@@ -15,7 +15,7 @@ materiais onde a tela sugeria uma só:
 
     POST /questionarios   →  CodigoAtendimento (8 díg.) + ScriptFinalizacao
                              + LinkAreaSegurado
-                             ↑ o número que a Regina vê como "Nº do atendimento"
+                             ↑ o número que a atendente vê como "Nº do atendimento"
 
 Provado por leitura direta: às 21:15:46 o `GET /atendimentos` devolve
 `CodigoAtendimento: null`; às 21:18:33, logo após o `POST /questionarios`, ele
@@ -231,12 +231,186 @@ def idempotencia_de_continuacao(*, company_id: Any, protocolo: Any,
 # validador confere antes de deixar a chamada sair.
 FRONTEIRA_ABRIR = "criar_atendimento_maxpar"        # POST /atendimentos
 FRONTEIRA_MATERIALIZAR = "gravar_questionario"      # POST /questionarios
+FRONTEIRA_ATUALIZAR = "atualizar_atendimento"       # PATCH /atendimentos
 FRONTEIRA_CANCELAR = "cancelar_atendimento"         # PUT  /atendimentos/cancelar
 FRONTEIRA_ABANDONAR = "abandonar_atendimento"       # PATCH /atendimentos/abandonar
 
 FRONTEIRAS_MATERIAIS: Tuple[str, ...] = (
-    FRONTEIRA_ABRIR, FRONTEIRA_MATERIALIZAR, FRONTEIRA_CANCELAR, FRONTEIRA_ABANDONAR,
+    FRONTEIRA_ABRIR, FRONTEIRA_MATERIALIZAR, FRONTEIRA_ATUALIZAR,
+    FRONTEIRA_CANCELAR, FRONTEIRA_ABANDONAR,
 )
+
+
+def fronteira_materializar_de(codigo_item_coberto: Any) -> str:
+    """Qual ação, NESTA peça, faz o pedido existir para o analista.
+
+    🔴 Esta função existe porque a resposta **não é a mesma para toda peça**, e
+    a constante fixa que estava no lugar dela acertava metade dos casos.
+
+    📊 Medido nas capturas de 20/09/2026, com o mesmo `GET /atendimentos` logo
+    depois da mesma mutação:
+
+        categoria `L` (lataria)      o `CodigoAtendimento` nasce logo após o
+                                     **PATCH**, e não há `POST /questionarios`
+                                     nenhum na captura inteira
+        categoria `V` (vidraçaria)   o PATCH NÃO materializa: o código nasce
+                                     depois do **POST /questionarios**
+                                     (📊 N=2 em `V`: vidro de porta e para-brisa)
+
+    Categoria desconhecida — inclusive `U` (roda/pneu), que esta SPEC não
+    percorre — devolve a fronteira MAIS CONSERVADORA: arma **antes** do PATCH.
+    Fail-closed: pedir autorização cedo demais custa uma pergunta; pedir tarde
+    demais custa um pedido aberto sem ninguém ter autorizado.
+    """
+    from portal_worker.journeys import vidros_api as API
+
+    categoria = str(API.partes_do_item_coberto(codigo_item_coberto).get("categoria") or "")
+    if categoria == API.CATEGORIA_VIDRACARIA:
+        return FRONTEIRA_MATERIALIZAR
+    return FRONTEIRA_ATUALIZAR
+
+
+# --------------------------------------------------------------------------
+# 🔴 O DESFECHO — quem decide loja ou agenda é o PORTAL, e ele diz por escrito
+# --------------------------------------------------------------------------
+DESFECHO_LOJA_DIRETA = "loja_direta"
+DESFECHO_AGENDA = "agenda"
+DESFECHO_ANALISTA = "analista"
+DESFECHO_VISTORIA = "vistoria"
+DESFECHO_DESCONHECIDO = "desconhecido"
+
+DESFECHOS: Tuple[str, ...] = (
+    DESFECHO_LOJA_DIRETA, DESFECHO_AGENDA, DESFECHO_ANALISTA,
+    DESFECHO_VISTORIA, DESFECHO_DESCONHECIDO,
+)
+
+# 📊 As 20 chaves de `GET /agendamentos/opcoes-disponiveis`, medidas nas 3
+# capturas que chegaram até lá (para-brisa, lataria, vidro de porta). A lista é
+# FECHADA de propósito: uma chave booleana nova, ligada, é uma decisão do portal
+# que este roteador não sabe ler — e a resposta certa para isso é parar.
+CHAVES_DO_ROTEADOR: Tuple[str, ...] = (
+    "AceitaReparo", "BloqueadoIlhaNormal", "BloqueadoPorFraude",
+    "DisponibilizarAgendamento", "ExibirAvisoVistoria",
+    "ExibirAvisoVistoriaPorRegraDeFraude", "ExisteAgendamento",
+    "ExisteOrdemServico", "ExisteVistoriaCriada", "GerarOrdemServicoGenesis",
+    "IrParaConclusaoDeAtendimento", "MensagemVistoria", "OpcoesAgendamento",
+    "PermiteOpcaoVistoria", "PermiteVistoriaAmbas", "PermiteVistoriaLoja",
+    "PermiteVistoriaMobile", "RealizarVistoria", "VistoriaFinalizada",
+    "VistoriaOnline",
+)
+
+# As que o roteador do bundle de fato consulta, NA ORDEM em que ele as consulta.
+_CONCLUSAO: Tuple[str, ...] = (
+    "IrParaConclusaoDeAtendimento", "ExisteVistoriaCriada", "ExisteAgendamento",
+    "ExisteOrdemServico", "VistoriaFinalizada",
+)
+_VISTORIA: Tuple[str, ...] = (
+    "PermiteVistoriaAmbas", "PermiteVistoriaLoja", "PermiteVistoriaMobile",
+    "RealizarVistoria",
+)
+
+
+def ler_desfecho(opcoes: Any, agregado: Any) -> Dict[str, Any]:
+    """O que o portal decidiu — função PURA sobre as duas respostas dele.
+
+    🔴 O ELO desta SPEC: *"a loja aparece PORQUE `opcoes-disponiveis` mandou"*.
+    Nenhum `if categoria == "L"` mora aqui. 📊 A prova de que não é atributo da
+    peça: mesma seguradora, mesma apólice, mesma categoria `V` — o para-brisa
+    terminou em loja direta e o vidro de porta em agenda, porque as respostas
+    deste endpoint foram opostas.
+
+    A ordem é a do bundle, e inverter troca o desfecho de gente de verdade:
+
+        conclusão (5 chaves, OU lógico)  → loja já atribuída (ou analista)
+        vistoria (4 chaves)              → vistoria
+        DisponibilizarAgendamento        → agenda, com `OpcoesAgendamento[]`
+        PermiteOpcaoVistoria             → vistoria
+
+    Fail-closed em dois casos, e os dois viram `desconhecido` com o roteador
+    inteiro preenchido para o dossiê: (1) a resposta não trouxe as chaves que o
+    roteador consulta; (2) veio uma chave booleana **fora das 20 medidas** e ela
+    está LIGADA — o portal passou a decidir por um caminho que nós não lemos.
+    """
+    o = opcoes if isinstance(opcoes, dict) else {}
+    a = agregado if isinstance(agregado, dict) else {}
+
+    from portal_worker.journeys import vidros_api as API
+
+    roteador = {k: o.get(k) for k in CHAVES_DO_ROTEADOR if k in o}
+    script = API.script_de_finalizacao(a)
+    franquia = API.descricao_da_franquia(a)
+    base: Dict[str, Any] = {
+        "tipo": DESFECHO_DESCONHECIDO,
+        "roteador": roteador,
+        "codigo_atendimento": str(a.get("CodigoAtendimento") or "").strip(),
+        "titulo_portal": script["titulo"],
+        "franquias": franquia.get("itens") or [],
+        "reparo": None,
+        "aceita_reparo_portal": o.get("AceitaReparo"),
+        "link_area_segurado": str(a.get("LinkAreaSegurado") or "").strip(),
+        "loja": None,
+        "lojas": [],
+        "motivo": "",
+    }
+
+    desconhecidas = [k for k, v in o.items()
+                     if k not in CHAVES_DO_ROTEADOR and isinstance(v, bool) and v]
+    if desconhecidas:
+        base["motivo"] = ("o portal respondeu com chave(s) que este roteador nao "
+                          "conhece, ligada(s): " + ", ".join(sorted(desconhecidas)))
+        base["chaves_novas"] = sorted(desconhecidas)
+        return base
+
+    if not any(k in o for k in _CONCLUSAO + ("DisponibilizarAgendamento",)):
+        base["motivo"] = ("opcoes-disponiveis veio sem as chaves do roteador "
+                          f"(chaves recebidas: {len(o)})")
+        return base
+
+    if any(o.get(k) is True for k in _CONCLUSAO):
+        # Conclusão. Quem diz se há LOJA é o ScriptFinalizacao — e só depois de
+        # `opcoes-disponiveis` ele traz a loja (ver `script_de_finalizacao`).
+        if script["tem_loja"]:
+            base["tipo"] = DESFECHO_LOJA_DIRETA
+            base["loja"] = script["loja"]
+            base["motivo"] = "portal concluiu com loja atribuida"
+        else:
+            base["tipo"] = DESFECHO_ANALISTA
+            base["motivo"] = ("portal concluiu sem loja no script; o atendimento "
+                              "esta com o analista")
+        return base
+
+    if any(o.get(k) is True for k in _VISTORIA):
+        base["tipo"] = DESFECHO_VISTORIA
+        base["motivo"] = "portal pediu vistoria"
+        return base
+
+    if o.get("DisponibilizarAgendamento") is True:
+        lojas = [x for x in (o.get("OpcoesAgendamento") or []) if isinstance(x, dict)]
+        base["tipo"] = DESFECHO_AGENDA
+        base["lojas"] = [{
+            "codigo_cliente": x.get("CodigoCliente"),
+            "codigo_produto": x.get("CodigoProduto"),
+            "nome": str(x.get("NomeLoja") or "").strip(),
+            "endereco": str(x.get("Endereco") or "").strip(),
+            "bairro": str(x.get("Bairro") or "").strip(),
+            "cidade": str(x.get("Cidade") or "").strip(),
+            "uf": str(x.get("SiglaUF") or "").strip(),
+            "cep": str(x.get("Cep") or "").strip(),
+            # 📊 `"S"` na captura. A agenda só existe quando a loja a publica.
+            "tem_agenda": str(x.get("DisponibilizaAgenda") or "").strip().upper() == "S",
+            "distancia": "", "tempo": "", "dias": [], "horarios": {},
+        } for x in lojas]
+        base["motivo"] = f"portal disponibilizou agendamento em {len(lojas)} loja(s)"
+        return base
+
+    if o.get("PermiteOpcaoVistoria") is True:
+        base["tipo"] = DESFECHO_VISTORIA
+        base["motivo"] = "portal ofereceu a opcao de vistoria"
+        return base
+
+    base["motivo"] = ("nenhum ramo do roteador ficou verdadeiro; o portal nao "
+                      "indicou desfecho")
+    return base
 
 
 def fase_apos_falha(estado: EstadoDoAtendimento) -> str:

@@ -108,10 +108,174 @@ EP_CLIENTES_CIDADES = "/clientes/cidades"
 EP_ABANDONAR = "/atendimentos/abandonar"
 EP_CANCELAR = "/atendimentos/cancelar"
 
-# 📊 Declarado no bundle, não exercido em nenhuma captura. Só entra em uso
-# depois de medido — SPEC-073 G3: candidato ≠ aprovado.
+# --------------------------------------------------------------------------
+# Endpoints acrescentados pela EXTRA-001.10 — todos MEDIDOS nos 4 HAR de
+# 20/09/2026, lidos por `app.services.portals.lab.trafego.importar_har`.
+# 📊 A contagem de exercícios por endpoint está no registro ESTADO_DO_ENDPOINT
+# mais abaixo, e o gate G7 a reconta a partir do HAR — nenhum destes números
+# vive só num comentário.
+# --------------------------------------------------------------------------
+EP_ALTERAR_REPARO = "/atendimentos/alterar-reparo"          # PUT  {"Reparo": bool}
+EP_SERVICOS_ITENS = "/atendimentos/servicos-itens"          # lataria: as peças
+EP_SERVICOS_DETALHES = "/atendimentos/servicos-detalhes"    # tamanho do amassado
+EP_OBJETOS_CAUSA = "/atendimentos/objetos-causa"            # lataria: causas
+EP_OFERTAS_POLIMENTO = "/atendimentos/ofertas-polimentos-farois"
+EP_EMITIR_FORMALIZADO = "/atendimentos/emitir-atendimento-formalizado"
+EP_LIVRES_ESCOLHAS_VALIDAR = "/atendimentos/livres-escolhas/validar"
+EP_STATUS_SEGURADORAS = "/atendimentos/status-seguradoras/"
+EP_LIMITES_BLOQUEIOS = "/atendimentos/limites-monetarios/bloqueios"
+EP_OPCOES_DISPONIVEIS = "/agendamentos/opcoes-disponiveis"  # 🔴 O ROTEADOR
+EP_DATAS_DISPONIVEIS = "/agendamentos/datas-disponiveis"
+EP_HORARIOS_DISPONIVEIS = "/agendamentos/horarios-disponiveis"
+EP_CONSULTAR_DISTANCIAS = "/lojas/consultar-distancias"     # POST de LEITURA
+EP_CONSULTA_CEP = "/transportes-proprios/consultas-cep"
+
+# 📊 Declarados no bundle, NÃO exercidos em nenhuma captura. Só entram em uso
+# depois de medidos — SPEC-073 G3: candidato ≠ aprovado.
 EP_FINALIZAR_NAO_MEDIDO = "/atendimentos/finalizar"
 EP_VISTORIA_MOBILE_NAO_MEDIDO = "/atendimentos/vistoriamobile"
+EP_AGENDAMENTOS_NAO_MEDIDO = "/agendamentos"
+EP_DIRECIONAMENTOS_NAO_MEDIDO = "/direcionamentos"
+EP_FOTOGRAFIAS_WEB_NAO_MEDIDO = "/atendimentos-fotografias/web"
+EP_MOTIVOS_CANCELAMENTO_NAO_MEDIDO = "/atendimentos/motivos-cancelamento"
+# 📊 Exercidos nas capturas, mas FORA do contrato desta SPEC: a tela os dispara
+# e nenhum campo que o motor lê muda com eles. Um robô que abre reclamação
+# sozinho é efeito que ninguém pediu.
+EP_VISTORIAS_PREVIAS_FORA = "/atendimentos/{codigo}/vistorias-previas/processar"
+EP_CORRETORES_RECLAMACOES_FORA = "/corretores-reclamacoes"
+
+# --------------------------------------------------------------------------
+# 🔴 A ESCADA DA SPEC-077, escrita: OBSERVED → CANDIDATE → APPROVED
+# --------------------------------------------------------------------------
+# `APPROVED` significa UMA coisa só: **este endereço foi exercido numa captura
+# real e nós sabemos o que ele faz**. `CANDIDATE` significa que ele existe no
+# bundle (ou na tela) e que nós NUNCA o vimos acontecer.
+#
+# 🔴 A regra que fecha a porta: `SessaoVidros.chamar` recusa endpoint
+# `CANDIDATE` **mesmo com o freio liberado e a aprovação humana dada**. Escrever
+# o código contra o contrato do bundle é barato; deixá-lo sair sem captura é
+# mandar um efeito que ninguém mediu para dentro de uma seguradora.
+APPROVED = "APPROVED"
+CANDIDATE = "CANDIDATE"
+
+ESTADO_DO_ENDPOINT: Dict[str, str] = {
+    # ---- leituras exercidas ------------------------------------------------
+    EP_SEGURADORAS: APPROVED,
+    EP_APOLICES: APPROVED,
+    EP_ITENS_COBERTOS: APPROVED,
+    EP_MOTIVOS_DANO: APPROVED,
+    EP_ATENDIMENTOS: APPROVED,
+    EP_ATENDIMENTOS_ABERTOS: APPROVED,
+    EP_TIPOS_TELEFONE: APPROVED,
+    EP_UFS: APPROVED,
+    EP_CIDADES: APPROVED,
+    EP_CLIENTES_CIDADES: APPROVED,
+    EP_SERVICOS_ITENS: APPROVED,
+    EP_SERVICOS_DETALHES: APPROVED,
+    EP_OBJETOS_CAUSA: APPROVED,
+    EP_OFERTAS_POLIMENTO: APPROVED,
+    EP_LIVRES_ESCOLHAS_VALIDAR: APPROVED,
+    EP_STATUS_SEGURADORAS: APPROVED,
+    EP_LIMITES_BLOQUEIOS: APPROVED,
+    EP_OPCOES_DISPONIVEIS: APPROVED,
+    EP_DATAS_DISPONIVEIS: APPROVED,
+    EP_HORARIOS_DISPONIVEIS: APPROVED,
+    EP_CONSULTA_CEP: APPROVED,
+    # ---- escritas exercidas e contratadas ----------------------------------
+    EP_CORRETORES: APPROVED,
+    EP_SOLICITANTES: APPROVED,
+    EP_QUESTIONARIO_PERGUNTAS: APPROVED,   # POST que LÊ a próxima pergunta
+    EP_QUESTIONARIO: APPROVED,
+    EP_REGRAS_REPARO: APPROVED,            # POST que LÊ {ExibirDialogDeReparo}
+    EP_ALTERAR_REPARO: APPROVED,
+    EP_EMITIR_FORMALIZADO: APPROVED,
+    EP_CONSULTAR_DISTANCIAS: APPROVED,     # POST de LEITURA (rota, não negócio)
+    EP_CANCELAR: APPROVED,                 # 📊 2 exercícios (NOVO, ANT)
+    # ---- escritas que NUNCA vimos acontecer --------------------------------
+    EP_AGENDAMENTOS_NAO_MEDIDO: CANDIDATE,
+    EP_DIRECIONAMENTOS_NAO_MEDIDO: CANDIDATE,
+    EP_FOTOGRAFIAS_WEB_NAO_MEDIDO: CANDIDATE,
+    EP_FINALIZAR_NAO_MEDIDO: CANDIDATE,
+    EP_VISTORIA_MOBILE_NAO_MEDIDO: CANDIDATE,
+    EP_MOTIVOS_CANCELAMENTO_NAO_MEDIDO: CANDIDATE,
+    # 📊 `abandonar` TEM 1 exercício (HAR da PORTO, `PATCH /atendimentos/abandonar
+    # {"MotivoAbandono": …}`, status 200) — a proposta dizia "zero capturas" e o
+    # número medido aqui vence. Ele continua CANDIDATE mesmo assim, e a razão não
+    # é falta de medição: é que desistir de um pedido no lugar do segurado não é
+    # um efeito que esta SPEC autoriza. Promover exige decisão de produto, não
+    # mais uma captura.
+    EP_ABANDONAR: CANDIDATE,
+    # exercidos, mas fora do contrato (a tela os dispara; o motor não)
+    EP_VISTORIAS_PREVIAS_FORA: CANDIDATE,
+    EP_CORRETORES_RECLAMACOES_FORA: CANDIDATE,
+}
+
+# 📊 O método com que cada ESCRITA foi medida (ou declarada no bundle). O gate
+# G7 usa esta tabela para recontar exercícios no HAR: endpoint de escrita com
+# ZERO exercícios e estado APPROVED deixa o gate VERMELHO.
+METODO_DA_ESCRITA: Dict[str, str] = {
+    EP_ATENDIMENTOS: "POST",
+    EP_CORRETORES: "PUT",
+    EP_SOLICITANTES: "POST",
+    EP_QUESTIONARIO_PERGUNTAS: "POST",
+    EP_QUESTIONARIO: "POST",
+    EP_REGRAS_REPARO: "POST",
+    EP_ALTERAR_REPARO: "PUT",
+    EP_EMITIR_FORMALIZADO: "POST",
+    EP_CONSULTAR_DISTANCIAS: "POST",
+    EP_CANCELAR: "PUT",
+    EP_ABANDONAR: "PATCH",
+    EP_AGENDAMENTOS_NAO_MEDIDO: "POST",
+    EP_DIRECIONAMENTOS_NAO_MEDIDO: "POST",
+    EP_FOTOGRAFIAS_WEB_NAO_MEDIDO: "POST",
+    EP_FINALIZAR_NAO_MEDIDO: "PATCH",
+    EP_VISTORIAS_PREVIAS_FORA: "POST",
+    EP_CORRETORES_RECLAMACOES_FORA: "POST",
+}
+
+_RE_CODIGO_NA_URL = re.compile(r"/\d{4,}")
+
+
+def endpoint_do_caminho(caminho: Any) -> str:
+    """Do caminho chamado para a CHAVE do registro. `""` = desconhecido.
+
+    O código de atendimento aparece no meio (`/atendimentos/<cod>/vistorias…`)
+    e no fim (`/emitir-atendimento-formalizado/<cod>`) — por isso a
+    normalização troca todo bloco de 4+ dígitos por `{codigo}` antes de casar, e
+    o casamento é pelo prefixo MAIS LONGO: `/atendimentos/abandonar` não pode
+    cair em `/atendimentos`.
+    """
+    c = str(caminho or "").split("?")[0]
+    c = _RE_CODIGO_NA_URL.sub("/{codigo}", c)
+    if c in ESTADO_DO_ENDPOINT:
+        return c
+    melhor = ""
+    for ep in ESTADO_DO_ENDPOINT:
+        base = ep.rstrip("/")
+        if c == base or c.startswith(base + "/"):
+            if len(base) > len(melhor):
+                melhor = ep
+    return melhor
+
+
+def estado_do_endpoint(caminho: Any) -> str:
+    """`APPROVED` · `CANDIDATE` · `""` (fora do registro)."""
+    return ESTADO_DO_ENDPOINT.get(endpoint_do_caminho(caminho), "")
+
+
+def pode_sair(caminho: Any) -> bool:
+    """A chamada pode sair para a rede?
+
+    Endpoint fora do registro devolve `True` de propósito: o registro cobre o
+    que ESTA journey chama, e uma rota nova escrita por engano já é barrada
+    pela allowlist de host. O que este portão existe para impedir é o caso
+    específico e caro — um endereço que sabemos existir e nunca vimos funcionar
+    sair com o freio liberado.
+    """
+    return estado_do_endpoint(caminho) != CANDIDATE
+
+
+# --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
 # Preflight de apólice — SPEC-074 §E, o gate que decide se PODE haver escrita
@@ -234,6 +398,175 @@ COBERTURAS_PORTO: Dict[int, str] = {
 }
 
 
+# --------------------------------------------------------------------------
+# 🔴 A seguradora sai de um DADO AO VIVO, não de uma lista no código
+# --------------------------------------------------------------------------
+# 📊 `GET /seguradoras/` devolveu **38 itens** em 20/09/2026 (HAR do para-brisa,
+# lido por `trafego.importar_har`). Cada item tem `Codigo`, `CodigoSeguradora`
+# (o slug que a API usa em toda query), `Nome` e `NomeFantasia`. **Não existe
+# campo `Ativo`**: a inatividade vem escrita no próprio nome, entre parênteses.
+#
+# 🔴 A lista fechada de 3 slugs que existia aqui (`PORTO`, `AZUL`, `ITAU`)
+# morreu, e com ela o defeito que ela carregava: `ITAU` **não está entre as 38**.
+# Um corretor que digitasse "Itaú" recebia o slug `ITAU`, o portal respondia
+# sobre uma seguradora que ele não publica, e o preflight decidia a escrita em
+# cima disso. Produto multi-corretora não decora catálogo de ninguém.
+FORA_DO_API_FIRST: Tuple[str, ...] = (
+    # D-PILOTO-17: a Bradesco resolve na lista (slug `BRADESCO`, código 52) —
+    # ela aparece, é exibível e o corretor pode nomeá-la. O que NÃO acontece é
+    # a escrita automática: `abrir_atendimento_api` devolve `None` para ela e o
+    # caminho DOM assume. A decisão é de produto, não de contrato.
+    "BRADESCO",
+)
+
+_MARCA_INATIVA = "(inativo)"
+
+
+def apelidos_de_seguradora() -> Tuple[Tuple[str, str], ...]:
+    """Dicas MEDIDAS: o que o corretor escreve → o slug que a API usa.
+
+    🔴 Isto é **dica**, nunca autoridade. O slug só vale se aparecer na lista
+    ao vivo; um apelido que aponte para uma seguradora que o portal não publica
+    não resolve nada. Cada linha abaixo tem a medição que a justifica.
+
+    ⚠️ **O formato é uma sequência de pares, e não um dicionário, de propósito.**
+    Quem consome isto de fora é `app/agents/tools/portal_params._apelidos_do_portal`,
+    que itera `for frag, canon in apelidos_de_seguradora()` e testa o fragmento
+    com `in` sobre o nome em CAIXA ALTA — por isso as chaves vêm em maiúscula,
+    sem acento, e **da mais específica para a mais genérica** (`PORTO SEGURO`
+    antes de `PORTO`). Devolver um `dict` faria aquele laço levantar
+    `ValueError`, cair no `except` e continuar usando a tabela antiga **em
+    silêncio** — a consolidação pareceria feita sem estar.
+    """
+    return _pares_de_apelido(_APELIDOS_MEDIDOS)
+
+
+def _pares_de_apelido(bruto: Dict[str, str]) -> Tuple[Tuple[str, str], ...]:
+    """Mais específico primeiro: o consumidor testa por `in`, e `PORTO` casaria
+    dentro de `PORTO SEGURO`."""
+    return tuple(sorted(((k.upper(), v) for k, v in bruto.items()),
+                        key=lambda par: (-len(par[0]), par[0])))
+
+
+_APELIDOS_MEDIDOS: Dict[str, str] = {
+        # 📊 `CodigoSeguradora = "LIBERTY"`, `Nome = "YELUM SEGUROS S.A"`,
+        # `NomeFantasia = "YELUM SEGURADORA"`, `Codigo = 56`. A Liberty virou
+        # Yelum e o portal guardou o slug antigo. Quem digita "Yelum" — que é o
+        # que está na apólice de hoje — precisa chegar em `LIBERTY`.
+        "yelum": "LIBERTY",
+        "liberty": "LIBERTY",
+        # 📊 `NomeFantasia = "TOKIO MARINE SEGURADORA"`, slug `TOKIOMARINE`:
+        # o nome de tela tem espaço e o slug não.
+        "tokio": "TOKIOMARINE",
+        "tokio marine": "TOKIOMARINE",
+        # 📊 `NomeFantasia = "SOMPO SEGUROS"`, slug `SOMPO`, código 281.
+        # ⚠️ No bundle do SPA existe uma ROTA `seguradoras/sompo/…` que carrega
+        # os templates de `GRUPO_HDI`. Isso é rota de tela (quem desenhou
+        # reaproveitou o layout do grupo), **não** é o slug da API. Ninguém deve
+        # "consertar" `SOMPO` para `GRUPO_HDI`: a query da API usa `SOMPO`, e é
+        # com `SOMPO` que a lista ao vivo responde.
+        "sompo": "SOMPO",
+        "porto": "PORTO",
+        "porto seguro": "PORTO",
+        "sul america": "SULAMERICA",
+        "sulamerica": "SULAMERICA",
+        "hdi": "HDI",
+        "mitsui": "MITSUI",
+        "toyota": "TOYOTA",
+        "santander": "SANTANDERAUTO",
+        "banco do brasil": "BB",
+        # ⛔ "itau" NÃO entra: 📊 não está entre as 38 que o portal publica.
+        # Deixar de fora é o conserto; escrever `"itau": ""` seria fingir que a
+        # ausência é uma regra nossa, e não do portal.
+    }
+
+
+def _itens_de_seguradora(lista_ao_vivo: Any) -> list:
+    if isinstance(lista_ao_vivo, dict):
+        lista_ao_vivo = lista_ao_vivo.get("json") or []
+    return [i for i in (lista_ao_vivo or []) if isinstance(i, dict)] \
+        if isinstance(lista_ao_vivo, list) else []
+
+
+def _slug_do_item(item: Dict[str, Any]) -> str:
+    return str(item.get("CodigoSeguradora") or "").strip().upper()
+
+
+def _item_inativo(item: Dict[str, Any]) -> bool:
+    """📊 Não há campo `Ativo`. A inatividade vem no nome: o item de código 146
+    chega como `NomeFantasia = "NUBANK AUTO (INATIVO)"` e
+    `Nome = "USEBENS SEGUROS S.A. (INATIVO)"`. Um pedido aberto para uma
+    seguradora inativa é um pedido que ninguém atende."""
+    return any(_MARCA_INATIVA in _norm(item.get(c))
+               for c in ("Nome", "NomeFantasia", "DescricaoAtendimentoWeb"))
+
+
+def resolver_seguradora(nome: Any, lista_ao_vivo: Any) -> Optional[Dict[str, Any]]:
+    """O nome que a corretora escreveu → `{slug, codigo, nome_de_tela}` ou `None`.
+
+    A lista vem de `GET /seguradoras/` **desta execução**. `None` é uma resposta
+    legítima e frequente, e significa sempre a mesma coisa: *não dá para provar
+    de qual seguradora ele está falando* — e aí o caminho DOM assume, que é
+    quem sabe navegar a tela de seleção.
+
+    A ordem das tentativas é do mais forte para o mais fraco:
+
+        1. igualdade com slug, `Nome` ou `NomeFantasia` (sem acento, sem caixa)
+        2. apelido MEDIDO, desde que o slug exista na lista ao vivo
+        3. prefixo/continência — e só resolve se sobrar **um** slug
+
+    🔴 Dois candidatos devolvem `None`, nunca "o primeiro". Escolher por posição
+    é como se manda o pedido para a seguradora errada com todos os testes verdes.
+    """
+    itens = [i for i in _itens_de_seguradora(lista_ao_vivo) if not _item_inativo(i)]
+    alvo = _norm(nome)
+    if not alvo or not itens:
+        return None
+
+    def devolver(item: Dict[str, Any]) -> Dict[str, Any]:
+        return {"slug": _slug_do_item(item),
+                "codigo": item.get("Codigo"),
+                "nome_de_tela": str(item.get("NomeFantasia")
+                                    or item.get("Nome") or "").strip()}
+
+    # 1. igualdade
+    for item in itens:
+        if alvo in (_norm(_slug_do_item(item)), _norm(item.get("Nome")),
+                    _norm(item.get("NomeFantasia"))):
+            return devolver(item)
+
+    # 2. apelido medido — vale só se o slug estiver publicado hoje
+    apelido = ""
+    for frag, slug in apelidos_de_seguradora():
+        if _norm(frag) == alvo:
+            apelido = slug
+            break
+    if apelido:
+        for item in itens:
+            if _slug_do_item(item) == apelido:
+                return devolver(item)
+
+    # 3. continência, e só com UM candidato
+    candidatos: Dict[str, Dict[str, Any]] = {}
+    for item in itens:
+        campos = [_norm(_slug_do_item(item)), _norm(item.get("Nome")),
+                  _norm(item.get("NomeFantasia"))]
+        if any(c and (c.startswith(alvo) or alvo.startswith(c) or
+                      (len(alvo) >= 4 and alvo in c)) for c in campos):
+            candidatos[_slug_do_item(item)] = item
+    if len(candidatos) == 1:
+        return devolver(next(iter(candidatos.values())))
+    return None
+
+
+def nomes_de_tela_das_seguradoras(lista_ao_vivo: Any) -> list:
+    """Os nomes que o portal publica hoje — para o agente perguntar com a lista
+    na mão em vez de adivinhar. Inativas ficam de fora."""
+    return sorted({str(i.get("NomeFantasia") or i.get("Nome") or "").strip()
+                   for i in _itens_de_seguradora(lista_ao_vivo)
+                   if not _item_inativo(i) and (i.get("NomeFantasia") or i.get("Nome"))})
+
+
 def tipo_atendimento_para(seguradora_slug: Any, familia: Any = "") -> Optional[int]:
     """`1`, `2` ou `None`. `None` é a resposta certa para 41 das 42."""
     slug = str(seguradora_slug or "").strip().upper()
@@ -304,6 +637,121 @@ RELACAO_TITULAR: Dict[str, str] = {
 }
 
 
+# --------------------------------------------------------------------------
+# 🔴 O corpo do `PATCH /atendimentos` — a regra é POR CAMPO, não uma regra só
+# --------------------------------------------------------------------------
+# 📊 Medido nas 4 capturas de 20/09/2026, com `importar_har`: o corpo tem
+# **8 chaves, sempre as mesmas e sempre nesta ordem**, em 4 de 4 —
+# `['CodigoItemCoberto', 'CodigoCidade', 'CodigoZona', 'CodigoObjetoCausa',
+#   'AvaliacaoDano', 'PerimetroDano', 'Cep', 'ServicosMartelinhoLataria']`.
+#
+# O contrato do bundle tem 11 campos. Os 3 que somem não somem por serem
+# `None`: eles somem porque o bundle os lê de `passo3.dados.X` sem ternário, e
+# `JSON.stringify` **descarta `undefined`**. Dois campos escapam disso e sempre
+# viajam, e é por isso que a regra não pode ser "omitir se None":
+#
+#     CodigoZona                  ternário explícito para `null` → viaja como null
+#     ServicosMartelinhoLataria   `(t || []).map(…)` → array vazio ainda é array
+#     ItemRemovido/EventoComposto/PolimentoFarol   → undefined, somem
+#
+# 🔴 Uma regra cega de "omitir se None" manda **6** chaves; mandar
+# `"ItemRemovido": null` manda **11**. As duas quebram o gate, por lados opostos.
+CHAVES_DO_PATCH: Tuple[str, ...] = (
+    "CodigoItemCoberto", "CodigoCidade", "CodigoZona", "CodigoObjetoCausa",
+    "AvaliacaoDano", "PerimetroDano", "Cep", "ServicosMartelinhoLataria",
+)
+
+# 📊 O portal exige relato com no mínimo 30 caracteres (a captura da lataria
+# chegou com `COLISAO` preenchido com pontos até passar do limite). Saber disso
+# ANTES da fronteira A é o que evita abrir um pedido e travar no passo 3.
+MINIMO_AVALIACAO_DANO = 30
+
+
+def corpo_de_atualizacao(*, codigo_item_coberto: str, codigo_cidade: Any,
+                         codigo_objeto_causa: Any, avaliacao_dano: str,
+                         perimetro_dano: str, cep: str = "",
+                         codigo_zona: Optional[int] = None,
+                         servicos_martelinho_lataria: Optional[list] = None,
+                         item_removido: Optional[bool] = None,
+                         evento_composto: Optional[bool] = None,
+                         polimento_farol: Optional[bool] = None) -> Dict[str, Any]:
+    """O corpo do PATCH, com a regra por campo aplicada. Função PURA."""
+    corpo: Dict[str, Any] = {
+        "CodigoItemCoberto": str(codigo_item_coberto or ""),
+        "CodigoCidade": codigo_cidade,
+        # sempre presente, ainda que `null`
+        "CodigoZona": codigo_zona,
+        "CodigoObjetoCausa": codigo_objeto_causa,
+        "AvaliacaoDano": str(avaliacao_dano or ""),
+        # 📊 o `value` do template é `opcao.substring(0,1)`: viaja a PRIMEIRA LETRA
+        "PerimetroDano": str(perimetro_dano or "")[:1].upper(),
+        "Cep": str(cep or ""),
+        # sempre lista, nunca `null`
+        "ServicosMartelinhoLataria": list(servicos_martelinho_lataria or []),
+    }
+    # 🔴 Estes três só existem no corpo quando foram RESPONDIDOS.
+    if item_removido is not None:
+        corpo["ItemRemovido"] = bool(item_removido)
+    if evento_composto is not None:
+        corpo["EventoComposto"] = bool(evento_composto)
+    if polimento_farol is not None:
+        corpo["PolimentoFarol"] = bool(polimento_farol)
+    return corpo
+
+
+# --------------------------------------------------------------------------
+# ScriptFinalizacao — o texto que o portal manda dar ao segurado
+# --------------------------------------------------------------------------
+def script_de_finalizacao(atendimento: Any) -> Dict[str, Any]:
+    """Lê o `ScriptFinalizacao` do agregado. **QUANDO se lê importa.**
+
+    🔴 📊 Medido no HAR do para-brisa (20/09/2026): o mesmo `GET /atendimentos`
+    devolve conteúdos diferentes conforme o momento.
+
+        logo que o CodigoAtendimento nasce   Titulo "Seu atendimento já está com
+                                             o analista responsável…",
+                                             PrioridadeRetorno=true,
+                                             InformacoesAdicionais = []  (0 itens)
+        DEPOIS de `GET /agendamentos/opcoes-disponiveis`, com
+        PossuiOrdemServico=true              Titulo "As informações abaixo serão
+                                             encaminhadas por e-mail ou SMS.",
+                                             PrioridadeRetorno=false,
+                                             InformacoesAdicionais = 4 itens
+                                             (Loja · Endereço · Ponto de
+                                              Referência · Telefone)
+
+    Ler antes é ler a versão sem loja — e entregar ao segurado "aguarde o
+    analista" quando o portal já tinha decidido a oficina dele.
+    """
+    a = atendimento if isinstance(atendimento, dict) else {}
+    sf = a.get("ScriptFinalizacao")
+    sf = sf if isinstance(sf, dict) else {}
+    infos = [i for i in (sf.get("InformacoesAdicionais") or []) if isinstance(i, dict)]
+    por_titulo = {_norm(i.get("Titulo")): str(i.get("Valor") or "").strip()
+                  for i in infos}
+    loja_nome = por_titulo.get("loja", "")
+    return {
+        "titulo": str(sf.get("Titulo") or "").strip(),
+        "rodape": str(sf.get("Rodape") or "").strip(),
+        "mensagem_adas": str(sf.get("MensagemAdas") or "").strip(),
+        "prioridade_retorno": sf.get("PrioridadeRetorno"),
+        "informacoes": [{"titulo": str(i.get("Titulo") or "").strip(),
+                         "valor": str(i.get("Valor") or "").strip()} for i in infos],
+        "tem_loja": bool(loja_nome),
+        "loja": {
+            "nome": loja_nome,
+            "endereco": por_titulo.get("endereco", ""),
+            "referencia": por_titulo.get("ponto de referencia", ""),
+            # 📊 o telefone vem com a orientação colada: "(NN) NNNNNNNNN (Entre
+            # em contato com a loja para agendar o serviço)". Separar aqui evita
+            # que a orientação vire parte do número numa mensagem de WhatsApp.
+            "telefone": por_titulo.get("telefone", "").split("(Entre")[0].strip(),
+            "orientacao": ("(Entre" + por_titulo["telefone"].split("(Entre")[1]).strip()
+            if "(Entre" in por_titulo.get("telefone", "") else "",
+        } if loja_nome else None,
+    }
+
+
 def descricao_da_franquia(atendimento: Any) -> Dict[str, Any]:
     """Extrai franquia do agregado `GET /atendimentos` — não da tela.
 
@@ -346,14 +794,14 @@ def vistoria_do_atendimento(atendimento: Any) -> Dict[str, Any]:
     """Os campos de vistoria, exatamente como a API os nomeia.
 
     📊 `vistoria.mobi` **não aparece em nenhuma das três capturas** — nem no
-    HAR, nem no HTML, nem no bundle. Aparece só no PDF que a Regina montou.
+    HAR, nem no HTML, nem no bundle. Aparece só no PDF que a atendente montou.
 
     O motivo está medido: nas sessões capturadas
     `PermiteVistoriaMobile: false` e `LinkVistoriaMobile: ""`. A seguradora não
     habilitou vistoria, então o link nunca foi gerado.
 
     🔴 Portanto: o campo é conhecido, o valor não. Nunca inventar o link; se
-    vier vazio, o resultado diz que não há link — e é P-186/Regina quem fecha
+    vier vazio, o resultado diz que não há link — e é P-186/a atendente quem fecha
     isso com uma apólice que tenha vistoria habilitada.
     """
     a = atendimento if isinstance(atendimento, dict) else {}

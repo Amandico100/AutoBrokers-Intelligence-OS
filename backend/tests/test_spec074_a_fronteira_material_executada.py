@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 from fixtures.vidros import maxpar_apolices as FA        # noqa: E402
 from fixtures.vidros import maxpar_atendimento as FT     # noqa: E402
+from fixtures.vidros import maxpar_catalogos as FC       # noqa: E402
 from portal_worker import guardrails as G                # noqa: E402
 from portal_worker.journeys import vidros_api as A       # noqa: E402
 from portal_worker.journeys import vidros_apifirst as AF  # noqa: E402
@@ -103,6 +104,87 @@ class SessaoFalsa:
         self._reg("ler_atendimento")
         return {"ok": True, "status": 200, "json": FT.ATENDIMENTO_POS_QUESTIONARIO}
 
+    # ======================================================================
+    # 🔴 ATUALIZADO em 20/09/2026 — SPEC-EXTRA-001.10 (CLAUDE.md §9.3)
+    # ======================================================================
+    # O FATO que mudou: a journey deixou de exigir `insurer_name` casado contra
+    # uma lista de 3 slugs no código e passou a resolver a seguradora contra o
+    # `GET /seguradoras/` AO VIVO (P0-4), e deixou de ir do `POST /atendimentos`
+    # direto ao questionário — ela agora cumpre o fio medido em 4 de 4 capturas
+    # (corretores → solicitantes → catálogo → PATCH → …).
+    #
+    # A lição deste arquivo NÃO mudou e continua sendo testada: as asserções
+    # continuam perguntando **"o POST saiu, ou não saiu?"**, e continuam
+    # contando `criar_atendimento` e `gravar_questionario`. O que mudou foi a
+    # superfície que a dublê precisa cobrir para que a journey chegue lá.
+    async def seguradoras(self, *a, **k):
+        self._reg("seguradoras")
+        return {"ok": True, "status": 200, "json": FC.SEGURADORAS}
+
+    async def registrar_corretor(self, *a, **k):
+        self._reg("registrar_corretor")
+        return {"ok": True, "status": 200, "json": {"CadastroRealizadoMaxParceiro": True}}
+
+    async def tipos_de_telefone(self, *a, **k):
+        self._reg("tipos_de_telefone")
+        return {"ok": True, "status": 200, "json": FC.TIPOS_TELEFONE}
+
+    async def registrar_solicitante(self, corpo=None, *a, **k):
+        self._reg("registrar_solicitante")
+        self.corpo_do_solicitante = dict(corpo or {})
+        return {"ok": True, "status": 200, "json": True}
+
+    async def itens_cobertos(self, *a, **k):
+        self._reg("itens_cobertos")
+        return {"ok": True, "status": 200, "json": FC.ITENS_COBERTOS_PORTO}
+
+    async def motivos_dano(self, *a, **k):
+        self._reg("motivos_dano")
+        return {"ok": True, "status": 200, "json": FC.MOTIVOS_DANO_VIDRO_PORTA}
+
+    async def servicos_itens(self, *a, **k):
+        self._reg("servicos_itens")
+        return {"ok": True, "status": 200, "json": []}
+
+    async def ufs(self, *a, **k):
+        self._reg("ufs")
+        return {"ok": True, "status": 200, "json": [{"UF": "SC"}, {"UF": "SP"}]}
+
+    async def cidades(self, *a, **k):
+        self._reg("cidades")
+        return {"ok": True, "status": 200, "json": [
+            {"Codigo": 8214, "UF": "SC", "Cidade": "FLORIANOPOLIS",
+             "Nome": "FLORIANOPOLIS"}]}
+
+    async def cidade_atendida(self, *a, **k):
+        self._reg("cidade_atendida")
+        return {"ok": True, "status": 200,
+                "json": {"Codigo": 8214, "Nome": "FLORIANOPOLIS", "UF": "SC",
+                         "Zonas": []}}
+
+    async def atualizar_atendimento(self, corpo=None, *a, **k):
+        self._reg("atualizar_atendimento")
+        self.corpo_do_patch = dict(corpo or {})
+        return {"ok": True, "status": 200, "json": {"AtendimentoAtualizado": True}}
+
+    async def regras_reparo(self, *a, **k):
+        self._reg("regras_reparo")
+        return {"ok": True, "status": 200, "json": {"ExibirDialogDeReparo": False}}
+
+    async def alterar_reparo(self, *a, **k):
+        self._reg("alterar_reparo")
+        return {"ok": True, "status": 200, "json": True}
+
+    async def opcoes_de_agendamento(self, *a, **k):
+        self._reg("opcoes_de_agendamento")
+        return {"ok": True, "status": 200, "json": {
+            "IrParaConclusaoDeAtendimento": True, "ExisteOrdemServico": True,
+            "DisponibilizarAgendamento": False, "OpcoesAgendamento": []}}
+
+    async def emitir_formalizado(self, *a, **k):
+        self._reg("emitir_formalizado")
+        return {"ok": True, "status": 200, "json": True}
+
 
 class RuntimeFalso:
     """O que o worker injeta em `params["_runtime"]`, com checkpoint durável
@@ -127,7 +209,24 @@ def _params(**extra):
         "cpf_cnpj": "00000000191",
         "placa": "QAB1A91",
         "data_dano": "14/08/2026",
-        "dano": {"peca": "vidro de porta"},
+        # 🔴 ATUALIZADO (SPEC-EXTRA-001.10): `como`, `descricao`,
+        # `local.cidade_servico` e `contato` passaram a ser exigidos ANTES da
+        # fronteira A — são o que o portal cobra no PATCH e no `POST
+        # /solicitantes`, medidos em 4 de 4 capturas. Sem eles a journey
+        # devolve `None` sem escrever nada, que é o comportamento certo e o que
+        # o par de controle abaixo continua provando.
+        "dano": {"peca": "vidro de porta",
+                 "como": "COLISÃO ACIDENTAL",
+                 "onde": "U",
+                 "descricao": "BATI O CARRO E O VIDRO DA PORTA QUEBROU INTEIRO"},
+        "local": {"cidade_servico": {"uf": "SC", "cidade": "FLORIANOPOLIS"},
+                  "cep": "88000000"},
+        "contato": {"relacao": "6", "telefone": "4700000000",
+                    "tipo_telefone": "segurado",
+                    "email_segurado": "teste@example.invalid",
+                    "email_corretora": "corretora@example.invalid",
+                    "nome_solicitante": "CORRETOR DE TESTE",
+                    "documento_corretor": "00000000191"},
         "especificos": {"lado_motorista_ou_carona": "motorista"},
         "confirm": True,
     }

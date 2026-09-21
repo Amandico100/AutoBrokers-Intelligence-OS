@@ -231,8 +231,24 @@ print("\n[V13] as duas fronteiras sao NOMEADAS ao guard, e sao diferentes")
 # ==========================================================================
 check("V13: abrir e materializar sao acoes distintas",
       E.FRONTEIRA_ABRIR != E.FRONTEIRA_MATERIALIZAR)
-check("V13: as quatro fronteiras materiais estao declaradas",
-      len(set(E.FRONTEIRAS_MATERIAIS)) == 4)
+# 🔴 ATUALIZADO em 20/09/2026 — SPEC-EXTRA-001.10 P0-3 (CLAUDE.md §9.3).
+# O FATO mudou: eram QUATRO fronteiras e passaram a ser CINCO. A nova é
+# `FRONTEIRA_ATUALIZAR` (o `PATCH /atendimentos`), e ela existe porque 📊 na
+# captura de lataria o `CodigoAtendimento` nasce logo depois do PATCH, sem
+# nenhum `POST /questionarios` — ou seja, para categoria `L` é o PATCH que
+# materializa. Guardar o número 4 aqui seria guardar uma verdade vencida.
+check("V13: as cinco fronteiras materiais estao declaradas",
+      len(set(E.FRONTEIRAS_MATERIAIS)) == 5, sorted(set(E.FRONTEIRAS_MATERIAIS)))
+check("V13: e a nova (PATCH) e distinta das duas antigas",
+      len({E.FRONTEIRA_ABRIR, E.FRONTEIRA_MATERIALIZAR, E.FRONTEIRA_ATUALIZAR}) == 3)
+# E o par que prova que a escolha da fronteira DEPENDE da peça — mesma função,
+# vereditos opostos. Sem este par, uma constante fixa passaria no teste acima.
+check("V13: categoria L arma no PATCH",
+      E.fronteira_materializar_de("1|142|S|11335|1|0|L") == E.FRONTEIRA_ATUALIZAR)
+check("V13 CONTROLE: categoria V arma no POST /questionarios",
+      E.fronteira_materializar_de("3|129|N|10700|1|0|V") == E.FRONTEIRA_MATERIALIZAR)
+check("V13: categoria desconhecida cai na MAIS conservadora (antes do PATCH)",
+      E.fronteira_materializar_de("lixo") == E.FRONTEIRA_ATUALIZAR)
 g = G.PortalActionGuard(material_liberado=True,
                         acao_material_esperada=E.FRONTEIRA_ABRIR)
 check("V13: o guard aceita a acao nomeada",
