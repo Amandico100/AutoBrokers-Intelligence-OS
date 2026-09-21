@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from app.core.relogio_do_modelo import timeout_http
+
 logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,9 @@ class BaseMCPServer(ABC):
         if method.lower() in ("post", "put", "patch") and json_data is not None:
             request_kwargs["json"] = json_data
 
-        async with httpx.AsyncClient() as client:
+        # 🔴 Cliente sem teto espera para sempre (SPEC-EXTRA-001.8 §7.5). O
+        # número é NOSSO e tem nome; o default do httpx muda de versão sem avisar.
+        async with httpx.AsyncClient(timeout=timeout_http()) as client:
             response = await getattr(client, method)(full_url, **request_kwargs)
             response.raise_for_status()
             return response

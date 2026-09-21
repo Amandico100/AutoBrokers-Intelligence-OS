@@ -10,6 +10,10 @@ from typing import Any, Dict, List
 import httpx
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# ⚠️ DEPOIS do `sys.path.insert`: este arquivo também roda como processo solto
+# (`python -m app.mcp_servers.google_drive_server`), e um import de `app.` antes
+# do conserto do caminho quebraria o servidor MCP antes de ele abrir a boca.
+from app.core.relogio_do_modelo import timeout_http
 from app.mcp_servers.base_server import BaseMCPServer
 
 
@@ -205,7 +209,11 @@ class GoogleDriveMCPServer(BaseMCPServer):
                 }
 
             # Para download direto, precisamos usar httpx diretamente com alt=media
-            async with httpx.AsyncClient() as client:
+            # 🔴 Teto do cliente (SPEC-EXTRA-001.8 §7.5). ⚠️ O `timeout=60` do
+            # `get` abaixo continua valendo para ESTA requisição: download de
+            # arquivo é mais lento que chamada de controle, e o httpx deixa a
+            # requisição sobrepor o cliente.
+            async with httpx.AsyncClient(timeout=timeout_http()) as client:
                 r = await client.get(
                     f"{self.base_url}/files/{file_id}?alt=media",
                     headers=self._headers(),

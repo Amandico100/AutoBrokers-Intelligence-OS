@@ -18,6 +18,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from app.core.relogio_do_modelo import timeout_http
+
 logger = logging.getLogger(__name__)
 
 
@@ -248,7 +250,8 @@ class MCPOAuthService:
             token_data["grant_type"] = "authorization_code"
 
         try:
-            async with httpx.AsyncClient() as client:
+            # 🔴 Teto explícito (SPEC-EXTRA-001.8 §7.5): troca de code por token.
+            async with httpx.AsyncClient(timeout=timeout_http()) as client:
                 headers = {"Accept": "application/json"}
                 response = await client.post(
                     config["token_url"],
@@ -381,7 +384,8 @@ class MCPOAuthService:
             if not config:
                 return None
 
-            async with httpx.AsyncClient() as client:
+            # 🔴 Teto explícito (SPEC-EXTRA-001.8 §7.5): renovação do token.
+            async with httpx.AsyncClient(timeout=timeout_http()) as client:
                 if provider == "google":
                     response = await client.post(
                         "https://oauth2.googleapis.com/token",

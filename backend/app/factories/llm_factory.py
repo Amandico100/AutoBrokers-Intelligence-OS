@@ -11,6 +11,11 @@ from langchain_openai import ChatOpenAI
 
 from app.core.callbacks.cost_callback import CostCallbackHandler
 from app.core.config import settings
+from app.core.relogio_do_modelo import (
+    RelogioDoModeloCallback,
+    kwargs_de_relogio,
+    provedor_normalizado,
+)
 from app.factories.model_policy import resolve_chat_model
 
 logger = logging.getLogger(__name__)
@@ -152,7 +157,18 @@ class LLMFactory:
                 company_id=company_id,
                 agent_id=agent_id,
                 model_name=model,
-            )
+            ),
+            # 🔴 QUEM DESCOBRE QUE O PROVEDOR CAIU (SPEC-EXTRA-001.8 §7.4).
+            # Aqui é o único lugar por onde TODA chamada de modelo do sistema
+            # passa — os 15 chamadores de `create_llm`, o nó `agent`, os
+            # subagentes e o streaming. Um sensor num gargalo é um sensor;
+            # quinze espalhados são quinze lugares para esquecer.
+            # ⛔ O callback ALIMENTA; quem BLOQUEIA é quem pergunta
+            # `provedor_disponivel()` ANTES de consumir a mensagem — quando este
+            # roda, a chamada já saiu.
+            # ⚠️ O Cost continua sendo `callbacks[0]`: há guarda que lê por
+            # índice (`tests/test_098_builder_a_unit.py:325`).
+            RelogioDoModeloCallback(provedor_normalizado(provider)),
         ]
 
         if provider == "openai":
@@ -203,6 +219,10 @@ class LLMFactory:
             llm_params["model_kwargs"] = {}
         llm_params["model_kwargs"]["stream_options"] = {"include_usage": True}
 
+        # 🔴 O RELÓGIO (SPEC-EXTRA-001.8 §7.1) — OpenAI. Campo `request_timeout`,
+        # alias `timeout`; é ele que o guarda lê no objeto.
+        llm_params.update(kwargs_de_relogio())
+
         return ChatOpenAI(**llm_params)
 
     @staticmethod
@@ -231,10 +251,20 @@ class LLMFactory:
         # Só envia temperature quando o modelo aceita (Claude 5 a rejeita → 400).
         if LLMFactory._anthropic_supports_temperature(model):
             params["temperature"] = temperature
+        # 🔴 O RELÓGIO — Anthropic. Campo `default_request_timeout`, alias
+        # `timeout`. `max_retries` já vinha 2 por default do SDK; agora o número
+        # é NOSSO e muda por env junto com os outros três.
+        params.update(kwargs_de_relogio())
         return ChatAnthropic(**params)
 
     @staticmethod
     def _create_google(model, api_key, max_tokens, temperature, callbacks):
+        # 🔴 O RELÓGIO — Google. Campo `timeout`, alias `request_timeout`.
+        # ⚠️ Aqui o `max_retries` importa MAIS que nos outros: o default do SDK é
+        # 6 e o retry dele repete `GoogleAPIError`, do qual `Unauthenticated`
+        # herda (📊 `langchain_google_genai/chat_models.py:176-205`) — isto é,
+        # ele repete credencial recusada. Baixar para 2 corta o estrago; a
+        # classificação errada do SDK fica registrada como pendência.
         return ChatGoogleGenerativeAI(
             model=model,
             temperature=temperature,
@@ -242,6 +272,7 @@ class LLMFactory:
             google_api_key=api_key,
             callbacks=callbacks,
             streaming=True,
+            **kwargs_de_relogio(),
         )
 
     @staticmethod
@@ -267,5 +298,11 @@ class LLMFactory:
                 "stream_options": {"include_usage": True},
             },
         }
+
+        # 🔴 O RELÓGIO — OpenRouter. É `ChatOpenAI` com outra `base_url`, então o
+        # campo lido é o mesmo `request_timeout`. ⚠️ O roteador acrescenta a
+        # espera DELE por cima da do provedor de destino; o teto único é o que
+        # impede essa soma de ficar sem fim.
+        llm_params.update(kwargs_de_relogio())
 
         return ChatOpenAI(**llm_params)
