@@ -524,7 +524,7 @@ async def o_que_aconteceu_ontem(db, company_id: str, dia: str) -> Dict[str, Any]
         "trajetoria": trajetoria,
     })
 
-    # ---- ③ 🔴 as notas da Regina e da Saionara ------------------------------
+    # ---- ③ 🔴 as notas das atendentes ----------------------------------
     notas, cortou_notas = await _paginar(
         lambda i, f: (db.client.table("notas_da_atendente")
                       .select("id, texto, origem, rota, tela, conversation_id, "

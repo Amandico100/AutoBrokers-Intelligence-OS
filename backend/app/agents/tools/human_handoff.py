@@ -1405,7 +1405,7 @@ class HumanHandoffTool(BaseTool):
         # jogar o problema interno no colo do segurado.
         # 🔴 Isto ERA "Registrei seu pedido e ele já está na fila da equipe".
         # Tecnicamente verdadeiro — a conversa entra na Fila do painel. Mas
-        # depois de o modelo reescrever no tom da Saionara, "já está na fila da
+        # depois de o modelo reescrever no tom da atendente, "já está na fila da
         # equipe" e "já passei para a equipe" viram a mesma frase no ouvido do
         # segurado. Retorno que o modelo consegue confundir com sucesso é o
         # mesmo defeito com outra roupa.

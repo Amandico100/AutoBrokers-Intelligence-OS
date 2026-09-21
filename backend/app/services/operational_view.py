@@ -247,7 +247,7 @@ async def _o_que_travou_no_dia(company_id: str, dia: str) -> List[str]:
             linhas.append(f"- {t['rota'] or '?'} · {t['tela'] or 'tela não identificada'}: "
                           f"{t['travou']}× ({t['sem_destravar']} sem destravar){marca}")
 
-    # 🔴 AS NOTAS DA REGINA E DA SAIONARA
+    # 🔴 AS NOTAS DAS ATENDENTES
     if r["notas"]:
         linhas.append(f"\nANOTAÇÕES DA EQUIPE ({len(r['notas'])}):")
         for n in r["notas"][:_MAX_LIST]:

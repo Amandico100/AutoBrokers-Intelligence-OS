@@ -422,7 +422,7 @@ def _tem_marca_de_corretora(mapa: Dict[str, Any]) -> int:
     📊 Ele era uma lista de três literais: `autofleet|resulta seguros|amandus`.
     Medido contra os quatro vazamentos reais encontrados nos mapas ativos:
 
-        "*Saionara - Resulta*, por ser um item essencial…"     -> False
+        "*<atendente> - <corretora>*, por ser um item essencial…" -> False
         "Olá RESULTA CORRETORA DE SEGUROS LTDA…"               -> False
         "Olá INDYANA COMERCIO DE VEICULOS LTDA…"               -> False
         "Olá CONDOMINIO DO CONJUNTO RESIDENCIAL…"              -> False

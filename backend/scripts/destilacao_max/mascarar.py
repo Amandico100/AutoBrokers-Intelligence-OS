@@ -182,7 +182,7 @@ def _fala(e: dict) -> str:
 # "Guincho, borracheiro e chaveiro estão disponíveis", que é o problema.
 #
 # O prefixo opcional é a metade que faltava: 📊 "Certo, Magda!" e
-# "Certo Saionara," escapavam porque a decisão era do bloco inteiro e "certo" é
+# "Certo <nome>," escapavam porque a decisão era do bloco inteiro e "certo" é
 # interjeição. A interjeição protege a si mesma, não o que vem depois dela.
 _VOCATIVO = re.compile(
     r"^(?:(?-i:[A-ZÀ-Ú][a-zà-ú]{2,}),\s+)?"
@@ -290,7 +290,7 @@ def _sem_acento(s: str) -> str:
 #                        limpeza 55 · reboque 37 · reparo 33 · coberturas 21 ·
 #                        roda 7 · elogios 4
 #     nome de pessoa     joao 3 · maria 2 · paulo 2 · jose 2 · carlos 1 ·
-#                        magda 0 · alvaro 0 · juliana 0 · rafael 0 · saionara 0
+#                        magda 0 · alvaro 0 · juliana 0 · rafael 0 · <nome-da-atendente> 0
 #
 # Sem o limiar, um nome entrava no vocabulário porque a URA o ECOA dentro de
 # uma linha de lista — "Falar sobre {PROTOCOLO}-CHAVEIRO" e o nome do titular
@@ -365,7 +365,7 @@ def _nomes_ditos_na_sessao(eventos: list) -> list:
     | hipótese | o que dizia | o que a medição mostrou |
     |---|---|---|
     | forma | capitalizada + vírgula é nome | 76% dos casamentos eram menu: Roubo 21×, Guincho 28×, Chaveiro 9× |
-    | raridade | nome aparece em poucas sessões | "Saionara" em 97 sessões, "Microondas" em 9 — as nuvens se tocam |
+    | raridade | nome aparece em poucas sessões | "<nome>" em 97 sessões, "Microondas" em 9 — as nuvens se tocam |
     | vocativo puro | nome só aparece como vocativo | Roubo, Chaveiro, Vidros e Coberturas caíram no mesmo balde |
 
     A quarta é de outra espécie: ela **não inventa critério nenhum**. Pergunta à
@@ -450,7 +450,7 @@ def transcript_seguradora(eventos: list, vocabulario: frozenset = frozenset()) -
         # O vocativo que a saudação NÃO denunciou: mascara-se o que a
         # seguradora nunca ofereceu como opção e não é interjeição.
         #
-        # PALAVRA POR PALAVRA, e não o casamento inteiro. 📊 "Certo Saionara,"
+        # PALAVRA POR PALAVRA, e não o casamento inteiro. 📊 "Certo <nome>,"
         # e "Certo Soraia," (4 ocorrências) escapavam quando a decisão era do
         # bloco: "certo" é interjeição, o bloco era poupado, e o nome ia junto
         # de carona. A interjeição protege a si mesma, não o que vem depois.

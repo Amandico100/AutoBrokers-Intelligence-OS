@@ -324,7 +324,7 @@ def dispatch_live_enabled() -> bool:
     A decisão de 04/08 (P-90) abriu o padrão com um motivo escrito logo acima:
     *"hoje quem segura é o agente desligado"*. **É exatamente essa premissa que
     a SPEC-071 vai derrubar** — a semana de 18/08 é a semana de LIGAR o agente,
-    com Regina e Saionara monitorando. No instante em que o agente acende, o
+    com as atendentes monitorando. No instante em que o agente acende, o
     único freio que restava some, e some em silêncio.
 
     Regra R1 do Founder, 14/08, literal: *"não pode ser enviado nada até eu

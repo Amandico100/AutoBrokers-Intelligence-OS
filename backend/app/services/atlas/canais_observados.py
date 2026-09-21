@@ -13,7 +13,7 @@ TODAS as linhas: o portão existia, tinha teste, e nunca disparou uma vez.
     Resulta  ... 10,9% do que ela vê é robô de seguradora  (714 mensagens)
     AutoFleet ..  6,8%                                      (652 mensagens)
 
-A Saionara abre a mesa e encontra a fila de espera da MAPFRE, o menu da Maxpar e
+A atendente abre a mesa e encontra a fila de espera da MAPFRE, o menu da Maxpar e
 a pesquisa de satisfação da Localiza no meio das pessoas que precisam dela.
 
 POR QUE ESTE ARQUIVO EXISTE — e por que ele NÃO é um segundo registro
@@ -22,7 +22,7 @@ POR QUE ESTE ARQUIVO EXISTE — e por que ele NÃO é um segundo registro
 seguradora, o número que a corretora liga para pedir guincho. É o que ele diz
 que é, e continua sendo a autoridade disso.
 
-📊 O que a Regina e a Saionara realmente usam é **outro conjunto de canais**:
+📊 O que as atendentes realmente usam é **outro conjunto de canais**:
 atendimento ao corretor, sinistro, financeiro, carro reserva, vidros. Medido:
 o MAPFRE registrado é `551140040101`; o que aparece 2.197 vezes no acervo é
 `551140029000`. Números diferentes, propósitos diferentes, mesma companhia.

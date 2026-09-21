@@ -254,12 +254,12 @@ NOME_NO_VOCATIVO = re.compile(
 # para `{NOME} DE LOURDES PRASS`.
 #
 # 📊 (b) SUFIXO LITERAL: a regra exigia a palavra `Seguros`. Então
-# `"Saionara - Resulta"` não casava nada, e `"RESULTA CORRETORA DE SEGUROS
+# `"<atendente> - <corretora>"` não casava nada, e `"RESULTA CORRETORA DE SEGUROS
 # LTDA"` também não — razão social não tem a forma `X Seguros`.
 #
 # Agora o nome aceita até 4 palavras (com `de/da/dos` no meio, como o resto do
 # arquivo já faz) e o sufixo é uma alternância medida sobre o que aparece de
-# verdade. O caso sem sufixo nenhum — `"Saionara - Resulta"` — **não é curável
+# verdade. O caso sem sufixo nenhum — `"<atendente> - <corretora>"` — **não é curável
 # por regex** e é tratado por `marcas_de_corretora()`, mais abaixo.
 _NOME_COMPOSTO = (
     r"(?-i:[A-ZÀ-Ú][a-zà-ú]{2,15}(?:[ \t]+(?:d[aeo]s?[ \t]+)?"
@@ -491,7 +491,7 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # próprio a uma palavra de distância de um rótulo que o anuncia:
     #
     #     "Meu nome é THAIS, darei continuidade em seu atendimento"   (a URA)
-    #     "me chamo Saionara"                                          (nós)
+    #     "me chamo <NOME>"                                       (nós)
     #     "*Quem estará no local:* Julia"                              (resumo)
     #
     # `_LABELED_VALUE` não alcança nenhuma: a primeira e a segunda não têm
@@ -1231,7 +1231,7 @@ def _devolver(s: str, guardados: List[str]) -> str:
 # 📊 Quatro literais medidos nos mapas ativos sobreviveram inteiros ao
 # `templatize`, e nenhuma regra lexical os cobre com segurança:
 #
-#     "*Saionara - Resulta*, por ser um item essencial…"
+#     "*<atendente> - <corretora>*, por ser um item essencial…"
 #     "Olá RESULTA CORRETORA DE SEGUROS LTDA…"
 #     "Olá INDYANA COMERCIO DE VEICULOS LTDA…"
 #     "Olá CONDOMINIO DO CONJUNTO RESIDENCIAL RECANTO DOS PASSAROS…"
@@ -1363,7 +1363,7 @@ def _apagar_marcas_de_corretora(s: str) -> str:
 
     # 🔴 E O NOME DA ATENDENTE, que sobrava do lado esquerdo.
     #
-    # 📊 Medido: `"*Saionara - Resulta*"` virava `"*Saionara - {CORRETORA}*"`.
+    # 📊 Medido: `"*<atendente> - <corretora>*"` virava `"*<atendente> - {CORRETORA}*"`.
     # A corretora saía e a PESSOA ficava — o pior dos dois mundos, porque
     # *parece* mascarado.
     #
@@ -1441,7 +1441,7 @@ def templatize(text: str, *, documento_publico: bool = False,
     #
     # Depois das regras lexicais, porque `ASSINATURA_DE_CORRETORA` já resolveu
     # os casos com sufixo e deixou `{CORRETORA}` no lugar. O que chega aqui é o
-    # resto — `"Saionara - Resulta"`, razão social — que nenhuma regex cobre sem
+    # resto — `"<atendente> - <corretora>"`, razão social — que nenhuma regex cobre sem
     # comer português.
     s = _apagar_marcas_de_corretora(s)
     return _devolver(s, guardados)

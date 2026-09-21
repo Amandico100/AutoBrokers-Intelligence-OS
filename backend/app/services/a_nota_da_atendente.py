@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""A anotação da Regina e da Saionara entra no produto — SPEC-090, BLOCO C.
+"""A anotação das atendentes entra no produto — SPEC-090, BLOCO C.
 
 > *"Enquanto os agentes vão atendendo e os humanos acompanhando no WhatsApp, a
 > Central e um chat do Claude Code vão analisar todos os atendimentos […] **e as

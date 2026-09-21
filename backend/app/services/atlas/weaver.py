@@ -23,13 +23,14 @@ rota nova entra.
     identidade de CORRETORA ou de ATENDENTE (nome, razão social, apelido)
 
 O agente de atendimento é GLOBAL; quem personaliza é o dashboard, com dados de
-configuração, em tempo de execução. Um nó que diga "Saionara - Resulta" está
+configuração, em tempo de execução. Um nó que diga "<atendente> - <corretora>" está
 errado por ser **específico onde tinha de ser neutro** — e faz o agente da
 corretora seguinte se apresentar com o nome de outra empresa.
 
 📊 Em 15/08/2026 havia 14 nós de mapas ativos com nome de corretora sem redação,
-e o redator era inconsistente: "Maria Regina - Autofleet" virava
-"Maria {NOME} - {CORRETORA}" (o primeiro nome escapava) e "Saionara - Resulta"
+e o redator era inconsistente: "<Primeiro> <Segundo> - <corretora>" virava
+"<Primeiro> {NOME} - {CORRETORA}" (o primeiro nome escapava) e
+"<atendente> - <corretora>"
 passava inteiro. Ver PENDENCIAS.md#P-165.
 
 ⚠️ Dado de segurado (CPF, CNPJ, placa, telefone) é regra SEPARADA — CLAUDE.md §7

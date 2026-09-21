@@ -4316,8 +4316,16 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         {"step": "pessoa_no_local",
          "anchor": r"[ée] a pessoa que est[áa] (?:no )?local para acompanhar",
          "reply": "Não",
-         "notes": "📊 'Saionara você é a pessoa que está local para acompanhar o serviço?' "
-                  "(3 sessões) — quem opera o canal não é quem espera o técnico"},
+         # 🔴 P-E00151-09 (SPEC-EXTRA-001.8 · FATIA 3): aqui havia o NOME PRÓPRIO
+         # de uma atendente de uma corretora do piloto, copiado da tela medida.
+         # Este `notes` não é comentário: ele entra no PROMPT INTERNO do cérebro
+         # (`insurer_dispatch_service.py:3864` no guia do fluxo e `:3984` quando o
+         # automático empaca), e o prompt é GLOBAL — todas as corretoras. Um nome
+         # de funcionário de UMA corretora não pode ser contexto das outras
+         # (CLAUDE.md §13.9). O sentido da tela fica; a pessoa sai.
+         "notes": "📊 'NOME DE QUEM OPERA O CANAL, você é a pessoa que está local "
+                  "para acompanhar o serviço?' (3 sessões) — a URA repete o nome de "
+                  "quem atende; quem opera o canal não é quem espera o técnico"},
         {"step": "nome_pessoa_local",
          "anchor": (r"nome da pessoa respons[áa]vel por acompanhar o t[ée]cnico|"
                     r"nome da pessoa que estar[áa] na resid[êe]ncia para receber o t[ée]cnico|"
@@ -4567,9 +4575,10 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "no local.",
     ],
     "handoff_triggers": _RESID_HANDOFF_TRIGGERS + [
-        # 📊 '*Saionara - Resulta*, por ser um item essencial, vou te transferir
-        # para que um de nossos analistas de continuidade ao atendimento.' A
-        # própria URA declara que dali em diante quem atende é gente.
+        # 📊 '*<atendente> - <corretora>*, por ser um item essencial, vou te
+        # transferir para que um de nossos analistas de continuidade ao
+        # atendimento.' A própria URA declara que dali em diante quem atende é
+        # gente. (A assinatura real traz nome de pessoa e de corretora; P-E00151-09.)
         r"vou te transferir para",
         # 🔴 O gatilho de formulário nativo FICA. Ele saiu dos corredores de AUTO
         # da HDI/Yelum em 03/08/2026 porque o canal de resposta foi provado E o

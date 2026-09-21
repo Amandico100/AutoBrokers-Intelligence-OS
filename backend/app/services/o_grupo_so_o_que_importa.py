@@ -1,7 +1,7 @@
 """O GRUPO SÓ RECEBE O QUE IMPORTA — a guarda única, a porta única, o contador.
 
 📊 10/09/2026, 17:14:18 → 18:29:59 UTC: **7 mensagens ao grupo da Resulta em
-75,7 minutos, todas sobre UMA conversa** — e a Saionara já tinha digitado "1"
+75,7 minutos, todas sobre UMA conversa** — e a atendente já tinha digitado "1"
 às 17:18:14. Seis das sete saíram DEPOIS de um humano da corretora estar
 dentro daquela conversa.
 

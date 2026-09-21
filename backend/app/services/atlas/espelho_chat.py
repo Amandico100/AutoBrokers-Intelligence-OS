@@ -267,8 +267,8 @@ def deve_espelhar(*, counterparty: str, texto: str, msg_type: str,
     # sempre: a linha 254 tem teste, tem comentário, e nunca barrou uma
     # mensagem sequer neste caminho.
     #
-    # 📊 O que passava por ela: 10,9% da mesa da Saionara e 6,8% da mesa da
-    # Regina são robôs de seguradora — 714 e 652 mensagens que não são cliente
+    # 📊 O que passava por ela: 10,9% da mesa de uma atendente e 6,8% da
+    # mesa da outra são robôs de seguradora — 714 e 652 mensagens que não são cliente
     # nenhum. A fila de espera da MAPFRE no meio de quem precisa dela.
     #
     # A pergunta certa não é "tem chave de seguradora?", é **"isto é gente?"**.

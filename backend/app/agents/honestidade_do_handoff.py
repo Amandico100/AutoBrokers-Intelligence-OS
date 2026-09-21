@@ -49,7 +49,7 @@ _TOOLS_DE_HANDOFF = ("request_human_agent", "human_handoff", "transferir_para_hu
 # ---------------------------------------------------------------------------
 #
 # Antes ela devolvia uma frase pronta em português ("Já chamei um atendente…"),
-# e o modelo a reescrevia no tom da Saionara. Frase pronta e frase inventada
+# e o modelo a reescrevia no tom da atendente. Frase pronta e frase inventada
 # são indistinguíveis depois da reescrita: o modelo não tinha como saber que
 # uma delas era mentira.
 #
