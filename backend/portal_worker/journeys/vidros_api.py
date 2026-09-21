@@ -422,63 +422,104 @@ FORA_DO_API_FIRST: Tuple[str, ...] = (
 _MARCA_INATIVA = "(inativo)"
 
 
-def apelidos_de_seguradora() -> Tuple[Tuple[str, str], ...]:
-    """Dicas MEDIDAS: o que o corretor escreve → o slug que a API usa.
+def apelidos_de_seguradora() -> Tuple[Tuple[str, str, str], ...]:
+    """A TABELA ÚNICA de seguradora: `(fragmento, slug, nome_de_tela)`.
 
-    🔴 Isto é **dica**, nunca autoridade. O slug só vale se aparecer na lista
-    ao vivo; um apelido que aponte para uma seguradora que o portal não publica
-    não resolve nada. Cada linha abaixo tem a medição que a justifica.
+    Três coisas que antes moravam em dois lugares e agora moram num só:
 
-    ⚠️ **O formato é uma sequência de pares, e não um dicionário, de propósito.**
-    Quem consome isto de fora é `app/agents/tools/portal_params._apelidos_do_portal`,
-    que itera `for frag, canon in apelidos_de_seguradora()` e testa o fragmento
-    com `in` sobre o nome em CAIXA ALTA — por isso as chaves vêm em maiúscula,
-    sem acento, e **da mais específica para a mais genérica** (`PORTO SEGURO`
-    antes de `PORTO`). Devolver um `dict` faria aquele laço levantar
-    `ValueError`, cair no `except` e continuar usando a tabela antiga **em
-    silêncio** — a consolidação pareceria feita sem estar.
+        fragmento     o que a InfoCap/o corretor escrevem (CAIXA ALTA, sem acento)
+        slug          o que a **API** usa em toda query (`CodigoSeguradora`)
+        nome_de_tela  o que o caminho **DOM** digita no `#seguradora-input`,
+                      e que casa com o `NomeFantasia` publicado
+
+    🔴 Isto é **dica**, nunca autoridade: o `slug` só vale se aparecer na lista
+    ao vivo de `GET /seguradoras/`. Um apelido que aponte para uma seguradora
+    que o portal não publica **não resolve nada** — é o que acontece com `ITAU`,
+    que continua aqui para o caminho DOM saber o que digitar e continua
+    devolvendo `None` em `resolver_seguradora`.
+
+    ⚠️ **O formato é uma sequência de TRIPLAS, não um dicionário, de propósito.**
+    Quem consome de fora é `app/agents/tools/portal_params._apelidos_do_portal`,
+    que testa o fragmento com `in` sobre o nome em CAIXA ALTA — por isso a ordem
+    é **da mais específica para a mais genérica** (`PORTO SEGURO` antes de
+    `PORTO`; `TOKIO MARINE` antes de `TOKIO`). Um `dict` faria aquele laço
+    levantar `ValueError` e cair num `except`, e a consolidação pareceria feita
+    sem estar.
     """
-    return _pares_de_apelido(_APELIDOS_MEDIDOS)
+    return _triplas_de_apelido(_APELIDOS_MEDIDOS)
 
 
-def _pares_de_apelido(bruto: Dict[str, str]) -> Tuple[Tuple[str, str], ...]:
+def _triplas_de_apelido(bruto: Dict[str, Tuple[str, str]]
+                        ) -> Tuple[Tuple[str, str, str], ...]:
     """Mais específico primeiro: o consumidor testa por `in`, e `PORTO` casaria
     dentro de `PORTO SEGURO`."""
-    return tuple(sorted(((k.upper(), v) for k, v in bruto.items()),
-                        key=lambda par: (-len(par[0]), par[0])))
+    return tuple(sorted(((k.upper(), v[0], v[1]) for k, v in bruto.items()),
+                        key=lambda t: (-len(t[0]), t[0])))
 
 
-_APELIDOS_MEDIDOS: Dict[str, str] = {
-        # 📊 `CodigoSeguradora = "LIBERTY"`, `Nome = "YELUM SEGUROS S.A"`,
-        # `NomeFantasia = "YELUM SEGURADORA"`, `Codigo = 56`. A Liberty virou
-        # Yelum e o portal guardou o slug antigo. Quem digita "Yelum" — que é o
-        # que está na apólice de hoje — precisa chegar em `LIBERTY`.
-        "yelum": "LIBERTY",
-        "liberty": "LIBERTY",
-        # 📊 `NomeFantasia = "TOKIO MARINE SEGURADORA"`, slug `TOKIOMARINE`:
-        # o nome de tela tem espaço e o slug não.
-        "tokio": "TOKIOMARINE",
-        "tokio marine": "TOKIOMARINE",
-        # 📊 `NomeFantasia = "SOMPO SEGUROS"`, slug `SOMPO`, código 281.
-        # ⚠️ No bundle do SPA existe uma ROTA `seguradoras/sompo/…` que carrega
-        # os templates de `GRUPO_HDI`. Isso é rota de tela (quem desenhou
-        # reaproveitou o layout do grupo), **não** é o slug da API. Ninguém deve
-        # "consertar" `SOMPO` para `GRUPO_HDI`: a query da API usa `SOMPO`, e é
-        # com `SOMPO` que a lista ao vivo responde.
-        "sompo": "SOMPO",
-        "porto": "PORTO",
-        "porto seguro": "PORTO",
-        "sul america": "SULAMERICA",
-        "sulamerica": "SULAMERICA",
-        "hdi": "HDI",
-        "mitsui": "MITSUI",
-        "toyota": "TOYOTA",
-        "santander": "SANTANDERAUTO",
-        "banco do brasil": "BB",
-        # ⛔ "itau" NÃO entra: 📊 não está entre as 38 que o portal publica.
-        # Deixar de fora é o conserto; escrever `"itau": ""` seria fingir que a
-        # ausência é uma regra nossa, e não do portal.
-    }
+def nome_de_tela_do_apelido(nome: Any) -> str:
+    """O nome que o caminho DOM digita. `""` quando nenhum fragmento casa.
+
+    É a mesma leitura que `normalize_insurer` faz; existe aqui para que a
+    tradução tenha UM dono, e não dois que divergem no primeiro nome novo.
+    """
+    alvo = str(nome or "").strip().upper()
+    if not alvo:
+        return ""
+    for fragmento, _slug, nome_de_tela in apelidos_de_seguradora():
+        if fragmento in alvo:
+            return nome_de_tela
+    return ""
+
+
+# 📊 `{fragmento: (slug, nome_de_tela)}`. Cada linha tem a medição que a
+# justifica; as sem comentário vieram direto da lista ao vivo de 20/09/2026
+# (`CodigoSeguradora` + `NomeFantasia`).
+_APELIDOS_MEDIDOS: Dict[str, Tuple[str, str]] = {
+    # 📊 `CodigoSeguradora = "LIBERTY"`, `Nome = "YELUM SEGUROS S.A"`,
+    # `NomeFantasia = "YELUM SEGURADORA"`, `Codigo = 56`. A Liberty virou
+    # Yelum e o portal guardou o slug antigo. Quem digita "Yelum" — que é o
+    # que está na apólice de hoje — precisa chegar em `LIBERTY`.
+    "yelum": ("LIBERTY", "Yelum"),
+    "liberty": ("LIBERTY", "Yelum"),
+    # 📊 A InfoCap abrevia. `LIBE` é o que 📊 `test_spec020_portal_action.py`
+    # mede vindo de apólice real.
+    "libe": ("LIBERTY", "Yelum"),
+    # 📊 `NomeFantasia = "TOKIO MARINE SEGURADORA"`, slug `TOKIOMARINE`:
+    # o nome de tela tem espaço e o slug não.
+    "tokio marine": ("TOKIOMARINE", "Tokio Marine"),
+    "tokio": ("TOKIOMARINE", "Tokio Marine"),
+    # 📊 `NomeFantasia = "SOMPO SEGUROS"`, slug `SOMPO`, código 281.
+    # ⚠️ No bundle do SPA existe uma ROTA `seguradoras/sompo/…` que carrega
+    # os templates de `GRUPO_HDI`. Isso é rota de tela (quem desenhou
+    # reaproveitou o layout do grupo), **não** é o slug da API. Ninguém deve
+    # "consertar" `SOMPO` para `GRUPO_HDI`: a query da API usa `SOMPO`, e é
+    # com `SOMPO` que a lista ao vivo responde.
+    "sompo": ("SOMPO", "Sompo"),
+    "porto seguro": ("PORTO", "Porto Seguro"),
+    "porto": ("PORTO", "Porto Seguro"),
+    "sul america": ("SULAMERICA", "SulAmerica"),
+    "sulamerica": ("SULAMERICA", "SulAmerica"),
+    "hdi": ("HDI", "HDI"),
+    "mitsui": ("MITSUI", "Mitsui"),
+    # 📊 A InfoCap usa a sigla do grupo Mitsui Sumitomo.
+    "msig": ("MITSUI", "Mitsui"),
+    "toyota": ("TOYOTA", "Seguro Toyota"),
+    "santander": ("SANTANDERAUTO", "Santander Auto"),
+    "banco do brasil": ("BB", "BB Seguros"),
+    "allianz": ("ALLIANZ", "Allianz"),
+    "bradesco": ("BRADESCO", "Bradesco"),
+    "mapfre": ("MAPFRE", "Mapfre"),
+    "zurich": ("ZURICH", "Zurich"),
+    "azul": ("AZUL", "Azul"),
+    # ⛔ Estas DUAS não estão entre as 38 que o portal publica hoje. Elas ficam
+    # para o caminho DOM saber o que digitar, e 📊 `resolver_seguradora`
+    # devolve `None` para as duas — porque o apelido só resolve quando o slug
+    # aparece na lista AO VIVO. Apagá-las daqui não as faria existir no portal;
+    # mantê-las não as faz existir na API. É a lista viva que decide.
+    "itau": ("ITAU", "Itau"),
+    "suhai": ("SUHAI", "Suhai"),
+}
 
 
 def _itens_de_seguradora(lista_ao_vivo: Any) -> list:
@@ -537,7 +578,7 @@ def resolver_seguradora(nome: Any, lista_ao_vivo: Any) -> Optional[Dict[str, Any
 
     # 2. apelido medido — vale só se o slug estiver publicado hoje
     apelido = ""
-    for frag, slug in apelidos_de_seguradora():
+    for frag, slug, _tela in apelidos_de_seguradora():
         if _norm(frag) == alvo:
             apelido = slug
             break
@@ -565,6 +606,50 @@ def nomes_de_tela_das_seguradoras(lista_ao_vivo: Any) -> list:
     return sorted({str(i.get("NomeFantasia") or i.get("Nome") or "").strip()
                    for i in _itens_de_seguradora(lista_ao_vivo)
                    if not _item_inativo(i) and (i.get("NomeFantasia") or i.get("Nome"))})
+
+
+# --------------------------------------------------------------------------
+# 🔴 `DataSinistro` — o portal recebe um INSTANTE, não uma data
+# --------------------------------------------------------------------------
+# 📊 Medido em 20/09/2026 nos 4 HAR, com `importar_har`, nos DOIS lugares em que
+# a data viaja — e os dois vieram idênticos em 4 de 4:
+#
+#     GET  /apolices?…&DataSinistro=2026-09-20T03:00:00.000Z   (o PREFLIGHT)
+#     POST /atendimentos  {"DataSinistro": "2026-09-20T03:00:00.000Z"}
+#
+# 🔴 `AAAA-MM-DD` tem **ZERO exercícios**, inclusive no preflight — que é o
+# portão que decide se pode haver escrita. Mandar um formato que nunca foi visto
+# funcionar, justo ali, é apostar o pedido inteiro num palpite.
+#
+# O `03:00Z` não é constante: é a **meia-noite local de São Paulo** convertida
+# para UTC. Por isso o offset é DERIVADO do fuso, nunca escrito. A prova de que
+# a derivação é real e não um `+3` disfarçado: para uma data de 2018, quando o
+# Brasil ainda tinha horário de verão, a mesma função devolve `T02:00:00.000Z`.
+FUSO_DO_PORTAL = "America/Sao_Paulo"
+
+
+def instante_do_sinistro(data: Any) -> str:
+    """`AAAA-MM-DD` → `AAAA-MM-DDT03:00:00.000Z` (meia-noite local em UTC).
+
+    Devolve `""` para entrada que não seja uma data ISO — quem chamou já tratou
+    o vazio como "não dá para abrir", e é o comportamento certo.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    txt = str(data or "").strip()[:10]
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", txt):
+        return ""
+    ano, mes, dia = (int(p) for p in txt.split("-"))
+    try:
+        from zoneinfo import ZoneInfo
+
+        local = datetime(ano, mes, dia, tzinfo=ZoneInfo(FUSO_DO_PORTAL))
+    except Exception:  # noqa: BLE001
+        # Sem a base de fusos (imagem enxuta), cai para o offset que 4 de 4
+        # capturas mostraram. Degradar para o MEDIDO é melhor que degradar para
+        # um formato nunca exercido.
+        local = datetime(ano, mes, dia, tzinfo=timezone(timedelta(hours=-3)))
+    return local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 def tipo_atendimento_para(seguradora_slug: Any, familia: Any = "") -> Optional[int]:
@@ -625,6 +710,46 @@ PERIMETRO_DANO: Dict[str, str] = {
     "R": "Rodoviário",
     "N": "Não Sabe",
 }
+
+# 📊 Medido nas 4 capturas: `PerimetroDano` = `U` 3× e `R` 1×. **`N` nunca.**
+_PALAVRAS_DO_PERIMETRO: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("R", ("rodoviario", "rodovia", "estrada", "br ", "freeway", "autoestrada",
+           "auto estrada", "viagem", "viajando", "pista")),
+    ("U", ("urbano", "cidade", "rua", "avenida", "bairro", "centro",
+           "estacionamento", "garagem", "condominio", "shopping", "casa",
+           "trabalho", "semaforo")),
+)
+
+
+def perimetro_do_texto(texto: Any) -> str:
+    """O que o segurado disse → `"U"` · `"R"` · `""` (não deu para saber).
+
+    🔴 Esta função existe para matar um defeito da classe do CLAUDE.md §9.5 —
+    *o passo que responde ERRADO e não trava*. O código antes fazia
+    `str(onde)[:1].upper()`, porque o template envia a PRIMEIRA LETRA do rótulo
+    (`opcao.substring(0,1)`). Funciona para `"urbano"` e `"rodoviario"`, que é
+    o que a pergunta oferece hoje — e falha calado para tudo o mais:
+
+        "na cidade"  → `"N"`   ← e `N` é **"Não Sabe"** para o portal
+        "na estrada" → `"N"`   ← idem
+        "centro"     → `"C"`   ← um valor que não existe no enum
+
+    Um `"N"` gravado por engano é uma resposta que o portal ACEITA, some no
+    pedido e chega ao analista como se o segurado tivesse dito que não sabe.
+
+    `""` é a resposta honesta para o que não dá para classificar, e quem chamou
+    PARA e pergunta. ⛔ Nunca cair em `"N"` por conveniência (SPEC-074 R6: "Não
+    sabe" não é atalho para avançar).
+    """
+    t = _norm(texto)
+    if not t:
+        return ""
+    if t in ("u", "r"):
+        return t.upper()
+    for codigo, palavras in _PALAVRAS_DO_PERIMETRO:
+        if any(p.strip() in t for p in palavras):
+            return codigo
+    return ""
 
 # 📊 Estático no `passo2.html`. Note que `6` está fora de sequência e **não
 # existe 4** — decorar "é o quarto da lista" daria Corretor onde se queria Filho.

@@ -97,6 +97,22 @@ _PECAS = {
     "farol":      ("farol", "farolete", "farolim"),
     "lanterna":   ("lanterna",),
     "teto":       ("teto", "panoramico"),
+    # 🔴 Acrescentadas em 20/09/2026 (SPEC-EXTRA-001.10, P-E00110-C-01). 📊 Até
+    # aqui `identidade_peca("lataria")` e `identidade_peca("para-choque")`
+    # devolviam CONJUNTO VAZIO, e o efeito no produto era este: quem escrevia
+    # *"amassei a porta e o paralama"* recebia *"isso não nomeia uma peça"* — ou,
+    # pior, era classificado como **vidro lateral**, porque "porta" está ali em
+    # cima. O catálogo da apólice tem `REPARO DE LATARIA E PINTURA` e
+    # `PARACHOQUE PINTADO`, e o roteiro da atendente tem um bloco para cada.
+    "para_choque": ("parachoque",),
+    # Duas classes de palavra, e as duas são necessárias: o DANO (amassado,
+    # martelinho) e a PEÇA de chaparia que não existe em vidraçaria (paralama,
+    # capô). ⛔ `porta malas` ficou DE FORA de propósito: ela é tampa em lataria
+    # e é o vidro vigia em vidraçaria, e uma palavra que nomeia duas famílias
+    # não desempata nada — quem amassou o porta-malas já é pego por "amassei".
+    "lataria":    ("lataria", "funilaria", "martelinho", "chaparia",
+                   "amassado", "amassada", "amassei", "amassou", "amassar",
+                   "paralama", "parabarro", "capo", "pintura"),
 }
 # 'luz' nao identifica peca: pode ser farol OU lanterna. Fica AMBIGUO de
 # proposito — se o portal oferecer os dois, a funcao para em vez de escolher.
@@ -108,6 +124,12 @@ _POSICAO = {"dianteiro": "parabrisa", "dianteira": "parabrisa", "frontal": "para
             "frente": "parabrisa", "traseiro": "vigia", "traseira": "vigia"}
 # Expressoes de varias palavras, resolvidas ANTES de separar em tokens.
 _EXPRESSOES = (
+    # 🔴 `para` é palavra vazia (`_STOP`) e `choque` sozinho é CAUSA DE DANO
+    # ("CHOQUE TERMICO" está na lista de motivos). Sem colar as duas ANTES de
+    # separar em tokens, "para-choque" viraria "choque" e casaria com a causa
+    # errada. As duas grafias existem na conversa real.
+    ("para-choque", "parachoque"), ("para choque", "parachoque"),
+    ("parachoques", "parachoque"),
     ("para brisa", "parabrisa"), ("para-brisa", "parabrisa"), ("parabrisas", "parabrisa"),
     ("vidro dianteiro", "parabrisa"), ("vidro da frente", "parabrisa"),
     ("vidro frontal", "parabrisa"), ("vidro traseiro", "vidro vigia"),
@@ -119,6 +141,9 @@ _STOP = {"de", "da", "do", "das", "dos", "e", "o", "a", "os", "as", "um", "uma",
 # Substantivo de CATEGORIA: nomeia o balcao, nao a peca. Num portal de vidros
 # 'vidro' esta em quase toda opcao — nao distingue nem desqualifica nada.
 _CATEGORIA = {"vidro", "peca", "item", "veiculo", "carro", "auto", "automovel"}
+# As famílias que só existem porque há um VIDRO ali. Usadas pela regra de
+# precedência da lataria em `identidade_peca` — ver o comentário lá.
+_FAMILIAS_DE_VIDRO = {"parabrisa", "lateral", "vigia", "teto"}
 
 # Confianca minima e distancia minima para o 2o colocado. Abaixo disso a
 # funcao devolve None: parar e o comportamento correto (o agente/humano ve as
@@ -157,6 +182,23 @@ def identidade_peca(texto: str) -> set:
     for t in toks:                      # 'luz' pode ser farol OU lanterna
         if t in _AMBIGUOS:
             achados.update(_AMBIGUOS[t])
+    # 🔴 LATARIA vence VIDRO quando a palavra 'vidro' não está na frase.
+    #
+    # 📊 O caso que obriga a regra: "amassei a porta e o paralama". `porta` é
+    # sinônimo de `lateral` (o VIDRO de porta) e `paralama`/`amassei` são de
+    # `lataria` — as duas identidades aparecem, e o produto responde *"não
+    # consegui identificar a peça"* num pedido perfeitamente claro.
+    #
+    # O que separa os dois casos é a palavra que nomeia o BALCÃO:
+    #
+    #     "amassei a porta"            → lataria   (não há vidro nenhum nisso)
+    #     "quebrou o VIDRO da porta"   → lateral   (a palavra está lá)
+    #
+    # `vidro` é `_CATEGORIA` — não identifica peça sozinha —, mas identifica o
+    # ASSUNTO, e é exatamente para isso que ela serve aqui. Com ela na frase,
+    # nada é removido e a ambiguidade continua de pé (o certo: perguntar).
+    if "lataria" in achados and not (toks & _CATEGORIA):
+        achados -= _FAMILIAS_DE_VIDRO
     if not achados:                     # so entao a posicao vira identidade
         for t in toks:
             if t in _POSICAO:

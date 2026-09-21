@@ -678,31 +678,18 @@ _ESPECIFICAS_POR_IDENTIDADE: Dict[str, Tuple[Pergunta, ...]] = {
 PECAS_SEM_ESPECIFICAS_MAPEADAS = ("teto",)
 
 # ==========================================================================
-# 🔴 DUAS FAMÍLIAS QUE O VOCABULÁRIO ÚNICO AINDA NÃO NOMEIA
+# 🔴 A TABELA LOCAL DE FAMÍLIAS MORREU — P-E00110-C-01, 20/09/2026
 # ==========================================================================
-# 📊 Medido em 20/09/2026: `identidade_peca("para-choque")` e
-# `identidade_peca("lataria")` devolvem **conjunto vazio** — `_PECAS` em
-# `vidros_lanternas.py` tem sete entradas e nenhuma delas. Efeito no produto:
-# quem escreve "amassei a porta e o paralama" recebe *"isso NÃO nomeia uma
-# peça"* e o acionamento não anda, embora o roteiro da atendente tenha um bloco
-# inteiro para lataria e outro para para-choque.
+# Aqui moravam `lataria` e `para_choque`, em `_FAMILIAS_AINDA_FORA_DO_VOCABULARIO`,
+# porque 📊 `identidade_peca` devolvia conjunto vazio para as duas. Elas foram
+# para `_PECAS` de `portal_worker/journeys/vidros_lanternas.py`, que é o
+# vocabulário único (CLAUDE.md §5), junto com a regra de precedência que o caso
+# real exigia: *"amassei a porta e o paralama"* é **lataria**, e não o VIDRO
+# lateral, porque a palavra `vidro` não está na frase.
 #
-# ⛔ **Isto NÃO é um segundo vocabulário** (CLAUDE.md §5), e a regra de
-# precedência é o que garante: esta tabela só é consultada quando
-# `identidade_peca` devolve VAZIO. Ela nunca corrige, nunca contradiz e nunca
-# desempata o vocabulário único — ela só fala onde ele está mudo. Um teste de
-# controle prova a precedência ("retrovisor" jamais chega aqui).
-#
-# 🔴 E o destino escrito, para não virar permanente: as duas entradas pertencem
-# a `_PECAS` de `portal_worker/journeys/vidros_lanternas.py`, que nesta SPEC é
-# de outro dono (fatia A, arquivos disjuntos — protocolo §4). Migrar é uma linha
-# em cada tabela. Registrado como pendência P-E00110-C-01.
-_FAMILIAS_AINDA_FORA_DO_VOCABULARIO: Dict[str, Tuple[str, ...]] = {
-    "para_choque": ("para choque", "parachoque", "parachoques", "para choques"),
-    "lataria": ("lataria", "funilaria", "martelinho", "amassado", "amassada",
-                "amassados", "amassadas", "amassei", "paralama", "parabarro",
-                "capo", "capô", "porta malas", "portamalas", "pintura"),
-}
+# ⛔ Nada de segunda tabela volta aqui. Família nova entra em `_PECAS`, e o
+# guarda que prova a precedência vive em
+# `tests/test_e00110_a_costura_do_agente_ao_desfecho.py`.
 
 
 # --------------------------------------------------------------------------
@@ -752,19 +739,13 @@ def _sem_acento(texto: str) -> str:
 
 
 def _identidades(peca: str) -> List[str]:
-    """As identidades do texto. 🔴 O vocabulário único DECIDE; a tabela local só
-    fala quando ele fica mudo (ver `_FAMILIAS_AINDA_FORA_DO_VOCABULARIO`)."""
-    ids = sorted(identidade_peca(str(peca or "")))
-    if ids:
-        return ids
-    texto = _sem_acento(peca)
-    if not texto.strip():
-        return []
-    achados = sorted(
-        familia for familia, sinonimos in _FAMILIAS_AINDA_FORA_DO_VOCABULARIO.items()
-        if any(f" {_sem_acento(s).strip()} " in texto for s in sinonimos)
-    )
-    return achados
+    """As identidades do texto. 🔴 UM vocabulário, e ele é `identidade_peca`.
+
+    Esta função existia para consultar uma tabela local quando o vocabulário
+    ficava mudo sobre lataria e para-choque. As duas famílias entraram em
+    `_PECAS` (P-E00110-C-01) e a tabela local morreu: agora há um leitor só.
+    """
+    return sorted(identidade_peca(str(peca or "")))
 
 
 def especificas_mapeadas(peca: str) -> bool:

@@ -164,6 +164,11 @@ class SessaoVidros:
         morre nesta chamada, com 400 — e nenhum atendimento nasceu. Pular o
         preflight é criar pedido para quem não tem cobertura.
         """
+        # 📊 `DataSinistro` viaja como INSTANTE (`…T03:00:00.000Z`) em 4 de 4
+        # capturas, também aqui na query. O `:` precisa ir percent-encoded.
+        from urllib.parse import quote as _quote
+
+        data_sinistro = _quote(str(data_sinistro or ""), safe="")
         q = (f"?CpfCnpj={cpf_cnpj}&DataSinistro={data_sinistro}"
              f"&Placa={placa}&Seguradora={seguradora}")
         if tipo_atendimento is not None:

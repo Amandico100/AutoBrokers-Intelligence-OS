@@ -142,7 +142,126 @@ def casar_unico(texto: Any, itens: Any, campos: Tuple[str, ...]) -> Dict[str, An
     if len(contidos) > 1:
         return {"item": None, "candidatos": contidos,
                 "motivo": f"{len(contidos)} itens candidatos"}
+
+    # 🔴 Terceira passada: TODAS as palavras do segurado estão no item?
+    #
+    # 📊 A medição que a obriga, feita na costura com o catálogo real de
+    # lataria: a própria pergunta da fatia C ensina o agente a responder
+    # `["porta dianteira esquerda", "paralama esquerdo"]`, e o catálogo escreve
+    # `PORTA DT ESQUERDA` e `PARALAMAS DT ESQUERDO`. Por continência, **zero**
+    # das duas casava — e todo pedido de lataria parava com o protocolo já
+    # emitido.
+    #
+    # A passada é conservadora por construção: ela só aceita quando **todas** as
+    # palavras ditas estão no item e **um único** item as contém. Ela nunca
+    # inventa: "uma pedra bateu no vidro" continua não casando com
+    # "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA", e é isso mesmo.
+    ditas = _palavras_comparaveis(alvo)
+    if ditas:
+        subconjunto = [i for i in reais
+                       if any(t and ditas <= _palavras_comparaveis(t) for t in textos(i))]
+        if len(subconjunto) == 1:
+            return {"item": subconjunto[0], "candidatos": subconjunto,
+                    "motivo": "todas as palavras ditas estao no item"}
+        if len(subconjunto) > 1:
+            return {"item": None, "candidatos": subconjunto,
+                    "motivo": f"{len(subconjunto)} itens contem todas as palavras"}
     return {"item": None, "candidatos": [], "motivo": "nenhum item do catalogo casou"}
+
+
+# 📊 Como o catálogo do portal ABREVIA, lido dos 21 serviços de lataria da
+# captura: `PORTA DT ESQUERDA`, `PORTA TR DIREITA`, `PARALAMAS DT ESQUERDO`.
+# E o segurado fala por extenso e troca o gênero. As duas pontas viram a mesma
+# raiz, e nenhuma delas precisa saber da outra.
+_RAIZ_DA_PALAVRA: Dict[str, str] = {
+    "dt": "diant", "dianteiro": "diant", "dianteira": "diant", "frente": "diant",
+    "tr": "tras", "traseiro": "tras", "traseira": "tras", "atras": "tras",
+    "esquerdo": "esq", "esquerda": "esq", "motorista": "esq",
+    "direito": "dir", "direita": "dir", "carona": "dir", "passageiro": "dir",
+}
+# Palavras que aparecem em quase todo item do catálogo e não distinguem nada
+# ("RLATARIA (SEM TROCA)" está em 14 dos 21 serviços).
+_PALAVRAS_SEM_PODER = {"de", "da", "do", "das", "dos", "e", "o", "a", "os", "as",
+                       "um", "uma", "no", "na", "em", "com", "meu", "minha",
+                       "sem", "troca", "rlataria", "reparo", "se"}
+
+
+def _palavras_comparaveis(texto: Any) -> set:
+    """Palavras que distinguem um item do outro, já com as raízes aplicadas."""
+    limpo = "".join(c if c.isalnum() else " " for c in _norm(texto))
+    saida = set()
+    for palavra in limpo.split():
+        if palavra in _PALAVRAS_SEM_PODER:
+            continue
+        raiz = _RAIZ_DA_PALAVRA.get(palavra)
+        if raiz is None and palavra.endswith("s") and len(palavra) > 3:
+            raiz = _RAIZ_DA_PALAVRA.get(palavra[:-1], palavra[:-1])
+        saida.add(raiz or palavra)
+    return saida
+
+
+def casar_peca(texto: Any, itens: Any) -> Dict[str, Any]:
+    """A PEÇA do catálogo — pelo VOCABULÁRIO ÚNICO, não por continência de texto.
+
+    🔴 Esta função existe por uma medição feita na costura, em 20/09/2026, com
+    os três catálogos reais e as palavras que o segurado usa de verdade:
+
+        texto do segurado              continência       vocabulário único
+        ─────────────────────────────  ────────────────  ─────────────────────
+        "para-brisa"                   ✗ nada            ✓ VIDRO PARABRISA
+        "o vidro da frente"            ✗ nada            ✓ VIDRO PARABRISA
+        "vidro da porta"               ✗ nada            ✓ VIDRO DE PORTA
+        "porta do motorista"           ✗ nada            ✓ VIDRO DE PORTA
+        "amassei a porta e o paralama" ✗ nada            ✓ (pela FAMÍLIA)
+
+    📊 **5 de 10 frases reais não casavam** — e cada uma delas é um pedido que
+    nasce e trava em `peca_ambigua` com o protocolo já emitido. `explicar_match`
+    é o casador de PEÇA que o caminho DOM já usa, com placar, margem mínima e
+    veto de peça diferente; usar outro aqui seria um segundo vocabulário
+    (CLAUDE.md §5).
+
+    Duas passadas, e a segunda é a que resolve a lataria: quando as palavras do
+    segurado não nomeiam nenhuma linha do catálogo mas nomeiam **uma família**
+    (`identidade_peca("amassei a porta e o paralama") == {"lataria"}`), procura-se
+    a família no catálogo — e é assim que se chega em
+    `REPARO DE LATARIA E PINTURA` sem nenhuma tabela nova.
+
+    ⛔ Sem confiança, `item=None` e as opções REAIS voltam. Escolher "o mais
+    parecido" é como se pede o para-brisa de quem quebrou o vidro da porta.
+    """
+    from portal_worker.journeys.vidros_lanternas import (
+        explicar_match, identidade_peca,
+    )
+
+    reais = [i for i in (itens or []) if isinstance(i, dict)]
+    rotulos = [str(i.get("Descricao") or "") for i in reais]
+    if not str(texto or "").strip() or not rotulos:
+        return {"item": None, "candidatos": reais, "motivo": "nada a casar"}
+
+    def pelo_rotulo(escolha: Any) -> Optional[Dict[str, Any]]:
+        for i in reais:
+            if str(i.get("Descricao") or "") == escolha:
+                return i
+        return None
+
+    veredito = explicar_match(texto, rotulos)
+    item = pelo_rotulo(veredito.get("escolha"))
+    if item is not None:
+        return {"item": item, "candidatos": [item],
+                "motivo": f"vocabulario unico: {veredito.get('motivo')}"}
+
+    familias = sorted(identidade_peca(str(texto)))
+    if len(familias) == 1:
+        # `para_choque` → "para choque": o nome da família é chave de código;
+        # o que se procura no catálogo é a palavra.
+        por_familia = explicar_match(familias[0].replace("_", " "), rotulos)
+        item = pelo_rotulo(por_familia.get("escolha"))
+        if item is not None:
+            return {"item": item, "candidatos": [item],
+                    "motivo": f"pela familia {familias[0]!r}: {por_familia.get('motivo')}"}
+
+    return {"item": None, "candidatos": reais,
+            "motivo": f"o vocabulario nao reconheceu a peca ({veredito.get('motivo')})"}
 
 
 def _rotulos(itens: Any, campo: str, teto: int = 20) -> List[str]:
@@ -370,12 +489,19 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     data = (str(params.get("_data_iso") or "").strip()
             or data_iso(params.get("data_dano")))
     relato = str(dano.get("descricao") or "").strip()
+    # 🔴 O perímetro é classificado AQUI, antes de qualquer escrita, porque um
+    # texto que não classifica não pode virar `"N"` (= "Não Sabe" no portal) lá
+    # na frente. Ver `API.perimetro_do_texto`.
+    perimetro = API.perimetro_do_texto(dano.get("onde") or local.get("perimetro"))
     faltou = [n for n, v in (
         ("cpf", cpf), ("placa", placa), ("data", data),
         ("dano.peca", dano.get("peca")), ("dano.como", dano.get("como")),
         ("local.cidade_servico", local.get("cidade_servico")),
         ("contato.documento_corretor", contato["documento_corretor"]),
         ("contato.telefone", contato["telefone"]),
+        # `dano.onde` existe mas não classifica como cidade ou estrada: a
+        # pergunta certa é barata AGORA e cara depois do protocolo emitido.
+        ("dano.onde (foi na cidade ou na estrada?)", perimetro),
     ) if not v]
     if relato and len(relato) < API.MINIMO_AVALIACAO_DANO:
         # 📊 O portal exige relato com no mínimo 30 caracteres. Descobrir isso
@@ -391,8 +517,11 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
 
     # ---- PREFLIGHT — read-only, e o único portão para a fronteira A --------
     tipo = API.tipo_atendimento_para(seguradora, dano.get("peca"))
+    # 🔴 `DataSinistro` viaja como INSTANTE nos dois lugares — ver
+    # `API.instante_do_sinistro`. 📊 `AAAA-MM-DD` tem zero exercícios.
+    instante = API.instante_do_sinistro(data)
     r = await sessao.buscar_apolice(seguradora=seguradora, cpf_cnpj=cpf,
-                                    placa=placa, data_sinistro=data,
+                                    placa=placa, data_sinistro=instante,
                                     tipo_atendimento=tipo)
     veredito = API.classificar_preflight(r.get("status") or 0, r.get("json"))
     evidence["preflight"] = {k: v for k, v in veredito.items()
@@ -426,7 +555,7 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     corpo = {
         "Seguradora": seguradora,
         "NumeroDaApolice": str(apolice.get("NumeroDaApolice") or ""),
-        "DataSinistro": data,
+        "DataSinistro": instante,
         "PlacaInformada": placa,
         "SufixoChassi": None,
         "CpfCnpjSegurado": cpf,
@@ -519,8 +648,7 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
                      "o pedido foi aberto e o catalogo de pecas desta apolice "
                      "nao veio. NAO reexecute.")
 
-    achado = casar_unico(dano.get("peca"), itens,
-                         ("Descricao", "DescricaoSimples"))
+    achado = casar_peca(dano.get("peca"), itens)
     if achado["item"] is None and especificos:
         # A família casou com várias linhas do catálogo; o que separa uma da
         # outra é o ESPECÍFICO que o segurado já respondeu (capa com pisca,
@@ -528,9 +656,8 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
         for resposta in especificos.values():
             if not isinstance(resposta, str) or not resposta.strip():
                 continue
-            refinado = casar_unico(f"{dano.get('peca')} {resposta}",
-                                   achado["candidatos"] or itens,
-                                   ("Descricao", "DescricaoSimples"))
+            refinado = casar_peca(f"{dano.get('peca')} {resposta}",
+                                  achado["candidatos"] or itens)
             if refinado["item"] is not None:
                 achado = refinado
                 break
@@ -640,7 +767,7 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
         codigo_cidade=codigo_cidade,
         codigo_objeto_causa=codigo_causa,
         avaliacao_dano=relato,
-        perimetro_dano=str(dano.get("onde") or local.get("perimetro") or "N"),
+        perimetro_dano=perimetro,
         cep=str(local.get("cep") or params.get("cep") or ""),
         servicos_martelinho_lataria=servicos_lataria,
         item_removido=especificos.get("item_removido"),

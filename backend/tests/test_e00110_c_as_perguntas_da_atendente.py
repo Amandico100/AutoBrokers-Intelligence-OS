@@ -345,8 +345,19 @@ def g8_as_familias_novas_nao_travam_o_que_nao_devem() -> None:
 
 
 def g8_o_vocabulario_unico_continua_mandando() -> None:
-    """A tabela local só fala onde `identidade_peca` fica MUDA."""
-    print("\n[G8-precedencia] a tabela local nao compete com o vocabulario")
+    """🔴 ATUALIZADO em 20/09/2026 — P-E00110-C-01 (CLAUDE.md §9.3).
+
+    O FATO que este bloco guardava MUDOU, e mudou porque foi consertado: 📊 até
+    aqui `identidade_peca("lataria")` e `identidade_peca("para-choque")`
+    devolviam conjunto VAZIO, e por isso existia uma tabela local em
+    `perguntas_do_portal_de_vidros` para falar onde o vocabulário ficava mudo.
+
+    As duas famílias entraram em `_PECAS` e **a tabela local morreu**. A lição
+    não morreu com ela: o que se testa continua sendo *"existe UM vocabulário"*
+    — agora provando que é ele quem responde pelas duas famílias novas, e que a
+    ambiguidade continua sendo ambiguidade.
+    """
+    print("\n[G8-precedencia] ha UM vocabulario, e ele nomeia as duas familias novas")
 
     from portal_worker.journeys.vidros_lanternas import identidade_peca
 
@@ -358,20 +369,27 @@ def g8_o_vocabulario_unico_continua_mandando() -> None:
                f"'{texto}': quem decide e o vocabulario unico ({do_vocabulario})",
                P.familia_da_peca(texto))
 
-    # E as duas famílias novas existem SÓ porque ele fica mudo.
+    # E as duas famílias novas vêm do MESMO lugar que todas as outras.
     for texto, familia in (("para-choque", "para_choque"), ("lataria", "lataria"),
-                           ("preciso reparar a funilaria", "lataria")):
-        checar(not identidade_peca(texto),
-               f"CONTROLE: 📊 identidade_peca('{texto}') e VAZIO hoje",
-               str(identidade_peca(texto)))
+                           ("preciso reparar a funilaria", "lataria"),
+                           ("amassei a porta e o paralama", "lataria")):
+        checar(sorted(identidade_peca(texto)) == [familia],
+               f"'{texto}': o vocabulario unico responde '{familia}'",
+               sorted(identidade_peca(texto)))
         checar(P.familia_da_peca(texto) == familia,
-               f"'{texto}' vira '{familia}' pela tabela local, e so por isso",
+               f"'{texto}' vira '{familia}', e pelo vocabulario unico",
                P.familia_da_peca(texto))
 
-    # E a ambiguidade continua sendo ambiguidade: a tabela local não desempata.
+    # 🔴 O par que prova que a lataria não atropelou a vidraçaria: a MESMA
+    # palavra "porta", com e sem a palavra "vidro", dá famílias opostas.
+    checar(P.familia_da_peca("quebrou o vidro da porta") == "lateral",
+           "CONTROLE: 'quebrou o VIDRO da porta' continua sendo vidro lateral",
+           P.familia_da_peca("quebrou o vidro da porta"))
+
+    # E a ambiguidade continua sendo ambiguidade.
     checar(P.familia_da_peca("a luz quebrou") == "",
            "CONTROLE: 'a luz quebrou' continua AMBIGUA (farol x lanterna)",
-           "se a tabela local desempatasse, ela seria um segundo vocabulario")
+           "um vocabulario que desempata sozinho escolhe a peca errada calado")
     checar(P.familia_da_peca("quebrou o vidro") == "",
            "CONTROLE: 'quebrou o vidro' continua nao nomeando peca")
 

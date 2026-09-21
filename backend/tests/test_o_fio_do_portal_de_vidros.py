@@ -138,6 +138,20 @@ check("G1: `ServicosMartelinhoLataria` com os 2 servicos medidos",
       patch_do_motor.get("ServicosMartelinhoLataria"))
 check("G1: a categoria da peca e L", ev1.get("peca", {}).get("categoria") == "L")
 
+# 🔴 `DataSinistro` — o portal recebe um INSTANTE, e o motor manda o MESMO que
+# o portal recebeu. 📊 `AAAA-MM-DD` tem zero exercícios nas 4 capturas.
+abertura_do_har = RV.primeira(har1, "POST", "/atendimentos", requisicao=True) or {}
+abertura_do_motor = p1.corpo_de("POST", "/atendimentos") or {}
+check("G1: `DataSinistro` sai no formato MEDIDO (instante ISO com Z)",
+      abertura_do_motor.get("DataSinistro") == abertura_do_har.get("DataSinistro"),
+      (abertura_do_motor.get("DataSinistro"), abertura_do_har.get("DataSinistro")))
+check("G1: e o offset e DERIVADO do fuso, nao escrito "
+      "(2018 tinha horario de verao e da outro instante)",
+      AF.API.instante_do_sinistro("2018-01-15").endswith("T02:00:00.000Z")
+      and AF.API.instante_do_sinistro("2026-01-15").endswith("T03:00:00.000Z"),
+      (AF.API.instante_do_sinistro("2018-01-15"),
+       AF.API.instante_do_sinistro("2026-01-15")))
+
 # ---- o desfecho --------------------------------------------------------
 d1 = ev1.get("desfecho") or {}
 check("G1: o desfecho e loja_direta", d1.get("tipo") == ST.DESFECHO_LOJA_DIRETA,

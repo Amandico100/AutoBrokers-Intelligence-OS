@@ -98,74 +98,33 @@ def _fold(s: Optional[str]) -> str:
     validado digitou 'Florianopolis' sem acento — formato comprovado no autocomplete."""
     return unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().strip()
 
-# Sinonimos seguradora: nome/abreviacao da InfoCap -> marca no portal de vidros.
-# Chave = fragmento (upper) testado por 'in'; ordem importa (mais especifico 1o).
-_INSURER_ALIASES = (
-    ("YELUM", "Yelum"),
-    ("LIBERTY", "Yelum"),   # Liberty auto = Yelum (rebrand)
-    ("LIBE", "Yelum"),
-    ("TOKIO", "Tokio Marine"),
-    ("PORTO", "Porto Seguro"),
-    ("AZUL", "Azul"),
-    ("ITAU", "Itau"),
-    ("ITAÚ", "Itau"),
-    ("MITSUI", "Mitsui"),
-    ("MSIG", "Mitsui"),
-    ("HDI", "HDI"),
-    ("ALLIANZ", "Allianz"),
-    ("BRADESCO", "Bradesco"),
-    ("MAPFRE", "Mapfre"),
-    ("SUHAI", "Suhai"),
-    ("ZURICH", "Zurich"),
-    ("SOMPO", "Sompo"),
-)
-
-
-#: 🔴 O PONTO DE TROCA da tabela de apelidos — SPEC-EXTRA-001.10 P0-4.
-#:
-#: A fatia A desta SPEC escreve `portal_worker.journeys.vidros_api`, que resolve
-#: a seguradora POR DADO (a partir do `GET /seguradoras/` ao vivo, 📊 38 itens) e
-#: publica `apelidos_de_seguradora()` / `resolver_seguradora()`.
-#:
-#: ⚠️ **E as duas funções respondem perguntas DIFERENTES, medido em 20/09/2026**
-#: com o arquivo já no disco:
-#:
-#:     apelidos_de_seguradora()[1]   ("PORTO SEGURO", "PORTO")        ← SLUG da API
-#:     _INSURER_ALIASES              ("PORTO",        "Porto Seguro") ← NOME de tela
-#:
-#: Ligar uma na outra hoje faria `normalize_insurer("LIBERTY SEGUROS S/A")`
-#: devolver `LIBERTY` em vez de `Yelum` — 📊 exatamente o que aconteceu quando o
-#: import foi consumido de verdade, com `test_spec020_portal_action.py` vermelho
-#: em cinco linhas. Por isso o interruptor existe e nasce DESLIGADO: a troca é
-#: de uma linha, e é do gerente, depois que A fechar o contrato de
-#: `resolver_seguradora` (que devolve `{"slug", "codigo", "nome_de_tela"}` — é
-#: `nome_de_tela` o que esta função precisa, não o slug).
-#:
-#: 🔴 A LINHA A TROCAR: `_APELIDOS_VEM_DA_API = True`, e `_apelidos_do_portal`
-#: passa a ler `nome_de_tela` de `resolver_seguradora`. Nada mais muda aqui.
-_APELIDOS_VEM_DA_API = False
-
-
+# ===========================================================================
+# A SEGURADORA TEM UMA TABELA SÓ — SPEC-EXTRA-001.10 P0-4 / P-E00110-C-02
+# ===========================================================================
+# 🔴 Aqui morava `_INSURER_ALIASES`, uma segunda tabela de sinônimos. Ela e a
+# de `portal_worker.journeys.vidros_api` respondiam perguntas diferentes sobre
+# a mesma coisa — uma dava o NOME DE TELA, a outra o SLUG da API — e por isso
+# pareciam poder conviver. Não podiam: a primeira seguradora nova entraria numa
+# e não na outra, e o sintoma seria um pedido aberto na seguradora errada.
+#
+# Hoje a tabela é UMA, e ela carrega as três coisas:
+# `(fragmento, slug, nome_de_tela)`. Esta função lê o `nome_de_tela`; a journey
+# lê o `slug`; ninguém lê uma cópia.
+#
+# ⚠️ Import TARDIO e tolerante: `portal_worker` viaja na imagem do smith-api
+# (📊 `backend/Dockerfile:11 COPY . .`), mas um `ImportError` no topo tiraria a
+# tool inteira do ar por causa de uma tabela de sinônimos. Sem ela, o nome vai
+# como o corretor escreveu (`.title()`), que é o mesmo desfecho de uma
+# seguradora desconhecida — e o preflight recusa antes de qualquer escrita.
 def _apelidos_do_portal() -> Tuple[Tuple[str, str], ...]:
-    """Os apelidos em vigor. Hoje: a tabela local (ver `_APELIDOS_VEM_DA_API`).
-
-    ⛔ Duas tabelas não podem CONVIVER (CLAUDE.md §5): esta função é a ÚNICA
-    leitora de `_INSURER_ALIASES`, e a consolidação é ligar o interruptor —
-    nunca escrever um terceiro mapa em algum outro arquivo.
-
-    ⚠️ Import TARDIO e tolerante quando ligado: `portal_worker` viaja na imagem
-    do smith-api (📊 `backend/Dockerfile:11 COPY . .`), mas um `ImportError` no
-    topo tiraria a tool inteira do ar por causa de uma tabela de sinônimos.
-    """
-    if not _APELIDOS_VEM_DA_API:
-        return _INSURER_ALIASES
+    """`(fragmento, nome_de_tela)` — a leitura de tela da tabela única."""
     try:
         from portal_worker.journeys.vidros_api import apelidos_de_seguradora
 
-        vivos = tuple((str(k).upper(), str(v)) for k, v in apelidos_de_seguradora())
-        return vivos or _INSURER_ALIASES
+        return tuple((str(frag).upper(), str(tela))
+                     for frag, _slug, tela in apelidos_de_seguradora())
     except Exception:  # noqa: BLE001
-        return _INSURER_ALIASES
+        return ()
 
 
 def normalize_insurer(name: Optional[str]) -> str:

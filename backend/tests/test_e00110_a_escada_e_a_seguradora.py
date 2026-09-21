@@ -162,15 +162,27 @@ check("G3: `SLUGS_DE_SEGURADORA` nao existe mais na journey",
       not hasattr(AF, "SLUGS_DE_SEGURADORA"))
 check("G3: `slug_da_seguradora` (lista fechada) nao existe mais na journey",
       not hasattr(AF, "slug_da_seguradora"))
-check("G3: os apelidos sao PARES (o consumidor itera `for frag, canon in …`)",
-      all(isinstance(p, tuple) and len(p) == 2
-          for p in A.apelidos_de_seguradora()),
+# 🔴 ATUALIZADO em 20/09/2026 — a FATIA DE INTEGRAÇÃO (CLAUDE.md §9.3).
+# O FATO mudou: os apelidos eram PARES `(fragmento, slug)` e passaram a ser
+# TRIPLAS `(fragmento, slug, nome_de_tela)`, porque a tabela local de
+# `portal_params` (que guardava o nome de tela) MORREU e a tradução virou uma
+# só. A lição não mudou: continua sendo sequência (nunca `dict`) e continua
+# ordenada do mais específico para o mais genérico.
+check("G3: os apelidos sao TRIPLAS (fragmento, slug, nome_de_tela)",
+      all(isinstance(t, tuple) and len(t) == 3
+          for t in A.apelidos_de_seguradora()),
       A.apelidos_de_seguradora()[:2])
 check("G3: e vem do mais especifico para o mais generico",
-      [len(f) for f, _ in A.apelidos_de_seguradora()]
-      == sorted((len(f) for f, _ in A.apelidos_de_seguradora()), reverse=True))
-check("G3: `ITAU` nao esta nos apelidos (nao e publicada pelo portal)",
-      not [f for f, _ in A.apelidos_de_seguradora() if "ITAU" in f])
+      [len(f) for f, _s, _t in A.apelidos_de_seguradora()]
+      == sorted((len(f) for f, _s, _t in A.apelidos_de_seguradora()), reverse=True))
+# 🔴 ATUALIZADO: `ITAU` VOLTOU à tabela — e a regra que importa não mudou.
+# 📊 Ela não está entre as 38 que o portal publica, então `resolver_seguradora`
+# continua devolvendo `None` para ela (asserção mais abaixo). O que a linha faz
+# é dar ao caminho DOM o nome para digitar. Guardar a AUSÊNCIA na tabela seria
+# guardar uma regra nossa no lugar da regra do portal; quem decide é a lista viva.
+check("G3: `ITAU` esta na tabela so para o DOM saber o que digitar",
+      [t for f, _s, t in A.apelidos_de_seguradora() if f == "ITAU"] == ["Itau"],
+      [t for f, _s, t in A.apelidos_de_seguradora() if f == "ITAU"])
 
 try:
     CHAMADAS = RV.carregar("NOVO")
