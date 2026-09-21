@@ -654,7 +654,7 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
         ja_sei["aceita_reparo"] = reparo_normalizado
 
     # N-3 — o contato que vai ao portal. Tudo vem do banco: o segurado da
-    # InfoCap, a corretora do Perfil de Acionamento. ⛔ Nada de constante de
+    # apólice, a corretora do Perfil de Acionamento. ⛔ Nada de constante de
     # corretora aqui (CLAUDE.md §13.9): `sol` já é o perfil daquela `company_id`.
     tel_segurado = str(cli.get("telefone") or "").strip()
     contato = {
