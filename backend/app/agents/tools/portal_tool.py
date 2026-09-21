@@ -487,6 +487,21 @@ class PortalActionTool(BaseTool):
             # atendimento parado, esperando uma pessoa, aparecia para a corretora
             # como **concluido**. Ninguem ia atras. A parada tem de FICAR VISIVEL
             # sem depender de o LLM lembrar de avisar.
+            # 🔴 B-N2: `agenda` e `vistoria` terminam `done` e AINDA PRECISAM
+            # DA EQUIPE — o portal ofereceu lojas/vistoria e alguem tem de
+            # combinar com o segurado e fechar no portal. Concluir o run aqui
+            # fazia a Fila mostrar "concluido" e ninguem ia atras; o aviso ficava
+            # dependendo de o LLM lembrar de avisar.
+            tipo_do_desfecho = str(desfecho.get("tipo") or "").strip().lower()
+            if status == "done" and tipo_do_desfecho in ("agenda", "vistoria"):
+                svc.marcar_progresso(run_id, self.company_id, tipo_do_desfecho, 80)
+                svc.falhar(run_id, self.company_id,
+                           "portal_aguarda_a_equipe",
+                           (f"O atendimento {numero} EXISTE na seguradora e o portal "
+                            f"pediu {'agendamento com a loja' if tipo_do_desfecho == 'agenda' else 'vistoria'}. "
+                            "NÃO reexecute: a equipe conclui no portal por esse número."),
+                           retryable=False)
+                return
             if status == "done":
                 # 🔴 Número lido = o trabalho DEU resultado, mesmo que o job
                 # tenha terminado `needs_human`. Marcar como falha um pedido que

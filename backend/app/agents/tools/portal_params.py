@@ -318,9 +318,15 @@ _NAO_NO_REPARO = ("nao", "nao quero", "prefiro trocar", "quero trocar", "trocar"
 _URBANO = ("urbano", "cidade", "rua", "avenida", "bairro", "centro",
            "estacionamento", "garagem", "condominio", "shopping", "casa",
            "trabalho", "semaforo", "vila", "praca", "urbana")
-_RODOVIARIO = ("rodoviario", "rodovia", "estrada", "br", "sp", "freeway",
+# 🔴 SIGLA DE UF NAO E RODOVIA. 📊 "em Santos SP" era classificado como
+# rodoviario porque `sp` estava nesta lista. Rodovia com sigla so conta quando
+# vem com NUMERO (`SP-280`, `BR 101`) — e isso e um padrao, nao uma palavra.
+_RODOVIARIO = ("rodoviario", "rodovia", "estrada", "freeway",
                "autoestrada", "viagem", "viajando", "pista", "marginal",
                "anel", "rodoviaria")
+_RE_RODOVIA_NUMERADA = __import__("re").compile(
+    r"\b(?:br|sp|rs|pr|sc|mg|rj|ba|go|pe|ce|ms|mt|pa|ma|pb|pi|rn|se|al|es|to|ro|rr|ac|am|ap|df)"
+    r"\s*[-\u2013]?\s*\d{2,3}\b", __import__("re").I)
 
 
 def _palavras_soltas(texto):
@@ -343,7 +349,8 @@ def normalizar_perimetro(texto):
     palavras = set(_palavras_soltas(texto))
     if not palavras:
         return ""
-    tem_r = bool(palavras & set(_RODOVIARIO))
+    tem_r = bool(palavras & set(_RODOVIARIO)) or bool(
+        _RE_RODOVIA_NUMERADA.search(_fold(str(texto or ""))))
     tem_u = bool(palavras & set(_URBANO))
     if tem_r and not tem_u:
         return "rodoviario"
@@ -438,23 +445,66 @@ _CIDADE_SEM_RESPOSTA = ("nao sei", "nao sei ainda", "tanto faz", "qualquer uma",
                         "onde voce quiser", "sei la", "nao faco ideia")
 
 
+#: Prefixos de FALA. 🔴 Sao PREFIXOS, e so: nada e removido do MEIO do nome.
+#: 📊 O conserto de 20/09 tirava ("em","no","na","de","estou","cidade") de
+#: qualquer posicao, e o resultado media assim:
+#:
+#:     "Passo de Torres/SC"   -> PASSO TORRES     (cidade que existe, nome errado)
+#:     "Rio de Janeiro/RJ"    -> RIO JANEIRO
+#:     "Cidade Ocidental GO"  -> OCIDENTAL
+#:     "Pe de Serra/BA"       -> SERRA            ("pe" lido como a UF PE)
+#:
+#: Todas nasciam o job, abriam o pedido, e a igualdade falhava DEPOIS do
+#: protocolo — que e exatamente o lugar onde falhar custa o atendimento.
+#: ⚠️ `cidade de` sai; `cidade` sozinho NAO — senao "Cidade Ocidental" morre.
+_PREFIXOS_DE_FALA = (
+    "estou na cidade de ", "estou na cidade ", "estou em ", "estou no ",
+    "estou na ", "to em ", "to na ", "aqui em ", "aqui na ", "moro em ",
+    "moro na ", "na cidade de ", "cidade de ", "em ", "no ", "na ",
+)
+
+#: A UF so e reconhecida na ULTIMA posicao, e precisa de um SEPARADOR antes
+#: (`/`, `-`, `,` ou espaco). Duas letras no comeco da frase nunca sao UF.
+_RE_UF_NO_FIM = __import__("re").compile(
+    r"[\/,\-\u2013\u2014\s]\s*([A-Za-z]{2})(?:\s*$|\s*[,\-/])")
+
+
 def cidade_do_servico_valida(texto):
-    """`(cidade, uf, erro)`. `erro` != "" faz o acionamento parar ANTES de abrir."""
+    """`(cidade, uf, erro)`. `erro` != "" faz o acionamento parar ANTES de abrir.
+
+    O nome da cidade sai INTEIRO: `Passo de Torres`, `Rio de Janeiro`,
+    `Cidade Ocidental`. O que se corta e so o prefixo de fala e o que vier
+    DEPOIS da UF (`"Sao Jose, sc, perto do shopping"` -> `SAO JOSE`).
+    """
     bruto = str(texto or "").strip()
-    limpo = " ".join(_palavras_soltas(bruto))
-    if not limpo:
+    if not " ".join(_palavras_soltas(bruto)):
         return "", "", "cidade_ausente"
-    if limpo in _CIDADE_SEM_RESPOSTA:
+    if " ".join(_palavras_soltas(bruto)) in _CIDADE_SEM_RESPOSTA:
         return "", "", "cidade_sem_resposta"
-    uf = uf_explicita(bruto)
+
+    # 1) a UF, so no fim (a ULTIMA ocorrencia que seja uma UF de verdade)
+    uf = ""
+    corte = len(bruto)
+    for m in _RE_UF_NO_FIM.finditer(_fold(bruto)):
+        if m.group(1).upper() in _UFS_DO_BRASIL:
+            uf, corte = m.group(1).upper(), m.start()
     if not uf:
         return "", "", "uf_ausente"
-    nome = " ".join(w for w in _palavras_soltas(bruto)
-                    if not (len(w) == 2 and w.upper() in _UFS_DO_BRASIL))
-    nome = " ".join(w for w in nome.split() if w not in ("em", "no", "na", "de", "estou", "cidade"))
+
+    # 2) o nome e o que vem ANTES da UF, inteiro
+    nome = bruto[:corte].strip(" ,-/\u2013\u2014")
+
+    # 3) so PREFIXO de fala sai, e o mais longo primeiro
+    dobrado = _fold(nome).lower().strip()
+    for pref in _PREFIXOS_DE_FALA:
+        if dobrado.startswith(pref):
+            nome = nome[len(pref):].strip()
+            break
+
+    nome = " ".join(_palavras_soltas(nome)).upper()
     if not nome:
         return "", uf, "cidade_ausente"
-    return nome.upper(), uf, ""
+    return nome, uf, ""
 
 
 def build_portal_params(flat: dict, profile: dict, infocap: dict,
@@ -1252,29 +1302,6 @@ def format_result(job: dict) -> str:
     # mais genérica — e o segurado receberia "cheguei numa etapa que precisa de
     # revisão" sobre um pedido que o portal já concluiu.
     # ----------------------------------------------------------------------
-    desfecho = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else None
-    if desfecho:
-        corpo = mensagem_do_desfecho(desfecho)
-        if corpo:
-            numero = str(desfecho.get("codigo_atendimento") or "").strip()
-            aviso = ("NAO peca para eu abrir de novo: o pedido ja existe e repetir "
-                     "criaria um segundo atendimento na seguradora, que nao se desfaz.")
-            if str(desfecho.get("tipo") or "").strip().lower() in ("desconhecido", "vistoria"):
-                aviso += (" Este caso VAI para a equipe humana: mande o dossie e diga ao "
-                          "segurado, com estas palavras, o que esta abaixo.")
-            return (
-                "O atendimento FOI ABERTO na seguradora"
-                + (f" (numero {numero})." if numero else ".")
-                + " ENTREGUE AO SEGURADO A MENSAGEM ABAIXO, com estas palavras — ela ja "
-                  "esta em portugues de gente e tem tudo o que ele precisa. Numero, "
-                  "valor, telefone e link se copiam EXATOS.\n\n"
-                + corpo
-                + "\n\n" + aviso
-            )
-
-    # A parada tem texto próprio? Então ele vence a frase genérica de
-    # `needs_human` — que é verdadeira e inútil ("uma etapa que precisa de
-    # revisão" não diz ao segurado o que fazer).
     parada = texto_da_parada(ev.get("stage"))
     if parada and status in ("needs_human", "failed"):
         para_ele, para_equipe = parada
@@ -1300,6 +1327,34 @@ def format_result(job: dict) -> str:
             "DIGA AO SEGURADO, com estas palavras:\n\n" + para_ele
             + "\n\n[para a equipe, nao mande ao segurado] " + para_equipe + extra
         )
+
+    desfecho = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else None
+    if desfecho:
+        corpo = mensagem_do_desfecho(desfecho)
+        if corpo:
+            numero = str(desfecho.get("codigo_atendimento") or "").strip()
+            aviso = ("NAO peca para eu abrir de novo: o pedido ja existe e repetir "
+                     "criaria um segundo atendimento na seguradora, que nao se desfaz.")
+            if str(desfecho.get("tipo") or "").strip().lower() in ("desconhecido", "vistoria"):
+                aviso += (" Este caso VAI para a equipe humana: mande o dossie e diga ao "
+                          "segurado, com estas palavras, o que esta abaixo.")
+            return (
+                "O atendimento FOI ABERTO na seguradora"
+                + (f" (numero {numero})." if numero else ".")
+                + " ENTREGUE AO SEGURADO A MENSAGEM ABAIXO, com estas palavras — ela ja "
+                  "esta em portugues de gente e tem tudo o que ele precisa. Numero, "
+                  "valor, telefone e link se copiam EXATOS.\n\n"
+                + corpo
+                + "\n\n" + aviso
+            )
+
+    # A parada tem texto próprio? Então ele vence a frase genérica de
+    # `needs_human` — que é verdadeira e inútil ("uma etapa que precisa de
+    # revisão" não diz ao segurado o que fazer).
+    # 🔴 P1: a parada vence o ramo do desfecho quando ha as duas coisas. Um
+    # `desfecho_ilegivel` com `evidence["desfecho"]` preenchido (tipo
+    # `desconhecido`) caia no escritor do desfecho e perdia o cabecalho do
+    # numero — justo nas duas paradas em que o pedido JA EXISTE.
 
     # ----------------------------------------------------------------------
     # SPEC-074 — o ESTADO DE NEGÓCIO vem antes do estado técnico.

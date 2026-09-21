@@ -174,7 +174,39 @@ def diagnosticar(job: Dict[str, Any], agora: Optional[datetime] = None) -> Optio
     # ou o job passou da janela, ou a conversa caiu — e nos dois casos o
     # segurado ficou sem resposta. Não adivinhamos pelo relógio: exigimos a
     # marca. Relógio erra quando o processo reinicia; a marca, não.
+    # 🔴 B-N2: ENTREGUE AO AGENTE NAO E "TRABALHO CONCLUIDO".
+    #
+    # 📊 Medido em 20/09/2026: desfecho `agenda` e `vistoria` terminam `done`, a
+    # mensagem diz ao segurado que "a equipe confirma com a loja" — e NADA avisa
+    # a equipe. O run era concluido, o vigia se calava por causa desta marca, e
+    # o aviso ficava dependendo de o LLM lembrar de avisar alguem.
+    #
+    # Nestes dois desfechos o vigia fala com o SUPORTE mesmo com a marca — uma
+    # vez so (`vigia_avisou_em`, ja checado acima) e **sem segunda mensagem ao
+    # segurado**, que ja recebeu a dele.
+    _desf = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else {}
+    _tipo = str(_desf.get("tipo") or "").strip().lower()
     if ev.get("entregue_ao_agente"):
+        if status == "done" and _tipo in ("agenda", "vistoria"):
+            _num = str(_desf.get("codigo_atendimento")
+                       or (ev.get("vidros_estado") or {}).get("codigo_atendimento")
+                       or ev.get("protocolo") or "").strip()
+            _lojas = [str(x.get("nome") or "") for x in (_desf.get("lojas") or [])
+                      if isinstance(x, dict)][:4]
+            _escolha = str(ev.get("escolha_do_segurado") or "").strip()
+            return {
+                "motivo": f"desfecho_{_tipo}_aguarda_a_equipe",
+                # ⛔ VAZIO de proposito: ele ja recebeu a mensagem do desfecho.
+                "para_o_segurado": "",
+                "para_o_suporte": (
+                    f"🔴 A EQUIPE PRECISA CONCLUIR: o atendimento {_num or '(sem numero)'} "
+                    f"existe na seguradora e o portal pediu "
+                    + ("AGENDAMENTO com a loja" if _tipo == "agenda" else "VISTORIA")
+                    + ". O segurado ja foi avisado; quem fecha no portal e a equipe. "
+                    + (f"Lojas oferecidas: {', '.join(_lojas)}. " if _lojas else "")
+                    + (f"O segurado ja escolheu: {_escolha}. " if _escolha else "")
+                    + "NAO reexecute o acionamento — reabrir cria um segundo pedido."),
+            }
         return None
 
     # ----------------------------------------------------------------------
@@ -473,11 +505,26 @@ async def varrer_portal() -> int:
             await _aprender_com_a_tela_cega(cliente, company_id, job)
 
             # 3) marca, para não repetir.
+            # 🔴 P5: mesmo padrao da tool — funde na evidence RELIDA e filtra
+            # por `company_id`. Regravar o dicionario que veio do SELECT de 200
+            # linhas apaga o que a tool escreveu nesse meio-tempo (a marca
+            # `entregue_ao_agente` inclusive), e um UPDATE sem `company_id` e um
+            # UPDATE que confia no id para isolar tenant.
+            _atual = dict(job.get("evidence") or {})
+            try:
+                _lido = (cliente.table("portal_jobs").select("evidence")
+                         .eq("id", job["id"]).eq("company_id", company_id)
+                         .limit(1).execute())
+                _linhas = getattr(_lido, "data", None) or []
+                if _linhas and isinstance(_linhas[0].get("evidence"), dict):
+                    _atual = dict(_linhas[0]["evidence"])
+            except Exception:  # noqa: BLE001
+                pass
             cliente.table("portal_jobs").update({
-                "evidence": {**(job.get("evidence") or {}),
+                "evidence": {**_atual,
                              "vigia_avisou_em": agora.isoformat(),
                              "vigia_motivo": achado["motivo"]},
-            }).eq("id", job["id"]).execute()
+            }).eq("id", job["id"]).eq("company_id", company_id).execute()
             tratados += 1
             logger.warning(f"[VIGIA-PORTAL] job {job.get('id')} -> {achado['motivo']}")
         except Exception as e:  # noqa: BLE001

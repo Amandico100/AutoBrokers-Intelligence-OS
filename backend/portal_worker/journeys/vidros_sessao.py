@@ -570,8 +570,14 @@ class SessaoVidros:
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "status": 0, "json": None, "text": "",
                     "erro": "cancelamento_bloqueado", "motivo": str(exc)[:160]}
-        # E o motivo tem de ter vindo do CATALOGO desta execucao.
-        if motivos_do_catalogo is not None:
+        # 🔴 E o motivo tem de ter vindo do CATALOGO desta execucao — e o
+        # catalogo e OBRIGATORIO. Sem ele nao ha como saber o que o codigo
+        # significa, e 📊 o `39` que as capturas mandaram e uma constante do
+        # bundle, nao uma escolha de ninguem.
+        if motivos_do_catalogo is None:
+            return {"ok": False, "status": 0, "json": None, "text": "",
+                    "erro": "catalogo_de_motivos_ausente"}
+        if True:
             codigos = {str(m.get("Codigo") or m.get("CodigoMotivoCancelamento") or "")
                        for m in (motivos_do_catalogo or []) if isinstance(m, dict)}
             if str(codigo_motivo) not in codigos:

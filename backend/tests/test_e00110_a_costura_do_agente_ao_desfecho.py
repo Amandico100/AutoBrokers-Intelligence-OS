@@ -608,6 +608,185 @@ check("C11 CONTROLE: mas `OUTROS` dito LITERALMENTE e aceito (e escolha de gente
       (casar_causa("OUTROS", causas_lat)["item"] or {}).get("DescricaoObjetoCausa")
       == "OUTROS")
 
+# ==========================================================================
+print("\n[C12] a CIDADE vai e volta INTEIRA — todas as do acervo")
+# ==========================================================================
+# 🔴 B-N1, criado pelo proprio conserto de 20/09 e pego na confirmacao: a
+# limpeza tirava ("em","no","na","de","estou","cidade") de QUALQUER posicao.
+# 📊 O efeito media assim, e as quatro cidades existem:
+#
+#     "Passo de Torres/SC"   -> PASSO TORRES
+#     "Rio de Janeiro/RJ"    -> RIO JANEIRO
+#     "Cidade Ocidental GO"  -> OCIDENTAL
+#     "Pe de Serra/BA"       -> SERRA        ("pe" lido como a UF PE)
+#
+# Todas nasciam o job e falhavam na igualdade DEPOIS do protocolo emitido.
+# O guarda e a IDA E VOLTA de todas as cidades que o portal publicou nos HAR.
+from portal_worker.journeys.vidros_apifirst import casar_igual  # noqa: E402
+
+_cidades_do_acervo = []
+for _har in RV.HARS:
+    try:
+        _lista = RV.primeira(RV.carregar(_har), "GET", "/cidades") or []
+    except RV.HarAusente:
+        continue
+    for _c in _lista:
+        if isinstance(_c, dict) and _c.get("Nome") and _c.get("UF"):
+            _cidades_do_acervo.append(_c)
+# Os HAR repetem a MESMA lista; a ida e volta e por cidade DISTINTA — senao
+# `casar_igual` acha 4 copias do mesmo nome e "dois candidatos" vira uma falha
+# inventada pelo acervo, nao pelo codigo.
+_vistas = set()
+_cidades_do_acervo = [_c for _c in _cidades_do_acervo
+                      if not ((_c["Nome"], _c["UF"]) in _vistas
+                              or _vistas.add((_c["Nome"], _c["UF"])))]
+check("C12: o acervo tem a lista de cidades do portal (>= 200)",
+      len(_cidades_do_acervo) >= 200, len(_cidades_do_acervo))
+
+_falhas_ida_volta = []
+for _c in _cidades_do_acervo:
+    _texto = f"{_c['Nome']}/{_c['UF']}"
+    _nome, _uf, _erro = PP.cidade_do_servico_valida(_texto)
+    if _erro or _uf != _c["UF"]:
+        _falhas_ida_volta.append((_texto, _nome, _uf, _erro))
+        continue
+    if casar_igual(_nome, _cidades_do_acervo, ("Nome", "Cidade"))["item"] is None:
+        _falhas_ida_volta.append((_texto, _nome, _uf, "nao casou de volta"))
+check(f"C12: TODAS as {len(_cidades_do_acervo)} cidades do acervo voltam inteiras",
+      not _falhas_ida_volta, _falhas_ida_volta[:5])
+print(f"      📊 {len(_cidades_do_acervo)} cidades · "
+      f"{len(_falhas_ida_volta)} falhas de ida e volta")
+
+# E os quatro casos de FORMA que o laudo trouxe (cidades de fora de SC).
+for _texto, _esperado, _uf_esperada in (
+        ("Passo de Torres/SC", "PASSO DE TORRES", "SC"),
+        ("Rio de Janeiro/RJ", "RIO DE JANEIRO", "RJ"),
+        ("Cidade Ocidental GO", "CIDADE OCIDENTAL", "GO"),
+        ("Pe de Serra/BA", "PE DE SERRA", "BA"),
+        ("Sao Jose, sc, perto do shopping", "SAO JOSE", "SC"),
+        ("na cidade de Lages SC", "LAGES", "SC"),
+        ("estou em Joinville SC", "JOINVILLE", "SC")):
+    _n, _u, _e = PP.cidade_do_servico_valida(_texto)
+    check(f"C12: {_texto!r} -> {_esperado!r}/{_uf_esperada}",
+          (_n, _u, _e) == (_esperado, _uf_esperada, ""), (_n, _u, _e))
+check("C12 CONTROLE: sem UF continua sendo recusa",
+      PP.cidade_do_servico_valida("Rio de Janeiro")[2] == "uf_ausente")
+
+# 🔴 P3: sigla de UF nao e rodovia.
+check("C13: 'em Santos SP' NAO e rodovia",
+      PP.normalizar_perimetro("em Santos SP") == "", PP.normalizar_perimetro("em Santos SP"))
+for _rod in ("SP-280", "BR 101", "na rodovia", "peguei a br101"):
+    check(f"C13: {_rod!r} continua sendo rodovia",
+          PP.normalizar_perimetro(_rod) == "rodoviario", PP.normalizar_perimetro(_rod))
+
+# ==========================================================================
+print("\n[C14] falha DEPOIS de opcoes-disponiveis: needs_human com numero")
+# ==========================================================================
+# 🔴 P1: as duas paradas em que o pedido JA EXISTE e o `evidence["desfecho"]`
+# tambem — o cabecalho do numero nao pode se perder para o escritor do desfecho.
+class _PaginaComFalha(RV.PaginaDeReplay):
+    def __init__(self, ch, onde):
+        super().__init__(ch)
+        self.onde = onde
+
+    async def evaluate(self, js, arg):
+        r = await super().evaluate(js, arg)
+        url = str(arg.get("url") or "")
+        met = str(arg.get("metodo") or "GET").upper()
+        if self.onde == "get_atendimentos" and met == "GET" and "/atendimentos?" in url:
+            if self.ordem_de("GET", "/agendamentos/opcoes-disponiveis") >= 0:
+                return {"ok": False, "status": 500, "text": ""}
+        if self.onde == "alterar_reparo" and "alterar-reparo" in url:
+            return {"ok": False, "status": 500, "text": ""}
+        return r
+
+
+def _costurar_com_falha(har, onde, peca, extras):
+    ch = RV.carregar(har)
+    profile, infocap, catalogo = bordas_do_har(ch)
+    flat = {"cpf_cnpj": infocap["client"]["cpf_cnpj"], "data_dano": catalogo["data"],
+            "peca": peca, "como_ocorreu": catalogo["motivo"],
+            "onde_ocorreu": "rodoviario" if catalogo["perimetro"] == "R" else "urbano",
+            "especificos": {"cidade_para_o_servico": catalogo["cidade"], **extras}}
+    params, erro = PP.build_portal_params(flat, profile, infocap, enviar_de_verdade=True)
+    assert params is not None, erro
+    params["_runtime"] = RuntimeDeReplay()
+    page = _PaginaComFalha(ch, onde)
+    ev = {}
+    res = asyncio.run(AF.abrir_atendimento_api(page, params, ev))
+    cap = getattr(res, "captured", {}) or {}
+    job = {"status": getattr(res, "status", ""),
+           "evidence": {**ev, **cap, "message": getattr(res, "message", "")}}
+    return res, ev, page, PP.format_result(job)
+
+
+_r14, _ev14, _pg14, _msg14 = _costurar_com_falha(
+    "ANT", "get_atendimentos", "vidro da porta", DO_SEGURADO_LATERAL)
+check("C14: GET /atendimentos 500 depois de opcoes => needs_human",
+      getattr(_r14, "status", "") == "needs_human", getattr(_r14, "status", ""))
+check("C14: e o stage e `desfecho_ilegivel`",
+      _ev14.get("stage") == "desfecho_ilegivel" or
+      (getattr(_r14, "captured", {}) or {}).get("stage") == "desfecho_ilegivel",
+      (getattr(_r14, "captured", {}) or {}).get("stage"))
+# No ANT o agregado nunca voltou, entao so existe o protocolo interno de 16 —
+# e a mensagem diz isso com todas as letras, em vez de o apresentar como o
+# numero que o segurado cita por telefone.
+check("C14: a mensagem ABRE com o numero que existe, nomeando qual e",
+      _msg14.strip().startswith("PROTOCOLO INICIAL (interno):")
+      or _msg14.strip().startswith("NUMERO DO ATENDIMENTO:"), _msg14[:70])
+check("C14: e se for o interno, ela avisa que nao serve por telefone",
+      "NUMERO DO ATENDIMENTO:" in _msg14 or "nao adianta" in _msg14.lower(),
+      _msg14[:120])
+check("C14: e NENHUMA escrita saiu depois do que ja tinha saido",
+      not [e for e in _pg14.escritas() if e[1].startswith("/agendamentos")],
+      _pg14.escritas())
+check("C14: e NAO diz `done` nem promete loja",
+      "loja_direta" not in _msg14 and "analista" not in _msg14.lower(), _msg14[:160])
+
+_r15, _ev15, _pg15, _msg15 = _costurar_com_falha(
+    "NOVO", "alterar_reparo", "para-brisa", DO_SEGURADO_PARABRISA)
+check("C14: PUT alterar-reparo 500 => needs_human",
+      getattr(_r15, "status", "") == "needs_human", getattr(_r15, "status", ""))
+check("C14: e o stage e `reparo_nao_gravado`",
+      (getattr(_r15, "captured", {}) or {}).get("stage") == "reparo_nao_gravado",
+      (getattr(_r15, "captured", {}) or {}).get("stage"))
+# 🔴 Aqui o numero de 8 digitos JA existe (o POST /questionarios passou), e a
+# journey o le antes de parar: o segurado sai da conversa com o que anotar.
+check("C14: no reparo, a mensagem ABRE com o NUMERO DO ATENDIMENTO (8 digitos)",
+      _msg15.strip().startswith("NUMERO DO ATENDIMENTO:"), _msg15[:70])
+check("C14: e o portal NAO recebeu opcoes-disponiveis depois da falha",
+      _pg15.quantas("GET", "/agendamentos/opcoes-disponiveis") == 0, _pg15.emitidas()[-3:])
+
+# ==========================================================================
+print("\n[C15] agenda e vistoria NAO ficam dependendo do LLM avisar a equipe")
+# ==========================================================================
+from app.tasks import vigia_do_portal as VG  # noqa: E402
+
+def _job(tipo):
+    return {"status": "done", "evidence": {
+        "entregue_ao_agente": True,
+        "desfecho": {"tipo": tipo, "codigo_atendimento": "23298628",
+                     "lojas": [{"nome": "LOJA X"}]}}}
+
+
+for _t in ("agenda", "vistoria"):
+    _a = VG.diagnosticar(_job(_t))
+    check(f"C15: {_t} entregue ao agente AINDA alerta o SUPORTE", bool(_a), _a)
+    check(f"C15: {_t} — e o alerta diz que a EQUIPE precisa concluir",
+          "EQUIPE PRECISA CONCLUIR" in (_a or {}).get("para_o_suporte", ""),
+          (_a or {}).get("para_o_suporte", "")[:90])
+    check(f"C15: {_t} — com o numero do atendimento",
+          "23298628" in (_a or {}).get("para_o_suporte", ""))
+    check(f"C15: {_t} — e NENHUMA segunda mensagem ao segurado",
+          (_a or {}).get("para_o_segurado") == "", (_a or {}).get("para_o_segurado"))
+for _t in ("loja_direta", "analista"):
+    check(f"C15 CONTROLE: {_t} entregue => vigia CALADO",
+          VG.diagnosticar(_job(_t)) is None, VG.diagnosticar(_job(_t)))
+check("C15: e ele avisa UMA vez so",
+      VG.diagnosticar({"status": "done", "evidence": {
+          **_job("agenda")["evidence"], "vigia_avisou_em": "2026-09-20T00:00:00Z"}}) is None)
+
+
 print("\n" + "=" * 66)
 print(f"  {PASS} asserções verdes · {FAIL} vermelhas")
 print("=" * 66)

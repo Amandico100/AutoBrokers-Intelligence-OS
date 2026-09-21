@@ -977,6 +977,16 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
                 # foi gravada, e as duas coisas custam valores diferentes a ele.
                 # Seguir calado entregaria um desfecho que fala de reparo sobre
                 # um pedido que o portal registrou como troca (ou vice-versa).
+                # O numero de 8 digitos JA nasceu (o POST /questionarios
+                # passou): uma leitura barata o traz, e e ele que o segurado
+                # anota. Parar sem o numero seria fazer a pessoa parar duas vezes.
+                _rnum = await sessao.ler_atendimento()
+                _ag = _rnum.get("json") if isinstance(_rnum.get("json"), dict) else {}
+                _cod = str(_ag.get("CodigoAtendimento") or "").strip()
+                if _cod:
+                    estado.codigo_atendimento = _cod
+                    evidence["protocolo"] = _cod
+                    evidence["protocolo_do_atendimento"] = _cod
                 estado.transitar(ST.ATENDIMENTO_MATERIALIZADO,
                                  motivo="alterar-reparo nao confirmou")
                 _tela_desconhecida(evidence, onde=API.EP_ALTERAR_REPARO, resposta=rrep)
