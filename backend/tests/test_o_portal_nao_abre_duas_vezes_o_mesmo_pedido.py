@@ -239,7 +239,10 @@ def teste_a_chave_nasce_dos_params_de_verdade():
         # chave obrigatoria do PATCH. Ela NAO entra na chave de idempotencia, e
         # o bloco abaixo continua provando exatamente isso.
             "especificos": {"onde_realizar_o_servico": "levar na oficina",
-                            "cidade_para_o_servico": "Joinville/SC"}}
+                            "cidade_para_o_servico": "Joinville/SC",
+                            "pelicula": "tem insulfilm sim",
+                            "porta_dianteira_ou_traseira": "dianteira",
+                            "lado_motorista_ou_carona": "do lado do carona"}}
     params, erro = pp.build_portal_params(flat, PERFIL, INFOCAP)
     checar("build_portal_params produziu params", erro is None and params is not None, str(erro))
     if not params:
@@ -247,9 +250,23 @@ def teste_a_chave_nasce_dos_params_de_verdade():
 
     real = pp.chave_de_idempotencia(params, EMPRESA)
     checar("a chave do params real não é vazia", bool(real), real)
+    # ⚠️ ATUALIZADO em 20/09/2026 (§9.3): o payload real passou a carregar o LADO
+    # (o portal pergunta `QUAL O LADO DO ITEM DANIFICADO?` e a resposta virou
+    # obrigatória antes de abrir), e o lado ENTRA na chave de propósito — 📊 dois
+    # vidros do mesmo carro, lados diferentes, são dois pedidos. O equivalente
+    # tem de carregar o mesmo lado, senão o par compara coisas diferentes e o
+    # teste vira ruído.
+    equivalente = {**pedido(),
+                   "especificos": {"lado_motorista_ou_carona": "do lado do carona"}}
     checar("a chave do params real bate com a do pedido equivalente",
-           real == pp.chave_de_idempotencia(pedido(), EMPRESA),
-           f"{real} != {pp.chave_de_idempotencia(pedido(), EMPRESA)}")
+           real == pp.chave_de_idempotencia(equivalente, EMPRESA),
+           f"{real} != {pp.chave_de_idempotencia(equivalente, EMPRESA)}")
+    checar("CONTROLE: e o MESMO pedido do outro lado tem chave DIFERENTE",
+           real != pp.chave_de_idempotencia(
+               {**pedido(),
+                "especificos": {"lado_motorista_ou_carona": "do lado do motorista"}},
+               EMPRESA),
+           "dois vidros do mesmo carro, lados diferentes, sao dois pedidos")
 
     # Se alguém mudar o formato de `params` (renomear dano.peca, por exemplo),
     # a chave muda em silêncio e o guarda deixa de casar com os jobs já vivos.

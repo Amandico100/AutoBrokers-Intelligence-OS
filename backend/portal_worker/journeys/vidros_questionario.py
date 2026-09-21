@@ -181,6 +181,72 @@ def _sem_acento(txt: Any) -> str:
     return "".join(c for c in s if not unicodedata.combining(c)).lower()
 
 
+# 📊 Como o portal escreve a saída de "não sei", nas 4 capturas: `NÃO SABE`
+# (perguntas 5, 8, 35, 39, 140). O texto é dele; a regra é nossa.
+def _e_nao_sabe(texto: Any) -> bool:
+    limpo = re.sub(r"\s+", " ", _sem_acento(texto)).strip()
+    return limpo in ("nao sabe", "nao sei", "nao informado", "desconhecido",
+                     "nao faco ideia", "sei la", "nao lembro")
+
+
+# Palavras que não distinguem uma pergunta da outra.
+_SEM_PODER_NA_PERGUNTA = {
+    "de", "da", "do", "das", "dos", "e", "ou", "o", "a", "os", "as", "um", "uma",
+    "no", "na", "em", "com", "por", "para", "que", "qual", "sr", "sra", "poderia",
+    "informar", "possui", "esta", "foi", "tem", "danificado", "danificada",
+    "veiculo", "item", "seu", "sua", "the", "ao", "mais", "menos",
+}
+
+
+def _palavras(texto: Any) -> set:
+    limpo = "".join(c if c.isalnum() else " " for c in _sem_acento(texto))
+    return {p for p in limpo.split()
+            if len(p) > 2 and p not in _SEM_PODER_NA_PERGUNTA}
+
+
+def _candidatos_para(pergunta: "Pergunta", respostas: Dict[str, Any],
+                     relato: str) -> List[Tuple[str, str]]:
+    """As respostas do segurado que PODEM ser desta pergunta, e só elas.
+
+    🔴 Esta função existe por um defeito medido em 20/09/2026, e ele é da classe
+    mais cara que este projeto conhece (CLAUDE.md §9.5): *o passo casou a tela e
+    RESPONDEU ERRADO, calado*.
+
+    📊 O que acontecia: `escolher_resposta` testava **todas** as respostas do
+    segurado contra **qualquer** pergunta, na ordem do dicionário. Na captura do
+    para-brisa, a pergunta 140 (`O VEICULO POSSUI SENSOR DE DIREÇÃO/MUDANÇA DE
+    FAIXA?`) era respondida com o `"sim"` que o segurado havia dado para
+    **aceitar o reparo** — e o portal recebia `799 = SIM` onde a pessoa nunca
+    disse nada sobre sensor. O replay não pegava, porque o dublê responde por
+    caminho e não confere o corpo.
+
+    O que separa uma pergunta da outra é o NOME DO SLOT, e ele já existe:
+
+        sensor_de_direcao_ou_faixa  ↔  "…POSSUI SENSOR DE DIREÇÃO/MUDANÇA DE FAIXA?"
+        posicao_do_trincado         ↔  "…PODERIA INFORMAR A POSICAO DO TRINCADO?"
+        pelicula                    ↔  "…TEM PELÍCULA DE CONTROLE SOLAR (INSULFILM)?"
+        lado_motorista_ou_carona    ↔  "QUAL O LADO DO ITEM DANIFICADO?"
+
+    ⛔ Não é tabela nova: são as chaves que a coleta já usa. Quando alguma chave
+    conversa com a pergunta, SÓ essas respostas concorrem. Quando nenhuma
+    conversa, vale o comportamento de antes — e o relato entra por último, que é
+    o que menos identifica um atributo.
+    """
+    palavras_da_pergunta = _palavras(pergunta.texto)
+    proprias: List[Tuple[str, str]] = []
+    outras: List[Tuple[str, str]] = []
+    for chave, valor in (respostas or {}).items():
+        if not isinstance(valor, str) or not valor.strip():
+            continue
+        if _palavras(chave) & palavras_da_pergunta:
+            proprias.append((valor, "propria"))
+        else:
+            outras.append((valor, "resposta"))
+    if proprias:
+        return proprias
+    return outras + ([(relato, "relato")] if relato else [])
+
+
 def _regua_combina(pergunta: Pergunta) -> Tuple[bool, str]:
     """A régua do portal é a mesma que o vocabulário compartilhado assume?
 
@@ -237,14 +303,34 @@ def escolher_resposta(pergunta: Pergunta,
 
     # O que o segurado já disse, do mais específico para o mais geral. O relato
     # livre entra por último: ele é o que menos identifica um atributo.
-    candidatos: List[str] = []
-    for v in (respostas_do_segurado or {}).values():
-        if isinstance(v, str) and v.strip():
-            candidatos.append(v)
-    if relato:
-        candidatos.append(relato)
+    candidatos = _candidatos_para(pergunta, respostas_do_segurado, relato)
 
-    for cand in candidatos:
+    # 🔴 "NÃO SABE" é resposta DELE, e só dele — e só NESTA pergunta.
+    #
+    # Se o segurado disse que não sabe **nesta pergunta** e o portal oferece a
+    # saída, ela vale: é a verdade. O robô nunca a escolhe sozinho (ver a recusa
+    # do `relato` mais abaixo) e nunca a empresta de outra pergunta.
+    #
+    # ⚠️ `origem == "propria"`, e não `"resposta"`, por um defeito que o teste do
+    # fio pegou em 20/09/2026: com a origem mais larga, o `"NÃO SABE"` que o
+    # segurado deu para o **sensor de faixa** respondia também a posição e o
+    # tamanho do trincado — 📊 `P5 = 5` e `P8 = 3` onde o humano mandou `2` e
+    # `2`, e a opção `NÃO SABE` do trincado vem com `StatusReparo: null`.
+    # Emprestar um "não sabe" é tão errado quanto inventá-lo.
+    for cand, origem in candidatos:
+        if origem == "propria" and _e_nao_sabe(cand):
+            for opcao in opcoes:
+                if _e_nao_sabe(opcao):
+                    cod = pergunta.codigo_da_opcao(opcao)
+                    if cod is None:
+                        break
+                    return {"situacao": "ok", "codigo": cod, "texto": opcao,
+                            "motivo": "o segurado respondeu que nao sabe, e o "
+                                      "portal oferece essa saida",
+                            "opcoes": opcoes}
+            break
+
+    for cand, origem in candidatos:
         veredito = explicar_especifico(cand, opcoes, pergunta.texto)
         if not isinstance(veredito, dict):
             veredito = {}
@@ -269,6 +355,19 @@ def escolher_resposta(pergunta: Pergunta,
                 veredito = {}
 
         escolha = veredito.get("escolha")
+        if escolha and origem == "relato" and _e_nao_sabe(escolha):
+            # 🔴 A REGRA DO FOUNDER: o robô não escolhe "NÃO SABE" sozinho.
+            #
+            # "Não sabe" é resposta legítima **do segurado** — se ele disse que
+            # não sabe, vai. O que não pode é ela ser deduzida do RELATO LIVRE:
+            # um relato que contenha "não sei o que foi" responderia por ele uma
+            # pergunta que ninguém lhe fez, e 📊 `StatusReparo` mostra o preço —
+            # na pergunta do trincado, `NÃO SABE` vem com `StatusReparo: null`,
+            # ou seja, o portal deixa de saber se cabe reparo.
+            #
+            # Parar aqui devolve a pergunta com as opções REAIS, que é o que o
+            # atendente precisa para perguntar. (SPEC-074 R6)
+            continue
         if escolha:
             cod = pergunta.codigo_da_opcao(escolha)
             if cod is None:

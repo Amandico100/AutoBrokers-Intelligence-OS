@@ -84,8 +84,17 @@ PEDIDO = {
     "peca": "vidro de porta", "como_ocorreu": "encontrou o veiculo danificado",
     "onde_ocorreu": "urbano",
     "descricao": "o carro estava estacionado e o vidro da porta foi quebrado",
+    # ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3): "completo" mudou de novo. As
+    # perguntas que o portal REALMENTE FAZ no questionario passaram a ser cobradas
+    # antes da fronteira A — 📊 na captura do vidro de porta ele perguntou pelicula
+    # (P4), dianteira/traseira (P39) e lado (P35). **Nao existe journey de
+    # continuacao**: o token vive so em memoria e `safe_to_retry_open` e False
+    # depois do POST, entao faltar uma resposta vira atendimento terminado a mao.
     "especificos": {"onde_realizar_o_servico": "loja",
-                    "cidade_para_o_servico": "Joinville/SC"},
+                    "cidade_para_o_servico": "Joinville/SC",
+                    "pelicula": "tem insulfilm sim",
+                    "porta_dianteira_ou_traseira": "dianteira",
+                    "lado_motorista_ou_carona": "do lado do carona"},
 }
 
 DESFECHO_CONHECIDO = {"tipo": "loja_direta", "codigo_atendimento": "99999999",

@@ -284,12 +284,29 @@ _UNIVERSAIS: Tuple[Pergunta, ...] = (
         COMO_OCORREU,
         "Me conta como aconteceu? (uma pedra na estrada, alguém quebrou pra furtar, "
         "você chegou e já estava assim...)",
-        # 📊 Sem `opcoes` DE PROPÓSITO. A lista de "como ocorreu" MUDA conforme a
-        # peça e conforme a seguradora — palavras do Founder: "quando escolho
+        # 📊 Continua SEM `opcoes` fixas: a lista de "como ocorreu" MUDA conforme
+        # a peça e conforme a apólice — palavras do Founder: "quando escolho
         # parabrisas vem algumas situações... São diferentes da situação dos
-        # vidros laterais". §8.1 do mapa proíbe decorar essa lista: quem casa o
-        # relato com a opção real é `match_option`, lendo a tela.
-        porque="o relato livre é o que `match_option` casa com a opção real da tela.",
+        # vidros laterais". 📊 Medido: 11 causas no para-brisa, 12 no vidro de
+        # porta, 14 na lanterna, 7 na lataria. §8.1 do mapa proíbe decorar a
+        # lista, e ninguém a decora: quem decide é sempre o `GET /motivos-dano`
+        # daquela peça.
+        #
+        # 🔴 O QUE MUDOU em 20/09/2026, e por quê: o relato livre não chegava à
+        # lista. 📊 De 29 frases reais de segurado, **18 não casavam com causa
+        # nenhuma** — e cada uma delas vira um pedido que NASCE e TRAVA, porque
+        # não existe journey de continuação (o token do portal vive só em
+        # memória). Então a pergunta continua sendo aberta, e a RESPOSTA passa a
+        # ser devolvida no vocabulário que o portal usa: `mensagem_para_o_agente`
+        # imprime as causas MEDIDAS daquela família (`CAUSAS_MEDIDAS`) e manda
+        # escolher UMA, literal. 📊 Com isso, 44 de 44 causas medidas casam com a
+        # lista ao vivo, e zero casam errado.
+        como_devolver="registre em `como_ocorreu` UMA das causas listadas abaixo, "
+                      "copiada LITERALMENTE (o portal só aceita as dela). Se o que "
+                      "ele contou não decidir entre duas, pergunte oferecendo 3 ou 4 "
+                      "delas em língua de gente — e nunca escolha por ele.",
+        porque="📊 o relato livre não casa com a lista do portal em 18 de 29 frases "
+               "reais, e parar depois de abrir o pedido é terminal.",
     ),
     Pergunta(
         DATA_DO_DANO,
@@ -949,6 +966,37 @@ def _marca_nao_sabe(pergunta: Pergunta) -> str:
     return "   [se ele nao souber, registre 'nao sabe']" if pergunta.aceita_nao_sabe else ""
 
 
+def causas_para_oferecer(peca: str = "") -> Tuple[str, ...]:
+    """As causas de dano MEDIDAS para a família desta peça.
+
+    🔴 É **dica de coleta**, nunca a lista final: quem manda é o
+    `GET /motivos-dano` daquela peça, naquela apólice, na hora. O que estas
+    palavras compram é o agente perguntar ANTES usando o vocabulário que o
+    portal vai usar — e é isso que evita o pedido nascer e travar.
+
+    Importa de `portal_worker.journeys.vidros_api`, que é onde o contrato
+    medido do portal mora. ⛔ Nenhuma segunda tabela aqui (CLAUDE.md §5).
+    """
+    try:
+        from portal_worker.journeys.vidros_api import causas_medidas_de
+    except Exception:  # noqa: BLE001
+        return ()
+    return tuple(causas_medidas_de(familia_da_peca(peca)))
+
+
+def _linhas_das_causas(pergunta: Pergunta, peca: str) -> List[str]:
+    """As causas, já em forma de instrução, só quando a pergunta é a da causa."""
+    if pergunta.campo != COMO_OCORREU:
+        return []
+    causas = causas_para_oferecer(peca)
+    if not causas:
+        return []
+    familia = familia_da_peca(peca)
+    cabecalho = (f"  causas que o portal aceita para {familia or 'esta peca'} "
+                 f"(📊 medidas; a lista real vem da apolice dele):")
+    return [cabecalho] + [f"      · {c}" for c in causas]
+
+
 def mensagem_para_o_agente(faltam: List[Pergunta], peca: str = "") -> str:
     """Traduz a lista em ordem de trabalho para o LLM. "" quando não há nada a dizer.
 
@@ -981,6 +1029,11 @@ def mensagem_para_o_agente(faltam: List[Pergunta], peca: str = "") -> str:
             linhas.append(f"  respostas que o portal aceita: {' / '.join(perguntas[0].opcoes)}")
         if perguntas[0].como_devolver:
             linhas.append(f"  {perguntas[0].como_devolver}")
+        # 🔴 A causa do dano é a única pergunta cujas respostas MUDAM por peça —
+        # por isso elas não cabem em `opcoes` e entram aqui, já filtradas pela
+        # família. Ver `causas_para_oferecer`.
+        for linha in _linhas_das_causas(perguntas[0], peca):
+            linhas.append(linha)
         if len(perguntas) > 1:
             linhas.append("")
             linhas.append("E na sequencia, uma de cada vez, ainda vou precisar destas:")

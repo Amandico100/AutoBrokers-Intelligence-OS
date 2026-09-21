@@ -475,8 +475,21 @@ FLAT_COMPLETO = {"cpf_cnpj": "03074327936", "data_dano": "05/07/2026",
                  #
                  # ⚠️ E mudou OUTRA VEZ em 20/09 pela mesma logica: a cidade do
                  # servico entrou em TRANSPORTAVEIS (P0-5).
+                 #
+                 # ⚠️ E mudou UMA TERCEIRA VEZ no mesmo dia, pela MESMA logica
+                 # levada ao fim: as perguntas que o portal REALMENTE FAZ no
+                 # questionario passaram a ser cobradas antes. 📊 Na captura do
+                 # vidro de porta ele perguntou pelicula (P4), dianteira/traseira
+                 # (P39) e lado (P35) — e **nao existe journey de continuacao**:
+                 # o `token_autorizacao` vive so em memoria e
+                 # `safe_to_retry_open` e False depois do POST. Faltar uma delas
+                 # nao e "pergunta e chama de novo": e um atendimento terminado
+                 # a mao, no portal, com o protocolo ja emitido.
                  "especificos": {"onde_realizar_o_servico": "levar na oficina",
-                                 "cidade_para_o_servico": "Joinville/SC"}}
+                                 "cidade_para_o_servico": "Joinville/SC",
+                                 "pelicula": "tem insulfilm sim",
+                                 "porta_dianteira_ou_traseira": "dianteira",
+                                 "lado_motorista_ou_carona": "do lado do carona"}}
 
 
 def o_portal_nao_abre_com_o_relato_vago() -> None:
@@ -582,11 +595,25 @@ def as_respostas_do_80_por_cento_chegam_ao_portal() -> None:
            "e elas chegam em params['especificos'] - a chave que a journey ja le",
            str((p or {}).get("especificos")))
 
-    p2, _ = PP.build_portal_params(FLAT_COMPLETO, PROFILE, INFOCAP)
-    coletadas = {k: v for k, v in (p2 or {}).get("especificos", {}).items() if k in do_80}
-    checar(p2 is not None and coletadas == {},
-           "CONTROLE: sem coleta, NENHUMA resposta do 80% e inventada",
-           str((p2 or {}).get("especificos")))
+    # 🔴 ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3). O CONTROLE dizia "sem
+    # coleta, o job ainda nasce e nada e inventado". A primeira metade deixou de
+    # ser verdade — e deixou porque foi CONSERTADA: as tres perguntas que o
+    # portal faz para esta peca passaram a travar o acionamento, ja que uma
+    # resposta que falte vira atendimento terminado a mao. A licao MIGRA: o que
+    # se continua exigindo e que **nada seja inventado** — agora o sistema
+    # RECUSA e pergunta, em vez de abrir com o campo vazio.
+    sem_o_80 = {k: v for k, v in FLAT_COMPLETO["especificos"].items()
+                if k not in do_80}
+    p2, e2 = PP.build_portal_params({**FLAT_COMPLETO, "especificos": sem_o_80},
+                                    PROFILE, INFOCAP)
+    checar(p2 is None and bool(e2),
+           "CONTROLE: sem as respostas do 80%, o acionamento NAO abre",
+           str(e2)[:120])
+    faltando = [c for c in do_80 if PP.pergunta_do_campo(c)
+                and PP.pergunta_do_campo(c).texto[:40] in str(e2)]
+    checar("PERGUNTE AGORA" in str(e2) and len(faltando) == len(do_80),
+           "CONTROLE: e a recusa FAZ as tres perguntas, em vez de inventar",
+           (faltando, str(e2)[:160]))
 
 
 def a_descricao_curta_e_consertada_antes_do_portal() -> None:

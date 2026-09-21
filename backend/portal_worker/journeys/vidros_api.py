@@ -711,6 +711,120 @@ PERIMETRO_DANO: Dict[str, str] = {
     "N": "Não Sabe",
 }
 
+# --------------------------------------------------------------------------
+# 🔴 AS CAUSAS DO DANO, MEDIDAS — para COLETAR antes, nunca para DECIDIR
+# --------------------------------------------------------------------------
+# 📊 União dos textos de `GET /motivos-dano` nos 4 HAR de 20/09/2026, lidos por
+# `app.services.portals.lab.trafego.importar_har`, agrupados pela família da
+# peça que a query pediu:
+#
+#     parabrisa  ← HAR YELUM PARA BRISA   item `1|129|S|10700|1|0|V`  (11 causas)
+#     lateral    ← HAR YELUM VIDROS ANTIGO item `3|129|N|10700|1|0|V` (12 causas)
+#     lanterna   ← HAR PORTO VIDRO LANTERNA item `4|132|S|11402|1|0|V`(14 causas)
+#     lataria    ← HAR YELUM 1             item `1|142|S|11335|1|0|L` ( 7 causas)
+#
+# ⛔ **ISTO É DICA PARA A COLETA. QUEM MANDA É A LISTA AO VIVO DAQUELA PEÇA.**
+# A lista muda por peça E por apólice — 📊 a mesma seguradora devolveu 11 causas
+# para o para-brisa e 12 para o vidro de porta, e a lataria tem um `OUTROS` que
+# não existe em nenhuma das outras três. Nada aqui é enviado ao portal: o que
+# viaja é sempre o `CodigoObjetoCausa` casado contra `GET /motivos-dano` na hora.
+#
+# Para que serve, então: para o agente PERGUNTAR ANTES com as palavras que o
+# portal vai usar. Sem isso, o relato livre do segurado ("uma pedra bateu no
+# vidro") não casa com nada, e o pedido nasce e trava em `motivo_ambiguo` — com
+# o protocolo já emitido e sem journey de continuação.
+CAUSAS_MEDIDAS: Dict[str, Tuple[str, ...]] = {
+    "parabrisa": (
+        "CHOQUE TERMICO",
+        "CHUVA DE GRANIZO",
+        "COLISÃO ACIDENTAL",
+        "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+        "DANO DESCARACTERIZADO - FOI REALIZADO ALGUM REPARO",
+        "DURANTE FORTE VENTANIA,TEMPESTADE OU ENCHENTE",
+        "ENCONTROU O VEICULO DANIFICADO",
+        "PEÇA AMARELADA, MANCHADA OU ARRANHADA",
+        "QUEBRA INTENCIONAL OU VOLUNTÁRIA",
+        "QUEDA DO RETROVISOR INTERNO DANIFICOU O VIDRO",
+        "REPARO INSATISFATÓRIO",
+    ),
+    "lateral": (
+        "CHOQUE TERMICO",
+        "CHUVA DE GRANIZO",
+        "COLISÃO ACIDENTAL",
+        "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+        "DANO DESCARACTERIZADO - FOI REALIZADO ALGUM REPARO",
+        "DURANTE FORTE VENTANIA,TEMPESTADE OU ENCHENTE",
+        "ENCONTROU O VEICULO DANIFICADO",
+        "ESQUECIMENTO DE CHAVE OU PESSOA DENTRO DO VEÍCULO",
+        "PEÇA AMARELADA, MANCHADA OU ARRANHADA",
+        "QUEBRA DO VIDRO PARA TENTATIVA DE ROUBO OU FURTO",
+        "QUEBRA INTENCIONAL OU VOLUNTÁRIA",
+        "VIDRO NÃO SOBE OU DESCE",
+    ),
+    "lanterna": (
+        "AO TROCAR A LÂMPADA QUEBROU O ITEM",
+        "CHUVA DE GRANIZO",
+        "COLISÃO ACIDENTAL",
+        "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+        "DANO DESCARACTERIZADO - FOI REALIZADO ALGUM REPARO",
+        "DANO NA PARTE ELETRICA",
+        "DURANTE FORTE VENTANIA,TEMPESTADE OU ENCHENTE",
+        "ENCONTROU O VEICULO DANIFICADO",
+        "GARRA DANIFICADA",
+        "INFILTRAÇÃO SEM TRINCA OU QUEBRA",
+        "PELO TRANSPORTE DE CARGA",
+        "PEÇA AMARELADA, MANCHADA OU ARRANHADA",
+        "QUEBRA INTENCIONAL OU VOLUNTÁRIA",
+        "ROUBO OU FURTO DA PEÇA",
+    ),
+    "lataria": (
+        "CHUVA DE GRANIZO",
+        "COLISÃO ACIDENTAL",
+        "DANO DESCARACTERIZADO - FOI REALIZADO ALGUM REPARO",
+        "DURANTE FORTE VENTANIA,TEMPESTADE OU ENCHENTE",
+        "ENCONTROU O VEICULO DANIFICADO",
+        "OUTROS",
+        "QUEBRA INTENCIONAL OU VOLUNTÁRIA",
+    ),
+    # A UNIÃO das quatro (21 textos distintos), para as famílias que nenhuma
+    # captura cobriu — vigia, farol, retrovisor, teto, para-choque. Oferecer a
+    # união é melhor que oferecer nada: o agente pergunta com palavras que o
+    # portal usa, e a lista ao vivo continua sendo quem decide.
+    "": (
+        "AO TROCAR A LÂMPADA QUEBROU O ITEM",
+        "CHOQUE TERMICO",
+        "CHUVA DE GRANIZO",
+        "COLISÃO ACIDENTAL",
+        "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+        "DANO DESCARACTERIZADO - FOI REALIZADO ALGUM REPARO",
+        "DANO NA PARTE ELETRICA",
+        "DURANTE FORTE VENTANIA,TEMPESTADE OU ENCHENTE",
+        "ENCONTROU O VEICULO DANIFICADO",
+        "ESQUECIMENTO DE CHAVE OU PESSOA DENTRO DO VEÍCULO",
+        "GARRA DANIFICADA",
+        "INFILTRAÇÃO SEM TRINCA OU QUEBRA",
+        "OUTROS",
+        "PELO TRANSPORTE DE CARGA",
+        "PEÇA AMARELADA, MANCHADA OU ARRANHADA",
+        "QUEBRA DO VIDRO PARA TENTATIVA DE ROUBO OU FURTO",
+        "QUEBRA INTENCIONAL OU VOLUNTÁRIA",
+        "QUEDA DO RETROVISOR INTERNO DANIFICOU O VIDRO",
+        "REPARO INSATISFATÓRIO",
+        "ROUBO OU FURTO DA PEÇA",
+        "VIDRO NÃO SOBE OU DESCE",
+    ),
+}
+
+
+def causas_medidas_de(familia: Any = "") -> Tuple[str, ...]:
+    """As causas MEDIDAS daquela família, ou a união quando não há captura dela.
+
+    ⛔ Nunca é a lista final. É a dica com que o agente PERGUNTA antes de abrir.
+    """
+    return CAUSAS_MEDIDAS.get(str(familia or "").strip().lower(),
+                              CAUSAS_MEDIDAS[""])
+
+
 # 📊 Medido nas 4 capturas: `PerimetroDano` = `U` 3× e `R` 1×. **`N` nunca.**
 _PALAVRAS_DO_PERIMETRO: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("R", ("rodoviario", "rodovia", "estrada", "br ", "freeway", "autoestrada",

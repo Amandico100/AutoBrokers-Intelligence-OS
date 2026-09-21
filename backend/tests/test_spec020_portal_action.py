@@ -82,8 +82,19 @@ FLAT = {"cpf_cnpj": "03074327936", "data_dano": "05/07/2026",
         # P0-5) — 📊 `CodigoCidade` e chave obrigatoria do PATCH nas 4 capturas
         # do portal, e o CEP da apolice e o de CASA, nao o da cidade onde o
         # segurado quer consertar. "Completo" mudou de significado outra vez.
+        # ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3), 2ª vez: "completo" mudou
+        # de novo. As perguntas que o portal REALMENTE FAZ no questionario
+        # passaram a travar o acionamento — 📊 na captura do vidro de porta ele
+        # perguntou pelicula (P4), porta dianteira/traseira (P39) e lado (P35),
+        # e **nao existe journey de continuacao**: o `token_autorizacao` vive so
+        # em memoria e `safe_to_retry_open` e False depois do POST. Uma resposta
+        # que falte nao volta como pergunta: vira atendimento terminado a mao,
+        # dentro do portal, com o protocolo ja emitido.
         "especificos": {"onde_realizar_o_servico": "levar na oficina",
-                        "cidade_para_o_servico": "Joinville/SC"}}
+                        "cidade_para_o_servico": "Joinville/SC",
+                        "pelicula": "tem insulfilm sim",
+                        "porta_dianteira_ou_traseira": "dianteira",
+                        "lado_motorista_ou_carona": "do lado do carona"}}
 
 
 def run():

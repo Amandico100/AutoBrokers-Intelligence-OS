@@ -264,6 +264,85 @@ def casar_peca(texto: Any, itens: Any) -> Dict[str, Any]:
             "motivo": f"o vocabulario nao reconheceu a peca ({veredito.get('motivo')})"}
 
 
+# --------------------------------------------------------------------------
+# 🔴 A CAUSA DO DANO — duas passadas, e nenhuma delas chuta
+# --------------------------------------------------------------------------
+# 📊 O problema, medido na costura: `dano.como` é relato livre ("uma pedra
+# bateu no vidro") e a lista do portal fala outra língua ("DANO ACIDENTAL
+# CAUSADO POR PEDRA, OBJETO OU FRUTA"). Como **não existe journey de
+# continuação** (o `token_autorizacao` vive só em memória e `safe_to_retry_open`
+# é `False`), parar aqui não é "tentar de novo": é terminar o atendimento na
+# mão de uma pessoa, dentro do portal, com o protocolo já emitido.
+#
+# O conserto de verdade é a COLETA (`CAUSAS_MEDIDAS` + a pergunta que o agente
+# faz antes). Este casador é o que aproveita essa coleta sem nunca inventar:
+#
+#     1. igualdade normalizada com a lista AO VIVO   ("colisão acidental" = item)
+#     2. PALAVRA DISTINTIVA: uma palavra não-vazia do que foi dito que aparece
+#        em UM ÚNICO item da lista ao vivo ("pedra" está só em um)
+#
+# ⛔ Nunca `OUTROS` por exclusão — 📊 ele existe na lista da lataria, e escolhê-lo
+# porque nada casou é gravar na seguradora que ninguém sabe o que houve.
+# ⛔ Nunca por posição. ⛔ Duas candidatas ⇒ para e mostra as opções reais.
+_PALAVRAS_SEM_PODER_NA_CAUSA = {
+    "de", "da", "do", "das", "dos", "e", "ou", "o", "a", "os", "as", "um", "uma",
+    "no", "na", "em", "com", "por", "para", "meu", "minha", "foi", "sem", "ao",
+    "dano", "danificado", "danificada", "peca", "item", "veiculo", "carro",
+    "acidental", "acidente", "algum", "realizado", "que", "se", "meu", "the",
+}
+CAUSA_PROIBIDA_POR_EXCLUSAO = "outros"
+# Substantivo de CATEGORIA: nomeia o balcão, não a peça nem a causa. É a mesma
+# lista que `vidros_lanternas._CATEGORIA` usa, pelo mesmo motivo.
+_CATEGORIA_DE_PECA = {"vidro", "vidros", "peca", "pecas", "item", "itens",
+                      "veiculo", "carro", "auto", "automovel"}
+
+
+def casar_causa(texto: Any, motivos: Any) -> Dict[str, Any]:
+    """`{"item", "candidatos", "motivo"}` — a causa do dano na lista AO VIVO."""
+    reais = [m for m in (motivos or []) if isinstance(m, dict)]
+    alvo = _norm(texto)
+    if not alvo or not reais:
+        return {"item": None, "candidatos": reais, "motivo": "nada a casar"}
+
+    def rotulo(m: Dict[str, Any]) -> str:
+        return _norm(m.get("DescricaoObjetoCausa"))
+
+    # 1. igualdade — é o que a coleta com `CAUSAS_MEDIDAS` produz
+    exatos = [m for m in reais if rotulo(m) == alvo]
+    if len(exatos) == 1:
+        return {"item": exatos[0], "candidatos": exatos, "motivo": "texto exato"}
+
+    # 2. palavra distintiva
+    # 🔴 O NOME DA PEÇA NÃO É A CAUSA, e ignorar isso produziu um casamento
+    # confiante e ERRADO na medição: 📊 "o vidro esta arranhado" escolhia
+    # `QUEDA DO RETROVISOR INTERNO DANIFICOU O VIDRO`, porque "vidro" aparecia
+    # em um único item da lista. Num portal de vidros, "vidro" nomeia o balcão.
+    # Quem sabe quais palavras nomeiam peça é o vocabulário único.
+    from portal_worker.journeys.vidros_lanternas import identidade_peca
+
+    ditas = [p for p in "".join(c if c.isalnum() else " " for c in alvo).split()
+             if len(p) > 2 and p not in _PALAVRAS_SEM_PODER_NA_CAUSA
+             and not identidade_peca(p) and p not in _CATEGORIA_DE_PECA]
+    achados: Dict[str, Dict[str, Any]] = {}
+    for palavra in ditas:
+        contem = [m for m in reais
+                  if palavra in "".join(c if c.isalnum() else " " for c in rotulo(m)).split()]
+        if len(contem) == 1:
+            unico = contem[0]
+            if rotulo(unico) == CAUSA_PROIBIDA_POR_EXCLUSAO:
+                continue
+            achados[str(unico.get("CodigoObjetoCausa"))] = unico
+    if len(achados) == 1:
+        unico = next(iter(achados.values()))
+        return {"item": unico, "candidatos": [unico],
+                "motivo": "palavra distintiva na lista ao vivo"}
+    if len(achados) > 1:
+        return {"item": None, "candidatos": list(achados.values()),
+                "motivo": f"{len(achados)} causas possiveis pelo que foi dito"}
+    return {"item": None, "candidatos": reais,
+            "motivo": "o relato nao casou com nenhuma causa da lista"}
+
+
 def _rotulos(itens: Any, campo: str, teto: int = 20) -> List[str]:
     return [str(i.get(campo) or "") for i in (itens or [])
             if isinstance(i, dict)][:teto]
@@ -685,7 +764,7 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
         return parar("motivos_indisponiveis",
                      "o pedido foi aberto e a lista de causas desta peca nao "
                      "veio. NAO reexecute.")
-    causa = casar_unico(dano.get("como"), motivos, ("DescricaoObjetoCausa",))
+    causa = casar_causa(dano.get("como"), motivos)
     if causa["item"] is None:
         return parar("motivo_ambiguo",
                      "o pedido foi aberto e a causa do dano precisa ser "

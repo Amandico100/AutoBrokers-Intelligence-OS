@@ -394,6 +394,84 @@ def g8_o_vocabulario_unico_continua_mandando() -> None:
            "CONTROLE: 'quebrou o vidro' continua nao nomeando peca")
 
 
+def g8_toda_pergunta_MEDIDA_do_portal_tem_slot_cobrado_antes() -> None:
+    """🔴 O que o portal PERGUNTA tem de estar coletado ANTES da fronteira A.
+
+    A razão é a mais cara do produto: **não existe journey de continuação.** O
+    `token_autorizacao` vive só em memória e `safe_to_retry_open` é `False`
+    depois do `POST /atendimentos` — então uma pergunta do questionário que
+    falte não é "pergunta ao segurado e chama de novo": é um atendimento
+    terminado à mão, dentro do portal, com o protocolo já emitido.
+
+    📊 As perguntas que os 4 HAR de 20/09/2026 mostraram, por família:
+
+        parabrisa  P5   SR.(A), PODERIA INFORMAR A POSICAO DO TRINCADO ?
+                   P8   O TRINCADO ESTÁ MAIOR OU MENOR QUE 10 CM?
+                   P140 O VEICULO POSSUI SENSOR DE DIREÇÃO/MUDANÇA DE FAIXA?
+        lateral    P4   O VIDRO DANIFICADO TEM PELÍCULA DE CONTROLE SOLAR?
+                   P39  O VIDRO DANIFICADO É DA PORTA DIANTEIRA OU TRASEIRA?
+                   P35  QUAL O LADO DO ITEM DANIFICADO?
+        lanterna   P35  QUAL O LADO DO ITEM DANIFICADO?
+        lataria    (nenhuma — 📊 zero chamadas a /questionarios na captura)
+    """
+    print("\n[G8-questionario] toda pergunta MEDIDA tem slot, e o slot TRAVA")
+
+    from app.agents.tools.portal_params import trava_o_pedido
+
+    MEDIDAS = {
+        "parabrisa": (("P5", "posicao_do_trincado"),
+                      ("P8", "tamanho_do_trincado"),
+                      ("P140", "sensor_de_direcao_ou_faixa")),
+        "lateral": (("P4", "pelicula"),
+                    ("P39", "porta_dianteira_ou_traseira"),
+                    ("P35", "lado_motorista_ou_carona")),
+        "lanterna": (("P35", "lado_motorista_ou_carona"),),
+        "lataria": (),
+    }
+    for familia, pares in MEDIDAS.items():
+        campos = {p.campo: p for p in P.catalogo_de_familias().get(familia, ())}
+        for codigo, slot in pares:
+            p = campos.get(slot)
+            checar(p is not None,
+                   f"{familia}/{codigo}: existe o slot `{slot}`", sorted(campos))
+            if p is None:
+                continue
+            checar(p.confirmada is True,
+                   f"{familia}/{codigo}: o slot esta CONFIRMADO (foi visto numa tela)")
+            checar(p.de_quem == P.DO_SEGURADO,
+                   f"{familia}/{codigo}: e a resposta e do SEGURADO")
+            checar(trava_o_pedido(p),
+                   f"{familia}/{codigo}: e ele TRAVA o pedido antes da fronteira A",
+                   "sem travar, a falta dele vira atendimento terminado a mao")
+    # 📊 A lataria não tem questionário — e o guarda prova que isso é medido, e
+    # não esquecimento: nenhuma pergunta de questionário na família.
+    do_questionario = [p.campo for p in P.catalogo_de_familias().get("lataria", ())
+                       if p.destino == P.DESTINO_QUESTIONARIO]
+    checar(not do_questionario,
+           "lataria: NENHUMA pergunta de questionario (📊 zero /questionarios na captura)",
+           do_questionario)
+
+    # 🔴 E o par que impede a régua de virar "cobra tudo": o que NENHUMA captura
+    # confirmou continua sendo coletado SEM travar.
+    nao_confirmadas = [(f, p.campo) for f, ps in P.catalogo_de_familias().items()
+                       for p in ps if not p.confirmada and p.de_quem == P.DO_SEGURADO]
+    checar(nao_confirmadas and all(not trava_o_pedido(p)
+                                   for f, ps in P.catalogo_de_familias().items()
+                                   for p in ps
+                                   if not p.confirmada and p.de_quem == P.DO_SEGURADO),
+           f"CONTROLE: as {len(nao_confirmadas)} perguntas NAO confirmadas nao travam",
+           nao_confirmadas)
+
+    # E as perguntas do portal que NÃO têm slot nenhum: o inventário honesto.
+    # 📊 Nas 4 capturas, todas as perguntas feitas têm slot. A família `vigia`
+    # tem slots e nenhuma captura — é o inverso, e está declarado.
+    vigia = [p.campo for p in P.catalogo_de_familias().get("vigia", ())]
+    checar(vigia and all(not p.confirmada
+                         for p in P.catalogo_de_familias().get("vigia", ())),
+           "vigia: tem perguntas, e NENHUMA confirmada (nenhuma captura dela)",
+           vigia)
+
+
 if __name__ == "__main__":
     print("=" * 72)
     print("G8 — o roteiro da atendente humana cabe no produto")
@@ -404,6 +482,7 @@ if __name__ == "__main__":
     g8_o_destino_de_cada_resposta_esta_declarado()
     g8_as_familias_novas_nao_travam_o_que_nao_devem()
     g8_o_vocabulario_unico_continua_mandando()
+    g8_toda_pergunta_MEDIDA_do_portal_tem_slot_cobrado_antes()
     print("\n" + "=" * 72)
     print(f"  {PASS} assercoes verdes - {FAIL} vermelhas")
     print("=" * 72)

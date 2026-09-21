@@ -78,7 +78,16 @@ BASE = {
     "onde_ocorreu": "urbano",
     "descricao": "o carro estava estacionado e o vidro da porta foi quebrado",
 }
-ESPECIFICOS_SEM_CIDADE = {"onde_realizar_o_servico": "loja"}
+# ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3): "completo" mudou de novo. As
+# perguntas que o portal REALMENTE FAZ no questionario passaram a ser cobradas
+# antes da fronteira A — 📊 na captura do vidro de porta ele perguntou pelicula
+# (P4), dianteira/traseira (P39) e lado (P35). **Nao existe journey de
+# continuacao**: o token vive so em memoria e `safe_to_retry_open` e False
+# depois do POST, entao faltar uma resposta vira atendimento terminado a mao.
+ESPECIFICOS_SEM_CIDADE = {"onde_realizar_o_servico": "loja",
+                          "pelicula": "tem insulfilm sim",
+                          "porta_dianteira_ou_traseira": "dianteira",
+                          "lado_motorista_ou_carona": "do lado do carona"}
 ESPECIFICOS_COM_CIDADE = {**ESPECIFICOS_SEM_CIDADE,
                           "cidade_para_o_servico": "Joinville/SC"}
 

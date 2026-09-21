@@ -93,6 +93,40 @@ TRANSPORTAVEIS = ("cpf_cnpj", "data_dano", "peca", "como_ocorreu", "onde_ocorreu
 # divergir: alguém reescrever o texto à mão — e o guarda de FORMA reprova isso.
 
 
+def trava_o_pedido(pergunta) -> bool:
+    """A falta DESTA resposta faz o pedido parar DEPOIS da fronteira A?
+
+    🔴 A regra mudou em 20/09/2026, e a razão é a mais cara do produto: **não
+    existe journey de continuação.** O `token_autorizacao` do portal vive só em
+    memória e `EstadoDoAtendimento.safe_to_retry_open` é `False` depois do
+    `POST /atendimentos` — então toda parada dali em diante termina em mão
+    humana, dentro do portal, com o protocolo já emitido. Coletar antes não é
+    capricho: é a diferença entre o robô finalizar e o robô abrir pendência.
+
+    Duas portas, e as duas são medidas, não opinadas:
+
+        1. o campo é de topo e o schema da tool o carrega  → `TRANSPORTAVEIS`
+        2. a pergunta é ESPECÍFICA e está **confirmada**   → o portal a fez numa
+           tela REAL que nós capturamos, e a resposta viaja em `especificos`
+           (o campo existe em `PortalActionInput` desde a fatia C)
+
+    ⚠️ `confirmada=False` continua NÃO travando, e isso é deliberado: são as
+    perguntas que nenhuma captura viu (sensor de chuva, degradê, capa fosca).
+    Elas são coletadas e vão junto; cobrá-las seria o agente exigir do segurado
+    uma resposta que o portal talvez nem peça.
+
+    📊 O efeito, por família: para-brisa passa a travar em posição do trincado,
+    tamanho, sensor de direção/faixa e aceita-reparo — **exatamente as 3
+    perguntas que o portal fez na captura, mais a do reparo**. Vidro lateral
+    trava em película, dianteira/traseira e lado — **exatamente as 3 da
+    captura**. Lanterna e farol travam no lado. Lataria, na lista de peças.
+    Vigia não trava em nada, porque nenhuma captura mostrou o questionário dela.
+    """
+    if getattr(pergunta, "campo", "") in TRANSPORTAVEIS:
+        return True
+    return bool(getattr(pergunta, "confirmada", False))
+
+
 def _fold(s: Optional[str]) -> str:
     """ASCII-fold para o que sera DIGITADO no portal (cidade/endereco): o teste
     validado digitou 'Florianopolis' sem acento — formato comprovado no autocomplete."""
@@ -326,9 +360,9 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
     }
     peca_dita = str(flat.get("peca") or "").strip()
     faltam = o_que_falta(peca_dita, ja_sei)
-    # So trava no que o agente CONSEGUE responder de volta (ver TRANSPORTAVEIS).
+    # So trava no que o agente CONSEGUE responder de volta (ver `trava_o_pedido`).
     # O resto vai junto na mensagem, para ele coletar na mesma conversa.
-    if [p for p in para_o_segurado(faltam) if p.campo in TRANSPORTAVEIS]:
+    if [p for p in para_o_segurado(faltam) if trava_o_pedido(p)]:
         return None, mensagem_para_o_agente(faltam, peca_dita)
 
     # A cidade do serviço vem do que o segurado respondeu; o ESTADO cai para o

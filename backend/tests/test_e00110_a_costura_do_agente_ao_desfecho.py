@@ -337,12 +337,18 @@ check("C4 CONTROLE: com ela, o job nasce — os dois casos DIFEREM",
 # ==========================================================================
 print("\n[C5] o relato do segurado NAO casa a causa — e a parada e util")
 # ==========================================================================
-# 📊 Medido na costura: `"uma pedra bateu no vidro"` não casa com
-# `"DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA"` por texto. Esta parada é
-# INEVITÁVEL depois da fronteira A (a lista de causas só existe com token), e o
-# que se exige dela é que ela seja ÚTIL: que venha com as opções reais e que a
-# mensagem diga ao segurado o que perguntar.
-c5 = costurar("NOVO", peca="para-brisa", como="uma pedra bateu no vidro",
+# 🔴 ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3). O FATO mudou, e mudou porque foi
+# consertado: 📊 `"uma pedra bateu no vidro"` **passou a casar** com
+# `DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA` pela palavra distintiva
+# "pedra". A lição continua de pé e é o que este bloco testa: o relato que NÃO
+# decide continua parando, e a parada continua sendo ÚTIL — com as opções reais
+# e sem dizer que o pedido falhou.
+check("C5 (o que MUDOU): 'uma pedra bateu no vidro' agora CASA e conclui",
+      getattr(costurar("NOVO", peca="para-brisa", como="uma pedra bateu no vidro",
+                       extras=DO_SEGURADO_PARABRISA)["resultado"],
+              "status", "") == "done")
+# 📊 "bati o carro" não tem palavra em comum com `COLISÃO ACIDENTAL`: ele para.
+c5 = costurar("NOVO", peca="para-brisa", como="bati o carro",
               extras=DO_SEGURADO_PARABRISA)
 check("C5: o motor parou em `motivo_ambiguo`",
       (c5["evidence"].get("stage")) == "motivo_ambiguo", c5["evidence"].get("stage"))
@@ -426,6 +432,171 @@ for legado, tela, slug in (("LIBERTY SEGUROS S/A", "Yelum", "LIBERTY"),
           nome == tela and achado and achado["slug"] == slug, (nome, achado))
 check("C7: seguradora desconhecida continua caindo no `.title()`",
       PP.normalize_insurer("ESSOR") == "Essor")
+
+# ==========================================================================
+print("\n[C8] as RESPOSTAS que o portal recebeu sao as que o SEGURADO deu")
+# ==========================================================================
+# 🔴 Este bloco existe por um defeito medido em 20/09/2026 e da classe §9.5 —
+# *casou a tela e respondeu ERRADO, calado*. 📊 A pergunta 140 do para-brisa
+# (`…POSSUI SENSOR DE DIREÇÃO/MUDANÇA DE FAIXA?`) estava sendo respondida com o
+# `"sim"` que o segurado deu para **aceitar o reparo**: o portal recebia
+# `799 = SIM` sobre um sensor que ninguém mencionou. Os gates ficavam verdes,
+# porque o replay responde por caminho e não confere o corpo.
+acumulado_do_motor = c1["page"].corpo_de("POST", "/questionarios")
+acumulado_do_har = RV.primeira(RV.carregar("NOVO"), "POST", "/questionarios",
+                               requisicao=True)
+check("C8: o acumulado enviado e IGUAL ao que o portal recebeu do humano",
+      acumulado_do_motor == acumulado_do_har,
+      (acumulado_do_motor, acumulado_do_har))
+check("C8: e sao as 3 perguntas medidas do para-brisa",
+      len((acumulado_do_motor or {}).get("PerguntasResposta") or []) == 3)
+
+# 🔴 E o robô NÃO escolhe "NÃO SABE" sozinho. 📊 Na pergunta do trincado, a
+# opção `NÃO SABE` vem com `StatusReparo: null` — escolhê-la por conta própria
+# faz o portal deixar de saber se cabe reparo, e o reparo é dinheiro do segurado.
+from portal_worker.journeys import vidros_questionario as QZ  # noqa: E402
+
+_corpo_p140 = [RV.corpo_json(_c) for _c in RV.carregar("NOVO")
+               if RV.caminho_de(_c) == "/questionarios/perguntas"
+               and _c.metodo == "POST" and _c.status == 200][2]
+_p140 = QZ.ler_pergunta(_corpo_p140)
+check("C8: a pergunta do fixture REALMENTE oferece 'NÃO SABE' "
+      "(senao o par nao mede nada)",
+      any(QZ._e_nao_sabe(o) for o in _p140.textos_das_opcoes),
+      _p140.textos_das_opcoes)
+_do_relato = QZ.escolher_resposta(_p140, respostas_do_segurado={},
+                                  relato="o segurado nao sabe informar o que houve")
+check("C8: vindo do RELATO, 'NÃO SABE' e RECUSADO — o robo nao responde por ele",
+      _do_relato["situacao"] != "ok", _do_relato)
+_dele = QZ.escolher_resposta(_p140,
+                             respostas_do_segurado={"sensor_de_direcao_ou_faixa": "nao sei"},
+                             relato="")
+check("C8 CONTROLE: mas se ELE respondeu que nao sabe, vale — os dois DIFEREM",
+      _dele["situacao"] == "ok" and QZ._e_nao_sabe(_dele["texto"]), _dele)
+
+# ==========================================================================
+print("\n[C9] VIDRO DE PORTA — a familia com 3 perguntas medidas, ponta a ponta")
+# ==========================================================================
+DO_SEGURADO_LATERAL = {
+    "onde_realizar_o_servico": "levar na oficina",
+    "pelicula": "tem insulfilm sim",
+    "porta_dianteira_ou_traseira": "dianteira",
+    "lado_motorista_ou_carona": "do lado do carona",
+}
+c9 = costurar("ANT", peca="vidro da porta", extras=DO_SEGURADO_LATERAL)
+check("C9: `build_portal_params` aceitou o payload", c9["erro"] is None, c9["erro"])
+check("C9: o job chegou ao fim (`done`)",
+      getattr(c9["resultado"], "status", "") == "done",
+      getattr(c9["resultado"], "message", ""))
+check("C9: as 3 respostas do questionario sao as que o portal recebeu",
+      c9["page"].corpo_de("POST", "/questionarios")
+      == RV.primeira(RV.carregar("ANT"), "POST", "/questionarios", requisicao=True),
+      c9["page"].corpo_de("POST", "/questionarios"))
+d9 = c9["evidence"].get("desfecho") or {}
+check("C9: o desfecho e AGENDA (o portal ofereceu loja para escolher)",
+      d9.get("tipo") == ST.DESFECHO_AGENDA, d9.get("tipo"))
+check("C9: e a mensagem oferece a loja com distancia",
+      (d9.get("lojas") or [{}])[0].get("distancia", "@@") in c9["mensagem"],
+      c9["mensagem"][:300])
+
+# ==========================================================================
+print("\n[C10] o que o portal VAI perguntar e cobrado ANTES da fronteira A")
+# ==========================================================================
+# 🔴 Não existe journey de continuação: o `token_autorizacao` vive só em
+# memória e `safe_to_retry_open` é False depois do `POST /atendimentos`. Toda
+# pergunta do questionário que faltar vira um atendimento terminado à mão.
+for slot in ("posicao_do_trincado", "tamanho_do_trincado",
+             "sensor_de_direcao_ou_faixa", "aceita_reparo"):
+    faltando = {k: v for k, v in DO_SEGURADO_PARABRISA.items() if k != slot}
+    c = costurar("NOVO", peca="para-brisa", extras=faltando)
+    check(f"C10: sem `{slot}`, o job do para-brisa NAO nasce",
+          c["params"] is None and bool(c["erro"]), c["erro"])
+    # A recusa tem de PERGUNTAR o que falta, com o texto da própria pergunta.
+    texto_da_pergunta = PP.pergunta_do_campo(slot).texto[:40]
+    check(f"C10: e a recusa faz a pergunta de `{slot}`",
+          texto_da_pergunta in str(c["erro"]), str(c["erro"])[:240])
+for slot in ("pelicula", "porta_dianteira_ou_traseira", "lado_motorista_ou_carona"):
+    faltando = {k: v for k, v in DO_SEGURADO_LATERAL.items() if k != slot}
+    c = costurar("ANT", peca="vidro da porta", extras=faltando)
+    check(f"C10: sem `{slot}`, o job do vidro lateral NAO nasce",
+          c["params"] is None and bool(c["erro"]), c["erro"])
+check("C10 CONTROLE: com TODOS os slots, os dois jobs nascem — DIFEREM",
+      c1["params"] is not None and c9["params"] is not None)
+# E o par que prova que a régua não virou "cobre tudo": o que nenhuma captura
+# confirmou continua sendo coletado SEM travar.
+sem_nao_confirmada = {**DO_SEGURADO_PARABRISA}
+c10 = costurar("NOVO", peca="para-brisa", extras=sem_nao_confirmada)
+check("C10 CONTROLE: `sensor_de_chuva` e `faixa_degrade` NAO travam "
+      "(nenhuma captura as viu)",
+      c10["params"] is not None and getattr(c10["resultado"], "status", "") == "done")
+
+# ==========================================================================
+print("\n[C11] a CAUSA do dano: coletada antes, casada na lista ao vivo")
+# ==========================================================================
+from portal_worker.journeys.vidros_apifirst import casar_causa  # noqa: E402
+
+FAMILIA_DO_HAR = {"NOVO": "parabrisa", "ANT": "lateral",
+                  "PORTO": "lanterna", "LAT": "lataria"}
+casou = parou = errou = 0
+for har, familia in FAMILIA_DO_HAR.items():
+    ao_vivo = RV.primeira(RV.carregar(har), "GET", "/motivos-dano") or []
+    check(f"C11: as causas medidas de {familia} existem na lista ao vivo do {har}",
+          bool(API.causas_medidas_de(familia)))
+    for causa in API.causas_medidas_de(familia):
+        r = casar_causa(causa, ao_vivo)
+        obtida = (r["item"] or {}).get("DescricaoObjetoCausa")
+        if obtida is None:
+            parou += 1
+        elif obtida.strip() == causa.strip():
+            casou += 1
+        else:
+            errou += 1
+check("C11: TODA causa medida casa com a lista ao vivo da sua familia",
+      parou == 0 and errou == 0, (casou, parou, errou))
+print(f"      📊 {casou} causas medidas casaram · {parou} pararam · {errou} erradas")
+
+# E o relato livre: pode parar, NUNCA pode casar errado.
+FRASES_LIVRES = [
+    ("NOVO", "pegou uma pedra na estrada", "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA"),
+    ("NOVO", "caiu granizo", "CHUVA DE GRANIZO"),
+    ("NOVO", "teve uma ventania muito forte", "DURANTE FORTE VENTANIA,TEMPESTADE OU ENCHENTE"),
+    ("NOVO", "o vidro esta arranhado", None),      # 📊 o nome da peça não é a causa
+    ("NOVO", "bati o carro", None),
+    ("NOVO", "quebrou", None),                      # 🔴 o CONTROLE: frase vaga PARA
+    ("ANT", "o vidro nao sobe", "VIDRO NÃO SOBE OU DESCE"),
+    ("ANT", "tranquei a chave dentro", "ESQUECIMENTO DE CHAVE OU PESSOA DENTRO DO VEÍCULO"),
+    ("ANT", "tentaram roubar", None),
+    ("PORTO", "troquei a lampada e quebrou", "AO TROCAR A LÂMPADA QUEBROU O ITEM"),
+    ("LAT", "granizo", "CHUVA DE GRANIZO"),
+    ("LAT", "nao faco ideia", None),
+]
+livres_ok = livres_parou = livres_errou = 0
+for har, frase, esperado in FRASES_LIVRES:
+    ao_vivo = RV.primeira(RV.carregar(har), "GET", "/motivos-dano") or []
+    obtida = (casar_causa(frase, ao_vivo)["item"] or {}).get("DescricaoObjetoCausa")
+    if obtida is None:
+        livres_parou += 1
+        check(f"C11: {frase!r} PARA, como esperado", esperado is None, obtida)
+    else:
+        bateu = esperado is not None and obtida.strip() == esperado.strip()
+        livres_ok += bateu
+        livres_errou += (not bateu)
+        check(f"C11: {frase!r} casou com a causa certa", bateu, obtida)
+check("C11: ZERO frases livres casaram ERRADO", livres_errou == 0, livres_errou)
+print(f"      📊 relato livre: {livres_ok} casaram · {livres_parou} pararam · "
+      f"{livres_errou} erradas")
+
+# 🔴 `OUTROS` existe na lista da lataria e NUNCA sai por exclusão.
+causas_lat = RV.primeira(RV.carregar("LAT"), "GET", "/motivos-dano") or []
+check("C11: a lista da lataria REALMENTE tem `OUTROS` (senao o teste nao mede nada)",
+      any(_m.get("DescricaoObjetoCausa") == "OUTROS" for _m in causas_lat))
+for vago in ("nao faco ideia", "sei la", "qualquer coisa", "aconteceu"):
+    check(f"C11: {vago!r} NAO vira `OUTROS`",
+          (casar_causa(vago, causas_lat)["item"] or {}).get("DescricaoObjetoCausa")
+          != "OUTROS")
+check("C11 CONTROLE: mas `OUTROS` dito LITERALMENTE e aceito (e escolha de gente)",
+      (casar_causa("OUTROS", causas_lat)["item"] or {}).get("DescricaoObjetoCausa")
+      == "OUTROS")
 
 print("\n" + "=" * 66)
 print(f"  {PASS} asserções verdes · {FAIL} vermelhas")
