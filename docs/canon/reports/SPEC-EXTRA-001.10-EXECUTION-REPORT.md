@@ -216,8 +216,22 @@ humana — e porque **uma regressão do próprio conserto** (cidade mutilada) s�
 
 ## 11. Entrega
 ```
-<<SAIDA DO PUSH>>
+$ git rev-list --count HEAD..origin/main ; git rev-list --count origin/main..HEAD      # 📊 21/09/2026, antes
+0
+10
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   083eeca..db49753  HEAD -> main
+$ git fetch origin ; git rev-list --count HEAD..origin/main ; git rev-list --count origin/main..HEAD   # depois
+0
+0
+$ git rev-parse --short HEAD ; git rev-parse --short origin/main
+db49753
+db49753
 ```
+Antes do push, 📊 varredura do diff inteiro (`git diff 083eeca HEAD | grep -E "^\+" | grep -cE "sk-(proj|ant)|eyJhbGciOi|…"`):
+**0** chaves/senhas; os 4 acertos no padrão de CPF são números sintéticos de teste; **0** arquivos de `docs/intake/` e **0** `.TXT`
+do Founder no diff (o único `.txt` é `BATERIA-LINHA-DE-BASE.txt`, que é canon). O commit que fecha este relatório sobe em seguida.
 **Implantar:** `smith-api` → `smith-worker` → `portal-worker`. **Variáveis novas:** `PORTAL_VIDROS_API_FIRST` (nasce
 **desligada**; só o Founder liga, depois do canário) · `PORTAL_CANARIO_ALLOWLIST` (opcional; vazia = hoje; malformada = **barra
 tudo**). Nenhuma variável existente mudou de significado; nenhuma migration; o caminho DOM continua atendendo em produção.
@@ -231,5 +245,5 @@ O BURACO    o token do portal vive SÓ EM MEMÓRIA (P-E00110-A11): toda parada d
 O QUE FALTA guardar o atendimento (número + o já respondido) de forma durável; reabrir pelo "Consultar atendimento"; concluir
             agenda/direcionamento quando as capturas existirem; a Fila ler o run (P-E00110-C-03).
 DEPENDE DE  a captura nº 1 do roteiro (agendamento concluído) e a pergunta nº 12 à atendente ("dá para retomar por número?").
-ONDE PAROU  branch feat/extra-001-10-o-portal-de-vidros-ponta-a-ponta, HEAD b246a4f, bateria na linha de base (35).
+ONDE PAROU  main db49753 (último commit de código b246a4f), bateria na linha de base (35).
 ```
