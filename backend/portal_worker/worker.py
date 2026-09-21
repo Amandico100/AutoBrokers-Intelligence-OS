@@ -1151,7 +1151,7 @@ async def user_agent_sem_headless(browser) -> str:
 
 
 async def _run_job(supa, job: Dict[str, Any]) -> None:
-    from portal_worker.journeys import get_journey, motivo_para_barrar
+    from portal_worker.journeys import cpf_hash_de, get_journey, motivo_para_barrar
 
     job_id = job["id"]
     journey_fn = get_journey(str(job.get("portal_key")), str(job.get("journey")))
@@ -1173,7 +1173,20 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
     # E aqui além do ponto de criação: job já enfileirado antes de alguém
     # apertar o freio não pode rodar depois. Freio que só vale para o que
     # ainda não entrou na fila não freia nada numa emergência.
-    barrado = motivo_para_barrar(str(job.get("portal_key")), str(job.get("journey")))
+    # 🔴 SPEC-EXTRA-001.10 P0-6 — E AGORA A PERGUNTA É SOBRE **ESTE** JOB.
+    #
+    # 📊 Sem os dois argumentos abaixo, soltar o freio para fazer UM canário
+    # liberava todos os jobs de vidros em voo naquele worker, de qualquer
+    # corretora. A allowlist só ESTREITA: vazia, este bloco responde
+    # exatamente o que respondia antes.
+    #
+    # ⚠️ O CPF sai de `params`, que é onde a tool o gravou — e ele NUNCA entra
+    # na allowlist nem no log em claro: o que viaja é o hash curto.
+    barrado = motivo_para_barrar(
+        str(job.get("portal_key")), str(job.get("journey")),
+        job_id=str(job_id or ""),
+        cpf_hash=cpf_hash_de(str((job.get("params") or {}).get("cpf_cnpj") or "")),
+    )
     if barrado:
         logger.warning("[PORTAL] job %s barrado — %s", job_id, barrado)
         supa.table("portal_jobs").update({

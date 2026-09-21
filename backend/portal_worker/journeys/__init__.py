@@ -303,20 +303,112 @@ def efeito_material_liberado() -> bool:
         "1", "true", "yes", "on")
 
 
-def motivo_para_barrar(portal_key: str, journey: str) -> str:
+# --------------------------------------------------------------------------
+# 🔴 O FREIO POR JOB — SPEC-EXTRA-001.10 P0-6 (BLOCKER)
+# --------------------------------------------------------------------------
+#
+# 📊 Medido em 13/09/2026 e reconfirmado em 20/09: `efeito_material_liberado()`
+# lê uma variável DO PROCESSO, e `motivo_para_barrar` não recebia job, nem CPF,
+# nem corretora. Consequência direta: ligar o freio para fazer UM canário
+# libera **todos** os jobs de vidros em voo naquele worker, de qualquer
+# corretora — um pedido pago no nome de um segurado que ninguém escolheu.
+#
+# 📊 E em produção o freio global JÁ ESTÁ LIGADO nos dois serviços. Então a
+# allowlist não é conveniência: é o que torna o canário possível com segurança.
+#
+# O CONTRATO, em três frases, e a terceira é a que importa:
+#
+#   vazia ............. comportamento de HOJE (o freio global manda sozinho)
+#   preenchida ........ só os listados passam; os outros são barrados COM motivo
+#   🔴 ela nunca LIGA o freio — ela só o ESTREITA
+#
+# A terceira frase é a diferença entre uma trava e um interruptor disfarçado.
+# Se a allowlist pudesse liberar com o freio global desligado, esquecer uma
+# linha de texto numa variável de ambiente abriria pedido de verdade — e
+# esquecer tem de custar um pedido a MENOS, nunca um a mais.
+#
+# ⛔ Não há mecanismo novo aqui: `BILLING_CANARIO_ALLOWLIST` é o molde, e a
+# EXTRA-001 já o provou em produção (CLAUDE.md §5).
+_ENV_ALLOWLIST = "PORTAL_CANARIO_ALLOWLIST"
+
+#: Quantos hex do sha256 do CPF entram na lista. 12 são 48 bits: colidir por
+#: acaso entre os poucos CPFs de um canário é improvável, e o valor continua
+#: curto o bastante para caber numa variável de ambiente sem erro de digitação.
+#: ⛔ O CPF em claro NUNCA entra na allowlist — ela vive numa variável de
+#: ambiente que aparece em painel, log de deploy e print de tela.
+_DIGITOS_DO_HASH = 12
+
+
+def cpf_hash_de(cpf: str) -> str:
+    """O apelido do CPF na allowlist. "" quando não há CPF.
+
+    🔴 UM LUGAR SÓ. Quem gera (o Founder, pela linha de comando), quem escreve
+    (a tool, que tem o CPF antes de o job existir) e quem confere (o worker)
+    têm de produzir o MESMO texto — e duas implementações do "mesmo" hash é
+    exatamente como uma allowlist deixa de casar em silêncio, liberando tudo ou
+    barrando tudo sem ninguém entender.
+
+    Só os dígitos entram: `012.345.678-90` e `01234567890` são a mesma pessoa.
+    """
+    import hashlib as _hashlib
+
+    digitos = "".join(c for c in str(cpf or "") if c.isdigit())
+    if not digitos:
+        return ""
+    return _hashlib.sha256(digitos.encode()).hexdigest()[:_DIGITOS_DO_HASH]
+
+
+def _allowlist() -> tuple:
+    """Os itens da allowlist, normalizados. Tupla vazia = allowlist ausente."""
+    import os as _os
+
+    bruto = str(_os.getenv(_ENV_ALLOWLIST, "") or "")
+    return tuple(p.strip().lower() for p in bruto.split(",") if p.strip())
+
+
+def efeito_material_liberado_para(*, job_id: str = "", cpf_hash: str = "") -> bool:
+    """Este job específico pode criar fato no mundo?
+
+    A trava global continua valendo; a allowlist a ESTREITA, nunca a alarga.
+    🔴 Vazia com o freio ligado = comportamento de hoje. Preenchida = só os
+    listados passam. ⛔ Nunca o contrário: a allowlist não LIGA o freio.
+    """
+    if not efeito_material_liberado():
+        return False
+    lista = _allowlist()
+    if not lista:
+        return True
+    eu = {f"job:{str(job_id or '').strip().lower()}" if job_id else "",
+          f"cpf:{str(cpf_hash or '').strip().lower()}" if cpf_hash else ""}
+    return bool(eu & set(lista))
+
+
+def motivo_para_barrar(portal_key: str, journey: str, *,
+                       job_id: str = "", cpf_hash: str = "") -> str:
     """Por que esta journey NÃO pode rodar agora. String vazia = pode.
 
     Devolve texto em vez de booleano de propósito: quem barra tem de conseguir
     gravar no job POR QUE barrou. `status=failed` sem motivo legível manda
     alguém abrir o código para descobrir o que já era sabido aqui.
+
+    ⚠️ `job_id` e `cpf_hash` são OPCIONAIS: toda chamada antiga continua
+    válida e continua respondendo o que respondia. Sem eles, um job só é
+    liberado quando a allowlist está VAZIA — que é o estado de hoje.
     """
     alvo = get_definition(portal_key, journey)
     if alvo is None:
         return ""  # journey desconhecida — quem chama já trata, com outro erro
     if alvo.effect_class != MATERIAL_SIDE_EFFECT:
         return ""
-    if efeito_material_liberado():
+    if efeito_material_liberado_para(job_id=job_id, cpf_hash=cpf_hash):
         return ""
+    if efeito_material_liberado():
+        # O freio global está solto: quem barrou foi a allowlist do canário.
+        # ⛔ E o motivo NÃO carrega o CPF nem o hash: ele vai para `error` no
+        # banco e para o log (CLAUDE.md §7 — nenhum segredo, nenhum dado de
+        # pessoa, em log). O job_id já identifica a linha para quem investigar.
+        return (f"journey `{portal_key}.{journey}` cria efeito material e este job "
+                f"está fora da allowlist do canário ({_ENV_ALLOWLIST})")
     return (f"journey `{portal_key}.{journey}` cria efeito material e "
             f"{_ENV_EFEITO_MATERIAL} está desligado")
 

@@ -166,7 +166,12 @@ PEDIDO = {
     "descricao": "Encontrei o carro com o vidro da porta do motorista quebrado no estacionamento",
     "especificos": {"pelicula": "nao", "porta_dianteira_ou_traseira": "dianteira",
                     "lado_motorista_ou_carona": "motorista",
-                    "onde_realizar_o_servico": "domicilio"},
+                    "onde_realizar_o_servico": "domicilio",
+                    # ⚠️ ATUALIZADO em 20/09/2026 (§9.3): a cidade do servico
+                    # passou a travar `build_portal_params` (SPEC-EXTRA-001.10
+                    # P0-5). Sem ela este PEDIDO deixaria de ser "completo" e o
+                    # arquivo mediria a fixture, nao o interruptor.
+                    "cidade_para_o_servico": "Joinville/SC"},
 }
 
 

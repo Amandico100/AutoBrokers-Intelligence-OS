@@ -77,7 +77,13 @@ FLAT = {"cpf_cnpj": "03074327936", "data_dano": "05/07/2026",
         "descricao": "o carro estava estacionado e o vidro da porta foi quebrado",
         # SPEC-065 — "completo" mudou: a preferencia de onde consertar entra
         # aqui porque parar no passo 7 e terminal (o Nº ja nasceu la).
-        "especificos": {"onde_realizar_o_servico": "levar na oficina"}}
+        # ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3): o FATO mudou. A CIDADE
+        # DO SERVICO passou a travar `build_portal_params` (SPEC-EXTRA-001.10
+        # P0-5) — 📊 `CodigoCidade` e chave obrigatoria do PATCH nas 4 capturas
+        # do portal, e o CEP da apolice e o de CASA, nao o da cidade onde o
+        # segurado quer consertar. "Completo" mudou de significado outra vez.
+        "especificos": {"onde_realizar_o_servico": "levar na oficina",
+                        "cidade_para_o_servico": "Joinville/SC"}}
 
 
 def run():

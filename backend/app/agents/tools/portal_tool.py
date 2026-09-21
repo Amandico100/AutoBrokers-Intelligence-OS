@@ -44,8 +44,11 @@ from pydantic import BaseModel, Field
 from .portal_params import (
     build_portal_params,
     chave_de_idempotencia,
+    descricao_da_tool,
     format_result,
     frase_de_pedido_ja_existente,
+    resumo_da_tela_desconhecida,
+    slug_da_seguradora,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +62,17 @@ POLL_EVERY_S = 5
 # depois de corrigido o CPF, a apolice ou a InfoCap).
 STATUS_MORTO = "failed"
 STATUS_EM_CURSO = ("queued", "running")
+
+#: SPEC-EXTRA-001.10 P-PILOTO-02 — o mesmo `outcome_type` do acionamento por
+#: WhatsApp, de proposito: para a corretora, "abrir assistencia" e UM resultado
+#: de negocio; o caminho (corredor x portal) e detalhe de execucao, e
+#: `runtime_kind` o distingue. Um outcome novo faria a Fila ter duas colunas
+#: para a mesma coisa.
+#: ⛔ No MODULO, nao como atributo de classe: `BaseTool` e um modelo pydantic e
+#: todo atributo sem anotacao vira campo (ou erro) nele.
+OUTCOME_ACIONAMENTO = "acionamento_assistencia"
+WORKFLOW_PORTAL = "acionamento.portal_vidros"
+RUNTIME_PORTAL = "portal"
 
 
 def _tem_prova_de_efeito(evidence) -> bool:
@@ -113,33 +127,26 @@ class PortalActionInput(BaseModel):
     # antes do pedido — chegar la sem elas e ter feito todo o percurso a toa.
     especificos: Optional[dict] = Field(
         default=None,
-        description=("Respostas das perguntas especificas do 80%, quando ja coletadas na conversa. "
-                     "Chaves: pelicula, porta_dianteira_ou_traseira, lado_motorista_ou_carona, "
-                     "posicao_do_trincado, tamanho_do_trincado. Use 'nao sabe' SO se o segurado "
-                     "realmente nao souber — nunca para agilizar: o portal precisa disso para "
-                     "pedir o vidro certo."))
+        description=("Respostas das perguntas especificas ja coletadas na conversa, e tambem "
+                     "cidade_para_o_servico. A propria ferramenta diz QUAIS chaves usar quando "
+                     "faltar alguma (ela devolve a pergunta pronta com o formato da resposta). "
+                     "Exemplos: cidade_para_o_servico, onde_realizar_o_servico, aceita_reparo, "
+                     "pelicula, lado_motorista_ou_carona, porta_dianteira_ou_traseira, "
+                     "posicao_do_trincado, tamanho_do_trincado, pecas_lataria (LISTA). "
+                     "Use 'nao sabe' SO se o segurado realmente nao souber — nunca para "
+                     "agilizar: o portal precisa disso para pedir a peca certa."))
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NAO preencher)")
 
 
 class PortalActionTool(BaseTool):
     name: str = "portal_action"
-    description: str = (
-        "Abre o atendimento de VIDROS/farois/lanternas/retrovisores no portal da seguradora. "
-        # SPEC-065 7.5 — a frase antiga pedia TRES coisas ("CPF, data do dano e o relato") para
-        # um portal que pergunta CINCO, e "o relato do que aconteceu" era satisfeito por "quebrou
-        # o vidro", que nao nomeia peca nenhuma. 📊 33 dos 39 acionamentos pararam no meio, e o
-        # motivo mais caro era sempre o mesmo: descobrir dentro do portal o que faltava.
-        # Depois que o portal abre, cada dado que falta custa o atendimento inteiro.
-        "Use SO quando voce ja tiver, da conversa: CPF do titular, data do dano, QUAL PECA quebrou "
-        "(para-brisa / vidro de porta / vidro de janela / vigia / retrovisor / farol / lanterna — "
-        "'quebrou o vidro' NAO serve, nao diz qual), COMO aconteceu, ONDE (cidade ou rodovia) e, se "
-        "for vidro de porta ou para-brisa, as respostas especificas: tem pelicula (insulfilm)? porta "
-        "dianteira ou traseira? lado do motorista ou do carona? posicao e tamanho do trincado? "
-        "Pergunte tudo ANTES de chamar. A ferramenta busca SOZINHA os dados reais da apolice (placa, veiculo, endereco, "
-        "seguradora) na InfoCap — NAO peca placa/CEP/endereco ao cliente. Se houver mais de uma apolice AUTO "
-        "ativa, ela devolve as opcoes para voce perguntar qual. Ela avisa o cliente que esta abrindo e volta "
-        "com o resultado. NAO finaliza sozinha o pedido."
-    )
+    # 🔴 SPEC-EXTRA-001.10 P0-5 — A DESCRICAO E GERADA, NAO ESCRITA.
+    #
+    # 📊 Ate 20/09/2026 este texto era a TERCEIRA opiniao sobre o que o portal
+    # pede: o prompt dizia 3 coisas, `TRANSPORTAVEIS` recusava por 6, e aqui
+    # havia uma lista a mao. Agora ele e uma projecao de `TRANSPORTAVEIS` + as
+    # familias — acrescentar um campo que trava muda este texto no mesmo commit.
+    description: str = descricao_da_tool()
     args_schema: Type[BaseModel] = PortalActionInput
     company_id: str = ""
     supabase_client: object = None
@@ -201,7 +208,7 @@ class PortalActionTool(BaseTool):
         except Exception:  # noqa: BLE001
             pass
 
-    async def _envio_liberado(self) -> bool:
+    async def _envio_liberado(self, cpf: str = "") -> bool:
         """P-90 — este acionamento pode CONCLUIR o pedido na seguradora?
 
         Uma pergunta, duas condicoes, e as duas moram fora daqui de proposito:
@@ -218,7 +225,7 @@ class PortalActionTool(BaseTool):
         desfaz (o Nº nasce no passo 7, antes do fim do fluxo).
         """
         try:
-            from portal_worker.journeys import motivo_para_barrar
+            from portal_worker.journeys import cpf_hash_de, motivo_para_barrar
 
             from app.services.atlas.attendance_capture import attendance_agent_active
             from app.services.insurer_dispatch_service import acionamento_liberado
@@ -234,7 +241,14 @@ class PortalActionTool(BaseTool):
             # `PORTAL_EFEITO_MATERIAL_LIBERADO` e o interruptor que faltava. E
             # e por CLASSE DE EFEITO, nao por portal: barrar "vidros" pelo nome
             # deixaria a proxima journey material nascer solta.
-            barrado = motivo_para_barrar("vidros_lanternas", "abrir_atendimento")
+            # 🔴 P0-6 — AQUI O JOB AINDA NAO EXISTE, entao a chave e o CPF.
+            #
+            # Este e o ponto de CRIACAO: `job:<uuid>` so existe depois do
+            # insert. Por isso a allowlist aceita as duas formas, e este lado
+            # usa `cpf:<hash>` — o mesmo hash que o worker recalcula do
+            # `params`, pela MESMA funcao, para os dois nunca discordarem.
+            barrado = motivo_para_barrar("vidros_lanternas", "abrir_atendimento",
+                                         cpf_hash=cpf_hash_de(cpf))
             if barrado:
                 logger.info("[PortalAction] pedido para no 80%% — %s", barrado)
                 return False
@@ -300,7 +314,7 @@ class PortalActionTool(BaseTool):
             # TODOS os status e a exclusão passa a ser feita aqui, olhando a
             # evidência em vez do rótulo.
             r = (self._client().table("portal_jobs")
-                 .select("id, status, evidence, error, created_at")
+                 .select("id, status, evidence, error, created_at, work_run_id")
                  .eq("company_id", self.company_id)
                  .eq("idempotency_key", chave)
                  .order("created_at", desc=True)
@@ -331,6 +345,193 @@ class PortalActionTool(BaseTool):
             getattr(exc, "code", ""), getattr(exc, "message", ""),
             getattr(exc, "details", ""), exc)).lower()
         return "23505" in alvo or "duplicate key" in alvo or "unique constraint" in alvo
+
+    # ======================================================================
+    # P-PILOTO-02 — O ACIONAMENTO PELO PORTAL APARECE NA FILA E NA FICHA
+    # ======================================================================
+    #
+    # 📊 Medido em 08/09/2026 e reconfirmado em 20/09: `portal_jobs` tem as
+    # colunas `work_run_id`, `agent_id` e `operation_key` e as três ficavam
+    # vazias; `lib/atendimento/casos.ts` lê cinco tabelas e nenhuma delas é
+    # `portal_jobs`. Efeito: um acionamento de vidros acontecia, custava
+    # dinheiro ao segurado e **não existia** para quem olha o produto.
+    #
+    # ⛔ Nenhum escritor novo (CLAUDE.md §5): quem grava é
+    # `work.runs.criar_registro_sem_fila`, o helper que o `dispatch_router` já
+    # usa — e pela mesma razão dele (o outbox marcaria como `failed` um trabalho
+    # que o Smith Worker não executa; quem executa aqui é o portal-worker).
+    #
+    # ⚠️ **Falhar aqui NUNCA derruba o acionamento.** O espelho é relatório; o
+    # pedido é o serviço do segurado. Perder o espelho é recuperável por
+    # backfill; perder o acionamento não é.
+
+    async def _conversa_provada(self, db, session_id: str) -> Optional[str]:
+        """De qual conversa este acionamento nasceu — ou `None`.
+
+        🔴 O filtro por corretora é a proteção real (CLAUDE.md §7 — o backend
+        roda com service role). E a dúvida grava NULO: perder a ligação de um
+        run legítimo é recuperável; gravar a ligação errada produz um relatório
+        confiante e falso.
+
+        ⚠️ Não reaproveita `dispatch_router._conversa_provada_da_sessao` porque
+        aquela prova por `session["mirror_conversation_id"]`, uma chave que só
+        existe dentro do corredor de WhatsApp. Aqui a prova é por
+        `conversations.session_id`, que é o mesmo texto que o job já guarda. A
+        REGRA é a mesma (filtrar corretora, NULO na dúvida); o que muda é por
+        onde se prova.
+        """
+        sessao = str(session_id or "").strip()
+        if not sessao or not self.company_id:
+            return None
+        try:
+            # ⚠️ `_talvez_await` em vez de `await` seco: este módulo roda tanto
+            # com o cliente async (produção) quanto com o síncrono (dublês dos
+            # guardas). É a MESMA razão, e a MESMA função, que `work.runs` usa —
+            # escrever aqui uma segunda versão do "aguarda se for aguardável"
+            # seria a cópia que aquele helper existe para não ter.
+            from app.services.work.runs import _talvez_await
+
+            achado = await _talvez_await(
+                getattr(db, "client", db).table("conversations")
+                .select("id")
+                .eq("company_id", self.company_id)
+                .eq("session_id", sessao)
+                .limit(1).execute())
+            linhas = getattr(achado, "data", None) or []
+            return str(linhas[0]["id"]) if linhas else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PortalAction] conversa nao provada (%s) — o run nasce "
+                           "com conversation_id NULO", type(exc).__name__)
+            return None
+
+    async def _garantir_work_run(self, *, chave: str, session_id: str,
+                                 params: dict, agent_id: Optional[str]) -> Optional[str]:
+        """O espelho durável deste acionamento. `None` = não deu, e segue assim mesmo."""
+        try:
+            from app.core.database import create_async_supabase_client
+            from app.services.work.runs import criar_registro_sem_fila
+
+            db = await create_async_supabase_client()
+            if db is None:
+                return None
+            peca = str((params.get("dano") or {}).get("peca") or "vidros").strip()
+            registro = await criar_registro_sem_fila(
+                db,
+                company_id=self.company_id,
+                workflow_key=WORKFLOW_PORTAL,
+                outcome_type=OUTCOME_ACIONAMENTO,
+                outcome_title=f"Acionamento de vidros — {peca}"[:180],
+                source_type="portal",
+                source_id=None,
+                conversation_id=await self._conversa_provada(db, session_id),
+                runtime_kind=RUNTIME_PORTAL,
+                status="running",
+                # Alto por definição: do outro lado está a seguradora de
+                # verdade, e o número do atendimento nasce antes do fim do fluxo.
+                risk_level="high",
+                idempotency_key=chave or f"portal:{session_id or 'sem-sessao'}",
+                input_payload={
+                    "placa": str(params.get("placa") or ""),
+                    "peca": peca,
+                    "data_dano": str(params.get("data_dano") or ""),
+                    "seguradora": str(params.get("insurer_name") or ""),
+                    # ⛔ Nada de CPF, telefone, e-mail ou endereço aqui: o
+                    # payload do run é lido por tela de operação e por
+                    # relatório. O que identifica o pedido é placa + data.
+                },
+                current_step_key="abrindo_no_portal",
+                progress_percent=10,
+                requester_agent_id=agent_id,
+            )
+            return str(registro["id"])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PortalAction] work_run nao criado (%s) — o acionamento "
+                           "segue; so o espelho durável falta", type(exc).__name__)
+            return None
+
+    async def _fechar_work_run(self, run_id: str, job: dict) -> None:
+        """Leva o run ao desfecho que o portal decidiu. Best-effort, sempre.
+
+        🔴 O número do atendimento fica GUARDADO no run (`result_payload`), e
+        não só na conversa: 📊 hoje o protocolo mora em `portal_jobs.evidence`,
+        que ninguém varre por corretora — a Ficha lê `work_runs`.
+
+        ⛔ Sem `UPDATE` solto: quem transiciona é `WorkRunService`, que já sabe
+        gravar o evento na linha do tempo junto. Escrever o update à mão aqui
+        seria a segunda mão escrevendo na mesma tabela.
+        """
+        if not run_id:
+            return
+        try:
+            from app.core.database import get_supabase_client
+            from app.services.work.runs import WorkRunService
+
+            svc = WorkRunService(get_supabase_client())
+            ev = (job or {}).get("evidence") or {}
+            desfecho = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else {}
+            estado = ev.get("vidros_estado") if isinstance(ev.get("vidros_estado"), dict) else {}
+            numero = str(desfecho.get("codigo_atendimento")
+                         or estado.get("codigo_atendimento")
+                         or ev.get("protocolo") or "").strip()
+            resultado = {
+                "numero_do_atendimento": numero,
+                "desfecho": str(desfecho.get("tipo") or "") or None,
+                "franquias": desfecho.get("franquias") or [],
+                "link_area_segurado": str(desfecho.get("link_area_segurado") or "") or None,
+            }
+            status = str((job or {}).get("status") or "")
+            if status == "done" or numero:
+                # 🔴 Número lido = o trabalho DEU resultado, mesmo que o job
+                # tenha terminado `needs_human`. Marcar como falha um pedido que
+                # existe na seguradora é a pior linha possível num relatório.
+                svc.concluir(run_id, self.company_id,
+                             (f"Atendimento {numero} aberto na seguradora" if numero
+                              else "Acionamento concluído no portal"),
+                             resultado)
+                return
+            svc.marcar_progresso(run_id, self.company_id,
+                                 str(ev.get("stage") or "parou_no_portal"), 60)
+            svc.falhar(run_id, self.company_id,
+                       "portal_sem_desfecho",
+                       "O portal parou antes de gerar o número do atendimento — "
+                       "a equipe conclui na mão.",
+                       retryable=False)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PortalAction] work_run nao atualizado (%s)", type(exc).__name__)
+
+    # ======================================================================
+    # P-PILOTO-08 — tela desconhecida no portal entra na FILA DE APRENDIZADO
+    # ======================================================================
+    async def _aprender_com_a_tela_cega(self, job_id: str, job: dict) -> None:
+        """Uma linha em `tela_cega` por job, e só quando o portal disse algo novo.
+
+        📊 A fila existe desde a SPEC-087 e só o corredor de URA a alimentava; o
+        portal gravava `debug_dom` num jsonb que ninguém varre (P-PILOTO-08).
+
+        ⚠️ UMA vez por job — a marca vai no próprio `evidence`. Sem ela, o Vigia
+        varre o mesmo job a cada minuto e a fila de aprendizado vira ruído em um
+        dia, que é exatamente o que a dedupe da SPEC-087 existe para impedir.
+        """
+        try:
+            ev = (job or {}).get("evidence") or {}
+            resumo = resumo_da_tela_desconhecida(ev)
+            if not resumo or ev.get("tela_cega_registrada"):
+                return
+            from app.services.tela_cega import registrar_tela_cega
+
+            await registrar_tela_cega(
+                company_id=self.company_id,
+                insurer_key=slug_da_seguradora((job or {}).get("params") or {}),
+                ramo="vidros",
+                playbook_ref=f"portal:vidros_lanternas:{resumo['onde']}",
+                texto=resumo["texto"],
+            )
+            self._client().table("portal_jobs").update({
+                "evidence": {**ev, "tela_cega_registrada": True},
+            }).eq("id", job_id).eq("company_id", self.company_id).execute()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PortalAction] fila de aprendizado nao recebeu (%s)",
+                           type(exc).__name__)
 
     async def _fetch_infocap(self, cpf: str, policy_number: Optional[str]) -> dict:
         """SPEC-025: fatos reais da apolice AUTO (placa/veiculo/endereco) via porta
@@ -384,7 +585,7 @@ class PortalActionTool(BaseTool):
         #
         # P-90 — e o interruptor do agente, que vira `params['confirm']`. E o
         # UNICO lugar do fluxo em que "abrir o pedido de verdade" se decide.
-        enviar = await self._envio_liberado()
+        enviar = await self._envio_liberado(cpf)
         params, err = build_portal_params(flat, self._load_profile(), info,
                                           enviar_de_verdade=enviar)
         if err:
@@ -397,6 +598,21 @@ class PortalActionTool(BaseTool):
         # SEGUNDO atendimento. 📊 39 jobs para 5 pedidos distintos e o que
         # acontecia sem este bloco.
         chave = chave_de_idempotencia(params, self.company_id)
+        # 🔴 ACHADO DO BLOCO 0 — `_idempotency_key` era LIDA E NUNCA ESCRITA.
+        #
+        # 📊 `portal_worker/journeys/vidros_apifirst.py:231` lê
+        # `params["_idempotency_key"]` e, medido em 20/09/2026, nenhum lugar do
+        # repositório a gravava. Efeito: a proteção contra o POST repetido
+        # DENTRO da journey (a que impede o segundo `POST /atendimentos` quando
+        # o worker reexecuta o mesmo job) nascia sempre vazia — a rede existia e
+        # estava desligada.
+        #
+        # ⚠️ É a MESMA chave do dedup de job, de propósito: as duas protegem o
+        # mesmo fato (um pedido por veículo, peça e data). Uma segunda chave
+        # seria um segundo conceito de "mesmo pedido", e o dia em que elas
+        # divergissem ninguém saberia qual valia.
+        if chave:
+            params["_idempotency_key"] = chave
         job_id: Optional[str] = None
         reaproveitado = False
 
@@ -418,6 +634,24 @@ class PortalActionTool(BaseTool):
         # responder depois saber por qual integracao falar) e para o `_notify`.
         agent_id = self._attendance_agent_id() if not reaproveitado else None
 
+        # 🔴 P-PILOTO-02 — o espelho durável nasce ANTES do job, e por isso o
+        # `work_run_id` já entra na linha do `portal_jobs` em vez de precisar de
+        # um segundo UPDATE que pode não acontecer. O run é idempotente pela
+        # MESMA chave do pedido: duas chamadas não criam dois espelhos.
+        #
+        # ⚠️ Run sem job é aceitável (aparece como acionamento que não concluiu);
+        # job sem run é o que o produto já tinha e é o defeito.
+        # Quem se anexou a um job em curso herda o espelho DELE — criar outro
+        # aqui daria dois runs para um pedido, que é o defeito na outra direção.
+        work_run_id = str((existente or {}).get("work_run_id") or "") or None
+        if not reaproveitado:
+            work_run_id = await self._garantir_work_run(
+                chave=chave, session_id=session_id, params=params, agent_id=agent_id)
+            if work_run_id:
+                params["_work_run_id"] = work_run_id
+            if session_id:
+                params["_conversation_id"] = session_id
+
         # 4) Enfileira o job para o portal-worker — so quando nao havia um vivo.
         if not reaproveitado:
             try:
@@ -430,6 +664,10 @@ class PortalActionTool(BaseTool):
                     "idempotency_key": chave or None,  # "" nunca vai para o banco
                     "session_id": session_id or None,  # o caminho de volta a conversa
                     "agent_id": agent_id,
+                    # 🔴 A coluna existe desde a SPEC-075 e nunca teve escritor
+                    # (📊 P-PILOTO-02, 08/09/2026). É ela que liga o acionamento
+                    # de vidros à Fila e à Ficha.
+                    "work_run_id": work_run_id,
                 }
                 # 🔴 SPEC-075 Bloco D — `operation_key` entra sem poder derrubar
                 # o acionamento. A coluna é nova; o smith-api sobe com a imagem
@@ -511,6 +749,19 @@ class PortalActionTool(BaseTool):
                     }).eq("id", job_id).execute()
                 except Exception:  # noqa: BLE001
                     pass  # falhar a marca nao pode derrubar a resposta ao segurado
+
+                # 🔴 O DESFECHO CHEGOU: o espelho durável fecha e a tela nova,
+                # se houver, entra na fila de aprendizado. As duas coisas são
+                # best-effort por dentro — nenhuma delas pode ficar entre o
+                # segurado e a resposta dele.
+                if work_run_id:
+                    await self._fechar_work_run(work_run_id, job)
+                # ⚠️ `params` entra por fora: 📊 o poll acima seleciona só
+                # `status, evidence, error` — o job que volta do banco NÃO tem
+                # `params`, e é de lá que sai o nome da seguradora para a fila
+                # de aprendizado. Sem esta linha toda tela nova entrava na fila
+                # como `desconhecida`, e a fila deixaria de separar por portal.
+                await self._aprender_com_a_tela_cega(str(job_id), {**job, "params": params})
                 return {"content": format_result(job)}
         # Estourou os 150s. Aqui morava o defeito: a tool dizia "enfileirei, o
         # worker nao processou" e o agente chamava de novo — criando o segundo

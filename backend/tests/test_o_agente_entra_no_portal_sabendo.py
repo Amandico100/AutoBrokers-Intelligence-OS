@@ -107,6 +107,13 @@ UNIVERSAIS_OK = {
     # deixado de valer. Que ela É cobrada quando falta, e NÃO quando já se sabe,
     # está provado em test_o_protocolo_volta_para_o_segurado.py [M3].
     P.ONDE_REALIZAR_O_SERVICO: "domicilio",
+    # ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3): o FATO mudou. A CIDADE
+    # DO SERVICO virou pergunta universal e BLOQUEANTE (SPEC-EXTRA-001.10
+    # P0-5) — 📊 `CodigoCidade` e chave obrigatoria do PATCH nas 4 capturas
+    # do portal (20/09/2026) e a cidade e perguntada em 8 de 8 blocos do
+    # roteiro da atendente. "Tudo que a conversa ja apurou" cresceu um item;
+    # as assercoes abaixo continuam valendo e provando o mesmo.
+    P.CIDADE_PARA_O_SERVICO: "Joinville/SC",
 }
 
 PARABRISA_COMPLETO = {
@@ -114,6 +121,18 @@ PARABRISA_COMPLETO = {
     "peca": "parabrisa",
     "posicao_do_trincado": "No centro",
     "tamanho_do_trincado": "Maior que 10 cm",
+    # ⚠️ E o para-brisa ganhou mais uma, pelo mesmo motivo: 📊 o portal
+    # oferece o REPARO (`regras-reparo` -> ExibirDialogDeReparo=true,
+    # medido em 20/09/2026) e para para perguntar — DEPOIS de o numero do
+    # atendimento ja existir. Coletar antes e o unico jeito de nao parar la.
+    "aceita_reparo": "sim",
+    # ⚠️ E as tres que o roteiro da atendente acrescentou ao para-brisa
+    # (SPEC-EXTRA-001.10 P1-3). Duas delas sao de CATALOGO e nao-confirmadas
+    # (sensor de chuva, faixa degrade): elas nao travam nada, mas `o_que_falta`
+    # as DEVOLVE — e "com TUDO sabido" tem de significar tudo mesmo.
+    "sensor_de_direcao_ou_faixa": "NAO",
+    "sensor_de_chuva": "SIM",
+    "faixa_degrade": "NAO",
 }
 
 
@@ -280,7 +299,18 @@ def o_cep_e_lacuna_do_provedor_e_nao_bloqueia() -> None:
 # ------------------------------------------------------------------ #
 
 def a_peca_nao_mapeada_nao_trava() -> None:
-    """📊 Mapa §7: retrovisor, farol, lanterna, vigia e teto não foram medidos."""
+    """📊 O que CONTINUA sem perguntas medidas.
+
+    ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3): o FATO mudou. Retrovisor,
+    farol, lanterna e vigia SAIRAM de `PECAS_SEM_ESPECIFICAS_MAPEADAS` porque o
+    roteiro da atendente humana (.docx de intake) traz as perguntas delas
+    (SPEC-EXTRA-001.10 P1-3). Sobrou o teto.
+
+    🔴 A LICAO MIGROU em vez de morrer: o arquivo continua provando que peca sem
+    perguntas NAO TRAVA e NAO INVENTA — agora sobre a lista de hoje, que o
+    proprio modulo declara. E o bloco ganhou o par oposto logo abaixo: as
+    familias novas TEM perguntas e tambem nao travam.
+    """
     for peca in P.PECAS_SEM_ESPECIFICAS_MAPEADAS:
         faltam = P.o_que_falta(peca, UNIVERSAIS_OK)
         checar(not P.especificas_mapeadas(peca),
@@ -300,6 +330,17 @@ def a_peca_nao_mapeada_nao_trava() -> None:
     checar(P.especificas_mapeadas("parabrisa") and P.especificas_mapeadas("vidro de porta"),
            "CONTROLE: parabrisa e vidro de porta CONTINUAM mapeados",
            "uma tabela de especificas vazia passaria em todo o bloco acima")
+
+    # 🔴 O PAR OPOSTO — as familias que SAIRAM da lista em 20/09/2026.
+    # Sem ele, apagar `_ESPECIFICAS_POR_IDENTIDADE["retrovisor"]` deixaria tudo
+    # verde: a peca voltaria a ser "nao mapeada" e o bloco acima aprovaria.
+    for nova in ("retrovisor", "farol", "lanterna", "vigia", "para-choque", "lataria"):
+        checar(P.especificas_mapeadas(nova),
+               f"'{nova}': agora TEM perguntas especificas (P1-3)",
+               "saiu de PECAS_SEM_ESPECIFICAS_MAPEADAS mas ninguem escreveu as perguntas")
+        checar(len(P.especificas_da_peca(nova)) >= 1,
+               f"'{nova}': e elas sao pelo menos uma",
+               str(campos(P.especificas_da_peca(nova))))
 
 
 # ------------------------------------------------------------------ #
@@ -431,7 +472,11 @@ FLAT_COMPLETO = {"cpf_cnpj": "03074327936", "data_dano": "05/07/2026",
                  # este arquivo continuar afirmando que um acionamento incompleto
                  # está completo — que é exatamente o tipo de verdade vencida que
                  # a §9.3 manda atualizar.
-                 "especificos": {"onde_realizar_o_servico": "levar na oficina"}}
+                 #
+                 # ⚠️ E mudou OUTRA VEZ em 20/09 pela mesma logica: a cidade do
+                 # servico entrou em TRANSPORTAVEIS (P0-5).
+                 "especificos": {"onde_realizar_o_servico": "levar na oficina",
+                                 "cidade_para_o_servico": "Joinville/SC"}}
 
 
 def o_portal_nao_abre_com_o_relato_vago() -> None:
@@ -479,10 +524,20 @@ def as_especificas_nao_travam_o_acionamento() -> None:
                                               # ver UNIVERSAIS_OK: universal nova,
                                               # respondida aqui para que a conta
                                               # abaixo continue sendo das 3 do 80%
-                                              P.ONDE_REALIZAR_O_SERVICO: "loja"})
-    checar(len(P.para_o_segurado(faltam)) == 3,
-           "as 3 especificas do vidro de porta CONTINUAM sendo cobradas por o_que_falta",
-           str(campos(faltam)))
+                                              P.ONDE_REALIZAR_O_SERVICO: "loja",
+                                              # ver UNIVERSAIS_OK: a cidade do
+                                              # servico tambem virou universal
+                                              # (P0-5) e e respondida aqui pela
+                                              # mesma razao que a de cima.
+                                              P.CIDADE_PARA_O_SERVICO: "Joinville/SC"})
+    # ⚠️ ATUALIZADO em 20/09/2026 (§9.3): eram 3, sao 4. O vidro de porta ganhou
+    # "e fixo ou sobe e desce?" (P1-3), que escolhe entre VIDRO DE PORTA, VIDRO
+    # DE JANELA e a MAQUINA do vidro no catalogo da apolice. A LICAO e a mesma:
+    # elas sao COBRADAS e NAO TRAVAM.
+    especificas = campos(P.especificas_da_peca("vidro de porta"))
+    checar(len(P.para_o_segurado(faltam)) == len(especificas),
+           f"as {len(especificas)} especificas do vidro de porta CONTINUAM sendo "
+           "cobradas por o_que_falta", str(campos(faltam)))
     checar(e is None and p is not None,
            "mas elas NAO travam build_portal_params - nao ha como transporta-las hoje",
            "travar sem transporte cria o laco infinito")

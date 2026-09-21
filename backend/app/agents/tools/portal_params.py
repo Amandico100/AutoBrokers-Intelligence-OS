@@ -20,10 +20,13 @@ import unicodedata
 from typing import Optional, Tuple
 
 from app.services.perguntas_do_portal_de_vidros import (
+    DO_SEGURADO,
+    catalogo_de_familias,
     compor_descricao,
     mensagem_para_o_agente,
     o_que_falta,
     para_o_segurado,
+    pergunta_do_campo,
 )
 
 # O QUE O AGENTE CONSEGUE DEVOLVER HOJE — e por que isso limita o que trava.
@@ -56,7 +59,38 @@ TRANSPORTAVEIS = ("cpf_cnpj", "data_dano", "peca", "como_ocorreu", "onde_ocorreu
                   # E é a pergunta mais fácil de todas: "o técnico vai até você,
                   # ou você prefere levar numa oficina?" — qualquer pessoa
                   # responde sem consultar nada.
-                  "onde_realizar_o_servico")
+                  "onde_realizar_o_servico",
+                  # 🔴 SPEC-EXTRA-001.10 P0-5 — A CIDADE DO SERVIÇO TRAVA.
+                  #
+                  # 📊 `CodigoCidade` é chave obrigatória do PATCH nas 4
+                  # capturas de 20/09/2026, e a cidade é perguntada em 8 de 8
+                  # blocos do roteiro da atendente humana. Sem ela o robô entra
+                  # no portal e para numa tela que ninguém consegue responder
+                  # por ele — o CEP da apólice é o de CASA, e quem quebra o
+                  # vidro viajando conserta onde está.
+                  "cidade_para_o_servico",
+                  # 🔴 N-2 (D-E00110-02) — só existe para para-brisa, e por
+                  # isso não precisa de exceção aqui: a pergunta só nasce na
+                  # família do para-brisa (`_ESPECIFICAS_POR_IDENTIDADE`), e o
+                  # que não nasce não trava. 📊 Sem ela a journey para DEPOIS de
+                  # o número do atendimento existir.
+                  "aceita_reparo",
+                  # 🔴 P1-5 — na lataria o `CodigoAtendimento` nasce logo após
+                  # o PATCH, e é o PATCH que leva `ServicosMartelinhoLataria`.
+                  # Perguntar a lista de peças depois é conversar sobre um
+                  # pedido que já nasceu. Mesma regra: só a família lataria a faz.
+                  "pecas_lataria")
+
+# ⚠️ ESTA É A VERDADE ÚNICA, e a `description` da tool é GERADA dela.
+#
+# 📊 Até 20/09/2026 três lugares discordavam: o prompt mandava chamar com 3
+# coisas (`prompts.py:136`), `TRANSPORTAVEIS` recusava por 6, e a `description`
+# listava tudo à mão. O modelo lia o prompt — o mais errado dos três — e
+# recebia de volta um pedido do que o prompt dissera que não precisava.
+#
+# Venceu a lista que é CÓDIGO EXECUTADO. O prompt aponta para a ferramenta, e a
+# ferramenta se descreve a partir daqui. Só há uma forma de as três voltarem a
+# divergir: alguém reescrever o texto à mão — e o guarda de FORMA reprova isso.
 
 
 def _fold(s: Optional[str]) -> str:
@@ -87,14 +121,170 @@ _INSURER_ALIASES = (
 )
 
 
+#: 🔴 O PONTO DE TROCA da tabela de apelidos — SPEC-EXTRA-001.10 P0-4.
+#:
+#: A fatia A desta SPEC escreve `portal_worker.journeys.vidros_api`, que resolve
+#: a seguradora POR DADO (a partir do `GET /seguradoras/` ao vivo, 📊 38 itens) e
+#: publica `apelidos_de_seguradora()` / `resolver_seguradora()`.
+#:
+#: ⚠️ **E as duas funções respondem perguntas DIFERENTES, medido em 20/09/2026**
+#: com o arquivo já no disco:
+#:
+#:     apelidos_de_seguradora()[1]   ("PORTO SEGURO", "PORTO")        ← SLUG da API
+#:     _INSURER_ALIASES              ("PORTO",        "Porto Seguro") ← NOME de tela
+#:
+#: Ligar uma na outra hoje faria `normalize_insurer("LIBERTY SEGUROS S/A")`
+#: devolver `LIBERTY` em vez de `Yelum` — 📊 exatamente o que aconteceu quando o
+#: import foi consumido de verdade, com `test_spec020_portal_action.py` vermelho
+#: em cinco linhas. Por isso o interruptor existe e nasce DESLIGADO: a troca é
+#: de uma linha, e é do gerente, depois que A fechar o contrato de
+#: `resolver_seguradora` (que devolve `{"slug", "codigo", "nome_de_tela"}` — é
+#: `nome_de_tela` o que esta função precisa, não o slug).
+#:
+#: 🔴 A LINHA A TROCAR: `_APELIDOS_VEM_DA_API = True`, e `_apelidos_do_portal`
+#: passa a ler `nome_de_tela` de `resolver_seguradora`. Nada mais muda aqui.
+_APELIDOS_VEM_DA_API = False
+
+
+def _apelidos_do_portal() -> Tuple[Tuple[str, str], ...]:
+    """Os apelidos em vigor. Hoje: a tabela local (ver `_APELIDOS_VEM_DA_API`).
+
+    ⛔ Duas tabelas não podem CONVIVER (CLAUDE.md §5): esta função é a ÚNICA
+    leitora de `_INSURER_ALIASES`, e a consolidação é ligar o interruptor —
+    nunca escrever um terceiro mapa em algum outro arquivo.
+
+    ⚠️ Import TARDIO e tolerante quando ligado: `portal_worker` viaja na imagem
+    do smith-api (📊 `backend/Dockerfile:11 COPY . .`), mas um `ImportError` no
+    topo tiraria a tool inteira do ar por causa de uma tabela de sinônimos.
+    """
+    if not _APELIDOS_VEM_DA_API:
+        return _INSURER_ALIASES
+    try:
+        from portal_worker.journeys.vidros_api import apelidos_de_seguradora
+
+        vivos = tuple((str(k).upper(), str(v)) for k, v in apelidos_de_seguradora())
+        return vivos or _INSURER_ALIASES
+    except Exception:  # noqa: BLE001
+        return _INSURER_ALIASES
+
+
 def normalize_insurer(name: Optional[str]) -> str:
     """Nome da seguradora como o PORTAL a conhece. Fonte: seguradora da InfoCap."""
     raw = str(name or "").strip()
     up = raw.upper()
-    for frag, canon in _INSURER_ALIASES:
+    for frag, canon in _apelidos_do_portal():
         if frag in up:
             return canon
     return raw.title() if raw else ""
+
+
+# ===========================================================================
+# A CIDADE DO SERVIÇO — texto de gente virando {uf, cidade}
+# ===========================================================================
+# 📊 O segurado escreve "Joinville/SC", "Joinville - SC", "joinville sc" ou só
+# "Joinville". Os quatro são a mesma cidade, e nenhum deles é um `CodigoCidade`:
+# quem resolve o código é a journey, por `GET /ufs` → `GET /cidades?UF=`.
+#
+# ⚠️ Quando o texto não traz o estado, o padrão é o da APÓLICE — e isso fica
+# DECLARADO em `local.cidade_servico_uf_de`, nunca silencioso. Um estado
+# assumido em silêncio manda o pedido para a cidade homônima de outro estado, e
+# "Campinas/SP" × "Campinas/RJ" não se desfaz depois de o pedido nascer.
+_UFS = ("AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS",
+        "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC",
+        "SE", "SP", "TO")
+
+
+def cidade_e_uf_do_servico(texto: Optional[str],
+                           uf_da_apolice: Optional[str] = None) -> Tuple[str, str, str]:
+    """(cidade, uf, de_onde_veio_a_uf). Tudo "" quando o texto não diz cidade.
+
+    `de_onde_veio_a_uf` é "segurado" quando ele escreveu o estado e "apolice"
+    quando caiu no padrão — a distinção existe para que a journey e o dossiê
+    saibam o que foi ASSUMIDO.
+    """
+    bruto = _fold(texto)
+    # Separadores que a gente usa na vida: "/", "-", vírgula e o próprio espaço.
+    pedacos = [p.strip() for p in "".join(
+        " " if c in "/,-–—|" else c for c in bruto).split() if p.strip()]
+    if not pedacos:
+        return "", "", ""
+
+    uf = ""
+    origem = ""
+    if len(pedacos) > 1 and pedacos[-1].upper() in _UFS:
+        uf, origem = pedacos[-1].upper(), "segurado"
+        pedacos = pedacos[:-1]
+    if not uf:
+        padrao = _fold(uf_da_apolice).upper()
+        if padrao in _UFS:
+            uf, origem = padrao, "apolice"
+
+    # "rio de janeiro" → "Rio de Janeiro", não "Rio De Janeiro": o autocomplete
+    # do portal casa por texto, e a preposição maiúscula é ruído gratuito.
+    palavras = [p.title() for p in pedacos]
+    palavras = [palavras[0]] + [
+        (p.lower() if p.lower() in _LIGACOES else p) for p in palavras[1:]]
+    cidade = " ".join(palavras)
+    if not cidade:
+        return "", "", ""
+    return cidade, uf, origem
+
+
+def descricao_da_tool() -> str:
+    """A `description` de `portal_action`, GERADA de `TRANSPORTAVEIS` + as famílias.
+
+    🔴 P0-5, a reconciliação das três verdades. Enquanto este texto era escrito
+    à mão, ele era a terceira opinião sobre o que o portal pede — e a que o
+    modelo lia junto com o prompt. Agora ele é uma PROJEÇÃO da lista que
+    realmente recusa o payload: acrescentar um campo a `TRANSPORTAVEIS` muda a
+    descrição no mesmo commit, sem ninguém lembrar de nada.
+
+    ⚠️ O que continua escrito à mão são as PROIBIÇÕES e o comportamento da
+    ferramenta — eles não derivam de campo nenhum e não podem sumir numa
+    geração automática.
+    """
+    trava = []
+    for campo in TRANSPORTAVEIS:
+        p = pergunta_do_campo(campo)
+        if p is None or p.de_quem != DO_SEGURADO:
+            continue
+        trava.append(f"{campo} ({p.texto.split('?')[0].strip()[:90]}…)")
+    familias = ", ".join(sorted(catalogo_de_familias()))
+    return (
+        "Abre o atendimento de VIDROS/farois/lanternas/retrovisores/para-choque/lataria "
+        "no portal da seguradora. "
+        "NAO decore a lista do que coletar: CHAME a ferramenta com o que voce ja tem e "
+        "ela devolve, em portugues, EXATAMENTE a proxima pergunta que falta — uma por "
+        "vez, para voce fazer ao segurado e chamar de novo. "
+        "O que trava o pedido hoje, e que ela vai cobrar: "
+        + "; ".join(trava) + ". "
+        "Ha perguntas ESPECIFICAS por familia de peca (" + familias + "), e sao elas "
+        "que decidem QUAL peca do catalogo da apolice sera pedida — a ferramenta diz "
+        "quais quando souber a peca. Mande-as em `especificos`. "
+        "A ferramenta busca SOZINHA os dados reais da apolice (placa, veiculo, endereco, "
+        "seguradora) na InfoCap — NAO peca placa/CEP/endereco ao cliente e NUNCA os "
+        "invente. Se houver mais de uma apolice AUTO ativa, ela devolve as opcoes para "
+        "voce perguntar qual. Ela avisa o cliente que esta abrindo e volta com o "
+        "resultado. NAO finaliza sozinha o pedido."
+    )
+
+
+def _lista_de_pecas(bruto) -> list:
+    """As peças amassadas como LISTA, venha como vier.
+
+    O modelo às vezes devolve `["porta", "paralama"]` e às vezes
+    `"porta e paralama"` — as duas são a mesma resposta do segurado. Aceitar só
+    uma forma faria metade das respostas sumirem no transporte, que é o defeito
+    que `TRANSPORTAVEIS` existe para não repetir.
+    """
+    if isinstance(bruto, (list, tuple, set)):
+        itens = [str(x).strip() for x in bruto]
+    else:
+        texto = str(bruto or "")
+        for sep in (";", " e ", ","):
+            texto = texto.replace(sep, ",")
+        itens = [p.strip() for p in texto.split(",")]
+    return [p for p in itens if p and p.lower() not in ("none", "null")]
 
 
 def build_portal_params(flat: dict, profile: dict, infocap: dict,
@@ -167,6 +357,10 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
         "como_ocorreu": flat.get("como_ocorreu"),
         "onde_ocorreu": flat.get("onde_ocorreu"),
         "descricao": flat.get("descricao"),
+        # P0-5 — aceita o campo tanto no topo quanto em `especificos` (que é o
+        # transporte declarado em `como_devolver`). `especificos` vence, porque
+        # é o caminho que a pergunta ensina ao agente.
+        "cidade_para_o_servico": flat.get("cidade_para_o_servico"),
         "veiculo": veh.get("veiculo"),
         "cep": cli.get("cep"),
         **especificos,
@@ -177,6 +371,27 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
     # O resto vai junto na mensagem, para ele coletar na mesma conversa.
     if [p for p in para_o_segurado(faltam) if p.campo in TRANSPORTAVEIS]:
         return None, mensagem_para_o_agente(faltam, peca_dita)
+
+    # A cidade do serviço vem do que o segurado respondeu; o ESTADO cai para o
+    # da apólice quando ele não o disse, e a queda fica declarada (P0-5).
+    cidade_servico, cidade_servico_uf, cidade_servico_origem = cidade_e_uf_do_servico(
+        ja_sei.get("cidade_para_o_servico"), cli.get("estado"))
+
+    # N-3 — o contato que vai ao portal. Tudo vem do banco: o segurado da
+    # InfoCap, a corretora do Perfil de Acionamento. ⛔ Nada de constante de
+    # corretora aqui (CLAUDE.md §13.9): `sol` já é o perfil daquela `company_id`.
+    tel_segurado = str(cli.get("telefone") or "").strip()
+    contato = {
+        # 📊 "6" = Corretor na tabela `RelacaoTitular` do POST /solicitantes.
+        # O número é do portal, não nosso — por isso vai como string literal.
+        "relacao": "6",
+        "telefone": tel_segurado or sol["telefone"],
+        "tipo_telefone": "segurado" if tel_segurado else "corretora",
+        "email_segurado": str(cli.get("email") or "").strip(),
+        "email_corretora": sol["email"],
+        "nome_solicitante": sol["nome"],
+        "documento_corretor": sol["cpf_cnpj"],
+    }
 
     endereco_txt = _fold(", ".join(p for p in (
         " ".join(x for x in (cli.get("logradouro"), cli.get("numero")) if x),
@@ -210,16 +425,49 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
             # disse (peca + relato + data + local). Relato dele com 30+ vai
             # inteiro, com as palavras dele.
             "descricao": compor_descricao(ja_sei),
+            # P1-5 — a lista de peças amassadas do MESMO evento. Só a família
+            # lataria a faz nascer, e por isso ela é `[]` em todo o resto: a
+            # journey lê o tamanho, não a presença da chave.
+            "pecas_lataria": _lista_de_pecas(ja_sei.get("pecas_lataria")),
         },
         # As respostas do passo 6 (80%), ja coletadas na conversa. A journey ja
         # le esta chave (`vidros_lanternas.abrir_atendimento`) e a entrega ao
         # cerebro adaptativo — era o unico pedaco do caminho que nascia vazio.
-        "especificos": {k: v for k, v in especificos.items() if str(v or "").strip()},
+        "especificos": {k: v for k, v in especificos.items()
+                        if (v if isinstance(v, (list, tuple)) else str(v or "").strip())},
         "local": {
             "estado": _fold(cli.get("estado")).upper(),
             "cidade": _fold(cli.get("cidade")).title(),
             "cep": str(cli.get("cep") or "").strip(),
+            # 🔴 P0-5 — A CIDADE DO SERVIÇO, que NÃO é a cidade do cadastro.
+            #
+            # As duas convivem na mesma chave de propósito: `local.cidade` é
+            # onde ele MORA (vai no cadastro e no cálculo de domicílio) e
+            # `local.cidade_servico` é onde ele QUER o serviço (vira
+            # `CodigoCidade` no PATCH). Guardá-las com o mesmo nome faria a
+            # journey escolher uma por engano — e a escolha errada é um
+            # vidraceiro em outra cidade.
+            "cidade_servico": {"uf": cidade_servico_uf, "cidade": cidade_servico},
+            "cidade_servico_uf_de": cidade_servico_origem,
         },
+        # 🔴 N-3 (D-E00110-01) — QUEM A LOJA LIGA PARA ACHAR.
+        #
+        # 📊 Medido em 20/09/2026: 3 das 4 capturas gravaram o telefone com
+        # `Tipo 21 = CELULAR CORRETOR`, e o portal respondeu
+        # `PossuiTelefoneRecebeWhatsapp:false` — o segurado não recebe nada da
+        # seguradora e a loja liga para a corretora, que então liga para ele.
+        # `Tipo 20 = CELULAR SEGURADO` tem ZERO exercícios.
+        #
+        # O desenho: a RELAÇÃO declarada continua sendo a verdade (quem abre é
+        # a corretora → "6" = Corretor; declarar "O Próprio" seria declaração
+        # falsa), e o CONTATO passa a ser o do segurado, porque é ele que a
+        # loja precisa achar para combinar o dia. O e-mail da corretora
+        # continua indo junto — é assim que ela recebe a cópia.
+        #
+        # ⚠️ Sem telefone do segurado o contato CAI para o da corretora, com o
+        # tipo dizendo a verdade. Um telefone vazio no portal é um pedido que
+        # ninguém consegue agendar.
+        "contato": contato,
         # P-90 — O QUE DECIDE SE O PEDIDO NASCE DE VERDADE.
         #
         # `confirm=False` faz `run_adaptive` parar em `is_confirm_screen` (o 80%)
@@ -232,6 +480,329 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
         "confirm": bool(enviar_de_verdade),
     }
     return params, None
+
+
+# ===========================================================================
+# O DESFECHO VIRA MENSAGEM — SPEC-EXTRA-001.10 N-1 / P1-1
+# ===========================================================================
+#
+# 🔴 Quem decide o que acontece depois do pedido é o PORTAL, não nós. 📊 Medido
+# em 20/09/2026 sobre 3 capturas: `GET /agendamentos/opcoes-disponiveis` devolve
+# 20 chaves booleanas e o bundle as roteia — e duas apólices idênticas, na mesma
+# seguradora e na mesma categoria, deram desfechos OPOSTOS (uma loja já
+# atribuída × uma agenda com lojas). Não é atributo de peça, é decisão do portal.
+#
+# Este bloco só TRADUZ o que veio. Ele nunca escolhe loja, nunca promete dia e
+# nunca inventa endereço: cada linha abaixo só aparece se o dado chegou.
+
+#: 📊 Copy do HTML da tela final do portal (20/09/2026), reescrita em português
+#: de gente. Vai em TODO desfecho, porque o golpe do "depósito da franquia"
+#: chega justamente a quem acabou de abrir um atendimento de verdade.
+AVISO_ANTIFRAUDE = (
+    "Importante: a franquia, quando existe, é paga na hora do serviço, direto "
+    "na loja. Ninguém vai te pedir depósito ou transferência antes — se pedirem, "
+    "não pague nada e me chama aqui."
+)
+
+
+def _linhas_de_franquia(desfecho: dict) -> list:
+    """Cada linha `{titulo, valor}` que o portal mandou, do jeito que ele mandou.
+
+    ⚠️ "SEM FRANQUIA" é um VALOR válido, não ausência — 📊 a captura de
+    20/09/2026 trouxe as três linhas juntas: *Valor para troca 630*, *Desconto
+    para reparo 630* e *Valor para reparo SEM FRANQUIA*. Tratar texto como
+    "vazio" apagaria justamente a linha que é boa notícia.
+    """
+    saida = []
+    for item in (desfecho.get("franquias") or []):
+        if not isinstance(item, dict):
+            continue
+        titulo = str(item.get("titulo") or "").strip()
+        valor = item.get("valor")
+        valor_txt = str(valor).strip() if valor is not None else ""
+        if not (titulo and valor_txt):
+            continue
+        if valor_txt.replace(".", "").replace(",", "").isdigit():
+            valor_txt = f"R$ {valor_txt}"
+        saida.append(f"• {titulo}: {valor_txt}")
+    return saida
+
+
+def _bloco_da_loja(loja: dict) -> list:
+    linhas = []
+    nome = str(loja.get("nome") or "").strip()
+    if nome:
+        linhas.append(f"Loja: {nome}")
+    endereco = str(loja.get("endereco") or "").strip()
+    if endereco:
+        linhas.append(f"Endereço: {endereco}")
+    referencia = str(loja.get("referencia") or "").strip()
+    if referencia:
+        linhas.append(f"Ponto de referência: {referencia}")
+    telefone = str(loja.get("telefone") or "").strip()
+    if telefone:
+        linhas.append(f"Telefone: {telefone}")
+    return linhas
+
+
+def mensagem_do_desfecho(desfecho: Optional[dict]) -> str:
+    """O que o segurado lê quando o portal decidiu. "" = não há desfecho legível.
+
+    🔴 NUNCA INVENTA LOJA. Toda loja citada sai de `desfecho["loja"]` ou de
+    `desfecho["lojas"]`; sem elas, a mensagem diz o que sabe e para. Uma loja
+    inventada manda uma pessoa dirigir até um endereço que não existe.
+    """
+    if not isinstance(desfecho, dict) or not desfecho:
+        return ""
+
+    tipo = str(desfecho.get("tipo") or "desconhecido").strip().lower()
+    numero = str(desfecho.get("codigo_atendimento") or "").strip()
+
+    partes = []
+    if numero:
+        partes.append(
+            f"Seu atendimento foi aberto na seguradora ✅\n"
+            f"Número do atendimento: {numero} — guarde esse número, é com ele que "
+            f"você acompanha e cobra o serviço.")
+    else:
+        partes.append("Seu atendimento foi aberto na seguradora ✅")
+
+    franquias = _linhas_de_franquia(desfecho)
+    if franquias:
+        partes.append("Sobre a franquia:\n" + "\n".join(franquias))
+
+    if tipo == "loja_direta":
+        bloco = _bloco_da_loja(desfecho.get("loja") or {})
+        if bloco:
+            partes.append(
+                "A seguradora já escolheu a loja que vai fazer o serviço:\n"
+                + "\n".join(bloco)
+                + "\n\nÉ a loja que combina o dia com você. Se preferir adiantar, "
+                  "pode ligar direto para ela e agendar.")
+        else:
+            partes.append(
+                "A seguradora já encaminhou seu pedido para uma loja credenciada. "
+                "Eles entram em contato com você para combinar o dia — assim que eu "
+                "tiver os dados da loja, eu te passo aqui.")
+
+    elif tipo == "agenda":
+        lojas = [l for l in (desfecho.get("lojas") or []) if isinstance(l, dict)]
+        if lojas:
+            linhas = ["Você escolhe onde quer fazer o serviço. Estas são as lojas "
+                      "credenciadas mais perto de você:"]
+            for i, loja in enumerate(lojas, start=1):
+                nome = str(loja.get("nome") or "").strip() or f"Loja {i}"
+                endereco = str(loja.get("endereco") or "").strip()
+                cidade = " ".join(x for x in (str(loja.get("cidade") or "").strip(),
+                                              str(loja.get("uf") or "").strip()) if x)
+                distancia = str(loja.get("distancia") or "").strip()
+                tempo = str(loja.get("tempo") or "").strip()
+                detalhe = ", ".join(x for x in (endereco, cidade) if x)
+                perto = " · ".join(x for x in (distancia, tempo) if x)
+                linha = f"{i}) {nome}"
+                if detalhe:
+                    linha += f" — {detalhe}"
+                if perto:
+                    linha += f" ({perto})"
+                dias = [str(d).strip() for d in (loja.get("dias") or []) if str(d).strip()]
+                if dias:
+                    linha += f"\n   Dias com agenda: {', '.join(dias[:8])}"
+                elif loja.get("tem_agenda") is False:
+                    linha += "\n   (sem agenda aberta no momento)"
+                linhas.append(linha)
+            linhas.append(
+                "Me diz o NÚMERO da loja que você prefere e o DIA que fica melhor. "
+                "⚠️ Quem confirma o horário com a loja é a nossa equipe — eu anoto a "
+                "sua escolha e passo para eles fecharem, e te aviso quando estiver "
+                "confirmado. Não considere agendado até eu te confirmar.")
+            partes.append("\n".join(linhas))
+        else:
+            partes.append(
+                "A seguradora liberou o agendamento, mas não consegui ler a lista de "
+                "lojas por aqui. Já passei para a nossa equipe buscar as opções e te "
+                "retornar com elas.")
+
+    elif tipo == "analista":
+        # ⚠️ O texto do portal entra INTEIRO quando ele já diz o que precisa ser
+        # dito, e só é substituído quando não diz. Repetir "está com o analista"
+        # duas vezes na mesma mensagem soa a robô — e soar a robô é a única
+        # coisa que o segurado nota antes do conteúdo.
+        titulo = str(desfecho.get("titulo_portal") or "").strip()
+        prazo = ("O retorno costuma sair até o próximo dia útil — assim que chegar, "
+                 "eu te aviso aqui mesmo.")
+        if "analista" in _fold(titulo).lower():
+            partes.append(f"{titulo} {prazo}")
+        else:
+            partes.append("Seu pedido está com o analista da seguradora. " + prazo)
+
+    elif tipo == "vistoria":
+        partes.append(
+            "A seguradora pediu uma vistoria antes de liberar o serviço. Essa parte "
+            "quem conduz é a nossa equipe: já passei o seu caso para eles, com tudo o "
+            "que você me contou, e eles te explicam o passo seguinte. Você não vai "
+            "precisar repetir nada.")
+
+    else:
+        partes.append(
+            "O pedido está aberto, mas a seguradora respondeu de um jeito que eu não "
+            "consigo interpretar sozinho — e eu prefiro te dizer isso do que te dar "
+            "uma informação errada. Já passei para a nossa equipe conferir direto com "
+            "eles, e te aviso assim que tiver a resposta certa.")
+
+    link = str(desfecho.get("link_area_segurado") or "").strip()
+    if link:
+        partes.append(f"Você também acompanha por aqui: {link}")
+
+    partes.append(AVISO_ANTIFRAUDE)
+    return "\n\n".join(p for p in partes if str(p).strip()).strip()
+
+
+# ---------------------------------------------------------------------------
+# AS PARADAS — desconhecido nunca vira silêncio
+# ---------------------------------------------------------------------------
+#
+# Cada parada tem DUAS traduções: uma pergunta curta para o segurado (com as
+# opções, quando o portal as deu) e um dossiê para quem vai resolver. A regra
+# que nasceu aqui: **uma parada sem texto é uma parada que o segurado não vê**,
+# e o que ele não vê ele cobra por outro canal.
+_PARADAS = {
+    "decidir_reparo": (
+        "Boa notícia: a seguradora ofereceu REPARAR o seu vidro em vez de trocar. "
+        "O reparo é sem custo de franquia, leva uns 30 minutos e mantém o vidro "
+        "original do carro; se não ficar bom, você ainda pode pedir a troca depois. "
+        "Você quer que eu aceite o reparo?",
+        "O portal ofereceu o reparo (regras-reparo → ExibirDialogDeReparo=true) e a "
+        "resposta do segurado não foi coletada antes. Nada foi materializado além do "
+        "que já existia: responda `aceita_reparo` e o pedido continua do mesmo ponto.",
+    ),
+    "peca_ambigua": (
+        "Só uma dúvida antes de eu seguir: qual peça exatamente foi danificada? "
+        "Com o nome certinho eu peço a peça certa na seguradora.",
+        "O texto da peça casou com mais de uma identidade no catálogo. O pedido não "
+        "avança porque escolher errado abre o atendimento da peça errada, e o portal "
+        "não deixa corrigir — seria preciso abrir outro.",
+    ),
+    "cidade_sem_rede": (
+        "Consegui abrir o seu pedido, mas na cidade que você me passou a seguradora "
+        "não tem loja credenciada. Tem alguma cidade vizinha onde você consiga levar "
+        "o carro? Me diz qual que eu sigo daqui.",
+        "`GET /clientes/cidades` não devolveu rede credenciada para a cidade "
+        "informada. Peça outra cidade ao segurado — não escolha por ele.",
+    ),
+    "motivo_ambiguo": (
+        "Me conta com um pouco mais de detalhe como o dano aconteceu? "
+        "(foi uma pedra na estrada, alguém quebrou, você encontrou o carro assim...) "
+        "É que a seguradora tem uma lista fechada de causas e eu quero marcar a certa.",
+        "O relato não casou com confiança em nenhuma opção de `motivos-dano`. "
+        "As opções reais do portal estão no dossiê abaixo — escolher por semelhança "
+        "seria abrir o pedido com a causa errada.",
+    ),
+    "questionario_incompleto": (
+        "Falta só uma coisa para eu concluir: a seguradora fez uma pergunta sobre o "
+        "seu vidro que eu não sei responder por você. Já te mando qual é.",
+        "O questionário do portal trouxe uma pergunta sem resposta coletada e sem "
+        "saída de 'não sabe'. A pergunta literal e TODAS as opções estão no dossiê.",
+    ),
+    "tela_desconhecida": (
+        "Comecei a abrir o seu pedido e a seguradora mostrou uma tela que eu ainda não "
+        "conheço. Prefiro não arriscar e te dar informação errada: já passei para a "
+        "nossa equipe concluir na mão, com tudo o que você me contou. Te aviso assim "
+        "que estiver aberto. 🙏",
+        "Tela/resposta fora do contrato conhecido. Vai para a fila de aprendizado "
+        "(`tela_cega`, ramo vidros) e para um humano concluir. NÃO reexecute sem "
+        "conferir se o atendimento já existe.",
+    ),
+}
+_PARADAS["desconhecido"] = _PARADAS["tela_desconhecida"]
+
+
+def texto_da_parada(stage: Optional[str]) -> Optional[Tuple[str, str]]:
+    """(o que o segurado lê, o que a equipe lê). None = parada sem texto próprio."""
+    chave = str(stage or "").strip().lower()
+    return _PARADAS.get(chave)
+
+
+# ===========================================================================
+# P-PILOTO-08 — o que vai para a FILA DE APRENDIZADO, e como
+# ===========================================================================
+#
+# 🔴 PURO, e é o que o torna provável offline: quem decide "isto é tela
+# desconhecida" não toca em banco nem em rede. A gravação é do chamador
+# (`portal_tool` dentro da janela de 150s · `vigia_do_portal` fora dela), e os
+# dois usam ESTA função — duas definições de "desconhecido" fariam a fila
+# receber do caminho A e não receber do caminho B, sem ninguém notar.
+
+#: Os desfechos que a journey sabe traduzir. Qualquer outro é aprendizado.
+_DESFECHOS_CONHECIDOS = ("loja_direta", "agenda", "analista", "vistoria")
+
+#: Quanto do texto do portal entra na fila. A tela é para uma pessoa LER e
+#: transformar em passo; 1200 caracteres já são mais do que ela consegue ler.
+_TETO_DO_RESUMO = 1200
+
+
+def slug_da_seguradora(params: Optional[dict]) -> str:
+    """O `insurer_key` da fila de aprendizado, a partir do nome da seguradora.
+
+    ⛔ Nunca uma constante de corretora nem uma lista fixa de seguradoras
+    (CLAUDE.md §13.9): o nome vem do `params` daquele job, que veio da apólice
+    daquela `company_id`. Nome vazio vira `desconhecida`, que é uma informação —
+    a fila mostra que chegou tela de alguém que não soubemos nomear.
+    """
+    nome = _fold((params or {}).get("insurer_name")).strip().lower()
+    slug = "_".join(p for p in "".join(
+        c if c.isalnum() else " " for c in nome).split())
+    return slug or "desconhecida"
+
+
+def resumo_da_tela_desconhecida(evidence: Optional[dict]) -> Optional[dict]:
+    """`{"onde", "texto"}` quando este job tem algo a ENSINAR. `None` quando não.
+
+    Três entradas, e as três já existem no produto:
+
+      `tela_desconhecida`  o caminho API disse, em contrato, que não entendeu
+      `desfecho.tipo`      veio um tipo fora dos quatro que sabemos traduzir
+      `debug_dom`/`final`  o caminho DOM parou sem desfecho conhecido
+
+    ⛔ O texto tem de chegar aqui **já mascarado** pela origem (SPEC-087
+    BLOCO C): escrever cru e mascarar depois é criar o vazamento e tapá-lo. Por
+    isso esta função nunca inventa texto — ela só ESCOLHE qual dos resumos que a
+    journey produziu vai para a fila, e corta no teto.
+    """
+    ev = evidence if isinstance(evidence, dict) else {}
+    if not ev:
+        return None
+
+    marca = ev.get("tela_desconhecida")
+    if isinstance(marca, dict):
+        texto = str(marca.get("resumo_mascarado") or marca.get("resumo") or "").strip()
+        onde = str(marca.get("onde") or "api").strip() or "api"
+        if texto:
+            return {"onde": onde, "texto": texto[:_TETO_DO_RESUMO]}
+
+    desfecho = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else None
+    if desfecho is not None:
+        tipo = str(desfecho.get("tipo") or "").strip().lower()
+        if tipo in _DESFECHOS_CONHECIDOS:
+            # 🔴 O PAR DE CONTROLE do guarda: desfecho conhecido NÃO ensina nada.
+            # Sem esta saída, todo acionamento bem-sucedido entraria na fila e a
+            # fila deixaria de ser fila de trabalho.
+            return None
+        titulo = str(desfecho.get("titulo_portal") or "").strip()
+        roteador = desfecho.get("roteador")
+        corpo = titulo or (f"roteador: {roteador}" if roteador else "")
+        if corpo:
+            return {"onde": f"desfecho_{tipo or 'sem_tipo'}",
+                    "texto": corpo[:_TETO_DO_RESUMO]}
+
+    # O caminho DOM: parou numa tela e guardou o que viu. Só vira aprendizado
+    # quando NÃO há desfecho conhecido — senão a tela de sucesso entra na fila.
+    for chave in ("debug_dom", "final"):
+        bruto = ev.get(chave)
+        texto = str(bruto if isinstance(bruto, str) else (bruto or {}).get("texto")
+                    if isinstance(bruto, dict) else "").strip()
+        if texto:
+            return {"onde": chave, "texto": texto[:_TETO_DO_RESUMO]}
+    return None
 
 
 def format_result(job: dict) -> str:
@@ -255,6 +826,53 @@ def format_result(job: dict) -> str:
     status = str((job or {}).get("status") or "")
     ev = (job or {}).get("evidence") or {}
     protocolo = str(ev.get("protocolo") or "").strip()
+
+    # ----------------------------------------------------------------------
+    # 🔴 SPEC-EXTRA-001.10 N-1 — O DESFECHO VEM ANTES DE TUDO.
+    #
+    # Quando a journey leu o roteador do portal, ela já sabe MAIS do que
+    # qualquer heurística daqui: o número, a franquia linha a linha, a loja
+    # atribuída ou as lojas com agenda. Deixar o desfecho para depois do
+    # `switch` de status faria o caso mais completo ser respondido pela frase
+    # mais genérica — e o segurado receberia "cheguei numa etapa que precisa de
+    # revisão" sobre um pedido que o portal já concluiu.
+    # ----------------------------------------------------------------------
+    desfecho = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else None
+    if desfecho:
+        corpo = mensagem_do_desfecho(desfecho)
+        if corpo:
+            numero = str(desfecho.get("codigo_atendimento") or "").strip()
+            aviso = ("NAO peca para eu abrir de novo: o pedido ja existe e repetir "
+                     "criaria um segundo atendimento na seguradora, que nao se desfaz.")
+            if str(desfecho.get("tipo") or "").strip().lower() in ("desconhecido", "vistoria"):
+                aviso += (" Este caso VAI para a equipe humana: mande o dossie e diga ao "
+                          "segurado, com estas palavras, o que esta abaixo.")
+            return (
+                "O atendimento FOI ABERTO na seguradora"
+                + (f" (numero {numero})." if numero else ".")
+                + " ENTREGUE AO SEGURADO A MENSAGEM ABAIXO, com estas palavras — ela ja "
+                  "esta em portugues de gente e tem tudo o que ele precisa. Numero, "
+                  "valor, telefone e link se copiam EXATOS.\n\n"
+                + corpo
+                + "\n\n" + aviso
+            )
+
+    # A parada tem texto próprio? Então ele vence a frase genérica de
+    # `needs_human` — que é verdadeira e inútil ("uma etapa que precisa de
+    # revisão" não diz ao segurado o que fazer).
+    parada = texto_da_parada(ev.get("stage"))
+    if parada and status in ("needs_human", "failed"):
+        para_ele, para_equipe = parada
+        opcoes = [str(o)[:60] for o in (ev.get("opcoes") or [])][:12]
+        extra = f"\nOpcoes que o portal ofereceu: {', '.join(opcoes)}" if opcoes else ""
+        pergunta = str(ev.get("pergunta") or "").strip()
+        if pergunta:
+            extra += f"\nO portal perguntou, literalmente: \"{pergunta[:180]}\""
+        return (
+            "O pedido PAROU numa etapa que precisa de uma resposta. DIGA AO SEGURADO, "
+            "com estas palavras:\n\n" + para_ele
+            + "\n\n[para a equipe, nao mande ao segurado] " + para_equipe + extra
+        )
 
     # ----------------------------------------------------------------------
     # SPEC-074 — o ESTADO DE NEGÓCIO vem antes do estado técnico.

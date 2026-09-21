@@ -190,6 +190,66 @@ def diagnosticar(job: Dict[str, Any], agora: Optional[datetime] = None) -> Optio
     est = ev.get("vidros_estado") if isinstance(ev.get("vidros_estado"), dict) else {}
     numero = str(est.get("codigo_atendimento") or ev.get("protocolo") or "").strip()
 
+    # ----------------------------------------------------------------------
+    # 🔴 SPEC-EXTRA-001.10 N-1 — O DESFECHO QUE O PORTAL DECIDIU VEM PRIMEIRO.
+    #
+    # Fora da janela dos 150s, quem fala com o segurado é este vigia. Se ele
+    # não souber ler `evidence["desfecho"]`, o segurado recebe a frase genérica
+    # ("consegui abrir na seguradora ✅") sobre um pedido que já tem número,
+    # franquia, loja e endereço — tudo lido e guardado, e nada entregue.
+    #
+    # ⛔ E a mensagem é composta pelo MESMO escritor que a tool usa
+    # (`portal_params.mensagem_do_desfecho`): duas versões do mesmo texto
+    # fariam o segurado receber coisas diferentes dependendo de o relógio ter
+    # estourado ou não.
+    # ----------------------------------------------------------------------
+    desfecho = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else None
+    if desfecho:
+        from app.agents.tools.portal_params import mensagem_do_desfecho
+
+        corpo = mensagem_do_desfecho(desfecho)
+        if corpo:
+            tipo = str(desfecho.get("tipo") or "desconhecido").strip().lower()
+            numero = str(desfecho.get("codigo_atendimento") or numero or "").strip()
+            conhecido = tipo in ("loja_direta", "agenda", "analista")
+            return {
+                "motivo": f"desfecho_{tipo or 'sem_tipo'}",
+                "para_o_segurado": corpo,
+                "para_o_suporte": (
+                    ("🟢" if conhecido else "🟠")
+                    + f" VIGIA DO PORTAL: desfecho `{tipo or 'sem_tipo'}` lido no portal e "
+                      f"entregue ao segurado agora. Pedido: {assunto}"
+                    + (f" · nº {numero}" if numero else " · numero NAO lido")
+                    + ("" if conhecido else
+                       "\n⚠️ A equipe PRECISA concluir: a escolha de loja/dia e a vistoria "
+                       "não são feitas pelo robô.")
+                    + f"\nroteador do portal: {desfecho.get('roteador')}\n"
+                    + _dossie(job)).strip(),
+            }
+
+    # As paradas com nome próprio (decidir_reparo, peca_ambigua, cidade_sem_rede,
+    # motivo_ambiguo, questionario_incompleto, tela_desconhecida). Cada uma tem
+    # UMA pergunta para o segurado e um dossiê para quem resolve — e é por isso
+    # que elas vêm antes do `switch` de status: `needs_human` diria a mesma
+    # frase vaga para as seis.
+    if status in ("needs_human", "failed"):
+        from app.agents.tools.portal_params import texto_da_parada
+
+        parada = texto_da_parada(ev.get("stage"))
+        if parada:
+            para_ele, para_equipe = parada
+            opcoes = [str(o)[:60] for o in (ev.get("opcoes") or [])][:12]
+            if opcoes:
+                para_ele += "\n\nAs opções são: " + " · ".join(opcoes)
+            return {
+                "motivo": f"parou_em_{str(ev.get('stage') or '').strip().lower()}",
+                "para_o_segurado": para_ele,
+                "para_o_suporte": (
+                    f"🟠 VIGIA DO PORTAL: {para_equipe} Pedido: {assunto}"
+                    + (f" · nº {numero}" if numero else "")
+                    + "\n" + _dossie(job)).strip(),
+            }
+
     if est.get("estado") == "aguardando_escolha_do_segurado":
         # 99%: o pedido nasceu e falta o segurado escolher loja ou domicílio.
         # Isso NÃO é incidente — é o fluxo funcionando. Alertar suporte aqui
@@ -276,6 +336,57 @@ def diagnosticar(job: Dict[str, Any], agora: Optional[datetime] = None) -> Optio
     }
 
 
+async def _aprender_com_a_tela_cega(cliente, company_id: str, job: Dict[str, Any]) -> bool:
+    """A tela que o portal mostrou e ninguém sabe ler entra na fila. `False` = não entrou.
+
+    🔴 `company_id` do PRÓPRIO JOB, nunca de um default: a fila de aprendizado é
+    por corretora, e uma linha na casa errada é a tela de uma corretora aparecendo
+    no trabalho da outra (CLAUDE.md §7).
+
+    ⚠️ UMA vez por job. A marca vai no `evidence` e não num relógio: o vigia roda
+    a cada 60s, e sem a marca a mesma tela entraria 1.440 vezes por dia — a fila
+    deixaria de ordenar por "quantas vezes apareceu", que é o que a torna útil.
+    """
+    import logging as _logging
+
+    log = _logging.getLogger(__name__)
+    try:
+        from app.agents.tools.portal_params import (
+            resumo_da_tela_desconhecida,
+            slug_da_seguradora,
+        )
+
+        ev = job.get("evidence") or {}
+        if ev.get("tela_cega_registrada") or not company_id:
+            return False
+        resumo = resumo_da_tela_desconhecida(ev)
+        if not resumo:
+            return False
+
+        from app.services.tela_cega import registrar_tela_cega
+
+        await registrar_tela_cega(
+            company_id=company_id,
+            insurer_key=slug_da_seguradora(job.get("params") or {}),
+            ramo="vidros",
+            playbook_ref=f"portal:vidros_lanternas:{resumo['onde']}",
+            texto=resumo["texto"],
+        )
+        # ⚠️ O dicionário do job é atualizado ANTES do banco de propósito: o
+        # passo 3 da varredura grava `vigia_avisou_em` espalhando
+        # `job["evidence"]`, e com a cópia velha ele apagaria esta marca no
+        # mesmo segundo em que ela foi escrita — a fila receberia de novo na
+        # próxima volta, e a dedupe viraria contagem inflada.
+        job["evidence"] = {**ev, "tela_cega_registrada": True}
+        cliente.table("portal_jobs").update({
+            "evidence": job["evidence"],
+        }).eq("id", job["id"]).eq("company_id", company_id).execute()
+        return True
+    except Exception as e:  # noqa: BLE001
+        log.error("[VIGIA-PORTAL] fila de aprendizado nao recebeu (%s)", type(e).__name__)
+        return False
+
+
 async def varrer_portal() -> int:
     """Varre os `portal_jobs` que deixaram alguém esperando. Devolve quantos tratou.
 
@@ -349,6 +460,17 @@ async def varrer_portal() -> int:
             # 2) a equipe, com o dossiê pronto.
             from app.tasks.dispatch_watchdog import _support_alert
             await _support_alert(company_id, achado["para_o_suporte"], wa, integracao)
+
+            # 2b) 🔴 P-PILOTO-08 — a tela que ninguém conhece vira FILA.
+            #
+            # 📊 `tela_cega` (SPEC-087) só era escrita pelo corredor de URA; o
+            # worker do navegador gravava `debug_dom` num jsonb que ninguém
+            # varria. Aqui, FORA da janela do atendimento; dentro dela quem
+            # registra é a própria `portal_tool` — a mesma função pura decide
+            # nos dois lados, e a marca em `evidence` garante UMA linha por job.
+            #
+            # ⛔ Falhar aqui não pode derrubar o aviso ao segurado, que já saiu.
+            await _aprender_com_a_tela_cega(cliente, company_id, job)
 
             # 3) marca, para não repetir.
             cliente.table("portal_jobs").update({

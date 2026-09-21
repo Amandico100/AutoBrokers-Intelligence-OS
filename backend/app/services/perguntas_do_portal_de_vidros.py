@@ -116,6 +116,26 @@ from app.services.attendance_ficha import _tem_valor
 DO_SEGURADO = "segurado"    # pergunta-se, em linguagem humana, no WhatsApp
 DO_PROVEDOR = "provedor"    # está (ou deveria estar) na InfoCap — NUNCA se pergunta
 
+# --------------------------------------------------------------------------
+# Para ONDE a resposta vai — SPEC-EXTRA-001.10 P1-3
+# --------------------------------------------------------------------------
+# 🔴 O achado que reorganiza a coleta: a maior parte do que a atendente humana
+# pergunta **não é o questionário do portal**. É o que decide QUAL LINHA do
+# catálogo da apólice (`GET /apolices/itens-cobertos`) vai no `CodigoItemCoberto`
+# do PATCH. Capa pintada ou fosca, com pisca ou sem, bipartida da tampa ou da
+# carroceria: cada resposta é um ITEM diferente, não uma opção de questionário.
+#
+# Misturar os dois destinos custa caro nos dois sentidos: mandar ao questionário
+# uma resposta que o portal nunca pediu faz o robô parar numa tela; e deixar de
+# usar no catálogo uma resposta que o segurado já deu manda buscar a peça errada.
+DESTINO_CATALOGO = "catalogo"        # ajuda a ESCOLHER o item coberto (PATCH)
+DESTINO_QUESTIONARIO = "questionario"  # é resposta do questionário do portal
+# ⚠️ O terceiro destino existe porque um nome que mente reinfecta todo leitor
+# seguinte (CLAUDE.md §12.1): a resposta do reparo **não** entra em
+# `PerguntasResposta` nem no `CodigoItemCoberto` — ela vira
+# `PUT /atendimentos/alterar-reparo {"Reparo": bool}`, uma chamada só dela.
+DESTINO_REPARO = "reparo"
+
 # O que o segurado responde quando genuinamente não sabe. Só vale depois de a
 # pergunta ter sido feita, e só nas perguntas que o portal deixa pular.
 NAO_SABE = "nao_sabe"
@@ -152,6 +172,47 @@ CEP_DO_SEGURADO = "cep_do_segurado"
 # na tela do portal e o segurado nunca a viu.
 ONDE_REALIZAR_O_SERVICO = "onde_realizar_o_servico"
 
+# 🔴 SPEC-EXTRA-001.10 P0-5 — O LUGAR, que não é a MODALIDADE.
+#
+# 📊 `CodigoCidade` é chave obrigatória do `PATCH /atendimentos` nas 4 capturas
+# (20/09/2026), e 📊 a cidade é perguntada em **8 de 8 blocos** do .docx da
+# atendente — junto com a data, a única presente em todos.
+#
+# 🔴 E ela NÃO é o CEP da apólice: quem quebra o vidro viajando conserta onde
+# está. O CEP do cadastro é o de casa; a cidade do serviço é uma decisão, e só
+# o segurado a tem.
+#
+# ⚠️ Não confundir com `ONDE_REALIZAR_O_SERVICO`, logo acima: aquele é
+# MODALIDADE (técnico em casa × levar numa loja); este é LUGAR (qual município
+# vira `CodigoCidade`). Responder um não responde o outro, e os dois convivem.
+CIDADE_PARA_O_SERVICO = "cidade_para_o_servico"
+
+# 🔴 SPEC-EXTRA-001.10 N-2 (D-E00110-02) — a decisão que o código não conhecia.
+# 📊 `POST /questionarios/regras-reparo` → `{ExibirDialogDeReparo: true}` e o
+# portal PARA para perguntar se o segurado topa tentar o reparo. Sem a resposta
+# coletada antes, a journey para DEPOIS de o protocolo já existir — o lugar mais
+# caro possível.
+ACEITA_REPARO = "aceita_reparo"
+
+# As específicas que o .docx da atendente cobre e que até aqui não existiam em
+# lugar nenhum. Quase todas são de CATÁLOGO (ver DESTINO_CATALOGO).
+SENSOR_DE_CHUVA = "sensor_de_chuva"
+FAIXA_DEGRADE = "faixa_degrade"
+SENSOR_DE_DIRECAO_OU_FAIXA = "sensor_de_direcao_ou_faixa"
+CAPA_PINTADA_OU_FOSCA = "capa_pintada_ou_fosca"
+RETROVISOR_TEM_PISCA = "retrovisor_tem_pisca"
+REGULAGEM_DO_RETROVISOR = "regulagem_do_retrovisor"
+CAPA_AINDA_NA_PECA = "capa_ainda_na_peca"
+LANTERNA_BIPARTIDA_ONDE = "lanterna_bipartida_onde"
+PARA_CHOQUE_DIANTEIRO_OU_TRASEIRO = "para_choque_dianteiro_ou_traseiro"
+VIDRO_FIXO_OU_SOBE_DESCE = "vidro_fixo_ou_sobe_desce"
+VIGIA_DESEMBACADOR_TERMICO = "vigia_desembacador_termico"
+# Guarda a LISTA de peças amassadas do mesmo evento — `peca_lataria` mentiria
+# sobre a cardinalidade, e é justamente a cardinalidade que faz a lataria ser um
+# caminho próprio (📊 `ServicosMartelinhoLataria` é um array no PATCH).
+PECAS_LATARIA = "pecas_lataria"
+LATARIA_MESMO_EVENTO = "lataria_mesmo_evento"
+
 # Onde a resposta MORA em `ja_sei`, quando não é na própria chave do campo.
 # 📊 A versão sai do campo `Veículo` da InfoCap ("NIVUS COMFORTLINE 1.0 200 TSI
 # FLEX AUT") e o CEP do cadastro do cliente — os dois já chegam prontos.
@@ -176,6 +237,16 @@ class Pergunta:
     opcoes: Tuple[str, ...] = ()
     aceita_nao_sabe: bool = False
     porque: str = ""
+    # Para onde a resposta vai (SPEC-EXTRA-001.10 P1-3): escolher o ITEM do
+    # catálogo, responder o QUESTIONÁRIO, ou decidir o REPARO. O default é o
+    # questionário porque era o único destino que existia antes desta SPEC.
+    destino: str = DESTINO_QUESTIONARIO
+    # 🔴 A pergunta foi VISTA numa tela do portal? `False` = a atendente humana
+    # a faz (e por isso ela vale a pena), mas nenhuma captura a exibiu — então a
+    # resposta serve para a CONVERSA e para escolher a peça, e **não** se manda
+    # ao questionário do portal enquanto não houver captura. Declarar isso é o
+    # que impede inventar pergunta (CLAUDE.md §12.1: 📊 × 💭).
+    confirmada: bool = True
     # Como a resposta VOLTA para cá. Vazio = o agente já sabe (o campo tem o
     # nome dele no schema da tool). Preenchido = uma linha literal de instrução,
     # para a pergunta que o schema da tool ainda não nomeia. Sem isso a pergunta
@@ -229,6 +300,23 @@ _UNIVERSAIS: Tuple[Pergunta, ...] = (
         "Foi na cidade ou na estrada/rodovia?",
         opcoes=("urbano", "rodoviario"),
         porque="📊 campo `ondeOcorreuDano` do passo 4.",
+    ),
+    # 🔴 SPEC-EXTRA-001.10 P0-5 — o campo que trava o PATCH e que ninguém pedia.
+    #
+    # ⛔ SEM `aceita_nao_sabe`, de propósito: numa cidade não existe "não sei"
+    # honesto. Quem está com o carro sabe em que cidade está. E o portal não
+    # oferece saída: 📊 `CodigoCidade` vem preenchido nas 4 capturas, e a rede
+    # credenciada é consultada POR cidade (`GET /clientes/cidades`).
+    Pergunta(
+        CIDADE_PARA_O_SERVICO,
+        "Em qual cidade você quer fazer o serviço? (pode ser diferente da cidade "
+        "onde você mora — se você estiver viajando, é onde o carro está agora)",
+        como_devolver="registre em especificos: {\"cidade_para_o_servico\": \"Joinville/SC\"} "
+                      "— só a cidade, com o estado se você souber",
+        porque="📊 `CodigoCidade` é chave obrigatória do PATCH nas 4 capturas (20/09/2026), "
+               "e a cidade é perguntada em 8 de 8 blocos do roteiro da atendente. O CEP da "
+               "apólice é o de CASA: quem quebra o vidro viajando conserta onde está.",
+        destino=DESTINO_QUESTIONARIO,
     ),
     # 📊 Passo 7 do mapa: `Nº do atendimento` no topo e, logo abaixo, "Escolha a
     # loja onde deseja realizar o serviço" — com "Agendar a domicílio" de um
@@ -302,7 +390,75 @@ _ESPECIFICAS_POR_IDENTIDADE: Dict[str, Tuple[Pergunta, ...]] = {
             opcoes=("Maior que 10 cm", "Menor que 10 cm"),
             aceita_nao_sabe=True,
             porque="📊 maior = troca, menor = possibilidade de reparo. Errar aqui manda "
-                   "o vidraceiro com a peça errada (mapa §4c).",
+                   "o vidraceiro com a peça errada (mapa §4c). 📊 A régua dos 10 cm VEM DO "
+                   "PORTAL: pergunta 8 da captura de 20/09/2026, com as opções "
+                   "'MAIOR (TROCA DO VIDRO)' e 'MENOR (POSSIBILIDADE DE REPARO)'.",
+        ),
+        # 🔴 N-2 · D-E00110-02 — A DECISÃO DO SEGURADO, COLETADA ANTES.
+        #
+        # 📊 Medido em 20/09/2026: `POST /questionarios/regras-reparo` devolveu
+        # `{"ExibirDialogDeReparo": true}` e o portal parou para perguntar. Se a
+        # resposta não estiver aqui, a journey PARA nesse ponto — e nesse ponto o
+        # `CodigoAtendimento` já existe. Parar depois do protocolo não é "tentar
+        # de novo": o pedido já está na seguradora.
+        #
+        # ⚠️ E é uma decisão DELE, não nossa: o reparo é grátis e rápido, mas é
+        # o vidro dele. A copy diz as três coisas que fazem alguém decidir —
+        # custo, tempo e o que acontece se não ficar bom.
+        Pergunta(
+            ACEITA_REPARO,
+            "Se a seguradora oferecer REPARO em vez de trocar o vidro, você topa tentar? "
+            "O reparo é sem custo de franquia, leva uns 30 minutos e mantém o vidro "
+            "original do carro. Se não ficar bom, você ainda pode pedir a troca depois.",
+            opcoes=("sim", "nao"),
+            como_devolver="registre em especificos: {\"aceita_reparo\": \"sim\"} ou "
+                          "{\"aceita_reparo\": \"nao\"}",
+            porque="📊 sem ela a journey para DEPOIS de o número do atendimento existir "
+                   "(regras-reparo → ExibirDialogDeReparo=true, captura de 20/09/2026).",
+            destino=DESTINO_REPARO,
+        ),
+        # 📊 MEDIDA no portal em 20/09/2026 — pergunta 140, tipo P, opções
+        # 'NÃO SABE' (798) · 'SIM' (799) · 'NÃO' (800). É o único ADAS que a
+        # tela perguntou; não se inventa os outros.
+        Pergunta(
+            SENSOR_DE_DIRECAO_OU_FAIXA,
+            "Seu carro tem aviso de saída de faixa ou assistente de direção? "
+            "(aquele que apita ou mexe no volante quando o carro sai da faixa sozinho)",
+            opcoes=("SIM", "NÃO"),
+            aceita_nao_sabe=True,
+            porque="📊 pergunta 140 do questionário do para-brisa (Yelum, 20/09/2026). "
+                   "O vidro com câmera de ADAS é outra peça e precisa de recalibração.",
+            destino=DESTINO_QUESTIONARIO,
+        ),
+        # 🔴 AS DUAS QUE A ATENDENTE FAZ E O PORTAL NÃO PERGUNTOU.
+        #
+        # 📊 A captura de 20/09/2026 trouxe TRÊS perguntas de para-brisa —
+        # posição, 10 cm e sensor de direção — e **não** perguntou chuva nem
+        # degradê. Elas continuam valendo, porque escolhem o VIDRO (linha do
+        # catálogo), não porque o questionário as peça: por isso
+        # `destino=DESTINO_CATALOGO` e `confirmada=False`. A resposta ajuda a
+        # pedir a peça certa e **não** vai ao questionário enquanto uma tela não
+        # a exibir.
+        Pergunta(
+            SENSOR_DE_CHUVA,
+            "O para-brisa tem sensor de chuva? (quando começa a chover, as palhetas "
+            "ligam sozinhas)",
+            opcoes=("SIM", "NÃO"),
+            aceita_nao_sabe=True,
+            porque="a atendente pergunta em 100% dos para-brisas; 📊 nenhuma tela capturada "
+                   "a exibiu — serve para escolher o vidro certo no catálogo da apólice.",
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+        Pergunta(
+            FAIXA_DEGRADE,
+            "O vidro tem aquela faixa escura degradê na parte de cima?",
+            opcoes=("SIM", "NÃO"),
+            aceita_nao_sabe=True,
+            porque="mesma razão do sensor de chuva: escolhe a linha do catálogo, e 📊 nenhuma "
+                   "tela capturada a perguntou.",
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
         ),
         Pergunta(
             VERSAO_DO_VEICULO,
@@ -345,14 +501,208 @@ _ESPECIFICAS_POR_IDENTIDADE: Dict[str, Tuple[Pergunta, ...]] = {
                    "solicitação para o outro lado (mapa §3). O aviso vai junto da "
                    "pergunta porque é o único momento em que ele chega a tempo.",
         ),
+        # 📊 O .docx separa "é vidro fixo?" e "é vidro sobe e desce?" em duas
+        # linhas, e a razão é de CATÁLOGO: o portal lista `VIDRO DE PORTA`,
+        # `VIDRO DE JANELA` e a `MÁQUINA` do vidro como itens diferentes. São
+        # duas perguntas no roteiro e UM slot aqui — a resposta é a mesma coisa.
+        Pergunta(
+            VIDRO_FIXO_OU_SOBE_DESCE,
+            "Esse vidro sobe e desce, ou é um vidro fixo (daqueles pequenos, "
+            "coladinho, que não abre)?",
+            opcoes=("sobe e desce", "fixo"),
+            aceita_nao_sabe=True,
+            como_devolver="registre em especificos: {\"vidro_fixo_ou_sobe_desce\": \"fixo\"}",
+            porque="escolhe entre VIDRO DE PORTA, VIDRO DE JANELA e a MÁQUINA do vidro no "
+                   "catálogo da apólice — 📊 nenhuma tela capturada perguntou isso.",
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+    ),
+    # ----------------------------------------------------------------------
+    # SPEC-EXTRA-001.10 P1-3 — as famílias que saíram de
+    # `PECAS_SEM_ESPECIFICAS_MAPEADAS` porque o roteiro da atendente as cobre.
+    #
+    # 🔴 A fonte é o .docx da atendente, não dedução: cada pergunta abaixo tem
+    # uma linha correspondente lá, e o guarda G8 lê o arquivo em tempo de
+    # execução e reprova se aparecer uma que não casa com slot nenhum.
+    #
+    # ⚠️ Quase todas são `DESTINO_CATALOGO` e `confirmada=False`: elas escolhem
+    # a LINHA do `itens-cobertos` (📊 `RETROVISOR COMPLETO PINTADO COM PISCA`,
+    # `CAPA DE RETROVISOR`, `LENTE`, `PISCA` são itens distintos), e nenhuma
+    # captura mostrou um questionário para elas. Não perguntá-las é abrir o
+    # pedido da peça errada; mandá-las ao questionário do portal seria inventar.
+    # ----------------------------------------------------------------------
+    "retrovisor": (
+        Pergunta(
+            LADO_MOTORISTA_OU_CARONA,
+            "Qual retrovisor foi: o do lado do motorista (esquerdo) ou o do carona (direito)?",
+            opcoes=("Lado do motorista", "Lado do carona"),
+            porque="📊 o portal aceita UM item por atendimento e cada lado é um pedido.",
+            destino=DESTINO_CATALOGO,
+        ),
+        Pergunta(
+            CAPA_PINTADA_OU_FOSCA,
+            "A capa do retrovisor é pintada na cor do carro, ou é aquela preta fosca "
+            "sem pintura? Se for pintada, me diz a cor.",
+            opcoes=("pintada", "preta fosca"),
+            aceita_nao_sabe=True,
+            como_devolver="registre em especificos: {\"capa_pintada_ou_fosca\": \"pintada - prata\"}",
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+        Pergunta(
+            RETROVISOR_TEM_PISCA,
+            "Esse retrovisor tem seta (pisca) nele?",
+            opcoes=("SIM", "NÃO"),
+            aceita_nao_sabe=True,
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+        Pergunta(
+            REGULAGEM_DO_RETROVISOR,
+            "A regulagem dele é elétrica (por botão) ou manual (na mão)?",
+            opcoes=("eletrica", "manual"),
+            aceita_nao_sabe=True,
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+        Pergunta(
+            CAPA_AINDA_NA_PECA,
+            "A capa ainda está no retrovisor, ou ela se soltou/quebrou junto?",
+            opcoes=("ainda esta na peca", "soltou ou quebrou"),
+            aceita_nao_sabe=True,
+            porque="decide se o pedido é o retrovisor COMPLETO ou só a lente/capa.",
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+    ),
+    "farol": (
+        Pergunta(
+            LADO_MOTORISTA_OU_CARONA,
+            "Qual farol foi: o do lado do motorista (esquerdo) ou o do carona (direito)?",
+            opcoes=("Lado do motorista", "Lado do carona"),
+            porque="📊 um item por atendimento; cada lado é um pedido separado.",
+            destino=DESTINO_CATALOGO,
+        ),
+        # ⛔ O TIPO do farol (xenon, LED, milha) NÃO entra aqui de propósito.
+        # 📊 O catálogo varia POR APÓLICE (21 × 30 itens em duas apólices da
+        # mesma seguradora), e ele só existe DEPOIS de o atendimento abrir
+        # (o header `token_autorizacao` nasce no POST /atendimentos). Perguntar
+        # o tipo antes é gastar uma mensagem que pode não mudar nada: se a
+        # apólice tem um farol só, a resposta é irrelevante. Essa restrição é a
+        # P1-4, e ela roda com o catálogo na mão.
+    ),
+    "lanterna": (
+        Pergunta(
+            LADO_MOTORISTA_OU_CARONA,
+            "Qual lanterna foi: a do lado do motorista (esquerda) ou a do carona (direita)?",
+            opcoes=("Lado do motorista", "Lado do carona"),
+            destino=DESTINO_CATALOGO,
+        ),
+        Pergunta(
+            LANTERNA_BIPARTIDA_ONDE,
+            "Em muitos carros a lanterna é partida em duas: uma parte na lataria e outra "
+            "na tampa do porta-malas. No seu, a que quebrou é a da TAMPA ou a da LATARIA?",
+            opcoes=("tampa do porta-malas", "lataria"),
+            aceita_nao_sabe=True,
+            como_devolver="registre em especificos: {\"lanterna_bipartida_onde\": \"tampa\"}",
+            porque="📊 são duas linhas diferentes do catálogo; errar troca a peça errada.",
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+    ),
+    "vigia": (
+        Pergunta(
+            VIGIA_DESEMBACADOR_TERMICO,
+            "O vidro de trás tem desembaçador? (aqueles fiozinhos na horizontal, que "
+            "esquentam o vidro)",
+            opcoes=("SIM", "NÃO"),
+            aceita_nao_sabe=True,
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+        Pergunta(
+            PELICULA,
+            "Esse vidro tem película? (aquele filme escuro, o insulfilm)",
+            opcoes=("SIM", "NÃO"),
+            aceita_nao_sabe=True,
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
+    ),
+    "para_choque": (
+        Pergunta(
+            PARA_CHOQUE_DIANTEIRO_OU_TRASEIRO,
+            "É o para-choque da frente ou o de trás?",
+            opcoes=("dianteiro", "traseiro"),
+            como_devolver="registre em especificos: "
+                          "{\"para_choque_dianteiro_ou_traseiro\": \"dianteiro\"}",
+            destino=DESTINO_CATALOGO,
+        ),
+    ),
+    "lataria": (
+        # 🔴 COBRADA ANTES (entra em `TRANSPORTAVEIS`): 📊 na lataria o
+        # `CodigoAtendimento` nasce logo depois do PATCH, sem questionário
+        # nenhum — e é o PATCH que leva `ServicosMartelinhoLataria`. Perguntar
+        # quais peças depois é conversar sobre um pedido que já nasceu.
+        Pergunta(
+            PECAS_LATARIA,
+            "Quais peças ficaram amassadas? Me manda todas de uma vez "
+            "(ex.: porta dianteira esquerda, paralama esquerdo).",
+            como_devolver="registre em especificos: "
+                          "{\"pecas_lataria\": [\"porta dianteira esquerda\", \"paralama esquerdo\"]}",
+            porque="📊 `ServicosMartelinhoLataria` é uma LISTA no PATCH, e o número do "
+                   "atendimento nasce logo depois dele — perguntar depois é tarde.",
+            destino=DESTINO_CATALOGO,
+        ),
+        Pergunta(
+            LATARIA_MESMO_EVENTO,
+            "Esses amassados foram todos no MESMO acontecimento, no mesmo momento e do "
+            "mesmo lado do carro? (a seguradora não junta danos de lados diferentes num "
+            "pedido só)",
+            opcoes=("sim", "nao"),
+            como_devolver="registre em especificos: {\"lataria_mesmo_evento\": \"sim\"}",
+            porque="regra escrita no roteiro da atendente: danos de eventos diferentes são "
+                   "pedidos diferentes. Juntá-los faz a seguradora recusar o conjunto.",
+            destino=DESTINO_CATALOGO,
+            confirmada=False,
+        ),
     ),
 }
 
-# 📊 O que NÃO foi medido (mapa §7): as específicas de retrovisor, farol,
-# lanterna, vigia e teto. Elas não estão aqui, e a ausência é a informação —
-# `especificas_mapeadas()` devolve False e a mensagem ao agente diz isso em voz
-# alta. Preencher esta tabela por dedução seria inventar pergunta.
-PECAS_SEM_ESPECIFICAS_MAPEADAS = ("vigia", "retrovisor", "farol", "lanterna", "teto")
+# 📊 O que continua SEM perguntas: só o teto. Retrovisor, farol, lanterna e
+# vigia saíram desta lista em 20/09/2026 porque o roteiro da atendente humana
+# (.docx de intake) traz as perguntas delas — ver `_ESPECIFICAS_POR_IDENTIDADE`.
+# A ausência continua sendo informação: `especificas_mapeadas()` devolve False
+# para o teto, e a mensagem ao agente diz isso em voz alta em vez de inventar.
+PECAS_SEM_ESPECIFICAS_MAPEADAS = ("teto",)
+
+# ==========================================================================
+# 🔴 DUAS FAMÍLIAS QUE O VOCABULÁRIO ÚNICO AINDA NÃO NOMEIA
+# ==========================================================================
+# 📊 Medido em 20/09/2026: `identidade_peca("para-choque")` e
+# `identidade_peca("lataria")` devolvem **conjunto vazio** — `_PECAS` em
+# `vidros_lanternas.py` tem sete entradas e nenhuma delas. Efeito no produto:
+# quem escreve "amassei a porta e o paralama" recebe *"isso NÃO nomeia uma
+# peça"* e o acionamento não anda, embora o roteiro da atendente tenha um bloco
+# inteiro para lataria e outro para para-choque.
+#
+# ⛔ **Isto NÃO é um segundo vocabulário** (CLAUDE.md §5), e a regra de
+# precedência é o que garante: esta tabela só é consultada quando
+# `identidade_peca` devolve VAZIO. Ela nunca corrige, nunca contradiz e nunca
+# desempata o vocabulário único — ela só fala onde ele está mudo. Um teste de
+# controle prova a precedência ("retrovisor" jamais chega aqui).
+#
+# 🔴 E o destino escrito, para não virar permanente: as duas entradas pertencem
+# a `_PECAS` de `portal_worker/journeys/vidros_lanternas.py`, que nesta SPEC é
+# de outro dono (fatia A, arquivos disjuntos — protocolo §4). Migrar é uma linha
+# em cada tabela. Registrado como pendência P-E00110-C-01.
+_FAMILIAS_AINDA_FORA_DO_VOCABULARIO: Dict[str, Tuple[str, ...]] = {
+    "para_choque": ("para choque", "parachoque", "parachoques", "para choques"),
+    "lataria": ("lataria", "funilaria", "martelinho", "amassado", "amassada",
+                "amassados", "amassadas", "amassei", "paralama", "parabarro",
+                "capo", "capô", "porta malas", "portamalas", "pintura"),
+}
 
 
 # --------------------------------------------------------------------------
@@ -376,6 +726,13 @@ def respondida(valor: Any, aceita_nao_sabe: bool = False) -> bool:
     A peça é o caso em que a distinção decide o atendimento: "não sei qual vidro
     quebrou" não é uma resposta que o portal aceite — é um caso para gente.
     """
+    # ⚠️ LISTA VAZIA É AUSÊNCIA, e `_tem_valor` não sabia disso: `str([])` é
+    # `"[]"`, que é texto e passaria como resposta. A lista de peças da lataria
+    # é o primeiro campo do produto que guarda uma lista — sem esta linha,
+    # `{"pecas_lataria": []}` contaria como respondida e o PATCH sairia com
+    # `ServicosMartelinhoLataria: []` num pedido que é justamente sobre peças.
+    if isinstance(valor, (list, tuple, set)):
+        return any(_tem_valor(item) for item in valor)
     if not _tem_valor(valor):
         return False
     if e_nao_sabe(valor):
@@ -386,8 +743,28 @@ def respondida(valor: Any, aceita_nao_sabe: bool = False) -> bool:
 # --------------------------------------------------------------------------
 # A peça e suas específicas
 # --------------------------------------------------------------------------
+def _sem_acento(texto: str) -> str:
+    """Só dobra texto — não decide peça nenhuma (ver a nota de precedência)."""
+    import unicodedata
+
+    cru = unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode()
+    return " " + " ".join("".join(c if c.isalnum() else " " for c in cru).lower().split()) + " "
+
+
 def _identidades(peca: str) -> List[str]:
-    return sorted(identidade_peca(str(peca or "")))
+    """As identidades do texto. 🔴 O vocabulário único DECIDE; a tabela local só
+    fala quando ele fica mudo (ver `_FAMILIAS_AINDA_FORA_DO_VOCABULARIO`)."""
+    ids = sorted(identidade_peca(str(peca or "")))
+    if ids:
+        return ids
+    texto = _sem_acento(peca)
+    if not texto.strip():
+        return []
+    achados = sorted(
+        familia for familia, sinonimos in _FAMILIAS_AINDA_FORA_DO_VOCABULARIO.items()
+        if any(f" {_sem_acento(s).strip()} " in texto for s in sinonimos)
+    )
+    return achados
 
 
 def especificas_mapeadas(peca: str) -> bool:
@@ -408,6 +785,44 @@ def especificas_da_peca(peca: str) -> Tuple[Pergunta, ...]:
     if len(ids) != 1:
         return ()
     return _ESPECIFICAS_POR_IDENTIDADE.get(ids[0], ())
+
+
+def universais() -> Tuple[Pergunta, ...]:
+    """O catálogo que não depende da peça. Leitura pública do que hoje é `_UNIVERSAIS`.
+
+    Existe para que a `description` da tool seja GERADA daqui (P0-5, as três
+    verdades) em vez de escrita à mão num terceiro lugar.
+    """
+    return _UNIVERSAIS
+
+
+def catalogo_de_familias() -> Dict[str, Tuple[Pergunta, ...]]:
+    """`{família: perguntas}` — cópia rasa, para ninguém editar o catálogo por acidente."""
+    return dict(_ESPECIFICAS_POR_IDENTIDADE)
+
+
+def pergunta_do_campo(campo: str) -> Optional[Pergunta]:
+    """A `Pergunta` que responde por este campo, onde quer que ela esteja."""
+    alvo = str(campo or "").strip()
+    for p in _UNIVERSAIS:
+        if p.campo == alvo:
+            return p
+    for perguntas in _ESPECIFICAS_POR_IDENTIDADE.values():
+        for p in perguntas:
+            if p.campo == alvo:
+                return p
+    return None
+
+
+def familia_da_peca(peca: str) -> str:
+    """A FAMÍLIA desta peça, ou "" quando o texto não nomeia exatamente uma.
+
+    É o nome que `_ESPECIFICAS_POR_IDENTIDADE` usa como chave — o mesmo que
+    aparece no relatório e nos guardas. Existe para que ninguém precise repetir
+    `sorted(identidade_peca(...))[0]` e, no caminho, escrever a segunda regra.
+    """
+    ids = _identidades(peca)
+    return ids[0] if len(ids) == 1 else ""
 
 
 def peca_ambigua(peca: str) -> bool:
@@ -606,6 +1021,20 @@ def mensagem_para_o_agente(faltam: List[Pergunta], peca: str = "") -> str:
             "(o portal deixa de saber qual vidro pedir). Nas perguntas SEM essa marca a "
             "saida nao existe: reformule com exemplos concretos, porque registrar 'nao "
             "sabe' nelas traz o acionamento de volta para a mesma pergunta."
+        )
+
+    # 🔴 A HONESTIDADE SOBRE O QUE AINDA NÃO FOI VISTO NUMA TELA.
+    #
+    # Sem esta linha, uma pergunta de catálogo não-confirmada pareceria exigência
+    # do portal — e o agente cobraria o segurado por ela como cobra o CPF. Ela é
+    # útil (escolhe a peça certa) e é dispensável (o portal não a pede).
+    nao_confirmadas = [p for p in perguntas if not p.confirmada]
+    if nao_confirmadas:
+        linhas.append("")
+        linhas.append(
+            "Destas, " + ", ".join(f"'{p.campo}'" for p in nao_confirmadas) + " servem para "
+            "pedir a PECA CERTA (elas escolhem o item no catalogo da apolice) e o portal "
+            "NAO as exige: se o segurado nao souber ou nao responder, siga assim mesmo."
         )
 
     if lacunas:

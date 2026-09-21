@@ -131,9 +131,24 @@ def _format_result():
     """
     caminho = os.path.join(RAIZ, "app", "agents", "tools", "portal_params.py")
     src = open(caminho, encoding="utf-8").read()
-    i = src.find("def format_result")
-    j = src.find("\ndef ", i + 10)
-    ns = {"Optional": object, "Dict": dict, "Any": object}
+
+    # ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3): o FATO mudou. `format_result`
+    # deixou de redigir sozinha — ela agora delega a `mensagem_do_desfecho` e a
+    # `texto_da_parada`, que são as MESMAS funções que o Vigia do Portal usa
+    # (uma redação só para o segurado, venha a resposta dentro ou fora da janela
+    # do atendimento). Recortar só `format_result` passaria a executar um código
+    # que não existe — então o recorte cresce até incluir os dois escritores.
+    #
+    # 🔴 A LIÇÃO NÃO MUDOU e continua sendo o que este teste prova: **os três
+    # (número, franquia e link) têm de SAIR na frase**. O que mudou foi de onde
+    # sai o texto.
+    inicio = src.find("def _fold(")
+    fim_fold = src.find("\n_INSURER_ALIASES", inicio)
+    i = src.find("AVISO_ANTIFRAUDE = (")
+    j = src.find("\n# ====", src.find("def format_result", i))
+    ns = {"Optional": object, "Dict": dict, "Any": object, "Tuple": tuple}
+    exec(compile("import unicodedata\n" + src[inicio:fim_fold],  # noqa: S102
+                 "fold", "exec"), ns)
     exec(compile(src[i:j], "format_result", "exec"), ns)  # noqa: S102
     return ns["format_result"]
 

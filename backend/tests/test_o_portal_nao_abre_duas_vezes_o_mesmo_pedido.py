@@ -234,7 +234,12 @@ def teste_a_chave_nasce_dos_params_de_verdade():
         # SPEC-065 — a preferencia de ONDE consertar passou a ser cobrada
         # antes de abrir o portal: uma parada no passo 7 e TERMINAL (o
         # numero do atendimento ja nasceu ali, e reexecutar cria outro).
-            "especificos": {"onde_realizar_o_servico": "levar na oficina"}}
+        # ⚠️ ATUALIZADO em 20/09/2026 (§9.3): a CIDADE DO SERVICO tambem passou
+        # a ser cobrada antes (SPEC-EXTRA-001.10 P0-5) — 📊 `CodigoCidade` e
+        # chave obrigatoria do PATCH. Ela NAO entra na chave de idempotencia, e
+        # o bloco abaixo continua provando exatamente isso.
+            "especificos": {"onde_realizar_o_servico": "levar na oficina",
+                            "cidade_para_o_servico": "Joinville/SC"}}
     params, erro = pp.build_portal_params(flat, PERFIL, INFOCAP)
     checar("build_portal_params produziu params", erro is None and params is not None, str(erro))
     if not params:

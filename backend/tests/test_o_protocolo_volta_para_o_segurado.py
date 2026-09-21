@@ -345,6 +345,15 @@ FICHA_SEM_A_PREFERENCIA = {
     "pelicula": "SIM",
     "porta_dianteira_ou_traseira": "DIANTEIRA",
     "lado_motorista_ou_carona": "Lado do motorista",
+    # ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3): duas perguntas novas fizeram
+    # "ficha completa" mudar de significado. A CIDADE DO SERVICO virou universal
+    # e bloqueante (📊 `CodigoCidade` e obrigatorio no PATCH nas 4 capturas do
+    # portal), e o vidro de porta ganhou "fixo ou sobe e desce?" (escolhe a
+    # linha do catalogo da apolice). As duas entram na ficha para que este
+    # bloco continue provando o que ele sempre provou: **que falta EXATAMENTE a
+    # preferencia**, e nao qualquer outra coisa.
+    "cidade_para_o_servico": "Joinville/SC",
+    "vidro_fixo_ou_sobe_desce": "sobe e desce",
 }
 
 
