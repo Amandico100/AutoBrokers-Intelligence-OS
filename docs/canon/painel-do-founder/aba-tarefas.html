@@ -38,11 +38,13 @@
     </div>
     <div class="nv ok">
       <span class="nvn">3 &middot; 🧑 2 min &middot; chat novo</span>
-      <h3>Abrir o chat da EXTRA-001.10</h3>
-      <p>É a próxima SPEC: o portal de vidros do WhatsApp ao comprovante. <b>Não espere por captura nenhuma</b> — a parte de lataria fecha com o material que já existe.</p>
-      <span class="nvv">1 prompt<span> · copiar e colar</span></span>
-      <em>Abra um <b>chat novo</b> e cole o conteúdo inteiro de <code>docs/canon/specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.10-PRONTO.md</code>.
-      O que providenciar antes está na aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>.</em>
+      <h3>O canário do portal de vidros</h3>
+      <p>A <b>001.10</b> fechou em 21/09 e entregou o robô de vidros indo do WhatsApp ao desfecho — <b>desligado</b>, atrás de uma chave.
+      Só falta <b>um acionamento de verdade</b>, com apólice e veículo <b>de teste</b>, para poder ligá-lo.</p>
+      <span class="nvv">30 min<span> · lataria na Yelum</span></span>
+      <em>Depois de Implantar: no <code>portal-worker</code>, <code>PORTAL_CANARIO_ALLOWLIST</code> com o acionamento do ensaio e
+      <code>PORTAL_VIDROS_API_FIRST = true</code>; ao terminar, volte a chave para <code>false</code>.
+      O passo a passo está na aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>.</em>
     </div>
   </div>
   <p class="note" style="margin-top:16px">⚠️ <b>E depois do 1 e do 2:</b> peça no chat <b>&ldquo;rode o checklist de ligar&rdquo;</b>. Ele deve vir <b>PODE LIGAR</b> —
@@ -221,6 +223,10 @@
 
 <section>
   <h2>8 · O piloto de 3 dias <span style="color:var(--muted);font-size:14px">(001.7)</span></h2>
+  <p class="note" style="border-left-color:var(--accent)">🔴 <b>Da 001.10, além do canário:</b> entregue à atendente o roteiro de captura
+  (<code>guias/ROTEIRO-DE-CAPTURA-PORTAL-DE-VIDROS.md</code>) — a captura nº 1 é <b>um agendamento levado até confirmar o horário</b>, e é ela que
+  libera o robô a marcar dia e hora — e as <b>15 perguntas</b> (<code>guias/PERGUNTAS-PARA-A-ATENDENTE-PORTAL-DE-VIDROS.md</code>), cuja nº 12
+  decide sozinha a próxima SPEC.</p>
   <div class="virada" style="border-left-color:var(--accent);margin-top:14px">
     <span class="eyebrow" style="color:var(--accent)">📖 O piloto em linguagem de gente, antes de começar</span>
     <h2>Quatro coisas para saber antes de clicar em Ligar agente</h2>

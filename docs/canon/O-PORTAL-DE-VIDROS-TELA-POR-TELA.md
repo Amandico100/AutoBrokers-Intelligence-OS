@@ -11,6 +11,10 @@
 >
 > Este arquivo é a **autoridade sobre o que o portal pergunta**. Código que
 > discordar dele está errado até que uma medição nova diga o contrário.
+>
+> 🔴 **A medição nova chegou:** 20/09/2026, por **tráfego de rede** (5 capturas HAR) e não por foto de tela.
+> Ela está na **§10**, no fim deste arquivo, e **vence** o que estiver em conflito acima. O texto de cima fica
+> como está — é história, e história não se apaga —, com ⚠️ onde ela passou por cima.
 
 ---
 
@@ -177,6 +181,10 @@ campo `Veículo` da InfoCap (*"NIVUS COMFORTLINE 1.0 200 TSI FLEX AUT"*).
 Perguntar isso a um segurado assustado é ridículo — e a resposta já está na
 nossa mão.
 
+⚠️ **Atualizado em 20/09/2026 (§10):** a régua dos 10 cm **vem escrita na tela do portal**, na própria
+pergunta — não é constante nossa. E existe um passo que este mapa não conhecia: quando a resposta é
+"menor", o portal **oferece o reparo** ao segurado, e é ele quem aceita ou recusa.
+
 **(c) Maior/menor que 10 cm decide troca × reparo.** Não é burocracia: é o
 serviço que será prestado. Errar aqui manda o vidraceiro com a peça errada.
 
@@ -235,6 +243,11 @@ nosso agente fala, e ninguém saberia quem disse o quê.
 caixa mandaria as atualizações para a corretora. **Enquanto não houver campo
 separado para o telefone do segurado, a caixa fica desmarcada.**
 
+⚠️ **Atualizado em 20/09/2026 (§10):** o campo separado **existe** — o portal tem um tipo de telefone
+`CELULAR SEGURADO`, diferente de `CELULAR CORRETOR`. 📊 Em 3 das 4 capturas foi gravado o do **corretor**, e
+o portal respondeu `PossuiTelefoneRecebeWhatsapp: false`: o segurado não recebe nada e a loja liga para a
+corretora. O tipo do segurado nunca foi exercitado. Decisão registrada: **D-E00110-01**.
+
 ---
 
 ## 7. O que ainda não foi medido
@@ -244,8 +257,8 @@ separado para o telefone do segurado, a caixa fica desmarcada.**
 | Telas de **roda/pneu/suspensão** (só Porto) | uma captura na Porto |
 | Lista completa de "como ocorreu" por peça | ler na tela — **de propósito** |
 | Perguntas específicas de **retrovisor, farol, lanterna, vigia, teto** | captura ou primeira execução real |
-| Tela **Consultar atendimento** | uma captura |
-| Quais seguradoras da lista **realmente atendem** vidros | tentativa por seguradora |
+| Tela **Consultar atendimento** | uma captura — ⚠️ **ainda em aberto, e agora é a lacuna nº 1**: é ela que permitiria RETOMAR um pedido parado (P-E00110-A11) |
+| Quais seguradoras da lista **realmente atendem** vidros | ⚠️ **respondido em parte (§10)**: 📊 38 publicadas, 1 marcada INATIVA no próprio nome; o que muda de uma para outra é a apólice, não a tela |
 | Diferenças de **Porto** depois do passo 1 | captura |
 
 **Nenhuma delas impede o corredor de funcionar** — todas caem no caminho
@@ -335,3 +348,110 @@ e as respostas específicas do 80%. Nada mais.
 4. **Tratar dois lados como um pedido.** O portal proíbe; nós avisamos antes.
 5. **Reexecutar um acionamento que passou do 80%.** Cria pedido novo, não corrige o velho.
 6. **Marcar a caixa do WhatsApp com o telefone da corretora.**
+
+---
+
+## 10. 🔴 O que a medição de 20/09/2026 acrescentou
+
+> 📊 **Fonte:** 5 capturas de **tráfego de rede** (HAR) lidas por `trafego.importar_har` em 20/09/2026 — Yelum
+> para-brisa (nova), Yelum lataria, Yelum vidro de porta, Porto lanterna, Porto roda — mais o arquivo de programa
+> do próprio portal (o "bundle"), que é onde as regras de decisão dele estão escritas.
+> Isto **não substitui** a §4: o que ele **pergunta** continua sendo o que está lá. Isto diz o que ele **decide**.
+
+### 10.1 Quem decide se aparece loja ou agenda é o PORTAL — não a peça, não nós
+
+Antes de mostrar a última tela, o portal chama `GET /agendamentos/opcoes-disponiveis`, que devolve **20 chaves** de
+sim/não, e decide **nesta ordem**:
+
+```
+1. já concluiu?    IrParaConclusaoDeAtendimento · ExisteVistoriaCriada · ExisteAgendamento
+                   ExisteOrdemServico · VistoriaFinalizada    ⇒ CONCLUSÃO: a loja já está escolhida,
+                                                                SEM agenda ("entre em contato com a loja")
+2. pede vistoria?  PermiteVistoriaAmbas · PermiteVistoriaLoja · PermiteVistoriaMobile · RealizarVistoria ⇒ VISTORIA
+3. abre agenda?    DisponibilizarAgendamento                  ⇒ AGENDA: lojas → dias → horários
+```
+
+📊 Medido: **para-brisa com reparo aceito → conclusão** · **lataria → conclusão** · **vidro de porta (troca) →
+agenda, com 1 loja** (e a lista de horários veio **vazia**). Mesma seguradora, mesma apólice, mesma categoria de
+serviço, **desfechos opostos** — logo isto **não é atributo da peça**, e qualquer tabela nossa que tente adivinhar
+estará errada em algum caso. O único jeito certo é **perguntar ao portal e ler a resposta**.
+
+### 10.2 O reparo é uma escolha do SEGURADO, e este mapa não a conhecia
+
+Quando a resposta do trincado é "menor que 10 cm", o portal consulta `POST /questionarios/regras-reparo` e recebe
+`ExibirDialogDeReparo`. Se vier `true`, ele **abre uma caixa perguntando ao segurado** se quer tentar o reparo
+(grátis, ~30 min) em vez da troca, e grava a resposta em `PUT /atendimentos/alterar-reparo {"Reparo": true|false}`.
+📊 Nenhuma das duas chamadas existia no nosso código — zero ocorrências. E há aviso antecipado: cada opção das
+perguntas traz um campo dizendo se **aquela resposta** leva ao reparo, então dá para saber uma rodada antes.
+
+**Consequência de produto:** a pergunta *"se a seguradora oferecer reparo grátis em 30 minutos, você aceita
+tentar?"* passa a ser feita **na conversa, antes** de abrir o pedido. O robô nunca decide isso sozinho (D-E00110-02).
+
+### 10.3 A tela final se reescreve — e só vale lida na hora certa
+
+O texto da conclusão (`ScriptFinalizacao`) vem dentro de `GET /atendimentos` e **muda sozinho**:
+
+```
+assim que o número nasce ....  "Seu atendimento já está com o analista responsável…", sem loja
+depois de opcoes-disponiveis   "As informações abaixo serão encaminhadas por e-mail ou SMS." + Loja, Endereço,
+                               Ponto de Referência e Telefone ("entre em contato com a loja para agendar")
+```
+
+Ler antes da hora entrega ao segurado a mensagem do analista quando na verdade **já existe loja**. Quem lê tem de
+ler **depois**. A franquia vem ao lado, em linhas com título e valor — 📊 no para-brisa vieram **três**: valor para
+troca, desconto para reparo e valor para reparo (esta **sem franquia**).
+
+### 10.4 Os tipos de telefone, e por que o segurado não recebe nada
+
+📊 `GET /tipos-telefone` devolve: `2 COMERCIAL · 5 RECADO · 20 CELULAR SEGURADO · 21 CELULAR CORRETOR ·
+22 RESIDÊNCIA SEGURADO`. Em **3 das 4** capturas foi gravado o **21 (corretor)**, e o portal respondeu
+`PossuiTelefoneRecebeWhatsapp: false`. O **20** nunca foi usado. É a explicação medida do que a §6 supunha: o
+segurado não recebe aviso nenhum do portal, e a loja liga para a corretora. O tipo é lido **pelo nome** nessa
+lista, nunca por número cravado — o número pode mudar.
+
+### 10.5 A data do sinistro tem formato, e ele não é "só a data"
+
+📊 Em **4 de 4** capturas, a data do dano viaja como `AAAA-MM-DDT03:00:00.000Z` — data com hora e fuso, tanto na
+busca da apólice quanto na abertura do pedido. Mandar só a data não serve (D-E00110-07).
+
+### 10.6 O questionário do para-brisa, medido (Yelum)
+
+📊 **Três** perguntas, uma de cada vez: **posição do trincado** · **maior ou menor que 10 cm** (com as próprias
+opções dizendo "TROCA DO VIDRO" e "POSSIBILIDADE DE REPARO") · **o veículo tem sensor de direção/mudança de
+faixa?**. 📊 Ele **não** perguntou chuva, degradê, antena nem aquecimento — perguntas que apareciam em listas
+antigas nossas. E a régua dos 10 cm está **escrita na tela**, não em nós.
+
+### 10.7 A lista de seguradoras, e os 12 endereços novos
+
+📊 `GET /seguradoras/` devolve **38** seguradoras, cada uma com nome de fantasia, código e o apelido que a URL usa.
+Não há campo "ativo": a inatividade vem escrita **no nome** ("… (INATIVO)"). Endereços que este mapa não tinha:
+
+```
+seguradoras/                        a lista viva das 38
+apolices/itens-cobertos             o catálogo de peças DAQUELA apólice
+motivos-dano                        as causas DAQUELA peça  (confirma a §4: ler na tela, sempre)
+atendimentos/servicos-itens         os serviços de lataria/martelinho
+tipos-telefone                      §10.4
+questionarios/perguntas             o questionário, uma pergunta por rodada
+questionarios/regras-reparo         §10.2
+atendimentos/alterar-reparo         §10.2
+agendamentos/opcoes-disponiveis     §10.1 — o roteador
+lojas/consultar-distancias          distância e tempo até cada loja
+agendamentos/datas-disponiveis      os dias
+agendamentos/horarios-disponiveis   os horários do dia escolhido
+```
+
+### 10.8 O que vai ao WhatsApp do segurado, hoje
+
+Quando o portal conclui, o segurado recebe, nesta ordem: **o número do atendimento** · **a franquia** (cada linha
+com seu título) · **a loja** com endereço, ponto de referência e telefone · **o próximo passo em uma frase**.
+Quando o portal abre agenda, ele recebe **as lojas com distância e tempo** e os **dias** disponíveis, e a equipe é
+avisada de que há uma escolha a fazer. Quando alguma coisa para, ele recebe **o número primeiro** e o que fazer —
+e **nunca** a promessa de que o robô vai continuar, porque hoje ele não consegue retomar (P-E00110-A11).
+
+### 10.9 O que continua sem medição
+
+Agendamento **levado até confirmar** (o passo que libera marcar hora) · **vistoria e fotos** · **domicílio** · a
+lista de **motivos de cancelamento** · o **questionário** de vigia, farol, retrovisor, teto e para-choque ·
+**qualquer seguradora fora de Yelum e Porto** · **qualquer corretora fora da que capturou**. Cada um está em
+`PENDENCIAS.md` (P-E00110-*) e no roteiro de captura, em ordem de valor.

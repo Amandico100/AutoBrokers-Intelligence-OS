@@ -1,4 +1,4 @@
-# TAREFAS DO FOUNDER — a lista única para validar as EXTRA-001.1 → 001.7
+# TAREFAS DO FOUNDER — a lista única para validar as EXTRA-001.1 → 001.10
 
 > **Escrito em 20/09/2026.** É esta a lista que vale. Ela substitui a lista antiga do §6/§7 e junta,
 > sem repetir, tudo o que saiu das "Caixas do Founder" dos nove relatórios, do roteiro de canário e
@@ -414,6 +414,39 @@ garantem; sem elas o comando recusa com **409** e não manda nada.
 
 ---
 
+## 8.5 · Bloco F — o portal de vidros (001.10)
+
+> **O que mudou:** o robô aprendeu a abrir o pedido de vidro **em qualquer uma das 38 seguradoras** que o portal
+> publica (antes eram 3, e nenhuma delas era a Yelum — 📊 o motor antigo escrevia **zero** nas capturas reais), e
+> aprendeu a **ler o desfecho que o portal decidiu**: loja já escolhida, agenda com lojas e horários, analista ou
+> vistoria. Ele devolve ao segurado o número do atendimento, a franquia e o próximo passo.
+>
+> 🔴 **Nada disso está ligado.** Tudo mora atrás de uma chave que nasce desligada: `PORTAL_VIDROS_API_FIRST`.
+> O que atende hoje continua sendo o caminho antigo. Implantar **não muda nada** no ar — e é de propósito.
+
+- [ ] **F.1 Implantar**, nesta ordem: `smith-api` → `smith-worker` → `portal-worker`.
+      **O que esperar:** os três voltam verdes e o produto continua exatamente como estava. · **001.10**
+- [ ] **F.2 O canário** (é o que falta para dar o passo seguinte). Um acionamento de **lataria na Yelum**, com
+      **apólice e veículo de teste** — nunca de cliente. Antes dele, em `portal-worker` → Environment:
+      ```
+      PORTAL_CANARIO_ALLOWLIST = <o id do job do ensaio>
+      PORTAL_VIDROS_API_FIRST  = true
+      ```
+      **O que esperar na tela:** o segurado (você, no número de teste) recebe o número do atendimento, a franquia
+      e o próximo passo em português. **Se der errado:** a mensagem diz o número primeiro e **não promete** que o
+      robô continua — é assim de propósito, porque hoje ele não consegue retomar. **Ao terminar:** volte
+      `PORTAL_VIDROS_API_FIRST` para `false`. · **001.10 · D-E00110-F2**
+      ⚠️ A allowlist **só estreita**: vazia = comportamento de hoje; escrita errada = **barra tudo** (é o certo).
+- [ ] **F.3 As capturas que faltam** — entregue o roteiro à atendente da corretora:
+      `docs/canon/guias/ROTEIRO-DE-CAPTURA-PORTAL-DE-VIDROS.md`, seção "O que ainda falta".
+      **A nº 1 vale mais que todas as outras juntas:** um agendamento **levado até o fim** (escolher a loja, o dia,
+      o horário e confirmar) na Yelum, com vidro de porta ou vigia. É ela que libera o robô a marcar hora. · **P-E00110-A1**
+- [ ] **F.4 As 15 perguntas à atendente** — `docs/canon/guias/PERGUNTAS-PARA-A-ATENDENTE-PORTAL-DE-VIDROS.md`.
+      A **nº 12** ("dá para retomar um atendimento parado, por número?") **decide sozinha** a próxima SPEC. · **P-E00110-A11**
+- [ ] **F.5 Rotacionar as credenciais** que foram coladas no chat de novo em 20/09. · **P-PILOTO-09**
+
+---
+
 ## 9 · Depois de tudo — desfazer o ensaio
 
 - [ ] **9.1** Desativar o destino do **grupo de canário** (painel → Personalização → Suporte humano) —
@@ -442,6 +475,9 @@ garantem; sem elas o comando recusa com **409** e não manda nada.
 | 8 | **O nome do agente da Resulta** | a SPEC entregou o mecanismo; o nome é seu | relatório 001.2 · P-E0012-D3 |
 | 9 | **As senhas de Allianz e Mapfre** para os portais | sem elas o bloco E.3 continua com duas seguradoras de fora | relatório 001.6 |
 | 10 | **Destilar as seguradoras que faltam** — a ordem pelo prêmio da carteira está em `providers/susep/fila-onda-3.json` (19 seguradoras) | a base cresce **sem código novo**; hoje 8 seguradoras respondem | relatório 001.5 / 001.5.1 |
+| 11 | **D-E00110-F1 · o contato do segurado no portal** | hoje o portal recebe o telefone da corretora, marca `recebe WhatsApp = não` e a loja liga para a equipe. A recomendação (nota 88) é pôr **celular e e-mail do segurado**, mantendo a corretora como quem abriu. Só o canário prova que o portal aceita | `FOUNDER-DECISIONS.md` |
+| 12 | **D-E00110-F2 · quando ligar `PORTAL_VIDROS_API_FIRST`** | ligar antes do canário abriria pedido real sem nenhuma prova ao vivo (nota 20). A recomendação é: **só depois do canário verde** (nota 95) | `FOUNDER-DECISIONS.md` |
+| 13 | **D-E00110-F3 · a 001.10.1 (a continuação) entra antes da 001.8?** | sem continuação, **toda** parada depois do pedido aberto termina em mão humana. Recomendação 💭: sim (80); a 001.8 é isolamento entre corretoras (70), e sobe de prioridade quando entrar a 3ª corretora | `FOUNDER-DECISIONS.md` |
 
 ---
 

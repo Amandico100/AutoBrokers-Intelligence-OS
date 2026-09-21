@@ -1,4 +1,7 @@
-# Linha de base NOMINAL da bateria — 📊 20/09/2026, main b3d88f1, `cd backend && python -m pytest tests -q` → 35 failed · 1187 passed · 34 xfailed · 1 xpassed em 2.897 s
+# Linha de base NOMINAL da bateria — 📊 21/09/2026, HEAD b246a4f (EXTRA-001.10), `cd backend && python -m pytest tests -q`
+# → 36 failed na rodada; 35 após o conserto da ÚNICA falha nova (`test_o_pulso_360_nao_pertence_a_infocap`, consertada em
+#   b246a4f e reconferida ISOLADA com rc=0). 0 falhas sumiram ⇒ a lista abaixo continua valendo, inalterada.
+# (anterior: 📊 20/09/2026, main b3d88f1 → 35 failed · 1187 passed · 34 xfailed · 1 xpassed em 2.897 s)
 # Uso: depois da bateria de uma SPEC, compare a lista de FAILED com esta. Falha que não está aqui = da SPEC até prova em contrário.
 # Quem fecha uma SPEC regrava este arquivo com a lista nova e a data.
 #

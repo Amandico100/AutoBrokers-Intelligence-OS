@@ -4,8 +4,13 @@
 > **Para que serve:** cada acionamento que você faz no portal é a única maneira de
 > o robô aprender a fazer aquilo sozinho. Este roteiro diz, tela por tela, o que
 > clicar, o que salvar e como nomear.
-> **v1.0 · 13/09/2026** · baseado em quatro capturas já medidas (Yelum lataria
-> 09/09, Yelum vidro de porta 15/08, Porto lanterna 15/08, Porto roda 15/08)
+> **v2.0 · 21/09/2026** · baseado em **cinco** capturas já medidas (Yelum para-brisa
+> 20/09 ✅ **nova**, Yelum lataria 09/09, Yelum vidro de porta 15/08, Porto lanterna
+> 15/08, Porto roda 15/08).
+>
+> 🔴 **O que mudou na v2.0:** a captura do **para-brisa** foi feita e respondeu quase
+> tudo o que se esperava dela (veja a §3.1). A lista do que ainda falta foi **reescrita
+> por ordem de valor** e está na **§5** — a nº 1 vale mais que todas as outras juntas.
 
 ---
 
@@ -22,7 +27,7 @@
 2. [O fluxo tela por tela](#2-o-fluxo-tela-por-tela)
 3. [O que muda em cada serviço](#3-o-que-muda-em-cada-serviço)
 4. [O que muda em cada seguradora](#4-o-que-muda-em-cada-seguradora)
-5. [As 12 capturas prioritárias — checklist](#5-as-12-capturas-prioritárias--checklist)
+5. [O QUE AINDA FALTA CAPTURAR — em ordem de valor](#5-o-que-ainda-falta-capturar--em-ordem-de-valor-v20--21092026)
 6. [O que enviar ao Founder no fim](#6-o-que-enviar-ao-founder-no-fim)
 7. [O que NÃO fazer](#7-o-que-não-fazer)
 
@@ -480,7 +485,27 @@ A tela é sempre a mesma; muda a peça escolhida no passo 3 e, por causa dela, o
 questionário do 80%. 🔴 **Em todos os serviços, sem exceção: print da lista de
 peças aberta e da lista de motivos aberta.**
 
-### 3.1 · PARA-BRISA 🔴 **prioridade máxima**
+### 3.1 · PARA-BRISA ✅ **CAPTURA FEITA — 20/09/2026**
+
+> ✅ **Esta captura já foi feita e já virou código.** O que ela respondeu, medido:
+>
+> - O questionário do para-brisa na Yelum tem **três** perguntas, uma de cada vez:
+>   **posição do trincado** · **o trincado é maior ou menor que 10 cm?** · **o veículo
+>   tem sensor de direção / mudança de faixa?**
+> - 📊 Ele **NÃO** perguntou sensor de chuva, faixa degradê, antena nem aquecimento —
+>   três das cinco perguntas que este roteiro esperava **não existem** nessa tela.
+> - A medida dos **10 cm** está escrita **na própria pergunta do portal**. Não é regra nossa.
+> - 🔴 O **reparo existe e é uma escolha do segurado**: quando a resposta é "menor", o
+>   portal abre uma caixa oferecendo o reparo (grátis, ~30 min) e grava a resposta.
+>   Por isso o robô passou a perguntar isso **na conversa, antes** de abrir o pedido.
+> - Com o reparo aceito, o portal **fechou direto com uma loja, sem abrir agenda**.
+>
+> ⚠️ **O que esta captura NÃO respondeu:** as telas de agendamento (escolher dia e hora
+> e confirmar) — porque não houve agenda. É exatamente o item **nº 1 da §5**.
+
+O texto abaixo é o que se esperava antes da captura; fica como história.
+
+### 3.1.a · PARA-BRISA — o que se esperava antes (13/09/2026)
 
 - **Peça na lista:** `VIDRO PARABRISA` (aparece como `VIDRO DIANTEIRO`).
 - **Nunca capturamos o questionário desta peça** — e é a peça mais comum.
@@ -673,59 +698,132 @@ A Bradesco aparece em **dois lugares** e não sabemos qual é o certo:
 
 ---
 
-## 5. As 12 capturas prioritárias — checklist
+## 5. O QUE AINDA FALTA CAPTURAR — em ordem de valor (v2.0 · 21/09/2026)
 
-- [ ] **1 · PARA-BRISA na Yelum (Liberty), do início ao agendamento confirmado, escolhendo LOJA**
-      Telas: passo 3 · **80% inteiro** · passo 5 com o número · **calendário com
-      dias livres** · **grade com horários** · confirmar · concluído.
-      ⚠️ Se o primeiro dia não tiver horário, **troque de dia** — não desista.
-      **Destrava:** as perguntas do para-brisa (sensor de chuva, faixa, ADAS) **e**
-      o clique de confirmar agendamento. É a captura que mais vale de todas.
+> 🔴 **Leia esta ordem como ela está.** A nº 1 vale mais que todas as outras juntas:
+> sem ela o robô **não pode marcar dia e hora** para ninguém, e é isso que sobra de
+> trabalho manual em cima de você.
+>
+> **Em TODAS elas, sem exceção:** grave o **HAR "with content"** ligado **antes** de
+> escolher a seguradora (§1.2 e §1.6), salve o **HTML de cada tela** (§1.3) e mande
+> junto um **TXT** com a estrutura da apólice (seguradora, tipo de veículo, o que a
+> apólice cobre) — **não precisa de vídeo**.
 
-- [ ] **2 · A mesma coisa, escolhendo DOMICÍLIO, num CEP com cobertura**
-      Telas: cartão `Serviço a domicílio` · condições · dia e hora do técnico ·
-      **formas de pagamento** · confirmação.
-      **Destrava:** o atendimento em casa — hoje o robô nem sabe que ele existe.
+---
 
-- [ ] **3 · Um acionamento numa apólice COM VISTORIA**
-      Telas: aviso de vistoria · pedido de telefone · **anexar fotos** ·
-      confirmação de vistoria concluída.
-      **Destrava:** o link de fotos que você cola à mão hoje, e o envio das fotos
-      pelo sistema.
+### ✅ 1 · UM AGENDAMENTO LEVADO ATÉ O FIM — a captura nº 1
 
-- [ ] **4 · RETROVISOR — lista de peças aberta e o 80%**
-      **Destrava:** saber se capa/pisca/regulagem são **opções da lista** ou
-      **perguntas** — hoje o sistema chuta.
+**O que fazer, exatamente:**
 
-- [ ] **5 · LANTERNA BIPARTIDA — lista aberta e o 80%**
-      **Destrava:** `bipartida da mala` × `bipartida lateral`, que é a sua
-      pergunta e hoje o robô não sabe fazer.
+1. Na **Yelum**, abra um acionamento de **vidro de PORTA** ou de **VIGIA** (o vidro
+   traseiro), com o vidro **quebrado ou trincado grande** — **não** uma trinca
+   pequena. Trinca pequena vira reparo, e reparo **fecha sem agenda** (já sabemos).
+2. Escolha uma cidade **que tenha loja** (uma cidade grande da região).
+3. Vá até o fim, **sem desistir**:
+   - escolha a **loja** na lista (print da lista inteira, com distância e endereço);
+   - escolha um **dia** no calendário (print do calendário com os dias livres);
+   - escolha um **horário** na grade (print da grade cheia);
+   - clique em **CONFIRMAR** e espere a tela de conclusão aparecer inteira.
+4. ⚠️ **Se não aparecer nenhum horário, troque de dia** — vá testando até achar um dia
+   com horário livre. Se nenhum dia tiver, anote isso no resumo e avise: é fato novo.
+5. Salve também a **tela final** (HTML + print) e, se houver, o **comprovante**.
 
-- [ ] **6 · FAROL — lista aberta e o 80% (+ oferta de polimento, se aparecer)**
-      **Destrava:** convencional × LED × xenon × milha — e o polimento de farol.
+**Por que ela vale tanto:** o botão de confirmar agendamento **nunca foi capturado**.
+📊 Nas 5 capturas que temos, ele tem **zero** ocorrências — e por isso o robô está
+proibido de usá-lo. Com esta captura, ele passa a marcar dia e hora sozinho.
 
-- [ ] **7 · VIGIA — o 80%**
-      **Destrava:** desembaçador térmico e película, nunca vistos.
+---
 
-- [ ] **8 · `Consultar atendimento` + Área do Segurado** (captura separada, §2.12)
-      **Destrava:** acompanhar o pedido sozinho, sem ligar para a seguradora.
+### 2 · A MESMA COISA, mas escolhendo a loja SEM agendar
 
-- [ ] **9 · Uma seguradora nova, só até o passo 3** — Allianz, HDI, Tokio Marine,
-      Mapfre ou Azul
-      **Destrava:** a prova de que as 38 usam o mesmo motor. Hoje só temos duas
-      medidas e sete seguradoras marcadas como "sem evidência".
+Se, na tela das lojas, o portal oferecer algo como **"direcionar para a loja"** (em vez
+de "agendar"), faça esse caminho numa segunda vez e vá até o fim. É um botão diferente
+do nº 1, e também nunca foi visto.
 
-- [ ] **10 · BRADESCO — o teste duplo da §4.4**
-      **Destrava:** decidir de vez qual é o portal de vidros da Bradesco. É o
-      único caso em que a resposta pode ser "é outro sistema".
+---
 
-- [ ] **11 · LATARIA com VÁRIAS peças e "mais de um item danificado = Sim"**
-      **Destrava:** o único serviço multi-peça. Hoje o sistema só sabe pedir uma
-      coisa por vez.
+### 3 · UM CASO EM QUE O PORTAL PEÇA FOTOS OU VISTORIA
 
-- [ ] **12 · RODA / PNEU / SUSPENSÃO na Porto, numa apólice COM essa cobertura**
-      **Destrava:** um ramo inteiro. A única tentativa que temos morreu no
-      passo 1 por falta de cobertura.
+**O que fazer:** abra um acionamento em que você **desconfie** que vai pedir vistoria e
+siga até a tela de fotos aparecer. Salve a tela do pedido de vistoria, a tela de
+**anexar fotos** e o que vier depois.
+
+💭 **Candidatos** (palpite, não medido): **farol LED / Matrix**, **retrovisor com LED**,
+e a **Porto** de modo geral. Se você já souber de uma peça que sempre pede vistoria,
+use essa — e escreva no resumo qual foi.
+
+**Por que:** o portal tem um ramo inteiro de vistoria que o robô lê e **não conhece** —
+📊 zero ocorrências nas 5 capturas. Hoje todo caso desses para e vira trabalho seu.
+
+---
+
+### 4 · SERVIÇO A DOMICÍLIO, NUMA CAPITAL
+
+**O que fazer:** abra um acionamento usando um **CEP de capital** (onde o atendimento em
+casa costuma existir) e vá até a tela em que o portal ofereça **"a domicílio"**. Salve:
+o cartão da oferta, as condições, o dia/hora do técnico e a confirmação.
+
+📊 Nas capturas que temos, o portal respondeu **"não atende a domicílio"** nesse CEP —
+então a tela nunca apareceu. É a opção mais confortável para o segurado e o robô nem
+sabe que ela existe.
+
+---
+
+### 5 · A LISTA DE MOTIVOS DE CANCELAMENTO — **só olhar, não cancelar**
+
+**O que fazer:** num atendimento já aberto (pode ser um de teste), com o HAR **gravando**,
+clique em **cancelar** até a tela que mostra a **lista de motivos**, tire o print da
+lista aberta… e **NÃO confirme**. Feche a tela.
+
+**Por que:** o robô conhece **um** código de motivo, tirado do programa do portal, e
+nunca viu a lista de onde ele sai. Cancelar com o motivo errado deixa registrado na
+seguradora uma razão que não é a verdadeira.
+
+---
+
+### 6 · UM ACIONAMENTO DE VIGIA, UM DE FAROL E UM DE RETROVISOR — até o 80 %
+
+**O que fazer:** três acionamentos separados (qualquer seguradora), cada um indo até a
+tela das **perguntas específicas** (os 80 %) e **parando ali, sem enviar**. Print de
+**cada pergunta** e de **cada lista de opções aberta**.
+
+**Por que:** 📊 só conhecemos o questionário do **para-brisa** e do **vidro de porta**.
+Vigia, farol, retrovisor, teto e para-choque nunca foram vistos — e toda pergunta
+desconhecida faz o robô parar **depois** de o pedido já existir, que é o pior momento.
+
+---
+
+### 7 · UM ACIONAMENTO EM OUTRA SEGURADORA — pelo menos o passo 1 e a lista de peças
+
+**Qual:** **Porto** (esta, se possível, completa), **Azul**, **Tokio Marine**, **HDI** ou
+**Allianz** — qualquer uma delas serve; duas é melhor que uma.
+
+**O mínimo aceitável:** o **passo 1** (CPF, placa, data) e a **lista de peças aberta**
+(print da lista inteira, rolando até o fim).
+
+**Por que:** 📊 o portal publica **38** seguradoras e nós só medimos **duas**. O robô já
+abre pedido em todas elas, mas o **questionário** de cada uma é desconhecido.
+
+---
+
+### 8 · UM ATENDIMENTO ABERTO POR OUTRA CORRETORA
+
+**O que fazer:** o mesmo roteiro, feito por **outra corretora** (outro acesso ao portal).
+Pode ser o caso mais simples que houver.
+
+**Por que:** todas as capturas que temos vêm do mesmo acesso. O portal identifica a
+corretora no começo, e não sabemos o que muda com outra. O produto é para **qualquer**
+corretora, e foi provado com uma só.
+
+---
+
+### Ficou de fora desta lista (continua valendo, mas depois)
+
+**Bradesco** (o teste duplo da §4.4 — ainda pode ser outro sistema), **roda/pneu/suspensão**
+na Porto com apólice que cubra, **lataria com várias peças**, e a tela
+**"Consultar atendimento" / Área do Segurado** — esta última sobe de prioridade **na
+hora em que alguém responder** se dá para retomar um atendimento parado pelo número
+(é a pergunta nº 12 do arquivo `PERGUNTAS-PARA-A-ATENDENTE-PORTAL-DE-VIDROS.md`).
 
 ---
 

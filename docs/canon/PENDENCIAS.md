@@ -638,7 +638,7 @@ está proibido de aplicar migration.
 | **P-47** | `infer_ramo_servico` devolve `"residencial"` genérico para *"encanador"* e *"eletricista"* — e `"residencial"` não é subserviço de nada, então cai em `subservico_invalido` | 🤖 | o classificador precisa nomear o subserviço. Não foi criado alias porque adivinhar qual dos cinco seria chute |
 | **P-48** | `unknown_step_policy` e `coverage_guardrails` são **campos declarativos sem consumidor** | 🤖 | nascem anotados, não escondidos (CLAUDE.md §11.1) |
 | **P-49** | **Nenhum dos corredores novos foi exercitado contra a URA real** | 🧑 | estão em modo teste com o freio; `DISPATCH_FINALIZE_LIVE_PLAYBOOKS` não os inclui |
-| **P-50** | **Vidros sem evidência em 7 seguradoras** — allianz, tokio, mapfre, yelum, hdi, alfa, bradesco | 🧑 | o Atlas precisa ver um atendimento de vidro nessas. Hoje elas caem em handoff, que é o certo |
+| **P-50** | **Vidros sem evidência em 7 seguradoras** — allianz, tokio, mapfre, yelum, hdi, alfa, bradesco. **`CONTINUA` (EXTRA-001.10, 21/09):** a abertura do pedido passou a resolver a seguradora **por dado** contra a lista ao vivo (📊 38 seguradoras, gate G3), e a Yelum ganhou 3 capturas reais; mas **evidência de questionário** só existe para Yelum e Porto → P-E00110-C-02 | 🧑 | o Atlas precisa ver um atendimento de vidro nessas. Hoje elas caem em handoff, que é o certo |
 | **P-51** | **Residencial sem evidência** em yelum, tokio, zurich, azul, alfa, mapfre. Bradesco só tem a entrada do menu (`*2.* Residencial`), sem subserviços | 🧑 | mesmo caminho: observação |
 | **P-52** | **Cobertura de URA baixa limita o corredor**: 📊 Tokio 12%, Mapfre 25%, Zurich 28%, Yelum 34%, HDI 36%, Porto 37% | 🧑 | o pareamento da AutoFleet (auto/frota) é o que mais move esses números |
 | **P-53** | **Twilio / telefonia** — credenciais no ambiente, zero código. É o que falta para a **Youse** ter corredor | 🧑 | sem prioridade agora, por decisão do Founder (03/08) |
@@ -10514,6 +10514,7 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 📊 Medido 08/09: o atendimento roda em 1 processo uvicorn sem `--workers`; o buffer processava as conversas prontas em série; envio ao WhatsApp era síncrono dentro do event loop (`requests.post` timeout 30 s + `sleep 0.7`); LLM sem timeout/retry. Teto seguro estimado 3–4 simultâneos por corretora e uma corretora travada atrasava todas. Hoje (U1, 08/09) o envio saiu do laço e o buffer ficou paralelo com semáforo — alívio, não solução. **Destrava:** desenho + execução de isolamento por tenant (fila/worker por corretora ou processos múltiplos, timeout no modelo, backpressure, prova com duas corretoras e uma delas travada). **Alvo do Founder:** ≥4 atendimentos simultâneos por corretora e nenhuma interferência entre corretoras. **Dono:** 🤖. **Custo de esquecer:** com centenas de corretoras, um travamento em uma para todas — "irreparável para a AutoBrokers" (Founder).
 
 ## P-PILOTO-02 · o acionamento pelo portal não aparece na Fila nem na Ficha
+**`PARCIAL` (EXTRA-001.10, 21/09):** feitos o work_run do acionamento, o `agent_id`, o número durável e a **Ficha** mostrando o caso; agenda/vistoria/paradas não concluem o run, de propósito, para a Fila enxergar. **Falta o front da Fila** → P-E00110-C-03.
 📊 `lib/atendimento/casos.ts` lê 5 tabelas e nenhuma é `portal_jobs`; `portal_tool.py:421` grava só `session_id` (colunas `work_run_id`, `agent_id`, `operation_key` existem e ficam vazias). U4 (08/09) deu uma tela em Conectores → Portais. **Destrava:** preencher o elo no insert; `projetarCasos` lê `portal_jobs`; fase "no portal da seguradora"; coluna durável `protocolo`. **Dono:** 🤖.
 
 ## P-PILOTO-03 · o PDF do segurado some da Ficha
@@ -10533,9 +10534,11 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 **`CONTINUA` (EXTRA-001.4, 17/09):** feitos — corpus regenerado com setembro (📊 4.470 telas, 0 sujas), `LINHA-DE-BASE-DE-ROTAS.json` commitada (73 rotas; `--comparar-com` exit 0 na fatia 1 e na fatia 2) e a frase trocada (📊 `grep -c "acesso ao Espelho"` = 0). Faltam o inventário `--formato markdown` e o roteiro (rodam mutações sobre o produto; ficaram para depois do Implantar) e a rotina automática de fim de dia.
 
 ## P-PILOTO-07 · portal de vidros: passo 7 de verdade e fotos
+**`PARCIAL` (EXTRA-001.10, 21/09):** o passo 7 é **lido e apresentado** (loja, endereço, telefone, franquia, próximo passo; lojas/datas/horários quando o portal abre agenda). **Agendar e fotos continuam CANDIDATE** e não saem (G7); destravam com as capturas P-E00110-A1 e A3.
 📊 `adaptive.py:1152-1163` para no protocolo e só recomenda loja/domicílio; `vidros_apifirst.py:33` "Não escolhe loja. Não agenda."; zero linhas para anexo de fotos (desenho atual: repassar o link de vistoria). **Destrava:** HAR + vídeo/prints dos acionamentos manuais da Regina em `docs/intake/MATERIAIS/PORTAL VIDROS/` → `portal_factory.py lab har/api-infer` → jornada até o agendamento; decidir fotos (nossas × link). **Dono:** 🧑 material + 🤖.
 
 ## P-PILOTO-08 · tela desconhecida no portal não aprende
+**`FECHADA no backend, com prova` (EXTRA-001.10, 21/09):** `registrar_tela_cega(ramo="vidros")` é escrita pelo portal, provada no gate G9 com dois tenants isolados, e job de sucesso nunca aprende. ⚠️ O **leitor** da fila continua inexistente — já é pendência própria, não desta. Resíduo: P-E00110-C-07.
 📊 `tela_cega` (SPEC-087) só é escrita pelo corredor de URA; o worker do navegador grava `debug_dom` num jsonb que ninguém varre. **Destrava:** estender a fila de aprendizado ao portal. **Dono:** 🤖.
 
 ## P-PILOTO-09 · credenciais dentro da árvore do repositório
@@ -10999,3 +11002,95 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E0017-14 · não existia jeito de "esquecer" um número de teste; a memória do agente mora em 6 lugares
 📊 20/09/2026: além de `conversations`/`messages`, o agente lembra por `checkpoints`/`checkpoint_writes`/`checkpoint_blobs` (estado do grafo; 📊 um número de teste soma 320 checkpoints e 3.347 blobs/writes), `user_memories`, `session_summaries`, `conversation_logs`, `saudacoes_enviadas` e chaves do Redis. Criado `backend/scripts/esquecer_numero_de_teste.py` (ensaio por padrão; só aceita número do conjunto de teste; backup antes; `--restaurar`). **Destrava (futuro):** virar função do produto — "esquecer contato" é também direito do titular (LGPD) para qualquer corretora. **Dono:** 🤖. **Custo de esquecer:** pedido de exclusão de um segurado real sem ferramenta.
+
+---
+
+# Pendências da SPEC-EXTRA-001.10 — o portal de vidros de ponta a ponta (21/09/2026)
+
+> A SPEC entregou a jornada API-first inteira **atrás da flag `PORTAL_VIDROS_API_FIRST`, que continua DESLIGADA**.
+> O que roda hoje em produção é o caminho DOM. Tudo abaixo é o que ficou de fora, com o que destrava cada item.
+
+## P-E00110-A1 · 🧑 falta a captura de um AGENDAMENTO CONCLUÍDO — é ela que libera o robô a marcar dia e hora
+📊 20/09/2026: `POST /agendamentos` e `POST /direcionamentos` existem no bundle do portal e têm **ZERO exercícios** nas 5 capturas; a única captura com agenda (vidro de porta) trouxe 1 loja e `Blocos: []` de horários, ou seja, nem os horários foram vistos. Por isso os dois endpoints ficaram marcados CANDIDATE e **não saem** (gate G7). **Destrava:** 1 acionamento real na Yelum, vidro de PORTA ou VIGIA (troca, não trinca pequena), numa cidade com loja, indo até o fim — escolher a loja, o dia, o horário e CONFIRMAR — com HAR "with content" gravado desde antes de escolher a seguradora; roteiro em `guias/ROTEIRO-DE-CAPTURA-PORTAL-DE-VIDROS.md` §"o que ainda falta", item 1. **Dono:** 🧑 (captura) + 🤖 (jornada). **Custo de esquecer:** o segurado escolhe loja e dia na conversa, e uma pessoa da equipe tem de repetir isso dentro do portal — todo dia, em todo caso com agenda.
+
+## P-E00110-A2 · cancelar exige um catálogo que nunca foi visto (`motivos-cancelamento`)
+📊 20/09/2026: `PUT /atendimentos/cancelar` aparece 1× no HAR novo e manda `codigoMotivoCancelamento: 39` — mas `GET .../motivos-cancelamento` tem **0 exercícios**, então o `39` é uma constante lida do bundle, não um motivo conferido. Cancelar ficou escrito como função e **sem jornada própria**. **Destrava:** abrir a tela de cancelar num atendimento de teste, com o HAR gravando, e **só olhar a lista de motivos** (sem cancelar). **Dono:** 🧑 captura + 🤖. **Custo de esquecer:** um cancelamento do robô com motivo errado fica registrado na seguradora com a razão errada.
+
+## P-E00110-A3 · 🧑 falta a captura de VISTORIA/FOTOS — o ramo inteiro do roteador está cego
+📊 20/09/2026: as chaves `PermiteVistoriaAmbas`, `PermiteVistoriaLoja`, `PermiteVistoriaMobile` e `RealizarVistoria` existem no roteador do portal e têm **0 exercícios** nas 5 capturas; o código as lê e, por não conhecer a tela seguinte, **para com dossiê** (é o comportamento certo). **Destrava:** 1 acionamento em que o portal peça fotos ou vistoria — candidatos 💭: farol LED/Matrix, retrovisor com LED, Porto. **Dono:** 🧑 captura. **Custo de esquecer:** todo caso de vistoria vira trabalho manual, sem o robô nem saber avisar o que vem depois.
+
+## P-E00110-A4 · `_LIMITE_CM` continua cravado no caminho DOM
+📊 20/09/2026: a régua dos "10 cm" que decide troca × reparo **vem do portal** (a pergunta 8 do questionário do para-brisa diz o número na própria tela), e o caminho API-first passou a lê-la de lá; o caminho DOM ainda carrega a constante. **Destrava:** o DOM ler o número da tela, como o API-first faz. **Dono:** 🤖. **Custo de esquecer:** no dia em que uma seguradora usar outra medida, o robô decide troca × reparo pelo número errado — e o vidraceiro vai com a peça errada.
+
+## P-E00110-A5 · 🔴 nome de atendente aparece em ~114 linhas de código Python (CLAUDE.md §13.9)
+📊 20/09/2026: `grep` por nomes próprios de atendente nos `.py` do backend → **~114 linhas**, em comentários, docstrings e nomes de fixture. Nenhuma delas decide comportamento, mas o produto é de **qualquer corretora** e nome de pessoa não entra em código. **Destrava:** trocar por "a atendente da corretora" e um teste que reprove nome próprio novo. **Dono:** 🤖. **Custo de esquecer:** uma corretora nova abre o código (ou um relatório gerado dele) e lê o nome de uma funcionária de outra.
+
+## P-E00110-A6 · os testes desta área são scripts: `pytest <arquivo>` isolado dá INTERNALERROR
+📊 21/09/2026: `python -m pytest tests/test_e00110_*.py` isolado quebra na coleta; `python tests/test_e00110_*.py` roda e dá rc=0, e a bateria inteira também os coleta e passa. **Destrava:** dar aos scripts uma função `test_*` que chame `main()` (como o `test_o_protocolo_tem_policia.py` faz), ou um conftest que os isole. **Dono:** 🤖. **Custo de esquecer:** quem tenta rodar um teste sozinho conclui que ele está quebrado e passa a ignorá-lo.
+
+## P-E00110-A7 · o replay dos HAR **pula** fora da máquina do Founder
+📊 20/09/2026: os HAR moram em `docs/intake/`, que **não é versionado**; os testes do fio detectam a ausência e pulam em silêncio. Na máquina do Founder eles rodam sobre 3 capturas reais; em CI, não rodam. **Destrava:** decidir onde guardar as capturas anonimizadas (elas têm CPF, placa e nome dentro) ou gerar um dublê derivado delas, e fazer o teste **falhar** — não pular — quando a fonte esperada faltar em CI. **Dono:** 🤖 + 🧑 (decisão sobre guardar). **Custo de esquecer:** o gate mais forte da SPEC é invisível para qualquer máquina que não seja a do Founder.
+
+## P-E00110-A8 · família sem lista própria de causas pode parar DEPOIS do protocolo
+📊 20/09/2026: as causas do dano vêm do portal por peça (`GET /motivos-dano`), e a coleta usa as causas **medidas** como dica. Para as famílias sem captura própria (vigia, farol, retrovisor, teto, para-choque), a dica é genérica: se o portal listar uma causa que o segurado não disse, o pedido **já terá nascido** e a parada acontece depois da fronteira — quando não há mais como voltar sozinho. **Destrava:** P-E00110-A14 (as capturas das 5 famílias) ou a continuação (A11). **Dono:** 🤖 + 🧑. **Custo de esquecer:** paradas evitáveis, exatamente no ponto em que elas custam mais.
+
+## P-E00110-A9 · o caminho DOM escolhe `OUTROS` quando devia perguntar
+📊 20/09/2026: `explicar_match` do caminho DOM cai em `OUTROS` para descrições que o catálogo cobre, porque casa por semelhança. O API-first passou a exigir igualdade; o DOM não. **Destrava:** o DOM usar o mesmo casador. **Dono:** 🤖. **Custo de esquecer:** o pedido nasce com a peça genérica e a loja recebe um chamado que não diz o que consertar.
+
+## P-E00110-A10 · `tzdata` não está no `requirements`
+📊 20/09/2026: o cálculo do `DataSinistro` usa o fuso da corretora; em imagem Linux enxuta, sem `tzdata`, a busca do fuso levanta exceção. Hoje funciona porque a imagem atual tem o pacote por acaso. **Destrava:** declarar `tzdata` no `requirements`. **Dono:** 🤖. **Custo de esquecer:** um rebuild da imagem derruba a abertura de pedido com um erro que não parece ter nada a ver.
+
+## P-E00110-A11 · 🔴 NÃO EXISTE CONTINUAÇÃO: o token do portal vive só em memória
+📊 20/09/2026: o `token_autorizacao` nasce no `POST /atendimentos` e é guardado **apenas no objeto da sessão**; nada durável. Consequência medida no desenho: **toda** parada depois da fronteira — agenda, vistoria, pergunta nunca vista, erro do portal — termina em mão humana, mesmo com o número do atendimento já na mão do segurado. **Destrava:** guardar o atendimento (número + o que já foi respondido) de forma durável e reabrir pelo "Consultar atendimento" do portal — é o coração da **SPEC-EXTRA-001.10.1**; depende também da resposta nº 12 da atendente ("dá para retomar por número?"). **Dono:** 🤖. **Custo de esquecer:** o robô abre o pedido e entrega o resto do trabalho para uma pessoa, que é justamente o que a SPEC existe para evitar.
+
+## P-E00110-A12 · `test_o_que_acontece_quando_o_agente_liga` está vermelho desde antes desta SPEC
+📊 21/09/2026: está na linha de base da bateria (`reports/BATERIA-LINHA-DE-BASE.txt`), não foi introduzido aqui e não foi consertado aqui. **Destrava:** triagem própria. **Dono:** 🤖. **Custo de esquecer:** falha antiga vira paisagem e esconde uma falha nova parecida.
+
+## P-E00110-A13 · o rótulo do LADO da peça ainda não é conferido contra a tela
+📊 20/09/2026: "lado do motorista" × "lado do carona" é uma das perguntas do portal, e o texto exato do rótulo varia. A coleta pergunta o lado, mas a conferência contra o rótulo publicado na tela só existe para as famílias capturadas. **Destrava:** as capturas de A14. **Dono:** 🤖 + 🧑. **Custo de esquecer:** pedido aberto para o lado errado do carro — e é pedido novo, não correção.
+
+## P-E00110-A14 · 🧑 falta ver o questionário de VIGIA, FAROL, RETROVISOR, TETO e PARA-CHOQUE
+📊 20/09/2026: o questionário do para-brisa foi medido (3 perguntas: posição · maior/menor que 10 cm · sensor de direção/faixa) e o de vidro de porta também; as outras 5 famílias **nunca foram vistas**. O código coleta o que consegue e **trava o pedido** diante de pergunta desconhecida. **Destrava:** 1 acionamento de cada família (qualquer seguradora) até o 80 %, sem enviar. **Dono:** 🧑. **Custo de esquecer:** cinco famílias inteiras que sempre param, quando poderiam ser coletadas antes.
+
+## P-E00110-A15 · Mitsui × Toyota podem colidir no apelido
+📊 20/09/2026: a lista ao vivo tem `MITSUI` e `TOYOTA` como slugs distintos, e o seguro Toyota é operado pela Mitsui — um segurado que diz "Toyota" pode estar em qualquer das duas. A resolução atual escolhe pelo nome escrito. **Destrava:** conferir contra a apólice (o `GET /apolices` só responde para a seguradora certa) antes de fixar o slug. **Dono:** 🤖. **Custo de esquecer:** preflight que falha sem motivo aparente, ou pedido aberto na seguradora errada.
+
+## P-E00110-A16 · o DOM confunde peças com nome parecido ("para-brisa traseiro", "janela lateral traseira")
+📊 20/09/2026: no caminho DOM, descrições como essas casam com a peça errada do catálogo. O API-first exige identidade conferida (conserto R1); o DOM não. **Destrava:** o DOM usar a mesma conferência. **Dono:** 🤖. **Custo de esquecer:** a loja recebe o pedido de um vidro que não é o quebrado.
+
+## P-E00110-A17 · 🔴 teste que toca `portal_tool` precisa FALHAR ALTO se alcançar o banco real
+📊 20/09/2026 (incidente declarado no relatório §4): um script de julgamento alcançou o **cliente Supabase REAL** com um `company_id` falso porque esqueceu o dublê. As duas chamadas devolveram `APIError` e **nada foi gravado** — 📊 SELECT confirmou **0 linhas** em `tela_cega`, `work_runs` e `portal_jobs` para `company_id like 'aaaaaaaa-0000-4000-8000-%'`. Só não houve estrago porque o banco recusou. **Destrava:** uma trava de ambiente nos testes: alcançar o cliente real sem dublê levanta exceção imediata, com teste de controle que prova que ela dispara. **Dono:** 🤖. **Custo de esquecer:** da próxima vez o banco aceita, e um teste escreve em produção.
+
+## P-E00110-A18 · `abandonar` tem 1 exercício e nenhuma decisão
+📊 20/09/2026: `PUT /atendimentos/abandonar` aparece 1× (captura da Porto) e continua CANDIDATE. Não se decidiu se o robô pode abandonar um atendimento começado. **Destrava:** decisão do Founder (abandonar × deixar aberto × cancelar com motivo) + 1 captura. **Dono:** 🧑 decisão + 🤖. **Custo de esquecer:** atendimentos pela metade acumulando na seguradora, sem ninguém saber de quem são.
+
+## P-E00110-C-01 · 🧑 falta a captura de serviço a DOMICÍLIO
+📊 20/09/2026: `GET /transportes-proprios/consultas-cep` respondeu `AtendeServicoMovel:false` nas capturas, então a tela de domicílio **nunca apareceu**. Domicílio é o que transforma o serviço em conveniência. **Destrava:** 1 acionamento com CEP de capital, onde o portal ofereça "a domicílio". **Dono:** 🧑. **Custo de esquecer:** o robô nunca oferece a melhor opção que a seguradora tem.
+
+## P-E00110-C-02 · 🧑 falta 1 captura de passo 1 + itens cobertos de OUTRA seguradora
+📊 20/09/2026: das 38 seguradoras publicadas, só **Yelum (LIBERTY)** e **Porto** têm captura. As outras 36 estão cobertas "por construção" — mesmo caminho de dado, provado pelo gate G3 — mas o **questionário** de cada uma é desconhecido. **Destrava:** 1 acionamento em Porto (completo), Azul, Tokio, HDI ou Allianz, pelo menos passo 1 + a lista de peças. **Dono:** 🧑. **Custo de esquecer:** a primeira seguradora nova vira parada com dossiê em vez de atendimento.
+
+## P-E00110-C-03 · a Fila do painel ainda não lê o acionamento do portal
+📊 20/09/2026: a Ficha já mostra o acionamento (work_run com `agent_id` e número durável), e agenda/vistoria/paradas **não concluem** o run de propósito, para que a Fila enxergue. Mas `lib/atendimento/casos.ts` continua sem ler o run do portal, então a fase legível ("no portal da seguradora", "esperando agenda") não aparece na tela. **Destrava:** `projetarCasos` ler o run do portal e mostrar a fase. **Dono:** 🤖 (front). **Custo de esquecer:** a equipe não vê o que o robô está fazendo e refaz no portal o que já está feito.
+
+## P-E00110-C-04 · 🧑 nenhuma captura veio de uma SEGUNDA corretora
+📊 20/09/2026: as 5 capturas são todas do mesmo acesso. O portal identifica a corretora no `PUT /atendimentos/corretores`, e não se sabe o que muda com outro documento. **Destrava:** 1 atendimento aberto por outra corretora, com HAR. **Dono:** 🧑. **Custo de esquecer:** o produto é para **qualquer** corretora (CLAUDE.md §13.9) e foi provado com uma só.
+
+## P-E00110-C-05 · 11 perguntas da coleta ainda não foram confirmadas numa tela real
+📊 20/09/2026: as perguntas por família cobrem 6 famílias; **11** delas nunca foram vistas numa tela do portal. Elas são **coletadas sem travar** o pedido (só as confirmadas travam), o que é o desenho certo — mas até a confirmação elas podem estar perguntando o que o portal não pergunta. **Destrava:** as capturas de A14. **Dono:** 🤖 + 🧑. **Custo de esquecer:** o segurado responde perguntas à toa, e o robô ainda assim para na tela real.
+
+## P-E00110-C-06 · `cpf:<12 hex>` é PSEUDÔNIMO, não anonimização
+📊 20/09/2026: o identificador usado nos registros do portal é um resumo de 12 caracteres do CPF. Como o universo de CPFs é pequeno e conhecido, ele é **reversível por força bruta** — logo é pseudônimo, e continua sendo dado pessoal. **Destrava:** decidir se entra um segredo (HMAC com chave no Vault) ou se o identificador sai dos registros. **Dono:** 🤖 + 🧑 (decisão). **Custo de esquecer:** tratar como anônimo o que não é, em documento e em log.
+
+## P-E00110-C-07 · resíduo: job DOM `done` sem número extraído ainda entra na fila de aprendizado
+📊 21/09/2026, apontado pelo juiz de confirmação: o conserto fez o job de **sucesso** nunca aprender, mas um job DOM que terminou `done` **sem** número de atendimento extraído continua entrando na fila. É ruído, não perda. **Destrava:** ~5 linhas no mesmo ponto do conserto. **Dono:** 🤖. **Custo de esquecer:** a fila de aprendizado enche de casos que não têm nada a aprender e esconde os que têm.
+
+---
+
+### O que esta SPEC mudou em pendências antigas (21/09/2026)
+
+- **P-PILOTO-02 → `PARCIAL`:** feitos o work_run do acionamento, o `agent_id`, o número durável e a Ficha mostrando o caso. **Falta o front da Fila** — virou P-E00110-C-03.
+- **P-PILOTO-07 → `PARCIAL`:** o passo 7 é **lido e apresentado** ao segurado (loja, endereço, telefone, franquia, próximo passo, e as lojas/datas/horários quando o portal abre agenda). **Agendar e enviar fotos continuam CANDIDATE**; o que destrava são as capturas P-E00110-A1 e A3.
+- **P-PILOTO-08 → `FECHADA no backend, com prova`:** a fila de aprendizado do portal existe e é escrita (`registrar_tela_cega(ramo="vidros")`), provada pelo gate G9 com dois tenants isolados, e job de sucesso nunca aprende. ⚠️ O **leitor** da fila continua não existindo — isso já era pendência própria, e não é desta.
+- **P-50 → `CONTINUA`:** a resolução por dado cobre as **38** seguradoras publicadas na abertura do pedido (gate G3), o que mata a lista fechada de 3 slugs. Mas **evidência de questionário** só existe para Yelum e Porto — é o que P-E00110-C-02 pede.
+- **P-PILOTO-09 → reforçada:** 📊 em 20/09 credenciais foram coladas no chat de novo. A rotação das chaves continua pendente e ficou mais urgente.
