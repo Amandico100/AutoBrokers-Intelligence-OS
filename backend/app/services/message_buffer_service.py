@@ -460,8 +460,12 @@ class MessageBufferService:
         webhook tem quando o buffer é escrito. Sem ele, cai em
         `sem-integracao`, que continua isolando por não ser o telefone sozinho.
         """
-        esc = str(escopo or "").strip() or ESCOPO_SEM_INTEGRACAO
-        return f"{BUFFER_PREFIXO}:{esc}:{phone}"
+        esc = str(escopo or "").strip() or "sem-integracao"
+        # ⚠️ LITERAL de propósito: `test_higiene_de_plataforma.py` recorta esta
+        # função do fonte e a roda SOZINHA (sem as constantes do módulo), e afirma
+        # esta forma exata. `BUFFER_PREFIXO` é para LER a chave; um guarda logo
+        # abaixo da classe confere que os dois nunca divergem.
+        return f"whatsapp_buffer:{esc}:{phone}"
 
     @staticmethod
     def escopo_da_chave(chave: str) -> str:
@@ -675,7 +679,9 @@ class MessageBufferService:
         except Exception as erro:  # noqa: BLE001
             logger.warning("[BUFFER] não consegui renovar a vida de uma chave "
                            "(%s)", type(erro).__name__)
-            return False
+            # `None`, e não `False`: `False` quer dizer "a chave NÃO EXISTE" e o
+            # varredor a tira da espera por isso. Erro de Redis é "não sei".
+            return None
 
     async def adiar(self, chave: str, *, motivo: str) -> bool:
         """A chave pronta que NÃO foi servida agora continua existindo.

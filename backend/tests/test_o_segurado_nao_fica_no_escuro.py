@@ -104,6 +104,12 @@ def o_fallback_nao_promete_o_que_nao_vai_acontecer() -> None:
     """Honestidade: o texto so pode afirmar o que e verdade."""
     corpo = _corpo_do_except()
     texto = re.search(r'text=\((.*?)\),\s*\n\s*integration=', corpo, re.DOTALL)
+    if texto is None and "text=TEXTO_DA_FALHA_HONESTA" in corpo:
+        # EXTRA-001.8 (21/09/2026): o texto virou constante do modulo, porque o
+        # corte por tempo passou a mandar o MESMO aviso. A licao nao mudou -- o
+        # texto so afirma o que e verdade --; ela e lida onde o texto mora hoje.
+        fonte = (RAIZ / "app/api/webhook.py").read_text(encoding="utf-8")
+        texto = re.search(r'TEXTO_DA_FALHA_HONESTA = \((.*?)\n\)', fonte, re.DOTALL)
     checar(texto is not None, "o texto do fallback esta legivel no fonte")
     msg = (texto.group(1) if texto else "").lower()
 

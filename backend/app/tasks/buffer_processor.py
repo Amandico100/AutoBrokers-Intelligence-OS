@@ -300,7 +300,7 @@ async def _renovar_vida(buffer_service, chave: str) -> None:
         logger.warning("[ISOLAMENTO] vida não renovada (%s)", type(erro).__name__)
 
 
-async def _adiar(buffer_service, chave: str, motivo: str) -> None:
+async def _adiar(buffer_service, chave: str, motivo: str):
     """A chave pronta que não foi servida AGORA continua existindo.
 
     🔴 **FATIA 6 — é aqui que a espera passa a ter DONO e RELÓGIO.** Todo
@@ -324,9 +324,11 @@ async def _adiar(buffer_service, chave: str, motivo: str) -> None:
 
     fn = getattr(buffer_service, "adiar", None)
     if fn is None:
-        return
+        return None
     try:
-        await fn(chave, motivo=motivo)
+        # Devolve o que o serviço disse: True (vida renovada) · False (a chave
+        # NÃO EXISTE mais) · None (não deu para saber). Quem decide é `_guardar`.
+        return await fn(chave, motivo=motivo)
     except Exception as erro:  # noqa: BLE001
         # ⚠️ SEM PII: a chave TERMINA no telefone. Só o motivo e o tipo do erro.
         logger.warning("[ISOLAMENTO] adiamento por %s falhou (%s)",
@@ -776,7 +778,17 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
             # uma conversa que uma varredura SOBREPOSTA já respondeu — e a
             # varredura seguinte a contaria como mensagem perdida.
             estado["aguardando"][str(chave)] = escopo
-        await _adiar(buffer_service, chave, motivo)
+        existe = await _adiar(buffer_service, chave, motivo)
+        if existe is False and motivo != "sem_escopo":
+            # 🔴 A chave JÁ NÃO EXISTE: uma varredura SOBREPOSTA a consumiu entre
+            # a nossa leitura e este adiamento (📊 21/09/2026, confirmação:
+            # `m1_corrida_sobreposta.py` → controle 0 · corrida `expiradas = 1`
+            # para uma conversa ATENDIDA, com o teto global cheio). Reinscrevê-la
+            # como "esperando" faria a volta seguinte contá-la como mensagem
+            # perdida. ⚠️ Só `False`: `None` é "o Redis não respondeu" — na dúvida
+            # a espera FICA anotada (perda de verdade tem de continuar contando).
+            marcar_consumida(chave)
+            pendentes_da_volta.pop(str(chave), None)
         return False
 
     async def _uma(chave: str) -> bool:
