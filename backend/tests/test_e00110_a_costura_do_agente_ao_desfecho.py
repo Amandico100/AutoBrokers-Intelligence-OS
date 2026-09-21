@@ -43,7 +43,9 @@ import _replay_vidros as RV                                  # noqa: E402
 from app.agents.tools import portal_params as PP             # noqa: E402
 from portal_worker import guardrails as G                    # noqa: E402
 from portal_worker.journeys import vidros_apifirst as AF     # noqa: E402
+from portal_worker.journeys import vidros_api as API         # noqa: E402
 from portal_worker.journeys import vidros_estado as ST       # noqa: E402
+from portal_worker.journeys.vidros_apifirst import casar_causa  # noqa: E402
 
 PASS = FAIL = 0
 
@@ -335,49 +337,63 @@ check("C4 CONTROLE: com ela, o job nasce — os dois casos DIFEREM",
       p4b is not None and e4b is None, e4b)
 
 # ==========================================================================
-print("\n[C5] o relato do segurado NAO casa a causa — e a parada e util")
+print("\n[C5] a CAUSA: rigor ANTES da fronteira, igualdade DEPOIS")
 # ==========================================================================
-# 🔴 ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3). O FATO mudou, e mudou porque foi
-# consertado: 📊 `"uma pedra bateu no vidro"` **passou a casar** com
-# `DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA` pela palavra distintiva
-# "pedra". A lição continua de pé e é o que este bloco testa: o relato que NÃO
-# decide continua parando, e a parada continua sendo ÚTIL — com as opções reais
-# e sem dizer que o pedido falhou.
-check("C5 (o que MUDOU): 'uma pedra bateu no vidro' agora CASA e conclui",
-      getattr(costurar("NOVO", peca="para-brisa", como="uma pedra bateu no vidro",
-                       extras=DO_SEGURADO_PARABRISA)["resultado"],
-              "status", "") == "done")
-# 📊 "bati o carro" não tem palavra em comum com `COLISÃO ACIDENTAL`: ele para.
-c5 = costurar("NOVO", peca="para-brisa", como="bati o carro",
-              extras=DO_SEGURADO_PARABRISA)
-check("C5: o motor parou em `motivo_ambiguo`",
-      (c5["evidence"].get("stage")) == "motivo_ambiguo", c5["evidence"].get("stage"))
-check("C5: o pedido JA EXISTE, e a evidencia prova",
-      G.tem_prova_de_efeito(c5["evidence"]) is True)
-check("C5: a parada trouxe as opcoes REAIS do portal",
-      c5["catalogo"]["motivo"] in (c5["evidence"].get("opcoes") or []),
-      (c5["evidence"].get("opcoes") or [])[:3])
-check("C5: e a mensagem ao atendente traz essas opcoes",
-      c5["catalogo"]["motivo"] in c5["mensagem"], c5["mensagem"][:300])
-check("C5: a mensagem NAO diz que o pedido falhou",
-      "nao consegui abrir" not in c5["mensagem"].lower(), c5["mensagem"][:200])
-check("C5 CONTROLE: com a causa nas palavras do portal, o mesmo payload conclui",
+# 🔴 REESCRITO no conserto de 20/09/2026 (juiz B2 + red B2). O bloco media a
+# PARADA depois do pedido aberto; o conserto moveu o rigor para antes, onde
+# recusar custa uma pergunta. As frases abaixo sao as do laudo do red team, e
+# cada uma delas CASAVA — confiante e errado:
+#
+#     "quebra acidental do para-brisa"  ->  QUEBRA INTENCIONAL OU VOLUNTARIA
+#     "na chuva o vidro trincou"        ->  CHUVA DE GRANIZO
+#
+# A primeira descreve FRAUDE numa seguradora, sobre alguem que disse o oposto.
+FRASES_DO_LAUDO = ("quebra acidental", "quebra acidental do para-brisa",
+                   "foi uma quebra acidental", "na chuva o vidro trincou",
+                   "quero o reparo", "nao sei, encontrei assim",
+                   "uma pedra bateu no vidro", "bati o carro", "quebrou")
+for _frase in FRASES_DO_LAUDO:
+    _c = costurar("NOVO", peca="para-brisa", como=_frase,
+                  extras=DO_SEGURADO_PARABRISA)
+    check(f"C5: {_frase!r} e RECUSADO antes da fronteira A — o job nem nasce",
+          _c["params"] is None and bool(_c["erro"]), _c["params"] is not None)
+    check(f"C5: {_frase!r} — e NENHUMA escrita saiu", _c["page"] is None)
+_erro = costurar("NOVO", peca="para-brisa", como="quebra acidental",
+                 extras=DO_SEGURADO_PARABRISA)["erro"]
+check("C5: a recusa DEVOLVE as causas da familia para o agente escolher",
+      all(_c in str(_erro) for _c in API.causas_medidas_de("parabrisa")[:4]),
+      str(_erro)[:200])
+check("C5: e ensina a PERGUNTAR quando o relato nao decidir",
+      "3 ou" in str(_erro) and "lingua de gente" in str(_erro), str(_erro)[:160])
+check("C5 CONTROLE: com a causa LITERAL, o mesmo payload conclui — DIFEREM",
       getattr(c1["resultado"], "status", "") == "done")
+# E DEPOIS da fronteira a regra e igualdade pura: nem `OUTROS` por exclusao.
+_causas_lat = RV.primeira(RV.carregar("LAT"), "GET", "/motivos-dano") or []
+for _vago in ("nao faco ideia", "quebra acidental", "sei la", "aconteceu"):
+    check(f"C5: depois da fronteira, {_vago!r} NAO casa com nada",
+          casar_causa(_vago, _causas_lat)["item"] is None,
+          (casar_causa(_vago, _causas_lat)["item"] or {}).get("DescricaoObjetoCausa"))
+check("C5 CONTROLE: e a causa LITERAL casa — o par difere",
+      (casar_causa("COLISÃO ACIDENTAL", _causas_lat)["item"] or {})
+      .get("DescricaoObjetoCausa") == "COLISÃO ACIDENTAL")
 
-# ==========================================================================
 print("\n[C6] `onde ocorreu` que nao classifica NAO vira 'Nao Sabe'")
 # ==========================================================================
 # 🔴 O defeito da classe §9.5: `str("na cidade")[:1].upper()` == `"N"`, e `N` é
 # **"Não Sabe"** para o portal — um passo que responde ERRADO e não trava.
-from portal_worker.journeys import vidros_api as API  # noqa: E402
-
 check("C6: 'urbano' e 'rodoviario' (o que a pergunta oferece) classificam",
       API.perimetro_do_texto("urbano") == "U"
       and API.perimetro_do_texto("rodoviario") == "R")
-check("C6: e a linguagem de gente tambem",
-      API.perimetro_do_texto("estava na estrada") == "R"
-      and API.perimetro_do_texto("na cidade") == "U"
-      and API.perimetro_do_texto("no estacionamento do shopping") == "U")
+# 🔴 ATUALIZADO (red B4): a linguagem de gente e classificada ANTES da
+# fronteira, por `normalizar_perimetro`, e por PALAVRA INTEIRA.
+check("C6: a linguagem de gente e classificada ANTES, por palavra inteira",
+      PP.normalizar_perimetro("estava na estrada") == "rodoviario"
+      and PP.normalizar_perimetro("na cidade") == "urbano"
+      and PP.normalizar_perimetro("no estacionamento do shopping") == "urbano")
+check("C6: e a substring MORREU — 'quebrou' nao contem 'br' de rodovia",
+      PP.normalizar_perimetro("o vidro quebrou na garagem de casa") == "urbano"
+      and PP.normalizar_perimetro("abri a porta em casa") == "urbano"
+      and PP.normalizar_perimetro("casado") == "")
 check("C6: o que NAO classifica devolve vazio, nunca 'N'",
       API.perimetro_do_texto("sei la") == ""
       and API.perimetro_do_texto("xyz") == "", API.perimetro_do_texto("sei la"))
@@ -395,23 +411,26 @@ p6_nao_sabe, e6_nao_sabe = PP.build_portal_params(
     {**_base6, "onde_ocorreu": "sei la"}, profile6, infocap6, enviar_de_verdade=True)
 check("C6: 'sei la' nem chega a journey — a fatia C ja pergunta de novo",
       p6_nao_sabe is None and bool(e6_nao_sabe), e6_nao_sabe)
-# 🔴 E o que PASSA por C e mesmo assim não classifica para o portal: é aqui que
-# a antiga regra da primeira letra gravaria `"N"` = "Não Sabe" na seguradora.
-flat6 = {**_base6, "onde_ocorreu": "no meio do nada"}
-p6, _ = PP.build_portal_params(flat6, profile6, infocap6, enviar_de_verdade=True)
-p6["_runtime"] = RuntimeDeReplay()
-page6 = RV.PaginaDeReplay(c6b)
-ev6: dict = {}
-r6 = asyncio.run(AF.abrir_atendimento_api(page6, p6, ev6))
-check("C6: com 'onde' que nao classifica, NENHUMA escrita sai",
-      page6.escritas() == [], page6.escritas())
-check("C6: e o motivo diz qual campo falta",
-      any("onde" in f for f in (ev6.get("api_first") or {}).get("faltou") or []),
-      (ev6.get("api_first") or {}).get("faltou"))
+# 🔴 ATUALIZADO no conserto de 20/09 (red B4): o que NAO classifica agora e
+# recusado ANTES da fronteira A, pela fatia C — que e onde parar custa uma
+# pergunta. A journey so ve o ENUM.
+for _ruim in ("no meio do nada", "sei la", "num lugar esquisito", "casado"):
+    _p, _e = PP.build_portal_params({**_base6, "onde_ocorreu": _ruim},
+                                    profile6, infocap6, enviar_de_verdade=True)
+    check(f"C6: {_ruim!r} nao vira perimetro — o job NAO nasce",
+          _p is None and bool(_e), _p is not None)
+check("C6: e a recusa PERGUNTA cidade ou estrada",
+      "estrada" in str(PP.build_portal_params(
+          {**_base6, "onde_ocorreu": "no meio do nada"}, profile6, infocap6,
+          enviar_de_verdade=True)[1]).lower())
+# E a journey, depois da fronteira, so aceita o enum.
+check("C6: a journey so aceita `urbano`/`rodoviario`",
+      API.perimetro_do_texto("urbano") == "U"
+      and API.perimetro_do_texto("na cidade") == ""
+      and API.perimetro_do_texto("o vidro quebrou na garagem de casa") == "")
 check("C6 CONTROLE: com 'rodoviario', o mesmo payload conclui — DIFEREM",
       getattr(c6["resultado"], "status", "") == "done")
 
-# ==========================================================================
 print("\n[C7] uma tabela so de seguradora, e ela tem as tres colunas")
 # ==========================================================================
 check("C7: a tabela local de `portal_params` MORREU",
@@ -533,8 +552,6 @@ check("C10 CONTROLE: `sensor_de_chuva` e `faixa_degrade` NAO travam "
 # ==========================================================================
 print("\n[C11] a CAUSA do dano: coletada antes, casada na lista ao vivo")
 # ==========================================================================
-from portal_worker.journeys.vidros_apifirst import casar_causa  # noqa: E402
-
 FAMILIA_DO_HAR = {"NOVO": "parabrisa", "ANT": "lateral",
                   "PORTO": "lanterna", "LAT": "lataria"}
 casou = parou = errou = 0
@@ -555,36 +572,29 @@ check("C11: TODA causa medida casa com a lista ao vivo da sua familia",
       parou == 0 and errou == 0, (casou, parou, errou))
 print(f"      📊 {casou} causas medidas casaram · {parou} pararam · {errou} erradas")
 
-# E o relato livre: pode parar, NUNCA pode casar errado.
+# 🔴 REESCRITO no conserto de 20/09: o relato livre NAO casa mais nada depois
+# da fronteira — 100% de recusa, e a recusa acontece ANTES (bloco C5), onde
+# custa uma pergunta. Estas sao as frases que ANTES casavam, certas e erradas.
 FRASES_LIVRES = [
-    ("NOVO", "pegou uma pedra na estrada", "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA"),
-    ("NOVO", "caiu granizo", "CHUVA DE GRANIZO"),
-    ("NOVO", "teve uma ventania muito forte", "DURANTE FORTE VENTANIA,TEMPESTADE OU ENCHENTE"),
-    ("NOVO", "o vidro esta arranhado", None),      # 📊 o nome da peça não é a causa
-    ("NOVO", "bati o carro", None),
-    ("NOVO", "quebrou", None),                      # 🔴 o CONTROLE: frase vaga PARA
-    ("ANT", "o vidro nao sobe", "VIDRO NÃO SOBE OU DESCE"),
-    ("ANT", "tranquei a chave dentro", "ESQUECIMENTO DE CHAVE OU PESSOA DENTRO DO VEÍCULO"),
-    ("ANT", "tentaram roubar", None),
-    ("PORTO", "troquei a lampada e quebrou", "AO TROCAR A LÂMPADA QUEBROU O ITEM"),
-    ("LAT", "granizo", "CHUVA DE GRANIZO"),
-    ("LAT", "nao faco ideia", None),
+    ("NOVO", "pegou uma pedra na estrada"), ("NOVO", "caiu granizo"),
+    ("NOVO", "teve uma ventania muito forte"), ("NOVO", "o vidro esta arranhado"),
+    ("NOVO", "bati o carro"), ("NOVO", "quebrou"),
+    ("NOVO", "quebra acidental"), ("NOVO", "na chuva o vidro trincou"),
+    ("ANT", "o vidro nao sobe"), ("ANT", "tranquei a chave dentro"),
+    ("ANT", "tentaram roubar"), ("PORTO", "troquei a lampada e quebrou"),
+    ("LAT", "granizo"), ("LAT", "nao faco ideia"),
 ]
-livres_ok = livres_parou = livres_errou = 0
-for har, frase, esperado in FRASES_LIVRES:
+livres_parou = livres_casou = 0
+for har, frase in FRASES_LIVRES:
     ao_vivo = RV.primeira(RV.carregar(har), "GET", "/motivos-dano") or []
     obtida = (casar_causa(frase, ao_vivo)["item"] or {}).get("DescricaoObjetoCausa")
-    if obtida is None:
-        livres_parou += 1
-        check(f"C11: {frase!r} PARA, como esperado", esperado is None, obtida)
-    else:
-        bateu = esperado is not None and obtida.strip() == esperado.strip()
-        livres_ok += bateu
-        livres_errou += (not bateu)
-        check(f"C11: {frase!r} casou com a causa certa", bateu, obtida)
-check("C11: ZERO frases livres casaram ERRADO", livres_errou == 0, livres_errou)
-print(f"      📊 relato livre: {livres_ok} casaram · {livres_parou} pararam · "
-      f"{livres_errou} erradas")
+    livres_parou += obtida is None
+    livres_casou += obtida is not None
+    check(f"C11: {frase!r} PARA depois da fronteira", obtida is None, obtida)
+check("C11: ZERO frases livres casam depois da fronteira",
+      livres_casou == 0, livres_casou)
+print(f"      📊 relato livre depois da fronteira: {livres_parou} pararam · "
+      f"{livres_casou} casaram · 0 erradas (por construcao: so igualdade)")
 
 # 🔴 `OUTROS` existe na lista da lataria e NUNCA sai por exclusão.
 causas_lat = RV.primeira(RV.carregar("LAT"), "GET", "/motivos-dano") or []

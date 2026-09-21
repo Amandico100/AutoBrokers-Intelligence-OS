@@ -353,6 +353,21 @@ def ler_desfecho(opcoes: Any, agregado: Any) -> Dict[str, Any]:
         "motivo": "",
     }
 
+    # 🔴 BLOQUEIO NUNCA VIRA "pode ligar para a loja" — red team, 20/09/2026.
+    #
+    # 📊 Com `BloqueadoPorFraude: true` (ou bloqueio de ilha, ou o aviso de
+    # vistoria por regra de fraude) MAIS as chaves de conclusao, o roteador
+    # respondia `loja_direta` e o segurado era mandado a uma loja que nao vai
+    # atende-lo — o pedido esta retido em analise. Sao as tres unicas chaves em
+    # que "o portal concluiu" e "o portal travou" chegam juntas.
+    travas = [k for k in ("BloqueadoPorFraude", "BloqueadoIlhaNormal",
+                          "ExibirAvisoVistoriaPorRegraDeFraude") if o.get(k) is True]
+    if travas:
+        base["motivo"] = ("o portal marcou bloqueio/retencao: " + ", ".join(travas)
+                          + ". Nao ha desfecho a prometer ao segurado.")
+        base["bloqueios"] = travas
+        return base
+
     desconhecidas = [k for k, v in o.items()
                      if k not in CHAVES_DO_ROTEADOR and isinstance(v, bool) and v]
     if desconhecidas:

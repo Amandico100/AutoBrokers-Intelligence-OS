@@ -310,8 +310,29 @@ loja4 = (d4.get("lojas") or [{}])[0]
 check("G1c: a loja tem endereco", bool(loja4.get("endereco")))
 check("G1c: e distancia lida do portal", bool(loja4.get("distancia")),
       loja4.get("distancia"))
-check("G1c: e os dias com agenda", bool(loja4.get("dias")),
-      [m.get("mes") for m in (loja4.get("dias") or [])])
+# 🔴 ATUALIZADO (conserto de 20/09, red B5): `dias` passou a ser UMA lista de
+# textos prontos `"DD/MM"`. 📊 Antes vinha `[{"mes": 8, "dias": [15, 17]}]`, e a
+# mensagem ao segurado imprimia a chave e o colchete junto.
+check("G1c: e os dias com agenda, ja em texto de gente",
+      bool(loja4.get("dias"))
+      and all(isinstance(d, str) and len(d) == 5 and d[2] == "/"
+              for d in loja4["dias"]),
+      (loja4.get("dias") or [])[:4])
+check("G1c: e o NUMERO do atendimento veio junto (o ANT nao tem GET depois)",
+      len(str(d4.get("codigo_atendimento") or "")) == 8,
+      d4.get("codigo_atendimento") and len(str(d4.get("codigo_atendimento"))))
+# 🔴 O TIPO DE TELEFONE — a mutacao 21x20 do red team ficava verde.
+# 📊 `Tipo 20 = CELULAR SEGURADO` e `21 = CELULAR CORRETOR`: um digito separa
+# quem a loja liga para achar. O contrato diz `tipo_telefone == "segurado"`.
+_tipos = RV.primeira(har2, "GET", "/tipos-telefone") or []
+_esperado = [t.get("Codigo") for t in _tipos
+             if str(t.get("Descricao") or "").strip().upper() == "CELULAR SEGURADO"]
+check("G1b: a lista do portal REALMENTE tem 'CELULAR SEGURADO'",
+      len(_esperado) == 1, _tipos)
+_enviado = (p2.corpo_de("POST", "/solicitantes") or {}).get("Telefones") or []
+check("G1b: o Tipo enviado e o de 'CELULAR SEGURADO', lido da lista",
+      [t.get("Tipo") for t in _enviado] == _esperado,
+      ([t.get("Tipo") for t in _enviado], _esperado))
 check("G1c: NENHUM POST /agendamentos saiu",
       p4.quantas("POST", "/agendamentos") == 0, p4.escritas())
 check("G1c: NENHUM POST /direcionamentos saiu",

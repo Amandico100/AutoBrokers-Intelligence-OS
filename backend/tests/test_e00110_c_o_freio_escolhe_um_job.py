@@ -147,7 +147,17 @@ def g5_os_pares_de_controle() -> None:
     print("\n[G5-controle] vazia = hoje · freio desligado = ninguem")
 
     # PAR 1 — allowlist VAZIA e o comportamento de hoje, para os DOIS jobs.
-    for allow in (None, "", "   ", ",,"):
+    #
+    # 🔴 ATUALIZADO em 20/09/2026 (§9.3) — red team: `",,"` SAIU desta lista.
+    # Ele nao e "vazia": e MALFORMADA, e malformada barra tudo. 📊 O jeito
+    # antigo produzia tupla vazia, e tupla vazia significava "pode todo mundo" —
+    # com o freio global LIGADO, era o canario liberando geral.
+    for allow in (",,", ",", " , ", "job:", "cpf:", "abc-1"):
+        with _com(freio="true", allowlist=allow):
+            checar(J.motivo_para_barrar(*VIDROS, job_id=JOB_DO_CANARIO) != ""
+                   and J.motivo_para_barrar(*VIDROS) != "",
+                   f"allowlist {allow!r}: MALFORMADA barra TUDO (fail-closed)")
+    for allow in (None, "", "   "):
         with _com(freio="true", allowlist=allow):
             checar(J.motivo_para_barrar(*VIDROS, job_id=JOB_DO_CANARIO) == ""
                    and J.motivo_para_barrar(*VIDROS, job_id=JOB_DE_OUTRO_SEGURADO) == "",

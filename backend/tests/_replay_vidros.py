@@ -197,8 +197,14 @@ class PaginaDeReplay:
 
     def _achar(self, metodo: str, caminho: str) -> Optional[int]:
         alvo = _chave(metodo, caminho)
+        # 🔴 A segunda passada vai PARA TRAS a partir do cursor, e nao para a
+        # frente a partir do zero. O estado do pedido avanca: a resposta mais
+        # RECENTE e a que vale. 📊 No HAR do vidro de porta ha cinco
+        # `GET /atendimentos`, e so os dois ULTIMOS trazem o CodigoAtendimento —
+        # varrendo do zero, o replay devolvia o primeiro (sem numero) e o
+        # desfecho `agenda` chegava ao segurado sem o que anotar.
         for faixa in (range(self.cursor, len(self.chamadas)),
-                      range(0, len(self.chamadas))):
+                      range(self.cursor, -1, -1)):
             for i in faixa:
                 if self.consumidas[i]:
                     continue

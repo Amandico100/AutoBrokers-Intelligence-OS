@@ -480,7 +480,14 @@ class PortalActionTool(BaseTool):
                 "link_area_segurado": str(desfecho.get("link_area_segurado") or "") or None,
             }
             status = str((job or {}).get("status") or "")
-            if status == "done" or numero:
+            # 🔴 JUIZ B4 (e): `completed` so com o job `done`.
+            #
+            # 📊 A versao anterior concluia o run sempre que houvesse NUMERO —
+            # e toda parada depois da fronteira A tem numero. Efeito na Fila: um
+            # atendimento parado, esperando uma pessoa, aparecia para a corretora
+            # como **concluido**. Ninguem ia atras. A parada tem de FICAR VISIVEL
+            # sem depender de o LLM lembrar de avisar.
+            if status == "done":
                 # 🔴 Número lido = o trabalho DEU resultado, mesmo que o job
                 # tenha terminado `needs_human`. Marcar como falha um pedido que
                 # existe na seguradora é a pior linha possível num relatório.
@@ -491,6 +498,16 @@ class PortalActionTool(BaseTool):
                 return
             svc.marcar_progresso(run_id, self.company_id,
                                  str(ev.get("stage") or "parou_no_portal"), 60)
+            # O pedido EXISTE e parou: a equipe precisa ver isso na Fila. A
+            # mensagem carrega o numero, que é por onde ela retoma no portal.
+            if numero:
+                svc.falhar(run_id, self.company_id,
+                           "portal_parou_com_pedido_aberto",
+                           (f"O atendimento {numero} EXISTE na seguradora e parou em "
+                            f"`{ev.get('stage') or 'etapa desconhecida'}`. NÃO "
+                            "reexecute: a equipe conclui no portal por esse número."),
+                           retryable=False)
+                return
             svc.falhar(run_id, self.company_id,
                        "portal_sem_desfecho",
                        "O portal parou antes de gerar o número do atendimento — "
@@ -526,8 +543,31 @@ class PortalActionTool(BaseTool):
                 playbook_ref=f"portal:vidros_lanternas:{resumo['onde']}",
                 texto=resumo["texto"],
             )
+            # 🔴 JUIZ B1: o `evidence` que este metodo tem em maos foi LIDO
+            # ANTES de o agente responder — e o Vigia grava `entregue_ao_agente`
+            # nesse meio-tempo. Regravar o dicionario velho APAGAVA a marca, e
+            # 📊 o Vigia entao mandava uma SEGUNDA mensagem ao segurado sobre um
+            # atendimento que ele ja tinha recebido.
+            #
+            # A releitura e curta e resolve: funde-se a marca no dicionario ATUAL
+            # do banco, nunca no que sobrou na memoria desta chamada.
+            atual = dict(ev)
+            try:
+                lido = (self._client().table("portal_jobs").select("evidence")
+                        .eq("id", job_id).eq("company_id", self.company_id)
+                        .limit(1).execute())
+                linhas = getattr(lido, "data", None) or []
+                if linhas and isinstance(linhas[0].get("evidence"), dict):
+                    atual = dict(linhas[0]["evidence"])
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[PortalAction] evidence nao relida (%s); "
+                               "preservando as marcas conhecidas", type(exc).__name__)
+            for marca in ("entregue_ao_agente", "entregue_em", "hitl",
+                          "critical_effect", "protocolo"):
+                if marca in ev and marca not in atual:
+                    atual[marca] = ev[marca]
             self._client().table("portal_jobs").update({
-                "evidence": {**ev, "tela_cega_registrada": True},
+                "evidence": {**atual, "tela_cega_registrada": True},
             }).eq("id", job_id).eq("company_id", self.company_id).execute()
         except Exception as exc:  # noqa: BLE001
             logger.warning("[PortalAction] fila de aprendizado nao recebeu (%s)",

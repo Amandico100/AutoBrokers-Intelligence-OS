@@ -358,12 +358,34 @@ def cpf_hash_de(cpf: str) -> str:
     return _hashlib.sha256(digitos.encode()).hexdigest()[:_DIGITOS_DO_HASH]
 
 
+#: Os prefixos que a allowlist entende. Item com outro prefixo (ou sem nenhum)
+#: e MALFORMADO — e allowlist malformada barra tudo.
+_PREFIXOS_DA_ALLOWLIST = ("job:", "cpf:")
+
+
 def _allowlist() -> tuple:
-    """Os itens da allowlist, normalizados. Tupla vazia = allowlist ausente."""
+    """`(itens, malformada)`.
+
+    🔴 FAIL-CLOSED, e a razao foi medida pelo red team em 20/09/2026: a variavel
+    com `","` ou `" , "` — o que sobra quando alguem apaga os itens e esquece os
+    separadores — produzia tupla VAZIA, e tupla vazia significava *"allowlist
+    ausente, pode todo mundo"*. 📊 Naquele estado, com o freio global ligado,
+    **todos os jobs passavam**, inclusive os que o Founder acabara de tirar da
+    lista. Um canario que libera geral e o oposto de um canario.
+
+    Separador sozinho => `malformada=True` => barra tudo, com motivo.
+    """
     import os as _os
 
     bruto = str(_os.getenv(_ENV_ALLOWLIST, "") or "")
-    return tuple(p.strip().lower() for p in bruto.split(",") if p.strip())
+    if not bruto.strip():
+        return (), False          # ausente de verdade: comportamento de hoje
+    pedacos = [p.strip().lower() for p in bruto.split(",")]
+    itens = tuple(p for p in pedacos if p)
+    malformada = (not itens) or any(
+        not p.startswith(_PREFIXOS_DA_ALLOWLIST) or len(p.split(":", 1)[1].strip()) == 0
+        for p in itens)
+    return itens, malformada
 
 
 def efeito_material_liberado_para(*, job_id: str = "", cpf_hash: str = "") -> bool:
@@ -375,7 +397,10 @@ def efeito_material_liberado_para(*, job_id: str = "", cpf_hash: str = "") -> bo
     """
     if not efeito_material_liberado():
         return False
-    lista = _allowlist()
+    lista, malformada = _allowlist()
+    if malformada:
+        # Escrita sem sentido => ninguem passa. Ver `_allowlist`.
+        return False
     if not lista:
         return True
     eu = {f"job:{str(job_id or '').strip().lower()}" if job_id else "",
@@ -408,7 +433,10 @@ def motivo_para_barrar(portal_key: str, journey: str, *,
         # banco e para o log (CLAUDE.md §7 — nenhum segredo, nenhum dado de
         # pessoa, em log). O job_id já identifica a linha para quem investigar.
         return (f"journey `{portal_key}.{journey}` cria efeito material e este job "
-                f"está fora da allowlist do canário ({_ENV_ALLOWLIST})")
+                f"está fora da allowlist do canário ({_ENV_ALLOWLIST})"
+                + (" — e a allowlist está MALFORMADA (só separadores ou item sem "
+                   "`job:`/`cpf:`), então NINGUÉM passa"
+                   if _allowlist()[1] else ""))
     return (f"journey `{portal_key}.{journey}` cria efeito material e "
             f"{_ENV_EFEITO_MATERIAL} está desligado")
 

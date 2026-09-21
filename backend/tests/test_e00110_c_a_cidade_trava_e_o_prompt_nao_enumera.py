@@ -41,6 +41,11 @@ sys.path.insert(0, RAIZ)
 from app.agents.tools import portal_params as PP  # noqa: E402
 from app.services import perguntas_do_portal_de_vidros as P  # noqa: E402
 
+# ⚠️ ATUALIZADO em 20/09/2026 (§9.3) — red B3. A UF deixou de ser assumida da
+# apolice: ela tem de vir ESCRITA pelo segurado, senao o job nao nasce. 📊 O
+# red team mediu o custo do jeito antigo: "Curitiba" + UF da apolice (SC) ->
+# CURITIBANOS/SC, outra cidade a 300 km. E o nome vai em CAIXA ALTA, que e
+# como o portal devolve a lista de cidades.
 PASS = FAIL = 0
 
 
@@ -74,7 +79,7 @@ BASE = {
     "cpf_cnpj": "52998224725",
     "data_dano": "05/07/2026",
     "peca": "vidro de porta",
-    "como_ocorreu": "encontrou o veiculo com o vidro quebrado",
+    "como_ocorreu": "ENCONTROU O VEICULO DANIFICADO",
     "onde_ocorreu": "urbano",
     "descricao": "o carro estava estacionado e o vidro da porta foi quebrado",
 }
@@ -118,7 +123,7 @@ def g4a_o_par_de_vereditos_opostos() -> None:
         {**BASE, "especificos": ESPECIFICOS_COM_CIDADE}, PERFIL, INFOCAP)
     checar(com is not None and erro2 is None,
            "PAR: COM a cidade, o job nasce normalmente", str(erro2)[:200])
-    checar(com and com["local"]["cidade_servico"] == {"uf": "SC", "cidade": "Joinville"},
+    checar(com and com["local"]["cidade_servico"] == {"uf": "SC", "cidade": "JOINVILLE"},
            "e ela chega no contrato da SPEC §5: local.cidade_servico {uf, cidade}",
            str((com or {}).get("local")))
 
@@ -128,11 +133,10 @@ def g4a_os_tres_formatos_de_gente() -> None:
     print("\n[G4a-bis] 'Joinville/SC', 'Joinville - SC', 'Joinville' + UF da apolice")
 
     for texto, esperado, origem in (
-        ("Joinville/SC", {"uf": "SC", "cidade": "Joinville"}, "segurado"),
-        ("Joinville - SC", {"uf": "SC", "cidade": "Joinville"}, "segurado"),
-        ("joinville sc", {"uf": "SC", "cidade": "Joinville"}, "segurado"),
+        ("Joinville/SC", {"uf": "SC", "cidade": "JOINVILLE"}, "segurado"),
+        ("Joinville - SC", {"uf": "SC", "cidade": "JOINVILLE"}, "segurado"),
+        ("joinville sc", {"uf": "SC", "cidade": "JOINVILLE"}, "segurado"),
         # Sem UF: cai para a da apolice (SC, em INFOCAP) e isso fica DECLARADO.
-        ("Joinville", {"uf": "SC", "cidade": "Joinville"}, "apolice"),
     ):
         p, _ = PP.build_portal_params(
             {**BASE, "especificos": {**ESPECIFICOS_SEM_CIDADE,
@@ -150,19 +154,37 @@ def g4a_os_tres_formatos_de_gente() -> None:
     # senao "SC" poderia estar cravado e as quatro linhas acima nao provariam
     # que a UF veio mesmo da apolice.
     outra = {**INFOCAP, "client": {**INFOCAP["client"], "estado": "PR"}}
-    p, _ = PP.build_portal_params(
+    # 🔴 ATUALIZADO em 20/09/2026 (§9.3) — red B3. O par que existia aqui media
+    # a UF ASSUMIDA da apolice, e ela MORREU: 📊 "Curitiba" com a apolice em SC
+    # virava CURITIBANOS/SC, outra cidade a 300 km, e o vidraceiro esperava la.
+    # O par novo mede o que passou a valer: sem UF escrita, o job NAO nasce.
+    sem_uf, erro_sem_uf = PP.build_portal_params(
         {**BASE, "especificos": {**ESPECIFICOS_SEM_CIDADE,
                                  "cidade_para_o_servico": "Joinville"}},
-        PERFIL, outra)
-    checar(p and p["local"]["cidade_servico"]["uf"] == "PR",
-           "CONTROLE: com a apolice em PR, a UF padrao vira PR",
-           str((p or {}).get("local", {}).get("cidade_servico")))
+        PERFIL, INFOCAP)
+    checar(sem_uf is None and bool(erro_sem_uf),
+           "sem a UF escrita pelo segurado, o job NAO nasce",
+           f"params={sem_uf is not None}")
+    checar("ESTADO" in str(erro_sem_uf).upper(),
+           "e a recusa pergunta o ESTADO, com a sigla como exemplo",
+           str(erro_sem_uf)[:160])
+    com_uf, erro_com_uf = PP.build_portal_params(
+        {**BASE, "especificos": {**ESPECIFICOS_SEM_CIDADE,
+                                 "cidade_para_o_servico": "Joinville SC"}},
+        PERFIL, INFOCAP)
+    checar(com_uf is not None and erro_com_uf is None,
+           "CONTROLE: com a UF escrita, o job nasce — os dois casos DIFEREM",
+           str(erro_com_uf)[:120])
+    checar(com_uf and com_uf["local"]["cidade_servico"] == {"uf": "SC", "cidade": "JOINVILLE"},
+           "e a cidade chega no contrato da SPEC §5",
+           str((com_uf or {}).get("local", {}).get("cidade_servico")))
+
     # E o segurado continua podendo contrariar a apolice — e o caso do viajante.
     p, _ = PP.build_portal_params(
         {**BASE, "especificos": {**ESPECIFICOS_SEM_CIDADE,
                                  "cidade_para_o_servico": "Curitiba/PR"}},
         PERFIL, INFOCAP)
-    checar(p and p["local"]["cidade_servico"] == {"uf": "PR", "cidade": "Curitiba"},
+    checar(p and p["local"]["cidade_servico"] == {"uf": "PR", "cidade": "CURITIBA"},
            "CONTROLE: apolice em SC e servico em PR — quem manda e o segurado",
            "e o caso inteiro pelo qual esta pergunta existe")
 
@@ -175,7 +197,7 @@ def g4a_a_cidade_do_cadastro_continua_existindo() -> None:
     checar(p and p["local"]["cidade"] == "Florianopolis",
            "local.cidade continua sendo onde ele MORA (da InfoCap)",
            str((p or {}).get("local")))
-    checar(p and p["local"]["cidade_servico"]["cidade"] == "Joinville",
+    checar(p and p["local"]["cidade_servico"]["cidade"] == "JOINVILLE",
            "local.cidade_servico e onde ele QUER o servico",
            "sao duas coisas, e o PATCH usa a segunda")
     checar(p and p["local"]["cidade"] != p["local"]["cidade_servico"]["cidade"],

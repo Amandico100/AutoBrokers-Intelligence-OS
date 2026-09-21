@@ -537,7 +537,8 @@ class SessaoVidros:
         return await self.chamar(API.EP_MOTIVOS_CANCELAMENTO_NAO_MEDIDO)
 
     async def cancelar(self, *, codigo_atendimento: str, codigo_motivo: Any,
-                       observacao: str = "") -> Dict[str, Any]:
+                       observacao: str = "", guard: Any = None,
+                       motivos_do_catalogo: Optional[list] = None) -> Dict[str, Any]:
         """`PUT /atendimentos/cancelar` — FRONTEIRA MATERIAL.
 
         📊 2 exercícios (para-brisa e vidro de porta), corpo de 3 chaves:
@@ -551,6 +552,31 @@ class SessaoVidros:
         if codigo_motivo in (None, ""):
             return {"ok": False, "status": 0, "json": None, "text": "",
                     "erro": "motivo_de_cancelamento_ausente"}
+        # 🔴 FRONTEIRA MATERIAL: o guard vem de fora, armado com o nome DESTA
+        # acao. 📊 O red team chamou `cancelar(codigo_motivo=39)` direto e a
+        # chamada SAIU — sem checkpoint, sem autorizacao, com o 39 que o bundle
+        # do portal tem cravado. Cancelar o pedido de alguem por um numero
+        # decorado e exatamente o efeito que a SPEC-073 existe para impedir.
+        from portal_worker import guardrails as _G
+        from portal_worker.journeys import vidros_estado as _ST
+
+        if guard is None:
+            return {"ok": False, "status": 0, "json": None, "text": "",
+                    "erro": "cancelamento_sem_guard"}
+        try:
+            await guard.before(action=_ST.FRONTEIRA_CANCELAR,
+                               action_class=_G.MATERIAL_SIDE_EFFECT,
+                               origem="journey")
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "status": 0, "json": None, "text": "",
+                    "erro": "cancelamento_bloqueado", "motivo": str(exc)[:160]}
+        # E o motivo tem de ter vindo do CATALOGO desta execucao.
+        if motivos_do_catalogo is not None:
+            codigos = {str(m.get("Codigo") or m.get("CodigoMotivoCancelamento") or "")
+                       for m in (motivos_do_catalogo or []) if isinstance(m, dict)}
+            if str(codigo_motivo) not in codigos:
+                return {"ok": False, "status": 0, "json": None, "text": "",
+                        "erro": "motivo_fora_do_catalogo"}
         return await self.chamar(API.EP_CANCELAR, metodo="PUT", corpo={
             "codigoMotivoCancelamento": codigo_motivo,
             "codigoAtendimento": str(codigo_atendimento or ""),

@@ -340,6 +340,211 @@ check("G7: `cancelar` sem motivo do catalogo nao sai",
       asyncio.run(sessao.cancelar(codigo_atendimento="1", codigo_motivo=None)
                   )["erro"] == "motivo_de_cancelamento_ausente")
 
+# ==========================================================================
+print("\n[B1] o job que DEU CERTO nao entra na fila de aprendizado")
+# ==========================================================================
+# 🔴 Juiz B1, 20/09/2026 — REGRESSAO EM PRODUCAO COM A FLAG DESLIGADA.
+# 📊 O caminho DOM grava `evidence["final"]` na tela de SUCESSO. O leitor da
+# fila caia em ("debug_dom", "final") e transformava TODO job DOM `done` em
+# linha de tela cega; o gravador da marca regravava a evidence LIDA ANTES e
+# apagava `entregue_ao_agente` — e o Vigia mandava uma SEGUNDA mensagem ao
+# segurado sobre o atendimento que ele ja tinha recebido.
+from app.agents.tools import portal_params as PP2  # noqa: E402
+
+_DOM_DONE = {"final": {"texto": "No do atendimento: 23298628 - CONFIRMADO"},
+             "protocolo": "23298628", "entregue_ao_agente": True}
+check("B1: DOM `done` com `final` NAO vira linha de tela cega",
+      PP2.resumo_da_tela_desconhecida(_DOM_DONE) is None,
+      PP2.resumo_da_tela_desconhecida(_DOM_DONE))
+check("B1: nem com desfecho conhecido",
+      PP2.resumo_da_tela_desconhecida(
+          {"desfecho": {"tipo": "loja_direta"}, "final": {"texto": "x" * 40}}) is None)
+check("B1: nem com o estado dizendo que o numero nasceu",
+      PP2.resumo_da_tela_desconhecida(
+          {"vidros_estado": {"tem_codigo_atendimento": True},
+           "debug_dom": "tela qualquer"}) is None)
+check("B1 CONTROLE: mas tela REALMENTE desconhecida continua ensinando",
+      (PP2.resumo_da_tela_desconhecida(
+          {"tela_desconhecida": {"onde": "/x", "resumo": ["A", "B"]},
+           "protocolo": "23298628"}) or {}).get("onde") == "/x")
+check("B1 CONTROLE: e um job que parou SEM numero tambem ensina",
+      PP2.resumo_da_tela_desconhecida({"debug_dom": "tela nova que ninguem viu"})
+      is not None)
+# 🔴 E a marca de entrega sobrevive ao gravador da fila: as duas marcas juntas.
+import inspect as _insp  # noqa: E402
+
+from app.agents.tools import portal_tool as PT  # noqa: E402
+
+_src_aprender = _insp.getsource(PT.PortalActionTool._aprender_com_a_tela_cega)
+check("B1: o gravador RELE a evidence do banco antes de escrever",
+      "select(\"evidence\")" in _src_aprender or 'select("evidence")' in _src_aprender,
+      _src_aprender[:200])
+check("B1: e preserva `entregue_ao_agente` explicitamente",
+      "entregue_ao_agente" in _src_aprender)
+_i_update = _src_aprender.find(".update(")
+_i_rele = _src_aprender.find("select")
+check("B1: e a releitura vem ANTES do update", -1 < _i_rele < _i_update,
+      (_i_rele, _i_update))
+
+# ==========================================================================
+print("\n[B4] TODA parada da journey tem texto proprio, e nenhum promete continuacao")
+# ==========================================================================
+# 🔴 Os stages sao EXTRAIDOS do codigo, nunca listados a mao: uma parada nova
+# sem texto proprio cairia na frase generica do DOM ("confirme onde o servico
+# sera feito... domicilio"), que fala de uma tela que a API-first nem abre.
+import re as _re  # noqa: E402
+
+_src_journey = (ROOT / "portal_worker" / "journeys" / "vidros_apifirst.py").read_text(
+    encoding="utf-8")
+_stages = sorted(set(_re.findall(r'parar\(\s*"([a-z_]+)"', _src_journey))
+                 | set(_re.findall(r'"stage": "([a-z_]+)"', _src_journey)))
+check("B4: a extracao achou os stages da journey (>= 15)", len(_stages) >= 15,
+      len(_stages))
+_sem_texto = [st for st in _stages if PP2.texto_da_parada(st) is None]
+check("B4: TODO stage da journey tem texto proprio", not _sem_texto, _sem_texto)
+
+_PROMESSAS = ("sigo daqui", "continua do mesmo ponto", "chame de novo",
+              "me chame de novo", "proximo dia util", "próximo dia útil")
+_promete = [st for st in _stages
+            if any(pr in " ".join(PP2.texto_da_parada(st)).lower() for pr in _PROMESSAS)]
+check("B4: NENHUM texto promete continuacao (ela nao existe)", not _promete, _promete)
+# O numero vem primeiro, e o de 16 digitos nao e apresentado como o de 8.
+_msg8 = PP2.format_result({"status": "needs_human",
+                           "evidence": {"stage": "motivo_ambiguo", "protocolo": "23298628"}})
+check("B4: a mensagem ABRE com o numero do atendimento",
+      _msg8.strip().startswith("NUMERO DO ATENDIMENTO: 23298628"), _msg8[:80])
+_msg16 = PP2.format_result({"status": "needs_human",
+                            "evidence": {"stage": "maybe_committed",
+                                         "protocolo": "1234567890123456"}})
+check("B4: com so o protocolo de 16, ele e chamado de PROTOCOLO INICIAL",
+      "PROTOCOLO INICIAL" in _msg16 and "NUMERO DO ATENDIMENTO" not in _msg16,
+      _msg16[:120])
+check("B4: e a mensagem avisa que ele nao serve por telefone",
+      "nao adianta" in _msg16.lower() or "não adianta" in _msg16.lower())
+# E nenhuma parada cai na frase do DOM.
+for _st in _stages:
+    _m = PP2.format_result({"status": "needs_human",
+                            "evidence": {"stage": _st, "protocolo": "23298628"}})
+    if _st == "pronto_para_abrir":
+        continue
+    check(f"B4: {_st} nao cai na frase do DOM (domicilio/loja a escolher)",
+          "tecnico a domicilio" not in _m.lower() and "técnico a domicílio" not in _m.lower(),
+          _m[:120])
+
+# ==========================================================================
+print("\n[B-freio] allowlist so com separadores BARRA TUDO (fail-closed)")
+# ==========================================================================
+import os as _os  # noqa: E402
+
+from portal_worker import journeys as _JN  # noqa: E402
+
+_antes = (_os.environ.get("PORTAL_EFEITO_MATERIAL_LIBERADO"),
+          _os.environ.get("PORTAL_CANARIO_ALLOWLIST"))
+try:
+    _os.environ["PORTAL_EFEITO_MATERIAL_LIBERADO"] = "true"
+    _h = _JN.cpf_hash_de("01234567890")
+    for _valor in (",", " , ", ",,", "job:", "cpf:", "abc-1", _h):
+        _os.environ["PORTAL_CANARIO_ALLOWLIST"] = _valor
+        _barrou = bool(_JN.motivo_para_barrar("vidros_lanternas", "abrir_atendimento",
+                                              job_id="abc-1", cpf_hash=_h))
+        check(f"B-freio: allowlist {_valor!r} BARRA ate o job alvo", _barrou, _valor)
+    _os.environ["PORTAL_CANARIO_ALLOWLIST"] = "job:abc-1"
+    check("B-freio CONTROLE: allowlist bem escrita deixa o job alvo passar",
+          not _JN.motivo_para_barrar("vidros_lanternas", "abrir_atendimento",
+                                     job_id="abc-1", cpf_hash=_h))
+    check("B-freio CONTROLE: e barra o outro job",
+          bool(_JN.motivo_para_barrar("vidros_lanternas", "abrir_atendimento",
+                                      job_id="outro", cpf_hash="")))
+    _os.environ["PORTAL_CANARIO_ALLOWLIST"] = ""
+    check("B-freio CONTROLE: allowlist AUSENTE continua sendo o comportamento de hoje",
+          not _JN.motivo_para_barrar("vidros_lanternas", "abrir_atendimento",
+                                     job_id="abc-1", cpf_hash=_h))
+finally:
+    for _k, _v in zip(("PORTAL_EFEITO_MATERIAL_LIBERADO", "PORTAL_CANARIO_ALLOWLIST"),
+                      _antes):
+        if _v is None:
+            _os.environ.pop(_k, None)
+        else:
+            _os.environ[_k] = _v
+
+# ==========================================================================
+print("\n[B-rota] a allowlist de endpoint nao se burla por caixa nem por barra")
+# ==========================================================================
+for _c in ("/Agendamentos", "/AGENDAMENTOS", "//agendamentos", "/agendamentos ",
+           " /agendamentos", "/agendamentos/", "/./agendamentos",
+           "/agendamentos;v=1", "/agendamentos?x=1", "/atendimentos/Abandonar",
+           "/Direcionamentos", "/atendimentos-fotografias/WEB"):
+    check(f"B-rota: {_c!r} NAO pode sair", not A.pode_sair(_c, "POST"), _c)
+check("B-rota: escrita em endpoint FORA do registro tambem nao sai (fail-closed)",
+      not A.pode_sair("/rota/que/ninguem/mediu", "POST"))
+check("B-rota CONTROLE: leitura fora do registro continua podendo",
+      A.pode_sair("/rota/que/ninguem/mediu", "GET"))
+check("B-rota CONTROLE: e um endpoint APPROVED de escrita sai",
+      A.pode_sair("/solicitantes", "POST"))
+
+# ==========================================================================
+print("\n[B-fraude] bloqueio do portal nunca vira 'pode ligar para a loja'")
+# ==========================================================================
+_CONCLUSAO_OK = {"IrParaConclusaoDeAtendimento": True, "ExisteOrdemServico": True,
+                 "DisponibilizarAgendamento": False, "OpcoesAgendamento": []}
+_AGREGADO = {"ScriptFinalizacao": {"Titulo": "As informacoes abaixo",
+                                   "InformacoesAdicionais": [
+                                       {"Titulo": "Loja", "Valor": "LOJA X"},
+                                       {"Titulo": "Endereço", "Valor": "RUA Y"}]}}
+check("B-fraude CONTROLE: sem bloqueio, esta resposta da loja_direta",
+      E.ler_desfecho(_CONCLUSAO_OK, _AGREGADO)["tipo"] == E.DESFECHO_LOJA_DIRETA)
+for _trava in ("BloqueadoPorFraude", "BloqueadoIlhaNormal",
+               "ExibirAvisoVistoriaPorRegraDeFraude"):
+    _d = E.ler_desfecho({**_CONCLUSAO_OK, _trava: True}, _AGREGADO)
+    check(f"B-fraude: com {_trava} o desfecho e `desconhecido`",
+          _d["tipo"] == E.DESFECHO_DESCONHECIDO, _d["tipo"])
+    check(f"B-fraude: e {_trava} fica registrado para o dossie",
+          _trava in (_d.get("bloqueios") or []), _d.get("bloqueios"))
+    check(f"B-fraude: e NENHUMA loja e prometida com {_trava}",
+          not _d.get("loja") and not _d.get("lojas"))
+
+# ==========================================================================
+print("\n[B-cancelar] cancelar exige guard armado e motivo do catalogo")
+# ==========================================================================
+class _PaginaQueContaTudo:
+    def __init__(self):
+        self.saiu = []
+
+    async def evaluate(self, js, arg):
+        self.saiu.append(arg.get("url"))
+        return {"ok": True, "status": 200, "text": "{}"}
+
+
+_pg = _PaginaQueContaTudo()
+_ses = SessaoVidros(page=_pg, token="tok")
+_r = asyncio.run(_ses.cancelar(codigo_atendimento="1", codigo_motivo=39))
+check("B-cancelar: sem guard, NAO sai", _pg.saiu == [] and _r.get("erro"), _r)
+check("B-cancelar: e o erro diz que falta o guard",
+      _r.get("erro") == "cancelamento_sem_guard", _r.get("erro"))
+from portal_worker import guardrails as G  # noqa: E402
+
+_guard_fechado = G.PortalActionGuard(material_liberado=False,
+                                     acao_material_esperada=E.FRONTEIRA_CANCELAR)
+_r2 = asyncio.run(_ses.cancelar(codigo_atendimento="1", codigo_motivo=39,
+                                guard=_guard_fechado))
+check("B-cancelar: com guard FECHADO, NAO sai", _pg.saiu == [], _pg.saiu)
+check("B-cancelar: e o erro diz que foi bloqueado",
+      _r2.get("erro") == "cancelamento_bloqueado", _r2.get("erro"))
+_guard_aberto = G.PortalActionGuard(material_liberado=True,
+                                    acao_material_esperada=E.FRONTEIRA_CANCELAR)
+_r3 = asyncio.run(_ses.cancelar(codigo_atendimento="1", codigo_motivo=39,
+                                guard=_guard_aberto,
+                                motivos_do_catalogo=[{"Codigo": 12, "Descricao": "OUTRO"}]))
+check("B-cancelar: motivo fora do catalogo lido NAO sai", _pg.saiu == [], _pg.saiu)
+check("B-cancelar: e o erro nomeia o catalogo",
+      _r3.get("erro") == "motivo_fora_do_catalogo", _r3.get("erro"))
+_r4 = asyncio.run(_ses.cancelar(codigo_atendimento="1", codigo_motivo=39,
+                                guard=_guard_aberto,
+                                motivos_do_catalogo=[{"Codigo": 39, "Descricao": "X"}]))
+check("B-cancelar CONTROLE: guard aberto + motivo do catalogo SAI — os casos DIFEREM",
+      len(_pg.saiu) == 1 and _r4.get("status") == 200, (_pg.saiu, _r4.get("status")))
+
+
 print("\n" + "=" * 66)
 print(f"  {PASS} asserções verdes · {FAIL} vermelhas")
 print("=" * 66)

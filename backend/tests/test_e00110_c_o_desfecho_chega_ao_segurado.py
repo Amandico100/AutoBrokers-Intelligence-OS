@@ -39,6 +39,12 @@ sys.path.insert(0, RAIZ)
 from app.agents.tools import portal_params as PP  # noqa: E402
 from app.tasks import vigia_do_portal as VIGIA  # noqa: E402
 
+# ⚠️ ATUALIZADO em 20/09/2026 (CLAUDE.md §9.3) — juiz B4 / red B6. Os textos das
+# paradas foram REESCRITOS no conserto: nenhum promete continuacao ("eu sigo
+# daqui", "chame de novo"), porque nao existe journey de continuacao, e todos
+# terminam dizendo que a equipe assume. As frases-ancora deste guarda seguiram o
+# texto novo; o que ele mede — cada parada fala em lingua de gente e diz o que
+# fazer — nao mudou.
 PASS = FAIL = 0
 
 
@@ -219,10 +225,10 @@ def n1_as_paradas_tem_texto_humano() -> None:
 
     esperado = {
         "decidir_reparo": ("reparo", "30 minutos"),
-        "peca_ambigua": ("qual peça", "nome certinho"),
-        "cidade_sem_rede": ("não tem loja credenciada", "cidade vizinha"),
-        "motivo_ambiguo": ("como o dano aconteceu", "pedra na estrada"),
-        "questionario_incompleto": ("Falta só uma coisa", "pergunta"),
+        "peca_ambigua": ("Qual peca", "nome certinho"),
+        "cidade_sem_rede": ("nao tem loja credenciada", "outra cidade"),
+        "motivo_ambiguo": ("como o dano aconteceu", "lista fechada de causas"),
+        "questionario_incompleto": ("pergunta sobre o seu vidro", "pergunta"),
         "tela_desconhecida": ("não conheço", "equipe"),
         "desconhecido": ("não conheço", "equipe"),
     }

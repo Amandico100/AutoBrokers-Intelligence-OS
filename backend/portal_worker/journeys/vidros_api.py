@@ -235,6 +235,31 @@ METODO_DA_ESCRITA: Dict[str, str] = {
 
 _RE_CODIGO_NA_URL = re.compile(r"/\d{4,}")
 
+# 📊 Os verbos que MUDAM o mundo. `POST /questionarios/perguntas` é leitura, e
+# por isso quem decide o que é material continua sendo o guard — esta lista só
+# escolhe quem precisa estar NO REGISTRO para poder sair.
+METODOS_DE_ESCRITA: Tuple[str, ...] = ("POST", "PUT", "PATCH", "DELETE")
+
+
+def _caminho_normalizado(caminho: Any) -> str:
+    """O caminho como o servidor o veria. 🔴 A allowlist não pode ser burlada
+    por caixa, espaço, barra dupla ou `;`.
+
+    📊 Medido pelo red team em 20/09/2026: `/Agendamentos`, `//agendamentos`,
+    `/agendamentos ` e `/atendimentos/Abandonar` **saíam para a rede** — os
+    quatro são o mesmo endereço para o servidor e eram desconhecidos para o
+    registro.
+    """
+    from urllib.parse import unquote
+
+    c = unquote(str(caminho or "")).strip().lower()
+    c = c.split("?")[0].split("#")[0].split(";")[0]
+    c = re.sub(r"/{2,}", "/", c)
+    c = re.sub(r"/\./", "/", c)
+    if len(c) > 1 and c.endswith("/"):
+        c = c[:-1]
+    return c
+
 
 def endpoint_do_caminho(caminho: Any) -> str:
     """Do caminho chamado para a CHAVE do registro. `""` = desconhecido.
@@ -245,15 +270,15 @@ def endpoint_do_caminho(caminho: Any) -> str:
     o casamento é pelo prefixo MAIS LONGO: `/atendimentos/abandonar` não pode
     cair em `/atendimentos`.
     """
-    c = str(caminho or "").split("?")[0]
-    c = _RE_CODIGO_NA_URL.sub("/{codigo}", c)
-    if c in ESTADO_DO_ENDPOINT:
-        return c
+    c = _RE_CODIGO_NA_URL.sub("/{codigo}", _caminho_normalizado(caminho))
+    for ep in ESTADO_DO_ENDPOINT:
+        if _caminho_normalizado(ep) == c:
+            return ep
     melhor = ""
     for ep in ESTADO_DO_ENDPOINT:
-        base = ep.rstrip("/")
+        base = _caminho_normalizado(ep)
         if c == base or c.startswith(base + "/"):
-            if len(base) > len(melhor):
+            if len(base) > len(_caminho_normalizado(melhor or "")):
                 melhor = ep
     return melhor
 
@@ -263,16 +288,26 @@ def estado_do_endpoint(caminho: Any) -> str:
     return ESTADO_DO_ENDPOINT.get(endpoint_do_caminho(caminho), "")
 
 
-def pode_sair(caminho: Any) -> bool:
+def pode_sair(caminho: Any, metodo: Any = "GET") -> bool:
     """A chamada pode sair para a rede?
 
-    Endpoint fora do registro devolve `True` de propósito: o registro cobre o
-    que ESTA journey chama, e uma rota nova escrita por engano já é barrada
-    pela allowlist de host. O que este portão existe para impedir é o caso
-    específico e caro — um endereço que sabemos existir e nunca vimos funcionar
-    sair com o freio liberado.
+    🔴 FAIL-CLOSED para ESCRITA, e a regra mudou em 20/09/2026 por medição: a
+    versão anterior devolvia `True` para endpoint fora do registro, e o red team
+    mostrou o que isso significava na prática — `/Agendamentos`, `//agendamentos`
+    e `/atendimentos/Abandonar` **saíram para a rede**, porque bastava escrever o
+    caminho de outro jeito para o registro não o reconhecer.
+
+        endpoint CANDIDATE            → nunca sai
+        fora do registro + ESCRITA    → nunca sai (é isto que mudou)
+        fora do registro + leitura    → sai; ler é reversível, e a allowlist de
+                                        host continua valendo
     """
-    return estado_do_endpoint(caminho) != CANDIDATE
+    estado = estado_do_endpoint(caminho)
+    if estado == CANDIDATE:
+        return False
+    if not estado and str(metodo or "").upper() in METODOS_DE_ESCRITA:
+        return False
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -421,6 +456,11 @@ FORA_DO_API_FIRST: Tuple[str, ...] = (
 
 _MARCA_INATIVA = "(inativo)"
 
+# Palavras que aparecem em quase toda razão social e não identificam ninguém.
+_PALAVRAS_GENERICAS = {"seguros", "seguro", "seguradora", "cia", "companhia",
+                       "s", "sa", "ltda", "auto", "brasil", "do", "de", "da",
+                       "e", "nacional", "gerais", "previdencia"}
+
 
 def apelidos_de_seguradora() -> Tuple[Tuple[str, str, str], ...]:
     """A TABELA ÚNICA de seguradora: `(fragmento, slug, nome_de_tela)`.
@@ -451,25 +491,55 @@ def apelidos_de_seguradora() -> Tuple[Tuple[str, str, str], ...]:
 
 def _triplas_de_apelido(bruto: Dict[str, Tuple[str, str]]
                         ) -> Tuple[Tuple[str, str, str], ...]:
-    """Mais específico primeiro: o consumidor testa por `in`, e `PORTO` casaria
-    dentro de `PORTO SEGURO`."""
+    """Mais específico primeiro: `PORTO SEGURO` antes de `PORTO`."""
     return tuple(sorted(((k.upper(), v[0], v[1]) for k, v in bruto.items()),
-                        key=lambda t: (-len(t[0]), t[0])))
+                        key=lambda t: (-len(t[0].split()), -len(t[0]), t[0])))
+
+
+def _palavras_de(texto: Any) -> list:
+    """Palavras comparáveis, sem acento e sem pontuação. Ordem preservada."""
+    return "".join(c if c.isalnum() else " " for c in _norm(texto)).split()
+
+
+def casar_apelido(nome: Any) -> Optional[Tuple[str, str, str]]:
+    """O apelido que casa com este nome, por PALAVRA INTEIRA. `None` se nenhum.
+
+    🔴 Três defeitos medidos pelo red team em 20/09/2026, e os três morrem aqui:
+
+        "ITAÚ SEGUROS…"      o acento fazia o fragmento `ITAU` não casar, e o
+                             DOM passava a digitar o nome cru — 📊 mudou o que
+                             a tela recebia, com a flag DESLIGADA
+        "ZURICH SANTANDER"   virava `Santander Auto` porque a ordenação por
+                             tamanho punha `SANTANDER` na frente. Empate em
+                             número de palavras resolve por QUEM APARECE ANTES
+                             no texto, que é como uma pessoa lê
+        "BANCO" / "SEG"      casavam por pedaço de palavra. Agora o apelido tem
+                             de aparecer como SEQUÊNCIA DE PALAVRAS INTEIRAS
+
+    Mais palavras vence menos (`PORTO SEGURO` > `PORTO`); empate vence quem
+    aparece primeiro.
+    """
+    palavras = _palavras_de(nome)
+    if not palavras:
+        return None
+    melhor: Optional[Tuple[int, int, Tuple[str, str, str]]] = None
+    for tripla in apelidos_de_seguradora():
+        alvo = _palavras_de(tripla[0])
+        if not alvo:
+            continue
+        for i in range(len(palavras) - len(alvo) + 1):
+            if palavras[i:i + len(alvo)] == alvo:
+                chave = (-len(alvo), i)
+                if melhor is None or chave < melhor[:2]:
+                    melhor = (chave[0], chave[1], tripla)
+                break
+    return melhor[2] if melhor else None
 
 
 def nome_de_tela_do_apelido(nome: Any) -> str:
-    """O nome que o caminho DOM digita. `""` quando nenhum fragmento casa.
-
-    É a mesma leitura que `normalize_insurer` faz; existe aqui para que a
-    tradução tenha UM dono, e não dois que divergem no primeiro nome novo.
-    """
-    alvo = str(nome or "").strip().upper()
-    if not alvo:
-        return ""
-    for fragmento, _slug, nome_de_tela in apelidos_de_seguradora():
-        if fragmento in alvo:
-            return nome_de_tela
-    return ""
+    """O nome que o caminho DOM digita. `""` quando nenhum apelido casa."""
+    achado = casar_apelido(nome)
+    return achado[2] if achado else ""
 
 
 # 📊 `{fragmento: (slug, nome_de_tela)}`. Cada linha tem a medição que a
@@ -576,25 +646,30 @@ def resolver_seguradora(nome: Any, lista_ao_vivo: Any) -> Optional[Dict[str, Any
                     _norm(item.get("NomeFantasia"))):
             return devolver(item)
 
-    # 2. apelido medido — vale só se o slug estiver publicado hoje
-    apelido = ""
-    for frag, slug, _tela in apelidos_de_seguradora():
-        if _norm(frag) == alvo:
-            apelido = slug
-            break
-    if apelido:
+    # 2. apelido medido, por PALAVRA INTEIRA — vale só se o slug estiver
+    #    publicado hoje
+    achado = casar_apelido(nome)
+    if achado:
         for item in itens:
-            if _slug_do_item(item) == apelido:
+            if _slug_do_item(item) == achado[1]:
                 return devolver(item)
 
-    # 3. continência, e só com UM candidato
+    # 3. o nome dito é uma SEQUÊNCIA DE PALAVRAS INTEIRAS do item, e só com UM
+    #    candidato.
+    # 🔴 Aqui morava um `alvo in campo` por pedaço de palavra, e o red team
+    # mediu o que ele fazia: 📊 `"BANCO"` resolvia para `BB` e `"SEG"` para
+    # `TOYOTA` — três letras escolhendo a seguradora de alguém.
+    ditas = [p for p in _palavras_de(nome) if p not in _PALAVRAS_GENERICAS]
+    if not ditas:
+        return None
     candidatos: Dict[str, Dict[str, Any]] = {}
     for item in itens:
-        campos = [_norm(_slug_do_item(item)), _norm(item.get("Nome")),
-                  _norm(item.get("NomeFantasia"))]
-        if any(c and (c.startswith(alvo) or alvo.startswith(c) or
-                      (len(alvo) >= 4 and alvo in c)) for c in campos):
-            candidatos[_slug_do_item(item)] = item
+        for campo in (_slug_do_item(item), item.get("Nome"), item.get("NomeFantasia")):
+            do_item = _palavras_de(campo)
+            if any(do_item[i:i + len(ditas)] == ditas
+                   for i in range(len(do_item) - len(ditas) + 1)):
+                candidatos[_slug_do_item(item)] = item
+                break
     if len(candidatos) == 1:
         return devolver(next(iter(candidatos.values())))
     return None
@@ -826,44 +901,35 @@ def causas_medidas_de(familia: Any = "") -> Tuple[str, ...]:
 
 
 # 📊 Medido nas 4 capturas: `PerimetroDano` = `U` 3× e `R` 1×. **`N` nunca.**
-_PALAVRAS_DO_PERIMETRO: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
-    ("R", ("rodoviario", "rodovia", "estrada", "br ", "freeway", "autoestrada",
-           "auto estrada", "viagem", "viajando", "pista")),
-    ("U", ("urbano", "cidade", "rua", "avenida", "bairro", "centro",
-           "estacionamento", "garagem", "condominio", "shopping", "casa",
-           "trabalho", "semaforo")),
-)
+#
+# 🔴 O CAMPO É UM ENUM, E ESTA FUNÇÃO SÓ ACEITA O ENUM.
+#
+# A versão anterior tentava classificar o texto de gente aqui dentro, com
+# `palavra in texto` — e o red team mediu o preço em 20/09/2026:
+#
+#     "o vidro quebrou na garagem de casa"  → R (rodoviário!)  ← "br " em "queBRou"
+#     "abri a porta em casa"                → R                ← idem
+#     "casado"                              → U                ← "casa" dentro
+#     "pista de kart do shopping"           → R
+#
+# Substring não é vocabulário. A classificação do texto de gente MUDOU DE LUGAR:
+# ela agora acontece **antes da fronteira A**, em
+# `portal_params.normalizar_perimetro`, onde errar custa uma pergunta a mais e
+# não um pedido gravado errado. Aqui, depois da fronteira, só entra o enum.
+PERIMETRO_POR_ENUM: Dict[str, str] = {"urbano": "U", "rodoviario": "R"}
 
 
-def perimetro_do_texto(texto: Any) -> str:
-    """O que o segurado disse → `"U"` · `"R"` · `""` (não deu para saber).
+def perimetro_do_texto(valor: Any) -> str:
+    """`"urbano"` → `"U"` · `"rodoviario"` → `"R"` · qualquer outra coisa → `""`.
 
-    🔴 Esta função existe para matar um defeito da classe do CLAUDE.md §9.5 —
-    *o passo que responde ERRADO e não trava*. O código antes fazia
-    `str(onde)[:1].upper()`, porque o template envia a PRIMEIRA LETRA do rótulo
-    (`opcao.substring(0,1)`). Funciona para `"urbano"` e `"rodoviario"`, que é
-    o que a pergunta oferece hoje — e falha calado para tudo o mais:
-
-        "na cidade"  → `"N"`   ← e `N` é **"Não Sabe"** para o portal
-        "na estrada" → `"N"`   ← idem
-        "centro"     → `"C"`   ← um valor que não existe no enum
-
-    Um `"N"` gravado por engano é uma resposta que o portal ACEITA, some no
-    pedido e chega ao analista como se o segurado tivesse dito que não sabe.
-
-    `""` é a resposta honesta para o que não dá para classificar, e quem chamou
-    PARA e pergunta. ⛔ Nunca cair em `"N"` por conveniência (SPEC-074 R6: "Não
-    sabe" não é atalho para avançar).
+    ⛔ Não classifica frase. Quem classifica é a coleta, antes de escrever.
+    `""` faz o chamador PARAR — nunca cair em `"N"` (= "Não Sabe" no portal),
+    que é uma resposta que o portal aceita e que mente sobre o segurado.
     """
-    t = _norm(texto)
-    if not t:
-        return ""
+    t = _norm(valor)
     if t in ("u", "r"):
         return t.upper()
-    for codigo, palavras in _PALAVRAS_DO_PERIMETRO:
-        if any(p.strip() in t for p in palavras):
-            return codigo
-    return ""
+    return PERIMETRO_POR_ENUM.get(t, "")
 
 # 📊 Estático no `passo2.html`. Note que `6` está fora de sequência e **não
 # existe 4** — decorar "é o quarto da lista" daria Corretor onde se queria Filho.

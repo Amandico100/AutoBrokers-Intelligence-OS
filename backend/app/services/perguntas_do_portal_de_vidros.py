@@ -425,7 +425,7 @@ _ESPECIFICAS_POR_IDENTIDADE: Dict[str, Tuple[Pergunta, ...]] = {
         Pergunta(
             ACEITA_REPARO,
             "Se a seguradora oferecer REPARO em vez de trocar o vidro, você topa tentar? "
-            "O reparo é sem custo de franquia, leva uns 30 minutos e mantém o vidro "
+            "O reparo é normalmente sem franquia — eu confirmo o valor quando a seguradora responder, leva uns 30 minutos e mantém o vidro "
             "original do carro. Se não ficar bom, você ainda pode pedir a troca depois.",
             opcoes=("sim", "nao"),
             como_devolver="registre em especificos: {\"aceita_reparo\": \"sim\"} ou "

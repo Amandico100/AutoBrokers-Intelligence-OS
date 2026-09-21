@@ -244,103 +244,127 @@ def casar_peca(texto: Any, itens: Any) -> Dict[str, Any]:
                 return i
         return None
 
+    familias = sorted(identidade_peca(str(texto)))
+
+    def a_familia_do_item_bate(item: Dict[str, Any]) -> bool:
+        """🔴 A PECA ESCOLHIDA TEM DE SER DA FAMILIA QUE O SEGURADO NOMEOU.
+
+        📊 O red team mediu, no catalogo real do para-brisa, o que acontecia sem
+        esta checagem:
+
+            "vidro lateral"            -> LANTERNA TRASEIRA BI-PARTIDA LATERAL LED
+            "janela lateral traseira"  -> LANTERNA TRASEIRA BI-PARTIDA LATERAL LED
+
+        A pessoa pede o vidro da porta e o robo pede uma LANTERNA — irreversivel,
+        pago, e o portal nao deixa corrigir. A palavra `LATERAL` no nome da
+        lanterna bastava.
+
+        A regra: a identidade da DESCRICAO DO ITEM tem de ser exatamente a
+        familia que o texto do segurado nomeou. `LANTERNA … LATERAL LED` tem
+        identidade `{lanterna, lateral}` — nao e `{lateral}`, entao nao serve.
+        Quando o texto nao nomeia UMA familia, nao ha o que conferir e a
+        checagem se cala (nao inventa veto).
+        """
+        if len(familias) != 1:
+            return True
+        return sorted(identidade_peca(str(item.get("Descricao") or ""))) == familias
+
     veredito = explicar_match(texto, rotulos)
     item = pelo_rotulo(veredito.get("escolha"))
-    if item is not None:
+    if item is not None and a_familia_do_item_bate(item):
         return {"item": item, "candidatos": [item],
                 "motivo": f"vocabulario unico: {veredito.get('motivo')}"}
+    if item is not None:
+        return {"item": None, "candidatos": reais,
+                "motivo": (f"o item mais parecido ({item.get('Descricao')!r}) nao e "
+                           f"da familia {familias[0]!r} que o segurado nomeou")}
 
-    familias = sorted(identidade_peca(str(texto)))
     if len(familias) == 1:
-        # `para_choque` → "para choque": o nome da família é chave de código;
-        # o que se procura no catálogo é a palavra.
-        por_familia = explicar_match(familias[0].replace("_", " "), rotulos)
-        item = pelo_rotulo(por_familia.get("escolha"))
-        if item is not None:
-            return {"item": item, "candidatos": [item],
-                    "motivo": f"pela familia {familias[0]!r}: {por_familia.get('motivo')}"}
+        # 🔴 A passada por FAMILIA so aceita item cuja PROPRIA identidade e
+        # aquela familia, e exatamente UM. Sem "o mais parecido".
+        da_familia = [i for i in reais if a_familia_do_item_bate(i)]
+        if len(da_familia) == 1:
+            return {"item": da_familia[0], "candidatos": da_familia,
+                    "motivo": f"unico item da familia {familias[0]!r} no catalogo"}
+        if len(da_familia) > 1:
+            # `para_choque` -> "para choque": o nome da familia e chave de
+            # codigo; o que se procura no catalogo e a palavra.
+            por_familia = explicar_match(familias[0].replace("_", " "),
+                                         [str(i.get("Descricao") or "") for i in da_familia])
+            item = pelo_rotulo(por_familia.get("escolha"))
+            if item is not None and a_familia_do_item_bate(item):
+                return {"item": item, "candidatos": da_familia,
+                        "motivo": f"pela familia {familias[0]!r}: {por_familia.get('motivo')}"}
+            return {"item": None, "candidatos": da_familia,
+                    "motivo": (f"{len(da_familia)} itens da familia {familias[0]!r} "
+                               "no catalogo desta apolice")}
 
     return {"item": None, "candidatos": reais,
             "motivo": f"o vocabulario nao reconheceu a peca ({veredito.get('motivo')})"}
 
 
 # --------------------------------------------------------------------------
-# 🔴 A CAUSA DO DANO — duas passadas, e nenhuma delas chuta
+# 🔴 A CAUSA DO DANO — DEPOIS DA FRONTEIRA, SO IGUALDADE
 # --------------------------------------------------------------------------
-# 📊 O problema, medido na costura: `dano.como` é relato livre ("uma pedra
-# bateu no vidro") e a lista do portal fala outra língua ("DANO ACIDENTAL
-# CAUSADO POR PEDRA, OBJETO OU FRUTA"). Como **não existe journey de
-# continuação** (o `token_autorizacao` vive só em memória e `safe_to_retry_open`
-# é `False`), parar aqui não é "tentar de novo": é terminar o atendimento na
-# mão de uma pessoa, dentro do portal, com o protocolo já emitido.
+# 📊 Aqui existia uma segunda passada, por "palavra distintiva". O red team a
+# mediu contra as listas AO VIVO dos 4 HAR, em 20/09/2026:
 #
-# O conserto de verdade é a COLETA (`CAUSAS_MEDIDAS` + a pergunta que o agente
-# faz antes). Este casador é o que aproveita essa coleta sem nunca inventar:
+#     "quebra acidental do para-brisa"  ->  QUEBRA INTENCIONAL OU VOLUNTARIA
+#     "foi uma quebra acidental"        ->  QUEBRA INTENCIONAL OU VOLUNTARIA
+#     "na chuva o vidro trincou"        ->  CHUVA DE GRANIZO
 #
-#     1. igualdade normalizada com a lista AO VIVO   ("colisão acidental" = item)
-#     2. PALAVRA DISTINTIVA: uma palavra não-vazia do que foi dito que aparece
-#        em UM ÚNICO item da lista ao vivo ("pedra" está só em um)
+# A primeira linha descreve FRAUDE. Ela e gravada na seguradora, confiante e
+# calada, para alguem que disse o contrario — e sinistro negado por causa
+# declarada errada nao se desfaz com um pedido de desculpas.
 #
-# ⛔ Nunca `OUTROS` por exclusão — 📊 ele existe na lista da lataria, e escolhê-lo
-# porque nada casou é gravar na seguradora que ninguém sabe o que houve.
-# ⛔ Nunca por posição. ⛔ Duas candidatas ⇒ para e mostra as opções reais.
-_PALAVRAS_SEM_PODER_NA_CAUSA = {
-    "de", "da", "do", "das", "dos", "e", "ou", "o", "a", "os", "as", "um", "uma",
-    "no", "na", "em", "com", "por", "para", "meu", "minha", "foi", "sem", "ao",
-    "dano", "danificado", "danificada", "peca", "item", "veiculo", "carro",
-    "acidental", "acidente", "algum", "realizado", "que", "se", "meu", "the",
-}
+# A passada MORREU. O que sobrou e igualdade normalizada com a lista daquela
+# peca, e o rigor mudou de lugar: `portal_params.causa_conhecida` exige, ANTES
+# da fronteira A, que `como_ocorreu` seja IGUAL a uma causa medida da familia.
+# Ali, recusar custa uma pergunta; aqui, custa o atendimento.
 CAUSA_PROIBIDA_POR_EXCLUSAO = "outros"
-# Substantivo de CATEGORIA: nomeia o balcão, não a peça nem a causa. É a mesma
-# lista que `vidros_lanternas._CATEGORIA` usa, pelo mesmo motivo.
-_CATEGORIA_DE_PECA = {"vidro", "vidros", "peca", "pecas", "item", "itens",
-                      "veiculo", "carro", "auto", "automovel"}
 
 
 def casar_causa(texto: Any, motivos: Any) -> Dict[str, Any]:
-    """`{"item", "candidatos", "motivo"}` — a causa do dano na lista AO VIVO."""
+    """A causa do dano na lista AO VIVO, por IGUALDADE. Nada mais.
+
+    ⛔ Sem continencia, sem palavra distintiva, sem posicao, sem `OUTROS` por
+    exclusao — `OUTROS` so quando dito literalmente, e ai e escolha de gente.
+    """
     reais = [m for m in (motivos or []) if isinstance(m, dict)]
     alvo = _norm(texto)
     if not alvo or not reais:
         return {"item": None, "candidatos": reais, "motivo": "nada a casar"}
 
-    def rotulo(m: Dict[str, Any]) -> str:
-        return _norm(m.get("DescricaoObjetoCausa"))
-
-    # 1. igualdade — é o que a coleta com `CAUSAS_MEDIDAS` produz
-    exatos = [m for m in reais if rotulo(m) == alvo]
+    exatos = [m for m in reais if _norm(m.get("DescricaoObjetoCausa")) == alvo]
     if len(exatos) == 1:
         return {"item": exatos[0], "candidatos": exatos, "motivo": "texto exato"}
-
-    # 2. palavra distintiva
-    # 🔴 O NOME DA PEÇA NÃO É A CAUSA, e ignorar isso produziu um casamento
-    # confiante e ERRADO na medição: 📊 "o vidro esta arranhado" escolhia
-    # `QUEDA DO RETROVISOR INTERNO DANIFICOU O VIDRO`, porque "vidro" aparecia
-    # em um único item da lista. Num portal de vidros, "vidro" nomeia o balcão.
-    # Quem sabe quais palavras nomeiam peça é o vocabulário único.
-    from portal_worker.journeys.vidros_lanternas import identidade_peca
-
-    ditas = [p for p in "".join(c if c.isalnum() else " " for c in alvo).split()
-             if len(p) > 2 and p not in _PALAVRAS_SEM_PODER_NA_CAUSA
-             and not identidade_peca(p) and p not in _CATEGORIA_DE_PECA]
-    achados: Dict[str, Dict[str, Any]] = {}
-    for palavra in ditas:
-        contem = [m for m in reais
-                  if palavra in "".join(c if c.isalnum() else " " for c in rotulo(m)).split()]
-        if len(contem) == 1:
-            unico = contem[0]
-            if rotulo(unico) == CAUSA_PROIBIDA_POR_EXCLUSAO:
-                continue
-            achados[str(unico.get("CodigoObjetoCausa"))] = unico
-    if len(achados) == 1:
-        unico = next(iter(achados.values()))
-        return {"item": unico, "candidatos": [unico],
-                "motivo": "palavra distintiva na lista ao vivo"}
-    if len(achados) > 1:
-        return {"item": None, "candidatos": list(achados.values()),
-                "motivo": f"{len(achados)} causas possiveis pelo que foi dito"}
+    if len(exatos) > 1:
+        return {"item": None, "candidatos": exatos,
+                "motivo": "a lista tem duas causas com o mesmo texto"}
     return {"item": None, "candidatos": reais,
-            "motivo": "o relato nao casou com nenhuma causa da lista"}
+            "motivo": "a causa dita nao e IGUAL a nenhuma da lista desta peca"}
+
+
+def casar_igual(texto: Any, itens: Any, campos: Tuple[str, ...]) -> Dict[str, Any]:
+    """Casamento por IGUALDADE normalizada, e exatamente UM. Nada de parecido.
+
+    🔴 E o unico casador que esta SPEC autoriza depois da fronteira A para
+    catalogo fechado (cidade, UF). Zero candidatos e dois candidatos param —
+    sao desfechos diferentes e os dois pedem a mesma coisa: perguntar.
+    """
+    reais = [i for i in (itens or []) if isinstance(i, dict)]
+    alvo = _norm(texto)
+    if not alvo:
+        return {"item": None, "candidatos": reais, "motivo": "nada a casar"}
+    iguais = [i for i in reais
+              if any(_norm(i.get(c)) == alvo for c in campos if i.get(c) not in (None, ""))]
+    if len(iguais) == 1:
+        return {"item": iguais[0], "candidatos": iguais, "motivo": "texto exato"}
+    if len(iguais) > 1:
+        return {"item": None, "candidatos": iguais,
+                "motivo": f"{len(iguais)} itens com o mesmo nome"}
+    return {"item": None, "candidatos": reais,
+            "motivo": "nenhum item do catalogo tem esse nome exato"}
 
 
 def _rotulos(itens: Any, campo: str, teto: int = 20) -> List[str]:
@@ -571,6 +595,8 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     # 🔴 O perímetro é classificado AQUI, antes de qualquer escrita, porque um
     # texto que não classifica não pode virar `"N"` (= "Não Sabe" no portal) lá
     # na frente. Ver `API.perimetro_do_texto`.
+    # 🔴 So o ENUM: quem classificou o texto de gente foi
+    # `portal_params.normalizar_perimetro`, ANTES da fronteira A.
     perimetro = API.perimetro_do_texto(dano.get("onde") or local.get("perimetro"))
     faltou = [n for n, v in (
         ("cpf", cpf), ("placa", placa), ("data", data),
@@ -810,7 +836,11 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
                      "do portal.", opcoes=sorted(ufs_validas))
     rcid = await sessao.cidades(uf)
     cidades = rcid.get("json") if isinstance(rcid.get("json"), list) else []
-    achada_cidade = casar_unico(nome_cidade, cidades, ("Nome", "Cidade"))
+    # 🔴 CIDADE POR IGUALDADE, e so. 📊 O red team mediu o que a continencia
+    # fazia com a lista real de SC: "Curitiba" -> CURITIBANOS, "Palmas" ->
+    # PALMA SOLA, "Santo Amaro" -> SANTO AMARO DA IMPERATRIZ. Cada uma dessas e
+    # um vidraceiro esperando numa cidade onde o carro nao esta.
+    achada_cidade = casar_igual(nome_cidade, cidades, ("Nome", "Cidade"))
     if achada_cidade["item"] is None:
         return parar("cidade_ambigua",
                      f"o pedido foi aberto e a cidade {nome_cidade!r} nao casou "
@@ -942,6 +972,17 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
             evidence["reparo"] = {**evidence.get("reparo", {}),
                                   "gravado": bool(rrep.get("ok")),
                                   "valor": reparo_decidido}
+            if not rrep.get("ok"):
+                # 🔴 RED B7: a decisao do segurado entre REPARAR e TROCAR nao
+                # foi gravada, e as duas coisas custam valores diferentes a ele.
+                # Seguir calado entregaria um desfecho que fala de reparo sobre
+                # um pedido que o portal registrou como troca (ou vice-versa).
+                estado.transitar(ST.ATENDIMENTO_MATERIALIZADO,
+                                 motivo="alterar-reparo nao confirmou")
+                _tela_desconhecida(evidence, onde=API.EP_ALTERAR_REPARO, resposta=rrep)
+                return parar("reparo_nao_gravado",
+                             "o pedido esta aberto e a escolha entre reparar e "
+                             "trocar nao foi confirmada pela seguradora.")
 
     # ======================================================================
     # 7. O DESFECHO — quem decide é o PORTAL, e ele diz por escrito
@@ -957,15 +998,39 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     # o ponto inteiro: 📊 o `ScriptFinalizacao` reescreve a si mesmo, e só aqui
     # ele traz a loja. Lido antes, diz "aguarde o analista".
     rg = await sessao.ler_atendimento()
-    agregado = rg.get("json") if isinstance(rg.get("json"), dict) else {}
+    if not rg.get("ok") or not isinstance(rg.get("json"), dict):
+        # 🔴 JUIZ B3 / RED B7: sem o agregado nao ha desfecho nenhum. A versao
+        # anterior seguia com `{}`, o roteador dizia "conclusao sem loja" e o
+        # segurado recebia `analista` INVENTADO — com `done`, sobre um pedido
+        # cujo estado ninguem leu.
+        _tela_desconhecida(evidence, onde=API.EP_ATENDIMENTOS, resposta=rg)
+        evidence["desfecho"] = {"tipo": ST.DESFECHO_DESCONHECIDO,
+                                "roteador": ropc.get("json") or {},
+                                "motivo": "GET /atendimentos nao respondeu depois "
+                                          "de opcoes-disponiveis"}
+        return parar("desfecho_ilegivel",
+                     "o pedido existe e eu nao consegui ler o que a seguradora "
+                     "decidiu. NAO reexecute: consulte o atendimento.")
+    agregado = rg.get("json")
     estado = ST.ler_estado_do_agregado(agregado, tinha_protocolo=bool(protocolo))
     estado.numero_protocolo = protocolo
 
     desfecho = ST.ler_desfecho(ropc.get("json"), agregado)
     desfecho["reparo"] = reparo_decidido
+    # 🔴 O NUMERO NAO PODE SUMIR NO CAMINHO DA AGENDA.
+    # 📊 No HAR do vidro de porta nao ha `GET /atendimentos` depois de
+    # `opcoes-disponiveis` — o agregado que o replay devolve e o de ANTES, e ele
+    # JA TINHA `CodigoAtendimento` (a materializacao veio antes). Se por
+    # qualquer motivo o agregado tardio vier sem o numero, vale o que ja
+    # tinhamos lido: perder o numero e deixar o segurado sem o que anotar.
+    if not desfecho.get("codigo_atendimento"):
+        desfecho["codigo_atendimento"] = str(
+            evidence.get("protocolo_do_atendimento")
+            or (estado.codigo_atendimento if estado.codigo_atendimento else "") or "")
     evidence["desfecho"] = desfecho
 
     if estado.codigo_atendimento:
+        evidence["protocolo_do_atendimento"] = estado.codigo_atendimento
         await guard.confirmado(receipt=estado.codigo_atendimento)
         # 📊 O número que a tela mostra e que o segurado anota é este.
         evidence["protocolo"] = estado.codigo_atendimento
@@ -1049,8 +1114,10 @@ async def _enriquecer_agenda(sessao: Any, desfecho: Dict[str, Any], *,
             codigo_cliente=loja.get("codigo_cliente"),
             codigo_produto=loja.get("codigo_produto"), ano=ano)
         meses = rdias.get("json") if isinstance(rdias.get("json"), list) else []
-        loja["dias"] = [{"mes": m.get("Mes"), "dias": list(m.get("Dias") or [])}
-                        for m in meses if isinstance(m, dict)]
+        # 🔴 UM FORMATO SO, e ele ja e o que a mensagem imprime: `["15/08", …]`.
+        # 📊 O red team mediu a mensagem ao segurado com `[{'mes': 8, 'dias':
+        # [15, 17]}]` dentro dela — chave, colchete e tudo. Quem le e uma pessoa.
+        loja["dias"] = _dias_legiveis(meses, ano)
 
         primeira = _primeira_data(meses, ano)
         if not primeira:
@@ -1068,12 +1135,53 @@ async def _enriquecer_agenda(sessao: Any, desfecho: Dict[str, Any], *,
         loja["tempo_permanencia"] = horarios.get("TempoPermanencia")
 
 
+def _ano_do_mes(mes: Any, ano_corrente: int) -> int:
+    """O ano a que este mes pertence. 🔴 A VIRADA DE ANO importa.
+
+    📊 O juiz apontou `datetime.now().year` cravado: em dezembro, a agenda que o
+    portal devolve para JANEIRO viraria `2026-01-…` em vez de `2027-01-…` — e a
+    query de horarios sai com o ano errado, ou o segurado le uma data que ja
+    passou. A regra: mes MENOR que o corrente e do ano que vem.
+    """
+    from datetime import datetime
+
+    try:
+        m = int(mes)
+    except (TypeError, ValueError):
+        return ano_corrente
+    return ano_corrente + 1 if 1 <= m < datetime.now().month else ano_corrente
+
+
+def _dias_legiveis(meses: Any, ano: int) -> List[str]:
+    """`[{"Mes": 8, "Dias": [15,17]}, …]` → `["15/08", "17/08", …]`.
+
+    ⛔ O contrato A→C de `lojas[].dias` e ESTE: uma lista de textos prontos. A
+    mensagem ao segurado imprime direto, sem formatar nada — e por isso nenhuma
+    chave, colchete ou `None` pode vazar para o WhatsApp.
+    """
+    saida: List[str] = []
+    for m in (meses or []):
+        if not isinstance(m, dict):
+            continue
+        try:
+            mes = int(m.get("Mes"))
+        except (TypeError, ValueError):
+            continue
+        for d in (m.get("Dias") or []):
+            try:
+                saida.append(f"{int(d):02d}/{mes:02d}")
+            except (TypeError, ValueError):
+                continue
+    return saida[:60]
+
+
 def _primeira_data(meses: Any, ano: int) -> str:
-    """📊 `[{"Mes": 8, "Dias": [15,17,…]}, …]` → `"2026-08-15"`."""
+    """📊 `[{"Mes": 8, "Dias": [15,17,…]}, …]` → `"2026-08-15"`, com o ano certo."""
     for m in (meses or []):
         if not isinstance(m, dict):
             continue
         dias = [d for d in (m.get("Dias") or []) if isinstance(d, int)]
         if dias:
-            return f"{ano}-{int(m.get('Mes') or 0):02d}-{min(dias):02d}"
+            mes = int(m.get("Mes") or 0)
+            return f"{_ano_do_mes(mes, ano)}-{mes:02d}-{min(dias):02d}"
     return ""

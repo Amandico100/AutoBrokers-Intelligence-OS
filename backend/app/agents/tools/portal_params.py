@@ -162,13 +162,24 @@ def _apelidos_do_portal() -> Tuple[Tuple[str, str], ...]:
 
 
 def normalize_insurer(name: Optional[str]) -> str:
-    """Nome da seguradora como o PORTAL a conhece. Fonte: seguradora da InfoCap."""
+    """Nome da seguradora como o PORTAL a conhece. Fonte: seguradora da InfoCap.
+
+    🔴 O casamento e por PALAVRA INTEIRA e sem acento, e quem o faz e a tabela
+    unica (`vidros_api.casar_apelido`). 📊 Tres defeitos medidos pelo red team
+    em 20/09/2026 morrem ai: `ITAU` nao casava com `ITAU` acentuado (e o DOM
+    passava a digitar a razao social crua), `ZURICH SANTANDER` virava
+    `Santander Auto`, e `BANCO`/`SEG` casavam por pedaco de palavra.
+    """
     raw = str(name or "").strip()
-    up = raw.upper()
-    for frag, canon in _apelidos_do_portal():
-        if frag in up:
-            return canon
-    return raw.title() if raw else ""
+    if not raw:
+        return ""
+    try:
+        from portal_worker.journeys.vidros_api import nome_de_tela_do_apelido
+
+        tela = nome_de_tela_do_apelido(raw)
+    except Exception:  # noqa: BLE001
+        tela = ""
+    return tela or raw.title()
 
 
 # ===========================================================================
@@ -280,6 +291,172 @@ def _lista_de_pecas(bruto) -> list:
     return [p for p in itens if p and p.lower() not in ("none", "null")]
 
 
+
+# ===========================================================================
+# 🔴 RIGOR ANTES DA FRONTEIRA A — onde parar e de graca
+# ===========================================================================
+# O principio que o conserto de 20/09/2026 fixou, depois de juiz e red team:
+#
+#     ANTES da fronteira A   parar custa UMA PERGUNTA. O job nem nasce, o agente
+#                            pergunta de novo, e ninguem no mundo soube de nada.
+#     DEPOIS dela            parar custa O ATENDIMENTO: o pedido existe na
+#                            seguradora, nao ha journey de continuacao, e quem
+#                            termina e uma pessoa, no portal.
+#
+# Por isso toda classificacao de texto de gente mora AQUI, e o que atravessa a
+# fronteira e sempre um ENUM ou uma IGUALDADE. 📊 O preco de nao fazer assim
+# foi medido: "quebra acidental" virava QUEBRA INTENCIONAL (a seguradora nega
+# sinistro), "na garagem de casa" virava Rodoviario, e "Curitiba" virava
+# CURITIBANOS/SC.
+
+_SIM_NO_REPARO = ("sim", "aceito", "aceita", "quero", "quero o reparo", "pode ser",
+                  "pode reparar", "topo", "vamos", "ok", "claro", "isso",
+                  "prefiro reparar", "quero reparar", "sim aceito", "s")
+_NAO_NO_REPARO = ("nao", "nao quero", "prefiro trocar", "quero trocar", "trocar",
+                  "troca", "nao aceito", "recuso", "melhor trocar", "n")
+
+_URBANO = ("urbano", "cidade", "rua", "avenida", "bairro", "centro",
+           "estacionamento", "garagem", "condominio", "shopping", "casa",
+           "trabalho", "semaforo", "vila", "praca", "urbana")
+_RODOVIARIO = ("rodoviario", "rodovia", "estrada", "br", "sp", "freeway",
+               "autoestrada", "viagem", "viajando", "pista", "marginal",
+               "anel", "rodoviaria")
+
+
+def _palavras_soltas(texto):
+    """As palavras inteiras do texto, sem acento e sem pontuacao."""
+    cru = _fold(str(texto or "")).lower()
+    return [w for w in "".join(c if c.isalnum() else " " for c in cru).split() if w]
+
+
+def normalizar_perimetro(texto):
+    """Texto de gente -> `"urbano"` | `"rodoviario"` | `""` (nao deu para saber).
+
+    🔴 Por PALAVRA INTEIRA, e o motivo esta medido: a versao por substring
+    (`"br " in texto`) respondia **Rodoviario** para *"o vidro quebrou na
+    garagem de casa"* — `br` dentro de `queBRou` — e **Urbano** para
+    *"casado"*. O portal aceita os dois valores calado, e o analista le o
+    errado.
+
+    `""` faz o acionamento PARAR ANTES de abrir, que custa uma pergunta.
+    """
+    palavras = set(_palavras_soltas(texto))
+    if not palavras:
+        return ""
+    tem_r = bool(palavras & set(_RODOVIARIO))
+    tem_u = bool(palavras & set(_URBANO))
+    if tem_r and not tem_u:
+        return "rodoviario"
+    if tem_u and not tem_r:
+        return "urbano"
+    return ""
+
+
+def normalizar_aceita_reparo(texto):
+    """Texto de gente -> `"sim"` | `"nao"` | `""`.
+
+    A journey so ve `sim`/`nao`: ela nao interpreta frase nenhuma depois da
+    fronteira. 📊 O red team mediu `"pode ser"`, `"quero o reparo"` e
+    `"quero trocar"` chegando crus a journey, onde viravam "nao decidiu" e
+    paravam o pedido ja aberto.
+    """
+    limpo = " ".join(_palavras_soltas(texto))
+    if not limpo:
+        return ""
+    # 🔴 "nao sei" NAO e "nao quero". A primeira versao respondia `nao` para
+    # quem disse que nao sabe — e ai o segurado perde o reparo (que costuma sair
+    # sem franquia) por uma palavra que ele nem usou nesse sentido.
+    if limpo in ("nao sei", "sei la", "nao faco ideia", "talvez", "nao lembro",
+                 "nao sabe", "tanto faz", "voce decide", "o que for melhor"):
+        return ""
+    if limpo in _SIM_NO_REPARO or limpo in _NAO_NO_REPARO:
+        return "sim" if limpo in _SIM_NO_REPARO else "nao"
+    palavras = set(limpo.split())
+    nega = bool(palavras & {"nao", "prefiro", "recuso"})
+    troca = bool(palavras & {"trocar", "troca", "trocado"})
+    repara = bool(palavras & {"reparo", "reparar", "conserto", "consertar"})
+    if nega and not repara:
+        return "nao"
+    if troca and not repara:
+        return "nao"
+    if nega and repara:
+        return "nao"
+    if repara or palavras & {"sim", "aceito", "quero", "pode", "topo", "ok", "claro"}:
+        return "sim"
+    return ""
+
+
+def causa_conhecida(peca, texto):
+    """A causa dita e IGUAL (normalizada) a uma das causas MEDIDAS da familia?
+
+    Devolve o texto CANONICO da causa, ou `""`.
+
+    🔴 Igualdade, e so igualdade. 📊 A passada por "palavra distintiva" que
+    existia na journey respondeu, na lista ao vivo do para-brisa:
+
+        "quebra acidental do para-brisa"  -> QUEBRA INTENCIONAL OU VOLUNTARIA
+        "na chuva o vidro trincou"        -> CHUVA DE GRANIZO
+
+    A primeira e a pior coisa que este produto pode escrever numa seguradora:
+    ela descreve fraude. A segunda inventa granizo. As duas passavam confiantes.
+    """
+    from app.services.perguntas_do_portal_de_vidros import causas_para_oferecer
+
+    dito = " ".join(_palavras_soltas(texto))
+    if not dito:
+        return ""
+    for causa in causas_para_oferecer(peca):
+        if " ".join(_palavras_soltas(causa)) == dito:
+            return causa
+    return ""
+
+
+def uf_explicita(texto):
+    """A UF que o SEGURADO escreveu. `""` quando ele nao escreveu nenhuma.
+
+    🔴 Acabou a UF assumida da apolice. 📊 O red team mediu o custo: o segurado
+    digita `"Curitiba"`, a apolice e de SC, e o pedido ia para **CURITIBANOS/SC**
+    — 300 km e outra cidade. O CEP da apolice e o de CASA; quem quebra o vidro
+    viajando conserta onde esta.
+    """
+    palavras = _palavras_soltas(texto)
+    for w in reversed(palavras):
+        if len(w) == 2 and w.upper() in _UFS_DO_BRASIL:
+            return w.upper()
+    return ""
+
+
+_UFS_DO_BRASIL = {"AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA",
+                  "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN",
+                  "RO", "RR", "RS", "SC", "SE", "SP", "TO"}
+
+# Lixo que o segurado responde quando nao quer decidir. 📊 Todos foram medidos
+# pelo red team passando pelo gate da cidade e virando `"Nao Sei"`, `"Tanto Faz"`.
+_CIDADE_SEM_RESPOSTA = ("nao sei", "nao sei ainda", "tanto faz", "qualquer uma",
+                        "qualquer", "perto de casa", "onde for mais perto",
+                        "nao decidi", "depois eu digo", "voce escolhe",
+                        "onde voce quiser", "sei la", "nao faco ideia")
+
+
+def cidade_do_servico_valida(texto):
+    """`(cidade, uf, erro)`. `erro` != "" faz o acionamento parar ANTES de abrir."""
+    bruto = str(texto or "").strip()
+    limpo = " ".join(_palavras_soltas(bruto))
+    if not limpo:
+        return "", "", "cidade_ausente"
+    if limpo in _CIDADE_SEM_RESPOSTA:
+        return "", "", "cidade_sem_resposta"
+    uf = uf_explicita(bruto)
+    if not uf:
+        return "", "", "uf_ausente"
+    nome = " ".join(w for w in _palavras_soltas(bruto)
+                    if not (len(w) == 2 and w.upper() in _UFS_DO_BRASIL))
+    nome = " ".join(w for w in nome.split() if w not in ("em", "no", "na", "de", "estou", "cidade"))
+    if not nome:
+        return "", uf, "cidade_ausente"
+    return nome.upper(), uf, ""
+
+
 def build_portal_params(flat: dict, profile: dict, infocap: dict,
                         *, enviar_de_verdade: bool = False) -> Tuple[Optional[dict], Optional[str]]:
     """(params, erro). flat = decisoes do LLM (cpf, data, dano, placa_informada
@@ -365,10 +542,66 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
     if [p for p in para_o_segurado(faltam) if trava_o_pedido(p)]:
         return None, mensagem_para_o_agente(faltam, peca_dita)
 
-    # A cidade do serviço vem do que o segurado respondeu; o ESTADO cai para o
-    # da apólice quando ele não o disse, e a queda fica declarada (P0-5).
-    cidade_servico, cidade_servico_uf, cidade_servico_origem = cidade_e_uf_do_servico(
-        ja_sei.get("cidade_para_o_servico"), cli.get("estado"))
+    # 🔴 A CIDADE E A UF SAO DO SEGURADO, E AS DUAS TEM DE VIR ESCRITAS.
+    # `cidade_e_uf_do_servico` continua existindo para quem so quer formatar o
+    # texto; quem DECIDE se o pedido pode nascer e `cidade_do_servico_valida`.
+    cidade_servico, cidade_servico_uf, erro_da_cidade = cidade_do_servico_valida(
+        ja_sei.get("cidade_para_o_servico"))
+    if erro_da_cidade:
+        p_cidade = pergunta_do_campo("cidade_para_o_servico")
+        motivo = {
+            "cidade_ausente": "Em qual CIDADE e ESTADO voce quer fazer o servico?",
+            "uf_ausente": ("Me confirma o ESTADO dessa cidade (a sigla, tipo SC ou "
+                           "PR)? Cidade com o mesmo nome existe em mais de um "
+                           "estado, e o vidraceiro vai para o endereco errado."),
+            "cidade_sem_resposta": ("Preciso de uma cidade de verdade para achar a "
+                                    "loja mais perto: em qual cidade e estado voce "
+                                    "quer fazer o servico?"),
+        }[erro_da_cidade]
+        return None, ("Falta a cidade do servico para eu abrir o pedido. PERGUNTE "
+                      "AGORA, com estas palavras:\n\n  " + motivo
+                      + "\n\n[para a equipe] `cidade_para_o_servico` recusada: "
+                      + erro_da_cidade
+                      + (f". A pergunta do catalogo e: {p_cidade.texto}" if p_cidade else ""))
+    cidade_servico_origem = "segurado"
+
+    # 🔴 O PERIMETRO e um ENUM, e a classificacao acontece AQUI.
+    perimetro = normalizar_perimetro(ja_sei.get("onde_ocorreu"))
+    if not perimetro:
+        return None, ("Falta saber onde o dano aconteceu. PERGUNTE AGORA:\n\n"
+                      "  Foi na cidade ou na estrada/rodovia?\n\n"
+                      "[para a equipe] `onde_ocorreu` nao classificou como urbano "
+                      "nem rodoviario, e o portal so aceita esses dois. Registre a "
+                      "resposta em `onde_ocorreu` com uma dessas duas palavras.")
+
+    # 🔴 A CAUSA tem de ser IGUAL a uma das causas MEDIDAS da familia.
+    causa_canonica = causa_conhecida(peca_dita, ja_sei.get("como_ocorreu"))
+    if not causa_canonica:
+        from app.services.perguntas_do_portal_de_vidros import causas_para_oferecer
+
+        lista = causas_para_oferecer(peca_dita)
+        return None, ("A causa do dano precisa ser UMA da lista da seguradora, "
+                      "escrita igual. Escolha pelo que ele ja contou; se o relato "
+                      "nao decidir entre duas, PERGUNTE ao segurado oferecendo 3 ou "
+                      "4 delas em lingua de gente.\n\n"
+                      "Causas aceitas para esta peca:\n"
+                      + "\n".join("  · " + c for c in lista)
+                      + "\n\n[para a equipe] `como_ocorreu` nao e igual a nenhuma "
+                      "causa medida. 🔴 Casar por semelhanca ja gravou QUEBRA "
+                      "INTENCIONAL para quem disse `quebra acidental`.")
+
+    # 🔴 O REPARO chega a journey como `sim`/`nao`, nunca como frase.
+    if "aceita_reparo" in especificos:
+        reparo_normalizado = normalizar_aceita_reparo(especificos.get("aceita_reparo"))
+        if not reparo_normalizado:
+            return None, ("Nao entendi se o segurado aceita o REPARO do vidro ou "
+                          "prefere a troca. PERGUNTE AGORA:\n\n  A seguradora pode "
+                          "consertar o vidro sem trocar (leva uns 30 minutos e "
+                          "normalmente sai sem franquia — eu confirmo o valor quando "
+                          "ela responder). Voce quer tentar o reparo?\n\n"
+                          "[para a equipe] registre `aceita_reparo` como `sim` ou `nao`.")
+        especificos["aceita_reparo"] = reparo_normalizado
+        ja_sei["aceita_reparo"] = reparo_normalizado
 
     # N-3 — o contato que vai ao portal. Tudo vem do banco: o segurado da
     # InfoCap, a corretora do Perfil de Acionamento. ⛔ Nada de constante de
@@ -411,8 +644,11 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
         },
         "dano": {
             "peca": str(flat.get("peca") or "").strip(),
-            "como": str(flat.get("como_ocorreu") or "").strip(),
-            "onde": str(flat.get("onde_ocorreu") or "").strip(),
+            # 🔴 CANONICO: igual a uma causa medida da familia. A journey casa
+            # por IGUALDADE com a lista ao vivo e nao interpreta nada.
+            "como": causa_canonica,
+            # 🔴 ENUM: `urbano` | `rodoviario`. Nada de frase.
+            "onde": perimetro,
             # 📊 O portal exige minimo de 30 caracteres aqui. Nao se pede ao
             # segurado que "escreva mais": o texto e COMPOSTO do que ele ja
             # disse (peca + relato + data + local). Relato dele com 30+ vai
@@ -658,43 +894,166 @@ def mensagem_do_desfecho(desfecho: Optional[dict]) -> str:
 # opções, quando o portal as deu) e um dossiê para quem vai resolver. A regra
 # que nasceu aqui: **uma parada sem texto é uma parada que o segurado não vê**,
 # e o que ele não vê ele cobra por outro canal.
+# 🔴 REESCRITO em 20/09/2026 — juiz B4 / red B6.
+#
+# Tres regras, e as tres sairam de laudo com medicao:
+#
+# 1. **NENHUM texto promete continuacao.** Nao existe journey de continuacao: o
+#    `token_autorizacao` vive so em memoria e `safe_to_retry_open` e False
+#    depois do `POST /atendimentos`. Dizer "eu sigo daqui" ou "continua do
+#    mesmo ponto" e prometer ao segurado uma coisa que o sistema nao faz.
+# 2. **A pergunta so aparece se a resposta for UTIL a equipe** — e o dossie diz
+#    a equipe o que fazer com ela no portal.
+# 3. **O numero vem primeiro** (quem garante e `format_result`, abaixo).
+_A_EQUIPE_ASSUME = ("O pedido esta aberto na seguradora e quem conclui este ponto e a nossa equipe, que ja recebeu tudo — voce nao precisa repetir nada.")
+
 _PARADAS = {
     "decidir_reparo": (
-        "Boa notícia: a seguradora ofereceu REPARAR o seu vidro em vez de trocar. "
-        "O reparo é sem custo de franquia, leva uns 30 minutos e mantém o vidro "
-        "original do carro; se não ficar bom, você ainda pode pedir a troca depois. "
-        "Você quer que eu aceite o reparo?",
-        "O portal ofereceu o reparo (regras-reparo → ExibirDialogDeReparo=true) e a "
-        "resposta do segurado não foi coletada antes. Nada foi materializado além do "
-        "que já existia: responda `aceita_reparo` e o pedido continua do mesmo ponto.",
+        "A seguradora ofereceu REPARAR o seu vidro em vez de trocar. O reparo "
+        "leva uns 30 minutos, mantem o vidro original do carro e normalmente "
+        "sai sem franquia — eu confirmo o valor assim que a seguradora "
+        "responder. Voce quer que eu aceite o reparo? " + _A_EQUIPE_ASSUME,
+        "O portal ofereceu o reparo (`regras-reparo` -> ExibirDialogDeReparo=true) "
+        "e a resposta do segurado nao foi coletada antes. NADA foi materializado "
+        "alem do que ja existia. No portal: retome o atendimento pelo numero, "
+        "responda o dialogo de reparo e siga ate a conclusao.",
     ),
     "peca_ambigua": (
-        "Só uma dúvida antes de eu seguir: qual peça exatamente foi danificada? "
-        "Com o nome certinho eu peço a peça certa na seguradora.",
-        "O texto da peça casou com mais de uma identidade no catálogo. O pedido não "
-        "avança porque escolher errado abre o atendimento da peça errada, e o portal "
-        "não deixa corrigir — seria preciso abrir outro.",
+        "Qual peca exatamente foi danificada? Com o nome certinho a seguradora "
+        "pede a peca certa. " + _A_EQUIPE_ASSUME,
+        "O texto da peca nao casou com UMA linha do catalogo daquela apolice "
+        "(zero ou mais de uma). As opcoes reais estao no dossie. No portal: "
+        "escolha o item coberto pelo numero do atendimento e siga.",
+    ),
+    "peca_de_lataria_ambigua": (
+        "Me diz de que lado fica a peca amassada (motorista ou carona) e se e a "
+        "da frente ou a de tras? " + _A_EQUIPE_ASSUME,
+        "Uma das pecas de lataria casou com mais de um servico do catalogo. "
+        "No portal: marque os servicos de martelinho pelo numero do atendimento.",
+    ),
+    "pecas_de_lataria_ausentes": (
+        "Quais pecas ficaram amassadas? " + _A_EQUIPE_ASSUME,
+        "`dano.pecas_lataria` veio vazio e a categoria e `L`. No portal: "
+        "marque os servicos de martelinho e conclua.",
     ),
     "cidade_sem_rede": (
-        "Consegui abrir o seu pedido, mas na cidade que você me passou a seguradora "
-        "não tem loja credenciada. Tem alguma cidade vizinha onde você consiga levar "
-        "o carro? Me diz qual que eu sigo daqui.",
-        "`GET /clientes/cidades` não devolveu rede credenciada para a cidade "
-        "informada. Peça outra cidade ao segurado — não escolha por ele.",
+        "Na cidade que voce me passou a seguradora nao tem loja credenciada. "
+        "Tem outra cidade onde voce consiga levar o carro? " + _A_EQUIPE_ASSUME,
+        "`GET /clientes/cidades` nao devolveu rede para a cidade informada. A "
+        "resposta do segurado E util: com outra cidade, a equipe altera o local "
+        "no portal e conclui. Nao escolha a cidade por ele.",
+    ),
+    "cidade_ambigua": (
+        "Confirma para mim a cidade e o estado onde voce quer fazer o servico? "
+        + _A_EQUIPE_ASSUME,
+        "O nome da cidade nao casou por IGUALDADE com a lista do portal. No "
+        "portal: escolha a cidade na lista e conclua.",
+    ),
+    "uf_desconhecida": (
+        "Confirma para mim o estado (a sigla, tipo SC ou PR) da cidade onde "
+        "voce quer fazer o servico? " + _A_EQUIPE_ASSUME,
+        "A UF informada nao esta na lista de `GET /ufs`.",
     ),
     "motivo_ambiguo": (
-        "Me conta com um pouco mais de detalhe como o dano aconteceu? "
-        "(foi uma pedra na estrada, alguém quebrou, você encontrou o carro assim...) "
-        "É que a seguradora tem uma lista fechada de causas e eu quero marcar a certa.",
-        "O relato não casou com confiança em nenhuma opção de `motivos-dano`. "
-        "As opções reais do portal estão no dossiê abaixo — escolher por semelhança "
-        "seria abrir o pedido com a causa errada.",
+        "Me conta com mais detalhe como o dano aconteceu? A seguradora tem uma "
+        "lista fechada de causas e eu preciso marcar exatamente a certa. "
+        + _A_EQUIPE_ASSUME,
+        "O relato nao e IGUAL a nenhuma causa de `motivos-dano` daquela peca. As "
+        "opcoes reais estao no dossie. 🔴 Escolher por semelhanca ja gravou "
+        "`QUEBRA INTENCIONAL` para quem disse `quebra acidental`. No portal: "
+        "escolha a causa pelo numero do atendimento.",
     ),
     "questionario_incompleto": (
-        "Falta só uma coisa para eu concluir: a seguradora fez uma pergunta sobre o "
-        "seu vidro que eu não sei responder por você. Já te mando qual é.",
-        "O questionário do portal trouxe uma pergunta sem resposta coletada e sem "
-        "saída de 'não sabe'. A pergunta literal e TODAS as opções estão no dossiê.",
+        "A seguradora fez uma pergunta sobre o seu vidro que eu nao respondo por "
+        "voce. " + _A_EQUIPE_ASSUME,
+        "O questionario trouxe uma pergunta sem resposta coletada. A pergunta "
+        "literal e TODAS as opcoes estao no dossie. No portal: responda o "
+        "questionario pelo numero e conclua.",
+    ),
+    "reparo_nao_gravado": (
+        "Seu pedido esta aberto. A escolha entre reparar e trocar o vidro ainda "
+        "nao foi registrada pela seguradora. " + _A_EQUIPE_ASSUME,
+        "O `PUT /atendimentos/alterar-reparo` NAO confirmou. No portal: abra o "
+        "atendimento pelo numero e confira o campo de reparo antes de concluir.",
+    ),
+    "desfecho_ilegivel": (
+        "Seu pedido esta aberto na seguradora. Ainda nao consegui ler o que ela "
+        "decidiu (loja, agendamento ou analise). " + _A_EQUIPE_ASSUME,
+        "O `GET /atendimentos` depois de `opcoes-disponiveis` nao respondeu. 🔴 "
+        "NAO reexecute: o pedido existe. No portal: abra pelo numero e leia a "
+        "tela de conclusao.",
+    ),
+    "desfecho_desconhecido": (
+        "Seu pedido esta aberto na seguradora. Ela seguiu por um caminho que eu "
+        "ainda nao sei ler. " + _A_EQUIPE_ASSUME,
+        "`opcoes-disponiveis` veio com combinacao fora do roteador conhecido "
+        "(inclusive bloqueio por fraude ou ilha). O roteador inteiro esta no "
+        "dossie. No portal: abra pelo numero e leia a tela.",
+    ),
+    "roteador_ilegivel": (
+        "Seu pedido esta aberto na seguradora e ela ainda nao me disse o proximo "
+        "passo. " + _A_EQUIPE_ASSUME,
+        "`GET /agendamentos/opcoes-disponiveis` nao respondeu. NAO reexecute.",
+    ),
+    "corretor_recusado": (
+        "Seu pedido foi aberto. Falta um dado do cadastro da corretora para a "
+        "seguradora liberar a continuacao. " + _A_EQUIPE_ASSUME,
+        "`PUT /atendimentos/corretores` recusou o documento. NAO reexecute: o "
+        "atendimento ja existe. Confira o CNPJ no Perfil de Acionamento.",
+    ),
+    "solicitante_recusado": (
+        "Seu pedido foi aberto. A seguradora recusou os dados de contato. "
+        + _A_EQUIPE_ASSUME,
+        "`POST /solicitantes` recusou. NAO reexecute. Confira telefone e e-mail.",
+    ),
+    "tipo_de_telefone_desconhecido": (
+        "Seu pedido foi aberto. " + _A_EQUIPE_ASSUME,
+        "`GET /tipos-telefone` nao trouxe o tipo esperado (CELULAR SEGURADO / "
+        "CELULAR CORRETOR). O contrato do portal mudou. NAO reexecute.",
+    ),
+    "catalogo_indisponivel": (
+        "Seu pedido foi aberto e a lista de pecas da sua apolice nao carregou. "
+        + _A_EQUIPE_ASSUME,
+        "`GET /apolices/itens-cobertos` nao respondeu. NAO reexecute.",
+    ),
+    "motivos_indisponiveis": (
+        "Seu pedido foi aberto e a lista de causas nao carregou. "
+        + _A_EQUIPE_ASSUME,
+        "`GET /motivos-dano` nao respondeu. NAO reexecute.",
+    ),
+    "item_com_formato_desconhecido": (
+        "Seu pedido foi aberto e a seguradora descreveu a peca de um jeito que "
+        "eu nao reconheco. " + _A_EQUIPE_ASSUME,
+        "`CodigoItemCoberto` fora do formato de 7 partes. NAO reexecute.",
+    ),
+    "patch_recusado": (
+        "Seu pedido foi aberto e a seguradora recusou os dados do dano. "
+        + _A_EQUIPE_ASSUME,
+        "`PATCH /atendimentos` recusou. NAO reexecute.",
+    ),
+    "maybe_committed": (
+        "Seu pedido foi enviado e eu nao consegui confirmar a resposta da "
+        "seguradora. " + _A_EQUIPE_ASSUME,
+        "🔴 `maybe_committed`: a chamada material saiu e a resposta se perdeu. "
+        "NAO REEXECUTE em hipotese nenhuma — reexecutar cria um SEGUNDO pedido "
+        "pago. Consulte o atendimento no portal antes de qualquer coisa.",
+    ),
+    "pronto_para_abrir": (
+        "Esta tudo conferido e a sua apolice cobre. Falta so a autorizacao "
+        "interna para eu abrir o pedido — ja pedi.",
+        "O guard recusou a fronteira A (confirm/approval ausente). NADA foi "
+        "aberto: este e o unico stage em que o pedido ainda NAO existe.",
+    ),
+    "pronto_para_materializar": (
+        "Seu pedido esta aberto e falta a autorizacao interna para eu concluir "
+        "— ja pedi. " + _A_EQUIPE_ASSUME,
+        "O guard recusou a fronteira B/PATCH. O `NumeroProtocolo` ja existe.",
+    ),
+    "coverage_absent": (
+        "A sua apolice nao tem a cobertura necessaria para essa peca, entao NAO "
+        "abri nenhum pedido. Se quiser, eu confiro a apolice com voce.",
+        "Preflight `coverage_absent`: detectado ANTES de qualquer escrita. "
+        "Nenhum atendimento nasceu e nenhum vai nascer por este caminho.",
     ),
     "tela_desconhecida": (
         "Comecei a abrir o seu pedido e a seguradora mostrou uma tela que eu ainda não "
@@ -707,6 +1066,36 @@ _PARADAS = {
     ),
 }
 _PARADAS["desconhecido"] = _PARADAS["tela_desconhecida"]
+
+
+def _cabecalho_do_numero(ev: dict) -> str:
+    """A primeira linha de toda parada: o numero, quando ele existe.
+
+    📊 Medido nas 4 capturas: o `CodigoAtendimento` tem 8 digitos e e o que a
+    tela mostra; o `NumeroProtocolo` tem 16 e e interno. Chamar o de 16 de
+    "numero do atendimento" faz o segurado citar no telefone um numero que a
+    seguradora nao encontra.
+    """
+    e = ev if isinstance(ev, dict) else {}
+    estado = e.get("vidros_estado") if isinstance(e.get("vidros_estado"), dict) else {}
+    desfecho = e.get("desfecho") if isinstance(e.get("desfecho"), dict) else {}
+    numero = ""
+    for bruto in (desfecho.get("codigo_atendimento"), e.get("protocolo"),
+                  e.get("codigo_atendimento"), estado.get("codigo_atendimento")):
+        texto = "".join(ch for ch in str(bruto or "") if ch.isdigit())
+        if len(texto) == 8:
+            numero = texto
+            break
+    if numero:
+        return (f"NUMERO DO ATENDIMENTO: {numero} — DIGA ESSE NUMERO AO SEGURADO "
+                "ANTES DE QUALQUER OUTRA COISA; e com ele que ele acompanha e "
+                "cobra o servico.\n\n")
+    interno = "".join(ch for ch in str(e.get("protocolo") or "") if ch.isdigit())
+    if len(interno) >= 12:
+        return (f"PROTOCOLO INICIAL (interno): {interno}. ⚠️ NAO e o numero do "
+                "atendimento e NAO adianta cita-lo por telefone — serve para a "
+                "nossa equipe achar o pedido no portal.\n\n")
+    return ""
 
 
 def texto_da_parada(stage: Optional[str]) -> Optional[Tuple[str, str]]:
@@ -747,6 +1136,26 @@ def slug_da_seguradora(params: Optional[dict]) -> str:
     return slug or "desconhecida"
 
 
+def _o_job_deu_certo(ev: dict) -> bool:
+    """Ha prova de que o acionamento terminou bem? Entao nao ha o que aprender.
+
+    Tres provas, e basta uma: desfecho conhecido, numero de atendimento, ou a
+    marca de sucesso do caminho DOM. ⛔ Um job com `tela_desconhecida` explicita
+    NUNCA e considerado sucesso, mesmo com numero: e o caso em que o pedido
+    existe E a tela era nova.
+    """
+    e = ev if isinstance(ev, dict) else {}
+    if isinstance(e.get("tela_desconhecida"), dict) and e.get("tela_desconhecida"):
+        return False
+    desfecho = e.get("desfecho") if isinstance(e.get("desfecho"), dict) else {}
+    if str(desfecho.get("tipo") or "").strip().lower() in _DESFECHOS_CONHECIDOS:
+        return True
+    if str(e.get("protocolo") or "").strip():
+        return True
+    estado = e.get("vidros_estado") if isinstance(e.get("vidros_estado"), dict) else {}
+    return bool(estado.get("tem_codigo_atendimento"))
+
+
 def resumo_da_tela_desconhecida(evidence: Optional[dict]) -> Optional[dict]:
     """`{"onde", "texto"}` quando este job tem algo a ENSINAR. `None` quando não.
 
@@ -763,6 +1172,19 @@ def resumo_da_tela_desconhecida(evidence: Optional[dict]) -> Optional[dict]:
     """
     ev = evidence if isinstance(evidence, dict) else {}
     if not ev:
+        return None
+
+    # 🔴 JUIZ B1 — REGRESSAO EM PRODUCAO COM A FLAG DESLIGADA, 20/09/2026.
+    #
+    # 📊 O caminho DOM grava `evidence["final"]` na tela de SUCESSO (passo 7).
+    # Como este leitor caia em ("debug_dom", "final") no fim, **todo job DOM
+    # `done` virava linha de tela cega** — e o `_aprender_com_a_tela_cega`
+    # regravava a evidence LIDA ANTES, apagando a marca `entregue_ao_agente`.
+    # Resultado: o Vigia mandava uma SEGUNDA mensagem ao segurado.
+    #
+    # A porta que fecha isso e esta, e ela e a primeira coisa do arquivo:
+    # trabalho que DEU CERTO nao ensina nada.
+    if _o_job_deu_certo(ev):
         return None
 
     marca = ev.get("tela_desconhecida")
@@ -861,9 +1283,21 @@ def format_result(job: dict) -> str:
         pergunta = str(ev.get("pergunta") or "").strip()
         if pergunta:
             extra += f"\nO portal perguntou, literalmente: \"{pergunta[:180]}\""
+        # 🔴 O NUMERO VEM PRIMEIRO — juiz B4 / red B6, 20/09/2026.
+        #
+        # Toda parada DEPOIS da fronteira A acontece com o pedido ja existindo.
+        # 📊 O laudo mediu paradas cujo texto nao trazia numero nenhum: o
+        # segurado ouvia "seu pedido esta aberto" e nao tinha o que anotar, e a
+        # equipe nao sabia por qual atendimento procurar no portal.
+        #
+        # ⚠️ E os dois numeros NAO sao a mesma coisa: o `CodigoAtendimento` (8
+        # digitos) e o que a tela mostra e o segurado repete no telefone; o
+        # `NumeroProtocolo` (16) e interno e NAO adianta no telefone. Apresentar
+        # um pelo outro e mandar a pessoa citar um numero que ninguem acha.
+        cabecalho = _cabecalho_do_numero(ev)
         return (
-            "O pedido PAROU numa etapa que precisa de uma resposta. DIGA AO SEGURADO, "
-            "com estas palavras:\n\n" + para_ele
+            cabecalho + "O pedido PAROU numa etapa que precisa de uma resposta. "
+            "DIGA AO SEGURADO, com estas palavras:\n\n" + para_ele
             + "\n\n[para a equipe, nao mande ao segurado] " + para_equipe + extra
         )
 
