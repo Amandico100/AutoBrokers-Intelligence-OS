@@ -99,9 +99,24 @@ Migrations: **nenhuma**. Testes: **não se aplica** (nenhum código). Canário: 
 
 Anuência da Agger negada · API muda sem aviso · licença por usuário robô · senha do robô expira · renovações sem histórico no Agger (❓ E2) · seguradoras de madrugada (❓ E3) · concorrência por sessão (❓ E4).
 
+## 7.5 PROVA AO VIVO (23/09/2026) — acesso ao Agger pelo navegador, AUTORIZADO pelo Founder
+
+O Founder autorizou por escrito o acesso à **própria conta** da corretora no Aggilizador via navegador (não há API hoje; é o único caminho, e é automação da conta própria do cliente, como o `portal_worker` já faz com 17 portais). Feito na conta da Resulta, navegador real `--headless=new`, ritmo humano, uma sessão. Nada foi enviado, emitido ou apagado. Evidência: `docs/canon/specs-propostas/SPEC-EXTRA-002-agger-acesso-navegador-NOTAS-AO-VIVO.md` (sanitizada).
+
+**Provado (📊):**
+- **Akamai não barra o navegador real.** `GET aggilizador.com.br/login` → nav 200, não bloqueado. Confirma a medição da equipe (HDI): disfarce é bloqueado, navegador real passa.
+- **Login funciona** pela tela (form) e por fetch: `POST usuario/login {email,senha}` → 201 com token. Modal de sessão única → **Prosseguir** (é o `derrubaSessao`) → cai em `/cotacoes`.
+- 🔴 **A auth que decide a arquitetura — DOIS tokens:** `api-prod.aggilizador.com.br` usa o token do login (~1319 chars); **`api.multicalculo.net` (motor de cálculo + polling) usa o token separado do `login/pdocs` (~488 chars)**. Uma chamada avulsa ao multicalculo falha por CORS. → O produto **deixa o app autenticar e INTERCEPTA as respostas** (`page.on("response")`), não reconstrói a auth.
+- **Leitura da carteira por interceptação:** `negocio/busca/v2` → **40 clientes** na 1ª página (só contagem). `ramo 31 = auto`.
+- **Caminho da renovação todo mapeado:** accordion → card `a.dados-cotacao` → **Recalcular** → formulário `/cotacao/auto/formulario/{uuid}/{v}` → toggle "Esta é uma renovação" → **Calcular** → `calcularV2` → polling. 🔴 Há um GUARD de rota: `goto` direto volta para `/cotacoes`; tem de clicar como humano, com retry.
+
+**NÃO capturado ao vivo (honesto):** o resultado de UM cálculo real de ponta a ponta. As tentativas caíram por **flakiness de UI** — o SPA leva de 11 a 50 s para desenhar o login (uma rodada estourou 45 s), e o `Calcular` só dispara com o formulário válido (campos obrigatórios, como o próprio Founder anotou). 💭 São problemas de robustez que o **código do produto** resolve (espera + retry + lease), não um script de teste. A linha do tempo do cálculo (30–229 s até completo, ~7 min para fechar) e a estrutura do resultado já estão medidas nos HARs e confirmadas na estrutura do polling ao vivo.
+
+**Efeito na decisão D-E002-01:** como o Agger não tem API hoje e o **navegador na conta própria está provado**, o transporte da EXTRA-003 é **navegador (form login + interceptação)**; a API vira passo futuro (negociar depois que o Auxiliar existir — plano do Founder). A incerteza "API × navegador" das propostas está **resolvida a favor do navegador, com prova ao vivo**.
+
 ## 8. Declaração
 
-Nenhum motor paralelo foi criado. Nenhum código de produto, migration ou escrita em banco. Nenhum acesso ao vivo ao Agger, à InfoCap ou a portal de seguradora. Nenhuma credencial, token, CPF ou placa em arquivo versionado (📊 `grep -cE "eyJ…|CPF"` nos 5 documentos → 0).
+Nenhum motor paralelo foi criado. Nenhum código de produto, migration ou escrita em banco. O acesso ao vivo ao Agger foi **autorizado pelo Founder**, na conta própria da corretora, só leitura e mapeamento — nenhum envio, emissão, exclusão ou cálculo concluído. Nenhuma credencial, token, CPF, placa ou senha de seguradora em arquivo versionado (📊 `grep` nos documentos e nas notas → 0); o `creds.env` (fora do repo) e as capturas de tela foram apagados ao fim.
 
 ## 9. Telemetria (§11) — `python backend/scripts/medir_execucao_claude_code.py --sessao atual`
 

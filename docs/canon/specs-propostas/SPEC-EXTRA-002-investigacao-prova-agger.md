@@ -264,13 +264,11 @@ EXTRA-007  COMPARADOR DA CORRETORA (site público)   reusa tudo; acrescenta anon
 
 ## 10. Decisões do Founder
 
-**D-E002-01 · O caminho de integração com o Agger**
+**D-E002-01 · O caminho de integração com o Agger** — 🔴 **RESOLVIDA com prova ao vivo (23/09, §7.5 do relatório):** o Founder confirmou que o Agger **não dá API hoje** (só depois que o Auxiliar existir) e autorizou o acesso pela **conta própria via navegador**. E a prova ao vivo mostrou que **funciona e é estável** (navegador real passa o Akamai; login e leitura OK). Então o caminho é o **A/B por navegador na conta própria**, decidido, e a nota dele sobe de 58 para **86** (era baixa por supor fragilidade que a medição não confirmou). A API oficial (C) continua sendo o alvo futuro, negociada **depois** do Auxiliar pronto.
 ```text
-C  pedir à Agger a API oficial / acordo de integração ........................ 92  (se existir)
-B  usar os endpoints da própria tela, COM anuência escrita e usuário robô ..... 84
-A  navegador preenchendo a tela como uma pessoa ............................... 58
-D  cotar direto nos portais das seguradoras ................................... 25
-eu recomendo: pedir C e B NA MESMA CONVERSA com a Agger. A engenharia é a mesma porta.
+A/B navegador real na conta própria (form login + interceptação) — PROVADO ao vivo ... 86  ← caminho decidido
+C   API oficial da Agger, negociada DEPOIS que o Auxiliar existir ..................... 92  (futuro; não disponível hoje)
+D   cotar direto nos portais das seguradoras .......................................... 25  (o Founder descartou: portal a portal é inviável)
 ```
 
 **D-E002-02 · Quem o robô é no Aggilizador**
