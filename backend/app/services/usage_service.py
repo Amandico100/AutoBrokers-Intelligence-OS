@@ -2,13 +2,17 @@
 Usage Service - Token Usage and Cost Tracking for FinOps
 
 Centralizes pricing calculations and logging to Supabase.
-Now supports database-backed pricing with in-memory cache.
+Pricing comes from the governed catalog (`llm_pricing`, SPEC-116) with an
+in-memory cache; the offline fallback is the catalog SNAPSHOT.
 """
 
+import json
 import logging
+import re
 import time
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..core.config import settings
@@ -26,70 +30,80 @@ CACHE_TTL_SECONDS = 300  # 5 minutos
 
 
 # ============================================================================
-# FALLBACK PRICING TABLE (usado se banco falhar)
+# 🔴 SPEC-116 U3 — O PREÇO VEM DO CATÁLOGO, E SÓ DELE
 # ============================================================================
-PRICING_TABLE = {
-    # Anthropic
-    "claude-opus-4-6": {"input": 5.00, "output": 25.00},
-    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
-    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
-    "claude-opus-4-5-20251101": {"input": 5.00, "output": 25.00},
-    "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
-    "claude-opus-4-1-20250805": {"input": 15.00, "output": 75.00},
-    "claude-opus-4-20250514": {"input": 15.00, "output": 75.00},
-    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
-    "claude-3-7-sonnet-20250219": {"input": 3.00, "output": 15.00},
-    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
-    "claude-3-5-sonnet-20240620": {"input": 3.00, "output": 15.00},
-    "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00},
-    "claude-opus-4-5": {"input": 5.00, "output": 25.00},
-    "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
-    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+# Aqui morava `PRICING_TABLE`: 60 linhas escritas à mão, sem Claude 5, com
+# modelos retirados — um 11º catálogo (EVIDENCIAS/01 §d). Saiu. Com o banco fora,
+# o fallback é o SNAPSHOT gerado do próprio catálogo
+# (`app/factories/modelos_snapshot.json`, `scripts/gerar_snapshot_de_modelos.py`).
+#
+# ⛔ E o preço de modelo DESCONHECIDO deixou de ser o do mini barato
+# (📊 era `usage_service.py:163-165`): Opus 5 cobrado assim sai ~33x menor.
+# Agora: custo 0 + `details.preco_desconhecido=true` + log de alerta.
+# ⚠️ Por que 0 e não NULL: 📊 `token_usage_logs.total_cost_usd` ACEITA NULL
+# (is_nullable=YES, default 0 — medido 23/09/2026 em information_schema), mas
+# `workers/billing_tasks.py:220` e `:351` fazem
+# `Decimal(str(log.get("total_cost_usd", 0)))`: com NULL a chave existe, vira
+# `Decimal("None")` e o faturamento quebra. A flag é o que separa "custou zero"
+# de "não sabemos".
+_SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "factories" / "modelos_snapshot.json"
 
-    # OpenAI
-    "gpt-5.2": {"input": 1.75, "output": 14.00},
-    "gpt-5.2-pro": {"input": 21.00, "output": 168.00},
-    "gpt-5.2-chat-latest": {"input": 1.75, "output": 14.00},
-    "gpt-5.1": {"input": 1.25, "output": 10.00},
-    "o3-pro": {"input": 15.00, "output": 60.00},
-    "o3": {"input": 5.00, "output": 20.00},
-    "o3-mini": {"input": 1.00, "output": 4.00},
-    "o1": {"input": 15.00, "output": 60.00},
-    "o1-pro": {"input": 30.00, "output": 120.00},
-    "o1-mini": {"input": 3.00, "output": 12.00},
-    "o1-preview": {"input": 15.00, "output": 60.00},
-    "gpt-4o": {"input": 2.50, "output": 10.00},
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-    "gpt-4o-mini-2024-07-18": {"input": 0.15, "output": 0.60},
-    "chatgpt-4o-latest": {"input": 5.00, "output": 15.00},
+_COLUNAS_DE_PRECO = (
+    "model_name, input_price_per_million, output_price_per_million, unit, sell_multiplier, "
+    "cache_write_multiplier, cache_read_multiplier, cached_input_multiplier, "
+    "input_price_long, output_price_long, limiar_contexto_longo"
+)
+#: enquanto a migration 20260923_01 não estiver aplicada, as colunas novas não existem
+_COLUNAS_DE_PRECO_ANTIGAS = (
+    "model_name, input_price_per_million, output_price_per_million, unit, sell_multiplier, "
+    "cache_write_multiplier, cache_read_multiplier, cached_input_multiplier"
+)
 
-    # Google
-    "gemini-3-pro-preview": {"input": 2.00, "output": 8.00},
-    "gemini-3-deep-think": {"input": 5.00, "output": 20.00},
-    "gemini-2.5-pro": {"input": 1.25, "output": 5.00},
-    "gemini-2.5-flash": {"input": 0.10, "output": 0.40},
-    "gemini-2.5-flash-lite": {"input": 0.05, "output": 0.20},
-    "gemini-1.5-pro": {"input": 1.25, "output": 5.00},
-    "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+_SUFIXO_DE_DATA = re.compile(r"-(\d{4}-\d{2}-\d{2}|\d{8})$")
 
-    # Outros
-    "grok-4": {"input": 2.00, "output": 10.00},
-    "grok-3": {"input": 2.00, "output": 10.00},
-    "deepseek-chat": {"input": 0.50, "output": 2.00},
-    "mistral-large-latest": {"input": 2.00, "output": 6.00},
-    "text-embedding-3-small": {"input": 0.02, "output": 0.0},
-    "whisper-1": {"input": 0.006, "output": 0.0, "unit": "minute"},
 
-    # OpenRouter — Exclusive models (not available via native providers)
-    "meta-llama/llama-3.1-405b-instruct": {"input": 2.00, "output": 6.00},
-    "meta-llama/llama-3.1-70b-instruct": {"input": 0.52, "output": 0.75},
-    "deepseek/deepseek-chat": {"input": 0.14, "output": 0.28},
-    "deepseek/deepseek-reasoner": {"input": 0.55, "output": 2.19},
-    "mistralai/mistral-large": {"input": 2.00, "output": 6.00},
-    "x-ai/grok-2": {"input": 2.00, "output": 10.00},
-    "cohere/command-r-plus": {"input": 2.50, "output": 10.00},
-    "qwen/qwen-2.5-72b-instruct": {"input": 0.36, "output": 0.36},
-}
+def _f(v) -> Optional[float]:
+    return None if v is None else float(v)
+
+
+def _linha_de_preco(row: dict) -> Optional[dict]:
+    """Uma linha do catálogo no formato do cache. None = preço DESCONHECIDO."""
+    entrada = _f(row.get("input_price_per_million"))
+    saida = _f(row.get("output_price_per_million"))
+    # 0/0 é como o catálogo marca "sem preço verificado" (ex.: rerank da Cohere)
+    if entrada is None or saida is None or (entrada == 0 and saida == 0):
+        return None
+    limiar = row.get("limiar_contexto_longo")
+    return {
+        "input": entrada,
+        "output": saida,
+        "unit": row.get("unit") or "token",
+        "sell_multiplier": float(row.get("sell_multiplier") or 2.68),
+        # Multiplicadores de cache podem ser NULL
+        "cache_write_multiplier": _f(row.get("cache_write_multiplier")),
+        "cache_read_multiplier": _f(row.get("cache_read_multiplier")),
+        "cached_input_multiplier": _f(row.get("cached_input_multiplier")),
+        "input_long": _f(row.get("input_price_long")),
+        "output_long": _f(row.get("output_price_long")),
+        "limiar_longo": int(limiar) if limiar else None,
+    }
+
+
+def _precos_do_snapshot() -> Dict[str, dict]:
+    """Preços do snapshot do catálogo (fallback sem banco)."""
+    try:
+        doc = json.loads(_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[UsageService] ❌ snapshot de modelos ilegível: {e}")
+        return {}
+    out: Dict[str, dict] = {}
+    for nome, row in (doc.get("catalogo") or {}).items():
+        if row.get("is_active") is False:
+            continue
+        linha = _linha_de_preco(row)
+        if linha:
+            out[nome] = linha
+    return out
 
 
 class UsageService:
@@ -113,40 +127,36 @@ class UsageService:
             return
 
         try:
-            result = self.supabase.client.table("llm_pricing") \
-                .select("model_name, input_price_per_million, output_price_per_million, unit, sell_multiplier, cache_write_multiplier, cache_read_multiplier, cached_input_multiplier") \
-                .eq("is_active", True) \
-                .execute()
+            tabela = self.supabase.client.table
+            try:
+                result = tabela("llm_pricing").select(_COLUNAS_DE_PRECO) \
+                    .eq("is_active", True).execute()
+            except Exception:  # noqa: BLE001 — colunas da SPEC-116 ainda não aplicadas
+                result = tabela("llm_pricing").select(_COLUNAS_DE_PRECO_ANTIGAS) \
+                    .eq("is_active", True).execute()
 
             if result.data and len(result.data) > 0:
-                _pricing_cache = {
-                    row["model_name"]: {
-                        "input": float(row["input_price_per_million"]),
-                        "output": float(row["output_price_per_million"]),
-                        "unit": row.get("unit") or "token",
-                        "sell_multiplier": float(row.get("sell_multiplier") or 2.68),
-                        # Cache multipliers (podem ser NULL)
-                        "cache_write_multiplier": float(row["cache_write_multiplier"]) if row.get("cache_write_multiplier") else None,
-                        "cache_read_multiplier": float(row["cache_read_multiplier"]) if row.get("cache_read_multiplier") else None,
-                        "cached_input_multiplier": float(row["cached_input_multiplier"]) if row.get("cached_input_multiplier") else None,
-                    }
-                    for row in result.data
-                }
+                cache: Dict[str, dict] = {}
+                for row in result.data:
+                    linha = _linha_de_preco(row)
+                    if linha:
+                        cache[row["model_name"]] = linha
+                _pricing_cache = cache
                 _cache_loaded_at = now
                 logger.info(f"[UsageService] ✅ Pricing cache loaded from DB: {len(_pricing_cache)} models")
             else:
-                # Banco vazio ou tabela não existe - usa fallback
-                _pricing_cache = PRICING_TABLE.copy()
+                # Banco vazio - usa o snapshot do catálogo
+                _pricing_cache = _precos_do_snapshot()
                 _cache_loaded_at = now
-                logger.warning("[UsageService] ⚠️ No pricing in DB, using hardcoded fallback")
+                logger.warning("[UsageService] ⚠️ No pricing in DB, using the models snapshot")
 
         except Exception as e:
-            # Erro de conexão/tabela - usa fallback
+            # Erro de conexão/tabela - usa o snapshot do catálogo
             logger.error(f"[UsageService] ❌ Failed to load pricing from DB: {e}")
             if not _pricing_cache:
-                _pricing_cache = PRICING_TABLE.copy()
+                _pricing_cache = _precos_do_snapshot()
                 _cache_loaded_at = now
-                logger.info("[UsageService] Using hardcoded fallback due to DB error")
+                logger.info("[UsageService] Using the models snapshot due to DB error")
 
     def reload_cache(self):
         """Força reload do cache (chamar via API admin)."""
@@ -155,16 +165,33 @@ class UsageService:
         self._ensure_cache_loaded()
         return len(_pricing_cache)
 
-    def get_pricing(self, model: str) -> dict:
-        """Retorna pricing do cache para um modelo."""
-        self._ensure_cache_loaded()
+    def get_pricing(self, model: str) -> Optional[dict]:
+        """Preço do catálogo para um modelo. None = DESCONHECIDO.
 
-        pricing = _pricing_cache.get(model)
-        if not pricing:
-            logger.warning(f"[UsageService] Unknown model: {model}, using gpt-4o-mini fallback")
-            pricing = _pricing_cache.get("gpt-4o-mini", {"input": 0.15, "output": 0.60, "unit": "token"})
-
+        ⛔ Nunca devolve o preço de OUTRO modelo. Aceita o id DATADO que o
+        provedor devolve (sufixo -AAAA-MM-DD ou -AAAAMMDD) quando só a forma
+        sem data está no catálogo.
+        """
+        pricing = self._buscar_preco(model)
+        if pricing is None:
+            logger.warning(
+                f"[UsageService] ⚠️ PRECO DESCONHECIDO para o modelo {model!r}: custo gravado 0 "
+                f"com details.preco_desconhecido=true (SPEC-116). Cadastre-o em llm_pricing."
+            )
         return pricing
+
+    def _buscar_preco(self, model: str) -> Optional[dict]:
+        self._ensure_cache_loaded()
+        pricing = _pricing_cache.get(model) if model else None
+        if pricing is None and model:
+            sem_data = _SUFIXO_DE_DATA.sub("", model)
+            if sem_data != model:
+                pricing = _pricing_cache.get(sem_data)
+        return pricing
+
+    def preco_conhecido(self, model: str) -> bool:
+        """Sem log: quem avisa é `get_pricing`, uma vez por chamada."""
+        return self._buscar_preco(model) is not None
 
     def calculate_cost(
         self, model: str, input_tokens: int, output_tokens: int = 0,
@@ -174,11 +201,15 @@ class UsageService:
         Calculate cost in USD for a given model and token count.
 
         Supports cache tokens:
-        - cache_creation_tokens: Anthropic cache write (1.25x input price)
-        - cache_read_tokens: Anthropic cache read (0.10x input price)
-        - cached_tokens: OpenAI cached (0.50x input price, already included in input_tokens)
+        - cache_creation_tokens: Anthropic cache write (catalog cache_write_multiplier)
+        - cache_read_tokens: Anthropic cache read (catalog cache_read_multiplier)
+        - cached_tokens: OpenAI cached (catalog cached_input_multiplier, already in input_tokens)
+
+        Unknown model → 0.0 (the writer flags `preco_desconhecido`; never another model's price).
         """
         pricing = self.get_pricing(model)
+        if pricing is None:
+            return 0.0
 
         # Check if this is audio (per-minute pricing)
         if pricing.get("unit") == "minute":
@@ -187,29 +218,39 @@ class UsageService:
 
         input_price = pricing["input"]
         output_price = pricing["output"]
+        # Contexto longo (ex.: GPT-6 > 272K, Grok 4.7 > 200K): a chamada INTEIRA
+        # passa ao preço longo, como a página do provedor descreve.
+        limiar = pricing.get("limiar_longo")
+        if limiar and input_tokens > limiar:
+            input_price = pricing.get("input_long") or input_price
+            output_price = pricing.get("output_long") or output_price
 
-        # Cache multipliers do banco (com fallback hardcoded)
-        cache_write_mult = pricing.get("cache_write_multiplier") or 1.25  # Anthropic default
-        cache_read_mult = pricing.get("cache_read_multiplier") or 0.10   # Anthropic default
-        cached_input_mult = pricing.get("cached_input_multiplier") or 0.50  # OpenAI default
+        # Multiplicadores POR MODELO, do catálogo (📊 23/09 eram iguais para as 50
+        # linhas). Os padrões abaixo só valem para linha antiga sem multiplicador.
+        def _m(chave: str, padrao: float) -> float:
+            v = pricing.get(chave)
+            return padrao if v is None else v
+
+        cache_write_mult = _m("cache_write_multiplier", 1.25)
+        cache_read_mult = _m("cache_read_multiplier", 0.10)
+        cached_input_mult = _m("cached_input_multiplier", 0.50)
 
         # Tokens cacheados JÁ estão incluídos em input_tokens, subtrair para não cobrar 2x
         # - OpenAI: cached_tokens
         # - Anthropic: cache_read_tokens (lidos) + cache_creation_tokens (escritos)
-        # Obs: cache_creation paga 1.25x, não 1.0x + 0.25x extra
         # SAFETY: max(0, ...) previne valores negativos se API retornar dados inconsistentes
         regular_input_tokens = max(0, input_tokens - cached_tokens - cache_read_tokens - cache_creation_tokens)
 
         # Input normal (preço cheio) - tokens que não são de cache
         input_cost = (regular_input_tokens / 1_000_000) * input_price
 
-        # OpenAI cache (usa multiplier do banco)
+        # OpenAI cache (usa multiplier do catálogo)
         openai_cache_cost = (cached_tokens / 1_000_000) * input_price * cached_input_mult
 
-        # Anthropic cache write (usa multiplier do banco)
+        # Anthropic cache write (usa multiplier do catálogo)
         cache_write_cost = (cache_creation_tokens / 1_000_000) * input_price * cache_write_mult
 
-        # Anthropic cache read (usa multiplier do banco)
+        # Anthropic cache read (usa multiplier do catálogo)
         cache_read_cost = (cache_read_tokens / 1_000_000) * input_price * cache_read_mult
 
         # Output
@@ -246,13 +287,17 @@ class UsageService:
             if agent_id and hasattr(agent_id, 'hex'):
                 agent_id = str(agent_id)
 
+            detalhes = dict(details or {})
+            if not self.preco_conhecido(model):
+                detalhes["preco_desconhecido"] = True
+
             log_entry = {
                 "service_type": service_type,
                 "model_name": model,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_cost_usd": cost,
-                "details": details or {},
+                "details": detalhes,
                 "created_at": datetime.utcnow().isoformat(),
                 "cache_creation_tokens": cache_creation_tokens,
                 "cache_read_tokens": cache_read_tokens,
@@ -318,8 +363,8 @@ class UsageService:
         # Custo real em USD
         cost_usd = Decimal(str(self.calculate_cost(model, input_tokens, output_tokens)))
 
-        # Busca multiplicador do modelo
-        pricing = self.get_pricing(model)
+        # Busca multiplicador do modelo (desconhecido: o custo já é 0)
+        pricing = self.get_pricing(model) or {}
         multiplier = Decimal(str(pricing.get("sell_multiplier", 2.68)))
 
         # Custo para o cliente em BRL
