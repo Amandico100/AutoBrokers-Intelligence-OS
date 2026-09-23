@@ -177,7 +177,8 @@ diagnóstico do research pack §35).
 
 **Regra de escolha (Onda A — potência primeiro):** elegível = classe de dado permitida · 0 efeito duplicado ·
 pass^k = 100 % no subconjunto CRÍTICO do papel (corte da SPEC-062 §13 por risco). Entre elegíveis vence o maior
-pass@1 no conjunto amplo; empate dentro de 2 pp → o de menor custo por sucesso. **Reserva** = melhor elegível de
+pass@1 no conjunto amplo; empate dentro de 2 pp → o de menor custo por sucesso — **exceto papel P0 na Onda A: empate →
+o de maior margem, e o mais barato vira desafiante da Onda B (D-116-18)**. **Reserva** = melhor elegível de
 OUTRO provedor com as mesmas capacidades exigidas pelo papel. **Teto de qualidade** (Opus 5.5 high e GPT-6 Astra)
 roda no subconjunto crítico: se até o teto falha, o defeito é do arnês → vira achado, não troca de modelo.
 **Onda B (baratear):** um papel por vez, desafiante mais barato promovido só se não-inferior (≥ vencedor − 1 pp amplo,
@@ -291,6 +292,7 @@ G14 🧑 canário do atendimento com o mapa novo — roteiro entregue; execuçã
 | D-116-13 | transcrição: `whisper-1` desliga 26/02/2027 → bancada PT-BR `gpt-transcribe` × whisper; promove se não-inferior | **80** |
 | D-116-14 | modelos do DESENVOLVIMENTO (protocolo §10 cita Fable 5.1/Opus 5/Sonnet 5): **não mexo no protocolo**; dívida registrada para o Founder | **90** |
 | D-116-15 | (execução) `memory_settings.memory_llm_model` vira **legado ignorado**: a rota `memoria` manda sempre. Zerar o dado/DEFAULT antes do deploy quebraria a memória no código antigo em produção | rota manda + coluna legada **90** · migration de dado já 35 |
+| D-116-18 | (execução) **empate em papel P0 na Onda A → o modelo de MAIOR margem, não o mais barato**; o mais barato empatado vira o desafiante da Onda B. Aplicado: portal_decisao → gpt-6-sol medium (📊 43/43; luna medium 45/45 empatada, custo/sucesso ~0,0001 × ~0,0015 US$) e visao → gpt-6-sol low (📊 30/30 = luna). Memória (P1, volume) segue a régua de custo: gpt-6-luna low (📊 39/45 × gpt-4o-mini 32/45). Motivo: intenção FROZEN F1 do Founder ("potência primeiro, depois economia") vence a régua de desempate que eu escrevi; diferença absoluta de custo é centavos por mês no volume medido | Sol no P0 **88** · Luna pela régua literal 80 · manter gpt-4o 20 |
 | D-116-17 | (execução) precedência: **rota do papel vence o modelo gravado no agente**; agente só manda em papel sem rota | rota vence **90** · agente vence 40 (8 agentes com Sonnet 5 gravado travariam toda troca) |
 | D-116-16 | (execução) F5a começou em PARALELO à F1 (arquivos disjuntos; contrato `ModeloResolvido` declarado no pacote) — antecipa a fatia mais longa | **85** · esperar a F1 60 |
 
