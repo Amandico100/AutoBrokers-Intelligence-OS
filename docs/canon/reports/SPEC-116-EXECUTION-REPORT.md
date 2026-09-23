@@ -184,7 +184,13 @@ rodadas: **1** (depois do conserto, 2º plano, `backend/.venv` com as libs NOVAS
 - `BATERIA-LINHA-DE-BASE.txt` regravado: 35 nomes.
 - ⚠️ G13 (app/): a F4 rodou `npm run test:rotas-montam` (303 rotas montam) · `npm run build` exit 0 · `next start` Ready · `GET /api/admin/proxy/agent/providers` → 401 JSON (código roda, sem 500).
 
-## 15. Entrega — `<<GERENTE>>` (saída do `git push origin HEAD:main`)
+## 15. Entrega (saída do `git push origin HEAD:main`, 23/09 ~22:50Z)
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   543cc82..03efadb  HEAD -> main
+atras=0 · afrente_depois=0
+```
+Depois deste relatório, 1 commit a mais (esta seção) empurrado do mesmo jeito. 🧑 Falta o Implantar (TAREFAS S116.2).
 
 ## 16. Telemetria (§11) — `python backend/scripts/medir_execucao_claude_code.py --sessao atual`
 ```
