@@ -1757,13 +1757,14 @@
   },
   "gpt-5.6-terra": {
    "api_key_env": null,
-   "api_surface": "chat_completions",
+   "api_surface": "responses",
    "base_url": null,
    "cache_read_multiplier": 0.1,
    "cache_write_multiplier": 1.25,
    "cached_input_multiplier": 0.1,
    "capacidades": {
     "reasoning_param": "reasoning.effort",
+    "responses_obrigatoria_com_tools": true,
     "sampling_ok": false,
     "tools": true
    },
@@ -1779,7 +1780,7 @@
    "lifecycle": "CANDIDATE",
    "limiar_contexto_longo": null,
    "model_name": "gpt-5.6-terra",
-   "notas": "2/0,20/2,50/12. Longo 2x/1,5x (limiar não registrado nas evidências). api_surface a confirmar na F2.",
+   "notas": "2/0,20/2,50/12. Longo 2x/1,5x (limiar não registrado nas evidências). api_surface a confirmar na F2. · SPEC-116 F6: 400 em chat_completions com tools+esforco (bancada 23/09)",
    "output_price_long": null,
    "output_price_per_million": 12,
    "preco_verificado_em": "2026-09-23",
@@ -2497,7 +2498,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-09-23T14:14:00+00:00",
+ "gerado_em": "2026-09-23T20:01:26+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {
@@ -2727,30 +2728,30 @@
   "memoria": {
    "classe_de_dado": "pii",
    "descricao": "memória: resumo de sessão e fatos do usuário — memory_service.py (memory_settings DEFAULT gpt-4o-mini)",
-   "esforco": null,
+   "esforco": "low",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-4o-mini",
+   "modelo_primario": "gpt-6-luna",
    "modelo_reserva": null,
-   "motivo": "seed SPEC-116: reproduz o runtime de 23/09 (EVIDENCIAS/01)",
+   "motivo": "SPEC-116 Onda A: bancada 23/09 memoria N1 luna-low 86,7% vs gpt-4o-mini 71,1% (D-116-18)",
    "papel": "memoria",
    "provider": "openai",
    "provider_reserva": null,
    "risco": "alto",
-   "versao": 1
+   "versao": 2
   },
   "portal_decisao": {
    "classe_de_dado": "pii",
    "descricao": "portal worker: decide o próximo clique — portal_worker/adaptive.py (PORTAL_VISION_MODEL ausente -> gpt-4o). Reserva NULA: o rebaixamento calado ao mini é defeito (F3 tira)",
-   "esforco": null,
+   "esforco": "medium",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-4o",
+   "modelo_primario": "gpt-6-sol",
    "modelo_reserva": null,
-   "motivo": "seed SPEC-116: reproduz o runtime de 23/09 (EVIDENCIAS/01)",
+   "motivo": "SPEC-116 Onda A: bancada 23/09 portal N1 sol-medium 43/43 vs gpt-4o 38/41; luna-medium 45/45 fica como desafiante da Onda B (D-116-18)",
    "papel": "portal_decisao",
    "provider": "openai",
    "provider_reserva": null,
    "risco": "critico",
-   "versao": 1
+   "versao": 2
   },
   "prompt_optimizer": {
    "classe_de_dado": "pii",
@@ -2825,16 +2826,16 @@
   "visao": {
    "classe_de_dado": "pii",
    "descricao": "visão de foto do segurado/corretor — vision_service.py, langchain_service._analyze_image, attendance_media.py, observer",
-   "esforco": null,
+   "esforco": "low",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-4o-mini",
+   "modelo_primario": "gpt-6-sol",
    "modelo_reserva": null,
-   "motivo": "seed SPEC-116: reproduz o runtime de 23/09 (EVIDENCIAS/01)",
+   "motivo": "SPEC-116 Onda A: bancada 23/09 visao N1 sol-low 30/30 vs gpt-4o-mini 28/30 (sinteticas; D-116-18 potencia primeiro)",
    "papel": "visao",
    "provider": "openai",
    "provider_reserva": null,
    "risco": "alto",
-   "versao": 1
+   "versao": 2
   },
   "visao_documento": {
    "classe_de_dado": "pii",
