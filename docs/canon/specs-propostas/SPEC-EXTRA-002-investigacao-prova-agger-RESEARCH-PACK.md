@@ -16,7 +16,7 @@ Legenda: 📊 medido (com comando/arquivo) · 💭 inferido · ❓ não sabemos 
 
 | pasta | arquivo | tamanho | o que prova | segredo/PII |
 |---|---|---:|---|---|
-| RENOVAÇÃO 1 | `aggilizador.com.br.har` | 49,1 MB | login, formulário, **cálculo de renovação PF**, 28 pollings | 🔴 **SIM** — senhas de 17 portais de seguradora em `calculos[]`, token, CPF, placa |
+| RENOVAÇÃO 1 | `aggilizador.com.br.har` | 49,1 MB | login, formulário, **cálculo de renovação PF**, 28 pollings | 🔴 **SIM** — senhas dos portais de seguradora (📊 15 configurações → 17 linhas) em `calculos[]` e nas respostas, token, CPF, placa |
 | RENOVAÇÃO 1 | `Aggilizador TELA 1/2/3 *.html` | 0,9–1,3 MB | DOM salvo das 3 telas | PII |
 | RENOVAÇÃO 1 | `BRADESCO AUTO.pdf`, `PDF EXEMPLO DE CALCULO DA HDI.pdf`, `INFORMAÇÕES DA APOLICE.txt` | 2,7 MB / 45 KB / 7 KB | a apólice/cálculo atual (o "seguro atual") | PII |
 | RENOVAÇÃO 2 | `aggilizador.com.br.har` | 55,3 MB | **cálculo de renovação PJ**, 28 pollings | 🔴 **SIM** (idem) |
@@ -28,7 +28,7 @@ Legenda: 📊 medido (com comando/arquivo) · 💭 inferido · ❓ não sabemos 
 
 🔴 **Achado de segurança sobre o próprio intake:** 📊 o payload de `POST /calculo/calcularV2` carrega, por seguradora, `login`, `senha`, `loginWs`, `senhaWs` (formas `str11`, `str16`…). O Aggilizador entrega ao navegador as credenciais dos portais das seguradoras.
 
-🔴 📊 **E não só no disparo — nas RESPOSTAS também:** as chaves `login/senha/loginWs/senhaWs`, com valor, aparecem nas respostas de `cfg/seguradora/config`, `calculo/seguradoras`, `cotacao/versoes/{id}`, `negocio/{id}` (login/senha) e em **todas as 28** respostas de polling `cotacao/calculos/{id}/{v}`, além do corpo do `POST calcularV2` (📊 varredura de chaves nos 2 HARs, 22/09). Qualquer integração recebe as senhas de ~15 portais **a cada consulta** — o contrato de redação está na EXTRA-003 §3.5. **Consequência para nós:** os três HARs são material secreto; não podem ser anexados, enviados a terceiros nem copiados para fora da pasta ignorada. Registrado como pendência de higiene (§12).
+🔴 📊 **E não só no disparo — nas RESPOSTAS também:** as chaves `login/senha/loginWs/senhaWs`, com valor, aparecem nas respostas de `cfg/seguradora/config`, `calculo/seguradoras`, `cotacao/versoes/{id}`, `negocio/{id}` (login/senha) e em **todas as 28** respostas de polling `cotacao/calculos/{id}/{v}`, além do corpo do `POST calcularV2` (📊 varredura das chaves `login/senha/loginWs/senhaWs` por tipo de resposta nos 2 HARs — script de sessão, reproduzido pelo juiz de confirmação, 22/09). Qualquer integração recebe as senhas de ~15 portais **a cada consulta** — o contrato de redação está na EXTRA-003 §3.5. **Consequência para nós:** os três HARs são material secreto; não podem ser anexados, enviados a terceiros nem copiados para fora da pasta ignorada. Registrado como pendência de higiene (§12).
 
 ⚠️ **Lacuna do intake:** não há HAR de **cotação nova** — só os PDFs. A diferença cotação × renovação (§6) vem do formulário e dos campos, não de uma captura de seguro novo.
 
@@ -294,5 +294,5 @@ Laudos completos nos arquivos de trabalho da sessão; os pontos que mudam o dese
 
 ## 12. Pendências de higiene deste pack
 
-- **P-E002-HAR:** os 3 HARs do intake têm senhas de 17 portais de seguradora e tokens. Manter só na pasta ignorada; apagar quando a prova terminar; se alguma senha tiver circulado fora da máquina, a corretora deve trocá-la.
+- **P-E002-HAR:** os 3 HARs do intake têm senhas de ~15 portais de seguradora (📊 15 configurações) e tokens. Manter só na pasta ignorada; apagar quando a prova terminar; se alguma senha tiver circulado fora da máquina, a corretora deve trocá-la.
 - **P-E002-LAB:** o `examples` do contrato candidato do laboratório SPEC-077 guarda valores observados sem redação — não versionar a saída do `lab api-infer` sobre estes HARs.
