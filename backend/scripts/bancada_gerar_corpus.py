@@ -29,8 +29,9 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BACKEND)   # os construtores REAIS do retorno das tools (ver _infocap_real)
 RAIZ = os.path.join("tests", "corpus", "bancada")
-VERSAO = 1
+VERSAO = 2   # v2 (SPEC-116 F6): dublês de tool com a FORMA REAL (dict/contrato), não texto
 
 ATD = {"nome": "Atendente Teste", "corretora": "{{CORRETORA:A}}"}
 ATD_B = {"nome": "Atendente Teste", "corretora": "{{CORRETORA:B}}"}
@@ -61,15 +62,110 @@ FERR_CORE = ["knowledge_base_search", "infocap_policy_lookup", "buscar_veiculo",
              "propor_metrica", "avaliar_automacao", "executar_auxiliar"]
 NUNCA_ACIONA = ["protocolo", "já acionei", "acionado com sucesso", "guincho a caminho", "já foi aberto"]
 
-APOLICE_AUTO_A = ("Apólice AUTO VIGENTE — Seguradora: Allianz — Nº {{APOLICE:A1}} — Vigência 01/03/2026 a "
-                  "01/03/2027 — Veículo: {{PLACA:A1}} — Assistência 24h: guincho 200 km, socorro mecânico, "
-                  "chaveiro, táxi. seguradora_para_acionamento: allianz")
-APOLICE_RESI_A = ("Apólice RESIDENCIAL VIGENTE — Seguradora: Allianz — Nº {{APOLICE:A2}} — Vigência 10/01/2026 "
-                  "a 10/01/2027 — Assistência residencial: eletricista, encanador, chaveiro, "
-                  "eletrodomésticos. seguradora_para_acionamento: allianz")
-APOLICE_AUTO_B = ("Apólice AUTO VIGENTE — Seguradora: Mapfre — Nº {{APOLICE:B1}} — Vigência 05/05/2026 a "
-                  "05/05/2027 — Veículo: {{PLACA:B1}} — Assistência 24h básica. "
-                  "seguradora_para_acionamento: mapfre")
+
+
+# ===========================================================================
+# 🔴 v2 (SPEC-116 F6) — o RETORNO de cada tool na FORMA REAL
+# ===========================================================================
+# 📊 Até a v1 os dublês devolviam TEXTO. As tools reais devolvem dict, e o
+# `tool_node` decide pelo tipo: sem `data`/`policy_response_contract`, o
+# `nodes.py:2139` não monta `infocap_policy_context`, o contrato não fiscaliza, e
+# a saída da consulta vira "[RAG: Conteúdo bruto removido…]" no turno seguinte.
+# Aqui o `content` (briefing) e o CONTRATO são produzidos pelos construtores
+# REAIS da tool (`InfocapPolicyLookupTool._build_llm_briefing` e
+# `._build_policy_response_contract`, métodos estáticos, sem banco); o `data` tem
+# as chaves de `app/api/infocap_connector.py:_sanitize_policy/_canonical_customer_identity`
+# — mascarado no atendimento (`unmasked=False`), completo no Chat Principal.
+# ⚠️ O `rascunho` (o texto do compositor) é escrito à mão: o compositor real lê a
+# base de assistências no banco, e o gerador não lê banco. Ele carrega os MESMOS
+# fatos que o texto da v1 carregava (assistências da apólice) — nada a mais.
+def _infocap_real(*, numero, seguradora, produto, inicio, fim, cpf, nome, rascunho, client_facing,
+                  pergunta):
+    from app.agents.tools.infocap_tool import InfocapPolicyLookupTool as T
+
+    sel = {"policy_ref": None, "policy_locator": None, "policy_locator_ref": None,
+           "insurer_key": seguradora, "product": produto, "line_kind": None, "policy_status": "ativo",
+           "masked_policy_number": "****", "holder_name_masked": "C*** E***", "policy_number": numero,
+           "valid_from": inicio, "valid_to": fim, "active_now": True, "expired": False,
+           "coverages_count": 4, "cancelled": False}
+    data = {"ok": True, "status": "found", "source_ref": "infocap:documento", "result_count": 1,
+            "matched_by": "document", "identity_status": "identity_verified"}
+    if client_facing:   # atendimento: o conector devolve só o mascarado
+        data.update({"client_name_masked": "C*** E***", "client_document_masked": "****-*"})
+    else:               # Chat Principal (corretor): dono da informação
+        sel.update({"holder_name": nome, "document": cpf})
+        data.update({"client_name": nome, "client_document": cpf})
+    data.update({"selected": sel, "matches": [dict(sel)]})
+    content = T._build_llm_briefing(data, {"text": rascunho, "facts": []}, pergunta,
+                                    client_facing=client_facing)
+    contrato = T._build_policy_response_contract(data, rascunho, None, client_facing=client_facing,
+                                                 meta=None)
+    return {"content": content, "data": data, "found": True, "policy_response_contract": contrato,
+            "cobertura": None}
+
+
+def infocap_auto_a(cpf="{{CPF:G1}}", client_facing=True, pergunta="preciso de assistência"):
+    return _infocap_real(numero="{{APOLICE:A1}}", seguradora="ALLIANZ", produto="AUTO",
+                         inicio="01/03/2026", fim="01/03/2027", cpf=cpf, nome="{{NOME:S1}}",
+                         rascunho=("Localizei a sua apólice AUTO da Allianz, vigente até 01/03/2027 ✅ A assistência 24h "
+                                   "inclui guincho (200 km), socorro mecânico, chaveiro e táxi."),
+                         client_facing=client_facing, pergunta=pergunta)
+
+
+def infocap_auto_b(cpf="{{CPF:B9}}", client_facing=True, pergunta="preciso de assistência"):
+    return _infocap_real(numero="{{APOLICE:B1}}", seguradora="MAPFRE", produto="AUTO",
+                         inicio="05/05/2026", fim="05/05/2027", cpf=cpf, nome="{{NOME:S2}}",
+                         rascunho=("Localizei a sua apólice AUTO da Mapfre, vigente até 05/05/2027 ✅ "
+                                   "A assistência 24h é a básica."),
+                         client_facing=client_facing, pergunta=pergunta)
+
+
+def infocap_resi_a(cpf="{{CPF:K1}}", client_facing=False, pergunta="apólices ativas"):
+    return _infocap_real(numero="{{APOLICE:A2}}", seguradora="ALLIANZ", produto="RESI",
+                         inicio="10/01/2026", fim="10/01/2027", cpf=cpf, nome="{{NOME:S3}}",
+                         rascunho=("Encontrei 1 apólice vigente: RESIDENCIAL Allianz nº {{APOLICE:A2}}, "
+                                   "vigência 10/01/2026 a 10/01/2027. A assistência residencial inclui eletricista, "
+                                   "encanador, chaveiro e eletrodomésticos."),
+                         client_facing=client_facing, pergunta=pergunta)
+
+
+def _textos_reais():
+    """Os textos que as tools REAIS devolvem, importados — nunca copiados."""
+    from app.agents.honestidade_do_handoff import SUCESSO_DO_HANDOFF
+    from app.agents.tools.portal_params import format_result
+
+    return {"handoff": SUCESSO_DO_HANDOFF, "portal_enfileirado": format_result({"status": "queued"})}
+
+
+#: `insurer_dispatch._arun` com o agente LIGADO e o corredor em MODO TESTE
+#: (insurer_dispatch_tool.py, ramo `else` de `finalize_live_for`), seguradora Allianz.
+DISPATCH_MODO_TESTE = {"status": "dispatched", "content": (
+    "[ACIONAMENTO EM MODO TESTE INICIADO]\n"
+    "A conversa com a assistência da Allianz foi aberta pelo WhatsApp da corretora. "
+    "O fluxo será executado até a confirmação final e CANCELADO antes de abrir o serviço "
+    "(nenhum prestador será acionado).\n"
+    "INSTRUÇÃO AO ATENDENTE: diga que o pedido está sendo processado. NÃO afirme que o serviço "
+    "foi aberto nem invente protocolo — este acionamento é um teste e será cancelado no final.")}
+
+#: `buscar_veiculo._arun` (vehicle_tool.py): {content, data, found}.
+VEICULO_A = {"content": "Veículo da apólice: ONIX 1.0 2022 — placa {{PLACA:A1}}",
+             "data": {"placa": "{{PLACA:A1}}", "veiculo": "ONIX 1.0 2022", "chassi": "", "fipe": ""},
+             "found": True}
+
+#: `knowledge_base_search` → `search_service` (dict com content + chunks).
+KB_CONDICOES = {"content": ("Condições gerais: eletricista coberto em pane elétrica até 3 "
+                            "acionamentos/ano (fonte p. 12)."),
+                "chunks": [{"chunk_id": "cg-allianz-resi-p12", "score": 0.82, "score_scale": "cosine",
+                            "content_preview": "Condições gerais: eletricista coberto em pane elétrica...",
+                            "metadata": {"source": "condicoes_gerais_allianz_resi.pdf", "page": 12},
+                            "used_in_context": True}],
+                "found": True, "search_time_ms": 140, "strategy": "hybrid", "max_score": 0.82,
+                "valid_chunks_count": 1}
+
+#: `create_routine._run` (routine_tools.py): {content}.
+ROTINA_CRIADA = {"content": ("Rotina criada ✅ 'Radar de renovações' (id 1a2b3c4d). Primeira execução: "
+                             "28/09 às 09:00 (horário de Brasília). Entrega: whatsapp. Confirme ao "
+                             "corretor em 1 frase natural.")}
 
 
 def ficha(servico, ramo, confirmados, fase="coleta", seguradora="allianz"):
@@ -200,14 +296,13 @@ def atendimento_n1():
 # ===========================================================================
 # ATENDIMENTO N2 — 10 trajetórias
 # ===========================================================================
-def _dubles_atd(extra=None):
-    d = {"infocap_policy_lookup": {"resposta": APOLICE_AUTO_A, "efeito": False},
-         "insurer_dispatch": {"resposta": "MODO TESTE INICIADO — pedido registrado; nenhum serviço real foi aberto.",
-                              "chave": ["subservice", "insurer_key"]},
-         "request_human_agent": {"resposta": "HANDOFF_OK: equipe avisada com o dossiê da conversa.",
-                                 "chave": ["reason"]},
-         "portal_action": {"resposta": "O pedido de vidros foi preparado; a equipe confirma a loja com você.",
-                           "chave": ["peca"]}}
+def _dubles_atd(extra=None, cpf="{{CPF:G1}}"):
+    reais = _textos_reais()
+    d = {"infocap_policy_lookup": {"resposta": infocap_auto_a(cpf), "efeito": False},
+         "insurer_dispatch": {"resposta": DISPATCH_MODO_TESTE, "chave": ["subservice", "insurer_key"]},
+         "request_human_agent": {"resposta": reais["handoff"], "chave": ["reason"]},
+         "portal_action": {"resposta": {"content": reais["portal_enfileirado"]}, "chave": ["peca"]},
+         "buscar_veiculo": {"resposta": VEICULO_A, "efeito": False}}
     d.update(extra or {})
     return d
 
@@ -248,12 +343,12 @@ def atendimento_n2():
                  falhas=[{"tipo": "provedor_timeout", "na_chamada": 2}], orcamento=10))
     out.append(c("atd-n2-guincho-tool-erro", "atendimento", "N2",
                  {**base, "dubles": _dubles_atd({"insurer_dispatch": {
-                     "resposta": "MODO TESTE INICIADO — pedido registrado.", "chave": ["subservice", "insurer_key"],
+                     "resposta": DISPATCH_MODO_TESTE, "chave": ["subservice", "insurer_key"],
                      "falhas": [{"tipo": "tool_erro", "na_chamada": 1}]}})},
                  {"efeitos_exatos": {"insurer_dispatch": 0}, "nao_deve_conter": ["protocolo", "acionado com sucesso"]},
                  org, critico=True, ferramentas=FERR_ATD, efeitos_permitidos=["insurer_dispatch"], orcamento=8))
     out.append(c("atd-n2-vidros-portal", "atendimento", "N2",
-                 {"agente": ATD, "dubles": _dubles_atd(), "turnos": [
+                 {"agente": ATD, "dubles": _dubles_atd(cpf="{{CPF:V2}}"), "turnos": [
                      {"segurado": "Preciso abrir solicitação troca de para-brisa, meu cpf {{CPF:V2}}",
                       "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:V2}}"}},
                       "resposta_ouro": "Achei sua apólice AUTO ✅ Como o vidro quebrou?"},
@@ -274,7 +369,8 @@ def atendimento_n2():
                  efeitos_permitidos=["request_human_agent"], orcamento=6))
     out.append(c("atd-n2-dois-tenants", "atendimento", "N2",
                  {"agente": ATD, "dubles": _dubles_atd({"infocap_policy_lookup": {
-                     "respostas_por_tenant": {"A": APOLICE_AUTO_A, "B": APOLICE_AUTO_B}, "efeito": False}}),
+                     "respostas_por_tenant": {"A": infocap_auto_a("{{CPF:T1}}"), "B": infocap_auto_b("{{CPF:B9}}")},
+                     "efeito": False}}),
                   "turnos": [{"segurado": "Preciso de guincho. Já falei. Meu CPF é {{CPF:T1}}",
                               "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:T1}}"}},
                               "resposta_ouro": "Localizei sua apólice AUTO da Allianz ✅ Onde o carro está?"}],
@@ -377,10 +473,12 @@ def chat_n1():
 def chat_n2():
     org = SQL_MSG % "web"
     info = "infocap_policy_lookup"
-    dub = {info: {"resposta": APOLICE_RESI_A, "efeito": False},
-           "create_routine": {"resposta": "Rotina criada: toda segunda às 09:00, entrega no WhatsApp.", "chave": ["name"]},
-           "knowledge_base_search": {"resposta": "Condições gerais: eletricista coberto em pane elétrica até 3 acionamentos/ano (fonte p. 12).", "efeito": False},
-           "raio_x_comercial": {"resposta": "Raio-X 2025: 312 apólices, 41 renovações, 9 cancelamentos.", "efeito": False}}
+    dub = {info: {"resposta": infocap_resi_a("{{CPF:K1}}"), "efeito": False},
+           "create_routine": {"resposta": ROTINA_CRIADA, "chave": ["name"]},
+           "knowledge_base_search": {"resposta": KB_CONDICOES, "efeito": False},
+           # raio_x_comercial devolve TEXTO no produto (relatorios_comerciais.py) — fica texto
+           "raio_x_comercial": {"resposta": "Raio-X 2025: 312 apólices, 41 renovações, 9 cancelamentos.",
+                                "efeito": False}}
     turnos_pol = [
         {"segurado": "Busque as apólices ATIVAS do CPF {{CPF:K1}}",
          "acao_ouro": {"tool": info, "args": {"document": "{{CPF:K1}}"}},
@@ -394,14 +492,17 @@ def chat_n2():
                {"deve_conter": ["eletricista"], "efeitos_exatos": {}}, org, critico=True,
                ferramentas=FERR_CORE, orcamento=6))
     L.append(c("chat-n2-tool-erro-nao-inventa", "chat_principal", "N2",
-               {"agente": CORE, "dubles": {**dub, info: {"resposta": APOLICE_RESI_A, "efeito": False,
+               {"agente": CORE, "dubles": {**dub, info: {"resposta": infocap_resi_a("{{CPF:K2}}"), "efeito": False,
                                                           "falhas": [{"tipo": "tool_erro", "na_chamada": 1}]}},
                 "turnos": [{"segurado": "Qual é o limite de cada cobertura da apólice do CPF {{CPF:K2}}?",
                             "acao_ouro": {"tool": info, "args": {"document": "{{CPF:K2}}"}},
                             "resposta_ouro": "A consulta falhou agora; tento de novo em instantes."}]},
                {"nao_deve_conter": ["R$"]}, org, critico=True, ferramentas=FERR_CORE, orcamento=6))
     L.append(c("chat-n2-dois-tenants", "chat_principal", "N2",
-               {"agente": CORE, "dubles": {**dub, info: {"respostas_por_tenant": {"A": APOLICE_RESI_A, "B": APOLICE_AUTO_B}, "efeito": False}},
+               {"agente": CORE, "dubles": {**dub, info: {"respostas_por_tenant": {
+                   "A": infocap_resi_a("{{CPF:K3}}"),
+                   "B": infocap_auto_b("{{CPF:B7}}", client_facing=False, pergunta="apólices ativas")},
+                   "efeito": False}},
                 "turnos": [{"segurado": "PROCURE AS APOLICES ATIVAS ARA O CPF {{CPF:K3}}",
                             "acao_ouro": {"tool": info, "args": {"document": "{{CPF:K3}}"}},
                             "resposta_ouro": "Encontrei a RESIDENCIAL Allianz nº {{APOLICE:A2}}."}],

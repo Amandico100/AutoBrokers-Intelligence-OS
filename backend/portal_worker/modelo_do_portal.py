@@ -497,7 +497,8 @@ async def _uma_chamada(modelo: ModeloDoPortal, system: str, user: str,
 
 
 async def decidir(system: str, user: str, *, company_id: Any = None, job_id: Any = None,
-                  chamar_modelo: Optional[ChamarModelo] = None) -> Dict[str, Any]:
+                  chamar_modelo: Optional[ChamarModelo] = None,
+                  rota: Optional[ModeloDoPortal] = None) -> Dict[str, Any]:
     """Uma decisão do cérebro do portal. Devolve {texto, modelo, reserva_usada}.
 
     Levanta `ModeloDoPortalIndisponivel` com o MOTIVO — nunca troca de modelo
@@ -505,8 +506,12 @@ async def decidir(system: str, user: str, *, company_id: Any = None, job_id: Any
     devolve a resposta crua do provedor; com ele o ledger do produto NÃO é
     escrito (a bancada mede o próprio custo em `eval_case_results`, e o
     processo dela não pode gravar linha no ledger de produção).
+
+    `rota` (SPEC-116 F6, só a BANCADA passa): o `ModeloDoPortal` do braço medido
+    — o corpo do pedido sai no formato do provedor DELE (`montar_pedido`). Sem
+    ele, o modelo é o da rota `portal_decisao`, como sempre.
     """
-    modelo = await resolver_rota()
+    modelo = rota if rota is not None else await resolver_rota()
     try:
         dados = await _uma_chamada(modelo, system, user, chamar_modelo)
         usado, reserva_usada, motivo = modelo, False, None

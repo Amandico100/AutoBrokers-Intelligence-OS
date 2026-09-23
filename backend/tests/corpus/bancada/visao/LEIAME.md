@@ -1,4 +1,4 @@
-# Bancada · visao — corpus v1
+# Bancada · visao — corpus v2
 
 > SPEC-116 U12 · gerado em 23/09/2026 · 10 casos (10 N1 · 0 N2) · 2 críticos ·
 > 0 com falha injetada · 0 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.

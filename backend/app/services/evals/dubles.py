@@ -328,7 +328,8 @@ class DubleDeTool:
 
     Estado aceito (``entrada.dubles[<nome>]`` no caso)::
 
-        {"resposta": "...",                 # ou "respostas_por_tenant": {"A": .., "B": ..}
+        {"resposta": "..." | {...},         # ou "respostas_por_tenant": {"A": .., "B": ..}
+                                            # dict = a FORMA da tool real, devolvida como dict
          "efeito": true,                    # default: EFEITO_POR_PADRAO
          "chave": ["subservice", "insurer_key"],
          "falhas": [{"tipo": "tool_timeout"|"tool_erro", "na_chamada": 1}]}
@@ -369,6 +370,14 @@ class DubleDeTool:
         resposta = por_tenant.get(self.tenant) if por_tenant else self.estado.get("resposta")
         if resposta is None:
             resposta = "Consulta concluída, sem dados adicionais para este caso."
+        # 🔴 SPEC-116 F6 — a FORMA é a da tool real, não uma string. 📊 As tools
+        # reais devolvem dict (`infocap_policy_lookup` → {content, data,
+        # policy_response_contract}; `insurer_dispatch` → {status, content};
+        # `knowledge_base_search` → {content, chunks, …}), e o `tool_node` decide
+        # pelo TIPO: é do dict que nasce `infocap_policy_context`
+        # (nodes.py:2139). Serializar aqui era o dublê decidir pelo produto.
+        if isinstance(resposta, (dict, list)):
+            return copy.deepcopy(resposta)
         return resposta if isinstance(resposta, str) else json.dumps(resposta, ensure_ascii=False)
 
     def _run(self, **kwargs):

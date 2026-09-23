@@ -185,13 +185,33 @@ def test_n2_dois_tenants_roda_as_duas_corretoras_no_mesmo_processo():
 
 
 # ---------------------------------------------------------------------------
+# 🔴 SPEC-116 F6 — DEFEITO DE PRODUTO que o dublê REALISTA expôs (não é da bancada)
+# ---------------------------------------------------------------------------
+#: 📊 Com a consulta de apólice na FORMA REAL (dict + contrato) e
+#: `POLICY_INTELLIGENCE_V2=true` (bancada.FLAGS_DO_AGENTE), o Chat Principal
+#: entra em LAÇO na pergunta de detalhe com anáfora ("Ela cobre eletricista?"):
+#: `agent_node` força a consulta pelo contexto (`_policy_context_tool_args`,
+#: nodes.py ~1325) → `tool_node` → `should_continue_after_tools` devolve "agent"
+#: (v2) → `agent_node` força DE NOVO, porque a última humana continua sendo a
+#: mesma pergunta. Medido: 7 consultas forçadas seguidas até a janela de 15
+#: mensagens derrubar a pergunta — e aí o modelo responde sem ela. Até o braço
+#: `perfeito` reprova. ⚠️ `strict=True`: consertado o produto, estes testes ficam
+#: VERMELHOS e o marcador sai (CLAUDE.md §9.3 — a lição migra, não morre).
+CASOS_DO_LACO_DA_APOLICE = ("chat-n2-apolice-e-cobertura", "chat-n2-429-retomada", "chat-n2-500-no-meio")
+LACO_DA_APOLICE = pytest.mark.xfail(
+    strict=True, reason="defeito de PRODUTO (v2 + contexto de apólice no core): consulta forçada em laço — "
+                        "SPEC-116 F6, relatório 06")
+
+
+# ---------------------------------------------------------------------------
 # LINHA DE CONTROLE (§9.2): a bancada SEPARA o perfeito do burro
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("papel,nivel", [("atendimento", "N1"), ("atendimento", "N2"), ("chat_principal", "N1"),
                                          ("chat_principal", "N2"), ("portal_decisao", "N1"), ("dispatch", "N1"),
                                          ("memoria", "N1"), ("visao", "N1"), ("cobranca", "N1")])
 def test_linha_de_controle_separa_perfeito_de_burro(papel, nivel):
-    rel = B.rodar_bancada(papel, ["duble:perfeito", "duble:burro"], k=1, nivel=nivel, teto_usd=50)
+    casos = [c for c in B.carregar_casos(papel, nivel=nivel) if c["chave"] not in CASOS_DO_LACO_DA_APOLICE]
+    rel = B.rodar_bancada(papel, ["duble:perfeito", "duble:burro"], casos, k=1, nivel=nivel, teto_usd=50)
     p, b = rel.bracos["duble:perfeito"], rel.bracos["duble:burro"]
     assert p["pass_at_1"] == 1.0, [(r.chave, _slugs_falhos(r), r.erro) for r in rel.resultados
                                    if r.braco == "duble:perfeito" and r.resultado != "PASS"]
@@ -202,7 +222,7 @@ def test_linha_de_controle_separa_perfeito_de_burro(papel, nivel):
 # Falha injetada: 429/timeout do provedor → retomada sem efeito dobrado
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("chave", ["atd-n2-guincho-429-depois-da-tool", "atd-n2-guincho-timeout-provedor",
-                                   "chat-n2-429-retomada"])
+                                   pytest.param("chat-n2-429-retomada", marks=LACO_DA_APOLICE)])
 def test_falha_injetada_no_provedor_recupera_sem_duplicar(chave):
     caso = _caso(chave)
     rel = B.rodar_bancada(caso["papel"], ["duble:perfeito"], [caso], k=1, nivel="N2", teto_usd=5)
@@ -288,3 +308,104 @@ def test_cli_roda_a_linha_de_controle_em_ensaio(tmp_path):
     r2 = subprocess.run([sys.executable, os.path.join("scripts", "bancada.py"), "--relatorio", str(saida)],
                         cwd=RAIZ, capture_output=True, text=True, encoding="utf-8", timeout=300)
     assert r2.returncode == 0 and "duble:perfeito" in r2.stdout
+
+
+@LACO_DA_APOLICE
+@pytest.mark.parametrize("chave", CASOS_DO_LACO_DA_APOLICE)
+def test_perfeito_passa_na_pergunta_de_detalhe_com_contexto_de_apolice(chave):
+    """O lado vermelho da exclusão acima: o `perfeito` TEM de passar nestes casos —
+    hoje não passa por causa do laço do produto (xfail estrito)."""
+    caso = _caso(chave)
+    rel = B.rodar_bancada("chat_principal", ["duble:perfeito"], [caso], k=1, nivel="N2", teto_usd=5)
+    r = rel.resultados[0]
+    assert r.resultado == "PASS", (_slugs_falhos(r), r.erro)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-116 F6 — o dublê de tool devolve a FORMA REAL (dict), não texto
+# ---------------------------------------------------------------------------
+def test_duble_de_tool_devolve_o_dict_intacto_e_o_texto_intacto():
+    import asyncio
+
+    class _Real:
+        name, description, args_schema = "infocap_policy_lookup", "", None
+
+    reg = D.RegistroDeEfeitos()
+    forma = {"content": "briefing", "data": {"status": "found"}, "policy_response_contract": {"provider": "infocap"}}
+    dub = D.DubleDeTool(_Real(), registro=reg, tenant="A", estado={"resposta": forma, "efeito": False})
+    volta = asyncio.run(dub._arun(document="x"))
+    assert volta == forma and isinstance(volta, dict), "dict tem de chegar ao tool_node como dict"
+    assert volta is not forma, "cópia: o tool_node não pode mutar o estado do caso"
+    dub_txt = D.DubleDeTool(_Real(), registro=reg, tenant="A", estado={"resposta": "texto", "efeito": False})
+    assert asyncio.run(dub_txt._arun(document="x")) == "texto"
+
+
+def test_corpus_consulta_de_apolice_tem_o_contrato_real_e_o_mascaramento_do_papel():
+    vistos = 0
+    for papel, mascarado in (("atendimento", True), ("chat_principal", False)):
+        for c in B.carregar_casos(papel, nivel="N2"):
+            est = (c["entrada"].get("dubles") or {}).get("infocap_policy_lookup") or {}
+            respostas = list((est.get("respostas_por_tenant") or {}).values()) or [est.get("resposta")]
+            for r in respostas:
+                assert isinstance(r, dict), (c["chave"], "a consulta de apólice voltou a ser TEXTO")
+                assert r["policy_response_contract"]["provider"] == "infocap"
+                assert r["policy_response_contract"]["rendered_safe_answer"]
+                assert ("client_document" not in r["data"]) is mascarado, (c["chave"], papel)
+                vistos += 1
+    assert vistos >= 18
+
+
+def test_contexto_da_apolice_nasce_da_forma_real_e_nao_do_texto():
+    """Chat Principal (core): com a forma REAL o `tool_node` monta `infocap_policy_context`
+    no turno 1. LINHA DE CONTROLE: o MESMO caso com o `content` como TEXTO (a v1) → vazio."""
+    import copy
+
+    caso = _caso("chat-n2-dois-tenants")
+    rel = B.rodar_bancada("chat_principal", ["duble:perfeito"], [caso], k=1, nivel="N2", teto_usd=5)
+    ctx = rel.resultados[0].rastro["estado"]["contexto_da_apolice_por_turno"]
+    assert rel.resultados[0].resultado == "PASS"
+    assert "selected_policy_number" in ctx[0] and "document" in ctx[0], ctx
+
+    controle = copy.deepcopy(caso)
+    est = controle["entrada"]["dubles"]["infocap_policy_lookup"]
+    est["respostas_por_tenant"] = {k: v["content"] for k, v in est["respostas_por_tenant"].items()}
+    rel_c = B.rodar_bancada("chat_principal", ["duble:perfeito"], [controle], k=1, nivel="N2", teto_usd=5)
+    assert rel_c.resultados[0].rastro["estado"]["contexto_da_apolice_por_turno"] == [[]], (
+        "a linha de controle tem de ficar SEM contexto — senão o guarda acima não prova nada")
+
+
+def test_o_texto_do_turno_e_o_final_response_quando_existe():
+    from langchain_core.messages import AIMessage
+
+    out = {"messages": [AIMessage(content="rascunho do modelo")], "final_response": "texto que o produto envia"}
+    assert B._texto_do_turno(out) == "texto que o produto envia"
+    assert B._texto_do_turno({"messages": [AIMessage(content="só a IA")], "final_response": None}) == "só a IA"
+
+
+def test_erro_do_provedor_engolido_pelo_motor_e_infra_e_nao_falha_do_modelo():
+    """📊 F6: o dispatch (`o_cerebro_ja_sabe`: `except Exception → (None, "")`) deu
+    20 % a todos os braços reais, com 0 chamadas concluídas. Chamada TENTADA e não
+    concluída = BLOCKED_BY_INFRA. CONTROLE: o mesmo braço respondendo lixo = FAIL."""
+    caso = _caso("disp-n1-allianz-ref")
+
+    class _SemCredito(D.LLMDuble):
+        async def ainvoke(self, entrada, config=None, **kw):
+            raise RuntimeError("You have no credits remaining")
+
+    class _Lixo(D.LLMDuble):
+        async def ainvoke(self, entrada, config=None, **kw):
+            from langchain_core.messages import AIMessage
+            return AIMessage(content="nao sei", usage_metadata={"input_tokens": 5, "output_tokens": 2,
+                                                                "total_tokens": 7})
+
+    def _com(cls):
+        rel = B.rodar_bancada("dispatch", [{"provider": "falso", "model": "m", "preco": {"entrada": 1, "saida": 1}}],
+                              [caso], k=1, construir_llm=lambda *_a, **_k: cls("burro"), teto_usd=1,
+                              resolver=lambda papel, override: {"provider": "falso", "model": "m"},
+                              precos=lambda b: {"entrada": 1.0, "saida": 1.0})
+        return rel.resultados[0]
+
+    r = _com(_SemCredito)
+    assert r.resultado == "BLOCKED_BY_INFRA" and "engoliu" in (r.erro or ""), (r.resultado, r.erro)
+    c = _com(_Lixo)
+    assert c.resultado == "FAIL", "controle: o modelo respondeu e errou — isso É do modelo"

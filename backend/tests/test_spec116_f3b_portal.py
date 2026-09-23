@@ -341,3 +341,43 @@ def test_o_custo_e_a_mesma_conta_do_usage_service(modelo, uso, monkeypatch):
                                   uso["cache_read"], uso["cached"])
     obtido = PM.custo_usd(SNAP["catalogo"][modelo], dict(uso, reasoning=0))
     assert obtido == pytest.approx(esperado) and esperado > 0
+
+
+# ---------------------------------------------------------------------------
+# SPEC-116 F6 — a ROTA INJETADA (só a bancada passa): o corpo é o do BRAÇO
+# ---------------------------------------------------------------------------
+def _rota_injetada(provider, model, effort):
+    """O `ModeloDoPortal` que a bancada injeta, montado pelo MESMO resolvedor."""
+    from app.services.evals.bancada import Braco, rota_do_portal_para
+
+    r = MP.resolver("portal_decisao", override={"provider": provider, "model": model, "effort": effort})
+    return rota_do_portal_para(Braco(provider, model, effort), r)
+
+
+def test_sem_rota_injetada_nada_muda(borda):
+    """Controle: sem `rota=`, o pedido é o da rota do banco (gpt-4o, JSON mode, temperature 0)."""
+    assert _decidir() == ACAO_OK
+    assert borda.prov.modelos == ["gpt-4o"] and borda.rest.leituras == 1
+    corpo = borda.prov.pedidos[0]["corpo"]
+    assert corpo["temperature"] == 0 and corpo["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.parametrize("provider,model,effort,url,sem_temperatura", [
+    ("anthropic", "claude-sonnet-5", "low", "/v1/messages", True),
+    ("openai", "gpt-6-sol", "medium", "/v1/responses", True),
+    ("openai", "gpt-4o-mini", None, "/v1/chat/completions", False),
+])
+def test_rota_injetada_monta_o_corpo_do_provedor_do_braco(borda, provider, model, effort, url,
+                                                          sem_temperatura):
+    rota = _rota_injetada(provider, model, effort)
+    assert _decidir(rota=rota) == ACAO_OK
+    ped = borda.prov.pedidos[0]
+    assert ped["url"].endswith(url) and ped["corpo"]["model"] == model
+    assert borda.rest.leituras == 0, "com a rota injetada o banco NÃO é lido"
+    assert ("temperature" not in ped["corpo"]) is sem_temperatura, (
+        f"{model}: temperature só onde o catálogo permite (sampling_ok)")
+    if provider == "anthropic" and effort:
+        assert ped["corpo"]["output_config"] == {"effort": effort}
+    if url.endswith("/responses"):
+        assert ped["corpo"]["reasoning"] == {"effort": effort} and ped["corpo"]["store"] is False
+        assert ped["corpo"]["text"] == {"format": {"type": "json_object"}}

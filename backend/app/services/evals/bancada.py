@@ -100,10 +100,19 @@ TENANTS = {
 RESULTADOS = ("PASS", "FAIL", "PARTIAL", "BLOCKED_BY_INFRA")
 
 #: papel → (agent_role no grafo, risco do dataset na Eval Fabric)
+#: 🔴 SPEC-116 F6 — as FLAGS de produção sob as quais o motor do agente é medido.
+#: `POLICY_INTELLIGENCE_V2=true` é a configuração que o Founder foi orientado a
+#: confirmar no `smith-api` (P-E0015-06): com ela a LLM REDIGE a resposta depois
+#: da consulta de apólice e o contrato vira fiscal. Desligada, o turno da
+#: consulta acaba no rascunho do compositor e o modelo nem escreve — mediríamos
+#: menos do que o produto faz. Declarada AQUI, num lugar só, e aplicada só
+#: enquanto o motor roda (`dubles.borda_isolada(env=)`).
+FLAGS_DO_AGENTE = {"POLICY_INTELLIGENCE_V2": "true"}
+
 PAPEIS: Dict[str, Dict[str, Any]] = {
-    "chat_principal": {"agent_role": "core", "risco": "alto", "motor": "agente"},
-    "atendimento": {"agent_role": "attendance", "risco": "critico", "motor": "agente"},
-    "cobranca": {"agent_role": "attendance", "risco": "alto", "motor": "agente"},
+    "chat_principal": {"agent_role": "core", "risco": "alto", "motor": "agente", "env": FLAGS_DO_AGENTE},
+    "atendimento": {"agent_role": "attendance", "risco": "critico", "motor": "agente", "env": FLAGS_DO_AGENTE},
+    "cobranca": {"agent_role": "attendance", "risco": "alto", "motor": "agente", "env": FLAGS_DO_AGENTE},
     "portal_decisao": {"risco": "critico", "motor": "portal"},
     "dispatch": {"risco": "critico", "motor": "dispatch"},
     "memoria": {"risco": "medio", "motor": "memoria"},
@@ -302,7 +311,7 @@ class Medidor:
         self.orcamento = orcamento
         self.max_output = int(max_output or 8192)
         self.estado = _estado if _estado is not None else {
-            "chamadas": 0, "tokens": {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0,
+            "chamadas": 0, "tentativas": 0, "tokens": {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0,
                                        "raciocinio": 0},
             "custo": 0.0, "tool_calls": [], "modelos_reais": [], "prompts": set(),
             "tools": set()}
@@ -339,6 +348,7 @@ class Medidor:
         estimativa = (D.estimar_tokens(texto) * self.preco["entrada"]
                       + self.max_output * self.preco["saida"]) / 1_000_000
         self.orcamento.reservar(estimativa)
+        self.estado["tentativas"] = self.estado.get("tentativas", 0) + 1
 
     def _depois(self, resp) -> None:
         self.estado["chamadas"] += 1
@@ -709,6 +719,21 @@ async def _com_retomada(fazer, retomar, ctx: Contexto):
         return await retomar()
 
 
+def _texto_do_turno(out: Any) -> str:
+    """O que o PRODUTO envia ao fim do turno: `final_response` do estado quando
+    existe (graph.py `run_agent`: `result.get("final_response")` primeiro), senão
+    o texto da última AIMessage. 🔴 SPEC-116 F6: ler só a AIMessage perdia o texto
+    que o fiscal pós-LLM (nodes.py `guarded_final`) ou o contrato da apólice
+    (`should_continue_after_tools` → end) puseram no lugar."""
+    out = out or {}
+    final = out.get("final_response")
+    if isinstance(final, str) and final.strip():
+        return final
+    msgs = out.get("messages") or []
+    ultima = next((m for m in reversed(msgs) if D._tipo(m) == "ai"), None)
+    return D._texto_de(getattr(ultima, "content", "")) if ultima is not None else ""
+
+
 def _saida_do_agente(mensagens: list, ctx: Contexto, textos: List[str], turnos: int) -> dict:
     ultima = next((m for m in reversed(mensagens) if D._tipo(m) == "ai"), None)
     calls = [{"name": c.get("name"), "args": c.get("args")}
@@ -750,13 +775,13 @@ async def motor_agente(caso: dict, ctx: Contexto) -> dict:
             lambda: grafo.ainvoke(entrada_msg, cfg, interrupt_before=["tools"]),
             lambda: grafo.ainvoke(None, cfg, interrupt_before=["tools"]), ctx)
         msgs = (out or {}).get("messages") or []
-        ultima = next((m for m in reversed(msgs) if D._tipo(m) == "ai"), None)
-        texto = D._texto_de(getattr(ultima, "content", "")) if ultima is not None else ""
+        texto = _texto_do_turno(out)
         return _saida_do_agente(msgs, ctx, [texto], ctx.medidor.estado["chamadas"])
 
     # ---------------- N2: trajetória ----------------
     textos_a: List[str] = []
     textos_b: List[str] = []
+    contexto_por_turno: List[list] = []   # chaves de `infocap_policy_context` após cada turno do A
     outro = ent.get("outro_tenant") or {}
     falhas = caso.get("falhas_injetadas") or []
     duplicar = {int(f.get("no_turno") or 1) for f in falhas if f.get("tipo") == "mensagem_duplicada"}
@@ -781,9 +806,9 @@ async def motor_agente(caso: dict, ctx: Contexto) -> dict:
             inp = {**base, "messages": [HumanMessage(content=texto)]}
             out = await _com_retomada(lambda: grafo.ainvoke(inp, cfg),
                                       lambda: grafo.ainvoke(None, cfg), ctx)
-            msgs = (out or {}).get("messages") or []
-            ultima = next((m for m in reversed(msgs) if D._tipo(m) == "ai"), None)
-            sink.append(D._texto_de(getattr(ultima, "content", "")) if ultima is not None else "")
+            sink.append(_texto_do_turno(out))
+            if tl == tenant:
+                contexto_por_turno.append(sorted((out or {}).get("infocap_policy_context") or {}))
 
     if outro.get("turnos"):
         await conversar(outro.get("tenant") or "B", outro["turnos"], textos_b,
@@ -797,7 +822,8 @@ async def motor_agente(caso: dict, ctx: Contexto) -> dict:
               for l in ctx.banco.tabelas.get("conversations", [])}
     ficha_a = fichas.get(f"bancada-{caso['chave']}-{tenant}") or {}
     saida["estado"] = {"fase": (ficha_a or {}).get("fase"),
-                       "tools_usadas": sorted({c["name"] for c in saida["tool_calls_todas"]})}
+                       "tools_usadas": sorted({c["name"] for c in saida["tool_calls_todas"]}),
+                       "contexto_da_apolice_por_turno": contexto_por_turno}
     saida["efeitos"] = {t: ctx.registro.contagem(t, tenant)
                         for t in {c["tool"] for c in ctx.registro.efeitos()}}
     return saida
@@ -843,6 +869,87 @@ def chamador_do_braco(llm: Any, pedidos: List[dict]) -> Callable[[dict], Any]:
     return _chamar
 
 
+def rota_do_portal_para(braco: Braco, resolvido: Any):
+    """O `ModeloDoPortal` do BRAÇO (SPEC-116 F6) — injetado em `decide_next_action(rota=)`
+    para o corpo do pedido sair no formato do provedor DELE (`montar_pedido`:
+    JSON mode, `reasoning`/`output_config.effort`, sem `temperature` onde o catálogo
+    proíbe). Os campos vêm do resolvedor da F1 — o mesmo catálogo do produto."""
+    from portal_worker.modelo_do_portal import PAPEL, ModeloDoPortal
+
+    return ModeloDoPortal(
+        papel=PAPEL, provider=_campo(resolvido, "provider") or braco.provider,
+        model=_campo(resolvido, "model") or braco.model, effort=_campo(resolvido, "effort"),
+        api_surface=_campo(resolvido, "api_surface") or "",
+        capacidades=dict(_campo(resolvido, "capacidades") or {}),
+        classe_de_dado=_campo(resolvido, "classe_de_dado") or "pii",
+        lifecycle=_campo(resolvido, "lifecycle") or "", origem="bancada",
+        versao_da_rota=None, base_url=_campo(resolvido, "base_url"),
+        api_key_env=_campo(resolvido, "api_key_env"), precos={}, reserva=None)
+
+
+def chamador_http_do_braco(modelo: Any, ctx: "Contexto", pedidos: List[dict]) -> Callable[[dict], Any]:
+    """O `chamar_modelo` do braço REAL no portal (SPEC-116 F6): posta o CORPO que
+    o produto montou para o provedor do braço (`modelo_do_portal._postar_no_provedor`,
+    o mesmo transporte do worker) e mede — teto antes, custo depois pelo
+    `usage_service.calculate_cost` (a conta do ledger) e UMA linha no ledger com
+    ``service_type='bancada'`` e ``company_id`` NULO (como o `CostCallbackHandler`
+    faria no braço de chat). Erro SOBE: o produto devolve `ask_human`."""
+    from portal_worker import modelo_do_portal as MP
+
+    med = ctx.medidor
+
+    async def _chamar(pedido: dict) -> dict:
+        reg = {k: pedido.get(k) for k in ("papel", "provider", "api_surface", "model", "url")}
+        corpo = pedido.get("corpo") or {}
+        reg["temperature"] = corpo.get("temperature")
+        reg["esforco"] = (corpo.get("reasoning") or {}).get("effort") or \
+            (corpo.get("output_config") or {}).get("effort") or corpo.get("reasoning_effort")
+        reg["formato"] = sorted(k for k in ("response_format", "text", "system") if k in corpo)
+        pedidos.append(reg)
+        med.orcamento.reservar((D.estimar_tokens(json.dumps(corpo, ensure_ascii=False)) * med.preco["entrada"]
+                                + med.max_output * med.preco["saida"]) / 1_000_000)
+        med.estado["tentativas"] = med.estado.get("tentativas", 0) + 1
+        try:
+            if ctx.falhas is not None:
+                ctx.falhas._talvez_falhar()
+            dados = await MP._postar_no_provedor(pedido, MP._cabecalhos_do_provedor(modelo))
+        except Exception as exc:  # noqa: BLE001
+            reg["erro"] = type(exc).__name__ + (f": {str(exc)[:120]}" if str(exc) else "")
+            raise
+        uso = MP.uso_da_resposta(dados)
+        from app.services.usage_service import get_usage_service
+
+        us = get_usage_service()
+        custo = float(us.calculate_cost(modelo.model, uso["input"], uso["output"], uso["cache_write"],
+                                        uso["cache_read"], uso["cached"]) or 0.0)
+        t = med.estado["tokens"]
+        t["in"] += uso["input"]
+        t["out"] += uso["output"]
+        t["cache_read"] += uso["cache_read"] + uso["cached"]
+        t["cache_write"] += uso["cache_write"]
+        t["raciocinio"] += uso["reasoning"]
+        med.estado["chamadas"] += 1
+        med.estado["custo"] += custo
+        med.orcamento.gastar(custo)
+        real = (dados or {}).get("model") if isinstance(dados, dict) else None
+        if real:
+            med.estado["modelos_reais"].append(str(real))
+        try:
+            us.track_cost_sync(service_type=SERVICE_TYPE_DA_BANCADA, model=modelo.model,
+                               input_tokens=uso["input"], output_tokens=uso["output"], company_id=None,
+                               agent_id=None,
+                               details={"papel": "portal_decisao", "origem": "bancada:portal",
+                                        "modelo_real": real, "esforco": modelo.effort,
+                                        "reasoning_tokens": uso["reasoning"]},
+                               cache_creation_tokens=uso["cache_write"], cache_read_tokens=uso["cache_read"],
+                               cached_tokens=uso["cached"])
+        except Exception as exc:  # noqa: BLE001 — perder a linha não derruba a medição
+            logger.warning("[Bancada] ledger do portal não gravado (%s)", type(exc).__name__)
+        return dados
+
+    return _chamar
+
+
 async def motor_portal(caso: dict, ctx: Contexto) -> dict:
     """`decide_next_action` REAL. Com `chamar_modelo=` (F3b) o pedido do produto
     vai ao braço e o ledger do portal NÃO é escrito; sem o parâmetro (código
@@ -855,7 +962,14 @@ async def motor_portal(caso: dict, ctx: Contexto) -> dict:
     pedidos: List[dict] = []
     args = (ent.get("tela") or {}, str(ent.get("objetivo") or ""), ent.get("dados") or {},
             ent.get("acoes_ja_feitas") or [])
-    if "chamar_modelo" in inspect.signature(decide_next_action).parameters:
+    parametros = inspect.signature(decide_next_action).parameters
+    if "rota" in parametros and not ctx.braco.e_duble:
+        # 🔴 SPEC-116 F6: o corpo do pedido é o do provedor do BRAÇO, e ele vai
+        # ao provedor pelo transporte do worker (não por um cliente LangChain).
+        modelo = rota_do_portal_para(ctx.braco, ctx.resolvido)
+        acao = await decide_next_action(*args, force=bool(ent.get("force")), rota=modelo,
+                                        chamar_modelo=chamador_http_do_braco(modelo, ctx, pedidos))
+    elif "chamar_modelo" in parametros:
         acao = await decide_next_action(*args, force=bool(ent.get("force")),
                                         chamar_modelo=chamador_do_braco(ctx.llm, pedidos))
     else:  # pragma: no cover — portal anterior à F3b
@@ -1212,7 +1326,7 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
     resultado = None
     vereditos: List[dict] = []
     try:
-        with D.borda_isolada(banco):
+        with D.borda_isolada(banco, env=PAPEIS[caso_m["papel"]].get("env")):
             saida = await motor(caso_m, ctx)
     except TetoDeGastoAtingido:
         raise
@@ -1238,6 +1352,17 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
         resultado = classificar(caso_m, vereditos)
         if saida.get("infra"):
             resultado, erro = "BLOCKED_BY_INFRA", saida["infra"]
+        # 🔴 SPEC-116 F6: motor que ENGOLE o erro do provedor (dispatch, visão,
+        # memória: `except Exception → None`) transformava crédito esgotado, 429
+        # ou 400 do provedor em FAIL do modelo. 📊 Medido: o dispatch deu 20 % a
+        # TODOS os braços com 0 chamadas concluídas. Chamada tentada e não
+        # concluída, sem falha injetada, é INFRA — nunca contra o modelo.
+        falhou_calado = medidor.estado.get("tentativas", 0) - medidor.estado["chamadas"]
+        if (not braco.e_duble and resultado in ("FAIL", "PARTIAL") and falhou_calado > 0
+                and not (falhas and falhas.disparadas)):
+            resultado = "BLOCKED_BY_INFRA"
+            erro = (f"provedor: {falhou_calado} de {medidor.estado['tentativas']} chamada(s) ao braço "
+                    f"não concluíram e o motor engoliu o erro — não é falha do modelo")
         reais = medidor.estado["modelos_reais"]
         if not braco.e_duble and reais and any(braco.model not in r for r in reais):
             resultado = "BLOCKED_BY_INFRA"
@@ -1250,6 +1375,7 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
         "falhas_injetadas": (falhas.disparadas if falhas else [])
         + [f for f in caso_m.get("falhas_injetadas") or [] if not str(f.get("tipo", "")).startswith("provedor_")],
         "chamadas_ao_modelo": medidor.estado["chamadas"],
+        "chamadas_tentadas": medidor.estado.get("tentativas", 0),
         "modelos_reais": sorted(set(medidor.estado["modelos_reais"])),
         "prompt_hashes": sorted(medidor.estado["prompts"]),
         "tools_hashes": sorted(medidor.estado["tools"]),

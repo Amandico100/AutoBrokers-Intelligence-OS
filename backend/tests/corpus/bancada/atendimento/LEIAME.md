@@ -1,4 +1,4 @@
-# Bancada · atendimento — corpus v1
+# Bancada · atendimento — corpus v2
 
 > SPEC-116 U12 · gerado em 23/09/2026 · 40 casos (30 N1 · 10 N2) · 36 críticos ·
 > 4 com falha injetada · 2 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.

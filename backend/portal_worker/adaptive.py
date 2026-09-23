@@ -409,8 +409,8 @@ def _recorte_json(texto: str) -> str:
 
 async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[str, Any],
                              history: List[Dict[str, Any]], force: bool = False, *,
-                             chamar_modelo: Optional[Callable[[Dict[str, Any]], Any]] = None
-                             ) -> Dict[str, Any]:
+                             chamar_modelo: Optional[Callable[[Dict[str, Any]], Any]] = None,
+                             rota: Any = None) -> Dict[str, Any]:
     """Chama o cerebro (LLM) para decidir a proxima acao. Fail-safe -> ask_human.
 
     📊 O padrao era `gpt-4o-mini` — um modelo pequeno conduzindo uma tarefa
@@ -429,6 +429,10 @@ async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[s
     ({papel, provider, api_surface, model, url, corpo}) e devolve a resposta
     crua do provedor (Chat Completions, Messages ou Responses). Sem ele, o
     pedido sai por `httpx.AsyncClient.post` — que a bancada tambem sabe desviar.
+
+    `rota` — (SPEC-116 F6) um `ModeloDoPortal` INJETADO pela bancada, para que
+    o corpo do pedido seja o do provedor do BRACO medido. Sem ele (produção),
+    nada muda: o modelo é o da rota `portal_decisao`.
     """
     system = _SYSTEM + (_FORCE_CHOOSE if force else "")
     user = json.dumps({"objetivo": goal, "dados_segurado_corretora": collected, "tela": state,
@@ -436,7 +440,8 @@ async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[s
     job = _JOB_EM_CURSO.get() or {}
     try:
         resposta = await _MODELO.decidir(system, user, company_id=job.get("company_id"),
-                                         job_id=job.get("job_id"), chamar_modelo=chamar_modelo)
+                                         job_id=job.get("job_id"), chamar_modelo=chamar_modelo,
+                                         rota=rota)
         return parse_action(json.loads(_recorte_json(resposta["texto"])))
     except _MODELO.ModeloDoPortalIndisponivel as e:
         return {"action": "ask_human", "value": f"cerebro do portal indisponivel: {e}"[:220],
