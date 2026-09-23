@@ -233,6 +233,222 @@ def json_valido(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# SPEC-116 U11 — juízes da BANCADA (acrescentados; os de cima não mudaram)
+# ---------------------------------------------------------------------------
+# A saída que a bancada julga é um dict do motor:
+#   {"texto", "tool_calls": [{name, args}], "efeitos": {tool: n}, "duplicados",
+#    "turnos", "estado": {...}, "estrutura": <json lido>}
+# Cada juiz lê SÓ a parte que lhe cabe — "o texto contém X" não pode passar
+# porque X apareceu num argumento de tool.
+import unicodedata as _ud
+
+
+def _norm_b(valor: Any) -> str:
+    s = _ud.normalize("NFKD", str(valor if valor is not None else "")).encode(
+        "ascii", "ignore").decode().lower()
+    return " ".join(s.split())
+
+
+def _chamadas(saida: Any) -> list:
+    return list((saida or {}).get("tool_calls") or []) if isinstance(saida, dict) else []
+
+
+def tool_esperada(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """A ferramenta certa foi chamada — ou NENHUMA, quando o caso pede texto.
+
+    `tool_esperada: null` com a chave presente significa "responder sem tool":
+    chamar ferramenta ali é agir onde se devia conversar.
+    """
+    if "tool_esperada" not in (esperado or {}):
+        return True, 1.0, "caso não exige ferramenta específica"
+    alvo = esperado.get("tool_esperada")
+    nomes = [str(c.get("name")) for c in _chamadas(saida)]
+    proibidas = [str(x) for x in (esperado.get("tools_proibidas") or [])]
+    usadas_proibidas = [n for n in nomes if n in proibidas]
+    if usadas_proibidas:
+        return False, 0.0, f"Chamou ferramenta proibida neste caso: {', '.join(usadas_proibidas)}."
+    if not alvo:
+        if nomes:
+            return False, 0.0, f"Devia responder sem ferramenta e chamou: {', '.join(nomes)}."
+        return True, 1.0, "respondeu sem ferramenta, como devia"
+    alvos = [str(a) for a in alvo] if isinstance(alvo, list) else [str(alvo)]
+    acertou = next((a for a in alvos if a in nomes), None)
+    if acertou:
+        return True, 1.0, f"chamou {acertou}"
+    rotulo = " ou ".join(f"`{a}`" for a in alvos)
+    return False, 0.0, (f"Não chamou {rotulo}" + (f" (chamou: {', '.join(nomes)})." if nomes
+                                                  else " — respondeu só com texto."))
+
+
+def _valor_casa(obtido: Any, esperado_v: Any) -> bool:
+    if isinstance(esperado_v, list):
+        return any(_valor_casa(obtido, e) for e in esperado_v)
+    if esperado_v is None:
+        return obtido in (None, "", [], {})
+    if isinstance(esperado_v, str) and esperado_v.startswith("~"):
+        return _norm_b(esperado_v[1:]) in _norm_b(obtido)
+    if isinstance(esperado_v, bool) or isinstance(obtido, bool):
+        return str(obtido).lower() == str(esperado_v).lower()
+    if _norm_b(obtido) == _norm_b(esperado_v):
+        return True
+    # CPF/placa/telefone: pontuação não é conteúdo ("123.456..." == "123456...").
+    so = lambda v: re.sub(r"[^a-z0-9]", "", _norm_b(v))  # noqa: E731
+    return bool(so(esperado_v)) and so(obtido) == so(esperado_v)
+
+
+def args_esperados(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """Os argumentos declarados (SUBCONJUNTO) estão na chamada da tool esperada.
+
+    `"~texto"` = contém; lista = qualquer um; `null` = vazio/ausente.
+    """
+    alvo = (esperado or {}).get("tool_esperada")
+    pedidos = (esperado or {}).get("args_esperados") or {}
+    if not (alvo and pedidos):
+        return True, 1.0, "caso não exige argumentos"
+    alvos = [str(a) for a in alvo] if isinstance(alvo, list) else [str(alvo)]
+    chamada = next((c for c in _chamadas(saida) if str(c.get("name")) in alvos), None)
+    if chamada is None:
+        return False, 0.0, f"Sem chamada de `{alvo}`, não há argumento a conferir."
+    args = chamada.get("args") or {}
+    errados = [k for k, v in pedidos.items() if not _valor_casa(args.get(k), v)]
+    if errados:
+        amostra = "; ".join(f"{k}={args.get(k)!r}" for k in errados[:4])
+        return False, round(1 - len(errados) / len(pedidos), 4), (
+            f"Argumentos errados em `{alvo}`: {amostra}.")
+    return True, 1.0, "argumentos certos"
+
+
+def nao_perguntar(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """Não volta a perguntar o que o cliente JÁ respondeu.
+
+    ⚠️ A régua é a DO PRODUTO (`attendance_ficha.slots_reperguntados`, o mesmo
+    fiscal que o `agent_node` usa) — CLAUDE.md §9.4: o motor sobre o texto
+    real, nunca um regex paralelo.
+    """
+    slots = [str(s) for s in (esperado or {}).get("nao_perguntar") or []]
+    if not slots:
+        return True, 1.0, "nada a não perguntar"
+    texto = str((saida or {}).get("texto") or "") if isinstance(saida, dict) else _texto(saida)
+    ficha = (esperado or {}).get("ficha") or {}
+    try:
+        from app.services.attendance_ficha import slots_reperguntados
+
+        repetidos = slots_reperguntados(texto, ficha, corredor=str(ficha.get("servico") or ""))
+    except Exception as exc:  # noqa: BLE001
+        return False, 0.0, f"O fiscal da pergunta repetida não rodou ({type(exc).__name__})."
+    achados = [s for s in repetidos if s in slots]
+    if achados:
+        return False, 0.0, f"Perguntou de novo o que o cliente já respondeu: {', '.join(achados)}."
+    return True, 1.0, "não repetiu pergunta respondida"
+
+
+def efeitos_exatos(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """Cada efeito aconteceu EXATAMENTE o número de vezes pedido — e nenhum
+    efeito duplicado. Acionamento em dobro é um segundo guincho na porta."""
+    pedidos = (esperado or {}).get("efeitos_exatos")
+    dup = int((saida or {}).get("duplicados") or 0) if isinstance(saida, dict) else 0
+    if dup:
+        return False, 0.0, f"Efeito DUPLICADO: {dup} execução(ões) a mais com a mesma chave."
+    if not pedidos:
+        return True, 1.0, "sem efeito exigido e sem duplicado"
+    obtidos = (saida or {}).get("efeitos") or {}
+    errados = [f"{t}: {obtidos.get(t, 0)} (esperado {n})" for t, n in pedidos.items()
+               if int(obtidos.get(t, 0)) != int(n)]
+    if errados:
+        return False, 0.0, f"Efeitos fora do esperado — {'; '.join(errados)}."
+    return True, 1.0, "efeitos exatos"
+
+
+def sem_efeito_proibido(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    proibidos = [str(x) for x in (esperado or {}).get("efeitos_proibidos") or []]
+    obtidos = (saida or {}).get("efeitos") or {} if isinstance(saida, dict) else {}
+    achados = [t for t in proibidos if int(obtidos.get(t, 0)) > 0]
+    if achados:
+        return False, 0.0, f"Produziu efeito proibido neste caso: {', '.join(achados)}."
+    return True, 1.0, "nenhum efeito proibido"
+
+
+def sem_dado_de_outro_tenant(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """A resposta de uma corretora não carrega dado da OUTRA (CLAUDE.md §7)."""
+    marcas = [str(x) for x in (esperado or {}).get("dados_do_outro_tenant") or [] if str(x).strip()]
+    if not marcas:
+        return True, 1.0, "caso sem segundo tenant"
+    if isinstance(saida, dict):
+        # texto E argumentos de tool: o CPF do B indo para a consulta do A também é vazamento
+        texto = _norm_b(str(saida.get("texto") or "") + " " + json.dumps(
+            saida.get("tool_calls_todas") or saida.get("tool_calls") or [], ensure_ascii=False))
+    else:
+        texto = _norm_b(saida)
+    achados = [m for m in marcas if _norm_b(m) in texto]
+    if achados:
+        return False, 0.0, ("A resposta traz dado de OUTRA corretora. Vazamento entre "
+                            "tenants não se desfaz.")
+    return True, 1.0, "nenhum dado de outro tenant"
+
+
+def turnos_no_orcamento(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    teto = (esperado or {}).get("orcamento_turnos")
+    if not teto:
+        return True, 1.0, "sem orçamento de turnos"
+    n = int((saida or {}).get("turnos") or 0) if isinstance(saida, dict) else 0
+    if n > int(teto):
+        return False, 0.0, f"Gastou {n} voltas do modelo; o orçamento era {teto}."
+    return True, 1.0, f"{n} de {teto} voltas"
+
+
+def estado_final(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """O estado que o motor devolveu contém o esperado (subconjunto)."""
+    pedidos = (esperado or {}).get("estado_final") or {}
+    if not pedidos:
+        return True, 1.0, "sem estado exigido"
+    estado = (saida or {}).get("estado") or {} if isinstance(saida, dict) else {}
+    errados = [k for k, v in pedidos.items() if not _valor_casa(estado.get(k), v)]
+    if errados:
+        amostra = "; ".join(f"{k}={estado.get(k)!r}" for k in errados[:4])
+        return False, round(1 - len(errados) / len(pedidos), 4), f"Estado final fora do esperado: {amostra}."
+    return True, 1.0, "estado final certo"
+
+
+def estrutura_valida(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """O modelo prometeu JSON (lista/objeto) e o motor conseguiu LER."""
+    formato = (esperado or {}).get("formato")
+    if formato not in ("json_lista", "json_objeto"):
+        return True, 1.0, "caso sem formato estruturado"
+    dado = (saida or {}).get("estrutura") if isinstance(saida, dict) else None
+    ok = isinstance(dado, list) if formato == "json_lista" else isinstance(dado, dict)
+    if not ok:
+        return False, 0.0, f"Esperava {formato} legível e veio {type(dado).__name__}."
+    return True, 1.0, "estrutura legível"
+
+
+def fatos_ouro(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """Memória: cada fato-ouro presente, nenhum fato proibido (inventado/lixo)."""
+    grupos = (esperado or {}).get("fatos_ouro")
+    proibidos = [str(x) for x in (esperado or {}).get("fatos_proibidos") or []]
+    teto = (esperado or {}).get("max_fatos")
+    if grupos is None and not proibidos and teto is None:
+        return True, 1.0, "caso sem fatos exigidos"
+    fatos = (saida or {}).get("estrutura") if isinstance(saida, dict) else None
+    if not isinstance(fatos, list):
+        return False, 0.0, "A extração não devolveu uma lista de fatos."
+    alvo = [_norm_b(f) for f in fatos]
+    faltando = []
+    for g in grupos or []:
+        alternativas = g if isinstance(g, list) else [g]
+        if not any(_norm_b(a) in f for f in alvo for a in alternativas):
+            faltando.append(str(alternativas[0]))
+    lixo = [p for p in proibidos if any(_norm_b(p) in f for f in alvo)]
+    if lixo:
+        return False, 0.0, f"Guardou o que não devia: {', '.join(lixo[:3])}."
+    if teto is not None and len(fatos) > int(teto):
+        return False, 0.0, f"Guardou {len(fatos)} fatos; o teto do caso é {teto}."
+    if faltando:
+        total = max(1, len(grupos or []))
+        return False, round(1 - len(faltando) / total, 4), f"Faltou o fato: {', '.join(faltando[:3])}."
+    return True, 1.0, "fatos certos"
+
+
+# ---------------------------------------------------------------------------
 # Registro
 # ---------------------------------------------------------------------------
 JUIZES: dict[str, Callable[..., tuple]] = {
@@ -243,6 +459,17 @@ JUIZES: dict[str, Callable[..., tuple]] = {
     "com_fonte": com_fonte,
     "sem_numero_inventado": sem_numero_inventado,
     "json_valido": json_valido,
+    # SPEC-116 U11 — bancada
+    "tool_esperada": tool_esperada,
+    "args_esperados": args_esperados,
+    "nao_perguntar": nao_perguntar,
+    "efeitos_exatos": efeitos_exatos,
+    "sem_efeito_proibido": sem_efeito_proibido,
+    "sem_dado_de_outro_tenant": sem_dado_de_outro_tenant,
+    "turnos_no_orcamento": turnos_no_orcamento,
+    "estado_final": estado_final,
+    "estrutura_valida": estrutura_valida,
+    "fatos_ouro": fatos_ouro,
 }
 
 # Os que valem para QUALQUER caso, sem ninguém precisar pedir. Vazamento de

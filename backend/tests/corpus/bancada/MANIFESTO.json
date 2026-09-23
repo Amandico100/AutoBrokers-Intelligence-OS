@@ -1,0 +1,18 @@
+{
+ "versao": 1,
+ "gerado_em": "2026-09-23",
+ "spec": "SPEC-116 U12",
+ "papeis": {
+  "atendimento": 40,
+  "chat_principal": 38,
+  "cobranca": 10,
+  "dispatch": 15,
+  "extrator_planos": 3,
+  "hyde": 3,
+  "juiz": 3,
+  "memoria": 15,
+  "portal_decisao": 16,
+  "transcricao": 3,
+  "visao": 10
+ }
+}
