@@ -11288,3 +11288,58 @@ a linha `# MUTACAO DE CONTROLE` FICA em `backend/scripts/rubrica.py` — foi ach
 restaurada por cópia. **Destrava:** o controle restaurar em `finally`; achar o que os guardas-script disputam
 (arquivo mutado em comum, porta ou relógio). **Dono:** 🤖. **Custo de esquecer:** cada SPEC repaga a triagem
 de falhas que não são dela, e uma mutação de controle pode ser commitada por engano.
+
+---
+
+# SPEC-EXTRA-002 · parte 1 · a perícia do Agger (22/09/2026, modo investigação)
+
+> O que a perícia deixou por fazer. Relatório: `reports/SPEC-EXTRA-002-INVESTIGATION-REPORT.md` §5–§6 · proposta:
+> `specs-propostas/SPEC-EXTRA-002-investigacao-prova-agger.md` §11. Cada entrada: 📊 o fato · **Destrava:** ·
+> **Dono:** 🧑 Founder ou 🤖 execução · **Custo de esquecer:**.
+
+## P-E002-HAR · 🔴 os 3 HARs do intake têm senhas de portal e o token de uma pessoa
+📊 22/09/2026 (Research Pack §1, §2.1): as senhas dos portais das seguradoras (`login/senha/loginWs/senhaWs`) vêm
+em 5 tipos de resposta, em **todas** as 28 respostas de polling e no corpo do disparo; os HARs foram gravados na
+sessão de uma pessoa da corretora e carregam também a senha dela no Aggilizador e o token de sessão.
+**Destrava:** **trocar AGORA** a senha do usuário do Aggilizador que gravou as capturas e as senhas dos portais que
+aparecem nelas; depois da parte 2, extrair só as fixtures de RESPOSTA redigidas (proposta EXTRA-003 §3.5) e
+**apagar os HARs**; nunca anexá-los a chat, drive ou e-mail. **Dono:** 🧑. **Custo de esquecer:** senhas de uma
+pessoa e de 💭 ~15 portais de seguradora expostas em arquivo fora de controle.
+
+## P-E002-LAB · a saída do `lab api-infer` sobre esses HARs guarda valores sem redação
+📊 22/09/2026: `portal_factory.py lab api-infer` rodado sobre os 3 HARs grava os valores observados como vieram,
+senhas incluídas. **Destrava:** nunca versionar essa saída; apagá-la junto com os HARs (P-E002-HAR); se o
+laboratório for usado de novo sobre HAR com credencial, redigir antes de gravar. **Dono:** 🤖. **Custo de
+esquecer:** um `git add` distraído põe senha de seguradora no histórico do repositório.
+
+## P-E002-06 · referência externa incompleta nas propostas 002 e 003
+📊 22/09/2026: a subtarefa de pesquisa externa (documentação da Agger, comparadores de seguro) foi interrompida na
+sessão e não foi refeita; o Research Pack §9 ficou incompleto. **Destrava:** completar a seção "O QUE O ESTADO DA
+ARTE FAZ, E O QUE MODELAMOS" (protocolo §7.3: 3 a 7 URLs, quatro linhas cada) **antes** de abrir a 003-A — na
+execução não se pesquisa de novo. **Dono:** 🤖. **Custo de esquecer:** o guarda do protocolo reprova a SPEC
+(≥ 088 sem 3 URLs externas não fecha) e o juiz fica sem artefato externo para abrir.
+
+## P-E002-X1 · 🔴 a conexão "InfoCap RESULTA" foi criada DENTRO da Amandus
+📊 22/09/2026 (laudo F1b, fora do escopo): a conexão foi criada sob a corretora Amandus em 21/09 20:29; a Resulta
+ficou sem conexão InfoCap utilizável — a carteira de uma corretora é lida sob outra (mesma família de
+F-094-07). ❓ pode ter sido intencional. **Destrava:** o Founder confirmar a intenção; se não for, recriar a
+conexão sob a corretora dona, com prova de isolamento com os dois tenants. **Dono:** 🧑 (confirmar) · 🤖
+(corrigir). **Custo de esquecer:** P1 de isolamento entre corretoras; o experimento E0 (volume de AUTO por dia)
+não roda para a Resulta e a equação das 7h fica com N 💭.
+
+## P-E002-X2 · `research_tool` cria run com `source_type` proibido
+📊 22/09/2026 (laudo F1a): o run nasce com um `source_type` que a restrição do banco recusa → 📊 **0 runs de
+pesquisa na vida** do produto. **Destrava:** alinhar o `source_type` da tool ao contrato de `work_runs`, com teste
+que cria o run pelo motor real. **Dono:** 🤖. **Custo de esquecer:** a pesquisa do produto parece existir e nunca
+executou uma vez.
+
+## P-E002-X3 · 11 runs `queued` eternos; `retry_scheduled` sem re-enfileirador
+📊 22/09/2026 (laudo F1a): 📊 11 runs parados em `queued`; o estado `retry_scheduled` é gravado, mas nenhum
+processo o re-enfileira (mesma família de P-09). **Destrava:** a **EXTRA-003-A** (espera durável + retomada real
+no Work OS) cura. **Dono:** 🤖. **Custo de esquecer:** a Renovação Feita depende de esperar e retomar — sem isso,
+toda renovação que precisar de uma segunda volta morre em silêncio.
+
+## P-E002-X4 · `smith_worker` sobrescreve `waiting_approval` com `completed`
+📊 22/09/2026 (laudo F1a): um run que parou para aprovação humana é marcado como concluído pelo worker — o
+Approval hoje não segura nada (por isso D-E002-04 recomenda "o corretor revisa e envia" na v1). **Destrava:** a
+**EXTRA-003-A** cura. **Dono:** 🤖. **Custo de esquecer:** qualquer envio "sob aprovação" sai sem aprovação.
