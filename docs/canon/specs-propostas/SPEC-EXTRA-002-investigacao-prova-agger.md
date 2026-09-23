@@ -16,7 +16,8 @@
 O Agger é automatizável?        🟢 SIM, tecnicamente — a tela é uma API JSON: dispara, espera, lê.
                                 🟡 COM DEPENDÊNCIA — anuência da Agger (ou API oficial) e um usuário robô
 Cotação nova?                   🟡 mesmo motor; falta o questionário (quem responde é o cliente/corretor)
-Renovação?                      🟢 para quem foi cotado no Agger no ano passado (o formulário inteiro volta)
+Renovação?                      🟡 para quem foi cotado no Agger no ano passado (o formulário inteiro volta —
+                                   📊 visto em 2 de 2 casos; QUANTAS renovações têm esse histórico → E2)
                                 🟡 para quem não foi: "precisa confirmar dado" — nunca "pronta"
 Site comparador público?        🟡 possível sobre o mesmo motor; é o de MAIOR risco; vem por último
 Promessa das 7h?                🟢 sustentável no volume dos pilotos, SE o Work OS ganhar espera durável
@@ -52,10 +53,11 @@ Fontes: 3 HARs + 7 HTMLs + 6 PDFs do intake (📊 Research Pack §1–§3), labo
 1. 📊 **Autenticação:** login por e-mail+senha → token JWT de **8 h**, enviado no cabeçalho `Authorization`; zero cookies. Sem captcha no login.
 2. 📊 **Sessão única:** o segundo login envia `derrubaSessao`. Um usuário = uma sessão.
 3. 📊 **Cálculo assíncrono:** `POST /calculo/calcularV2` responde em 1,5–1,9 s com `{idIntegracao, versao}`; o resultado vem por **polling** de `GET /calculo/cotacao/calculos/{id}/{versao}`.
-4. 📊 **Tempo:** ofertas válidas completas em **30 s** e **229 s**; conjunto fechado em **420 s** e **413 s** — o Agger corta em ~7 min (n = 2).
+4. 📊 **Tempo:** ofertas válidas completas em **30 s** e **229 s**; conjunto fechado em **420 s** e **413 s** (n = 2). 💭 Parece um corte do Agger em ~7 min — mas nos dois casos a última foi o Bradesco instável: pode ser **timeout por seguradora**, não teto global. E3 decide; até lá T é 💭.
 5. 📊 **Resultado padronizado pelo próprio Agger:** prêmio, prêmio mensal, franquia, coberturas (casco, DM, DC, danos morais, APP, vidros, carro reserva, assistência), até 32 parcelamentos, **nº do cálculo na seguradora** e **PDF oficial** por seguradora.
 6. 📊 **Erros com motivo** em 6 famílias: configuração (senha/permissão), comercial, aceitação, transitório.
-7. 📊 **17 seguradoras** configuradas no perfil da conta capturada; catálogo de 69 para "seguradora anterior"; 56 com status por ramo.
+7. 📊 **15 configurações de seguradora** na conta capturada (`calculo/seguradoras`), que viram **17 linhas de cálculo** por disparo (produtos a mais, ex.: Azul e Azul Assinatura); catálogo de 69 para "seguradora anterior"; 56 com status por ramo.
+7a. 🔴 📊 **As senhas dos portais das seguradoras viajam em quase tudo:** `login/senha/loginWs/senhaWs` aparecem nas respostas de `cfg/seguradora/config`, `calculo/seguradoras`, `cotacao/versoes`, `negocio/{id}` e **em cada uma das 28 respostas de polling**, e no corpo do `calcularV2` (📊 varredura de chaves nos 2 HARs, 22/09). Qualquer integração recebe 15 senhas de terceiros a cada consulta — é a maior exigência de segurança do desenho (EXTRA-003 §3.5).
 8. 📊 **Renovação = cotação marcada** (`renovacao=true` + bônus, sinistros, nº da apólice, seguradora anterior, fim de vigência anterior). Não há "botão renovar" que dispense o formulário.
 9. 📊 **O formulário do ano anterior volta inteiro** por `GET /calculo/negocio/{uuid}` — inclusive o questionário de risco e o condutor, que **não existem na InfoCap**.
 10. 📊 **Placa → veículo** (`buscaPlaca`), **CPF → pessoa** (`cadastros/cliente`), **CEP → endereço**: o Agger completa o que a InfoCap não tem.
@@ -75,7 +77,7 @@ medir tempo, erro, paralelismo (subindo aos      contornar captcha, 2FA, bloquei
 poucos, com linha de controle)                   ou limite de sessão — se bloquear, PARA e registra
 ```
 
-🔴 **A condição de entrada da parte 2 é comercial, não técnica:** (a) **usuário robô** criado pela corretora no Aggilizador; (b) **anuência escrita da Agger** para acesso programático — ou a API oficial dela. Sem (b), a prova usa o caminho A (navegador, como uma pessoa) e mede o custo disso.
+🔴 **A condição de entrada da parte 2 é comercial, não técnica:** (a) **usuário robô** criado pela corretora no Aggilizador; (b) **anuência escrita da Agger** para acesso programático — ou a API oficial dela. **Sem (b), a parte 2 não roda automação nenhuma** — nem por API, nem por navegador: trocar o transporte não muda o fato de ser acesso automatizado sem autorização do fornecedor. Nesse caso, a EXTRA-002 fecha com o que a perícia provou e a D-E002-01 volta ao Founder.
 
 🔴 **Proteção anti-robô:** 📊 o site carrega o sensor Akamai. Se a chamada de servidor for recusada, **isso é resultado da investigação** — a resposta é o acordo com a Agger, nunca o contorno.
 
@@ -93,7 +95,10 @@ Cada um com **linha de controle** (CLAUDE.md §9.2) e registro 📊 no relatóri
 | **E3** | quanto demora, de verdade? | **10 renovações reais do ciclo**, 5 às 20h e 5 às 02h | p50/p95 do conjunto útil e do fechado, por seguradora | 1 caso recalculado igual (mesma entrada, mesmo resultado?) |
 | **E4** | quantos cálculos simultâneos por usuário? | 1 → 2 → 3 simultâneos; sobe só se o anterior passou sem erro | o 1º nível que degrada ou recusa | o nível 1 repetido no fim |
 
-**Custo e risco dos experimentos:** 💭 ≤ 25 cálculos no total, todos de renovações que a corretora **precisa calcular de qualquer jeito**. Cálculo não é proposta: 📊 não há efeito além de uma versão nova no negócio e um número de cálculo na seguradora.
+**Custo e risco dos experimentos:** 💭 ≤ 25 cálculos no total, todos de renovações que a corretora **precisa calcular de qualquer jeito**. 🔴 Cálculo não é proposta nem emissão, **mas sai do prédio**: 📊 cria uma versão nova no negócio do cliente no Agger ("Item calculado recentemente… será incorporada") e um número de cálculo em cada seguradora (`nroCalculo`). Por isso E3/E4 seguem o **piso CRÍTICO** (protocolo §3.2) mesmo em modo investigação:
+- lista das renovações a calcular **autorizada por escrito pela corretora**, caso a caso;
+- só usuário robô; nunca num negócio com versão humana de menos de 24 h;
+- teto de 25 cálculos; relatório de cada um (quando, qual negócio, qual versão criada).
 
 ---
 
@@ -102,25 +107,38 @@ Cada um com **linha de controle** (CLAUDE.md §9.2) e registro 📊 no relatóri
 ```text
 N  = renovações AUTO que entram na janela do dia, por corretora     📊 ≈3,3/dia todos os ramos (Resulta, radar)
                                                                     ❓ fatia AUTO e pico → E0
-T  = do disparo ao conjunto fechado                                 📊 413–420 s (teto do Agger); útil 30–229 s
-P  = cálculos simultâneos por usuário robô                          ❓ → E4 (conservador: 1)
+C  = CÁLCULOS por noite = 2 × N × (1 + R)                           o recálculo de D-5 (D-E002-03) DOBRA: cada
+                                                                    noite calcula quem entra em D-30 E quem entra em D-5
+T  = do disparo ao conjunto fechado                                 💭 ~7 min (📊 413–420 s, n = 2, mesmo confundidor
+                                                                    Bradesco — E3 mede); útil 📊 30–229 s
+R  = acréscimo por nova tentativa (transitório)                     💭 ~15 % (📊 1–2 de 17 seguradoras instáveis por
+                                                                    cálculo, em 2 de 2 cálculos)
+P  = cálculos simultâneos por robô                                  ❓ → E4 (conservador: 1) · teto de hoje: 📊
+                                                                    `WORK_TENANT_CONCURRENCY` padrão 2 por corretora e
+                                                                    `WORK_WORKER_CONCURRENCY` padrão 3 no total
+                                                                    (`backend/app/workers/smith_worker.py:40-41`)
 W  = janela da madrugada (início → corte)                           proposta: 22h → 06h30 = 8,5 h
-R  = fração que precisa de nova tentativa (transitório)             📊 1–2 de 17 seguradoras por cálculo (Bradesco/Youse)
+                                                                    ⚠️ W > o token de 8 h → relogin planejado sob lease
 
-capacidade por corretora = W × 60 / (T/60) × P  =  8,5 × 60 / 7 × 1  ≈  72 renovações por noite (pior caso, P=1)
+capacidade em CÁLCULOS    = W × 60 / T × P      =  510 / 7 × 1       ≈ 72 cálculos por noite (P = 1)
+capacidade em RENOVAÇÕES  = cálculos / (2 × 1,15)                    ≈ 31 renovações por noite (P = 1)
+                                                                       ≈ 63 com P = 2 (o teto por corretora de hoje)
 ```
 
-💭 **Leitura:** com o teto de 7 min e **um** cálculo por vez, uma corretora comporta ~72 renovações AUTO por noite. Os pilotos (📊 ≈3–10/dia, todos os ramos) cabem com folga de 7×. 💭 Uma corretora com 200/dia precisa de P ≥ 3 **ou** de espalhar o cálculo pelo dia anterior — a data de renovação é conhecida com 30+ dias de antecedência, então **não há razão física para tudo acontecer às 3h**.
+💭 **Leitura:** com ~7 min por cálculo, **um** cálculo por vez, o recálculo de D-5 e ~15 % de nova tentativa, uma corretora comporta **~31 renovações AUTO por noite** — não 72 (72 era a conta em cálculos, sem D-5 e sem R). Os pilotos (📊 ≈3,3/dia todos os ramos na Resulta) cabem com folga ~9×. 💭 Uma corretora com 200/dia precisaria de P ≈ 7 na madrugada — ou de **espalhar o cálculo pelo dia anterior**: a data de renovação é conhecida com 30+ dias de antecedência, então **não há razão física para tudo acontecer às 3h**.
 
-🔴 **Onde a escala quebra, e não é no Agger:** hoje cada espera do AutoBrokers é um `sleep` que **segura o trabalhador** (laudo F1a §1.6). 💭 1.000 cálculos × 7 min = **117 horas-trabalhador por noite** com 3 trabalhadores (📊 `WORK_WORKER_CONCURRENCY` padrão 3) → impossível. Com **espera durável** (o run dorme no banco e acorda para consultar), o custo cai para as consultas em si: 💭 1.000 × ~30 consultas × <1 s ≈ **8 horas de E/S, paralelizáveis** → minutos. **A espera durável é o pré-requisito da promessa**, não um detalhe.
+🔴 **Onde a escala quebra, e não é só no Agger:** hoje cada espera do AutoBrokers é um `sleep` que **segura a vaga do trabalhador** (laudo F1a §1.6). 💭 1.000 cálculos × 7 min = **117 horas-vaga por noite** com 3 vagas → impossível. Com **espera durável** (o run dorme no banco e acorda para consultar), o custo cai para as acordadas — mas cada acordada ainda ocupa **1 de 3 vagas globais**, no mesmo processo que atende a API: 💭 1.000 cálculos × ~28 consultas × ~2 s ÷ 3 vagas ≈ **5,2 h**. São **horas, não dias — limitado pelas vagas, que viram parâmetro** (não "minutos", como dizia a versão anterior). **A espera durável é o pré-requisito da promessa**, não um detalhe.
 
-| cenário | N/noite | P | tempo (pior caso) | cabe em 22h–06h30? |
-|---|---:|:-:|---:|:-:|
-| piloto | 10 | 1 | 70 min | 🟢 |
-| média | 50 | 1 | 5 h 50 | 🟢 |
-| grande | 100 | 1 | 11 h 40 | 🔴 → P=2 ou início às 18h |
-| grande | 100 | 3 | 3 h 53 | 🟢 |
-| 100 corretoras × 10 | 1.000 | 1 cada | 70 min cada, **em paralelo** (um robô por corretora) | 🟢 só com espera durável |
+❓ **E o fornecedor:** 1.000 cálculos × 📊 28 pollings = **~28 mil requisições por noite** num backend que não é nosso, de um IP nosso, atrás do sensor Akamai (RP §2.2). Limite de chamadas é pergunta para a Agger (caixa #2), não suposição.
+
+| cenário | renovações/dia (N) | cálculos/noite (2N × 1,15) | P | tempo (pior caso) | cabe em 22h–06h30? |
+|---|---:|---:|:-:|---:|:-:|
+| piloto | 10 | 23 | 1 | 2 h 41 | 🟢 |
+| média | 50 | 115 | 1 | 13 h 25 | 🔴 (era 🟢) |
+| média | 50 | 115 | 2 | 6 h 43 | 🟢 no teto de hoje (`WORK_TENANT_CONCURRENCY` 2), ❓ E4 |
+| grande | 100 | 230 | 2 | 13 h 25 | 🔴 (era 🟢 com P = 3 — P = 3 **não existe** com o padrão de hoje) |
+| grande | 100 | 230 | 4 | 6 h 43 | 🟡 só com a vaga por corretora virando parâmetro **e** E4 provando P = 4 |
+| 100 corretoras × 10 | 1.000 | 2.300 | 1 cada | 2 h 41 por corretora; 💭 ~12 h de vagas globais (3) | 🔴 (era 🟢) → vagas globais como parâmetro (💭 12 vagas ≈ 3 h) + ❓ limite da Agger |
 
 **O que se pode prometer já:** *"Às 7h, cada renovação do ciclo mostra o seu estado real: pronta · aguardando seguradora · precisa confirmar dado · precisa de revisão · falhou."* 🔴 **Nunca** "todas prontas" — 📊 em 2 de 2 cálculos, ao menos uma seguradora caiu por instabilidade.
 
@@ -152,10 +170,12 @@ Rotina diária da corretora ──► routines.config.workflow = "renewal.cycle"
 | lista de renovações (InfoCap) | ✅ | | |
 | agenda (routine_engine + `config.workflow`) | ✅ | | |
 | Work Run, lease, idempotência | ✅ | | |
-| **espera durável de run** ("acorde em 30 s") | | 🔧 `work_waits` ganha `kind='timer'` + varredor | |
+| **espera durável de run** ("acorde em 30 s") | | 🔧 `work_runs.wake_at` + estado de espera; o varredor que já existe reenfileira (📊 `work_waits` é espera de **conversa** — `conversation_id NOT NULL`, não se toca) | |
 | **retomada sem refazer passo com efeito** | | 🔧 `executar_passo` respeita `succeeded` | |
 | credencial do Agger por corretora | ✅ molde | 🔧 novo `connector_template` | |
-| lock "um usuário = uma sessão" | ✅ molde | 🔧 chave por conexão Agger | |
+| lock "um usuário = uma sessão" | ✅ molde | 🔧 chave por conexão Agger; token em Redis por conexão (EXTRA-003 §3.6) | |
+| allowlist de saída (`egress_guard`) | ✅ | 🔧 ganha os hosts do conector (📊 `egress_guard.py:91`: vazia = DENY ALL) | |
+| redação de segredos | ✅ `portal_worker/redaction.py` | 🔧 o Work OS passa a usá-la; o adaptador tira as senhas das seguradoras de toda resposta (EXTRA-003 §3.5) | |
 | **porta `QuoteProvider` + modelo canônico de cotação** | | | 🆕 |
 | **adaptador Agger** | | | 🆕 |
 | Artifact + marca + link público | ✅ | 🔧 template novo, `white_label` lido, PDF | |
@@ -199,7 +219,7 @@ Rotina diária da corretora ──► routines.config.workflow = "renewal.cycle"
 ```text
 EXTRA-002  parte 2: prova ao vivo (E0–E4)           ~1 sessão, depois da caixa do Founder
     │
-EXTRA-003  RENOVAÇÃO FEITA                          fatias 1–2 = a FUNDAÇÃO compartilhada
+EXTRA-003  RENOVAÇÃO FEITA                          003-A = fatias 1–2, a FUNDAÇÃO · 003-B = fatias 3–5 (D-E002-06)
     │        1 o Work OS sabe esperar (espera durável + retomada)
     │        2 QuoteProvider + adaptador Agger + conexão
     │        3 o ciclo de renovação (dados, lacunas, cálculo, recálculo)
@@ -211,8 +231,9 @@ EXTRA-007  COMPARADOR DA CORRETORA (site público)   reusa tudo; acrescenta anon
 
 | decisão de forma | nota |
 |---|:-:|
-| a fundação vive **dentro** da EXTRA-003 (fatias 1–2) | **86** |
-| a fundação vira uma proposta própria antes da 003 | 74 |
+| a 003 dividida: **003-A "a fundação"** (fatias 1–2) e **003-B "o ciclo de renovação"** (fatias 3–5), um chat cada | **88** |
+| a fundação vira uma proposta própria, com outro número, antes da 003 | 74 |
+| uma 003 só, num chat | 70 |
 | cada produto faz a sua integração | 15 (motor paralelo) |
 
 | ordem | nota |
@@ -226,7 +247,7 @@ EXTRA-007  COMPARADOR DA CORRETORA (site público)   reusa tudo; acrescenta anon
 
 | risco | prob. | efeito | resposta |
 |---|:-:|---|---|
-| a Agger não autoriza acesso programático | 💭 média | caminho B fecha | C (oficial) ou A (navegador, mais caro); a porta absorve |
+| a Agger não autoriza acesso programático | 💭 média | B **e** A fecham (automação sem autorização é a mesma coisa por API ou por navegador) | só C (oficial); sem C, a Renovação Feita não nasce sobre o Agger — reavaliar D (portais das seguradoras, onde a corretora já autoriza o robô) |
 | mudança de API sem aviso | 💭 alta em 12 meses | cálculo quebra de madrugada | teste de contrato diário (1 leitura), alerta antes das 7h, painel honesto |
 | licença do robô cobrada por usuário | 💭 alta | custo por corretora | pergunta comercial; entra no preço do Auxiliar |
 | senha do robô expira (📊 `diasParaExpirarSenha`) | alta | noite perdida | alerta N dias antes; a corretora troca na tela de conexões |
@@ -234,7 +255,10 @@ EXTRA-007  COMPARADOR DA CORRETORA (site público)   reusa tudo; acrescenta anon
 | seguradora fora de madrugada | ❓ → E3 | "aguardando seguradora" às 7h | nova tentativa até o corte; recalcular às 7h30 |
 | o cálculo do robô "entra" no negócio que um humano está mexendo | 📊 "Item calculado recentemente" incorpora versão | confusão de versões | robô identificado; versão marcada; nunca mexe em negócio com versão humana < 24 h |
 | cruzamento de corretora | — | P1 | conexão por `company_id`; lock por conexão; teste com 2 tenants (CLAUDE.md §7) |
-| HAR com senhas vaza | baixa | senhas de 17 portais | P-E002-HAR |
+| HAR com senhas vaza | baixa | senhas de 17 portais | P-E002-HAR · troca AGORA (caixa #5) |
+| 🔴 **a Agger é dona dos DOIS elos** — a InfoCap (a lista de renovações) e o Aggilizador (o cálculo) | 💭 média | se ela negar acesso ou lançar a própria renovação automática (❓ a permissão `RENOVACOES_PENDENTES` aparece oculta no login, RP §6), cai o produto inteiro, não "um transporte" | pergunta direta na conversa comercial (caixa #2); decisão de produto do Founder se ela disser não |
+| **a porta `QuoteProvider` ainda não está provada como porta** — há um só adaptador previsto | 📊 1 adaptador | isola o código, não o negócio; o `PolicyDataProvider` só virou porta de verdade com o 2º adaptador (`PdfOnlyProvider`) | nomear um 2º candidato (outro multicálculo, ou 2–3 seguradoras pelo Portal Worker) e a fixture de contrato que os dois passam |
+| **perguntas que uma corretora grande fará** e que ainda não têm resposta | ❓ | venda travada | (a) calcular 15–17 seguradoras em TODA renovação mexe na **taxa de conversão de cotação** da corretora junto às seguradoras? (b) **várias filiais / várias contas** Agger: quem vê qual renovação, qual robô calcula? (c) que **fatia do mercado** usa Agger (e não outro multicálculo) — sem isso o produto é "para quem usa Agger" (CLAUDE.md §13.9) |
 
 ---
 
@@ -277,7 +301,13 @@ menor franquia · destaque da corretora (escolhido por gente) ..................
 uma "recomendação" escolhida por IA ................................................ 30
 ```
 
-**D-E002-06 · Onde a fundação vive** → dentro da EXTRA-003 (86) × proposta própria (74). Recomendo dentro.
+**D-E002-06 · Como a 003 se divide** (CLAUDE.md §9: nenhuma SPEC em duas sessões; 💭 14–22 h não cabem num chat)
+```text
+003-A "a fundação" (fatias 1–2) → 003-B "o ciclo de renovação" (fatias 3–5), um chat cada .... 88
+proposta própria, com outro número, para a fundação, antes da 003 ........................ 74
+uma 003 só, num chat ...................................................................... 70
+eu recomendo 003-A/003-B. Nenhuma fatia é "herdada" pela 004 (seria corte silencioso). Nome e número finais: seus.
+```
 
 **D-E002-07 · A posição na fila** (📊 fila vigente: 001.9 → 001.0 → triagem → EXTRA-002 → 099 → EXTRA-003)
 ```text
@@ -295,11 +325,12 @@ manter 099 (canais) antes da 003 ...............................................
 | # | o que | por quê | custa esquecer | bloqueia? |
 |---|---|---|---|---|
 | 1 | **Confirmar a conexão "InfoCap RESULTA" dentro da Amandus** (21/09 20:29) | 📊 a carteira da Resulta está sendo lida sob outra corretora; a Resulta ficou sem conexão | P1 de isolamento; E0 não roda para a Resulta | **SIM, para E0** |
-| 2 | Conversar com a Agger: API oficial? anuência para acesso programático? preço de 1 usuário robô? | D-E002-01 | a parte 2 fica só no caminho A | **SIM, para E1–E4 pelo caminho B** |
+| 2 | Conversar com a Agger: API oficial? anuência para acesso programático? preço de 1 usuário robô? | D-E002-01 | a parte 2 não roda; a Renovação Feita não tem motor | **SIM, para E1–E4** |
 | 3 | Criar o usuário robô no Aggilizador da Resulta (e da AutoFleet) | sessão única | derrubaria a Ellen | SIM, para E1 |
 | 4 | Guardar a senha do robô no AutoBrokers (tela de conexões), nunca em arquivo | CLAUDE.md §7 e §13.3 | — | SIM, para E1 |
-| 5 | Apagar os 3 HARs do intake quando a parte 2 terminar; se circularam fora da máquina, trocar as senhas dos portais | P-E002-HAR | 17 senhas de portal expostas | não |
-| 6 | Decidir D-E002-01 a 08 | §10 | — | não (há padrão recomendado) |
+| 5 | 🔴 **TROCAR AGORA** a senha do usuário do Aggilizador que gravou as capturas **e** as senhas dos portais das seguradoras que aparecem nelas. Os HARs foram gravados na sessão de uma pessoa da corretora e contêm a senha dela no Aggilizador e as senhas dos portais (📊 RP §1, §2.1). Depois: extrair só as fixtures de RESPOSTA redigidas (EXTRA-003 §3.5) e apagar os HARs; nunca anexar a chat, drive ou e-mail | P-E002-HAR | senhas de uma pessoa e de ~15 portais de seguradora expostas | não (mas é a primeira coisa a fazer) |
+| 6 | Rodízio recomendado das **credenciais de produção coladas no chat desta sessão** (chaves de API, banco, portais): elas passaram a existir em mais um lugar | CLAUDE.md §13.3 | segredo em lugar não controlado | não |
+| 7 | Decidir D-E002-01 a 08 | §10 | — | não (há padrão recomendado) |
 
 ---
 
