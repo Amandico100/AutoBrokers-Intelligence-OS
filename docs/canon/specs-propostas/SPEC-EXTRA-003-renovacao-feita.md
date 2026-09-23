@@ -136,7 +136,7 @@ D-5   RECÁLCULO de fechamento   → ou quando o corretor marcar "cliente aceito
 
 ### 3.5 🔴 Os segredos que o multicálculo nos entrega
 
-📊 As chaves `login/senha/loginWs/senhaWs`, **com valor**, aparecem nas RESPOSTAS de `cfg/seguradora/config`, `calculo/seguradoras`, `cotacao/versoes/{id}`, `negocio/{id}` (login/senha) e em **todas as 28** respostas de polling `cotacao/calculos/{id}/{v}`; e no CORPO do `POST calcularV2` (📊 varredura de chaves nos 2 HARs, 22/09). O AutoBrokers passaria a segurar as senhas dos portais de ~15 seguradoras **por corretora, a cada consulta**.
+📊 As chaves `login/senha/loginWs/senhaWs`, **com valor**, aparecem nas RESPOSTAS de `cfg/seguradora/config`, `calculo/seguradoras`, `cotacao/versoes/{id}`, `negocio/{id}` (login/senha) e em **todas as 28** respostas de polling `cotacao/calculos/{id}/{v}`; e no CORPO do `POST calcularV2` (📊 varredura das chaves `login/senha/loginWs/senhaWs` por tipo de resposta nos 2 HARs — script de sessão, reproduzido pelo juiz de confirmação, 22/09). O AutoBrokers passaria a segurar as senhas dos portais de ~15 seguradoras **por corretora, a cada consulta**.
 
 **Contrato (vale para o adaptador e para o Work OS, fatias 1–2):**
 1. **Strip na borda do transporte.** O adaptador remove `login`, `senha`, `loginWs`, `senhaWs` — e toda chave da lista de redação existente (`CHAVES_SENSIVEIS`, `backend/portal_worker/redaction.py:44`) — de **TODA** resposta, antes de devolver qualquer coisa ao resto do código. Reutiliza `redigir()` (`redaction.py:141`); não copia.
@@ -256,7 +256,7 @@ alter table public.work_runs add column if not exists wake_at timestamptz;
 create index if not exists work_runs_waiting_wake_idx on public.work_runs (wake_at) where status = 'waiting';
 -- VERIFY
 --   coluna wake_at existe (information_schema.columns) → 1
---   pg_get_constraintdef do CHECK de status contém 'waiting'
+--   se existir CHECK de status: pg_get_constraintdef contém 'waiting' · se não existir (BLOCO 0): o INSERT de teste com status='waiting' passa e é desfeito
 --   o índice parcial existe (pg_indexes) → 1 · count(*) where status='waiting' → 0 logo após o APPLY
 -- ROLLBACK (antes: nenhum run em 'waiting' — reenfileirar como 'queued')
 update public.work_runs set status = 'queued', wake_at = null where status = 'waiting';
