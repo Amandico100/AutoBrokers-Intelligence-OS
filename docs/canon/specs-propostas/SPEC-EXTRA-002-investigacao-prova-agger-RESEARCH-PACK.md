@@ -26,7 +26,9 @@ Legenda: 📊 medido (com comando/arquivo) · 💭 inferido · ❓ não sabemos 
 | GERAL | `Aggilizador TELA CREDENCIAIS.html` | 1,6 MB | DOM da tela de credenciais | 🔴 |
 | GERAL | `MODELO DE APRESENTAÇÃO COM 3 OPÇÕES.pdf` | 150 KB | **a apresentação que a corretora envia hoje** (referência observada) | PII |
 
-🔴 **Achado de segurança sobre o próprio intake:** 📊 o payload de `POST /calculo/calcularV2` carrega, por seguradora, `login`, `senha`, `loginWs`, `senhaWs` (formas `str11`, `str16`…). O Aggilizador entrega ao navegador as credenciais dos portais das seguradoras. **Consequência para nós:** os três HARs são material secreto; não podem ser anexados, enviados a terceiros nem copiados para fora da pasta ignorada. Registrado como pendência de higiene (§12).
+🔴 **Achado de segurança sobre o próprio intake:** 📊 o payload de `POST /calculo/calcularV2` carrega, por seguradora, `login`, `senha`, `loginWs`, `senhaWs` (formas `str11`, `str16`…). O Aggilizador entrega ao navegador as credenciais dos portais das seguradoras.
+
+🔴 📊 **E não só no disparo — nas RESPOSTAS também:** as chaves `login/senha/loginWs/senhaWs`, com valor, aparecem nas respostas de `cfg/seguradora/config`, `calculo/seguradoras`, `cotacao/versoes/{id}`, `negocio/{id}` (login/senha) e em **todas as 28** respostas de polling `cotacao/calculos/{id}/{v}`, além do corpo do `POST calcularV2` (📊 varredura de chaves nos 2 HARs, 22/09). Qualquer integração recebe as senhas de ~15 portais **a cada consulta** — o contrato de redação está na EXTRA-003 §3.5. **Consequência para nós:** os três HARs são material secreto; não podem ser anexados, enviados a terceiros nem copiados para fora da pasta ignorada. Registrado como pendência de higiene (§12).
 
 ⚠️ **Lacuna do intake:** não há HAR de **cotação nova** — só os PDFs. A diferença cotação × renovação (§6) vem do formulário e dos campos, não de uma captura de seguro novo.
 
@@ -93,13 +95,13 @@ seguradoras ← chamadas pelo BACKEND do Agger (o navegador nunca fala com segur
  24 s   Allianz ✓
  30 s   Aliro ✓  Liberty ✓  Mitsui ✓  Azul ✓  Porto ✓  Itaú ✗ (oferta não disponível ao parceiro)
  36 s   Zurich ✗ (login ou senha incorreta)          → 16 de 17 decididas
-420 s   Bradesco ✗ (instabilidade da seguradora)     → corte do Agger
+420 s   Bradesco ✗ (instabilidade da seguradora)     → fechamento (💭 corte do Agger ou timeout da seguradora?)
 ```
 **RENOVAÇÃO 2 (PJ, 17 seguradoras, 18/09 ~21h14 BRT):**
 ```text
  41 s Allianz ✓ · 68 s Mapfre ✓ · 84 s Sura ✗ · 95 s Zurich ✗, Tokio ✓ · 106 s Porto, Mitsui, Itaú, HDI, Azul ✓
 127 s Liberty ✓, Darwin ✗ · 168 s Aliro ✓ · 229 s Ezze ✓ · 291 s Azul Assinatura ✗
-413 s Bradesco ✗, Youse ✗   → corte do Agger
+413 s Bradesco ✗, Youse ✗   → fechamento (💭 corte do Agger ou timeout da seguradora?)
 ```
 
 | métrica (n = 2 cálculos) | RENOV. 1 | RENOV. 2 |
@@ -110,7 +112,7 @@ seguradoras ← chamadas pelo BACKEND do Agger (o navegador nunca fala com segur
 | todas as **ofertas válidas** recebidas | **30 s** | **229 s** |
 | conjunto fechado (último item decidido) | **420 s** | **413 s** |
 
-💭 **Leitura:** existe um **corte do lado do Agger em ~7 min** (413–420 s). A cotação útil fica pronta em 0,5–4 min; o resto é espera por seguradora lenta ou fora. ❓ Com n = 2 **não há p50/p95** — ver o experimento E3 da proposta.
+💭 **Leitura (hipótese, não medição):** o fechamento em 413–420 s *parece* um **corte em ~7 min** — mas com **n = 2** e o **mesmo confundidor** nos dois casos (o último a fechar foi sempre o Bradesco instável, com a Youse junto na RENOV. 2), é igualmente compatível com um **timeout por seguradora**, e não com um teto global do Agger. A cotação útil fica pronta em 📊 0,5–4 min; o resto é espera por seguradora lenta ou fora. ❓ Com n = 2 **não há p50/p95** — o E3 da proposta mede, com cálculos **sem** seguradora instável como linha de controle.
 
 ### 2.4 O resultado já vem PADRONIZADO pelo Agger
 
@@ -186,7 +188,7 @@ Laudos completos nos arquivos de trabalho da sessão; os pontos que mudam o dese
 | lista de renovações | ✅ EXERCITADO | `comercial/fonte_infocap.py:547 carteira_a_vencer` → `/renovacoes` da InfoCap; template `renewals.radar` (📊 15 artifacts) |
 | volume | 📊 Resulta: 297 renovações em 90 dias (≈3,3/dia, todos os ramos, radar de 18/08) · censo 2025: Resulta 3.536, AutoFleet 2.654 · ❓ fatia AUTO e pico diário | laudo F1b §9 |
 | preenchimento InfoCap `/renovacoes` | 📊 fim de vigência, nº apólice, seguradora, ramo, situação de renovação 100% · CPF/CNPJ 99,2% · elo com apólice anterior 57,8% (n = 3.536) | laudo F1b §9 |
-| Work OS: espera durável | ❌ | todo polling é `sleep` em processo (`portal_tool.py:780-822`, `billing_collection.py:1148-1164`, `gateway.py:284`); `work_waits` é espera de **conversa** |
+| Work OS: espera durável | ❌ | todo polling é `sleep` em processo (`portal_tool.py:780-822`, `billing_collection.py:1148-1164`, `gateway.py:140` — 📊 `self._dormir = dormir or time.sleep`); `work_waits` é espera de **conversa** (📊 `20260826_05_spec086_blocoB_work_waits.sql:68` `conversation_id NOT NULL`, `:104` CHECK de 3 kinds, `:121` FK `(conversation_id, company_id)`) |
 | Work OS: retomada | ⚠️ só no papel | 📊 `checkpoint_id` 0/13.888; `executar_passo` re-executa passo já concluído (`workflows.py:111-140`) |
 | Work OS: retry | ⚠️ | `retry_scheduled` sem re-enfileirador; retry manual sem outbox (`api/work_runs.py:180-239`) |
 | agenda | ✅ | `routine_engine` + `routines.config.workflow` lido por `bridge_rotina` (`workflows.py:333-347`); 📊 `WORK_RUNS_ROUTINE_BRIDGE=1` no env de produção |
@@ -277,7 +279,7 @@ Laudos completos nos arquivos de trabalho da sessão; os pontos que mudam o dese
 2. `research_tool` cria run com `source_type="research"`, proibido pelo CHECK do banco → 📊 0 runs `research.execute` na vida (laudo F1a §11.5).
 3. `smith_worker._processar` sobrescreve `waiting_approval` com `completed` (💭 leitura, `smith_worker.py:385-393`).
 4. 11 runs `queued` eternos e `retry_scheduled` sem re-enfileirador (📊 laudo F1a §11.1–2).
-5. `time.sleep` bloqueante no Gateway de portal dentro de workflow async (`gateway.py:284`).
+5. `time.sleep` bloqueante no Gateway de portal dentro de workflow async (`gateway.py:140`, usado em `:409`).
 
 ## 11. Ideias futuras (não entram na EXTRA-003)
 
