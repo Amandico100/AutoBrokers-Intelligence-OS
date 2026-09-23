@@ -4518,7 +4518,7 @@ transcripts **já mascarados**:
 | `lote_050` `63e92ce5` | **a segurada** enviando a senha do PDF do boleto no chat |
 
 **A causa:** o mascarador conhece CPF, CNPJ, telefone, placa, e-mail, endereço e
-valor — todos têm **forma reconhecível**. Senha não tem. `Youmba2013@@` e
+valor — todos têm **forma reconhecível**. Senha não tem. `[SEGREDO REMOVIDO 23/09 — SPEC-116; trocar a senha do banco]` e
 `resulta123` não casam com padrão nenhum, então atravessam inteiras.
 
 ⚠️ **O alcance é o acervo todo.** `attendance_transcripts` tem 150.734 linhas
