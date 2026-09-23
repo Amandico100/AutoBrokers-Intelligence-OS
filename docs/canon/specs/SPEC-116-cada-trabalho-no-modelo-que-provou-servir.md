@@ -94,8 +94,10 @@ PAPEL (o trabalho: atendimento, chat_principal, portal_decisao, dispatch, memori
 RESOLVEDOR  backend/app/factories/model_policy.py  (reescrito; mesmo ponto de chamada)
    resolver(papel, agente?, corretora?, classe_de_dado, override_da_bancada?) → ModeloResolvido
    { provider, model, effort, api_surface, parametros, reserva, motivo, versao_da_rota }
-   ordem: override da bancada (só no processo da bancada) → override do agente SE aprovado p/ o papel →
-          rota do papel (banco) → snapshot versionado (sem banco) → ERRO EXPLÍCITO. ⛔ nunca "cai no mini"
+   ordem: override da bancada (só no processo da bancada) → rota do papel (banco) → modelo do agente SÓ para
+          papel sem rota (agentes custom) e só se registrado → snapshot versionado (sem banco) → ERRO EXPLÍCITO.
+          ⛔ nunca "cai no mini" · D-116-17: a ROTA vence o agente (troca/volta em minutos; "modelo nunca é
+          override do tenant" já era regra do blueprint)
    ⛔ recusa rota cuja classe_de_dado o modelo não pode ver (LGPD) · ⛔ recusa lifecycle BLOCKED/HISTORICAL
    ▼
 CATÁLOGO (autoridade) = `llm_pricing` EXPANDIDO (não tabela nova de modelos): lifecycle · api_surface · capacidades
@@ -288,6 +290,9 @@ G14 🧑 canário do atendimento com o mapa novo — roteiro entregue; execuçã
 | D-116-12 | embeddings `text-embedding-3-small` **KEEP** com justificativa medida: OpenAI não tem sucessor; troca = reindexação + eval de retrieval | **85** · trocar por gemini-embedding-2 agora 35 |
 | D-116-13 | transcrição: `whisper-1` desliga 26/02/2027 → bancada PT-BR `gpt-transcribe` × whisper; promove se não-inferior | **80** |
 | D-116-14 | modelos do DESENVOLVIMENTO (protocolo §10 cita Fable 5.1/Opus 5/Sonnet 5): **não mexo no protocolo**; dívida registrada para o Founder | **90** |
+| D-116-15 | (execução) `memory_settings.memory_llm_model` vira **legado ignorado**: a rota `memoria` manda sempre. Zerar o dado/DEFAULT antes do deploy quebraria a memória no código antigo em produção | rota manda + coluna legada **90** · migration de dado já 35 |
+| D-116-17 | (execução) precedência: **rota do papel vence o modelo gravado no agente**; agente só manda em papel sem rota | rota vence **90** · agente vence 40 (8 agentes com Sonnet 5 gravado travariam toda troca) |
+| D-116-16 | (execução) F5a começou em PARALELO à F1 (arquivos disjuntos; contrato `ModeloResolvido` declarado no pacote) — antecipa a fatia mais longa | **85** · esperar a F1 60 |
 
 ## 11. Pré-requisitos de API (o que só o Founder faz — nunca colar chave no chat)
 

@@ -4,23 +4,30 @@ uvicorn[standard]==0.27.0
 pydantic==2.12.4
 pydantic-settings==2.12.0
 
-# LangChain & LangGraph (versões do seu ambiente local)
-langchain==1.0.8
-langchain-anthropic==1.1.0
-langchain-community==0.4.1
-langchain-core==1.1.0
-langchain-experimental==0.4.0
+# LangChain & LangGraph — SPEC-116 F2 (§8, D-116-08): sobe SÓ o que tem necessidade
+# concreta. langchain-anthropic 1.7.3 = effort nativo do Claude (output_config.effort);
+# langchain-openai 1.6.4 = Responses API p/ GPT-6 com tools+raciocínio; langchain-core 1.6.4
+# é exigido pelas duas; langgraph 1.2.x exige langgraph-checkpoint >= 4.1 (fecha
+# CVE-2026-27794 / CVE-2026-48775). langchain 1.0.8 NÃO resolve com langgraph 1.2 (📊 pip
+# --dry-run py3.11 manylinux, 23/09/2026) → 1.4.2 junto, com community/experimental/splitters.
+langchain==1.4.2
+langchain-anthropic==1.7.3
+langchain-community==0.4.2
+langchain-core==1.6.4
+langchain-experimental==0.4.2
 langchain-google-genai==3.1.0
-langchain-openai==1.0.3
-langchain-text-splitters==1.0.0
-langgraph==1.0.3
-langgraph-checkpoint==3.0.1
-langgraph-prebuilt==1.0.5
-langgraph-sdk==0.2.9
+langchain-openai==1.6.4
+langchain-text-splitters==1.1.2
+langgraph==1.2.12
+langgraph-checkpoint==4.2.0
+langgraph-prebuilt==1.1.0
+langgraph-sdk==0.4.5
 
-# LLM Providers
-openai>=1.10.0
-anthropic>=0.18.0
+# LLM Providers — pin EXATO (build reprodutível, F10). ⛔ NÃO subir openai 3.x nem
+# anthropic 1.x: trocam httpx por httpx2 e o relógio classifica erro por httpx
+# (relogio_do_modelo.e_transitorio). Sem necessidade concreta hoje (SPEC-116 §6 "Sai").
+openai==2.54.0
+anthropic==0.125.0
 google-ai-generativelanguage==0.9.0
 
 # Cryptography
@@ -31,7 +38,7 @@ bcrypt>=4.0.0
 supabase==2.10.0
 psycopg[binary]>=3.0.0
 psycopg-pool>=3.2.0
-langgraph-checkpoint-postgres>=2.0.0
+langgraph-checkpoint-postgres==3.1.2
 
 # Vector Store
 qdrant-client>=1.11.0
@@ -50,7 +57,7 @@ PyMuPDF==1.28.0
 python-docx==1.1.0
 
 # Utils
-httpx>=0.26
+httpx==0.27.2  # supabase 2.10.0 exige httpx<0.28 (📊 pip --dry-run 23/09/2026)
 requests>=2.31.0
 python-dotenv==1.0.1
 python-multipart==0.0.6

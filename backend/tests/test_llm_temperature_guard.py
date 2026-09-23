@@ -1,48 +1,103 @@
-"""Regressao: Claude 5 rejeita `temperature` (API 400 'temperature is
-deprecated for this model'). O _create_anthropic NAO pode enviar temperature
-para a familia Claude 5. Teste puro (le a fonte; sem importar langchain).
+"""Regressao: quem RECUSA sampling (API 400 'temperature is deprecated for this
+model') nunca recebe temperature/top_p/top_k.
+
+SPEC-116 F2 (EVIDENCIAS/03 F5 + CLAUDE.md §9.3/§9.4): a versao anterior deste
+guarda RECRIAVA a regra por prefixo de nome e AFIRMAVA "claude-opus-4-8 AINDA
+recebe temperature" — verdade vencida (Opus 4.7/4.8 dao 400) guardada por um
+teste que nao chamava o motor. Agora a regra mora no CATALOGO
+(`capacidades.sampling_ok`) e o guarda chama a FABRICA real e le o PAYLOAD
+que sairia ao provedor (nenhuma rede: chave falsa, so `_get_request_payload`).
+
+LINHA DE CONTROLE: modelos com `sampling_ok=true` (Haiku 4.5, gpt-4o) TEM de
+receber temperature — prova que o guarda consegue ver a diferenca.
+
 Rodar de backend/: `python tests/test_llm_temperature_guard.py`."""
+import copy
+import json
 import os
-import re
+import sys
 
-_P = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "factories", "llm_factory.py")
-with open(_P, "r", encoding="utf-8") as fh:
-    SRC = fh.read()
+BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BACKEND not in sys.path:
+    sys.path.insert(0, BACKEND)
+os.environ["SEM_REDE"] = "1"
 
+
+class _BancoMudo:
+    class _Consulta:
+        data: list = []
+
+        def __getattr__(self, _nome):
+            return lambda *a, **k: self
+
+        def execute(self):
+            return self
+
+    client = None
+
+    def table(self, _nome):
+        return self._Consulta()
+
+
+import app.core.database as _db  # noqa: E402
+import app.services.usage_service as _uso  # noqa: E402
+
+_db.get_supabase_client = lambda: _BancoMudo()
+_uso.get_supabase_client = _db.get_supabase_client
+
+from app.factories import model_policy as MP  # noqa: E402
+from app.factories.llm_factory import LLMFactory  # noqa: E402
+
+SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+_cat, _pap = copy.deepcopy(SNAP["catalogo"]), copy.deepcopy(SNAP["papeis"])
+MP.leitor_do_banco = lambda: (_cat, _pap)
+MP.limpar_cache()
+
+CHAVE_FALSA = "sk-teste-chave-falsa-nao-existe"
 _pass = 0
 _fail = 0
 
 
-def check(name, cond):
+def check(name, cond, detalhe=""):
     global _pass, _fail
     if cond:
         _pass += 1
         print(f"  ok  {name}")
     else:
         _fail += 1
-        print(f"  XX  {name}")
+        print(f"  XX  {name}  {detalhe}")
 
 
-# Recria a regra pura da fonte para validar o comportamento.
-def _supports_temperature(model: str) -> bool:
-    m = (model or "").lower()
-    blocked = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-5", "claude-mythos", "claude-fable")
-    return not any(m.startswith(p) for p in blocked)
+def _sampling_no_payload(provider: str, modelo: str) -> set:
+    """Chaves de sampling no payload FINAL (inclusive dentro de extra_body)."""
+    r = MP.resolver("brand_capture", override={"provider": provider, "model": modelo})
+    try:
+        llm = LLMFactory.create_llm({}, {"llm_temperature": 0.3}, api_key=CHAVE_FALSA,
+                                    modelo_resolvido=r)
+        p = llm._get_request_payload([("human", "oi")])
+    except Exception as exc:  # noqa: BLE001 — a lib recusou localmente: também é "recebeu"
+        return {f"ERRO:{type(exc).__name__}"}
+    achadas = {k for k in ("temperature", "top_p", "top_k") if k in p}
+    achadas |= {f"extra_body.{k}" for k in ("temperature", "top_p", "top_k")
+                if k in (p.get("extra_body") or {})}
+    return achadas
 
 
-check("claude-sonnet-5 NAO recebe temperature", _supports_temperature("claude-sonnet-5") is False)
-check("claude-opus-5 NAO recebe temperature", _supports_temperature("claude-opus-5") is False)
-check("claude-mythos NAO recebe temperature", _supports_temperature("claude-mythos-5") is False)
-check("claude 4.x AINDA recebe temperature", _supports_temperature("claude-opus-4-8") is True)
-check("claude 3.5 AINDA recebe temperature", _supports_temperature("claude-3-5-sonnet-20241022") is True)
+RECUSAM = [("anthropic", "claude-sonnet-5"), ("anthropic", "claude-opus-5"),
+           ("anthropic", "claude-opus-5-5"), ("anthropic", "claude-fable-5-1"),
+           ("anthropic", "claude-opus-4-7"), ("anthropic", "claude-opus-4-8"),
+           ("openai", "gpt-6-sol"), ("openai", "gpt-5.6-terra")]
+ACEITAM = [("anthropic", "claude-haiku-4-5-20251001"), ("openai", "gpt-4o")]
 
-# A fonte precisa condicionar o envio de temperature (nao passar sempre).
-check("helper _anthropic_supports_temperature existe na fonte", "_anthropic_supports_temperature" in SRC)
-check(
-    "temperature so entra em params quando suportado",
-    bool(re.search(r"if\s+LLMFactory\._anthropic_supports_temperature\(model\)\s*:\s*\n\s*params\[.temperature.\]", SRC)),
-)
-check("claude-sonnet-5 esta na lista bloqueada da fonte", "claude-sonnet-5" in SRC and "blocked" in SRC)
+for prov, modelo in RECUSAM:
+    assert _cat[modelo]["capacidades"].get("sampling_ok") is False, modelo
+    achadas = _sampling_no_payload(prov, modelo)
+    check(f"{modelo} (sampling_ok=false no catalogo) NAO recebe sampling", not achadas, achadas)
+
+for prov, modelo in ACEITAM:
+    achadas = _sampling_no_payload(prov, modelo)
+    check(f"CONTROLE: {modelo} (sampling_ok=true) RECEBE temperature", "temperature" in achadas,
+          achadas)
 
 print(f"\n== Resumo: {_pass} passaram, {_fail} falharam ==")
 if _fail:

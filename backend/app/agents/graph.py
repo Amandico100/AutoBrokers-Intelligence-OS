@@ -178,26 +178,49 @@ async def create_agent_graph(
     # Get agent_id early for cost tracking
     agent_id = agent_data.get("id") if agent_data else None
 
-    # === 1. Identificar Provider e Key (Correção 401 Anthropic) ===
-    # 1. Identificar qual provedor o Agente está configurado para usar
-    # (Default para openai se não definido)
-    provider = "openai"
-    if agent_data and agent_data.get("llm_provider"):
-        provider = agent_data.get("llm_provider")
-    elif company_config.get("llm_provider"):
-        provider = company_config.get("llm_provider")
+    # === 1. O MODELO DO PAPEL (SPEC-116 §4, o fio) ===
+    # Quem escolhe é o Model Router: a ROTA do papel do agente (`llm_papeis`),
+    # não o `llm_provider`/`llm_model` gravado. A chave é a do provedor
+    # RESOLVIDO — a rota pode ter trocado o provedor. ⛔ Papel/provedor
+    # desconhecido levanta `ModeloNaoResolvido` aqui: nada cai no mini.
+    resolvido = LLMFactory.resolver_para(company_config, agent_data)
+    selected_api_key = get_api_key_for_provider(resolvido.provider, resolvido.model)
 
-    # === SELEÇÃO DE CHAVE: FORÇAR USO DE VARIÁVEL DE AMBIENTE ===
-    selected_api_key = get_api_key_for_provider(provider)
-
-    # 3. Criar o LLM do Agente com a chave correta
     llm = LLMFactory.create_llm(
         company_config=company_config,
         agent_data=agent_data,
-        api_key=selected_api_key, # <--- Usando a chave selecionada
+        api_key=selected_api_key,
         company_id=company_id,
-        agent_id=agent_id
+        agent_id=agent_id,
+        modelo_resolvido=resolvido,
     )
+
+    # === 1.1 A RESERVA da rota (SPEC-116 U6c, D-116-07) ===
+    # Só existe se a rota a declara (📊 seed de 23/09: nenhuma declara → o
+    # comportamento é exatamente o de antes). Ela só é usada ANTES da 1ª
+    # ferramenta do turno — quem decide é o nó (`nodes._invocar_o_modelo`).
+    llm_reserva = None
+    if resolvido.reserva is not None:
+        try:
+            llm_reserva = LLMFactory.create_llm(
+                company_config=company_config,
+                agent_data=agent_data,
+                api_key=get_api_key_for_provider(resolvido.reserva.provider,
+                                                 resolvido.reserva.model),
+                company_id=company_id,
+                agent_id=agent_id,
+                modelo_resolvido=resolvido.reserva,
+                reserva_usada=True,
+            )
+        except Exception as exc:  # noqa: BLE001 — sem reserva, o primário segue como sempre
+            logger.error("[Graph] reserva %s/%s indisponível (%s) — seguindo só com o primário",
+                         resolvido.reserva.provider, resolvido.reserva.model, type(exc).__name__)
+    rota_do_turno = {
+        "papel": resolvido.papel,
+        "provedor": resolvido.provider,
+        "modelo": resolvido.model,
+        "provedor_reserva": resolvido.reserva.provider if resolvido.reserva else None,
+    }
 
     # === 2. Cria as Tools ===
     # agent_id já foi definido acima
@@ -660,6 +683,8 @@ async def create_agent_graph(
         llm_with_tools=llm_with_tools,
         llm_base=llm,
         tools_base=tools,
+        llm_reserva=llm_reserva,
+        rota=rota_do_turno,
         cutover_ctx={
             "supabase_client": supabase_client,
             "company_id": str(company_id) if company_id else None,

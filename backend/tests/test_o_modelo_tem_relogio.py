@@ -114,6 +114,24 @@ _dublar_o_banco()
 import app.core.relogio_do_modelo as R  # noqa: E402
 from app.factories.llm_factory import LLMFactory  # noqa: E402
 
+# 🔴 SPEC-116 F2 (CLAUDE.md §9.3 — a lição migra): a fábrica só constrói o que o
+# CATÁLOGO governa. `gemini-2.0-flash` é HISTORICAL e o OpenRouter não tem linha
+# no snapshot: este guarda passou a construir um Gemini governado e uma linha de
+# OpenRouter no DUBLÊ do banco das rotas. O que ele prova não mudou: o teto e as
+# voltas chegam aos QUATRO construtores.
+import json as _json  # noqa: E402
+
+from app.factories import model_policy as _MP  # noqa: E402
+
+_SNAP = _json.loads(_MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+_CAT = dict(_SNAP["catalogo"])
+_CAT["meta-llama/llama-3.1-8b-instruct"] = {
+    "model_name": "meta-llama/llama-3.1-8b-instruct", "provider": "openrouter", "tipo": "chat",
+    "api_surface": "chat_completions", "lifecycle": "CANDIDATE",
+    "classes_de_dado": ["publico", "interno", "pii"], "capacidades": {}}
+_MP.leitor_do_banco = lambda: (_CAT, _SNAP["papeis"])
+_MP.limpar_cache()
+
 #: O produto, guardado antes de qualquer dublê — é para cá que os gates voltam.
 _CLIENTE_ORIGINAL = R._cliente
 _AGORA_ORIGINAL = R._agora
@@ -160,7 +178,7 @@ def _construir(provedor, modelo):
 OS_QUATRO = [
     ("openai", "gpt-4o", "request_timeout"),
     ("anthropic", "claude-sonnet-5", "default_request_timeout"),
-    ("google", "gemini-2.0-flash", "timeout"),
+    ("google", "gemini-3-flash-preview", "timeout"),
     ("openrouter", "meta-llama/llama-3.1-8b-instruct", "request_timeout"),
 ]
 

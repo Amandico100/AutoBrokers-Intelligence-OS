@@ -238,15 +238,20 @@ def teste_provedor_sai_do_nome_do_modelo():
     print("\n[7] O ledger sabe de qual provedor foi o gasto")
     # Sem isso, `provider` fica nulo e a §26 não consegue separar custo por
     # fornecedor — que é a primeira pergunta de quem negocia contrato.
-    import re
-    fonte_cb = open(os.path.join(RAIZ, "app", "core", "callbacks",
-                                 "cost_callback.py"), encoding="utf-8").read()
+    # 🔴 SPEC-116 F2 (CLAUDE.md §9.3/§9.4 — a lição migra): o provedor deixou de
+    # vir de um mapa de prefixos escrito no callback e passou a vir do CATÁLOGO
+    # (`llm_pricing`, snapshot como dublê). Este guarda lia o FONTE atrás da
+    # palavra "openai"; agora chama o MOTOR — a mesma função que o callback usa.
+    from app.core.callbacks.cost_callback import provedor_pelo_catalogo
+
     for modelo, provedor in (("claude-opus-5", "anthropic"),
                              ("gpt-4o-mini", "openai"),
+                             ("gpt-4o-mini-2024-07-18", "openai"),
                              ("gemini-3-flash-preview", "google")):
-        par = re.search(rf'\("{re.escape(provedor)}"\)|"{re.escape(provedor)}"',
-                        fonte_cb)
-        checar(par is not None, f"{modelo} → {provedor}")
+        checar(provedor_pelo_catalogo(modelo) == provedor, f"{modelo} → {provedor}")
+    # LINHA DE CONTROLE: quem ninguém cataloga não ganha provedor inventado
+    checar(provedor_pelo_catalogo("modelo-que-ninguem-cataloga") is None,
+           "modelo fora do catálogo → provedor nulo (nunca um palpite)")
 
 
 def main() -> int:

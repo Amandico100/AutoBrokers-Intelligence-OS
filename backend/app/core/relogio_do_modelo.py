@@ -128,7 +128,34 @@ BACKOFF_TETO_S = _decimal("LLM_BACKOFF_TETO_SEGUNDOS", 30.0)
 TIMEOUT_HTTP_S = _decimal("HTTP_TIMEOUT_SEGUNDOS", 30.0)
 TIMEOUT_HTTP_CONEXAO_S = _decimal("HTTP_TIMEOUT_CONEXAO_SEGUNDOS", 10.0)
 
-PROVEDORES = ("openai", "anthropic", "google", "openrouter")
+def _provedores_do_catalogo() -> tuple:
+    """Os provedores que têm modelo de CONVERSA usável no catálogo (SPEC-116 U6d).
+
+    ⚠️ Lido do SNAPSHOT versionado (`modelos_snapshot.json`), não do banco: este
+    módulo é importado cedo e a varredura do breaker itera esta tupla — nenhuma
+    consulta ao banco na importação. O snapshot é gerado do banco
+    (`scripts/gerar_snapshot_de_modelos.py`). Os quatro de sempre vêm primeiro e
+    nunca saem (o breaker deles já tem chave no Redis de produção).
+    """
+    base = ["openai", "anthropic", "google", "openrouter"]
+    try:
+        import json
+
+        from app.factories.model_policy import LIFECYCLES_USAVEIS, SNAPSHOT_PATH
+
+        cat = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8")).get("catalogo") or {}
+        for linha in cat.values():
+            prov = str(linha.get("provider") or "").strip().lower()
+            if (prov and prov not in base and linha.get("tipo") == "chat"
+                    and linha.get("lifecycle") in LIFECYCLES_USAVEIS):
+                base.append(prov)
+    except Exception as exc:  # noqa: BLE001 — sem snapshot, os quatro de sempre
+        logger.warning("[RelogioDoModelo] catálogo indisponível (%s) — só os 4 provedores de "
+                       "sempre", type(exc).__name__)
+    return tuple(base)
+
+
+PROVEDORES = _provedores_do_catalogo()
 
 
 def timeout_http() -> httpx.Timeout:
@@ -246,6 +273,36 @@ def e_transitorio(exc: BaseException) -> bool:
     return False
 
 
+def motivo_de_reserva(exc: BaseException) -> Optional[str]:
+    """Este erro autoriza a RESERVA da rota? Devolve o motivo, ou `None`.
+
+    SPEC-116 U6c / D-116-07: 429 · 5xx · timeout · conexão — o provedor não
+    respondeu, e outro provedor pode responder. ⛔ 400/401/403/404/422 NÃO: um
+    pedido que o provedor recusou é defeito nosso (ou da chave), e mandá-lo a
+    outro modelo só esconderia o defeito. A decisão de SE pode (antes ou depois
+    da 1ª tool com efeito) é de quem chama — este só classifica.
+    """
+    if not e_transitorio(exc):
+        return None
+    vistos: set = set()
+    atual: Optional[BaseException] = exc
+    while atual is not None and id(atual) not in vistos:
+        vistos.add(id(atual))
+        status = _status_de(atual)
+        if status == 429:
+            return "429"
+        if status is not None and status >= 500:
+            return "5xx"
+        if status in (408, 409):
+            return str(status)
+        nome = type(atual).__name__.lower()
+        if (isinstance(atual, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException))
+                or "timeout" in nome or "timedout" in nome):
+            return "timeout"
+        atual = atual.__cause__
+    return "conexao"
+
+
 def espera_do_backoff(tentativa: int) -> float:
     """PURO: quantos segundos esperar antes da tentativa `n`. Full jitter.
 
@@ -303,20 +360,34 @@ def _chaves(provedor: str) -> tuple:
 
 
 def provedor_normalizado(provedor: Any) -> str:
-    """O nome do provedor como chave — nunca vazio, nunca de duas formas."""
+    """O nome do provedor como chave — nunca vazio, nunca de duas formas.
+
+    ⚠️ SPEC-116: um provedor fora da tupla NÃO vira mais "openai" — a falha do
+    xAI contava no breaker da OpenAI (EVIDENCIAS/03 F6). Vazio continua sendo
+    "openai" (o legado de agente sem provedor).
+    """
     nome = str(provedor or "").strip().lower()
-    return nome if nome in PROVEDORES else "openai"
+    return nome or "openai"
 
 
 def provedor_configurado(company_config: Optional[dict],
                          agent_data: Optional[dict]) -> str:
     """O provedor que a fábrica VAI usar para este agente desta corretora.
 
-    🔴 É a MESMA regra de `LLMFactory.create_llm` — agente vence corretora, e
-    corretora sem nada cai em `openai` — porque a fábrica chama esta função. Duas
-    cópias da regra é como a costura pergunta pelo breaker de um provedor e a
-    chamada sai por outro.
+    🔴 SPEC-116: é a MESMA pergunta que a fábrica faz — o Model Router
+    (`LLMFactory.resolver_para`): a ROTA do papel pode ter trocado o provedor
+    gravado no agente, e a costura precisa perguntar pelo breaker do provedor
+    por onde a chamada VAI sair. Duas regras = pergunta por um, chamada por outro.
+    Sem resposta do roteador (config inválida), o gravado — é só uma pergunta
+    de leitura, e ela nunca levanta.
     """
+    try:
+        from app.factories.llm_factory import LLMFactory
+
+        return provedor_normalizado(LLMFactory.resolver_para(company_config, agent_data).provider)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[RelogioDoModelo] roteador sem resposta (%s) — provedor gravado",
+                     type(exc).__name__)
     fonte = agent_data if agent_data else (company_config or {})
     escolhido = fonte.get("llm_provider") or (company_config or {}).get("llm_provider")
     return provedor_normalizado(escolhido or "openai")
@@ -569,10 +640,11 @@ class RelogioDoModeloCallback(AsyncCallbackHandler):  # type: ignore[misc]
 #   await registrar_falha(provedor, exc) -> None     # a fábrica já alimenta
 #   await estado_do_breaker(provedor) -> dict        # para a frase ao dono
 #   e_transitorio(exc) -> bool ·  espera_do_backoff(n) -> float
+#   motivo_de_reserva(exc) -> str|None   # SPEC-116: 429/5xx/timeout/conexão
 __all__ = [
     "TIMEOUT_S", "MAX_RETRIES", "PROVEDORES",
     "kwargs_de_relogio", "timeout_http", "e_transitorio", "espera_do_backoff",
     "provedor_normalizado", "provedor_configurado",
     "provedor_disponivel", "registrar_sucesso", "registrar_falha",
-    "estado_do_breaker", "RelogioDoModeloCallback",
+    "estado_do_breaker", "RelogioDoModeloCallback", "motivo_de_reserva",
 ]

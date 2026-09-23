@@ -10,12 +10,13 @@ Cada função representa um nó que processa o estado.
 """
 
 import asyncio
+import contextvars
 import json
 import logging
 import re
 import time
 import unicodedata
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Tuple
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -24,6 +25,193 @@ from .utils import extract_text_from_content, sanitize_ai_message
 from .context import build_task_context
 
 logger = logging.getLogger(__name__)
+
+
+# ===========================================================================
+# SPEC-116 U6 — o TURNO sabe se já executou ferramenta
+# ===========================================================================
+#
+# 🔴 A regra (D-116-07): o turno só pode ser REFEITO — pela reserva da rota ou
+# pelo retry do serviço — ANTES da 1ª ferramenta. Depois dela, retém e sinaliza.
+#
+# ⚠️ "Ferramenta com efeito": o Tool Gateway marca `side_effect_class` em
+# `tool_definitions` (📊 `services/skills/gateway.py:49`), mas o objeto que o
+# `tool_node` executa é a tool do LangChain, sem essa marca, e o nó não lê o
+# banco por ferramenta. 📊 `grep -rn "side_effect" app/agents/tools` → 0. Não
+# existe marcação utilizável no ponto de execução → CONSERVADOR: TODA
+# ferramenta conta como ferramenta com efeito. (Lista paralela seria o motor
+# paralelo do CLAUDE.md §5.)
+class MarcadorDoTurno:
+    """Quantas ferramentas o turno JÁ COMEÇOU a executar (anotado ANTES de rodar)."""
+
+    __slots__ = ("tools_iniciadas",)
+
+    def __init__(self) -> None:
+        self.tools_iniciadas = 0
+
+
+#: O marcador do turno corrente. É um OBJETO mutável dentro da ContextVar de
+#: propósito: o LangGraph roda cada nó numa tarefa filha com CÓPIA do contexto —
+#: um `.set()` lá dentro não voltaria; a mutação do mesmo objeto volta.
+_MARCADOR_DO_TURNO: contextvars.ContextVar = contextvars.ContextVar(
+    "marcador_do_turno", default=None)
+
+
+def abrir_marcador_do_turno() -> Tuple[MarcadorDoTurno, Any]:
+    marcador = MarcadorDoTurno()
+    return marcador, _MARCADOR_DO_TURNO.set(marcador)
+
+
+def fechar_marcador_do_turno(ficha: Any) -> None:
+    try:
+        _MARCADOR_DO_TURNO.reset(ficha)
+    except (ValueError, RuntimeError):  # outra tarefa/contexto: só esquece
+        pass
+
+
+def _anotar_tool_iniciada() -> None:
+    marcador = _MARCADOR_DO_TURNO.get()
+    if marcador is not None:
+        marcador.tools_iniciadas += 1
+
+
+def turno_ja_executou_tool(state: dict) -> bool:
+    """O turno corrente já passou por alguma ferramenta? (conservador: qualquer uma)
+
+    Três testemunhas, qualquer uma basta: `tools_used` do turno (📊 zerado a cada
+    invocação em `graph._build_initial_state`), uma ToolMessage DEPOIS da última
+    mensagem humana, ou o marcador do turno (anotado ANTES de executar — pega
+    também a ferramenta que começou e caiu no meio).
+    """
+    if state.get("tools_used"):
+        return True
+    for msg in reversed(state.get("messages") or []):
+        if isinstance(msg, HumanMessage) or getattr(msg, "type", None) == "human":
+            break
+        if isinstance(msg, ToolMessage) or getattr(msg, "type", None) == "tool":
+            return True
+    marcador = _MARCADOR_DO_TURNO.get()
+    return bool(marcador is not None and marcador.tools_iniciadas)
+
+
+# ===========================================================================
+# SPEC-116 U6a — o histórico devolve o RACIOCÍNIO a quem o produziu
+# ===========================================================================
+def _origem_da_mensagem(msg) -> Tuple[Optional[str], Optional[str]]:
+    """(provedor, modelo) que produziram esta AIMessage, pelo `response_metadata`."""
+    meta = getattr(msg, "response_metadata", None) or {}
+    modelo = meta.get("model_name") or meta.get("model")
+    # ⚠️ O CATÁLOGO vence o `model_provider` do LangChain: todo cliente
+    # OpenAI-compatível (DeepSeek, xAI…) é um `ChatOpenAI` e se declara "openai".
+    provedor = None
+    if modelo:
+        try:
+            from app.core.callbacks.cost_callback import provedor_pelo_catalogo
+
+            provedor = provedor_pelo_catalogo(modelo)
+        except Exception:  # noqa: BLE001
+            provedor = None
+    return provedor or meta.get("model_provider"), modelo
+
+
+def _mesmo_modelo(real: Optional[str], atual: Optional[str]) -> bool:
+    if not real or not atual:
+        return False
+    return real == atual or real.startswith(atual) or atual.startswith(real)
+
+
+def mensagem_do_assistente_para(msg, provedor_atual: Optional[str],
+                                modelo_atual: Optional[str]):
+    """A AIMessage como vai ao modelo DESTE turno.
+
+    🔴 Mesmo provedor e mesmo modelo → a mensagem INTEIRA volta: blocos de
+    `thinking` com assinatura (Anthropic), itens de raciocínio (Responses),
+    `reasoning_content` (compatíveis). Opus 5.5/Fable/DeepSeek dão 400 sem eles
+    num laço de ferramentas; os outros degradam (EVIDENCIAS/03 F9, /05 §3).
+    ⚠️ Provedor ou modelo DIFERENTE (a rota trocou; a reserva entrou) → sanitiza,
+    como era: o raciocínio é preso ao modelo que o gerou e o outro o recusa.
+    Origem desconhecida (mensagem antiga no checkpoint) → sanitiza.
+    """
+    if provedor_atual and modelo_atual:
+        provedor, modelo = _origem_da_mensagem(msg)
+        if provedor == provedor_atual and _mesmo_modelo(modelo, modelo_atual):
+            return msg
+    return sanitize_ai_message(msg)
+
+
+def _historico_para_outro_provedor(mensagens: list) -> list:
+    """O mesmo histórico, sem nada que prenda ao provedor anterior (a reserva).
+
+    Blocos de sistema com `cache_control` viram texto; assistentes perdem o
+    raciocínio (é do outro modelo).
+    """
+    saida = []
+    for m in mensagens:
+        if isinstance(m, SystemMessage) and isinstance(m.content, list):
+            texto = "\n\n".join(b.get("text", "") if isinstance(b, dict) else str(b)
+                                for b in m.content)
+            saida.append(SystemMessage(content=texto))
+        elif isinstance(m, AIMessage):
+            saida.append(sanitize_ai_message(m))
+        else:
+            saida.append(m)
+    return saida
+
+
+async def _invocar_o_modelo(llm_with_tools, llm_messages: list, config, state: dict, *,
+                            llm_reserva=None, tools_do_turno=None, rota: Optional[dict] = None):
+    """A chamada ao modelo do turno, com a RESERVA da rota (SPEC-116 U6c, D-116-07).
+
+    Devolve `(resposta, llm_usado, mensagens_usadas)` — quem regenera depois
+    (os fiscais) fala com o MESMO modelo que respondeu.
+
+      · breaker do primário ABERTO e nenhuma ferramenta no turno → reserva;
+      · 429 / 5xx / timeout / conexão ANTES da 1ª ferramenta → reserva;
+      · DEPOIS da 1ª ferramenta → o erro sobe (a mensagem fica retida por quem
+        chamou, como hoje). ⛔ Nunca refaz um turno que já teve ferramenta.
+      · sem reserva declarada na rota → exatamente o comportamento de antes.
+    """
+    tem_reserva = llm_reserva is not None and bool(rota)
+    if tem_reserva and not turno_ja_executou_tool(state):
+        try:
+            from app.core.relogio_do_modelo import estado_do_breaker
+
+            estado = (await estado_do_breaker(rota.get("provedor"))).get("estado")
+        except Exception:  # noqa: BLE001 — fail-open: sem breaker, tenta o primário
+            estado = None
+        if estado == "aberto":
+            return await _pela_reserva(llm_reserva, tools_do_turno, llm_messages, config,
+                                       rota, "breaker_aberto")
+    try:
+        resposta = await llm_with_tools.ainvoke(llm_messages, config=config)
+        return resposta, llm_with_tools, llm_messages
+    except Exception as exc:
+        if not tem_reserva:
+            raise
+        from app.core.relogio_do_modelo import motivo_de_reserva
+
+        motivo = motivo_de_reserva(exc)
+        if motivo is None:
+            raise
+        if turno_ja_executou_tool(state):
+            logger.error(
+                "[Agent Node] ⛔ %s (%s) no provedor %s DEPOIS de ferramenta no turno — "
+                "a reserva NÃO refaz; o erro sobe e a mensagem fica retida",
+                type(exc).__name__, motivo, rota.get("provedor"))
+            raise
+        return await _pela_reserva(llm_reserva, tools_do_turno, llm_messages, config,
+                                   rota, motivo)
+
+
+async def _pela_reserva(llm_reserva, tools_do_turno, llm_messages, config, rota, motivo):
+    ligado = llm_reserva.bind_tools(tools_do_turno) if tools_do_turno else llm_reserva
+    mensagens = _historico_para_outro_provedor(llm_messages)
+    cfg = dict(config or {})
+    cfg["metadata"] = {**(cfg.get("metadata") or {}), "motivo_reserva": motivo}
+    logger.warning("[Agent Node] 🔁 RESERVA da rota: %s → %s (motivo=%s)",
+                   rota.get("provedor"), rota.get("provedor_reserva"), motivo)
+    resposta = await ligado.ainvoke(mensagens, config=cfg)
+    return resposta, ligado, mensagens
 
 from app.core.constants import AGENT_CONTEXT_WINDOW_SIZE
 
@@ -1045,7 +1233,8 @@ async def _resposta_no_tamanho_da_classe(texto: str, state: dict, *, regenerar,
 
 
 async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
-                     llm_base=None, tools_base=None, cutover_ctx=None) -> dict:
+                     llm_base=None, tools_base=None, cutover_ctx=None,
+                     llm_reserva=None, rota: Optional[dict] = None) -> dict:
     """
     Nó do Agente - Decide se usa uma tool ou responde diretamente.
     INCLUI CORREÇÃO PARA ERRO DE REASONING (OpenAI 400).
@@ -1087,6 +1276,7 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     # Roda depois de conhecer a pergunta e antes de qualquer chamada ao modelo.
     # Em `shadow` só grava o diff; em `on` re-liga o modelo com a lista que o
     # Gateway autorizou — e ele só consegue REMOVER ferramenta, nunca somar.
+    tools_do_turno = tools_base
     if cutover_ctx and llm_base is not None and tools_base:
         try:
             from .gateway_cutover import aplicar as _cutover_aplicar
@@ -1104,6 +1294,7 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
                 _filtradas = _cutover_aplicar(tools_base, _veredito)
                 if len(_filtradas) != len(tools_base):
                     llm_with_tools = llm_base.bind_tools(_filtradas)
+                    tools_do_turno = _filtradas
         except Exception as exc:  # noqa: BLE001
             # Falha do Gateway nunca derruba o atendimento: o corretor continua
             # sendo respondido pelo caminho antigo e o erro vira registro.
@@ -1199,8 +1390,10 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
             llm_messages.append(msg)
 
         elif isinstance(msg, AIMessage):
-            # Sanitiza removendo blocos de reasoning (evita erro 400 da OpenAI)
-            llm_messages.append(sanitize_ai_message(msg))
+            # 🔴 SPEC-116 U6a: o raciocínio VOLTA a quem o produziu (mesmo
+            # provedor e modelo); só sanitiza quando o provedor/modelo mudou.
+            llm_messages.append(mensagem_do_assistente_para(
+                msg, (rota or {}).get("provedor"), (rota or {}).get("modelo")))
 
         elif isinstance(msg, ToolMessage):
             # Lógica de compressão de tools antigas
@@ -1251,8 +1444,11 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     logger.info(f"[Agent Node] Enviando {len(llm_messages)} mensagens ao LLM")
 
     start_time = time.time()
-    # Executa o LLM (com streaming ativo nas configs)
-    response = await llm_with_tools.ainvoke(llm_messages, config=config)
+    # Executa o LLM (com streaming ativo nas configs) — e a RESERVA da rota,
+    # só antes da 1ª ferramenta do turno (SPEC-116 U6c).
+    response, llm_with_tools, llm_messages = await _invocar_o_modelo(
+        llm_with_tools, llm_messages, config, state,
+        llm_reserva=llm_reserva, tools_do_turno=tools_do_turno, rota=rota)
     response_time = int((time.time() - start_time) * 1000)
 
     logger.info(f"[Agent Node] LLM respondeu em {response_time}ms")
@@ -1806,6 +2002,9 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                     # que a próxima ferramenta nasça sem auditoria: quem
                     # esquecer de instrumentar continua registrado, porque o
                     # ponto de execução é um só.
+                    # 🔴 SPEC-116 U6b: anotado ANTES de executar — um turno
+                    # que caiu no meio de uma ferramenta não é refeito.
+                    _anotar_tool_iniciada()
                     registro = _abrir_registro_de_invocacao(
                         state, tool_name=tool_name, tool_args=tool_args)
                     with registro:
@@ -2056,7 +2255,13 @@ def log_node(state: AgentState, supabase_client) -> dict:
 
         # Priority: Agent > Company > Default
         llm_provider = agent_data.get("llm_provider") or company_config.get("llm_provider") or "openai"
-        llm_model = agent_data.get("llm_model") or company_config.get("llm_model") or "gpt-4-turbo"
+        # 🔴 SPEC-116 U7 (CLAUDE.md §12.1, o corolário do campo que mente): o
+        # rótulo era o CONFIGURADO, com um default inventado quando faltava. Agora
+        # é o modelo que RESPONDEU, lido da última resposta; sem ela, o
+        # configurado; sem nenhum, "desconhecido" (📊 `conversation_logs.llm_model`
+        # é NOT NULL) — nunca um nome de modelo que não rodou.
+        llm_model = _modelo_que_respondeu(state.get("messages") or []) or \
+            agent_data.get("llm_model") or company_config.get("llm_model") or "desconhecido"
         llm_temperature = agent_data.get("llm_temperature") or company_config.get("llm_temperature") or 0.7
 
         # Convert UUIDs to strings for JSON serialization
@@ -2100,6 +2305,16 @@ def log_node(state: AgentState, supabase_client) -> dict:
         logger.error(f"[Log Node] Erro ao salvar log: {e}")
 
     return {}
+
+
+def _modelo_que_respondeu(mensagens: list) -> Optional[str]:
+    for msg in reversed(mensagens):
+        if isinstance(msg, AIMessage) or getattr(msg, "type", None) == "ai":
+            meta = getattr(msg, "response_metadata", None) or {}
+            modelo = meta.get("model_name") or meta.get("model")
+            if modelo:
+                return str(modelo)
+    return None
 
 
 def should_continue(state: AgentState) -> Literal["tools", "end"]:

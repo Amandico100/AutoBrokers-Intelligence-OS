@@ -16,6 +16,25 @@ from langchain_core.outputs import LLMResult
 logger = logging.getLogger(__name__)
 
 
+def provedor_pelo_catalogo(modelo: Optional[str]) -> Optional[str]:
+    """O provedor de um id de modelo segundo o catálogo. `None` se ninguém o conhece."""
+    nome = str(modelo or "").strip()
+    if not nome:
+        return None
+    try:
+        from app.factories.model_policy import catalogo
+
+        cat = catalogo()
+    except Exception:  # noqa: BLE001 — sem catálogo, sem palpite
+        return None
+    if nome in cat:
+        return cat[nome].get("provider")
+    candidatos = [k for k in cat if nome.startswith(k)]
+    if candidatos:
+        return cat[max(candidatos, key=len)].get("provider")
+    return None
+
+
 class CostCallbackHandler(BaseCallbackHandler):
     """
     LangChain callback handler that tracks token usage and costs.
@@ -29,6 +48,7 @@ class CostCallbackHandler(BaseCallbackHandler):
         agent_id: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
         model_name: str = None,  # <--- NOVO PARÂMETRO
+        provider: Optional[str] = None,
     ):
         """
         Initialize the cost callback handler.
@@ -39,11 +59,28 @@ class CostCallbackHandler(BaseCallbackHandler):
         self.agent_id = agent_id
         self.details = details or {}
         self.model_name = model_name  # <--- Armazena
+        #: SPEC-116 U7 — o provedor que a FÁBRICA resolveu. Quem o sabe é quem
+        #: construiu o cliente; adivinhar por prefixo do nome é o plano B.
+        self.provider = provider
+        #: run_id → metadados da chamada (o motivo da reserva chega por aqui,
+        #: no `config.metadata` de quem chamou — a fábrica não o conhece).
+        self._metadados_por_run: Dict[str, Dict[str, Any]] = {}
 
         # Import here to avoid circular imports
         from ...services.usage_service import get_usage_service
 
         self.usage_service = get_usage_service()
+
+    def on_chat_model_start(self, serialized, messages, *, run_id: UUID,  # noqa: ANN001
+                            parent_run_id: Optional[UUID] = None, tags=None,
+                            metadata: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
+        """Guarda só o que o ledger usa do `config.metadata` (o motivo da reserva)."""
+        try:
+            motivo = (metadata or {}).get("motivo_reserva")
+            if motivo:
+                self._metadados_por_run[str(run_id)] = {"motivo_reserva": str(motivo)}
+        except Exception:  # noqa: BLE001
+            pass
 
     def on_llm_end(
         self,
@@ -70,6 +107,9 @@ class CostCallbackHandler(BaseCallbackHandler):
 
             # Tenta pegar do output do LLM, se falhar, usa o que guardamos no init
             model = llm_output.get("model_name", self.model_name)
+            # SPEC-116 U7 — o modelo REAL que respondeu, como o provedor disse
+            # (📊 F13: streaming Anthropic só trazia o configurado).
+            modelo_real = None
 
             # Se ainda for unknown (ou llm_output for None), usa o forçado
             if model == "unknown" or not model:
@@ -85,6 +125,9 @@ class CostCallbackHandler(BaseCallbackHandler):
             if generations and len(generations) > 0 and len(generations[0]) > 0:
                 generation = generations[0][0]
 
+                meta_resp = getattr(getattr(generation, "message", None), "response_metadata", None) or {}
+                modelo_real = (meta_resp.get("model_name") or meta_resp.get("model")
+                               or llm_output.get("model_name") or None)
                 if hasattr(generation, "message") and hasattr(generation.message, "usage_metadata"):
                     meta = generation.message.usage_metadata
                     if meta:
@@ -93,7 +136,12 @@ class CostCallbackHandler(BaseCallbackHandler):
 
                         # Extrair Reasoning Tokens
                         output_details = meta.get("output_token_details") or {}
-                        reasoning_tokens = output_details.get("reasoning_tokens", 0)
+                        # ⚠️ SPEC-116 U7: a chave padrão do LangChain é `reasoning`
+                        # (`OutputTokenDetails`); `reasoning_tokens` é a do SDK da
+                        # OpenAI. Lendo só a segunda, o ledger gravava 0 sempre
+                        # (📊 EVIDENCIAS/03 §1.8: 0 linhas com raciocínio em 30 d).
+                        reasoning_tokens = (output_details.get("reasoning")
+                                            or output_details.get("reasoning_tokens") or 0)
 
                         # === CACHE TOKENS ===
                         input_details = meta.get("input_token_details") or {}
@@ -111,6 +159,14 @@ class CostCallbackHandler(BaseCallbackHandler):
 
                         # OpenAI: cached_tokens (já incluídos em input_tokens)
                         cached_tokens = input_details.get("cached_tokens", 0) or meta.get("cached_tokens", 0)
+
+                        # 📊 F12 (EVIDENCIAS/03): a langchain-openai põe o cache
+                        # da OpenAI em `input_token_details.cache_read` — o balde
+                        # da Anthropic, cobrado com o multiplicador dela. O
+                        # provedor decide o balde, não o nome do campo.
+                        if ((self._provedor_do_modelo(modelo_real or model) or "") != "anthropic"
+                                and cache_read_tokens and not cached_tokens):
+                            cached_tokens, cache_read_tokens = cache_read_tokens, 0
 
             # === ESTRATÉGIA 2: llm_output (Padrão Antigo / Legacy OpenAI) ===
             if input_tokens == 0 and output_tokens == 0:
@@ -133,12 +189,25 @@ class CostCallbackHandler(BaseCallbackHandler):
                 logger.debug(f"[CostCallback] No token usage found for model {model}")
                 return
 
+            if modelo_real and not llm_output.get("model_name"):
+                model = modelo_real
+
             # Prepara detalhes do log
             log_details = {
                 **self.details,
                 "run_id": str(run_id),
                 "reasoning_tokens": reasoning_tokens,  # 🧠 Salva o reasoning para análise futura
+                # SPEC-116 U7 — pedido × resolvido × REAL, e o cache dos dois lados.
+                "modelo_real": modelo_real or model,
+                "tokens_cache_leitura": int(cache_read_tokens or cached_tokens or 0),
+                "tokens_cache_escrita": int(cache_creation_tokens or 0),
             }
+            extra = self._metadados_por_run.pop(str(run_id), None) or {}
+            if extra.get("motivo_reserva"):
+                log_details["reserva_usada"] = True
+                log_details["motivo_reserva"] = extra["motivo_reserva"]
+            elif "reserva_usada" in log_details:
+                log_details.setdefault("motivo_reserva", None)
             if parent_run_id:
                 log_details["parent_run_id"] = str(parent_run_id)
 
@@ -208,25 +277,14 @@ class CostCallbackHandler(BaseCallbackHandler):
     # fato, não uma substituição — trocar de ledger com o produto no ar é
     # como trocar o pneu andando.
 
-    _PROVEDOR_POR_PREFIXO = (
-        ("claude", "anthropic"),
-        ("gpt", "openai"),
-        ("o1", "openai"),
-        ("o3", "openai"),
-        ("gemini", "google"),
-        ("llama", "meta"),
-        ("mistral", "mistral"),
-        ("deepseek", "deepseek"),
-        ("grok", "xai"),
-    )
-
-    @classmethod
-    def _provedor_do_modelo(cls, modelo: str) -> Optional[str]:
-        nome = (modelo or "").lower()
-        for prefixo, provedor in cls._PROVEDOR_POR_PREFIXO:
-            if prefixo in nome:
-                return provedor
-        return None
+    # SPEC-116 U7 — o provedor vem da FÁBRICA (`self.provider`) e, na falta
+    # dela, do CATÁLOGO (`llm_pricing`): o id exato, ou o id do catálogo que é
+    # prefixo do real ("gpt-4o-mini-2024-07-18" → "gpt-4o-mini"). ⛔ Sem mapa de
+    # prefixo de família aqui: um provedor novo entra por UMA linha do catálogo.
+    def _provedor_do_modelo(self, modelo: str) -> Optional[str]:
+        if getattr(self, "provider", None):
+            return self.provider
+        return provedor_pelo_catalogo(modelo)
 
     def _registrar_no_ledger(
         self,

@@ -7,7 +7,8 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from collections.abc import Mapping
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from cachetools import LRUCache
 from langchain_anthropic import ChatAnthropic
@@ -66,7 +67,18 @@ async def get_or_create_graph(
         updated_at = updated_at.isoformat()
 
     # 🔥 A chave agora inclui a data de atualização
-    cache_key = f"{company_id}:{agent_id}:{updated_at}"
+    # 🔴 SPEC-116: e a ROTA do papel. Trocar a rota no banco tem de mudar o
+    # modelo SEM deploy — com o grafo cacheado só por `updated_at` do agente, o
+    # modelo velho seguiria respondendo até o processo reiniciar. O resolvedor
+    # tem cache de 60 s: a troca vale em até 1 minuto.
+    try:
+        from app.factories.llm_factory import LLMFactory
+
+        _r = LLMFactory.resolver_para(agent_config, agent_config)
+        rota = f"{_r.provider}/{_r.model}/{_r.effort}/v{_r.versao_da_rota}"
+    except Exception as exc:  # noqa: BLE001 — quem constrói o grafo levanta o erro de verdade
+        rota = f"sem-rota:{type(exc).__name__}"
+    cache_key = f"{company_id}:{agent_id}:{updated_at}:{rota}"
 
     # LRUCache gerencia automaticamente a evição; invalidação centralizada cuida de versões antigas
     if cache_key in _graphs_cache:
@@ -113,51 +125,61 @@ def invalidate_agent_graph_cache(company_id: str, agent_id: str):
             pass  # Já foi removido por outra thread ou LRU eviction
 
 
-SUPPORTED_PROVIDERS = {
-    "openai": [
-        "gpt-5.2",
-        "gpt-5.2-pro",
-        "gpt-5.2-chat-latest",
-        "gpt-5.1",
-        "gpt-4o",
-        "gpt-4o-mini",
-        "o1",
-        "o1-mini",
-        "o3-mini",
-    ],
-    "anthropic": [
-        # `claude-opus-5` faltava, e esta lista NÃO é catálogo: `agent_config.py`
-        # a usa para VALIDAR (`Model 'x' not available for provider`). Sem ela
-        # aqui, configurar um agente com opus-5 era recusado — e a mensagem de
-        # erro falava de "provider", não de lista desatualizada.
-        "claude-opus-5",
-        "claude-sonnet-5",
-        # Mantido: agentes gravados no banco ainda podem apontar para ele, e
-        # removê-lo faria a configuração deles virar inválida na próxima
-        # gravação. Sai quando ninguém mais o usar.
-        "claude-opus-4-8",
-        "claude-haiku-4-5-20251001",
-        "claude-opus-4-6",
-        "claude-sonnet-4-6",
-        "claude-sonnet-4-5-20250929",
-        "claude-opus-4-20250514",
-        "claude-sonnet-4-20250514",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku-20241022",
-        "claude-3-opus-20240229",
-    ],
-    "google": [
-        "gemini-3-pro-preview",
-        "gemini-3-pro-preview-11-2025",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-    ],
-    "openrouter": [],  # Populated dynamically via sync from OpenRouter API
-}
+class _ProvedoresDoCatalogo(Mapping):
+    """`provedor → [modelos]` DERIVADO do catálogo (SPEC-116 U5).
+
+    Era uma lista escrita à mão — o 7º catálogo do repo (EVIDENCIAS/03 §3.0),
+    que recusava `claude-sonnet-5` na UI enquanto a produção rodava nele. Agora
+    é LEITURA de `llm_pricing` (cache de 60 s do Model Router): modelo de
+    CONVERSA com lifecycle usável (APPROVED · CANDIDATE · DEPRECATED).
+    BLOCKED/HISTORICAL somem daqui sozinhos. `openrouter` existe sempre (a
+    lista dele é sincronizada do próprio OpenRouter).
+
+    ⚠️ É um `Mapping` e não um `dict` congelado de propósito: `agent_config.py`
+    importa o objeto uma vez e pergunta `in`/`.get`/`.keys()` a cada pedido.
+    """
+
+    def _agora(self) -> Dict[str, List[str]]:
+        from app.factories.model_policy import LIFECYCLES_USAVEIS, catalogo
+
+        saida: Dict[str, List[str]] = {"openrouter": []}
+        for nome, linha in sorted(catalogo().items()):
+            if linha.get("tipo") != "chat" or linha.get("lifecycle") not in LIFECYCLES_USAVEIS:
+                continue
+            saida.setdefault(str(linha.get("provider") or ""), []).append(nome)
+        saida.pop("", None)
+        return saida
+
+    def __getitem__(self, chave: str) -> List[str]:
+        return self._agora()[chave]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._agora())
+
+    def __len__(self) -> int:
+        return len(self._agora())
+
+
+SUPPORTED_PROVIDERS = _ProvedoresDoCatalogo()
+
+#: Os pacotes de SDK de MODELO. Um erro que nasce num deles é do provedor do
+#: modelo, nunca do pool do Postgres — por mais que a mensagem diga "connection".
+_PACOTES_DE_PROVEDOR_DE_MODELO = ("openai", "anthropic", "google", "groq", "httpx", "httpcore",
+                                  "langchain_openai", "langchain_anthropic",
+                                  "langchain_google_genai")
+
+
+def _erro_do_provedor_de_modelo(exc: BaseException) -> bool:
+    vistos: set = set()
+    atual: Optional[BaseException] = exc
+    while atual is not None and id(atual) not in vistos:
+        vistos.add(id(atual))
+        raiz = (type(atual).__module__ or "").split(".")[0]
+        if raiz in _PACOTES_DE_PROVEDOR_DE_MODELO:
+            return True
+        atual = atual.__cause__ or atual.__context__
+    return False
+
 
 DEFAULT_SYSTEM_PROMPT = """Você é o AutoBrokers, copiloto operacional inteligente da corretora.
 Seja profissional, claro e objetivo nas suas respostas.
@@ -365,15 +387,16 @@ class LangChainService:
                 logger.error(f"[CONFIG] No active agents found for company {company_id}")
                 raise ValueError("CONFIG_REQUIRED: Nenhum Agente de IA encontrado.")
 
-            # 3. Obter API Key do .env baseado no provider/modelo do agente
+            # 3. Obter API Key do provedor que VAI responder
+            # 🔴 SPEC-116: é o provedor da ROTA do papel (o Model Router), não o
+            # gravado no agente — a rota pode ter trocado. Papel/provedor
+            # desconhecido levanta aqui, antes de qualquer chamada.
             from app.core.utils import get_api_key_for_provider
+            from app.factories.llm_factory import LLMFactory
 
-            llm_model = agent.get("llm_model", "")
-            llm_provider = agent.get("llm_provider", "")
-
-            # Usar função centralizada para obter API key
             try:
-                api_key = get_api_key_for_provider(llm_provider, llm_model)
+                _resolvido = LLMFactory.resolver_para(agent, agent)
+                api_key = get_api_key_for_provider(_resolvido.provider, _resolvido.model)
             except ValueError as e:
                 logger.error(f"[CONFIG] {e}")
                 raise
@@ -489,7 +512,13 @@ class LangChainService:
 
             # 7. Invocar Agente (LangGraph) - COM RETRY PARA POOL FECHADO
             from app.agents import invoke_agent
+            from app.agents.nodes import abrir_marcador_do_turno, fechar_marcador_do_turno
 
+            # 🔴 SPEC-116 U6b — o MARCADOR DO TURNO. O `tool_node` anota nele cada
+            # ferramenta ANTES de executá-la. Se o turno cair depois disso, ele
+            # NÃO é refeito: a ferramenta pode ter produzido efeito (mensagem,
+            # acionamento, portal) e refazer o turno a faria de novo.
+            marcador, _ficha_do_marcador = abrir_marcador_do_turno()
             try:
                 result = await invoke_agent(
                     graph=graph,
@@ -515,6 +544,22 @@ class LangChainService:
                     or "ssl" in error_msg
                     or "eof" in error_msg
                 )
+                # 🔴 SPEC-116 U6b (EVIDENCIAS/03 F4): o erro de rede do SDK do
+                # MODELO diz literalmente "Connection error." — e o turno inteiro
+                # era refeito, ferramentas inclusive. Erro de provedor de modelo
+                # não é pool: o SDK já repetiu a CHAMADA (max_retries) e a reserva
+                # da rota já foi tentada no nó. E nenhum turno que já executou
+                # ferramenta é refeito, por motivo nenhum.
+                if is_pool_error and _erro_do_provedor_de_modelo(e):
+                    logger.warning("[LANGCHAIN] erro do provedor do modelo (%s) — o turno NÃO "
+                                   "é refeito (o SDK já repetiu a chamada)", type(e).__name__)
+                    is_pool_error = False
+                if is_pool_error and marcador.tools_iniciadas:
+                    logger.error(
+                        "[LANGCHAIN] ⛔ %s depois de %d ferramenta(s) no turno — NÃO refaço o "
+                        "turno (efeito em dobro). Erro sobe.", type(e).__name__,
+                        marcador.tools_iniciadas)
+                    is_pool_error = False
 
                 if is_pool_error:
                     logger.warning(
@@ -563,6 +608,8 @@ class LangChainService:
                     logger.info("[LANGCHAIN] ✅ Retry successful after pool recovery")
                 else:
                     raise e  # Outro erro, deixa subir
+            finally:
+                fechar_marcador_do_turno(_ficha_do_marcador)
 
             response_text = result["response"]
 

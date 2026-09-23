@@ -5,8 +5,8 @@ O fio (SPEC-116 §4), atravessado com o MOTOR real e dublê SÓ na borda:
 
     agente do banco (agent_role='attendance', anthropic/claude-sonnet-5)
       → app/factories/llm_factory.py:LLMFactory.create_llm
-      → app/factories/model_policy.py:resolve_chat_model   (shim de hoje)
-      → model_policy.resolver('atendimento')  ← lê llm_papeis + llm_pricing
+      → LLMFactory.resolver_para → model_policy.resolver('atendimento')  ← lê llm_papeis + llm_pricing
+      → LLMFactory.construir (adaptador do provedor, capacidades → kwargs)
       → ChatAnthropic(...)  → _get_request_payload(...)  ← o que SAIRIA ao provedor
 
 Bordas dubladas: o BANCO (`model_policy.leitor_do_banco` devolve o snapshot, e o
@@ -19,11 +19,11 @@ O que prova (G1 da SPEC-116 §9):
     e voltar a rota volta o payload (linha de controle);
   · a rota VENCE o `llm_model` gravado no agente, para papel com rota.
 
-⚠️ O que é da F2 (exceção declarada, `xfail(strict=True)`): o ESFORÇO da rota
-chegar ao payload e o provedor desconhecido virar ERRO na fábrica. Hoje a
-fábrica ignora o effort para Claude e cai no gpt-4o-mini com provedor
-desconhecido; a F2 liga a fábrica ao resolvedor e APAGA os dois xfail — com
-`strict=True`, se passarem antes disso o teste fica vermelho e avisa.
+F2 (SPEC-116 U5) ligou a fábrica ao resolvedor e APAGOU os dois xfail: o
+ESFORÇO da rota chega ao payload (`output_config.effort`) e provedor/superfície
+desconhecidos são ERRO na fábrica — o `else → gpt-4o-mini` morreu. Trocar a rota
+para OUTRO provedor troca o cliente e a API (GPT-6 → Responses), sem tocar no
+agente.
 
 Rodar (de backend/):  python -m pytest -q tests/test_o_fio_do_modelo.py
 """
@@ -120,7 +120,9 @@ def test_fio_a_rota_semente_chega_ao_payload(banco):
     agente = dict(AGENTE)
     llm, p = _payload(agente)
     r = MP.resolver("atendimento")
-    assert type(llm).__name__ == "ChatAnthropic"
+    from langchain_anthropic import ChatAnthropic
+
+    assert isinstance(llm, ChatAnthropic), type(llm)  # o adaptador governado é um ChatAnthropic
     assert (r.model, r.origem, r.versao_da_rota) == ("claude-sonnet-5", "rota", 1)
     assert p["model"] == r.model
     assert "temperature" not in p, "Claude 5 rejeita temperature (400)"
@@ -157,7 +159,6 @@ def test_fio_chat_principal_segue_a_sua_rota_e_nao_a_do_atendimento(banco):
     assert (p_core["model"], p_atend["model"]) == ("claude-opus-5", "claude-sonnet-5")
 
 
-@pytest.mark.xfail(strict=True, reason="F2 liga a fábrica ao resolvedor: effort da rota no payload")
 def test_fio_o_esforco_da_rota_chega_ao_payload(banco):
     _, pap = banco
     _trocar_rota(pap, "atendimento", esforco="low")
@@ -165,9 +166,42 @@ def test_fio_o_esforco_da_rota_chega_ao_payload(banco):
     assert (p.get("output_config") or {}).get("effort") == "low", p.keys()
 
 
-@pytest.mark.xfail(strict=True, reason="F2: provedor desconhecido na fábrica vira ERRO (hoje cai no gpt-4o-mini)")
 def test_fio_provedor_desconhecido_na_fabrica_e_erro(banco):
     with pytest.raises(MP.ModeloNaoResolvido):
         LLMFactory.create_llm(
             {}, dict(AGENTE, agent_role="subagent", llm_provider="moonshot", llm_model="kimi-k3"),
             api_key=CHAVE_FALSA)
+
+
+def test_fio_esforco_nulo_na_rota_nao_inventa_esforco(banco):
+    """Linha de controle do esforço: rota sem esforço → nada de output_config
+    (o default do provedor), e o esforço gravado no AGENTE não vaza para a rota."""
+    _, p = _payload(dict(AGENTE, reasoning_effort="low"))
+    assert "output_config" not in p, p.get("output_config")
+
+
+def test_fio_rota_para_outro_provedor_troca_cliente_e_api(banco, monkeypatch):
+    """A rota do atendimento vai para GPT-6 Sol: o MESMO agente (anthropic
+    gravado) passa a sair pela Responses API, com reasoning.effort e store=False,
+    e com a chave do provedor RESOLVIDO (não a do agente)."""
+    _, pap = banco
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-teste-openai-falsa")
+    _trocar_rota(pap, "atendimento", provider="openai", modelo_primario="gpt-6-sol", esforco="low")
+    llm, p = _payload(dict(AGENTE))
+    assert type(llm).__name__ == "ChatOpenAIGovernado"
+    assert p["model"] == "gpt-6-sol"
+    assert "input" in p and "messages" not in p, "GPT-6 sai pela Responses API"
+    assert p.get("reasoning", {}).get("effort") == "low"
+    assert p.get("store") is False
+    assert "temperature" not in p and "stream_options" not in p
+    assert llm.openai_api_key.get_secret_value() == "sk-teste-openai-falsa"
+
+
+def test_fio_superficie_sem_adaptador_e_erro_e_nao_cai_no_mini(banco):
+    """G1 · o antigo `else → gpt-4o-mini`: uma rota que resolve para um modelo
+    sem adaptador de CONVERSA (rerank da Cohere) tem de ser ERRO, nunca um
+    ChatOpenAI no mini. Reintroduzir o `else` deixa este teste vermelho."""
+    _, pap = banco
+    _trocar_rota(pap, "atendimento", provider="cohere", modelo_primario="rerank-multilingual-v3.0")
+    with pytest.raises(MP.ModeloNaoResolvido):
+        LLMFactory.create_llm({}, dict(AGENTE), api_key=CHAVE_FALSA)

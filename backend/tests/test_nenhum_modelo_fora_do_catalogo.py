@@ -78,45 +78,13 @@ ALLOWLIST: dict = {
 #: pendência sumir do código e continuar aqui, e falha com literal NOVO.
 #: 📊 medido 23/09/2026 com `python tests/test_nenhum_modelo_fora_do_catalogo.py`.
 LITERAIS_PENDENTES_DAS_FATIAS: dict = {
-    # F2 — fábrica, mapas de família, histórico
-    "backend/app/factories/llm_factory.py": ("F2", {
-        "claude-fable", "claude-haiku-5", "claude-mythos", "gpt-5",
-        "meta-llama/llama-3.1-405b", "o1", "o3"}),
-    "backend/app/core/utils.py": ("F2", {"meta-llama/llama-3.1-405b", "o1", "o3"}),
-    "backend/app/core/callbacks/cost_callback.py": ("F2", {"o1", "o3"}),
-    "backend/app/services/langchain_service.py": ("F2", {
-        "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229",
-        "claude-opus-4-20250514", "claude-sonnet-4-20250514", "gemini-1.5-flash",
-        "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite",
-        "gemini-2.5-pro", "gemini-3-pro-preview", "gemini-3-pro-preview-11-2025", "gpt-5.1",
-        "gpt-5.2", "gpt-5.2-chat-latest", "gpt-5.2-pro", "o1", "o1-mini", "o3-mini"}),
-    "backend/app/agents/nodes.py": ("F2", {"gpt-4-turbo"}),
     # F3 — call sites por fora da fábrica
+    # ⚠️ (F2, 23/09) o literal restante de langchain_service.py mora no bloco de
+    # VISÃO (`_analyze_image` e o seu ramo, :440-480) — território da F3.
+    "backend/app/services/langchain_service.py": ("F3", {"claude-3-5-sonnet-20241022"}),
     "backend/app/services/vision_service.py": ("F3", {"claude-3-5-sonnet-20241022"}),
     "backend/app/services/atlas/atlas_parser.py": ("F3", {"gpt-5.1"}),
     "backend/app/agents/tools/subagent_tool.py": ("F3", {"gpt-4-turbo"}),
-    # F4 — nascimento e UI
-    "components/admin/AgentConfigModal.tsx": ("F4", {
-        "claude-3-5-sonnet-20240620", "claude-3-7-sonnet-20250219", "claude-opus-4-1-20250805",
-        "claude-opus-4-20250514", "claude-sonnet-4-20250514", "deepseek-chat", "gemini-2.5-flash",
-        "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-3-deep-think", "gemini-3.1-pro-preview",
-        "gpt-4.1", "gpt-5", "gpt-5.1", "gpt-5.2", "gpt-5.2-chat-latest", "grok-4",
-        "meta-llama/llama-3.1-405b-instruct", "mistral-large-latest", "o1", "o1-mini", "o3",
-        "o3-mini", "o3-pro"}),
-    "lib/admin/agent-health.ts": ("F4", {"gpt-3.5-turbo", "gpt-4.1-mini"}),
-    # SEM DONO na SPEC-116 §7 — whitelist do sync de preço do OpenRouter (reportado ao gerente)
-    "backend/app/api/pricing.py": ("SEM_DONO", {
-        "deepseek/deepseek-chat-v3-0324", "deepseek/deepseek-r1", "deepseek/deepseek-r1-0528",
-        "deepseek/deepseek-v3.2", "meta-llama/llama-3.1-405b-instruct",
-        "meta-llama/llama-3.1-70b-instruct", "meta-llama/llama-3.3-70b-instruct",
-        "meta-llama/llama-4-maverick", "meta-llama/llama-4-scout", "mistralai/codestral-2501",
-        "mistralai/devstral-medium", "mistralai/devstral-small", "mistralai/mistral-large-2411",
-        "mistralai/mistral-small-3.2-24b-instruct", "moonshotai/kimi-k2-0711",
-        "moonshotai/kimi-k2-0905", "moonshotai/kimi-k2.5", "qwen/qwen-2.5-72b-instruct",
-        "qwen/qwen-2.5-coder-32b-instruct", "qwen/qwen3-235b-a22b",
-        "qwen/qwen3-coder-480b-a35b-instruct", "qwen/qwen3.5-plus", "x-ai/grok-3",
-        "x-ai/grok-3-mini", "x-ai/grok-4", "x-ai/grok-4.1-fast", "x-ai/grok-code-fast-1",
-        "z-ai/glm-4.5-air", "z-ai/glm-4.7", "z-ai/glm-5"}),
 }
 
 

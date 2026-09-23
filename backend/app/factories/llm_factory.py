@@ -1,9 +1,30 @@
 """
-LLM Factory to decouple LLM creation from Graph logic.
+LLM Factory — a ÚNICA fábrica de modelos de conversa (CLAUDE.md §5).
+
+SPEC-116 F2 (U5): a fábrica deixou de escolher modelo. Quem escolhe é o Model
+Router (`app/factories/model_policy.py:resolver`), por PAPEL; a fábrica recebe
+um `ModeloResolvido` e traduz as CAPACIDADES do catálogo (`llm_pricing`) em
+kwargs do provedor — o jeito que CADA provedor exige:
+
+  Anthropic   esforço → `reasoning_effort` (langchain-anthropic ≥ 1.7.3 manda
+              `output_config.effort`); `sampling_ok=false` → nenhum
+              temperature/top_p/top_k sai (Claude 5 e Opus 4.7/4.8 dão 400);
+              `tool_choice_forcado_ok=false` → nunca `tool_choice` any/tool nem
+              `thinking` disabled/enabled (Opus 5.5 dá 400).
+  OpenAI      `api_surface=responses` → Responses API, `reasoning.effort`,
+              `store=False` (o estado é o NOSSO checkpointer), sem temperature
+              quando `sampling_ok=false`; `chat_completions` segue como antes.
+  Google      esforço → `thinking_level`.
+  compatível  provedor OpenAI-compatível (xAI, DeepSeek, Z.ai, MiMo…) entra
+              por UMA linha do catálogo (`base_url` + `api_key_env`) e o
+              raciocínio (`reasoning_content`) VAI e VOLTA entre rodadas.
+
+⛔ Nada cai no mini. Provedor, modelo ou superfície sem adaptador →
+`ModeloNaoResolvido`. O antigo `else → gpt-4o-mini` e o `or "gpt-4o"` morreram.
 """
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -14,9 +35,9 @@ from app.core.config import settings
 from app.core.relogio_do_modelo import (
     RelogioDoModeloCallback,
     kwargs_de_relogio,
-    provedor_normalizado,
 )
-from app.factories.model_policy import resolve_chat_model
+from app.factories import model_policy as MP
+from app.factories.model_policy import ModeloNaoResolvido, ModeloResolvido, papel_do_agente
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +78,21 @@ PISO_DE_SAIDA_DA_CONVERSA = int(os.getenv("PISO_DE_SAIDA_DA_CONVERSA", "8192"))
 #: sem mudar um byte do que chega a alguém.
 PAPEIS_QUE_CONVERSAM = ("", "core", "attendance", "insured_external")
 
+#: 🔴 O PAPEL DE QUEM AINDA NÃO DECLARA PAPEL (SPEC-116 F2 → F3).
+#:
+#: Os chamadores de plataforma (despacho, destilador, atlas, marca, conselho…)
+#: passam um `agent_data` montado na hora — `{"llm_provider", "llm_model"}`, SEM
+#: a chave `agent_role`. Tratá-los como `chat_principal` (o que `papel_do_agente("")`
+#: devolve) trocaria o modelo DELES pela rota do chat: 📊 o despacho de produção
+#: roda `claude-opus-5` (EVIDENCIAS/02) e passaria a rodar `claude-sonnet-5` sem
+#: ninguém pedir. Então: sem `agent_role` no dicionário = papel SEM rota → o
+#: resolvedor aceita o modelo do chamador SÓ se ele estiver no catálogo com
+#: lifecycle usável (senão, ERRO). A F3 troca cada um pelo `papel=` dele.
+PAPEL_SEM_PAPEL = "sem_papel"
+
+#: Provedores cujo cliente é o `ChatOpenAI` NATIVO (sem base_url própria).
+_SUPERFICIES_OPENAI = ("chat_completions", "responses")
+
 
 def piso_de_saida(agent_role, max_tokens):
     """Devolve o teto de saída efetivo — nunca abaixo do piso, para quem conversa."""
@@ -70,43 +106,211 @@ def piso_de_saida(agent_role, max_tokens):
     return max(atual, PISO_DE_SAIDA_DA_CONVERSA)
 
 
+def _provedores_conhecidos() -> set:
+    try:
+        do_catalogo = {str(l.get("provider") or "") for l in MP.catalogo().values()}
+    except Exception:  # noqa: BLE001 — o conjunto fixo do resolvedor ainda vale
+        do_catalogo = set()
+    return set(MP.PROVEDORES_CONHECIDOS) | {p for p in do_catalogo if p}
+
+
+# ===========================================================================
+# ADAPTADORES — subclasses finas, DENTRO da fábrica (nada paralelo)
+# ===========================================================================
+def _sem_parametros_proibidos(payload: dict, capacidades: dict) -> dict:
+    """Tira do payload o que o catálogo diz que o modelo RECUSA (400).
+
+    ⚠️ Roda sobre o payload FINAL — é a última porta antes da rede. A
+    langchain-anthropic 1.7.3 move `temperature` para `extra_body` quando acha
+    que o modelo não aceita; a API recebe do mesmo jeito (📊 EVIDENCIAS/03 §2).
+    """
+    if capacidades.get("sampling_ok") is False:
+        for chave in ("temperature", "top_p", "top_k"):
+            payload.pop(chave, None)
+            if isinstance(payload.get("extra_body"), dict):
+                payload["extra_body"].pop(chave, None)
+        if payload.get("extra_body") == {}:
+            payload.pop("extra_body")
+    return payload
+
+
+class ChatAnthropicGovernado(ChatAnthropic):
+    """`ChatAnthropic` que obedece às capacidades do catálogo NO PAYLOAD.
+
+    Opus 5.5 (whats-new-opus-5-5): `tool_choice` any/tool → 400 e `thinking`
+    disabled/enabled → 400. O app não força hoje (📊 `grep -rn tool_choice app`
+    = 0), mas `with_structured_output()` e `bind_tools(tool_choice=…)` forçam
+    — e o próximo que usar não vai ler esta docstring. A porta é o payload.
+    """
+
+    capacidades_do_catalogo: Dict[str, Any] = {}
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):  # noqa: ANN001
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        caps = self.capacidades_do_catalogo or {}
+        if caps.get("tool_choice_forcado_ok") is False:
+            escolha = payload.get("tool_choice")
+            if isinstance(escolha, dict) and escolha.get("type") in ("any", "tool"):
+                novo = {"type": "auto"}
+                if "disable_parallel_tool_use" in escolha:
+                    novo["disable_parallel_tool_use"] = escolha["disable_parallel_tool_use"]
+                logger.warning("[Factory] %s recusa tool_choice forçado (%s) — enviado 'auto'",
+                               payload.get("model"), escolha.get("type"))
+                payload["tool_choice"] = novo
+            pensamento = payload.get("thinking")
+            if isinstance(pensamento, dict) and pensamento.get("type") in ("disabled", "enabled"):
+                payload.pop("thinking")
+        return _sem_parametros_proibidos(payload, caps)
+
+
+class ChatOpenAIGovernado(ChatOpenAI):
+    """`ChatOpenAI` que tira do payload o que o catálogo diz que o modelo recusa."""
+
+    capacidades_do_catalogo: Dict[str, Any] = {}
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):  # noqa: ANN001
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        return _sem_parametros_proibidos(payload, self.capacidades_do_catalogo or {})
+
+
+#: O campo em que os provedores compatíveis devolvem o raciocínio
+#: (DeepSeek, Kimi, MiMo, GLM — EVIDENCIAS/05 §3). DeepSeek dá 400 se ele não volta.
+CAMPO_DE_RACIOCINIO_PADRAO = "reasoning_content"
+
+
+class ChatOpenAICompativel(ChatOpenAIGovernado):
+    """Provedor OpenAI-compatível com o RACIOCÍNIO indo e voltando.
+
+    📊 langchain#40219 (aberta, 05/09/2026): `_get_request_payload` descarta
+    `reasoning_content` → 400 em tool call no DeepSeek. Aqui: (1) na RESPOSTA,
+    o campo vai para `additional_kwargs[campo]` (streaming e não-streaming);
+    (2) no PEDIDO, cada mensagem de assistente que o trouxe o devolve.
+    """
+
+    campo_de_raciocinio: str = CAMPO_DE_RACIOCINIO_PADRAO
+
+    def _create_chat_result(self, response, generation_info=None):  # noqa: ANN001
+        resultado = super()._create_chat_result(response, generation_info)
+        try:
+            dados = response if isinstance(response, dict) else response.model_dump()
+            for escolha, geracao in zip(dados.get("choices") or [], resultado.generations):
+                valor = (escolha.get("message") or {}).get(self.campo_de_raciocinio)
+                if valor:
+                    geracao.message.additional_kwargs[self.campo_de_raciocinio] = valor
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Factory] raciocínio não extraído da resposta: %s", type(exc).__name__)
+        return resultado
+
+    def _convert_chunk_to_generation_chunk(self, chunk, default_chunk_class, base_generation_info):  # noqa: ANN001
+        gen = super()._convert_chunk_to_generation_chunk(chunk, default_chunk_class, base_generation_info)
+        try:
+            escolhas = chunk.get("choices") or []
+            delta = (escolhas[0] or {}).get("delta") or {} if escolhas else {}
+            valor = delta.get(self.campo_de_raciocinio)
+            if gen is not None and valor:
+                gen.message.additional_kwargs[self.campo_de_raciocinio] = valor
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Factory] raciocínio do chunk não lido: %s", type(exc).__name__)
+        return gen
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):  # noqa: ANN001
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        try:
+            mensagens = self._convert_input(input_).to_messages()
+            saida = payload.get("messages") or []
+            if len(mensagens) == len(saida):
+                for original, convertida in zip(mensagens, saida):
+                    valor = (getattr(original, "additional_kwargs", None) or {}).get(
+                        self.campo_de_raciocinio)
+                    if valor and convertida.get("role") == "assistant":
+                        convertida[self.campo_de_raciocinio] = valor
+            else:  # nunca adivinhar o par: melhor um 400 visível que raciocínio no lugar errado
+                logger.warning("[Factory] %d mensagens → %d no payload: raciocínio não reenviado",
+                               len(mensagens), len(saida))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Factory] raciocínio não reenviado: %s", type(exc).__name__)
+        return payload
+
+
 class LLMFactory:
+    # ------------------------------------------------------------------
+    # O papel e o modelo — perguntados ao Model Router, nunca decididos aqui
+    # ------------------------------------------------------------------
+    @staticmethod
+    def resolver_para(company_config: Optional[Dict[str, Any]], agent_data: Optional[Dict[str, Any]],
+                      *, papel: Optional[str] = None,
+                      classe_de_dado: Optional[str] = None) -> ModeloResolvido:
+        """O `ModeloResolvido` que a fábrica vai construir para este chamador.
+
+        Papel: o explícito; senão o do agente (`agent_role` presente no
+        dicionário — agente do banco); senão `sem_papel` (chamador de
+        plataforma, ver `PAPEL_SEM_PAPEL`). ⛔ Provedor declarado que ninguém
+        conhece é ERRO — não vira openai, nem a rota.
+        """
+        agente = dict(agent_data or {})
+        corretora = dict(company_config or {})
+        declarado = agente.get("llm_provider") or corretora.get("llm_provider")
+        if declarado and str(declarado).strip().lower() not in _provedores_conhecidos():
+            raise ModeloNaoResolvido(f"provedor desconhecido {declarado!r}")
+        if papel is None:
+            papel = papel_do_agente(agente.get("agent_role")) if "agent_role" in agente \
+                else PAPEL_SEM_PAPEL
+        return MP.resolver(papel, agente=agente or None, corretora=corretora or None,
+                           classe_de_dado=classe_de_dado)
+
+    @staticmethod
+    def chave_para(resolvido: ModeloResolvido, api_key: Optional[str] = None,
+                   provedor_da_chave: Optional[str] = None) -> str:
+        """A chave do provedor RESOLVIDO.
+
+        A chave que o chamador trouxe só vale se foi escolhida para o MESMO
+        provedor (a rota pode ter mudado o provedor do agente). Senão, a do
+        catálogo (`api_key_env`), lida do ambiente. ⛔ Nunca exibida.
+        """
+        if api_key and (provedor_da_chave is None or provedor_da_chave == resolvido.provider):
+            return api_key
+        from app.core.utils import get_api_key_for_provider
+
+        return get_api_key_for_provider(resolvido.provider, resolvido.model)
+
+    # ------------------------------------------------------------------
     @staticmethod
     def create_llm(
         company_config: Dict[str, Any],
         agent_data: Optional[Dict[str, Any]],
-        api_key: str,
+        api_key: Optional[str] = None,
         company_id: str = None,
         agent_id: str = None,
         service_type: Optional[str] = None,
+        *,
+        papel: Optional[str] = None,
+        modelo_resolvido: Optional[ModeloResolvido] = None,
+        classe_de_dado: Optional[str] = None,
+        reserva_usada: bool = False,
     ):
+        """Constrói o modelo do PAPEL.
+
+        `papel=` — o trabalho (a F3 passa: "memoria", "visao", "dispatch"…).
+        `modelo_resolvido=` — quem já resolveu (o grafo, a bancada, a reserva).
+        Sem nenhum dos dois: papel do agente (`agent_role`) ou `sem_papel`.
+        ⛔ Levanta `ModeloNaoResolvido` — nunca devolve um modelo por omissão.
         """
-        Create LLM with hierarchy: Agent Config > Company Config.
-        """
-        if not api_key:
-            raise ValueError(
-                f"CRITICAL: API Key missing for agent {agent_id or 'Unknown'}."
-            )
+        company_config = company_config or {}
+        resolvido = modelo_resolvido or LLMFactory.resolver_para(
+            company_config, agent_data, papel=papel, classe_de_dado=classe_de_dado)
 
         source = agent_data if agent_data else company_config
-
-        provider = source.get("llm_provider") or company_config.get(
-            "llm_provider", "openai"
-        )
-        model = (source.get("llm_model") or company_config.get("llm_model")) or "gpt-4o"
-
-        # SPEC-013 FB-1: promove o Chat Principal (Core) a um modelo mais forte (temporário,
-        # CORE_CHAT_MODEL). Não engessa; Even/Auxiliares mantêm o modelo configurado.
-        model = resolve_chat_model((agent_data or {}).get("agent_role"), model)
+        provedor_da_chave = source.get("llm_provider") or company_config.get("llm_provider")
+        chave = LLMFactory.chave_para(resolvido, api_key, provedor_da_chave)
+        if not chave:
+            raise ValueError(f"CRITICAL: API Key missing for agent {agent_id or 'Unknown'}.")
 
         temp_val = source.get("llm_temperature")
         if temp_val is None:
             temp_val = company_config.get("llm_temperature", 0.7)
         temperature = float(temp_val)
 
-        max_tokens = source.get("llm_max_tokens") or company_config.get(
-            "llm_max_tokens", 8192
-        )
+        max_tokens = source.get("llm_max_tokens") or company_config.get("llm_max_tokens", 8192)
         # 🔴 Um número velho no banco não corta a resposta pela metade.
         max_tokens_gravado = max_tokens
         max_tokens = piso_de_saida((agent_data or {}).get("agent_role"), max_tokens)
@@ -118,191 +322,225 @@ class LLMFactory:
                 (agent_data or {}).get("agent_role"), agent_id or "-",
             )
 
-        reasoning_effort = source.get("reasoning_effort") or "medium"
+        logger.info("[Factory] papel=%s → %s/%s esforço=%s (%s, rota v%s)",
+                    resolvido.papel, resolvido.provider, resolvido.model, resolvido.effort,
+                    resolvido.origem, resolvido.versao_da_rota)
 
-        # Logic for reasoning models (fixed temperature)
-        use_temperature = True
-        if model.startswith("o1") or model.startswith("o3") or model.startswith("gpt-5"):
-            use_temperature = False
-
-        logger.info(
-            f"[Factory] Creating LLM: provider={provider}, model={model}, "
-            f"temp={temperature if use_temperature else 'fixed'}"
-        )
-
-        # O callback de custo é SEMPRE anexado.
-        #
-        # Antes ele só entrava quando havia `company_id`, e isso abria um buraco
-        # grande: todo trabalho de PLATAFORMA — o Tecelão resolvendo rotas
-        # ambíguas com Opus 5, o Destilador do Espelho, o Cartógrafo — roda sem
-        # corretora dona e ficava **invisível no ledger**.
-        #
-        # Medido em 28/07/2026: `token_usage_logs` com ZERO chamadas em três
-        # horas, enquanto o console da Anthropic mostrava US$ 0,54 gastos. O
-        # dinheiro saía e o sistema não sabia dizer em quê.
-        #
-        # `service_type` distingue: consumo de corretora é "chat"; o que a
-        # plataforma gasta por conta própria é "plataforma", e some do custo por
-        # corretora sem sumir do total.
-        #
-        # SPEC-098 R12 — "custo com nome": um trabalho que NÃO é conversa não
-        # pode entrar no ledger como se fosse. A leitura do site da corretora
-        # tem `company_id` (é dela o gasto) e cairia em "chat" pela regra antiga,
-        # somando ao custo de atendimento uma linha que nunca foi atendimento.
-        # Quem sabe o que está fazendo passa `service_type`; os 11 chamadores de
-        # hoje não passam nada e continuam decididos pela mesma regra.
+        # O callback de custo é SEMPRE anexado (📊 28/07/2026: plataforma sem
+        # `company_id` ficava invisível no ledger). `service_type` distingue
+        # consumo de corretora ("chat") do da plataforma; SPEC-098 R12: quem sabe
+        # o que está fazendo passa `service_type`.
+        # SPEC-116 U7: o ledger grava QUEM pediu o quê e o que RESPONDEU —
+        # papel · pedido · resolvido · real · esforço · rota · reserva.
         callbacks = [
             CostCallbackHandler(
                 service_type=service_type or ("chat" if company_id else "plataforma"),
                 company_id=company_id,
                 agent_id=agent_id,
-                model_name=model,
+                model_name=resolvido.model,
+                details=LLMFactory.detalhes_do_ledger(
+                    resolvido, modelo_pedido=(source or {}).get("llm_model"),
+                    reserva_usada=reserva_usada),
+                provider=resolvido.provider,
             ),
-            # 🔴 QUEM DESCOBRE QUE O PROVEDOR CAIU (SPEC-EXTRA-001.8 §7.4).
-            # Aqui é o único lugar por onde TODA chamada de modelo do sistema
-            # passa — os 15 chamadores de `create_llm`, o nó `agent`, os
-            # subagentes e o streaming. Um sensor num gargalo é um sensor;
-            # quinze espalhados são quinze lugares para esquecer.
-            # ⛔ O callback ALIMENTA; quem BLOQUEIA é quem pergunta
-            # `provedor_disponivel()` ANTES de consumir a mensagem — quando este
-            # roda, a chamada já saiu.
-            # ⚠️ O Cost continua sendo `callbacks[0]`: há guarda que lê por
-            # índice (`tests/test_098_builder_a_unit.py:325`).
-            RelogioDoModeloCallback(provedor_normalizado(provider)),
+            # 🔴 QUEM DESCOBRE QUE O PROVEDOR CAIU (SPEC-EXTRA-001.8 §7.4): o
+            # sensor mora no gargalo. ⚠️ O Cost continua sendo `callbacks[0]`:
+            # há guarda que lê por índice (`tests/test_098_builder_a_unit.py:325`).
+            RelogioDoModeloCallback(resolvido.provider),
         ]
-
-        if provider == "openai":
-            return LLMFactory._create_openai(
-                model, api_key, max_tokens, temperature, use_temperature,
-                reasoning_effort, callbacks
-            )
-        elif provider == "anthropic":
-            return LLMFactory._create_anthropic(
-                model, api_key, max_tokens, temperature, callbacks
-            )
-        elif provider == "google":
-            return LLMFactory._create_google(
-                model, api_key, max_tokens, temperature, callbacks
-            )
-        elif provider == "openrouter":
-            return LLMFactory._create_openrouter(
-                model, api_key, max_tokens, temperature, callbacks
-            )
-        else:
-            logger.warning(f"Unknown provider '{provider}', using OpenAI fallback")
-            return LLMFactory._create_openai(
-                "gpt-4o-mini", api_key, max_tokens, temperature, True, "medium", callbacks
-            )
+        return LLMFactory.construir(resolvido, chave, max_tokens=max_tokens,
+                                    temperature=temperature, callbacks=callbacks)
 
     @staticmethod
-    def _create_openai(model, api_key, max_tokens, temperature, use_temp, reasoning_effort, callbacks):
-        model_kwargs = {}
-        if model.startswith("o1") or model.startswith("o3"):
-            model_kwargs["reasoning_effort"] = reasoning_effort
+    def criar_de_resolvido(resolvido: ModeloResolvido, *, callbacks: Optional[List[Any]] = None,
+                           api_key: Optional[str] = None, company_id: Optional[str] = None,
+                           agent_id: Optional[str] = None, service_type: Optional[str] = None,
+                           max_tokens: int = 8192, temperature: float = 0.7):
+        """Para a BANCADA e para quem já tem o `ModeloResolvido` na mão.
 
-        llm_params = {
-            "model": model,
+        ⛔ O ledger continua: os callbacks do chamador ENTRAM junto dos dois de
+        sempre (custo + relógio), nunca no lugar deles.
+        """
+        llm = LLMFactory.create_llm(
+            {}, {"llm_max_tokens": max_tokens, "llm_temperature": temperature},
+            api_key=api_key, company_id=company_id, agent_id=agent_id,
+            service_type=service_type, modelo_resolvido=resolvido)
+        if callbacks:
+            llm.callbacks = list(llm.callbacks or []) + list(callbacks)
+        return llm
+
+    @staticmethod
+    def detalhes_do_ledger(resolvido: ModeloResolvido, *, modelo_pedido: Optional[str],
+                           reserva_usada: bool) -> Dict[str, Any]:
+        return {
+            "papel": resolvido.papel,
+            "modelo_pedido": modelo_pedido,
+            "modelo_resolvido": resolvido.model,
+            "provedor_resolvido": resolvido.provider,
+            "esforco": resolvido.effort,
+            "origem_da_rota": resolvido.origem,
+            "versao_da_rota": resolvido.versao_da_rota,
+            "reserva_usada": bool(reserva_usada),
+        }
+
+    # ------------------------------------------------------------------
+    # capacidades → kwargs
+    # ------------------------------------------------------------------
+    @staticmethod
+    def construir(resolvido: ModeloResolvido, api_key: str, *, max_tokens, temperature: float,
+                  callbacks: list):
+        prov, sup = resolvido.provider, resolvido.api_surface
+        if prov == "anthropic" and sup == "messages":
+            return LLMFactory._create_anthropic(resolvido, api_key, max_tokens, temperature, callbacks)
+        if prov == "openai" and sup in _SUPERFICIES_OPENAI:
+            return LLMFactory._create_openai(resolvido, api_key, max_tokens, temperature, callbacks)
+        if prov == "google" and sup == "generate_content":
+            return LLMFactory._create_google(resolvido, api_key, max_tokens, temperature, callbacks)
+        if prov == "openrouter":
+            return LLMFactory._create_openrouter(resolvido, api_key, max_tokens, temperature, callbacks)
+        if sup == "openai_compat":
+            return LLMFactory._create_openai_compat(resolvido, api_key, max_tokens, temperature,
+                                                    callbacks)
+        # ⛔ O `else → gpt-4o-mini` morreu aqui (SPEC-116 G1).
+        raise ModeloNaoResolvido(
+            f"papel {resolvido.papel!r}: sem adaptador de conversa para "
+            f"{prov!r}/{sup!r} ({resolvido.model!r})")
+
+    @staticmethod
+    def _esforco(resolvido: ModeloResolvido) -> Optional[str]:
+        e = resolvido.effort
+        return e if e and e in MP.NIVEIS_DE_ESFORCO else None
+
+    @staticmethod
+    def _create_openai(resolvido: ModeloResolvido, api_key, max_tokens, temperature, callbacks):
+        caps = resolvido.capacidades or {}
+        esforco = LLMFactory._esforco(resolvido)
+        llm_params: Dict[str, Any] = {
+            "model": resolvido.model,
             "max_tokens": max_tokens,
             "openai_api_key": api_key,
             "callbacks": callbacks,
             "streaming": True,
+            "capacidades_do_catalogo": caps,
         }
-
-        if use_temp:
+        if caps.get("sampling_ok") is not False:
             llm_params["temperature"] = temperature
 
-        if model_kwargs:
-            llm_params["model_kwargs"] = model_kwargs
+        if resolvido.api_surface == "responses":
+            # GPT-6: tools + raciocínio SÓ na Responses (📊 doc gpt-6-sol;
+            # langchain#40346). `store=False`: nada fica no servidor alheio — o
+            # estado é o checkpointer. Sem `store`, o raciocínio só volta pelo
+            # `encrypted_content`, por isso o `include`.
+            llm_params["use_responses_api"] = True
+            llm_params["store"] = False
+            if esforco:
+                llm_params["reasoning"] = {"effort": esforco}
+                llm_params["include"] = ["reasoning.encrypted_content"]
+            # Responses conta o uso sozinha — sem `stream_options.include_usage`.
+        else:
+            if esforco and caps.get("reasoning_param") in ("reasoning.effort", "reasoning_effort"):
+                llm_params["reasoning_effort"] = esforco
+            llm_params["model_kwargs"] = {"stream_options": {"include_usage": True}}
 
-        # Force usage metadata
-        if "model_kwargs" not in llm_params:
-            llm_params["model_kwargs"] = {}
-        llm_params["model_kwargs"]["stream_options"] = {"include_usage": True}
-
-        # 🔴 O RELÓGIO (SPEC-EXTRA-001.8 §7.1) — OpenAI. Campo `request_timeout`,
-        # alias `timeout`; é ele que o guarda lê no objeto.
+        # 🔴 O RELÓGIO (SPEC-EXTRA-001.8 §7.1) — campo `request_timeout`, alias `timeout`.
         llm_params.update(kwargs_de_relogio())
-
-        return ChatOpenAI(**llm_params)
-
-    @staticmethod
-    def _anthropic_supports_temperature(model: str) -> bool:
-        """A família Claude 5 (Sonnet/Opus/Haiku 5, Mythos, Fable) REJEITA o
-        parâmetro `temperature` (API 400: 'temperature is deprecated for this
-        model'). Modelos 3.x/4.x ainda aceitam."""
-        m = (model or "").lower()
-        blocked = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-5", "claude-mythos", "claude-fable")
-        return not any(m.startswith(p) for p in blocked)
+        return ChatOpenAIGovernado(**llm_params)
 
     @staticmethod
-    def _create_anthropic(model, api_key, max_tokens, temperature, callbacks):
-        params = {
-            "model": model,
+    def _create_anthropic(resolvido: ModeloResolvido, api_key, max_tokens, temperature, callbacks):
+        caps = resolvido.capacidades or {}
+        params: Dict[str, Any] = {
+            "model": resolvido.model,
             "max_tokens": max_tokens,
             "anthropic_api_key": api_key,
             "callbacks": callbacks,
             "streaming": True,
-            "model_kwargs": {
-                "extra_headers": {
-                    "anthropic-beta": "prompt-caching-2024-07-31"
-                }
-            },
+            "capacidades_do_catalogo": caps,
+            # ⚠️ o header beta `prompt-caching-2024-07-31` saiu: o cache é GA e o
+            # `cache_control` do bloco estático (`nodes.py`) é o que liga.
         }
-        # Só envia temperature quando o modelo aceita (Claude 5 a rejeita → 400).
-        if LLMFactory._anthropic_supports_temperature(model):
+        # Claude 5 e Opus 4.7/4.8 REJEITAM sampling (400) — decidido pelo
+        # CATÁLOGO, não por prefixo de nome (EVIDENCIAS/03 F5).
+        if caps.get("sampling_ok") is not False:
             params["temperature"] = temperature
-        # 🔴 O RELÓGIO — Anthropic. Campo `default_request_timeout`, alias
-        # `timeout`. `max_retries` já vinha 2 por default do SDK; agora o número
-        # é NOSSO e muda por env junto com os outros três.
+        esforco = LLMFactory._esforco(resolvido)
+        if esforco and caps.get("reasoning_param") == "output_config.effort":
+            params["reasoning_effort"] = esforco
+        # 🔴 O RELÓGIO — Anthropic. Campo `default_request_timeout`, alias `timeout`.
         params.update(kwargs_de_relogio())
-        return ChatAnthropic(**params)
+        return ChatAnthropicGovernado(**params)
 
     @staticmethod
-    def _create_google(model, api_key, max_tokens, temperature, callbacks):
-        # 🔴 O RELÓGIO — Google. Campo `timeout`, alias `request_timeout`.
-        # ⚠️ Aqui o `max_retries` importa MAIS que nos outros: o default do SDK é
-        # 6 e o retry dele repete `GoogleAPIError`, do qual `Unauthenticated`
-        # herda (📊 `langchain_google_genai/chat_models.py:176-205`) — isto é,
-        # ele repete credencial recusada. Baixar para 2 corta o estrago; a
-        # classificação errada do SDK fica registrada como pendência.
-        return ChatGoogleGenerativeAI(
-            model=model,
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-            google_api_key=api_key,
-            callbacks=callbacks,
-            streaming=True,
-            **kwargs_de_relogio(),
-        )
-
-    @staticmethod
-    def _create_openrouter(model, api_key, max_tokens, temperature, callbacks):
-        """
-        Cria LLM via OpenRouter usando ChatOpenAI com base_url customizada.
-        OpenRouter é 100% compatível com a API OpenAI.
-        Model IDs usam formato "provider/model" (ex: "meta-llama/llama-3.1-405b").
-        """
-        llm_params = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "openai_api_key": api_key,
-            "base_url": settings.OPENROUTER_BASE_URL,
+    def _create_google(resolvido: ModeloResolvido, api_key, max_tokens, temperature, callbacks):
+        # 🔴 O RELÓGIO — Google. ⚠️ `max_retries` importa mais aqui: o SDK repete
+        # `Unauthenticated` (📊 `langchain_google_genai/chat_models.py:176-205`).
+        caps = resolvido.capacidades or {}
+        params: Dict[str, Any] = {
+            "model": resolvido.model,
+            "max_output_tokens": max_tokens,
+            "google_api_key": api_key,
             "callbacks": callbacks,
             "streaming": True,
+        }
+        if caps.get("sampling_ok") is not False:
+            params["temperature"] = temperature
+        esforco = LLMFactory._esforco(resolvido)
+        if esforco and caps.get("reasoning_param") == "thinking_level":
+            params["thinking_level"] = esforco
+        params.update(kwargs_de_relogio())
+        return ChatGoogleGenerativeAI(**params)
+
+    @staticmethod
+    def _create_openrouter(resolvido: ModeloResolvido, api_key, max_tokens, temperature, callbacks):
+        """OpenRouter: `ChatOpenAI` com a base_url dele. Ids "provedor/modelo"."""
+        caps = resolvido.capacidades or {}
+        llm_params: Dict[str, Any] = {
+            "model": resolvido.model,
+            "max_tokens": max_tokens,
+            "openai_api_key": api_key,
+            "base_url": resolvido.base_url or settings.OPENROUTER_BASE_URL,
+            "callbacks": callbacks,
+            "streaming": True,
+            "capacidades_do_catalogo": caps,
             "default_headers": {
                 "HTTP-Referer": settings.FRONTEND_URL,
                 "X-Title": "AutoBrokers",
             },
-            "model_kwargs": {
-                "stream_options": {"include_usage": True},
-            },
+            "model_kwargs": {"stream_options": {"include_usage": True}},
         }
-
-        # 🔴 O RELÓGIO — OpenRouter. É `ChatOpenAI` com outra `base_url`, então o
-        # campo lido é o mesmo `request_timeout`. ⚠️ O roteador acrescenta a
-        # espera DELE por cima da do provedor de destino; o teto único é o que
-        # impede essa soma de ficar sem fim.
+        if caps.get("sampling_ok") is not False:
+            llm_params["temperature"] = temperature
+        # 🔴 O RELÓGIO — OpenRouter soma a espera DELE à do destino; o teto é único.
         llm_params.update(kwargs_de_relogio())
+        return ChatOpenAIGovernado(**llm_params)
 
-        return ChatOpenAI(**llm_params)
+    @staticmethod
+    def _create_openai_compat(resolvido: ModeloResolvido, api_key, max_tokens, temperature,
+                              callbacks):
+        """Provedor OpenAI-compatível NOVO = uma linha do catálogo (base_url + api_key_env)."""
+        if not resolvido.base_url:
+            raise ModeloNaoResolvido(
+                f"{resolvido.provider}/{resolvido.model}: linha do catálogo sem base_url")
+        caps = resolvido.capacidades or {}
+        esforco = LLMFactory._esforco(resolvido)
+        llm_params: Dict[str, Any] = {
+            "model": resolvido.model,
+            "max_tokens": max_tokens,
+            "openai_api_key": api_key,
+            "base_url": resolvido.base_url,
+            "callbacks": callbacks,
+            "streaming": True,
+            "stream_usage": True,
+            "capacidades_do_catalogo": caps,
+            "campo_de_raciocinio": caps.get("campo_de_raciocinio") or CAMPO_DE_RACIOCINIO_PADRAO,
+        }
+        if caps.get("sampling_ok") is not False:
+            llm_params["temperature"] = temperature
+        param = caps.get("reasoning_param")
+        if esforco and param in ("reasoning_effort", "reasoning.effort"):
+            llm_params["reasoning_effort"] = esforco
+        elif esforco and param == "thinking":  # MiMo: none | high
+            llm_params["extra_body"] = {
+                "thinking": {"type": "disabled" if esforco == "none" else "enabled"}}
+        llm_params.update(kwargs_de_relogio())
+        return ChatOpenAICompativel(**llm_params)
