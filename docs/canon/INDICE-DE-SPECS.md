@@ -86,6 +86,7 @@ entre elas**. Um chat por SPEC joga fora esse ganho.
 | **093-B** | O sinistro deixa rastro (protocolo v11 · nível CRÍTICO · zero migration) | 03/09 |
 | **094** | O Pulso 360 não pertence à InfoCap (v11.1→v11.2 · CRÍTICO · censo + CBIM + registry + canário vivo) | 03/09 |
 | **094.1** | A fábrica de relatórios (v11.2 opção B · CRÍTICO · 12 métricas, SUSEP × carteira, proposta com Approval, protocolo escrito) | 04/09 |
+| **116** | Cada trabalho no modelo que provou servir — Model Router + Bancada E2E (v13 · CRÍTICO · **medição parcial, Onda A parcial**; [relatório](reports/SPEC-116-EXECUTION-REPORT.md)) | 23/09 |
 
 ## ⬜ OS BURACOS — e nenhum precisa de ação
 
@@ -265,6 +266,11 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     📊 492 serviços em 108 planos e 8 seguradoras, escritos por leitores do plano, 0 chamada de API de modelo).
 ✅   SPEC-EXTRA-001.7 · O piloto medido — CONCLUÍDA (instrumento) 20/09/2026 (nota 86; `main` `b3d88f1`;
     📊 7 defeitos materiais achados antes do push). Os 3 dias de piloto são do Founder (P-E0017-09).
+🟡   SPEC-116 · Cada trabalho no modelo que provou servir (Model Router + Bancada E2E) — CONCLUÍDA COM MEDIÇÃO PARCIAL
+    23/09/2026 (Onda A parcial; juiz 74 ‖ red team 78 → conserto único `be8b033`): 1 catálogo, rotas por papel no banco,
+    resolvedor que erra em vez de cair no mini, bancada sobre a Eval Fabric. 📊 memória, visão e portal trocados pela
+    bancada; chat/atendimento/cobrança/dispatch esperam crédito (P-S116-01/02). SPEC `specs/SPEC-116-cada-trabalho-no-
+    modelo-que-provou-servir.md` · relatório `reports/SPEC-116-EXECUTION-REPORT.md` · 27 P-S116-*.
 💡   IDEIA · SPEC-115 · O Placar — as medições moram no painel (`specs-propostas/IDEIA-SPEC-115-PLACAR-E-MEDICOES-NO-PAINEL.md`)
     — **ideia registrada, não é SPEC**; depois da 114, por decisão do Founder de 20/09.
 💡   IDEIA · bloco EXTRA-001.11 · pendências que pesam (`specs-propostas/IDEIA-BLOCO-EXTRA-001.11-PENDENCIAS-QUE-PESAM.md`)

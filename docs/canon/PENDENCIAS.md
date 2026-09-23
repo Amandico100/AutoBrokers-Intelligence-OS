@@ -11343,3 +11343,161 @@ toda renovação que precisar de uma segunda volta morre em silêncio.
 📊 22/09/2026 (laudo F1a): um run que parou para aprovação humana é marcado como concluído pelo worker — o
 Approval hoje não segura nada (por isso D-E002-04 recomenda "o corretor revisa e envia" na v1). **Destrava:** a
 **EXTRA-003-A** cura. **Dono:** 🤖. **Custo de esquecer:** qualquer envio "sob aprovação" sai sem aprovação.
+
+---
+
+# SPEC-116 · Model Router + Bancada E2E (23/09/2026)
+
+> O que a SPEC-116 deixou por fazer. Relatório: `reports/SPEC-116-EXECUTION-REPORT.md` · evidência:
+> `specs-propostas/SPEC-116-EVIDENCIAS/06-resultado-da-bancada.md`. Cada entrada: 📊 o fato · **Destrava:** ·
+> **Dono:** 🧑 Founder ou 🤖 execução · **Custo de esquecer:**.
+
+## P-S116-01 · 🔴 bancada N2 (atendimento e chat), dispatch e cobrança sem medição válida
+📊 23/09/2026 (EVIDENCIAS/06 §0, §3): atendimento N2 com 26/30 tentativas bloqueadas no Sonnet 5; dispatch deu o placar do
+`burro` (20 %) em todos os braços porque o motor engolia o erro do provedor (consertado na bancada, não remedido); cobrança
+sem nenhum braço com crít^k 100 %. Causa: crédito zerado + 4 processos em paralelo (rate limit). **Destrava:** crédito nas
+duas contas e rodar de novo, **um processo por provedor**, os grupos N2, dispatch e cobrança; só então decidir chat,
+atendimento, dispatch e cobrança. **Dono:** 🧑 crédito · 🤖 rodada. **Custo de esquecer:** os quatro trabalhos que o segurado
+mais lê continuam no modelo de hoje por falta de prova, não por prova.
+
+## P-S116-02 · 🔴 braços Anthropic não medidos depois de 19:18Z — reserva vazia em todas as rotas
+📊 23/09/2026: Sonnet 5 medium/high, Opus 5.5 medium/high, Haiku 4.5 com tools e toda a visão Anthropic ficaram
+`BLOCKED_BY_INFRA`; 📊 as 25 rotas têm `modelo_reserva` NULO. **Destrava:** crédito Anthropic + rodar os braços; a reserva
+de cada papel = melhor elegível de OUTRO provedor (SPEC §5). **Dono:** 🧑 crédito · 🤖 rodada e migration de dado.
+**Custo de esquecer:** queda de um provedor = o papel inteiro para, sem failover (o desenho já sabe usar a reserva).
+
+## P-S116-03 · Onda B armada, não promovida
+📊 23/09/2026: GPT-6 Luna empatou com o Sol no portal (📊 45/45 × 43/43) e na visão (📊 30/30 × 30/30) com custo por sucesso
+📊 ~0,0001 × 0,0014–0,0016 US$; a D-116-18 pôs o Sol (maior margem no P0). **Destrava:** tráfego vivo + critério de
+não-inferioridade (≥ vencedor − 1 pp no amplo, 100 % no crítico) + canário; um papel por vez. **Dono:** 🤖 (canário 🧑).
+**Custo de esquecer:** pagar ~15× mais por sucesso nos dois papéis sem ganho medido.
+
+## P-S116-04 · hyde, extrator de planos, juiz, transcrição e documento sem ouro
+📊 23/09/2026 (`bancada.PAPEIS`): hyde/extrator/juiz/transcrição BLOCKED por decisão (sem saída esperada ou sem áudio);
+`visao_documento` sem corpus de PDF. As rotas `hyde`, `chunking_agentico` e `visao_documento` seguem em `gpt-4o-mini`
+(DEPRECATED). **Destrava:** casos-ouro mascarados do acervo real para cada papel. **Dono:** 🤖. **Custo de esquecer:** o
+modelo DEPRECATED fica para sempre, porque sem ouro a regra D-116-11 nunca o deixa virar BLOCKED.
+
+## P-S116-05 · Gemini, Grok, MiMo, DeepSeek e GLM — BLOCKED LIVE
+📊 23/09/2026 (SPEC B0.11, D-116-06): sem chave local; adaptador e contrato com dublê prontos. PII bloqueada para provedores
+na China/Singapura sem cláusulas-padrão ANPD; Gemini só no tier pago. **Destrava:** `GOOGLE_API_KEY` no `backend/.env` +
+tier pago confirmado; os demais só em laboratório com dado sintético. **Dono:** 🧑. **Custo de esquecer:** nenhum hoje; a
+comparação de preço fica incompleta.
+
+## P-S116-06 · `whisper-1` desliga em 26/02/2027 e a fábrica não constrói STT
+📊 23/09/2026: rota `transcricao` = `whisper-1` (DEPRECATED, `retirada_em` 2027-02-26); `gpt-transcribe` é CANDIDATE; não há
+adaptador de transcrição na fábrica nem áudio-ouro. **Destrava:** adaptador STT + bancada PT-BR (D-116-13). **Dono:** 🤖.
+**Custo de esquecer:** em 26/02/2027 todo áudio do segurado deixa de ser lido.
+
+## P-S116-07 · Haiku 4.5 retirado a partir de 15/10/2026 — o auxiliar usa
+📊 23/09/2026: rota `auxiliar` = `claude-haiku-4-5-20251001`; não existe Haiku 5 (SPEC §2). **Destrava:** medir o auxiliar
+contra Luna/Sonnet 5 low e trocar a rota antes de 15/10. **Dono:** 🤖. **Custo de esquecer:** resumo e follow-up ao cliente
+param no dia da retirada.
+
+## P-S116-08 · 🔴 no atendimento o contexto da apólice nunca nasce
+📊 23/09/2026 (EVIDENCIAS/06 §1): o conector devolve só `client_name_masked/client_document_masked` para papel não-core e
+`nodes._safe_infocap_policy_context` exige `client_document` ou `client_name` → `None`. A regra "o ramo da apólice vence o do
+modelo" (`selected_policy_ramo` → `insurer_dispatch`) **nunca dispara** no atendimento. **Destrava:** o contexto aceitar os
+campos mascarados (ou o conector entregar um identificador opaco). **Dono:** 🤖. **Custo de esquecer:** o acionamento
+escolhe o ramo pelo que o modelo lembrou, não pela apólice.
+
+## P-S116-09 · docling-service lê o modelo por env
+📊 23/09/2026: `docling-service/app/config.py:28` `VISION_MODEL="gpt-4o-mini"`; trocar a rota `visao_documento` não troca o
+serviço. **Destrava:** `VISION_MODEL` no EasyPanel igual à rota, ou o serviço ler o snapshot. **Dono:** 🧑 env · 🤖 leitura.
+**Custo de esquecer:** duas verdades sobre o modelo que lê documento.
+
+## P-S116-10 · variáveis `*_MODEL`/`*_PROVIDER` de produção agora IGNORADAS
+📊 23/09/2026 (comentários "ficam IGNORADOS" no código): `PORTAL_VISION_MODEL` · `DISPATCH_LLM_PROVIDER` ·
+`DISPATCH_LLM_MODEL` · `ATLAS_PARSER_PROVIDER` · `ATLAS_PARSER_MODEL` · `DISTILLER_PROVIDER` · `DISTILLER_LLM_MODEL` ·
+`DISTILLER_STRONG_MODEL` · `COUNCIL_LEADER_PROVIDER` · `COUNCIL_LEADER_MODEL` · `SUGESTOES_LLM_PROVIDER` ·
+`SUGESTOES_LLM_MODEL` · `GARIMPO_LLM_PROVIDER` · `GARIMPO_LLM_MODEL` · `EVAL_JUDGE_MODEL` · `EXTRATOR_PLANOS_PROVIDER` ·
+`EXTRATOR_PLANOS_MODEL` · `BRAND_CAPTURE_PROVIDER` · `BRAND_CAPTURE_MODEL` · `AUXILIAR_LLM_MODEL`. ⚠️ `GARIMPO_LLM` e
+`SUGESTOES_LLM` continuam sendo interruptores — **não apagar**. **Destrava:** apagar do EasyPanel as que existirem.
+**Dono:** 🧑. **Custo de esquecer:** alguém muda a variável achando que troca o modelo, e nada acontece.
+
+## P-S116-11 · 31 linhas de teste no ledger de produção, um `eval_run` aberto, e nenhuma trava geral
+📊 23/09/2026 (juiz B3, red team P2): 31 linhas em `token_usage_logs`, `service_type='portal'`, `company_id` NULL, 0 tokens,
+custo 0, 17:43:24Z–17:46:53Z; `eval_runs` da bancada com 1 `running` (19:41Z). A bateria só coleta com o `backend/.env` de
+produção carregado. O C4 impede o portal de gravar em pytest; a trava geral não existe (mesma família de P-E00110-A17).
+**Destrava:** 🧑 decidir o `delete from token_usage_logs where service_type='portal' and company_id is null and created_at
+between '2026-09-23T17:43Z' and '2026-09-23T17:47Z'`; 🤖 fechar o run (`status='error'`, `motivo_parada='credito_zerado'`) e
+um `conftest` com ambiente falso. **Dono:** 🧑 + 🤖. **Custo de esquecer:** a tela de FinOps soma lixo; o próximo teste escreve de novo.
+
+## P-S116-12 · voz Gemini sem leitor no repositório
+📊 23/09/2026 (SPEC §2 item 11): envs `AUTOBROKERS_GEMINI_*` sem nenhuma linha que as leia (0 commits na história).
+**Destrava:** achar o serviço que as lê ou apagar as envs. **Dono:** 🧑. **Custo de esquecer:** variável sem dono no ambiente.
+
+## P-S116-13 · guardrail anti-jailbreak desligado em silêncio
+📊 23/09/2026: `llama_guard_service.py:71` depende de `GROQ_API_KEY`, que está vazia. **Destrava:** chave Groq, ou mover o
+guardrail para um papel do catálogo. **Dono:** 🧑 decisão · 🤖 código. **Custo de esquecer:** a proteção existe no código e
+não roda.
+
+## P-S116-14 · `test_spec062_evals` depende de ordem
+📊 23/09/2026 (conserto): passa sozinho e falha depois de módulos que trocam `model_policy.leitor_do_banco` no nível do módulo.
+**Destrava:** a troca virar fixture com restauração. **Dono:** 🤖. **Custo de esquecer:** vermelho que não é regressão.
+
+## P-S116-15 · `test_snapshot_e_gerado_da_fonte_unica` faz skip com origem=banco
+📊 23/09/2026 (juiz P2): com o snapshot gerado do banco não há guarda de que o arquivo commitado = o banco. **Destrava:**
+comparar com o banco quando houver acesso, ou falhar se o snapshot for mais velho que a última migration de rota.
+**Dono:** 🤖. **Custo de esquecer:** o fallback offline diverge do banco e ninguém vê.
+
+## P-S116-16 · o trigger da `_05` não cobre UPDATE em `llm_pricing`
+📊 23/09/2026 (migration `_05`, "FORA DO ESCOPO"): marcar BLOCKED um modelo que uma rota usa passa no banco; o resolvedor
+recusa em ≤ 60 s e o papel para. **Destrava:** trigger em `llm_pricing` que recuse mudar o ciclo de modelo em uso.
+**Dono:** 🤖. **Custo de esquecer:** um UPDATE de catálogo cala um papel inteiro, de todas as corretoras.
+
+## P-S116-17 · `--conferir` do snapshot compara campos que a migration não declara
+📊 23/09/2026 (conserto): o modo de conferência acusa diferença em campos fora do bloco `$catalogo$`. **Destrava:** comparar
+só o que a migration declara. **Dono:** 🤖. **Custo de esquecer:** falso alarme ensina a ignorar a conferência.
+
+## P-S116-18 · no Windows, o script do snapshot quebra sem `PYTHONIOENCODING=utf-8`
+📊 23/09/2026: `gerar_snapshot_de_modelos.py` imprime caracteres fora do cp1252. **Destrava:**
+`sys.stdout.reconfigure(encoding="utf-8")` no script. **Dono:** 🤖. **Custo de esquecer:** quem roda no Windows acha que o
+snapshot quebrou.
+
+## P-S116-19 · modelos do DESENVOLVIMENTO no protocolo (D-116-14)
+📊 23/09/2026: o protocolo §10 fixa Fable 5.1/Opus 5/Sonnet 5; o catálogo já tem Opus 5.5 e Fable 5.1 com preço e ciclo.
+Nesta SPEC o gerente rodou em Opus 5.5 (telemetria do relatório §16). **Destrava:** decisão do Founder sobre os modelos do
+rito. **Dono:** 🧑. **Custo de esquecer:** o rito escrito e o rito praticado divergem.
+
+## P-S116-20 · 🔴 rotação dos segredos colados no chat
+📊 23/09/2026: segredos foram colados no chat de execução (lista por NOME em `TAREFAS-DO-FOUNDER.md`, seção SPEC-116,
+passo 3). Reforça P-PILOTO-09. **Destrava:** trocar cada um no painel do provedor e no EasyPanel. **Dono:** 🧑.
+**Custo de esquecer:** chave viva num histórico de conversa.
+
+## P-S116-21 · buffer meio-aberto com reserva, e o disjuntor conta timeout no primário
+📊 23/09/2026 (conserto): quando o turno roda na reserva, o timeout é contado contra o provedor PRIMÁRIO; e o buffer pode
+ficar meio-aberto se a reserva responder depois do corte. Hoje sem vítima (reserva vazia, P-S116-02). **Destrava:** o
+disjuntor contar pelo provedor que de fato rodou. **Dono:** 🤖. **Custo de esquecer:** no dia em que houver reserva, o
+disjuntor abre o provedor errado.
+
+## P-S116-22 · ZDR com OpenAI e Anthropic
+📊 23/09/2026 (SPEC §11): retenção zero só por contrato de vendas; não cobre Fable/Mythos (classe `pii` negada a eles,
+D-116-10). **Destrava:** pedir ZDR/"Modified Abuse Monitoring" aos dois. **Dono:** 🧑. **Custo de esquecer:** PII do
+segurado fica retida no provedor pelo prazo padrão dele.
+
+## P-S116-23 · tela de planos de FinOps estima custo com `gpt-4o-mini`
+📊 23/09/2026: `app/admin/finops/plans/page.tsx:9,427` ("estimativa com modelo padrão (gpt-4o-mini)"). **Destrava:** a
+estimativa ler o custo médio real do ledger por papel. **Dono:** 🤖. **Custo de esquecer:** a tela de preço mostra um custo
+que o produto não tem mais.
+
+## P-S116-24 · `gpt-5.6-terra` com tools não foi remedido
+📊 23/09/2026: 100 % dos casos com tools deram 400 em `chat_completions`; a `_04` corrigiu a superfície para `responses`,
+sem rodar de novo. **Destrava:** rodar os braços Terra com tools. **Dono:** 🤖. **Custo de esquecer:** um candidato barato
+fica fora da comparação.
+
+## P-S116-25 · o ROLLBACK da `_01` não devolve o comportamento antigo
+📊 23/09/2026 (juiz P3): sem `llm_papeis` o resolvedor cai no SNAPSHOT (que já tem as rotas v2) com WARNING. **Destrava:**
+escrever no rollback que voltar de verdade = imagem anterior + drop. **Dono:** 🤖. **Custo de esquecer:** um rollback de
+emergência "funciona" e o modelo não volta.
+
+## P-S116-26 · o build real em Python 3.11 só é provado no deploy
+📊 23/09/2026: venv local em 3.14; `uv pip compile` para 3.11 resolveu 196 pins com wheel; a imagem `python:3.11-slim` não
+foi construída. **Destrava:** o Implantar do smith-api; se falhar, o log diz o pacote. **Dono:** 🧑 clique · 🤖 conserto.
+**Custo de esquecer:** nenhum se o build passar; se não, o serviço não sobe.
+
+## P-S116-27 · resíduos do red team e do juiz
+📊 23/09/2026: `agent_role` desconhecido (ex.: `auxiliary` pelo grafo) cai na rota `subagente`, não `auxiliar` (red team P8);
+`CostCallbackHandler._metadados_por_run` só é limpo em `on_llm_end` — erro deixa a entrada (red team P9); `SUPPORTED_PROVIDERS`
+lê o catálogo a cada acesso e, sem banco e sem snapshot, devolve vazio (juiz P10, fail-closed). **Destrava:** mapear o papel;
+limpar no erro. **Dono:** 🤖. **Custo de esquecer:** custo do auxiliar pelo grafo no modelo errado; vazamento lento de memória.

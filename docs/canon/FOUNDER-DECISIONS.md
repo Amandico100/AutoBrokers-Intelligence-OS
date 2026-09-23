@@ -2000,3 +2000,34 @@ O Founder, ao mandar executar a 096: *"as pendências você decide, com nota 0�
 | 🧑 **D-E002-06** (22/09, proposta) | **Como a 003 se divide** (CLAUDE.md §9: nenhuma SPEC em duas sessões; 💭 14–22 h não cabem num chat). Recomendado: **003-A "a fundação"** (espera durável + `QuoteProvider` + adaptador + conexão) → **003-B "o ciclo de renovação"**, um chat cada. Nenhuma fatia é "herdada" pela 004. Nome e número finais: do Founder | 003-A/003-B **88** · proposta própria com outro número para a fundação **74** · uma 003 só, num chat **70** | proposta 002 §8/§10 · 003 |
 | 🧑 **D-E002-07** (22/09, proposta) | **A posição na fila** (📊 fila vigente: 001.9 → 001.0 → triagem → EXTRA-002 → 099 → EXTRA-003). Recomendado: **parte 2 da 002 assim que a caixa do Founder estiver feita; 003 logo depois da triagem**. 💭 A diferença é pequena porque o peso da 099 não foi medido — por isso vai ao Founder | parte 2 + 003 logo depois da triagem **78** · manter a 099 (canais) antes da 003 **65** | proposta 002 §10 |
 | 🧑 **D-E002-08** (22/09, proposta) | **Reclassificar a D-PILOTO-16:** o Agger/Aggilizador é **multicálculo**, não gestão — entra como porta **nova e irmã**, **`QuoteProvider`**, não como adaptador de gestão da SPEC-101. Um eventual produto de gestão da Agger continua cabendo na 101 | reclassificar como `QuoteProvider` **90** · manter a D-PILOTO-16 como está **40** | proposta 002 §0/§10 · D-PILOTO-16 |
+
+### Decisões da SPEC-116 · Model Router + Bancada E2E (23/09/2026, tomadas pela execução com nota 0–100 — regra do Founder de 13/09; rito AAA v13)
+
+> Texto completo e evidência: `specs/SPEC-116-cada-trabalho-no-modelo-que-provou-servir.md` §10 · relatório `reports/SPEC-116-EXECUTION-REPORT.md`.
+
+| # | decisão | notas | onde |
+|---|---|---|---|
+| **D-116-01** | nome canônico **Model Router** (SPEC-052 §14), não "Model Fabric" (colide com Intelligence Fabric) | Router **95** · Fabric 40 | SPEC §0 |
+| **D-116-02** | catálogo = **`llm_pricing` expandido** + snapshot gerado do banco | expandir **88** · catálogo em código 74 · YAML 70 · tabela nova 30 | migration `_01` |
+| **D-116-03** | rotas por PAPEL no banco (`llm_papeis` + histórico); o código pede papel | banco **88** · env por serviço 50 · no código 45 | migration `_01` |
+| **D-116-04** | a bancada **estende a Eval Fabric** da SPEC-062 (nada de `bench_*`) | estender **95** · `bench_*` 10 | migration `_03` |
+| **D-116-05** | ordem **arnês → baseline → candidatos → mapa** | **92** · bancada antes do arnês 45 · trocar e medir depois 20 | SPEC §5 |
+| **D-116-06** | em produção: **OpenAI + Anthropic**; Google depois de chave local + tier pago; xAI/MiMo/DeepSeek/Z.ai só laboratório, PII bloqueada | **90** · liberar por benchmark 25 | SPEC §11 |
+| **D-116-07** | reserva declarada na rota, **só antes da 1ª tool com efeito**; depois retém | **85** · `with_fallbacks` 68 · sem reserva 70 | F2 |
+| **D-116-08** | SDK por necessidade; checkpoint 4 condicionado à medição (📊 40/40 checkpoints reais abriram) | **86** · subir tudo 40 · nada 55 | SPEC §8 |
+| **D-116-09** | bancada ao vivo com **teto de US$ 100** no código; teto de qualidade só no subconjunto crítico | **85** · sem teto 50 · US$ 20 45 | F5a |
+| **D-116-10** | classes de dado `publico · interno · pii`; Fable/Mythos sem `pii` | **88** · sem classe 30 | migration `_01` |
+| **D-116-11** | ciclo em dois passos: legado vira **DEPRECATED** já, **BLOCKED** só depois que a bancada provar o substituto | **90** · bloquear já 40 | migration `_01` |
+| **D-116-12** | embeddings `text-embedding-3-small` **KEEP** (sem sucessor; troca = reindexar + eval de retrieval) | **85** · gemini-embedding-2 agora 35 | SPEC §10 |
+| **D-116-13** | transcrição: bancada PT-BR `gpt-transcribe` × `whisper-1` antes de 26/02/2027 | **80** | P-S116-06 |
+| 🧑 **D-116-14** | modelos do DESENVOLVIMENTO (protocolo §10): **não mexo no protocolo**; dívida para o Founder | **90** | P-S116-19 |
+| **D-116-15** | `memory_settings.memory_llm_model` vira **legado ignorado**; a rota `memoria` manda; a migration `_02` não existe | rota manda **90** · migration de dado já 35 | F3a |
+| **D-116-16** | F5a começou **em paralelo** à F1 (arquivos disjuntos, contrato declarado no pacote) | **85** · esperar a F1 60 | card |
+| **D-116-17** | precedência: **a rota do papel vence o modelo gravado no agente**; o agente só manda em papel sem rota | rota vence **90** · agente vence 40 | F4 |
+| 🧑 **D-116-18** | **empate em papel P0 na Onda A → o modelo de MAIOR margem**; o mais barato empatado vira desafiante da Onda B. Aplicado: portal → gpt-6-sol medium (📊 43/43; Luna 45/45) e visão → gpt-6-sol low (📊 30/30 = Luna); memória segue a régua de custo (gpt-6-luna low, 📊 39/45 × 32/45). Diferença de custo é decisão comercial (CLAUDE.md §10-2): **o Founder pode confirmar ou trocar por uma linha** | Sol no P0 **88** · Luna pela régua literal 80 · manter gpt-4o 20 | migration `_04` · `8909de2` |
+
+**🔴 Lição registrada — o incidente do pooler (23/09/2026, resolvido).** 📊 Um script de medição desta execução deixou uma
+conexão do pooler Supabase (porta 6543, modo transação) com `default_transaction_read_only=on`; o pooler a entregava a
+quem conectava (12/12 sondas só-leitura). Encerrada por `pg_terminate_backend` ≈ 20:00Z; 20/20 sondas limpas depois;
+impacto medido zero (nenhum turno de agente nas 10 h; o espelho grava por REST). **Regra:** script de medição **nunca**
+usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentro da transação.

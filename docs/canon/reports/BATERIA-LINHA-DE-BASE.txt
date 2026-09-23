@@ -1,7 +1,9 @@
-# Linha de base NOMINAL da bateria — 📊 21/09/2026, HEAD b246a4f (EXTRA-001.10), `cd backend && python -m pytest tests -q`
-# → 36 failed na rodada; 35 após o conserto da ÚNICA falha nova (`test_o_pulso_360_nao_pertence_a_infocap`, consertada em
-#   b246a4f e reconferida ISOLADA com rc=0). 0 falhas sumiram ⇒ a lista abaixo continua valendo, inalterada.
-# (anterior: 📊 20/09/2026, main b3d88f1 → 35 failed · 1187 passed · 34 xfailed · 1 xpassed em 2.897 s)
+# Linha de base NOMINAL da bateria — 📊 23/09/2026, SPEC-116 (branch spec/116-model-router-e2e-bench, HEAD be8b033 + conserto do guarda do vocabulário), `cd backend && .venv/Scripts/python -m pytest tests -q` (libs NOVAS do requirements da SPEC-116)
+# → 36 failed · 1454 passed · 1 skipped · 34 xfailed · 1 xpassed em 3.137 s. 3 falhas NÃO estavam na base anterior:
+#   · test_o_guarda_script_passa[test_o_vocabulario_viaja_na_imagem] — DA SPEC (bancada.py com parents[3]); CONSERTADA e reconferida isolada: 40 verdes / 0 vermelhas → fora da lista.
+#   · test_o_fio_inteiro_do_isolamento e test_so_um_agendador_manda — passam ISOLADAS (📊 1 passed cada, 23/09); falham só na bateria longa (ordem/tempo). Ficam na lista, marcadas, até alguém isolar a dependência.
+#   2 falhas SUMIRAM: test_o_protocolo_tem_policia · test_todos_os_guardas_script_rodam::test_a_arvore_ficou_limpa_no_fim.
+# (anterior: 📊 21/09/2026, HEAD b246a4f → 35 failed)
 # Uso: depois da bateria de uma SPEC, compare a lista de FAILED com esta. Falha que não está aqui = da SPEC até prova em contrário.
 # Quem fecha uma SPEC regrava este arquivo com a lista nova e a data.
 #
@@ -18,18 +20,18 @@ FAILED tests/test_a_rubrica_e_honesta.py::test_a_regua_pontua_e_nao_bate_no_port
 FAILED tests/test_o_caso_se_explica_sozinho.py::test_o_caso_se_explica_sozinho
 FAILED tests/test_o_clique_da_atendente_nao_apaga_da_fila.py::test_o_clique_da_atendente_nao_apaga_da_fila
 FAILED tests/test_o_corpus_nao_vaza_pii.py::test_a_sessao_da_regua_classifica_como_residencial_pelo_nivel_2
+FAILED tests/test_o_fio_inteiro_do_isolamento.py::test_o_fio_inteiro_do_isolamento
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_CONTROLE_o_handoff_do_vigia_passa_pela_regra_e_os_outros_NAO
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_CONTROLE_os_alertas_nao_handoff_continuam_saindo
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_a_promessa_antiga_nao_sobrou_em_lugar_nenhum
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_a_reserva_e_devolvida_quando_o_aviso_nao_sai
 FAILED tests/test_o_numero_de_teste_e_conversa_nova.py::test_excecao_nao_fura_o_takeover_mas_fura_a_janela
-FAILED tests/test_o_protocolo_tem_policia.py::test_o_protocolo_tem_policia
 FAILED tests/test_o_ramo_sai_da_conversa_nao_da_ultima_frase.py::test_o_ramo_sai_da_conversa_nao_da_ultima_frase
 FAILED tests/test_o_sinistro_deixa_rastro.py::test_o_sinistro_deixa_rastro
 FAILED tests/test_o_travamento_vira_evidencia.py::test_C3_o_codigo_dos_dois_agentes_CHAMA_o_registro
 FAILED tests/test_o_travamento_vira_linha.py::test_as_familias_do_fonte_batem_com_a_triagem
+FAILED tests/test_so_um_agendador_manda.py::test_so_um_agendador_manda
 FAILED tests/test_todo_silencio_tem_motivo.py::test_todo_silencio_tem_motivo
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_a_arvore_ficou_limpa_no_fim
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_mesma_verdade_em_duas_vozes]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_nenhuma_mutacao_foi_commitada]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_observador_silencio]

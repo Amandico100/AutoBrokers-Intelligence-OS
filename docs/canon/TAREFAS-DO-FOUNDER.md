@@ -26,6 +26,88 @@
 
 ---
 
+## SPEC-116 — o que só você faz (23/09/2026) · cada trabalho no modelo que provou servir
+
+> **O que mudou, em uma frase:** cada tarefa do produto (responder no chat, atender no WhatsApp, ler foto, decidir no
+> portal, lembrar do cliente…) agora pede o seu modelo de inteligência a **um lugar só**, e trocar ou voltar um modelo é
+> uma linha no banco, em minutos, sem Implantar. Três trabalhos já trocaram, porque a bancada de testes provou que o novo
+> acerta mais: **memória** (📊 39 de 45 acertos, era 32), **leitura de foto** (📊 30 de 30, era 28) e **decisão no portal de
+> vidros** (📊 43 de 43, era 38 de 41). O chat, o atendimento, a cobrança e a conversa com a seguradora **não mudaram**:
+> a medição parou antes, por falta de crédito. Relatório: `reports/SPEC-116-EXECUTION-REPORT.md`.
+
+- [ ] **S116.1** 🔴 **Recarregar o crédito da Anthropic e da OpenAI — e ligar a recarga automática** · **bloqueia o produto**
+      **Onde:** `console.anthropic.com` → Settings → **Billing** → comprar crédito e ligar **auto-reload** ·
+      `platform.openai.com` → Settings → **Billing** → adicionar crédito e ligar **auto recharge**.
+      **Por quê:** 📊 23/09 as duas contas zeraram durante a bancada (Anthropic às 19:18 UTC, OpenAI às 19:41 UTC), e as
+      chaves do seu computador são **as mesmas** do produto. Até recarregar, o chat do painel, a memória, a leitura de foto,
+      o portal de vidros e os resumos **não têm quem responda**.
+      **O que esperar:** saldo positivo nas duas telas. Depois, o "oi" do passo S116.2 responde em segundos.
+      **Se der errado:** a mensagem *"Your credit balance is too low"* (Anthropic) ou *"You have no credits remaining"*
+      (OpenAI) quer dizer que o crédito ainda não caiu — espere 5 minutos e tente de novo.
+
+- [ ] **S116.2** **Implantar os quatro serviços, nesta ordem:** `smith-api` → `smith-worker` → `portal-worker` → `smith-web`
+      **Onde:** EasyPanel, um clique em cada, esperando o anterior ficar verde.
+      **Por que a ordem:** com as telas novas e o cérebro velho, um agente criado no meio da janela nasceria no modelo
+      antigo. O `portal-worker` **mudou a receita de montagem** (Dockerfile) — ele demora mais para ficar verde.
+      **O que esperar:** cada um verde em 2–5 min (o portal-worker pode levar mais). Nenhuma variável nova é obrigatória.
+      Então abra o chat do painel e mande **"oi"**: resposta em segundos.
+      **Se der errado:** se o `smith-api` não subir, copie as **últimas 30 linhas do log** e cole no chat — a troca de
+      bibliotecas foi provada para a versão do contêiner, mas a montagem de verdade só acontece aqui (P-S116-26).
+
+- [ ] **S116.3** **Trocar as chaves e senhas que foram coladas no chat** · higiene
+      **Quais (só o NOME):** chaves de IA: OPENAI_API_KEY · ANTHROPIC_API_KEY/CLAUDE_API_KEY · GOOGLE_API_KEY/GEMINI_API_KEY · COHERE_API_KEY · DEEPGRAM_API_KEY · ELEVENLABS_API_KEY · TAVILY_API_KEY · FIRECRAWL_API_KEY · GOOGLE_PLACES_API_KEY · BROWSERBASE_API_KEY; banco e infra: SUPABASE_SERVICE_ROLE_KEY (=SUPABASE_KEY/SUPABASE_SERVICE_KEY) · senha do banco em SUPABASE_DB_URL · senha do REDIS_URL · MINIO_ROOT_PASSWORD · MINIO_BACKUP_S3_ACCESS_KEY_ID/SECRET_ACCESS_KEY · senha do Postgres do evolution-go; segredos do app: SESSION_SECRET/APP_SECRET/SECRET_KEY · ADMIN_API_KEY/ADMIN_TOKEN · ENCRYPTION_KEY · PORTAL_VAULT_KEY · REVIEW_ENGINE_LINK_SECRET · DOCLING_SERVICE_KEY; canais e integrações: EVOLUTION_API_KEY · EVOLUTION_GO_INSTANCE_TOKEN · EVOLUTION_GO_GLOBAL_KEY/GLOBAL_API_KEY · N8N_API_KEY · TWILIO_AUTH_TOKEN · GOOGLE_OAUTH_CLIENT_SECRET · NOTION_OAUTH_CLIENT_SECRET; logins de portal: senhas da API InfoCap (Resulta e AutoFleet) · senhas do Agger (2 contas) · senha do Segfy — e as de P-PILOTO-09.
+      **Onde:** no painel de cada provedor, gere a nova e **apague a antiga**; cole a nova no EasyPanel (smith-api →
+      Environment; e no portal-worker, se ela existir lá) e clique Implantar.
+      🔴 **Nunca cole a chave nova no chat.**
+
+- [ ] **S116.4** *(opcional)* **Pedir "retenção zero" (ZDR) à OpenAI e à Anthropic**
+      **Onde:** o formulário de vendas de cada uma — peça *"Zero Data Retention"* para a sua organização.
+      **Por quê:** hoje o que o segurado escreve fica guardado no provedor pelo prazo padrão dele. Não bloqueia nada.
+
+- [ ] **S116.5** *(opcional)* **Ligar o Gemini na bancada**
+      **Onde:** ponha `GOOGLE_API_KEY` no arquivo `backend/.env` do seu computador (o mesmo nome que já está no EasyPanel) e,
+      no Google AI Studio → Billing, confirme que o projeto está no **plano pago** — o gratuito usa os dados para treino.
+      **O que esperar:** nada muda no produto; a próxima bancada passa a comparar o Gemini também.
+
+- [ ] **S116.6** **Documentos (docling): `VISION_MODEL`** — **hoje, deixe como está**
+      O serviço de documentos escolhe o modelo por essa variável, não pelo lugar único. Hoje o valor (`gpt-4o-mini`) é o
+      mesmo da rota de documento, então nada a fazer. **Anote:** quando a rota de documento mudar, esta variável muda junto
+      (P-S116-09).
+
+- [ ] **S116.7** **Apagar as variáveis que o produto deixou de ler**
+      **Onde:** EasyPanel → `smith-api` → Environment (e `PORTAL_VISION_MODEL` no `portal-worker`). Apague **as que
+      existirem**: `PORTAL_VISION_MODEL` · `DISPATCH_LLM_PROVIDER` · `DISPATCH_LLM_MODEL` · `ATLAS_PARSER_PROVIDER` ·
+      `ATLAS_PARSER_MODEL` · `DISTILLER_PROVIDER` · `DISTILLER_LLM_MODEL` · `DISTILLER_STRONG_MODEL` ·
+      `COUNCIL_LEADER_PROVIDER` · `COUNCIL_LEADER_MODEL` · `SUGESTOES_LLM_PROVIDER` · `SUGESTOES_LLM_MODEL` ·
+      `GARIMPO_LLM_PROVIDER` · `GARIMPO_LLM_MODEL` · `EVAL_JUDGE_MODEL` · `EXTRATOR_PLANOS_PROVIDER` · `EXTRATOR_PLANOS_MODEL` ·
+      `BRAND_CAPTURE_PROVIDER` · `BRAND_CAPTURE_MODEL` · `AUXILIAR_LLM_MODEL`.
+      🔴 **NÃO apague** `GARIMPO_LLM` nem `SUGESTOES_LLM` (sem sufixo): elas continuam sendo o botão liga/desliga.
+      **O que esperar:** nada muda — elas já eram ignoradas. É para ninguém mudá-las achando que troca o modelo.
+
+- [ ] **S116.8** **Decidir se apaga as 31 linhas de teste** que um teste gravou por engano no registro de custos (P-S116-11)
+      São 📊 31 linhas do portal, sem corretora, custo zero, entre 17:43 e 17:47 UTC de 23/09. Nunca foram cobradas.
+      **Para apagar:** peça no chat *"pode apagar as 31 linhas de teste do portal no ledger (P-S116-11)"*.
+      **O que esperar:** a resposta mostra **31** apagadas. Outro número = pare e peça a conferência.
+
+- [ ] **S116.9** **O canário — religar o atendimento só quando quiser testar** (depois do S116.1 e do S116.2)
+      1. Preencha `ATTENDANT_INBOUND_ALLOWLIST` (smith-api) **só** com o número do celular de teste (tarefa 0.1.d) e Implantar.
+      2. Ligue o agente de atendimento com o botão **Ligar agente** (o mesmo que o desligou em 10/09 — bloco 8).
+      3. Do celular de teste: **"oi"** → resposta em segundos.
+      4. Mande **uma foto** de um para-brisa → o agente descreve o que viu (é a leitura de foto nova).
+      5. Pergunte pelo seguro com um CPF de teste → ele consulta **uma vez** e responde com a seguradora.
+      6. No chat do painel, depois de consultar uma apólice, pergunte *"Ela cobre eletricista?"* → responde **sem**
+         ficar consultando de novo (era um laço de 7 consultas).
+      7. No painel de administração, abra o agente: o campo de modelo mostra o **modelo efetivo** que a rota escolheu.
+      8. **Desfazer:** esvazie `ATTENDANT_INBOUND_ALLOWLIST` e desligue o agente se era só ensaio.
+      **Se algo piorar** (memória, foto ou portal): peça no chat *"volte a rota memoria (ou visao, ou portal_decisao)
+      para a linha anterior"* — vale em até 1 minuto, **sem Implantar**. **Anote** o horário e a frase que saiu errada.
+
+- [ ] **S116.10** *(opcional)* **Confirmar a D-116-18** — no portal e na foto ficou o modelo de **maior margem** (GPT-6 Sol)
+      e não o mais barato que empatou (GPT-6 Luna, 📊 ~1/15 do custo por acerto). Recomendação: manter o Sol até o canário
+      e depois testar a Luna (Onda B). Se preferir já a Luna, é uma linha — peça no chat.
+
+---
+
 ## 0 · Antes de tudo — segurança e ambiente
 
 ### 0.1 As variáveis de ambiente, todas numa sentada
