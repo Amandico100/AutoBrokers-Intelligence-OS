@@ -195,12 +195,12 @@ def test_n2_dois_tenants_roda_as_duas_corretoras_no_mesmo_processo():
 #: (v2) → `agent_node` força DE NOVO, porque a última humana continua sendo a
 #: mesma pergunta. Medido: 7 consultas forçadas seguidas até a janela de 15
 #: mensagens derrubar a pergunta — e aí o modelo responde sem ela. Até o braço
-#: `perfeito` reprova. ⚠️ `strict=True`: consertado o produto, estes testes ficam
-#: VERMELHOS e o marcador sai (CLAUDE.md §9.3 — a lição migra, não morre).
+#: `perfeito` reprovava.
+#: ✅ CONSERTADO no conserto único da SPEC-116 (`nodes._consulta_forcada_ja_feita_no_turno`:
+#: a consulta forçada roda UMA vez por pergunta). 📊 Os 4 xfail(strict) deram XPASS
+#: e o marcador SAIU (CLAUDE.md §9.3 — a lição migra, não morre): estes casos agora
+#: GUARDAM o conserto — reintroduzir o laço os deixa VERMELHOS.
 CASOS_DO_LACO_DA_APOLICE = ("chat-n2-apolice-e-cobertura", "chat-n2-429-retomada", "chat-n2-500-no-meio")
-LACO_DA_APOLICE = pytest.mark.xfail(
-    strict=True, reason="defeito de PRODUTO (v2 + contexto de apólice no core): consulta forçada em laço — "
-                        "SPEC-116 F6, relatório 06")
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ LACO_DA_APOLICE = pytest.mark.xfail(
                                          ("chat_principal", "N2"), ("portal_decisao", "N1"), ("dispatch", "N1"),
                                          ("memoria", "N1"), ("visao", "N1"), ("cobranca", "N1")])
 def test_linha_de_controle_separa_perfeito_de_burro(papel, nivel):
-    casos = [c for c in B.carregar_casos(papel, nivel=nivel) if c["chave"] not in CASOS_DO_LACO_DA_APOLICE]
+    casos = B.carregar_casos(papel, nivel=nivel)   # (os casos do laço voltaram: o laço foi consertado)
     rel = B.rodar_bancada(papel, ["duble:perfeito", "duble:burro"], casos, k=1, nivel=nivel, teto_usd=50)
     p, b = rel.bracos["duble:perfeito"], rel.bracos["duble:burro"]
     assert p["pass_at_1"] == 1.0, [(r.chave, _slugs_falhos(r), r.erro) for r in rel.resultados
@@ -222,7 +222,7 @@ def test_linha_de_controle_separa_perfeito_de_burro(papel, nivel):
 # Falha injetada: 429/timeout do provedor → retomada sem efeito dobrado
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("chave", ["atd-n2-guincho-429-depois-da-tool", "atd-n2-guincho-timeout-provedor",
-                                   pytest.param("chat-n2-429-retomada", marks=LACO_DA_APOLICE)])
+                                   "chat-n2-429-retomada"])
 def test_falha_injetada_no_provedor_recupera_sem_duplicar(chave):
     caso = _caso(chave)
     rel = B.rodar_bancada(caso["papel"], ["duble:perfeito"], [caso], k=1, nivel="N2", teto_usd=5)
@@ -310,15 +310,18 @@ def test_cli_roda_a_linha_de_controle_em_ensaio(tmp_path):
     assert r2.returncode == 0 and "duble:perfeito" in r2.stdout
 
 
-@LACO_DA_APOLICE
 @pytest.mark.parametrize("chave", CASOS_DO_LACO_DA_APOLICE)
 def test_perfeito_passa_na_pergunta_de_detalhe_com_contexto_de_apolice(chave):
-    """O lado vermelho da exclusão acima: o `perfeito` TEM de passar nestes casos —
-    hoje não passa por causa do laço do produto (xfail estrito)."""
+    """O `perfeito` TEM de passar nestes casos — e a consulta de apólice roda UMA
+    vez no turno (o laço media 7). Guarda do conserto do laço."""
     caso = _caso(chave)
     rel = B.rodar_bancada("chat_principal", ["duble:perfeito"], [caso], k=1, nivel="N2", teto_usd=5)
     r = rel.resultados[0]
     assert r.resultado == "PASS", (_slugs_falhos(r), r.erro)
+    # 📊 depois do conserto: 3 consultas em 2 turnos (a do modelo + no máximo UMA
+    # forçada por pergunta); o laço fazia ≥ 7. Teto: uma por turno + a forçada.
+    consultas = sum(1 for e in r.rastro["efeitos"] if e["tool"] == "infocap_policy_lookup")
+    assert consultas <= len(caso["entrada"]["turnos"]) + 1, consultas
 
 
 # ---------------------------------------------------------------------------

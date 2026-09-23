@@ -675,10 +675,12 @@ class SubAgentTool(BaseTool):
             # provedor/modelo que RESPONDEU — o real (`response_metadata`) ou o
             # resolvido pela rota. Era um default fixo do GPT-4 Turbo, um modelo que nunca
             # rodou aqui. Sem nenhum dos dois (falhou antes de resolver): None.
+            # 🔴 (conserto, red team P4): sem resolução, "desconhecido" — nunca o
+            # provedor GRAVADO no agente (a rota pode tê-lo trocado; F4 grava NULO).
+            # 📊 `conversation_logs.llm_provider/llm_model` são NOT NULL (information_schema).
             real = modelo_real or {}
-            llm_provider = real.get("provedor") or subagent_data.get("llm_provider") \
-                or self.company_config.get("llm_provider")
-            llm_model = real.get("modelo_real") or real.get("modelo")
+            llm_provider = real.get("provedor") or "desconhecido"
+            llm_model = real.get("modelo_real") or real.get("modelo") or "desconhecido"
             llm_temperature = (
                 subagent_data.get("llm_temperature")
                 or self.company_config.get("llm_temperature")

@@ -5,9 +5,6 @@ from typing import List as ListType
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 from app.core.auth import require_master_admin
@@ -190,6 +187,16 @@ async def create_agent(
     _: bool = Depends(require_master_admin),
 ):
     """Create a new agent"""
+    # 🔴 SPEC-116 (conserto, red team P5): a MESMA trava do PUT — agente novo
+    # não nasce com modelo retirado/BLOCKED/HISTORICAL/fora do catálogo (e sem
+    # legado: não há linha gravada). Sem modelo é permitido: a ROTA decide.
+    from app.api.agent_config import ModeloRecusado
+    from app.models.agent import conferir_modelos_do_agente
+
+    try:
+        conferir_modelos_do_agente(agent, None)
+    except ModeloRecusado as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return service.create_agent(agent.company_id, agent)
 
 
@@ -576,34 +583,18 @@ async def test_llm_integration(request: TestLLMRequest, _: bool = Depends(requir
                 detail=f"API key não encontrada para provider {request.provider}. Configure a variável de ambiente ou forneça uma chave."
             )
 
-        # Instantiate the correct model based on provider
+        # 🔴 SPEC-116 (conserto, juiz P5): pela FÁBRICA do produto — o catálogo
+        # decide se o par (provedor, modelo) é governado e o adaptador só manda
+        # sampling onde o modelo aceita (Claude 5 dá 400 com temperature).
+        from app.factories import model_policy as MP
+        from app.factories.llm_factory import LLMFactory
+
         provider = request.provider.lower()
         model = request.model
-
-        if provider == "openai":
-            llm = ChatOpenAI(model=model, api_key=api_key, max_tokens=50, timeout=30)
-        elif provider == "anthropic":
-            llm = ChatAnthropic(model=model, api_key=api_key, max_tokens=50, timeout=30)
-        elif provider == "google":
-            llm = ChatGoogleGenerativeAI(model=model, google_api_key=api_key, max_tokens=50, timeout=30)
-        elif provider == "openrouter":
-            from app.core.config import settings
-            llm = ChatOpenAI(
-                model=model,
-                api_key=api_key,
-                max_tokens=50,
-                timeout=30,
-                base_url=settings.OPENROUTER_BASE_URL,
-                default_headers={
-                    "HTTP-Referer": settings.FRONTEND_URL,
-                    "X-Title": "AutoBrokers",
-                },
-            )
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Provider '{provider}' não suportado. Use: openai, anthropic, google, openrouter"
-            )
+        try:
+            llm = LLMFactory.para_teste_de_conexao(provider, model, api_key=api_key)
+        except MP.ModeloNaoResolvido as exc:
+            raise HTTPException(status_code=400, detail=f"Modelo não governado: {exc}") from exc
 
         # Make a simple test invocation
         response = llm.invoke("Responda com apenas 'OK' para confirmar conexão.")

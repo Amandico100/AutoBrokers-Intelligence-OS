@@ -1103,7 +1103,9 @@ def julgar_caso(caso: dict, saida: dict) -> List[dict]:
     if o.get("deve_conter"):
         pedidos.append(("contem", E.contem, texto, {"contem": o["deve_conter"]}, ent))
     if o.get("nao_deve_conter"):
-        pedidos.append(("nao_contem", E.nao_contem, texto, {"nao_contem": o["nao_deve_conter"]}, ent))
+        pedidos.append(("nao_contem", E.nao_contem, texto,
+                        {"nao_contem": o["nao_deve_conter"],
+                         "negacao_ok": bool(o.get("negacao_ok"))}, ent))
     if "tool_esperada" in o:
         pedidos.append(("tool_esperada", E.tool_esperada, saida, o, ent))
         pedidos.append(("args_esperados", E.args_esperados, saida, o, ent))

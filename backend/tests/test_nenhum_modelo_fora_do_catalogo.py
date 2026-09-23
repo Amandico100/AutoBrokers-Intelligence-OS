@@ -96,6 +96,53 @@ LITERAIS_PENDENTES_DAS_FATIAS: dict = {
 }
 
 
+#: 🔴 (conserto único, red team P1): o gate só acusava literal FORA do catálogo
+#: ou BLOCKED/HISTORICAL — 📊 a mutação `return ChatOpenAIGovernado(model=
+#: "gpt-4o-mini")` na fábrica passava com 13 verdes, porque gpt-4o-mini é
+#: DEPRECATED (usável). Agora TODO literal de modelo em código de produção é
+#: INVENTARIADO: o que existia em 23/09 (📊 `varrer()` rodado, 26 literais em 19
+#: arquivos — rótulos de log, docstrings, preço de fallback, dicionários de
+#: tradução de modelo, embeddings = rota `embedding`) está aqui; literal NOVO,
+#: mesmo de modelo APROVADO, fica VERMELHO — peça o PAPEL ao resolvedor ou
+#: registre aqui com o motivo. A lista só ENCOLHE: literal que sumiu do código
+#: tem de sair daqui (o teste acusa o vencido).
+LITERAIS_CONHECIDOS: dict = {
+    "backend/app/api/webhook.py": {"gpt-4o"},
+    "backend/app/core/callbacks/cost_callback.py": {"gpt-4o-mini", "gpt-4o-mini-2024-07-18"},
+    "backend/app/core/constants.py": {"claude-haiku-4-5-20251001", "gpt-4o-mini"},
+    "backend/app/factories/llm_factory.py": {"claude-opus-5", "claude-sonnet-5", "gpt-4o"},
+    "backend/app/services/agent_council.py": {"gpt-4o-mini"},
+    "backend/app/services/attendance_distiller.py": {"claude-opus-5", "text-embedding-3-small"},
+    "backend/app/services/global_knowledge_seed.py": {"text-embedding-3-small"},
+    "backend/app/services/ingestion_service.py": {"gpt-4o-mini"},
+    "backend/app/services/knowledge/insurance_corpus.py": {"text-embedding-3-small"},
+    "backend/app/services/langchain_service.py": {"claude-sonnet-5"},
+    "backend/app/services/llama_guard_service.py": {"meta-llama/llama-prompt-guard-2-86m"},
+    "backend/app/services/memory_service.py": {"gpt-4o-mini"},
+    "backend/app/services/proactive_suggestions.py": {"claude-opus-5", "gpt-4o"},
+    "backend/app/services/prompt_optimizer.py": {"claude-opus-5"},
+    "backend/app/services/search_service.py": {"gpt-4o-mini"},
+    "backend/app/services/vision_service.py": {"gpt-4o-mini"},
+    "backend/portal_worker/adaptive.py": {"gpt-4o-mini"},
+    "backend/portal_worker/modelo_do_portal.py": {"gpt-4o", "gpt-4o-mini"},
+    "docling-service/app/config.py": {"gpt-4o-mini"},
+}
+
+
+def literais_fora_do_inventario(achados: dict, conhecidos: dict):
+    """(novos, vencidos) contra o inventário — a allowlist permanente não conta."""
+    novos, vencidos = {}, {}
+    for arq, lits in achados.items():
+        n = set(lits) - set(ALLOWLIST.get(arq, {})) - set(conhecidos.get(arq, set()))
+        if n:
+            novos[arq] = n
+    for arq, lits in conhecidos.items():
+        v = set(lits) - set(achados.get(arq, set()))
+        if v:
+            vencidos[arq] = v
+    return novos, vencidos
+
+
 def _eh_id_de_modelo(s: str) -> bool:
     if s in _NAO_SAO_MODELO or s.endswith("-"):
         return False
@@ -224,6 +271,41 @@ def test_controle_um_literal_novo_num_call_site_fica_vermelho():
     # e um literal APROVADO no mesmo lugar NÃO acusa (o checador sabe diferenciar)
     assert literais_do_texto('model="claude-sonnet-5"') == {"claude-sonnet-5"}
     assert not violacoes({"x.py": {"claude-sonnet-5"}}, SNAP["catalogo"])
+
+
+def test_nenhum_literal_de_modelo_novo_em_codigo_de_producao():
+    """🔴 (conserto único) TODO literal de modelo — até de modelo usável — é
+    inventariado. Os DEPRECATED saem numa lista de AVISO."""
+    achados = varrer()
+    cat = SNAP["catalogo"]
+    avisos = sorted(f"{a}: {l}" for a, ls in achados.items() for l in ls
+                    if (cat.get(l) or {}).get("lifecycle") == "DEPRECATED")
+    print(f"\n⚠️ LITERAIS DE MODELO DEPRECATED EM CÓDIGO DE PRODUÇÃO ({len(avisos)}, aviso):")
+    for linha in avisos:
+        print("   ·", linha)
+    novos, vencidos = literais_fora_do_inventario(achados, LITERAIS_CONHECIDOS)
+    assert not novos, (
+        "literal de modelo NOVO em código de produção — peça o PAPEL ao resolvedor "
+        f"(model_policy) ou registre em LITERAIS_CONHECIDOS com o motivo: {novos}")
+    assert not vencidos, (
+        f"literal que já sumiu do código — apague-o de LITERAIS_CONHECIDOS: {vencidos}")
+
+
+def test_controle_literal_usavel_novo_na_fabrica_fica_vermelho():
+    """LINHA DE CONTROLE (a mutação do red team): `gpt-4o-mini` (DEPRECATED,
+    USÁVEL — o checador do catálogo não o acusa) reintroduzido na fábrica."""
+    achados = {a: set(l) for a, l in varrer().items()}
+    arq = "backend/app/factories/llm_factory.py"
+    achados.setdefault(arq, set()).update(literais_do_texto(
+        'return ChatOpenAIGovernado(model="gpt-4o-mini", api_key=api_key)'))
+    assert not violacoes({arq: {"gpt-4o-mini"}}, SNAP["catalogo"]), \
+        "pré-condição: o checador do CATÁLOGO não vê este literal (é usável)"
+    novos, _ = literais_fora_do_inventario(achados, LITERAIS_CONHECIDOS)
+    assert novos == {arq: {"gpt-4o-mini"}}, novos
+    # e um arquivo NOVO com modelo APROVADO também acusa
+    novos, _ = literais_fora_do_inventario(
+        {"backend/app/services/novo.py": {"claude-sonnet-5"}}, LITERAIS_CONHECIDOS)
+    assert novos == {"backend/app/services/novo.py": {"claude-sonnet-5"}}
 
 
 def test_pendencias_tem_dono_e_fatia_valida():

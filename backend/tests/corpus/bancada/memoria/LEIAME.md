@@ -1,4 +1,4 @@
-# Bancada · memoria — corpus v2
+# Bancada · memoria — corpus v3
 
 > SPEC-116 U12 · gerado em 23/09/2026 · 15 casos (15 N1 · 0 N2) · 0 críticos ·
 > 0 com falha injetada · 0 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.

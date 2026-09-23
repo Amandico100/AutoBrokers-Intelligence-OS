@@ -1,4 +1,4 @@
-# Bancada · chat_principal — corpus v2
+# Bancada · chat_principal — corpus v3
 
 > SPEC-116 U12 · gerado em 23/09/2026 · 38 casos (30 N1 · 8 N2) · 23 críticos ·
 > 3 com falha injetada · 2 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.

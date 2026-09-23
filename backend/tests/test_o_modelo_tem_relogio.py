@@ -710,8 +710,37 @@ def main():
     return 1 if FAIL else 0
 
 
+def _instalar_os_dubles():
+    """Os dublês DESTE guarda (banco do ledger + catálogo com o OpenRouter)."""
+    _dublar_o_banco()
+    _MP.leitor_do_banco = lambda: (_CAT, _SNAP["papeis"])
+    _MP.limpar_cache()
+
+
 def test_o_modelo_tem_relogio():
-    assert main() == 0
+    # 🔴 (conserto único): os dublês eram instalados SÓ no import do módulo. No
+    # pytest, a coleta importa todos os módulos antes de rodar — 📊 com
+    # `test_llm_temperature_guard.py` na mesma sessão o `leitor_do_banco` dele
+    # vencia e o G6a caía em "meta-llama/llama-3.1-8b-instruct fora do catálogo".
+    # Agora o teste instala os SEUS na hora de rodar e devolve os de antes.
+    import app.core.database as _db
+    import app.services.usage_service as _uso
+
+    # E o breaker: 📊 o G9c deixava `R._cliente` num Redis que EXPLODE em todo
+    # comando (fail-open) — o teste seguinte da sessão via o disjuntor sempre
+    # "fechado" (`test_buffer_segue_pela_reserva_e_retem_sem_ela` caía, também
+    # no HEAD). Devolve o cliente, o relógio e a memória do breaker.
+    antes = (_MP.leitor_do_banco, _db.get_supabase_client, _uso.get_supabase_client)
+    breaker = (R._cliente, R._agora, dict(R._MEMORIA), R.TIMEOUT_S)
+    _instalar_os_dubles()
+    try:
+        assert main() == 0
+    finally:
+        _MP.leitor_do_banco, _db.get_supabase_client, _uso.get_supabase_client = antes
+        _MP.limpar_cache()
+        R._cliente, R._agora, memoria, R.TIMEOUT_S = breaker
+        R._MEMORIA.clear()
+        R._MEMORIA.update(memoria)
 
 
 if __name__ == "__main__":

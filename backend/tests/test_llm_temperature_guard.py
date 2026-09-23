@@ -42,6 +42,10 @@ class _BancoMudo:
 import app.core.database as _db  # noqa: E402
 import app.services.usage_service as _uso  # noqa: E402
 
+# 🔴 (conserto único): este guarda roda no IMPORT (script). Ele troca dublês
+# globais — e agora DEVOLVE os de antes no fim, para não vazar para o módulo
+# seguinte da mesma sessão do pytest (📊 derrubava `test_o_modelo_tem_relogio`).
+_ANTES_DB = (_db.get_supabase_client, _uso.get_supabase_client)
 _db.get_supabase_client = lambda: _BancoMudo()
 _uso.get_supabase_client = _db.get_supabase_client
 
@@ -50,6 +54,7 @@ from app.factories.llm_factory import LLMFactory  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
 _cat, _pap = copy.deepcopy(SNAP["catalogo"]), copy.deepcopy(SNAP["papeis"])
+_ANTES_LEITOR = MP.leitor_do_banco
 MP.leitor_do_banco = lambda: (_cat, _pap)
 MP.limpar_cache()
 
@@ -98,6 +103,10 @@ for prov, modelo in ACEITAM:
     achadas = _sampling_no_payload(prov, modelo)
     check(f"CONTROLE: {modelo} (sampling_ok=true) RECEBE temperature", "temperature" in achadas,
           achadas)
+
+MP.leitor_do_banco = _ANTES_LEITOR
+_db.get_supabase_client, _uso.get_supabase_client = _ANTES_DB
+MP.limpar_cache()
 
 print(f"\n== Resumo: {_pass} passaram, {_fail} falharam ==")
 if _fail:

@@ -197,11 +197,25 @@ def test_fio_rota_para_outro_provedor_troca_cliente_e_api(banco, monkeypatch):
     assert llm.openai_api_key.get_secret_value() == "sk-teste-openai-falsa"
 
 
-def test_fio_superficie_sem_adaptador_e_erro_e_nao_cai_no_mini(banco):
+def test_fio_superficie_sem_adaptador_e_erro_e_nao_cai_no_mini(banco, monkeypatch):
     """G1 · o antigo `else → gpt-4o-mini`: uma rota que resolve para um modelo
     sem adaptador de CONVERSA (rerank da Cohere) tem de ser ERRO, nunca um
-    ChatOpenAI no mini. Reintroduzir o `else` deixa este teste vermelho."""
+    ChatOpenAI no mini. Reintroduzir o `else` deixa este teste vermelho.
+
+    🔴 (conserto, red team P1 — era CARIMBO): sem `COHERE_API_KEY` no ambiente,
+    `chave_para` levantava `ChaveNaoResolvida` (uma `ModeloNaoResolvido`) ANTES
+    de `construir`, e o `raises` passava pelo motivo errado — a mutação
+    `raise → return ChatOpenAIGovernado("gpt-4o-mini")` sobrevivia. Agora a chave
+    falsa EXISTE, e o teste exige que o erro venha do ADAPTADOR (construção)."""
+    from app.core.utils import ChaveNaoResolvida
+
     _, pap = banco
+    monkeypatch.setenv("COHERE_API_KEY", CHAVE_FALSA)
     _trocar_rota(pap, "atendimento", provider="cohere", modelo_primario="rerank-multilingual-v3.0")
-    with pytest.raises(MP.ModeloNaoResolvido):
+    # pré-condição: a CHAVE resolve — o que falha não pode ser a chave
+    r = MP.resolver("atendimento")
+    assert LLMFactory.chave_para(r, None) == CHAVE_FALSA
+    with pytest.raises(MP.ModeloNaoResolvido) as erro:
         LLMFactory.create_llm({}, dict(AGENTE), api_key=CHAVE_FALSA)
+    assert not isinstance(erro.value, ChaveNaoResolvida), erro.value
+    assert "sem adaptador de conversa" in str(erro.value), erro.value

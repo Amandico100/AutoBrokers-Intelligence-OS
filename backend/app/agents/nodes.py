@@ -357,6 +357,23 @@ def _extract_context_policy_number(question: str, context: Optional[Dict[str, An
     return None
 
 
+#: prefixo do id da chamada que o nó FORÇA (ver `agent_node`) — é por ele que o
+#: turno sabe que a consulta forçada já aconteceu.
+_ID_DA_CONSULTA_FORCADA = "infocap_policy_context_"
+
+
+def _consulta_forcada_ja_feita_no_turno(mensagens: list) -> bool:
+    """Desde a última mensagem do usuário, o nó já forçou `infocap_policy_lookup`?"""
+    for msg in reversed(mensagens or []):
+        if isinstance(msg, HumanMessage) or getattr(msg, "type", None) == "human":
+            return False
+        for tc in (getattr(msg, "tool_calls", None) or []):
+            tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+            if str(tc_id or "").startswith(_ID_DA_CONSULTA_FORCADA):
+                return True
+    return False
+
+
 def _policy_context_tool_args(question: str, context: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not isinstance(context, dict):
         return None
@@ -1323,8 +1340,16 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
             logger.warning("[Agent Node] cutover ignorado: %s", type(exc).__name__)
 
     context_tool_args = _policy_context_tool_args(current_user_query, state.get("infocap_policy_context"))
+    if context_tool_args and _consulta_forcada_ja_feita_no_turno(all_messages):
+        # 🔴 SPEC-116 (conserto, relatório 06 §1 / juiz P6): a consulta FORÇADA
+        # roda UMA vez por pergunta. 📊 Com POLICY_INTELLIGENCE_V2 ligada, a
+        # volta `tools → agent` (should_continue_after_tools) chegava aqui com a
+        # MESMA pergunta e forçava de novo — 7 consultas num turno na bancada.
+        # Já consultado: o modelo redige com o resultado que está no histórico.
+        logger.info("[Agent Node] InfoCap policy context lock: já consultado neste turno — segue ao modelo")
+        context_tool_args = None
     if context_tool_args:
-        tool_call_id = f"infocap_policy_context_{int(time.time() * 1000)}"
+        tool_call_id = f"{_ID_DA_CONSULTA_FORCADA}{int(time.time() * 1000)}"
         logger.info("[Agent Node] InfoCap policy context lock: resolving human number inside customer catalog")
         return {
             "messages": [
@@ -1368,7 +1393,13 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     # Detecta provider para ativar cache (economia de até 90% em inputs repetidos)
     agent_data = state.get("agent_data") or {}
     company_config = state.get("company_config") or {}
-    llm_provider = agent_data.get("llm_provider") or company_config.get("llm_provider") or "openai"
+    # 🔴 SPEC-116 (conserto, red team B1): quem decide o formato do system é o
+    # provedor da ROTA — o que a fábrica RESOLVEU e para onde a chamada vai —,
+    # nunca o `llm_provider` gravado. 📊 Agente nascido NULO (F4) indo à
+    # Anthropic pela rota ficava SEM cache_control: input cheio (2,00 × 0,20
+    # US$/M no Sonnet 5) a cada turno. O gravado só vale sem rota (chamador
+    # antigo que não passa `rota`).
+    llm_provider = _provedor_do_turno(rota, agent_data, company_config)
 
     if llm_provider == "anthropic" and static_prompt:
         # Anthropic: 2 blocos - estático (cacheado) + dinâmico (não cacheado)
@@ -2224,7 +2255,7 @@ async def tool_node(state: AgentState, tools: list) -> dict:
 
 
 
-def log_node(state: AgentState, supabase_client) -> dict:
+def log_node(state: AgentState, supabase_client, rota: Optional[dict] = None) -> dict:
     """
     Nó de Logging - Salva métricas na tabela conversation_logs.
     """
@@ -2279,8 +2310,12 @@ def log_node(state: AgentState, supabase_client) -> dict:
         agent_id = agent_data.get("id") if agent_data else None
         company_config = state.get("company_config") or {}
 
-        # Priority: Agent > Company > Default
-        llm_provider = agent_data.get("llm_provider") or company_config.get("llm_provider") or "openai"
+        # 🔴 SPEC-116 (conserto, red team P4 — CLAUDE.md §12.1): o provedor que
+        # RESPONDEU (`response_metadata.model_provider`), senão o da ROTA
+        # resolvida; o gravado só sem rota. Era `gravado or "openai"`: agente
+        # NULO falando com a Anthropic ficava registrado como OpenAI.
+        llm_provider = _provedor_que_respondeu(state.get("messages") or []) or \
+            _provedor_do_turno(rota, agent_data, company_config, padrao="desconhecido")
         # 🔴 SPEC-116 U7 (CLAUDE.md §12.1, o corolário do campo que mente): o
         # rótulo era o CONFIGURADO, com um default inventado quando faltava. Agora
         # é o modelo que RESPONDEU, lido da última resposta; sem ela, o
@@ -2331,6 +2366,27 @@ def log_node(state: AgentState, supabase_client) -> dict:
         logger.error(f"[Log Node] Erro ao salvar log: {e}")
 
     return {}
+
+
+def _provedor_do_turno(rota: Optional[dict], agent_data: dict, company_config: dict,
+                       padrao: str = "openai") -> str:
+    """O provedor para onde a chamada do turno VAI: o da rota resolvida.
+
+    O gravado (agente → corretora) só vale para chamador que não passa `rota`.
+    """
+    return ((rota or {}).get("provedor") or (agent_data or {}).get("llm_provider")
+            or (company_config or {}).get("llm_provider") or padrao)
+
+
+def _provedor_que_respondeu(mensagens: list) -> Optional[str]:
+    for msg in reversed(mensagens):
+        if isinstance(msg, AIMessage) or getattr(msg, "type", None) == "ai":
+            meta = getattr(msg, "response_metadata", None) or {}
+            if meta.get("model_provider"):
+                return str(meta["model_provider"])
+            if meta.get("model_name") or meta.get("model"):
+                return None  # respondeu sem dizer o provedor: vale a rota
+    return None
 
 
 def _modelo_que_respondeu(mensagens: list) -> Optional[str]:

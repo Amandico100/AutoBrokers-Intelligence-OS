@@ -693,7 +693,7 @@ async def create_agent_graph(
         },
     )
     tool_fn = partial(tool_node, tools=tools)
-    log_fn = partial(log_node, supabase_client=supabase_client)
+    log_fn = partial(log_node, supabase_client=supabase_client, rota=rota_do_turno)
 
     # === 4. Monta o Grafo ===
     workflow = StateGraph(AgentState)

@@ -153,13 +153,36 @@ def contem(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
     return True, 1.0, "trouxe tudo que era esperado"
 
 
+_NEGACOES = ("não", "nao", "nunca", "jamais", "nem")
+
+
+def _afirmado(texto: str, termo: str) -> bool:
+    """Alguma ocorrência de `termo` em `texto` SEM negação nas 2 palavras antes."""
+    inicio = texto.find(termo)
+    while inicio >= 0:
+        antes = re.findall(r"[\wçãõáéíóúâêô]+", texto[max(0, inicio - 40):inicio])[-2:]
+        if not any(p in _NEGACOES for p in antes):
+            return True
+        inicio = texto.find(termo, inicio + 1)
+    return False
+
+
 def nao_contem(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
-    """Nenhum termo de `expected.nao_contem` aparece."""
+    """Nenhum termo de `expected.nao_contem` aparece.
+
+    `expected.negacao_ok` (SPEC-116, conserto — juiz P7): o termo NEGADO não é
+    achado. 📊 O oráculo `cob-n1-p19a` proíbe afirmar "é golpe" e reprovava a
+    resposta certa "Não **é golpe**". Só vale para o oráculo que declara a
+    flag — sem ela, o comportamento é o de sempre (substring).
+    """
     proibidos = [str(x) for x in (esperado or {}).get("nao_contem") or []]
     if not proibidos:
         return True, 1.0, "nada proibido"
     texto = _texto(saida).lower()
-    achados = [t for t in proibidos if t.lower() in texto]
+    if (esperado or {}).get("negacao_ok"):
+        achados = [t for t in proibidos if _afirmado(texto, t.lower())]
+    else:
+        achados = [t for t in proibidos if t.lower() in texto]
     if achados:
         return False, 0.0, f"A resposta trouxe o que era proibido: {', '.join(achados)}."
     return True, 1.0, "não trouxe nada proibido"

@@ -9,7 +9,7 @@ laço do portal chama a cada tela — com o `modelo_do_portal` real. Dublês SÓ
     chamada (o mesmo ponto que a bancada desvia), que GUARDA cada pedido.
 
 Gates:
-  · a rota decide (gpt-4o hoje) e `PORTAL_VISION_MODEL` fica ignorado;
+  · a rota decide (o modelo lido da rota de hoje) e `PORTAL_VISION_MODEL` fica ignorado;
   · 🔴 500 do provedor NÃO vira chamada ao gpt-4o-mini: UMA chamada, e o laço
     recebe `ask_human` com o motivo (mutação: restaurar a reserva calada ⇒ VERMELHO);
   · o uso é GRAVADO no ledger (service_type='portal', company_id do job, papel);
@@ -45,6 +45,29 @@ EMPRESA_A = "11111111-1111-4111-8111-111111111111"
 TELA = {"heading": "Dados do veiculo", "text": "Informe a placa", "fields": [{"label": "Placa"}]}
 DADOS = {"placa": "ABC1D23"}
 ACAO_OK = {"action": "fill", "target": "Placa", "value": "ABC1D23", "reason": "tela pede placa"}
+
+#: 🔴 (conserto único — CLAUDE.md §9.3, a lição MIGRA): estes testes afirmavam
+#: `gpt-4o`, a rota do SEED. A migration `_04` (Onda A) trocou `portal_decisao`
+#: para outro modelo e o snapshot foi regenerado — a constante virou verdade
+#: vencida. O modelo esperado agora é LIDO da rota de hoje (o snapshot, que é o
+#: banco dublado), e o corpo esperado, do CATÁLOGO desse modelo. O que se prova
+#: não mudou: a rota decide, erro não vira chamada a outro modelo, o ledger grava.
+ROTA_HOJE = SNAP["papeis"]["portal_decisao"]
+MODELO_HOJE = ROTA_HOJE["modelo_primario"]
+CAT_HOJE = SNAP["catalogo"][MODELO_HOJE]
+
+
+def _corpo_segue_o_catalogo(corpo, modelo=MODELO_HOJE):
+    """O corpo do pedido obedece ao catálogo do modelo (superfície e sampling)."""
+    linha = SNAP["catalogo"][modelo]
+    amostra_ok = (linha.get("capacidades") or {}).get("sampling_ok") is not False
+    assert ("temperature" in corpo) is amostra_ok, (modelo, corpo)
+    if amostra_ok:
+        assert corpo["temperature"] == 0
+    if linha.get("api_surface") == "responses":
+        assert corpo["text"] == {"format": {"type": "json_object"}} and corpo["store"] is False
+    elif linha.get("api_surface") == "chat_completions":
+        assert corpo["response_format"] == {"type": "json_object"}
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +108,11 @@ class Provedor:
         self.status = [200]
 
     def resposta(self, corpo):
+        if "input" in corpo and "messages" not in corpo:  # responses
+            return {"model": corpo["model"] + "-2026-09-22", "output": [
+                {"type": "message", "content": [{"type": "output_text",
+                                                  "text": json.dumps(ACAO_OK)}]}],
+                "usage": {"input_tokens": 1500, "output_tokens": 60}}
         if "messages" in corpo and "system" in corpo:  # anthropic
             return {"model": corpo["model"] + "-20260101", "content": [
                 {"type": "text", "text": json.dumps(ACAO_OK)}],
@@ -159,22 +187,24 @@ def _decidir(**kw):
 # ---------------------------------------------------------------------------
 def test_a_rota_decide_e_o_uso_vai_para_o_ledger(borda, monkeypatch):
     monkeypatch.setenv("PORTAL_VISION_MODEL", "gpt-4o-mini")   # o env de antes: IGNORADO
+    assert MODELO_HOJE != "gpt-4o-mini", "o env e a rota precisam CONSEGUIR divergir (§9.3)"
     acao = _decidir()
     assert acao == ACAO_OK
-    assert borda.prov.modelos == [borda.rest.pap["portal_decisao"]["modelo_primario"]] == ["gpt-4o"]
-    corpo = borda.prov.pedidos[0]["corpo"]
-    assert corpo["temperature"] == 0 and corpo["response_format"] == {"type": "json_object"}
+    assert borda.prov.modelos == [borda.rest.pap["portal_decisao"]["modelo_primario"]] == [MODELO_HOJE]
+    _corpo_segue_o_catalogo(borda.prov.pedidos[0]["corpo"])
     assert borda.rest.leituras == 1, "a rota veio do BANCO"
 
     assert len(borda.rest.ledger) == 1, "o portal agora deixa linha no ledger"
     linha = borda.rest.ledger[0]
     assert linha["service_type"] == "portal" and linha["company_id"] == EMPRESA_A
     d = linha["details"]
-    assert (d["papel"], d["modelo_resolvido"], d["modelo_real"]) == (
-        "portal_decisao", "gpt-4o", "gpt-4o-2024-08-06")
+    assert (d["papel"], d["modelo_resolvido"]) == ("portal_decisao", MODELO_HOJE)
+    assert d["modelo_real"].startswith(MODELO_HOJE + "-"), "o modelo que RESPONDEU (a resposta)"
     assert d["reserva_usada"] is False and d["job_id"] == "job-1" and d["origem_da_rota"] == "rota"
     assert (linha["input_tokens"], linha["output_tokens"]) == (1500, 60)
-    assert linha["total_cost_usd"] == pytest.approx(1500 / 1e6 * 2.5 + 60 / 1e6 * 10)
+    assert linha["total_cost_usd"] == pytest.approx(
+        1500 / 1e6 * float(CAT_HOJE["input_price_per_million"])
+        + 60 / 1e6 * float(CAT_HOJE["output_price_per_million"])) and linha["total_cost_usd"] > 0
 
 
 def test_trocar_a_rota_troca_o_modelo_sem_deploy(borda):
@@ -196,7 +226,7 @@ def test_trocar_a_rota_troca_o_modelo_sem_deploy(borda):
 def test_erro_do_provedor_nao_vira_chamada_ao_mini(borda, status):
     borda.prov.status = [status, 200]
     acao = _decidir()
-    assert borda.prov.modelos == ["gpt-4o"], (
+    assert borda.prov.modelos == [MODELO_HOJE], (
         f"depois do {status} saiu outra chamada: {borda.prov.modelos} — rebaixamento calado")
     assert acao["action"] == "ask_human" and acao["reason"] == "llm error"
     assert f"HTTP {status}" in acao["value"], "o motivo chega ao laço (vira o needs_human)"
@@ -208,7 +238,7 @@ def test_reserva_so_quando_a_rota_declara_e_com_motivo(borda):
                                             modelo_reserva="claude-sonnet-5")
     borda.prov.status = [500, 200]
     assert _decidir() == ACAO_OK
-    assert borda.prov.modelos == ["gpt-4o", "claude-sonnet-5"]
+    assert borda.prov.modelos == [MODELO_HOJE, "claude-sonnet-5"]
     d = borda.rest.ledger[0]["details"]
     assert d["reserva_usada"] is True and "HTTP 500" in d["motivo_reserva"]
     assert borda.rest.ledger[0]["model_name"] == "claude-sonnet-5"
@@ -259,7 +289,7 @@ def test_chamar_modelo_recebe_o_pedido_e_nao_escreve_no_ledger(borda):
         return {"choices": [{"message": {"content": json.dumps(ACAO_OK)}}]}
 
     assert _decidir(chamar_modelo=_braco) == ACAO_OK
-    assert vistos[0]["papel"] == "portal_decisao" and vistos[0]["model"] == "gpt-4o"
+    assert vistos[0]["papel"] == "portal_decisao" and vistos[0]["model"] == MODELO_HOJE
     assert "headers" not in vistos[0], "o pedido entregue à bancada não carrega segredo"
     assert borda.prov.pedidos == [] and borda.rest.ledger == []
 
@@ -355,11 +385,11 @@ def _rota_injetada(provider, model, effort):
 
 
 def test_sem_rota_injetada_nada_muda(borda):
-    """Controle: sem `rota=`, o pedido é o da rota do banco (gpt-4o, JSON mode, temperature 0)."""
+    """Controle: sem `rota=`, o pedido é o da rota do banco (o modelo de hoje, com o
+    corpo que o catálogo dele manda — JSON mode; temperature só se sampling_ok)."""
     assert _decidir() == ACAO_OK
-    assert borda.prov.modelos == ["gpt-4o"] and borda.rest.leituras == 1
-    corpo = borda.prov.pedidos[0]["corpo"]
-    assert corpo["temperature"] == 0 and corpo["response_format"] == {"type": "json_object"}
+    assert borda.prov.modelos == [MODELO_HOJE] and borda.rest.leituras == 1
+    _corpo_segue_o_catalogo(borda.prov.pedidos[0]["corpo"])
 
 
 @pytest.mark.parametrize("provider,model,effort,url,sem_temperatura", [

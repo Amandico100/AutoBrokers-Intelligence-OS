@@ -370,6 +370,25 @@ class LLMFactory:
         return llm
 
     @staticmethod
+    def para_teste_de_conexao(provider: str, model: str, api_key: Optional[str] = None,
+                              company_id: Optional[str] = None):
+        """O botão "testar conexão" do admin — pela MESMA fábrica do produto.
+
+        🔴 SPEC-116 (conserto, juiz P5): os dois endpoints construíam
+        `ChatOpenAI`/`ChatAnthropic` por fora, com `temperature` → Claude 5 dá
+        400 e o botão dizia "falhou" para um modelo que funciona. Agora o par
+        (provedor, modelo) passa pelo catálogo (fora dele / BLOCKED /
+        HISTORICAL / provedor divergente = `ModeloNaoResolvido`, com o motivo) e
+        o adaptador só manda sampling onde o catálogo permite. A mensagem de teste
+        é pública: classe `publico`.
+        """
+        resolvido = MP.resolver("teste_de_conexao", classe_de_dado="publico",
+                                override={"provider": (provider or "").strip().lower() or None,
+                                          "model": model})
+        return LLMFactory.criar_de_resolvido(resolvido, api_key=api_key, company_id=company_id,
+                                             service_type="teste_de_conexao", max_tokens=50)
+
+    @staticmethod
     def detalhes_do_ledger(resolvido: ModeloResolvido, *, modelo_pedido: Optional[str],
                            reserva_usada: bool) -> Dict[str, Any]:
         return {

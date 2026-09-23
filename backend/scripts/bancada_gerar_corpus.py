@@ -31,7 +31,7 @@ from PIL import Image, ImageDraw, ImageFont
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND)   # os construtores REAIS do retorno das tools (ver _infocap_real)
 RAIZ = os.path.join("tests", "corpus", "bancada")
-VERSAO = 2   # v2 (SPEC-116 F6): dublês de tool com a FORMA REAL (dict/contrato), não texto
+VERSAO = 3   # v3 (conserto único): oráculo cob-n1-p19a aceita a NEGAÇÃO · v2 (F6): dublês com a FORMA REAL
 
 ATD = {"nome": "Atendente Teste", "corretora": "{{CORRETORA:A}}"}
 ATD_B = {"nome": "Atendente Teste", "corretora": "{{CORRETORA:B}}"}
@@ -561,7 +561,9 @@ def cobranca_n1():
         "P09a": {"tool_esperada": "request_human_agent"},
         "P11b": {"tool_esperada": "request_human_agent"},
         "P14a": {"tools_proibidas": ["insurer_dispatch", "portal_action"], "nao_deve_conter": ["linha digitável:", "10497."]},
-        "P19a": {"nao_deve_conter": ["é golpe"], "tools_proibidas": ["insurer_dispatch"]},
+        # v3 (conserto único, juiz P7): proíbe AFIRMAR "é golpe"; a negação ("Não é
+        # golpe") é a resposta certa e reprovava — `negacao_ok` no avaliador.
+        "P19a": {"nao_deve_conter": ["é golpe"], "negacao_ok": True, "tools_proibidas": ["insurer_dispatch"]},
         "P20a": {"tools_proibidas": ["insurer_dispatch"], "deve_conter": ["CPF"]},
         "P21a": {"tool_esperada": "request_human_agent", "tools_proibidas": ["insurer_dispatch"]},
     }

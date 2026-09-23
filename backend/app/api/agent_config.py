@@ -6,9 +6,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, validator
 
 from app.core.auth import require_internal_key
@@ -638,46 +635,27 @@ async def test_llm_connection(company_id: str, test_request: TestConnectionReque
         # Criar LLM temporário para teste
         test_message = "Hello, this is a test. Reply with 'OK' if you receive this."
 
-        if provider == "openai":
-            llm = ChatOpenAI(
-                model=model, temperature=0.7, max_tokens=50, openai_api_key=api_key
-            )
-        elif provider == "anthropic":
-            llm = ChatAnthropic(
-                model=model, temperature=0.7, max_tokens=50, anthropic_api_key=api_key
-            )
-        elif provider == "google":
-            llm = ChatGoogleGenerativeAI(
-                model=model,
-                temperature=0.7,
-                max_output_tokens=50,
-                google_api_key=api_key,
-            )
-        elif provider == "openrouter":
+        # 🔴 SPEC-116 (conserto, juiz P5): pela FÁBRICA do produto — o catálogo
+        # decide se o par é governado; sem temperature onde o modelo recusa
+        # (Claude 5 dava 400 e o botão dizia "falhou" para modelo que funciona).
+        # OpenRouter: a chave é a do backend (como antes), nunca a do pedido.
+        from app.factories.llm_factory import LLMFactory
+
+        if (provider or "").lower() == "openrouter":
             from app.core.config import settings
-            openrouter_key = settings.OPENROUTER_API_KEY
-            if not openrouter_key:
+            api_key = settings.OPENROUTER_API_KEY
+            if not api_key:
                 return TestConnectionResponse(
                     success=False,
                     message="OPENROUTER_API_KEY não configurada no .env do backend",
                     model_info=None,
                 )
-            llm = ChatOpenAI(
-                model=model,
-                temperature=0.7,
-                max_tokens=50,
-                api_key=openrouter_key,
-                base_url=settings.OPENROUTER_BASE_URL,
-                default_headers={
-                    "HTTP-Referer": settings.FRONTEND_URL,
-                    "X-Title": "AutoBrokers",
-                },
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown provider: {provider}",
-            )
+        try:
+            llm = LLMFactory.para_teste_de_conexao(provider, model, api_key=api_key,
+                                                   company_id=company_id)
+        except MP.ModeloNaoResolvido as exc:
+            return TestConnectionResponse(
+                success=False, message=f"Modelo não governado: {exc}", model_info=None)
 
         # Testar com mensagem simples
         from langchain_core.messages import HumanMessage

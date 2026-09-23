@@ -439,7 +439,32 @@ def linha_do_ledger(modelo: ModeloDoPortal, dados: Any, *, company_id: Any, job_
     return linha
 
 
+def _motivo_para_nao_gravar(linha: Dict[str, Any]) -> Optional[str]:
+    """🔴 SPEC-116 (conserto, juiz B3 / red team P2) — a trava do ledger de produção.
+
+    📊 23/09 17:43–17:46Z: 31 linhas `portal` com company_id NULO, job NULO e 0
+    tokens chegaram a `token_usage_logs` de PRODUÇÃO — um teste rodou `decidir`
+    com a rede do provedor dublada e o REST do Supabase REAL (as credenciais do
+    `backend/.env`). Duas regras, independentes:
+      · sem JOB e sem EMPRESA não é uma decisão de portal: é teste ou script
+        (📊 o único chamador do produto, `adaptive.py`, passa os dois do job);
+      · dentro do pytest, NUNCA pelo transporte real — só por um dublê
+        (`transporte_do_supabase`) ou pelo `gravador_de_uso` injetado.
+    """
+    detalhes = linha.get("details") or {}
+    if not detalhes.get("job_id") and not linha.get("company_id"):
+        return "sem job e sem empresa (teste/script, não um acionamento)"
+    if os.getenv("PYTEST_CURRENT_TEST") and transporte_do_supabase is None:
+        return "dentro do pytest sem dublê do banco"
+    return None
+
+
 async def _gravar_no_banco(linha: Dict[str, Any]) -> bool:
+    motivo = _motivo_para_nao_gravar(linha)
+    if motivo:
+        logger.warning("[PORTAL/MODELO] uso NÃO gravado no ledger: %s (modelo=%s)",
+                       motivo, linha.get("model_name"))
+        return False
     url, chave = _supabase()
     if not url or not chave:
         logger.error("[PORTAL/MODELO] uso NÃO gravado: SUPABASE_URL/SUPABASE_SERVICE_KEY ausentes")

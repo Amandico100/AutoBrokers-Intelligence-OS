@@ -95,6 +95,24 @@ def banco(monkeypatch):
     MP.limpar_cache()
 
 
+@pytest.fixture(autouse=True)
+def _banco_do_ledger_deste_modulo(monkeypatch):
+    """🔴 (conserto único) o dublê do cliente Supabase é DESTE módulo durante o
+    teste. Vários módulos trocam `get_supabase_client` no nível do import — na
+    coleta, o último import vencia: 📊 com `test_spec116_f2_adaptadores.py` na
+    mesma sessão, o `webhook` nascia com `client=None` e
+    `test_uma_foto_uma_chamada…` caía em `IntegrationService` (ValueError)."""
+    monkeypatch.setattr(_db, "get_supabase_client", lambda: _BancoMudo())
+    monkeypatch.setattr(_uso, "get_supabase_client", _db.get_supabase_client)
+
+
+#: 🔴 (conserto único — CLAUDE.md §9.3): a rota de HOJE, lida do snapshot (o banco
+#: dublado). Os controles afirmavam `gpt-4o-mini` (o seed); a `_04` trocou visão e
+#: memória. O teste lê o esperado da rota; nunca uma constante.
+def _rota_hoje(papel):
+    return SNAP["papeis"][papel]
+
+
 def _trocar_rota(pap, papel, provider, modelo):
     pap[papel].update(provider=provider, modelo_primario=modelo)
     MP.limpar_cache()
@@ -160,14 +178,26 @@ def test_visao_segue_a_rota_do_papel_e_nao_o_default(banco, provedor):
 
 
 def test_visao_controle_rota_openai_mantem_a_temperatura(banco, provedor):
-    """LINHA DE CONTROLE: o catálogo diz que o gpt-4o-mini ACEITA sampling —
-    o mesmo motor que tirou a temperatura do Claude a mantém aqui."""
+    """LINHA DE CONTROLE: um modelo cujo catálogo ACEITA sampling mantém a
+    temperatura — o mesmo motor que a tirou do Claude. E a rota de HOJE segue o
+    catálogo dela (com ou sem temperature, conforme `sampling_ok`)."""
     from app.services.vision_service import describe_image
 
-    _, pap = banco
-    assert pap["visao"]["modelo_primario"] == "gpt-4o-mini", "a rota de hoje é a do seed"
+    cat, pap = banco
+    # 1) a rota de hoje (lida do snapshot): o cliente e o payload seguem o catálogo
+    hoje = _rota_hoje("visao")
     asyncio.run(describe_image(FOTO, company_id=TENANT_A))
     ch = provedor.chamadas[0]
+    assert ch["model"] == hoje["modelo_primario"], ch
+    amostra_ok = (cat[hoje["modelo_primario"]].get("capacidades") or {}).get("sampling_ok") is not False
+    assert ("temperature" in ch["llm"]._get_request_payload(ch["mensagens"])) is amostra_ok
+    # 2) CONTROLE: rota para um modelo que ACEITA sampling ⇒ a temperatura fica
+    _trocar_rota(pap, "visao", "openai", "gpt-4o-mini")
+    pap["visao"]["esforco"] = None   # a rota de hoje tem esforço; o gpt-4o-mini não aceita
+    MP.limpar_cache()
+    assert (cat["gpt-4o-mini"].get("capacidades") or {}).get("sampling_ok") is not False
+    asyncio.run(describe_image(FOTO, company_id=TENANT_A))
+    ch = provedor.chamadas[1]
     assert (ch["classe"], ch["model"]) == ("ChatOpenAIGovernado", "gpt-4o-mini")
     assert ch["llm"]._get_request_payload(ch["mensagens"]).get("temperature") == 0.3
 
@@ -345,7 +375,8 @@ def test_attendance_media_agente_de_outra_corretora_nao_e_achado(banco, provedor
     assert r["ok"] is True and r["status"] == "processed", r
     assert len(provedor.chamadas) == 1
     ch = provedor.chamadas[0]
-    assert ch["model"] == "gpt-4o-mini", "a ROTA manda, não o vision_model gravado (D-116-17)"
+    assert _rota_hoje("visao")["modelo_primario"] != "gpt-4o", "rota e gravado CONSEGUEM divergir"
+    assert ch["model"] == _rota_hoje("visao")["modelo_primario"],         "a ROTA manda, não o vision_model gravado (D-116-17)"
     custo = ch["llm"].callbacks[0]
     assert (custo.service_type, custo.company_id, custo.agent_id) == ("vision", TENANT_B, "ag-b")
     assert custo.details["papel"] == "visao" and custo.details["modelo_pedido"] == "gpt-4o"
@@ -383,12 +414,17 @@ def test_memoria_ignora_memory_settings_e_segue_a_rota(banco):
 
 
 def test_memoria_controle_a_rota_de_hoje_e_o_mini_no_cliente_openai(banco):
-    """LINHA DE CONTROLE: a rota do seed (gpt-4o-mini) monta o cliente da
-    OpenAI — nunca um Claude dentro de `ChatOpenAI` (o defeito de antes)."""
+    """LINHA DE CONTROLE: a rota de HOJE (lida do snapshot) monta o cliente DO
+    PROVEDOR DELA — nunca um Claude dentro de `ChatOpenAI` (o defeito de antes),
+    e a coluna legada `memory_llm_model` (Haiku) não manda."""
     from app.services.memory_service import MemoryService
 
+    hoje = _rota_hoje("memoria")
+    assert hoje["modelo_primario"] != "claude-haiku-4-5-20251001", "legado e rota CONSEGUEM divergir"
     llm = MemoryService(None)._get_memory_llm({"memory_llm_model": "claude-haiku-4-5-20251001"})
-    assert isinstance(llm, ChatOpenAIGovernado) and llm.model_name == "gpt-4o-mini"
+    classe = {"openai": ChatOpenAIGovernado, "anthropic": ChatAnthropicGovernado}[hoje["provider"]]
+    assert isinstance(llm, classe), type(llm)
+    assert (getattr(llm, "model_name", None) or llm.model) == hoje["modelo_primario"]
 
 
 def test_memoria_ponto_de_injecao_aceita_resposta_em_blocos():

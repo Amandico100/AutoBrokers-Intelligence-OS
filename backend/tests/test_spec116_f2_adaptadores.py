@@ -165,6 +165,12 @@ def test_gpt6_sol_pela_responses_com_esforco_e_store_false(banco):
 
 
 def test_gpt4o_continua_em_chat_completions_com_temperature(banco):
+    # 🔴 (conserto único — §9.3): a afirmação é sobre o ADAPTADOR do gpt-4o, e
+    # dependia de `portal_decisao` ainda estar no seed (gpt-4o). A `_04` trocou a
+    # rota; o teste passa a DECLARAR a rota que prova — a lição migra, o
+    # comportamento guardado (chat completions + temperature) é o mesmo.
+    _, pap = banco
+    _rota(pap, "portal_decisao", provider="openai", modelo_primario="gpt-4o", esforco=None)
     p = _payload(_llm("portal_decisao"))
     assert p["model"] == "gpt-4o"
     assert "messages" in p and "input" not in p
