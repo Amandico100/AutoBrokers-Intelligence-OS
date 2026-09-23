@@ -89,7 +89,12 @@ from . import evaluators as E
 
 logger = logging.getLogger(__name__)
 
-CORPUS_DIR = Path(__file__).resolve().parents[3] / "tests" / "corpus" / "bancada"
+import app as _pacote_app  # noqa: E402
+
+#: A raiz de `backend/` sai do PACOTE `app`, não de contar níveis a partir deste
+#: arquivo (guarda `test_o_vocabulario_viaja_na_imagem`: `parents[n]` de cabeça quebra
+#: quando o arquivo muda de lugar). O corpus é instrumento de desenvolvimento/CI.
+CORPUS_DIR = Path(_pacote_app.__file__).resolve().parent.parent / "tests" / "corpus" / "bancada"
 
 #: Tenants FICTÍCIOS — nunca uma corretora real (CLAUDE.md §13.9).
 TENANTS = {
