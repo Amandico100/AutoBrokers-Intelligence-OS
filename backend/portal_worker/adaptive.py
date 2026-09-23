@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextvars
 import json
-import os
 import unicodedata
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from portal_worker import modelo_do_portal as _MODELO
 from portal_worker import redaction as _RED
 from portal_worker.journeys import JourneyResult
 from portal_worker.journeys.vidros_lanternas import explicar_match, explicar_especifico
@@ -42,10 +43,19 @@ from portal_worker.journeys.vidros_lanternas import (
 )
 
 VALID_ACTIONS = ("fill", "select", "click", "check", "done", "ask_human")
-# O modelo que ja rodou em producao. Serve de rede: se o padrao novo nao existir
-# na conta, o acionamento cai aqui em vez de morrer.
-_MODELO_DE_RESERVA = "gpt-4o-mini"
+# 🔴 SPEC-116 U9: aqui morava `_MODELO_DE_RESERVA = "gpt-4o-mini"` — a "rede"
+# que QUALQUER erro >= 400 (429 e 5xx inclusive) disparava calada, fora do
+# ledger, com o modelo que a propria autopsia dos 39 acionamentos reprovou.
+# Rebaixar sem avisar nao e rede: e trocar o cerebro no meio do acionamento.
+# Quem escolhe o modelo agora e a ROTA `portal_decisao` (modelo_do_portal.py);
+# reserva so se a rota declarar.
 MAX_STEPS = 22
+
+#: O job em curso (company_id/job_id) para o LEDGER do cerebro. `run_adaptive`
+#: o preenche a partir do `runtime`; um contextvar, e nao um parametro, para que
+#: `decide_next_action(state, goal, collected, history, force)` mantenha a
+#: assinatura que os dubles de teste e a bancada ja usam.
+_JOB_EM_CURSO: contextvars.ContextVar = contextvars.ContextVar("portal_job_em_curso", default=None)
 LAST_MDSELECT_DEBUG = None  # ultimo overlay md-option nao-clicavel (diagnostico)
 
 
@@ -390,46 +400,47 @@ _FORCE_CHOOSE = (
 )
 
 
+def _recorte_json(texto: str) -> str:
+    """O primeiro objeto JSON do texto (modelos embrulham em cerca de codigo)."""
+    t = str(texto or "").strip()
+    i, j = t.find("{"), t.rfind("}")
+    return t[i: j + 1] if i != -1 and j > i else t
+
+
 async def decide_next_action(state: Dict[str, Any], goal: str, collected: Dict[str, Any],
-                             history: List[Dict[str, Any]], force: bool = False) -> Dict[str, Any]:
-    """Chama o cerebro (LLM) para decidir a proxima acao. Fail-safe -> ask_human."""
-    key = os.getenv("OPENAI_API_KEY") or ""
-    # 📊 O padrao era `gpt-4o-mini` — um modelo pequeno conduzindo uma tarefa
-    # agentica de 22 passos com 1.500 caracteres de instrucao. A autopsia dos 39
-    # acionamentos mostra os tres sintomas classicos de instrucao nao seguida:
-    # perguntou o que estava no payload (4x), repetiu acao que ja tinha dado
-    # certo (7x) e escreveu "Santa Catarina" onde o prompt manda a SIGLA.
-    #
-    # Continua trocavel por env — e o fallback abaixo garante que um nome de
-    # modelo invalido nunca derrube o acionamento.
-    model = os.getenv("PORTAL_VISION_MODEL", "gpt-4o")
-    if not key:
-        return {"action": "ask_human", "value": "cerebro de visao indisponivel (sem OPENAI_API_KEY no worker)", "reason": "no key"}
+                             history: List[Dict[str, Any]], force: bool = False, *,
+                             chamar_modelo: Optional[Callable[[Dict[str, Any]], Any]] = None
+                             ) -> Dict[str, Any]:
+    """Chama o cerebro (LLM) para decidir a proxima acao. Fail-safe -> ask_human.
+
+    📊 O padrao era `gpt-4o-mini` — um modelo pequeno conduzindo uma tarefa
+    agentica de 22 passos com 1.500 caracteres de instrucao. A autopsia dos 39
+    acionamentos mostra os tres sintomas classicos de instrucao nao seguida:
+    perguntou o que estava no payload (4x), repetiu acao que ja tinha dado
+    certo (7x) e escreveu "Santa Catarina" onde o prompt manda a SIGLA.
+
+    SPEC-116 U9: o modelo e o da ROTA `portal_decisao` (Model Router, mesmo
+    catalogo do produto); `PORTAL_VISION_MODEL` fica IGNORADO. Falha do
+    provedor NAO troca de modelo: vira `ask_human` com o MOTIVO, e o laco segue
+    o caminho de `needs_human` que ja existe. O uso vai para o ledger
+    (`token_usage_logs`, service_type='portal', company_id do job).
+
+    `chamar_modelo` — ponto de injecao da BANCADA: recebe o pedido montado
+    ({papel, provider, api_surface, model, url, corpo}) e devolve a resposta
+    crua do provedor (Chat Completions, Messages ou Responses). Sem ele, o
+    pedido sai por `httpx.AsyncClient.post` — que a bancada tambem sabe desviar.
+    """
     system = _SYSTEM + (_FORCE_CHOOSE if force else "")
     user = json.dumps({"objetivo": goal, "dados_segurado_corretora": collected, "tela": state,
                        "acoes_ja_feitas": history[-8:]}, ensure_ascii=False)
+    job = _JOB_EM_CURSO.get() or {}
     try:
-        import httpx
-
-        mensagens = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        async with httpx.AsyncClient(timeout=45.0) as c:
-            async def _pedir(m: str):
-                return await c.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {key}"},
-                    json={"model": m, "temperature": 0, "response_format": {"type": "json_object"},
-                          "messages": mensagens},
-                )
-
-            r = await _pedir(model)
-            # Um nome de modelo que a conta nao tem nao pode custar o
-            # acionamento inteiro. Cai UMA vez no modelo antigo, que
-            # comprovadamente responde — pior decisao e melhor que nenhuma.
-            if r.status_code >= 400 and model != _MODELO_DE_RESERVA:
-                r = await _pedir(_MODELO_DE_RESERVA)
-            data = r.json()
-            content = data["choices"][0]["message"]["content"]
-        return parse_action(json.loads(content))
+        resposta = await _MODELO.decidir(system, user, company_id=job.get("company_id"),
+                                         job_id=job.get("job_id"), chamar_modelo=chamar_modelo)
+        return parse_action(json.loads(_recorte_json(resposta["texto"])))
+    except _MODELO.ModeloDoPortalIndisponivel as e:
+        return {"action": "ask_human", "value": f"cerebro do portal indisponivel: {e}"[:220],
+                "reason": "llm error"}
     except Exception as e:  # noqa: BLE001
         return {"action": "ask_human", "value": f"nao consegui decidir ({type(e).__name__})", "reason": "llm error"}
 
@@ -1194,6 +1205,9 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         _guard.acao_material_esperada = "avancar|confirmar"
     _escada = getattr(runtime, "escada", None) or _P.EscadaDePercepcao()
     _rejeitadas = 0
+    # O job em curso, para o LEDGER do cerebro (SPEC-116 U9): quem pagou a decisao.
+    _JOB_EM_CURSO.set({"company_id": getattr(runtime, "company_id", None) or None,
+                       "job_id": getattr(runtime, "job_id", None) or None})
     for _ in range(max_steps):
         state = await capture_state(page)
         # Antes de gastar um passo com o modelo: o que ja sabemos, escrevemos.

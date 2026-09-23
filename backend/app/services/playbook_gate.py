@@ -66,19 +66,22 @@ def deterministic_checks(content: Dict[str, Any]) -> List[str]:
     return problems
 
 
+#: SPEC-116 U8 — o papel do juiz de playbook no Model Router (`llm_papeis`).
+PAPEL_DO_JUIZ = "juiz_playbook"
+
+
 async def _judge(candidate: Dict[str, Any], current: Optional[Dict[str, Any]],
                  golden: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
-        from app.services.attendance_distiller import _provider_model
 
-        provider, model = _provider_model(strong=True)
+        # SPEC-116 U8: o juiz pede o PAPEL dele (`juiz_playbook`) — não herda
+        # mais o modelo do destilador. Plataforma: company_id nulo, papel no ledger.
         llm = LLMFactory.create_llm(
-            company_config={}, agent_data={"llm_provider": provider, "llm_model": model},
-            api_key=get_api_key_for_provider(provider, model), company_id="", agent_id=None,
+            company_config={}, agent_data={}, company_id=None, agent_id=None,
+            service_type="plataforma", papel=PAPEL_DO_JUIZ,
         )
         user = json.dumps({
             "candidato": candidate, "atual": current,

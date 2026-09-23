@@ -96,11 +96,25 @@ def _teto_de_gasto() -> int:
         return 0
 
 
+#: SPEC-116 U8 — os PAPÉIS do destilador no Model Router (`llm_papeis`).
+#: `DISTILLER_PROVIDER/_LLM_MODEL/_STRONG_MODEL` ficam IGNORADOS: a rota escolhe.
+PAPEL_PADRAO = "distiller"
+PAPEL_FORTE = "distiller_forte"
+
+
+def _papel(strong: bool) -> str:
+    return PAPEL_FORTE if strong else PAPEL_PADRAO
+
+
 def _provider_model(strong: bool) -> Tuple[str, str]:
-    provider = os.getenv("DISTILLER_PROVIDER") or "anthropic"
-    if strong:
-        return provider, os.getenv("DISTILLER_STRONG_MODEL") or "claude-opus-5"
-    return provider, os.getenv("DISTILLER_LLM_MODEL") or "claude-sonnet-5"
+    """(provedor, modelo) que a ROTA do papel resolve — o que carimba `model_used`.
+
+    ⛔ Sem rota → `ModeloNaoResolvido` (nunca um modelo por omissão).
+    """
+    from app.factories.llm_factory import LLMFactory
+
+    r = LLMFactory.resolver_para({}, {}, papel=_papel(strong))
+    return r.provider, r.model
 
 
 def _texto_da_resposta(result: Any) -> Optional[str]:
@@ -139,20 +153,30 @@ def _texto_da_resposta(result: Any) -> Optional[str]:
     return str(bruto or "").strip() or None
 
 
-async def _call_llm(system: str, user: str, company_id: str = "", strong: bool = False) -> Optional[str]:
-    """Chamada única de LLM (padrão da casa: LLMFactory + FinOps por company)."""
+async def _call_llm(system: str, user: str, company_id: str = "", strong: bool = False,
+                    papel: Optional[str] = None) -> Optional[str]:
+    """Chamada única de LLM pelo PAPEL (SPEC-116 U8).
+
+    🔴 O LEDGER (BLOCO 0 da F3b, 📊 23/09): o destilador NUNCA sumiu do ledger —
+    as 18 sínteses de playbook têm, cada uma, uma linha `claude-opus-5` gravada
+    < 1 s antes (29/07–05/08). Mas iam como `service_type="chat"` sob a
+    empresa técnica Global Knowledge (o `or GLOBAL_KNOWLEDGE_COMPANY_ID` abaixo
+    de antes): indistinguíveis de conversa, sem papel, e fora da janela de 45 d
+    do censo. Agora: `service_type="plataforma"` + `details.papel`; company_id
+    só quando o trabalho é sobre a conversa de UMA corretora (estágio 1);
+    trabalho global (síntese, lapidador, juiz) vai com company_id NULO — a forma
+    das demais linhas de plataforma.
+    """
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
 
-        provider, model = _provider_model(strong)
         llm = LLMFactory.create_llm(
-            company_config={}, agent_data={"llm_provider": provider, "llm_model": model},
-            api_key=get_api_key_for_provider(provider, model),
-            company_id=str(company_id or os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID") or ""),
-            agent_id=None,
+            company_config={}, agent_data={},
+            company_id=(str(company_id) if company_id else None),
+            agent_id=None, service_type="plataforma",
+            papel=papel or _papel(strong),
         )
         result = await llm.ainvoke([SystemMessage(content=system), HumanMessage(content=user)])
         return _texto_da_resposta(result)

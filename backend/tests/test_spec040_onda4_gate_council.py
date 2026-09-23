@@ -156,14 +156,38 @@ def _bootstrap():
 
     lf = types.ModuleType("app.factories.llm_factory")
 
+    # ⚠️ ATUALIZADO EM 23/09/2026 — SPEC-116 F3b (CLAUDE.md §9.3). O conselho e o
+    # juiz passaram a pedir PAPEL à fábrica (`resolver_para` + `create_llm(papel=…,
+    # modelo_resolvido=…)`). O dublê fala o contrato NOVO e resolve pelo CATÁLOGO
+    # REAL (o snapshot): membro fora do catálogo é PULADO — a lição "membro sem
+    # chave/provedor não quebra o conselho" migra para "membro não governado é
+    # pulado, nunca vira outro modelo".
+    _snap = json.loads((ROOT / "app" / "factories" / "modelos_snapshot.json")
+                       .read_text(encoding="utf-8"))
+
     class LLMFactory:
         calls = []
         judge_response = {"nota_candidato": 88, "nota_atual": 75, "veredito": "aprovar",
                           "riscos": [], "melhorias": []}
 
         @staticmethod
-        def create_llm(company_config, agent_data, api_key, company_id=None, agent_id=None):
-            model = agent_data.get("llm_model")
+        def resolver_para(company_config, agent_data, *, papel=None, classe_de_dado=None):
+            rota = _snap["papeis"].get(papel or "")
+            if rota:
+                return types.SimpleNamespace(provider=rota["provider"],
+                                             model=rota["modelo_primario"], papel=papel)
+            prov, modelo = (agent_data or {}).get("llm_provider"), (agent_data or {}).get("llm_model")
+            linha = _snap["catalogo"].get(modelo or "")
+            if not linha or linha.get("provider") != prov or linha.get("lifecycle") not in (
+                    "APPROVED", "CANDIDATE", "DEPRECATED"):
+                raise ValueError(f"fora do catalogo: {prov}:{modelo}")
+            return types.SimpleNamespace(provider=prov, model=modelo, papel=papel)
+
+        @staticmethod
+        def create_llm(company_config, agent_data, api_key=None, company_id=None, agent_id=None,
+                       service_type=None, *, papel=None, modelo_resolvido=None, **_kw):
+            r = modelo_resolvido or LLMFactory.resolver_para(company_config, agent_data, papel=papel)
+            model = r.model
 
             class _LLM:
                 async def ainvoke(self, msgs):
@@ -287,10 +311,15 @@ def run():
     r1 = asyncio.run(council.convene_council("Ativar playbook guincho?", "contexto"))
     ok_members = [o for o in r1.get("opinions", []) if o.get("ok")]
     skipped = [o for o in r1.get("opinions", []) if not o.get("ok")]
-    check("conselho ligado: membros com chave opinam", len(ok_members) == 2,
+    check("conselho ligado: membros GOVERNADOS pelo catalogo opinam",
+          [o.get("member") for o in ok_members] == ["anthropic:claude-opus-5"],
           [o.get("member") for o in ok_members])
-    check("membros sem chave (kimi/grok) pulados sem quebrar", len(skipped) == 2,
+    check("membros fora do catalogo (gpt-5.5/kimi/grok) pulados sem quebrar",
+          sorted(o.get("member") for o in skipped)
+          == ["moonshot:kimi-k3", "openai:gpt-5.5", "xai:grok-4.5"],
           [o.get("member") for o in skipped])
+    check("nenhum membro virou o mini (SPEC-116)",
+          "gpt-4o-mini" not in [c["model"] for c in factory.calls], factory.calls)
     check("lider consolida em JSON", (r1.get("synthesis") or {}).get("veredito") == "aprovar", r1.get("synthesis"))
     os.environ.pop("COUNCIL_ENABLED", None)
 

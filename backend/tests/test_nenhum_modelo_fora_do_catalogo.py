@@ -71,6 +71,17 @@ ALLOWLIST: dict = {
     "backend/app/models/conversation_log.py": {
         "gpt-5.1": "exemplo de documentação da API (json_schema_extra), não escolhe modelo",
     },
+    # SPEC-116 F3b: benchmark COMPARATIVO de RAG do admin — modelos fixos por
+    # desenho (rodadas só são comparáveis com o mesmo gerador/juiz). Não pede papel.
+    # Hoje os quatro estão no catálogo (3 DEPRECATED, 1 APPROVED) e não violam; a
+    # entrada existe para que, quando virarem BLOCKED, a decisão seja revista AQUI
+    # (trocar o literal) e não descoberta no CI de outra SPEC.
+    "backend/app/services/benchmark_service.py": {
+        "gpt-4o": "benchmark comparativo de RAG: gerador de perguntas fixo por desenho",
+        "gpt-4o-mini": "benchmark comparativo de RAG: HyDE fixo por desenho",
+        "claude-sonnet-4-6": "benchmark comparativo de RAG: juiz de chunks fixo por desenho",
+        "text-embedding-3-small": "benchmark comparativo de RAG: o embedding do índice",
+    },
 }
 
 #: 🔴 O QUE HOJE VIOLA E É DE OUTRA FATIA. arquivo → (fatia dona, {literais}).
@@ -78,13 +89,10 @@ ALLOWLIST: dict = {
 #: pendência sumir do código e continuar aqui, e falha com literal NOVO.
 #: 📊 medido 23/09/2026 com `python tests/test_nenhum_modelo_fora_do_catalogo.py`.
 LITERAIS_PENDENTES_DAS_FATIAS: dict = {
-    # F3 — call sites por fora da fábrica
-    # ⚠️ (F2, 23/09) o literal restante de langchain_service.py mora no bloco de
-    # VISÃO (`_analyze_image` e o seu ramo, :440-480) — território da F3.
-    "backend/app/services/langchain_service.py": ("F3", {"claude-3-5-sonnet-20241022"}),
-    "backend/app/services/vision_service.py": ("F3", {"claude-3-5-sonnet-20241022"}),
-    "backend/app/services/atlas/atlas_parser.py": ("F3", {"gpt-5.1"}),
-    "backend/app/agents/tools/subagent_tool.py": ("F3", {"gpt-4-turbo"}),
+    # 📊 23/09/2026 — ZERADA. A F3a tirou os literais de langchain_service.py,
+    # vision_service.py e subagent_tool.py; a F3b, o de atlas_parser.py ("gpt-5.1",
+    # a tabela de preços própria do Atlas). Daqui em diante, literal fora do
+    # catálogo é literal NOVO e o teste fica vermelho.
 }
 
 

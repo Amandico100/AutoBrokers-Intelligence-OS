@@ -73,8 +73,9 @@ logger = logging.getLogger(__name__)
 #: deste arquivo, e a mutação (a) do pacote é justamente acrescentá-lo.
 _PROIBIDO_IMPORTAR = ("publicar_servico", "publicar_plano")
 
-MODELO = os.getenv("EXTRATOR_PLANOS_MODEL") or "claude-sonnet-5"
-PROVEDOR = os.getenv("EXTRATOR_PLANOS_PROVIDER") or "anthropic"
+#: SPEC-116 U8 — o PAPEL do extrator no Model Router (`llm_papeis`).
+#: `EXTRATOR_PLANOS_PROVIDER/_MODEL` ficam IGNORADOS: a rota escolhe o modelo.
+PAPEL = "extrator_planos"
 
 #: Teto de páginas enviadas ao modelo por documento. 📊 um documento do acervo
 #: tem 207 páginas; sem teto, um PDF mal filtrado vira a conta do mês inteiro.
@@ -628,15 +629,14 @@ def montar_modelo() -> Optional[Any]:
         from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
 
-        chave = get_api_key_for_provider(PROVEDOR, MODELO)
-        if not chave:
+        resolvido = LLMFactory.resolver_para({}, {}, papel=PAPEL)
+        if not get_api_key_for_provider(resolvido.provider, resolvido.model):
             return None
+        # Plataforma (a base de planos é de todas as corretoras): company_id
+        # nulo + `service_type="plataforma"` + papel no ledger.
         return LLMFactory.create_llm(
-            company_config={},
-            agent_data={"llm_provider": PROVEDOR, "llm_model": MODELO},
-            api_key=chave,
-            company_id=str(os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID") or ""),
-            agent_id=None,
+            company_config={}, agent_data={}, company_id=None, agent_id=None,
+            service_type="plataforma", modelo_resolvido=resolvido,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("[onda1] modelo indisponivel: %s", type(exc).__name__)
@@ -1582,7 +1582,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.limite:
         docs = docs[: int(args.limite)]
     print("[onda1] %s documento(s) · modo=%s · modelo=%s"
-          % (len(docs), "APLICAR" if aplicar else "dry-run", MODELO if llm else "nenhum"))
+          % (len(docs), "APLICAR" if aplicar else "dry-run",
+             getattr(llm, "model", None) or getattr(llm, "model_name", None) if llm else "nenhum"))
 
     total = {"planos": 0, "servicos": 0, "rascunhos": 0, "propostas": 0}
     por_chave: Dict[str, Dict[str, int]] = {}

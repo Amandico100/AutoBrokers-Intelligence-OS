@@ -175,7 +175,6 @@ async def _llm_refine_company(company_id: str, conv_ids: list) -> int:
         from langchain_core.messages import HumanMessage, SystemMessage
 
         from app.core.database import get_supabase_client
-        from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
 
         db = get_supabase_client()
@@ -199,12 +198,11 @@ async def _llm_refine_company(company_id: str, conv_ids: list) -> int:
         if len(chunks) < 2:  # pouco material = não vale a chamada
             return 0
 
-        provider = _os.getenv("GARIMPO_LLM_PROVIDER") or "anthropic"
-        model = _os.getenv("GARIMPO_LLM_MODEL") or "claude-sonnet-5"
+        # SPEC-116 U8: a ROTA `garimpo` escolhe o modelo; `GARIMPO_LLM_PROVIDER/
+        # _MODEL` ficam IGNORADOS. (`GARIMPO_LLM` continua sendo o interruptor.)
         llm = LLMFactory.create_llm(
-            company_config={}, agent_data={"llm_provider": provider, "llm_model": model},
-            api_key=get_api_key_for_provider(provider, model),
-            company_id=company_id, agent_id=None,
+            company_config={}, agent_data={}, company_id=company_id, agent_id=None,
+            papel="garimpo",
         )
         result = await llm.ainvoke([
             SystemMessage(content=_LLM_SYSTEM),

@@ -124,12 +124,17 @@ def collect_feedback_sync(ramo: str, servico: str, days: int = 14) -> List[str]:
     return out[:40]
 
 
+#: SPEC-116 U8 — o papel do Lapidador no Model Router (`llm_papeis`).
+PAPEL = "prompt_optimizer"
+
+
 async def optimize_playbook(ramo: str, servico: str,
                             min_feedback: Optional[int] = None) -> Dict[str, Any]:
     """Uma rodada de lapidação: feedback -> reflexão (modelo forte) -> DRAFT.
     O draft NUNCA assume sozinho — passa pelo gate da Onda 4."""
+    from app.factories.llm_factory import LLMFactory
     from app.services.attendance_distiller import (
-        _call_llm, _load_group_summaries_sync, _parse_json, _provider_model,
+        _call_llm, _load_group_summaries_sync, _parse_json,
     )
     from app.services.playbook_gate import _load_active_sync, deterministic_checks
 
@@ -175,7 +180,9 @@ async def optimize_playbook(ramo: str, servico: str,
         "condutas_douradas": golden[:10],
     }, ensure_ascii=False)[:14000]
 
-    raw = await _call_llm(_REFLECT_SYSTEM, user, strong=True)
+    # SPEC-116 U8: o Lapidador pede o PAPEL dele (`prompt_optimizer`), não o do
+    # destilador — trocar um não troca o outro.
+    raw = await _call_llm(_REFLECT_SYSTEM, user, papel=PAPEL)
     candidate = _parse_json(raw)
     if not candidate or not candidate.get("ficha_coleta"):
         return {"ok": False, "reason": "reflexao_ilegivel"}
@@ -187,7 +194,7 @@ async def optimize_playbook(ramo: str, servico: str,
 
     from app.services.attendance_distiller import _save_playbook_draft_sync
 
-    _prov, model = _provider_model(strong=True)
+    model = LLMFactory.resolver_para({}, {}, papel=PAPEL).model
     pid = await asyncio.to_thread(
         _save_playbook_draft_sync, ramo, servico, candidate, len(golden), model)
     if not pid:

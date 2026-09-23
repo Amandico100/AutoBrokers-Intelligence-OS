@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -62,14 +61,40 @@ RUBRICAS: dict[str, str] = {
 }
 
 
+#: SPEC-116 U8 — o PAPEL do juiz no Model Router (`llm_papeis`). Quem escolhe o
+#: modelo é a rota; `EVAL_JUDGE_MODEL` fica IGNORADO.
+PAPEL = "juiz_eval"
+
+#: O resultado de uma rubrica que NÃO foi avaliada (erro, sem chave, sem rota,
+#: rubrica não respondida). ⛔ Não é "falhou": ninguém julgou.
+NAO_AVALIADO = "NAO_AVALIADO"
+
+
 def juiz_disponivel() -> bool:
-    return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY"))
+    """Há rota para o papel e chave para o provedor que ela resolve?"""
+    try:
+        from app.core.utils import get_api_key_for_provider
+        from app.factories.llm_factory import LLMFactory
+
+        r = LLMFactory.resolver_para({}, {}, papel=PAPEL)
+        return bool(get_api_key_for_provider(r.provider, r.model))
+    except Exception:  # noqa: BLE001 — sem rota/catálogo/chave = indisponível
+        return False
 
 
-def _modelo() -> str:
-    # Um modelo barato basta para julgar rubrica fechada, e o custo importa:
-    # o juiz roda sobre amostra contínua de tráfego real.
-    return os.getenv("EVAL_JUDGE_MODEL", "claude-sonnet-5")
+def criar_juiz():
+    """O modelo do juiz, PELA FÁBRICA — a mesma porta de todo o produto.
+
+    📊 Até a SPEC-116 esta chamada era `create_llm(provider=..., model=...,
+    temperature=0)`: assinatura inexistente → `TypeError` engolido → o juiz
+    NUNCA julgou nada (zero chamadores, e nenhum teria funcionado).
+    Plataforma: company_id nulo, papel/pedido/resolvido no ledger.
+    """
+    from app.factories.llm_factory import LLMFactory
+
+    return LLMFactory.create_llm(
+        company_config={}, agent_data={"llm_temperature": 0},
+        company_id=None, agent_id=None, service_type="plataforma", papel=PAPEL)
 
 
 def _prompt(entrada: Any, saida: Any, rubricas: list[str]) -> str:
@@ -97,27 +122,31 @@ Regras da sua resposta:
 
 
 async def julgar_com_llm(entrada: Any, saida: Any, *,
-                         rubricas: Optional[list[str]] = None) -> list[dict]:
+                         rubricas: Optional[list[str]] = None,
+                         llm: Any = None) -> list[dict]:
     """Devolve um veredito por rubrica. Nunca levanta exceção.
 
-    Falha de rede, chave ausente ou JSON malformado **não** viram aprovação:
-    viram `passou=False` com motivo explícito e confiança zero — que a política
-    manda encaminhar para revisão humana.
+    `llm` — injeção da BANCADA (o braço em avaliação); sem ele, a fábrica pelo
+    papel `juiz_eval`.
+
+    Falha de rede, rota/chave ausente ou JSON malformado **não** viram
+    aprovação NEM reprovação: viram `resultado="NAO_AVALIADO"`, `passou=None`,
+    `nota=None` — e vão para revisão humana. (Antes: `passou=False` com
+    confiança 0, um "falhou" disfarçado que um painel contaria como reprovação.)
     """
     escolhidas = [r for r in (rubricas or list(RUBRICAS)) if r in RUBRICAS]
     if not escolhidas:
         return []
 
-    if not juiz_disponivel():
-        return [_sem_veredito(r, "não há chave de LLM configurada nesta instalação")
+    if llm is None and not juiz_disponivel():
+        return [_sem_veredito(r, "não há rota ou chave de LLM para o juiz nesta instalação")
                 for r in escolhidas]
 
     try:
-        from app.factories.llm_factory import LLMFactory
         from langchain_core.messages import HumanMessage
 
-        llm = LLMFactory.create_llm(provider="anthropic", model=_modelo(),
-                                    temperature=0)
+        if llm is None:
+            llm = criar_juiz()
         resposta = await llm.ainvoke([HumanMessage(content=_prompt(entrada, saida, escolhidas))])
         texto = getattr(resposta, "content", "") or ""
         if isinstance(texto, list):  # alguns provedores devolvem blocos
@@ -142,6 +171,8 @@ async def julgar_com_llm(entrada: Any, saida: Any, *,
         precisa_humano = confianca < LIMIAR_DE_CONFIANCA
         saida_final.append({
             "evaluator_slug": f"llm:{r}",
+            "resultado": ("PASS" if passou else "FAIL") if not precisa_humano else "INCERTO",
+            "avaliado": True,
             # Confiança baixa NÃO vira aprovação. Vira "não passou ainda" +
             # fila humana. É a diferença entre um gate honesto e um otimista.
             "passou": passou and not precisa_humano,
@@ -154,11 +185,14 @@ async def julgar_com_llm(entrada: Any, saida: Any, *,
 
 
 def _sem_veredito(rubrica: str, porque: str) -> dict:
+    """Rubrica NÃO avaliada. ⛔ Nem aprovação nem reprovação: `passou=None`."""
     return {
         "evaluator_slug": f"llm:{rubrica}",
-        "passou": False, "nota": 0.0, "confianca": 0.0,
+        "resultado": NAO_AVALIADO, "avaliado": False,
+        "passou": None, "nota": None, "confianca": None,
         "precisa_revisao_humana": True,
-        "motivo": f"Sem veredito: {porque}. Ausência de veredito não é aprovação.",
+        "motivo": (f"Não avaliado: {porque}. Ausência de veredito não é aprovação "
+                   f"nem reprovação."),
     }
 
 

@@ -115,19 +115,17 @@ async def _llm_message(company_id: str, prompt: Dict[str, str]) -> Optional[str]
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
 
-        # 🔴 `claude-opus-5`, e não `gpt-4o`. Ver o cabeçalho: esta é a única
+        # 🔴 Um modelo FORTE, e não `gpt-4o`. Ver o cabeçalho: esta é a única
         # mensagem que o produto envia sem o corretor pedir, e ela precisa
-        # ler o negócio dele e dizer algo que ele ainda não sabia. ~US$ 0,4/mês
-        # com as 3 corretoras de hoje.
-        provider = _os.getenv("SUGESTOES_LLM_PROVIDER") or "anthropic"
-        model = _os.getenv("SUGESTOES_LLM_MODEL") or "claude-opus-5"
+        # ler o negócio dele e dizer algo que ele ainda não sabia.
+        # SPEC-116 U8: quem escolhe é a ROTA `sugestoes` (📊 23/09 = claude-opus-5);
+        # `SUGESTOES_LLM_PROVIDER/_MODEL` ficam IGNORADOS. (`SUGESTOES_LLM`
+        # continua sendo o interruptor.)
         llm = LLMFactory.create_llm(
-            company_config={}, agent_data={"llm_provider": provider, "llm_model": model},
-            api_key=get_api_key_for_provider(provider, model),
-            company_id=str(company_id), agent_id=None,
+            company_config={}, agent_data={}, company_id=str(company_id), agent_id=None,
+            papel="sugestoes",
         )
         result = await llm.ainvoke(
             [SystemMessage(content=prompt["system"]), HumanMessage(content=prompt["user"])]

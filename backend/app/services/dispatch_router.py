@@ -3386,20 +3386,17 @@ async def o_cerebro_ja_sabe(company_id: str, session: Dict[str, Any], *, slot: s
         return None, ""
     try:
         import asyncio
-        import os as _os
 
         from langchain_core.messages import HumanMessage, SystemMessage
 
         if llm is None:
-            from app.core.utils import get_api_key_for_provider
             from app.factories.llm_factory import LLMFactory
 
-            provedor = _os.getenv("DISPATCH_LLM_PROVIDER") or "openai"
-            modelo = _os.getenv("DISPATCH_LLM_MODEL") or "gpt-4o"
+            # SPEC-116 U8: a ROTA `dispatch` escolhe o modelo; `DISPATCH_LLM_*`
+            # ficam IGNORADOS. Sem rota → erro → o except devolve (None, "").
             llm = LLMFactory.create_llm(
-                company_config={}, agent_data={"llm_provider": provedor, "llm_model": modelo},
-                api_key=get_api_key_for_provider(provedor, modelo),
-                company_id=str(company_id), agent_id=None)
+                company_config={}, agent_data={}, company_id=str(company_id),
+                agent_id=None, papel="dispatch")
         corpo = "\n\n".join("### fonte: %s\n%s" % (o, t) for o, t in fontes)
         pedido = ("A seguradora mostrou esta tela:\n%s\n\nO que falta e: %s\n\n"
                   "FONTES (o unico lugar de onde a resposta pode sair):\n%s"

@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""
 
     # Vision LLM for image descriptions
+    # ⚠️ SPEC-116 U8 — DEPRECATED: este default literal fica só para não mudar o
+    # comportamento de um serviço SEPARADO e SEM banco (não lê `llm_papeis`).
+    # Definir no EasyPanel VISION_MODEL = o modelo da rota `visao_documento`
+    # (📊 23/09: gpt-4o-mini, a mesma do default). Trocar a rota NÃO troca este
+    # serviço — a env tem de acompanhar (caixa do Founder).
     VISION_MODEL: str = "gpt-4o-mini"
     VISION_API_URL: str = "https://api.openai.com/v1/chat/completions"
     OPENAI_API_KEY: str = ""

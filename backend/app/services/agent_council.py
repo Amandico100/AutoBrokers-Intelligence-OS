@@ -10,8 +10,12 @@ estruturais. Ligar = COUNCIL_ENABLED=1 no ambiente.
 
 Membros (env COUNCIL_MEMBERS, "provider:model" separados por vírgula):
 default "openai:gpt-5.5,anthropic:claude-opus-5,moonshot:kimi-k3,xai:grok-4.5".
-Membro sem API key/provider suportado é PULADO com nota — nada quebra.
-Líder consolida: COUNCIL_LEADER_MODEL (default claude-opus-5/anthropic).
+🔴 SPEC-116 U8: cada membro é resolvido UM A UM pelo CATÁLOGO governado
+(`llm_pricing`, via Model Router). Membro fora do catálogo, com lifecycle
+BLOCKED/HISTORICAL, de provedor desconhecido ou sem chave é PULADO com log
+explícito — ⛔ nunca vira `gpt-4o-mini` (antes: `moonshot`/`xai` caíam na chave
+OpenAI e a fábrica respondia com o mini: 2 dos 4 "conselheiros" eram o mesmo).
+Líder: a ROTA `conselho_lider`; `COUNCIL_LEADER_PROVIDER/_MODEL` ficam IGNORADOS.
 
 Custo controlado por construção: contexto cap 3000 chars, parecer curto,
 pareceres em PARALELO, e o Conselho só é convocado em decisão estrutural.
@@ -62,31 +66,67 @@ def council_members() -> List[Tuple[str, str]]:
     return out
 
 
+#: SPEC-116 U8 — os papéis do Conselho no Model Router.
+PAPEL_LIDER = "conselho_lider"
+#: Membro não tem rota: é o modelo DECLARADO em COUNCIL_MEMBERS, aceito só se o
+#: catálogo o governa (papel sem rota → modelo do "agente", resolvedor passo 3).
+PAPEL_MEMBRO = "conselho_membro"
+#: A classe de dado do Conselho é a do líder (a rota `conselho_lider` declara pii).
+CLASSE_DO_CONSELHO = "pii"
+
+
 def _leader() -> Tuple[str, str]:
-    return (os.getenv("COUNCIL_LEADER_PROVIDER") or "anthropic",
-            os.getenv("COUNCIL_LEADER_MODEL") or "claude-opus-5")
+    """(provedor, modelo) da ROTA `conselho_lider` — só para log/telemetria."""
+    from app.factories.llm_factory import LLMFactory
+
+    r = LLMFactory.resolver_para({}, {}, papel=PAPEL_LIDER)
+    return r.provider, r.model
 
 
-async def _ask_model(provider: str, model: str, system: str, user: str) -> Optional[str]:
-    """Uma chamada; membro sem chave/provider vira None (pulado, sem quebrar)."""
+def resolver_membro(provider: str, model: str):
+    """O `ModeloResolvido` de UM membro, pelo catálogo — ou `None` (PULADO, com log).
+
+    ⛔ Nunca devolve outro modelo no lugar do pedido.
+    """
+    try:
+        from app.factories.llm_factory import LLMFactory
+
+        return LLMFactory.resolver_para(
+            {}, {"llm_provider": provider, "llm_model": model},
+            papel=PAPEL_MEMBRO, classe_de_dado=CLASSE_DO_CONSELHO)
+    except Exception as e:  # noqa: BLE001 — ModeloNaoResolvido e afins
+        logger.warning("[CONSELHO] membro %s:%s PULADO — não resolvido pelo catálogo (%s: %s)",
+                       provider, model, type(e).__name__, str(e)[:200])
+        return None
+
+
+async def _ask_model(provider: str, model: str, system: str, user: str, *,
+                     papel: Optional[str] = None) -> Optional[str]:
+    """Uma chamada. `papel` → a ROTA decide (líder); sem papel → o membro
+    declarado, se o catálogo o governar. Não resolvido / sem chave → None
+    (pulado, sem quebrar)."""
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
 
-        api_key = get_api_key_for_provider(provider, model)
-        if not api_key:
-            return None
+        if papel:
+            resolvido = LLMFactory.resolver_para({}, {}, papel=papel)
+        else:
+            resolvido = resolver_membro(provider, model)
+            if resolvido is None:
+                return None
+        # Plataforma: company_id nulo; papel/pedido/resolvido no ledger.
         llm = LLMFactory.create_llm(
             company_config={}, agent_data={"llm_provider": provider, "llm_model": model},
-            api_key=api_key,
-            company_id=str(os.getenv("GLOBAL_KNOWLEDGE_COMPANY_ID") or ""), agent_id=None,
+            company_id=None, agent_id=None, service_type="plataforma",
+            modelo_resolvido=resolvido,
         )
         result = await llm.ainvoke([SystemMessage(content=system), HumanMessage(content=user)])
         return str(getattr(result, "content", "") or "").strip() or None
     except Exception as e:  # noqa: BLE001
-        logger.info(f"[CONSELHO] membro {provider}:{model} indisponível ({type(e).__name__})")
+        logger.info(f"[CONSELHO] {papel or 'membro'} {provider}:{model} indisponível "
+                    f"({type(e).__name__})")
         return None
 
 
@@ -100,6 +140,9 @@ async def convene_council(question: str, context: str = "",
     user = f"DECISÃO ({decision_kind}): {question}\n\nCONTEXTO:\n{str(context or '')[:_CTX_CAP]}"
 
     async def _member(provider: str, model: str) -> Dict[str, Any]:
+        if resolver_membro(provider, model) is None:
+            return {"member": f"{provider}:{model}", "ok": False,
+                    "skipped": "fora_do_catalogo_ou_proibido"}
         text = await _ask_model(provider, model, _MEMBER_SYSTEM, user)
         if not text:
             return {"member": f"{provider}:{model}", "ok": False, "skipped": "sem_chave_ou_indisponivel"}
@@ -110,10 +153,15 @@ async def convene_council(question: str, context: str = "",
 
     synthesis: Optional[Dict[str, Any]] = None
     if given:
-        lp, lm = _leader()
+        try:
+            lp, lm = _leader()
+        except Exception as e:  # noqa: BLE001 — sem rota do líder: sem síntese, com log
+            logger.warning("[CONSELHO] líder sem rota (%s) — pareceres sem síntese", type(e).__name__)
+            lp, lm = "", ""
         pareceres = "\n\n".join(f"[{o['member']}]\n{o['opinion']}" for o in given)
         raw = await _ask_model(lp, lm, _LEADER_SYSTEM,
-                               f"DECISÃO: {question}\n\nPARECERES:\n{pareceres[:6000]}")
+                               f"DECISÃO: {question}\n\nPARECERES:\n{pareceres[:6000]}",
+                               papel=PAPEL_LIDER)
         if raw:
             s = raw.strip().strip("`")
             s = s[4:] if s.lower().startswith("json") else s

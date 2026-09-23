@@ -46,11 +46,20 @@ def parser_enabled() -> bool:
     return os.getenv("ATLAS_PARSER_ENABLED", "1").strip() != "0"
 
 
+#: SPEC-116 U8 — o PAPEL deste trabalho no Model Router (`llm_papeis`).
+#: `ATLAS_PARSER_PROVIDER/_MODEL` ficam IGNORADOS: a rota escolhe o modelo.
+PAPEL = "atlas_parser"
+
+
 def _model_cfg() -> Dict[str, str]:
-    return {
-        "provider": os.getenv("ATLAS_PARSER_PROVIDER", "anthropic"),
-        "model": os.getenv("ATLAS_PARSER_MODEL", "claude-sonnet-5"),
-    }
+    """O modelo que a ROTA `atlas_parser` resolve hoje (para log e estimativa).
+
+    ⛔ Sem rota/catálogo → `ModeloNaoResolvido` (nunca um modelo por omissão).
+    """
+    from app.factories.llm_factory import LLMFactory
+
+    r = LLMFactory.resolver_para({}, {}, papel=PAPEL)
+    return {"provider": r.provider, "model": r.model}
 
 
 def _collect_ambiguous(map_acc: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -80,18 +89,23 @@ async def resolve_typed_choices(map_acc: Dict[str, Any], insurer_key: str = "") 
     if not items:
         return 0
 
-    cfg = _model_cfg()
     try:
         from langchain_core.messages import HumanMessage
 
-        from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
 
-        api_key = get_api_key_for_provider(cfg["provider"], cfg["model"])
+        # 🔴 SPEC-116 U8/G8: o Atlas era INVISÍVEL no ledger — passava
+        # `company_id="atlas"` e `token_usage_logs.company_id` é uuid: o insert
+        # falhava e `usage_service` engolia o erro. O Atlas é trabalho de
+        # PLATAFORMA (o mapa da URA é de todas as corretoras): company_id NULO +
+        # service_type "plataforma", a mesma forma das 532 linhas de plataforma
+        # que o ledger já tem (📊 23/09, `group by service_type, company_id is null`).
+        resolvido = LLMFactory.resolver_para({}, {}, papel=PAPEL)
+        cfg = {"provider": resolvido.provider, "model": resolvido.model}
         llm = LLMFactory.create_llm(
-            company_config={}, agent_data={"llm_provider": cfg["provider"], "llm_model": cfg["model"],
-                                           "llm_temperature": 0},
-            api_key=api_key, company_id="atlas", agent_id=None)
+            company_config={}, agent_data={"llm_temperature": 0},
+            company_id=None, agent_id=None, service_type="plataforma",
+            modelo_resolvido=resolvido)
         payload = [{"menu": it["menu"], "options": it["options"], "next": it["next"]} for it in items]
         prompt = _PROMPT.format(items=json.dumps(payload, ensure_ascii=False))
         resp = await llm.ainvoke([HumanMessage(content=prompt)])
@@ -143,17 +157,31 @@ def _norm(s: str) -> str:
 
 
 def estimate_cost(nodes: int, ambiguous_edges: int) -> Dict[str, Any]:
-    """Estimativa de custo por seguradora (uma chamada do resolvedor). Preços
-    por milhão de tokens (input/output). Independe do nº de conversas."""
+    """Estimativa de custo por seguradora (uma chamada do resolvedor).
+    Independe do nº de conversas.
+
+    SPEC-116 U8: o modelo é o da ROTA e o preço é o do CATÁLOGO (`llm_pricing`,
+    lido por `usage_service`). A tabela de preços própria que morava aqui saiu —
+    ela não tinha o Opus 5 que roda em produção e cobrava-o como Sonnet.
+    Preço desconhecido → custo 0 + `preco_desconhecido=True` — a MESMA regra
+    do ledger (`usage_service.track_cost_sync`): nunca o preço de outro modelo.
+    """
     cfg = _model_cfg()
-    prices = {  # $/milhão (input, output)
-        "claude-sonnet-5": (3.0, 15.0), "claude-sonnet-4-5": (3.0, 15.0),
-        "claude-haiku-4-5": (1.0, 5.0), "gpt-5.1": (1.25, 10.0), "gpt-4o": (2.5, 10.0),
-    }
-    pin, pout = prices.get(cfg["model"], (3.0, 15.0))
     # ~180 tokens input por aresta ambígua + overhead; ~12 tokens output por resposta
     in_tok = 300 + ambiguous_edges * 180
     out_tok = 40 + ambiguous_edges * 12
-    usd = in_tok / 1e6 * pin + out_tok / 1e6 * pout
-    return {"model": cfg["model"], "input_tokens": in_tok, "output_tokens": out_tok,
-            "usd_per_insurer": round(usd, 4), "brl_per_insurer": round(usd * 6.0, 3)}
+    usd: Optional[float] = None
+    try:
+        from app.services.usage_service import get_usage_service
+
+        svc = get_usage_service()
+        if svc.preco_conhecido(cfg["model"]):
+            usd = svc.calculate_cost(cfg["model"], in_tok, out_tok)
+    except Exception as e:  # noqa: BLE001 — sem catálogo de preço, sem número
+        logger.warning(f"[ATLAS PARSER] preço do catálogo indisponível ({type(e).__name__})")
+    out: Dict[str, Any] = {"model": cfg["model"], "input_tokens": in_tok, "output_tokens": out_tok}
+    if usd is None:
+        out.update(usd_per_insurer=0.0, brl_per_insurer=0.0, preco_desconhecido=True)
+    else:
+        out.update(usd_per_insurer=round(usd, 4), brl_per_insurer=round(usd * 6.0, 3))
+    return out

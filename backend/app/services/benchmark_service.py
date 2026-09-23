@@ -65,6 +65,15 @@ class BenchmarkService:
         """
         Cria LLMs com callback de billing para empresa/agente específicos.
         Garante que o uso de tokens seja debitado corretamente.
+
+        ⚠️ SPEC-116 U8 — MODELOS FIXOS POR DESENHO. Este é o benchmark de RAG do
+        admin: compara estratégias de chunking/recuperação com os MESMOS
+        modelos entre rodadas; se a rota de um papel mudasse o gerador ou o juiz,
+        duas rodadas deixariam de ser comparáveis. Por isso NÃO pede papel ao
+        Model Router. Cada literal está no catálogo (`llm_pricing`; 📊 23/09:
+        gpt-4o, gpt-4o-mini e claude-sonnet-4-6 DEPRECATED, text-embedding-3-small
+        APPROVED) e o arquivo está na ALLOWLIST do legacy gate
+        (`tests/test_nenhum_modelo_fora_do_catalogo.py`) com este motivo.
         """
         from ..core.callbacks.cost_callback import CostCallbackHandler
 

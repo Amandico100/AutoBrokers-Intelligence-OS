@@ -791,11 +791,8 @@ async def _segurar_ou_desistir(company_id: str, insurer_phone: str,
 async def _adaptive_reply(company_id: str, session: Dict[str, Any], insurer_text: str) -> Optional[str]:
     """Cérebro forte (mesmo caminho do human_phase do webhook). Falha → None."""
     try:
-        import os as _os
-
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.core.utils import get_api_key_for_provider
         from app.factories.llm_factory import LLMFactory
         from app.services.insurer_dispatch_service import build_human_phase_messages
 
@@ -815,14 +812,15 @@ async def _adaptive_reply(company_id: str, session: Dict[str, Any], insurer_text
         except Exception:  # noqa: BLE001 — mapa é opcional
             ura_map = None
         msgs = build_human_phase_messages(session, insurer_text, ura_map=ura_map)
-        d_provider = _os.getenv("DISPATCH_LLM_PROVIDER") or "openai"
-        d_model = _os.getenv("DISPATCH_LLM_MODEL") or "gpt-4o"
+        # SPEC-116 U8: o modelo do acionamento é a ROTA `dispatch` (llm_papeis),
+        # não env nem literal. `DISPATCH_LLM_PROVIDER/_MODEL` ficam IGNORADOS
+        # (📊 prod = claude-opus-5 = a rota). Sem rota → ModeloNaoResolvido →
+        # o except abaixo devolve None e o corredor segue sem o cérebro.
         llm = LLMFactory.create_llm(
-            company_config={},
-            agent_data={"llm_provider": d_provider, "llm_model": d_model},
-            api_key=get_api_key_for_provider(d_provider, d_model),
+            company_config={}, agent_data={},
             company_id=str(company_id),
             agent_id=None,
+            papel="dispatch",
         )
         result = await llm.ainvoke(
             [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]

@@ -146,7 +146,12 @@ def run():
     # 4) estimativa de custo (Sonnet default): barata e por seguradora
     est = parser.estimate_cost(nodes=30, ambiguous_edges=12)
     check("custo estimado < R$0,20/seguradora", est["brl_per_insurer"] < 0.20, est)
-    check("modelo default forte (sonnet)", "sonnet" in est["model"], est)
+    # ⚠️ ATUALIZADO 23/09/2026 — SPEC-116 F3b (§9.3): o modelo é o da ROTA
+    # `atlas_parser` (📊 claude-opus-5, o mesmo do env de produção), não "sonnet".
+    import json as _json
+    _rota = _json.loads((ROOT / "app" / "factories" / "modelos_snapshot.json")
+                        .read_text(encoding="utf-8"))["papeis"]["atlas_parser"]
+    check("modelo = o da ROTA atlas_parser", est["model"] == _rota["modelo_primario"], est)
 
     # 5) parser desligavel por env
     import os

@@ -28,6 +28,10 @@ COPY backend/portal_worker/requirements.txt /app/portal_worker/requirements.txt
 RUN pip install --no-cache-dir -r /app/portal_worker/requirements.txt
 
 COPY backend/portal_worker /app/portal_worker
+# SPEC-116 U9: o snapshot do catalogo de modelos (o MESMO do backend) — a rede do
+# `modelo_do_portal.py` quando o banco nao responde. Sem ele, banco fora = erro
+# explicito (o portal nunca escolhe modelo por conta propria).
+COPY backend/app/factories/modelos_snapshot.json /app/portal_worker/modelos_snapshot.json
 COPY --from=gitinfo /build_sha.txt /app/portal_worker/build_sha.txt
 COPY --from=gitinfo /build_time.txt /app/portal_worker/build_time.txt
 

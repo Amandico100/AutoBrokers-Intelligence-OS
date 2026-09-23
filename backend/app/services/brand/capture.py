@@ -23,7 +23,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -1030,24 +1029,20 @@ class BrandCaptureService:
     def _llm_de_marca(self, company_id: str):
         """O modelo da leitura de marca, com o custo no nome certo (R12).
 
-        Mesmo padrao dos outros 11 chamadores (`attendance_distiller.py:151`):
-        `company_config` vazio, provedor/modelo por variavel, chave pela funcao
-        da casa. O que muda e `service_type="brand_capture"` — sem ele o gasto
-        entraria no ledger como se fosse conversa com o segurado.
+        SPEC-116 U8: o modelo e o da ROTA `brand_capture` (`llm_papeis`);
+        `BRAND_CAPTURE_PROVIDER/_MODEL` ficam IGNORADOS. A chave e a do
+        provedor resolvido (a fabrica escolhe). `service_type="brand_capture"`
+        continua — sem ele o gasto entraria no ledger como conversa.
         """
         try:
-            from app.core.utils import get_api_key_for_provider
             from app.factories.llm_factory import LLMFactory
 
-            provider = os.getenv("BRAND_CAPTURE_PROVIDER") or "anthropic"
-            modelo = os.getenv("BRAND_CAPTURE_MODEL") or "claude-sonnet-5"
             return LLMFactory.create_llm(
-                company_config={},
-                agent_data={"llm_provider": provider, "llm_model": modelo},
-                api_key=get_api_key_for_provider(provider, modelo),
-                company_id=str(company_id or ""),
+                company_config={}, agent_data={},
+                company_id=str(company_id) if company_id else None,
                 agent_id=None,
                 service_type=SERVICE_TYPE_MARCA,
+                papel="brand_capture",
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("[brand] modelo de leitura indisponivel: %s",

@@ -69,33 +69,44 @@ def get_billing_service() -> BillingCore:
 # PRICING HELPER
 # ============================================================================
 
-def get_pricing_for_model(supabase: Client, model_name: str) -> Dict[str, Any]:
-    """
-    Get pricing info for a model from llm_pricing table.
-    Returns dict with input_price, output_price, sell_multiplier.
-    """
-    try:
-        result = supabase.table("llm_pricing") \
-            .select("input_price_per_million, output_price_per_million, sell_multiplier") \
-            .eq("model_name", model_name) \
-            .single() \
-            .execute()
+def get_pricing_for_model(supabase: Client, model_name: str) -> Optional[Dict[str, Any]]:
+    """O preço do modelo NO CATÁLOGO (`llm_pricing`) — ou `None` (DESCONHECIDO).
 
-        if result.data:
+    🔴 SPEC-116 U8: aqui morava um SEGUNDO leitor de preço com um preço próprio
+    ("default" 1,00/3,00 × 2,68) para modelo ausente — o faturamento cobrava por
+    uma tabela que ninguém governa. Agora a única fonte é a linha do catálogo
+    (a mesma que `usage_service` lê). ⛔ Modelo sem linha ou sem
+    `sell_multiplier` → `None`: o chamador NÃO cobra e NÃO marca como cobrado
+    (a linha fica para o próximo ciclo, depois que o catálogo for completado).
+    Aceita o id DATADO do provedor quando só a forma sem data está no catálogo.
+    """
+    import re
+
+    candidatos = [model_name]
+    sem_data = re.sub(r"-(\d{4}-\d{2}-\d{2}|\d{8})$", "", str(model_name or ""))
+    if sem_data and sem_data != model_name:
+        candidatos.append(sem_data)
+    for nome in candidatos:
+        try:
+            result = supabase.table("llm_pricing") \
+                .select("model_name, input_price_per_million, output_price_per_million, sell_multiplier") \
+                .eq("model_name", nome) \
+                .limit(1) \
+                .execute()
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[Billing] PRECO DESCONHECIDO (catalogo ilegivel) para {model_name!r}: "
+                         f"{type(e).__name__} — nada cobrado")
+            return None
+        linha = (result.data or [None])[0]
+        if linha and linha.get("sell_multiplier") is not None:
             return {
-                "input_price": Decimal(str(result.data.get("input_price_per_million", 0))),
-                "output_price": Decimal(str(result.data.get("output_price_per_million", 0))),
-                "sell_multiplier": Decimal(str(result.data.get("sell_multiplier", 2.68)))
+                "input_price": Decimal(str(linha.get("input_price_per_million") or 0)),
+                "output_price": Decimal(str(linha.get("output_price_per_million") or 0)),
+                "sell_multiplier": Decimal(str(linha["sell_multiplier"])),
             }
-    except Exception as e:
-        logger.warning(f"[Billing] Pricing not found for {model_name}, using default: {e}")
-
-    # Default fallback
-    return {
-        "input_price": Decimal("1.00"),
-        "output_price": Decimal("3.00"),
-        "sell_multiplier": Decimal("2.68")
-    }
+    logger.error(f"[Billing] PRECO DESCONHECIDO para {model_name!r} (sem linha em llm_pricing) — "
+                 f"nada cobrado; cadastre o modelo no catalogo")
+    return None
 
 
 # ============================================================================
@@ -202,12 +213,17 @@ def process_unbilled_usage(self):
 
         processed_count = 0
         transactions_count = 0
+        sem_preco: List[str] = []
 
         # Process each (company, agent, model) combination
         for (company_id, agent_id, model_name), group_logs in grouped.items():
             try:
-                # Get pricing for THIS specific model
+                # Get pricing for THIS specific model — do CATÁLOGO, nunca inventado
                 pricing = get_pricing_for_model(supabase, model_name)
+                if pricing is None:
+                    # ⛔ Sem preço no catálogo: não cobra e NÃO marca `billed`.
+                    sem_preco.append(model_name)
+                    continue
                 multiplier = pricing["sell_multiplier"]
 
                 # Calculate total cost for this group
@@ -260,9 +276,14 @@ def process_unbilled_usage(self):
             f"created {transactions_count} transactions."
         )
 
+        if sem_preco:
+            logger.error("[Billing Worker] %d grupo(s) SEM PRECO no catalogo ficaram sem cobrar "
+                         "(billed=false): %s", len(sem_preco), sorted(set(sem_preco)))
+
         return {
             "processed": processed_count,
-            "transactions": transactions_count
+            "transactions": transactions_count,
+            "sem_preco": sorted(set(sem_preco)),
         }
 
     except Exception as e:
@@ -345,27 +366,34 @@ def process_company_billing(self, company_id: str):
 
         total_cost_brl = Decimal("0")
         log_ids = []
+        sem_preco: List[str] = []
+        cobrados: List[Dict] = []
 
         for log in logs:
             model = log.get("model_name", "unknown")
             cost_usd = Decimal(str(log.get("total_cost_usd", 0)))
 
             pricing = get_pricing_for_model(supabase, model)
+            if pricing is None:
+                # ⛔ Sem preço no catálogo: fica FORA da cobrança e fica `billed=false`.
+                sem_preco.append(model)
+                continue
             multiplier = pricing["sell_multiplier"]
+            cobrados.append(log)
 
             cost_brl = cost_usd * get_dollar_rate() * multiplier
             total_cost_brl += cost_brl
             log_ids.append(log["id"])
 
         if total_cost_brl > 0:
-            first_log = logs[0]
+            first_log = cobrados[0]
             billing_service.debit_credits(
                 company_id=company_id,
                 agent_id=first_log.get("agent_id"),
                 amount_brl=total_cost_brl,
                 model_name="batch_processing",
-                tokens_input=sum(log.get("input_tokens", 0) for log in logs),
-                tokens_output=sum(log.get("output_tokens", 0) for log in logs)
+                tokens_input=sum(log.get("input_tokens", 0) for log in cobrados),
+                tokens_output=sum(log.get("output_tokens", 0) for log in cobrados)
             )
 
         # Mark as billed
@@ -382,8 +410,9 @@ def process_company_billing(self, company_id: str):
         )
 
         return {
-            "processed": len(logs),
-            "cost_brl": float(total_cost_brl)
+            "processed": len(log_ids),
+            "cost_brl": float(total_cost_brl),
+            "sem_preco": sorted(set(sem_preco)),
         }
 
     except Exception as e:
