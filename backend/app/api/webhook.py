@@ -1103,7 +1103,6 @@ async def process_whatsapp_message_background(
                 try:
                     from langchain_core.messages import HumanMessage, SystemMessage
 
-                    from app.core.utils import get_api_key_for_provider
                     from app.factories.llm_factory import LLMFactory
                     from app.services.insurer_dispatch_service import build_human_phase_messages
 
@@ -1120,17 +1119,18 @@ async def process_whatsapp_message_background(
                     except Exception:  # noqa: BLE001
                         _ura_map = None
                     msgs = build_human_phase_messages(dispatch_session, insurer_text, ura_map=_ura_map)
-                    # Cérebro da fase humana do dispatch: forte por padrão, com
-                    # override por env (DISPATCH_LLM_PROVIDER/DISPATCH_LLM_MODEL).
-                    import os as _os
-                    d_provider = _os.getenv("DISPATCH_LLM_PROVIDER") or "openai"
-                    d_model = _os.getenv("DISPATCH_LLM_MODEL") or "gpt-4o"
+                    # Cérebro da fase humana do dispatch: o PAPEL `dispatch`
+                    # (SPEC-116 U8). 🔴 O modelo é o da ROTA (`llm_papeis`);
+                    # DISPATCH_LLM_PROVIDER/DISPATCH_LLM_MODEL deixaram de ser
+                    # lidos aqui — o `or "gpt-4o"` escondia um modelo velho
+                    # sempre que o env faltasse. Sem rota → ModeloNaoResolvido,
+                    # capturado abaixo (acumula; nunca responde às cegas).
                     llm = LLMFactory.create_llm(
                         company_config={},
-                        agent_data={"llm_provider": d_provider, "llm_model": d_model},
-                        api_key=get_api_key_for_provider(d_provider, d_model),
+                        agent_data={},
                         company_id=str(company_id),
                         agent_id=None,
+                        papel="dispatch",
                     )
                     result = await llm.ainvoke(
                         [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]

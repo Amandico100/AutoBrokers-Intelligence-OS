@@ -241,7 +241,7 @@ class _RerankDuplo:
             "safe_to_run": True,
         }
 
-    def rerank(self, query, docs, top_k=3):
+    def rerank(self, query, docs, top_k=3, **_contexto):  # SPEC-116 U8: company_id/agent_id do ledger
         return docs[:top_k]
 
 

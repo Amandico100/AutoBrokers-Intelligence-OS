@@ -158,6 +158,28 @@ def _historico_para_outro_provedor(mensagens: list) -> list:
     return saida
 
 
+#: O rótulo que separa a instrução do FISCAL da fala do cliente.
+ROTULO_DA_CORRECAO_INTERNA = "[INSTRUÇÃO INTERNA DO SISTEMA — não é mensagem do cliente]"
+
+
+def mensagens_com_correcao(llm_messages: list, instrucao: str) -> list:
+    """As mensagens do turno + a instrução de REESCRITA dos fiscais.
+
+    🔴 SPEC-116 U8 (F3a) — defeito medido pela F2: os fiscais (pergunta
+    repetida, tamanho) punham um `SystemMessage` no FIM da conversa. A
+    langchain-anthropic recusa ("Received multiple non-consecutive system
+    messages") ANTES de chamar a API — em Claude a regeneração NUNCA rodou, e o
+    erro era engolido: a resposta que repergunta/estoura saía assim mesmo.
+
+    A instrução vai como a ÚLTIMA mensagem do lado do usuário (rotulada como
+    interna): válida em todo provedor — a Anthropic funde turnos de usuário
+    consecutivos (inclusive depois de um `tool_result`) — e o prefixo do prompt
+    fica intacto, então o cache do bloco estático continua valendo.
+    """
+    return list(llm_messages) + [
+        HumanMessage(content=f"{ROTULO_DA_CORRECAO_INTERNA}\n{instrucao}")]
+
+
 async def _invocar_o_modelo(llm_with_tools, llm_messages: list, config, state: dict, *,
                             llm_reserva=None, tools_do_turno=None, rota: Optional[dict] = None):
     """A chamada ao modelo do turno, com a RESERVA da rota (SPEC-116 U6c, D-116-07).
@@ -1527,13 +1549,15 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
 
             _lista = "\n".join("  · %s: %s" % (rotulo(s), _valor_da_ficha(_ficha, s))
                                for s in _slots)
-            _aviso = SystemMessage(content=(
+            _aviso = (
                 "⛔ A resposta que você acabou de escrever PERGUNTA DE NOVO o "
                 "que o cliente já respondeu nesta conversa:\n" + _lista +
                 "\n\nReescreva a resposta USANDO esses dados como verdade já "
                 "confirmada. Não peça confirmação deles e não os mencione como "
-                "dúvida. Siga do ponto em que o atendimento parou."))
-            _resp = await llm_with_tools.ainvoke(llm_messages + [_aviso], config=config)
+                "dúvida. Siga do ponto em que o atendimento parou.")
+            # 🔴 SPEC-116 U8: nunca um SystemMessage no fim (Claude recusa).
+            _resp = await llm_with_tools.ainvoke(
+                mensagens_com_correcao(llm_messages, _aviso), config=config)
             return extract_text_from_content(getattr(_resp, "content", "") or "")
 
         _final, _persistiu = await _resposta_sem_pergunta_repetida(
@@ -1559,13 +1583,15 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
         _texto_atual = extract_text_from_content(getattr(response, "content", "") or "")
 
         async def _encurtar(_regua):
-            _aviso = SystemMessage(content=(
+            _aviso = (
                 "⛔ A resposta que você acabou de escrever está FORA do tamanho "
                 "que este momento do atendimento permite.\n" + _regua +
                 "\n\nReescreva a MESMA resposta dentro dessa régua, sem perder "
                 "nenhuma informação que o cliente precisa para agir. Corte "
-                "explicação, não conteúdo."))
-            _resp = await llm_with_tools.ainvoke(llm_messages + [_aviso], config=config)
+                "explicação, não conteúdo.")
+            # 🔴 SPEC-116 U8: nunca um SystemMessage no fim (Claude recusa).
+            _resp = await llm_with_tools.ainvoke(
+                mensagens_com_correcao(llm_messages, _aviso), config=config)
             return extract_text_from_content(getattr(_resp, "content", "") or "")
 
         _curto, _classe_fora = await _resposta_no_tamanho_da_classe(

@@ -353,6 +353,14 @@ def _rerank_serv(chave, resposta=None, explode=False):
 
     _stub("cohere", Client=_ClienteCohere)
     _SETTINGS.COHERE_API_KEY = chave
+    # 🔴 SPEC-116 U8 (23/09/2026, CLAUDE.md §9.3): o id do rerank deixou de ser
+    # literal — vem da ROTA do papel `rerank` (`model_policy.resolver`). O Model
+    # Router é código puro: carrega-se o REAL; sem banco aqui, ele cai no
+    # snapshot versionado (a mesma fonte do catálogo).
+    if "app.factories.model_policy" not in sys.modules:
+        _m = sys.modules.setdefault("app.factories", types.ModuleType("app.factories"))
+        _m.__path__ = []
+        _carregar("app.factories.model_policy", "app/factories/model_policy.py")
     rs = _carregar("app.services.rerank_service", "app/services/rerank_service.py")
     return rs.RerankService()
 

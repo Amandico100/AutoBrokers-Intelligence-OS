@@ -97,8 +97,8 @@ async def attendance_media_transcribe(
 
 
 # ---------------------------------------------------------------------------
-# Vision (42M1) — reusa o padrão de visão do Smith (chat.py): vision_model do
-# agente + ChatOpenAI/ChatAnthropic com mensagem multimodal. NÃO confirma cobertura.
+# Vision (42M1) — o MESMO motor de visão do Smith: papel `visao` pela fábrica
+# (SPEC-116 U8). NÃO confirma cobertura.
 # ---------------------------------------------------------------------------
 class VisionPayload(BaseModel):
     company_id: str
@@ -118,23 +118,38 @@ _VISION_SYSTEM = (
     "NÃO confirme cobertura, NÃO invente, NÃO leia dados pessoais. Responda em 2-3 frases."
 )
 
+#: Temperatura pedida; a fábrica a TIRA de quem a recusa (Claude 5 → 400).
+_VISION_TEMPERATURE = 0.2
 
-def _build_vision_llm(vision_model: str):
-    if vision_model.startswith("gpt-") or vision_model == "gpt-4o":
-        key = os.getenv("OPENAI_API_KEY")
-        if not key:
-            return None
-        from langchain_openai import ChatOpenAI
 
-        return ChatOpenAI(model=vision_model, api_key=key, temperature=0.2)
-    if vision_model.startswith("claude"):
-        key = os.getenv("ANTHROPIC_API_KEY")
-        if not key:
-            return None
-        from langchain_anthropic import ChatAnthropic
+def _build_vision_llm(company_id: str, agent_id: Optional[str], agente: Optional[Dict[str, Any]]):
+    """O modelo do papel `visao`, pela fábrica (ledger incluso).
 
-        return ChatAnthropic(model=vision_model, api_key=key, temperature=0.2)
-    return None
+    🔴 SPEC-116 U8: era `ChatOpenAI`/`ChatAnthropic` por fora, com o
+    `vision_model` do agente escolhido por PREFIXO de nome e `temperature=0.2`
+    (Claude 5 → 400), sem ledger. Agora a ROTA do papel decide (D-116-17); o
+    `vision_model` do agente só vale se o papel ficar sem rota. Levanta
+    `ModeloNaoResolvido`/`ValueError` — nunca cai num modelo por omissão.
+    """
+    from app.services.vision_service import criar_llm_de_visao
+
+    return criar_llm_de_visao(company_id=company_id, agent_id=agent_id, agent_data=agente,
+                              temperature=_VISION_TEMPERATURE)
+
+
+async def _agente_da_corretora(db, company_id: str, agent_id: str) -> Optional[Dict[str, Any]]:
+    """O agente — SÓ se for DESTA corretora (CLAUDE.md §7).
+
+    🔴 Antes a busca era só por `id`: um `agent_id` de OUTRA corretora trazia a
+    configuração dela (EVIDENCIAS/01, fora do escopo, agora consertado). O
+    backend usa service role — a RLS não protege; o filtro no código, sim.
+    """
+    res = await (
+        db.client.table("agents").select("id, vision_model, agent_role")
+        .eq("id", agent_id).eq("company_id", company_id).limit(1).execute()
+    )
+    linhas = getattr(res, "data", None) or []
+    return linhas[0] if linhas else None
 
 
 @router.post("/attendance/media/vision-analyze")
@@ -151,25 +166,28 @@ async def attendance_media_vision(
     if not image:
         return {"ok": False, "status": "unsupported", "error": "no_image"}
 
-    # Resolver vision_model do agente (mesmo padrão do chat.py).
-    vision_model = None
+    # O agente, se veio, tem de ser DESTA corretora (CLAUDE.md §7).
+    agente = None
     if payload.agent_id:
         try:
-            res = (
-                await db.client.table("agents").select("vision_model, agent_role").eq("id", payload.agent_id).limit(1).execute()
-            )
-            if res and res.data:
-                vision_model = res.data[0].get("vision_model")
+            agente = await _agente_da_corretora(db, company_id, payload.agent_id)
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[ATTENDANCE VISION] agent fetch failed: {type(e).__name__}")
-    if not vision_model:
-        return {"ok": False, "status": "unsupported", "error": "vision_model_not_configured",
-                "limitations": ["Agente sem vision_model configurado."], "provenance": "attendance_vision"}
+            return {"ok": False, "status": "failed", "error": "agent_fetch_failed",
+                    "provenance": "attendance_vision"}
+        if agente is None:
+            logger.warning("[ATTENDANCE VISION] agente fora da corretora company=%s", company_id)
+            return {"ok": False, "status": "unsupported", "error": "agent_not_found",
+                    "limitations": ["Agente não encontrado nesta corretora."],
+                    "provenance": "attendance_vision"}
 
-    llm = _build_vision_llm(vision_model)
-    if llm is None:
+    try:
+        llm = _build_vision_llm(company_id, payload.agent_id, agente)
+    except Exception as e:  # noqa: BLE001 — ModeloNaoResolvido / chave ausente
+        logger.error(f"[ATTENDANCE VISION] papel 'visao' indisponível: {type(e).__name__}: {e}")
         return {"ok": False, "status": "unsupported", "error": "vision_provider_unavailable",
                 "limitations": ["Provider de visão indisponível."], "provenance": "attendance_vision"}
+    vision_model = str(getattr(llm, "model_name", None) or getattr(llm, "model", None) or "visao")
 
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -179,9 +197,11 @@ async def attendance_media_vision(
             HumanMessage(content=[{"type": "text", "text": "Descreva a imagem para o atendimento:"}, {"type": "image_url", "image_url": {"url": image}}]),
         ]
         result = await asyncio.wait_for(llm.ainvoke(messages), timeout=VISION_TIMEOUT_S)
-        summary = result.content if hasattr(result, "content") else str(result)
-        if isinstance(summary, list):
-            summary = " ".join(str(p.get("text", p)) if isinstance(p, dict) else str(p) for p in summary)
+        from app.services.vision_service import _texto_da_resposta
+
+        # Claude 5 com raciocínio devolve blocos: só o TEXTO vira resumo (o
+        # bloco de raciocínio nunca vai ao atendimento).
+        summary = _texto_da_resposta(result.content if hasattr(result, "content") else str(result))
         summary = _mask_pii(summary).strip()[:MAX_SUMMARY_LEN]
     except asyncio.TimeoutError:
         return {"ok": False, "status": "failed", "error": "vision_timeout", "provenance": "attendance_vision"}

@@ -681,14 +681,10 @@ CASOS = {"1": caso_1_e_2, "3": caso_3, "4": caso_4, "5": caso_5,
 # adiamento passaram a chamar `_guardar`, que adia E anota o DONO da espera na
 # mesma linha. A mutação continua sendo a MESMA ideia — perguntar ao disjuntor
 # DEPOIS do `get_and_clear` —, só que sobre o texto de hoje.
-_BLOCO = """            if com_cota and provedores_fora and provedor_de is not None:
-                provedor = await _provedor_da_chave(provedor_de, escopo)
-                if provedor and provedor in provedores_fora:
-                    # ⚠️ Sem PII: nem chave, nem telefone, nem corretora.
-                    logger.info("[ISOLAMENTO] conversa guardada: disjuntor "
-                                "aberto no provedor %s", provedor)
-                    return await _guardar(chave, escopo, "breaker")
-"""
+# ⚠️ ÂNCORA ATUALIZADA em 23/09/2026 (SPEC-116 U8): o bloco passou a seguir
+# pela RESERVA da rota quando só o primário está com o disjuntor aberto. A
+# mutação continua a MESMA ideia (perguntar DEPOIS do `get_and_clear`).
+_BLOCO = '            if com_cota and provedores_fora and provedor_de is not None:\n                _valor = await _provedor_da_chave(provedor_de, escopo)\n                # `provedor_de` devolve o provedor OU (primário, reserva).\n                provedor, reserva = (list(_valor) + [None, None])[:2] if isinstance(_valor, (tuple, list)) else (_valor, None)\n                if provedor and provedor in provedores_fora:\n                    # 🔴 SPEC-116 U8: a RESERVA da rota de pé → segue. O nó do\n                    # agente usa a reserva quando o breaker do primário está\n                    # aberto (antes da 1ª ferramenta — F2). Reter aqui\n                    # calava o segurado com um modelo pronto para responder.\n                    if reserva and reserva not in provedores_fora:\n                        logger.info("[ISOLAMENTO] disjuntor aberto no provedor %s "\n                                    "— segue pela reserva %s", provedor, reserva)\n                    else:\n                        # ⚠️ Sem PII: nem chave, nem telefone, nem corretora.\n                        logger.info("[ISOLAMENTO] conversa guardada: disjuntor "\n                                    "aberto no provedor %s", provedor)\n                        return await _guardar(chave, escopo, "breaker")\n'
 
 _DEPOIS_DO_CONSUMO = """                        combined_msg = buffer_service.get_combined_message(buffer)
                         if com_cota and provedores_fora and provedor_de is not None:

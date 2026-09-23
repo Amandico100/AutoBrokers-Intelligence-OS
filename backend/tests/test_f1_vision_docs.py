@@ -40,26 +40,17 @@ spec.loader.exec_module(vs)
 def run():
     print("== F1 - visao/documentos globais ==\n")
 
-    os.environ["OPENAI_API_KEY"] = "sk-teste"
-    os.environ.pop("ANTHROPIC_API_KEY", None)
-
-    m = vs.resolve_vision_model({"vision_model": "gpt-4o"})
-    check("F1: vision_model do agente tem prioridade", m == ("gpt-4o", "sk-teste"), m)
-
-    m2 = vs.resolve_vision_model({})
-    check("F1: SEM vision_model -> default da plataforma (nunca cego)", m2 == ("gpt-4o-mini", "sk-teste"), m2)
-
-    m3 = vs.resolve_vision_model(None)
-    check("F1: agent_data None -> default da plataforma", m3 == ("gpt-4o-mini", "sk-teste"), m3)
-
-    os.environ.pop("OPENAI_API_KEY", None)
-    os.environ["ANTHROPIC_API_KEY"] = "ak-teste"
-    m4 = vs.resolve_vision_model({})
-    check("F1: sem OpenAI -> cai para Claude", m4 is not None and m4[0].startswith("claude") and m4[1] == "ak-teste", m4)
-
-    os.environ.pop("ANTHROPIC_API_KEY", None)
-    check("F1: sem nenhuma chave -> None (fail-safe)", vs.resolve_vision_model({}) is None)
-    os.environ["OPENAI_API_KEY"] = "sk-teste"
+    # 🔴 VERDADE ATUALIZADA em 23/09/2026 (SPEC-116 U8, CLAUDE.md §9.3): o
+    # `resolve_vision_model` com default `gpt-4o-mini` (e fallback para um Claude
+    # RETIRADO) saiu — a visão pede o PAPEL `visao` à fábrica e a ROTA decide.
+    # A lição "nunca cego" migrou para o MOTOR, com mutação:
+    # `test_spec116_f3a_o_segurado_pede_papel.py` (G-VIS-1 e G-VIS-2).
+    check("F1: o default literal de visão não existe mais",
+          not hasattr(vs, "resolve_vision_model") and hasattr(vs, "criar_llm_de_visao"))
+    check("F1: a marca do contexto visual reconhece a descrição do webhook",
+          vs.imagem_ja_descrita("oi\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nx") is True)
+    check("F1: CONTROLE — texto sem a marca não conta como descrito",
+          vs.imagem_ja_descrita("o que tem nessa imagem?") is False and vs.imagem_ja_descrita(None) is False)
 
     t = vs.truncate_document_text("x" * 25000, max_chars=20000)
     check("F1: documento gigante e truncado com aviso", len(t) < 20500 and "TRUNCADO" in t, len(t))

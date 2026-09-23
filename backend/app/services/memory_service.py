@@ -4,7 +4,7 @@ MemoryService - Advanced Memory System for AutoBrokers V2
 ARCHITECTURE:
 3-Layer Memory System:
 1. Working Memory (LangGraph Checkpointer) - Current session messages
-2. Summarization Layer (This service + gpt-4o-mini) - Extract facts & summaries
+2. Summarization Layer (This service + o modelo da ROTA `memoria`) - Extract facts & summaries
 3. Long-Term Memory (PostgreSQL) - Persistent user profiles & session summaries
 
 RESPONSIBILITIES:
@@ -15,9 +15,15 @@ RESPONSIBILITIES:
 - Manage race conditions with locks and debounce
 - Build memory context for prompt injection
 
-COST OPTIMIZATION:
-- ALWAYS uses gpt-4o-mini for summarization (~95% cheaper than gpt-4o)
-- Estimated cost: ~$0.0003 per summarization trigger
+🔴 O MODELO (SPEC-116 U8 · D-116-15):
+- vem SEMPRE da rota do papel `memoria` (`llm_papeis`), pela fábrica
+  (`LLMFactory.create_llm(..., papel="memoria")`), com o ledger de sempre;
+- a coluna `memory_settings.memory_llm_model` é LEGADO IGNORADO. 📊 23/09/2026:
+  8/8 linhas gravadas `gpt-4o-mini` pelo DEFAULT da coluna, e o default de
+  `constants.py` (um Claude) ia para `ChatOpenAI` e quebrava. Zerar o dado antes
+  do deploy quebraria o código antigo em produção — então a coluna fica, e
+  ninguém a lê. Trocar o modelo da memória = trocar a ROTA (minutos, sem deploy).
+- `llm=` em cada método é o ponto de injeção (bancada, testes).
 """
 
 import asyncio
@@ -27,10 +33,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from langchain_openai import ChatOpenAI
-
-from app.core.callbacks.cost_callback import CostCallbackHandler
-from app.core.config import settings as app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +47,26 @@ from app.core.constants import (
     MEMORY_SUMMARY_USER_FACTS_LIMIT,
 )
 
-# Default model for memory tasks (CHEAP!)
-DEFAULT_MEMORY_MODEL = DEFAULT_MEMORY_SETTINGS.get("memory_llm_model", "gpt-4o-mini")
+def _texto_da_resposta(response) -> str:
+    """O texto da resposta do modelo — string OU lista de blocos.
+
+    A rota pode trocar o modelo sem deploy (SPEC-116): Claude 5 com raciocínio
+    devolve `content` em blocos, e `.strip()` numa lista derrubava a memória.
+    Só os blocos de TEXTO entram; o raciocínio nunca vira fato.
+    """
+    content = getattr(response, "content", response)
+    if isinstance(content, list):
+        content = "".join(
+            str(b.get("text") or "") if isinstance(b, dict) and b.get("type") in (None, "text")
+            else ("" if isinstance(b, dict) else str(b))
+            for b in content)
+    return str(content or "").strip()
+
+
+#: O papel do Model Router que faz o trabalho da memória (SPEC-116 U8).
+PAPEL_DA_MEMORIA = "memoria"
+#: Temperatura pedida; a fábrica a tira de quem a recusa (Claude 5).
+TEMPERATURA_DA_MEMORIA = 0.3
 
 
 class MemoryService:
@@ -66,8 +86,9 @@ class MemoryService:
 
         Args:
             supabase_client: Supabase client for database operations (sync or async)
-            llm_factory: Optional function (model_name) -> LLM instance
-                        If None, creates OpenAI ChatOpenAI directly
+            llm_factory: Optional function (model_name) -> LLM instance — recebe o
+                        modelo da ROTA `memoria` (nunca a coluna legada). Se None,
+                        a fábrica (`LLMFactory.create_llm(papel="memoria")`).
         """
         self.supabase = supabase_client
         self.llm_factory = llm_factory
@@ -206,39 +227,30 @@ class MemoryService:
     def _get_memory_llm(
         self, settings: Dict[str, Any], company_id: str = None, agent_id: str = None
     ):
+        """O modelo da memória: SEMPRE a rota do papel `memoria` (D-116-15).
+
+        ⛔ `settings["memory_llm_model"]` NÃO é lido — é a coluna legada (ver o
+        topo do módulo). `settings` continua no parâmetro porque os chamadores o
+        passam; o modelo não sai dele.
+
+        Levanta `ModeloNaoResolvido` (papel sem rota) — nunca um modelo por
+        omissão. O ledger (service_type=memory, papel/pedido/resolvido) vem da
+        fábrica, com ou sem `company_id`.
         """
-        Get LLM configured for memory tasks.
-        ALWAYS uses cheap model (gpt-4o-mini by default).
-
-        Args:
-            settings: Memory settings dict
-            company_id: Optional company UUID for cost tracking
-            agent_id: Optional agent UUID for cost tracking
-
-        Returns:
-            LLM instance with cost tracking callback
-        """
-        model = settings.get("memory_llm_model", DEFAULT_MEMORY_MODEL)
-
-        # Build callbacks for cost tracking
-        callbacks = []
-        if company_id:
-            callbacks.append(
-                CostCallbackHandler(
-                    service_type="memory", company_id=company_id, agent_id=agent_id
-                )
-            )
+        from app.factories.llm_factory import LLMFactory
 
         if self.llm_factory:
-            return self.llm_factory(model)
+            from app.factories.model_policy import resolver
 
-        # Fallback: create OpenAI ChatOpenAI directly with explicit API key
-        # (needed for background threads which don't inherit env vars)
-        return ChatOpenAI(
-            model=model,
-            temperature=0.3,
-            api_key=app_settings.OPENAI_API_KEY,
-            callbacks=callbacks,
+            return self.llm_factory(resolver(PAPEL_DA_MEMORIA).model)
+
+        return LLMFactory.create_llm(
+            {},
+            {"llm_temperature": TEMPERATURA_DA_MEMORIA},
+            company_id=company_id,
+            agent_id=agent_id,
+            service_type="memory",
+            papel=PAPEL_DA_MEMORIA,
         )
 
     # ==========================================================================
@@ -690,7 +702,7 @@ class MemoryService:
         Args:
             messages: List[Any] of LangChain messages
             existing_facts: Previously extracted facts (for dedup)
-            llm: LLM instance (gpt-4o-mini)
+            llm: LLM instance (o da rota `memoria`)
 
         Returns:
             List of NEW facts (non-duplicated)
@@ -729,7 +741,7 @@ Se não houver fatos novos relevantes, responda: []"""
 
         try:
             response = llm.invoke(prompt)  # SYNC, não ainvoke
-            content = response.content.strip()
+            content = _texto_da_resposta(response)
 
             # Parse JSON
             if content.startswith("```"):
@@ -760,7 +772,7 @@ Se não houver fatos novos relevantes, responda: []"""
         Args:
             messages: List[Any] of LangChain messages
             user_context: User memory dict (for context)
-            llm: LLM instance (gpt-4o-mini)
+            llm: LLM instance (o da rota `memoria`)
 
         Returns:
             Dict with {summary, topics, decisions, pending_items} or None
@@ -795,7 +807,7 @@ Responda APENAS o JSON, sem texto adicional."""
 
         try:
             response = llm.invoke(prompt)  # SYNC, não ainvoke
-            content = response.content.strip()
+            content = _texto_da_resposta(response)
 
             if content.startswith("```"):
                 content = content.split("```")[1]
@@ -821,7 +833,7 @@ Responda APENAS o JSON, sem texto adicional."""
         Args:
             current_facts: Lista de fatos existentes
             new_facts: Lista de novos fatos extraídos
-            llm: LLM instance (gpt-4o-mini)
+            llm: LLM instance (o da rota `memoria`)
 
         Returns:
             Lista consolidada de fatos únicos e relevantes (máximo 8)
@@ -862,7 +874,7 @@ Retorne APENAS uma lista JSON de strings: ["fato 1", "fato 2"]"""
 
         try:
             response = llm.invoke(prompt)
-            content = response.content.strip()
+            content = _texto_da_resposta(response)
 
             # Limpeza básica de markdown json
             if content.startswith("```"):
@@ -1535,7 +1547,7 @@ Se não houver fatos novos relevantes, responda: []"""
 
         try:
             response = await llm.ainvoke(prompt)  # ASYNC!
-            content = response.content.strip()
+            content = _texto_da_resposta(response)
 
             if content.startswith("```"):
                 content = content.split("```")[1]
@@ -1588,7 +1600,7 @@ Responda APENAS o JSON, sem texto adicional."""
 
         try:
             response = await llm.ainvoke(prompt)  # ASYNC!
-            content = response.content.strip()
+            content = _texto_da_resposta(response)
 
             if content.startswith("```"):
                 content = content.split("```")[1]
@@ -1639,7 +1651,7 @@ Retorne APENAS uma lista JSON de strings: ["fato 1", "fato 2"]"""
 
         try:
             response = await llm.ainvoke(prompt)  # ASYNC!
-            content = response.content.strip()
+            content = _texto_da_resposta(response)
 
             if content.startswith("```"):
                 content = content.split("```")[1]

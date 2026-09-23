@@ -320,6 +320,8 @@ class SubAgentTool(BaseTool):
         )
 
         # Tracking
+        #: provedor/modelo que DE FATO responderam (o log grava este, não um default).
+        modelo_do_turno: Dict[str, Optional[str]] = {"provedor": None, "modelo": None}
         total_input_tokens = 0
         total_output_tokens = 0
         tools_used = []
@@ -330,14 +332,21 @@ class SubAgentTool(BaseTool):
 
         try:
             # === 1. Criar LLM do SubAgent ===
+            # 🔴 SPEC-116 U8: papel `subagente` explícito (a ROTA decide o
+            # modelo, D-116-17); a chave é a do provedor RESOLVIDO (a fábrica
+            # a escolhe). O modelo real vai ao log — fim do rótulo inventado.
             from app.factories.llm_factory import LLMFactory
 
+            resolvido = LLMFactory.resolver_para(
+                self.company_config, subagent_data, papel="subagente")
+            modelo_do_turno["provedor"] = resolvido.provider
+            modelo_do_turno["modelo"] = resolvido.model
             llm = LLMFactory.create_llm(
                 company_config=self.company_config,
                 agent_data=subagent_data,
-                api_key=self._resolve_api_key(subagent_data),
                 company_id=self.company_id,
                 agent_id=subagent_id,  # CostCallback usa este ID
+                modelo_resolvido=resolvido,
             )
 
             # === 2. Montar Tools do SubAgent ===
@@ -402,7 +411,17 @@ class SubAgentTool(BaseTool):
 
                 # Invocar LLM
                 response = await llm_with_tools.ainvoke(messages)
-                messages.append(response)
+                # 🔴 SPEC-116 U6a/U8: o RACIOCÍNIO volta a quem o produziu (a
+                # mesma função do nó do agente) — Opus 5.5/DeepSeek dão 400 sem
+                # ele num laço de ferramentas; provedor diferente → sanitiza.
+                from app.agents.nodes import mensagem_do_assistente_para
+
+                messages.append(mensagem_do_assistente_para(
+                    response, modelo_do_turno["provedor"], modelo_do_turno["modelo"]))
+                _real = (getattr(response, "response_metadata", None) or {}).get("model_name") \
+                    or (getattr(response, "response_metadata", None) or {}).get("model")
+                if _real:
+                    modelo_do_turno["modelo_real"] = _real
 
                 # Extrair tokens (se disponível via usage_metadata)
                 usage_meta = getattr(response, "usage_metadata", None)
@@ -542,6 +561,7 @@ class SubAgentTool(BaseTool):
                     search_strategy=search_strategy,
                     retrieval_score=retrieval_score,
                     status="success",
+                    modelo_real=modelo_do_turno,
                 ),
             )
 
@@ -590,6 +610,7 @@ class SubAgentTool(BaseTool):
                     search_strategy=search_strategy,
                     retrieval_score=retrieval_score,
                     status="error",
+                    modelo_real=modelo_do_turno,
                 ),
             )
 
@@ -620,13 +641,8 @@ class SubAgentTool(BaseTool):
     # =========================================================
     # Helpers
     # =========================================================
-    def _resolve_api_key(self, subagent_data: dict) -> str:
-        """
-        Resolve API key usando o padrão do projeto (os.getenv via get_api_key_for_provider).
-        """
-        from app.core.utils import get_api_key_for_provider
-        provider = subagent_data.get("llm_provider") or "openai"
-        return get_api_key_for_provider(provider)
+    # (SPEC-116 U8: `_resolve_api_key` saiu — escolhia a chave pelo provedor
+    # GRAVADO, com "openai" por omissão; a fábrica escolhe a do RESOLVIDO.)
 
     def _save_subagent_log(
         self,
@@ -644,6 +660,7 @@ class SubAgentTool(BaseTool):
         search_strategy: str | None = None,
         retrieval_score: float | None = None,
         status: str = "success",
+        modelo_real: Optional[Dict[str, Optional[str]]] = None,
     ):
         """
         Salva log do SubAgent na tabela conversation_logs — mesma estrutura do log_node.
@@ -654,17 +671,14 @@ class SubAgentTool(BaseTool):
             return
 
         try:
-            # Provider/model do SubAgent (Priority: Agent > Company > Default)
-            llm_provider = (
-                subagent_data.get("llm_provider")
+            # 🔴 SPEC-116 U8 (CLAUDE.md §12.1, campo que mente): o log grava o
+            # provedor/modelo que RESPONDEU — o real (`response_metadata`) ou o
+            # resolvido pela rota. Era um default fixo do GPT-4 Turbo, um modelo que nunca
+            # rodou aqui. Sem nenhum dos dois (falhou antes de resolver): None.
+            real = modelo_real or {}
+            llm_provider = real.get("provedor") or subagent_data.get("llm_provider") \
                 or self.company_config.get("llm_provider")
-                or "openai"
-            )
-            llm_model = (
-                subagent_data.get("llm_model")
-                or self.company_config.get("llm_model")
-                or "gpt-4-turbo"
-            )
+            llm_model = real.get("modelo_real") or real.get("modelo")
             llm_temperature = (
                 subagent_data.get("llm_temperature")
                 or self.company_config.get("llm_temperature")

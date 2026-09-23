@@ -272,6 +272,17 @@ async def update_agent(
     # Já estava sendo buscado aqui só para invalidar cache; o update ignorava.
     tenant = str(existing_agent.company_id) if existing_agent else None
 
+    # 🔴 SPEC-116 U8: o modelo é conferido no CATÁLOGO governado antes de
+    # gravar (retirado/bloqueado/fora do catálogo → 400 com frase para gente;
+    # o legado que JÁ está gravado pode ficar; sem modelo é permitido).
+    from app.api.agent_config import ModeloRecusado
+    from app.models.agent import conferir_modelos_do_agente
+
+    try:
+        conferir_modelos_do_agente(agent_data, existing_agent)
+    except ModeloRecusado as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     # Atualizar o agente
     updated_agent = service.update_agent(agent_id, agent_data, company_id=tenant)
 

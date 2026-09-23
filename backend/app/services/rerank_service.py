@@ -14,25 +14,65 @@ class RerankService:
     Refina a precisão da busca vetorial usando modelos Cross-Encoder.
     """
 
-    def __init__(self):
-        self.api_key = getattr(settings, "COHERE_API_KEY", None)
-        self.client = None
-        self.model = (
-            "rerank-multilingual-v3.0"  # Otimizado para PT-BR e contextos técnicos
-        )
+    #: O papel do Model Router que reordena o RAG (SPEC-116 U8).
+    PAPEL = "rerank"
 
-        if self.api_key:
+    def __init__(self, *, modelo: str = None, cliente=None):
+        """PONTO DE INJEÇÃO: `modelo` fixa o braço; `cliente` é qualquer objeto
+        com `.rerank(model=, query=, documents=, top_n=)` (dublê da bancada)."""
+        self.api_key = getattr(settings, "COHERE_API_KEY", None)
+        self.client = cliente
+        self._modelo_fixo = modelo
+
+        if self.client is None and self.api_key:
             try:
                 self.client = cohere.Client(self.api_key)
-                logger.info(
-                    f"✅ RerankService conectado ao Cohere (Modelo: {self.model})"
-                )
+                logger.info("✅ RerankService conectado ao Cohere (papel rerank)")
             except Exception as e:
                 logger.error(f"❌ Erro ao inicializar Cohere Client: {e}")
-        else:
+        elif self.client is None:
             logger.warning(
                 "⚠️ COHERE_API_KEY não configurada. Reranking será ignorado (Bypass)."
             )
+
+    @property
+    def model(self) -> str:
+        """O id da ROTA do papel `rerank` (lido a cada uso: a troca vale sem
+        reiniciar). 🔴 SPEC-116 U8: era literal. ⛔ Sem rota → ModeloNaoResolvido."""
+        if self._modelo_fixo:
+            return self._modelo_fixo
+        from app.factories.model_policy import resolver
+
+        return resolver(self.PAPEL).model
+
+    def _registrar_uso(self, response, modelo: str, *, n_docs: int, company_id=None,
+                       agent_id=None) -> None:
+        """Ledger do rerank (📊 23/09/2026: ZERO registro — EVIDENCIAS/01 (e)#5).
+
+        Cohere cobra por "search unit" (`meta.billed_units.search_units`). O
+        catálogo tem o rerank com preço 0/0 = DESCONHECIDO: a linha sai com custo
+        nulo e `preco_desconhecido`, nunca como se fosse de graça.
+        """
+        try:
+            unidades = None
+            meta = getattr(response, "meta", None)
+            cobradas = getattr(meta, "billed_units", None) if meta is not None else None
+            if cobradas is not None:
+                unidades = getattr(cobradas, "search_units", None)
+            from .usage_service import get_usage_service
+
+            get_usage_service().track_cost_sync(
+                service_type="rerank",
+                model=modelo,
+                input_tokens=int(unidades or 1),
+                output_tokens=0,
+                company_id=company_id,
+                agent_id=agent_id,
+                details={"papel": self.PAPEL, "modelo_resolvido": modelo,
+                         "search_units": unidades, "documentos": n_docs},
+            )
+        except Exception as e:  # noqa: BLE001 — o ledger nunca derruba a busca
+            logger.warning(f"[Rerank] uso não registrado: {type(e).__name__}")
 
     def is_available(self) -> bool:
         """True se o cliente Cohere está pronto (sem chamada pesada)."""
@@ -66,7 +106,8 @@ class RerankService:
         }
 
     def rerank(
-        self, query: str, docs: List[Dict[str, Any]], top_k: int = 3
+        self, query: str, docs: List[Dict[str, Any]], top_k: int = 3,
+        *, company_id: str = None, agent_id: str = None,
     ) -> List[Dict[str, Any]]:
         """
         Reordena os documentos baseados na relevância semântica real.
@@ -85,9 +126,12 @@ class RerankService:
 
         try:
             # Chamada API Cohere
+            modelo = self.model
             response = self.client.rerank(
-                model=self.model, query=query, documents=docs_content, top_n=top_k
+                model=modelo, query=query, documents=docs_content, top_n=top_k
             )
+            self._registrar_uso(response, modelo, n_docs=len(docs_content),
+                                company_id=company_id, agent_id=agent_id)
 
             # Reconstrói a lista ordenada com os scores de relevância
             final_docs = []

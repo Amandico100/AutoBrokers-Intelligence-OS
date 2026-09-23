@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from fastembed import SparseTextEmbedding
 from langchain_core.messages import HumanMessage
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 
 from ..core.config import settings
 from .qdrant_service import get_qdrant_service
@@ -115,6 +115,24 @@ SCALE_NONE = "none"  # nada pontuou
 # Confiabilidade da escala como medida de RELEVÂNCIA (maior = mais confiável).
 # Serve para escolher entre dois candidatos sem comparar unidades diferentes.
 _SCALE_RANK = {SCALE_RERANK: 3, SCALE_COSINE: 2, SCALE_RRF: 1, SCALE_NONE: 0}
+
+
+def _modelo_do_papel(papel: str) -> str:
+    """O id do modelo da ROTA do papel (SPEC-116). ⛔ Levanta sem rota."""
+    from app.factories.model_policy import resolver
+
+    return resolver(papel).model
+
+
+def _texto_do_modelo(response) -> str:
+    """Texto da resposta — string ou blocos (Claude 5 com raciocínio)."""
+    content = getattr(response, "content", response)
+    if isinstance(content, list):
+        content = "".join(
+            str(b.get("text") or "") if isinstance(b, dict) and b.get("type") in (None, "text")
+            else ("" if isinstance(b, dict) else str(b))
+            for b in content)
+    return str(content or "").strip()
 
 
 def _env_float(name: str, default: float) -> float:
@@ -329,9 +347,11 @@ class SearchService:
         self.qdrant = get_qdrant_service()
         self.reranker = get_rerank_service()
 
-        # Embeddings para busca vetorial (Dense)
+        # Embeddings para busca vetorial (Dense). SPEC-116 U8: o id vem da ROTA
+        # do papel `embedding` (D-116-12: KEEP — trocar exige reindexar tudo).
+        self.modelo_de_embedding = _modelo_do_papel("embedding")
         self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small", api_key=settings.OPENAI_API_KEY
+            model=self.modelo_de_embedding, api_key=settings.OPENAI_API_KEY
         )
 
         # Modelo para busca lexical (Sparse BM25) - Rodando Local
@@ -346,7 +366,11 @@ class SearchService:
         try:
             import tiktoken
 
-            encoder = tiktoken.encoding_for_model("text-embedding-3-small")
+            modelo = getattr(self, "modelo_de_embedding", None) or _modelo_do_papel("embedding")
+            try:
+                encoder = tiktoken.encoding_for_model(modelo)
+            except KeyError:  # modelo que o tiktoken não conhece: a contagem é estimativa
+                encoder = tiktoken.get_encoding("cl100k_base")
             tokens = len(encoder.encode(query))
 
             from .usage_service import get_usage_service
@@ -354,43 +378,43 @@ class SearchService:
             usage_service = get_usage_service()
             usage_service.track_cost_sync(
                 service_type="rag_query",
-                model="text-embedding-3-small",
+                model=modelo,
                 input_tokens=tokens,
                 output_tokens=0,
                 company_id=company_id,
                 agent_id=agent_id,
-                details={"query_preview": query[:100]},
+                details={"query_preview": query[:100], "papel": "embedding",
+                         "modelo_resolvido": modelo, "tokens_estimados": True},
             )
         except Exception as e:
             logger.warning(f"[Search] Cost tracking failed: {e}")
 
-    def _generate_hyde_doc(self, query: str, company_id: str = None, agent_id: str = None) -> str:
-        """Gera documento hipotético para expansão semântica."""
-        from ..core.callbacks.cost_callback import CostCallbackHandler
+    def _generate_hyde_doc(self, query: str, company_id: str = None, agent_id: str = None,
+                           *, llm=None) -> str:
+        """Gera documento hipotético para expansão semântica.
 
+        🔴 SPEC-116 U8: o modelo é o do PAPEL `hyde` (rota no banco), pela
+        fábrica — era `gpt-4o-mini` literal, por fora. O ledger vem da fábrica
+        (service_type=rag_query, com papel/pedido/resolvido), com ou sem
+        `company_id`. `llm=` é o ponto de injeção da bancada. Falha → a própria
+        pergunta (como sempre), com o motivo no log.
+        """
         try:
-            # 🔥 Cria callback dinamicamente com IDs para billing correto
-            callbacks = []
-            if company_id:
-                callbacks.append(CostCallbackHandler(
-                    service_type="rag_query",
-                    company_id=company_id,
-                    agent_id=agent_id
-                ))
+            if llm is None:
+                from app.factories.llm_factory import LLMFactory
 
-            hyde_llm = ChatOpenAI(
-                model="gpt-4o-mini",
-                temperature=0.7,
-                api_key=settings.OPENAI_API_KEY,
-                callbacks=callbacks,
-            )
+                llm = LLMFactory.create_llm(
+                    {}, {"llm_temperature": 0.7},
+                    company_id=company_id, agent_id=agent_id,
+                    service_type="rag_query", papel="hyde",
+                )
 
             prompt = f"""Você é um especialista técnico. Escreva um parágrafo curto e denso que seria a resposta PERFEITA para a pergunta: "{query}".
             Use terminologia técnica correta. Não responda a pergunta, simule o trecho do documento que conteria a resposta."""
-            response = hyde_llm.invoke([HumanMessage(content=prompt)])
-            return response.content
+            response = llm.invoke([HumanMessage(content=prompt)])
+            return _texto_do_modelo(response) or query
         except Exception as e:
-            logger.warning(f"[Search] HyDE generation failed: {e}")
+            logger.warning(f"[Search] HyDE generation failed: {type(e).__name__}: {e}")
             return query
 
     def _execute_search(
@@ -650,6 +674,7 @@ class SearchService:
             query=original_query,
             docs=initial_results,
             top_k=len(initial_results),  # ORDENAR tudo; quem corta é a cota
+            company_id=company_id, agent_id=agent_id,  # SPEC-116 U8: o rerank entra no ledger
         )
         escolhidos = selecionar_com_cota(ordenados)
         logger.info(

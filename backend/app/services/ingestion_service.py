@@ -14,7 +14,7 @@ from fastembed import SparseTextEmbedding
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_experimental.text_splitter import SemanticChunker
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from ..core.config import settings
@@ -31,9 +31,13 @@ class IngestionService:
         self.qdrant = get_qdrant_service()
         self.supabase = get_supabase_client().client
 
-        # Dense embeddings (OpenAI)
+        # Dense embeddings (OpenAI). SPEC-116 U8: o id vem da ROTA do papel
+        # `embedding` (D-116-12: KEEP — trocar exige reindexar tudo).
+        from app.factories.model_policy import resolver as _resolver_do_papel
+
+        self.modelo_de_embedding = _resolver_do_papel("embedding").model
         self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small", api_key=settings.OPENAI_API_KEY
+            model=self.modelo_de_embedding, api_key=settings.OPENAI_API_KEY
         )
 
         # Sparse embeddings (BM25 local)
@@ -169,7 +173,15 @@ class IngestionService:
         try:
             import tiktoken
 
-            encoding = tiktoken.encoding_for_model("text-embedding-3-small")
+            modelo = getattr(self, "modelo_de_embedding", None)
+            if not modelo:
+                from app.factories.model_policy import resolver as _resolver_do_papel
+
+                modelo = _resolver_do_papel("embedding").model
+            try:
+                encoding = tiktoken.encoding_for_model(modelo)
+            except KeyError:  # modelo que o tiktoken não conhece: estimativa
+                encoding = tiktoken.get_encoding("cl100k_base")
             total_tokens = sum(len(encoding.encode(chunk)) for chunk in chunks)
 
             from .usage_service import get_usage_service
@@ -177,12 +189,13 @@ class IngestionService:
             usage_service = get_usage_service()
             usage_service.track_cost_sync(
                 service_type="embedding",
-                model="text-embedding-3-small",
+                model=modelo,
                 input_tokens=total_tokens,
                 output_tokens=0,
                 company_id=company_id,
                 agent_id=agent_id,  # 🔥 FIX: Passa agent_id para evitar 'Sem Agente'
-                details={"chunk_count": len(chunks)},
+                details={"chunk_count": len(chunks), "papel": "embedding",
+                         "modelo_resolvido": modelo, "tokens_estimados": True},
             )
         except Exception as e:
             logger.warning(f"[FinOps] Could not track embedding cost: {e}")
@@ -353,12 +366,15 @@ class IngestionService:
         return chunks, metas
 
     def _chunk_agentic(
-        self, text: str, raw_data: Dict, company_id: str = None
+        self, text: str, raw_data: Dict, company_id: str = None, *, llm=None
     ) -> Tuple[List[str], List[Dict]]:
         """
         Estratégia Agêntica 2.0: Usa LLM com janelas seguras e prompt avançado.
+
+        🔴 SPEC-116 U8: o modelo é o do PAPEL `chunking_agentico` (rota no
+        banco), pela fábrica — era `gpt-4o-mini` literal, por fora. Ledger da
+        fábrica (service_type=ingestion). `llm=` é o ponto de injeção.
         """
-        from ..core.callbacks.cost_callback import CostCallbackHandler
 
         logger.info("🧠 Iniciando Agentic Chunking 2.0...")
 
@@ -370,19 +386,14 @@ class IngestionService:
         final_chunks = []
         final_metadatas = []
 
-        # Build callbacks for cost tracking
-        callbacks = []
-        if company_id:
-            callbacks.append(
-                CostCallbackHandler(service_type="ingestion", company_id=company_id)
-            )
+        if llm is None:
+            from app.factories.llm_factory import LLMFactory
 
-        llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0,
-            api_key=settings.OPENAI_API_KEY,
-            callbacks=callbacks,
-        )
+            llm = LLMFactory.create_llm(
+                {}, {"llm_temperature": 0},
+                company_id=company_id, service_type="ingestion",
+                papel="chunking_agentico",
+            )
 
         prompt = ChatPromptTemplate.from_messages(
             [

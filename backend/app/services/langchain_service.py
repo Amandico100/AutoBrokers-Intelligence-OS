@@ -11,9 +11,9 @@ from collections.abc import Mapping
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from cachetools import LRUCache
-from langchain_anthropic import ChatAnthropic
+
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Pool error handling for hot-reload recovery
@@ -194,8 +194,12 @@ class LangChainService:
         self.supabase = supabase_client
         self.encryption_service = get_encryption_service()
 
+        # SPEC-116 U8: o id do embedding vem da ROTA do papel `embedding`
+        # (D-116-12: text-embedding-3-small KEEP — trocar exige reindexar).
+        from app.factories.model_policy import resolver as _resolver_do_papel
+
         self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small", openai_api_key=openai_api_key
+            model=_resolver_do_papel("embedding").model, openai_api_key=openai_api_key
         )
 
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -273,62 +277,34 @@ class LangChainService:
             logger.error(f"Error fetching raw agent: {e}")
             return None
 
-    def _analyze_image(
+    async def _analyze_image(
         self,
         image_url: str,
-        vision_model: str,
-        vision_api_key: str,
+        *,
         company_id: str = None,
-        agent_id: str = None
-    ) -> str:
-        try:
-            # Callback para registrar custos de Vision
-            callbacks = []
-            if company_id:
-                from app.core.callbacks.cost_callback import CostCallbackHandler
-                callbacks.append(
-                    CostCallbackHandler(
-                        service_type="vision",
-                        company_id=company_id,
-                        agent_id=agent_id,
-                        model_name=vision_model
-                    )
-                )
+        agent_id: str = None,
+        agent_data: Optional[Dict[str, Any]] = None,
+        llm=None,
+    ) -> Optional[str]:
+        """A visão do `process_message` — o MESMO motor do webhook e do chat.
 
-            if vision_model == "gpt-4o" or vision_model.startswith("gpt-"):
-                llm = ChatOpenAI(
-                    model=vision_model,
-                    api_key=vision_api_key,
-                    temperature=0.3,
-                    callbacks=callbacks
-                )
-            elif vision_model and vision_model.startswith("claude"):
-                llm = ChatAnthropic(
-                    model=vision_model,
-                    api_key=vision_api_key,
-                    temperature=0.3,
-                    callbacks=callbacks
-                )
-            else:
-                return "[Modelo de visão não configurado ou suportado]"
+        🔴 SPEC-116 U8 (F3a): era um segundo cliente, por fora da fábrica, com
+        default literal e `temperature=0.3` (Claude 5 → 400); em erro devolvia a
+        frase "[Erro na análise de imagem]", que ia ao PROMPT como se fosse a
+        descrição. Agora delega a `vision_service.describe_image` (papel
+        `visao`, ledger incluso) e devolve None na falha. `llm=` é o ponto de
+        injeção da bancada.
+        """
+        from app.services.vision_service import describe_image
 
-            system_prompt = (
-                "Descreva tecnicamente a imagem para um Agente de Suporte. Seja breve."
-            )
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(
-                    content=[
-                        {"type": "text", "text": "Descreva:"},
-                        {"type": "image_url", "image_url": {"url": image_url}},
-                    ]
-                ),
-            ]
-            response = llm.invoke(messages)
-            return response.content
-        except Exception as e:
-            logger.error(f"[VISION] Error: {e}")
-            return "[Erro na análise de imagem]"
+        return await describe_image(
+            image_url,
+            company_id=company_id,
+            agent_id=agent_id,
+            agent_data=agent_data,
+            purpose_hint="Agente de Suporte",
+            llm=llm,
+        )
 
     async def process_message(
         self,
@@ -468,47 +444,29 @@ class LangChainService:
             # 6. Vision - Usa final_message (já sanitizado)
             enriched_message = final_message
             if image_url:
-                import os
-                # F1: default de plataforma — agente NUNCA fica cego por falta
-                # de vision_model configurado (mesma regra do vision_service).
-                v_model = agent.get("vision_model") or (
-                    "gpt-4o-mini" if os.getenv("OPENAI_API_KEY")
-                    # 🔴 Era `claude-3-5-sonnet-20241022`, RETIRADO em
-                    # 28/10/2025: devolve 404. O agente ficava cego exatamente
-                    # no caso que esta linha promete cobrir (so chave Anthropic
-                    # presente) — e o comentario acima jurava o contrario.
-                    else ("claude-haiku-4-5-20251001" if os.getenv("ANTHROPIC_API_KEY") else None)
-                )
+                from app.services.vision_service import imagem_ja_descrita
 
-                # === SELEÇÃO DE CHAVE VISION: USAR .env ===
-                v_key = None
-                if v_model:
-                    if v_model == "gpt-4o" or v_model.startswith("gpt-"):
-                        v_key = os.getenv("OPENAI_API_KEY")
-                    elif v_model.startswith("claude"):
-                        v_key = os.getenv("ANTHROPIC_API_KEY")
-                    elif v_model.startswith("gemini"):
-                        v_key = os.getenv("GOOGLE_API_KEY")
-
-                if v_model and v_key:
-                    try:
-                        desc = self._analyze_image(
-                            image_url,
-                            v_model,
-                            v_key,
-                            company_id=company_id,
-                            agent_id=agent.get("id")
-                        )
+                # 🔴 UMA chamada de visão por foto (SPEC-116 U8). 📊 23/09/2026:
+                # o webhook descrevia a foto do segurado (e gravava a marca no
+                # texto) e ESTE ramo a descrevia de novo — 2 chamadas por foto e
+                # o contexto visual duplicado no prompt. A marca no texto é a
+                # prova de que a descrição já está aqui: reaproveita.
+                if imagem_ja_descrita(final_message):
+                    logger.info("[VISION] imagem já descrita neste turno — reaproveitada")
+                else:
+                    desc = await self._analyze_image(
+                        image_url,
+                        company_id=company_id,
+                        agent_id=agent.get("id"),
+                        agent_data=agent,
+                    )
+                    if desc:
                         enriched_message = (
                             f"{final_message}\n\n[CONTEXTO VISUAL]:\n{desc}"
                         )
-                        logger.info(f"[VISION] ✅ Imagem analisada com sucesso usando {v_model}")
-                    except Exception as e:
-                        logger.error(f"[VISION] ❌ Erro ao analisar imagem: {e}")
-                elif image_url and not v_model:
-                    logger.warning("[VISION] ⚠️ vision_model não configurado no agente")
-                elif image_url and not v_key:
-                    logger.warning(f"[VISION] ⚠️ API Key não encontrada no .env para modelo {v_model}")
+                        logger.info("[VISION] ✅ Imagem analisada (papel visao)")
+                    else:
+                        logger.warning("[VISION] ⚠️ imagem sem descrição — segue só com o texto")
 
             # 7. Invocar Agente (LangGraph) - COM RETRY PARA POOL FECHADO
             from app.agents import invoke_agent

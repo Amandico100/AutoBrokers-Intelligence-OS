@@ -525,7 +525,9 @@ async def _contar_timeout_no_breaker(provedor_de, escopo: str,
     try:
         from app.core.relogio_do_modelo import registrar_falha
 
-        provedor = await _provedor_da_chave(provedor_de, escopo)
+        _valor = await _provedor_da_chave(provedor_de, escopo)
+        # `provedor_de` devolve o provedor OU (primário, reserva) — SPEC-116 U8.
+        provedor = (_valor[0] if _valor else None) if isinstance(_valor, (tuple, list)) else _valor
         if not provedor:
             return
         await registrar_falha(provedor, TimeoutError(
@@ -567,7 +569,21 @@ async def provedor_do_escopo(escopo: str):
         str(company_id), integracao.get("agent_id"), required_role="attendance")
     if not agente:
         return None
+    # 🔴 SPEC-116 U8: o provedor E a RESERVA da rota do papel. O nó do agente
+    # já troca para a reserva quando o breaker do primário está aberto (antes
+    # da 1ª ferramenta — F2); reter aqui com a reserva de pé era silêncio à toa.
+    try:
+        from app.core.relogio_do_modelo import provedor_normalizado
+        from app.factories.llm_factory import LLMFactory
+
+        r = LLMFactory.resolver_para(agente, agente)
+        reserva = provedor_normalizado(r.reserva.provider) if r.reserva else None
+        return (provedor_normalizado(r.provider), reserva)
+    except Exception as erro:  # noqa: BLE001 — a pergunta de sempre, sem reserva
+        logger.debug("[ISOLAMENTO] rota sem resposta (%s) — provedor gravado",
+                     type(erro).__name__)
     return provedor_configurado(agente, agente)
+
 
 
 async def _provedor_da_chave(provedor_de, escopo: str):
@@ -829,12 +845,22 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
             # lá embaixo que devolve a VAGA DE COTA desta corretora. Sair por
             # cima do `try` deixaria a vaga presa até o processo reiniciar.
             if com_cota and provedores_fora and provedor_de is not None:
-                provedor = await _provedor_da_chave(provedor_de, escopo)
+                _valor = await _provedor_da_chave(provedor_de, escopo)
+                # `provedor_de` devolve o provedor OU (primário, reserva).
+                provedor, reserva = (list(_valor) + [None, None])[:2] if isinstance(_valor, (tuple, list)) else (_valor, None)
                 if provedor and provedor in provedores_fora:
-                    # ⚠️ Sem PII: nem chave, nem telefone, nem corretora.
-                    logger.info("[ISOLAMENTO] conversa guardada: disjuntor "
-                                "aberto no provedor %s", provedor)
-                    return await _guardar(chave, escopo, "breaker")
+                    # 🔴 SPEC-116 U8: a RESERVA da rota de pé → segue. O nó do
+                    # agente usa a reserva quando o breaker do primário está
+                    # aberto (antes da 1ª ferramenta — F2). Reter aqui
+                    # calava o segurado com um modelo pronto para responder.
+                    if reserva and reserva not in provedores_fora:
+                        logger.info("[ISOLAMENTO] disjuntor aberto no provedor %s "
+                                    "— segue pela reserva %s", provedor, reserva)
+                    else:
+                        # ⚠️ Sem PII: nem chave, nem telefone, nem corretora.
+                        logger.info("[ISOLAMENTO] conversa guardada: disjuntor "
+                                    "aberto no provedor %s", provedor)
+                        return await _guardar(chave, escopo, "breaker")
 
             # ================================================================
             # 🔴 MEIO-ABERTO: PASSA **UMA**, E SÓ UMA (§7.4)
@@ -851,7 +877,9 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
             # gasta AQUI, antes do `get_and_clear` — quem pergunta é quem retém.
             # Na dúvida (erro), `_sonda_do_meio_aberto` devolve True: atende.
             if com_cota and em_meio_aberto and provedor_de is not None:
-                provedor = await _provedor_da_chave(provedor_de, escopo)
+                _valor = await _provedor_da_chave(provedor_de, escopo)
+                provedor = ((_valor[0] if _valor else None)
+                            if isinstance(_valor, (tuple, list)) else _valor)
                 if provedor and provedor in em_meio_aberto:
                     if not await _sonda_do_meio_aberto(provedor):
                         logger.info("[ISOLAMENTO] conversa guardada: a sonda do "

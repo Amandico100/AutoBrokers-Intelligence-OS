@@ -22,7 +22,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from app.core.database import AsyncSupabaseClient, get_async_db
-from app.core.utils import get_api_key_for_provider
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +34,15 @@ DEFAULT_MAX_MESSAGES = 80
 # Modelo fraco + temperatura alta e a pior combinacao possivel para RESPEITAR
 # PROIBICAO em redacao livre: o texto sai fluente e passa por cima da regra.
 #
-# Haiku 4.5 obedece instrucao muito melhor que `gpt-4o-mini` e continua barato.
-# Configuravel por ambiente para trocar sem deploy.
-DEFAULT_MODEL = os.getenv("AUXILIAR_LLM_MODEL", "claude-haiku-4-5-20251001")
+# 🔴 SPEC-116 U8 (F3a) — O MODELO E O DO PAPEL `auxiliar`, PELA FABRICA.
+# 📊 07/08/2026 → 23/09/2026 os dois auxiliares estavam QUEBRADOS: a env
+# `AUXILIAR_LLM_MODEL` trocou a string para um Claude, mas o cliente continuou
+# `ChatOpenAI` com a chave da OpenAI (EVIDENCIAS/01 F4) — um Claude na API da
+# OpenAI nao existe. Agora a ROTA (`llm_papeis`) escolhe provedor+modelo e a
+# fabrica monta o cliente CERTO, sem temperatura para quem a recusa, com o
+# ledger (service_type=auxiliary_run). Trocar o modelo = trocar a rota, sem
+# deploy. A env `AUXILIAR_LLM_MODEL` deixou de ser lida.
+PAPEL_DO_AUXILIAR = "auxiliar"
 RECENT_CONVERSATIONS_SCAN = 20
 
 SYSTEM_PROMPT = (
@@ -220,35 +225,27 @@ async def run_resumo_atendimentos(
 
     # 5. Gerar resumo via LLM
     try:
-        output, usage, model_name = await _summarize(messages)
+        output, usage, model_name = await _summarize(
+            messages, company_id=company_id,
+            detalhes={"auxiliary": RESUMO_SLUG, "run_id": run_id,
+                      "tenant_auxiliary_id": tenant_auxiliary_id})
     except Exception as e:  # noqa: BLE001
-        logger.error(f"[AUX] LLM summarization failed: {e}")
+        logger.error(f"[AUX] LLM summarization failed: {type(e).__name__}: {e}")
         await _fail_run(db, run_id, "Falha ao gerar o resumo com a IA.")
         raise HTTPException(status_code=502, detail="Falha ao gerar o resumo com a IA.")
 
-    # 6. Custo (best-effort — nunca derruba a execução)
+    # 6. Custo da EXECUÇÃO (best-effort). ⚠️ SPEC-116 U8: o ledger
+    # (`token_usage_logs`) já foi gravado pela fábrica, com os detalhes do
+    # auxiliar na mesma linha — gravar de novo aqui contaria o custo 2×.
     cost_usd = 0.0
     try:
         from app.services.usage_service import get_usage_service
 
-        svc = get_usage_service()
         in_tok = int(usage.get("input_tokens") or 0)
         out_tok = int(usage.get("output_tokens") or 0)
-        cost_usd = float(svc.calculate_cost(model_name, in_tok, out_tok))
-        svc.track_cost_sync(
-            service_type="auxiliary_run",
-            model=model_name,
-            input_tokens=in_tok,
-            output_tokens=out_tok,
-            company_id=company_id,
-            details={
-                "auxiliary": RESUMO_SLUG,
-                "run_id": run_id,
-                "tenant_auxiliary_id": tenant_auxiliary_id,
-            },
-        )
+        cost_usd = float(get_usage_service().calculate_cost(model_name, in_tok, out_tok))
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"[AUX] usage logging failed (non-fatal): {e}")
+        logger.warning(f"[AUX] custo da execução não calculado (non-fatal): {e}")
 
     # 7. Sucesso
     await _succeed_run(db, run_id, output, usage, cost_usd, model_name, conversation_id)
@@ -442,7 +439,15 @@ def _parse_output(raw: str) -> Dict[str, Any]:
     try:
         data = json.loads(raw)
     except Exception:  # noqa: BLE001
+        # Sem `response_format` (só a OpenAI tem): o modelo pode cercar o JSON
+        # com ```json … ``` ou uma frase. Pega o primeiro objeto `{…}` inteiro.
         data = {}
+        ini, fim = str(raw or "").find("{"), str(raw or "").rfind("}")
+        if ini != -1 and fim > ini:
+            try:
+                data = json.loads(str(raw)[ini:fim + 1])
+            except Exception:  # noqa: BLE001
+                data = {}
     if isinstance(data, dict):
         out["summary"] = str(data.get("summary") or "")
         for key in ("topics", "decisions", "pending_items", "next_steps"):
@@ -470,27 +475,63 @@ def _extract_usage(resp: Any) -> Dict[str, Any]:
     }
 
 
-async def _summarize(messages: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
-    """Chama o LLM (reuso de langchain_openai já presente no runtime) e retorna (output, usage, model)."""
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_openai import ChatOpenAI
+def _llm_do_auxiliar(*, company_id: Optional[str], temperature: float, max_tokens: int,
+                     detalhes: Optional[Dict[str, Any]] = None):
+    """O modelo do papel `auxiliar`, pela FÁBRICA. Devolve `(llm, modelo_resolvido)`.
 
-    model_name = DEFAULT_MODEL
-    api_key = get_api_key_for_provider("openai", model_name)
+    ⛔ Levanta `ModeloNaoResolvido`/`ValueError` — nunca um modelo por omissão.
+    O ledger é o da fábrica (callback de custo sempre anexado): os detalhes do
+    auxiliar (slug, run) entram na MESMA linha, sem uma segunda gravação.
+    """
+    from app.factories.llm_factory import LLMFactory
+
+    llm = LLMFactory.create_llm(
+        {},
+        # `agent_role=auxiliary`: o piso de saída da CONVERSA não vale aqui
+        # (resumo/rascunho curto) — o teto pedido é o que sai.
+        {"agent_role": "auxiliary", "llm_temperature": temperature, "llm_max_tokens": max_tokens},
+        company_id=company_id,
+        service_type="auxiliary_run",
+        papel=PAPEL_DO_AUXILIAR,
+    )
+    for cb in list(getattr(llm, "callbacks", None) or []):
+        if detalhes and isinstance(getattr(cb, "details", None), dict):
+            cb.details.update(detalhes)
+    modelo = getattr(llm, "model_name", None) or getattr(llm, "model", None) or ""
+    return llm, str(modelo)
+
+
+def _texto_da_resposta(resp: Any) -> str:
+    """Texto da resposta — string ou blocos (Claude 5 com raciocínio)."""
+    content = getattr(resp, "content", resp)
+    if isinstance(content, list):
+        content = "".join(
+            str(b.get("text") or "") if isinstance(b, dict) and b.get("type") in (None, "text")
+            else ("" if isinstance(b, dict) else str(b))
+            for b in content)
+    return str(content or "")
+
+
+async def _summarize(messages: List[Dict[str, Any]], *, company_id: Optional[str] = None,
+                     detalhes: Optional[Dict[str, Any]] = None,
+                     llm=None) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+    """Resumo do atendimento pelo papel `auxiliar`. Retorna (output, usage, model).
+
+    `llm=` é o PONTO DE INJEÇÃO (bancada/testes): usado como está.
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    if llm is None:
+        llm, model_name = _llm_do_auxiliar(company_id=company_id, temperature=0.2,
+                                           max_tokens=1200, detalhes=detalhes)
+    else:
+        model_name = str(getattr(llm, "model_name", None) or getattr(llm, "model", None) or "")
 
     transcript = _format_transcript(messages)
-    llm = ChatOpenAI(
-        model=model_name,
-        api_key=api_key,
-        temperature=0.2,
-        max_tokens=1200,
-        model_kwargs={"response_format": {"type": "json_object"}},
-    )
     resp = await llm.ainvoke(
         [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=transcript)]
     )
-    raw = resp.content if isinstance(resp.content, str) else str(resp.content)
-    return _parse_output(raw), _extract_usage(resp), model_name
+    return _parse_output(_texto_da_resposta(resp)), _extract_usage(resp), model_name
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -599,14 +640,18 @@ class FollowUpDraftRequest(BaseModel):
 
 async def _draft_followup(
     messages: List[Dict[str, Any]], objective: str, tone: str = "",
-    estado: str = "",
+    estado: str = "", *, company_id: Optional[str] = None,
+    detalhes: Optional[Dict[str, Any]] = None, llm=None,
 ) -> Tuple[str, Dict[str, Any], str]:
-    """Gera UMA mensagem de follow-up (texto puro) com o LLM. Retorna (message, usage, model)."""
+    """Gera UMA mensagem de follow-up (texto puro) pelo papel `auxiliar`.
+    Retorna (message, usage, model). `llm=` é o PONTO DE INJEÇÃO."""
     from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_openai import ChatOpenAI
 
-    model_name = DEFAULT_MODEL
-    api_key = get_api_key_for_provider("openai", model_name)
+    if llm is None:
+        llm, model_name = _llm_do_auxiliar(company_id=company_id, temperature=0.4,
+                                           max_tokens=400, detalhes=detalhes)
+    else:
+        model_name = str(getattr(llm, "model_name", None) or getattr(llm, "model", None) or "")
 
     parts: List[str] = []
     if messages:
@@ -626,11 +671,10 @@ async def _draft_followup(
     parts.append("Escreva APENAS a mensagem final de WhatsApp (sem aspas, sem rótulos).")
     human = "\n\n".join(parts)
 
-    llm = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.4, max_tokens=400)
     resp = await llm.ainvoke(
         [SystemMessage(content=FOLLOWUP_SYSTEM_PROMPT), HumanMessage(content=human)]
     )
-    raw = resp.content if isinstance(resp.content, str) else str(resp.content)
+    raw = _texto_da_resposta(resp)
     message = raw.strip().strip('"').strip()
     if len(message) > 700:
         message = message[:700].rstrip() + "…"
@@ -726,33 +770,26 @@ async def draft_follow_up_whatsapp(
     estado = await _estado_do_caso(db, company_id, conversation_id)
 
     try:
-        message, usage, model_name = await _draft_followup(messages, objective, tone,
-                                                           estado=estado)
+        message, usage, model_name = await _draft_followup(
+            messages, objective, tone, estado=estado, company_id=company_id,
+            detalhes={"auxiliary": FOLLOWUP_SLUG, "run_id": run_id})
     except Exception as e:  # noqa: BLE001
         logger.error(f"[AUX] follow-up draft LLM failed: {type(e).__name__}")
         if run_id:
             await _fail_run(db, run_id, "Falha ao gerar o rascunho com a IA.")
         raise HTTPException(status_code=502, detail="Falha ao gerar o rascunho com a IA.")
 
-    # Custo (best-effort).
+    # Custo da EXECUÇÃO (best-effort). O ledger já foi gravado pela fábrica
+    # (SPEC-116 U8) — gravar de novo aqui contaria o custo 2×.
     cost_usd = 0.0
     try:
         from app.services.usage_service import get_usage_service
 
-        svc = get_usage_service()
         in_tok = int(usage.get("input_tokens") or 0)
         out_tok = int(usage.get("output_tokens") or 0)
-        cost_usd = float(svc.calculate_cost(model_name, in_tok, out_tok))
-        svc.track_cost_sync(
-            service_type="auxiliary_run",
-            model=model_name,
-            input_tokens=in_tok,
-            output_tokens=out_tok,
-            company_id=company_id,
-            details={"auxiliary": FOLLOWUP_SLUG, "run_id": run_id},
-        )
+        cost_usd = float(get_usage_service().calculate_cost(model_name, in_tok, out_tok))
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"[AUX] follow-up usage logging failed (non-fatal): {e}")
+        logger.warning(f"[AUX] follow-up: custo da execução não calculado (non-fatal): {e}")
 
     if run_id:
         try:

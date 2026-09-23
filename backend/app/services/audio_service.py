@@ -1,5 +1,5 @@
 """
-Serviço de Áudio - Whisper API da OpenAI (ASYNC)
+Serviço de Áudio — transcrição pelo modelo da ROTA `transcricao` (SPEC-116), ASYNC.
 """
 
 import base64
@@ -13,18 +13,67 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 
+#: O papel do Model Router que transcreve (SPEC-116 U8; D-116-13: whisper-1
+#: desliga em 26/02/2027 — a troca é uma linha da ROTA, depois da bancada).
+PAPEL_DA_TRANSCRICAO = "transcricao"
+
+
+def _modelo_da_rota() -> str:
+    from app.factories.model_policy import resolver
+
+    return resolver(PAPEL_DA_TRANSCRICAO).model
+
+
 class AudioService:
-    """Serviço para transcrever áudio usando Whisper API (async)"""
+    """Transcrição de áudio (async) pelo modelo da ROTA `transcricao`.
 
-    def __init__(self, openai_api_key: str):
-        """
-        Inicializa o serviço de áudio
+    🔴 SPEC-116 U8: o id era literal nos dois caminhos. PONTO DE INJEÇÃO:
+    `AudioService(chave, modelo=..., cliente=...)` — `cliente` é qualquer objeto
+    com `audio.transcriptions.create` (a bancada e os testes passam um dublê);
+    `modelo` fixa o braço. Sem `modelo`, a rota é lida a CADA transcrição (a
+    troca vale sem reiniciar). ⛔ Sem rota → `ModeloNaoResolvido` (nunca um
+    modelo por omissão).
+    """
 
-        Args:
-            openai_api_key: API key da OpenAI
-        """
-        self.client = AsyncOpenAI(api_key=openai_api_key)
-        logger.info("Audio service initialized with Whisper API (async)")
+    def __init__(self, openai_api_key: str, *, modelo: str = None, cliente=None):
+        self.client = cliente if cliente is not None else AsyncOpenAI(api_key=openai_api_key)
+        self._modelo_fixo = modelo
+        logger.info("Audio service initialized (papel transcricao, async)")
+
+    @property
+    def modelo(self) -> str:
+        return self._modelo_fixo or _modelo_da_rota()
+
+    @staticmethod
+    def _formato_detalhado(modelo: str) -> bool:
+        """`verbose_json` (traz a DURAÇÃO, que é o que se cobra) só existe no
+        Whisper; os `gpt-*-transcribe` aceitam só json/text e devolvem `usage`."""
+        return str(modelo or "").startswith("whisper-")
+
+    def _registrar_uso(self, transcript, modelo: str, *, company_id, agent_id, details: dict) -> None:
+        """Ledger da transcrição: duração (Whisper) ou tokens (`usage`)."""
+        from .usage_service import get_usage_service
+
+        duracao = getattr(transcript, "duration", None)
+        uso = getattr(transcript, "usage", None)
+        entrada = saida = 0
+        if duracao:
+            entrada = int(duracao)
+        elif uso is not None:
+            entrada = int(getattr(uso, "input_tokens", 0) or 0)
+            saida = int(getattr(uso, "output_tokens", 0) or 0)
+        if not (entrada or saida):
+            return
+        get_usage_service().track_cost_sync(
+            service_type="audio",
+            model=modelo,
+            input_tokens=entrada,
+            output_tokens=saida,
+            company_id=company_id,
+            agent_id=agent_id,
+            details={**details, "papel": PAPEL_DA_TRANSCRICAO, "modelo_resolvido": modelo,
+                     "duration_seconds": duracao},
+        )
 
     async def transcribe_audio(
         self,
@@ -66,33 +115,23 @@ class AudioService:
             try:
                 logger.info(f"[AUDIO] Sending to Whisper API: {temp_file_path}")
 
+                modelo = self.modelo
                 with open(temp_file_path, "rb") as audio_file:
                     # ✅ ASYNC: await na chamada à API da OpenAI
+                    extras = {"response_format": "verbose_json"} if self._formato_detalhado(modelo) else {}
                     transcript = await self.client.audio.transcriptions.create(
-                        model="whisper-1",
+                        model=modelo,
                         file=audio_file,
                         language="pt",
-                        response_format="verbose_json",
+                        **extras,
                     )
 
                 transcribed_text = transcript.text
 
                 # Track cost (sync, rápido, ok por enquanto)
                 try:
-                    duration_seconds = getattr(transcript, "duration", None)
-                    if duration_seconds:
-                        from .usage_service import get_usage_service
-
-                        usage_service = get_usage_service()
-                        usage_service.track_cost_sync(
-                            service_type="audio",
-                            model="whisper-1",
-                            input_tokens=int(duration_seconds),
-                            output_tokens=0,
-                            company_id=company_id,
-                            agent_id=agent_id,
-                            details={"duration_seconds": duration_seconds},
-                        )
+                    self._registrar_uso(transcript, modelo, company_id=company_id,
+                                        agent_id=agent_id, details={})
                 except Exception as e:
                     logger.warning(f"[AUDIO] Cost tracking failed: {e}")
 
@@ -173,32 +212,26 @@ class AudioService:
             try:
                 logger.info(f"[AUDIO] Sending to Whisper API: {temp_file_path}")
 
+                modelo = self.modelo
                 with open(temp_file_path, "rb") as audio_file:
                     # ✅ ASYNC: await na chamada à API
+                    # 🔴 SPEC-116 U8: `verbose_json` também aqui. Sem ele o
+                    # Whisper não devolve `duration` e ESTE caminho (o do
+                    # WhatsApp) nunca entrava no ledger.
+                    extras = {"response_format": "verbose_json"} if self._formato_detalhado(modelo) else {}
                     transcript = await self.client.audio.transcriptions.create(
-                        model="whisper-1",
+                        model=modelo,
                         file=audio_file,
                         language="pt",
+                        **extras,
                     )
 
                 transcribed_text = transcript.text
 
                 try:
-                    duration_seconds = getattr(transcript, "duration", None)
-                    if duration_seconds and company_id:
-                        from .usage_service import get_usage_service
-
-                        usage_service = get_usage_service()
-                        usage_service.track_cost_sync(
-                            service_type="audio",
-                            model="whisper-1",
-                            input_tokens=int(duration_seconds),
-                            output_tokens=0,
-                            company_id=company_id,
-                            agent_id=agent_id,
-                            details={"duration_seconds": duration_seconds, "source": "whatsapp"},
-                        )
-                        logger.info(f"[AUDIO] Billing tracked: {duration_seconds}s for company {company_id}")
+                    if company_id:
+                        self._registrar_uso(transcript, modelo, company_id=company_id,
+                                            agent_id=agent_id, details={"source": "whatsapp"})
                 except Exception as e:
                     logger.warning(f"[AUDIO] Cost tracking failed: {e}")
 

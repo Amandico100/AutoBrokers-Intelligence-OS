@@ -105,3 +105,33 @@ class AgentResponse(AgentBase):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-116 U8 (F3a) — o PUT /api/agents/{id} confere o modelo no CATÁLOGO
+# ---------------------------------------------------------------------------
+def conferir_modelos_do_agente(pedido: "AgentUpdate", gravado: Any = None) -> None:
+    """Recusa, com frase para gente, o modelo que não pode ser escolhido.
+
+    A MESMA regra de `app.api.agent_config.validar_modelo_escolhido` (F4) — o
+    catálogo governado (`llm_pricing`): retirado/BLOCKED/HISTORICAL/fora do
+    catálogo → `ModeloRecusado`. `gravado` é a linha atual do agente: um legado
+    (DEPRECATED) que JÁ estava gravado pode permanecer — a tela manda o
+    formulário inteiro a cada salvamento, e recusar o que já está lá travaria
+    qualquer edição. Sem modelo (`None`/"") é permitido: a ROTA do papel decide.
+
+    ⛔ Levanta `ModeloRecusado` (um `ValueError`); quem chama devolve 400.
+    """
+    from app.api.agent_config import validar_modelo_escolhido
+
+    def _atual(campo: str) -> Optional[str]:
+        if gravado is None:
+            return None
+        valor = gravado.get(campo) if isinstance(gravado, dict) else getattr(gravado, campo, None)
+        return str(valor) if valor else None
+
+    if pedido.llm_model:
+        validar_modelo_escolhido(pedido.llm_provider,
+                                 pedido.llm_model, gravado_atual=_atual("llm_model"))
+    if pedido.vision_model and pedido.vision_model != _atual("vision_model"):
+        validar_modelo_escolhido(None, pedido.vision_model)

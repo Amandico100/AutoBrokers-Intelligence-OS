@@ -148,21 +148,30 @@ def teste_a_porta_abre_para_o_lado_seguro():
 
 
 def teste_os_modelos_sairam_do_mais_fraco():
-    print("\n[3] Memória, auxiliar e visão saíram do gpt-4o-mini")
-    constantes = _fonte("backend/app/core/constants.py")
-    cmd = "\n".join(l for l in constantes.split("\n") if not l.lstrip().startswith("#"))
-    checar('"memory_llm_model": "claude-haiku-4-5' in cmd,
-           "a MEMÓRIA saiu do modelo mais fraco",
-           "📊 US$ 0,0162/mês — a melhor troca ganho/custo do sistema")
+    print("\n[3] Memória, auxiliar e visão pedem um PAPEL (SPEC-116 U8)")
+    # 🔴 VERDADE ATUALIZADA em 23/09/2026 (CLAUDE.md §9.3). Esta seção afirmava
+    # que a memória "saiu do mini" porque `constants.py` dizia Haiku — e 📊 8/8
+    # linhas de `memory_settings` rodavam gpt-4o-mini pelo DEFAULT da coluna (a
+    # constante nunca chegava ao motor). Agora quem decide é a ROTA do papel
+    # (`llm_papeis`), e a lição migra: o MOTOR é conferido em
+    # `test_spec116_f3a_o_segurado_pede_papel.py` (G-MEM, com mutação) e
+    # `test_spec116_f3a_quem_escreve_pede_papel.py` (G-AUX). Aqui fica só a
+    # forma: ninguém volta a LER a coluna legada nem a env aposentada.
+    mem = _fonte("backend/app/services/memory_service.py")
+    cmd_mem = "\n".join(l for l in mem.split("\n") if not l.lstrip().startswith("#"))
+    checar('PAPEL_DA_MEMORIA = "memoria"' in cmd_mem
+           and 'settings.get("memory_llm_model"' not in cmd_mem,
+           "a MEMÓRIA pede o papel `memoria` e não lê a coluna legada",
+           "D-116-15: memory_settings.memory_llm_model é legado ignorado")
 
     aux = _fonte("backend/app/api/auxiliaries.py")
     cmd_aux = "\n".join(l for l in aux.split("\n") if not l.lstrip().startswith("#"))
     checar("gpt-4o-mini" not in cmd_aux,
            "o auxiliar que escreve para o CLIENTE FINAL também",
            "modelo fraco + temperatura alta é o pior para respeitar proibição")
-    checar("AUXILIAR_LLM_MODEL" in cmd_aux,
-           "e passou a ser configurável por ambiente",
-           "trocar modelo não deveria exigir deploy")
+    checar('PAPEL_DO_AUXILIAR = "auxiliar"' in cmd_aux and "ChatOpenAI(" not in cmd_aux,
+           "e pede o papel `auxiliar` à fábrica (o cliente certo para o provedor da rota)",
+           "trocar modelo = trocar a rota, sem deploy — a env AUXILIAR_LLM_MODEL aposentou")
 
     lc = _fonte("backend/app/services/langchain_service.py")
     cmd_lc = "\n".join(l for l in lc.split("\n") if not l.lstrip().startswith("#"))
