@@ -12,6 +12,9 @@ falha · BLOCKED_BY_INFRA.
     python scripts/bancada.py --papel atendimento --braco dublê:perfeito --braco dublê:burro --k 3 --nivel N1 --ensaio
     # braço real (depois da costura F5b), só o subconjunto crítico, com teto
     python scripts/bancada.py --papel atendimento --braco anthropic:claude-sonnet-5:medium --critico --k 3 --teto-usd 5 --gravar
+    # a costura (F5b): 2 braços reais + a linha de controle no MESMO grupo
+    python scripts/bancada.py --papel atendimento --nivel N1 --braco anthropic:claude-sonnet-5:low --braco openai:gpt-6-luna:low --k 1 --casos atd-n1-cpf-guincho,atd-n1-humano-cancelar --gravar --teto-usd 0.50 --por-caso
+    python scripts/bancada.py --papel atendimento --nivel N1 --braco dublê:perfeito --braco dublê:burro --k 1 --casos atd-n1-cpf-guincho,atd-n1-humano-cancelar --gravar --grupo <o grupo acima>
     # ler de novo um relatório
     python scripts/bancada.py --relatorio <grupo_bancada | arquivo.json>
     # carregar o corpus na Eval Fabric (datasets/versões/casos; idempotente)
@@ -45,7 +48,9 @@ def main(argv=None) -> int:
                    help="provider:model[:effort] (repetível). `dublê:perfeito` e `dublê:burro` = linha de controle")
     p.add_argument("--k", type=int, default=3, help="tentativas por caso (pass^k)")
     p.add_argument("--nivel", default="N1", choices=("N1", "N2"))
-    p.add_argument("--casos", default=None, help="filtro por trecho da chave do caso")
+    p.add_argument("--casos", default=None, help="filtro por trecho da chave do caso (vários: separados por vírgula)")
+    p.add_argument("--grupo", default=None, help="grupo_bancada a reusar (ex.: pôr a linha de controle no MESMO grupo dos braços reais)")
+    p.add_argument("--por-caso", action="store_true", help="imprime uma linha por tentativa (resultado, custo, tokens, latência)")
     p.add_argument("--critico", action="store_true", help="só o subconjunto crítico")
     p.add_argument("--teto-usd", type=float, default=None, help="teto de gasto da rodada (padrão: env BANCADA_TETO_USD ou 100)")
     modo = p.add_mutually_exclusive_group()
@@ -60,6 +65,15 @@ def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO if a.verboso else logging.CRITICAL)
     if not a.verboso:
         logging.disable(logging.WARNING)
+
+    # As chaves dos provedores e do banco moram no .env (como no app/main.py).
+    # ⛔ Nunca impressas; `override=False`: o ambiente de quem chama vence.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(os.path.join(RAIZ, ".env"), override=False)
+    except ImportError:  # pragma: no cover
+        pass
 
     from app.services.evals import bancada as B
 
@@ -81,8 +95,16 @@ def main(argv=None) -> int:
         p.error("--papel e ao menos um --braco são obrigatórios (ou use --relatorio / --carregar-corpus)")
 
     rel = B.rodar_bancada(a.papel, a.braco, k=a.k, nivel=a.nivel, gravar=bool(a.gravar),
-                          teto_usd=a.teto_usd, filtro=a.casos, critico=a.critico)
+                          teto_usd=a.teto_usd, filtro=a.casos, critico=a.critico, grupo_bancada=a.grupo)
     print(rel.tabela())
+    if a.por_caso:
+        print()
+        for r in rel.resultados:
+            t = r.tokens or {}
+            print(f"  {r.braco:<34} {r.chave:<40} t{r.tentativa} {r.resultado:<16} "
+                  f"US$ {r.custo_usd:.6f} in={t.get('in', 0)} out={t.get('out', 0)} "
+                  f"rac={t.get('raciocinio', 0)} {r.latencia_ms} ms · chamadas={r.rastro.get('chamadas_ao_modelo')}"
+                  + (f" · {r.erro[:140]}" if r.erro else ""))
     print(f"\ngrupo_bancada: {rel.grupo_bancada} · casos: {len({r.chave for r in rel.resultados})} "
           f"· tentativas: {len(rel.resultados)}")
     if a.gravar:

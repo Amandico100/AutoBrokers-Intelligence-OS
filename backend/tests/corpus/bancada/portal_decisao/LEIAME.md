@@ -4,7 +4,7 @@
 > 1 com falha injetada · 0 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.
 
 ## O motor que estes casos rodam
-portal_worker/adaptive.py:decide_next_action — o HTTP a api.openai.com é desviado para o braço por um proxy de httpx (dubles.httpx_do_portal). COSTURA F3: um parâmetro llm=/transporte
+portal_worker/adaptive.py:decide_next_action(chamar_modelo=) — o pedido que o PRODUTO monta (rota portal_decisao) vai ao braço (bancada.chamador_do_braco); o ledger do portal não é escrito
 
 ## De onde veio o texto
 portal_jobs.evidence (debug_dom.text + adaptive_steps, SELECT 23/09) + as telas dos testes test_o_protocolo_volta_para_o_segurado / test_o_portal_deixa_prova_do_sucesso; mascarado
@@ -15,7 +15,7 @@ MARCADOR (`{{CPF:A1}}`, `{{NOME:N1}}`, `{{CORRETORA:A}}`…) e o carregador
 O guarda `tests/test_spec116_bancada_corpus.py::test_corpus_sem_pii` varre este diretório.
 
 ## O que falta (medido, não prometido)
-🔴 o caso falha-500 sai BLOCKED_BY_INFRA HOJE: o produto cai calado no gpt-4o-mini (adaptive.py:428). Vira PASS/FAIL de modelo quando a F3 tirar o rebaixamento.
+o caso falha-500 sai BLOCKED_BY_INFRA: desde a F3b erro do provedor vira ask_human (needs_human), sem trocar de modelo — falha de infra, fora do pass@1. O mesmo caso sem a falha é a linha de controle (test_controle_o_mesmo_caso_sem_a_falha_passa).
 
 ## Como rodar
 ```

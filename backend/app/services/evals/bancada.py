@@ -26,26 +26,40 @@ O MOTOR de cada papel — o ponto de entrada REAL (arquivo:função)
         prompt: app/core/prompts.py:build_composite_prompt (estático) +
             app/services/attendance_ficha.py:bloco_para_o_prompt (dinâmico).
     portal_decisao  N1  backend/portal_worker/adaptive.py:decide_next_action
-            (a chamada HTTP a api.openai.com é desviada para o braço por um
-            proxy de `httpx` — ver COSTURA).
+            (``chamar_modelo=`` — o pedido montado pelo produto vai ao braço;
+            erro do provedor ⇒ ``ask_human``/needs_human ⇒ BLOCKED_BY_INFRA).
+            Sem o parâmetro (código antigo), o proxy de ``httpx``.
     dispatch        N1  app/services/dispatch_router.py:o_cerebro_ja_sabe (llm=)
     memoria         N1  app/services/memory_service.py:MemoryService.extract_user_facts_async (llm=)
-    visao           N1  app/services/vision_service.py:describe_image (ChatOpenAI/
-            ChatAnthropic desviados para o braço — ver COSTURA)
-    hyde            N1  app/services/search_service.py:SearchService._generate_hyde_doc
-            (ChatOpenAI do módulo desviado)                       — ESQUELETO
+    visao           N1  app/services/vision_service.py:describe_image (llm=)
+    hyde            N1  app/services/search_service.py:SearchService._generate_hyde_doc (llm=)
+                                                                   — ESQUELETO (oráculo por termo)
     extrator_planos N1  app/services/knowledge/assistance_plans_extractor.py:
             propostas_da_pagina (llm=)                             — ESQUELETO
-    juiz            BLOCKED — juiz_llm.py:119 chama create_llm com a assinatura
-            errada (TypeError engolido). Conserto é da F3.         — ESQUELETO
-    transcricao     BLOCKED — STT não é chat; exige áudio sintético e o
-            ponto de injeção em audio_service (F3/F6).             — ESQUELETO
+    juiz            BLOCKED — o motor existe (evals/juiz_llm.py:julgar_com_llm(llm=),
+            consertado na F3b), mas os 3 casos não têm OURO (saída, critério,
+            veredito esperado). Não se inventa oráculo.            — ESQUELETO
+    transcricao     BLOCKED — o ponto de injeção existe (audio_service.AudioService(
+            cliente=, modelo=)), mas não há áudio sintético nem fala-ouro, e a
+            fábrica de chat não constrói STT.                      — ESQUELETO
 
-A COSTURA que a F5b faz (resolvedor + fábrica reais)
-----------------------------------------------------
-``rodar_bancada(..., resolver=, construir_llm=)`` recebe as duas peças por
-injeção. Os defaults tentam `app.factories.model_policy.resolver` (F1) e a
-fábrica de hoje; o braço `duble:*` não precisa de nenhuma das duas.
+A COSTURA (F5b) — resolvedor + fábrica REAIS, com a bancada ISOLADA
+-------------------------------------------------------------------
+``resolver_padrao`` → ``app.factories.model_policy.resolver(papel, override=braço)``
+(o MESMO catálogo e as MESMAS recusas do produto). ``construir_llm_padrao`` →
+``LLMFactory.criar_de_resolvido(resolvido, service_type="bancada",
+company_id=None)`` — o MESMO adaptador por provedor do produto, com:
+
+  · o LEDGER de produção recebendo cada chamada como ``service_type='bancada'``
+    e ``company_id`` NULO: custo real visível, nunca faturado
+    (``workers/billing_tasks.py`` pula linha sem ``company_id``; o ledger da
+    SPEC-062 — ``usage_events`` — exige ``company_id`` e fica de fora);
+  · o DISJUNTOR de produção INTOCADO: o ``RelogioDoModeloCallback`` que a
+    fábrica anexa é RETIRADO do braço. Um 429 da bancada não abre o breaker do
+    produto — e um sucesso dela não o FECHA (``registrar_sucesso`` apaga as
+    chaves no Redis de produção);
+  · o custo de cada caso = ``usage_metadata`` da resposta × o preço do
+    catálogo (``usage_service.calculate_cost`` — a MESMA conta do ledger).
 
 ⛔ Nenhuma mensagem sai, nenhum portal é aberto: o banco do produto é trocado
 pelo `SupabaseDuble` (``dubles.borda_isolada``) enquanto o motor roda.
@@ -97,11 +111,13 @@ PAPEIS: Dict[str, Dict[str, Any]] = {
     "hyde": {"risco": "medio", "motor": "hyde"},
     "extrator_planos": {"risco": "medio", "motor": "extrator_planos"},
     "juiz": {"risco": "medio", "motor": "bloqueado",
-             "bloqueio": "juiz_llm.py:119 chama LLMFactory.create_llm com assinatura errada "
-                         "(TypeError engolido) — conserto da F3; sem ele não há motor a medir"},
+             "bloqueio": "sem OURO: o motor existe (evals/juiz_llm.py:julgar_com_llm(llm=), consertado "
+                         "na F3b), mas os casos não trazem saída, critério nem veredito esperado — "
+                         "não se inventa oráculo (corpus v2)"},
     "transcricao": {"risco": "medio", "motor": "bloqueado",
-                    "bloqueio": "STT não é chat: exige áudio sintético das falas mascaradas e ponto "
-                                "de injeção em audio_service.py (F3/F6)"},
+                    "bloqueio": "sem ÁUDIO: o ponto de injeção existe (AudioService(cliente=, modelo=)), "
+                                "mas não há áudio sintético nem fala-ouro, e a fábrica de chat não "
+                                "constrói STT (corpus v2 + adaptador de transcrição, F6)"},
 }
 
 #: Capabilities ativas por papel quando o caso não declara (as do registro de
@@ -182,41 +198,43 @@ class BancadaSemResolvedor(Exception):
 PRECO_DUBLE_PADRAO = {"entrada": 1.0, "saida": 4.0}
 
 
-def preco_do_catalogo(braco: Braco, cliente: Any = None) -> Optional[Dict[str, float]]:
-    """US$ por milhão de tokens, do catálogo `llm_pricing` (autoridade da F1).
+#: O `service_type` com que a bancada grava no ledger de produção
+#: (`token_usage_logs`). ⛔ Nunca "chat"/"plataforma": é o que separa o custo da
+#: medição do custo do produto — e, com `company_id` NULO, nunca é faturado.
+SERVICE_TYPE_DA_BANCADA = "bancada"
 
-    ⛔ NUNCA cai no preço do mini (o defeito de `usage_service.py:163`): sem
-    linha com preço → ``None`` → a bancada recusa o braço.
+#: O teto de saída com que o braço é CONSTRUÍDO — o mesmo piso de quem conversa
+#: no produto (`llm_factory.PISO_DE_SAIDA_DA_CONVERSA`). É também o que a
+#: reserva do teto em US$ usa, e não o `max_output` do catálogo (128 mil tokens
+#: fariam a reserva de UMA chamada de Sonnet custar US$ 1,28).
+MAX_TOKENS_DA_BANCADA = 8192
+
+
+def preco_do_catalogo(braco: Braco, cliente: Any = None) -> Optional[Dict[str, Any]]:
+    """US$ por milhão de tokens, do catálogo `llm_pricing` — pelo `UsageService`,
+    a MESMA fonte (e o mesmo cache/snapshot) que o ledger usa para cobrar.
+
+    ⛔ NUNCA cai no preço de outro modelo: sem linha com preço → ``None`` → a
+    bancada recusa o braço. Preço por MINUTO (áudio) também é recusado aqui: a
+    bancada de chat não sabe medir minuto. (`cliente` fica pela compatibilidade.)
     """
     if braco.e_duble:
         return dict(braco.preco or PRECO_DUBLE_PADRAO)
     try:
-        if cliente is None:
-            from app.core.database import get_supabase_client
+        from app.services.usage_service import get_usage_service
 
-            cliente = get_supabase_client()
-        db = getattr(cliente, "client", cliente)
-        linhas = (db.table("llm_pricing").select("*").eq("model_name", braco.model)
-                  .eq("is_active", True).limit(1).execute().data or [])
+        p = get_usage_service().get_pricing(braco.model)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[Bancada] catálogo ilegível (%s)", type(exc).__name__)
         return None
-    if not linhas:
+    if not p or p.get("unit") == "minute":
         return None
-    l = linhas[0]
     try:
-        entrada = float(l["input_price_per_million"])
-        saida = float(l["output_price_per_million"])
+        return {"entrada": float(p["input"]), "saida": float(p["output"]),
+                "modelo": braco.model, "provider": braco.provider,
+                "fonte": "llm_pricing (usage_service)"}
     except (KeyError, TypeError, ValueError):
         return None
-    preco = {"entrada": entrada, "saida": saida}
-    # Colunas que a F1 acrescenta (se existirem): preço real de cache.
-    for col, chave in (("cache_read_price_per_million", "cache_leitura"),
-                       ("cache_write_price_per_million", "cache_escrita")):
-        if l.get(col) is not None:
-            with contextlib.suppress(TypeError, ValueError):
-                preco[chave] = float(l[col])
-    return preco
 
 
 class Orcamento:
@@ -242,13 +260,27 @@ def teto_padrao() -> float:
         return 100.0
 
 
-def custo_de(usage: dict, preco: Dict[str, float]) -> float:
-    """Custo pelo `usage_metadata` do LangChain e o preço do catálogo."""
+def custo_de(usage: dict, preco: Dict[str, Any]) -> float:
+    """Custo pelo `usage_metadata` do LangChain e o preço do catálogo.
+
+    Braço real (preço veio do catálogo): ``usage_service.calculate_cost`` — a
+    MESMA conta que o `CostCallbackHandler` grava no ledger, com o mesmo balde
+    de cache por provedor (📊 F12: a langchain-openai põe o cache da OpenAI em
+    `cache_read`, o balde da Anthropic). Dublê: a conta local, preço fictício.
+    """
     entrada = int(usage.get("input_tokens") or 0)
     saida = int(usage.get("output_tokens") or 0)
     det = usage.get("input_token_details") or {}
     lido = int(det.get("cache_read") or 0)
     escrito = int(det.get("cache_creation") or 0)
+    if preco.get("modelo"):
+        from app.services.usage_service import get_usage_service
+
+        cached = int(det.get("cached_tokens") or 0)
+        if (preco.get("provider") or "") != "anthropic" and lido and not cached:
+            cached, lido = lido, 0
+        return float(get_usage_service().calculate_cost(
+            preco["modelo"], entrada, saida, escrito, lido, cached))
     normal = max(0, entrada - lido - escrito)
     p_in = preco["entrada"]
     return (normal * p_in
@@ -368,35 +400,57 @@ def resolver_padrao(papel: str, *, override: dict, **_k) -> Any:
     return _resolver(papel, override=override)
 
 
-def construir_llm_padrao(resolvido: Any, callbacks: Optional[list] = None) -> Any:
-    """Dublê → LLMDuble. Real → a fábrica EXISTENTE (a F5b troca pela que lê
-    `ModeloResolvido` — nunca um cliente novo aqui).
+class BancadaSemIsolamento(Exception):
+    """O braço construído escreveria como produto (ledger faturável ou disjuntor)."""
 
-    ⚠️ COSTURA F5b (medido em 23/09): `LLMFactory.create_llm` pendura
-    `CostCallbackHandler` (→ `usage_service`, que importa `get_supabase_client`
-    no TOPO do módulo — `usage_service.py:19` — e por isso escapa da
-    `borda_isolada`) e `RelogioDoModeloCallback` (o disjuntor do provedor do
-    PRODUTO). Um braço real por este caminho grava linha `plataforma` no ledger
-    e pode abrir o disjuntor de produção com um 429 da bancada. A F5b tem de
-    construir o braço com `service_type="bancada"` e relógio isolado.
+
+def isolar_do_produto(llm: Any) -> Any:
+    """Tira do braço o `RelogioDoModeloCallback` e CONFERE o ledger.
+
+    ⛔ O relógio escreve no disjuntor de PRODUÇÃO (Redis `llm_breaker:<provedor>`):
+    falha da bancada abriria o breaker do atendimento; sucesso dela o FECHARIA
+    (`registrar_sucesso` apaga as chaves). A bancada mede um braço — não pode
+    decidir se o produto fala com o provedor.
+
+    🔴 E confere, em vez de presumir: o custo tem de sair como
+    ``service_type='bancada'`` e ``company_id`` NULO. Qualquer outra coisa →
+    ``BancadaSemIsolamento`` (a bancada NÃO roda).
     """
+    from app.core.callbacks.cost_callback import CostCallbackHandler
+    from app.core.relogio_do_modelo import RelogioDoModeloCallback
+
+    atuais = list(getattr(llm, "callbacks", None) or [])
+    llm.callbacks = [c for c in atuais if not isinstance(c, RelogioDoModeloCallback)]
+    custos = [c for c in llm.callbacks if isinstance(c, CostCallbackHandler)]
+    if not custos:
+        raise BancadaSemIsolamento("o braço saiu da fábrica sem o callback de custo — "
+                                   "o custo real ficaria invisível")
+    for c in custos:
+        if c.service_type != SERVICE_TYPE_DA_BANCADA or c.company_id is not None:
+            raise BancadaSemIsolamento(
+                f"o braço gravaria no ledger como service_type={c.service_type!r} "
+                f"company_id={'<preenchido>' if c.company_id else None} — faturável/misturado")
+    if any(isinstance(c, RelogioDoModeloCallback) for c in llm.callbacks):
+        raise BancadaSemIsolamento("o relógio de produção continua no braço")
+    return llm
+
+
+def construir_llm_padrao(resolvido: Any, callbacks: Optional[list] = None, *,
+                         api_key: Optional[str] = None) -> Any:
+    """Dublê → `LLMDuble`. Real → a fábrica do PRODUTO (`criar_de_resolvido`),
+    o mesmo adaptador por provedor, ISOLADA do produto (`isolar_do_produto`).
+    ⛔ Nunca um cliente novo aqui (CLAUDE.md §5)."""
     provider = _campo(resolvido, "provider")
     model = _campo(resolvido, "model")
     if provider == "duble":
         return D.LLMDuble(model)
-    from app.factories import llm_factory as _lf
+    from app.factories.llm_factory import LLMFactory
 
-    criar = getattr(_lf.LLMFactory, "criar_de_resolvido", None)  # nome da F2, se existir
-    if callable(criar):
-        return criar(resolvido, callbacks=callbacks or [])
-    from app.core.utils import get_api_key_for_provider
-
-    return _lf.LLMFactory.create_llm(
-        company_config={},
-        agent_data={"llm_provider": provider, "llm_model": model,
-                    "reasoning_effort": _campo(resolvido, "effort")},
-        api_key=get_api_key_for_provider(provider, model),
-        company_id=None, agent_id=None)
+    llm = LLMFactory.criar_de_resolvido(
+        resolvido, callbacks=list(callbacks or []), api_key=api_key,
+        company_id=None, agent_id=None, service_type=SERVICE_TYPE_DA_BANCADA,
+        max_tokens=MAX_TOKENS_DA_BANCADA)
+    return isolar_do_produto(llm)
 
 
 # ===========================================================================
@@ -409,9 +463,11 @@ def manifesto() -> dict:
 
 def carregar_casos(papel: str, *, filtro: Optional[str] = None, critico: bool = False,
                    nivel: Optional[str] = None) -> List[dict]:
+    """`filtro`: trecho da chave, ou vários separados por vírgula (qualquer um casa)."""
     arq = CORPUS_DIR / papel / "casos.jsonl"
     if not arq.exists():
         return []
+    trechos = [t.strip() for t in str(filtro or "").split(",") if t.strip()]
     casos = []
     for n, linha in enumerate(arq.read_text(encoding="utf-8").splitlines(), 1):
         if not linha.strip():
@@ -422,7 +478,7 @@ def carregar_casos(papel: str, *, filtro: Optional[str] = None, critico: bool = 
             continue
         if critico and not caso.get("critico"):
             continue
-        if filtro and filtro not in caso.get("chave", ""):
+        if trechos and not any(t in caso.get("chave", "") for t in trechos):
             continue
         casos.append(caso)
     return casos
@@ -506,6 +562,7 @@ class Contexto:
     falhas: Optional[D.LLMComFalhas] = None
     saver: Any = None
     notas: List[str] = field(default_factory=list)
+    resolvido: Any = None
 
 
 class Bloqueado(Exception):
@@ -549,7 +606,7 @@ def _estado_base(caso: dict, braco: Braco, agent_role: str, tenant: str) -> dict
             logger.warning("[Bancada] bloco da ficha indisponível (%s)", type(exc).__name__)
     agent_data = {"id": None, "agent_role": agent_role, "name": agente.get("nome") or "",
                   "tools_config": {}, "company_id": company_id,
-                  "llm_provider": "anthropic" if braco.provider == "anthropic" else "openai",
+                  "llm_provider": braco.provider if not braco.e_duble else "openai",
                   "llm_model": braco.model}
     return {
         "company_id": company_id, "user_id": f"bancada-{tenant}",
@@ -582,9 +639,20 @@ async def _grafo_real(ctx: Contexto, *, agent_role: str, tenant: str, caps: List
             dub.append(cache[t.name])
         return await real_tool_node(state, tools=dub)
 
+    rota_do_braco = _resolvido_sem_reserva(ctx.resolvido, ctx.braco)
+
     class _Fabrica:
+        """O dublê da FÁBRICA no grafo — o contrato da F2: o grafo pergunta
+        `resolver_para` (o Model Router) e constrói com `create_llm(...,
+        modelo_resolvido=)`. Aqui a resposta é o BRAÇO, sem reserva (a bancada
+        mede UM braço; a reserva da rota traria outro modelo para a conta)."""
+
         @staticmethod
-        def create_llm(**_k):
+        def resolver_para(*_a, **_k):
+            return rota_do_braco
+
+        @staticmethod
+        def create_llm(*_a, **_k):
             return ctx.llm
 
     async def _saver():
@@ -603,6 +671,23 @@ async def _grafo_real(ctx: Contexto, *, agent_role: str, tenant: str, caps: List
             company_id=TENANTS[tenant], agent_data={
                 "id": None, "agent_role": agent_role, "tools_config": {}},
             enable_logging=False)
+
+
+def _resolvido_sem_reserva(resolvido: Any, braco: Braco) -> Any:
+    """O `ModeloResolvido` do braço com `reserva=None` (dublê: um equivalente)."""
+    import dataclasses
+    import types
+
+    if resolvido is not None and dataclasses.is_dataclass(resolvido):
+        return dataclasses.replace(resolvido, reserva=None)
+    r = dict(resolvido or {}) if isinstance(resolvido, dict) else {}
+    return types.SimpleNamespace(
+        papel=r.get("papel") or "", provider=r.get("provider") or braco.provider,
+        model=r.get("model") or braco.model, effort=r.get("effort", braco.effort),
+        api_surface=r.get("api_surface") or "duble", capacidades=r.get("capacidades") or {},
+        classe_de_dado="pii", lifecycle="APPROVED", reserva=None,
+        origem=r.get("origem") or "bancada", versao_da_rota=r.get("versao_da_rota"),
+        motivo=r.get("motivo") or "braço da bancada", base_url=None, api_key_env=None)
 
 
 def _e_falha_de_provedor(exc: BaseException) -> bool:
@@ -718,32 +803,91 @@ async def motor_agente(caso: dict, ctx: Contexto) -> dict:
     return saida
 
 
+def _mensagens_do_pedido(corpo: dict) -> list:
+    """O corpo que o PRODUTO montou (Chat Completions, Messages ou Responses) →
+    mensagens do LangChain para o braço. O prompt é o do produto, byte a byte."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    msgs: list = []
+    if corpo.get("system"):                                   # anthropic messages
+        msgs.append(SystemMessage(content=D._texto_de(corpo["system"])))
+    for m in (corpo.get("messages") or corpo.get("input") or []):
+        cls = SystemMessage if m.get("role") in ("system", "developer") else HumanMessage
+        msgs.append(cls(content=D._texto_de(m.get("content"))))
+    return msgs
+
+
+def chamador_do_braco(llm: Any, pedidos: List[dict]) -> Callable[[dict], Any]:
+    """O `chamar_modelo` que a bancada entrega ao portal (SPEC-116 F3b).
+
+    Recebe o pedido montado pelo produto (sem segredo), manda as MESMAS
+    mensagens ao braço e devolve a resposta no formato Chat Completions.
+    Erro do braço SOBE — é o produto quem decide o que fazer com ele
+    (hoje: `ask_human` com o motivo, nunca outro modelo calado)."""
+
+    async def _chamar(pedido: dict) -> dict:
+        reg = {k: pedido.get(k) for k in ("papel", "provider", "api_surface", "model", "url")}
+        pedidos.append(reg)
+        try:
+            resp = await llm.ainvoke(_mensagens_do_pedido(pedido.get("corpo") or {}))
+        except Exception as exc:  # noqa: BLE001
+            reg["erro"] = type(exc).__name__
+            raise
+        u = getattr(resp, "usage_metadata", None) or {}
+        meta = getattr(resp, "response_metadata", None) or {}
+        return {"choices": [{"message": {"content": D._texto_de(getattr(resp, "content", ""))}}],
+                "model": meta.get("model_name") or meta.get("model"),
+                "usage": {"prompt_tokens": int(u.get("input_tokens") or 0),
+                          "completion_tokens": int(u.get("output_tokens") or 0)}}
+
+    return _chamar
+
+
 async def motor_portal(caso: dict, ctx: Contexto) -> dict:
+    """`decide_next_action` REAL. Com `chamar_modelo=` (F3b) o pedido do produto
+    vai ao braço e o ledger do portal NÃO é escrito; sem o parâmetro (código
+    antigo), o proxy de `httpx` de sempre."""
+    import inspect
+
     from portal_worker.adaptive import decide_next_action
 
     ent = caso.get("entrada") or {}
     pedidos: List[dict] = []
-    env = {"PORTAL_VISION_MODEL": ctx.braco.model,
-           "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY") or "bancada-sem-chave-real"}
-    antes = {k: os.environ.get(k) for k in env}
-    os.environ.update(env)
-    try:
-        with D.httpx_do_portal(D.cliente_http_que_fala_com(ctx.llm, pedidos)):
-            acao = await decide_next_action(ent.get("tela") or {}, str(ent.get("objetivo") or ""),
-                                            ent.get("dados") or {}, ent.get("acoes_ja_feitas") or [],
-                                            force=bool(ent.get("force")))
-    finally:
-        for k, v in antes.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    args = (ent.get("tela") or {}, str(ent.get("objetivo") or ""), ent.get("dados") or {},
+            ent.get("acoes_ja_feitas") or [])
+    if "chamar_modelo" in inspect.signature(decide_next_action).parameters:
+        acao = await decide_next_action(*args, force=bool(ent.get("force")),
+                                        chamar_modelo=chamador_do_braco(ctx.llm, pedidos))
+    else:  # pragma: no cover — portal anterior à F3b
+        env = {"PORTAL_VISION_MODEL": ctx.braco.model,
+               "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY") or "bancada-sem-chave-real"}
+        antes = {k: os.environ.get(k) for k in env}
+        os.environ.update(env)
+        try:
+            with D.httpx_do_portal(D.cliente_http_que_fala_com(ctx.llm, pedidos)):
+                acao = await decide_next_action(*args, force=bool(ent.get("force")))
+        finally:
+            for k, v in antes.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
     saida = {"texto": json.dumps(acao, ensure_ascii=False), "estado": dict(acao or {}),
              "estrutura": acao if isinstance(acao, dict) else None, "pedidos_http": pedidos}
-    rebaixou = [p for p in pedidos if p.get("model") != ctx.braco.model]
-    if rebaixou:
-        saida["infra"] = (f"o produto trocou o modelo calado: pediu {rebaixou[0].get('model')} "
-                          f"depois de falha (adaptive.py:_MODELO_DE_RESERVA) — defeito do arnês, F3")
+    parou = isinstance(acao, dict) and acao.get("action") == "ask_human" and acao.get("reason") == "llm error"
+    falhos = [p for p in pedidos if p.get("erro")]
+    if parou and not pedidos:
+        saida["infra"] = (f"o cérebro do portal não chegou a chamar o braço ({acao.get('value')}) — "
+                          f"rota/catálogo do portal_decisao, não o modelo")
+    elif parou and falhos:
+        # 🔴 A verdade NOVA (F3b): erro do provedor não troca de modelo calado —
+        # o produto devolve `ask_human` e o job segue para `needs_human`. É
+        # falha de INFRA (o provedor), nunca acerto nem erro do modelo.
+        saida["infra"] = (f"o provedor falhou ({falhos[0]['erro']}) e o produto parou em ask_human "
+                          f"(needs_human), sem trocar de modelo — {len(pedidos)} pedido(s) ao braço")
+    elif len({p.get("model") for p in pedidos}) > 1:
+        saida["infra"] = (f"o portal pediu mais de um modelo na mesma decisão "
+                          f"{sorted({str(p.get('model')) for p in pedidos})} — reserva da rota, não o braço")
     return saida
 
 
@@ -782,49 +926,29 @@ def _imagem_em_data_uri(caminho: str) -> str:
 
 
 async def motor_visao(caso: dict, ctx: Contexto) -> dict:
-    import langchain_anthropic
-    import langchain_openai
-
     from app.services.vision_service import describe_image
 
     ent = caso.get("entrada") or {}
-    pedidos: List[dict] = []
-
-    def _fabrica(**kw):
-        pedidos.append({"model": kw.get("model"), "temperature": kw.get("temperature")})
-        return ctx.llm
-
-    env = {"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY") or "bancada-sem-chave-real"}
-    antes = {k: os.environ.get(k) for k in env}
-    os.environ.update(env)
-    try:
-        with D.atributo_trocado(langchain_openai, "ChatOpenAI", _fabrica), \
-                D.atributo_trocado(langchain_anthropic, "ChatAnthropic", _fabrica):
-            desc = await describe_image(
-                _imagem_em_data_uri(ent["imagem"]), company_id=TENANTS[caso.get("tenant") or "A"],
-                agent_data=({"vision_model": ctx.braco.model} if not ctx.braco.e_duble else None),
-                purpose_hint=str(ent.get("finalidade") or "Agente de Suporte"))
-    finally:
-        for k, v in antes.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-    saida = {"texto": str(desc or ""), "pedidos": pedidos}
-    if not ctx.braco.e_duble and any(p.get("model") != ctx.braco.model for p in pedidos):
-        saida["infra"] = (f"o produto pediu {pedidos[0].get('model')} em vez do braço "
-                          f"(vision_service.resolve_vision_model) — defeito do arnês, F3")
-    return saida
+    desc = await describe_image(
+        _imagem_em_data_uri(ent["imagem"]), company_id=TENANTS[caso.get("tenant") or "A"],
+        purpose_hint=str(ent.get("finalidade") or "Agente de Suporte"), llm=ctx.llm)
+    if desc is None and ctx.medidor.estado["chamadas"] == 0:
+        # describe_image engole a falha e devolve None (o fluxo do produto segue
+        # só com o texto) — sem chamada medida, não houve modelo a julgar.
+        raise Bloqueado("describe_image devolveu None sem resposta do braço (falha engolida pelo motor)")
+    return {"texto": str(desc or "")}
 
 
 async def motor_hyde(caso: dict, ctx: Contexto) -> dict:
     from app.services import search_service as ss
 
     ent = caso.get("entrada") or {}
-    with D.atributo_trocado(ss, "ChatOpenAI", lambda **_k: ctx.llm):
-        doc = ss.SearchService._generate_hyde_doc(object.__new__(ss.SearchService), str(ent.get("pergunta") or ""))
-    if str(doc or "").strip() == str(ent.get("pergunta") or "").strip():
-        raise Bloqueado("HyDE devolveu a própria pergunta (o motor engole a falha: search_service.py:392)")
+    pergunta = str(ent.get("pergunta") or "")
+    doc = ss.SearchService._generate_hyde_doc(object.__new__(ss.SearchService), pergunta,
+                                              llm=ctx.llm)
+    if str(doc or "").strip() == pergunta.strip() and ctx.medidor.estado["chamadas"] == 0:
+        raise Bloqueado("HyDE devolveu a própria pergunta sem resposta do braço "
+                        "(o motor engole a falha: search_service._generate_hyde_doc)")
     return {"texto": str(doc or "")}
 
 
@@ -957,8 +1081,9 @@ class RelatorioDaBancada:
         return caminho
 
     def tabela(self) -> str:
+        real = sum(r.custo_usd for r in self.resultados if not r.braco.startswith("duble:"))
         return tabela_de_metricas(self.papel, self.nivel, self.k, self.bracos,
-                                  self.parada, self.recusados, self.gasto_usd, self.teto_usd)
+                                  self.parada, self.recusados, real, self.teto_usd)
 
 
 def _pct(v: Optional[float]) -> str:
@@ -969,7 +1094,9 @@ def tabela_de_metricas(papel, nivel, k, bracos, parada=None, recusados=None,
                        gasto=0.0, teto=0.0) -> str:
     cab = (f"{'braço':<34} {'pass@1':>7} {'pass^k':>7} {'crít^k':>7} {'custo/suc':>10} "
            f"{'p50ms':>7} {'p95ms':>7} {'tool':>6} {'args':>6} {'dup':>4} {'recup':>6} {'infra':>5}")
-    linhas = [f"BANCADA · papel={papel} · nível={nivel} · k={k} · gasto US$ {gasto:.4f} de {teto:.2f}",
+    teto_txt = f" de {teto:.2f}" if teto else ""
+    linhas = [f"BANCADA · papel={papel} · nível={nivel} · k={k} · gasto REAL US$ {gasto:.4f}{teto_txt} "
+              f"(braços-dublê têm preço fictício e ficam fora)",
               cab, "-" * len(cab)]
     for rot, m in bracos.items():
         cps = "—" if m.get("custo_por_sucesso") is None else f"{m['custo_por_sucesso']:.5f}"
@@ -1041,12 +1168,25 @@ def calcular_metricas(resultados: List[Any]) -> dict:
 
 
 def _commit() -> Optional[str]:
+    """O commit medido — com ``-sujo`` quando o código do MOTOR (app/,
+    portal_worker/) tem mudança não commitada: o placar de um braço tem de
+    apontar para o código que o produziu, e HEAD sozinho mentiria."""
     try:
         from .runner import commit_atual
 
-        return commit_atual()
+        sha = commit_atual()
     except Exception:  # noqa: BLE001
         return None
+    if not sha or os.getenv("BUILD_COMMIT"):
+        return sha
+    try:
+        import subprocess
+
+        r = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", "app", "portal_worker"],
+                           cwd=str(CORPUS_DIR.parents[2]), capture_output=True, timeout=10)
+        return f"{sha}-sujo" if r.returncode == 1 else sha
+    except Exception:  # noqa: BLE001
+        return sha
 
 
 async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
@@ -1057,14 +1197,15 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
     registro = D.RegistroDeEfeitos()
     banco = D.SupabaseDuble()
     llm_base = construir_llm(resolvido, [])
-    max_out = int((_campo(resolvido, "capacidades") or {}).get("max_output") or 8192)
+    max_out = min(int((_campo(resolvido, "capacidades") or {}).get("max_output") or MAX_TOKENS_DA_BANCADA),
+                  MAX_TOKENS_DA_BANCADA)
     medidor = Medidor(llm_base, preco=preco, orcamento=orcamento, max_output=max_out)
     plano = [f for f in caso_m.get("falhas_injetadas") or [] if str(f.get("tipo", "")).startswith("provedor_")]
     falhas = D.LLMComFalhas(medidor, plano) if plano else None
     from langgraph.checkpoint.memory import InMemorySaver
 
     ctx = Contexto(llm=falhas or medidor, braco=braco, registro=registro, banco=banco,
-                   medidor=medidor, falhas=falhas, saver=InMemorySaver())
+                   medidor=medidor, falhas=falhas, saver=InMemorySaver(), resolvido=resolvido)
     motor = MOTORES[PAPEIS[caso_m["papel"]]["motor"]]
     saida: dict = {}
     erro = None
@@ -1266,8 +1407,10 @@ def relatorio_do_banco(grupo_bancada: str, cliente: Any = None) -> str:
     runs = db.table("eval_runs").select("*").eq("grupo_bancada", grupo_bancada).execute().data or []
     if not runs:
         return f"nenhum eval_run com grupo_bancada={grupo_bancada}"
-    casos = {c["id"]: c["chave"] for c in (db.table("eval_cases").select("id, chave")
-                                            .eq("version_id", runs[0]["version_id"]).execute().data or [])}
+    linhas_casos = (db.table("eval_cases").select("id, chave, tags")
+                    .eq("version_id", runs[0]["version_id"]).execute().data or [])
+    casos = {c["id"]: c["chave"] for c in linhas_casos}
+    criticos = {c["id"] for c in linhas_casos if "critico" in (c.get("tags") or [])}
     por_braco: Dict[str, List[dict]] = {}
     for run in runs:
         b = run.get("braco") or {}
@@ -1279,7 +1422,7 @@ def relatorio_do_banco(grupo_bancada: str, cliente: Any = None) -> str:
             if l["evaluator_slug"] == "bancada:caso":
                 reg.update({"chave": casos.get(l["case_id"], l["case_id"]), "resultado": l.get("resultado"),
                             "custo_usd": l.get("custo_usd"), "latencia_ms": l.get("latencia_ms"),
-                            "rastro": l.get("rastro") or {}, "critico": False})
+                            "rastro": l.get("rastro") or {}, "critico": l["case_id"] in criticos})
             else:
                 reg["vereditos"].append({"evaluator_slug": l["evaluator_slug"], "passou": l["passou"],
                                          "nota": float(l.get("nota") or 0)})
@@ -1288,7 +1431,8 @@ def relatorio_do_banco(grupo_bancada: str, cliente: Any = None) -> str:
     return tabela_de_metricas(r0.get("papel"), r0.get("nivel"),
                               max(int(r.get("tentativa") or 1) for r in runs),
                               {rot: calcular_metricas(rs) for rot, rs in por_braco.items()},
-                              gasto=sum(float(r.get("custo_usd") or 0) for r in runs))
+                              gasto=sum(float(r.get("custo_usd") or 0) for r in runs
+                                        if (r.get("braco") or {}).get("provider") != "duble"))
 
 
 def relatorio_de_arquivo(caminho: str) -> str:

@@ -214,15 +214,35 @@ def test_falha_injetada_no_provedor_recupera_sem_duplicar(chave):
 
 
 def test_blocked_by_infra_nao_conta_contra_o_modelo():
-    """O portal cai calado no gpt-4o-mini depois de 500 (adaptive.py:428): é defeito do
-    ARNÊS, sai como BLOCKED_BY_INFRA e fica fora do pass@1."""
+    """🔴 A lição MIGROU (CLAUDE.md §9.3). Antes da F3b o portal caía CALADO no
+    gpt-4o-mini depois de um 500 — e a bancada marcava BLOCKED por isso. A F3b
+    matou o rebaixamento: erro do provedor agora vira `ask_human` (needs_human)
+    com o motivo, SEM outro modelo. Continua sendo falha de INFRA: sai como
+    BLOCKED_BY_INFRA e fica fora do pass@1 — e o guarda agora afirma também que
+    houve UM pedido só (nenhum modelo trocado por baixo)."""
     caso = _caso("portal-n1-falha-500-reserva-calada")
     rel = B.rodar_bancada("portal_decisao", ["duble:perfeito"], [caso, _caso("portal-n1-20-relacao")], k=1, teto_usd=5)
     por = {r.chave: r for r in rel.resultados}
     bloq = por["portal-n1-falha-500-reserva-calada"]
-    assert bloq.resultado == "BLOCKED_BY_INFRA" and "gpt-4o-mini" in (bloq.erro or "")
+    assert bloq.resultado == "BLOCKED_BY_INFRA", (bloq.resultado, bloq.erro)
+    assert "ask_human" in (bloq.erro or "") and "sem trocar de modelo" in (bloq.erro or "")
+    assert bloq.rastro["estado"]["action"] == "ask_human"
+    pedidos = bloq.rastro["pedidos_http"]
+    assert len(pedidos) == 1 and pedidos[0].get("erro"), pedidos
+    assert bloq.rastro["falhas_injetadas"], "a falha tem de ter DISPARADO"
     m = rel.bracos["duble:perfeito"]
     assert m["blocked_by_infra"] == 1 and m["pass_at_1"] == 1.0 and m["pass_hat_k"] == 1.0
+
+
+def test_controle_o_mesmo_caso_sem_a_falha_passa():
+    """CONTROLE (§9.2): tirando SÓ a falha injetada, o mesmo caso passa com o
+    perfeito — o BLOCKED acima é da falha, não da tela nem do oráculo."""
+    caso = json.loads(json.dumps(_caso("portal-n1-falha-500-reserva-calada")))
+    caso["falhas_injetadas"] = []
+    rel = B.rodar_bancada("portal_decisao", ["duble:perfeito"], [caso], k=1, teto_usd=5)
+    r = rel.resultados[0]
+    assert r.resultado == "PASS", (r.erro, _slugs_falhos(r))
+    assert len(r.rastro["pedidos_http"]) == 1 and not r.rastro["pedidos_http"][0].get("erro")
 
 
 def test_nada_sai_do_processo_o_banco_do_produto_e_o_duble():

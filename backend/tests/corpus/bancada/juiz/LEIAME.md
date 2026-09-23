@@ -4,7 +4,7 @@
 > 0 com falha injetada · 0 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.
 
 ## O motor que estes casos rodam
-BLOCKED — juiz_llm.py:119 chama create_llm com a assinatura errada (TypeError engolido)
+BLOCKED — o motor existe (evals/juiz_llm.py:julgar_com_llm(llm=), consertado na F3b)
 
 ## De onde veio o texto
 —
@@ -15,7 +15,7 @@ MARCADOR (`{{CPF:A1}}`, `{{NOME:N1}}`, `{{CORRETORA:A}}`…) e o carregador
 O guarda `tests/test_spec116_bancada_corpus.py::test_corpus_sem_pii` varre este diretório.
 
 ## O que falta (medido, não prometido)
-ESQUELETO: o motor não existe até a F3 consertar o juiz.
+ESQUELETO: os 3 casos não têm OURO (saída, critério, veredito esperado). Não se inventa oráculo: entra na v2 com casos de concordância com veredito humano.
 
 ## Como rodar
 ```

@@ -4,7 +4,7 @@
 > 0 com falha injetada · 0 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.
 
 ## O motor que estes casos rodam
-app/services/vision_service.py:describe_image — ChatOpenAI/ChatAnthropic desviados para o braço. COSTURA F3: describe_image precisa receber o modelo/LLM (hoje o atendimento SEMPRE usa gpt-4o-mini)
+app/services/vision_service.py:describe_image(llm=) — o braço entra pelo ponto de injeção da F3a
 
 ## De onde veio o texto
 10 imagens SINTÉTICAS geradas por PIL (texto legível, nenhum dado real) em visao/imagens/

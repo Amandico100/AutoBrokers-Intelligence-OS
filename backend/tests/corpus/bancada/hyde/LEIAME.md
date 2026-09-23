@@ -4,7 +4,7 @@
 > 0 com falha injetada · 0 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.
 
 ## O motor que estes casos rodam
-app/services/search_service.py:SearchService._generate_hyde_doc (ChatOpenAI do módulo desviado)
+app/services/search_service.py:SearchService._generate_hyde_doc(llm=)
 
 ## De onde veio o texto
 perguntas_de_cobertura_2026-09-17.json

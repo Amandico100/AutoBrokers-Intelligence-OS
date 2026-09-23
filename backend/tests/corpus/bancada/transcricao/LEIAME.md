@@ -4,7 +4,7 @@
 > 0 com falha injetada · 0 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.
 
 ## O motor que estes casos rodam
-BLOCKED — STT não é chat; precisa de áudio sintético e injeção em audio_service.py
+BLOCKED — o ponto de injeção existe (audio_service.AudioService(cliente=, modelo=))
 
 ## De onde veio o texto
 —
@@ -15,7 +15,7 @@ MARCADOR (`{{CPF:A1}}`, `{{NOME:N1}}`, `{{CORRETORA:A}}`…) e o carregador
 O guarda `tests/test_spec116_bancada_corpus.py::test_corpus_sem_pii` varre este diretório.
 
 ## O que falta (medido, não prometido)
-ESQUELETO: F3/F6.
+ESQUELETO: falta áudio sintético de falas mascaradas + fala-ouro, e a fábrica de chat não constrói STT (F6).
 
 ## Como rodar
 ```
