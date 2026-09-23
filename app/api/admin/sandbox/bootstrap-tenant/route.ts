@@ -100,8 +100,12 @@ export async function POST(request: NextRequest) {
       name: 'AutoBrokers Sandbox',
       slug: SANDBOX_AGENT_SLUG,
       is_active: true,
-      llm_provider: 'openai',
-      llm_model: 'gpt-4o-mini',
+      // SPEC-116 U10 — o sandbox nasce SEM modelo: herda a rota do papel
+      // (`llm_papeis`), como qualquer corretora. 📊 Era openai / gpt-4o-mini —
+      // e sandbox é onde se prova que o produto funciona: provar no mini o que
+      // em produção roda noutro modelo não prova nada.
+      llm_provider: null,
+      llm_model: null,
       llm_temperature: 0.4,
       // 🔴 8192, e não 1200 (SPEC-EXTRA-001.1, BLOCO E · P-PILOTO-17).
       // 📊 09/09/2026: 1200 é EXATAMENTE o número que cortou 10 de 95

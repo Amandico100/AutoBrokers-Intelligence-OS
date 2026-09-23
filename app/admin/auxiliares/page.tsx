@@ -125,8 +125,7 @@ export default function AdminAuxiliaresPage() {
     slug: '',
     is_subagent: true,
     allow_direct_chat: false,
-    llm_provider: 'openai',
-    llm_model: 'gpt-4o-mini',
+    // SPEC-116 U10 — sem provider/modelo: o auxiliar herda a rota do papel.
     agent_system_prompt: '',
   });
   const [rtSaving, setRtSaving] = useState(false);
@@ -340,8 +339,6 @@ export default function AdminAuxiliaresPage() {
       slug: sb('slug', t.slug),
       is_subagent: typeof bp.is_subagent === 'boolean' ? (bp.is_subagent as boolean) : true,
       allow_direct_chat: typeof bp.allow_direct_chat === 'boolean' ? (bp.allow_direct_chat as boolean) : false,
-      llm_provider: sb('llm_provider', 'openai'),
-      llm_model: sb('llm_model', 'gpt-4o-mini'),
       agent_system_prompt: sb('agent_system_prompt'),
     });
     setRtError('');
@@ -361,8 +358,7 @@ export default function AdminAuxiliaresPage() {
           slug: rt.slug.trim() || runtimeFor.slug,
           is_subagent: rt.is_subagent,
           allow_direct_chat: rt.allow_direct_chat,
-          llm_provider: rt.llm_provider,
-          llm_model: rt.llm_model,
+          // SPEC-116 U10 — o modelo NÃO viaja no blueprint: é da rota do papel.
           agent_system_prompt: rt.agent_system_prompt.trim(),
         },
       };
@@ -780,8 +776,9 @@ export default function AdminAuxiliaresPage() {
                 <label className="space-y-1 text-sm"><span className="text-foreground">Slug base</span><Input value={rt.slug} onChange={(e) => setRt({ ...rt, slug: e.target.value })} /></label>
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={rt.is_subagent} onChange={(e) => setRt({ ...rt, is_subagent: e.target.checked })} className="h-4 w-4 accent-[hsl(var(--primary))]" /><span className="text-foreground">Criar como subagent</span></label>
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={rt.allow_direct_chat} onChange={(e) => setRt({ ...rt, allow_direct_chat: e.target.checked })} className="h-4 w-4 accent-[hsl(var(--primary))]" /><span className="text-foreground">Permitir chat direto</span></label>
-                <label className="space-y-1 text-sm"><span className="text-foreground">Provider</span><Input value={rt.llm_provider} onChange={(e) => setRt({ ...rt, llm_provider: e.target.value })} /></label>
-                <label className="space-y-1 text-sm"><span className="text-foreground">Modelo</span><Input value={rt.llm_model} onChange={(e) => setRt({ ...rt, llm_model: e.target.value })} /></label>
+                <p className="text-sm text-muted-foreground sm:col-span-2">
+                  Modelo de IA: definido pelo papel do agente (auxiliar). A troca é feita uma vez, para todos os auxiliares, na configuração de modelos da plataforma — não aqui.
+                </p>
                 <label className="space-y-1 text-sm sm:col-span-2"><span className="text-foreground">System prompt</span><textarea className="w-full rounded-md border border-border bg-background p-2 text-sm" rows={3} value={rt.agent_system_prompt} onChange={(e) => setRt({ ...rt, agent_system_prompt: e.target.value })} /></label>
                 <p className="text-xs text-muted-foreground sm:col-span-2">Ao instalar numa corretora, um Agent/Subagent Smith é criado/vinculado a partir deste blueprint (sem segredos).</p>
               </div>
@@ -835,7 +832,7 @@ export default function AdminAuxiliaresPage() {
                     <div className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground sm:col-span-2">
                       <p className="mb-1 font-medium text-foreground">Preview do blueprint (segredos removidos)</p>
                       <p>
-                        Modelo: {a.llm_provider || 'openai'} / {a.llm_model || 'gpt-4o-mini'} ·{' '}
+                        Modelo: definido pelo papel do agente ·{' '}
                         {a.is_subagent ? 'Subagent' : 'Agent'} · Chat direto: {a.allow_direct_chat ? 'sim' : 'não'}
                       </p>
                       <p>

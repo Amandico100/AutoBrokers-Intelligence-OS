@@ -218,6 +218,9 @@ export function materializarAgente(
       slug,
       is_active: bp.default_active,
       agent_enabled: true,
+      // SPEC-116 U10 — NULL (vem do blueprint): o agente nasce sem modelo e
+      // herda a rota do seu papel (chat_principal / atendimento). Nem
+      // `vision_model`: a leitura de imagem segue a rota do papel 'visao'.
       llm_provider: eff.llm_provider,
       llm_model: eff.llm_model,
       agent_system_prompt: eff.system_prompt,
@@ -439,7 +442,9 @@ async function ensureAgentByRole(
  * só quando alguém abria a tela.
  *
  * NÃO inventa política: grava apenas `agent_id` + `company_id` e deixa os
- * DEFAULTS da coluna decidirem o resto. Escolher aqui um valor diferente do que
+ * DEFAULTS da coluna decidirem o resto. ⚠️ SPEC-116 (D-116-15): o DEFAULT de
+ * `memory_llm_model` (o mini da OpenAI) virou LEGADO IGNORADO — o modelo da memória
+ * é o da rota do papel `memoria`. Por isso este insert NÃO grava modelo. Escolher aqui um valor diferente do que
  * a tela grava criaria uma terceira verdade sobre memória.
  */
 async function garantirConfigDeMemoria(

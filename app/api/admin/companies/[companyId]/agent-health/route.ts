@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminForCompany, supabaseService } from '@/lib/admin/admin-auth';
 import {
-  buildAgentDivergences, isHealthy, effectiveCoreModel, estadoDaVoz, personalizacaoDoPrompt,
-  type AgentLite,
+  buildAgentDivergences, isHealthy, modeloEfetivoPelaRota, estadoDaVoz, personalizacaoDoPrompt,
+  type AgentLite, type RotaDoPapel,
 } from '@/lib/admin/agent-health';
 
 export const dynamic = 'force-dynamic';
@@ -36,10 +36,23 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ com
   let knowledge_docs = 0;
   try { const { count } = await supabase.from('documents').select('id', { count: 'exact', head: true }).eq('company_id', companyId); knowledge_docs = count ?? 0; } catch { /* 0 */ }
 
+  // SPEC-116 U10 — o modelo efetivo é o da ROTA do papel (`llm_papeis`, a
+  // mesma tabela que o Model Router lê). Tabela global de plataforma: sem
+  // company_id, sem dado de corretora. Falhou a leitura → null, nunca um palpite.
+  let rotas: RotaDoPapel[] | null = null;
+  try {
+    const { data } = await supabase.from('llm_papeis').select('papel, provider, modelo_primario');
+    rotas = (data ?? []) as RotaDoPapel[];
+  } catch { /* rotas = null: a tela diz que não conseguiu ler */ }
+
   const diag = (a: any) => a ? {
-    present: true, is_active: Boolean(a.is_active), provider: a.llm_provider ?? 'openai',
+    present: true, is_active: Boolean(a.is_active),
+    // o que está gravado na linha (legado; o novo nasce null) e o que manda de fato
+    provider: a.llm_provider ?? null,
     model_stored: a.llm_model ?? null,
-    model_effective: a.agent_role === 'core' ? effectiveCoreModel(a.llm_model) : (a.llm_model ?? null),
+    model_effective: modeloEfetivoPelaRota(a.agent_role, rotas).modelo,
+    model_source: 'rota_do_papel',
+    model_role: modeloEfetivoPelaRota(a.agent_role, rotas).papel,
     // Só o veredito e as medidas — nunca o texto do prompt (CLAUDE.md §13.3).
     voice: estadoDaVoz(a.agent_system_prompt),
     mute: estadoDaVoz(a.agent_system_prompt) !== 'ok',

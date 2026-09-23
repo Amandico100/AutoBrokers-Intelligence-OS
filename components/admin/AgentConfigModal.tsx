@@ -56,6 +56,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { papelDoAgente } from '@/lib/admin/agent-health';
 
 interface Props {
   companyId: string;
@@ -68,6 +69,7 @@ interface ProviderInfo {
   name: string;
   display_name: string;
   models_count: number;
+  modelos?: ModeloDoCatalogo[]; // SPEC-116 U10
 }
 
 const DEFAULT_SYSTEM_PROMPT = `Você é o AutoBrokers, copiloto operacional inteligente da corretora.
@@ -91,269 +93,73 @@ const DEFAULT_BLACKLIST = [
 ].join('\n');
 
 // =============================================================================
-// LLM_MODEL_OPTIONS - Lista Atualizada (Dezembro 2025)
+// SPEC-116 U10 — O CATÁLOGO VEM DA API, NÃO DESTE ARQUIVO
 // =============================================================================
+// 📊 Aqui morava `LLM_MODEL_OPTIONS` ("Lista Atualizada (Dezembro 2025)"): uma
+// lista escrita à mão, sem Claude 5, com modelos já retirados — e um dropdown de
+// visão que oferecia um modelo desligado pela Anthropic. A tela agora lista o
+// CATÁLOGO governado (`GET /api/agent/providers`, com o ciclo de vida de cada
+// modelo) e mostra o modelo EFETIVO de cada papel (`GET /api/agent/rotas`).
+// Para o chat principal e o atendimento, quem decide é a rota do papel: a tela
+// mostra o modelo em uso e não oferece um seletor que não manda.
 
-export const LLM_MODEL_OPTIONS = [
-  // =============================================================================
-  // ANTHROPIC - Claude Models (Fev 2026)
-  // =============================================================================
+interface ModeloDoCatalogo {
+  id: string;
+  display_name: string;
+  provider: string | null;
+  lifecycle: string | null;
+  lifecycle_rotulo: string;
+  escolhivel: boolean;
+  legado: boolean;
+  classes_de_dado: string[];
+  preco_entrada_por_milhao: number | null;
+  preco_saida_por_milhao: number | null;
+  substituido_por: string | null;
+  sem_temperatura: boolean;
+  niveis_de_esforco: string[] | null;
+}
 
-  // --- Claude 4.6 Series (Latest - Fev/2026) ---
-  {
-    label: 'Claude Opus 4.6 (Premium - Fev 2026)',
-    value: 'claude-opus-4-6',
-    group: 'Anthropic',
-    description: 'Modelo premium com máxima inteligência e performance prática',
-    pricing: '$5/$25 per MTok',
-  },
-  {
-    label: 'Claude Sonnet 4.6 (Recomendado - Fev 2026)',
-    value: 'claude-sonnet-4-6',
-    group: 'Anthropic',
-    description: 'Melhor modelo para agentes complexos e coding. Melhor custo-benefício.',
-    pricing: '$3/$15 per MTok',
-  },
-  {
-    label: 'Claude Haiku 4.5 (Rápido - Out 2025)',
-    value: 'claude-haiku-4-5-20251001',
-    group: 'Anthropic',
-    description: 'Mais rápido, inteligência near-frontier. Ideal para alto volume.',
-    pricing: '$1/$5 per MTok',
-  },
+interface RotaEfetiva {
+  papel: string;
+  provider?: string;
+  model?: string;
+  display_name?: string;
+  effort?: string | null;
+  lifecycle_rotulo?: string;
+  sem_temperatura?: boolean;
+  erro?: string;
+}
 
-  // --- Claude 4 Series (Mai-Ago 2025) ---
-  {
-    label: 'Claude Opus 4.1 (Ago 2025)',
-    value: 'claude-opus-4-1-20250805',
-    group: 'Anthropic',
-    description: 'Upgrade do Opus 4 para tarefas agênticas e coding',
-    pricing: '$15/$75 per MTok',
-  },
-  {
-    label: 'Claude Opus 4 (Mai 2025)',
-    value: 'claude-opus-4-20250514',
-    group: 'Anthropic',
-    description: 'Modelo poderoso para tarefas complexas de longa duração',
-    pricing: '$15/$75 per MTok',
-  },
-  {
-    label: 'Claude Sonnet 4 (Mai 2025)',
-    value: 'claude-sonnet-4-20250514',
-    group: 'Anthropic',
-    description: 'Equilíbrio entre performance e eficiência',
-    pricing: '$3/$15 per MTok',
-  },
+interface RotasDaPlataforma {
+  papeis: Record<string, RotaEfetiva>;
+}
 
-  // --- Claude 3.7 Series (Legacy) ---
-  {
-    label: 'Claude 3.7 Sonnet (Legacy)',
-    value: 'claude-3-7-sonnet-20250219',
-    group: 'Anthropic',
-    description: 'Modelo legado com suporte a 128K output tokens',
-    pricing: '$3/$15 per MTok',
-  },
+interface OpcaoDeModelo {
+  label: string;
+  value: string;
+}
 
-  // =============================================================================
-  // OPENAI - GPT Models (Dez 2025)
-  // =============================================================================
-
-  // --- GPT-5.2 Series (Latest - Dec 2025) ---
-  {
-    label: 'GPT-5.2 (Flagship)',
-    value: 'gpt-5.2',
-    group: 'OpenAI',
-    description: 'Versão mais recente e inteligente',
-    pricing: '$1.75/$14 per MTok',
-  },
-  {
-    label: 'GPT-5.2 Chat Latest',
-    value: 'gpt-5.2-chat-latest',
-    group: 'OpenAI',
-    description: 'Versão otimizada para chat',
-    pricing: '$1.75/$14 per MTok',
-  },
-
-  // --- GPT-5.1 Series ---
-  {
-    label: 'GPT-5.1 (Estável)',
-    value: 'gpt-5.1',
-    group: 'OpenAI',
-    description: 'Versão estável com contexto de 1M tokens',
-    pricing: '$1.25/$10 per MTok',
-  },
-
-  // --- O-Series Reasoning Models ---
-  {
-    label: 'o3-pro (Reasoning Premium)',
-    value: 'o3-pro',
-    group: 'OpenAI',
-    description: 'Versão premium do o3',
-  },
-  {
-    label: 'o3 (Reasoning Avançado)',
-    value: 'o3',
-    group: 'OpenAI',
-    description: 'Modelo de raciocínio SOTA',
-  },
-  {
-    label: 'o3-mini (Reasoning Compacto)',
-    value: 'o3-mini',
-    group: 'OpenAI',
-    description: 'Alternativa compacta ao o3',
-  },
-  {
-    label: 'o1 (Reasoning Original)',
-    value: 'o1',
-    group: 'OpenAI',
-    description: 'Modelo original de raciocínio avançado',
-  },
-  {
-    label: 'o1-mini (Reasoning Legado)',
-    value: 'o1-mini',
-    group: 'OpenAI',
-    description: 'Versão compacta do o1 original',
-  },
-
-  // --- GPT-4o Series (Legacy) ---
-  {
-    label: 'GPT-4o (Multimodal Estável)',
-    value: 'gpt-4o',
-    group: 'OpenAI',
-    description: 'Modelo multimodal otimizado',
-  },
-  {
-    label: 'GPT-4o Mini (Econômico)',
-    value: 'gpt-4o-mini',
-    group: 'OpenAI',
-    description: 'Versão econômica do GPT-4o',
-  },
-
-  // =============================================================================
-  // GOOGLE - Gemini Models (Dez 2025)
-  // =============================================================================
-
-  // --- Gemini 3.1 Series (Fev 2026 - Latest) ---
-  {
-    label: 'Gemini 3.1 Pro (Mais Inteligente - Fev 2026)',
-    value: 'gemini-3.1-pro-preview',
-    group: 'Google',
-    description: 'Modelo mais avançado para tarefas complexas. Substitui o Gemini 3 Pro.',
-    pricing: '$2/$12 per MTok',
-  },
-
-  // --- Gemini 3 Series (Dez 2025) ---
-  {
-    label: 'Gemini 3 Flash (Rápido - Dez 2025)',
-    value: 'gemini-3-flash-preview',
-    group: 'Google',
-    description: 'Alta performance com custo-eficiência.',
-    pricing: '$0.10/$0.40 per MTok',
-  },
-  {
-    label: 'Gemini 3 Deep Think (Reasoning)',
-    value: 'gemini-3-deep-think',
-    group: 'Google',
-    description: 'Modo de raciocínio profundo',
-  },
-
-  // --- Gemini 2.5 Series (Jun-Jul 2025 - Stable) ---
-  {
-    label: 'Gemini 2.5 Pro (Estável)',
-    value: 'gemini-2.5-pro',
-    group: 'Google',
-    description: 'Modelo estável mais poderoso da série 2.5',
-  },
-  {
-    label: 'Gemini 2.5 Flash (Recomendado)',
-    value: 'gemini-2.5-flash',
-    group: 'Google',
-    description: 'Melhor custo-benefício, rápido e versátil',
-  },
-  {
-    label: 'Gemini 2.5 Flash-Lite (Ultra-Rápido)',
-    value: 'gemini-2.5-flash-lite',
-    group: 'Google',
-    description: 'Mais rápido e econômico',
-  },
-
-
-  // =============================================================================
-  // OUTROS PROVIDERS
-  // =============================================================================
-  {
-    label: 'Grok 4 (xAI)',
-    value: 'grok-4',
-    group: 'Outros',
-    description: 'Modelo avançado da xAI',
-  },
-  {
-    label: 'DeepSeek V3',
-    value: 'deepseek-chat',
-    group: 'Outros',
-    description: 'Modelo open-source chinês competitivo',
-  },
-  {
-    label: 'Mistral Large',
-    value: 'mistral-large-latest',
-    group: 'Outros',
-    description: 'Modelo flagship da Mistral',
-  },
-];
-
-export const PROVIDER_INFO = {
-  anthropic: {
-    name: 'Anthropic',
-    displayName: 'Anthropic (Claude)',
-    modelsCount: LLM_MODEL_OPTIONS.filter((m) => m.group === 'Anthropic').length,
-    recommended: 'claude-sonnet-4-6',
-    description: 'Modelos Claude - Líderes em segurança e coding',
-  },
-  openai: {
-    name: 'OpenAI',
-    displayName: 'OpenAI (GPT)',
-    modelsCount: LLM_MODEL_OPTIONS.filter((m) => m.group === 'OpenAI').length,
-    recommended: 'gpt-4.1',
-    description: 'Modelos GPT e o-series - Versatilidade e reasoning',
-  },
-  google: {
-    name: 'Google',
-    displayName: 'Google (Gemini)',
-    modelsCount: LLM_MODEL_OPTIONS.filter((m) => m.group === 'Google').length,
-    recommended: 'gemini-2.5-flash',
-    description: 'Modelos Gemini - Multimodal e contexto longo',
-  },
-  outros: {
-    name: 'Outros',
-    displayName: 'Outros Providers',
-    modelsCount: LLM_MODEL_OPTIONS.filter((m) => m.group === 'Outros').length,
-    recommended: 'deepseek-chat',
-    description: 'xAI, DeepSeek, Mistral e outros',
-  },
-  openrouter: {
-    name: 'OpenRouter',
-    displayName: 'OpenRouter (Multi-provider)',
-    modelsCount: 0, // Dynamic — loaded from backend
-    recommended: 'meta-llama/llama-3.1-405b-instruct',
-    description: '400+ modelos via gateway único — Meta, DeepSeek, Mistral e mais',
-  },
+/** Nome do papel como gente lê (a tela nunca mostra o identificador cru sozinho). */
+const NOME_DO_PAPEL: Record<string, string> = {
+  chat_principal: 'chat principal',
+  atendimento: 'atendimento ao segurado',
+  subagente: 'subagente',
+  visao: 'leitura de imagens',
 };
 
-export const getModelsByProvider = (provider: string) => {
-  return LLM_MODEL_OPTIONS.filter((opt) => opt.group.toLowerCase() === provider.toLowerCase());
-};
-
-export const getRecommendedModel = (provider: string): string | undefined => {
-  const providerKey = provider.toLowerCase() as keyof typeof PROVIDER_INFO;
-  return PROVIDER_INFO[providerKey]?.recommended;
-};
+/** Funções cujo modelo é SEMPRE o da rota do papel (nunca escolha por agente). */
+const FUNCOES_GOVERNADAS_PELA_ROTA = ['core', 'attendance', 'insured_external', ''];
 
 export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [models, setModels] = useState<typeof LLM_MODEL_OPTIONS>([]);
+  const [models, setModels] = useState<OpcaoDeModelo[]>([]);
+  // SPEC-116 U10 — o modelo efetivo de cada papel e a função deste agente
+  const [rotas, setRotas] = useState<RotasDaPlataforma | null>(null);
+  const [agentRole, setAgentRole] = useState<string>('');
+  const [modeloGravado, setModeloGravado] = useState<string | undefined>(undefined);
 
   // Agent Identity
   const [name, setName] = useState('');
@@ -378,7 +184,6 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
   const [systemPrompt, setSystemPrompt] = useState('');
   const [allowWebSearch, setAllowWebSearch] = useState(true);
   const [allowVision, setAllowVision] = useState(false);
-  const [visionModel, setVisionModel] = useState<string | undefined>(undefined);
   const [isHydeEnabled, setIsHydeEnabled] = useState(true); // HyDE toggle
   const [modelSearch, setModelSearch] = useState(''); // OpenRouter model search filter
 
@@ -453,6 +258,25 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
 
   const isCreateMode = !agentId;
 
+  // SPEC-116 U10 — quem decide o modelo deste agente?
+  //   chat principal / atendimento → SEMPRE a rota do papel (somente leitura)
+  //   outra função → a rota do papel, se existir; sem rota, a escolha aqui
+  const papel = papelDoAgente(agentRole);
+  const rotaDoPapel = rotas?.papeis?.[papel];
+  const governadoPelaRota =
+    FUNCOES_GOVERNADAS_PELA_ROTA.includes(agentRole.trim().toLowerCase()) || Boolean(rotaDoPapel?.model);
+  const modeloEscolhido = providers
+    .flatMap((p) => p.modelos ?? [])
+    .find((m) => m.id === llmModel);
+  const provedorEfetivo = governadoPelaRota ? rotaDoPapel?.provider : llmProvider;
+  const modeloEfetivo = governadoPelaRota ? rotaDoPapel?.model : llmModel;
+  // o catálogo sabe quais modelos ignoram temperatura (ex.: Claude 5, GPT-6)
+  const semTemperatura = governadoPelaRota
+    ? Boolean(rotaDoPapel?.sem_temperatura)
+    : Boolean(modeloEscolhido?.sem_temperatura);
+  const niveisDeEsforco = governadoPelaRota ? null : (modeloEscolhido?.niveis_de_esforco ?? null);
+  const rotaDeVisao = rotas?.papeis?.visao;
+
   useEffect(() => {
     if (open) {
       loadProviders();
@@ -469,7 +293,8 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
     if (llmProvider) {
       loadModels(llmProvider);
     }
-  }, [llmProvider]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [llmProvider, providers, modeloGravado]);
 
   // Auto-generate slug from name
   useEffect(() => {
@@ -498,8 +323,8 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
     setSystemPrompt('');
     setAllowWebSearch(true);
     setAllowVision(false);
-    setVisionModel(undefined);
-    setVisionModel(undefined);
+    setAgentRole('');
+    setModeloGravado(undefined);
     // removed setVisionApiKey, setHasApiKey, setHasVisionApiKey
     setAllowHumanHandoff(false);
     setContextVars([]);
@@ -521,7 +346,7 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
   };
 
   const handleTestLLM = async () => {
-    if (!llmProvider || !llmModel) {
+    if (!provedorEfetivo || !modeloEfetivo) {
       toast({
         title: 'Atenção',
         description: 'Selecione um provider e modelo primeiro',
@@ -538,8 +363,8 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: llmProvider,
-          model: llmModel,
+          provider: provedorEfetivo,
+          model: modeloEfetivo,
           agent_id: agentId,
           company_id: companyId,
         }),
@@ -583,41 +408,25 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
     } catch (error) {
       console.error('Error loading providers:', error);
     }
+    try {
+      const response = await fetch(`/api/admin/proxy/agent/rotas`);
+      if (response.ok) setRotas(await response.json());
+    } catch (error) {
+      console.error('Error loading model routes:', error);
+    }
   };
 
-  const loadModels = async (provider: string) => {
-    if (provider === 'openrouter') {
-      // Fetch models dynamically from backend for OpenRouter
-      try {
-        const response = await fetch(`/api/admin/proxy/agent/models/openrouter`);
-        if (response.ok) {
-          const modelNames: string[] = await response.json();
-          const dynamicModels = modelNames.map((name) => ({
-            label: name,
-            value: name,
-            group: 'OpenRouter' as const,
-            description: '',
-            pricing: '',
-          }));
-          setModels(dynamicModels as typeof LLM_MODEL_OPTIONS);
-        } else {
-          setModels([]);
-        }
-      } catch (error) {
-        console.error('Error loading OpenRouter models:', error);
-        setModels([]);
-      }
-      setModelSearch('');
-      return;
-    }
-
-    // Local filter for native providers
-    const filtered = LLM_MODEL_OPTIONS.filter(
-      (opt) =>
-        opt.group.toLowerCase() === provider.toLowerCase() ||
-        (provider.toLowerCase() === 'outros' && opt.group === 'Outros'),
-    );
-    setModels(filtered);
+  // SPEC-116 U10 — as opções vêm do CATÁLOGO (via API). Só entra o que pode ser
+  // escolhido; um legado aparece APENAS se já é o gravado neste agente.
+  const loadModels = (provider: string) => {
+    const modelos = providers.find((p) => p.name === provider)?.modelos ?? [];
+    const opcoes = modelos
+      .filter((m) => m.escolhivel || (m.legado && m.id === modeloGravado))
+      .map((m) => ({
+        value: m.id,
+        label: `${m.display_name} — ${m.legado ? 'legado, em saída' : m.lifecycle_rotulo}`,
+      }));
+    setModels(opcoes);
     setModelSearch('');
   };
 
@@ -638,6 +447,8 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
         // LLM Config
         setLlmProvider(agent.llm_provider);
         setLlmModel(agent.llm_model);
+        setModeloGravado(agent.llm_model);
+        setAgentRole(String((agent as Agent & { agent_role?: string | null }).agent_role ?? ''));
         setTemperature(agent.llm_temperature);
         setMaxTokens(agent.llm_max_tokens);
         setTopP(agent.llm_top_p);
@@ -649,7 +460,6 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
         setSystemPrompt(agent.agent_system_prompt || '');
         setAllowWebSearch(agent.allow_web_search);
         setAllowVision(agent.allow_vision);
-        setVisionModel(agent.vision_model);
         setIsHydeEnabled(agent.is_hyde_enabled ?? false); // Load HyDE toggle (default OFF)
 
         // Tools Config
@@ -993,7 +803,7 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
       return;
     }
 
-    if (!llmProvider || !llmModel) {
+    if (!governadoPelaRota && (!llmProvider || !llmModel)) {
       toast({
         title: 'Atenção',
         description: 'Selecione um provider e modelo',
@@ -1009,13 +819,11 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
         name: name.trim(),
         slug: slug.trim(),
         avatar_url: avatarUrl,
-        llm_provider: llmProvider,
-        llm_model: llmModel,
-        // Modelos GPT-5/o1/o3 só suportam temperatura 1.0
-        llm_temperature:
-          llmModel?.startsWith('gpt-5') || llmModel?.startsWith('o1') || llmModel?.startsWith('o3')
-            ? 1.0
-            : temperature,
+        // SPEC-116 U10 — com a rota do papel decidindo, a tela NÃO grava modelo
+        // (nem apaga o que está gravado): as chaves nem viajam. Sem rota, grava
+        // a escolha feita no catálogo (o servidor confere de novo).
+        ...(governadoPelaRota ? {} : { llm_provider: llmProvider, llm_model: llmModel }),
+        llm_temperature: temperature,
         llm_max_tokens: maxTokens,
         llm_top_p: topP,
         llm_top_k: topK,
@@ -1024,7 +832,6 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
         agent_system_prompt: systemPrompt || DEFAULT_SYSTEM_PROMPT,
         allow_web_search: allowWebSearch,
         allow_vision: allowVision,
-        vision_model: visionModel,
         tools_config: {
           human_handoff: { enabled: allowHumanHandoff },
           csv_analytics: { enabled: allowCsvAnalytics },
@@ -1534,86 +1341,107 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                   <CardTitle className="text-sm text-foreground">Modelo de IA</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="provider" className="text-muted-foreground">
-                      Provider
-                    </Label>
-                    <Select
-                      value={llmProvider}
-                      onValueChange={(value) => {
-                        setLlmProvider(value);
-                        setLlmModel(undefined);
-                      }}
-                    >
-                      <SelectTrigger className="bg-background border-border text-foreground">
-                        <SelectValue placeholder="Selecione o provider" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border">
-                        {providers.map((p) => (
-                          <SelectItem key={p.name} value={p.name} className="text-foreground">
-                            {p.display_name} ({p.models_count} modelos)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {governadoPelaRota ? (
+                    // SPEC-116 U10 — somente leitura: o papel do agente decide.
+                    <div className="rounded-md border border-border bg-background p-3 space-y-1">
+                      <p className="text-sm text-foreground">
+                        Modelo em uso:{' '}
+                        <span className="font-medium">
+                          {rotaDoPapel?.display_name ?? rotaDoPapel?.model ?? 'não foi possível ler'}
+                        </span>
+                        {rotaDoPapel?.provider ? ` (${rotaDoPapel.provider})` : ''}
+                        {rotaDoPapel?.lifecycle_rotulo ? ` · ${rotaDoPapel.lifecycle_rotulo}` : ''}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Definido pela rota do papel “{NOME_DO_PAPEL[papel] ?? papel}” — muda em llm_papeis
+                        (a configuração de modelos da plataforma), não neste agente. A troca vale para
+                        todas as corretoras de uma vez e pode ser desfeita.
+                      </p>
+                      {rotaDoPapel?.erro && (
+                        <p className="text-xs text-destructive">
+                          A rota deste papel está com problema: {rotaDoPapel.erro}
+                        </p>
+                      )}
+                      {modeloGravado && modeloGravado !== rotaDoPapel?.model && (
+                        <p className="text-xs text-muted-foreground">
+                          Este agente ainda tem “{modeloGravado}” gravado de antes; esse valor não é usado.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <Label htmlFor="provider" className="text-muted-foreground">
+                          Provedor
+                        </Label>
+                        <Select
+                          value={llmProvider}
+                          onValueChange={(value) => {
+                            setLlmProvider(value);
+                            setLlmModel(undefined);
+                          }}
+                        >
+                          <SelectTrigger className="bg-background border-border text-foreground">
+                            <SelectValue placeholder="Selecione o provedor" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-card border-border">
+                            {providers.map((p) => (
+                              <SelectItem key={p.name} value={p.name} className="text-foreground">
+                                {p.display_name} ({p.models_count} modelos)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  <div>
-                    <Label htmlFor="model" className="text-muted-foreground">
-                      Modelo
-                    </Label>
-                    <Select
-                      value={llmModel}
-                      onValueChange={(model) => {
-                        setLlmModel(model);
-                        // Forçar temperatura 1.0 para modelos que não suportam temperatura customizada
-                        if (
-                          model.startsWith('gpt-5') ||
-                          model.startsWith('o1') ||
-                          model.startsWith('o3')
-                        ) {
-                          setTemperature(1.0);
-                        }
-                      }}
-                      disabled={!llmProvider}
-                    >
-                      <SelectTrigger className="bg-background border-border text-foreground">
-                        <SelectValue placeholder="Selecione o modelo" />
-                      </SelectTrigger>
-                      <SelectContent
-                        className="bg-card border-border max-h-[40vh] overflow-y-auto z-[9999] min-w-[300px] w-[var(--radix-select-trigger-width)]"
-                        position="popper"
-                        sideOffset={5}
-                      >
-                        {llmProvider === 'openrouter' && (
-                          <div className="sticky top-0 bg-card p-2 border-b border-border z-10">
-                            <input
-                              type="text"
-                              placeholder="Buscar modelo... (ex: llama, deepseek, mistral)"
-                              value={modelSearch}
-                              onChange={(e) => setModelSearch(e.target.value)}
-                              className="w-full px-2 py-1 text-sm bg-background border border-border rounded text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                        )}
-                        {models
-                          .filter((opt) =>
-                            !modelSearch || opt.label.toLowerCase().includes(modelSearch.toLowerCase())
-                          )
-                          .map((opt) => (
-                            <SelectItem
-                              key={opt.value}
-                              value={opt.value}
-                              className="text-foreground truncate max-w-[500px] cursor-pointer focus:bg-blue-600 focus:text-white"
-                            >
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      <div>
+                        <Label htmlFor="model" className="text-muted-foreground">
+                          Modelo
+                        </Label>
+                        <Select value={llmModel} onValueChange={setLlmModel} disabled={!llmProvider}>
+                          <SelectTrigger className="bg-background border-border text-foreground">
+                            <SelectValue placeholder="Selecione o modelo" />
+                          </SelectTrigger>
+                          <SelectContent
+                            className="bg-card border-border max-h-[40vh] overflow-y-auto z-[9999] min-w-[300px] w-[var(--radix-select-trigger-width)]"
+                            position="popper"
+                            sideOffset={5}
+                          >
+                            {models.length > 8 && (
+                              <div className="sticky top-0 bg-card p-2 border-b border-border z-10">
+                                <input
+                                  type="text"
+                                  placeholder="Buscar modelo..."
+                                  value={modelSearch}
+                                  onChange={(e) => setModelSearch(e.target.value)}
+                                  className="w-full px-2 py-1 text-sm bg-background border border-border rounded text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                            )}
+                            {models
+                              .filter((opt) =>
+                                !modelSearch || opt.label.toLowerCase().includes(modelSearch.toLowerCase())
+                              )
+                              .map((opt) => (
+                                <SelectItem
+                                  key={opt.value}
+                                  value={opt.value}
+                                  className="text-foreground truncate max-w-[500px] cursor-pointer focus:bg-blue-600 focus:text-white"
+                                >
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          A lista é o catálogo de modelos da plataforma. Modelos retirados não aparecem; um
+                          modelo em saída só aparece se já estiver gravado neste agente.
+                        </p>
+                      </div>
+                    </>
+                  )}
 
                   {/* Test LLM Integration Button */}
                   <div className="flex items-center gap-3 pt-2">
@@ -1622,7 +1450,7 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                       variant="outline"
                       size="sm"
                       onClick={handleTestLLM}
-                      disabled={testingLLM || !llmProvider || !llmModel}
+                      disabled={testingLLM || !provedorEfetivo || !modeloEfetivo}
                       className="bg-background border-border text-foreground hover:bg-muted"
                     >
                       {testingLLM ? (
@@ -1663,23 +1491,21 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                     <div className="flex justify-between mb-2">
                       <Label className="text-muted-foreground">Temperature</Label>
                       <span className="text-sm text-muted-foreground">
-                        {llmModel?.includes('gpt-5') ? '1.00 (fixo)' : temperature.toFixed(2)}
+                        {semTemperatura ? 'ignorada por este modelo' : temperature.toFixed(2)}
                       </span>
                     </div>
                     <Slider
-                      value={[llmModel?.includes('gpt-5') ? 1.0 : temperature]}
-                      onValueChange={(value) =>
-                        !llmModel?.includes('gpt-5') && setTemperature(value[0])
-                      }
+                      value={[temperature]}
+                      onValueChange={(value) => !semTemperatura && setTemperature(value[0])}
                       min={0}
                       max={2}
                       step={0.1}
                       className="w-full"
-                      disabled={llmModel?.includes('gpt-5')}
+                      disabled={semTemperatura}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      {llmModel?.includes('gpt-5')
-                        ? '⚠️ GPT-5.x só suporta temperature 1.0 por enquanto'
+                      {semTemperatura
+                        ? 'O modelo em uso não aceita ajuste de temperatura; este valor é ignorado.'
                         : 'Menor = mais conservador, Maior = mais criativo'}
                     </p>
                   </div>
@@ -1769,49 +1595,33 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                 </CardContent>
               </Card>
 
-              {/* Reasoning Models Config - Only visible for o1/o3 models */}
-              {(llmModel?.startsWith('o1') || llmModel?.startsWith('o3')) && (
+              {/* SPEC-116 U10 — profundidade de raciocínio: só quando o modelo ESCOLHIDO
+                  aqui a aceita (o catálogo diz os níveis). Com a rota do papel decidindo,
+                  o esforço também é o da rota. */}
+              {niveisDeEsforco && niveisDeEsforco.length > 0 && (
                 <Card className="bg-card border-border border-purple-500/30">
                   <CardHeader>
                     <CardTitle className="text-sm text-foreground flex items-center gap-2">
                       <Brain className="h-4 w-4 text-purple-400" />
-                      Configurações de Raciocínio (o1/o3)
+                      Profundidade de raciocínio
                     </CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      Controles específicos para modelos de raciocínio
-                    </p>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <Label className="text-muted-foreground">Reasoning Effort</Label>
                       <Select value={reasoningEffort} onValueChange={setReasoningEffort}>
                         <SelectTrigger className="bg-background border-border text-foreground">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-card border-border">
-                          <SelectItem value="none" className="text-foreground">
-                            None (Sem raciocínio adicional)
-                          </SelectItem>
-                          <SelectItem value="low" className="text-foreground">
-                            Low (Raciocínio leve)
-                          </SelectItem>
-                          <SelectItem value="medium" className="text-foreground">
-                            Medium (Balanceado)
-                          </SelectItem>
-                          <SelectItem value="high" className="text-foreground">
-                            High (Raciocínio profundo)
-                          </SelectItem>
+                          {niveisDeEsforco.map((nivel) => (
+                            <SelectItem key={nivel} value={nivel} className="text-foreground">
+                              {nivel}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Controla a profundidade do raciocínio. Valores mais altos = respostas
-                        melhores, porém mais tokens.
-                      </p>
-                    </div>
-
-                    <div className="pt-2 border-t border-border">
-                      <p className="text-xs text-yellow-500">
-                        ⚠️ Modelos de raciocínio (o1, o3) ignoram o parâmetro Temperature.
+                        Mais profundidade = respostas melhores, porém mais lentas e mais caras.
                       </p>
                     </div>
                   </CardContent>
@@ -1961,35 +1771,25 @@ export function AgentConfigModal({ companyId, agentId, open, onOpenChange }: Pro
                           👁️ Visão Computacional
                         </Label>
                         <p className="text-xs text-muted-foreground">
-                          Permite analisar imagens enviadas (GPT-4o, Claude 3.5 Sonnet)
+                          Permite analisar imagens enviadas
                         </p>
                       </div>
                       <Switch checked={allowVision} onCheckedChange={setAllowVision} />
                     </div>
 
                     {allowVision && (
-                      <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
-                        <div>
-                          <Label htmlFor="vision_model" className="text-muted-foreground text-sm">
-                            🤖 Modelo de Visão
-                          </Label>
-                          <Select value={visionModel || ''} onValueChange={setVisionModel}>
-                            <SelectTrigger className="bg-background border-border text-foreground mt-2">
-                              <SelectValue placeholder="Selecione o modelo de visão" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-card border-border">
-                              <SelectItem value="gpt-4o" className="text-foreground hover:bg-muted">
-                                GPT-4o (OpenAI)
-                              </SelectItem>
-                              <SelectItem
-                                value="claude-3-5-sonnet-20240620"
-                                className="text-foreground hover:bg-muted"
-                              >
-                                Claude 3.5 Sonnet (Anthropic)
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                      // SPEC-116 U10 — o modelo de visão é o da rota do papel "visao"; o
+                      // dropdown fixo (com um modelo já retirado pela Anthropic) saiu.
+                      <div className="mt-4 pt-4 border-t border-border/50">
+                        <p className="text-sm text-foreground">
+                          Modelo de leitura de imagens:{' '}
+                          <span className="font-medium">
+                            {rotaDeVisao?.display_name ?? rotaDeVisao?.model ?? 'não foi possível ler'}
+                          </span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Definido pela rota do papel “leitura de imagens” — muda em llm_papeis, não neste agente.
+                        </p>
                       </div>
                     )}
                   </div>

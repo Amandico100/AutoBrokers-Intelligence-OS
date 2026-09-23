@@ -6,9 +6,9 @@ Usage:
     cd backend
     python scripts/sync_openrouter_models.py
 
-Only top-tier exclusive models are synced — not available via native providers
-(Anthropic, OpenAI, Google). Prices are fetched live from OpenRouter API.
-Re-sync preserves admin-customized sell_multiplier and is_active.
+SPEC-116: only the OpenRouter models the governed catalog already has
+(provider='openrouter', lifecycle APPROVED/CANDIDATE) get their prices
+refreshed. Nothing is inserted. Prices are fetched live from OpenRouter API.
 """
 
 import os
@@ -32,66 +32,18 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
-DEFAULT_SELL_MULTIPLIER = 2.68
+# SPEC-116 U10 — UMA fonte só. A whitelist escrita à mão (cópia da de
+# `app/api/pricing.py`) saiu: os ids vêm do CATÁLOGO governado, pela mesma
+# função que o endpoint `/api/admin/pricing/sync-openrouter` usa. Só atualiza
+# preço de modelo que o catálogo já tem; NUNCA insere linha nova em llm_pricing
+# (modelo novo entra pela migration do catálogo, com ciclo de vida e classe de
+# dado — D-116-06: OpenRouter é laboratório).
 
-# ── Curated whitelist: top OpenRouter-exclusive models ──
-# Based on OpenRouter rankings & usage data (2025-2026).
-# Models from native providers (Anthropic, OpenAI, Google) are NOT included.
-CURATED_MODELS = [
-    # xAI Grok
-    "x-ai/grok-4",
-    "x-ai/grok-4.1-fast",
-    "x-ai/grok-3",
-    "x-ai/grok-3-mini",
-    "x-ai/grok-code-fast-1",
-    # DeepSeek
-    "deepseek/deepseek-v3.2",
-    "deepseek/deepseek-chat-v3-0324",
-    "deepseek/deepseek-r1",
-    "deepseek/deepseek-r1-0528",
-    # Meta Llama
-    "meta-llama/llama-4-maverick",
-    "meta-llama/llama-4-scout",
-    "meta-llama/llama-3.3-70b-instruct",
-    "meta-llama/llama-3.1-405b-instruct",
-    "meta-llama/llama-3.1-70b-instruct",
-    # Qwen
-    "qwen/qwen3.5-plus",
-    "qwen/qwen3-235b-a22b",
-    "qwen/qwen3-coder-480b-a35b-instruct",
-    "qwen/qwen-2.5-72b-instruct",
-    "qwen/qwen-2.5-coder-32b-instruct",
-    # Mistral
-    "mistralai/mistral-large-2411",
-    "mistralai/mistral-small-3.2-24b-instruct",
-    "mistralai/codestral-2501",
-    "mistralai/devstral-medium",
-    "mistralai/devstral-small",
-    # Cohere
-    "cohere/command-a",
-    "cohere/command-r-plus",
-    "cohere/command-r",
-    # MiniMax
-    "minimax/minimax-m2.5",
-    "minimax/minimax-m2.1",
-    "minimax/minimax-m2",
-    # GLM / Z.ai
-    "z-ai/glm-5",
-    "z-ai/glm-4.7",
-    "z-ai/glm-4.5-air",
-    # NVIDIA
-    "nvidia/nemotron-nano-12b-2-vl",
-    "nvidia/nemotron-3-nano-30b-a3b",
-    # Moonshot / Kimi
-    "moonshotai/kimi-k2.5",
-    "moonshotai/kimi-k2-0905",
-    "moonshotai/kimi-k2-0711",
-    # Microsoft
-    "microsoft/phi-4",
-    # Perplexity
-    "perplexity/sonar-pro",
-    "perplexity/sonar",
-]
+
+def modelos_para_sincronizar():
+    from app.api.pricing import modelos_openrouter_do_catalogo
+
+    return modelos_openrouter_do_catalogo()
 
 
 def fetch_openrouter_models():
@@ -116,7 +68,8 @@ def sync_models():
 
     print("\n" + "=" * 60)
     print("🔄 Syncing curated OpenRouter models...")
-    print(f"📋 {len(CURATED_MODELS)} models in whitelist")
+    curated = modelos_para_sincronizar()
+    print(f"📋 {len(curated)} OpenRouter models in the governed catalog")
     print("=" * 60 + "\n")
 
     try:
@@ -133,7 +86,7 @@ def sync_models():
     not_found_count = 0
     error_count = 0
 
-    for model_id in CURATED_MODELS:
+    for model_id in curated:
         model = models_by_id.get(model_id)
         if not model:
             print(f"  ⚠️  {model_id} — not found on OpenRouter")
@@ -148,8 +101,6 @@ def sync_models():
         input_per_million = round(prompt_price * 1_000_000, 4)
         output_per_million = round(completion_price * 1_000_000, 4)
 
-        display_name = model.get("name", model_id)
-
         try:
             # Check if model already exists
             existing = (
@@ -159,25 +110,16 @@ def sync_models():
                 .execute()
             )
 
-            if existing.data:
-                # UPDATE existing: only update prices, preserve sell_multiplier and is_active
-                supabase.table("llm_pricing").update({
-                    "input_price_per_million": input_per_million,
-                    "output_price_per_million": output_per_million,
-                    "display_name": display_name,
-                }).eq("model_name", model_id).execute()
-            else:
-                # INSERT new: use default sell_multiplier
-                supabase.table("llm_pricing").insert({
-                    "model_name": model_id,
-                    "input_price_per_million": input_per_million,
-                    "output_price_per_million": output_per_million,
-                    "unit": "token",
-                    "provider": "openrouter",
-                    "is_active": True,
-                    "display_name": display_name,
-                    "sell_multiplier": DEFAULT_SELL_MULTIPLIER,
-                }).execute()
+            if not existing.data:
+                # ⛔ nunca insere: modelo novo entra pelo catálogo (SPEC-116 U10)
+                print(f"  ⚠️  {model_id} — not in llm_pricing, skipped")
+                not_found_count += 1
+                continue
+            # UPDATE: only prices; preserve sell_multiplier, is_active, lifecycle
+            supabase.table("llm_pricing").update({
+                "input_price_per_million": input_per_million,
+                "output_price_per_million": output_per_million,
+            }).eq("model_name", model_id).execute()
 
             print(f"  ✅ {model_id} (${input_per_million:.2f}/${output_per_million:.2f} per MTok)")
             success_count += 1

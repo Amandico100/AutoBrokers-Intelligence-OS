@@ -224,7 +224,8 @@ export default function PricingPage() {
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${syncingOpenRouter ? 'animate-spin' : ''}`} />
-            {syncingOpenRouter ? 'Sincronizando...' : 'Sync OpenRouter'}
+            {/* SPEC-116 U10 — só atualiza o PREÇO dos modelos OpenRouter que o catálogo já tem; nunca cadastra modelo novo */}
+            {syncingOpenRouter ? 'Sincronizando...' : 'Atualizar preços OpenRouter'}
           </Button>
 
           <Button
@@ -439,7 +440,9 @@ export default function PricingPage() {
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
                     {pricing.length === 0
-                      ? 'Nenhum modelo encontrado. Execute o seed_pricing.py primeiro.'
+                      ? // SPEC-116 U10 — o catálogo nasce da migration de modelos (e o snapshot versionado
+                        // sai dele); o antigo script de semente virou só-leitura.
+                        'Nenhum modelo encontrado. O catálogo de modelos vem da migration de modelos da plataforma — confira se ela foi aplicada neste banco.'
                       : 'Nenhum modelo corresponde aos filtros.'}
                   </td>
                 </tr>

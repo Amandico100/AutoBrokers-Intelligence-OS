@@ -33,8 +33,13 @@ export interface CanonicalBlueprint {
   display_name_template: string;     // ex.: 'AutoBrokers da {{company_name}}'
   allow_direct_chat: boolean;
   is_subagent: boolean;
-  default_llm_provider: string;
-  default_llm_model: string;
+  // SPEC-116 U10 — NULL: o agente nasce SEM modelo gravado e herda a ROTA do
+  // seu papel (`llm_papeis`: chat_principal, atendimento, subagente — D-116-03).
+  // Um modelo gravado aqui envelhece: 📊 as duas linhas abaixo eram
+  // openai / gpt-4o-mini e TODA corretora nova nascia com o atendente no mini
+  // (SPEC-116 §2 achado 1). A rota troca em minutos, sem deploy e sem migration.
+  default_llm_provider: string | null;
+  default_llm_model: string | null;
   // Template do system prompt com {{variáveis}}. PROTEGIDO (tenant não edita o texto).
   system_prompt_template: string;
   variables: BlueprintVariable[];
@@ -62,8 +67,8 @@ export const AUTOBROKERS_CORE_BLUEPRINT: CanonicalBlueprint = {
   display_name_template: 'AutoBrokers da {{company_name}}',
   allow_direct_chat: true,
   is_subagent: false,
-  default_llm_provider: 'openai',
-  default_llm_model: 'gpt-4o-mini',
+  default_llm_provider: null, // SPEC-116: a rota do papel decide (ver CanonicalBlueprint)
+  default_llm_model: null,
   system_prompt_template: [
     'Voce e o AutoBrokers da {{company_name}} — o braco direito interno e inteligentissimo da corretora.',
     'Apresente-se como "AutoBrokers da {{company_name}}". A marca AutoBrokers nunca muda.',
@@ -99,8 +104,8 @@ export const EVEN_ATTENDANCE_BLUEPRINT: CanonicalBlueprint = {
   display_name_template: '{{attendant_name}}',
   allow_direct_chat: false,
   is_subagent: false,
-  default_llm_provider: 'openai',
-  default_llm_model: 'gpt-4o-mini',
+  default_llm_provider: null, // SPEC-116: a rota do papel decide (ver CanonicalBlueprint)
+  default_llm_model: null,
   system_prompt_template: [
     'Voce e {{attendant_name}}, atendente de assistencia e sinistro da {{company_name}} no WhatsApp.',
     'Atenda o segurado com clareza, empatia e seguranca.',
@@ -203,8 +208,8 @@ export interface EffectiveConfig {
   is_subagent: boolean;
   allow_direct_chat: boolean;
   system_prompt: string;
-  llm_provider: string;
-  llm_model: string;
+  llm_provider: string | null; // null = a rota do papel decide (SPEC-116)
+  llm_model: string | null;
   llm_temperature: number | null; // materializado (override seguro) ou null = default
   avatar_url: string | null;      // materializado
   voice: string | null;           // materializado
@@ -246,7 +251,9 @@ export function resolveEffectiveConfig(input: EffectiveConfigInput): EffectiveCo
   const rejected: string[] = [];
   const overrides_applied: Record<string, unknown> = {};
   const llm_provider = bp.default_llm_provider;
-  const llm_model = bp.default_llm_model; // modelo NUNCA é override do tenant (anti custo premium)
+  // modelo NUNCA é override do tenant (anti custo premium). SPEC-116: e também
+  // não é do blueprint — o default é NULL e quem decide é a rota do papel.
+  const llm_model = bp.default_llm_model;
   let llm_temperature: number | null = null;
   if (input.tenant_overrides) {
     for (const [k, v] of Object.entries(input.tenant_overrides)) {

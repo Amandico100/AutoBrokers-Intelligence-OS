@@ -23,8 +23,8 @@ export interface AgentCreatePayload {
   slug: string;
   is_subagent: boolean;
   allow_direct_chat: boolean;
-  llm_provider: string;
-  llm_model: string;
+  llm_provider: string | null; // SPEC-116: sempre null — a rota do papel decide
+  llm_model: string | null;
   agent_system_prompt?: string;
   is_active: boolean;
   /** Por que o agente nasceu desligado. Ausente = nasceu com voz. */
@@ -57,8 +57,12 @@ export function buildAgentCreatePayload(
     slug: `${base}-${suffix}`,
     is_subagent: b('is_subagent', true),
     allow_direct_chat: b('allow_direct_chat', false),
-    llm_provider: s('llm_provider') || 'openai',
-    llm_model: s('llm_model') || 'gpt-4o-mini',
+    // SPEC-116 U10 — o auxiliar nasce SEM modelo e herda a rota do seu papel
+    // (`llm_papeis`). 📊 Era um fallback fixo para gpt-4o-mini: todo auxiliar instalado nascia
+    // no mini. Um modelo que viesse no blueprint também é ignorado: o modelo
+    // não viaja no blueprint (ver BLUEPRINT_ALLOWED_KEYS).
+    llm_provider: null,
+    llm_model: null,
     agent_system_prompt: problemas.length ? undefined : prompt,
     // O agente mudo NASCE DESLIGADO. Era `true` fixo, uma linha abaixo de um
     // prompt que podia ter sumido do JSON — as duas decisões estavam lado a
@@ -135,8 +139,9 @@ const BLUEPRINT_ALLOWED_KEYS = [
   'slug',
   'is_subagent',
   'allow_direct_chat',
-  'llm_provider',
-  'llm_model',
+  // SPEC-116 U10 — `llm_provider`/`llm_model` SAÍRAM: o modelo não é
+  // inteligência do auxiliar, é da rota do papel. Um blueprint publicado a
+  // partir de um agente não congela mais o modelo que ele tinha naquele dia.
   'agent_system_prompt',
   'llm_temperature',
   'llm_max_tokens',

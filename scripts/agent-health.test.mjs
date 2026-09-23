@@ -30,7 +30,7 @@ function carregarTS(rel) {
 }
 
 const {
-  buildAgentDivergences, isHealthy, effectiveCoreModel, estadoDaVoz, personalizacaoDoPrompt, isMute,
+  buildAgentDivergences, isHealthy, modeloEfetivoPelaRota, estadoDaVoz, personalizacaoDoPrompt, isMute,
 } = carregarTS('lib/admin/agent-health.ts');
 
 let pass = 0, fail = 0; const failures = [];
@@ -64,10 +64,18 @@ const test = buildAgentDivergences([CORE_OK, EVEN_OK, { id: 't', name: 'TESTE Ru
 assert('agente de teste gera legacy_test_agent + ação archive', test.some((d) => d.kind === 'legacy_test_agent' && d.action === 'archive_agent' && d.agent_id === 't'));
 assert('teste não derruba saúde canônica', isHealthy(test));
 
-// modelo efetivo do Core
-assert('core mini → gpt-4o efetivo', effectiveCoreModel('gpt-4o-mini') === 'gpt-4o');
-assert('core já forte mantém', effectiveCoreModel('gpt-4.1') === 'gpt-4.1');
-assert('core sem modelo → gpt-4o', effectiveCoreModel(null) === 'gpt-4o');
+// modelo efetivo — SPEC-116 U10: vem da ROTA do papel, não da cópia TS da
+// antiga promoção "mini vira gpt-4o" (que saiu do backend e daqui).
+{
+  const rotas = [
+    { papel: 'chat_principal', provider: 'anthropic', modelo_primario: 'rota-do-chat' },
+    { papel: 'atendimento', provider: 'anthropic', modelo_primario: 'rota-do-atendimento' },
+  ];
+  assert('core → modelo da rota chat_principal', modeloEfetivoPelaRota('core', rotas).modelo === 'rota-do-chat');
+  assert('atendimento → modelo da rota atendimento', modeloEfetivoPelaRota('attendance', rotas).modelo === 'rota-do-atendimento');
+  assert('sem rota do papel → null (nunca um palpite)', modeloEfetivoPelaRota('subagent', rotas).modelo === null);
+  assert('rotas ilegíveis → null', modeloEfetivoPelaRota('core', null).modelo === null);
+}
 
 // ---------------------------------------------------------------------------
 // P-37 — O AGENTE MUDO. 📊 A AutoFleet tinha um core ATIVO de ZERO caracteres,

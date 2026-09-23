@@ -150,10 +150,40 @@ export function isHealthy(divs: Divergence[]): boolean {
   ].includes(d.kind));
 }
 
-/** Espelha a política de modelo do Core (informativo na UI; runtime real é o backend). */
-const ECONOMY = ['gpt-4o-mini', 'gpt-4o-mini-2024-07-18', 'gpt-3.5-turbo', 'gpt-4.1-mini'];
-export function effectiveCoreModel(storedModel: string | null | undefined): string {
-  const m = (storedModel || '').trim();
-  if (!m || ECONOMY.includes(m)) return 'gpt-4o';
-  return m;
+// ---------------------------------------------------------------------------
+// SPEC-116 U10 — o modelo EFETIVO vem da ROTA do papel, não de uma cópia TS
+// ---------------------------------------------------------------------------
+// 📊 Aqui morava `ECONOMY` + `effectiveCoreModel`: uma cópia em TypeScript da
+// antiga promoção do backend ("mini vira gpt-4o"), que ignorava até a variável
+// de ambiente que o backend lia (EVIDENCIAS/01 §d, fonte #10). A promoção saiu
+// do backend (model_policy.py) e a cópia sai daqui. O que o diagnóstico mostra
+// agora é a linha de `llm_papeis` do papel do agente — a mesma que o Model
+// Router lê.
+
+/** Uma linha de `llm_papeis`, só o que o diagnóstico precisa. */
+export interface RotaDoPapel { papel: string; provider: string | null; modelo_primario: string | null }
+
+/**
+ * A FUNÇÃO do agente (`agent_role`) → o PAPEL da rota. Igual a
+ * `backend/app/factories/model_policy.py:papel_do_agente` — a mesma tabela de
+ * casos é provada nos dois lados (`scripts/spec116-f4-nascimento.test.mjs` e
+ * `backend/tests/test_spec116_f4_nascimento_e_catalogo.py`).
+ */
+export function papelDoAgente(agentRole: string | null | undefined): string {
+  const r = String(agentRole ?? '').trim().toLowerCase();
+  if (r === '' || r === 'core') return 'chat_principal';
+  if (r === 'attendance' || r === 'insured_external') return 'atendimento';
+  return 'subagente';
+}
+
+/**
+ * O modelo que o agente usa DE FATO: o da rota do seu papel. Sem rota
+ * conhecida → null (a tela diz "rota indisponível"; nunca inventa um modelo).
+ */
+export function modeloEfetivoPelaRota(
+  agentRole: string | null | undefined, rotas: RotaDoPapel[] | null | undefined,
+): { papel: string; modelo: string | null; provedor: string | null } {
+  const papel = papelDoAgente(agentRole);
+  const rota = (rotas ?? []).find((r) => r.papel === papel);
+  return { papel, modelo: rota?.modelo_primario ?? null, provedor: rota?.provider ?? null };
 }

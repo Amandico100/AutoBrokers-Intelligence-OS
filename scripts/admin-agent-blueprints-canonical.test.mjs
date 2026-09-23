@@ -38,7 +38,10 @@ assert('renderTemplate var ausente vira vazio', renderTemplate('a{{y}}b', {}) ==
   assert('even display = nome escolhido', eff.display_name === 'Joana');
   assert('even prompt usa nome/empresa', eff.system_prompt.includes('Joana') && eff.system_prompt.includes('Autofleet'));
   const eff2 = resolveEffectiveConfig({ blueprint: EVEN_ATTENDANCE_BLUEPRINT, company_name: 'ABC', tenant_variables: { attendant_name: 'João', attendant_gender: 'masculino', attendant_pronoun: 'ele' } });
-  assert('even masculino aplicado', eff2.display_name === 'João' && eff2.system_prompt.includes('masculino') && eff2.variables_used.attendant_pronoun === 'ele');
+  // SPEC-045 v2 removeu gênero/pronome (a LLM resolve pelo contexto): a variável
+  // que não existe mais é IGNORADA, não vaza para o prompt. (Teste atualizado na
+  // SPEC-116 F4 — afirmava a verdade de antes, CLAUDE.md §9.3.)
+  assert('even: gênero/pronome removidos são ignorados', eff2.display_name === 'João' && !eff2.system_prompt.includes('masculino') && !('attendant_pronoun' in eff2.variables_used));
 }
 
 // Overrides: whitelist aplicada, fora da whitelist rejeitado
@@ -48,6 +51,8 @@ assert('renderTemplate var ausente vira vazio', renderTemplate('a{{y}}b', {}) ==
   assert('override MATERIALIZADO (avatar_url no objeto)', eff.avatar_url === 'http://a' && eff.overrides_applied.avatar_url === 'http://a');
   assert('override perigoso rejeitado (agent_system_prompt/role/llm_model)', eff.rejected_overrides.includes('agent_system_prompt') && eff.rejected_overrides.includes('role') && eff.rejected_overrides.includes('llm_model'));
   assert('llm_model não vira premium silenciosamente', eff.llm_model === EVEN_ATTENDANCE_BLUEPRINT.default_llm_model);
+  // SPEC-116 U10: e o default é NULO — o modelo é o da rota do papel
+  assert('modelo efetivo do blueprint é nulo (rota do papel decide)', eff.llm_model === null && eff.llm_provider === null);
   // voz materializada + llm_temperature só no core (whitelist)
   const effVoice = resolveEffectiveConfig({ blueprint: EVEN_ATTENDANCE_BLUEPRINT, company_name: 'X', tenant_overrides: { voice: 'feminina-br-1' } });
   assert('voz materializada', effVoice.voice === 'feminina-br-1');
@@ -92,25 +97,23 @@ console.log('\n[TA2-A] persistência de config');
 // [TA2-B] dropdowns, validação e guardrails-after-variables
 console.log('\n[TA2-B] validação + dropdowns + guardrails');
 {
-  // dropdowns: gênero, pronome e tom da Even têm options
-  const gender = EVEN_ATTENDANCE_BLUEPRINT.variables.find((v) => v.key === 'attendant_gender');
-  assert('gênero é select com 3 opções', gender.input_kind === 'select' && gender.options.length === 3);
-  assert('gênero inclui masculino/feminino/neutro', ['feminino', 'masculino', 'neutro'].every((g) => gender.options.some((o) => o.value === g)));
-  const pron = EVEN_ATTENDANCE_BLUEPRINT.variables.find((v) => v.key === 'attendant_pronoun');
-  assert('pronome é select', pron.input_kind === 'select' && pron.options.some((o) => o.value === 'ele'));
+  // dropdowns: SPEC-045 v2 removeu gênero e pronome; o tom da Even é select
+  assert('gênero/pronome não existem mais (SPEC-045 v2)', !EVEN_ATTENDANCE_BLUEPRINT.variables.some((v) => v.key === 'attendant_gender' || v.key === 'attendant_pronoun'));
+  const evenTone = EVEN_ATTENDANCE_BLUEPRINT.variables.find((v) => v.key === 'tone');
+  assert('tom da Even é select', evenTone.input_kind === 'select' && evenTone.options.length >= 3);
   const coreTone = AUTOBROKERS_CORE_BLUEPRINT.variables.find((v) => v.key === 'tone');
   assert('tom do core é select', coreTone.input_kind === 'select' && coreTone.options.length >= 3);
 
   // sanitize expõe metadados de UI (input_kind/options) p/ dropdown
   const sani = sanitizeAgentConfigForDashboard(EVEN_ATTENDANCE_BLUEPRINT, 'Resulta', null);
-  const sg = sani.editable_variables.find((v) => v.key === 'attendant_gender');
-  assert('sanitize entrega options de gênero', sg.input_kind === 'select' && sg.options.length === 3);
+  const sg = sani.editable_variables.find((v) => v.key === 'tone');
+  assert('sanitize entrega options do tom', sg.input_kind === 'select' && sg.options.length >= 3);
   assert('sanitize entrega override-fields com metadados', sani.editable_override_fields.some((f) => f.key === 'voice' && f.input_kind === 'select'));
   assert('voice tem opções de dropdown', sani.editable_override_fields.find((f) => f.key === 'voice').options.length > 0);
 
   // validação: opção inválida de enum é bloqueada
-  const bad = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { variables: { attendant_gender: 'alienígena' } });
-  assert('gênero fora da lista é bloqueado', bad.ok === false && bad.errors.some((e) => e.startsWith('attendant_gender')));
+  const bad = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { variables: { tone: 'alienígena' } });
+  assert('tom fora da lista é bloqueado', bad.ok === false && bad.errors.some((e) => e.startsWith('tone')));
 
   // validação: texto longo bloqueado
   const longText = 'x'.repeat(400);
@@ -141,8 +144,8 @@ console.log('\n[TA2-B] validação + dropdowns + guardrails');
   assert('avatar inseguro bloqueado na validação', badUrl.ok === false && badUrl.errors.some((e) => e.includes('avatar_url')));
 
   // entrada válida com dropdown passa e limpa
-  const good = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { variables: { attendant_name: 'Joana', attendant_gender: 'masculino' }, overrides: { voice: 'masculina-br-natural' } });
-  assert('entrada válida passa', good.ok === true && good.clean.variables.attendant_gender === 'masculino' && good.clean.overrides.voice === 'masculina-br-natural');
+  const good = validateTenantAgentInput(EVEN_ATTENDANCE_BLUEPRINT, { variables: { attendant_name: 'Joana', tone: 'direto e objetivo' }, overrides: { voice: 'masculina-br-natural' } });
+  assert('entrada válida passa', good.ok === true && good.clean.variables.tone === 'direto e objetivo' && good.clean.overrides.voice === 'masculina-br-natural');
 
   // guardrails SEMPRE depois da personalização
   const composed = composeSystemPromptWithGuardrails('TEXTO PERSONALIZADO DA CORRETORA', EVEN_ATTENDANCE_BLUEPRINT.immutable_guardrails);

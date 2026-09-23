@@ -19,6 +19,29 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin/pricing", tags=["Admin Pricing"])
 
 
+# ============================================================================
+# 🔴 SPEC-116 U10 — O OPENROUTER SINCRONIZA O QUE O CATÁLOGO GOVERNA, E SÓ ISSO
+# ============================================================================
+# 📊 Antes: `CURATED_MODELS` era uma lista de 41 ids escrita à mão AQUI e COPIADA
+# em `scripts/sync_openrouter_models.py` (EVIDENCIAS/01 §d, fontes #7 e #8), e o
+# sync INSERIA em `llm_pricing` linhas sem ciclo de vida, sem classe de dado —
+# modelos entrando no catálogo por fora da governança.
+# Agora a fonte é UMA: o catálogo (`model_policy.catalogo()`). O sync só
+# atualiza o PREÇO de modelos `provider='openrouter'` que o catálogo já tem com
+# ciclo de vida usável para escolha (APPROVED/CANDIDATE); nunca insere linha.
+# OpenRouter é LABORATÓRIO (D-116-06): para um modelo entrar, ele entra pela
+# migration/catálogo, com classe de dado e ciclo de vida — não por este sync.
+# O script de linha de comando importa esta função (uma fonte só).
+def modelos_openrouter_do_catalogo() -> List[str]:
+    from app.factories import model_policy as MP
+
+    return sorted(
+        nome for nome, linha in MP.catalogo().items()
+        if linha.get("provider") == "openrouter"
+        and linha.get("lifecycle") in ("APPROVED", "CANDIDATE")
+    )
+
+
 
 # ============================================================================
 # MODELS
@@ -227,64 +250,9 @@ async def sync_openrouter_models(
     from datetime import datetime
     from app.core.config import settings
 
-    # ── Curated whitelist: top OpenRouter-exclusive models ──
-    # Based on OpenRouter rankings & usage data (2025-2026).
-    # Models from native providers (Anthropic, OpenAI, Google) are NOT included.
-    CURATED_MODELS = [
-        # xAI Grok
-        "x-ai/grok-4",
-        "x-ai/grok-4.1-fast",
-        "x-ai/grok-3",
-        "x-ai/grok-3-mini",
-        "x-ai/grok-code-fast-1",
-        # DeepSeek
-        "deepseek/deepseek-v3.2",
-        "deepseek/deepseek-chat-v3-0324",
-        "deepseek/deepseek-r1",
-        "deepseek/deepseek-r1-0528",
-        # Meta Llama
-        "meta-llama/llama-4-maverick",
-        "meta-llama/llama-4-scout",
-        "meta-llama/llama-3.3-70b-instruct",
-        "meta-llama/llama-3.1-405b-instruct",
-        "meta-llama/llama-3.1-70b-instruct",
-        # Qwen
-        "qwen/qwen3.5-plus",
-        "qwen/qwen3-235b-a22b",
-        "qwen/qwen3-coder-480b-a35b-instruct",
-        "qwen/qwen-2.5-72b-instruct",
-        "qwen/qwen-2.5-coder-32b-instruct",
-        # Mistral
-        "mistralai/mistral-large-2411",
-        "mistralai/mistral-small-3.2-24b-instruct",
-        "mistralai/codestral-2501",
-        "mistralai/devstral-medium",
-        "mistralai/devstral-small",
-        # Cohere
-        "cohere/command-a",
-        "cohere/command-r-plus",
-        "cohere/command-r",
-        # MiniMax
-        "minimax/minimax-m2.5",
-        "minimax/minimax-m2.1",
-        "minimax/minimax-m2",
-        # GLM / Z.ai
-        "z-ai/glm-5",
-        "z-ai/glm-4.7",
-        "z-ai/glm-4.5-air",
-        # NVIDIA
-        "nvidia/nemotron-nano-12b-2-vl",
-        "nvidia/nemotron-3-nano-30b-a3b",
-        # Moonshot / Kimi
-        "moonshotai/kimi-k2.5",
-        "moonshotai/kimi-k2-0905",
-        "moonshotai/kimi-k2-0711",
-        # Microsoft
-        "microsoft/phi-4",
-        # Perplexity
-        "perplexity/sonar-pro",
-        "perplexity/sonar",
-    ]
+    # SPEC-116 U10 — a lista vem do CATÁLOGO governado (ver
+    # `modelos_openrouter_do_catalogo`), não de uma whitelist escrita aqui.
+    CURATED_MODELS = modelos_openrouter_do_catalogo()
 
     try:
         openrouter_key = settings.OPENROUTER_API_KEY
@@ -341,24 +309,16 @@ async def sync_openrouter_models(
                     .execute()
                 )
 
-                if existing.data:
-                    supabase.client.table("llm_pricing").update({
-                        "input_price_per_million": input_per_million,
-                        "output_price_per_million": output_per_million,
-                        "display_name": model.get("name", model_id),
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }).eq("model_name", model_id).execute()
-                else:
-                    supabase.client.table("llm_pricing").insert({
-                        "model_name": model_id,
-                        "input_price_per_million": input_per_million,
-                        "output_price_per_million": output_per_million,
-                        "unit": "token",
-                        "provider": "openrouter",
-                        "is_active": True,
-                        "display_name": model.get("name", model_id),
-                        "sell_multiplier": 2.68,
-                    }).execute()
+                if not existing.data:
+                    # ⛔ nunca insere: modelo novo entra pelo catálogo (SPEC-116 U10)
+                    logger.warning(f"[Pricing API] {model_id} não está em llm_pricing — ignorado")
+                    not_found_count += 1
+                    continue
+                supabase.client.table("llm_pricing").update({
+                    "input_price_per_million": input_per_million,
+                    "output_price_per_million": output_per_million,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }).eq("model_name", model_id).execute()
 
                 success_count += 1
 

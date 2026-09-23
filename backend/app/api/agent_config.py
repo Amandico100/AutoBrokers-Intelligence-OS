@@ -19,11 +19,7 @@ from app.services.portao_do_prompt import (
     conferir_prompt_gravado,
     problemas_da_escrita_de_prompt,
 )
-from app.services.langchain_service import (
-    SUPPORTED_PROVIDERS,
-    get_models_for_provider,
-    get_supported_providers,
-)
+from app.factories import model_policy as MP
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +48,206 @@ router = APIRouter()
 
 
 
+# =============================================================================
+# 🔴 SPEC-116 U10 — A TELA ESCOLHE NO CATÁLOGO, E SÓ NELE
+# =============================================================================
+#
+# 📊 Antes (EVIDENCIAS/01 §d, fontes #1–#3): a lista que a tela oferecia era
+# `LLM_MODEL_OPTIONS` escrita à mão no TSX ("Dezembro 2025", sem Claude 5), o
+# dropdown de visão oferecia o Claude 3.5 Sonnet de 20240620 (RETIRADO da API) e
+# esta validação consultava uma TERCEIRA lista (`SUPPORTED_PROVIDERS` de
+# langchain_service.py). Três catálogos, nenhum deles o governado.
+#
+# Agora os três leem UM: `model_policy.catalogo()` (= `llm_pricing` expandido,
+# com o snapshot versionado quando o banco não responde). Regras de ESCOLHA:
+#
+#     APPROVED · CANDIDATE     → pode ser escolhido
+#     DEPRECATED               → só permanece se JÁ está gravado (aparece como
+#                                "legado"); nunca é escolha nova (D-116-11)
+#     BLOCKED · HISTORICAL     → nunca
+#     fora do catálogo         → nunca
+#
+# E o papel do agente manda: para o chat principal e o atendimento, o modelo é o
+# da ROTA do papel (`llm_papeis`, D-116-03) — a tela mostra o efetivo, não
+# oferece um seletor que não decide nada.
+
+LIFECYCLES_ESCOLHIVEIS = ("APPROVED", "CANDIDATE")
+
+#: como o ciclo de vida aparece para gente (a tela nunca mostra o código cru)
+ROTULO_DO_CICLO = {
+    "APPROVED": "aprovado",
+    "CANDIDATE": "em avaliação",
+    "DEPRECATED": "legado — em saída",
+    "BLOCKED": "bloqueado",
+    "HISTORICAL": "retirado",
+}
+
+NOME_DO_PROVEDOR = {
+    "openai": "OpenAI (GPT)",
+    "anthropic": "Anthropic (Claude)",
+    "google": "Google (Gemini)",
+    "openrouter": "OpenRouter (laboratório)",
+    "xai": "xAI (Grok) — laboratório",
+    "xiaomi": "Xiaomi (MiMo) — laboratório",
+    "deepseek": "DeepSeek — laboratório",
+    "zai": "Z.ai (GLM) — laboratório",
+    "cohere": "Cohere",
+    "groq": "Groq",
+    "mistral": "Mistral",
+}
+
+#: a FUNÇÃO do agente (coluna `agent_role`) → o PAPEL que a rota conhece.
+#: Não é uma segunda regra: é `model_policy.papel_do_agente` aplicado às
+#: funções que existem, para a tela não precisar reimplementá-lo.
+FUNCOES_DO_AGENTE = ("core", "attendance", "subagent")
+
+
+class ModeloRecusado(ValueError):
+    """Escolha de modelo que o catálogo não permite — a mensagem é para gente."""
+
+
+def validar_modelo_escolhido(
+    provider: Optional[str], model: Optional[str], gravado_atual: Optional[str] = None,
+    *, tipo: str = "chat",
+) -> None:
+    """Recusa, com mensagem humana, o modelo que não pode ser ESCOLHIDO.
+
+    `gravado_atual` é o que já está na linha: um DEPRECATED que já está lá pode
+    ser mantido (a tela o mostra como legado), mas não pode ser escolhido de novo.
+    """
+    if not model:
+        raise ModeloRecusado("Escolha um modelo da lista.")
+    linha = MP.catalogo().get(model)
+    if linha is None:
+        raise ModeloRecusado(
+            f"O modelo '{model}' não está no catálogo de modelos aprovados da plataforma "
+            "e não pode ser usado. Escolha um da lista.")
+    prov = linha.get("provider")
+    if provider and provider != prov:
+        raise ModeloRecusado(f"O modelo '{model}' é do provedor '{prov}', não de '{provider}'.")
+    if tipo and linha.get("tipo") not in (None, tipo):
+        raise ModeloRecusado(f"O modelo '{model}' não serve para esta função.")
+    ciclo = linha.get("lifecycle")
+    if ciclo in LIFECYCLES_ESCOLHIVEIS:
+        return
+    if ciclo == "DEPRECATED" and gravado_atual and model == gravado_atual:
+        return  # legado que já estava gravado: mantém, não oferece
+    sucessor = linha.get("substituido_por")
+    dica = f" Use '{sucessor}' ou outro modelo aprovado." if sucessor else " Escolha um modelo aprovado."
+    if ciclo == "DEPRECATED":
+        raise ModeloRecusado(
+            f"O modelo '{model}' está em saída (legado) e não pode ser escolhido para configurações novas.{dica}")
+    raise ModeloRecusado(
+        f"O modelo '{model}' foi {ROTULO_DO_CICLO.get(ciclo, 'bloqueado')} pela plataforma e não pode ser usado.{dica}")
+
+
+def _exibicao_do_catalogo() -> Dict[str, dict]:
+    """Nome de exibição e preço por modelo — só para MOSTRAR, nunca para decidir.
+
+    Lê o mesmo `llm_pricing` (o catálogo); sem banco, o snapshot gerado dele.
+    """
+    colunas = "model_name,display_name,input_price_per_million,output_price_per_million"
+    try:
+        dados = get_supabase_client().client.table("llm_pricing").select(colunas).execute().data or []
+        if dados:
+            return {r["model_name"]: r for r in dados}
+    except Exception as e:  # noqa: BLE001 — só exibição
+        logger.warning("[agent_config] exibição do catálogo sem banco (%s): usando snapshot", type(e).__name__)
+    try:
+        import json
+
+        doc = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        return dict(doc.get("catalogo") or {})
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _modelo_para_tela(nome: str, linha: dict, exib: dict) -> dict:
+    ciclo = linha.get("lifecycle")
+    e = exib.get(nome) or {}
+    return {
+        "id": nome,
+        "display_name": e.get("display_name") or nome,
+        "provider": linha.get("provider"),
+        "tipo": linha.get("tipo"),
+        "lifecycle": ciclo,
+        "lifecycle_rotulo": ROTULO_DO_CICLO.get(ciclo, "desconhecido"),
+        "escolhivel": ciclo in LIFECYCLES_ESCOLHIVEIS,
+        "legado": ciclo == "DEPRECATED",
+        "classes_de_dado": sorted(linha.get("classes_de_dado") or []),
+        "preco_entrada_por_milhao": e.get("input_price_per_million"),
+        "preco_saida_por_milhao": e.get("output_price_per_million"),
+        "substituido_por": linha.get("substituido_por"),
+        "sem_temperatura": (linha.get("capacidades") or {}).get("sampling_ok") is False,
+        "niveis_de_esforco": (linha.get("capacidades") or {}).get("niveis_de_esforco"),
+    }
+
+
+def modelos_da_tela(tipo: str = "chat") -> List[dict]:
+    """O catálogo que a tela lista: nunca BLOCKED/HISTORICAL; DEPRECATED como legado."""
+    exib = _exibicao_do_catalogo()
+    out = []
+    for nome, linha in sorted(MP.catalogo().items()):
+        if linha.get("lifecycle") not in MP.LIFECYCLES_USAVEIS:
+            continue
+        if tipo and linha.get("tipo") != tipo:
+            continue
+        out.append(_modelo_para_tela(nome, linha, exib))
+    return out
+
+
+def rotas_da_tela() -> dict:
+    """O modelo EFETIVO de cada papel, pelo MESMO resolvedor que a fábrica usa."""
+    exib = _exibicao_do_catalogo()
+    papeis: Dict[str, dict] = {}
+    for papel in MP.papeis_conhecidos():
+        try:
+            r = MP.resolver(papel)
+        except MP.ModeloNaoResolvido as e:
+            papeis[papel] = {"papel": papel, "erro": str(e)}
+            continue
+        papeis[papel] = {
+            "papel": papel,
+            "provider": r.provider,
+            "model": r.model,
+            "display_name": (exib.get(r.model) or {}).get("display_name") or r.model,
+            "effort": r.effort,
+            "lifecycle": r.lifecycle,
+            "lifecycle_rotulo": ROTULO_DO_CICLO.get(r.lifecycle, "desconhecido"),
+            "sem_temperatura": (r.capacidades or {}).get("sampling_ok") is False,
+            "reserva": ({"provider": r.reserva.provider, "model": r.reserva.model}
+                        if r.reserva else None),
+            "origem": r.origem,
+            "versao_da_rota": r.versao_da_rota,
+        }
+    return {
+        "papeis": papeis,
+        "papel_por_funcao": {f: MP.papel_do_agente(f) for f in FUNCOES_DO_AGENTE},
+        # o que decide cada função: sem funcao cadastrada = chat principal
+        "papel_sem_funcao": MP.papel_do_agente(None),
+    }
+
+
 # ===== MODELS =====
+
+
+class ModeloDoCatalogo(BaseModel):
+    """Um modelo do catálogo governado, como a tela o mostra."""
+
+    id: str
+    display_name: str
+    provider: Optional[str] = None
+    tipo: Optional[str] = None
+    lifecycle: Optional[str] = None
+    lifecycle_rotulo: str = ""
+    escolhivel: bool = False
+    legado: bool = False
+    classes_de_dado: List[str] = Field(default_factory=list)
+    preco_entrada_por_milhao: Optional[float] = None
+    preco_saida_por_milhao: Optional[float] = None
+    substituido_por: Optional[str] = None
+    sem_temperatura: bool = False
+    niveis_de_esforco: Optional[List[str]] = None
 
 
 class ProviderInfo(BaseModel):
@@ -60,7 +255,10 @@ class ProviderInfo(BaseModel):
 
     name: str = Field(..., description="Nome do provider (openai, anthropic, google)")
     display_name: str = Field(..., description="Nome para exibir na UI")
-    models_count: int = Field(..., description="Número de modelos disponíveis")
+    models_count: int = Field(..., description="Número de modelos que podem ser ESCOLHIDOS")
+    # SPEC-116 U10 — acrescentado (o formato antigo continua válido)
+    modelos: List[ModeloDoCatalogo] = Field(
+        default_factory=list, description="Modelos do catálogo (sem retirados/bloqueados)")
 
 
 class AgentConfigRequest(BaseModel):
@@ -103,10 +301,10 @@ class AgentConfigRequest(BaseModel):
         default=True, description="Permitir busca na web via Tavily"
     )
     allow_vision: bool = Field(
-        default=False, description="Permitir análise de imagens (GPT-4o, Claude 3.5)"
+        default=False, description="Permitir análise de imagens"
     )
     vision_model: Optional[str] = Field(
-        None, description="Modelo de visão: gpt-4o ou claude-3-5-sonnet-20240620"
+        None, description="Legado: a leitura de imagem segue a rota do papel 'visao' (SPEC-116)"
     )
     vision_api_key: Optional[str] = Field(
         None, description="API Key para visão (separada da conversação)"
@@ -114,20 +312,11 @@ class AgentConfigRequest(BaseModel):
 
     @validator("llm_provider")
     def validate_provider(cls, v):
-        if v not in SUPPORTED_PROVIDERS:
-            raise ValueError(
-                f"Provider '{v}' not supported. Available: {list(SUPPORTED_PROVIDERS.keys())}"
-            )
-        return v
-
-    @validator("llm_model")
-    def validate_model(cls, v, values):
-        provider = values.get("llm_provider")
-        # OpenRouter: accept any model (validation done by OpenRouter API)
-        if provider == "openrouter":
-            return v
-        if provider and v not in SUPPORTED_PROVIDERS.get(provider, []):
-            raise ValueError(f"Model '{v}' not available for provider '{provider}'")
+        # SPEC-116 U10: a lista de provedores é a do Model Router, não a de
+        # langchain_service. O MODELO é conferido no endpoint, contra o catálogo
+        # e contra o que já está gravado (um legado gravado pode permanecer).
+        if v not in MP.PROVEDORES_CONHECIDOS:
+            raise ValueError(f"O provedor '{v}' não é conhecido pela plataforma.")
         return v
 
 
@@ -180,76 +369,52 @@ class TestConnectionResponse(BaseModel):
 @router.get("/providers", response_model=List[ProviderInfo])
 async def list_providers():
     """
-    Lista providers disponíveis (openai, anthropic, google)
+    Lista os provedores do CATÁLOGO governado, cada um com os seus modelos de
+    conversa (SPEC-116 U10). `models_count` conta só os que podem ser escolhidos.
+    Retirados e bloqueados não aparecem; legados aparecem marcados.
     """
+    por_provedor: Dict[str, List[dict]] = {}
+    for m in modelos_da_tela("chat"):
+        por_provedor.setdefault(m["provider"], []).append(m)
+
     providers = []
-    display_names = {
-        "openai": "OpenAI (GPT)",
-        "anthropic": "Anthropic (Claude)",
-        "google": "Google (Gemini)",
-        "openrouter": "OpenRouter (Multi-provider)",
-    }
-
-    for provider_name, models in get_supported_providers().items():
-        count = len(models)
-        if provider_name == "openrouter":
-            # Fetch count dynamically from llm_pricing
-            try:
-                supabase = get_supabase_client()
-                result = (
-                    supabase.client.table("llm_pricing")
-                    .select("model_name", count="exact", head=True)
-                    .eq("provider", "openrouter")
-                    .eq("is_active", True)
-                    .execute()
-                )
-                count = result.count if result.count is not None else 0
-            except Exception as e:
-                logger.error(f"Error counting OpenRouter models: {e}")
-                count = 0
-
+    for provider_name in sorted(por_provedor):
+        modelos = por_provedor[provider_name]
         providers.append(
             ProviderInfo(
                 name=provider_name,
-                display_name=display_names.get(provider_name, provider_name.title()),
-                models_count=count,
+                display_name=NOME_DO_PROVEDOR.get(provider_name, provider_name.title()),
+                models_count=sum(1 for m in modelos if m["escolhivel"]),
+                modelos=[ModeloDoCatalogo(**m) for m in modelos],
             )
         )
-
     return providers
 
 
 @router.get("/models/{provider}", response_model=List[str])
 async def list_models(provider: str):
     """
-    Lista modelos disponíveis para um provider.
-    Para OpenRouter, busca dinamicamente da tabela llm_pricing.
+    Modelos de conversa que podem ser ESCOLHIDOS para um provedor — do catálogo
+    governado (SPEC-116 U10), inclusive o OpenRouter (laboratório, D-116-06):
+    só entra o que o catálogo cadastrou com ciclo de vida.
     """
-    if provider == "openrouter":
-        # Fetch active OpenRouter models from llm_pricing
-        supabase = get_supabase_client()
-        result = (
-            supabase.client.table("llm_pricing")
-            .select("model_name")
-            .eq("provider", "openrouter")
-            .eq("is_active", True)
-            .order("model_name")
-            .execute()
-        )
-        if result.data:
-            return [row["model_name"] for row in result.data]
-        return []
-
-    # Direct providers (existing logic)
-    models = get_models_for_provider(provider)
-
-    if not models:
+    if provider not in MP.PROVEDORES_CONHECIDOS:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider '{provider}' not found or has no models",
+            detail=f"Provedor '{provider}' não é conhecido pela plataforma",
         )
+    return [m["id"] for m in modelos_da_tela("chat")
+            if m["provider"] == provider and m["escolhivel"]]
 
-    return models
+
+@router.get("/rotas")
+async def list_rotas():
+    """
+    O modelo EFETIVO de cada papel (chat principal, atendimento, visão, memória…),
+    resolvido pelo mesmo Model Router que a fábrica usa. A tela mostra isto no
+    lugar de um seletor para os papéis cuja rota decide (SPEC-116 U10, D-116-03).
+    """
+    return rotas_da_tela()
 
 
 @router.get("/config/{company_id}", response_model=AgentConfigResponse,
@@ -340,6 +505,17 @@ async def save_agent_config(company_id: str, config: AgentConfigRequest):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Company {company_id} not found",
             )
+
+        # SPEC-116 U10 — o modelo é conferido contra o CATÁLOGO governado, com
+        # o que já está gravado ao lado (um legado gravado pode permanecer; um
+        # retirado, nunca). Recusa com a frase para gente, não com stack trace.
+        try:
+            validar_modelo_escolhido(
+                config.llm_provider, config.llm_model, gravado_atual=company.get("llm_model"))
+            if config.vision_model and config.vision_model != company.get("vision_model"):
+                validar_modelo_escolhido(None, config.vision_model)
+        except ModeloRecusado as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
         # Preparar dados para atualizar
         update_data = {

@@ -18,8 +18,10 @@ export interface BlueprintArtifact {
   display_name_template: string;
   allow_direct_chat: boolean;
   is_subagent: boolean;
-  llm_provider: string;
-  llm_model: string;
+  // SPEC-116 U10 — sempre null nos artefatos novos: o modelo é da rota do papel
+  // (`llm_papeis`), não da release. Releases antigas podem ter um valor gravado.
+  llm_provider: string | null;
+  llm_model: string | null;
   system_prompt_template: string;
   variables: unknown;
   immutable_guardrails: string[];
@@ -126,11 +128,12 @@ export function assertReleasePublishable(artifact: BlueprintArtifact): PublishCh
 
 // --- SPEC-013 Fase B P3: artefato derivado do SOURCE AGENT editado no Studio ----
 // Estrutura travada (role/audience/marca/variáveis/guardrails) vem do blueprint;
-// o conteúdo editável (prompt-base, modelo, capability_keys) vem do Source Agent.
+// o conteúdo editável (prompt-base, capability_keys) vem do Source Agent. O modelo
+// não (SPEC-116 U10): ele é da rota do papel.
 export interface SourceAgentInput {
   agent_system_prompt?: string | null;   // prompt-base EDITADO no Studio
-  llm_provider?: string | null;
-  llm_model?: string | null;
+  llm_provider?: string | null;           // SPEC-116: aceito e IGNORADO (a rota decide)
+  llm_model?: string | null;              // SPEC-116: aceito e IGNORADO
   declared_capability_keys?: string[];    // capacidades homologadas (Fase C liga providers)
 }
 
@@ -149,8 +152,11 @@ export function buildArtifactFromSourceAgent(bp: CanonicalBlueprint, src: Source
     display_name_template: bp.display_name_template,
     allow_direct_chat: bp.allow_direct_chat,
     is_subagent: bp.is_subagent,
-    llm_provider: (src.llm_provider && src.llm_provider.trim()) ? src.llm_provider.trim() : bp.default_llm_provider,
-    llm_model: (src.llm_model && src.llm_model.trim()) ? src.llm_model.trim() : bp.default_llm_model,
+    // SPEC-116 U10 — o modelo do Source Agent NÃO entra na release: quem decide
+    // é a rota do papel. Congelar aqui o modelo do dia da edição era como um
+    // modelo velho voltava pela porta dos fundos.
+    llm_provider: bp.default_llm_provider,
+    llm_model: bp.default_llm_model,
     system_prompt_template: editedPrompt, // EDITÁVEL no Studio
     variables: bp.variables,              // governado pelo blueprint
     immutable_guardrails: bp.immutable_guardrails, // TRAVADO (não enfraquece)
@@ -166,7 +172,8 @@ export function auxiliaryBlueprintKey(slug: string): string { return `aux-${slug
 
 export function buildAuxiliaryArtifact(src: {
   name: string; slug: string; agent_system_prompt?: string | null;
-  llm_provider?: string | null; llm_model?: string | null; agent_role?: string | null;
+  llm_provider?: string | null; llm_model?: string | null; // SPEC-116: ignorados (a rota decide)
+  agent_role?: string | null;
   declared_capability_keys?: string[];
 }): BlueprintArtifact {
   return {
@@ -179,8 +186,10 @@ export function buildAuxiliaryArtifact(src: {
     display_name_template: src.name,
     allow_direct_chat: false,
     is_subagent: true,
-    llm_provider: (src.llm_provider && src.llm_provider.trim()) ? src.llm_provider.trim() : 'openai',
-    llm_model: (src.llm_model && src.llm_model.trim()) ? src.llm_model.trim() : 'gpt-4o-mini',
+    // SPEC-116 U10 — sem modelo: o auxiliar herda a rota do papel. 📊 O
+    // fallback era openai / gpt-4o-mini.
+    llm_provider: null,
+    llm_model: null,
     system_prompt_template: (src.agent_system_prompt && src.agent_system_prompt.trim()) ? src.agent_system_prompt : `Voce e o auxiliar ${src.name}.`,
     variables: [],
     immutable_guardrails: ['sem_acesso_a_segredos', 'respeita_approval_e_gates', 'nunca_executa_acao_externa_sem_autorizacao'],
