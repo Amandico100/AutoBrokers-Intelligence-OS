@@ -116,6 +116,19 @@ modelos do grupo, e a contagem das exceções do silêncio que o checklist da 00
 
 **Depois de trocar qualquer uma: Implantar o serviço.** Variável nova só vale depois do Implantar.
 
+- [ ] **0.4.c 🔴 TROCAR AGORA as senhas que estão nas capturas do Agger** (acrescentado em 22/09). As três
+      capturas de tela (arquivos HAR) que vieram para a investigação do Agger foram gravadas na sessão de uma
+      pessoa da corretora e contêm **a senha dela no Aggilizador** e **as senhas dos portais das seguradoras**
+      (📊 22/09: as senhas dos portais aparecem em **todas** as 28 respostas de acompanhamento do cálculo —
+      Research Pack da EXTRA-002 §1, §2.1). **O que fazer:** (1) trocar a senha desse usuário no Aggilizador;
+      (2) trocar a senha de cada portal de seguradora cadastrado no Aggilizador; (3) **nunca** anexar esses
+      arquivos a chat, drive ou e-mail; (4) apagá-los depois da parte 2 da EXTRA-002 (antes disso a execução
+      extrai só as respostas, sem senha). **Não bloqueia nada, mas é a primeira coisa a fazer.** · **EXTRA-002 ·
+      P-E002-HAR**
+- [ ] **0.4.d Rodízio das credenciais de produção coladas no chat da sessão da EXTRA-002** (22/09: chaves de
+      API, banco, portais). Elas passaram a existir em mais um lugar. É a mesma tabela do 0.4.b — só sobe a
+      urgência. · **EXTRA-002 · P-PILOTO-09**
+
 ---
 
 ## 1 · Preparar o ensaio — pré-requisitos
@@ -496,6 +509,39 @@ bloqueiam nada.
 
 ---
 
+## 8.7 · Bloco H — cotar e renovar pelo Agger (EXTRA-002, parte 2)
+
+> **O que a investigação descobriu (22/09):** a tela do Aggilizador é uma "casca" sobre um serviço que o
+> computador consegue chamar diretamente — dispara o cálculo, espera, lê o resultado já padronizado por
+> seguradora, com PDF. 📊 Em 2 cálculos medidos, as primeiras ofertas completas chegaram em 30 s e 229 s, e o
+> conjunto fechou em ~7 min. Ou seja: **tecnicamente dá**. O que falta é **só da sua mão**: a permissão da Agger,
+> um usuário próprio para o robô e a senha dele guardada no produto. Sem isso, a prova ao vivo (parte 2) não
+> roda — e a Renovação Feita (EXTRA-003) não tem motor.
+>
+> 🔴 **Antes deste bloco: o 0.4.c** (trocar as senhas que estão nas capturas).
+
+- [ ] **H.1 Confirmar a conexão "InfoCap RESULTA" que está dentro da Amandus.** 📊 Ela foi criada em 21/09 às
+      20:29 **sob a corretora Amandus**; a Resulta ficou sem conexão InfoCap que funcione. **Onde:** painel →
+      conexões da Amandus. **O que decidir:** foi de propósito? Se **não**, diga no chat e a execução a recria
+      na corretora certa, com prova de isolamento. **Bloqueia:** o experimento E0 (quantas renovações de
+      automóvel por dia) para a Resulta. · **EXTRA-002 · P-E002-X1**
+- [ ] **H.2 Conversar com a Agger** — três perguntas, na mesma conversa: (1) existe **API oficial** ou acordo
+      de integração? (2) se não, vocês **autorizam por escrito** o acesso programático pelos mesmos endereços
+      que a tela usa? (3) quanto custa **um usuário a mais** (o do robô)? 🔴 **Sem essa autorização, nenhuma
+      automação** — nem por navegador. **Bloqueia:** E1–E4 da parte 2. · **EXTRA-002 · D-E002-01**
+- [ ] **H.3 Criar o usuário robô no Aggilizador** da Resulta (e da AutoFleet), com um nome que diga o que é
+      (💭 ex.: "AutoBrokers"). **Por quê:** o Aggilizador aceita **uma sessão por usuário** — se o robô usasse o
+      login de uma pessoa, ele a derrubaria no meio do trabalho. **Bloqueia:** E1. · **EXTRA-002 · D-E002-02**
+- [ ] **H.4 Guardar a senha do robô no AutoBrokers**, na **tela de conexões** da corretora — **nunca** em
+      arquivo, chat ou e-mail. **Bloqueia:** E1. · **EXTRA-002**
+- [ ] **H.5 Decidir D-E002-01 a 08** (ver §10, linha 14). Todas já vêm com a opção recomendada e a nota; se
+      você não disser nada, a execução segue a recomendação. **Não bloqueia.** · **EXTRA-002**
+
+**Bloqueia alguma coisa?** H.2, H.3 e H.4 bloqueiam a parte 2 inteira (e, com ela, a EXTRA-003). H.1 bloqueia
+só a medição de volume da Resulta.
+
+---
+
 ## 9 · Depois de tudo — desfazer o ensaio
 
 - [ ] **9.1** Desativar o destino do **grupo de canário** (painel → Personalização → Suporte humano) —
@@ -527,6 +573,7 @@ bloqueiam nada.
 | 11 | **D-E00110-F1 · o contato do segurado no portal** | hoje o portal recebe o telefone da corretora, marca `recebe WhatsApp = não` e a loja liga para a equipe. A recomendação (nota 88) é pôr **celular e e-mail do segurado**, mantendo a corretora como quem abriu. Só o canário prova que o portal aceita | `FOUNDER-DECISIONS.md` |
 | 12 | **D-E00110-F2 · quando ligar `PORTAL_VIDROS_API_FIRST`** | ligar antes do canário abriria pedido real sem nenhuma prova ao vivo (nota 20). A recomendação é: **só depois do canário verde** (nota 95) | `FOUNDER-DECISIONS.md` |
 | 13 | **D-E00110-F3 · a 001.10.1 (a continuação) entra antes da 001.8?** | sem continuação, **toda** parada depois do pedido aberto termina em mão humana. Recomendação 💭: sim (80); a 001.8 é isolamento entre corretoras (70), e sobe de prioridade quando entrar a 3ª corretora | `FOUNDER-DECISIONS.md` |
+| 14 | **D-E002-01 a 08 · o Agger, a renovação e a fila** (22/09, propostas) | as oito já vêm com a recomendação: pedir à Agger a **API oficial e a autorização** na mesma conversa, sem autorização nenhuma automação (01: 92 × 84 × 58 × 25) · **usuário robô** por corretora (02: 95) · calcular em D-30 e **recalcular** perto do fechamento, porque a cotação vale 5 dias (03: 88) · **o corretor revisa e envia** (04: 92) · **rótulos transparentes** em vez de "a melhor" escolhida por IA (05: 94) · a 003 em **duas partes**, fundação e ciclo (06: 88) · a posição na fila (07: 78 × 65 — diferença pequena, é a que mais precisa de você) · o Agger como porta **de cotação**, não de gestão (08: 90) | `FOUNDER-DECISIONS.md` · proposta 002 §10 |
 
 ---
 
