@@ -182,18 +182,31 @@ async def continuar_atendimento(page, params: Dict[str, Any],
                            mensagem="o portal diz que este atendimento foi cancelado. "
                                     "Nada foi gravado.")
 
-    # ---- 4. a operação, decidida pelo estado REAL -------------------------
-    if operacao == "agendar":
+    # ---- 4. JÁ AGENDADO? conclui LENDO (JUIZ B1 / RED B2c) -----------------
+    # 🔴 Qualquer operação: o agregado que acabamos de ler diz "Agendado para"
+    # ⇒ o desfecho é esse, e nenhum `POST /agendamentos` sai — nem com outra
+    # escolha, nem com uma preferência herdada, nem numa releitura.
+    ja = await AF.concluir_se_ja_agendado(ex)
+    if ja is not None:
+        return ja
+
+    # ---- 5. a operação, decidida pelo estado REAL -------------------------
+    escolha = dict(cont.get("escolha") or {})
+    # 🔴 RED B2(b): a releitura de um job `agendar` HERDA a escolha explícita
+    # dele (`montar_job_de_continuacao`) — é isso que cumpre o "já estou
+    # tentando de novo" dito ao segurado. Só a escolha que ELE fez; nada mais.
+    if operacao == "agendar" or (operacao == "reler" and escolha):
         if not codigo:
             return AF._parar(ex, "desfecho_ilegivel",
                              "o atendimento ainda nao tem numero no portal; nao ha "
                              "agenda a escolher. Nada foi gravado.")
-        return await AF.agendar_escolha(ex, dict(cont.get("escolha") or {}))
+        return await AF.agendar_escolha(ex, escolha)
 
     if codigo:
         # responder · reler · vistoria sobre pedido materializado: o desfecho
         # de HOJE (opções → agregado → roteador → agenda/ramo 7/conclusão).
-        return await AF.fase_desfecho(ex)
+        # 🔴 RED B2(a): a RELEITURA nunca agenda pela preferência — ela lê.
+        return await AF.fase_desfecho(ex, agendar_por_preferencia=operacao != "reler")
 
     if sessao_info.get("incerto"):
         # 🔴 A origem parou em `maybe_committed` e o agregado não prova que a
@@ -203,4 +216,5 @@ async def continuar_atendimento(page, params: Dict[str, Any],
                          "portal ainda nao mostra o numero. Nada foi repetido: a "
                          "equipe confere antes.")
     etapa = str(sessao_info.get("etapa") or ST.ETAPA_PECA)
-    return await AF.rodar_fases(ex, a_partir=etapa)
+    return await AF.rodar_fases(ex, a_partir=etapa,
+                                agendar_por_preferencia=operacao != "reler")
