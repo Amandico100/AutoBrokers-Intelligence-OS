@@ -82,7 +82,34 @@ _URL_PADRAO = {"openai": "https://api.openai.com/v1", "anthropic": "https://api.
 
 
 class ModeloDoPortalIndisponivel(Exception):
-    """Sem rota, rota recusada, sem chave, sem transporte ou o provedor falhou."""
+    """Sem rota, rota recusada, sem chave, sem transporte ou o provedor falhou.
+
+    `transitoria` (SPEC-116-RESERVA): o provedor NÃO respondeu — 408/409/429/5xx,
+    timeout ou conexão. Só essa falha autoriza a reserva da rota; 400/401/404 e
+    resposta ilegível são defeito nosso (ou da chave) e outro modelo o esconderia.
+    """
+
+    def __init__(self, mensagem: str = "", *, transitoria: bool = False):
+        super().__init__(mensagem)
+        self.transitoria = transitoria
+
+
+#: o que a `relogio_do_modelo.motivo_de_reserva` do backend também aceita.
+_STATUS_TRANSITORIO = (408, 409, 429)
+
+
+def _falha_transitoria(e: BaseException) -> bool:
+    """Timeout ou conexão (a exceção ou a causa dela)."""
+    vistos, atual = set(), e
+    while atual is not None and id(atual) not in vistos:
+        vistos.add(id(atual))
+        if isinstance(atual, (_httpx_real.TransportError, asyncio.TimeoutError, TimeoutError,
+                              ConnectionError)):
+            return True
+        if isinstance(atual, ModeloDoPortalIndisponivel) and atual.transitoria:
+            return True
+        atual = atual.__cause__
+    return False
 
 
 @dataclass(frozen=True)
@@ -331,7 +358,9 @@ async def _postar_no_provedor(pedido: Dict[str, Any], cabecalhos: Dict[str, str]
     async with httpx.AsyncClient(timeout=TIMEOUT_DO_PROVEDOR) as c:
         r = await c.post(pedido["url"], headers=cabecalhos, json=pedido["corpo"])
         if r.status_code >= 400:
-            raise ModeloDoPortalIndisponivel(f"o provedor respondeu HTTP {r.status_code}")
+            raise ModeloDoPortalIndisponivel(
+                f"o provedor respondeu HTTP {r.status_code}",
+                transitoria=r.status_code in _STATUS_TRANSITORIO or r.status_code >= 500)
         return r.json()
 
 
@@ -518,7 +547,8 @@ async def _uma_chamada(modelo: ModeloDoPortal, system: str, user: str,
         except ModeloDoPortalIndisponivel:
             raise
         except Exception as e:  # noqa: BLE001
-            raise ModeloDoPortalIndisponivel(f"o provedor falhou ({type(e).__name__})") from e
+            raise ModeloDoPortalIndisponivel(f"o provedor falhou ({type(e).__name__})",
+                                             transitoria=_falha_transitoria(e)) from e
         if isinstance(dados, dict) and dados.get("error"):
             raise ModeloDoPortalIndisponivel("o provedor devolveu erro")
         return dados
@@ -528,7 +558,8 @@ async def _uma_chamada(modelo: ModeloDoPortal, system: str, user: str,
     except ModeloDoPortalIndisponivel:
         raise
     except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001 — rede, timeout, JSON
-        raise ModeloDoPortalIndisponivel(f"o provedor falhou ({type(e).__name__})") from e
+        raise ModeloDoPortalIndisponivel(f"o provedor falhou ({type(e).__name__})",
+                                         transitoria=_falha_transitoria(e)) from e
 
 
 async def decidir(system: str, user: str, *, company_id: Any = None, job_id: Any = None,
@@ -554,6 +585,11 @@ async def decidir(system: str, user: str, *, company_id: Any = None, job_id: Any
         if modelo.reserva is None:
             logger.error("[PORTAL/MODELO] %s/%s falhou e a rota não declara reserva: %s",
                          modelo.provider, modelo.model, falha)
+            raise
+        if not falha.transitoria:
+            # ⛔ 400/401/404/resposta ilegível: outro modelo esconderia o defeito.
+            logger.error("[PORTAL/MODELO] %s/%s falhou sem ser transitório (%s) — "
+                         "a reserva NÃO entra", modelo.provider, modelo.model, falha)
             raise
         motivo = str(falha)[:200]
         logger.warning("[PORTAL/MODELO] %s/%s falhou (%s) — RESERVA declarada na rota: %s/%s",

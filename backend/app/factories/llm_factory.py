@@ -563,3 +563,60 @@ class LLMFactory:
                 "thinking": {"type": "disabled" if esforco == "none" else "enabled"}}
         llm_params.update(kwargs_de_relogio())
         return ChatOpenAICompativel(**llm_params)
+
+
+# ---------------------------------------------------------------------------
+# SPEC-116-RESERVA — a RESERVA da rota para quem faz UMA chamada de decisão
+# ---------------------------------------------------------------------------
+async def invocar_com_reserva(papel: str, mensagens: list, *, company_id: Optional[str] = None,
+                              agent_id: Optional[str] = None,
+                              service_type: Optional[str] = None,
+                              classe_de_dado: Optional[str] = None):
+    """UMA chamada de decisão pelo papel, com a RESERVA declarada na rota.
+
+    Para quem chama `create_llm(papel=…)` → `ainvoke` direto, SEM ferramentas
+    (o cérebro do acionamento: webhook, sentinela, `o_cerebro_ja_sabe`). O
+    turno de conversa com ferramentas tem a sua própria regra
+    (`nodes._invocar_o_modelo`); o portal, a dele (`modelo_do_portal.decidir`).
+
+      · breaker do provedor primário ABERTO → a reserva, sem tocar no primário;
+      · 429 / 5xx / timeout / conexão (`motivo_de_reserva`) → a reserva, UMA vez;
+      · 400/401/404/contrato → o erro SOBE (outro modelo esconderia o defeito);
+      · rota sem reserva → o erro SOBE, como antes. ⛔ Nunca um modelo por omissão.
+
+    O ledger da reserva grava `reserva_usada=True` + `motivo_reserva` (o motivo
+    vai no `config.metadata`, que o `CostCallbackHandler` lê).
+    """
+    from app.core.relogio_do_modelo import estado_do_breaker, motivo_de_reserva
+
+    resolvido = LLMFactory.resolver_para({}, {}, papel=papel, classe_de_dado=classe_de_dado)
+    reserva = resolvido.reserva
+
+    async def _pela_reserva(motivo: str):
+        logger.warning("[Factory] 🔁 RESERVA do papel %s: %s/%s → %s/%s (motivo=%s)",
+                       papel, resolvido.provider, resolvido.model,
+                       reserva.provider, reserva.model, motivo)
+        llm_r = LLMFactory.create_llm({}, {}, company_id=company_id, agent_id=agent_id,
+                                      service_type=service_type, modelo_resolvido=reserva,
+                                      reserva_usada=True)
+        return await llm_r.ainvoke(mensagens, config={"metadata": {"motivo_reserva": motivo}})
+
+    if reserva is not None:
+        try:
+            estado = (await estado_do_breaker(resolvido.provider)).get("estado")
+        except Exception:  # noqa: BLE001 — fail-open: sem breaker, tenta o primário
+            estado = None
+        if estado == "aberto":
+            return await _pela_reserva("breaker_aberto")
+
+    llm = LLMFactory.create_llm({}, {}, company_id=company_id, agent_id=agent_id,
+                                service_type=service_type, modelo_resolvido=resolvido)
+    try:
+        return await llm.ainvoke(mensagens)
+    except Exception as exc:
+        if reserva is None:
+            raise
+        motivo = motivo_de_reserva(exc)
+        if motivo is None:
+            raise
+        return await _pela_reserva(motivo)

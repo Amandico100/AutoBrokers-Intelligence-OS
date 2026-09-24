@@ -2499,7 +2499,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-09-24T18:06:19+00:00",
+ "gerado_em": "2026-09-24T22:00:43+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {
@@ -2508,13 +2508,13 @@
    "esforco": "high",
    "esforco_reserva": null,
    "modelo_primario": "gpt-6-sol",
-   "modelo_reserva": null,
-   "motivo": "Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "modelo_reserva": "claude-opus-5-5",
+   "motivo": "SPEC-116-RESERVA · Founder 24/09/2026 — reserva cross-provider P0",
    "papel": "atendimento",
    "provider": "openai",
-   "provider_reserva": null,
+   "provider_reserva": "anthropic",
    "risco": "critico",
-   "versao": 2
+   "versao": 3
   },
   "atlas_parser": {
    "classe_de_dado": "interno",
@@ -2564,13 +2564,13 @@
    "esforco": "medium",
    "esforco_reserva": null,
    "modelo_primario": "gpt-6-sol",
-   "modelo_reserva": null,
-   "motivo": "Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "modelo_reserva": "claude-opus-5-5",
+   "motivo": "SPEC-116-RESERVA · Founder 24/09/2026 — reserva cross-provider P0",
    "papel": "chat_principal",
    "provider": "openai",
-   "provider_reserva": null,
+   "provider_reserva": "anthropic",
    "risco": "alto",
-   "versao": 2
+   "versao": 3
   },
   "chunking_agentico": {
    "classe_de_dado": "interno",
@@ -2604,15 +2604,15 @@
    "classe_de_dado": "pii",
    "descricao": "acionamento: fala com a URA da seguradora — webhook.py, dispatch_watchdog.py, dispatch_router.py (env DISPATCH_LLM_MODEL=claude-opus-5 em prod)",
    "esforco": null,
-   "esforco_reserva": null,
+   "esforco_reserva": "high",
    "modelo_primario": "claude-opus-5-5",
-   "modelo_reserva": null,
-   "motivo": "Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "modelo_reserva": "gpt-6-sol",
+   "motivo": "SPEC-116-RESERVA · Founder 24/09/2026 — reserva cross-provider P0",
    "papel": "dispatch",
    "provider": "anthropic",
-   "provider_reserva": null,
+   "provider_reserva": "openai",
    "risco": "critico",
-   "versao": 2
+   "versao": 3
   },
   "distiller": {
    "classe_de_dado": "pii",
@@ -2746,13 +2746,13 @@
    "esforco": "medium",
    "esforco_reserva": null,
    "modelo_primario": "gpt-6-sol",
-   "modelo_reserva": null,
-   "motivo": "SPEC-116 Onda A: bancada 23/09 portal N1 sol-medium 43/43 vs gpt-4o 38/41; luna-medium 45/45 fica como desafiante da Onda B (D-116-18)",
+   "modelo_reserva": "claude-opus-5-5",
+   "motivo": "SPEC-116-RESERVA · Founder 24/09/2026 — reserva cross-provider P0",
    "papel": "portal_decisao",
    "provider": "openai",
-   "provider_reserva": null,
+   "provider_reserva": "anthropic",
    "risco": "critico",
-   "versao": 2
+   "versao": 3
   },
   "prompt_optimizer": {
    "classe_de_dado": "pii",

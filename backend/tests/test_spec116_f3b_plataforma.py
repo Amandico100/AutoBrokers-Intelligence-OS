@@ -162,6 +162,20 @@ def borda(monkeypatch):
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-teste-falsa")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-teste-falsa")
+
+    # SPEC-116-RESERVA: a rota `dispatch` declara reserva, então o helper
+    # (`invocar_com_reserva`) pergunta pelo BREAKER antes de chamar. O breaker é
+    # borda (Redis): um breaker aberto herdado do ambiente (Redis local, ou a
+    # memória do processo depois de outra suíte) mandaria a chamada à reserva e
+    # o teste mediria o ambiente, não o código. Breaker limpo e isolado por teste.
+    import app.core.relogio_do_modelo as _R
+
+    _breaker = _R._RedisDeMemoria({})
+
+    async def _cliente_limpo():
+        return _breaker
+
+    monkeypatch.setattr(_R, "_cliente", _cliente_limpo)
     yield type("Borda", (), {"cat": cat, "pap": pap, "banco": banco, "prov": prov})
     MP.limpar_cache()
 
@@ -192,6 +206,8 @@ def test_dispatch_do_sentinela_pede_o_papel_e_ignora_o_env(borda, monkeypatch):
     assert "temperature" not in borda.prov.payloads[0], "Claude 5 recusa sampling (400)"
     linha = _ultima_linha(borda)
     assert linha["details"]["papel"] == "dispatch" and linha["company_id"] == EMPRESA_A
+    # SPEC-116-RESERVA: passa por `invocar_com_reserva`; primário de pé → sem reserva
+    assert linha["details"]["reserva_usada"] is False
 
     # trocar a ROTA (banco) troca o modelo — sem deploy, sem env
     borda.pap["dispatch"]["modelo_primario"] = "claude-sonnet-5"
@@ -217,6 +233,7 @@ def test_dispatch_do_cerebro_antes_do_segurado_pede_o_papel(borda, monkeypatch):
     assert borda.prov.modelos == ["claude-opus-5-5"]  # a rota `dispatch` (24/09/2026)
     linha = _ultima_linha(borda)
     assert linha["details"]["papel"] == "dispatch" and linha["company_id"] == EMPRESA_B
+    assert linha["details"]["reserva_usada"] is False  # SPEC-116-RESERVA: pelo helper
 
 
 def test_dispatch_sem_rota_nao_cai_em_modelo_nenhum(borda):

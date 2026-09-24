@@ -241,6 +241,11 @@ def test_trocar_a_rota_troca_o_modelo_sem_deploy(borda):
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("status", [429, 500, 503, 404])
 def test_erro_do_provedor_nao_vira_chamada_ao_mini(borda, status):
+    # SPEC-116-RESERVA (§9.3, a lição migra): a rota de hoje DECLARA reserva; a
+    # premissa deste teste é a rota SEM reserva — a reserva tem os testes dela
+    # (`test_spec116_reserva_portal.py`).
+    borda.rest.pap["portal_decisao"].update(provider_reserva=None, modelo_reserva=None,
+                                            esforco_reserva=None)
     borda.prov.status = [status, 200]
     acao = _decidir()
     assert borda.prov.modelos == [MODELO_HOJE], (

@@ -1103,7 +1103,7 @@ async def process_whatsapp_message_background(
                 try:
                     from langchain_core.messages import HumanMessage, SystemMessage
 
-                    from app.factories.llm_factory import LLMFactory
+                    from app.factories.llm_factory import invocar_com_reserva
                     from app.services.insurer_dispatch_service import build_human_phase_messages
 
                     # CÉREBRO v2 (SPEC-034): passa o Mapa de URA ativo quando existir.
@@ -1125,15 +1125,12 @@ async def process_whatsapp_message_background(
                     # lidos aqui — o `or "gpt-4o"` escondia um modelo velho
                     # sempre que o env faltasse. Sem rota → ModeloNaoResolvido,
                     # capturado abaixo (acumula; nunca responde às cegas).
-                    llm = LLMFactory.create_llm(
-                        company_config={},
-                        agent_data={},
+                    # SPEC-116-RESERVA: falha transitória do primário → a
+                    # reserva da rota (uma chamada de decisão, sem ferramentas).
+                    result = await invocar_com_reserva(
+                        "dispatch",
+                        [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])],
                         company_id=str(company_id),
-                        agent_id=None,
-                        papel="dispatch",
-                    )
-                    result = await llm.ainvoke(
-                        [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]
                     )
                     return getattr(result, "content", None)
                 except Exception as e:  # noqa: BLE001

@@ -34,6 +34,12 @@
 > acerta mais: **memória** (📊 39 de 45 acertos, era 32), **leitura de foto** (📊 30 de 30, era 28) e **decisão no portal de
 > vidros** (📊 43 de 43, era 38 de 41). O chat, o atendimento, a cobrança e a conversa com a seguradora **não mudaram**:
 > a medição parou antes, por falta de crédito. Relatório: `reports/SPEC-116-EXECUTION-REPORT.md`.
+>
+> **Estado em 24/09/2026:** a Onda A foi concluída (`ccb2b0d`: chat e atendimento no GPT-6 Sol, volume no GPT-6 Luna,
+> Opus 5.5 no lugar do Opus 5, transcrição no gpt-transcribe). E a **SPEC-116-RESERVA** acrescentou um **modelo reserva de
+> outra empresa** nos 4 caminhos que não podem parar: se a OpenAI cair, o atendimento, o chat e o portal respondem pelo
+> Claude Opus 5.5; se a Anthropic cair, a conversa com a seguradora responde pelo GPT-6 Sol. Relatório:
+> `reports/SPEC-116-RESERVA-REPORT.md`. Tarefa nova: **S116.11**.
 
 - [ ] **S116.1** 🔴 **Recarregar o crédito da Anthropic e da OpenAI — e ligar a recarga automática** · **bloqueia o produto**
       **Onde:** `console.anthropic.com` → Settings → **Billing** → comprar crédito e ligar **auto-reload** ·
@@ -105,6 +111,24 @@
 - [ ] **S116.10** *(opcional)* **Confirmar a D-116-18** — no portal e na foto ficou o modelo de **maior margem** (GPT-6 Sol)
       e não o mais barato que empatou (GPT-6 Luna, 📊 ~1/15 do custo por acerto). Recomendação: manter o Sol até o canário
       e depois testar a Luna (Onda B). Se preferir já a Luna, é uma linha — peça no chat.
+
+- [ ] **S116.11** **Depois de Implantar a SPEC-116-RESERVA: apagar 3 variáveis velhas e conferir a reserva** (24/09/2026)
+      **Onde:** EasyPanel → `smith-api` → Environment, e depois `smith-worker` → Environment. Apague **as que existirem**:
+      `DISPATCH_LLM_PROVIDER` · `DISPATCH_LLM_MODEL` · `ATLAS_PARSER_MODEL`. Clique Implantar.
+      **Por quê:** 📊 24/09 (`rg` no código) nenhum arquivo as lê mais — quem escolhe o modelo é a rota no banco. Deixá-las
+      lá só faz alguém trocá-las achando que muda alguma coisa.
+      **Conferir a reserva** (Supabase → SQL Editor, cole e rode):
+      ```sql
+      select papel, provider, modelo_primario, esforco, provider_reserva, modelo_reserva, esforco_reserva
+        from public.llm_papeis where modelo_reserva is not null order by papel;
+      ```
+      **O que esperar:** 4 linhas — `atendimento`, `chat_principal`, `portal_decisao` com reserva `anthropic / claude-opus-5-5`,
+      e `dispatch` com reserva `openai / gpt-6-sol / high`. E, no dia em que a reserva entrar de verdade:
+      ```sql
+      select created_at, details->>'papel' papel, model_name, details->>'motivo_reserva' motivo
+        from public.token_usage_logs where details->>'reserva_usada' = 'true' order by created_at desc limit 20;
+      ```
+      **Se der errado:** 0 linhas na primeira consulta = a migration `20260924_02` não foi aplicada — peça no chat.
 
 ---
 

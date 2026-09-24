@@ -793,7 +793,7 @@ async def _adaptive_reply(company_id: str, session: Dict[str, Any], insurer_text
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.factories.llm_factory import LLMFactory
+        from app.factories.llm_factory import invocar_com_reserva
         from app.services.insurer_dispatch_service import build_human_phase_messages
 
         # CÉREBRO v2 (SPEC-034 Onda 2): com Mapa de URA ativo, o cérebro enxerga
@@ -816,14 +816,11 @@ async def _adaptive_reply(company_id: str, session: Dict[str, Any], insurer_text
         # não env nem literal. `DISPATCH_LLM_PROVIDER/_MODEL` ficam IGNORADOS
         # (📊 prod = claude-opus-5 = a rota). Sem rota → ModeloNaoResolvido →
         # o except abaixo devolve None e o corredor segue sem o cérebro.
-        llm = LLMFactory.create_llm(
-            company_config={}, agent_data={},
+        # SPEC-116-RESERVA: falha transitória do primário → a reserva da rota.
+        result = await invocar_com_reserva(
+            "dispatch",
+            [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])],
             company_id=str(company_id),
-            agent_id=None,
-            papel="dispatch",
-        )
-        result = await llm.ainvoke(
-            [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]
         )
         content = getattr(result, "content", None)
         return str(content).strip() if content else None

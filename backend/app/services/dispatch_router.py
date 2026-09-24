@@ -3389,21 +3389,22 @@ async def o_cerebro_ja_sabe(company_id: str, session: Dict[str, Any], *, slot: s
 
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        if llm is None:
-            from app.factories.llm_factory import LLMFactory
-
-            # SPEC-116 U8: a ROTA `dispatch` escolhe o modelo; `DISPATCH_LLM_*`
-            # ficam IGNORADOS. Sem rota → erro → o except devolve (None, "").
-            llm = LLMFactory.create_llm(
-                company_config={}, agent_data={}, company_id=str(company_id),
-                agent_id=None, papel="dispatch")
         corpo = "\n\n".join("### fonte: %s\n%s" % (o, t) for o, t in fontes)
         pedido = ("A seguradora mostrou esta tela:\n%s\n\nO que falta e: %s\n\n"
                   "FONTES (o unico lugar de onde a resposta pode sair):\n%s"
                   % (str(tela or "")[:1200], str(rotulo or slot)[:200], corpo))
-        resposta = await asyncio.wait_for(
-            llm.ainvoke([SystemMessage(content=_INSTRUCAO_DO_LOCALIZADOR),
-                         HumanMessage(content=pedido)]), timeout=20)
+        mensagens = [SystemMessage(content=_INSTRUCAO_DO_LOCALIZADOR),
+                     HumanMessage(content=pedido)]
+        if llm is not None:  # injetado (testes)
+            chamada = llm.ainvoke(mensagens)
+        else:
+            from app.factories.llm_factory import invocar_com_reserva
+
+            # SPEC-116 U8: a ROTA `dispatch` escolhe o modelo; `DISPATCH_LLM_*`
+            # ficam IGNORADOS. SPEC-116-RESERVA: falha transitória do primário →
+            # a reserva da rota. Sem rota → erro → o except devolve (None, "").
+            chamada = invocar_com_reserva("dispatch", mensagens, company_id=str(company_id))
+        resposta = await asyncio.wait_for(chamada, timeout=20)
         bruto = str(getattr(resposta, "content", resposta) or "").strip()
     except Exception as e:  # noqa: BLE001 — o Cérebro nunca derruba o corredor
         logger.warning("[CEREBRO ANTES] consulta não concluída (%s)", type(e).__name__)
