@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
 # --------------------------------------------------------------------------
@@ -130,11 +130,36 @@ EP_HORARIOS_DISPONIVEIS = "/agendamentos/horarios-disponiveis"
 EP_CONSULTAR_DISTANCIAS = "/lojas/consultar-distancias"     # POST de LEITURA
 EP_CONSULTA_CEP = "/transportes-proprios/consultas-cep"
 
+# --------------------------------------------------------------------------
+# Endpoints promovidos pela EXTRA-001.10.1 — capturas de 21/09/2026
+# --------------------------------------------------------------------------
+# 📊 `POST /agendamentos` MEDIDO 1× (HAR `YELUM VIDRO LATERAL` [048], idêntico
+# no bloco [0–60] de `YELUM LATARIA`): corpo de 7 chaves
+# `{CodigoCliente, DataDeAgendamento "AAAA-MM-DD", Horario "HH:MM",
+#   CodigoProduto, QuantidadeTempoServico, QuantidadeTempoPermanencia, Encaixe}`
+# → `{"ServicoAgendado": true, "ExibirPesquisaDeSatisfacao": false}`, e o
+# `GET /atendimentos` seguinte [049] traz "Agendado para 22/09/2026 às 16:00".
+# Era `EP_AGENDAMENTOS_NAO_MEDIDO` (0 exercícios em 4 HAR); a captura o destrava.
+EP_AGENDAMENTOS = "/agendamentos"
+# 📊 Ramo 7 do roteador do SPA (`PermiteOpcaoVistoria`), medido 1× cada no HAR
+# `YELUM LATARIA` [091] `GET /atendimentos-prioridades/{cod}` → `false`,
+# [092] `POST /atendimentos-prioridades {CodigoAtendimento, Situacao,
+# DataLimite, Observacao}` e [093] `POST /ocorrencias {CodigoAtendimento,
+# Ocorrencia}`. Só depois delas o portal concluiu ("com o analista").
+EP_PRIORIDADES = "/atendimentos-prioridades"
+EP_OCORRENCIAS = "/ocorrencias"
+# 📊 Declarados no bundle e NUNCA exercidos. O prefixo `/agendamentos` virou
+# APPROVED — por isso estes dois são registrados EXPLICITAMENTE como CANDIDATE:
+# sem a linha, o casamento pelo prefixo mais longo os deixaria sair como se
+# fossem o agendamento medido (ver `pode_sair`, que agora exige o endereço
+# EXATO para escrita).
+EP_AGENDAMENTOS_ENCAIXES_NAO_MEDIDO = "/agendamentos/encaixes"
+EP_AGENDAMENTOS_INSATISFACAO_NAO_MEDIDO = "/agendamentos/insatisfacao"
+
 # 📊 Declarados no bundle, NÃO exercidos em nenhuma captura. Só entram em uso
 # depois de medidos — SPEC-073 G3: candidato ≠ aprovado.
 EP_FINALIZAR_NAO_MEDIDO = "/atendimentos/finalizar"
 EP_VISTORIA_MOBILE_NAO_MEDIDO = "/atendimentos/vistoriamobile"
-EP_AGENDAMENTOS_NAO_MEDIDO = "/agendamentos"
 EP_DIRECIONAMENTOS_NAO_MEDIDO = "/direcionamentos"
 EP_FOTOGRAFIAS_WEB_NAO_MEDIDO = "/atendimentos-fotografias/web"
 EP_MOTIVOS_CANCELAMENTO_NAO_MEDIDO = "/atendimentos/motivos-cancelamento"
@@ -191,8 +216,13 @@ ESTADO_DO_ENDPOINT: Dict[str, str] = {
     EP_EMITIR_FORMALIZADO: APPROVED,
     EP_CONSULTAR_DISTANCIAS: APPROVED,     # POST de LEITURA (rota, não negócio)
     EP_CANCELAR: APPROVED,                 # 📊 2 exercícios (NOVO, ANT)
+    # ---- EXTRA-001.10.1: medidos nas capturas de 21/09 ----------------------
+    EP_AGENDAMENTOS: APPROVED,             # 📊 POST 1× (LATERAL [048])
+    EP_PRIORIDADES: APPROVED,              # 📊 GET /{cod} 1× + POST 1× (LATARIA)
+    EP_OCORRENCIAS: APPROVED,              # 📊 POST 1× (LATARIA [093])
     # ---- escritas que NUNCA vimos acontecer --------------------------------
-    EP_AGENDAMENTOS_NAO_MEDIDO: CANDIDATE,
+    EP_AGENDAMENTOS_ENCAIXES_NAO_MEDIDO: CANDIDATE,
+    EP_AGENDAMENTOS_INSATISFACAO_NAO_MEDIDO: CANDIDATE,
     EP_DIRECIONAMENTOS_NAO_MEDIDO: CANDIDATE,
     EP_FOTOGRAFIAS_WEB_NAO_MEDIDO: CANDIDATE,
     EP_FINALIZAR_NAO_MEDIDO: CANDIDATE,
@@ -225,7 +255,11 @@ METODO_DA_ESCRITA: Dict[str, str] = {
     EP_CONSULTAR_DISTANCIAS: "POST",
     EP_CANCELAR: "PUT",
     EP_ABANDONAR: "PATCH",
-    EP_AGENDAMENTOS_NAO_MEDIDO: "POST",
+    EP_AGENDAMENTOS: "POST",
+    EP_PRIORIDADES: "POST",
+    EP_OCORRENCIAS: "POST",
+    EP_AGENDAMENTOS_ENCAIXES_NAO_MEDIDO: "POST",
+    EP_AGENDAMENTOS_INSATISFACAO_NAO_MEDIDO: "POST",
     EP_DIRECIONAMENTOS_NAO_MEDIDO: "POST",
     EP_FOTOGRAFIAS_WEB_NAO_MEDIDO: "POST",
     EP_FINALIZAR_NAO_MEDIDO: "PATCH",
@@ -305,9 +339,27 @@ def pode_sair(caminho: Any, metodo: Any = "GET") -> bool:
     estado = estado_do_endpoint(caminho)
     if estado == CANDIDATE:
         return False
-    if not estado and str(metodo or "").upper() in METODOS_DE_ESCRITA:
+    escrita = str(metodo or "").upper() in METODOS_DE_ESCRITA
+    if not estado and escrita:
+        return False
+    if escrita and not _escrita_no_endereco_exato(caminho):
+        # 🔴 EXTRA-001.10.1: com `/agendamentos` APPROVED, o casamento pelo
+        # prefixo mais longo deixaria `POST /agendamentos/qualquer-coisa` sair
+        # como se fosse o agendamento medido — e o mesmo já valia para
+        # `POST /atendimentos/livres-escolhas` (prefixo `/atendimentos`).
+        # Escrita só sai no endereço EXATO do registro, ou nele + `/{codigo}`
+        # (📊 `emitir-atendimento-formalizado/{cod}`, `atendimentos-prioridades/{cod}`).
         return False
     return True
+
+
+def _escrita_no_endereco_exato(caminho: Any) -> bool:
+    """O caminho é o endpoint do registro, ou o endpoint + `/{codigo}`?"""
+    c = _RE_CODIGO_NA_URL.sub("/{codigo}", _caminho_normalizado(caminho))
+    base = _caminho_normalizado(endpoint_do_caminho(caminho))
+    if not base:
+        return False
+    return c in (base, base + "/{codigo}")
 
 
 # --------------------------------------------------------------------------
@@ -1035,7 +1087,18 @@ def script_de_finalizacao(atendimento: Any) -> Dict[str, Any]:
     por_titulo = {_norm(i.get("Titulo")): str(i.get("Valor") or "").strip()
                   for i in infos}
     loja_nome = por_titulo.get("loja", "")
+    # 📊 EXTRA-001.10.1 — HAR LATERAL [049], logo depois do `POST /agendamentos`:
+    # `{"Titulo": "Agendado para", "Valor": "22/09/2026 às 16:00"}` e
+    # `{"Titulo": "Permanência do veículo na loja", "Valor": "01:30 Hrs."}`.
+    # 🔴 É esta linha, LIDA do portal, que prova o agendamento — nunca o
+    # `ServicoAgendado: true` sozinho (0 ocorrências da chave no bundle).
+    agendado = por_titulo.get("agendado para", "")
+    m_ag = re.search(r"(\d{2}/\d{2}/\d{4})\D+(\d{2}:\d{2})", agendado)
     return {
+        "agendamento": {
+            "data": m_ag.group(1), "horario": m_ag.group(2),
+            "permanencia": por_titulo.get("permanencia do veiculo na loja", ""),
+        } if m_ag else None,
         "titulo": str(sf.get("Titulo") or "").strip(),
         "rodape": str(sf.get("Rodape") or "").strip(),
         "mensagem_adas": str(sf.get("MensagemAdas") or "").strip(),
@@ -1055,6 +1118,98 @@ def script_de_finalizacao(atendimento: Any) -> Dict[str, Any]:
             if "(Entre" in por_titulo.get("telefone", "") else "",
         } if loja_nome else None,
     }
+
+
+# --------------------------------------------------------------------------
+# 🔴 A AGENDA — quais blocos o segurado PODE escolher (regra do bundle)
+# --------------------------------------------------------------------------
+# 📊 Laudo do bundle `app-231e920f7d`, função `I(o,e,a)`:
+#     bloqueado = (modo encaixe OU EncaixeCeven=="Sim")
+#                    ? QuantidadeEncaixeParametrizadoDisponivel == 0
+#                    : QuantidadeDisponivel == 0
+#     … OR previsão de peça, só quando a loja NÃO tem estoque próprio e TemPeca
+# e o `Encaixe` do POST é `true` só quando o usuário escolheu o MODO encaixe.
+# 📊 HAR LATERAL [045]: 40 blocos, TODOS com `QuantidadeDisponivel: 0`; 8 com
+# `QuantidadeEncaixeParametrizadoDisponivel: 1`; o escolhido (16:00) foi com
+# `Encaixe: true`. Um bloco livre nos dois modos vai no NORMAL (é o que a tela
+# abre primeiro; encaixe é a aba de exceção).
+def blocos_livres(horarios: Any, *, encaixe_ceven: Any = None,
+                  bloqueio_por_peca_nao_medido: bool = False) -> List[Dict[str, Any]]:
+    """`[{"horario": "HH:MM", "turno": "Manha"|"Tarde"|…, "encaixe": bool}, …]`.
+
+    ⛔ Duas regras do bundle NUNCA foram exercidas e aqui viram lista VAZIA
+    (fail-closed: não se oferece nem se agenda horário cuja regra não medimos):
+    `EncaixeCeven == "Sim"` (troca o critério do modo normal) e a previsão de
+    peça em loja sem estoque próprio (o laudo não traz a fórmula de `d`).
+    """
+    if bloqueio_por_peca_nao_medido or _norm(encaixe_ceven) == "sim":
+        return []
+    h = horarios if isinstance(horarios, dict) else {}
+    if _norm(h.get("EncaixeCeven")) == "sim":
+        return []
+    saida: List[Dict[str, Any]] = []
+    for b in (h.get("Blocos") or []):
+        if not isinstance(b, dict):
+            continue
+        hora = str(b.get("Horario") or "").strip()
+        if not re.fullmatch(r"\d{2}:\d{2}", hora):
+            continue
+        turno = b.get("Turno")
+        turno = str((turno or {}).get("Value") if isinstance(turno, dict) else turno or "")
+        try:
+            normal = int(b.get("QuantidadeDisponivel") or 0) > 0
+            encaixe = int(b.get("QuantidadeEncaixeParametrizadoDisponivel") or 0) > 0
+        except (TypeError, ValueError):
+            continue
+        if normal:
+            saida.append({"horario": hora, "turno": turno, "encaixe": False})
+        elif encaixe:
+            saida.append({"horario": hora, "turno": turno, "encaixe": True})
+    return saida
+
+
+def corpo_do_agendamento(*, loja: Dict[str, Any], data_iso: str, bloco: Dict[str, Any],
+                         horarios: Dict[str, Any]) -> Dict[str, Any]:
+    """O corpo do `POST /agendamentos`, com as 7 chaves NA ORDEM MEDIDA.
+
+    📊 HAR LATERAL [048]. Nada é digitado: `CodigoCliente`/`CodigoProduto` são os
+    da loja em `OpcoesAgendamento` (int, como o portal os publicou), os tempos
+    são `TempoServico`/`TempoPermanencia` de `horarios-disponiveis` (o laudo:
+    `P.blocoHorario.TempoServico`) e `Encaixe` é o MODO do bloco escolhido.
+    """
+    return {
+        "CodigoCliente": loja.get("codigo_cliente"),
+        "DataDeAgendamento": str(data_iso),
+        "Horario": str(bloco.get("horario") or ""),
+        "CodigoProduto": loja.get("codigo_produto"),
+        "QuantidadeTempoServico": horarios.get("TempoServico"),
+        "QuantidadeTempoPermanencia": horarios.get("TempoPermanencia"),
+        "Encaixe": bool(bloco.get("encaixe")),
+    }
+
+
+# --------------------------------------------------------------------------
+# 🔴 O RAMO 7 do roteador — prioridade + preferência de vistoria
+# --------------------------------------------------------------------------
+# 📊 Texto LITERAL do bundle (`P.inserirSelecaoOpcaoVistoria`, opção "L"/"M"),
+# e o "EM LOJA" conferido byte a byte com o corpo do HAR LATARIA [093].
+OCORRENCIA_VISTORIA: Dict[str, str] = {
+    "loja": "SEGURADO TEM PREFERÊNCIA POR REALIZAR VISTORIA EM LOJA",
+    "link": "SEGURADO TEM PREFERÊNCIA POR REALIZAR VISTORIA ONLINE (LINK)",
+}
+# 📊 HAR LATARIA [092], medido 1×: `Situacao "Não se aplica"`, `DataLimite
+# "Não tenho"`, `Observacao ""`. 🔴 POR QUE ESTES e não outros: são as duas
+# respostas NEUTRAS das listas fechadas do bundle (não-carga) — "Não se aplica"
+# (o veículo não tem prazo/impacto declarado) e "Não tenho" (o que o SPA envia
+# para "Não tenho data limite"). Qualquer outra opção AFIRMA uma urgência que o
+# segurado não declarou; a neutra só deixa de pedir prioridade.
+# ⛔ Só valem para veículo NÃO de carga (`GET atendimentos-prioridades/{cod}` →
+# `false`): a lista de carga não tem "Não se aplica" — aí o motor para.
+PRIORIDADE_NEUTRA: Dict[str, str] = {
+    "Situacao": "Não se aplica",
+    "DataLimite": "Não tenho",
+    "Observacao": "",
+}
 
 
 def descricao_da_franquia(atendimento: Any) -> Dict[str, Any]:
