@@ -237,8 +237,16 @@ check("V13: abrir e materializar sao acoes distintas",
 # captura de lataria o `CodigoAtendimento` nasce logo depois do PATCH, sem
 # nenhum `POST /questionarios` — ou seja, para categoria `L` é o PATCH que
 # materializa. Guardar o número 4 aqui seria guardar uma verdade vencida.
-check("V13: as cinco fronteiras materiais estao declaradas",
-      len(set(E.FRONTEIRAS_MATERIAIS)) == 5, sorted(set(E.FRONTEIRAS_MATERIAIS)))
+# 🔴 ATUALIZADO na EXTRA-001.10.1 (CLAUDE.md §9.3): eram cinco; as capturas de
+# 21/09 destravaram TRÊS escritas materiais novas — agendar (`POST
+# /agendamentos`), prioridade e ocorrência de vistoria. Cada uma muda o que a
+# seguradora faz com o segurado, e todas passam pelo guard com nome próprio.
+check("V13: as oito fronteiras materiais estao declaradas",
+      len(set(E.FRONTEIRAS_MATERIAIS)) == 8, sorted(set(E.FRONTEIRAS_MATERIAIS)))
+check("V13: e as tres da 001.10.1 estao entre elas, distintas",
+      {E.FRONTEIRA_AGENDAR, E.FRONTEIRA_PRIORIDADE, E.FRONTEIRA_OCORRENCIA}
+      <= set(E.FRONTEIRAS_MATERIAIS)
+      and len({E.FRONTEIRA_AGENDAR, E.FRONTEIRA_PRIORIDADE, E.FRONTEIRA_OCORRENCIA}) == 3)
 check("V13: e a nova (PATCH) e distinta das duas antigas",
       len({E.FRONTEIRA_ABRIR, E.FRONTEIRA_MATERIALIZAR, E.FRONTEIRA_ATUALIZAR}) == 3)
 # E o par que prova que a escolha da fronteira DEPENDE da peça — mesma função,
