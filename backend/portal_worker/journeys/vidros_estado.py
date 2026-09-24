@@ -234,11 +234,91 @@ FRONTEIRA_MATERIALIZAR = "gravar_questionario"      # POST /questionarios
 FRONTEIRA_ATUALIZAR = "atualizar_atendimento"       # PATCH /atendimentos
 FRONTEIRA_CANCELAR = "cancelar_atendimento"         # PUT  /atendimentos/cancelar
 FRONTEIRA_ABANDONAR = "abandonar_atendimento"       # PATCH /atendimentos/abandonar
+# 📊 EXTRA-001.10.1 — as três escritas que as capturas de 21/09 destravaram.
+# Cada uma muda o que a seguradora faz com o segurado (o dia em que ele leva o
+# carro; a fila do analista; o tipo de vistoria), e nenhuma se desfaz pela API.
+FRONTEIRA_AGENDAR = "agendar_servico"               # POST /agendamentos
+FRONTEIRA_PRIORIDADE = "gravar_prioridade"          # POST /atendimentos-prioridades
+FRONTEIRA_OCORRENCIA = "gravar_ocorrencia_vistoria"  # POST /ocorrencias
 
 FRONTEIRAS_MATERIAIS: Tuple[str, ...] = (
     FRONTEIRA_ABRIR, FRONTEIRA_MATERIALIZAR, FRONTEIRA_ATUALIZAR,
     FRONTEIRA_CANCELAR, FRONTEIRA_ABANDONAR,
+    FRONTEIRA_AGENDAR, FRONTEIRA_PRIORIDADE, FRONTEIRA_OCORRENCIA,
 )
+
+
+# --------------------------------------------------------------------------
+# 🔴 A CONTINUAÇÃO — em que ETAPA o pedido parou e o que falta para seguir
+# --------------------------------------------------------------------------
+# EXTRA-001.10.1. `evidence["continuacao"]["etapa"]` diz de onde a journey
+# `continuar_atendimento` retoma; `acao_esperada` diz o que a CONVERSA precisa
+# trazer (`responder:<slot>`) ou fazer (`agendar`, `vistoria`, `reler`).
+# 🔴 A tabela é FECHADA: stage fora dela não tem continuação automática
+# (`possivel=False`) — melhor a equipe olhar do que o robô adivinhar a fase.
+ETAPA_CONTATO = "contato"
+ETAPA_PECA = "peca"
+ETAPA_CAUSA = "causa"
+ETAPA_LATARIA = "lataria"
+ETAPA_CIDADE = "cidade"
+ETAPA_MATERIALIZAR = "materializar"
+ETAPA_DESFECHO = "desfecho"
+ETAPA_AGENDAR = "agendar"
+ETAPA_VISTORIA = "vistoria"
+ETAPA_CONCLUIDO = "concluido"
+
+# A ordem em que as fases da abertura acontecem. A continuação sem
+# `CodigoAtendimento` retoma a partir da etapa gravada; as fases de LEITURA
+# anteriores rodam de novo (ler é reversível e o `codigo_item` depende delas).
+ORDEM_DAS_ETAPAS: Tuple[str, ...] = (
+    ETAPA_CONTATO, ETAPA_PECA, ETAPA_CAUSA, ETAPA_LATARIA, ETAPA_CIDADE,
+    ETAPA_MATERIALIZAR, ETAPA_DESFECHO,
+)
+
+ETAPA_DA_PARADA: Dict[str, Tuple[str, str]] = {
+    "corretor_recusado": (ETAPA_CONTATO, "reler"),
+    "tipo_de_telefone_desconhecido": (ETAPA_CONTATO, "reler"),
+    "solicitante_recusado": (ETAPA_CONTATO, "reler"),
+    "catalogo_indisponivel": (ETAPA_PECA, "reler"),
+    "peca_ambigua": (ETAPA_PECA, "responder:peca"),
+    "item_com_formato_desconhecido": (ETAPA_PECA, "reler"),
+    "motivos_indisponiveis": (ETAPA_CAUSA, "reler"),
+    "motivo_ambiguo": (ETAPA_CAUSA, "responder:como"),
+    "pecas_de_lataria_ausentes": (ETAPA_LATARIA, "responder:pecas_lataria"),
+    "peca_de_lataria_ambigua": (ETAPA_LATARIA, "responder:pecas_lataria"),
+    "uf_desconhecida": (ETAPA_CIDADE, "responder:cidade_servico"),
+    "cidade_ambigua": (ETAPA_CIDADE, "responder:cidade_servico"),
+    "cidade_sem_rede": (ETAPA_CIDADE, "responder:cidade_servico"),
+    "pronto_para_materializar": (ETAPA_MATERIALIZAR, "reler"),
+    "patch_recusado": (ETAPA_MATERIALIZAR, "reler"),
+    "questionario_incompleto": (ETAPA_MATERIALIZAR, "responder:pergunta"),
+    "decidir_reparo": (ETAPA_MATERIALIZAR, "responder:aceita_reparo"),
+    "reparo_nao_gravado": (ETAPA_DESFECHO, "reler"),
+    "roteador_ilegivel": (ETAPA_DESFECHO, "reler"),
+    "desfecho_ilegivel": (ETAPA_DESFECHO, "reler"),
+    "desfecho_desconhecido": (ETAPA_DESFECHO, "reler"),
+    # 🔴 a agenda que saiu e não confirmou: RELER, nunca repetir o POST
+    "agendamento_nao_confirmado": (ETAPA_DESFECHO, "reler"),
+    "pronto_para_agendar": (ETAPA_AGENDAR, "agendar"),
+    "horario_indisponivel": (ETAPA_AGENDAR, "agendar"),
+    "agenda_ilegivel": (ETAPA_AGENDAR, "agendar"),
+    "decidir_vistoria": (ETAPA_VISTORIA, "vistoria"),
+    "prioridade_nao_medida": (ETAPA_VISTORIA, "vistoria"),
+    "pronto_para_vistoria": (ETAPA_VISTORIA, "vistoria"),
+    "leitura_falhou": (ETAPA_DESFECHO, "reler"),
+}
+
+# Stages em que o efeito pode ter acontecido sem confirmação: a continuação
+# LÊ, e se o agregado não provar o estado, para — nunca repete a escrita.
+PARADAS_INCERTAS: Tuple[str, ...] = ("maybe_committed",)
+
+
+def etapa_da_parada(stage: Any) -> Tuple[str, str]:
+    """`(etapa, acao_esperada)` de uma parada. `("", "")` = sem continuação."""
+    st = str(stage or "").strip()
+    if st in PARADAS_INCERTAS:
+        return ETAPA_DESFECHO, "reler"
+    return ETAPA_DA_PARADA.get(st, ("", ""))
 
 
 def fronteira_materializar_de(codigo_item_coberto: Any) -> str:
@@ -278,10 +358,18 @@ DESFECHO_AGENDA = "agenda"
 DESFECHO_ANALISTA = "analista"
 DESFECHO_VISTORIA = "vistoria"
 DESFECHO_DESCONHECIDO = "desconhecido"
+# 📊 EXTRA-001.10.1 — o "Agendado para" LIDO do ScriptFinalizacao (LATERAL [049]).
+DESFECHO_AGENDADO = "agendado"
+# 📊 EXTRA-001.10.1 — ramo 7 do roteador do SPA (`PermiteOpcaoVistoria` sem
+# nada antes): o portal quer PRIORIDADE + PREFERÊNCIA DE VISTORIA antes de
+# concluir. Não é "vistoria" (ramos 2–5, que o robô não faz): é uma PERGUNTA ao
+# segurado, e com a resposta dele o portal conclui (LATARIA [089]→[093]→[094]).
+DESFECHO_VISTORIA_OPCIONAL = "vistoria_opcional"
 
 DESFECHOS: Tuple[str, ...] = (
     DESFECHO_LOJA_DIRETA, DESFECHO_AGENDA, DESFECHO_ANALISTA,
     DESFECHO_VISTORIA, DESFECHO_DESCONHECIDO,
+    DESFECHO_AGENDADO, DESFECHO_VISTORIA_OPCIONAL,
 )
 
 # 📊 As 20 chaves de `GET /agendamentos/opcoes-disponiveis`, medidas nas 3
@@ -319,12 +407,14 @@ def ler_desfecho(opcoes: Any, agregado: Any) -> Dict[str, Any]:
     terminou em loja direta e o vidro de porta em agenda, porque as respostas
     deste endpoint foram opostas.
 
-    A ordem é a do bundle, e inverter troca o desfecho de gente de verdade:
+    A ordem é a do bundle (`function M(o)`, laudo §2), e inverter troca o
+    desfecho de gente de verdade:
 
-        conclusão (5 chaves, OU lógico)  → loja já atribuída (ou analista)
-        vistoria (4 chaves)              → vistoria
-        DisponibilizarAgendamento        → agenda, com `OpcoesAgendamento[]`
-        PermiteOpcaoVistoria             → vistoria
+        (1) conclusão (5 chaves, OU)  → agendado · loja já atribuída · analista
+        (2–5) vistoria (4 chaves)     → vistoria
+        (6) DisponibilizarAgendamento → agenda, com `OpcoesAgendamento[]`
+        (7) PermiteOpcaoVistoria      → vistoria_opcional (prioridade + preferência)
+        (8) nenhuma                   → conclusão (o SPA chama `F()`)
 
     Fail-closed em dois casos, e os dois viram `desconhecido` com o roteador
     inteiro preenchido para o dossiê: (1) a resposta não trouxe as chaves que o
@@ -333,7 +423,25 @@ def ler_desfecho(opcoes: Any, agregado: Any) -> Dict[str, Any]:
     """
     o = opcoes if isinstance(opcoes, dict) else {}
     a = agregado if isinstance(agregado, dict) else {}
+    base, script = _base_do_desfecho(o, a)
+    return _ramos_do_roteador(o, base, script)
 
+
+def ler_conclusao(opcoes: Any, agregado: Any) -> Dict[str, Any]:
+    """O desfecho DEPOIS de uma escrita que leva o SPA direto à conclusão.
+
+    📊 EXTRA-001.10.1: depois do `POST /agendamentos` (LATERAL [048]→[049]) e da
+    ocorrência de vistoria (LATARIA [093]→[094]) o SPA chama `F()` — a tela de
+    conclusão — SEM reler `opcoes-disponiveis`. O que vale é o ScriptFinalizacao
+    do `GET /atendimentos` seguinte. `opcoes` entra só para o dossiê.
+    """
+    o = opcoes if isinstance(opcoes, dict) else {}
+    a = agregado if isinstance(agregado, dict) else {}
+    base, script = _base_do_desfecho(o, a)
+    return conclusao(base, script)
+
+
+def _base_do_desfecho(o: Dict[str, Any], a: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     from portal_worker.journeys import vidros_api as API
 
     roteador = {k: o.get(k) for k in CHAVES_DO_ROTEADOR if k in o}
@@ -352,15 +460,25 @@ def ler_desfecho(opcoes: Any, agregado: Any) -> Dict[str, Any]:
         "lojas": [],
         "motivo": "",
     }
+    return base, script
 
+
+def _ramos_do_roteador(o: Dict[str, Any], base: Dict[str, Any],
+                       script: Dict[str, Any]) -> Dict[str, Any]:
     # 🔴 BLOQUEIO NUNCA VIRA "pode ligar para a loja" — red team, 20/09/2026.
     #
-    # 📊 Com `BloqueadoPorFraude: true` (ou bloqueio de ilha, ou o aviso de
-    # vistoria por regra de fraude) MAIS as chaves de conclusao, o roteador
-    # respondia `loja_direta` e o segurado era mandado a uma loja que nao vai
-    # atende-lo — o pedido esta retido em analise. Sao as tres unicas chaves em
-    # que "o portal concluiu" e "o portal travou" chegam juntas.
-    travas = [k for k in ("BloqueadoPorFraude", "BloqueadoIlhaNormal",
+    # 📊 Com `BloqueadoPorFraude: true` (ou o aviso de vistoria por regra de
+    # fraude) MAIS as chaves de conclusao, o roteador respondia `loja_direta` e
+    # o segurado era mandado a uma loja que nao vai atende-lo.
+    #
+    # 🔴 EXTRA-001.10.1 — `BloqueadoIlhaNormal` SAIU desta lista, por medição:
+    # 📊 a chave tem ZERO ocorrências nos 3 bundles do SPA (laudo §2), e no HAR
+    # LATARIA [089] ela veio `true` junto de `PermiteOpcaoVistoria` e o portal
+    # SEGUIU — prioridade [092], ocorrência [093], conclusão com o analista
+    # [094]. Tratá-la como trava mandava para a mão humana um pedido que o
+    # próprio portal conclui. As outras duas continuam travando (0 exercícios:
+    # conservador até uma captura mostrar o contrário).
+    travas = [k for k in ("BloqueadoPorFraude",
                           "ExibirAvisoVistoriaPorRegraDeFraude") if o.get(k) is True]
     if travas:
         base["motivo"] = ("o portal marcou bloqueio/retencao: " + ", ".join(travas)
@@ -382,17 +500,7 @@ def ler_desfecho(opcoes: Any, agregado: Any) -> Dict[str, Any]:
         return base
 
     if any(o.get(k) is True for k in _CONCLUSAO):
-        # Conclusão. Quem diz se há LOJA é o ScriptFinalizacao — e só depois de
-        # `opcoes-disponiveis` ele traz a loja (ver `script_de_finalizacao`).
-        if script["tem_loja"]:
-            base["tipo"] = DESFECHO_LOJA_DIRETA
-            base["loja"] = script["loja"]
-            base["motivo"] = "portal concluiu com loja atribuida"
-        else:
-            base["tipo"] = DESFECHO_ANALISTA
-            base["motivo"] = ("portal concluiu sem loja no script; o atendimento "
-                              "esta com o analista")
-        return base
+        return conclusao(base, script)
 
     if any(o.get(k) is True for k in _VISTORIA):
         base["tipo"] = DESFECHO_VISTORIA
@@ -413,18 +521,60 @@ def ler_desfecho(opcoes: Any, agregado: Any) -> Dict[str, Any]:
             "cep": str(x.get("Cep") or "").strip(),
             # 📊 `"S"` na captura. A agenda só existe quando a loja a publica.
             "tem_agenda": str(x.get("DisponibilizaAgenda") or "").strip().upper() == "S",
+            # 📊 laudo §1, função `I`: loja SEM estoque próprio e COM `TemPeca`
+            # bloqueia blocos por previsão de peça — fórmula não medida. As
+            # chaves não vieram na captura; se vierem, a agenda dela não é lida.
+            "bloqueio_por_peca_nao_medido": (x.get("EstoqueProprio") is False
+                                             and bool(x.get("TemPeca"))),
             "distancia": "", "tempo": "", "dias": [], "horarios": {},
         } for x in lojas]
         base["motivo"] = f"portal disponibilizou agendamento em {len(lojas)} loja(s)"
         return base
 
     if o.get("PermiteOpcaoVistoria") is True:
-        base["tipo"] = DESFECHO_VISTORIA
-        base["motivo"] = "portal ofereceu a opcao de vistoria"
+        base["tipo"] = DESFECHO_VISTORIA_OPCIONAL
+        base["motivo"] = ("portal pediu a prioridade e a preferencia de vistoria "
+                          "(ramo 7) antes de concluir")
         return base
 
-    base["motivo"] = ("nenhum ramo do roteador ficou verdadeiro; o portal nao "
-                      "indicou desfecho")
+    # (8) Nenhum ramo: o SPA vai para a conclusão (`F()`). 🔴 Só aceitamos se o
+    # ScriptFinalizacao disser ALGUMA coisa — conclusão sem texto nenhum não é
+    # desfecho que se entregue a alguém.
+    if script["titulo"] or script["tem_loja"]:
+        return conclusao(base, script)
+    base["motivo"] = ("nenhum ramo do roteador ficou verdadeiro e o portal nao "
+                      "escreveu desfecho")
+    return base
+
+
+def conclusao(base: Dict[str, Any], script: Dict[str, Any]) -> Dict[str, Any]:
+    """O ramo de CONCLUSÃO: quem diz o que concluiu é o ScriptFinalizacao.
+
+    📊 E ele só traz a loja DEPOIS de `opcoes-disponiveis` (ver
+    `script_de_finalizacao`). Três leituras, da mais específica para a menos:
+    "Agendado para" (EXTRA-001.10.1) → loja atribuída → com o analista.
+    """
+    if script.get("agendamento") and script.get("tem_loja"):
+        ag = script["agendamento"]
+        loja = script["loja"] or {}
+        base["tipo"] = DESFECHO_AGENDADO
+        base["loja"] = loja
+        base["agendamento"] = {
+            "loja": loja.get("nome", ""), "endereco": loja.get("endereco", ""),
+            "referencia": loja.get("referencia", ""),
+            "data": ag["data"], "horario": ag["horario"],
+            "permanencia": ag.get("permanencia", ""),
+            "confirmado_pelo_portal": True,
+        }
+        base["motivo"] = "o portal registrou o agendamento (Agendado para)"
+    elif script["tem_loja"]:
+        base["tipo"] = DESFECHO_LOJA_DIRETA
+        base["loja"] = script["loja"]
+        base["motivo"] = "portal concluiu com loja atribuida"
+    else:
+        base["tipo"] = DESFECHO_ANALISTA
+        base["motivo"] = ("portal concluiu sem loja no script; o atendimento "
+                          "esta com o analista")
     return base
 
 
