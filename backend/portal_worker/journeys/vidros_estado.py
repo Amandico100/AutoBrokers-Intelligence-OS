@@ -302,6 +302,11 @@ ETAPA_DA_PARADA: Dict[str, Tuple[str, str]] = {
     "pronto_para_agendar": (ETAPA_AGENDAR, "agendar"),
     "horario_indisponivel": (ETAPA_AGENDAR, "agendar"),
     "agenda_ilegivel": (ETAPA_AGENDAR, "agendar"),
+    # 🔴 RED B3 (conserto da 001.10.1): a agenda NÃO RESPONDEU (500/timeout em
+    # datas/horários) — parada TÉCNICA, nunca "horário ocupado". A escolha do
+    # segurado continua valendo: a mesma escolha pode ser pedida de novo e o
+    # vigia relê herdando-a.
+    "agenda_nao_respondeu": (ETAPA_AGENDAR, "agendar"),
     "decidir_vistoria": (ETAPA_VISTORIA, "vistoria"),
     "prioridade_nao_medida": (ETAPA_VISTORIA, "vistoria"),
     "pronto_para_vistoria": (ETAPA_VISTORIA, "vistoria"),
@@ -486,6 +491,16 @@ def _ramos_do_roteador(o: Dict[str, Any], base: Dict[str, Any],
         base["bloqueios"] = travas
         return base
 
+    # 🔴 RED B2(c) / JUIZ B1 (conserto da 001.10.1): o agregado JÁ DIZ "Agendado
+    # para" ⇒ é conclusão, ANTES de olhar `DisponibilizarAgendamento`. 📊 O que
+    # `opcoes-disponiveis` publica DEPOIS de um agendamento tem 0 exercícios no
+    # acervo (o SPA não relê); o "Agendado para" do `ScriptFinalizacao` está
+    # medido (LATERAL [049]). Confiar só na flag era deixar o motor postar um
+    # SEGUNDO agendamento sobre um atendimento que o próprio portal escreveu
+    # que está agendado.
+    if script.get("agendamento"):
+        return conclusao(base, script)
+
     desconhecidas = [k for k, v in o.items()
                      if k not in CHAVES_DO_ROTEADOR and isinstance(v, bool) and v]
     if desconhecidas:
@@ -554,9 +569,14 @@ def conclusao(base: Dict[str, Any], script: Dict[str, Any]) -> Dict[str, Any]:
     `script_de_finalizacao`). Três leituras, da mais específica para a menos:
     "Agendado para" (EXTRA-001.10.1) → loja atribuída → com o analista.
     """
-    if script.get("agendamento") and script.get("tem_loja"):
+    if script.get("agendamento"):
+        # 🔴 "Agendado para" LIDO é agendamento, com ou sem a loja no script
+        # (conserto da 001.10.1): cair em "analista" sobre um pedido que o
+        # portal escreveu que está agendado seria mentir o desfecho — e abrir a
+        # porta para um segundo agendamento. Sem a loja, as linhas dela só
+        # não aparecem (a mensagem imprime o que veio).
         ag = script["agendamento"]
-        loja = script["loja"] or {}
+        loja = script.get("loja") or {}
         base["tipo"] = DESFECHO_AGENDADO
         base["loja"] = loja
         base["agendamento"] = {
