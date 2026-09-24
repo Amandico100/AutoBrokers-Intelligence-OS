@@ -30,10 +30,9 @@
 > estado.
 
 ```
-FEITAS      EXTRA-001 · 001.1 · 001.2 · 001.3 · 001.4 · 001.5 · 001.5.1 · 001.5.2 · 001.6 · 001.7 · 001.10
+FEITAS      EXTRA-001 · 001.1 · 001.2 · 001.3 · 001.4 · 001.5 · 001.5.1 · 001.5.2 · 001.6 · 001.7 · 001.10 · 001.10.1
             EXTRA-001.8 (uma corretora não trava a outra) — EXECUTADA em 21/09/2026, CANÁRIO PENDENTE 🧑
 A FILA      001.9  →  001.0  →  triagem de pendências (D-FILA-01)  →  EXTRA-002 (investigação Agger)
-            a EXTRA-001.10.1 (a continuação do portal de vidros) entra quando o Founder trouxer as capturas
 PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
 ```
 
