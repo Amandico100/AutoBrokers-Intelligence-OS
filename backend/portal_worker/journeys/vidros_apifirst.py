@@ -917,7 +917,12 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
         evidence["protocolo"] = protocolo
     # 🔴 A1 — a sessão durável nasce AQUI, junto do protocolo, e vai no MESMO
     # checkpoint: uma queda no passo seguinte ainda deixa o pedido retomável.
-    _guardar_sessao(ex, sessao.token)
+    # `getattr`: 📊 24/09 a bateria pegou o dublê da SPEC-074
+    # (`test_spec074_a_fronteira_material_executada`, SessaoFalsa) sem `token` —
+    # e um AttributeError AQUI, depois do protocolo, derrubaria o pedido já aberto.
+    # Sem token não há sessão a guardar: `_guardar_sessao` registra
+    # `possivel=False` e o acionamento segue.
+    _guardar_sessao(ex, getattr(sessao, "token", "") or "")
     evidence["vidros_estado"] = estado.para_evidencia()
     await _checkpoint(params, {"vidros_estado": estado.para_evidencia(),
                                "protocolo": protocolo,
