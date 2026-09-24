@@ -1,16 +1,17 @@
 <div id="tab-vidros" class="tab" hidden>
 
 <header class="top">
-  <span class="eyebrow">EXTRA-001.10 &middot; ✅ CONCLUÍDA em 21/09/2026 &middot; nota 86 &middot; 📊 medido sobre <code>b246a4f</code></span>
-  <h1>O portal de vidros, do WhatsApp ao desfecho.</h1>
-  <p class="lede">O robô agora <b>coleta antes</b> tudo o que o portal vai pedir, <b>abre o pedido em qualquer uma das 38 seguradoras</b>
-  que o portal publica, e <b>lê o desfecho que o portal decidiu</b> — loja já escolhida, agenda com lojas e horários, analista ou vistoria —
-  devolvendo ao segurado o <b>número do atendimento</b>, a <b>franquia</b> e o <b>próximo passo</b>, em português de gente.
-  🔴 <b>E nada disso está ligado:</b> tudo mora atrás de uma chave que nasce desligada. O que atende hoje é o caminho antigo.</p>
+  <span class="eyebrow">EXTRA-001.10 &middot; ✅ CONCLUÍDA 21/09/2026, nota 86 &middot; EXTRA-001.10.1 (a continuação) &middot; ✅ CONCLUÍDA 24/09/2026, nota 88 &middot; 📊 medido sobre <code>5622911</code></span>
+  <h1>O portal de vidros, do WhatsApp ao desfecho — e de volta.</h1>
+  <p class="lede">O robô <b>coleta antes</b> tudo o que o portal vai pedir, <b>abre o pedido em qualquer uma das 38 seguradoras</b>
+  que o portal publica, <b>lê o desfecho que o portal decidiu</b> — loja já escolhida, agenda com lojas e horários, analista ou vistoria —
+  e agora (001.10.1) <b>RETOMA</b> o pedido quando a resposta do segurado chega: guarda o acesso cifrado, volta ao portal, lê onde o
+  pedido está e <b>continua sozinho</b> — agenda a loja e o horário, envia a prioridade, a preferência de vistoria — em vez de terminar
+  em mão humana. Devolve ao segurado o <b>número do atendimento</b>, a <b>franquia</b> e o <b>próximo passo</b>, em português de gente.
+  🔴 <b>E nada disso está ligado:</b> tudo mora atrás da mesma chave, que nasce desligada. O que atende hoje é o caminho antigo.</p>
   <div class="meta">
-    <span>relatório <b>reports/SPEC-EXTRA-001.10-EXECUTION-REPORT.md</b></span>
-    <span>o que falta capturar <b>guias/ROTEIRO-DE-CAPTURA-PORTAL-DE-VIDROS.md</b></span>
-    <span>perguntas à atendente <b>guias/PERGUNTAS-PARA-A-ATENDENTE-PORTAL-DE-VIDROS.md</b></span>
+    <span>relatórios <b>reports/SPEC-EXTRA-001.10-EXECUTION-REPORT.md</b> &middot; <b>reports/SPEC-EXTRA-001.10.1-EXECUTION-REPORT.md</b></span>
+    <span>o que ainda falta <b>PENDENCIAS.md, bloco 001.10.1</b></span>
     <span>a chave <b>PORTAL_VIDROS_API_FIRST = desligada</b></span>
   </div>
 </header>
@@ -46,22 +47,23 @@
         <tr><td class="ds"><b>Tela que o robô não conhece</b></td><td class="ds">🔴 virava silêncio</td><td class="ds">vira <b>parada com resumo do caso</b> para uma pessoa assumir, <b>mais</b> uma linha na fila de aprendizado</td></tr>
         <tr><td class="ds"><b>O freio de segurança</b></td><td class="ds">⚠️ geral: ligar liberava todos os acionamentos em voo</td><td class="ds">um freio <b>por acionamento</b>, que só <b>estreita</b>. Escrito errado, ele <b>barra tudo</b> — é o certo</td></tr>
         <tr><td class="ds"><b>Aparecer na Fila e na Ficha</b></td><td class="ds">🔴 não aparecia</td><td class="ds">a <b>Ficha já mostra</b>; agenda e vistoria <b>não encerram</b> o caso, de propósito, para a equipe ver que falta escolher</td></tr>
-        <tr><td class="ds"><b>Marcar dia e hora</b></td><td class="ds">🟡 não fazia</td><td class="ds">🟡 <b>continua não fazendo</b> — 📊 o clique de confirmar tem <b>zero</b> ocorrências nas 5 capturas. Falta a captura nº 1</td></tr>
-        <tr><td class="ds"><b>Retomar um pedido parado</b></td><td class="ds">🔴 não fazia</td><td class="ds">🔴 <b>continua não fazendo</b> — é a próxima entrega (001.10.1)</td></tr>
+        <tr><td class="ds"><b>Marcar dia e hora</b></td><td class="ds">🟡 não fazia</td><td class="ds">🟢 <b>agenda</b> — a captura de 21/09 trouxe o agendamento concluído (7 chaves) e o "Agendado para" lido de volta do portal</td></tr>
+        <tr><td class="ds"><b>Retomar um pedido parado</b></td><td class="ds">🔴 não fazia</td><td class="ds">🟢 <b>retoma</b> (001.10.1) — token guardado cifrado, lê o estado real do portal e continua pela ação pendente. ⚠️ o canário ainda não provou isso ao vivo</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
 <section>
-  <h2>🔴 O buraco que sobrou — e por que ele é a próxima SPEC</h2>
-  <p class="lede" style="max-width:78ch">O acesso do robô ao atendimento <b>vive só na memória</b> da execução. Quando ele abre o pedido e
-  alguma coisa para depois disso — o portal abre agenda, pede vistoria, faz uma pergunta nunca vista, ou simplesmente dá erro —
-  <b>ele não consegue voltar</b>, mesmo tendo o número do atendimento na mão. O caso termina em mão humana.</p>
-  <p class="note" style="border-left-color:var(--crit);margin-top:12px">🔴 Por isso <b>nenhuma</b> mensagem de parada promete que o robô vai
-  continuar. Ela dá o <b>número primeiro</b> e diz o que fazer. Prometer continuação que não existe seria pior do que parar.
-  <br>👉 A próxima entrega — <b>EXTRA-001.10.1, a continuação</b> — é exatamente isto. E ela depende de <b>uma resposta da atendente</b>:
-  <i>"dá para retomar um atendimento parado, pelo número?"</i> (pergunta nº 12 do arquivo de perguntas).</p>
+  <h2>🟢 O buraco que sobrou virou entrega — a continuação (001.10.1, 24/09/2026)</h2>
+  <p class="lede" style="max-width:78ch">O acesso do robô ao atendimento não vive mais só na memória de uma execução: agora é guardado
+  <b>cifrado</b>, e quando a resposta do segurado chega — a agenda, a preferência de loja — o robô <b>volta ao portal, lê onde o pedido
+  está de verdade</b> e continua sozinho: agenda a loja e o horário, envia a prioridade e a preferência de vistoria.</p>
+  <p class="note" style="margin-top:12px">🔴 <b>O achado que decidiu o desenho:</b> 📊 o token do portal <b>expira</b> — o de 21/09 22:09 UTC
+  devolveu 401 em 23/09 23:40 UTC, uma janela entre minutos e ~50 h, ainda desconhecida com precisão. Por isso o 401 é um <b>desfecho legível</b>
+  (nunca um retry cego), e por isso <b>nenhuma</b> mensagem de parada promete continuação que não existe.
+  <br>👉 <b>O que falta:</b> o <b>canário</b> — nenhum acionamento real passou pelo caminho novo ainda. É o que abre o passo seguinte
+  (aba <a href="#tarefas" style="color:var(--accent)">Suas tarefas</a>, bloco F).</p>
 </section>
 
 <section>
@@ -87,32 +89,30 @@
   <dl class="q2">
     <dt>1 · implantar</dt><dd>EasyPanel, nesta ordem: <code>smith-api</code> → <code>smith-worker</code> → <code>portal-worker</code>.
     <b>O que esperar:</b> os três voltam verdes e <b>o produto continua exatamente como estava</b> — a chave nasce desligada. <b>10 min.</b></dd>
-    <dt>2 · o canário</dt><dd>🔴 <b>É o que falta para dar o passo seguinte.</b> Um acionamento de <b>lataria na Yelum</b>, com
-    <b>apólice e veículo de teste</b> — nunca de cliente. Antes dele, no <code>portal-worker</code> → Environment:
-    <code>PORTAL_CANARIO_ALLOWLIST</code> com o acionamento do ensaio e <code>PORTAL_VIDROS_API_FIRST = true</code>.
-    <b>Ao terminar, volte a chave para <code>false</code>.</b> <b>30 min.</b></dd>
-    <dt>3 · as capturas</dt><dd>Entregue à atendente o roteiro <code>guias/ROTEIRO-DE-CAPTURA-PORTAL-DE-VIDROS.md</code>, seção
-    <i>"O que ainda falta capturar"</i>. 🔴 <b>A nº 1 vale mais que todas as outras juntas:</b> um agendamento <b>levado até confirmar o horário</b>
-    (vidro de porta ou vigia, numa cidade com loja). É ela que libera o robô a marcar dia e hora.</dd>
-    <dt>4 · as perguntas</dt><dd>As <b>15 perguntas</b> em <code>guias/PERGUNTAS-PARA-A-ATENDENTE-PORTAL-DE-VIDROS.md</code>.
-    A <b>nº 12</b> decide sozinha o desenho da próxima entrega. <b>20 min dela, 5 seus.</b></dd>
-    <dt>5 · as senhas</dt><dd>Rotacionar as credenciais que foram coladas no chat de novo em 20/09.</dd>
-    <dt>6 · três decisões</dt><dd>O <b>contato do segurado</b> no portal (recomendação: celular e e-mail dele, nota 88) &middot;
-    <b>quando ligar a chave</b> (recomendação: só depois do canário, nota 95) &middot;
-    <b>a 001.10.1 entra antes da 001.8?</b> (recomendação 💭: sim, nota 80).</dd>
+    <dt>2 · o canário</dt><dd>🔴 <b>É o que falta agora — e é a mesma apólice das capturas de 21/09.</b>
+    No <code>portal-worker</code> → Environment: <code>PORTAL_VIDROS_API_FIRST=true</code> &middot;
+    <code>PORTAL_CANARIO_ALLOWLIST=cpf:1f2d4a03549e</code> &middot; <code>PORTAL_EFEITO_MATERIAL_LIBERADO=true</code>; no
+    <code>smith-api</code>: as duas últimas linhas de novo. Implantar os dois. Do celular de teste, escreva ao WhatsApp da
+    corretora <b>como o segurado daquela apólice</b> (vidro traseiro do motorista, carro parado, Florianópolis/SC) e responda
+    a agenda com "amanhã às 16h". <b>O que esperar:</b> aviso de acionamento, depois número do atendimento + franquia +
+    "Agendei o serviço ✅" com loja/dia/hora — ou a lista de horários para escolher. <b>Ao terminar:</b> cancele no portal e
+    volte a chave para <code>false</code>. Mande o número no chat. <b>30 min.</b> · <b>P-E001101-01/02</b></dd>
+    <dt>3 · as senhas</dt><dd>Rotacionar as credenciais que foram coladas no chat de novo em 20/09. · <b>P-PILOTO-09</b></dd>
+    <dt>4 · decisões cumpridas</dt><dd>O <b>contato do segurado</b> no portal — <b>já é assim</b> (corretor + celular/e-mail do
+    segurado + WhatsApp) &middot; <b>a 001.10.1 entrou antes da 001.8</b>, como você recomendou. Falta só <b>quando ligar a
+    chave</b> em definitivo (recomendação: só depois do canário verde, nota 95).</dd>
   </dl>
 </section>
 
 <section>
-  <h2>As oito capturas que faltam, por ordem de valor</h2>
+  <h2>As capturas que faltam, por ordem de valor</h2>
   <p class="sub">Em todas: gravador de rede ligado <b>antes</b> de escolher a seguradora, telas salvas, e um bilhete com a estrutura da apólice.
   <b>Não precisa de vídeo.</b> 🔴 E nenhuma delas se inventa: só com demanda real de um segurado — abrir um pedido <b>aciona uma loja de verdade</b>.</p>
   <div class="cards">
-    <div class="card cr">
-      <h3>1 · Um agendamento levado até o fim</h3><span class="n">vale mais que todas as outras juntas</span>
-      <p>Yelum, <b>vidro de porta ou vigia</b>, quebrado ou trincado grande (<b>não</b> trinca pequena — trinca pequena vira reparo e fecha sem agenda),
-      numa cidade <b>com loja</b>. Ir até o fim: escolher a <b>loja</b>, escolher um <b>dia</b>, escolher um <b>horário</b> e <b>CONFIRMAR</b>.
-      ⚠️ Se não aparecer horário, <b>trocar de dia</b> até achar. 📊 O clique de confirmar tem <b>zero</b> ocorrências em tudo o que temos.</p>
+    <div class="card ok">
+      <h3>1 · Um agendamento levado até o fim</h3><span class="n">🟢 chegou em 21/09 — feita</span>
+      <p>Yelum, vidro de porta, agendamento concluído (loja + dia + horário + CONFIRMAR). É a captura que liberou o <code>POST /agendamentos</code>
+      (P-E00110-A1 FECHADA) e o desenho inteiro da continuação (001.10.1).</p>
     </div>
     <div class="card al">
       <h3>2 · A loja SEM agendar</h3><span class="n">se o portal oferecer "direcionar"</span>
@@ -166,6 +166,25 @@
   pedido aberto com a causa errada, com a cidade de outro estado, com a peça errada — ou uma mensagem prometendo que o robô continuaria quando ele não pode.
   <br><b>Nota da execução: 86/100.</b> Perde pontos porque <b>o canário não rodou</b> (nada foi provado contra o portal ao vivo),
   porque <b>a retomada não existe</b>, e porque uma regressão do próprio conserto só apareceu na conferência.</p>
+</section>
+
+<section>
+  <h2>Como a continuação foi julgada (001.10.1, 📊 24/09/2026)</h2>
+  <p class="sub">Dois avaliadores independentes, cegos um ao outro, e uma conferência final — sobre HAR reais atravessados pelo motor real.</p>
+  <div class="tblbox">
+    <table style="min-width:720px">
+      <thead><tr><th class="l">quem</th><th>nota</th><th class="l">o que achou</th></tr></thead>
+      <tbody>
+        <tr><td class="ds">avaliador</td><td class="dm">86</td><td class="ds">1 defeito grave: 2º agendamento sobre pedido que o portal já dizia "Agendado para"</td></tr>
+        <tr><td class="ds">avaliador adversário</td><td class="dm">64</td><td class="ds">5 defeitos <b>exclusivos</b> — entre eles "4 da tarde" virando POST às 13:00, e a releitura automática agendando pela preferência antiga, ignorando a escolha do segurado</td></tr>
+        <tr><td class="ds">conferência, depois do conserto</td><td class="dm">78</td><td class="ds">liberou; achou 2 defeitos <b>exclusivos</b> que só ficaram parcialmente fechados na 1ª rodada (hora por extenso, peça reescrita junto da escolha de agenda) — consertados em seguida, sem 3ª rodada</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">📊 <b>11 defeitos morreram antes de qualquer coisa ir para a rua</b> — todos do tipo que o segurado sentiria: horário errado,
+  2º pedido, 2º agendamento, mentira sobre a vaga, laço no questionário.
+  <br><b>Nota da execução: 88/100.</b> Perde pontos porque <b>o canário (G12) não rodou</b>, porque <b>o tempo de vida do token é
+  desconhecido</b> (entre minutos e ~50 h), e por 3 quebras de rito declaradas no relatório.</p>
 </section>
 
 </div>
