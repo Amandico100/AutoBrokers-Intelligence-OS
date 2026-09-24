@@ -125,7 +125,7 @@ C  backend/app/agents/tools/portal_params.py · portal_tool.py · backend/app/co
 ## 5. 🔴 O CONTRATO A ↔ C
 **C → A (params do job de abertura, chaves novas):**
 ```
-especificos.preferencia_agenda ... {"a_partir_de": "DD/MM/AAAA", "periodo": "manha"|"tarde"|"qualquer"}   (opcional)
+especificos.preferencia_agenda ... {"a_partir_de": "DD/MM/AAAA", "periodo": "manha"|"tarde"|"qualquer", "horario"?: "HH:MM"}   (opcional; com "horario" o motor agenda SÓ esse horário, no 1º dia ≥ a_partir_de em que ele está livre; não achou ⇒ agenda com as opções)
 especificos.preferencia_vistoria . "link" | "loja"                                                      (opcional)
 contato.tipo_telefone ............ "segurado" (padrão)  · contato.recebe_whatsapp: true
 ```
