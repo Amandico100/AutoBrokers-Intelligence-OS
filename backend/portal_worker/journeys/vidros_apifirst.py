@@ -929,7 +929,8 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
 # --------------------------------------------------------------------------
 # 🔴 As FASES depois da fronteira A — a abertura e a continuação usam estas
 # --------------------------------------------------------------------------
-async def rodar_fases(ex: Execucao, *, a_partir: str) -> JourneyResult:
+async def rodar_fases(ex: Execucao, *, a_partir: str,
+                      agendar_por_preferencia: bool = True) -> JourneyResult:
     """Roda as fases a partir de `a_partir`, na ordem medida.
 
     🔴 A fase de CONTATO (PUT corretores + POST solicitantes) é escrita: roda só
@@ -953,7 +954,7 @@ async def rodar_fases(ex: Execucao, *, a_partir: str) -> JourneyResult:
         parada = await fase(ex)
         if parada is not None:
             return parada
-    return await fase_desfecho(ex)
+    return await fase_desfecho(ex, agendar_por_preferencia=agendar_por_preferencia)
 
 
 async def _fase_contato(ex: Execucao) -> Optional[JourneyResult]:
@@ -1264,8 +1265,15 @@ async def _fase_materializar(ex: Execucao) -> Optional[JourneyResult]:
 
 
 async def fase_desfecho(ex: Execucao, *,
-                        ropc: Optional[Dict[str, Any]] = None) -> JourneyResult:
-    """O DESFECHO — quem decide é o PORTAL, e ele diz por escrito."""
+                        ropc: Optional[Dict[str, Any]] = None,
+                        agendar_por_preferencia: bool = True) -> JourneyResult:
+    """O DESFECHO — quem decide é o PORTAL, e ele diz por escrito.
+
+    `agendar_por_preferencia=False` (RED B2(a), conserto da 001.10.1): a
+    RELEITURA nunca agenda pela preferência. Ela existe para ler de novo depois
+    de uma parada técnica — marcar o dia de alguém a partir de uma preferência
+    antiga, sem ele ter escolhido, é escrever no portal o que ninguém pediu.
+    """
     sessao, evidence, guard = ex.sessao, ex.evidence, ex.guard
     if ropc is None:
         ropc = await sessao.opcoes_de_agendamento()
@@ -1310,7 +1318,7 @@ async def fase_desfecho(ex: Execucao, *,
         cache = await _enriquecer_agenda(sessao, desfecho, agregado=agregado,
                                          codigo_atendimento=ex.estado.codigo_atendimento)
         # ---- A4: a preferência do segurado já veio → agenda NESTA sessão --
-        pref = preferencia_de_agenda(ex.especificos)
+        pref = preferencia_de_agenda(ex.especificos) if agendar_por_preferencia else None
         if pref is not None:
             feito = await _agendar_pela_preferencia(ex, desfecho, cache, pref)
             if feito is not None:
@@ -1436,8 +1444,11 @@ def _datas_publicadas(meses: Any, ano: int) -> List[Tuple[str, str]]:
 
 async def _ler_blocos(sessao: Any, loja: Dict[str, Any], data_iso_: str,
                       cache: Dict[Any, Any], *, encaixe_ceven: Any = None
-                      ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Os blocos LIVRES de uma loja num dia (regra do bundle), com cache."""
+                      ) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Os blocos LIVRES de uma loja num dia (regra do bundle), com cache.
+
+    `(livres, resposta)`; `resposta is None` = o portal não respondeu (500,
+    timeout, corpo que não é objeto) — parada técnica para quem agenda."""
     chave = (str(loja.get("codigo_cliente")), data_iso_)
     if chave in cache:
         return cache[chave]["livres"], cache[chave]["resposta"]
@@ -1445,7 +1456,13 @@ async def _ler_blocos(sessao: Any, loja: Dict[str, Any], data_iso_: str,
         codigo_cliente=loja.get("codigo_cliente"),
         codigo_produto=loja.get("codigo_produto"),
         data_agendamento=data_iso_)
-    resp = r.get("json") if r.get("ok") and isinstance(r.get("json"), dict) else {}
+    if not r.get("ok") or not isinstance(r.get("json"), dict):
+        # 🔴 RED B3 (conserto da 001.10.1): o portal NÃO RESPONDEU a agenda.
+        # `None` (e não `{}`) para quem chamou distinguir "não respondeu" de
+        # "respondeu sem horário livre" — são mensagens opostas ao segurado.
+        # Não entra no cache: a próxima leitura pergunta de novo.
+        return [], None
+    resp = r.get("json")
     livres = API.blocos_livres(
         resp, encaixe_ceven=encaixe_ceven,
         bloqueio_por_peca_nao_medido=bool(loja.get("bloqueio_por_peca_nao_medido"))
@@ -1533,9 +1550,15 @@ async def _enriquecer_agenda(sessao: Any, desfecho: Dict[str, Any], *,
 def preferencia_de_agenda(especificos: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """`especificos.preferencia_agenda` (contrato C→A) validada, ou `None`.
 
-    `{"a_partir_de": "DD/MM/AAAA", "periodo": "manha"|"tarde"|"qualquer"}`.
+    `{"a_partir_de": "DD/MM/AAAA", "periodo": "manha"|"tarde"|"qualquer",
+      "horario"?: "HH:MM"}`.
     ⛔ Período fora dos três → `None`: agendar por um período adivinhado é
     marcar o dia de alguém no horário em que ele disse que não pode.
+
+    🔴 RED B1 (conserto da 001.10.1): `horario` presente = o segurado disse a
+    HORA ("4 da tarde", "16h", "às 9"). Aí o motor agenda SÓ aquele horário —
+    nunca "o 1º bloco do período". Horário que não é `HH:MM` válido → `None`
+    (a preferência inteira não vale: melhor a lista do que um palpite).
     """
     bruto = (especificos or {}).get("preferencia_agenda")
     if not isinstance(bruto, dict):
@@ -1546,7 +1569,14 @@ def preferencia_de_agenda(especificos: Dict[str, Any]) -> Optional[Dict[str, Any
     a_partir = data_iso(bruto.get("a_partir_de")) if bruto.get("a_partir_de") else ""
     if bruto.get("a_partir_de") and not a_partir:
         return None
-    return {"a_partir_de": a_partir, "periodo": periodo}
+    saida: Dict[str, Any] = {"a_partir_de": a_partir, "periodo": periodo}
+    if bruto.get("horario") not in (None, ""):
+        hora = str(bruto.get("horario")).strip()
+        m = re.fullmatch(r"(\d{2}):(\d{2})", hora)
+        if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+            return None
+        saida["horario"] = hora
+    return saida
 
 
 def _km(texto: Any) -> float:
@@ -1568,11 +1598,19 @@ async def _agendar_pela_preferencia(ex: Execucao, desfecho: Dict[str, Any],
     "a partir de" do segurado e ≥ hoje, com bloco livre no período dele.
     Sem casamento em `MAX_DIAS_PELA_PREFERENCIA` dias, nada sai: o desfecho
     continua `agenda`, com as opções, e a conversa pergunta.
+
+    🔴 Com `pref["horario"]` (RED B1): casa SÓ o bloco livre com aquele
+    horário exato (normal ou encaixe), no 1º dia ≥ o "a partir de" em que ele
+    está livre na loja mais próxima. Não achou → `agenda` com as opções —
+    NUNCA outro horário.
     """
     candidatas = [(i, l) for i, l in enumerate(desfecho.get("lojas") or [])
                   if l.get("tem_agenda") and not l.get("bloqueio_por_peca_nao_medido")]
+    hora_dita = str(pref.get("horario") or "")
     registro: Dict[str, Any] = {"periodo": pref["periodo"],
                                 "a_partir_de": pref["a_partir_de"], "casou": False}
+    if hora_dita:
+        registro["horario"] = hora_dita
     ex.evidence["preferencia_agenda"] = registro
     if not candidatas:
         registro["motivo"] = "nenhuma loja com agenda publicada"
@@ -1590,14 +1628,55 @@ async def _agendar_pela_preferencia(ex: Execucao, desfecho: Dict[str, Any],
         lidos += 1
         livres, resp = await _ler_blocos(ex.sessao, loja, iso, cache,
                                          encaixe_ceven=encaixe_ceven)
-        casam = [b for b in livres
-                 if pref["periodo"] == "qualquer" or _norm(b.get("turno")) == pref["periodo"]]
+        if resp is None:
+            # O portal não respondeu este dia: não se casa nada por ele.
+            continue
+        if hora_dita:
+            casam = [b for b in livres if b.get("horario") == hora_dita]
+        else:
+            casam = [b for b in livres
+                     if pref["periodo"] == "qualquer"
+                     or _norm(b.get("turno")) == pref["periodo"]]
         if casam:
             registro.update(casou=True, dias_lidos=lidos)
             return await _agendar_no_portal(ex, loja, iso, casam[0], resp)
     registro.update(dias_lidos=lidos,
                     motivo="nenhum horario livre casou com a preferencia")
     return None
+
+
+async def concluir_se_ja_agendado(ex: Execucao) -> Optional[JourneyResult]:
+    """🔴 JUIZ B1 / RED B2(c) — o agregado LIDO já diz "Agendado para"? Então
+    conclui LENDO, e `None` nunca volta: nenhum `POST /agendamentos` sai.
+
+    📊 LATERAL [049]: `{"Titulo": "Agendado para", "Valor": "22/09/2026 às
+    16:00"}`. É o portal dizendo por escrito que o serviço está marcado — a
+    prova que o §8.2 da SPEC chama de "idempotência pela leitura". Um segundo
+    POST sobre isso seria um segundo agendamento, e a API não o desfaz.
+
+    `confirmado_pelo_portal` vem do que está ESCRITO (é a mesma linha que
+    confirma um agendamento nosso). `ja_estava_agendado=True` diz à mensagem
+    que não fomos nós que marcamos AGORA — ela não diz "Agendei".
+    """
+    agregado = ex.agregado if isinstance(ex.agregado, dict) else {}
+    if not API.script_de_finalizacao(agregado).get("agendamento"):
+        return None
+    roteador = ((ex.evidence.get("desfecho") or {}).get("roteador")
+                or ((ex.params.get("_continuacao") or {}).get("desfecho_anterior")
+                    or {}).get("roteador"))
+    desfecho = ST.ler_conclusao(roteador, agregado)
+    ag = desfecho.get("agendamento") if isinstance(desfecho.get("agendamento"), dict) else None
+    if desfecho.get("tipo") != ST.DESFECHO_AGENDADO or not ag:
+        # Defesa: `conclusao` sempre dá `agendado` com "Agendado para"; se um
+        # dia não der, parar é melhor do que postar.
+        return _parar(ex, "agendamento_nao_confirmado",
+                      "o portal mostra um agendamento que eu nao consegui ler "
+                      "por inteiro. NAO repita: releia o atendimento.")
+    ag["ja_estava_agendado"] = True
+    ex.evidence["agendamento_lido"] = {"data": ag.get("data"), "horario": ag.get("horario"),
+                                       "novo_post": False}
+    _absorver_agregado(ex, agregado, desfecho)
+    return await _concluir(ex, desfecho, agregado)
 
 
 async def agendar_escolha(ex: Execucao, escolha: Dict[str, Any]) -> JourneyResult:
@@ -1608,7 +1687,16 @@ async def agendar_escolha(ex: Execucao, escolha: Dict[str, Any]) -> JourneyResul
     `DD/MM` na lista de datas, horário `HH:MM` nos blocos livres daquele dia.
     Não casou → `horario_indisponivel` com as opções REAIS de agora, e nenhuma
     escrita sai.
+
+    🔴 Conserto da 001.10.1:
+      · JUIZ B1 — o agregado lido já diz "Agendado para" ⇒ conclui LENDO, e
+        nenhum `POST /agendamentos` sai (nem que a escolha seja outra);
+      · RED B3 — a agenda NÃO RESPONDEU (datas ou horários sem 200) ⇒ parada
+        TÉCNICA `agenda_nao_respondeu`, nunca "o horário foi ocupado".
     """
+    ja = await concluir_se_ja_agendado(ex)
+    if ja is not None:
+        return ja
     ropc = await ex.sessao.opcoes_de_agendamento()
     if not ropc.get("ok") or not isinstance(ropc.get("json"), dict):
         _tela_desconhecida(ex.evidence, onde=API.EP_OPCOES_DISPONIVEIS, resposta=ropc)
@@ -1640,17 +1728,37 @@ async def agendar_escolha(ex: Execucao, escolha: Dict[str, Any]) -> JourneyResul
                       + ". Nada foi agendado.",
                       escolha={"loja": alvo_loja, "dia": alvo_dia, "horario": alvo_hora})
 
+    def nao_respondeu(onde: str, resposta: Dict[str, Any]) -> JourneyResult:
+        # 🔴 RED B3: 500/timeout NÃO é "a escolha sumiu". Nada foi escrito, a
+        # escolha dele continua de pé, e quem tenta de novo é o robô.
+        _tela_desconhecida(ex.evidence, onde=onde, resposta=resposta)
+        # A lista que o segurado VIU continua sendo a referência da escolha
+        # dele: a tool casa "loja 1" contra ela se ele repetir a escolha.
+        anterior = (ex.params.get("_continuacao") or {}).get("desfecho_anterior")
+        ex.evidence["desfecho"] = (dict(anterior) if isinstance(anterior, dict)
+                                   and anterior.get("lojas") else desfecho)
+        return _parar(ex, "agenda_nao_respondeu",
+                      "o portal nao respondeu a agenda da loja agora (" + onde
+                      + "). Nada foi agendado; a escolha continua valendo.",
+                      escolha={"loja": alvo_loja, "dia": alvo_dia, "horario": alvo_hora})
+
     if loja is None:
         return await indisponivel("a loja escolhida nao esta entre as de agora")
     rdias = await ex.sessao.datas_disponiveis(
         codigo_cliente=loja.get("codigo_cliente"),
         codigo_produto=loja.get("codigo_produto"), ano=hoje().year)
-    meses = rdias.get("json") if isinstance(rdias.get("json"), list) else []
+    if not rdias.get("ok") or not isinstance(rdias.get("json"), list):
+        return nao_respondeu(API.EP_DATAS_DISPONIVEIS, rdias)
+    meses = rdias["json"]
     iso = next((i for d, i in _datas_publicadas(meses, hoje().year) if d == alvo_dia), "")
     if not iso:
         return await indisponivel(f"o dia {alvo_dia} nao esta mais na agenda da loja")
-    livres, resp = await _ler_blocos(ex.sessao, loja, iso, {},
+    rh: Dict[Any, Any] = {}
+    livres, resp = await _ler_blocos(ex.sessao, loja, iso, rh,
                                      encaixe_ceven=ex.agregado.get("EncaixeCeven"))
+    if resp is None:
+        return nao_respondeu(API.EP_HORARIOS_DISPONIVEIS,
+                             {"ok": False, "status": 0, "json": None})
     bloco = next((b for b in livres if b.get("horario") == alvo_hora), None)
     if bloco is None:
         return await indisponivel(f"o horario {alvo_hora} de {alvo_dia} nao esta livre")
@@ -1670,6 +1778,12 @@ async def _agendar_no_portal(ex: Execucao, loja: Dict[str, Any], iso: str,
     """
     from portal_worker.guardrails import AcaoBloqueada, MATERIAL_SIDE_EFFECT
 
+    # 🔴 JUIZ B1 — a última porta antes do POST, para TODO caminho que chega
+    # aqui (preferência, escolha, releitura): agregado com "Agendado para" ⇒
+    # conclui lendo, nunca um segundo agendamento.
+    ja = await concluir_se_ja_agendado(ex)
+    if ja is not None:
+        return ja
     corpo = API.corpo_do_agendamento(loja=loja, data_iso=iso, bloco=bloco,
                                      horarios=horarios or {})
     data_br = f"{iso[8:10]}/{iso[5:7]}/{iso[0:4]}"
