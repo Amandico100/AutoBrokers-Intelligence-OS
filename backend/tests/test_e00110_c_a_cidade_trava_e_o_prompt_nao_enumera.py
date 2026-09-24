@@ -208,12 +208,32 @@ def g4a_a_cidade_do_cadastro_continua_existindo() -> None:
 def g4a_a_cidade_e_a_modalidade_nao_se_respondem() -> None:
     """`cidade_para_o_servico` (lugar) × `onde_realizar_o_servico` (modalidade)."""
     print("\n[G4a-quater] lugar nao responde modalidade")
+    # ⚠️ ATUALIZADO em 23/09/2026 (CLAUDE.md §9.3) — SPEC-EXTRA-001.10.1,
+    # D-E001101-05: o DOMICILIO saiu do produto e a MODALIDADE deixou de ser
+    # perguntada — `build_portal_params` manda sempre "loja". A afirmacao antiga
+    # ("respondida a cidade, a modalidade continua faltando") so continuava verde
+    # porque a pelicula tambem faltava — um guarda verde pelo motivo errado. A
+    # licao migra: lugar e modalidade seguem sendo DUAS chaves, e a modalidade
+    # agora e fixa, nunca perguntada.
     so_cidade, erro = PP.build_portal_params(
-        {**BASE, "especificos": {"cidade_para_o_servico": "Joinville/SC"}},
+        {**BASE, "especificos": {k: v for k, v in ESPECIFICOS_COM_CIDADE.items()
+                                 if k != "onde_realizar_o_servico"}},
         PERFIL, INFOCAP)
-    checar(so_cidade is None and erro and "prefere" in erro,
-           "respondida a CIDADE, a MODALIDADE continua faltando",
+    checar(so_cidade is not None and erro is None,
+           "respondida a CIDADE (sem modalidade), o pedido NASCE — domicilio nao trava",
            (erro or "")[:200])
+    checar(bool(so_cidade)
+           and so_cidade["especificos"].get("onde_realizar_o_servico") == "loja"
+           and so_cidade["local"]["cidade_servico"]["cidade"] == "JOINVILLE",
+           "e as duas chaves seguem separadas: modalidade 'loja' fixa, lugar = Joinville",
+           str((so_cidade or {}).get("especificos")))
+    dom, _ = PP.build_portal_params(
+        {**BASE, "especificos": {**ESPECIFICOS_COM_CIDADE,
+                                 "onde_realizar_o_servico": "domicilio"}},
+        PERFIL, INFOCAP)
+    checar(bool(dom) and dom["especificos"]["onde_realizar_o_servico"] == "loja",
+           "CONTROLE: um 'domicilio' que ainda chegue vira 'loja' (o produto nao o entrega)",
+           str((dom or {}).get("especificos")))
     so_modalidade, erro2 = PP.build_portal_params(
         {**BASE, "especificos": ESPECIFICOS_SEM_CIDADE}, PERFIL, INFOCAP)
     checar(so_modalidade is None and erro2 and "cidade" in erro2.lower(),
