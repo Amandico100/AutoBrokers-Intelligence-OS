@@ -175,8 +175,9 @@ class _Consulta:
 
 
 def _campo(linha: dict, chave: str):
-    if chave == "params->>_pedido_key":
-        return str((linha.get("params") or {}).get("_pedido_key") or "")
+    if chave.startswith("params->>"):
+        # o `->>` do PostgREST: texto da chave de topo do jsonb (RED B4 usa placa)
+        return str((linha.get("params") or {}).get(chave.split(">>", 1)[1]) or "")
     return linha.get(chave)
 
 
@@ -188,6 +189,10 @@ class BancoDeMentira:
         self.updates_de_run: list = []
         self.resultado = resultado_da_continuacao
         self.selects_de_jobs: list = []
+        # CONSERTO da 001.10.1: o "worker" pode ficar parado (continuacao EM
+        # CURSO) e a leitura da ultima continuacao pode cair (fail-closed).
+        self.worker_ligado = True
+        self.select_falha = False
 
     @property
     def client(self):
@@ -227,10 +232,14 @@ class BancoDeMentira:
             return _Resposta([])
         self.selects_de_jobs.append(dict(f))
         achados = [j for j in self.jobs if all(_campo(j, k) == v for k, v in f.items())]
+        if self.select_falha and "params->>_pedido_key" in f:
+            # CONSERTO (JUIZ B1): a leitura da ultima continuacao CAI.
+            raise RuntimeError("TESTE: leitura de portal_jobs indisponivel")
         if "id" in f and achados:
             job = achados[0]
             if (job.get("journey") == "continuar_atendimento"
-                    and job.get("status") in ("queued", "running")):
+                    and job.get("status") in ("queued", "running")
+                    and self.worker_ligado):
                 # O "worker": a continuação termina com o resultado roteirizado.
                 job.update(copy.deepcopy(self.resultado))
             return _Resposta([copy.deepcopy(job)])
@@ -373,30 +382,133 @@ def g7a_a_escolha_vira_uma_continuacao() -> None:
 
 
 def g7b_a_mesma_resposta_duas_vezes_e_um_job() -> None:
-    print("\n[G7b] a MESMA escolha 2x => UM job (Stripe: mesma chave, mesmo resultado)")
-    # A continuação termina parada de novo (horário sumiu) e AINDA continuável:
-    # a segunda chamada idêntica calcula a MESMA chave e se anexa.
-    parada_de_novo = {"status": "needs_human", "evidence": {
-        "stage": "horario_indisponivel", "desfecho": DESFECHO_AGENDA,
+    print("\n[G7b] a MESMA escolha 2x com a continuacao EM CURSO => UM job (Stripe)")
+    # 🔴 CONSERTO da 001.10.1 (RED B3) — verdade que MUDOU (CLAUDE.md §9.3):
+    # antes este guarda afirmava "a mesma escolha depois de uma continuacao
+    # TERMINADA = o mesmo job", e era exatamente isso que prendia para sempre a
+    # escolha do segurado depois de um 500 da agenda. A licao migra: a MESMA
+    # resposta com a continuacao EM CURSO continua sendo UM job (G7); depois de
+    # uma parada SEM efeito, a mesma escolha ganha uma tentativa nova.
+    parada_tecnica = {"status": "needs_human", "evidence": {
+        "stage": "agenda_nao_respondeu", "desfecho": DESFECHO_AGENDA,
         "continuacao": _continuacao("agendar")}}
     ab = _abertura(EMPRESA_A, "done", {"desfecho": DESFECHO_AGENDA,
                                        "continuacao": _continuacao("agendar")})
-    banco = _banco_com(ab, parada_de_novo)
-    _chamar(banco, EMPRESA_A, ESCOLHA)
-    segundo = _chamar(banco, EMPRESA_A, ESCOLHA)
+    banco = _banco_com(ab, parada_tecnica)
+    teto = PT.POLL_TIMEOUT_S
+    PT.POLL_TIMEOUT_S = 0.05
+    banco.worker_ligado = False           # a 1a continuacao fica EM CURSO
+    try:
+        _chamar(banco, EMPRESA_A, ESCOLHA)
+        segundo = _chamar(banco, EMPRESA_A, ESCOLHA)
+    finally:
+        PT.POLL_TIMEOUT_S = teto
     checar(len(_continuacoes(banco)) == 1,
-           "duas chamadas identicas => UM job de continuacao", len(_continuacoes(banco)))
-    checar("horário acabou de ser ocupado" in segundo,
-           "e a segunda recebe o resultado do job que ja existia", segundo[:200])
+           "G7: duas chamadas identicas com a 1a EM CURSO => UM job de continuacao",
+           len(_continuacoes(banco)))
+    checar("ja existe" in segundo.lower(),
+           "e a segunda NAO cria nada: acompanha o job que ja roda", segundo[:200])
+    # A corrida (as duas chamadas antes de qualquer insert) cai no indice unico:
+    # a MESMA origem + a MESMA escolha = a MESMA chave.
+    _esc = {"loja": "40001", "dia": "25/09", "horario": "16:00"}
+    k1 = PP.montar_job_de_continuacao(company_id=EMPRESA_A, job_origem=ab, operacao="agendar",
+                                      pedido_key="p", protocolo="88888888", confirm=True,
+                                      escolha=_esc, extra="job-abertura")["idempotency_key"]
+    k2 = PP.montar_job_de_continuacao(company_id=EMPRESA_A, job_origem=ab, operacao="agendar",
+                                      pedido_key="p", protocolo="88888888", confirm=True,
+                                      escolha=dict(_esc), extra="job-abertura")["idempotency_key"]
+    checar(bool(k1) and k1 == k2,
+           "G7: corrida de duas chamadas iguais => a MESMA chave (o indice decide)")
 
-    # CONTROLE: uma escolha DIFERENTE é outra continuação — senão a chave
-    # poderia ser constante e o bloco acima não provaria nada.
+    # 🔴 RED B3: a 1a termina numa parada TECNICA sem efeito (a agenda nao
+    # respondeu). A MESMA escolha agora ganha uma tentativa nova.
+    banco.worker_ligado = True
+    for j in _continuacoes(banco):        # o "worker" termina a 1a (parada tecnica)
+        j.update(copy.deepcopy(parada_tecnica))
+    antes = len(_continuacoes(banco))
+    _chamar(banco, EMPRESA_A, ESCOLHA)
+    checar(len(_continuacoes(banco)) == antes + 1,
+           "RED B3: depois de uma parada SEM efeito, a MESMA escolha => tentativa NOVA",
+           (antes, len(_continuacoes(banco))))
+
+    # CONTROLE: uma escolha DIFERENTE e outra continuacao — senao a chave
+    # poderia ser constante e o bloco acima nao provaria nada.
     _chamar(banco, EMPRESA_A, {"escolha_agenda": {"loja": "2", "dia": "25/09",
                                                   "horario": "09:00"}})
-    checar(len(_continuacoes(banco)) == 2,
+    checar(len(_continuacoes(banco)) == antes + 2,
            "CONTROLE: escolha diferente => um job NOVO", len(_continuacoes(banco)))
     chaves = {j.get("idempotency_key") for j in _continuacoes(banco)}
-    checar(len(chaves) == 2, "CONTROLE: e as duas chaves sao diferentes", chaves)
+    checar(len(chaves) == len(_continuacoes(banco)),
+           "CONTROLE: e as chaves sao todas diferentes", chaves)
+
+
+def b1_leitura_que_cai_nao_manda_nada() -> None:
+    print("\n[JUIZ B1] a leitura da ultima continuacao CAI => nada vai a seguradora")
+    ab = _abertura(EMPRESA_A, "done", {"desfecho": DESFECHO_AGENDA,
+                                       "continuacao": _continuacao("agendar")})
+    banco = _banco_com(ab, RESULTADO_AGENDADO)
+    banco.select_falha = True
+    conteudo = _chamar(banco, EMPRESA_A, ESCOLHA)
+    checar(len(_continuacoes(banco)) == 0,
+           "JUIZ B1: SELECT caiu => NENHUM job de continuacao (fail-closed)",
+           len(_continuacoes(banco)))
+    checar("Nao consegui conferir" in conteudo,
+           "JUIZ B1: e o agente ouve que a tool nao conseguiu conferir", conteudo[:200])
+    # CONTROLE: a MESMA chamada com a leitura de pe cria a continuacao.
+    banco.select_falha = False
+    _chamar(banco, EMPRESA_A, ESCOLHA)
+    checar(len(_continuacoes(banco)) == 1,
+           "CONTROLE: com a leitura de pe, a mesma chamada continua", len(_continuacoes(banco)))
+
+
+def _chamar_com_peca(banco, company_id: str, peca: str) -> str:
+    NOTIFICACOES.clear()
+    pedido = copy.deepcopy(PEDIDO)
+    pedido["peca"] = peca
+    saida = asyncio.run(PortalDeMentira(company_id=company_id, supabase_client=banco)
+                        ._arun(**pedido, session_id=SESSAO))
+    return str(saida.get("content") or "")
+
+
+def b4_a_peca_reescrita_nao_abre_outro_pedido() -> None:
+    print("\n[RED B4] a peca REESCRITA para responder uma parada => continuacao, nunca 2o pedido")
+    nova = "vidro da porta dianteira direita"
+    ev_parado = {"stage": "peca_ambigua", "continuacao": _continuacao("responder:peca")}
+    ab = _abertura(EMPRESA_A, "needs_human", ev_parado)
+    banco = _banco_com(ab, RESULTADO_AGENDADO)
+    conteudo = _chamar_com_peca(banco, EMPRESA_A, nova)
+    checar(len(_aberturas(banco)) == 1,
+           "RED B4: NENHUM abrir_atendimento novo (a peca reescrita nao e pedido novo)",
+           len(_aberturas(banco)))
+    conts = _continuacoes(banco)
+    resp = ((conts[0].get("params") or {}).get("_continuacao") or {}).get("respostas") if conts else None
+    checar(len(conts) == 1 and resp == {"peca": nova},
+           "RED B4: UMA continuacao 'responder' com a peca nova como RESPOSTA", resp)
+    checar(bool(conts) and ((conts[0].get("params") or {}).get("dano") or {}).get("peca")
+           == ab["params"]["dano"]["peca"],
+           "RED B4: e o campo de cima da continuacao e o do pedido (a chave nao muda)")
+    checar("NAO abri outro atendimento" in conteudo,
+           "RED B4: o agente e avisado de que a chamada virou RESPOSTA", conteudo[:200])
+
+    # DOIS TENANTS: o pedido parado e de B; a chamada de A abre o de A.
+    ab_b = _abertura(EMPRESA_B, "needs_human", ev_parado)
+    banco_b = _banco_com(ab_b, RESULTADO_AGENDADO)
+    _chamar_com_peca(banco_b, EMPRESA_A, nova)
+    checar(len(_continuacoes(banco_b)) == 0
+           and len([j for j in _aberturas(banco_b) if j.get("company_id") == EMPRESA_A]) == 1,
+           "G11: o pedido parado de B NUNCA vira continuacao de uma chamada de A",
+           [(str(j.get("company_id"))[:4], j.get("journey")) for j in banco_b.jobs])
+
+    # CONTROLE: a MESMA peca reescrita com o pedido NAO esperando resposta
+    # (agenda) abre outro pedido — o guarda CONSEGUE deixar passar (outra peca
+    # de verdade = outro pedido, frase_de_pedido_ja_existente).
+    ab_c = _abertura(EMPRESA_A, "done", {"desfecho": DESFECHO_AGENDA,
+                                         "continuacao": _continuacao("agendar")})
+    banco_c = _banco_com(ab_c, RESULTADO_AGENDADO)
+    _chamar_com_peca(banco_c, EMPRESA_A, nova)
+    checar(len(_aberturas(banco_c)) == 2 and len(_continuacoes(banco_c)) == 0,
+           "CONTROLE: sem parada esperando resposta, a regra de antes vale",
+           (len(_aberturas(banco_c)), len(_continuacoes(banco_c))))
 
 
 def g7c_sem_continuacao_possivel() -> None:
@@ -529,6 +641,8 @@ if __name__ == "__main__":
     _preparar_ambiente()
     g7a_a_escolha_vira_uma_continuacao()
     g7b_a_mesma_resposta_duas_vezes_e_um_job()
+    b1_leitura_que_cai_nao_manda_nada()
+    b4_a_peca_reescrita_nao_abre_outro_pedido()
     g7c_sem_continuacao_possivel()
     g7d_responder_so_com_resposta_nova()
     g11_dois_tenants()
