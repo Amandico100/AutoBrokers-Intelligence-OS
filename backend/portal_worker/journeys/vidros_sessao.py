@@ -69,7 +69,14 @@ class SessaoVidros:
     """
 
     page: Any = None
-    token: str = ""
+    # 🔴 `repr=False`: o token é a ÚNICA autenticação da API (📊 header
+    # `token_autorizacao`, sem cookie, CORS `*`). O `repr` padrão do dataclass
+    # o imprimiria em qualquer log de exceção que mostrasse a sessão.
+    token: str = field(default="", repr=False)
+    # 🔴 EXTRA-001.10.1 — a sessão RETOMADA de um atendimento que já existe.
+    # Com ela ligada, `criar_atendimento` RECUSA sem tocar a rede: a continuação
+    # nunca abre um segundo pedido, nem por engano de quem chamar.
+    modo_continuacao: bool = False
     chamadas: int = 0
     # Trilha para evidência: método, path normalizado e status. Nunca corpo.
     trilha: list = field(default_factory=list)
@@ -102,7 +109,11 @@ class SessaoVidros:
         # método novo amanhã não precisa lembrar da regra, e nenhum caminho de
         # exceção a contorna. **Freio liberado e aprovação humana dada não
         # bastam** — os três precisam estar verdes, e este é o terceiro.
-        if not API.pode_sair(caminho):
+        # 🔴 O MÉTODO vai junto: escrita fora do registro, ou fora do endereço
+        # EXATO de um endpoint APPROVED, não sai (`API.pode_sair`). Antes da
+        # EXTRA-001.10.1 esta linha perguntava só pelo caminho, e a regra de
+        # escrita fail-closed do red team nunca era consultada aqui.
+        if not API.pode_sair(caminho, metodo):
             ep = API.endpoint_do_caminho(caminho)
             self._registrar(metodo, caminho, 0)
             logger.warning("vidros: endpoint CANDIDATE recusado: %s", ep)
@@ -322,6 +333,13 @@ class SessaoVidros:
         Depois desta chamada existe registro na seguradora. Retry cego aqui
         produz dois pedidos.
         """
+        if self.modo_continuacao:
+            # ⛔ G3 da EXTRA-001.10.1. Nenhuma chamada sai: a continuação
+            # trabalha sobre o atendimento que o token JÁ identifica.
+            self._registrar("POST", API.EP_ATENDIMENTOS, 0)
+            logger.warning("vidros: POST /atendimentos recusado em modo continuacao")
+            return {"ok": False, "status": 0, "json": None, "text": "",
+                    "erro": "continuacao_nao_cria_atendimento"}
         r = await self.chamar(API.EP_ATENDIMENTOS, metodo="POST", corpo=corpo,
                               com_token=False)
         dados = r.get("json") or {}
@@ -426,16 +444,44 @@ class SessaoVidros:
         return await self.chamar(
             f"{API.EP_STATUS_SEGURADORAS}?Seguradora={str(slug or '').strip().lower()}")
 
+    # ---- EXTRA-001.10.1: as escritas que as capturas de 21/09 destravaram --
+    # 🔴 Fronteiras materiais: quem arma o guard é a JOURNEY, nunca estas funções
+    # (mesma regra de `criar_atendimento`/`gravar_questionario`).
+    async def agendar(self, corpo: Dict[str, Any]) -> Dict[str, Any]:
+        """`POST /agendamentos` — APPROVED. 📊 1 exercício (HAR LATERAL [048]),
+        corpo de 7 chaves → `{"ServicoAgendado": true, …}`. O corpo vem de
+        `API.corpo_do_agendamento`; a confirmação é o `GET /atendimentos`."""
+        return await self.chamar(API.EP_AGENDAMENTOS, metodo="POST", corpo=corpo)
+
+    async def prioridade_do_atendimento(self, codigo_atendimento: Any) -> Dict[str, Any]:
+        """`GET /atendimentos-prioridades/{cod}` → 📊 `false` (1×, LATARIA [091]).
+        O SPA o lê como "é veículo de CARGA?" (`validarVeiculoCarga`), e é isso
+        que escolhe a lista de opções do modal de prioridade."""
+        cod = str(codigo_atendimento or "").strip()
+        r = await self.chamar(f"{API.EP_PRIORIDADES}/{cod}")
+        # 📊 O corpo é o booleano CRU (`false`), que `chamar` não lê como JSON
+        # (só `{`/`[`). Lido aqui, e só aqui: mudar `chamar` mudaria o que
+        # outros endpoints de booleano cru devolvem a quem já os consome.
+        texto = str(r.get("text") or "").strip().lower()
+        if r.get("json") is None and texto in ("true", "false"):
+            r["json"] = texto == "true"
+        return r
+
+    async def gravar_prioridade(self, corpo: Dict[str, Any]) -> Dict[str, Any]:
+        """`POST /atendimentos-prioridades` — 📊 1× (LATARIA [092]), 4 chaves."""
+        return await self.chamar(API.EP_PRIORIDADES, metodo="POST", corpo=corpo)
+
+    async def gravar_ocorrencia(self, corpo: Dict[str, Any]) -> Dict[str, Any]:
+        """`POST /ocorrencias` — 📊 1× (LATARIA [093]), `{CodigoAtendimento,
+        Ocorrencia}` com o texto LITERAL do bundle (`API.OCORRENCIA_VISTORIA`)."""
+        return await self.chamar(API.EP_OCORRENCIAS, metodo="POST", corpo=corpo)
+
     # ---- escritas ESCRITAS e DESLIGADAS: CANDIDATE na escada da SPEC-077 --
-    # 🔴 As cinco funções abaixo existem, estão completas e **não saem**:
+    # 🔴 As funções abaixo existem, estão completas e **não saem**:
     # `chamar` as recusa com `erro="endpoint_candidate"` antes de tocar a rede,
     # porque 📊 nenhuma delas tem um exercício em captura. Escrever o código
     # contra o contrato do bundle é barato e deixa a promoção pronta; deixá-lo
     # sair sem captura é mandar efeito não medido para dentro da seguradora.
-    async def agendar(self, corpo: Dict[str, Any]) -> Dict[str, Any]:
-        """`POST /agendamentos` — CANDIDATE. 📊 zero exercícios em 4 HAR."""
-        return await self.chamar(API.EP_AGENDAMENTOS_NAO_MEDIDO, metodo="POST",
-                                 corpo=corpo)
 
     async def direcionar(self, corpo: Dict[str, Any]) -> Dict[str, Any]:
         """`POST /direcionamentos` — CANDIDATE. 📊 zero exercícios em 4 HAR."""
@@ -600,5 +646,6 @@ class SessaoVidros:
             "camada": "api",
             "chamadas": self.chamadas,
             "tem_token": bool(self.token),
+            "modo": "continuacao" if self.modo_continuacao else "abertura",
             "trilha": self.trilha[:60],
         }
