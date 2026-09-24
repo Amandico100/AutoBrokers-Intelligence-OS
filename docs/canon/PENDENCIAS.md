@@ -11028,12 +11028,15 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E00110-A1 · 🧑 falta a captura de um AGENDAMENTO CONCLUÍDO — é ela que libera o robô a marcar dia e hora
 📊 20/09/2026: `POST /agendamentos` e `POST /direcionamentos` existem no bundle do portal e têm **ZERO exercícios** nas 5 capturas; a única captura com agenda (vidro de porta) trouxe 1 loja e `Blocos: []` de horários, ou seja, nem os horários foram vistos. Por isso os dois endpoints ficaram marcados CANDIDATE e **não saem** (gate G7). **Destrava:** 1 acionamento real na Yelum, vidro de PORTA ou VIGIA (troca, não trinca pequena), numa cidade com loja, indo até o fim — escolher a loja, o dia, o horário e CONFIRMAR — com HAR "with content" gravado desde antes de escolher a seguradora; roteiro em `guias/ROTEIRO-DE-CAPTURA-PORTAL-DE-VIDROS.md` §"o que ainda falta", item 1. **Dono:** 🧑 (captura) + 🤖 (jornada). **Custo de esquecer:** o segurado escolhe loja e dia na conversa, e uma pessoa da equipe tem de repetir isso dentro do portal — todo dia, em todo caso com agenda.
+**`FECHADA` (EXTRA-001.10.1, 24/09):** a captura de 21/09 trouxe o `POST /agendamentos` com 7 chaves e o `GET /atendimentos` confirmando "Agendado para" — o endpoint saiu de CANDIDATE e o robô agenda, atrás da flag. Prova: agendamento medido e em uso (relatório §1, B0.2).
 
 ## P-E00110-A2 · cancelar exige um catálogo que nunca foi visto (`motivos-cancelamento`)
 📊 20/09/2026: `PUT /atendimentos/cancelar` aparece 1× no HAR novo e manda `codigoMotivoCancelamento: 39` — mas `GET .../motivos-cancelamento` tem **0 exercícios**, então o `39` é uma constante lida do bundle, não um motivo conferido. Cancelar ficou escrito como função e **sem jornada própria**. **Destrava:** abrir a tela de cancelar num atendimento de teste, com o HAR gravando, e **só olhar a lista de motivos** (sem cancelar). **Dono:** 🧑 captura + 🤖. **Custo de esquecer:** um cancelamento do robô com motivo errado fica registrado na seguradora com a razão errada.
+**`CONTINUA` (EXTRA-001.10.1, 24/09):** a perícia do bundle confirma que `motivos-cancelamento` é código MORTO no portal e que `39` é constante do controlador (não catálogo conferido); a observação exige ≥ 20 caracteres. Falta decidir se o robô cancela → P-E001101-17.
 
 ## P-E00110-A3 · 🧑 falta a captura de VISTORIA/FOTOS — o ramo inteiro do roteador está cego
 📊 20/09/2026: as chaves `PermiteVistoriaAmbas`, `PermiteVistoriaLoja`, `PermiteVistoriaMobile` e `RealizarVistoria` existem no roteador do portal e têm **0 exercícios** nas 5 capturas; o código as lê e, por não conhecer a tela seguinte, **para com dossiê** (é o comportamento certo). **Destrava:** 1 acionamento em que o portal peça fotos ou vistoria — candidatos 💭: farol LED/Matrix, retrovisor com LED, Porto. **Dono:** 🧑 captura. **Custo de esquecer:** todo caso de vistoria vira trabalho manual, sem o robô nem saber avisar o que vem depois.
+**`PARCIAL` (EXTRA-001.10.1, 24/09):** prioridade e preferência de vistoria (link × loja) agora são coletadas e enviadas (`atendimentos-prioridades` + `ocorrencias`), atrás da flag. Fotos multipart e link de vistoria mobile continuam CANDIDATE (0 exercícios) → P-E001101-05.
 
 ## P-E00110-A4 · `_LIMITE_CM` continua cravado no caminho DOM
 📊 20/09/2026: a régua dos "10 cm" que decide troca × reparo **vem do portal** (a pergunta 8 do questionário do para-brisa diz o número na própria tela), e o caminho API-first passou a lê-la de lá; o caminho DOM ainda carrega a constante. **Destrava:** o DOM ler o número da tela, como o API-first faz. **Dono:** 🤖. **Custo de esquecer:** no dia em que uma seguradora usar outra medida, o robô decide troca × reparo pelo número errado — e o vidraceiro vai com a peça errada.
@@ -11049,6 +11052,7 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E00110-A8 · família sem lista própria de causas pode parar DEPOIS do protocolo
 📊 20/09/2026: as causas do dano vêm do portal por peça (`GET /motivos-dano`), e a coleta usa as causas **medidas** como dica. Para as famílias sem captura própria (vigia, farol, retrovisor, teto, para-choque), a dica é genérica: se o portal listar uma causa que o segurado não disse, o pedido **já terá nascido** e a parada acontece depois da fronteira — quando não há mais como voltar sozinho. **Destrava:** P-E00110-A14 (as capturas das 5 famílias) ou a continuação (A11). **Dono:** 🤖 + 🧑. **Custo de esquecer:** paradas evitáveis, exatamente no ponto em que elas custam mais.
+**`PARCIAL` (EXTRA-001.10.1, 24/09):** a parada tardia agora tem continuação — quando a parada depende do segurado, o robô pergunta e RETOMA pela resposta, em vez de terminar em mão humana. A causa continuar genérica para as 5 famílias sem captura própria não mudou; segue esperando A14.
 
 ## P-E00110-A9 · o caminho DOM escolhe `OUTROS` quando devia perguntar
 📊 20/09/2026: `explicar_match` do caminho DOM cai em `OUTROS` para descrições que o catálogo cobre, porque casa por semelhança. O API-first passou a exigir igualdade; o DOM não. **Destrava:** o DOM usar o mesmo casador. **Dono:** 🤖. **Custo de esquecer:** o pedido nasce com a peça genérica e a loja recebe um chamado que não diz o que consertar.
@@ -11058,6 +11062,7 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E00110-A11 · 🔴 NÃO EXISTE CONTINUAÇÃO: o token do portal vive só em memória
 📊 20/09/2026: o `token_autorizacao` nasce no `POST /atendimentos` e é guardado **apenas no objeto da sessão**; nada durável. Consequência medida no desenho: **toda** parada depois da fronteira — agenda, vistoria, pergunta nunca vista, erro do portal — termina em mão humana, mesmo com o número do atendimento já na mão do segurado. **Destrava:** guardar o atendimento (número + o que já foi respondido) de forma durável e reabrir pelo "Consultar atendimento" do portal — é o coração da **SPEC-EXTRA-001.10.1**; depende também da resposta nº 12 da atendente ("dá para retomar por número?"). **Dono:** 🤖. **Custo de esquecer:** o robô abre o pedido e entrega o resto do trabalho para uma pessoa, que é justamente o que a SPEC existe para evitar.
+**`FECHADA` (EXTRA-001.10.1, 24/09):** o token agora é guardado cifrado (cofre do worker) em `portal_jobs.evidence["continuacao"]`, e a journey `continuar_atendimento` reidrata, lê o estado real e executa a ação pendente. Prova: fio 78/0 + costura 60/0. ⚠️ Sobrevive nova pendência: o tempo de vida do token é desconhecido (P-E001101-02) e o canário que provaria isto ao vivo não rodou (P-E001101-01).
 
 ## P-E00110-A12 · `test_o_que_acontece_quando_o_agente_liga` está vermelho desde antes desta SPEC
 📊 21/09/2026: está na linha de base da bateria (`reports/BATERIA-LINHA-DE-BASE.txt`), não foi introduzido aqui e não foi consertado aqui. **Destrava:** triagem própria. **Dono:** 🤖. **Custo de esquecer:** falha antiga vira paisagem e esconde uma falha nova parecida.
@@ -11082,6 +11087,7 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E00110-C-01 · 🧑 falta a captura de serviço a DOMICÍLIO
 📊 20/09/2026: `GET /transportes-proprios/consultas-cep` respondeu `AtendeServicoMovel:false` nas capturas, então a tela de domicílio **nunca apareceu**. Domicílio é o que transforma o serviço em conveniência. **Destrava:** 1 acionamento com CEP de capital, onde o portal ofereça "a domicílio". **Dono:** 🧑. **Custo de esquecer:** o robô nunca oferece a melhor opção que a seguradora tem.
+**`MORREU` (EXTRA-001.10.1, 24/09):** domicílio sai por decisão do Founder (D-E001101-05) — o robô não pergunta e não oferece; virou "loja" por padrão.
 
 ## P-E00110-C-02 · 🧑 falta 1 captura de passo 1 + itens cobertos de OUTRA seguradora
 📊 20/09/2026: das 38 seguradoras publicadas, só **Yelum (LIBERTY)** e **Porto** têm captura. As outras 36 estão cobertas "por construção" — mesmo caminho de dado, provado pelo gate G3 — mas o **questionário** de cada uma é desconhecido. **Destrava:** 1 acionamento em Porto (completo), Azul, Tokio, HDI ou Allianz, pelo menos passo 1 + a lista de peças. **Dono:** 🧑. **Custo de esquecer:** a primeira seguradora nova vira parada com dossiê em vez de atendimento.
@@ -11110,6 +11116,67 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 - **P-PILOTO-08 → `FECHADA no backend, com prova`:** a fila de aprendizado do portal existe e é escrita (`registrar_tela_cega(ramo="vidros")`), provada pelo gate G9 com dois tenants isolados, e job de sucesso nunca aprende. ⚠️ O **leitor** da fila continua não existindo — isso já era pendência própria, e não é desta.
 - **P-50 → `CONTINUA`:** a resolução por dado cobre as **38** seguradoras publicadas na abertura do pedido (gate G3), o que mata a lista fechada de 3 slugs. Mas **evidência de questionário** só existe para Yelum e Porto — é o que P-E00110-C-02 pede.
 - **P-PILOTO-09 → reforçada:** 📊 em 20/09 credenciais foram coladas no chat de novo. A rotação das chaves continua pendente e ficou mais urgente.
+
+---
+
+## SPEC-EXTRA-001.10.1 · o que ficou pendente (24/09/2026)
+
+> A SPEC entregou a **continuação** do atendimento (token guardado cifrado, retomada pelo estado real do portal) e o
+> **agendamento concluído**, ambos ainda atrás da flag `PORTAL_VIDROS_API_FIRST`, que continua **DESLIGADA**. O que
+> ficou de fora, com o que destrava cada item, está abaixo.
+
+## P-E001101-01 · 🧑 o CANÁRIO (G12) não rodou
+📊 24/09/2026: nenhum acionamento real passou pelo caminho novo — os 11 blockers foram mortos sobre HAR reais com o motor real, nunca contra o portal ao vivo. **Destrava:** Implantar + o roteiro do bloco F das `TAREFAS-DO-FOUNDER.md`. **Dono:** 🧑. **Custo de esquecer:** a continuação (o coração desta SPEC) nunca foi provada contra o portal de verdade.
+
+## P-E001101-02 · o tempo de vida do token é desconhecido
+📊 o token de 21/09 22:09 UTC devolveu 401 em 23/09 23:40 UTC — a janela real está entre minutos e ~50 h. **Destrava:** no canário, ler o atendimento com o token em +1 h, +6 h e +24 h (o gerente mede no chat). **Dono:** 🤖 (medição) + 🧑 (canário). **Custo de esquecer:** a continuação pode sair cedo demais (perdendo trabalho que ainda daria) ou tarde demais (tentando contra um token já morto).
+
+## P-E001101-03 · a continuação pode reenviar `PATCH /atendimentos` / `PUT /corretores` sem prova de gravação
+📊 quando retoma antes da materialização, a continuação reenvia esses dois; o agregado do portal só devolve `CodigoObjetoCausa` e `Cep` de volta, o que não prova que o resto foi gravado. **Destrava:** canário com captura de um `PATCH` repetido. **Dono:** 🤖. **Custo de esquecer:** um campo pode não estar gravado do lado do portal e ninguém percebe.
+
+## P-E001101-04 · o que `opcoes-disponiveis` publica DEPOIS de agendar/ocorrência nunca foi capturado
+📊 a defesa de hoje é ler "Agendado para" no agregado (`ScriptFinalizacao`); ninguém viu a tela recarregada depois de agendar ou depois da ocorrência de vistoria. **Destrava:** captura de recarregar a tela depois de agendar. **Dono:** 🧑. **Custo de esquecer:** um comportamento do portal depois da agenda pode existir e nunca ter sido modelado.
+
+## P-E001101-05 · link de vistoria mobile e envio de fotos continuam CANDIDATE
+📊 0 exercícios nas capturas até aqui — o ramo do roteador que pede fotos/vistoria segue cego. **Destrava:** captura em que o portal peça fotos (P-E00110-A3). **Dono:** 🧑. **Custo de esquecer:** todo caso de vistoria continua indo para mão humana, sem o robô saber avisar o que vem depois.
+
+## P-E001101-06 · prioridade só tem os valores medidos 1×
+📊 as opções de Situação vistas são "Não se aplica" e "Não tenho"; a urgência real do segurado não é coletada nem apresentada como opção. **Destrava:** decisão + captura de outra opção de prioridade. **Dono:** 🧑 + 🤖. **Custo de esquecer:** um segurado com urgência real escolhe entre opções que não descrevem o caso dele.
+
+## P-E001101-07 · (CP1) peça LEGÍTIMA dita como resposta a um pedido parado em `responder:peca` pode virar resposta do 1º pedido
+📊 achado do julgamento (§4, item 1 do relatório), consertado por prioridade de código na resposta — mas o caso de uma peça nova, legítima, chegando junto com a resposta a uma pergunta parada ainda depende de decisão de produto; hoje o agente é avisado. **Destrava:** decisão de produto sobre como distinguir os dois casos. **Dono:** 🧑. **Custo de esquecer:** uma correção de peça pode ser tratada como resposta ao questionário antigo.
+
+## P-E001101-08 · (CP2) a busca do "pedido irmão" é fail-open
+📊 se a leitura do índice cair, o 2º pedido pode sair mesmo havendo um pedido irmão esperando resposta — a mutação correspondente foi vermelha, mas a rede de proteção é uma só. **Destrava:** uma 2ª rede no índice único (constraint ou reconferência). **Dono:** 🤖. **Custo de esquecer:** uma falha de leitura pontual pode abrir um 2º pedido duplicado no portal.
+
+## P-E001101-09 · (CP3) a mesma escolha pela tool depois de `leitura_falhou` responde "já existe"
+📊 comportamento medido do conserto: o vigia relê em até 30 min, então a inconsistência se resolve, mas não instantaneamente. **Destrava:** decisão sobre encurtar a janela de releitura para este caso. **Dono:** 🤖. **Custo de esquecer:** o segurado pode repetir a escolha e receber uma resposta que parece um erro, por até 30 min.
+
+## P-E001101-10 · (CP4) se o portal agendar entre a leitura e o desfecho, o texto diz "Agendei" sem POST nosso
+📊 é o comportamento correto (ler, nunca reagendar por cima) mas o texto "Agendei" nesse caso é só leitura — nenhum POST nosso aconteceu. **Destrava:** nenhuma ação pendente; registrado para quem for auditar logs de escrita. **Dono:** 🤖. **Custo de esquecer:** quem olhar só os POSTs pode concluir que um agendamento "sumiu".
+
+## P-E001101-11 · o filtro `params->>` do PostgREST só foi provado no dublê
+📊 os gates (G7, G11) rodam contra o motor real com dublê na borda HTTP, nunca contra o Postgres/PostgREST real do ambiente implantado. **Destrava:** canário. **Dono:** 🧑. **Custo de esquecer:** uma diferença de comportamento do PostgREST real (operador, índice, tipo) pode não ter sido pega pelo dublê.
+
+## P-E001101-12 · as mensagens que o vigia manda não entram na memória da conversa do agente
+📊 o vigia opera fora do turno de chat; o que ele escreve ao segurado (releitura, alerta) não é registrado como turno na memória que o agente lê depois. **Destrava:** decisão sobre se isso precisa entrar (hoje não trava nada, mas o agente pode "não saber" o que o vigia já disse). **Dono:** 🤖. **Custo de esquecer:** o agente pode repetir ou contradizer algo que o vigia já contou ao segurado.
+
+## P-E001101-13 · um run "aguardando o segurado" não tem prazo
+📊 o work_run fica aberto esperando resposta indefinidamente; não existe um teto de tempo depois do qual ele é escalado ou encerrado. **Destrava:** decisão de produto sobre o prazo. **Dono:** 🧑. **Custo de esquecer:** pedidos podem ficar "abertos" por semanas sem ninguém saber que precisam de ação.
+
+## P-E001101-14 · ramos 3/6 do roteador com `OpcoesAgendamento` vazio: o SPA faz `vistoriacredenciado`; o nosso motor devolve "agenda" com 0 lojas
+📊 achado do bundle: nesses dois ramos do roteador do portal, o comportamento correto do SPA é outro fluxo (`vistoriacredenciado`), e o nosso motor hoje devolve uma "agenda" sem nenhuma loja disponível. **Destrava:** captura de um caso que caia nesses ramos. **Dono:** 🧑 + 🤖. **Custo de esquecer:** um pedido pode chegar ao segurado como "escolha um horário" quando não há nenhum.
+
+## P-E001101-15 · `EncaixeCeven="Sim"` e a regra de previsão de peça nunca foram capturados
+📊 essas duas chaves existem no bundle e ficam bloqueadas (CANDIDATE) por falta de exercício. **Destrava:** captura em que apareçam. **Dono:** 🧑. **Custo de esquecer:** dois comportamentos do portal continuam desconhecidos e, se aparecerem, o robô para com dossiê em vez de agir.
+
+## P-E001101-16 · o telefone da InfoCap pode ser fixo e vai como "CELULAR SEGURADO"
+📊 o campo que o robô usa como celular do segurado (Tipo 20) vem da InfoCap sem confirmação de que é sempre um número de celular — pode ser um fixo cadastrado como contato principal. **Destrava:** decisão + verificação do dado de origem. **Dono:** 🤖 + 🧑. **Custo de esquecer:** o portal pode marcar `PossuiTelefoneRecebeWhatsapp:true` para um número que não recebe WhatsApp.
+
+## P-E001101-17 · 🧑 cancelar e reagendar pelo robô continuam fora — decisão de gente
+📊 medido: `codigoMotivoCancelamento: 39` é constante do controlador do portal (não um catálogo conferido) e a observação exige ≥ 20 caracteres. **Destrava:** decisão do Founder sobre se o robô cancela/reagenda, e em que condição. **Dono:** 🧑. **Custo de esquecer:** hoje todo cancelamento e reagendamento continua manual, mesmo quando o robô já tem toda a informação para fazê-lo.
+
+**Re-julgadas nesta SPEC (ver FOUNDER-DECISIONS.md e o relatório §8):** P-E00110-A11 **FECHADA** (prova: fio 78/0 + costura 60/0) · A1 **FECHADA** (agendamento medido e em uso, atrás da flag) · A2 **CONTINUA** (motivos-cancelamento é código morto; 39 é constante; falta decidir se o robô cancela → P-E001101-17) · A3 **PARCIAL** (prioridade + preferência de vistoria feitas; fotos/link não → P-E001101-05) · A8 **PARCIAL** (a parada tardia agora tem continuação) · C-01 **MORREU** (domicílio fora por decisão do Founder, D-E001101-05).
 
 ---
 
