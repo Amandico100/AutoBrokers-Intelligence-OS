@@ -64,6 +64,14 @@ from .portal_params import (
 logger = logging.getLogger(__name__)
 
 POLL_TIMEOUT_S = 150
+
+#: 🔴 JUIZ B1 (conserto da 001.10.1) — o que o agente ouve quando a tool não
+#: consegue LER o estado atual do pedido. Fail-closed: nada vai à seguradora.
+NAO_CONSEGUI_CONFERIR = (
+    "Nao consegui conferir agora o estado do pedido que ja existe na seguradora, "
+    "entao NAO mandei nada a ela (para nao repetir nem desfazer nada). O pedido "
+    "continua aberto com o mesmo numero. Tente de novo em instantes; se "
+    "persistir, acione um humano.")
 POLL_EVERY_S = 5
 
 # SPEC-065 7.2 — o mesmo conjunto do indice unico parcial
@@ -601,6 +609,27 @@ class PortalActionTool(BaseTool):
                     existente=existente, params=params, pedido_key=chave,
                     session_id=session_id, cpf=cpf)
 
+        if not existente:
+            # 🔴 RED B4 (conserto da 001.10.1) — a PEÇA REESCRITA não abre outro
+            # pedido. 📊 O red team mediu: "vidro de porta" parou em
+            # `peca_ambigua`, o modelo chamou de novo com "vidro da porta
+            # traseira esquerda" no campo de cima, a chave (que embute a peça)
+            # mudou e nasceu um 2º `POST /atendimentos` — um segundo atendimento
+            # real no nome do segurado. A proteção era só a frase do prompt.
+            irmao = self._pedido_irmao_esperando_resposta(params, chave)
+            if irmao is not None:
+                abertura_irma, params_irmaos, chave_irma = irmao
+                resposta = await self._continuar_ou_explicar(
+                    existente=abertura_irma, params=params_irmaos,
+                    pedido_key=chave_irma, session_id=session_id, cpf=cpf)
+                return {"content": (
+                    "[para voce, agente] Esta chamada tem a MESMA placa, o MESMO CPF e a "
+                    "MESMA data do dano de um pedido que ja existe e esta PARADO "
+                    "esperando uma resposta do segurado — tratei a peca nova como a "
+                    "RESPOSTA desse pedido e NAO abri outro atendimento. Se for OUTRA "
+                    "peca de verdade, conclua este pedido primeiro.\n\n"
+                    + str((resposta or {}).get("content") or ""))}
+
         # O agente atendente e resolvido uma vez so: ele vai para o job (para quem
         # responder depois saber por qual integracao falar) e para o `_notify`.
         agent_id = self._attendance_agent_id() if not reaproveitado else None
@@ -774,6 +803,10 @@ class PortalActionTool(BaseTool):
         """
         cliente = self._client()
         atual = buscar_ultimo_estado_do_pedido(cliente, self.company_id, existente, pedido_key)
+        if atual is None:
+            # 🔴 JUIZ B1 — fail-closed: sem saber o estado ATUAL do pedido, nada
+            # vai à seguradora (a evidence da abertura pode estar vencida).
+            return {"content": NAO_CONSEGUI_CONFERIR}
         work_run_id = str(existente.get("work_run_id") or atual.get("work_run_id") or "") or None
         if atual is not existente and str(atual.get("status")) in STATUS_EM_CURSO:
             # Uma continuação deste pedido já está rodando: acompanha a ELA.
@@ -821,7 +854,15 @@ class PortalActionTool(BaseTool):
             company_id=self.company_id, job_origem=atual, operacao=operacao,
             pedido_key=pedido_key,
             protocolo=numero_do_pedido(existente.get("evidence")) or pedido_key,
-            confirm=confirm, escolha=escolha, respostas=respostas)
+            confirm=confirm, escolha=escolha, respostas=respostas,
+            # 🔴 RED B3 (conserto da 001.10.1): a tentativa é sobre o ESTADO
+            # ATUAL do pedido — o job que ela continua entra na chave. A mesma
+            # resposta 2× com uma continuação EM CURSO segue sendo 1 job (G7:
+            # ela é achada ANTES, por `STATUS_EM_CURSO`, e a corrida de dois
+            # inserts cai no índice único com a MESMA chave). Depois de uma
+            # parada SEM efeito (ex.: a agenda não respondeu), a mesma escolha
+            # ganha tentativa nova em vez de ficar presa para sempre.
+            extra=str(atual.get("id") or ""))
         if session_id:
             linha["params"]["_conversation_id"] = session_id
             linha["session_id"] = linha.get("session_id") or session_id
@@ -849,6 +890,79 @@ class PortalActionTool(BaseTool):
         )
         resposta = await self._aguardar(job_id, work_run_id, params)
         return resposta or {"content": format_result({"status": "queued"})}
+
+    def _pedido_irmao_esperando_resposta(self, params: dict, chave: str):
+        """RED B4 — `(abertura, params_ajustados, chave_dela)` ou `None`.
+
+        O IRMÃO é um pedido da MESMA corretora, com a MESMA placa, o MESMO CPF e
+        a MESMA data do dano, e outra chave (a peça foi reescrita), cujo estado
+        ATUAL (a última continuação, ou a abertura) pode continuar e espera
+        `responder:<slot>`. Aí esta chamada é a RESPOSTA dele: a peça nova vai
+        em `especificos.peca` (o slot que `respostas_da_chamada` lê) e o campo
+        de cima volta a ser o do pedido — nunca um segundo `POST /atendimentos`.
+
+        🔴 CLAUDE.md §7: `company_id` no filtro E de novo na linha. Leitura que
+        falha segue o comportamento de `_buscar_pedido_vivo` (fail-open, log):
+        o guarda não pode ser o motivo de um atendimento legítimo não abrir.
+        """
+        import copy as _copy
+
+        from .portal_params import normalizar_data, normalizar_placa
+
+        placa = str(params.get("placa") or "").strip()
+        if not (self.company_id and placa and chave):
+            return None
+        data = normalizar_data(params.get("data_dano"))
+        cpf = "".join(ch for ch in str(params.get("cpf_cnpj") or "") if ch.isdigit())
+        cliente = self._client()
+        try:
+            r = (cliente.table("portal_jobs")
+                 .select(_COLUNAS_DO_PEDIDO + ", idempotency_key")
+                 .eq("company_id", self.company_id)
+                 .eq("journey", "abrir_atendimento")
+                 .eq("params->>placa", placa)
+                 .order("created_at", desc=True)
+                 .limit(10).execute())
+            linhas = [dict(x) for x in (getattr(r, "data", None) or [])]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PortalAction] busca do pedido irmao indisponivel (%s)",
+                           type(exc).__name__)
+            return None
+        for job in linhas:
+            if str(job.get("company_id") or "") != str(self.company_id):
+                continue          # a segunda rede: linha de outra casa não conta
+            chave_dela = str(job.get("idempotency_key")
+                             or (job.get("params") or {}).get("_idempotency_key") or "")
+            if not chave_dela or chave_dela == chave:
+                continue
+            p_dela = job.get("params") if isinstance(job.get("params"), dict) else {}
+            if normalizar_placa(p_dela.get("placa")) != normalizar_placa(placa):
+                continue
+            if not data or normalizar_data(p_dela.get("data_dano")) != data:
+                continue
+            cpf_dela = "".join(ch for ch in str(p_dela.get("cpf_cnpj") or "") if ch.isdigit())
+            if not cpf or cpf_dela != cpf:
+                continue
+            if str(job.get("status")) == STATUS_MORTO and not _tem_prova_de_efeito(job.get("evidence")):
+                continue
+            atual = buscar_ultimo_estado_do_pedido(cliente, self.company_id, job, chave_dela)
+            if atual is None:
+                continue
+            ev = atual.get("evidence") if isinstance(atual.get("evidence"), dict) else {}
+            operacao, _slot = acao_esperada(ev)
+            if not (continuacao_possivel(ev) and operacao == "responder"):
+                continue
+            novo = _copy.deepcopy(params)
+            esp = dict(novo.get("especificos") or {})
+            peca_nova = str((novo.get("dano") or {}).get("peca") or "").strip()
+            if peca_nova and not str(esp.get("peca") or "").strip():
+                esp["peca"] = peca_nova
+            novo["especificos"] = esp
+            novo["dano"] = {**dict(novo.get("dano") or {}),
+                            "peca": (p_dela.get("dano") or {}).get("peca")}
+            novo["_idempotency_key"] = chave_dela
+            return job, novo, chave_dela
+        return None
 
     @staticmethod
     def _ainda_esperando(job: dict) -> str:
@@ -926,6 +1040,12 @@ def buscar_ultimo_estado_do_pedido(cliente, company_id: str, abertura: dict,
     corretora não é guarda (guarda que depende do formato de uma string não é
     guarda). `failed` sem prova de efeito é pulado — o mesmo predicado do
     índice único `idx_portal_jobs_pedido_vivo`.
+
+    🔴 JUIZ B1 (conserto da 001.10.1) — FAIL-CLOSED: leitura que falha devolve
+    `None` ("não sei"), NUNCA a abertura. 📊 O juiz mediu o caminho: SELECT
+    caiu → a tool lia a evidence VELHA da abertura (`possivel=True`, etapa
+    agendar) → um job `agendar` nascia sobre um pedido JÁ agendado. Quem chama
+    diz ao agente que não conseguiu conferir e pede para tentar de novo.
     """
     if not (company_id and pedido_key):
         return abertura
@@ -944,7 +1064,8 @@ def buscar_ultimo_estado_do_pedido(cliente, company_id: str, abertura: dict,
                 return job
     except Exception as exc:  # noqa: BLE001
         logger.warning("[PortalAction] ultima continuacao indisponivel (%s) — "
-                       "usando a abertura", type(exc).__name__)
+                       "nada sera enviado (fail-closed)", type(exc).__name__)
+        return None
     return abertura
 
 
@@ -977,8 +1098,13 @@ def enfileirar_continuacao(cliente, linha: dict):
         if ja:
             return None, ja
     except Exception as exc:  # noqa: BLE001
-        logger.warning("[PortalAction] leitura da continuacao falhou (%s) — o indice "
-                       "unico e a segunda rede", type(exc).__name__)
+        # 🔴 JUIZ P4 (conserto da 001.10.1) — FAIL-CLOSED, coerente com
+        # `buscar_ultimo_estado_do_pedido`: sem conseguir ler, não se enfileira.
+        # O índice único só protege a MESMA chave; uma leitura cega que segue
+        # para o INSERT é uma escrita no portal decidida sem olhar o estado.
+        logger.warning("[PortalAction] leitura da continuacao falhou (%s) — nada "
+                       "enfileirado (fail-closed)", type(exc).__name__)
+        return None, None
     try:
         ins = cliente.table("portal_jobs").insert(linha).execute()
         dados = getattr(ins, "data", None) or []
