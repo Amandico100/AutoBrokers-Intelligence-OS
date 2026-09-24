@@ -1068,7 +1068,9 @@ ESTAGIOS_TECNICOS = ("corretor_recusado", "solicitante_recusado",
 ESTAGIOS_QUE_O_SEGURADO_RESPONDE = (
     "peca_ambigua", "peca_de_lataria_ambigua", "pecas_de_lataria_ausentes",
     "cidade_sem_rede", "cidade_ambigua", "uf_desconhecida", "motivo_ambiguo",
-    "questionario_incompleto", "decidir_reparo", "decidir_vistoria")
+    "questionario_incompleto", "decidir_reparo", "decidir_vistoria",
+    # COSTURA: a escolha sumiu da agenda — quem escolhe de novo é o segurado.
+    "horario_indisponivel")
 
 
 def _hora_legivel(texto) -> str:
@@ -1527,8 +1529,11 @@ _PARADAS.update({
         "NADA foi escrito. No portal: abra pelo numero e conclua o passo pendente.",
     ),
     "horario_indisponivel": (
-        "Esse horário acabou de ser ocupado na loja. Escolhe outro entre as opções "
-        "de agora que eu agendo para você.",
+        # 🔴 COSTURA: dizia "…que eu agendo para você" SEMPRE — promessa sem a
+        # prova da sessão (📊 pega pelo guarda B4 reescrito). Agora o convite a
+        # continuar entra por `texto_da_parada`, só com `possivel is True`.
+        "Esse horário acabou de ser ocupado na loja, então eu NÃO agendei nada. Me "
+        "diz qual das opções de agora fica melhor para você. " + _A_EQUIPE_ASSUME,
         "A escolha do segurado nao estava mais entre os blocos publicados pelo "
         "portal. NADA foi agendado. As opcoes atuais estao no desfecho.",
     ),
@@ -1555,6 +1560,78 @@ _PARADAS.update({
         "O portal ofereceu a opcao de vistoria (`PermiteOpcaoVistoria`) e a "
         "preferencia do segurado nao foi coletada antes. No portal: registre a "
         "preferencia (link x loja) pelo numero e conclua.",
+    ),
+})
+
+# 🔴 COSTURA (EXTRA-001.10.1) — as paradas que as fases novas da journey (A)
+# produzem e que não tinham texto: sem ele, `format_result` caía na frase
+# genérica do DOM ("técnico a domicílio ou uma das lojas"), que fala de uma
+# tela que a API-first nem abre e de um domicílio que o produto não oferece
+# (D-E001101-05). 📊 Medido pelo guarda B4 de `test_e00110_a_escada_e_a_
+# seguradora`: 9 stages sem texto. Nenhum promete continuação — quem troca
+# "a equipe assume" por "eu continuo" é `texto_da_parada`, e só com a prova.
+_PARADAS.update({
+    "agenda_ilegivel": (
+        "Seu pedido está aberto na seguradora, mas a agenda da loja veio "
+        "incompleta — então eu NÃO marquei horário nenhum. " + _A_EQUIPE_ASSUME,
+        "A agenda publicada pelo portal veio sem campos que o `POST /agendamentos` "
+        "exige (a lista esta no motivo). NADA foi agendado. No portal: abra o "
+        "atendimento pelo numero e agende pela tela de agenda.",
+    ),
+    "pronto_para_agendar": (
+        "Achei o horário na agenda da loja, mas ainda falta uma autorização interna "
+        "para eu confirmar — então NÃO está agendado ainda. " + _A_EQUIPE_ASSUME,
+        "O guard recusou a fronteira de agendamento (confirm/approval ausente ou "
+        "freio de efeito material). NADA foi agendado. O horario casado esta no motivo.",
+    ),
+    "leitura_falhou": (
+        "Seu pedido continua aberto na seguradora, com o mesmo número, mas o sistema "
+        "dela não respondeu quando fui continuar. Nada foi alterado no pedido. "
+        + _A_EQUIPE_ASSUME,
+        "A continuacao nao conseguiu LER o atendimento (`GET /atendimentos` sem 200 "
+        "e sem 401). NADA foi escrito. Pode reler; NAO reabra o pedido.",
+    ),
+    "operacao_desconhecida": (
+        "Seu pedido continua aberto na seguradora, com o mesmo número. "
+        + _A_EQUIPE_ASSUME,
+        "A continuacao recebeu uma operacao fora do contrato (agendar, responder, "
+        "reler, vistoria). NADA foi enviado ao portal. Defeito de integracao: "
+        "confira o job de continuacao.",
+    ),
+    "prioridade_nao_medida": (
+        "Seu pedido está aberto e a seguradora pediu uma informação sobre a urgência "
+        "do atendimento que eu não respondo por você. " + _A_EQUIPE_ASSUME,
+        "O portal pediu a prioridade num caso nunca medido (veiculo de carga ou "
+        "resposta ilegivel de `atendimentos-prioridades`). NADA foi gravado. No "
+        "portal: abra pelo numero, responda a prioridade e a preferencia de vistoria.",
+    ),
+    "pronto_para_vistoria": (
+        "Anotei a sua preferência para a vistoria e falta uma autorização interna "
+        "para eu registrá-la na seguradora. " + _A_EQUIPE_ASSUME,
+        "O guard recusou a fronteira de prioridade/ocorrencia. NADA foi gravado. No "
+        "portal: registre a preferencia (loja x link) pelo numero do atendimento.",
+    ),
+    "vistoria_nao_confirmada": (
+        "Registrei a sua preferência para a vistoria, mas a seguradora não confirmou. "
+        "Para não registrar duas vezes, eu não vou repetir. " + _A_EQUIPE_ASSUME,
+        "🔴 `POST /atendimentos-prioridades` ou `/ocorrencias` saiu e NAO confirmou. "
+        "NAO repita (duas prioridades/ocorrencias nao se desfazem): consulte o "
+        "atendimento no portal antes de qualquer coisa.",
+    ),
+    "reconciliar_antes": (
+        "Seu pedido foi enviado à seguradora e eu não consegui confirmar a última "
+        "etapa. Para não duplicar nada, eu não vou repetir. " + _A_EQUIPE_ASSUME,
+        "🔴 A origem parou em `maybe_committed` e o agregado ainda nao mostra o "
+        "numero do atendimento. NADA foi repetido. Consulte o atendimento no portal "
+        "ANTES de qualquer nova tentativa.",
+    ),
+    "sessao_de_outro_atendimento": (
+        "Não consegui retomar o seu pedido por aqui. Ele continua aberto na "
+        "seguradora, com o mesmo número — a nossa equipe conclui direto com a "
+        "seguradora e eu te aviso. Você não precisa repetir nada.",
+        "🔴 A sessao guardada abriu OUTRO atendimento (codigo diferente do deste "
+        "pedido). NADA foi escrito. Investigue: a sessao pode ter sido trocada entre "
+        "pedidos. No portal: conclua este pedido pelo numero.",
     ),
 })
 
@@ -1594,6 +1671,12 @@ def _cabecalho_do_numero(ev: dict) -> str:
                 "atendimento e NAO adianta cita-lo por telefone — serve para a "
                 "nossa equipe achar o pedido no portal.\n\n")
     return ""
+
+
+def _frase_de_gente(texto) -> str:
+    """"QUAL O LADO DO ITEM DANIFICADO?" -> "Qual o lado do item danificado?"."""
+    t = " ".join(str(texto or "").split())
+    return (t[:1].upper() + t[1:].lower()) if t else ""
 
 
 def texto_da_parada(stage: Optional[str],
@@ -1788,6 +1871,16 @@ def format_result(job: dict) -> str:
         # `NumeroProtocolo` (16) e interno e NAO adianta no telefone. Apresentar
         # um pelo outro e mandar a pessoa citar um numero que ninguem acha.
         cabecalho = _cabecalho_do_numero(ev)
+        # 🔴 COSTURA (EXTRA-001.10.1): com a continuação possível, o segurado é
+        # convidado a RESPONDER — então ele precisa LER a pergunta. 📊 Medido na
+        # costura: em `questionario_incompleto` o texto dele dizia "a seguradora
+        # fez uma pergunta… me responde que eu continuo" e a pergunta literal só
+        # aparecia no bloco "[para a equipe, nao mande ao segurado]".
+        if (pode_continuar and pergunta
+                and str(ev.get("stage") or "").strip().lower() in ESTAGIOS_QUE_O_SEGURADO_RESPONDE):
+            para_ele += "\n\nA pergunta da seguradora: " + _frase_de_gente(pergunta[:180])
+            if opcoes:
+                para_ele += "\nAs opções dela: " + ", ".join(_frase_de_gente(o) for o in opcoes)
         # 🔴 SPEC-EXTRA-001.10.1 — o horário sumiu: as opções DE AGORA vão junto,
         # da mesma fonte da agenda (nenhuma opção inventada).
         desf_atual = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else {}
@@ -2152,6 +2245,11 @@ def instrucao_de_continuacao(evidence) -> str:
                        "devolver o agendamento CONFIRMADO pela seguradora.")
     if operacao == "responder":
         campo = _CAMPO_DO_SLOT.get(slot, f"especificos.{slot}" if slot else "especificos")
+        if slot.startswith("pergunta_"):
+            # 🔴 COSTURA: a resposta à pergunta do portal volta ETIQUETADA com o
+            # código dela — é o que o motor do questionário casa (contrato §5).
+            campo = (f"especificos.{slot} (a resposta dele a pergunta da seguradora, "
+                     "de preferencia com as palavras de uma das opcoes)")
         return base + ("Faca a pergunta ao segurado e chame portal_action de novo com os "
                        "MESMOS dados de antes (a MESMA peca e a MESMA data) e a resposta em "
                        f"{campo}.")
