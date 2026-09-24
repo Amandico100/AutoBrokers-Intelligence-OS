@@ -19,6 +19,16 @@ provedor desconhecido ou divergente do catálogo · classe de dado da rota que o
 modelo não pode ver (D-116-10) · esforço fora dos níveis do modelo. A reserva é
 resolvida pelas MESMAS regras.
 
+🔴 PRODUÇÃO × BANCADA (Founder 24/09/2026 — conclusão da Onda A):
+  · PRODUÇÃO (rota, reserva, modelo do agente, snapshot) aceita SÓ `APPROVED`
+    (`LIFECYCLES_DE_PRODUCAO`) e recusa esforço abaixo de
+    `capacidades.esforco_minimo_producao` quando o modelo o declara (esforço
+    NULO também é recusado: o mínimo obriga a declarar). É a MESMA regra do
+    trigger `llm_papeis_so_modelo_governado` (migration 20260924_01).
+  · BANCADA (`override=`) continua aceitando APPROVED · CANDIDATE · DEPRECATED
+    (`LIFECYCLES_DA_BANCADA`) — medir desafiante e baseline histórico é o ofício
+    dela — e não impõe o mínimo de produção (medir a Luna em `low` é legítimo).
+
 `resolve_chat_model` e `is_core_chat_role` ficam como SHIM da fábrica de hoje
 (a F2 troca a fábrica para `resolver`). O shim NÃO promove mais para gpt-4o.
 """
@@ -37,7 +47,11 @@ logger = logging.getLogger(__name__)
 SNAPSHOT_PATH = Path(__file__).resolve().parent / "modelos_snapshot.json"
 CACHE_TTL_SECONDS = 60
 
+#: o que a BANCADA pode medir (override explícito) — e o que a tela de config lista.
 LIFECYCLES_USAVEIS = ("APPROVED", "CANDIDATE", "DEPRECATED")
+LIFECYCLES_DA_BANCADA = LIFECYCLES_USAVEIS
+#: o que uma rota/agente/snapshot de PRODUÇÃO pode usar (Founder 24/09/2026).
+LIFECYCLES_DE_PRODUCAO = ("APPROVED",)
 LIFECYCLES_PROIBIDOS = ("BLOCKED", "HISTORICAL")
 NIVEIS_DE_ESFORCO = ("none", "low", "medium", "high", "xhigh", "max")
 #: ordem de sensibilidade — a classe efetiva de uma chamada é a MAIS sensível
@@ -175,8 +189,24 @@ def _classe_mais_sensivel(*classes: Optional[str]) -> str:
     return max(validas, key=CLASSES_DE_DADO.index)
 
 
+def esforco_abaixo_do_minimo(effort: Optional[str], linha: dict) -> Optional[str]:
+    """O mínimo de produção que `effort` não atinge (ou None se atinge / não há mínimo).
+
+    Esforço NULO com mínimo declarado NÃO atinge: o default do provedor pode
+    mudar sem aviso, e a rota de produção tem de dizer o que roda.
+    """
+    minimo = (linha.get("capacidades") or {}).get("esforco_minimo_producao")
+    if not minimo:
+        return None
+    if minimo not in NIVEIS_DE_ESFORCO:
+        return minimo  # mínimo mal declarado no catálogo: recusa (não adivinha)
+    if effort not in NIVEIS_DE_ESFORCO:
+        return minimo
+    return minimo if NIVEIS_DE_ESFORCO.index(effort) < NIVEIS_DE_ESFORCO.index(minimo) else None
+
+
 def _validar(papel: str, provider: Optional[str], model: Optional[str], effort: Optional[str],
-             classe: str, cat: Dict[str, dict]) -> dict:
+             classe: str, cat: Dict[str, dict], *, producao: bool = True) -> dict:
     if not model:
         raise ModeloNaoResolvido(f"papel {papel!r}: nenhum modelo declarado")
     linha = cat.get(model)
@@ -191,8 +221,10 @@ def _validar(papel: str, provider: Optional[str], model: Optional[str], effort: 
         raise ModeloNaoResolvido(
             f"papel {papel!r}: provedor {provider!r} diverge do catálogo ({prov_cat!r}) para {model!r}")
     ciclo = linha.get("lifecycle")
-    if ciclo not in LIFECYCLES_USAVEIS:
-        raise ModeloNaoResolvido(f"papel {papel!r}: {model!r} tem lifecycle {ciclo!r} (recusado)")
+    aceitos = LIFECYCLES_DE_PRODUCAO if producao else LIFECYCLES_DA_BANCADA
+    if ciclo not in aceitos:
+        onde = "produção só aceita APPROVED" if producao else "recusado"
+        raise ModeloNaoResolvido(f"papel {papel!r}: {model!r} tem lifecycle {ciclo!r} ({onde})")
     permitidas = linha.get("classes_de_dado") or []
     if classe not in permitidas:
         raise ModeloNaoResolvido(
@@ -203,6 +235,11 @@ def _validar(papel: str, provider: Optional[str], model: Optional[str], effort: 
         niveis = (linha.get("capacidades") or {}).get("niveis_de_esforco")
         if niveis is not None and effort not in niveis:
             raise ModeloNaoResolvido(f"papel {papel!r}: {model!r} não aceita esforço {effort!r}")
+    if producao:
+        minimo = esforco_abaixo_do_minimo(effort, linha)
+        if minimo is not None:
+            raise ModeloNaoResolvido(
+                f"papel {papel!r}: {model!r} exige esforço >= {minimo!r} em produção (recebeu {effort!r})")
     return linha
 
 
@@ -238,7 +275,7 @@ def resolver(papel: str, *, agente: Optional[dict] = None, corretora: Optional[d
     # 1. bancada
     if override:
         linha = _validar(papel, override.get("provider"), override.get("model"),
-                         override.get("effort"), classe, cat)
+                         override.get("effort"), classe, cat, producao=False)
         return _montar(papel, linha, override.get("effort"), classe, "bancada", versao,
                        "override da bancada", reserva)
 
@@ -253,10 +290,13 @@ def resolver(papel: str, *, agente: Optional[dict] = None, corretora: Optional[d
     for dono in (agente, corretora):
         if dono and dono.get("llm_model"):
             effort = dono.get("reasoning_effort")
-            linha = _validar(papel, dono.get("llm_provider"), dono["llm_model"], None, classe, cat)
+            linha = _validar(papel, dono.get("llm_provider"), dono["llm_model"], None, classe, cat,
+                             producao=False)  # lifecycle/mínimo conferidos abaixo, já com o esforço
             niveis = (linha.get("capacidades") or {}).get("niveis_de_esforco")
             if effort not in NIVEIS_DE_ESFORCO or (niveis is not None and effort not in niveis):
                 effort = None  # esforço gravado que o modelo não aceita: default do provedor
+            # produção: o modelo do agente também só roda se APPROVED e no mínimo
+            _validar(papel, dono.get("llm_provider"), dono["llm_model"], effort, classe, cat)
             return _montar(papel, linha, effort, classe, "agente", None,
                            "papel sem rota: modelo do agente", None)
 

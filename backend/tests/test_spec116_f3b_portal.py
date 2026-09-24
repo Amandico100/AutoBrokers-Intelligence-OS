@@ -41,6 +41,23 @@ from portal_worker import adaptive as AD  # noqa: E402
 from portal_worker import modelo_do_portal as PM  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
 EMPRESA_A = "11111111-1111-4111-8111-111111111111"
 TELA = {"heading": "Dados do veiculo", "text": "Informe a placa", "fields": [{"label": "Placa"}]}
 DADOS = {"placa": "ABC1D23"}
@@ -75,7 +92,7 @@ def _corpo_segue_o_catalogo(corpo, modelo=MODELO_HOJE):
 # ---------------------------------------------------------------------------
 class SupabaseRest:
     def __init__(self):
-        self.cat = copy.deepcopy(SNAP["catalogo"])
+        self.cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
         self.pap = copy.deepcopy(SNAP["papeis"])
         self.ledger = []
         self.fora = False
@@ -318,7 +335,7 @@ MUTACOES_DA_ROTA = [
 
 @pytest.mark.parametrize("nome,mudanca", MUTACOES_DA_ROTA, ids=[m[0] for m in MUTACOES_DA_ROTA])
 def test_o_portal_e_o_model_router_decidem_igual(nome, mudanca, monkeypatch):
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     pap["portal_decisao"].update(mudanca)
     monkeypatch.setattr(MP, "leitor_do_banco", lambda: (cat, pap))
@@ -352,6 +369,7 @@ def test_o_portal_e_o_model_router_decidem_igual(nome, mudanca, monkeypatch):
 
 def test_as_listas_de_regra_sao_as_do_model_router():
     assert PM.LIFECYCLES_USAVEIS == MP.LIFECYCLES_USAVEIS
+    assert PM.LIFECYCLES_DE_PRODUCAO == MP.LIFECYCLES_DE_PRODUCAO  # 24/09/2026
     assert PM.CLASSES_DE_DADO == MP.CLASSES_DE_DADO
     assert PM.NIVEIS_DE_ESFORCO == MP.NIVEIS_DE_ESFORCO
 

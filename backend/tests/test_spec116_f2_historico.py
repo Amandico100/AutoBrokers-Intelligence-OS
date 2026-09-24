@@ -70,6 +70,35 @@ from app.factories import model_policy as MP  # noqa: E402
 from app.factories.llm_factory import LLMFactory  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
+#: CANDIDATE usados só pela MECÂNICA do adaptador compatível (a bancada os roda via
+#: override); no dublê viram APPROVED para a rota de teste montar.
+_legados_original = _legados_como_dubles
+
+
+def _legados_como_dubles(cat):  # noqa: F811
+    _legados_original(cat)
+    for m in ("gemini-3.8-flash", "deepseek-flash"):
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
 EFEITOS = {"consultas": 0}
 
 
@@ -215,7 +244,7 @@ class Provedor:
 # ===========================================================================
 @pytest.fixture
 def banco():
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     original = MP.leitor_do_banco
     MP.leitor_do_banco = lambda: (cat, pap)
@@ -265,7 +294,7 @@ def test_opus_55_tres_rodadas_com_o_thinking_de_volta(banco, monkeypatch):
     prov = Provedor("anthropic", "claude-opus-5-5")
     try:
         monkeypatch.setenv("ANTHROPIC_API_URL", prov.url)
-        pap["chat_principal"].update(modelo_primario="claude-opus-5-5", esforco="medium")
+        pap["chat_principal"].update(provider="anthropic", modelo_primario="claude-opus-5-5", esforco="medium")
         MP.limpar_cache()
         r = MP.resolver("chat_principal")
         llm = LLMFactory.create_llm({}, {"agent_role": "core"}, api_key=CHAVE_FALSA, modelo_resolvido=r)
@@ -294,7 +323,7 @@ def test_controle_modelo_trocado_nao_devolve_o_thinking(banco, monkeypatch):
     prov = Provedor("anthropic", "claude-opus-5-5")
     try:
         monkeypatch.setenv("ANTHROPIC_API_URL", prov.url)
-        pap["chat_principal"].update(modelo_primario="claude-opus-5-5", esforco="medium")
+        pap["chat_principal"].update(provider="anthropic", modelo_primario="claude-opus-5-5", esforco="medium")
         MP.limpar_cache()
         r = MP.resolver("chat_principal")
         llm = LLMFactory.create_llm({}, {"agent_role": "core"}, api_key=CHAVE_FALSA, modelo_resolvido=r)

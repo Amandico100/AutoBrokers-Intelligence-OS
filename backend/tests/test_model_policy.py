@@ -33,10 +33,27 @@ from app.factories import model_policy as MP  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
 
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
+
 
 @pytest.fixture
 def banco():
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     original = MP.leitor_do_banco
     MP.leitor_do_banco = lambda: (cat, pap)
@@ -54,26 +71,45 @@ def test_papel_do_agente():
     assert not MP.is_core_chat_role("attendance")
 
 
+def _outro_provedor(prov):
+    """Um modelo legado (dublê APPROVED) de provedor DIFERENTE do da rota."""
+    return "claude-sonnet-5" if prov == "openai" else "gpt-4o-mini"
+
+
+def _mesmo_provedor(prov):
+    return "gpt-4o-mini" if prov == "openai" else "claude-sonnet-5"
+
+
 def test_shim_nao_promove_mais_para_gpt_4o(banco, monkeypatch):
+    # (24/09/2026) o esperado vem da ROTA — antes afirmava "rota anthropic".
+    _, pap = banco
     monkeypatch.setenv("CORE_CHAT_MODEL", "gpt-4o")
-    # core em provedor openai com rota anthropic: mantém o do agente — nada de gpt-4o
-    assert MP.resolve_chat_model("core", "gpt-4o-mini") == "gpt-4o-mini"
-    assert MP.resolve_chat_model(None, "gpt-4o-mini") == "gpt-4o-mini"
+    prov = pap["chat_principal"]["provider"]
+    outro = _outro_provedor(prov)
+    # agente de outro provedor: mantém o do agente — nada de gpt-4o
+    assert MP.resolve_chat_model("core", outro) == outro
+    assert MP.resolve_chat_model(None, outro) == outro
+    # mesmo provedor: a ROTA — e nunca o gpt-4o do env
+    assert MP.resolve_chat_model("core", _mesmo_provedor(prov)) == pap["chat_principal"]["modelo_primario"] != "gpt-4o"
 
 
 def test_shim_devolve_a_rota_quando_o_provedor_bate(banco):
     _, pap = banco
-    assert MP.resolve_chat_model("attendance", "claude-sonnet-5") == pap["atendimento"]["modelo_primario"]
-    pap["atendimento"]["modelo_primario"] = "claude-opus-5-5"
+    prov = pap["atendimento"]["provider"]
+    assert MP.resolve_chat_model("attendance", _mesmo_provedor(prov)) == pap["atendimento"]["modelo_primario"]
+    pap["atendimento"].update(provider="anthropic", modelo_primario="claude-opus-5-5", esforco=None)
     MP.limpar_cache()
     assert MP.resolve_chat_model("attendance", "claude-sonnet-5") == "claude-opus-5-5"
-    assert MP.resolve_chat_model("core", "claude-sonnet-5") == pap["chat_principal"]["modelo_primario"]
+    prov_core = pap["chat_principal"]["provider"]
+    assert MP.resolve_chat_model("core", _mesmo_provedor(prov_core)) == pap["chat_principal"]["modelo_primario"]
 
 
 def test_shim_mantem_o_do_agente_quando_a_rota_e_de_outro_provedor(banco):
-    # 📊 toda corretora nova nasce openai/gpt-4o-mini (EVIDENCIAS/01 §c) — até a F4/F2,
-    # trocar só o nome devolveria um Claude para um ChatOpenAI.
-    assert MP.resolve_chat_model("attendance", "gpt-4o-mini") == "gpt-4o-mini"
+    # 📊 toda corretora nova nascia openai/gpt-4o-mini (EVIDENCIAS/01 §c) — a fábrica
+    # de hoje não pode receber um modelo de OUTRO provedor pelo shim.
+    _, pap = banco
+    outro = _outro_provedor(pap["atendimento"]["provider"])
+    assert MP.resolve_chat_model("attendance", outro) == outro
 
 
 def test_shim_mantem_o_do_agente_quando_a_rota_e_invalida(banco):
@@ -84,9 +120,9 @@ def test_shim_mantem_o_do_agente_quando_a_rota_e_invalida(banco):
 
 
 def test_resolver_papel_sem_rota_usa_o_agente_governado(banco):
-    r = MP.resolver("agente_custom", agente={"llm_provider": "anthropic", "llm_model": "claude-opus-5",
+    r = MP.resolver("agente_custom", agente={"llm_provider": "anthropic", "llm_model": "claude-opus-5-5",
                                               "reasoning_effort": "medium"})
-    assert (r.model, r.origem, r.effort, r.classe_de_dado) == ("claude-opus-5", "agente", "medium", "pii")
+    assert (r.model, r.origem, r.effort, r.classe_de_dado) == ("claude-opus-5-5", "agente", "medium", "pii")
     # esforço gravado que o modelo não aceita (Haiku não tem effort) → default do provedor
     r = MP.resolver("agente_custom", agente={"llm_provider": "anthropic",
                                               "llm_model": "claude-haiku-4-5-20251001",

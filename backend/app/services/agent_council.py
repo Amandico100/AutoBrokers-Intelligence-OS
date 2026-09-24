@@ -9,7 +9,7 @@ o sistema funciona 100% sem o Conselho; ligado, ele agrega valor nas decisões
 estruturais. Ligar = COUNCIL_ENABLED=1 no ambiente.
 
 Membros (env COUNCIL_MEMBERS, "provider:model" separados por vírgula):
-default "openai:gpt-5.5,anthropic:claude-opus-5,moonshot:kimi-k3,xai:grok-4.5".
+default "openai:gpt-6-sol,anthropic:claude-opus-5-5" (os APPROVED — SPEC-116, 24/09/2026).
 🔴 SPEC-116 U8: cada membro é resolvido UM A UM pelo CATÁLOGO governado
 (`llm_pricing`, via Model Router). Membro fora do catálogo, com lifecycle
 BLOCKED/HISTORICAL, de provedor desconhecido ou sem chave é PULADO com log
@@ -55,8 +55,11 @@ def council_enabled() -> bool:
 
 
 def council_members() -> List[Tuple[str, str]]:
+    # SPEC-116 (24/09/2026): o default antigo tinha 3 membros fora do catálogo
+    # (gpt-5.5, kimi-k3, grok-4.5) e 1 DEPRECATED (opus 5) — todos PULADOS pela
+    # regra de produção do resolvedor. Default = os APPROVED.
     raw = os.getenv("COUNCIL_MEMBERS") or \
-        "openai:gpt-5.5,anthropic:claude-opus-5,moonshot:kimi-k3,xai:grok-4.5"
+        "openai:gpt-6-sol,anthropic:claude-opus-5-5"
     out: List[Tuple[str, str]] = []
     for item in raw.split(","):
         if ":" in item:

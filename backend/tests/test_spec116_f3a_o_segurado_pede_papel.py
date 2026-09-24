@@ -73,6 +73,23 @@ from app.factories import model_policy as MP  # noqa: E402
 from app.factories.llm_factory import ChatAnthropicGovernado, ChatOpenAIGovernado  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
 TENANT_A = "aaaaaaaa-0000-4000-8000-00000000000a"
 TENANT_B = "bbbbbbbb-0000-4000-8000-00000000000b"
 FOTO = "https://fixture.invalido/foto-sintetica.jpg"
@@ -83,7 +100,7 @@ FOTO = "https://fixture.invalido/foto-sintetica.jpg"
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def banco(monkeypatch):
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     original = MP.leitor_do_banco
     MP.leitor_do_banco = lambda: (cat, pap)
@@ -113,8 +130,9 @@ def _rota_hoje(papel):
     return SNAP["papeis"][papel]
 
 
-def _trocar_rota(pap, papel, provider, modelo):
-    pap[papel].update(provider=provider, modelo_primario=modelo)
+def _trocar_rota(pap, papel, provider, modelo, esforco=None):
+    # (24/09/2026) o esforço da rota nova (medium/high) não vale para o dublê
+    pap[papel].update(provider=provider, modelo_primario=modelo, esforco=esforco)
     MP.limpar_cache()
 
 
@@ -505,39 +523,42 @@ def test_embedding_o_id_vem_da_rota(banco, uso):
 # Transcrição e rerank — pela rota, com ledger
 # ===========================================================================
 class _Transcricoes:
-    def __init__(self):
+    def __init__(self, resposta=None):
         self.pedidos: List[dict] = []
+        self.resposta = resposta or SimpleNamespace(text="quebrou o cano", duration=4.2)
 
     async def create(self, **kw):
         self.pedidos.append({k: v for k, v in kw.items() if k != "file"})
-        return SimpleNamespace(text="quebrou o cano", duration=4.2)
+        return self.resposta
 
 
-def _cliente_de_audio():
-    return SimpleNamespace(audio=SimpleNamespace(transcriptions=_Transcricoes()))
+def _cliente_de_audio(resposta=None):
+    return SimpleNamespace(audio=SimpleNamespace(transcriptions=_Transcricoes(resposta)))
 
 
-def test_transcricao_pela_rota_e_no_ledger(banco, uso, monkeypatch):
+def _ogg_opus(segundos: float) -> bytes:
+    """Um OGG/Opus MÍNIMO: cabeçalho OpusHead (pre-skip 312) + a última página com
+    o grânulo de `segundos` a 48 kHz — o bastante para medir a duração."""
+    pre_skip = 312
+    head = b"OggS" + b"\x00\x02" + (0).to_bytes(8, "little") + b"\x00" * 12 + \
+        b"OpusHead" + b"\x01\x01" + pre_skip.to_bytes(2, "little") + (48000).to_bytes(4, "little")
+    granulo = int(segundos * 48000) + pre_skip
+    fim = b"OggS" + b"\x00\x04" + granulo.to_bytes(8, "little") + b"\x00" * 12
+    return head + b"\x00" * 64 + fim
+
+
+def test_transcricao_pela_rota_gpt_transcribe_json_prompt_e_ledger_por_minuto(banco, uso, monkeypatch):
+    """🔴 (24/09/2026) a rota `transcricao` é gpt-transcribe: API de TRANSCRIÇÃO
+    (não a fábrica de chat), `json` (verbose_json não é documentado para ele),
+    `prompt` de domínio SEM PII, e o ledger por MINUTO com a duração medida AQUI."""
     from app.services import audio_service as A
+    from app.services.insurer_registry import INSURER_REGISTRY
 
-    cli = _cliente_de_audio()
-    svc = A.AudioService("sem-chave", cliente=cli)
-    texto = asyncio.run(svc.transcribe_audio(base64.b64encode(b"audio sintetico").decode(),
-                                             company_id=TENANT_A, agent_id="ag-a"))
-    assert texto == "quebrou o cano"
-    pedido = cli.audio.transcriptions.pedidos[0]
-    assert pedido["model"] == "whisper-1" and pedido["response_format"] == "verbose_json"
-    assert uso.linhas[-1]["model"] == "whisper-1" and uso.linhas[-1]["details"]["papel"] == "transcricao"
-
-    # a rota troca → o id troca, sem `verbose_json` (gpt-*-transcribe não aceita)
-    _, pap = banco
+    cat, pap = banco
     _trocar_rota(pap, "transcricao", "openai", "gpt-transcribe")
-    asyncio.run(svc.transcribe_audio(base64.b64encode(b"x").decode(), company_id=TENANT_A))
-    pedido = cli.audio.transcriptions.pedidos[-1]
-    assert pedido["model"] == "gpt-transcribe" and "response_format" not in pedido
-
-    # o caminho do WhatsApp (URL) passa a entrar no ledger (antes: sem duração)
-    _trocar_rota(pap, "transcricao", "openai", "whisper-1")
+    assert cat["gpt-transcribe"]["unit"] == "minute"
+    cli = _cliente_de_audio(SimpleNamespace(text="quebrou o cano da Porto"))  # sem duration
+    svc = A.AudioService("sem-chave", cliente=cli)
 
     class _Http:
         def __init__(self, *a, **k):
@@ -550,14 +571,58 @@ def test_transcricao_pela_rota_e_no_ledger(banco, uso, monkeypatch):
             return False
 
         async def get(self, url):
-            return SimpleNamespace(content=b"ogg", headers={"Content-Type": "audio/ogg"},
+            return SimpleNamespace(content=_ogg_opus(42.0), headers={"Content-Type": "audio/ogg"},
                                    raise_for_status=lambda: None)
 
     monkeypatch.setattr(A.httpx, "AsyncClient", _Http)
+    texto = asyncio.run(svc.transcribe_audio_from_url("https://wa.invalido/a.ogg",
+                                                      company_id=TENANT_B, agent_id="ag-b"))
+    assert texto == "quebrou o cano da Porto"
+    pedido = cli.audio.transcriptions.pedidos[-1]
+    assert (pedido["model"], pedido["language"], pedido["response_format"]) == ("gpt-transcribe", "pt", "json")
+    # o prompt: contexto genérico + seguradoras da FONTE CANÔNICA, com teto e sem PII
+    assert pedido["prompt"].startswith("Atendimento de corretora de seguros no Brasil.")
+    assert all(v["label"] in pedido["prompt"] for v in list(INSURER_REGISTRY.values())[:3])
+    assert len(pedido["prompt"]) <= A.LIMITE_DO_PROMPT
+    import re as _re
+    assert not _re.search(r"\d{4,}", pedido["prompt"]), "nenhum número (telefone/CPF/placa) no prompt"
+    # o ledger: 42 s MEDIDOS do OGG → input_tokens=42 (a conta por minuto do UsageService)
+    linha = uso.linhas[-1]
+    assert (linha["model"], linha["input_tokens"], linha["company_id"]) == ("gpt-transcribe", 42, TENANT_B)
+    assert linha["details"]["papel"] == "transcricao" and linha["details"]["duration_seconds"] == 42.0
+
+    # sem duração mensurável (webm) e sem `usage`: NÃO inventa uma linha
     antes = len(uso.linhas)
-    asyncio.run(svc.transcribe_audio_from_url("https://wa.invalido/a.ogg", company_id=TENANT_B))
-    assert cli.audio.transcriptions.pedidos[-1]["response_format"] == "verbose_json"
-    assert len(uso.linhas) == antes + 1 and uso.linhas[-1]["company_id"] == TENANT_B
+    asyncio.run(svc.transcribe_audio(base64.b64encode(b"webm sem cabecalho").decode(), company_id=TENANT_A))
+    assert len(uso.linhas) == antes
+    # `usage.seconds` da resposta vence a medição local
+    cli.audio.transcriptions.resposta = SimpleNamespace(
+        text="ok", usage=SimpleNamespace(type="duration", seconds=7))
+    asyncio.run(svc.transcribe_audio(base64.b64encode(b"x").decode(), company_id=TENANT_A))
+    assert uso.linhas[-1]["input_tokens"] == 7
+
+    # CONTROLE — a bancada fixa o whisper-1 (DEPRECATED, baseline): `verbose_json` volta
+    wh = A.AudioService("sem-chave", modelo="whisper-1", cliente=_cliente_de_audio())
+    asyncio.run(wh.transcribe_audio(base64.b64encode(b"x").decode(), company_id=TENANT_A))
+    assert wh.client.audio.transcriptions.pedidos[-1]["response_format"] == "verbose_json"
+    assert uso.linhas[-1]["model"] == "whisper-1" and uso.linhas[-1]["input_tokens"] == 4
+
+
+def test_duracao_local_do_audio():
+    from app.services.audio_service import duracao_local_em_segundos as D
+    import io
+    import wave
+
+    assert abs(D(_ogg_opus(3.5), ".ogg") - 3.5) < 1e-6
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(b"\x00\x00" * 16000)
+    assert D(buf.getvalue(), ".wav") == 2.0
+    # CONTROLE: formato sem medição e lixo → None (nunca um número inventado)
+    assert D(b"qualquer coisa", ".mp3") is None and D(b"OggS", ".ogg") is None
 
 
 def test_rerank_pela_rota_e_no_ledger(banco, uso):

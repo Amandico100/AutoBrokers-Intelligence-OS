@@ -8,7 +8,14 @@ celery[redis]>=5.3.0
 redis>=5.0.0
 
 # Docling (document parsing)
-docling>=2.0.0
+# 📌 PIN 24/09/2026 (SPEC-116, conclusão da Onda A): 2.130.0 é o que `docling>=2.0.0`
+# resolvia nesta data; conferido ESTATICAMENTE no wheel (docling-slim 2.130.0):
+# `PictureDescriptionApiOptions(url, headers, params, timeout, prompt)` existe com
+# esses campos e `api_image_request` envia só `messages` + `params` (sem temperature).
+# ⚠️ A partir das 2.1xx o pacote é um meta-pacote de `docling-slim[standard]`, e o
+# OCR padrão é `OcrAutoOptions` (rapidocr no extra standard; easyocr virou extra
+# à parte). Conferir no contêiner a versão que roda HOJE: `pip show docling`.
+docling==2.130.0
 
 # Object storage (file transfer between API and Worker)
 minio>=7.2.0

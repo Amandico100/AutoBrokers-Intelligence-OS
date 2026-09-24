@@ -66,10 +66,39 @@ from app.factories.llm_factory import LLMFactory  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
 
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
+#: CANDIDATE usados só pela MECÂNICA do adaptador compatível (a bancada os roda via
+#: override); no dublê viram APPROVED para a rota de teste montar.
+_legados_original = _legados_como_dubles
+
+
+def _legados_como_dubles(cat):  # noqa: F811
+    _legados_original(cat)
+    for m in ("gemini-3.8-flash", "deepseek-flash"):
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
+
 
 @pytest.fixture
 def banco():
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     original = MP.leitor_do_banco
     MP.leitor_do_banco = lambda: (cat, pap)
@@ -80,6 +109,11 @@ def banco():
 
 
 def _rota(pap, papel, **campos):
+    # (24/09/2026) a rota de hoje é OpenAI: sem `provider` explícito, o do CATÁLOGO
+    # do modelo novo (a mecânica testada é a do adaptador, não a do provedor)
+    if "modelo_primario" in campos:
+        campos.setdefault("provider", MP.catalogo()[campos["modelo_primario"]]["provider"])
+        campos.setdefault("esforco", None)
     pap[papel].update(campos)
     pap[papel]["versao"] = int(pap[papel].get("versao") or 1) + 1
     MP.limpar_cache()

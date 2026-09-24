@@ -81,6 +81,23 @@ from app.factories.llm_factory import LLMFactory  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
 
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
+
 #: O agente como o banco o guarda hoje (📊 EVIDENCIAS/02: 8/8 anthropic/claude-sonnet-5).
 AGENTE = {
     "agent_role": "attendance",
@@ -95,8 +112,14 @@ AGENTE = {
 @pytest.fixture
 def banco():
     """Dublê do BANCO das rotas: o snapshot, copiado — o teste pode trocar a rota."""
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
+    # (24/09/2026) este arquivo prova o FIO pelo adaptador ANTHROPIC com a semente
+    # de 23/09 (claude-sonnet-5, v1) como dublê; a rota de PRODUÇÃO de hoje (OpenAI)
+    # é provada em `test_fio_a_rota_de_producao_de_hoje_chega_ao_payload`.
+    for _papel in ("atendimento", "chat_principal"):
+        pap[_papel].update(provider="anthropic", modelo_primario="claude-sonnet-5", esforco=None,
+                           versao=1)
     original = MP.leitor_do_banco
     MP.leitor_do_banco = lambda: (cat, pap)
     MP.limpar_cache()
@@ -106,6 +129,11 @@ def banco():
 
 
 def _trocar_rota(pap, papel, **campos):
+    # (24/09/2026) a rota de hoje é OpenAI: sem `provider` explícito, o do CATÁLOGO
+    # do modelo novo (a mecânica testada é a do adaptador, não a do provedor)
+    if "modelo_primario" in campos:
+        campos.setdefault("provider", MP.catalogo()[campos["modelo_primario"]]["provider"])
+        campos.setdefault("esforco", None)
     pap[papel].update(campos)
     pap[papel]["versao"] = int(pap[papel].get("versao") or 1) + 1
     MP.limpar_cache()
@@ -126,6 +154,30 @@ def test_fio_a_rota_semente_chega_ao_payload(banco):
     assert (r.model, r.origem, r.versao_da_rota) == ("claude-sonnet-5", "rota", 1)
     assert p["model"] == r.model
     assert "temperature" not in p, "Claude 5 rejeita temperature (400)"
+
+
+def test_fio_a_rota_de_producao_de_hoje_chega_ao_payload(monkeypatch):
+    """A rota do SNAPSHOT (sem dublê): o atendimento sai no modelo e no esforço da
+    ROTA, pela API que o catálogo declara — e o modelo gravado no agente não vaza."""
+    cat, pap = copy.deepcopy(SNAP["catalogo"]), copy.deepcopy(SNAP["papeis"])
+    original = MP.leitor_do_banco
+    MP.leitor_do_banco = lambda: (cat, pap)
+    MP.limpar_cache()
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-teste-openai-falsa")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-teste-anthropic-falsa")
+    try:
+        rota = pap["atendimento"]
+        r = MP.resolver("atendimento")
+        assert (r.provider, r.model, r.effort) == (rota["provider"], rota["modelo_primario"], rota["esforco"])
+        assert r.lifecycle == "APPROVED"
+        llm, p = _payload(dict(AGENTE))
+        assert p["model"] == rota["modelo_primario"] != AGENTE["llm_model"]
+        if r.api_surface == "responses":
+            assert "input" in p and (p.get("reasoning") or {}).get("effort") == rota["esforco"], p.keys()
+        assert "temperature" not in p
+    finally:
+        MP.leitor_do_banco = original
+        MP.limpar_cache()
 
 
 def test_fio_trocar_a_rota_muda_o_payload_sem_mudar_o_agente(banco):

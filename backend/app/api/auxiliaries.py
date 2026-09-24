@@ -43,6 +43,12 @@ DEFAULT_MAX_MESSAGES = 80
 # ledger (service_type=auxiliary_run). Trocar o modelo = trocar a rota, sem
 # deploy. A env `AUXILIAR_LLM_MODEL` deixou de ser lida.
 PAPEL_DO_AUXILIAR = "auxiliar"
+#: SPEC-116 (conclusão da Onda A): um TEMPLATE pode declarar o PRÓPRIO papel de
+#: modelo em `auxiliary_templates.runtime_policy.papel_de_modelo` — resolvido
+#: pelo MESMO resolvedor (`model_policy`), com as MESMAS regras de produção.
+#: Sem declarar → `auxiliar` (a rota genérica). Papel declarado sem rota →
+#: `ModeloNaoResolvido` (erro explícito, nunca um modelo por omissão).
+CHAVE_DO_PAPEL_NO_TEMPLATE = "papel_de_modelo"
 RECENT_CONVERSATIONS_SCAN = 20
 
 SYSTEM_PROMPT = (
@@ -228,7 +234,8 @@ async def run_resumo_atendimentos(
         output, usage, model_name = await _summarize(
             messages, company_id=company_id,
             detalhes={"auxiliary": RESUMO_SLUG, "run_id": run_id,
-                      "tenant_auxiliary_id": tenant_auxiliary_id})
+                      "tenant_auxiliary_id": tenant_auxiliary_id},
+            papel=await _papel_do_template(db, template_id))
     except Exception as e:  # noqa: BLE001
         logger.error(f"[AUX] LLM summarization failed: {type(e).__name__}: {e}")
         await _fail_run(db, run_id, "Falha ao gerar o resumo com a IA.")
@@ -475,8 +482,28 @@ def _extract_usage(resp: Any) -> Dict[str, Any]:
     }
 
 
+def papel_de_modelo_do_template(template: Optional[Dict[str, Any]]) -> str:
+    """O papel de modelo que o template declara (`runtime_policy.papel_de_modelo`), ou `auxiliar`."""
+    politica = (template or {}).get("runtime_policy") or {}
+    papel = str(politica.get(CHAVE_DO_PAPEL_NO_TEMPLATE) or "").strip() if isinstance(politica, dict) else ""
+    return papel or PAPEL_DO_AUXILIAR
+
+
+async def _papel_do_template(db: AsyncSupabaseClient, template_id: Optional[str]) -> str:
+    """Lê `runtime_policy` do template. Falha de leitura → `auxiliar` (com aviso)."""
+    if not template_id:
+        return PAPEL_DO_AUXILIAR
+    try:
+        r = (await db.client.table("auxiliary_templates").select("runtime_policy")
+             .eq("id", template_id).limit(1).execute())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[AUX] runtime_policy do template ilegível ({type(e).__name__}) — papel auxiliar")
+        return PAPEL_DO_AUXILIAR
+    return papel_de_modelo_do_template((r.data or [None])[0])
+
+
 def _llm_do_auxiliar(*, company_id: Optional[str], temperature: float, max_tokens: int,
-                     detalhes: Optional[Dict[str, Any]] = None):
+                     detalhes: Optional[Dict[str, Any]] = None, papel: str = PAPEL_DO_AUXILIAR):
     """O modelo do papel `auxiliar`, pela FÁBRICA. Devolve `(llm, modelo_resolvido)`.
 
     ⛔ Levanta `ModeloNaoResolvido`/`ValueError` — nunca um modelo por omissão.
@@ -492,7 +519,7 @@ def _llm_do_auxiliar(*, company_id: Optional[str], temperature: float, max_token
         {"agent_role": "auxiliary", "llm_temperature": temperature, "llm_max_tokens": max_tokens},
         company_id=company_id,
         service_type="auxiliary_run",
-        papel=PAPEL_DO_AUXILIAR,
+        papel=papel or PAPEL_DO_AUXILIAR,
     )
     for cb in list(getattr(llm, "callbacks", None) or []):
         if detalhes and isinstance(getattr(cb, "details", None), dict):
@@ -514,7 +541,7 @@ def _texto_da_resposta(resp: Any) -> str:
 
 async def _summarize(messages: List[Dict[str, Any]], *, company_id: Optional[str] = None,
                      detalhes: Optional[Dict[str, Any]] = None,
-                     llm=None) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+                     llm=None, papel: str = PAPEL_DO_AUXILIAR) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
     """Resumo do atendimento pelo papel `auxiliar`. Retorna (output, usage, model).
 
     `llm=` é o PONTO DE INJEÇÃO (bancada/testes): usado como está.
@@ -523,7 +550,7 @@ async def _summarize(messages: List[Dict[str, Any]], *, company_id: Optional[str
 
     if llm is None:
         llm, model_name = _llm_do_auxiliar(company_id=company_id, temperature=0.2,
-                                           max_tokens=1200, detalhes=detalhes)
+                                           max_tokens=1200, detalhes=detalhes, papel=papel)
     else:
         model_name = str(getattr(llm, "model_name", None) or getattr(llm, "model", None) or "")
 
@@ -641,7 +668,7 @@ class FollowUpDraftRequest(BaseModel):
 async def _draft_followup(
     messages: List[Dict[str, Any]], objective: str, tone: str = "",
     estado: str = "", *, company_id: Optional[str] = None,
-    detalhes: Optional[Dict[str, Any]] = None, llm=None,
+    detalhes: Optional[Dict[str, Any]] = None, llm=None, papel: str = PAPEL_DO_AUXILIAR,
 ) -> Tuple[str, Dict[str, Any], str]:
     """Gera UMA mensagem de follow-up (texto puro) pelo papel `auxiliar`.
     Retorna (message, usage, model). `llm=` é o PONTO DE INJEÇÃO."""
@@ -649,7 +676,7 @@ async def _draft_followup(
 
     if llm is None:
         llm, model_name = _llm_do_auxiliar(company_id=company_id, temperature=0.4,
-                                           max_tokens=400, detalhes=detalhes)
+                                           max_tokens=400, detalhes=detalhes, papel=papel)
     else:
         model_name = str(getattr(llm, "model_name", None) or getattr(llm, "model", None) or "")
 
@@ -772,7 +799,8 @@ async def draft_follow_up_whatsapp(
     try:
         message, usage, model_name = await _draft_followup(
             messages, objective, tone, estado=estado, company_id=company_id,
-            detalhes={"auxiliary": FOLLOWUP_SLUG, "run_id": run_id})
+            detalhes={"auxiliary": FOLLOWUP_SLUG, "run_id": run_id},
+            papel=await _papel_do_template(db, template_id))
     except Exception as e:  # noqa: BLE001
         logger.error(f"[AUX] follow-up draft LLM failed: {type(e).__name__}")
         if run_id:

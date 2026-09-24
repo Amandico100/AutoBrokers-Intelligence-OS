@@ -157,12 +157,27 @@ def check(nome, cond, detalhe=""):
 
 
 def _construir(provedor, modelo):
-    """O objeto que o PRODUTO usa — pela função pública da fábrica real."""
+    """O objeto que o PRODUTO usa — pela função pública da fábrica real.
+
+    (24/09/2026) produção só aceita APPROVED; o sujeito aqui é o CONSTRUTOR (o
+    relógio no objeto), não o lifecycle — modelo do catálogo que não é APPROVED
+    (Google não tem nenhum hoje) é resolvido pelo caminho da bancada/"testar
+    conexão" (override), que monta o MESMO construtor.
+    """
+    from app.factories import model_policy as _MP
+
+    extra = {}
+    linha = _MP.catalogo().get(modelo)
+    if linha and linha.get("lifecycle") != "APPROVED":
+        extra["modelo_resolvido"] = _MP.resolver(
+            "teste_de_conexao", classe_de_dado="publico",
+            override={"provider": provedor, "model": modelo})
     return LLMFactory.create_llm(
         company_config={},
         agent_data={"llm_provider": provedor, "llm_model": modelo},
         api_key=CHAVE_FALSA,
         company_id="11111111-1111-1111-1111-111111111111",
+        **extra,
     )
 
 
@@ -176,8 +191,8 @@ def _construir(provedor, modelo):
 # Ler o fonte da fábrica provaria só que a LINHA existe; ler o atributo prova
 # que o kwarg CHEGOU na classe com o nome que ela entende.
 OS_QUATRO = [
-    ("openai", "gpt-4o", "request_timeout"),
-    ("anthropic", "claude-sonnet-5", "default_request_timeout"),
+    ("openai", "gpt-6-sol", "request_timeout"),
+    ("anthropic", "claude-opus-5-5", "default_request_timeout"),
     ("google", "gemini-3-flash-preview", "timeout"),
     ("openrouter", "meta-llama/llama-3.1-8b-instruct", "request_timeout"),
 ]
@@ -217,7 +232,7 @@ def g6a():
     original = R.TIMEOUT_S
     try:
         R.TIMEOUT_S = 0
-        llm = _construir("openai", "gpt-4o")
+        llm = _construir("openai", "gpt-6-sol")
         check("CONTROLE: LLM_TIMEOUT_SEGUNDOS=0 -> nenhum teto passado (%s)"
               % getattr(llm, "request_timeout", None),
               getattr(llm, "request_timeout", None) is None)
@@ -337,7 +352,7 @@ def _chamar_com_transporte(status):
     retry e o objeto são os de produção.
     """
     chamadas = []
-    alvo = _construir("openai", "gpt-4o")
+    alvo = _construir("openai", "gpt-6-sol")
     # Sem streaming a resposta do dublê é um JSON só; a política de retry e o
     # teto são exatamente os mesmos objetos.
     alvo.streaming = False

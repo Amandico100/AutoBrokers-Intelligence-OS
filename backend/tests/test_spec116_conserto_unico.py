@@ -71,6 +71,23 @@ from app.factories import model_policy as MP  # noqa: E402
 from app.factories.llm_factory import LLMFactory  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
 TENANT_A = "aaaaaaaa-0000-4000-8000-00000000000a"
 CHAVE_FALSA = "sk-teste-chave-falsa-nao-existe"
 MIGRATION_05 = (BACKEND / "supabase" / "migrations"
@@ -80,7 +97,7 @@ MIGRATION_05 = (BACKEND / "supabase" / "migrations"
 @pytest.fixture(autouse=True)
 def banco(monkeypatch):
     """O banco dublado: snapshot copiado + cliente Supabase mudo (ledger)."""
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     monkeypatch.setattr(MP, "leitor_do_banco", lambda: (cat, pap))
     monkeypatch.setattr(_db, "get_supabase_client", lambda: _BancoMudo())
@@ -280,8 +297,14 @@ def test_c4_no_pytest_sem_duble_do_banco_nao_abre_conexao(portal, monkeypatch):
 # ===========================================================================
 # C5 — a migration _05: a regra do BANCO é a regra do resolvedor
 # ===========================================================================
+#: (24/09/2026) a função da trava foi SUBSTITUÍDA pela conclusão da Onda A: a
+#: versão em vigor é a da migration mais nova que a define.
+MIGRATION_DA_TRAVA = (BACKEND / "supabase" / "migrations"
+                      / "20260924_01_spec116_onda_a_conclusao.sql")
+
+
 def _sql():
-    return MIGRATION_05.read_text(encoding="utf-8")
+    return MIGRATION_DA_TRAVA.read_text(encoding="utf-8")
 
 
 def _corpo_da_funcao(sql):
@@ -291,19 +314,26 @@ def _corpo_da_funcao(sql):
     return m.group(1)
 
 
-def test_c5_a_lista_usavel_do_sql_e_a_do_model_policy():
+def test_c5_a_lista_de_producao_do_sql_e_a_do_model_policy():
+    """(24/09/2026) a trava do banco é a regra de PRODUÇÃO: só APPROVED."""
     corpo = _corpo_da_funcao(_sql())
-    m = re.search(r"v_usaveis\s+constant\s+text\[\]\s*:=\s*array\[([^\]]*)\]", corpo, re.I)
-    assert m, "lista de lifecycles usáveis ausente"
-    usaveis = tuple(x.strip().strip("'") for x in m.group(1).split(","))
-    assert usaveis == MP.LIFECYCLES_USAVEIS
-    assert not set(usaveis) & set(MP.LIFECYCLES_PROIBIDOS)
+    m = re.search(r"v_producao\s+constant\s+text\[\]\s*:=\s*array\[([^\]]*)\]", corpo, re.I)
+    assert m, "lista de lifecycles de produção ausente"
+    producao = tuple(x.strip().strip("'") for x in m.group(1).split(","))
+    assert producao == MP.LIFECYCLES_DE_PRODUCAO == ("APPROVED",)
+    m = re.search(r"v_escala\s+constant\s+text\[\]\s*:=\s*array\[([^\]]*)\]", corpo, re.I)
+    assert m and tuple(x.strip().strip("'") for x in m.group(1).split(",")) == MP.NIVEIS_DE_ESFORCO
+    # a trava antiga (_05) continua no histórico com a lista da bancada
+    antiga = _corpo_da_funcao(MIGRATION_05.read_text(encoding="utf-8"))
+    assert re.search(r"v_usaveis\s+constant", antiga)
 
 
 @pytest.mark.parametrize("regra,padrao", [
     ("fora do catálogo", r"if not found then\s+raise exception"),
     ("provider divergente", r"v_prov is distinct from v_linha\.provider"),
-    ("lifecycle", r"v_linha\.lifecycle is null or not \(v_linha\.lifecycle = any\(v_usaveis\)\)"),
+    ("lifecycle", r"v_linha\.lifecycle is null or not \(v_linha\.lifecycle = any\(v_producao\)\)"),
+    ("esforço mínimo", r"v_linha\.capacidades ->> 'esforco_minimo_producao'"),
+    ("mínimo exige declarar", r"v_esforco is null\s+or array_position\(v_escala, v_esforco\) < array_position\(v_escala, v_minimo\)"),
     ("classe de dado", r"new\.classe_de_dado = any\(coalesce\(v_linha\.classes_de_dado"),
     ("esforço", r"\(v_linha\.capacidades -> 'niveis_de_esforco'\) \? v_esforco"),
     ("reserva também", r"array\['primario','reserva'\]"),

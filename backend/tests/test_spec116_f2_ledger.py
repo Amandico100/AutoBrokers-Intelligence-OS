@@ -57,6 +57,23 @@ from app.factories import model_policy as MP  # noqa: E402
 from app.factories.llm_factory import LLMFactory  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
 CHAVE_FALSA = "sk-teste-chave-falsa-nao-existe"
 AGENTE = {"agent_role": "attendance", "llm_provider": "anthropic", "llm_model": "claude-sonnet-5",
           "reasoning_effort": "medium"}
@@ -76,7 +93,7 @@ class _UsoCapturado:
 
 @pytest.fixture
 def banco():
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     original = MP.leitor_do_banco
     MP.leitor_do_banco = lambda: (cat, pap)
@@ -103,7 +120,8 @@ def _chamada(handler, *, modelo_real, metadados=None, cache_read=40, cache_creat
 
 def test_ledger_do_atendimento_grava_pedido_resolvido_e_real(banco):
     _, pap = banco
-    pap["atendimento"].update(esforco="low", versao=7)
+    # dublê: a rota Anthropic de 23/09 (o balde de cache da Anthropic é o sujeito aqui)
+    pap["atendimento"].update(provider="anthropic", modelo_primario="claude-sonnet-5", esforco="low", versao=7)
     MP.limpar_cache()
     llm = LLMFactory.create_llm({}, dict(AGENTE, llm_model="claude-opus-5"), api_key=CHAVE_FALSA,
                                 company_id="11111111-1111-1111-1111-111111111111")

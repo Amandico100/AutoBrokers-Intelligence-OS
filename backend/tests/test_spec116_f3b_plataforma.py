@@ -46,6 +46,23 @@ from app.factories import llm_factory as LF  # noqa: E402
 from app.factories import model_policy as MP  # noqa: E402
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
 EMPRESA_A = "11111111-1111-4111-8111-111111111111"
 EMPRESA_B = "22222222-2222-4222-8222-222222222222"
 
@@ -122,7 +139,7 @@ class Provedor:
 
 @pytest.fixture
 def borda(monkeypatch):
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     monkeypatch.setattr(MP, "leitor_do_banco", lambda: (cat, pap))
     MP.limpar_cache()
@@ -171,7 +188,7 @@ def test_dispatch_do_sentinela_pede_o_papel_e_ignora_o_env(borda, monkeypatch):
     sessao = {"playbook_ref": "", "company_id": EMPRESA_A, "slots": {}, "history": []}
     r = _rodar(W._adaptive_reply(EMPRESA_A, sessao, "Digite 1 para guincho, 2 para chaveiro"))
     assert r == "2"
-    assert borda.prov.modelos == [borda.pap["dispatch"]["modelo_primario"]] == ["claude-opus-5"]
+    assert borda.prov.modelos == [borda.pap["dispatch"]["modelo_primario"]] == ["claude-opus-5-5"]
     assert "temperature" not in borda.prov.payloads[0], "Claude 5 recusa sampling (400)"
     linha = _ultima_linha(borda)
     assert linha["details"]["papel"] == "dispatch" and linha["company_id"] == EMPRESA_A
@@ -197,7 +214,7 @@ def test_dispatch_do_cerebro_antes_do_segurado_pede_o_papel(borda, monkeypatch):
     valor, origem = _rodar(R.o_cerebro_ja_sabe(EMPRESA_B, {"company_id": EMPRESA_B}, slot="ponto",
                                                rotulo="ponto de referencia", tela="Informe o ponto"))
     assert (valor, origem) == ("em frente a padaria azul", "ficha")
-    assert borda.prov.modelos == ["claude-opus-5"]
+    assert borda.prov.modelos == ["claude-opus-5-5"]  # a rota `dispatch` (24/09/2026)
     linha = _ultima_linha(borda)
     assert linha["details"]["papel"] == "dispatch" and linha["company_id"] == EMPRESA_B
 

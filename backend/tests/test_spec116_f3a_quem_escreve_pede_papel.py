@@ -76,6 +76,23 @@ from app.factories.llm_factory import (  # noqa: E402
 )
 
 SNAP = json.loads(MP.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+#: 🔴 (24/09/2026 — conclusão da Onda A) PRODUÇÃO só aceita APPROVED. Estes testes
+#: provam a MECÂNICA de trocar a rota (provedor, adaptador, temperatura, ledger)
+#: usando modelos LEGADOS como dublês de "outro modelo" — no dublê eles são
+#: promovidos a APPROVED. A regra de lifecycle (e o mínimo de esforço) é provada
+#: em `test_nenhum_modelo_fora_do_catalogo.py` (§9.3: a lição migra, não morre).
+MODELOS_LEGADOS_DUBLES = ("claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5",
+                          "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini",
+                          "gpt-4o-mini-2024-07-18", "whisper-1")
+
+
+def _legados_como_dubles(cat):
+    for m in MODELOS_LEGADOS_DUBLES:
+        if m in cat:
+            cat[m]["lifecycle"] = "APPROVED"
+    return cat
+
 TENANT_A = "aaaaaaaa-0000-4000-8000-00000000000a"
 CHAVE_ANTHROPIC = "sk-ant-teste-falsa"
 CHAVE_OPENAI = "sk-teste-openai-falsa"
@@ -83,7 +100,7 @@ CHAVE_OPENAI = "sk-teste-openai-falsa"
 
 @pytest.fixture
 def banco(monkeypatch):
-    cat = copy.deepcopy(SNAP["catalogo"])
+    cat = _legados_como_dubles(copy.deepcopy(SNAP["catalogo"]))
     pap = copy.deepcopy(SNAP["papeis"])
     original = MP.leitor_do_banco
     MP.leitor_do_banco = lambda: (cat, pap)
@@ -95,8 +112,9 @@ def banco(monkeypatch):
     MP.limpar_cache()
 
 
-def _trocar_rota(pap, papel, provider, modelo):
-    pap[papel].update(provider=provider, modelo_primario=modelo)
+def _trocar_rota(pap, papel, provider, modelo, esforco=None):
+    # (24/09/2026) o esforço da rota nova (medium/high) não vale para o dublê
+    pap[papel].update(provider=provider, modelo_primario=modelo, esforco=esforco)
     MP.limpar_cache()
 
 
@@ -124,7 +142,7 @@ def test_auxiliar_resumo_sai_no_provedor_da_rota(banco, provedor):
     import app.api.auxiliaries as AUX
 
     _, pap = banco
-    assert pap["auxiliar"]["provider"] == "anthropic", "a rota de hoje é Claude (o seed)"
+    _trocar_rota(pap, "auxiliar", "anthropic", "claude-sonnet-5")  # dublê: a MECÂNICA do adaptador Anthropic (a rota de 24/09 é OpenAI)
     saida, uso, modelo = asyncio.run(AUX._summarize(
         [{"role": "user", "content": "meu carro quebrou"}], company_id=TENANT_A,
         detalhes={"auxiliary": AUX.RESUMO_SLUG, "run_id": "run-1"}))
@@ -162,6 +180,61 @@ def test_auxiliar_followup_troca_de_provedor_com_a_rota(banco, provedor):
     assert "temperature" not in ch["llm"]._get_request_payload(ch["mensagens"])
 
 
+def test_auxiliar_template_com_papel_proprio_usa_a_rota_dele(banco, provedor):
+    """SPEC-116 (24/09/2026): o TEMPLATE declara o PRÓPRIO papel de modelo em
+    `runtime_policy.papel_de_modelo`; o MESMO resolvedor o resolve. Sem declarar →
+    a rota genérica `auxiliar`. Papel declarado sem rota → erro explícito."""
+    import app.api.auxiliaries as AUX
+
+    _, pap = banco
+    assert AUX.papel_de_modelo_do_template(None) == "auxiliar"
+    assert AUX.papel_de_modelo_do_template({"runtime_policy": None}) == "auxiliar"
+    assert AUX.papel_de_modelo_do_template({"runtime_policy": {"papel_de_modelo": " "}}) == "auxiliar"
+    tpl = {"runtime_policy": {"papel_de_modelo": "aux_teste_proprio"}}
+    assert AUX.papel_de_modelo_do_template(tpl) == "aux_teste_proprio"
+
+    # a rota PRÓPRIA (inventada só no dublê — os papéis futuros não nascem aqui)
+    pap["aux_teste_proprio"] = dict(pap["auxiliar"], papel="aux_teste_proprio", provider="anthropic",
+                                    modelo_primario="claude-opus-5-5", esforco=None)
+    MP.limpar_cache()
+    provedor.resposta["texto"] = "Oi! Seguimos acompanhando."
+
+    class _Tabela:
+        def __init__(self, linha):
+            self.linha = linha
+
+        def select(self, *_a):
+            return self
+
+        def eq(self, *_a):
+            return self
+
+        def limit(self, *_a):
+            return self
+
+        async def execute(self):
+            return SimpleNamespace(data=[self.linha] if self.linha else [])
+
+    db = SimpleNamespace(client=SimpleNamespace(table=lambda _n: _Tabela(tpl)))
+    papel = asyncio.run(AUX._papel_do_template(db, "tpl-1"))
+    _m, _u, modelo = asyncio.run(AUX._draft_followup([], "retomar", company_id=TENANT_A, papel=papel))
+    ch = provedor.chamadas[-1]
+    assert (modelo, ch["classe"]) == ("claude-opus-5-5", "ChatAnthropicGovernado")
+    assert ch["llm"].callbacks[0].details["papel"] == "aux_teste_proprio"
+
+    # CONTROLE — template sem declarar (e sem template) → a rota `auxiliar`
+    db_sem = SimpleNamespace(client=SimpleNamespace(table=lambda _n: _Tabela({"runtime_policy": {}})))
+    assert asyncio.run(AUX._papel_do_template(db_sem, "tpl-2")) == "auxiliar"
+    assert asyncio.run(AUX._papel_do_template(db_sem, None)) == "auxiliar"
+    _m, _u, modelo = asyncio.run(AUX._draft_followup([], "retomar", company_id=TENANT_A))
+    assert modelo == pap["auxiliar"]["modelo_primario"]
+    assert provedor.chamadas[-1]["llm"].callbacks[0].details["papel"] == "auxiliar"
+
+    # papel declarado SEM rota → erro explícito (nunca um modelo por omissão)
+    with pytest.raises(MP.ModeloNaoResolvido):
+        asyncio.run(AUX._draft_followup([], "retomar", company_id=TENANT_A, papel="papel_sem_rota_nenhuma"))
+
+
 # ===========================================================================
 # G-PUT — o PUT do agente confere o modelo no catálogo (rota REAL do FastAPI)
 # ===========================================================================
@@ -195,6 +268,8 @@ def _put(servico, corpo):
 
 
 def test_put_do_agente_recusa_modelo_retirado_e_aceita_o_resto(banco):
+    cat, _ = banco
+    cat["gpt-4o-mini"]["lifecycle"] = "DEPRECATED"  # o valor REAL: aqui o legado é o sujeito
     servico = _ServicoDeAgentes({"company_id": TENANT_A, "llm_provider": "openai",
                                  "llm_model": "gpt-4o-mini", "vision_model": None})
     # retirado (BLOCKED) → 400 com frase para gente, e NADA é gravado
@@ -213,7 +288,7 @@ def test_put_do_agente_recusa_modelo_retirado_e_aceita_o_resto(banco):
     assert r.status_code == 200, r.text
     # CONTROLE — sem modelo é permitido (a ROTA decide) · e um aprovado passa
     assert _put(servico, {"name": "Atendente"}).status_code == 200
-    assert _put(servico, {"llm_provider": "anthropic", "llm_model": "claude-sonnet-5"}).status_code == 200
+    assert _put(servico, {"llm_provider": "anthropic", "llm_model": "claude-opus-5-5"}).status_code == 200
     assert len(servico.atualizados) == 3
     # e o legado NÃO pode ser escolhido de novo por quem não o tinha
     outro = _ServicoDeAgentes({"company_id": TENANT_A, "llm_provider": "anthropic",
@@ -250,6 +325,8 @@ def test_regeneracao_do_fiscal_monta_payload_valido_no_claude(banco):
     import test_slot_confirmado_nao_se_pergunta as S
     from app.agents import nodes as N
 
+    _, pap = banco
+    _trocar_rota(pap, "atendimento", "anthropic", "claude-sonnet-5")  # dublê: a MECÂNICA do adaptador Anthropic (a rota de 24/09 é OpenAI)
     adaptador = LLMFactory.create_llm({}, {"agent_role": "attendance"}, papel="atendimento")
     assert isinstance(adaptador, ChatAnthropicGovernado)
     repetida = "Só para eu confirmar: a água ainda está escorrendo?"
@@ -287,6 +364,8 @@ def test_controle_system_no_fim_e_recusado_pelo_adaptador_anthropic(banco):
     depois de um `tool_result` (a Anthropic funde os turnos do usuário)."""
     from app.agents.nodes import mensagens_com_correcao
 
+    _, pap = banco
+    _trocar_rota(pap, "atendimento", "anthropic", "claude-sonnet-5")  # dublê: a MECÂNICA do adaptador Anthropic (a rota de 24/09 é OpenAI)
     adaptador = LLMFactory.create_llm({}, {"agent_role": "attendance"}, papel="atendimento")
     base = [SystemMessage(content=[{"type": "text", "text": "estatico", "cache_control": {"type": "ephemeral"}},
                                    {"type": "text", "text": "dinamico"}]),
@@ -343,6 +422,7 @@ def test_o_escopo_devolve_a_reserva_da_rota(banco, monkeypatch):
     import app.tasks.buffer_processor as BP
 
     _, pap = banco
+    _trocar_rota(pap, "atendimento", "anthropic", "claude-sonnet-5")  # dublê: a MECÂNICA do adaptador Anthropic (a rota de 24/09 é OpenAI)
     pap["atendimento"].update(provider_reserva="openai", modelo_reserva="gpt-4o")
     MP.limpar_cache()
 
@@ -375,6 +455,9 @@ def test_subagente_papel_raciocinio_e_rotulo_real(banco, monkeypatch):
     from langchain_core.tools import BaseTool
 
     from app.agents.tools import subagent_tool as ST
+
+    _, pap = banco
+    _trocar_rota(pap, "subagente", "anthropic", "claude-sonnet-5")  # dublê: a MECÂNICA do adaptador Anthropic (a rota de 24/09 é OpenAI)
 
     class _Consulta(BaseTool):
         name: str = "consultar"

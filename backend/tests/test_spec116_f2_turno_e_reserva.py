@@ -132,6 +132,7 @@ AGENTE = {"id": "ag-1", "company_id": CID, "agent_role": "attendance", "llm_prov
 @pytest.fixture
 def servico(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-teste-anthropic-falsa")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-teste-openai-falsa")  # a rota de 24/09 é OpenAI
     svc = object.__new__(LS.LangChainService)
     svc.supabase = _Supabase()
     svc.qdrant = None

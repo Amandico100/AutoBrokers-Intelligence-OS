@@ -58,6 +58,10 @@ MAX_TOKENS_ANTHROPIC = 4096
 
 #: As MESMAS listas de `app/factories/model_policy.py` (o guarda confere a igualdade).
 LIFECYCLES_USAVEIS = ("APPROVED", "CANDIDATE", "DEPRECATED")
+#: 🔴 Founder 24/09/2026: a ROTA do portal é produção — só APPROVED (e o esforço
+#: mínimo de produção do catálogo). A bancada monta o `ModeloDoPortal` do braço
+#: direto (`evals/bancada.rota_do_portal_para`), sem passar por aqui.
+LIFECYCLES_DE_PRODUCAO = ("APPROVED",)
 CLASSES_DE_DADO = ("publico", "interno", "pii")
 NIVEIS_DE_ESFORCO = ("none", "low", "medium", "high", "xhigh", "max")
 
@@ -218,15 +222,21 @@ def _validar(provider: Optional[str], model: Optional[str], effort: Optional[str
         raise ModeloDoPortalIndisponivel(
             f"papel {PAPEL!r}: provedor {provider!r} diverge do catálogo "
             f"({linha.get('provider')!r}) para {model!r}")
-    if linha.get("lifecycle") not in LIFECYCLES_USAVEIS:
+    if linha.get("lifecycle") not in LIFECYCLES_DE_PRODUCAO:
         raise ModeloDoPortalIndisponivel(
-            f"papel {PAPEL!r}: {model!r} tem lifecycle {linha.get('lifecycle')!r} (recusado)")
+            f"papel {PAPEL!r}: {model!r} tem lifecycle {linha.get('lifecycle')!r} "
+            "(produção só aceita APPROVED)")
     if classe not in (linha.get("classes_de_dado") or []):
         raise ModeloDoPortalIndisponivel(f"papel {PAPEL!r}: {model!r} não pode ver dado {classe!r}")
     if effort is not None:
         niveis = (linha.get("capacidades") or {}).get("niveis_de_esforco")
         if effort not in NIVEIS_DE_ESFORCO or (niveis is not None and effort not in niveis):
             raise ModeloDoPortalIndisponivel(f"papel {PAPEL!r}: {model!r} não aceita esforço {effort!r}")
+    minimo = (linha.get("capacidades") or {}).get("esforco_minimo_producao")
+    if minimo and (minimo not in NIVEIS_DE_ESFORCO or effort not in NIVEIS_DE_ESFORCO
+                   or NIVEIS_DE_ESFORCO.index(effort) < NIVEIS_DE_ESFORCO.index(minimo)):
+        raise ModeloDoPortalIndisponivel(
+            f"papel {PAPEL!r}: {model!r} exige esforço >= {minimo!r} em produção (recebeu {effort!r})")
     return linha
 
 

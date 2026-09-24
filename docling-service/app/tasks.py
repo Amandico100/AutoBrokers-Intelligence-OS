@@ -15,6 +15,20 @@ from .config import settings
 logger = logging.getLogger("docling-worker")
 
 
+def _params_da_visao() -> dict:
+    """O corpo extra do pedido de visão (Chat Completions): modelo, teto e esforço.
+
+    ⛔ Nada de sampling (`temperature`/`seed`): o GPT-6 Sol não o aceita
+    (catálogo: sampling_ok=false). `reasoning_effort` só quando configurado.
+    """
+    params = dict(model=settings.VISION_MODEL,
+                  max_completion_tokens=settings.VISION_MAX_COMPLETION_TOKENS)
+    esforco = (settings.VISION_REASONING_EFFORT or "").strip().lower()
+    if esforco:
+        params["reasoning_effort"] = esforco
+    return params
+
+
 def _get_minio_client() -> Minio:
     """Create MinIO client."""
     return Minio(
@@ -119,7 +133,7 @@ def _docling_parse(file_path: str, extract_images: bool = False) -> Tuple[str, D
         Tuple of (markdown_string, metadata_dict)
     """
     from docling.datamodel.base_models import InputFormat
-    from docling.datamodel.pipeline_options import (
+    from docling.datamodel.pipeline_options import (  # 📌 docling==2.130.0 (requirements.txt)
         PdfPipelineOptions,
         PictureDescriptionApiOptions,
     )
@@ -139,11 +153,11 @@ def _docling_parse(file_path: str, extract_images: bool = False) -> Tuple[str, D
         # Prompt with INFORMACIONAL/DECORATIVA classifier
         pipeline_options.picture_description_options = PictureDescriptionApiOptions(
             url=settings.VISION_API_URL,
-            params=dict(
-                model=settings.VISION_MODEL,
-                seed=42,
-                max_completion_tokens=4096,
-            ),
+            # 🔴 SPEC-116 (24/09/2026): sem `seed`/`temperature` — GPT-6 Sol tem
+            # sampling_ok=false no catálogo (EVIDENCIAS/04); o Docling 2.130.0
+            # manda SÓ `messages` + estes params (utils/api_image_request.py).
+            params=_params_da_visao(),
+            timeout=settings.VISION_TIMEOUT_SECONDS,
             prompt=(
                 "Primeiro classifique esta imagem: "
                 "[INFORMACIONAL] se contém dados, gráficos, tabelas, fluxogramas, "

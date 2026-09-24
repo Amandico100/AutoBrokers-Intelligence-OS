@@ -6,6 +6,7 @@ import base64
 import logging
 import os
 import tempfile
+from typing import Optional
 
 import httpx
 from openai import AsyncOpenAI
@@ -14,8 +15,35 @@ logger = logging.getLogger(__name__)
 
 
 #: O papel do Model Router que transcreve (SPEC-116 U8; D-116-13: whisper-1
-#: desliga em 26/02/2027 — a troca é uma linha da ROTA, depois da bancada).
+#: desliga em 26/02/2027). 📊 24/09/2026 a rota é `gpt-transcribe` (Founder,
+#: conclusão da Onda A — migration 20260924_01).
 PAPEL_DA_TRANSCRICAO = "transcricao"
+
+#: Contexto de domínio enviado como `prompt` à API de transcrição — GOVERNADO:
+#: ⛔ nunca PII (nome de segurado, placa, CPF, telefone, nome de corretora). Só
+#: o ofício e os NOMES DE SEGURADORAS, lidos da fonte canônica da plataforma
+#: (`insurer_registry.INSURER_REGISTRY`, dado global de produto — seguradora não
+#: é cliente). EVIDENCIAS/04 l.54: o gpt-transcribe aceita "keyword hints,
+#: contexto livre"; o whisper-1 também aceita `prompt`.
+CONTEXTO_DE_DOMINIO = "Atendimento de corretora de seguros no Brasil."
+TERMOS_DO_OFICIO = ("apólice", "sinistro", "assistência 24 horas", "guincho", "franquia",
+                    "vistoria", "segurado", "corretora")
+LIMITE_DO_PROMPT = 600  # caracteres — dica curta; o modelo não precisa de mais
+
+
+def prompt_de_dominio() -> str:
+    """O `prompt` da transcrição: contexto + vocabulário, sem PII, com teto."""
+    try:
+        from app.services.insurer_registry import INSURER_REGISTRY
+
+        seguradoras = sorted({str(v.get("label") or "").strip()
+                              for v in INSURER_REGISTRY.values() if v.get("label")})
+    except Exception:  # noqa: BLE001 — sem o registro, só o contexto genérico
+        seguradoras = []
+    partes = [CONTEXTO_DE_DOMINIO, "Termos frequentes: " + ", ".join(TERMOS_DO_OFICIO) + "."]
+    if seguradoras:
+        partes.append("Seguradoras: " + ", ".join(seguradoras) + ".")
+    return " ".join(partes)[:LIMITE_DO_PROMPT]
 
 
 def _modelo_da_rota() -> str:
@@ -24,15 +52,54 @@ def _modelo_da_rota() -> str:
     return resolver(PAPEL_DA_TRANSCRICAO).model
 
 
+def duracao_local_em_segundos(dados: bytes, extensao: str) -> Optional[float]:
+    """Duração do áudio SEM biblioteca de mídia (o ledger cobra por MINUTO).
+
+    WAV pelo cabeçalho; OGG (o áudio do WhatsApp) pela posição de grânulo da
+    ÚLTIMA página (Opus = 48 kHz sempre, menos o pre-skip; Vorbis = taxa do
+    cabeçalho de identificação). Outros formatos → None (quem chama não inventa).
+    """
+    ext = (extensao or "").lower().lstrip(".")
+    try:
+        if ext == "wav":
+            import io
+            import wave
+
+            with wave.open(io.BytesIO(dados)) as w:
+                taxa = w.getframerate()
+                return (w.getnframes() / float(taxa)) if taxa else None
+        if ext in ("ogg", "oga", "opus"):
+            ultima = dados.rfind(b"OggS")
+            if ultima < 0 or len(dados) < ultima + 14:
+                return None
+            granulo = int.from_bytes(dados[ultima + 6:ultima + 14], "little", signed=True)
+            if granulo <= 0:
+                return None
+            i = dados.find(b"OpusHead", 0, 4096)
+            if i >= 0:
+                pre_skip = int.from_bytes(dados[i + 10:i + 12], "little") if len(dados) >= i + 12 else 0
+                return max(granulo - pre_skip, 0) / 48000.0
+            i = dados.find(b"\x01vorbis", 0, 4096)
+            if i >= 0 and len(dados) >= i + 16:
+                taxa = int.from_bytes(dados[i + 12:i + 16], "little")
+                return granulo / float(taxa) if taxa else None
+    except Exception:  # noqa: BLE001 — duração é para o ledger; nunca derruba a transcrição
+        return None
+    return None
+
+
 class AudioService:
     """Transcrição de áudio (async) pelo modelo da ROTA `transcricao`.
 
     🔴 SPEC-116 U8: o id era literal nos dois caminhos. PONTO DE INJEÇÃO:
     `AudioService(chave, modelo=..., cliente=...)` — `cliente` é qualquer objeto
     com `audio.transcriptions.create` (a bancada e os testes passam um dublê);
-    `modelo` fixa o braço. Sem `modelo`, a rota é lida a CADA transcrição (a
-    troca vale sem reiniciar). ⛔ Sem rota → `ModeloNaoResolvido` (nunca um
-    modelo por omissão).
+    `modelo` fixa o braço (a bancada pode fixar um DEPRECATED como baseline).
+    Sem `modelo`, a rota é lida a CADA transcrição (a troca vale sem reiniciar).
+    ⛔ Sem rota → `ModeloNaoResolvido` (nunca um modelo por omissão).
+
+    A chamada é a API de TRANSCRIÇÃO da OpenAI (`/audio/transcriptions`), não a
+    fábrica de chat.
     """
 
     def __init__(self, openai_api_key: str, *, modelo: str = None, cliente=None):
@@ -46,22 +113,72 @@ class AudioService:
 
     @staticmethod
     def _formato_detalhado(modelo: str) -> bool:
-        """`verbose_json` (traz a DURAÇÃO, que é o que se cobra) só existe no
-        Whisper; os `gpt-*-transcribe` aceitam só json/text e devolvem `usage`."""
+        """`verbose_json` (traz a DURAÇÃO) só é documentado no Whisper; o
+        `gpt-transcribe` não o documenta (EVIDENCIAS/04 l.54) → `json`, e a
+        duração do ledger é medida AQUI (`duracao_local_em_segundos`)."""
         return str(modelo or "").startswith("whisper-")
 
-    def _registrar_uso(self, transcript, modelo: str, *, company_id, agent_id, details: dict) -> None:
-        """Ledger da transcrição: duração (Whisper) ou tokens (`usage`)."""
+    def _parametros(self, modelo: str) -> dict:
+        return {
+            "model": modelo,
+            "language": "pt",
+            "prompt": prompt_de_dominio(),
+            "response_format": "verbose_json" if self._formato_detalhado(modelo) else "json",
+        }
+
+    async def _transcrever(self, dados: bytes, extensao: str):
+        """(transcript, modelo, duração local) — UMA chamada à API de transcrição."""
+        with tempfile.NamedTemporaryFile(suffix=extensao, delete=False) as temp_file:
+            temp_file.write(dados)
+            temp_file_path = temp_file.name
+        try:
+            modelo = self.modelo
+            logger.info("[AUDIO] Enviando à API de transcrição (%s)", modelo)
+            with open(temp_file_path, "rb") as audio_file:
+                transcript = await self.client.audio.transcriptions.create(
+                    file=audio_file, **self._parametros(modelo))
+            return transcript, modelo, duracao_local_em_segundos(dados, extensao)
+        finally:
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+
+    @staticmethod
+    def _unidade(modelo: str) -> Optional[str]:
+        try:
+            from app.factories.model_policy import catalogo
+
+            return (catalogo().get(modelo) or {}).get("unit")
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _registrar_uso(self, transcript, modelo: str, *, company_id, agent_id, details: dict,
+                       duracao_local: Optional[float] = None) -> None:
+        """Ledger da transcrição. Modelo cobrado por MINUTO (`unit=minute`):
+        `input_tokens` = SEGUNDOS (a conta de `usage_service.calculate_cost`) —
+        da resposta (`duration` do verbose_json ou `usage.seconds`) ou medidos
+        localmente. Modelo por token: `usage.input/output_tokens`."""
         from .usage_service import get_usage_service
 
-        duracao = getattr(transcript, "duration", None)
         uso = getattr(transcript, "usage", None)
+
+        def _u(chave):
+            return uso.get(chave) if isinstance(uso, dict) else getattr(uso, chave, None)
+
+        duracao = getattr(transcript, "duration", None)
+        if not duracao and uso is not None and _u("type") == "duration":
+            duracao = _u("seconds")
+        if not duracao:
+            duracao = duracao_local
         entrada = saida = 0
-        if duracao:
-            entrada = int(duracao)
+        if self._unidade(modelo) == "minute" or (duracao and uso is None):
+            if not duracao:
+                logger.warning("[AUDIO] ledger: %s é cobrado por minuto e a duração não pôde ser "
+                               "medida — linha NÃO gravada (sem inventar)", modelo)
+                return
+            entrada = max(1, int(round(float(duracao))))
         elif uso is not None:
-            entrada = int(getattr(uso, "input_tokens", 0) or 0)
-            saida = int(getattr(uso, "output_tokens", 0) or 0)
+            entrada = int(_u("input_tokens") or 0)
+            saida = int(_u("output_tokens") or 0)
         if not (entrada or saida):
             return
         get_usage_service().track_cost_sync(
@@ -82,7 +199,7 @@ class AudioService:
         agent_id: str = None
     ) -> str:
         """
-        Transcreve áudio em base64 usando Whisper API (async).
+        Transcreve áudio em base64 pela API de transcrição (modelo da rota), async.
         Não bloqueia o event loop durante a chamada à API.
 
         Args:
@@ -107,44 +224,17 @@ class AudioService:
             audio_bytes = base64.b64decode(audio_base64)
             logger.info(f"[AUDIO] Decoded audio size: {len(audio_bytes)} bytes")
 
-            # Criar arquivo temporário (I/O local, rápido, ok ser sync)
-            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
-                temp_file.write(audio_bytes)
-                temp_file_path = temp_file.name
+            transcript, modelo, duracao = await self._transcrever(audio_bytes, ".webm")
+            transcribed_text = transcript.text
 
             try:
-                logger.info(f"[AUDIO] Sending to Whisper API: {temp_file_path}")
+                self._registrar_uso(transcript, modelo, company_id=company_id,
+                                    agent_id=agent_id, details={}, duracao_local=duracao)
+            except Exception as e:
+                logger.warning(f"[AUDIO] Cost tracking failed: {e}")
 
-                modelo = self.modelo
-                with open(temp_file_path, "rb") as audio_file:
-                    # ✅ ASYNC: await na chamada à API da OpenAI
-                    extras = {"response_format": "verbose_json"} if self._formato_detalhado(modelo) else {}
-                    transcript = await self.client.audio.transcriptions.create(
-                        model=modelo,
-                        file=audio_file,
-                        language="pt",
-                        **extras,
-                    )
-
-                transcribed_text = transcript.text
-
-                # Track cost (sync, rápido, ok por enquanto)
-                try:
-                    self._registrar_uso(transcript, modelo, company_id=company_id,
-                                        agent_id=agent_id, details={})
-                except Exception as e:
-                    logger.warning(f"[AUDIO] Cost tracking failed: {e}")
-
-                logger.info(
-                    f"[AUDIO] Transcription successful: {transcribed_text[:100]}..."
-                )
-
-                return transcribed_text
-
-            finally:
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                    logger.debug(f"[AUDIO] Temporary file deleted: {temp_file_path}")
+            logger.info(f"[AUDIO] Transcription successful: {transcribed_text[:100]}...")
+            return transcribed_text
 
         except ValueError as e:
             logger.error(f"[AUDIO] Validation error: {str(e)}")
@@ -203,48 +293,19 @@ class AudioService:
 
             logger.info(f"[AUDIO] Detected format: {content_type} -> {extension}")
 
-            with tempfile.NamedTemporaryFile(
-                suffix=extension, delete=False
-            ) as temp_file:
-                temp_file.write(audio_bytes)
-                temp_file_path = temp_file.name
+            transcript, modelo, duracao = await self._transcrever(audio_bytes, extension)
+            transcribed_text = transcript.text
 
             try:
-                logger.info(f"[AUDIO] Sending to Whisper API: {temp_file_path}")
+                if company_id:
+                    self._registrar_uso(transcript, modelo, company_id=company_id,
+                                        agent_id=agent_id, details={"source": "whatsapp"},
+                                        duracao_local=duracao)
+            except Exception as e:
+                logger.warning(f"[AUDIO] Cost tracking failed: {e}")
 
-                modelo = self.modelo
-                with open(temp_file_path, "rb") as audio_file:
-                    # ✅ ASYNC: await na chamada à API
-                    # 🔴 SPEC-116 U8: `verbose_json` também aqui. Sem ele o
-                    # Whisper não devolve `duration` e ESTE caminho (o do
-                    # WhatsApp) nunca entrava no ledger.
-                    extras = {"response_format": "verbose_json"} if self._formato_detalhado(modelo) else {}
-                    transcript = await self.client.audio.transcriptions.create(
-                        model=modelo,
-                        file=audio_file,
-                        language="pt",
-                        **extras,
-                    )
-
-                transcribed_text = transcript.text
-
-                try:
-                    if company_id:
-                        self._registrar_uso(transcript, modelo, company_id=company_id,
-                                            agent_id=agent_id, details={"source": "whatsapp"})
-                except Exception as e:
-                    logger.warning(f"[AUDIO] Cost tracking failed: {e}")
-
-                logger.info(
-                    f"[AUDIO] Transcription successful: {transcribed_text[:100]}..."
-                )
-
-                return transcribed_text
-
-            finally:
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                    logger.debug(f"[AUDIO] Temporary file deleted: {temp_file_path}")
+            logger.info(f"[AUDIO] Transcription successful: {transcribed_text[:100]}...")
+            return transcribed_text
 
         except httpx.HTTPError as e:
             logger.error(f"[AUDIO] Error downloading audio: {str(e)}")

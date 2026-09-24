@@ -8,9 +8,8 @@
      migration/banco), não a uma lista escrita neste arquivo.
 
 O que ele garante (G0 · G1 parcial · G2 · G3 da SPEC-116 §9):
-  1. todo papel resolve para APPROVED | CANDIDATE | DEPRECATED; os DEPRECATED
-     saem numa LISTA impressa — aviso, não falha (D-116-11: legado vira
-     DEPRECATED já e BLOCKED só depois que a bancada provar o substituto);
+  1. todo papel resolve para APPROVED (24/09/2026 — antes: APPROVED | CANDIDATE |
+     DEPRECATED com aviso, D-116-11; a Onda A concluiu e produção só roda APPROVED);
   2. nenhuma reserva BLOCKED/HISTORICAL;
   3. todo literal de modelo em backend/app, backend/portal_worker, lib, app,
      components e docling-service/app existe no catálogo e não é
@@ -21,6 +20,11 @@ O que ele garante (G0 · G1 parcial · G2 · G3 da SPEC-116 §9):
   4. papel/provedor desconhecido → `ModeloNaoResolvido`;
   5. LINHA DE CONTROLE: rota para `claude-3-5-sonnet-20241022` (BLOCKED) e rota
      `pii` para `mimo-v2.6-pro` (só publico) → VERMELHO obrigatório.
+  6. 🔴 LEGACY GATE (Founder 24/09/2026 — conclusão da Onda A): produção só roda
+     APPROVED. Rota em DEPRECATED (ex.: claude-sonnet-5) ou Luna abaixo do
+     mínimo → VERMELHO; e todo literal DEPRECATED em código de produção tem de
+     estar CLASSIFICADO em `DEPRECADOS_NAO_OPERACIONAIS` (HISTÓRICO · COMENTÁRIO
+     · BASELINE) — literal DEPRECATED novo num caminho produtivo → VERMELHO.
 
 Rodar (de backend/):  python -m pytest -q tests/test_nenhum_modelo_fora_do_catalogo.py -s
 """
@@ -109,10 +113,10 @@ LITERAIS_PENDENTES_DAS_FATIAS: dict = {
 LITERAIS_CONHECIDOS: dict = {
     "backend/app/api/webhook.py": {"gpt-4o"},
     "backend/app/core/callbacks/cost_callback.py": {"gpt-4o-mini", "gpt-4o-mini-2024-07-18"},
-    "backend/app/core/constants.py": {"claude-haiku-4-5-20251001", "gpt-4o-mini"},
     "backend/app/factories/llm_factory.py": {"claude-opus-5", "claude-sonnet-5", "gpt-4o"},
     "backend/app/services/agent_council.py": {"gpt-4o-mini"},
     "backend/app/services/attendance_distiller.py": {"claude-opus-5", "text-embedding-3-small"},
+    "backend/app/services/audio_service.py": {"gpt-transcribe"},
     "backend/app/services/global_knowledge_seed.py": {"text-embedding-3-small"},
     "backend/app/services/ingestion_service.py": {"gpt-4o-mini"},
     "backend/app/services/knowledge/insurance_corpus.py": {"text-embedding-3-small"},
@@ -125,8 +129,59 @@ LITERAIS_CONHECIDOS: dict = {
     "backend/app/services/vision_service.py": {"gpt-4o-mini"},
     "backend/portal_worker/adaptive.py": {"gpt-4o-mini"},
     "backend/portal_worker/modelo_do_portal.py": {"gpt-4o", "gpt-4o-mini"},
-    "docling-service/app/config.py": {"gpt-4o-mini"},
+    # serviço SEM banco: o default acompanha à mão a rota `visao_documento` (24/09/2026)
+    "docling-service/app/config.py": {"gpt-6-sol"},
 }
+
+#: 🔴 LEGACY GATE (24/09/2026). Todo literal de modelo DEPRECATED que AINDA mora
+#: em código de produção, com a classificação que prova que ele NÃO escolhe o
+#: modelo de nada que roda. 📊 medido 24/09/2026 com `varrer()` contra o catálogo
+#: pós-20260924_01. Um DEPRECATED fora desta lista (ou um literal novo num
+#: arquivo daqui) fica VERMELHO; a lista só encolhe.
+DEPRECADOS_NAO_OPERACIONAIS: dict = {
+    "backend/app/api/webhook.py": {"gpt-4o": "COMENTÁRIO: o `or gpt-4o` que morreu"},
+    "backend/app/core/callbacks/cost_callback.py": {
+        "gpt-4o-mini": "COMENTÁRIO: exemplo do mapeamento snapshot → id do catálogo",
+        "gpt-4o-mini-2024-07-18": "COMENTÁRIO: idem"},
+    "backend/app/factories/llm_factory.py": {
+        "claude-opus-5": "COMENTÁRIO/HISTÓRICO: o despacho rodava opus 5 (EVIDENCIAS/02)",
+        "claude-sonnet-5": "COMENTÁRIO/HISTÓRICO: idem",
+        "gpt-4o": "COMENTÁRIO: o `or gpt-4o` que morreu"},
+    "backend/app/services/agent_council.py": {"gpt-4o-mini": "COMENTÁRIO: o fallback que morreu"},
+    "backend/app/services/attendance_distiller.py": {
+        "claude-opus-5": "HISTÓRICO: as 18 sínteses gravadas pelo opus 5 (📊)"},
+    "backend/app/services/benchmark_service.py": {
+        "gpt-4o": "BASELINE: benchmark comparativo de RAG, fixo por desenho (ALLOWLIST)",
+        "gpt-4o-mini": "BASELINE: idem",
+        "claude-sonnet-4-6": "BASELINE: idem"},
+    "backend/app/services/ingestion_service.py": {"gpt-4o-mini": "COMENTÁRIO: o literal que morreu"},
+    "backend/app/services/langchain_service.py": {"claude-sonnet-5": "COMENTÁRIO/HISTÓRICO: a UI que o recusava"},
+    "backend/app/services/llama_guard_service.py": {
+        "meta-llama/llama-prompt-guard-2-86m":
+            "⚠️ OPERACIONAL — DECISÃO PENDENTE: guarda de prompt (Groq), DEPRECATED desde antes "
+            "da 116; sem substituto APPROVED no catálogo (trocar = escolher modelo = Founder)"},
+    "backend/app/services/memory_service.py": {"gpt-4o-mini": "HISTÓRICO: o DEFAULT da coluna legada (📊)"},
+    "backend/app/services/proactive_suggestions.py": {
+        "claude-opus-5": "COMENTÁRIO/HISTÓRICO: custo medido com opus 5",
+        "gpt-4o": "COMENTÁRIO: o default que morreu"},
+    "backend/app/services/prompt_optimizer.py": {"claude-opus-5": "COMENTÁRIO/HISTÓRICO"},
+    "backend/app/services/search_service.py": {"gpt-4o-mini": "COMENTÁRIO: o literal que morreu"},
+    "backend/app/services/vision_service.py": {"gpt-4o-mini": "COMENTÁRIO: o literal que morreu"},
+    "backend/portal_worker/adaptive.py": {"gpt-4o-mini": "COMENTÁRIO: a reserva calada que morreu"},
+    "backend/portal_worker/modelo_do_portal.py": {
+        "gpt-4o": "COMENTÁRIO: o fixo que morreu", "gpt-4o-mini": "COMENTÁRIO: a reserva que morreu"},
+}
+
+
+def deprecados_nao_classificados(achados: dict, catalogo: dict, classificados: dict) -> dict:
+    """arquivo → {literais DEPRECATED sem classificação não-operacional}."""
+    out: dict = {}
+    for arq, lits in achados.items():
+        ruins = {l for l in lits if (catalogo.get(l) or {}).get("lifecycle") == "DEPRECATED"}
+        ruins -= set(classificados.get(arq, {}))
+        if ruins:
+            out[arq] = ruins
+    return out
 
 
 def literais_fora_do_inventario(achados: dict, conhecidos: dict):
@@ -218,20 +273,20 @@ def banco():
 # ---------------------------------------------------------------------------
 # 1–2. todo papel resolve; reservas limpas
 # ---------------------------------------------------------------------------
-def test_todo_papel_resolve_para_um_lifecycle_usavel(banco):
+def test_todo_papel_resolve_para_um_modelo_de_producao(banco):
+    """🔴 (24/09/2026) a verdade antiga era "DEPRECATED é aviso" (D-116-11); a Onda
+    A concluiu e o Founder decidiu: produção só roda APPROVED. A lição migra: o
+    esperado de cada papel vem da ROTA (snapshot), e o resolvedor confere."""
+    cat, pap = banco
     papeis = MP.papeis_conhecidos()
     assert len(papeis) >= 20, papeis
-    deprecados = []
     for papel in papeis:
         r = MP.resolver(papel)
         assert r.origem == "rota", (papel, r.origem)
-        assert r.lifecycle in MP.LIFECYCLES_USAVEIS, (papel, r.model, r.lifecycle)
+        assert (r.provider, r.model, r.effort) == (
+            pap[papel]["provider"], pap[papel]["modelo_primario"], pap[papel]["esforco"]), papel
+        assert r.lifecycle in MP.LIFECYCLES_DE_PRODUCAO, (papel, r.model, r.lifecycle)
         assert r.classe_de_dado in (MP.catalogo()[r.model]["classes_de_dado"]), (papel, r.model)
-        if r.lifecycle == "DEPRECATED":
-            deprecados.append(f"{papel} → {r.provider}/{r.model}")
-    print("\n⚠️ PAPÉIS EM MODELO DEPRECATED (aviso, não falha — D-116-11):")
-    for linha in deprecados:
-        print("   ·", linha)
 
 
 def test_nenhuma_reserva_bloqueada_ou_historica(banco):
@@ -308,6 +363,80 @@ def test_controle_literal_usavel_novo_na_fabrica_fica_vermelho():
     assert novos == {"backend/app/services/novo.py": {"claude-sonnet-5"}}
 
 
+def test_legacy_gate_nenhum_deprecated_operacional_novo():
+    """🔴 LEGACY GATE: DEPRECATED em código de produção só com classificação."""
+    achados = varrer()
+    cat = SNAP["catalogo"]
+    ruins = deprecados_nao_classificados(achados, cat, DEPRECADOS_NAO_OPERACIONAIS)
+    assert not ruins, (
+        "literal de modelo DEPRECATED em código de produção sem classificação — produção "
+        "só roda APPROVED: peça o PAPEL ao resolvedor ou classifique em "
+        f"DEPRECADOS_NAO_OPERACIONAIS: {ruins}")
+    vencidos = {a: set(c) - achados.get(a, set()) for a, c in DEPRECADOS_NAO_OPERACIONAIS.items()}
+    vencidos = {a: v for a, v in vencidos.items() if v}
+    assert not vencidos, f"classificação de literal que já sumiu — apague-a (a lista só encolhe): {vencidos}"
+
+
+def test_controle_legacy_gate_fica_vermelho_com_deprecated_novo():
+    """LINHA DE CONTROLE: `gpt-4o-mini` num call site NOVO e `claude-sonnet-5` num
+    arquivo já classificado (literal não) → os dois acusados."""
+    cat = SNAP["catalogo"]
+    assert cat["gpt-4o-mini"]["lifecycle"] == "DEPRECATED"
+    assert cat["claude-sonnet-5"]["lifecycle"] == "DEPRECATED"
+    achados = {a: set(l) for a, l in varrer().items()}
+    achados["backend/app/services/call_site_novo.py"] = literais_do_texto('ChatOpenAI(model="gpt-4o-mini")')
+    achados["backend/app/services/prompt_optimizer.py"] = set(achados.get(
+        "backend/app/services/prompt_optimizer.py", set())) | {"claude-sonnet-5"}
+    ruins = deprecados_nao_classificados(achados, cat, DEPRECADOS_NAO_OPERACIONAIS)
+    assert ruins == {"backend/app/services/call_site_novo.py": {"gpt-4o-mini"},
+                     "backend/app/services/prompt_optimizer.py": {"claude-sonnet-5"}}, ruins
+    # controle do controle: um APPROVED novo NÃO é acusado por ESTE checador
+    assert not deprecados_nao_classificados({"x.py": {"gpt-6-sol"}}, cat, {})
+
+
+def test_controle_rota_de_producao_em_deprecated_e_recusada(banco):
+    """A rota em claude-sonnet-5 (DEPRECATED) é recusada; a BANCADA ainda o mede."""
+    cat, pap = banco
+    assert cat["claude-sonnet-5"]["lifecycle"] == "DEPRECATED"
+    pap["chat_principal"].update(provider="anthropic", modelo_primario="claude-sonnet-5", esforco=None)
+    MP.limpar_cache()
+    with pytest.raises(MP.ModeloNaoResolvido, match="APPROVED"):
+        MP.resolver("chat_principal")
+    r = MP.resolver("juiz_eval", override={"provider": "anthropic", "model": "claude-sonnet-5"})
+    assert (r.model, r.origem, r.lifecycle) == ("claude-sonnet-5", "bancada", "DEPRECATED")
+
+
+def test_controle_luna_abaixo_do_minimo_e_recusada_em_producao(banco):
+    cat, pap = banco
+    assert cat["gpt-6-luna"]["capacidades"].get("esforco_minimo_producao") == "medium"
+    for esforco in ("low", "none", None):
+        pap["memoria"].update(provider="openai", modelo_primario="gpt-6-luna", esforco=esforco)
+        MP.limpar_cache()
+        with pytest.raises(MP.ModeloNaoResolvido, match="exige esforço"):
+            MP.resolver("memoria")
+    # CONTROLE: medium e high passam; a bancada mede a Luna em low
+    for esforco in ("medium", "high"):
+        pap["memoria"]["esforco"] = esforco
+        MP.limpar_cache()
+        assert MP.resolver("memoria").effort == esforco
+    r = MP.resolver("memoria", override={"provider": "openai", "model": "gpt-6-luna", "effort": "low"})
+    assert (r.effort, r.origem) == ("low", "bancada")
+
+
+def test_controle_candidate_nao_roda_em_producao(banco):
+    cat, pap = banco
+    assert cat["gpt-6-astra"]["lifecycle"] == "CANDIDATE"
+    pap["atendimento"].update(provider="openai", modelo_primario="gpt-6-astra", esforco="medium")
+    MP.limpar_cache()
+    with pytest.raises(MP.ModeloNaoResolvido, match="APPROVED"):
+        MP.resolver("atendimento")
+    # e o modelo DO AGENTE (papel sem rota) também é produção
+    with pytest.raises(MP.ModeloNaoResolvido, match="APPROVED"):
+        MP.resolver("papel_sem_rota", agente={"llm_provider": "openai", "llm_model": "gpt-4o-mini"})
+    r = MP.resolver("papel_sem_rota", agente={"llm_provider": "openai", "llm_model": "gpt-6-sol"})
+    assert (r.model, r.origem) == ("gpt-6-sol", "agente")
+
+
 def test_pendencias_tem_dono_e_fatia_valida():
     for arq, (fatia, lits) in LITERAIS_PENDENTES_DAS_FATIAS.items():
         assert fatia in ("F2", "F3", "F4", "F5a", "F6", "SEM_DONO"), (arq, fatia)
@@ -357,11 +486,15 @@ def test_controle_rota_pii_para_modelo_sem_pii_e_recusada(banco):
     cat, pap = banco
     assert "pii" not in cat["mimo-v2.6-pro"]["classes_de_dado"]
     assert pap["atendimento"]["classe_de_dado"] == "pii"
-    pap["atendimento"].update(provider="xiaomi", modelo_primario="mimo-v2.6-pro")
+    # (24/09/2026) em produção um CANDIDATE já cai pelo lifecycle; para a regra de
+    # CLASSE ser a que dispara, o dublê o promove — a lição LGPD continua provada.
+    cat["mimo-v2.6-pro"]["lifecycle"] = "APPROVED"
+    pap["atendimento"].update(provider="xiaomi", modelo_primario="mimo-v2.6-pro", esforco=None)
     MP.limpar_cache()
     with pytest.raises(MP.ModeloNaoResolvido, match="pii"):
         MP.resolver("atendimento")
     # e a bancada não fura a regra: override também respeita a classe da rota
+    cat["mimo-v2.6-pro"]["lifecycle"] = "CANDIDATE"  # de volta ao valor real
     MP.limpar_cache()
     pap["atendimento"].update(provider="anthropic", modelo_primario="claude-sonnet-5")
     with pytest.raises(MP.ModeloNaoResolvido, match="pii"):
