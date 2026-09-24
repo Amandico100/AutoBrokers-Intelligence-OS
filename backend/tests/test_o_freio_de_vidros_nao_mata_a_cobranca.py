@@ -200,10 +200,67 @@ def chama_o_freio(caminho: str, funcao: str) -> bool:
     return False
 
 
+def chama_o_freio_seguindo_a_delegacao(caminho: str, funcao: str, _fundo: int = 3) -> bool:
+    """Como `chama_o_freio`, mas SEGUE a delegacao dentro do MESMO arquivo.
+
+    🔴 VERDADE VENCIDA atualizada na EXTRA-001.10.1 (CLAUDE.md §9.3): o metodo
+    `PortalActionTool._envio_liberado` passou a DELEGAR a funcao de modulo
+    `envio_liberado` (a regra agora tem dois leitores: a tool e o vigia). A
+    chamada ao freio mora la. A licao nao muda: tem de existir uma chamada REAL
+    (na arvore, nao no texto) no caminho que decide a criacao — e ela so e
+    seguida por chamada de verdade (`envio_liberado(...)` ou
+    `self.envio_liberado(...)`), nunca por nome solto num comentario.
+    """
+    if chama_o_freio(caminho, funcao):
+        return True
+    if _fundo <= 0:
+        return False
+    with open(os.path.join(RAIZ, caminho), encoding="utf-8") as fh:
+        arvore = ast.parse(fh.read())
+    definidas = {n.name for n in ast.walk(arvore)
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    for no in ast.walk(arvore):
+        if not isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)) or no.name != funcao:
+            continue
+        for x in ast.walk(no):
+            if not isinstance(x, ast.Call):
+                continue
+            alvo = getattr(x.func, "id", "") or getattr(x.func, "attr", "")
+            if alvo in definidas and alvo != funcao and                     chama_o_freio_seguindo_a_delegacao(caminho, alvo, _fundo - 1):
+                return True
+    return False
+
+
 check("o portal-worker barra na EXECUCAO do job",
       chama_o_freio("portal_worker/worker.py", "_run_job"))
-check("o agente barra na CRIACAO do pedido",
-      chama_o_freio("app/agents/tools/portal_tool.py", "_envio_liberado"))
+check("o agente barra na CRIACAO do pedido (seguindo a delegacao ao modulo)",
+      chama_o_freio_seguindo_a_delegacao("app/agents/tools/portal_tool.py", "_envio_liberado"))
+check("e quem guarda a regra e a funcao de modulo `envio_liberado` (tool e vigia)",
+      chama_o_freio("app/agents/tools/portal_tool.py", "envio_liberado"))
+
+# CONTROLE da delegacao: um metodo que delega a uma funcao que NAO chama o
+# freio (so o menciona) tem de dar FALSO — senao o seguidor viraria carimbo.
+_DELEGA_SEM_FREIO = chr(10).join([
+    "async def envio_liberado(company_id, cpf='', journey='abrir_atendimento'):",
+    "    # motivo_para_barrar('vidros_lanternas', journey)",
+    "    return True",
+    "class T:",
+    "    async def _envio_liberado(self, cpf=''):",
+    "        return await envio_liberado('x', cpf)",
+])
+_FAKE2 = os.path.join(RAIZ, "..", "_fake_delegacao_para_controle.py")
+with open(_FAKE2, "w", encoding="utf-8") as fh:
+    fh.write(_DELEGA_SEM_FREIO)
+try:
+    check("CONTROLE: delegar a quem NAO chama o freio nao conta",
+          not chama_o_freio_seguindo_a_delegacao(os.path.relpath(_FAKE2, RAIZ), "_envio_liberado"))
+    with open(_FAKE2, "w", encoding="utf-8") as fh:
+        fh.write(_DELEGA_SEM_FREIO.replace(
+            "    return True", "    return not motivo_para_barrar('vidros_lanternas', journey)"))
+    check("CONTROLE: e delegar a quem CHAMA conta (os dois diferem)",
+          chama_o_freio_seguindo_a_delegacao(os.path.relpath(_FAKE2, RAIZ), "_envio_liberado"))
+finally:
+    os.remove(_FAKE2)
 
 _SEM_A_CHAMADA = chr(10).join([
     "def _run_job(supa, job):",
