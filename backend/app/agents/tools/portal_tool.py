@@ -42,11 +42,21 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from .portal_params import (
+    ESTAGIOS_QUE_O_SEGURADO_RESPONDE,
+    ESTAGIOS_TECNICOS,
+    JOURNEY_CONTINUAR,
+    PREFERENCIA_VISTORIA,
+    acao_esperada,
     build_portal_params,
     chave_de_idempotencia,
+    continuacao_possivel,
     descricao_da_tool,
     format_result,
     frase_de_pedido_ja_existente,
+    mapear_escolha_de_agenda,
+    montar_job_de_continuacao,
+    numero_do_pedido,
+    respostas_da_chamada,
     resumo_da_tela_desconhecida,
     slug_da_seguradora,
 )
@@ -106,6 +116,7 @@ def _tem_prova_de_efeito(evidence) -> bool:
         return False
 
 
+
 class PortalActionInput(BaseModel):
     cpf_cnpj: str = Field(description="CPF/CNPJ do segurado (titular da apolice) — da conversa")
     data_dano: str = Field(description="Data do dano DD/MM/AAAA")
@@ -127,12 +138,19 @@ class PortalActionInput(BaseModel):
     # antes do pedido — chegar la sem elas e ter feito todo o percurso a toa.
     especificos: Optional[dict] = Field(
         default=None,
+        # 🔴 SPEC-EXTRA-001.10.1 — `onde_realizar_o_servico` SAIU (domicílio fora,
+        # D-E001101-05); entraram as preferências e a escolha da agenda, que é
+        # como o segurado CONTINUA um pedido já aberto.
         description=("Respostas das perguntas especificas ja coletadas na conversa, e tambem "
                      "cidade_para_o_servico. A propria ferramenta diz QUAIS chaves usar quando "
                      "faltar alguma (ela devolve a pergunta pronta com o formato da resposta). "
-                     "Exemplos: cidade_para_o_servico, onde_realizar_o_servico, aceita_reparo, "
+                     "Exemplos: cidade_para_o_servico, aceita_reparo, "
                      "pelicula, lado_motorista_ou_carona, porta_dianteira_ou_traseira, "
-                     "posicao_do_trincado, tamanho_do_trincado, pecas_lataria (LISTA). "
+                     "posicao_do_trincado, tamanho_do_trincado, pecas_lataria (LISTA), "
+                     "preferencia_agenda (a partir de que dia e manha/tarde, com as palavras "
+                     "dele), preferencia_vistoria ('link' ou 'loja'), e escolha_agenda "
+                     "({loja: numero da lista, dia: DD/MM, horario: HH:MM}) quando o pedido "
+                     "ja aberto mostrou a agenda. "
                      "Use 'nao sabe' SO se o segurado realmente nao souber — nunca para "
                      "agilizar: o portal precisa disso para pedir a peca certa."))
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NAO preencher)")
@@ -208,7 +226,8 @@ class PortalActionTool(BaseTool):
         except Exception:  # noqa: BLE001
             pass
 
-    async def _envio_liberado(self, cpf: str = "") -> bool:
+    async def _envio_liberado(self, cpf: str = "",
+                              journey: str = "abrir_atendimento") -> bool:
         """P-90 — este acionamento pode CONCLUIR o pedido na seguradora?
 
         Uma pergunta, duas condicoes, e as duas moram fora daqui de proposito:
@@ -224,40 +243,13 @@ class PortalActionTool(BaseTool):
         do `True` e um atendimento aberto de verdade na seguradora, que nao se
         desfaz (o Nº nasce no passo 7, antes do fim do fluxo).
         """
-        try:
-            from portal_worker.journeys import cpf_hash_de, motivo_para_barrar
-
-            from app.services.atlas.attendance_capture import attendance_agent_active
-            from app.services.insurer_dispatch_service import acionamento_liberado
-
-            # 🔴 A TERCEIRA CONDICAO — 18/08/2026.
-            #
-            # As duas de cima ("agente ligado" + "freio de emergencia solto")
-            # sao as MESMAS do corredor de WhatsApp. Era esse o defeito: soltar
-            # o freio para testar um eletricista armava o portal de vidros no
-            # mesmo segundo, sem ninguem pedir. Nao existia jeito de liberar um
-            # sem liberar o outro.
-            #
-            # `PORTAL_EFEITO_MATERIAL_LIBERADO` e o interruptor que faltava. E
-            # e por CLASSE DE EFEITO, nao por portal: barrar "vidros" pelo nome
-            # deixaria a proxima journey material nascer solta.
-            # 🔴 P0-6 — AQUI O JOB AINDA NAO EXISTE, entao a chave e o CPF.
-            #
-            # Este e o ponto de CRIACAO: `job:<uuid>` so existe depois do
-            # insert. Por isso a allowlist aceita as duas formas, e este lado
-            # usa `cpf:<hash>` — o mesmo hash que o worker recalcula do
-            # `params`, pela MESMA funcao, para os dois nunca discordarem.
-            barrado = motivo_para_barrar("vidros_lanternas", "abrir_atendimento",
-                                         cpf_hash=cpf_hash_de(cpf))
-            if barrado:
-                logger.info("[PortalAction] pedido para no 80%% — %s", barrado)
-                return False
-
-            return acionamento_liberado(await attendance_agent_active(self.company_id))
-        except Exception as exc:  # noqa: BLE001
-            logger.error("[PortalAction] nao foi possivel confirmar o interruptor do agente "
-                         "(%s) — o pedido para no 80%%", type(exc).__name__)
-            return False
+        # 🔴 SPEC-EXTRA-001.10.1 — a regra mora em `envio_liberado` (módulo): o
+        # vigia também a lê. As três condições continuam as mesmas: agente
+        # ligado + freio de emergência solto (as do corredor de WhatsApp) +
+        # `PORTAL_EFEITO_MATERIAL_LIBERADO`/allowlist do canário por CLASSE DE
+        # EFEITO (18/08/2026, P0-6), com `cpf:<hash>` porque aqui o job ainda
+        # não existe.
+        return await envio_liberado(self.company_id, cpf, journey)
 
     def _load_profile(self) -> dict:
         """Solicitante = identidade da CORRETORA (multi-tenant). REUSA os 'Dados da
@@ -314,7 +306,7 @@ class PortalActionTool(BaseTool):
             # TODOS os status e a exclusão passa a ser feita aqui, olhando a
             # evidência em vez do rótulo.
             r = (self._client().table("portal_jobs")
-                 .select("id, status, evidence, error, created_at, work_run_id")
+                 .select(_COLUNAS_DO_PEDIDO)
                  .eq("company_id", self.company_id)
                  .eq("idempotency_key", chave)
                  .order("created_at", desc=True)
@@ -341,10 +333,7 @@ class PortalActionTool(BaseTool):
         insert. O banco decide qual vence. A perdedora NAO pode estourar o
         atendimento — ela cai no caminho de quem achou um existente, que e a
         verdade do que aconteceu."""
-        alvo = " ".join(str(x) for x in (
-            getattr(exc, "code", ""), getattr(exc, "message", ""),
-            getattr(exc, "details", ""), exc)).lower()
-        return "23505" in alvo or "duplicate key" in alvo or "unique constraint" in alvo
+        return e_chave_duplicada(exc)
 
     # ======================================================================
     # P-PILOTO-02 — O ACIONAMENTO PELO PORTAL APARECE NA FILA E NA FICHA
@@ -450,86 +439,9 @@ class PortalActionTool(BaseTool):
             return None
 
     async def _fechar_work_run(self, run_id: str, job: dict) -> None:
-        """Leva o run ao desfecho que o portal decidiu. Best-effort, sempre.
-
-        🔴 O número do atendimento fica GUARDADO no run (`result_payload`), e
-        não só na conversa: 📊 hoje o protocolo mora em `portal_jobs.evidence`,
-        que ninguém varre por corretora — a Ficha lê `work_runs`.
-
-        ⛔ Sem `UPDATE` solto: quem transiciona é `WorkRunService`, que já sabe
-        gravar o evento na linha do tempo junto. Escrever o update à mão aqui
-        seria a segunda mão escrevendo na mesma tabela.
-        """
-        if not run_id:
-            return
-        try:
-            from app.core.database import get_supabase_client
-            from app.services.work.runs import WorkRunService
-
-            svc = WorkRunService(get_supabase_client())
-            ev = (job or {}).get("evidence") or {}
-            desfecho = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else {}
-            estado = ev.get("vidros_estado") if isinstance(ev.get("vidros_estado"), dict) else {}
-            numero = str(desfecho.get("codigo_atendimento")
-                         or estado.get("codigo_atendimento")
-                         or ev.get("protocolo") or "").strip()
-            resultado = {
-                "numero_do_atendimento": numero,
-                "desfecho": str(desfecho.get("tipo") or "") or None,
-                "franquias": desfecho.get("franquias") or [],
-                "link_area_segurado": str(desfecho.get("link_area_segurado") or "") or None,
-            }
-            status = str((job or {}).get("status") or "")
-            # 🔴 JUIZ B4 (e): `completed` so com o job `done`.
-            #
-            # 📊 A versao anterior concluia o run sempre que houvesse NUMERO —
-            # e toda parada depois da fronteira A tem numero. Efeito na Fila: um
-            # atendimento parado, esperando uma pessoa, aparecia para a corretora
-            # como **concluido**. Ninguem ia atras. A parada tem de FICAR VISIVEL
-            # sem depender de o LLM lembrar de avisar.
-            # 🔴 B-N2: `agenda` e `vistoria` terminam `done` e AINDA PRECISAM
-            # DA EQUIPE — o portal ofereceu lojas/vistoria e alguem tem de
-            # combinar com o segurado e fechar no portal. Concluir o run aqui
-            # fazia a Fila mostrar "concluido" e ninguem ia atras; o aviso ficava
-            # dependendo de o LLM lembrar de avisar.
-            tipo_do_desfecho = str(desfecho.get("tipo") or "").strip().lower()
-            if status == "done" and tipo_do_desfecho in ("agenda", "vistoria"):
-                svc.marcar_progresso(run_id, self.company_id, tipo_do_desfecho, 80)
-                svc.falhar(run_id, self.company_id,
-                           "portal_aguarda_a_equipe",
-                           (f"O atendimento {numero} EXISTE na seguradora e o portal "
-                            f"pediu {'agendamento com a loja' if tipo_do_desfecho == 'agenda' else 'vistoria'}. "
-                            "NÃO reexecute: a equipe conclui no portal por esse número."),
-                           retryable=False)
-                return
-            if status == "done":
-                # 🔴 Número lido = o trabalho DEU resultado, mesmo que o job
-                # tenha terminado `needs_human`. Marcar como falha um pedido que
-                # existe na seguradora é a pior linha possível num relatório.
-                svc.concluir(run_id, self.company_id,
-                             (f"Atendimento {numero} aberto na seguradora" if numero
-                              else "Acionamento concluído no portal"),
-                             resultado)
-                return
-            svc.marcar_progresso(run_id, self.company_id,
-                                 str(ev.get("stage") or "parou_no_portal"), 60)
-            # O pedido EXISTE e parou: a equipe precisa ver isso na Fila. A
-            # mensagem carrega o numero, que é por onde ela retoma no portal.
-            if numero:
-                svc.falhar(run_id, self.company_id,
-                           "portal_parou_com_pedido_aberto",
-                           (f"O atendimento {numero} EXISTE na seguradora e parou em "
-                            f"`{ev.get('stage') or 'etapa desconhecida'}`. NÃO "
-                            "reexecute: a equipe conclui no portal por esse número."),
-                           retryable=False)
-                return
-            svc.falhar(run_id, self.company_id,
-                       "portal_sem_desfecho",
-                       "O portal parou antes de gerar o número do atendimento — "
-                       "a equipe conclui na mão.",
-                       retryable=False)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[PortalAction] work_run nao atualizado (%s)", type(exc).__name__)
+        """Leva o run ao desfecho que o portal decidiu — a regra é `fechar_work_run`
+        (módulo), a MESMA que o vigia usa quando é ele quem entrega."""
+        fechar_work_run(self.company_id, run_id, job)
 
     # ======================================================================
     # P-PILOTO-08 — tela desconhecida no portal entra na FILA DE APRENDIZADO
@@ -680,10 +592,14 @@ class PortalActionTool(BaseTool):
                 job_id, reaproveitado = str(existente.get("id")), True
                 logger.info("[PortalAction] pedido ja em andamento — anexando ao job existente")
             else:
-                # Pedido terminado (done/needs_human): a resposta ja existe, e
-                # abrir outro seria o segundo atendimento. Sai antes de gastar
-                # qualquer consulta a mais.
-                return {"content": frase_de_pedido_ja_existente(existente)}
+                # Pedido terminado (done/needs_human): abrir outro seria o
+                # segundo atendimento. 🔴 SPEC-EXTRA-001.10.1 — mas ele pode
+                # CONTINUAR: se a journey guardou a sessão e esta chamada traz o
+                # que o pedido espera, o MESMO pedido segue. Senão, a frase de
+                # sempre, honesta.
+                return await self._continuar_ou_explicar(
+                    existente=existente, params=params, pedido_key=chave,
+                    session_id=session_id, cpf=cpf)
 
         # O agente atendente e resolvido uma vez so: ele vai para o job (para quem
         # responder depois saber por qual integracao falar) e para o `_notify`.
@@ -778,11 +694,33 @@ class PortalActionTool(BaseTool):
         # NAO bloqueia o event loop (o time.sleep antigo travava o atendente inteiro).
         # Quando `reaproveitado`, o poll acompanha o job que JA existia — e por isso
         # que uma segunda chamada nao precisa de um segundo job para responder.
+        resposta = await self._aguardar(str(job_id), work_run_id, params)
+        if resposta is not None:
+            return resposta
+        # Estourou os 150s. Aqui morava o defeito: a tool dizia "enfileirei, o
+        # worker nao processou" e o agente chamava de novo — criando o segundo
+        # atendimento. Quem se anexou a um job em curso recebe a verdade do que
+        # aconteceu (nada foi enfileirado nesta chamada) e a instrucao de nao repetir.
+        if reaproveitado:
+            return {"content": frase_de_pedido_ja_existente({"status": "queued"})}
+        return {"content": format_result({"status": "queued"})}
+
+    async def _aguardar(self, job_id: str, work_run_id: Optional[str],
+                        params: dict) -> Optional[dict]:
+        """O poll de 150 s: a resposta pronta, ou `None` se o relógio estourou.
+
+        🔴 SPEC-EXTRA-001.10.1 — virou método porque a CONTINUAÇÃO espera do
+        mesmo jeito que a abertura: mesma marca `entregue_ao_agente` (que cala
+        o vigia), mesmo fechamento do run, mesma fila de aprendizado. Dois laços
+        de espera seriam duas regras sobre quando o segurado já soube.
+        """
         deadline = time.time() + POLL_TIMEOUT_S
         while time.time() < deadline:
             await asyncio.sleep(POLL_EVERY_S)
             try:
-                r = self._client().table("portal_jobs").select("status, evidence, error").eq("id", job_id).limit(1).execute()
+                r = (self._client().table("portal_jobs").select("status, evidence, error")
+                     .eq("id", job_id).eq("company_id", self.company_id)
+                     .limit(1).execute())
                 job = r.data[0] if r.data else {}
             except Exception:  # noqa: BLE001
                 continue
@@ -801,7 +739,7 @@ class PortalActionTool(BaseTool):
                 try:
                     self._client().table("portal_jobs").update({
                         "evidence": {**(job.get("evidence") or {}), "entregue_ao_agente": True},
-                    }).eq("id", job_id).execute()
+                    }).eq("id", job_id).eq("company_id", self.company_id).execute()
                 except Exception:  # noqa: BLE001
                     pass  # falhar a marca nao pode derrubar a resposta ao segurado
 
@@ -818,13 +756,345 @@ class PortalActionTool(BaseTool):
                 # como `desconhecida`, e a fila deixaria de separar por portal.
                 await self._aprender_com_a_tela_cega(str(job_id), {**job, "params": params})
                 return {"content": format_result(job)}
-        # Estourou os 150s. Aqui morava o defeito: a tool dizia "enfileirei, o
-        # worker nao processou" e o agente chamava de novo — criando o segundo
-        # atendimento. Quem se anexou a um job em curso recebe a verdade do que
-        # aconteceu (nada foi enfileirado nesta chamada) e a instrucao de nao repetir.
-        if reaproveitado:
-            return {"content": frase_de_pedido_ja_existente({"status": "queued"})}
-        return {"content": format_result({"status": "queued"})}
+        return None
+
+    # ======================================================================
+    # 🔴 SPEC-EXTRA-001.10.1 C1 — O PEDIDO TERMINADO PODE CONTINUAR
+    # ======================================================================
+    async def _continuar_ou_explicar(self, *, existente: dict, params: dict,
+                                     pedido_key: str, session_id: str, cpf: str) -> dict:
+        """O pedido desta chamada já terminou (done/needs_human). Continua, ou explica.
+
+        Continua quando as DUAS coisas são verdade:
+          1. a journey provou que dá (`evidence.continuacao.possivel is True`) —
+             na ÚLTIMA continuação do pedido, não na evidence velha da abertura;
+          2. esta chamada traz o que o pedido espera (`acao_esperada`).
+        ⛔ NUNCA um segundo `abrir_atendimento`: o que sai daqui é um job
+        `continuar_atendimento`, com chave própria de continuação (G7).
+        """
+        cliente = self._client()
+        atual = buscar_ultimo_estado_do_pedido(cliente, self.company_id, existente, pedido_key)
+        work_run_id = str(existente.get("work_run_id") or atual.get("work_run_id") or "") or None
+        if atual is not existente and str(atual.get("status")) in STATUS_EM_CURSO:
+            # Uma continuação deste pedido já está rodando: acompanha a ELA.
+            resposta = await self._aguardar(str(atual.get("id")), work_run_id, params)
+            return resposta or {"content": frase_de_pedido_ja_existente({"status": "queued"})}
+
+        ev = atual.get("evidence") if isinstance(atual.get("evidence"), dict) else {}
+        esp = params.get("especificos") if isinstance(params.get("especificos"), dict) else {}
+        operacao, slot = acao_esperada(ev)
+        escolha, respostas = None, None
+
+        if not continuacao_possivel(ev):
+            resposta_nova = bool(esp.get("escolha_agenda") or esp.get(PREFERENCIA_VISTORIA)
+                                 or (slot and respostas_da_chamada(params, atual.get("params") or {}, slot)))
+            return {"content": frase_de_pedido_ja_existente(atual, resposta_nova=resposta_nova)}
+
+        if operacao == "agendar":
+            bruto = esp.get("escolha_agenda")
+            if not bruto:
+                return {"content": self._ainda_esperando(atual)}
+            desf = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else {}
+            escolha, erro = mapear_escolha_de_agenda(bruto, desf)
+            if erro:
+                return {"content": (
+                    "A escolha que voce mandou NAO casa com a lista que o segurado viu "
+                    f"({erro}). NAO agendei nada. Confirme com ele o NUMERO da loja, o dia "
+                    "(DD/MM) e um horario que esteja na lista, e chame de novo.\n\n"
+                    + format_result(atual))}
+        elif operacao == "responder":
+            respostas = respostas_da_chamada(params, atual.get("params") or {}, slot)
+            if not respostas:
+                return {"content": self._ainda_esperando(atual)}
+        elif operacao == "vistoria":
+            pref = str(esp.get(PREFERENCIA_VISTORIA) or "").strip()
+            if not pref:
+                return {"content": self._ainda_esperando(atual)}
+            respostas = {PREFERENCIA_VISTORIA: pref}
+        else:
+            # "reler" é do vigia (parada técnica, sem nada a perguntar); ação
+            # desconhecida não se adivinha.
+            return {"content": frase_de_pedido_ja_existente(atual)}
+
+        confirm = await self._envio_liberado(cpf, JOURNEY_CONTINUAR)
+        linha = montar_job_de_continuacao(
+            company_id=self.company_id, job_origem=atual, operacao=operacao,
+            pedido_key=pedido_key,
+            protocolo=numero_do_pedido(existente.get("evidence")) or pedido_key,
+            confirm=confirm, escolha=escolha, respostas=respostas)
+        if session_id:
+            linha["params"]["_conversation_id"] = session_id
+            linha["session_id"] = linha.get("session_id") or session_id
+        if work_run_id:
+            linha["work_run_id"] = work_run_id
+            linha["params"]["_work_run_id"] = work_run_id
+        job_id, ja = enfileirar_continuacao(cliente, linha)
+        if ja is not None:
+            # A MESMA resposta já virou continuação (G7): um job só.
+            if str(ja.get("status")) in STATUS_EM_CURSO and ja.get("id"):
+                resposta = await self._aguardar(str(ja["id"]), work_run_id, params)
+                return resposta or {"content": frase_de_pedido_ja_existente({"status": "queued"})}
+            return {"content": frase_de_pedido_ja_existente(ja)}
+        if not job_id:
+            return {"content": ("Nao consegui levar a resposta do segurado a seguradora agora. "
+                                "O pedido continua aberto com o mesmo numero; tente de novo em "
+                                "instantes e, se persistir, acione um humano.")}
+        self._notify(
+            session_id,
+            ("Perfeito! 🙌 Já estou confirmando esse horário com a seguradora — "
+             "te respondo aqui em instantes." if operacao == "agendar" else
+             "Perfeito! 🙌 Já estou levando a sua resposta para a seguradora — "
+             "te respondo aqui em instantes."),
+            linha.get("agent_id"),
+        )
+        resposta = await self._aguardar(job_id, work_run_id, params)
+        return resposta or {"content": format_result({"status": "queued"})}
+
+    @staticmethod
+    def _ainda_esperando(job: dict) -> str:
+        """O pedido pode continuar, mas esta chamada não trouxe o que ele espera."""
+        return ("O pedido ja esta aberto e PARADO esperando uma resposta do segurado — "
+                "esta chamada nao trouxe essa resposta, entao NAO mandei nada a "
+                "seguradora.\n\n" + format_result(job))
 
     def _run(self, **flat) -> dict:
         return {"content": "portal_action deve ser executada de forma assincrona."}
+
+
+# ==========================================================================
+# 🔴 SPEC-EXTRA-001.10.1 — o que a tool e o VIGIA compartilham (um escritor só)
+# ==========================================================================
+# Moram DEPOIS da classe de propósito: o guarda de ordem de
+# `test_o_portal_nao_abre_duas_vezes_o_mesmo_pedido` lê este arquivo em ordem de
+# texto para provar que o `_arun` calcula a chave e busca o pedido vivo ANTES do
+# seu insert — e o insert da continuação não é o da abertura.
+def e_chave_duplicada(exc: Exception) -> bool:
+    """23505 = unique_violation do Postgres (ver `PortalActionTool._e_chave_duplicada`)."""
+    alvo = " ".join(str(x) for x in (
+        getattr(exc, "code", ""), getattr(exc, "message", ""),
+        getattr(exc, "details", ""), exc)).lower()
+    return "23505" in alvo or "duplicate key" in alvo or "unique constraint" in alvo
+
+
+async def envio_liberado(company_id: str, cpf: str = "",
+                         journey: str = "abrir_atendimento") -> bool:
+    """P-90 — este job pode produzir EFEITO na seguradora? UMA regra, dois leitores.
+
+    🔴 SPEC-EXTRA-001.10.1: saiu do método para o módulo porque agora há dois
+    chamadores — a tool (abertura e continuação) e o vigia (releitura). Duas
+    cópias de "agente ligado + freio solto + allowlist" seriam duas verdades
+    sobre a mesma trava, e no dia em que uma mudasse a outra valeria calada.
+
+    `journey` entra no freio porque a continuação é journey PRÓPRIA: a
+    allowlist do canário e a classe de efeito são lidas para ELA.
+
+    Fail-closed em qualquer imprevisto (ver `_envio_liberado`).
+    """
+    try:
+        from portal_worker.journeys import cpf_hash_de, motivo_para_barrar
+
+        from app.services.atlas.attendance_capture import attendance_agent_active
+        from app.services.insurer_dispatch_service import acionamento_liberado
+
+        barrado = motivo_para_barrar("vidros_lanternas", journey,
+                                     cpf_hash=cpf_hash_de(cpf))
+        if barrado:
+            logger.info("[PortalAction] %s para no 80%% — %s", journey, barrado)
+            return False
+        return acionamento_liberado(await attendance_agent_active(company_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[PortalAction] nao foi possivel confirmar o interruptor do agente "
+                     "(%s) — o pedido para no 80%%", type(exc).__name__)
+        return False
+
+
+_COLUNAS_DO_PEDIDO = ("id, company_id, status, journey, params, evidence, error, "
+                      "created_at, work_run_id, session_id, agent_id")
+
+
+def buscar_ultimo_estado_do_pedido(cliente, company_id: str, abertura: dict,
+                                   pedido_key: str) -> dict:
+    """O job que carrega o ESTADO ATUAL do pedido: a última continuação viva, ou
+    a própria abertura.
+
+    🔴 SPEC-EXTRA-001.10.1 — sem isto, a segunda resposta do segurado seria lida
+    contra a evidence VELHA da abertura (a agenda de ontem, a sessão de antes),
+    e a continuação sairia com a escolha certa sobre a lista errada.
+
+    🔴 CLAUDE.md §7 — SEMPRE `company_id` no filtro, e de novo na linha que
+    volta: o backend roda com service role, e a chave do pedido embutir a
+    corretora não é guarda (guarda que depende do formato de uma string não é
+    guarda). `failed` sem prova de efeito é pulado — o mesmo predicado do
+    índice único `idx_portal_jobs_pedido_vivo`.
+    """
+    if not (company_id and pedido_key):
+        return abertura
+    try:
+        r = (cliente.table("portal_jobs").select(_COLUNAS_DO_PEDIDO)
+             .eq("company_id", company_id)
+             .eq("journey", JOURNEY_CONTINUAR)
+             .eq("params->>_pedido_key", pedido_key)
+             .order("created_at", desc=True)
+             .limit(10).execute())
+        for linha in (getattr(r, "data", None) or []):
+            job = dict(linha)
+            if str(job.get("company_id") or company_id) != str(company_id):
+                continue          # a segunda rede: linha de outra casa não conta
+            if str(job.get("status")) != STATUS_MORTO or _tem_prova_de_efeito(job.get("evidence")):
+                return job
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[PortalAction] ultima continuacao indisponivel (%s) — "
+                       "usando a abertura", type(exc).__name__)
+    return abertura
+
+
+def enfileirar_continuacao(cliente, linha: dict):
+    """O ÚNICO escritor de job de continuação (tool e vigia). `(job_id, existente)`.
+
+    `existente` != None = a MESMA continuação já existe viva (a mesma resposta
+    dada duas vezes — G7): quem chamou se anexa a ela em vez de criar outra.
+    A corrida de dois inserts é decidida pelo índice único parcial
+    `idx_portal_jobs_pedido_vivo (company_id, idempotency_key)` e cai no mesmo
+    caminho, nunca num erro.
+    """
+    empresa = str(linha.get("company_id") or "")
+    chave = linha.get("idempotency_key")
+
+    def _viva():
+        if not chave:
+            return None
+        r = (cliente.table("portal_jobs")
+             .select("id, company_id, status, evidence, error, work_run_id")
+             .eq("company_id", empresa).eq("idempotency_key", chave)
+             .order("created_at", desc=True).limit(5).execute())
+        for j in (getattr(r, "data", None) or []):
+            if str(j.get("status")) != STATUS_MORTO:
+                return dict(j)
+        return None
+
+    try:
+        ja = _viva()
+        if ja:
+            return None, ja
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[PortalAction] leitura da continuacao falhou (%s) — o indice "
+                       "unico e a segunda rede", type(exc).__name__)
+    try:
+        ins = cliente.table("portal_jobs").insert(linha).execute()
+        dados = getattr(ins, "data", None) or []
+        return (str(dados[0]["id"]) if dados else None), None
+    except Exception as exc:  # noqa: BLE001
+        if not e_chave_duplicada(exc):
+            logger.error("[PortalAction] continuacao nao enfileirada (%s)", type(exc).__name__)
+            return None, None
+        logger.info("[PortalAction] continuacao ja existia (23505) — anexando")
+        try:
+            return None, (_viva() or {"status": "queued"})
+        except Exception:  # noqa: BLE001
+            return None, {"status": "queued"}
+
+
+def fechar_work_run(company_id: str, run_id: str, job: dict) -> None:
+    """Leva o run ao desfecho que o portal decidiu. Best-effort, sempre.
+
+    🔴 O número do atendimento fica GUARDADO no run (`result_payload`), e
+    não só na conversa: 📊 hoje o protocolo mora em `portal_jobs.evidence`,
+    que ninguém varre por corretora — a Ficha lê `work_runs`.
+
+    ⛔ Sem `UPDATE` solto: quem transiciona é `WorkRunService`, que já sabe
+    gravar o evento na linha do tempo junto.
+
+    🔴 SPEC-EXTRA-001.10.1 — é função de MÓDULO porque o vigia também fecha
+    (a releitura que ele dispara não tem tool esperando), e a continuação
+    atualiza o MESMO run do pedido: um pedido, um run.
+    """
+    if not run_id:
+        return
+    try:
+        from app.core.database import get_supabase_client
+        from app.services.work.runs import WorkRunService
+
+        svc = WorkRunService(get_supabase_client())
+        ev = (job or {}).get("evidence") or {}
+        desfecho = ev.get("desfecho") if isinstance(ev.get("desfecho"), dict) else {}
+        estado = ev.get("vidros_estado") if isinstance(ev.get("vidros_estado"), dict) else {}
+        numero = str(desfecho.get("codigo_atendimento")
+                     or estado.get("codigo_atendimento")
+                     or ev.get("protocolo") or "").strip()
+        resultado = {
+            "numero_do_atendimento": numero,
+            "desfecho": str(desfecho.get("tipo") or "") or None,
+            "franquias": desfecho.get("franquias") or [],
+            "link_area_segurado": str(desfecho.get("link_area_segurado") or "") or None,
+        }
+        status = str((job or {}).get("status") or "")
+        stage = str(ev.get("stage") or "").strip().lower()
+        tipo_do_desfecho = str(desfecho.get("tipo") or "").strip().lower()
+        pode_continuar = continuacao_possivel(ev)
+
+        # 🔴 SPEC-EXTRA-001.10.1 — AGENDADO conclui, e o agendamento fica no run.
+        ag = desfecho.get("agendamento") if isinstance(desfecho.get("agendamento"), dict) else {}
+        if status == "done" and tipo_do_desfecho == "agendado" and ag.get("confirmado_pelo_portal") is True:
+            resultado["agendamento"] = {k: str(ag.get(k) or "") for k in
+                                        ("loja", "endereco", "data", "horario")}
+            svc.concluir(run_id, company_id,
+                         (f"Atendimento {numero} agendado: {ag.get('data') or ''} "
+                          f"{ag.get('horario') or ''} — {ag.get('loja') or 'loja'}").strip(),
+                         resultado)
+            return
+        # 🔴 A ESPERA DO SEGURADO NÃO É FALHA. Com a continuação possível, o
+        # pedido fica ABERTO em progresso: quem o leva adiante é a próxima
+        # resposta dele, e a Fila mostra "aguardando o segurado", não "falhou".
+        if pode_continuar and (
+                (status == "done" and tipo_do_desfecho in ("agenda", "vistoria",
+                                                           "vistoria_opcional",
+                                                           "decidir_vistoria"))
+                or (status in ("needs_human", "failed")
+                    and stage in ESTAGIOS_QUE_O_SEGURADO_RESPONDE + ESTAGIOS_TECNICOS
+                    + ("horario_indisponivel",))):
+            svc.marcar_progresso(run_id, company_id,
+                                 ("aguardando_escolha_do_segurado"
+                                  if tipo_do_desfecho == "agenda" and status == "done"
+                                  else (stage or "aguardando_resposta_do_segurado")), 80)
+            return
+        # 🔴 JUIZ B4 (e): `completed` so com o job `done`.
+        # 🔴 B-N2: `agenda` e `vistoria` SEM continuação terminam `done` e AINDA
+        # PRECISAM DA EQUIPE — concluir o run aqui fazia a Fila mostrar
+        # "concluido" e ninguem ia atras.
+        if status == "done" and tipo_do_desfecho in ("agenda", "vistoria"):
+            svc.marcar_progresso(run_id, company_id, tipo_do_desfecho, 80)
+            svc.falhar(run_id, company_id,
+                       "portal_aguarda_a_equipe",
+                       (f"O atendimento {numero} EXISTE na seguradora e o portal "
+                        f"pediu {'agendamento com a loja' if tipo_do_desfecho == 'agenda' else 'vistoria'}. "
+                        "NÃO reexecute: a equipe conclui no portal por esse número."),
+                       retryable=False)
+            return
+        if status == "done" and tipo_do_desfecho != "agendado":
+            # 🔴 Número lido = o trabalho DEU resultado. Marcar como falha um
+            # pedido que existe na seguradora é a pior linha num relatório.
+            svc.concluir(run_id, company_id,
+                         (f"Atendimento {numero} aberto na seguradora" if numero
+                          else "Acionamento concluído no portal"),
+                         resultado)
+            return
+        svc.marcar_progresso(run_id, company_id, stage or "parou_no_portal", 60)
+        # O pedido EXISTE e parou: a equipe precisa ver isso na Fila. A
+        # mensagem carrega o numero, que é por onde ela retoma no portal.
+        if numero:
+            svc.falhar(run_id, company_id,
+                       "portal_parou_com_pedido_aberto",
+                       (f"O atendimento {numero} EXISTE na seguradora e parou em "
+                        f"`{stage or ('agendamento_nao_confirmado' if tipo_do_desfecho == 'agendado' else 'etapa desconhecida')}`. NÃO "
+                        "reexecute: a equipe conclui no portal por esse número."),
+                       retryable=False)
+            return
+        svc.falhar(run_id, company_id,
+                   "portal_sem_desfecho",
+                   "O portal parou antes de gerar o número do atendimento — "
+                   "a equipe conclui na mão.",
+                   retryable=False)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[PortalAction] work_run nao atualizado (%s)", type(exc).__name__)
+
+
