@@ -389,6 +389,83 @@ check("J-P4: _viva() em excecao NAO segue para o INSERT (fail-closed)",
                                                  "idempotency_key": "cont:x"}) == (None, None))
 
 # ==========================================================================
+print("\n[CONFIRMACAO CB1] hora POR EXTENSO: a hora certa, ou {} — NUNCA so o periodo")
+# ==========================================================================
+_extenso = {
+    "quatro da tarde": "16:00", "duas da tarde": "14:00", "às quatro da tarde": "16:00",
+    "dez da manhã": "10:00", "4 e meia da tarde": "16:30", "tres da tarde": "15:00",
+    "quatro e meia da tarde": "16:30", "duas horas da tarde": "14:00",
+    "de tarde, lá pelas quatro": "16:00", "cinco e quinze da tarde": "17:15",
+    "meio-dia": "12:00", "12h30": "12:30",
+}
+for _f, _hh in _extenso.items():
+    _got = PP.normalizar_preferencia_agenda(_f, hoje=HOJE)
+    check(f"CB1: {_f!r} -> horario {_hh} (nunca {{periodo}} sem horario)",
+          _got.get("horario") == _hh, _got)
+for _f in ("dia dez de manhã", "depois das quatro"):
+    _got = PP.normalizar_preferencia_agenda(_f, hoje=HOJE)
+    check(f"CB1 fail-closed: {_f!r} -> {{}} (vai para a lista)", _got == {}, _got)
+check("CB1 CONTROLE: 'de manhã cedo' (sem hora) segue so periodo",
+      PP.normalizar_preferencia_agenda("de manhã cedo", hoje=HOJE)
+      == {"a_partir_de": "21/09/2026", "periodo": "manha"})
+banco_x, ab_x, *_ = abrir({"preferencia_agenda": "4 e meia da tarde"})
+pag_x = H.PAGINAS[ab_x["_pagina"]]
+corpo_x = H._body(pag_x, "/agendamentos") or {}
+check("CB1 FIO: '4 e meia da tarde' NUNCA emite Horario 13:00 (16:30 nao publicado => lista)",
+      corpo_x.get("Horario") != "13:00" and pag_x.quantas("POST", "/agendamentos") == 0
+      and (ab_x["evidence"].get("desfecho") or {}).get("tipo") == "agenda",
+      (pag_x.escritas(), corpo_x.get("Horario")))
+banco_y, ab_y, *_ = abrir({"preferencia_agenda": "quatro da tarde"})
+corpo_y = H._body(H.PAGINAS[ab_y["_pagina"]], "/agendamentos") or {}
+check("CB1 FIO: 'quatro da tarde' => POST 16:00 (a hora dita)", corpo_y.get("Horario") == "16:00",
+      corpo_y)
+
+# ==========================================================================
+print("\n[CONFIRMACAO CB2] red A6.2 migrado: 1o pedido em AGENDA + peca reescrita")
+# ==========================================================================
+banco_z, ab_z, flat_z, info_z, _ = abrir()
+flat_z2 = copy.deepcopy(flat_z)
+flat_z2["peca"] = "vidro da porta traseira esquerda"
+flat_z2["especificos"]["escolha_agenda"] = {"loja": "1", "dia": "22/09", "horario": "16:00"}
+pag_z = RV.PaginaDeReplay(HAR, cursor=CUR)
+banco_z.paginas.clear()
+resp_z = H.chamar(banco_z, H.EMPRESA_A, H.SESSAO_A, flat_z2, info_z, pag_z)
+conts_z = banco_z.jobs(journey="continuar_atendimento")
+print("   jobs abrir:", len(banco_z.jobs(journey="abrir_atendimento")),
+      "· POST /atendimentos na 2a:", pag_z.quantas("POST", "/atendimentos"))
+check("CB2 (A6.2): com escolha_agenda, a peca reescrita NAO abre 2o POST /atendimentos",
+      len(banco_z.jobs(journey="abrir_atendimento")) == 1
+      and pag_z.quantas("POST", "/atendimentos") == 0,
+      (len(banco_z.jobs(journey="abrir_atendimento")), pag_z.quantas("POST", "/atendimentos")))
+check("CB2: vira UMA continuacao 'agendar' do irmao, que agenda 22/09 16:00",
+      len(conts_z) == 1
+      and ((conts_z[0].get("params") or {}).get("_continuacao") or {}).get("operacao") == "agendar"
+      and (H._body(pag_z, "/agendamentos") or {}).get("Horario") == "16:00",
+      (len(conts_z), pag_z.escritas()))
+check("CB2: a peca reescrita fica ANOTADA na evidence (fora da chave)",
+      bool(conts_z) and (conts_z[0].get("evidence") or {}).get("peca_reescrita_ignorada")
+      == "vidro da porta traseira esquerda"
+      and conts_z[0]["params"]["dano"]["peca"] == ab_z["params"]["dano"]["peca"])
+# CONTROLE: sem escolha_agenda, peca diferente = pedido NOVO (o 2o vidro legitimo)
+banco_w, ab_w, flat_w, info_w, _ = abrir()
+flat_w2 = copy.deepcopy(flat_w)
+flat_w2["peca"] = "vidro da porta traseira esquerda"
+pag_w = RV.PaginaDeReplay(HAR)
+banco_w.paginas.clear()
+H.chamar(banco_w, H.EMPRESA_A, H.SESSAO_A, flat_w2, info_w, pag_w)
+check("CB2 CONTROLE: SEM escolha_agenda, peca diferente continua sendo pedido NOVO",
+      len(banco_w.jobs(journey="abrir_atendimento")) == 2
+      and not banco_w.jobs(journey="continuar_atendimento"))
+# DOIS TENANTS: o irmao em agenda de A nunca recebe a escolha de B
+banco_v, ab_v, flat_v, info_v, _ = abrir()
+banco_v.paginas.clear()
+H.chamar(banco_v, H.EMPRESA_B, H.SESSAO_B, flat_z2, info_v, RV.PaginaDeReplay(HAR))
+check("CB2 G11: a chamada de B (mesma placa/peca/escolha) NUNCA vira continuacao do pedido de A",
+      not banco_v.jobs(journey="continuar_atendimento")
+      and len([j for j in banco_v.jobs(journey="abrir_atendimento")
+               if j["company_id"] == H.EMPRESA_B]) == 1)
+
+# ==========================================================================
 print("\n[G6/A17] token nunca em claro · o banco real nunca alcancado")
 # ==========================================================================
 _vaz = [i for i, b in enumerate(BANCOS)
