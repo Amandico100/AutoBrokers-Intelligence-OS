@@ -723,6 +723,15 @@ def _parar(ex: Execucao, stage: str, mensagem: str, **capturado: Any) -> Journey
     ex.evidence["api_first"] = {"usado": True, "parou_em": stage,
                                 **ex.sessao.resumo_para_evidencia()}
     etapa, acao = ST.etapa_da_parada(stage)
+    if acao == "responder:pergunta" and capturado.get("codigo_pergunta"):
+        # 🔴 COSTURA (EXTRA-001.10.1): a resposta volta ETIQUETADA com o código
+        # da pergunta que o portal fez (`pergunta_<codigo>`, contrato §5). 📊
+        # Medido na costura: com `responder:pergunta` genérico, a resposta do
+        # segurado ("lado do motorista") ia para `especificos.pergunta` e o
+        # motor continuava preferindo o slot antigo que casava com a pergunta
+        # (`lado_motorista_ou_carona` = a resposta que já não servira) — a
+        # continuação parava de novo em `questionario_incompleto`, para sempre.
+        acao = f"responder:pergunta_{capturado['codigo_pergunta']}"
     _marcar_continuacao(ex, etapa=etapa, acao=acao,
                         incerto=stage in ST.PARADAS_INCERTAS, motivo=mensagem)
     return JourneyResult(
@@ -1181,7 +1190,8 @@ async def _fase_materializar(ex: Execucao) -> Optional[JourneyResult]:
                       "o pedido foi aberto e o questionario parou: "
                       + resultado.motivo,
                       pergunta=pendente.texto if pendente else "",
-                      opcoes=pendente.textos_das_opcoes if pendente else [])
+                      opcoes=pendente.textos_das_opcoes if pendente else [],
+                      codigo_pergunta=pendente.codigo if pendente else None)
 
     # ---- `regras-reparo` é LEITURA e roda ANTES da fronteira B -----------
     # 🔴 É esta ordem que permite descobrir que falta a decisão do segurado
