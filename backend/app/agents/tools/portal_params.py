@@ -441,6 +441,52 @@ _DATA_INEXISTENTE = "data_inexistente"
 _FALA_DA_LOJA = {"loja", "lojas", "perto", "pertinho", "longe", "oficina"}
 
 
+#: CONFIRMAÇÃO CB1 (retomada 1) — a hora dita POR EXTENSO. 📊 "quatro da tarde",
+#: "dez da manhã", "4 e meia da tarde" viravam só período e o motor marcava o
+#: 1º bloco (13:00). "uma" só vira 1 em contexto de hora (é artigo também).
+_HORA_POR_EXTENSO = {"uma": 1, "duas": 2, "tres": 3, "quatro": 4, "cinco": 5, "seis": 6,
+                     "sete": 7, "oito": 8, "nove": 9, "dez": 10, "onze": 11, "doze": 12}
+_MINUTO_POR_EXTENSO = {"meia": 30, "quinze": 15, "trinta": 30, "vinte": 20, "dez": 10,
+                       "quarenta e cinco": 45, "quarenta": 40, "cinquenta": 50}
+_PALAVRA_DE_HORA = ("duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze")
+
+
+def _hora_em_digitos(t: str) -> Tuple[str, bool]:
+    """`(texto com as horas por extenso em dígitos, havia_hora_por_extenso)`.
+
+    "quatro e meia da tarde" → "4:30 da tarde" · "meio-dia e meia" → "12:30" ·
+    "lá pelas quatro" → "pelas 4". Só palavra que É hora vira número.
+    """
+    import re as _re
+
+    num = "|".join(_HORA_POR_EXTENSO)
+    mins = "|".join(sorted(_MINUTO_POR_EXTENSO, key=len, reverse=True))
+    t = _re.sub(r"\bmeio\s*-?\s*dia\b", "12", t)
+    achou = False
+
+    def _hm(m):
+        nonlocal achou
+        h = m.group(1)
+        if not h.isdigit():
+            achou = True
+        hh = int(h) if h.isdigit() else _HORA_POR_EXTENSO[h]
+        return f"{hh}:{_MINUTO_POR_EXTENSO[m.group(2)]:02d}"
+
+    t = _re.sub(rf"\b(\d{{1,2}}|{num})\s*(?:h|hs|hrs|horas?)?\s+e\s+({mins})\b", _hm, t)
+
+    def _h(m):
+        nonlocal achou
+        achou = True
+        return str(_HORA_POR_EXTENSO[m.group(1)])
+
+    # "uma" só com cara de hora: "uma da tarde", "uma hora da", "às/pelas uma"
+    t = _re.sub(r"\b(uma)\b(?=\s+(?:da\s|hora\s+da\s|horas?\s*$))", _h, t)
+    t = _re.sub(r"\b(as|pelas)\s+(uma)\b",
+                lambda m: m.group(1) + " " + _h(_re.match(r"(uma)", "uma")), t)
+    t = _re.sub(rf"\b({_PALAVRA_DE_HORA})\b", _h, t)
+    return t, achou
+
+
 def _hora_dita(bruto: str, palavras: list):
     """`(horario "HH:MM" | "", relativa: bool, ilegivel: bool)` — a HORA que o
     segurado disse, quando ele disse uma.
@@ -455,7 +501,7 @@ def _hora_dita(bruto: str, palavras: list):
     """
     import re as _re
 
-    t = bruto
+    t, por_extenso = _hora_em_digitos(bruto)
     if _re.search(r"\b(depois|apos|antes|ate|partir)\s+(d[aoe]s?\s+|as\s+)?(\d{1,2})\s*"
                   r"(h|hs|hrs|horas?|:\d{2})?\b(?!\s*/)", t) and \
             not _re.search(r"\b(depois|apos|antes|ate|partir)\s+d[aoe]s?\s+dia\b", t):
@@ -473,12 +519,17 @@ def _hora_dita(bruto: str, palavras: list):
         if m:
             h, mi = int(m.group(1)), 0
     if h is None:
-        m = _re.search(r"\bas\s+(\d{1,2})\b(?!\s*/)", t)
+        m = _re.search(r"\b(?:as|pelas|umas)\s+(\d{1,2})\b(?!\s*/)", t)
         if m:
             h, mi = int(m.group(1)), 0
-    if h is None and _re.search(r"\bmeio\s*-?\s*dia\b", t):
+    if h is None and _re.search(r"\b12\b", t) and _re.search(r"\bmeio\s*-?\s*dia\b", bruto):
         h, mi = 12, 0
     if h is None:
+        # 🔴 CB1 FAIL-CLOSED: sobrou uma hora POR EXTENSO (ou um "e meia") que
+        # nenhum padrão casou — devolver só o período marcaria o 1º bloco dele.
+        # Ilegível ⇒ `{}` ⇒ a lista é mostrada.
+        if por_extenso or _re.search(r"\be\s+(meia|quinze)\b", bruto):
+            return "", False, True
         return "", False, False
     # "4 da tarde" / "de tarde, umas 4 horas" / "8 da noite": o período DITO
     # desfaz a ambiguidade das 12 horas. Sem período dito, a hora vai como foi
