@@ -432,12 +432,45 @@ check("B4: a extracao achou os stages da journey (>= 15)", len(_stages) >= 15,
 _sem_texto = [st for st in _stages if PP2.texto_da_parada(st) is None]
 check("B4: TODO stage da journey tem texto proprio", not _sem_texto, _sem_texto)
 
+# 🔴 VERDADE VENCIDA atualizada na EXTRA-001.10.1 (CLAUDE.md §9.3). A asserção
+# era "NENHUM texto promete continuação (ela não existe)" — e a continuação
+# passou a existir (`vidros_continuacao.continuar_atendimento`). A LIÇÃO não
+# morre, migra: prometer "eu continuo" sobre um token que não foi guardado é o
+# texto mentindo ao segurado. Então: nenhum texto promete continuação SEM A
+# PROVA (`evidence.continuacao.possivel is True`) — nem o de `texto_da_parada`,
+# nem o que `format_result` entrega ao agente, e "possivel" em TEXTO não é prova.
 _PROMESSAS = ("sigo daqui", "continua do mesmo ponto", "chame de novo",
-              "me chame de novo", "proximo dia util", "próximo dia útil")
-_promete = [st for st in _stages
-            if any(pr in " ".join(PP2.texto_da_parada(st) or []).lower()
-                   for pr in _PROMESSAS)]
-check("B4: NENHUM texto promete continuacao (ela nao existe)", not _promete, _promete)
+              "me chame de novo", "proximo dia util", "próximo dia útil",
+              "eu continuo", "me responde por aqui", "ja estou tentando de novo",
+              "já estou tentando de novo", "que eu agendo", "pode continuar por aqui")
+
+
+def _promessas_em(texto):
+    return [pr for pr in _PROMESSAS if pr in str(texto or "").lower()]
+
+
+_promete = []
+for _st in _stages:
+    for _sem_prova in ({}, {"possivel": False}, {"possivel": "true"}, {"possivel": 1}):
+        _flag = PP2.continuacao_possivel({"continuacao": _sem_prova})
+        _txt = " ".join(PP2.texto_da_parada(_st, _flag) or [])
+        _fr = PP2.format_result({"status": "needs_human", "evidence": {
+            "stage": _st, "protocolo": "23298628",
+            "continuacao": {**_sem_prova, "acao_esperada": "responder:peca"}}})
+        if _promessas_em(_txt) or _promessas_em(_fr):
+            _promete.append((_st, _sem_prova, _promessas_em(_txt) + _promessas_em(_fr)))
+check("B4: NENHUM texto promete continuacao SEM a prova (continuacao.possivel is True)",
+      not _promete, _promete[:4])
+# CONTROLE (§9.3 corolário: o guarda tem de CONSEGUIR ficar vermelho): COM a
+# prova, as paradas que o segurado responde passam a prometer — então a
+# varredura acima enxerga a promessa quando ela está lá.
+_com_prova = [st for st in PP2.ESTAGIOS_QUE_O_SEGURADO_RESPONDE
+              if _promessas_em(PP2.format_result({"status": "needs_human", "evidence": {
+                  "stage": st, "protocolo": "23298628",
+                  "continuacao": {"possivel": True, "acao_esperada": "responder:peca"}}}))]
+check("B4 CONTROLE: COM a prova, toda parada que o segurado responde promete (a varredura ve)",
+      sorted(_com_prova) == sorted(PP2.ESTAGIOS_QUE_O_SEGURADO_RESPONDE),
+      sorted(set(PP2.ESTAGIOS_QUE_O_SEGURADO_RESPONDE) - set(_com_prova)))
 # O numero vem primeiro, e o de 16 digitos nao e apresentado como o de 8.
 _msg8 = PP2.format_result({"status": "needs_human",
                            "evidence": {"stage": "motivo_ambiguo", "protocolo": "23298628"}})
