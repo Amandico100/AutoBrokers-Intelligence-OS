@@ -272,7 +272,13 @@ def g8_o_destino_de_cada_resposta_esta_declarado() -> None:
     """Catálogo × questionário × reparo — e o que ainda não foi visto numa tela."""
     print("\n[G8-destino] para onde vai cada resposta")
 
-    validos = (P.DESTINO_CATALOGO, P.DESTINO_QUESTIONARIO, P.DESTINO_REPARO)
+    # ⚠️ ATUALIZADO em 23/09/2026 (CLAUDE.md §9.3) — SPEC-EXTRA-001.10.1 C2. O
+    # quarto destino passou a EXISTIR: a PREFERENCIA (agenda/vistoria), que nao
+    # escolhe peca, nao responde questionario e nao decide reparo — diz ao robo o
+    # que fazer quando o portal abrir a agenda depois do numero. A licao continua
+    # a mesma: TODA pergunta declara para onde a resposta vai.
+    validos = (P.DESTINO_CATALOGO, P.DESTINO_QUESTIONARIO, P.DESTINO_REPARO,
+               P.DESTINO_PREFERENCIA)
     todas = list(P.universais())
     for perguntas in P.catalogo_de_familias().values():
         todas.extend(perguntas)
