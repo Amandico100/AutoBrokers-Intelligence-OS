@@ -409,20 +409,22 @@ def diagnosticar(job: Dict[str, Any], agora: Optional[datetime] = None) -> Optio
         }
 
     if est.get("estado") == "aguardando_escolha_do_segurado":
-        # 99%: o pedido nasceu e falta o segurado escolher loja ou domicílio.
+        # 99%: o pedido nasceu e falta o segurado escolher a loja.
         # Isso NÃO é incidente — é o fluxo funcionando. Alertar suporte aqui
         # treinaria a equipe a ignorar o Vigia.
+        # 🔴 RED B5 (conserto da 001.10.1) — D-E001101-05: domicílio FORA. Este
+        # texto sai no caminho DOM (produção com a flag desligada) e oferecia
+        # "um técnico vai até você" — uma opção que o produto não entrega.
         return {
             "motivo": "aguardando_escolha_do_segurado",
             "para_o_segurado": (
                 f"Oi! {assunto.capitalize()} já está aberto na seguradora"
                 + (f" (nº {numero})" if numero else "")
-                + ". Falta só você escolher onde prefere fazer o serviço: "
-                  "um técnico vai até você, ou você leva numa loja credenciada. "
-                  "Qual fica melhor?"),
+                + ". Falta só você escolher em qual loja credenciada prefere "
+                  "fazer o serviço. Qual fica melhor para você?"),
             "para_o_suporte": (
                 f"🟢 VIGIA DO PORTAL: pedido ABERTO aguardando escolha do segurado "
-                f"(loja × domicílio). Nao e falha. Pedido: {assunto}"
+                f"(qual loja). Nao e falha. Pedido: {assunto}"
                 + (f" · nº {numero}" if numero else "")),
         }
 
