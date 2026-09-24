@@ -232,6 +232,14 @@ def _candidatos_para(pergunta: "Pergunta", respostas: Dict[str, Any],
     conversa, vale o comportamento de antes — e o relato entra por último, que é
     o que menos identifica um atributo.
     """
+    # 🔴 A resposta ETIQUETADA com o código DESTA pergunta vence tudo
+    # (EXTRA-001.10.1, costura): é o segurado respondendo a pergunta que o
+    # portal fez, depois de a parada mostrá-la a ele. 📊 Sem esta regra, o slot
+    # antigo que "conversa" com a pergunta (a resposta que não serviu) seguia
+    # sendo o único candidato e a continuação parava de novo, no mesmo lugar.
+    etiquetada = (respostas or {}).get(f"pergunta_{pergunta.codigo}")
+    if isinstance(etiquetada, str) and etiquetada.strip():
+        return [(etiquetada, "propria")]
     palavras_da_pergunta = _palavras(pergunta.texto)
     proprias: List[Tuple[str, str]] = []
     outras: List[Tuple[str, str]] = []
