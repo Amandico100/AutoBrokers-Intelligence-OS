@@ -135,6 +135,14 @@ DESTINO_QUESTIONARIO = "questionario"  # é resposta do questionário do portal
 # `PerguntasResposta` nem no `CodigoItemCoberto` — ela vira
 # `PUT /atendimentos/alterar-reparo {"Reparo": bool}`, uma chamada só dela.
 DESTINO_REPARO = "reparo"
+# 🔴 SPEC-EXTRA-001.10.1 C2 — o quarto destino: a PREFERÊNCIA do segurado.
+# A resposta não escolhe peça, não responde questionário e não decide reparo:
+# ela diz ao robô o que fazer quando o portal, DEPOIS do número, abrir a agenda
+# (📊 `POST /agendamentos` concluído na captura lateral de 21/09, HAR [048]) ou
+# oferecer a opção de vistoria (📊 lataria, `PermiteOpcaoVistoria:true`, HAR
+# [089]). Nunca trava: sem ela o portal mostra as opções e o robô CONTINUA
+# quando o segurado escolher.
+DESTINO_PREFERENCIA = "preferencia"
 
 # O que o segurado responde quando genuinamente não sabe. Só vale depois de a
 # pergunta ter sido feita, e só nas perguntas que o portal deixa pular.
@@ -171,6 +179,19 @@ CEP_DO_SEGURADO = "cep_do_segurado"
 # mentiria sobre o que o campo pode conter, porque a lista de lojas só existe
 # na tela do portal e o segurado nunca a viu.
 ONDE_REALIZAR_O_SERVICO = "onde_realizar_o_servico"
+# 🔴 SPEC-EXTRA-001.10.1 (D-E001101-05, decisão do Founder): DOMICÍLIO SAI.
+# O campo continua existindo porque o caminho DOM (`adaptive.preferencia_do_
+# segurado`) o lê — mas ninguém mais PERGUNTA: `build_portal_params` manda
+# sempre "loja". A pergunta foi retirada de `_UNIVERSAIS`.
+ONDE_REALIZAR_PADRAO = "loja"
+
+# 🔴 SPEC-EXTRA-001.10.1 C2 — as duas preferências coletadas ANTES do portal.
+#
+# 📊 O token do portal EXPIRA (21/09 22:09 UTC → 401 em 23/09 23:40 UTC). Cada
+# resposta que o robô já tem na hora do número é uma continuação a menos que
+# depende do token viver até o segurado responder.
+PREFERENCIA_AGENDA = "preferencia_agenda"
+PREFERENCIA_VISTORIA = "preferencia_vistoria"
 
 # 🔴 SPEC-EXTRA-001.10 P0-5 — O LUGAR, que não é a MODALIDADE.
 #
@@ -335,40 +356,11 @@ _UNIVERSAIS: Tuple[Pergunta, ...] = (
                "apólice é o de CASA: quem quebra o vidro viajando conserta onde está.",
         destino=DESTINO_QUESTIONARIO,
     ),
-    # 📊 Passo 7 do mapa: `Nº do atendimento` no topo e, logo abaixo, "Escolha a
-    # loja onde deseja realizar o serviço" — com "Agendar a domicílio" de um
-    # lado e a lista de lojas do outro.
-    #
-    # O DESENHO, e por que ele é de PREFERÊNCIA e não de escolha:
-    #
-    # **A lista de lojas só existe naquela tela.** Perguntar "qual loja?" antes
-    # de abrir o portal é pedir ao segurado que responda algo que ele não sabe —
-    # a mesma falha de perguntar a versão do veículo (§4b do mapa), só que pelo
-    # outro lado: lá a resposta estava conosco, aqui ela ainda não existe.
-    #
-    # **Mas a preferência ele sabe agora, e sempre.** "O técnico vai até você ou
-    # você prefere levar?" é respondível por qualquer pessoa, em qualquer estado
-    # emocional, sem consultar nada. É a única metade da decisão que cabe numa
-    # conversa de WhatsApp — e é a metade que evita a ligação de volta.
-    #
-    # **E ela nem sempre é atendível.** 📊 O rótulo do CEP diz que ele serve para
-    # "verificar se há disponibilidade de atendimento em domicílio na sua
-    # região". O texto abaixo promete só o que o portal pode cumprir: diz que
-    # depende do CEP, em vez de prometer domicílio e desmentir depois.
-    #
-    # Por isso NÃO tem `aceita_nao_sabe`: numa preferência não existe "não sei"
-    # honesto — existe "tanto faz", que é uma resposta e passa por `respondida`.
-    Pergunta(
-        ONDE_REALIZAR_O_SERVICO,
-        "Última coisa: você prefere que o técnico vá até você (em casa ou no trabalho) "
-        "ou prefere levar o carro numa loja? O atendimento em domicílio depende de ter "
-        "cobertura no seu CEP — se não tiver, eu te mostro as lojas mais perto.",
-        opcoes=("domicilio", "loja"),
-        como_devolver="registre em especificos: {\"onde_realizar_o_servico\": \"domicilio\"} ou "
-                      "{\"onde_realizar_o_servico\": \"loja\"}",
-        porque="📊 é a pergunta do passo 7, onde o `Nº do atendimento` JÁ existe (mapa §7). "
-               "A loja concreta NÃO se pergunta antes: a lista só aparece naquela tela.",
-    ),
+    # 🔴 SPEC-EXTRA-001.10.1 (D-E001101-05) — AQUI MORAVA A PERGUNTA DO
+    # DOMICÍLIO ("o técnico vai até você ou você leva numa loja?"). O Founder
+    # decidiu: domicílio FORA — o robô não pergunta e não oferece. Ela TRAVAVA o
+    # pedido (estava em `TRANSPORTAVEIS`), e perguntar o que não se entrega era
+    # prometer o que o produto não faz. `build_portal_params` manda "loja".
     Pergunta(
         CEP_DO_SEGURADO,
         "O CEP do segurado não veio no cadastro da InfoCap. Ele é OPCIONAL no portal, "
@@ -686,6 +678,55 @@ _ESPECIFICAS_POR_IDENTIDADE: Dict[str, Tuple[Pergunta, ...]] = {
         ),
     ),
 }
+
+# ==========================================================================
+# 🔴 SPEC-EXTRA-001.10.1 C2 — AS PREFERÊNCIAS, coletadas antes e sem travar
+# ==========================================================================
+# 📊 Na captura lateral de 21/09 o portal abriu AGENDA depois do número e o
+# `POST /agendamentos` concluiu (HAR [048]); na lataria ele ofereceu a opção de
+# vistoria (`PermiteOpcaoVistoria:true`, HAR [089]). Nos dois casos quem decide
+# é o segurado — e o token do portal EXPIRA (📊 401 dois dias depois). Com a
+# preferência na mão, o robô resolve na MESMA sessão; sem ela, mostra as opções
+# e CONTINUA quando ele responder (journey `continuar_atendimento`).
+#
+# ⚠️ `confirmada=False` e destino PREFERÊNCIA, de propósito: nenhuma tela do
+# portal faz ESTA pergunta — ela é nossa, para escolher na agenda que o portal
+# publica. Por isso NUNCA trava (`trava_o_pedido`): faltar a preferência custa
+# uma continuação, não o atendimento.
+#
+# As famílias da agenda são as de TROCA (vidro de porta, para-brisa, vigia,
+# lanterna, farol, retrovisor) — a lataria não agenda: ela vai à vistoria.
+_PERGUNTA_PREFERENCIA_AGENDA = Pergunta(
+    PREFERENCIA_AGENDA,
+    "Se a seguradora já liberar agenda, a partir de que dia e em qual período "
+    "(manhã ou tarde) fica melhor levar o carro?",
+    opcoes=("manhã", "tarde", "tanto faz"),
+    como_devolver="registre em especificos: {\"preferencia_agenda\": \"amanhã de manhã\"} "
+                  "— com as palavras dele (hoje, amanhã, um dia da semana ou DD/MM, e "
+                  "manhã/tarde/tanto faz); eu converto",
+    porque="📊 o portal abre a agenda DEPOIS do número e o token dele expira: com a "
+           "preferência, o robô agenda na mesma sessão (D-E001101-02).",
+    destino=DESTINO_PREFERENCIA,
+    confirmada=False,
+)
+_PERGUNTA_PREFERENCIA_VISTORIA = Pergunta(
+    PREFERENCIA_VISTORIA,
+    "Se a seguradora pedir vistoria, você prefere receber um link no celular para "
+    "mandar fotos, ou levar o carro numa loja?",
+    opcoes=("link", "loja"),
+    como_devolver="registre em especificos: {\"preferencia_vistoria\": \"link\"} ou "
+                  "{\"preferencia_vistoria\": \"loja\"}",
+    porque="📊 lataria: `PermiteOpcaoVistoria:true` e o portal grava a preferência como "
+           "ocorrência (HAR [092][093]) antes de mandar ao analista.",
+    destino=DESTINO_PREFERENCIA,
+    confirmada=False,
+)
+for _familia in ("parabrisa", "lateral", "vigia", "lanterna", "farol", "retrovisor"):
+    _ESPECIFICAS_POR_IDENTIDADE[_familia] = (
+        _ESPECIFICAS_POR_IDENTIDADE[_familia] + (_PERGUNTA_PREFERENCIA_AGENDA,))
+_ESPECIFICAS_POR_IDENTIDADE["lataria"] = (
+    _ESPECIFICAS_POR_IDENTIDADE["lataria"] + (_PERGUNTA_PREFERENCIA_VISTORIA,))
+del _familia
 
 # 📊 O que continua SEM perguntas: só o teto. Retrovisor, farol, lanterna e
 # vigia saíram desta lista em 20/09/2026 porque o roteiro da atendente humana
@@ -1062,7 +1103,19 @@ def mensagem_para_o_agente(faltam: List[Pergunta], peca: str = "") -> str:
     # Sem esta linha, uma pergunta de catálogo não-confirmada pareceria exigência
     # do portal — e o agente cobraria o segurado por ela como cobra o CPF. Ela é
     # útil (escolhe a peça certa) e é dispensável (o portal não a pede).
-    nao_confirmadas = [p for p in perguntas if not p.confirmada]
+    # ⚠️ As PREFERÊNCIAS (agenda/vistoria) também são não-confirmadas, mas não
+    # escolhem peça nenhuma — dizer que "servem para pedir a peça certa" seria o
+    # texto mentindo sobre elas. Têm a linha própria logo abaixo.
+    nao_confirmadas = [p for p in perguntas
+                       if not p.confirmada and p.destino != DESTINO_PREFERENCIA]
+    preferencias = [p for p in perguntas if p.destino == DESTINO_PREFERENCIA]
+    if preferencias:
+        linhas.append("")
+        linhas.append(
+            "Destas, " + ", ".join(f"'{p.campo}'" for p in preferencias) + " NAO travam o "
+            "pedido: servem para eu resolver sozinho o que a seguradora oferecer DEPOIS "
+            "do numero (agenda ou vistoria). Se o segurado nao souber, siga assim mesmo "
+            "— eu mostro as opcoes e continuo quando ele escolher.")
     if nao_confirmadas:
         linhas.append("")
         linhas.append(
