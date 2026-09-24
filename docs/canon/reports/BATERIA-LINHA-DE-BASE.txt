@@ -1,3 +1,4 @@
+# 📊 24/09/2026, EXTRA-001.10.1 (HEAD 5622911), .venv/Scripts/python -m pytest tests -q → 39 failed (35 da base + 4 da SPEC, consertadas e reconferidas isoladas: spec074_a_fronteira 29/0 · tool_continua 50/0 em 41 s · passo_compartilhado 10/0 · árvore limpa na rerodada do harness) ⇒ o conjunto volta a ser o da base (35).
 # Linha de base NOMINAL da bateria — 📊 23/09/2026, SPEC-116 (branch spec/116-model-router-e2e-bench, HEAD be8b033 + conserto do guarda do vocabulário), `cd backend && .venv/Scripts/python -m pytest tests -q` (libs NOVAS do requirements da SPEC-116)
 # → 36 failed · 1454 passed · 1 skipped · 34 xfailed · 1 xpassed em 3.137 s. 3 falhas NÃO estavam na base anterior:
 #   · test_o_guarda_script_passa[test_o_vocabulario_viaja_na_imagem] — DA SPEC (bancada.py com parents[3]); CONSERTADA e reconferida isolada: 40 verdes / 0 vermelhas → fora da lista.
