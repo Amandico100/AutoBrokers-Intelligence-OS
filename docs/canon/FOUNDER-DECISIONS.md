@@ -1961,7 +1961,26 @@ O Founder, ao mandar executar a 096: *"as pendências você decide, com nota 0�
 | **D-E00110-09** | **Agenda e vistoria NÃO concluem o work_run, e o vigia avisa a equipe sem depender do modelo:** quando o portal abre agenda ou pede vistoria, o trabalho não acabou — o run fica aberto para a Fila enxergar e o alerta ao suporte é disparado por código | não concluir + alerta por código **90** × confiar no modelo para avisar **30** (📊 mutação "vigia calado em agenda" passava despercebida) | `vigia_do_portal.py` · P-E00110-C-03 |
 | 🧑 **D-E00110-F1** (ABERTA) | **Confirmar o contato do segurado no portal.** A execução recomenda o desenho de D-E00110-01 (celular e e-mail do segurado, solicitante Corretor). Só um acionamento real prova que o portal aceita `Tipo 20` e passa a notificar o segurado | recomendado **88** · a alternativa é manter tudo da corretora, como hoje, e a loja continuar ligando para a equipe | decide o Founder, no canário |
 | 🧑 **D-E00110-F2** (ABERTA) | **Quando ligar `PORTAL_VIDROS_API_FIRST` em produção.** A execução recomenda: **só depois do canário verde**, e com `PORTAL_CANARIO_ALLOWLIST` limitada ao job do ensaio | canário antes **95** × ligar junto com o Implantar **20** (abriria pedido real sem nenhuma prova ao vivo) | decide o Founder |
-| 🧑 **D-E00110-F3** (ABERTA) | **A EXTRA-001.10.1 (a continuação) entra antes da 001.8?** Recomendação 💭 da execução: **sim, 80** — sem continuação, toda parada depois do protocolo termina em mão humana, e é justamente o trabalho manual que a SPEC existe para eliminar | 001.10.1 antes **80** × 001.8 (isolamento entre corretoras) antes **70** (é segurança, e sobe de prioridade quando entrar a 3ª corretora) | decide o Founder |
+| 🧑 **D-E00110-F3** (**RESOLVIDA** 24/09) | **A EXTRA-001.10.1 (a continuação) entra antes da 001.8?** Recomendação 💭 da execução: **sim, 80** — sem continuação, toda parada depois do protocolo termina em mão humana, e é justamente o trabalho manual que a SPEC existe para eliminar | 001.10.1 antes **80** × 001.8 (isolamento entre corretoras) antes **70** (é segurança, e sobe de prioridade quando entrar a 3ª corretora) | decide o Founder → executou-se a 001.10.1 (este bloco) |
+
+### Decisões da SPEC-EXTRA-001.10.1 (24/09/2026, tomadas pela execução com nota 0–100 — regra do Founder de 13/09; rito AAA v13 · O FIO, D-PROTO-12)
+
+> A SPEC entrega a **continuação** de um atendimento já aberto (token do portal guardado cifrado) e o **agendamento
+> concluído**, atrás de `PORTAL_VIDROS_API_FIRST`, que continua DESLIGADA. D-E00110-F1 **RESOLVIDA** (o Founder já
+> tinha decidido o contato do segurado, D-E001101-04 abaixo confirma o desenho) · D-E00110-F3 **CUMPRIDA** (a linha
+> acima).
+
+| # | decisão | notas | onde |
+|---|---|---|---|
+| **D-E001101-01** | **Onde mora o token:** cifrado pelo cofre do portal-worker (`PORTAL_VAULT_KEY`) dentro de `portal_jobs.evidence["continuacao"]`, com o instante de emissão; nunca em claro | cofre **88** · Redis com TTL 60 (`REDIS_URL` nunca confirmado no worker) · coluna nova + migration **70** · manter o job vivo esperando **40** | relatório §1 B0.13 |
+| **D-E001101-02** | **Agendamento:** preferência (a partir de que dia · manhã/tarde) coletada ANTES; o robô agenda na mesma sessão a loja mais próxima e o 1º horário que casa, e confirma lendo o portal; sem casamento, apresenta as opções e continua quando o segurado escolher | preferência + continuação **90** · só continuação **70** (depende do token viver até a resposta) · equipe agenda na mão (hoje) **20** | SPEC §7 |
+| **D-E001101-03** | **E-mail do corretor:** Perfil de Acionamento → e-mail do contato principal da corretora → nenhum (`EmailCorretor` nulo) | regra do banco **90** × e-mail fixo de atendente **10** (CLAUDE.md §13.9) | `portal_tool._load_profile` |
+| **D-E001101-04** | **Contato (fecha D-E00110-F1, respondida pelo Founder):** Corretor (6) como solicitante declarado + celular e e-mail do SEGURADO como contato (`Tipo 20`) + WhatsApp marcado | **88** (escolha do Founder) | relatório §8 |
+| **D-E001101-05** | **Domicílio:** fora; o robô não pergunta e não oferece | decisão do Founder | P-E00110-C-01 (MORREU) |
+| **D-E001101-06** | **`BloqueadoIlhaNormal` deixa de travar o roteador** — o portal não lê essa chave (0 ocorrências em 3 bundles) e segue para o modal de prioridade + vistoria; a fraude (`BloqueadoPorFraude`) **continua travando** | seguir o portal **90** × manter a trava geral **40** | relatório §1.1 (perícia do bundle) |
+| **D-E001101-07** | **Peça reescrita pelo agente:** se há um pedido irmão (mesmo `company_id`) esperando resposta, a peça reescrita **vira continuação** dele, nunca um 2º `abrir_atendimento`; sem pedido irmão esperando resposta, peça nova é pedido novo | continuação do irmão **85** × sempre pedido novo **60** (📊 era o defeito EXCLUSIVO do red team que atravessou da 001.10) | relatório §4, achados 8 e 11 |
+
+**Pendências novas desta SPEC:** `P-E001101-01…17` (em `PENDENCIAS.md`).
 
 ### Decisões da SPEC-EXTRA-001.8 (21/09/2026, tomadas pela execução com nota 0–100 — regra do Founder de 13/09; rito AAA v13.1)
 
