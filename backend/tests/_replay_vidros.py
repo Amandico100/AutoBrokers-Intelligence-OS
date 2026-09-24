@@ -57,7 +57,37 @@ HARS: Dict[str, Path] = {
     "ANT": RAIZ_REPO / "docs/intake/materiais/portal-vidros/YELUM/YELUM VIDROS ANTIGO/abraseuatendimento.com.br.har",
     # lanterna · Porto · TipoAtendimento = 1 · terminou em abandono
     "PORTO": RAIZ_REPO / "docs/intake/materiais/portal-vidros/PORTO/VIDRO LANTERNA.har",
+    # EXTRA-001.10.1 · capturas de 21/09/2026
+    # vidro de porta · V · AGENDA com 1 loja · 📊 o `POST /agendamentos` [048]
+    # CONCLUÍDO (Encaixe:true, 16:00) e o "Agendado para" lido em [049]
+    "LATERAL": RAIZ_REPO / "docs/intake/materiais/portal-vidros/YELUM/YELUM VIDRO LATERAL/YELUM VIDRO LATERAL.har",
+    # 🔴 o MESMO arquivo tem DUAS execuções: [0–60] repete o vidro lateral e
+    # [61–113] é a LATARIA — ilha normal + opção de vistoria (ramo 7 do
+    # roteador do SPA): prioridade [092] + ocorrência [093] → analista.
+    # A faixa (a 2ª abertura) está em FAIXAS.
+    "LATARIA2": RAIZ_REPO / "docs/intake/materiais/portal-vidros/YELUM/YELUM LATARIA/YELUM LATARIA.har",
 }
+
+# 🔴 FAIXA: um HAR pode conter mais de uma execução. `N` = começa na N-ésima
+# `POST /atendimentos` (com os GET de preflight que a antecedem colados).
+# 📊 `YELUM LATARIA.har`: 2 aberturas, em [003] e [062] (`importar_har`).
+FAIXAS: Dict[str, int] = {"LATARIA2": 2}
+
+# 🔴 Endereços cuja resposta depende da QUERY, e não só do caminho.
+# 📊 `horarios-disponiveis` do LATERAL: [044] `DataAgendamento=2026-09-21` → 0
+# blocos; [045] `=2026-09-22` → 40 blocos. Responder o dia 23 com os blocos do
+# dia 22 seria o dublê INVENTANDO agenda — e o motor agendaria num dia que o
+# portal nunca publicou. Dia que o acervo não viu → 404 e `fora_do_acervo`.
+QUERY_ESTRITA = ("/agendamentos/horarios-disponiveis",)
+
+# 🔴 BARREIRAS: escritas que MUDAM o que a leitura seguinte devolve.
+# 📊 LATERAL: o motor lê `GET /atendimentos` logo depois de
+# `opcoes-disponiveis` [037]; o próximo GET do HAR é o [049] — DEPOIS do
+# `POST /agendamentos` [048], já com "Agendado para". Servir aquele agregado a
+# um motor que ainda não agendou é o dublê contando o futuro. Com a barreira,
+# a leitura cai no estado mais recente ANTES dela ([032]).
+BARREIRAS = {("POST", "/agendamentos"), ("POST", "/atendimentos-prioridades"),
+             ("POST", "/ocorrencias")}
 
 # 🔴 O motor NÃO cancela e NÃO abandona. As entradas a partir da desistência
 # ficam FORA do acervo do replay: deixá-las dentro faria uma leitura tardia do
@@ -82,8 +112,13 @@ def _chave(metodo: str, caminho: str) -> Tuple[str, str]:
             re.sub(r"/\d{4,}", "/{codigo}", str(caminho).split("?")[0]))
 
 
-def carregar(nome: str) -> List[Any]:
-    """As chamadas de API do HAR, na ordem, até a desistência (exclusive)."""
+def carregar(nome: str, *, a_partir: Optional[int] = None) -> List[Any]:
+    """As chamadas de API do HAR, na ordem, até a desistência (exclusive).
+
+    `a_partir=N` (ou `FAIXAS[nome]`) começa na N-ésima `POST /atendimentos`,
+    levando junto os GET de preflight (`/seguradoras/`, `/apolices`) colados
+    antes dela — é a execução inteira, e só ela.
+    """
     caminho = HARS[nome]
     if not caminho.exists():
         raise HarAusente(
@@ -92,12 +127,36 @@ def carregar(nome: str) -> List[Any]:
     trafego = importar_har(caminho, host_portal=HOST_PORTAL)
     api = [c for c in trafego
            if c.host == HOST_API and c.metodo.upper() != "OPTIONS"]
+    n = a_partir if a_partir is not None else FAIXAS.get(nome)
+    if n:
+        aberturas = [i for i, c in enumerate(api)
+                     if c.metodo.upper() == "POST" and caminho_de(c) == "/atendimentos"]
+        if len(aberturas) < n:
+            raise ValueError(f"o HAR {nome} tem {len(aberturas)} abertura(s), "
+                             f"nao {n}")
+        ini = aberturas[n - 1]
+        while ini > 0 and api[ini - 1].metodo.upper() == "GET" \
+                and caminho_de(api[ini - 1]) in ("/apolices", "/seguradoras/"):
+            ini -= 1
+        api = api[ini:]
     corte = len(api)
     for i, c in enumerate(api):
         if caminho_de(c) in CAMINHOS_DE_DESISTENCIA:
             corte = i
             break
     return api[:corte]
+
+
+def indice(chamadas: List[Any], metodo: str, caminho: str, *, n: int = 1) -> int:
+    """Posição da N-ésima chamada que casa (método, caminho). `-1` se não há."""
+    alvo = _chave(metodo, caminho)
+    vistos = 0
+    for i, c in enumerate(chamadas):
+        if _chave(c.metodo, caminho_de(c)) == alvo:
+            vistos += 1
+            if vistos == n:
+                return i
+    return -1
 
 
 def corpo_json(chamada: Any, *, requisicao: bool = False) -> Any:
@@ -141,12 +200,19 @@ class PaginaDeReplay:
     motor não relê, e parou onde o motor não para.
     """
 
-    def __init__(self, chamadas: List[Any]) -> None:
+    def __init__(self, chamadas: List[Any], *, cursor: int = 0) -> None:
+        """`cursor=i`: a página já "viveu" as entradas `[0, i)` — é como se
+        retoma um atendimento no MEIO do HAR (a continuação é outro job, mas o
+        portal é o mesmo e já passou por aquelas telas)."""
         self.chamadas = chamadas
-        self.consumidas = [False] * len(chamadas)
-        self.cursor = 0
+        self.consumidas = [i < cursor for i in range(len(chamadas))]
+        self.cursor = cursor
         self.registro: List[Dict[str, Any]] = []
         self.sem_resposta: List[Tuple[str, str]] = []
+        # pedidos a um endereço de QUERY_ESTRITA com uma query que o acervo não
+        # viu (ex.: um dia de agenda que o humano não abriu). Não é defeito do
+        # motor: é o limite do que foi capturado.
+        self.fora_do_acervo: List[Tuple[str, str]] = []
 
     # -- o que o teste pergunta ------------------------------------------
     def emitidas(self, *, apenas_escritas: bool = False) -> List[Tuple[str, str]]:
@@ -184,7 +250,18 @@ class PaginaDeReplay:
         caminho = url.split(HOST_API, 1)[-1]
         caminho = caminho[len(BASE):] if caminho.startswith(BASE) else caminho
         self.registro.append({"metodo": metodo, "caminho": caminho,
-                              "corpo": arg.get("corpo")})
+                              "corpo": arg.get("corpo"),
+                              "cabecalhos": dict(arg.get("cabecalhos") or {})})
+
+        if caminho.split("?")[0] in QUERY_ESTRITA:
+            indice = self._achar_pela_query(metodo, caminho)
+            if indice is None:
+                self.fora_do_acervo.append((metodo, caminho.split("?")[0]))
+                return {"ok": False, "status": 404, "text": ""}
+            chamada = self.chamadas[indice]
+            return {"ok": 200 <= int(chamada.status or 0) < 400,
+                    "status": int(chamada.status or 0),
+                    "text": chamada.corpo_resp or ""}
 
         indice = self._achar(metodo, caminho)
         if indice is None:
@@ -195,6 +272,22 @@ class PaginaDeReplay:
                 "status": int(chamada.status or 0),
                 "text": chamada.corpo_resp or ""}
 
+    def _achar_pela_query(self, metodo: str, caminho: str) -> Optional[int]:
+        """A entrada do mesmo endereço E da mesma query. Sem ela, `None`."""
+        from urllib.parse import parse_qsl, urlsplit
+
+        alvo = _chave(metodo, caminho)
+        pedida = dict(parse_qsl(urlsplit(caminho).query))
+        iguais = [i for i, c in enumerate(self.chamadas)
+                  if _chave(c.metodo, caminho_de(c)) == alvo
+                  and {str(k): str(v) for k, v in (c.query or {}).items()} == pedida]
+        if not iguais:
+            return None
+        livres = [i for i in iguais if not self.consumidas[i]]
+        i = (livres or iguais)[0]
+        self.consumidas[i] = True
+        return i
+
     def _achar(self, metodo: str, caminho: str) -> Optional[int]:
         alvo = _chave(metodo, caminho)
         # 🔴 A segunda passada vai PARA TRAS a partir do cursor, e nao para a
@@ -203,9 +296,14 @@ class PaginaDeReplay:
         # `GET /atendimentos`, e so os dois ULTIMOS trazem o CodigoAtendimento —
         # varrendo do zero, o replay devolvia o primeiro (sem numero) e o
         # desfecho `agenda` chegava ao segurado sem o que anotar.
-        for faixa in (range(self.cursor, len(self.chamadas)),
-                      range(self.cursor, -1, -1)):
+        for n_faixa, faixa in enumerate((range(self.cursor, len(self.chamadas)),
+                                         range(self.cursor, -1, -1))):
             for i in faixa:
+                if n_faixa == 0 and not self.consumidas[i] and                         _chave(self.chamadas[i].metodo, caminho_de(self.chamadas[i]))                         in BARREIRAS and _chave(self.chamadas[i].metodo,
+                                                caminho_de(self.chamadas[i])) != alvo:
+                    # 🔴 uma leitura não atravessa uma escrita que o motor
+                    # AINDA não fez: o estado de depois dela não existe.
+                    break
                 if self.consumidas[i]:
                     continue
                 if _chave(self.chamadas[i].metodo, caminho_de(self.chamadas[i])) == alvo:
