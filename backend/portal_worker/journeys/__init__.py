@@ -253,6 +253,16 @@ JOURNEYS: Dict[str, JourneyDefinition] = {
         effect_class=MATERIAL_SIDE_EFFECT,
         supports_resume=True,
         description="abre atendimento de vidro/lanterna no portal Maxpar"),
+    "vidros_lanternas.continuar_atendimento": JourneyDefinition(
+        portal_key="vidros_lanternas", journey_key="continuar_atendimento",
+        business_operation=OP_ASSISTANCE_GLASS_REQUEST,
+        module="portal_worker.journeys.vidros_continuacao",
+        function="continuar_atendimento",
+        # 🔴 MATERIAL (EXTRA-001.10.1): agenda, grava prioridade e ocorrência
+        # num atendimento REAL — e o freio por classe vale para ela igual.
+        effect_class=MATERIAL_SIDE_EFFECT,
+        supports_resume=True,
+        description="retoma um atendimento de vidros ja aberto (agenda, responde, rele)"),
 }
 
 # A journey que o Auxiliar de Cobrança pede a cada portal.
