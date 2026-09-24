@@ -619,13 +619,15 @@ class PortalActionTool(BaseTool):
             irmao = self._pedido_irmao_esperando_resposta(params, chave)
             if irmao is not None:
                 abertura_irma, params_irmaos, chave_irma = irmao
+                ignorada = str(params_irmaos.pop("_peca_reescrita_ignorada", "") or "")
                 resposta = await self._continuar_ou_explicar(
                     existente=abertura_irma, params=params_irmaos,
-                    pedido_key=chave_irma, session_id=session_id, cpf=cpf)
+                    pedido_key=chave_irma, session_id=session_id, cpf=cpf,
+                    anotacao=({"peca_reescrita_ignorada": ignorada} if ignorada else None))
                 return {"content": (
                     "[para voce, agente] Esta chamada tem a MESMA placa, o MESMO CPF e a "
                     "MESMA data do dano de um pedido que ja existe e esta PARADO "
-                    "esperando uma resposta do segurado — tratei a peca nova como a "
+                    "esperando uma resposta do segurado — tratei esta chamada como a "
                     "RESPOSTA desse pedido e NAO abri outro atendimento. Se for OUTRA "
                     "peca de verdade, conclua este pedido primeiro.\n\n"
                     + str((resposta or {}).get("content") or ""))}
@@ -791,7 +793,8 @@ class PortalActionTool(BaseTool):
     # 🔴 SPEC-EXTRA-001.10.1 C1 — O PEDIDO TERMINADO PODE CONTINUAR
     # ======================================================================
     async def _continuar_ou_explicar(self, *, existente: dict, params: dict,
-                                     pedido_key: str, session_id: str, cpf: str) -> dict:
+                                     pedido_key: str, session_id: str, cpf: str,
+                                     anotacao: Optional[dict] = None) -> dict:
         """O pedido desta chamada já terminou (done/needs_human). Continua, ou explica.
 
         Continua quando as DUAS coisas são verdade:
@@ -869,6 +872,10 @@ class PortalActionTool(BaseTool):
         if work_run_id:
             linha["work_run_id"] = work_run_id
             linha["params"]["_work_run_id"] = work_run_id
+        if anotacao:
+            # CB2: o que a tool IGNOROU desta chamada fica escrito no job (o
+            # worker preserva a evidence inicial) — nunca na chave.
+            linha["evidence"] = {**dict(linha.get("evidence") or {}), **anotacao}
         job_id, ja = enfileirar_continuacao(cliente, linha)
         if ja is not None:
             # A MESMA resposta já virou continuação (G7): um job só.
@@ -897,7 +904,9 @@ class PortalActionTool(BaseTool):
         O IRMÃO é um pedido da MESMA corretora, com a MESMA placa, o MESMO CPF e
         a MESMA data do dano, e outra chave (a peça foi reescrita), cujo estado
         ATUAL (a última continuação, ou a abertura) pode continuar e espera
-        `responder:<slot>`. Aí esta chamada é a RESPOSTA dele: a peça nova vai
+        `responder:<slot>` — ou `agendar`, SÓ quando a chamada traz
+        `especificos.escolha_agenda` (CB2; a peça reescrita é ignorada e fica
+        anotada). Aí esta chamada é a RESPOSTA dele: a peça nova vai
         em `especificos.peca` (o slot que `respostas_da_chamada` lê) e o campo
         de cima volta a ser o do pedido — nunca um segundo `POST /atendimentos`.
 
@@ -950,12 +959,26 @@ class PortalActionTool(BaseTool):
                 continue
             ev = atual.get("evidence") if isinstance(atual.get("evidence"), dict) else {}
             operacao, _slot = acao_esperada(ev)
-            if not (continuacao_possivel(ev) and operacao == "responder"):
+            if not continuacao_possivel(ev):
+                continue
+            esp_nova = params.get("especificos") if isinstance(params.get("especificos"), dict) else {}
+            # 🔴 CONFIRMAÇÃO CB2 (retomada 1): o irmão que espera `agendar` também
+            # recebe a chamada — MAS só quando ela traz `escolha_agenda`. Com a
+            # escolha, a chamada é inequivocamente a RESPOSTA dele (📊 red A6.2 /
+            # c2 D1: 1º pedido em agenda + peça reescrita + escolha => 2º POST
+            # /atendimentos). Sem a escolha, peça diferente continua sendo pedido
+            # NOVO: é o caso legítimo do 2º vidro, que o guarda não sabe separar.
+            eh_agenda = operacao == "agendar" and bool(esp_nova.get("escolha_agenda"))
+            if not (operacao == "responder" or eh_agenda):
                 continue
             novo = _copy.deepcopy(params)
             esp = dict(novo.get("especificos") or {})
             peca_nova = str((novo.get("dano") or {}).get("peca") or "").strip()
-            if peca_nova and not str(esp.get("peca") or "").strip():
+            if eh_agenda:
+                # A peça reescrita NÃO entra na chave nem na resposta: fica
+                # registrada na evidence da continuação (quem lê é a equipe).
+                novo["_peca_reescrita_ignorada"] = peca_nova
+            elif peca_nova and not str(esp.get("peca") or "").strip():
                 esp["peca"] = peca_nova
             novo["especificos"] = esp
             novo["dano"] = {**dict(novo.get("dano") or {}),
