@@ -65,7 +65,14 @@ check("G2 CONTROLE: os dois vereditos SAO diferentes — a funcao consegue difer
 # lataria quebra, em produção, com dinheiro.
 import inspect  # noqa: E402
 
-src_journey = inspect.getsource(AF.abrir_atendimento_api)
+# 🔴 ATUALIZADO na EXTRA-001.10.1 (CLAUDE.md §9.3): a abertura virou FASES para
+# a continuação reusar o MESMO código (§5, nenhum segundo motor). A fronteira B
+# mora agora em `_fase_materializar` — a lição migra com ela, e um guarda novo
+# prova que a abertura ainda passa por essa fase.
+src_journey = inspect.getsource(AF._fase_materializar)
+check("G2: a abertura delega as fases pos-protocolo a `rodar_fases`",
+      "rodar_fases(" in inspect.getsource(AF.abrir_atendimento_api)
+      and "_fase_materializar" in inspect.getsource(AF.rodar_fases))
 check("G2: a journey CALCULA a fronteira (`fronteira_materializar_de` no corpo)",
       "fronteira_materializar_de" in src_journey)
 i_calculo = src_journey.find("fronteira_materializar_de")
@@ -77,7 +84,8 @@ check("G2: e calcula ANTES de mandar o PATCH", -1 < i_calculo < i_patch,
 check("G2: o PATCH so arma o guard quando a fronteira calculada e a dele",
       "fronteira_b == ST.FRONTEIRA_ATUALIZAR" in src_journey)
 check("G2: e o questionario so roda quando a fronteira calculada e a dele",
-      "fronteira_b == ST.FRONTEIRA_MATERIALIZAR" in src_journey)
+      "fronteira_b == ST.FRONTEIRA_MATERIALIZAR" in src_journey
+      or "fronteira_b != ST.FRONTEIRA_MATERIALIZAR" in src_journey)
 
 # ==========================================================================
 print("\n[P2-1] nenhuma regua numerica de trincado no caminho API-first")
@@ -283,26 +291,36 @@ else:
     check("G7: NENHUM endpoint de escrita APPROVED tem zero exercicios",
           not aprovados_sem_exercicio, aprovados_sem_exercicio)
 
-    for ep in (A.EP_AGENDAMENTOS_NAO_MEDIDO, A.EP_DIRECIONAMENTOS_NAO_MEDIDO,
-               A.EP_FOTOGRAFIAS_WEB_NAO_MEDIDO, A.EP_FINALIZAR_NAO_MEDIDO):
+    for ep in (A.EP_DIRECIONAMENTOS_NAO_MEDIDO,
+               A.EP_FOTOGRAFIAS_WEB_NAO_MEDIDO, A.EP_FINALIZAR_NAO_MEDIDO,
+               A.EP_AGENDAMENTOS_ENCAIXES_NAO_MEDIDO):
         check(f"G7: {ep} tem ZERO exercicios e e CANDIDATE",
               EXERCICIOS[ep] == 0 and A.ESTADO_DO_ENDPOINT[ep] == A.CANDIDATE,
               (EXERCICIOS[ep], A.ESTADO_DO_ENDPOINT[ep]))
+    # 🔴 ATUALIZADO na EXTRA-001.10.1 (CLAUDE.md §9.3): `agendamentos` TINHA zero
+    # exercícios e era CANDIDATE; as capturas de 21/09 o exercitaram (LATERAL
+    # [048]) e ele foi PROMOVIDO. A lição não morre: a promoção só vale porque
+    # a contagem, feita no acervo por `importar_har`, AGORA é ≥ 1.
+    for ep in (A.EP_AGENDAMENTOS, A.EP_PRIORIDADES, A.EP_OCORRENCIAS):
+        check(f"G7: {ep} foi PROMOVIDO porque o acervo o exercita (>= 1x)",
+              EXERCICIOS[ep] >= 1 and A.ESTADO_DO_ENDPOINT[ep] == A.APPROVED,
+              (EXERCICIOS[ep], A.ESTADO_DO_ENDPOINT[ep]))
 
-    # 🔴 A MUTAÇÃO, permanente: promover `agendamentos` sem captura deixa o
-    # gate VERMELHO. Sem este par, o G7 seria um carimbo.
+    # 🔴 A MUTAÇÃO, permanente: promover um endpoint sem captura deixa o gate
+    # VERMELHO. Sem este par, o G7 seria um carimbo. (Era `agendamentos`; hoje é
+    # `direcionamentos`, que continua sem nenhum exercício.)
     original = dict(A.ESTADO_DO_ENDPOINT)
     try:
-        A.ESTADO_DO_ENDPOINT[A.EP_AGENDAMENTOS_NAO_MEDIDO] = A.APPROVED
+        A.ESTADO_DO_ENDPOINT[A.EP_DIRECIONAMENTOS_NAO_MEDIDO] = A.APPROVED
         promovidos = [ep for ep, n in EXERCICIOS.items()
                       if n == 0 and A.ESTADO_DO_ENDPOINT[ep] == A.APPROVED]
-        check("G7 MUTACAO: promover `agendamentos` sem captura acusa",
-              A.EP_AGENDAMENTOS_NAO_MEDIDO in promovidos, promovidos)
+        check("G7 MUTACAO: promover `direcionamentos` sem captura acusa",
+              A.EP_DIRECIONAMENTOS_NAO_MEDIDO in promovidos, promovidos)
     finally:
         A.ESTADO_DO_ENDPOINT.clear()
         A.ESTADO_DO_ENDPOINT.update(original)
     check("G7: e o registro voltou ao estado original",
-          A.ESTADO_DO_ENDPOINT[A.EP_AGENDAMENTOS_NAO_MEDIDO] == A.CANDIDATE)
+          A.ESTADO_DO_ENDPOINT[A.EP_DIRECIONAMENTOS_NAO_MEDIDO] == A.CANDIDATE)
 
 # ---- a recusa na SESSAO, que e onde a chamada morre -------------------
 import asyncio  # noqa: E402
@@ -321,12 +339,13 @@ class PaginaQueNaoDeviaSerChamada:
 
 pagina = PaginaQueNaoDeviaSerChamada()
 sessao = SessaoVidros(page=pagina, token="tok")
-r = asyncio.run(sessao.agendar({"CodigoCliente": 1}))
-check("G7: `agendar` NAO toca a rede, mesmo com token e freio liberados",
+# 🔴 ATUALIZADO na EXTRA-001.10.1 (§9.3): o exemplo da recusa era `agendar`,
+# que agora é APPROVED. A lição — CANDIDATE morre na SESSÃO, antes da rede,
+# mesmo com token e freio liberados — continua provada com `direcionar`.
+r = asyncio.run(sessao.direcionar({"CodigoCliente": 1}))
+check("G7: `direcionar` NAO toca a rede, mesmo com token e freio liberados",
       pagina.chamou is False, pagina.chamou)
 check("G7: e devolve `endpoint_candidate`", r.get("erro") == "endpoint_candidate", r)
-check("G7: `direcionar` idem",
-      asyncio.run(sessao.direcionar({}))["erro"] == "endpoint_candidate")
 check("G7: `abandonar` idem (1 exercicio medido, e AINDA assim CANDIDATE)",
       asyncio.run(sessao.abandonar("x"))["erro"] == "endpoint_candidate")
 check("G7: `enviar_fotografias` (multipart) idem",
@@ -336,6 +355,10 @@ check("G7: `gerar_link_vistoria` idem",
       asyncio.run(sessao.gerar_link_vistoria("0"))["erro"] == "endpoint_candidate")
 check("G7 CONTROLE: um endpoint APPROVED CHEGA a tocar a pagina — os dois DIFEREM",
       (asyncio.run(sessao.opcoes_de_agendamento()) is not None) and pagina.chamou is True)
+_pg_ag = PaginaQueNaoDeviaSerChamada()
+asyncio.run(SessaoVidros(page=_pg_ag, token="tok").agendar({"CodigoCliente": 1}))
+check("G7: `agendar` (promovido pela 001.10.1) agora SAI — a escada anda por medicao",
+      _pg_ag.chamou is True)
 check("G7: `cancelar` sem motivo do catalogo nao sai",
       asyncio.run(sessao.cancelar(codigo_atendimento="1", codigo_motivo=None)
                   )["erro"] == "motivo_de_cancelamento_ausente")
@@ -394,10 +417,16 @@ print("\n[B4] TODA parada da journey tem texto proprio, e nenhum promete continu
 # sera feito... domicilio"), que fala de uma tela que a API-first nem abre.
 import re as _re  # noqa: E402
 
-_src_journey = (ROOT / "portal_worker" / "journeys" / "vidros_apifirst.py").read_text(
-    encoding="utf-8")
-_stages = sorted(set(_re.findall(r'parar\(\s*"([a-z_]+)"', _src_journey))
-                 | set(_re.findall(r'"stage": "([a-z_]+)"', _src_journey)))
+# 🔴 ATUALIZADO na EXTRA-001.10.1 (§9.3): as paradas viraram `_parar(ex, "…")`
+# (fases reusadas pela continuação) e a journey nova `vidros_continuacao` tem
+# as dela (`stage="…"`). A extração acompanha a forma nova e lê os DOIS
+# arquivos — sem isso ela acharia 3 stages e o guarda viraria carimbo.
+_src_journey = "\n".join(
+    (ROOT / "portal_worker" / "journeys" / f).read_text(encoding="utf-8")
+    for f in ("vidros_apifirst.py", "vidros_continuacao.py"))
+_stages = sorted(set(_re.findall(r'parar\(\s*(?:ex,\s*)?"([a-z_]+)"', _src_journey))
+                 | set(_re.findall(r'"stage": "([a-z_]+)"', _src_journey))
+                 | set(_re.findall(r'stage="([a-z_]+)"', _src_journey)))
 check("B4: a extracao achou os stages da journey (>= 15)", len(_stages) >= 15,
       len(_stages))
 _sem_texto = [st for st in _stages if PP2.texto_da_parada(st) is None]
@@ -406,7 +435,8 @@ check("B4: TODO stage da journey tem texto proprio", not _sem_texto, _sem_texto)
 _PROMESSAS = ("sigo daqui", "continua do mesmo ponto", "chame de novo",
               "me chame de novo", "proximo dia util", "próximo dia útil")
 _promete = [st for st in _stages
-            if any(pr in " ".join(PP2.texto_da_parada(st)).lower() for pr in _PROMESSAS)]
+            if any(pr in " ".join(PP2.texto_da_parada(st) or []).lower()
+                   for pr in _PROMESSAS)]
 check("B4: NENHUM texto promete continuacao (ela nao existe)", not _promete, _promete)
 # O numero vem primeiro, e o de 16 digitos nao e apresentado como o de 8.
 _msg8 = PP2.format_result({"status": "needs_human",
@@ -470,11 +500,23 @@ finally:
 # ==========================================================================
 print("\n[B-rota] a allowlist de endpoint nao se burla por caixa nem por barra")
 # ==========================================================================
-for _c in ("/Agendamentos", "/AGENDAMENTOS", "//agendamentos", "/agendamentos ",
-           " /agendamentos", "/agendamentos/", "/./agendamentos",
-           "/agendamentos;v=1", "/agendamentos?x=1", "/atendimentos/Abandonar",
-           "/Direcionamentos", "/atendimentos-fotografias/WEB"):
+# 🔴 ATUALIZADO na EXTRA-001.10.1 (§9.3): as variações eram de `/agendamentos`,
+# que virou APPROVED. A lição (caixa, barra, espaço e `;` não burlam o
+# registro) migra para `/direcionamentos`, que continua CANDIDATE.
+for _c in ("/Direcionamentos", "/DIRECIONAMENTOS", "//direcionamentos",
+           "/direcionamentos ", " /direcionamentos", "/direcionamentos/",
+           "/./direcionamentos", "/direcionamentos;v=1", "/direcionamentos?x=1",
+           "/atendimentos/Abandonar", "/atendimentos-fotografias/WEB"):
     check(f"B-rota: {_c!r} NAO pode sair", not A.pode_sair(_c, "POST"), _c)
+# 🔴 E a porta que a promoção abriria: com `/agendamentos` APPROVED, o casamento
+# pelo prefixo deixava sair QUALQUER `POST /agendamentos/…` — escrita só sai
+# no endereço EXATO (ou + `/{codigo}`).
+for _c in ("/agendamentos/encaixes", "/agendamentos/insatisfacao",
+           "/agendamentos/qualquer-coisa", "/atendimentos/livres-escolhas"):
+    check(f"B-rota: {_c!r} NAO pode sair (prefixo de endpoint APPROVED)",
+          not A.pode_sair(_c, "POST"), _c)
+check("B-rota CONTROLE: o agendamento medido sai, e sai por qualquer grafia dele",
+      A.pode_sair("/agendamentos", "POST") and A.pode_sair("/Agendamentos/", "POST"))
 check("B-rota: escrita em endpoint FORA do registro tambem nao sai (fail-closed)",
       not A.pode_sair("/rota/que/ninguem/mediu", "POST"))
 check("B-rota CONTROLE: leitura fora do registro continua podendo",
@@ -493,8 +535,15 @@ _AGREGADO = {"ScriptFinalizacao": {"Titulo": "As informacoes abaixo",
                                        {"Titulo": "Endereço", "Valor": "RUA Y"}]}}
 check("B-fraude CONTROLE: sem bloqueio, esta resposta da loja_direta",
       E.ler_desfecho(_CONCLUSAO_OK, _AGREGADO)["tipo"] == E.DESFECHO_LOJA_DIRETA)
-for _trava in ("BloqueadoPorFraude", "BloqueadoIlhaNormal",
-               "ExibirAvisoVistoriaPorRegraDeFraude"):
+# 🔴 ATUALIZADO na EXTRA-001.10.1 (§9.3): `BloqueadoIlhaNormal` SAIU das travas.
+# 📊 Zero ocorrências nos 3 bundles do SPA (laudo §2), e no HAR LATARIA [089]
+# ele veio `true` e o portal SEGUIU até a conclusão ([092]→[093]→[094]). A
+# lição (bloqueio de fraude nunca vira "pode ir à loja") continua nas outras.
+_d_ilha = E.ler_desfecho({**_CONCLUSAO_OK, "BloqueadoIlhaNormal": True}, _AGREGADO)
+check("B-fraude: `BloqueadoIlhaNormal` sozinho NAO trava (o portal segue)",
+      _d_ilha["tipo"] == E.DESFECHO_LOJA_DIRETA and not _d_ilha.get("bloqueios"),
+      _d_ilha["tipo"])
+for _trava in ("BloqueadoPorFraude", "ExibirAvisoVistoriaPorRegraDeFraude"):
     _d = E.ler_desfecho({**_CONCLUSAO_OK, _trava: True}, _AGREGADO)
     check(f"B-fraude: com {_trava} o desfecho e `desconhecido`",
           _d["tipo"] == E.DESFECHO_DESCONHECIDO, _d["tipo"])
