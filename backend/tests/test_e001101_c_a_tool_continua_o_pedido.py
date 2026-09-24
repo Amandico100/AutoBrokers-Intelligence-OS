@@ -490,6 +490,20 @@ def b4_a_peca_reescrita_nao_abre_outro_pedido() -> None:
     checar("NAO abri outro atendimento" in conteudo,
            "RED B4: o agente e avisado de que a chamada virou RESPOSTA", conteudo[:200])
 
+    # ⚠️ Os dois cenarios abaixo ABREM um pedido novo que o dublê nao processa:
+    # sem teto curto, a tool espera os 150 s inteiros de POLL_TIMEOUT_S em cada
+    # um. 📊 24/09: o arquivo levava 339 s e estourava o teto de 120 s do
+    # `test_todos_os_guardas_script_rodam` na bateria. O que se afirma aqui e o
+    # que foi INSERIDO, nao a espera.
+    teto = PT.POLL_TIMEOUT_S
+    PT.POLL_TIMEOUT_S = 0.05
+    try:
+        _b4_dois_tenants_e_controle(ev_parado, nova)
+    finally:
+        PT.POLL_TIMEOUT_S = teto
+
+
+def _b4_dois_tenants_e_controle(ev_parado: dict, nova: str) -> None:
     # DOIS TENANTS: o pedido parado e de B; a chamada de A abre o de A.
     ab_b = _abertura(EMPRESA_B, "needs_human", ev_parado)
     banco_b = _banco_com(ab_b, RESULTADO_AGENDADO)
