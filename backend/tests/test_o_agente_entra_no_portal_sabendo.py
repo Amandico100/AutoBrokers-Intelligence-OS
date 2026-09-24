@@ -133,6 +133,11 @@ PARABRISA_COMPLETO = {
     "sensor_de_direcao_ou_faixa": "NAO",
     "sensor_de_chuva": "SIM",
     "faixa_degrade": "NAO",
+    # ⚠️ ATUALIZADO em 23/09/2026 (CLAUDE.md §9.3) — SPEC-EXTRA-001.10.1 C2: a
+    # preferência de AGENDA ("a partir de que dia, manhã ou tarde") entrou nas
+    # famílias de troca. Ela NÃO trava, mas `o_que_falta` a devolve — e "com
+    # TUDO sabido" continua tendo de significar tudo.
+    "preferencia_agenda": "amanhã de manhã",
 }
 
 
@@ -591,7 +596,12 @@ def as_respostas_do_80_por_cento_chegam_ao_portal() -> None:
     p, e = PP.build_portal_params({**FLAT_COMPLETO, "especificos": especificos},
                                   PROFILE, INFOCAP)
     checar(e is None and p is not None, "params montados com as especificas", str(e)[:120])
-    checar(p and p.get("especificos") == especificos,
+    # ⚠️ ATUALIZADO em 23/09/2026 (CLAUDE.md §9.3) — SPEC-EXTRA-001.10.1,
+    # D-E001101-05: a modalidade deixou de ser a frase do segurado e passou a
+    # ser SEMPRE "loja" (domicílio fora). As respostas do 80% continuam
+    # chegando intactas; só a modalidade é normalizada.
+    esperado = {**especificos, "onde_realizar_o_servico": "loja"}
+    checar(p and p.get("especificos") == esperado,
            "e elas chegam em params['especificos'] - a chave que a journey ja le",
            str((p or {}).get("especificos")))
 
