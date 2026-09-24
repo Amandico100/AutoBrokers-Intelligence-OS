@@ -1137,6 +1137,9 @@ def blocos_livres(horarios: Any, *, encaixe_ceven: Any = None,
                   bloqueio_por_peca_nao_medido: bool = False) -> List[Dict[str, Any]]:
     """`[{"horario": "HH:MM", "turno": "Manha"|"Tarde"|…, "encaixe": bool}, …]`.
 
+    Livre = normal (`QuantidadeDisponivel > 0`) OU encaixe
+    (`PossuiEncaixeDisponivel is True` E `QuantidadeEncaixeParametrizadoDisponivel > 0`).
+
     ⛔ Duas regras do bundle NUNCA foram exercidas e aqui viram lista VAZIA
     (fail-closed: não se oferece nem se agenda horário cuja regra não medimos):
     `EncaixeCeven == "Sim"` (troca o critério do modo normal) e a previsão de
@@ -1158,7 +1161,15 @@ def blocos_livres(horarios: Any, *, encaixe_ceven: Any = None,
         turno = str((turno or {}).get("Value") if isinstance(turno, dict) else turno or "")
         try:
             normal = int(b.get("QuantidadeDisponivel") or 0) > 0
-            encaixe = int(b.get("QuantidadeEncaixeParametrizadoDisponivel") or 0) > 0
+            # 🔴 JUIZ P2 (conserto da 001.10.1): a ABA de encaixe do SPA só
+            # lista blocos com `PossuiEncaixeDisponivel === true` (laudo do
+            # bundle, `P.blocosDeHorariosEncaixe`), e dentro dela o bloco fica
+            # bloqueado com `QuantidadeEncaixeParametrizadoDisponivel === 0`.
+            # As DUAS condições, então. 📊 No HAR LATERAL [045] os dois
+            # conjuntos coincidem (8 = 8); no dia em que divergirem, oferecer
+            # um bloco que a tela não oferece seria agendar fora do portal.
+            encaixe = (b.get("PossuiEncaixeDisponivel") is True
+                       and int(b.get("QuantidadeEncaixeParametrizadoDisponivel") or 0) > 0)
         except (TypeError, ValueError):
             continue
         if normal:
