@@ -152,7 +152,11 @@ check("A1: e ainda indexa e mede como tupla",
 check("A1: mas agora tambem SABE o que faz",
       d.business_operation == J.OP_BILLING_OVERDUE_LIST
       and d.effect_class == J.READ_ONLY)
-check("A1: as 14 entradas da baseline continuam la", len(J.JOURNEYS) == 14,
+# 🔴 ATUALIZADO na EXTRA-001.10.1 (CLAUDE.md §9.3): 14 → 15, com a journey
+# `vidros_lanternas.continuar_atendimento`. A lição continua: as 14 da
+# baseline seguem LÁ (nenhuma sumiu), e a nova é a única a mais.
+check("A1: as 14 entradas da baseline continuam la (+ a continuacao de vidros)",
+      len(J.JOURNEYS) == 15 and "vidros_lanternas.continuar_atendimento" in J.JOURNEYS,
       len(J.JOURNEYS))
 check("A1: e todas resolvem para uma funcao importavel",
       all(callable(J.get_journey(*k.rsplit(".", 1))) for k in J.JOURNEYS))
