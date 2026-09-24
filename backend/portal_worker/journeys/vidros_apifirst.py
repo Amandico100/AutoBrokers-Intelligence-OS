@@ -44,9 +44,21 @@ aconteceu, e o navegador é a autoridade de último recurso.
 
 O que este módulo NÃO faz
 =========================
-Não escolhe loja, não agenda, não direciona, não cancela, não abandona, não
-finaliza. Ele APRESENTA o que o portal ofereceu — lojas, distâncias, dias e
-horários — e a escolha continua sendo do segurado.
+Não direciona, não cancela, não abandona, não finaliza. Ele APRESENTA o que o
+portal ofereceu — lojas, distâncias, dias e horários LIVRES — e a escolha
+continua sendo do segurado.
+
+🔴 EXTRA-001.10.1 — o que mudou, e com que limite
+==================================================
+AGENDA (📊 `POST /agendamentos` medido, LATERAL [048]) só em dois casos, e
+sempre confirmada pelo "Agendado para" LIDO do portal: (a) a preferência que o
+segurado JÁ deu (`especificos.preferencia_agenda`) casou — loja mais próxima
+pela distância do portal, 1º horário livre no período; (b) a continuação trouxe
+a escolha dele (loja, dia, horário), casada por IGUALDADE com o publicado agora.
+O RAMO 7 do roteador (prioridade + preferência de vistoria) é respondido com a
+preferência dele e as respostas NEUTRAS medidas; sem ela, para e pergunta.
+As fases depois da fronteira A viraram funções (`rodar_fases`) — a journey
+`vidros_continuacao` as reusa; não existe segundo motor.
 """
 from __future__ import annotations
 
@@ -54,7 +66,8 @@ import logging
 import os
 import re
 import unicodedata
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from portal_worker.journeys import JourneyResult
@@ -400,12 +413,21 @@ def _contato_de(params: Dict[str, Any]) -> Dict[str, Any]:
     c = dict(params.get("contato") or {})
     sol = dict(params.get("solicitante") or {})
     seg = dict(params.get("segurado") or {})
+    tipo_telefone = str(c.get("tipo_telefone")
+                        or ("segurado" if seg.get("telefone") else "corretora"))
+    # 🔴 EXTRA-001.10.1 (D-E001101-04): o WhatsApp do SEGURADO vai marcado.
+    # 📊 `StatusEnvioWhatsapp: true` medido 1× (LATERAL [009], Tipo 20) e o
+    # agregado passou a dizer `PossuiTelefoneRecebeWhatsapp: true`; sem a
+    # caixinha, `false` nas outras 5 capturas. Padrão: marcado quando o telefone
+    # é do segurado — o celular da corretora não recebe o aviso do portal.
+    recebe = c.get("recebe_whatsapp")
     return {
         "relacao": str(c.get("relacao") or RELACAO_CORRETOR),
         "telefone": str(c.get("telefone") or seg.get("telefone")
                         or sol.get("telefone") or "").strip(),
-        "tipo_telefone": str(c.get("tipo_telefone")
-                             or ("segurado" if seg.get("telefone") else "corretora")),
+        "tipo_telefone": tipo_telefone,
+        "recebe_whatsapp": (bool(recebe) if recebe is not None
+                            else tipo_telefone.strip().lower() == "segurado"),
         "email_segurado": str(c.get("email_segurado") or seg.get("email") or "").strip(),
         "email_corretora": str(c.get("email_corretora") or sol.get("email") or "").strip(),
         "nome_solicitante": str(c.get("nome_solicitante") or sol.get("nome") or "").strip(),
@@ -434,6 +456,24 @@ def _codigo_do_tipo_de_telefone(tipos: Any, dono: str) -> Optional[int]:
     return None
 
 
+def termo_exibido(corpo: Dict[str, Any]) -> bool:
+    """A regra LITERAL do SPA para `TermoExibido` (laudo §8, offset ~107338).
+
+    termo = e-mail do segurado E relação preenchidos E
+            (O Próprio "1" SEM e-mail de corretor  OU  Corretor "6" COM e-mail de corretor)
+
+    📊 Bate com as 6 capturas (todas `false`). 🔴 A versão anterior mandava
+    `true` sempre — declarava ao portal um termo que a tela dele não teria
+    exibido a ninguém.
+    """
+    email = str(corpo.get("EmailSegurado") or "").strip()
+    relacao = str(corpo.get("RelacaoTitular") or "").strip()
+    if not email or not relacao:
+        return False
+    com_corretor = bool(corpo.get("EmailCorretor"))
+    return (relacao == "1" and not com_corretor) or (relacao == "6" and com_corretor)
+
+
 def _corpo_do_solicitante(contato: Dict[str, Any], *,
                           codigo_tipo_telefone: int) -> Dict[str, Any]:
     """O corpo do `POST /solicitantes`, na ordem medida."""
@@ -449,10 +489,12 @@ def _corpo_do_solicitante(contato: Dict[str, Any], *,
     corpo["NomeSolicitante"] = contato["nome_solicitante"] or None
     corpo["CpfCnpjSolicitante"] = contato["documento_corretor"] or None
     corpo["EmailCorretor"] = True if tem_email_corretora else None
-    corpo["Telefones"] = ([{"Numero": contato["telefone"],
-                            "Tipo": codigo_tipo_telefone}]
-                          if contato["telefone"] else [])
-    corpo["TermoExibido"] = True
+    telefone: Dict[str, Any] = {"Numero": contato["telefone"],
+                                "Tipo": codigo_tipo_telefone}
+    if contato.get("recebe_whatsapp"):
+        telefone["StatusEnvioWhatsapp"] = True
+    corpo["Telefones"] = [telefone] if contato["telefone"] else []
+    corpo["TermoExibido"] = termo_exibido(corpo)
     # 🔴 `false` em 4 de 4 capturas. Não se inventa `true` num termo que
     # ninguém exibiu a ninguém.
     corpo["TermoAceito"] = False
@@ -523,7 +565,176 @@ def _tela_desconhecida(evidence: Dict[str, Any], *, onde: str,
 
 
 # --------------------------------------------------------------------------
-# A journey
+# O relógio — UMA função, para o replay poder fixar o "hoje" da captura
+# --------------------------------------------------------------------------
+def hoje() -> date:
+    """A data de hoje no fuso do portal (meia-noite de São Paulo).
+
+    🔴 Uma função só, e não `datetime.now()` espalhado: o replay de um HAR de
+    21/09 roda em outro dia, e "a primeira data ≥ hoje" tem de ser a do dia da
+    captura para o motor ler a mesma agenda que o humano leu.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo(API.FUSO_DO_PORTAL)).date()
+    except Exception:  # noqa: BLE001
+        return (datetime.now(timezone.utc) - timedelta(hours=3)).date()
+
+
+# --------------------------------------------------------------------------
+# 🔴 A EXECUÇÃO — o estado que as FASES dividem (EXTRA-001.10.1)
+# --------------------------------------------------------------------------
+# A abertura era UMA função de 560 linhas. A continuação precisa retomar do
+# meio dela — e a SPEC proíbe um segundo motor (CLAUDE.md §5). Então a função
+# virou FASES, e a abertura e a continuação chamam as MESMAS fases com a
+# mesma `Execucao`. Nada foi copiado para `vidros_continuacao`.
+@dataclass
+class Execucao:
+    params: Dict[str, Any]
+    evidence: Dict[str, Any]
+    sessao: Any
+    guard: Any
+    estado: Any
+    dano: Dict[str, Any] = field(default_factory=dict)
+    local: Dict[str, Any] = field(default_factory=dict)
+    especificos: Dict[str, Any] = field(default_factory=dict)
+    contato: Dict[str, Any] = field(default_factory=dict)
+    seguradora: str = ""
+    protocolo: str = ""
+    chassi: str = ""
+    relato: str = ""
+    perimetro: str = ""
+    # o que as fases de LEITURA descobrem e as de escrita consomem
+    codigo_item: str = ""
+    partes: Dict[str, Any] = field(default_factory=dict)
+    codigo_causa: Any = None
+    servicos_lataria: List[Dict[str, Any]] = field(default_factory=list)
+    codigo_cidade: Any = None
+    reparo_decidido: Optional[bool] = None
+    agregado: Dict[str, Any] = field(default_factory=dict)
+    # o bloco `evidence["continuacao"]` COM a sessão cifrada (em memória)
+    continuacao: Dict[str, Any] = field(default_factory=dict)
+
+
+def execucao_de(params: Dict[str, Any], evidence: Dict[str, Any], *, sessao: Any,
+                guard: Any, estado: Any) -> Execucao:
+    """A `Execucao` a partir dos params do job — o mesmo contrato A↔C."""
+    dano = dict(params.get("dano") or {})
+    local = dict(params.get("local") or {})
+    return Execucao(
+        params=params, evidence=evidence, sessao=sessao, guard=guard, estado=estado,
+        dano=dano, local=local,
+        especificos=dict(params.get("especificos") or {}),
+        contato=_contato_de(params),
+        chassi=str(params.get("chassi") or "").strip(),
+        relato=str(dano.get("descricao") or "").strip(),
+        perimetro=API.perimetro_do_texto(dano.get("onde") or local.get("perimetro")),
+    )
+
+
+# --------------------------------------------------------------------------
+# 🔴 A SESSÃO DURÁVEL — A1
+# --------------------------------------------------------------------------
+# 📊 O `Token` do `POST /atendimentos` é a ÚNICA autenticação da API (header
+# `token_autorizacao`, sem cookie, CORS `*`); não existe endpoint que devolva
+# token de atendimento existente (laudo §7c); e ele EXPIRA (o de 21/09 22:09Z
+# deu 401 em 23/09 23:40Z). Guardá-lo é o único jeito de continuar um pedido
+# que já nasceu — e guardá-lo em claro seria entregar a chave do atendimento a
+# quem lesse `portal_jobs.evidence`. Vai CIFRADO pelo cofre do worker
+# (`PORTAL_VAULT_KEY`, D-E001101-01).
+#
+# ⚠️ O nome `sessao_cifrada` foi escolhido para PASSAR intacto pelo redator:
+# `redaction.redigir_envelope` só toca as chaves de diagnóstico, e nenhuma
+# substring de `CHAVES_SENSIVEIS` (`token`, `session_storage`…) está no nome.
+# A cifra é o que protege; apagar a cifra seria perder a continuação.
+def _guardar_sessao(ex: Execucao, token: str) -> None:
+    from datetime import timezone as _tz
+
+    bloco: Dict[str, Any] = {
+        "sessao_cifrada": "",
+        "emitida_em": datetime.now(_tz.utc).isoformat(timespec="seconds"),
+        "seguradora": ex.seguradora,
+        "protocolo": ex.protocolo,
+        "codigo_atendimento": "",
+        "categoria": "",
+        "etapa": ST.ETAPA_CONTATO,
+        "acao_esperada": "reler",
+        "possivel": False,
+        "sessao_guardada": False,
+        "motivo": "",
+    }
+    try:
+        if not token:
+            raise ValueError("o portal nao devolveu Token")
+        from portal_worker import vault
+
+        bloco["sessao_cifrada"] = vault.encrypt(token)
+        bloco["sessao_guardada"] = True
+        bloco["possivel"] = True
+        bloco["motivo"] = ("sessao do portal guardada cifrada; o pedido pode ser "
+                           "retomado enquanto o portal aceitar o token")
+    except Exception as exc:  # noqa: BLE001
+        # 🔴 NUNCA derruba o acionamento: o pedido JÁ existe na seguradora.
+        # Só a continuação automática fica indisponível — e isso é dito.
+        bloco["motivo"] = (f"sessao NAO guardada ({type(exc).__name__}): a "
+                           "continuacao automatica fica indisponivel para este "
+                           "pedido (cofre do worker sem PORTAL_VAULT_KEY?)")
+    ex.continuacao = bloco
+    ex.evidence["continuacao"] = dict(bloco)
+
+
+def _marcar_continuacao(ex: Execucao, *, etapa: str, acao: str,
+                        possivel: Optional[bool] = None, incerto: bool = False,
+                        motivo: str = "") -> None:
+    """Regrava `evidence["continuacao"]` com a etapa NOVA. Sem sessão, nada."""
+    if not ex.continuacao:
+        return
+    guardada = bool(ex.continuacao.get("sessao_guardada")) \
+        and bool(ex.continuacao.get("sessao_cifrada"))
+    pode = guardada and bool(etapa) and (True if possivel is None else bool(possivel))
+    bloco = {
+        **ex.continuacao,
+        "etapa": etapa or "",
+        "acao_esperada": acao or "",
+        "possivel": pode,
+        "sessao_guardada": guardada,
+        "codigo_atendimento": (ex.estado.codigo_atendimento
+                               or ex.continuacao.get("codigo_atendimento") or ""),
+        "categoria": (ex.partes.get("categoria")
+                      or ex.continuacao.get("categoria") or ""),
+        "motivo": (str(motivo or "")[:300] if guardada
+                   else str(ex.continuacao.get("motivo") or "")),
+    }
+    if incerto:
+        bloco["incerto"] = True
+    if not pode:
+        # Sem continuação possível, a cifra não tem serventia: não fica.
+        bloco["sessao_cifrada"] = ""
+    ex.evidence["continuacao"] = bloco
+
+
+def _parar(ex: Execucao, stage: str, mensagem: str, **capturado: Any) -> JourneyResult:
+    """🔴 Toda parada DEPOIS da fronteira A é esta função: `needs_human`, com o
+    estado de negócio, o que falta e — EXTRA-001.10.1 — a ETAPA de onde uma
+    continuação retoma. Nunca `None`, que voltaria ao DOM e abriria um segundo
+    pedido."""
+    ex.evidence["vidros_estado"] = ex.estado.para_evidencia()
+    ex.evidence["api_first"] = {"usado": True, "parou_em": stage,
+                                **ex.sessao.resumo_para_evidencia()}
+    etapa, acao = ST.etapa_da_parada(stage)
+    _marcar_continuacao(ex, etapa=etapa, acao=acao,
+                        incerto=stage in ST.PARADAS_INCERTAS, motivo=mensagem)
+    return JourneyResult(
+        status="needs_human",
+        captured={"stage": stage, "business_state": ex.estado.estado,
+                  "protocolo": ex.estado.codigo_atendimento or ex.estado.numero_protocolo,
+                  **capturado},
+        message=mensagem)
+
+
+# --------------------------------------------------------------------------
+# A journey de abertura
 # --------------------------------------------------------------------------
 async def abrir_atendimento_api(page, params: Dict[str, Any],
                                 evidence: Dict[str, Any]) -> Optional[JourneyResult]:
@@ -535,27 +746,11 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     sessao = SessaoVidros(page=page)
     guard = _guard_do(params)
     guard.acao_material_esperada = ST.FRONTEIRA_ABRIR
-    dano = dict(params.get("dano") or {})
-    local = dict(params.get("local") or {})
-    especificos = dict(params.get("especificos") or {})
-    contato = _contato_de(params)
+    ex = execucao_de(params, evidence, sessao=sessao, guard=guard, estado=estado)
+    dano, local, contato = ex.dano, ex.local, ex.contato
 
     def desistir(motivo: str, **extra: Any) -> None:
         evidence["api_first"] = {"usado": False, "motivo": motivo, **extra}
-
-    def parar(stage: str, mensagem: str, **capturado: Any) -> JourneyResult:
-        """🔴 Toda parada DEPOIS da fronteira A é esta função: `needs_human`,
-        com o estado de negócio e o que falta. Nunca `None`, que voltaria ao DOM
-        e abriria um segundo pedido."""
-        evidence["vidros_estado"] = estado.para_evidencia()
-        evidence["api_first"] = {"usado": True, "parou_em": stage,
-                                 **sessao.resumo_para_evidencia()}
-        return JourneyResult(
-            status="needs_human",
-            captured={"stage": stage, "business_state": estado.estado,
-                      "protocolo": estado.codigo_atendimento or estado.numero_protocolo,
-                      **capturado},
-            message=mensagem)
 
     # ======================================================================
     # 1. A SEGURADORA SAI DA LISTA AO VIVO — P0-4
@@ -577,6 +772,7 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
         return None
 
     seguradora = achada["slug"]
+    ex.seguradora = seguradora
     evidence["seguradora"] = {"slug": seguradora, "codigo": achada["codigo"],
                               "nome_de_tela": achada["nome_de_tela"]}
     if seguradora in API.FORA_DO_API_FIRST:
@@ -591,13 +787,13 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     placa = str(params.get("placa") or "").strip().upper()
     data = (str(params.get("_data_iso") or "").strip()
             or data_iso(params.get("data_dano")))
-    relato = str(dano.get("descricao") or "").strip()
+    relato = ex.relato
     # 🔴 O perímetro é classificado AQUI, antes de qualquer escrita, porque um
     # texto que não classifica não pode virar `"N"` (= "Não Sabe" no portal) lá
     # na frente. Ver `API.perimetro_do_texto`.
     # 🔴 So o ENUM: quem classificou o texto de gente foi
     # `portal_params.normalizar_perimetro`, ANTES da fronteira A.
-    perimetro = API.perimetro_do_texto(dano.get("onde") or local.get("perimetro"))
+    perimetro = ex.perimetro
     faltou = [n for n, v in (
         ("cpf", cpf), ("placa", placa), ("data", data),
         ("dano.peca", dano.get("peca")), ("dano.como", dano.get("como")),
@@ -650,7 +846,7 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
         return None
 
     apolice = r.get("json") or {}
-    chassi = str(params.get("chassi") or apolice.get("Chassi") or "").strip()
+    ex.chassi = str(params.get("chassi") or apolice.get("Chassi") or "").strip()
 
     # ======================================================================
     # 3. FRONTEIRA A — a partir daqui existe registro na seguradora
@@ -697,6 +893,7 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
 
     dados = ra.get("json") or {}
     protocolo = str(dados.get("NumeroProtocolo") or "")
+    ex.protocolo = protocolo
     estado.transitar(ST.PROTOCOLO_CRIADO, motivo="POST /atendimentos 200",
                      numero_protocolo=protocolo)
     await guard.submetido(receipt=protocolo)
@@ -709,49 +906,92 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     # o segundo atendimento, pago, no nome do mesmo segurado.
     if protocolo:
         evidence["protocolo"] = protocolo
+    # 🔴 A1 — a sessão durável nasce AQUI, junto do protocolo, e vai no MESMO
+    # checkpoint: uma queda no passo seguinte ainda deixa o pedido retomável.
+    _guardar_sessao(ex, sessao.token)
     evidence["vidros_estado"] = estado.para_evidencia()
     await _checkpoint(params, {"vidros_estado": estado.para_evidencia(),
-                               "protocolo": protocolo})
+                               "protocolo": protocolo,
+                               "continuacao": evidence["continuacao"]})
 
-    # ---- corretor e solicitante — P0-2, obrigatórios em 4 de 4 ------------
+    return await rodar_fases(ex, a_partir=ST.ETAPA_CONTATO)
+
+
+# --------------------------------------------------------------------------
+# 🔴 As FASES depois da fronteira A — a abertura e a continuação usam estas
+# --------------------------------------------------------------------------
+async def rodar_fases(ex: Execucao, *, a_partir: str) -> JourneyResult:
+    """Roda as fases a partir de `a_partir`, na ordem medida.
+
+    🔴 A fase de CONTATO (PUT corretores + POST solicitantes) é escrita: roda só
+    quando a retomada é DELA. As fases de LEITURA (peça, causa, lataria,
+    cidade) rodam sempre — reler é reversível, e o `CodigoItemCoberto` que a
+    fase de materializar consome sai delas.
+    """
+    fases = (
+        (ST.ETAPA_CONTATO, _fase_contato),
+        (ST.ETAPA_PECA, _fase_peca),
+        (ST.ETAPA_CAUSA, _fase_causa),
+        (ST.ETAPA_LATARIA, _fase_lataria),
+        (ST.ETAPA_CIDADE, _fase_cidade),
+        (ST.ETAPA_MATERIALIZAR, _fase_materializar),
+    )
+    # Etapa desconhecida NUNCA recomeça pelo contato (que escreve): pela peça.
+    inicio = a_partir if a_partir in ST.ORDEM_DAS_ETAPAS else ST.ETAPA_PECA
+    for etapa, fase in fases:
+        if etapa == ST.ETAPA_CONTATO and inicio != ST.ETAPA_CONTATO:
+            continue
+        parada = await fase(ex)
+        if parada is not None:
+            return parada
+    return await fase_desfecho(ex)
+
+
+async def _fase_contato(ex: Execucao) -> Optional[JourneyResult]:
+    """Corretor e solicitante — P0-2, obrigatórios em 4 de 4."""
+    sessao, evidence, contato = ex.sessao, ex.evidence, ex.contato
     rc = await sessao.registrar_corretor(contato["documento_corretor"])
     if not rc.get("ok"):
         _tela_desconhecida(evidence, onde=API.EP_CORRETORES, resposta=rc)
-        return parar("corretor_recusado",
-                     "o pedido foi aberto e o portal recusou o vinculo do "
-                     "corretor. NAO reexecute: o atendimento ja existe.")
+        return _parar(ex, "corretor_recusado",
+                      "o pedido foi aberto e o portal recusou o vinculo do "
+                      "corretor. NAO reexecute: o atendimento ja existe.")
 
     rt_tel = await sessao.tipos_de_telefone()
     codigo_tipo = _codigo_do_tipo_de_telefone(rt_tel.get("json"),
                                               contato["tipo_telefone"])
     if codigo_tipo is None:
         _tela_desconhecida(evidence, onde=API.EP_TIPOS_TELEFONE, resposta=rt_tel)
-        return parar("tipo_de_telefone_desconhecido",
-                     "o pedido foi aberto e a lista de tipos de telefone do "
-                     "portal nao trouxe o tipo esperado. NAO reexecute.")
+        return _parar(ex, "tipo_de_telefone_desconhecido",
+                      "o pedido foi aberto e a lista de tipos de telefone do "
+                      "portal nao trouxe o tipo esperado. NAO reexecute.")
 
-    rsol = await sessao.registrar_solicitante(
-        _corpo_do_solicitante(contato, codigo_tipo_telefone=codigo_tipo))
+    corpo_sol = _corpo_do_solicitante(contato, codigo_tipo_telefone=codigo_tipo)
+    rsol = await sessao.registrar_solicitante(corpo_sol)
     if not rsol.get("ok"):
         _tela_desconhecida(evidence, onde=API.EP_SOLICITANTES, resposta=rsol)
-        return parar("solicitante_recusado",
-                     "o pedido foi aberto e o portal recusou os dados de "
-                     "contato. NAO reexecute: o atendimento ja existe.")
+        return _parar(ex, "solicitante_recusado",
+                      "o pedido foi aberto e o portal recusou os dados de "
+                      "contato. NAO reexecute: o atendimento ja existe.")
     evidence["contato_no_portal"] = {"relacao": contato["relacao"],
                                      "tipo_telefone": contato["tipo_telefone"],
                                      "codigo_tipo_telefone": codigo_tipo,
+                                     "recebe_whatsapp": bool(contato.get("recebe_whatsapp")),
+                                     "termo_exibido": corpo_sol["TermoExibido"],
                                      "termo_aceito": False}
+    return None
 
-    # ======================================================================
-    # 4. O CATÁLOGO DESTA APÓLICE — só existe depois do token
-    # ======================================================================
-    ritens = await sessao.itens_cobertos(seguradora)
+
+async def _fase_peca(ex: Execucao) -> Optional[JourneyResult]:
+    """O CATÁLOGO DESTA APÓLICE — só existe depois do token."""
+    sessao, evidence, dano, especificos = ex.sessao, ex.evidence, ex.dano, ex.especificos
+    ritens = await sessao.itens_cobertos(ex.seguradora)
     itens = ritens.get("json")
     if not ritens.get("ok") or not isinstance(itens, list) or not itens:
         _tela_desconhecida(evidence, onde=API.EP_ITENS_COBERTOS, resposta=ritens)
-        return parar("catalogo_indisponivel",
-                     "o pedido foi aberto e o catalogo de pecas desta apolice "
-                     "nao veio. NAO reexecute.")
+        return _parar(ex, "catalogo_indisponivel",
+                      "o pedido foi aberto e o catalogo de pecas desta apolice "
+                      "nao veio. NAO reexecute.")
 
     achado = casar_peca(dano.get("peca"), itens)
     if achado["item"] is None and especificos:
@@ -767,73 +1007,85 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
                 achado = refinado
                 break
     if achado["item"] is None:
-        return parar("peca_ambigua",
-                     "o pedido foi aberto e a peca precisa ser escolhida na "
-                     "lista real desta apolice: " + achado["motivo"],
-                     opcoes=_rotulos(achado["candidatos"] or itens, "Descricao"))
+        return _parar(ex, "peca_ambigua",
+                      "o pedido foi aberto e a peca precisa ser escolhida na "
+                      "lista real desta apolice: " + achado["motivo"],
+                      opcoes=_rotulos(achado["candidatos"] or itens, "Descricao"))
 
     item = achado["item"]
     codigo_item = str(item.get("CodigoItemCoberto") or "")
     partes = API.partes_do_item_coberto(codigo_item)
     if not partes:
-        return parar("item_com_formato_desconhecido",
-                     "o pedido foi aberto e a chave da peca veio num formato "
-                     "que nao conheco. NAO reexecute.")
+        return _parar(ex, "item_com_formato_desconhecido",
+                      "o pedido foi aberto e a chave da peca veio num formato "
+                      "que nao conheco. NAO reexecute.")
+    ex.codigo_item, ex.partes = codigo_item, partes
     evidence["peca"] = {"codigo": codigo_item, "categoria": partes["categoria"],
                         "descricao": str(item.get("Descricao") or "")}
+    return None
 
-    # ---- a causa do dano, da lista DAQUELA peça --------------------------
-    rmot = await sessao.motivos_dano(codigo_item)
+
+async def _fase_causa(ex: Execucao) -> Optional[JourneyResult]:
+    """A causa do dano, da lista DAQUELA peça."""
+    rmot = await ex.sessao.motivos_dano(ex.codigo_item)
     motivos = rmot.get("json")
     if not rmot.get("ok") or not isinstance(motivos, list) or not motivos:
-        _tela_desconhecida(evidence, onde=API.EP_MOTIVOS_DANO, resposta=rmot)
-        return parar("motivos_indisponiveis",
-                     "o pedido foi aberto e a lista de causas desta peca nao "
-                     "veio. NAO reexecute.")
-    causa = casar_causa(dano.get("como"), motivos)
+        _tela_desconhecida(ex.evidence, onde=API.EP_MOTIVOS_DANO, resposta=rmot)
+        return _parar(ex, "motivos_indisponiveis",
+                      "o pedido foi aberto e a lista de causas desta peca nao "
+                      "veio. NAO reexecute.")
+    causa = casar_causa(ex.dano.get("como"), motivos)
     if causa["item"] is None:
-        return parar("motivo_ambiguo",
-                     "o pedido foi aberto e a causa do dano precisa ser "
-                     "escolhida na lista real: " + causa["motivo"],
-                     opcoes=_rotulos(causa["candidatos"] or motivos,
-                                     "DescricaoObjetoCausa"))
-    codigo_causa = causa["item"].get("CodigoObjetoCausa")
+        return _parar(ex, "motivo_ambiguo",
+                      "o pedido foi aberto e a causa do dano precisa ser "
+                      "escolhida na lista real: " + causa["motivo"],
+                      opcoes=_rotulos(causa["candidatos"] or motivos,
+                                      "DescricaoObjetoCausa"))
+    ex.codigo_causa = causa["item"].get("CodigoObjetoCausa")
+    return None
 
-    # ---- as peças da LATARIA (multi-peça) — P1-5 -------------------------
-    servicos_lataria: List[Dict[str, Any]] = []
-    if partes["categoria"] == API.CATEGORIA_LATARIA:
-        rserv = await sessao.servicos_itens(
-            codigo_script=partes["codigo_script"],
-            codigo_tipo_script=partes["codigo_tipo_script"])
-        catalogo_pecas = rserv.get("json") if isinstance(rserv.get("json"), list) else []
-        pedidas = [p for p in (dano.get("pecas_lataria") or []) if str(p).strip()]
-        if not pedidas:
-            return parar("pecas_de_lataria_ausentes",
-                         "o pedido foi aberto e a lista de pecas amassadas nao "
-                         "veio. Quais pecas o reparo cobre?",
-                         opcoes=_rotulos(catalogo_pecas, "Descricao"))
-        for peca in pedidas:
-            casado = casar_unico(peca, catalogo_pecas, ("Descricao",))
-            if casado["item"] is None:
-                return parar("peca_de_lataria_ambigua",
-                             f"o pedido foi aberto e a peca {peca!r} precisa ser "
-                             "escolhida na lista real: " + casado["motivo"],
-                             opcoes=_rotulos(casado["candidatos"] or catalogo_pecas,
-                                             "Descricao"))
-            servicos_lataria.append({"CodigoServico": casado["item"].get("Codigo"),
-                                     "CodigoObjetoCausa": codigo_causa})
 
-    # ---- a cidade do serviço — e se ela tem REDE -------------------------
-    cidade_pedida = local.get("cidade_servico") or {}
+async def _fase_lataria(ex: Execucao) -> Optional[JourneyResult]:
+    """As peças da LATARIA (multi-peça) — P1-5."""
+    ex.servicos_lataria = []
+    if ex.partes.get("categoria") != API.CATEGORIA_LATARIA:
+        return None
+    rserv = await ex.sessao.servicos_itens(
+        codigo_script=ex.partes["codigo_script"],
+        codigo_tipo_script=ex.partes["codigo_tipo_script"])
+    catalogo_pecas = rserv.get("json") if isinstance(rserv.get("json"), list) else []
+    pedidas = [p for p in (ex.dano.get("pecas_lataria") or []) if str(p).strip()]
+    if not pedidas:
+        return _parar(ex, "pecas_de_lataria_ausentes",
+                      "o pedido foi aberto e a lista de pecas amassadas nao "
+                      "veio. Quais pecas o reparo cobre?",
+                      opcoes=_rotulos(catalogo_pecas, "Descricao"))
+    for peca in pedidas:
+        casado = casar_unico(peca, catalogo_pecas, ("Descricao",))
+        if casado["item"] is None:
+            return _parar(ex, "peca_de_lataria_ambigua",
+                          f"o pedido foi aberto e a peca {peca!r} precisa ser "
+                          "escolhida na lista real: " + casado["motivo"],
+                          opcoes=_rotulos(casado["candidatos"] or catalogo_pecas,
+                                          "Descricao"))
+        ex.servicos_lataria.append({"CodigoServico": casado["item"].get("Codigo"),
+                                    "CodigoObjetoCausa": ex.codigo_causa})
+    return None
+
+
+async def _fase_cidade(ex: Execucao) -> Optional[JourneyResult]:
+    """A cidade do serviço — e se ela tem REDE."""
+    sessao = ex.sessao
+    cidade_pedida = ex.local.get("cidade_servico") or {}
     uf = str(cidade_pedida.get("uf") or "").strip().upper()
     nome_cidade = str(cidade_pedida.get("cidade") or "").strip()
     rufs = await sessao.ufs()
     ufs_validas = {str(u.get("UF") or "").upper()
                    for u in (rufs.get("json") or []) if isinstance(u, dict)}
     if ufs_validas and uf not in ufs_validas:
-        return parar("uf_desconhecida",
-                     f"o pedido foi aberto e o estado {uf!r} nao esta na lista "
-                     "do portal.", opcoes=sorted(ufs_validas))
+        return _parar(ex, "uf_desconhecida",
+                      f"o pedido foi aberto e o estado {uf!r} nao esta na lista "
+                      "do portal.", opcoes=sorted(ufs_validas))
     rcid = await sessao.cidades(uf)
     cidades = rcid.get("json") if isinstance(rcid.get("json"), list) else []
     # 🔴 CIDADE POR IGUALDADE, e so. 📊 O red team mediu o que a continencia
@@ -842,43 +1094,49 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     # um vidraceiro esperando numa cidade onde o carro nao esta.
     achada_cidade = casar_igual(nome_cidade, cidades, ("Nome", "Cidade"))
     if achada_cidade["item"] is None:
-        return parar("cidade_ambigua",
-                     f"o pedido foi aberto e a cidade {nome_cidade!r} nao casou "
-                     "com uma da lista do portal: " + achada_cidade["motivo"],
-                     opcoes=_rotulos(achada_cidade["candidatos"], "Nome"))
+        return _parar(ex, "cidade_ambigua",
+                      f"o pedido foi aberto e a cidade {nome_cidade!r} nao casou "
+                      "com uma da lista do portal: " + achada_cidade["motivo"],
+                      opcoes=_rotulos(achada_cidade["candidatos"], "Nome"))
     codigo_cidade = achada_cidade["item"].get("Codigo")
 
     rrede = await sessao.cidade_atendida(
-        chassi=chassi, codigo_cidade=codigo_cidade,
-        codigo_script=partes["codigo_script"],
-        codigo_tipo_script=partes["codigo_tipo_script"])
+        chassi=ex.chassi, codigo_cidade=codigo_cidade,
+        codigo_script=ex.partes["codigo_script"],
+        codigo_tipo_script=ex.partes["codigo_tipo_script"])
     rede = rrede.get("json")
     if not rrede.get("ok") or not isinstance(rede, dict) or not rede.get("Codigo"):
         # 🔴 Esta é uma parada que SÓ dá para descobrir depois da fronteira A:
         # a consulta exige o token, que nasce no `POST /atendimentos`.
-        _tela_desconhecida(evidence, onde=API.EP_CLIENTES_CIDADES, resposta=rrede)
-        return parar("cidade_sem_rede",
-                     f"o pedido foi aberto e {nome_cidade}/{uf} nao tem rede "
-                     "para esta peca. Ha outra cidade onde o servico possa ser "
-                     "feito?")
+        _tela_desconhecida(ex.evidence, onde=API.EP_CLIENTES_CIDADES, resposta=rrede)
+        return _parar(ex, "cidade_sem_rede",
+                      f"o pedido foi aberto e {nome_cidade}/{uf} nao tem rede "
+                      "para esta peca. Ha outra cidade onde o servico possa ser "
+                      "feito?")
+    ex.codigo_cidade = codigo_cidade
+    return None
 
-    # ======================================================================
-    # 5. A FRONTEIRA MATERIAL DEPENDE DA CATEGORIA — P0-3
-    # ======================================================================
+
+async def _fase_materializar(ex: Execucao) -> Optional[JourneyResult]:
+    """A FRONTEIRA MATERIAL DEPENDE DA CATEGORIA — P0-3. PATCH, questionário, reparo."""
+    from portal_worker.guardrails import AcaoBloqueada, MATERIAL_SIDE_EFFECT
+
+    sessao, evidence, guard, estado = ex.sessao, ex.evidence, ex.guard, ex.estado
+    especificos = ex.especificos
     # 🔴 Nenhuma constante fixa aqui: a fronteira é CALCULADA a partir da peça.
-    fronteira_b = ST.fronteira_materializar_de(codigo_item)
-    evidence["fronteira_material"] = {"peca": codigo_item,
-                                      "categoria": partes["categoria"],
+    fronteira_b = ST.fronteira_materializar_de(ex.codigo_item)
+    evidence["fronteira_material"] = {"peca": ex.codigo_item,
+                                      "categoria": ex.partes["categoria"],
                                       "fronteira": fronteira_b}
 
     corpo_patch = API.corpo_de_atualizacao(
-        codigo_item_coberto=codigo_item,
-        codigo_cidade=codigo_cidade,
-        codigo_objeto_causa=codigo_causa,
-        avaliacao_dano=relato,
-        perimetro_dano=perimetro,
-        cep=str(local.get("cep") or params.get("cep") or ""),
-        servicos_martelinho_lataria=servicos_lataria,
+        codigo_item_coberto=ex.codigo_item,
+        codigo_cidade=ex.codigo_cidade,
+        codigo_objeto_causa=ex.codigo_causa,
+        avaliacao_dano=ex.relato,
+        perimetro_dano=ex.perimetro,
+        cep=str(ex.local.get("cep") or ex.params.get("cep") or ""),
+        servicos_martelinho_lataria=ex.servicos_lataria,
         item_removido=especificos.get("item_removido"),
         evento_composto=especificos.get("evento_composto"),
         polimento_farol=especificos.get("polimento_farol"),
@@ -892,8 +1150,8 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
             await guard.before(action=ST.FRONTEIRA_ATUALIZAR,
                                action_class=MATERIAL_SIDE_EFFECT, origem="journey")
         except AcaoBloqueada as e:
-            return parar("pronto_para_materializar",
-                         f"os dados estao completos, falta autorizacao ({e})")
+            return _parar(ex, "pronto_para_materializar",
+                          f"os dados estao completos, falta autorizacao ({e})")
 
     rpatch = await sessao.atualizar_atendimento(corpo_patch)
     if not rpatch.get("ok"):
@@ -902,107 +1160,111 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
                              motivo=f"PATCH /atendimentos devolveu {rpatch.get('status')}")
             await guard.incerto(motivo="PATCH /atendimentos sem sucesso")
         _tela_desconhecida(evidence, onde=API.EP_ATENDIMENTOS, resposta=rpatch)
-        return parar("maybe_committed" if fronteira_b == ST.FRONTEIRA_ATUALIZAR
-                     else "patch_recusado",
-                     "gravei a peca e o local e nao confirmei. NAO reexecute.")
+        return _parar(ex, "maybe_committed" if fronteira_b == ST.FRONTEIRA_ATUALIZAR
+                      else "patch_recusado",
+                      "gravei a peca e o local e nao confirmei. NAO reexecute.")
 
-    # ======================================================================
-    # 6. O QUESTIONÁRIO E O REPARO — só para vidraçaria
-    # ======================================================================
-    reparo_decidido: Optional[bool] = None
-    if fronteira_b == ST.FRONTEIRA_MATERIALIZAR:
-        resultado = await QZ.rodar_questionario(
-            sessao,
-            respostas_do_segurado=dict(especificos),
-            relato=relato)
-        evidence["questionario"] = resultado.para_evidencia()
+    if fronteira_b != ST.FRONTEIRA_MATERIALIZAR:
+        return None
 
-        if not resultado.completo:
-            estado.transitar(ST.PROTOCOLO_CRIADO, motivo=resultado.motivo)
-            pendente = resultado.pergunta_pendente
-            return parar("questionario_incompleto",
-                         "o pedido foi aberto e o questionario parou: "
-                         + resultado.motivo,
-                         pergunta=pendente.texto if pendente else "",
-                         opcoes=pendente.textos_das_opcoes if pendente else [])
+    # ---- O QUESTIONÁRIO E O REPARO — só para vidraçaria ------------------
+    resultado = await QZ.rodar_questionario(
+        sessao,
+        respostas_do_segurado=dict(especificos),
+        relato=ex.relato)
+    evidence["questionario"] = resultado.para_evidencia()
 
-        # ---- `regras-reparo` é LEITURA e roda ANTES da fronteira B --------
-        # 🔴 É esta ordem que permite descobrir que falta a decisão do segurado
-        # sem ter materializado nada.
-        rreg = await sessao.regras_reparo(resultado.respostas)
-        oferece = bool((rreg.get("json") or {}).get("ExibirDialogDeReparo")) \
-            if isinstance(rreg.get("json"), dict) else False
-        evidence["reparo"] = {"portal_oferece": oferece,
-                              "previsto_pelo_questionario": resultado.reparo_previsto}
-        if oferece:
-            dito = _norm(especificos.get("aceita_reparo"))
-            if dito in ("sim", "s", "aceito", "true"):
-                reparo_decidido = True
-            elif dito in ("nao", "n", "recuso", "false"):
-                reparo_decidido = False
-            else:
-                # 🔴 PARA AQUI, antes da fronteira B: nada materializado, e a
-                # decisão é do segurado. 💭 "A seguradora pode consertar sem
-                # trocar o vidro — leva uns 30 minutos e costuma sair mais
-                # barato para você. Quer tentar o reparo?"
-                return parar("decidir_reparo",
-                             "o portal ofereceu REPARO em vez de troca, e essa "
-                             "escolha e do segurado. Nada foi materializado.",
-                             opcoes=["tentar o reparo", "trocar a peca"])
+    if not resultado.completo:
+        estado.transitar(ST.PROTOCOLO_CRIADO, motivo=resultado.motivo)
+        pendente = resultado.pergunta_pendente
+        return _parar(ex, "questionario_incompleto",
+                      "o pedido foi aberto e o questionario parou: "
+                      + resultado.motivo,
+                      pergunta=pendente.texto if pendente else "",
+                      opcoes=pendente.textos_das_opcoes if pendente else [])
 
-        # ---- FRONTEIRA B ------------------------------------------------
-        guard.acao_material_esperada = ST.FRONTEIRA_MATERIALIZAR
-        try:
-            await guard.before(action=ST.FRONTEIRA_MATERIALIZAR,
-                               action_class=MATERIAL_SIDE_EFFECT, origem="journey")
-        except AcaoBloqueada as e:
-            return parar("pronto_para_materializar",
-                         f"questionario completo, falta autorizacao para gravar ({e})")
+    # ---- `regras-reparo` é LEITURA e roda ANTES da fronteira B -----------
+    # 🔴 É esta ordem que permite descobrir que falta a decisão do segurado
+    # sem ter materializado nada.
+    rreg = await sessao.regras_reparo(resultado.respostas)
+    oferece = bool((rreg.get("json") or {}).get("ExibirDialogDeReparo")) \
+        if isinstance(rreg.get("json"), dict) else False
+    evidence["reparo"] = {"portal_oferece": oferece,
+                          "previsto_pelo_questionario": resultado.reparo_previsto}
+    if oferece:
+        dito = _norm(especificos.get("aceita_reparo"))
+        if dito in ("sim", "s", "aceito", "true"):
+            ex.reparo_decidido = True
+        elif dito in ("nao", "n", "recuso", "false"):
+            ex.reparo_decidido = False
+        else:
+            # 🔴 PARA AQUI, antes da fronteira B: nada materializado, e a
+            # decisão é do segurado. 💭 "A seguradora pode consertar sem
+            # trocar o vidro — leva uns 30 minutos e costuma sair mais
+            # barato para você. Quer tentar o reparo?"
+            return _parar(ex, "decidir_reparo",
+                          "o portal ofereceu REPARO em vez de troca, e essa "
+                          "escolha e do segurado. Nada foi materializado.",
+                          opcoes=["tentar o reparo", "trocar a peca"])
 
-        rq = await sessao.gravar_questionario(resultado.respostas)
-        if not rq.get("ok"):
-            estado.transitar(ST.DESCONHECIDO,
-                             motivo=f"POST /questionarios devolveu {rq.get('status')}")
-            await guard.incerto(motivo="POST /questionarios sem sucesso")
-            return parar("maybe_committed",
-                         "gravei o questionario e nao confirmei. NAO reexecute.")
+    # ---- FRONTEIRA B ----------------------------------------------------
+    guard.acao_material_esperada = ST.FRONTEIRA_MATERIALIZAR
+    try:
+        await guard.before(action=ST.FRONTEIRA_MATERIALIZAR,
+                           action_class=MATERIAL_SIDE_EFFECT, origem="journey")
+    except AcaoBloqueada as e:
+        return _parar(ex, "pronto_para_materializar",
+                      f"questionario completo, falta autorizacao para gravar ({e})")
 
-        if reparo_decidido is not None:
-            rrep = await sessao.alterar_reparo(reparo_decidido)
-            evidence["reparo"] = {**evidence.get("reparo", {}),
-                                  "gravado": bool(rrep.get("ok")),
-                                  "valor": reparo_decidido}
-            if not rrep.get("ok"):
-                # 🔴 RED B7: a decisao do segurado entre REPARAR e TROCAR nao
-                # foi gravada, e as duas coisas custam valores diferentes a ele.
-                # Seguir calado entregaria um desfecho que fala de reparo sobre
-                # um pedido que o portal registrou como troca (ou vice-versa).
-                # O numero de 8 digitos JA nasceu (o POST /questionarios
-                # passou): uma leitura barata o traz, e e ele que o segurado
-                # anota. Parar sem o numero seria fazer a pessoa parar duas vezes.
-                _rnum = await sessao.ler_atendimento()
-                _ag = _rnum.get("json") if isinstance(_rnum.get("json"), dict) else {}
-                _cod = str(_ag.get("CodigoAtendimento") or "").strip()
-                if _cod:
-                    estado.codigo_atendimento = _cod
-                    evidence["protocolo"] = _cod
-                    evidence["protocolo_do_atendimento"] = _cod
-                estado.transitar(ST.ATENDIMENTO_MATERIALIZADO,
-                                 motivo="alterar-reparo nao confirmou")
-                _tela_desconhecida(evidence, onde=API.EP_ALTERAR_REPARO, resposta=rrep)
-                return parar("reparo_nao_gravado",
-                             "o pedido esta aberto e a escolha entre reparar e "
-                             "trocar nao foi confirmada pela seguradora.")
+    rq = await sessao.gravar_questionario(resultado.respostas)
+    if not rq.get("ok"):
+        estado.transitar(ST.DESCONHECIDO,
+                         motivo=f"POST /questionarios devolveu {rq.get('status')}")
+        await guard.incerto(motivo="POST /questionarios sem sucesso")
+        return _parar(ex, "maybe_committed",
+                      "gravei o questionario e nao confirmei. NAO reexecute.")
 
-    # ======================================================================
-    # 7. O DESFECHO — quem decide é o PORTAL, e ele diz por escrito
-    # ======================================================================
-    ropc = await sessao.opcoes_de_agendamento()
+    if ex.reparo_decidido is not None:
+        rrep = await sessao.alterar_reparo(ex.reparo_decidido)
+        evidence["reparo"] = {**evidence.get("reparo", {}),
+                              "gravado": bool(rrep.get("ok")),
+                              "valor": ex.reparo_decidido}
+        if not rrep.get("ok"):
+            # 🔴 RED B7: a decisao do segurado entre REPARAR e TROCAR nao
+            # foi gravada, e as duas coisas custam valores diferentes a ele.
+            # Seguir calado entregaria um desfecho que fala de reparo sobre
+            # um pedido que o portal registrou como troca (ou vice-versa).
+            # O numero de 8 digitos JA nasceu (o POST /questionarios
+            # passou): uma leitura barata o traz, e e ele que o segurado
+            # anota. Parar sem o numero seria fazer a pessoa parar duas vezes.
+            _rnum = await sessao.ler_atendimento()
+            _ag = _rnum.get("json") if isinstance(_rnum.get("json"), dict) else {}
+            _cod = str(_ag.get("CodigoAtendimento") or "").strip()
+            if _cod:
+                estado.codigo_atendimento = _cod
+                evidence["protocolo"] = _cod
+                evidence["protocolo_do_atendimento"] = _cod
+            estado.transitar(ST.ATENDIMENTO_MATERIALIZADO,
+                             motivo="alterar-reparo nao confirmou")
+            _tela_desconhecida(evidence, onde=API.EP_ALTERAR_REPARO, resposta=rrep)
+            return _parar(ex, "reparo_nao_gravado",
+                          "o pedido esta aberto e a escolha entre reparar e "
+                          "trocar nao foi confirmada pela seguradora.")
+    return None
+
+
+async def fase_desfecho(ex: Execucao, *,
+                        ropc: Optional[Dict[str, Any]] = None) -> JourneyResult:
+    """O DESFECHO — quem decide é o PORTAL, e ele diz por escrito."""
+    sessao, evidence, guard = ex.sessao, ex.evidence, ex.guard
+    if ropc is None:
+        ropc = await sessao.opcoes_de_agendamento()
     if not ropc.get("ok") or not isinstance(ropc.get("json"), dict):
         _tela_desconhecida(evidence, onde=API.EP_OPCOES_DISPONIVEIS, resposta=ropc)
-        return parar("roteador_ilegivel",
-                     "o pedido existe e o portal nao disse o desfecho. NAO "
-                     "reexecute: consulte o atendimento.")
+        return _parar(ex, "roteador_ilegivel",
+                      "o pedido existe e o portal nao disse o desfecho. NAO "
+                      "reexecute: consulte o atendimento.")
+    opcoes = ropc["json"]
 
     # 🔴 O `GET /atendimentos` vem DEPOIS de `opcoes-disponiveis`, e a ordem é
     # o ponto inteiro: 📊 o `ScriptFinalizacao` reescreve a si mesmo, e só aqui
@@ -1015,18 +1277,57 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
         # cujo estado ninguem leu.
         _tela_desconhecida(evidence, onde=API.EP_ATENDIMENTOS, resposta=rg)
         evidence["desfecho"] = {"tipo": ST.DESFECHO_DESCONHECIDO,
-                                "roteador": ropc.get("json") or {},
+                                "roteador": opcoes,
                                 "motivo": "GET /atendimentos nao respondeu depois "
                                           "de opcoes-disponiveis"}
-        return parar("desfecho_ilegivel",
-                     "o pedido existe e eu nao consegui ler o que a seguradora "
-                     "decidiu. NAO reexecute: consulte o atendimento.")
-    agregado = rg.get("json")
-    estado = ST.ler_estado_do_agregado(agregado, tinha_protocolo=bool(protocolo))
-    estado.numero_protocolo = protocolo
+        return _parar(ex, "desfecho_ilegivel",
+                      "o pedido existe e eu nao consegui ler o que a seguradora "
+                      "decidiu. NAO reexecute: consulte o atendimento.")
+    agregado = rg["json"]
+    desfecho = ST.ler_desfecho(opcoes, agregado)
+    _absorver_agregado(ex, agregado, desfecho)
+    if ex.estado.codigo_atendimento:
+        await guard.confirmado(receipt=ex.estado.codigo_atendimento)
 
-    desfecho = ST.ler_desfecho(ropc.get("json"), agregado)
-    desfecho["reparo"] = reparo_decidido
+    if desfecho["tipo"] == ST.DESFECHO_DESCONHECIDO:
+        _tela_desconhecida(evidence, onde=API.EP_OPCOES_DISPONIVEIS, resposta=ropc)
+        return _parar(ex, "desfecho_desconhecido",
+                      "o pedido existe e o portal decidiu por um caminho que eu "
+                      "nao sei ler: " + str(desfecho.get("motivo") or ""))
+
+    # ---- agenda: ler lojas, distância, dias e horários (LEITURA) — P1-1 ---
+    if desfecho["tipo"] == ST.DESFECHO_AGENDA:
+        cache = await _enriquecer_agenda(sessao, desfecho, agregado=agregado,
+                                         codigo_atendimento=ex.estado.codigo_atendimento)
+        # ---- A4: a preferência do segurado já veio → agenda NESTA sessão --
+        pref = preferencia_de_agenda(ex.especificos)
+        if pref is not None:
+            feito = await _agendar_pela_preferencia(ex, desfecho, cache, pref)
+            if feito is not None:
+                return feito
+
+    # ---- A5: ramo 7 — prioridade + preferência de vistoria ---------------
+    if desfecho["tipo"] == ST.DESFECHO_VISTORIA_OPCIONAL:
+        return await _responder_vistoria_opcional(ex, desfecho)
+
+    # ---- conclusão: o COMPROVANTE — P1-5 --------------------------------
+    if desfecho["tipo"] in (ST.DESFECHO_LOJA_DIRETA, ST.DESFECHO_ANALISTA) \
+            and ex.estado.codigo_atendimento:
+        rf = await sessao.emitir_formalizado(ex.estado.codigo_atendimento)
+        desfecho["comprovante_emitido"] = bool(rf.get("ok"))
+
+    return await _concluir(ex, desfecho, agregado)
+
+
+def _absorver_agregado(ex: Execucao, agregado: Dict[str, Any],
+                       desfecho: Dict[str, Any]) -> None:
+    """O agregado é a verdade: estado, número, franquia e link saem DELE."""
+    evidence = ex.evidence
+    ex.agregado = agregado
+    estado = ST.ler_estado_do_agregado(agregado, tinha_protocolo=bool(ex.protocolo))
+    estado.numero_protocolo = ex.protocolo
+    ex.estado = estado
+    desfecho["reparo"] = ex.reparo_decidido
     # 🔴 O NUMERO NAO PODE SUMIR NO CAMINHO DA AGENDA.
     # 📊 No HAR do vidro de porta nao ha `GET /atendimentos` depois de
     # `opcoes-disponiveis` — o agregado que o replay devolve e o de ANTES, e ele
@@ -1038,70 +1339,139 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
             evidence.get("protocolo_do_atendimento")
             or (estado.codigo_atendimento if estado.codigo_atendimento else "") or "")
     evidence["desfecho"] = desfecho
-
     if estado.codigo_atendimento:
         evidence["protocolo_do_atendimento"] = estado.codigo_atendimento
-        await guard.confirmado(receipt=estado.codigo_atendimento)
         # 📊 O número que a tela mostra e que o segurado anota é este.
         evidence["protocolo"] = estado.codigo_atendimento
-    if desfecho["franquias"]:
+    if desfecho.get("franquias"):
         evidence["franquia"] = desfecho["franquias"][0].get("valor", "")
     vistoria = API.vistoria_do_atendimento(agregado)
     if vistoria.get("tem_link"):
         evidence["link_vistoria"] = vistoria["link"]
 
-    if desfecho["tipo"] == ST.DESFECHO_DESCONHECIDO:
-        _tela_desconhecida(evidence, onde=API.EP_OPCOES_DISPONIVEIS, resposta=ropc)
-        return parar("desfecho_desconhecido",
-                     "o pedido existe e o portal decidiu por um caminho que eu "
-                     "nao sei ler: " + str(desfecho.get("motivo") or ""))
 
-    # ---- agenda: ler lojas, distância, dias e horários (LEITURA) — P1-1 ---
-    if desfecho["tipo"] == ST.DESFECHO_AGENDA:
-        await _enriquecer_agenda(sessao, desfecho, agregado=agregado,
-                                 codigo_atendimento=estado.codigo_atendimento)
-
-    # ---- conclusão: o COMPROVANTE — P1-5 --------------------------------
-    if desfecho["tipo"] in (ST.DESFECHO_LOJA_DIRETA, ST.DESFECHO_ANALISTA) \
-            and estado.codigo_atendimento:
-        rf = await sessao.emitir_formalizado(estado.codigo_atendimento)
-        desfecho["comprovante_emitido"] = bool(rf.get("ok"))
-
-    estado.transitar(ST.AGUARDANDO_ESCOLHA if desfecho["tipo"] == ST.DESFECHO_AGENDA
+async def _concluir(ex: Execucao, desfecho: Dict[str, Any],
+                    agregado: Dict[str, Any]) -> JourneyResult:
+    """O `done` — com a etapa da continuação dizendo o que ainda cabe."""
+    evidence, estado = ex.evidence, ex.estado
+    evidence["desfecho"] = desfecho
+    tipo = desfecho["tipo"]
+    estado.transitar(ST.AGUARDANDO_ESCOLHA if tipo == ST.DESFECHO_AGENDA
                      else ST.ATENDIMENTO_MATERIALIZADO,
                      motivo=str(desfecho.get("motivo") or ""))
+    if tipo == ST.DESFECHO_AGENDA:
+        _marcar_continuacao(ex, etapa=ST.ETAPA_AGENDAR, acao="agendar",
+                            motivo="o portal abriu a agenda; falta o segurado "
+                                   "escolher loja, dia e horario")
+    else:
+        _marcar_continuacao(ex, etapa=ST.ETAPA_CONCLUIDO, acao="", possivel=False,
+                            motivo=f"o portal concluiu ({tipo}); nada a continuar")
     evidence["vidros_estado"] = estado.para_evidencia()
-    evidence["api_first"] = {"usado": True, **sessao.resumo_para_evidencia()}
-    await _checkpoint(params, {"vidros_estado": estado.para_evidencia(),
-                               "desfecho": desfecho})
-
+    evidence["api_first"] = {"usado": True, **ex.sessao.resumo_para_evidencia()}
+    await _checkpoint(ex.params, {"vidros_estado": estado.para_evidencia(),
+                                  "desfecho": desfecho,
+                                  "continuacao": evidence.get("continuacao") or {}})
+    vistoria = API.vistoria_do_atendimento(agregado)
+    captured: Dict[str, Any] = {
+        "business_state": estado.estado,
+        "protocolo": estado.codigo_atendimento,
+        "tipo": tipo,
+        "franquia": (desfecho.get("franquias") or [{}])[0].get("valor", ""),
+        "link_vistoria": vistoria.get("link", ""),
+        "customer_choice_needed": tipo == ST.DESFECHO_AGENDA,
+    }
+    if desfecho.get("agendamento"):
+        captured["agendamento"] = desfecho["agendamento"]
     return JourneyResult(
         status="done",
-        captured={"business_state": estado.estado,
-                  "protocolo": estado.codigo_atendimento,
-                  "tipo": desfecho["tipo"],
-                  "franquia": (desfecho["franquias"] or [{}])[0].get("valor", ""),
-                  "link_vistoria": vistoria.get("link", ""),
-                  "customer_choice_needed": desfecho["tipo"] == ST.DESFECHO_AGENDA},
+        captured=captured,
         message=("atendimento aberto"
                  + (f" — n {estado.codigo_atendimento}" if estado.codigo_atendimento else "")
-                 + f" · desfecho: {desfecho['tipo']}"))
+                 + f" · desfecho: {tipo}"))
+
+
+# --------------------------------------------------------------------------
+# 🔴 A AGENDA — ler (A3), agendar pela preferência (A4) e pela escolha (A2)
+# --------------------------------------------------------------------------
+# Tetos de leitura. 📊 A sessão tem 150 chamadas; a abertura medida usa ~40.
+# 6 lojas × (distância + datas + 5 dias) = 42 no pior caso, e a reserva garante
+# que o POST, a confirmação e o comprovante nunca fiquem sem chamada.
+MAX_DIAS_LIDOS_POR_LOJA = 5
+DIAS_COM_HORARIO_POR_LOJA = 3
+MAX_DIAS_PELA_PREFERENCIA = 10
+RESERVA_DE_CHAMADAS = 15
+PERIODOS = ("manha", "tarde", "qualquer")
+
+
+def _datas_publicadas(meses: Any, ano: int) -> List[Tuple[str, str]]:
+    """`[{"Mes": 9, "Dias": [21, 22]}]` → `[("21/09", "2026-09-21"), …]`, em ordem."""
+    saida: List[Tuple[str, str]] = []
+    for m in (meses or []):
+        if not isinstance(m, dict):
+            continue
+        try:
+            mes = int(m.get("Mes"))
+        except (TypeError, ValueError):
+            continue
+        a = _ano_do_mes(mes, ano)
+        for d in (m.get("Dias") or []):
+            try:
+                dia = int(d)
+                date(a, mes, dia)
+            except (TypeError, ValueError):
+                continue
+            saida.append((f"{dia:02d}/{mes:02d}", f"{a}-{mes:02d}-{dia:02d}"))
+    return sorted(set(saida), key=lambda t: t[1])
+
+
+async def _ler_blocos(sessao: Any, loja: Dict[str, Any], data_iso_: str,
+                      cache: Dict[Any, Any], *, encaixe_ceven: Any = None
+                      ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Os blocos LIVRES de uma loja num dia (regra do bundle), com cache."""
+    chave = (str(loja.get("codigo_cliente")), data_iso_)
+    if chave in cache:
+        return cache[chave]["livres"], cache[chave]["resposta"]
+    r = await sessao.horarios_disponiveis(
+        codigo_cliente=loja.get("codigo_cliente"),
+        codigo_produto=loja.get("codigo_produto"),
+        data_agendamento=data_iso_)
+    resp = r.get("json") if r.get("ok") and isinstance(r.get("json"), dict) else {}
+    livres = API.blocos_livres(
+        resp, encaixe_ceven=encaixe_ceven,
+        bloqueio_por_peca_nao_medido=bool(loja.get("bloqueio_por_peca_nao_medido"))
+    ) if resp else []
+    cache[chave] = {"livres": livres, "resposta": resp}
+    return livres, resp
+
+
+def _pode_ler_mais(sessao: Any) -> bool:
+    from portal_worker.journeys.vidros_sessao import MAX_CHAMADAS
+
+    return int(getattr(sessao, "chamadas", 0) or 0) < MAX_CHAMADAS - RESERVA_DE_CHAMADAS
 
 
 async def _enriquecer_agenda(sessao: Any, desfecho: Dict[str, Any], *,
                              agregado: Dict[str, Any],
-                             codigo_atendimento: str) -> None:
-    """Distância, dias e horários de cada loja. **Só leitura.**
+                             codigo_atendimento: str) -> Dict[Any, Any]:
+    """Distância, dias e horários LIVRES de cada loja. **Só leitura.**
 
     🔴 Isto é o que elimina a razão de sortear loja. 📊 `adaptive.py` explica,
     com três motivos medidos, por que o robô não escolhe: *"a lista de lojas só
     existe NESTA tela. O segurado nunca a viu."* Aqui a lista passa a existir na
-    conversa — e a decisão continua sendo dele.
+    conversa — e a decisão continua sendo dele (ou da preferência que ele deu).
 
     ⚠️ `POST /lojas/consultar-distancias` é POST e **não** é escrita de negócio:
     calcula rota. Não passa pelo guard como fronteira material.
+
+    🔴 EXTRA-001.10.1 — o contrato A→C de `lojas[].horarios` passa a ser
+    `{"DD/MM": ["HH:MM", …]}`, só com blocos LIVRES (normal ou encaixe, regra
+    do bundle em `API.blocos_livres`). 📊 Antes era `{"AAAA-MM-DD": [blocos
+    crus]}` — dict do portal que nenhuma mensagem pode imprimir. O MODO de cada
+    bloco (normal × encaixe) fica no cache devolvido, em memória, para o POST.
     """
-    ano = datetime.now().year
+    ano = hoje().year
+    cache: Dict[Any, Any] = {}
+    encaixe_ceven = agregado.get("EncaixeCeven") if isinstance(agregado, dict) else None
     for loja in desfecho.get("lojas", [])[:MAX_LOJAS_CONSULTADAS]:
         rd = await sessao.consultar_distancia({
             "CodigoAtendimento": str(codigo_atendimento or ""),
@@ -1128,21 +1498,320 @@ async def _enriquecer_agenda(sessao: Any, desfecho: Dict[str, Any], *,
         # 📊 O red team mediu a mensagem ao segurado com `[{'mes': 8, 'dias':
         # [15, 17]}]` dentro dela — chave, colchete e tudo. Quem le e uma pessoa.
         loja["dias"] = _dias_legiveis(meses, ano)
+        publicadas = _datas_publicadas(meses, ano)
+        cache[("datas", str(loja.get("codigo_cliente")))] = publicadas
+        loja["horarios"] = {}
+        lidos = 0
+        for dd_mm, iso in publicadas:
+            if (lidos >= MAX_DIAS_LIDOS_POR_LOJA
+                    or len(loja["horarios"]) >= DIAS_COM_HORARIO_POR_LOJA
+                    or not _pode_ler_mais(sessao)):
+                break
+            livres, resp = await _ler_blocos(sessao, loja, iso, cache,
+                                             encaixe_ceven=encaixe_ceven)
+            lidos += 1
+            if resp:
+                loja["tempo_servico"] = resp.get("TempoServico")
+                loja["tempo_permanencia"] = resp.get("TempoPermanencia")
+            # 📊 Dia com `Blocos` vazio (LATERAL [044]) ou todo lotado não entra:
+            # dizer "sem horários" é o que a lista de dias já diz sozinha.
+            if livres:
+                loja["horarios"][dd_mm] = [b["horario"] for b in livres]
+    return cache
 
-        primeira = _primeira_data(meses, ano)
-        if not primeira:
+
+def preferencia_de_agenda(especificos: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """`especificos.preferencia_agenda` (contrato C→A) validada, ou `None`.
+
+    `{"a_partir_de": "DD/MM/AAAA", "periodo": "manha"|"tarde"|"qualquer"}`.
+    ⛔ Período fora dos três → `None`: agendar por um período adivinhado é
+    marcar o dia de alguém no horário em que ele disse que não pode.
+    """
+    bruto = (especificos or {}).get("preferencia_agenda")
+    if not isinstance(bruto, dict):
+        return None
+    periodo = _norm(bruto.get("periodo") or "qualquer")
+    if periodo not in PERIODOS:
+        return None
+    a_partir = data_iso(bruto.get("a_partir_de")) if bruto.get("a_partir_de") else ""
+    if bruto.get("a_partir_de") and not a_partir:
+        return None
+    return {"a_partir_de": a_partir, "periodo": periodo}
+
+
+def _km(texto: Any) -> float:
+    """📊 `"9,2 km"` (LATERAL [040]) → 9.2. Sem número → infinito (vai por último)."""
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*(km|m)\b", str(texto or "").lower())
+    if not m:
+        return float("inf")
+    valor = float(m.group(1).replace(",", "."))
+    return valor / 1000.0 if m.group(2) == "m" else valor
+
+
+async def _agendar_pela_preferencia(ex: Execucao, desfecho: Dict[str, Any],
+                                    cache: Dict[Any, Any],
+                                    pref: Dict[str, Any]) -> Optional[JourneyResult]:
+    """A4 — a loja MAIS PRÓXIMA, o 1º horário que casa. `None` = não casou.
+
+    🔴 A loja é a mais próxima pela distância que o PORTAL calculou (empate →
+    a ordem em que o portal as listou). A data é a primeira publicada ≥ o
+    "a partir de" do segurado e ≥ hoje, com bloco livre no período dele.
+    Sem casamento em `MAX_DIAS_PELA_PREFERENCIA` dias, nada sai: o desfecho
+    continua `agenda`, com as opções, e a conversa pergunta.
+    """
+    candidatas = [(i, l) for i, l in enumerate(desfecho.get("lojas") or [])
+                  if l.get("tem_agenda") and not l.get("bloqueio_por_peca_nao_medido")]
+    registro: Dict[str, Any] = {"periodo": pref["periodo"],
+                                "a_partir_de": pref["a_partir_de"], "casou": False}
+    ex.evidence["preferencia_agenda"] = registro
+    if not candidatas:
+        registro["motivo"] = "nenhuma loja com agenda publicada"
+        return None
+    _, loja = min(candidatas, key=lambda t: (_km(t[1].get("distancia")), t[0]))
+    inicio = max(pref["a_partir_de"] or "", hoje().isoformat())
+    publicadas = cache.get(("datas", str(loja.get("codigo_cliente")))) or []
+    encaixe_ceven = ex.agregado.get("EncaixeCeven") if ex.agregado else None
+    lidos = 0
+    for _, iso in publicadas:
+        if iso < inicio:
             continue
-        rhor = await sessao.horarios_disponiveis(
-            codigo_cliente=loja.get("codigo_cliente"),
-            codigo_produto=loja.get("codigo_produto"),
-            data_agendamento=primeira)
-        horarios = rhor.get("json") if isinstance(rhor.get("json"), dict) else {}
-        # 📊 `Blocos` veio **vazio** na única captura. Lista vazia não é erro: é
-        # o que a loja publicou naquele dia, e dizer "sem horários para o dia X"
-        # é mais honesto do que inventar um.
-        loja["horarios"] = {primeira: [b for b in (horarios.get("Blocos") or [])]}
-        loja["tempo_servico"] = horarios.get("TempoServico")
-        loja["tempo_permanencia"] = horarios.get("TempoPermanencia")
+        if lidos >= MAX_DIAS_PELA_PREFERENCIA or not _pode_ler_mais(ex.sessao):
+            break
+        lidos += 1
+        livres, resp = await _ler_blocos(ex.sessao, loja, iso, cache,
+                                         encaixe_ceven=encaixe_ceven)
+        casam = [b for b in livres
+                 if pref["periodo"] == "qualquer" or _norm(b.get("turno")) == pref["periodo"]]
+        if casam:
+            registro.update(casou=True, dias_lidos=lidos)
+            return await _agendar_no_portal(ex, loja, iso, casam[0], resp)
+    registro.update(dias_lidos=lidos,
+                    motivo="nenhum horario livre casou com a preferencia")
+    return None
+
+
+async def agendar_escolha(ex: Execucao, escolha: Dict[str, Any]) -> JourneyResult:
+    """A2/A3 — a CONTINUAÇÃO com a escolha do segurado: loja, dia, horário.
+
+    🔴 Tudo por IGUALDADE contra o que o portal publica AGORA — não contra o
+    que publicou quando a lista foi mostrada. Loja pelo `CodigoCliente`, dia
+    `DD/MM` na lista de datas, horário `HH:MM` nos blocos livres daquele dia.
+    Não casou → `horario_indisponivel` com as opções REAIS de agora, e nenhuma
+    escrita sai.
+    """
+    ropc = await ex.sessao.opcoes_de_agendamento()
+    if not ropc.get("ok") or not isinstance(ropc.get("json"), dict):
+        _tela_desconhecida(ex.evidence, onde=API.EP_OPCOES_DISPONIVEIS, resposta=ropc)
+        return _parar(ex, "roteador_ilegivel",
+                      "o pedido existe e o portal nao disse o desfecho. NAO "
+                      "reexecute: consulte o atendimento.")
+    opcoes = ropc["json"]
+    if not isinstance(opcoes, dict) or opcoes.get("DisponibilizarAgendamento") is not True \
+            or any(opcoes.get(k) is True for k in ST._CONCLUSAO):
+        # 🔴 Já agendado, concluído, ou a agenda sumiu: o desfecho de HOJE é o
+        # que vale — e ler não repete nenhum POST (idempotência pela leitura).
+        return await fase_desfecho(ex, ropc=ropc)
+
+    desfecho = ST.ler_desfecho(opcoes, ex.agregado)
+    lojas = desfecho.get("lojas") or []
+    alvo_loja = str((escolha or {}).get("loja") or "").strip()
+    alvo_dia = str((escolha or {}).get("dia") or "").strip()[:5]
+    alvo_hora = str((escolha or {}).get("horario") or "").strip()
+    loja = next((l for l in lojas if str(l.get("codigo_cliente")) == alvo_loja
+                 and l.get("tem_agenda")), None)
+
+    async def indisponivel(motivo: str) -> JourneyResult:
+        # As opções REAIS de agora, no MESMO contrato da abertura (`lojas[]`).
+        await _enriquecer_agenda(ex.sessao, desfecho, agregado=ex.agregado,
+                                 codigo_atendimento=ex.estado.codigo_atendimento)
+        _absorver_agregado(ex, ex.agregado, desfecho)
+        return _parar(ex, "horario_indisponivel",
+                      "a escolha nao esta mais publicada pelo portal: " + motivo
+                      + ". Nada foi agendado.",
+                      escolha={"loja": alvo_loja, "dia": alvo_dia, "horario": alvo_hora})
+
+    if loja is None:
+        return await indisponivel("a loja escolhida nao esta entre as de agora")
+    rdias = await ex.sessao.datas_disponiveis(
+        codigo_cliente=loja.get("codigo_cliente"),
+        codigo_produto=loja.get("codigo_produto"), ano=hoje().year)
+    meses = rdias.get("json") if isinstance(rdias.get("json"), list) else []
+    iso = next((i for d, i in _datas_publicadas(meses, hoje().year) if d == alvo_dia), "")
+    if not iso:
+        return await indisponivel(f"o dia {alvo_dia} nao esta mais na agenda da loja")
+    livres, resp = await _ler_blocos(ex.sessao, loja, iso, {},
+                                     encaixe_ceven=ex.agregado.get("EncaixeCeven"))
+    bloco = next((b for b in livres if b.get("horario") == alvo_hora), None)
+    if bloco is None:
+        return await indisponivel(f"o horario {alvo_hora} de {alvo_dia} nao esta livre")
+    ex.evidence["desfecho"] = desfecho
+    return await _agendar_no_portal(ex, loja, iso, bloco, resp)
+
+
+async def _agendar_no_portal(ex: Execucao, loja: Dict[str, Any], iso: str,
+                             bloco: Dict[str, Any], horarios: Dict[str, Any]
+                             ) -> JourneyResult:
+    """A3 — `POST /agendamentos`, CONFIRMADO pela leitura do portal.
+
+    🔴 A confirmação é o "Agendado para" do `GET /atendimentos` seguinte (📊
+    LATERAL [049]), com o MESMO dia e horário pedidos. `ServicoAgendado` sozinho
+    não prova nada (0 ocorrências no bundle). Sem confirmação → parada
+    `agendamento_nao_confirmado`, e a continuação RELÊ — nunca repete o POST.
+    """
+    from portal_worker.guardrails import AcaoBloqueada, MATERIAL_SIDE_EFFECT
+
+    corpo = API.corpo_do_agendamento(loja=loja, data_iso=iso, bloco=bloco,
+                                     horarios=horarios or {})
+    data_br = f"{iso[8:10]}/{iso[5:7]}/{iso[0:4]}"
+    faltam = [k for k, v in corpo.items() if not isinstance(v, bool) and v in (None, "")]
+    if faltam:
+        return _parar(ex, "agenda_ilegivel",
+                      "a agenda do portal veio sem os campos que o agendamento "
+                      "exige (" + ", ".join(faltam) + "). Nada foi agendado.")
+    ex.guard.acao_material_esperada = ST.FRONTEIRA_AGENDAR
+    try:
+        await ex.guard.before(action=ST.FRONTEIRA_AGENDAR,
+                              action_class=MATERIAL_SIDE_EFFECT,
+                              details={"idempotency_key":
+                                       str(ex.params.get("_idempotency_key") or "")},
+                              origem="journey")
+    except AcaoBloqueada as e:
+        return _parar(ex, "pronto_para_agendar",
+                      f"o horario casou e falta autorizacao para agendar ({e})",
+                      escolha={"loja": str(loja.get("codigo_cliente")),
+                               "dia": data_br[:5], "horario": bloco.get("horario")})
+
+    r = await ex.sessao.agendar(corpo)
+    ex.evidence["agendamento_enviado"] = {"data": data_br,
+                                          "horario": corpo["Horario"],
+                                          "encaixe": corpo["Encaixe"],
+                                          "status": int(r.get("status") or 0)}
+    if not r.get("ok"):
+        await ex.guard.incerto(motivo="POST /agendamentos sem sucesso")
+        _tela_desconhecida(ex.evidence, onde=API.EP_AGENDAMENTOS, resposta=r)
+        return _parar(ex, "agendamento_nao_confirmado",
+                      "o pedido de agendamento saiu e o portal nao confirmou. "
+                      "NAO repita: releia o atendimento.")
+    dados = r.get("json") if isinstance(r.get("json"), dict) else {}
+    await ex.guard.submetido(receipt=f"{data_br} {corpo['Horario']}")
+
+    rg = await ex.sessao.ler_atendimento()
+    agregado = rg.get("json") if rg.get("ok") and isinstance(rg.get("json"), dict) else {}
+    script = API.script_de_finalizacao(agregado)
+    ag = script.get("agendamento") or {}
+    confirmado = (ag.get("data") == data_br and ag.get("horario") == corpo["Horario"])
+    ex.evidence["agendamento_enviado"].update(
+        servico_agendado=dados.get("ServicoAgendado"),
+        confirmado_pelo_portal=confirmado)
+    if dados.get("ServicoAgendado") is not True or not confirmado:
+        await ex.guard.incerto(motivo="agendamento sem o 'Agendado para' lido")
+        return _parar(ex, "agendamento_nao_confirmado",
+                      "o portal nao confirmou o agendamento por escrito. NAO "
+                      "repita o pedido: releia o atendimento.")
+
+    desfecho = ST.ler_conclusao((ex.evidence.get("desfecho") or {}).get("roteador"),
+                                agregado)
+    _absorver_agregado(ex, agregado, desfecho)
+    ag_final = desfecho.get("agendamento") or {}
+    # Se o script não trouxer a loja por escrito, os dados vêm da loja que o
+    # PORTAL publicou em `OpcoesAgendamento` — nunca de texto nosso.
+    for campo, valor in (("loja", loja.get("nome")), ("endereco", loja.get("endereco"))):
+        if not ag_final.get(campo) and valor:
+            ag_final[campo] = valor
+    if desfecho["tipo"] != ST.DESFECHO_AGENDADO:
+        desfecho["tipo"] = ST.DESFECHO_AGENDADO
+        desfecho["agendamento"] = {
+            "loja": str(loja.get("nome") or ""), "endereco": str(loja.get("endereco") or ""),
+            "referencia": "", "data": ag["data"], "horario": ag["horario"],
+            "permanencia": ag.get("permanencia", ""), "confirmado_pelo_portal": True}
+    await ex.guard.confirmado(receipt=f"{data_br} {corpo['Horario']}")
+    if ex.estado.codigo_atendimento:
+        rf = await ex.sessao.emitir_formalizado(ex.estado.codigo_atendimento)
+        desfecho["comprovante_emitido"] = bool(rf.get("ok"))
+    return await _concluir(ex, desfecho, agregado)
+
+
+# --------------------------------------------------------------------------
+# 🔴 O RAMO 7 — prioridade + preferência de vistoria (A5)
+# --------------------------------------------------------------------------
+async def _responder_vistoria_opcional(ex: Execucao,
+                                       desfecho: Dict[str, Any]) -> JourneyResult:
+    """📊 LATARIA [089]→[091]→[092]→[093]→[094]→[095]: o que o SPA fez, na ordem.
+
+    Com a preferência do segurado (`especificos.preferencia_vistoria` ∈
+    {"loja","link"}): lê se é veículo de carga; grava a prioridade NEUTRA
+    medida; grava a ocorrência com o texto LITERAL do bundle; relê o agregado
+    (o SPA vai direto à conclusão, `F()`, sem reler `opcoes-disponiveis`) e
+    emite o comprovante. Sem a preferência: PARA antes de qualquer escrita.
+    """
+    from portal_worker.guardrails import AcaoBloqueada, MATERIAL_SIDE_EFFECT
+
+    pref = _norm(ex.especificos.get("preferencia_vistoria"))
+    cod = str(ex.estado.codigo_atendimento or "").strip()
+    if pref not in API.OCORRENCIA_VISTORIA:
+        return _parar(ex, "decidir_vistoria",
+                      "o portal quer saber se o segurado prefere a vistoria numa "
+                      "LOJA ou por LINK no celular antes de concluir. Nada foi "
+                      "gravado.", opcoes=sorted(API.OCORRENCIA_VISTORIA))
+    if not cod.isdigit():
+        return _parar(ex, "desfecho_ilegivel",
+                      "o portal pediu a vistoria e o atendimento veio sem numero. "
+                      "Nada foi gravado.")
+
+    rp = await ex.sessao.prioridade_do_atendimento(cod)
+    if not rp.get("ok") or rp.get("json") is not False:
+        # 📊 `false` é o único valor medido. `true` (veículo de carga) troca a
+        # lista de situações — e nela não existe a resposta neutra medida.
+        _tela_desconhecida(ex.evidence, onde=API.EP_PRIORIDADES, resposta=rp)
+        return _parar(ex, "prioridade_nao_medida",
+                      "o portal pediu a prioridade do atendimento num caso que "
+                      "nunca medimos (veiculo de carga ou resposta ilegivel). "
+                      "Nada foi gravado.")
+
+    for fronteira in (ST.FRONTEIRA_PRIORIDADE, ST.FRONTEIRA_OCORRENCIA):
+        ex.guard.acao_material_esperada = fronteira
+        try:
+            await ex.guard.before(action=fronteira, action_class=MATERIAL_SIDE_EFFECT,
+                                  details={"idempotency_key":
+                                           str(ex.params.get("_idempotency_key") or "")},
+                                  origem="journey")
+        except AcaoBloqueada as e:
+            return _parar(ex, "pronto_para_vistoria",
+                          f"a preferencia de vistoria esta pronta e falta "
+                          f"autorizacao para grava-la ({e})")
+        if fronteira == ST.FRONTEIRA_PRIORIDADE:
+            r = await ex.sessao.gravar_prioridade(
+                {"CodigoAtendimento": int(cod), **API.PRIORIDADE_NEUTRA})
+            onde = API.EP_PRIORIDADES
+        else:
+            r = await ex.sessao.gravar_ocorrencia(
+                {"CodigoAtendimento": int(cod),
+                 "Ocorrencia": API.OCORRENCIA_VISTORIA[pref]})
+            onde = API.EP_OCORRENCIAS
+        if not r.get("ok"):
+            await ex.guard.incerto(motivo=f"{onde} sem sucesso")
+            _tela_desconhecida(ex.evidence, onde=onde, resposta=r)
+            # ⛔ fora da tabela de etapas: a equipe confere antes de qualquer
+            # repetição (duas prioridades/ocorrências não se desfazem).
+            return _parar(ex, "vistoria_nao_confirmada",
+                          "gravei a preferencia de vistoria e o portal nao "
+                          "confirmou. NAO repita: confira o atendimento.")
+        await ex.guard.confirmado(receipt=f"{onde}:{cod}")
+
+    rg = await ex.sessao.ler_atendimento()
+    if not rg.get("ok") or not isinstance(rg.get("json"), dict):
+        _tela_desconhecida(ex.evidence, onde=API.EP_ATENDIMENTOS, resposta=rg)
+        return _parar(ex, "desfecho_ilegivel",
+                      "a preferencia de vistoria foi gravada e nao consegui ler "
+                      "o que o portal decidiu. NAO repita: consulte o atendimento.")
+    agregado = rg["json"]
+    final = ST.ler_conclusao(desfecho.get("roteador"), agregado)
+    final["vistoria_preferida"] = pref
+    _absorver_agregado(ex, agregado, final)
+    if ex.estado.codigo_atendimento:
+        rf = await ex.sessao.emitir_formalizado(ex.estado.codigo_atendimento)
+        final["comprovante_emitido"] = bool(rf.get("ok"))
+    return await _concluir(ex, final, agregado)
 
 
 def _ano_do_mes(mes: Any, ano_corrente: int) -> int:
@@ -1153,13 +1822,11 @@ def _ano_do_mes(mes: Any, ano_corrente: int) -> int:
     query de horarios sai com o ano errado, ou o segurado le uma data que ja
     passou. A regra: mes MENOR que o corrente e do ano que vem.
     """
-    from datetime import datetime
-
     try:
         m = int(mes)
     except (TypeError, ValueError):
         return ano_corrente
-    return ano_corrente + 1 if 1 <= m < datetime.now().month else ano_corrente
+    return ano_corrente + 1 if 1 <= m < hoje().month else ano_corrente
 
 
 def _dias_legiveis(meses: Any, ano: int) -> List[str]:
@@ -1187,11 +1854,5 @@ def _dias_legiveis(meses: Any, ano: int) -> List[str]:
 
 def _primeira_data(meses: Any, ano: int) -> str:
     """📊 `[{"Mes": 8, "Dias": [15,17,…]}, …]` → `"2026-08-15"`, com o ano certo."""
-    for m in (meses or []):
-        if not isinstance(m, dict):
-            continue
-        dias = [d for d in (m.get("Dias") or []) if isinstance(d, int)]
-        if dias:
-            mes = int(m.get("Mes") or 0)
-            return f"{_ano_do_mes(mes, ano)}-{mes:02d}-{min(dias):02d}"
-    return ""
+    datas = _datas_publicadas(meses, ano)
+    return datas[0][1] if datas else ""
