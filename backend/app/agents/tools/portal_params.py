@@ -431,8 +431,68 @@ def _hoje_no_brasil():
         return datetime.now(timezone(timedelta(hours=-3))).date()
 
 
+#: Marca de "o segurado disse uma data que não existe" (31/02) — diferente de
+#: `None` ("não disse data nenhuma").
+_DATA_INEXISTENTE = "data_inexistente"
+
+#: 🔴 RED B1 (conserto da 001.10.1) — frase sobre a LOJA, não sobre o dia:
+#: "quero a segunda loja", "a mais perto". "segunda" ali é ordinal, nunca
+#: segunda-feira; a preferência não vai, e a lista é mostrada.
+_FALA_DA_LOJA = {"loja", "lojas", "perto", "pertinho", "longe", "oficina"}
+
+
+def _hora_dita(bruto: str, palavras: list):
+    """`(horario "HH:MM" | "", relativa: bool, ilegivel: bool)` — a HORA que o
+    segurado disse, quando ele disse uma.
+
+    🔴 RED B1 (conserto da 001.10.1): "4 da tarde", "16h", "às 9", "15:30" são
+    um HORÁRIO, não um período. Antes esta função não existia e a hora se
+    perdia: o motor marcava o 1º bloco da tarde (13:00) para quem pediu 16:00.
+
+    `relativa` = "depois das 15h", "antes das 10", "a partir das 14h", "até as
+    11": não é um horário, é um limite — e agendar o limite é adivinhar. Quem
+    chama devolve `{}` (a lista é mostrada).
+    """
+    import re as _re
+
+    t = bruto
+    if _re.search(r"\b(depois|apos|antes|ate|partir)\s+(d[aoe]s?\s+|as\s+)?(\d{1,2})\s*"
+                  r"(h|hs|hrs|horas?|:\d{2})?\b(?!\s*/)", t) and \
+            not _re.search(r"\b(depois|apos|antes|ate|partir)\s+d[aoe]s?\s+dia\b", t):
+        return "", True, False
+    h = mi = None
+    m = _re.search(r"\b(\d{1,2}):(\d{2})\b", t)
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2))
+    if h is None:
+        m = _re.search(r"\b(\d{1,2})\s*(?:h|hs|hrs|horas?)\s*(\d{2})?\b", t)
+        if m:
+            h, mi = int(m.group(1)), int(m.group(2) or 0)
+    if h is None:
+        m = _re.search(r"(?<!dia )\b(\d{1,2})\s+da\s+(manha|tarde|noite)\b", t)
+        if m:
+            h, mi = int(m.group(1)), 0
+    if h is None:
+        m = _re.search(r"\bas\s+(\d{1,2})\b(?!\s*/)", t)
+        if m:
+            h, mi = int(m.group(1)), 0
+    if h is None and _re.search(r"\bmeio\s*-?\s*dia\b", t):
+        h, mi = 12, 0
+    if h is None:
+        return "", False, False
+    # "4 da tarde" / "de tarde, umas 4 horas" / "8 da noite": o período DITO
+    # desfaz a ambiguidade das 12 horas. Sem período dito, a hora vai como foi
+    # dita ("às 4" = 04:00, que nenhuma loja publica — a lista é mostrada).
+    if h < 12 and ({"tarde", "tardinha", "noite"} & set(palavras)):
+        h += 12
+    if h > 23 or mi > 59:
+        return "", False, True
+    return f"{h:02d}:{mi:02d}", False, False
+
+
 def _data_dita(palavras: list, bruto: str, hoje):
-    """A data que o segurado disse, ou None. Só o que tem UMA leitura."""
+    """A data que o segurado disse, ou None. Só o que tem UMA leitura.
+    `_DATA_INEXISTENTE` quando ele disse uma data que não existe (31/02)."""
     import re as _re
     from datetime import date, timedelta
 
@@ -452,7 +512,11 @@ def _data_dita(palavras: list, bruto: str, hoje):
         try:
             alvo = date(ano, mes, d)
         except ValueError:
-            return None
+            # 🔴 RED P2/P3 (conserto da 001.10.1): "31/02" é uma data DITA e
+            # que não existe — não é "não disse data". Sem esta marca, a frase
+            # "31/02 de manhã" virava "hoje de manhã" e o robô marcava o 1º
+            # horário de hoje para quem pediu outro dia.
+            return _DATA_INEXISTENTE
         if not m.group(3) and alvo < hoje:
             # "05/01" dito em dezembro é o janeiro que vem, não o que passou.
             try:
@@ -492,21 +556,45 @@ def normalizar_preferencia_agenda(valor, hoje=None) -> dict:
 
     Aceita também o dicionário já no formato do contrato (o modelo às vezes o
     manda pronto) — mas só se as duas chaves forem válidas.
+
+    🔴 RED B1 (conserto da 001.10.1) — HORA explícita ("4 da tarde", "16h", "às
+    9", "15:30") atravessa como `"horario": "HH:MM"`, e o motor agenda SÓ esse
+    horário (nunca "o 1º bloco do período"). Hora relativa ("depois das 15h")
+    ou frase sobre a LOJA ("a segunda loja", "a mais perto") → `{}`: a lista
+    é mostrada e ele escolhe. Data que não existe (31/02) → `{}`. Data PASSADA
+    no dicionário vira HOJE (RED P3: é o que o motor já fazia — agora dito).
     """
+    import re as _re
+
     hoje = hoje or _hoje_no_brasil()
     if isinstance(valor, dict):
-        import re as _re
+        from datetime import datetime as _dt
 
         data = str(valor.get("a_partir_de") or "").strip()
         periodo = str(valor.get("periodo") or "").strip().lower()
+        hora = str(valor.get("horario") or "").strip()
         if _re.fullmatch(r"\d{2}/\d{2}/\d{4}", data) and periodo in ("manha", "tarde", "qualquer"):
-            return {"a_partir_de": data, "periodo": periodo}
+            try:
+                dia = _dt.strptime(data, "%d/%m/%Y").date()
+            except ValueError:
+                return {}                  # 31/02/2027: data que não existe
+            if hora and not _re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", hora):
+                return {}                  # horário ilegível: nada de palpite
+            saida = {"a_partir_de": max(dia, hoje).strftime("%d/%m/%Y"), "periodo": periodo}
+            if hora:
+                saida["horario"] = hora
+            return saida
         valor = " ".join(str(v) for v in valor.values() if v)
     bruto = _fold(str(valor or "")).lower()
     palavras = _palavras_soltas(bruto)
     if not palavras:
         return {}
+    if set(palavras) & _FALA_DA_LOJA:
+        return {}                          # "a segunda loja" não é segunda-feira
     texto = " ".join(palavras)
+    horario, relativa, hora_ilegivel = _hora_dita(bruto, palavras)
+    if relativa or hora_ilegivel:
+        return {}
 
     tem_manha = bool(set(palavras) & _MANHA)
     tem_tarde = bool(set(palavras) & _TARDE)
@@ -523,15 +611,21 @@ def normalizar_preferencia_agenda(valor, hoje=None) -> dict:
         periodo = ""
 
     data = _data_dita(palavras, bruto, hoje)
-    if data is None and not periodo:
-        return {}                      # não disse nem dia nem período
+    if data == _DATA_INEXISTENTE:
+        return {}                      # "31/02": disse um dia que não existe
+    if data is None and not periodo and not horario:
+        return {}                      # não disse nem dia, nem período, nem hora
     if data is None:
-        data = hoje                    # "de manhã" / "tanto faz" = a partir de já
+        data = hoje                    # "de manhã" / "tanto faz" / "16h" = a partir de já
     if not periodo:
-        periodo = "qualquer"           # disse o dia e não o período
+        # disse o dia (ou a hora) e não o período
+        periodo = ("manha" if int(horario[:2]) < 12 else "tarde") if horario else "qualquer"
     if data < hoje:
         return {}                      # "a partir de" um dia que já passou não existe
-    return {"a_partir_de": data.strftime("%d/%m/%Y"), "periodo": periodo}
+    saida = {"a_partir_de": data.strftime("%d/%m/%Y"), "periodo": periodo}
+    if horario:
+        saida["horario"] = horario
+    return saida
 
 
 _VISTORIA_LINK = {"link", "celular", "foto", "fotos", "online", "whatsapp", "zap",
@@ -1061,7 +1155,11 @@ def acao_esperada(evidence) -> Tuple[str, str]:
 ESTAGIOS_TECNICOS = ("corretor_recusado", "solicitante_recusado",
                      "tipo_de_telefone_desconhecido", "catalogo_indisponivel",
                      "motivos_indisponiveis", "roteador_ilegivel",
-                     "desfecho_ilegivel", "patch_recusado")
+                     "desfecho_ilegivel", "patch_recusado",
+                     # 🔴 conserto da 001.10.1: RED P1 — o `GET /atendimentos`
+                     # da continuação sem 200 (nada foi escrito); RED B3 — a
+                     # agenda não respondeu (500/timeout), nunca "ocupado".
+                     "leitura_falhou", "agenda_nao_respondeu")
 
 #: As paradas que dependem de uma RESPOSTA do segurado e que a continuação
 #: resolve (contrato §5: `acao_esperada = responder:<slot>` / `vistoria`).
@@ -1099,6 +1197,15 @@ def _dia_legivel(texto) -> str:
         return ""
     d, mes = int(m.group(1)), int(m.group(2))
     if not (1 <= d <= 31 and 1 <= mes <= 12):
+        return ""
+    # 🔴 RED P2 (conserto da 001.10.1): "31/02" passava, ia ao portal e voltava
+    # como "esse horário acabou de ser ocupado" — falso. O dia tem de EXISTIR.
+    # Ano bissexto de referência: 29/02 existe em algum ano próximo.
+    from datetime import date as _date
+
+    try:
+        _date(2024, mes, d)
+    except ValueError:
         return ""
     return f"{d:02d}/{mes:02d}"
 
@@ -1237,9 +1344,17 @@ def mensagem_do_desfecho(desfecho: Optional[dict], continuacao: Optional[dict] =
         # 🔴 "Agendei" só com a confirmação LIDA do portal (📊 B0.5: o
         # `ScriptFinalizacao` traz "Agendado para 22/09/2026 às 16:00"). Sem
         # ela, dizer "agendei" seria mandar a pessoa a uma loja que não a espera.
+        # 🔴 JUIZ P3 (conserto da 001.10.1): reagendar é FORA da SPEC — a frase
+        # não promete que o robô muda o horário; ela passa para a equipe.
+        # `ja_estava_agendado` (JUIZ B1): o portal JÁ estava agendado quando a
+        # continuação leu — não fomos nós que marcamos agora, e o texto não
+        # diz "Agendei".
         if ag.get("confirmado_pelo_portal") is True and bloco:
-            partes.append("Agendei o serviço ✅\n" + "\n".join(bloco)
-                          + "\n\nSe precisar mudar o dia ou o horário, me avise por aqui.")
+            titulo = ("Seu serviço já está agendado ✅" if ag.get("ja_estava_agendado") is True
+                      else "Agendei o serviço ✅")
+            partes.append(titulo + "\n" + "\n".join(bloco)
+                          + "\n\nSe precisar mudar, me avise por aqui que eu passo "
+                            "para a nossa equipe.")
         else:
             partes.append(
                 "Pedi o agendamento, mas a seguradora ainda não me confirmou o horário. "
@@ -1590,6 +1705,14 @@ _PARADAS.update({
         + _A_EQUIPE_ASSUME,
         "A continuacao nao conseguiu LER o atendimento (`GET /atendimentos` sem 200 "
         "e sem 401). NADA foi escrito. Pode reler; NAO reabra o pedido.",
+    ),
+    "agenda_nao_respondeu": (
+        "Seu pedido está aberto na seguradora, mas o sistema dela não respondeu a "
+        "agenda da loja agora — então eu NÃO agendei nada, e o horário que você "
+        "escolheu continua anotado. " + _A_EQUIPE_ASSUME,
+        "`datas-disponiveis`/`horarios-disponiveis` sem 200 (500/timeout) na hora "
+        "de agendar a escolha do segurado. NADA foi agendado; a escolha esta no "
+        "motivo. Pode reler/repetir a escolha; NAO e horario ocupado.",
     ),
     "operacao_desconhecida": (
         "Seu pedido continua aberto na seguradora, com o mesmo número. "
@@ -1956,8 +2079,11 @@ def format_result(job: dict) -> str:
         passo7 = ev.get("passo7") if isinstance(ev.get("passo7"), dict) else {}
         recomendacao = str(passo7.get("recomendacao") or "").strip()
         if not recomendacao:
-            recomendacao = ("Confirme com o segurado onde o servico sera feito (tecnico a domicilio "
-                            "ou uma das lojas) — essa escolha e dele, e ela ainda esta em aberto.")
+            # 🔴 RED B5 (conserto da 001.10.1) — D-E001101-05: domicílio FORA.
+            # O caminho DOM (produção com a flag desligada) oferecia "técnico a
+            # domicílio" ao segurado; o produto não entrega mais essa opção.
+            recomendacao = ("Confirme com o segurado qual loja credenciada ele prefere "
+                            "— essa escolha e dele, e ela ainda esta em aberto.")
         # 🔴 OS OUTROS DOIS DADOS DA MESMA TELA — SPEC-071 BLOCO 6, 15/08/2026.
         #
         # 📊 A tela traz TRES coisas e so o protocolo chegava ao segurado:
@@ -2419,8 +2545,20 @@ def montar_job_de_continuacao(*, company_id: str, job_origem: dict, operacao: st
     """
     origem = job_origem if isinstance(job_origem, dict) else {}
     ev = origem.get("evidence") if isinstance(origem.get("evidence"), dict) else {}
+    cont_origem = (origem.get("params") or {}).get("_continuacao")
+    cont_origem = cont_origem if isinstance(cont_origem, dict) else {}
     params = {k: v for k, v in dict(origem.get("params") or {}).items() if k != "_continuacao"}
     respostas = dict(respostas or {})
+    escolha_origem = cont_origem.get("escolha")
+    if (operacao == "reler" and not escolha
+            and cont_origem.get("operacao") in ("agendar", "reler")
+            and isinstance(escolha_origem, dict) and escolha_origem):
+        # 🔴 RED B2(b) (conserto da 001.10.1): a releitura de uma continuação
+        # `agendar` que parou por motivo TÉCNICO herda a ESCOLHA EXPLÍCITA do
+        # segurado — e só ela. Sem isto o "já estou tentando de novo" mentia:
+        # o reler voltava ao desfecho sem a escolha e agendava pela preferência
+        # antiga (📊 red A4.3: 23/09 08:00 para quem escolheu 22/09 16:00).
+        escolha = dict(cont_origem["escolha"])
     if operacao == "vistoria" and respostas.get(PREFERENCIA_VISTORIA):
         # A preferência vai nos DOIS lugares: em `respostas` (contrato) e em
         # `especificos`, que é onde a abertura já a lia (A5, mesma função).
