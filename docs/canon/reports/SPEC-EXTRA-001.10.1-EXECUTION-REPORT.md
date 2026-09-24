@@ -149,6 +149,20 @@ real. Perde pontos porque **o canário não rodou** (nenhum acionamento real pas
 desconhecido** entre minutos e ~50 h, e por **3 quebras de rito** declaradas no §4.
 
 ## 10. Entrega
-{ENTREGA}
+```
+$ git rev-list --count HEAD..origin/main ; git rev-list --count origin/main..HEAD      # 📊 24/09/2026, antes
+0
+61
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   4573a46..39e8249  HEAD -> main
+$ git fetch origin ; git rev-list --count HEAD..origin/main ; git rev-list --count origin/main..HEAD   # depois
+0
+0
+```
+Antes do push, 📊 varredura do diff inteiro (`git diff 4573a46 HEAD | grep -E "^\+"`): **0** chaves/senhas · **0** arquivos de
+`docs/intake/` · **0** CPF formatado · **0** nome de segurado · 6 GUIDs, todos sintéticos de teste (`aaaaaaaa-0000-…`, `bbbbbbbb-0000-…`).
+O commit que fecha este relatório sobe em seguida. **Implantar:** `smith-api` → `smith-worker` → `portal-worker`. **Nenhuma variável nova**;
+`PORTAL_VIDROS_API_FIRST` continua **desligada** e `PORTAL_VAULT_KEY` (já existente no portal-worker) passa a cifrar também o token.
 </content>
 </invoke>
