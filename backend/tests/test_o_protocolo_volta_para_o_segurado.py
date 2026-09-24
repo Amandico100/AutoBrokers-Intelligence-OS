@@ -358,44 +358,51 @@ FICHA_SEM_A_PREFERENCIA = {
 
 
 def teste_a_preferencia_e_perguntada_quando_falta() -> None:
-    print("\n[M3] a preferência de domicílio × loja")
+    # ⚠️ ATUALIZADO em 23/09/2026 (CLAUDE.md §9.3) — SPEC-EXTRA-001.10.1,
+    # D-E001101-05. O FATO mudou por decisão do Founder: o DOMICÍLIO saiu do
+    # produto — o robô não pergunta e não oferece, e `build_portal_params` manda
+    # "loja". A preferência que o produto passou a perguntar é a da AGENDA ("a
+    # partir de que dia, manhã ou tarde"), e ela NÃO trava.
+    # A lição migra inteira: a preferência é perguntada, SÓ quando falta, com o
+    # caminho de volta escrito, sem perguntar QUAL loja — e o controle prova que
+    # a guarda consegue falhar.
+    print("\n[M3] a preferência de agenda (o domicílio saiu — D-E001101-05)")
+    from app.agents.tools.portal_params import trava_o_pedido
 
+    PREFERENCIA_AGENDA = _perguntas.PREFERENCIA_AGENDA
     faltam = o_que_falta("vidro de porta", FICHA_SEM_A_PREFERENCIA)
     campos = [p.campo for p in faltam]
-    checar(campos == [ONDE_REALIZAR_O_SERVICO],
+    checar(campos == [PREFERENCIA_AGENDA],
            "com a ficha inteira menos a preferência, falta EXATAMENTE ela",
            f"faltam={campos!r}")
+    checar(ONDE_REALIZAR_O_SERVICO not in campos,
+           "e o DOMICÍLIO não é mais perguntado (decisão do Founder)", f"faltam={campos!r}")
 
-    pergunta = faltam[0]
-    texto = _norm(pergunta.texto)
-    checar("prefere" in texto and ("levar" in texto or "loja" in texto),
-           "e a pergunta é de PREFERÊNCIA (o técnico vai até você × você leva)",
-           pergunta.texto)
-    checar("cep" in texto,
-           "e ela avisa que domicílio depende do CEP — 📊 o portal só oferece "
-           "domicílio onde há cobertura na região",
-           pergunta.texto)
+    pergunta = faltam[0] if faltam else None
+    texto = _norm(getattr(pergunta, "texto", ""))
+    checar("a partir de que dia" in texto and "manha" in texto and "tarde" in texto,
+           "e a pergunta é de PREFERÊNCIA (a partir de que dia × manhã/tarde)",
+           getattr(pergunta, "texto", None))
+    checar("domicil" not in texto and "ate voce" not in texto,
+           "e ela NÃO oferece domicílio", getattr(pergunta, "texto", None))
+    checar(pergunta is not None and not trava_o_pedido(pergunta),
+           "e ela NÃO trava: sem ela o portal mostra a agenda e o robô continua")
 
-    # 🔴 A pergunta que NÃO se faz: qual loja. A lista só existe na tela do
-    # passo 7, e o segurado nunca a viu.
+    # 🔴 A pergunta que NÃO se faz: qual loja. A lista só existe no portal.
     checar("qual loja" not in texto and "autoglass" not in texto,
            "e ela NÃO pergunta QUAL loja — ele não conhece a lista")
 
-    # O caminho de VOLTA existe. Uma pergunta cuja resposta o schema descarta é
-    # o laço infinito que este repositório já pagou uma vez.
-    checar("especificos" in _norm(pergunta.como_devolver)
-           and ONDE_REALIZAR_O_SERVICO in pergunta.como_devolver,
+    checar(pergunta is not None and "especificos" in _norm(pergunta.como_devolver)
+           and PREFERENCIA_AGENDA in pergunta.como_devolver,
            "e diz ao agente COMO devolver a resposta (especificos)",
-           pergunta.como_devolver)
+           getattr(pergunta, "como_devolver", None))
     mensagem = mensagem_para_o_agente(faltam, "vidro de porta")
-    checar(ONDE_REALIZAR_O_SERVICO in mensagem,
+    checar(PREFERENCIA_AGENDA in mensagem,
            "e isso chega à mensagem que o agente lê",
            mensagem[:200])
 
     # ---- CONTROLE: sabida, ela NÃO é perguntada de novo ----
-    # Este é o controle que prova que a guarda acima consegue falhar: a única
-    # diferença entre as duas chamadas é a chave da preferência.
-    sabida = {**FICHA_SEM_A_PREFERENCIA, ONDE_REALIZAR_O_SERVICO: "domicilio"}
+    sabida = {**FICHA_SEM_A_PREFERENCIA, PREFERENCIA_AGENDA: "amanhã de manhã"}
     checar(o_que_falta("vidro de porta", sabida) == [],
            "CONTROLE · com a preferência respondida, NADA mais falta",
            f"ainda faltam {[p.campo for p in o_que_falta('vidro de porta', sabida)]!r}")
