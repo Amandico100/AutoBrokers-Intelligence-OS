@@ -47,6 +47,11 @@ import threading
 from datetime import date
 from pathlib import Path
 
+# 🔴 RED P5 (conserto da 001.10.1): o teste não pode depender de quem o chama
+# ter posto PYTHONIOENCODING — no Windows (cp1252) o 1º emoji do `print`
+# derrubava o teste no meio (📊 UnicodeEncodeError na linha 668).
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
