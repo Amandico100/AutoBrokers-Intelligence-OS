@@ -257,7 +257,12 @@ def g5_os_dois_pontos_chamam_com_o_job() -> None:
     checar("job_id" in execucao and "cpf_hash" in execucao,
            "na EXECUCAO, o worker passa job_id e cpf_hash", str(execucao))
 
-    criacao = argumentos_do_freio("app/agents/tools/portal_tool.py", "_envio_liberado")
+    # ⚠️ ATUALIZADO em 23/09/2026 (CLAUDE.md §9.3) — SPEC-EXTRA-001.10.1. A
+    # chamada saiu do METODO `_envio_liberado` para a funcao de modulo
+    # `envio_liberado`, porque o vigia (releitura) passou a ler a MESMA regra. O
+    # metodo so delega. A licao nao mudou: na CRIACAO vai `cpf_hash`, nunca um
+    # `job_id` inventado.
+    criacao = argumentos_do_freio("app/agents/tools/portal_tool.py", "envio_liberado")
     checar("cpf_hash" in criacao,
            "na CRIACAO, a tool passa cpf_hash (o job ainda nao existe)", str(criacao))
     checar("job_id" not in criacao,
