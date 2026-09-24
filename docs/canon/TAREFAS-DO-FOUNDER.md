@@ -509,35 +509,54 @@ garantem; sem elas o comando recusa com **409** e não manda nada.
 
 ---
 
-## 8.5 · Bloco F — o portal de vidros (001.10)
+## 8.5 · Bloco F — o portal de vidros (001.10 · 001.10.1)
 
 > **O que mudou:** o robô aprendeu a abrir o pedido de vidro **em qualquer uma das 38 seguradoras** que o portal
 > publica (antes eram 3, e nenhuma delas era a Yelum — 📊 o motor antigo escrevia **zero** nas capturas reais), e
 > aprendeu a **ler o desfecho que o portal decidiu**: loja já escolhida, agenda com lojas e horários, analista ou
 > vistoria. Ele devolve ao segurado o número do atendimento, a franquia e o próximo passo.
+> **E agora (001.10.1), ele RETOMA um atendimento já aberto** — guarda o acesso cifrado, e quando a resposta do
+> segurado chega (a agenda, uma preferência), ele volta ao portal, lê onde o pedido está e continua sozinho, em vez
+> de terminar em mão humana.
 >
 > 🔴 **Nada disso está ligado.** Tudo mora atrás de uma chave que nasce desligada: `PORTAL_VIDROS_API_FIRST`.
 > O que atende hoje continua sendo o caminho antigo. Implantar **não muda nada** no ar — e é de propósito.
 
 - [ ] **F.1 Implantar**, nesta ordem: `smith-api` → `smith-worker` → `portal-worker`.
       **O que esperar:** os três voltam verdes e o produto continua exatamente como estava. · **001.10**
-- [ ] **F.2 O canário** (é o que falta para dar o passo seguinte). Um acionamento de **lataria na Yelum**, com
-      **apólice e veículo de teste** — nunca de cliente. Antes dele, em `portal-worker` → Environment:
-      ```
-      PORTAL_CANARIO_ALLOWLIST = <o id do job do ensaio>
-      PORTAL_VIDROS_API_FIRST  = true
-      ```
-      **O que esperar na tela:** o segurado (você, no número de teste) recebe o número do atendimento, a franquia
-      e o próximo passo em português. **Se der errado:** a mensagem diz o número primeiro e **não promete** que o
-      robô continua — é assim de propósito, porque hoje ele não consegue retomar. **Ao terminar:** volte
-      `PORTAL_VIDROS_API_FIRST` para `false`. · **001.10 · D-E00110-F2**
+- [ ] **F.2 O canário** — com a **mesma apólice das capturas de 21/09** (é ela que a allowlist libera; qualquer
+      outro CPF é barrado — escrita errada barra tudo, é o certo). No EasyPanel:
+      1. Serviço **portal-worker** → Environment → acrescente/confira estas 3 linhas:
+         ```
+         PORTAL_VIDROS_API_FIRST=true
+         PORTAL_CANARIO_ALLOWLIST=cpf:1f2d4a03549e
+         PORTAL_EFEITO_MATERIAL_LIBERADO=true
+         ```
+      2. Serviço **smith-api** → Environment → acrescente/confira estas 2 linhas:
+         ```
+         PORTAL_CANARIO_ALLOWLIST=cpf:1f2d4a03549e
+         PORTAL_EFEITO_MATERIAL_LIBERADO=true
+         ```
+      3. Clique **Implantar** nos dois serviços.
+      4. O agente de atendimento da corretora dessa apólice precisa estar **ligado**.
+      5. Do celular de teste, escreva ao WhatsApp da corretora **como o segurado daquela apólice**: vidro da porta
+         traseira do lado do motorista quebrado, carro estacionado, em Florianópolis/SC — e, quando ele perguntar a
+         agenda, responda "amanhã às 16h".
+      **O que esperar na tela:** (1) um aviso de que vai acionar; (2) em ~1–2 min, o número do atendimento
+      (8 dígitos), a franquia, e "Agendei o serviço ✅" com loja, endereço, dia, horário e tempo de permanência —
+      **ou**, se não houver vaga às 16h, a lista de horários para você escolher; responda "loja 1, dia X às HH:MM"
+      e espere a confirmação.
+      **Depois:** cancele no portal (motivo com ≥ 20 caracteres, como a atendente faz hoje) e volte
+      `PORTAL_VIDROS_API_FIRST` para `false` se não quiser deixar ligado. **Mande no chat o número do atendimento**
+      — é com ele que se mede quanto tempo o token vive (P-E001101-02).
+      **Se der errado:** a mensagem diz o número primeiro e o que falta; nada é aberto duas vezes.
       ⚠️ A allowlist **só estreita**: vazia = comportamento de hoje; escrita errada = **barra tudo** (é o certo).
-- [ ] **F.3 As capturas que faltam** — entregue o roteiro à atendente da corretora:
-      `docs/canon/guias/ROTEIRO-DE-CAPTURA-PORTAL-DE-VIDROS.md`, seção "O que ainda falta".
-      **A nº 1 vale mais que todas as outras juntas:** um agendamento **levado até o fim** (escolher a loja, o dia,
-      o horário e confirmar) na Yelum, com vidro de porta ou vigia. É ela que libera o robô a marcar hora. · **P-E00110-A1**
-- [ ] **F.4 As 15 perguntas à atendente** — `docs/canon/guias/PERGUNTAS-PARA-A-ATENDENTE-PORTAL-DE-VIDROS.md`.
-      A **nº 12** ("dá para retomar um atendimento parado, por número?") **decide sozinha** a próxima SPEC. · **P-E00110-A11**
+      · **001.10 · 001.10.1 · D-E00110-F2 · G12**
+- [x] **F.3 As capturas que faltam** — chegaram em 21/09 e liberaram o agendamento (P-E00110-A1 FECHADA). O que
+      ainda falta (fotos/vistoria, domicílio decidido fora, cancelar) está em P-E001101-05 e no bloco novo de
+      pendências da 001.10.1. · **001.10 · 001.10.1**
+- [x] **F.4 As 15 perguntas à atendente** — respondidas em 21/09. A nº 12 ("dá para retomar por número?") decidiu
+      a 001.10.1, que já foi executada. · **001.10 · P-E00110-A11 (FECHADA)**
 - [ ] **F.5 Rotacionar as credenciais** que foram coladas no chat de novo em 20/09. · **P-PILOTO-09**
 
 ---
@@ -652,9 +671,10 @@ só a medição de volume da Resulta.
 | 8 | **O nome do agente da Resulta** | a SPEC entregou o mecanismo; o nome é seu | relatório 001.2 · P-E0012-D3 |
 | 9 | **As senhas de Allianz e Mapfre** para os portais | sem elas o bloco E.3 continua com duas seguradoras de fora | relatório 001.6 |
 | 10 | **Destilar as seguradoras que faltam** — a ordem pelo prêmio da carteira está em `providers/susep/fila-onda-3.json` (19 seguradoras) | a base cresce **sem código novo**; hoje 8 seguradoras respondem | relatório 001.5 / 001.5.1 |
-| 11 | **D-E00110-F1 · o contato do segurado no portal** | hoje o portal recebe o telefone da corretora, marca `recebe WhatsApp = não` e a loja liga para a equipe. A recomendação (nota 88) é pôr **celular e e-mail do segurado**, mantendo a corretora como quem abriu. Só o canário prova que o portal aceita | `FOUNDER-DECISIONS.md` |
+| 11 | **D-E00110-F1 · o contato do segurado no portal — `RESOLVIDA`** | você escolheu: corretor como solicitante declarado + celular e e-mail do **segurado** como contato, com WhatsApp marcado. É o desenho que a 001.10.1 já entrega (D-E001101-04); só falta o canário provar que o portal aceita | `FOUNDER-DECISIONS.md` |
 | 12 | **D-E00110-F2 · quando ligar `PORTAL_VIDROS_API_FIRST`** | ligar antes do canário abriria pedido real sem nenhuma prova ao vivo (nota 20). A recomendação é: **só depois do canário verde** (nota 95) | `FOUNDER-DECISIONS.md` |
-| 13 | **D-E00110-F3 · a 001.10.1 (a continuação) entra antes da 001.8?** | sem continuação, **toda** parada depois do pedido aberto termina em mão humana. Recomendação 💭: sim (80); a 001.8 é isolamento entre corretoras (70), e sobe de prioridade quando entrar a 3ª corretora | `FOUNDER-DECISIONS.md` |
+| 13 | **D-E00110-F3 · a 001.10.1 (a continuação) entra antes da 001.8? — `CUMPRIDA`** | sim: a 001.10.1 foi executada em 24/09/2026 (nota 88), antes da 001.8 seguir para canário | `FOUNDER-DECISIONS.md` |
+| — | **D-E001101-01…07 (001.10.1)** — todas tomadas pela execução, nenhuma aberta para você | token no cofre do worker (88) · agendar pela preferência + continuação (90) · e-mail do corretor = Perfil de Acionamento (90) · contato do segurado + WhatsApp (88, fecha a F1) · domicílio fora (sua decisão) · `BloqueadoIlhaNormal` deixa de travar (90) · peça reescrita com pedido esperando resposta vira continuação (85) | `FOUNDER-DECISIONS.md` |
 | 14 | **D-E002-01 a 08 · o Agger, a renovação e a fila** (22/09, propostas) | as oito já vêm com a recomendação: pedir à Agger a **API oficial e a autorização** na mesma conversa, sem autorização nenhuma automação (01: 92 × 84 × 58 × 25) · **usuário robô** por corretora (02: 95) · calcular em D-30 e **recalcular** perto do fechamento, porque a cotação vale 5 dias (03: 88) · **o corretor revisa e envia** (04: 92) · **rótulos transparentes** em vez de "a melhor" escolhida por IA (05: 94) · a 003 em **duas partes**, fundação e ciclo (06: 88) · a posição na fila (07: 78 × 65 — diferença pequena, é a que mais precisa de você) · o Agger como porta **de cotação**, não de gestão (08: 90) | `FOUNDER-DECISIONS.md` · proposta 002 §10 |
 
 ---
