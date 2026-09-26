@@ -426,32 +426,58 @@ async def prova_de_formulario(
     if not base_url or not token:
         raise HTTPException(status_code=422, detail="Integracao sem base_url ou sem chave utilizavel")
 
+    # 🔴 A PROVA MEDE O CAMINHO DA PRODUÇÃO — as MESMAS funções, não cópias.
+    #
     # A forma vem da ÚNICA captura real que temos de um humano respondendo este
     # formulário (18/07/2026, família HDI). O flow_token guarda os dois
     # telefones dentro dele — por isso é montado, e nunca inventado solto.
-    from app.services.whatsapp.providers.evolution_go import montar_nfm_reply
+    #
+    # ⚠️ Aqui já houve DOIS montadores: esta rota remontava o corpo plano à mão
+    # (`{number, name, paramsJSON, ...}`) ao lado de `corpo_do_flow_reply`, que é
+    # quem o motor de envio usa. Dois montadores do mesmo corpo divergem um dia,
+    # e a divergência só aparece numa seguradora descartando a resposta em
+    # silêncio — com a prova dizendo "está tudo bem" sobre outra coisa
+    # (CLAUDE.md §5 e §9.4).
+    from app.services.whatsapp.providers.evolution_go import (
+        ENV_ROTA_FLOW_REPLY,
+        ROTA_DE_FLOW_REPLY_PROVADA,
+        corpo_do_flow_reply,
+        rota_de_flow_reply,
+    )
 
     origem = "".join(ch for ch in str(runtime.get("identifier") or "") if ch.isdigit()) or "0"
     flow_token = f"00000000-0000-0000-0000-000000000000:{origem}:{para}"
-    try:
-        mensagem = montar_nfm_reply(
+
+    #: O que a prova varia por cima do corpo de produção — um fator por vez.
+    _PARAMS_DA_PROVA: Dict[str, Any] = {"prova_de_canal": "1"}
+    _IDENTIDADE_DA_PROVA: Dict[str, Any] = {
+        "title": "Prova de canal",
+        "flow_id": "0",
+        "flow_name": "AutoBrokers — prova de envio de formulario",
+    }
+    _TEXTO_DA_PROVA = "Prova tecnica do AutoBrokers. Pode ignorar."
+
+    def _corpo_da_prova(*, version: int) -> Dict[str, Any]:
+        """O corpo plano do envio REAL, montado por quem monta em produção."""
+        return corpo_do_flow_reply(
+            to=para,
             flow_token=flow_token,
-            params={"prova_de_canal": "1"},
+            params=_PARAMS_DA_PROVA,
             nome_do_envelope="galaxy_message",
-            flow_response_params={
-                "title": "Prova de canal",
-                "flow_id": "0",
-                "flow_name": "AutoBrokers — prova de envio de formulario",
-            },
-            body_text="Prova tecnica do AutoBrokers. Pode ignorar.",
+            flow_response_params=_IDENTIDADE_DA_PROVA,
+            body_text=_TEXTO_DA_PROVA,
+            version=version,
         )
+
+    try:
+        # A primeira montagem também serve de relatório (envelope e tamanho do
+        # paramsJSON na resposta) — e recusa cedo, antes de tocar a rede.
+        corpo_base = _corpo_da_prova(version=0)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=f"montagem recusada: {exc}") from exc
 
-    envelope = mensagem["interactiveResponseMessage"]
-    nfm = envelope["nativeFlowResponseMessage"]
-    params_json = nfm["paramsJSON"]
-    texto = (envelope.get("body") or {}).get("text")
+    params_json = str(corpo_base.get("paramsJSON") or "")
+    nome_do_envelope_ecoado = str(corpo_base.get("name") or "")
 
     # A BATERIA. O WhatsApp recusou a primeira tentativa com 479, que o próprio
     # whatsmeow documenta como "Invalid stanza sent (smax-invalid)": recusa do
@@ -490,20 +516,49 @@ async def prova_de_formulario(
 
     import requests
 
-    url = f"{base_url}/send/interactiveResponse"
+    # 🔴 A ROTA SAI DA MESMA FUNÇÃO QUE O ENVIO REAL — nunca de uma string daqui.
+    #
+    # ⚠️ Esta linha já foi `f"{base_url}/send/interactiveResponse"` fixo. Hoje as
+    # duas coisas coincidem, e é justamente por isso que o defeito era
+    # SILENCIOSO: no dia em que alguém escrever `EVOLUTION_GO_FLOW_REPLY_PATH`
+    # para corrigir o caminho, a prova continuaria dizendo "tudo bem" sobre uma
+    # rota que a produção não usa mais (CLAUDE.md §9.4 — *um padrão medido com um
+    # motor e aplicado com outro é um padrão sobre outra coisa*).
+    rota = rota_de_flow_reply()
+    if not rota:
+        # 🔴 Desligado é uma RECUSA, não um caminho. Sem esta guarda o `f-string`
+        # abaixo montaria `{base_url}` + "" e a prova bateria na raiz do serviço,
+        # medindo o que não se quis medir.
+        logger.warning(
+            "[PROVA FORMULARIO] company=%s a rota de resposta de interativa esta "
+            "DESLIGADA por configuracao (%s) — nada foi enviado", company_id,
+            ENV_ROTA_FLOW_REPLY)
+        return {
+            "success": False,
+            "diagnostico": "rota_desligada_por_configuracao",
+            "explicacao": (
+                f"O envio de resposta de formulario esta DESLIGADO nesta instalacao: "
+                f"a variavel {ENV_ROTA_FLOW_REPLY} esta em 'off'. Nenhuma mensagem "
+                f"foi enviada, e o produto tambem nao envia enquanto estiver assim. "
+                f"Para religar, apague o valor da variavel (o padrao volta a ser a "
+                f"rota provada {ROTA_DE_FLOW_REPLY_PROVADA}) e rode esta prova de novo."
+            ),
+        }
+
+    url = f"{base_url}{rota}"
     resultados = []
     vencedora = None
 
     for t in tentativas:
-        corpo: Dict[str, Any] = {"number": para, "name": nfm["name"], "paramsJSON": params_json}
-        if t["version"]:
-            corpo["version"] = int(t["version"])
-        if t["body"] and texto:
-            corpo["body"] = texto
+        # 🔴 O corpo NASCE do montador de produção e a prova só TIRA o fator que
+        # está medindo. Começar de um dicionário próprio é ter dois montadores.
+        corpo: Dict[str, Any] = _corpo_da_prova(version=int(t["version"]))
+        if not t.get("embrulho"):
+            corpo.pop("wrapInDocumentWithCaption", None)
+        if not t["body"]:
+            corpo.pop("body", None)
         if t["biz"]:
             corpo["withBizNodes"] = True
-        if t.get("embrulho"):
-            corpo["wrapInDocumentWithCaption"] = True
         if t.get("segredo"):
             corpo["withMessageSecret"] = True
 
@@ -520,16 +575,39 @@ async def prova_de_formulario(
             resultados.append({"tentativa": t["nome"], "http": None, "erro": type(e).__name__})
             continue
 
-        # 404 é conclusivo e não adianta insistir: a imagem no ar é anterior ao
-        # patch 0005 e não tem a porta de saída.
+        # 404 é conclusivo e não adianta insistir — mas o que ele SIGNIFICA
+        # mudou, e dizer o antigo custou um rebuild que não era necessário.
+        #
+        # 🔴 O TEXTO DE ANTES DIZIA QUE FALTAVA VERSÃO DE IMAGEM, e isso é FALSO
+        # desde 26/09/2026: 📊 a rota respondeu HTTP 200 (`vencedora: "embrulho
+        # DocumentWithCaption"`, servidor devolveu
+        # `Type: "InteractiveResponseMessage"`, ID 3EB02C9B1BFC57E46E3136) na
+        # imagem que está no ar. Quem leu aquele texto pediu autorização para
+        # reconstruir a imagem à toa. CLAUDE.md §9.3: verdade vencida é pior que
+        # teste nenhum — e este texto é lido às três da manhã, por quem está com
+        # um acionamento parado.
+        #
+        # ⛔ E ele NÃO promete versão de imagem nenhuma. Foi a promessa que
+        # enganou: a rota não aparece no `swagger/doc.json` nem na imagem em que
+        # ela FUNCIONA, então número de versão aqui é palpite com cara de
+        # instrução.
         if r.status_code == 404:
             return {
                 "success": False,
-                "diagnostico": "rota_ausente",
+                "diagnostico": "rota_nao_respondeu_mais",
                 "explicacao": (
-                    "Este Evolution GO nao tem POST /send/interactiveResponse. "
-                    "A imagem precisa ser 0.7.2-autobrokers.2 ou mais nova."
+                    f"Este Evolution GO devolveu 404 em POST {rota}. 📊 Essa mesma "
+                    f"rota FOI PROVADA no ar em 26/09/2026 (HTTP 200, o servidor "
+                    f"respondeu Type: \"InteractiveResponseMessage\"). Um 404 agora "
+                    f"significa que ela MUDOU DE CAMINHO ou foi DESLIGADA no "
+                    f"servico — nao que falte versao de imagem. Confira: (1) a "
+                    f"variavel {ENV_ROTA_FLOW_REPLY}, que e o que corrige o caminho "
+                    f"(vazia = usa {ROTA_DE_FLOW_REPLY_PROVADA}); (2) se o servico "
+                    f"em {base_url} e o mesmo de antes; (3) rode esta prova de novo "
+                    f"depois de corrigir — ela e a unica coisa que decide, e o "
+                    f"swagger/doc.json NAO lista esta rota nem quando ela funciona."
                 ),
+                "rota_tentada": rota,
             }
 
         try:
@@ -554,8 +632,11 @@ async def prova_de_formulario(
         "success": vencedora is not None,
         "vencedora": vencedora,
         "para": para,
-        "envelope": nfm["name"],
+        "envelope": nome_do_envelope_ecoado,
         "tamanho_paramsJSON": len(params_json),
+        # 🔴 A rota vai NA RESPOSTA: quem lê a prova precisa saber em que caminho
+        # ela bateu, senão um dia ela prova um caminho e o produto usa outro.
+        "rota": rota,
         "tentativas": resultados,
         "leitura": (
             f"O WhatsApp ACEITOU: {vencedora}. Esta e a forma a usar."
