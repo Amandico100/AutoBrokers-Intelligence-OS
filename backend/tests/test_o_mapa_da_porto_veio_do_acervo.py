@@ -304,24 +304,49 @@ def test_a_resposta_declarada_tem_as_10_chaves_de_3_em_3_capturas():
                 f"{chave} aponta para o campo {decl['campo']!r}, que não existe na tela")
 
 
-def test_latitude_e_longitude_sao_sem_chute_e_NAO_viram_zero():
-    """🔴 O defeito que esta asserção impede é geográfico e irreversível.
+def test_latitude_e_longitude_vem_do_PIN_e_NUNCA_de_um_valor_fixo():
+    """🔴 ESTE TESTE MIGROU EM 26/09/2026 (SPEC-118 F4) — CLAUDE.md §9.3.
 
-    📊 As 3 capturas trazem `latitude`/`longitude` reais (o próprio Flow as
-    resolve a partir do campo "Endereço ou CEP"); nenhuma é 0. E o backend não
-    tem geocodificador algum. Um zero "para completar a resposta" põe o
-    endereço do chamado no Golfo da Guiné, e a URA aceita calada.
+    Ele exigia `origem: "sem_chute"` nas duas coordenadas, e a mensagem de falha
+    dizia o que fazer quando o fato mudasse: *"se apareceu uma fonte real,
+    ótimo: escreva a medição dela aqui"*. **Apareceu**, e não é geocodificador:
 
-    Sem fonte, a única saída honesta é não responder e dizer por quê."""
+    📊 é o PIN do WhatsApp. `whatsapp/evolution_inbound.py:720` converte
+    `locationMessage` em texto desde 03/08/2026 com 6 casas decimais, e
+    `corridor_playbooks.coordenada_do_pin` lê a linha rotulada dele.
+
+    ⚠️ **A GARANTIA É A MESMA, e ela nunca foi sobre a palavra `sem_chute`:** a
+    coordenada não pode sair de um valor FIXO nem de uma dedução de endereço. Um
+    zero "para completar a resposta" põe o chamado no Golfo da Guiné e a URA
+    aceita calada. Agora a mesma coisa se afirma pelo outro lado — a origem é um
+    SLOT, o slot vem do pin, e o par desonesto é apagado antes de chegar aqui.
+    """
     resposta = (PB.native_flow(_porto(), FLOW_ENDERECO).get("resposta") or {})
-    for chave in ("latitude", "longitude"):
+    for chave, slot in (("latitude", "local_latitude"),
+                        ("longitude", "local_longitude")):
         decl = (resposta.get("obrigatorias") or {}).get(chave) or {}
-        assert decl.get("origem") == "sem_chute", (
-            f"{chave} passou a ter origem {decl.get('origem')!r} — se apareceu "
-            "uma fonte real, ótimo: escreva a medição dela aqui. Se foi um "
-            "valor fixo, isso é o chute que este teste existe para barrar")
+        assert decl.get("origem") == "slot", (
+            f"{chave} tem origem {decl.get('origem')!r}. As origens aceitáveis "
+            "são duas e só duas: `slot` (o par do pin, conferido por "
+            "`par_de_coordenadas`) ou `sem_chute` (sem fonte → handoff com "
+            "motivo). Qualquer outra é o chute que este teste existe para barrar")
+        assert decl.get("slot") == slot, decl
         assert "default" not in decl and "valor" not in decl, (
             f"{chave} ganhou valor fixo no mapa: {decl!r}")
+    # 🔴 E O MOTOR NÃO ACEITA O ZERO, que é a metade que importa da lição antiga.
+    #    📊 Medido com `inject_address_slots`, o portão por onde TODO acionamento
+    #    passa (`new_dispatch_session`): `(0,0)`, meio par e fora de faixa são
+    #    APAGADOS dos slots, e o formulário cai em `sem_valor` → uma pessoa.
+    from_capture = dict(CAPTURA["slots_do_corredor_equivalentes"])
+    for lat, lon, apelido in (("0", "0", "o Golfo da Guiné"),
+                              ("-27.588016", "", "meio par"),
+                              ("-95.0", "-48.5", "fora da faixa do planeta")):
+        slots = dict(from_capture, local_latitude=lat, local_longitude=lon)
+        PB.inject_address_slots(slots)
+        montado = PB.montar_resposta_de_flow(
+            PB.native_flow(_porto(), FLOW_ENDERECO), slots)
+        assert montado["ok"] is False and montado["params"] is None, (
+            f"⛔ {apelido} atravessou o motor: {montado['params']!r}")
     # E o motor não pode inventá-las por outro caminho: nenhum componente da
     # tela se chama latitude/longitude, então nem um `default` de componente as
     # produziria.
@@ -372,10 +397,23 @@ def test_o_montador_JA_responde_texto_e_o_que_falta_e_a_COORDENADA():
         f"o que falta mudou: {montado['missing']} — um campo de TEXTO de volta "
         f"aqui significa que o passthrough do montador parou de funcionar")
     motivos = {d["motivo"] for d in montado["missing_detail"]}
-    assert motivos == {"sem_chute"}, (
+    # 🔴 O MOTIVO MIGROU DE NOVO EM 26/09 (F4), e a lição foi COM ele.
+    #    `valor_nao_reconhecido` → `sem_chute` → `sem_valor`, e cada degrau é uma
+    #    frase diferente para a atendente:
+    #      · `valor_nao_reconhecido`  "o endereço do segurado não serve"   (era FALSO)
+    #      · `sem_chute`              "não há dado no mundo para buscar"   (era verdade)
+    #      · `sem_valor`              "falta um dado, e há onde buscá-lo"  (é o pin)
+    #    ⚠️ A garantia não muda: o mapa da Porto, com o CASO SEM O PIN, ainda não
+    #    responde — e diz por quê, nomeando o slot que a pessoa tem de pedir.
+    assert motivos == {"sem_valor"}, (
         f"o motivo da recusa mudou: {motivos} — `valor_nao_reconhecido` é o "
-        "defeito de antes da F2b (o motor não sabia ler texto); `sem_valor` seria "
-        "o mapa ter deixado de casar os slots do corredor")
+        "defeito de antes da F2b (o motor não sabia ler texto); `sem_chute` "
+        "significa que a coordenada perdeu a fonte que o pin lhe deu na F4")
+    assert {d.get("slot") for d in montado["missing_detail"]} == {
+        "local_latitude", "local_longitude"}, (
+        "a falta deixou de NOMEAR o slot do caso — é ele que o portão cobra e "
+        "que o agente pede, e sem ele quem lê o dossiê não sabe o que buscar: "
+        f"{montado['missing_detail']}")
 
 
 def test_a_resposta_nunca_sai_pela_metade():

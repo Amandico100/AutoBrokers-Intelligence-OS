@@ -318,7 +318,20 @@ def test_3_o_formulario_sem_fonte_vai_a_UMA_PESSOA_com_o_motivo_escrito():
         flow_sender=lambda **k: enviados.append(k) or True)
     assert saida is not None, "a tela do formulário da Porto não foi reconhecida"
     assert saida["state"] == "needs_human", saida.get("state")
-    assert str(saida.get("reason") or "").startswith("sem_chute:"), saida.get("reason")
+    # 🔴 O MOTIVO MIGROU EM 26/09/2026 (SPEC-118 F4), E A MUDANÇA É O CONSERTO.
+    #
+    #    Antes: `sem_chute:latitude,longitude` — e estava certo, porque não
+    #    existia dado no mundo para buscar. 📊 A F4 deu fonte à coordenada (o PIN
+    #    do WhatsApp), então agora existe: o motivo passa a ser
+    #    `formulario_incompleto:latitude,longitude`, que é a frase que manda a
+    #    atendente PROCURAR — e há o que procurar.
+    #
+    # ⚠️ A garantia deste teste não muda: a tela chega, a resposta NÃO SAI, nada
+    #    é enviado, `params` fica None e os campos que faltam são NOMEADOS.
+    assert str(saida.get("reason") or "").startswith("formulario_incompleto:"), (
+        "o motivo mudou: %r — `sem_chute:` de volta significa que a coordenada "
+        "perdeu a fonte do pin (a F4 a declarou em `corridor_playbooks`)"
+        % saida.get("reason"))
     assert "latitude" in saida["reason"] and "longitude" in saida["reason"], saida["reason"]
     assert not enviados, (
         "⛔ alguma coisa foi enviada à seguradora com o formulário incompleto: %r"
@@ -326,8 +339,31 @@ def test_3_o_formulario_sem_fonte_vai_a_UMA_PESSOA_com_o_motivo_escrito():
     # 🔴 Zero inventado é o Golfo da Guiné: a resposta não pode ter sido montada.
     assert (saida.get("flow_resposta") or {}).get("params") is None, saida.get("flow_resposta")
     frase = DS.motivo_em_portugues(saida["reason"])
-    assert "não responde o que não sabe" in frase, frase
-    assert "sem_chute" not in frase, frase
+    assert not _CHAVE_CRUA.search(frase), (
+        "a frase que a atendente lê traz chave crua: %r" % frase)
+    assert "formulario_incompleto" not in frase, frase
+
+    # 🔴 E A LIÇÃO ANTIGA CONTINUA TESTADA, com o defeito REINTRODUZIDO numa
+    #    cópia: chave sem fonte é `sem_chute`, e a frase diz que o produto não
+    #    responde o que não sabe — em vez de mandar procurar o que não existe.
+    import copy as _copy
+    pb_sem_fonte = _copy.deepcopy(PB.get_playbook(PORTO_AUTO))
+    _flow = pb_sem_fonte["native_flows"][FLOW_PORTO_ENDERECO]
+    _flow["resposta"]["obrigatorias"]["latitude"] = {"origem": "sem_chute"}
+    _flow["resposta"]["obrigatorias"]["longitude"] = {"origem": "sem_chute"}
+    sessao2 = _sessao(PORTO_AUTO, "guincho")
+    sessao2["state"] = "ura"
+    sessao2["flow_token"] = "token-de-teste"
+    saida2 = DS._responder_formulario_nativo(
+        sessao2, pb_sem_fonte,
+        "Para seguir, preencha o formulário com o endereço.",
+        interactive={"kind": "flow", "flow": {"flow_id": FLOW_PORTO_ENDERECO}},
+        flow_sender=lambda **k: enviados.append(k) or True)
+    assert str(saida2.get("reason") or "").startswith("sem_chute:"), saida2.get("reason")
+    frase2 = DS.motivo_em_portugues(saida2["reason"])
+    assert "não responde o que não sabe" in frase2, frase2
+    assert "sem_chute" not in frase2, frase2
+    assert not enviados, enviados
 
 
 # ===========================================================================
@@ -419,57 +455,56 @@ def test_5_CONTROLE_zero_e_meio_par_NAO_viajam_e_o_texto_pede_o_PIN():
     assert bons.get("local_latitude") == "-27.588016", bons.get("local_latitude")
 
 
-def test_5_o_MAPA_da_porto_ainda_declara_a_coordenada_SEM_FONTE__BLOQUEIO():
-    """📊 O que falta para a Porto fechar, medido em 26/09/2026 — e é UMA LINHA,
-    no arquivo da fatia F2b (`corridor_playbooks.py`), que esta fatia não toca.
+def test_5_o_MAPA_da_porto_FECHA_com_a_coordenada_do_PIN():
+    """🔴 ESTE TESTE FEZ O QUE A PRÓPRIA DOCSTRING DELE MANDOU FAZER.
 
-    Hoje o mapa declara::
+    Ele se chamava `..._ainda_declara_a_coordenada_SEM_FONTE__BLOQUEIO` e media,
+    com o motor, o que faltava para a Porto fechar: **uma linha no mapa**. A
+    instrução estava escrita lá: *"quando a F2b (ou quem costurar) declarar a
+    origem, esta primeira asserção fica VERMELHA de propósito: apague-a e mova a
+    prova para o teste nº 5, que passa a exigir `ok=True` no mapa de verdade"*.
 
-        "latitude":  {"origem": "sem_chute", ...}
-        "longitude": {"origem": "sem_chute", ...}
+    📊 A F4 declarou a origem (`{"origem": "slot", "slot": "local_latitude"}`,
+    `corridor_playbooks.py`), a asserção ficou vermelha, e a prova mudou de lado:
+    o que era medido numa CÓPIA agora se exige do mapa REAL.
 
-    e `montar_resposta_de_flow` nunca lê slot nenhum para essa origem — então
-    **mesmo com o par do pin nos slots** a resposta não fecha, e o caso vai a uma
-    pessoa (é o que o teste nº 3 prova).
-
-    🔴 Com a origem declarada (`{"origem": "slot", "slot": "local_latitude"}`), o
-    formulário FECHA: é o que a segunda metade deste teste mede, sobre uma CÓPIA
-    do mapa real — nada aqui é inventado.
-
-    ⚠️ Quando a F2b (ou quem costurar) declarar a origem, **esta primeira
-    asserção fica VERMELHA de propósito**: apague-a e mova a prova para o teste
-    nº 5, que passa a exigir `ok=True` no mapa de verdade.
+    ⚠️ A garantia que sobrevive é a que sempre importou — **as 10 chaves das 3
+    capturas, com a coordenada do PIN e nada inventado**.
     """
-    import copy
-
     flow = PB.get_playbook(PORTO_AUTO)["native_flows"][FLOW_PORTO_ENDERECO]
     obrigatorias = (flow.get("resposta") or {}).get("obrigatorias") or {}
-    assert obrigatorias["latitude"]["origem"] == "sem_chute", (
-        "🔴 o mapa passou a declarar a origem da latitude — apague esta asserção "
-        "e exija `ok=True` no mapa REAL: %r" % obrigatorias["latitude"])
+    assert obrigatorias["latitude"] == {
+        "origem": "slot", "slot": "local_latitude",
+        "pergunta": "a localização exata, pelo pin do WhatsApp"}, (
+        "a declaração da latitude mudou: %r — `sem_chute` de volta significa que "
+        "a Porto voltou a ser handoff; um `default` ou `valor` seria o chute que "
+        "põe o chamado no Golfo da Guiné" % obrigatorias["latitude"])
 
     slots_com_pin = dict(CASO_AUTO, local_latitude="-27.588016",
                          local_longitude="-48.544253")
     sessao = DS.new_dispatch_session(case_id="guarda-f3", company_id="guarda-f3",
                                      playbook_ref=PORTO_AUTO, subservice="guincho",
                                      slots=slots_com_pin)
-    # No mapa REAL: não fecha, e o motivo é `sem_chute` (nunca zero, nunca chute).
-    real = PB.montar_resposta_de_flow(flow, sessao["slots"],
+    assert sessao["state"] == "ready_to_send", sessao.get("missing_slots")
+    fecha = PB.montar_resposta_de_flow(flow, sessao["slots"],
                                       flow_id=FLOW_PORTO_ENDERECO)
-    assert real["ok"] is False and real["missing"] == ["latitude", "longitude"], real
-    # Na CÓPIA com a origem declarada: fecha, com as 10 chaves das 3 capturas.
-    como_seria = copy.deepcopy(flow)
-    como_seria["resposta"]["obrigatorias"]["latitude"] = {
-        "origem": "slot", "slot": "local_latitude"}
-    como_seria["resposta"]["obrigatorias"]["longitude"] = {
-        "origem": "slot", "slot": "local_longitude"}
-    fecha = PB.montar_resposta_de_flow(como_seria, sessao["slots"],
-                                       flow_id=FLOW_PORTO_ENDERECO)
     assert fecha["ok"] is True, fecha["missing_detail"]
     assert set(fecha["params"]) == {
         "rua", "numero_residencia", "bairro", "cidade", "estado", "cep",
         "referencia", "label_endereco_completo", "latitude", "longitude"}, fecha["params"]
     assert fecha["params"]["latitude"] == "-27.588016", fecha["params"]
+
+    # 🔴 CONTROLE — o MESMO caso SEM o pin não fecha, e agora nem nasce pronto:
+    #    o portão cobra a coordenada ANTES de a URA rodar 25 telas. É o elo 3 da
+    #    SPEC-118, e sem esta linha um `ok=True` fixo passaria acima.
+    sem_pin = DS.new_dispatch_session(case_id="guarda-f3", company_id="guarda-f3",
+                                      playbook_ref=PORTO_AUTO,
+                                      subservice="guincho", slots=dict(CASO_AUTO))
+    assert sem_pin["state"] == "preparing", sem_pin["state"]
+    assert "local_latitude" in (sem_pin.get("missing_slots") or []), sem_pin
+    nao_fecha = PB.montar_resposta_de_flow(flow, sem_pin["slots"],
+                                          flow_id=FLOW_PORTO_ENDERECO)
+    assert nao_fecha["ok"] is False and nao_fecha["params"] is None, nao_fecha
 
 
 def test_6_P_F2b_01_cada_seguradora_ecoa_o_NOME_do_proprio_formulario():

@@ -136,8 +136,15 @@ def test_o_montador_responde_os_campos_de_TEXTO_da_porto():
     assert montado["missing"] == SEM_FONTE, (
         f"o que falta mudou: {montado['missing']} — se um campo de TEXTO voltou "
         f"para cá, o passthrough parou de funcionar")
-    assert {d["motivo"] for d in montado["missing_detail"]} == {"sem_chute"}, (
-        f"motivos={[d['motivo'] for d in montado['missing_detail']]}")
+    # 🔴 O MOTIVO MIGROU EM 26/09 (F4): a coordenada ganhou fonte — o PIN — e
+    #    passou a faltar como qualquer outro dado, com o slot NOMEADO. A garantia
+    #    é a mesma ("não se declare pronto cedo"), e agora o motivo diz para onde
+    #    a atendente vai: pedir o pin, em vez de procurar um dado que não existe.
+    assert {d["motivo"] for d in montado["missing_detail"]} == {"sem_valor"}, (
+        f"motivos={[d['motivo'] for d in montado['missing_detail']]} — "
+        "`sem_chute` de volta significa que a coordenada perdeu a fonte do pin")
+    assert {d["slot"] for d in montado["missing_detail"]} == {
+        "local_latitude", "local_longitude"}, montado["missing_detail"]
     # 🔴 E A PROVA POSITIVA DO TEXTO: a chave DERIVADA só existe se os cinco
     #    componentes de texto tiverem resolvido valor.
     #    📊 molde medido em 3 de 3 capturas:
@@ -230,22 +237,56 @@ def test_CONTROLE_com_a_coordenada_declarada_a_resposta_da_porto_sai_INTEIRA():
     assert "ponto_referencia" not in montado["params"]
 
 
-def test_a_coordenada_sem_fonte_e_HANDOFF_COM_MOTIVO_nunca_zero():
+def test_a_coordenada_AUSENTE_e_HANDOFF_COM_MOTIVO_nunca_zero():
     """⛔ O defeito irreversível: lat/long 0 é o Golfo da Guiné, e a URA aceita
-    calada. O motivo `sem_chute` é o que manda o caso a uma pessoa em vez de
-    completar a resposta com um número inventado."""
+    calada. Responder com zero abre o chamado no meio do Atlântico.
+
+    🔴 MIGROU EM 26/09/2026 (SPEC-118 F4). A mensagem de falha antiga dizia o
+    que fazer: *"se apareceu uma FONTE real, escreva a medição dela no mapa e
+    migre este teste (§9.3)"*. Apareceu — o PIN — e as duas asserções que
+    morreram foram `motivo == "sem_chute"` e `not d["slot"]`.
+
+    ⚠️ **A garantia não era sobre o nome do motivo.** Era: sem a coordenada a
+    resposta NÃO SAI, e o caso vai a uma pessoa com o que falta escrito. Isso
+    continua palavra por palavra — e ganhou a metade que fecha a porta de
+    verdade: o par DESONESTO (zero, meio par, fora de faixa) também não sai, e é
+    o motor do produto que o recusa."""
     montado = PB.montar_resposta_de_flow(_flow_porto(), dict(SLOTS_DA_CAPTURA))
+    assert montado["ok"] is False and montado["params"] is None
     for d in montado["missing_detail"]:
         assert d["campo"] in SEM_FONTE
-        assert d["motivo"] == "sem_chute"
+        assert d["motivo"] == "sem_valor", d
         assert d.get("valor_recebido") in (None, ""), (
-            f"a coordenada chegou com valor {d.get('valor_recebido')!r} — se "
-            f"apareceu uma FONTE real, escreva a medição dela no mapa e migre "
-            f"este teste (§9.3). Se é um valor fixo, é o chute proibido")
-        assert not d.get("slot"), (
-            "a coordenada ganhou um slot do caso — então ela deixou de ser "
-            "`sem_chute`, e o portão passaria a INTERROGAR o segurado por uma "
-            "latitude")
+            f"a coordenada chegou com valor {d.get('valor_recebido')!r} e ainda "
+            f"assim foi recusada — isso é `valor_nao_reconhecido` disfarçado")
+        # 🔴 AGORA ELA TEM SLOT, E É ISSO QUE A TORNA PEDÍVEL: é por este nome
+        #    que o portão cobra e que o agente ensina o segurado a mandar o pin.
+        #    ⛔ E NÃO é "interrogar por uma latitude": `_COMO_PERGUNTAR` traduz os
+        #    dois slots na MESMA frase, que ensina o clipe, e
+        #    `test_o_fio_do_acionamento_atravessa_o_formulario` prova que nenhuma
+        #    frase dita ao segurado contém a palavra "latitude".
+        assert d["slot"] in ("local_latitude", "local_longitude"), d
+
+    # 🔴 O PAR DESONESTO TAMBÉM NÃO VIAJA — pelo motor, nunca por leitura.
+    for lat, lon, apelido in (("0", "0", "o Golfo da Guine"),
+                              ("0.0000001", "0", "zero com maquiagem"),
+                              ("-27.588016", "", "meio par"),
+                              ("abc", "def", "texto no lugar do numero")):
+        slots = dict(SLOTS_DA_CAPTURA, local_latitude=lat, local_longitude=lon)
+        PB.inject_address_slots(slots)
+        sobrou = {k: v for k, v in slots.items() if "itude" in k}
+        assert not sobrou, f"⛔ {apelido} sobreviveu ao portao: {sobrou}"
+        ruim = PB.montar_resposta_de_flow(_flow_porto(), slots)
+        assert ruim["ok"] is False and ruim["params"] is None, ruim["params"]
+
+    # 🔴 CONTROLE: o par HONESTO do pin FECHA a resposta. Sem esta linha, um
+    #    portão que apagasse tudo passaria em todas as asserções acima.
+    bom = dict(SLOTS_DA_CAPTURA, local_latitude="-27.588016",
+               local_longitude="-48.544253")
+    PB.inject_address_slots(bom)
+    fecha = PB.montar_resposta_de_flow(_flow_porto(), bom)
+    assert fecha["ok"] is True, fecha["missing_detail"]
+    assert fecha["params"]["latitude"] == "-27.588016", fecha["params"]
 
 
 # ===========================================================================
@@ -296,18 +337,58 @@ def test_o_portao_cobra_os_campos_do_formulario_QUE_TEM_COMO_SER_RESPONDIDO():
 
 
 def test_formulario_que_NAO_FECHA_nao_gera_pergunta_nenhuma():
-    """⛔ A trava, no mapa REAL: enquanto a coordenada não tiver fonte, o
-    formulário da Porto é handoff com motivo — e o portão fica calado.
+    """⛔ A trava contra o interrogatório à toa — 🔴 MIGRADA EM 26/09/2026 (F4).
 
-    📊 `local_cep` e os `local_*` não têm redação em português em
-    `_COMO_PERGUNTAR` (é o que `test_o_cliente_nao_le_marcador_interno` mede):
-    cobrá-los faria o agente pedir "local_bairro" a uma pessoa de verdade."""
-    faltando = PB.missing_slots_for_subservice(_porto(), "guincho", {})
-    intrusos = [s for s in DO_FORMULARIO_DA_PORTO if s in faltando]
+    A afirmação antiga era sobre o mapa REAL da Porto: *"enquanto a coordenada
+    não tiver fonte, o portão fica calado"*. 📊 Ela tinha DOIS motivos escritos,
+    e a F4 matou os dois:
+
+    ```
+    (1) as duas chaves eram `sem_chute`         -> agora vêm do PIN
+    (2) os `local_*` não tinham redação em PT   -> têm, em `_COMO_PERGUNTAR`
+    ```
+
+    ⚠️ **O MECANISMO continua vivo, e é ele que este teste guarda.** Qualquer
+    formulário com uma chave obrigatória SEM FONTE continua sendo saltado pelo
+    portão — perguntar não muda o desfecho dele. Prova-se numa CÓPIA que
+    reintroduz o defeito histórico, que é o que torna este guarda um guarda e não
+    um carimbo (CLAUDE.md §9.5).
+    """
+    copia = copy.deepcopy(_porto())
+    flow = copia["native_flows"][FLOW_PORTO_ENDERECO] = copy.deepcopy(_flow_porto())
+    flow["resposta"]["obrigatorias"]["latitude"] = {
+        "origem": "sem_chute", "motivo": "o defeito historico, reintroduzido"}
+    faltando = PB.missing_slots_for_subservice(copia, "guincho", {})
+    intrusos = [x for x in DO_FORMULARIO_DA_PORTO if x in faltando]
     assert not intrusos, (
         f"o portão passou a cobrar {intrusos} de um formulário que NÃO FECHA "
-        f"(latitude/longitude sem fonte) — duas perguntas a mais e o caso vai "
-        f"para uma pessoa do mesmo jeito")
+        f"(latitude sem fonte) — seriam perguntas a mais e o caso iria para uma "
+        f"pessoa do mesmo jeito")
+
+    # 🔴 E O ESTADO DE HOJE, MEDIDO: no mapa REAL o portão COBRA — é o elo 3 da
+    #    SPEC finalmente fechado — e cobra em português.
+    real = PB.missing_slots_for_subservice(_porto(), "guincho", {})
+    ausentes = [x for x in DO_FORMULARIO_DA_PORTO if x not in real]
+    assert not ausentes, (
+        f"o portão parou de cobrar {ausentes} no mapa REAL — o caso voltaria a "
+        f"morrer na tela do formulário, depois de ~25 telas de URA")
+    assert "local_latitude" in real and "local_longitude" in real, real
+    from app.services.corridor_playbooks import _COMO_PERGUNTAR
+    sem_redacao = [x for x in real if not _COMO_PERGUNTAR.get(x)]
+    assert not sem_redacao, (
+        f"o portão cobra {sem_redacao} e o produto não sabe pedir em português — "
+        f"o agente diria o identificador a uma pessoa de verdade (§12.1)")
+
+    # 🔴 CONTROLE: com o PIN e o endereço na mão, o portão cobra ZERO. É a
+    #    medição que sustenta a decisão desta fatia — UM TOQUE, não seis
+    #    perguntas. Sem esta linha, "cobrar sempre" passaria acima.
+    com_pin = dict(SLOTS_DA_CAPTURA, local_latitude="-27.588016",
+                   local_longitude="-48.544253")
+    ainda = [x for x in DO_FORMULARIO_DA_PORTO
+             if x in PB.missing_slots_for_subservice(_porto(), "guincho", com_pin)]
+    assert not ainda, (
+        f"o portão cobra {ainda} de um caso que já tem o endereço inteiro — é o "
+        f"interrogatório à toa que a trava existe para evitar")
 
 
 def test_CONTROLE_o_portao_NAO_cobra_de_quem_nao_ve_a_tela():
