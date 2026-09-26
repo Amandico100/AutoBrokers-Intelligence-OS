@@ -353,11 +353,57 @@ def test_a_apolice_sobrevive_a_compressao_da_toolmessage():
 # --------------------------------------------------------------------------- #
 _RE_CPF = re.compile(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b")
 
+#: 🔴 O ALVO SÃO OS VALORES, NÃO A SERIALIZAÇÃO — e isso custou um falso vermelho.
+#:
+#: 📊 26/09/2026: a primeira versão deste guarda comparava as partes do nome
+#: contra `json.dumps(contexto)`, que inclui os NOMES DAS CHAVES. O contexto novo
+#: tem a chave `cliente_ref` (o pseudônimo opaco) e o valor `sistema_de_gestao`
+#: (a origem do campo): `"Cliente"` casava com `cliente_ref` e `"De"` casava com
+#: `sistema_de_gestao`. O guarda ficaria VERMELHO sem uma gota de PII no
+#: contexto — e um guarda que grita sem motivo é desligado pela próxima pessoa.
+#:
+#: Duas correções, as duas com razão escrita:
+#:   · varre só os VALORES, recursivamente (chave não é dado do cliente);
+#:   · parte de nome só conta com 4+ letras — `"De"`, `"Da"`, `"Dos"` são
+#:     partículas de nome brasileiro e aparecem em palavra comum do domínio.
+#: ⚠️ O CPF continua sendo procurado no texto INTEIRO, sem exceção de tamanho:
+#: dígito de documento não tem colisão inocente.
+_MIN_LETRAS_DE_NOME = 4
+
+
+def _valores_em_texto(no) -> str:
+    """Todos os VALORES de um dicionário aninhado, concatenados. **PURA.**"""
+    if isinstance(no, dict):
+        return " ".join(_valores_em_texto(v) for v in no.values())
+    if isinstance(no, (list, tuple, set)):
+        return " ".join(_valores_em_texto(v) for v in no)
+    return str(no)
+
+
+def _achados_de_pii(contexto: dict) -> list:
+    """O que de dado pessoal existe nos VALORES deste contexto. **PURA.**
+
+    Separada do teste de propósito: é ela que o teste de MUTAÇÃO chama para
+    provar que o guarda CONSEGUE ficar vermelho (CLAUDE.md §9.3).
+    """
+    import json as _json
+
+    valores = _valores_em_texto(contexto)
+    inteiro = _json.dumps(contexto, ensure_ascii=False, default=str)
+    achados = []
+    if DOC_SINTETICO in inteiro or _RE_CPF.search(inteiro):
+        achados.append("CPF")
+    for parte in NOME_SINTETICO.split():
+        if len(parte) >= _MIN_LETRAS_DE_NOME and parte.lower() in valores.lower():
+            achados.append("nome:%s" % parte)
+    if "infocap:" in valores:
+        achados.append("locator tecnico cru")
+    return achados
+
 
 def test_o_contexto_do_atendimento_nao_carrega_dado_pessoal():
-    """🔴 G2. O contexto que o atendimento guarda não pode conter CPF nem nome —
-    nem cru, nem por descuido de quem o montou. O alvo é o CONTEÚDO, não o nome
-    da chave: o guarda varre o dicionário inteiro, recursivamente.
+    """🔴 G2. O contexto que o atendimento guarda não pode conter CPF, nome nem
+    locator técnico cru. O alvo é o CONTEÚDO dos valores, recursivamente.
     """
     duble = _DubleDaConsulta(_data_do_conector(unmasked=False))
     estado = _estado(papel="attendance")
@@ -368,11 +414,32 @@ def test_o_contexto_do_atendimento_nao_carrega_dado_pessoal():
     contexto = _rodar(N.tool_node(estado, tools=[duble])).get("infocap_policy_context")
     assert contexto, "sem contexto não há o que auditar — ver o teste do fio"
 
-    import json as _json
+    achados = _achados_de_pii(contexto)
+    assert not achados, "dado pessoal no contexto do atendimento: %s | %r" % (achados, contexto)
 
-    texto = _json.dumps(contexto, ensure_ascii=False, default=str)
-    assert DOC_SINTETICO not in texto, "o CPF do cliente entrou no contexto: %s" % texto
-    assert not _RE_CPF.search(texto), "há um CPF no contexto: %s" % texto
-    for parte in NOME_SINTETICO.split():
-        assert parte.lower() not in texto.lower(), (
-            "o nome do cliente entrou no contexto (%r): %s" % (parte, texto))
+    # E a identidade crua não pode existir NEM como chave no papel do segurado.
+    assert "document" not in contexto, contexto
+    assert "name" not in contexto, contexto
+
+
+def test_CONTROLE_o_guarda_de_pii_consegue_ficar_vermelho():
+    """🔴 O guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3).
+
+    Três defeitos históricos, reintroduzidos à mão, um por vez. Se qualquer um
+    deles passar batido, o guarda acima é carimbo — e este teste é o que prova
+    que ele não é.
+    """
+    limpo = {"versao": 1, "cliente_ref": "ab12cd34", "apolices": [
+        {"chave": "ff00", "numapo": "A-0001", "ramo": "auto", "seguradora": "ALLIANZ"}],
+        "origem_por_campo": {"ramo": "sistema_de_gestao"}}
+    assert _achados_de_pii(limpo) == [], (
+        "o contexto LIMPO tem de passar — senão o guarda reprova tudo e não "
+        "distingue nada: %r" % (_achados_de_pii(limpo),))
+
+    com_cpf = {**limpo, "document": DOC_SINTETICO}
+    com_nome = {**limpo, "apolices": [{**limpo["apolices"][0],
+                                      "titular": NOME_SINTETICO}]}
+    com_locator = {**limpo, "apolices": [{**limpo["apolices"][0],
+                                          "ref": "infocap:1:900001"}]}
+    for nome, sujo in (("CPF", com_cpf), ("nome", com_nome), ("locator", com_locator)):
+        assert _achados_de_pii(sujo), "o guarda NÃO viu o %s injetado: %r" % (nome, sujo)

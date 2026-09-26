@@ -166,7 +166,7 @@ Fora disso: `PENDENCIAS.md`, com causa, caso reproduzível, gravidade e o que de
 | **B0.5** | todo leitor/escritor do contexto | 12 pontos em `nodes.py`, 1 em `state.py`, 3 na bancada; **escritor único**: `tool_node:2251` | `grep -rn "infocap_policy_context" backend/app --include=*.py` |
 | **B0.5b** | testes que exercitam a regra do ramo | **ZERO** — `selected_policy_ramo` não aparece em `backend/tests` | `grep -rn "selected_policy_ramo" backend/tests` |
 | **B0.6** | 🔴 **quantos dos 68,9 % são deste defeito** | **NENHUM** — ver abaixo | `python` sobre `RESULTADOS/atendimento_N1_03af4327….json` |
-| **B0.7** | o teste do fio nasce vermelho | **SIM** — 5 falham, 1 passa (a linha de controle do core) | `pytest tests/test_o_atendimento_guarda_a_apolice.py` |
+| **B0.7** | o teste do fio nasce vermelho | **SIM** — 📊 `4 failed, 2 passed`; as 2 verdes são as linhas de controle (a fronteira mascarada e o papel `core`) | `pytest tests/test_o_atendimento_guarda_a_apolice.py` |
 
 ### 🔴 B0.6 — a medição que REFUTA metade da premissa herdada
 
