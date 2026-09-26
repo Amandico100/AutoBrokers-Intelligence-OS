@@ -1,0 +1,94 @@
+{
+  "_o_que_e_isto": [
+    "O formulario nativo da PORTO, como o acervo o mostra. SPEC-118, fatia F2a.",
+    "",
+    "Sao 3 capturas com schema no acervo (21/09 e 14/09 x2). A ESTRUTURA abaixo e",
+    "a das tres -- identica nas tres, campo a campo. O original integral vive em",
+    "observed_events, linha 42a1cb5a-7ca8-4b9a-9b71-532e2cb764f9",
+    "(wa_timestamp 2026-09-21T10:24:36Z, insurer_key porto, msg_type flow_reply,",
+    "source live).",
+    "",
+    "🔴 O QUE E REAL AQUI, E O QUE FOI MASCARADO (CLAUDE.md §7 e §13.9):",
+    "  REAL       flow_id, flow_name, envelope, nomes de campo, rotulos, telas,",
+    "             e as CHAVES da resposta -- e disso que o guarda vive.",
+    "  MASCARADO  os VALORES do endereco (e o endereco de um segurado real),",
+    "             o flow_token (uuid:telefone:telefone) e as coordenadas.",
+    "             Os valores de exemplo tem a MESMA FORMA dos reais: CEP com",
+    "             hifen, cidade com acento, UF de 2 letras, grau decimal",
+    "             negativo. Nenhum nome de pessoa, CPF, telefone ou corretora."
+  ],
+  "envelope": {
+    "name": "galaxy_message",
+    "type": "native_flow_response",
+    "cta_do_convite": "Preencher"
+  },
+  "flow": {
+    "flow_id": "709854848132894",
+    "flow_name": "Assistência - Captura de endereço dinâmica_v3",
+    "tela_principal": "CAPTURAR_ENDERECO"
+  },
+  "fields_do_acervo": [
+    {"name": "location", "label": "Endereço ou CEP", "answer_nas_3_capturas": null},
+    {"name": "input_confirmar_endereco", "label": "${data.label_endereco_completo_flow}", "answer_nas_3_capturas": null},
+    {"name": "rua", "label": "Logradouro", "answer": "PREENCHIDO nas 3"},
+    {"name": "numero_residencia", "label": "Número", "answer": "PREENCHIDO nas 3"},
+    {"name": "complemento", "label": "Complemento", "answer": "PREENCHIDO em 2 de 3"},
+    {"name": "bairro", "label": "Bairro", "answer": "PREENCHIDO nas 3"},
+    {"name": "cidade", "label": "Cidade", "answer": "PREENCHIDO nas 3"},
+    {"name": "estado", "label": "Estado", "answer": "PREENCHIDO nas 3"},
+    {"name": "ponto_referencia", "label": "Ponto de referência", "answer_nas_3_capturas": null},
+    {"name": "input_tentar_novamente2", "label": "Clique na opção abaixo para que eu possa transferir seu atendimento.", "tela": "Endereço não encontrado", "answer_nas_3_capturas": null}
+  ],
+  "chaves_da_resposta": {
+    "presentes_em_3_de_3": ["cep", "rua", "numero_residencia", "bairro", "cidade",
+                            "estado", "latitude", "longitude", "referencia",
+                            "label_endereco_completo"],
+    "presentes_em_2_de_3": ["complemento"]
+  },
+  "answers_mascarado": {
+    "cep": "88000-000",
+    "rua": "R. Exemplo Um",
+    "numero_residencia": "0",
+    "complemento": "esquina com a segunda rua",
+    "bairro": "Centro",
+    "cidade": "Florianópolis",
+    "estado": "SC",
+    "latitude": -27.5,
+    "longitude": -48.5,
+    "referencia": "em frente ao mercado",
+    "label_endereco_completo": "R. Exemplo Um, 0, Centro, Florianópolis - SC"
+  },
+  "slots_do_corredor_equivalentes": {
+    "local_cep": "88000-000",
+    "local_rua": "R. Exemplo Um",
+    "local_numero": "0",
+    "local_complemento": "esquina com a segunda rua",
+    "local_bairro": "Centro",
+    "local_cidade": "Florianópolis",
+    "local_uf": "SC",
+    "ponto_referencia": "em frente ao mercado"
+  },
+  "o_que_isto_prova": {
+    "envelope": "galaxy_message nas 14 capturas de convite da Porto -- o mesmo rotulo LEGADO da familia HDI/Yelum. Ecoar, nunca escolher.",
+    "fields_nao_e_answers": "`ponto_referencia` vem null nas 3 capturas e `answers.referencia` vem PREENCHIDA nas 3. Quem a seguradora consome e `answers`.",
+    "label_derivado": "`label_endereco_completo` obedece {rua}, {numero}, {bairro}, {cidade} - {estado} nas 3. Nao se pergunta ao segurado.",
+    "caminho_de_falha": "a tela 'Endereço não encontrado' transfere para humano. E handoff previsto pela PROPRIA seguradora."
+  },
+  "o_que_isto_NAO_prova": {
+    "latitude_longitude": [
+      "Presentes nas 3 capturas, com coordenadas reais resolvidas pelo proprio Flow",
+      "a partir do campo `location`. NAO se sabe se a Porto as EXIGE -- so se sabe",
+      "que o clique humano sempre as levou. E nao temos de onde tirar: 0",
+      "geocodificadores no backend. Enquanto isso, `sem_chute`: a resposta nao sai",
+      "e o caso vai a uma pessoa. ⛔ Zero inventado manda o guincho para o oceano."
+    ],
+    "response_message": [
+      "Nao vai na resposta, como na familia HDI/Yelum: ninguem mediu se a",
+      "seguradora exige (P-118-04)."
+    ],
+    "exigencia_campo_a_campo": [
+      "3 capturas dizem o que o humano MANDOU, nunca o que o servidor RECUSA.",
+      "`obrigatorio` aqui significa 'presente em 3 de 3', e nao 'validado pela Porto'."
+    ]
+  }
+}
