@@ -11629,3 +11629,27 @@ mas deixa de resistir a força bruta. Não é silencioso: está escrito no códi
 **Destrava:** 🧑 o Founder decidir se cria `POLICY_CONTEXT_HMAC_KEY` dedicada no ambiente (o certo pela ENISA: chave
 de pseudonimização separada da de cifra). **Dono:** 🧑 decisão · 🤖 aplicação. **Custo de esquecer:** hoje nada muda em
 produção (o `ENCRYPTION_KEY` existe); se algum dia ele faltar, o pseudônimo enfraquece sem ninguém notar.
+
+## P-S117-09 · `fimvig` com ano de 2 dígitos deixaria o cliente sem apólice selecionável
+📊 26/09/2026 (confirmação do conserto): depois do B5, `vigente` exige fim de vigência **conhecido** —
+e `infocap_connector._parse_date` não reconhece `01/03/27` (ano de 2 dígitos) nem string vazia. Medido: `'2027-03-01'`,
+`'01/03/2027'`, `' 2027-03-01 '`, `'2027-03-01T00:00:00'` e `'01-03-2027'` → **todos** vigentes; `'01/03/27'` e `''` → não.
+⚠️ **O efeito é seguro e deliberado** (G5, *"não sei" nunca vira "vale"*): o agente **pergunta** em vez de acionar errado.
+**Destrava:** medir no acervo se a fonte real já devolveu `fimvig` nesse formato; se sim, ampliar `_parse_date`.
+**Dono:** 🤖. **Custo de esquecer:** num formato que ninguém viu ainda, o agente pede confirmação onde poderia seguir —
+incômodo, nunca acionamento errado.
+
+## P-S117-10 · `chaveiro` é o único subserviço sem família de apólice
+📊 26/09/2026: 17 subserviços declarados nos playbooks; **1** devolve `""` em `_familia_do_servico_pedido`
+(`chaveiro`, e os apelidos `chave` / `chaveiro de carro`), porque chaveiro existe em auto **e** em residencial.
+Com `""` o sistema **não sobrescreve** o que o modelo pediu — que é o comportamento de antes desta SPEC, não um
+defeito novo. **Destrava:** decidir como desambiguar chaveiro (a conversa já diz se é casa ou carro).
+**Dono:** 🤖. **Custo de esquecer:** no chaveiro, quem decide o ramo continua sendo o modelo.
+
+## P-S117-11 · o formato `_sanitize_match` não carrega vigência, e por isso nunca é selecionável
+📊 26/09/2026: `infocap_connector.py:1241` (caminho `ambiguous_customer`) monta a apólice por `_sanitize_match`, que
+**não emite** `valid_to` nem `active_now` — logo, depois do B5, nenhuma apólice desse formato é selecionável.
+⚠️ As **listas** de apólices (`:1109`, `:1134`, `:1337`) usam `_sanitize_policy`, que carrega a vigência: a desambiguação
+normal está intacta. **Destrava:** `_sanitize_match` emitir vigência, ou o caminho passar a usar `_sanitize_policy`.
+**Dono:** 🤖. **Custo de esquecer:** quando a consulta é ambígua no CLIENTE (homônimos), a apólice não é fixada e o
+agente pede confirmação — seguro, mas uma pergunta a mais.
