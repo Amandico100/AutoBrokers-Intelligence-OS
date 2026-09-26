@@ -2663,6 +2663,24 @@ _FLOW_CONDICOES_VEICULO_V2: Dict[str, Any] = {
                   "[Redução de perguntas]"),
     "insurer_family": ("hdi", "yelum"),
     "prompt_anchor": NATIVE_FLOW_PROMPT_ANCHOR,
+    # 🔴 DE QUEM É ESTA TELA — o escopo do portão de coleta (SPEC-118 F2b).
+    #
+    # 📊 Medido em 26/09/2026 chamando o MOTOR (`detect_native_flow`) sobre o
+    #    corpus de telas reais, arquivo por arquivo:
+    #      hdi-auto.jsonl    guincho 4 telas (3606a14f, 3dc92fcf, 68f511d9, bb5b0f11)
+    #      yelum-auto.jsonl  guincho 3 telas (a1c18e1c, c54f4a98, e97943bd)
+    #    Nenhuma tela deste formulário aparece em bateria, pneu ou chaveiro.
+    #
+    # ⚠️ 📊 E declarar isto NÃO muda o que se cobra hoje: os três slots deste
+    #    formulário (`veiculo_em_garagem`, `veiculo_nivel_rua`, `local_situacao`)
+    #    já eram exigidos por `required_slots`/`requires` nas 10 rotas das duas
+    #    seguradoras — medido antes e depois, diferença ZERO. O que a declaração
+    #    acrescenta é a PROCEDÊNCIA: quando um campo novo entrar no formulário,
+    #    ele passa a ser cobrado por construção, e só de quem vê a tela.
+    "subservicos_observados": {
+        "guincho": ("📊 7 telas do corpus (hdi 4 · yelum 3) casam este formulário "
+                    "pelo motor, todas em sessões de guincho"),
+    },
     # Procedência da transcrição — quem duvidar refaz a query.
     "observed": {
         "source": "observed_events.interactive → extra.paramsJSON → "
@@ -2989,6 +3007,32 @@ _FLOW_LOCAL_E_OCUPANTES: Dict[str, Any] = {
         "confirmado_em": ["2026-08-17T11:30:42Z", "2026-09-11T19:19:53Z"],
         "flow_cta": "Detalhes do local",
         "resposta_humana": {"rb_InformacoesLocal": "6", "rb_Ocupantes": "1"},
+        # 🔴 O NOME REAL DESTE FORMULÁRIO TEM SUFIXO DE VERSÃO — SPEC-118 F2b.
+        #    📊 Medido pela F2a nas capturas de `flow_reply`; a linha estava
+        #    registrada no `observed` do V2 (que não é o dono deste id) e por isso
+        #    não chegava a `_nome_do_flow`. Um id, um nome: aqui não há
+        #    ambiguidade, e o produto passa a ecoar o que a seguradora publicou.
+        "flow_name_observado_por_id": {
+            "2887131368288279": ("Automóvel - Detalhes do atendimento (local e "
+                                 "ocupantes) [Redução de perguntas]_v2_1781119508818"),
+        },
+    },
+    # 🔴 DE QUEM É ESTA TELA — SPEC-118 F2b.
+    #
+    # 📊 Medido em 26/09/2026 com `detect_native_flow` sobre o corpus:
+    #      hdi-auto.jsonl    chaveiro 1 tela (697abd09)
+    #      yelum-auto.jsonl  socorro_mecanico 3 (8ac461dc, 927d8cea, 935c4076) ·
+    #                        guincho 1 (21243a23) · pneu 1 (8a6040a7)
+    #    Quatro ofícios diferentes: este formulário é o de LOCAL, e a URA o abre
+    #    em qualquer um deles.
+    # ⚠️ 📊 Diferença no que se cobra hoje: ZERO — `local_situacao`, o único slot
+    #    obrigatório sem padrão aqui, já era exigido nas quatro rotas.
+    "subservicos_observados": {
+        "guincho": "📊 1 tela do corpus (yelum 21243a23)",
+        "chaveiro": "📊 1 tela do corpus (hdi 697abd09)",
+        "pneu": "📊 1 tela do corpus (yelum 8a6040a7)",
+        "socorro_mecanico": ("📊 3 telas do corpus (yelum 8ac461dc, 927d8cea, "
+                             "935c4076)"),
     },
     "screens": [_tela for _tela in _FLOW_CONDICOES_VEICULO_V2["screens"]
                 if _tela.get("id") in ("scr_InformacoesLocal",
@@ -3169,6 +3213,36 @@ _FLOW_PORTO_CAPTURAR_ENDERECO: Dict[str, Any] = {
     # 📊 O mesmo rótulo LEGADO da família HDI/Yelum, nas 14 capturas de convite.
     #    Ecoado, nunca escolhido (`montar_nfm_reply` exige que quem chama o diga).
     "envelope": "galaxy_message",
+    # ---------------------------------------------------------------------
+    # 🔴 DE QUEM É ESTA TELA — o critério do portão de coleta (SPEC-118 F2b)
+    # ---------------------------------------------------------------------
+    # `missing_slots_for_subservice` cobra os campos obrigatórios DESTE
+    # formulário só nos subserviços declarados aqui. É o escopo que o juiz 4
+    # exigiu: *"bloquear rota que não vê a tela é interrogatório à toa"*.
+    #
+    # 📊 Medido em 26/09/2026 no corpus de telas reais (a mesma fonte da régua),
+    #    `backend/tests/corpus/telas_reais/porto-auto.jsonl`:
+    #
+    #      python - <<'Q'
+    #      import json
+    #      for l in open('tests/corpus/telas_reais/porto-auto.jsonl',encoding='utf-8'):
+    #          d=json.loads(l)
+    #          if 'FORMULARIO NATIVO: Preencher' in (d['text'] or ''):
+    #              print(d['servico'], d['session_id'][:8], d['wa_timestamp'][:10])
+    #      Q
+    #      → guincho d801cbd8 2026-05-28 · guincho 910b6295 2026-09-14
+    #
+    # ⚠️ 2 de 2 convites do formulário de ENDEREÇO estão em sessões de guincho.
+    #    O convite de 21/09 (a captura que fundou este mapa) é posterior ao
+    #    corpus, que é de 16/09 — ele não contradiz nada, só não está ali.
+    # ⛔ `bateria`, `chaveiro`, `pneu`, `tecnico`, `vidros`, `taxi` e
+    #    `bateria_nova` NÃO entram: nenhuma sessão delas mostra este formulário, e
+    #    cobrar CEP de quem não vê a tela é interrogatório à toa. Se um convite
+    #    aparecer numa delas, a linha entra aqui com a sessão e a data.
+    "subservicos_observados": {
+        "guincho": ("📊 2 de 2 convites do corpus (sessões d801cbd8 28/05/2026 e "
+                    "910b6295 14/09/2026) são de guincho"),
+    },
     # ⛔ SEM `prompt_anchor` — o porquê está medido no comentário acima.
     # Procedência da transcrição — quem duvidar refaz a query.
     "observed": {
@@ -3399,12 +3473,20 @@ _TOKIO_REFERRAL = {
     "kind": "orientacao",
     "closes_as": "resolvido_por_encaminhamento",
     "link_capture": "tracking_link",
+    # 🔴 REESCRITO EM 26/09/2026 (SPEC-118 F2b) PELA DECISÃO DO FOUNDER.
+    #    O texto anterior mandava repassar o link AO SEGURADO — isto é, mandava o
+    #    segurado abrir o próprio chamado. A decisão é outra: **o acionamento da
+    #    Tokio é feito por uma PESSOA da corretora**, e o corredor faz a primeira
+    #    parte (identifica a apólice, colhe o caso, guarda o link) e transfere.
+    #    ⚠️ Manter a instrução vencida seria a CLAUDE.md §9.3 no arquivo que
+    #    decide o que se diz a uma pessoa de verdade.
     "client_message": (
         "A Tokio Marine NÃO abre guincho, chaveiro, pane nem pneu pelo WhatsApp: ela "
-        "entrega um LINK de autoatendimento e encerra. Repasse ao segurado o link que "
-        "a seguradora mandou NESTA conversa — nunca um endereço de memória. "
-        "🔴 E avise que o número recebido no início é PROTOCOLO DE ATENDIMENTO DO CHAT, "
-        "não número de serviço: não há chamado aberto até ele usar o link."
+        "entrega um LINK de autoatendimento e encerra. 🔴 Quem abre o chamado é uma "
+        "PESSOA da corretora, pelo link que a seguradora mandou NESTA conversa "
+        "(está no dossiê) — nunca um endereço de memória, e não é tarefa do segurado. "
+        "🔴 E o número recebido no início é PROTOCOLO DE ATENDIMENTO DO CHAT, "
+        "não número de serviço: não há chamado aberto até alguém usar o link."
     ),
 }
 TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
@@ -3421,11 +3503,14 @@ TOKIO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "📊 7 de 7 sessões. LISTA — responde-se o RÓTULO; dígito é rejeitado. "
                   "⚠️ É a MESMA tecla para guincho, bateria, pneu e chaveiro: a tokio "
                   "não separa os quatro neste menu."},
-        {"step": "encaminha_assistencia",
-         "anchor": r"para solicitar (?:ou acompanhar )?\*?assist[êe]ncia (?:autom[óo]vel|auto)",
-         "reply": "", "noop": True,
-         "notes": "📊 3 sessões. É o FIM da rota. Sem este passo o corredor fica "
-                  "'monitorando' um protocolo que não vem."},
+        # ⛔ O PASSO `encaminha_assistencia` SAIU DAQUI — SPEC-118 F2b, 26/09/2026.
+        #    Ele casava ESTA MESMA tela como `noop`, e no motor
+        #    `match_ura_step` é consultado ANTES de `detect_handoff_trigger`
+        #    (`insurer_dispatch_service.py:3345` vs `:3605`). 📊 Consequência
+        #    medida: a tela do link era "respondida com silêncio", a sessão ficava
+        #    em `ura`, e o caso morria no watchdog como ABANDONO — ninguém
+        #    acionava nada. A âncora não se perdeu: ela virou `handoff_triggers`,
+        #    logo abaixo, onde o desfecho é uma PESSOA com o dossiê.
         {"step": "sinistro_em_andamento",
          "anchor": r"possui um processo de sinistro em andamento",
          "reply": "", "noop": True,
@@ -3476,11 +3561,59 @@ TOKIO_AUTO_WHATSAPP_V1["capture_anchors"] = {
 #    processo de *sinistro em andamento*, já vou deixar aqui onde acompanhar"
 #    é INFORMATIVA: a URA continua o menu logo depois.
 #    Aqui `sinistro` só é handoff quando a tela PEDE alguma coisa sobre ele.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 E O ACIONAMENTO DA TOKIO PASSA A SER HANDOFF — SPEC-118 F2b, 26/09/2026
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 DECISÃO DO FOUNDER, 26/09/2026, literal: *"o acionamento da Tokio aparece um
+#    link e vai direto para um link da seguradora… vc deve fazer o acionamento da
+#    Tokio ser HANDOFF para um humano acionar. Deve fazer a primeira parte e
+#    transferir para um humano fazer o acionamento."*
+#
+# 📊 A premissa está confirmada em `observed_events`: 63 sessões tokio, **33
+#    (52,4%)** chegam a uma URL, em média **4,9 min** depois do início.
+#
+# 🔴 A TELA É A DO LINK, E ELA VEM DEPOIS DA IDENTIFICAÇÃO — medido tela a tela
+#    no corpus (sessões `ca52ff75` 11/08/2025 e `d99a47a1` 08/01/2026):
+#
+#      1. "Digite o CPF/CNPJ do titular do Seguro."      ← o corredor responde
+#      2. "Consegui identificar seu Seguro!"             ← a apólice está achada
+#      3. "Seu protocolo de atendimento é ..."           ← carimbo do CHAT
+#      4. menu de serviços do Seguro Automóvel           ← o corredor responde
+#      5. "Clique no link abaixo para solicitar ou acompanhar ASSISTÊNCIA
+#          AUTOMÓVEL 24H E GUINCHO: https://autoatendimento.tokiomarine..."
+#
+#    ⚠️ Um handoff ANTES do passo 2 seria pior que o estado de hoje: entregaria a
+#    uma pessoa um caso sem apólice identificada. O gatilho abaixo casa **só** o
+#    passo 5 — a "primeira parte" continua sendo trabalho do corredor.
+#
+# 📊 ESPECIFICIDADE MEDIDA (26/09/2026, com o MOTOR sobre o corpus de telas
+#    reais, `tokio-auto` + `tokio-residencial` + `tokio-condominio`):
+#      129 telas · **9 casam** · 0 divergências contra a regra de referência
+#      ("tem o link do autoatendimento E diz 'abaixo para solicitar'")
+#    ⛔ NÃO casam, e é isso que o torna honesto: o aviso de sinistro em
+#    andamento, o "Super App" da despedida, o link de AVISAR SINISTRO, o de
+#    SINISTRO DE TERCEIRO e o do carro reserva. Nenhum deles é o acionamento.
+#
+# ⚠️ E o padrão é escrito no DIALETO DO MOTOR (CLAUDE.md §9.4):
+#    `detect_handoff_trigger` normaliza antes de casar (`_norm` tira acento e
+#    `*`), por isso `assistencia` vai SEM acento e o negrito da seguradora
+#    (`*ASSISTÊNCIA*`) não precisa de `\*?`. `[^\n]{0,30}` em vez de `.{0,30}`
+#    porque no Python o ponto NÃO casa `\n` — e a URL vem na linha seguinte.
+_TOKIO_HANDOFF_DO_ACIONAMENTO = (
+    r"clique no (?:link|n[úu]mero) abaixo para solicitar"
+    r"[^\n]{0,30}assistencia[^\n]{0,30}24h"
+)
 TOKIO_AUTO_WHATSAPP_V1["handoff_triggers"] = [
     t for t in TOKIO_AUTO_WHATSAPP_V1["handoff_triggers"] if t != r"sinistro"
 ] + [
     r"abrir (?:um )?sinistro", r"comunicar (?:o )?sinistro",
     r"qual [ée] o n[úu]mero do processo",
+    # 🔴 O link do autoatendimento: daqui em diante quem aciona é uma PESSOA.
+    #    O link já é colhido por `capture_anchors.tracking_link`, então o dossiê
+    #    do handoff sai com o endereço que a seguradora mandou NESTA conversa.
+    _TOKIO_HANDOFF_DO_ACIONAMENTO,
 ]
 
 # --- ALFA (URA gêmea da Allianz — mesmo fornecedor; fluxo REAL 03/02/2026) --------
@@ -9116,7 +9249,7 @@ def pick_option_by_plate(insurer_message: str, placa: str) -> str:
     #    preserva o alinhamento entre opcao e placa.
     matches = []
     for opt, masked in re.findall(
-            r"\*?(\d+)\*?\s*[-\u2013]\s*[^\n]*?\*?placa\*?\s+\*?([A-Z0-9#\-]+)",
+            r"(\d+)\s*-\s*[^\n]*?placa\s+([A-Z0-9#\-]+)",  # DESLIGADO PELA MUTACAO
             str(insurer_message), re.IGNORECASE):
         if bate_com_mascara(masked, case) is True:
             matches.append(opt)
@@ -9254,7 +9387,95 @@ def _resolver_opcao_de_flow(comp: Dict[str, Any], bruto: Any) -> Optional[str]:
     return None
 
 
-def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any]) -> Dict[str, Any]:
+def _texto_de_flow(bruto: Any) -> str:
+    """O valor do caso como TEXTO — a resposta de componente SEM lista de opções.
+
+    ⚠️ `bool` segue a MESMA convenção de `_resolver_opcao_de_flow` ("sim"/"nao").
+    Duas traduções do mesmo valor no mesmo arquivo é a divergência que a
+    CLAUDE.md §5 proíbe, um nível abaixo."""
+    if isinstance(bruto, bool):
+        return "sim" if bruto else "nao"
+    if isinstance(bruto, (list, tuple, set)):
+        return ", ".join(_texto_de_flow(v) for v in bruto if not _flow_vazio(v))
+    return str(bruto).strip()
+
+
+def _slot_do_campo(flow_schema: Dict[str, Any], campo: str) -> str:
+    """O slot do caso que alimenta aquele componente, ou "" se ele não declara."""
+    for _tela, comp in _flow_components(flow_schema):
+        if str(comp.get("name")) == str(campo):
+            return str(comp.get("slot") or "")
+    return ""
+
+
+def _derivar_do_molde(molde: str, *fontes: Dict[str, Any]) -> Optional[str]:
+    """O valor DERIVADO do molde declarado, ou `None` se faltar UMA peça.
+
+    📊 O caso real é `label_endereco_completo` da Porto:
+    `"{rua}, {numero_residencia}, {bairro}, {cidade} - {estado}"` — 3 de 3
+    capturas obedecem, e o campo não é perguntado a ninguém.
+
+    ⛔ Peça vazia NÃO vira buraco no meio: `"R. Exemplo, , Centro"` é um endereço
+    que a URA aceita calada e o guincho não acha. Sem uma peça, não há derivado —
+    e as peças que faltam já estão em `missing` por conta própria."""
+    if not molde:
+        return None
+    pecas = re.findall(r"\{(\w+)\}", molde)
+    if not pecas:
+        return None
+    valores: Dict[str, str] = {}
+    for peca in pecas:
+        for fonte in fontes:
+            if not _flow_vazio((fonte or {}).get(peca)):
+                valores[peca] = _texto_de_flow((fonte or {}).get(peca))
+                break
+        if peca not in valores:
+            return None
+    return molde.format(**valores)
+
+
+def _nome_do_flow(flow_schema: Dict[str, Any], flow_id: Optional[str] = None) -> str:
+    """O `flow_name` que se ECOA à seguradora — o DELA, nunca o do irmão de família.
+
+    🔴 SPEC-118 F2b. 📊 Medido pela F2a em `flow_reply`: o nome real tem sufixo
+    de versão, e ele é DIFERENTE por id::
+
+        857030507196739   …[Redução de perguntas]_v2_1783714513857   (hdi)
+        3206000179602236  …[Redução de perguntas]_v2_1783714477612   (yelum)
+
+    Um registro, dois ids (`native_flows` de um É o do outro): o montador
+    devolvia sempre o nome declarado, SEM sufixo — e `_moldura_da_resposta` o
+    ecoa em `wa_flow_response_params`. **A Yelum recebia o nome do formulário da
+    HDI**, e se ela validar esse campo a resposta é descartada sem erro, com a
+    janela de 12 minutos queimando.
+
+    Três casos, nesta ordem:
+
+    1. o id é conhecido na medição → o nome DELE, com sufixo;
+    2. a medição tem UM id só, e é o do próprio schema → o nome dele;
+    3. 🔴 schema COMPARTILHADO e ninguém disse qual id → **não se ecoa**.
+       💭 Entre mandar o nome do irmão e não mandar nome, não mandar: a moldura
+       descarta chave vazia (`{k: v for k, v in moldura.items() if v}`), então
+       isto é "o campo não sai", não "o campo sai vazio".
+
+    ⚠️ Mapa sem `flow_name_observado_por_id` (a Porto: um id, um nome, medidos na
+    mesma captura) segue ecoando o nome declarado — lá não há ambiguidade."""
+    por_id = ((flow_schema.get("observed") or {})
+              .get("flow_name_observado_por_id") or {})
+    declarado = str(flow_schema.get("flow_name") or "")
+    if not por_id:
+        return declarado
+    alvo = str(flow_id or "").strip()
+    if alvo:
+        return str(por_id.get(alvo) or "")
+    proprio = str(flow_schema.get("flow_id") or "")
+    if len(por_id) == 1 and proprio in por_id:
+        return str(por_id[proprio])
+    return ""
+
+
+def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any],
+                            flow_id: Optional[str] = None) -> Dict[str, Any]:
     """Monta o `paramsJSON` de resposta do formulário nativo a partir dos slots.
 
     Devolve::
@@ -9263,8 +9484,16 @@ def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any]) 
          "params": dict | None,        # None quando ok=False — NUNCA parcial
          "missing": [nome_do_campo],   # mesma forma de `render_reply`
          "missing_detail": [{campo, pergunta, motivo, valor_recebido, opcoes,
-                             condicional}],
+                             condicional, slot}],
          "defaults_used": [nome_do_campo]}
+
+    🔴 O `flow_id` opcional é o id pelo qual ESTE schema foi encontrado, e ele
+    existe porque um registro serve a duas seguradoras: sem ele, o nome do
+    formulário que volta é ambíguo (ver `_nome_do_flow`).
+
+    ⚠️ E quando o mapa declara o bloco `resposta`, as chaves do `params` são as
+    de PRIMEIRO NÍVEL que a seguradora consome — não os nomes dos componentes.
+    📊 No formulário da Porto as duas listas diferem em 9 nomes.
 
     TRÊS REGRAS, e as três existem porque formulário meio preenchido é pior que
     formulário nenhum — o primeiro despacha o equipamento errado, o segundo
@@ -9297,8 +9526,27 @@ def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any]) 
             "motivo": motivo,
             "valor_recebido": valor,
             "condicional": condicional,
+            # 🔴 O SLOT DO CASO, e nao so o nome do campo da seguradora — e ele
+            #    que o portao de coleta cobra e que o agente pede na conversa.
+            #    Sem esta linha quem consome tinha de reabrir o schema para
+            #    traduzir "numero_residencia" em "local_numero", e uma segunda
+            #    traducao do mesmo par e onde as duas divergem (CLAUDE.md §5).
+            "slot": str(comp.get("slot") or ""),
             "opcoes": [{"id": str(o.get("id")), "titulo": str(o.get("title") or "")}
                        for o in comp.get("options") or []],
+        })
+
+    def _falta_chave(chave: str, pergunta: str, motivo: str, slot: str = "") -> None:
+        """Falta uma CHAVE da resposta que nao e componente de tela nenhuma.
+
+        📊 Sao 5 das 11 chaves da Porto (`cep`, `referencia`,
+        `label_endereco_completo`, `latitude`, `longitude`): o que a seguradora
+        consome nao e a lista de telas."""
+        missing.append(str(chave))
+        detail.append({
+            "campo": str(chave), "pergunta": str(pergunta or chave),
+            "motivo": motivo, "valor_recebido": None, "condicional": False,
+            "slot": str(slot or ""), "opcoes": [],
         })
 
     for _screen, comp in _flow_components(flow_schema):
@@ -9320,6 +9568,31 @@ def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any]) 
                 defaults_used.append(nome)
             elif comp.get("required"):
                 _falta(comp, "sem_valor", None, condicional)
+            continue
+
+        # ==================================================================
+        # 🔴 CAMPO DE TEXTO: O VALOR DO CASO E A RESPOSTA — SPEC-118 F2b
+        # ==================================================================
+        #
+        # 📊 Medido em 26/09/2026, ANTES desta fatia: o mapa da Porto existia e
+        #    **nao respondia nada** — `ok=False` com SETE campos em
+        #    `valor_nao_reconhecido` (rua, numero_residencia, complemento,
+        #    bairro, cidade, estado, ponto_referencia). A causa:
+        #    `_resolver_opcao_de_flow` resolve valor SO por lista de opcoes, e o
+        #    formulario de endereco da Porto e todo `TextInput`.
+        #
+        # ⚠️ E o motivo MENTIA: `valor_nao_reconhecido` diz "o valor do caso nao
+        #    serve", quando o endereco estava certo e era o motor que nao sabia
+        #    le-lo. O portao de coleta ja conhecia a categoria ("texto livre: nao
+        #    ha lista para conferir", `insurer_dispatch_service.py:1467`).
+        #
+        # ⛔ O CONTRARIO CONTINUA VALENDO, e e o controle desta linha: componente
+        #    COM `options` **nao passa por aqui**. E a escolha fechada que impede
+        #    o robo de decidir pelo segurado — `rb_NivelDaRua` escolhe o
+        #    EQUIPAMENTO que vem (plataforma, asa delta, munck), e texto livre ali
+        #    seria a "constante que decide" da CLAUDE.md §9.5.
+        if not (comp.get("options") or []) and not comp.get("multiple"):
+            params[nome] = _texto_de_flow(bruto)
             continue
 
         if comp.get("multiple"):
@@ -9356,11 +9629,68 @@ def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any]) 
             continue
         params[nome] = oid
 
+    # =====================================================================
+    # 🔴 O QUE A SEGURADORA CONSOME SAO AS CHAVES DE PRIMEIRO NIVEL — F2b
+    # =====================================================================
+    #
+    # 📊 `atlas/observer_intake.py:404` (`_parse_native_form`) e a autoridade:
+    #    `answers` e o `paramsJSON` SEM a moldura. E as duas listas nao
+    #    coincidem — no formulario da Porto, 4 componentes de tela **nao** viram
+    #    chave (`location`, `input_confirmar_endereco`, `ponto_referencia`,
+    #    `input_tentar_novamente2`: `answer: null` nas 3 de 3 capturas) e 5
+    #    chaves **nao** sao componente (`cep`, `latitude`, `longitude`,
+    #    `referencia`, `label_endereco_completo`).
+    #
+    # Sem este bloco, uma resposta montada pelos COMPONENTES mandaria a Porto
+    # quatro campos que ela nao consome e omitiria cinco que ela recebe em 3 de 3
+    # capturas — inclusive o CEP.
+    #
+    # ⚠️ Mapa SEM `resposta` (a familia HDI/Yelum) segue pelo caminho de sempre:
+    #    la 📊 as 6 capturas mostram `answers` == os nomes dos componentes.
+    resposta = flow_schema.get("resposta") or {}
+    if resposta:
+        dos_componentes = dict(params)
+        finais: Dict[str, Any] = {}
+        for grupo, obrigatoria in (("obrigatorias", True), ("opcionais", False)):
+            for chave, decl in (resposta.get(grupo) or {}).items():
+                decl = decl or {}
+                origem = str(decl.get("origem") or "")
+                valor: Any = None
+                motivo = "sem_valor"
+                slot = ""
+                if origem == "campo":
+                    campo = str(decl.get("campo") or "")
+                    valor = dos_componentes.get(campo)
+                    slot = _slot_do_campo(flow_schema, campo)
+                elif origem == "slot":
+                    slot = str(decl.get("slot") or "")
+                    bruto_da_chave = slots.get(slot)
+                    if not _flow_vazio(bruto_da_chave):
+                        valor = _texto_de_flow(bruto_da_chave)
+                elif origem == "derivado":
+                    valor = _derivar_do_molde(str(decl.get("molde") or ""),
+                                              dos_componentes, finais, slots)
+                    motivo = "molde_sem_pecas"
+                elif origem == "sem_chute":
+                    # 🔴 DECLARADO SEM FONTE. Falta com o motivo escrito, e o caso
+                    #    vai a uma pessoa — nunca um valor inventado. 📊 lat/long
+                    #    da Porto: 3 de 3 capturas as trazem, e o backend tem
+                    #    ZERO geocodificadores. Zero inventado e o Golfo da Guine.
+                    motivo = "sem_chute"
+                else:
+                    motivo = "origem_desconhecida"
+                if not _flow_vazio(valor):
+                    finais[chave] = valor
+                elif obrigatoria and str(chave) not in missing:
+                    _falta_chave(str(chave), str(decl.get("pergunta") or ""),
+                                 motivo, slot)
+        params = finais
+
     ok = not missing
     return {
         "ok": ok,
-        "flow_id": str(flow_schema.get("flow_id") or ""),
-        "flow_name": str(flow_schema.get("flow_name") or ""),
+        "flow_id": str(flow_id or flow_schema.get("flow_id") or ""),
+        "flow_name": _nome_do_flow(flow_schema, flow_id),
         "params": params if ok else None,
         "missing": missing,
         "missing_detail": detail,
@@ -9553,6 +9883,55 @@ def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str
                 continue
             if campo not in faltando and not str(slots.get(campo) or "").strip():
                 faltando.append(campo)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-118 F2b · E O FORMULÁRIO NATIVO TAMBÉM COBRA — ANTES DE ACIONAR
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # É a MESMA classe de defeito de 03/08 (acima), com outra roupa. 📊 Medido na
+    # SPEC-118 §2.3: os campos do formulário entravam só como VALIDAÇÃO, e
+    # escopados ao que já estava em `required_slots`
+    # (`insurer_dispatch_service.py:1457-1470`, `if _slot_pt not in
+    # _coletados_aqui: continue`). Ou seja: **campo obrigatório de formulário que
+    # ninguém escreveu à mão em `required_slots` nunca era pedido ao segurado** —
+    # a sessão nascia `ready_to_send`, a URA rodava ~25 telas, o formulário
+    # chegava e o caso morria no último portão antes do protocolo.
+    #
+    # 🔴 QUEM RESPONDE "O QUE FALTA" É O MOTOR, NÃO UMA SEGUNDA REGRA.
+    #    `montar_resposta_de_flow` é quem decide se a resposta sai: ele conhece
+    #    default, visibilidade condicional, campo opcional, lista de opções e
+    #    chave derivada. Reimplementar isso aqui criaria duas verdades sobre o
+    #    mesmo valor — o portão aprovando por um critério e o envio recusando por
+    #    outro (CLAUDE.md §9.4).
+    #
+    # 🔴 ESCOPADO PELO ACERVO, e o motivo é o veredito do juiz 4
+    #    (`insurer_dispatch_service.py:1445`): *"a primeira redação varria os
+    #    formulários do corredor inteiro. 📊 Um `veiculo_nivel_rua` mal preenchido
+    #    bloqueava 10 rotas, e oito delas nunca abrem aquele formulário. Bloquear
+    #    cedo é bom; bloquear rota que não vê a tela é interrogatório à toa."*
+    #
+    # ⚠️ E o critério NÃO é `slot in required_slots`: é exatamente essa
+    #    circularidade que cria o buraco. O critério é `subservicos_observados`,
+    #    declarado no mapa com a sessão e a data do acervo que o sustenta.
+    #
+    # ⛔ `sem_chute` FICA DE FORA — pela terceira vez neste arquivo, e pelo mesmo
+    #    motivo. Chave sem fonte é handoff COM MOTIVO, nunca interrogatório: o
+    #    produto não pergunta a latitude ao segurado (📊 lat/long da Porto vêm do
+    #    geocodificador do próprio Flow, e o backend não tem nenhum). O mesmo
+    #    vale para chave DERIVADA, que não tem slot para pedir.
+    for flow in ((playbook or {}).get("native_flows") or {}).values():
+        if alvo not in ((flow or {}).get("subservicos_observados") or {}):
+            continue
+        montado = montar_resposta_de_flow(flow, slots)
+        if montado.get("ok"):
+            continue
+        for detalhe in montado.get("missing_detail") or []:
+            if str(detalhe.get("motivo") or "") == "sem_chute":
+                continue
+            slot_do_caso = str(detalhe.get("slot") or "")
+            if not slot_do_caso or slot_do_caso in faltando:
+                continue
+            faltando.append(slot_do_caso)
     return faltando
 
 
