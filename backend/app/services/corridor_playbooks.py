@@ -3370,12 +3370,44 @@ _FLOW_PORTO_CAPTURAR_ENDERECO: Dict[str, Any] = {
                 "molde": "{rua}, {numero_residencia}, {bairro}, {cidade} - {estado}",
                 "nota": "📊 3 de 3 obedecem o molde. Não se pergunta ao segurado",
             },
-            "latitude": {"origem": "sem_chute",
-                         "motivo": "o Flow geocodifica; nós não temos de onde tirar "
-                                   "(0 geocodificadores no backend). Sem fonte, "
-                                   "handoff com o motivo escrito — nunca zero"},
-            "longitude": {"origem": "sem_chute",
-                          "motivo": "idem latitude"},
+            # ══════════════════════════════════════════════════════════════
+            # 🔴 SPEC-118 F4 · A COORDENADA GANHOU FONTE, E ELA É O PIN
+            # ══════════════════════════════════════════════════════════════
+            #
+            # Até a F3 as duas eram `sem_chute`, com este motivo escrito: *"o
+            # Flow geocodifica; nós não temos de onde tirar (0 geocodificadores
+            # no backend)"*. 📊 A primeira metade continua verdadeira — o
+            # backend tem ZERO geocodificadores (`grep -rln
+            # "geocod|viacep|nominatim" backend/app` → 0) e nenhum endereço
+            # vira coordenada aqui. A segunda estava **vencida**: existe fonte,
+            # e ela nunca foi um geocodificador.
+            #
+            # 📊 O PIN do WhatsApp. `whatsapp/evolution_inbound.py:720`
+            # (`_texto_de_localizacao`) converte `locationMessage` em texto
+            # desde 03/08/2026, com 6 casas decimais, e entrega ao agente:
+            #
+            #     Localização compartilhada: -27.588016,-48.544253
+            #
+            # `inject_address_slots` lê essa linha (`coordenada_do_pin`) e o
+            # agente também pode passar o par explicitamente — os dois
+            # caminhos caem nos mesmos dois slots, conferidos pela MESMA
+            # `par_de_coordenadas`.
+            #
+            # ⛔ O QUE NÃO MUDOU, e é o que impede isto de virar chute:
+            # `par_de_coordenadas` recusa `(0,0)`, meio par e fora de faixa —
+            # então um caso SEM pin continua caindo em `sem_valor` e o caso vai
+            # a uma pessoa. A resposta nunca sai com zero (CLAUDE.md §9.5: a
+            # constante que decide precisa dizer por que está certa).
+            #
+            # 📊 O efeito medido no portão: com a origem declarada, os 7 campos
+            # de endereço da Porto passam a ser cobrados ANTES de acionar — o
+            # mecanismo que a F2b escreveu e provou numa CÓPIA do mapa. E com o
+            # pin na mão, o portão cobra ZERO: um toque preenche endereço e
+            # coordenada juntos.
+            "latitude": {"origem": "slot", "slot": "local_latitude",
+                         "pergunta": "a localização exata, pelo pin do WhatsApp"},
+            "longitude": {"origem": "slot", "slot": "local_longitude",
+                          "pergunta": "a localização exata, pelo pin do WhatsApp"},
         },
         # 📊 2 de 3 — ausente quando o humano não escreveu. A chave SOME.
         "opcionais": {
@@ -9101,6 +9133,90 @@ def _endereco_de_rodovia(raw: str, out: Dict[str, str]) -> Dict[str, str]:
     return out
 
 
+# ===========================================================================
+# 🔴 A COORDENADA — UMA FONTE SÓ, E ELA VEM DO PIN (SPEC-118 F4)
+# ===========================================================================
+#
+# 🔴 A coordenada NÃO se pergunta: ninguém sabe a própria latitude. Ela chega de
+# UM TOQUE, pelo pin de localização do WhatsApp — e o produto já sabe lê-lo:
+# 📊 `whatsapp/evolution_inbound.py::_texto_de_localizacao` converte
+# `locationMessage`/`liveLocationMessage` em TEXTO para o agente desde
+# 03/08/2026, com 6 casas decimais (≈ 11 cm), em LINHAS SEPARADAS:
+#
+#     R. Exemplo Um, 41 - Centro, Florianópolis - SC, 88000-000
+#     Localização compartilhada: -27.588016,-48.544253
+#
+# ⛔ `(0, 0)` é o default do protobuf para `double` não preenchido, não um
+# lugar: é o Golfo da Guiné. Uma coordenada zerada manda o guincho para o meio
+# do Atlântico e a URA aceita calada — o defeito da CLAUDE.md §9.5, que responde
+# errado sem travar.
+#
+# ⚠️ **ESTAS DUAS FUNÇÕES MORAM AQUI, E NÃO NA FERRAMENTA DO AGENTE.** A F3 as
+# escreveu em `agents/tools/insurer_dispatch_tool.py`, onde o agente as usa; a
+# costura precisa da MESMA régua no portão de coleta e no montador da resposta —
+# e `corridor_playbooks` é a camada que os três alcançam. Duas cópias da conta
+# divergiriam num dia, e a divergência só apareceria num guincho no lugar
+# errado (CLAUDE.md §5: consolidar antes de duplicar). A ferramenta agora
+# DELEGA para cá.
+
+
+def par_de_coordenadas(latitude: Any, longitude: Any) -> Optional[Tuple[str, str]]:
+    """`(lat, lon)` como texto normalizado, ou `None` quando não há par honesto.
+
+    Recusa: o que não é número · o que está fora da faixa do planeta ·
+    `(0, 0)` · e **meio par**. Latitude sem longitude não localiza nada, e o
+    campo solto viajaria para a seguradora como se localizasse.
+
+    💭 A faixa é a do mundo, não a do Brasil: o produto atende quem está na
+    fronteira, e recusar por geografia seria inventar regra.
+    """
+    try:
+        lat = float(str(latitude).strip().replace(",", "."))
+        lon = float(str(longitude).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+    if abs(lat) > 90 or abs(lon) > 180:
+        return None
+    if abs(lat) < 1e-6 and abs(lon) < 1e-6:
+        return None          # 🔴 o Golfo da Guiné — ver o comentário acima
+    return f"{lat:.6f}", f"{lon:.6f}"
+
+
+#: A linha que `_texto_de_localizacao` escreve. Serve a DOIS usos opostos:
+#: ler a coordenada dela, e impedir que ela seja lida como endereço.
+_LINHA_DE_COORDENADA_RE = re.compile(
+    r"localiza[çc][ãa]o(?:\s+ao\s+vivo)?\s+compartilhada", re.IGNORECASE)
+
+#: ⚠️ SÓ O PONTO DECIMAL, de propósito. Quem produz esta linha é `_grau`, que
+#: escreve `f"{valor:.6f}"` — ponto, sempre. Aceitar a vírgula aqui tornaria
+#: `-27,588016,-48,544253` ambíguo: não há como saber se a vírgula do meio
+#: separa os dois números ou as casas decimais, e um palpite errado troca o
+#: hemisfério. A vírgula digitada à mão é normalizada por `par_de_coordenadas`,
+#: onde os dois números chegam SEPARADOS e a ambiguidade não existe.
+_COORDENADA_DO_PIN_RE = re.compile(
+    r"localiza[çc][ãa]o(?:\s+ao\s+vivo)?\s+compartilhada\s*:\s*"
+    r"(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)", re.IGNORECASE)
+
+
+def coordenada_do_pin(texto: Any) -> Optional[Tuple[str, str]]:
+    """O par do PIN, lido da linha ROTULADA — ou `None`.
+
+    🔴 **Só a linha rotulada.** Varrer o texto livre por "dois números com
+    sinal" acharia par em CEP, telefone e valor de franquia, e o produto
+    mandaria o guincho para uma coordenada que ninguém compartilhou. O rótulo é
+    o que separa dado de coincidência.
+
+    ⚠️ E o pin SEM coordenada também é texto: `_texto_de_localizacao` escreve
+    *"Localização compartilhada (sem coordenada)"* quando o `locationMessage`
+    vem vazio ou `(0,0)`. Ali não há par, e esta função devolve `None` — nunca
+    zero.
+    """
+    m = _COORDENADA_DO_PIN_RE.search(str(texto or ""))
+    if not m:
+        return None
+    return par_de_coordenadas(m.group(1), m.group(2))
+
+
 def parse_address_br(text: str) -> Dict[str, str]:
     """Heurística de endereço BR em texto livre → componentes para URAs que pedem
     rua/número/bairro/cidade/UF separados (Yelum/HDI/Allianz destino).
@@ -9121,7 +9237,25 @@ def parse_address_br(text: str) -> Dict[str, str]:
     # Uma cidade chamada "48.5477" não é uma dedução ruim; é uma invenção.
     # Ler só a primeira linha com conteúdo resolve a classe: qualquer rodapé
     # (coordenada, legenda, assinatura) deixa de virar campo de endereço.
-    raw = next((l.strip() for l in raw.splitlines() if l.strip()), "")
+    #
+    # 🔴 SPEC-118 F4 — E A PRIMEIRA LINHA NEM SEMPRE É O ENDEREÇO.
+    #
+    # 📊 Medido em 26/09/2026, com o motor: `_texto_de_localizacao`
+    # (`whatsapp/evolution_inbound.py`) só escreve o endereço quando o pin TRAZ
+    # `name`/`address`. Quando não traz — pin solto de um lugar sem cadastro, o
+    # caso do acostamento —, a ÚNICA linha é a rotulada, e ela caía aqui como
+    # endereço::
+    #
+    #     parse_address_br("Localização compartilhada: -27.588016,-48.544253")
+    #       → {'rua': 'Localizacao compartilhada:', 'bairro': '27.588016',
+    #          'cidade': '48.544253'}
+    #
+    # Três campos inventados, e um deles é a CIDADE para onde o guincho vai. É
+    # exatamente a classe que o conserto de 03/08 (logo acima) diz fechar — ele
+    # fechou o caso "coordenada no RODAPÉ" e deixou aberto o caso "coordenada
+    # SOZINHA". A linha da coordenada nunca é endereço, esteja onde estiver.
+    raw = next((l.strip() for l in raw.splitlines()
+                if l.strip() and not _LINHA_DE_COORDENADA_RE.search(l)), "")
     if not raw:
         return out
     m = re.search(r"\b(\d{5})-?(\d{3})\b", raw)
@@ -9196,6 +9330,65 @@ def inject_address_slots(slots: Dict[str, Any]) -> Dict[str, Any]:
     # Aliases usados pelos passos da Allianz (logradouro = rua).
     if slots.get("destino_rua"):
         slots.setdefault("destino_logradouro", slots["destino_rua"])
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-118 F4 · E A COORDENADA VEM DO MESMO TOQUE QUE O ENDEREÇO
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # O pin do WhatsApp entrega as duas coisas na MESMA mensagem: a primeira
+    # linha é o endereço (é o que o laço acima acabou de decompor) e a linha
+    # rotulada é a coordenada. Derivar só metade seria deixar a outra metade
+    # dependendo de o modelo copiar seis casas decimais sem errar um dígito — e
+    # um dígito errado em latitude são 11 km, com a URA aceitando calada.
+    #
+    # ⚠️ `setdefault`: o que o AGENTE passou explicitamente em
+    # `local_latitude`/`local_longitude` (os parâmetros que a F3 criou na
+    # ferramenta) VENCE. Aqui é a rede de baixo, não a autoridade.
+    #
+    # 🔴 E só do LOCAL ATUAL. O destino é a oficina, e a Porto não pede
+    # coordenada dele: derivar `destino_latitude` seria criar um campo que
+    # ninguém consome e que um mapa futuro consumiria por engano.
+    # ══════════════════════════════════════════════════════════════════════
+    # ⛔ E AQUI É O PORTÃO DA COORDENADA — PARA TODO MUNDO, NÃO SÓ O AGENTE
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 🔴 ACHADO PELA LINHA DE CONTROLE DO TESTE DO FIO, 26/09/2026. A F3 conferia
+    #    o par em `InsurerDispatchTool._extract_slots` — o caminho do AGENTE — e
+    #    `montar_resposta_de_flow` lê o slot direto. Com a origem declarada, um
+    #    `local_latitude="0"` chegando por qualquer OUTRO caminho (roteador,
+    #    retomada de sessão do Redis, `ura_simulator`, régua, um `slots` montado
+    #    à mão) fechava o formulário da Porto:
+    #
+    #        montar_resposta_de_flow(<mapa da Porto>, {...,'local_latitude':'0',
+    #                                                     'local_longitude':'0'})
+    #          → ok=True   params['latitude'] = '0'
+    #
+    #    ⛔ **O Golfo da Guiné com `ok=True`.** A URA aceita calada e o guincho
+    #    sai para o meio do Atlântico — o defeito silencioso da CLAUDE.md §9.5,
+    #    que responde ERRADO em vez de travar.
+    #
+    # 🔴 Por que o conserto é AQUI e não no montador: `inject_address_slots` roda
+    #    em `new_dispatch_session`, ANTES do portão de coleta, e é por onde todo
+    #    acionamento passa. Conferir dentro do montador resolveria o envio e
+    #    deixaria o portão aprovando um caso que o envio depois recusa — as duas
+    #    verdades sobre o mesmo valor que este arquivo já pagou uma vez.
+    #
+    # ⚠️ Par desonesto é APAGADO, não corrigido: o formulário cai em
+    #    `sem_valor`, o portão cobra o pin e o caso vai a uma pessoa com o motivo
+    #    escrito. Nunca um número inventado no lugar.
+    bruto_lat = str(slots.get("local_latitude") or "").strip()
+    bruto_lon = str(slots.get("local_longitude") or "").strip()
+    if bruto_lat or bruto_lon:
+        par = par_de_coordenadas(bruto_lat, bruto_lon)
+        if par:
+            slots["local_latitude"], slots["local_longitude"] = par
+        else:
+            slots.pop("local_latitude", None)
+            slots.pop("local_longitude", None)
+    if not (str(slots.get("local_latitude") or "").strip()
+            and str(slots.get("local_longitude") or "").strip()):
+        par = coordenada_do_pin(slots.get("local_atual"))
+        if par:
+            slots["local_latitude"], slots["local_longitude"] = par
     return slots
 
 
@@ -10589,6 +10782,44 @@ _COMO_PERGUNTAR = {
     "aparelho_marca_modelo": "a marca e o modelo do aparelho",
     "ponto_referencia": "um ponto de referencia proximo",
     "servico_texto": "qual servico o cliente precisa, em uma frase",
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-118 F4 · OS CAMPOS DO FORMULÁRIO DE ENDEREÇO — E O PIN
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 Medido em 26/09/2026, ANTES desta costura: `local_cep`, `local_rua`,
+    # `local_numero`, `local_bairro`, `local_cidade`, `local_uf`,
+    # `local_complemento`, `local_latitude` e `local_longitude` tinham **zero**
+    # entradas aqui (`_COMO_PERGUNTAR.get(k) is None` para todas as nove). A
+    # F2b mediu o custo disso e por isso recusou cobrar o formulário da Porto
+    # (nota 40/100): *"o agente pediria 'local_bairro' a uma pessoa de
+    # verdade"*. A cobrança só podia existir depois da frase — é a frase que faz
+    # dela uma pergunta em vez de um vazamento de identificador.
+    #
+    # ⚠️ A redação é a do CLIENTE, e diz DE QUAL endereço se fala: o corredor
+    # tem dois (`local_*` é onde o carro está, `destino_*` é a oficina), e a
+    # pergunta sem o "onde o carro está" manda o guincho para o lugar certo com
+    # o endereço do outro.
+    "local_rua": "o nome da rua onde o carro está",
+    "local_numero": "o número mais próximo na rua onde o carro está — "
+                    "o do prédio, da casa ou o km",
+    "local_bairro": "o bairro onde o carro está",
+    "local_cidade": "a cidade onde o carro está",
+    "local_uf": "o estado onde o carro está",
+    "local_cep": "o CEP do lugar onde o carro está — se ele não souber, o pin "
+                 "da localização resolve",
+    "local_complemento": "um complemento do endereço, se houver "
+                         "(apartamento, bloco, quadra)",
+    # 🔴 E ESTAS DUAS NÃO PEDEM UM NÚMERO. Ninguém sabe responder a própria
+    #    latitude — mas todo mundo sabe mandar o pin, e é UM TOQUE. A frase
+    #    ENSINA o caminho, porque pedir "a coordenada" a uma pessoa no
+    #    acostamento é a pergunta que não tem resposta.
+    #
+    # ⚠️ As duas dizem a MESMA coisa de propósito: é uma pergunta só, e
+    #    `como_pedir_ao_segurado` não repete frase igual.
+    "local_latitude": "que ele mande a localização pelo WhatsApp: clipe 📎 → "
+                      "Localização → Enviar sua localização atual",
+    "local_longitude": "que ele mande a localização pelo WhatsApp: clipe 📎 → "
+                       "Localização → Enviar sua localização atual",
 }
 
 #: Slots que o MOTOR preenche sozinho. Pedi-los ao cliente seria perguntar o
