@@ -2,7 +2,7 @@
 
 > **SPEC DEFINITIVA** · 26/09/2026 · convertida da proposta de 24/09 (`specs-propostas/SPEC-117-…md`)
 > sobre o HEAD `79c9e80` (`origin/main`, SPEC-116-RESERVA) · branch `spec/117-apolice-persistente`
-> **Rito:** PROTOCOLO AUTOBROKERS AAA **v13.2 · O FIO** (D-PROTO-13 — gerente/juiz/red team Opus 5.5)
+> **Rito:** PROTOCOLO AUTOBROKERS AAA **v13.2 · O FIO** (D-PROTO-14 — gerente/juiz/red team Opus 5.5)
 >
 > 📊 medido (data, fonte, comando) · 💭 ilustrativo, **nunca citável como fato** — CLAUDE.md §12.1
 
@@ -21,7 +21,7 @@ PISO APLICADO ........  CRÍTICO por EFEITO (§3.2): altera o que vai para insur
 NÍVEL ................  CRÍTICO · gerente Opus 5.5 · builders Opus 5.5 xhigh · juiz Opus 5.5 ‖ red team
                         Opus 5.5 (frescos, cegos um ao outro) + confirmação curta se houver blocker
                         🔴 DESVIO REGISTRADO: o protocolo v13 previa gerente/juiz/red team Fable 5.1. O
-                        Founder trocou para Opus 5.5 na abertura desta SPEC → protocolo v13.2, D-PROTO-13.
+                        Founder trocou para Opus 5.5 na abertura desta SPEC → protocolo v13.2, D-PROTO-14.
                         ⛔ Nenhum gate foi reduzido por causa da troca.
 O FIO ................  §1 · o TESTE DO FIO (F0) é a 1ª entrega e NASCEU VERMELHO (§4, B0.7)
 PARALELISMO REAL .....  F1 (`policy_context.py` novo + unitários) ‖ F4a (corpus `casos.jsonl`) — arquivos

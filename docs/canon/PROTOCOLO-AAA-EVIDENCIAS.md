@@ -683,7 +683,7 @@ SAÍDA (thinking + texto)            ≈ 6 % do gasto → effort não é alavanc
 
 ---
 
-# 📊 21/09/2026 — v13.1 · D-PROTO-13: as cinco regras que a EXTRA-001.10 comprou, e a medição de cada uma
+# 📊 21/09/2026 — v13.1 · D-PROTO-14: as cinco regras que a EXTRA-001.10 comprou, e a medição de cada uma
 
 > Commit `2f03c67`. Os pacotes-modelo estão em `docs/canon/pacotes/PACOTE-*.md`.
 > 📊 Depois da mudança: protocolo **21,94 KB**, núcleo **10,95 KB**, `test_o_protocolo_tem_policia.py` **78 ok,
@@ -726,7 +726,7 @@ atravessou 9 guardas verdes — o CLAUDE.md §9.4 um andar acima (testou-se o mo
 
 ---
 
-## D-PROTO-13 · o gerente, o juiz e o red team passam a ser Opus 5.5 (26/09/2026)
+## D-PROTO-14 · o gerente, o juiz e o red team passam a ser Opus 5.5 (26/09/2026)
 
 **Quem decidiu:** o Founder, na abertura da SPEC-117, por escrito: *"o Founder também escolhe Opus 5.5
 como gerente desta SPEC e como modelo dos builders, em lugar do gerente Fable previsto por padrão no

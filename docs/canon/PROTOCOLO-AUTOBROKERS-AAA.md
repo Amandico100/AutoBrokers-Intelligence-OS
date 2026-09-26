@@ -3,7 +3,7 @@
 > **Como se executa, se julga e se autoriza a entrega de uma SPEC no AutoBrokers.**
 > Não diz **o que** construir (isso é a SPEC). Diz **como construir, julgar, entregar e parar**.
 >
-> **v13.2 · O FIO · 26/09/2026 (D-PROTO-13: §10)** — rito ÚNICO. "v11", "v11.2", "opção B", "laço
+> **v13.2 · O FIO · 26/09/2026 (D-PROTO-14: §10)** — rito ÚNICO. "v11", "v11.2", "opção B", "laço
 > curto", "3 juízes", "AAA FAST sequencial" são nomes HISTÓRICOS, nunca rito. Só regras. O porquê, com as medições: [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
 
 ---
