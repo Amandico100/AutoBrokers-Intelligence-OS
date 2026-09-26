@@ -265,18 +265,49 @@ def test_a_coordenada_sem_fonte_e_HANDOFF_COM_MOTIVO_nunca_zero():
 # ⚠️ E o critério NÃO é `slot in required_slots`: era essa circularidade que
 #    fazia o campo do formulário nunca ser cobrado (SPEC-118 §2.3).
 
-def test_o_portao_cobra_os_campos_do_formulario_da_porto_no_guincho():
-    """🔴 O elo 3 da SPEC: o agente passa a saber o que o formulário vai pedir.
+DO_FORMULARIO_DA_PORTO = ["local_rua", "local_numero", "local_bairro",
+                          "local_cidade", "local_uf", "local_cep",
+                          "ponto_referencia"]
 
-    Sem isto a sessão nasce `ready_to_send`, a URA roda ~25 telas, o formulário
-    chega e o caso morre no último portão — com o segurado esperando."""
-    faltando = PB.missing_slots_for_subservice(_porto(), "guincho", {})
-    do_formulario = ["local_rua", "local_numero", "local_bairro", "local_cidade",
-                     "local_uf", "local_cep", "ponto_referencia"]
-    ausentes = [s for s in do_formulario if s not in faltando]
+
+def test_o_portao_cobra_os_campos_do_formulario_QUE_TEM_COMO_SER_RESPONDIDO():
+    """🔴 O elo 3 da SPEC — e a trava que o impede de virar interrogatório.
+
+    Sem o portão, a sessão nasce `ready_to_send`, a URA roda ~25 telas, o
+    formulário chega e o caso morre no último portão, com o segurado esperando.
+
+    ⚠️ Mas a pergunta só existe se a RESPOSTA puder sair. 📊 O formulário da Porto
+    tem duas chaves obrigatórias `sem_chute`: ele termina em `needs_human` com ou
+    sem o CEP. Cobrar o CEP antes seria acrescentar duas perguntas e mandar o caso
+    a uma pessoa do mesmo jeito — o erro do juiz 4 com outra roupa.
+
+    🔴 Este teste prova o MECANISMO, na CÓPIA do mapa em que a coordenada tem
+    fonte — que é o estado em que o portão precisa funcionar. E o teste seguinte
+    prova que, no mapa REAL de hoje, ele não pergunta nada."""
+    copia = copy.deepcopy(_porto())
+    flow = copia["native_flows"][FLOW_PORTO_ENDERECO] = copy.deepcopy(_flow_porto())
+    for chave in SEM_FONTE:
+        flow["resposta"]["obrigatorias"].pop(chave)
+    faltando = PB.missing_slots_for_subservice(copia, "guincho", {})
+    ausentes = [s for s in DO_FORMULARIO_DA_PORTO if s not in faltando]
     assert not ausentes, (
         f"o portão não cobra {ausentes} — são campos OBRIGATÓRIOS do formulário "
         f"que a Porto abre no guincho, e sem eles a resposta não sai")
+
+
+def test_formulario_que_NAO_FECHA_nao_gera_pergunta_nenhuma():
+    """⛔ A trava, no mapa REAL: enquanto a coordenada não tiver fonte, o
+    formulário da Porto é handoff com motivo — e o portão fica calado.
+
+    📊 `local_cep` e os `local_*` não têm redação em português em
+    `_COMO_PERGUNTAR` (é o que `test_o_cliente_nao_le_marcador_interno` mede):
+    cobrá-los faria o agente pedir "local_bairro" a uma pessoa de verdade."""
+    faltando = PB.missing_slots_for_subservice(_porto(), "guincho", {})
+    intrusos = [s for s in DO_FORMULARIO_DA_PORTO if s in faltando]
+    assert not intrusos, (
+        f"o portão passou a cobrar {intrusos} de um formulário que NÃO FECHA "
+        f"(latitude/longitude sem fonte) — duas perguntas a mais e o caso vai "
+        f"para uma pessoa do mesmo jeito")
 
 
 def test_CONTROLE_o_portao_NAO_cobra_de_quem_nao_ve_a_tela():
@@ -287,9 +318,17 @@ def test_CONTROLE_o_portao_NAO_cobra_de_quem_nao_ve_a_tela():
 
     📊 `local_cep` e `ponto_referencia` não são exigidos por passo de URA nem
     por `required_slots` em nenhum destes subserviços — se aparecerem, vieram do
-    formulário que eles NÃO abrem."""
+    formulário que eles NÃO abrem.
+
+    ⚠️ A cobrança roda sobre a CÓPIA em que a coordenada tem fonte: é o único
+    estado em que o portão cobra algo, e portanto o único em que "não cobrar de
+    quem não vê a tela" pode ser medido."""
+    copia = copy.deepcopy(_porto())
+    flow = copia["native_flows"][FLOW_PORTO_ENDERECO] = copy.deepcopy(_flow_porto())
+    for chave in SEM_FONTE:
+        flow["resposta"]["obrigatorias"].pop(chave)
     for subservico in ("bateria", "chaveiro", "pneu", "tecnico"):
-        faltando = PB.missing_slots_for_subservice(_porto(), subservico, {})
+        faltando = PB.missing_slots_for_subservice(copia, subservico, {})
         assert "local_cep" not in faltando, (
             f"porto/{subservico} passou a ser interrogado sobre o CEP por causa "
             f"de um formulário que o acervo só mostra no guincho")
