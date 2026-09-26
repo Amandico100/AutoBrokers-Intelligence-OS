@@ -9249,7 +9249,7 @@ def pick_option_by_plate(insurer_message: str, placa: str) -> str:
     #    preserva o alinhamento entre opcao e placa.
     matches = []
     for opt, masked in re.findall(
-            r"(\d+)\s*-\s*[^\n]*?placa\s+([A-Z0-9#\-]+)",  # DESLIGADO PELA MUTACAO
+            r"\*?(\d+)\*?\s*[-\u2013]\s*[^\n]*?\*?placa\*?\s+\*?([A-Z0-9#\-]+)",
             str(insurer_message), re.IGNORECASE):
         if bate_com_mascara(masked, case) is True:
             matches.append(opt)
