@@ -80,8 +80,31 @@ do próprio produto. O nome do envelope que a HDI/Yelum espera
 Bloco 7, teste B. Enquanto isso, o freio externo (`INSURER_DISPATCH_LIVE`) está
 fechado por construção.
 
-Ou seja: tudo que dá para provar sem o número pareado está pronto e provado; o
-que falta é uma rota que este build do GO não tem.
+📊 26/09/2026 — A ROTA EXISTE NA IMAGEM QUE ESTÁ NO AR, E O CATÁLOGO NÃO SABE
+-----------------------------------------------------------------------------
+Esta docstring fechava com *"o que falta é uma rota que este build do GO não
+tem"*. 🔴 **Falsificado, e a medição é de hoje** — rodada às 17:24 (-03) pela
+rota da prova, contra o serviço em produção:
+
+    POST /api/whatsapp-integrations/prova-de-formulario
+      → HTTP 200 · {"success": true, "vencedora": "embrulho DocumentWithCaption"}
+        tentativa 1 — controle, SEM o embrulho .. HTTP 500 "server returned error 479"
+        tentativa 2 — COM o embrulho ........... HTTP 200
+        o servidor devolveu Type: "InteractiveResponseMessage",
+        ID 3EB02C9B1BFC57E46E3136, para 5547****4743 (número NOSSO)
+
+⛔ **E a armadilha que quase desligou o transporte inteiro:** o
+`GET /swagger/doc.json` do MESMO serviço lista **88 rotas**, 12 delas de
+`/send`, e **nenhuma** com `interactive` no caminho — porque o patch 0005 não
+acrescentou anotação de swagger. 🔴 **O catálogo é INCOMPLETO; ele não é a
+verdade sobre a imagem.** Quem concluir "a rota não existe" lendo o catálogo
+desliga, por conta própria, o único transporte de formulário que o produto tem.
+Ausência no catálogo não é evidência de ausência na imagem: quem decide é o
+comando (protocolo §0.4), e o comando é a rota da prova acima.
+
+Ou seja: o transporte existe e está provado no ar entre dois números nossos. O
+que continua sem prova é o **desfecho** — uma seguradora aceitando a nossa
+resposta no meio de um atendimento real.
 """
 
 from __future__ import annotations
@@ -120,19 +143,28 @@ _GO_CAPABILITIES = ProviderCapabilities(presence=True)
 #: O enum que o fork aceita em `state`.
 ESTADOS_DE_PRESENCA = ("unavailable", "available", "composing", "recording", "paused")
 
-# 📊 As rotas de envio deste build do Evolution GO, transcritas do swagger em
-# 03/08/2026 (ver docstring). Ficam como DADO, e não como frase de comentário,
-# porque é contra esta lista que o teste mede a afirmação "não há rota de
-# resposta de flow". Comentário envelhece calado; lista o teste vigia.
+# 📊 As rotas de envio que o swagger deste build do Evolution GO PUBLICA,
+# transcritas em 03/08/2026 e reconferidas em 26/09/2026 (as mesmas 12, em 88
+# rotas). Ficam como DADO, e não como frase de comentário, porque comentário
+# envelhece calado e lista o teste vigia.
+#
+# 🔴 ELA É O CATÁLOGO, NÃO É A CAPACIDADE — e confundir as duas coisas quase
+# desligou o produto em 26/09/2026. `/send/interactiveResponse` **não está
+# aqui** e **funciona** (HTTP 200 pela rota da prova; ver a docstring do topo),
+# porque o patch 0005 abriu a rota sem anotação de swagger. ⛔ Ninguém decide
+# "o canal sabe responder formulário?" olhando esta lista: quem decide é a
+# mensagem de verdade que a rota da prova manda para um número nosso.
 ROTAS_DE_ENVIO_MEDIDAS: tuple = (
     "/send/text", "/send/media", "/send/button", "/send/list", "/send/carousel",
     "/send/contact", "/send/link", "/send/location", "/send/poll", "/send/sticker",
     "/send/status/text", "/send/status/media",
 )
 
-# A rota que enviaria a resposta do formulário nativo. Vazia = não existe rota
-# provada, e nada é enviado. Quem preencher isto está afirmando ter provado a
-# rota contra o número pareado — não está chutando um caminho plausível.
+# A rota que envia a resposta do formulário nativo. 🔴 **Vazia = usa a rota
+# PROVADA** (`ROTA_DE_FLOW_REPLY_PROVADA`), e o envio ACONTECE — este comentário
+# já disse o contrário e era verdade vencida no arquivo que decide se mensagem
+# sai para seguradora (CLAUDE.md §9.3). Preencher CORRIGE o caminho; `off`/`0`/
+# `none`/`desligado` DESLIGA sem deploy.
 ENV_ROTA_FLOW_REPLY = "EVOLUTION_GO_FLOW_REPLY_PATH"
 
 # Texto que o WhatsApp mostra na bolha de quem respondeu o formulário. 📊 É o
@@ -162,7 +194,14 @@ def rota_de_flow_reply(env: Optional[Dict[str, str]] = None) -> str:
 
     Então o padrão passou a ser a rota provada. A variável de ambiente continua
     existindo — mas mudou de papel: era o que LIGAVA, agora é o que corrige ou
-    desliga, se um dia o fork mudar de caminho. Um valor explícito sempre vence.
+    desliga, se um dia o fork mudar de caminho. Um valor explícito sempre vence,
+    porque um operador que escreveu a rota com a própria mão não é contrariado em
+    silêncio.
+
+    📊 26/09/2026 — a rota foi RECONFERIDA no ar, pela rota da prova, e voltou
+    HTTP 200 (`ID 3EB02C9B1BFC57E46E3136`). ⛔ E o `swagger/doc.json` do mesmo
+    serviço **não a lista**: o catálogo é incompleto. Quem conferir a capacidade
+    contra ele desliga um transporte que funciona — ver a docstring do topo.
     """
     fonte = env if env is not None else os.environ
     rota = str(fonte.get(ENV_ROTA_FLOW_REPLY) or "").strip()
@@ -296,6 +335,67 @@ def montar_nfm_reply(
             },
         }
     }
+
+
+def corpo_do_flow_reply(
+    *,
+    to: str,
+    flow_token: str,
+    params: Dict[str, Any],
+    nome_do_envelope: str,
+    flow_response_params: Optional[Dict[str, Any]] = None,
+    body_text: Optional[str] = None,
+    version: int = VERSION_DA_RESPOSTA_DE_FLOW,
+) -> Dict[str, Any]:
+    """O corpo PLANO que a rota do fork recebe. PURO — sem rede e sem env.
+
+    A rota do nosso fork (patch 0005) recebe corpo plano, não o waE2E aninhado —
+    ela mesma monta o protobuf do lado Go. Ainda assim quem decide o CONTEÚDO é
+    :func:`montar_nfm_reply`: se as duas montagens existissem em paralelo, um dia
+    divergiriam, e a divergência só apareceria numa seguradora descartando a
+    resposta em silêncio.
+
+    🔴 **Por que isto é função livre, e não linhas dentro do envio:** o embrulho
+    é a diferença entre 200 e 479, e precisa ser conferível **sem telefone** —
+    pelo guarda (`backend/tests/test_o_transporte_do_formulario_e_conferido.py`)
+    e pelo `/health`, que publica `formulario_embrulho_viaja`. Separar o que pode
+    estar errado do que precisa de rede é o método que resolveu isto em
+    03/08/2026 (`docs/canon/O-FORMULARIO-NATIVO-RESOLVIDO.md` §10.1).
+    """
+    mensagem = montar_nfm_reply(
+        flow_token=flow_token, params=params,
+        nome_do_envelope=nome_do_envelope,
+        flow_response_params=flow_response_params,
+        body_text=body_text, version=version)
+
+    envelope = mensagem["interactiveResponseMessage"]
+    nfm = envelope["nativeFlowResponseMessage"]
+    corpo: Dict[str, Any] = {
+        "number": to,
+        "name": nfm["name"],
+        "paramsJSON": nfm["paramsJSON"],
+        # 📊 MEDIDO, não escolhido. Em 03/08/2026 seis formas foram enviadas de
+        # um número nosso para outro. Cinco voltaram com o mesmo erro 479 — que
+        # o whatsmeow documenta como "Invalid stanza sent". A sexta, com este
+        # embrulho, voltou 200 e o servidor devolveu
+        # `Type: "InteractiveResponseMessage"`.
+        #
+        # 📊 RECONFIRMADO em 26/09/2026 pela rota da prova, com a mesma linha de
+        # controle: tentativa 1 sem o embrulho → 479; tentativa 2 com ele → 200,
+        # `ID 3EB02C9B1BFC57E46E3136`. Duas medições, 54 dias de distância, o
+        # mesmo veredito.
+        #
+        # É o mesmo embrulho que /send/button usa nas três variantes dele. Sem
+        # ele o WhatsApp recusa a mensagem inteira, em silêncio para o cliente e
+        # com um número para nós.
+        "wrapInDocumentWithCaption": True,
+    }
+    if nfm.get("version"):
+        corpo["version"] = int(nfm["version"])
+    texto = (envelope.get("body") or {}).get("text")
+    if texto:
+        corpo["body"] = texto
+    return corpo
 
 
 class EvolutionGoProvider:
@@ -533,10 +633,36 @@ class EvolutionGoProvider:
     def flow_reply_supported(self) -> bool:
         """Este canal sabe ENVIAR resposta de formulário nativo?
 
-        Falso enquanto ninguém declarar a rota provada. Ter o schema do
-        formulário e saber montar o `paramsJSON` **não é** ter o canal — e é
-        justamente por confundir as duas coisas que um acionamento sairia
-        achando que respondeu."""
+        🔴 **O QUE ESTA FUNÇÃO SABE E O QUE ELA NÃO SABE — escrito, porque a
+        resposta errada aqui custa um acionamento parado no meio da URA.**
+
+        Ela sabe UMA coisa, e é a que está no nome do arquivo de configuração:
+        **a rota de envio está declarada?** A provada
+        (`/send/interactiveResponse`) é o padrão, um valor explícito na
+        `EVOLUTION_GO_FLOW_REPLY_PATH` a corrige, e `off`/`0`/`none`/`desligado`
+        a **desliga** — e aí esta função devolve `False` e nada toca a rede.
+
+        ⛔ **Ela não sonda o canal, e isso é deliberado, não esquecimento.** 📊
+        Em 26/09/2026 o `swagger/doc.json` deste mesmo serviço listava 88 rotas e
+        **nenhuma** com `interactive`, enquanto a rota **funcionava** (HTTP 200 —
+        ver a docstring do topo). Uma conferência contra o catálogo devolveria
+        `False` para uma rota viva e desligaria o único transporte de formulário
+        que o produto tem. **Sonda que mede a coisa errada é pior que sonda
+        nenhuma**, porque ela vem com a autoridade de um número.
+
+        🔴 **A única prova honesta de que ESTE canal envia** é mandar uma
+        mensagem de verdade para um número nosso:
+        `POST /api/whatsapp-integrations/prova-de-formulario`
+        (`app/api/whatsapp_integrations.py` — o botão *"Provar envio de
+        formulário"* na tela de WhatsApp da corretora). Ela mede **com linha de
+        controle**: a primeira tentativa vai SEM o embrulho, de propósito, e tem
+        de falhar. Nenhum `/health` substitui isso, e nenhuma leitura de
+        catálogo também não.
+
+        ⚠️ E ter o schema do formulário e saber montar o `paramsJSON` continua
+        **não** sendo ter o canal — é justamente por confundir as duas coisas que
+        um acionamento sairia achando que respondeu.
+        """
         return bool(rota_de_flow_reply())
 
     def send_native_flow_response(
@@ -559,48 +685,27 @@ class EvolutionGoProvider:
         """
         rota = rota_de_flow_reply()
         if not rota:
+            # 🔴 O único caminho que chega aqui é alguém ter DESLIGADO a rota na
+            # `EVOLUTION_GO_FLOW_REPLY_PATH`. 📊 A rota padrão existe e está
+            # provada no ar (26/09/2026, HTTP 200) — esta recusa é uma escolha de
+            # operação, nunca uma limitação da imagem. O texto anterior dizia
+            # "este build do GO não tem rota", e isso virou verdade vencida no
+            # log que alguém vai ler às três da manhã (CLAUDE.md §9.3).
             logger.warning(
                 "[EVOLUTION-GO] resposta de formulário nativo montada mas NÃO enviada: "
-                "este build do GO não tem rota de resposta de interativa (%s vazio). "
-                "As 12 rotas de envio conhecidas só ORIGINAM mensagem.", ENV_ROTA_FLOW_REPLY)
+                "a rota de resposta de interativa está DESLIGADA por configuração "
+                "(%s = off). A rota padrão %s existe e foi provada no ar.",
+                ENV_ROTA_FLOW_REPLY, ROTA_DE_FLOW_REPLY_PROVADA)
             return SendResult(ok=False, error="evolution_go_sem_rota_de_flow_reply")
         try:
-            mensagem = montar_nfm_reply(
-                flow_token=flow_token, params=params,
+            corpo = corpo_do_flow_reply(
+                to=to, flow_token=flow_token, params=params,
                 nome_do_envelope=nome_do_envelope,
                 flow_response_params=flow_response_params,
                 body_text=body_text, version=version)
         except ValueError as exc:
             logger.error("[EVOLUTION-GO] resposta de formulário recusada: %s", exc)
             return SendResult(ok=False, error=f"flow_reply_invalida:{exc}")
-
-        # A rota do nosso fork (patch 0005) recebe corpo PLANO, não o waE2E
-        # aninhado — ela mesma monta o protobuf do lado Go. Ainda assim quem
-        # decide o conteúdo é `montar_nfm_reply`, aqui em cima: se as duas
-        # montagens existissem em paralelo, um dia divergiriam, e a divergência
-        # só apareceria numa seguradora descartando a resposta em silêncio.
-        envelope = mensagem["interactiveResponseMessage"]
-        nfm = envelope["nativeFlowResponseMessage"]
-        corpo: Dict[str, Any] = {
-            "number": to,
-            "name": nfm["name"],
-            "paramsJSON": nfm["paramsJSON"],
-            # 📊 MEDIDO, não escolhido. Em 03/08/2026 seis formas foram enviadas
-            # de um número nosso para outro. Cinco voltaram com o mesmo erro 479
-            # — que o whatsmeow documenta como "Invalid stanza sent". A sexta,
-            # com este embrulho, voltou 200 e o servidor devolveu
-            # `Type: "InteractiveResponseMessage"`.
-            #
-            # É o mesmo embrulho que /send/button usa nas três variantes dele.
-            # Sem ele o WhatsApp recusa a mensagem inteira, em silêncio para o
-            # cliente e com um número para nós.
-            "wrapInDocumentWithCaption": True,
-        }
-        if nfm.get("version"):
-            corpo["version"] = int(nfm["version"])
-        texto = (envelope.get("body") or {}).get("text")
-        if texto:
-            corpo["body"] = texto
         return self._post(rota, corpo)
 
 
@@ -613,7 +718,9 @@ __all__ = [
     "EvolutionGoProvider",
     "go_event_to_v2_envelope",
     "montar_nfm_reply",
+    "corpo_do_flow_reply",
     "rota_de_flow_reply",
+    "ROTA_DE_FLOW_REPLY_PROVADA",
     "rotas_de_envio_medidas",
     "ROTAS_DE_ENVIO_MEDIDAS",
     "ENV_ROTA_FLOW_REPLY",
