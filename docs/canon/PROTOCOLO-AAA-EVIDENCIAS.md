@@ -723,3 +723,35 @@ os DOIS laudos .... 2 achados em comum (a conta global e a inequação 90×3 > 1
 rodaram, cegos um ao outro, e nenhum deles teria achado os do outro. E a maior lacuna foi de método, não de
 esforço: **nenhum guarda rodava o agendador REAL com turnos longos**, e por isso o achado exclusivo do juiz
 atravessou 9 guardas verdes — o CLAUDE.md §9.4 um andar acima (testou-se o motor, não quem o chama).
+
+---
+
+## D-PROTO-13 · o gerente, o juiz e o red team passam a ser Opus 5.5 (26/09/2026)
+
+**Quem decidiu:** o Founder, na abertura da SPEC-117, por escrito: *"o Founder também escolhe Opus 5.5
+como gerente desta SPEC e como modelo dos builders, em lugar do gerente Fable previsto por padrão no
+protocolo… Mantenha juiz e red team — são agora Opus 5.5, frescos, independentes e cegos um ao outro…
+Não reduza os gates por causa da troca de gerente."*
+
+**O que mudou no protocolo v13 → v13.2** (📊 `grep -c "Fable" docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md`
+→ era **7**, agora **0**):
+
+```
+§3.1  juiz fresco de PADRÃO e CRÍTICO ....  Fable ‖ red team      →  Opus 5.5 ‖ red team
+§4    🎯 GERENTE ..........................  Fable 5.1            →  Opus 5.5
+§4    🗡️ RED TEAM .........................  Fable 5.1            →  Opus 5.5
+§8    peça de escalação ...................  "consulta ao Fable"  →  "consulta a um 2º modelo"
+§10   MODELO ..............................  gerente/juiz/red team Fable 5.1 → Opus 5.5
+                                             builder Opus 5 xhigh → Opus 5.5 xhigh
+```
+
+🔴 **O que NÃO mudou, de propósito:** o juiz e o red team continuam **frescos, paralelos e cegos um ao
+outro** (§6), a confirmação curta continua obrigatória depois de blocker (§6.1), a trava de duas rodadas
+continua contada por `backend/scripts/rodada_do_juiz.py`, e a mutação dos guardas novos continua no passo ③.
+Trocar o modelo do julgador **não é** afrouxar a régua — a evidência da EXTRA-001.8 acima mostra por que o
+par juiz ‖ red team existe, e essa razão é de **método**, não de família de modelo.
+
+⚠️ **O limite honesto desta entrada:** a troca é uma decisão do Founder registrada, **não** uma medição.
+Nenhum número desta linha diz que Opus 5.5 julga melhor que Fable 5.1 — a comparação não foi feita. A regra
+que se aplica é a §13 (*"regra que errar duas vezes muda de número"*): se o julgamento piorar em duas SPECs,
+volta-se ao número anterior com o porquê escrito aqui.

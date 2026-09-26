@@ -3,7 +3,7 @@
 > **Como se executa, se julga e se autoriza a entrega de uma SPEC no AutoBrokers.**
 > Não diz **o que** construir (isso é a SPEC). Diz **como construir, julgar, entregar e parar**.
 >
-> **v13 · O FIO · 20/09/2026 (D-PROTO-12)** — rito ÚNICO. "v11", "v11.2", "opção B", "laço
+> **v13.2 · O FIO · 26/09/2026 (D-PROTO-13: §10)** — rito ÚNICO. "v11", "v11.2", "opção B", "laço
 > curto", "3 juízes", "AAA FAST sequencial" são nomes HISTÓRICOS, nunca rito. Só regras. O porquê, com as medições: [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
 
 ---
@@ -101,8 +101,8 @@ UNIDADE = a menor coisa que dá para ENTREGAR e PROVAR sozinha. FATIA = o que ca
 | nível | quando | quem ESCREVE | juiz fresco (§6) | rodadas |
 |---|---|---|---|---|
 | **LEVE** | RISCO 0–1 e SUPERFÍCIE 0–1 | Opus `high` | nenhum (só o verificador) | 0 |
-| **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | Opus `xhigh` | **Fable ‖ red team** | 1 |
-| **CRÍTICO** | RISCO 6+, SUPERFÍCIE 3, ou o piso §3.2 | Opus `xhigh` | **Fable ‖ red team** + lente por gatilho (§8) | 1 (+1 curta) |
+| **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | Opus `xhigh` | **Opus 5.5 ‖ red team** | 1 |
+| **CRÍTICO** | RISCO 6+, SUPERFÍCIE 3, ou o piso §3.2 | Opus `xhigh` | **Opus 5.5 ‖ red team** + lente por gatilho (§8) | 1 (+1 curta) |
 
 ```
 ⚠️ rótulo e soma discordam? a soma vence
@@ -133,12 +133,12 @@ mesma interface, tipo ou contrato? uma REDEFINE o que a outra consome? mesmo ARQ
 
 ## 4. OS PAPÉIS — três por padrão; o resto por gatilho
 ```
-🎯 GERENTE        Fable 5.1 no chat de decisão: card, BLOCO 0, pacotes, provas, juiz, conserto, entrega e
+🎯 GERENTE        Opus 5.5 no chat de decisão: card, BLOCO 0, pacotes, provas, juiz, conserto, entrega e
                   REGISTRO (§5 ⑧). Lê a FICHA, nunca a proposta inteira
 🔧 BUILDER        Opus 5 xhigh, FRESCO, um por fatia. 🔴 cada arquivo tem UM dono: fatias de ARQUIVOS
                   DISJUNTOS (listados no card) vão EM PARALELO; qualquer interseção → série
 ⚖️ JUIZ FRESCO    read-only, contexto limpo, não viu escrever (§6)
-🗡️ RED TEAM       Fable 5.1 fresco, missão QUEBRAR o fio vivo. SEMPRE ‖ o juiz em PADRÃO e CRÍTICO, cego
+🗡️ RED TEAM       Opus 5.5 fresco, missão QUEBRAR o fio vivo. SEMPRE ‖ o juiz em PADRÃO e CRÍTICO, cego
                   para ele (§6) — deixou de ser peça de gatilho
 ⚙️ VERIFICADOR    passo mecânico do laço · 🔍 INVESTIGADOR Sonnet 5, read-only, no máximo UM
 🏁 CONFIRMAÇÃO    juiz novo, ≤ 20 turnos, só o diff do conserto — obrigatória se houve blocker (§6.1)
@@ -281,7 +281,7 @@ Identidade, dinheiro e escolha-entre-existente-e-novo exigem julgamento humano.
 |---|---|
 | **lente do dado** | outcome é NÚMERO, DATASET ou relatório que a corretora lê · migration que ALTERA DADO · a SPEC afirma percentuais do acervo |
 | **confirmação (§6.1)** | o juiz OU o red team achou ≥ 1 BLOCKER — em qualquer código (deixou de ser gatilho estreito) |
-| **consulta ao Fable antes do BUILD** (≤ 15 turnos) | decisão de arquitetura em aberto |
+| **consulta a um 2º modelo antes do BUILD** (≤15 turnos) | decisão de arquitetura em aberto |
 | **segundo juiz** (família diferente) | o primeiro reprovou com ≥ 2 blockers materiais E a SPEC envia ou toca tenant |
 | **AAA COMPLETO** (painel de 3 lentes + lente do dado + confirmação) | incidente P0/P1 · mudança ampla de arquitetura · migration DESTRUTIVA · o Founder disse "é mais importante do que parece" · o juiz reprovou DUAS vezes com blocker material |
 
@@ -337,8 +337,8 @@ NÃO). Nunca se para para entregar uma linha dela.
 ```
 SESSÃO      o GERENTE vive num chat; cada SPEC inteira nele (card → push); 2–3 SPECs por chat enquanto o
             gerente ficar ≤ 600 k. ⛔ nenhuma SPEC em duas sessões
-MODELO      🎯 gerente = Fable 5.1 · 🔧 builder = Opus 5 xhigh (max só a pedido do Founder) · ⚖️ juiz = Fable 5.1
-            sempre que houver juiz · 🔍 investigador = Sonnet 5 · 🗡️ red team = Fable 5.1. ⛔ não trocar no meio
+MODELO      🎯 gerente = Opus 5.5 · 🔧 builder = Opus 5.5 xhigh (max só a pedido do Founder) · ⚖️ juiz = Opus 5.5
+            sempre que houver juiz · 🔍 investigador = Sonnet 5 · 🗡️ red team = Opus 5.5. ⛔ não trocar no meio
 TETOS       LEVE · PADRÃO · CRÍTICO — turnos do executor ≤ 80 · 160 · 250 por fatia · contexto ≤ 200 · 250 · 300 k
             (passou → builder novo, §5.2) · agentes por sessão ≤ 24 · relógio ≤ 40 min ·
             75 min · 2h30 (fatia ≤ 1h15) · juiz ≤ 80 turnos e ≤ 250 k
