@@ -708,6 +708,55 @@ o ramo oficial ficam provados só por teste); o **I.3** é uma melhoria de segur
 
 ---
 
+## 8.9 · Bloco J — o formulário dentro do WhatsApp deixa de parar o acionamento (118)
+
+> **O que mudou, em uma frase:** quando a seguradora abre aquele **formulário dentro da conversa** — a telinha com
+> campos para preencher, que o WhatsApp mostra sem sair do chat —, o produto agora sabe respondê-lo **sozinho** na
+> Porto, e o agente pergunta antes, em português, o que a seguradora vai exigir lá dentro.
+>
+> 🔴 **E uma coisa que eu te pedi errado, e agora está medida:** eu pedi um **rebuild da imagem do WhatsApp**. Não era
+> preciso. 📊 Em 26/09 às 17:24 a prova rodou contra o serviço no ar e o envio de resposta de formulário **funcionou na
+> primeira tentativa certa** (HTTP 200, `Type: "InteractiveResponseMessage"`), com a tentativa de controle — sem o
+> embrulho — devolvendo erro 479. O catálogo do serviço (`swagger`) não lista a rota, mas a rota existe: **o catálogo
+> estava incompleto, não o serviço.** A pendência **P-62**, que repetia o pedido de rebuild há semanas, foi fechada.
+>
+> **O que mais mudou:** a **Tokio** deixou de fingir que atende. 📊 Em 52% das conversas dela o atendimento termina num
+> **link** da seguradora, e não num protocolo — então o caso passa a ir para uma pessoa **com o dossiê pronto**, em vez
+> de ficar preso até o vigia perceber. (E havia um defeito grave aí: a entrega para uma pessoa era **inalcançável** no
+> código — o segurado era simplesmente abandonado.)
+
+- [ ] **J.1 Implantar** `smith-api` → `smith-worker`.
+      **Por quê:** 🔴 **a entrega só existe depois deste clique.** As telas (`smith-web`) e o robô de portal
+      (`portal-worker`) **não mudaram** nesta SPEC.
+      **O que esperar:** os dois verdes em 2–5 min. Nenhuma variável nova é obrigatória, **nenhuma mudança de banco**.
+      **Se der errado:** copie as **últimas 30 linhas do log** do `smith-api` e cole no chat. · **118**
+- [ ] **J.2 🔴 O canário do formulário** — é o que falta para esta entrega fechar, e é o único teste que nenhum
+      computador pode fazer sozinho. Peça um **guincho na Porto** por um número de teste e, quando o agente pedir a
+      localização, **mande o pin** (o clipe 📎 → Localização → Enviar localização atual). O que conferir:
+      (1) o agente pede **uma coisa de cada vez**, em português, e **ensina** a mandar o pin;
+      (2) quando o formulário chega, ele é respondido **sem ninguém tocar**;
+      (3) o caso **não** vai para uma pessoa.
+      ⛔ Com um número de teste, nunca com segurado real. · **118**
+- [ ] **J.3 Decidir a `D-118-01` — quando abrir a finalização para todas as seguradoras.** Você pediu *"todas
+      liberadas, para não ter confusão depois"*. **A recomendação da execução é o contrário, e por um motivo concreto:**
+      hoje a lista `DISPATCH_FINALIZE_LIVE_PLAYBOOKS` aceita um nome escrito errado **e não avisa** — o corredor
+      simplesmente nunca fecha o chamado, em silêncio. Enquanto os testes correm, o modo `test` + a lista explícita é o
+      estado mais seguro (é o que está no ar hoje: Porto e Yelum). Depois do canário do J.2, troque para
+      `DISPATCH_FINALIZE_MODE=live` e **apague a lista** — aí todas ficam liberadas, sem lista para esquecer.
+      **Onde:** EasyPanel → `smith-api` → Environment. · **118 · D-118-01 · P-118-15**
+- [ ] **J.4 As capturas que faltam** (quando quiser, sem pressa): um acionamento **de auto na Azul** que chegue ao
+      formulário (hoje não há uma única captura dela, e sem isso o mapa não pode ser escrito sem inventar), e um
+      acionamento **de pneu na Azul** (a tecla do menu mudou em 07/04 e a rota existe sem tecla).
+      Vale o mesmo para **Mapfre** e **Tokio**: 📊 nenhuma conversa delas no acervo chegou ao fim com protocolo — por
+      isso as 4 rotas da Mapfre e 3 das 4 da Tokio aparecem no painel como **"sem uma conversa no acervo"**.
+      · **118 · P-118-01 · P-118-02 · P-118-03**
+
+**Bloqueia alguma coisa?** ⛔ **Não.** Nada nesta entrega espera terceiro, chave ou pagamento. O **J.1** leva ao ar; o
+**J.2** é o que prova na vida real; o **J.3** é sua decisão e pode esperar o J.2; o **J.4** é coleta de material, e cada
+captura vale uma rota a mais no painel.
+
+---
+
 ## 9 · Depois de tudo — desfazer o ensaio
 
 - [ ] **9.1** Desativar o destino do **grupo de canário** (painel → Personalização → Suporte humano) —
@@ -742,6 +791,7 @@ o ramo oficial ficam provados só por teste); o **I.3** é uma melhoria de segur
 | — | **D-E001101-01…07 (001.10.1)** — todas tomadas pela execução, nenhuma aberta para você | token no cofre do worker (88) · agendar pela preferência + continuação (90) · e-mail do corretor = Perfil de Acionamento (90) · contato do segurado + WhatsApp (88, fecha a F1) · domicílio fora (sua decisão) · `BloqueadoIlhaNormal` deixa de travar (90) · peça reescrita com pedido esperando resposta vira continuação (85) | `FOUNDER-DECISIONS.md` |
 | 14 | **D-E002-01 a 08 · o Agger, a renovação e a fila** (22/09, propostas) | as oito já vêm com a recomendação: pedir à Agger a **API oficial e a autorização** na mesma conversa, sem autorização nenhuma automação (01: 92 × 84 × 58 × 25) · **usuário robô** por corretora (02: 95) · calcular em D-30 e **recalcular** perto do fechamento, porque a cotação vale 5 dias (03: 88) · **o corretor revisa e envia** (04: 92) · **rótulos transparentes** em vez de "a melhor" escolhida por IA (05: 94) · a 003 em **duas partes**, fundação e ciclo (06: 88) · a posição na fila (07: 78 × 65 — diferença pequena, é a que mais precisa de você) · o Agger como porta **de cotação**, não de gestão (08: 90) | `FOUNDER-DECISIONS.md` · proposta 002 §10 |
 | 15 | **P-S117-08 · a chave do apelido opaco do cliente** | hoje o apelido do cliente é derivado com a chave de cifra que já existe (`ENCRYPTION_KEY`) e funciona; o certo pela ENISA é uma chave **separada** (`POLICY_CONTEXT_HMAC_KEY`). **Não bloqueia nada**: se o `ENCRYPTION_KEY` faltar um dia, o apelido enfraquece em silêncio | `PENDENCIAS.md` P-S117-08 · bloco **I.3** |
+| 16 | **D-118-01 · quando abrir a finalização para TODAS as seguradoras** | você pediu *"todas liberadas, para não ter confusão depois"*. A recomendação da execução (nota 88 × 55 × 40) é o contrário **enquanto os testes correm**: `DISPATCH_FINALIZE_MODE=test` + a lista explícita — que é o estado no ar hoje (📊 Porto e Yelum) —, e só **depois do canário do J.2** trocar para `live` e **apagar a lista**. O motivo é concreto: a lista aceitava um nome escrito errado e não avisava; o corredor nunca fechava o chamado, em silêncio. ✅ Isso virou **defeito visível** no `/health` nesta SPEC (`finalize_refs_fantasma`) | relatório 118 · D-118-01 · P-118-15 |
 
 ---
 
