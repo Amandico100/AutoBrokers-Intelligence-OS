@@ -1,9 +1,9 @@
 {
- "versao": 3,
- "gerado_em": "2026-09-23",
- "spec": "SPEC-116 U12",
+ "versao": 4,
+ "gerado_em": "2026-09-26",
+ "spec": "SPEC-116 U12 · SPEC-117 F4a",
  "papeis": {
-  "atendimento": 40,
+  "atendimento": 51,
   "chat_principal": 38,
   "cobranca": 10,
   "dispatch": 15,

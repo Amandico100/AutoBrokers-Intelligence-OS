@@ -31,7 +31,13 @@ from PIL import Image, ImageDraw, ImageFont
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND)   # os construtores REAIS do retorno das tools (ver _infocap_real)
 RAIZ = os.path.join("tests", "corpus", "bancada")
-VERSAO = 3   # v3 (conserto único): oráculo cob-n1-p19a aceita a NEGAÇÃO · v2 (F6): dublês com a FORMA REAL
+#: 🔴 v4 (SPEC-117 F4a, 26/09/2026): 11 trajetórias N2 do atendimento em que a apólice TEM de
+#: atravessar o caso + o `client_ref` no dublê da consulta (ele sai nos DOIS papéis no conector
+#: real e o dublê da v3 não o trazia). ⚠️ A proposta da SPEC-117 falava em "corpus v2"; 📊 o
+#: corpus em disco estava em `versao: 3` nos 40 casos (`python -c` sobre o casos.jsonl,
+#: 26/09/2026) — a proposta citava a v2 da F6, que já tinha sido sucedida pela v3 do conserto
+#: único da SPEC-116. Registrado aqui para ninguém procurar uma v2 que não existe mais.
+VERSAO = 4   # v3 (conserto único): oráculo cob-n1-p19a aceita a NEGAÇÃO · v2 (F6): dublês com a FORMA REAL
 
 ATD = {"nome": "Atendente Teste", "corretora": "{{CORRETORA:A}}"}
 ATD_B = {"nome": "Atendente Teste", "corretora": "{{CORRETORA:B}}"}
@@ -79,6 +85,32 @@ NUNCA_ACIONA = ["protocolo", "já acionei", "acionado com sucesso", "guincho a c
 # ⚠️ O `rascunho` (o texto do compositor) é escrito à mão: o compositor real lê a
 # base de assistências no banco, e o gerador não lê banco. Ele carrega os MESMOS
 # fatos que o texto da v1 carregava (assistências da apólice) — nada a mais.
+def _identidade_do_conector(*, client_facing, codigo="7788", codfil="0001", cpf=None, nome=None):
+    """O bloco de identidade de `infocap_connector._canonical_customer_identity`.
+
+    🔴 `infocap_client_found`, `client_ref_available`, `client_ref_fields`,
+    `client_ref` e `canonical_customer_source` são montados FORA do `if unmasked`
+    (📊 `infocap_connector.py:552-563`, BLOCO 0 B0.3 da SPEC-117): eles saem nos
+    DOIS papéis. A máscara muda só o PAR de campos do fim da função —
+    `client_name`/`client_document` crus no papel `core`,
+    `client_name_masked`/`client_document_masked` no papel do segurado.
+
+    ⚠️ Até a v3 o dublê não trazia o `client_ref`, e era exatamente ele que
+    permite ao atendimento saber que o cliente está identificado sem CPF em
+    claro (SPEC-117 §2, decisão D7). Um dublê que omite o campo faz o corpus
+    afirmar uma forma que o conector não devolve (CLAUDE.md §9.4).
+    """
+    out = {"infocap_client_found": True, "client_ref_available": True,
+           "client_ref_fields": ["codigo", "codfil"],
+           "client_ref": {"codigo": codigo, "codfil": codfil},
+           "canonical_customer_source": "infocap:/cliente"}
+    if client_facing:   # atendimento: o conector devolve só o mascarado
+        out.update({"client_name_masked": "C*** E***", "client_document_masked": "****-*"})
+    else:               # Chat Principal (corretor): dono da informação
+        out.update({"client_name": nome, "client_document": cpf})
+    return out
+
+
 def _infocap_real(*, numero, seguradora, produto, inicio, fim, cpf, nome, rascunho, client_facing,
                   pergunta):
     from app.agents.tools.infocap_tool import InfocapPolicyLookupTool as T
@@ -90,11 +122,9 @@ def _infocap_real(*, numero, seguradora, produto, inicio, fim, cpf, nome, rascun
            "coverages_count": 4, "cancelled": False}
     data = {"ok": True, "status": "found", "source_ref": "infocap:documento", "result_count": 1,
             "matched_by": "document", "identity_status": "identity_verified"}
-    if client_facing:   # atendimento: o conector devolve só o mascarado
-        data.update({"client_name_masked": "C*** E***", "client_document_masked": "****-*"})
-    else:               # Chat Principal (corretor): dono da informação
+    data.update(_identidade_do_conector(client_facing=client_facing, cpf=cpf, nome=nome))
+    if not client_facing:   # Chat Principal (corretor): dono da informação
         sel.update({"holder_name": nome, "document": cpf})
-        data.update({"client_name": nome, "client_document": cpf})
     data.update({"selected": sel, "matches": [dict(sel)]})
     content = T._build_llm_briefing(data, {"text": rascunho, "facts": []}, pergunta,
                                     client_facing=client_facing)
@@ -393,6 +423,534 @@ def atendimento_n2():
                       "resposta_ouro": "Já encaminhei o caso com tudo o que a gente levantou; te aviso aqui mesmo."}]},
                  {"efeitos_exatos": {"request_human_agent": 1}, "nao_deve_conter": ["aguarde na linha"]},
                  org, critico=True, ferramentas=FERR_ATD, efeitos_permitidos=["request_human_agent"], orcamento=6))
+    return out
+
+
+# ===========================================================================
+# 🔴 SPEC-117 F4a — ATENDIMENTO N2: a apólice que o caso ENCONTROU atravessa o
+# caso inteiro (gates G1–G10 da SPEC-117 §6)
+# ===========================================================================
+# ⛔ O que se mede aqui é o TRANSPORTE do fato (SPEC-117 §3, lado B), nunca a
+# AQUISIÇÃO dele: a escolha que a porta já sabe fazer
+# (`policy_data_provider.escolher_apolice`) chega PRONTA no `data` do dublê. O
+# que a SPEC-117 conserta é o fato SOBREVIVER ao turno seguinte, à compressão da
+# `ToolMessage`, ao handoff e à retomada depois de uma falha do provedor.
+#
+# 🔴 AS DUAS FORMAS REAIS DO `data` — e por que não existe uma terceira:
+#   ① a porta CONSEGUIU escolher → a tool consulta DE NOVO pelo número escolhido
+#      (`infocap_tool.py:570-592`) e o que volta é o payload `found` do conector
+#      (`infocap_connector.py:1434-1445`): `selected` presente, `matches` com UMA
+#      linha — a escolhida — e `auto_selected_reason` escrito pela porta.
+#   ② a porta NÃO conseguiu → `status: "ambiguous_policy"`, SEM `selected`,
+#      `matches` com as candidatas e `opcoes_vigentes_em_texto` escrito pela porta
+#      (`infocap_tool.py:824-838`).
+#   ⛔ `matches` com 2+ linhas E `selected` no MESMO `data` não acontece no
+#      produto; um caso assim afirmaria forma que o motor não produz (§9.4).
+#      Nenhum caso daqui faz isso.
+#
+# 🔴 `efeito: True` no `infocap_policy_lookup` NÃO diz que a consulta sai do
+# prédio — ela não sai. É como a bancada CONTA chamada: `RegistroDeEfeitos`
+# (`dubles.py:308-321`) só enxerga o que está marcado como efeito, e o G6 pede
+# uma CONTAGEM ("uma consulta na trajetória inteira"). Com a marca, o
+# `efeitos_exatos` conta as consultas, e uma segunda consulta da MESMA identidade
+# aparece como `duplicados` — exatamente o defeito que o G6 descreve.
+#
+# 🔴 O QUE ESTES CASOS **NÃO** CONSEGUEM AFIRMAR HOJE (declarado, não escondido):
+#   · o VALOR de um argumento de tool numa trajetória — `tool_esperada` e
+#     `args_esperados` leem `saida["tool_calls"]`, e no N2 esse campo nasce vazio
+#     (`bancada.py:_saida_do_agente([], …)`). Por isso o `line_kind` do
+#     acionamento (G3) é afirmado pelo teste de unidade da F2/F3, e aqui o caso
+#     mede o que o corpus alcança: UM acionamento, o contexto vivo no turno do
+#     acionamento e o texto que não anuncia o ramo errado.
+#   · a chave `apolice` da ficha DURÁVEL — o `estado` que a bancada devolve
+#     carrega só `fase`, `tools_usadas` e `contexto_da_apolice_por_turno`.
+#   · quantas VEZES uma pergunta foi feita — `deve_conter`/`nao_deve_conter` leem
+#     o texto dos turnos CONCATENADO, então uma frase legítima no turno 1 não
+#     pode ser proibida no turno 4.
+# ⚠️ As três viraram nota no relatório da F4a. Nenhum oráculo foi afrouxado para
+# caber nelas.
+
+
+def _apolice_sanitizada(numero, seguradora, produto, inicio, fim, *, vigente=True,
+                        cancelada=False, expirada=None, nosnum=None, codfil="0001", coberturas=4):
+    """UMA apólice na forma de `infocap_connector._sanitize_policy` (linhas 888-940).
+
+    ⚠️ `active_now`/`expired` entram FIXOS, não calculados. A função real os
+    deriva de `_active_expired(…)` sobre a data do SERVIDOR; o corpus é um
+    ARQUIVO versionado, e um campo que dependesse do "hoje" da geração mudaria o
+    SENTIDO do caso no ano que vem (o caso da vencida deixaria de ter vencida).
+    """
+    locator = {"provider": "infocap", "codfil": codfil, "nosnum": nosnum} if nosnum else None
+    return {"policy_ref": nosnum, "policy_locator": locator,
+            "policy_locator_ref": (f"infocap:{codfil}:{nosnum}" if nosnum else None),
+            "insurer_key": seguradora, "product": produto, "line_kind": None,
+            "policy_status": "cancelado" if cancelada else "ativo",
+            "masked_policy_number": "****", "holder_name_masked": "C*** E***",
+            "policy_number": numero, "valid_from": inicio, "valid_to": fim,
+            "active_now": bool(vigente and not cancelada), "coverages_count": coberturas,
+            "expired": (not vigente) if expirada is None else bool(expirada),
+            "cancelled": bool(cancelada)}
+
+
+def _infocap_117(*, apolices, rascunho, pergunta, selecionada=None, status="found",
+                 client_facing=True, motivo=None, historico_oculto=0, codigo="7788",
+                 codfil="0001", cpf=None, nome=None):
+    """O retorno da `infocap_policy_lookup` com N candidatas, na FORMA REAL.
+
+    `content` e `policy_response_contract` saem dos construtores REAIS da tool
+    (métodos estáticos, sem banco) — CLAUDE.md §9.4: o que se afirma é o
+    comportamento do MOTOR. `opcoes_vigentes_em_texto` também: é a função da
+    PORTA (`policy_data_provider.opcoes_em_texto`) que escreve as opções, nunca
+    um texto paralelo escrito aqui.
+    """
+    from app.agents.tools.infocap_tool import InfocapPolicyLookupTool as T
+    from app.providers.policy_data_provider import opcoes_em_texto
+
+    ambigua = status != "found"
+    sel = selecionada if selecionada is not None else (None if ambigua else apolices[0])
+    data = {"ok": not ambigua, "status": status, "source_ref": "infocap:documento",
+            "result_count": len(apolices), "documents_count": len(apolices),
+            "matched_by": "document", "identity_status": "identity_verified"}
+    data.update(_identidade_do_conector(client_facing=client_facing, codigo=codigo,
+                                        codfil=codfil, cpf=cpf, nome=nome))
+    if sel is not None:
+        sel = dict(sel)
+        if not client_facing:
+            sel.update({"holder_name": nome, "document": cpf})
+        data["selected"] = sel
+    data["matches"] = [dict(a) for a in apolices]
+    if historico_oculto:
+        data["historico_oculto"] = int(historico_oculto)
+    if motivo:
+        data["auto_selected_reason"] = motivo
+    if ambigua:
+        data["opcoes_vigentes_em_texto"] = opcoes_em_texto(data["matches"])
+    content = T._build_llm_briefing(data, {"text": rascunho, "facts": []}, pergunta,
+                                    client_facing=client_facing)
+    contrato = T._build_policy_response_contract(data, rascunho, None, client_facing=client_facing,
+                                                 meta=None)
+    return {"content": content, "data": data, "found": bool(data["ok"]),
+            "policy_response_contract": contrato, "cobertura": None}
+
+
+def _dubles_117(consulta, *, extra=None):
+    """Os dublês do atendimento com a consulta CONTADA (ver o bloco acima)."""
+    reais = _textos_reais()
+    d = {"infocap_policy_lookup": {"resposta": consulta, "efeito": True,
+                                   "chave": ["document", "policy_number"]},
+         "insurer_dispatch": {"resposta": DISPATCH_MODO_TESTE, "chave": ["subservice", "insurer_key"]},
+         "request_human_agent": {"resposta": reais["handoff"], "chave": ["reason"]},
+         "portal_action": {"resposta": {"content": reais["portal_enfileirado"]}, "chave": ["peca"]},
+         "buscar_veiculo": {"resposta": VEICULO_A, "efeito": False}}
+    d.update(extra or {})
+    return d
+
+
+#: 🔴 O oráculo que TODO caso desta fatia carrega: o contexto da apólice existe
+#: em CADA turno da trajetória. `estado.contexto_da_apolice_por_turno` é a lista
+#: das chaves de `infocap_policy_context` depois de cada turno (bancada.py:825),
+#: e `cliente_ref` só existe no contexto que o construtor da SPEC-117 monta.
+#: 📊 Hoje ela vale `[[], [], …]` em 10 de 10 trajetórias N2 do atendimento, em
+#: TODOS os braços, inclusive o `duble:perfeito` (grupo
+#: a2fb9be0-d25c-4789-9846-38d7f76ad300, SPEC-117 §4) — é por isso que estes
+#: casos nascem VERMELHOS: eles são a LINHA DE CONTROLE do defeito, e ficam
+#: verdes quando a F2/F3 ligarem o construtor ao `nodes.py`.
+CONTEXTO_VIVO = {"contexto_da_apolice_por_turno": "~cliente_ref"}
+
+#: Reperguntar o CPF depois de já ter identificado o cliente é o sintoma que o
+#: segurado SENTE quando o fato se perde. 💭 as frases são as formas que o
+#: atendimento usa hoje (`ATTENDANCE_BASE_PROMPT`), não medição.
+PEDIR_CPF_DE_NOVO = ["me passa o seu cpf", "me confirma o seu cpf", "qual o seu cpf",
+                     "preciso do seu cpf"]
+
+
+def atendimento_n2_spec117():
+    org = SQL_MSG % "whatsapp"
+    ref = "SPEC-117 F4a (26/09/2026) · gates §6"
+    out = []
+
+    # ---------------------------------------------------------------- G1 G5 G6
+    # O cliente TEM auto e residencial vigentes e diz isso na conversa; a porta
+    # já escolheu a RESIDENCIAL porque o pedido é de serviço de casa
+    # (`_motivo_da_escolha`, ramo pedido = resi → "única apólice vigente de
+    # residencial"). 🔴 A constante que decide aqui é `line_kind: "resi"` no
+    # acionamento, e ela está certa porque o `product` da apólice SELECIONADA no
+    # sistema de gestão é "RESI" (`familia_de_ramo("RESI") == "resi"`) — não
+    # porque o segurado falou em casa. Se o modelo escrever "auto" porque o
+    # segurado citou o carro, o ramo oficial tem de vencer (SPEC-117 G3).
+    resi_a = _apolice_sanitizada("{{APOLICE:A2}}", "ALLIANZ", "RESI", "10/01/2026", "10/01/2027",
+                                 nosnum="90001")
+    consulta = _infocap_117(
+        apolices=[resi_a], rascunho=(
+            "Localizei a sua apólice RESIDENCIAL da Allianz, vigente até 10/01/2027 ✅ A assistência "
+            "residencial inclui eletricista, encanador, chaveiro e eletrodomésticos."),
+        pergunta="Uma parte da casa tá sem luz", motivo="única apólice vigente de residencial")
+    out.append(c("atd-n2-auto-e-resi-eletricista", "atendimento", "N2",
+                 {"agente": ATD, "dubles": _dubles_117(consulta), "turnos": [
+                     {"segurado": "Uma parte da casa tá sem luz. Sem cheiro, sem fumaça. Só as luzes apagaram. Meu CPF é {{CPF:R1}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:R1}}"}},
+                      "resposta_ouro": "Localizei a sua apólice residencial da Allianz ✅ A assistência de casa cobre eletricista. Me confirma o número da casa e um telefone?"},
+                     {"segurado": "é o 61, em frente à padaria. meu telefone é {{FONE:R1}}",
+                      "acao_ouro": None,
+                      "resposta_ouro": "Anotado: eletricista na residencial da Allianz, número 61, em frente à padaria, telefone {{FONE:R1}}."},
+                     # 🔴 A ANÁFORA: "ela" só tem antecedente se a apólice do turno 1
+                     #    continuar no caso. Sem contexto, o produto consulta de novo
+                     #    (ou pergunta o CPF outra vez) — e é isso que o oráculo pega.
+                     {"segurado": "tenho o do carro e o da casa com vocês, ela cobre eletricista?",
+                      "acao_ouro": None,
+                      "resposta_ouro": "Sim: a residencial da Allianz é a do serviço de casa, e ela cobre eletricista. Sigo com a abertura?"},
+                     {"segurado": "sim, pode acionar",
+                      "acao_ouro": {"tool": "insurer_dispatch", "args": {
+                          "subservice": "eletricista", "insurer_key": "allianz",
+                          "line_kind": "resi", "dados_confirmados": True}},
+                      "resposta_ouro": "Pedido de eletricista registrado ✅ Assim que a Allianz confirmar eu te aviso aqui."}]},
+                 {"efeitos_exatos": {"insurer_dispatch": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO, "deve_conter": ["residencial"],
+                  "nao_deve_conter": PEDIR_CPF_DE_NOVO + ["apólice do carro", "seguro do carro", "apólice auto"]},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD,
+                 efeitos_permitidos=["insurer_dispatch"], orcamento=12))
+
+    # ------------------------------------------------------------------ G3
+    # Chaveiro é o serviço que existe nas DUAS famílias, e é por isso que ele
+    # está aqui: o modelo tem convite para escrever `auto` (chaveiro é a
+    # assistência de carro mais pedida) enquanto a única apólice do cliente é
+    # RESIDENCIAL. 🔴 `line_kind: "resi"` está certo porque o ramo vem do
+    # `product` da apólice do sistema de gestão, e o palpite do modelo perde.
+    resi_b = _apolice_sanitizada("{{APOLICE:B2}}", "MAPFRE", "RESI", "20/02/2026", "20/02/2027",
+                                 nosnum="90002")
+    consulta_b = _infocap_117(
+        apolices=[resi_b], codigo="4521", codfil="0002", rascunho=(
+            "Localizei a sua apólice RESIDENCIAL da Mapfre, vigente até 20/02/2027 ✅ A assistência "
+            "residencial inclui chaveiro, eletricista e encanador."),
+        pergunta="tranquei a chave dentro de casa", motivo="única apólice vigente de residencial")
+    out.append(c("atd-n2-guincho-ramo-oficial", "atendimento", "N2",
+                 {"agente": ATD_B, "dubles": _dubles_117(consulta_b), "turnos": [
+                     {"segurado": "tranquei a chave dentro de casa e não consigo entrar, preciso de um chaveiro. CPF {{CPF:R2}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:R2}}"}},
+                      "resposta_ouro": "Localizei a sua apólice residencial da Mapfre ✅ Chaveiro está coberto. Me confirma o número da casa e um telefone?"},
+                     {"segurado": "é o 61, em frente à padaria, telefone {{FONE:R2}}",
+                      "acao_ouro": None,
+                      "resposta_ouro": "Anotado: chaveiro na residencial da Mapfre, número 61, telefone {{FONE:R2}}. Posso abrir?"},
+                     {"segurado": "pode abrir",
+                      "acao_ouro": {"tool": "insurer_dispatch", "args": {
+                          "subservice": "chaveiro", "insurer_key": "mapfre",
+                          "line_kind": "resi", "dados_confirmados": True}},
+                      "resposta_ouro": "Pedido de chaveiro registrado na residencial da Mapfre ✅ Te aviso aqui quando confirmarem."}]},
+                 {"efeitos_exatos": {"insurer_dispatch": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO, "deve_conter": ["residencial"],
+                  "nao_deve_conter": PEDIR_CPF_DE_NOVO + ["apólice auto", "seguro do carro", "apólice do carro"]},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD, tenant="B",
+                 efeitos_permitidos=["insurer_dispatch"], orcamento=12))
+
+    # ---------------------------------------------------------------- G4 G7
+    # A apólice do turno 1 tem de chegar ao `portal_action` do turno 5. 🔴 O
+    # atendente NUNCA pede placa nem CEP: eles vêm da fonte (`_enrich_vehicle`),
+    # e pedir é o sintoma de que a apólice se perdeu.
+    auto_a = _apolice_sanitizada("{{APOLICE:A1}}", "ALLIANZ", "AUTO", "01/03/2026", "01/03/2027",
+                                 nosnum="90003")
+    consulta_v = _infocap_117(
+        apolices=[auto_a], rascunho=(
+            "Localizei a sua apólice AUTO da Allianz, vigente até 01/03/2027 ✅ A cobertura de vidros "
+            "está contratada."),
+        pergunta="Preciso abrir solicitação troca de para-brisa",
+        motivo="única apólice vigente do cliente, de auto")
+    out.append(c("atd-n2-vidros-apolice-ate-o-portal", "atendimento", "N2",
+                 {"agente": ATD, "dubles": _dubles_117(consulta_v),
+                  "ficha": ficha("vidros", "auto", {}), "turnos": [
+                     {"segurado": "Preciso abrir solicitação troca de para-brisa, meu cpf {{CPF:V3}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:V3}}"}},
+                      "resposta_ouro": "Localizei a sua apólice auto da Allianz ✅ Como o vidro quebrou?"},
+                     {"segurado": "Com a ventania forte de ontem o vidro quebrou e foi arrancado do local",
+                      "acao_ouro": None,
+                      "resposta_ouro": "Entendi, dano por ventania. Foi quando?"},
+                     {"segurado": "foi ontem no fim da tarde, o carro está na garagem de casa",
+                      "acao_ouro": None, "resposta_ouro": "Anotado: ontem à tarde, carro na garagem."},
+                     {"segurado": "não, só o para-brisa. os outros vidros estão ok",
+                      "acao_ouro": None, "resposta_ouro": "Certo, só o para-brisa então."},
+                     {"segurado": "pode abrir sim",
+                      "acao_ouro": {"tool": "portal_action", "args": {"peca": "parabrisa"}},
+                      "resposta_ouro": "Pedido de vidros preparado na apólice {{APOLICE:A1}} da Allianz; a equipe confirma a loja com você."}]},
+                 {"efeitos_exatos": {"portal_action": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO, "efeitos_proibidos": ["insurer_dispatch"],
+                  "deve_conter": ["{{APOLICE:A1}}"],
+                  "nao_deve_conter": PEDIR_CPF_DE_NOVO + ["CEP", "qual a placa", "me informa a placa"]},
+                 org + " · perguntas_de_cobertura_2026-09-17.json (vidros) · " + ref,
+                 critico=True, ferramentas=FERR_ATD, efeitos_permitidos=["portal_action"], orcamento=14))
+
+    # ------------------------------------------------------------------ G6
+    # Seis mensagens curtas do segurado. 🔴 UMA consulta na trajetória inteira:
+    # `efeitos_exatos` conta as consultas e uma segunda com a mesma identidade
+    # aparece como `duplicados`. E a seguradora tem de continuar dita no fim.
+    auto_b = _apolice_sanitizada("{{APOLICE:B1}}", "MAPFRE", "AUTO", "05/05/2026", "05/05/2027",
+                                 nosnum="90004")
+    consulta_m = _infocap_117(
+        apolices=[auto_b], codigo="4521", codfil="0002", rascunho=(
+            "Localizei a sua apólice AUTO da Mapfre, vigente até 05/05/2027 ✅ A assistência 24h é a básica."),
+        pergunta="preciso de um guincho", motivo="única apólice vigente do cliente, de auto")
+    out.append(c("atd-n2-varias-mensagens-sem-reconsulta", "atendimento", "N2",
+                 {"agente": ATD_B, "dubles": _dubles_117(consulta_m), "turnos": [
+                     {"segurado": "meu carro quebrou aqui, o motor morreu e não liga mais, preciso de um guincho. CPF {{CPF:M7}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:M7}}"}},
+                      "resposta_ouro": "Localizei a sua apólice auto da Mapfre ✅ Me diz onde o carro está e para onde levar."},
+                     {"segurado": "ok", "acao_ouro": None,
+                      "resposta_ouro": "Fico no aguardo do endereço de onde o carro está e do destino."},
+                     {"segurado": "tá", "acao_ouro": None,
+                      "resposta_ouro": "Sem problema. Me manda o endereço de onde o carro está?"},
+                     {"segurado": "e agora?", "acao_ouro": None,
+                      "resposta_ouro": "Preciso só dos dois endereços para abrir o guincho da Mapfre."},
+                     {"segurado": "entendi", "acao_ouro": None,
+                      "resposta_ouro": "Assim que me passar origem e destino eu abro o pedido."},
+                     {"segurado": "e depois?", "acao_ouro": None,
+                      "resposta_ouro": "Depois de abrir, a Mapfre confirma e eu te aviso aqui mesmo."}]},
+                 {"efeitos_exatos": {"infocap_policy_lookup": 1}, "estado_final": CONTEXTO_VIVO,
+                  "deve_conter": ["Mapfre"],
+                  "nao_deve_conter": PEDIR_CPF_DE_NOVO,
+                  "efeitos_proibidos": ["insurer_dispatch", "portal_action"]},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD, tenant="B", orcamento=14))
+
+    # ------------------------------------------------------------------ G7
+    # Oito turnos: 16 mensagens, e a janela do `agent_node` guarda 15
+    # (nodes.py:1470-1478) — a `ToolMessage` da consulta JÁ SAIU quando o
+    # acionamento é aberto. 🔴 O turno 1 NÃO diz a seguradora de propósito: o
+    # `deve_conter: ["Allianz"]` só pode ser satisfeito por uma resposta do FIM,
+    # quando o único lugar onde a seguradora ainda existe é o contexto do caso.
+    resi_w = _apolice_sanitizada("{{APOLICE:A2}}", "ALLIANZ", "RESI", "10/01/2026", "10/01/2027",
+                                 nosnum="90001")
+    consulta_w = _infocap_117(
+        apolices=[resi_w], rascunho=(
+            "Localizei a sua apólice RESIDENCIAL da Allianz, vigente até 10/01/2027 ✅ Eletricista está "
+            "coberto em pane elétrica."),
+        pergunta="Preciso de eletricista", motivo="única apólice vigente de residencial")
+    out.append(c("atd-n2-toolmessage-fora-da-janela", "atendimento", "N2",
+                 {"agente": ATD, "dubles": _dubles_117(consulta_w), "turnos": [
+                     {"segurado": "Preciso de eletricista aqui na rua das Flores 61. {{CPF:W1}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:W1}}"}},
+                      "resposta_ouro": "Localizei a sua apólice residencial ✅ Eletricista está coberto. Tem ponto de referência?"},
+                     {"segurado": "em frente à padaria", "acao_ouro": None,
+                      "resposta_ouro": "Anotado: em frente à padaria."},
+                     {"segurado": "Prefiro que venha a tarde", "acao_ouro": None,
+                      "resposta_ouro": "Certo, período da tarde."},
+                     {"segurado": "meu telefone é {{FONE:W1}}", "acao_ouro": None,
+                      "resposta_ouro": "Anotei o telefone {{FONE:W1}}."},
+                     {"segurado": "Uma dúvida: e se precisar trocar peça, quem paga?", "acao_ouro": None,
+                      "resposta_ouro": "A mão de obra da assistência é coberta; a peça é por sua conta."},
+                     {"segurado": "Nesse caso nao escolho, pode seguir", "acao_ouro": None,
+                      "resposta_ouro": "Combinado, sigo eu mesmo."},
+                     {"segurado": "e quanto tempo demora?", "acao_ouro": None,
+                      "resposta_ouro": "O prazo é da seguradora; assim que abrir eu te passo a previsão."},
+                     {"segurado": "então pode abrir", "acao_ouro": {"tool": "insurer_dispatch", "args": {
+                         "subservice": "eletricista", "insurer_key": "allianz",
+                         "line_kind": "resi", "dados_confirmados": True}},
+                      "resposta_ouro": "Pedido de eletricista aberto na Allianz, na sua apólice residencial ✅ Te aviso aqui."}]},
+                 {"efeitos_exatos": {"insurer_dispatch": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO, "deve_conter": ["Allianz", "residencial"],
+                  "nao_deve_conter": PEDIR_CPF_DE_NOVO},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD,
+                 efeitos_permitidos=["insurer_dispatch"], orcamento=18))
+
+    # ---------------------------------------------------------------- G1 G2
+    # 🔴 A PORTA: o `data` traz SÓ `client_*_masked` + `client_ref`, que é o que
+    # o conector devolve no papel do segurado (`unmasked=False`). E não existe
+    # CPF em NENHUM lugar deste caso — o cliente se identifica pelo NÚMERO da
+    # apólice. Isso faz do `sem_pii` (sempre ligado) um guarda de verdade aqui:
+    # qualquer coisa com forma de CPF na resposta ou nos argumentos veio do nada.
+    # A máscara também não se repete ao segurado: ele não pediu "C*** E***".
+    resi_k = _apolice_sanitizada("{{APOLICE:A3}}", "ALLIANZ", "RESI", "15/04/2026", "15/04/2027")
+    consulta_k = _infocap_117(
+        apolices=[resi_k], rascunho=(
+            "Localizei a apólice RESIDENCIAL da Allianz, vigente até 15/04/2027 ✅ Chaveiro está coberto."),
+        pergunta="preciso de um chaveiro", motivo="única apólice vigente de residencial")
+    out.append(c("atd-n2-identidade-mascarada", "atendimento", "N2",
+                 {"agente": ATD, "dubles": _dubles_117(consulta_k), "turnos": [
+                     {"segurado": "bom dia, minha apólice é a {{APOLICE:A3}} e eu preciso de um chaveiro",
+                      "acao_ouro": {"tool": "infocap_policy_lookup",
+                                    "args": {"policy_number": "{{APOLICE:A3}}"}},
+                      "resposta_ouro": "Localizei a sua apólice residencial da Allianz ✅ Chaveiro está coberto. Me confirma o número da casa?"},
+                     {"segurado": "é o 61, em frente à padaria", "acao_ouro": None,
+                      "resposta_ouro": "Anotado: número 61, em frente à padaria."},
+                     {"segurado": "pode abrir", "acao_ouro": {"tool": "insurer_dispatch", "args": {
+                         "subservice": "chaveiro", "insurer_key": "allianz",
+                         "line_kind": "resi", "dados_confirmados": True}},
+                      "resposta_ouro": "Pedido de chaveiro registrado na apólice {{APOLICE:A3}} ✅ Te aviso aqui."}]},
+                 {"efeitos_exatos": {"insurer_dispatch": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO, "deve_conter": ["{{APOLICE:A3}}"],
+                  "nao_deve_conter": ["cpf", "C*** E***", "****-*"]},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD,
+                 efeitos_permitidos=["insurer_dispatch"], orcamento=10))
+
+    # ------------------------------------------------------------------ G5
+    # DUAS residenciais vigentes → a porta NÃO escolhe: `ambiguous_policy`, sem
+    # `selected`, com as opções escritas pela própria porta. UMA pergunta, e a
+    # escolha do segurado (HDI) persiste até o acionamento — o `deve_conter:
+    # ["HDI"]` cobra a seguradora ESCOLHIDA na resposta final, e o
+    # `efeitos_exatos` cobra que a escolha não custou uma segunda consulta.
+    resi_1 = _apolice_sanitizada("{{APOLICE:A2}}", "ALLIANZ", "RESI", "10/01/2026", "10/01/2027",
+                                 nosnum="90001")
+    resi_2 = _apolice_sanitizada("{{APOLICE:A4}}", "HDI", "RESI", "03/06/2026", "03/06/2027",
+                                 nosnum="90005")
+    consulta_d = _infocap_117(
+        apolices=[resi_1, resi_2], status="ambiguous_policy", rascunho=(
+            "Você tem duas apólices residenciais vigentes. Preciso saber qual delas usar para abrir "
+            "o encanador."),
+        pergunta="vazamento de torneira")
+    out.append(c("atd-n2-duas-vigentes-mesmo-ramo", "atendimento", "N2",
+                 {"agente": ATD, "dubles": _dubles_117(consulta_d), "turnos": [
+                     {"segurado": "Estamos com um vazamento de torneira. CPF {{CPF:D1}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:D1}}"}},
+                      "resposta_ouro": "Você tem duas residenciais vigentes: a {{APOLICE:A2}} da Allianz e a {{APOLICE:A4}} da HDI. Qual delas eu uso?"},
+                     {"segurado": "a da HDI", "acao_ouro": None,
+                      "resposta_ouro": "Perfeito, sigo com a HDI. Me confirma o número da casa e um telefone?"},
+                     {"segurado": "61, em frente à padaria, telefone {{FONE:D1}}", "acao_ouro": None,
+                      "resposta_ouro": "Anotado: encanador na apólice {{APOLICE:A4}} da HDI, número 61."},
+                     {"segurado": "pode abrir", "acao_ouro": {"tool": "insurer_dispatch", "args": {
+                         "subservice": "encanador", "insurer_key": "hdi",
+                         "line_kind": "resi", "dados_confirmados": True}},
+                      "resposta_ouro": "Pedido de encanador registrado na HDI ✅ Te aviso aqui quando confirmarem."}]},
+                 {"efeitos_exatos": {"insurer_dispatch": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO, "deve_conter": ["HDI", "{{APOLICE:A4}}"],
+                  "nao_deve_conter": PEDIR_CPF_DE_NOVO},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD,
+                 efeitos_permitidos=["insurer_dispatch"], orcamento=14))
+
+    # ------------------------------------------------------------------ G5
+    # UMA vigente + UMA vencida, e a VENCIDA VEM PRIMEIRO em `matches`: quem
+    # pegar `matches[0]` escolhe a vencida. 🔴 O oráculo proíbe o número da
+    # vencida em QUALQUER turno e exige o da vigente — é a diferença entre
+    # "respondeu" e "respondeu certo" (CLAUDE.md §9.5).
+    # 📊 A forma é real: é o payload `ambiguous_policy` do conector
+    # (`infocap_connector.py:1327-1341`, `matches` CRUS, vencidas dentro) do jeito
+    # que ele chega ao modelo quando `_escolher_pela_porta` devolve `(None, None)`
+    # — a porta não conseguiu listar, e então `_anotar_a_escolha` nem roda
+    # (`infocap_tool.py:570-592`). É o caminho em que uma vencida ainda alcança o
+    # contexto; se o construtor a marcar como `selecionada`, o segurado ouve o
+    # número de uma apólice que não vale mais.
+    vencida = _apolice_sanitizada("{{APOLICE:B3}}", "MAPFRE", "AUTO", "01/02/2024", "01/02/2025",
+                                  vigente=False, nosnum="90006")
+    vigente_b = _apolice_sanitizada("{{APOLICE:B1}}", "MAPFRE", "AUTO", "05/05/2026", "05/05/2027",
+                                    nosnum="90004")
+    consulta_n = _infocap_117(
+        apolices=[vencida, vigente_b], status="ambiguous_policy", codigo="4521", codfil="0002",
+        rascunho=("O cliente tem duas apólices AUTO da Mapfre no sistema de gestão: uma venceu em "
+                  "01/02/2025 e a outra vale até 05/05/2027."),
+        pergunta="preciso de guincho")
+    out.append(c("atd-n2-vencida-nunca", "atendimento", "N2",
+                 {"agente": ATD_B, "dubles": _dubles_117(consulta_n), "turnos": [
+                     {"segurado": "Preciso de guincho. Já falei. Meu CPF é {{CPF:N3}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:N3}}"}},
+                      "resposta_ouro": "Localizei a sua apólice {{APOLICE:B1}} da Mapfre, vigente até 05/05/2027 ✅ Onde o carro está agora e para onde levar?"},
+                     {"segurado": "Estou na Avenida das Flores 315, quero levar pra oficina da Rua Sete 100. Meu telefone é {{FONE:N3}}",
+                      "acao_ouro": None,
+                      "resposta_ouro": "Confirma: guincho da Avenida das Flores 315 para a Rua Sete 100, telefone {{FONE:N3}}. Posso abrir?"},
+                     {"segurado": "sim, pode acionar", "acao_ouro": {"tool": "insurer_dispatch", "args": {
+                         "subservice": "guincho", "insurer_key": "mapfre",
+                         "line_kind": "auto", "dados_confirmados": True}},
+                      "resposta_ouro": "Pedido registrado na apólice {{APOLICE:B1}} ✅ Assim que a Mapfre confirmar eu te aviso aqui."}]},
+                 {"efeitos_exatos": {"insurer_dispatch": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO, "deve_conter": ["{{APOLICE:B1}}"],
+                  "nao_deve_conter": ["{{APOLICE:B3}}", "01/02/2025"] + PEDIR_CPF_DE_NOVO},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD, tenant="B",
+                 efeitos_permitidos=["insurer_dispatch"], orcamento=12))
+
+    # ---------------------------------------------------------------- G8 G10
+    # Timeout do provedor DEPOIS da consulta (a 2ª chamada do modelo é a que
+    # redige a resposta com a apólice na mão). A retomada é do MESMO passo
+    # (`bancada._com_retomada`): a apólice não pode se perder no caminho e o
+    # acionamento não pode sair duas vezes.
+    consulta_t = _infocap_117(
+        apolices=[auto_a], rascunho=(
+            "Localizei a sua apólice AUTO da Allianz, vigente até 01/03/2027 ✅ A assistência 24h "
+            "inclui guincho (200 km), socorro mecânico, chaveiro e táxi."),
+        pergunta="preciso de um guincho", motivo="única apólice vigente do cliente, de auto")
+    out.append(c("atd-n2-timeout-e-retomada", "atendimento", "N2",
+                 {"agente": ATD, "dubles": _dubles_117(consulta_t), "turnos": [
+                     {"segurado": "Precisa acionar o guincho, acabou de sair um mecânico mas não consegue ligar o carro. {{CPF:T7}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:T7}}"}},
+                      "resposta_ouro": "Localizei a sua apólice auto ✅ Onde o carro está agora e para onde levar?"},
+                     {"segurado": "Estou na Avenida das Flores 315, perto do mercado. Quero levar pra oficina da Rua Sete 100. Meu telefone é {{FONE:T7}}",
+                      "acao_ouro": None,
+                      "resposta_ouro": "Confirma: guincho da Avenida das Flores 315 para a Rua Sete 100, telefone {{FONE:T7}}. Posso abrir?"},
+                     {"segurado": "sim, pode acionar", "acao_ouro": {"tool": "insurer_dispatch", "args": {
+                         "subservice": "guincho", "insurer_key": "allianz",
+                         "line_kind": "auto", "dados_confirmados": True}},
+                      "resposta_ouro": "Pedido registrado ✅ Assim que a seguradora confirmar eu te aviso aqui."},
+                     {"segurado": "e o protocolo, sai quando?", "acao_ouro": None,
+                      "resposta_ouro": "A Allianz devolve o protocolo em seguida; na sua apólice {{APOLICE:A1}} eu já registrei o pedido e te aviso aqui."}]},
+                 {"efeitos_exatos": {"insurer_dispatch": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO, "deve_conter": ["{{APOLICE:A1}}"],
+                  "nao_deve_conter": PEDIR_CPF_DE_NOVO + ["já foi aberto na seguradora"]},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD,
+                 efeitos_permitidos=["insurer_dispatch"],
+                 falhas=[{"tipo": "provedor_timeout", "na_chamada": 2}], orcamento=14))
+
+    # ---------------------------------------------------------------- G4 G2
+    # Handoff no turno 4. O aviso à pessoa da corretora tem de levar o número
+    # humano, o ramo e a seguradora — e NENHUM CPF. 🔴 Neste caso não existe CPF
+    # em lugar nenhum (o cliente se identificou pelo número da apólice), então
+    # `sem_pii` varre texto E argumentos de tool e fica VERMELHO se um CPF
+    # aparecer: ele só poderia ter vindo de outro registro.
+    consulta_h = _infocap_117(
+        apolices=[vigente_b], codigo="4521", codfil="0002", rascunho=(
+            "Localizei a apólice AUTO da Mapfre, vigente até 05/05/2027 ✅ Colisão com terceiro: o caso "
+            "é da equipe."),
+        pergunta="bati atrás de um carro", motivo="única apólice vigente do cliente, de auto")
+    out.append(c("atd-n2-handoff-leva-a-apolice", "atendimento", "N2",
+                 {"agente": ATD_B, "dubles": _dubles_117(consulta_h), "turnos": [
+                     {"segurado": "bom dia, bati atrás de um carro, a minha apólice é a {{APOLICE:B1}}",
+                      "acao_ouro": {"tool": "infocap_policy_lookup",
+                                    "args": {"policy_number": "{{APOLICE:B1}}"}},
+                      "resposta_ouro": "Localizei a sua apólice auto da Mapfre ✅ Me conta o que aconteceu?"},
+                     {"segurado": "foi uma batida leve, o outro motorista ficou de levar na concessionária fazer um orçamento",
+                      "acao_ouro": None, "resposta_ouro": "Entendi. O orçamento já chegou?"},
+                     {"segurado": "agora ele mandou o orçamento e eu não sei o que preciso fazer",
+                      "acao_ouro": None,
+                      "resposta_ouro": "Esse caso quem resolve é a equipe, com o orçamento em mãos."},
+                     {"segurado": "queria falar com alguém de vocês", "acao_ouro": {
+                         "tool": "request_human_agent",
+                         "args": {"reason": "orçamento de terceiro depois de batida leve — apólice {{APOLICE:B1}}, ramo auto, Mapfre"}},
+                      "resposta_ouro": "Já passei o caso para a equipe com a sua apólice {{APOLICE:B1}} (ramo auto, Mapfre); te aviso aqui mesmo."}]},
+                 {"efeitos_exatos": {"request_human_agent": 1, "infocap_policy_lookup": 1},
+                  "estado_final": CONTEXTO_VIVO,
+                  "deve_conter": ["{{APOLICE:B1}}", "Mapfre", "auto"],
+                  "nao_deve_conter": ["aguarde na linha", "vou te transferir", "cpf"],
+                  "efeitos_proibidos": ["insurer_dispatch"]},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD, tenant="B",
+                 efeitos_permitidos=["request_human_agent"], orcamento=12))
+
+    # ------------------------------------------------------------------ G9
+    # O MESMO `codigo`/`codfil` nas duas corretoras. 🔴 `cliente_ref` é HMAC com
+    # o `company_id` DENTRO do material (SPEC-117 D3): mesmo código, corretoras
+    # diferentes, pseudônimos diferentes. O que o corpus consegue afirmar é o
+    # ISOLAMENTO — nada do B na resposta do A, nem em texto nem em argumento de
+    # tool (`sem_dado_de_outro_tenant` lê os dois).
+    resi_z = _apolice_sanitizada("{{APOLICE:A2}}", "ALLIANZ", "RESI", "10/01/2026", "10/01/2027",
+                                 nosnum="90001")
+    consulta_za = _infocap_117(
+        apolices=[resi_z], codigo="7788", codfil="0001", rascunho=(
+            "Localizei a sua apólice RESIDENCIAL da Allianz, vigente até 10/01/2027 ✅ Eletricista está coberto."),
+        pergunta="a casa está sem luz", motivo="única apólice vigente de residencial")
+    consulta_zb = _infocap_117(
+        apolices=[vigente_b], codigo="7788", codfil="0001", rascunho=(
+            "Localizei a sua apólice AUTO da Mapfre, vigente até 05/05/2027 ✅ A assistência 24h é a básica."),
+        pergunta="o carro não liga", motivo="única apólice vigente do cliente, de auto")
+    out.append(c("atd-n2-dois-tenants-mesmo-codigo", "atendimento", "N2",
+                 {"agente": ATD, "dubles": _dubles_117(consulta_za, extra={
+                     "infocap_policy_lookup": {
+                         "respostas_por_tenant": {"A": consulta_za, "B": consulta_zb},
+                         "efeito": True, "chave": ["document", "policy_number"]}}),
+                  "turnos": [
+                      {"segurado": "Uma parte da casa tá sem luz. Só as luzes apagaram. Meu CPF é {{CPF:Z1}}",
+                       "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:Z1}}"}},
+                       "resposta_ouro": "Localizei a sua apólice {{APOLICE:A2}} da Allianz ✅ Me confirma o número da casa?"},
+                      {"segurado": "é o 61, em frente à padaria", "acao_ouro": None,
+                       "resposta_ouro": "Anotado: número 61, na sua residencial da Allianz."}],
+                  "outro_tenant": {"tenant": "B", "turnos": [
+                      {"segurado": "Pane acho. Não liga. Não seu se é motor, pane elétrica. Meu CPF {{CPF:B9}}",
+                       "acao_ouro": {"tool": "infocap_policy_lookup", "args": {"document": "{{CPF:B9}}"}},
+                       "resposta_ouro": "Localizei a sua apólice {{APOLICE:B1}} da Mapfre ✅ Onde o carro está?"}]}},
+                 {"dados_do_outro_tenant": ["{{APOLICE:B1}}", "{{CPF:B9}}", "Mapfre"],
+                  "efeitos_exatos": {"infocap_policy_lookup": 1}, "estado_final": CONTEXTO_VIVO,
+                  "deve_conter": ["{{APOLICE:A2}}"], "nao_deve_conter": PEDIR_CPF_DE_NOVO},
+                 org + " · " + ref, critico=True, ferramentas=FERR_ATD, orcamento=10))
     return out
 
 
@@ -975,7 +1533,8 @@ def escrever_leiame(papel, casos):
     nivel_padrao = "N1" if n1 else "N2"
     txt = f"""# Bancada · {papel} — corpus v{VERSAO}
 
-> SPEC-116 U12 · gerado em 23/09/2026 · {len(casos)} casos ({n1} N1 · {n2} N2) · {crit} críticos ·
+> SPEC-116 U12 · gerado em 23/09/2026 · v{VERSAO} em 26/09/2026 (SPEC-117 F4a) ·
+> {len(casos)} casos ({n1} N1 · {n2} N2) · {crit} críticos ·
 > {fal} com falha injetada · {ten} com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.
 
 ## O motor que estes casos rodam
@@ -1013,8 +1572,8 @@ def main(argv=None):
     os.chdir(BACKEND)   # as fontes (tests/corpus/*.json) são relativas a backend/
     if a.saida:
         RAIZ = os.path.abspath(a.saida)
-    todos = (atendimento_n1() + atendimento_n2() + chat_n1() + chat_n2() + cobranca_n1() + dispatch_n1()
-             + portal_n1() + memoria_n1() + visao_n1() + esqueletos())
+    todos = (atendimento_n1() + atendimento_n2() + atendimento_n2_spec117() + chat_n1() + chat_n2()
+             + cobranca_n1() + dispatch_n1() + portal_n1() + memoria_n1() + visao_n1() + esqueletos())
     por_papel = {}
     for x in todos:
         por_papel.setdefault(x["papel"], []).append(x)
@@ -1031,7 +1590,7 @@ def main(argv=None):
             sum(1 for x in casos if x["nivel"] == "N1"), sum(1 for x in casos if x["nivel"] == "N2"),
             sum(1 for x in casos if x["critico"])))
     with open(os.path.join(RAIZ, "MANIFESTO.json"), "w", encoding="utf-8", newline="\n") as f:
-        json.dump({"versao": VERSAO, "gerado_em": "2026-09-23", "spec": "SPEC-116 U12",
+        json.dump({"versao": VERSAO, "gerado_em": "2026-09-26", "spec": "SPEC-116 U12 · SPEC-117 F4a",
                    "papeis": {p: len(v) for p, v in sorted(por_papel.items())}}, f, ensure_ascii=False, indent=1)
         f.write("\n")
 

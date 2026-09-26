@@ -1,7 +1,8 @@
-# Bancada · atendimento — corpus v3
+# Bancada · atendimento — corpus v4
 
-> SPEC-116 U12 · gerado em 23/09/2026 · 40 casos (30 N1 · 10 N2) · 36 críticos ·
-> 4 com falha injetada · 2 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.
+> SPEC-116 U12 · gerado em 23/09/2026 · v4 em 26/09/2026 (SPEC-117 F4a) ·
+> 51 casos (30 N1 · 21 N2) · 47 críticos ·
+> 5 com falha injetada · 3 com segundo tenant. 📊 contagem medida no arquivo `casos.jsonl`.
 
 ## O motor que estes casos rodam
 app/agents/graph.py:create_agent_graph (papel attendance) → nodes.agent_node (N1: UMA volta, interrupt_before=tools) · N2: grafo inteiro com tool_node REAL sobre dublês
