@@ -376,8 +376,51 @@ def finalize_live_for(playbook_ref: str) -> bool:
     mode = str(os.getenv("DISPATCH_FINALIZE_MODE", "live")).strip().lower()
     if mode == "live":
         return True
-    live_refs = [x.strip() for x in str(os.getenv("DISPATCH_FINALIZE_LIVE_PLAYBOOKS", "")).split(",") if x.strip()]
-    return str(playbook_ref or "") in live_refs
+    return str(playbook_ref or "") in refs_de_finalizacao_declarados()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-118 F5 · UM `ref` ESCRITO ERRADO NA LISTA NUNCA FINALIZA, EM SILÊNCIO
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# O Founder pediu, em 26/09/2026, *"todas as seguradoras liberadas, para não ter
+# confusão depois"*. 🔴 **O que evita a confusão não é liberar tudo: é a trava.**
+#
+# Com `DISPATCH_FINALIZE_MODE=test`, a lista `DISPATCH_FINALIZE_LIVE_PLAYBOOKS`
+# é a única coisa que autoriza um corredor a CONCLUIR o pedido. Um `ref` com uma
+# letra trocada — `porto-auto-whatsapp@v2` em vez de `@v1` — não casa corredor
+# nenhum: o acionamento anda até o fim, fala com a URA da seguradora, e **cancela
+# na última tela**. O segurado ouviu *"estou acionando"* e ninguém vem.
+#
+# ⚠️ E o sintoma é indistinguível de *"o corredor está em teste de propósito"*.
+# Não há erro, não há log, não há diferença visível. É a classe do CLAUDE.md
+# §9.5: **responde errado sem travar** — só que aqui o "responder" é a promessa
+# de um guincho.
+#
+# A regra: a lista é declarada num lugar só, e quem não resolve para corredor
+# aparece no `/health` como DEFEITO. `main.py` passa o universo de corredores
+# conhecidos — a função não importa `corridor_playbooks` para não criar ciclo, e
+# assim ela também se testa sem carregar o hub inteiro.
+def refs_de_finalizacao_declarados() -> List[str]:
+    """Os `ref` escritos em `DISPATCH_FINALIZE_LIVE_PLAYBOOKS`, na ordem, sem vazios.
+
+    🔴 É a ÚNICA leitura da variável no produto. Duas leituras divergem no dia em
+    que uma delas aprender a aceitar espaço, ponto-e-vírgula ou maiúscula.
+    """
+    bruto = str(os.getenv("DISPATCH_FINALIZE_LIVE_PLAYBOOKS", ""))
+    return [x.strip() for x in bruto.split(",") if x.strip()]
+
+
+def refs_de_finalizacao_sem_corredor(refs_conhecidos) -> List[str]:
+    """Os `ref` declarados que NÃO resolvem para corredor nenhum — os fantasmas.
+
+    ⚠️ Devolve lista vazia quando a variável está vazia **e** quando todos os
+    `ref` existem: são estados diferentes do mundo com a mesma resposta, e é o
+    certo — a pergunta aqui é só *"há fantasma?"*. Quem quer saber o que está na
+    lista lê `finalize_abre_de_verdade`, que é o que de fato abre.
+    """
+    conhecidos = {str(r) for r in (refs_conhecidos or ())}
+    return sorted({r for r in refs_de_finalizacao_declarados() if r not in conhecidos})
 
 
 def _finalize_allowed(session: Dict[str, Any]) -> bool:

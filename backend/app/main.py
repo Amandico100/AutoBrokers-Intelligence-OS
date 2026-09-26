@@ -761,6 +761,20 @@ def _sinais_do_codigo() -> dict:
             os.getenv("DISPATCH_FINALIZE_MODE", "live")).strip().lower()
         sinais["finalize_abre_de_verdade"] = sorted(
             ref for ref in _PLAYBOOKS if finalize_live_for(ref))
+        # 🔴 E OS `ref` FANTASMAS — SPEC-118 F5, 26/09/2026.
+        #
+        # `finalize_abre_de_verdade` diz quem ABRE. Ele **não** consegue dizer
+        # que alguém foi ESCRITO e não existe: um `ref` com uma letra trocada
+        # some da lista de cima exatamente como um corredor deixado de fora de
+        # propósito. O acionamento anda até o fim, fala com a URA e cancela na
+        # última tela — o segurado ouviu "estou acionando" e ninguém vem.
+        #
+        # Lista vazia é a resposta boa. Nome aqui é defeito de configuração, e
+        # nenhum é segredo (CLAUDE.md §13.3: é `ref` de corredor, não credencial).
+        from app.services.insurer_dispatch_service import (
+            refs_de_finalizacao_sem_corredor)
+
+        sinais["finalize_refs_fantasma"] = refs_de_finalizacao_sem_corredor(_PLAYBOOKS)
         # 🔴 A ALLOWLIST DE ENTRADA — SPEC-093 BLOCO B.
         #
         # 📊 Ela decide quem pode escrever para o produto, e em produção tinha
@@ -793,6 +807,9 @@ def _sinais_do_codigo() -> dict:
         sinais["allowlist_tamanho"] = None
         sinais["allowlist_descartes"] = None
         sinais["finalize_abre_de_verdade"] = None
+        # ⚠️ `None`, nunca `[]`. Lista vazia aqui diria "olhei e não há fantasma"
+        #    — e no caminho de erro ninguém olhou. É a lição do bloco acima.
+        sinais["finalize_refs_fantasma"] = None
 
     # 🔴 AS EXCEÇÕES DA JANELA DE SILÊNCIO — EXTRA-001.7, 20/09/2026.
     #
