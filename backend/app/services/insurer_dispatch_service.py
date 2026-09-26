@@ -42,7 +42,11 @@ from app.services.corridor_playbooks import (
     match_ura_step,
     missing_slots_for_subservice,
     _flow_components,
-    _resolver_opcao_de_flow,
+    # ⛔ `_resolver_opcao_de_flow` SAIU daqui na SPEC-118 F3, e o motivo é o
+    #    comentário de `new_dispatch_session`: quem confere o valor de escolha
+    #    fechada é o MOTOR que monta a resposta, uma vez. Import de função que
+    #    ninguém mais chama é convite para o laço voltar.
+    SUBSERVICO_INVALIDO,
     montar_resposta_de_flow,
     native_flow,
     parse_address_br,
@@ -1450,24 +1454,56 @@ def new_dispatch_session(
     #    formulário**. Bloquear cedo é bom; bloquear rota que não vê a tela é
     #    interrogatório à toa.
     #
-    # ⚠️ O critério é o que o produto JÁ usa para saber o que esta rota
-    #    precisa: se o slot não está em `required_slots` do subserviço, esta
-    #    rota não o coleta — e não faz sentido reprovar o valor dele.
-    _coletados_aqui = set(sub.get("required_slots") or [])
-    for _flow_pt in (playbook.get("native_flows") or {}).values():
-        for _tela_pt, _comp_pt in _flow_components(_flow_pt):
-            _slot_pt = str(_comp_pt.get("slot") or "")
-            if not _slot_pt or _slot_pt in missing:
-                continue
-            if _slot_pt not in _coletados_aqui:
-                continue
-            if not (_comp_pt.get("options") or []):
-                continue          # texto livre: não há lista para conferir
-            _val_pt = merged_slots.get(_slot_pt)
-            if not str(_val_pt or "").strip():
-                continue          # ausência já é tratada pelo portão
-            if _resolver_opcao_de_flow(_comp_pt, _val_pt) is None:
-                missing.append(_slot_pt)
+    # ⚠️ O critério ERA `slot in required_slots` — a lista escrita à mão.
+    #
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-118 F3 · A CONFERÊNCIA CONTINUA. O ESCOPO MUDOU DE DONO.
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # Aqui existia um laço que repetia esta mesma conferência: varria
+    # `native_flows`, escopava por `required_slots` e acrescentava a `missing` o
+    # slot cujo valor não casava com a lista de opções.
+    #
+    # 🔴 Ele era a FRONTEIRA porque era o único lugar que olhava o formulário —
+    #    e a fronteira estava no lugar errado. 📊 Medido na SPEC-118 §2.3:
+    #    `if _slot_pt not in _coletados_aqui: continue` escopava pela lista
+    #    escrita à mão, então **campo obrigatório do formulário que ninguém
+    #    escreveu em `required_slots` nunca era pedido ao segurado** — a sessão
+    #    nascia `ready_to_send` e o caso morria no último portão antes do
+    #    protocolo, depois de ~25 telas de URA.
+    #
+    # Desde a F2b quem escopa é `missing_slots_for_subservice`, pelo
+    # `subservicos_observados` do mapa (o acervo, não a lista à mão), e a
+    # conferência do VALOR acontece lá dentro, no MOTOR que monta a resposta
+    # (`montar_resposta_de_flow` → `motivo="valor_nao_reconhecido"`). A linha de
+    # cima já traz o resultado.
+    #
+    # ⛔ MANTER O LAÇO AQUI SERIA A DUPLA VERDADE QUE ELE EXISTIA PARA EVITAR:
+    #    dois códigos decidindo sobre o mesmo valor, com escopos diferentes —
+    #    e o daqui é o escopo que o juiz 4 reprovou (*"bloquear rota que não vê
+    #    a tela é interrogatório à toa"*).
+    #
+    # 📊 O DELTA DA REMOÇÃO, MEDIDO ROTA POR ROTA (26/09/2026). As 73 rotas do
+    #    produto × 4 estados de slot (vazio · caso completo · caso com valor de
+    #    escolha fechada fora da lista, com a tela VISÍVEL · o mesmo valor ruim
+    #    com a tela INVISÍVEL) = 292 respostas de `new_dispatch_session`,
+    #    comparando o que o laço acrescentaria com o que o portão já devolve:
+    #
+    #      diferem ..... 2 de 292
+    #      quais ....... hdi/auto/guincho e yelum/auto/guincho, e só no estado
+    #                    RUIM_TELA_INVISÍVEL
+    #      o que era ... o laço exigia `veiculo_nivel_rua` de um caso cujo
+    #                    `veiculo_em_garagem` é "Não"
+    #
+    # 🔴 E ESSA É A MELHORA, NÃO UMA PERDA. `rb_NivelDaRua` declara
+    #    `visible_if: rb_EmGaragemOuEstacionamento == "1"`: **a pergunta do nível
+    #    da rua só existe para carro que está em garagem.** O laço daqui não lia
+    #    visibilidade e cobrava a resposta de uma tela que a seguradora não mostra
+    #    — o achado do juiz 4 um nível abaixo: não "rota que não vê o formulário",
+    #    mas "campo que a tela não pergunta". O motor respeita a condição (é a
+    #    regra 3 de `montar_resposta_de_flow`), e o valor fora da lista continua
+    #    recusado quando a tela aparece — com a linha de controle em
+    #    `test_o_agente_pede_antes_de_acionar.py`.
     session = {
         "case_id": case_id,
         "company_id": company_id,
@@ -1545,6 +1581,138 @@ def build_dry_run_plan(playbook_ref: str, subservice: str, slots: Dict[str, Any]
                   "(freio de emergência armado ou INSURER_DISPATCH_LIVE=false).")
         ),
     }
+
+
+# ===========================================================================
+# 🔴 O QUE A SEGURADORA VAI PEDIR — E COMO SE PEDE, EM PORTUGUÊS · SPEC-118 F3
+# ===========================================================================
+#
+# O Founder, em 26/09/2026, com estas palavras: *"durante a conversa inicial,
+# ele precisa pegar as informações necessárias para responder no WhatsApp das
+# seguradoras"* — **uma informação por vez**.
+#
+# 📊 O QUE A FERRAMENTA DIZIA ANTES, medido no caminho da Porto com o endereço
+#    sem número (`_run` real, 26/09/2026):
+#
+#      "Ainda faltam estes dados para acionar: local numero; local bairro."
+#
+#    Dois identificadores com o `_` trocado por espaço, no meio de uma frase em
+#    português — e é esse texto que o agente repete ao segurado. É o mesmo
+#    defeito que a SPEC-084.2 C5 consertou uma vez (14 chaves à mão contra 58 no
+#    vocabulário), voltando por uma porta nova: os campos do formulário nativo
+#    **não estavam no vocabulário de ninguém**, porque até a F2b eles não eram
+#    cobrados.
+#
+# 🔴 E A FONTE É O PLAYBOOK, LIDO PELO MOTOR — NUNCA UMA LISTA À MÃO.
+#    Lista escrita aqui envelhece calada (CLAUDE.md §9.3): o dia em que a Porto
+#    acrescentar um campo ao formulário, ninguém vem editar este arquivo.
+#    - **o que falta** vem de `missing_slots_for_subservice` (a F2b escopou pelo
+#      acervo: só quem VÊ a tela é cobrado);
+#    - **o rótulo da seguradora** vem de `montar_resposta_de_flow(flow, {})`, o
+#      mesmo motor que monta a resposta — é ele que sabe qual campo é
+#      obrigatório, qual tem padrão e qual é condicional.
+#
+# ⛔ `latitude`/`longitude` NÃO ENTRAM, E ISSO NÃO É OMISSÃO: ninguém sabe
+#    responder a própria coordenada. Elas são `sem_chute` no mapa da Porto, o
+#    portão as deixa de fora por construção (F2b) e, quando a tela chegar, o caso
+#    vai a uma pessoa com o motivo escrito (ver `_responder_formulario_nativo`).
+#    📊 Zero inventado é o Golfo da Guiné.
+
+
+def rotulos_do_formulario_por_slot(playbook: Any) -> Dict[str, str]:
+    """`{slot do caso: o nome que a SEGURADORA dá ao campo}`, LIDO pelo motor.
+
+    Pergunta ao montador o que ele faria com um caso VAZIO: o que ele devolve em
+    `missing_detail` é exatamente a lista de campos que podem faltar, com o
+    `label` da tela e o slot do corredor lado a lado. Nenhum schema é reaberto
+    aqui — 🔴 um segundo leitor de playbook é a divergência da CLAUDE.md §5 um
+    nível abaixo.
+
+    ⚠️ Rótulo que é MOLDE do servidor (`${data.…}`) fica fora: a tela mostra o
+    endereço formatado, não a chave. E rótulo igual ao nome do campo também —
+    ali não há texto de tela nenhum (📊 as 5 chaves da Porto que não são
+    componente: `cep`, `referencia`, `label_endereco_completo`, `latitude`,
+    `longitude`), e o vocabulário da ficha diz melhor.
+
+    Aceita o playbook OU o `playbook_ref`, como `missing_slots_for_subservice`.
+    """
+    if isinstance(playbook, str):
+        playbook = get_playbook(playbook) or {}
+    fora: Dict[str, str] = {}
+    for flow in ((playbook or {}).get("native_flows") or {}).values():
+        try:
+            montado = montar_resposta_de_flow(flow, {})
+        except Exception:  # noqa: BLE001 — rótulo é enfeite; nunca derruba coleta
+            continue
+        for detalhe in montado.get("missing_detail") or []:
+            slot = str(detalhe.get("slot") or "").strip()
+            rotulo = str(detalhe.get("pergunta") or "").strip()
+            campo = str(detalhe.get("campo") or "").strip()
+            if not slot or not rotulo or slot in fora:
+                continue
+            if "${" in rotulo or rotulo == campo:
+                continue
+            fora[slot] = rotulo
+    return fora
+
+
+def como_pedir_ao_segurado(playbook_ref: str, faltando: List[str]) -> List[str]:
+    """Uma frase em português por campo que falta — na ordem em que se pergunta.
+
+    Três fontes, nesta ordem, e a primeira é a que já existia:
+
+    1. `_COMO_PERGUNTAR` — o vocabulário único do produto, escrito com as
+       palavras do CLIENTE (*"se o carro está numa garagem ou parado na rua"*);
+    2. o rótulo da SEGURADORA, quando o campo é do formulário nativo e o
+       vocabulário não o conhece — 📊 é o caso dos 6 campos de endereço da Porto;
+    3. `_rotulo_legivel`, a última peneira, que nunca devolve chave crua.
+
+    🔴 Por que o rótulo da seguradora aparece entre parênteses, e não sozinho:
+    quem lê é o agente, que vai perguntar ao segurado. *"o número do local"* é o
+    que ele pergunta; *"Número"* é como a Porto chama o campo — e dizer as duas
+    coisas é o que permite conferir depois sem reentrevistar ninguém.
+    """
+    playbook = get_playbook(playbook_ref) or {}
+    rotulos = rotulos_do_formulario_por_slot(playbook)
+    frases: List[str] = []
+    for slot in faltando or []:
+        chave = str(slot or "")
+        if not chave:
+            continue
+        humano = _COMO_PERGUNTAR.get(chave)
+        rotulo = rotulos.get(chave)
+        if humano and rotulo:
+            frases.append(f"{humano} (no formulário da seguradora: “{rotulo}”)")
+        elif humano:
+            frases.append(humano)
+        elif rotulo:
+            frases.append(f"{_rotulo_legivel(chave)} — a seguradora chama esse "
+                          f"campo de “{rotulo}” no formulário dentro do WhatsApp")
+        else:
+            frases.append(_rotulo_legivel(chave))
+    return frases
+
+
+def o_que_a_seguradora_vai_pedir(playbook_ref: str, subservice: str) -> List[str]:
+    """Tudo o que ESTA seguradora vai pedir NESTE serviço, em português.
+
+    🔴 Quem responde é o MOTOR, com um caso vazio: `new_dispatch_session` injeta
+    tudo o que o produto preenche sozinho (tecla de menu, padrão de rodovia,
+    ponto de referência) e devolve, em `missing_slots`, só o que precisa vir do
+    segurado — incluindo os campos obrigatórios do formulário nativo que ESTA
+    rota abre, desde a F2b. É a mesma pergunta que o portão faz na hora de
+    acionar, feita antes, para o agente coletar na conversa inicial.
+
+    ⚠️ Devolve `[]` para rota que a seguradora não faz por este canal — ali não
+    falta dado, falta caminho, e a ferramenta já manda isso para handoff.
+    """
+    sessao = new_dispatch_session(
+        case_id="catalogo", company_id="catalogo", playbook_ref=playbook_ref,
+        subservice=subservice, slots={})
+    faltando = list(sessao.get("missing_slots") or [])
+    if SUBSERVICO_INVALIDO in faltando or sessao.get("state") == "needs_human":
+        return []
+    return como_pedir_ao_segurado(playbook_ref, faltando)
 
 
 def start_dispatch(
@@ -2161,7 +2329,31 @@ def _responder_formulario_nativo(
         session["reason"] = "formulario_nativo_desconhecido"
         return session
 
-    montado = montar_resposta_de_flow(flow, session.get("slots") or {})
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 P-F2b-01 · O ID DA SESSÃO ENTRA NA MONTAGEM — SPEC-118 F3
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # O argumento `flow_id` existe desde a F2b e ninguém o passava daqui. Sem
+    # ele, `_nome_do_flow` cai no caso 3 do próprio docstring: 📊 o registro
+    # `_FLOW_CONDICOES_VEICULO_V2` é UM objeto servindo DOIS ids (`857030507196739`
+    # na HDI, `3206000179602236` na Yelum), então "ninguém disse qual id" →
+    # `flow_name` volta VAZIO → `_moldura_da_resposta` descarta a chave e **nem a
+    # HDI nem a Yelum recebem nome de formulário**.
+    #
+    # ⚠️ Vazio é melhor que errado (era o defeito anterior: a Yelum recebia o nome
+    # da HDI, e se ela validar o campo a resposta é descartada sem erro, com a
+    # janela de 12 minutos queimando). Mas o CERTO estava a um argumento de
+    # distância — e o id daqui é o MESMO que o veto acima acabou de conferir
+    # contra `native_flows`, não uma segunda fonte.
+    #
+    # ⚠️ `_id_da_sessao` **ou** o id do CONVITE, nesta ordem, e os dois já passaram
+    # pelo veto contra `native_flows` logo acima. 📊 Medido em 26/09/2026: a
+    # sessão só ganha `flow_id_ativo` quando `registrar_formulario_nativo` roda
+    # (caminho do webhook); chamada direta com o `interactive` do convite tem o id
+    # no argumento e mais em lugar nenhum. Ler só a sessão deixaria o eco vazio
+    # exatamente no caminho que a bateria exercita.
+    montado = montar_resposta_de_flow(flow, session.get("slots") or {},
+                                      flow_id=(_id_da_sessao or id_do_convite or None))
     session["flow_resposta"] = {
         "ok": montado["ok"], "flow_id": montado["flow_id"], "flow_name": montado["flow_name"],
         "params": montado["params"], "missing": montado["missing"],
@@ -2171,7 +2363,31 @@ def _responder_formulario_nativo(
     if not montado["ok"]:
         faltantes = [d.get("campo") for d in montado["missing_detail"]]
         session["state"] = "needs_human"
-        session["reason"] = f"formulario_incompleto:{','.join(str(f) for f in faltantes)}"
+        # ══════════════════════════════════════════════════════════════════
+        # 🔴 SPEC-118 F3 · "SEM FONTE" NÃO É "DADO QUE FALTA"
+        # ══════════════════════════════════════════════════════════════════
+        #
+        # `formulario_incompleto` diz à atendente *"o formulário pede um dado que
+        # o caso não tem"* — e ela vai procurar o dado. 📊 Quando o que falta é
+        # `latitude`/`longitude` da Porto, **não existe dado para procurar**: o
+        # próprio Flow da seguradora geocodifica, e o backend tem ZERO
+        # geocodificadores. Perguntar a coordenada ao segurado é a pergunta que
+        # ninguém no mundo responde.
+        #
+        # `sem_chute` é o motivo que o produto já usa para isso, no passo de URA
+        # (`sem_chute:<slots>`, logo abaixo nesta mesma função) — mesma família,
+        # mesma frase em português (`_MOTIVOS_EM_PORTUGUES`), mesmo desfecho
+        # (`DIRETO_AO_HUMANO`) e, por estar em `_MOTIVOS_QUE_NOMEIAM_CAMPOS`, o
+        # dossiê NOMEIA os campos em vez de dizer "um dado".
+        #
+        # ⚠️ Só quando é a ÚNICA causa. Falta misturada (um campo que o segurado
+        # poderia ter respondido + uma coordenada) continua `formulario_incompleto`:
+        # ali existe dado a procurar, e a frase que manda procurar é a certa.
+        _motivos = [str(d.get("motivo") or "") for d in montado["missing_detail"]]
+        if _motivos and all(m == "sem_chute" for m in _motivos):
+            session["reason"] = f"sem_chute:{','.join(str(f) for f in faltantes)}"
+        else:
+            session["reason"] = f"formulario_incompleto:{','.join(str(f) for f in faltantes)}"
         session["missing_slots"] = list(montado["missing"])
         return session
 
