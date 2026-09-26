@@ -367,6 +367,52 @@ class InsurerDispatchInput(BaseModel):
         "[auto pneu] Tem macaco, chave de roda e estepe? (a URA pergunta os "
         "três juntos numa tela só)"))
 
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-118 F4 · O ENDEREÇO EM PARTES — PORQUE O FORMULÁRIO PEDE ASSIM
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 ACHADO POR `test_o_contrato_alcanca_o_portao` NA MESMA FATIA, e é a
+    #    classe de defeito que aquele guarda existe para pegar (SPEC-084.2 C1):
+    #    **um slot que o portão exige e o contrato não anuncia não tem como ser
+    #    preenchido.** Quando a coordenada da Porto ganhou fonte, o portão passou
+    #    a cobrar os campos do formulário de endereço, e seis deles não tinham
+    #    campo aqui:
+    #
+    #        local_rua · local_numero · local_bairro · local_cidade ·
+    #        local_uf  · local_cep
+    #
+    #    O agente ouviria "ainda faltam: o bairro onde o carro está", perguntaria
+    #    ao segurado, receberia a resposta e **não teria onde a guardar** — laço
+    #    fechado, com o segurado respondendo a mesma pergunta para sempre.
+    #
+    # ⚠️ E ELES QUASE NUNCA SÃO PREENCHIDOS À MÃO, de propósito:
+    #    `corridor_playbooks.inject_address_slots` decompõe `local_atual` sozinho
+    #    (📊 um endereço completo rende cinco deles; o pin do WhatsApp rende os
+    #    mesmos cinco mais a coordenada). Estes campos existem para o BURACO:
+    #    quando o texto não tinha o número, ou o pin não trouxe o bairro, e a
+    #    seguradora pede o campo separado.
+    local_rua: Optional[str] = Field(default=None, description=(
+        "[auto] Só quando a seguradora pede o endereço em PARTES e o texto de "
+        "`local_atual` não deixou claro: o nome da RUA onde o veículo está, sem "
+        "número. ⛔ Não deduza nem complete — se o cliente não disse, pergunte."))
+    local_numero: Optional[str] = Field(default=None, description=(
+        "[auto] O número mais próximo na rua onde o veículo está — do prédio, da "
+        "casa, ou o km na rodovia. ⛔ Nunca invente um número: o guincho vai ao "
+        "endereço que sair daqui."))
+    local_bairro: Optional[str] = Field(default=None, description=(
+        "[auto] O bairro onde o veículo está."))
+    local_cidade: Optional[str] = Field(default=None, description=(
+        "[auto] A cidade onde o veículo está."))
+    local_uf: Optional[str] = Field(default=None, description=(
+        "[auto] O estado (sigla de 2 letras) onde o veículo está."))
+    local_cep: Optional[str] = Field(default=None, description=(
+        "[auto] O CEP do lugar onde o veículo está. Se o cliente não souber, "
+        "PEÇA O PIN de localização em vez de insistir no CEP: o pin resolve o "
+        "endereço e a coordenada de uma vez."))
+    local_complemento: Optional[str] = Field(default=None, description=(
+        "[auto] Complemento do endereço, se houver (apartamento, bloco, quadra). "
+        "Opcional na seguradora: quando não há, não preencha."))
+
     # --- Residencial: qual seguro ---
     # 🔴 Decisão do Founder, 17/09/2026: a tela "Qual seguro deseja utilizar?"
     # (residencial · condomínio · empresarial) é respondida pelo RAMO DA APÓLICE.
