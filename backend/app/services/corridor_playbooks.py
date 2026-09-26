@@ -7317,6 +7317,31 @@ PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) 
 #
 
 # ROTA porto/auto/guincho
+#
+# 🔴 A MESMA ROTA, RECONFERIDA NUMA SESSÃO QUE ESTÁ NO CORPUS — SPEC-118 F2b.
+#    📊 sessão 910b6295, 14/09/2026, protocolo 1-129498396900, 37 telas. Medida
+#    em 26/09/2026 com:
+#      python - <<'Q'
+#      import json
+#      s=[json.loads(l) for l in open('tests/corpus/telas_reais/porto-auto.jsonl',
+#                                     encoding='utf-8') if l.strip()]
+#      for x in s:
+#          if x['session_id'].startswith('910b6295'): print(x['text'][:90])
+#      Q
+#    O caminho é o de baixo, com TRÊS diferenças que valem registro:
+#      · é AGENDADO, não "agora": entram as telas de data, período e horário
+#        ("Estas são as datas disponíveis para agendamento");
+#      · o endereço de DESTINO chega por FORMULÁRIO NATIVO
+#        ("Selecione o botão: [FORMULARIO NATIVO: Preencher]") — é o flow
+#        `709854848132894`, o mesmo que o mapa da F2a transcreveu;
+#      · o encadeamento do táxi se repete: "Você também precisa solicitar um
+#        táxi?" **DEPOIS** do protocolo (tela 33 de 37).
+#    ⚠️ Por que as duas citações ficam: `c5cafa8b` é uma sessão REAL de
+#    `observed_events` e sustenta o `only_subservices` do táxi; ela não está no
+#    corpus porque o gerador tem teto de 5 sessões por rota. Apagar a citação
+#    verdadeira para agradar a régua seria trocar procedência por nota. A de
+#    cima é a que a régua consegue conferir.
+#
 # 📊 sessão c5cafa8b, protocolo 1-408029004672, 37 telas, entre 5 sessões.
 #    CPF → menu raiz → "Como eu posso te ajudar?" = Serviços para veículo →
 #    "Você quer atendimento para o veículo Kia, placa M####61?" = Sim → "De que
