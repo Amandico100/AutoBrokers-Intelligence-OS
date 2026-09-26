@@ -9616,6 +9616,24 @@ def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any],
         #    o robo de decidir pelo segurado — `rb_NivelDaRua` escolhe o
         #    EQUIPAMENTO que vem (plataforma, asa delta, munck), e texto livre ali
         #    seria a "constante que decide" da CLAUDE.md §9.5.
+        #
+        # 🔴 E A DECISÃO EXPLÍCITA SOBRE `required: False` COM VALOR QUE NÃO
+        #    RESOLVE — pedida no pacote da F2b, e ela tem três ramos:
+        #
+        #    · TEXTO + opcional + com valor  → o valor ENTRA. Não existe mais
+        #      "não resolve" para texto, e era exatamente isto que punha
+        #      `complemento` e `ponto_referencia` em `missing` antes desta fatia.
+        #    · TEXTO + opcional + vazio      → a chave simplesmente NÃO SAI, e é
+        #      o que o acervo mostra: 📊 `complemento` desaparece de `answers` em
+        #      1 de 3 capturas, quando o humano não digitou nada. A Porto não
+        #      recebe a chave vazia; ela não recebe a chave.
+        #    · OPÇÕES + opcional + valor fora da lista → CONTINUA bloqueando
+        #      (`valor_nao_reconhecido` já cai em `_falta` sem olhar `required`).
+        #      📊 Medido em 26/09/2026: dos 34 componentes de formulário no
+        #      produto, **ZERO** são (com `options` E `required: False`) — então
+        #      a regra não custa nada hoje, e o lado por que ela erra é o certo:
+        #      descartar em silêncio um valor que o CASO TEM é perder informação
+        #      que ninguém vai procurar depois; travar manda o caso a uma pessoa.
         if not (comp.get("options") or []) and not comp.get("multiple"):
             params[nome] = _texto_de_flow(bruto)
             continue
@@ -9939,20 +9957,51 @@ def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str
     #    circularidade que cria o buraco. O critério é `subservicos_observados`,
     #    declarado no mapa com a sessão e a data do acervo que o sustenta.
     #
+    # ══════════════════════════════════════════════════════════════════════
+    # ⛔ E A TRAVA QUE IMPEDE ESTE CONSERTO DE VIRAR INTERROGATÓRIO À TOA
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 🔴 **Formulário que o produto NÃO CONSEGUE responder não gera pergunta
+    #    nenhuma — gera handoff com motivo.** Decidido por nota na F2b, com a
+    #    medição do formulário da Porto na mão:
+    #
+    #    (A) cobrar sempre os campos do formulário ....................... 40
+    #        📊 O formulário da Porto tem DUAS chaves obrigatórias `sem_chute`
+    #        (latitude/longitude — o Flow dela geocodifica, e o backend tem 0
+    #        geocodificadores). Ele termina em `needs_human` **com ou sem** os
+    #        outros campos. Cobrar CEP e ponto de referência antes de acionar
+    #        acrescentaria duas perguntas ao segurado e o caso iria para uma
+    #        pessoa do mesmo jeito: custo puro. 📊 E pior, medido: `local_cep`
+    #        e os `local_*` não têm redação em português em `_COMO_PERGUNTAR`
+    #        (`test_o_cliente_nao_le_marcador_interno`) — o agente pediria
+    #        "local_bairro" a uma pessoa de verdade. É a família do "sentinela
+    #        virado campo" (`test_o_acionamento_nao_pede_o_impossivel`).
+    #
+    #    (B) cobrar só o formulário que TEM COMO ser respondido ......... 88 ✅
+    #        A pergunta só existe se a resposta puder sair. 📊 Efeito hoje,
+    #        medido: Porto cobra ZERO (o formulário dela é handoff por falta de
+    #        coordenada) e a família HDI/Yelum cobra exatamente o que já cobrava
+    #        (`veiculo_em_garagem`, `veiculo_nivel_rua`, `local_situacao` já
+    #        estão em `required_slots`/`requires` — diferença ZERO nas 10 rotas).
+    #        🔴 E o mecanismo NÃO é decoração: na hora em que a coordenada tiver
+    #        fonte, os 7 campos do endereço passam a ser cobrados por construção.
+    #        O guarda prova isso numa CÓPIA do mapa sem as duas chaves
+    #        (`test_o_montador_responde_texto_e_o_portao_cobra_antes`).
+    #
     # ⛔ `sem_chute` FICA DE FORA — pela terceira vez neste arquivo, e pelo mesmo
-    #    motivo. Chave sem fonte é handoff COM MOTIVO, nunca interrogatório: o
-    #    produto não pergunta a latitude ao segurado (📊 lat/long da Porto vêm do
-    #    geocodificador do próprio Flow, e o backend não tem nenhum). O mesmo
-    #    vale para chave DERIVADA, que não tem slot para pedir.
+    #    motivo: chave sem fonte é handoff COM MOTIVO, nunca interrogatório. O
+    #    mesmo vale para chave DERIVADA, que não tem slot para pedir.
     for flow in ((playbook or {}).get("native_flows") or {}).values():
         if alvo not in ((flow or {}).get("subservicos_observados") or {}):
             continue
         montado = montar_resposta_de_flow(flow, slots)
         if montado.get("ok"):
             continue
-        for detalhe in montado.get("missing_detail") or []:
-            if str(detalhe.get("motivo") or "") == "sem_chute":
-                continue
+        detalhes = montado.get("missing_detail") or []
+        if any(str(d.get("motivo") or "") == "sem_chute" for d in detalhes):
+            # Este formulário não fecha nem com o caso inteiro preenchido.
+            continue
+        for detalhe in detalhes:
             slot_do_caso = str(detalhe.get("slot") or "")
             if not slot_do_caso or slot_do_caso in faltando:
                 continue
