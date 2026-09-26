@@ -506,6 +506,41 @@ def test_c8_controle_sem_a_flag_o_substring_continua():
 
 
 def test_c8_o_corpus_versionado_subiu_e_o_manifesto_acompanha():
+    """🔴 O que este teste guarda é o ACOMPANHAMENTO, não o número.
+
+    📊 26/09/2026, SPEC-117: a afirmação era `== ... == 3`. O corpus subiu para
+    **4** (11 casos N2 novos) e este teste ficou vermelho — não por defeito, mas
+    por guardar uma verdade que venceu. É o CLAUDE.md §9.3 na letra: *"teste que
+    guarda verdade vencida é pior que teste nenhum"*, e a saída é **migrar a
+    lição**, nunca apagá-la.
+
+    A lição é: o caso versionado e o manifesto **não podem divergir** — se o
+    gerador sobe a versão do corpus e o manifesto fica atrás, ninguém sabe qual
+    corpus produziu qual medição. Isso continua sendo afirmado, e agora sobrevive
+    à próxima subida de versão. O piso `>= 3` fica porque 3 foi a primeira versão
+    em que o dublê ganhou a forma real das tools (F6 da SPEC-116): voltar abaixo
+    dele seria regressão, não evolução.
+    """
     from app.services.evals import bancada as B
 
-    assert _oraculo_p19a()["versao"] == B.manifesto()["versao"] == 3
+    versao_do_caso = _oraculo_p19a()["versao"]
+    versao_do_manifesto = B.manifesto()["versao"]
+
+    assert versao_do_caso == versao_do_manifesto, (
+        "o corpus está na versão %r e o manifesto na %r — a medição não sabe "
+        "de qual corpus veio" % (versao_do_caso, versao_do_manifesto))
+    assert versao_do_caso >= 3, (
+        "a versão do corpus caiu abaixo de 3, em que o dublê ganhou a forma "
+        "real das tools: %r" % (versao_do_caso,))
+
+
+def test_c8_CONTROLE_a_divergencia_de_versao_seria_vista():
+    """🔴 O guarda acima precisa CONSEGUIR ficar vermelho (CLAUDE.md §9.3).
+
+    Sem esta linha, `>= 3` sozinho passaria com o manifesto em 3 e o corpus em
+    99 — e o teste teria deixado de guardar o que importa. Aqui a comparação é
+    exercitada sobre um par divergente construído à mão.
+    """
+    corpus, manifesto = 4, 3
+    assert not (corpus == manifesto), (
+        "a comparação de versões não distingue 4 de 3 — o guarda acima é carimbo")
