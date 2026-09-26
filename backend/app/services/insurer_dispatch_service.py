@@ -1690,7 +1690,29 @@ def como_pedir_ao_segurado(playbook_ref: str, faltando: List[str]) -> List[str]:
                           f"campo de “{rotulo}” no formulário dentro do WhatsApp")
         else:
             frases.append(_rotulo_legivel(chave))
-    return frases
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-118 F4 · A MESMA PERGUNTA, UMA VEZ SÓ
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 Medido em 26/09/2026, quando a coordenada da Porto ganhou fonte: dois
+    # slots (`local_latitude` e `local_longitude`) passaram a faltar juntos, e
+    # os dois se resolvem com **um toque** — o pin do WhatsApp. A lista saía
+    # assim:
+    #
+    #     · que ele mande a localização pelo WhatsApp: clipe 📎 → …
+    #     · que ele mande a localização pelo WhatsApp: clipe 📎 → …
+    #
+    # O contrato desta função é *"uma coisa por vez, na ordem em que se
+    # pergunta"*. Pedir duas vezes a mesma coisa não é redundância inofensiva:
+    # o agente repete, o segurado no acostamento acha que a primeira resposta
+    # não chegou, e manda o pin de novo — e é a classe do "interrogatório à toa"
+    # que a F2b recusou por nota.
+    #
+    # ⚠️ Deduplicar pela FRASE, não pelo slot: é a frase que a pessoa ouve. Dois
+    # slots com redação idêntica são, para quem responde, uma pergunta — e
+    # quando `local_seguro` e `local_seguro_opcao` faltam juntos (📊 acontece
+    # nos residenciais), calar a segunda é o mesmo acerto.
+    return list(dict.fromkeys(frases))
 
 
 def o_que_a_seguradora_vai_pedir(playbook_ref: str, subservice: str) -> List[str]:
