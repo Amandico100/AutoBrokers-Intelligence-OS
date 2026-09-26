@@ -133,6 +133,39 @@ def placa_br_valida(valor) -> bool:
     return bool(_PLACA_BR.match(re.sub(r"[^A-Za-z0-9]", "", str(valor or "")).upper()))
 
 
+# --------------------------------------------------------------------------- #
+# O PAR DE COORDENADAS — SPEC-118 F3
+# --------------------------------------------------------------------------- #
+# 🔴 A coordenada NÃO se pergunta: ninguém sabe a própria latitude. Ela chega de
+# UM TOQUE, pelo pin de localização do WhatsApp — e o produto já sabe lê-lo:
+# 📊 `whatsapp/evolution_inbound.py` converte `locationMessage`/
+# `liveLocationMessage` em texto para o agente desde 03/08/2026, com 6 casas
+# decimais (≈ 11 cm) e tratando `(0, 0)` como AUSENTE de propósito.
+#
+# ⛔ `(0, 0)` é o default do protobuf, não um lugar: é o Golfo da Guiné. Uma
+# coordenada zerada manda o guincho para o meio do oceano e a URA aceita calada.
+#
+# ⚠️ **Meio par não é par.** Latitude sem longitude não localiza nada, e o campo
+# solto viajaria para a seguradora como se localizasse.
+def par_de_coordenadas(latitude, longitude):
+    """`(lat, lon)` como texto normalizado, ou `None` quando não há par honesto.
+
+    Recusa: o que não é número · o que está fora da faixa do planeta ·
+    `(0, 0)` · e meio par. 💭 A faixa é a do mundo, não a do Brasil: o produto
+    atende quem está na fronteira, e recusar por geografia seria inventar regra.
+    """
+    try:
+        lat = float(str(latitude).strip().replace(",", "."))
+        lon = float(str(longitude).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+    if abs(lat) > 90 or abs(lon) > 180:
+        return None
+    if abs(lat) < 1e-6 and abs(lon) < 1e-6:
+        return None          # 🔴 o Golfo da Guiné — ver o comentário acima
+    return f"{lat:.6f}", f"{lon:.6f}"
+
+
 def telefone_br_valido(valor) -> bool:
     """Telefone brasileiro pelas regras que a ANATEL de fato impõe.
 
@@ -248,6 +281,35 @@ class InsurerDispatchInput(BaseModel):
     pessoa_no_local: Optional[str] = Field(default=None, description="[auto] Nome de quem está com o veículo no local")
     quando: Optional[str] = Field(default=None, description="[auto] 'agora' (urgência) ou uma data para agendar")
     ponto_referencia: Optional[str] = Field(default=None, description="[auto] Ponto de referência do local (ou 'não tem')")
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 O PIN DE LOCALIZAÇÃO — SPEC-118 F3
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 O produto JÁ recebe o pin: `whatsapp/evolution_inbound.py` converte
+    #    `locationMessage`/`liveLocationMessage` no texto que chega ao agente,
+    #    em linhas separadas::
+    #
+    #        R. Rafael Bandeira, Centro
+    #        Localização compartilhada: -27.588016,-48.544253
+    #
+    # 🔴 Faltava o acionamento ter ONDE recebê-la. Estes dois campos são esse
+    #    lugar — e a instrução é pedir O PIN, não a coordenada: é uma pergunta
+    #    em vez de seis (rua, número, bairro, cidade, estado, CEP), e é a que o
+    #    segurado responde num acostamento, com o celular na mão.
+    #
+    # ⛔ Ausente continua sendo handoff com o motivo escrito. Nunca zero.
+    local_latitude: Optional[str] = Field(default=None, description=(
+        "[auto] Latitude do LOCAL onde o veículo está, em grau decimal "
+        "(ex.: -27.588016). SÓ preencha com o número que veio do PIN DE "
+        "LOCALIZAÇÃO que o cliente compartilhou no WhatsApp — a linha "
+        "'Localização compartilhada: <lat>,<lon>' da conversa. ⛔ NUNCA invente, "
+        "NUNCA converta um endereço em coordenada de cabeça e NUNCA mande zero. "
+        "Se a seguradora precisa do local exato e não há pin, PEÇA O PIN ao "
+        "cliente: 'toque no clipe 📎 e envie sua localização' — uma pergunta em "
+        "vez de seis. Latitude sem longitude não serve: mande as duas ou nenhuma."))
+    local_longitude: Optional[str] = Field(default=None, description=(
+        "[auto] Longitude do LOCAL, em grau decimal (ex.: -48.544253), vinda do "
+        "mesmo pin de localização da latitude. As duas juntas ou nenhuma."))
     # --- Comuns ---
     telefone_contato: Optional[str] = Field(default=None, description="Telefone de contato com DDD (somente dígitos)")
     problema_descricao: Optional[str] = Field(default=None, description="Descrição curta do problema relatado pelo cliente")
@@ -585,7 +647,37 @@ class InsurerDispatchTool(BaseTool):
         "(eletricista/chaveiro/encanador/eletrodomésticos). Para AUTO informe insurer_key (da InfoCap) e "
         "line_kind='auto'. Retorna o plano do acionamento ou os dados que ainda faltam. NUNCA diga ao cliente "
         "que acionou se o retorno indicar simulação/teste. Em modo TESTE o fluxo é executado por completo e "
-        "CANCELADO na confirmação final (nada é aberto); corredor validado em modo LIVE completa ponta a ponta."
+        "CANCELADO na confirmação final (nada é aberto); corredor validado em modo LIVE completa ponta a ponta. "
+        # ══════════════════════════════════════════════════════════════════
+        # 🔴 SPEC-118 F3 · O QUE VEM PELA FRENTE SE PERGUNTA NA CONVERSA
+        # ══════════════════════════════════════════════════════════════════
+        #
+        # Cada seguradora pede coisas diferentes, e algumas pedem por FORMULÁRIO
+        # (o aplicativo que abre dentro da conversa do WhatsApp) — endereço
+        # quebrado em rua, número, bairro, cidade, estado, CEP; em que nível da
+        # rua o carro está. 📊 Esses campos só passaram a ser cobrados ANTES do
+        # acionamento na SPEC-118; até então a sessão nascia pronta e o caso
+        # morria no último portão, com a URA já rodando.
+        #
+        # ⚠️ A descrição não LISTA os campos de cada seguradora de propósito:
+        # lista escrita aqui envelhece calada (CLAUDE.md §9.3) e são 73 rotas. A
+        # lista certa, por seguradora e por serviço, é a que a própria ferramenta
+        # devolve — em português, na hora, lida do corredor.
+        "🔴 CHAME ESTA FERRAMENTA CEDO, ainda durante o levantamento, mesmo sem "
+        "tudo em mãos: cada seguradora pede um conjunto diferente de dados, e "
+        "algumas pedem por FORMULÁRIO dentro da conversa do WhatsApp (endereço "
+        "em rua/número/bairro/cidade/estado/CEP, por exemplo). O retorno "
+        "`missing_data` traz, em português, exatamente o que ESTA seguradora vai "
+        "pedir NESTE serviço — pergunte ao cliente UMA informação por vez, na "
+        "ordem em que vierem, e chame de novo. NÃO invente o que falta e NÃO "
+        "pergunte coordenada, latitude ou longitude a ninguém. "
+        # 🔴 O pin resolve com um toque o que seis perguntas não resolvem — e o
+        #    produto JÁ lê o `locationMessage` do WhatsApp (evolution_inbound.py).
+        "Quando a seguradora precisar do LOCAL EXATO, peça o PIN DE LOCALIZAÇÃO: "
+        "'toque no clipe 📎, escolha Localização e me envie'. O que o cliente "
+        "mandar chega na conversa como 'Localização compartilhada: <lat>,<lon>' — "
+        "passe os dois números em `local_latitude` e `local_longitude`, "
+        "exatamente como vieram, e nunca zero."
     )
     args_schema: Type[BaseModel] = InsurerDispatchInput
 
@@ -731,6 +823,21 @@ class InsurerDispatchTool(BaseTool):
                 slots["ramo_da_apolice"] = familia
             else:
                 slots.pop("ramo_da_apolice")
+        # 🔴 A COORDENADA SE NORMALIZA AQUI, E NÃO NO `_run` — SPEC-118 F3.
+        #
+        # ⚠️ `_arun` (o caminho LIVE, que cria a sessão de verdade) chama
+        # `_extract_slots` **de novo**, com os kwargs crus: normalizar só no `_run`
+        # deixaria o caminho real com o valor como o modelo escreveu. Aqui vale
+        # para os dois, e é o mesmo par que o guarda do `_run` recusa quando não
+        # fecha — uma regra, dois consumidores.
+        if "local_latitude" in slots or "local_longitude" in slots:
+            par = par_de_coordenadas(slots.get("local_latitude"),
+                                     slots.get("local_longitude"))
+            if par:
+                slots["local_latitude"], slots["local_longitude"] = par
+            else:
+                slots.pop("local_latitude", None)
+                slots.pop("local_longitude", None)
         return subservice, slots
 
     def _run(self, **kwargs) -> dict:
@@ -802,16 +909,79 @@ class InsurerDispatchTool(BaseTool):
                     f"O valor informado em `{campo}` não é válido — não passa na conferência "
                     "determinística de formato. NÃO envie isso à seguradora e NÃO tente adivinhar: "
                     f"descubra {comojá}. Se o cliente não souber, chame `request_human_agent`.")}
+
+        # ══════════════════════════════════════════════════════════════════
+        # 🔴 A COORDENADA É PAR, OU NÃO É — SPEC-118 F3
+        # ══════════════════════════════════════════════════════════════════
+        #
+        # ⛔ Zero é o Golfo da Guiné, meio par não localiza nada, e coordenada
+        # deduzida de endereço é invenção com cara de precisão. Os três saem
+        # daqui com a frase que manda pedir o PIN — a pergunta que o segurado
+        # responde com um toque.
+        _bruto_lat = str(kwargs.get("local_latitude") or "").strip()
+        _bruto_lon = str(kwargs.get("local_longitude") or "").strip()
+        if _bruto_lat or _bruto_lon:
+            _par = par_de_coordenadas(_bruto_lat, _bruto_lon)
+            if not _par:
+                slots.pop("local_latitude", None)
+                slots.pop("local_longitude", None)
+                return {"status": "missing_data",
+                        "missing": ["local_latitude", "local_longitude"],
+                        "content": (
+                            "A localização exata que você passou não é um par de coordenadas "
+                            "honesto (ou falta uma das duas, ou está fora da faixa, ou é zero — "
+                            "e zero fica no meio do oceano). NÃO tente adivinhar a coordenada a "
+                            "partir do endereço. PEÇA O PIN ao cliente, com estas palavras: "
+                            "'para o guincho te achar rápido, toque no clipe 📎 aqui no WhatsApp, "
+                            "escolha Localização e me envie'. Quando ele enviar, use os dois "
+                            "números da linha 'Localização compartilhada' exatamente como vieram.")}
+            slots["local_latitude"], slots["local_longitude"] = _par
         if is_auto and not kwargs.get("dados_confirmados"):
             placa = str(kwargs.get("veiculo_placa") or "—")
-            return {"status": "confirm_first", "content": (
+            # ══════════════════════════════════════════════════════════════
+            # 🔴 SPEC-118 F3 · A CONFIRMAÇÃO DEIXA DE ESCONDER O QUE FALTA
+            # ══════════════════════════════════════════════════════════════
+            #
+            # 📊 Este ramo devolve ANTES de `build_dry_run_plan` — então, em AUTO,
+            # a PRIMEIRA chamada sempre diz "confirme com o cliente", mesmo quando
+            # ainda faltam seis dados. O agente confirma, chama de novo, e só aí
+            # descobre o que falta: o segurado é interrompido **duas vezes**, e a
+            # segunda depois de ter dito "sim, pode acionar".
+            #
+            # ⚠️ A ORDEM NÃO MUDA (a confirmação é o ponto irreversível e continua
+            # sendo a próxima coisa a fazer). O que muda é que a mesma mensagem já
+            # carrega o que ainda vai ser pedido — quem pergunta é o mesmo turno
+            # de conversa. 🔴 E quem responde "o que falta" é o MOTOR
+            # (`missing_slots_for_subservice`, via o mesmo tradutor da coleta):
+            # esta linha não recalcula nada.
+            _falta: list = []
+            _ainda: list = []
+            try:
+                from app.services.corridor_playbooks import (
+                    SUBSERVICO_INVALIDO as _SI, missing_slots_for_subservice)
+                from app.services.insurer_dispatch_service import (
+                    como_pedir_ao_segurado)
+                _falta = list(missing_slots_for_subservice(
+                    playbook_ref, subservice, slots) or [])
+                if _SI in _falta:
+                    _falta = []   # não falta dado, falta caminho — o ramo lá embaixo trata
+                _ainda = como_pedir_ao_segurado(playbook_ref, _falta)
+            except Exception:  # noqa: BLE001 — a confirmação nunca cai por causa do aviso
+                _falta, _ainda = [], []
+            _e_falta = (
+                " E ainda FALTAM estes dados, que esta seguradora vai pedir: "
+                + "; ".join(_ainda)
+                + ". Colete-os no MESMO turno da confirmação, UMA informação por "
+                  "vez, e não invente nenhum deles."
+            ) if _ainda else ""
+            return {"status": "confirm_first", "missing": _falta, "content": (
                 "ANTES de acionar, CONFIRME com o cliente NA CONVERSA (mensagem única): "
                 f"placa {placa}, o que houve, local atual, destino e telefone de contato. "
                 "Se o cliente corrigir qualquer dado, use o valor corrigido. Depois chame de novo com "
                 "dados_confirmados=true. ATENÇÃO: NADA foi acionado ainda — é PROIBIDO dizer ao cliente "
                 "que a seguradora foi acionada/contatada. Só afirme acionamento quando ESTA ferramenta "
                 "retornar status 'dispatched'. Assim que o cliente confirmar, chame de novo IMEDIATAMENTE "
-                "(na mesma resposta), não deixe para depois.")}
+                "(na mesma resposta), não deixe para depois." + _e_falta)}
 
         plan = build_dry_run_plan(playbook_ref, subservice, slots)
 
@@ -902,9 +1072,26 @@ class InsurerDispatchTool(BaseTool):
                 # ⚠️ Uma fonte só: mudou o corredor, mudou o que a ferramenta
                 #    diz, no mesmo commit. `_COMO_PERGUNTAR` é onde o produto
                 #    já escreve como se pergunta cada coisa.
-                from app.services.corridor_playbooks import _COMO_PERGUNTAR
-                faltam = [_COMO_PERGUNTAR.get(s, s.replace("_", " "))
-                          for s in plan["missing_slots"]]
+                #
+                # ══════════════════════════════════════════════════════════
+                # 🔴 SPEC-118 F3 · E O `else` DAQUELA LINHA AINDA VAZAVA CHAVE
+                # ══════════════════════════════════════════════════════════
+                #
+                # Era `_COMO_PERGUNTAR.get(s, s.replace("_", " "))`. O fallback
+                # não é chave crua, é chave com o `_` trocado por espaço — e para
+                # os campos do FORMULÁRIO nativo, que a F2b passou a cobrar, é o
+                # único ramo que roda: 📊 medido em 26/09/2026 no caminho da Porto
+                # com o endereço sem número, `_run` devolvia literalmente
+                # *"Ainda faltam estes dados para acionar: local numero; local
+                # bairro."* — o defeito de 23/08 com roupa nova.
+                #
+                # 🔴 `como_pedir_ao_segurado` é o tradutor único: tenta o
+                #    vocabulário do produto, depois o RÓTULO QUE A SEGURADORA USA
+                #    na tela do formulário (lido pelo motor, nunca escrito à mão)
+                #    e, por último, a peneira que nunca devolve `_`.
+                from app.services.insurer_dispatch_service import (
+                    como_pedir_ao_segurado)
+                faltam = como_pedir_ao_segurado(playbook_ref, plan["missing_slots"])
 
                 # 🔴 JUIZ 4 · VALOR RECUSADO NÃO É DADO AUSENTE.
                 #
@@ -921,6 +1108,18 @@ class InsurerDispatchTool(BaseTool):
                 _opcoes_de = _opcoes_recusadas(playbook_ref, subservice,
                                                kwargs, plan["missing_slots"])
                 if _opcoes_de:
+                    # 🔴 SPEC-118 F3 · A PERGUNTA É A DA TELA, NÃO O NOME DO SLOT.
+                    #
+                    #    Aqui saía `veiculo_nivel_rua: Subsolo | Acima do nível
+                    #    da rua | …` — o nome interno do campo colado nos títulos
+                    #    da seguradora. Quem lê é o agente, que vai perguntar ao
+                    #    segurado: ⚠️ ele precisa da PERGUNTA da tela (*"Em
+                    #    relação ao nível da rua, onde o veículo está?"*), que
+                    #    está no mesmo schema de onde os títulos saíram.
+                    from app.services.corridor_playbooks import _COMO_PERGUNTAR
+                    from app.services.insurer_dispatch_service import (
+                        rotulos_do_formulario_por_slot)
+                    _rotulos = rotulos_do_formulario_por_slot(playbook_ref)
                     return {
                         "status": "missing_data",
                         "missing": list(_opcoes_de),
@@ -928,19 +1127,44 @@ class InsurerDispatchTool(BaseTool):
                             "O valor informado não é uma das opções que a "
                             "seguradora aceita nesta tela. Use EXATAMENTE uma "
                             "destas: "
-                            + " · ".join(f"{c}: {' | '.join(v)}"
-                                         for c, v in _opcoes_de.items())
+                            + " · ".join(
+                                f"{_rotulos.get(c) or _COMO_PERGUNTAR.get(c) or c}: "
+                                f"{' | '.join(v)}"
+                                for c, v in _opcoes_de.items())
                             + ". NÃO invente outra redação — a URA só aceita a "
-                            "opção literal."),
+                            "opção literal. E NÃO escolha por ele quando a opção "
+                            "mudar o serviço que vem: pergunte ao cliente com as "
+                            "palavras da tela e use a resposta dele."),
                     }
                 return {
                     "status": "missing_data",
                     "missing": plan["missing_slots"],
                     "content": (
-                        "Ainda faltam estes dados para acionar: " + "; ".join(faltam) + ". "
+                        # 🔴 SPEC-118 F3 · O QUE MUDOU NESTA FRASE, E POR QUÊ.
+                        #
+                        #    `faltam` agora é português de gente até para os
+                        #    campos do formulário nativo, e a frase diz de ONDE
+                        #    vem a exigência — *"a seguradora abre um formulário
+                        #    dentro da conversa e ele pede isto"*. 📊 Sem essa
+                        #    metade, o agente recebia uma lista de campos de
+                        #    endereço sem entender por que o CEP virou
+                        #    obrigatório numa seguradora e não na outra, e o
+                        #    caminho fácil dele é inventar ou desistir.
+                        "Ainda faltam estes dados para acionar, na ordem em que "
+                        "esta seguradora pede: " + "; ".join(faltam) + ". "
                         "ANTES de perguntar ao cliente, PROCURE cada um na CONVERSA e na sua ficha "
                         "(CPF, endereço e telefone quase sempre JÁ foram ditos) e chame de novo com eles. "
-                        "Pergunte ao cliente SOMENTE o que nunca foi informado — um de cada vez, com naturalidade."
+                        # ⚠️ "um de cada vez" é literal GUARDADO por
+                        # `test_golden_do_eletricista` (GOLD-ELEC-005): *"e com uma
+                        # pergunta por vez, não um interrogatório"*. Reescrever a
+                        # frase sem ele apagaria o guarda, não o melhoraria.
+                        "Pergunte ao cliente SOMENTE o que nunca foi informado — um de cada vez, "
+                        "com naturalidade, e chame de novo assim que ele responder: UMA informação "
+                        "por vez, nunca a lista inteira numa mensagem. "
+                        "Parte desta lista é o que a seguradora vai pedir num FORMULÁRIO dentro da "
+                        "conversa dela (por isso ela quer o endereço quebrado em rua, número, bairro, "
+                        "cidade, estado e CEP): coletar agora evita parar no meio do acionamento, com "
+                        "o cliente esperando. NÃO invente nenhum destes valores."
                     ),
                 }
             return {"status": "error", "content": f"Não foi possível preparar o acionamento ({plan.get('error')}). Acione um atendente humano."}
