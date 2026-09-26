@@ -658,22 +658,6 @@ está proibido de aplicar migration.
 
 ---
 
-## P-62 · Construir a imagem `0.7.2-autobrokers.2` do Evolution GO 🤖→🧑
-
-**O que é.** O patch `0005-send-interactive-response` abre a rota que faltava
-(`POST /send/interactiveResponse`). O código está escrito, os cinco patches
-aplicam limpos no commit fixado, e o teste que prova a montagem já existe.
-
-**O que destrava.** O envio de resposta de formulário nativo — 📊 4 seguradoras
-o usam (Porto 12 · HDI 6 · Azul 4 · Yelum 2) e 460 apólices de auto (26,9% da
-carteira) estão nessas seguradoras.
-
-**Por que ainda não foi feito.** Não há Go nem Docker nesta máquina: **quem
-compila é o build**. Até ele rodar, o código nunca passou por um compilador.
-
-**O que custa esquecer.** Os corredores dessas 4 seguradoras já existem e não
-rendem. É trabalho pronto parado.
-
 ## P-63 · A prova de transporte precisa de UM telefone pareado 🧑
 
 **O que é.** Mandar a resposta de um número nosso para outro número nosso e
@@ -11670,3 +11654,125 @@ relatório da bateria, em vez de converter o resultado em `xfail`; ou `xfail(str
 **Dono:** 🤖.
 **Custo de esquecer:** 🔴 uma regressão real atravessa a bateria **parecendo melhora** — e foi exatamente o que
 aconteceu nesta SPEC. Sem a comparação nominal contra o commit base, ela teria ido para produção.
+
+---
+
+# SPEC-118 · O formulário dentro do WhatsApp funciona, e o agente sabe o que vem (26/09/2026)
+
+> **Como ler:** 🧑 = só o Founder faz (ação física, acesso, decisão, terceiro) · 🤖 = execução.
+> 📊 = medido, com a fonte ao lado · 💭 = ilustrativo, nunca citável como fato (CLAUDE.md §12.1).
+
+## P-118-01 · O mapa do formulário da Azul não existe — zero material 🧑
+📊 Não há uma única captura de formulário nativo da Azul no acervo com `paramsJSON` preenchido.
+**O que destrava:** um acionamento de auto real na Azul que chegue até a tela do formulário, com o
+observador ligado — o mesmo caminho que produziu as 3 capturas da Porto em 21/09.
+**Custa esquecer:** o mapa é o ÚNICO gargalo de formulário que restou (P-62 fechou o transporte).
+Sem ele, todo acionamento da Azul que abra formulário para numa pessoa, no último portão antes do
+protocolo.
+
+## P-118-02 · `azul/auto/pneu` não tem tecla de menu 🧑
+O menu da Azul migrou em 07/04/2026 e o subserviço ficou declarado sem tecla.
+**O que destrava:** um acionamento de pneu na Azul, observado, que mostre a tela e a tecla atual.
+**Custa esquecer:** a rota existe, aparece na lista e **nunca atende** — subserviço declarado sem
+tecla é handoff, nunca "escolhe a primeira opção".
+
+## P-118-03 · Mapfre e Tokio não têm UM acionamento com desfecho no acervo 🧑
+📊 26/09/2026, do índice do modo seco de `backend/scripts/gerar_corpus_de_telas.py --todas`
+(coluna `c/ desfecho`): `mapfre-auto` **0** de 21 candidatas · `tokio-auto` **0** de 7 ·
+`tokio-residencial` **0** de 5. Para comparar: `yelum-auto` 26, `porto-auto` 19, `hdi-auto` 16,
+`allianz-auto` 16.
+🔴 **É por isso — e só por isso — que as 4 rotas da Mapfre e 3 das 4 da Tokio saem `SEM_CORPUS`.**
+O eixo A da régua exige que a ROTA tenha sido percorrida até o fim, com protocolo. Não é falta de
+conversa: a Mapfre tem 📊 **572** textos de URA capturados em 31 sessões, o maior acervo sem mapa
+do produto (13 passos mapeados).
+**O que destrava:** um acionamento de cada uma, até o desfecho, com o observador ligado.
+**Custa esquecer:** a Mapfre é 💭 provavelmente recuperável com âncoras (📊 19 das 38 sessões dela
+mencionam protocolo), mas nenhum trabalho de mapa pode ser PROVADO sem uma sessão que chegue ao fim.
+
+## P-118-04 · A seguradora exige `response_message` na resposta do formulário? 🤖
+Não há como medir sem uma seguradora do outro lado.
+**O que destrava:** um acionamento real que responda formulário e seja aceito ou recusado.
+**Custa esquecer:** é o suspeito nº 1 se a resposta for descartada **em silêncio** — sem erro, sem
+reenvio, com a URA correndo o relógio.
+
+## P-118-05 · `MessageSecret` nunca foi exercitado 🤖
+**O que destrava:** o mesmo acionamento de P-118-04.
+**Custa esquecer:** pode ser exigido num caso que ainda não vimos; hoje o campo viaja como a
+captura o mostrou, e ninguém finge saber.
+
+## P-118-06 · O porteiro de "Ligar agente" manda o cabeçalho com outro nome 🤖
+O porteiro envia `X-AutoBrokers-Internal-Key` e o backend espera `X-Internal-Key` → 401 → fail-open.
+**O que destrava:** uma linha.
+**Custa esquecer:** o porteiro **nunca** roda de verdade a partir da tela — a trava existe no código
+e não existe na vida.
+
+## P-118-07 · `ignoreGroups: true` — o humano não assume pelo grupo 🧑
+"AGENTE"/"EU CUIDO" digitado no grupo não chega ao webhook.
+**O que destrava:** decisão de canal do Founder (é a mesma de P-E0014-06).
+**Custa esquecer:** a pessoa que quer assumir o caso precisa sair do grupo para conseguir.
+
+## P-118-08 · O corpus da régua é de 16/09 e já existe o gerador para atualizá-lo 🤖
+📊 26/09/2026: todos os `.jsonl` de `backend/tests/corpus/telas_reais/` estão datados **16/09/2026
+21:47**, e `backend/scripts/gerar_corpus_de_telas.py --todas --dry-run` rodou **verde** (`exit=0`)
+produzindo índice novo. Regerar traz ~51 sessões que a régua nunca viu.
+🔴 **Ficou fora desta SPEC de propósito:** regerar **muda a nota das 73 rotas** no mesmo commit em
+que um conserto de produto as move — e aí não se sabe mais o que moveu o quê. A régua desta SPEC foi
+medida ANTES e DEPOIS com **o mesmo corpus**, que é o que dá direito à conclusão (CLAUDE.md §9.2).
+**O que destrava:** uma rodada de `--todas` sem `--dry-run`, seguida da régua completa, **sozinha**,
+num commit que não mude mais nada.
+**Custa esquecer:** é ganho de honestidade — as notas de hoje descrevem o acervo de dez dias atrás.
+Mesma raiz de **P-PILOTO-06**.
+
+## P-118-09 · Bradesco e Zurich: ZERO sessões com protocolo no acervo 🧑
+📊 26/09/2026, `observed_events`, sessões distintas: bradesco 30 sessões · 15 com link · **0 com
+protocolo** · 17 mandam ligar. zurich 15 · 5 · **0** · 5.
+**O que destrava:** um acionamento de cada, até o fim.
+**Custa esquecer:** hoje elas **não fecham por WhatsApp**, e ninguém sabe se fecham. Prometer que
+fecham é a classe de defeito do CLAUDE.md §9.5 — responde e chega errado ao segurado.
+
+## P-118-10 · A zona rural da Yelum tem amostra de UM 🤖
+Um acervo de um permite comparar; não permite conferir hipótese (CLAUDE.md §9.2).
+**O que destrava:** uma segunda sessão de zona rural.
+**Custa esquecer:** qualquer regra escrita sobre essa tela hoje se credita a um acaso.
+
+## P-118-11 · A tela de datas da Porto vem com `{DATA}` mascarado 🤖
+O mascarador apaga a data e o passo não tem como aprender o FORMATO que a URA espera.
+**O que destrava:** uma captura com a data preservada, ou a regra do mascarador registrando o
+formato ao lado do marcador.
+**Custa esquecer:** o passo cai no adaptativo por falta de um dado que estava na tela.
+
+## P-118-12 · O gatilho `acidente` é largo demais — 13 corredores 🤖
+**O que destrava:** medir quantas sessões do acervo casam o gatilho e não são acidente.
+**Custa esquecer:** gatilho largo manda o segurado para o corredor errado **sem travar**.
+
+## P-118-13 · Carro reserva da Tokio sai por outro caminho 🤖
+📊 A Tokio entrega `https://autoservicoreplacement.localiza.com/reserva?...` dentro da conversa.
+**O que destrava:** decidir se o produto acompanha esse link ou entrega ao segurado.
+**Custa esquecer:** hoje o link passa e ninguém o trata.
+
+## P-118-14 · A régua suja a árvore de trabalho — P-E0013-09 AGRAVADA 🤖
+📊 26/09/2026 20:37, nesta árvore: `medir_rota.py --todas` morreu com
+`OSError: [WinError 1224] ... arquivo com uma seção mapeada pelo usuário aberta` dentro do `finally`
+que restaura a mutação, e deixou `backend/app/services/insurer_dispatch_service.py` **mutado**
+(`git diff --stat` → `1 file changed, 1 insertion(+), 1 deletion(-)`). A causa medida foi um
+`grep -r` recursivo caminhando por `backend/` ao mesmo tempo.
+**O que foi feito nesta SPEC:** a restauração passou a tentar 6 vezes, depois reescrever os bytes, e
+só então falhar — com o nome do arquivo mutado na mensagem (`backend/scripts/verificar_mutacoes.py`).
+**O que AINDA destrava:** medir em cópia da árvore, ou a régua recusar-se a rodar com a árvore suja.
+**Custa esquecer:** 🔴 uma mutação commitada dá pontos de graça nas 73 rotas. O preço já foi pago
+duas vezes: o commit `d910613` desta SPEC existe só para desfazer a mutação que entrou no `26b2b72`.
+
+## P-118-15 · ✅ FECHADA · `DISPATCH_FINALIZE_LIVE_PLAYBOOKS` aceitava `ref` que não existe, em silêncio
+Um `ref` escrito errado na lista **nunca finalizava** e nada avisava: o acionamento andava até o
+fim, falava com a URA de verdade e **cancelava na última tela** — o segurado ouviu *"estou
+acionando"* e ninguém veio. ⚠️ E o sintoma era **indistinguível** do estado legítimo: um corredor
+deixado de fora de propósito e um corredor escrito errado somem da mesma lista, do mesmo jeito.
+**O que foi feito (26/09):** `/health` passou a publicar `finalize_refs_fantasma` — os `ref`
+declarados que não resolvem para corredor nenhum —, a leitura da variável passou a ter **um lugar
+só** (`insurer_dispatch_service.refs_de_finalizacao_declarados`), e o guarda
+`backend/tests/test_a_lista_de_finalizacao_nao_tem_fantasma.py` fixa as duas perguntas com quatro
+linhas de controle, entre elas a armadilha real: **em `DISPATCH_FINALIZE_MODE=live` o aviso
+continua lá**, porque quem trocar o modo de volta para `test` herdaria a lista errada, calada.
+📊 Estado conferido no `/health` em 26/09, antes do conserto: `finalize_abre_de_verdade:
+['porto-auto-whatsapp@v1','yelum-auto-whatsapp@v3']` — os dois resolvem, nenhum fantasma hoje.
+**O que AINDA é do Founder:** a decisão **D-118-01** — quando trocar para `live` e apagar a lista.

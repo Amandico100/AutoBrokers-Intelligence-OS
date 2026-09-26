@@ -948,3 +948,35 @@ Builder B (06/09): `DELETE /connections/{id}` (e duas irmãs) apagam/alteram con
 📊 `corridor_playbooks.py:4319` guarda, no campo `notes` de um passo, a frase de uma tela: *"Saionara você é a pessoa que está local para acompanhar o serviço?"*. O `notes` entra no **prompt interno** que decide a resposta quando o corredor empaca (`insurer_dispatch_service.py:3984`). **Destrava:** redigir o nome no playbook. **Dono:** 🤖. **Custo de esquecer:** o nome de uma atendente da Resulta é contexto global e pode reaparecer numa resposta gerada para outra corretora.
 
 ✅ **FECHADA em 21/09/2026 pela SPEC-EXTRA-001.8 (fatia F3b, commit `658debf`):** o nome de pessoa real saiu do dado GLOBAL de corredor — o campo que entra no prompt de TODAS as corretoras — e de 23 comentários do backend. 📊 censo de 24 ocorrências (1 em prompt + 23 em comentário) zerado no que é dado de produto; `test_nenhum_nome_de_gente_em_dado_global.py` verde, com nome próprio por **hash** e **0** ocorrências em `conduct_playbooks` (18 linhas) e `knowledge_cards` (18.715). **Resíduo:** o nome continua em fixtures de teste e no corpus → P-E0018-15. Movida para `PENDENCIAS-FECHADAS.md`.
+
+---
+
+## P-62 · ✅ FECHADA em 26/09/2026 — a rota EXISTE na imagem que já está no ar
+
+🔴 **A pendência afirmava um fato que deixou de ser verdade, e a frase dela custou um
+pedido de rebuild desnecessário ao Founder.** CLAUDE.md §9.3: verdade vencida é pior
+que registro nenhum, porque quem lê acredita.
+
+📊 **A medição que a fechou**, 26/09/2026 17:24 (-03), em produção, com linha de controle:
+```
+POST /api/whatsapp-integrations/prova-de-formulario
+  tentativa 1 (CONTROLE, sem o embrulho) .... HTTP 500 · "server returned error 479"
+  tentativa 2 (com DocumentWithCaption) ..... HTTP 200 · ACEITO
+→ {"success": true, "vencedora": "embrulho DocumentWithCaption"}
+→ servidor: Type: "InteractiveResponseMessage" · ID 3EB02C9B1BFC57E46E3136
+```
+
+⚠️ **Por que ninguém tinha visto:** o `swagger/doc.json` da imagem no ar lista 88 rotas,
+12 delas de `/send`, e **nenhuma** com `interactive` — o patch `0005` não acrescentou
+anotação de swagger. **O catálogo é incompleto; não é a verdade.** Concluir ausência por
+leitura do catálogo é o defeito que o `PROTOCOLO-AUTOBROKERS-AAA.md` §0.4 nomeia:
+*afirmar por leitura o que só um comando decide*.
+
+🔴 **E o elo foi fechado** (o caminho REAL, não só a prova): `evolution_go.py::
+send_native_flow_response` posta em `rota_de_flow_reply()` (= `/send/interactiveResponse`)
+com `wrapInDocumentWithCaption: True` — a mesma rota e o mesmo embrulho que a prova mostrou
+vencendo. Fixado por guarda em `backend/tests/test_o_transporte_do_formulario_e_conferido.py`.
+
+⛔ **Consequência para quem ler isto depois: NÃO existe rebuild de imagem a fazer por
+causa de formulário nativo.** O que resta é o **mapa** de cada seguradora (§2.2 da SPEC-118),
+e o da Porto passou a existir nesta SPEC.
