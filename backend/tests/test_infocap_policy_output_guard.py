@@ -32,6 +32,21 @@ def _load_nodes_module():
         if name in ("app", "app.agents"):
             module.__path__ = []  # mark as package for relative imports
 
+    # 🔴 SPEC-117 F2: `nodes._safe_infocap_policy_context` passou a DELEGAR a
+    #    `app.services.policy_context` — a ÚNICA autoridade que monta o contexto
+    #    da apólice. Os três módulos REAIS são carregados POR ARQUIVO (é o que
+    #    este harness já faz com `nodes`): sem eles o import morre e o guarda
+    #    mediria o `ModuleNotFoundError`, não a regra. ⛔ Nada de dublê: o que se
+    #    afirma é o comportamento do MOTOR (CLAUDE.md §9.4).
+    for name in ("app.services", "app.providers"):
+        module = sys.modules.setdefault(name, types.ModuleType(name))
+        module.__path__ = []
+        module.__package__ = name
+    _carregar_real("app.providers.policy_data_provider",
+                   "app/providers/policy_data_provider.py")
+    _carregar_real("app.services.policy_facts", "app/services/policy_facts.py")
+    _carregar_real("app.services.policy_context", "app/services/policy_context.py")
+
     constants = types.ModuleType("app.core.constants")
     constants.AGENT_CONTEXT_WINDOW_SIZE = 15
     sys.modules["app.core.constants"] = constants
@@ -165,6 +180,10 @@ def run():
     check("safe InfoCap policy context helper exists", callable(context_builder))
     check("policy context tool args helper exists", callable(context_args))
     if callable(context_builder) and callable(context_args):
+        # 🔴 SPEC-117 F2.1: o construtor passou a exigir o TENANT (sem
+        #    `company_id` não nasce contexto — CLAUDE.md §7) e o PAPEL (só `core`
+        #    carrega identidade crua). Este guarda é do Chat Principal, então o
+        #    papel é `core`; o `data` é o mesmo de antes.
         context = context_builder({
             "client_document": "11122233344",
             "client_name": "Cliente Teste",
@@ -172,7 +191,7 @@ def run():
                 {"policy_number": "202623140269982", "policy_locator_ref": "infocap:1:N1"},
                 {"policy_number": "0", "policy_locator_ref": "infocap:1:N0"},
             ],
-        })
+        }, company_id="11111111-1111-4111-8111-111111111111", papel="core")
         raw_context = str(context)
         check("safe context stores human number", context and "202623140269982" in context.get("policy_numbers", []), context)
         check("safe context does not store locator", "infocap:" not in raw_context and "N1" not in raw_context, context)

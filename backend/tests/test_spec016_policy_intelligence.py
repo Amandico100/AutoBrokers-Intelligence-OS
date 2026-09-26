@@ -62,6 +62,7 @@ def _load_nodes_module():
     #    mesmo e pior que guarda nenhum, porque ele acusa outra peca.
     providers = sys.modules.setdefault("app.providers", types.ModuleType("app.providers"))
     providers.__path__ = [str(ROOT / "app" / "providers")]
+
     providers.__package__ = "app.providers"
 
     constants = types.ModuleType("app.core.constants")
@@ -109,6 +110,20 @@ def _load_nodes_module():
     # limpo. Um guarda que nao roda nao guarda (CLAUDE.md 9.3).
     _load_file_module("app.agents.honestidade_do_handoff",
                       "app/agents/honestidade_do_handoff.py")
+    # 🔴 SPEC-117 F2: `nodes._safe_infocap_policy_context` e
+    #    `nodes._merge_infocap_policy_context` passaram a DELEGAR a
+    #    `app.services.policy_context` — a ÚNICA autoridade que monta o contexto
+    #    da apólice. O stub de `app.services` nasce com `__path__ = []`, então o
+    #    import morreria em `ModuleNotFoundError` e este guarda mediria o HARNESS,
+    #    não a regra. ⛔ Nada de DUBLÊ de `policy_context`: o que se afirma é o
+    #    comportamento do MOTOR (CLAUDE.md §9.4). Os dois módulos REAIS só trazem
+    #    hashlib/hmac/os/datetime + a porta de ramo: carregam limpos.
+    #    ⚠️ Carregados POR ARQUIVO (e não dando `__path__` real a `app.services`):
+    #    📊 26/09/2026, com o `__path__` real o `policy_answer_composer` passou a
+    #    importar a Skill de cobertura de verdade e o G-C2 mudou de resultado — o
+    #    harness não pode mudar o que ele mede.
+    _load_file_module("app.services.policy_facts", "app/services/policy_facts.py")
+    _load_file_module("app.services.policy_context", "app/services/policy_context.py")
     return _load_file_module("app.agents.nodes", "app/agents/nodes.py")
 
 
@@ -187,6 +202,12 @@ def run_e1(nodes):
         check("G-A5b: pergunta operacional com anáfora segue forçando", args and args.get("policy_number") == "1234567890", args)
 
     # G-A4/captura: _safe_infocap_policy_context captura selected_policy_number em found.
+    #
+    # 🔴 SPEC-117 F2.1: o construtor passou a exigir o TENANT e o PAPEL. Sem
+    #    `company_id` NÃO nasce contexto (CLAUDE.md §7 — tenant não se adivinha), e
+    #    o papel decide se identidade crua pode existir nele. Estes casos são do
+    #    Chat Principal, então o papel é `core`.
+    EMPRESA = "11111111-1111-4111-8111-111111111111"
     data_found = {
         "status": "found",
         "client_document": "12345678900",
@@ -194,7 +215,7 @@ def run_e1(nodes):
         "matches": [{"policy_number": "1234567890", "numapo": "1234567890"}],
         "selected": {"policy_number": "1234567890", "numapo": "1234567890"},
     }
-    ctx = nodes._safe_infocap_policy_context(data_found)
+    ctx = nodes._safe_infocap_policy_context(data_found, company_id=EMPRESA, papel="core")
     check("captura: contexto criado em found", isinstance(ctx, dict), ctx)
     check("captura: selected_policy_number preenchido", ctx and ctx.get("selected_policy_number") == "1234567890", ctx)
 
@@ -206,14 +227,14 @@ def run_e1(nodes):
             {"policy_number": "9876543210"},
         ],
     }
-    ctx = nodes._safe_infocap_policy_context(data_listing)
+    ctx = nodes._safe_infocap_policy_context(data_listing, company_id=EMPRESA, papel="core")
     check("captura: listagem não fixa selected", ctx and not ctx.get("selected_policy_number"), ctx)
     check("captura: listagem traz os 2 números", ctx and sorted(ctx.get("policy_numbers")) == ["1234567890", "9876543210"], ctx)
 
     # Contexto nunca carrega locator técnico.
     data_found_with_ref = dict(data_found)
     data_found_with_ref["selected"] = {"policy_number": "1234567890", "policy_locator_ref": "infocap:1:999"}
-    ctx = nodes._safe_infocap_policy_context(data_found_with_ref)
+    ctx = nodes._safe_infocap_policy_context(data_found_with_ref, company_id=EMPRESA, papel="core")
     check("segurança: contexto não expõe locator técnico", "infocap:" not in str(ctx), ctx)
 
 

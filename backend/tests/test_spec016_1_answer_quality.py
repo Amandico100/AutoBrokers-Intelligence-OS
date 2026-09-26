@@ -311,6 +311,13 @@ def _load_nodes():
     # limpo. Um guarda que nao roda nao guarda (CLAUDE.md 9.3).
     _load_file_module("app.agents.honestidade_do_handoff",
                       "app/agents/honestidade_do_handoff.py")
+    # 🔴 SPEC-117 F2: `nodes._safe_infocap_policy_context` e
+    #    `nodes._merge_infocap_policy_context` passaram a DELEGAR a
+    #    `app.services.policy_context`. Carregado POR ARQUIVO, como
+    #    `policy_facts`: dar `__path__` real a `app.services` muda o que outras
+    #    peças do harness conseguem importar, e harness não pode mudar o que mede.
+    #    ⛔ Nada de dublê: o que se afirma é o comportamento do MOTOR (§9.4).
+    _load_file_module("app.services.policy_context", "app/services/policy_context.py")
     return _load_file_module("app.agents.nodes", "app/agents/nodes.py")
 
 
@@ -360,22 +367,49 @@ def run_routing_and_context(nodes):
         check("D7: valores corretos são mantidos", nodes._guard_infocap_policy_final_response(honest, contract_val) == honest, None)
 
         # D6: contexto preserva a apólice selecionada quando um lookup falho volta.
-        prev = {"document": "12345678900", "policy_numbers": ["111", "222"], "selected_policy_number": "222", "source": "infocap_customer_catalog"}
+        #
+        # 🔴 SPEC-117 F2.2 — O QUE MUDOU, E POR QUE O TESTE MUDA COM O FATO.
+        #
+        # "É o mesmo cliente?" deixou de ser comparação de CPF/nome e passou a ser
+        # o `cliente_ref` — HMAC de `company_id:codfil:codigo`, decisão D3. Tinha
+        # de mudar: o papel do SEGURADO nunca recebe CPF nem nome crus, e a regra
+        # do D6 estava morta nele. Então os contextos aqui passam a nascer do
+        # CONSTRUTOR REAL, com o `client_ref` que o conector devolve nos DOIS
+        # papéis (📊 B0.3 da SPEC-117), em vez de dicionários escritos à mão.
+        # ⚠️ As AFIRMAÇÕES são as mesmas: a lição migra, a régua não afrouxa
+        # (CLAUDE.md §9.3).
+        EMPRESA = "11111111-1111-4111-8111-111111111111"
+        CLIENTE = {"codigo": "7788", "codfil": "1"}
+        prev = nodes._safe_infocap_policy_context({
+            "status": "found",
+            "client_document": "12345678900",
+            "client_ref": CLIENTE,
+            "matches": [{"policy_number": "111"}, {"policy_number": "222"}],
+            "selected": {"policy_number": "222"},
+        }, company_id=EMPRESA, papel="core")
+        check("D6: o contexto anterior nasceu com a apólice escolhida", prev and prev.get("selected_policy_number") == "222", prev)
         failed_result = {
             "status": "policy_number_not_found",
             "client_document": "12345678900",
+            "client_ref": CLIENTE,
             "matches": [{"policy_number": "111"}, {"policy_number": "222"}],
         }
-        merged = nodes._merge_infocap_policy_context(prev, nodes._safe_infocap_policy_context(failed_result))
+        novo = nodes._safe_infocap_policy_context(failed_result, company_id=EMPRESA, papel="core")
+        # 🔴 A LINHA DE CONTROLE (CLAUDE.md §9.2): sem contexto novo, `fundir`
+        #    devolveria o anterior INTACTO e a afirmação de baixo passaria sem que
+        #    o merge tivesse sido exercitado — verde pelo motivo errado.
+        check("D6: o lookup falho AINDA produz contexto (senão o merge não é medido)", isinstance(novo, dict) and not novo.get("selected_policy_number"), novo)
+        merged = nodes._merge_infocap_policy_context(prev, novo)
         check("D6: selected preservado após not_found do mesmo cliente", merged and merged.get("selected_policy_number") == "222", merged)
 
         other_client = {
             "status": "found",
             "client_document": "99988877766",
+            "client_ref": {"codigo": "9999", "codfil": "1"},
             "matches": [{"policy_number": "999"}],
             "selected": {"policy_number": "999"},
         }
-        merged2 = nodes._merge_infocap_policy_context(prev, nodes._safe_infocap_policy_context(other_client))
+        merged2 = nodes._merge_infocap_policy_context(prev, nodes._safe_infocap_policy_context(other_client, company_id=EMPRESA, papel="core"))
         check("D6: cliente novo NÃO herda selected antigo", merged2 and merged2.get("selected_policy_number") == "999" and merged2.get("document") == "99988877766", merged2)
     finally:
         os.environ.pop("POLICY_INTELLIGENCE_V2", None)

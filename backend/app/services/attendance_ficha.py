@@ -230,6 +230,55 @@ def _tem_valor(v: Any) -> bool:
 SLOTS_DA_IDENTIDADE = frozenset({"titular_nome"})
 
 
+# ---- a APÓLICE DO CASO (SPEC-117 §2 · D1) --------------------------------- #
+#
+# 🔴 **DUAS CHAVES, E A DIFERENÇA ENTRE ELAS CHEGA AO WHATSAPP DA ATENDENTE.**
+#
+# 📊 26/09/2026 · `backend/app/agents/tools/human_handoff.py:607` faz
+#
+#     apolice = str(ficha.get("apolice") or ficha.get("policy") or "").strip()
+#
+# e joga o resultado em `_linha_da_apolice`, que é o TEXTO do aviso enviado à
+# atendente humana (3 chamadores: linhas 917, 1022, 1104). Um `str()` sobre um
+# dicionário Python não levanta erro — ele produz
+# `{'versao': 1, 'company_id': …}` e manda isso para o WhatsApp.
+#
+# Por isso as duas chaves são separadas, e o tipo de cada uma é parte do
+# contrato:
+#
+#     ficha["apolice"]          STRING — o número humano, o que se diz em voz alta
+#     ficha["apolice_do_caso"]  DICT   — o PolicyContext (SPEC-117 §2)
+#
+# 📊 E até hoje NINGUÉM escrevia `ficha["apolice"]`
+# (`grep -rn '"apolice"' backend/app --include=*.py`, descontando
+# `apolice_confirmada`) — era por isso que o aviso ao humano saía sem o número.
+CHAVE_DA_APOLICE = "apolice"
+CHAVE_DO_CONTEXTO_DA_APOLICE = "apolice_do_caso"
+
+#: 🔴 A LINHA do corredor a partir da FAMÍLIA da apólice. Esta constante
+#: **ESCOLHE** (não navega), então a razão de cada linha está escrita ao lado
+#: (CLAUDE.md §9.5).
+#:
+#: 📊 26/09/2026: `graph._slots_obrigatorios_do_caso` (`graph.py:798-806`)
+#: entrega `ficha["ramo"]` a `corridor_playbooks.resolve_playbook_ref` como
+#: `line_kind`, e ele só reconhece `auto` e
+#: `("residencial","residencia","resid","casa","home")`
+#: (📊 `corridor_playbooks.py:8276-8277`). A FAMÍLIA `"resi"` **não** está nessa
+#: lista: gravar a família crua em `ficha["ramo"]` deixaria a lista de
+#: obrigatórios VAZIA e o agente pararia de saber o que falta — em silêncio.
+#: 📊 E os playbooks só têm duas linhas: `"auto"` (1) e `"residencial"` (4)
+#: (`grep -o '"line_kind": "[a-z_]*"' corridor_playbooks.py | sort | uniq -c`).
+LINHA_DO_CORREDOR_POR_FAMILIA = {
+    "auto": "auto",          # o corredor de auto é o de auto
+    "resi": "residencial",   # casa/apartamento → corredor residencial
+    "cond": "residencial",   # condomínio → a assistência é a residencial
+    "empr": "residencial",   # empresarial/loja → idem
+}
+# ⚠️ `vida`, `viag` e `saud` ficam FORA de propósito: não existe corredor de
+# assistência para elas, e uma linha chutada mandaria o segurado para o
+# corredor errado (o pior defeito do CLAUDE.md §9.5 — o que não trava).
+
+
 def identidade_vazia() -> Dict[str, Any]:
     # 🔴 `apresentacao_pendente_*` é a INTENÇÃO do turno (J5, 14/09/2026):
     # o bloco do prompt pediu a apresentação, mas ela só vira `apresentado_em`
@@ -340,6 +389,14 @@ def fundir(ficha: Dict[str, Any], novidades: Dict[str, Any],
             nova["identidade"] = depois
             nova["confirmados"] = {k: v for k, v in (nova["confirmados"] or {}).items()
                                    if k not in SLOTS_DA_IDENTIDADE}
+            # 🔴 SPEC-117 §7: A APÓLICE É DO CASO, NÃO DO TELEFONE.
+            # A thread do WhatsApp é por número e nunca reinicia. Herdar a
+            # apólice de um sinistro fechado faria o caso NOVO sair acionando a
+            # apólice do caso ANTIGO — o ramo, a seguradora e a tecla da URA
+            # todos do contrato errado, e nada disso trava. No assunto novo a
+            # apólice sai junto com a identidade; o produto reconsulta.
+            nova.pop(CHAVE_DA_APOLICE, None)
+            nova.pop(CHAVE_DO_CONTEXTO_DA_APOLICE, None)
         else:
             # Mesmo assunto: a identidade se completa (o nome que o cliente
             # acabou de dizer, a hora em que a apresentação aconteceu).
@@ -361,6 +418,26 @@ def fundir(ficha: Dict[str, Any], novidades: Dict[str, Any],
     if _tem_valor(_titular):
         nova["identidade"] = {**identidade_de(nova),
                               "titular_nome": str(_titular).strip()}
+
+    # 🔴 SPEC-117 F2.3 — A APÓLICE DO CASO, ADITIVA COMO TODO O RESTO.
+    #
+    # Um turno que não traz apólice não apaga a que existe (é o defeito que
+    # este arquivo inteiro conserta). E o `company_id` é uma TRAVA, não um
+    # campo: contexto de outra corretora **nunca** funde com o desta ficha
+    # (CLAUDE.md §7). Na prática `carregar` já filtra por `company_id`, mas a
+    # trava fica escrita aqui porque `fundir` é pura e é chamada de outros
+    # lugares — e uma trava que depende de quem chama não é trava.
+    _novo_ctx = novidades.get(CHAVE_DO_CONTEXTO_DA_APOLICE)
+    if isinstance(_novo_ctx, dict) and _novo_ctx.get("apolices"):
+        _atual_ctx = nova.get(CHAVE_DO_CONTEXTO_DA_APOLICE)
+        _tenant_atual = str((_atual_ctx or {}).get("company_id") or "").strip()
+        _tenant_novo = str(_novo_ctx.get("company_id") or "").strip()
+        if _tenant_atual and _tenant_novo and _tenant_atual != _tenant_novo:
+            # Corretora diferente: SUBSTITUI, nunca mistura.
+            nova.pop(CHAVE_DA_APOLICE, None)
+        nova[CHAVE_DO_CONTEXTO_DA_APOLICE] = _novo_ctx
+    if _tem_valor(novidades.get(CHAVE_DA_APOLICE)):
+        nova[CHAVE_DA_APOLICE] = str(novidades[CHAVE_DA_APOLICE]).strip()
 
     if novidades.get("apolice_confirmada") is True:
         nova["apolice_confirmada"] = True          # confirmação não se desfaz sozinha
@@ -493,6 +570,131 @@ def dados_conhecidos(ficha: Optional[Dict[str, Any]] = None,
     return saida
 
 
+# --------------------------------------------------------------------- #
+# A APÓLICE DO CASO — uma escrita, uma leitura (SPEC-117 F2.3/F3)
+# --------------------------------------------------------------------- #
+def contexto_da_apolice(ficha: Optional[Dict[str, Any]] = None,
+                        state: Optional[Dict[str, Any]] = None
+                        ) -> Optional[Dict[str, Any]]:
+    """O PolicyContext deste caso. O ESTADO manda; a FICHA é a RETOMADA.
+
+    🔴 SPEC-117 G8: o checkpointer de fallback é um `MemorySaver`
+    (`graph.py:50`) — ele **some quando o processo reinicia**. Sem a leitura da
+    ficha durável, o segurado que volta depois de um deploy perde a apólice que
+    o produto já tinha encontrado, e o ramo oficial volta a ser o palpite do
+    modelo.
+
+    ⚠️ Um contexto de versão desconhecida é tratado como ausência de sinal
+    (expand-first), nunca como erro.
+    """
+    do_estado = (state or {}).get("infocap_policy_context") if isinstance(state, dict) else None
+    if isinstance(do_estado, dict) and do_estado.get("apolices"):
+        return do_estado
+    da_ficha = (ficha or {}).get(CHAVE_DO_CONTEXTO_DA_APOLICE)
+    if isinstance(da_ficha, dict) and da_ficha.get("apolices"):
+        return da_ficha
+    return do_estado if isinstance(do_estado, dict) else None
+
+
+def apolice_do_caso(ficha: Optional[Dict[str, Any]] = None,
+                    state: Optional[Dict[str, Any]] = None,
+                    contexto: Optional[Dict[str, Any]] = None
+                    ) -> Optional[Dict[str, Any]]:
+    """🔴 A LEITURA ÚNICA da apólice deste caso — **todo** leitor passa aqui.
+
+    Devolve o resumo da apólice SELECIONADA (a lista branca da SPEC-117 §2:
+    `chave`, `numapo`, `ramo`, `seguradora`, vigência, `vigente`/`expirada`/
+    `cancelada`), ou `None`. ⛔ Ninguém varre `apolices[]` por conta própria: a
+    escolha é de `policy_context.apolice_selecionada`, e só dela (CLAUDE.md §5).
+    """
+    from app.services.policy_context import apolice_selecionada
+
+    ctx = contexto if isinstance(contexto, dict) else contexto_da_apolice(
+        ficha=ficha, state=state)
+    return apolice_selecionada(ctx)
+
+
+def linha_do_corredor(familia: Any) -> str:
+    """A linha do corredor (`auto` / `residencial`) da FAMÍLIA da apólice.
+
+    `""` quando a família não tem corredor de assistência — e vazio significa
+    *"não sei"*, nunca *"tanto faz"* (ver `LINHA_DO_CORREDOR_POR_FAMILIA`).
+    """
+    return LINHA_DO_CORREDOR_POR_FAMILIA.get(str(familia or "").strip().lower(), "")
+
+
+def chave_da_seguradora(seguradora: Any) -> str:
+    """A chave canônica da seguradora, pela régua que JÁ existe.
+
+    ⛔ Não é uma segunda normalização: é `corridor_playbooks.normalize_insurer_key`
+    (📊 `corridor_playbooks.py:8245`), com `para="conhecimento"` — a regra é de
+    quem EMITIU a apólice, não de quem opera o corredor (essa tradução o
+    `insurer_dispatch_tool._resolve_playbook_ref` já faz depois). Sem o módulo,
+    cai para `.lower()`, que é o formato que o corpus da bancada usa
+    (📊 `"insurer_key": "allianz"`).
+    """
+    bruta = str(seguradora or "").strip()
+    if not bruta:
+        return ""
+    try:
+        from app.services.corridor_playbooks import normalize_insurer_key
+
+        return normalize_insurer_key(bruta, para="conhecimento") or bruta.lower()
+    except Exception:  # noqa: BLE001
+        return bruta.lower()
+
+
+def novidades_da_apolice(contexto: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """O bloco de novidades que grava a apólice do caso na ficha. **PURA.**
+
+    🔴 `apolice` sai STRING e `apolice_do_caso` sai DICT — ver o comentário de
+    `CHAVE_DA_APOLICE`. Sem apólice SELECIONADA grava só a estrutura: duas
+    candidatas ainda não são a apólice do caso, e inventar uma escolha aqui
+    seria decidir pelo segurado.
+    """
+    if not isinstance(contexto, dict) or not contexto.get("apolices"):
+        return {}
+    novidades: Dict[str, Any] = {CHAVE_DO_CONTEXTO_DA_APOLICE: contexto}
+    escolhida = apolice_do_caso(contexto=contexto)
+    if not escolhida:
+        return novidades
+    if escolhida.get("numapo"):
+        novidades[CHAVE_DA_APOLICE] = str(escolhida["numapo"]).strip()
+    linha = linha_do_corredor(escolhida.get("ramo"))
+    if linha:
+        novidades["ramo"] = linha
+    chave = chave_da_seguradora(escolhida.get("seguradora"))
+    if chave:
+        novidades["seguradora"] = chave
+    return novidades
+
+
+def _bloco_da_apolice(ficha: Optional[Dict[str, Any]]) -> str:
+    """A apólice do caso, em uma linha, para o modelo. `""` se não houver.
+
+    ⛔ Nunca `cliente_ref`, `chave`, `origem_por_campo` nem `evidencia`: só o que
+    a SPEC-117 §2 marca como visível — número humano, ramo, seguradora e
+    vigência.
+    """
+    apolice = apolice_do_caso(ficha=ficha)
+    if not apolice:
+        return ""
+    from app.services.policy_context import nome_humano_do_ramo
+
+    partes = [p for p in (
+        str(apolice.get("numapo") or "").strip(),
+        nome_humano_do_ramo(apolice.get("ramo")) or "",
+        str(apolice.get("seguradora") or "").strip().title(),
+    ) if p]
+    if not partes:
+        return ""
+    fim = str(apolice.get("vigencia_fim") or "").strip()
+    if fim:
+        partes.append(("vigente até %s" if apolice.get("vigente") else "vigência até %s") % fim)
+    return ("Apólice deste caso, veio do sistema de gestão — é ELA que vale, "
+            "não o palpite: " + " · ".join(partes))
+
+
 def bloco_para_o_prompt(ficha: Dict[str, Any],
                         obrigatorios: Optional[List[str]] = None) -> str:
     """O que o modelo vê no começo do turno. Curto, e sem enfeite.
@@ -500,8 +702,12 @@ def bloco_para_o_prompt(ficha: Dict[str, Any],
     Não repetimos a conversa — ela já está no histórico. Repetimos só o que o
     histórico pode ter perdido: o que foi CONFIRMADO e o que ainda FALTA.
     """
+    # 🔴 SPEC-117 F3.6: a apólice do caso SOZINHA já justifica o bloco. Sem esta
+    # linha, um caso identificado que ainda não confirmou nenhum slot voltaria
+    # ao modelo sem a apólice — e o modelo perguntaria de novo qual é.
+    _bloco_apolice = _bloco_da_apolice(ficha)
     if not ficha or ficha.get("fase") in (None, FASE_INTAKE):
-        if not (ficha or {}).get("confirmados"):
+        if not (ficha or {}).get("confirmados") and not _bloco_apolice:
             return ""
 
     confirmados = ficha.get("confirmados") or {}
@@ -512,6 +718,8 @@ def bloco_para_o_prompt(ficha: Dict[str, Any],
     if cabeca:
         linhas.append(f"Caso: {cabeca}")
     linhas.append(f"Fase: {ficha.get('fase')}")
+    if _bloco_apolice:
+        linhas.append(_bloco_apolice)
 
     # 🔴 A ORIGEM SEPARA AS DUAS LISTAS — e é a diferença entre um dado que não
     # pode ser perguntado outra vez e um que pode ser lido de volta em uma

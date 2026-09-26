@@ -48,6 +48,10 @@ def check(name, cond, detail=None):
 # ---------------------------------------------------------------------------
 
 CPF_SINT = "98765432100"
+#: 🔴 SPEC-117 F2.1: o construtor do contexto passou a exigir o TENANT — sem
+#: `company_id` não nasce contexto (CLAUDE.md §7, o tenant não se adivinha). Este
+#: harness é do Chat Principal (papel `core`, identidade crua).
+EMPRESA_SINT = "11111111-1111-4111-8111-111111111111"
 CLIENTE_SINT = "Cliente Sintetico Spec"
 CODIGO_SINT = "777"
 
@@ -223,7 +227,6 @@ def _install_stubs():
     providers = sys.modules["app.providers"]
     providers.__path__ = [str(ROOT / "app" / "providers")]
     providers.__package__ = "app.providers"
-
     config = types.ModuleType("app.core.config")
     config.settings = types.SimpleNamespace(INFOCAP_BASE_URL="", DOCLING_SERVICE_URL=None)
     sys.modules["app.core.config"] = config
@@ -286,6 +289,11 @@ def _load_nodes():
     # limpo. Um guarda que nao roda nao guarda (CLAUDE.md 9.3).
     _load_file_module("app.agents.honestidade_do_handoff",
                       "app/agents/honestidade_do_handoff.py")
+    # 🔴 SPEC-117 F2: `nodes._safe_infocap_policy_context` passou a DELEGAR a
+    #    `app.services.policy_context`. Carregado POR ARQUIVO, como os outros
+    #    módulos reais deste harness. ⛔ Nada de dublê: o que se afirma é o
+    #    comportamento do MOTOR (CLAUDE.md §9.4).
+    _load_file_module("app.services.policy_context", "app/services/policy_context.py")
     return _load_file_module("app.agents.nodes", "app/agents/nodes.py")
 
 
@@ -341,7 +349,7 @@ def run():
         check("T1: token não vaza no resultado", "tok-sintetico-e2e" not in str(r1))
         check("T1: base_url não vaza no resultado", f"127.0.0.1:{port_no}" not in str(r1))
 
-        ctx1 = nodes._safe_infocap_policy_context(r1)
+        ctx1 = nodes._safe_infocap_policy_context(r1, company_id=EMPRESA_SINT, papel="core")
         check("T1: contexto seguro capturado", ctx1 and sorted(ctx1["policy_numbers"]) == ["1234567890", "9876543210"], ctx1)
 
         # ---- Turno 2: anáfora com 2 apólices -> força listagem (não escolhe) ----
@@ -364,7 +372,7 @@ def run():
         check("T3: resposta sem jargão técnico", not any(j in low3 for j in ("nosnum", "locator", "codfil", "evidence")), meta3["text"])
 
         # ---- Turno 4: contexto trava na selecionada; "ela" gruda sem repetir número ----
-        ctx3 = nodes._safe_infocap_policy_context(r3)
+        ctx3 = nodes._safe_infocap_policy_context(r3, company_id=EMPRESA_SINT, papel="core")
         check("T4: contexto fixa apólice selecionada", ctx3 and ctx3.get("selected_policy_number") == "1234567890", ctx3)
         args4 = nodes._policy_context_tool_args("ela cobre eletricista?", ctx3)
         check("T4: anáfora resolve direto para a selecionada", args4 and args4.get("policy_number") == "1234567890", args4)

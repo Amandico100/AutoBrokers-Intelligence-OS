@@ -386,10 +386,38 @@ def _policy_context_tool_args(question: str, context: Optional[Dict[str, Any]]) 
         identity["document"] = context.get("document")
     elif context.get("name"):
         identity["name"] = context.get("name")
-    else:
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-117 F3.5 — SEM IDENTIDADE CRUA, A TRAVA VAI PELO NÚMERO HUMANO
+    # ═══════════════════════════════════════════════════════════════════════
+    #
+    # Acima havia `else: return None`: sem `document` nem `name` CRUS a trava de
+    # anáfora não existia. 📊 No atendimento pelo WhatsApp o `data` nunca traz
+    # identidade crua (`infocap_connector._canonical_customer_identity`,
+    # `unmasked=False`), então esta função nunca travou nada no canal que fala
+    # com o SEGURADO — *"e a franquia dela?"* ia ao modelo sem consulta canônica.
+    #
+    # A consulta forçada passa a poder ir só pelo NÚMERO HUMANO da apólice
+    # selecionada, que a própria tool aceita (`InfocapLookupInput.policy_number`).
+    # ⚠️ E o GATILHO não mudou: quem decide se há anáfora de apólice continua
+    # sendo `_extract_context_policy_number` (termo de detalhe + anáfora + não
+    # conceitual + `POLICY_INTELLIGENCE_V2`). Sem esse gatilho, TODA mensagem do
+    # atendimento forçaria uma consulta — o oposto do G6 da SPEC-117.
+    # ⛔ Nada de argumento novo na tool, e ⛔ nada de `policy_ref`/locator cru: a
+    # `AIMessage` com os `tool_calls` FICA no histórico e volta ao modelo no turno
+    # seguinte — mandar locator técnico por ali seria vazá-lo ao modelo.
+    #
+    # 🔴 E A TRAVA DE SEGURANÇA CONTINUA, SÓ MUDOU DE FORMA: "há cliente?" deixou
+    # de ser "há CPF/nome CRUS aqui" e passou a ser "este contexto NASCEU de um
+    # cliente identificado" — o que o `cliente_ref` (pseudônimo HMAC, presente em
+    # TODO contexto que a porta de `policy_context` deixa nascer) atesta sem
+    # carregar dado pessoal. Um dicionário sem nenhum dos dois não é PolicyContext
+    # e não força consulta nenhuma.
+    if not identity and not str(context.get("cliente_ref") or "").strip():
         return None
 
     policy_number = _extract_context_policy_number(question, context)
+
     if policy_number:
         return {"policy_number": policy_number, "user_query": str(question or ""), **identity}
 
@@ -400,7 +428,14 @@ def _policy_context_tool_args(question: str, context: Optional[Dict[str, Any]]) 
         lowered = str(question or "").lower()
         candidates = [str(item or "").strip() for item in context.get("policy_numbers") or [] if str(item or "").strip()]
         if (
-            len(candidates) > 1
+            # 🔴 SPEC-117 F3.5: a LISTAGEM continua exigindo identidade. Sem ela
+            # (papel mascarado, 2+ apólices, nenhuma selecionada) a consulta iria
+            # à fonte com `user_query` e mais nada — pedir dado de contrato sem
+            # dizer de quem. ⚠️ Fica registrado como PENDÊNCIA da SPEC-117: o
+            # caso "2+ apólices + anáfora + papel mascarado" segue SEM trava, e
+            # não travar é melhor que consultar sem identidade.
+            identity
+            and len(candidates) > 1
             and _has_policy_detail_term(lowered)
             and _POLICY_ANAPHORA_RE.search(lowered)
             and not _CONCEPTUAL_QUESTION_RE.search(lowered)
@@ -409,73 +444,198 @@ def _policy_context_tool_args(question: str, context: Optional[Dict[str, Any]]) 
     return None
 
 
-def _safe_infocap_policy_context(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    if not isinstance(data, dict):
-        return None
-    matches = data.get("matches") or []
-    policy_numbers: list[str] = []
-    for match in matches:
-        if not isinstance(match, dict):
-            continue
-        number = str(match.get("policy_number") or match.get("numapo") or "").strip()
-        if number and number.lower() not in {"0", "none", "null", "-"}:
-            policy_numbers.append(number)
-    document = str(data.get("client_document") or "").strip()
-    name = str(data.get("client_name") or "").strip()
-    if not (document or name) or not policy_numbers:
-        return None
-    context: Dict[str, Any] = {
-        "document": document or None,
-        "name": name or None,
-        "policy_numbers": sorted(set(policy_numbers)),
-        "source": "infocap_customer_catalog",
-    }
-    # SPEC-016 E1 (G-A3): detalhe confirmado fixa a apólice selecionada para as
-    # próximas anáforas ("ela"). Somente número humano; nunca locator técnico.
-    if str(data.get("status") or "") == "found":
-        selected = data.get("selected") or data.get("policy") or {}
-        if isinstance(selected, dict):
-            selected_number = str(selected.get("policy_number") or selected.get("numapo") or "").strip()
-            if selected_number and selected_number.lower() not in {"0", "none", "null", "-"}:
-                context["selected_policy_number"] = selected_number
-                # 🔴 Decisão do Founder (17/09): a FAMÍLIA do ramo da apólice
-                #    (`resi`/`cond`/`empr`/`auto`…) segue com ela — é o que responde
-                #    "Qual seguro deseja utilizar?" sem perguntar ao segurado.
-                #    ⚠️ Categoria, não dado pessoal: o produto cru não sai daqui.
-                try:
-                    from app.providers.policy_data_provider import familia_de_ramo
+def _papel_do_agente(state: Dict[str, Any]) -> str:
+    """O papel com que a ferramenta do turno foi montada.
 
-                    familia = familia_de_ramo(selected.get("product"))
-                except Exception:  # noqa: BLE001
-                    familia = None
-                if familia:
-                    context["selected_policy_ramo"] = familia
-    return context
+    ⚠️ É a MESMA régua de `graph.py:473` (`agent_role=str(_agent_role or "core")`)
+    — e ela decide se o `data` traz identidade CRUA (`infocap_tool._unmasked`:
+    `agent_role in ("", "core")`). Duas réguas para o mesmo papel divergem no
+    dia em que uma muda, e a divergência aqui é "o contexto carrega CPF ou não".
+    """
+    return str((state.get("agent_data") or {}).get("agent_role") or "core")
+
+
+def _safe_infocap_policy_context(
+    data: Dict[str, Any],
+    *,
+    company_id: Optional[str] = None,
+    papel: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """ADAPTADOR FINO de `policy_context.construir_policy_context` (SPEC-117 F2.1).
+
+    🔴 **Nenhuma regra mora aqui.** Esta função tinha a PORTA do contexto da
+    apólice, e a porta estava quebrada: ela exigia `client_document` ou
+    `client_name` CRUS, que no papel do segurado (`attendance`) o conector nunca
+    devolve (📊 `nodes.py:423-425` em 26/09/2026, HEAD `79c9e80`). Resultado:
+    `None` no WhatsApp, e toda regra pendurada no contexto morta em silêncio.
+    A autoridade passou a ser `app/services/policy_context.py`, e o que sobra
+    aqui é só resolver `company_id` e `papel` — 📊 as duas coisas que o `data`
+    não carrega. ⛔ Não recriar aqui, nem em nenhum outro lugar, as chaves
+    legadas (`policy_numbers`, `selected_policy_*`, `source`): quem as monta é
+    `policy_context._derivar_chaves_legadas`, e só ele (CLAUDE.md §5).
+
+    🔴 **Sem `company_id`, NÃO nasce contexto** (CLAUDE.md §7). O padrão `None`
+    existe para os chamadores antigos que não passam tenant; ele devolve `None`,
+    nunca um contexto com tenant adivinhado. E o padrão de `papel` é
+    `attendance` — o papel MENOS privilegiado, o que não copia identidade crua:
+    errar para o lado de não vazar.
+    """
+    from app.services.policy_context import construir_policy_context
+
+    return construir_policy_context(
+        data,
+        company_id=str(company_id or ""),
+        papel=str(papel if papel is not None else "attendance"),
+    )
 
 
 def _merge_infocap_policy_context(
     prev: Optional[Dict[str, Any]], new: Optional[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
-    """SPEC-016.1 D6: uma consulta falha do MESMO cliente não pode apagar a
-    apólice selecionada na conversa. Cliente novo substitui o contexto inteiro."""
-    if not isinstance(new, dict):
-        return prev if isinstance(prev, dict) else None
-    if not isinstance(prev, dict):
-        return new
-    if new.get("selected_policy_number"):
-        return new
-    same_client = bool(
-        (new.get("document") and new.get("document") == prev.get("document"))
-        or (not new.get("document") and new.get("name") and new.get("name") == prev.get("name"))
-    )
-    prev_selected = str(prev.get("selected_policy_number") or "").strip()
-    if same_client and prev_selected and prev_selected in (new.get("policy_numbers") or []):
-        merged = dict(new)
-        merged["selected_policy_number"] = prev_selected
-        if prev.get("selected_policy_ramo"):
-            merged["selected_policy_ramo"] = prev["selected_policy_ramo"]
-        return merged
-    return new
+    """SPEC-016.1 D6, agora sobre identidade OPACA — e a regra mora num lugar só.
+
+    Uma consulta falha do MESMO cliente não pode apagar a apólice selecionada na
+    conversa; cliente novo substitui o contexto inteiro; corretora diferente
+    nunca mistura (CLAUDE.md §7). ⛔ A regra é de `policy_context.fundir`
+    (SPEC-117 F2.2) — aqui não fica cópia nenhuma dela.
+
+    ⚠️ O que MUDOU de verdade: "é o mesmo cliente?" deixou de ser comparação de
+    CPF/nome e passou a ser o `cliente_ref` (HMAC de `company_id:codfil:codigo`,
+    decisão D3). Sem `cliente_ref` a resposta é "não sei" — e não se herda
+    apólice de quem não se sabe se é a mesma pessoa.
+    """
+    from app.services.policy_context import fundir
+
+    return fundir(prev, new)
+
+
+#: 🔴 A família de ramo que o PORTAL atende (SPEC-117 F3.2). O portal ligado ao
+#: `portal_action` é o de VIDROS/LANTERNAS, que só existe na linha de automóvel
+#: (📊 `portal_tool.PortalActionInput.policy_number`: *"Numero da apolice AUTO
+#: escolhida"*). ⛔ Qualquer outra família e o número NÃO é injetado: mandar o
+#: portal de vidros abrir pedido contra uma apólice residencial não trava — sai
+#: da corretora como pedido válido, contra o contrato errado (CLAUDE.md §9.5).
+FAMILIA_DO_PORTAL = "auto"
+
+
+def _familia_do_ramo(ramo: Any) -> str:
+    """A família (`auto`/`resi`/`cond`/…) de um ramo qualquer, pela régua única.
+
+    ⛔ Não é uma segunda tabela de ramo: é `policy_data_provider.familia_de_ramo`.
+    `""` quando não se sabe — e "não sei" nunca é "não é".
+    """
+    try:
+        from app.providers.policy_data_provider import familia_de_ramo
+
+        return str(familia_de_ramo(ramo) or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _chave_da_seguradora(seguradora: Any) -> str:
+    """A chave canônica da seguradora — pela régua que já existe.
+
+    ⛔ Delega a `attendance_ficha.chave_da_seguradora`, que delega a
+    `corridor_playbooks.normalize_insurer_key`. 📊 O corpus da bancada usa
+    `"allianz"` minúsculo e o conector devolve `"ALLIANZ"`: sem a normalização,
+    a comparação modelo × sistema acusaria divergência em toda chamada.
+    """
+    try:
+        from app.services.attendance_ficha import chave_da_seguradora
+
+        return chave_da_seguradora(seguradora)
+    except Exception:  # noqa: BLE001
+        return str(seguradora or "").strip().lower()
+
+
+async def _contexto_da_apolice_do_turno(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """O PolicyContext deste turno: o ESTADO manda, a FICHA é a RETOMADA.
+
+    🔴 SPEC-117 G8. O checkpointer de fallback é um `MemorySaver`
+    (📊 `graph.py:50`): ele mora na memória do processo e **some no reinício**.
+    Sem esta leitura, o segurado que volta depois de um deploy perde a apólice
+    que o produto já tinha encontrado — e o ramo oficial, a seguradora e o
+    número que iriam ao acionamento voltam a ser o palpite do modelo.
+
+    ⚠️ O SELECT só acontece quando o checkpoint NÃO tem o contexto. Um SELECT por
+    turno em todo atendimento seria custo sem retorno, e a ficha já é lida uma
+    vez por turno na montagem do prompt (`graph.py:1649`).
+    🔴 E o tenant é conferido na volta: contexto gravado sob outra corretora é
+    descartado, nunca usado (CLAUDE.md §7).
+    """
+    do_estado = state.get("infocap_policy_context")
+    if isinstance(do_estado, dict) and do_estado.get("apolices"):
+        return do_estado
+
+    company_id = str(state.get("company_id") or "")
+    session_id = str(state.get("session_id") or "")
+    if not (company_id and session_id):
+        return do_estado if isinstance(do_estado, dict) else None
+    try:
+        from app.core.database import get_supabase_client
+        from app.services.attendance_ficha import carregar, contexto_da_apolice
+
+        ficha = await carregar(get_supabase_client().client, company_id, session_id)
+        da_ficha = contexto_da_apolice(ficha=ficha)
+        if isinstance(da_ficha, dict) and str(da_ficha.get("company_id") or "") == company_id:
+            logger.info("[APOLICE] contexto retomado da ficha durável (empresa=%s)",
+                        company_id)
+            return da_ficha
+    except Exception as exc:  # noqa: BLE001 — a retomada nunca derruba o turno
+        logger.warning("[APOLICE] contexto não relido da ficha (%s)", type(exc).__name__)
+    return do_estado if isinstance(do_estado, dict) else None
+
+
+async def _apolice_do_caso_do_turno(state: Dict[str, Any],
+                                    memo: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """🔴 A LEITURA ÚNICA da apólice do caso dentro do `tool_node`.
+
+    Delega a `attendance_ficha.apolice_do_caso`, que delega a
+    `policy_context.apolice_selecionada`. ⛔ Nenhum consumidor varre `apolices[]`
+    nem lê `selected_policy_*` por conta própria (SPEC-117 F3).
+
+    O `memo` é do TURNO: o dispatch, o portal, a consulta e a ficha leem o mesmo
+    contexto, resolvido uma vez — inclusive o SELECT da retomada.
+    """
+    if "apolice" not in memo:
+        from app.services.attendance_ficha import apolice_do_caso
+
+        memo["contexto"] = await _contexto_da_apolice_do_turno(state)
+        memo["apolice"] = apolice_do_caso(contexto=memo["contexto"])
+    return memo["apolice"]
+
+
+async def _gravar_apolice_do_caso(state: Dict[str, Any],
+                                  contexto: Optional[Dict[str, Any]]) -> None:
+    """A apólice do caso vai para a ficha DURÁVEL (SPEC-117 F2.3 · decisão D1).
+
+    `conversations.ficha_atendimento` é a coluna `jsonb` que já existe
+    (📊 B0.4 da SPEC-117 — **nenhuma migration**). O estado continua sendo o
+    espelho; a verdade durável é o Supabase (CLAUDE.md §6).
+
+    ⚠️ Nunca levanta: uma falha aqui custa a retomada deste caso, e deixar a
+    exceção subir custaria a resposta ao segurado. É a mesma regra do resto do
+    arquivo da ficha.
+    """
+    company_id = str(state.get("company_id") or "")
+    session_id = str(state.get("session_id") or "")
+    if not (company_id and session_id) or not isinstance(contexto, dict):
+        return
+    if str(contexto.get("company_id") or "") != company_id:
+        # Contexto de outra corretora não se grava nesta conversa (CLAUDE.md §7).
+        logger.error("[APOLICE] contexto de outra corretora NÃO gravado")
+        return
+    try:
+        from app.core.database import get_supabase_client
+        from app.services.attendance_ficha import gravar, novidades_da_apolice
+
+        novidades = novidades_da_apolice(contexto)
+        if not novidades:
+            return
+        await gravar(get_supabase_client().client, company_id, session_id, novidades)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[APOLICE] apólice do caso não gravada (%s) — o estado "
+                       "deste processo continua com ela", type(exc).__name__)
 
 
 def _normalize_money_amount(value: Any) -> str:
@@ -1774,11 +1934,18 @@ _DO_SISTEMA_DE_GESTAO = ("veiculo_placa", "veiculo_descricao")
 
 
 async def _gravar_ficha_do_turno(state: dict, tool_name: str,
-                                 tool_args: dict, result) -> None:
+                                 tool_args: dict, result,
+                                 contexto_da_apolice: Optional[dict] = None) -> None:
     """Guarda o que este turno apurou, para o próximo não reperguntar.
 
     SPEC-063 Bloco S. É o lado da ESCRITA do laço que fecha o buraco: o modelo
     declara os slots na tool, a ficha grava, e o turno seguinte mostra de volta.
+
+    🔴 SPEC-117 F3.3: `contexto_da_apolice` é o PolicyContext do turno, resolvido
+    UMA vez pelo `tool_node` (estado → ficha durável). **Havendo apólice do
+    sistema de gestão, é a do sistema que vai para a ficha** — o `insurer_key` e
+    o `line_kind` que o MODELO escreveu ficam só como sinal de divergência, e a
+    divergência vira log. Sem apólice do sistema, segue como antes: o modelo.
 
     Nunca levanta para fora: uma falha aqui custa a memória de um turno; deixar
     a exceção subir custaria a resposta ao segurado.
@@ -1788,8 +1955,11 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
         FASE_COM_HUMANO,
         ORIGEM_CLIENTE,
         ORIGEM_SISTEMA_DE_GESTAO,
+        apolice_do_caso,
         confirmacao,
         gravar,
+        linha_do_corredor,
+        novidades_da_apolice,
         slots_do_atendimento,
     )
 
@@ -1800,6 +1970,18 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
 
     novidades: dict = {}
 
+    # 🔴 SPEC-117 F3.3 — a LEITURA ÚNICA da apólice do caso. `contexto_da_apolice`
+    #    já vem resolvido pelo `tool_node` (estado → ficha); o `state` fica como
+    #    caminho de quem chama esta função de fora do nó.
+    apolice = apolice_do_caso(contexto=contexto_da_apolice, state=state)
+
+    # 🔴 A apólice do caso vai para a ficha DURÁVEL no mesmo ato, e com os dois
+    #    tipos certos: `apolice` STRING (o número humano, que é o que o aviso à
+    #    atendente humana imprime) e `apolice_do_caso` DICT (a estrutura).
+    #    📊 Até 26/09/2026 ninguém escrevia `ficha["apolice"]`, e por isso o
+    #    aviso ao humano saía sem o número (`human_handoff.py:607`).
+    novidades.update(novidades_da_apolice(contexto_da_apolice))
+
     if tool_name == "request_human_agent":
         # Devolvido a uma pessoa. A fase trava aqui: só um humano tira daqui.
         novidades["fase"] = FASE_COM_HUMANO
@@ -1807,7 +1989,12 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
         # Cada confirmação carrega a ORIGEM: o bloco do prompt diz ao modelo o
         # que ele NÃO pode perguntar de novo (o cliente disse) e o que ele pode
         # só CONFIRMAR numa frase (veio do sistema de gestão).
-        tem_infocap = bool(state.get("infocap_policy_context"))
+        # 🔴 SPEC-117 F3.3: "tem InfoCap" passou a ser "HÁ APÓLICE DO CASO" — pela
+        #    leitura única, não por "existe um dicionário no estado". Duas
+        #    candidatas sem escolha não são a apólice do caso, e marcar a placa
+        #    como vinda do sistema nesse ponto seria marcar origem de um contrato
+        #    que ninguém escolheu ainda.
+        tem_infocap = bool(apolice)
         confirmados = {}
         for chave in slots_do_atendimento():
             valor = tool_args.get(chave)
@@ -1826,8 +2013,10 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
                 from app.providers.policy_data_provider import NOME_DA_FAMILIA, familia_de_ramo
 
                 _familia = familia_de_ramo(_ramo)
-                _do_sistema = _familia and _familia == str(
-                    (state.get("infocap_policy_context") or {}).get("selected_policy_ramo") or "")
+                # 🔴 SPEC-117 F3.3: a comparação é com a apólice do caso, pela
+                #    leitura única — a regra do ramo não se duplica aqui.
+                _do_sistema = bool(_familia) and _familia == str(
+                    (apolice or {}).get("ramo") or "")
                 if _familia in ("resi", "cond", "empr"):
                     confirmados["qual_seguro_opcao"] = confirmacao(
                         NOME_DA_FAMILIA[_familia],
@@ -1840,8 +2029,38 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
                                 ("line_kind", "ramo"),
                                 ("subservice", "servico"),
                                 ("servico", "servico")):
-            if tool_args.get(origem):
-                novidades[destino] = tool_args[origem]
+            if not tool_args.get(origem):
+                continue
+            # ═══════════════════════════════════════════════════════════════
+            # 🔴 SPEC-117 F3.3 — HAVENDO APÓLICE DO SISTEMA, A DO SISTEMA VENCE
+            # ═══════════════════════════════════════════════════════════════
+            #
+            # Estas duas linhas copiavam `insurer_key` e `line_kind` dos
+            # `tool_args` — isto é, do que o MODELO escreveu — direto para a
+            # ficha durável. A ficha é lida depois por
+            # `graph._slots_obrigatorios_do_caso` (que resolve o CORREDOR) e por
+            # `human_handoff._linha_da_apolice` (o aviso à atendente). Um palpite
+            # do modelo virava o corredor do caso e o texto que o humano lê, sem
+            # nada travar (CLAUDE.md §9.5).
+            _do_sistema = ""
+            if destino == "seguradora":
+                _do_sistema = _chave_da_seguradora((apolice or {}).get("seguradora"))
+            elif destino == "ramo":
+                # ⚠️ A LINHA do corredor, não a família crua: `graph.py:798`
+                # entrega `ficha["ramo"]` a `resolve_playbook_ref` como
+                # `line_kind`, e ele não conhece `"resi"` (ver
+                # `attendance_ficha.LINHA_DO_CORREDOR_POR_FAMILIA`).
+                _do_sistema = linha_do_corredor((apolice or {}).get("ramo"))
+            if _do_sistema:
+                _do_modelo = str(tool_args[origem] or "").strip().lower()
+                if _do_modelo and _do_modelo != _do_sistema:
+                    # 📊 A métrica de divergência modelo × sistema na FICHA.
+                    logger.warning("[APOLICE] %s DIVERGENTE na ficha: modelo=%r "
+                                   "sistema=%r — vale o sistema",
+                                   destino, _do_modelo, _do_sistema)
+                novidades[destino] = _do_sistema
+                continue
+            novidades[destino] = tool_args[origem]
         # A placa resolvida pela InfoCap é prova de apólice localizada; o
         # modelo não pode marcar isso sozinho.
         if tool_args.get("dados_confirmados") is True and tool_args.get("veiculo_placa"):
@@ -1888,6 +2107,9 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     policy_response_contract = None
     policy_final_response = None
     infocap_policy_context = None
+    # 🔴 SPEC-117 F3: a apólice do caso é resolvida UMA vez por turno, e todos os
+    #    consumidores (consulta, acionamento, portal, ficha) leem a MESMA.
+    memo_da_apolice: Dict[str, Any] = {}
 
     # Extrair agent_id do state
     agent_data = state.get("agent_data")
@@ -1993,8 +2215,13 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                             [t for t in _recent_humans[-3:] if t]) or current_user_query
                         # ② A FICHA do atendimento: a apólice já confirmada no caso
                         #    vence a dedução por texto — e impede a segunda pergunta.
-                        _ficha = state.get("infocap_policy_context")
-                        _ja_escolhida = str((_ficha or {}).get("selected_policy_number") or "").strip()
+                        # 🔴 SPEC-117 F3: pela LEITURA ÚNICA, e a partir da ficha
+                        #    durável quando o processo reiniciou (G8). Antes isto
+                        #    lia `selected_policy_number` do estado — que no
+                        #    WhatsApp nunca existia (📊 `nodes.py:423-425`).
+                        _apolice_do_caso = await _apolice_do_caso_do_turno(
+                            state, memo_da_apolice)
+                        _ja_escolhida = str((_apolice_do_caso or {}).get("numapo") or "").strip()
                         # 🔴 SPEC-EXTRA-001.5.1 · CONSERTO B2 — a CONVERSA viaja
                         #    junto, pelo MESMO caminho de `insurer_dispatch`
                         #    (abaixo) e de `request_human_agent` (acima): o
@@ -2021,14 +2248,76 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         # 🔴 Decisão do Founder (17/09): o RAMO DA APÓLICE localizada
                         #    vence o que o modelo tenha escrito — o sistema de gestão
                         #    é a fonte de verdade do ramo (D-PILOTO-11).
-                        _ramo_do_sistema = str((state.get("infocap_policy_context") or {})
-                                               .get("selected_policy_ramo") or "").strip()
+                        #
+                        # 🔴 SPEC-117 F3.1: o ramo passa a sair da LEITURA ÚNICA da
+                        #    apólice do caso, e a SEGURADORA vem com ele. Uma tecla
+                        #    de URA na seguradora errada não trava: ela chega ao
+                        #    segurado como "sua assistência foi aberta" e nada foi
+                        #    aberto (CLAUDE.md §9.5).
+                        _apolice_do_caso = await _apolice_do_caso_do_turno(
+                            state, memo_da_apolice)
+                        _ramo_do_sistema = str((_apolice_do_caso or {}).get("ramo") or "").strip()
                         if _ramo_do_sistema:
+                            _ramo_do_modelo = str(tool_args.get("ramo_da_apolice") or "").strip()
+                            if _ramo_do_modelo and _familia_do_ramo(_ramo_do_modelo) != _ramo_do_sistema:
+                                # 📊 A métrica de divergência modelo × sistema.
+                                logger.warning(
+                                    "[APOLICE] ramo DIVERGENTE no acionamento: "
+                                    "modelo=%r sistema=%r — vale o sistema",
+                                    _ramo_do_modelo, _ramo_do_sistema)
                             tool_args = {**tool_args, "ramo_da_apolice": _ramo_do_sistema}
+                        _seguradora_do_sistema = _chave_da_seguradora(
+                            (_apolice_do_caso or {}).get("seguradora"))
+                        if _seguradora_do_sistema:
+                            _seguradora_do_modelo = _chave_da_seguradora(
+                                tool_args.get("insurer_key"))
+                            if (_seguradora_do_modelo
+                                    and _seguradora_do_modelo != _seguradora_do_sistema):
+                                logger.warning(
+                                    "[APOLICE] seguradora DIVERGENTE no acionamento: "
+                                    "modelo=%r sistema=%r — vale o sistema",
+                                    _seguradora_do_modelo, _seguradora_do_sistema)
+                            tool_args = {**tool_args,
+                                         "insurer_key": _seguradora_do_sistema}
                     elif tool_name == "portal_action":
                         # SPEC-020: telefone do segurado vem da sessão WhatsApp
                         # (ack imediato "tô abrindo agora" antes do portal rodar).
                         tool_args = {**tool_args, "session_id": str(state.get("session_id") or "")}
+                        # ═══════════════════════════════════════════════════════
+                        # 🔴 SPEC-117 F3.2 — O PORTAL É DE VIDROS/AUTO, E SÓ.
+                        # ═══════════════════════════════════════════════════════
+                        #
+                        # O número da apólice do caso passa a ir ao portal (o
+                        # schema aceita: 📊 `portal_tool.py:131`,
+                        # `policy_number: Optional[str]`), porque sem ele um
+                        # segurado com duas apólices auto vigentes vira uma
+                        # pergunta que o produto já sabia responder.
+                        #
+                        # ⚠️ MAS SÓ QUANDO A FAMÍLIA É `auto`. Injetar o número de
+                        # uma apólice `resi`/`cond`/`empr`/`vida` faria o portal de
+                        # VIDROS abrir pedido contra uma apólice RESIDENCIAL — e
+                        # isso não trava: sai da corretora como pedido válido, com
+                        # o contrato errado (CLAUDE.md §9.5). A constante abaixo
+                        # DECIDE entre conteúdos, então a razão fica ao lado dela:
+                        # o portal atendido aqui é o de vidros/lanternas, que só
+                        # existe na linha de automóvel.
+                        _apolice_do_caso = await _apolice_do_caso_do_turno(
+                            state, memo_da_apolice)
+                        _numero_da_apolice = str((_apolice_do_caso or {}).get("numapo") or "").strip()
+                        _familia_da_apolice = str((_apolice_do_caso or {}).get("ramo") or "").strip()
+                        if _numero_da_apolice and _familia_da_apolice == FAMILIA_DO_PORTAL:
+                            _numero_do_modelo = str(tool_args.get("policy_number") or "").strip()
+                            if _numero_do_modelo and _numero_do_modelo != _numero_da_apolice:
+                                logger.warning(
+                                    "[APOLICE] apólice DIVERGENTE no portal: "
+                                    "modelo=%r sistema=%r — vale o sistema",
+                                    _numero_do_modelo, _numero_da_apolice)
+                            tool_args = {**tool_args, "policy_number": _numero_da_apolice}
+                        elif _numero_da_apolice:
+                            logger.info(
+                                "[APOLICE] portal SEM número: a apólice do caso é "
+                                "da família %r e o portal é de %r",
+                                _familia_da_apolice, FAMILIA_DO_PORTAL)
                     elif tool_name == "delegate_to_subagent":
                         # 🤖 SubAgent: injeta contexto do orquestrador
                         delegation_config = None
@@ -2119,8 +2408,14 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                     # numa chamada que estourou não é dado confirmado.
                     if tool_name in ("insurer_dispatch", "request_human_agent"):
                         try:
+                            # 🔴 SPEC-117 F3.3/F3.4: a apólice do caso vai junto —
+                            #    é ela que grava `ficha["apolice"]`, e é daí que
+                            #    `human_handoff._linha_da_apolice` tira o número
+                            #    que a atendente humana lê no aviso.
+                            await _apolice_do_caso_do_turno(state, memo_da_apolice)
                             await _gravar_ficha_do_turno(
-                                state, tool_name, tool_args, result)
+                                state, tool_name, tool_args, result,
+                                contexto_da_apolice=memo_da_apolice.get("contexto"))
                         except Exception as _e:  # noqa: BLE001
                             logger.warning("[FICHA] turno sem memória (%s)",
                                            type(_e).__name__)
@@ -2167,7 +2462,14 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                                     policy_response_contract,
                                 )
                             data = result.get("data") if isinstance(result.get("data"), dict) else {}
-                            infocap_policy_context = _safe_infocap_policy_context(data)
+                            # 🔴 SPEC-117 F2.1: o contexto nasce com o TENANT e o
+                            #    PAPEL do turno — sem tenant não nasce (§7), e o
+                            #    papel decide se identidade crua pode existir nele.
+                            infocap_policy_context = _safe_infocap_policy_context(
+                                data,
+                                company_id=str(state.get("company_id") or ""),
+                                papel=_papel_do_agente(state),
+                            )
                             if _policy_intelligence_v2() and str(result.get("content") or "").strip():
                                 # infocap_briefing_only (SPEC-016.1 D10): a LLM recebe
                                 # SÓ o briefing humanizado — nunca o JSON cru com
@@ -2246,9 +2548,16 @@ async def tool_node(state: AgentState, tools: list) -> dict:
         # fiscaliza). Só identity_mismatch encerra direto com o texto seguro.
         if not _policy_intelligence_v2() or policy_response_contract.get("result_kind") == "identity_mismatch":
             return_dict["final_response"] = policy_final_response
-    merged_context = _merge_infocap_policy_context(state.get("infocap_policy_context"), infocap_policy_context)
+    merged_context = _merge_infocap_policy_context(
+        memo_da_apolice.get("contexto", state.get("infocap_policy_context")),
+        infocap_policy_context)
     if merged_context:
         return_dict["infocap_policy_context"] = merged_context
+        if infocap_policy_context:
+            # 🔴 SPEC-117 F2.3/G8: a apólice que este turno ENCONTROU vira memória
+            #    durável. Só quando nasceu contexto novo — gravar a cada turno
+            #    seria um UPDATE por mensagem, sem nenhum fato novo.
+            await _gravar_apolice_do_caso(state, merged_context)
 
     return return_dict
 
