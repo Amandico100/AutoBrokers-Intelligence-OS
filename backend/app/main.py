@@ -832,6 +832,42 @@ def _sinais_do_codigo() -> dict:
         sinais["excecoes_da_janela_tamanho"] = None
         sinais["excecoes_da_janela_fora_do_teste"] = None
 
+    # 🔴 O TRANSPORTE DO FORMULÁRIO NATIVO — SPEC-118 F1, 26/09/2026.
+    #
+    # ⛔ **O que estas duas linhas NÃO dizem: que o canal aceita a resposta.**
+    # Isso não se sabe sem mandar uma mensagem de verdade, e só a rota
+    # `POST /api/whatsapp-integrations/prova-de-formulario` faz isso — com linha
+    # de controle. Um sinal aqui que fingisse medir o canal seria pior que sinal
+    # nenhum, porque viria com a autoridade de um número.
+    #
+    # 📊 E a tentação era real: em 26/09/2026 o `swagger/doc.json` do Evolution
+    # GO listava 88 rotas e NENHUMA com `interactive`, enquanto
+    # `/send/interactiveResponse` respondia HTTP 200. Conferir capacidade pelo
+    # catálogo teria desligado o único transporte que o produto tem.
+    #
+    # O que estas duas linhas dizem, e é honesto sem tocar em rede:
+    #   formulario_embrulho_viaja       o conserto de 03/08 está NESTA imagem?
+    #                                   (o embrulho é a diferença entre 200 e 479)
+    #   formulario_envio_desligado      alguém desligou o envio pela env?
+    try:
+        from app.services.whatsapp.providers.evolution_go import (
+            corpo_do_flow_reply, rota_de_flow_reply)
+
+        # Sem rede e sem env: `corpo_do_flow_reply` é puro, e é ele que decide o
+        # que vai no fio. Números fictícios, nenhum telefone real, nenhum segredo.
+        _corpo_de_prova = corpo_do_flow_reply(
+            to="0", flow_token="0:0:0", params={"prova": "1"},
+            nome_do_envelope="galaxy_message")
+        sinais["formulario_embrulho_viaja"] = (
+            _corpo_de_prova.get("wrapInDocumentWithCaption") is True)
+        sinais["formulario_envio_desligado"] = rota_de_flow_reply() == ""
+    except Exception:  # noqa: BLE001
+        # AS DUAS, e `None` — não `False`. `False` aqui seria "conferi, e o
+        # embrulho não está no código", que é um chamado de madrugada; chave
+        # ausente é indistinguível de backend velho.
+        sinais["formulario_embrulho_viaja"] = None
+        sinais["formulario_envio_desligado"] = None
+
     # O template do briefing existe no catálogo? Sem ele, o artefato morre em
     # chave estrangeira e o briefing fica em `pending` sem ninguém saber.
     try:
