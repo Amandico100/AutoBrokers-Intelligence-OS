@@ -237,6 +237,68 @@ def verificar(teste: str) -> List[Resultado]:
         _soltar_a_trava(_fd)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 SPEC-118 F5 · A RESTAURAÇÃO NÃO PODE DESISTIR — ela é a única coisa entre
+#    uma medição e um arquivo de PRODUÇÃO mutado dentro da árvore de trabalho.
+#
+# 📊 MEDIDO em 26/09/2026 20:37, rodando `medir_rota.py --todas`:
+#    ```
+#    shutil.copy2(copia, alvo)
+#    OSError: [WinError 1224] A operação solicitada não pode ser executada em um
+#             arquivo com uma seção mapeada pelo usuário aberta
+#    ```
+#    O `finally` estourou, a régua morreu na primeira mutação, e
+#    `backend/app/services/insurer_dispatch_service.py` FICOU com
+#    `schedule.get("ZZ_PERIODO_DESLIGADO_PELA_MUTACAO")` na árvore
+#    (📊 `git diff --stat` → `1 file changed, 1 insertion(+), 1 deletion(-)`).
+#
+# ⚠️ A causa não é o Python: era um `grep -r` recursivo caminhando por
+#    `backend/` no mesmo instante. No Windows, quem tem o arquivo mapeado faz
+#    `CopyFile2` falhar — e o antivírus, o indexador e um editor aberto fazem a
+#    mesma coisa. **Não é caso raro; é corrida.**
+#
+# 🔴 É o agravamento de P-E0013-09, e o preço já foi pago nesta MESMA SPEC: o
+#    commit `d910613` existe só para desfazer uma mutação que entrou no
+#    `26b2b72`. Uma mutação commitada dá pontos de graça nas 73 rotas.
+#
+# A regra: tenta a cópia; se o sistema recusar, ESCREVE o conteúdo que já está
+# na memória (`fonte`); e se as duas falharem, grita o nome do arquivo em vez de
+# morrer calado — porque um `OSError` do `shutil` não diz a quem lê que há um
+# arquivo de produção mutado esperando `git checkout`.
+_TENTATIVAS_DE_RESTAURO = 6
+
+
+def _restaurar(copia: str, alvo: str) -> None:
+    ultimo: Exception | None = None
+    for tentativa in range(_TENTATIVAS_DE_RESTAURO):
+        try:
+            shutil.copy2(copia, alvo)
+            return
+        except OSError as erro:            # noqa: PERF203
+            ultimo = erro
+            time.sleep(0.25 * (tentativa + 1))
+    # ⚠️ Bytes, não texto: o restauro tem de sair IDÊNTICO ao hash de antes, e
+    #    reescrever de uma string já normalizada trocaria CRLF por LF em
+    #    silêncio — um "restaurado" que o próprio `_hash` reprovaria.
+    try:
+        with open(copia, "rb") as fh:
+            bruto = fh.read()
+        with open(alvo, "wb") as fh:
+            fh.write(bruto)
+        print(f"  ⚠️ restauro por ESCRITA (copy2 recusou: {ultimo})",
+              file=sys.stderr)
+        return
+    except OSError as erro:
+        raise RuntimeError(
+            "\U0001f534 A MUTACAO NAO FOI DESFEITA e o arquivo de PRODUCAO "
+            f"continua mutado na arvore: {alvo}\n"
+            f"   copy2 falhou: {ultimo}\n"
+            f"   escrita falhou: {erro}\n"
+            "   ⚠️ RODE `git checkout -- <o arquivo acima>` ANTES de commitar "
+            "qualquer coisa (P-E0013-09)."
+        ) from erro
+
+
 def _rodar_mutacoes(caminho_teste: str, mutacoes) -> List[Resultado]:
     fora: List[Resultado] = []
     for arquivo, de, para, rotulo in mutacoes:
@@ -261,7 +323,7 @@ def _rodar_mutacoes(caminho_teste: str, mutacoes) -> List[Resultado]:
                 saida = _rodar(caminho_teste)  # 3 · roda
                 vermelha = _assercao_vermelha(saida, rotulo)
             finally:
-                shutil.copy2(copia, alvo)      # 4 · RESTAURA da cópia
+                _restaurar(copia, alvo)        # 4 · RESTAURA da cópia
 
         h_depois = _hash(alvo)
         identico = h_antes == h_depois
