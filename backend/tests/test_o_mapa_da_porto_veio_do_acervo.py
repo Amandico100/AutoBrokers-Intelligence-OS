@@ -22,25 +22,30 @@ cada teste aqui fecha um:
 
 ## 🔴 O QUE ESTE ARQUIVO **NÃO** AFIRMA (e é metade do valor dele)
 
-📊 Medido em 26/09/2026, com o motor real:
+📊 Medido em 26/09/2026, com o motor real — ANTES da fatia da lógica (F2b):
 
 ```
 montar_resposta_de_flow(<mapa da Porto>, <slots do caso>)
   → ok=False, missing=[rua, numero_residencia, complemento, bairro,
-                       cidade, estado, ponto_referencia]
+                       cidade, estado, ponto_referencia]   motivo: valor_nao_reconhecido
 ```
 
-O montador resolve valor **só por lista de opções** (`_resolver_opcao_de_flow`);
-um componente de TEXTO com valor real cai em `valor_nao_reconhecido`. O portão
-de coleta já conhece a categoria (*"texto livre: não há lista para conferir"*,
-`insurer_dispatch_service.py:1467`) — o montador ainda não. **Logo o mapa da
-Porto, hoje, não responde nada**, e este arquivo diz isso em voz alta em vez de
-deixar alguém acreditar que o formulário da Porto está resolvido.
+O montador resolvia valor **só por lista de opções** (`_resolver_opcao_de_flow`);
+um componente de TEXTO com valor real caía em `valor_nao_reconhecido`.
 
-⚠️ `test_o_montador_AINDA_nao_sabe_responder_campo_de_TEXTO` fica **VERMELHO** no
-dia em que a fatia da lógica ensinar o montador — e é exatamente o que se quer
-(`CLAUDE.md` §9.3: quando o fato muda, o teste muda com ele). A asserção que
-entra no lugar dele já está escrita ali, na docstring.
+🔴 **A F2b ensinou o montador, no mesmo dia**, e a medição virou:
+
+```
+  → ok=False, missing=['latitude', 'longitude']            motivo: sem_chute
+```
+
+⚠️ **A afirmação deste arquivo continua a mesma, e é a que importa: o mapa da
+Porto, sozinho, NÃO responde.** O que mudou é o motivo — de "o valor do caso não
+serve" (que era falso) para "faltam as duas coordenadas que o Flow da Porto
+geocodifica e que nós não temos de onde tirar". `test_o_montador_JA_responde_
+texto_e_o_que_falta_e_a_COORDENADA` guarda isso, e a prova positiva do texto está
+em `test_o_montador_responde_texto_e_o_portao_cobra_antes.py` (§9.3: quando o
+fato muda, o teste muda com ele, e a lição migra em vez de morrer).
 """
 from __future__ import annotations
 
@@ -326,41 +331,51 @@ def test_latitude_e_longitude_sao_sem_chute_e_NAO_viram_zero():
         "apareceu um componente de coordenada na tela — a captura não tem")
 
 
-def test_o_montador_AINDA_nao_sabe_responder_campo_de_TEXTO():
-    """📊 A medição que impede a SPEC de se declarar pronta cedo.
+def test_o_montador_JA_responde_texto_e_o_que_falta_e_a_COORDENADA():
+    """🔴 ESTE TESTE MIGROU EM 26/09/2026 (SPEC-118 F2b) — e a lição migrou com
+    ele, em vez de morrer (`CLAUDE.md` §9.3).
 
-    ```
-    montar_resposta_de_flow(<mapa da Porto>, <slots da captura>)
-      → ok=False, missing=[rua, numero_residencia, complemento, bairro,
-                           cidade, estado, ponto_referencia]
-    ```
+    O que ele afirmava, medido e verdadeiro até a fatia da lógica existir::
 
-    `_resolver_opcao_de_flow` só resolve por lista de opções; componente de
-    TEXTO com valor real cai em `valor_nao_reconhecido`. Logo o mapa da Porto,
-    sozinho, **não responde nada** — e um teste que afirmasse o contrário seria
-    o "gate verde sem produto" que o protocolo existe para matar.
+        montar_resposta_de_flow(<mapa da Porto>, <slots da captura>)
+          → ok=False, missing=[rua, numero_residencia, complemento, bairro,
+                               cidade, estado, ponto_referencia]
+          motivo: valor_nao_reconhecido   (o montador só sabia LISTA DE OPÇÕES)
 
-    ⚠️ 🔴 ESTE GUARDA FICA VERMELHO quando o montador aprender texto — e é o que
-    se quer (`CLAUDE.md` §9.3). Nesse dia, troque-o por::
+    📊 O que ele afirma agora, medido com o mesmo comando::
 
-        montado = PB.montar_resposta_de_flow(flow, slots)
-        assert montado["ok"] is True, montado["missing_detail"]
-        assert set(montado["params"]) == set(
-            CAPTURA["chaves_da_resposta"]["presentes_em_3_de_3"]) | {"complemento"}
+        → ok=False, missing=['latitude', 'longitude']   motivo: sem_chute
 
-    …e mantenha `test_a_resposta_nunca_sai_pela_metade` como está: ele vale nos
-    dois mundos.
+    **Os sete campos de texto saíram.** O que sobra são as duas coordenadas que o
+    Flow da Porto geocodifica sozinho e que nós não temos de onde tirar (📊 0
+    geocodificadores no backend) — `sem_chute`, handoff com o motivo escrito,
+    ⛔ nunca zero inventado.
+
+    ⚠️ A GARANTIA É A MESMA de antes: **o mapa da Porto, sozinho, ainda não
+    responde**, e este arquivo continua dizendo isso em voz alta em vez de deixar
+    alguém acreditar que o formulário está resolvido. O que mudou é que agora o
+    motivo é honesto: `valor_nao_reconhecido` acusava o endereço do segurado de
+    estar errado, quando o errado era o motor.
+
+    🔴 A prova POSITIVA do texto (o corpo inteiro, com as 9 chaves que sobram)
+    está em `test_o_montador_responde_texto_e_o_portao_cobra_antes.py`, com a
+    linha de controle que tira as duas coordenadas de uma CÓPIA do mapa.
     """
     flow = PB.native_flow(_porto(), FLOW_ENDERECO)
     montado = PB.montar_resposta_de_flow(
         flow, dict(CAPTURA["slots_do_corredor_equivalentes"]))
-    assert montado["ok"] is False, (
-        "o montador passou a responder campo de texto — ótimo. Agora migre este "
-        "teste para a asserção positiva escrita na docstring")
+    assert montado["ok"] is False and montado["params"] is None, (
+        "a resposta da Porto saiu sem latitude/longitude — ou apareceu uma FONTE "
+        "real para elas (então escreva a medição no mapa e migre este teste), ou "
+        "alguém completou a resposta com um número inventado")
+    assert montado["missing"] == ["latitude", "longitude"], (
+        f"o que falta mudou: {montado['missing']} — um campo de TEXTO de volta "
+        f"aqui significa que o passthrough do montador parou de funcionar")
     motivos = {d["motivo"] for d in montado["missing_detail"]}
-    assert motivos == {"valor_nao_reconhecido"}, (
-        f"o motivo da recusa mudou: {motivos} — se virou `sem_valor`, o mapa "
-        "deixou de casar os slots do corredor")
+    assert motivos == {"sem_chute"}, (
+        f"o motivo da recusa mudou: {motivos} — `valor_nao_reconhecido` é o "
+        "defeito de antes da F2b (o motor não sabia ler texto); `sem_valor` seria "
+        "o mapa ter deixado de casar os slots do corredor")
 
 
 def test_a_resposta_nunca_sai_pela_metade():
