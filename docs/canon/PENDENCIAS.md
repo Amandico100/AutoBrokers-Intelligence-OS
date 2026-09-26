@@ -11568,3 +11568,64 @@ foi construída. **Destrava:** o Implantar do smith-api; se falhar, o log diz o 
 `CostCallbackHandler._metadados_por_run` só é limpo em `on_llm_end` — erro deixa a entrada (red team P9); `SUPPORTED_PROVIDERS`
 lê o catálogo a cada acesso e, sem banco e sem snapshot, devolve vazio (juiz P10, fail-closed). **Destrava:** mapear o papel;
 limpar no erro. **Dono:** 🤖. **Custo de esquecer:** custo do auxiliar pelo grafo no modelo errado; vazamento lento de memória.
+
+## P-S117-01 · `tool_esperada` e `args_esperados` não funcionam no nível N2 da bancada
+📊 26/09/2026 (F4a): `app/services/evals/bancada.py:823` chama `_saida_do_agente([], …)`, então `saida["tool_calls"]`
+nasce `[]` e **todo** oráculo N2 que declare `tool_esperada` recebe FAIL falso *"respondeu só com texto"*. Consequência:
+o **valor** de um argumento (por exemplo o `line_kind` que o acionamento recebe, o G3 da SPEC-117) **não é afirmável
+pelo corpus** — tem de ser afirmado em teste de unidade. **Destrava:** `_saida_do_agente` receber as `tool_calls`
+do medidor (`tool_calls_todas`), como o N1 já faz. **Dono:** 🤖. **Custo de esquecer:** a bancada mede metade do que
+parece medir no nível que mais importa, e todo caso N2 novo nasce com um FAIL que ninguém sabe explicar.
+
+## P-S117-02 · a reprovação de `atd-n1-humano-bati-carro` é do instrumento, não do modelo
+📊 26/09/2026: no grupo `03af4327-80c5-4ec6-b21b-624299cd8542` o rastro registra `tool_calls: ['request_human_agent']`
+e o avaliador diz *"não chamou `request_human_agent` — respondeu só com texto"*. INFERÊNCIA (mesma causa da P-S117-01):
+`_saida_do_agente` lê `tool_calls` só da **última** `AIMessage`, enquanto `tool_calls_todas` vem do medidor.
+**Destrava:** conferir esse elo e reclassificar o caso. **Dono:** 🤖. **Custo de esquecer:** um número de qualidade do
+atendimento carrega uma reprovação que não existe, e a conta dos 68,9 % fica pior do que a realidade.
+
+## P-S117-03 · o tenant B da bancada roda com o nome da corretora A no prompt
+📊 26/09/2026 (F4a): `bancada._estado_base` lê um `agente` só; `outro_tenant` não tem `agente` próprio. O braço do
+tenant B monta o prompt com o `company_display_name` de A. **Destrava:** `outro_tenant` aceitar `agente`.
+**Dono:** 🤖. **Custo de esquecer:** todo teste de dois tenants da bancada (inclusive o `atd-n2-dois-tenants` que já
+existia) prova o isolamento de dado, mas **não** o de identidade da corretora — e é justamente o que o CLAUDE.md §13.9 pede.
+
+## P-S117-04 · três campos que o aviso à atendente humana lê e ninguém escreve
+📊 26/09/2026: `grep -rn '\["placa"\]\|\["narrativa"\]\|\["faltando"\]' backend/app` → **nenhum escritor** de
+`ficha_atendimento["placa"]`, `["narrativa"]` e `["faltando"]`, e `human_handoff._linha_da_apolice` (`:607`),
+`_narrativa` (`:625`) e `_o_que_falta` (`:634`) os leem. É a **mesma classe** do defeito que esta SPEC consertou em
+`ficha["apolice"]`. A placa existe em `confirmados["veiculo_placa"]`; o que falta existe na lista de obrigatórios.
+**Destrava:** promover os três na mesma função que agora promove a apólice. **Dono:** 🤖. **Custo de esquecer:** a
+atendente humana recebe o caso sem placa e sem saber o que falta, e a narrativa cai sempre no motivo genérico.
+
+## P-S117-05 · slots declarados fora de duas ferramentas nunca viram memória
+📊 26/09/2026: `nodes.py:2416` chama `_gravar_ficha_do_turno` **só** para `insurer_dispatch` e `request_human_agent`.
+Slot que o modelo declare em qualquer outra ferramenta é usado uma vez e jogado fora. **Destrava:** decidir a lista de
+ferramentas que deixam memória (não é "todas": há ferramentas sem slot). **Dono:** 🤖. **Custo de esquecer:** a
+pergunta repetida volta pelo caminho que ninguém fiscaliza.
+
+## P-S117-06 · 6 falhas da linha de base da bateria podem ser só codificação do terminal
+📊 26/09/2026: os guardas-script (`test_spec016_*`, `test_infocap_policy_output_guard`, `test_a_tecla_tem_a_forma_da_
+seguradora`) passam com `exit 0` rodados direto, e a linha de base os lista como FAILED sob
+`test_todos_os_guardas_script_rodam`. Causa medida: `python tests/<guarda>.py > arquivo` morre com
+`UnicodeEncodeError: 'charmap' codec can't encode '\U0001f4ca'` e passa com `PYTHONIOENCODING=utf-8`. É **instrumento**,
+não produto. **Destrava:** o runner dos guardas-script fixar `PYTHONIOENCODING=utf-8`. **Dono:** 🤖.
+**Custo de esquecer:** a linha de base carrega 6 vermelhos falsos, e toda SPEC gasta triagem para redescobrir isso.
+
+## P-S117-07 · a anáfora com 2+ apólices vigentes segue sem trava no papel mascarado
+📊 26/09/2026: `nodes.py:414` — o ramo de **listagem** da consulta forçada ainda exige `document`/`name`. No WhatsApp,
+o caso *"duas apólices vigentes + 'ela cobre isso?' + identidade mascarada"* não força a listagem. **A escolha é
+deliberada e é a conservadora:** consultar a fonte só com `user_query`, sem dizer de quem, seria pior que não travar.
+A `InfocapLookupInput` não tem argumento para identidade opaca, e inventar um mudaria o contrato que o modelo lê.
+**Destrava:** decidir se a porta aceita `cliente_ref` (é mudança de contrato da ferramenta, não desta SPEC).
+**Dono:** 🤖 + 🧑 (decisão de contrato). **Custo de esquecer:** nesse caso específico o agente pode pedir a escolha
+ao segurado mais de uma vez; ⚠️ com a apólice **selecionada** agora persistida na ficha, o caso ficou raro.
+
+## P-S117-08 · a chave do pseudônimo do cliente não tem variável própria
+📊 26/09/2026: `app/services/policy_context.py` procura `POLICY_CONTEXT_HMAC_KEY`, cai para `ENCRYPTION_KEY` (a única
+chave de plataforma obrigatória no runtime, `app/core/config.py:38`) e, sem nenhuma das duas, usa uma constante de
+derivação **documentada** — o pseudônimo continua estável e isolado por corretora (o `company_id` está no material),
+mas deixa de resistir a força bruta. Não é silencioso: está escrito no código e no relatório da SPEC.
+**Destrava:** 🧑 o Founder decidir se cria `POLICY_CONTEXT_HMAC_KEY` dedicada no ambiente (o certo pela ENISA: chave
+de pseudonimização separada da de cifra). **Dono:** 🧑 decisão · 🤖 aplicação. **Custo de esquecer:** hoje nada muda em
+produção (o `ENCRYPTION_KEY` existe); se algum dia ele faltar, o pseudônimo enfraquece sem ninguém notar.
