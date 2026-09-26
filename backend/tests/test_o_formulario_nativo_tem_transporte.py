@@ -181,5 +181,61 @@ def main() -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# 🔴 O PYTEST PASSA A COLETAR ESTE GUARDA — SPEC-118, fatia F1b
+# ---------------------------------------------------------------------------
+# ⚠️ Até aqui este arquivo não tinha nenhuma `def test_`. O `pytest` não tinha o
+# que chamar nele, então `pytest tests/...` o ignorava — e **um arquivo que
+# coleta zero é indistinguível de um que passou** (CLAUDE.md §9.3). As garantias
+# acima só apareciam pelo `test_todos_os_guardas_script_rodam.py`, que os roda
+# como PROCESSO.
+#
+# 🔴 **E a execução como processo NÃO se perde**: a função abaixo é exatamente
+# isso — `python tests/este_arquivo.py`, com o mesmo `PYTHONIOENCODING=utf-8` que
+# o meta-guarda usa (📊 sem ele os guardas com emoji morrem de
+# `UnicodeEncodeError` no Windows). As asserções continuam existindo UMA vez, no
+# `main()`; nada é duplicado.
+#
+# ⚠️ **Por que subprocesso e não `main()` direto:** `_carregar_provider()` registra
+# cascas de `app`, `app.services`, `app.services.whatsapp` e
+# `...providers` em `sys.modules` e não as remove. Chamado dentro da sessão do
+# pytest, isso ficaria de herança para todos os testes seguintes, que importam
+# esses pacotes de verdade. O guarda ficaria verde e derrubaria os vizinhos.
+#
+# 📊 Efeito colateral esperado e consistente: com uma `def test_` neste arquivo, a
+# regra ÚNICA de descoberta (`_e_guarda_script`, em
+# `test_todos_os_guardas_script_rodam.py`, e a cópia dela no `conftest.py`) para
+# de classificá-lo como guarda-script — as DUAS listas mudam juntas, porque as
+# duas são DERIVADAS da mesma regra, e `test_a_exclusao_bate_com_a_descoberta`
+# continua verde. Quem roda este arquivo passa a ser o pytest, aqui.
+
+
+def test_o_guarda_do_transporte_passa_como_PROCESSO():
+    """Roda este mesmo arquivo do jeito que ele foi escrito, e exige exit 0."""
+    import os
+    import subprocess
+
+    ambiente = dict(os.environ)
+    # 🔴 Sem isto o guarda morre de UnicodeEncodeError (cp1252) e o vermelho
+    # seria do terminal, não do produto.
+    ambiente.setdefault("PYTHONIOENCODING", "utf-8")
+
+    r = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve())],
+        capture_output=True, text=True, errors="replace",
+        cwd=str(RAIZ), env=ambiente, timeout=300,
+    )
+    assert r.returncode == 0, (
+        "o guarda do transporte do formulário ficou VERMELHO "
+        f"(exit {r.returncode}).\n--- saída ---\n{r.stdout}\n--- erro ---\n{r.stderr}"
+    )
+    # 🔴 A LINHA DE CONTROLE: exit 0 com saída vazia seria um processo que não
+    # rodou nada — e passaria igual. É o defeito que este bloco veio matar.
+    assert "O FORMULARIO NATIVO TEM ROTA, EMBRULHO E TRANSPORTE" in r.stdout, (
+        "o processo devolveu 0 mas não imprimiu o veredito final — ele não "
+        f"chegou ao fim das conferências.\n--- saída ---\n{r.stdout}"
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
