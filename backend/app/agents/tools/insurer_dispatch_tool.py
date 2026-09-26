@@ -148,22 +148,21 @@ def placa_br_valida(valor) -> bool:
 # ⚠️ **Meio par não é par.** Latitude sem longitude não localiza nada, e o campo
 # solto viajaria para a seguradora como se localizasse.
 def par_de_coordenadas(latitude, longitude):
-    """`(lat, lon)` como texto normalizado, ou `None` quando não há par honesto.
+    """`(lat, lon)` normalizado, ou `None` — **delegado à fonte única**.
 
-    Recusa: o que não é número · o que está fora da faixa do planeta ·
-    `(0, 0)` · e meio par. 💭 A faixa é a do mundo, não a do Brasil: o produto
-    atende quem está na fronteira, e recusar por geografia seria inventar regra.
+    🔴 SPEC-118 F4 · A conta mora em `corridor_playbooks.par_de_coordenadas`, e
+    não aqui, porque a costura provou que ela tem TRÊS leitores: esta ferramenta
+    (o agente passando o par), `inject_address_slots` (o par lido do pin) e o
+    montador da resposta do formulário. Uma segunda cópia daria dois vereditos
+    sobre a mesma coordenada, e a divergência só apareceria num guincho no lugar
+    errado (CLAUDE.md §5: consolidar antes de duplicar).
+
+    ⚠️ O nome fica: `_extract_slots` e `_run` o chamam, e trocá-los por um
+    import inline em dois lugares só espalharia o acoplamento.
     """
-    try:
-        lat = float(str(latitude).strip().replace(",", "."))
-        lon = float(str(longitude).strip().replace(",", "."))
-    except (TypeError, ValueError):
-        return None
-    if abs(lat) > 90 or abs(lon) > 180:
-        return None
-    if abs(lat) < 1e-6 and abs(lon) < 1e-6:
-        return None          # 🔴 o Golfo da Guiné — ver o comentário acima
-    return f"{lat:.6f}", f"{lon:.6f}"
+    from app.services.corridor_playbooks import par_de_coordenadas as _fonte
+
+    return _fonte(latitude, longitude)
 
 
 def telefone_br_valido(valor) -> bool:
