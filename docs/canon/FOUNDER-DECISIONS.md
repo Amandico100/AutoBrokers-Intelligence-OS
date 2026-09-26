@@ -2050,3 +2050,21 @@ conexão do pooler Supabase (porta 6543, modo transação) com `default_transact
 quem conectava (12/12 sondas só-leitura). Encerrada por `pg_terminate_backend` ≈ 20:00Z; 20/20 sondas limpas depois;
 impacto medido zero (nenhum turno de agente nas 10 h; o espelho grava por REST). **Regra:** script de medição **nunca**
 usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentro da transação.
+
+### Decisões da SPEC-117 · o atendimento nunca perde a apólice que encontrou (26/09/2026; rito AAA v13.2)
+
+> Texto completo e evidência: `specs/SPEC-117-o-atendimento-nunca-perde-a-apolice-que-encontrou.md` §10 · relatório
+> `reports/SPEC-117-EXECUTION-REPORT.md` · `PROTOCOLO-AAA-EVIDENCIAS.md`.
+>
+> ⚠️ **Colisão de número, declarada em vez de corrigida:** o identificador **D-PROTO-13** já foi usado em 21/09/2026
+> (a passagem do protocolo à v13.1, na tabela da SPEC-EXTRA-001.8 acima). O protocolo **v13.2**, o
+> `PROTOCOLO-AAA-EVIDENCIAS.md` e o relatório da SPEC-117 chamam **D-PROTO-13** também a decisão de 26/09. Como este
+> arquivo é **append-only** (regra 1), a entrada nova fica com o número que os documentos citam e a colisão fica
+> registrada aqui; renumerar uma das duas é decisão do Founder.
+
+| # | decisão | notas | onde |
+|---|---|---|---|
+| 🧑 **D-PROTO-13** (26/09) | **O gerente, o juiz e o red team passam de Fable 5.1 a Opus 5.5** — determinado pelo Founder, por escrito, na abertura da SPEC-117, junto do modelo dos builders. O protocolo foi atualizado para **v13.2** (📊 `grep -c "Fable" docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md` → era **7**, ficou **0**; §3.1, §4, §8 e §10). ⛔ **Nenhum gate reduzido:** juiz e red team seguem **frescos, paralelos e cegos um ao outro**, a confirmação curta segue obrigatória depois de blocker, a trava de duas rodadas segue contada por `backend/scripts/rodada_do_juiz.py` e a mutação dos guardas novos segue no passo ③. ⚠️ **O limite honesto:** é **decisão, não medição** — nenhum número diz que Opus 5.5 julga melhor que Fable 5.1, a comparação não foi feita; se o julgamento piorar em duas SPECs, volta-se ao número anterior (regra §13 do protocolo) | decisão expressa do Founder, sem contrária registrada | `PROTOCOLO-AUTOBROKERS-AAA.md` §3.1/§4/§8/§10 · `PROTOCOLO-AAA-EVIDENCIAS.md` (entrada D-PROTO-13 de 26/09) |
+| 🧑 **D-S117-01** (era a D4 da proposta) | **Só o conserto completo — sem hotfix de uma linha antes.** Decisão expressa do Founder na abertura da SPEC | conserto completo **(escolha expressa do Founder)** × hotfix de 1 linha antes **descartado** | SPEC §10 D4 |
+| **D-S117-02** (era a D7) | **A máscara de identidade FICA, e o conserto é na porta.** Razão: o dado mascarado **já** traz número, seguradora, ramo, vigência, situação e o código interno do cliente; o que falta é só a identidade — e para responder *"é o mesmo cliente"* basta um **pseudônimo opaco**. Dar CPF em claro ao agente que fala com o segurado reabriria risco de LGPD **sem necessidade** | manter e consertar a porta **95** × identidade crua no atendimento **25** × papel novo **15** | SPEC §2 e §10 D7 |
+| **D-S117-03** (era a D3) | **O pseudônimo do cliente (`cliente_ref`) é HMAC com o `company_id` DENTRO do material, e a chave vem do ambiente** — o isolamento por corretora não depende de uma chave por corretora, e o G9 o prova (📊 mesmo `codfil:codigo` em duas corretoras → `cliente_ref` diferente). A escolha da variável dedicada ficou como pendência **P-S117-08** | HMAC com chave de plataforma + `company_id` no material **85** × HMAC com chave por tenant no Vault **70** (exige chave nova por corretora; não há porta pronta hoje) × `sha256` sem chave **25** | SPEC §10 D3 · P-S117-08 |

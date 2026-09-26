@@ -1,14 +1,14 @@
 <div id="tab-specs" class="tab" hidden>
 
 <header class="top">
-  <span class="eyebrow">O que foi feito, o que está no ar, o que só você decide &middot; 📊 atualizado em 24/09/2026</span>
+  <span class="eyebrow">O que foi feito, o que está no ar, o que só você decide &middot; 📊 atualizado em 26/09/2026</span>
   <h1>As SPECs — uma frase de negócio por entrega, e a fila do que vem.</h1>
   <p class="lede">Esta aba substitui o antigo painel de dossiês. Tudo o que lá era <i>"próximo passo"</i> e já aconteceu está marcado como <b>feito</b>;
   o que continua verdadeiro foi mantido, com a data ao lado. 🔴 <b>A família EXTRA-001.x está fechada até a 001.10.1</b> — treze entregas, todas na <code>main</code>.</p>
   <div class="meta">
     <span>árvore <b>AutoBrokers-FIX</b></span>
     <span>main <b>5a3ba36</b></span>
-    <span>protocolo <b>AAA v13 · O FIO</b> (em teste desde 20/09)</span>
+    <span>protocolo <b>AAA v13.2 · O FIO</b> (rito único; D-PROTO-13, 26/09)</span>
     <span>fonte <b>ESTADO-DAS-SPECS.md</b> · <b>INDICE-DE-SPECS.md</b> · os relatórios de cada SPEC</span>
   </div>
 </header>
@@ -90,6 +90,28 @@
 </section>
 
 <section>
+  <h2>Fora da família — o atendimento não perde a apólice (SPEC-117)</h2>
+  <p class="sub">Também não é dos pilotos: conserta o caminho em que o agente do WhatsApp <b>descobre</b> a apólice do
+  segurado e, no turno seguinte, a <b>esquece</b>. 📊 26/09/2026, relatório
+  <code>reports/SPEC-117-EXECUTION-REPORT.md</code>.</p>
+  <div class="tblbox">
+    <table style="min-width:980px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou, em uma frase</th><th>data</th><th>nota</th><th class="l">o que ainda falta <b>de você</b></th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>SPEC-117</b><br><span class="mono" style="font-size:11px;color:var(--muted)">a apólice fica no caso até o fim</span></td>
+          <td class="ds">A apólice que o agente encontra <b>fica no caso até o fim</b>, e é ela que decide a tecla da URA, a seguradora e o portal — a sua decisão de 17/09 (<i>o ramo da apólice vence o palpite do modelo</i>) só passa a valer agora. 🔴 O defeito era estrutural: a peça que monta esse contexto exigia <b>CPF ou nome crus</b>, e o agente que fala com o segurado só recebe a versão mascarada — então o contexto <b>nunca nascia</b> no WhatsApp, e toda regra pendurada nele estava desligada sem ninguém saber. Agora existe <b>um lugar só</b> que escolhe a apólice do caso, ela é gravada na ficha do atendimento, e <b>todos</b> leem a mesma: acionamento, portal de vidros, aviso à pessoa que assume, resposta seguinte. 📊 <b>8 defeitos graves mortos antes do push</b> — entre eles a mesma mensagem abrindo <b>duas</b> consultas à seguradora, o pedido de um <b>encanador</b> saindo com a apólice de <b>automóvel</b>, e uma apólice de <b>outro cliente</b> entrando no caso por um número tirado do texto. Nenhum dado pessoal cru chega ao modelo: o cliente viaja como <b>apelido opaco</b></td>
+          <td class="dm">26/09</td><td class="dm">juiz 70 ‖ red team 62 → confirmação <b>90</b></td><td class="ds">🔴 <b>Implantar</b> (<code>smith-api</code> → <code>smith-worker</code>) e o <b>canário de duas corretoras</b>, que é seu (aba <a href="#tarefas" style="color:var(--accent)">Suas tarefas</a>, bloco I)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">🔴 <b>O que esta entrega NÃO promete, e foi medido.</b> 📊 Ela <b>não</b> melhora a nota de 68,9 % do
+  atendimento na bancada de testes: das 13 reprovações, <b>zero</b> são de apólice perdida (9 não chamaram a ferramenta
+  certa, 4 não pediram o CPF). Aquele teste é de <b>uma</b> mensagem só — e este defeito só aparece a partir da segunda,
+  onde o contexto da apólice estava vazio em <b>10 de 10</b> conversas medidas. ⚠️ <b>Zero mudança de banco</b> e zero
+  motor novo: a autoridade da apólice é uma só.</p>
+</section>
+
+<section>
   <h2>A fila vigente — decidida em 20/09 (D-FILA-01)</h2>
   <div class="tblbox">
     <table style="min-width:860px">
@@ -98,6 +120,7 @@
         <tr><td class="dm">✓</td><td class="ds"><b>EXTRA-001.10</b> · portal de vidros ponta a ponta</td><td class="ds">Tirou a pessoa do meio de um acionamento que já acontece hoje — até o desfecho que o portal decide</td><td class="ds"><b>✅ concluída 21/09, nota 86</b> (aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>)</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>EXTRA-001.10.1</b> · a continuação</td><td class="ds">O acesso do robô ao pedido agora é guardado <b>cifrado</b>, e o robô <b>retoma</b> o pedido pela resposta do segurado em vez de terminar em mão humana</td><td class="ds"><b>✅ concluída 24/09, nota 88</b> (aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>) — falta o <b>canário</b>, que é seu</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>EXTRA-001.8</b> · isolamento entre corretoras <b>+ 2 itens de segurança</b></td><td class="ds">Uma corretora travada não pode derrubar a vizinha — e as duas pendências ≥ 90 de segurança foram junto (cada coisa sabe de quem é; nome de pessoa fora do dado global)</td><td class="ds"><b>✅ executada 21/09</b> — falta o <b>canário</b>, que é seu</td></tr>
+        <tr><td class="dm">✓</td><td class="ds"><b>SPEC-117</b> · o atendimento não perde a apólice</td><td class="ds">Fora da família e fora da fila: a apólice que o agente encontra no WhatsApp se perdia no turno seguinte — e com ela morria a sua decisão de 17/09, de que o <b>ramo da apólice</b> manda no acionamento</td><td class="ds"><b>✅ executada 26/09</b> — juiz 70 ‖ red team 62 → confirmação <b>90</b>; faltam o <b>Implantar</b> e o <b>canário de duas corretoras</b>, que é seu</td></tr>
         <tr><td class="dm">3</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata</td><td class="ds">só no diagnóstico</td></tr>
         <tr><td class="dm">4</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
         <tr><td class="dm">5</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>

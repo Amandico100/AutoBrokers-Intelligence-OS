@@ -667,6 +667,47 @@ só a medição de volume da Resulta.
 
 ---
 
+## 8.8 · Bloco I — a apólice não se perde no meio do atendimento (117)
+
+> **O que mudou:** quando o agente do WhatsApp descobre a apólice do segurado, ela agora **fica no caso até o fim**.
+> Antes ela sumia: o agente já tinha a apólice na mão e, na hora de acionar a seguradora ou abrir o portal, o **ramo**
+> (automóvel, residencial) voltava a ser palpite do modelo — inclusive contra a sua decisão de 17/09, de que **o ramo da
+> apólice manda**. 🔴 A causa era estrutural: a peça que monta esse contexto exigia **CPF ou nome crus**, e o agente que
+> fala com o segurado só recebe a versão mascarada — então o contexto **nunca nascia** no WhatsApp, e toda regra pendurada
+> nele estava desligada sem ninguém saber. Agora existe **um lugar só** que escolhe a apólice do caso, ela é gravada na
+> ficha do atendimento, e **todos** leem a mesma: o acionamento da seguradora, o portal de vidros, o aviso à pessoa que
+> assume o caso e a resposta seguinte. Nenhum dado pessoal cru chega ao modelo — o cliente viaja como **apelido opaco**.
+>
+> 🔴 **Nada aqui precisa de configuração nova:** nenhuma variável é obrigatória e 📊 **não houve nenhuma mudança de
+> banco**. Relatório: `reports/SPEC-117-EXECUTION-REPORT.md`.
+
+- [ ] **I.1 Implantar**, nesta ordem: `smith-api` → `smith-worker`.
+      **Por quê:** 🔴 **a SPEC não muda nada em produção até este clique** — enquanto ninguém clica, o WhatsApp continua
+      rodando o código de ontem, e a apólice continua se perdendo. O `smith-web` e o `portal-worker` **não mudam**:
+      📊 a SPEC alterou 3 arquivos, todos do cérebro (`backend/app`), nenhum de tela.
+      **O que esperar:** os dois verdes em 2–5 min, e o atendimento se comportando como antes nas conversas simples.
+      **Se der errado:** se o `smith-api` não subir, copie as **últimas 30 linhas do log** e cole no chat. · **117**
+- [ ] **I.2 🔴 O canário de duas corretoras** — é o que falta para esta entrega fechar. Precisa de **uma conversa de teste
+      por corretora** (duas corretoras de teste, um número de teste em cada; na mesma corretora o ensaio não prova o
+      isolamento), com um cliente que tenha **Auto e Residencial** ao mesmo tempo. Peça uma assistência **de casa**
+      (💭 ex.: *"preciso de um encanador"*) e confira duas coisas: (1) na ficha do atendimento (`ficha_atendimento`) a
+      chave **`apolice`** nasceu, com número, seguradora e ramo; (2) o acionamento de teste levou o **ramo da apólice**
+      (residencial) e não o palpite do modelo (automóvel). O comando pronto para ler a ficha sai na caixa do Founder do
+      relatório desta SPEC.
+      ⛔ **Nenhum número de cliente real e nenhum acionamento de verdade** — nada aqui envia mensagem a segurado,
+      seguradora ou grupo real. · **117**
+- [ ] **I.3 Decidir a P-S117-08** — criar ou não uma **variável própria** para o apelido opaco do cliente
+      (`POLICY_CONTEXT_HMAC_KEY`). **Hoje funciona sem ela:** o código usa a chave de cifra que já existe no ambiente
+      (`ENCRYPTION_KEY`), e o apelido continua estável e isolado por corretora. O certo pelo manual europeu de
+      pseudonimização (ENISA) é ter a chave do apelido **separada** da chave de cifra. **Não bloqueia nada** — se algum
+      dia o `ENCRYPTION_KEY` faltar, o apelido enfraquece sem ninguém notar. · **117 · P-S117-08**
+
+**Bloqueia alguma coisa?** 🔴 **Nada aqui bloqueia a entrega** — a SPEC está pronta e provada por teste, e nada nela
+espera terceiro. O **I.1** é o que leva a mudança ao ar; o **I.2** é o que a prova na vida real (sem ele, o isolamento e
+o ramo oficial ficam provados só por teste); o **I.3** é uma melhoria de segurança que pode esperar.
+
+---
+
 ## 9 · Depois de tudo — desfazer o ensaio
 
 - [ ] **9.1** Desativar o destino do **grupo de canário** (painel → Personalização → Suporte humano) —
@@ -700,6 +741,7 @@ só a medição de volume da Resulta.
 | 13 | **D-E00110-F3 · a 001.10.1 (a continuação) entra antes da 001.8? — `CUMPRIDA`** | sim: a 001.10.1 foi executada em 24/09/2026 (nota 88), antes da 001.8 seguir para canário | `FOUNDER-DECISIONS.md` |
 | — | **D-E001101-01…07 (001.10.1)** — todas tomadas pela execução, nenhuma aberta para você | token no cofre do worker (88) · agendar pela preferência + continuação (90) · e-mail do corretor = Perfil de Acionamento (90) · contato do segurado + WhatsApp (88, fecha a F1) · domicílio fora (sua decisão) · `BloqueadoIlhaNormal` deixa de travar (90) · peça reescrita com pedido esperando resposta vira continuação (85) | `FOUNDER-DECISIONS.md` |
 | 14 | **D-E002-01 a 08 · o Agger, a renovação e a fila** (22/09, propostas) | as oito já vêm com a recomendação: pedir à Agger a **API oficial e a autorização** na mesma conversa, sem autorização nenhuma automação (01: 92 × 84 × 58 × 25) · **usuário robô** por corretora (02: 95) · calcular em D-30 e **recalcular** perto do fechamento, porque a cotação vale 5 dias (03: 88) · **o corretor revisa e envia** (04: 92) · **rótulos transparentes** em vez de "a melhor" escolhida por IA (05: 94) · a 003 em **duas partes**, fundação e ciclo (06: 88) · a posição na fila (07: 78 × 65 — diferença pequena, é a que mais precisa de você) · o Agger como porta **de cotação**, não de gestão (08: 90) | `FOUNDER-DECISIONS.md` · proposta 002 §10 |
+| 15 | **P-S117-08 · a chave do apelido opaco do cliente** | hoje o apelido do cliente é derivado com a chave de cifra que já existe (`ENCRYPTION_KEY`) e funciona; o certo pela ENISA é uma chave **separada** (`POLICY_CONTEXT_HMAC_KEY`). **Não bloqueia nada**: se o `ENCRYPTION_KEY` faltar um dia, o apelido enfraquece em silêncio | `PENDENCIAS.md` P-S117-08 · bloco **I.3** |
 
 ---
 
