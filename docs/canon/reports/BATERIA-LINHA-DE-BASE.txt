@@ -1,3 +1,12 @@
+# 📊 26/09/2026, SPEC-117 (branch spec/117-apolice-persistente, HEAD a94887f), `cd backend && python -m pytest tests -q`
+# → 47 failed · 1566 passed · 1 skipped · 36 xfailed · 1 xpassed em 3.524 s. TRIAGEM NOMINAL (contra a base E contra o
+#   commit base 79c9e80 num worktree): 33 da base · 10 pre-existentes fora da base (Model Router/encoding, falham igual
+#   em 79c9e80) · 2 de ordem/ambiente (passam isoladas) · 1 ja consertada (test_o_protocolo_tem_policia) · 1 DA SPEC
+#   ([test_o_atendimento_tem_memoria], consertada em b5bebf5). Detalhe item a item: reports/SPEC-117-BATERIA-TRIAGEM.md
+# 🔴 LICAO DESTA RODADA: 2 testes DESAPARECERAM da lista e isso NAO era ganho — estao em QUARENTENA como
+#   xfail(strict=True), onde script vermelho vira `xfailed` e sai da contagem. A bateria PARECEU melhorar onde piorou.
+#   ⛔ Nunca conclua ganho por um nome que saiu da lista: compare contra o COMMIT BASE. Pendencia P-S117-12 (32 casos).
+# ⚠️ A recontagem NAO foi refeita depois do conserto b5bebf5; a area tocada foi medida nominalmente (ver o anexo).
 # 📊 24/09/2026, EXTRA-001.10.1 (HEAD 5622911), .venv/Scripts/python -m pytest tests -q → 39 failed (35 da base + 4 da SPEC, consertadas e reconferidas isoladas: spec074_a_fronteira 29/0 · tool_continua 50/0 em 41 s · passo_compartilhado 10/0 · árvore limpa na rerodada do harness) ⇒ o conjunto volta a ser o da base (35).
 # Linha de base NOMINAL da bateria — 📊 23/09/2026, SPEC-116 (branch spec/116-model-router-e2e-bench, HEAD be8b033 + conserto do guarda do vocabulário), `cd backend && .venv/Scripts/python -m pytest tests -q` (libs NOVAS do requirements da SPEC-116)
 # → 36 failed · 1454 passed · 1 skipped · 34 xfailed · 1 xpassed em 3.137 s. 3 falhas NÃO estavam na base anterior:

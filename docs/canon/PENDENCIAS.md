@@ -11653,3 +11653,20 @@ defeito novo. **Destrava:** decidir como desambiguar chaveiro (a conversa já di
 normal está intacta. **Destrava:** `_sanitize_match` emitir vigência, ou o caminho passar a usar `_sanitize_policy`.
 **Dono:** 🤖. **Custo de esquecer:** quando a consulta é ambígua no CLIENTE (homônimos), a apólice não é fixada e o
 agente pede confirmação — seguro, mas uma pergunta a mais.
+
+## P-S117-12 · a QUARENTENA `xfail(strict=True)` esconde vermelho real da bateria
+📊 26/09/2026, triagem nominal da bateria da SPEC-117: `backend/tests/test_todos_os_guardas_script_rodam.py` mantém
+guardas-script em `QUARENTENA` como `xfail(strict=True)`. Com `strict`, **script verde vira `FAILED` (xpass)** e
+**script vermelho vira `xfailed`, que NÃO aparece na lista de falhas**. Consequência medida: dois guardas
+(`test_spec016_1_answer_quality` e `test_spec016_policy_intelligence`) passaram de `EXIT=0` no commit base a `EXIT=1`
+no HEAD — com **4 asserções da própria SPEC-117 vermelhas** — e **desapareceram** da contagem, dando a impressão de
+que a bateria havia melhorado em dois testes. É o CLAUDE.md §9.3 ao contrário: a quarentena virou o lugar onde a
+regressão se esconde. 📊 **E o tamanho do problema foi medido:** há **32** entradas ainda em `QUARENTENA`, e todas são vermelhos reais que
+aparecem como `xfailed` e jamais na lista de falhas. Entre elas, tocando o terreno desta SPEC:
+`test_o_cerebro_assume_quando_falta_dado`, `test_spec040_onda1_attendance_capture`, `test_spec017_dispatch` e
+`test_spec031_auto_dispatch`. 📊 A própria linha de base registra outras **3** entradas que estão FAILED por
+`XPASS(strict)` — isto é, por o guarda estar **verde**. **Destrava:** a quarentena registrar o `EXIT` do script no
+relatório da bateria, em vez de converter o resultado em `xfail`; ou `xfail(strict=False)` com a saída impressa.
+**Dono:** 🤖.
+**Custo de esquecer:** 🔴 uma regressão real atravessa a bateria **parecendo melhora** — e foi exatamente o que
+aconteceu nesta SPEC. Sem a comparação nominal contra o commit base, ela teria ido para produção.
