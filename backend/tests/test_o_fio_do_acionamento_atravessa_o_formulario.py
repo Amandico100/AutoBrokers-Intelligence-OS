@@ -409,8 +409,18 @@ def test_o_corpo_que_vai_ao_fio_tem_as_DEZ_chaves_da_captura(fio_ligado):
     assert params["label_endereco_completo"] == (
         f"{params['rua']}, {params['numero_residencia']}, {params['bairro']}, "
         f"{params['cidade']} - {params['estado']}"), params["label_endereco_completo"]
-    # ⛔ O token é credencial: ele é do transporte, e não sai no `paramsJSON`.
-    assert "flow_token" not in params, params
+    # 🔴 O TOKEN É DO TRANSPORTE, E É ELE QUEM O INJETA.
+    #
+    # 📊 `montar_resposta_de_flow` (o corredor) deliberadamente NÃO o produz — o
+    # token é da sessão, não do caso. `montar_nfm_reply` o achata ao lado das
+    # respostas, que é como 📊 o clique humano de 18/07/2026 chegou. As duas
+    # metades têm de ser verdade ao mesmo tempo, e é o que se afirma aqui.
+    assert "flow_token" not in ((d.get("resposta_montada") or {}).get("params") or {}), (
+        "⛔ o corredor passou a produzir o `flow_token` — ele é credencial de "
+        "sessão e não é dado do caso: %r" % d["resposta_montada"]["params"])
+    assert params.get("flow_token"), (
+        "o transporte deixou de injetar o `flow_token` — sem ele o WhatsApp "
+        "recusa a resposta e a janela da URA queima em silêncio")
 
 
 # ===========================================================================
@@ -487,7 +497,14 @@ def test_o_que_o_agente_pede_na_conversa_e_PORTUGUES_e_ensina_o_PIN(fio_ligado):
         "o portão não cobrou NADA sem a coordenada — o caso morreria na tela do "
         "formulário, que é justamente o que esta SPEC conserta")
     frases = DS.como_pedir_ao_segurado(REF_PORTO, faltando)
-    assert len(frases) == len(faltando), (frases, faltando)
+    assert frases, faltando
+    # 🔴 Uma coisa por vez, e NENHUMA duas vezes: `local_latitude` e
+    #    `local_longitude` faltam juntos e se resolvem com o MESMO toque.
+    assert len(frases) == len(set(frases)), (
+        "o agente pediria a mesma coisa duas vezes: %r" % frases)
+    assert len(frases) < len(faltando), (
+        "📊 o par de coordenadas deixou de ser UMA pergunta: %r ← %r"
+        % (frases, faltando))
     cruas = [f for f in frases if _CHAVE_CRUA.search(f)]
     assert not cruas, f"o agente pediria um identificador a uma pessoa: {cruas}"
     # 🔴 E a pergunta da coordenada ENSINA o caminho honesto: o pin, não o número.
