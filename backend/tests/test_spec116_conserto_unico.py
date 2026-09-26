@@ -534,13 +534,26 @@ def test_c8_o_corpus_versionado_subiu_e_o_manifesto_acompanha():
         "real das tools: %r" % (versao_do_caso,))
 
 
-def test_c8_CONTROLE_a_divergencia_de_versao_seria_vista():
+def test_c8_CONTROLE_a_divergencia_de_versao_seria_vista(monkeypatch):
     """🔴 O guarda acima precisa CONSEGUIR ficar vermelho (CLAUDE.md §9.3).
 
-    Sem esta linha, `>= 3` sozinho passaria com o manifesto em 3 e o corpus em
-    99 — e o teste teria deixado de guardar o que importa. Aqui a comparação é
-    exercitada sobre um par divergente construído à mão.
+    📊 26/09/2026, SPEC-117 (pendência 7 do juiz · CLAUDE.md §9.4): a versão
+    anterior deste controle afirmava `not (4 == 3)` sobre dois inteiros escritos
+    à mão. Isso prova o `==` do Python — **não chamava** `_oraculo_p19a()` nem
+    `B.manifesto()`, então não exercitava nada do guarda de cima. Era carimbo.
+
+    O que este controle faz agora: faz o manifesto DIVERGIR do corpus (pelo
+    monkeypatch do próprio `B.manifesto`) e afirma que a asserção do teste irmão
+    **falha**. É o MOTOR do guarda que roda, sobre uma verdade mentirosa.
     """
-    corpus, manifesto = 4, 3
-    assert not (corpus == manifesto), (
-        "a comparação de versões não distingue 4 de 3 — o guarda acima é carimbo")
+    from app.services.evals import bancada as B
+
+    manifesto_real = dict(B.manifesto())
+    divergente = {**manifesto_real, "versao": manifesto_real["versao"] + 1}
+    monkeypatch.setattr(B, "manifesto", lambda *a, **k: divergente)
+    assert B.manifesto()["versao"] != _oraculo_p19a()["versao"], (
+        "o controle não conseguiu fazer as duas versões divergirem")
+
+    with pytest.raises(AssertionError) as erro:
+        test_c8_o_corpus_versionado_subiu_e_o_manifesto_acompanha()
+    assert "manifesto" in str(erro.value), str(erro.value)

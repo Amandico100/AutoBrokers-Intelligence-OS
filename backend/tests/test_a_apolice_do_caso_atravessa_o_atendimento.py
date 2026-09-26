@@ -372,6 +372,27 @@ def test_a_apolice_de_outra_corretora_NUNCA_funde_com_esta_ficha():
     assert (ficha["apolice_do_caso"]["cliente_ref"]
             != depois["apolice_do_caso"]["cliente_ref"])
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 🔴 O RAMO QUE PROVA QUE O `pop` DE `fundir` TEM EFEITO (pendência 4 do juiz)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 📊 O juiz mediu que o `pop(CHAVE_DA_APOLICE)` era desfeito três linhas
+    # abaixo, e concluiu "código morto". Ele é morto **só quando há apólice
+    # selecionada**: aí `novidades_da_apolice` manda as duas chaves juntas. Com
+    # DUAS candidatas e nenhuma escolhida ela manda só a estrutura — e sem o
+    # `pop` o NÚMERO HUMANO da corretora anterior ficaria na ficha, ao lado do
+    # contexto da nova. É esse número que `human_handoff._linha_da_apolice`
+    # imprime para a atendente ler (CLAUDE.md §7 e §9.5).
+    outra_sem_escolha = _contexto(
+        company_id=TENANT_B,
+        docs=[_doc_auto("B-0010"), _doc_resi("B-0011")])
+    assert outra_sem_escolha["selecionada"] is None, (
+        "controle: duas vigentes não escolhem — é este o caso em que o `pop` age")
+    sem_numero = F.fundir(ficha, F.novidades_da_apolice(outra_sem_escolha))
+    assert sem_numero.get("apolice") in (None, ""), (
+        "o NÚMERO da apólice da corretora A sobreviveu na ficha da B: %r"
+        % (sem_numero.get("apolice"),))
+    assert sem_numero["apolice_do_caso"]["company_id"] == TENANT_B
+
 
 # =========================================================================== #
 # (b) O RAMO E A SEGURADORA DO SISTEMA VENCEM O PALPITE DO MODELO
@@ -563,3 +584,315 @@ def test_a_leitura_da_apolice_e_UMA_e_recusa_vencida():
     assert F.novidades_da_apolice(duas).get("apolice") is None
     # ⚠️ mas a estrutura é gravada: é dela que sai a desambiguação do turno seguinte.
     assert F.novidades_da_apolice(duas)["apolice_do_caso"]["apolices"]
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B1 — O DURÁVEL É A LISTA BRANCA, EM TODO PAPEL
+# =========================================================================== #
+def test_b1_no_papel_core_a_ficha_duravel_NAO_recebe_cpf_nem_nome(banco):
+    """🔴 SEGURANÇA. LGPD · OWASP LLM02 · SPEC-117 §2 e §7.
+
+    O papel `core` recebe identidade CRUA no contexto — exceção legítima da §2,
+    porque o Chat Principal opera com dado cru no turno e
+    `_policy_context_tool_args` depende dela. 📊 Mas `novidades_da_apolice`
+    gravava o contexto INTEIRO em `conversations.ficha_atendimento`, a coluna que
+    o painel do Founder lê:
+
+    ```
+    [core] PII na ficha durável: ['CPF','nome:Cliente','nome:Teste','nome:Sintetico']
+    [attendance] PII na ficha durável: nenhum
+    ```
+    e 📊 `0 de 79` fichas de `core` tinham conteúdo no banco: o primeiro byte que
+    esta SPEC escreveria lá era o CPF.
+
+    ⚠️ Este guarda roda o papel `core` de propósito: nenhum dos 40 testes novos
+    varria esse caminho, e foi por isso que o defeito atravessou.
+    """
+    consulta = _DubleDaConsulta(_data_do_conector(unmasked=True, docs=[_doc_auto()]))
+    estado = _estado(papel="core")
+    estado["messages"] = [
+        HumanMessage(content="apolice do cliente %s" % DOC_SINTETICO),
+        _pedido("infocap_policy_lookup", {"document": DOC_SINTETICO}),
+    ]
+    saida = _rodar(N.tool_node(estado, tools=[consulta]))
+
+    # CONTROLE: o contexto do TURNO continua com a identidade crua (o `core`
+    # depende dela) — o que muda é só o que FICA GRAVADO.
+    contexto = saida.get("infocap_policy_context") or {}
+    assert contexto.get("document") == DOC_SINTETICO, (
+        "o papel core perdeu a identidade crua NO TURNO: o Chat Principal "
+        "depende dela em `_policy_context_tool_args`")
+
+    ficha = _ficha_gravada(banco)
+    assert ficha, "o motor não gravou a ficha — sem gravação não há o que medir"
+    assert _pii_nos_valores(ficha) == [], (
+        "dado pessoal CRU chegou à coluna durável: %s" % _pii_nos_valores(ficha))
+    do_caso = ficha.get("apolice_do_caso") or {}
+    assert "document" not in do_caso and "name" not in do_caso, sorted(do_caso)
+    # e o que é legítimo continua lá
+    assert do_caso.get("company_id") == TENANT_A
+    assert [a["numapo"] for a in do_caso.get("apolices") or []] == ["A-0001"]
+
+
+def test_b1_MUTACAO_o_guarda_do_duravel_consegue_ficar_vermelho(banco, monkeypatch):
+    """🔴 CLAUDE.md §9.3. Com a projeção da lista branca DESLIGADA (o defeito de
+    26/09 reintroduzido), o guarda de cima tem de ficar vermelho."""
+    from app.services import policy_context as PC
+
+    monkeypatch.setattr(PC, "contexto_para_o_duravel", lambda ctx: ctx)
+
+    consulta = _DubleDaConsulta(_data_do_conector(unmasked=True, docs=[_doc_auto()]))
+    estado = _estado(papel="core")
+    estado["messages"] = [
+        HumanMessage(content="apolice do cliente %s" % DOC_SINTETICO),
+        _pedido("infocap_policy_lookup", {"document": DOC_SINTETICO}),
+    ]
+    _rodar(N.tool_node(estado, tools=[consulta]))
+    achados = _pii_nos_valores(_ficha_gravada(banco))
+    assert "CPF" in achados, (
+        "sem a projeção da lista branca o CPF TINHA de aparecer na ficha — o "
+        "guarda de cima é carimbo: %s" % achados)
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B3 — A APÓLICE QUE ATRAVESSOU É A CERTA?
+# =========================================================================== #
+#
+# 🔴 A MAIOR LACUNA que o juiz apontou: toda a bateria perguntava "o fato
+# atravessou?" e nenhum teste perguntava "o fato que atravessou é o CERTO para
+# este pedido?" (CLAUDE.md §9.5, a segunda pergunta). O caso que pega o defeito
+# — UMA apólice vigente, de ramo DIFERENTE do serviço pedido — não existia, e
+# foi por ele que o B3 atravessou 40 testes verdes.
+def _so_auto_vigente_e_pede_encanador(banco, servico="encanador"):
+    """Cliente com UMA apólice AUTO vigente pede um serviço de CASA."""
+    consulta = _DubleDaConsulta(_data_do_conector(docs=[_doc_auto()]))
+    dispatch = _Duble("insurer_dispatch")
+    estado = _estado()
+    estado["messages"] = [
+        HumanMessage(content="minha casa alagou, CPF %s" % DOC_SINTETICO),
+        _pedido("infocap_policy_lookup", {"document": DOC_SINTETICO}),
+    ]
+    saida = _rodar(N.tool_node(estado, tools=[consulta, dispatch]))
+    estado2 = _estado(infocap_policy_context=saida.get("infocap_policy_context"))
+    estado2["messages"] = [
+        HumanMessage(content="pode acionar o encanador"),
+        _pedido("insurer_dispatch",
+                {"subservice": servico, "insurer_key": "porto",
+                 "line_kind": "residencial", "ramo_da_apolice": "residencial",
+                 "dados_confirmados": True}, tool_id="call-2"),
+    ]
+    _rodar(N.tool_node(estado2, tools=[consulta, dispatch]))
+    return dispatch, _ficha_gravada(banco)
+
+
+def test_b3_uma_apolice_de_ramo_DIFERENTE_do_servico_nao_sobrescreve_o_pedido(banco):
+    """🔴 O defeito silencioso que CHEGA AO SEGURADO (CLAUDE.md §9.5).
+
+    📊 Medido em 26/09/2026, pelo motor:
+    ```
+    SÓ AUTO vigente + encanador
+      MODELO pediu      : ramo=residencial insurer=porto
+      SEGURADORA recebeu: ramo=auto        insurer=allianz
+      FICHA             : ramo=auto / allianz
+    ```
+    Um ENCANADOR saía para a seguradora do CARRO, com as teclas de URA do
+    corredor `auto`; e como `graph._slots_obrigatorios_do_caso` (📊
+    `graph.py:798`) resolve o corredor de `ficha["ramo"]`, a lista de
+    obrigatórios do caso inteiro virava a errada. Nada travava: o segurado ouvia
+    *"sua assistência foi aberta"*.
+
+    ⚠️ Não havendo apólice da família pedida, o sistema NÃO sobrescreve — a
+    sobrescrita é que era a mentira. A divergência fica no log.
+    """
+    dispatch, ficha = _so_auto_vigente_e_pede_encanador(banco)
+    assert dispatch.chamadas, "o acionamento não foi chamado"
+    recebido = dispatch.chamadas[-1]
+    assert recebido.get("ramo_da_apolice") == "residencial", (
+        "o encanador saiu no ramo %r — a apólice do caso é AUTO e o serviço é de "
+        "CASA" % (recebido.get("ramo_da_apolice"),))
+    assert recebido.get("insurer_key") == "porto", (
+        "o encanador saiu para a seguradora %r, a do CARRO"
+        % (recebido.get("insurer_key"),))
+    assert ficha.get("ramo") == "residencial", (
+        "a ficha gravou ramo=%r — é dela que sai o CORREDOR do caso"
+        % (ficha.get("ramo"),))
+    assert ficha.get("seguradora") == "porto", ficha.get("seguradora")
+
+
+def test_b3_duas_vigentes_o_SERVICO_pedido_escolhe_sem_perguntar(banco):
+    """🔴 G5 da SPEC-117, que estava construído e desligado: *"Auto+Resi →
+    serviço de casa escolhe `resi` sem perguntar"*.
+
+    📊 `apolices_vigentes(contexto, ramo=…)` tinha ZERO chamadores em
+    `backend/app` — a escolha por serviço nunca foi ligada. Com as duas
+    vigentes, `selecionada` volta `None` e ninguém escolhia pelo pedido.
+    """
+    consulta = _DubleDaConsulta(_data_do_conector(docs=[_doc_auto(), _doc_resi()]))
+    dispatch = _Duble("insurer_dispatch")
+    estado = _estado()
+    estado["messages"] = [
+        HumanMessage(content="oi, CPF %s" % DOC_SINTETICO),
+        _pedido("infocap_policy_lookup", {"document": DOC_SINTETICO}),
+    ]
+    saida = _rodar(N.tool_node(estado, tools=[consulta, dispatch]))
+    contexto = saida.get("infocap_policy_context") or {}
+    assert contexto.get("selecionada") is None, (
+        "controle: com duas vigentes o construtor NÃO escolhe — quem escolhe "
+        "pelo ramo é o PEDIDO")
+
+    estado2 = _estado(infocap_policy_context=contexto)
+    estado2["messages"] = [
+        HumanMessage(content="deu um vazamento em casa, pode acionar"),
+        _pedido("insurer_dispatch",
+                {"subservice": "encanador", "insurer_key": "allianz",
+                 "line_kind": "auto", "ramo_da_apolice": "auto",
+                 "dados_confirmados": True}, tool_id="call-2"),
+    ]
+    _rodar(N.tool_node(estado2, tools=[consulta, dispatch]))
+
+    recebido = dispatch.chamadas[-1]
+    assert recebido.get("ramo_da_apolice") == "resi", recebido
+    assert recebido.get("insurer_key") == "porto", recebido
+    ficha = _ficha_gravada(banco)
+    assert ficha.get("apolice") == "R-0002", (
+        "a escolha do SERVIÇO não ficou: a ficha guardou %r" % (ficha.get("apolice"),))
+    assert ficha.get("ramo") == "residencial", ficha.get("ramo")
+    do_caso = ficha.get("apolice_do_caso") or {}
+    assert (do_caso.get("origem_por_campo") or {}).get("selecionada") == "corredor", (
+        "a ficha tem de dizer QUEM escolheu a apólice: %r"
+        % (do_caso.get("origem_por_campo"),))
+
+
+def test_b3_MUTACAO_sem_o_guarda_de_familia_o_encanador_sai_no_carro(banco, monkeypatch):
+    """🔴 CLAUDE.md §9.3/§9.5 — com o defeito de 26/09 reintroduzido (a família do
+    serviço deixa de ser conhecida, e o sistema volta a sobrescrever sempre), o
+    guarda de cima tem de ficar VERMELHO."""
+    monkeypatch.setattr(N, "_familia_do_servico_pedido", lambda _args: "")
+    dispatch, ficha = _so_auto_vigente_e_pede_encanador(banco)
+    assert dispatch.chamadas[-1].get("ramo_da_apolice") == "auto", (
+        "sem o guarda o encanador TINHA de sair no ramo auto — o guarda de cima "
+        "é carimbo: %r" % (dispatch.chamadas[-1],))
+    assert ficha.get("ramo") == "auto", ficha.get("ramo")
+
+
+def test_b3_o_servico_AMBIGUO_nao_decide_pelo_segurado():
+    """🔴 `chaveiro` existe nas DUAS linhas (📊 `corridor_playbooks`), e um
+    chaveiro de CARRO mandado ao menu residencial pede o número da casa a quem
+    está parado no acostamento. Ambíguo é "não sei", nunca "é esta"."""
+    assert N._familia_do_servico_pedido({"subservice": "chaveiro"}) == ""
+    # CONTROLE: os que NÃO são ambíguos respondem, e vêm dos corredores
+    assert N._familia_do_servico_pedido({"subservice": "encanador"}) == "resi"
+    assert N._familia_do_servico_pedido({"subservice": "guincho"}) == "auto"
+    assert N._familia_do_servico_pedido({"servico": "vidros"}) == "auto"
+    assert N._familia_do_servico_pedido({}) == ""
+    # ⛔ e NUNCA do palpite do modelo sobre a apólice
+    assert N._familia_do_servico_pedido(
+        {"line_kind": "residencial", "ramo_da_apolice": "residencial"}) == ""
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · R2 — O PORTAL E O NÚMERO QUE O MODELO ESCOLHEU
+# =========================================================================== #
+def test_r2_o_portal_mantem_a_auto_que_o_modelo_pediu_quando_ela_e_do_cliente(banco):
+    """📊 Medido: com DUAS autos vigentes, o modelo pediu `A-0002` (o vidro é do
+    outro carro) e o portal recebia `A-0001` — a que a fonte fixou num turno
+    anterior. O pedido saía da corretora contra o contrato errado.
+
+    O sistema só corrige o número quando o que o modelo escreveu NÃO é uma
+    apólice vigente deste cliente na família do portal.
+    """
+    outro_carro = _doc_auto("A-0002")
+    outro_carro["nosnum"] = "900009"
+    portal = _Duble("portal_action", {"status": "queued"})
+    contexto = _contexto(docs=[_doc_auto("A-0001"), outro_carro])
+
+    estado = _estado(infocap_policy_context=contexto)
+    estado["messages"] = [
+        HumanMessage(content="quebrou o parabrisa do outro carro"),
+        _pedido("portal_action", {"cpf_cnpj": DOC_SINTETICO,
+                                  "data_dano": "01/09/2026",
+                                  "policy_number": "A-0002"}),
+    ]
+    _rodar(N.tool_node(estado, tools=[portal]))
+    assert portal.chamadas[-1].get("policy_number") == "A-0002", (
+        "o portal recebeu %r no lugar da apólice que o modelo escolheu"
+        % (portal.chamadas[-1].get("policy_number"),))
+
+
+def test_r2_CONTROLE_numero_que_NAO_e_do_cliente_continua_sendo_corrigido(banco):
+    """🔴 O guarda de cima não pode virar "o modelo sempre vence": um número que
+    não é de nenhuma apólice vigente do cliente continua sendo substituído pela
+    apólice do caso — era esse o valor da F3.2."""
+    portal = _Duble("portal_action", {"status": "queued"})
+    estado = _estado(infocap_policy_context=_contexto(docs=[_doc_auto("A-0001")]))
+    estado["messages"] = [
+        HumanMessage(content="quebrou o parabrisa"),
+        _pedido("portal_action", {"cpf_cnpj": DOC_SINTETICO,
+                                  "data_dano": "01/09/2026",
+                                  "policy_number": "Z-9999"}),
+    ]
+    _rodar(N.tool_node(estado, tools=[portal]))
+    assert portal.chamadas[-1].get("policy_number") == "A-0001", portal.chamadas[-1]
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B7 — A TRAVA DE TENANT MORA NO CÓDIGO (§7)
+# =========================================================================== #
+def test_b7_contexto_de_outra_corretora_no_estado_nao_atravessa_nem_grava(banco):
+    """🔴 CLAUDE.md §7: o backend usa **service role** — a RLS não protege contra
+    filtro errado no código, e uma trava que depende de quem chama não é trava.
+
+    📊 Medido pelo red team em 26/09/2026, com o `tool_node` real:
+    ```
+    contexto do tenant 1111… num turno do tenant 2222…
+    o acionamento do tenant B RECEBEU: ramo='resi' seguradora='porto'   (de A)
+    linha gravada: ('2222…','whatsapp:…') → apolice_do_caso.company_id='1111…'
+    ```
+    A trava existia só em `_gravar_apolice_do_caso`; `_gravar_ficha_do_turno` e o
+    caminho do ESTADO (o primeiro que se consulta) não tinham nenhuma.
+    """
+    import json as _json
+
+    contexto_de_a = _contexto(company_id=TENANT_A, docs=[_doc_resi()])
+    dispatch = _Duble("insurer_dispatch")
+    estado = _estado(company_id=TENANT_B, infocap_policy_context=contexto_de_a)
+    estado["messages"] = [
+        HumanMessage(content="pode acionar"),
+        _pedido("insurer_dispatch",
+                {"subservice": "encanador", "insurer_key": "allianz",
+                 "line_kind": "auto", "ramo_da_apolice": "auto",
+                 "dados_confirmados": True}),
+    ]
+    _rodar(N.tool_node(estado, tools=[dispatch]))
+
+    recebido = dispatch.chamadas[-1]
+    assert recebido.get("insurer_key") == "allianz", (
+        "o acionamento da corretora B saiu com a seguradora da apólice da "
+        "corretora A: %r" % (recebido,))
+    ficha_b = _ficha_gravada(banco, TENANT_B)
+    bruto = _json.dumps(ficha_b, ensure_ascii=False, default=str)
+    assert TENANT_A not in bruto, ficha_b
+    assert "R-0002" not in bruto, (
+        "o número da apólice da corretora A foi gravado na ficha da B: %r" % (ficha_b,))
+    assert not ficha_b.get("apolice_do_caso"), ficha_b.get("apolice_do_caso")
+
+
+def test_b7_MUTACAO_sem_a_trava_o_contexto_alheio_atravessa(banco, monkeypatch):
+    """🔴 CLAUDE.md §9.3 — com a trava desligada, o guarda de cima fica vermelho."""
+    monkeypatch.setattr(N, "_contexto_do_tenant",
+                        lambda contexto, company_id: contexto
+                        if isinstance(contexto, dict) else None)
+    contexto_de_a = _contexto(company_id=TENANT_A, docs=[_doc_resi()])
+    dispatch = _Duble("insurer_dispatch")
+    estado = _estado(company_id=TENANT_B, infocap_policy_context=contexto_de_a)
+    estado["messages"] = [
+        HumanMessage(content="pode acionar"),
+        _pedido("insurer_dispatch",
+                {"subservice": "encanador", "insurer_key": "allianz",
+                 "line_kind": "auto", "ramo_da_apolice": "auto",
+                 "dados_confirmados": True}),
+    ]
+    _rodar(N.tool_node(estado, tools=[dispatch]))
+    assert dispatch.chamadas[-1].get("insurer_key") == "porto", (
+        "sem a trava o acionamento de B TINHA de sair com a seguradora de A — o "
+        "guarda de cima é carimbo: %r" % (dispatch.chamadas[-1],))

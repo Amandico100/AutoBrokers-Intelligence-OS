@@ -443,3 +443,133 @@ def test_CONTROLE_o_guarda_de_pii_consegue_ficar_vermelho():
                                           "ref": "infocap:1:900001"}]}
     for nome, sujo in (("CPF", com_cpf), ("nome", com_nome), ("locator", com_locator)):
         assert _achados_de_pii(sujo), "o guarda NÃO viu o %s injetado: %r" % (nome, sujo)
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B2 — UMA CONSULTA POR MENSAGEM, E SÓ UMA
+# =========================================================================== #
+#
+# 📊 O defeito medido em 26/09/2026, com o dublê PERFEITO (que acerta tudo):
+#
+#     pytest tests/test_spec116_bancada_gates.py -k linha_de_controle
+#        → assert 0.9047619047619048 == 1.0
+#        "Efeito DUPLICADO: 1 execução a mais com a mesma chave" (3c0ee80f4a3bf6c0)
+#        tool_calls que o MODELO pediu = 1   |   execuções = 2
+#
+# A causa: `_consulta_forcada_ja_feita_no_turno` só reconhecia a chamada que o
+# nó FORÇOU (pelo prefixo do `id`). A que o modelo pediu no mesmo turno não
+# contava — e o nó forçava uma segunda ao sistema de gestão da corretora.
+#
+# ⚠️ Este guarda chama a FUNÇÃO DO MOTOR sobre mensagens REAIS (CLAUDE.md §9.4),
+# não uma reimplementação da contagem.
+def _ai_com_tool_call(nome: str, tool_id: str):
+    return AIMessage(content="", tool_calls=[{"name": nome, "args": {}, "id": tool_id}])
+
+
+def test_b2_a_consulta_do_MODELO_no_mesmo_turno_ja_conta_como_feita():
+    """🔴 A mesma mensagem não dispara DUAS consultas ao sistema de gestão."""
+    historico = [
+        HumanMessage(content="e a franquia dela?"),
+        # o MODELO pediu a consulta: id comum, sem o prefixo da forçada
+        _ai_com_tool_call("infocap_policy_lookup", "toolu_01ModeloPediu"),
+    ]
+    assert N._consulta_forcada_ja_feita_no_turno(historico) is True, (
+        "a consulta que o MODELO pediu neste turno não contou — o nó vai forçar "
+        "uma segunda à corretora com a mesma pergunta (SPEC-117 G6/G10)")
+
+
+def test_b2_CONTROLE_a_contagem_consegue_dizer_NAO():
+    """🔴 CLAUDE.md §9.3 — um guarda que não tem como falhar não guarda nada.
+
+    Três formas de "ainda não consultei neste turno", e a contagem tem de
+    devolver `False` nas três. Sem isto, um `return True` fixo passaria no teste
+    de cima e o produto nunca mais consultaria a apólice.
+    """
+    # (a) nada aconteceu desde a mensagem humana
+    assert N._consulta_forcada_ja_feita_no_turno(
+        [HumanMessage(content="e a franquia dela?")]) is False
+    # (b) o modelo chamou OUTRA ferramenta
+    assert N._consulta_forcada_ja_feita_no_turno([
+        HumanMessage(content="pode acionar"),
+        _ai_com_tool_call("insurer_dispatch", "toolu_02Outra"),
+    ]) is False
+    # (c) a consulta existe, mas é de ANTES da última mensagem humana — turno novo
+    assert N._consulta_forcada_ja_feita_no_turno([
+        HumanMessage(content="meu cpf e %s" % DOC_SINTETICO),
+        _ai_com_tool_call("infocap_policy_lookup", "toolu_03TurnoAnterior"),
+        HumanMessage(content="e a franquia dela?"),
+    ]) is False, "a contagem não reiniciou na mensagem humana nova"
+
+
+def test_b2_a_consulta_FORCADA_pelo_no_continua_contando():
+    """A trava antiga não foi substituída, foi ampliada: o `id` da forçada (que
+    em históricos reconstruídos pode chegar sem `name`) continua valendo."""
+    assert N._consulta_forcada_ja_feita_no_turno([
+        HumanMessage(content="e a franquia dela?"),
+        AIMessage(content="", tool_calls=[{
+            "name": "", "args": {}, "id": N._ID_DA_CONSULTA_FORCADA + "1700000000000"}]),
+    ]) is True
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B4 — A CONSULTA FORÇADA E O NÚMERO DE TERCEIRO
+# =========================================================================== #
+def test_b4_numero_que_nao_e_do_cliente_nao_forca_consulta_no_papel_mascarado(monkeypatch):
+    """🔴 CROSS-CLIENT. `lookup(policy_number=…)` é busca GLOBAL na base da
+    corretora (exata por `numapo`): o contexto que volta pode ser de OUTRO
+    cliente e SUBSTITUI a apólice do caso.
+
+    📊 Medido pelo red team em 26/09/2026:
+    ```
+    tool_args FORCADOS: {'policy_number': '202623140269982', …}
+    apolice do caso ANTES: 'A-0001'   DEPOIS: 'Z-9999'
+    ficha durável: apolice='Z-9999' ramo='residencial' seguradora='azul'
+    ```
+    e sem nenhuma má-fé: `'meu cep para o reboque e 01310900, tem cobertura?'`
+    → `{'policy_number': '01310900'}`.
+    """
+    from app.services.policy_context import construir_policy_context
+
+    contexto = construir_policy_context(
+        _data_do_conector(unmasked=False, docs=[_doc_infocap_auto()]),
+        company_id=TENANT_A, papel="attendance")
+    assert contexto and not contexto.get("document"), (
+        "controle: no papel do segurado não existe identidade crua")
+
+    # (a) um número que NÃO é de nenhuma apólice deste cliente
+    assert N._policy_context_tool_args(
+        "quais as coberturas da apolice 202623140269982?", contexto) is None
+    # (b) um CEP que a expressão livre confunde com número de apólice
+    assert N._policy_context_tool_args(
+        "meu cep para o reboque e 01310900, tem cobertura?", contexto) is None
+
+    # 🔴 CONTROLE — e o que a F3.5 ganhou CONTINUA funcionando: a anáfora sobre a
+    #    apólice DO CLIENTE força a consulta canônica, com o número dele.
+    #    ⚠️ A anáfora sem número depende de `POLICY_INTELLIGENCE_V2` (o gatilho
+    #    E1 da SPEC-016.1), e é ela que o produto liga no atendimento.
+    monkeypatch.setenv("POLICY_INTELLIGENCE_V2", "1")
+    forcada = N._policy_context_tool_args("e a franquia dela?", contexto)
+    assert forcada and forcada["policy_number"] == "A-0001", forcada
+    do_texto = N._policy_context_tool_args(
+        "quais as coberturas da apolice A-0001?", contexto)
+    assert do_texto and do_texto["policy_number"] == "A-0001", do_texto
+    # e com a flag ligada o número ALHEIO continua recusado
+    assert N._policy_context_tool_args(
+        "quais as coberturas da apolice 202623140269982?", contexto) is None
+
+
+def test_b4_CONTROLE_no_papel_core_a_identidade_crua_ainda_abre_a_porta():
+    """⚠️ O conserto é na PORTA, não na extração: o Chat Principal (`core`) manda
+    o CPF junto, e ali o número é um filtro DENTRO das apólices daquela pessoa.
+    Fechar esse caminho seria consertar o defeito errado."""
+    from app.services.policy_context import construir_policy_context
+
+    contexto = construir_policy_context(
+        _data_do_conector(unmasked=True, docs=[_doc_infocap_auto()]),
+        company_id=TENANT_A, papel="core")
+    assert contexto.get("document"), "controle: o papel core tem identidade crua"
+    args = N._policy_context_tool_args(
+        "quais as coberturas da apolice 202623140269982?", contexto)
+    assert args and args.get("document"), (
+        "no `core` a consulta forçada por número tem de continuar saindo, e com "
+        "a identidade do cliente ao lado: %r" % (args,))

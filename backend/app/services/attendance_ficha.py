@@ -434,6 +434,20 @@ def fundir(ficha: Dict[str, Any], novidades: Dict[str, Any],
         _tenant_novo = str(_novo_ctx.get("company_id") or "").strip()
         if _tenant_atual and _tenant_novo and _tenant_atual != _tenant_novo:
             # Corretora diferente: SUBSTITUI, nunca mistura.
+            #
+            # 🔴 E este `pop` NÃO é código morto (pendência 4 do juiz da
+            # SPEC-117), embora a linha de baixo às vezes o desfaça. A razão
+            # escrita, porque sem ela o próximo leitor apaga a linha:
+            # `novidades_da_apolice` manda as DUAS chaves juntas **só quando há
+            # apólice SELECIONADA**. Quando o contexto da outra corretora tem
+            # duas candidatas e nenhuma escolhida, ele manda só
+            # `apolice_do_caso` — e sem este `pop` o NÚMERO HUMANO da corretora
+            # anterior ficaria na ficha, ao lado do contexto da nova. É esse
+            # número que `human_handoff._linha_da_apolice` imprime para a
+            # atendente ler (CLAUDE.md §7 e §9.5).
+            # 📊 O guarda que prova que a linha tem efeito:
+            # `test_a_apolice_de_outra_corretora_NUNCA_funde_com_esta_ficha`,
+            # no ramo "a nova corretora não escolheu nada".
             nova.pop(CHAVE_DA_APOLICE, None)
         nova[CHAVE_DO_CONTEXTO_DA_APOLICE] = _novo_ctx
     if _tem_valor(novidades.get(CHAVE_DA_APOLICE)):
@@ -651,10 +665,34 @@ def novidades_da_apolice(contexto: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     `CHAVE_DA_APOLICE`. Sem apólice SELECIONADA grava só a estrutura: duas
     candidatas ainda não são a apólice do caso, e inventar uma escolha aqui
     seria decidir pelo segurado.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    🔴 SPEC-117, conserto único (blocker B1) — O QUE VAI PARA O DURÁVEL É A
+       LISTA BRANCA, EM QUALQUER PAPEL.
+    ═══════════════════════════════════════════════════════════════════════════
+    Esta função gravava o contexto **INTEIRO**. No papel `core` o contexto
+    carrega `document` e `name` CRUS (exceção legítima da §2, porque o Chat
+    Principal opera com dado cru no turno) — e assim o CPF e o nome completo
+    passavam a repousar em `conversations.ficha_atendimento`, a coluna que o
+    painel do Founder lê.
+
+    📊 Medido pelo motor em 26/09/2026 (`tool_node` real, Supabase de mentira):
+    `[core] PII na ficha durável: ['CPF','nome:Cliente','nome:Teste','nome:Sintetico']`
+    contra `[attendance]: nenhum`. E 📊 `0 de 79` fichas de `core` tinham
+    conteúdo no banco: o primeiro byte que esta SPEC escreveria lá era o CPF.
+
+    ⛔ O corte é aqui, no lugar que ESCREVE — não numa condição de papel
+    espalhada pelos chamadores. É o mesmo princípio de
+    `infocap_tool._doc_para_o_publico`. A projeção é de `policy_context`
+    (`contexto_para_o_duravel`), que é quem define a §2: ⛔ não existe segunda
+    lista branca (CLAUDE.md §5).
     """
     if not isinstance(contexto, dict) or not contexto.get("apolices"):
         return {}
-    novidades: Dict[str, Any] = {CHAVE_DO_CONTEXTO_DA_APOLICE: contexto}
+    from app.services.policy_context import contexto_para_o_duravel
+
+    novidades: Dict[str, Any] = {
+        CHAVE_DO_CONTEXTO_DA_APOLICE: contexto_para_o_duravel(contexto)}
     escolhida = apolice_do_caso(contexto=contexto)
     if not escolhida:
         return novidades

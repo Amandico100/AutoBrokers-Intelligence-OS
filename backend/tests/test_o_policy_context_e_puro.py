@@ -680,3 +680,339 @@ def test_a_chave_do_hmac_nunca_aparece_no_contexto_nem_na_excecao(monkeypatch):
     monkeypatch.delenv("POLICY_CONTEXT_HMAC_KEY")
     assert _ctx(docs=[_auto_vigente()])["cliente_ref"] != contexto["cliente_ref"], (
         "trocar a chave tinha de trocar o pseudônimo — senão ela não entra no HMAC")
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B5 — "NÃO SEI" NUNCA VIRA "VALE"
+# =========================================================================== #
+#
+# Os 9 cenários de vigência, todos pelas funções REAIS do conector
+# (`_sanitize_policy` e `_sanitize_match`). 📊 Os três que estavam ERRADOS em
+# 26/09/2026, medidos pelo red team:
+#
+#   fimvig ausente          → active_now=None expired=None → selecionada='A-0001'
+#                             e o bloco dizia "é ELA que vale"
+#   active_now + expired    → selecionada='A-0001' (vencida), e
+#                             `apolices_vigentes` devolvia a VENCIDA
+#   policy_status cancelado → cancelada=False, selecionada='A-0001',
+#                             e `escolher_apolice` ACEITAVA a cancelada
+def _sem_fim_de_vigencia() -> dict:
+    """A fonte não disse até quando a apólice vale — 📊 `_active_expired` devolve
+    `active_now=None, expired=None`."""
+    # ⚠️ `nosnum` próprio: a `chave` técnica sai do locator, e duas apólices com
+    # o MESMO `nosnum` são deduplicadas pelo construtor — o cenário ficaria com
+    # uma apólice só, e o teste passaria medindo outra coisa.
+    doc = _doc_infocap(numapo="S-0001", nosnum="900333")
+    doc["fimvig"] = ""
+    return doc
+
+
+def test_b5_vigencia_desconhecida_nao_e_vigente_e_nao_e_selecionavel():
+    contexto = _ctx(docs=[_sem_fim_de_vigencia()])
+    assert contexto, "a apólice continua LISTADA — o corretor precisa vê-la"
+    resumo = contexto["apolices"][0]
+    assert resumo["vigencia_fim"] is None
+    assert resumo["vigente"] is False, resumo
+    assert resumo["expirada"] is False, "controle: ela não está vencida — é 'não sei'"
+    assert contexto["selecionada"] is None, (
+        "uma apólice de vigência DESCONHECIDA virou a apólice do caso")
+    assert "selected_policy_number" not in contexto
+    assert PC.apolices_vigentes(contexto) == []
+    with pytest.raises(ValueError) as erro:
+        PC.escolher_apolice(contexto, resumo["chave"])
+    assert "vigencia conhecida" in str(erro.value)
+
+
+def test_b5_a_fonte_contraditoria_ativa_E_vencida_nao_e_selecionada():
+    """📊 `{"active_now": True, "expired": True}` → antes: `selecionada=902`."""
+    data = _data_do_conector(unmasked=False, docs=[_auto_vigente("C-0001")],
+                             status="ambiguous_policy")
+    data["matches"][0]["expired"] = True
+    contexto = PC.construir_policy_context(data, company_id=TENANT_A,
+                                           papel="attendance")
+    resumo = contexto["apolices"][0]
+    assert resumo["expirada"] is True and resumo["vigente"] is False, resumo
+    assert contexto["selecionada"] is None, contexto
+    assert PC.apolices_vigentes(contexto) == [], (
+        "`apolices_vigentes` devolveu uma apólice VENCIDA — e é ela que o "
+        "serviço pedido usaria para escolher")
+
+
+def test_b5_cancelada_so_em_policy_status_nao_e_selecionavel():
+    """🔴 O shape de `_sanitize_match` **não emite `cancelled`** (📊 as chaves
+    reais são `[... 'policy_status', 'product']`): o cancelamento chega só em
+    `policy_status='cancelado'`, e `policy_context` nunca o lia."""
+    from app.api.infocap_connector import _sanitize_match
+
+    doc = _auto_vigente("K-0001")
+    doc["cancelado"] = "S"
+    correspondencia = _sanitize_match(doc, False)
+    assert "cancelled" not in correspondencia, (
+        "controle: se a fonte passar a emitir `cancelled` aqui, este teste "
+        "deixou de medir o que dizia medir")
+    assert correspondencia["policy_status"] == "cancelado"
+
+    identidade = _canonical_customer_identity(doc, doc, unmasked=False)
+    contexto = PC.construir_policy_context(
+        {"status": "found", **identidade, "selected": correspondencia,
+         "matches": [correspondencia]},
+        company_id=TENANT_A, papel="attendance")
+    resumo = contexto["apolices"][0]
+    assert resumo["cancelada"] is True, resumo
+    assert resumo["vigente"] is False
+    assert contexto["selecionada"] is None, contexto
+    with pytest.raises(ValueError) as erro:
+        PC.escolher_apolice(contexto, resumo["chave"])
+    assert "CANCELADA" in str(erro.value)
+
+
+def test_b5_CONTROLE_o_prefixo_de_cancelamento_nao_engole_o_que_nao_e():
+    """🔴 A constante `_PREFIXO_DE_CANCELAMENTO` DECIDE entre conteúdos, então
+    ela tem de provar as duas direções (CLAUDE.md §9.5):
+
+    · `"CANCELADO PELO CLIENTE"` conta — `policy_status` é texto livre da fonte;
+    · `"renovacao cancelada"` NÃO conta — ali quem foi cancelada é a RENOVAÇÃO,
+      e tratar as duas como iguais cancelaria contrato válido.
+    """
+    assert PC._cancelada({"policy_status": "cancelado"}) is True
+    assert PC._cancelada({"policy_status": "CANCELADO PELO CLIENTE"}) is True
+    assert PC._cancelada({"policy_status": "cancelada"}) is True
+    assert PC._cancelada({"policy_status": "renovacao cancelada"}) is False
+    assert PC._cancelada({"policy_status": "ativo"}) is False
+    assert PC._cancelada({}) is False
+    # e o sinal booleano continua valendo, sozinho
+    assert PC._cancelada({"cancelled": True}) is True
+
+
+def test_b5_os_nove_cenarios_de_vigencia_de_uma_vez():
+    """A tabela inteira num lugar — é ela que se lê quando alguém mexer na régua."""
+    from app.api.infocap_connector import _sanitize_match
+
+    vencida = _auto_vencida("Z-9999")
+    vigente = _auto_vigente("A-0001")
+    cancelada = _doc_infocap(numapo="C-0007", nosnum="900555", cancelado=True)
+    sem_fim = _sem_fim_de_vigencia()
+
+    def sel(docs, status="found", selected_idx=None):
+        data = _data_do_conector(unmasked=False, docs=docs, status=status)
+        if selected_idx is not None:
+            data["selected"] = data["matches"][selected_idx]
+        contexto = PC.construir_policy_context(data, company_id=TENANT_A,
+                                               papel="attendance")
+        escolhida = PC.apolice_selecionada(contexto)
+        return (escolhida or {}).get("numapo")
+
+    assert sel([vencida, vigente]) == "A-0001", "vencida como matches[0]"
+    assert sel([vencida]) is None, "vencida ÚNICA"
+    assert sel([cancelada]) is None, "cancelada ÚNICA"
+    assert sel([sem_fim]) is None, "vigência desconhecida ÚNICA"
+    assert sel([vencida, vigente], selected_idx=0) == "A-0001", (
+        "a fonte apontou a VENCIDA — e ela não pode ser a do caso")
+    assert sel([cancelada, vigente], selected_idx=0) == "A-0001", (
+        "a fonte apontou a CANCELADA")
+    assert sel([sem_fim, vigente], selected_idx=0) == "A-0001", (
+        "a fonte apontou a de vigência desconhecida")
+    assert sel([vencida, cancelada]) is None, "nenhuma vigente"
+    # e o shape do `_sanitize_match`, onde só `policy_status` diz que cancelou
+    doc = _auto_vigente("K-0002")
+    doc["cancelado"] = "S"
+    m = _sanitize_match(doc, False)
+    ident = _canonical_customer_identity(doc, doc, unmasked=False)
+    contexto = PC.construir_policy_context(
+        {"status": "found", **ident, "selected": m, "matches": [m]},
+        company_id=TENANT_A, papel="attendance")
+    assert contexto["selecionada"] is None, "cancelada no shape do _sanitize_match"
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B6 — A APÓLICE DO CASO NÃO ESCORREGA PARA OUTRA
+# =========================================================================== #
+def test_b6_quando_a_escolhida_vence_o_caso_volta_a_NAO_ter_apolice():
+    """🔴 O defeito silencioso, 📊 medido pelo red team em 26/09/2026:
+    ```
+    anterior.selecionada -> 'A-0001' (auto)
+    depois de A-0001 vencer     : selecionada='R-0002'   (a resi, de outro RAMO)
+    depois de A-0001 desaparecer: selecionada='R-0002'
+    ```
+    `fundir` recusava herdar a vencida — e devolvia o `novo`, cuja auto-escolha
+    *"única vigente"* fixava OUTRO contrato. O acionamento seguinte sairia com o
+    ramo e a seguradora dessa outra apólice, e ninguém avisava.
+    """
+    auto, resi = _auto_vigente("A-0001"), _resi_vigente("R-0002")
+    data = _data_do_conector(unmasked=False, docs=[auto, resi])
+    data["selected"] = data["matches"][0]            # a fonte escolheu o carro
+    anterior = PC.construir_policy_context(data, company_id=TENANT_A,
+                                           papel="attendance")
+    assert (PC.apolice_selecionada(anterior) or {})["numapo"] == "A-0001", (
+        "controle: o caso COMEÇA com a apólice do carro")
+
+    # a consulta seguinte: a auto VENCEU, a resi continua vigente, e a fonte
+    # não apontou nada (`status` ambíguo) — ninguém ESCOLHEU a resi.
+    auto_vencida = _doc_infocap(numapo="A-0001", nosnum="900001",
+                               inivig=VENC_INICIO, fimvig=VENC_FIM)
+    novo = _ctx(docs=[auto_vencida, resi], status="ambiguous_policy")
+    fundido = PC.fundir(anterior, novo)
+    assert fundido["selecionada"] is None, (
+        "a apólice do caso escorregou para %r, de outro ramo"
+        % ((PC.apolice_selecionada(fundido) or {}).get("numapo"),))
+    assert "selected_policy_number" not in fundido
+    assert "selected_policy_ramo" not in fundido
+    assert (fundido.get("origem_por_campo") or {}).get("selecionada") is None
+    assert len(fundido["apolices"]) == 2, (
+        "a LISTA continua inteira — só a escolha caiu")
+
+    # e o mesmo quando ela simplesmente SAI da lista
+    fundido2 = PC.fundir(anterior, _ctx(docs=[resi], status="ambiguous_policy"))
+    assert fundido2["selecionada"] is None, fundido2
+
+
+def test_b6_CONTROLE_quando_a_FONTE_aponta_outra_ela_vence():
+    """🔴 O guarda de cima não pode virar "nunca troca de apólice". Quando a
+    fonte APONTA outra (`status=found` + `selected`), isso é informação nova e
+    legítima — o que não vale é o produto escorregar sozinho."""
+    anterior_data = _data_do_conector(unmasked=False, docs=[_auto_vigente("A-0001")])
+    anterior = PC.construir_policy_context(anterior_data, company_id=TENANT_A,
+                                           papel="attendance")
+    assert anterior["selecionada_pela_fonte"] is True, (
+        "controle: com UMA apólice o `_data_do_conector` real põe `selected`")
+    novo = _ctx(docs=[_resi_vigente("R-0002")])
+    assert novo["selecionada_pela_fonte"] is True
+    fundido = PC.fundir(anterior, novo)
+    assert (PC.apolice_selecionada(fundido) or {})["numapo"] == "R-0002", fundido
+
+
+def test_b6_a_escolha_que_SOBROU_na_lista_nao_e_escolha_da_fonte():
+    """A diferença que o B6 usa, afirmada sobre o construtor: "a fonte apontou
+    esta" e "sobrou só esta vigente" são as duas do sistema — e decidem coisas
+    opostas numa fusão."""
+    # duas apólices, nenhuma apontada, só uma vigente → a escolha é por sobra
+    contexto = _ctx(docs=[_auto_vencida("Z-9999"), _resi_vigente("R-0002")],
+                    status="ambiguous_policy")
+    assert (PC.apolice_selecionada(contexto) or {})["numapo"] == "R-0002"
+    assert contexto["selecionada_pela_fonte"] is False, contexto
+    # e uma escolha EXPLÍCITA também não é da fonte
+    escolhido = PC.escolher_apolice(contexto, contexto["apolices"][1]["chave"])
+    assert escolhido["selecionada_pela_fonte"] is False
+
+
+def test_b6_a_escolha_pelo_CORREDOR_tem_origem_propria():
+    """🔴 SPEC-117 §2: `origem_por_campo` responde QUEM escolheu. A terceira
+    origem (`corredor`) só ganhou escritor no conserto único — é ela que diz que
+    a apólice do caso foi decidida pelo SERVIÇO pedido, não pelo segurado."""
+    contexto = _ctx(docs=[_auto_vigente("A-0001"), _resi_vigente("R-0002")])
+    assert contexto["selecionada"] is None, "controle: duas vigentes não escolhem"
+    resi = [a for a in contexto["apolices"] if a["ramo"] == "resi"][0]
+    escolhido = PC.escolher_apolice(contexto, resi["chave"], PC.ORIGEM_CORREDOR)
+    assert escolhido["origem_por_campo"]["selecionada"] == "corredor"
+    assert escolhido["selected_policy_ramo"] == "resi"
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B1 — A LISTA BRANCA DO DURÁVEL
+# =========================================================================== #
+def test_b1_o_contexto_para_o_duravel_e_lista_de_PERMISSAO():
+    """🔴 Lista de permissão, não de proibição: campo novo no contexto não vaza
+    por omissão — ele simplesmente não é gravado até alguém escrevê-lo na §2."""
+    cru = _ctx(docs=[_auto_vigente()], papel="core", unmasked=True)
+    assert cru.get("document") == DOC_SINTETICO, "controle: o `core` traz o CPF"
+
+    duravel = PC.contexto_para_o_duravel(cru)
+    assert _varrer_pii(duravel) == [], _varrer_pii(duravel)
+    assert "document" not in duravel and "name" not in duravel
+    assert set(duravel) <= set(PC.CAMPOS_DURAVEIS), sorted(duravel)
+    # o que é legítimo continua
+    assert duravel["company_id"] == TENANT_A
+    assert duravel["cliente_ref"] == cru["cliente_ref"]
+    assert [a["numapo"] for a in duravel["apolices"]] == ["A-0001"]
+
+    # 🔴 um campo inventado no TOPO e DENTRO da apólice: nenhum dos dois passa
+    sujo = {**cru, "telefone_do_titular": TELEFONE_SINTETICO}
+    sujo["apolices"] = [{**cru["apolices"][0], "holder_name": NOME_SINTETICO}]
+    projetado = PC.contexto_para_o_duravel(sujo)
+    assert "telefone_do_titular" not in projetado
+    assert "holder_name" not in projetado["apolices"][0]
+    assert _varrer_pii(projetado) == [], _varrer_pii(projetado)
+
+    # ⛔ e não muta o recebido
+    assert sujo["telefone_do_titular"] == TELEFONE_SINTETICO
+    assert PC.contexto_para_o_duravel(None) is None
+
+
+def test_b1_CONTROLE_a_varredura_reprova_o_contexto_CRU_do_core():
+    """🔴 CLAUDE.md §9.3: se a varredura não reprovasse o contexto cru, o teste
+    de cima não provaria nada."""
+    cru = _ctx(docs=[_auto_vigente()], papel="core", unmasked=True)
+    achados = _varrer_pii(cru)
+    assert achados, "o contexto cru do `core` TEM CPF — a varredura não o viu"
+
+
+# =========================================================================== #
+# 🔴 SPEC-117, CONSERTO ÚNICO · B8 — A CHAVE DO HMAC PELO CAMINHO DO PRODUTO
+# =========================================================================== #
+def test_b8_a_chave_tambem_vem_do_app_core_config(monkeypatch):
+    """🔴 📊 `app/core/config.py:173` declara `env_file = ".env"`, e o pydantic lê
+    o ARQUIVO — ele **não** popula `os.environ`. Uma chave que existe no `.env`
+    era invisível para `os.getenv`, e 📊 o `cliente_ref` caía por força bruta em
+    **0,1 s / 7.789 tentativas** sem que nada avisasse.
+
+    ⛔ Presença/ausência, nunca o valor (CLAUDE.md §13.3).
+    """
+    monkeypatch.delenv("POLICY_CONTEXT_HMAC_KEY", raising=False)
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+
+    class _ConfiguracaoDeMentira:
+        ENCRYPTION_KEY = "chave-que-so-existe-no-dotenv-7f2c"
+
+    import sys
+    import types
+
+    modulo = types.ModuleType("app.core.config")
+    modulo.settings = _ConfiguracaoDeMentira()
+    monkeypatch.setitem(sys.modules, "app.core.config", modulo)
+
+    assert PC.chave_de_plataforma_presente() is True, (
+        "a chave do `.env` continua invisível para o pseudônimo")
+    com_dotenv = _ctx(docs=[_auto_vigente()])["cliente_ref"]
+
+    # CONTROLE: sem NENHUM dos dois caminhos, a presença é False e o pseudônimo
+    # muda — é isso que prova que a chave do `.env` entrou no HMAC.
+    modulo.settings = _ConfiguracaoDeMentira()
+    modulo.settings.ENCRYPTION_KEY = ""
+    assert PC.chave_de_plataforma_presente() is False
+    sem_chave = _ctx(docs=[_auto_vigente()])["cliente_ref"]
+    assert com_dotenv != sem_chave, (
+        "o pseudônimo não mudou: a chave do `.env` não está no HMAC")
+
+    # ⛔ e o valor da chave nunca aparece no contexto
+    import json as _json
+
+    assert "7f2c" not in _json.dumps(
+        _ctx(docs=[_auto_vigente()]), default=str)
+
+
+def test_b8_a_ausencia_da_chave_e_AVISADA_uma_vez(monkeypatch, caplog):
+    """🔴 `chave_de_plataforma_presente()` não tinha nenhum chamador — ninguém
+    seria avisado de que o pseudônimo deixou de resistir a força bruta
+    (pendência 3 do juiz). ⚠️ Uma vez por processo: um `logger.error` por
+    pseudônimo seria um alarme por turno, e alarme que grita sempre é desligado.
+    """
+    import logging
+
+    monkeypatch.delenv("POLICY_CONTEXT_HMAC_KEY", raising=False)
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+
+    import sys
+    import types
+
+    modulo = types.ModuleType("app.core.config")
+    modulo.settings = types.SimpleNamespace(ENCRYPTION_KEY="")
+    monkeypatch.setitem(sys.modules, "app.core.config", modulo)
+    monkeypatch.setattr(PC, "_JA_AVISOU_DA_CHAVE", [False])
+
+    with caplog.at_level(logging.ERROR, logger=PC.logger.name):
+        _ctx(docs=[_auto_vigente()])
+        _ctx(docs=[_resi_vigente()])
+    avisos = [r for r in caplog.records if "forca bruta" in r.getMessage()]
+    assert len(avisos) == 1, "o aviso saiu %d vezes" % len(avisos)
+    # ⛔ e o aviso não carrega valor de chave nenhum
+    assert "=" not in avisos[0].getMessage().split("presentes")[0].split("nem")[-1]

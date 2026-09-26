@@ -100,28 +100,154 @@ DERIVACAO_SEM_CHAVE_DE_PLATAFORMA = "autobrokers:policy_context:v1:sem-chave-de-
 #: modelo (SPEC-117 §2 · D-PILOTO-11 de 17/09/2026).
 ORIGEM_SISTEMA = "sistema_de_gestao"
 ORIGEM_CLIENTE = "cliente"
+#: 🔴 A terceira origem da §2, que só ganhou escritor no conserto único da
+#: SPEC-117 (blocker B3): quem escolheu a apólice foi o SERVIÇO pedido — o
+#: corredor —, não a fonte nem o segurado. Ela existe para que a ficha diga
+#: **por que** aquela apólice é a do caso quando o cliente tem duas vigentes de
+#: ramos diferentes e pede um encanador.
+ORIGEM_CORREDOR = "corredor"
 
 #: os campos cujo valor vem do sistema de gestão em todo contexto recém-nascido.
 _CAMPOS_DO_SISTEMA = ("numapo", "ramo", "seguradora", "vigencia")
+
+# --------------------------------------------------------------------------- #
+# 🔴 A LISTA BRANCA DO QUE É DURÁVEL (SPEC-117 §2 · conserto único, blocker B1)
+# --------------------------------------------------------------------------- #
+#
+# 📊 26/09/2026, medido pelo motor (`tool_node` real, papel `core`):
+#
+#     [core] PII na ficha durável: ['CPF','nome:Cliente','nome:Teste','nome:Sintetico']
+#     [attendance] PII na ficha durável: nenhum
+#
+# A exceção do papel `core` (identidade CRUA em `document`/`name`, mais abaixo)
+# é legítima **para o turno**: o Chat Principal já opera com dado cru e
+# `nodes._policy_context_tool_args` depende dela. Ela nunca foi legítima para o
+# que FICA GRAVADO — `attendance_ficha.novidades_da_apolice` punha o contexto
+# INTEIRO em `conversations.ficha_atendimento`, que o painel do Founder lê, e
+# 📊 0 de 79 fichas de `core` tinham conteúdo: o primeiro byte que esta SPEC
+# escreveria lá era o CPF.
+#
+# 🔴 O corte é no lugar que ESCREVE, e é uma lista de PERMISSÃO, não de
+# proibição — é o mesmo princípio de `infocap_tool._doc_para_o_publico`
+# (📊 `infocap_tool.py:429`: *"o corte é aqui, no lugar que escreve, e não numa
+# instrução que o modelo pode ignorar"*). Campo novo no contexto não vaza por
+# omissão: ele simplesmente não é gravado até alguém escrevê-lo aqui.
+CAMPOS_DURAVEIS = (
+    "versao", "company_id", "cliente_ref", "apolices", "selecionada",
+    "selecionada_pela_fonte", "origem_por_campo", "evidencia",
+    # as chaves LEGADAS que os leitores de `nodes.py` ainda consomem
+    "policy_numbers", "source", "selected_policy_number", "selected_policy_ramo",
+)
+
+#: e o que de CADA apólice é durável — a mesma lista branca de `_resumo_da_apolice`.
+CAMPOS_DURAVEIS_DA_APOLICE = (
+    "chave", "numapo", "ramo", "seguradora", "vigencia_inicio", "vigencia_fim",
+    "vigente", "expirada", "cancelada",
+)
+
+
+def contexto_para_o_duravel(contexto: Optional[dict]) -> Optional[dict]:
+    """O contexto reduzido ao que pode ser GRAVADO (SPEC-117 §2 · B1).
+
+    🔴 Vale em **qualquer** papel: `document` e `name` crus são exceção só para
+    o que o modelo vê no turno, nunca para o que fica em coluna durável.
+    ⛔ Não muta o recebido.
+    """
+    if not isinstance(contexto, dict):
+        return None
+    saida: Dict[str, Any] = {}
+    for campo in CAMPOS_DURAVEIS:
+        if campo not in contexto:
+            continue
+        valor = contexto[campo]
+        if campo == "apolices":
+            valor = [
+                {k: a[k] for k in CAMPOS_DURAVEIS_DA_APOLICE if k in a}
+                for a in valor or []
+                if isinstance(a, dict)
+            ]
+        elif isinstance(valor, dict):
+            valor = dict(valor)
+        elif isinstance(valor, list):
+            valor = list(valor)
+        saida[campo] = valor
+    return saida
 
 
 # --------------------------------------------------------------------------- #
 # A chave do HMAC
 # --------------------------------------------------------------------------- #
+def _chave_pelas_configuracoes() -> str:
+    """A chave pelo caminho que o RESTO do produto usa — `app.core.config`.
+
+    🔴 SPEC-117, conserto único (blocker B8). 📊 Medido em 26/09/2026:
+    `app/core/config.py:173` declara `env_file = ".env"`, e o pydantic lê o
+    ARQUIVO — ele **não** popula `os.environ`. Uma chave que existe no `.env`
+    era invisível para `os.getenv`, e o `cliente_ref` caía por força bruta em
+    📊 **0,1 s / 7.789 tentativas** sem que nada avisasse.
+
+    ⚠️ Import TARDIO, dentro da função, como o resto do código já faz: o módulo
+    continua puro e o `Settings()` (que levanta quando a chave obrigatória
+    falta) nunca é arrastado para o import deste arquivo.
+    ⛔ Devolve `""` em qualquer falha — e nunca loga o valor.
+    """
+    try:
+        from app.core.config import settings
+
+        for nome in CHAVES_DE_ENV_DO_HMAC:
+            valor = str(getattr(settings, nome, "") or "").strip()
+            if valor:
+                return valor
+    except Exception:  # noqa: BLE001 — sem configuração o pseudônimo não para
+        return ""
+    return ""
+
+
 def _segredo_do_hmac() -> tuple[bytes, bool]:
     """Devolve `(segredo, tem_chave_de_plataforma)`.
 
     ⛔ Nunca devolve, loga ou levanta exceção com o valor da chave. O segundo
     elemento diz apenas **presença/ausência** (CLAUDE.md §13.3).
+
+    A ordem é: variável de ambiente de verdade → `app.core.config` (o `.env`) →
+    a derivação sem segredo. A do ambiente vem primeiro porque é ela que um
+    operador usa para ROTACIONAR a chave sem reescrever o arquivo.
     """
     for nome in CHAVES_DE_ENV_DO_HMAC:
         valor = str(os.getenv(nome) or "").strip()
         if valor:
             return valor.encode("utf-8"), True
+    das_configuracoes = _chave_pelas_configuracoes()
+    if das_configuracoes:
+        return das_configuracoes.encode("utf-8"), True
     return DERIVACAO_SEM_CHAVE_DE_PLATAFORMA.encode("utf-8"), False
 
 
+#: ⚠️ O aviso sai UMA vez por processo. Um `logger.error` por pseudônimo seria
+#: um alarme por turno de atendimento — e alarme que grita sempre é desligado.
+_JA_AVISOU_DA_CHAVE = [False]
+
+
+def _avisar_se_a_chave_faltar() -> None:
+    """🔴 O CHAMADOR de `chave_de_plataforma_presente()` (pendência 3 do juiz).
+
+    Sem este aviso ninguém saberia que o `cliente_ref` deixou de ser resistente
+    a força bruta: o produto continua funcionando, e é justamente por isso que o
+    defeito é silencioso (CLAUDE.md §9.5).
+    ⛔ Presença/ausência, nunca o valor (CLAUDE.md §13.3).
+    """
+    if _JA_AVISOU_DA_CHAVE[0] or chave_de_plataforma_presente():
+        return
+    _JA_AVISOU_DA_CHAVE[0] = True
+    logger.error(
+        "[APOLICE] nem POLICY_CONTEXT_HMAC_KEY nem ENCRYPTION_KEY estao "
+        "presentes (ambiente ou .env): o cliente_ref vira derivacao SEM "
+        "segredo e deixa de resistir a forca bruta — SPEC-117 D3"
+    )
+
+
 def _pseudonimo(material: str) -> str:
+    _avisar_se_a_chave_faltar()
     segredo, _tem_chave = _segredo_do_hmac()
     return hmac.new(segredo, material.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
 
@@ -201,16 +327,60 @@ def _e_papel_com_identidade_crua(papel: Any) -> bool:
     return str(papel or "").strip().lower() in PAPEIS_COM_IDENTIDADE_CRUA
 
 
+#: 🔴 Os dois sinais de CANCELAMENTO que a fonte usa — e são dois de verdade.
+#: 📊 26/09/2026: `infocap_connector._sanitize_policy:890` emite `cancelled`
+#: (bool) **e** `policy_status = "cancelado"`; `_sanitize_match:925` emite
+#: `policy_status` e **NÃO** emite `cancelled` (medido: as chaves do
+#: `_sanitize_match` real são `[... 'policy_status', 'product']`). Ler só
+#: `cancelled` fazia uma apólice CANCELADA virar a apólice do caso no shape do
+#: `_sanitize_match`, sem nada travar.
+#:
+#: ⚠️ A comparação é por PREFIXO, e a razão está aqui porque esta linha DECIDE
+#: entre conteúdos (CLAUDE.md §9.5): `policy_status` é texto livre da fonte
+#: (`_first_str` sobre `sit_acompanhamento_txt`/`situacao`/…), então
+#: `"CANCELADO PELO CLIENTE"` tem de contar. ⛔ Já `"renovacao cancelada"` NÃO
+#: conta — ali quem foi cancelada é a renovação, não a apólice, e tratar as duas
+#: como iguais cancelaria contrato válido.
+_PREFIXO_DE_CANCELAMENTO = "cancel"
+
+
+def _cancelada(apolice_sanitizada: Dict[str, Any]) -> bool:
+    """Cancelada por QUALQUER um dos dois sinais da fonte."""
+    if apolice_sanitizada.get("cancelled"):
+        return True
+    status = str(apolice_sanitizada.get("policy_status") or "").strip().lower()
+    return status.startswith(_PREFIXO_DE_CANCELAMENTO)
+
+
 def _resumo_da_apolice(apolice_sanitizada: Dict[str, Any], chave: str) -> Dict[str, Any]:
     """A LISTA BRANCA de UMA apólice (SPEC-117 §2) — e nada além dela.
 
     ⚠️ Esta função é a única que decide o que de uma apólice atravessa. O guarda
     de PII do `test_o_policy_context_e_puro.py` a monkeypatcha de propósito para
     provar que a varredura recursiva **consegue** ficar vermelha (CLAUDE.md §9.3).
+
+    🔴 SPEC-117, conserto único (blocker B5) — `vigente` exige TRÊS coisas:
+    ```
+    a fonte disse que está ativa (`active_now is True`)
+      E a vigência tem FIM conhecido          ← sem data de fim é "NÃO SEI"
+      E não está expirada (`expired is not True`)
+      E não está cancelada por nenhum dos dois sinais
+    ```
+    📊 O defeito que a terceira cláusula fecha: `fimvig` ausente → o conector
+    devolve `active_now=None, expired=None` → `expirada=False` → a apólice era
+    **selecionável**, e o bloco do prompt afirmava *"é ELA que vale"* sobre um
+    contrato que o produto não sabia se estava valendo. É a mesma regra de
+    `familia_de_ramo`, cujo `None` significa *"não sei"* e **nunca** *"não é"*.
     """
-    cancelada = bool(apolice_sanitizada.get("cancelled"))
+    cancelada = _cancelada(apolice_sanitizada)
     expirada = apolice_sanitizada.get("expired") is True
-    vigente = apolice_sanitizada.get("active_now") is True and not cancelada
+    fim_conhecido = bool(str(apolice_sanitizada.get("valid_to") or "").strip())
+    vigente = (
+        apolice_sanitizada.get("active_now") is True
+        and fim_conhecido
+        and not expirada
+        and not cancelada
+    )
     return {
         "chave": chave,
         # D2 · P0 de 25/06: o número humano é visível — é o que o segurado ouve.
@@ -227,9 +397,19 @@ def _resumo_da_apolice(apolice_sanitizada: Dict[str, Any], chave: str) -> Dict[s
 
 
 def _selecionavel(resumo: Dict[str, Any]) -> bool:
-    """🔴 Vencida ou cancelada NUNCA é selecionada — nem sendo a única, nem
-    sendo a mais recente (SPEC-117 G5)."""
-    return not resumo.get("expirada") and not resumo.get("cancelada")
+    """🔴 Só uma apólice VIGENTE pode ser a apólice do caso (SPEC-117 G5).
+
+    Vencida, cancelada **ou de vigência desconhecida** nunca é selecionada — nem
+    sendo a única, nem sendo a mais recente, nem quando a própria fonte a
+    marcou como `selected`.
+
+    📊 SPEC-117, conserto único (B5): a versão anterior era
+    `not expirada and not cancelada`, e as duas negativas passavam a apólice
+    cuja vigência a fonte não informou (`expired=None` → `expirada=False`).
+    "Não sei" virava "vale" por omissão. Agora é uma pergunta afirmativa:
+    **o que se sabe está vigente?**
+    """
+    return resumo.get("vigente") is True
 
 
 def _candidatas(data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -313,24 +493,35 @@ def construir_policy_context(
         },
     }
 
-    escolhida = _escolha_inicial(data, apolices)
+    escolhida, pela_fonte = _escolha_inicial(data, apolices)
     if escolhida:
         contexto["selecionada"] = escolhida
         contexto["origem_por_campo"]["selecionada"] = ORIGEM_SISTEMA
+        # 🔴 SPEC-117, conserto único (B6): "a FONTE apontou esta" e "sobrou só
+        #    esta na lista" são as duas do sistema de gestão — e decidem coisas
+        #    OPOSTAS numa fusão. Ver `fundir`.
+        contexto["selecionada_pela_fonte"] = pela_fonte
 
     _derivar_chaves_legadas(contexto, data=data, papel=papel)
     return contexto
 
 
-def _escolha_inicial(data: Dict[str, Any], apolices: List[Dict[str, Any]]) -> Optional[str]:
-    """A seleção automática — e só ela.
+def _escolha_inicial(data: Dict[str, Any],
+                     apolices: List[Dict[str, Any]]) -> tuple[Optional[str], bool]:
+    """A seleção automática — e só ela. Devolve `(chave, escolhida_pela_fonte)`.
 
     1. a fonte já escolheu (`selected`, com `status` "found" ou ausente) e a
-       escolhida é selecionável → é ela;
-    2. existe exatamente UMA apólice VIGENTE → é ela, sem perguntar;
-    3. caso contrário `None` — duas vigentes (do mesmo ramo ou de ramos
+       escolhida é selecionável → é ela, e `pela_fonte=True`;
+    2. existe exatamente UMA apólice VIGENTE → é ela, sem perguntar, e
+       `pela_fonte=False` — ninguém a APONTOU, ela só foi a que sobrou;
+    3. caso contrário `(None, False)` — duas vigentes (do mesmo ramo ou de ramos
        diferentes) exigem desambiguação, e quem escolhe pelo ramo é o PEDIDO
        (`apolices_vigentes(contexto, ramo=…)`), nunca o construtor.
+
+    🔴 A diferença entre 1 e 2 parece cosmética e não é: numa fusão, "a fonte
+    apontou esta outra" é informação nova e legítima, enquanto "sobrou esta"
+    seria trocar a apólice do caso porque a antiga venceu — o escorregão
+    silencioso do B6.
     """
     por_chave = {a["chave"]: a for a in apolices}
 
@@ -341,12 +532,15 @@ def _escolha_inicial(data: Dict[str, Any], apolices: List[Dict[str, Any]]) -> Op
             chave = chave_da_apolice(da_fonte)
             resumo = por_chave.get(chave or "")
             if resumo and _selecionavel(resumo):
-                return resumo["chave"]
+                return resumo["chave"], True
 
-    vigentes = [a for a in apolices if a.get("vigente")]
+    # 🔴 `_selecionavel`, não `vigente` cru: uma régua só, nos DOIS ramos da
+    #    escolha (pendência 1 do juiz da SPEC-117). Hoje as duas coincidem — e é
+    #    exatamente por isso que dá para consolidar sem mudar comportamento.
+    vigentes = [a for a in apolices if _selecionavel(a)]
     if len(vigentes) == 1:
-        return vigentes[0]["chave"]
-    return None
+        return vigentes[0]["chave"], False
+    return None, False
 
 
 def _derivar_chaves_legadas(
@@ -434,6 +628,9 @@ def _com_selecionada(contexto: Dict[str, Any], chave: str, origem: str) -> Dict[
     novo["evidencia"] = dict(contexto.get("evidencia") or {})
     novo["selecionada"] = chave
     novo["origem_por_campo"]["selecionada"] = origem
+    # 🔴 B6: uma escolha explícita (o segurado, o corredor, ou a preservação da
+    #    escolha anterior) NÃO é "a fonte apontou nesta consulta".
+    novo["selecionada_pela_fonte"] = False
     novo.pop("selected_policy_number", None)
     novo.pop("selected_policy_ramo", None)
     escolhida = apolice_selecionada(novo)
@@ -445,11 +642,18 @@ def _com_selecionada(contexto: Dict[str, Any], chave: str, origem: str) -> Dict[
     return novo
 
 
-def escolher_apolice(contexto: dict, chave: str) -> dict:
-    """O segurado (ou o corretor) escolheu uma apólice. Devolve contexto NOVO.
+def escolher_apolice(contexto: dict, chave: str,
+                     origem: str = ORIGEM_CLIENTE) -> dict:
+    """Alguém escolheu uma apólice para este caso. Devolve contexto NOVO.
 
-    `ValueError` quando a chave não está no contexto ou quando a apólice está
-    vencida/cancelada — 🔴 vencida nunca é selecionada (SPEC-117 G5).
+    `ValueError` quando a chave não está no contexto ou quando a apólice não é
+    selecionável — 🔴 vencida, cancelada ou de vigência desconhecida nunca é a
+    apólice do caso (SPEC-117 G5).
+
+    O `origem` diz QUEM escolheu, e é isso que a ficha grava em
+    `origem_por_campo["selecionada"]`: `ORIGEM_CLIENTE` (o segurado escolheu),
+    `ORIGEM_CORREDOR` (o SERVIÇO pedido escolheu — o encanador só pode sair na
+    residencial) ou `ORIGEM_SISTEMA` (a fonte já vinha escolhida).
     """
     if not isinstance(contexto, dict):
         raise ValueError("contexto de apolice ausente: nao ha o que escolher")
@@ -469,7 +673,16 @@ def escolher_apolice(contexto: dict, chave: str) -> dict:
                 "a apolice %s esta VENCIDA e nao pode ser a apolice do caso"
                 % (apolice.get("numapo") or procurada)
             )
-        return _com_selecionada(contexto, procurada, ORIGEM_CLIENTE)
+        if not _selecionavel(apolice):
+            # 🔴 B5: nem vencida, nem cancelada, e ainda assim não vigente —
+            #    a fonte não disse até quando ela vale. "Não sei" nunca vira
+            #    "vale": afirmar autoridade sobre um contrato de vigência
+            #    desconhecida é o erro silencioso que chega ao segurado.
+            raise ValueError(
+                "a apolice %s nao tem vigencia conhecida e nao pode ser a "
+                "apolice do caso" % (apolice.get("numapo") or procurada)
+            )
+        return _com_selecionada(contexto, procurada, origem)
     raise ValueError(
         "a chave %r nao corresponde a nenhuma apolice deste contexto "
         "(a chave e tecnica e opaca, nunca o numero humano da apolice)" % (procurada,)
@@ -511,8 +724,6 @@ def fundir(anterior: Optional[dict], novo: Optional[dict]) -> Optional[dict]:
         return novo
     if str(anterior.get("company_id") or "").strip() != str(novo.get("company_id") or "").strip():
         return novo
-    if novo.get("selecionada"):
-        return novo
     if not mesmo_cliente(anterior, novo):
         return novo
 
@@ -523,9 +734,65 @@ def fundir(anterior: Optional[dict], novo: Optional[dict]) -> Optional[dict]:
         if not isinstance(apolice, dict) or apolice.get("chave") != chave_anterior:
             continue
         if not _selecionavel(apolice):
-            return novo
+            break
         origem = str(
             (anterior.get("origem_por_campo") or {}).get("selecionada") or ORIGEM_SISTEMA
         )
         return _com_selecionada(novo, chave_anterior, origem)
-    return novo
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-117, conserto único (blocker B6) — AQUI A APÓLICE DO CASO CAIU.
+    # ═══════════════════════════════════════════════════════════════════════════
+    # A escolhida venceu, foi cancelada ou saiu da lista da consulta nova. Duas
+    # saídas, e só uma delas é honesta:
+    #
+    #   · a FONTE apontou outra nesta consulta  → é informação nova: vale ela;
+    #   · a nova "sobrou" como única vigente    → ninguém escolheu. 📊 Medido:
+    #         anterior.selecionada -> 'A-0001' (auto)
+    #         depois de A-0001 vencer     : selecionada='R-0002'  (resi!)
+    #         depois de A-0001 desaparecer: selecionada='R-0002'
+    #     e o acionamento seguinte sairia com o ramo e a seguradora de OUTRO
+    #     contrato, sem avisar ninguém (CLAUDE.md §9.5).
+    #
+    # ⛔ Nunca escorregar para outra sozinho. Quando o produto deixa de saber, ele
+    # volta a NÃO saber — e quem não sabe pergunta.
+    if novo.get("selecionada") and novo.get("selecionada_pela_fonte") is True:
+        return novo
+    if not novo.get("selecionada"):
+        return novo
+    return _sem_selecao(
+        novo, "a apolice do caso deixou de ser elegivel ou saiu da lista")
+
+
+def _sem_selecao(contexto: Dict[str, Any], motivo: str) -> Dict[str, Any]:
+    """🔴 O caso volta a NÃO ter apólice escolhida (SPEC-117, conserto único B6).
+
+    📊 O defeito, medido pelo red team em 26/09/2026:
+    ```
+    anterior.selecionada -> 'A-0001' (auto)
+    depois de A-0001 vencer     : selecionada='R-0002'   (a resi, de outro ramo)
+    depois de A-0001 desaparecer: selecionada='R-0002'
+    ```
+    O `fundir` recusava corretamente herdar a vencida — e devolvia o `novo`,
+    cuja auto-escolha *"única vigente"* fixava **outro contrato, de outro
+    ramo**, sem avisar ninguém. O acionamento seguinte saía com o ramo e a
+    seguradora dessa outra apólice.
+
+    ⛔ Escorregar para outra apólice sozinho é decidir pelo segurado. Quando a
+    escolhida deixa de valer, o produto volta a **não saber** — e quem não sabe
+    pergunta. A lista continua inteira no contexto; só a escolha cai.
+    """
+    logger.info("[APOLICE] %s: o caso volta a NAO ter apolice escolhida", motivo)
+    limpo: Dict[str, Any] = dict(contexto)
+    limpo["apolices"] = [dict(a) for a in contexto.get("apolices") or []
+                         if isinstance(a, dict)]
+    limpo["origem_por_campo"] = {
+        k: v for k, v in (contexto.get("origem_por_campo") or {}).items()
+        if k != "selecionada"
+    }
+    limpo["evidencia"] = dict(contexto.get("evidencia") or {})
+    limpo["selecionada"] = None
+    limpo["selecionada_pela_fonte"] = False
+    limpo.pop("selected_policy_number", None)
+    limpo.pop("selected_policy_ramo", None)
+    return limpo
