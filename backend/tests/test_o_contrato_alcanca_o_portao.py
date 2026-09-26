@@ -231,6 +231,15 @@ _NAO_SE_COBRA_NO_PORTAO = {
     #    `qual_seguro_opcao` (decisão do Founder, 17/09). O portão cobra a tecla;
     #    o ramo é como ela chega sem pergunta extra.
     "ramo_da_apolice",
+    # ⚠️ SPEC-118 F4 — `local_complemento` é OPCIONAL NA SEGURADORA, e o
+    #    formulário da Porto prova por que ele ainda precisa existir aqui:
+    #    📊 a chave `complemento` aparece em 2 de 3 capturas e SOME quando o
+    #    humano não digitou nada. Ou seja — a Porto CONSOME o campo (ele viaja
+    #    na resposta do formulário) e nunca o EXIGE. Declarado e não cobrado é
+    #    exatamente o certo, como `ponto_referencia` acima: o errado seria
+    #    cobrá-lo, porque aí o portão pararia um acionamento por um dado que a
+    #    seguradora aceita em branco.
+    "local_complemento",
 }
 sobrando = sorted(CAMPOS - todos_cobrados - _NAO_SE_COBRA_NO_PORTAO)
 certo(not sobrando,

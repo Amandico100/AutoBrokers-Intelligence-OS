@@ -119,8 +119,26 @@ print("=" * 74)
 # O que de fato nao pode acontecer e mais estreito: a rota A ser cobrada por
 # um slot que SO existe em passo de outra rota. Isso e o borrao.
 def slots_legitimos_da_rota(pb, rota):
-    """Tudo que ESTA rota tem direito de exigir: o `required_slots` dela mais
-    os `requires` dos passos que se aplicam a ela."""
+    """Tudo que ESTA rota tem direito de exigir.
+
+    TRÊS fontes, e cada uma tem o próprio escopo declarado:
+
+    1. `required_slots` do subserviço — a lista escrita à mão;
+    2. os `requires` dos passos de URA que se aplicam a ela (`only_subservices`);
+    3. 🔴 os campos obrigatórios dos FORMULÁRIOS NATIVOS que esta rota abre
+       (SPEC-118 F2b/F4), escopados por `subservicos_observados` — o ACERVO.
+
+    ⚠️ A terceira entrou em 26/09/2026, quando a coordenada da Porto ganhou
+    fonte e `missing_slots_for_subservice` passou a somar os campos do
+    formulário. Sem ela, este guarda acusava `porto/guincho` de borrão por nove
+    slots que são do formulário que **só o guincho da Porto abre** — medindo como
+    defeito o conserto do elo 3 da SPEC-118.
+
+    🔴 **A GARANTIA NÃO MUDOU NEM UM MILÍMETRO:** a rota A não pode ser cobrada
+    por slot que só existe para a rota B. O escopo do formulário é tão estreito
+    quanto o `only_subservices` de um passo — e o teste de controle abaixo prova
+    que um formulário fora do escopo AINDA é borrão.
+    """
     sub = (pb.get("subservices") or {}).get(rota) or {}
     legit = set(sub.get("required_slots") or [])
     alvo = str(rota).lower()
@@ -129,6 +147,16 @@ def slots_legitimos_da_rota(pb, rota):
         if only and alvo not in [str(x).lower() for x in only]:
             continue
         legit.update(passo.get("requires") or [])
+    for flow in (pb.get("native_flows") or {}).values():
+        if alvo not in ((flow or {}).get("subservicos_observados") or {}):
+            continue
+        for _tela, comp in CP._flow_components(flow):
+            if comp.get("slot"):
+                legit.add(str(comp["slot"]))
+        for grupo in ("obrigatorias", "opcionais"):
+            for decl in ((flow.get("resposta") or {}).get(grupo) or {}).values():
+                if (decl or {}).get("slot"):
+                    legit.add(str(decl["slot"]))
     return legit
 
 
@@ -155,6 +183,45 @@ certo(pares > 10,
 certo(not borroes,
       "nenhuma rota e cobrada por slot que so existe em passo de OUTRA rota",
       "borrando: " + "; ".join(f"{r}/{s} -> {f}" for r, s, f in borroes[:6]))
+
+# 🔴 CONTROLE DA TERCEIRA FONTE — SPEC-118 F4.
+#
+# Sem esta linha, `slots_legitimos_da_rota` poderia ter passado a aceitar
+# QUALQUER campo de QUALQUER formulário do corredor, e o guarda viraria carimbo
+# (CLAUDE.md §9.5). Aqui se reintroduz o borrão de propósito: um formulário
+# declarado como observado numa rota que não é a testada.
+import copy as _copy
+
+_alvo = next(((ref, pb) for ref, pb in sorted(CP._PLAYBOOKS.items())
+              if pb.get("native_flows")), (None, None))
+certo(_alvo[0] is not None,
+      "CONTROLE: existe corredor com formulario nativo para medir o escopo",
+      "sem formulario nenhum, a terceira fonte nao pode ser conferida")
+if _alvo[0]:
+    _ref, _pb = _alvo
+    _copia = _copy.deepcopy(_pb)
+    _flow = next(iter(_copia["native_flows"].values()))
+    _rotas = sorted((_copia.get("subservices") or {}).keys())
+    # o formulario passa a se declarar observado em TODAS as rotas do corredor
+    _flow["subservicos_observados"] = {r: "controle do guarda" for r in _rotas}
+    _slots_do_form = {str(c["slot"]) for _t, c in CP._flow_components(_flow)
+                      if c.get("slot")}
+    _pegou = []
+    for _rota in _rotas:
+        _caso = caso_completo_da_rota(_copia, _rota)
+        _falta = set(CP.missing_slots_for_subservice(_copia, _rota, _caso))
+        # o escopo VERDADEIRO do formulario, como o mapa REAL o declara
+        _verdadeiro = set((next(iter(_pb["native_flows"].values()))
+                           .get("subservicos_observados") or {}))
+        if _rota in _verdadeiro:
+            continue
+        if _falta & _slots_do_form:
+            _pegou.append((_rota, sorted(_falta & _slots_do_form)))
+    certo(bool(_pegou),
+          "🔴 CONTROLE: formulario declarado FORA do escopo do acervo AINDA "
+          "e borrao — a terceira fonte nao afrouxou nada",
+          f"corredor {_ref}: nenhuma rota extra foi cobrada, entao este guarda "
+          f"deixou de saber distinguir escopo de formulario")
 
 # 🔴 E AGORA A ASSERCAO NAO-CIRCULAR, que e a que realmente guarda.
 #
