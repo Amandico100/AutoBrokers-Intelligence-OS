@@ -2671,6 +2671,53 @@ _FLOW_CONDICOES_VEICULO_V2: Dict[str, Any] = {
         "msg_type": "flow_reply",
         "event_source": "live",
         "wa_timestamp": "2026-07-18T21:51:52Z",
+        # 🔴 SPEC-118 F2a · 26/09/2026 — O ACERVO CRESCEU, E ELE CONFIRMA.
+        #
+        # 📊 Varredura das 6 capturas com schema da família (1 hdi + 5 yelum):
+        #    select insurer_key, wa_timestamp,
+        #           interactive->'native_form'->>'flow_id',
+        #           interactive->'native_form'->'answers'
+        #      from observed_events
+        #     where msg_type='flow_reply' and insurer_key in ('yelum','hdi')
+        #       and interactive ? 'native_form' order by wa_timestamp;
+        "confirmado_em": ["2026-08-19T16:02:38Z (yelum, 3206000179602236)",
+                          "2026-09-04T19:11:55Z (hdi, 857030507196739)",
+                          "2026-09-14T12:13:20Z (yelum, 3206000179602236)"],
+        # 🔴 A REGRA DE VISIBILIDADE DEIXOU DE SER LEITURA DE JSON E PASSOU A SER
+        #    MEDIÇÃO: `rb_NivelDaRua` só aparece quando
+        #    `rb_EmGaragemOuEstacionamento == "1"`.
+        #    📊 5 de 6 capturas trazem garagem="0" e **nenhuma** delas tem a chave
+        #    `rb_NivelDaRua`; a única com garagem="1" (yelum, 14/09) a tem, com
+        #    valor "1" (Subsolo). O `visible_if` abaixo descreve o que acontece.
+        "visible_if_conferido": "garagem=0 → sem rb_NivelDaRua em 5 de 5 · "
+                                "garagem=1 → com rb_NivelDaRua em 1 de 1",
+        # 📊 E os ids de opção deixaram de ser só transcrição: aparecem
+        #    ESCOLHIDOS por humanos — ckb `cambio_travado` (yelum 14/09) e
+        #    rb_InformacoesLocal `2` = "Local escuro ou mal iluminado"
+        #    (yelum 11/09). Antes, 4 de 4 traziam só o padrão.
+        "ids_vistos_em_uso": ["ckb_SituacoesVeiculo=cambio_travado",
+                              "rb_InformacoesLocal=2", "rb_NivelDaRua=1"],
+        # ⚠️ O QUE O ACERVO MOSTRA E O MAPA **NÃO** MUDOU — de propósito.
+        #
+        # 🔴 O `flow_name` REAL tem sufixo de versão, e ele é DIFERENTE por id:
+        #      857030507196739  "…V2 [Redução de perguntas]_v2_1783714513857"  (hdi)
+        #      3206000179602236 "…V2 [Redução de perguntas]_v2_1783714477612"  (yelum)
+        #      2887131368288279 "…(local e ocupantes) […]_v2_1781119508818"    (yelum)
+        #    O mapa declara o nome SEM sufixo, e `_moldura_da_resposta` ecoa
+        #    `montado["flow_name"]` — ou seja, o produto devolve à seguradora um
+        #    nome que não é o que ela mandou, e para a Yelum devolve o da HDI
+        #    (um objeto, dois ids). ⛔ Não se corrige aqui: trocar o nome muda o
+        #    BYTE que SAI, e ninguém mediu se a seguradora valida esse campo
+        #    (é a classe da P-118-04). Fica registrado, com a medição, para a
+        #    fatia que mexer no eco decidir com dado — não com palpite.
+        "flow_name_observado_por_id": {
+            "857030507196739": "Automóvel - Detalhes do atendimento (veículo, local e "
+                               "ocupantes) V2 [Redução de perguntas]_v2_1783714513857",
+            "3206000179602236": "Automóvel - Detalhes do atendimento (veículo, local e "
+                                "ocupantes) V2 [Redução de perguntas]_v2_1783714477612",
+            "2887131368288279": "Automóvel - Detalhes do atendimento (local e "
+                                "ocupantes) [Redução de perguntas]_v2_1781119508818",
+        },
     },
     "screens": [
         {
@@ -2935,7 +2982,11 @@ _FLOW_LOCAL_E_OCUPANTES: Dict[str, Any] = {
         "insurer_key": "yelum",
         "msg_type": "flow_reply",
         "wa_timestamp": "2026-08-07T11:25:29Z",
-        "confirmado_em": "2026-08-17T11:30:42Z",
+        # 📊 SPEC-118 F2a · 26/09/2026: uma terceira captura deste formulário —
+        #    yelum 11/09, com `rb_InformacoesLocal="2"` (Local escuro ou mal
+        #    iluminado). É a primeira vez que a opção 2 aparece ESCOLHIDA; nas
+        #    duas anteriores as respostas eram "6"/"1", que são o padrão.
+        "confirmado_em": ["2026-08-17T11:30:42Z", "2026-09-11T19:19:53Z"],
         "flow_cta": "Detalhes do local",
         "resposta_humana": {"rb_InformacoesLocal": "6", "rb_Ocupantes": "1"},
     },
@@ -3012,6 +3063,306 @@ YELUM_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair"  # 'Digite Sair para enc
 # passou a existir e foi provado. Quem recusa formulário desconhecido é o motor.
 # MESMO objeto do corredor da HDI (mesmo bot, mesmo flow_id). `is`, não `==`.
 YELUM_AUTO_WHATSAPP_V1["native_flows"] = _NATIVE_FLOWS_FAMILIA_HDI_YELUM
+
+# ==========================================================================
+# 🔴 PORTO — O FORMULÁRIO DE ENDEREÇO, E O QUESTIONÁRIO QUE NÃO SE RESPONDE
+#    SPEC-118 · fatia F2a · 26/09/2026
+# ==========================================================================
+#
+# 📊 Medido em `observed_events` (projeto `dcajcvlzcjbmyapmklil`) em 26/09/2026:
+#
+#     select interactive->'flow'->>'flow_id', interactive->'flow'->>'cta',
+#            interactive->'flow'->>'name', count(*),
+#            min(wa_timestamp)::date, max(wa_timestamp)::date
+#       from observed_events
+#      where msg_type='flow' and insurer_key='porto' group by 1,2,3;
+#
+#     709854848132894   "Preencher"            galaxy_message   6   28/05→21/09/2026
+#     1263063458275481  "Avaliar atendimento"  galaxy_message   8   09/10/2025→21/09/2026
+#
+# A Porto abre DOIS formulários neste canal e só UM é do chamado. O segundo é
+# pesquisa de satisfação — ver `flows_nao_respondiveis`, mais abaixo.
+#
+# ⛔ ESTE MAPA NÃO TEM `prompt_anchor`, E O MOTIVO É MEDIDO.
+#
+# 📊 O texto que abre o formulário é, nas 6 capturas, literalmente
+#    "Selecione o botão:". Essa frase aparece em **37** mensagens da Porto, e só
+#    **6** delas são o convite:
+#
+#      select count(*) filter (where text ~* 'selecione o bot[aã]o'),
+#             count(*) filter (where text ~* 'selecione o bot[aã]o' and msg_type='flow')
+#        from observed_events where insurer_key='porto';        →   37  ·  6
+#
+#    Declarar essa frase como âncora levaria **31 telas (84%)** para o caminho
+#    do formulário — inclusive telas que hoje um passo de URA responde. É o
+#    defeito da `CLAUDE.md` §9.5 (*"o passo de um ofício respondendo a tela de
+#    outro"*), e ele chegaria à régua das 73 rotas por
+#    `scripts/replay.py:246` (`detect_native_flow`).
+#
+# 🔴 O canal de detecção da Porto é o `flow_id`, e ele CHEGA: 6 de 6 convites o
+#    trazem em `interactive.flow.flow_id` (o oposto da família HDI/Yelum, onde
+#    📊 o marcador aparecia 0 vezes em 28.096 eventos e a âncora de texto era o
+#    único canal). Por isso, aqui, âncora seria risco sem ganho.
+#
+# ---------------------------------------------------------------------------
+# 🔴 O QUE A SEGURADORA CONSOME: AS CHAVES DE PRIMEIRO NÍVEL — NÃO OS CAMPOS
+# ---------------------------------------------------------------------------
+# `atlas/observer_intake.py:404` (`_parse_native_form`) é a autoridade sobre o
+# que o acervo chama de `answers`:
+#
+#     answers = {k: v for k, v in params.items()
+#                if k not in ("flow_token", "wa_flow_response_params")}
+#
+# Ou seja: `answers` É o paramsJSON sem a moldura — exatamente o que
+# `montar_nfm_reply` monta como `{"flow_token": …, **params}`. E `fields` é
+# outra coisa: são os componentes das TELAS, com `answer` casado por NOME.
+#
+# ⚠️ AS DUAS LISTAS NÃO COINCIDEM, e a diferença não é detalhe:
+#
+#     nos dois lados      rua · numero_residencia · complemento · bairro ·
+#                         cidade · estado
+#     só em `fields`      location · input_confirmar_endereco ·
+#                         ponto_referencia · input_tentar_novamente2
+#                         (📊 `answer: null` nas 3 de 3 capturas)
+#     só em `answers`     cep · latitude · longitude · referencia ·
+#                         label_endereco_completo
+#
+# 🔴 `referencia` chega preenchida nas 3 de 3 capturas **com o campo
+#    `ponto_referencia` vazio nas 3 de 3** — ela é prefill do servidor da Porto
+#    (o `${data.*}` da tela), vindo do que a URA já perguntou por texto antes.
+#    Quem responde por código tem de produzi-la do CASO, não do formulário.
+#
+# 📊 AS TRÊS CAPTURAS, chave a chave (`interactive->'native_form'->'answers'`):
+#
+#     chave                     21/09 10:24  14/09 15:10  14/09 15:09
+#     cep                            ✔            ✔            ✔
+#     rua · bairro · cidade · estado ✔            ✔            ✔
+#     numero_residencia           "0"          "0"          "14"
+#     referencia                     ✔            ✔            ✔
+#     label_endereco_completo        ✔            ✔            ✔
+#     latitude / longitude     -27,588…     -27,626…     -27,546…
+#     complemento                    ✔        AUSENTE          ✔
+#
+#     → 10 chaves em 3 de 3 · `complemento` em 2 de 3 (o campo veio `null`)
+#
+# 🔴 LATITUDE E LONGITUDE: PRESENTES NAS 3 DE 3, E NÃO TEMOS DE ONDE TIRAR.
+#    📊 Os três pares são coordenadas reais, resolvidas pelo próprio Flow a
+#    partir do campo `location` ("Endereço ou CEP") — nenhum é 0, nenhum é
+#    igual a outro. 📊 E não existe geocodificador no backend:
+#    `grep -rln "geocod\|viacep\|nominatim" backend/app --include=*.py` → 0.
+#    Portanto a origem delas é `sem_chute`: enquanto não houver fonte, a
+#    resposta NÃO SAI e o caso vai a uma pessoa com o motivo escrito.
+#    ⛔ Zero inventado aqui manda o guincho para o meio do oceano (lat 0 /
+#    long 0 é o Golfo da Guiné) — e a URA aceitaria calada.
+#
+# ⚠️ E `label_endereco_completo` é DERIVADO, não perguntado:
+#    📊 3 de 3 obedecem "{rua}, {numero_residencia}, {bairro}, {cidade} - {estado}".
+NATIVE_FLOW_PORTO_ENDERECO = "709854848132894"
+
+#: 📊 O outro flow da Porto: pesquisa de satisfação. ⛔ NUNCA se responde.
+NATIVE_FLOW_PORTO_PESQUISA = "1263063458275481"
+
+_FLOW_PORTO_CAPTURAR_ENDERECO: Dict[str, Any] = {
+    "flow_id": NATIVE_FLOW_PORTO_ENDERECO,
+    "flow_name": "Assistência - Captura de endereço dinâmica_v3",
+    "insurer_family": ("porto",),
+    # 📊 O mesmo rótulo LEGADO da família HDI/Yelum, nas 14 capturas de convite.
+    #    Ecoado, nunca escolhido (`montar_nfm_reply` exige que quem chama o diga).
+    "envelope": "galaxy_message",
+    # ⛔ SEM `prompt_anchor` — o porquê está medido no comentário acima.
+    # Procedência da transcrição — quem duvidar refaz a query.
+    "observed": {
+        "source": "observed_events.interactive → native_form "
+                  "(paramsJSON → wa_flow_response_params.response_message)",
+        "insurer_key": "porto",
+        "msg_type": "flow_reply",
+        "event_source": "live",
+        "wa_timestamp": "2026-09-21T10:24:36Z",
+        "linha": "42a1cb5a-7ca8-4b9a-9b71-532e2cb764f9",
+        "confirmado_em": ["2026-09-14T15:10:57Z", "2026-09-14T15:09:14Z"],
+        "flow_cta": "Preencher",
+        # 🔴 As 3 capturas trazem os MESMOS 10 componentes, com os mesmos
+        #    rótulos e as mesmas telas. Nenhum campo divergiu entre elas.
+        "capturas_com_schema": 3,
+        "divergencias_entre_capturas": ["complemento presente em 2 de 3 "
+                                        "(a 3ª veio com o campo `null`)"],
+    },
+    # As telas, como a captura as nomeia. ⚠️ Dois dos três títulos são MOLDE do
+    # servidor da Porto (`${data.*}`), não texto: ficam como vieram, porque
+    # inventar um título legível seria inventar a tela.
+    "screens": [
+        {
+            "id": "CAPTURAR_ENDERECO",
+            "title": "${data.end_origem_destino}",
+            "components": [
+                {
+                    "name": "location",
+                    "type": "TextInput",
+                    "label": "Endereço ou CEP",
+                    # 📊 `answer: null` nas 3 de 3: quem digita aqui é o humano,
+                    # e o resultado da BUSCA é o que aparece em `answers`
+                    # (cep, latitude, longitude). Exigir este campo seria
+                    # exigir a caixa de busca, não o dado.
+                    "required": False,
+                    "slot": "local_atual",
+                },
+            ],
+        },
+        {
+            "id": "CONFIRMAR_ENDERECO",
+            "title": "${screen.CAPTURAR_ENDERECO.data.end_origem_destino}",
+            "components": [
+                {
+                    "name": "input_confirmar_endereco",
+                    "type": "TextInput",
+                    # 📊 O rótulo é molde: `${data.label_endereco_completo_flow}`.
+                    "label": "${data.label_endereco_completo_flow}",
+                    "required": False,  # 📊 null nas 3 de 3
+                    "slot": None,
+                },
+                {"name": "rua", "type": "TextInput", "label": "Logradouro",
+                 "required": True, "slot": "local_rua"},
+                # 🔴 ESTE É CAMPO DE FORMULÁRIO, E NÃO É O PASSO DE TEXTO
+                #    `numero_residencia` (aquele é da allianz/residencial:
+                #    📊 205 mensagens · 89 sessões casam
+                #    `(?:informe|confirme) o n[úu]mero da resid[êe]ncia`,
+                #    e 0 delas são da Porto). Os dois nomes coincidem e as duas
+                #    coisas não são a mesma.
+                {"name": "numero_residencia", "type": "TextInput", "label": "Número",
+                 "required": True, "slot": "local_numero"},
+                # 📊 2 de 3: quando o humano não escreve, a chave SOME da
+                #    resposta — não vai vazia. Por isso `required: False`.
+                {"name": "complemento", "type": "TextInput", "label": "Complemento",
+                 "required": False, "slot": "local_complemento"},
+                {"name": "bairro", "type": "TextInput", "label": "Bairro",
+                 "required": True, "slot": "local_bairro"},
+                {"name": "cidade", "type": "TextInput", "label": "Cidade",
+                 "required": True, "slot": "local_cidade"},
+                {"name": "estado", "type": "TextInput", "label": "Estado",
+                 "required": True, "slot": "local_uf"},
+                {
+                    "name": "ponto_referencia",
+                    "type": "TextInput",
+                    "label": "Ponto de referência",
+                    # 🔴 null nas 3 de 3 — e ainda assim `answers.referencia`
+                    # vem preenchida nas 3. O dado é prefill do servidor.
+                    "required": False,
+                    "slot": "ponto_referencia",
+                },
+            ],
+        },
+        {
+            # 🔴 O CAMINHO DE FALHA É DA PRÓPRIA SEGURADORA, e é handoff: "Clique
+            #    na opção abaixo para que eu possa transferir seu atendimento."
+            #    Respeitar isto é melhor que insistir — quando a Porto não acha o
+            #    endereço, quem resolve é uma pessoa.
+            "id": "ENDERECO_NAO_ENCONTRADO",
+            "title": "Endereço não encontrado",
+            "components": [
+                {"name": "input_tentar_novamente2", "type": "TextInput",
+                 "label": "Clique na opção abaixo para que eu possa transferir "
+                          "seu atendimento.",
+                 "required": False, "slot": None},
+            ],
+        },
+    ],
+    # ---------------------------------------------------------------------
+    # 🔴 A RESPOSTA — as chaves de PRIMEIRO NÍVEL, com a origem de cada uma
+    # ---------------------------------------------------------------------
+    # ⚠️ ESTE BLOCO AINDA NÃO TEM MOTOR. 📊 Medido em 26/09/2026:
+    #    `montar_resposta_de_flow` resolve valor SÓ por lista de opções
+    #    (`_resolver_opcao_de_flow`), e um componente de TEXTO com valor real
+    #    devolve `motivo="valor_nao_reconhecido"` — logo `ok=False`. O portão de
+    #    coleta já reconhece a categoria ("texto livre: não há lista para
+    #    conferir", `insurer_dispatch_service.py:1467`); o montador, não.
+    #    Ensinar o montador é a fatia SEGUINTE; o mapa fica pronto e a decisão
+    #    de cada chave fica ESCRITA aqui, medida, em vez de improvisada lá.
+    "resposta": {
+        "_o_que_e": ("as chaves de primeiro nível do paramsJSON — é isto que a "
+                     "Porto consome, e não a lista de componentes das telas"),
+        # 📊 presentes nas 3 de 3 capturas
+        "obrigatorias": {
+            "rua": {"origem": "campo", "campo": "rua"},
+            "numero_residencia": {"origem": "campo", "campo": "numero_residencia"},
+            "bairro": {"origem": "campo", "campo": "bairro"},
+            "cidade": {"origem": "campo", "campo": "cidade"},
+            "estado": {"origem": "campo", "campo": "estado"},
+            "cep": {"origem": "slot", "slot": "local_cep", "formato": "00000-000"},
+            "referencia": {"origem": "slot", "slot": "ponto_referencia",
+                           "nota": "📊 o campo `ponto_referencia` veio null nas "
+                                   "3 de 3; a chave, preenchida nas 3"},
+            "label_endereco_completo": {
+                "origem": "derivado",
+                "molde": "{rua}, {numero_residencia}, {bairro}, {cidade} - {estado}",
+                "nota": "📊 3 de 3 obedecem o molde. Não se pergunta ao segurado",
+            },
+            "latitude": {"origem": "sem_chute",
+                         "motivo": "o Flow geocodifica; nós não temos de onde tirar "
+                                   "(0 geocodificadores no backend). Sem fonte, "
+                                   "handoff com o motivo escrito — nunca zero"},
+            "longitude": {"origem": "sem_chute",
+                          "motivo": "idem latitude"},
+        },
+        # 📊 2 de 3 — ausente quando o humano não escreveu. A chave SOME.
+        "opcionais": {
+            "complemento": {"origem": "slot", "slot": "local_complemento"},
+        },
+        # 🔴 O que NÃO se manda, e por quê.
+        "fora_da_resposta": {
+            "flow_token": "é da sessão; entra no transporte (`montar_nfm_reply`)",
+            "wa_flow_response_params": "moldura; quem a monta é "
+                                       "`_moldura_da_resposta`, ecoando o convite",
+            "response_message": "📊 ninguém mediu se a Porto exige (P-118-04)",
+        },
+    },
+}
+
+PORTO_AUTO_WHATSAPP_V1["native_flows"] = {
+    NATIVE_FLOW_PORTO_ENDERECO: _FLOW_PORTO_CAPTURAR_ENDERECO,
+}
+
+# ==========================================================================
+# ⛔ O FLOW QUE NÃO SE RESPONDE — A PESQUISA DE SATISFAÇÃO
+# ==========================================================================
+# 📊 8 convites entre 09/10/2025 e 21/09/2026, CTA "Avaliar atendimento", e o
+#    texto que os acompanha é "A sua opinião é muito importante! Clique no botão
+#    abaixo e avalie." — a MESMA frase que `_SURVEY_NOOP_RE`
+#    (`insurer_dispatch_service.py:384`) já trata quando ela chega como texto.
+#
+# 🔴 ELE NÃO ENTRA EM `native_flows`, E ISSO É DELIBERADO. Medido em 26/09/2026:
+#
+#     montar_resposta_de_flow({"screens": []}, {})
+#       → {'ok': True, 'params': {}, 'missing': []}
+#
+#    Um registro sem componentes sai APROVADO com resposta vazia. Registrar a
+#    pesquisa aqui faria o produto "responder" o questionário — mentindo à
+#    seguradora sobre um atendimento — ou estourar em `montar_nfm_reply`
+#    ("params vazio"). `native_flow(pb, <id da pesquisa>)` devolver **None** é o
+#    que garante que a resposta nunca é montada.
+#
+# ⚠️ E o que falta é NOMEAR: 📊 hoje o convite da pesquisa cai em
+#    `formulario_nativo_desconhecido` → needs_human (medido chamando
+#    `_responder_formulario_nativo` com o convite real de 21/09). Uma pesquisa de
+#    satisfação não é trabalho para uma pessoa: é `noop`, como já é no texto.
+#    Esta declaração é o que permite à fatia da LÓGICA dar esse desfecho sem
+#    reimplementar `_SURVEY_NOOP_RE`.
+PORTO_AUTO_WHATSAPP_V1["flows_nao_respondiveis"] = {
+    NATIVE_FLOW_PORTO_PESQUISA: {
+        "motivo": "pesquisa_de_satisfacao",
+        "flow_cta": "Avaliar atendimento",
+        "tratamento": "noop",
+        "coerente_com": "insurer_dispatch_service._SURVEY_NOOP_RE",
+        "observed": {
+            "source": "observed_events.interactive → flow",
+            "insurer_key": "porto",
+            "msg_type": "flow",
+            "event_source": "live",
+            "wa_timestamp": "2026-09-21T10:31:23Z",
+            "convites": 8,
+            "primeiro": "2025-10-09T20:16:32Z",
+        },
+    },
+}
 
 # ==========================================================================
 # 🔴 TOKIO — A SEGURADORA QUE NÃO ABRE NADA NESTE CANAL — 22/08/2026
@@ -3473,6 +3824,50 @@ AZUL_AUTO_WHATSAPP_V1["subservice_menu_map"] = {
 # fica marcada `test_aborted` do nosso lado e a URA continua parada na tela de
 # confirmação do lado da seguradora.
 AZUL_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "Sair e não agendar"
+
+# ==========================================================================
+# ⛔ A AZUL NÃO ESTÁ MAPEADA — E ISSO ESTÁ ESCRITO DE PROPÓSITO (SPEC-118 F2a)
+# ==========================================================================
+# 📊 Medido em `observed_events` em 26/09/2026:
+#
+#     select count(*) filter (where msg_type='flow')                       as convites,
+#            count(*) filter (where msg_type='flow_reply'
+#                             and interactive ? 'native_form')             as com_schema,
+#            count(*) filter (where msg_type='flow_reply'
+#                             and not (interactive ? 'native_form'))       as vazias
+#       from observed_events where insurer_key='azul';
+#
+#     convites 0 · com_schema 0 · vazias 10
+#
+# 🔴 ZERO convites e ZERO schemas. As 10 respostas são os registros VAZIOS do
+#    defeito antigo do observador (o mesmo que a Fase 0.1 consertou) — elas
+#    provam que houve formulário, e não dizem NADA sobre o que ele pergunta.
+#
+# ⛔ Por isso `AZUL_AUTO_WHATSAPP_V1` não declara `native_flows`. Inventar o mapa
+#    a partir do formulário da Porto seria a pior forma do defeito que este
+#    arquivo combate: um mapa com cara de medição, respondendo ids de outra
+#    seguradora numa tela que decide para onde o guincho vai.
+#
+# 📋 COMO SE CAPTURA (pendência P-118-01, 🧑 do Founder):
+#    1. um acionamento de auto REAL na Azul, pelo canal observado, até a tela do
+#       formulário aparecer;
+#    2. um humano CLICA e preenche o formulário até o fim (é o clique que gera o
+#       `flow_reply` com `paramsJSON`);
+#    3. conferir que a linha nasceu completa:
+#         select id, wa_timestamp from observed_events
+#          where insurer_key='azul' and msg_type='flow_reply'
+#            and interactive ? 'native_form';
+#    4. com UMA captura, o mapa se escreve como o da Porto — inclusive o bloco
+#       `observed` apontando a linha.
+#
+# ⚠️ Enquanto isso, o desfecho honesto já existe e é o de hoje: formulário
+#    desconhecido → `needs_human` com `reason=formulario_nativo_desconhecido`
+#    (`insurer_dispatch_service._responder_formulario_nativo`). Pior que
+#    atender, muito melhor que responder errado.
+_AZUL_AUTO_SEM_MAPA_DE_FORMULARIO = (
+    "📊 26/09/2026 · azul: 0 convites, 0 schemas, 10 respostas vazias — "
+    "sem material não há mapa (P-118-01)"
+)
 
 # --- BRADESCO (bot Europ; PLACA primeiro; fluxo REAL 05/01/2026) ------------------
 BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
