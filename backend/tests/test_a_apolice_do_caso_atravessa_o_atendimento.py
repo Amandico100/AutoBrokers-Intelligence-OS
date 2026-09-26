@@ -563,6 +563,44 @@ def test_o_bloco_do_prompt_mostra_a_apolice_e_esconde_o_que_e_interno():
     assert DOC_SINTETICO not in bloco and "Sintetico" not in bloco, bloco
 
 
+def test_o_bloco_DIZ_que_NAO_SABE_a_vigencia_quando_a_fonte_nao_manda():
+    """🔴 R7 do red team, fechado pelo OUTRO lado (26/09/2026).
+
+    A triagem da bateria mostrou que recusar a apólice de vigência desconhecida
+    fazia o produto PERDER a apólice que o sistema de gestão apontou. A régua
+    mudou: ela PODE ser a apólice do caso (`_selecionavel`), e continua **não
+    sendo afirmada como vigente** (`vigente`, `apolices_vigentes`).
+
+    🔴 Só que o bloco do prompt diz *"é ELA que vale, não o palpite"*. Sem a
+    linha abaixo, o modelo leria autoridade sobre um contrato cuja vigência o
+    produto NÃO conhece — que é exatamente o R7. Então o bloco passa a **dizer
+    que não sabe**, em português, e é isso que este teste guarda.
+    """
+    doc = _doc_resi("S-0003")
+    doc["fimvig"] = ""
+    contexto = _contexto(docs=[doc])
+    assert contexto["selecionada"], (
+        "a FONTE apontou esta apólice: ela é a apólice do caso — %r" % (contexto,))
+    assert contexto["apolices"][0]["vigente"] is False, contexto["apolices"][0]
+    ficha = F.fundir(F.ficha_vazia(), F.novidades_da_apolice(contexto))
+    bloco = F.bloco_para_o_prompt(ficha)
+
+    assert "S-0003" in bloco, bloco
+    assert "vigente até" not in bloco, (
+        "o bloco AFIRMOU vigência que o produto não conhece:\n%s" % bloco)
+    assert "vigência não informada" in bloco, (
+        "o bloco calou o 'não sei' — é o R7 voltando:\n%s" % bloco)
+
+    # ⚠️ A LINHA DE CONTROLE: com o fim de vigência presente o bloco afirma, e a
+    #    frase do "não sei" NÃO aparece. Sem ela, um bloco que dissesse sempre
+    #    "vigência não informada" passaria neste teste.
+    normal = F.bloco_para_o_prompt(
+        F.fundir(F.ficha_vazia(),
+                 F.novidades_da_apolice(_contexto(docs=[_doc_resi()]))))
+    assert "vigente até 01/03/2027" in normal, normal
+    assert "vigência não informada" not in normal, normal
+
+
 def test_a_leitura_da_apolice_e_UMA_e_recusa_vencida():
     """A LEITURA ÚNICA é `attendance_ficha.apolice_do_caso` →
     `policy_context.apolice_selecionada`. ⛔ Ninguém varre `apolices[]`.

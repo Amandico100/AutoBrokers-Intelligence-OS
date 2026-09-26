@@ -288,11 +288,24 @@ QUARENTENA = {
     # -----------------------------------------------------------------------
     "test_a_fonte_comercial_bate_com_a_infocap":
         "P-226 · a triar",
-    "test_as_ferramentas_de_relatorio_comercial":
-        "P-226 · a triar",
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔴 SAÍRAM DA QUARENTENA em 26/09/2026, por `XPASS(strict)` MEDIDO:
+    # ═══════════════════════════════════════════════════════════════════════
+    #   · test_infocap_policy_output_guard  → 📊 EXIT=0 · 14 passaram, 0 falharam
+    #     (2 rodadas). VEREDITO: **consertado pela própria SPEC-117**, fatia F2 —
+    #     o guarda foi ATUALIZADO no commit `ead9b50` para exigir que
+    #     `nodes._safe_infocap_policy_context` delegue a `policy_context`, e
+    #     agora ele delega. 📊 `git diff --stat 79c9e80..HEAD -- <o arquivo>` =
+    #     20 inserções. Deixá-lo aqui transformaria o CONSERTO em falha da suíte.
+    #   · test_as_ferramentas_de_relatorio_comercial → 📊 EXIT=0 · 68 asserções
+    #     verdes, 0 vermelhas (2 rodadas). ⚠️ VEREDITO HONESTO: **não foi a
+    #     SPEC-117** — ela não toca este arquivo (📊 `git log 79c9e80..HEAD --`
+    #     vazio). E o verde é PARCIAL: a saída diz "(ponta a ponta PULADO)", ou
+    #     seja o trecho que fala com a fonte não roda neste ambiente. Ele sai
+    #     daqui porque `strict=True` obriga (verde na quarentena = suíte
+    #     vermelha), e vai para a P-226 como pendência: **descobrir por que o
+    #     ponta a ponta está sendo pulado** antes de confiar neste verde.
     "test_duas_medicoes_nao_se_atropelam":
-        "P-226 · a triar",
-    "test_infocap_policy_output_guard":
         "P-226 · a triar",
     "test_o_agente_responde_a_tela_inteira":
         "P-226 · a triar",
@@ -300,11 +313,26 @@ QUARENTENA = {
         "P-226 · 🔴 TOCA A SPEC-085 — o cérebro e missing_slots",
     "test_o_corredor_residencial_nao_trava":
         "P-226 · 🔴 TOCA A SPEC-085 — travamento de corredor",
-    "test_spec016_1_answer_quality":
-        "P-226 · a triar",
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔴 SAÍRAM DA QUARENTENA em 26/09/2026 — SPEC-117, triagem da bateria.
+    #    VEREDITO: **defeito de PRODUTO**, consertado. Não foi asserção vencida.
+    # ═══════════════════════════════════════════════════════════════════════
+    #   · test_spec016_1_answer_quality      → 📊 EXIT=0 · 53 passaram, 0 falharam
+    #   · test_spec016_policy_intelligence   → 📊 EXIT=0 · 92 passaram, 0 falharam
+    #
+    # 📊 O que a quarentena escondia: com `strict=True`, um script VERMELHO vira
+    #    `xfailed` e NÃO aparece na lista de falhas. Estes dois estavam verdes no
+    #    commit base `79c9e80` (51 e 92 asserções) e ficaram vermelhos durante
+    #    esta SPEC (50/+3 e 91/+1) — 4 asserções da PRÓPRIA SPEC-117 apagadas da
+    #    vista, e a bateria pareceu ter MELHORADO em dois testes quando piorou.
+    #    Causa: `policy_context._selecionavel` confundia "está vigente" com "é a
+    #    apólice do caso". Conserto no produto, não no teste.
+    #
+    # ⛔ Eles NÃO voltam para cá: `strict=True` quebraria a suíte agora que
+    #    passam — é exatamente a trava que o desenho deste arquivo quis (§"a
+    #    quarentena, e a regra que a torna honesta"), e é por isso que ela
+    #    funcionou. Quarentena que não esvazia vira aterro.
     "test_spec016_e2e_stub":
-        "P-226 · a triar",
-    "test_spec016_policy_intelligence":
         "P-226 · a triar",
     "test_spec017_dispatch":
         "P-226 · 🔴 TOCA A SPEC-085 — dispatch",

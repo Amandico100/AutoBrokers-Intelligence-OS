@@ -366,11 +366,16 @@ def _resumo_da_apolice(apolice_sanitizada: Dict[str, Any], chave: str) -> Dict[s
       E não está expirada (`expired is not True`)
       E não está cancelada por nenhum dos dois sinais
     ```
-    📊 O defeito que a terceira cláusula fecha: `fimvig` ausente → o conector
-    devolve `active_now=None, expired=None` → `expirada=False` → a apólice era
-    **selecionável**, e o bloco do prompt afirmava *"é ELA que vale"* sobre um
-    contrato que o produto não sabia se estava valendo. É a mesma regra de
-    `familia_de_ramo`, cujo `None` significa *"não sei"* e **nunca** *"não é"*.
+    📊 O defeito que a segunda cláusula fecha: `fimvig` ausente → o conector
+    devolve `active_now=None, expired=None` → `expirada=False` → o produto
+    **afirmava vigência** sobre um contrato que ele não sabia se estava valendo.
+    É a mesma regra de `familia_de_ramo`, cujo `None` significa *"não sei"* e
+    **nunca** *"não é"*.
+
+    ⚠️ 26/09/2026: `vigente=False` aqui significa *"não sei / não vale"* e trava
+    o que o produto AFIRMA e o que ele escolhe SOZINHO — **não** impede a
+    apólice de ser a apólice do caso quando a FONTE a aponta. As duas réguas
+    estão no bloco acima de `_selecionavel`.
     """
     cancelada = _cancelada(apolice_sanitizada)
     expirada = apolice_sanitizada.get("expired") is True
@@ -396,18 +401,59 @@ def _resumo_da_apolice(apolice_sanitizada: Dict[str, Any], chave: str) -> Dict[s
     }
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🔴 DUAS PERGUNTAS DIFERENTES, DUAS RÉGUAS — 26/09/2026 (SPEC-117, triagem da
+#    bateria). Confundi-las é o defeito, e ele já apareceu nos dois sentidos.
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+#   "esta apólice ESTÁ VIGENTE"   → afirmação sobre COBERTURA. É o que o produto
+#                                   DIZ ao segurado e o que autoriza o produto a
+#                                   escolher SOZINHO. Exige fim de vigência
+#                                   CONHECIDO (`vigente is True`, o aperto do
+#                                   conserto B5, MANTIDO). Régua:
+#                                   `_vigencia_afirmada` / `apolices_vigentes`.
+#
+#   "esta é a apólice DO CASO"    → qual CONTRATO estamos tratando neste
+#                                   atendimento. Outra pergunta: basta que não
+#                                   esteja vencida nem cancelada. Régua:
+#                                   `_selecionavel`.
+#
+# 📊 Por que a distinção existe (medido em 26/09/2026): com `_selecionavel =
+#    vigente is True`, o `data` no formato de `_sanitize_match`
+#    (`{"policy_number": "1234567890", "numapo": "1234567890"}`, sem vigência —
+#    pendência P-S117-11) fazia `_escolha_inicial` devolver NADA **mesmo com
+#    `status: "found"` e a apólice apontada pela fonte em `selected`**:
+#       `test_spec016_policy_intelligence` → "captura: selected_policy_number
+#       preenchido" com `'selecionada': None`  (1 asserção)
+#       `test_spec016_1_answer_quality`    → as 3 asserções D6 do contexto que
+#       nasce com a apólice escolhida e a preserva
+#    Ou seja: o produto PERDIA a apólice que o sistema de gestão já tinha
+#    apontado — exatamente o defeito que esta SPEC existe para consertar.
+#
+# ⛔ O que NÃO se afrouxa: vencida e cancelada continuam fora (R5/R6 do red
+#    team), `apolices_vigentes` continua devolvendo só `vigente is True`, e a
+#    escolha AUTOMÁTICA por "única vigente" continua exigindo vigência
+#    conhecida — sem data, o produto não escolhe sozinho; ele só aceita a que a
+#    FONTE apontou.
 def _selecionavel(resumo: Dict[str, Any]) -> bool:
-    """🔴 Só uma apólice VIGENTE pode ser a apólice do caso (SPEC-117 G5).
+    """🔴 Pode esta apólice ser a apólice DO CASO? (SPEC-117 G5)
 
-    Vencida, cancelada **ou de vigência desconhecida** nunca é selecionada — nem
-    sendo a única, nem sendo a mais recente, nem quando a própria fonte a
-    marcou como `selected`.
+    **Não cancelada E não expirada.** Vigência desconhecida NÃO impede: "não
+    sei até quando vale" não é "não é este o contrato". Quem decide o que o
+    produto AFIRMA sobre cobertura é `_vigencia_afirmada`, não esta função.
 
-    📊 SPEC-117, conserto único (B5): a versão anterior era
-    `not expirada and not cancelada`, e as duas negativas passavam a apólice
-    cuja vigência a fonte não informou (`expired=None` → `expirada=False`).
-    "Não sei" virava "vale" por omissão. Agora é uma pergunta afirmativa:
-    **o que se sabe está vigente?**
+    ⛔ Vencida e cancelada nunca — nem sendo a única, nem a mais recente, nem
+    quando a própria fonte as marcou como `selected` (R5/R6).
+    """
+    return not resumo.get("cancelada") and not resumo.get("expirada")
+
+
+def _vigencia_afirmada(resumo: Dict[str, Any]) -> bool:
+    """🔴 O produto SABE que esta apólice está vigente? (conserto B5, mantido)
+
+    `True` só com fim de vigência conhecido e a fonte afirmando `active_now`
+    (ver `_resumo_da_apolice`). É a régua de tudo que o produto **afirma** e de
+    tudo que ele **escolhe sozinho**. ⛔ Nunca use `_selecionavel` para isso.
     """
     return resumo.get("vigente") is True
 
@@ -511,9 +557,14 @@ def _escolha_inicial(data: Dict[str, Any],
     """A seleção automática — e só ela. Devolve `(chave, escolhida_pela_fonte)`.
 
     1. a fonte já escolheu (`selected`, com `status` "found" ou ausente) e a
-       escolhida é selecionável → é ela, e `pela_fonte=True`;
-    2. existe exatamente UMA apólice VIGENTE → é ela, sem perguntar, e
-       `pela_fonte=False` — ninguém a APONTOU, ela só foi a que sobrou;
+       escolhida é selecionável (não vencida, não cancelada) → é ela, e
+       `pela_fonte=True`. 🔴 Aqui vigência DESCONHECIDA passa: quem aponta é o
+       sistema de gestão, e recusar seria perder a apólice do caso por falta de
+       um campo que a fonte não mandou;
+    2. existe exatamente UMA apólice de vigência AFIRMADA → é ela, sem
+       perguntar, e `pela_fonte=False` — ninguém a APONTOU, ela só foi a que
+       sobrou. 🔴 Este ramo exige `_vigencia_afirmada`, não `_selecionavel`:
+       sem saber até quando vale, o produto **não escolhe sozinho**;
     3. caso contrário `(None, False)` — duas vigentes (do mesmo ramo ou de ramos
        diferentes) exigem desambiguação, e quem escolhe pelo ramo é o PEDIDO
        (`apolices_vigentes(contexto, ramo=…)`), nunca o construtor.
@@ -534,10 +585,12 @@ def _escolha_inicial(data: Dict[str, Any],
             if resumo and _selecionavel(resumo):
                 return resumo["chave"], True
 
-    # 🔴 `_selecionavel`, não `vigente` cru: uma régua só, nos DOIS ramos da
-    #    escolha (pendência 1 do juiz da SPEC-117). Hoje as duas coincidem — e é
-    #    exatamente por isso que dá para consolidar sem mudar comportamento.
-    vigentes = [a for a in apolices if _selecionavel(a)]
+    # 🔴 `_vigencia_afirmada`, e NÃO `_selecionavel`: escolher sozinho é uma
+    #    AFIRMAÇÃO do produto ("esta é a sua apólice, e ela vale"), e afirmação
+    #    exige vigência conhecida (conserto B5). Uma apólice sem data de fim só
+    #    se torna a apólice do caso se a FONTE a apontar (ramo 1 acima) ou se
+    #    alguém escolher (`escolher_apolice`).
+    vigentes = [a for a in apolices if _vigencia_afirmada(a)]
     if len(vigentes) == 1:
         return vigentes[0]["chave"], False
     return None, False
@@ -647,8 +700,12 @@ def escolher_apolice(contexto: dict, chave: str,
     """Alguém escolheu uma apólice para este caso. Devolve contexto NOVO.
 
     `ValueError` quando a chave não está no contexto ou quando a apólice não é
-    selecionável — 🔴 vencida, cancelada ou de vigência desconhecida nunca é a
-    apólice do caso (SPEC-117 G5).
+    selecionável — 🔴 vencida ou cancelada nunca é a apólice do caso
+    (SPEC-117 G5). ⚠️ Vigência DESCONHECIDA é aceita: ver o bloco "duas
+    perguntas diferentes, duas réguas" acima de `_selecionavel` (26/09/2026).
+    Escolher é dizer *"o caso é sobre este contrato"*, não *"este contrato está
+    coberto"* — e recusar aqui fazia o produto perder a apólice que o sistema de
+    gestão já tinha apontado.
 
     O `origem` diz QUEM escolheu, e é isso que a ficha grava em
     `origem_por_campo["selecionada"]`: `ORIGEM_CLIENTE` (o segurado escolheu),
@@ -663,24 +720,19 @@ def escolher_apolice(contexto: dict, chave: str,
     for apolice in contexto.get("apolices") or []:
         if not isinstance(apolice, dict) or apolice.get("chave") != procurada:
             continue
-        if apolice.get("cancelada"):
-            raise ValueError(
-                "a apolice %s esta CANCELADA e nao pode ser a apolice do caso"
-                % (apolice.get("numapo") or procurada)
-            )
-        if apolice.get("expirada"):
+        # 🔴 A régua é `_selecionavel`, uma só; as duas mensagens abaixo só
+        #    EXPLICAM o "não" dela. ⛔ Não existe um terceiro `if` aqui: com
+        #    `_selecionavel` = não cancelada E não expirada, ele seria código
+        #    morto (protocolo §0.3), e código morto mente sobre a regra.
+        if not _selecionavel(apolice):
+            if apolice.get("cancelada"):
+                raise ValueError(
+                    "a apolice %s esta CANCELADA e nao pode ser a apolice do caso"
+                    % (apolice.get("numapo") or procurada)
+                )
             raise ValueError(
                 "a apolice %s esta VENCIDA e nao pode ser a apolice do caso"
                 % (apolice.get("numapo") or procurada)
-            )
-        if not _selecionavel(apolice):
-            # 🔴 B5: nem vencida, nem cancelada, e ainda assim não vigente —
-            #    a fonte não disse até quando ela vale. "Não sei" nunca vira
-            #    "vale": afirmar autoridade sobre um contrato de vigência
-            #    desconhecida é o erro silencioso que chega ao segurado.
-            raise ValueError(
-                "a apolice %s nao tem vigencia conhecida e nao pode ser a "
-                "apolice do caso" % (apolice.get("numapo") or procurada)
             )
         return _com_selecionada(contexto, procurada, origem)
     raise ValueError(

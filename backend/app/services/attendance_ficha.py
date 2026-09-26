@@ -620,8 +620,32 @@ def apolice_do_caso(ficha: Optional[Dict[str, Any]] = None,
     `chave`, `numapo`, `ramo`, `seguradora`, vigência, `vigente`/`expirada`/
     `cancelada`), ou `None`. ⛔ Ninguém varre `apolices[]` por conta própria: a
     escolha é de `policy_context.apolice_selecionada`, e só dela (CLAUDE.md §5).
+
+    ═══════════════════════════════════════════════════════════════════════════
+    🔴 SPEC-117, conserto da triagem (26/09/2026) — SEM O PACOTE, "NÃO SEI",
+       NUNCA UMA EXPLOSÃO.
+    ═══════════════════════════════════════════════════════════════════════════
+    📊 Medido: `cd backend/tests && python -c "…exec(attendance_ficha.py)…
+    bloco_para_o_prompt(...)"` → `ModuleNotFoundError: No module named 'app'`
+    em `attendance_ficha.py:624`, porque o guarda-script
+    `tests/test_o_atendimento_tem_memoria.py:92` carrega este módulo por
+    `exec()` de propósito (o `app/services/__init__.py` puxa `openai`), sem o
+    pacote `app` no `sys.path`. Este é o leitor ÚNICO da apólice, e
+    `bloco_para_o_prompt` o chama: um import que levanta aqui derrubava o turno
+    inteiro — contra a regra escrita neste arquivo.
+
+    ⛔ `except ImportError`, não `except Exception`: um defeito REAL dentro de
+    `apolice_selecionada` (um `TypeError`, um contrato quebrado) tem de
+    continuar estourando e aparecer no guarda. O que se tolera é só a AUSÊNCIA
+    do pacote. ⛔ E não se reimplementa a escolha aqui (CLAUDE.md §5): sem a
+    autoridade, a resposta honesta é `None` — *"não sei qual é a apólice"* —,
+    nunca um palpite.
     """
-    from app.services.policy_context import apolice_selecionada
+    try:
+        from app.services.policy_context import apolice_selecionada
+    except ImportError:
+        logger.debug("policy_context indisponivel: apolice do caso = None")
+        return None
 
     ctx = contexto if isinstance(contexto, dict) else contexto_da_apolice(
         ficha=ficha, state=state)
@@ -717,11 +741,28 @@ def _bloco_da_apolice(ficha: Optional[Dict[str, Any]]) -> str:
     apolice = apolice_do_caso(ficha=ficha)
     if not apolice:
         return ""
-    from app.services.policy_context import nome_humano_do_ramo
+    # 🔴 SPEC-117, conserto da triagem (26/09/2026): `bloco_para_o_prompt` NUNCA
+    #    pode derrubar o turno — é a regra escrita neste arquivo, e um import de
+    #    dentro da função a violava. 📊 O guarda-script
+    #    `tests/test_o_atendimento_tem_memoria.py:92` carrega este módulo por
+    #    `exec()`, sem o pacote `app` no `sys.path`: o import explodia com
+    #    `ModuleNotFoundError: No module named 'app'` e o bloco inteiro morria.
+    #    Sem o módulo, degrada para a família CRUA (`"resi"` em vez de
+    #    `"residencial"`) — que é exatamente o que `nome_humano_do_ramo` já
+    #    devolve para uma família fora do dicionário (📊 `policy_context.py:617`,
+    #    `NOME_DA_FAMILIA.get(chave, chave)`). ⛔ Não se duplica o dicionário
+    #    aqui (CLAUDE.md §5); é o mesmo desenho de `chave_da_seguradora`.
+    #    ⛔ `except ImportError` e não `except Exception`: erro REAL dentro da
+    #    função importada continua estourando.
+    try:
+        from app.services.policy_context import nome_humano_do_ramo as _nome_do_ramo
+    except ImportError:
+        def _nome_do_ramo(ramo: Any) -> str:
+            return str(ramo or "").strip().lower()
 
     partes = [p for p in (
         str(apolice.get("numapo") or "").strip(),
-        nome_humano_do_ramo(apolice.get("ramo")) or "",
+        _nome_do_ramo(apolice.get("ramo")) or "",
         str(apolice.get("seguradora") or "").strip().title(),
     ) if p]
     if not partes:
@@ -729,6 +770,16 @@ def _bloco_da_apolice(ficha: Optional[Dict[str, Any]]) -> str:
     fim = str(apolice.get("vigencia_fim") or "").strip()
     if fim:
         partes.append(("vigente até %s" if apolice.get("vigente") else "vigência até %s") % fim)
+    else:
+        # 🔴 26/09/2026 — R7 do red team, fechado pelo OUTRO lado. A apólice de
+        #    vigência DESCONHECIDA voltou a poder ser a apólice do caso (quando é
+        #    a FONTE que a aponta; ver `policy_context._selecionavel`). Só que
+        #    esta frase diz "é ELA que vale": sem a linha abaixo, o modelo leria
+        #    autoridade sobre um contrato cuja vigência o produto NÃO conhece —
+        #    e diria ao segurado que está coberto. Então o bloco DIZ que não
+        #    sabe. ⛔ "Não sei" nunca vira "vale" por omissão.
+        partes.append("vigência não informada pelo sistema — não afirme que "
+                      "está vigente")
     return ("Apólice deste caso, veio do sistema de gestão — é ELA que vale, "
             "não o palpite: " + " · ".join(partes))
 

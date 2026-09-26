@@ -707,20 +707,57 @@ def _sem_fim_de_vigencia() -> dict:
     return doc
 
 
-def test_b5_vigencia_desconhecida_nao_e_vigente_e_nao_e_selecionavel():
+def _outra_sem_fim_de_vigencia() -> dict:
+    """Uma SEGUNDA apólice sem fim de vigência, para o par que ninguém aponta."""
+    doc = _doc_infocap(numapo="S-0002", nosnum="900444")
+    doc["fimvig"] = ""
+    return doc
+
+
+def test_b5_vigencia_desconhecida_nao_e_vigente_mas_PODE_ser_a_do_caso():
+    """🔴 ATUALIZADO em 26/09/2026 (CLAUDE.md §9.3 — a lição MIGRA, não morre).
+
+    Este teste afirmava *"vigência desconhecida nunca é a apólice do caso"*. 📊 A
+    triagem da bateria mediu o preço dessa afirmação: no shape de
+    `_sanitize_match` (sem vigência, pendência P-S117-11) o produto PERDIA a
+    apólice que o sistema de gestão tinha apontado — 4 asserções vermelhas em
+    `test_spec016_1_answer_quality` e `test_spec016_policy_intelligence`, e o
+    defeito que esta SPEC existe para consertar voltando por outra porta.
+
+    A régua se partiu em duas, e as duas continuam medidas aqui:
+    ```
+    COBERTURA ("ela está vigente?")  → `vigente=False`, `apolices_vigentes()==[]`
+    O CASO    ("é este o contrato?")  → sim, SE a fonte apontar
+    e o aperto do B5 que SOBREVIVE    → sozinho o produto NÃO escolhe
+    ```
+    """
     contexto = _ctx(docs=[_sem_fim_de_vigencia()])
     assert contexto, "a apólice continua LISTADA — o corretor precisa vê-la"
     resumo = contexto["apolices"][0]
     assert resumo["vigencia_fim"] is None
+    # ── o que o B5 apertou e CONTINUA apertado: o produto não AFIRMA vigência
     assert resumo["vigente"] is False, resumo
     assert resumo["expirada"] is False, "controle: ela não está vencida — é 'não sei'"
-    assert contexto["selecionada"] is None, (
-        "uma apólice de vigência DESCONHECIDA virou a apólice do caso")
-    assert "selected_policy_number" not in contexto
-    assert PC.apolices_vigentes(contexto) == []
-    with pytest.raises(ValueError) as erro:
-        PC.escolher_apolice(contexto, resumo["chave"])
-    assert "vigencia conhecida" in str(erro.value)
+    assert PC.apolices_vigentes(contexto) == [], (
+        "`apolices_vigentes` é sobre COBERTURA: sem fim de vigência ela não entra")
+    # ── e o que mudou: a fonte apontou esta apólice, então ela É a do caso
+    assert contexto["selecionada"] == resumo["chave"], contexto
+    assert contexto["selected_policy_number"] == "S-0001", contexto
+    assert contexto["selecionada_pela_fonte"] is True, (
+        "quem escolheu foi a FONTE — o produto não escolheu sozinho")
+    # ── escolher deixou de levantar: escolher é dizer "o caso é sobre ESTE
+    #    contrato", não "este contrato está coberto"
+    outro = PC.escolher_apolice(contexto, resumo["chave"], PC.ORIGEM_CLIENTE)
+    assert outro["selecionada"] == resumo["chave"]
+    # ── 🔴 O APERTO DO B5 QUE SOBREVIVE, e é o que este teste passa a guardar:
+    #    DUAS sem vigência conhecida e NINGUÉM apontando → o produto não escolhe
+    #    sozinho. `_data_do_conector` só preenche `selected` com uma candidata.
+    par = _ctx(docs=[_sem_fim_de_vigencia(), _outra_sem_fim_de_vigencia()])
+    assert len(par["apolices"]) == 2, "controle: as duas entraram (nosnum distinto)"
+    assert par["selecionada"] is None, (
+        "sem vigência conhecida e sem a fonte apontar, o produto ESCOLHEU "
+        "sozinho — é o defeito B5 voltando")
+    assert "selected_policy_number" not in par
 
 
 def test_b5_a_fonte_contraditoria_ativa_E_vencida_nao_e_selecionada():
@@ -805,13 +842,21 @@ def test_b5_os_nove_cenarios_de_vigencia_de_uma_vez():
     assert sel([vencida, vigente]) == "A-0001", "vencida como matches[0]"
     assert sel([vencida]) is None, "vencida ÚNICA"
     assert sel([cancelada]) is None, "cancelada ÚNICA"
-    assert sel([sem_fim]) is None, "vigência desconhecida ÚNICA"
+    # 🔴 ATUALIZADO em 26/09/2026 (CLAUDE.md §9.3): as duas linhas de vigência
+    #    DESCONHECIDA afirmavam `None`. Custava a apólice que a FONTE apontou —
+    #    ver `test_b5_vigencia_desconhecida_nao_e_vigente_mas_PODE_ser_a_do_caso`.
+    #    `_data_do_conector` preenche `selected` quando há UMA candidata, então a
+    #    linha abaixo é "a fonte apontou a de vigência desconhecida".
+    assert sel([sem_fim]) == "S-0001", "vigência desconhecida ÚNICA, APONTADA"
+    assert sel([sem_fim, _outra_sem_fim_de_vigencia()]) is None, (
+        "🔴 duas sem vigência conhecida e ninguém apontando: o produto NÃO "
+        "escolhe sozinho — é o aperto do B5, e ele continua valendo")
     assert sel([vencida, vigente], selected_idx=0) == "A-0001", (
         "a fonte apontou a VENCIDA — e ela não pode ser a do caso")
     assert sel([cancelada, vigente], selected_idx=0) == "A-0001", (
         "a fonte apontou a CANCELADA")
-    assert sel([sem_fim, vigente], selected_idx=0) == "A-0001", (
-        "a fonte apontou a de vigência desconhecida")
+    assert sel([sem_fim, vigente], selected_idx=0) == "S-0001", (
+        "a fonte apontou a de vigência desconhecida — é ELA o contrato do caso")
     assert sel([vencida, cancelada]) is None, "nenhuma vigente"
     # e o shape do `_sanitize_match`, onde só `policy_status` diz que cancelou
     doc = _auto_vigente("K-0002")
