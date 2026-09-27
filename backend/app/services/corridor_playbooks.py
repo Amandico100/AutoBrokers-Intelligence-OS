@@ -1521,7 +1521,31 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                              "Não é hoje."),
     },
     # Fail-safe.
-    "handoff_triggers": list(_RESID_HANDOFF_TRIGGERS),
+    # 🔴 SPEC-119 bateria 5 — A PORTA DO GALHO DE CONDOMÍNIO VIRA HANDOFF.
+    #
+    # 🧑 O Founder, 27/09/2026: condomínio, empresarial e sinistro **nunca** são
+    #    tentados sozinhos. `resolver_tecla` já para na tela que ESCOLHE a apólice
+    #    (`apolice_de_condominio_ou_empresa`); este gatilho é a segunda porta, para
+    #    o caso em que a URA entra no galho sem passar por aquele menu — ela guarda
+    #    o documento do último atendimento (ver `cpf_anterior`, onde a 5ª tela do
+    #    acervo diz só `CNPJ` justamente por ser o galho do condomínio).
+    #
+    # 📊 A tela real, `allianz-residencial`, sessões c6b63f95 e be8e3f8d, literal:
+    #    "Digite o *CNPJ* do titular ou pressione 9 para voltar. *Importante:* esta
+    #     opção é destinada exclusivamente a serviços nas áreas comuns e estrutura
+    #     do condomínio"
+    #
+    # 🔴 CONTROLE do padrão, medido em 27/09/2026 sobre os 16 corpora versionados
+    #    (`simular_corredor.py --bateria-5`): casa **1 tela** — a do CNPJ do galho —
+    #    e ZERO das telas de `aviso_areas_comuns` ("os serviços são exclusivamente
+    #    DESTINADOS às áreas comuns"), que é informativa e segue `noop`. As duas
+    #    redações diferem em três palavras, e um padrão largo aqui tiraria do ar a
+    #    tela que só avisa.
+    #
+    # ⚠️ `[\s\S]` obrigatório: `detect_handoff_trigger` NÃO compila com DOTALL.
+    "handoff_triggers": list(_RESID_HANDOFF_TRIGGERS) + [
+        r"exclusivamente a servi[çc]os nas[\s\S]{0,4}[áa]reas comuns",
+    ],
     "unknown_step_policy": "pause_and_handoff",  # nunca responder às cegas
 }
 
@@ -7051,13 +7075,25 @@ _ALLIANZ_RESID_TRONCO = [
               "endereço da apólice. ⚠️ Se o caso trouxer outro endereço, o adaptativo "
               "assume: escolher às cegas manda o prestador para a casa errada."},
 
-    # ---- o galho do CONDOMINIO: 5 sessoes, e o produto nao o conhecia -----
-    # 🔴 Só se chega aqui respondendo **2** em `menu_qual_seguro_tres_opcoes` —
-    #    a tela que até 22/08/2026 era respondida com "1" fixo. Consertada ela,
-    #    este galho passa a existir de verdade.
-    {"step": "cnpj_condominio", "anchor": r"digite o \*?cnpj\*? do titular",
-     "reply": "{titular_cnpj}", "requires": ["titular_cnpj"], "fallback_adaptive": True,
-     "notes": "📊 1 tela / 5 sessões. A porta do galho condomínio."},
+    # ---- o galho do CONDOMINIO: 5 sessoes, e ele VAI A UMA PESSOA -----------
+    # 🔴 SPEC-119 bateria 5 — O PASSO `cnpj_condominio` SAIU, e é de propósito.
+    #
+    # 🧑 O Founder, 27/09/2026: condomínio, empresarial e sinistro nunca são
+    #    tentados sozinhos.
+    #
+    # 📊 Ele respondia `{titular_cnpj}` sozinho na tela que PROVA que o caso é de
+    #    áreas comuns (medido em 27/09 por `simular_corredor.py --bateria-5`,
+    #    sessões c6b63f95 e be8e3f8d). E um passo que casa responde ANTES do
+    #    gatilho de handoff (`handle_insurer_message`), então enquanto ele
+    #    existisse o gatilho novo — `exclusivamente a serviços nas áreas comuns`,
+    #    lá em cima neste mesmo corredor — nunca dispararia. Deixar o passo e
+    #    escrever o gatilho seria escrever um guarda atrás de uma porta trancada.
+    #
+    # ⚠️ Os dois passos abaixo FICAM: `aviso_areas_comuns` é `noop` (não responde
+    #    nada, e o que ele diz é a regra de cobertura que o cliente precisa ouvir)
+    #    e `numero_condominio` só é alcançável DEPOIS da tela do CNPJ, que agora
+    #    para. Apagá-los perderia a transcrição de 5 sessões sem fechar buraco
+    #    nenhum.
     {"step": "aviso_areas_comuns", "anchor": r"exclusivamente destinados [àa]s [áa]reas comuns",
      "reply": "", "noop": True,
      "notes": "📊 1 tela / 5 ses. 🔴 REGRA DE COBERTURA: o serviço NÃO cobre unidade "

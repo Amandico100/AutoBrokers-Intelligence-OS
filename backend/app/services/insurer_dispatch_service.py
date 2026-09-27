@@ -3522,6 +3522,69 @@ def _casar_rotulo(valor: str, opcoes: List[Tuple[str, str]]) -> List[Tuple[str, 
     return [(d, r) for d, r in opcoes if w.labels_match(f"{d} - {r}", valor)]
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 CONDOMÍNIO E EMPRESARIAL VÃO A UMA PESSOA — SPEC-119 F4, bateria 5
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# 🧑 O Founder, 27/09/2026, pedido explícito: **condomínio, empresarial e sinistro
+#    nunca são tentados sozinhos.** Vão a uma pessoa, com o dossiê completo.
+#
+# 📊 E o robô os tentava. Medido em 27/09/2026 com
+#    `python backend/scripts/simular_corredor.py --bateria-5`, sobre as telas
+#    REAIS de `allianz-residencial` (sessões c6b63f95 e be8e3f8d):
+#
+#    ```
+#    menu_qual_seguro_tres_opcoes   "Qual seguro deseja utilizar?
+#                                    1 - Residencial  2 - Condomínio  3 - Empresarial"
+#      com a apólice de condomínio no caso, `qual_seguro_opcao` nasce "Condomínio"
+#      (`new_dispatch_session`, `rotulo_do_ramo_da_apolice`), `resolver_tecla`
+#      traduzia para "2" e o robô SEGUIA — para dentro do galho de áreas comuns
+#    cnpj_condominio                "Digite o *CNPJ* do titular ... esta opção é
+#                                    destinada exclusivamente a serviços nas
+#                                    áreas comuns"
+#      respondia `{titular_cnpj}` sozinho
+#    ```
+#
+# ⚠️ O defeito NÃO era responder a tecla errada: o "2" estava certo, e o
+#    `test_o_menu_numerado_recebe_numero` provava que estava. 🔴 O defeito é que a
+#    regra do Founder é sobre o CASO, não sobre a tecla: um chamado de áreas
+#    comuns tem cobertura, prestador e responsável diferentes, e quem o conduz é
+#    gente. **Uma tecla certa que abre o chamado errado é o §9.5 do CLAUDE.md
+#    pela nona vez.**
+#
+#: As famílias de ramo que NÃO são a unidade do segurado. Vêm de
+#: `_ROTULO_DO_RAMO` / `policy_data_provider.familia_de_ramo`, que é a autoridade
+#: do produto sobre "que ramo é este" — nenhuma lista de sinônimos nova aqui.
+_RAMOS_QUE_VAO_A_UMA_PESSOA = frozenset({"cond", "empr"})
+
+
+def _apolice_de_areas_comuns(valor: str, rotulo: Optional[str],
+                             tela: str) -> Optional[str]:
+    """O motivo, em português, quando a tecla escolhe CONDOMÍNIO ou EMPRESARIAL.
+
+    `None` quando é a apólice residencial do próprio segurado (o caminho normal)
+    ou quando não há como saber daqui.
+
+    🔴 O rótulo sai da TELA REAL, pelo parser do produto (`opcoes_numeradas`), e
+    nunca de uma tabela de dígitos: 📊 a mesma URA tem uma tela de DUAS opções em
+    que "1" é *"Residência, Condomínio ou Empresa"* e uma de TRÊS em que "2" é
+    *"Condomínio"*. Um mapa `{"2": "condomínio"}` acertaria numa e mentiria na
+    outra — é o defeito nº 3 do CLAUDE.md §9.5 ao contrário.
+    """
+    alvo = rotulo
+    if not alvo and re.fullmatch(r"\d{1,2}", str(valor or "").strip()):
+        alvo = dict(opcoes_numeradas(tela)).get(str(valor).strip())
+    if not alvo:
+        alvo = valor
+    familia = _familia_de_ramo(alvo)
+    if familia not in _RAMOS_QUE_VAO_A_UMA_PESSOA:
+        return None
+    qual = "de condomínio" if familia == "cond" else "empresarial"
+    return (f"a apólice é {qual}, e os serviços dela cobrem as áreas comuns e a "
+            f"estrutura, não a unidade do segurado — o Founder decidiu que este "
+            f"chamado é conduzido por uma pessoa, sempre")
+
+
 def resolver_tecla(playbook: Dict[str, Any], step: Dict[str, Any],
                    session: Dict[str, Any], tela: str) -> Optional[Tecla]:
     """A tecla que o passo manda à URA, conferida contra a TELA REAL.
@@ -3536,12 +3599,33 @@ def resolver_tecla(playbook: Dict[str, Any], step: Dict[str, Any],
       2c. a tela não é menu numerado             → a palavra sai inteira (a porto)
       3.  valor vazio                            → Cérebro (tela reversível)
       ⚠️  a tecla que decide o RAMO nunca vai ao Cérebro: humano (`ramo_indeterminado`)
+      🔴  e quando ela RESOLVE para condomínio/empresarial, também vai a uma
+          pessoa (`apolice_de_condominio_ou_empresa`) — SPEC-119 bateria 5
 
     ⚠️ Divergência registrada (D-E0014-01): a proposta §5.2 manda o valor vazio a
     `needs_human`. 📊 Desde 19/08 a tela reversível sem dado vai ao Cérebro (ver
     `handle_insurer_message`), e voltar a parar ali reabriria o travamento de 2min22
     em 29 teclas. O Cérebro agora recebe as opções numeradas (`build_human_phase_messages`).
     """
+    bruta = _resolver_tecla_bruta(playbook, step, session, tela)
+    # 🔴 A TRAVA VEM DEPOIS DA RESOLUÇÃO, e a ordem é a medição: só uma tecla que
+    #    JÁ resolveu sem ambiguidade diz qual apólice será aberta. Antes dela,
+    #    "residencial condominio" (que casa DUAS opções) seria lido como
+    #    condomínio e roubaria o motivo `tecla_ambigua` — que é outro defeito e
+    #    manda a atendente para outro lugar. 📊 O caso está no acervo e tem
+    #    guarda: `test_o_menu_numerado_recebe_numero` §[3].
+    if (bruta is not None and bruta["destino"] == "ura"
+            and bruta["slot"] in _TECLAS_QUE_DECIDEM_O_RAMO):
+        motivo = _apolice_de_areas_comuns(bruta["valor"], bruta.get("rotulo"), tela)
+        if motivo:
+            return {**bruta, "destino": "humano",
+                    "reason": "apolice_de_condominio_ou_empresa", "motivo": motivo}
+    return bruta
+
+
+def _resolver_tecla_bruta(playbook: Dict[str, Any], step: Dict[str, Any],
+                          session: Dict[str, Any], tela: str) -> Optional[Tecla]:
+    """A resolução da tecla contra a tela — sem a trava da apólice (ver acima)."""
     m = _SLOT_OPCAO_RE.match(str(step.get("reply") or "").strip())
     if not m:
         return None
@@ -5003,6 +5087,15 @@ _MOTIVOS_EM_PORTUGUES = {
     "conducao_esgotada": "o robô seguiu várias telas de navegação seguidas e a "
                          "seguradora não voltou a nenhuma tela conhecida — o "
                          "atendimento saiu do caminho que o robô sabe fazer",
+    # --- SPEC-119 bateria 5: condomínio · empresarial · sinistro ------------
+    "apolice_de_condominio_ou_empresa":
+        "a apólice é de condomínio ou empresarial: os serviços dela cobrem as "
+        "áreas comuns e a estrutura, não a unidade do segurado. Este chamado é "
+        "conduzido por uma pessoa, sempre — foi decisão do dono do produto",
+    "galho_de_areas_comuns":
+        "a seguradora entrou no caminho de condomínio, que atende só as áreas "
+        "comuns. O robô parou aqui de propósito: este chamado é conduzido por "
+        "uma pessoa",
     # --- laço ----------------------------------------------------------
     "loop_guard": "a seguradora repetiu a mesma pergunta e o robô já tinha "
                   "respondido a mesma coisa duas vezes",

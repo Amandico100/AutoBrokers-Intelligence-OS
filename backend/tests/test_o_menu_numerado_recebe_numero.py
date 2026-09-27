@@ -100,9 +100,7 @@ print()
 print("=" * 74)
 print("[2] GA-2 · o motor responde o NÚMERO ao menu real de 10/09")
 print("=" * 74)
-for valor, digito, rotulo in (("residência", "1", "Residencial"),
-                              ("Condomínio", "2", "Condomínio"),
-                              ("empresarial", "3", "Empresarial")):
+for valor, digito, rotulo in (("residência", "1", "Residencial"),):
     s = D.handle_insurer_message(sessao(qual_seguro_opcao=valor), MENU_1009)
     out = saidas(s)
     checar(out and out[-1]["text"] == digito and s["state"] == "ura",
@@ -112,9 +110,49 @@ for valor, digito, rotulo in (("residência", "1", "Residencial"),
     checar(tecla.get("origem") == "menu_lido" and tecla.get("rotulo") == rotulo,
            f"   e o transcript diz de onde veio: menu_lido · {rotulo}", f"{tecla}")
 
-# o dígito que já é dígito sai como está (a derivação/o subserviço mandam)
-s = D.handle_insurer_message(sessao(qual_seguro_opcao="2"), MENU_1009)
-checar([o["text"] for o in saidas(s)] == ["2"], "tecla que já é dígito sai como está")
+# ═══════════════════════════════════════════════════════════════════════════
+# 🔴 O FATO MUDOU — CLAUDE.md §9.3, e a lição MIGRA em vez de morrer
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Até 27/09/2026 este bloco afirmava que *"Condomínio"* sai como `2` e
+# *"empresarial"* como `3`, com o estado seguindo `ura`. **Era verdade, e a
+# tradução continua certa** — o que mudou é o que o produto FAZ com ela.
+#
+# 🧑 O Founder, 27/09/2026 (SPEC-119 F4, bateria 5): condomínio, empresarial e
+#    sinistro **nunca** são tentados sozinhos; vão a uma pessoa, com o dossiê.
+#
+# ⚠️ E a lição não morre: o que era *"a palavra vira o dígito certo"* passa a ser
+#    *"a palavra vira o dígito certo, o motor SABE qual apólice é, e é por isso
+#    que ele para"*. O `rotulo` continua sendo conferido — se a leitura do menu
+#    quebrar, este bloco fica vermelho igual.
+for valor, rotulo in (("Condomínio", "Condomínio"), ("empresarial", "Empresarial"),
+                      ("2", None), ("3", None)):
+    s = D.handle_insurer_message(sessao(qual_seguro_opcao=valor), MENU_1009)
+    checar(not saidas(s) and s["state"] == "needs_human"
+           and s["reason"] == "apolice_de_condominio_ou_empresa",
+           f"🔴 {valor!r}: NADA sai, e o caso vai a uma pessoa "
+           f"(`apolice_de_condominio_ou_empresa`)",
+           f"estado {s['state']} · motivo {s.get('reason')} · "
+           f"saiu {[o['text'] for o in saidas(s)]}")
+    if rotulo:
+        tecla = D.resolver_tecla(
+            CP.get_playbook(REF),
+            next(p for p in CP.get_playbook(REF)["ura_steps"]
+                 if p.get("step") == "menu_qual_seguro_tres_opcoes"),
+            {"slots": {"qual_seguro_opcao": valor}}, MENU_1009)
+        checar(tecla and tecla["rotulo"] == rotulo and tecla["destino"] == "humano",
+               f"   e o motor LEU o menu antes de parar: {rotulo} (não é palpite)",
+               f"{tecla}")
+checar("apolice_de_condominio_ou_empresa" in D._MOTIVOS_EM_PORTUGUES,
+       "   e o dossiê diz o motivo em português, sem nome de chave",
+       f"{D._MOTIVOS_EM_PORTUGUES.get('apolice_de_condominio_ou_empresa')}")
+
+s = D.handle_insurer_message(sessao(qual_seguro_opcao="residência"), MENU_1009)
+checar([o["text"] for o in saidas(s)] == ["1"],
+       "e o dígito que já é dígito sai como está — `1` continua saindo `1`",
+       f"{[o['text'] for o in saidas(D.handle_insurer_message(sessao(qual_seguro_opcao='1'), MENU_1009))]}")
+s = D.handle_insurer_message(sessao(qual_seguro_opcao="1"), MENU_1009)
+checar([o["text"] for o in saidas(s)] == ["1"], "tecla que já é dígito sai como está")
 
 print()
 print("=" * 74)
