@@ -84,6 +84,62 @@ def test_a_pergunta_a_e_do_replay_e_a_b_do_conferidor():
         "as opções da tela saem do parser do produto (CLAUDE.md §9.4)"
 
 
+def test_a_atribuicao_do_achado_a_rota_roda_o_motor_e_respeita_o_oficio():
+    """🔴 ESTE TESTE NASCEU DE UMA MUTAÇÃO QUE FICOU VERDE — e ele é o conserto.
+
+    📊 Medido em 27/09/2026: `conferir_respostas.py --todas` devolve **ZERO**
+    achados desde a SPEC-085. Então a atribuição do achado à rota é um caminho
+    **sem dado vivo** — e uma mutação que trocasse `match_ura_step` por *"pega o
+    primeiro passo da lista"* passava por TODOS os 22 testes deste arquivo, porque
+    não havia achado nenhum para atribuir errado.
+
+    🔴 Guarda sobre caminho sem dado é carimbo (CLAUDE.md §9.3). Este teste dá o
+    dado: um índice SINTÉTICO com dois achados — um no passo que o MOTOR realmente
+    casa naquela tela para aquele serviço, e um CHAMARIZ num passo que não casa.
+    A atribuição correta reivindica o primeiro e ignora o chamariz.
+
+    ⚠️ E o chamariz é de outro OFÍCIO de propósito: ele só ficaria de fora se
+    `match_ura_step` fosse chamado com `subservice=<serviço da rota>`. Sem o
+    argumento, `only_subservices` não filtra nada e o chamariz entra.
+    """
+    rota = M.rota_de("allianz", "residencial", "encanador")
+    pb = M.get_playbook(rota.ref)
+    rp = RP.replay(rota)
+    assert rp.telas, "a rota perdeu o corpus — este teste ficaria sem o que medir"
+
+    # a tela REAL e o passo que o MOTOR casa nela PARA ESTA ROTA
+    tela = passo_certo = None
+    for t in rp.telas:
+        p = M.match_ura_step(pb, t.texto, subservice=rota.servico)
+        if p and p.get("step"):
+            tela, passo_certo = t, str(p["step"])
+            break
+    assert passo_certo, "nenhuma tela desta rota casa passo — o teste perdeu o caso"
+
+    # o CHAMARIZ: um passo do corredor restrito a OUTRO ofício
+    chamariz = next((str(p["step"]) for p in (pb.get("ura_steps") or [])
+                     if p.get("only_subservices")
+                     and rota.servico not in [str(x).lower() for x in p["only_subservices"]]),
+                    None)
+    assert chamariz, "o corredor perdeu os passos com `only_subservices`"
+
+    chave_tela = M._norm(tela.texto)[:60]
+    certo = CR.Achado(True, "B", "allianz", "residencial", passo_certo,
+                      "achado de teste, no passo que responde esta tela", tela.texto)
+    isca = CR.Achado(True, "C", "allianz", "residencial", chamariz,
+                     "achado de teste, num passo de OUTRO ofício", tela.texto)
+    indice = {(passo_certo, chave_tela): [certo], (chamariz, chave_tela): [isca]}
+
+    atribuidos = SC.achados_da_rota(rota, rp.telas, pb, indice)
+    passos = {a.passo for a in atribuidos}
+    assert passo_certo in passos, (
+        "🔴 o achado do passo que RESPONDE esta tela não foi atribuído à rota — "
+        "a atribuição não está rodando o motor")
+    assert chamariz not in passos, (
+        f"🔴 o achado de um passo de OUTRO ofício (`{chamariz}`) foi atribuído a "
+        f"`{rota}` — `match_ura_step` está sendo chamado sem `subservice`")
+
+
 def test_o_simulador_nao_tem_regex_proprio_sobre_a_resposta_do_passo():
     """🔴 CONTROLE do [1]: os únicos padrões do arquivo são os de SITUAÇÃO.
 
