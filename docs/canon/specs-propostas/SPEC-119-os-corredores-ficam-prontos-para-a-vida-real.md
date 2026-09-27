@@ -36,7 +36,7 @@ REFERÊNCIA .....  interna: `porto-auto.jsonl` — 📊 524 telas com 21 `(vazio
 GATES ..........  §6
 O ELO ..........  a afirmação-título é "rotas ficam SEM CORPUS porque o CLASSIFICADOR é cego,
                   não porque falta conversa". §3 mede A, mede B e mede que B chega em A.
-FAIXA ..........  💭 sem teto declarado pelo Founder. 3 baterias autorizadas.
+FAIXA DE RELÓGIO  💭 sem teto declarado pelo Founder. 3 baterias autorizadas.
                   Tetos de contexto: 250 turnos por builder.
 ORÇAMENTO ......  🔴 US$ 4 na OpenAI (as simulações com o agente REAL) · US$ 5 na Anthropic
                   (Vigia/Sentinela/Cérebro). ⛔ Parar e declarar ao cruzar 80% de cada teto.
