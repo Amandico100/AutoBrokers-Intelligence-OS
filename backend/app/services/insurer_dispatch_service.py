@@ -2296,6 +2296,37 @@ def _responder_formulario_nativo(
             not id_do_convite or native_flow(playbook, id_do_convite) is None):
         return None
 
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 O FORMULÁRIO QUE O MAPA DECLARA COMO NÃO-RESPONDÍVEL — 26/09/2026
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 `PORTO_AUTO_WHATSAPP_V1["flows_nao_respondiveis"]` existia desde a F2.2
+    #    e `grep -rn flows_nao_respondiveis app/ scripts/` devolvia **ZERO**
+    #    consumidores: o único leitor era o teste que conferia a própria
+    #    declaração. É o defeito da CLAUDE.md §9.4 — *"teste que chama o regex
+    #    guarda o regex"* — aplicado a um dicionário: a declaração estava certa e
+    #    ninguém perguntava.
+    #
+    # ⚠️ O efeito medido HOJE, com o convite real da pesquisa de satisfação da
+    #    Porto (`flow_id 1263063458275481`, CTA *"Avaliar atendimento"*, 📊 8
+    #    convites entre 09/10/2025 e 21/09/2026): `needs_human` com
+    #    `formulario_nativo_desconhecido`. **Zero bytes para a seguradora** — o
+    #    lado certo de errar — mas uma pesquisa de satisfação tirava do
+    #    automático um caso que já tinha terminado, e punha uma pessoa a olhar
+    #    uma avaliação.
+    #
+    # 🔴 O desfecho declarado (`tratamento: noop`) é o MESMO que o produto já dá
+    #    para pesquisa de satisfação pelo TEXTO (`_SURVEY_NOOP_RE`, mais abaixo
+    #    nesta função): reconhecer e não responder nada, sem mudar o estado.
+    #    Aqui o `flow_id` faz por metadado o que a frase já fazia por texto —
+    #    consolidação, não um segundo motor (CLAUDE.md §5). E a autoridade é o
+    #    `flow_id` DECLARADO, um só: qualquer outro id desconhecido continua indo
+    #    a uma pessoa, que é a linha de controle deste ramo.
+    _nao_respondivel = ((playbook or {}).get("flows_nao_respondiveis")
+                        or {}).get(str(id_do_convite or ""))
+    if _nao_respondivel and str(_nao_respondivel.get("tratamento") or "") == "noop":
+        return session
+
     if id_do_convite and native_flow(playbook, id_do_convite) is None:
         session["state"] = "needs_human"
         session["reason"] = "formulario_nativo_desconhecido"
@@ -2427,17 +2458,34 @@ def _responder_formulario_nativo(
 
     if not montado["ok"]:
         faltantes = [d.get("campo") for d in montado["missing_detail"]]
-        session["state"] = "needs_human"
         # ══════════════════════════════════════════════════════════════════
         # 🔴 SPEC-118 F3 · "SEM FONTE" NÃO É "DADO QUE FALTA"
         # ══════════════════════════════════════════════════════════════════
         #
         # `formulario_incompleto` diz à atendente *"o formulário pede um dado que
-        # o caso não tem"* — e ela vai procurar o dado. 📊 Quando o que falta é
-        # `latitude`/`longitude` da Porto, **não existe dado para procurar**: o
-        # próprio Flow da seguradora geocodifica, e o backend tem ZERO
-        # geocodificadores. Perguntar a coordenada ao segurado é a pergunta que
-        # ninguém no mundo responde.
+        # o caso não tem"* — e ela vai procurar o dado. Quando o que falta é uma
+        # chave que o mapa declara `origem: sem_chute`, **não existe dado para
+        # procurar**, e mandar alguém procurar é mandar procurar o que não há.
+        #
+        # ⚠️ **ESTE PARÁGRAFO ESTAVA VENCIDO — conserto de 26/09/2026.** Ele
+        # citava `latitude`/`longitude` da Porto como O exemplo de `sem_chute`.
+        # 📊 A F4, no mesmo dia, deu fonte às duas (o PIN do WhatsApp,
+        # `origem: slot`), e `grep -c '"origem": "sem_chute"'` em
+        # `corridor_playbooks.py` → **0**: nenhum mapa declara `sem_chute` hoje,
+        # então este ramo **não é alcançável por chave de formulário nenhuma**.
+        #
+        # 🔴 **E O CÓDIGO FICA, com o porquê escrito — não é decoração.**
+        # `sem_chute` continua sendo uma origem DECLARÁVEL no formato do mapa, e
+        # é a única que diz *"esta chave não tem fonte"* sem virar interrogatório:
+        # o portão de coleta a salta (`corridor_playbooks.py`, o `continue` de
+        # `sem_chute`) e a política de retomada a manda direto ao humano
+        # (`test_a_retomada_cobre_as_dezesseis`). Apagar os três consumidores
+        # obrigaria o próximo mapa com chave sem fonte a reinventá-los — e o que
+        # este arquivo já pagou uma vez foi exatamente a segunda régua.
+        # ⚠️ Quem prova que o mecanismo ANDA é
+        # `test_o_montador_responde_texto_e_o_portao_cobra_antes`, numa CÓPIA do
+        # mapa: declaração sem consumidor é o defeito da CLAUDE.md §9.4, e um
+        # consumidor sem declaração viva precisa de um guarda que o exercite.
         #
         # `sem_chute` é o motivo que o produto já usa para isso, no passo de URA
         # (`sem_chute:<slots>`, logo abaixo nesta mesma função) — mesma família,
@@ -2448,10 +2496,27 @@ def _responder_formulario_nativo(
         # ⚠️ Só quando é a ÚNICA causa. Falta misturada (um campo que o segurado
         # poderia ter respondido + uma coordenada) continua `formulario_incompleto`:
         # ali existe dado a procurar, e a frase que manda procurar é a certa.
+        # ⚠️ O ESTADO E O MOTIVO NO MESMO LUGAR, nos DOIS ramos — e a repetição
+        #    é de propósito.
+        #
+        # 📊 27/09/2026: `test_o_travamento_vira_linha::test_nenhuma_familia_de_motivo_fica_orfa`
+        #    ficou VERMELHO nestas duas linhas, e estava certo. O
+        #    `session["state"] = "needs_human"` morava ~30 linhas acima, do outro
+        #    lado do comentário — e o guarda lê uma JANELA de 6 linhas em volta de
+        #    cada gravação de motivo, porque a pergunta dele é *"isto põe o caso
+        #    na mão de uma pessoa, ou é um desfecho?"*. Motivo longe do
+        #    estado é exatamente o travamento que ninguém vê. 📊 `origin/main`
+        #    tinha ZERO órfãos; estas duas nasceram na F3 desta SPEC.
+        #
+        # 🔴 Juntar as duas linhas não é agradar o guarda: é escrever no código o
+        #    que o guarda afirma — quem grava o motivo é quem manda o caso à
+        #    pessoa. Quem ler daqui a um mês vê a decisão inteira numa tela.
         _motivos = [str(d.get("motivo") or "") for d in montado["missing_detail"]]
         if _motivos and all(m == "sem_chute" for m in _motivos):
+            session["state"] = "needs_human"
             session["reason"] = f"sem_chute:{','.join(str(f) for f in faltantes)}"
         else:
+            session["state"] = "needs_human"
             session["reason"] = f"formulario_incompleto:{','.join(str(f) for f in faltantes)}"
         session["missing_slots"] = list(montado["missing"])
         return session
