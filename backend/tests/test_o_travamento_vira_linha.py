@@ -142,15 +142,72 @@ FAMILIAS_DE_TRAVAMENTO = {
     "missing_slots",
     "playbook_not_found",
     "sem_chute",
+    # 🔴 27/09/2026 (SPEC-119) — ERA REAL E ESTAVA FORA DA LISTA. Tem frase
+    #    propria em `insurer_dispatch_service.py:4986` (*"a seguradora pediu um
+    #    dado que so' o segurado sabe…"*) e ja' era usada no conjunto da :681.
+    #    ⛔ NAO RETOMA: quem nao respondeu foi o SEGURADO; retomar sozinho
+    #    reapresentaria a mesma pergunta a quem ja' nao respondeu. Vai ao humano,
+    #    que tem telefone.
+    "segurado_nao_respondeu",
     "sentinela_stall",
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 AS DUAS DA SPEC-119 (F3) — e o veredito das duas e' O MESMO: VAI
+    #    DIRETO AO HUMANO, nao retoma. A §D.1 exige o veredito ANTES da
+    #    entrada, e aqui esta' o porque de cada uma.
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # `tela_que_decide` — a URA mostrou uma tela DESCONHECIDA que ESCOLHE
+    # conteudo (qual servico, aceitar custo). 📊 Medido na F3: das 624 telas
+    # desconhecidas do acervo, **26** sao destas (14 de escolha de servico, 12
+    # de custo). ⛔ NAO RETOMA, e a razao e' a mesma das oito respostas erradas
+    # do CLAUDE.md §9.5: quem retomasse teria de ESCOLHER, e escolher sem
+    # evidencia foi o que mandou todo condominio para a apolice residencial.
+    # Retomar aqui e' repetir o defeito com outra roupa.
+    "tela_que_decide",
+    #
+    # `conducao_esgotada` — a tela era de CONDUCAO (navegar, confirmar sem
+    # consequencia, ecoar dado que o caso ja tem), o agente tentou e o teto de
+    # tentativas acabou. ⛔ NAO RETOMA: se o agente nao passou com a tela real
+    # na frente e o caso inteiro no contexto, a tentativa seguinte nao tem
+    # informacao NOVA — seria o loop_guard com outro nome.
+    "conducao_esgotada",
 }
 
 _RE_REASON = re.compile(r'session\["reason"\]\s*=\s*(.+)')
 _RE_FAMILIA = re.compile(r'["\']([a-z_]+)')
 
 
+# `tecla["reason"]`, `session["reason"]` — referência do lado direito, não família.
+_RE_REF_REASON = re.compile(r"""\w+\[["']reason["']\]""")
+# `"fam"`, `f"fam:{x}"`, `("fam"` — as três formas literais do acervo.
+_RE_ABRE_LITERAL = re.compile(r"""\s*\(?\s*[fru]{0,2}["']""")
+
+
 def _atribuicoes_de_motivo():
-    """(arquivo, nº da linha, família) para cada `session["reason"] = ...`."""
+    """(arquivo, nº, família, linhas, e_literal) para cada `session["reason"] = …`.
+
+    🔴 `e_literal` nasceu em 27/09/2026 (SPEC-119) e conserta um FALSO VERMELHO
+    que confundia toda sessão nova.
+
+    📊 O defeito: `test_as_familias_do_fonte_batem_com_a_triagem` acusava
+    `['?', 'reason', 'segurado_nao_respondeu']` como *"famílias novas sem
+    triagem"* — e **duas delas não são famílias**:
+
+      · `?`       o motivo é DINÂMICO (`session["reason"] = motivo`,
+                  `= f"sem_chute:{campos}"`). Não há literal para triar.
+      · `reason`  o regex `["']([a-z_]+)` casava a PRÓPRIA chave quando a
+                  atribuição referencia `session["reason"]` do lado direito.
+
+    ⚠️ E a terceira **era** real: `segurado_nao_respondeu` tem frase própria em
+    `insurer_dispatch_service.py:4986` e nunca entrou na lista.
+
+    🔴 A distinção importa porque as duas exigências são OPOSTAS: motivo
+    dinâmico continua tendo de estar colado num `needs_human` (o teste das
+    órfãs, que sempre passou), mas **não** pode ser exigido na lista de
+    triagem — ninguém tria uma f-string. Um vermelho permanente ensina a
+    ignorar o guarda, que é o contrário do que ele existe para fazer
+    (CLAUDE.md §9.3).
+    """
     achados = []
     for caminho in (ROUTER_PY, MOTOR_PY, VIGIA_PY):
         linhas = caminho.read_text(encoding="utf-8").splitlines()
@@ -158,8 +215,21 @@ def _atribuicoes_de_motivo():
             m = _RE_REASON.search(linha)
             if not m:
                 continue
-            fam = _RE_FAMILIA.search(m.group(1))
-            achados.append((caminho.name, i, fam.group(1) if fam else "?", linhas))
+            valor = m.group(1).strip()
+            # ⛔ Do lado DIREITO, `<algo>["reason"]` é REFERÊNCIA, não família —
+            #    era daqui que saía o falso `reason` (`tecla["reason"]`, :3581).
+            direita = _RE_REF_REASON.sub("", valor)
+            fam = _RE_FAMILIA.search(direita)
+            # 📊 O acervo real tem QUATRO formas, e três são literais:
+            #      "familia"            ·  f"familia:{campo}"
+            #      ("familia"           ·  CONSTANTE  <- a única que não é
+            #    Por isso o teste é "começa em aspas, deixando passar `(` e o
+            #    `f`", e não "começa em aspas" — este último derrubava
+            #    `("formulario_envio_falhou"` (:3014) e mais oito famílias
+            #    REAIS. 📊 Medido: 9 sumiam da lista com a versão ingenua.
+            literal = bool(_RE_ABRE_LITERAL.match(direita))
+            achados.append((caminho.name, i, fam.group(1) if fam else "?",
+                            linhas, literal))
     return achados
 
 
@@ -211,7 +281,7 @@ def test_nenhuma_familia_de_motivo_fica_orfa():
     declarado como não-travamento. 🔴 Um motivo que não é nem um nem outro é
     exatamente o travamento que ninguém vê."""
     orfas = []
-    for arquivo, numero, familia, linhas in _atribuicoes_de_motivo():
+    for arquivo, numero, familia, linhas, _literal in _atribuicoes_de_motivo():
         if familia in NAO_SAO_TRAVAMENTO:
             continue
         janela = "\n".join(linhas[max(0, numero - 4):numero + 2])
@@ -226,7 +296,12 @@ def test_nenhuma_familia_de_motivo_fica_orfa():
 def test_as_familias_do_fonte_batem_com_a_triagem():
     """🔴 O gate cobra o COMANDO, não o texto (§D.1). Família nova quebra aqui
     de propósito: ela precisa de um veredito antes de existir na lista."""
-    do_fonte = {f for _, _, f, _ in _atribuicoes_de_motivo()} - NAO_SAO_TRAVAMENTO
+    # 🔴 SÓ as atribuições LITERAIS entram na triagem. Motivo dinâmico
+    #    (`= motivo`, `= f"sem_chute:{campos}"`) não tem família para julgar —
+    #    quem cobra dele é `test_nenhuma_familia_de_motivo_fica_orfa`, que
+    #    exige o `needs_human` ao lado, literal ou não.
+    do_fonte = {f for _, _, f, _, literal in _atribuicoes_de_motivo()
+                if literal} - NAO_SAO_TRAVAMENTO
     # `playbook_not_found` também nasce num `return {...}` do motor (:1033),
     # que o grep de `session["reason"]` não pega — e é família de travamento.
     assert "playbook_not_found" in MOTOR_PY.read_text(encoding="utf-8")
