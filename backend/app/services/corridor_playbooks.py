@@ -9054,6 +9054,208 @@ def match_ura_step(playbook: Dict[str, Any], insurer_message: str, subservice: O
     return None
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 DECIDE × CONDUZ — A CLASSE DO PASSO (SPEC-119 F3)
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# O Founder, 27/09/2026: *"será que o GPT não está sendo podado? Muito melhor dar
+# liberdade para um agente inteligentíssimo do que deixar ele determinístico o
+# tempo todo e travar numa situação que seria fácil de responder."*
+#
+# 🔴 Ele está metade certo, e as duas metades importam. O CLAUDE.md §9.5 registra
+#    **oito** passos que CASARAM a tela e RESPONDERAM ERRADO — todos com gate
+#    verde, nenhum travou:
+#
+#      a tecla do ELETRICISTA na tela do ENCANADOR
+#      a idade do aparelho AFIRMADA numa tela que a PERGUNTAVA
+#      todo condomínio virando apólice RESIDENCIAL
+#      o caso de vidros encerrado com a legenda do MENU
+#      protocolo prometido numa seguradora que só entrega LINK
+#      o CEP do destino entregue como número do chamado
+#
+#    Um modelo livre faria MAIS desses, não menos. E onde a resposta só CONDUZ —
+#    `Continuar`, `Voltar`, ecoar um dado que o caso já tem — exigir tela mapeada
+#    é desperdiçar a inteligência do agente e travar por bobagem.
+#
+# A CLASSE É A LINHA ENTRE OS DOIS, e ela sai da EVIDÊNCIA, nunca de adjetivo:
+#
+#     🔴 se duas respostas possíveis levariam o segurado a desfechos
+#        DIFERENTES, o passo é `decide`.
+#
+#   decide   escolhe entre alternativas de CONTEÚDO — qual serviço, qual ramo,
+#            qual apólice, aceitar custo, confirmar o irreversível, afirmar um
+#            fato sobre o bem ou sobre o segurado
+#   conduz   NAVEGA (Continuar/Voltar/Menu), confirma sem consequência, ou ECOA
+#            um dado que o caso JÁ TEM (nome, CPF, placa, endereço coletado)
+#
+# ⚠️ NA DÚVIDA, `decide`. Errar para o lado do determinismo custa um handoff;
+#    errar para o outro custa um técnico no endereço errado.
+#
+# 🔴 E `decide` NÃO AFROUXA NADA: continua exigindo tecla/âncora observada,
+#    `sem_chute` continua valendo, e a constante continua precisando do porquê
+#    escrito ao lado (`constante_justificada`).
+
+CLASSE_DECIDE = "decide"
+CLASSE_CONDUZ = "conduz"
+#: A tela que não é evidentemente nem uma nem outra. 🔴 Ela NÃO vira `decide` por
+#: omissão: ela segue o caminho que já existia, intacto. Inventar `decide` sem
+#: evidência viraria handoff para metade do produto; inventar `conduz` sem
+#: evidência é o defeito que esta classe existe para impedir.
+CLASSE_INDEFINIDA = "indefinida"
+
+# 🔴 O VOCABULÁRIO DA NAVEGAÇÃO — a lista que separa "andar" de "decidir".
+#
+# Uma opção daqui não afirma NADA sobre o segurado: ela move o fluxo.
+#
+# ⚠️ **`Sim` e `Não` NÃO estão aqui, e é a decisão mais importante deste bloco.**
+#
+# 📊 Medido em 27/09/2026 sobre os 16 corpora versionados de telas reais: das
+#    telas que NENHUM passo casa e cujas opções são todas "Sim/Não", estas são
+#    reais, literais, e todas AFIRMAM UM FATO::
+#
+#      "Os equipamentos para troca (chave de roda, macaco e step) estão no
+#       veículo e em boas condições?  1 - Sim  2 - Não"      allianz-auto c6fff008
+#      "O veículo está impedido de rodar até uma oficina?"   bradesco-auto 72af1ae1
+#      "Por acaso você precisou chamar a polícia aí no local?"        idem
+#      "Houve vítimas no local?"                            hdi-auto bb5b0f11
+#      "Possui chave de roda e macaco em boas condições?"    hdi-auto 886066e5
+#
+#    Responder "Sim" ali troca o caminhão que vem, ou afirma que houve vítima.
+#    `Sim` não tem significado próprio: ele HERDA o significado da pergunta — e
+#    por isso não pode entrar num vocabulário que autoriza responder sozinho.
+#
+# 🔴 `scripts/conferir_respostas.py::_NAVEGACAO` (a régua) inclui "sim", "nao",
+#    "confirmar" e "confirmo". Para a régua, que mede a FORMA da declaração, isso
+#    é tolerável; para o PRODUTO, que responde a URA, não é. ⚠️ As duas listas
+#    existirem é dívida declarada: a régua deve passar a delegar para cá (a
+#    função é `a_resposta_decide_pelo_cliente`), senão a régua mede uma coisa e o
+#    produto faz outra — o defeito do §9.4 um nível acima.
+_VOCABULARIO_DE_NAVEGACAO = (
+    "continuar", "prosseguir", "seguir", "avancar", "proximo", "voltar",
+    "voltar ao menu", "voltar ao menu anterior", "menu", "menu inicial",
+    "menu principal", "sair", "encerrar", "encerrar atendimento", "finalizar",
+    "novo atendimento", "abrir novo atendimento", "outro servico",
+    "outros servicos", "outros assuntos", "mais opcoes", "outros",
+    "nao entendi", "nao encontrei o assunto", "nenhuma das anteriores",
+)
+
+
+def rotulo_e_de_navegacao(rotulo: Any) -> bool:
+    """O rótulo desta opção apenas MOVE o fluxo?
+
+    Casamento por prefixo de palavra inteira: *"Voltar ao menu"* e
+    *"Sair, não quero continuar"* navegam; *"Voltar para o carro reserva"*
+    também — nenhuma delas afirma fato do segurado.
+
+    ⚠️ Rótulo VAZIO devolve False de propósito. A régua offline trata vazio como
+    navegação (ela está medindo a forma de uma declaração); aqui, um rótulo que
+    ninguém leu não pode autorizar o produto a responder.
+    """
+    r = " ".join(_norm(rotulo).split())
+    if not r:
+        return False
+    for nav in _VOCABULARIO_DE_NAVEGACAO:
+        if r == nav or r.startswith(nav + " ") or r.startswith(nav + ","):
+            return True
+    return False
+
+
+#: O sufixo de slot que é TECLA DE MENU. 🔴 Ele é o discriminador do §9.5 dentro
+#: do playbook: `{titular_cpf}` ECOA um dado do caso; `{qual_seguro_opcao}`
+#: ESCOLHE entre Residencial, Condomínio e Empresarial — e foi o defeito nº 3.
+#: ⚠️ É a mesma regra que o roteador já aplica para não perguntar tecla de menu
+#: ao segurado (`dispatch_router`: *"⛔ Tecla de menu (`*_opcao`) não se pergunta
+#: ao segurado: quem a responde é o motor"*). Uma regra, dois leitores.
+_SUFIXOS_DE_TECLA = ("_opcao", "_rotulo")
+
+_RX_SLOT_DO_REPLY = re.compile(r"\{([a-z0-9_]+)\}", re.IGNORECASE)
+
+
+def classe_do_passo(step: Dict[str, Any]) -> str:
+    """`decide` ou `conduz` para UM passo de URA — da evidência do passo.
+
+    A classe DECLARADA (`"classe": "conduz"`) vence, porque é ela que o guarda
+    confere contra a evidência: declaração que contradiz a evidência tem de ficar
+    VERMELHA, e um inferidor que ignorasse a declaração nunca deixaria isso
+    aparecer (`test_o_passo_que_decide_e_o_passo_que_conduz`).
+
+    Sem declaração, a inferência é conservadora — `decide` no fim da cascata:
+
+        noop                      → conduz   (não responde nada; não pode decidir)
+        sem_chute                 → decide   (a consequência não é reversível)
+        referral / encaminha      → decide   (encerra o caso do segurado)
+        constante_justificada     → decide   (só decide precisa dizer por quê)
+        reply com `{*_opcao}`     → decide   (tecla de menu escolhe conteúdo)
+        reply `{slot}` de dado    → conduz   (ecoa o que o caso já tem)
+        reply constante de nav.   → conduz   (Continuar / Voltar / Sair)
+        qualquer outra coisa      → decide   (na dúvida, `decide`)
+    """
+    declarada = str((step or {}).get("classe") or "").strip().lower()
+    if declarada in (CLASSE_DECIDE, CLASSE_CONDUZ):
+        return declarada
+    if step.get("noop"):
+        return CLASSE_CONDUZ
+    if step.get("sem_chute") or step.get("referral"):
+        return CLASSE_DECIDE
+    if str(step.get("outcome") or "") == OUTCOME_ENCAMINHA:
+        return CLASSE_DECIDE
+    if step.get("constante_justificada"):
+        return CLASSE_DECIDE
+    replies = [str(step.get("reply") or ""), str(step.get("reply_repeat") or "")]
+    slots = [s.lower() for r in replies for s in _RX_SLOT_DO_REPLY.findall(r)]
+    if slots:
+        if any(s.endswith(_SUFIXOS_DE_TECLA) for s in slots):
+            return CLASSE_DECIDE
+        return CLASSE_CONDUZ
+    constantes = [r for r in replies if r.strip()]
+    if constantes and all(rotulo_e_de_navegacao(r) for r in constantes):
+        return CLASSE_CONDUZ
+    return CLASSE_DECIDE
+
+
+def passos_com_classe_contraditoria(playbook: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """Os passos DECLARADOS `conduz` cuja evidência diz `decide`. `[(passo, porquê)]`
+
+    🔴 É o guarda da classe, e ele mora no produto de propósito: quem escreve um
+    passo novo tem como conferir a própria declaração sem sair do motor.
+
+    A pergunta é uma só, e é a do §9.5: *"duas respostas possíveis levariam o
+    segurado a desfechos DIFERENTES?"*. Quando a resposta é sim, `conduz` é uma
+    declaração falsa — e declaração falsa é pior que declaração nenhuma, porque
+    é ela que autoriza o agente a responder sozinho.
+    """
+    fora: List[Tuple[str, str]] = []
+    for step in (playbook.get("ura_steps") or []):
+        if str(step.get("classe") or "").strip().lower() != CLASSE_CONDUZ:
+            continue
+        nome = str(step.get("step") or "?")
+        if step.get("sem_chute"):
+            fora.append((nome, "está marcado `sem_chute`: para este dado não "
+                               "existe default honesto, logo ele DECIDE"))
+            continue
+        if step.get("constante_justificada"):
+            fora.append((nome, "tem `constante_justificada` — só um passo que "
+                               "DECIDE precisa dizer por que a constante está certa"))
+            continue
+        if step.get("referral") or str(step.get("outcome") or "") == OUTCOME_ENCAMINHA:
+            fora.append((nome, "encerra o caso por encaminhamento: o desfecho do "
+                               "segurado muda, logo ele DECIDE"))
+            continue
+        replies = [str(step.get("reply") or ""), str(step.get("reply_repeat") or "")]
+        teclas = [s for r in replies for s in _RX_SLOT_DO_REPLY.findall(r)
+                  if s.lower().endswith(_SUFIXOS_DE_TECLA)]
+        if teclas:
+            fora.append((nome, f"responde a TECLA DE MENU `{{{teclas[0]}}}` — "
+                               "tecla de menu escolhe entre alternativas de conteúdo"))
+            continue
+        constantes = [r for r in replies if r.strip() and "{" not in r]
+        nao_nav = [r for r in constantes if not rotulo_e_de_navegacao(r)]
+        if nao_nav:
+            fora.append((nome, f"responde a constante {nao_nav[0]!r}, que não está "
+                               "no vocabulário da navegação"))
+    return fora
+
+
 _UFS = {
     "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
     "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
