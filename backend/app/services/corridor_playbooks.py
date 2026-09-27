@@ -40,6 +40,7 @@ capturado em `ura_maps` (status='observed', 03/08/2026). Inventar rótulo de men
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import unicodedata
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -3194,10 +3195,21 @@ YELUM_AUTO_WHATSAPP_V1["native_flows"] = _NATIVE_FLOWS_FAMILIA_HDI_YELUM
 #    partir do campo `location` ("Endereço ou CEP") — nenhum é 0, nenhum é
 #    igual a outro. 📊 E não existe geocodificador no backend:
 #    `grep -rln "geocod\|viacep\|nominatim" backend/app --include=*.py` → 0.
-#    Portanto a origem delas é `sem_chute`: enquanto não houver fonte, a
-#    resposta NÃO SAI e o caso vai a uma pessoa com o motivo escrito.
-#    ⛔ Zero inventado aqui manda o guincho para o meio do oceano (lat 0 /
-#    long 0 é o Golfo da Guiné) — e a URA aceitaria calada.
+#
+#    ⚠️ **ESTE PARÁGRAFO ESTAVA VENCIDO, e é o texto mais caro do arquivo.** Ele
+#    dizia *"portanto a origem delas é `sem_chute`: enquanto não houver fonte, a
+#    resposta NÃO SAI e o caso vai a uma pessoa"*. 📊 A F4 (26/09/2026) deu fonte
+#    às duas — o PIN do WhatsApp, `origem: slot` → `local_latitude` /
+#    `local_longitude` — e desde então a resposta SAI, com a coordenada do pin.
+#    `grep -c '"origem": "sem_chute"'` neste arquivo → **0**. Quem lia o topo do
+#    mapa concluía que a Porto nunca fecha; ela fecha desde a F4. A regra que
+#    pegou isto é a do protocolo §0.4: mudou o caminho? `grep` do valor ANTIGO
+#    no arquivo inteiro — sobrevivente é defeito.
+#
+#    🔴 O QUE CONTINUA VERDADE: nenhum ENDEREÇO vira coordenada aqui. Sem pin,
+#    as duas chaves caem em `sem_valor`, o portão cobra o pin em português e o
+#    caso vai a uma pessoa. ⛔ Zero inventado aqui manda o guincho para o meio
+#    do oceano (lat 0 / long 0 é o Golfo da Guiné) — e a URA aceitaria calada.
 #
 # ⚠️ E `label_endereco_completo` é DERIVADO, não perguntado:
 #    📊 3 de 3 obedecem "{rua}, {numero_residencia}, {bairro}, {cidade} - {estado}".
@@ -3394,7 +3406,8 @@ _FLOW_PORTO_CAPTURAR_ENDERECO: Dict[str, Any] = {
             # `par_de_coordenadas`.
             #
             # ⛔ O QUE NÃO MUDOU, e é o que impede isto de virar chute:
-            # `par_de_coordenadas` recusa `(0,0)`, meio par e fora de faixa —
+            # `par_de_coordenadas` recusa `(0,0)`, meio par, fora de faixa e o
+            # que não é finito (`nan`/`inf`, 26/09/2026 — ver a função) —
             # então um caso SEM pin continua caindo em `sem_valor` e o caso vai
             # a uma pessoa. A resposta nunca sai com zero (CLAUDE.md §9.5: a
             # constante que decide precisa dizer por que está certa).
@@ -9194,9 +9207,10 @@ def _endereco_de_rodovia(raw: str, out: Dict[str, str]) -> Dict[str, str]:
 def par_de_coordenadas(latitude: Any, longitude: Any) -> Optional[Tuple[str, str]]:
     """`(lat, lon)` como texto normalizado, ou `None` quando não há par honesto.
 
-    Recusa: o que não é número · o que está fora da faixa do planeta ·
-    `(0, 0)` · e **meio par**. Latitude sem longitude não localiza nada, e o
-    campo solto viajaria para a seguradora como se localizasse.
+    Recusa: o que não é número · **o que não é FINITO** (`nan`, `-nan`, `NaN`,
+    `inf`) · o que está fora da faixa do planeta · `(0, 0)` · e **meio par**.
+    Latitude sem longitude não localiza nada, e o campo solto viajaria para a
+    seguradora como se localizasse.
 
     💭 A faixa é a do mundo, não a do Brasil: o produto atende quem está na
     fronteira, e recusar por geografia seria inventar regra.
@@ -9206,6 +9220,35 @@ def par_de_coordenadas(latitude: Any, longitude: Any) -> Optional[Tuple[str, str
         lon = float(str(longitude).strip().replace(",", "."))
     except (TypeError, ValueError):
         return None
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 `nan` NÃO É NÚMERO PEQUENO NEM NÚMERO GRANDE — ELE NÃO É NÚMERO
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 Medido em 26/09/2026, com o motor: as duas conferências abaixo são
+    #    COMPARAÇÕES, e toda comparação com `nan` devolve `False` por definição
+    #    do IEEE 754 — `abs(nan) > 90` é `False` e `abs(nan) < 1e-6` também.
+    #    Então o par atravessava as duas e saía formatado:
+    #
+    #        par_de_coordenadas('nan', 'nan')    -> ('nan', 'nan')
+    #        par_de_coordenadas('nan', '-48.5')  -> ('nan', '-48.500000')  <- meio par
+    #        par_de_coordenadas('inf', 'inf')    -> None    <- o infinito ERA pego
+    #        par_de_coordenadas('0', '0')        -> None    <- o zero ERA pego
+    #
+    #    E o fio inteiro fechava com ele: `state=ready_to_send`, `missing=[]`,
+    #    e `"latitude":"nan"` no `paramsJSON` que vai à seguradora.
+    #
+    # ⚠️ De onde vem um `nan`: `json.dumps({'a': float('nan')})` emite `NaN`
+    #    literal e `json.loads` o devolve — qualquer ida e volta dos `slots` por
+    #    JSON (sessão retomada do Redis, `ura_simulator`, um `slots` montado à
+    #    mão) reabre a porta. O campo do agente é `Optional[str]` e a descrição
+    #    pede *"exatamente como vieram"*: um pin com a linha corrompida também.
+    #
+    # 🔴 `math.isfinite` recusa a FAMÍLIA INTEIRA de uma vez — `nan`, `-nan`,
+    #    `NaN`, `+inf`, `-inf`, `infinity` — e é a única conferência possível que
+    #    NÃO é uma comparação. Faixa e zero continuam abaixo: quem não é finito
+    #    não chega lá.
+    if not (math.isfinite(lat) and math.isfinite(lon)):
+        return None
     if abs(lat) > 90 or abs(lon) > 180:
         return None
     if abs(lat) < 1e-6 and abs(lon) < 1e-6:
@@ -9213,10 +9256,208 @@ def par_de_coordenadas(latitude: Any, longitude: Any) -> Optional[Tuple[str, str
     return f"{lat:.6f}", f"{lon:.6f}"
 
 
+# ===========================================================================
+# 🔴 O CAMPO TEM VALOR — MAS O VALOR É UM VALOR? (SPEC-118, conserto de 26/09)
+# ===========================================================================
+#
+# A `GUARDA ANTI-INVENÇÃO` de `agents/tools/insurer_dispatch_tool.py` nasceu no
+# incidente de 10/07/2026 (*"placa e telefone inventados foram parar na
+# seguradora"*) e confere TRÊS campos: telefone, placa e CPF. 📊 Medido em
+# 26/09/2026, depois da F4, o formulário da Porto passou a mandar **seis campos
+# novos** à seguradora — e nenhum deles entrou na conferência:
+#
+#     estado="ZZ"                  -> ok=True, e a label saiu "… Floripa - ZZ"
+#     cep="0"                      -> ok=True
+#     numero_residencia="nao sei"  -> ok=True
+#     cidade="48.5477"             -> ok=True
+#     rua="R. X\nNAO IGNORE: …"    -> ok=True, com a QUEBRA DE LINHA dentro
+#     (CONTROLE: rua=""            -> ok=False — só a AUSÊNCIA era conferida)
+#
+# 🔴 **Recusar é `sem_valor`, nunca corrigir.** Um valor que não é valor é
+# APAGADO do caso: o portão volta a cobrá-lo, o agente o pede em português e, se
+# não houver resposta, o caso vai a uma pessoa com o motivo escrito. ⛔ Nunca um
+# palpite no lugar — é a mesma regra de `par_de_coordenadas`, logo acima.
+#
+# ⚠️ E as duas peças que faltavam JÁ ESTAVAM NESTE ARQUIVO, sem leitor: `_UFS`
+# (as 27 siglas, 200 linhas acima) e o `"formato": "00000-000"` que o mapa da
+# Porto declara à mão para o CEP. Escrever um terceiro validador ao lado delas
+# seria a duplicação que a CLAUDE.md §5 proíbe; aqui elas passam a ser LIDAS.
+
+#: Uma quebra de linha dentro de um campo de formulário parte a resposta em duas
+#: no lado da seguradora, e a segunda metade é texto que ninguém autorizou.
+#: ⚠️ O espaço em branco é COLAPSADO, não recusado: espaço já é o separador do
+#: próprio campo, e colapsá-lo não muda uma letra do que o segurado escreveu. O
+#: que se RECUSA é caractere de controle — ele não tem como ter sido digitado.
+_CONTROLE_INVISIVEL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+#: 📊 O maior valor de ENDEREÇO nas 3 capturas da Porto tem 46 caracteres. 300 é
+#: seis vezes de folga: acima disso não é endereço, é outra coisa.
+#:
+#: ⚠️ E o teto vale SÓ para os seis campos de endereço, de propósito. Um campo de
+#: texto livre qualquer — "descreva o problema" — pode legitimamente ser longo, e
+#: recusar o relato do segurado por tamanho trocaria um defeito por outro: o caso
+#: iria a uma pessoa por ter informação DEMAIS. Para esses, a régua é só a que
+#: não tem como ter sido digitada: caractere de controle.
+_TETO_DE_ENDERECO = 300
+
+#: Nome de lugar (rua, bairro, cidade) precisa de LETRA. 📊 `cidade="48.5477"` é
+#: o defeito de 03/08/2026 com outra roupa: uma cidade chamada 48.5477 não é
+#: dedução ruim, é invenção — e é para onde o guincho vai.
+_TEM_LETRA_RE = re.compile(r"[A-Za-zÀ-ÿ]")
+
+#: Número de imóvel: dígitos, com sufixo de letra ("120A"), ou "sem número".
+#: 📊 O `numero_residencia` das 3 capturas da Porto é `"0"`, `"0"` e `"14"` — o
+#: ZERO é valor LEGÍTIMO aqui (é o que a própria Porto grava quando não há
+#: número), e por isso a conferência é de FORMA, nunca "diferente de zero".
+_NUMERO_DE_IMOVEL_RE = re.compile(r"^\d{1,6}\s*[A-Za-z]?$")
+_SEM_NUMERO_RE = re.compile(r"^(?:s\s*/?\s*n[\u00ba\u00b0]?|sem\s+n[u\u00fa]mero)$",
+                            re.IGNORECASE)
+
+
+def texto_de_campo_honesto(valor: Any, teto: Optional[int] = None) -> Optional[str]:
+    """O texto que pode viajar num campo de formulário — ou `None`.
+
+    Vale para TODO campo de texto livre, não só os seis do endereço: espaço em
+    branco (inclusive a quebra de linha) é colapsado, caractere de controle
+    recusa o valor inteiro, e o que sobra precisa ter conteúdo.
+
+    ⚠️ `teto` é opcional e só os campos de ENDEREÇO o usam (ver `_TETO_DE_ENDERECO`).
+    """
+    bruto = _texto_de_flow(valor)
+    if _CONTROLE_INVISIVEL_RE.search(bruto):
+        return None
+    limpo = re.sub(r"\s+", " ", bruto).strip()
+    if not limpo or (teto is not None and len(limpo) > teto):
+        return None
+    return limpo
+
+
+def valor_no_formato(valor: Any, formato: str) -> Optional[str]:
+    """O valor no FORMATO que o mapa DECLAROU, ou `None` quando ele não cabe.
+
+    🔴 O formato é lido como declaração: cada `0` é um dígito, todo o resto é
+    literal. `"00000-000"` — o que o mapa da Porto escreve à mão para o CEP —
+    pede oito dígitos e devolve `88000-000`, venha o valor com traço ou sem.
+
+    ⚠️ Isto NÃO conserta valor: `"0"` tem um dígito onde o formato pede oito, e
+    um dígito não é um CEP. Volta `None`, a chave falta com o motivo escrito, e
+    o caso vai a uma pessoa — em vez de a seguradora receber `cep="0"`.
+    """
+    molde = str(formato or "")
+    quantos = molde.count("0")
+    if not molde or not quantos:
+        return None
+    digitos = re.sub(r"\D", "", _texto_de_flow(valor))
+    if len(digitos) != quantos:
+        return None
+    saida, i = [], 0
+    for c in molde:
+        if c == "0":
+            saida.append(digitos[i])
+            i += 1
+        else:
+            saida.append(c)
+    return "".join(saida)
+
+
+def uf_br(valor: Any) -> Optional[str]:
+    """A sigla da UF em maiúsculas, ou `None`. 🔴 Consulta `_UFS` — a lista que
+    já morava neste arquivo e que a conferência do formulário não lia."""
+    sigla = _texto_de_flow(valor).strip().upper()
+    return sigla if sigla in _UFS else None
+
+
+def _nome_de_lugar(valor: Any) -> Optional[str]:
+    limpo = texto_de_campo_honesto(valor, teto=_TETO_DE_ENDERECO)
+    return limpo if limpo and _TEM_LETRA_RE.search(limpo) else None
+
+
+def _numero_de_imovel(valor: Any) -> Optional[str]:
+    bruto = _texto_de_flow(valor).strip()
+    if _NUMERO_DE_IMOVEL_RE.match(bruto) or _SEM_NUMERO_RE.match(bruto):
+        return bruto
+    return None
+
+
+#: Os slots de endereço que VIAJAM para a seguradora, e a régua de cada um.
+#: ⚠️ `destino_*` fica FORA: a oficina é escolhida pela corretora e não é campo
+#: do formulário da Porto. No dia em que for, entra aqui — nunca num segundo
+#: dicionário noutro arquivo (CLAUDE.md §5).
+_REGUA_DE_SLOT: Dict[str, Any] = {
+    "local_uf": uf_br,
+    "local_cep": lambda v: valor_no_formato(v, "00000-000"),
+    "local_numero": _numero_de_imovel,
+    "local_rua": _nome_de_lugar,
+    "local_bairro": _nome_de_lugar,
+    "local_cidade": _nome_de_lugar,
+}
+
+
+def valor_de_slot_honesto(slot: str, valor: Any) -> Optional[str]:
+    """O valor normalizado do slot, ou `None` quando ele não é um valor.
+
+    Slot sem régua própria cai na conferência de TEXTO: nenhum campo de
+    formulário viaja com quebra de linha dentro, seja ele de endereço ou não.
+
+    🔴 UMA função, TRÊS consumidores — o portão (`inject_address_slots`), o
+    montador da resposta (`montar_resposta_de_flow`) e a ferramenta do agente.
+    É o mesmo desenho de `par_de_coordenadas`, e pelo mesmo motivo escrito lá:
+    duas cópias da régua divergiriam num dia, e a divergência só apareceria num
+    guincho no lugar errado (CLAUDE.md §5).
+    """
+    if _flow_vazio(valor):
+        return None
+    regua = _REGUA_DE_SLOT.get(str(slot or ""))
+    return regua(valor) if regua else texto_de_campo_honesto(valor)
+
+
+#: Os seis campos que a SPEC-118 passou a mandar à seguradora. ⚠️ A lista é
+#: derivada da régua, e não escrita de novo: acrescentar um slot lá o põe aqui.
+SLOTS_DE_ENDERECO_CONFERIDOS = tuple(_REGUA_DE_SLOT)
+
+
 #: A linha que `_texto_de_localizacao` escreve. Serve a DOIS usos opostos:
 #: ler a coordenada dela, e impedir que ela seja lida como endereço.
 _LINHA_DE_COORDENADA_RE = re.compile(
     r"localiza[çc][ãa]o(?:\s+ao\s+vivo)?\s+compartilhada", re.IGNORECASE)
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 A SEGUNDA LINHA QUE NUNCA É ENDEREÇO: O NOME DO LUGAR DO PIN
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 Medido em 26/09/2026, do produtor REAL até o montador REAL: o pin do
+#    WhatsApp traz DUAS coisas de texto — `name` (o nome cadastrado do lugar) e
+#    `address` (o endereço). `_texto_de_localizacao` colava os dois na MESMA
+#    linha, com vírgula, e o parser quebra a linha em vírgulas::
+#
+#      {name:'Estacionamento', address:'Rod. SC-401, km 5'}
+#        -> 'Estacionamento, Rod. SC-401, km 5'
+#        -> rua='Rod. SC-401, km 5'   local_cidade='ESTACIONAMENTO'  ❌
+#        -> e a Porto recebia  cidade="Estacionamento"
+#
+#    🔴 É o cenário mais comum de guincho que existe: o carro parado na rodovia
+#    e o pin com o nome de um posto. E o portão **não cobrava a cidade, porque
+#    ela estava preenchida** — preenchida com um palpite. CLAUDE.md §9.5: o
+#    passo que responde ERRADO é silencioso e chega ao cliente.
+#
+# ⚠️ Por que o conserto é do PRODUTOR e não deste parser: só quem leu o
+#    `locationMessage` SABE qual pedaço era o nome. Aqui embaixo chega texto
+#    livre, e "Estacionamento" tem exactamente a cara de um nome de lugar —
+#    nenhuma heurística separa os dois sem chutar. Então o produtor passou a
+#    escrever o nome numa linha ROTULADA, e esta linha entra na mesma lista de
+#    "linhas que nunca são endereço" onde a coordenada já estava. Um mecanismo,
+#    duas linhas (CLAUDE.md §5: nada de um segundo filtro ao lado deste).
+#
+# ⚠️ O caso em que a rua É reconhecida já saía certo ANTES deste conserto
+#    (`'Posto Shell, R. Rafael Bandeira, 41 - Centro, Florianópolis - SC'` →
+#    rua `R. Rafael Bandeira`, cidade `Florianópolis`): `_STREET_RE` acha o
+#    logradouro e tudo antes dele é descartado. O defeito aparecia quando NENHUM
+#    segmento tem cara de logradouro — aí o primeiro (o nome) virava a rua, e a
+#    sobra virava a cidade.
+_LINHA_DO_NOME_DO_PIN_RE = re.compile(r"^\s*nome do local\s*:", re.IGNORECASE)
+
+#: As duas linhas que `_texto_de_localizacao` escreve e que NUNCA são endereço.
+_LINHAS_QUE_NAO_SAO_ENDERECO = (_LINHA_DE_COORDENADA_RE, _LINHA_DO_NOME_DO_PIN_RE)
 
 #: ⚠️ SÓ O PONTO DECIMAL, de propósito. Quem produz esta linha é `_grau`, que
 #: escreve `f"{valor:.6f}"` — ponto, sempre. Aceitar a vírgula aqui tornaria
@@ -9286,7 +9527,8 @@ def parse_address_br(text: str) -> Dict[str, str]:
     # fechou o caso "coordenada no RODAPÉ" e deixou aberto o caso "coordenada
     # SOZINHA". A linha da coordenada nunca é endereço, esteja onde estiver.
     raw = next((l.strip() for l in raw.splitlines()
-                if l.strip() and not _LINHA_DE_COORDENADA_RE.search(l)), "")
+                if l.strip() and not any(r.search(l)
+                                         for r in _LINHAS_QUE_NAO_SAO_ENDERECO)), "")
     if not raw:
         return out
     m = re.search(r"\b(\d{5})-?(\d{3})\b", raw)
@@ -9406,8 +9648,22 @@ def inject_address_slots(slots: Dict[str, Any]) -> Dict[str, Any]:
     # ⚠️ Par desonesto é APAGADO, não corrigido: o formulário cai em
     #    `sem_valor`, o portão cobra o pin e o caso vai a uma pessoa com o motivo
     #    escrito. Nunca um número inventado no lugar.
-    bruto_lat = str(slots.get("local_latitude") or "").strip()
-    bruto_lon = str(slots.get("local_longitude") or "").strip()
+    # ⚠️ `_texto_do_slot` E NÃO `str(... or "")`.
+    #
+    # 📊 Medido em 26/09/2026: `str(0 or "")` é `''` e `str(0.0 or "")` também —
+    #    o zero é FALSY em Python. Com `local_latitude=0` (o inteiro, não a
+    #    string), `bruto_lat` saía vazio, a conferência abaixo **nunca rodava**,
+    #    o `if not (...)` seguinte também não repunha nada, e o slot ficava como
+    #    estava: `state=ready_to_send`, `ok=True`, `params['latitude'] = "0"`.
+    #    O Golfo da Guiné entrando pela porta que foi feita para barrá-lo.
+    #
+    # 🔴 A conferência de "tem valor?" deste arquivo é `_flow_vazio`, e ela sabe
+    #    a diferença (*"vazio é ausência de resposta; `False` é uma RESPOSTA"*).
+    #    `or ""` é a mesma pergunta escrita de um jeito que confunde zero com
+    #    nada — e as OUTRAS ocorrências de `or ""` neste arquivo são sobre TEXTO,
+    #    onde o comportamento é correto e fica como está.
+    bruto_lat = _texto_do_slot(slots, "local_latitude")
+    bruto_lon = _texto_do_slot(slots, "local_longitude")
     if bruto_lat or bruto_lon:
         par = par_de_coordenadas(bruto_lat, bruto_lon)
         if par:
@@ -9415,12 +9671,46 @@ def inject_address_slots(slots: Dict[str, Any]) -> Dict[str, Any]:
         else:
             slots.pop("local_latitude", None)
             slots.pop("local_longitude", None)
-    if not (str(slots.get("local_latitude") or "").strip()
-            and str(slots.get("local_longitude") or "").strip()):
+    if not (_texto_do_slot(slots, "local_latitude")
+            and _texto_do_slot(slots, "local_longitude")):
         par = coordenada_do_pin(slots.get("local_atual"))
         if par:
             slots["local_latitude"], slots["local_longitude"] = par
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 E OS SEIS CAMPOS DE ENDEREÇO PASSAM PELA MESMA PORTA — 26/09/2026
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # A coordenada ganhou portão acima porque ela VIAJA para a seguradora. 📊 Os
+    # seis campos que a F3/F4 acrescentou viajam pelo mesmo `paramsJSON`, e
+    # nenhum era conferido: `estado="ZZ"`, `cep="0"`, `numero="nao sei"`,
+    # `cidade="48.5477"` e uma rua com quebra de linha dentro saíam todos com
+    # `ok=True` (o CONTROLE era rua VAZIA, o único caso que travava).
+    #
+    # 🔴 Aqui, e não só no montador, pelo motivo já escrito acima para a
+    # coordenada: `inject_address_slots` roda em `new_dispatch_session`, ANTES do
+    # portão de coleta, e é por onde todo acionamento passa. Conferir só no envio
+    # deixaria o portão APROVANDO um caso que o envio depois recusa.
+    #
+    # ⚠️ Valor desonesto é APAGADO, nunca corrigido: o slot desaparece, o portão
+    # volta a cobrá-lo, o agente pede em português e, sem resposta, o caso vai a
+    # uma pessoa. E o valor que a régua NORMALIZA (o CEP `88000000` virando
+    # `88000-000`, a UF `sc` virando `SC`) são os MESMOS dígitos e as mesmas
+    # letras — normalizar forma não é inventar conteúdo.
+    for _slot in SLOTS_DE_ENDERECO_CONFERIDOS:
+        if _flow_vazio(slots.get(_slot)):
+            continue
+        _limpo = valor_de_slot_honesto(_slot, slots.get(_slot))
+        if _limpo is None:
+            slots.pop(_slot, None)
+        else:
+            slots[_slot] = _limpo
     return slots
+
+
+def _texto_do_slot(slots: Dict[str, Any], chave: str) -> str:
+    """O valor do slot como texto — e `0` NÃO é vazio (ver `_flow_vazio`)."""
+    valor = (slots or {}).get(chave)
+    return "" if valor is None else str(valor).strip()
 
 
 # A SEGURADORA MOSTRA O DADO MASCARADO — E MASCARADO NÃO SE COMPARA COM `==`.
@@ -9858,8 +10148,20 @@ def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any],
         #      a regra não custa nada hoje, e o lado por que ela erra é o certo:
         #      descartar em silêncio um valor que o CASO TEM é perder informação
         #      que ninguém vai procurar depois; travar manda o caso a uma pessoa.
+        #
+        # 🔴 E O VALOR AINDA PRECISA SER UM VALOR — conserto de 26/09/2026.
+        #    `_texto_de_flow` converte; ele não confere. `valor_de_slot_honesto`
+        #    é a régua (a MESMA que o portão e a ferramenta usam) e ela recusa
+        #    UF que não existe, CEP que não tem oito dígitos, número que é
+        #    frase, cidade sem letra nenhuma e caractere de controle dentro do
+        #    campo. ⚠️ Recusa vira `sem_valor` — o caso vai a uma pessoa com o
+        #    motivo escrito, nunca um palpite no lugar.
         if not (comp.get("options") or []) and not comp.get("multiple"):
-            params[nome] = _texto_de_flow(bruto)
+            _limpo = valor_de_slot_honesto(str(comp.get("slot") or ""), bruto)
+            if _limpo is None:
+                _falta(comp, "sem_valor", bruto, condicional)
+                continue
+            params[nome] = _limpo
             continue
 
         if comp.get("multiple"):
@@ -9933,7 +10235,25 @@ def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any],
                     slot = str(decl.get("slot") or "")
                     bruto_da_chave = slots.get(slot)
                     if not _flow_vazio(bruto_da_chave):
-                        valor = _texto_de_flow(bruto_da_chave)
+                        # 🔴 E AQUI O `"formato"` DO MAPA PASSA A SER LIDO.
+                        #
+                        # 📊 26/09/2026: o mapa da Porto declara, à mão,
+                        #    `"cep": {..., "formato": "00000-000"}` — e
+                        #    `grep -n '"formato"' app/services/*.py` devolvia
+                        #    ZERO leitores. Era a *"constante que decide sem
+                        #    dizer por que está certa"* da CLAUDE.md §9.5 com um
+                        #    agravante: ela PARECIA dizer. Resultado medido:
+                        #    `cep="0"` saía com `ok=True`.
+                        #
+                        # ⚠️ Sem `formato` declarado, a régua do slot decide (é
+                        #    o caso de `referencia`, texto livre). Com `formato`,
+                        #    ele MANDA: é a declaração mais específica.
+                        _formato = str(decl.get("formato") or "")
+                        if _formato:
+                            valor = valor_no_formato(bruto_da_chave, _formato)
+                            motivo = "formato_invalido"
+                        else:
+                            valor = valor_de_slot_honesto(slot, bruto_da_chave)
                 elif origem == "derivado":
                     valor = _derivar_do_molde(str(decl.get("molde") or ""),
                                               dos_componentes, finais, slots)
