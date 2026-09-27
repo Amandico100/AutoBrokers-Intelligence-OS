@@ -137,24 +137,74 @@ def test_espaco_em_volta_do_ref_nao_cria_fantasma(monkeypatch):
 
 
 def test_o_health_publica_o_sinal(monkeypatch):
-    """O guarda do PRODUTO: sem a linha em `main.py`, o defeito continua invisível.
+    """O guarda do PRODUTO: o `/health` CALCULA o sinal, e ele chega no payload.
 
-    🔴 **Esta asserção nasceu FROUXA e a mutação a pegou.** A primeira versão
-    perguntava se a string `sinais["finalize_refs_fantasma"]` aparecia em
-    `main.py`. 📊 Medido em 26/09/2026: apagando a linha que CALCULA o sinal, o
-    guarda continuou **verde** — porque o caminho de erro, logo abaixo, tem a
-    mesma chave (`= None`). Era um guarda que não tinha como falhar
-    (CLAUDE.md §9.3).
+    🔴 **ESTA ASSERÇÃO JÁ NASCEU FROUXA DUAS VEZES — a segunda foi pega pelo red
+    team.** A 1ª versão perguntava se a string `sinais["finalize_refs_fantasma"]`
+    aparecia em `main.py`; 📊 apagando a linha que CALCULA o sinal, o guarda
+    ficava **verde**, porque o caminho de erro logo abaixo escreve a mesma chave
+    (`= None`). A 2ª versão passou a procurar a **atribuição** que chama o motor
+    — e tinha o mesmo buraco um nível acima: 📊 medido em 26/09/2026, com um
+    `raise` no topo do bloco `try` de `_sinais_do_codigo`, o texto da atribuição
+    continuava intacto no arquivo e o guarda deu `7 passed`, **com o `/health`
+    devolvendo `finalize_refs_fantasma = None`**.
 
-    Agora a asserção é sobre a **atribuição que chama o motor**, e não sobre a
-    chave: só o caminho de sucesso a satisfaz.
+    🔴 As duas versões eram `grep` no CÓDIGO-FONTE. Agora o guarda **chama o
+    produto** (`app.main._sinais_do_codigo`) e afirma sobre o DICIONÁRIO que o
+    `/health` devolve — CLAUDE.md §9.4 literal: *"o que se afirma é o
+    comportamento do MOTOR sobre o texto REAL"*.
+
+    ⚠️ **E por que isto não é detalhe de teste:** os 10 sinais do `/health` moram
+    num único `try/except Exception`. Qualquer exceção em qualquer um deles —
+    inclusive em `allowlist_ativa()`, 30 linhas DEPOIS — apaga os dez, e a trava
+    contra o `ref` fantasma (a razão de existir desta fatia) volta a ser
+    invisível. Só uma asserção sobre o valor devolvido vê isso.
+    """
+    # ⚠️ `backend/` NA FRENTE do `sys.path`, e nao apenas nele.
+    #
+    #    Quem roda este arquivo por caminho (fora do `conftest.py` da raiz) nao
+    #    tem `app` importavel, e o guarda morreria com ModuleNotFoundError em vez
+    #    de medir o produto. 🔴 E `if str(RAIZ) not in sys.path` NAO bastava: o
+    #    pytest ja acrescenta a raiz no FIM, entao o `app` resolvido era o do
+    #    diretorio de TRABALHO. 📊 Medido em 27/09/2026, numa arvore-copia: a
+    #    mutacao que derruba os 10 sinais do `/health` ficou VERDE, porque o teste
+    #    mediu o `app/main.py` de OUTRA arvore. Um guarda mede o produto que esta
+    #    ao lado dele (CLAUDE.md §9.4).
+    if sys.path[:1] != [str(RAIZ)]:
+        sys.path.insert(0, str(RAIZ))
+    for _cache in [m for m in list(sys.modules)
+                   if m == "app" or m.startswith("app.main")]:
+        sys.modules.pop(_cache, None)
+    from app.main import _sinais_do_codigo
+
+    _com_lista(monkeypatch, "%s,%s" % (REF_PORTO, FANTASMA))
+    sinais = _sinais_do_codigo()
+    assert "finalize_refs_fantasma" in sinais, (
+        "a chave nao chega ao payload do /health — a trava existe e ninguem a ve")
+    assert sinais["finalize_refs_fantasma"] == [FANTASMA], (
+        "o /health NAO reporta o ref fantasma: %r. Isto fica vermelho tambem "
+        "quando o bloco inteiro dos 10 sinais cai por outro motivo, que e "
+        "exatamente o caso que o grep no fonte nao via"
+        % (sinais["finalize_refs_fantasma"],))
+    # 🔴 CONTROLE — o mesmo motor, a lista CERTA: lista vazia, e nao `None`.
+    #    Sem esta linha o guarda nao distingue "olhei e nao ha fantasma" de
+    #    "o bloco caiu": as duas coisas sao falsy.
+    _com_lista(monkeypatch, "%s,%s" % (REF_PORTO, REF_YELUM))
+    limpo = _sinais_do_codigo()["finalize_refs_fantasma"]
+    assert limpo == [], (
+        "🔴 CONTROLE: com a lista certa o /health tem de devolver LISTA VAZIA "
+        "(e nao None, que e o que o caminho de erro escreve): %r" % (limpo,))
+
+
+def test_o_caminho_de_ERRO_do_health_publica_None_e_nao_lista_vazia():
+    """⚠️ Esta metade continua sendo sobre o TEXTO, e de propósito: o ramo
+    `except` só roda quando algo já deu errado, e forçá-lo aqui exigiria
+    quebrar um import do produto no meio da bateria. O que se afirma é a
+    DECLARAÇÃO — `None` e não `[]` —, porque lista vazia ali diria *"olhei e
+    não há fantasma"* quando ninguém olhou. A pergunta do comportamento é a do
+    teste acima, e ela chama o motor.
     """
     fonte = (RAIZ / "app" / "main.py").read_text(encoding="utf-8")
-    atribuicao = ('sinais["finalize_refs_fantasma"] = '
-                  "refs_de_finalizacao_sem_corredor(")
-    assert atribuicao in fonte, (
-        "o /health nao CALCULA os refs fantasma — a trava existe e ninguem a ve. "
-        "⚠️ a chave sozinha nao basta: o caminho de erro tambem a escreve")
     assert 'sinais["finalize_refs_fantasma"] = None' in fonte, (
         "o caminho de erro do /health precisa publicar None — lista vazia ali "
         "diria 'olhei e nao ha fantasma', e ninguem olhou")
