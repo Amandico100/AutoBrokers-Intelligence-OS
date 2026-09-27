@@ -90,11 +90,64 @@ from typing import Any, Dict, List, Optional, Tuple
 # 🔴 O CONTROLE que dá o direito: o disclaimer que a própria SPEC-083 §10 avisa
 #    que polui — *"está coberto apenas a mão de obra necessária para o serviço:"*
 #    — **não casa** o padrão ancorado em linha, e **casa** o largo.
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 SPEC-119 F1 · AS QUATRO FORMAS QUE FALTAVAM — cada uma com a seguradora, a
+#    frase REAL e a contagem, medidas no MESMO motor (Python) sobre o MESMO
+#    texto (`norm_para_classificar`) em que vão rodar. CLAUDE.md §9.4.
+#
+# ⛔ O que NÃO entrou, e por quê: um padrão largo `servi[çc]o de (…)` casaria
+#    **os disclaimers de cobertura** que a SPEC-083 §10 já avisou que envenenam
+#    — 📊 `"esse servico de troca e coberto para lampadas comuns"`,
+#    `"sua apolice nao contempla o servico de limpeza de exaustor"`,
+#    `"o servico de encanador reparo hidraulico cobrira os custos"`. Por isso
+#    cada padrão novo é ancorado no **VERBO DE ENVIO** da seguradora
+#    (`enviaremos`, `vamos enviar`, `segue`), nunca na palavra `serviço` solta.
+#
+# 📊 Medido em 27/09/2026 — comando:
+#    `python scratchpad/testar_padrao.py acervo.json "<o padrão>"`, que roda
+#    `re.search` sobre `norm_para_classificar` de TODOS os eventos `in` de
+#    `observed_events` (555 sessões, 10 seguradoras).
+#
+# ```
+#   padrão                                        sessões          rótulos capturados
+#   neste caso enviaremos o servico de (…) para   hdi 15 · yelum 15  guincho 28 · troca de pneus 4 · chaveiro 1
+#   entao vamos enviar um (…)                     bradesco 5         reboque 8
+#   segue o servico de (…)                        allianz 14         reboque 15
+#   da pra resolver com a assistencia de um (…)   bradesco 2         tecnico 2
+# ```
+# ─────────────────────────────────────────────────────────────────────────────
 PADRAO_OURO = (
     # o resumo da URA — 📊 112 sessões em 10 seguradoras, sobre texto normalizado
     re.compile(r"(?m)^servi[çc]o\s*:\s*([^\n;]{1,55})", re.IGNORECASE),
     # a confirmação de abertura — 📊 hdi e yelum
-    re.compile(r"sua solicita[çc][ãa]o de ([^*\n]{2,40}) foi aberta", re.IGNORECASE),
+    #
+    # 🔴 `(?:a|sua)`, e não só `sua`, por MEDIÇÃO — 27/09/2026. A HDI escreve as
+    #    duas formas: *"sua solicitacao de guincho foi aberta com sucesso"* e
+    #    *"a solicitacao de guincho para a assistencia 9257546 foi aberta com
+    #    sucesso"*. 📊 só `sua` = hdi 13 · yelum 17; com `(?:a|sua)` = hdi **15**
+    #    · yelum 17. As 2 sessões a mais percorrem um guincho inteiro.
+    re.compile(r"\b(?:a|sua) solicita[çc][ãa]o de ([^*\n]{2,40}) foi aberta",
+               re.IGNORECASE),
+    # 🔴 hdi e yelum · a frase REAL: *"neste caso enviaremos o servico de guincho
+    #    para atende-lo(a)."* — 📊 hdi 15 sessões · yelum 15; `guincho` 28,
+    #    `troca de pneus` 4, `chaveiro` 1.
+    #    ⚠️ A âncora `para atende` é o que separa o ENVIO do disclaimer.
+    re.compile(r"neste caso enviaremos o servi[çc]o de ([^\n.]{2,40}) para atende",
+               re.IGNORECASE),
+    # 🔴 bradesco · a frase REAL: *"certo, entao vamos enviar um reboque. me diz:
+    #    o veiculo esta em garagem subsolo?"* — 📊 5 sessões, `reboque` 8×.
+    #    ⚠️ É a PRIMEIRA forma de padrão-ouro que a bradesco tem: até 27/09/2026
+    #    ela estava em `SEM_PADRAO_OURO`.
+    re.compile(r"entao vamos enviar um ([^\n.]{2,30})", re.IGNORECASE),
+    # 🔴 allianz · a frase REAL: *"segue o servico de reboque, com previsao de 60
+    #    min para a chegada no local"* — 📊 14 sessões, `reboque` 15×.
+    #    ⚠️ Vírgula e ponto fora da classe, senão a captura engole a previsão.
+    re.compile(r"segue o servi[çc]o de ([^\n,.]{2,30})", re.IGNORECASE),
+    # 🔴 bradesco · a frase REAL: *"certo! esse problema da pra resolver com a
+    #    assistencia de um tecnico. posso confirmar esse servico?"* — 📊 2 sessões,
+    #    `tecnico` 2×.
+    re.compile(r"da pra resolver com a assistencia de um ([^\n.]{2,30})",
+               re.IGNORECASE),
 )
 
 # 🔴 O DESEMPATE, e ele resolve um caso que a SPEC não previa.
@@ -118,12 +171,29 @@ CAMPO_PROBLEMA = re.compile(r"(?m)^problema\s*:\s*([^\n;]{1,60})", re.IGNORECASE
 SERVICOS_GENERICOS = frozenset({"eletrodomesticos", "eletrodomestico",
                                 "conserto residencial", "assistencia"})
 
-# 🔴 As 4 seguradoras SEM padrão-ouro, declaradas — nunca implícitas:
-#    `tokio` · `bradesco` · `zurich` · `mapfre` não têm nenhuma tela em que a
-#    própria seguradora nomeie o serviço executado. Nelas o nível 1 depende
-#    inteiramente da resposta ao cardápio (1b), e onde nem isso existe, a rota
-#    fica sem demanda medida — o que vai para o relatório, não para o silêncio.
-SEM_PADRAO_OURO = ("tokio", "bradesco", "zurich", "mapfre")
+# 🔴 As seguradoras SEM padrão-ouro, declaradas — nunca implícitas.
+#
+# ⚠️ Eram QUATRO até 27/09/2026. A **bradesco saiu**: ela nomeia o serviço em
+#    *"certo, entao vamos enviar um reboque"* (📊 5 sessões) e em *"esse problema
+#    da pra resolver com a assistencia de um tecnico"* (📊 2 sessões) — as duas
+#    formas estão em `PADRAO_OURO` acima.
+#
+# 📊 As três que CONTINUAM cegas ao nível 1a, e o motivo medido de cada uma
+#    (comando: varredura de `re.search` sobre todos os eventos `in` do acervo,
+#    procurando qualquer frase em que a seguradora nomeie o serviço executado):
+#
+# ```
+#   tokio    o desfecho é LINK, nunca serviço executado pela URA: *"o servico de
+#            aviso de sinistro automovel esta pronto para voce ⬇ https://…"*.
+#            📊 7 sessões. A SPEC-119 §4 já declara a Tokio como handoff.
+#   zurich   fecha com *"sua assistencia foi solicitada! numero da solicitacao:
+#            71020124"* — protocolo SIM, nome do serviço NÃO. 📊 2 sessões.
+#   mapfre   🔴 o acervo NÃO TEM NENHUMA sessão de assistência. 📊 Das 18 telas
+#            de menu de assunto, as respostas foram `pagamento` 14 ·
+#            `sinistro` 3 · `carro reserva` 1. ZERO `assistencia`. Não há o que
+#            ler: a tela de confirmação de guincho da Mapfre não existe no acervo.
+# ```
+SEM_PADRAO_OURO = ("tokio", "zurich", "mapfre")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -187,11 +257,81 @@ MENUS_DE_SERVICO: List[Dict[str, Any]] = [
      "tela": r"o que voc[êe] precisa\?.{0,40}\*1\*\s*-\s*guincho",
      "teclas": {"1": "guincho", "2": "bateria", "3": "pneu", "4": "chaveiro",
                 "5": "vidro", "6": "alarme", "7": None, "8": None}},
+    # ── azul ── 🔴 SPEC-119 · o menu de PRIMEIRO nível, que faltava ──────────
+    #
+    # 📊 12 sessões. A frase real: *"selecione uma opcao, por favor."* seguida de
+    #    `assistencia emergencial / guincho, tecnico e chaveiro`, `sinistro`,
+    #    `vidros e farois / atendimento para vidros, farois e retrovisores`,
+    #    `martelinho de ouro`, `carro reserva`, `transporte por app`, …
+    #    Respostas medidas: `assistencia emergencial` 9 · `carro reserva` 1 ·
+    #    `martelinho de ouro` 1 · `sinistro` 1 · (e 4 pedidos de humano).
+    #
+    # 🔴 CLAUDE.md §9.5 — NAVEGAR × DECIDIR, e aqui as duas convivem na MESMA
+    #    tela. `assistencia emergencial` **navega** (leva ao submenu
+    #    `o que voce precisa?`, que já está cadastrado acima) → `None`.
+    #    `vidros e farois` e `carro reserva` **decidem** o serviço → rótulo.
+    {"seguradora": "azul", "sessoes": 12,
+     "tela": r"selecione uma op[çc][ãa]o, por favor\.{0,3}\s*\n\s*assist[êe]ncia emergencial",
+     "rotulos": {
+         # DECIDEM — a tecla escolhe o conteúdo do atendimento
+         "vidros e farois": "vidro",
+         "martelinho de ouro": "martelinho",
+         "carro reserva": "carro_reserva",
+         # NAVEGAM — levam a outro menu; quem decide é o de baixo
+         "assistencia emergencial": None,
+         "sinistro": None, "transporte por app": None, "financeiro": None,
+         "apolice": None, "cartao de credito porto": None,
+         "contratar um seguro azul": None}},
+    # ── porto E azul ── 🔴 SPEC-119 · a tela de REMOÇÃO, o guincho que faltava ─
+    #
+    # 📊 A frase real, em DUAS variações do mesmo texto:
+    #    *"por favor, selecione a opcao que **descreve** melhor a sua
+    #    necessidade."* (porto 10 ses · azul 5 ses) e *"…que **atende** melhor a
+    #    sua necessidade."* (porto 6 ses), ambas com
+    #    `remocao de veiculo / preciso de reboque para remover o veiculo do local`
+    #    e `envolvimento em acidente / preciso informar sobre acidentes,
+    #    incendios ou enchentes`.
+    #
+    # 📊 A resposta é UNÂNIME no acervo: `remocao de veiculo` em 21 de 21 sessões.
+    # ⚠️ `(descreve|atende)` é ALTERNÂNCIA MEDIDA, não generalização: as duas
+    #    formas estão no acervo, e nenhuma terceira.
+    {"seguradora": "porto", "sessoes": 16,
+     "tela": r"selecione a op[çc][ãa]o que (descreve|atende) melhor a sua necessidade",
+     "rotulos": {"remocao de veiculo": "guincho",
+                 "envolvimento em acidente": "acidente",
+                 "nao encontrei o assunto": None, "voltar": None}},
+    {"seguradora": "azul", "sessoes": 5,
+     "tela": r"selecione a op[çc][ãa]o que (descreve|atende) melhor a sua necessidade",
+     "rotulos": {"remocao de veiculo": "guincho",
+                 "envolvimento em acidente": "acidente",
+                 "nao encontrei o assunto": None, "voltar": None}},
+    # ── porto ── o menu de PRIMEIRO nível: puro NAVEGAR, declarado ────────────
+    #
+    # 📊 17 sessões. *"como eu posso te ajudar?"* +
+    #    `servicos para veiculo / assistencia emergencial como: guincho, tecnico,
+    #    chaveiro ou taxi.` · `servicos para residencia / assistencia de eletrica,
+    #    hidraulica e conserto de eletrodomesticos` · `sinistro de automovel` ·
+    #    `assuntos financeiros` · `apolice e coberturas`.
+    #
+    # 🔴 TODAS as teclas são `None` DE PROPÓSITO, e isso é informação, não
+    #    omissão: esta tela escolhe o RAMO e o ASSUNTO, nunca o serviço. Quem
+    #    decide o serviço é a tela seguinte (`o que voce precisa?`, já cadastrada).
+    #    ⚠️ Sem esta entrada escrita, o próximo leitor mediria o cardápio desta
+    #    tela e contaria `guincho`, `chaveiro` e `taxi` como demanda — o defeito
+    #    exato que o cabeçalho deste arquivo conserta.
+    {"seguradora": "porto", "sessoes": 17,
+     "tela": r"como eu posso te ajudar\?.{0,40}servi[çc]os para ve[íi]culo",
+     "rotulos": {"servicos para veiculo": None, "servicos para residencia": None,
+                 "sinistro de automovel": None, "assuntos financeiros": None,
+                 "apolice e coberturas": None, "voltar": None}},
     # ── bradesco ─────────────────────────────────────────────────────────────
     {"seguradora": "bradesco", "sessoes": 7,
      "tela": r"qual o problema com o seu carro",
-     # 🔴 `1` é PANE — e sozinho NÃO distingue bateria de guincho. A tela que
+     # 🔴 `1` é PANE — e sozinho NÃO distingue TÉCNICO de guincho. A tela que
      #    separa é a seguinte, e ela existe: ver `DESEMPATE` abaixo.
+     # ⚠️ 📊 A frase real da tela, medida em 27/09/2026 (6 sessões): *"entendi, mas
+     #    pra eu te ajudar, preciso entender qual o problema com o seu carro:"* —
+     #    o regex abaixo casa o trecho final dela.
      "teclas": {"1": None, "2": "acidente", "3": "pneu", "4": "chaveiro",
                 "5": "combustivel", "6": "taxi", "7": None}},
     # ── porto ────────────────────────────────────────────────────────────────
@@ -218,16 +358,141 @@ MENUS_DE_SERVICO: List[Dict[str, Any]] = [
                  "eletricista": "eletricista", "chaveiro": "chaveiro",
                  "linha branca": "eletrodomestico", "ar condicionado": "ar_condicionado"}},
     # ── tokio ── 📊 o menu para no nível ASSUNTO; não nomeia serviço ─────────
+    #
+    # 🔴 SPEC-119 · AMPLIADO com os rótulos que a própria tela enumera. 📊 5
+    #    sessões, a frase real: *"clique no botao abaixo para acessar o menu de
+    #    servicos do seguro automovel 🚙"* + `guincho/assist.24h / guincho,
+    #    chaveiro, pane e pneus furados` · `informacoes sinistro` ·
+    #    `pagamentos/pix` · `2a via da apolice` · `roda, pneu e suspensao /
+    #    reparo ou troca` · `servicos para vidros / reparo ou reposicao do
+    #    para-brisa, vidros laterais ou traseiro` · `lataria ou pintura` ·
+    #    `para-choque/martelinho` · `cartao digital` · `outros servicos`.
+    #    Respostas medidas: `informacoes sinistro` 3 · `outros servicos` 2 ·
+    #    `guincho/assist.24h` 2.
     {"seguradora": "tokio", "sessoes": 7,
      "tela": r"menu de servi[çc]os do \*?seguro autom[óo]vel",
-     "rotulos": {"guincho/assist.24h": "guincho", "guincho/assist. auto": "guincho"}},
-    # ── zurich ── 📊 a ÚNICA tela de escolha do acervo, 2 sessões ────────────
+     "rotulos": {"guincho/assist.24h": "guincho", "guincho/assist. auto": "guincho",
+                 # DECIDEM
+                 "servicos para vidros": "vidro",
+                 "para-choque/martelinho": "martelinho",
+                 # NAVEGAM ou saem do escopo de corredor
+                 "informacoes sinistro": None, "pagamentos/pix": None,
+                 "2a via da apolice": None, "roda, pneu e suspensao": None,
+                 "lataria ou pintura": None, "cartao digital": None,
+                 "outros servicos": None}},
+    # ── zurich ── 🔴 SPEC-119 · eram 36 de 253 telas; agora as três telas reais ─
+    #
+    # 📊 ① O menu de PRIMEIRO nível, 5 sessões. A frase real: *"agora escolha um
+    #    dos servicos para continuar 😊"* + `assistencia 24h / solicite a
+    #    assistencia 24h para o seu carro ou moto` · `assistencia a vidros /
+    #    consulte como solicitar assistencia para danos a vidros` · `sinistro` ·
+    #    `carro reserva / solicite um carro reserva apos abrir o seu sinistro` ·
+    #    `consultar pagamentos` · `consultar apolice` · `atendimento a oficinas` ·
+    #    `outros servicos`. Respostas medidas: `assistencia 24h` 4 · `sinistro` 3.
+    #
+    # 🔴 `assistencia 24h` **NAVEGA** — e a prova é a própria tela seguinte, que a
+    #    zurich escreve: *"aqui voce vai acionar a assistencia 24h, que atende
+    #    reboque, socorro mecanico, chaveiro, pane seca ou troca de pneu"*. Cinco
+    #    serviços atrás de UMA tecla: mapeá-la para `guincho` seria decidir pelo
+    #    segurado (CLAUDE.md §9.5).
+    {"seguradora": "zurich", "sessoes": 5,
+     "tela": r"escolha um dos servi[çc]os para continuar",
+     "rotulos": {"assistencia a vidros": "vidro",
+                 "carro reserva": "carro_reserva",
+                 "assistencia 24h": None, "sinistro": None,
+                 "consultar pagamentos": None, "consultar apolice": None,
+                 "atendimento a oficinas": None, "outros servicos": None}},
+    # 📊 ② O menu de escolha, 2 sessões — a entrada que já existia.
     {"seguradora": "zurich", "sessoes": 2,
      "tela": r"me conte o que aconteceu",
-     # ⚠️ 📊 A tarefa dizia "menu de panes com 13 opções". **Não existe.** O maior
-     #    menu numerado da zurich tem 8 opções. Os demais `*1*/*2*` são sim/não.
+     # ⚠️ 📊 A tarefa dizia "menu de panes com 13 opções". **Não existe** NESTA
+     #    tela. O maior menu numerado aqui tem 8 opções. As 13 opções existem —
+     #    na tela ③ abaixo, que é a que a tecla `4` abre.
      "teclas": {"1": "combustivel", "2": "pneu", "3": "chaveiro", "4": None,
                 "5": "acidente", "6": "guincho", "7": None, "8": None}},
+    # 📊 ③ 🔴 A TELA QUE A TECLA `4` ABRE — *"problemas no funcionamento (panes)"*
+    #    não distingue bateria de reboque, e por isso ela vale `None` acima.
+    #    Quem distingue é esta, e ela existe: 2 sessões, a frase real
+    #    *"o que houve?"* com 13 opções.
+    #
+    # 🔴 A REGRA DE PREENCHIMENTO, escrita ao lado dela (CLAUDE.md §9.5): uma
+    #    tecla só recebe rótulo quando **(a)** o texto da própria seguradora NOMEIA
+    #    o serviço, ou **(b)** o acervo mostra o DESFECHO daquela tecla. Todas as
+    #    outras ficam `None` — e `None` aqui significa *"a zurich não disse o
+    #    bastante"*, nunca *"não tem serviço"*.
+    #
+    # ```
+    #   1  problema de bateria                 -> bateria   (a) o rótulo NOMEIA
+    #   4  problemas no cambio ou embreagem    -> guincho   (b) 📊 sessão 9f7dbd91:
+    #                                                       a zurich pergunta "para
+    #                                                       onde devemos levar seu
+    #                                                       veiculo" e fecha com
+    #                                                       "numero da solicitacao:
+    #                                                       71020124" — é reboque
+    #   2,3,5..13  (partida, alarme, freio, motor, vazamentos, suspensao,
+    #              superaquecimento, ignicao, radiador, bomba, combustivel errado)
+    #              -> None: o rótulo descreve o SINTOMA, e o desfecho (reboque ou
+    #                 socorro no local) NÃO está no acervo. Inferir seria inventar.
+    # ```
+    {"seguradora": "zurich", "sessoes": 2,
+     "tela": r"o que houve\?.{0,60}problema de bateria",
+     "teclas": {"1": "bateria", "4": "guincho"}},
+    # ── mapfre ── 🔴 SPEC-119 · a ÚNICA seguradora sem NENHUMA entrada, até hoje
+    #
+    # ⚠️ 📊 **SÃO DOIS BOTS DIFERENTES**, e a régua já registrava isso: a tecla se
+    #    chama `assistencia 24h` num e `assistencia` no outro. Medido em 27/09/2026
+    #    sobre as 39 sessões `insurer_key='mapfre'` (21 em `ramo=auto`):
+    #
+    # ```
+    #   bot do SEGURADO ("eu sou a Maite")   3 sessões
+    #     "otimo! voce esta no atendimento de seguros para veiculos. 🚗🏍
+    #      sobre qual assunto voce quer falar?
+    #      assistencia 24h / solicitacao e acompanhamento de guincho, socorro ou taxi
+    #      sinistro / carro reserva / pequenos reparos / apolice e carteirinha / …"
+    #     respostas medidas: `sinistro` 3 · `carro reserva` 1
+    #
+    #   bot da CORRETORA ("digite o seu codigo de corretor")   14 sessões
+    #     "agora e so escolher sobre qual assunto voce quer falar:
+    #      pagamento / apolice e proposta / sinistro
+    #      assistencia / solicitacao ou acompanhamento de guincho, vidros e
+    #      pequenos reparos / acesso portal e cotacao / vistoria previa /
+    #      help desk / demais assuntos / voltar"
+    #     respostas medidas: `pagamento` 22 · `demais assuntos` 1 · `sinistro` 1
+    # ```
+    #
+    # 🔴 **E O ACHADO QUE A F2 E A F5 PRECISAM SABER:** em 18 telas de menu de
+    #    assunto, `assistencia` foi escolhida **ZERO vezes**. O acervo da Mapfre
+    #    **não tem uma única sessão de assistência** — só pagamento, sinistro e um
+    #    carro reserva. Nenhuma entrada de menu pode produzir `guincho` na Mapfre,
+    #    porque ninguém pediu guincho à Mapfre neste acervo. Isso é falta de
+    #    CONVERSA, não cegueira de classificador (SPEC-119 §3, gate G2).
+    #
+    # ⚠️ `assistencia`/`assistencia 24h` valem `None`: elas NAVEGAM para o submenu
+    #    de serviço, que não existe no acervo. Cadastrá-las como `guincho` seria
+    #    exatamente o defeito do cardápio que o topo deste arquivo conserta.
+    # ⚠️ 🔴 A ÂNCORA **NÃO** É `assistencia 24h`, e a diferença é um teste que
+    #    nunca ficaria verde. 📊 O mascarador do corpus (`higiene_do_corpus`)
+    #    troca o número: no arquivo versionado a linha lê
+    #    `assistencia {valor}`. O produto classifica sobre o texto CRU (onde
+    #    `24h` existe), mas qualquer guarda que leia o CORPUS veria `{valor}`.
+    #    A âncora é a frase que sobrevive à máscara — e ela também é o que
+    #    distingue este bot do outro: aqui é *"solicitacao **E** acompanhamento
+    #    de guincho, socorro ou taxi"*; no bot da corretora é *"solicitacao
+    #    **OU** acompanhamento de guincho, vidros e pequenos reparos"*.
+    {"seguradora": "mapfre", "sessoes": 3,
+     "tela": (r"sobre qual assunto voc[êe] quer falar\?"
+              r".{0,60}solicita[çc][ãa]o e acompanhamento de guincho"),
+     "rotulos": {"carro reserva": "carro_reserva",
+                 "pequenos reparos": "vidro",
+                 "assistencia 24h": None, "sinistro": None,
+                 "apolice e carteirinha": None, "endosso": None,
+                 "pagamentos": None}},
+    {"seguradora": "mapfre", "sessoes": 14,
+     "tela": r"escolher sobre qual assunto voc[êe] quer falar",
+     "rotulos": {"assistencia": None, "pagamento": None,
+                 "apolice e proposta": None, "sinistro": None,
+                 "acesso portal e cotacao": None, "vistoria previa": None,
+                 "help desk": None, "demais assuntos": None, "voltar": None}},
 ]
 
 # 🔴 O DESEMPATE do bradesco — a tela POSTERIOR à tecla que não distingue.
@@ -236,9 +501,24 @@ DESEMPATE: List[Dict[str, Any]] = [
     {"seguradora": "bradesco", "sessoes": 4,
      "depois_de": r"qual o problema com o seu carro",
      "tela": r"me conta o que aconteceu",
-     "teclas": {"1": "bateria",   # "o veículo estava estacionado e não liga"
+     # 🔴 CORRIGIDO em 27/09/2026 (SPEC-119 F1) — a tabela afirmava `bateria` por
+     #    INFERÊNCIA ("estacionado e não liga" ⇒ bateria) e a bradesco diz outra
+     #    coisa. CLAUDE.md §9.3: verdade vencida migra, não fica.
+     #
+     # 📊 Sessões `2c05415b` e `57149865`: depois da tecla `1`, a URA responde
+     #    *"certo! esse problema da pra resolver com a assistencia de um
+     #    **tecnico**. posso confirmar esse servico?"* — nunca `bateria`.
+     # 📊 Sessões `0d5284f3`, `a10d095d` e `bc2cfead`: depois da tecla `2`, a URA
+     #    responde *"certo, entao vamos enviar um **reboque**"*. `guincho` confere.
+     #
+     # ⚠️ CONSEQUÊNCIA DECLARADA, e ela é insumo da F5: `bradesco/auto` **não tem
+     #    rota `tecnico`** (subserviços: bateria · chaveiro · guincho · pneu), e
+     #    com esta correção `bradesco/auto/bateria` fica com ZERO sessões. Não é
+     #    perda de amostra — é a medição de que **ninguém pediu recarga de bateria
+     #    à bradesco neste acervo**; quem pede pane recebe TÉCNICO.
+     "teclas": {"1": "tecnico",   # "o veículo estava estacionado e não liga"
                 "2": "guincho"},  # "o veículo estava andando e parou de funcionar"
-     "resolve": ("bradesco", "guincho", "bateria")},
+     "resolve": ("bradesco", "guincho", "tecnico")},
 ]
 
 # ⚠️ 📊 O caminho DOMINANTE da allianz não é escolha de serviço — é FUGA.
@@ -440,10 +720,34 @@ def servico_da_sessao(seguradora: str,
         return None
 
     # ── NÍVEL 1a · o padrão-ouro ─────────────────────────────────────────────
-    for direcao, texto in pares:
-        if direcao != "in":
-            continue
-        for rx in PADRAO_OURO:
+    #
+    # 🔴 A ORDEM É **PADRÃO POR FORA, EVENTO POR DENTRO** — e ela vale uma
+    #    classificação errada. Medido em 27/09/2026, SPEC-119 F1.
+    #
+    #    `PADRAO_OURO` é uma tupla ORDENADA POR PRECISÃO: o resumo
+    #    (`^servico:`) é o que a seguradora escreve depois de decidir; as frases
+    #    de envio (`enviaremos o servico de …`) são o que ela diz **no meio** do
+    #    caminho, e a URA se corrige.
+    #
+    # 📊 A prova, sessão `886066e5` da hdi — uma TROCA DE PNEUS inteira:
+    # ```
+    #   "pneu furado"                                          (a corretora)
+    #   "quantos pneus foram furados/danificados?"              (a URA)
+    #   "neste caso enviaremos o servico de GUINCHO …"     ← a URA se engana
+    #   "neste caso enviaremos o servico de TROCA DE PNEUS …"  ← e se corrige
+    #   "resumo da solicitacao / … / servico: troca de pneus"  ← e assina
+    # ```
+    #    Com evento por fora, o primeiro `in` que casasse QUALQUER padrão
+    #    vencia: a sessão saía `guincho`. Com padrão por fora, o resumo é
+    #    procurado no acervo INTEIRO antes de qualquer frase de envio, e a
+    #    sessão sai `pneu` — que é o que a hdi assinou.
+    #
+    # ⚠️ Não é troca de estilo: é a diferença entre `pneu` e `guincho` numa
+    #    sessão que percorreu o corredor até o fim.
+    for rx in PADRAO_OURO:
+        for direcao, texto in pares:
+            if direcao != "in":
+                continue
             m = rx.search(texto)
             if m:
                 rotulo = _norm_rotulo(m.group(1))
