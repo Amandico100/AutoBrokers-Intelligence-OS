@@ -209,6 +209,62 @@ def test_o_flow_de_PESQUISA_da_porto_nao_e_respondivel():
     assert declarado.get("observed"), "declaração sem procedência"
 
 
+def test_o_MOTOR_consulta_flows_nao_respondiveis_em_vez_de_so_declara_la():
+    """🔴 A declaração passou a ter LEITOR — conserto de 26/09/2026.
+
+    📊 O juiz mediu: `grep -rn flows_nao_respondiveis app/ scripts/ --include=*.py`
+    devolvia **ZERO** consumidores no produto. O único leitor era o teste logo
+    acima, que confere a própria declaração — a classe *"teste que chama o regex
+    guarda o regex"* (CLAUDE.md §9.4) aplicada a um dicionário.
+
+    📊 O efeito medido ANTES: o convite real da pesquisa da Porto
+    (`flow_id 1263063458275481`) caía em `needs_human` /
+    `formulario_nativo_desconhecido` — zero bytes para a seguradora (o lado
+    certo de errar) e uma pessoa chamada para olhar uma avaliação de
+    atendimento.
+
+    🔴 Este guarda chama o MOTOR (`_responder_formulario_nativo`) com o convite
+    real. O desfecho declarado é `noop`: reconhecer e não fazer nada, sem mudar
+    o estado — o MESMO que o produto já dá para pesquisa pelo texto.
+    """
+    enviados = []
+    sessao = {"state": "ura", "slots": {}, "transcript": []}
+    saida = M._responder_formulario_nativo(
+        sessao, _porto(),
+        "A sua opinião é muito importante! Clique no botão abaixo e avalie."
+        + chr(10) + "[FORMULARIO NATIVO: Avaliar atendimento]",
+        interactive={"kind": "flow",
+                     "flow": {"flow_id": FLOW_PESQUISA, "flow_token": "t:1:2",
+                              "name": "galaxy_message",
+                              "cta": "Avaliar atendimento"}},
+        flow_sender=lambda **kw: enviados.append(kw) or True)
+    assert saida is not None, "o convite da pesquisa escorregou sem desfecho"
+    assert saida["state"] == "ura", (
+        "a pesquisa de satisfação virou trabalho para uma pessoa: estado=%r"
+        % (saida["state"],))
+    assert not enviados, (
+        "🔴 o produto RESPONDEU a pesquisa de satisfação da seguradora: %r"
+        % (enviados,))
+
+
+def test_CONTROLE_so_o_flow_DECLARADO_ganha_o_noop():
+    """§9.3 — o guarda acima ficaria verde se o `noop` valesse para qualquer id.
+
+    Um `flow_id` que ninguém declarou continua indo a uma pessoa, com o motivo
+    gravado: é a diferença entre *"sei que esta eu ignoro"* e *"ignoro tudo"*."""
+    sessao = {"state": "ura", "slots": {}, "transcript": []}
+    saida = M._responder_formulario_nativo(
+        sessao, _porto(),
+        "A sua opinião é muito importante! Clique no botão abaixo e avalie."
+        + chr(10) + "[FORMULARIO NATIVO: Avaliar atendimento]",
+        interactive={"kind": "flow",
+                     "flow": {"flow_id": FLOW_INVENTADO, "flow_token": "t:1:2",
+                              "name": "galaxy_message",
+                              "cta": "Avaliar atendimento"}})
+    assert saida is not None and saida["state"] == "needs_human", saida
+    assert saida.get("reason") == "formulario_nativo_desconhecido", saida.get("reason")
+
+
 def test_a_pesquisa_e_COERENTE_com_o_que_o_motor_ja_faz_por_texto():
     """🔴 Não se reimplementa `_SURVEY_NOOP_RE` — confere-se que a MESMA frase do
     convite da pesquisa é a que o motor já reconhece quando ela chega como texto.
