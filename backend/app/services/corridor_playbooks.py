@@ -9045,9 +9045,40 @@ _UFS = {
     "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
     "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
 }
+# 🔴 AS ABREVIAÇÕES COM PONTO VÊM PRIMEIRO, E SEM `\b` NO FIM — SPEC-118 F5.
+#
+# 📊 26/09/2026: `r\.` dentro de um grupo terminado por `\b` **nunca podia
+#    casar**. Depois de um ponto, `\b` exige um caractere de PALAVRA logo em
+#    seguida — e `"R. Rafael Bandeira"` traz um **espaço**.
+#
+#    ```
+#    parse_address_br('Posto Shell, R. Rafael Bandeira, 41 - Centro, ...')
+#       →  rua = 'Posto Shell'            ❌  o posto virou a rua
+#          bairro = 'R. Rafael Bandeira'  ❌  a rua virou o bairro
+#    ```
+#
+# ⚠️ As outras escapavam **por acaso**: em `av\.?` o ponto é opcional, então o
+#    motor retrocede, casa só `av` e encontra a fronteira entre `v` e `.`. `r\.`
+#    não tinha essa saída. Uma linha de sete alternativas com uma morta.
+#
+# 🔴 Por que importa AGORA: a Porto passou a fechar o formulário com o **pin de
+#    localização**, e o pin do WhatsApp entrega `name` **mais** `address` na
+#    mesma linha (`evolution_inbound._texto_de_localizacao`) — o nome do lugar
+#    (um posto, um mercado) vem ANTES da rua. Sem reconhecer `R.`, o primeiro
+#    segmento ganha por omissão e o guincho sai com o destino errado, **sem
+#    travar**. É a classe do CLAUDE.md §9.5.
+#
+# ⛔ O grupo com ponto NÃO inclui `r` sozinho: o ponto é obrigatório, então
+#    `\bDr\.` não casa (não há fronteira entre `D` e `r`) e um `r` solto
+#    continua fora. A largura da expressão é a MESMA de antes, mais a
+#    alternativa que estava morta. O controle é
+#    `tests/test_o_endereco_do_pin_reconhece_a_abreviacao.py`, e a régua
+#    completa das 73 rotas foi rodada antes e depois.
 _STREET_RE = re.compile(
-    r"\b(?:rua|r\.|av\.?|avenida|rod\.?|rodovia|estrada|travessa|tv\.?|alameda|al\.?|"
-    r"servid[ãa]o|br-?\s?\d+|sc-?\s?\d+|pra[çc]a|largo|beco|via|linha)\b", re.IGNORECASE)
+    r"\b(?:r|av|rod|tv|al)\.|"
+    r"\b(?:rua|av|avenida|rod|rodovia|estrada|travessa|tv|alameda|al|"
+    r"servid[ãa]o|br-?\s?\d+|sc-?\s?\d+|pra[çc]a|largo|beco|via|linha)\b",
+    re.IGNORECASE)
 
 # RODOVIA NÃO TEM NÚMERO DE CASA — e é por isso que ela precisa de caminho próprio.
 #
