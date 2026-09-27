@@ -7,7 +7,8 @@
 
 | | ANTES | DEPOIS |
 |---|---|---|
-| commit | `b897ac7` | `125a024` |
+| commit | `b897ac7` (HEAD limpo) | a árvore que virou `125a024` |
+| ⚠️ | — | a rodada começou **antes** do commit: o que ela mediu é o conteúdo que `125a024` fixou |
 | relógio | 18 min 24 s (20:38:25 → 20:56:49) | 16 min 45 s (20:58:35 → 21:15:20) |
 | rotas medidas | 73 | 73 |
 
