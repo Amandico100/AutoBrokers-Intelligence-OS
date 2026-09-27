@@ -717,6 +717,15 @@ def _grau(valor: float) -> str:
     return f"{valor:.6f}".rstrip("0").rstrip(".") or "0"
 
 
+#: O rótulo da linha do NOME DO LUGAR do pin. 🔴 CONTRATO COM O PARSER: quem o
+#: salta é `_LINHA_DO_NOME_DO_PIN_RE`, em `app/services/corridor_playbooks.py`.
+#: Mudar este texto sem mudar aquele regex devolve o defeito de 26/09/2026 (o
+#: nome do lugar virando a cidade do chamado) — e o guarda
+#: `test_o_nome_do_lugar_do_pin_nao_vira_cidade.py` roda o produtor REAL contra o
+#: parser REAL exatamente para que o contrato não possa quebrar em silêncio.
+_ROTULO_DO_NOME_DO_PIN = "Nome do local"
+
+
 def _texto_de_localizacao(message: Dict[str, Any]) -> Optional[str]:
     """O pin virado em texto útil, ou None quando não há pin nenhum."""
     for chave, ao_vivo in (("locationMessage", False), ("liveLocationMessage", True)):
@@ -744,15 +753,50 @@ def _texto_de_localizacao(message: Dict[str, Any]) -> Optional[str]:
         # é uma linha; a coordenada é outra. O parser lê a primeira e ignora o
         # resto — errado com confiança é o defeito que este conserto evita, não
         # o que ele deveria introduzir.
-        endereco_humano = ", ".join(dict.fromkeys([p for p in (rotulo, endereco) if p]))
+        # ══════════════════════════════════════════════════════════════
+        # 🔴 O NOME DO LUGAR SAI DA LINHA DO ENDEREÇO — 26/09/2026
+        # ══════════════════════════════════════════════════════════════
+        #
+        # Até aqui esta linha era `", ".join([rotulo, endereco])`: o `name` do
+        # pin colado na frente do `address`, com vírgula. 📊 Medido do produtor
+        # REAL até o montador REAL, com o pin mais comum que existe num guincho
+        # (carro na rodovia, pin com o nome de um posto):
+        #
+        #     {name:'Estacionamento', address:'Rod. SC-401, km 5'}
+        #       -> 'Estacionamento, Rod. SC-401, km 5'
+        #       -> parse_address_br: rua='Rod. SC-401, km 5'
+        #                            cidade='Estacionamento'        ❌
+        #       -> e a Porto recebia  cidade="Estacionamento"
+        #
+        # 🔴 `parse_address_br` quebra a linha em vírgulas e o ÚLTIMO segmento
+        # que sobra é onde a cidade mora. Com o nome do lugar dentro da mesma
+        # linha, o nome vira cidade — e o portão de coleta **não cobra a
+        # cidade, porque ela está preenchida**. Preenchida com um palpite. É a
+        # CLAUDE.md §9.5 literal: o passo que responde ERRADO não trava, e
+        # chega ao cliente.
+        #
+        # ⚠️ **O NOME NÃO É JOGADO FORA.** Ele é informação boa para quem lê a
+        # conversa ("o carro está no estacionamento do posto") e continua no
+        # texto — numa linha PRÓPRIA e ROTULADA, que `parse_address_br` sabe
+        # saltar do mesmo jeito que já saltava a linha da coordenada
+        # (`_LINHAS_QUE_NAO_SAO_ENDERECO`, em `corridor_playbooks.py`). Um
+        # mecanismo, duas linhas: nada de um segundo filtro ao lado dele.
+        #
+        # ⚠️ E a ORDEM continua sendo a de antes para o que importa: o ENDEREÇO
+        # é a primeira linha, porque é a linha que o parser lê. Sem `address`,
+        # a primeira linha passa a ser a da coordenada e o parser devolve `{}` —
+        # o portão cobra rua/bairro/cidade em português, que é o desfecho
+        # honesto. Antes, `'Shopping Iguatemi'` sozinho virava a RUA.
         linhas: List[str] = []
-        if endereco_humano:
-            linhas.append(endereco_humano)
+        if endereco:
+            linhas.append(endereco)
         cauda = f"{cabeca}: {_grau(lat)},{_grau(lon)}" if lat is not None else f"{cabeca} (sem coordenada)"
         if ao_vivo and lat is not None:
             cauda += " — a pessoa pode estar em movimento"
         linhas.append(cauda)
-        if legenda and legenda not in endereco_humano:
+        if rotulo and rotulo != endereco:
+            linhas.append(f"{_ROTULO_DO_NOME_DO_PIN}: {rotulo}")
+        if legenda and legenda not in (endereco or "") and legenda != rotulo:
             linhas.append(legenda)
         return "\n".join(linhas).strip()
     return None
