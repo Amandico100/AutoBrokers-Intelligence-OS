@@ -170,11 +170,22 @@ def test_o_health_publica_o_sinal(monkeypatch):
     #    mutacao que derruba os 10 sinais do `/health` ficou VERDE, porque o teste
     #    mediu o `app/main.py` de OUTRA arvore. Um guarda mede o produto que esta
     #    ao lado dele (CLAUDE.md §9.4).
-    if sys.path[:1] != [str(RAIZ)]:
-        sys.path.insert(0, str(RAIZ))
+    # 🔴 E TUDO ISTO PELO `monkeypatch`, NAO A MAO — 27/09/2026.
+    #
+    #    A 1a redacao fazia `sys.path.insert` e `sys.modules.pop` CRUS, e nao
+    #    devolvia nenhum dos dois. 📊 Medido: rodando este arquivo ANTES de
+    #    `test_o_follow_up_respeita_o_horario_e_as_cartas_sao_de_todas.py`,
+    #    aquele quebrava (`1 failed, 31 passed`); na ordem INVERSA, `32 passed`.
+    #    O `app` recem-importado apagava o estado de modulo de quem vinha depois
+    #    — um teste que suja o vizinho torna a bateria de 1h nao-reproduzivel, que
+    #    e o defeito que esta SPEC passou o dia inteiro combatendo.
+    #
+    #    `monkeypatch.syspath_prepend` poe na POSICAO 0 (e nao apenas no path) e
+    #    `monkeypatch.delitem` devolve o modulo no teardown. As duas desfazem.
+    monkeypatch.syspath_prepend(str(RAIZ))
     for _cache in [m for m in list(sys.modules)
                    if m == "app" or m.startswith("app.main")]:
-        sys.modules.pop(_cache, None)
+        monkeypatch.delitem(sys.modules, _cache, raising=False)
     from app.main import _sinais_do_codigo
 
     _com_lista(monkeypatch, "%s,%s" % (REF_PORTO, FANTASMA))
