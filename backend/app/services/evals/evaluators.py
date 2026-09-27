@@ -273,7 +273,39 @@ def _norm_b(valor: Any) -> str:
 
 
 def _chamadas(saida: Any) -> list:
-    return list((saida or {}).get("tool_calls") or []) if isinstance(saida, dict) else []
+    """As chamadas de ferramenta que o juiz de tool/args enxerga.
+
+    🔴 SPEC-119 F4b — ESTE FALLBACK É UM CONSERTO, E ELE TEM MEDIÇÃO.
+
+    📊 27/09/2026. Só esta função lia **apenas** `tool_calls`. As outras duas
+    leitoras do mesmo rastro já liam as duas listas, na mesma ordem:
+
+        bancada.py:1102      saida.get("tool_calls_todas") or saida.get("tool_calls")
+        evaluators.py:402    saida.get("tool_calls_todas") or saida.get("tool_calls")
+        evaluators.py:_chamadas   ← só `tool_calls`
+
+    E `tool_calls` é o que a ÚLTIMA `AIMessage` carrega. No nível **N2** ele é
+    sempre vazio por construção: `bancada.py:824` chama
+    `_saida_do_agente([], ...)` com a lista de mensagens VAZIA de propósito (o
+    juiz de vazamento não pode ver o tenant B), e só depois preenche
+    `tool_calls_todas`.
+
+    🔴 Consequência medida, com o braço real `openai:gpt-6-sol:high`: um caso N2
+    com `tool_esperada` **não tinha como passar**. O agente chamou
+    `insurer_dispatch` com `subservice="pneu"` — certo — e o veredito saiu
+    *"Não chamou `insurer_dispatch` — respondeu só com texto."* Um juiz que
+    reprova a resposta certa é o espelho do guarda que nunca fica vermelho
+    (CLAUDE.md §9.3): os dois ensinam a ignorar o resultado.
+
+    ⚠️ Por que o fallback e não a troca: no N1 `tool_calls` é a resposta do
+    TURNO, e `tool_calls_todas` traz tudo o que o medidor viu. Trocar mudaria o
+    que `tool_esperada: null` significa lá. O `or` só age onde a primeira lista
+    está vazia — e no N1 vazia significa "o turno terminou em texto", caso em
+    que olhar o rastro inteiro é mais honesto, não menos.
+    """
+    if not isinstance(saida, dict):
+        return []
+    return list(saida.get("tool_calls") or saida.get("tool_calls_todas") or [])
 
 
 def tool_esperada(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
