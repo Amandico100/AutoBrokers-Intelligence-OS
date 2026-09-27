@@ -78,9 +78,15 @@
     "latitude_longitude": [
       "Presentes nas 3 capturas, com coordenadas reais resolvidas pelo proprio Flow",
       "a partir do campo `location`. NAO se sabe se a Porto as EXIGE -- so se sabe",
-      "que o clique humano sempre as levou. E nao temos de onde tirar: 0",
-      "geocodificadores no backend. Enquanto isso, `sem_chute`: a resposta nao sai",
-      "e o caso vai a uma pessoa. ⛔ Zero inventado manda o guincho para o oceano."
+      "que o clique humano sempre as levou.",
+      "⚠️ ESTA NOTA ESTAVA VENCIDA e foi corrigida em 26/09/2026: ela dizia",
+      "\"nao temos de onde tirar; enquanto isso, `sem_chute`: a resposta nao sai e o",
+      "caso vai a uma pessoa\". A F4 deu fonte as duas -- o PIN do WhatsApp, via",
+      "`origem: slot` -> local_latitude/local_longitude -- e desde entao a resposta",
+      "SAI, com a coordenada do pin. `grep -c \"sem_chute\"` nos mapas -> 0.",
+      "O que CONTINUA verdade: 0 geocodificadores no backend, nenhum ENDERECO vira",
+      "coordenada, e sem pin as duas chaves caem em `sem_valor` e o caso vai a uma",
+      "pessoa. ⛔ Zero inventado manda o guincho para o oceano."
     ],
     "response_message": [
       "Nao vai na resposta, como na familia HDI/Yelum: ninguem mediu se a",

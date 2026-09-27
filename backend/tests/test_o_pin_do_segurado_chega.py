@@ -89,8 +89,21 @@ def o_pin_simples_deixa_de_ser_descartado() -> None:
            texto)
 
 
-def o_nome_e_o_endereco_vem_junto_e_primeiro() -> None:
-    """A ordem importa: `parse_address_br` le endereco, nao par de floats."""
+def o_nome_do_lugar_NAO_entra_na_linha_do_endereco() -> None:
+    """A ordem importa: `parse_address_br` le endereco, nao par de floats.
+
+    ⚠️ ESTA AFIRMACAO MIGROU em 26/09/2026, e o motivo e o CLAUDE.md §9.3.
+    Ela se chamava `o_nome_e_o_endereco_vem_junto_e_primeiro` e o produtor
+    colava `name` + `address` na MESMA linha, com virgula. 📊 Medido do produtor
+    REAL ate o montador REAL: com o pin mais comum de um guincho
+    (`{name:'Estacionamento', address:'Rod. SC-401, km 5'}`), o nome do lugar
+    virava `local_cidade` e a Porto abria o chamado na cidade de
+    "Estacionamento" -- sem travar, porque o portao nao cobra campo preenchido.
+
+    O nome CONTINUA no texto (e informacao boa para quem le a conversa); o que
+    ele deixou de ser e campo de endereco. As asserçoes de baixo continuam as
+    mesmas, porque o que elas afirmam continua verdade -- e ganharam a que
+    faltava: o nome do lugar nao vira campo nenhum."""
     out = INB.normalize_evolution_inbound(_evento({
         "locationMessage": {
             "degreesLatitude": -27.5945,
@@ -123,6 +136,11 @@ def o_nome_e_o_endereco_vem_junto_e_primeiro() -> None:
     checar(end.get("uf") == "SC", f"e a UF: {end.get('uf')!r}", str(end))
     checar("48.5477" not in str(end),
            "e NENHUM campo de endereco recebeu a coordenada", str(end))
+    # 🔴 A asserção que faltava, e que so o conserto de 26/09 torna verdadeira.
+    checar("Posto BR" not in str(end),
+           "e o NOME DO LUGAR nao virou rua, bairro nem cidade", str(end))
+    checar("Posto BR" in texto,
+           "embora continue NO TEXTO, para quem le a conversa", repr(texto))
 
 
 def a_live_location_tambem_chega() -> None:
@@ -226,7 +244,7 @@ def main() -> int:
     print("== o pin simples deixa de ser descartado ==")
     o_pin_simples_deixa_de_ser_descartado()
     print("== o nome e o endereco vem junto, e primeiro ==")
-    o_nome_e_o_endereco_vem_junto_e_primeiro()
+    o_nome_do_lugar_NAO_entra_na_linha_do_endereco()
     print("== a live location tambem chega ==")
     a_live_location_tambem_chega()
     print("== (0,0) nao vira coordenada ==")
