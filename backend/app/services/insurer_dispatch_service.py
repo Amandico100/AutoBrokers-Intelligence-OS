@@ -5594,6 +5594,12 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     # Formulário nativo: falta campo, ou a forma dele é desconhecida.
     "formulario_incompleto": DIRETO_AO_HUMANO,
     "formulario_nativo_desconhecido": DIRETO_AO_HUMANO,
+    # 🔴 SPEC-119 bateria 5 — A APÓLICE É DE CONDOMÍNIO OU EMPRESARIAL.
+    #    Não é travamento e não é falta de dado: é a regra do dono do produto.
+    #    Retomar seria desobedecê-la, e o padrão já seria este — declarado porque
+    #    um leitor que não achar a linha vai supor que ela foi esquecida.
+    "apolice_de_condominio_ou_empresa": DIRETO_AO_HUMANO,
+    "galho_de_areas_comuns": DIRETO_AO_HUMANO,
 
     # ---- NÃO RETOMA, E CONTINUAR TAMBÉM NÃO RESOLVE ----
     # A conferência já tem escada própria (as correções por campo, até o teto).
