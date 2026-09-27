@@ -137,9 +137,24 @@ def test_espaco_em_volta_do_ref_nao_cria_fantasma(monkeypatch):
 
 
 def test_o_health_publica_o_sinal(monkeypatch):
-    """O guarda do PRODUTO: sem a linha em `main.py`, o defeito continua invisível."""
+    """O guarda do PRODUTO: sem a linha em `main.py`, o defeito continua invisível.
+
+    🔴 **Esta asserção nasceu FROUXA e a mutação a pegou.** A primeira versão
+    perguntava se a string `sinais["finalize_refs_fantasma"]` aparecia em
+    `main.py`. 📊 Medido em 26/09/2026: apagando a linha que CALCULA o sinal, o
+    guarda continuou **verde** — porque o caminho de erro, logo abaixo, tem a
+    mesma chave (`= None`). Era um guarda que não tinha como falhar
+    (CLAUDE.md §9.3).
+
+    Agora a asserção é sobre a **atribuição que chama o motor**, e não sobre a
+    chave: só o caminho de sucesso a satisfaz.
+    """
     fonte = (RAIZ / "app" / "main.py").read_text(encoding="utf-8")
-    assert 'sinais["finalize_refs_fantasma"]' in fonte, (
-        "o /health nao publica os refs fantasma — a trava existe e ninguem a ve")
-    assert "refs_de_finalizacao_sem_corredor" in fonte, (
-        "o /health calcula o sinal por conta propria em vez de chamar o motor")
+    atribuicao = ('sinais["finalize_refs_fantasma"] = '
+                  "refs_de_finalizacao_sem_corredor(")
+    assert atribuicao in fonte, (
+        "o /health nao CALCULA os refs fantasma — a trava existe e ninguem a ve. "
+        "⚠️ a chave sozinha nao basta: o caminho de erro tambem a escreve")
+    assert 'sinais["finalize_refs_fantasma"] = None' in fonte, (
+        "o caminho de erro do /health precisa publicar None — lista vazia ali "
+        "diria 'olhei e nao ha fantasma', e ninguem olhou")
