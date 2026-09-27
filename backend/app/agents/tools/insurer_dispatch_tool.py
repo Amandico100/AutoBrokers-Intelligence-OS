@@ -165,6 +165,28 @@ def par_de_coordenadas(latitude, longitude):
     return _fonte(latitude, longitude)
 
 
+def valor_de_slot_honesto(slot, valor):
+    """O valor do slot de endereço normalizado, ou `None` — **mesma delegação**.
+
+    🔴 26/09/2026 · A `GUARDA ANTI-INVENÇÃO` logo abaixo conferia TRÊS campos
+    (telefone, placa, CPF), escrita depois do incidente de 10/07/2026. 📊 A F3/F4
+    acrescentou SEIS campos que vão para a seguradora dentro do formulário da
+    Porto — `local_rua`, `local_numero`, `local_bairro`, `local_cidade`,
+    `local_uf`, `local_cep` — e nenhum entrou na lista, no mesmo commit em que o
+    comentário acima dela explica por que ela existe. Medido: `estado="ZZ"`,
+    `cep="0"`, `numero="nao sei"`, `cidade="48.5477"` e uma rua com quebra de
+    linha dentro saíam todos com `ok=True`.
+
+    ⚠️ A régua mora em `corridor_playbooks.valor_de_slot_honesto`, pelo mesmo
+    motivo escrito em `par_de_coordenadas` logo acima: ela tem TRÊS leitores (o
+    portão de coleta, o montador da resposta e esta ferramenta) e duas cópias
+    divergiriam num dia.
+    """
+    from app.services.corridor_playbooks import valor_de_slot_honesto as _fonte
+
+    return _fonte(slot, valor)
+
+
 def telefone_br_valido(valor) -> bool:
     """Telefone brasileiro pelas regras que a ANATEL de fato impõe.
 
@@ -939,6 +961,19 @@ class InsurerDispatchTool(BaseTool):
         # (`(\d)\1{4,}`) reprovava `48999990000`, que é um celular REAL de
         # Florianópolis e é o `CASO_COMPLETO` dos testes deste próprio repositório.
         # Guarda que reprova o verdadeiro ensina a desligar o guarda.
+        #
+        # 🔴 E OS SEIS CAMPOS DE ENDEREÇO ENTRARAM NA LISTA — 26/09/2026.
+        #
+        # 📊 Medido no montador real, antes deste conserto: `estado="ZZ"`,
+        # `cep="0"`, `numero_residencia="nao sei"`, `cidade="48.5477"` e uma rua
+        # com uma QUEBRA DE LINHA dentro fechavam o formulário da Porto com
+        # `ok=True` e viajavam
+        # para a seguradora. O único caso que travava era o campo VAZIO — ou
+        # seja: conferia-se a AUSÊNCIA do valor, nunca o valor.
+        #
+        # ⚠️ A frase de cada um ensina o agente a DESCOBRIR o dado, nunca a
+        # adivinhá-lo — é a mesma forma dos três de cima, e é o que separa esta
+        # guarda de um "tente de novo".
         is_auto = "auto" in str(playbook_ref)
         for campo, valor, ok, comojá in (
             ("telefone_contato", kwargs.get("telefone_contato"), telefone_br_valido,
@@ -948,6 +983,27 @@ class InsurerDispatchTool(BaseTool):
              "na InfoCap ou com o cliente"),
             ("titular_cpf", kwargs.get("titular_cpf"), documento_br_valido,
              "o CPF (ou CNPJ) REAL do titular da apólice"),
+            ("local_uf", kwargs.get("local_uf"),
+             lambda v: valor_de_slot_honesto("local_uf", v) is not None,
+             "a sigla de DUAS LETRAS do estado onde o veículo está (SC, SP, RS…) — "
+             "se você não tem certeza, NÃO escreva nada neste campo"),
+            ("local_cep", kwargs.get("local_cep"),
+             lambda v: valor_de_slot_honesto("local_cep", v) is not None,
+             "o CEP com OITO dígitos (00000-000) do lugar onde o veículo está — "
+             "peça ao cliente ou deixe o campo vazio"),
+            ("local_numero", kwargs.get("local_numero"),
+             lambda v: valor_de_slot_honesto("local_numero", v) is not None,
+             "o NÚMERO do imóvel (só dígitos, ou 's/n' quando não há número) — "
+             "'nao sei' não é um número, e a seguradora o aceitaria calada"),
+            ("local_rua", kwargs.get("local_rua"),
+             lambda v: valor_de_slot_honesto("local_rua", v) is not None,
+             "o nome da RUA onde o veículo está, numa linha só"),
+            ("local_bairro", kwargs.get("local_bairro"),
+             lambda v: valor_de_slot_honesto("local_bairro", v) is not None,
+             "o nome do BAIRRO onde o veículo está, numa linha só"),
+            ("local_cidade", kwargs.get("local_cidade"),
+             lambda v: valor_de_slot_honesto("local_cidade", v) is not None,
+             "o nome da CIDADE onde o veículo está — um número não é uma cidade"),
         ):
             if str(valor or "").strip() and not ok(valor):
                 return {"status": "missing_data", "missing": [campo], "content": (
