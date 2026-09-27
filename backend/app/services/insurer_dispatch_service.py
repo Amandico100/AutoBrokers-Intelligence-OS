@@ -26,10 +26,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict
 from app.services.corridor_playbooks import (
     _COMO_PERGUNTAR,
     _norm as _norm_corredor,
+    CLASSE_CONDUZ,
+    CLASSE_DECIDE,
+    CLASSE_INDEFINIDA,
     MAX_CORRECOES_POR_CAMPO,
     MAX_CORRECOES_POR_SESSAO,
     auto_subservice_menu_value,
     canonical_subservice,
+    classe_do_passo,
     conferir_confirmacao,
     detect_finalize_anchor,
     detect_handoff_trigger,
@@ -56,6 +60,7 @@ from app.services.corridor_playbooks import (
     render_reply,
     resolve_playbook_ref,
     resposta_de_correcao,
+    rotulo_e_de_navegacao,
     subservice_referral,
 )
 
@@ -1977,6 +1982,323 @@ def responder_da_ficha(
 
 
 # ===========================================================================
+# 🔴 DECIDE × CONDUZ NA TELA QUE NENHUM PASSO CASA — SPEC-119 F3
+# ===========================================================================
+#
+# `classe_do_passo` (em `corridor_playbooks`) responde pelo passo ESCRITO. Esta
+# camada responde pela tela que o corredor NÃO conhece — e é ali que o Founder
+# está metade certo e metade errado ao mesmo tempo:
+#
+#   ERRADO onde a resposta DECIDE conteúdo. 📊 O CLAUDE.md §9.5 registra oito
+#          passos que casaram a tela e responderam errado, todos verdes. Um
+#          modelo livre faria MAIS desses.
+#   CERTO  onde a resposta só CONDUZ. Exigir tela mapeada para responder
+#          `Continuar` é travar por bobagem, com o cronômetro da URA correndo.
+#
+# 🔴 O QUE MUDA, E SÓ ISSO — a cirurgia é estreita de propósito:
+#
+#   tela CONDUZ (navegação estrita, ou eco de dado que o caso JÁ TEM)
+#       → o AGENTE responde, com a tela REAL na frente, o contexto do caso e a
+#         instrução de que ele está CONDUZINDO. Com TETO de telas conduzidas
+#         seguidas; esgotado, uma pessoa recebe o caso.
+#   tela de APOSTA ALTA (escolhe o SERVIÇO/o seguro · pede DINHEIRO/aceite de
+#   custo)
+#       → handoff, SEMPRE. ⛔ O cérebro não é convidado a opinar. É o controle
+#         desta fatia: sem ele, `conduz` seria afrouxamento geral.
+#   qualquer outra tela
+#       → EXATAMENTE o caminho de antes (fase humana, cérebro, guarda). Nada
+#         afrouxa e nada aperta.
+#
+# ⚠️ E a ordem das perguntas é a regra, não detalhe de implementação: DINHEIRO e
+#    SERVIÇO são medidos ANTES das opções. Uma tela de aceite de custo com
+#    "1 - Sim / 2 - Não" tem a forma de navegação e o preço de uma decisão.
+
+#: DINHEIRO NA TELA + PERGUNTA NA MESMA TELA.
+#:
+#: 📊 Medido em 27/09/2026 no acervo versionado: a tela real que isto existe para
+#:    pegar é a da allianz-auto, sessão 4971b50b::
+#:
+#:      "Podemos levar o veículo para um oficina referenciada Allianz?
+#:       - Desconto de até {VALOR_RS} na franquia
+#:       - Franquia parcelada em até 3 vezes"
+#:
+#:    Ela decide PARA ONDE O CARRO VAI e mexe na franquia que o segurado paga, e
+#:    hoje nenhum passo a casa e nenhum padrão de decisão a pega — o cérebro
+#:    responde sozinho.
+#:
+#: ⚠️ A palavra de dinheiro SOZINHA não basta, e isso é medido: *"Essas são as
+#:    informações do seu pagamento:"* e *"Percebi que você escolheu débito em
+#:    conta"* (zurich, 4118ba36) são INFORMATIVAS. Sem a marca de pergunta, elas
+#:    seguem o caminho antigo — que para tela informativa é o silêncio.
+_RX_DINHEIRO_NA_TELA = re.compile(
+    r"\bfranquia\b|\bcust(?:o|os|ear)\b|\bcobran[çc]a\b|\bcobrad[oa]\b|"
+    r"\bpagamento\b|\bpagar\b|\btaxa\b|\bvalor\s+(?:a\s+pagar|do\s+servi[çc]o|"
+    r"da\s+(?:franquia|corrida))\b|r\$",
+    re.IGNORECASE)
+
+#: A TELA ESCOLHE O SERVIÇO OU O SEGURO. 📊 As redações reais, do acervo:
+#:
+#:    "Assistência 24h para qual seguro?"                allianz-residencial f22b6d12
+#:    "Qual seguro deseja utilizar?"                     allianz-residencial c6b63f95
+#:    "Qual desses serviços, você precisa"               allianz-residencial
+#:    "Selecione uma opção, por favor. / Assistência emergencial / Sinistro /
+#:     Vidros e faróis ..."                              azul-auto 6c5280df
+#:    "Informe o tipo de serviço"                        (régua, RELATORIO-DAS-CONSTANTES)
+#:
+#: 🔴 É o defeito nº 3 do §9.5 na forma de tela desconhecida: *"todo condomínio
+#:    virando apólice RESIDENCIAL"*. Responder essa tela errado não dá tela
+#:    errada: dá chamado recusado no local, depois de o segurado esperar.
+_RX_ESCOLHE_O_SERVICO = re.compile(
+    r"para qual seguro\b|qual seguro (?:deseja|que deseja|voc[êe] deseja)\b|"
+    r"qual (?:desses |destes )?servi[çc]os?,? (?:voc[êe] )?(?:precisa|deseja|quer)\b|"
+    # 🔴 O PADRÃO GENÉRICO É ESTREITO POR MEDIÇÃO, não por elegância.
+    #
+    # 📊 A primeira versão aceitava "serviço" a até 40 caracteres do verbo de
+    #    escolha. Rodada no acervo, ela mandava para uma PESSOA a tela
+    #    `porto-auto 910b6295`: *"Estas são as datas disponíveis para
+    #    agendamento. Por favor, selecione a data para quando você quer o
+    #    serviço."* É escolha de DATA — e é literalmente o falso positivo que o
+    #    CLAUDE.md §9.5 já registrou uma vez ("Escolha qual data deseja
+    #    agendar" marcada como decisão por um padrão largo). Agora o
+    #    substantivo vem logo DEPOIS do verbo, com no máximo um artigo e
+    #    "tipo de" no meio.
+    r"(?:qual|qual [ée]|escolha|selecione|informe)\s+(?:o |a |um |uma )?"
+    r"(?:tipo de )?(?:servi[çc]o|assist[êe]ncia|seguro|atendimento que)\b|"
+    r"sobre qual servi[çc]o\b|"
+    # 📊 A janela de 140 é medida: o cardápio da azul (6c5280df) tem 83
+    #    caracteres entre "Selecione uma opção" e "Sinistro", e o da mapfre é
+    #    mais longo. Com 80 o cardápio de serviços da azul passava batido.
+    r"selecione uma op[çc][ãa]o[\s\S]{0,140}\bsinistro\b",
+    re.IGNORECASE)
+
+#: A tela ABRE, AGENDA ou CANCELA. 🔴 Não vira handoff por si (o freio de
+#: finalização, `_conferir_antes_de_confirmar` e a orientação do corredor já
+#: governam a confirmação) — mas VETA o `conduz`. Uma tela que ecoa o endereço e
+#: pergunta *"posso confirmar a ABERTURA da sua assistência?"* (bradesco,
+#: 72af1ae1) não está conduzindo: está abrindo.
+_RX_ABRE_AGENDA_CANCELA = re.compile(
+    r"\babertura\b|abrir (?:o |a |um |uma )?(?:chamado|servi[çc]o|solicita[çc][ãa]o|"
+    r"assist[êe]ncia|atendimento)|\bagendar\b|\bagendamento\b|\bagendad|\breagendar\b|"
+    # ⚠️ `encerrar` e `desistir` NÃO entram, e é medição: eles são RÓTULOS de
+    #    navegação. 📊 `mapfre-auto b979f244` manda *"O que gostaria de fazer
+    #    agora? Botão 1: Voltar Botão 2: Encerrar"* — duas opções que só movem
+    #    o fluxo. Com `encerrar` no veto, a única tela que o agente PODE
+    #    conduzir era barrada pela palavra de uma das opções dela.
+    #    🔴 `cancelar` fica: cancelar um serviço agendado desmarca o técnico de
+    #    um cliente, e é a tecla mais cara do corredor inteiro.
+    r"\bcancelar\b|\bcancelad",
+    re.IGNORECASE)
+
+#: A tela pede CONFIRMAÇÃO de algo. Usada só para habilitar o ramo do ECO — e
+#: sempre com os vetos acima ligados.
+#:
+#: 📊 `confi(?:r)?mar` não é elegância: a HDI escreve *"Poderia **confimar** o
+#:    endereço?"* — sem o `r` —, e é a ÚNICA ocorrência dessa grafia em 16
+#:    corpora (hdi-auto, sessão 68f511d9, contada em 27/09/2026 junto das 112 de
+#:    "confirmar" e 49 de "confirma"). É exatamente a tela que este ramo existe
+#:    para conduzir; sem a grafia real, o ramo nasceria morto.
+_RX_PEDE_CONFIRMACAO = re.compile(
+    r"\bconfi(?:r)?m(?:a|ar|e|ei|amos|ado|ada)\b|est[ãa]o? corret[oa]s?\b|"
+    r"\bconfere\b|\b[ée] (?:esse|este|isso) mesmo\b",
+    re.IGNORECASE)
+
+#: Os rótulos que uma tela de ECO pode ter sem deixar de ser eco: ou navegam, ou
+#: dizem apenas *"o dado está certo"* / *"está errado, corrija"*.
+#:
+#: 🔴 `Sim` e `Não` entram AQUI e não no vocabulário da navegação, e a diferença
+#:    é a medição do §9.5: "Sim" não tem significado próprio — ele herda o da
+#:    pergunta. 📊 Em *"Houve vítimas no local? 1-Sim 2-Não"* (hdi-auto bb5b0f11)
+#:    ele AFIRMA UM FATO; em *"O endereço é: {X}. Confirma? 1-Sim 2-Não"*
+#:    (alfa-auto 665b5bad) ele confirma um dado que NÓS mandamos. A diferença não
+#:    está no rótulo: está em a tela ECOAR ou não um valor do caso — e é por isso
+#:    que este conjunto só vale dentro do ramo do eco.
+_ROTULOS_DE_ECO = (
+    "sim", "nao", "isso", "isso mesmo", "esta correto", "estao corretos",
+    "confirmo", "confirmar", "corrigir", "alterar", "editar", "nao, alterar",
+    "nao, corrigir", "nao, esta errado", "nao, esta incorreto",
+)
+
+
+def _rotulo_cabe_no_eco(rotulo: str) -> bool:
+    """O rótulo desta opção é compatível com uma tela de ECO?"""
+    if rotulo_e_de_navegacao(rotulo):
+        return True
+    r = " ".join(_norm_text(rotulo).split()).rstrip(".!")
+    return any(r == x or r.startswith(x + " ") or r.startswith(x + ",")
+               for x in _ROTULOS_DE_ECO)
+
+#: Os slots cujo valor é DADO DO CASO — o que o segurado informou ou a apólice
+#: trouxe. ⛔ Nenhum `*_opcao` aqui: tecla de menu não é dado, é escolha.
+_SLOTS_DE_DADO_DO_CASO = (
+    "local_atual", "local_destino", "local_rua", "local_bairro", "local_cidade",
+    "local_cep", "destino_rua", "destino_bairro", "destino_cidade", "destino_cep",
+    "telefone_contato", "titular_cpf", "titular_nome", "veiculo_placa",
+    "pessoa_no_local", "endereco_numero",
+)
+
+#: 🔴 O TETO DE TELAS CONDUZIDAS SEGUIDAS.
+#:
+#: 💭 Não é número medido: é a fronteira entre *"a URA deu um passo que o
+#:    corredor não tinha escrito"* e *"o corredor perdeu o mapa e está sendo
+#:    levado a passeio"*. Três telas seguidas sem que NENHUM passo volte a casar
+#:    é a segunda coisa; e a URA da HDI encerra sozinha em 12 minutos, então
+#:    passear custa o acionamento.
+#:
+#: ⚠️ O contador é de telas SEGUIDAS: o passo mapeado que volta a casar o zera
+#:    (em `handle_insurer_message`). Sem zerar, um acionamento longo e saudável
+#:    esgotaria o teto por acumulação — e handoff por acumulação é handoff que
+#:    ninguém entende.
+TETO_DE_TELAS_CONDUZIDAS = 3
+
+
+def _tela_ecoa_dado_do_caso(texto: str, slots: Optional[Dict[str, Any]]) -> str:
+    """O slot do caso que a tela está ECOANDO de volta, ou "".
+
+    📊 A forma real, da hdi (documentada em `scripts/conferir_respostas.py`)::
+
+        "Certo! Poderia confimar o endereço?
+         *Rua:* {VALOR}  *Número:* {VALOR}  *Bairro:* {VALOR}"
+
+    A evidência de que a tela ecoa é literal: um pedaço do valor que NÓS mandamos
+    aparece nela. ⚠️ Pedaço com pelo menos 4 caracteres — `"SC"`, `"12"` e `"Rua"`
+    casariam em qualquer tela e transformariam o eco em carta branca.
+    """
+    alvo = _norm_text(texto)
+    if not alvo:
+        return ""
+    for slot in _SLOTS_DE_DADO_DO_CASO:
+        valor = _norm_text(str((slots or {}).get(slot) or ""))
+        if not valor:
+            continue
+        for pedaco in re.split(r"[^0-9a-zà-ÿ]+", valor):
+            if len(pedaco) >= 4 and pedaco in alvo:
+                return slot
+    return ""
+
+
+def _rotulos_da_tela(texto: str) -> List[str]:
+    """Os RÓTULOS das opções da tela, nas QUATRO formas medidas do acervo.
+
+    🔴 Pelo parser do Atlas (`cartographer.parse_options`), que é a autoridade do
+    produto sobre "que opções esta tela tem". Escrever uma regex nova aqui seria
+    o §9.4 do CLAUDE.md de novo: um padrão medido com um motor e aplicado com
+    outro é um padrão sobre outra coisa.
+
+    📊 As quatro formas, e por que `opcoes_numeradas` não serve aqui: ela exige
+    DÍGITO e descarta lista nua de propósito (botão se escolhe pelo rótulo). Esta
+    classificação precisa do RÓTULO, não da tecla::
+
+        "*1 -* Abrir novo atendimento"   numerada com negrito  → "Abrir novo atendimento"
+        "Botão 1: Sim"                   botão do WhatsApp     → "Sim"
+        "Branco / Prata / Outra cor"     lista nua             → os três
+        "Sim / Não, alterar endereço"    lista nua da porto    → os dois
+
+    ⚠️ O ramo de PALPITE do parser (lista nua) pode trazer linha que não é opção.
+    O erro é sempre para o lado seguro: uma linha a mais é um rótulo que NÃO está
+    no vocabulário da navegação, e a tela deixa de ser `conduz`.
+    """
+    carto = _cartographer()
+    fora: List[str] = []
+    for label in carto.parse_options(str(texto or "")):
+        rotulo = re.sub(r"^\s*\d{1,2}\s*[-–.)\]]\s*", "", str(label)).strip()
+        if rotulo:
+            fora.append(rotulo)
+    return fora
+
+
+def classe_da_tela(playbook: Optional[Dict[str, Any]], insurer_message: str,
+                   *, slots: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """`decide` / `conduz` / `indefinida` para a tela que NENHUM passo casou.
+
+    Devolve `{"classe", "chave", "porque", "handoff"}`:
+
+        classe   CLASSE_DECIDE · CLASSE_CONDUZ · CLASSE_INDEFINIDA
+        chave    família curta, para o `session["reason"]`
+        porque   a frase que uma PESSOA lê (nunca nome de chave)
+        handoff  🔴 True só nas duas famílias de aposta alta
+
+    🔴 `indefinida` é a resposta mais comum, e é ela que mantém esta fatia
+    cirúrgica: a tela que não é evidentemente uma coisa nem a outra segue o
+    caminho que já existia.
+    """
+    texto = str(insurer_message or "")
+    if not texto.strip():
+        return {"classe": CLASSE_INDEFINIDA, "chave": "", "porque": "", "handoff": False}
+    norm = _norm_text(texto)
+    tem_pergunta = bool(re.search(_MARCA_DE_PERGUNTA, norm, re.IGNORECASE))
+
+    # ① A ESCOLHA DO SERVIÇO / DO SEGURO — a família mais específica primeiro.
+    #
+    # ⚠️ A ordem entre ① e ② não muda o DESFECHO (as duas são handoff), muda a
+    #    FRASE que a atendente lê. 📊 Medido: os menus da mapfre ("E você quer
+    #    falar sobre *qual seguro*? / Auto / Pagamento, 2ª via de apólice…")
+    #    casam as duas, e "aceite de custo" ali seria uma frase falsa sobre uma
+    #    tela que só escolhe assunto.
+    if _RX_ESCOLHE_O_SERVICO.search(norm):
+        return {"classe": CLASSE_DECIDE, "chave": "escolhe_o_servico", "handoff": True,
+                "porque": "a seguradora está pedindo para escolher qual serviço ou "
+                          "qual seguro usar, e o robô não conhece esta tela — "
+                          "escolher errado aqui faz o chamado ser recusado no local"}
+
+    # ② DINHEIRO — antes de olhar as opções, sempre.
+    if tem_pergunta and _RX_DINHEIRO_NA_TELA.search(norm):
+        return {"classe": CLASSE_DECIDE, "chave": "aceite_de_custo", "handoff": True,
+                "porque": "a seguradora falou de custo, franquia ou pagamento nesta "
+                          "tela e pediu uma resposta — quem aceita custo em nome do "
+                          "segurado é uma pessoa"}
+
+    veta_conduzir = bool(_RX_ABRE_AGENDA_CANCELA.search(norm))
+    if playbook and detect_finalize_anchor(playbook, texto):
+        veta_conduzir = True
+
+    # ③ O ECO: a tela repete um dado que o caso JÁ TEM e pede confirmação.
+    #
+    # 🔴 VEM ANTES DAS OPÇÕES DE PROPÓSITO, e é a medição que manda. A tela real
+    #    da alfa (665b5bad) é *"O endereço é: *{ENDERECO}* Confirma? 1 - Sim
+    #    2 - Não"*: pelas opções ela seria "alternativa de conteúdo", porque
+    #    `Sim` não está no vocabulário da navegação. Mas o que ela pergunta é se
+    #    o endereço QUE NÓS MANDAMOS está certo — e a resposta sai dos dados do
+    #    caso, não de uma escolha.
+    #
+    # ⚠️ Os vetos continuam todos ligados: se a tela abre, agenda, cancela, pede
+    #    dinheiro, escolhe serviço ou é `finalize_anchor` do corredor, ela nunca
+    #    chega aqui. 📊 É o que separa esta tela da `bradesco 72af1ae1` — *"Posso
+    #    confirmar a ABERTURA da sua assistência?"* —, que também ecoa o endereço
+    #    e **não** está conduzindo: está abrindo o chamado.
+    if tem_pergunta and not veta_conduzir and _RX_PEDE_CONFIRMACAO.search(norm):
+        slot_ecoado = _tela_ecoa_dado_do_caso(texto, slots)
+        if slot_ecoado and all(_rotulo_cabe_no_eco(r) for r in _rotulos_da_tela(texto)):
+            return {"classe": CLASSE_CONDUZ, "chave": "eco_de_dado", "handoff": False,
+                    "porque": "a tela repete de volta um dado que o caso já tem "
+                              f"({_rotulo(slot_ecoado)}) e pede confirmação"}
+
+    # ④ AS OPÇÕES DA TELA — pelo parser do produto, nunca por uma regex nova:
+    #    📊 no menu real da Allianz (`*1 - Residencial:*`) uma regex sozinha acha
+    #    0 opções e o parser acha 3 (CLAUDE.md §9.4).
+    opcoes = _rotulos_da_tela(texto)
+    if opcoes:
+        conteudo = [r for r in opcoes if not rotulo_e_de_navegacao(r)]
+        if conteudo:
+            # Alternativa de CONTEÚDO: `decide`, mas SEM handoff — o caminho
+            # antigo (cérebro + guarda) continua valendo. 🔴 Mandar toda tela de
+            # menu desconhecida para uma pessoa desfaria a decisão do Founder de
+            # 05/08/2026 (*"o cérebro dá conta de uma URA que MUDOU"*), e o
+            # preço disso é a Regina recebendo handoff porque a seguradora
+            # trocou uma palavra do menu.
+            return {"classe": CLASSE_DECIDE, "chave": "alternativa_de_conteudo",
+                    "handoff": False,
+                    "porque": f"a tela oferece {len(conteudo)} alternativas de "
+                              "conteúdo, e a resposta escolhe entre elas"}
+        if not veta_conduzir:
+            return {"classe": CLASSE_CONDUZ, "chave": "navegacao", "handoff": False,
+                    "porque": "todas as opções desta tela apenas movem o fluxo "
+                              f"({', '.join(opcoes)})"}
+        return {"classe": CLASSE_INDEFINIDA, "chave": "", "porque": "", "handoff": False}
+
+    return {"classe": CLASSE_INDEFINIDA, "chave": "", "porque": "", "handoff": False}
+
+
+# ===========================================================================
 # FORMULÁRIO NATIVO — do reconhecimento ao transporte
 # ===========================================================================
 
@@ -3690,6 +4012,10 @@ def handle_insurer_message(
 
     step = match_ura_step(playbook, insurer_message, subservice=session.get("subservice"))
     if step:
+        # 🔴 SPEC-119 F3 — O CORREDOR VOLTOU A RECONHECER A TELA: o contador de
+        #    telas CONDUZIDAS seguidas zera aqui. É isto que faz o teto medir
+        #    *"o corredor perdeu o mapa"* em vez de *"o acionamento foi longo"*.
+        session["telas_conduzidas"] = 0
         # Passo "noop": mensagem informativa (fila, aguarde, "ainda não
         # identificamos") — reconhecer e NÃO responder nada.
         if step.get("noop"):
@@ -3856,6 +4182,33 @@ def handle_insurer_message(
                     step_name, rendered["missing"])
                 return session
 
+            # ==============================================================
+            # 🔴 SPEC-119 F3 — A CLASSE DO PASSO **NÃO** ENTRA AQUI, E FOI
+            #    MEDIÇÃO QUE DECIDIU ISSO
+            # ==============================================================
+            #
+            # A primeira versão desta fatia escreveu *"um passo `conduz` é
+            # `fallback_adaptive` por construção"* e pôs a implicação nesta linha.
+            # 📊 `test_o_cerebro_assume_quando_falta_dado` ficou VERMELHO em
+            # *"tela de CONFIRMAÇÃO sem o dado PARA — o freio não foi removido"*,
+            # e estava certo:
+            #
+            #   um passo que responde `{um_slot}` numa tela que diz *"podemos
+            #   confirmar o atendimento?"* é `conduz` pela forma da RESPOSTA e
+            #   irreversível pela TELA. Com a implicação, o cérebro assumia a
+            #   confirmação — exatamente o freio que o §9.5 existe para manter.
+            #
+            # 🔴 E aí a conta fecha: a condição abaixo já libera o cérebro sempre
+            #    que a tela **não** é irreversível (`not decisao`). O único caso
+            #    que a classe do passo acrescentaria é justamente o proibido. Ou
+            #    seja: **a classe do PASSO não tem efeito seguro neste ponto** —
+            #    `detect_finalize_anchor` mede a TELA, a classe mede a RESPOSTA, e
+            #    nenhuma das duas substitui a outra (é a mesma lição que fez
+            #    `sem_chute` e o freio coexistirem, logo acima).
+            #
+            # A classe segue valendo onde ela decide algo de verdade: na TELA
+            # DESCONHECIDA (`classe_da_tela`, mais abaixo) e no guarda
+            # `passos_com_classe_contraditoria`.
             if step.get("fallback_adaptive") or not decisao:
                 # O cérebro assume. Ele recebe o caso inteiro, a intenção de
                 # cada passo do playbook e os últimos turnos — e agora também
@@ -3994,6 +4347,73 @@ def handle_insurer_message(
         session["falta_para_a_ura"] = {"campo": da_ficha.get("campo"),
                                        "slot": da_ficha.get("slot"),
                                        "rotulo": da_ficha.get("rotulo")}
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-119 F3 — A TELA DESCONHECIDA: ELA DECIDE OU ELA CONDUZ?
+    # ═══════════════════════════════════════════════════════════════════════
+    #
+    # Chega aqui a tela que nenhum passo casou, que não é formulário, que não
+    # tem gatilho de handoff e cujo dado não está na ficha. Daqui para baixo era
+    # UM caminho só: fase humana → o cérebro redige → o guarda fiscaliza.
+    #
+    # 🔴 Dois defeitos moravam nesse caminho único, e são opostos:
+    #
+    #   ① a tela que ESCOLHE O SERVIÇO ou PEDE DINHEIRO era respondida pelo
+    #      modelo. 📊 São 26 telas distintas no acervo versionado (12 de custo,
+    #      14 de escolha de serviço/seguro) — inclusive *"Podemos levar o
+    #      veículo para uma oficina referenciada? Desconto de até R$X na
+    #      franquia"*, que decide para onde o carro vai e mexe na franquia que o
+    #      segurado paga. É a família dos oito defeitos do §9.5, agora cometida
+    #      pelo modelo em vez de por um passo.
+    #   ② a tela que só NAVEGA gastava a mesma rodada de modelo, guarda e
+    #      contador de recusa de uma decisão irreversível.
+    #
+    # ⚠️ E a cirurgia é estreita de propósito: 📊 das 624 telas desconhecidas do
+    #    acervo (27/09/2026), 594 continuam no caminho EXATO de antes. Mandar toda tela de
+    #    menu desconhecida para uma pessoa desfaria a decisão do Founder de
+    #    05/08/2026 (*"o cérebro dá conta de uma URA que MUDOU"*) e faria a
+    #    Regina receber handoff porque a seguradora trocou uma palavra do menu.
+    classe = classe_da_tela(playbook, insurer_message, slots=session.get("slots"))
+    if classe.get("handoff"):
+        session["state"] = "needs_human"
+        session["reason"] = f"tela_que_decide:{classe['chave']}"
+        # ⛔ O CÉREBRO NÃO É CONVIDADO A OPINAR, e é o mesmo motivo do
+        #    `sem_chute`: ele receberia a tela, veria opções plausíveis e
+        #    escolheria uma — o mesmo chute, agora com um parágrafo de
+        #    justificativa. Por isso o motivo vai em `motivo_legivel` (que a
+        #    PESSOA lê) e nunca em `falta_para_a_ura` (que alimenta o modelo).
+        session["motivo_legivel"] = {"campo": classe["chave"], "slot": "",
+                                     "rotulo": classe["porque"]}
+        logger.warning("[DISPATCH] 🔴 tela desconhecida que DECIDE (%s) — handoff: %s",
+                       classe["chave"], classe["porque"])
+        return session
+    if classe.get("classe") == CLASSE_CONDUZ:
+        conduzidas = int(session.get("telas_conduzidas") or 0) + 1
+        session["telas_conduzidas"] = conduzidas
+        if conduzidas > TETO_DE_TELAS_CONDUZIDAS:
+            # 🔴 O TETO. Conduzir é levar o fluxo adiante esperando que o
+            #    corredor volte a reconhecer a tela. Se ele não volta, o que
+            #    está acontecendo não é condução: é passeio — e a URA encerra
+            #    sozinha enquanto isso.
+            session["state"] = "needs_human"
+            session["reason"] = "conducao_esgotada"
+            session["motivo_legivel"] = {
+                "campo": "conducao", "slot": "",
+                "rotulo": (f"o robô seguiu {conduzidas - 1} telas de navegação seguidas "
+                           "e a seguradora não voltou a nenhuma tela que ele conhece")}
+            session.pop("conduzindo", None)
+            logger.warning("[DISPATCH] 🔴 teto de telas conduzidas (%d) — handoff",
+                           conduzidas - 1)
+            return session
+        # O cérebro responde, e AGORA ele sabe que está conduzindo — é o que
+        # `build_human_phase_messages` lê para não devolver NAO_SEI numa tela
+        # que só pede `Continuar`.
+        session["conduzindo"] = {"porque": classe["porque"],
+                                 "opcoes": _rotulos_da_tela(insurer_message)[:8],
+                                 "tentativa": conduzidas,
+                                 "teto": TETO_DE_TELAS_CONDUZIDAS}
+        logger.info("[DISPATCH] tela desconhecida que CONDUZ (%d/%d): %s",
+                    conduzidas, TETO_DE_TELAS_CONDUZIDAS, classe["porque"])
 
     # Sem âncora de URA: fase humana da seguradora.
     if session.get("state") == "ura":
@@ -4334,6 +4754,31 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
               "Se realmente não der para deduzir, responda NAO_SEI."
         )
 
+    # 🔴 SPEC-119 F3 — QUANDO A TELA APENAS CONDUZ, O AGENTE SABE DISSO.
+    #
+    # Sem este bloco o modelo lê *"Continuar / Voltar"* com a orientação do
+    # corredor dizendo *"se a seguradora for CONFIRMAR/ABRIR o serviço, NÃO
+    # confirme"* e a regra 4 dizendo *"se não der para deduzir, NAO_SEI"* — e
+    # `NAO_SEI` é `model_declined`, que em duas telas seguidas chama uma pessoa.
+    # 🔴 Era o travamento que o Founder descreveu: *"travar numa situação que
+    # seria fácil de responder"*.
+    #
+    # ⛔ E a instrução é estreita: o motor só grava `conduzindo` depois de provar,
+    # pela tela REAL, que ela não escolhe serviço, não pede dinheiro, não abre,
+    # não agenda, não cancela e não tem alternativa de conteúdo nenhuma.
+    conduzindo = session.get("conduzindo") or {}
+    bloco_conduzir = ""
+    if conduzindo.get("porque"):
+        bloco_conduzir = (
+            "\n\n🟢 ESTA TELA APENAS CONDUZ (o corredor não a tem escrita, e o "
+            f"motor conferiu que ela não decide nada): {conduzindo['porque']}.\n"
+            "Responda a opção que LEVA O ATENDIMENTO ADIANTE — ou confirme o dado "
+            "que já está nos dados do caso acima. ⛔ NÃO responda NAO_SEI aqui: "
+            "nenhuma das opções desta tela escolhe serviço, aceita custo, abre, "
+            "agenda ou cancela nada."
+            + (f"\nOpções desta tela: {', '.join(conduzindo['opcoes'])}"
+               if conduzindo.get("opcoes") else ""))
+
     # 🔴 SPEC-EXTRA-001.4 B · GB-3 — O CÉREBRO SABE QUE FOI RECUSADO, E VÊ OS NÚMEROS.
     #
     # 📊 Em 10/09 nada no prompt dizia "a sua última resposta foi recusada": o
@@ -4358,7 +4803,7 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
 
     user = (
         f"Dados do caso (únicos números permitidos):\n{fatos}{guia_ura}"
-        f"{ajuda_do_passo}{bloco_menu}"
+        f"{ajuda_do_passo}{bloco_conduzir}{bloco_menu}"
         f"{contexto_pendente}{contexto_historico}\n\n"
         # "TELA", não "mensagem". A seguradora manda o aviso numa bolha, o menu
         # na outra e a pergunta na terceira — e o que chega aqui é a rajada
@@ -4489,6 +4934,11 @@ def reply_human_phase(
     session.pop("ultimo_passo_sem_dado", None)
     session.pop("falta_para_a_ura", None)
     session.pop("motivo_legivel", None)
+    # 🔴 SPEC-119 F3: a tela conduzida foi respondida — a instrução morre com
+    #    ela. Deixá-la gravada faria o prompt do PRÓXIMO turno afirmar "esta tela
+    #    apenas conduz" sobre uma tela que ninguém classificou, que é a maneira
+    #    exata de a licença de conduzir virar licença para tudo.
+    session.pop("conduzindo", None)
     return session
 
 
@@ -4546,6 +4996,13 @@ _MOTIVOS_EM_PORTUGUES = {
                      "sem volta",
     "sem_chute": "a seguradora pediu um dado que o caso não tem — e o robô não "
                  "responde o que não sabe",
+    # --- SPEC-119 F3: a tela desconhecida que DECIDE -------------------------
+    "tela_que_decide": "a seguradora mostrou uma tela que o robô não conhece e que "
+                       "escolhe o serviço ou aceita um custo — responda você essa "
+                       "tela na conversa com a seguradora",
+    "conducao_esgotada": "o robô seguiu várias telas de navegação seguidas e a "
+                         "seguradora não voltou a nenhuma tela conhecida — o "
+                         "atendimento saiu do caminho que o robô sabe fazer",
     # --- laço ----------------------------------------------------------
     "loop_guard": "a seguradora repetiu a mesma pergunta e o robô já tinha "
                   "respondido a mesma coisa duas vezes",
