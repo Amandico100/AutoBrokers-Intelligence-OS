@@ -107,14 +107,35 @@ def test_a_atribuicao_do_achado_a_rota_roda_o_motor_e_respeita_o_oficio():
     rp = RP.replay(rota)
     assert rp.telas, "a rota perdeu o corpus — este teste ficaria sem o que medir"
 
-    # a tela REAL e o passo que o MOTOR casa nela PARA ESTA ROTA
+    # A tela REAL e o passo que o MOTOR casa nela PARA ESTA ROTA.
+    #
+    # 🔴 E o passo é DE PROPÓSITO um `only_subservices` do PRÓPRIO ofício da rota
+    #    (📊 `local_do_vazamento`, `material_da_tubulacao`, `quebra_de_alvenaria`…
+    #    são do encanador). Com um passo comum, chamar `match_ura_step` SEM
+    #    `subservice` daria o mesmo resultado e a mutação M10 passaria — medido em
+    #    27/09/2026. Restrito ao ofício da rota, o passo só casa COM o argumento:
+    #    sem ele, `canonical_subservice(None)` vira "" e TODO passo restrito é
+    #    pulado, então o achado dele nunca chegaria à rota.
     tela = passo_certo = None
-    for t in rp.telas:
-        p = M.match_ura_step(pb, t.texto, subservice=rota.servico)
-        if p and p.get("step"):
+    for exigir_restrito in (True, False):
+        for t in rp.telas:
+            p = M.match_ura_step(pb, t.texto, subservice=rota.servico)
+            if not (p and p.get("step")):
+                continue
+            restrito = [str(x).lower() for x in (p.get("only_subservices") or [])]
+            if exigir_restrito and rota.servico not in restrito:
+                continue
             tela, passo_certo = t, str(p["step"])
             break
+        if passo_certo:
+            break
     assert passo_certo, "nenhuma tela desta rota casa passo — o teste perdeu o caso"
+    assert rota.servico in [str(x).lower() for x in
+                            (M.match_ura_step(pb, tela.texto,
+                                              subservice=rota.servico) or {}
+                             ).get("only_subservices") or []], (
+        "o corredor perdeu os passos restritos ao PRÓPRIO ofício — sem eles a "
+        "mutação que chama o motor sem `subservice` fica verde")
 
     # o CHAMARIZ: um passo do corredor restrito a OUTRO ofício
     chamariz = next((str(p["step"]) for p in (pb.get("ura_steps") or [])
