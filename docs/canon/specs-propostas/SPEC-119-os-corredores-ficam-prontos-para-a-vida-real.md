@@ -149,16 +149,23 @@ outra rodada ampliando listas de classificador em vez de pedir o que falta.
 etiqueta e cruzando com as 73 rotas que os playbooks declaram:
 
 ```
-                                  base df66d1e     HEAD e76cb28
-telas etiquetadas .................   3.749            5.369      (+1.666)
+                                  base df66d1e     HEAD acfe09a
+telas etiquetadas .................   3.749            5.369      (+1.620)
+  delas, em rota das 73 ...........   3.342            4.996      (+1.654)
 rotas COM corpus ..................      43               42
 rotas SEM corpus ..................      30               31
 
 rotas que GANHARAM corpus do ZERO .........  0
-rotas que PERDERAM corpus .................  1   (bradesco/auto/bateria -> tecnico)
-as +1.666 telas foram TODAS para 10 rotas que JÁ tinham corpus;
-8 dessas 10 são guincho (yelum +620, hdi +386, porto +286, allianz +171 ...)
+rotas que PERDERAM corpus .................  1   (bradesco/auto/bateria -> tecnico, -36)
+o crescimento foi TODO para 11 rotas que JÁ tinham corpus (+1.690 telas);
+7 dessas 11 são guincho (yelum +620, hdi +386, porto +286, allianz +171 ...)
 ```
+
+⚠️ **Os três números não fecham entre si de propósito, e a diferença é o achado:**
+`+1.620` é o total; `+1.690` é a soma só das rotas que cresceram; a diferença são
+as `-36` telas que `bradesco/auto/bateria` perdeu para `tecnico` e as 34 que
+saíram das chaves que não correspondem a rota nenhuma. 🔴 Somar só o que cresceu
+e chamar de crescimento é o erro que este parágrafo existe para não cometer.
 
 **Comando:** `git ls-tree` nos dois commits + contagem do campo `servico` de cada
 linha `.jsonl`, cruzada com `regua_motor.rotas()`.
