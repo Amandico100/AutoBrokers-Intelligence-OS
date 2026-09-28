@@ -241,9 +241,22 @@ def test_o_piso_de_producao_e_um_PISO_e_nao_um_teto():
 @pytest.mark.parametrize("nome", _arquivos())
 def test_o_corpus_continua_mascarado(nome):
     """🔴 Nenhum telefone inteiro, CPF, CNPJ, e-mail ou razão social no `.jsonl`."""
-    sujas = [(i, H.auditar_pii(d.get("text") or ""))
-             for i, d in enumerate(_linhas(nome), 1)
-             if H.auditar_pii(d.get("text") or "")]
+    # 🔴 `nomes_da_sessao` — SPEC-119 CONSERTO A, 28/09/2026.
+    #    📊 Este chamador ignorava o parâmetro que a própria docstring de
+    #    `auditar_pii` diz existir "porque um primeiro nome solto não casa
+    #    nenhum padrão lexical". Com ele, o guarda que devolvia `0 sujas` sobre
+    #    86 linhas de nome em claro devolve 134.
+    linhas = list(_linhas(nome))
+    por_sessao = {}
+    for d in linhas:
+        por_sessao.setdefault(str(d.get("session_id")), []).append(d.get("text") or "")
+    nomes = {sid: H.nomes_no_vocativo(ts) for sid, ts in por_sessao.items()}
+
+    def _pii(d):
+        return H.auditar_pii(d.get("text") or "",
+                             nomes_da_sessao=nomes.get(str(d.get("session_id")), set()))
+
+    sujas = [(i, _pii(d)) for i, d in enumerate(linhas, 1) if _pii(d)]
     assert not sujas, "%s: %d linha(s) com PII: %s" % (nome, len(sujas), sujas[:3])
 
 
@@ -270,6 +283,32 @@ def test_CONTROLE_o_auditor_e_a_placa_CONSEGUEM_acusar():
               "digite o CPF 030.111.222-95 do titular",
               "mande para ninguem@exemplo.com.br o comprovante"]:
         assert H.auditar_pii(t), "CONTROLE FALHOU: auditor passou limpo -> %r" % t
+
+    # 🔴 O NOME — a quinta forma, e a que DE FATO vazou. SPEC-119 CONSERTO A.
+    #
+    # 📊 Este controle provava telefone, CPF, e-mail e placa; nenhuma delas era
+    # a que estava no acervo. 86 linhas com primeiro nome de segurado em claro
+    # atravessaram a SPEC-083, a SPEC-117 e a SPEC-119 com o controle VERDE —
+    # *"um guarda que não tem como falhar não guarda nada"* (CLAUDE.md §9.3).
+    #
+    # ⚠️ Os nomes abaixo são SINTÉTICOS (nenhum vem do acervo) e cobrem as
+    # quatro formas medidas: solto, dentro de negrito, depois de um abridor de
+    # fala, e nome COMPLETO com sobrenome.
+    for t in ["Zoraide, o telefone informado nao e valido",
+              "*Zoraide*, agora definiremos o endereco para onde o veiculo vai",
+              "Certo, Zoraide. A solicitacao de agendamento foi encerrada",
+              "Ola ZORAIDE BENEVIDES DA CUNHA, como foi o servico de REBOQUE?"]:
+        assert H.auditar_pii(t), "CONTROLE FALHOU: nome passou limpo -> %r" % t
+
+    # e o outro sentido: o guarda do nome NÃO pode comer língua de serviço
+    for t in ["Certo! Por favor digite o *CPF* ou *CNPJ* do(a) titular da apolice",
+              "Roubo, furto e incendio tem franquia propria",
+              "Agora, informe apenas o nome do logradouro (rua, avenida, etc.)",
+              "Elogios, reclamacoes e informacoes de como proceder",
+              "{NOME}, escolha a opcao desejada: Seguro Auto"]:
+        assert not H.auditar_pii(t), (
+            "CONTROLE FALHOU: o guarda do nome comeu portugues -> %r  %s"
+            % (t, H.auditar_pii(t)))
     for t in ["a placa ABC1D23 esta correta?", "confirme a placa abc1d23"]:
         assert RX_PLACA.search(t), "CONTROLE FALHOU: placa passou limpa -> %r" % t
     # e o que NÃO é placa continua não sendo — o achado de 10/08/2026

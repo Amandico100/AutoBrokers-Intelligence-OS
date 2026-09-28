@@ -206,6 +206,92 @@ def test_o_vocativo_estrutural_nao_come_portugues():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# 4b · O PADRÃO INVERTIDO — SPEC-119 CONSERTO A, 28/09/2026
+# ═════════════════════════════════════════════════════════════════════════════
+def test_o_nome_de_uma_cabeca_so_e_mascarado_sem_precisar_de_TRES():
+    """🔴 O buraco que os dois julgadores acharam, e o pior de todos.
+
+    📊 O discriminador de ≥3 cabeças não vê o esqueleto com UMA cabeça — e é
+    a pessoa que recebeu a frase que mais ninguém recebeu. 86 linhas do acervo
+    versionado carregavam primeiro nome de segurado por causa disso.
+
+    ⚠️ `esqueletos_dado` VAZIO de propósito: o mecanismo antigo não ajuda aqui.
+    """
+    sozinhas = [
+        "Zoraide, o telefone informado nao e valido",                  # solta
+        "*Zoraide*, agora definiremos o endereco do destino",          # ① negrito
+        "Certo, Zoraide. A solicitacao de agendamento foi encerrada",  # ② abridor
+        "Ola ZORAIDE BENEVIDES DA CUNHA, como foi o servico?",         # ③ completo
+    ]
+    for t in sozinhas:
+        limpo, houve = H._mascarar_vocativo(t)
+        assert houve and "{NOME}" in limpo and "Zoraide" not in limpo \
+            and "ZORAIDE" not in limpo, f"nao mascarou: {t!r} -> {limpo!r}"
+
+
+def test_CONTROLE_o_padrao_invertido_NAO_come_a_tela_do_CPF_da_allianz():
+    """🔴 O outro sentido, e ele tem nome e tamanho.
+
+    📊 *"Certo! Por favor digite o *CPF*…"* é a tela de maior retorno do acervo
+    (78 sessões). Um discriminador que a mastigasse derrubaria o BLOCO 0
+    inteiro — é a mesma armadilha da SPEC-084 §2.5.2.
+    """
+    lingua = [
+        "Certo! Por favor digite o *CPF* ou *CNPJ* do(a) titular da apolice",
+        "Agora, informe apenas o nome do logradouro (rua, avenida, rodovia)",
+        "Roubo, furto e incendio tem franquia propria e voce paga",
+        "Elogios, reclamacoes e informacoes de como cancelar seu seguro",
+        "Pronto! O seu servico foi agendado para hoje, em ate 60 minutos",
+        "Guincho, tecnico e chaveiro",
+        "Vidros, retrovisores, para-choques e pequenos reparos",
+        "Hyundai, ano 2011, placa {PLACA}",
+        "*Unnamed Road,  - Angelina  - SC*.",
+        "{NOME}, escolha a opcao desejada: Seguro Auto",
+    ]
+    for t in lingua:
+        limpo, houve = H._mascarar_vocativo(t)
+        assert not houve and limpo == t, f"comeu lingua: {t!r} -> {limpo!r}"
+
+
+def test_o_vocabulario_de_lingua_vem_do_PRODUTO_e_nao_de_uma_lista():
+    """🔴 CLAUDE.md §5 — a prova de que é língua sai do próprio produto.
+
+    📊 Medido em 28/09/2026: o vocabulário dos 14 playbooks mais os padrões de
+    serviço cobrem 78 das 118 cabeças de língua do acervo — e **zero** dos 47
+    nomes. É isso que dá direito a usá-lo como dicionário.
+    """
+    voc = H.vocabulario_de_lingua(recarregar=True)
+    assert len(voc) > 500, f"vocabulario pequeno demais ({len(voc)}) -- leu o produto?"
+    for w in ("guincho", "chaveiro", "placa", "apolice"):
+        assert w in voc, f"{w!r} devia vir do produto"
+    for nome in ("zoraide", "benevides", "saionara", "nathalya"):
+        assert nome not in voc, f"🔴 {nome!r} entrou no vocabulario de lingua"
+
+
+def test_o_logradouro_sem_numero_tambem_e_mascarado():
+    """🔴 O mesmo buraco de DESENHO do vocativo, no endereço.
+
+    📊 *"O DÍGITO é a regra inteira"* vale na conversa que o humano digita. A
+    URA ecoa o Google Maps, e o Maps devolve endereço sem número — duas ruas
+    reais (com bairro, cidade e UF) foram para o acervo versionado em claro.
+    """
+    devem_mascarar = [
+        "Localizei o endereco R. Fulana de Tal Silva, null, Centro, Palhoca - SC",
+        "Localizei o endereco R. Dr. Fulano Silva, 457, Jardim Tal, Sao Paulo - SP",
+    ]
+    for t in devem_mascarar:
+        assert "{ENDERECO}" in M.templatize(t), f"rua em claro: {t!r}"
+    # 🔴 CONTROLE — a prosa que a medição de 06/08/2026 mandou NÃO comer
+    devem_ficar = [
+        "a Rua Direita e conhecida na regiao, e o prestador vai ate la",
+        "A Porto pede rua e numero do local do atendimento",
+        "desistir do residencial da Porto em ate 7 dias, sem custo - SC",
+    ]
+    for t in devem_ficar:
+        assert "{ENDERECO}" not in M.templatize(t), f"comeu prosa: {t!r}"
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # 5 · A TABELA DE RAMO
 # ═════════════════════════════════════════════════════════════════════════════
 def test_o_dicionario_de_ramo_nao_tem_chave_duplicada():
