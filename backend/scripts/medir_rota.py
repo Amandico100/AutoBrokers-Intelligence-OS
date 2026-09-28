@@ -353,7 +353,15 @@ def _gravar_notas(notas: List[RB.Nota], caminho: str,
             "o_que_destrava": _o_que_destrava(n),
         } for n in notas],
     }
-    destino = caminho if os.path.isabs(caminho) else os.path.join(RAIZ, caminho)
+    # 🔴 `RAIZ` deste arquivo é `backend/`, NÃO a raiz do repositório — e o
+    #    caminho que se escreve na linha de comando é o do repositório.
+    #    📊 Medido em 28/09/2026: `--gravar-notas docs/canon/reports/…` gravou
+    #    em `backend/docs/canon/reports/…`, uma árvore inteira nova, e o
+    #    comando saiu com **exit 0** e a mensagem "notas gravadas" — o arquivo
+    #    existia, só não onde quem o leria iria procurar. É a mesma família do
+    #    `cwd` que já mora neste arquivo trinta linhas acima.
+    repo = os.path.dirname(RAIZ)
+    destino = caminho if os.path.isabs(caminho) else os.path.join(repo, caminho)
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     with open(destino, "w", encoding="utf-8") as fh:
         json.dump(fora, fh, ensure_ascii=False, indent=1, sort_keys=True)
