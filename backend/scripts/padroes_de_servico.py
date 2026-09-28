@@ -841,10 +841,35 @@ def servico_da_sessao(seguradora: str,
     return None, "-"
 
 
-# 📊 O ranking medido em 21/08/2026 — a coluna que ordena a SPEC-084.
-#    🔴 Guardado como DADO, não como comentário, para o inventário do Bloco D
-#    poder citá-lo sem recalcular.
-DEMANDA_MEDIDA: List[Tuple[str, int, int]] = [
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-119 F5 · ESTE NOME MENTIA, E A MENTIRA CHEGOU AO FOUNDER
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Chamava-se `DEMANDA_MEDIDA`. Quem lia entendia "a demanda desta rota". É
+# outra coisa: **o total de um SERVIÇO somando TODAS as seguradoras, no retrato
+# de 21/08/2026**. `("guincho", 72, 197)` são 72 escolhas de guincho em sete
+# seguradoras — e a régua o imprimia igual nas dez linhas de guincho.
+#
+# 📊 O Founder leu `mapfre/auto/guincho · 72` e perguntou, com razão: *"como
+#    pode ter 72 pedidos e não ter o corredor?"* Nunca houve 72 pedidos na
+#    Mapfre. Medido em 28/09/2026 em `observed_events`: a Mapfre tem **ZERO**
+#    sessões de guincho, e a maior rota de guincho é `allianz/auto` com 29.
+#
+# 🔴 CLAUDE.md §12.1: *"se o nome de um campo mente sobre o que ele guarda,
+#    conserte o CAMPO — o texto errado é o sintoma, o nome errado é a causa, e
+#    ela reinfecta todo leitor seguinte."* Por isso o nome agora carrega os dois
+#    fatos que faltavam: **é GLOBAL POR SERVIÇO**, e **é de 21/08/2026**.
+#
+# ⛔ NÃO use isto como demanda de uma rota. A demanda por rota vive em
+#    `scripts/demanda_por_rota.py`, medida em `observed_events` e datada.
+#
+# ⚠️ E as chaves são SINGULARES (`eletrodomestico`, `vidro`) enquanto os
+#    playbooks e o classificador escrevem no PLURAL (`eletrodomesticos`,
+#    `vidros`). 📊 `.get("eletrodomesticos")` devolvia nada -> `0`, e rotas COM
+#    demanda apareciam como se ninguém pedisse. As chaves ficam como estão
+#    porque é assim que a medição de 21/08 foi feita — mudá-las seria inventar
+#    um número. O que muda é que ninguém mais busca uma ROTA aqui dentro.
+DEMANDA_GLOBAL_POR_SERVICO_21_08_2026: List[Tuple[str, int, int]] = [
     # (servico, ESCOLHIDO, no_cardapio)
     ("guincho", 72, 197), ("bateria", 16, 106), ("encanador", 14, 132),
     ("eletricista", 12, 109), ("pneu", 10, 101), ("eletrodomestico", 9, 102),
