@@ -262,6 +262,7 @@ class Contador:
         self.chamadas = 0
         self.tokens_in = self.tokens_out = 0
         self.respostas: List[str] = []
+        self.cru: List[str] = []   # o `.content` CRU, para o relatório comparar
 
     def custo_usd(self, modelo: str) -> float:
         """📊 `usage_service.calculate_cost` — a MESMA conta do ledger."""
@@ -324,8 +325,15 @@ class _MedidoPorFora:
         uso = getattr(out, "usage_metadata", None) or {}
         self._c.tokens_in += int(uso.get("input_tokens") or 0)
         self._c.tokens_out += int(uso.get("output_tokens") or 0)
-        texto = getattr(out, "content", "")
-        self._c.respostas.append(str(texto)[:400])
+        # 🔴 DUAS LINHAS, e a diferença entre elas é o defeito da SPEC-119 F4b:
+        #    `content` CRU é a lista de blocos que o modelo devolveu; `texto` é o
+        #    que o PRODUTO passou a usar (`agents/utils.extract_text_from_content`).
+        #    Imprimir só o cru faria este script mentir sobre o conserto dele.
+        from app.agents.utils import extract_text_from_content
+
+        cru = getattr(out, "content", "")
+        self._c.respostas.append(extract_text_from_content(cru).strip()[:400])
+        self._c.cru.append(str(cru)[:160])
         return out
 
 
@@ -498,8 +506,9 @@ async def cenarios(cerebro: str, teto_usd: float, k: int) -> int:
         print(f"\n① TRAVAMENTO FORÇADO (tentativa {tentativa}/{k})  custo US$ {custo:.6f}")
         for ch, v in r.items():
             print(f"     {ch:26s} {v}")
-        if c.respostas:
-            print(f"     {'o CÉREBRO respondeu':26s} {c.respostas[0]!r}")
+        if c.respostas or c.cru:
+            print(f"     {'.content CRU do modelo':26s} {(c.cru or [''])[0]!r}")
+            print(f"     {'o que o PRODUTO usou':26s} {(c.respostas or [''])[0]!r}")
         destravou = bool(r["enviou_a_seguradora"]) and r["estado_final"] == "ura"
         print(f"     {'DESENTRAVOU?':26s} {'✅ SIM' if destravou else '🔴 NÃO'}")
         if not destravou:
@@ -527,8 +536,8 @@ async def cenarios(cerebro: str, teto_usd: float, k: int) -> int:
     for cchave in ("estado_final", "motivo_final", "enviou_a_seguradora",
                    "dossies", "avisos_ao_segurado"):
         print(f"     {cchave:26s} {rh[cchave]}")
-    if ch.respostas:
-        print(f"     {'o CÉREBRO respondeu':26s} {ch.respostas[0]!r}")
+    if ch.respostas or ch.cru:
+        print(f"     {'o que o PRODUTO usou':26s} {(ch.respostas or [''])[0]!r}")
     honrou = not rh["enviou_a_seguradora"]
     print(f"     🔴 O SENTINELA HONRA O HANDOFF DA F3? "
           f"{'✅ SIM' if honrou else '🔴 NÃO — ele respondeu uma tela que o corredor manda a uma PESSOA'}")
