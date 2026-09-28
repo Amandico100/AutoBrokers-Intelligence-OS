@@ -5,7 +5,7 @@
   "sessoes": 652
  },
  "comando": "cd backend && python scripts/demanda_por_rota.py --medir --gravar",
- "commit": "f9b7204",
+ "commit": "71e8035",
  "controle": {
   "marcas_de_corretora": 8
  },
@@ -14,7 +14,7 @@
   "tokio/condominio": 3
  },
  "medido_em": "2026-09-28",
- "medido_em_iso": "2026-09-28T02:17:45+00:00",
+ "medido_em_iso": "2026-09-28T04:58:19+00:00",
  "nao_decidiu": {
   "alfa": 1,
   "allianz": 20,
@@ -66,8 +66,7 @@
   "hdi/residencial/eletricista": 5,
   "hdi/residencial/encanador": 3,
   "mapfre/auto/carro_reserva": 1,
-  "porto/auto/?4145720 - 26": 1,
-  "porto/auto/bateria": 4,
+  "porto/auto/bateria": 5,
   "porto/auto/chaveiro": 1,
   "porto/auto/guincho": 25,
   "porto/auto/tecnico": 2,
@@ -102,7 +101,6 @@
   "allianz/residencial/telhado": 1,
   "bradesco/auto/tecnico": 2,
   "mapfre/auto/carro_reserva": 1,
-  "porto/auto/?4145720 - 26": 1,
   "tokio/auto/carro_reserva": 2,
   "yelum/auto/carro_reserva": 10,
   "yelum/residencial/limpeza_caixa_dagua": 1

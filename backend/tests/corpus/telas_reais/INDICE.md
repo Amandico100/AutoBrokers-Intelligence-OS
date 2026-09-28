@@ -1,6 +1,6 @@
 # Corpus de telas reais — ÍNDICE
 
-> Gerado em **2026-09-28T04:31:54+00:00** · commit `e76cb28`
+> Gerado em **2026-09-28T04:57:06+00:00** · commit `71e8035`
 > 📊 `marcas_de_corretora()` = **8** (o CONTROLE da SPEC-084 §2.5.1.3 — se fosse 0, a geração teria rodado sem banco e o corpus **não estaria mascarado**)
 
 🔴 Este arquivo existe porque a SPEC-083 §7 proíbe pular em silêncio: *"truncar calado lê-se como 'cobrimos tudo'"*.
@@ -17,7 +17,7 @@
 | `hdi-auto.jsonl` | 722 | 230 | 697abd09 3606a14f 3dc92fcf 68f511d9 bb5b0f11 2e6df205 21a53457 83d2b9e3 e476dc68 ea61eb64 4b2d0c2a 78b2de6f 2548c9c7 fa2ceb6f 886066e5 71caf82f 7e842aee 2bdccc04 d8b852de 17ccacad 794a9d2c | 31 | 5 | 5 | 16 | 0 |
 | `hdi-residencial.jsonl` | 190 | 63 | 0a7c24ef 13379965 1c8d0849 ed46a953 b638adcd 834cc238 61b96027 26c0546f a1ba53b9 | 9 | 5 | 5 | 2 | 0 |
 | `mapfre-auto.jsonl` | 114 | 37 | a68aa770 59055fb6 f6f2ec11 d857d4de b979f244 b03a6b30 | 21 | 5 | 4 | 0 | 0 |
-| `porto-auto.jsonl` | 810 | 240 | 4830574a e3b1561f f4838bb3 c470d13d 67296ad9 d0d64bfc aef7e9d6 910b6295 d6f1f8d3 697561ab d801cbd8 ca755794 c5cafa8b ba772444 12203ed9 a9560e3a 51b2ed32 77983f63 e5318468 b1ff65f2 0c1e8e3e 1f2582fc 90a47771 cdcc7125 8c490e96 e17f4b74 | 63 | 5 | 8 | 19 | 0 |
+| `porto-auto.jsonl` | 810 | 240 | e3b1561f f4838bb3 c470d13d 67296ad9 4830574a d0d64bfc aef7e9d6 910b6295 d6f1f8d3 697561ab d801cbd8 ca755794 c5cafa8b ba772444 12203ed9 a9560e3a 51b2ed32 77983f63 e5318468 b1ff65f2 0c1e8e3e 1f2582fc 90a47771 cdcc7125 8c490e96 e17f4b74 | 63 | 5 | 8 | 19 | 0 |
 | `porto-residencial.jsonl` | 212 | 66 | 565cb39a 3854b4a2 5bcf0792 84187509 0fe42179 897c42ff e3b9dfd6 0e97bfa8 4631b3ed | 9 | 5 | 5 | 4 | 0 |
 | `tokio-auto.jsonl` | 70 | 24 | c1a67b4a b7e75c66 d99a47a1 fa8127ef ca52ff75 641420c8 d8a81c33 | 7 | 5 | 4 | 0 | 0 |
 | `tokio-residencial.jsonl` | 53 | 19 | 6bb9dd93 8d9b8672 f8b83a35 e0383feb 66c9dd9b | 5 | 5 | 0 | 0 | 0 |
@@ -195,11 +195,11 @@
 - [(tronco)] AVISO: 15 sessao(oes) SEM desfecho fora do corpus pelo piso de 5 por rota
 
 **`porto-auto.jsonl`**
-- [?4145720 - 26] diversidade (jaccard 0.00) -> 4830574a
 - [bateria] COM DESFECHO -> e3b1561f
 - [bateria] COM DESFECHO -> f4838bb3
 - [bateria] COM DESFECHO -> c470d13d
 - [bateria] COM DESFECHO -> 67296ad9
+- [bateria] diversidade (jaccard 0.03) -> 4830574a
 - [chaveiro] COM DESFECHO -> d0d64bfc
 - [guincho] COM DESFECHO -> aef7e9d6
 - [guincho] COM DESFECHO -> 910b6295
