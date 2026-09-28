@@ -298,6 +298,26 @@ def _contar(linhas: List[Linha]) -> Dict[str, int]:
     return d
 
 
+def _par_da_mesma_nota(linhas: List["Linha"]):
+    """Duas rotas com a MESMA nota e respostas opostas a "dá para ligar?".
+
+    🔴 É a prova mais barata e mais forte de que a régua não responde a
+    pergunta binária: se a nota bastasse, um par assim seria impossível.
+    Devolve `None` quando não existe — e aí a página **não afirma nada**.
+    """
+    por_nota: Dict[int, Dict[bool, "Linha"]] = {}
+    for l in linhas:
+        pct = l.nota.get("pct")
+        if pct is None:
+            continue
+        por_nota.setdefault(pct, {}).setdefault(l.da_para_ligar == "SIM", l)
+    for pct in sorted(por_nota, reverse=True):
+        lados = por_nota[pct]
+        if True in lados and False in lados:
+            return lados[True], lados[False]
+    return None
+
+
 def _pct_faixa(n: int, total: int) -> str:
     return f"{round(100 * n / total)}%" if total else "—"
 
@@ -538,19 +558,20 @@ def aba(f: Fontes, linhas: List[Linha]) -> str:
       'nunca para decidir se liga. Uma rota pode ter nota baixa e estar pronta; '
       'outra pode ter nota alta e não ter uma conversa gravada que prove nada.</p>')
     # 🔴 O EXEMPLO NÃO É INVENTADO — ele sai dos dados, ou não aparece.
-    #    ⚠️ Escrever "imagine uma rota de 95% que não liga" seria 💭; a frase só
-    #    tem direito de existir se houver uma, e o nome dela vai junto.
-    provas = sorted([l for l in linhas
-                     if (l.nota.get("pct") or 0) >= 90 and l.da_para_ligar != "SIM"],
-                    key=lambda l: -(l.nota.get("pct") or 0))[:2]
-    if provas:
-        nomes = " e ".join(f"<code>{_e(l.rota)}</code> ({_e(l.pct)})"
-                           for l in provas)
-        A(f'<p class="note" style="margin-top:12px">📊 <b>E não é hipótese:</b> '
-          f'{nomes} {"estão" if len(provas) > 1 else "está"} entre as notas mais '
-          f'altas da régua e <b>não dá para ligar</b> — {"elas têm" if len(provas) > 1 else "ela tem"} '
-          f'telas que ninguém respondeu. <b>Se as duas colunas nunca '
-          f'discordassem, uma delas não estaria medindo nada.</b></p>')
+    #    ⚠️ Escrever "imagine uma rota boa que não liga" seria 💭; a frase só
+    #    tem direito de existir se houver uma, e os nomes vão junto.
+    #
+    # 🔴 E a prova mais forte não é uma rota: é um PAR com a MESMA nota e
+    #    respostas opostas. Enquanto existir um, ninguém pode dizer que a nota
+    #    responde as duas perguntas.
+    par = _par_da_mesma_nota(linhas)
+    if par:
+        a, b = par
+        A(f'<p class="note" style="margin-top:12px">📊 <b>E não é hipótese.</b> '
+          f'<code>{_e(a.rota)}</code> e <code>{_e(b.rota)}</code> têm '
+          f'<b>a mesma nota, {_e(a.pct)}</b> — e a primeira <b>atende '
+          f'sozinha</b> enquanto a segunda <b>vai para uma pessoa</b>. '
+          f'<b>Se a nota bastasse, isso não podia acontecer.</b></p>')
     A('<p class="lede" style="max-width:76ch;margin-top:10px">🔴 <b>E a nota '
       'agora é em %, não mais &ldquo;58 de 76&rdquo;.</b> O denominador mudava '
       'de rota para rota — 76, 70, 64 — porque itens que não se aplicam saem da '

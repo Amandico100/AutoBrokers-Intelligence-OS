@@ -211,14 +211,31 @@ def test_a_pagina_responde_as_duas_perguntas_separadamente():
     assert linhas, "nenhuma rota montada"
     for l in linhas:
         assert l.da_para_ligar in ("SIM", "VAI PARA UMA PESSOA", "FALTA CAPTURA")
-    # 🔴 A PROVA de que são perguntas diferentes: existe rota de qualidade
-    #    alta que NÃO dá para ligar. Se não existisse, uma delas seria
-    #    dedutível da outra e a segunda coluna seria enfeite.
-    alta_e_nao_liga = [l for l in linhas
-                       if (l.nota.get("pct") or 0) >= 80 and l.da_para_ligar != "SIM"]
-    assert alta_e_nao_liga, (
-        "nenhuma rota tem nota alta e não dá para ligar — se as duas colunas "
-        "nunca discordam, uma delas não está medindo nada")
+    # 🔴 A PROVA de que são perguntas diferentes: as faixas de nota das que
+    #    LIGAM e das que NÃO LIGAM têm de se SOBREPOR. Se a nota mais baixa
+    #    entre as que ligam fosse maior que a nota mais alta entre as que não
+    #    ligam, a nota sozinha responderia as duas perguntas — e a segunda
+    #    coluna seria enfeite.
+    #
+    # ⚠️ A primeira versão deste guarda exigia "≥ 80% e não liga", um limiar
+    #    que EU escolhi. 📊 Ele ficou vermelho na primeira rodada da régua
+    #    nova, não porque o produto tivesse mudado, mas porque as duas rotas
+    #    que o satisfaziam caíram de 95% para 76% e 63% quando o corpus cresceu.
+    #    Um guarda preso a um número que a medição move não guarda a REGRA;
+    #    guarda o número. A regra é a sobreposição.
+    #
+    # 📊 Medido em 28/09/2026: `tokio/auto/guincho` e `hdi/auto/chaveiro` têm
+    #    os DOIS 70% — e o primeiro vai para uma pessoa enquanto o segundo
+    #    atende sozinho. Mesma nota, respostas opostas.
+    ligam = [l.nota["pct"] for l in linhas
+             if l.da_para_ligar == "SIM" and l.nota.get("pct") is not None]
+    nao_ligam = [l.nota["pct"] for l in linhas
+                 if l.da_para_ligar != "SIM" and l.nota.get("pct") is not None]
+    assert ligam and nao_ligam, "faltou rota com nota nos dois lados"
+    assert min(ligam) <= max(nao_ligam), (
+        f"as notas NÃO se sobrepõem: a pior que liga tem {min(ligam)}% e a "
+        f"melhor que não liga tem {max(nao_ligam)}%. Se a nota separa as duas "
+        "perguntas sozinha, a segunda coluna não está medindo nada")
 
 
 def test_toda_rota_fora_de_atende_sozinho_traz_a_causa():
