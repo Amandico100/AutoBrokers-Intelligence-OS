@@ -183,4 +183,4 @@ Enquanto elas estiverem aqui, um `—` na coluna `pedidos` **não quer dizer 'ni
 
 ---
 
-_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-28T03:05:54+00:00. **Nenhum número deste documento foi digitado à mão.**_
+_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-28T03:06:34+00:00. **Nenhum número deste documento foi digitado à mão.**_

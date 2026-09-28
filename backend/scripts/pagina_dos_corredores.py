@@ -748,6 +748,22 @@ def aba(f: Fontes, linhas: List[Linha]) -> str:
         A('</tbody></table></div>')
         A('</div>')
 
+    # 🔴 O HISTORICO SAIU, E A PAGINA DIZ PARA ONDE FOI.
+    #    O Founder pediu "sem informacoes antigas que possam me confundir", e a
+    #    aba anterior carregava ~48 KB de medicoes de agosto/2026 misturadas com
+    #    as de hoje. ⚠️ Mas "apagar" e "esconder" nao sao a mesma coisa: quem
+    #    for auditar precisa saber que existiu e onde achar.
+    A('<p class="note" style="border-left-color:var(--faint);margin-top:26px">'
+      '<b>O histórico de agosto saiu desta aba de propósito.</b> Ela carregava '
+      'as medições das SPECs 083, 084 e 084.2 ao lado das de hoje, e as duas '
+      'coisas usavam <b>réguas diferentes</b> — o denominador mudou de 106 para '
+      '76/70/64 na SPEC-089, então comparar os números era comparar duas '
+      'réguas. Nada foi perdido: está no histórico do repositório '
+      '(<span class="mono">git log docs/canon/painel-do-founder/'
+      'aba-corredores.html</span>), e as lições que viraram regra moram no '
+      '<span class="mono">CLAUDE.md</span> §9.4 e §9.5. '
+      '🔴 <b>Nesta aba só entra número com data ao lado.</b></p>')
+
     A('</div>')
     return "\n".join(P)
 
