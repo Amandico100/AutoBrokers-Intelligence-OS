@@ -1,0 +1,1068 @@
+[
+ {
+  "rota": "allianz/residencial/desentupimento",
+  "telas": 49,
+  "pedem_algo": 40,
+  "respondidas": 40,
+  "orfas": []
+ },
+ {
+  "rota": "allianz/residencial/eletrodomesticos",
+  "telas": 39,
+  "pedem_algo": 29,
+  "respondidas": 29,
+  "orfas": []
+ },
+ {
+  "rota": "allianz/residencial/encanador",
+  "telas": 176,
+  "pedem_algo": 115,
+  "respondidas": 111,
+  "orfas": [
+   {
+    "sessao": "0591c1d1",
+    "ts": "2026-08-21T19:38:07+00:00",
+    "tela": "Para confirmamos o benefício residencial na sua apólice, informe a *PLACA* do veículo.",
+    "humano": {
+     "texto": "<texto livre, 7 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "0591c1d1",
+    "ts": "2026-08-21T19:38:21+00:00",
+    "tela": "Por favor, confirme o veículo do seguro: *1* - COMPASS, placa RX#-###3 *2* - Outro veículo *3* - Sair",
+    "humano": {
+     "texto": "1",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "5e72e523",
+    "ts": "2026-08-27T11:52:05+00:00",
+    "tela": "Os agendamentos estão disponíveis de *segunda-feira* a *sexta-feira*, para os próximos *7 dias*. Escolha qual data deseja agendar: *1 -* {DATA} (Sexta-feira) *2 -* {DATA} (Segunda-feira) *3 -* {DATA} (Terça-feira) *4 -* {DATA} (Quarta-feira) *5 -* {DATA} (Quinta-feira) *6 -* {DATA} (Sexta-feira) *7 -* {DATA} (Terça-feira)",
+    "humano": {
+     "texto": "1",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "5e72e523",
+    "ts": "2026-08-27T11:52:19+00:00",
+    "tela": "E quanto aos horários de agendamento, são por *períodos (manhã* - das 9:00 as 13:00 ou *tarde* - das 13:00 às 18:00). E caso o agendamento seja para o dia seguinte, obrigatoriamente precisará ser no *período da tarde e se esse agendamento estiver sendo feito no final de semana*, obrigatoriamente precisará ser agendado no mínimo para *próximo dia útil a tarde*. Só lembrando que o prestador poderá chegar *durante todo*",
+    "humano": {
+     "texto": "1",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   }
+  ]
+ },
+ {
+  "rota": "allianz/residencial/maquina_de_lavar",
+  "telas": 112,
+  "pedem_algo": 86,
+  "respondidas": 85,
+  "orfas": [
+   {
+    "sessao": "590b5940",
+    "ts": "2026-08-26T12:03:09+00:00",
+    "tela": "Informe somente números.",
+    "humano": {
+     "texto": "<texto livre, 5 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 2
+    }
+   }
+  ]
+ },
+ {
+  "rota": "azul/auto/guincho",
+  "telas": 228,
+  "pedem_algo": 115,
+  "respondidas": 114,
+  "orfas": [
+   {
+    "sessao": "2f0cd86a",
+    "ts": "2025-09-17T15:33:46+00:00",
+    "tela": "Se for necessário, posso te ligar em qualquer um deles? *1* - Sim *2* - Não, apenas no primeiro *3* - Apenas no segundo *4* - Nenhum dos dois",
+    "humano": {
+     "texto": "4",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   }
+  ]
+ },
+ {
+  "rota": "bradesco/auto/guincho",
+  "telas": 129,
+  "pedem_algo": 107,
+  "respondidas": 102,
+  "orfas": [
+   {
+    "sessao": "72af1ae1",
+    "ts": "2026-05-12T18:06:50+00:00",
+    "tela": "Sentimos muito pelo ocorrido, esperamos que todos estejam bem! Para dar continuidade ao atendimento preciso confirmar alguns dados. O veículo está impedido de rodar até uma oficina? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "Sim",
+     "tipo": "button_reply",
+     "botao": "Sim",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "72af1ae1",
+    "ts": "2026-05-12T18:07:01+00:00",
+    "tela": "Tudo bem. Por acaso você precisou chamar a polícia aí no local? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "72af1ae1",
+    "ts": "2026-05-12T18:15:35+00:00",
+    "tela": "Agora, confira as informações que você me forneceu Origem: *Av. {ENDERECO} - Brejaru, Palhoça - SC, {CEP}, Brazil* Referência: {VALOR} Destino do veículo: *R. {ENDERECO} - Canto, Florianópolis - SC, {CEP}, Brazil* Referência: {VALOR} Posso confirmar a abertura da sua assistência? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "Sim",
+     "tipo": "button_reply",
+     "botao": "Sim",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "706df513",
+    "ts": "2026-09-08T19:25:35+00:00",
+    "tela": "Sentimos muito pelo ocorrido, esperamos que todos estejam bem! Para dar continuidade ao atendimento preciso confirmar alguns dados. O veículo está impedido de rodar até uma oficina? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "Sim",
+     "tipo": "button_reply",
+     "botao": "Sim",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "706df513",
+    "ts": "2026-09-08T19:25:54+00:00",
+    "tela": "Tudo bem. Por acaso você precisou chamar a polícia aí no local? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 3
+    }
+   }
+  ]
+ },
+ {
+  "rota": "hdi/auto/guincho",
+  "telas": 599,
+  "pedem_algo": 362,
+  "respondidas": 341,
+  "orfas": [
+   {
+    "sessao": "fa2ceb6f",
+    "ts": "2025-07-28T20:30:15+00:00",
+    "tela": "O veículo está desatrelado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "fa2ceb6f",
+    "ts": "2025-07-28T20:39:56+00:00",
+    "tela": "Neste caso, como o veículo encontra-se em zona rural, passaremos a coordenada para você confirmar o endereço. Se tiver dificuldade em entender este código, por favor, copie e cole no Google Maps seguindo o passo a passo da imagem antes de confirmar a localização.",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "fa2ceb6f",
+    "ts": "2025-07-28T20:50:29+00:00",
+    "tela": "Possui animal de estimação? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "fa2ceb6f",
+    "ts": "2025-07-28T20:50:45+00:00",
+    "tela": "Gostaria de solicitar algum outro serviço? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "2548c9c7",
+    "ts": "2025-08-15T15:14:40+00:00",
+    "tela": "Certo. Poderia nos dizer se o veículo encontra-se com as rodas livres? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Sim",
+     "tipo": "button_reply",
+     "botao": "Sim",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "2548c9c7",
+    "ts": "2025-08-15T15:14:48+00:00",
+    "tela": "O câmbio está travado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "2548c9c7",
+    "ts": "2025-08-15T15:14:53+00:00",
+    "tela": "O veículo é blindado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "2548c9c7",
+    "ts": "2025-08-15T15:16:45+00:00",
+    "tela": "Nesse caso, vou precisar que me informe novamente.",
+    "humano": {
+     "texto": "<texto livre, 19 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "2548c9c7",
+    "ts": "2025-08-15T15:16:45+00:00",
+    "tela": "Para qual endereço devemos leva - lo? Informe apenas o nome da rua",
+    "humano": {
+     "texto": "<texto livre, 19 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "78b2de6f",
+    "ts": "2025-09-15T12:30:53+00:00",
+    "tela": "Agora, selecione qual o serviço que melhor atenderá o problema descrito. Botão 1: Recarga de bateria Botão 2: Guincho Botão 3: Voltar",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "78b2de6f",
+    "ts": "2025-09-15T12:31:54+00:00",
+    "tela": "O veículo está em garagem subsolo ou acima do nível da rua? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "78b2de6f",
+    "ts": "2025-09-15T12:32:02+00:00",
+    "tela": "Certo. Poderia nos dizer se o veículo encontra-se com as rodas livres? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "78b2de6f",
+    "ts": "2025-09-15T12:32:08+00:00",
+    "tela": "O câmbio está travado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4b2d0c2a",
+    "ts": "2025-09-26T13:07:13+00:00",
+    "tela": "Não encontrei a placa, poderia tentar novamente? Por favor, digite seguindo os exemplos: AAA12__ ou AAA1A__",
+    "humano": {
+     "texto": "<texto livre, 7 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4b2d0c2a",
+    "ts": "2025-09-26T13:11:35+00:00",
+    "tela": "O veículo está desatrelado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4b2d0c2a",
+    "ts": "2025-09-26T13:18:10+00:00",
+    "tela": "Sua solicitação está pendente. *Mas não se preocupe, pois entraremos em contato com você através do número {CPF} nos próximos minutos.* Fique atento as ligações para que possamos falar com você e confirmar algumas informações que são necessárias para este atendimento.",
+    "humano": {
+     "texto": "5",
+     "tipo": "list_reply",
+     "botao": "5",
+     "pulos": 3
+    }
+   },
+   {
+    "sessao": "4b2d0c2a",
+    "ts": "2025-09-26T14:38:56+00:00",
+    "tela": "Agora, selecione qual o serviço que melhor atenderá o problema descrito. Botão 1: Recarga de bateria Botão 2: Guincho Botão 3: Voltar",
+    "humano": {
+     "texto": "Guincho",
+     "tipo": "button_reply",
+     "botao": "Guincho",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4b2d0c2a",
+    "ts": "2025-09-26T14:41:23+00:00",
+    "tela": "O veículo está em garagem subsolo ou acima do nível da rua? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4b2d0c2a",
+    "ts": "2025-09-26T15:18:57+00:00",
+    "tela": "A solicitação de *GUINCHO* está concluída. Por favor, selecione abaixo o assunto que você deseja falar. Pedir outro serviço Questionar atraso Selecione esta opção se o GUINCHO ainda não chegou para te atender. Questionar entrega Selecione esta opção se precisa de informação sobre a entrega do veiculo Alterar endereço Selecione esta opção se deseja informar um novo endereço de destino. Outro Voltar Encerrar conversa",
+    "humano": {
+     "texto": "Outro",
+     "tipo": "list_reply",
+     "botao": "Outro",
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "ea61eb64",
+    "ts": "2025-10-06T19:55:11+00:00",
+    "tela": "Possui animal de estimação? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "83d2b9e3",
+    "ts": "2026-01-23T12:07:59+00:00",
+    "tela": "O veículo é blindado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   }
+  ]
+ },
+ {
+  "rota": "hdi/residencial/chaveiro",
+  "telas": 26,
+  "pedem_algo": 16,
+  "respondidas": 16,
+  "orfas": []
+ },
+ {
+  "rota": "hdi/residencial/eletricista",
+  "telas": 109,
+  "pedem_algo": 68,
+  "respondidas": 65,
+  "orfas": [
+   {
+    "sessao": "13379965",
+    "ts": "2026-06-30T13:18:39+00:00",
+    "tela": "Qual desses itens está com vazamento? Torneira Torneira elétrica Sifão Chuveiro Válvulas de descarga Registro Mais opções Voltar",
+    "humano": {
+     "texto": "Mais opções",
+     "tipo": "list_reply",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "13379965",
+    "ts": "2026-06-30T13:18:56+00:00",
+    "tela": "Qual desses itens está com vazamento? Vasos sanitários Boia de caixa d'água Descarga acoplada Misturadores Tanques Caça-vazamento Voltar",
+    "humano": {
+     "texto": "Voltar",
+     "tipo": "list_reply",
+     "botao": "Voltar",
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "13379965",
+    "ts": "2026-06-30T13:20:20+00:00",
+    "tela": "Qual desses itens precisa de reparo? Geladeira Geladeira Side By Side Fogão Cooktop Microondas Lava Louças Frigobar Outras opções Voltar",
+    "humano": {
+     "texto": "Voltar",
+     "tipo": "list_reply",
+     "botao": null,
+     "pulos": 2
+    }
+   }
+  ]
+ },
+ {
+  "rota": "hdi/residencial/encanador",
+  "telas": 55,
+  "pedem_algo": 33,
+  "respondidas": 31,
+  "orfas": [
+   {
+    "sessao": "61b96027",
+    "ts": "2026-09-24T19:12:36+00:00",
+    "tela": "Por aqui, você pode solicitar os seguintes serviços: - *Encanador* - *Desentupimento* - *Eletricista* - *Chaveiro* - *Eletrodomésticos e eletrônicos* - *Ar condicionado* - *Dedetização* Caso não encontre o serviço desejado, digite 'SAIR' para finalizar o atendimento. Mas não se preocupe, você pode entrar em contato na central para verificar os serviços em sua apólice.",
+    "humano": {
+     "texto": "Sou corretor(a)",
+     "tipo": "button_reply",
+     "botao": "<mascarado>",
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "61b96027",
+    "ts": "2026-09-24T19:20:05+00:00",
+    "tela": "Deseja abrir uma nova solicitação de serviço? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "Sim",
+     "tipo": "button_reply",
+     "botao": "Sim",
+     "pulos": 1
+    }
+   }
+  ]
+ },
+ {
+  "rota": "porto/auto/bateria",
+  "telas": 164,
+  "pedem_algo": 86,
+  "respondidas": 76,
+  "orfas": [
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:29:04+00:00",
+    "tela": "Olá! 😊 Aqui é a {NOME}. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso te ajudar?",
+    "humano": {
+     "texto": "<texto livre, 81 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:30:19+00:00",
+    "tela": "{NOME}, informe a placa e o modelo do veículo",
+    "humano": {
+     "texto": "<texto livre, 7 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:32:17+00:00",
+    "tela": "{NOME}, você sabe me informar quantos amperes tem a bateria?",
+    "humano": {
+     "texto": "<texto livre, 13 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:45:41+00:00",
+    "tela": "{NOME} esta por aí?",
+    "humano": {
+     "texto": "<texto livre, 5 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:46:18+00:00",
+    "tela": "Nós podemos abrir a solicitação, caso o prestador não tenha a bateria ele pode buscar no Centro Automotivo.",
+    "humano": {
+     "texto": "<texto livre, 5 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:47:48+00:00",
+    "tela": "Informe por gentileza o endereço",
+    "humano": {
+     "texto": "<texto livre, 3 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:49:06+00:00",
+    "tela": "Esse cliente é do Sul e esta em São Paulo?",
+    "humano": {
+     "texto": "<texto livre, 10 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:52:00+00:00",
+    "tela": "O próprio segurado?",
+    "humano": {
+     "texto": "<texto livre, 12 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:52:23+00:00",
+    "tela": "Serviço Imediato ou agendado?",
+    "humano": {
+     "texto": "<texto livre, 12 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "4830574a",
+    "ts": "2026-06-19T19:54:41+00:00",
+    "tela": "Sua opinião é muito importante. Em uma escala de 0 a 10, o quanto você recomendaria o nosso atendimento? Por favor, digite o número da sua avaliação.",
+    "humano": {
+     "texto": null,
+     "motivo": "a conversa TERMINOU nesta tela"
+    }
+   }
+  ]
+ },
+ {
+  "rota": "porto/auto/guincho",
+  "telas": 495,
+  "pedem_algo": 250,
+  "respondidas": 233,
+  "orfas": [
+   {
+    "sessao": "77983f63",
+    "ts": "2025-08-12T14:42:27+00:00",
+    "tela": "Tudo bem. Depois de concluir o agendamento do guincho, *você também pode solicitar um táxi* se precisar.",
+    "humano": {
+     "texto": "Agendar data e hora",
+     "tipo": "button_reply",
+     "botao": "<mascarado>",
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "77983f63",
+    "ts": "2025-08-12T14:44:08+00:00",
+    "tela": "Por favor, digite o endereço completo. Coloque assim 👇 *Rua/Avenida/Rodovia, número, cidade, estado*",
+    "humano": {
+     "texto": "Sent",
+     "tipo": "flow_reply",
+     "botao": "<mascarado>",
+     "pulos": 3
+    }
+   },
+   {
+    "sessao": "77983f63",
+    "ts": "2025-08-12T14:47:30+00:00",
+    "tela": "{NOME}, além do guincho, você precisa também solicitar um táxi para ir embora do local? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "51b2ed32",
+    "ts": "2025-09-09T17:01:20+00:00",
+    "tela": "Tudo bem. Depois de concluir o agendamento do guincho, *você também pode solicitar um táxi* se precisar.",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "51b2ed32",
+    "ts": "2025-09-09T17:03:09+00:00",
+    "tela": "Por favor, digite o endereço completo. Coloque assim 👇 *Rua/Avenida/Rodovia, número, cidade, estado*",
+    "humano": {
+     "texto": "Sent",
+     "tipo": "flow_reply",
+     "botao": "<mascarado>",
+     "pulos": 3
+    }
+   },
+   {
+    "sessao": "51b2ed32",
+    "ts": "2025-09-09T17:07:22+00:00",
+    "tela": "{NOME}, além do guincho, você precisa também solicitar um táxi para ir embora do local? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "a9560e3a",
+    "ts": "2025-12-16T12:26:52+00:00",
+    "tela": "Tudo bem. Depois de concluir o agendamento do guincho, *você também pode solicitar um táxi* se precisar.",
+    "humano": {
+     "texto": "Tenho urgência",
+     "tipo": "button_reply",
+     "botao": "<mascarado>",
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "a9560e3a",
+    "ts": "2025-12-16T12:29:13+00:00",
+    "tela": "Por favor, digite o endereço completo. Coloque assim 👇 *Rua/Avenida/Rodovia, número, cidade, estado*",
+    "humano": {
+     "texto": "Sent",
+     "tipo": "flow_reply",
+     "botao": "<mascarado>",
+     "pulos": 3
+    }
+   },
+   {
+    "sessao": "a9560e3a",
+    "ts": "2025-12-16T12:33:53+00:00",
+    "tela": "{NOME}, além do guincho, você precisa também solicitar um táxi para ir embora do local? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "12203ed9",
+    "ts": "2026-01-02T12:57:11+00:00",
+    "tela": "O atendimento é para qual veículo? *1* - Ram, ano 2024, placa S####12 *2* - Outro veículo *3* - Voltar",
+    "humano": {
+     "texto": "3",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "12203ed9",
+    "ts": "2026-01-02T13:02:04+00:00",
+    "tela": "Tudo bem. Depois de concluir o agendamento do guincho, *você também pode solicitar um táxi* se precisar.",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "12203ed9",
+    "ts": "2026-01-02T14:04:45+00:00",
+    "tela": "Eu vi que você estava agendando um serviço. Para não precisar reiniciar o seu atendimento, gostaria de continuar com a solicitação agora? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "12203ed9",
+    "ts": "2026-01-02T14:08:31+00:00",
+    "tela": "Por favor, digite o endereço completo. Coloque assim 👇 *Rua/Avenida/Rodovia, número, cidade, estado*",
+    "humano": {
+     "texto": "<texto livre, 41 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 3
+    }
+   },
+   {
+    "sessao": "12203ed9",
+    "ts": "2026-01-02T14:10:13+00:00",
+    "tela": "Gostaria de continuar com o horário escolhido mesmo assim? Botão 1: Sim Botão 2: Outro horário Botão 3: Outra data",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "12203ed9",
+    "ts": "2026-01-02T14:12:39+00:00",
+    "tela": "Segurado(a), além do guincho, você precisa também solicitar um táxi para ir embora do local? Botão 1: Sim Botão 2: Não",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 3
+    }
+   },
+   {
+    "sessao": "ba772444",
+    "ts": "2026-03-16T10:14:35+00:00",
+    "tela": "Qual tipo de atendimento você precisa? Serviços para veículo Serviços para residência Consultar apólice Voltar",
+    "humano": {
+     "texto": "Serviços para veículo",
+     "tipo": "list_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "910b6295",
+    "ts": "2026-09-14T15:11:10+00:00",
+    "tela": "Certo! Estas são as *datas disponíveis para agendamento*. Por favor, selecione a data para quando você quer o serviço. {DATA} {DATA} {DATA} {DATA} {DATA} {DATA} {DATA} Escolher outra data Voltar",
+    "humano": {
+     "texto": "14/09/2026",
+     "tipo": "list_reply",
+     "botao": "<mascarado>",
+     "pulos": 1
+    }
+   }
+  ]
+ },
+ {
+  "rota": "porto/residencial/eletrodomesticos",
+  "telas": 15,
+  "pedem_algo": 11,
+  "respondidas": 11,
+  "orfas": []
+ },
+ {
+  "rota": "yelum/auto/bateria",
+  "telas": 22,
+  "pedem_algo": 16,
+  "respondidas": 16,
+  "orfas": []
+ },
+ {
+  "rota": "yelum/auto/guincho",
+  "telas": 817,
+  "pedem_algo": 483,
+  "respondidas": 461,
+  "orfas": [
+   {
+    "sessao": "19d73270",
+    "ts": "2025-09-09T17:26:00+00:00",
+    "tela": "O câmbio está travado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "7c841763",
+    "ts": "2025-09-29T18:02:08+00:00",
+    "tela": "Não encontrei a placa, poderia tentar novamente? Por favor, digite seguindo os exemplos: AAA12__ ou AAA1A__",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 3
+    }
+   },
+   {
+    "sessao": "7c841763",
+    "ts": "2025-09-29T18:15:51+00:00",
+    "tela": "A polícia liberou o veículo? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "7c841763",
+    "ts": "2025-09-29T18:18:56+00:00",
+    "tela": "O veículo é blindado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "56bd78f7",
+    "ts": "2025-10-02T18:57:53+00:00",
+    "tela": "O que aconteceu com a chave? Dentro do veículo Chave está trancada dentro do veículo Perda Perdeu a chave Quebrou A chave quebrou Outros Voltar Sair Encerra esse atendimento",
+    "humano": {
+     "texto": "Perda",
+     "tipo": "list_reply",
+     "botao": "Perda",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "56bd78f7",
+    "ts": "2025-10-02T18:58:14+00:00",
+    "tela": "O veículo está trancado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "56bd78f7",
+    "ts": "2025-10-02T18:59:45+00:00",
+    "tela": "Neste caso, como o veículo encontra-se em zona rural, passaremos a coordenada para você confirmar o endereço. Se tiver dificuldade em entender este código, por favor, copie e cole no Google Maps seguindo o passo a passo da imagem antes de confirmar a localização.",
+    "humano": {
+     "texto": "Sim",
+     "tipo": "button_reply",
+     "botao": "<mascarado>",
+     "pulos": 3
+    }
+   },
+   {
+    "sessao": "56bd78f7",
+    "ts": "2025-10-02T19:01:19+00:00",
+    "tela": "O veículo está em garagem subsolo ou acima do nível da rua? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "705f915b",
+    "ts": "2026-02-11T17:37:10+00:00",
+    "tela": "O veículo está em garagem subsolo ou acima do nível da rua? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "705f915b",
+    "ts": "2026-02-11T17:37:41+00:00",
+    "tela": "O veículo é blindado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "705f915b",
+    "ts": "2026-02-11T17:38:59+00:00",
+    "tela": "{NOME}, agora definiremos *o endereço para onde o veículo será levado.* Ainda não sabe onde levar? A gente facilita pra você. Basta selecionar *Quero indicação* que você terá acesso as oficinas mais próximas com descontos e condições especiais como agilidade na vistoria e liberação do conserto, peças novas e originais, parcelamento e desconto no valor da franquia, garantia e muito mais...* Selecione abaixo a opção de",
+    "humano": {
+     "texto": "Digitar endereço",
+     "tipo": "button_reply",
+     "botao": "<mascarado>",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "29ae4344",
+    "ts": "2026-04-01T16:06:31+00:00",
+    "tela": "A polícia liberou o veículo? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "29ae4344",
+    "ts": "2026-04-01T16:11:17+00:00",
+    "tela": "{NOME}, agora definiremos *o endereço para onde o veículo será levado.* Ainda não sabe onde levar? A gente facilita pra você. Basta selecionar *Quero indicação* que você terá acesso as oficinas mais próximas com descontos e condições especiais como agilidade na vistoria e liberação do conserto, peças novas e originais, parcelamento e desconto no valor da franquia, garantia e muito mais...* Selecione abaixo a opção de",
+    "humano": {
+     "texto": "<texto livre, 0 caracteres — mascarado (§13.9)>",
+     "tipo": "button_reply",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "29ae4344",
+    "ts": "2026-04-01T19:30:19+00:00",
+    "tela": "Não encontrei esta placa em nosso sistema. Vamos tentar com o *CPF* ou *CNPJ* do segurado? Por favor, digite seguindo o exemplo: *{CPF}* ou *{CPF}*",
+    "humano": {
+     "texto": "<texto livre, 7 caracteres — mascarado (§13.9)>",
+     "tipo": "text",
+     "botao": null,
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "ba9f1970",
+    "ts": "2026-04-02T13:48:55+00:00",
+    "tela": "O veículo está em garagem subsolo ou acima do nível da rua? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "ba9f1970",
+    "ts": "2026-04-02T13:49:35+00:00",
+    "tela": "O veículo é blindado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "b187d77a",
+    "ts": "2026-04-29T13:14:00+00:00",
+    "tela": "O veículo é blindado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Não",
+     "tipo": "button_reply",
+     "botao": "Não",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "b187d77a",
+    "ts": "2026-04-29T13:15:24+00:00",
+    "tela": "{NOME}, agora definiremos *o endereço para onde o veículo será levado.* Ainda não sabe onde levar? A gente facilita pra você. Basta selecionar *Quero indicação* que você terá acesso as oficinas mais próximas com descontos e condições especiais como agilidade na vistoria e liberação do conserto, peças novas e originais, parcelamento e desconto no valor da franquia, garantia e muito mais...* Selecione abaixo a opção de",
+    "humano": {
+     "texto": "Informar CEP",
+     "tipo": "button_reply",
+     "botao": "<mascarado>",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "6b4c37e4",
+    "ts": "2026-04-30T11:37:19+00:00",
+    "tela": "O veículo está desatrelado? Botão 1: Sim Botão 2: Não Botão 3: Voltar",
+    "humano": {
+     "texto": "Sim",
+     "tipo": "button_reply",
+     "botao": "Sim",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "01bf91c2",
+    "ts": "2026-05-18T14:02:27+00:00",
+    "tela": "{NOME}, identifiquei que você já tentou abrir um atendimento e preencheu as informações:",
+    "humano": {
+     "texto": "Continuar",
+     "tipo": "button_reply",
+     "botao": "<mascarado>",
+     "pulos": 2
+    }
+   },
+   {
+    "sessao": "01bf91c2",
+    "ts": "2026-05-18T14:02:28+00:00",
+    "tela": "*PLACA:* {PLACA} *Você gostaria de abrir um novo atendimento ou continuar de onde parou?* Botão 1: Continuar Botão 2: Novo atendimento",
+    "humano": {
+     "texto": "Continuar",
+     "tipo": "button_reply",
+     "botao": "Continuar",
+     "pulos": 1
+    }
+   },
+   {
+    "sessao": "21243a23",
+    "ts": "2026-09-11T19:17:04+00:00",
+    "tela": "Neste caso, como o veículo encontra-se em zona rural, passaremos a coordenada para você confirmar o endereço. Se tiver dificuldade em entender este código, por favor, copie e cole no Google Maps seguindo o passo a passo da imagem antes de confirmar a localização.",
+    "humano": {
+     "texto": "Sim",
+     "tipo": "button_reply",
+     "botao": "<mascarado>",
+     "pulos": 2
+    }
+   }
+  ]
+ },
+ {
+  "rota": "yelum/residencial/eletrodomesticos",
+  "telas": 17,
+  "pedem_algo": 11,
+  "respondidas": 11,
+  "orfas": []
+ }
+]
