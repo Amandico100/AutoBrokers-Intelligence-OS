@@ -537,6 +537,35 @@ async def _sentinela_recover(
         _classe = classe_da_tela(get_playbook(str(session.get("playbook_ref") or "")),
                                  insurer_text, slots=session.get("slots"))
         if _classe.get("handoff"):
+            # 🔴 RELER ANTES DE FALAR — SPEC-119, P-119-19.
+            #
+            # A sessão foi lida no começo da varredura. Se a atendente assumiu
+            # nesse meio-tempo, ESTE ramo entregava o dossiê assim mesmo e dizia
+            # ao segurado *"já passei seu caso para um colega"* — um SEGUNDO
+            # handoff num caso que JÁ TEM DONO, com a atendente descobrindo pelo
+            # WhatsApp do cliente.
+            #
+            # ⚠️ O ramo de ENVIO logo abaixo já relia (`_preservar_a_atendente`, a
+            # lição da SPEC-EXTRA-001.4 C). Este nasceu depois e não herdou a
+            # leitura: 📊 `test_a_atendente_na_ura_cala_o_robo` caiu de **57/0**
+            # na base `ff711bd` para **54/3** assim que a F3 passou a classificar
+            # *"qual seguro deseja utilizar … 3 - Empresarial"* como
+            # `escolhe_o_servico`.
+            #
+            # ⛔ E a leitura vem ANTES do dossiê e do aviso: depois deles já saiu
+            # mensagem, e mensagem enviada não volta.
+            try:
+                from app.services.dispatch_router import _ler_do_redis
+            
+                if _preservar_a_atendente(
+                        session, await _ler_do_redis(company_id, insurer_phone)):
+                    logger.info("[SENTINELA] tela que DECIDE, mas a atendente "
+                                "está na conversa — nada nosso sai")
+                    return "pausa_humana"
+            except Exception as e:  # noqa: BLE001 — sem reler, segue como sempre seguiu
+                logger.warning("[SENTINELA] sessão não relida antes do handoff "
+                               "da tela que decide (%s)", type(e).__name__)
+            
             await _ato_do_sentinela(company_id, session, "tela_que_decide",
                                     {"classe": _classe["chave"]})
             session["state"] = "needs_human"

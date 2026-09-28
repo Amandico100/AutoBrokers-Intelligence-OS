@@ -180,6 +180,44 @@ def tela_real():
 TELA = tela_real()
 
 
+def tela_que_vai_ao_cerebro():
+    """🔴 UMA TELA QUE O SENTINELA AINDA LEVA AO CÉREBRO — SPEC-119, §9.3.
+
+    A `TELA` acima (*"qual seguro deseja utilizar … 3 - Empresarial"*) era a
+    única deste arquivo, e a SPEC-119 (fatia F3) ensinou o produto a mandar
+    essa tela **a uma pessoa**, porque escolher nela pelo segurado faz o
+    chamado ser recusado no local. Isso está CERTO — e apagou a corrida que o
+    bloco GC-2b existe para provar: se o ramo devolve antes, o Cérebro nunca
+    pensa, e *"a atendente entra enquanto ele pensa"* deixa de ter o que testar.
+
+    ⚠️ Baixar a asserção seria matar a lição. Ela MIGRA: a corrida passa a ser
+    provada numa tela que **ainda** vai ao Cérebro — escolhida pelo MOTOR
+    (`classe_da_tela` diz que não é handoff **e** `match_ura_step` não a
+    conhece), nunca por texto escolhido a dedo. 📊 Havia 28 candidatas no
+    acervo em 28/09/2026; se um dia houver zero, este teste falha aqui em vez
+    de passar por engano.
+    """
+    for linha in open(CORPUS, encoding="utf-8"):
+        t = json.loads(linha)["text"]
+        if len(t) < 40 or "?" not in t:
+            continue
+        if D.classe_da_tela(PB, t).get("handoff"):
+            continue
+        if D.match_ura_step(PB, t, subservice="encanador"):
+            continue
+        return t
+    raise AssertionError(
+        "nenhuma tela do acervo chega mais ao Cérebro do Sentinela — ou o "
+        "corredor passou a conhecer todas, ou TODAS viraram handoff. Nos dois "
+        "casos a corrida do GC-2b precisa ser repensada, não afrouxada.")
+
+
+from app.services import corridor_playbooks as CP  # noqa: E402
+
+PB = CP.get_playbook(REF)
+TELA_AO_CEREBRO = tela_que_vai_ao_cerebro()
+
+
 def nova_sessao(empresa):
     s = D.new_dispatch_session(
         case_id=f"gc-{empresa}", company_id=empresa, playbook_ref=REF, subservice="encanador",
@@ -360,7 +398,7 @@ print("[GC-2b] A CORRIDA: ela entra enquanto o Cérebro do Sentinela pensa")
 print("=" * 74)
 REDIS.d.clear()
 velha = nova_sessao(A)
-velha["transcript"].append({"direction": "in", "text": TELA,
+velha["transcript"].append({"direction": "in", "text": TELA_AO_CEREBRO,
                             "at": (datetime.now(timezone.utc) - timedelta(seconds=40)).isoformat()})
 rodar(R.save_active_dispatch(A, URA, velha))
 velha = rodar(R.load_active_dispatch(A, URA))          # o Vigia leu ANTES
@@ -390,7 +428,7 @@ checar(D.pausa_humana_aberta(velha) and int(velha.get("sentinela_attempts") or 0
 #    linha, o guarda ficava VERDE com o Vigia ignorando quem assumiu (mutação M4).
 REDIS.d.clear()
 velha2 = nova_sessao(A)
-velha2["transcript"].append({"direction": "in", "text": TELA,
+velha2["transcript"].append({"direction": "in", "text": TELA_AO_CEREBRO,
                              "at": (datetime.now(timezone.utc) - timedelta(seconds=40)).isoformat()})
 rodar(R.save_active_dispatch(A, URA, velha2))
 velha2 = rodar(R.load_active_dispatch(A, URA))          # o Vigia leu ANTES
@@ -410,6 +448,47 @@ checar(acao2 == "pausa_humana" and ENVIOS_WA == [] and D.humano_assumiu(velha2)
        "🔴 ela ASSUMIU enquanto o Cérebro pensava: o Sentinela NÃO envia e a cópia "
        "dele fica com `needs_human`/`humano_assumiu`", f"{acao2} {ENVIOS_WA} {velha2.get('state')}")
 
+print()
+print("=" * 74)
+print("[GC-2b2] A TELA QUE DECIDE, COM ELA JÁ NA CONVERSA — e nada sai")
+print("=" * 74)
+# 🔴 A LIÇÃO NOVA DESTA SPEC (P-119-19) — o outro lado do GC-2b.
+#
+# O ramo `tela_que_decide` (F4b) manda o caso a uma pessoa ANTES do Cérebro e,
+# por isso, ANTES da releitura que o ramo de envio já fazia desde a
+# SPEC-EXTRA-001.4 C. 📊 Com a atendente JÁ na conversa, o Sentinela entregava
+# o dossiê e dizia ao segurado *"já passei seu caso para um colega"* — um
+# SEGUNDO handoff num caso que JÁ TEM DONO, com ela descobrindo pelo WhatsApp
+# do cliente.
+#
+# ⚠️ O GC-2b prova a CORRIDA (ela entra enquanto o Cérebro pensa). Este prova
+# o caso em que ela JÁ ESTAVA — o único que o ramo novo alcança, porque ele
+# devolve antes de qualquer chamada lenta.
+REDIS.d.clear()
+velha3 = nova_sessao(A)
+velha3["transcript"].append({"direction": "in", "text": TELA,
+                             "at": (datetime.now(timezone.utc) - timedelta(seconds=40)).isoformat()})
+rodar(R.save_active_dispatch(A, URA, velha3))
+velha3 = rodar(R.load_active_dispatch(A, URA))        # o Vigia leu ANTES
+rodar(R.note_manual_outbound(A, URA, "1", foi_humano=True))
+rodar(R.note_manual_outbound(A, URA, "deixa comigo", foi_humano=True))
+
+
+async def _cerebro_que_nao_deve_ser_chamado(company_id, session, texto):
+    raise AssertionError("o Cérebro foi chamado numa tela que DECIDE")
+
+
+W._adaptive_reply = _cerebro_que_nao_deve_ser_chamado
+ENVIOS_WA.clear()
+checar(D.classe_da_tela(PB, TELA).get("handoff") is True,
+       "CONTROLE: a TELA deste bloco é mesmo uma tela que DECIDE",
+       str(D.classe_da_tela(PB, TELA)))
+acao3 = rodar(W._sentinela_recover(A, URA, velha3, _WaVigia(), {"id": "canal"}))
+checar(acao3 == "pausa_humana" and ENVIOS_WA == [],
+       "🔴 tela que DECIDE + a atendente JÁ na conversa: o Sentinela relê, "
+       "NÃO entrega dossiê e NÃO avisa o segurado", f"{acao3} {ENVIOS_WA}")
+checar(int(velha3.get("sentinela_attempts") or 0) == 0,
+       "e a tentativa não é gasta — ninguém errou")
 print()
 print("=" * 74)
 print("[GC-2c] A CORRIDA NO ROTEADOR (juiz fresco, B1): ela entra enquanto o Cérebro redige")
