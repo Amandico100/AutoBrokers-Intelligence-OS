@@ -75,7 +75,26 @@ certo("carro_reserva" in nomeados,
       str(sorted(nomeados)))
 
 # ── 2 · nenhuma rota fica sem veredito ───────────────────────────────────────
-certo(len(hoje) == 30, "as 30 rotas SEM_CORPUS tem veredito", str(len(hoje)))
+#
+# 🔴 TRINTA VIROU TRINTA E UMA em 28/09/2026, e o numero nao e' um detalhe
+#    contabil: ele e' a CONSEQUENCIA DECLARADA da correcao da F1 desta SPEC.
+#
+#    📊 A tabela `DESEMPATE` afirmava que a tecla `1` da bradesco ("o veiculo
+#    estava estacionado e nao liga") dava `bateria`. Era inferencia. As sessoes
+#    2c05415b e 57149865 mostram a URA respondendo *"assistencia de um
+#    **tecnico**"*, e a tabela passou a dizer `tecnico`. `bradesco/auto` nao tem
+#    rota `tecnico` -- logo `bradesco/auto/bateria` ficou com ZERO sessoes.
+#
+#    ⚠️ Isso NAO e' perda de amostra: e' a medicao de que ninguem pediu recarga
+#    de bateria a' bradesco neste acervo. Quem pede pane recebe TECNICO. Manter o
+#    30 aqui seria manter a verdade vencida (CLAUDE.md §9.3).
+certo(len(hoje) == 31, "as 31 rotas SEM_CORPUS tem veredito", str(len(hoje)))
+certo(("bradesco", "auto", "bateria") in hoje,
+      "🔴 e a 31a e' `bradesco/auto/bateria` -- a consequencia declarada da F1",
+      str(sorted(k for k in hoje if k[0] == "bradesco")))
+certo(all(str(v).strip() for v in hoje.values()),
+      "   — e NENHUMA delas ficou com veredito vazio (e' isto que esta linha guarda)",
+      str([k for k, v in hoje.items() if not str(v).strip()]))
 certo(not [k for k, v in hoje.items() if v == "🔴 SUSPEITO DE BUG"],
       "e hoje NENHUMA delas e suspeita de bug",
       str([k for k, v in hoje.items() if v == "🔴 SUSPEITO DE BUG"]))
@@ -108,6 +127,47 @@ certo({k: v for k, v in mutado.items() if k[0] != "mapfre"} ==
       {k: v for k, v in hoje.items() if k[0] != "mapfre"},
       "   — e as outras 26 rotas nao se moveram (a mutacao foi so na mapfre)")
 
+certo(vereditos() == hoje,
+      "   — e o veredito volta ao que era depois de restaurar")
+
+# ── 3b · 🔴 O CONTROLE QUE LIGA O 31 A' CAUSA DELE ──────────────────────────
+#    Sem esta metade, "31" e' um numero que alguem digitou. Com ela o numero tem
+#    dono: as 36 telas que hoje o acervo rotula `tecnico` em `bradesco/auto` eram
+#    `bateria` ate' a F1 desta SPEC. Devolvendo o rotulo antigo — so' em memoria —
+#    a rota recupera corpus e a lista volta a ter 30.
+#
+#    📊 E a contagem e' medida aqui, nao afirmada: `bradesco/auto` tem 36 telas
+#    com `servico == "tecnico"`, e `tecnico` NAO e' rota deste corredor (as rotas
+#    sao bateria - chaveiro - guincho - pneu). E' por isso que a bateria zerou.
+_bd = _original("bradesco", "auto")
+_como_tecnico = [l for l in _bd if str(l.get("servico")) == "tecnico"]
+certo(len(_como_tecnico) >= 30,
+      f"🔴 CONTROLE: o acervo da bradesco rotula {len(_como_tecnico)} telas como "
+      "`tecnico` — e `tecnico` nao e' rota deste corredor",
+      f"{len(_como_tecnico)} telas")
+
+
+def _tecnico_volta_a_ser_bateria(seguradora, ramo):
+    linhas = _original(seguradora, ramo)
+    if (seguradora, ramo) == ("bradesco", "auto"):
+        return [dict(l, servico="bateria") if str(l.get("servico")) == "tecnico" else l
+                for l in linhas]
+    return linhas
+
+
+RC.RP.carregar_corpus = _tecnico_volta_a_ser_bateria
+try:
+    _com_bateria = vereditos()
+finally:
+    RC.RP.carregar_corpus = _original
+
+certo(("bradesco", "auto", "bateria") not in _com_bateria and len(_com_bateria) == 30,
+      "🔴 CONTROLE: com o rotulo ANTIGO de volta, a rota ganha corpus e sobram "
+      "30 — o 31 tem causa medida, nao e' numero digitado",
+      f"{len(_com_bateria)} rotas")
+certo({k: v for k, v in _com_bateria.items() if k[0] != "bradesco"} ==
+      {k: v for k, v in hoje.items() if k[0] != "bradesco"},
+      "   — e nenhuma outra seguradora se moveu (a mutacao foi so na bradesco)")
 certo(vereditos() == hoje,
       "   — e o veredito volta ao que era depois de restaurar")
 
