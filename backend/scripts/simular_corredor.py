@@ -557,6 +557,14 @@ def tabela(sims: List[Simulacao]) -> str:
         L.append(f"  {faixa:16s} {contagem.get(faixa, 0):3d} de {len(sims)}")
     por_causa = collections.Counter(s.causa for s in sims if s.causa)
     L.append("  causas: " + " · ".join(f"{k}={v}" for k, v in sorted(por_causa.items())))
+    # 🔴 SPEC-083 §7: *"truncar calado lê-se como 'cobrimos tudo'"*. O achado que
+    #    nenhuma rota reivindicou é REAL — ele só não tem rota, porque a tela em que
+    #    acontece foi etiquetada com OUTRO serviço. Sem esta linha, a soma
+    #    `A=0 B=0 C=0` na coluna de cada rota leria-se como "o conferidor está mudo".
+    orfaos = achados_fora_de_rota(sims)
+    L.append(f"  achados do conferidor FORA de rota: {len(orfaos)}")
+    for a in orfaos:
+        L.append(str(a))
     return "\n".join(L)
 
 
@@ -597,6 +605,21 @@ def markdown(sims: List[Simulacao]) -> str:
                      f"{len(s.replay.orfas_funcionais)} | {g.get('A', 0)} | "
                      f"{g.get('B', 0)} | {g.get('C', 0)} | "
                      f"{'sim' if s.desfecho.chegou else 'não'} | {motivo} |")
+        L.append("")
+    orfaos = achados_fora_de_rota(sims)
+    L += ["## Os achados que NENHUMA rota reivindicou", "",
+          "🔴 *“truncar calado lê-se como ‘cobrimos tudo’”* (SPEC-083 §7). Estes "
+          "achados do conferidor são reais — eles só não têm rota, porque a tela em "
+          "que acontecem foi etiquetada com **outro** serviço, e o motor não casa "
+          "aquele passo para o serviço da rota. Eles não entram na faixa de nenhuma "
+          "rota, e é por isso que aparecem aqui.", ""]
+    if not orfaos:
+        L += ["_nenhum._", ""]
+    else:
+        L += ["| regra | seguradora | ramo | passo | por quê |", "|---|---|---|---|---|"]
+        for a in orfaos:
+            L.append(f"| {'🔴' if a.grave else '⚠️'} {a.regra} | {a.seguradora} | "
+                     f"{a.ramo} | `{a.passo}` | {a.porque} |")
         L.append("")
     fura = [(s, x) for s in sims for x in s.situacoes]
     L += ["## Bateria 5 — condomínio · empresarial · sinistro", ""]

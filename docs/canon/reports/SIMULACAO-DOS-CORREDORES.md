@@ -1,6 +1,6 @@
 # A simulação dos corredores — a lista por rota
 
-> gerado em 2026-09-27T23:58:29+00:00 · commit `4077522` · corpus `backend/tests/corpus/telas_reais/`
+> gerado em 2026-09-28T00:08:01+00:00 · commit `a83dc06` · corpus `backend/tests/corpus/telas_reais/`
 
 🔴 **Offline por construção:** corpus versionado + motor do produto. Nenhum modelo foi chamado, nenhum `observed_events` foi lido.
 
@@ -99,6 +99,53 @@ Cada rota foi atravessada com as **telas reais** do acervo, tela a tela, e cada 
 | `zurich/auto/pneu` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `zurich/auto/socorro_mecanico` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `zurich/auto/vidros` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
+
+## Os achados que NENHUMA rota reivindicou
+
+🔴 *“truncar calado lê-se como ‘cobrimos tudo’”* (SPEC-083 §7). Estes achados do conferidor são reais — eles só não têm rota, porque a tela em que acontecem foi etiquetada com **outro** serviço, e o motor não casa aquele passo para o serviço da rota. Eles não entram na faixa de nenhuma rota, e é por isso que aparecem aqui.
+
+| regra | seguradora | ramo | passo | por quê |
+|---|---|---|---|---|
+| ⚠️ B | alfa | auto | `selecionar_endereco_veiculo` | responde `1` e a tela oferece apenas ['2'] -- a URA rejeita |
+| ⚠️ C | allianz | residencial | `aparelho_modelo` | e restrito a ['eletrodomesticos', 'maquina_de_lavar'] e esta respondendo uma tela que so aparece em sessoes de ['ar_condicionado'] (1 sessao/sessoes) -- 1 sessao so: pode ser a CLASSIFICACAO |
+| ⚠️ A | azul | auto | `cor_menu` | o slot `veiculo_cor_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | azul | auto | `tecnico_periodo` | o slot `periodo_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | azul | auto | `tecnico_horario` | o slot `horario_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | azul | auto | `pedir_complemento` | o slot `endereco_complemento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | azul | auto | `cor_menu` | o slot `veiculo_cor_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ C | bradesco | auto | `pane_detalhe_bateria` | e restrito a ['bateria'] e esta respondendo uma tela que so aparece em sessoes de ['guincho'] (1 sessao/sessoes) -- 1 sessao so: pode ser a CLASSIFICACAO |
+| ⚠️ B | bradesco | auto | `endereco_confirma_bradesco` | responde o rotulo 'Sim' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
+| ⚠️ B | bradesco | auto | `destino_rodovia` | responde o rotulo 'Nao' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
+| ⚠️ B | bradesco | auto | `confirmar_abertura_bradesco` | responde o rotulo 'Sim' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
+| ⚠️ B | bradesco | auto | `reentrada_confirma_veiculo` | responde o rotulo 'Sim' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
+| ⚠️ A | bradesco | auto | `agendamento_hora_bradesco` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ B | hdi | auto | `confirmar_endereco_digitado` | responde o rotulo 'Sim' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
+| ⚠️ A | hdi | auto | `agendamento_hora` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | hdi | residencial | `periodo_preferido` | o slot `periodo_preferido` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ C | hdi | residencial | `detalhe_do_vazamento` | e restrito a ['encanador'] e esta respondendo uma tela que so aparece em sessoes de ['eletricista'] (1 sessao/sessoes) -- 1 sessao so: pode ser a CLASSIFICACAO |
+| ⚠️ C | hdi | residencial | `menu_item_linha_branca` | e restrito a ['eletrodomesticos'] e esta respondendo uma tela que so aparece em sessoes de ['eletricista'] (1 sessao/sessoes) -- 1 sessao so: pode ser a CLASSIFICACAO |
+| ⚠️ A | mapfre | auto | `menu_assunto_veiculo` | o slot `assunto_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | mapfre | auto | `codigo_corretor` | o slot `codigo_corretor` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `menu_servico_resid` | o slot `servico_texto` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `horario_agendamento_resid` | o slot `horario_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `horario_agendamento_resid` | o slot `horario_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `horario_agendamento_resid` | o slot `horario_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `horario_agendamento_resid` | o slot `horario_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `menu_servico_resid` | o slot `servico_texto` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `eletro_categoria` | o slot `eletrodomestico_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `eletro_categoria` | o slot `eletrodomestico_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ A | porto | residencial | `eletro_categoria` | o slot `eletrodomestico_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| 🔴 C | yelum | auto | `chave_o_que_aconteceu` | e restrito a ['chaveiro'] e esta respondendo uma tela que so aparece em sessoes de ['guincho'] (2 sessao/sessoes) |
+| ⚠️ A | yelum | auto | `veiculo_trancado` | o slot `veiculo_trancado` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| 🔴 C | yelum | auto | `veiculo_trancado` | e restrito a ['chaveiro'] e esta respondendo uma tela que so aparece em sessoes de ['guincho'] (2 sessao/sessoes) |
+| ⚠️ A | yelum | auto | `agendamento_hora` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+| ⚠️ B | yelum | auto | `continuar_com_placa` | responde o rotulo 'Automóvel' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
+| ⚠️ A | yelum | residencial | `periodo_preferido` | o slot `periodo_preferido` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
 
 ## Bateria 5 — condomínio · empresarial · sinistro
 
