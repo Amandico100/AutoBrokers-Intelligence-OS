@@ -494,6 +494,29 @@ def _familia_de_ramo(valor: Any) -> Optional[str]:
     return provedor.familia_de_ramo(texto)
 
 
+def _familia_de_ramo_do_rotulo(valor: Any) -> Optional[str]:
+    """A família de ramo NOMEADA dentro de um rótulo de TELA — mesma autoridade.
+
+    🔴 A diferença para `_familia_de_ramo` é medida, não estilística: aquela casa
+    o rótulo INTEIRO, que é o certo para um código de ramo vindo da base
+    (`AUTOM`, `VIND`); esta lê uma FRASE que a seguradora escreveu.
+    📊 28/09/2026: *"Seguro Condomínio"*, *"Condomínio (áreas comuns)"* e
+    *"Empresarial / PME"* davam `None` — e `None` na trava significa
+    *"segue sozinho"*. ⚠️ O controle continua verde: *"Residência, Condomínio ou
+    Empresa"* nomeia TRÊS famílias e continua devolvendo `None`.
+    """
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    if texto in _ROTULO_DO_RAMO:
+        return texto
+    provedor = _modulo_do_produto(
+        "app.providers.policy_data_provider",
+        ("app.providers.policy_data_provider",
+         os.path.join("..", "providers", "policy_data_provider.py")))
+    return provedor.familia_de_ramo_do_rotulo(texto)
+
+
 def rotulo_do_ramo_da_apolice(valor: Any) -> Optional[str]:
     """O rótulo da tela "Qual seguro deseja utilizar?" para o ramo da apólice, ou `None`."""
     return _ROTULO_DO_RAMO.get(_familia_de_ramo(valor) or "")
@@ -2077,8 +2100,34 @@ _RX_ESCOLHE_O_SERVICO = re.compile(
 #: pergunta *"posso confirmar a ABERTURA da sua assistência?"* (bradesco,
 #: 72af1ae1) não está conduzindo: está abrindo.
 _RX_ABRE_AGENDA_CANCELA = re.compile(
-    r"\babertura\b|abrir (?:o |a |um |uma )?(?:chamado|servi[çc]o|solicita[çc][ãa]o|"
-    r"assist[êe]ncia|atendimento)|\bagendar\b|\bagendamento\b|\bagendad|\breagendar\b|"
+    # 🔴 A PALAVRA `novo` NO MEIO MATAVA O VETO — SPEC-119, conserto B, item 3.
+    #
+    # 📊 Medido em 28/09/2026, com o padrão antigo `abrir (?:o |a |um |uma )?…`:
+    #
+    #     'abrir atendimento'          -> True
+    #     'abrir novo atendimento'     -> False   <- a redação REAL
+    #     'abrir um novo atendimento'  -> False   <- a redação REAL
+    #     'reagendado'                 -> False   ('reagendar' -> True)
+    #
+    # 🔴 A tela real é `yelum-auto.jsonl`, sessão `01bf91c2`: *"Você gostaria de
+    #    abrir um novo atendimento ou continuar de onde parou?"*. Nenhum passo
+    #    casa, nenhum gatilho dispara, e `classe_da_tela` respondia
+    #    `conduz/navegacao` — com a frase *"todas as opções desta tela apenas
+    #    movem o fluxo"*. Duas respostas, dois desfechos: continuar o acionamento
+    #    em curso, ou abrir um SEGUNDO e perder o protocolo do primeiro.
+    #    ⚠️ Mesma falha em `tokio-auto`, sessão `d8a81c33`.
+    #
+    # ⚠️ E o preço subiu com esta SPEC: o prompt que o modelo recebe afirma
+    #    *"⛔ NÃO responda NAO_SEI aqui"* quando a classe é `navegacao`. A rede
+    #    de segurança (`NAO_SEI` → `model_declined`) foi DESLIGADA POR INSTRUÇÃO
+    #    exatamente na tela em que errar a classe custa o protocolo.
+    #
+    # 🔴 A janela de até dois adjetivos é medida, não elegante: o acervo escreve
+    #    `abrir atendimento`, `abrir um novo atendimento` e `abrir um novo
+    #    chamado`. `\breagendad` entra pela mesma razão que `\bagendad`.
+    r"\babertura\b|abrir\s+(?:\w+\s+){0,2}(?:chamado|servi[çc]o|solicita[çc][ãa]o|"
+    r"assist[êe]ncia|atendimento)|\bagendar\b|\bagendamento\b|\bagendad|"
+    r"\breagendar\b|\breagendad|"
     # ⚠️ `encerrar` e `desistir` NÃO entram, e é medição: eles são RÓTULOS de
     #    navegação. 📊 `mapfre-auto b979f244` manda *"O que gostaria de fazer
     #    agora? Botão 1: Voltar Botão 2: Encerrar"* — duas opções que só movem
@@ -3576,7 +3625,14 @@ def _apolice_de_areas_comuns(valor: str, rotulo: Optional[str],
         alvo = dict(opcoes_numeradas(tela)).get(str(valor).strip())
     if not alvo:
         alvo = valor
-    familia = _familia_de_ramo(alvo)
+    # 🔴 CONTENÇÃO POR PALAVRA, não casamento exato — SPEC-119, conserto B, item 6.
+    #    📊 A seguradora escreve *"Seguro Condomínio"*, *"Condomínio (áreas
+    #    comuns)"* e *"Empresarial / PME"*; com o casamento exato os três davam
+    #    `None`, e `None` aqui é *"segue sozinho"*.
+    #    ⚠️ CONTROLE: *"Residência, Condomínio ou Empresa"* nomeia TRÊS famílias
+    #    e continua `None` — nela a opção 1 É a apólice residencial, e mandá-la
+    #    a uma pessoa seria trocar um defeito por outro.
+    familia = _familia_de_ramo_do_rotulo(alvo)
     if familia not in _RAMOS_QUE_VAO_A_UMA_PESSOA:
         return None
     qual = "de condomínio" if familia == "cond" else "empresarial"
@@ -4988,6 +5044,24 @@ def guard_human_phase_reply(reply: str, session: Dict[str, Any],
 
     if "NAO_SEI" in normalized:
         return {"ok": False, "reason": "model_declined", "reply": text}
+    # =====================================================================
+    # 🔴 RASCUNHO QUE NÃO É FRASE — SPEC-119, conserto B, item 7
+    # =====================================================================
+    #
+    # 📊 Medido em 28/09/2026: de dez rascunhos defeituosos, OITO passavam por
+    #    este fiscal. Entre eles o `repr` de uma lista de blocos, um JSON de
+    #    `tool_use`, e um markdown com cerca ``` — todos curtos, todos "sem
+    #    número inventado", todos aprovados e enviados à seguradora.
+    #
+    # ⚠️ Esta trava é a METADE BARATA do conserto, e ela é declarada como tal:
+    #    ela pega o que tem FORMA de estrutura de dados. **Ela não confere se a
+    #    resposta pertence às opções da tela** — isso é P-119-01, escrita.
+    #
+    # 🔴 O outro lado do mesmo defeito está em `app/agents/utils.py`: o
+    #    `extract_text_from_content` devolvia o `repr` de um dict, e era ele que
+    #    fabricava o rascunho que esta linha agora barra.
+    if text[:1] in "{[" or text.startswith("```"):
+        return {"ok": False, "reason": "nao_e_frase", "reply": text}
     if len(text) > 400:
         return {"ok": False, "reason": "too_long", "reply": text}
     captured = session.get("captured") or {}
