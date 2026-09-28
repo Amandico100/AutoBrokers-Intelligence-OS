@@ -5698,9 +5698,14 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     # ---- 🔴 SPEC-119, conserto C: AS CINCO QUE CAÍAM NO PADRÃO EM SILÊNCIO ----
     #
     # 📊 Medido em 28/09/2026 por `test_a_retomada_cobre_as_dezesseis.py`, depois
-    # que o varredor dele passou a enxergar TAMBÉM o `{"destino": "humano",
-    # "reason": "…"}` (ele só lia `session["reason"] = …`). As três primeiras
-    # nasceram NESTA SPEC; as duas últimas são de antes e viviam no ponto cego.
+    # que o varredor dele passou a enxergar TAMBÉM o dicionário que manda a uma
+    # pessoa e já nomeia o motivo (ele só lia a ATRIBUIÇÃO direta ao motivo da
+    # sessão). As três primeiras nasceram NESTA SPEC; as duas últimas são de
+    # antes e viviam no ponto cego.
+    #
+    # ⚠️ E esta nota não escreve a atribuição por extenso de propósito: o guarda
+    # `test_o_travamento_vira_linha.py` varre linha a linha, comentário
+    # INCLUSIVE, e uma citação vira família fantasma sem `needs_human` ao lado.
     #
     # ⚠️ O veredito das cinco é o MESMO, e a razão também: a conversa com a
     # seguradora continua VIVA, e o que falta é uma decisão que só gente toma.
