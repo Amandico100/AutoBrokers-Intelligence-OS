@@ -479,6 +479,7 @@ async def _sentinela_recover(
     Retorna a ação tomada (telemetria/testes)."""
     from app.services.insurer_dispatch_service import (
         build_handoff_dossier,
+        classe_da_tela,
         guard_human_phase_reply,
         id_da_tela,
         registrar_menu_pendente,
@@ -496,6 +497,65 @@ async def _sentinela_recover(
     def _consumir() -> None:
         session["sentinela_attempts"] = attempts + 1
         por_tela[tela_id] = na_tela + 1
+
+    # =====================================================================
+    # 🔴 A TELA QUE DECIDE VALE AQUI TAMBÉM — SPEC-119 F4b, A COSTURA DA F3.
+    # =====================================================================
+    #
+    # A F3 desta SPEC criou a classe de passo em
+    # `insurer_dispatch_service.classe_da_tela`, e duas famílias dela têm
+    # `handoff: True`: `escolhe_o_servico` e `aceite_de_custo`. O corredor as
+    # manda a uma PESSOA e NÃO convida o cérebro a opinar (`insurer_dispatch_
+    # service.py`, o ramo `tela_que_decide:`).
+    #
+    # ⛔ O SENTINELA NÃO PASSAVA POR LÁ. 📊 Medido em 27/09/2026 pela bateria 4
+    # (`scripts/bateria_do_vigia.py`, cena ②), com o laço REAL sobre a tela REAL
+    # da allianz (acervo `allianz-auto.jsonl`, sessão 4971b50b, serviço guincho):
+    #
+    #     tela ..... "Podemos levar o veículo para um oficina referenciada
+    #                 Allianz? … Desconto de até {VALOR_RS} na franquia"
+    #     classe ... aceite_de_custo · handoff=True
+    #     corredor . needs_human, reason=tela_que_decide:aceite_de_custo
+    #     🔴 SENTINELA ... enviou "1" para a seguradora
+    #
+    # 🔴 Trinta segundos depois, o MESMO texto recebia veredito OPOSTO — e o
+    # caminho que aceitava a franquia em nome do segurado era o que chegava à
+    # seguradora. Pelo TESTE DO PRODUTO (protocolo §2) isso muda um byte que
+    # chega ao SEGURADO: é blocker, não pendência.
+    #
+    # ⚠️ E a cirurgia é a MESMA da F3, de propósito estreita: só as duas famílias
+    # de `handoff: True`. 📊 `alternativa_de_conteudo` (o menu desconhecido)
+    # continua indo ao cérebro, porque mandá-lo a uma pessoa desfaria a decisão
+    # do Founder de 05/08/2026. ⛔ E não existe régua nova aqui: quem classifica
+    # é a função da F3, a única (CLAUDE.md §5).
+    #
+    # ⚠️ Antes dos tetos, e antes do cérebro: a chamada ao modelo é economizada e
+    # a tentativa NÃO é consumida — ninguém errou, a tela é de pessoa.
+    if insurer_text.strip():
+        from app.services.corridor_playbooks import get_playbook
+
+        _classe = classe_da_tela(get_playbook(str(session.get("playbook_ref") or "")),
+                                 insurer_text, slots=session.get("slots"))
+        if _classe.get("handoff"):
+            await _ato_do_sentinela(company_id, session, "tela_que_decide",
+                                    {"classe": _classe["chave"]})
+            session["state"] = "needs_human"
+            session["reason"] = f"tela_que_decide:{_classe['chave']}"
+            session["motivo_legivel"] = {"campo": _classe["chave"], "slot": "",
+                                         "rotulo": _classe["porque"]}
+            dossier = build_handoff_dossier(session, reason=_classe["porque"])
+            # 🔴 O DOSSIÊ E O AVISO AO SEGURADO SÃO OS MESMOS DO RAMO DE
+            #    ESGOTAMENTO, logo abaixo — e a razão é a SPEC-085 B.0: handoff
+            #    que não avisa ninguém é o segurado esperando no escuro. ⚠️ O
+            #    corredor não precisa disto no ramo dele (quem o chamou entrega);
+            #    o Sentinela roda no scheduler e não tem ninguém depois dele.
+            session["dossier_sent"] = await _entregar_dossie_com_marcador(
+                company_id, session, dossier, wa, integration)
+            session["segurado_avisado"] = await _avisar_o_segurado(session, wa, integration)
+            logger.warning("[SENTINELA] 🔴 tela que DECIDE (%s) — handoff, e o cérebro "
+                           "NÃO foi convidado a opinar: %s",
+                           _classe["chave"], _classe["porque"])
+            return "tela_que_decide"
 
     if na_tela < MAX_TENTATIVAS_POR_TELA and attempts < MAX_TENTATIVAS_NA_SESSAO:
         reply = await _adaptive_reply(company_id, session, insurer_text)
@@ -822,8 +882,36 @@ async def _adaptive_reply(company_id: str, session: Dict[str, Any], insurer_text
             [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])],
             company_id=str(company_id),
         )
-        content = getattr(result, "content", None)
-        return str(content).strip() if content else None
+        # =================================================================
+        # 🔴 `.content` DE UM MODELO DE RACIOCÍNIO É UMA **LISTA DE BLOCOS**
+        #    — SPEC-119 F4b, e este era o defeito que matava o Sentinela.
+        # =================================================================
+        #
+        # 📊 Medido em 27/09/2026 pela bateria 4 (`scripts/bateria_do_vigia.py
+        # --cerebro real`), laço REAL, duas tentativas, rota `dispatch` =
+        # `anthropic:claude-opus-5-5`. `str(content)` devolvia:
+        #
+        #     "[{'id': 'rs_0ba608…', 'summary': [], 'type': 'reasoning',
+        #        'content': [], 'encrypted_content': 'gAAAAABqubKOcQyFEQwA…'}]"
+        #
+        # 🔴 **O Sentinela não desentravou NENHUMA das duas vezes.** O fiscal
+        # recusou por `too_long` (> 400 caracteres), a escada esgotou e o caso
+        # virou handoff — em 2 de 2. O cérebro do acionamento estava 100 % fora
+        # do ar desde que a rota `dispatch` passou a apontar para um modelo de
+        # raciocínio (SPEC-116 U8), e nada acusava: o efeito era *"o Sentinela
+        # nunca recupera"*, que se lê como URA difícil.
+        #
+        # ⚠️ E o que salvava não era desenho, era SORTE: com uma resposta de
+        # ≤ 400 caracteres o fiscal teria APROVADO, e o blob de raciocínio
+        # cifrado iria para a seguradora como se fosse a tecla do menu.
+        #
+        # ⛔ Nenhum extrator novo aqui (CLAUDE.md §5): `extract_text_from_content`
+        # é a função do produto que já faz isto — ela pega os blocos `type=text`
+        # e IGNORA os de `reasoning`, e é a mesma que o `agent_node` usa.
+        from app.agents.utils import extract_text_from_content
+
+        texto = extract_text_from_content(getattr(result, "content", None)).strip()
+        return texto or None
     except Exception as e:  # noqa: BLE001
         logger.error(f"[SENTINELA] cérebro adaptativo falhou: {type(e).__name__}")
         return None

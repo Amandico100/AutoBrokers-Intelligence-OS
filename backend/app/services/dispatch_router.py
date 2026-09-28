@@ -3405,7 +3405,22 @@ async def o_cerebro_ja_sabe(company_id: str, session: Dict[str, Any], *, slot: s
             # a reserva da rota. Sem rota → erro → o except devolve (None, "").
             chamada = invocar_com_reserva("dispatch", mensagens, company_id=str(company_id))
         resposta = await asyncio.wait_for(chamada, timeout=20)
-        bruto = str(getattr(resposta, "content", resposta) or "").strip()
+        # 🔴 SPEC-119 F4b — `.content` de modelo de RACIOCÍNIO é LISTA DE BLOCOS.
+        #
+        # 📊 Medido em 27/09/2026 no caminho irmão (o Sentinela), rota `dispatch`
+        # = `anthropic:claude-opus-5-5`: `str(content)` devolve
+        # `"[{'type': 'reasoning', 'encrypted_content': 'gAAAAAB…'}]"`. Aqui isso
+        # ia para `valor_tem_origem`, que — corretamente — não acharia origem
+        # nenhuma e recusaria: o Cérebro do `o_cerebro_ja_sabe` ficaria MUDO
+        # sempre, e o sintoma seria *"o modelo nunca sabe"*.
+        #
+        # ⛔ `extract_text_from_content` é a função do produto (CLAUDE.md §5); o
+        # `or resposta` do original fica, para o caso de um provedor devolver
+        # string crua.
+        from app.agents.utils import extract_text_from_content
+
+        _cru = getattr(resposta, "content", resposta)
+        bruto = (extract_text_from_content(_cru) or "").strip()
     except Exception as e:  # noqa: BLE001 — o Cérebro nunca derruba o corredor
         logger.warning("[CEREBRO ANTES] consulta não concluída (%s)", type(e).__name__)
         return None, ""

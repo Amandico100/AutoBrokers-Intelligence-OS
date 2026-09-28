@@ -1132,7 +1132,23 @@ async def process_whatsapp_message_background(
                         [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])],
                         company_id=str(company_id),
                     )
-                    return getattr(result, "content", None)
+                    # 🔴 SPEC-119 F4b — `.content` de modelo de RACIOCÍNIO é uma
+                    #    LISTA DE BLOCOS, e este `return` a entregava crua.
+                    #
+                    # 📊 Medido em 27/09/2026 no caminho IRMÃO deste (o Sentinela,
+                    # `dispatch_watchdog._adaptive_reply`), com a rota `dispatch` =
+                    # `anthropic:claude-opus-5-5`: o que voltava era
+                    # `"[{'type': 'reasoning', 'encrypted_content': 'gAAAAAB…'}]"`.
+                    # Aqui a lista seguia para `guard_human_phase_reply`, que a
+                    # trataria como a resposta à URA.
+                    #
+                    # ⛔ Extrator nenhum novo (CLAUDE.md §5): `extract_text_from_content`
+                    # é a função do produto que pega os blocos `type=text` e ignora
+                    # os de `reasoning` — a mesma que o `agent_node` usa.
+                    from app.agents.utils import extract_text_from_content
+
+                    return extract_text_from_content(
+                        getattr(result, "content", None)) or None
                 except Exception as e:  # noqa: BLE001
                     logger.error(f"[WEBHOOK] human phase LLM failed: {type(e).__name__}")
                     return None
