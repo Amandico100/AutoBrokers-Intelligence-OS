@@ -138,7 +138,17 @@ def test_quem_chama_o_cerebro_do_acionamento_extrai_o_texto(arquivo: Path, ancor
     """
     fonte = arquivo.read_text(encoding="utf-8")
     assert ancora in fonte, f"{arquivo.name} deixou de chamar o cérebro do acionamento"
-    assert "extract_text_from_content" in fonte, (
+
+    # 🔴 EM LINHA DE CÓDIGO, NÃO EM COMENTÁRIO — e esta linha nasceu de uma
+    # MUTAÇÃO QUE FICOU VERDE (G7, 27/09/2026).
+    #
+    # 📊 A primeira forma deste guarda era `"extract_text_from_content" in fonte`.
+    # Desfiz o conserto do `webhook.py` inteiro e o guarda passou: o COMENTÁRIO
+    # do conserto cita o nome da função, e o `in fonte` se contentou com ele.
+    # Um guarda que um comentário satisfaz é carimbo — é o mesmo detalhe de
+    # mutação que deixou um guarda verde duas vezes na SPEC-118.
+    codigo = [l for l in fonte.splitlines() if not l.lstrip().startswith("#")]
+    assert any("extract_text_from_content" in l for l in codigo), (
         f"🔴 {arquivo.name} consome `.content` do papel `dispatch` sem extrair o "
         "texto dos blocos. Com a rota em modelo de raciocínio, o que segue é "
         "`[{'type': 'reasoning', 'encrypted_content': …}]` — medido em 27/09/2026.")
@@ -189,17 +199,137 @@ def test_o_fiscal_aprovaria_um_bloco_curto_entao_o_extrator_e_a_defesa():
 # ═════════════════════════════════════════════════════════════════════════════
 # 4 · O SENTINELA HONRA O HANDOFF DA CLASSE DE TELA (conserto 2)
 # ═════════════════════════════════════════════════════════════════════════════
-def test_o_sentinela_consulta_a_classe_da_tela():
-    """🔴 `classe_da_tela` passa a ter DOIS chamadores, e o Sentinela é um deles."""
-    fonte = WD_PY.read_text(encoding="utf-8")
-    assert "classe_da_tela" in fonte, (
-        "🔴 o Sentinela voltou a não consultar a classe da tela — e aí ele "
-        "responde, 30 s depois, a mesma tela de `aceite_de_custo` que o corredor "
-        "manda a uma PESSOA (medido em 27/09/2026)")
-    assert "tela_que_decide:" in fonte, (
+#: 📊 A tela REAL da allianz, do acervo `allianz-auto.jsonl` (sessão 4971b50b,
+#: serviço guincho), que `classe_da_tela` marca `aceite_de_custo`/`handoff=True`.
+TELA_DE_CUSTO = ("Podemos levar o veículo para um oficina referenciada Allianz?\n\n"
+                 "Confira alguns dos benefícios que você pode ter:\n"
+                 "- Desconto de até {VALOR_RS} na franquia")
+#: 📊 A tela REAL da yelum (sessão c0c3c694) que é `alternativa_de_conteudo` —
+#: `handoff=False`, e o cérebro CONTINUA respondendo. É a linha de controle.
+TELA_DE_MENU = "Houve a abertura do sinistro?\nBotão 1: Sim ✅\nBotão 2: Não ❌"
+
+
+def _sessao_travada_na(tela: str, ref: str) -> dict:
+    """Uma sessão em `ura` cuja última entrada é a tela da seguradora."""
+    from datetime import datetime, timezone
+    agora = datetime.now(timezone.utc).isoformat()
+    return {"case_id": "guarda-f4b", "company_id": "guarda-f4b", "playbook_ref": ref,
+            "subservice": "guincho", "state": "ura", "live": True, "created_at": agora,
+            "slots": {"titular_cpf": "52998224725", "veiculo_placa": "ABC1D23",
+                      "local_atual": "R. Exemplo Um, 0, Centro",
+                      "local_destino": "Oficina Central, Rua B, 50",
+                      "telefone_contato": "48991234567"},
+            "transcript": [{"direction": "in", "text": tela, "at": agora}]}
+
+
+def _rodar_o_sentinela(tela: str, ref: str, *, resposta_do_cerebro: str = "1") -> dict:
+    """`_sentinela_recover` REAL, com a BORDA dublada. ⛔ Nada vai para a rede.
+
+    ⚠️ CLAUDE.md §9.4: quem responde é o MOTOR. O cérebro é dublê (a borda que
+    custaria API), e o resto — `classe_da_tela`, a escada, o fiscal, o dossiê —
+    é o código que roda no ar.
+    """
+    import asyncio
+
+    import app.tasks.dispatch_watchdog as WD
+
+    enviadas: list = []
+    atos: list = []
+    dossies: list = []
+
+    class _Wa:
+        def send_message(self, to, text, integration=None):
+            enviadas.append({"para": to, "texto": text})
+            return {"ok": True}
+
+    async def _cerebro(_c, _s, _t):
+        return resposta_do_cerebro
+
+    async def _ato(_c, _s, desfecho, payload=None):
+        atos.append(desfecho)
+
+    async def _dossie(_c, _s, dossier, _wa, _i):
+        dossies.append(str(dossier)[:200])
+        return True
+
+    async def _avisa(_s, _wa, _i):
+        return True
+
+    async def _ler(*_a, **_k):
+        return None
+
+    async def _ato_agente(*_a, **_k):
+        return None
+
+    from app.services import dispatch_router as ROUTER
+
+    guardados = [(WD, "_adaptive_reply", WD._adaptive_reply),
+                 (WD, "_ato_do_sentinela", WD._ato_do_sentinela),
+                 (WD, "_entregar_dossie_com_marcador", WD._entregar_dossie_com_marcador),
+                 (WD, "_avisar_o_segurado", WD._avisar_o_segurado),
+                 (ROUTER, "_ler_do_redis", getattr(ROUTER, "_ler_do_redis", None)),
+                 (ROUTER, "registrar_ato_do_agente",
+                  getattr(ROUTER, "registrar_ato_do_agente", None))]
+    sessao = _sessao_travada_na(tela, ref)
+    try:
+        WD._adaptive_reply = _cerebro
+        WD._ato_do_sentinela = _ato
+        WD._entregar_dossie_com_marcador = _dossie
+        WD._avisar_o_segurado = _avisa
+        ROUTER._ler_do_redis = _ler
+        ROUTER.registrar_ato_do_agente = _ato_agente
+        acao = asyncio.run(WD._sentinela_recover(
+            "guarda-f4b", "5500000000000", sessao, _Wa(),
+            {"id": "int-teste", "provider": "evolution_go"}))
+    finally:
+        for mod, nome, antigo in guardados:
+            if antigo is not None:
+                setattr(mod, nome, antigo)
+    return {"acao": acao, "estado": sessao.get("state"),
+            "motivo": str(sessao.get("reason") or ""), "enviadas": enviadas,
+            "atos": atos, "dossies": len(dossies)}
+
+
+def test_o_sentinela_nao_responde_a_tela_que_decide():
+    """🔴 O CONSERTO 2, provado pelo MOTOR — e este teste nasceu de uma mutação
+    que ficou VERDE.
+
+    📊 A primeira forma deste guarda era `"classe_da_tela" in fonte`. Apaguei o
+    bloco inteiro do conserto e ele passou: o nome sobrevive no `import` e nos
+    COMENTÁRIOS. Guarda de TEXTO sobre um conserto de COMPORTAMENTO é carimbo —
+    e a CLAUDE.md §9.4 diz por quê: o que se afirma é o comportamento do MOTOR.
+    """
+    r = _rodar_o_sentinela(TELA_DE_CUSTO, "allianz-auto-whatsapp@v1")
+    assert r["enviadas"] == [], (
+        "🔴 O SENTINELA RESPONDEU UMA TELA DE ACEITE DE CUSTO. O corredor manda "
+        "esta mesma tela a uma PESSOA (`tela_que_decide:aceite_de_custo`); trinta "
+        f"segundos depois o Sentinela aceitava a franquia em nome do segurado. "
+        f"Enviou: {r['enviadas']}")
+    assert r["acao"] == "tela_que_decide", r
+    assert r["estado"] == "needs_human"
+    assert r["motivo"] == "tela_que_decide:aceite_de_custo", (
         "o motivo do handoff do Sentinela deixou de ser o MESMO do corredor — "
-        "duas famílias de motivo para a mesma causa é o que o guarda de "
-        "triagem (`test_o_travamento_vira_linha`) existe para pegar")
+        f"duas famílias de motivo para a mesma causa ({r['motivo']!r})")
+    assert r["dossies"] == 1, "handoff sem dossiê deixa quem vai socorrer sem o caso"
+
+
+def test_controle_o_menu_desconhecido_continua_indo_ao_cerebro():
+    """🔴 A LINHA DE CONTROLE do conserto 2, e é ela que dá direito ao teste acima.
+
+    Se os dois lados dessem `needs_human`, o guarda não estaria medindo a classe
+    da tela — estaria medindo "o Sentinela desistiu". 📊 Das 624 telas
+    desconhecidas do acervo a F3 mediu que 594 seguem o caminho de antes: mandar
+    todas a uma pessoa desfaria a decisão do Founder de 05/08/2026.
+    """
+    r = _rodar_o_sentinela(TELA_DE_MENU, "yelum-auto-whatsapp@v3")
+    assert r["enviadas"] and r["enviadas"][0]["texto"] == "1", (
+        "🔴 o menu desconhecido parou de ser respondido pelo cérebro — a "
+        f"cirurgia deixou de ser estreita ({r})")
+    assert r["acao"] == "recovered", r
+    assert r["estado"] == "ura", r
+    # E os dois lados CONSEGUEM ser diferentes (o corolário da §9.3).
+    custo = _rodar_o_sentinela(TELA_DE_CUSTO, "allianz-auto-whatsapp@v1")
+    assert r["estado"] != custo["estado"] and r["acao"] != custo["acao"]
 
 
 def test_a_tela_da_allianz_e_aceite_de_custo_e_o_menu_nao_e():
