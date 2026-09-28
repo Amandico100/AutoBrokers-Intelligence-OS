@@ -76,7 +76,7 @@ import json
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -824,18 +824,143 @@ def conferir(f: Fontes, linhas: List[Linha], texto_html: str) -> Tuple[List[str]
         achados.append(f"🔴 a soma das faixas ({soma}) não é o total "
                        f"({len(linhas)})")
 
-    # ⑥ 🔴 nenhum nome de gente ou de corretora nos DADOS (CLAUDE.md §13.9)
-    #    ⚠️ os nomes na FAIXA são copy pedida pelo Founder; o que não pode é
-    #    um nome desses vir de `por_rota`, `sem_corredor` ou `sem_etiqueta`.
-    feitas.append("nenhum nome de corretora/pessoa nos dados medidos")
-    proibidos = ("regina", "saionara", "resulta", "autofleet", "amandus")
-    for bloco in ("por_rota", "sem_corredor", "sem_etiqueta"):
-        for k in (f.demanda.get(bloco) or {}):
-            baixo = k.lower()
-            for p in proibidos:
-                if p in baixo:
-                    achados.append(f"🔴 §13.9: {bloco}[{k!r}] carrega {p!r}")
+    # ⑥ 🔴 §13.9 NOS DADOS **E** NO HTML — e por REGRA, não por lista
+    #
+    # ══════════════════════════════════════════════════════════════════════
+    # ⚠️ 🔴 ESTE GUARDA VIOLAVA O §13.9 QUE ELE EXISTE PARA GUARDAR.
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # A v1 era `proibidos = ("regina", "saionara", "resulta", "autofleet",
+    # "amandus")` — **cinco constantes com o nome de duas corretoras-piloto e
+    # de duas atendentes, escritas num script NOVO**. É literalmente o que o
+    # §13.9 proíbe: *"nenhum nome de corretora (nem de grupo, número, pasta ou
+    # atendente) entra como constante em código, teste, script ou documento"*.
+    #
+    # 📊 E ela tinha três defeitos num lugar só, medidos em 28/09/2026:
+    #
+    # ```
+    # ① lista com nome de cliente/funcionário dentro do próprio guarda
+    # ② olhava só as CHAVES — o juiz mutou nome como VALOR e nome dentro do
+    #    HTML emitido, e o guarda deu ZERO achado nas duas
+    # ③ `maria` não estava na lista, e era o nome que de fato vazava
+    # ```
+    #
+    # 🔴 A REGRA QUE SUBSTITUI A LISTA, e ela falha FECHADO:
+    #
+    # > ## Toda palavra publicada num dado medido tem de ser vocabulário do
+    # > ## PRODUTO. O que o produto não conhece não sai daqui.
+    #
+    # O vocabulário vem de `higiene_do_corpus.vocabulario_de_lingua()` — os 14
+    # playbooks, os padrões de serviço e os tipos de logradouro — mais as marcas
+    # das seguradoras. 📊 Medido: das 987 células de dado da aba, **14** palavras
+    # ficam de fora, e todas são a língua desta página (`observador`, `pronta`,
+    # `classificador`…). É essa lista de 14 que fica escrita aqui — nenhuma delas
+    # é nome de gente nem de corretora.
+    feitas.append("§13.9 por REGRA: toda palavra dos dados e do HTML é "
+                  "vocabulário do produto (chaves, VALORES e células)")
+    for achado in _palavras_fora_do_produto(f.demanda, texto_html):
+        achados.append(achado)
+
+    # ⑦ 🔴 O CONTROLE DO ⑥ — e ele viaja junto com o guarda.
+    #    *"Um guarda que não tem como falhar não guarda nada"* (CLAUDE.md §9.3).
+    #    📊 A v1 do ⑥ ficava VERDE com nome no valor e nome no HTML.
+    feitas.append("o guarda do §13.9 CONSEGUE ficar vermelho (4 mutações)")
+    achados += _controle_do_guarda_139(f.demanda, texto_html)
     return achados, feitas
+
+
+# 🔴 A LÍNGUA DESTA PÁGINA — 14 palavras, medidas, e nenhuma é nome de ninguém.
+#    ⚠️ Cresce quando a copy da aba crescer; se um dia alguém tentar escrever
+#    um nome aqui, a linha fica visível no diff, que é o ponto.
+_LINGUA_DA_PAGINA = frozenset({
+    "observador", "pronta", "ficou", "prova", "classificador", "reconhece",
+    "qualidade", "desenho", "bruto", "conversas", "lar", "assistance",
+    "reembolso", "etiqueta",
+})
+_RX_CELULA = re.compile(r"<(?:code|td|th)[^>]*>(.*?)</(?:code|td|th)>", re.S)
+
+
+def _textos_medidos(demanda: Any, html: str) -> List[Tuple[str, str]]:
+    """Todo texto que a página PUBLICA como dado: `(origem, texto)`.
+
+    🔴 Chaves **e** valores, em qualquer profundidade — e as células do HTML
+    emitido. O juiz mutou nas duas e o guarda antigo não olhava nenhuma.
+    """
+    fora: List[Tuple[str, str]] = []
+
+    def _andar(no: Any, caminho: str) -> None:
+        if isinstance(no, dict):
+            for k, v in no.items():
+                fora.append((caminho + " (chave)", str(k)))
+                _andar(v, f"{caminho}[{k!r}]")
+        elif isinstance(no, (list, tuple)):
+            for i, v in enumerate(no):
+                _andar(v, f"{caminho}[{i}]")
+        elif isinstance(no, str):
+            fora.append((caminho, no))
+
+    for bloco in ("por_rota", "sem_corredor", "sem_etiqueta"):
+        _andar((demanda or {}).get(bloco), f"demanda.{bloco}")
+    for celula in _RX_CELULA.findall(html or ""):
+        fora.append(("html", re.sub(r"<[^>]+>", " ", celula)))
+    return fora
+
+
+def _controle_do_guarda_139(demanda: Any, html: str) -> List[str]:
+    """Semeia quatro defeitos SINTÉTICOS e exige o vermelho em cada um.
+
+    ⚠️ Os nomes semeados aqui não existem em corretora nenhuma — são inventados
+    justamente para que o §13.9 não seja violado pelo seu próprio controle.
+    📊 Com a v1 do guarda, as mutações ② e ③ davam ZERO achado.
+    """
+    falhas: List[str] = []
+    mutacoes = [
+        ("① nome na CHAVE",
+         {**(demanda or {}),
+          "por_rota": {**((demanda or {}).get("por_rota") or {}),
+                       "porto/auto/zoraide": 3}}, html),
+        ("② nome no VALOR",
+         {**(demanda or {}),
+          "sem_etiqueta": {"porto-auto": {"motivo": "Zoraide nao escolheu"}}}, html),
+        ("③ nome no HTML emitido",
+         demanda, re.sub(r"<td[^>]*>", lambda m: m.group(0) + "Zoraide ",
+                         html or "", count=1)),
+        ("④ marca de corretora no HTML",
+         demanda, re.sub(r"<code[^>]*>", lambda m: m.group(0) + "Zoraidecorp-",
+                         html or "", count=1)),
+    ]
+    for rotulo, dem, htm in mutacoes:
+        if not _palavras_fora_do_produto(dem, htm):
+            falhas.append(f"🔴 CONTROLE FALHOU: o guarda do §13.9 ficou VERDE "
+                          f"com a mutação {rotulo} — ele é carimbo, não guarda")
+    return falhas
+
+
+def _palavras_fora_do_produto(demanda: Any, html: str) -> List[str]:
+    """Os achados do §13.9. Lista vazia = a página só publica língua do produto."""
+    try:
+        import higiene_do_corpus as H
+        conhecidas = set(H.vocabulario_de_lingua()) | _LINGUA_DA_PAGINA
+        try:
+            conhecidas |= {H._sem_acento(s) for s in H.M.TPL._marcas_das_seguradoras()}
+        except Exception:  # noqa: BLE001
+            pass
+        sem_acento = H._sem_acento
+    except Exception as e:  # noqa: BLE001
+        return [f"🔴 §13.9: não consegui ler o vocabulário do produto ({e})"]
+
+    achados: List[str] = []
+    vistas: Set[str] = set()
+    for origem, texto in _textos_medidos(demanda, html):
+        for palavra in re.findall(r"[A-Za-zÀ-ÿ]{3,}", texto):
+            n = sem_acento(palavra)
+            if n in conhecidas or n in vistas:
+                continue
+            vistas.add(n)
+            achados.append(
+                f"🔴 §13.9: {origem} publica {palavra!r}, que não é vocabulário "
+                f"do produto — nome de gente ou de corretora não sai daqui")
+    return achados
 
 
 def main(argv: Optional[List[str]] = None) -> int:
