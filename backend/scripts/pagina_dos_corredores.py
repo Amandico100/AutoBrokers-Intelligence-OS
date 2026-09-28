@@ -74,6 +74,7 @@ import datetime as dt
 import html
 import json
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -171,11 +172,34 @@ class Fontes:
 
     @property
     def data_sim(self) -> str:
-        return _data_br(str(self.sim_meta().get("gerado_em", "?"))[:10])
+        """🔴 A data da SIMULAÇÃO vem da simulação, nunca emprestada.
+
+        ⚠️ O JSON de `simular_corredor.py` é uma LISTA pura — não tem carimbo.
+        Emprestar a data das notas seria cômodo e seria a mesma falta que esta
+        fatia existe para consertar: um número com a data de outro. O carimbo
+        de verdade está no `.md` irmão, que o próprio simulador escreve:
+        `> gerado em 2026-09-28T00:08:01+00:00 · commit `a83dc06``.
+        """
+        return _data_br(self.sim_meta().get("gerado_em", "?")[:10])
+
+    @property
+    def commit_sim(self) -> str:
+        return self.sim_meta().get("commit", "?")
 
     def sim_meta(self) -> Dict[str, Any]:
-        """A simulação é uma LISTA; o carimbo dela vem do .md irmão."""
-        return {"gerado_em": self.notas.get("medido_em", "?")}
+        caminho = RETRATO_SIM[: -len(".json")] + ".md"
+        try:
+            with open(caminho, encoding="utf-8") as fh:
+                for linha in fh:
+                    m = re.search(r"gerado em ([0-9T:+\-]{10,})\s*·\s*commit "
+                                  r"`([0-9a-f]+)`", linha)
+                    if m:
+                        return {"gerado_em": m.group(1), "commit": m.group(2)}
+                    if linha.startswith("## "):
+                        break
+        except OSError:
+            pass
+        return {"gerado_em": "?", "commit": "?"}
 
 
 class Linha:
@@ -293,8 +317,8 @@ def markdown(f: Fontes, linhas: List[Linha]) -> str:
         f"`observed_events`, o banco — vivo |\n"
         f"> | **a nota da régua** (`qualidade`) | **{f.data_notas}** | o corpus "
         f"versionado no commit `{f.notas.get('commit','?')}` |\n"
-        f"> | **dá para ligar?** | **{f.data_notas}** | a simulação com as telas "
-        f"reais, `simular_corredor.py --todas` |\n>\n"
+        f"> | **dá para ligar?** | **{f.data_sim}** | a simulação com as telas "
+        f"reais no commit `{f.commit_sim}`, `simular_corredor.py --todas` |\n>\n"
         f"> ⚠️ O banco é de hoje; o corpus é do commit. Comparar os dois números "
         f"de uma mesma rota é legítimo — comparar sem ver as datas, não.\n",
         "## 🔴 A frase que o Founder pode dizer a uma corretora\n",
@@ -400,6 +424,11 @@ def _e(t: Any) -> str:
     return html.escape(str(t), quote=True)
 
 
+def _slug(t: str) -> str:
+    """Um valor de `data-` sem espaço nem acento — o filtro compara string."""
+    return (t or "sem").lower().replace(" ", "_")
+
+
 def _linha_html(l: Linha) -> str:
     porque = l.causa_em_portugues if l.causa else "responde tudo e chega ao fim"
     ressalva = l.ressalva_da_demanda
@@ -455,6 +484,7 @@ def aba(f: Fontes, linhas: List[Linha]) -> str:
     A('<div class="meta">')
     A(f'<span>pedidos <b>{_e(f.data_demanda)}</b></span>')
     A(f'<span>qualidade <b>{_e(f.data_notas)}</b></span>')
+    A(f'<span>dá para ligar <b>{_e(f.data_sim)}</b></span>')
     A(f'<span>fonte <b>observed_events + corpus versionado</b></span>')
     A(f'<span>commit <b>{_e(f.notas.get("commit","?"))}</b></span>')
     A('</div>')
@@ -541,6 +571,52 @@ def aba(f: Fontes, linhas: List[Linha]) -> str:
             A('<tr><td class="ds" colspan="6">nenhuma</td></tr>')
         A('</tbody></table></div>')
         A('</div>')
+
+    # ── as 73 numa tabela só, com busca ──────────────────────────────────────
+    # 🔴 As três faixas acima são o que o Founder pediu. Esta tabela existe
+    #    porque `base.html` traz um filtro que procura `#tb`, `#cnt`, `input.q`
+    #    e `.chip` — e ele sai do ar em silêncio se a aba não os tiver
+    #    (`if (!tb) return;`). ⚠️ Um filtro que some sem avisar numa lista de
+    #    73 linhas é pior que filtro nenhum: quem usou ontem procura hoje.
+    A('<div class="virada" style="border-left-color:var(--line-2)">')
+    A('<span class="eyebrow">As 73 numa tabela só &middot; para procurar</span>')
+    A('<h2>A mesma coisa, com busca.</h2>')
+    A('<p class="lede" style="max-width:76ch">As linhas são as mesmas de cima — '
+      'nenhum número muda aqui. Filtre por faixa, por causa, ou escreva o nome '
+      'da seguradora ou do serviço.</p>')
+    A('<div class="ctl">')
+    for chave, titulo, _s in FAIXAS:
+        A(f'<button class="chip" data-f="p:{_slug(chave)}" aria-pressed="false">'
+          f'{_e(titulo)}</button>')
+    causas_vivas = sorted({l.causa for l in linhas if l.causa})
+    for causa in causas_vivas:
+        A(f'<button class="chip" data-f="b:{_slug(causa)}" aria-pressed="false">'
+          f'{_e(CAUSAS.get(causa, (causa, ""))[0])}</button>')
+    A('<input class="q" type="search" placeholder="allianz, guincho, resi…" '
+      'aria-label="Filtrar rotas">')
+    A(f'<span class="count" id="cnt">{total} de {total}</span>')
+    A('</div>')
+    A('<div class="tblbox"><table>')
+    A('<thead><tr><th class="l">rota</th><th>dá para ligar?</th><th>pedidos</th>'
+      '<th>qualidade</th><th class="l">por quê</th>'
+      '<th class="l">o que destrava</th></tr></thead>')
+    A('<tbody id="tb">')
+    for l in linhas:
+        porque = l.causa_em_portugues if l.causa else "responde tudo e chega ao fim"
+        busca = " ".join([l.seguradora, l.ramo, l.servico, l.faixa, l.causa,
+                          l.da_para_ligar]).lower()
+        A(f'<tr data-b="{_slug(l.causa)}" data-p="{_slug(l.faixa)}" '
+          f'data-q="{_e(busca)}">'
+          f'<td class="un"><b>{_e(l.seguradora)}</b><span class="sl">/</span>'
+          f'{_e(l.ramo)}<span class="sl">/</span>'
+          f'<b class="sv">{_e(l.servico)}</b></td>'
+          f'<td class="ds">{_e(l.da_para_ligar)}</td>'
+          f'<td class="dm">{_e(l.pedidos_rotulo)}</td>'
+          f'<td class="dm">{_e(l.pct)}</td>'
+          f'<td class="ds">{_e(porque)}</td>'
+          f'<td class="ds">{_e(l.o_que_destrava)}</td></tr>')
+    A('</tbody></table></div>')
+    A('</div>')
 
     # ── o serviço que ninguém atende ─────────────────────────────────────────
     sem_corredor = f.demanda.get("sem_corredor", {})
