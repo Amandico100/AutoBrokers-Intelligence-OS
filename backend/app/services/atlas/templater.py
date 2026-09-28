@@ -361,6 +361,39 @@ _LOGRADOURO = re.compile(
     r"(?:(?-i:d[aeo]s?)" + _H + r"+)?" + _NOME_DE_LOGRADOURO + r"\s*,?\s*"
     r"(?:n?[ºo°]?\s*)?\d{1,6}(?:\s*[-/]\s*\d{1,6})?\b")
 
+# 🔴 O LOGRADOURO SEM NÚMERO — SPEC-119 CONSERTO A, 28/09/2026.
+#
+# ⚠️ *"O DÍGITO é a regra inteira"* continua verdadeiro **no acervo onde foi
+# medido** — a conversa que o humano da corretora digita. Mas a URA da
+# seguradora ecoa o que o Google Maps devolveu, e o Maps devolve endereço **sem
+# número** quando o imóvel não tem um:
+#
+# ```
+# azul-auto.jsonl:336  "Localizei o endereço R. Frida Melzer Silva, null, Rio Grande, Palhoça - SC"
+# azul-auto.jsonl:249  "Localizei o endereço R. Ver. Carlos Acelino Pereira, null, Real Parque, São José - SC"
+# ```
+#
+# 📊 O `null` é literalmente o número que o Maps não tinha — e era ele que
+# desarmava a regra. **Duas ruas reais, com bairro, cidade e UF, foram para o
+# acervo versionado em claro** (CLAUDE.md §7 e §13.9).
+#
+# 🔴 O que substitui o dígito como prova é o RABO DO ENDEREÇO: uma lista
+# separada por vírgula que termina em `- UF`. Prosa não termina assim. Sem essa
+# exigência a regra comeria *"a Rua Direita é conhecida na região"*, que é
+# exatamente o que a medição de 06/08/2026 mandou não fazer.
+_LOGRADOURO_SEM_NUMERO = re.compile(
+    r"(?i)\b(rua|r\.|av\.|avenida|alameda|al\.|travessa|rodovia|rod\.|estrada|"
+    r"estr\.|pra[çc]a|servid[ãa]o|marginal|beco|largo|linha|loteamento|"
+    r"via|road|unnamed road)" + _H + r"+"
+    r"(?:(?-i:d[aeo]s?)" + _H + r"+)?"
+    # ⚠️ O NOME DA RUA PODE JÁ TER VIRADO `{NOME}` — e é o pior estado dos dois.
+    # 📊 `porto-auto.jsonl:650`: a regra de tratamento pessoal (`Dr. Fulano`)
+    #    roda ANTES das de endereço e leva o nome da rua embora, deixando
+    #    *"R. Dr. {NOME}, 457, Jardim Paulistano, São Paulo - SP"* — número,
+    #    bairro e cidade do segurado em claro, numa linha que PARECE tratada.
+    r"(?:" + _NOME_DE_LOGRADOURO + r"(?:" + _H + r"*\{[A-Z_]+\})?|\{[A-Z_]+\})"
+    r"(?:\s*,\s*[^\n,]{1,40}){1,3}\s*-\s*(?-i:[A-Z]{2})\b")
+
 # RODOVIA COM NÚMERO DE IMÓVEL — `BR-101, 205` · `SC-281, 1500`.
 # Separada do `_LOGRADOURO` porque a sigla não é uma PALAVRA de tipo: é a
 # própria identidade da via, e o que a torna endereço é o número que vem depois
@@ -625,6 +658,9 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # rua exposto.
     (_ENDERECO_ANUNCIADO, r"\1\2\3{ENDERECO}"),
     (_LOGRADOURO, r"\1 {ENDERECO}"),
+    # 🔴 depois do `_LOGRADOURO`: quando há número, quem manda é a regra medida
+    #    de 06/08/2026; esta só alcança o que sobrou sem número.
+    (_LOGRADOURO_SEM_NUMERO, r"\1 {ENDERECO}"),
     (_RODOVIA_COM_NUMERO, r"\1, {ENDERECO}"),
     (_PLUS_CODE, "{ENDERECO}"),
     (_COMPLEMENTO, _mascara_complemento),
