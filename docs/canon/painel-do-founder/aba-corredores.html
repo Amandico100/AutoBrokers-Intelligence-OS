@@ -15,7 +15,7 @@
 <div class="virada" style="border-left-color:var(--accent)">
 <span class="eyebrow" style="color:var(--accent)">A frase que você pode dizer a uma corretora</span>
 <h2>&ldquo;Hoje o sistema resolve sozinho 34% dos casos que sabemos medir. 3% vão para uma pessoa, com o caso pronto na mão dela.&rdquo;</h2>
-<p class="lede" style="max-width:76ch">E a segunda metade, que é a honesta: <b>63% das rotas (46 de 73) ainda não têm uma conversa gravada.</b> Não dá para prometer nada sobre elas — e também não dá para culpar o robô por elas. Cada acionamento real que acontecer com o observador ligado tira uma rota desta faixa.</p>
+<p class="lede" style="max-width:76ch">E a segunda metade, que é a honesta: <b>63% das rotas (46 de 73) ainda não dão para ligar</b> — e dessas, <b>31 não têm uma conversa gravada</b>. Nessas não dá para prometer nada, e também não dá para culpar o robô: cada acionamento real que acontecer com o observador ligado tira uma rota da lista. As outras <b>15</b> têm conversa — nelas o material existe e <b>falta código nosso</b>.</p>
 <div class="niveis" style="margin-top:20px">
 <div class="nv ok"><span class="nvn">FAIXA 1</span><h3>ATENDE SOZINHO</h3><span class="nvv">25<span> de 73 &middot; 34%</span></span><em>responde todas as telas que o acervo mostra, não decide pelo segurado, e já chegou ao protocolo pelo menos uma vez</em></div>
 <div class="nv al"><span class="nvn">FAIXA 2</span><h3>VAI PARA UMA PESSOA</h3><span class="nvv">2<span> de 73 &middot; 3%</span></span><em>🔴 e a <b>causa</b> muda tudo: por desenho (a seguradora só devolve link) é o produto certo; por defeito, tem conserto</em></div>
@@ -72,9 +72,10 @@
 </tbody></table></div>
 </div>
 <div class="virada" style="border-left-color:var(--crit)">
-<span class="eyebrow" style="color:var(--crit)">PRECISA DE ACIONAMENTO &middot; 46 de 73 &middot; 63%</span>
-<h2>Falta conversa, não falta código.</h2>
-<p class="lede" style="max-width:76ch">🔴 <b>Não se mapeia o que ninguém viu.</b> Ordenadas por quantas pessoas pediram aquele serviço naquela seguradora — comece de cima. Onde os pedidos aparecem como <b>—</b>, é porque não há conversa etiquetada: <b>não é zero, é &ldquo;não sabemos&rdquo;</b>.</p>
+<span class="eyebrow" style="color:var(--crit)">AINDA NÃO DÁ PARA LIGAR &middot; 46 de 73 &middot; 63%</span>
+<h2>E a causa diz de quem é o trabalho: sem conversa é acionamento; tela sem resposta é código.</h2>
+<p class="lede" style="max-width:76ch">🔴 <b>Não se mapeia o que ninguém viu</b> — mas <b>parte desta faixa não é isso</b>, e a coluna <b>o que destrava</b> diz qual. Ordenadas por quantas pessoas pediram aquele serviço naquela seguradora — comece de cima. Onde os pedidos aparecem como <b>—</b>, é porque não há conversa etiquetada: <b>não é zero, é &ldquo;não sabemos&rdquo;</b>.</p>
+<p class="note" style="margin-top:10px">📊 <b>Dentro desta faixa:</b> <b>31</b> nenhuma conversa desta rota no acervo &middot; <b>9</b> existe conversa, e uma tela dela ninguém respondeu &middot; <b>6</b> responde tudo o que o acervo mostra e nunca chegou ao protocolo</p>
 <div class="tblbox" style="margin-top:14px"><table>
 <thead><tr><th class="l">rota</th><th>pedidos</th><th>qualidade</th><th>bruto</th><th class="l">por quê</th><th class="l">o que destrava</th></tr></thead><tbody>
 <tr><td class="un"><b>yelum</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b></td><td class="dm">26</td><td class="dm">63%</td><td class="dm">48/76</td><td class="ds">existe conversa, e uma tela dela ninguém respondeu</td><td class="ds">🤖 escrever o passo da tela que ficou sem resposta</td></tr>
@@ -132,7 +133,7 @@
 <div class="ctl">
 <button class="chip" data-f="p:atende_sozinho" aria-pressed="false">ATENDE SOZINHO</button>
 <button class="chip" data-f="p:handoff" aria-pressed="false">VAI PARA UMA PESSOA</button>
-<button class="chip" data-f="p:falta_captura" aria-pressed="false">PRECISA DE ACIONAMENTO</button>
+<button class="chip" data-f="p:falta_captura" aria-pressed="false">AINDA NÃO DÁ PARA LIGAR</button>
 <button class="chip" data-f="b:por_desenho_link" aria-pressed="false">a seguradora não abre pela conversa: devolve link ou formulário</button>
 <button class="chip" data-f="b:sem_corpus" aria-pressed="false">nenhuma conversa desta rota no acervo</button>
 <button class="chip" data-f="b:sem_desfecho" aria-pressed="false">responde tudo o que o acervo mostra e nunca chegou ao protocolo</button>

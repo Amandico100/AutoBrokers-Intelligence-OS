@@ -12,9 +12,9 @@
 
 ## 🔴 A frase que o Founder pode dizer a uma corretora
 
-> **De 73 rotas medidas, o sistema resolve sozinho 34% (25), 3% (2) vão para uma pessoa, e 63% (46) ainda não têm conversa gravada para medir.**
+> **De 73 rotas medidas, o sistema resolve sozinho 34% (25), 3% (2) vão para uma pessoa, e 63% (46) ainda não dão para ligar.**
 
-⚠️ **E a segunda metade da frase é obrigatória:** as 63% não são falha do robô. São rotas em que ninguém ainda acionou a seguradora com o observador ligado — **um acionamento real resolve uma rota**.
+⚠️ **E a segunda metade da frase é obrigatória, com o número exato:** das 46 que ainda não ligam, **31 não têm uma conversa gravada** — essas não são falha do robô, e só um acionamento real as destrava. As outras **15** têm conversa: nelas o material existe e **falta código nosso**.
 
 ## 🔴 DUAS PERGUNTAS, NUNCA UMA
 
@@ -71,9 +71,11 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 | `porto/auto/vidros` | 1 | 53% | 37/70 | a seguradora não abre pela conversa: devolve link ou formulário | ✅ nada — é o desenho certo, e já é handoff pela SPEC-118 |
 
 
-## PRECISA DE ACIONAMENTO — 46 de 73 (63%)
+## AINDA NÃO DÁ PARA LIGAR — 46 de 73 (63%)
 
-*falta conversa, não falta código*
+*e a causa diz de quem é o trabalho: sem conversa é acionamento; tela sem resposta é código*
+
+📊 **Dentro desta faixa:** **31** nenhuma conversa desta rota no acervo · **9** existe conversa, e uma tela dela ninguém respondeu · **6** responde tudo o que o acervo mostra e nunca chegou ao protocolo
 
 | rota | pedidos | qualidade | bruto | por quê | 🔴 o que destrava |
 |---|---:|---:|---:|---|---|
@@ -181,4 +183,4 @@ Enquanto elas estiverem aqui, um `—` na coluna `pedidos` **não quer dizer 'ni
 
 ---
 
-_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-28T02:52:17+00:00. **Nenhum número deste documento foi digitado à mão.**_
+_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-28T03:04:52+00:00. **Nenhum número deste documento foi digitado à mão.**_

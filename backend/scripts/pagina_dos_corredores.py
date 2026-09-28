@@ -97,8 +97,17 @@ FAIXAS = [
      "o sistema resolve sozinho, do começo ao protocolo"),
     ("HANDOFF", "VAI PARA UMA PESSOA",
      "o caso segue com alguém — por desenho da seguradora ou por defeito"),
-    ("FALTA CAPTURA", "PRECISA DE ACIONAMENTO",
-     "falta conversa, não falta código"),
+    # 🔴 O SUBTITULO DESTA NAO PODE SER "falta conversa, nao falta codigo".
+    #    📊 Medido em 28/09: das 46 rotas, 31 nao tem conversa nenhuma (aí SIM
+    #    falta acionamento), mas **9 TEM conversa e falta o passo escrito**
+    #    (`tela_orfa`) e **6 respondem tudo e nunca chegaram ao protocolo**
+    #    (`sem_desfecho`). Prometer "falta conversa" nas 46 mandaria o Founder
+    #    coletar o que JA ESTA COLETADO — a mesma confusão que esta SPEC existe
+    #    para acabar. A faixa junta o que **não dá para ligar ainda**; é a
+    #    `causa` que diz de quem é o trabalho, e ela é obrigatória.
+    ("FALTA CAPTURA", "AINDA NÃO DÁ PARA LIGAR",
+     "e a causa diz de quem é o trabalho: sem conversa é acionamento; "
+     "tela sem resposta é código"),
 ]
 
 #: As causas, ditas em português. 🔴 Nunca se imprime a faixa sem a causa.
@@ -298,6 +307,15 @@ def _contar(linhas: List[Linha]) -> Dict[str, int]:
     return d
 
 
+def _por_causa(linhas: List["Linha"]):
+    """A repartição por causa, da mais frequente para a menos."""
+    d: Dict[str, int] = {}
+    for l in linhas:
+        if l.causa:
+            d[l.causa] = d.get(l.causa, 0) + 1
+    return sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
 def _par_da_mesma_nota(linhas: List["Linha"]):
     """Duas rotas com a MESMA nota e respostas opostas a "dá para ligar?".
 
@@ -331,6 +349,8 @@ def markdown(f: Fontes, linhas: List[Linha]) -> str:
     sozinho = c.get("ATENDE SOZINHO", 0)
     pessoa = c.get("HANDOFF", 0)
     captura = c.get("FALTA CAPTURA", 0)
+    # 📊 quantas das que nao ligam e por AUSENCIA DE CONVERSA, e nao por codigo
+    _sem_conversa = sum(1 for l in linhas if l.causa == "sem_corpus")
     L = [
         "# Os corredores, rota por rota — o que liga hoje e o que falta\n",
         f"> 🔴 **Três retratos, três datas, e elas estão escritas porque são "
@@ -349,12 +369,15 @@ def markdown(f: Fontes, linhas: List[Linha]) -> str:
         f"> **De {total} rotas medidas, o sistema resolve sozinho "
         f"{_pct_faixa(sozinho, total)} ({sozinho}), "
         f"{_pct_faixa(pessoa, total)} ({pessoa}) vão para uma pessoa, e "
-        f"{_pct_faixa(captura, total)} ({captura}) ainda não têm conversa "
-        f"gravada para medir.**\n",
-        f"⚠️ **E a segunda metade da frase é obrigatória:** as "
-        f"{_pct_faixa(captura, total)} não são falha do robô. São rotas em que "
-        f"ninguém ainda acionou a seguradora com o observador ligado — "
-        f"**um acionamento real resolve uma rota**.\n",
+        f"{_pct_faixa(captura, total)} ({captura}) ainda não dão para ligar.**\n",
+        # 🔴 A SEGUNDA METADE, com o número EXATO. Dizer que as 46 "não têm
+        #    conversa gravada" seria falso para 15 delas — e mandaria coletar o
+        #    que já está coletado, que é a confusão que esta SPEC vem acabar.
+        f"⚠️ **E a segunda metade da frase é obrigatória, com o número exato:** "
+        f"das {captura} que ainda não ligam, **{_sem_conversa} não têm uma "
+        f"conversa gravada** — essas não são falha do robô, e só um acionamento "
+        f"real as destrava. As outras **{captura - _sem_conversa}** têm "
+        f"conversa: nelas o material existe e **falta código nosso**.\n",
         "## 🔴 DUAS PERGUNTAS, NUNCA UMA\n",
         "```\n"
         "DÁ PARA LIGAR?   binária     SIM · VAI PARA UMA PESSOA · FALTA CAPTURA\n"
@@ -377,6 +400,13 @@ def markdown(f: Fontes, linhas: List[Linha]) -> str:
         if not desta:
             L.append("_(nenhuma)_\n")
             continue
+        # 🔴 A repartição por CAUSA, DENTRO da faixa. Sem ela, "46 rotas" soa
+        #    como 46 acionamentos a fazer — e 15 delas são trabalho nosso.
+        reparte = _por_causa(desta)
+        if len(reparte) > 1:
+            L.append("📊 **Dentro desta faixa:** "
+                     + " · ".join(f"**{v}** {CAUSAS.get(k, (k, ''))[0]}"
+                                  for k, v in reparte) + "\n")
         L.append("| rota | pedidos | qualidade | bruto | por quê | "
                  "🔴 o que destrava |")
         L.append("|---|---:|---:|---:|---|---|")
@@ -522,12 +552,15 @@ def aba(f: Fontes, linhas: List[Linha]) -> str:
       f'{_pct_faixa(sozinho, total)} dos casos que sabemos medir. '
       f'{_pct_faixa(pessoa, total)} vão para uma pessoa, com o caso pronto na '
       f'mão dela.&rdquo;</h2>')
+    _sem_conversa = sum(1 for l in linhas if l.causa == "sem_corpus")
     A(f'<p class="lede" style="max-width:76ch">E a segunda metade, que é a '
       f'honesta: <b>{_pct_faixa(captura, total)} das rotas ({captura} de '
-      f'{total}) ainda não têm uma conversa gravada.</b> Não dá para prometer '
-      f'nada sobre elas — e também não dá para culpar o robô por elas. '
-      f'Cada acionamento real que acontecer com o observador ligado tira uma '
-      f'rota desta faixa.</p>')
+      f'{total}) ainda não dão para ligar</b> — e dessas, <b>{_sem_conversa} '
+      f'não têm uma conversa gravada</b>. Nessas não dá para prometer nada, e '
+      f'também não dá para culpar o robô: cada acionamento real que acontecer '
+      f'com o observador ligado tira uma rota da lista. As outras '
+      f'<b>{captura - _sem_conversa}</b> têm conversa — nelas o material '
+      f'existe e <b>falta código nosso</b>.</p>')
     A('<div class="niveis" style="margin-top:20px">')
     A(f'<div class="nv ok"><span class="nvn">FAIXA 1</span>'
       f'<h3>ATENDE SOZINHO</h3><span class="nvv">{sozinho}'
@@ -591,15 +624,23 @@ def aba(f: Fontes, linhas: List[Linha]) -> str:
         A(f'<h2>{_e(subtitulo[0].upper() + subtitulo[1:])}.</h2>')
         if chave == "FALTA CAPTURA":
             A('<p class="lede" style="max-width:76ch">🔴 <b>Não se mapeia o que '
-              'ninguém viu.</b> Ordenadas por quantas pessoas pediram aquele '
-              'serviço naquela seguradora — comece de cima. Onde os pedidos '
-              'aparecem como <b>—</b>, é porque não há conversa etiquetada: '
-              '<b>não é zero, é &ldquo;não sabemos&rdquo;</b>.</p>')
+              'ninguém viu</b> — mas <b>parte desta faixa não é isso</b>, e a '
+              'coluna <b>o que destrava</b> diz qual. Ordenadas por quantas '
+              'pessoas pediram aquele serviço naquela seguradora — comece de '
+              'cima. Onde os pedidos aparecem como <b>—</b>, é porque não há '
+              'conversa etiquetada: <b>não é zero, é &ldquo;não '
+              'sabemos&rdquo;</b>.</p>')
         elif chave == "HANDOFF":
             A('<p class="lede" style="max-width:76ch">🔴 <b>A coluna '
               '&ldquo;por quê&rdquo; é obrigatória aqui.</b> "A seguradora só '
               'devolve link" e "o robô responde errado" são opostos, e antes '
               'apareciam com o mesmo rótulo.</p>')
+        reparte = _por_causa(desta)
+        if len(reparte) > 1:
+            A('<p class="note" style="margin-top:10px">📊 <b>Dentro desta '
+              'faixa:</b> ' + ' &middot; '.join(
+                  f'<b>{v}</b> {_e(CAUSAS.get(k, (k, ""))[0])}'
+                  for k, v in reparte) + '</p>')
         A('<div class="tblbox" style="margin-top:14px"><table>')
         A('<thead><tr><th class="l">rota</th><th>pedidos</th><th>qualidade</th>'
           '<th>bruto</th><th class="l">por quê</th>'
