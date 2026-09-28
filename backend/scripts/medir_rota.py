@@ -366,7 +366,16 @@ def _gravar_notas(notas: List[RB.Nota], caminho: str,
     with open(destino, "w", encoding="utf-8") as fh:
         json.dump(fora, fh, ensure_ascii=False, indent=1, sort_keys=True)
         fh.write("\n")
-    return f"# notas gravadas: {destino} ({len(notas)} rotas, {fora['medido_em']})"
+    # 🔴 O caminho impresso é RELATIVO ao repositório — SPEC-119 CONSERTO A.
+    #    📊 O absoluto virou a primeira linha de `INVENTARIO-DE-ROTAS.md`, um
+    #       documento versionado, e carregou o nome de uma árvore de trabalho
+    #       local (`AutoBrokers-FIX-f5`) que não existe para mais ninguém —
+    #       leitor seguinte procura a pasta e não acha.
+    try:
+        curto = os.path.relpath(destino, repo).replace(os.sep, "/")
+    except ValueError:   # noqa: BLE001 — outro drive no Windows
+        curto = destino
+    return f"# notas gravadas: {curto} ({len(notas)} rotas, {fora['medido_em']})"
 
 
 def _demanda_de(retrato: Optional[DPR.Retrato], rota) -> str:

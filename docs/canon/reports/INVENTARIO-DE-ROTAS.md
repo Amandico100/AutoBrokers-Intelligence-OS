@@ -1,4 +1,4 @@
-# notas gravadas: C:\Users\amand\Projetos\AUTOBROKERS RESULTA\AutoBrokers-FIX-f5\backend\docs/canon/reports/NOTAS-DAS-ROTAS.json (73 rotas, 2026-09-28)
+# notas gravadas: docs/canon/reports/NOTAS-DAS-ROTAS.json (73 rotas, 2026-09-28)
 # Inventário de rotas — a régua aplicada às 73
 
 > Gerado em **2026-09-28T02:48:52+00:00** · commit `f9b7204`
