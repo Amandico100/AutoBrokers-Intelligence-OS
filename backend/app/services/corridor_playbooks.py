@@ -9234,14 +9234,85 @@ CLASSE_INDEFINIDA = "indefinida"
 #    existirem é dívida declarada: a régua deve passar a delegar para cá (a
 #    função é `a_resposta_decide_pelo_cliente`), senão a régua mede uma coisa e o
 #    produto faz outra — o defeito do §9.4 um nível acima.
+#
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 RÓTULO QUE COMEÇA TRABALHO NOVO NÃO NAVEGA — SPEC-119, conserto B, item 3/4
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# 📊 Quatro entradas saíram daqui em 28/09/2026: `novo atendimento`,
+#    `abrir novo atendimento`, `outro servico` e `outros servicos`.
+#
+#    A tela real é `yelum-auto.jsonl`, sessão `01bf91c2`: *"Você gostaria de
+#    abrir um novo atendimento ou continuar de onde parou?"*. Com elas na lista,
+#    `classe_da_tela` respondia `conduz/navegacao` — *"todas as opções desta
+#    tela apenas movem o fluxo (Continuar, Novo atendimento)"*. **Abrir um
+#    segundo atendimento perde o protocolo do primeiro.** ⚠️ E `tokio-auto`,
+#    sessão `d8a81c33`, tem a opção 1 = *Outro serviço*.
+#
+# 🔴 E A LISTA NÃO TINHA GUARDA PARA ISSO. Mutação do red team (M-RT1c):
+#    acrescentar `"condominio","empresarial","residencial"` aqui deu **103
+#    asserções VERDES**, e a tela dos três ramos passou a ser `navegacao`.
+#    ⚠️ O contraste que dá direito à conclusão: acrescentar `sim`/`nao` deixava
+#    **2 guardas vermelhos** — a lista tinha guarda, ele só não cobria as três
+#    palavras que mais importam. O guarda que fecha a porta é
+#    `entrada_pode_ser_navegacao`, logo abaixo, e ele roda sobre a própria lista
+#    em `test_o_passo_que_decide_e_o_passo_que_conduz`.
 _VOCABULARIO_DE_NAVEGACAO = (
     "continuar", "prosseguir", "seguir", "avancar", "proximo", "voltar",
     "voltar ao menu", "voltar ao menu anterior", "menu", "menu inicial",
     "menu principal", "sair", "encerrar", "encerrar atendimento", "finalizar",
-    "novo atendimento", "abrir novo atendimento", "outro servico",
-    "outros servicos", "outros assuntos", "mais opcoes", "outros",
+    "outros assuntos", "mais opcoes", "outros",
     "nao entendi", "nao encontrei o assunto", "nenhuma das anteriores",
 )
+
+#: 🔴 O QUE NUNCA PODE ENTRAR NO VOCABULÁRIO DA NAVEGAÇÃO.
+#:
+#: Duas famílias, e cada uma nasceu de um defeito medido:
+#:
+#:   ① RÓTULO DE RAMO — `Residencial`, `Condomínio`, `Empresarial`, `Casa`,
+#:     `Apartamento`. Quem sabe se uma palavra é ramo é o dono do assunto
+#:     (`policy_data_provider.familia_de_ramo`), e é ele quem responde aqui:
+#:     ⛔ nenhuma lista de sinônimos nova (CLAUDE.md §5).
+#:   ② RÓTULO QUE COMEÇA TRABALHO NOVO — `abrir…`, `novo/nova…`,
+#:     `outro serviço`, `outros serviços`. Escolher um deles não move o fluxo:
+#:     abre um segundo caso.
+_RX_COMECA_TRABALHO_NOVO = re.compile(
+    r"\babrir\b|\bnov[oa]s?\b|\boutr[oa]s?\s+(?:servi[çc]o|atendimento|chamado|"
+    r"solicita[çc][ãa]o|assist[êe]ncia)", re.IGNORECASE)
+
+
+def entrada_pode_ser_navegacao(entrada: str) -> Optional[str]:
+    """`None` se esta palavra pode morar no vocabulário; o motivo, se não pode.
+
+    🔴 É o guarda da lista, e ele mora no produto porque quem acrescenta uma
+    palavra tem de conseguir conferi-la sem sair do motor.
+    """
+    texto = " ".join(_norm(entrada).split())
+    if not texto:
+        return "entrada vazia"
+    familia = _familia_do_ramo_do_produto(texto)
+    if familia:
+        return (f"{entrada!r} é rótulo de RAMO (família {familia!r}): escolher "
+                f"entre Residencial, Condomínio e Empresarial decide a APÓLICE, "
+                f"não move o fluxo (CLAUDE.md §9.5, defeito nº 3)")
+    if _RX_COMECA_TRABALHO_NOVO.search(texto):
+        return (f"{entrada!r} COMEÇA TRABALHO NOVO: escolher esta opção abre um "
+                f"segundo atendimento e perde o protocolo do primeiro — não é "
+                f"navegação")
+    return None
+
+
+def _familia_do_ramo_do_produto(texto: str) -> Optional[str]:
+    """`policy_data_provider.familia_de_ramo`, importado tarde de propósito.
+
+    ⚠️ Este módulo é carregado por testes que montam `app.services` à mão; o
+    import no topo quebraria neles. O DONO da pergunta continua sendo um só.
+    """
+    try:
+        from app.providers.policy_data_provider import familia_de_ramo_do_rotulo
+    except Exception:  # noqa: BLE001 — sem o provider, o guarda não inventa
+        return None
+    return familia_de_ramo_do_rotulo(texto)
 
 
 def rotulo_e_de_navegacao(rotulo: Any) -> bool:
