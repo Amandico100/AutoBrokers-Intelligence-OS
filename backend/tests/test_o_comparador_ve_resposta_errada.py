@@ -78,14 +78,34 @@ def _mut_b(fonte: str) -> str:
     📊 `menu_qual_seguro` respondia "1" a um menu de TRÊS opções onde 2 é
     Condomínio, e 5 sessões de condomínio existem no acervo. Não travava:
     acertava a tecla e abria o chamado que seria recusado no local.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    🔴 A MUTAÇÃO PASSOU A DIZER **ONDE** — 28/09/2026, e por medição
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Ela trocava a PRIMEIRA ocorrência de `"reply": "{qual_seguro_opcao}"` no
+    arquivo. 📊 O conserto B da SPEC-119 fez `menu_solicitar_para` — a SEGUNDA
+    tela de três opções, que respondia `"1"` e abria condomínio na apólice da
+    unidade — passar a usar o mesmo slot, e ela mora ANTES no arquivo. A partir
+    daí a mutação mutava o passo ERRADO, o achado saía em `menu_solicitar_para`,
+    o detector exigia `"qual_seguro" in a.passo` e **o guarda ficava VERDE**.
+
+    ⚠️ É o terceiro verde-por-detalhe-de-mutação desta família (CLAUDE.md §9.5:
+    *"ficou verde por engano duas vezes, as duas por detalhe de mutação, não de
+    regra"*). A cura é a mesma de `_mut_a`: a mutação diz ONDE.
     """
-    velho = '''         "reply": "{qual_seguro_opcao}",
-            "requires": ["qual_seguro_opcao"],'''
-    novo = '''         "reply": "1",
-            "requires": [],'''
+    # 🔴 Ancorada na ÂNCORA do passo, que é única no arquivo — não na posição.
+    velho = ('r"\\*?1\\s*-\\s*resid[êe]ncial",\n'
+             '            "reply": "{qual_seguro_opcao}",\n'
+             '            "requires": ["qual_seguro_opcao"],')
+    novo = ('r"\\*?1\\s*-\\s*resid[êe]ncial",\n'
+            '            "reply": "1",\n'
+            '            "requires": [],')
     if velho not in fonte:
-        velho = '"reply": "{qual_seguro_opcao}",'
-        novo = '"reply": "1",'
+        raise AssertionError(
+            "🔴 a mutação B não achou `menu_qual_seguro_tres_opcoes` pela âncora "
+            "dele. Ela NÃO pode cair no `replace` da primeira ocorrência: foi "
+            "assim que este guarda ficou verde por engano em 28/09/2026")
     return fonte.replace(velho, novo, 1)
 
 
@@ -145,10 +165,17 @@ MUTACOES: List[Tuple[str, str, Callable[[str], str], Callable[[list], bool]]] = 
     ("B", "menu de 3 opcoes volta a responder '1' (condominio -> residencial)",
      "B", _mut_b,
      lambda ach: any(a.regra == "B" and a.grave and "ALTERNATIVAS DE CONTEUDO" in a.porque
-                     and "qual_seguro" in a.passo for a in ach)),
+                     and a.passo == "menu_qual_seguro_tres_opcoes" for a in ach)),
+    # 🔴 O NOME DO PASSO POR IGUALDADE, NUNCA POR SUBSTRING — 28/09/2026.
+    #    📊 `"o_que_aconteceu" in a.passo` casa TAMBEM `chave_o_que_aconteceu`, um
+    #    passo da yelum que a SPEC-119 acusa de verdade (2 achados C graves, no
+    #    acervo de hoje). Com a substring, o CONTROLE NEGATIVO desta linha ficava
+    #    vermelho sem que o defeito historico estivesse presente — medido tanto
+    #    no HEAD de hoje quanto em `e76cb28`, ANTES do conserto B, o que prova
+    #    que a colisao nao veio do conserto e sim do nome parecido.
     ("C", "o_que_aconteceu volta a ter ancora seca (tela do outro oficio)",
      "C", _mut_c,
-     lambda ach: any(a.regra == "C" and a.grave and "o_que_aconteceu" in a.passo
+     lambda ach: any(a.regra == "C" and a.grave and a.passo == "o_que_aconteceu"
                      for a in ach)),
     ("A", "idade_de_fabricacao perde origem E fallback (passo CALADO)",
      "A", _mut_a,
