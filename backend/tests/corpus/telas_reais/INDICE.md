@@ -1,6 +1,6 @@
 # Corpus de telas reais — ÍNDICE
 
-> Gerado em **2026-09-27T21:55:30+00:00** · commit `df66d1e`
+> Gerado em **2026-09-28T04:31:54+00:00** · commit `e76cb28`
 > 📊 `marcas_de_corretora()` = **8** (o CONTROLE da SPEC-084 §2.5.1.3 — se fosse 0, a geração teria rodado sem banco e o corpus **não estaria mascarado**)
 
 🔴 Este arquivo existe porque a SPEC-083 §7 proíbe pular em silêncio: *"truncar calado lê-se como 'cobrimos tudo'"*.
@@ -12,13 +12,13 @@
 | `alfa-auto.jsonl` | 121 | 37 | f25d07b1 665b5bad 0c085fc5 47c3a1d8 1b13140b fa39ff38 5872a774 406462dd | 8 | 5 | 4 | 3 | 0 |
 | `allianz-auto.jsonl` | 578 | 173 | 46e8e180 cea36de4 b11fdfe0 d2edf0dd b60d9359 061c2960 4971b50b f94275d4 1e123686 dc6c0345 5d34bab2 1eb1a682 d186210d 696c1712 d8208ce0 d6b1d83f 298e0c49 c6fff008 0aeaae0b 432614de e504c2d7 e0efb326 879eedb0 5e866ea4 | 44 | 5 | 4 | 16 | 0 |
 | `allianz-residencial.jsonl` | 912 | 302 | 75d9671f 90d58fe4 992aaa22 965b3d12 ae194667 b2946306 987572a4 bb97ea04 88eb97a9 6d6164de 448c6aae 3d6a8467 287619f2 920385e3 e70dfcaa aa2e0a68 c58a171a 3a895d36 8ad1d251 2540f42f 96f220ca 267eb82f acc3e885 b084a429 bf5fbbeb c63026a5 21610390 eb7c521e 7c22675f 5e72e523 0591c1d1 0b244572 9694992d e3a53c71 ed379849 be8e3f8d bb6e16d4 eade0321 382cbdb7 c6b63f95 7ac3c101 b2bf40e7 db469d05 590b5940 a8e875fd 5d7a1a35 44ff2017 b5ecd7e1 80c4b7d5 5250ab35 f22b6d12 | 99 | 5 | 9 | 24 | 0 |
-| `azul-auto.jsonl` | 351 | 102 | 4c821851 0189f34b fdec3edf b012d3cd 1cec8452 14398ee8 a1a6a0d4 6c5280df 2f0cd86a d70ced75 | 11 | 5 | 5 | 10 | 0 |
-| `bradesco-auto.jsonl` | 192 | 68 | bc2cfead 0d5284f3 72af1ae1 a10d095d 706df513 57149865 2c05415b c7b6d792 9daeeccb d557d3c7 8f7f1d68 b4e4ef95 | 15 | 5 | 4 | 4 | 0 |
-| `hdi-auto.jsonl` | 722 | 231 | 697abd09 3606a14f 3dc92fcf 68f511d9 bb5b0f11 2e6df205 21a53457 83d2b9e3 e476dc68 ea61eb64 4b2d0c2a 78b2de6f 2548c9c7 fa2ceb6f 886066e5 71caf82f 7e842aee 2bdccc04 d8b852de 17ccacad 794a9d2c | 31 | 5 | 5 | 16 | 0 |
+| `azul-auto.jsonl` | 351 | 101 | 4c821851 0189f34b fdec3edf b012d3cd 1cec8452 14398ee8 a1a6a0d4 6c5280df 2f0cd86a d70ced75 | 11 | 5 | 5 | 10 | 0 |
+| `bradesco-auto.jsonl` | 192 | 67 | bc2cfead 0d5284f3 72af1ae1 a10d095d 706df513 57149865 2c05415b c7b6d792 9daeeccb d557d3c7 8f7f1d68 b4e4ef95 | 15 | 5 | 4 | 4 | 0 |
+| `hdi-auto.jsonl` | 722 | 230 | 697abd09 3606a14f 3dc92fcf 68f511d9 bb5b0f11 2e6df205 21a53457 83d2b9e3 e476dc68 ea61eb64 4b2d0c2a 78b2de6f 2548c9c7 fa2ceb6f 886066e5 71caf82f 7e842aee 2bdccc04 d8b852de 17ccacad 794a9d2c | 31 | 5 | 5 | 16 | 0 |
 | `hdi-residencial.jsonl` | 190 | 63 | 0a7c24ef 13379965 1c8d0849 ed46a953 b638adcd 834cc238 61b96027 26c0546f a1ba53b9 | 9 | 5 | 5 | 2 | 0 |
 | `mapfre-auto.jsonl` | 114 | 37 | a68aa770 59055fb6 f6f2ec11 d857d4de b979f244 b03a6b30 | 21 | 5 | 4 | 0 | 0 |
-| `porto-auto.jsonl` | 810 | 241 | 4830574a e3b1561f f4838bb3 c470d13d 67296ad9 d0d64bfc aef7e9d6 910b6295 d6f1f8d3 697561ab d801cbd8 ca755794 c5cafa8b ba772444 12203ed9 a9560e3a 51b2ed32 77983f63 e5318468 b1ff65f2 0c1e8e3e 1f2582fc 90a47771 cdcc7125 8c490e96 e17f4b74 | 63 | 5 | 8 | 19 | 0 |
-| `porto-residencial.jsonl` | 212 | 66 | 565cb39a 3854b4a2 5bcf0792 84187509 0fe42179 897c42ff 0e97bfa8 e3b9dfd6 4631b3ed | 9 | 5 | 5 | 4 | 0 |
+| `porto-auto.jsonl` | 810 | 240 | 4830574a e3b1561f f4838bb3 c470d13d 67296ad9 d0d64bfc aef7e9d6 910b6295 d6f1f8d3 697561ab d801cbd8 ca755794 c5cafa8b ba772444 12203ed9 a9560e3a 51b2ed32 77983f63 e5318468 b1ff65f2 0c1e8e3e 1f2582fc 90a47771 cdcc7125 8c490e96 e17f4b74 | 63 | 5 | 8 | 19 | 0 |
+| `porto-residencial.jsonl` | 212 | 66 | 565cb39a 3854b4a2 5bcf0792 84187509 0fe42179 897c42ff e3b9dfd6 0e97bfa8 4631b3ed | 9 | 5 | 5 | 4 | 0 |
 | `tokio-auto.jsonl` | 70 | 24 | c1a67b4a b7e75c66 d99a47a1 fa8127ef ca52ff75 641420c8 d8a81c33 | 7 | 5 | 4 | 0 | 0 |
 | `tokio-residencial.jsonl` | 53 | 19 | 6bb9dd93 8d9b8672 f8b83a35 e0383feb 66c9dd9b | 5 | 5 | 0 | 0 | 0 |
 | `yelum-auto.jsonl` | 1253 | 401 | 69816f6b f984d8f0 c0c3c694 4d5bd779 e8efabc0 39e395bb e97943bd 21243a23 a1c18e1c 8a0d25a4 c54f4a98 350492ce 9d2655e2 01bf91c2 6b4c37e4 b187d77a 74fa01a1 ba9f1970 29ae4344 0a1a616e 705f915b 56bd78f7 7c841763 19d73270 8a6040a7 8ce9f29d 935c4076 8ac461dc 927d8cea ba475989 86769bd5 e6a07317 b73ccd15 aa0f65bf 9e562ae5 859d185c | 63 | 5 | 5 | 26 | 0 |
@@ -231,8 +231,8 @@
 - [encanador] COM DESFECHO -> 84187509
 - [encanador] COM DESFECHO -> 0fe42179
 - [(tronco)] diversidade (jaccard 0.00) -> 897c42ff
-- [(tronco)] diversidade (jaccard 0.05) -> 0e97bfa8
-- [(tronco)] diversidade (jaccard 0.15) -> e3b9dfd6
+- [(tronco)] diversidade (jaccard 0.04) -> e3b9dfd6
+- [(tronco)] diversidade (jaccard 0.15) -> 0e97bfa8
 - [(tronco)] diversidade (jaccard 0.45) -> 4631b3ed
 
 **`tokio-auto.jsonl`**
@@ -363,18 +363,18 @@ _nenhuma_
 
 ## Contagens por seguradora
 
-| seguradora | FALA_DE_GENTE | FORA_DE_ESCOPO:condominio | ORFAO_sessao | dedup | nivel:- | nivel:colisao | nivel:nivel-1-resposta | nivel:nivel-2-texto | nivel:sem-escolha-de-ramo | ramo:ambos | ramo:auto | ramo:condominio | ramo:indefinido | ramo:residencial | ramo:sem_escolha | senha_preservada | servico:indefinido | servico:nivel | vocativo_mascarado | zona:HUMANO | zona:URA |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| alfa | 0 | 0 | 0 | 30 | 1 | 0 | 0 | 8 | 0 | 0 | 8 | 0 | 1 | 0 | 0 | 3 | 3 | 5 | 0 | 0 | 151 |
-| allianz | 1 | 0 | 1 | 1411 | 19 | 1 | 135 | 8 | 0 | 1 | 44 | 0 | 19 | 99 | 0 | 55 | 47 | 96 | 0 | 4412 | 3698 |
-| azul | 0 | 0 | 0 | 68 | 3 | 0 | 0 | 11 | 5 | 0 | 11 | 0 | 3 | 0 | 5 | 9 | 0 | 11 | 10 | 22 | 450 |
-| bradesco | 0 | 0 | 0 | 19 | 15 | 0 | 0 | 15 | 0 | 0 | 15 | 0 | 15 | 0 | 0 | 0 | 8 | 7 | 0 | 0 | 227 |
-| hdi | 0 | 0 | 1 | 241 | 9 | 1 | 8 | 32 | 0 | 1 | 31 | 0 | 9 | 9 | 0 | 33 | 12 | 28 | 23 | 403 | 1248 |
-| mapfre | 0 | 0 | 1 | 130 | 17 | 0 | 0 | 21 | 0 | 0 | 21 | 0 | 17 | 0 | 0 | 0 | 20 | 1 | 0 | 223 | 534 |
-| porto | 0 | 0 | 1 | 531 | 54 | 0 | 31 | 41 | 16 | 0 | 63 | 0 | 54 | 9 | 16 | 23 | 34 | 38 | 42 | 384 | 1853 |
-| tokio | 0 | 2 | 1 | 87 | 48 | 0 | 0 | 14 | 0 | 0 | 7 | 2 | 48 | 5 | 0 | 0 | 7 | 5 | 0 | 0 | 210 |
-| yelum | 0 | 0 | 1 | 469 | 44 | 0 | 33 | 39 | 1 | 0 | 63 | 0 | 44 | 9 | 1 | 51 | 20 | 52 | 31 | 435 | 2218 |
-| zurich | 0 | 0 | 1 | 69 | 4 | 0 | 0 | 11 | 0 | 0 | 11 | 0 | 4 | 0 | 0 | 2 | 9 | 2 | 0 | 41 | 398 |
+| seguradora | FALA_DE_GENTE | FORA_DE_ESCOPO:condominio | ORFAO_sessao | dedup | nivel:- | nivel:colisao | nivel:nivel-1-resposta | nivel:nivel-2-texto | nivel:sem-escolha-de-ramo | nome_da_sessao_mascarado | ramo:ambos | ramo:auto | ramo:condominio | ramo:indefinido | ramo:residencial | ramo:sem_escolha | senha_preservada | servico:indefinido | servico:nivel | vocativo_mascarado | zona:HUMANO | zona:URA |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| alfa | 0 | 0 | 0 | 30 | 1 | 0 | 0 | 8 | 0 | 0 | 0 | 8 | 0 | 1 | 0 | 0 | 3 | 3 | 5 | 0 | 0 | 151 |
+| allianz | 1 | 0 | 1 | 1411 | 19 | 1 | 135 | 8 | 0 | 3 | 1 | 44 | 0 | 19 | 99 | 0 | 55 | 47 | 96 | 0 | 4412 | 3698 |
+| azul | 0 | 0 | 0 | 68 | 3 | 0 | 0 | 11 | 5 | 0 | 0 | 11 | 0 | 3 | 0 | 5 | 9 | 0 | 11 | 25 | 22 | 450 |
+| bradesco | 0 | 0 | 0 | 19 | 15 | 0 | 0 | 15 | 0 | 0 | 0 | 15 | 0 | 15 | 0 | 0 | 0 | 8 | 7 | 2 | 0 | 227 |
+| hdi | 0 | 0 | 1 | 241 | 9 | 1 | 8 | 32 | 0 | 44 | 1 | 31 | 0 | 9 | 9 | 0 | 33 | 12 | 28 | 40 | 403 | 1248 |
+| mapfre | 0 | 0 | 1 | 130 | 17 | 0 | 0 | 21 | 0 | 0 | 0 | 21 | 0 | 17 | 0 | 0 | 0 | 20 | 1 | 0 | 223 | 534 |
+| porto | 0 | 0 | 1 | 531 | 54 | 0 | 31 | 41 | 16 | 4 | 0 | 63 | 0 | 54 | 9 | 16 | 23 | 34 | 38 | 94 | 384 | 1853 |
+| tokio | 0 | 2 | 1 | 87 | 48 | 0 | 0 | 14 | 0 | 0 | 0 | 7 | 2 | 48 | 5 | 0 | 0 | 7 | 5 | 0 | 0 | 210 |
+| yelum | 0 | 0 | 1 | 469 | 44 | 0 | 33 | 39 | 1 | 62 | 0 | 63 | 0 | 44 | 9 | 1 | 51 | 20 | 52 | 54 | 435 | 2218 |
+| zurich | 0 | 0 | 1 | 69 | 4 | 0 | 0 | 11 | 0 | 0 | 0 | 11 | 0 | 4 | 0 | 0 | 2 | 9 | 2 | 0 | 41 | 398 |
 
 ## Avisos
 
@@ -383,5 +383,5 @@ _nenhuma_
 
 ## Vocativos
 
-📊 esqueletos com ≥3 cabeças distintas (= DADO, mascarado): **7** · com exatamente 2 (= `NOME_DUVIDOSO`, **não** mascarado automaticamente, fica para leitura humana): **8**
+📊 esqueletos com ≥3 cabeças distintas (= DADO, mascarado): **6** · com exatamente 2 (= `NOME_DUVIDOSO`, **não** mascarado automaticamente, fica para leitura humana): **6**
 
