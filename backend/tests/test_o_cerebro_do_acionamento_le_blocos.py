@@ -176,22 +176,51 @@ def test_o_fiscal_aprovaria_um_bloco_curto_entao_o_extrator_e_a_defesa():
 
     Um bloco de raciocínio CURTO passa pelo fiscal. Logo, o que impede o blob de
     ir à seguradora é o extrator — e o guarda 2 é quem o vigia.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    🔴 A FRASE MUDOU, A LIÇÃO NÃO — CLAUDE.md §9.3, em 28/09/2026
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Este teste dizia, por escrito, o que fazer se o fiscal passasse a barrar o
+    blob: *"se o fiscal passou a barrar isto, ÓTIMO — mas então este teste
+    precisa de outra frase"*. O conserto B da SPEC-119 fez exatamente isso: o
+    fiscal agora recusa rascunho que comece com `{`, `[` ou cerca de markdown
+    (`reason="nao_e_frase"`).
+
+    📊 Então a frase de teste deixou de ser o `repr` de uma LISTA e passou a ser
+    o `encrypted_content` NU — que é o que sobra de um bloco de raciocínio
+    quando alguém concatena os pedaços em vez de ler o campo `text`. Ele é
+    curto, não tem colchete, não tem número inventado, **e o fiscal aprova**.
+
+    🔴 A afirmação segue de pé, e é a mesma: *o teto de 400 não é a proteção; o
+    extrator é.* O que mudou foi a largura da rede do fiscal, e o teste mede a
+    rede de HOJE — as duas metades, a que ele pega e a que ele não pega.
     """
     from app.services.insurer_dispatch_service import guard_human_phase_reply
 
     sessao = {"playbook_ref": "yelum-auto-whatsapp@v3", "slots": {}, "captured": {}}
     tela = "Houve a abertura do sinistro?\nBotao 1: Sim\nBotao 2: Nao"
 
-    curto = "[{'type': 'reasoning', 'encrypted_content': 'gAAAA'}]"
+    # ① o que o fiscal NÃO pega: o conteúdo cifrado do bloco, sem colchete
+    curto = "gAAAAABmQx encrypted reasoning content"
     assert len(curto) <= 400
     veredito = guard_human_phase_reply(curto, sessao, insurer_message=tela)
     assert veredito["ok"] is True, (
-        "se o fiscal passou a barrar isto, ÓTIMO — mas então este teste precisa "
-        "de outra frase, e o comentário do conserto precisa mudar com ele "
-        f"(veredito: {veredito})")
+        "se o fiscal passou a barrar TAMBÉM isto, ÓTIMO — mas então este teste "
+        "precisa de outra frase, e o comentário do conserto precisa mudar com "
+        f"ele (veredito: {veredito})")
 
-    # …e o mesmo blob LONGO é recusado por tamanho, que é o que aconteceu de fato
-    longo = "[{'type': 'reasoning', 'encrypted_content': '" + "g" * 500 + "'}]"
+    # ② o que ele PEGA desde 28/09: a estrutura de dados, por FORMA
+    estrutura = "[{'type': 'reasoning', 'encrypted_content': 'gAAAA'}]"
+    assert len(estrutura) <= 400, "a frase ② deixou de testar a FORMA, e sim o teto"
+    assert guard_human_phase_reply(estrutura, sessao, insurer_message=tela) == {
+        "ok": False, "reason": "nao_e_frase", "reply": estrutura}, (
+        "🔴 o fiscal voltou a aceitar o `repr` de uma lista de blocos")
+
+    # ③ …e o mesmo blob LONGO é recusado por tamanho, que é o que aconteceu de
+    #    fato em 27/09. 🔴 Sem colchete, para que a recusa seja mesmo `too_long`
+    #    e não a trava nova — senão ② e ③ mediriam a MESMA coisa.
+    longo = "g" * 500
     assert guard_human_phase_reply(longo, sessao, insurer_message=tela) == {
         "ok": False, "reason": "too_long", "reply": longo}
 

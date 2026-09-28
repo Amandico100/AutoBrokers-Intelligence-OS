@@ -419,8 +419,28 @@ def test_13_sim_e_nao_nao_sao_navegacao():
             f"{rotulo!r} entrou no vocabulário da navegação — a tela "
             "'Houve vítimas no local? 1-Sim 2-Não' viraria `conduz`")
     for rotulo in ("Continuar", "Voltar", "Sair", "Voltar ao menu", "Encerrar",
-                   "Abrir novo atendimento", "Mais opções"):
+                   "Mais opções"):
         assert PB.rotulo_e_de_navegacao(rotulo), f"{rotulo!r} deixou de navegar"
+    # =====================================================================
+    # 🔴 `Abrir novo atendimento` SAIU DAQUI — e a lição MIGROU (CLAUDE.md §9.3)
+    # =====================================================================
+    #
+    # Esta linha afirmava que *"Abrir novo atendimento"* NAVEGA. Era verdade
+    # até deixar de ser: 📊 medido em 28/09/2026 na tela real
+    # `yelum-auto.jsonl`, sessão `01bf91c2` — *"Você gostaria de abrir um novo
+    # atendimento ou continuar de onde parou?"* —, `classe_da_tela` respondia
+    # `conduz/navegacao` **por causa deste rótulo**, e o prompt do modelo
+    # recebia *"⛔ NÃO responda NAO_SEI aqui"*. Abrir um segundo atendimento
+    # perde o protocolo do primeiro.
+    #
+    # ⛔ A afirmação não foi apagada: ela foi INVERTIDA e ganhou o porquê. Manter
+    #    a versão vencida ensinaria a ignorar teste.
+    for rotulo in ("Abrir novo atendimento", "Novo atendimento", "Outro serviço",
+                   "Outros serviços"):
+        assert not PB.rotulo_e_de_navegacao(rotulo), (
+            f"🔴 {rotulo!r} voltou a NAVEGAR — a tela 'abrir um novo atendimento "
+            f"ou continuar de onde parou?' volta a ser `conduz`, e com ela a rede "
+            f"de segurança do NAO_SEI é desligada por instrução")
     # 🔴 CONTROLE: rótulo vazio NÃO navega. A régua offline trata vazio como
     #    navegação; aqui, um rótulo que ninguém leu não autoriza nada.
     assert not PB.rotulo_e_de_navegacao("")
