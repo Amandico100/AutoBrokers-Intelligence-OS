@@ -12103,3 +12103,72 @@ vai dizer que `porto/auto/bateria` tem 10 telas sem resposta e mandar **escrever
 falas de gente**. É trabalho que não existe, apontado com número — a forma mais cara de erro
 que este documento registra.
 
+
+## P-119-15 · 🤖 O SEGUNDO varredor de famílias de travamento continua cego ao dicionário
+📊 Medido em 28/09/2026 pelo CONSERTO C. `test_a_retomada_cobre_as_dezesseis.py` foi consertado
+e passou a enxergar os DOIS escritores do motivo da sessão:
+
+```
+a atribuição direta                            session["reason"] = "..."
+o dicionário que manda a uma pessoa            {"destino": "humano", "reason": "..."}
+```
+
+🔴 **O outro varredor, `test_o_travamento_vira_linha.py`, só enxerga o primeiro** — e é ele que
+alimenta `test_as_familias_do_fonte_batem_com_a_triagem` e a lista `FAMILIAS_DE_TRAVAMENTO`.
+📊 Consequência medida: três famílias REAIS não aparecem na triagem dele —
+`ramo_indeterminado`, `tecla_ambigua` e `apolice_de_condominio_ou_empresa`.
+
+**O que destrava:** 🤖 levar o mesmo padrão do dicionário para lá e acrescentar as três à
+`FAMILIAS_DE_TRAVAMENTO` (ela é parametrizada, então cada uma vira um caso a mais).
+⚠️ **Por que não foi feito nesta fatia:** `test_as_familias_do_fonte_batem_com_a_triagem` é um
+dos SEIS testes que **passaram a ficar verdes** nesta SPEC, e o pacote do CONSERTO C diz, com
+essas palavras, *"ganho, não mexa"*. Mexer nele sem medição própria trocaria um ganho por um
+risco.
+**Custa esquecer:** ⚠️ uma família nova escrita no estilo do dicionário nasce sem triagem e
+**sem vermelho** — exatamente o defeito que o CONSERTO C acabou de fechar do outro lado. É meia
+porta fechada.
+
+## P-119-16 · 🤖 `galho_de_areas_comuns` ainda tem uma frase para um motivo que ninguém escreve
+📊 Medido em 28/09/2026 (CONSERTO C). A entrada saiu de `_POLITICA_DE_RETOMADA` porque **nenhuma
+linha do produto escreve esse motivo**: a segunda porta do condomínio é um `handoff_triggers` do
+corredor residencial, e o motivo que sai dela é `handoff_trigger:…` — provado por
+`test_condominio_empresarial_sinistro_vao_para_gente.py::test_a_porta_do_galho_de_areas_comuns_tambem_para`.
+
+🔴 **Sobrou o gêmeo:** `_MOTIVOS_EM_PORTUGUES["galho_de_areas_comuns"]`, a frase que a atendente
+leria. Ela também é inalcançável. ⚠️ O guarda que existe (`test_A1_todo_motivo_do_produto_tem_frase_em_portugues`)
+pergunta *"todo motivo tem frase?"* e **não** pergunta *"toda frase tem motivo?"* — a pergunta
+inversa não tem guarda, e é a que pegaria isto.
+
+**O que destrava:** 🤖 apagar a entrada, e acrescentar ao guarda a segunda pergunta (frase sem
+motivo = aterro), com a lista de exceções declaradas que ele hoje não tem.
+**Custa esquecer:** ⚠️ zero byte para o segurado hoje — nada a alcança. O custo é de leitura:
+quem abrir a tabela vai supor que existe um motivo próprio para o galho de áreas comuns e vai
+procurar onde ele é escrito. Verdade vencida em tabela é o defeito do CLAUDE.md §9.3 na forma
+mais barata de consertar e mais fácil de esquecer.
+
+## P-119-17 · 🧑 As worktrees de medição não têm `node_modules` — e cinco guardas dependem dele
+📊 Medido em 28/09/2026 (CONSERTO C), com linha de controle:
+
+```
+MESMO commit 96bde37
+  AutoBrokers-FIX-mut        (com node_modules)   os 5 guardas VERDES
+  AutoBrokers-FIX-gate0-e001 (sem node_modules)   os 5 guardas VERMELHOS
+```
+
+Os cinco: `test_o_diagnostico_ve_o_agente_mudo` · `test_o_numero_da_casa_nao_e_cliente` ·
+`test_a_tabela_de_rotas_monta` · `test_o_nome_do_agente_nao_confunde` ·
+`test_um_clique_liga_os_corredores`. Todos transpilam ou executam o `.ts`/`.mjs` REAL com o
+`typescript` (ou o `next`) **do repositório**.
+
+🔴 **Isto já custou triagem:** os cinco entraram numa lista de "defeitos da SPEC" e quatro deles
+foram procurados no repositório. **O CONSERTO C fez os cinco DIZEREM a causa** (*"node_modules/
+typescript ausente nesta arvore — rode `npm ci` na raiz. Isto NAO e' regressao do produto"*), e
+⛔ **nenhum virou `skip`** — guarda que se cala quando não consegue medir não guarda nada, e no
+caso da tabela de rotas foi um gate silencioso que deixou o site fora do ar por 1h40 (§9.1).
+
+**O que destrava:** 🧑 rodar `npm ci` uma vez em cada worktree usada para medir (hoje falta em
+`AutoBrokers-FIX-f5`, `AutoBrokers-FIX-gate0-e001` e `AutoBrokers-FIX-base-0016`), ou medir
+sempre numa árvore que já o tenha.
+**Custa esquecer:** ⚠️ cinco vermelhos por rodada que **não são do produto**. O preço não é o
+vermelho: é a hora gasta procurando no código uma regressão que está na máquina — e o hábito de
+ignorar um gate que vive vermelho (§9.3).
