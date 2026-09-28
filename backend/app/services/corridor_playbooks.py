@@ -9329,6 +9329,30 @@ def rotulo_e_de_navegacao(rotulo: Any) -> bool:
     r = " ".join(_norm(rotulo).split())
     if not r:
         return False
+    # =====================================================================
+    # 🔴 O VETO VEM ANTES DO PREFIXO — e foi a MEDIÇÃO que exigiu esta linha
+    # =====================================================================
+    #
+    # 📊 Medido em 28/09/2026: tirar `outros servicos` do vocabulário não mudou
+    #    NADA. `rotulo_e_de_navegacao` casa por PREFIXO de palavra inteira, e
+    #    `outros` — que fica na lista, porque *"Outros"* abre um submenu —
+    #    engolia *"Outros serviços"*:
+    #
+    #    ```
+    #    'Outro serviço'    -> False   (saiu da lista, e nada o cobre)
+    #    'Outros serviços'  -> True    🔴 coberto por `outros`
+    #    ```
+    #
+    #    Uma entrada removida da lista sem este veto é conserto INERTE — o
+    #    CLAUDE.md §0.4 em forma de rótulo: mudou o valor, procure o antigo.
+    #
+    # ⚠️ **Só a segunda família do guarda entra aqui, e a razão é medida.** A
+    #    primeira (rótulo de RAMO) vale para quem ESCREVE a lista, não para
+    #    todo rótulo que passa: 📊 `familia_de_ramo_do_rotulo("Voltar para o
+    #    carro reserva")` devolve `auto` (por "carro"), e essa opção NAVEGA —
+    #    está na docstring desta função desde que ela existe.
+    if _RX_COMECA_TRABALHO_NOVO.search(r):
+        return False
     for nav in _VOCABULARIO_DE_NAVEGACAO:
         if r == nav or r.startswith(nav + " ") or r.startswith(nav + ","):
             return True
