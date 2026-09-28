@@ -268,6 +268,80 @@ def test_o_vocabulario_de_lingua_vem_do_PRODUTO_e_nao_de_uma_lista():
         assert nome not in voc, f"🔴 {nome!r} entrou no vocabulario de lingua"
 
 
+# 🔴 A forma de um logradouro escrito por extenso. Vale para o CORPUS inteiro,
+#    e é a mesma que o gerente usou para achar as 27 linhas.
+RX_LOGRADOURO = re.compile(
+    r"(?i)\b(rua|r\.|av\.|avenida|alameda|al\.|travessa|rodovia|rod\.|estrada|"
+    r"estr\.|pra[çc]a|servid[ãa]o|marginal|beco|largo|loteamento|road|"
+    r"unnamed road)\s+(?-i:[A-ZÀ-Ú][\wÀ-ÿ'’.#-]*)")
+#: O EXEMPLO que a própria URA escreve — `_(Ex. Avenida Brasil)_`. Não é dado de
+#: ninguém, e mascarar apagaria a instrução que ensina o segurado a responder.
+RX_EXEMPLO_DA_URA = re.compile(r"(?i)\(?\s*\bex(?:\.|:|emplos?\b)")
+
+
+def test_nenhum_logradouro_real_sobrou_no_corpus():
+    """🔴 O logradouro de um segurado não vai para `origin/main` (§7, §13.9).
+
+    📊 Medido em 28/09/2026, antes do conserto: **27 linhas distintas** com nome
+    de rua em claro — e em 20 delas a PRÓPRIA seguradora já tinha mascarado o
+    fim do nome e o número com `#` (`Av. Caetano Silveir#, #, Palhoça, SC`).
+    **Meia máscara é o pior dos estados**: a linha parece tratada, e o que
+    sobrou é justamente a parte que localiza uma pessoa.
+
+    ⚠️ A linha de EXEMPLO da URA é descontada — é o outro sentido, e tem o seu
+    próprio teste logo abaixo.
+    """
+    achados = [(n, i, li.strip()[:80])
+               for n, i, d in _linhas_do_corpus()
+               for li in (d.get("text") or "").split("\n")
+               if RX_LOGRADOURO.search(li) and not RX_EXEMPLO_DA_URA.search(li)]
+    assert not achados, "%d linha(s) com logradouro real: %s" % (
+        len(achados), achados[:4])
+
+
+def test_CONTROLE_o_exemplo_da_propria_URA_NAO_e_mascarado():
+    """🔴 O outro sentido — *"um guarda que sempre acusa é bloqueio"*.
+
+    📊 São 18 linhas do acervo, em 3 formas: `_(Ex. Avenida Brasil)_.`,
+    `_(ex. Avenida Brasil)_.` e
+    `_(Ex: Em frente ao shopping / travessa da Rua Dois)._`.
+    Mascarar ali apagaria a instrução, e a tela ensinaria menos que antes.
+    """
+    exemplos = [(n, i, li) for n, i, d in _linhas_do_corpus()
+                for li in (d.get("text") or "").split("\n")
+                if RX_EXEMPLO_DA_URA.search(li) and RX_LOGRADOURO.search(li)]
+    assert exemplos, ("CONTROLE FALHOU: o exemplo da URA sumiu do corpus -- "
+                      "ou a máscara o comeu, ou o acervo mudou")
+    for _n, _i, li in exemplos:
+        assert "{ENDERECO}" not in li, "comeu o exemplo da URA: %r" % li[:90]
+
+
+def test_CONTROLE_a_mascara_de_endereco_separa_EXEMPLO_de_DADO():
+    """🔴 As duas classes, lado a lado, na MESMA rodada do mascarador."""
+    dado = [
+        "*Endereço de destino:* Av. Fulana Silveir#, #, Palhoca, SC",
+        "*Endereço de destino taxi:* Av. Fulana Silveira - N/A - Palhoca - Palhoca - SC",
+        "Localizei o endereço R. Gen. Fulano, Canoas, RS",
+        "*Ponto de referência*: Se entrar pela Rua Fulana Tal, minha rua é a segunda",
+        "Rua Presidente Fulan#, 445, Apto 302 - Centro - Florianopolis - SC",
+    ]
+    for t in dado:
+        assert "{ENDERECO}" in M.templatize(t), "rua em claro: %r" % t
+    lingua = [
+        "Agora, informe apenas o nome do logradouro _(Ex. Avenida Brasil)_.",
+        "Informe um ponto de referência _(Ex: Em frente ao shopping / travessa da Rua Dois)._",
+        "a Rua Direita e conhecida na regiao, e o prestador vai ate la",
+        "A Porto pede rua e numero do local do atendimento",
+        "Endereço de Origem e destino (rua/av., número, bairro, cidade e estado;",
+    ]
+    for t in lingua:
+        assert "{ENDERECO}" not in M.templatize(t), "comeu prosa/exemplo: %r" % t
+    # 🔴 e a máscara é IDEMPOTENTE: linha já tratada não muda de novo
+    for t in ["*Origem:* ESTR. {ENDERECO} - ANGELINA - SC",
+              "*Destino:* BR-101, {ENDERECO} - SAO JOSE - SC"]:
+        assert M.templatize(t) == t, "mexeu em linha já tratada: %r" % t
+
+
 def test_o_logradouro_sem_numero_tambem_e_mascarado():
     """🔴 O mesmo buraco de DESENHO do vocativo, no endereço.
 
