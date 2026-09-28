@@ -11871,3 +11871,66 @@ amostra de 1 não distingue *"o segurado pediu guincho no meio de um chamado res
 **Custa esquecer:** ⚠️ **uma** linha errada numa lista que o Founder lê como inventário de
 trabalho manda alguém escrever um corredor que não existe. É pequeno e é da classe que o
 CLAUDE.md §12.1 chama de reinfecção: o número está certo, o rótulo é que mente.
+
+## P-119-10 · 🔴🤖 `bradesco/auto/bateria` PERDEU o corpus — o classificador novo mandou a bateria para uma rota que não existe
+📊 Medido em 28/09/2026 pela régua completa das 73 rotas, comparada com o inventário do
+commit `44ea3a4` (27/09, antes das fatias F1/F2):
+
+```
+bradesco/auto/bateria    47/76 parcial(76)!1   ->   SEM_CORPUS
+```
+
+🔴 **E a causa não é falta de conversa — é etiqueta trocada.** No mesmo arquivo, com o mesmo
+total de 192 telas:
+
+```
+antes (SPEC-119 §1, lido do corpus)   guincho 89 · bateria 36 · (vazio) 27
+depois (28/09)                        guincho 129 · tecnico 36 · (vazio) 27
+```
+
+As **36 telas que eram `bateria` agora são `tecnico`** — e `bradesco/auto/tecnico`
+**não é uma rota**: 📊 `regua_motor.rotas()` para a bradesco devolve `bateria · chaveiro ·
+guincho · pneu`. As telas saíram de uma rota que **tem** corredor e foram para uma que **não
+tem**, onde ninguém as lê.
+
+⛔ **E o texto das telas diz que a etiqueta certa é `bateria`.** Lidas do acervo:
+
+```
+"Entendi, mas pra eu te ajudar, preciso entender qual o problema com o seu carro:
+   *1* - Pane ( _ex. bateria, motor, câmbio, radiador, etc_ )"
+"Me conta o que aconteceu:  *1* - O veículo estava estacionado e não liga"
+"O seu veículo é híbrido/elétrico?"
+```
+
+**O que destrava:** 🤖 conferir a regra de `tecnico` em `padroes_de_servico.py` contra estas
+telas da bradesco, e regerar o corpus. ⚠️ Regerar **move a nota das 73 rotas**, então isto pede
+a régua antes e depois, como a D-118-02 exigiu.
+**Custa esquecer:** 🔴 é a classe do CLAUDE.md §9.5 — **responde errado sem travar**. Nada
+quebra: a página simplesmente passa a dizer *"bradesco/auto/bateria: nenhuma conversa desta
+rota"* para uma rota que **tem duas conversas no acervo**, e a corretora é mandada coletar o
+que já está coletado. É exatamente a confusão que esta SPEC existe para acabar, reintroduzida
+pela fatia que veio consertá-la.
+⚠️ **Não foi consertado nesta fatia** (F5): o arquivo é da F1, o conserto exige regerar o corpus
+da F2, e fazer isso depois de medir invalidaria o G4 que acabou de ser medido (CLAUDE.md §9.2).
+
+## P-119-11 · 🤖 Três rotas de guincho caíram de patamar porque o acervo cresceu
+📊 28/09/2026, régua completa (73 rotas), contra o inventário de 27/09 (`44ea3a4`):
+
+```
+azul/auto/guincho      72/76 quase     ->  58/76 parcial   eixo B: 33/33 -> 19/33
+hdi/auto/guincho       72/76 quase     ->  48/76 parcial   eixo B: 33/33 ->  9/33
+bradesco/auto/guincho  55/76 parcial   ->  31/76 esqueleto eixo A: 16/16 ->  4/16 · B -> 4/33
+```
+
+🔴 **A causa é a mesma nas três, e ela é BOA notícia disfarçada de má:** a F2 trouxe o acervo
+inteiro para o corpus, e a régua passou a ver telas que o corredor **não responde** e que antes
+ela não enxergava. 📊 `hdi/auto/guincho` foi de um corpus pequeno para **599 telas** com **21
+órfãs funcionais**; `azul/auto/guincho` para **228 telas** com 1 órfã. O item que despenca é
+sempre *"zero órfãs funcionais"*.
+⚠️ **O produto não piorou — a medição melhorou.** É o mesmo fenômeno que a SPEC-118 registrou
+quando o denominador da régua mudou: comparar duas réguas diferentes é que seria o erro.
+**O que destrava:** 🤖 escrever os passos das telas órfãs — elas estão nomeadas na aba
+CORREDORES, com a frase real e a conversa em que aparecem.
+**Custa esquecer:** ⚠️ estas três **ainda dão para ligar do ponto de vista do produto**? Não:
+a simulação as põe em `FALTA CAPTURA / tela_orfa`. Uma tela órfã é o robô **calado** na frente
+do segurado, e a régua sozinha não diria isso — foi preciso a segunda pergunta.
