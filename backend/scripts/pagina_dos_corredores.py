@@ -537,6 +537,20 @@ def aba(f: Fontes, linhas: List[Linha]) -> str:
       'a nota da régua, de 0 a 100, e serve para saber <i>por onde começar</i> — '
       'nunca para decidir se liga. Uma rota pode ter nota baixa e estar pronta; '
       'outra pode ter nota alta e não ter uma conversa gravada que prove nada.</p>')
+    # 🔴 O EXEMPLO NÃO É INVENTADO — ele sai dos dados, ou não aparece.
+    #    ⚠️ Escrever "imagine uma rota de 95% que não liga" seria 💭; a frase só
+    #    tem direito de existir se houver uma, e o nome dela vai junto.
+    provas = sorted([l for l in linhas
+                     if (l.nota.get("pct") or 0) >= 90 and l.da_para_ligar != "SIM"],
+                    key=lambda l: -(l.nota.get("pct") or 0))[:2]
+    if provas:
+        nomes = " e ".join(f"<code>{_e(l.rota)}</code> ({_e(l.pct)})"
+                           for l in provas)
+        A(f'<p class="note" style="margin-top:12px">📊 <b>E não é hipótese:</b> '
+          f'{nomes} {"estão" if len(provas) > 1 else "está"} entre as notas mais '
+          f'altas da régua e <b>não dá para ligar</b> — {"elas têm" if len(provas) > 1 else "ela tem"} '
+          f'telas que ninguém respondeu. <b>Se as duas colunas nunca '
+          f'discordassem, uma delas não estaria medindo nada.</b></p>')
     A('<p class="lede" style="max-width:76ch;margin-top:10px">🔴 <b>E a nota '
       'agora é em %, não mais &ldquo;58 de 76&rdquo;.</b> O denominador mudava '
       'de rota para rota — 76, 70, 64 — porque itens que não se aplicam saem da '
