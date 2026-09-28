@@ -11835,7 +11835,21 @@ valor de hoje como omissão, e ensinar o auditor a reclamar de UUID literal em `
 apelidos do eixo D e move as notas das 73 rotas no meio de uma medição — o G4 desta SPEC deixaria
 de ser comparável. É dívida pequena e de efeito nulo hoje; é dívida de regra, e a regra vale.
 
+⚠️ **CONSERTO A, 28/09/2026 — confirmado e NÃO consertado, pelo mesmo motivo.** Foi reavaliado
+ao trocar o guarda do §13.9 da página por uma regra. 🔴 Fica registrado que **o guarda novo não
+alcança este caso**: ele confere o que a página **publica** (chaves, valores e o HTML emitido),
+não o que está escrito **dentro do código**. Quem cobre código é
+`backend/scripts/auditar_pii_no_codigo.py`, e a nota acima já diz que ele passa por cima de um
+UUID. São dois guardas com dois escopos, e este UUID cai no vão entre eles.
+
 ## P-119-07 · 🤖 Um NÚMERO DE PROTOCOLO virou "serviço" — e cinco rótulos esperam nome canônico
+
+> ✅ **A primeira metade FOI FEITA — CONSERTO A, 28/09/2026.** `padroes_de_servico.py` deixa de
+> aceitar como nome de serviço um rótulo com menos de três letras: 📊 a chave
+> `porto/auto/?4145720 - 26` sumiu dos dois blocos de `DEMANDA-POR-ROTA.json`, e a sessão passou
+> a contar em `porto/auto/bateria` (4 → 5 pedidos, 24 linhas do corpus). A sessão **não** é
+> descartada — os níveis seguintes continuam tentando, porque descartar ali seria pular em
+> silêncio (SPEC-083 §7). ⚠️ **Os cinco rótulos que esperam nome canônico continuam abertos.**
 📊 28/09/2026, 7 rótulos com `?` no acervo, **170 telas**. O `?` é **honesto**: o classificador
 escreve `nivel-1a-rotulo-desconhecido` em vez de chutar. Mas são duas coisas diferentes:
 ```
@@ -11913,6 +11927,54 @@ pela fatia que veio consertá-la.
 ⚠️ **Não foi consertado nesta fatia** (F5): o arquivo é da F1, o conserto exige regerar o corpus
 da F2, e fazer isso depois de medir invalidaria o G4 que acabou de ser medido (CLAUDE.md §9.2).
 
+### 🔴 ATUALIZAÇÃO — CONSERTO A, 28/09/2026: **eu medi e discordo da leitura acima**
+
+📊 Fui às duas telas reais (`2c05415b`, `57149865`). Depois de o cliente escolher
+`*1* - Pane ( _ex. bateria, motor, câmbio, radiador, etc_ )`, a URA da **própria Bradesco**
+responde:
+
+```
+"Certo! Esse problema dá pra resolver com a assistência de um *técnico*. Posso confirmar
+ esse serviço?"
+"Ótimo! Logo mais, o *técnico* deve chegar até o local."
+```
+
+🔴 **O classificador está CERTO.** A Bradesco não manda um serviço de bateria: ela despacha um
+**técnico**. E `tecnico` não é um balde de não-classificado — é vocabulário legítimo do produto,
+com **rota declarada** em `azul/auto` (33 telas) e `porto/auto` (76 telas).
+
+> ## O defeito não é a etiqueta. É o NOME DA ROTA.
+> ## `bateria` batiza pelo SINTOMA o que a seguradora resolve pelo DESFECHO.
+
+⚠️ O trecho acima cita as telas do menu (*"Pane ( ex. bateria… )"*, *"não liga"*) como prova de
+que a etiqueta certa seria `bateria`. 📊 Elas provam o que o **cliente pediu**; a tela que diz
+o que a **seguradora faz** vem depois, e diz `técnico`. Ler só a primeira metade da conversa é
+o que produz uma rota com nome de sintoma.
+
+**O que foi FEITO (CONSERTO A):** a página parou de mandar gastar um acionamento que já existe.
+`pagina_dos_corredores.py` ganhou `nome_que_mente`, uma **regra** (não uma exceção com nome de
+seguradora dentro, §13.9): quando uma rota é `SEM_CORPUS` e o mesmo `(seguradora, ramo)` tem
+serviço medido **sem rota declarada**, a página diz *"confira ANTES de gastar um acionamento:
+N pedido(s) de `seg/ramo` estão no acervo sob `X`"*. 📊 Alcança 17 rotas em 6 seguradoras.
+
+**O que CONTINUA aberto, e é isto:** 🤖 declarar `bradesco/auto/tecnico` nos `subservices` do
+playbook. Notas das três saídas consideradas:
+
+```
+(a) declarar bradesco/auto/tecnico no playbook ......... 72
+    conserta o nome e dá rota ao que já existe; mas mora em `corridor_playbooks.py`
+    (arquivo do CONSERTO B nesta execução) e move as 73 notas
+(b) renomear bateria -> tecnico ........................ 58
+    esconde a demanda que o SEGURADO pede; e 📊 `subservice_menu_map` da bradesco já
+    manda `guincho` e `bateria` para a MESMA tecla `1` — renomear duplica, não resolve
+(c) ressalva nomeada na página, por regra .............. 86   ← EXECUTADA
+    não move nota nenhuma, mata o custo imediato, e vale para qualquer seguradora
+```
+
+**Custa esquecer:** 🔴 o nome da rota **continua mentindo**, e nome errado reinfecta todo leitor
+seguinte (CLAUDE.md §12.1). ⚠️ E qualquer mexida em (a) ou (b) pede a régua completa antes e
+depois, com a regra de que nenhuma rota pode cair.
+
 ## P-119-11 · 🤖 Três rotas de guincho caíram de patamar porque o acervo cresceu
 📊 28/09/2026, régua completa (73 rotas), contra o inventário de 27/09 (`44ea3a4`):
 
@@ -11937,50 +11999,7 @@ do segurado, e a régua sozinha não diria isso — foi preciso a segunda pergun
 
 ---
 
-## P-119-05 · `bradesco/auto/bateria` tem nome de SINTOMA para um desfecho de TÉCNICO — 🤖
-📊 **Medido em 28/09/2026.** O cliente escolhe `*1* - Pane ( _ex. bateria, motor, câmbio,
-radiador, etc_ )` e a URA da **própria Bradesco** responde: *"Esse problema dá pra resolver com a
-assistência de um técnico. Posso confirmar esse serviço?"* e *"Logo mais, o técnico deve chegar
-até o local."* (sessões `2c05415b` e `57149865`). O classificador está **certo**: a Bradesco
-despacha um **técnico**. A rota do produto se chama `bateria`.
-
-**O que destrava:** 🤖 declarar `bradesco/auto/tecnico` nos `subservices` do playbook da
-Bradesco (`backend/app/services/corridor_playbooks.py`) — e decidir se `bateria` some ou fica
-como apelido. ⚠️ Mexer ali **reconta as 73 notas da régua**, então a mudança pede uma rodada
-completa antes e depois, com a regra de que nenhuma rota pode cair.
-
-**Custa esquecer:** 🔴 a página já parou de mandar gastar um acionamento que existe (a ressalva
-do `nome_que_mente`), mas **o nome continua mentindo** — e nome errado reinfecta todo leitor
-seguinte (CLAUDE.md §12.1). ⚠️ E há um agravante medido: `subservice_menu_map` da Bradesco manda
-`guincho` **e** `bateria` para a **mesma tecla `1`**. Enquanto isso for verdade, renomear não
-resolve — duplica.
-
----
-
-## P-119-06 · `_AMANDUS_COMPANY_ID` é constante de cliente dentro do código — 🤖
-📊 `backend/scripts/regua_motor.py:287` traz `_AMANDUS_COMPANY_ID = "3aa75902-…"`, usado em dois
-lugares (`vocabulario_do_espelho` e a leitura dos apelidos). É o §13.9 literal: *"nem de grupo,
-número, pasta ou atendente"* — um `company_id` é um número de corretora.
-
-⚠️ **E a trava é nomeada por um motivo medido**, escrito no próprio arquivo: 📊 em 22/08/2026 a
-AMANDUS estava marcada `is_technical = False` no banco, então filtrar só as corretoras técnicas
-**não** a excluiria.
-
-**O que destrava:** 🤖 duas opções, e a segunda é melhor — (a) ler a lista de uma variável de
-ambiente (`REGUA_CORRETORAS_DE_TESTE`), com aviso barulhento em `stderr` quando ela faltar, para
-que a ausência não vire silêncio; (b) marcar a AMANDUS como técnica no banco e apagar a trava,
-depois de conferir quem mais lê `is_technical`.
-
-**Custa esquecer:** ⚠️ não foi consertado nesta fatia **de propósito**: as duas opções mudam o
-que o Espelho enxerga, e o Espelho alimenta a conferência de apelidos da régua. Sem rodar a
-bateria completa (que muta `corridor_playbooks.py` e exige worktree separado — P-118-14), trocar
-isto é mudar um número sem poder medi-lo. 🔴 O que custa deixar: um `company_id` de cliente
-viaja em `origin/main` e em todo clone, e o guarda novo da página (§13.9 por regra) **não olha
-para dentro do código** — só para o que a página publica.
-
----
-
-## P-119-07 · o léxico de língua tem 40 palavras escritas à mão — 🤖
+## P-119-12 · o léxico de língua tem 40 palavras escritas à mão — 🤖
 📊 Medido em 28/09/2026: a prova de que uma cabeça de vocativo é **língua** vem do produto (2.406
 palavras dos 14 playbooks + padrões de serviço + tipos de logradouro), e isso cobre **78 das 118**
 cabeças do acervo. As outras **40** estão numa lista fechada em `higiene_do_corpus.py`
@@ -12000,7 +12019,7 @@ contagem medida, e mora ao lado do guarda.
 
 ---
 
-## P-119-08 · o resíduo medido da inversão do vocativo — 🤖
+## P-119-13 · o resíduo medido da inversão do vocativo — 🤖
 📊 Medido em 28/09/2026, depois do conserto. A regra invertida (*mascara a menos que prove
 que é língua*) tem **dois** resíduos conhecidos, e os dois estão medidos, não supostos:
 
@@ -12026,4 +12045,61 @@ no acervo de hoje: 📊 `--auditar-pii` devolve `6048 linhas, 0 sujas` e a varre
 devolve **0 cabeças não-língua**. 🔴 O que custa é o dia em que uma segurada chamada Luz ou
 Graça abrir uma conversa: a linha dela entra no acervo versionado com o primeiro nome em
 claro, e **nenhum guarda de hoje fica vermelho** — porque os dois guardas usam o mesmo léxico.
+
+---
+
+## P-119-14 · 🔴 `porto/auto/bateria` saiu de ATENDE SOZINHO — e a causa é uma CONVERSA HUMANA lida como URA
+📊 Medido em 28/09/2026 pelo CONSERTO A, respondendo à pergunta do gerente *"as faixas foram de
+25 para 24 ATENDE SOZINHO; qual rota caiu e por quê?"*.
+
+**A rota é `porto/auto/bateria`**, e ela foi de `ATENDE SOZINHO` para `FALTA CAPTURA / tela_orfa`:
+
+```
+antes   porto/auto/bateria   140 telas · 4 sessões · 0 órfãs funcionais   ATENDE SOZINHO
+depois  porto/auto/bateria   164 telas · 5 sessões · 10 órfãs funcionais  FALTA CAPTURA
+        as 10 órfãs vêm TODAS da MESMA sessão nova: `4830574a`
+```
+
+🔴 **E a causa imediata é um conserto meu, que continua certo.** A sessão `4830574a` estava
+arquivada sob a chave `porto/auto/?4145720 - 26` — um **número de ordem de serviço** que a URA
+escreve como *"Serviço: 4145720 - 26"* e que o classificador lia como nome de serviço. Ao
+recusar rótulo sem letras (P-119-07), a sessão passou a cair na rota real. ⚠️ **A rota não
+piorou; ela parou de esconder uma conversa.** É o mesmo fenômeno que a P-119-11 já registra:
+o produto não piorou, a medição melhorou.
+
+🔴 **Mas a causa de FUNDO é outra, e é um defeito de leitura do acervo.** Lidas as 24 telas da
+sessão, a conversa vira HUMANA na sexta:
+
+```
+"Olá! 😊 Aqui é a Viviane. Sou consultora de relacionamento e darei continuidade
+ ao seu atendimento. Como posso ajudar?"
+"Esse cliente é do Sul e esta em São Paulo?"
+"Isso, como ele esta em São Paulo temos a bateria Premium."
+"{NOME} esta por aí?"
+```
+
+📊 E o sinal **existe e está aceso** — só não está ligado na tomada certa:
+
+```
+zonas_do_acervo.tem_apresentacao_humana("porto", <a fala da Viviane>)  ->  True
+zonas_do_acervo.e_fronteira("porto",          <a fala da Viviane>)  ->  False
+```
+
+⇒ o classificador **reconhece** que um humano se apresentou e **não** trata isso como fronteira,
+então tudo o que vem depois continua na zona `URA`. As 10 "telas órfãs" são um humano
+conversando — e **nenhum corredor jamais terá resposta escrita para elas**, porque não são
+telas de URA.
+
+**O que destrava:** 🤖 usar `tem_apresentacao_humana` como fronteira em `zonas_do_acervo.py`
+(o sinal já está calculado), com o controle negativo que já existe no arquivo — 📊
+*"sem ele, `meu nome é|me chamo|sou a` marca 88% das sessões da allianz, porque o robô também
+se apresenta"*. É por isso que a ligação tem de ser **por seguradora e depois da primeira tela
+de URA**, não global.
+
+**Custa esquecer:** ⚠️ **não foi feito nesta fatia de propósito.** Mexer na zona muda o corpus
+de **todas** as rotas e moveria as faixas que o CONSERTO B acabou de medir (`24/2/47`) — é o
+CLAUDE.md §9.2: não se troca a régua depois de medir com ela. 🔴 O que custa deixar: a página
+vai dizer que `porto/auto/bateria` tem 10 telas sem resposta e mandar **escrever passos para
+falas de gente**. É trabalho que não existe, apontado com número — a forma mais cara de erro
+que este documento registra.
 
