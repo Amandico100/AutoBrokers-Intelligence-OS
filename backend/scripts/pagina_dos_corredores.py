@@ -215,7 +215,8 @@ class Linha:
     """Uma rota, com as DUAS respostas e a demanda. Nada digitado."""
 
     def __init__(self, sim: Dict[str, Any], nota: Optional[Dict[str, Any]],
-                 pedidos: Optional[int], sem_etiqueta: int):
+                 pedidos: Optional[int], sem_etiqueta: int,
+                 sem_corredor_do_ramo: Optional[Dict[str, int]] = None):
         self.seguradora = sim["seguradora"]
         self.ramo = sim["ramo"]
         self.servico = sim["servico"]
@@ -228,6 +229,9 @@ class Linha:
         self.nota = nota or {}
         self.pedidos = pedidos
         self.sem_etiqueta = sem_etiqueta
+        #: 🔴 O que este (seguradora, ramo) TEM no acervo sob um nome que o
+        #: produto não declara como rota. Ver `nome_que_mente`.
+        self.sem_corredor_do_ramo = dict(sem_corredor_do_ramo or {})
 
     @property
     def rota(self) -> str:
@@ -254,12 +258,70 @@ class Linha:
 
     @property
     def causa_em_portugues(self) -> str:
-        return CAUSAS.get(self.causa, (self.causa, "—"))[0]
+        base = CAUSAS.get(self.causa, (self.causa, "—"))[0]
+        if self.nome_que_mente:
+            return base + " — ⚠️ mas " + self.nome_que_mente
+        return base
+
+    # ═════════════════════════════════════════════════════════════════════
+    # 🔴 A EXCEÇÃO QUE IMPEDE A PÁGINA DE MANDAR GASTAR UM ACIONAMENTO QUE JÁ EXISTE
+    # ═════════════════════════════════════════════════════════════════════
+    #
+    # 📊 Medido em 28/09/2026. `bradesco/auto/bateria` saiu de 36 telas na base
+    # para ZERO no HEAD, e nasceu `bradesco/auto/tecnico` com as MESMAS 36 telas e
+    # as mesmas 2 sessões (`2c05415b`, `57149865`). A página imprimia:
+    #
+    # ```
+    # bradesco/auto/bateria | SEM_CORPUS | nenhuma conversa desta rota no acervo
+    #                                    | 🧑 um acionamento real desta rota
+    # ```
+    #
+    # ⚠️ **E a conversa está em git.** Isso manda uma pessoa da corretora até uma
+    # Bradesco gravar o que já foi gravado — o erro que a SPEC-084 §7.2 nomeia:
+    # *coletar o que já está coletado*.
+    #
+    # 🔴 E o classificador está CERTO. Nas telas reais, a URA da **própria
+    # Bradesco** responde ao `*1* - Pane ( _ex. bateria, motor, câmbio_ )`:
+    #
+    # > *"Esse problema dá pra resolver com a assistência de um \*técnico\*."*
+    # > *"Logo mais, o \*técnico\* deve chegar até o local."*
+    #
+    # A seguradora despacha um **técnico**. `bateria` batiza pelo SINTOMA o que a
+    # seguradora resolve pelo DESFECHO — é o corolário do CLAUDE.md §12.1
+    # (*conserte o campo, não o texto*), e está anotado em PENDENCIAS.md.
+    #
+    # ⚠️ Aqui não se conserta o NOME (ele mora no playbook, e mudá-lo recontaria as
+    # 73 notas). Aqui se conserta a MENTIRA: a página para de pedir 🧑 e passa a
+    # pedir 🤖 — decidir o nome antes de coletar.
+    #
+    # 🔴 E é REGRA, não exceção com nome de seguradora dentro (§13.9): vale para
+    # qualquer (seguradora, ramo) cujo acervo tenha serviço medido SEM rota
+    # declarada. 📊 Hoje alcança 17 chaves e 32 pedidos, em 6 seguradoras.
+    @property
+    def nome_que_mente(self) -> str:
+        """O que o acervo deste ramo tem sob um nome que o produto não declara."""
+        if self.faixa == "ATENDE SOZINHO" or self.causa != "sem_corpus":
+            return ""
+        if not self.sem_corredor_do_ramo:
+            return ""
+        itens = sorted(self.sem_corredor_do_ramo.items(), key=lambda kv: (-kv[1], kv[0]))
+        quantos = sum(v for _, v in itens)
+        nomes = " · ".join(f"`{k}` ({v})" for k, v in itens[:3])
+        return (f"{quantos} pedido(s) de {self.seguradora}/{self.ramo} estão no "
+                f"acervo sob {nomes}, que o produto NÃO declara como rota")
 
     @property
     def o_que_destrava(self) -> str:
         if self.faixa == "ATENDE SOZINHO":
             return "✅ nada — esta rota está pronta para ligar"
+        if self.nome_que_mente:
+            # ⚠️ NÃO troca 🧑 por 🤖 em silêncio: a página não sabe se o
+            #    serviço sem rota É esta rota com outro nome. Ela sabe que há
+            #    material, e que gastar um acionamento antes de olhar é caro.
+            return ("⚠️ confira ANTES de gastar um acionamento: "
+                    + self.nome_que_mente
+                    + " — se for esta rota com outro nome, o trabalho é 🤖 "
+                      "(decidir o nome), não 🧑 (coletar de novo)")
         return CAUSAS.get(self.causa, ("—", "—"))[1]
 
     @property
@@ -285,11 +347,15 @@ def montar(f: Fontes) -> List[Linha]:
         for n in f.notas.get("rotas", [])}
     demanda = f.demanda.get("por_rota", {})
     sem_etq = f.demanda.get("sem_etiqueta", {})
+    sem_corredor = f.demanda.get("sem_corredor", {}) or {}
     fora = []
     for s in f.sim:
         chave = f"{s['seguradora']}/{s['ramo']}/{s['servico']}"
+        prefixo = f"{s['seguradora']}/{s['ramo']}/"
         fora.append(Linha(s, por_rota_nota.get(chave), demanda.get(chave),
-                          int(sem_etq.get(f"{s['seguradora']}/{s['ramo']}", 0))))
+                          int(sem_etq.get(f"{s['seguradora']}/{s['ramo']}", 0)),
+                          {k[len(prefixo):]: v for k, v in sem_corredor.items()
+                           if k.startswith(prefixo)}))
     # 🔴 A ORDEM é a do Founder: primeiro o que mais gente pede.
     #    ⚠️ `—` (não medido) vai para o FIM, separado de um `0` medido — que
     #    seria "olhamos e ninguém pediu", e é outra coisa. `or -1` juntaria os
@@ -876,6 +942,8 @@ _LINGUA_DA_PAGINA = frozenset({
     "observador", "pronta", "ficou", "prova", "classificador", "reconhece",
     "qualidade", "desenho", "bruto", "conversas", "lar", "assistance",
     "reembolso", "etiqueta",
+    # ➕ 28/09/2026, pela ressalva do `nome_que_mente`:
+    "sob", "decidir",
 })
 _RX_CELULA = re.compile(r"<(?:code|td|th)[^>]*>(.*?)</(?:code|td|th)>", re.S)
 
