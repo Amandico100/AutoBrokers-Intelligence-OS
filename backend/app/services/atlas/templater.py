@@ -350,7 +350,23 @@ ASSINATURA_DE_CORRETORA = re.compile(
 # `"...da Porto é de 90 dias"` voltava a casar, porque sem acento "e de" são
 # dois conectivos seguidos de um número. Nome de rua termina em nome:
 # `Marechal Deodoro da Fonseca`, não `Marechal Deodoro da`.
-_PALAVRA_DE_NOME = r"[A-ZÀ-Ú0-9][\w'’.\-]*"
+# 🔴 O `#` DA PRÓPRIA SEGURADORA DESARMAVA O NOSSO MASCARADOR — SPEC-119 CONSERTO A.
+#
+# 📊 Medido em 28/09/2026 sobre o acervo versionado: **20 das 27 linhas** com
+#    logradouro em claro têm esta forma — a URA já mascarou o FIM do nome e o
+#    número, com `#`, e é justamente isso que fazia a nossa regra não casar:
+#
+# ```
+#   "*Endereço de destino:* Av. Caetano Silveir#, #, Palhoça, SC"
+#   "*Endereço de destino:* Rua Pereira Franc#, ###, Porto Alegre, RS"
+#   "Rua Presidente Coutinh#, 445, Apto {NUM} - Centro - Florianopolis - SC"
+# ```
+#
+# ⚠️ **Meia máscara é o pior dos estados**: a linha PARECE tratada, e o nome da
+#    rua — a parte que localiza uma pessoa — é a metade que sobrou.
+#
+# `#` entra na palavra do nome, e `#+` passa a valer como número mascarado.
+_PALAVRA_DE_NOME = r"[A-ZÀ-Ú0-9#][\w'’.\-#]*"
 _NOME_DE_LOGRADOURO = (
     r"(?-i:" + _PALAVRA_DE_NOME +
     r"(?:" + _H + r"+(?:(?:d[aeo]s?|e)" + _H + r"+)?" + _PALAVRA_DE_NOME + r"){0,4})")
@@ -359,7 +375,7 @@ _LOGRADOURO = re.compile(
     r"estr\.|pra[çc]a|servid[ãa]o|condom[íi]nio|edif[íi]cio|ed\.|residencial|"
     r"marginal|beco|largo|linha|loteamento|via|road|unnamed road)" + _H + r"+"
     r"(?:(?-i:d[aeo]s?)" + _H + r"+)?" + _NOME_DE_LOGRADOURO + r"\s*,?\s*"
-    r"(?:n?[ºo°]?\s*)?\d{1,6}(?:\s*[-/]\s*\d{1,6})?\b")
+    r"(?:n?[ºo°]?\s*)?(?:\d{1,6}|#{1,6})(?:\s*[-/]\s*(?:\d{1,6}|#{1,6}))?\b")
 
 # 🔴 O LOGRADOURO SEM NÚMERO — SPEC-119 CONSERTO A, 28/09/2026.
 #
@@ -393,6 +409,63 @@ _LOGRADOURO_SEM_NUMERO = re.compile(
     #    bairro e cidade do segurado em claro, numa linha que PARECE tratada.
     r"(?:" + _NOME_DE_LOGRADOURO + r"(?:" + _H + r"*\{[A-Z_]+\})?|\{[A-Z_]+\})"
     r"(?:\s*,\s*[^\n,]{1,40}){1,3}\s*-\s*(?-i:[A-Z]{2})\b")
+
+# 🔴 O MESMO, COM O RABO SEPARADO POR TRAÇO OU TERMINANDO EM `, UF`.
+#
+# 📊 Medido em 28/09/2026: dois formatos do acervo que a escrita acima (só
+#    vírgula, e traço antes da UF) deixava passar inteiros:
+#
+# ```
+#   "*Endereço de destino taxi:* Av. Caetano Silveira - N/A - Palhoça - Palhoça - SC"
+#   "Localizei o endereço R. Gen. Câmara, Canoas, RS"
+# ```
+#
+# ⚠️ **E ela exige NOME REAL de rua, nunca um `{MARCADOR}`** — é o que a impede
+# de comer a cidade de uma linha já tratada. 📊 Sem essa trava, ela transformava
+# `"*Origem:* ESTR. {ENDERECO} - ANGELINA - SC"` em `"*Origem:* ESTR. {ENDERECO}"`
+# em ~100 linhas do corpus: mudança que ninguém pediu, num texto que já estava
+# mascarado. Quem cuida do caso `R. Dr. {NOME}, 457, …` é a regra de cima.
+_LOGRADOURO_SEM_NUMERO_TRACO = re.compile(
+    r"(?i)\b(rua|r\.|av\.|avenida|alameda|al\.|travessa|rodovia|rod\.|estrada|"
+    r"estr\.|pra[çc]a|servid[ãa]o|marginal|beco|largo|linha|loteamento|"
+    r"via|road|unnamed road)" + _H + r"+"
+    r"(?:(?-i:d[aeo]s?)" + _H + r"+)?" + _NOME_DE_LOGRADOURO +
+    r"(?:\s*[,-]\s*[^\n,-]{1,40}){1,3}\s*[,-]\s*(?-i:[A-Z]{2})\b")
+
+# 🔴 O ENDEREÇO QUE SÓ O CONTEXTO DENUNCIA — SPEC-119 CONSERTO A, 28/09/2026.
+#
+# Sem número, sem UF, no meio de uma frase que o SEGURADO digitou:
+#
+# ```
+# azul-auto 0189f34b   "*Ponto de referência*: Se entrar pela Rua Osvaldo
+#                       Climado, minha rua é a segunda à direita"
+# zurich-auto 963f4097 "*Devido a causa*: No dia 05 de abril de 2026, às 01h21,
+#                       na Avenida Jornalista ..."
+# ```
+#
+# 🔴 Aqui o que prova que é endereço não é a FORMA — é o RÓTULO da linha. E por
+# isso a regra é estreita: só dispara em linha que carrega um desses rótulos.
+#
+# ⚠️ **E o guarda que impede o dano**: a mesma forma aparece no EXEMPLO que a
+# própria URA escreve, e mascarar ali seria apagar a instrução que ensina o
+# segurado a responder — 📊 18 linhas do acervo:
+#
+# ```
+#   "_(Ex. Avenida Brasil)_."                                    alfa · allianz
+#   "_(Ex: Em frente ao shopping / travessa da Rua Dois)._"       allianz-resid.
+# ```
+#
+# O `(?![^\n]*\bex[.:]|…)` na frente é esse guarda, e ele é a razão de esta
+# regra poder ser agressiva no resto da linha: dado real vira `{ENDERECO}`
+# inteiro; exemplo da URA não é tocado.
+_ENDERECO_SO_PELO_ROTULO = re.compile(
+    r"(?im)^(?=[^\n]*\b(?:ponto de refer[êe]ncia|devido a causa|"
+    r"endere[çc]o de destino|endere[çc]o de origem)\b)"
+    r"(?![^\n]*\(?\s*\bex(?:\.|:|emplos?\b))"
+    r"([^\n]*?)"
+    r"\b(?:rua|r\.|av\.|avenida|alameda|al\.|travessa|rodovia|rod\.|estrada|"
+    r"estr\.|pra[çc]a|servid[ãa]o|marginal|beco|largo|loteamento|road|"
+    r"unnamed road)\s+(?-i:[A-ZÀ-Ú][\wÀ-ÿ'’.#-]*)[^\n]*$")
 
 # RODOVIA COM NÚMERO DE IMÓVEL — `BR-101, 205` · `SC-281, 1500`.
 # Separada do `_LOGRADOURO` porque a sigla não é uma PALAVRA de tipo: é a
@@ -661,6 +734,8 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # 🔴 depois do `_LOGRADOURO`: quando há número, quem manda é a regra medida
     #    de 06/08/2026; esta só alcança o que sobrou sem número.
     (_LOGRADOURO_SEM_NUMERO, r"\1 {ENDERECO}"),
+    (_LOGRADOURO_SEM_NUMERO_TRACO, r"\1 {ENDERECO}"),
+    (_ENDERECO_SO_PELO_ROTULO, r"\1{ENDERECO}"),
     (_RODOVIA_COM_NUMERO, r"\1, {ENDERECO}"),
     (_PLUS_CODE, "{ENDERECO}"),
     (_COMPLEMENTO, _mascara_complemento),
