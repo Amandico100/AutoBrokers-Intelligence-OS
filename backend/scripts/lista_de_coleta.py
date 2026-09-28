@@ -47,10 +47,18 @@ import replay as RP         # noqa: E402
 import rubrica as RB        # noqa: E402
 import padroes_de_servico as PS   # noqa: E402
 
-# 📊 A demanda MEDIDA, lida da fonte -- {servico: escolhido}. E ela ordena a
-#    lista: coletar guincho (72 escolhas) antes de vidros (2) e o obvio, e o
-#    obvio precisa estar escrito para nao se perder na pressa.
-_DEMANDA = {sv: esc for sv, esc, _card in PS.DEMANDA_MEDIDA}
+# 📊 O ranking GLOBAL de 21/08/2026 -- {servico: escolhido em TODAS as
+#    seguradoras}. Ele ordena a lista: coletar guincho antes de vidros e o
+#    obvio, e o obvio precisa estar escrito para nao se perder na pressa.
+#
+# 🔴 SPEC-119 F5 · AQUI O NUMERO GLOBAL E LEGITIMO, E POR UM MOTIVO ESTREITO:
+#    esta lista so contem rotas SEM corpus -- a demanda POR ROTA delas e `—`
+#    por construcao, e ordenar por `—` nao ordena nada. O que se pergunta aqui
+#    e "quao pedido e este SERVICO, em geral?", e e essa a pergunta que o
+#    ranking global responde.
+#    ⛔ O que era defeito e imprimi-lo numa coluna chamada `demanda` ao lado de
+#    uma ROTA, como se fosse dela. A coluna passa a dizer o que ele e.
+_DEMANDA = {sv: esc for sv, esc, _card in PS.DEMANDA_GLOBAL_POR_SERVICO_21_08_2026}
 
 
 def _servicos_no_acervo(seguradora: str) -> Set[str]:
@@ -184,7 +192,11 @@ def gerar() -> str:
                      "PRIMEIRO, e ele passa a ser o controle dos próximos.\n")
 
         L.append("**4 · O que se espera aprender, por rota:**\n")
-        L.append("| ramo | serviço | demanda | o que falta ver |")
+        # 🔴 SPEC-119 F5 · a coluna dizia `demanda` e mostrava um numero GLOBAL.
+        #    Agora ela diz o que e -- inclusive a data, que e o que impede de
+        #    ler um retrato de 21/08 como se fosse de hoje (CLAUDE.md §12.1).
+        L.append("| ramo | serviço | pedidos do SERVIÇO em todas as seguradoras "
+                 "(📊 21/08/2026) | o que falta ver |")
         L.append("|---|---|---:|---|")
         for n in reais:
             pedidos += 1
