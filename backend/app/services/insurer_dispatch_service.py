@@ -5055,7 +5055,10 @@ def guard_human_phase_reply(reply: str, session: Dict[str, Any],
     #
     # ⚠️ Esta trava é a METADE BARATA do conserto, e ela é declarada como tal:
     #    ela pega o que tem FORMA de estrutura de dados. **Ela não confere se a
-    #    resposta pertence às opções da tela** — isso é P-119-01, escrita.
+    #    resposta pertence às opções da tela** — isso é a P-119-12, escrita.
+    #    ⚠️ 📊 As que AINDA passam, medidas em 28/09/2026: frase em inglês ·
+    #    *"Por favor, informe o CPF do titular para continuar."* (português
+    #    perfeito, pedindo CPF À SEGURADORA) · `...` · `None`.
     #
     # 🔴 O outro lado do mesmo defeito está em `app/agents/utils.py`: o
     #    `extract_text_from_content` devolvia o `repr` de um dict, e era ele que
