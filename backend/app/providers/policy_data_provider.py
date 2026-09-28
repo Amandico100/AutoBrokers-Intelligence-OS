@@ -1243,6 +1243,66 @@ def familia_de_ramo(ramo: Any) -> Optional[str]:
     return None
 
 
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 O RAMO DENTRO DE UM RÓTULO DE TELA — SPEC-119, conserto B, item 6
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# `familia_de_ramo` casa o rótulo INTEIRO, e é o certo para um código de ramo
+# (`VIND`, `AUTOM`) que vem da base. Uma opção de URA não é um código: é uma
+# frase que a seguradora escreveu.
+#
+# 📊 Medido em 28/09/2026 com `familia_de_ramo` puro:
+#
+#     'Residência, Condomínio ou Empresa'  -> None   ✅ (e isto é BOM: multi-ramo)
+#     'Seguro Condomínio'                  -> None   🔴
+#     'Condomínio (áreas comuns)'          -> None   🔴
+#     'Empresarial / PME'                  -> None   🔴
+#
+# 🔴 Quem lê isso é a trava que manda condomínio e empresarial a uma PESSOA
+#    (`insurer_dispatch_service._apolice_de_areas_comuns`). `None` ali significa
+#    *"segue sozinho"* — então as três linhas vermelhas são chamados de áreas
+#    comuns abertos na apólice da unidade.
+#
+# 🔴 E A LINHA DE CONTROLE É OBRIGATÓRIA, porque o defeito OPOSTO é igualmente
+#    caro: *"Residência, Condomínio ou Empresa"* é a opção 1 de uma tela de DUAS
+#    em que ela É a apólice residencial. Acertar nos três de cima e mentir nela
+#    troca um defeito por outro. Por isso: **rótulo que nomeia 2+ famílias
+#    devolve `None`** — ele não decide ramo nenhum.
+#
+# ⛔ E a contenção é por PALAVRA INTEIRA, nunca por prefixo: 📊 a SPEC-094.1 já
+#    registrou que `SURA` casa dentro de `ASSURANCE` e que casamento parcial
+#    produz catálogo errado.
+_RX_DO_SINONIMO: Dict[str, "re.Pattern[str]"] = {
+    sinonimo: re.compile(r"(?<![0-9a-z])" + re.escape(sinonimo) + r"(?![0-9a-z])")
+    for sinonimo in _FAMILIA_POR_ABREVIATURA
+}
+
+
+def familia_de_ramo_do_rotulo(rotulo: Any) -> Optional[str]:
+    """A família de ramo NOMEADA dentro de um rótulo de tela, ou `None`.
+
+    ```
+    'Seguro Condomínio'                  -> 'cond'
+    'Condomínio (áreas comuns)'          -> 'cond'
+    'Empresarial / PME'                  -> 'empr'
+    'Residência, Condomínio ou Empresa'  -> None   (nomeia TRÊS: não decide ramo)
+    'Sua residência é uma casa individual ou fica num condomínio?' -> None
+    ```
+
+    `None` continua significando *"não sei"*, nunca *"não é"*.
+    """
+    texto = normalizar_rotulo(rotulo)
+    if not texto:
+        return None
+    exata = familia_de_ramo(texto)
+    if exata:
+        return exata
+    familias = {familia for sinonimo, familia in _FAMILIA_POR_ABREVIATURA.items()
+                if _RX_DO_SINONIMO[sinonimo].search(texto)}
+    return familias.pop() if len(familias) == 1 else None
+
+
 StatusDaEscolha = Literal["found", "sem_vigente", "ambiguous_policy", "nenhuma"]
 
 
