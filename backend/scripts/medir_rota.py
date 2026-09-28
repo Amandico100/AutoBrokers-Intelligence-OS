@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import demanda_por_rota as DPR       # noqa: E402
 import padroes_de_servico as PS      # noqa: E402
 import regua_motor as M              # noqa: E402
 import replay as RP                  # noqa: E402
@@ -231,7 +232,11 @@ def imprimir_nota(n: RB.Nota, *, detalhado: bool = True) -> str:
     fora = n.fora
     txt_fora = ("   (" + " · ".join(f"{k} {v}" for k, v in sorted(fora.items())) +
                 " pts fora)") if fora else ""
-    L.append(f"PRONTIDAO  {n.pontos}/{n.denominador}   {n.patamar}{txt_fora}")
+    # 🔴 SPEC-119 F5 · o `%` PRIMEIRO. O bruto continua ao lado porque quem abre
+    #    a visão de UMA rota quer auditar os itens — mas quem COMPARA rotas lê o
+    #    `%`, e era o bruto que vinha sozinho.
+    L.append(f"PRONTIDAO  {100 * n.fracao:.0f}%  ({n.pontos}/{n.denominador})   "
+             f"{n.patamar}{txt_fora}")
     if n.replay:
         L.append(f"           {n.replay.amostra}")
     L.append("")
@@ -261,22 +266,111 @@ def imprimir_nota(n: RB.Nota, *, detalhado: bool = True) -> str:
     return "\n".join(L)
 
 
-def tabela(notas: List[RB.Nota], demanda: Dict[str, int]) -> str:
-    L = [f"{'SEGURADORA':10s} {'RAMO':12s} {'SERVICO':18s} {'PRONT':>7s} "
-         f"{'A':>3s} {'B':>3s} {'C':>3s} {'D':>3s} {'E':>3s}  {'PATAMAR':16s} "
-         f"{'FAMILIA':18s} {'DEMANDA':>7s}"]
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-119 F5 · AS DUAS COLUNAS QUE MENTIAM
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# ⛔ **DEMANDA** era `demanda.get(n.rota.servico, 0)` sobre `PS.DEMANDA_MEDIDA`:
+#    uma chave de UM eixo (o serviço) para uma tabela de TRÊS (seguradora ×
+#    ramo × serviço). 📊 `("guincho", 72, …)` é o total de sete seguradoras, e
+#    ele aparecia IGUAL nas dez linhas de guincho. Nenhuma rota tinha 72.
+#    Foi esta linha que produziu a pergunta do Founder.
+#    ⇒ agora vem do retrato DATADO de `demanda_por_rota.py`, por ROTA, e
+#      **ausência imprime `—`, nunca `0` e nunca o número global**.
+#
+# ⛔ **PRONT** era `f"{n.pontos}/{n.denominador}"` — e o denominador VARIA por
+#    rota (76, 70, 64…), porque `ROTA_INDISTINGUIVEL` e companhia tiram itens
+#    da conta. 📊 `42/64` e `48/76` não se comparam, e a tabela convidava a
+#    comparar. ⇒ a coluna que se LÊ é `%`; o bruto fica ao lado, para auditar.
+def _pct(n: RB.Nota) -> str:
+    """🔴 A nota em PORCENTAGEM. O estado (`SEM_CORPUS`…) vence o número."""
+    return n.estado or f"{100 * n.fracao:.0f}%"
+
+
+def _bruto(n: RB.Nota) -> str:
+    """O `pontos/denominador` que sustenta o `%` — para quem for auditar."""
+    return "—" if n.estado else f"{n.pontos}/{n.denominador}"
+
+
+def tabela(notas: List[RB.Nota], demanda: Optional[DPR.Retrato]) -> str:
+    L = []
+    if demanda is not None:
+        L.append(f"# {demanda.carimbo}")
+    else:
+        L.append("# ⚠️ DEMANDA NAO MEDIDA — sem retrato em "
+                 f"{DPR.CAMINHO_DO_RETRATO}. A coluna sai toda `—`, "
+                 "que e o honesto: zero medido e zero nao medido sao "
+                 "coisas diferentes.")
+    L.append(f"{'SEGURADORA':10s} {'RAMO':12s} {'SERVICO':18s} {'PRONT':>7s} "
+             f"{'BRUTO':>8s} {'A':>3s} {'B':>3s} {'C':>3s} {'D':>3s} {'E':>3s}  "
+             f"{'PATAMAR':16s} {'FAMILIA':18s} {'PEDIDOS':>7s}")
     # 🔴 SPEC-089 BLOCO B: o `!N` no patamar diz quantos portoes abriram.
     L.append("#  patamar com `!N` = N portao(oes) aberto(s); a rota nao chega a AAA")
+    L.append("#  PEDIDOS = sessoes REAIS desta rota (nao do servico). `—` = nao medido")
     for n in notas:
         e = n.por_eixo()
         g = lambda k: (f"{e[k][0]}" if k in e else "—")   # noqa: E731
-        pr = n.estado or f"{n.pontos}/{n.denominador}"
         fam = familia_de(n.rota)
-        d = demanda.get(n.rota.servico, 0)
+        d = _demanda_de(demanda, n.rota)
         L.append(f"{n.rota.seguradora:10s} {n.rota.ramo:12s} {n.rota.servico:18s} "
-                 f"{pr:>7s} {g('A'):>3s} {g('B'):>3s} {g('C'):>3s} {g('D'):>3s} "
-                 f"{g('E'):>3s}  {n.patamar:16s} {fam:18s} {d:7d}")
+                 f"{_pct(n):>7s} {_bruto(n):>8s} "
+                 f"{g('A'):>3s} {g('B'):>3s} {g('C'):>3s} {g('D'):>3s} "
+                 f"{g('E'):>3s}  {n.patamar:16s} {fam:18s} {d:>7s}")
     return "\n".join(L)
+
+
+def _gravar_notas(notas: List[RB.Nota], caminho: str,
+                  acervo: Dict[str, int]) -> str:
+    """O despejo DATADO das 73 notas — a fonte única da página do Founder.
+
+    🔴 Cada rota carrega o `%`, o bruto, o patamar e os portões ABERTOS pelo
+    NOME. Quem monta a página não recalcula nada, e por isso não tem como
+    publicar um número que a régua não disse.
+
+    ⚠️ A data fica no arquivo, não no commit: a página tem de conseguir
+    imprimir *"medido em"* sem consultar o git (gate G10 da SPEC-119).
+    """
+    agora = dt.datetime.now(dt.timezone.utc)
+    fora = {
+        "medido_em": agora.date().isoformat(),
+        "medido_em_iso": agora.isoformat(timespec="seconds"),
+        "commit": _commit(),
+        "comando": "cd backend && python scripts/medir_rota.py --todas "
+                   f"--gravar-notas {caminho}",
+        "acervo_por_seguradora": acervo,
+        "rotas": [{
+            "seguradora": n.rota.seguradora,
+            "ramo": n.rota.ramo,
+            "servico": n.rota.servico,
+            "estado": n.estado,
+            "pontos": n.pontos,
+            "denominador": n.denominador,
+            "pct": None if n.estado else round(100 * n.fracao),
+            "patamar": n.patamar,
+            "eixos": {k: list(v) for k, v in n.por_eixo().items()},
+            "portoes_abertos": [i.nome for i in n.portoes_abertos],
+            "o_que_falta": _o_que_falta(n),
+            "o_que_destrava": _o_que_destrava(n),
+        } for n in notas],
+    }
+    destino = caminho if os.path.isabs(caminho) else os.path.join(RAIZ, caminho)
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    with open(destino, "w", encoding="utf-8") as fh:
+        json.dump(fora, fh, ensure_ascii=False, indent=1, sort_keys=True)
+        fh.write("\n")
+    return f"# notas gravadas: {destino} ({len(notas)} rotas, {fora['medido_em']})"
+
+
+def _demanda_de(retrato: Optional[DPR.Retrato], rota) -> str:
+    """🔴 O rótulo da coluna PEDIDOS — a rota inteira, ou `—`.
+
+    ⚠️ Sem retrato, TODA linha sai `—`. Nunca `0`: uma rota com zero pedidos
+    medidos e uma rota que ninguém mediu são estados diferentes, e só um deles
+    é um fato (CLAUDE.md §12.1).
+    """
+    if retrato is None:
+        return DPR.NAO_MEDIDO
+    return retrato.rotulo(rota.seguradora, rota.ramo, rota.servico)
 
 
 _FAMILIAS: Dict[int, List[str]] = {}
@@ -413,6 +507,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="confere os apelidos contra o ESPELHO (le o banco)")
     ap.add_argument("--comparar-com", metavar="ARQ")
     ap.add_argument("--so-orfas", action="store_true")
+    # 🔴 SPEC-119 F5 · uma rodada da régua serve a TODOS os leitores.
+    #    📊 `--todas` leva 17–18 min (cada rota paga corpus + motor). Sem este
+    #    despejo, a página dos corredores e o comparador de patamar exigiriam
+    #    uma rodada cada — 54 min para medir a mesma coisa três vezes.
+    ap.add_argument("--gravar-notas", metavar="ARQ",
+                    help="despeja as notas de --todas em JSON, com a data")
     a = ap.parse_args(argv)
 
     if a.verificar_mutacoes:
@@ -443,7 +543,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _comparar_com(a.comparar_com, a.seguradora)
 
     acervo = _sessoes_por_seguradora()
-    demanda = {s: e for s, e, _c in PS.DEMANDA_MEDIDA}
+    # 🔴 SPEC-119 F5 · era `{s: e for s, e, _c in PS.DEMANDA_MEDIDA}` — uma
+    #    chave de UM eixo para uma tabela de TRÊS. Agora é o retrato POR ROTA,
+    #    com a data colada nele. `None` = não há retrato, e a coluna sai `—`.
+    demanda = DPR.carregar()
 
     if a.replay_detalhado:
         rota = M.rota_de(a.seguradora, a.ramo, a.servico)
@@ -495,6 +598,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                           tem_espelho=a.com_espelho,
                           mutacoes_ok=mut_ok,
                           travamentos=travamentos) for r in M.rotas()]
+        if a.gravar_notas:
+            print(_gravar_notas(notas, a.gravar_notas, acervo))
         if a.formato == "markdown":
             print(markdown(notas, demanda, acervo))
         else:
@@ -573,7 +678,7 @@ def _o_que_destrava(n: RB.Nota) -> str:
     return " · ".join(dict.fromkeys(pend)) or "nada"
 
 
-def markdown(notas: List[RB.Nota], demanda: Dict[str, int],
+def markdown(notas: List[RB.Nota], demanda: Optional[DPR.Retrato],
              acervo: Dict[str, int]) -> str:
     """O `INVENTARIO-DE-ROTAS.md` do Bloco D.
 
@@ -618,13 +723,26 @@ def markdown(notas: List[RB.Nota], demanda: Dict[str, int],
     L.append("> quando pudermos.**\"*\n")
     L.append("🔴 **Uma rota em 60 com o bloqueio nomeado é ENTREGA. Uma rota em 95 com furo")
     L.append("invisível não é.** É por isso que este inventário tem três colunas, e não uma.\n")
-    L.append("| seguradora | ramo | serviço | nota | patamar | 🔴 o que FALTA para o nível da máquina de lavar | 🔴 o que DESTRAVA | dem |")
-    L.append("|---|---|---|---:|---|---|---|---:|")
+    # 🔴 SPEC-119 F5 · a nota que se LE e `%`; o bruto fica na coluna ao lado.
+    #    Denominadores de 76, 70 e 64 na mesma tabela convidam a comparar o que
+    #    nao se compara -- `42/64` PARECE pior que `48/76` e e melhor (66% x 63%).
+    L.append("🔴 **A nota que se lê é `%`.** O `bruto` ao lado é o `pontos/denominador` "
+             "que a sustenta — e o denominador **muda por rota**, então dois brutos "
+             "não se comparam entre si. A `%` compara.\n")
+    if demanda is not None:
+        L.append(f"🔴 **A coluna `pedidos` é POR ROTA**, não por serviço — {demanda.carimbo}. "
+                 "`—` quer dizer **não medido**, nunca zero.\n")
+    else:
+        L.append("⚠️ **A coluna `pedidos` saiu `—` em tudo:** não há retrato em "
+                 f"`{DPR.CAMINHO_DO_RETRATO}`. Zero medido e zero não medido "
+                 "não são a mesma coisa.\n")
+    L.append("| seguradora | ramo | serviço | nota | bruto | patamar | 🔴 o que FALTA para o nível da máquina de lavar | 🔴 o que DESTRAVA | pedidos |")
+    L.append("|---|---|---|---:|---:|---|---|---|---:|")
     for n in sorted(notas, key=lambda x: (-x.fracao, str(x.rota))):
-        pr = n.estado or f"{n.pontos}/{n.denominador}"
-        L.append(f"| {n.rota.seguradora} | {n.rota.ramo} | {n.rota.servico} | **{pr}** | "
+        L.append(f"| {n.rota.seguradora} | {n.rota.ramo} | {n.rota.servico} | "
+                 f"**{_pct(n)}** | {_bruto(n)} | "
                  f"{n.patamar} | {_o_que_falta(n)} | {_o_que_destrava(n)} | "
-                 f"{demanda.get(n.rota.servico, 0)} |")
+                 f"{_demanda_de(demanda, n.rota)} |")
     L.append("\n## Os eixos, para quem quiser a decomposição\n")
     L.append("| seguradora | ramo | serviço | A | B | C | D | E | família |")
     L.append("|---|---|---|---:|---:|---:|---:|---:|---|")
