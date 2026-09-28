@@ -5,7 +5,7 @@
   "sessoes": 652
  },
  "comando": "cd backend && python scripts/demanda_por_rota.py --medir --gravar",
- "commit": "71e8035",
+ "commit": "349c0a3",
  "controle": {
   "marcas_de_corretora": 8
  },
@@ -14,7 +14,7 @@
   "tokio/condominio": 3
  },
  "medido_em": "2026-09-28",
- "medido_em_iso": "2026-09-28T04:58:19+00:00",
+ "medido_em_iso": "2026-09-28T13:06:22+00:00",
  "nao_decidiu": {
   "alfa": 1,
   "allianz": 20,

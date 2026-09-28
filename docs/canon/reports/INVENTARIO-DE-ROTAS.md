@@ -1,7 +1,7 @@
 # notas gravadas: docs/canon/reports/NOTAS-DAS-ROTAS.json (73 rotas, 2026-09-28)
 # Inventário de rotas — a régua aplicada às 73
 
-> Gerado em **2026-09-28T02:48:52+00:00** · commit `f9b7204`
+> Gerado em **2026-09-28T13:27:12+00:00** · commit `349c0a3`
 > 📊 acervo no momento da geração: **682 sessões** em 12 seguradoras
 
 🔴 A nota é sempre sobre o **denominador real**. Item dispensado sai do
@@ -34,7 +34,6 @@ invisível não é.** É por isso que este inventário tem três colunas, e não
 | allianz | residencial | chaveiro | **95%** | 72/76 | quase(76) | apelidos do jeito que o cliente fala (+4) | 🤖 conferir os apelidos pelo leitor do Espelho | 2 |
 | allianz | residencial | eletricista | **95%** | 72/76 | quase(76) | apelidos do jeito que o cliente fala (+4) | 🤖 conferir os apelidos pelo leitor do Espelho | 5 |
 | azul | auto | bateria | **95%** | 72/76 | quase(76)!1 | apelidos do jeito que o cliente fala (+4) | 🤖 conferir os apelidos pelo leitor do Espelho | 3 |
-| porto | auto | bateria | **95%** | 72/76 | quase(76)!1 | apelidos do jeito que o cliente fala (+4) | 🤖 conferir os apelidos pelo leitor do Espelho | 4 |
 | yelum | auto | pneu | **95%** | 72/76 | quase(76)!1 | apelidos do jeito que o cliente fala (+4) | 🤖 conferir os apelidos pelo leitor do Espelho | 2 |
 | yelum | residencial | encanador | **95%** | 72/76 | quase(76)!1 | apelidos do jeito que o cliente fala (+4) | 🤖 conferir os apelidos pelo leitor do Espelho | 4 |
 | allianz | residencial | limpeza_caixa_dagua | **94%** | 66/70 | quase(70) | apelidos do jeito que o cliente fala (+4) | 🤖 conferir os apelidos pelo leitor do Espelho | 4 |
@@ -57,6 +56,7 @@ invisível não é.** É por isso que este inventário tem três colunas, e não
 | hdi | auto | chaveiro | **70%** | 53/76 | parcial(76)!1 | a ROTA foi percorrida ate o fim (+12) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) · >=2 sessoes distintas (+2) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho | 1 |
 | hdi | residencial | encanador | **68%** | 52/76 | parcial(76)!1 | zero orfas funcionais (+16) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4) | 🤖 mapear 2 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho | 3 |
 | hdi | auto | guincho | **63%** | 48/76 | parcial(76)!1 | zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4) | 🤖 mapear 21 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho | 16 |
+| porto | auto | bateria | **63%** | 48/76 | parcial(76)!1 | zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4) | 🤖 mapear 10 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho | 5 |
 | porto | auto | guincho | **63%** | 48/76 | parcial(76)!1 | zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4) | 🤖 mapear 17 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho | 25 |
 | yelum | auto | guincho | **63%** | 48/76 | parcial(76)!1 | zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4) | 🤖 mapear 22 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho | 26 |
 | allianz | residencial | eletrodomesticos | **62%** | 47/76 | parcial(76) | a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho | 3 |
@@ -112,7 +112,6 @@ invisível não é.** É por isso que este inventário tem três colunas, e não
 | allianz | residencial | chaveiro | 16 | 33 | 11 | 6 | — | — |
 | allianz | residencial | eletricista | 16 | 33 | 11 | 6 | — | — |
 | azul | auto | bateria | 16 | 33 | 11 | 6 | — | — |
-| porto | auto | bateria | 16 | 33 | 11 | 6 | — | — |
 | yelum | auto | pneu | 16 | 33 | 11 | 6 | — | — |
 | yelum | residencial | encanador | 16 | 33 | 11 | 6 | — | — |
 | allianz | residencial | limpeza_caixa_dagua | 16 | 33 | 11 | 0 | — | — |
@@ -135,6 +134,7 @@ invisível não é.** É por isso que este inventário tem três colunas, e não
 | hdi | auto | chaveiro | 2 | 28 | 11 | 6 | — | — |
 | hdi | residencial | encanador | 16 | 13 | 11 | 6 | — | — |
 | hdi | auto | guincho | 16 | 9 | 11 | 6 | — | — |
+| porto | auto | bateria | 16 | 9 | 11 | 6 | — | — |
 | porto | auto | guincho | 16 | 9 | 11 | 6 | — | — |
 | yelum | auto | guincho | 16 | 9 | 11 | 6 | — | — |
 | allianz | residencial | eletrodomesticos | 4 | 28 | 3 | 6 | — | — |

@@ -766,9 +766,9 @@
   "seguradora": "porto",
   "ramo": "auto",
   "servico": "bateria",
-  "telas": 140,
-  "respondidas": 74,
-  "orfas_funcionais": 0,
+  "telas": 164,
+  "respondidas": 76,
+  "orfas_funcionais": 10,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -776,9 +776,9 @@
    "c470d13d",
    "f4838bb3"
   ],
-  "faixa": "ATENDE SOZINHO",
-  "causa": "",
-  "motivo": "todas as 74 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 3 conversa(s) — a primeira é `67296ad9`",
+  "faixa": "FALTA CAPTURA",
+  "causa": "tela_orfa",
+  "motivo": "10 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 4830574a: “Olá! 😊 Aqui é a Viviane. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso ”",
   "bateria_5": []
  },
  {
@@ -1080,7 +1080,9 @@
   "telas": 0,
   "respondidas": 0,
   "orfas_funcionais": 0,
-  "achados_graves": {},
+  "achados_graves": {
+   "C": 2
+  },
   "chegou_ao_fim": false,
   "sessoes_de_desfecho": [],
   "faixa": "FALTA CAPTURA",
