@@ -11998,3 +11998,32 @@ nunca o dado de uma pessoa. 🔴 O que **não** pode acontecer é alguém escrev
 nesta lista para "limpar um vermelho": é por isso que ela é curta, comentada uma a uma com a
 contagem medida, e mora ao lado do guarda.
 
+---
+
+## P-119-08 · o resíduo medido da inversão do vocativo — 🤖
+📊 Medido em 28/09/2026, depois do conserto. A regra invertida (*mascara a menos que prove
+que é língua*) tem **dois** resíduos conhecidos, e os dois estão medidos, não supostos:
+
+**① o nome que COLIDE com palavra de língua.** 📊 De 34 nomes próprios PT-BR comuns testados
+contra o léxico, **2 passariam**: `Luz` e `Graça` — ambos são palavra do produto (*"parte da
+casa sem luz"*, *"de graça"*). ⚠️ O reforço do **esqueleto contaminado** cobre o caso em que
+outra pessoa recebeu a mesma frase (é assim que `Atendimento,` foi pego); **não** cobre o
+nome que aparece uma vez só, numa frase que mais ninguém recebeu.
+
+**② o nome de PERFIL do WhatsApp que é uma palavra comum.** 📊 `yelum-auto.jsonl` ainda traz
+*"Atendimento, identifiquei uma inconsistência sistêmica…"*. Ali `Atendimento` está na posição
+do nome — a URA ecoa o nome do perfil, e o perfil é o aparelho de um atendente. Ficou porque
+**não é nome de pessoa** e mascará-lo quebraria `Atendimento` como rótulo de menu legítimo,
+que existe no acervo. ⚠️ É uma decisão, não um esquecimento.
+
+**O que destrava:** 🤖 a única fonte que resolveria ① sem chute é o `slots.titular_nome` da
+sessão em `observed_sessions` — o nome que o produto **já sabe**. Hoje `nomes_da_sessao` é
+derivado do próprio vocativo; ligado ao slot, ele passaria a conhecer o nome mesmo quando a
+forma não o revela.
+
+**Custa esquecer:** ⚠️ **pouco, e o pouco está quantificado.** Nenhum dos dois resíduos vaza
+no acervo de hoje: 📊 `--auditar-pii` devolve `6048 linhas, 0 sujas` e a varredura de vocativo
+devolve **0 cabeças não-língua**. 🔴 O que custa é o dia em que uma segurada chamada Luz ou
+Graça abrir uma conversa: a linha dela entra no acervo versionado com o primeiro nome em
+claro, e **nenhum guarda de hoje fica vermelho** — porque os dois guardas usam o mesmo léxico.
+
