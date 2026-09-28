@@ -282,8 +282,12 @@ def montar(f: Fontes) -> List[Linha]:
         fora.append(Linha(s, por_rota_nota.get(chave), demanda.get(chave),
                           int(sem_etq.get(f"{s['seguradora']}/{s['ramo']}", 0))))
     # 🔴 A ORDEM é a do Founder: primeiro o que mais gente pede.
-    #    ⚠️ `—` vai para o fim, e não para o meio como `0` iria.
-    fora.sort(key=lambda l: (-(l.pedidos or -1), -(l.nota.get("pct") or 0), l.rota))
+    #    ⚠️ `—` (não medido) vai para o FIM, separado de um `0` medido — que
+    #    seria "olhamos e ninguém pediu", e é outra coisa. `or -1` juntaria os
+    #    dois no mesmo lugar e apagaria a distinção que a coluna existe para
+    #    fazer.
+    fora.sort(key=lambda l: (-l.pedidos if l.pedidos is not None else 10**9,
+                             -(l.nota.get("pct") or 0), l.rota))
     return fora
 
 
