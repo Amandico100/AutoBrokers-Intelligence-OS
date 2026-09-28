@@ -542,6 +542,12 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False,
                         f"PADRAO_DE_CARDAPIO {seg}/{str(sid)[:8]}: {nivel}")
                 continue
 
+            # 🔴 QUEM É O SEGURADO DESTA SESSÃO — levantado ANTES de mascarar.
+            #    O vocativo revela o nome; o resto da conversa o repete fora da
+            #    posição de vocativo, onde nenhuma regra de FORMA o alcança.
+            nomes_desta_sessao = H.nomes_no_vocativo(
+                e.get("text") or "" for e in ordenados if e.get("direction") == "in")
+
             # PASSO 1 · só `direction='in'`, e só `zona='URA'`
             linhas: List[Dict[str, Any]] = []
             vistos: Set[str] = set()
@@ -575,15 +581,22 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False,
                     continue
                 vistos.add(n)
 
-                # PASSO 3 · mascarar (§6.4 + CA-062 + CA-064)
+                # PASSO 3 · mascarar (§6.4 + CA-062 + CA-064 + SPEC-119 §1)
                 pb = pb_por_ramo.get(ramo)
-                limpo, marcas_ap = H.higienizar(pb or {}, bruto, esq_dado)
+                limpo, marcas_ap = H.higienizar(pb or {}, bruto, esq_dado,
+                                                nomes_da_sessao=nomes_desta_sessao)
                 if marcas_ap["senha_preservada"]:
                     contagem["senha_preservada"] += 1
                 if marcas_ap["vocativo_mascarado"]:
                     contagem["vocativo_mascarado"] += 1
+                if marcas_ap["nome_da_sessao_mascarado"]:
+                    contagem["nome_da_sessao_mascarado"] += 1
 
-                sujeira = H.auditar_pii(limpo)
+                # 🔴 O AUDITOR RECEBE OS NOMES — SPEC-119 CONSERTO A, 28/09/2026.
+                #    📊 `auditar_pii` TEM o parâmetro `nomes_da_sessao` desde a
+                #    SPEC-083, e a docstring dele diz por quê; os dois chamadores
+                #    o ignoravam. O guarda existia e não era chamado.
+                sujeira = H.auditar_pii(limpo, nomes_da_sessao=nomes_desta_sessao)
                 if sujeira:
                     # 🔴 RECUSAR só o que sobrar sujo depois da máscara — e a
                     #    recusa vai para o INDICE.md com sessão e motivo.
@@ -778,12 +791,30 @@ def auditar(destino: str) -> int:
     A v1 da SPEC usava `grep -cE '[0-9]{11}'`. Ele **não casa**
     `+55 (47) 90000-0000` — a maior sequência de dígitos ali tem CINCO.
     Devolvia 0 com quatro telefones no arquivo.
+
+    🔴 E ELE LÊ O ARQUIVO DUAS VEZES — SPEC-119 CONSERTO A, 28/09/2026.
+
+    A primeira leitura levanta, POR SESSÃO, os nomes que algum vocativo
+    sobrevivente revelou; a segunda audita cada linha COM esses nomes. Sem as
+    duas passadas, `nomes_da_sessao` nunca chega aqui — e era assim que
+    📊 `6048 linhas, 0 sujas, exit 0` convivia com 86 linhas de nome em claro.
     """
     total = sujas = 0
     achados: List[str] = []
-    for nome in sorted(os.listdir(destino)):
-        if not nome.endswith(".jsonl"):
-            continue
+    arquivos = [n for n in sorted(os.listdir(destino)) if n.endswith(".jsonl")]
+
+    # passada 1 — quem é o segurado de cada sessão, segundo o que sobrou
+    por_sessao: Dict[str, List[str]] = collections.defaultdict(list)
+    for nome in arquivos:
+        for linha in open(os.path.join(destino, nome), encoding="utf-8"):
+            if linha.strip():
+                d = json.loads(linha)
+                por_sessao[str(d.get("session_id"))].append(d.get("text") or "")
+    nomes_por_sessao = {sid: H.nomes_no_vocativo(ts)
+                        for sid, ts in por_sessao.items()}
+
+    # passada 2 — a auditoria, agora com o nome sendo olhado
+    for nome in arquivos:
         for i, linha in enumerate(open(os.path.join(destino, nome), encoding="utf-8"), 1):
             if not linha.strip():
                 continue
@@ -793,7 +824,9 @@ def auditar(destino: str) -> int:
                 achados.append(f"{nome}:{i} DIRECAO != in")
                 sujas += 1
                 continue
-            s = H.auditar_pii(d.get("text") or "")
+            s = H.auditar_pii(
+                d.get("text") or "",
+                nomes_da_sessao=nomes_por_sessao.get(str(d.get("session_id")), set()))
             if s:
                 sujas += 1
                 achados.append(f"{nome}:{i} {d['session_id']} -> {','.join(s[:3])}")
