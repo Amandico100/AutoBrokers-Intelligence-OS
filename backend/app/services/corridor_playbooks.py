@@ -315,18 +315,67 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         {
             "step": "menu_tipo_seguro",
             "constante_justificada": (
-                "📊 A ROTA JÁ DIZ o ramo. `menu_tipo_seguro` só existe dentro de um playbook de auto ou de residencial — a tecla não escolhe nada que o caso não tenha decidido antes de o corredor abrir."),
+                "📊 A tecla `2` é *Residência, Condomínio ou Empresa* na tela real "
+                "(acervo `allianz-residencial.jsonl`), e este playbook É o residencial: "
+                "a ROTA já disse o ramo antes de o corredor abrir. ⚠️ Ela NÃO separa "
+                "residência de condomínio — quem faz isso é a tela seguinte "
+                "(`menu_solicitar_para`), e lá a tecla vem do caso."),
             "anchor": r"assist[êe]ncia 24h para qual seguro",
             "reply": "2",
             "notes": "1-Auto 2-Residência/Empresa/Condomínio 3-Vida 4-Viagem 5-Outros",
         },
         {
+            # ═══════════════════════════════════════════════════════════════
+            # 🔴 A SEGUNDA TELA DE TRÊS OPÇÕES — SPEC-119, conserto B, item 1
+            # ═══════════════════════════════════════════════════════════════
+            #
+            # 📊 A tela REAL, do acervo (`backend/tests/corpus/telas_reais/
+            #    allianz-residencial.jsonl`, sessão `2540f42f`, rota
+            #    `allianz/residencial/desentupimento`):
+            #
+            #      "Você gostaria de solicitar serviços de assistência para:
+            #       *1 -* Residência  *2 -* Condomínio  *3 -* Empresa"
+            #
+            # 🔴 E a justificativa que estava escrita aqui descrevia OUTRA TELA:
+            #    *"1-Residência 2-Veículo"*, uma tela de DUAS opções. A linha de
+            #    baixo (`notes`) já dizia `1-Residência 2-Condomínio 3-Empresa`,
+            #    e o acervo concorda com ela. É o corolário do CLAUDE.md §9.5
+            #    quebrado no lugar exato onde ele está escrito: *"uma constante
+            #    que escolhe entre alternativas de conteúdo precisa dizer POR QUE
+            #    está certa, escrito ao lado dela"*.
+            #
+            # 🔴 O QUE CHEGAVA AO SEGURADO: `reply: "1"` abria todo chamado de
+            #    ÁREAS COMUNS de condomínio como RESIDÊNCIA. Cobertura, prestador
+            #    e responsável errados — e a recusa acontece no local, depois da
+            #    espera. É o mesmo defeito nº 3 do §9.5 que a SPEC-083 já tinha
+            #    consertado três passos abaixo (`menu_qual_seguro_tres_opcoes`):
+            #    **existem DUAS telas de três opções, e só uma tinha sido
+            #    consertada.**
+            #
+            # ⚠️ E a trava nova (`insurer_dispatch_service._apolice_de_areas_comuns`)
+            #    NÃO ALCANÇAVA ESTE PASSO: ela só roda quando `resolver_tecla`
+            #    devolve algo, e `resolver_tecla` devolve `None` para `reply`
+            #    constante (`_SLOT_OPCAO_RE` só casa `{algo_opcao}`). Com a tecla
+            #    vindo do caso, a trava passa a valer aqui sem tocar em mais nada.
+            #
+            # 📊 Medido em 28/09/2026 sobre a tela real acima:
+            #      `_casar_rotulo("Residencial", opcoes_numeradas(tela))`
+            #         -> [('1', 'Residência')]   a apólice residencial segue sozinha
+            #      `_casar_rotulo("Condomínio",  ...)` -> [('2', 'Condomínio')]
+            #      `_casar_rotulo("Empresarial", ...)` -> [('3', 'Empresa')]
+            #    Ou seja: o ramo do caso continua acertando a tecla — o que muda
+            #    é que condomínio e empresarial agora vão a uma PESSOA.
             "step": "menu_solicitar_para",
-            "constante_justificada": (
-                "📊 1-Residência 2-Veículo. O playbook é o residencial: o ramo não é uma escolha aberta aqui, é a identidade da rota."),
             "anchor": r"solicitar servi[çc]os de assist[êe]ncia para:",
-            "reply": "1",
-            "notes": "URA 2026: 1-Residência 2-Condomínio 3-Empresa",
+            "reply": "{qual_seguro_opcao}",
+            "requires": ["qual_seguro_opcao"],
+            "fallback_adaptive": True,
+            "notes": "📊 URA 2026: 1-Residência 2-Condomínio 3-Empresa (acervo, "
+                     "sessao 2540f42f). 🔴 Vem do caso, NUNCA fixo: '1' num "
+                     "condominio abre o chamado na apolice da UNIDADE, e o "
+                     "servico de areas comuns e recusado no local. E a MESMA "
+                     "regra do `menu_qual_seguro_tres_opcoes` — sao DUAS telas "
+                     "de tres opcoes nesta URA, nao uma.",
         },
         {
             "step": "menu_qual_seguro",
@@ -810,7 +859,11 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # real passaria. A ancora agora aceita qualquer profissional.
             "step": "quando",
             "constante_justificada": (
-                "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
+                "📊 A tecla `1` é a URGÊNCIA nesta tela — o acervo a escreve como "
+        "*Agora* (allianz, alfa) e como *Tenho urgência* (azul); a alternativa é "
+        "*Agendar data e horário*. O corredor só é acionado quando a corretora "
+        "abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia "
+        "existir rota de AGENDAMENTO, esta constante vira slot."),
             "anchor": r"para quando precisa (?:do|da)\s*\*?(?:eletricista|encanador|chaveiro|"
                       r"desentupimento|desentupidor|profissional|servi[çc]o|t[ée]cnico)",
             "reply": "1",
@@ -2079,7 +2132,11 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
     #       casavam continuam casando. Ampliar é seguro; trocar não é.
     {"step": "quando",
     "constante_justificada": (
-        "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
+        "📊 A tecla `1` é a URGÊNCIA nesta tela — o acervo a escreve como "
+        "*Agora* (allianz, alfa) e como *Tenho urgência* (azul); a alternativa é "
+        "*Agendar data e horário*. O corredor só é acionado quando a corretora "
+        "abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia "
+        "existir rota de AGENDAMENTO, esta constante vira slot."),
      "anchor": (r"para quando precisa d[oa] \*?(?:reboque|guincho|servi[çc]o|profissional|"
                 r"borracheiro|chaveiro|t[ée]cnico|socorro|eletricista|encanador)"), "reply": "1",
      "notes": "1-Agora 2-Agendar; urgência é o default do corredor"},
@@ -2102,7 +2159,8 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
     #    dado bloquearia toda troca de pneu de carro.
     {"step": "cilindrada_moto", "anchor": r"qual a cilindrada da moto", "reply": "2",
      "constante_justificada": (
-         "🔴 O erro nao e simetrico. `2 - Mais de 300` manda o reboque que "
+         "🔴 O erro nao e simetrico. `2 - Mais de 300 cilindradas` (o rotulo "
+         "literal da tela real) manda o reboque que "
          "carrega QUALQUER moto; `1 - Menos de 300` manda um que nao carrega a "
          "grande, e o segurado fica na rua esperando um segundo acionamento. "
          "Sem o dado no caso, a resposta conservadora e a que atende os dois."),
@@ -2157,7 +2215,8 @@ ALLIANZ_AUTO_WHATSAPP_V1 = _auto_playbook(
     ura_steps=[
         {"step": "menu_tipo_seguro", "anchor": r"assist[êe]ncia 24h para qual seguro", "reply": "1",
         "constante_justificada": (
-            "📊 A ROTA JÁ DIZ o ramo. `menu_tipo_seguro` só existe dentro de um playbook de auto ou de residencial — a tecla não escolhe nada que o caso não tenha decidido antes de o corredor abrir."),
+            "📊 A tecla `1` é *Automóvel, Moto ou Caminhão* na tela real, e este "
+            "playbook É o de auto: a ROTA já disse o ramo antes de o corredor abrir."),
          "notes": "1-Auto/Moto/Caminhão 2-Residência 3-Vida 4-Viagem 5-Outros → Auto"},
     ] + [dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS] + [
         {"step": "endereco_origem_menu", "anchor": r"selecione o endere[çc]o onde est[áa] o ve[íi]culo", "reply": "3",
@@ -3691,7 +3750,8 @@ ALFA_AUTO_WHATSAPP_V1 = _auto_playbook(
     ura_steps=[
         {"step": "menu_tipo_seguro", "anchor": r"assist[êe]ncia 24h para qual seguro", "reply": "1",
         "constante_justificada": (
-            "📊 A ROTA JÁ DIZ o ramo. `menu_tipo_seguro` só existe dentro de um playbook de auto ou de residencial — a tecla não escolhe nada que o caso não tenha decidido antes de o corredor abrir."),
+            "📊 A tecla `1` é *Automóvel ou Moto* na tela real, e este playbook É o "
+            "de auto: a ROTA já disse o ramo antes de o corredor abrir."),
          "notes": "1-Automóvel/Moto 2-Residencial 3-Outros → Auto"},
     ] + [dict(s) for s in _ALLIANZ_FAMILY_AUTO_STEPS],
     finalize_anchors=list(_ALLIANZ_FAMILY_FINALIZE),
@@ -3860,7 +3920,11 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
                   "dele chega (sessão d70ced75)."},
         {"step": "quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o", "reply": "1",
         "constante_justificada": (
-            "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
+            "📊 A tecla `1` é a URGÊNCIA nesta tela — o acervo a escreve como "
+        "*Agora* (allianz, alfa) e como *Tenho urgência* (azul); a alternativa é "
+        "*Agendar data e horário*. O corredor só é acionado quando a corretora "
+        "abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia "
+        "existir rota de AGENDAMENTO, esta constante vira slot."),
          "notes": "1-Tenho urgência (a frase 'confirmada somente após a finalização' faz parte desta COLETA)"},
         # 🔴 ANCORADO NA REDAÇÃO RARA — 1 sessão, enquanto a viva tem 10.
         #    📊 "é você que estARÁ no local"  ->  1 sessão  (2025)
@@ -4109,7 +4173,11 @@ BRADESCO_AUTO_WHATSAPP_V1 = _auto_playbook(
          "notes": "default Não; se houver no caso, adaptativo assume"},
         {"step": "quando", "anchor": r"envie a assist[êe]ncia agora ou prefere agendar", "reply": "Enviar agora",
         "constante_justificada": (
-            "📊 'Agora' x 'Agendar'. O corredor só é acionado quando a corretora abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia existir rota de AGENDAMENTO, esta constante vira slot."),
+            "📊 A tecla `1` é a URGÊNCIA nesta tela — o acervo a escreve como "
+        "*Agora* (allianz, alfa) e como *Tenho urgência* (azul); a alternativa é "
+        "*Agendar data e horário*. O corredor só é acionado quando a corretora "
+        "abriu um caso de assistência — que é, por definição, agora. ⚠️ Se um dia "
+        "existir rota de AGENDAMENTO, esta constante vira slot."),
          "notes": "passo de COLETA no MEIO do fluxo (era FALSO freio) — urgência é o default"},
         {"step": "via_local_rodovia", "anchor": r"\*?via local\*? ou \*?rodovia",
          "reply": "{via_ou_rodovia_opcao}", "requires": ["via_ou_rodovia_opcao"],
