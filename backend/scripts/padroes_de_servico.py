@@ -751,6 +751,19 @@ def servico_da_sessao(seguradora: str,
             m = rx.search(texto)
             if m:
                 rotulo = _norm_rotulo(m.group(1))
+                # 🔴 UM NÚMERO NÃO É NOME DE SERVIÇO — SPEC-119 CONSERTO A.
+                #
+                # 📊 `DEMANDA-POR-ROTA.json` publicava a chave
+                #    `porto/auto/?4145720 - 26`, num relatório versionado. A tela
+                #    real é `"Serviço: 4145720 - 26"` — o número da ORDEM DE
+                #    SERVIÇO da seguradora, capturado pelo mesmo grupo que captura
+                #    `"Serviço: Guincho"`.
+                #
+                # ⚠️ Não se descarta a sessão: `continue` deixa os níveis seguintes
+                #    (cardapio e texto do `out`) tentarem. Descartar aqui seria
+                #    pular em silêncio, que a SPEC-083 §7 proíbe.
+                if len(re.findall(r"[a-zà-ÿ]", rotulo)) < 3:
+                    continue
                 # 🔴 O rotulo LITERAL da seguradora primeiro: e ele que
                 #    distingue `maquina de lavar` de `eletrodomesticos` na
                 #    allianz, onde as duas sao rotas separadas.
