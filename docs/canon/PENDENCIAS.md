@@ -12206,3 +12206,48 @@ sob morte do processo (candidato: restaurar por `atexit` + conferência no iníc
 no `finally`), e cortar o tempo de `test_o_vocabulario_viaja_na_imagem.py` para caber em 120 s.
 **Custa esquecer:** ⚠️ um gate que vive vermelho ensina todo mundo a ignorá-lo — é o CLAUDE.md
 §9.3 pelo avesso, e o próprio arquivo diz que este é *"o único que não pode falhar"*.
+
+## P-119-19 · 🔴 O guarda da atendente ficou vermelho e NÃO estava na lista dos dez — bissecção feita
+📊 Achado em 28/09/2026 pelo CONSERTO C, triando as falhas da bateria completa que não eram dos
+dez itens do pacote. `test_a_atendente_na_ura_cala_o_robo.py`:
+
+```
+BASE  ff711bd ....  57 assercoes verdes · 0 vermelhas   (22 s)
+      e76cb28 ....  54 verdes · 3 vermelhas    <- ja' vermelho AQUI
+      8d94db0 ....  54 verdes · 3 vermelhas
+      96bde37 ....  54 verdes · 3 vermelhas
+      9b1f264 ....  54 verdes · 3 vermelhas   (o conserto C nao mexeu nisso)
+```
+
+⚠️ **Nasceu nas FATIAS, antes do conserto B** — e não estava entre os dez que o pacote do
+conserto C listou. As três asserções são do bloco `[GC-2b] A CORRIDA: ela entra enquanto o
+Cérebro do Sentinela pensa`.
+
+🔴 **A causa está medida, e é a mesma cirurgia da F4b.** A tela que o guarda usa é, literalmente,
+*"qual seguro deseja utilizar … 3 - Empresarial"* — que a F3 passou a classificar como
+`escolhe_o_servico`, `handoff: True`. O degrau novo do Sentinela roda **antes** do Cérebro, então:
+
+```
+antes   a tela ia ao Cerebro -> a atendente falava DURANTE o pensamento -> relia -> `pausa_humana`
+hoje    a tela nem chega ao Cerebro -> handoff direto -> `tela_que_decide`
+```
+
+**São duas coisas, e cada uma pede uma resposta diferente:**
+
+```
+(b) VERDADE VENCIDA no teste ... a CORRIDA continua existindo, mas nao com ESTA tela. O bloco
+    precisa de uma tela que ainda va' ao Cerebro (`classe_da_tela(...)["handoff"] is False`,
+    escolhida pelo MOTOR, §9.4) — senao ele guarda um caminho que ninguem mais percorre.
+(a) BURACO no produto ......... o ramo `tela_que_decide` NAO rele' a sessao. Se a atendente
+    assumiu, o Sentinela ainda entrega dossie e manda ao segurado *"ja' passei seu caso para um
+    colega"* — um segundo handoff num caso que ja' tem dono. O ramo de envio, logo abaixo, JA'
+    rele' (`_preservar_a_atendente`); falta a mesma leitura no ramo novo.
+```
+
+**O que destrava:** 🤖 (a) reler antes do handoff em `dispatch_watchdog._sentinela_recover`,
+devolvendo `pausa_humana`; (b) migrar a tela do bloco GC-2b. ⚠️ **Por que o conserto C não fez:**
+o arquivo é do CONSERTO B, a mudança é no caminho que decide o que sai para o segurado, e não
+sobrou relógio para rodar a bateria inteira depois dela. Medir e entregar vale mais que consertar
+sem prova (§9.2).
+**Custa esquecer:** 🔴 o segurado recebe *"passei seu caso"* de um robô enquanto uma pessoa já
+está com o caso — e a corretora vê dois handoffs para um atendimento só.
