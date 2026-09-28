@@ -460,7 +460,11 @@ def _faixa(rota, rp, achados: List[Any], desfecho: Desfecho,
     return (FAIXA_ATENDE, "",
             f"todas as {rp.pedem_algo} telas que pedem algo são respondidas, "
             f"nenhuma resposta decide pelo segurado sem evidência, e "
-            f"{desfecho.como} ({len(desfecho.sessoes)} conversa/conversas)")
+            f"{desfecho.como} em {len(desfecho.sessoes)} conversa(s) — "
+            # 🔴 G2 da SPEC-119: *"com a sessão nomeada"*. Um "sim" sem o nome da
+            #    conversa não é verificável, e foi o que fez o Founder acreditar
+            #    por meses num 72 que era o mesmo número repetido em 10 linhas.
+            f"a primeira é `{desfecho.sessoes[0]}`")
 
 
 def simular(rota, *, indice: Optional[Dict[Tuple[str, str], List[Any]]] = None,
@@ -587,7 +591,7 @@ def markdown(sims: List[Simulacao]) -> str:
               "|---|---:|---:|---:|---:|---:|---:|:---:|---|"]
         for s in doface:
             g = s.por_regra
-            motivo = "" if faixa == FAIXA_ATENDE else s.motivo
+            motivo = s.motivo
             L.append(f"| `{s.rota.seguradora}/{s.rota.ramo}/{s.rota.servico}` | "
                      f"{len(s.replay.telas)} | {s.replay.respondidas} | "
                      f"{len(s.replay.orfas_funcionais)} | {g.get('A', 0)} | "
