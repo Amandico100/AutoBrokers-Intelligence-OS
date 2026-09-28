@@ -12172,3 +12172,37 @@ sempre numa árvore que já o tenha.
 **Custa esquecer:** ⚠️ cinco vermelhos por rodada que **não são do produto**. O preço não é o
 vermelho: é a hora gasta procurando no código uma regressão que está na máquina — e o hábito de
 ignorar um gate que vive vermelho (§9.3).
+
+## P-119-18 · 🔴🤖 `test_a_arvore_ficou_limpa_no_fim` — `scripts/rubrica.py` fica mutado, e isso é ANTERIOR à SPEC
+📊 Medido em 28/09/2026 (CONSERTO C), com a linha de controle que dá direito à conclusão:
+
+```
+HEAD  95d6f4f (conserto C)   bateria completa .......  FALHA: "a sessão TERMINOU com
+                                                        rubrica.py diferente do início"
+BASE  ff711bd (o que está no ar)  só o meta-guarda ...  FALHA: a MESMA frase, o MESMO arquivo
+```
+
+🔴 **É o mesmo defeito, no commit-base da SPEC.** ⚠️ Isto corrige a inferência de que o gate seria
+*"consequência dos outros nove"*: os outros nove estão VERDES no HEAD final e este continua
+vermelho — e ele já era vermelho antes de a SPEC começar.
+
+**Quem muta `scripts/rubrica.py`:** `test_a_regua_nao_tem_furo.py` (entradas C17 e vizinhas da
+lista `MUTACOES`). 📊 Rodado SOZINHO ele restaura: o `md5sum` antes e depois é idêntico
+(`9e5fd3a5…`). O vazamento só aparece DENTRO do meta-guarda, onde o processo pode ser morto
+antes do `finally` — é a família da P-118-14, e o próprio meta-guarda documenta a causa:
+*"contenção e restauração são objetivos opostos — quem morre não limpa"*.
+
+⚠️ **A árvore NÃO fica suja:** o gate restaura o arquivo antes de reprovar (por desenho, desde
+25/08). O vermelho é o aviso, não o estrago.
+
+📊 **E há um segundo fato medido, que é insumo de qualquer conserto:**
+`test_o_vocabulario_viaja_na_imagem.py` leva **264 s na base** e **317 s no HEAD** — o teto do
+meta-guarda é **120 s**. Ele é morto em toda rodada em que não caia no grupo dos "puros juntos".
+Não é regressão desta SPEC (já estourava na base); é um guarda que precisa caber no teto ou
+declarar um teto próprio.
+
+**O que destrava:** 🤖 achar o caminho de `test_a_regua_nao_tem_furo.py` que escapa do `finally`
+sob morte do processo (candidato: restaurar por `atexit` + conferência no início, em vez de só
+no `finally`), e cortar o tempo de `test_o_vocabulario_viaja_na_imagem.py` para caber em 120 s.
+**Custa esquecer:** ⚠️ um gate que vive vermelho ensina todo mundo a ignorá-lo — é o CLAUDE.md
+§9.3 pelo avesso, e o próprio arquivo diz que este é *"o único que não pode falhar"*.
