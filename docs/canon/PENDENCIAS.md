@@ -11776,3 +11776,98 @@ continua lá**, porque quem trocar o modo de volta para `test` herdaria a lista 
 📊 Estado conferido no `/health` em 26/09, antes do conserto: `finalize_abre_de_verdade:
 ['porto-auto-whatsapp@v1','yelum-auto-whatsapp@v3']` — os dois resolvem, nenhum fantasma hoje.
 **O que AINDA é do Founder:** a decisão **D-118-01** — quando trocar para `live` e apagar a lista.
+
+## P-119-01 · 🧑 `mapfre/auto/guincho` só sai de SEM_CORPUS com um acionamento real — G2 NÃO CUMPRIDO
+📊 Medido em 28/09/2026 por **duas vias independentes**, e as duas dizem a mesma coisa:
+```
+corpus versionado   das 114 telas da Mapfre, a única etiqueta é `carro_reserva` (14) — ZERO de guincho
+observed_events     `demanda_por_rota.py --medir` -> a chave `mapfre/auto/guincho` NÃO EXISTE.
+                    A Mapfre tem 20 sessões de auto e nenhuma delas é guincho
+```
+🔴 **A causa NÃO é o classificador cego** — é ausência de material. A F1 desta SPEC ampliou o
+classificador e a F2 regerou o acervo inteiro; a rota continua sem uma linha porque **não existe
+uma conversa de guincho da Mapfre para etiquetar**.
+**O que destrava:** 🧑 **um** acionamento de guincho na Mapfre, pelo WhatsApp da corretora, com o
+observador ligado, indo até o protocolo. Não é trabalho de escrever código.
+**Custa esquecer:** a página do Founder apontava esta rota como *"a de 72 pedidos"* e ela é, na
+verdade, a rota com **zero** conversas. Enquanto ninguém acionar, nenhuma SPEC a conserta — e
+prometer a uma corretora que a Mapfre está coberta seria prometer o que não se mediu.
+
+## P-119-02 · 🧑🤖 Cinco arquivos do acervo ainda passam de 25% de telas sem etiqueta — G1 NÃO CUMPRIDO
+📊 27/09/2026, contando o campo `servico` em `backend/tests/corpus/telas_reais/*.jsonl`:
+```
+mapfre-auto         87% sem etiqueta   (única etiqueta: carro_reserva, 14 telas)
+tokio-condominio   100%                 fora de RAMOS_EM_ESCOPO, de agosto, nunca regerado
+tokio-residencial  100%                 📊 5/5 sessões são LINK — a Tokio não atende pela conversa
+zurich-auto         69%                 ⚠️ MELHOROU: a SPEC media 86%
+tokio-auto          31%
+```
+📊 **E o total caiu para 11%** (679 de 6.048 telas), com **11 dos 16** arquivos em ≤ 21%.
+**O que destrava:** mapfre e tokio-auto dependem de **captura** (é a P-119-01 em outra forma);
+tokio-condominio e tokio-residencial dependem de uma **decisão** (condomínio está fora de escopo
+por decisão do Founder de 21/08, e a Tokio entrega link — P-119-03 da SPEC); a zurich é 🤖.
+**Custa esquecer:** este gate é o que impede a régua de dizer *"não há conversa"* quando a
+verdade é *"há conversa e ninguém soube etiquetar"*. São coisas diferentes e levam a trabalhos
+opostos — uma pede acionamento, a outra pede código.
+
+## P-119-05 · 🤖 `carro_reserva` é pedido por gente de verdade e não tem UM passo escrito
+📊 28/09/2026: `grep -c carro_reserva backend/app/services/corridor_playbooks.py` → **0**.
+E o acervo tem **126 telas** etiquetadas assim (yelum 91, tokio 21, mapfre 14); `observed_events`
+tem **13 sessões** (yelum 10, tokio 2, mapfre 1). A régua responde `rota inexistente` para
+mapfre e tokio, e a rota **não aparece em lista nenhuma** — porque toda lista itera as rotas que
+têm playbook.
+**O que destrava:** 🤖 escrever o corredor de `carro_reserva` a partir das 126 telas que já
+existem. ⚠️ Não precisa de captura nova — o material está no acervo.
+**Custa esquecer:** é o serviço mais pedido entre os que o produto **não atende**, e ele era
+invisível por construção. A aba CORREDORES passou a publicá-lo numa seção própria
+(*"o segurado pede, e não existe corredor nenhum"*) exatamente para não voltar a sumir.
+
+## P-119-06 · 🤖 Um UUID de corretora escrito à mão em código — CLAUDE.md §13.9
+`backend/scripts/regua_motor.py:287` → `_AMANDUS_COMPANY_ID = "3aa75902-…"`, usado em `:416`
+(exclusão do Espelho) e `:595`. O motivo documentado é legítimo — a corretora de teste está
+marcada `is_technical = False` no banco, então filtrar as técnicas **não** a excluiria — mas a
+regra não admite constante de corretora em código.
+⚠️ `backend/scripts/auditar_pii_no_codigo.py` **não pega** este caso: um UUID não tem "forma de
+PII", então o guarda que existe para isto passa por cima dele.
+**O que destrava:** 🤖 mover para variável de ambiente (`ESPELHO_EXCLUIR_COMPANY_IDS`) com o
+valor de hoje como omissão, e ensinar o auditor a reclamar de UUID literal em `scripts/`.
+**Custa esquecer:** ⚠️ **não foi consertado nesta SPEC de propósito**: mexer aqui muda o item de
+apelidos do eixo D e move as notas das 73 rotas no meio de uma medição — o G4 desta SPEC deixaria
+de ser comparável. É dívida pequena e de efeito nulo hoje; é dívida de regra, e a regra vale.
+
+## P-119-07 · 🤖 Um NÚMERO DE PROTOCOLO virou "serviço" — e cinco rótulos esperam nome canônico
+📊 28/09/2026, 7 rótulos com `?` no acervo, **170 telas**. O `?` é **honesto**: o classificador
+escreve `nivel-1a-rotulo-desconhecido` em vez de chutar. Mas são duas coisas diferentes:
+```
+🔴 `?4145720 - 26`  (24 telas)  um NÚMERO DE PROTOCOLO. Aqui o padrão-ouro casou uma linha que
+                                não é escolha de serviço nenhuma — é defeito do PADRÃO
+   `?conserto residencial` (71 telas, 5 sessões)   serviço REAL sem nome canônico
+   `?pet assistance` (16) · `?limpeza` (16) · `?check-up lar` (14)   serviços reais
+   `?reembolso - qualidade` (16) · `?retorno em garantia` (13)       não são assistência
+```
+**O que destrava:** 🤖 (a) impedir que uma linha só com dígitos e traços vire rótulo de serviço;
+(b) canonizar os três que são serviço real; (c) marcar os dois que não são assistência.
+**Custa esquecer:** `?conserto residencial` tem 5 conversas com demanda medida e nenhuma rota —
+é a P-119-05 de novo, numa forma que ninguém procura.
+
+## P-119-08 · 🤖 O retrato da demanda não se regenera sozinho — ele envelhece em silêncio
+`docs/canon/reports/DEMANDA-POR-ROTA.json` é gravado à mão por
+`cd backend && python scripts/demanda_por_rota.py --medir --gravar`. Nada o reGera, e a página
+imprime a data que estiver dentro dele.
+**O que destrava:** 🤖 pendurar a regeração na mesma rotina que regera o corpus, ou um guarda que
+reclame quando o retrato passar de N dias.
+**Custa esquecer:** ⚠️ a data VISÍVEL na página protege o leitor (foi o gate G10 desta SPEC), mas
+proteger não é atualizar: daqui a três meses a aba dirá *"pedidos medidos em 28/09/2026"* com
+todo o direito, e ninguém saberá que o número dobrou. **Era exatamente assim que o `72` de
+21/08 sobreviveu até 27/09.**
+
+## P-119-09 · 🤖 Uma sessão de `residencial` foi classificada como `guincho`
+📊 28/09/2026: `observed_events` tem `allianz/residencial/guincho` com **1 sessão** — e o corpus
+versionado **não** tem essa rota. Guincho é serviço de auto; a rota não existe em playbook nenhum,
+e por isso ela aparece na seção *"o segurado pede e não há corredor"* como se fosse demanda real.
+**O que destrava:** 🤖 auditar a cascata de `classificar_ramo` para esta sessão — é 1 caso, e a
+amostra de 1 não distingue *"o segurado pediu guincho no meio de um chamado residencial"* de
+*"a cascata errou o ramo"*.
+**Custa esquecer:** ⚠️ **uma** linha errada numa lista que o Founder lê como inventário de
+trabalho manda alguém escrever um corredor que não existe. É pequeno e é da classe que o
+CLAUDE.md §12.1 chama de reinfecção: o número está certo, o rótulo é que mente.
