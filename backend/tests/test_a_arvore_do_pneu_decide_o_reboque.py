@@ -30,10 +30,12 @@ Este arquivo chama o MOTOR (§9.4). As telas são copiadas do corpus versionado.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CORPUS = os.path.join(RAIZ, "tests", "corpus", "telas_reais")
 sys.path.insert(0, RAIZ)
 
 import importlib.util as _ilu  # noqa: E402
@@ -233,7 +235,7 @@ for ref, sv, trecho in (
 
 print()
 print("=" * 74)
-print("[5] 🔴 BRADESCO: a tela que separa guincho de bateria vem DEPOIS")
+print("[5] 🔴 BRADESCO: a tela que separa REBOQUE de TECNICO vem DEPOIS")
 print("=" * 74)
 print("     (as 4 rotas eram SEM_CORPUS por um desempate que ninguem lia)")
 
@@ -282,10 +284,41 @@ def _classifica(resposta_desempate):
 certo(_classifica("2")[0] == "guincho",
       "🔴 CONTROLE: 'estava andando e parou' -> GUINCHO",
       str(_classifica("2")))
-certo(_classifica("1")[0] == "bateria",
-      "🔴 CONTROLE: 'estava estacionado e nao liga' -> BATERIA — a MESMA "
+# 🔴 A VERDADE DESTA LINHA VENCEU em 27/09/2026, e migrou (CLAUDE.md §9.3).
+#
+#    Ela afirmava BATERIA. Era INFERÊNCIA — "estacionado e não liga" ⇒ bateria —
+#    e a bradesco diz outra coisa. A F1 desta SPEC corrigiu a tabela `DESEMPATE`
+#    e o guarda acompanha, porque guarda que segura verdade vencida ensina todo
+#    mundo a ignorar guarda.
+#
+#    🔴 E A LIÇÃO NÃO MORREU, MUDOU DE FRASE. O que este controle sempre provou
+#    é que a MESMA tecla `1` do menu anterior leva a desfechos DIFERENTES, e que
+#    quem decide é a tela POSTERIOR. Isso continua sendo afirmado — agora com o
+#    desfecho que a URA realmente dá, e com o acervo ao lado provando qual é.
+certo(_classifica("1")[0] == "tecnico",
+      "🔴 CONTROLE: 'estava estacionado e nao liga' -> TECNICO — a MESMA "
       "tecla `1` do menu anterior, e desfechos diferentes",
       str(_classifica("1")))
+certo(_classifica("1")[0] != _classifica("2")[0],
+      "   — e o que este controle guarda e a DIFERENCA: a tela posterior decide, "
+      "e os dois caminhos nao se confundem",
+      f'{_classifica("1")} vs {_classifica("2")}')
+
+# 📊 E A LINHA DE CONTROLE DO CONTROLE: o desfecho sai do ACERVO, nao de uma
+#    inferência sobre o que "estacionado e não liga" deveria significar.
+_bd = [json.loads(l) for l in
+       open(os.path.join(CORPUS, "bradesco-auto.jsonl"), encoding="utf-8")]
+_diz_tecnico = [l for l in _bd if "assistência de um *técnico*" in l["text"]]
+_diz_reboque = [l for l in _bd if "vamos enviar um reboque" in l["text"].lower()]
+certo(len(_diz_tecnico) >= 2 and len(_diz_reboque) >= 2,
+      f"📊 e o ACERVO diz os dois: {len(_diz_tecnico)} telas respondem "
+      f"*tecnico* e {len(_diz_reboque)} respondem *reboque* — a tabela nao inventa",
+      f"tecnico={len(_diz_tecnico)} reboque={len(_diz_reboque)}")
+certo(sorted({l["session_id"][:8] for l in _diz_tecnico}) and
+      sorted({l["session_id"][:8] for l in _diz_reboque}),
+      "   — e as sessoes estao nomeadas: "
+      f"tecnico={sorted({l['session_id'][:8] for l in _diz_tecnico})} "
+      f"reboque={sorted({l['session_id'][:8] for l in _diz_reboque})}")
 
 # 🔴 CONTROLE DO CONTROLE: sem a tela de desempate, a tecla `1` do menu
 #    continua NAO decidindo. Se decidisse, o desempate seria decorativo.
