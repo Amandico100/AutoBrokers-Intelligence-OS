@@ -756,11 +756,19 @@ def escrever_indice(rel: Dict[str, Any]) -> str:
         L.append("\n## Avisos\n")
         for a in rel["avisos"]:
             L.append(f"- {a}")
-    L.append(f"\n## Vocativos\n\n📊 esqueletos com ≥3 cabeças distintas "
-             f"(= DADO, mascarado): **{rel['vocativos']['dado']}** · "
-             f"com exatamente 2 (= `NOME_DUVIDOSO`, **não** mascarado "
-             f"automaticamente, fica para leitura humana): "
-             f"**{rel['vocativos']['duvidoso']}**\n")
+    # 🔴 O RÓTULO TEM DE DIZER O QUE O NÚMERO É — SPEC-119 CONSERTO A.
+    #    Desde a inversão, `dado` é a UNIÃO de dois mecanismos diferentes
+    #    (≥3 cabeças distintas · esqueleto onde alguma cabeça já se provou
+    #    nome). Chamar a soma de "≥3 cabeças" seria um nome que mente (§12.1).
+    L.append(f"\n## Vocativos\n\n📊 esqueletos tratados como DADO (≥3 cabeças "
+             f"distintas **ou** esqueleto onde alguma cabeça já se provou "
+             f"nome): **{rel['vocativos']['dado']}** · com exatamente 2 cabeças "
+             f"(= `NOME_DUVIDOSO`, **não** mascarado por este mecanismo, fica "
+             f"para leitura humana): **{rel['vocativos']['duvidoso']}**\n")
+    L.append("\n> ⚠️ Estes dois números são o mecanismo ESTRUTURAL, que hoje é "
+             "**reforço**. Quem mascara a maior parte é a regra invertida: "
+             "*mascara a menos que prove que é língua*, e ela não passa por "
+             "esqueleto nenhum — ver `higiene_do_corpus.e_lingua`.\n")
     return "\n".join(L) + "\n"
 
 

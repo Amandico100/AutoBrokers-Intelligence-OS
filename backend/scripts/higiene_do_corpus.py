@@ -124,7 +124,34 @@ def levantar_vocativos(textos: Iterable[str]) -> Tuple[set, set]:
             cabecas[esq].add(m.group(1).lower())
     dado = {e for e, c in cabecas.items() if len(c) >= CABECAS_PARA_SER_DADO}
     duvidoso = {e for e, c in cabecas.items() if len(c) == CABECAS_DUVIDOSO}
-    return dado, duvidoso
+    # 🔴 O ESQUELETO CONTAMINADO — SPEC-119 CONSERTO A, 28/09/2026.
+    #
+    # Se ALGUMA cabeça deste esqueleto já se provou nome, o esqueleto é um campo
+    # de NOME — e o que aparece nele é dado, mesmo quando a palavra existe no
+    # dicionário. É o que fecha o último buraco da inversão: um nome que COLIDE
+    # com palavra de língua passaria pelo léxico. 📊 Medido: de 34 nomes próprios
+    # PT-BR comuns testados contra o léxico, **2** passariam (`Luz`, `Graça`).
+    #
+    # 📊 E o preço do reforço foi medido sobre os 18.623 eventos `in`: 335
+    #    esqueletos com vocativo, 50 com ao menos um nome, e ele alcança **duas**
+    #    cabeças de língua no acervo inteiro:
+    #
+    # ```
+    # "Certo! Confira o resumo da sua solicitação"   <- `Alvaro,` abre a mesma
+    #     ⚠️ falso positivo ACEITO: custa `{NOME}!` numa tela de resumo
+    #
+    # "Atendimento, agora preciso saber se o veículo está em uma rodovia?"
+    #     🔴 NÃO é falso positivo: `christian`, `Maria`, `chrstian`, `MARI` e
+    #        `Andre` abrem a MESMA frase. Ali a URA ecoa o nome do perfil do
+    #        WhatsApp — e um perfil chamado "Atendimento" é o aparelho de um
+    #        ATENDENTE, que o CLAUDE.md §13.9 nomeia junto com o cliente.
+    # ```
+    #
+    # ⚠️ Um falso positivo barato contra o vazamento do nome de um funcionário:
+    #    falhar fechado é o certo, e a conta está medida, não suposta.
+    contaminado = {e for e, c in cabecas.items()
+                   if any(not e_lingua(x) for x in c)}
+    return dado | contaminado, duvidoso
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -1,6 +1,6 @@
 # Corpus de telas reais — ÍNDICE
 
-> Gerado em **2026-09-28T04:57:06+00:00** · commit `71e8035`
+> Gerado em **2026-09-28T11:39:48+00:00** · commit `f66c040`
 > 📊 `marcas_de_corretora()` = **8** (o CONTROLE da SPEC-084 §2.5.1.3 — se fosse 0, a geração teria rodado sem banco e o corpus **não estaria mascarado**)
 
 🔴 Este arquivo existe porque a SPEC-083 §7 proíbe pular em silêncio: *"truncar calado lê-se como 'cobrimos tudo'"*.
@@ -367,11 +367,11 @@ _nenhuma_
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | alfa | 0 | 0 | 0 | 30 | 1 | 0 | 0 | 8 | 0 | 0 | 0 | 8 | 0 | 1 | 0 | 0 | 3 | 3 | 5 | 0 | 0 | 151 |
 | allianz | 1 | 0 | 1 | 1411 | 19 | 1 | 135 | 8 | 0 | 3 | 1 | 44 | 0 | 19 | 99 | 0 | 55 | 47 | 96 | 0 | 4412 | 3698 |
-| azul | 0 | 0 | 0 | 68 | 3 | 0 | 0 | 11 | 5 | 0 | 0 | 11 | 0 | 3 | 0 | 5 | 9 | 0 | 11 | 25 | 22 | 450 |
+| azul | 0 | 0 | 0 | 68 | 3 | 0 | 0 | 11 | 5 | 0 | 0 | 11 | 0 | 3 | 0 | 5 | 9 | 0 | 11 | 28 | 22 | 450 |
 | bradesco | 0 | 0 | 0 | 19 | 15 | 0 | 0 | 15 | 0 | 0 | 0 | 15 | 0 | 15 | 0 | 0 | 0 | 8 | 7 | 2 | 0 | 227 |
 | hdi | 0 | 0 | 1 | 241 | 9 | 1 | 8 | 32 | 0 | 44 | 1 | 31 | 0 | 9 | 9 | 0 | 33 | 12 | 28 | 40 | 403 | 1248 |
 | mapfre | 0 | 0 | 1 | 130 | 17 | 0 | 0 | 21 | 0 | 0 | 0 | 21 | 0 | 17 | 0 | 0 | 0 | 20 | 1 | 0 | 223 | 534 |
-| porto | 0 | 0 | 1 | 531 | 54 | 0 | 31 | 41 | 16 | 4 | 0 | 63 | 0 | 54 | 9 | 16 | 23 | 34 | 38 | 94 | 384 | 1853 |
+| porto | 0 | 0 | 1 | 531 | 54 | 0 | 31 | 41 | 16 | 4 | 0 | 63 | 0 | 54 | 9 | 16 | 23 | 34 | 38 | 101 | 384 | 1853 |
 | tokio | 0 | 2 | 1 | 87 | 48 | 0 | 0 | 14 | 0 | 0 | 0 | 7 | 2 | 48 | 5 | 0 | 0 | 7 | 5 | 0 | 0 | 210 |
 | yelum | 0 | 0 | 1 | 469 | 44 | 0 | 33 | 39 | 1 | 62 | 0 | 63 | 0 | 44 | 9 | 1 | 51 | 20 | 52 | 54 | 435 | 2218 |
 | zurich | 0 | 0 | 1 | 69 | 4 | 0 | 0 | 11 | 0 | 0 | 0 | 11 | 0 | 4 | 0 | 0 | 2 | 9 | 2 | 0 | 41 | 398 |
@@ -383,5 +383,8 @@ _nenhuma_
 
 ## Vocativos
 
-📊 esqueletos com ≥3 cabeças distintas (= DADO, mascarado): **6** · com exatamente 2 (= `NOME_DUVIDOSO`, **não** mascarado automaticamente, fica para leitura humana): **6**
+📊 esqueletos tratados como DADO (≥3 cabeças distintas **ou** esqueleto onde alguma cabeça já se provou nome): **51** · com exatamente 2 cabeças (= `NOME_DUVIDOSO`, **não** mascarado por este mecanismo, fica para leitura humana): **6**
+
+
+> ⚠️ Estes dois números são o mecanismo ESTRUTURAL, que hoje é **reforço**. Quem mascara a maior parte é a regra invertida: *mascara a menos que prove que é língua*, e ela não passa por esqueleto nenhum — ver `higiene_do_corpus.e_lingua`.
 
