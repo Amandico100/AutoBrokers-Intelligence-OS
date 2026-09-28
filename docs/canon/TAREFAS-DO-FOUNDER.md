@@ -795,6 +795,59 @@ captura vale uma rota a mais no painel.
 
 ---
 
+## SPEC-119 — o que só você faz (28/09/2026) · os corredores ficam prontos para a vida real
+
+> 🔴 **Nada aqui é urgente e nada bloqueia o produto.** São **capturas** — conversas de verdade
+> que precisam acontecer com o observador ligado. Cada uma resolve uma rota, e **nenhuma linha de
+> programa substitui uma delas.**
+
+### 119.A · Ler a aba CORREDORES de novo — ela mudou de verdade
+
+`[ ]` Abra o painel, aba **CORREDORES**. O que você vai ver de diferente:
+
+```
+antes   mapfre / auto / guincho ....... 72 pedidos
+hoje    mapfre / auto / guincho ....... —   (nenhuma conversa desta rota no acervo)
+```
+
+📊 **Aquele 72 nunca foi da Mapfre.** Era o total de guincho somando **sete** seguradoras, medido
+em **21/08/2026**, impresso igual nas dez linhas de guincho. A maior rota de guincho de verdade,
+medida em **28/09** nas conversas reais, é a **Allianz** com **29** — e a Mapfre tem **zero**.
+
+⚠️ **Onde a página mostrar `—`, leia "não sabemos", nunca "ninguém pediu".** São coisas
+diferentes, e a aba tem uma seção no fim dizendo quantas conversas existem sem etiqueta.
+
+### 119.B · As capturas que destravam rota — uma conversa cada
+
+`[ ]` **Guincho na Mapfre.** É a única coisa que tira `mapfre/auto/guincho` de "sem conversa".
+📊 Conferido por duas vias em 28/09: das 114 telas da Mapfre no acervo, a única etiqueta é
+`carro reserva`; no banco, a Mapfre tem 20 conversas de auto e **nenhuma** é guincho.
+**Como:** um acionamento de guincho pelo WhatsApp da corretora, indo até o protocolo.
+**O que anotar:** o dia e a hora — é por eles que a próxima medição acha a conversa.
+
+`[ ]` **As rotas sem uma única conversa.** São **31**. A aba as lista ordenadas por quantas
+pessoas pediram aquele serviço naquela seguradora — **comece de cima**.
+
+### 119.C · A decisão que sobra para você
+
+`[ ]` **`carro reserva` vira corredor?** 📊 O segurado pede: **126 telas** e **13 conversas** no
+acervo (Yelum 10, Tokio 2, Mapfre 1). E **não existe um único passo escrito** para ele — o produto
+não atende. ⚠️ **Não precisa de captura nova**: o material já está gravado; precisa de uma SPEC.
+Isto é a **P-119-05**.
+
+`[ ]` **Condomínio e a Tokio continuam fora?** A Tokio entrega **link** (📊 5 de 5 conversas
+residenciais dela), e condomínio está fora de escopo por decisão sua de 21/08. As duas coisas
+aparecem como "100% sem etiqueta" na medição — e é **por desenho**, não por defeito. Se mudou de
+ideia, é uma SPEC nova.
+
+| # | tarefa | por que importa | onde |
+|---|---|---|---|
+| 17 | **ler a aba CORREDORES** | a coluna `pedidos` mudou de significado; o `—` agora quer dizer "não medido" | painel, aba CORREDORES |
+| 18 | **1 acionamento de guincho na Mapfre** | é o gate **G2**, e ele **não se cumpre com código** | WhatsApp da corretora · P-119-01 |
+| 19 | **decidir se `carro reserva` vira corredor** | 13 conversas pedindo, zero passos escritos | P-119-05 |
+
+---
+
 ## Apêndice · O que o produto ainda não sabe medir sozinho
 
 Não é tarefa sua — é para você saber o que **não** esperar do relatório do piloto (`PENDENCIAS.md`):
