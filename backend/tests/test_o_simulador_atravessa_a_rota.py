@@ -275,6 +275,155 @@ def test_mutacao_a_faixa_do_defeito_deixa_de_ser_atende_sozinho():
         "o motivo tem de NOMEAR o passo — o Founder lê o motivo, não a tabela"
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 [3b] O ELO INTEIRO — achado VINDO DE `CR.conferir`, nunca plantado
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ Os dois testes acima chamam `SC._faixa(...)` com um `CR.Achado` construído à
+#    mão. Eles provam que `_faixa` REAGE a um grave. Não provam que
+#    `achados_da_rota` CONSEGUE produzir um — e era exatamente esse elo que
+#    estava morto.
+#
+# 📊 Medido em 28/09/2026, antes do conserto B:
+#
+#     ACHADOS TOTAIS do conferidor ... 84   graves: 2   (A 59 · B 19 · C 6)
+#     graves por regra ............... {'C': 2}
+#     ACHADOS ATRIBUIDOS a rota ...... 56   graves ATRIBUIDOS: 0
+#     rotas com >=1 grave ............ 0
+#
+#    Com 100% dos graves na regra C e a atribuição procurando a tela no replay
+#    DA ROTA (filtrado por `servico == rota.servico`), a faixa ④ — *"≥1 grave →
+#    HANDOFF defeito_de_resposta"* — **nunca podia disparar**.
+#
+# 🔴 Estas duas mutações são as do JUIZ e do RED TEAM, e as duas ficavam VERDES.
+
+
+def _mutar_passo(ref, nome_do_passo, **troca):
+    """Muta UM passo do corredor EM MEMÓRIA e devolve o desfazedor.
+
+    ⛔ Em memória de propósito: a bateria que muta `corridor_playbooks.py` no
+    disco restaura por cópia a cada ~10 s e apaga edição de quem estiver ao lado
+    (P-118-14).
+    """
+    pb = M.get_playbook(ref)
+    passo = next(p for p in pb["ura_steps"] if p.get("step") == nome_do_passo)
+    antes = dict(passo)
+    for k in list(troca):
+        if troca[k] is None:
+            passo.pop(k, None)
+            troca.pop(k)
+    passo.update(troca)
+
+    def _desfazer():
+        passo.clear()
+        passo.update(antes)
+    return _desfazer
+
+
+def _retrato(seguradora, ramo):
+    """`(graves do conferidor, rotas ATENDE SOZINHO, rotas com grave atribuído)`."""
+    derivados = CR._slots_derivados()
+    graves = [a for a in CR.conferir(seguradora, ramo, derivados) if a.grave]
+    sims = [SC.simular(r) for r in M.rotas()
+            if r.seguradora == seguradora and r.ramo == ramo]
+    return (len(graves),
+            sum(1 for s in sims if s.faixa == SC.FAIXA_ATENDE),
+            sum(1 for s in sims if s.graves))
+
+
+def test_mutacao_do_juiz_o_passo_do_eletricista_na_tela_do_encanador():
+    """🔴 A MUTAÇÃO DO JUIZ — e ela ficava VERDE.
+
+    O passo `quando` de `allianz-residencial` restrito a `['eletricista']`
+    responde a tela *"E para quando precisa do \\*Encanador\\*?"*. O conferidor
+    ACUSAVA (regra C, 2 graves) e a rota seguia `ATENDE SOZINHO`:
+    `graves do conferidor=2 · graves atribuidos=0`.
+
+    ⚠️ A vítima é a rota do OFÍCIO DO PASSO (`eletricista`), não a da tela: é
+    nela que o passo é alcançável.
+    """
+    ref = M.rota_de("allianz", "residencial", "eletricista").ref
+    graves_antes, atende_antes, com_grave_antes = _retrato("allianz", "residencial")
+    assert com_grave_antes == 0, \
+        f"a árvore já vem com grave atribuído: o controle perdeu o zero"
+
+    desfazer = _mutar_passo(ref, "quando", only_subservices=["eletricista"])
+    try:
+        graves, atende, com_grave = _retrato("allianz", "residencial")
+        assert graves > graves_antes, (
+            f"🔴 o conferidor não viu o defeito reintroduzido: {graves}")
+        assert com_grave > 0, (
+            "🔴 VERDE FALSO: o conferidor acusa e NENHUMA rota recebe o grave — "
+            "é o elo morto que o conserto B da SPEC-119 fechou")
+        sim = SC.simular(M.rota_de("allianz", "residencial", "eletricista"))
+        assert sim.faixa != SC.FAIXA_ATENDE, sim.motivo
+        assert sim.causa == "defeito_de_resposta", f"{sim.faixa}/{sim.causa}"
+    finally:
+        desfazer()
+    assert _retrato("allianz", "residencial") == (graves_antes, atende_antes, 0), \
+        "🔴 a mutação não foi desfeita"
+
+
+def test_mutacao_M_RT6_a_tecla_fixa_que_escolhe_o_servico_pelo_segurado():
+    """🔴 A MUTAÇÃO DO RED TEAM (M-RT6) — 126 asserções verdes e 3 rotas
+    seguindo `ATENDE SOZINHO`.
+
+    `menu_outros_servicos_residencia` deixa de ler o caso
+    (`{outro_servico_opcao}`) e passa a responder a tecla fixa `3`, que naquela
+    tela é *Limpeza de Caixa d'Água*. As DUAS formas têm de ficar vermelhas:
+
+    ```
+    (a) sem justificativa   a regra B já acusava -- faltava a ATRIBUIÇÃO
+    (b) com justificativa   `constante_justificada` só exigia que a justificativa
+        genérica            EXISTISSE; o conteúdo nunca era conferido
+    ```
+    """
+    ref = M.rota_de("allianz", "residencial", "encanador").ref
+    graves_antes, atende_antes, com_grave_antes = _retrato("allianz", "residencial")
+    assert atende_antes >= 1, "nenhuma rota allianz/residencial atende: sem o caso"
+
+    for nome, troca in (
+            ("(a) sem justificativa",
+             dict(reply="3", requires=None, constante_justificada=None)),
+            ("(b) com justificativa genérica",
+             dict(reply="3", requires=None,
+                  constante_justificada=("A rota ja diz o servico: a tecla nao "
+                                         "escolhe nada que o caso nao tenha "
+                                         "decidido antes de o corredor abrir."))),
+    ):
+        desfazer = _mutar_passo(ref, "menu_outros_servicos_residencia", **troca)
+        try:
+            graves, atende, com_grave = _retrato("allianz", "residencial")
+            assert graves > graves_antes, f"{nome}: o conferidor não acusou"
+            assert com_grave > 0, (
+                f"🔴 {nome}: VERDE FALSO — o conferidor acusa e nenhuma rota "
+                f"recebe o grave")
+            assert atende < atende_antes, (
+                f"🔴 {nome}: {atende} rotas continuam ATENDE SOZINHO "
+                f"(eram {atende_antes}) com a tecla que escolhe o serviço pelo "
+                f"segurado")
+        finally:
+            desfazer()
+    assert _retrato("allianz", "residencial") == (graves_antes, atende_antes, 0), \
+        "🔴 a mutação não foi desfeita"
+
+
+def test_a_justificativa_de_hoje_nomeia_o_rotulo_da_tecla():
+    """🔴 CONTROLE de (b): a regra nova tem de ser MUDA na árvore limpa.
+
+    📊 Ela achou CINCO justificativas que descreviam outra tela — entre elas a
+    de `menu_solicitar_para`, que falava de *"1-Residência 2-Veículo"* numa tela
+    `1-Residência 2-Condomínio 3-Empresa`. Todas foram consertadas; se ela
+    voltar a gritar, é porque alguém escreveu a sexta.
+    """
+    derivados = CR._slots_derivados()
+    gritos = [a for seg in M.seguradoras() for ramo in ("auto", "residencial")
+              for a in CR.conferir(seg, ramo, derivados)
+              if a.grave and "NAO NOMEIA" in a.porque]
+    assert not gritos, "\n".join(f"{a.seguradora}/{a.ramo} {a.passo}: {a.porque}"
+                                 for a in gritos)
+
+
 def test_a_resposta_errada_vem_antes_da_resposta_que_falta():
     """🔴 A ordem do §9.5: um passo que responde errado é silencioso e chega ao
     cliente; um que trava é barulhento. Com os dois, o motivo é o do errado."""
