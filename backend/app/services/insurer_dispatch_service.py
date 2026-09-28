@@ -5684,7 +5684,44 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     #    Retomar seria desobedecê-la, e o padrão já seria este — declarado porque
     #    um leitor que não achar a linha vai supor que ela foi esquecida.
     "apolice_de_condominio_ou_empresa": DIRETO_AO_HUMANO,
-    "galho_de_areas_comuns": DIRETO_AO_HUMANO,
+    # ⛔ `galho_de_areas_comuns` FOI DAQUI EMBORA em 28/09/2026 (SPEC-119,
+    #    conserto C). Ele nunca foi escrito em `session["reason"]` por linha
+    #    nenhuma: a SEGUNDA PORTA do condomínio é um `handoff_triggers` do
+    #    corredor residencial, e o motivo que sai dela é `handoff_trigger:…` —
+    #    medido e guardado por `test_condominio_empresarial_sinistro_vao_para_
+    #    gente.py::test_a_porta_do_galho_de_areas_comuns_tambem_para`, que
+    #    afirma `reason.startswith("handoff_trigger:")`.
+    #    🔴 Verdade vencida em tabela de política é pior que linha faltando: ela
+    #    faz parecer que a porta tem veredito próprio quando quem decide é o
+    #    `handoff_trigger`, que já está logo acima.
+
+    # ---- 🔴 SPEC-119, conserto C: AS CINCO QUE CAÍAM NO PADRÃO EM SILÊNCIO ----
+    #
+    # 📊 Medido em 28/09/2026 por `test_a_retomada_cobre_as_dezesseis.py`, depois
+    # que o varredor dele passou a enxergar TAMBÉM o `{"destino": "humano",
+    # "reason": "…"}` (ele só lia `session["reason"] = …`). As três primeiras
+    # nasceram NESTA SPEC; as duas últimas são de antes e viviam no ponto cego.
+    #
+    # ⚠️ O veredito das cinco é o MESMO, e a razão também: a conversa com a
+    # seguradora continua VIVA, e o que falta é uma decisão que só gente toma.
+    # Retomar refaria o corredor contra a MESMA tela com os MESMOS dados — e o
+    # padrão silencioso já dava isto; o que faltava era estar ESCRITO (§D.1b).
+    #
+    # A seguradora mostrou uma tela que decide pelo segurado (escolher serviço,
+    # aceitar custo). Refazer só recolocaria o robô diante dela.
+    "tela_que_decide": DIRETO_AO_HUMANO,
+    # O robô seguiu telas de navegação até o teto sem reconhecer nenhuma. A URA
+    # não voltou ao caminho conhecido; refazer entra no mesmo passeio.
+    "conducao_esgotada": DIRETO_AO_HUMANO,
+    # A seguradora pediu um dado que só o segurado sabe, e ele não respondeu.
+    # Retomar não cria o dado; uma pessoa pergunta por outro canal.
+    "segurado_nao_respondeu": DIRETO_AO_HUMANO,
+    # A tecla que decide QUAL apólice usar não resolveu. 🔴 Chutar o ramo é abrir
+    # o chamado na apólice errada — o desfecho que a bateria 5 existe para matar.
+    "ramo_indeterminado": DIRETO_AO_HUMANO,
+    # A resposta coletada serve para duas opções do menu. Uma pessoa desempata;
+    # o robô, repetindo, empataria de novo.
+    "tecla_ambigua": DIRETO_AO_HUMANO,
 
     # ---- NÃO RETOMA, E CONTINUAR TAMBÉM NÃO RESOLVE ----
     # A conferência já tem escada própria (as correções por campo, até o teto).

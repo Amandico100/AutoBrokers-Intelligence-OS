@@ -69,8 +69,34 @@ def _carregar(nome: str, caminho: Path):
 
 M = _carregar("_spec085_motor_D", MOTOR_PY)
 
-_RE_REASON = re.compile(r'session\["reason"\]\s*=\s*(.+)')
-_RE_FAMILIA = re.compile(r'["\']([a-z_]+)')
+#: `session["reason"] = "x"` · `= f"x:{…}"` · `= ("x"` — a ATRIBUIÇÃO direta.
+#:
+#: 🔴 A âncora no começo do valor é o conserto de 28/09/2026 (SPEC-119, conserto
+#: C). O padrão antigo era `(.+)` + "primeira coisa entre aspas", e em
+#: `session["reason"] = tecla["reason"]` ele colhia a palavra **`reason`** como
+#: se fosse uma família de travamento. Ela nunca teria veredito, e o gate ficava
+#: vermelho para sempre por um defeito do próprio gate (CLAUDE.md §9.3).
+_RE_REASON = re.compile(r'session\["reason"\]\s*=\s*\(?\s*f?["\']([a-z_]+)')
+
+#: 🔴 E O SEGUNDO ESCRITOR, que este arquivo não enxergava: o dicionário que
+#: manda a uma pessoa e já nomeia o motivo — `{"destino": "humano", "reason":
+#: "ramo_indeterminado"}` e `{"state": "needs_human", "reason": "…"}`. O motivo
+#: dele chega em `session["reason"]` por `_tecla_para_humano`/`handle_*`, e não
+#: por uma linha de atribuição literal.
+#:
+#: 📊 Medido em 28/09/2026: o ponto cego escondia CINCO famílias
+#: (`ramo_indeterminado`, `tecla_ambigua`, `apolice_de_condominio_ou_empresa`,
+#: `playbook_not_found` — esta era compensada à mão, logo abaixo — e, por
+#: tabela, fazia `apolice_de_condominio_ou_empresa` parecer família MORTA).
+#:
+#: ⚠️ A cláusula do humano é OBRIGATÓRIA no padrão, e não é enfeite: os mesmos
+#: arquivos têm `{"ok": False, "reason": "model_declined"}` — o veredito do
+#: FISCAL sobre o rascunho do modelo, que nunca vira `session["reason"]`. Sem
+#: ela o gate cobraria política de retomada de sete coisas que não são
+#: travamento. 📊 Medido: 26 famílias com a cláusula, 33 sem.
+_RE_REASON_DICT = re.compile(
+    r'"(?:destino"\s*:\s*"humano|state"\s*:\s*"needs_human)"\s*,'
+    r'\s*(?:#[^\n]*\n\s*)?"reason"\s*:\s*"([a-z_]+)"')
 
 #: Famílias que NÃO são travamento — são desfechos, e por isso não têm política
 #: de retomada. Nomeadas para que ninguém as confunda com uma.
@@ -85,22 +111,57 @@ def _familias_do_fonte() -> set:
     """
     achadas = set()
     for caminho in (MOTOR_PY, ROUTER_PY, VIGIA_PY):
-        for linha in caminho.read_text(encoding="utf-8").splitlines():
-            m = _RE_REASON.search(linha)
-            if not m:
-                continue
-            fam = _RE_FAMILIA.search(m.group(1))
-            if fam:
-                achadas.add(fam.group(1))
-    # `playbook_not_found` também nasce num `return {...}` do motor, que o
-    # padrão de `session["reason"]` não pega.
-    achadas.add("playbook_not_found")
+        texto = caminho.read_text(encoding="utf-8")
+        # ⚠️ O dicionário pode quebrar a linha entre `"destino": "humano",` e
+        #    `"reason": "…"` (o motor quebra), então o casamento é no TEXTO
+        #    inteiro, nunca linha a linha.
+        for rx in (_RE_REASON, _RE_REASON_DICT):
+            achadas.update(m.group(1) for m in rx.finditer(texto))
+    # 🔴 `playbook_not_found` NÃO É MAIS ACRESCENTADO À MÃO (era, até 28/09/2026).
+    #    Ele nasce em `return {"state": "needs_human", "reason": "playbook_not_
+    #    found", …}`, que o segundo padrão agora alcança — e deixá-lo ser
+    #    DESCOBERTO é o que transforma o varredor num guarda de si mesmo: se o
+    #    padrão do dicionário quebrar, esta família some do conjunto e
+    #    `test_a_lista_nao_tem_familia_MORTA` fica vermelho na hora.
     return achadas - NAO_SAO_TRAVAMENTO
 
 
 # ---------------------------------------------------------------------------
 # 1. TODA FAMÍLIA TEM VEREDITO — e o gate cobra o COMANDO
 # ---------------------------------------------------------------------------
+
+def test_CONTROLE_o_varredor_nao_colhe_o_que_nao_e_familia():
+    """🔴 O varredor cresceu em 28/09/2026 — e o que cresce colhe lixo.
+
+    Duas linhas de controle, e cada uma pega um defeito que a outra não vê:
+
+      📊 `session["reason"] = tecla["reason"]` (motor, `_tecla_para_humano`) —
+         o padrão ANTIGO colhia a palavra **`reason`** como família. Ela nunca
+         teria veredito, e o gate ficaria vermelho para sempre por defeito dele
+         mesmo. CLAUDE.md §9.3.
+      📊 `{"ok": False, "reason": "model_declined"}` (motor, o FISCAL do
+         rascunho do modelo) — o padrão NOVO do dicionário colheria os sete
+         vereditos do fiscal se não exigisse a cláusula do humano. Nenhum deles
+         é travamento e nenhum vira `session["reason"]`.
+
+    ⚠️ E os dois textos TÊM de existir no fonte, senão este controle é decoração.
+    """
+    fonte = MOTOR_PY.read_text(encoding="utf-8")
+    assert 'session["reason"] = tecla["reason"]' in fonte, (
+        "o escritor indireto sumiu do motor — este controle deixou de medir algo")
+    assert '"reason": "model_declined"' in fonte, (
+        "os vereditos do fiscal sumiram do motor — este controle deixou de medir algo")
+
+    familias = _familias_do_fonte()
+    assert "reason" not in familias, (
+        "🔴 o varredor voltou a colher a PALAVRA `reason` de "
+        '`session["reason"] = tecla["reason"]` como se fosse família')
+    do_fiscal = {"empty", "model_declined", "silencio", "nao_e_frase", "too_long",
+                 "protocol_without_capture", "invented_number"}
+    assert not (familias & do_fiscal), (
+        f"🔴 o varredor colheu veredito do FISCAL como família de travamento: "
+        f"{sorted(familias & do_fiscal)}")
+
 
 def test_toda_familia_do_fonte_tem_veredito_escrito():
     sem_veredito = sorted(f for f in _familias_do_fonte()
@@ -140,8 +201,24 @@ def test_sao_dezesseis():
     # dele e' `nao_retoma` pela razao do `loop_guard` mais uma: o que se
     # repetiria e' uma confirmacao, e confirmacao repetida manda o segundo
     # prestador a' casa de alguem.
-    assert len(familias) == 18, (
-        f"o fonte tem {len(familias)} famílias de travamento, não 18: "
+    #
+    # 🔴 E DEZOITO VIROU VINTE E QUATRO em 28/09/2026 (SPEC-119, conserto C), por
+    # DUAS causas que precisam ficar separadas — juntá-las esconderia as duas:
+    #
+    #   📊 +3 famílias NOVAS, criadas por esta SPEC e sem veredito escrito:
+    #      `tela_que_decide` (a tela que decide pelo segurado, F3/F4b),
+    #      `conducao_esgotada` (o teto de telas conduzidas) e
+    #      `segurado_nao_respondeu` (o Vigia). As três caíam no padrão
+    #      `direto_ao_humano` EM SILÊNCIO — que é o defeito da §D.1b.
+    #   📊 +3 famílias que já existiam e o varredor NÃO ENXERGAVA, porque só lia
+    #      `session["reason"] = …`: `ramo_indeterminado`, `tecla_ambigua` e
+    #      `apolice_de_condominio_ou_empresa`. Elas nascem num dicionário
+    #      `{"destino": "humano", "reason": "…"}`.
+    #
+    # ⚠️ `playbook_not_found` NÃO entra nesta conta: ele já era contado, à mão.
+    #    Hoje é descoberto pelo mesmo padrão do dicionário (ver `_familias_do_fonte`).
+    assert len(familias) == 24, (
+        f"o fonte tem {len(familias)} famílias de travamento, não 24: "
         f"{sorted(familias)}")
 
 
@@ -171,6 +248,16 @@ def test_sao_dezesseis():
     ("encaminhamento_sem_link", M.DIRETO_AO_HUMANO),
     ("formulario_incompleto", M.DIRETO_AO_HUMANO),
     ("formulario_nativo_desconhecido", M.DIRETO_AO_HUMANO),
+    # 🔴 SPEC-119, conserto C. As três primeiras nasceram nesta SPEC; as duas
+    # últimas viviam no ponto cego do varredor. As cinco têm o mesmo veredito e
+    # a mesma razão: a conversa está VIVA e falta uma decisão que só gente toma —
+    # refazer recolocaria o robô diante da MESMA tela com os MESMOS dados.
+    ("tela_que_decide", M.DIRETO_AO_HUMANO),
+    ("conducao_esgotada", M.DIRETO_AO_HUMANO),
+    ("segurado_nao_respondeu", M.DIRETO_AO_HUMANO),
+    ("ramo_indeterminado", M.DIRETO_AO_HUMANO),
+    ("tecla_ambigua", M.DIRETO_AO_HUMANO),
+    ("apolice_de_condominio_ou_empresa", M.DIRETO_AO_HUMANO),
     # não retoma, e continuar também não resolve — falta CONSERTO
     ("conferencia_divergente", M.NAO_RETOMA),
     ("loop_guard", M.NAO_RETOMA),
