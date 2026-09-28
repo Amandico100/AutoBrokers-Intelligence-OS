@@ -196,12 +196,33 @@ try:
 except Exception:  # noqa: BLE001 — sem o módulo, o `except` do Sentinela cobre
     pass
 
-MENUS = []
+# 🔴 A ESCADA DO SENTINELA GANHOU UM DEGRAU ACIMA DOS TETOS (SPEC-119 F4b),
+#    e por isso a prova do GB-2 precisa escolher as telas, nao pegar as primeiras.
+#
+#    O degrau novo: uma tela cuja CLASSE tem `handoff: True` (`escolhe_o_servico`,
+#    `aceite_de_custo`) vai a uma PESSOA antes de qualquer contagem, e NAO consome
+#    tentativa -- ninguem errou, a tela e' de gente. 📊 Medido em 28/09/2026: dos
+#    113 menus numerados distintos do acervo `allianz-residencial`, 8 sao dessas
+#    classes -- e os DOIS PRIMEIROS estavam entre eles. A prova dos tetos usava
+#    justamente esses dois, e devolvia `tela_que_decide` onde esperava `recovered`.
+#
+#    ⚠️ A separacao e' feita pelo MOTOR (`classe_da_tela`), nunca por uma regex
+#    daqui (CLAUDE.md §9.4). E as duas metades sao provadas: os tetos, com as telas
+#    que o cerebro ainda atende; o degrau novo, com as que vao a gente.
+_TODOS_OS_MENUS = []
 for t in RES:
-    if len(D.opcoes_numeradas(t)) >= 2 and t not in MENUS:
-        MENUS.append(t)
+    if len(D.opcoes_numeradas(t)) >= 2 and t not in _TODOS_OS_MENUS:
+        _TODOS_OS_MENUS.append(t)
+MENUS = [t for t in _TODOS_OS_MENUS
+         if not D.classe_da_tela(PB, t, slots={}).get("handoff")]
+DECIDEM = [t for t in _TODOS_OS_MENUS
+           if D.classe_da_tela(PB, t, slots={}).get("handoff")]
 checar(len(MENUS) >= W.MAX_TENTATIVAS_NA_SESSAO + 1,
-       f"📊 o acervo tem {len(MENUS)} menus numerados distintos para a prova")
+       f"📊 o acervo tem {len(MENUS)} menus numerados que o cerebro ainda "
+       f"atende, de {len(_TODOS_OS_MENUS)} distintos, para a prova dos tetos")
+checar(len(DECIDEM) >= 1,
+       f"📊 e {len(DECIDEM)} que DECIDEM pelo segurado -- a prova do degrau novo",
+       f"{len(DECIDEM)}")
 
 
 def _nova():
@@ -244,6 +265,42 @@ checar(r[:-1] == ["recovered"] * W.MAX_TENTATIVAS_NA_SESSAO and r[-1] == "handof
        f"{r}")
 checar(W.MAX_TENTATIVAS_POR_TELA < W.MAX_TENTATIVAS_NA_SESSAO,
        "o teto por tela é menor que o da sessão")
+
+print()
+print("=" * 74)
+print("[6] 🔴 O DEGRAU NOVO: a tela que DECIDE nao gasta tentativa")
+print("=" * 74)
+
+# 🔴 A LIÇÃO QUE MIGROU (CLAUDE.md §9.3). O bloco [5] afirmava que TODA tela de
+#    menu passa pela contagem. Isso era verdade -- ate' a F4b desta SPEC. Agora ha'
+#    uma classe de tela que sai antes, e o guarda passa a afirmar as DUAS coisas.
+#
+#    ⚠️ E o que estava em jogo esta escrito no motor: trinta segundos depois de o
+#    corredor mandar a tela a uma pessoa, o Sentinela enviava `1` para a
+#    seguradora -- aceitando custo em nome do segurado.
+s = _nova()
+_chega(s, DECIDEM[0])
+r_decide = _sentinela(s)
+checar(r_decide == "tela_que_decide",
+       "🔴 a tela que DECIDE vai a uma pessoa -- e nao ao cerebro",
+       f"{r_decide!r}")
+checar(s.get("state") == "needs_human"
+       and str(s.get("reason") or "").startswith("tela_que_decide:"),
+       "   — e o motivo diz QUAL classe, para quem tria",
+       f"{s.get('state')!r} · {s.get('reason')!r}")
+checar(not s.get("sentinela_attempts") and not s.get("tentativas_por_tela"),
+       "🔴 e NENHUMA tentativa foi consumida: ninguem errou, a tela e' de gente",
+       f"sessao={s.get('sentinela_attempts')} · por_tela={s.get('tentativas_por_tela')}")
+
+# 🔴 CONTROLE: a MESMA sessao, a MESMA chamada, com uma tela de menu comum —
+#    ela continua indo ao cerebro e CONSUMINDO tentativa. Sem esta linha, um
+#    Sentinela que mandasse TUDO a uma pessoa passaria verde aqui.
+s = _nova()
+_chega(s, MENUS[0])
+r_comum = _sentinela(s)
+checar(r_comum == "recovered" and s.get("sentinela_attempts") == 1,
+       "🔴 CONTROLE: o menu comum continua indo ao cerebro, e gasta tentativa",
+       f"{r_comum!r} · attempts={s.get('sentinela_attempts')}")
 
 print()
 print("=" * 74)
