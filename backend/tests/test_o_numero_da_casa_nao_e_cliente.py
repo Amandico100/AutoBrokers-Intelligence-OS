@@ -328,8 +328,19 @@ if ts_ok:
           "🔴 e os DOIS dão exatamente o mesmo resultado — %s" % ts_res)
 else:
     # ⛔ Sem `node` o guarda NÃO finge que mediu: ele reprova a dimensão.
-    certo(False, "⛔ NÃO AVALIADA: `node` indisponível — a equivalência entre os "
-                 "dois casadores não foi medida nesta rodada")
+    #
+    # 🔴 E A CAUSA MAIS COMUM NÃO E' "node ausente" (28/09/2026, SPEC-119 C):
+    #    o node está instalado e o que falta e' o `typescript` do REPOSITORIO, que
+    #    este script usa para transpilar o `.ts` real. 📊 Medido: o MESMO commit
+    #    passa numa arvore com `node_modules` e reprova numa sem. Dizer "node
+    #    indisponível" mandava quem tria procurar no lugar errado.
+    _falta_ts = not os.path.isdir(os.path.join(_PROJETO, "node_modules", "typescript"))
+    certo(False, "⛔ NÃO AVALIADA: " + (
+        "node_modules/typescript ausente nesta arvore — rode `npm ci` na raiz. "
+        "🔴 Isto NAO e' regressao do produto"
+        if _falta_ts else
+        "`node` nao conseguiu rodar a prova") +
+        " — a equivalência entre os dois casadores não foi medida nesta rodada")
 
 print()
 print("=" * 70)

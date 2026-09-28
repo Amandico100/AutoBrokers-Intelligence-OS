@@ -89,6 +89,17 @@ def teste_a_deteccao_roda_de_verdade():
     print("\n[1] A funcao REAL e executada, nao lida")
     caminho = os.path.join(RAIZ, PROVA_NODE)
     checar(os.path.exists(caminho), f"{PROVA_NODE} existe")
+    # 🔴 A PRECONDICAO DITA EM VOZ ALTA (28/09/2026, SPEC-119 C). A prova
+    #    transpila o `.ts` REAL com o `typescript` do repositorio. Sem
+    #    `node_modules`, ela reprova com "Cannot find package 'typescript'" e os
+    #    seis vermelhos parecem defeito de produto. 📊 Medido: o MESMO commit
+    #    passa numa arvore com `node_modules` e reprova numa sem.
+    #    ⚠️ Continua VERMELHO, nao vira `skip` (CLAUDE.md §9.3).
+    checar(os.path.isdir(os.path.join(RAIZ, "node_modules", "typescript")),
+           "node_modules/typescript existe nesta arvore (a prova transpila o `.ts` real)",
+           "AUSENTE -- rode `npm ci` na raiz. 🔴 Se os vermelhos abaixo forem "
+           "todos de node, NAO e' regressao do produto: confira o mesmo commit "
+           "numa arvore que tenha node_modules")
     try:
         r = subprocess.run(["node", caminho], cwd=RAIZ, capture_output=True,
                            text=True, encoding="utf-8", errors="replace", timeout=120)

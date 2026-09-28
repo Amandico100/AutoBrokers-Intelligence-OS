@@ -196,6 +196,19 @@ def teste_a_funcao_do_next_aceita_a_arvore():
     if not os.path.isfile(script):
         return
 
+    # 🔴 A PRECONDICAO DITA EM VOZ ALTA (28/09/2026, SPEC-119 C).
+    #    A prova carrega o `next` do REPOSITORIO. Sem `node_modules` ela reprova
+    #    com "Cannot find package" e o vermelho parece defeito de rota.
+    #    📊 Medido: o MESMO commit passa numa arvore com `node_modules` e
+    #    reprova numa sem -- e um dia de triagem foi gasto por causa disso.
+    #    ⚠️ Continua VERMELHO, nao vira `skip`: guarda que se cala nao guarda
+    #    nada, e foi um gate silencioso que deixou o site cair (§9.1).
+    checar(os.path.isdir(os.path.join(RAIZ, "node_modules")),
+           "node_modules existe nesta arvore (a prova carrega o `next` daqui)",
+           "AUSENTE -- rode `npm ci` na raiz. 🔴 Se este for o unico vermelho, "
+           "NAO e' regressao do produto: confira o mesmo commit numa arvore que "
+           "tenha node_modules")
+
     import subprocess
     try:
         r = subprocess.run(["node", script], cwd=RAIZ, capture_output=True,

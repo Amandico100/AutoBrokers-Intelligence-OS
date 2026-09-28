@@ -56,6 +56,28 @@ ROTA_TS = WEB / "app" / "api" / "dashboard" / "agents" / "[agentKey]" / "route.t
 _NODE = shutil.which("node")
 _sem_node = pytest.mark.skipif(_NODE is None, reason="node ausente neste ambiente")
 
+#: 🔴 A PRECONDICAO QUE FALTAVA SER DITA EM VOZ ALTA (28/09/2026, SPEC-119 C).
+#:
+#: O `.test.mjs` importa um `.ts` e o transpila com o `typescript` DO REPOSITORIO.
+#: Sem `node_modules`, o node morre com `ERR_MODULE_NOT_FOUND: Cannot find package
+#: 'typescript'` e uma pilha de dez linhas de `internal/modules/esm/resolve`.
+#:
+#: 📊 Medido em 28/09/2026: o MESMO commit passa numa arvore com `node_modules`
+#: e reprova numa sem. Um dia de triagem foi gasto procurando no repositorio uma
+#: regressao que estava na MAQUINA. ⚠️ O guarda continua VERMELHO -- ele nao vira
+#: `skip`, porque um gate que se cala quando nao consegue medir nao guarda nada
+#: (CLAUDE.md §9.3). O que muda e' que ele passa a DIZER o que falta.
+_TS = WEB / "node_modules" / "typescript"
+
+
+def _exigir_typescript() -> None:
+    assert _TS.is_dir(), (
+        "node_modules/typescript ausente nesta arvore — rode `npm ci` na raiz do "
+        "repositorio.\n🔴 Isto NAO e' regressao do produto: o `.test.mjs` "
+        "transpila um `.ts` com o typescript do repositorio. Confira rodando o "
+        "mesmo commit numa arvore que tenha `node_modules`."
+    )
+
 
 def _rodar_mjs(caminho: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -71,6 +93,7 @@ def _rodar_mjs(caminho: Path) -> subprocess.CompletedProcess:
 @_sem_node
 def test_os_gates_do_bloco_G_passam():
     """① ② ③ ④ ⑥, executados de verdade em `node`."""
+    _exigir_typescript()
     r = _rodar_mjs(MJS)
     assert r.returncode == 0, (r.stdout or "")[-2500:] + (r.stderr or "")[-600:]
     assert "0 falharam" in (r.stdout or ""), (r.stdout or "")[-800:]
