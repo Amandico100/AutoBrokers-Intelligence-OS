@@ -486,6 +486,42 @@ def test_a_rota_que_encaminha_e_handoff_por_desenho_nao_por_defeito(sims):
                                        s.rota.servico) == M.CP.OUTCOME_ENCAMINHA
 
 
+# 📊 As 25 rotas que atendiam sozinhas em 27/09/2026, NOMEADAS — porque um
+#    guarda que so' CONTA nao diz QUEM caiu, e o nome e' a unica coisa acionavel.
+AS_25_DE_27_09 = frozenset({
+    "alfa/auto/guincho", "alfa/auto/pneu",
+    "allianz/auto/bateria", "allianz/auto/guincho", "allianz/auto/pneu",
+    "allianz/residencial/ar_condicionado", "allianz/residencial/chaveiro",
+    "allianz/residencial/consulta_veterinaria", "allianz/residencial/eletricista",
+    "allianz/residencial/limpeza_caixa_dagua",
+    "azul/auto/bateria", "azul/auto/tecnico",
+    "hdi/auto/chaveiro", "hdi/auto/pneu", "hdi/auto/socorro_mecanico",
+    "porto/auto/bateria", "porto/auto/chaveiro", "porto/auto/tecnico",
+    "porto/residencial/chaveiro", "porto/residencial/encanador",
+    "yelum/auto/pneu", "yelum/auto/socorro_mecanico",
+    "yelum/residencial/eletricista", "yelum/residencial/encanador",
+    "zurich/auto/guincho",
+})
+
+# 🔴 A UNICA baixa autorizada — e ela e' MEDIDA, nao presumida (P-119-14).
+#
+# 📊 `porto/auto/bateria` saiu em 28/09/2026: 140 telas / 4 sessoes / 0 orfas
+#    -> 164 telas / 5 sessoes / 10 orfas funcionais. As 10 vem TODAS da mesma
+#    sessao nova (`4830574a`), que so' entrou no acervo porque o conserto do
+#    classificador parou de arquiva-la sob `porto/auto/?4145720 - 26` — um
+#    NUMERO DE ORDEM DE SERVICO que estava sendo lido como nome de servico.
+#
+# ⚠️ A rota NAO piorou: ela parou de ESCONDER uma conversa. E as "10 orfas" sao
+#    uma PESSOA conversando ("Aqui e' a Viviane, consultora de relacionamento"),
+#    para as quais corredor nenhum tera' resposta — `tem_apresentacao_humana`
+#    devolve True e `e_fronteira` devolve False, que e' a fronteira de zona a
+#    consertar. Enquanto isso nao for feito, a baixa fica aqui, NOMEADA.
+BAIXAS_EXPLICADAS = frozenset({"porto/auto/bateria"})
+
+# 📊 25 menos a baixa explicada. Nao e' numero escolhido: e' o que sobra.
+PISO_DO_PATAMAR = len(AS_25_DE_27_09 - BAIXAS_EXPLICADAS)
+
+
 def test_o_patamar_medido_em_27_09_nao_cai(sims):
     """📊 O RETRATO, medido em 27/09/2026 com `simular_corredor.py --todas`:
 
@@ -503,9 +539,32 @@ def test_o_patamar_medido_em_27_09_nao_cai(sims):
     """
     atendem = {f"{s.rota.seguradora}/{s.rota.ramo}/{s.rota.servico}"
                for s in sims if s.faixa == SC.FAIXA_ATENDE}
-    assert len(atendem) >= 25, f"o patamar caiu: {len(atendem)} — {sorted(atendem)}"
+    assert len(atendem) >= PISO_DO_PATAMAR, (
+        f"o patamar caiu: {len(atendem)} — {sorted(atendem)}")
     assert "allianz/auto/guincho" in atendem, \
         "a rota de REFERÊNCIA do protocolo §7.1 saiu de ATENDE SOZINHO"
+
+    # 🔴 O PISO SOZINHO NAO GUARDA NADA — por isso a licao MIGROU (§9.3).
+    #
+    # Baixar `>= 25` para `>= 24` e parar aí trocaria um guarda por um carimbo:
+    # a proxima rota a cair em silencio passaria, porque 23 ainda seria "quase
+    # 24". O que este teste tem de saber e' **QUEM** saiu, nao quantos.
+    #
+    # Entao as 25 de 27/09 estao NOMEADAS, e a unica baixa AUTORIZADA e' a que
+    # foi medida e explicada (P-119-14). Qualquer outra rota que sair fica
+    # VERMELHA aqui, com o nome dela na mensagem.
+    #
+    # ⚠️ E o teste NAO fica vermelho quando o produto MELHORA: se
+    # `porto/auto/bateria` voltar (fronteira de zona consertada), a diferenca
+    # fica vazia e isto continua verde. Teste que reprova por melhorar ensina a
+    # ignorar teste — o mesmo motivo que o docstring ja' dava para nao cobrar
+    # numero exato.
+    sairam = AS_25_DE_27_09 - atendem
+    assert sairam <= BAIXAS_EXPLICADAS, (
+        f"rota(s) sairam de ATENDE SOZINHO sem explicacao: "
+        f"{sorted(sairam - BAIXAS_EXPLICADAS)}. "
+        f"§9.3: ou o corredor piorou, ou a medida mudou — descubra qual, "
+        f"escreva a pendencia, e so' entao acrescente a rota a BAIXAS_EXPLICADAS.")
 
 
 def test_atende_sozinho_exige_desfecho_e_zero_orfa_e_zero_grave(sims):
