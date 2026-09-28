@@ -5157,6 +5157,14 @@ _MOTIVOS_EM_PORTUGUES = {
                      "sem volta",
     "sem_chute": "a seguradora pediu um dado que o caso não tem — e o robô não "
                  "responde o que não sabe",
+    # --- SPEC-119 conserto B: o rascunho que não é uma frase -----------------
+    # 🔴 O guarda `test_A1_todo_motivo_do_produto_tem_frase_em_portugues` pegou
+    #    este motivo nascendo sem tradução, e é para isso que ele existe: sem a
+    #    frase, o cartão da atendente mostraria `nao_e_frase` e ela não saberia
+    #    o que fazer com aquilo.
+    "nao_e_frase": "o robô montou uma resposta que não era uma frase (veio um "
+                   "trecho de código, e não texto) e ela foi barrada antes de "
+                   "sair — responda você essa tela na conversa com a seguradora",
     # --- SPEC-119 F3: a tela desconhecida que DECIDE -------------------------
     "tela_que_decide": "a seguradora mostrou uma tela que o robô não conhece e que "
                        "escolhe o serviço ou aceita um custo — responda você essa "
