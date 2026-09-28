@@ -138,6 +138,50 @@ B chega em A? .... 🔴 É O QUE A F4 PROVA: com a entrada da Mapfre escrita a p
                   medição, são duas medições certas e uma causa suposta (protocolo §0.3).
 ```
 
+### 3.1 🔴 O ELO FOI MEDIDO NO FIM, E DEU **FALSO** — 28/09/2026
+
+⚠️ Este parágrafo existe porque a pergunta *"B chega em A?"* foi feita, medida e
+**respondida com não**. Deixá-la sem resposta escrita faria a próxima SPEC gastar
+outra rodada ampliando listas de classificador em vez de pedir o que falta.
+
+📊 **Medido em 28/09/2026**, comparando a base da SPEC (`df66d1e`) com o HEAD
+(`e76cb28`), contando as chaves `(seguradora, ramo, serviço)` que o corpus
+etiqueta e cruzando com as 73 rotas que os playbooks declaram:
+
+```
+                                  base df66d1e     HEAD e76cb28
+telas etiquetadas .................   3.749            5.369      (+1.666)
+rotas COM corpus ..................      43               42
+rotas SEM corpus ..................      30               31
+
+rotas que GANHARAM corpus do ZERO .........  0
+rotas que PERDERAM corpus .................  1   (bradesco/auto/bateria -> tecnico)
+as +1.666 telas foram TODAS para 10 rotas que JÁ tinham corpus;
+8 dessas 10 são guincho (yelum +620, hdi +386, porto +286, allianz +171 ...)
+```
+
+**Comando:** `git ls-tree` nos dois commits + contagem do campo `servico` de cada
+linha `.jsonl`, cruzada com `regua_motor.rotas()`.
+
+> ## A afirmação-título não se sustentou.
+> ## O classificador estava cego — e destapar os olhos dele deu FUNDO, não LARGURA.
+
+🔴 **A causa dominante das 31 rotas sem corpus é falta de MATERIAL**, e o G2 da
+Mapfre já apontava para lá: 12 sessões no acervo inteiro não viram cinco rotas.
+Nenhuma lista de padrão transforma conversa que não existe em corpus.
+
+⚠️ **E o valor da SPEC não desaparece com a tese.** O que ela entregou, medido:
+o acervo ficou 43% mais fundo nas rotas que existem; a classe de passo é nova;
+dois defeitos graves de produto foram achados (o vocativo com nome de segurado
+no acervo versionado, e a página mandando gastar um acionamento que já existe).
+O que **não** se pode dizer é que ela destravou rota parada — ela destravou zero.
+
+🔴 **O que a próxima SPEC precisa saber:** as 31 rotas sem corpus pedem
+**acionamento dirigido**, uma a uma, com o observador ligado — não mais padrão de
+classificador. Está em `PENDENCIAS.md` como **P-119-02**, e agora com o número.
+
+---
+
 ---
 
 ## 4. O QUE ESTA SPEC **NÃO** FAZ

@@ -11934,3 +11934,67 @@ CORREDORES, com a frase real e a conversa em que aparecem.
 **Custa esquecer:** ⚠️ estas três **ainda dão para ligar do ponto de vista do produto**? Não:
 a simulação as põe em `FALTA CAPTURA / tela_orfa`. Uma tela órfã é o robô **calado** na frente
 do segurado, e a régua sozinha não diria isso — foi preciso a segunda pergunta.
+
+---
+
+## P-119-05 · `bradesco/auto/bateria` tem nome de SINTOMA para um desfecho de TÉCNICO — 🤖
+📊 **Medido em 28/09/2026.** O cliente escolhe `*1* - Pane ( _ex. bateria, motor, câmbio,
+radiador, etc_ )` e a URA da **própria Bradesco** responde: *"Esse problema dá pra resolver com a
+assistência de um técnico. Posso confirmar esse serviço?"* e *"Logo mais, o técnico deve chegar
+até o local."* (sessões `2c05415b` e `57149865`). O classificador está **certo**: a Bradesco
+despacha um **técnico**. A rota do produto se chama `bateria`.
+
+**O que destrava:** 🤖 declarar `bradesco/auto/tecnico` nos `subservices` do playbook da
+Bradesco (`backend/app/services/corridor_playbooks.py`) — e decidir se `bateria` some ou fica
+como apelido. ⚠️ Mexer ali **reconta as 73 notas da régua**, então a mudança pede uma rodada
+completa antes e depois, com a regra de que nenhuma rota pode cair.
+
+**Custa esquecer:** 🔴 a página já parou de mandar gastar um acionamento que existe (a ressalva
+do `nome_que_mente`), mas **o nome continua mentindo** — e nome errado reinfecta todo leitor
+seguinte (CLAUDE.md §12.1). ⚠️ E há um agravante medido: `subservice_menu_map` da Bradesco manda
+`guincho` **e** `bateria` para a **mesma tecla `1`**. Enquanto isso for verdade, renomear não
+resolve — duplica.
+
+---
+
+## P-119-06 · `_AMANDUS_COMPANY_ID` é constante de cliente dentro do código — 🤖
+📊 `backend/scripts/regua_motor.py:287` traz `_AMANDUS_COMPANY_ID = "3aa75902-…"`, usado em dois
+lugares (`vocabulario_do_espelho` e a leitura dos apelidos). É o §13.9 literal: *"nem de grupo,
+número, pasta ou atendente"* — um `company_id` é um número de corretora.
+
+⚠️ **E a trava é nomeada por um motivo medido**, escrito no próprio arquivo: 📊 em 22/08/2026 a
+AMANDUS estava marcada `is_technical = False` no banco, então filtrar só as corretoras técnicas
+**não** a excluiria.
+
+**O que destrava:** 🤖 duas opções, e a segunda é melhor — (a) ler a lista de uma variável de
+ambiente (`REGUA_CORRETORAS_DE_TESTE`), com aviso barulhento em `stderr` quando ela faltar, para
+que a ausência não vire silêncio; (b) marcar a AMANDUS como técnica no banco e apagar a trava,
+depois de conferir quem mais lê `is_technical`.
+
+**Custa esquecer:** ⚠️ não foi consertado nesta fatia **de propósito**: as duas opções mudam o
+que o Espelho enxerga, e o Espelho alimenta a conferência de apelidos da régua. Sem rodar a
+bateria completa (que muta `corridor_playbooks.py` e exige worktree separado — P-118-14), trocar
+isto é mudar um número sem poder medi-lo. 🔴 O que custa deixar: um `company_id` de cliente
+viaja em `origin/main` e em todo clone, e o guarda novo da página (§13.9 por regra) **não olha
+para dentro do código** — só para o que a página publica.
+
+---
+
+## P-119-07 · o léxico de língua tem 40 palavras escritas à mão — 🤖
+📊 Medido em 28/09/2026: a prova de que uma cabeça de vocativo é **língua** vem do produto (2.406
+palavras dos 14 playbooks + padrões de serviço + tipos de logradouro), e isso cobre **78 das 118**
+cabeças do acervo. As outras **40** estão numa lista fechada em `higiene_do_corpus.py`
+(`_ABRIDORES_DE_FALA`): interjeição (`perfeito`, `ops`, `claro`…), rótulo de campo que o
+prestador escreve (`laudo`, `requerimento`, `parcela`…) e **duas marcas de veículo**
+(`hyundai`, `ram`).
+
+**O que destrava:** 🤖 quando o produto ganhar uma lista de marcas de veículo, `hyundai` e `ram`
+saem da lista e a fonte passa a ser ela. Os rótulos de prestador poderiam vir de um vocabulário
+de terceiros, se algum dia existir.
+
+**Custa esquecer:** ⚠️ **pouco, e de propósito.** A regra falha **fechado**: uma palavra de
+língua nova que ninguém acrescentar é **mascarada**, não vazada — custa uma tela menos legível,
+nunca o dado de uma pessoa. 🔴 O que **não** pode acontecer é alguém escrever um nome de gente
+nesta lista para "limpar um vermelho": é por isso que ela é curta, comentada uma a uma com a
+contagem medida, e mora ao lado do guarda.
+
