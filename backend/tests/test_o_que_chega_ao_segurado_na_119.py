@@ -231,6 +231,68 @@ def test_a_tela_de_outro_servico_da_tokio_tambem_decide():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# 🔴 UM FATOR POR VEZ — e foi a MEDIÇÃO que exigiu esta seção (CLAUDE.md §9.2)
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ Os dois testes acima ficam VERDES com o veto revertido. Não é defeito
+#    deles: é que a tela do novo atendimento está protegida por DOIS consertos,
+#    e um guarda protegido por dois fatores não guarda nenhum dos dois.
+#
+# 📊 Medido em 28/09/2026, variando UM fator por vez, com a linha de CONTROLE:
+#
+#     ```
+#                                        yelum 01bf91c2      tokio d8a81c33
+#     ① a árvore de hoje (os dois)       decide              decide
+#     ② só o VETO revertido              decide              decide
+#     ③ só o VOCABULÁRIO revertido       indefinida          conduz/navegacao
+#     ④ os DOIS revertidos (o defeito)   conduz/navegacao    conduz/navegacao
+#     ⑤ CONTROLE, de volta ao ①          decide              decide
+#     ```
+#
+# 🔴 A leitura, e ela me corrigiu: **o vocabulário é a causa; o veto é a segunda
+#    rede.** Na tokio o veto não tem nada para casar (*"Outro serviço"* não abre,
+#    não agenda, não cancela) e SÓ o vocabulário salva a tela. No yelum o veto
+#    sozinho troca `navegacao` por `indefinida` — melhor, mas não é `decide`.
+#
+# ⇒ Cada fator ganha o SEU guarda, medido no seu próprio ponto.
+
+
+def test_o_veto_alcanca_o_TEXTO_REAL_da_tela_do_novo_atendimento():
+    """🔴 O FATOR ①, isolado: o veto, sobre a tela REAL — não sobre uma frase.
+
+    📊 Sem ele, com o vocabulário antigo, esta tela era `conduz/navegacao`; com
+    ele, `indefinida`. É a segunda rede, e ela precisa do seu próprio guarda
+    porque o vocabulário a esconde.
+    """
+    assert TELA_NOVO_ATENDIMENTO, "a tela do novo atendimento saiu do acervo"
+    norm = D._norm_text(TELA_NOVO_ATENDIMENTO["text"])
+    assert D._RX_ABRE_AGENDA_CANCELA.search(norm), (
+        f"🔴 o veto deixou de alcançar o TEXTO REAL da tela (sessão "
+        f"{TELA_NOVO_ATENDIMENTO['session_id']}): "
+        f"{' '.join(TELA_NOVO_ATENDIMENTO['text'].split())[:120]!r}")
+
+
+def test_o_vocabulario_e_o_unico_que_salva_a_tela_da_tokio():
+    """🔴 O FATOR ②, isolado: na tokio o veto NÃO tem o que casar.
+
+    📊 *"Posso te ajudar em algo mais? Botão 1: Outro serviço Botão 2: Menu
+    inicial Botão 3: Encerrar atendimento"* — nenhuma palavra de abrir, agendar
+    ou cancelar. Com `outro servico` no vocabulário, os três rótulos navegam e a
+    tela inteira vira `conduz`. É o vocabulário, e só ele.
+    """
+    tela = uma_tela("tokio-auto", r"posso te ajudar em algo mais")
+    if not tela:
+        pytest.skip("a tela `posso te ajudar em algo mais` saiu do acervo da tokio")
+    norm = D._norm_text(tela["text"])
+    assert not D._RX_ABRE_AGENDA_CANCELA.search(norm), (
+        "esta tela passou a casar o veto — escolha outra para isolar o "
+        "vocabulário, senão os dois fatores voltam a se esconder")
+    assert not CP.rotulo_e_de_navegacao("Outro serviço"), (
+        "🔴 *Outro serviço* voltou a navegar, e aqui NÃO há veto para segurar a "
+        "tela: ela volta inteira para `conduz`")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # [4] O VOCABULÁRIO DA NAVEGAÇÃO TEM GUARDA — e ele cobre as palavras que doem
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -265,6 +327,43 @@ def test_controle_a_navegacao_de_verdade_continua_entrando(palavra):
     """🔴 CONTROLE: um guarda que recusasse tudo não guardaria nada."""
     assert CP.entrada_pode_ser_navegacao(palavra) is None, \
         CP.entrada_pode_ser_navegacao(palavra)
+
+
+@pytest.mark.parametrize("rotulo", [
+    "Outro serviço", "Outros serviços", "Novo atendimento",
+    "Abrir novo atendimento", "Abrir um novo chamado",
+])
+def test_tirar_da_lista_nao_bastava_e_o_rotulo_e_que_tem_de_parar(rotulo):
+    """🔴 O CONSERTO INERTE QUE A MEDIÇÃO PEGOU — CLAUDE.md §0.4.
+
+    📊 Medido em 28/09/2026: tirar `outros servicos` do vocabulário não mudou
+    nada. `rotulo_e_de_navegacao` casa por PREFIXO de palavra inteira, e
+    `outros` — que FICA na lista — engolia *"Outros serviços"*:
+
+    ```
+    'Outro serviço'    -> False   (saiu da lista, e nada o cobre)
+    'Outros serviços'  -> True    🔴 coberto por `outros`
+    ```
+
+    A pergunta certa não é *"a palavra saiu da lista?"*, é *"o RÓTULO para de
+    navegar?"* — e é ela que este teste faz.
+    """
+    assert not CP.rotulo_e_de_navegacao(rotulo), (
+        f"🔴 {rotulo!r} navega. Tirar a entrada da lista não basta: alguma outra "
+        f"entrada o cobre por prefixo")
+
+
+@pytest.mark.parametrize("rotulo", [
+    "Outros", "Outros assuntos", "Mais opções", "Continuar", "Voltar ao menu",
+    "Sair, não quero continuar",
+    # 🔴 A LINHA DE CONTROLE que a medição me obrigou a escrever: este rótulo
+    #    contém "carro", que é sinônimo de RAMO (`auto`) — e ele NAVEGA. É por
+    #    isso que só a família do TRABALHO NOVO vale para o rótulo, e a do ramo
+    #    vale só para quem escreve a lista.
+    "Voltar para o carro reserva",
+])
+def test_controle_o_rotulo_que_navega_de_verdade_continua_navegando(rotulo):
+    assert CP.rotulo_e_de_navegacao(rotulo), f"{rotulo!r} deixou de navegar"
 
 
 def test_a_tela_dos_tres_ramos_nunca_e_navegacao():
