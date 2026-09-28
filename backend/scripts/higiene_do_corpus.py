@@ -61,7 +61,9 @@ as palavras de LÍNGUA, que EXISTEM em massa e NÃO são marcadas:
 from __future__ import annotations
 
 import collections
+import json
 import re
+import unicodedata
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import regua_motor as M
@@ -87,11 +89,21 @@ def _esqueleto_do_resto(texto: str) -> Optional[str]:
     Os dígitos saem porque o resto carrega dado que varia por cliente (valores,
     datas) e a fragmentação por dígito faria o mesmo esqueleto virar vários — o
     que esconderia a variação das cabeças, que é justamente o sinal.
+
+    🔴 E A PRIMEIRA LINHA SÓ — SPEC-119 CONSERTO A, 28/09/2026.
+
+    ⚠️ Tirar DÍGITO e não tirar PALAVRA é o mesmo defeito da CLAUDE.md §9.4:
+    📊 `"Juliana, você quer atendimento para qual veículo?\\n*1* - Land rover,
+    ano 2018"` e a mesma tela com `Ram` produziam DOIS esqueletos — a marca do
+    veículo fragmentava o molde, e a variação das cabeças (que é o sinal
+    inteiro) desaparecia. O cardápio de veículos vive SEMPRE depois da primeira
+    quebra de linha; a pergunta, que é o molde, vive antes dela.
     """
     m = _RX_RESTO.match(texto or "")
     if not m:
         return None
-    resto = re.sub(r"\s+", " ", re.sub(r"[0-9]", "#", m.group(1).lower()))
+    primeira_linha = m.group(1).split("\n", 1)[0]
+    resto = re.sub(r"\s+", " ", re.sub(r"[0-9]", "#", primeira_linha.lower()))
     return resto[:60] if len(resto[:60]) >= 25 else None
 
 
@@ -115,15 +127,294 @@ def levantar_vocativos(textos: Iterable[str]) -> Tuple[set, set]:
     return dado, duvidoso
 
 
-def _mascarar_vocativo(texto: str, esqueletos_dado: set) -> Tuple[str, bool]:
-    """Troca a cabeça por `{NOME}` **só** se o esqueleto está na lista medida."""
-    esq = _esqueleto_do_resto(texto)
-    if esq is None or esq not in esqueletos_dado:
-        return texto, False
-    m = _RX_VOCATIVO.match(texto)
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 O PADRÃO INVERTIDO — SPEC-119 · CONSERTO A · 28/09/2026
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ O mecanismo de cima (≥3 cabeças = DADO) continua valendo e continua certo no
+# que afirma. O que ele NÃO cobre é o caso mais perigoso de todos:
+#
+# > ## O esqueleto com UMA cabeça só era INVISÍVEL — nem mascarado, nem sinalizado.
+# > ## E uma cabeça só é a pessoa que recebeu a frase que mais ninguém recebeu.
+#
+# 📊 Medido em 28/09/2026 sobre os 16 `.jsonl` do acervo versionado (HEAD
+# `e76cb28`), com o `_RX_VOCATIVO` da v1:
+#
+# ```
+# cabeças distintas em posição de vocativo .......... 43
+# delas, primeiro nome de segurado real ............. 18   (78 linhas)
+#   Saionara ×17 · Maria ×13 · Carlos ×11 · Magda ×8 · Juliana ×5 · christian ×4
+#   Nathalya ×3 · Elienai ×2 · Thaize ×2 · Maisa ×2 · Rafael ×2 · Alvaro ×2
+#   Zany ×2 · Debora ×1 · Isac ×1 · Valmor ×1 · Paulo ×1 · Yan ×1
+# ```
+#
+# 🔴 **A INVERSÃO.** Antes: mascara só se PROVAR que é nome. Agora: mascara
+# **a menos que prove que é LÍNGUA**. ⚠️ Falhar fechado é o certo aqui —
+# mascarar uma palavra comum por engano custa uma tela menos legível; deixar um
+# nome passar custa o dado de uma pessoa (CLAUDE.md §13.9 e §7).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# DE ONDE VEM A PROVA DE QUE É LÍNGUA — o PRODUTO primeiro, a lista depois
+# ─────────────────────────────────────────────────────────────────────────────
+# 📊 Medido em 28/09/2026 sobre as 118 cabeças de língua do acervo inteiro
+# (18.623 eventos `in` do banco, 137 cabeças distintas):
+#
+# ```
+# cabeças que o VOCABULÁRIO DO PRODUTO já cobre ......  78 de 118
+#   (2.406 palavras dos 14 playbooks + 53 dos padrões de serviço)
+# cabeças que sobraram para a lista fechada ...........  40
+# 🔴 nomes de segurado que o vocabulário do produto chamaria de língua ......  0
+# ```
+#
+# **Os 47 nomes medidos no acervo não aparecem em nenhum playbook.** É isso que
+# dá direito a usar o produto como dicionário: ele é feito de língua de serviço,
+# e nome de gente não entra nele. ⚠️ E a lista fechada **não é uma segunda lista
+# de serviço** (CLAUDE.md §5): é só o que o produto não tem como saber —
+# interjeição, saudação, rótulo de campo de terceiro e marca de veículo. Cada
+# entrada carrega a contagem que a pôs lá.
+_ABRIDORES_DE_FALA = frozenset({
+    # 📊 interjeição e abridor de fala (contagem medida no acervo do banco):
+    "perfeito",      # 17
+    "imagina",       # 40  · `maginaa` ×10 e `imgina` ×1 são o MESMO erro de digitação
+    "maginaa", "imgina",
+    "ops",           # 12
+    "opa",           # 2
+    "claro",         # 10
+    "otimo",         # 8   (o léxico é comparado SEM acento)
+    "disponha",      # 7
+    "desculpa",      # 6   (`desculpe` já vem do produto)
+    "legal",         # 5
+    "infelizmente",  # 4
+    "igualmente",    # 2
+    "compreendi",    # 2
+    "exatamente",    # 2
+    "capriche",      # 8
+    "alterado",      # 2
+    "cancelado",     # 2
+    "atualmente",    # 1
+    "correto",       # 1
+    "anotado",       # 1
+    "correcao",      # 1
+    "okay", "okey",
+    # 📊 rótulo de MENU que o produto ainda não declara:
+    "pagamento",     # 8   menu da porto
+    "elogios",       # 3   "Elogios, reclamações…"
+    "participe",     # 2   convite de pesquisa de satisfação
+    "coberturas",    # 1
+    "incendio",      # 1   menu de sinistro
+    "alagamento",    # 1   menu de sinistro
+    # 📊 rótulo de campo que a URA ou o PRESTADOR escreve, e não é do produto:
+    "dica", "atencao", "lembrete", "vigia", "requerimento", "laudo",
+    "parcela", "boleto", "vencimento", "especialidade", "classificacao",
+    "parachoque", "exemplos", "prestador",
+    # 📊 marca de veículo que abre linha de cardápio ("Hyundai, ano 2011, placa…").
+    #    ⚠️ Não existe lista de marcas no produto; no dia em que existir, estas
+    #    duas saem daqui e a fonte passa a ser ela.
+    "hyundai", "ram",
+})
+
+_CACHE_LINGUA: Optional[frozenset] = None
+
+
+def _sem_acento(s: str) -> str:
+    n = unicodedata.normalize("NFD", s or "")
+    return "".join(c for c in n if unicodedata.category(c) != "Mn").lower()
+
+
+def vocabulario_de_lingua(*, recarregar: bool = False) -> frozenset:
+    """Toda palavra que o PRODUTO já declara — mais a lista fechada acima.
+
+    🔴 Lê os playbooks (âncoras, rótulos de passo, nomes de subserviço) e os
+    `PADROES_DE_SERVICO_TEXTO`. Não é uma cópia deles: é o próprio produto
+    servindo de dicionário, e quando uma seguradora nova entra, o vocabulário
+    dela entra junto — que é o que a CLAUDE.md §5 pede no lugar de uma
+    segunda lista.
+    """
+    global _CACHE_LINGUA
+    if _CACHE_LINGUA is not None and not recarregar:
+        return _CACHE_LINGUA
+    palavras = set(_ABRIDORES_DE_FALA)
+    try:
+        import padroes_de_servico as _PSV
+        for nome, padrao in _PSV.PADROES_DE_SERVICO_TEXTO.items():
+            for w in re.findall(r"[a-zA-ZÀ-ÿ]{3,}", padrao):
+                palavras.add(_sem_acento(w))
+            for w in nome.split("_"):
+                palavras.add(_sem_acento(w))
+    except Exception:   # noqa: BLE001 — sem o módulo, sobra a lista fechada
+        pass
+    try:
+        for pb in M.PLAYBOOKS.values():
+            for w in re.findall(r"[A-Za-zÀ-ÿ]{2,25}",
+                                json.dumps(pb, ensure_ascii=False)):
+                palavras.add(_sem_acento(w))
+    except Exception:   # noqa: BLE001 — sem playbook carregado, sobra o resto
+        pass
+    # 🔴 O TIPO DE LOGRADOURO vem do MASCARADOR, não de uma cópia.
+    # 📊 `*Unnamed Road,  - Angelina  - SC*.` era o único falso positivo dos 25
+    #    medidos: `Unnamed Road` é o nome que o Google Maps dá a via sem nome, e
+    #    ele já está na alternância `_LOGRADOURO` do `templater.py`. Ler de lá é
+    #    o que impede as duas listas de divergirem (CLAUDE.md §5).
+    try:
+        for w in re.findall(r"[a-zà-ÿ]{2,}", M.TPL._LOGRADOURO.pattern):
+            palavras.add(_sem_acento(w))
+    except Exception:   # noqa: BLE001
+        pass
+    _CACHE_LINGUA = frozenset(palavras)
+    return _CACHE_LINGUA
+
+
+def e_lingua(cabeca: str) -> bool:
+    """A cabeça do vocativo é LÍNGUA (fica) ou é NOME (mascara-se)?
+
+    🔴 Cabeça de VÁRIAS palavras (`MARIA DE LOURDES SOUZA SANTOS`) só é língua
+    se **todas** forem — senão o sobrenome atravessa. 📊 Foi exatamente o que
+    aconteceu com `"Olá, {NOME} Manfroi, sou a Sofia…"` (hdi-auto.jsonl:722):
+    o primeiro nome saiu e o sobrenome ficou.
+    """
+    palavras = re.findall(r"[A-Za-zÀ-ÿ]{2,}", cabeca or "")
+    if not palavras:
+        return True          # só marcador (`{NOME}`) — já está mascarado
+    voc = vocabulario_de_lingua()
+    return all(_sem_acento(p) in voc for p in palavras)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ONDE O VOCATIVO MORA — e as três formas que a v1 não via
+# ─────────────────────────────────────────────────────────────────────────────
+# 📊 Medidas em 28/09/2026, no acervo versionado:
+#
+# ```
+# ① o NEGRITO engole a âncora          `*chrstian*, agora definiremos…`
+#    `^([A-Za-zÀ-ÿ]{3,20})` não casa porque o primeiro caractere é `*`.
+#
+# ② o nome vem DEPOIS de um abridor    `Certo, Alvaro.`  ·  `Certo, Magda!`
+#                                      `Legal, Saionara! Você possui…`
+#    porto-auto.jsonl:691 · porto-residencial.jsonl:24
+#
+# ③ o nome é COMPOSTO                  `Olá MARIA DE LOURDES SOUZA SANTOS,
+#                                        como foi o serviço de MECANICO?`
+#    bradesco-auto.jsonl:175 — nome COMPLETO em claro, o pior caso do acervo.
+# ```
+#
+# ⚠️ E o vocativo não mora só no caractere 0: a linha de cardápio começa no meio
+# do texto. Por isso a regra vale em TODO início de linha — e é a MESMA regra
+# que o auditor usa, para que máscara e guarda não possam discordar (§9.3).
+_PALAVRA_DE_NOME = (r"(?:\{[A-Z_]+\}|[A-ZÀ-Ý][A-Za-zÀ-ÿ'’´-]{1,19}|[A-ZÀ-Ý]{2,20})")
+# a PRIMEIRA palavra aceita minúscula — 📊 `christian,` `maria,` `ola,` existem
+# no acervo, escritos pela própria URA.
+_PRIMEIRA_PALAVRA = (r"(?:\{[A-Z_]+\}|[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’´-]{2,19})")
+# ⚠️ SEIS palavras depois da primeira, não quatro. 📊 `"Olá MARIA DE LOURDES
+#    SOUZA SANTOS, como foi o serviço…"` (bradesco-auto.jsonl:175) tem SETE
+#    palavras antes da vírgula — com o teto em quatro, a linha com o nome
+#    COMPLETO do segurado passava limpa, e ela é o pior caso do acervo.
+_RX_CABECA = re.compile(
+    r"\**(" + _PRIMEIRA_PALAVRA + r"(?:[ \t]+" + _PALAVRA_DE_NOME + r"){0,6})\**"
+    r"[ \t]*([,!.])(?=[ \t]|$)")
+# depois de um abridor, a cabeça tem de ser CAPITALIZADA — senão
+# `"Agora, informe apenas o nome do logradouro"` viraria `"Agora, {NOME}"`.
+_RX_CABECA_APOS_ABRIDOR = re.compile(
+    r"\**(" + _PALAVRA_DE_NOME + r"(?:[ \t]+" + _PALAVRA_DE_NOME + r"){0,6})\**"
+    r"[ \t]*([,!.])(?=[ \t]|$)")
+
+
+def achar_vocativo(linha: str) -> Optional[Tuple[int, int, str]]:
+    """`(inicio, fim, cabeca)` do vocativo desta LINHA, ou `None`.
+
+    🔴 Duas tentativas, nesta ordem, e a segunda é a que a v1 não tinha:
+      1. a cabeça abre a linha                      → `Saionara, o telefone…`
+      2. um ABRIDOR abre e a cabeça vem em seguida  → `Certo, Alvaro.`
+
+    Se a cabeça da tentativa 1 for língua, tenta a 2 a partir do fim dela.
+
+    ⚠️ E quando a cabeça COMEÇA por língua (`Olá DOBEREINER MILLER SILVA
+    RODRIGUES,`), a saudação fica e só o resto vira `{NOME}` — mascarar o `Olá`
+    junto tiraria da tela a informação de que ali há uma saudação, que é
+    justamente o que o corpus existe para ensinar.
+    """
+    m = _RX_CABECA.match(linha or "")
     if not m:
+        return None
+    if not e_lingua(m.group(1)):
+        ini, fim = m.start(1), m.end(1)
+        palavras = m.group(1).split()
+        while len(palavras) > 1 and e_lingua(palavras[0]):
+            ini = linha.index(palavras[1], ini + len(palavras[0]))
+            palavras = palavras[1:]
+        return ini, fim, linha[ini:fim]
+    resto = linha[m.end():]
+    desloc = m.end() + (len(resto) - len(resto.lstrip(" \t")))
+    m2 = _RX_CABECA_APOS_ABRIDOR.match(linha, desloc)
+    if m2 and not e_lingua(m2.group(1)):
+        return m2.start(1), m2.end(1), m2.group(1)
+    return None
+
+
+def _mascarar_vocativo(texto: str, esqueletos_dado: set = frozenset()) -> Tuple[str, bool]:
+    """Troca por `{NOME}` toda cabeça de vocativo que NÃO se prova língua.
+
+    ⚠️ `esqueletos_dado` continua sendo honrado como REFORÇO — um esqueleto que
+    o levantamento de ≥3 cabeças marcou como DADO é mascarado mesmo que a
+    cabeça caia no léxico. Os dois mecanismos somam; nenhum substitui o outro.
+    """
+    if not texto:
         return texto, False
-    return "{NOME}" + m.group(2) + texto[m.end():], True
+    esq = _esqueleto_do_resto(texto)
+    reforco = esq is not None and esq in (esqueletos_dado or frozenset())
+    saida: List[str] = []
+    houve = False
+    for i, linha in enumerate(texto.split("\n")):
+        achado = achar_vocativo(linha)
+        if achado is None and reforco and i == 0:
+            m = _RX_CABECA.match(linha)
+            achado = (m.start(1), m.end(1), m.group(1)) if m else None
+        if achado is None:
+            saida.append(linha)
+            continue
+        ini, fim, _cab = achado
+        saida.append(linha[:ini] + "{NOME}" + linha[fim:])
+        houve = True
+    return "\n".join(saida), houve
+
+
+def nomes_no_vocativo(textos: Iterable[str]) -> set:
+    """Os nomes que o vocativo REVELOU nas telas de uma sessão.
+
+    🔴 Serve à segunda metade do vazamento: o nome que aparece FORA da posição
+    de vocativo, onde nenhuma regra de forma o alcança. 📊 Medido em 28/09/2026:
+
+    ```
+    porto-auto.jsonl:691        "Certo, Alvaro. A solicitação de agendamento foi encerrada"
+    porto-residencial.jsonl:24  "Certo, Magda! Antes de continuar, tenha em mente que…"
+    ```
+
+    ⚠️ A sessão é a unidade certa: `Alvaro` só é nome NAQUELA conversa. Usar o
+    acervo inteiro transformaria um nome numa palavra proibida para todas as
+    corretoras, que é o que a CLAUDE.md §13.9 manda não fazer.
+    """
+    fora: set = set()
+    for t in textos:
+        for linha in (t or "").split("\n"):
+            achado = achar_vocativo(linha)
+            if achado is None:
+                continue
+            for palavra in re.findall(r"[A-Za-zÀ-ÿ]{3,}", achado[2]):
+                if not e_lingua(palavra):
+                    fora.add(palavra)
+    return fora
+
+
+def _mascarar_nomes_conhecidos(texto: str, nomes: Iterable[str]) -> Tuple[str, bool]:
+    """Troca por `{NOME}` os nomes que a própria sessão já revelou."""
+    houve = False
+    for nome in sorted(set(nomes or ()), key=len, reverse=True):
+        if len(nome) < 3:
+            continue
+        novo, n = re.subn(rf"(?i)(?<![\w{{]){re.escape(nome)}(?![\w}}])",
+                          "{NOME}", texto)
+        if n:
+            texto, houve = novo, True
+    return texto, houve
 
 
 # ── a exceção da senha (CA-062 · SPEC-083 §6.4) ──────────────────────────────
@@ -331,6 +622,18 @@ def auditar_pii(texto: str, *, nomes_da_sessao: Iterable[str] = ()) -> List[str]
                     p.lower() in seguradoras for p in trecho.split()):
                 continue
             achados.append(f"{rotulo}:{trecho[:6]}…")
+    # 🔴 O NOME NO VOCATIVO — SPEC-119 CONSERTO A, 28/09/2026.
+    #
+    # 📊 Antes deste bloco, `--auditar-pii` devolvia `6048 linhas, 0 sujas` e
+    # `exit 0` sobre um acervo com 78 linhas de primeiro nome de segurado em
+    # claro. **Era um carimbo, não um guarda** (CLAUDE.md §9.3).
+    #
+    # ⚠️ É a MESMA regra que `_mascarar_vocativo` usa, de propósito: guarda e
+    # máscara que discordam produzem um vermelho que ninguém consegue apagar.
+    for linha in (texto or "").split("\n"):
+        achado = achar_vocativo(linha)
+        if achado is not None:
+            achados.append(f"NOME_NO_VOCATIVO:{achado[2][:6]}…")
     baixo = (texto or "").lower()
     for nome in nomes_da_sessao:
         nome = (nome or "").strip()
@@ -340,7 +643,8 @@ def auditar_pii(texto: str, *, nomes_da_sessao: Iterable[str] = ()) -> List[str]
 
 
 # ── a porta única ────────────────────────────────────────────────────────────
-def higienizar(playbook: Dict[str, Any], cru: str, esqueletos_dado: set) -> Tuple[str, Dict[str, bool]]:
+def higienizar(playbook: Dict[str, Any], cru: str, esqueletos_dado: set = frozenset(),
+               *, nomes_da_sessao: Iterable[str] = ()) -> Tuple[str, Dict[str, bool]]:
     """`templatize` + as duas exceções da §6.4. A ordem importa.
 
     🔴 Mascarar ANTES de qualquer `_norm` (SPEC-084 §2.5.1.3): senão a mesma tela
@@ -350,4 +654,7 @@ def higienizar(playbook: Dict[str, Any], cru: str, esqueletos_dado: set) -> Tupl
     mascarado = M.templatize(cru)
     mascarado, houve_senha = _preservar_capturas(playbook, cru, mascarado)
     mascarado, houve_vocativo = _mascarar_vocativo(mascarado, esqueletos_dado)
-    return mascarado, {"senha_preservada": houve_senha, "vocativo_mascarado": houve_vocativo}
+    mascarado, houve_nome = _mascarar_nomes_conhecidos(mascarado, nomes_da_sessao)
+    return mascarado, {"senha_preservada": houve_senha,
+                       "vocativo_mascarado": houve_vocativo,
+                       "nome_da_sessao_mascarado": houve_nome}
