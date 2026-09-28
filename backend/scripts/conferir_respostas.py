@@ -347,6 +347,22 @@ class Achado(NamedTuple):
     passo: str
     porque: str
     tela: str
+    #: 🔴 AS ROTAS QUE SÃO VÍTIMAS DESTE ACHADO, quando o achado NÃO é sobre a
+    #: tela que a rota vê — SPEC-119, conserto B, item 2a.
+    #:
+    #: A regra C acusa um passo restrito a `S_p` que responde uma tela que o
+    #: acervo só mostra em sessões de `S_t`, com `S_p ∩ S_t = ∅`. A vítima é a
+    #: rota de `S_p`: é lá que o passo é ALCANÇÁVEL. E o atribuidor do simulador
+    #: procurava a tela no replay DA ROTA — replay que é filtrado por
+    #: `servico == rota.servico` (`replay.py`). Para casar seria preciso
+    #: `rota.servico ∈ S_t` **e** `∈ S_p`, que é exatamente o que a
+    #: pré-condição da regra C exclui.
+    #:
+    #: 📊 Medido em 28/09/2026, antes do conserto: `84 achados · 2 graves ·
+    #:    graves por regra {'C': 2} · graves ATRIBUÍDOS a rota: 0 · rotas com
+    #:    ≥1 grave: 0`. Com 100% dos graves na regra C, a faixa ④ do simulador
+    #:    (*"≥1 grave → HANDOFF defeito_de_resposta"*) NUNCA podia disparar.
+    rotas_alvo: Tuple[str, ...] = ()
 
     def __str__(self) -> str:
         marca = "🔴" if self.grave else "⚠️ "
@@ -358,6 +374,112 @@ class Achado(NamedTuple):
 _RX_ECO_DE_CAMPO = re.compile(r"^\*?[A-Za-zÀ-ÿ ]{2,22}\*?\s*:", re.IGNORECASE)
 
 _RX_SLOT = re.compile(r"\{([a-z0-9_]+)\}", re.IGNORECASE)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 B · A JUSTIFICATIVA QUE DESCREVE OUTRA TELA — SPEC-119, conserto B, item 2b
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# > ## `constante_justificada` so exigia que a justificativa EXISTISSE.
+# > ## O conteudo dela nunca era conferido contra a tela real.
+#
+# 📊 O custo, medido pelo red team em 28/09/2026: trocar
+#    `menu_outros_servicos_residencia` de `{outro_servico_opcao}` para a tecla
+#    fixa `"3"` (= *Limpeza de Caixa d'Agua*) com uma justificativa qualquer dava
+#    **126 asseroes verdes** e **3 rotas ainda ATENDE SOZINHO**. A pergunta B
+#    aprovava (`3` E uma tecla daquela tela), a C nao se aplicava, e a
+#    justificativa passava por existir.
+#
+# 🔴 E o mesmo furo ja tinha custado o produto: `menu_solicitar_para` respondia
+#    `"1"` numa tela `1-Residencia 2-Condominio 3-Empresa` com uma justificativa
+#    que descrevia uma tela de DUAS opcoes (`1-Residencia 2-Veiculo`). Todo
+#    chamado de areas comuns de condominio abria na apolice da UNIDADE.
+#    E o corolario do CLAUDE.md §9.5 quebrado no proprio lugar onde ele mora.
+#
+# ⚠️ DOIS FALSOS POSITIVOS QUE A MEDICAO ACHOU, e como cada um sai:
+#
+#   1. o rotulo e DADO, nao rotulo de menu. 📊 `allianz/auto/confirmar_veiculo`
+#      tem **19** redacoes distintas para a tecla 1 no acervo ("argo, placa
+#      QJ#-###1", "compass, placa", ...) e `escolher_endereco_da_lista` tem
+#      **20**. Nenhuma justificativa pode nomear uma placa. O corte e medido, e
+#      o vao e grande: os rotulos de MENU tem **1 ou 2** redacoes
+#      (`menu_tipo_seguro` 2, `menu_qual_seguro` 1, `servico_aberto_ver_ou_abrir`
+#      2), os de DADO tem **3, 19 e 20**.
+#   2. a URA reescreve o MESMO rotulo. 📊 `servico_aberto_ver_ou_abrir` ve
+#      "abrir um novo atendimento" e um "conserto residencial;" que o ingestor
+#      partiu errado. Por isso a pergunta e feita uma vez por (passo, tecla), e
+#      basta a justificativa nomear UMA das redacoes do acervo.
+_MIN_ROTULOS_PARA_SER_DADO = 3
+
+
+def rotulo_nomeado_na_justificativa(rotulo: str, justificativa: str) -> bool:
+    """A justificativa NOMEIA este rotulo da tela?
+
+    Toda palavra de 4+ letras do rotulo tem de aparecer na justificativa — nao a
+    frase inteira. 📊 Medido: a URA escreve *"Residencia, Condominio ou Empresa"*
+    numa sessao e *"Residencia, Empresa ou Condominio"* noutra, e a justificativa
+    escreve `1-Seguro Residencia/Condominio/Empresa`. Exigir a frase literal
+    reprovaria as tres por PONTUACAO, e guarda que reprova por pontuacao ensina
+    a ignorar guarda.
+
+    ⚠️ Rotulo sem palavra propria de 4+ letras ("Sim", "Nao", "1") devolve True:
+    nao ha o que nomear. Esses ja saem antes, por `e_navegacao`.
+    """
+    palavras = [p for p in re.split(r"[^0-9a-z]+", M._norm(rotulo)) if len(p) >= 4]
+    if not palavras:
+        return True
+    alvo = M._norm(justificativa)
+    return all(p in alvo for p in palavras)
+
+
+def _coletar_constante_justificada(
+        justificadas: Dict[Tuple[str, str], Tuple[str, Set[str], str, Tuple[str, ...]]],
+        passo: Dict[str, Any], nome: str, reply: str, texto: str,
+        rotas_alvo: Tuple[str, ...] = ()) -> None:
+    """Guarda `(passo, tecla) -> (justificativa, rotulos do acervo, tela)`.
+
+    So entra a constante que JA e uma escolha de conteudo pela mesma regra da
+    `B`: tecla numerica, rotulo que nao e navegacao, e 2+ alternativas
+    substantivas na tela. ⛔ Nenhuma definicao nova aqui — `e_navegacao` e
+    `opcoes_da_tela` sao as mesmas que a `B` usa (CLAUDE.md §9.4).
+    """
+    just = str(passo.get("constante_justificada") or "")
+    tecla = reply.strip()
+    if not just or not tecla.isdigit() or "{" in reply:
+        return
+    ops = opcoes_da_tela(texto)
+    rotulo = ops.get(tecla)
+    if not rotulo or e_navegacao(rotulo):
+        return
+    if len([v for v in ops.values() if not e_navegacao(v)]) < 2:
+        return
+    anterior = justificadas.get((nome, tecla))
+    rotulos = anterior[1] if anterior else set()
+    rotulos.add(rotulo)
+    alvo = tuple(sorted(set(anterior[3] if anterior else ()) | set(rotas_alvo)))
+    justificadas[(nome, tecla)] = (
+        just, rotulos, anterior[2] if anterior else " ".join(texto.split()), alvo)
+
+
+def _constantes_que_nao_nomeiam_o_rotulo(
+        seguradora: str, ramo: str,
+        justificadas: Dict[Tuple[str, str],
+                           Tuple[str, Set[str], str, Tuple[str, ...]]]) -> List[Achado]:
+    """Os passos cuja `constante_justificada` NAO nomeia o rotulo da tecla."""
+    fora: List[Achado] = []
+    for (nome, tecla), (just, rotulos, tela, alvo) in sorted(justificadas.items()):
+        if len(rotulos) >= _MIN_ROTULOS_PARA_SER_DADO:
+            continue  # o rotulo e DADO do caso (placa, endereco) — ver acima
+        if any(rotulo_nomeado_na_justificativa(r, just) for r in rotulos):
+            continue
+        fora.append(Achado(
+            True, "B", seguradora, ramo, nome,
+            f"a constante `{tecla}` escolhe '{sorted(rotulos)[0][:44]}' e a "
+            f"`constante_justificada` NAO NOMEIA esse rotulo -- ela descreve "
+            f"outra tela. Justificativa que existe sem dizer a verdade e pior "
+            f"que justificativa nenhuma (CLAUDE.md §9.5)",
+            tela, alvo))
+    return fora
 
 
 def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
@@ -384,16 +506,49 @@ def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
 
     fora: List[Achado] = []
     ja_vistos: Set[Tuple[str, str]] = set()
+    # {(passo, tecla): (justificativa, {rotulos vistos no acervo}, tela exemplo)}
+    justificadas: Dict[Tuple[str, str],
+                       Tuple[str, Set[str], str, Tuple[str, ...]]] = {}
 
     for _, (texto, servicos_da_tela, ses_da_tela) in telas.items():
+        # =================================================================
+        # 🔴 QUEM ALCANCA ESTE PASSO NESTA TELA -- pelo MOTOR, uma rota
+        #    por vez. SPEC-119, conserto B, item 2a.
+        # =================================================================
+        #
+        # A resposta e' a lista de ROTAS VITIMAS do achado: e' nelas que o passo
+        # e' alcancavel, e e' o segurado delas que recebe a resposta errada.
+        #
+        # ⚠️ Antes, o laco parava no PRIMEIRO subservico que casava (o
+        #    `ja_vistos` cortava os outros), e o achado saia sem dizer de quem
+        #    era. O simulador entao procurava a tela no replay DA ROTA -- replay
+        #    filtrado por `servico == rota.servico` --, e um achado sobre uma tela
+        #    de sessao NAO CLASSIFICADA nunca chegava a rota nenhuma.
+        #
+        # 📊 Medido em 28/09/2026: a mutacao M-RT6 do red team (tecla fixa
+        #    `3` = *Limpeza de Caixa d'Agua* em `menu_outros_servicos_residencia`)
+        #    produzia **1 achado grave** no conferidor e **0 rotas** com grave
+        #    atribuido -- 5 rotas seguiam ATENDE SOZINHO.
+        alcance: Dict[str, Tuple[Dict[str, Any], List[str]]] = {}
         for sv in servicos:
-            passo = M.match_ura_step(pb, texto, subservice=sv)
-            if not passo:
+            candidato = M.match_ura_step(pb, texto, subservice=sv)
+            if not candidato or candidato.get("noop"):
                 continue
-            nome = str(passo.get("step") or "?")
-            if passo.get("noop"):
-                continue
+            alcance.setdefault(str(candidato.get("step") or "?"),
+                               (candidato, []))[1].append(sv)
+
+        for nome, (passo, alcancado_por) in alcance.items():
+            rotas_alvo = tuple(sorted(alcancado_por))
             reply = str(passo.get("reply") or "")
+            # 🔴 A CONTAGEM DE REDACOES DO ROTULO VEM ANTES DA DEDUPLICACAO.
+            #    `ja_vistos` corta por (passo, tela[:60]), e as 19 telas de
+            #    `confirmar_veiculo` compartilham o mesmo prefixo de 60: dentro do
+            #    corte, o acervo pareceria ter 2 redacoes, e um rotulo que e DADO
+            #    (uma placa) viraria achado. 📊 Medido em 28/09/2026: com a coleta
+            #    dentro do corte, `alfa/auto/confirmar_veiculo` era acusado; fora
+            #    dele, nao.
+            _coletar_constante_justificada(justificadas, passo, nome, reply, texto,
+                                           rotas_alvo)
             chave = (nome, M._norm(texto)[:60])
             if chave in ja_vistos:
                 continue
@@ -441,7 +596,7 @@ def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
                     (f"o slot `{slot}` nao tem origem; o passo nao trava porque "
                      f"tem `fallback_adaptive` -- mas quem responde e o cerebro, "
                      f"nao o corredor"),
-                    " ".join(texto.split())))
+                    " ".join(texto.split()), rotas_alvo))
 
             # ------------------------------------------------ B · CONSTANTE
             if reply and not slots:
@@ -467,17 +622,17 @@ def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
                             (f"responde `{tecla}` e a tela nao expoe opcao nenhuma "
                              f"no `text` -- botao nao gravado pelo ingestor "
                              f"(P-084-15). Nao da para confirmar daqui"),
-                            " ".join(texto.split())))
-                    elif not e_navegacao(ops[tecla]) and not passo.get("constante_justificada"):
+                            " ".join(texto.split()), rotas_alvo))
+                    elif not e_navegacao(ops[tecla]):
                         substantivas = [v for v in ops.values() if not e_navegacao(v)]
-                        if len(substantivas) >= 2:
+                        if len(substantivas) >= 2 and not passo.get("constante_justificada"):
                             fora.append(Achado(
                                 True, "B", seguradora, ramo, nome,
                                 f"a constante `{tecla}` escolhe "
                                 f"'{ops[tecla][:44]}' entre {len(substantivas)} "
                                 f"ALTERNATIVAS DE CONTEUDO -- o corredor decide "
                                 f"pelo cliente. Falta `constante_justificada`",
-                                " ".join(texto.split())))
+                                " ".join(texto.split()), rotas_alvo))
                 else:
                     # 🔴 UM ROTULO SO PODE ESTAR ERRADO CONTRA UMA LISTA QUE
                     #    DA PARA VER. Se a tela nao expoe opcao nenhuma, a
@@ -515,7 +670,7 @@ def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
                                 f"{len(subst)} ALTERNATIVAS DE CONTEUDO -- o "
                                 f"corredor decide pelo cliente. Falta "
                                 f"`constante_justificada`",
-                                " ".join(texto.split())))
+                                " ".join(texto.split()), rotas_alvo))
                     if M._norm(reply) not in n:
                         em_lista = opcoes_em_lista(texto)
                         tem_opcoes = bool(ops) or bool(em_lista)
@@ -529,7 +684,7 @@ def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
                              f"nenhuma no `text` -- pode ser texto livre ou botao "
                              f"nao gravado pelo ingestor (P-084-15). Nao da para "
                              f"confirmar daqui"),
-                            " ".join(texto.split())))
+                            " ".join(texto.split()), rotas_alvo))
 
             # ------------------------------------------------- C · OFICIO
             restrito = passo.get("only_subservices")
@@ -552,7 +707,13 @@ def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
                         f"tela que so aparece em sessoes de {sorted(conhecidos)} "
                         f"({len(ses_da_tela)} sessao/sessoes)" +
                         ("" if grave else " -- 1 sessao so: pode ser a CLASSIFICACAO"),
-                        " ".join(texto.split())))
+                        " ".join(texto.split()),
+                        # 🔴 A VITIMA E A ROTA QUE ALCANCA O PASSO, nao a da
+                        #    tela. Na regra C isso e' sempre um subconjunto de
+                        #    `only_subservices` -- e o MOTOR quem diz qual.
+                        rotas_alvo))
+
+    fora.extend(_constantes_que_nao_nomeiam_o_rotulo(seguradora, ramo, justificadas))
     return fora
 
 

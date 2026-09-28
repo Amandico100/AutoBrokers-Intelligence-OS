@@ -325,17 +325,52 @@ def achados_da_rota(rota, telas: List[Any], pb: Dict[str, Any],
     """
     fora: List[Any] = []
     vistos: Set[Tuple[str, str, str]] = set()
+
+    def _guardar(a) -> None:
+        marca = (a.regra, a.passo, a.porque)
+        if marca in vistos:
+            return
+        vistos.add(marca)
+        fora.append(a)
+
     for t in telas:
         passo = M.match_ura_step(pb, t.texto, subservice=rota.servico)
         if not passo:
             continue
         chave = (str(passo.get("step") or "?"), M._norm(t.texto)[:60])
         for a in indice.get(chave, []):
-            marca = (a.regra, a.passo, a.porque)
-            if marca in vistos:
-                continue
-            vistos.add(marca)
-            fora.append(a)
+            _guardar(a)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔴 O ACHADO QUE NÃO ESTÁ NO REPLAY DA ROTA — SPEC-119, conserto B, item 2a
+    # ═══════════════════════════════════════════════════════════════════════
+    #
+    # A varredura acima só alcança achado sobre uma tela que ESTA rota vê. Para
+    # a regra C isso é um beco sem saída ESTRUTURAL, não um erro de string:
+    #
+    # ```
+    # a regra C acusa  passo restrito a S_p  respondendo tela que o acervo só
+    #                  mostra em sessões de S_t,  com  S_p ∩ S_t = ∅
+    # o replay filtra  linhas cujo `servico` == rota.servico   (replay.py)
+    # para casar aqui  seria preciso rota.servico ∈ S_t  E  ∈ S_p
+    #                  — exatamente o que a pré-condição da regra C exclui
+    # ```
+    #
+    # 📊 Medido em 28/09/2026, antes: `84 achados · 2 graves · graves por regra
+    #    {'C': 2} · graves ATRIBUÍDOS a rota: 0 · rotas com ≥1 grave: 0`. Com
+    #    100% dos graves na regra C, a faixa ④ de `_faixa` (*"≥1 grave → HANDOFF
+    #    defeito_de_resposta"*) **nunca podia disparar** — e a mutação do juiz
+    #    (passo `quando` restrito a `['eletricista']` respondendo a tela do
+    #    *Encanador*, 5 sessões) deixava a rota em `ATENDE SOZINHO`.
+    #
+    # 🔴 A VÍTIMA É A ROTA DO OFÍCIO DO PASSO: é na rota de `S_p` que aquele
+    #    passo é ALCANÇÁVEL, e é o segurado dela que recebe a resposta errada.
+    #    Quem sabe quem é `S_p` é o conferidor, que escreve `rotas_alvo` no
+    #    achado — nenhuma régua nova aqui (CLAUDE.md §5).
+    for achados in indice.values():
+        for a in achados:
+            if rota.servico in (getattr(a, "rotas_alvo", ()) or ()):
+                _guardar(a)
     return fora
 
 
