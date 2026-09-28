@@ -552,6 +552,14 @@ async def _sentinela_recover(
             session["dossier_sent"] = await _entregar_dossie_com_marcador(
                 company_id, session, dossier, wa, integration)
             session["segurado_avisado"] = await _avisar_o_segurado(session, wa, integration)
+            # 🔴 O FEED DA CORRETORA PRECISA DOS TRÊS DESFECHOS AQUI TAMBÉM —
+            #    SPEC-119, conserto B, item 5. Sem esta linha, o pior deles
+            #    (dossiê não entregue E segurado não avisado) era silencioso.
+            await _anunciar_o_handoff_no_feed(
+                company_id, bool(session.get("dossier_sent")),
+                bool(session.get("segurado_avisado")),
+                "A seguradora mandou uma tela que DECIDE pelo segurado e o robô parou",
+                "O robô parou numa tela que decide pelo segurado")
             logger.warning("[SENTINELA] 🔴 tela que DECIDE (%s) — handoff, e o cérebro "
                            "NÃO foi convidado a opinar: %s",
                            _classe["chave"], _classe["porque"])
@@ -688,7 +696,7 @@ async def _sentinela_recover(
     #
     # Ele era. E duas linhas abaixo o feed afirmava, incondicionalmente, *"e o
     # segurado foi avisado disso"*. 📊 Com `integration=None` — a condição
-    # documentada da Resulta em 18/08, só observador — as duas coisas caem
+    # documentada de uma corretora do piloto em 18/08, só observador — as duas caem
     # juntas pela MESMA razão, então nesse caminho a frase era **sempre falsa**.
     #
     # A corretora lia que o segurado sabia, e não ligava para ele.
@@ -705,30 +713,58 @@ async def _sentinela_recover(
     # É textualmente o defeito de 02:01:25 de 18/08, um andar acima: a flag foi
     # consertada e a frase ao lado dela não. Flag que mente encerra a
     # investigação; feed que mente encerra antes ainda.
+    await _anunciar_o_handoff_no_feed(
+        company_id, bool(session.get("dossier_sent")), segurado_avisado,
+        "A URA parou de responder e a recuperação automática esgotou",
+        "A recuperação automática esgotou")
+    logger.warning(f"[SENTINELA] escada esgotada → needs_human case={session.get('case_id')}")
+    return "handoff"
+
+
+async def _anunciar_o_handoff_no_feed(company_id: str, dossie_entregue: bool,
+                                      segurado_avisado: bool,
+                                      porque_entregue: str, porque_falhou: str) -> None:
+    """Os TRÊS desfechos do handoff do Sentinela, no feed de Atividades.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    🔴 UM SÓ ESCRITOR — SPEC-119, conserto B, item 5
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Este bloco existia apenas no ramo de ESGOTAMENTO. O ramo novo da F4b
+    (`tela_que_decide`) entrega o mesmo dossiê e faz o mesmo aviso ao segurado,
+    e escrevia só um `logger.warning` — então o PIOR desfecho (dossiê não
+    entregue **e** segurado não avisado) voltava a ser silencioso no feed da
+    corretora. É textualmente o defeito de 18/08/2026 que o irmão foi
+    consertado para anunciar, reaberto por um caminho novo que dispara **mais
+    cedo e mais vezes**.
+
+    ⛔ Nenhum motor paralelo (CLAUDE.md §5): os dois ramos chamam esta função.
+
+    🔴 Flag que mente encerra a investigação; feed que mente encerra antes
+    ainda. Por isso as três frases são DIFERENTES e a terceira manda ligar.
+    """
     try:
         from app.services.activity_log import log_activity
 
-        if session.get("dossier_sent"):
+        if dossie_entregue:
             await log_activity(company_id, "acionamentos",
                                "Dossiê entregue à equipe — acionamento travou",
-                               "A URA parou de responder e a recuperação automática esgotou; o caso foi passado com todos os dados.")
+                               f"{porque_entregue}; o caso foi passado com todos os dados.")
         elif segurado_avisado:
             await log_activity(company_id, "acionamentos",
                                "🔴 Acionamento travou e o dossiê NÃO foi entregue",
-                               "A recuperação automática esgotou e não foi possível avisar a equipe. "
+                               f"{porque_falhou} e não foi possível avisar a equipe. "
                                "O caso está na Fila, esperando alguém — e o segurado foi avisado disso.")
         else:
             # 🔴 O PIOR DOS TRÊS, e o que a corretora precisa ler PRIMEIRO:
             # ninguém sabe de nada. Nem a equipe, nem a pessoa que está parada.
             await log_activity(company_id, "acionamentos",
                                "🔴 Acionamento travou, a equipe NÃO foi avisada e o segurado TAMBÉM NÃO",
-                               "A recuperação automática esgotou e não houve canal para avisar ninguém. "
+                               f"{porque_falhou} e não houve canal para avisar ninguém. "
                                "O caso está na Fila — e o segurado continua esperando sem saber. "
                                "Ligue para ele.")
     except Exception:  # noqa: BLE001
         pass
-    logger.warning(f"[SENTINELA] escada esgotada → needs_human case={session.get('case_id')}")
-    return "handoff"
 
 
 _FALA_DO_VIGIA = {
