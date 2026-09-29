@@ -627,8 +627,13 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             #    2 horas. Caso contrario, solicite para agora"*. Chaveiro e
             #    emergencial: casar a tela dele com este passo agendaria para
             #    outro dia quem esta trancado do lado de fora.
+            # 🔴 SPEC-120 · D7 — + `encanador`. 📊 allianz 5e72e523 (27/08): a
+            #    URA agendou o ENCANADOR com a MESMA tela, e o corredor ficava
+            #    mudo. `data_agendamento_opcao` nasce "1" = a PRIMEIRA data
+            #    disponível, que é a decisão do Founder (*"pode ser a primeira
+            #    data disponível"*).
             "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
-                                 "ar_condicionado", "limpeza_caixa_dagua"],
+                                 "ar_condicionado", "limpeza_caixa_dagua", "encanador"],
             "anchor": r"escolha qual data deseja agendar",
             "reply": "{data_agendamento_opcao}",
             "requires": ["data_agendamento_opcao"],
@@ -654,8 +659,12 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             #    2 horas. Caso contrario, solicite para agora"*. Chaveiro e
             #    emergencial: casar a tela dele com este passo agendaria para
             #    outro dia quem esta trancado do lado de fora.
+            # 🔴 SPEC-120 · D8 — + `encanador`, e o período é PERGUNTADO: 📊
+            #    `periodo_preferido` já está em `required_slots` do encanador da
+            #    allianz, e `periodo_agendamento_opcao` sai dele
+            #    (`_derivar_teclas_do_caso`). Sessão 5e72e523.
             "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
-                                 "ar_condicionado", "limpeza_caixa_dagua"],
+                                 "ar_condicionado", "limpeza_caixa_dagua", "encanador"],
             "anchor": (r"agendamento (?:[ée] por per[íi]odo|[ée] feito em intervalo)"
                        r"|hor[áa]rios de agendamento"),
             "reply": "{periodo_agendamento_opcao}",
@@ -1599,7 +1608,21 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     "handoff_triggers": list(_RESID_HANDOFF_TRIGGERS) + [
         r"exclusivamente a servi[çc]os nas[\s\S]{0,4}[áa]reas comuns",
     ],
-    "unknown_step_policy": "pause_and_handoff",  # nunca responder às cegas
+    # 🔴 SPEC-120 · D14 — O RESIDENCIAL TENTA, E A CHAVE PASSA A DIZER A VERDADE.
+    #    📊 `grep -rn unknown_step_policy backend/app` só acha DECLARAÇÕES: nenhuma
+    #    linha do produto lê esta chave (medido em 19/08/2026 e de novo em
+    #    28/09/2026). `pause_and_handoff` nunca pausou nada — a tela desconhecida
+    #    do residencial já seguia o MESMO caminho da de auto
+    #    (`handle_insurer_message` → `classe_da_tela` → cérebro). O que muda com
+    #    esta linha é a declaração, que mentia sobre o comportamento; o que TENTA
+    #    de verdade está provado pelo motor em
+    #    `tests/test_os_dezesseis_corredores_atendem_sozinhos.py` (F2).
+    #    ⛔ A rede NÃO se afrouxa: a tela que DECIDE (escolher serviço/ramo,
+    #    aceitar custo) continua indo a uma pessoa — `classe_da_tela`, SPEC-119.
+    #    ⚠️ O "nunca responder às cegas" que estava aqui continua valendo, e
+    #    quem o cumpre é o freio (`finalize_anchors`), o `sem_chute` e a
+    #    `classe_da_tela` — não esta chave.
+    "unknown_step_policy": "adaptive_then_handoff",
 }
 
 # ===========================================================================
@@ -2637,7 +2660,13 @@ _YELUM_FAMILY_STEPS = [
     #    `servico_opcao` nao serve aqui. A resposta e o proprio subservico da
     #    rota, declarado por subservico -- que e uma das quatro origens.
     {"step": "servico_apos_aviso",
-     "anchor": r"agora que voc[êe] j[áa] sabe desta informa[çc][ãa]o",
+     # 🔴 SPEC-120 · 📊 A SEGUNDA REDAÇÃO da mesma tela era ÓRFÃ em
+     #    hdi/auto/guincho (78b2de6f, 4b2d0c2a): *"Agora, selecione qual o
+     #    serviço que melhor atenderá o problema descrito. Botão 1: Recarga de
+     #    bateria · Botão 2: Guincho · Botão 3: Voltar"* — os MESMOS botões, e o
+     #    humano respondeu "Guincho" (4b2d0c2a). ACRESCENTAR, nunca trocar.
+     "anchor": (r"agora que voc[êe] j[áa] sabe desta informa[çc][ãa]o|"
+                r"selecione qual o servi[çc]o que melhor atender[áa] o problema descrito"),
      "reply": "{servico_pos_aviso_opcao}", "requires": ["servico_pos_aviso_opcao"],
      "fallback_adaptive": True,
      "notes": "📊 1 tela / 1 sessão (3dc92fcf). Botão 1: Recarga de bateria · "
@@ -2667,6 +2696,19 @@ _YELUM_FAMILY_STEPS = [
      "notes": "resumo geocodificado do QUE NÓS digitamos (origem e destino) — confirmar"},
     {"step": "complemento_ref", "anchor": r"quais s[ãa]o o complemento e/?ou refer[êe]ncia", "reply": "{ponto_referencia}",
      "notes": "default 'não tem'"},
+    # 🔴 SPEC-120 · D2 — "O veículo está em uma garagem?" tem RESPOSTA NO CASO.
+    #    📊 `veiculo_em_garagem` é cobrado do segurado ANTES de acionar em
+    #    hdi/yelum guincho (`required_slots`), e o passo `garagem` logo abaixo
+    #    respondia "Não" FIXO por cima do que ele disse — a resposta errada e
+    #    silenciosa do CLAUDE.md §9.5. No guincho, quem responde é o caso; nos
+    #    outros serviços (que não perguntam isto ao segurado) segue o de antes.
+    {"step": "garagem_do_caso", "anchor": r"o ve[íi]culo est[áa] em uma garagem",
+     "reply": "{veiculo_em_garagem}", "requires": ["veiculo_em_garagem"],
+     "format": "garagem_sim_nao", "classe": "decide", "fallback_adaptive": True,
+     "only_subservices": ["guincho"],
+     "notes": "📊 hdi 78b2de6f, 4b2d0c2a · yelum 56bd78f7, 705f915b. Sim/Não/Voltar. "
+              "O valor é o que o segurado contou, lido pelo MESMO componente do "
+              "formulário nativo (`rb_EmGaragemOuEstacionamento`)."},
     {"step": "garagem", "anchor": r"o ve[íi]culo est[áa] em uma garagem", "reply": "Não",
      "notes": "default Não; subsolo real → adaptativo"},
     {"step": "cambio_rodas", "anchor": r"c[âa]mbio\*? ou as \*?rodas\*? est[ãa]o travadas", "reply": "Não",
@@ -4654,7 +4696,18 @@ HDI_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         r"podemos confirmar", r"posso confirmar", r"deseja confirmar",
     ],
     "finalize_abort_reply": "Sair",  # 'Digite Sair para encerrar'
-    "unknown_step_policy": "pause_and_handoff",  # corredor novo: pausa antes de improvisar
+    # 🔴 SPEC-120 · D14 — O RESIDENCIAL TENTA, E A CHAVE PASSA A DIZER A VERDADE.
+    #    📊 `grep -rn unknown_step_policy backend/app` só acha DECLARAÇÕES: nenhuma
+    #    linha do produto lê esta chave (medido em 19/08/2026 e de novo em
+    #    28/09/2026). `pause_and_handoff` nunca pausou nada — a tela desconhecida
+    #    do residencial já seguia o MESMO caminho da de auto
+    #    (`handle_insurer_message` → `classe_da_tela` → cérebro). O que muda com
+    #    esta linha é a declaração, que mentia sobre o comportamento; o que TENTA
+    #    de verdade está provado pelo motor em
+    #    `tests/test_os_dezesseis_corredores_atendem_sozinhos.py` (F2).
+    #    ⛔ A rede NÃO se afrouxa: a tela que DECIDE (escolher serviço/ramo,
+    #    aceitar custo) continua indo a uma pessoa — `classe_da_tela`, SPEC-119.
+    "unknown_step_policy": "adaptive_then_handoff",
     "coverage_guardrails": [
         "📊 'Ela não possui mais utilizações de encanador' — a apólice residencial tem LIMITE de "
         "utilizações POR SUBSERVIÇO. Esgotado, não existe acionamento: é handoff com o motivo "
@@ -4799,7 +4852,18 @@ PORTO_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         r"posso confirmar", r"deseja confirmar",
     ],
     "finalize_abort_reply": "Sair e não agendar",
-    "unknown_step_policy": "pause_and_handoff",
+    # 🔴 SPEC-120 · D14 — O RESIDENCIAL TENTA, E A CHAVE PASSA A DIZER A VERDADE.
+    #    📊 `grep -rn unknown_step_policy backend/app` só acha DECLARAÇÕES: nenhuma
+    #    linha do produto lê esta chave (medido em 19/08/2026 e de novo em
+    #    28/09/2026). `pause_and_handoff` nunca pausou nada — a tela desconhecida
+    #    do residencial já seguia o MESMO caminho da de auto
+    #    (`handle_insurer_message` → `classe_da_tela` → cérebro). O que muda com
+    #    esta linha é a declaração, que mentia sobre o comportamento; o que TENTA
+    #    de verdade está provado pelo motor em
+    #    `tests/test_os_dezesseis_corredores_atendem_sozinhos.py` (F2).
+    #    ⛔ A rede NÃO se afrouxa: a tela que DECIDE (escolher serviço/ramo,
+    #    aceitar custo) continua indo a uma pessoa — `classe_da_tela`, SPEC-119.
+    "unknown_step_policy": "adaptive_then_handoff",
     "coverage_guardrails": [
         "📊 'Parece que as apólices no CNPJ informado não tem cobertura para serviços residenciais. "
         "Nestes casos é possível realizar a assistência de forma particular.' — apólice sem cobertura "
@@ -4864,8 +4928,11 @@ PORTO_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
 # 📊 `utilizações`: ZERO ocorrências na Yelum (a HDI tem 4). O passo
 # `utilizacoes_restantes`, o gatilho "não possui mais utilizações" e os dois
 # `coverage_guardrails` de limite por apólice ficam de fora. O que cobre a
-# lacuna não é uma lista: é `unknown_step_policy: pause_and_handoff` — tela
-# desconhecida pausa o acionamento com o dossiê, antes de improvisar.
+# lacuna não é uma lista — e ⚠️ 🔴 SPEC-120: a frase que estava aqui (*"é
+# `unknown_step_policy: pause_and_handoff` — tela desconhecida pausa o
+# acionamento"*) era FALSA. 📊 Nenhuma linha do produto lê essa chave. Uma tela
+# de limite esgotado na Yelum cai no caminho da tela desconhecida
+# (`classe_da_tela` → cérebro), e o risco está anotado em P-120-06.
 # **Destrava quando aparecer uma sessão da Yelum com o texto de limite.**
 #
 # 📊 "Esta residência possui complemento?" e os horários de entrada em
@@ -5260,7 +5327,18 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         r"podemos confirmar", r"posso confirmar", r"deseja confirmar",
     ],
     "finalize_abort_reply": "Sair",
-    "unknown_step_policy": "pause_and_handoff",
+    # 🔴 SPEC-120 · D14 — O RESIDENCIAL TENTA, E A CHAVE PASSA A DIZER A VERDADE.
+    #    📊 `grep -rn unknown_step_policy backend/app` só acha DECLARAÇÕES: nenhuma
+    #    linha do produto lê esta chave (medido em 19/08/2026 e de novo em
+    #    28/09/2026). `pause_and_handoff` nunca pausou nada — a tela desconhecida
+    #    do residencial já seguia o MESMO caminho da de auto
+    #    (`handle_insurer_message` → `classe_da_tela` → cérebro). O que muda com
+    #    esta linha é a declaração, que mentia sobre o comportamento; o que TENTA
+    #    de verdade está provado pelo motor em
+    #    `tests/test_os_dezesseis_corredores_atendem_sozinhos.py` (F2).
+    #    ⛔ A rede NÃO se afrouxa: a tela que DECIDE (escolher serviço/ramo,
+    #    aceitar custo) continua indo a uma pessoa — `classe_da_tela`, SPEC-119.
+    "unknown_step_policy": "adaptive_then_handoff",
     "coverage_guardrails": [
         "📊 ENCANADOR: 'Reparos emergenciais em virtude de vazamento (aparente) em tubulações em PVC "
         "de 1 a 4 polegadas, ou em dispositivos hidráulicos como: torneiras, sifões, encanamento de "
@@ -5276,9 +5354,10 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "segurado, e a própria URA avisa isso antes de abrir.",
         "⚠️ LIMITE DE UTILIZAÇÕES: a HDI (mesmo bot) informa quantas utilizações restam e recusa "
         "quando esgotam. Na YELUM isso NÃO foi observado — 📊 zero ocorrências de 'utilizações' em "
-        "3.026 eventos. Por isso este corredor não declara passo nem gatilho de limite: se a tela "
-        "aparecer, `unknown_step_policy: pause_and_handoff` devolve o caso ao humano em vez de "
-        "improvisar. Destrava quando uma sessão da Yelum trouxer o texto.",
+        "3.026 eventos. Por isso este corredor não declara passo nem gatilho de limite. Se a "
+        "tela de limite aparecer, NÃO confirme o acionamento: diga ao segurado que a seguradora "
+        "informou limite de utilizações e devolva o caso à corretora. Destrava quando uma sessão "
+        "da Yelum trouxer o texto.",
     ],
 }
 
@@ -5609,6 +5688,9 @@ PORTO_AUTO_WHATSAPP_V1["handoff_triggers"] = PORTO_AUTO_WHATSAPP_V1["handoff_tri
 #
 #      📊 hdi-residencial: 70 telas distintas · 64 SEM PASSO · 6 ura_steps
 #      📊 unknown_step_policy = "pause_and_handoff"
+#      ⚠️ 🔴 SPEC-120: a chave NÃO É LIDA por linha nenhuma do produto — a
+#         frase abaixo descreve a DECLARAÇÃO, não o comportamento. Desde
+#         28/09/2026 os quatro residenciais declaram `adaptive_then_handoff`.
 #
 #    Nos corredores de AUTO a política é `adaptive_then_handoff`: tela órfã cai
 #    no cérebro e o fluxo continua. Aqui é `pause_and_handoff`: **cada uma das
@@ -5968,6 +6050,29 @@ _FAMILIA_YH_GUINCHO = [
      "reply": "{destino_cep}", "fallback_adaptive": True, "notes": "📊 2+4 ses."},
     {"step": "origem_cep", "anchor": r"em qual \*?cep\*? o ve[íi]culo est[áa]",
      "reply": "{local_cep}", "fallback_adaptive": True, "notes": "📊 1+1 ses."},
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-120 · A ORIGEM IA COMO DESTINO — e nenhuma régua via
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 Medido em 28/09/2026 sobre os 16 corpora: *"Digite o endereço seguindo
+    #    o exemplo: *Rua xxx, Número xxx, Bairro xxx, Cidade xxx*"* aparece
+    #    **8 vezes, e as 8 logo depois de "para onde devemos levar o veículo" /
+    #    "definiremos o endereço para onde o veículo será levado"** (hdi 2548c9c7,
+    #    4b2d0c2a, 83d2b9e3 · yelum 705f915b, 29ae4344, ba9f1970, 9d2655e2,
+    #    a1c18e1c). E `endereco_livre_digitado`, logo abaixo, respondia
+    #    `{local_atual}` — **o endereço de ONDE O CARRO ESTÁ, como destino**.
+    #
+    # 🔴 É a forma exata do §9.5: o passo CASAVA a tela, respondia, não travava
+    #    — e o guincho recebia a origem no campo do destino. A outra redação
+    #    (*"Nesse caso vou precisar que me informe o endereço completo, seguindo
+    #    o exemplo"*, depois de "Não foi possível localizar o endereço") é a
+    #    ORIGEM, e continua com `{local_atual}`.
+    {"step": "destino_digitado",
+     "anchor": r"digite o endere[çc]o seguindo o exemplo",
+     "reply": "{local_destino}", "requires": ["local_destino"],
+     "fallback_adaptive": True, "only_subservices": ["guincho"],
+     "notes": "📊 8 telas / 8 sessões, TODAS depois da pergunta do destino. "
+              "🔴 É o DESTINO — o passo abaixo mandava a origem."},
     {"step": "endereco_livre_digitado",
      "anchor": (r"digite o endere[çc]o seguindo o exemplo|"
                 r"me informe o \*?endere[çc]o completo\*?, seguindo o exemplo"),
@@ -6808,7 +6913,9 @@ _BRADESCO_TRONCO = [
      #    assistência? Botão 1: Sim · Botão 2: Mudar origem · Botão 3: Mudar
      #    destino" (2 sessões). A segunda já estava nos `finalize_anchors`; o
      #    passo precisava das duas.
-     "anchor": (r"posso confirmar a abertura da assist[êe]ncia|"
+     # 🔴 SPEC-120 · 📊 bradesco 72af1ae1: *"Posso confirmar a abertura da
+     #    SUA assistência?"* — o "sua" deixava a tela ÓRFÃ.
+     "anchor": (r"posso confirmar a abertura da (?:sua )?assist[êe]ncia|"
                 r"posso confirmar o agendamento da assist[êe]ncia"),
      "reply": "Sim",
      "constante_justificada": (
@@ -8322,15 +8429,20 @@ _PORTO_AUTO_FOLHAS = [
               "os dois mecanismos não podem conviver respondendo."},
 
     # ---- o taxi oferecido DEPOIS do guincho -------------------------------
+    # 🔴 SPEC-120 · D9 — A DECISÃO DE PRODUTO QUE ESTA CONSTANTE ESPERAVA SAIU.
+    #    Ela respondia "Não" fixo e dizia, com todas as letras, *"é decisão de
+    #    PRODUTO, não de coleta, e está em PENDENCIAS"*. O Founder decidiu em
+    #    28/09/2026: *"pode perguntar então. Mas isso precisa ser para a Porto
+    #    Seguro."* O benefício coberto deixa de ser recusado em nome do segurado:
+    #    `taxi_apos_guincho` é cobrado ANTES de acionar (`required_slots` do
+    #    guincho da porto), e a tela recebe o que ELE disse.
     {"step": "taxi_oferta", "anchor": r"voc[êe] tamb[ée]m precisa solicitar um t[áa]xi",
-     "reply": "Não", "only_subservices": ["guincho"],
-     "constante_justificada": (
-         "📊 5 msgs / 5 sessões. 🔴 É um BENEFÍCIO COBERTO sendo recusado em nome "
-         "do segurado — e é defensável porque ninguém pediu táxi: 'Sim' abre um "
-         "SEGUNDO serviço no nome dele. ⚠️ Mas é decisão de PRODUTO, não de "
-         "coleta, e está em PENDENCIAS. Quem quer táxi entra pela rota `taxi`, "
-         "que existe desde o BLOCO 4."),
-     "notes": "📊 5 msgs / 5 sessões."},
+     "reply": "{taxi_apos_guincho}", "requires": ["taxi_apos_guincho"],
+     "format": "sim_nao", "classe": "decide", "sem_chute": True,
+     "only_subservices": ["guincho"],
+     "notes": "📊 5 msgs / 5 sessões. D9: vem do segurado. 🔴 `sem_chute`: 'Sim' "
+              "abre um SEGUNDO serviço — resposta ilegível vai a uma pessoa, "
+              "nunca vira palpite."},
 
     {"step": "tecnico_agendamento_porto",
      "anchor": r"vou te ajudar com o agendamento de um t[ée]cnico",
@@ -9154,6 +9266,12 @@ def match_ura_step(playbook: Dict[str, Any], insurer_message: str, subservice: O
         if only and sub not in [str(x).lower() for x in only]:
             continue
         if re.search(step.get("anchor") or r"$^", text, re.IGNORECASE | re.DOTALL):
+            # 🔴 SPEC-120 — o passo cuja resposta é LIDA DA TELA (as opções dos
+            #    amperes, a primeira data da lista) leva a tela junto. Cópia,
+            #    nunca o passo-fonte: gravar `_tela` no playbook faria a tela de
+            #    um acionamento responder o próximo.
+            if str(step.get("format") or "") in _FORMATOS_QUE_LEEM_A_TELA:
+                return {**step, "_tela": str(insurer_message or "")}
             return step
     return None
 
@@ -10196,6 +10314,321 @@ def pick_option_by_plate(insurer_message: str, placa: str) -> str:
     return matches[0] if len(matches) == 1 else ""
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-120 — A RESPOSTA QUE SAI DO CASO, NO FORMATO QUE A TELA ACEITA
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# `format` já existia (`phone_br`, a Azul que rejeita outro formato de telefone).
+# Estes são mais do mesmo, e cada um nasceu de uma tela órfã medida em
+# `docs/canon/reports/TELAS-SEM-RESPOSTA-DOS-16.json`:
+#
+#     sim_nao                  o segurado disse "não precisa" → a tela aceita "Não"
+#     identificador_do_caso    a placa como a URA pede (AAA1A23) — ou o CPF, na 2ª vez
+#     so_digitos               "Informe somente números." → os dígitos do que foi enviado
+#     subsolo_ou_acima_da_rua  o nível da rua que o segurado contou → "Sim"/"Não"
+#     garagem_sim_nao          "o carro está numa garagem?" pelo que o segurado contou
+#     policia_pela_pane        "precisou chamar a polícia?" numa rota de PANE
+#     placa_e_modelo           "informe a placa e o modelo"
+#     imediato_ou_agendado     o `quando` do caso, na palavra da tela
+#     o_proprio_segurado       quem está no local é o titular?
+#     amperes_da_bateria       🔴 a tela que NUNCA pode travar (D13, §3.1)
+#     data_da_lista            a data que o segurado quer, ou a PRIMEIRA (D7)
+#
+# ⛔ Cada um devolve o texto que sai, ou `None`. `None` NUNCA vira um palpite
+#    aqui dentro: `render_reply` devolve `ok=False` e o motor faz o que já fazia
+#    com dado faltando (o cérebro na tela reversível; uma pessoa no `sem_chute`).
+#    A única exceção é a dos amperes, e ela é a decisão do Founder, não uma
+#    conveniência: *"em QUALQUER dúvida → 60 Ah"*.
+
+def _texto_normal(valor: Any) -> str:
+    return " ".join(_norm(str(valor or "")).split())
+
+
+def _sim_nao(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """O "sim"/"não" do segurado, na palavra do botão. Dúvida → `None`.
+
+    ⚠️ A NEGAÇÃO É TESTADA PRIMEIRO: *"não, obrigado"*, *"não precisa"* e
+    *"sem táxi"* começam por palavras que também aparecem em respostas
+    afirmativas (*"precisa"*), e a ordem inversa diria "Sim" a quem recusou.
+    """
+    t = _texto_normal(valor)
+    if not t:
+        return None
+    if re.match(r"^(?:nao|n|negativo|dispenso|dispensa|sem)\b", t) or re.search(
+            r"\bnao (?:precisa|preciso|quero|vai|vou)\b", t):
+        return "Não"
+    if re.match(r"^(?:sim|s|quero|preciso|precisa|vou precisar|vai precisar|claro|"
+                r"pode|positivo)\b", t):
+        return "Sim"
+    return None
+
+
+_RX_PLACA_BR = re.compile(r"^[A-Z]{3}\d[A-Z0-9]\d{2}$")
+
+
+def _identificador_do_caso(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """A placa no formato que a URA pede (📊 *"AAA12__ ou AAA1A__"*, sem traço),
+    ou — quando o passo manda o CPF — só os dígitos. Qualquer outra coisa: `None`."""
+    bruto = re.sub(r"[^A-Za-z0-9]", "", str(valor or "")).upper()
+    if _RX_PLACA_BR.match(bruto):
+        return bruto
+    if bruto.isdigit() and len(bruto) in (11, 14):
+        return bruto
+    return None
+
+
+def _so_digitos(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    digitos = re.sub(r"\D", "", str(valor or ""))
+    return digitos or None
+
+
+def _componente_da_familia(nome: str) -> Dict[str, Any]:
+    """O componente do formulário nativo da família HDI/Yelum — a MESMA tradução
+    de "o que o segurado disse" para opção que o formulário já usa. ⛔ Nenhum
+    apelido novo aqui: dois dicionários para o mesmo fato divergem (CLAUDE.md §5)."""
+    flow = (_NATIVE_FLOWS_FAMILIA_HDI_YELUM or {}).get(NATIVE_FLOW_CONDICOES_VEICULO) or {}
+    for _tela, comp in _flow_components(flow):
+        if comp.get("name") == nome:
+            return comp
+    return {}
+
+
+def _garagem_sim_nao(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """Primeiro pelo componente do formulário (a mesma leitura dele); depois pelo
+    "sim"/"não" dito com mais palavras (*"sim, no estacionamento do prédio"*)."""
+    bruto = slots.get("veiculo_em_garagem")
+    opcao = _resolver_opcao_de_flow(_componente_da_familia("rb_EmGaragemOuEstacionamento"),
+                                    bruto)
+    if str(opcao or "") in ("1", "0"):
+        return {"1": "Sim", "0": "Não"}[str(opcao)]
+    dito = _sim_nao(str(bruto or ""), slots, tela)
+    if dito:
+        return dito
+    t = _texto_normal(bruto)
+    if re.search(r"garagem|estacionamento|subsolo", t):
+        return "Sim"
+    if re.search(r"na rua|via publica|na estrada|na rodovia", t):
+        return "Não"
+    return None
+
+
+def _subsolo_ou_acima_da_rua(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """D2 — *"O veículo está em garagem subsolo ou acima do nível da rua?"*.
+
+    A resposta é o que o SEGURADO contou em `veiculo_nivel_rua` (cobrado antes
+    de acionar, `required_slots` de hdi/yelum guincho), lida pelo MESMO
+    componente que responde o formulário nativo: 1-Subsolo e 2-Acima do nível
+    são "Sim"; 3 e 4 (nível da rua) são "Não". E um carro que NÃO está em
+    garagem nenhuma não está em garagem subsolo.
+    """
+    nivel = _resolver_opcao_de_flow(_componente_da_familia("rb_NivelDaRua"),
+                                    slots.get("veiculo_nivel_rua"))
+    if nivel in ("1", "2"):
+        return "Sim"
+    if nivel in ("3", "4"):
+        return "Não"
+    if _garagem_sim_nao("", slots, tela) == "Não":
+        return "Não"
+    t = _texto_normal(slots.get("veiculo_nivel_rua"))
+    if re.search(r"\bsubsolo\b|\bacima\b|\belevad|abaixo do (?:nivel|solo)", t):
+        return "Sim"
+    if re.search(r"nivel da rua|\bna rua\b|\bterreo\b", t):
+        return "Não"
+    return None
+
+
+#: O que, num relato de PANE, diz que houve polícia — e a partir daí o caso é
+#: de uma pessoa (a mesma leitura do D5: acidente vira sinistro, não assistência).
+_RX_RELATO_COM_POLICIA = re.compile(
+    r"polici|acident|batid|\bbati\b|bateram|colis|capot|roub|furt|assalt|vitima|ferid|"
+    r"boletim|\bb\.?o\b")
+
+
+def _policia_pela_pane(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    relato = _texto_normal(" ".join(str(slots.get(c) or "") for c in
+                                    ("problema_descricao", "problema_relato", "descricao")))
+    if not relato or _RX_RELATO_COM_POLICIA.search(relato):
+        return None
+    return "Não"
+
+
+def _placa_e_modelo(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    placa = _identificador_do_caso(slots.get("veiculo_placa"), slots, tela)
+    if not placa or not _RX_PLACA_BR.match(placa):
+        return None
+    modelo = " ".join(str(slots.get("veiculo_descricao") or "").split())
+    return f"{placa} {modelo}".strip()
+
+
+def _imediato_ou_agendado(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    t = _texto_normal(slots.get("quando"))
+    if re.search(r"agend|\d{1,2}/\d{1,2}|amanha|semana que vem|depois", t):
+        return "Agendado"
+    if re.search(r"agora|urgen|imediat|\bja\b|hoje|rapido|o quanto antes", t):
+        return "Imediato"
+    return None
+
+
+def _o_proprio_segurado(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    pessoa_bruta = " ".join(str(slots.get("pessoa_no_local") or "").split())
+    pessoa = _texto_normal(pessoa_bruta)
+    if not pessoa:
+        return None
+    if re.search(r"\b(?:eu|ele|ela) mesm|\bo proprio\b|\ba propria\b|\bsegurad|\btitular\b", pessoa):
+        return "Sim"
+    titular = _texto_normal(slots.get("titular_nome"))
+    if not titular:
+        return None
+    if pessoa.split()[0] == titular.split()[0] and (pessoa in titular or titular in pessoa):
+        return "Sim"
+    return f"Não. Quem está no local é {pessoa_bruta}."
+
+
+# ─── 🔴 D13 · OS AMPERES — a tela que NUNCA trava, em NENHUMA seguradora ───────
+#
+# O Founder, 28/09/2026: *"Não podemos chamar suporte humano nessa pergunta em
+# nenhuma seguradora... ela não vai mudar muita coisa pro prestador... Garanta
+# que o agente não vai travar e vai conseguir responder isso sempre, seja
+# escrito ou múltipla escolha ou pra digitar um número."*
+#
+# 📊 A distribuição que ele forneceu (SPEC-120 §3.1): 60 Ah ~50–55% da frota ·
+#    45–50 Ah ~25–30% · 70–75 Ah ~15% · 80+ Ah ~5%.
+#
+# ⚠️ Uma lista CURTA — só os modelos que ele citou, mais duas regras de porte que
+#    não deixam dúvida (diesel leve no Brasil é caminhonete/SUV grande; start-stop
+#    pede bateria maior). ⛔ Nada de tabela de 5.000 modelos: *"se for algo muito
+#    confuso... devíamos responder tudo 60 amperes"*. Errar para 60 é aceitável;
+#    travar não é.
+AMPERES_PADRAO = 60
+_AMPERES_POR_PORTE = (
+    (80, r"\bhilux\b|\bs ?-?10\b|\bdiesel\b"),
+    (70, r"\bcorolla\b|\bcivic\b|\bcompass\b|start ?-?stop"),
+    (50, r"\bmobi\b|\bkwid\b|\bcelta\b|\bgol\b[\s\S]{0,12}\b1[.,]0\b"),
+    (60, r"\bonix\b|\bhb ?20\b|\bpolo\b|\bargo\b"),
+)
+_RX_AMPERES_DITOS = re.compile(r"\b(\d{2,3})\s*(?:ah\b|a\b|amp)")
+
+
+def amperes_do_caso(slots: Dict[str, Any]) -> int:
+    """O Ah deste caso — e, em QUALQUER dúvida, 60. ⛔ Nunca levanta."""
+    try:
+        texto = _texto_normal(" ".join(str((slots or {}).get(c) or "") for c in (
+            "bateria_amperes", "veiculo_descricao", "problema_descricao",
+            "problema_relato")))
+        dito = _RX_AMPERES_DITOS.search(texto)
+        if dito and 30 <= int(dito.group(1)) <= 200:
+            return int(dito.group(1))  # o segurado disse — o caso manda
+        for ah, padrao in _AMPERES_POR_PORTE:
+            if re.search(padrao, texto):
+                return ah
+    except Exception:  # noqa: BLE001 — a regra do Founder: nunca travar aqui
+        pass
+    return AMPERES_PADRAO
+
+
+def _faixa_do_rotulo(rotulo: str) -> Optional[Tuple[float, float]]:
+    """`"45 a 50 Ah"` → (45, 50) · `"até 50Ah"` → (0, 50) · `"acima de 70"` → (70, 999)."""
+    t = _texto_normal(rotulo)
+    nums = [int(n) for n in re.findall(r"\d{2,3}", t)]
+    if not nums:
+        return None
+    if re.search(r"\bate\b|\bmenos de\b|\babaixo de\b", t):
+        return (0, nums[0])
+    if re.search(r"\bacima\b|\bmais de\b|\bou mais\b|\+", t):
+        return (nums[0], 999)
+    return (min(nums), max(nums))
+
+
+def responder_amperes(tela: str, slots: Dict[str, Any]) -> str:
+    """🔴 A resposta à pergunta dos amperes, na FORMA que a tela aceita. Nunca vazia.
+
+    ```
+    texto livre / "digite o número"   → "60" (ou a faixa do porte)
+    opções numéricas                  → a que CONTÉM o alvo; senão a mais próxima
+    só "Sim"/"Não" ("você sabe?")     → "Sim" — e a próxima tela recebe o número
+    opções sem número                 → "Não sei", se houver; senão o NÚMERO
+    ```
+    Tecla numerada (`*1 -*`) sai como DÍGITO; botão e lista saem como RÓTULO —
+    é a forma que cada bot aceita (`opcoes_da_tela`).
+    """
+    alvo = amperes_do_caso(slots)
+    try:
+        opcoes = [(k, " ".join(str(r).split())) for k, r in opcoes_da_tela(tela or "")]
+        opcoes = [(k, r) for k, r in opcoes if r and not r.rstrip().endswith("?")]
+        conteudo = [(k, r) for k, r in opcoes if not rotulo_e_de_navegacao(r)]
+        if len(opcoes) < 2 and not any(k for k, _ in opcoes):
+            return str(alvo)  # texto livre: a pergunta não oferece opção nenhuma
+        botao = bool(re.search(r"bot[ãa]o\s*\d", str(tela or ""), re.IGNORECASE))
+
+        def _sai(k: str, r: str) -> str:
+            return k if (k and not botao) else r
+
+        faixas = [(k, r, _faixa_do_rotulo(r)) for k, r in conteudo]
+        numericas = [(k, r, f) for k, r, f in faixas if f]
+        if numericas:
+            dentro = [(k, r) for k, r, f in numericas if f[0] <= alvo <= f[1]]
+            if dentro:
+                return _sai(*dentro[0])
+            k, r, _f = min(numericas, key=lambda x: min(abs(alvo - x[2][0]),
+                                                          abs(alvo - x[2][1])))
+            return _sai(k, r)
+        normais = [_texto_normal(r) for _k, r in conteudo]
+        if set(normais) <= {"sim", "nao"} and "sim" in normais:
+            k, r = conteudo[normais.index("sim")]
+            return _sai(k, r)
+        for (k, r), n in zip(conteudo, normais):
+            if "nao sei" in n:
+                return _sai(k, r)
+        # ⛔ Nenhum rótulo reconhecível: as "opções" podem ser só linhas de
+        #    conversa (*"Boa tarde"*, *"Sou a consultora"*). Mandar uma delas
+        #    seria responder o que ninguém perguntou — sai o número.
+        return str(alvo)
+    except Exception:  # noqa: BLE001 — a regra do Founder: nunca travar aqui
+        return str(alvo)
+
+
+def _amperes_da_bateria(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    return responder_amperes(tela, slots) or str(AMPERES_PADRAO)
+
+
+def _data_da_lista(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """D7 — a data que o segurado pediu, se estiver na lista; senão a PRIMEIRA.
+
+    📊 porto-auto `910b6295`: *"Estas são as datas disponíveis para agendamento.
+    Por favor, selecione a data..."* e sete datas em LISTA (sem número): a
+    resposta válida é o rótulo da data, e o humano respondeu a primeira.
+    """
+    rotulos = [" ".join(str(r).split()) for _k, r in opcoes_da_tela(tela or "")]
+    datas = [r for r in rotulos if r and not rotulo_e_de_navegacao(r)
+             and not re.search(r"outra data|escolher|selecione|dispon", _texto_normal(r))]
+    if not datas:
+        return None
+    desejada = re.sub(r"\D", "", str(slots.get("data_agendamento") or ""))[:4]
+    if len(desejada) == 4:
+        for r in datas:
+            if re.sub(r"\D", "", r)[:4] == desejada:
+                return r
+    return datas[0]
+
+
+_FORMATOS_DA_RESPOSTA = {
+    "sim_nao": _sim_nao,
+    "identificador_do_caso": _identificador_do_caso,
+    "so_digitos": _so_digitos,
+    "garagem_sim_nao": _garagem_sim_nao,
+    "subsolo_ou_acima_da_rua": _subsolo_ou_acima_da_rua,
+    "policia_pela_pane": _policia_pela_pane,
+    "placa_e_modelo": _placa_e_modelo,
+    "imediato_ou_agendado": _imediato_ou_agendado,
+    "o_proprio_segurado": _o_proprio_segurado,
+    "amperes_da_bateria": _amperes_da_bateria,
+    "data_da_lista": _data_da_lista,
+}
+#: Os formatos que precisam da TELA, e não só do caso — `match_ura_step` os
+#: devolve com `_tela` (numa CÓPIA do passo).
+_FORMATOS_QUE_LEEM_A_TELA = frozenset({"amperes_da_bateria", "data_da_lista"})
+
+
 def _format_phone_br(value: str) -> str:
     """Formata dígitos no padrão estrito '(dd) 99999-9999' (a Azul REJEITA outro)."""
     d = "".join(ch for ch in str(value or "") if ch.isdigit())
@@ -10218,8 +10651,27 @@ def render_reply(step: Dict[str, Any], slots: Dict[str, Any]) -> Dict[str, Any]:
         reply = template.format(**{k: str(v) for k, v in slots.items()})
     except KeyError as exc:  # placeholder sem slot
         return {"ok": False, "missing": [str(exc).strip("'")], "reply": None}
-    if step.get("format") == "phone_br":
+    formato = str(step.get("format") or "")
+    if formato == "phone_br":
         reply = _format_phone_br(reply)
+    elif formato:
+        # 🔴 SPEC-120 — a resposta que sai do CASO (e, nos dois formatos de
+        #    `_FORMATOS_QUE_LEEM_A_TELA`, da própria tela). ⛔ Formato que este
+        #    arquivo não conhece NÃO passa o texto cru adiante: falha fechada,
+        #    e quem decide o que fazer com a falta é o motor (cérebro, ou uma
+        #    pessoa quando o passo é `sem_chute`).
+        formatador = _FORMATOS_DA_RESPOSTA.get(formato)
+        pronto = None
+        if formatador is not None:
+            try:
+                pronto = formatador(reply, slots or {}, str(step.get("_tela") or ""))
+            except Exception:  # noqa: BLE001 — formatador nunca derruba o acionamento
+                pronto = None
+        if not pronto:
+            faltou = (list(step.get("requires") or [])
+                      or _RX_SLOT_DO_REPLY.findall(template) or [f"formato:{formato}"])
+            return {"ok": False, "missing": faltou, "reply": None}
+        reply = pronto
     return {"ok": True, "missing": [], "reply": reply}
 
 
@@ -11460,6 +11912,9 @@ _COMO_PERGUNTAR = {
     "data_agendamento": "para que dia ele quer o agendamento",
     "veiculo_cor": "a cor do veículo",
     "taxi_passageiros": "quantas pessoas vão no táxi",
+    # 🔴 SPEC-120 · D9 — só a porto, e é o FOUNDER quem decidiu perguntar.
+    "taxi_apos_guincho": "se ele vai precisar de um táxi para sair do local "
+                         "depois que o guincho levar o carro (a Porto oferece)",
     "pet_nome": "o nome do animal",
     "pet_raca": "a raça do animal",
     "pet_idade": "a idade do animal",
@@ -12671,3 +13126,398 @@ for _pb_bt in (AZUL_AUTO_WHATSAPP_V1, PORTO_AUTO_WHATSAPP_V1):
         _req_bt = list(_sub_bt.get("required_slots") or [])
         if "bateria_tipo_opcao" not in _req_bt:
             _sub_bt["required_slots"] = _req_bt + ["bateria_tipo_opcao"]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-120 F1 · AS TELAS QUE NINGUÉM RESPONDIA — e quem decidiu cada resposta
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 A fonte é `docs/canon/reports/TELAS-SEM-RESPOSTA-DOS-16.json`: 86 telas
+#    órfãs em 10 rotas, e 67 delas com a resposta que uma PESSOA deu na conversa
+#    real. ⚠️ Resposta humana é evidência forte, NÃO prova — e duas delas estavam
+#    ERRADAS, e o passo abaixo diz por quê (hdi-resid 61b96027: o "Sim" abriu um
+#    SEGUNDO protocolo; zona rural: o "Sim" era da tela SEGUINTE).
+#
+# 🔴 Cada constante que ESCOLHE entre alternativas de conteúdo cita a decisão do
+#    Founder (SPEC-120 §3, D1–D14) e NOMEIA o rótulo da tela real — é o guarda
+#    `_constantes_que_nao_nomeiam_o_rotulo` da SPEC-119.
+#
+# ⚠️ Estes passos entram no FIM das listas de propósito: 📊 nenhum passo
+#    existente casa estas telas hoje (é por isso que eram órfãs), então o fim
+#    não rouba tela de ninguém. A exceção são os AMPERES, que entram no COMEÇO —
+#    é a regra que tem de vencer sempre (D13).
+
+_SPEC120_FAMILIA_AUTO = [
+    # ---- as quatro condições do veículo: D1, D3, D4, D5 ---------------------
+    {"step": "rodas_livres",
+     "anchor": r"o ve[íi]culo encontra-se com as rodas livres",
+     "reply": "Sim",
+     "constante_justificada": (
+         "D5 (Founder, 28/09/2026): `Sim` -- as rodas estao livres. 'Rodas "
+         "travadas sao de algum acidente e ai provavelmente vira sinistro e nao "
+         "assistencia.' O botao `Nao` so e verdade num caso que nao e deste "
+         "corredor. 📊 hdi 2548c9c7 (humano: Sim), 78b2de6f."),
+     "notes": "📊 hdi 2 telas / 2 sessões. Sim/Não/Voltar."},
+    {"step": "cambio_travado",
+     "anchor": r"o c[âa]mbio est[áa] travado",
+     "reply": "Não",
+     "constante_justificada": (
+         "D3 (Founder, 28/09/2026): `Nao` -- 'sempre colocar nao'. 📊 hdi "
+         "2548c9c7 e 78b2de6f, yelum 19d73270: os TRES humanos responderam Nao."),
+     "notes": "📊 3 telas / 3 sessões (hdi 2 · yelum 1)."},
+    {"step": "veiculo_blindado_familia",
+     "anchor": r"o ve[íi]culo [ée] blindado",
+     "reply": "Não",
+     "constante_justificada": (
+         "D1 (Founder, 28/09/2026): `Nao` -- 'nao vai mudar o guincho por causa "
+         "disso. Nao precisa perguntar.' 📊 6 telas, 6 sessoes, e os 6 humanos "
+         "que responderam disseram Nao (hdi 2548c9c7, 83d2b9e3 · yelum 7c841763, "
+         "705f915b, ba9f1970, b187d77a)."),
+     "notes": "📊 hdi 2 · yelum 4. Sim/Não/Voltar."},
+    {"step": "veiculo_desatrelado",
+     "anchor": r"o ve[íi]culo est[áa] desatrelado",
+     "reply": "Sim",
+     "constante_justificada": (
+         "D4 (Founder, 28/09/2026, confirmado): `Sim` -- 'deve usar a "
+         "probabilidade maior': desatrelado = nao esta preso a reboque/trailer, "
+         "o caso normal. ⚠️ 📊 Os dois humanos DIVERGIRAM: yelum 6b4c37e4 disse "
+         "Sim, hdi 4b2d0c2a disse Nao. A constante segue a decisao, e a "
+         "divergencia esta no relatorio da SPEC-120."),
+     "notes": "📊 3 telas / 3 sessões (hdi fa2ceb6f, 4b2d0c2a · yelum 6b4c37e4)."},
+    # ---- D2: o nível da rua é do CASO ---------------------------------------
+    {"step": "garagem_subsolo_ou_acima",
+     "anchor": r"garagem subsolo ou acima do n[íi]vel da rua",
+     "reply": "{veiculo_nivel_rua}", "requires": ["veiculo_nivel_rua"],
+     "format": "subsolo_ou_acima_da_rua", "classe": "decide",
+     "fallback_adaptive": True,
+     "notes": "📊 5 telas / 5 sessões (hdi 78b2de6f, 4b2d0c2a · yelum 56bd78f7, "
+              "705f915b, ba9f1970). 🔴 D2 (Founder): 'precisa perguntar onde está "
+              "o carro. Esse depende do caso.' `veiculo_nivel_rua` é cobrado do "
+              "segurado ANTES de acionar; Subsolo/Acima = Sim, nível da rua = Não."},
+    # ---- D6: o animal no táxi -----------------------------------------------
+    {"step": "animal_de_estimacao",
+     "anchor": r"possui animal de estima[çc][ãa]o",
+     "reply": "Não",
+     "constante_justificada": (
+         "D6 (Founder, 28/09/2026): `Nao` -- 'pode deixar nao como padrao. Nao "
+         "precisa perguntar.' 📊 hdi fa2ceb6f e ea61eb64: a pergunta vem no galho "
+         "do TAXI (depois de passageiros e bagagens); o humano de ea61eb64 disse Nao."),
+     "notes": "📊 2 telas / 2 sessões."},
+    # ---- telas que só AVISAM ------------------------------------------------
+    # ⚠️ 🔴 A RESPOSTA HUMANA AQUI ERA DA TELA SEGUINTE. 📊 yelum 56bd78f7 e
+    #    21243a23: o "Sim" que o banco atribui a esta tela foi dado à pergunta
+    #    que chega no MESMO segundo — *"Você confirma o endereço?"*, que
+    #    `confirma_endereco` já responde. Esta bolha não pergunta nada; mandar
+    #    "Sim" nela entregaria um "Sim" a mais à URA.
+    {"step": "zona_rural_coordenada",
+     "anchor": r"como o ve[íi]culo encontra-se em zona rural, passaremos a coordenada",
+     "reply": "", "noop": True,
+     "notes": "📊 3 telas / 3 sessões (hdi fa2ceb6f · yelum 56bd78f7, 21243a23). AVISO."},
+    {"step": "informe_novamente_aviso",
+     "anchor": r"^\s*nesse caso, vou precisar que me informe novamente\.?\s*$",
+     "reply": "", "noop": True,
+     "notes": "📊 hdi 2548c9c7. Aviso; a pergunta (só a rua) vem na bolha seguinte."},
+    {"step": "ja_tentou_abrir_aviso",
+     "anchor": r"identifiquei que voc[êe] j[áa] tentou abrir um atendimento e preencheu",
+     "reply": "", "noop": True,
+     "notes": "📊 yelum 01bf91c2. Cabeçalho; os botões vêm na bolha seguinte."},
+    {"step": "continuar_de_onde_parou",
+     "anchor": r"gostaria de abrir um novo atendimento ou continuar de onde parou",
+     "reply": "Continuar",
+     "constante_justificada": (
+         "📊 yelum 01bf91c2: os DOIS humanos responderam `Continuar`. `Novo "
+         "atendimento` abre um SEGUNDO caso para a mesma placa e perde o primeiro "
+         "(SPEC-119: rotulo que comeca trabalho novo nao navega). ⚠️ Os dados "
+         "preenchidos antes sao conferidos de novo na confirmacao final "
+         "(`conferir_confirmacao`), que compara o resumo com o caso."),
+     "notes": "📊 1 tela / 1 sessão. Botão 1: Continuar · Botão 2: Novo atendimento."},
+    # ---- o destino, em duas redações novas ----------------------------------
+    {"step": "destino_so_a_rua",
+     "anchor": (r"para qual endere[çc]o devemos lev[aá]\s*-?\s*lo\?[\s\S]{0,10}"
+                r"informe apenas o nome da rua"),
+     "reply": "{destino_rua}", "fallback_adaptive": True,
+     "only_subservices": ["guincho"],
+     "notes": "📊 hdi 2548c9c7 (humano: o nome da rua do destino). `destino_rua` "
+              "sai de `local_destino` por `inject_address_slots`."},
+    {"step": "destino_com_indicacao",
+     "anchor": r"agora definiremos \*?o endere[çc]o para onde o ve[íi]culo ser[áa] levado",
+     "reply": "Digitar endereço", "only_subservices": ["guincho"],
+     "constante_justificada": (
+         "`Digitar endereco` x `Informar CEP` sao dois METODOS de entregar o MESMO "
+         "destino (`local_destino`, cobrado antes de acionar). `Quero indicacao`, "
+         "`Oficinas proximas` e `Oficinas na minha cidade` sao ESCOLHA DE OFICINA "
+         "-- conteudo que o segurado ja decidiu ao dizer para onde o carro vai. "
+         "📊 yelum 705f915b (humano: Digitar endereco), b187d77a (Informar CEP), "
+         "29ae4344, 19d73270, 7c841763, a1c18e1c."),
+     "notes": "📊 6 telas / 6 sessões, nas duas redações (botões e lista)."},
+    # ---- a placa que a URA não achou ----------------------------------------
+    {"step": "placa_nao_encontrada_familia",
+     "anchor": r"n[ãa]o encontrei a placa, poderia tentar novamente",
+     "reply": "{veiculo_placa}", "reply_repeat": "{titular_cpf}",
+     "requires": ["veiculo_placa"], "format": "identificador_do_caso",
+     "fallback_adaptive": True,
+     "notes": "📊 hdi 4b2d0c2a (humano: a placa de novo) · yelum 7c841763. 1ª vez: "
+              "a placa no formato que a URA pede (AAA1A23, sem traço); 2ª vez: o "
+              "CPF do titular, que o caso já tem."},
+    {"step": "placa_nao_encontrada_tenta_cpf",
+     "anchor": r"n[ãa]o encontrei esta placa em nosso sistema\. vamos tentar com o \*?cpf",
+     "reply": "{titular_cpf}", "requires": ["titular_cpf"],
+     "format": "identificador_do_caso",
+     "notes": "📊 yelum 29ae4344. ⚠️ O humano mandou a PLACA de novo numa tela "
+              "que pedia CPF — o corredor manda o que a tela pede."},
+    # ---- depois do protocolo: não abrir o segundo ---------------------------
+    {"step": "outro_servico_apos_protocolo",
+     "anchor": r"gostaria de solicitar algum outro servi[çc]o",
+     "reply": "Não",
+     "constante_justificada": (
+         "📊 hdi fa2ceb6f: a tela vem DEPOIS de 'Sua solicitacao foi aberta com "
+         "sucesso' e do resumo com o numero da assistencia. `Sim` abriria um "
+         "SEGUNDO servico que ninguem pediu -- o corredor foi aberto para UM "
+         "acionamento, e ele ja existe. `Nao` encerra o que foi pedido."),
+     "notes": "📊 1 tela / 1 sessão. Botão 1: Sim · Botão 2: Não."},
+]
+for _pb120 in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1):
+    _pb120["ura_steps"] = list(_pb120["ura_steps"]) + [dict(p) for p in _SPEC120_FAMILIA_AUTO]
+    _pb120["handoff_triggers"] = list(_pb120.get("handoff_triggers") or []) + [
+        # 🔴 SINISTRO → uma pessoa, e é o comportamento CERTO. 📊 yelum 7c841763,
+        #    29ae4344: "A polícia liberou o veículo?" — o carro esteve retido.
+        r"a pol[íi]cia liberou o ve[íi]culo",
+        # 🔴 DESFECHO SEM PROTOCOLO. 📊 hdi 4b2d0c2a: *"Sua solicitação está
+        #    pendente... entraremos em contato com você através do número ... nos
+        #    próximos minutos"*. Não há protocolo para entregar; alguém precisa
+        #    acompanhar a ligação da seguradora.
+        r"sua solicita[çc][ãa]o est[áa] pendente",
+        # 🔴 JÁ EXISTE ASSISTÊNCIA PARA ESTA PLACA. 📊 hdi 4b2d0c2a, yelum
+        #    859d185c: *"A solicitação de GUINCHO está concluída. Por favor,
+        #    selecione abaixo o assunto..."* — é acompanhamento, não abertura.
+        r"a solicita[çc][ãa]o de [a-z ]{3,40} est[áa] conclu[íi]da",
+    ]
+
+# ---- HDI residencial --------------------------------------------------------
+# 🔴 D12 — entrar como SEGURADO. O passo `perfil` da família responde `Sou
+#    corretor(a)`, e a justificativa dele é de VERDADE ("quem opera a URA é a
+#    corretora"). A decisão da SPEC-120 é outra, e fica registrada a tensão:
+#    📊 hdi-residencial, 8 sessões do acervo: 6 seguiram pelo caminho do
+#    SEGURADO ("você é a pessoa que está no local?") e 2 pelo do corretor; os
+#    dois caminhos têm passo. Vale só para a HDI RESIDENCIAL.
+HDI_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = [
+    {"step": "perfil_hdi_residencial",
+     "anchor": (r"escolha a op[çc][ãa]o que melhor te representa|"
+                r"em qual dessas op[çc][õo]es voc[êe] se enquadra"),
+     "reply": "Sou segurado(a)",
+     "constante_justificada": (
+         "D12 (SPEC-120 §3): `Sou segurado(a)` entre `Sou segurado(a)`, `Sou "
+         "corretor(a)` e `Outro` -- 'entrar como segurado e o caminho que o "
+         "corredor ja conhece'. 📊 hdi-residencial: 6 das 8 sessoes do acervo "
+         "seguiram por ele (1c8d0849, 834cc238, ed46a953, b638adcd, 0a7c24ef, "
+         "13379965). ⚠️ O passo `perfil` da familia responde `Sou corretor(a)` "
+         "por fidelidade a quem opera a URA; nesta seguradora e ramo, a decisao "
+         "e outra."),
+     "notes": "📊 Botão 1: Sou segurado(a) · Botão 2: Sou corretor(a) · Botão 3: Outro."},
+] + list(HDI_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "servicos_disponiveis_aviso",
+     "anchor": r"por aqui, voc[êe] pode solicitar os seguintes servi[çc]os",
+     "reply": "", "noop": True,
+     "notes": "📊 hdi 61b96027. CARDÁPIO informativo ('caso não encontre, digite "
+              "SAIR'). ⚠️ O 'Sou corretor(a)' atribuído a ela era a resposta à "
+              "tela SEGUINTE (o perfil)."},
+    {"step": "nova_solicitacao_apos_protocolo",
+     "anchor": r"deseja abrir uma nova solicita[çc][ãa]o de servi[çc]o",
+     "reply": "Não",
+     "constante_justificada": (
+         "🔴 A RESPOSTA HUMANA ESTAVA ERRADA, e a sessao prova. 📊 hdi 61b96027: "
+         "a tela chega DEPOIS de 'Assistencia solicitada!' (protocolo 19905659); "
+         "a atendente respondeu `Sim`, e 2 minutos depois saiu um SEGUNDO "
+         "protocolo (19905675) -- mesmo servico, mesmo endereco. `Nao` e a unica "
+         "resposta que nao duplica o chamado."),
+     "notes": "📊 1 tela / 1 sessão. Botão 1: Sim · Botão 2: Não."},
+]
+
+# ---- ALLIANZ residencial ----------------------------------------------------
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = list(
+    ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [
+    # 📊 allianz 0591c1d1: a apólice era de AUTO com benefício residencial
+    #    (*"algumas apólices automotivas dão benefícios para residência"*). A
+    #    placa só existe no caso quando a apólice é essa; sem ela, o cérebro.
+    {"step": "placa_do_beneficio_residencial",
+     "anchor": (r"para confirmamos o benef[íi]cio residencial na sua ap[óo]lice, "
+                r"informe a \*?placa"),
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "format": "identificador_do_caso", "fallback_adaptive": True,
+     "notes": "📊 1 tela / 1 sessão (0591c1d1)."},
+    {"step": "confirme_veiculo_do_seguro",
+     "anchor": r"confirme o ve[íi]culo do seguro",
+     "dynamic": "vehicle_by_plate", "reply": "{veiculo_opcao}",
+     "fallback_adaptive": True,
+     "notes": "📊 0591c1d1: '*1* - COMPASS, placa RX#-###3 *2* - Outro veículo "
+              "*3* - Sair'. Pela PLACA do caso, como `veiculo_por_placa`."},
+    # 🔴 O REPIQUE. 📊 allianz 590b5940 (maquina_de_lavar): "Agora, me confirme o
+    #    número da residência." → a URA recusou → "Informe somente números." →
+    #    o humano mandou só os dígitos. É a ÚNICA tela órfã dessa rota.
+    # ⚠️ O que se reenvia é o número da residência, e não "o último campo
+    #    enviado": 📊 a única ocorrência vem depois de `numero_residencia`, e
+    #    `render_reply` não enxerga a conversa. Ver P-120-07.
+    {"step": "repique_somente_numeros",
+     "anchor": r"^\s*informe somente n[úu]meros\.?\s*$",
+     "reply": "{endereco_numero}", "requires": ["endereco_numero"],
+     "format": "so_digitos", "fallback_adaptive": True,
+     "only_subservices": ["ar_condicionado", "chaveiro", "consulta_veterinaria",
+                          "desentupimento", "eletricista", "eletrodomesticos",
+                          "encanador", "limpeza_caixa_dagua", "maquina_de_lavar"],
+     "notes": "📊 1 tela / 1 sessão (590b5940). Os dígitos do número da residência."},
+]
+
+# ---- AZUL -------------------------------------------------------------------
+AZUL_AUTO_WHATSAPP_V1["ura_steps"] = list(AZUL_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "pode_ligar_qualquer_azul",
+     "anchor": r"posso te ligar em qualquer um deles",
+     "reply": "1",
+     "constante_justificada": (
+         "D10 (SPEC-120 §3): `1` = `Sim` -- 'o telefone e o do segurado, nao o da "
+         "atendente'. A tela lista os DOIS telefones do cadastro do segurado; `4` "
+         "(Nenhum dos dois), que a atendente usou em 2f0cd86a, tiraria do "
+         "prestador o unico jeito de achar quem esta no carro. Mesma resposta que "
+         "a porto ja da (`pode_ligar_qualquer`)."),
+     "notes": "📊 azul 2f0cd86a. *1* Sim *2* Não, apenas no primeiro *3* Apenas no "
+              "segundo *4* Nenhum dos dois."},
+]
+
+# ---- BRADESCO ---------------------------------------------------------------
+BRADESCO_AUTO_WHATSAPP_V1["ura_steps"] = list(BRADESCO_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "impedido_de_rodar",
+     "anchor": r"o ve[íi]culo est[áa] impedido de rodar",
+     "reply": "Sim", "only_subservices": ["guincho"],
+     "constante_justificada": (
+         "D11 (Founder, 28/09/2026): `Sim` -- 'senao nao tinha chamado o "
+         "guincho'. 📊 bradesco 72af1ae1 e 706df513: os dois humanos responderam Sim."),
+     "notes": "📊 2 telas / 2 sessões. Botão 1: Sim · Botão 2: Não."},
+    # ⚠️ 🔴 DECISÃO DO EXECUTOR, FORA DA §3 — e está no relatório para o Founder.
+    #    A tela vem DEPOIS de o corredor apertar `1 - Pane` (o `2 - Acidente` é
+    #    outra rota), e a URA pergunta de polícia mesmo na pane. 📊 706df513: o
+    #    humano disse Não. O "Não" sai só quando o RELATO não fala de polícia,
+    #    acidente, batida, roubo ou vítima; se falar, é `sem_chute` → uma pessoa
+    #    (a leitura do D5: acidente vira sinistro, não assistência).
+    {"step": "policia_no_local_pane",
+     "anchor": r"precisou chamar a pol[íi]cia a[íi] no local",
+     "reply": "{problema_descricao}", "requires": ["problema_descricao"],
+     "format": "policia_pela_pane", "classe": "decide", "sem_chute": True,
+     "notes": "📊 2 telas / 2 sessões (72af1ae1, 706df513)."},
+]
+
+# ---- PORTO ------------------------------------------------------------------
+_sub_guincho_porto = PORTO_AUTO_WHATSAPP_V1["subservices"]["guincho"]
+if "taxi_apos_guincho" not in (_sub_guincho_porto.get("required_slots") or []):
+    _sub_guincho_porto["required_slots"] = (
+        list(_sub_guincho_porto.get("required_slots") or []) + ["taxi_apos_guincho"])
+
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "taxi_pode_depois_aviso",
+     "anchor": (r"depois de concluir o agendamento do guincho,\s*"
+                r"voc[êe] tamb[ée]m pode solicitar um t[áa]xi"),
+     "reply": "", "noop": True,
+     "notes": "📊 4 telas / 4 sessões (77983f63, 51b2ed32, a9560e3a, 12203ed9). AVISO."},
+    {"step": "taxi_alem_do_guincho",
+     "anchor": r"al[ée]m do guincho, voc[êe] precisa tamb[ée]m solicitar um t[áa]xi",
+     "reply": "{taxi_apos_guincho}", "requires": ["taxi_apos_guincho"],
+     "format": "sim_nao", "classe": "decide", "sem_chute": True,
+     "only_subservices": ["guincho"],
+     "notes": "📊 4 telas / 4 sessões. 🔴 D9 (Founder): 'pode perguntar então. Mas "
+              "isso precisa ser para a Porto Seguro.' Cobrado ANTES de acionar."},
+    {"step": "destino_endereco_completo_porto",
+     "anchor": r"^\s*por favor, digite o endere[çc]o completo\. coloque assim",
+     "reply": "{local_destino}", "requires": ["local_destino"],
+     "fallback_adaptive": True, "only_subservices": ["guincho"],
+     "notes": "📊 4 telas / 4 sessões, TODAS logo depois de 'Você já sabe para "
+              "onde o guincho deve levar seu veículo?' — é o DESTINO (mesma leitura "
+              "da azul, `endereco_destino_livre_2025`)."},
+    {"step": "veiculo_do_atendimento_porto",
+     "anchor": r"o atendimento [ée] para qual ve[íi]culo",
+     "dynamic": "vehicle_by_plate", "reply": "{veiculo_opcao}",
+     "fallback_adaptive": True,
+     "notes": "📊 12203ed9. Pela PLACA do caso — '1' fixo pega o carro errado."},
+    {"step": "retomar_agendamento_porto",
+     "anchor": r"eu vi que voc[êe] estava agendando um servi[çc]o",
+     "reply": "Sim",
+     "constante_justificada": (
+         "📊 porto 12203ed9: a URA oferece CONTINUAR o agendamento em curso "
+         "('para nao precisar reiniciar o seu atendimento'). `Sim` segue o MESMO "
+         "pedido; `Nao` joga fora o que ja foi preenchido."),
+     "notes": "📊 1 tela / 1 sessão. Botão 1: Sim · Botão 2: Não."},
+    # ⚠️ 🔴 DECISÃO DO EXECUTOR, FORA DA §3 — no relatório para o Founder.
+    {"step": "manter_horario_oficina_fechada",
+     "anchor": r"gostaria de continuar com o hor[áa]rio escolhido mesmo assim",
+     "reply": "Sim",
+     "constante_justificada": (
+         "📊 porto 12203ed9: a tela chega junto do aviso 'a oficina pode estar "
+         "fechada... o prestador pode levar o veiculo para seu endereco ou uma "
+         "base, e no proximo dia util um novo guincho leva a oficina' -- que o "
+         "passo `oficina_fechada` ja transforma em REGRA AO CLIENTE. `Sim` mantem "
+         "o horario que o segurado pediu; `Outro horario` e `Outra data` "
+         "decidiriam por ele um horario que ele nao pediu."),
+     "notes": "📊 1 tela / 1 sessão. Sim · Outro horário · Outra data."},
+    {"step": "tipo_de_atendimento_veiculo",
+     "anchor": (r"qual tipo de atendimento voc[êe] precisa\?[\s\S]{0,40}"
+                r"servi[çc]os para ve[íi]culo"),
+     "reply": "Serviços para veículo",
+     "constante_justificada": (
+         "`Servicos para veiculo` entre `Servicos para veiculo`, `Servicos para "
+         "residencia` e `Consultar apolice`: o ramo e a IDENTIDADE desta rota "
+         "(porto/AUTO). 📊 porto ba772444 (apolice Protecao Combinada, casa+carro): "
+         "o humano respondeu `Servicos para veiculo`."),
+     "notes": "📊 1 tela / 1 sessão."},
+    {"step": "datas_disponiveis_porto",
+     "anchor": r"estas s[ãa]o as \*?datas dispon[íi]veis para agendamento",
+     "reply": "", "format": "data_da_lista", "fallback_adaptive": True,
+     "constante_justificada": (
+         "D7 (Founder, 28/09/2026): a PRIMEIRA data disponivel -- 'pode ser a "
+         "primeira data disponivel'. Se o segurado pediu uma data e ela esta na "
+         "lista, vai a dele. 📊 porto 910b6295: o humano respondeu a primeira."),
+     "notes": "📊 1 tela / 1 sessão. LISTA sem número: a resposta é o RÓTULO da data."},
+    {"step": "pesquisa_de_satisfacao_porto",
+     "anchor": r"o quanto voc[êe] recomendaria o nosso atendimento",
+     "reply": "", "noop": True,
+     "notes": "📊 4830574a. DESFECHO: pesquisa de 0 a 10, não se responde."},
+    # ---- porto/bateria: as quatro telas que não são da consultora ------------
+    # ⚠️ As OUTRAS seis telas órfãs desta rota (4830574a) são uma PESSOA da Porto
+    #    (a consultora de relacionamento que assume a conversa). Reconhecer isso
+    #    é do motor, não do corredor: P-120-04.
+    {"step": "placa_e_modelo",
+     "anchor": r"informe a placa e o modelo do ve[íi]culo",
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "format": "placa_e_modelo", "fallback_adaptive": True,
+     "notes": "📊 4830574a. Placa (sem traço) + o modelo, quando o caso tem."},
+    {"step": "o_proprio_segurado",
+     "anchor": r"^\W*o pr[óo]prio segurado\s*\?",
+     "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"],
+     "format": "o_proprio_segurado", "classe": "decide", "fallback_adaptive": True,
+     "notes": "📊 4830574a. Quem está no local é o titular? Do caso."},
+    {"step": "imediato_ou_agendado",
+     "anchor": r"servi[çc]o imediato ou agendado",
+     "reply": "{quando}", "requires": ["quando"],
+     "format": "imediato_ou_agendado", "classe": "decide", "fallback_adaptive": True,
+     "notes": "📊 4830574a (humano: 'imediato'). Do `quando` do caso."},
+]
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-120 F3 · D13 — OS AMPERES, EM TODA SEGURADORA, NO COMEÇO DA LISTA
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 A única tela do acervo é texto livre (porto 4830574a: *"{NOME}, você sabe
+#    me informar quantos amperes tem a bateria?"*). `responder_amperes` responde
+#    também múltipla escolha, botão, lista e "digite o número" — e nunca devolve
+#    vazio. ⛔ Nenhum `requires`, nenhum `sem_chute`: não há dado que falte.
+_PASSO_DOS_AMPERES = {
+    "step": "amperes_da_bateria",
+    "anchor": r"amper(?:es|agem)|\bamp[eè]r\b",
+    "reply": str(AMPERES_PADRAO), "format": "amperes_da_bateria",
+    "constante_justificada": (
+        "D13 (Founder, 28/09/2026, SPEC-120 §3.1): 60 Ah e o padrao do mercado "
+        "(~50-55% da frota); a faixa do porte so quando o veiculo do caso a "
+        "identifica com clareza (Mobi/Kwid/Celta/Gol 1.0 -> 50; Corolla/Civic/"
+        "Compass/start-stop -> 70; Hilux/S10/diesel -> 80). 'Nao podemos chamar "
+        "suporte humano nessa pergunta em nenhuma seguradora.' Em QUALQUER duvida, 60."),
+    "notes": "🔴 NUNCA trava e NUNCA chama humano. Texto livre, número, botão ou lista.",
+}
+for _pb_amp in _PLAYBOOKS.values():
+    if str(_pb_amp.get("line_kind") or "") == "auto":
+        _pb_amp["ura_steps"] = [dict(_PASSO_DOS_AMPERES)] + list(_pb_amp["ura_steps"])
