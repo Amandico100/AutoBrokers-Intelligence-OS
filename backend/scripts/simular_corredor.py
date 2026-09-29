@@ -112,6 +112,20 @@ import conferir_respostas as CR   # noqa: E402  — as TRÊS perguntas (b)
 import regua_motor as M           # noqa: E402  — o motor do produto
 import replay as RP               # noqa: E402  — a pergunta (a)
 
+
+# 🔴 SPEC-120 (§13.9): a tela citada no motivo é texto REAL do acervo, e o acervo
+# ainda guarda a APRESENTAÇÃO de funcionária da seguradora (*"Aqui é a …"*,
+# P-120-12) — o mascarador de lá pega vocativo, não apresentação. 📊 Em 29/09 o
+# primeiro nome de uma consultora saiu por aqui em SIMULACAO-DOS-CORREDORES.md.
+# Enquanto o acervo não for consertado, a CITAÇÃO não repassa o nome.
+_RX_APRESENTACAO = re.compile(
+    r"(\b(?:[Aa]qui (?:[ée]|fala)|[Mm]e chamo|[Mm]eu nome [ée]|[Ff]ala)\s+(?:(?:a|o)\s+)?)"
+    r"[A-ZÀ-Ý][a-zà-ÿ]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ]+)*")
+
+
+def _sem_apresentacao(texto: str) -> str:
+    return _RX_APRESENTACAO.sub(lambda m: m.group(1) + "{NOME}", texto)
+
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 FAIXA_ATENDE = "ATENDE SOZINHO"
@@ -482,7 +496,7 @@ def _faixa(rota, rp, achados: List[Any], desfecho: Desfecho,
         return (FAIXA_FALTA_CAPTURA, "tela_orfa",
                 f"{len(rp.orfas_funcionais)} tela(s) desta rota pedem alguma coisa e "
                 f"o robô não tem resposta escrita para elas. A primeira, na conversa "
-                f"{t.session_id}: “{' '.join(t.texto.split())[:110]}”")
+                f"{t.session_id}: “{_sem_apresentacao(' '.join(t.texto.split()))[:110]}”")
 
     # ⑥ nunca chegou ao fim
     if not desfecho.chegou:

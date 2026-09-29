@@ -778,7 +778,7 @@
   ],
   "faixa": "FALTA CAPTURA",
   "causa": "tela_orfa",
-  "motivo": "5 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 4830574a: “Olá! 😊 Aqui é a Viviane. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso ”",
+  "motivo": "5 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 4830574a: “Olá! 😊 Aqui é a {NOME}. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso t”",
   "bateria_5": []
  },
  {

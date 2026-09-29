@@ -1,6 +1,6 @@
 # A simulação dos corredores — a lista por rota
 
-> gerado em 2026-09-29T03:49:21+00:00 · commit `7844542` · corpus `backend/tests/corpus/telas_reais/`
+> gerado em 2026-09-29T05:59:46+00:00 · commit `5ae1755` · corpus `backend/tests/corpus/telas_reais/`
 
 🔴 **Offline por construção:** corpus versionado + motor do produto. Nenhum modelo foi chamado, nenhum `observed_events` foi lido.
 
@@ -78,7 +78,7 @@ Cada rota foi atravessada com as **telas reais** do acervo, tela a tela, e cada 
 | `mapfre/auto/chaveiro` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `mapfre/auto/guincho` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `mapfre/auto/pneu` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
-| `porto/auto/bateria` | 164 | 80 | 5 | 0 | 0 | 0 | sim | 5 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 4830574a: “Olá! 😊 Aqui é a Viviane. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso ” |
+| `porto/auto/bateria` | 164 | 80 | 5 | 0 | 0 | 0 | sim | 5 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 4830574a: “Olá! 😊 Aqui é a {NOME}. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso t” |
 | `porto/auto/bateria_nova` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `porto/auto/pneu` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `porto/auto/taxi` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
