@@ -164,6 +164,23 @@ certo("*CONVERSA*" not in _corpo,
 certo("link_do_whatsapp(" in _corpo and "WhatsApp do segurado" in _corpo,
       "🔴 e leva o `wa.me` do segurado no lugar")
 
+# 🔴 SPEC-120 (28/09/2026) — A MESMA DECISÃO VALE PARA O PÓS-ACIONAMENTO.
+#
+# 📊 Este guarda olhava SÓ o corpo de `_montar_dossie`, e o outro montador que
+# a mesma equipe recebe — `_dossie_de_pos_acionamento` — continuou mandando o
+# link do PAINEL, o histórico de mensagens e NENHUM WhatsApp. Ficou verde
+# porque não era olhado. O Founder chegou a perguntar *"não sei se está
+# aparecendo o dossiê errado"*: eram dois formatos. Agora os dois são cobrados.
+_corpo_pos = DOSSIE.split("def _dossie_de_pos_acionamento", 1)[1].split("\n    def ", 1)[0]
+_so_codigo_pos = "\n".join(l for l in _corpo_pos.splitlines()
+                           if l.strip() and not l.strip().startswith("#"))
+certo("_link_da_conversa(conversa)" not in _so_codigo_pos,
+      "🔴 o PÓS-ACIONAMENTO também NÃO leva mais o link do painel")
+certo("*CONVERSA*" not in _so_codigo_pos,
+      "🔴 nem as últimas mensagens")
+certo("link_do_whatsapp(" in _so_codigo_pos and "WhatsApp do segurado" in _so_codigo_pos,
+      "🔴 e leva o `wa.me` do segurado, como o 🆘")
+
 # O formato do link, nos casos que o §8.5 congela.
 certo(link_do_whatsapp("47988880001") == "https://wa.me/5547988880001",
       "sem 55 → o 55 entra")

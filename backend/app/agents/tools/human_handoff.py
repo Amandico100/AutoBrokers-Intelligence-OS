@@ -794,6 +794,32 @@ def _link_da_conversa(conversa: Dict[str, Any]) -> str:
     return f"{base}/dashboard/atendimentos/conversas?c={ident}"
 
 
+#: 🔴 SPEC-120 — OS TRÊS MOMENTOS, nas palavras do Founder (28/09/2026):
+#: *"existem 3 momentos: conversa inicial com o segurado, acionamento com a
+#: seguradora, pós-acionamento. Precisa explicar para o humano EM QUE MOMENTO
+#: isso aconteceu."* O 2º (acionamento) mora no dossiê do corredor
+#: (`insurer_dispatch_service.build_handoff_dossier`); estes são os outros dois.
+MOMENTO_CONVERSA_INICIAL = "na CONVERSA com o segurado — antes de acionar a seguradora"
+MOMENTO_POS_ACIONAMENTO = "DEPOIS do acionamento — o chamado já foi aberto na seguradora"
+
+
+def _linha_do_momento(momento: str, agora=None) -> str:
+    """`🕐 28/09 às 19:05 · <momento>` — o QUANDO e o EM QUE PONTO, numa linha.
+
+    ⚠️ A hora é a do fuso da CORRETORA (`fuso_da_corretora`, o mesmo que o
+    resumo das 19h usa) — nunca UTC: *"19:05"* tem de ser a hora que a
+    atendente viu no relógio dela. ⛔ Nunca levanta: sem fuso, sai sem hora.
+    """
+    from datetime import datetime, timezone
+    try:
+        from app.services.platform_outbound import fuso_da_corretora
+        instante = (agora or datetime.now(timezone.utc)).astimezone(fuso_da_corretora())
+        return "🕐 %s às %s · %s" % (instante.strftime("%d/%m"),
+                                    instante.strftime("%H:%M"), momento)
+    except Exception:  # noqa: BLE001
+        return "🕐 %s" % momento
+
+
 def _quem_assumiu(conversa: Dict[str, Any]) -> str:
     """Evita que duas atendentes corram para a mesma conversa."""
     nome = str(conversa.get("claimed_by_name") or "").strip()
@@ -917,6 +943,7 @@ class HumanHandoffTool(BaseTool):
         apolice = _linha_da_apolice(conversa)
         if apolice:
             linhas.append(apolice)
+        linhas.append(_linha_do_momento(MOMENTO_CONVERSA_INICIAL))
 
         # O QUE ACONTECEU — narrativa, não campos soltos.
         narrativa = _narrativa(conversa, motivo)
@@ -1024,8 +1051,14 @@ class HumanHandoffTool(BaseTool):
             linhas.append(apolice)
         ficha = conversa.get("ficha_atendimento") or {}
         protocolo = str((ficha or {}).get("protocolo") or "").strip() if isinstance(ficha, dict) else ""
+        linhas.append(_linha_do_momento(MOMENTO_POS_ACIONAMENTO))
+        # 🔴 SPEC-120 D15 — O NÚMERO DO PROTOCOLO SAI POR EXTENSO. Antes a linha
+        #    dizia *"protocolo com o cliente"* — o dossiê SABIA o número e não o
+        #    escrevia, e a atendente tinha de perguntar ao segurado o que o
+        #    sistema já tinha. Protocolo é o que ela precisa para falar com a
+        #    seguradora; não é dado para esconder.
         if protocolo:
-            linhas.append("Acionamento já entregue · protocolo com o cliente")
+            linhas.append(f"Acionamento já entregue · protocolo *{protocolo}*")
 
         linhas += ["", "*Quem fala*", _quem_fala(conversa)]
         linhas += ["", "*O que ele quer*", _o_que_ele_quer(conversa)]
@@ -1049,32 +1082,32 @@ class HumanHandoffTool(BaseTool):
         linhas += ["", "*O que fazer*",
                    _o_que_fazer(_com_a_espera(conversa, espera), motivo)]
 
+        # =================================================================
+        # 🔴 SPEC-120 — O PÓS-ACIONAMENTO SEGUE A MESMA DECISÃO DO 🆘 (§8.0)
+        # =================================================================
+        #
+        # 📊 Em 16/09/2026 (SPEC-EXTRA-001.3 §8.0) duas decisões da SPEC-071
+        # foram revertidas no dossiê principal: *o link do painel sai e o
+        # WhatsApp do segurado entra* ("no celular o número clicável custa UM
+        # TOQUE e o painel custa uma página") e *as últimas mensagens saem*
+        # ("viravam 4 balões e a atendente lia o último"). **Este montador
+        # nunca foi atualizado** — continuava mandando o painel e o histórico,
+        # e nenhum WhatsApp. O guarda da decisão
+        # (`test_os_quatro_modelos_falam_portugues.py`) só olhava o corpo de
+        # `_montar_dossie`, então o esquecimento ficou verde.
+        #
+        # É a confusão que o Founder descreveu em 28/09 — *"não sei se está
+        # aparecendo o dossiê errado"*: eram DOIS formatos para a mesma equipe,
+        # conforme o caso tivesse passado ou não por um acionamento.
+        #
+        # E a regra dele, a mesma para os dois: *"eles precisam olhar o
+        # dossiê, clicar no número do WhatsApp e já abrir a conversa com o
+        # cliente para assumirem. Precisa ser fácil, claro, rápido."*
         linhas += ["", _TRACO]
-        try:
-            # 🔴 §7 (red team 097.1 [7]): `messages` não tem `company_id` — a corretora
-            #    é conferida na CONVERSA (lida com `.eq("company_id")` em `_arun`) antes
-            #    desta leitura; conversa sem corretora não tem transcrição no dossiê.
-            if not str(conversa.get("company_id") or "").strip():
-                raise PermissionError("conversa sem corretora: a transcrição não entra")
-            msgs = (self.supabase_client.table("messages")
-                    .select("role, content, created_at, payload")
-                    .eq("conversation_id", conversa["id"])
-                    .order("created_at", desc=True)
-                    .limit(_MSGS_NO_DOSSIE).execute().data or [])
-            if msgs:
-                _nome_ia = _nome_do_agente(self.supabase_client,
-                                           str(conversa.get("company_id") or ""))
-                linhas.append(f"*CONVERSA* _(últimas {len(msgs)})_")
-                for m in reversed(msgs):
-                    linhas.append(_linha_da_conversa(m, _nome_ia))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[HumanHandoff] histórico indisponível (%s)", type(exc).__name__)
-            linhas.append("_(não consegui carregar o histórico — você entra sem ele)_")
-
-        linhas += [_TRACO]
-        link = _link_da_conversa(conversa)
-        if link:
-            linhas.append(f"▶ {link}")
+        from app.services.os_modelos_do_grupo import link_do_whatsapp
+        _wa = link_do_whatsapp(conversa.get("user_phone"))
+        if _wa:
+            linhas.append(f"*WhatsApp do segurado:* {_wa}")
         linhas.append(_quem_assumiu(conversa))
         return "\n".join(linhas)
 
