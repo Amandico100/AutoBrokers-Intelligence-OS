@@ -8,8 +8,8 @@
   🔴 <b>Se você tem cinco minutos, leia só a aba <a href="#tarefas" style="color:var(--accent)">SUAS TAREFAS</a>.</b></p>
   <div class="meta">
     <span>árvore <b>AutoBrokers-FIX</b></span>
-    <span>main <b>3dbc286</b></span>
-    <span>última SPEC fechada <b>SPEC-119</b> — os corredores ficam prontos para a vida real: a página passa a responder <b>duas</b> perguntas (dá para ligar? e qual a qualidade?), o acervo deixa de vazar nome de segurado, e o cérebro do acionamento volta a funcionar (28/09; juiz 71 ‖ red team 58 → três consertos) &middot; antes dela, a <b>SPEC-118</b> (27/09) e a <b>SPEC-117</b> (26/09)</span>
+    <span>main <b>7844542</b> (29/09)</span>
+    <span>última SPEC fechada <b>SPEC-120</b> — os corredores com conversa passam a atender sozinhos: 📊 <b>24 → 31</b> das 73 rotas, e o grupo recebe <b>um aviso só, na hora, completo</b> (29/09; juiz 66 ‖ red team 55 → um conserto → juiz 82) &middot; antes dela, a <b>SPEC-119</b> (28/09) e a <b>SPEC-118</b> (27/09)</span>
     <span>a fila: próxima <b>EXTRA-001.9</b></span>
     <span>protocolo <b>AAA v13.2 · O FIO</b> (rito único; D-PROTO-14, 26/09)</span>
     <span>📊 = medido, com fonte &middot; 💭 = exemplo, nunca citável como fato</span>
@@ -18,10 +18,10 @@
 
 <div class="tiles">
   <div class="tile ok"><b>0</b><em>travas de ambiente entre você e o canário: 📊 27/09 o <code>/health</code> devolve <code>allowlist_tamanho 1</code>, <code>excecoes_da_janela_fora_do_teste 0</code> e <code>finalize_abre_de_verdade</code> com os dois corredores</em></div>
-  <div class="tile cr"><b>2</b><em>coisas de <b>agora</b>: <b>Implantar</b> (a <code>main</code> tem a 119 e a produção tem a 118) &middot; o <b>canário da Porto com o PIN</b> — é o único elo que nenhum teste alcança</em></div>
+  <div class="tile cr"><b>2</b><em>coisas de <b>agora</b>: <b>Implantar</b> (a <code>main</code> tem a 120 e a produção tem a 119) &middot; o <b>canário da Porto com o PIN</b> — é o único elo que nenhum teste alcança</em></div>
   <div class="tile ok"><b>13</b><em>SPECs da família <b>EXTRA-001.x</b> concluídas — notas de <b>84 a 90</b>. A última: o robô <b>retoma</b> um pedido de vidro parado, em vez de terminar em mão humana</em></div>
   <div class="tile ok"><b>492</b><em>serviços de assistência <b>publicados</b>, em 108 planos e 8 seguradoras. Era <b>23</b> anteontem</em></div>
-  <div class="tile cr"><b>31</b><em>das <b>73 rotas</b> não têm <b>nenhuma</b> conversa no acervo (📊 28/09) — inclusive as 4 da Mapfre. Nenhuma se resolve com código: precisam de um acionamento da Regina/Saionara. 🔴 A SPEC-119 mediu e a tese caiu: o classificador consertado deu <b>fundo</b> (+1.620 telas), não <b>largura</b> — <b>zero</b> rotas saíram do vazio</em></div>
+  <div class="tile cr"><b>31</b><em>das <b>73 rotas</b> não têm <b>nenhuma</b> conversa no acervo (📊 28/09) — inclusive as 4 da Mapfre. Nenhuma se resolve com código: precisam de um acionamento feito pela atendente da corretora. 🔴 A SPEC-119 mediu e a tese caiu: o classificador consertado deu <b>fundo</b> (+1.620 telas), não <b>largura</b> — <b>zero</b> rotas saíram do vazio</em></div>
   <div class="tile cr"><b>7</b><em>pendências que <b>pesam</b> (≥ 90). 📊 a <b>001.8</b> fechou duas: cada conexão sabe de quem é, e nome de pessoa saiu do dado global</em></div>
 </div>
 
@@ -53,7 +53,7 @@
     <dd>A próxima SPEC (001.10): o que o robô já faz, o que falta, o que providenciar antes, e como abrir o chat.</dd>
 
     <dt><a href="#corredores" style="color:var(--accent)">Corredores</a></dt>
-    <dd>🔴 <b>Reescrita em 28/09 e agora GERADA</b>, não digitada — as 73 rotas em três faixas, com a data ao lado de cada número. <b>De 73 rotas, 33% (24) o sistema resolve sozinho, 3% (2) vão a uma pessoa por desenho da seguradora, e 64% (47) ainda não ligam</b> — dessas, 31 faltam conversa (🧑 acionamento seu) e 16 faltam código (🤖 nosso).</dd>
+    <dd>🔴 <b>Reescrita em 28/09 e agora GERADA</b>, não digitada — as 73 rotas em três faixas, com a data ao lado de cada número. <b>De 73 rotas, 42% (31) o sistema resolve sozinho, 3% (2) vão a uma pessoa por desenho da seguradora, e 55% (40) ainda não ligam</b> — dessas, 31 faltam conversa, 6 falta um acionamento que chegue ao protocolo (🧑 seus) e 3 têm tela sem resposta (🤖 nosso). 📊 29/09, commit 7844542.</dd>
 
     <dt><a href="#conhecimento" style="color:var(--accent)">Conhecimento</a></dt>
     <dd>O que o agente sabe de cada seguradora: a base de planos publicada, quem já foi destilado e o que falta.</dd>

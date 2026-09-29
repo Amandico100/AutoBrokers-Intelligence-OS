@@ -864,3 +864,23 @@ P-E0017-07  num dia de banco instável, o resumo das 19h pode dizer "sem acionam
             em vez de "não consegui ler o dia"
 P-E0017-08  POLICY_INTELLIGENCE_V2 é lida em dois lugares com listas diferentes: use "true"
 ```
+
+---
+
+## SPEC-120 — os corredores com conversa atendem sozinhos (29/09/2026)
+
+📊 No simulador, 24 → **31** das 73 rotas atendem sozinhas (`simular_corredor.py --todas`, commit `7844542`).
+Nada foi testado com seguradora de verdade: estes passos são o que falta antes de mandar a Resulta e a AutoFleet ligarem.
+
+1. **Implantar** no EasyPanel: `smith-api` → `smith-worker`. Nenhuma variável nova.
+   **Esperar:** os dois verdes; um "oi" no chat do painel responde.
+2. **O dossiê no grupo da AMANDUS.** Do celular de teste, mande *"quero falar com uma pessoa"*.
+   **Esperar:** UM aviso no grupo com nome, CPF, seguradora, WhatsApp clicável e *"🕐 dd/mm às hh:mm · conversa inicial"*.
+   Espere 15 minutos: nenhum lembrete. Responda o segurado pelo celular: dali em diante nada sai no grupo.
+   **Se chegar mascarado** (`****`): o Implantar não pegou — confira o horário do último deploy do `smith-api`.
+3. **Acionamentos reais**: Yelum auto guincho · Porto auto guincho (com o pin) · opcional Allianz residencial encanador e o formulário nativo.
+   **Esperar:** o protocolo chega ao segurado; no grupo, o ✅ com *serviço · seguradora · protocolo*; às 19h, a lista das assistências abertas.
+   **Se o agente parar numa tela:** o grupo recebe o dossiê com *"momento: acionamento"* — mande o print no chat; é uma tela nova para o acervo.
+4. **Decidir** D-120-B (preço da bateria na Porto + "posso continuar?": recomendo perguntar ao segurado, 85) e D-120-C (amperes com preço: recomendo manter com pessoa, 80).
+5. Quando der: um acionamento real de cada rota de P-120-02 (as 6 que respondem tudo e nunca chegaram ao protocolo).
+

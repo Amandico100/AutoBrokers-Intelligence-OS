@@ -15,6 +15,22 @@
 </header>
 
 <section style="margin-top:8px">
+  <h2>SPEC-120 — o que só você faz <span style="color:var(--muted);font-size:14px">(29/09 · os corredores com conversa atendem sozinhos)</span></h2>
+  <p class="sub">📊 24 → <b>31</b> das 73 rotas atendem sozinhas no simulador. Nada disso foi testado com uma seguradora de verdade:
+  os testes abaixo são o que falta para você mandar a Resulta e a AutoFleet ligarem. Passo a passo completo em <code>TAREFAS-DO-FOUNDER.md</code>, seção SPEC-120.</p>
+  <dl class="q2">
+    <dt>☐ S120.1</dt><dd><b>Implantar</b>, nesta ordem: <code>smith-api</code> → <code>smith-worker</code>. Nenhuma variável nova. <b>O que esperar:</b> os dois verdes e um "oi" respondido</dd>
+    <dt>☐ S120.2</dt><dd><b>O dossiê no grupo da AMANDUS</b>: do celular de teste, peça <i>"quero falar com uma pessoa"</i>. <b>O que esperar:</b> UM aviso no grupo,
+    com nome, CPF, seguradora, WhatsApp <b>clicável</b> e <i>"🕐 dd/mm às hh:mm · conversa inicial"</i>. Espere 15 min: <b>nada</b> de lembrete. Responda o segurado pelo celular: dali em diante <b>nada</b> sai no grupo</dd>
+    <dt>☐ S120.3</dt><dd><b>Os acionamentos reais</b>: Yelum auto (guincho) · Porto auto (guincho, mandando o <b>pin</b>) · se quiser, Allianz residencial (encanador) e o formulário nativo.
+    <b>O que esperar:</b> o protocolo chega ao segurado; no grupo, o ✅ diz <i>serviço · seguradora · protocolo</i>; às 19h, o resumo lista a assistência</dd>
+    <dt>☐ S120.4</dt><dd><b>Duas decisões</b>: <b>D-120-B</b> (a Porto avisa o preço da bateria e pergunta <i>"posso continuar?"</i> — hoje o agente diz Sim; recomendo <b>perguntar ao segurado</b>, 85) ·
+    <b>D-120-C</b> (tela de amperes <b>com preço</b> vai a uma pessoa; recomendo <b>manter</b>, 80)</dd>
+    <dt>☐ S120.5</dt><dd>Quando der: <b>um acionamento real</b> de cada uma das 6 rotas que respondem tudo mas nunca chegaram ao protocolo (lista em P-120-02)</dd>
+  </dl>
+</section>
+
+<section style="margin-top:8px">
   <h2>SPEC-116 — o que só você faz <span style="color:var(--muted);font-size:14px">(23/09 · cada trabalho no modelo que provou servir)</span></h2>
   <p class="sub">🔴 <b>Antes de qualquer outra tarefa desta aba:</b> 📊 em 23/09 as contas da <b>Anthropic</b> (19:18 UTC) e da <b>OpenAI</b> (19:41 UTC)
   zeraram durante a bancada de testes, e as chaves são as mesmas do produto. Até recarregar, o chat do painel, a memória, a leitura de foto,

@@ -1,6 +1,6 @@
 # A simulação dos corredores — a lista por rota
 
-> gerado em 2026-09-28T00:08:01+00:00 · commit `a83dc06` · corpus `backend/tests/corpus/telas_reais/`
+> gerado em 2026-09-29T03:49:21+00:00 · commit `7844542` · corpus `backend/tests/corpus/telas_reais/`
 
 🔴 **Offline por construção:** corpus versionado + motor do produto. Nenhum modelo foi chamado, nenhum `observed_events` foi lido.
 
@@ -8,11 +8,11 @@ Cada rota foi atravessada com as **telas reais** do acervo, tela a tela, e cada 
 
 | faixa | rotas | o que significa |
 |---|---:|---|
-| **ATENDE SOZINHO** | 25 | o robô responde tudo o que o acervo mostra, sem decidir pelo segurado, e já chegou ao protocolo pelo menos uma vez |
+| **ATENDE SOZINHO** | 31 | o robô responde tudo o que o acervo mostra, sem decidir pelo segurado, e já chegou ao protocolo pelo menos uma vez |
 | **HANDOFF** | 2 | vai a uma pessoa — por desenho (a seguradora só dá link) ou porque ainda responde algo errado |
-| **FALTA CAPTURA** | 46 | falta conversa: ou o acervo não tem nenhuma, ou tem uma tela sem resposta escrita, ou nenhuma chegou ao fim |
+| **FALTA CAPTURA** | 40 | falta conversa: ou o acervo não tem nenhuma, ou tem uma tela sem resposta escrita, ou nenhuma chegou ao fim |
 
-## ATENDE SOZINHO — 25 rota(s)
+## ATENDE SOZINHO — 31 rota(s)
 
 | rota | telas | respondidas | órfãs | A | B | C | chegou ao fim | por quê |
 |---|---:|---:|---:|---:|---:|---:|:---:|---|
@@ -25,14 +25,20 @@ Cada rota foi atravessada com as **telas reais** do acervo, tela a tela, e cada 
 | `allianz/residencial/chaveiro` | 50 | 34 | 0 | 0 | 0 | 0 | sim | todas as 34 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `e70dfcaa` |
 | `allianz/residencial/consulta_veterinaria` | 35 | 23 | 0 | 0 | 0 | 0 | sim | todas as 23 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `c58a171a` |
 | `allianz/residencial/eletricista` | 87 | 60 | 0 | 0 | 0 | 0 | sim | todas as 60 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 2 conversa(s) — a primeira é `267eb82f` |
+| `allianz/residencial/encanador` | 176 | 115 | 0 | 0 | 0 | 0 | sim | todas as 115 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 6 conversa(s) — a primeira é `0591c1d1` |
 | `allianz/residencial/limpeza_caixa_dagua` | 80 | 60 | 0 | 0 | 0 | 0 | sim | todas as 60 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 2 conversa(s) — a primeira é `382cbdb7` |
+| `allianz/residencial/maquina_de_lavar` | 112 | 86 | 0 | 0 | 0 | 0 | sim | todas as 86 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 2 conversa(s) — a primeira é `7ac3c101` |
 | `azul/auto/bateria` | 90 | 47 | 0 | 0 | 0 | 0 | sim | todas as 47 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 2 conversa(s) — a primeira é `0189f34b` |
+| `azul/auto/guincho` | 228 | 115 | 0 | 0 | 0 | 0 | sim | todas as 115 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 6 conversa(s) — a primeira é `14398ee8` |
 | `azul/auto/tecnico` | 33 | 19 | 0 | 0 | 0 | 0 | sim | todas as 19 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `d70ced75` |
+| `bradesco/auto/guincho` | 129 | 107 | 0 | 0 | 0 | 0 | sim | todas as 107 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 3 conversa(s) — a primeira é `0d5284f3` |
 | `hdi/auto/chaveiro` | 26 | 17 | 0 | 0 | 0 | 0 | sim | todas as 17 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a URA chegou à tela que CONFIRMA a abertura em 1 conversa(s) — a primeira é `697abd09` |
+| `hdi/auto/guincho` | 599 | 358 | 0 | 0 | 0 | 0 | sim | todas as 358 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 13 conversa(s) — a primeira é `21a53457` |
 | `hdi/auto/pneu` | 44 | 27 | 0 | 0 | 0 | 0 | sim | todas as 27 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `886066e5` |
 | `hdi/auto/socorro_mecanico` | 39 | 21 | 0 | 0 | 0 | 0 | sim | todas as 21 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `71caf82f` |
-| `porto/auto/bateria` | 140 | 74 | 0 | 0 | 0 | 0 | sim | todas as 74 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 3 conversa(s) — a primeira é `67296ad9` |
+| `hdi/residencial/encanador` | 55 | 32 | 0 | 0 | 0 | 0 | sim | todas as 32 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `61b96027` |
 | `porto/auto/chaveiro` | 34 | 17 | 0 | 0 | 0 | 0 | sim | todas as 17 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `d0d64bfc` |
+| `porto/auto/guincho` | 495 | 246 | 0 | 0 | 0 | 0 | sim | todas as 246 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 12 conversa(s) — a primeira é `12203ed9` |
 | `porto/auto/tecnico` | 76 | 39 | 0 | 0 | 0 | 0 | sim | todas as 39 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 2 conversa(s) — a primeira é `b1ff65f2` |
 | `porto/residencial/chaveiro` | 37 | 21 | 0 | 0 | 0 | 0 | sim | todas as 21 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `565cb39a` |
 | `porto/residencial/encanador` | 114 | 58 | 0 | 0 | 0 | 0 | sim | todas as 58 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 3 conversa(s) — a primeira é `0fe42179` |
@@ -49,7 +55,7 @@ Cada rota foi atravessada com as **telas reais** do acervo, tela a tela, e cada 
 | `porto/auto/vidros` | 20 | 11 | 0 | 0 | 0 | 0 | sim | esta seguradora não abre o chamado pela conversa: ela devolve um link ou um formulário. O robô entrega o link e o caso segue com uma pessoa — é o desenho, não uma falha |
 | `tokio/auto/guincho` | 27 | 9 | 0 | 0 | 0 | 0 | sim | esta seguradora não abre o chamado pela conversa: ela devolve um link ou um formulário. O robô entrega o link e o caso segue com uma pessoa — é o desenho, não uma falha |
 
-## FALTA CAPTURA — 46 rota(s)
+## FALTA CAPTURA — 40 rota(s)
 
 | rota | telas | respondidas | órfãs | A | B | C | chegou ao fim | por quê |
 |---|---:|---:|---:|---:|---:|---:|:---:|---|
@@ -58,28 +64,22 @@ Cada rota foi atravessada com as **telas reais** do acervo, tela a tela, e cada 
 | `allianz/auto/chaveiro` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `allianz/residencial/desentupimento` | 49 | 40 | 0 | 0 | 0 | 0 | não | o robô responde todas as telas que o acervo mostra, mas nenhuma sessão do corpus chegou ao protocolo, à confirmação ou ao encaminhamento — então não há prova de que esta rota vá até o protocolo. Falta uma conversa que termine |
 | `allianz/residencial/eletrodomesticos` | 39 | 29 | 0 | 0 | 0 | 0 | não | o robô responde todas as telas que o acervo mostra, mas nenhuma sessão do corpus chegou ao protocolo, à confirmação ou ao encaminhamento — então não há prova de que esta rota vá até o protocolo. Falta uma conversa que termine |
-| `allianz/residencial/encanador` | 176 | 111 | 4 | 0 | 0 | 0 | sim | 4 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 0591c1d1: “Para confirmamos o benefício residencial na sua apólice, informe a *PLACA* do veículo.” |
-| `allianz/residencial/maquina_de_lavar` | 112 | 85 | 1 | 0 | 0 | 0 | sim | 1 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 590b5940: “Informe somente números.” |
 | `azul/auto/chaveiro` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
-| `azul/auto/guincho` | 228 | 114 | 1 | 0 | 0 | 0 | sim | 1 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 2f0cd86a: “Se for necessário, posso te ligar em qualquer um deles? *1* - Sim *2* - Não, apenas no primeiro *3* - Apenas n” |
 | `azul/auto/pneu` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `bradesco/auto/bateria` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `bradesco/auto/chaveiro` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
-| `bradesco/auto/guincho` | 129 | 102 | 5 | 0 | 0 | 0 | sim | 5 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 72af1ae1: “Sentimos muito pelo ocorrido, esperamos que todos estejam bem! Para dar continuidade ao atendimento preciso co” |
 | `bradesco/auto/pneu` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `hdi/auto/bateria` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
-| `hdi/auto/guincho` | 599 | 341 | 21 | 0 | 0 | 0 | sim | 21 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa fa2ceb6f: “O veículo está desatrelado? Botão 1: Sim Botão 2: Não Botão 3: Voltar” |
 | `hdi/residencial/chaveiro` | 26 | 16 | 0 | 0 | 0 | 0 | não | o robô responde todas as telas que o acervo mostra, mas nenhuma sessão do corpus chegou ao protocolo, à confirmação ou ao encaminhamento — então não há prova de que esta rota vá até o protocolo. Falta uma conversa que termine |
 | `hdi/residencial/desentupimento` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `hdi/residencial/eletricista` | 109 | 65 | 3 | 0 | 0 | 0 | não | 3 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 13379965: “Qual desses itens está com vazamento? Torneira Torneira elétrica Sifão Chuveiro Válvulas de descarga Registro ” |
 | `hdi/residencial/eletrodomesticos` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
-| `hdi/residencial/encanador` | 55 | 31 | 2 | 0 | 0 | 0 | sim | 2 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 61b96027: “Por aqui, você pode solicitar os seguintes serviços: - *Encanador* - *Desentupimento* - *Eletricista* - *Chave” |
 | `mapfre/auto/bateria` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `mapfre/auto/chaveiro` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `mapfre/auto/guincho` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `mapfre/auto/pneu` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
+| `porto/auto/bateria` | 164 | 80 | 5 | 0 | 0 | 0 | sim | 5 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 4830574a: “Olá! 😊 Aqui é a Viviane. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso ” |
 | `porto/auto/bateria_nova` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
-| `porto/auto/guincho` | 495 | 233 | 17 | 0 | 0 | 0 | sim | 17 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 77983f63: “Tudo bem. Depois de concluir o agendamento do guincho, *você também pode solicitar um táxi* se precisar.” |
 | `porto/auto/pneu` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `porto/auto/taxi` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `porto/residencial/desentupimento` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
@@ -89,8 +89,8 @@ Cada rota foi atravessada com as **telas reais** do acervo, tela a tela, e cada 
 | `tokio/auto/chaveiro` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `tokio/auto/pneu` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `yelum/auto/bateria` | 22 | 16 | 0 | 0 | 0 | 0 | não | o robô responde todas as telas que o acervo mostra, mas nenhuma sessão do corpus chegou ao protocolo, à confirmação ou ao encaminhamento — então não há prova de que esta rota vá até o protocolo. Falta uma conversa que termine |
-| `yelum/auto/chaveiro` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
-| `yelum/auto/guincho` | 817 | 461 | 22 | 0 | 0 | 0 | sim | 22 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 19d73270: “O câmbio está travado? Botão 1: Sim Botão 2: Não Botão 3: Voltar” |
+| `yelum/auto/chaveiro` | 0 | 0 | 0 | 0 | 0 | 2 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
+| `yelum/auto/guincho` | 817 | 479 | 2 | 0 | 0 | 0 | sim | 2 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 56bd78f7: “O que aconteceu com a chave? Dentro do veículo Chave está trancada dentro do veículo Perda Perdeu a chave Queb” |
 | `yelum/residencial/chaveiro` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `yelum/residencial/desentupimento` | 0 | 0 | 0 | 0 | 0 | 0 | não | o acervo não tem UMA conversa desta rota. Não é que o robô falhe: ninguém nunca ligou para esta seguradora pedindo este serviço pelo WhatsApp da corretora (ou o classificador não soube etiquetar a conversa que existe) |
 | `yelum/residencial/eletrodomesticos` | 17 | 11 | 0 | 0 | 0 | 0 | não | o robô responde todas as telas que o acervo mostra, mas nenhuma sessão do corpus chegou ao protocolo, à confirmação ou ao encaminhamento — então não há prova de que esta rota vá até o protocolo. Falta uma conversa que termine |
@@ -104,48 +104,7 @@ Cada rota foi atravessada com as **telas reais** do acervo, tela a tela, e cada 
 
 🔴 *“truncar calado lê-se como ‘cobrimos tudo’”* (SPEC-083 §7). Estes achados do conferidor são reais — eles só não têm rota, porque a tela em que acontecem foi etiquetada com **outro** serviço, e o motor não casa aquele passo para o serviço da rota. Eles não entram na faixa de nenhuma rota, e é por isso que aparecem aqui.
 
-| regra | seguradora | ramo | passo | por quê |
-|---|---|---|---|---|
-| ⚠️ B | alfa | auto | `selecionar_endereco_veiculo` | responde `1` e a tela oferece apenas ['2'] -- a URA rejeita |
-| ⚠️ C | allianz | residencial | `aparelho_modelo` | e restrito a ['eletrodomesticos', 'maquina_de_lavar'] e esta respondendo uma tela que so aparece em sessoes de ['ar_condicionado'] (1 sessao/sessoes) -- 1 sessao so: pode ser a CLASSIFICACAO |
-| ⚠️ A | azul | auto | `cor_menu` | o slot `veiculo_cor_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | azul | auto | `tecnico_periodo` | o slot `periodo_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | azul | auto | `tecnico_horario` | o slot `horario_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | azul | auto | `pedir_complemento` | o slot `endereco_complemento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | azul | auto | `cor_menu` | o slot `veiculo_cor_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ C | bradesco | auto | `pane_detalhe_bateria` | e restrito a ['bateria'] e esta respondendo uma tela que so aparece em sessoes de ['guincho'] (1 sessao/sessoes) -- 1 sessao so: pode ser a CLASSIFICACAO |
-| ⚠️ B | bradesco | auto | `endereco_confirma_bradesco` | responde o rotulo 'Sim' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
-| ⚠️ B | bradesco | auto | `destino_rodovia` | responde o rotulo 'Nao' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
-| ⚠️ B | bradesco | auto | `confirmar_abertura_bradesco` | responde o rotulo 'Sim' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
-| ⚠️ B | bradesco | auto | `reentrada_confirma_veiculo` | responde o rotulo 'Sim' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
-| ⚠️ A | bradesco | auto | `agendamento_hora_bradesco` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ B | hdi | auto | `confirmar_endereco_digitado` | responde o rotulo 'Sim' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
-| ⚠️ A | hdi | auto | `agendamento_hora` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | hdi | residencial | `periodo_preferido` | o slot `periodo_preferido` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ C | hdi | residencial | `detalhe_do_vazamento` | e restrito a ['encanador'] e esta respondendo uma tela que so aparece em sessoes de ['eletricista'] (1 sessao/sessoes) -- 1 sessao so: pode ser a CLASSIFICACAO |
-| ⚠️ C | hdi | residencial | `menu_item_linha_branca` | e restrito a ['eletrodomesticos'] e esta respondendo uma tela que so aparece em sessoes de ['eletricista'] (1 sessao/sessoes) -- 1 sessao so: pode ser a CLASSIFICACAO |
-| ⚠️ A | mapfre | auto | `menu_assunto_veiculo` | o slot `assunto_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | mapfre | auto | `codigo_corretor` | o slot `codigo_corretor` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | auto | `agendar_horario_porto` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `menu_servico_resid` | o slot `servico_texto` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `horario_agendamento_resid` | o slot `horario_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `horario_agendamento_resid` | o slot `horario_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `horario_agendamento_resid` | o slot `horario_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `horario_agendamento_resid` | o slot `horario_opcao` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `menu_servico_resid` | o slot `servico_texto` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `eletro_categoria` | o slot `eletrodomestico_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `eletro_categoria` | o slot `eletrodomestico_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ A | porto | residencial | `eletro_categoria` | o slot `eletrodomestico_rotulo` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| 🔴 C | yelum | auto | `chave_o_que_aconteceu` | e restrito a ['chaveiro'] e esta respondendo uma tela que so aparece em sessoes de ['guincho'] (2 sessao/sessoes) |
-| ⚠️ A | yelum | auto | `veiculo_trancado` | o slot `veiculo_trancado` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| 🔴 C | yelum | auto | `veiculo_trancado` | e restrito a ['chaveiro'] e esta respondendo uma tela que so aparece em sessoes de ['guincho'] (2 sessao/sessoes) |
-| ⚠️ A | yelum | auto | `agendamento_hora` | o slot `hora_agendamento` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
-| ⚠️ B | yelum | auto | `continuar_com_placa` | responde o rotulo 'Automóvel' e a tela nao expoe opcao nenhuma no `text` -- pode ser texto livre ou botao nao gravado pelo ingestor (P-084-15). Nao da para confirmar daqui |
-| ⚠️ A | yelum | residencial | `periodo_preferido` | o slot `periodo_preferido` nao tem origem; o passo nao trava porque tem `fallback_adaptive` -- mas quem responde e o cerebro, nao o corredor |
+_nenhum._
 
 ## Bateria 5 — condomínio · empresarial · sinistro
 
