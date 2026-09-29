@@ -271,7 +271,9 @@ DA_ATENDENTE = {
 for _ref in ("hdi-residencial", "yelum-residencial"):
     for _slot in ("chaveiro_porta_opcao", "eletrodomestico_opcao", "geladeira_medicacao_opcao"):
         DA_ATENDENTE[(_ref, _slot)] = _ATENDENTE
-for _ref in ("azul-auto", "hdi-auto", "hdi-residencial", "porto-auto",
+# SPEC-120: + allianz-residencial — 📊 0591c1d1, a apólice de AUTO com benefício
+#    residencial confirma o veículo pela placa (`confirme_veiculo_do_seguro`).
+for _ref in ("allianz-residencial", "azul-auto", "hdi-auto", "hdi-residencial", "porto-auto",
              "porto-residencial", "yelum-auto", "yelum-residencial"):
     DA_ATENDENTE[(_ref, "veiculo_opcao")] = ("a lista de veículos da apólice; " + _ATENDENTE)
 
