@@ -219,7 +219,7 @@ def conversa(cid, horas=48):
             "last_message_at": quando, "human_handoff_reason": "pediu humano"}
 
 
-def rodar(banco, redis, avisos):
+def rodar(banco, redis, avisos, avisado=True):
     preparar(banco, redis)
     import importlib
     wd = importlib.import_module("app.tasks.handoff_watchdog")
@@ -227,7 +227,7 @@ def rodar(banco, redis, avisos):
 
     async def _falso(self, company_id, conv, motivo):
         avisos.append((str(conv.get("id")), motivo))
-        return {"avisado": True, "motivo": ""}
+        return {"avisado": bool(avisado), "motivo": "" if avisado else "grupo fora do ar"}
     hh.HumanHandoffTool._avisar_suporte = _falso
     asyncio.run(wd.varrer_handoffs_parados())
     return wd
@@ -316,6 +316,57 @@ certo(avisos4 == [],
 certo(len(MEDIDAS) == 7,
       "CONTROLE: e as sete varreduras chegaram ate' ela (7 medidas)",
       f"medidas: {len(MEDIDAS)}")
+
+print()
+print("=" * 74)
+print("  4b. A REDE DE SEGURANCA — o PRIMEIRO aviso que NUNCA saiu (SPEC-120)")
+print("=" * 74)
+# 📊 Achado do juiz: ao tirar o lembrete, a D16 tirou tambem a nova tentativa
+# de um aviso que FALHOU (grupos desativados de 10 a 21/09 = pedido de ajuda
+# que ninguem recebeu). Ela volta, com tres limites, e cada um e' provado aqui.
+_msg_cliente = [{"conversation_id": "c-nova", "role": "user",
+                 "created_at": "2026-09-28T10:00:00Z"}]
+
+# (a) recente, e o aviso da hora nunca saiu: UM aviso — e so' um.
+redis_a, avisos_a = RedisFake(), []
+banco_a = BancoFake([conversa("c-nova", horas=0.75)], _msg_cliente)
+rodar(banco_a, redis_a, avisos_a)
+rodar(banco_a, redis_a, avisos_a)            # segunda varredura, 5 min depois
+certo(len(avisos_a) == 1,
+      "🔴 conversa de 45 min cujo aviso NUNCA saiu: o vigia avisa UMA vez "
+      "(a 2a varredura acha a vez reservada pelo sucesso)",
+      f"avisos: {avisos_a}")
+certo(avisos_a and avisos_a[0][1] == "pediu humano",
+      "e o dossie leva o motivo ORIGINAL do pedido — nunca 'AINDA SEM ATENDIMENTO ha Xh'",
+      f"{avisos_a}")
+
+# (b) recente, mas o aviso da hora JA SAIU (a vez esta' reservada): nada.
+redis_b, avisos_b = RedisFake(), []
+preparar(BancoFake([], []), redis_b)
+hh_b = importlib.import_module("app.agents.tools.human_handoff")
+asyncio.run(hh_b.reivindicar_o_aviso("c-nova", 6, company_id="emp-1"))   # o _arun reservou e avisou
+rodar(BancoFake([conversa("c-nova", horas=0.75)], _msg_cliente), redis_b, avisos_b)
+certo(avisos_b == [],
+      "🔴 se o aviso da hora SAIU, o vigia NAO repete — nem em caso recente",
+      f"avisos: {avisos_b}")
+
+# (c) o envio falha: a vez e' DEVOLVIDA e a proxima varredura tenta de novo.
+redis_c, avisos_c = RedisFake(), []
+banco_c = BancoFake([conversa("c-nova", horas=0.75)], _msg_cliente)
+rodar(banco_c, redis_c, avisos_c, avisado=False)
+rodar(banco_c, redis_c, avisos_c, avisado=False)
+certo(len(avisos_c) == 2,
+      "🔴 grupo fora do ar: cada varredura TENTA de novo (a vez volta a ficar livre)",
+      f"tentativas: {len(avisos_c)}")
+
+# (d) CONTROLE: a MESMA conversa fora da janela (3h) — so' medida.
+redis_d, avisos_d = RedisFake(), []
+MEDIDAS.clear()
+rodar(BancoFake([conversa("c-nova", horas=3)], _msg_cliente), redis_d, avisos_d)
+certo(avisos_d == [] and len(MEDIDAS) == 1,
+      "CONTROLE: com 3h ela sai da janela de 2h — medida, nao anunciada. "
+      "Logo o (a) acima veio da JANELA, nao de um vigia que avisa tudo",
+      f"avisos: {avisos_d} medidas: {len(MEDIDAS)}")
 
 print()
 print("=" * 74)

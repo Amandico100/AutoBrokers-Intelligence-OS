@@ -222,9 +222,16 @@ def o_agendador_nao_cai_por_causa_deste_job() -> None:
         return "\n".join(ln for ln in bloco.splitlines()
                          if ln.strip() and not ln.strip().startswith("#"))
     parados = _so_codigo(_corpo_de("async def varrer_handoffs_parados"))
-    checar("HumanHandoffTool" not in parados,
-           "🔴 a varredura de conversa PARADA nao importa mais a ferramenta de handoff "
-           "— ela nao manda nada ao grupo (SPEC-120 D16)")
+    # ⚠️ MIGRADA DE NOVO NO MESMO DIA (SPEC-120, achado do juiz): a varredura
+    # voltou a importar a ferramenta — SO' para o primeiro aviso que nunca saiu,
+    # e so' em caso recente. A licao do import (por execucao e sob `try`) volta
+    # a valer AQUI tambem; o limite da janela e' o que a torna segura.
+    checar("_AVISO_TARDIO_HORAS_PADRAO" in parados and "_ja_avisado_recentemente(" in parados,
+           "🔴 a varredura de conversa PARADA so' avisa dentro da JANELA TARDIA e "
+           "com a vez LIVRE no marcador — nunca lembrete (SPEC-120)")
+    i_hh = parados.find("from app.agents.tools.human_handoff import HumanHandoffTool")
+    checar(i_hh > 0 and "try:" in parados[:i_hh],
+           "e o import dela, quando acontece, e' por execucao e sob `try`")
     esperas = _corpo_de("async def varrer_esperas_vencidas")
     checar("from app.agents.tools.human_handoff import HumanHandoffTool" in esperas,
            "o import pesado de quem AINDA envia acontece POR EXECUCAO, dentro da funcao")
@@ -331,9 +338,10 @@ def a_telemetria_mede_quem_espera() -> None:
     corpo_parados = trecho[:10 + _prox.start()] if _prox else trecho
     corpo_parados = "\n".join(ln for ln in corpo_parados.splitlines()   # so' codigo
                                if ln.strip() and not ln.strip().startswith("#"))
-    checar("_avisar_suporte" not in corpo_parados,
-           "🔴 e a varredura de conversa parada NAO chama o envio ao grupo (SPEC-120 D16)",
-           "medir sim; cobrar o grupo sobre conversa antiga, nunca mais")
+    checar("_janela_tardia_ms" in corpo_parados
+           and corpo_parados.find("_janela_tardia_ms") < corpo_parados.find("_avisar_suporte"),
+           "🔴 e o unico envio da varredura fica DEPOIS do corte da janela tardia",
+           "medir sim; cobrar o grupo sobre conversa antiga, nunca mais (SPEC-120 D16)")
 
 
 # ==================================================================== #

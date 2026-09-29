@@ -42,6 +42,11 @@ logger = logging.getLogger(__name__)
 
 _ESPERA_ALERTA_MIN_PADRAO = 30      # espera que já constrange
 _REALERTA_HORAS_PADRAO = 6          # e a cadência do lembrete depois disso
+#: 🔴 SPEC-120 — a janela em que o vigia ainda TENTA DE NOVO um primeiro aviso
+#: que NUNCA saiu. Tem de ser MENOR que a reserva do marcador (`realerta_h`):
+#: dentro dela, um aviso que saiu ainda está reservado, e por isso nunca se
+#: repete. Fora dela, a conversa só é medida.
+_AVISO_TARDIO_HORAS_PADRAO = 2
 _MAX_POR_PASSADA = 50               # trabalho limitado por varredura
 
 
@@ -245,6 +250,49 @@ async def varrer_handoffs_parados() -> None:
                           contexto={"minutos": round(parada_ms / 60000)})
         except Exception:  # noqa: BLE001
             pass
+
+        # 🔴 SPEC-120 — A ÚNICA COISA QUE O VIGIA AINDA MANDA: o PRIMEIRO aviso
+        #    que NUNCA saiu. Não é lembrete.
+        #
+        # 📊 Achado do juiz (MÉDIO 4). Ao tirar o lembrete, a D16 tirou também a
+        # rede de segurança que o desenho CONTAVA existir: `HumanHandoffTool.
+        # _arun` reserva o marcador, e se o aviso falha ele o DEVOLVE — o
+        # comentário de lá diz *"senão o Vigia fica mudo justamente no caso em
+        # que ninguém soube"*. 📊 Com os grupos desativados de 10 a 21/09, é
+        # exatamente o caso que existiu: pedido de ajuda que ninguém recebeu.
+        # E a regra do Founder tem duas metades — *"um aviso só, na hora"* E
+        # *"o agente nunca pode travar sem chamar ninguém"*.
+        #
+        # Os três limites que impedem isto de virar o lembrete de novo:
+        #   ① só caso RECENTE (≤ `_AVISO_TARDIO_HORAS_PADRAO`): o print de 244h
+        #      é impossível por construção;
+        #   ② só se a vez estiver LIVRE no marcador compartilhado — um primeiro
+        #      aviso que SAIU está reservado por `realerta_h`, que é maior que a
+        #      janela ①, então nunca se repete;
+        #   ③ com humano atendendo, a porta única (`enviar_ao_grupo` →
+        #      `o_grupo_pode_saber`) cala, como em todo remetente (D17).
+        # ⚠️ O preço declarado: com o Redis fora do ar, `reivindicar_o_aviso`
+        #    devolve "a vez é sua" e o aviso pode sair mais de uma vez — mas
+        #    só dentro da janela ①.
+        _janela_tardia_ms = min(_env_int("HANDOFF_AVISO_TARDIO_HORAS",
+                                         _AVISO_TARDIO_HORAS_PADRAO),
+                                max(1, realerta_h - 1)) * 3_600_000
+        if parada_ms <= _janela_tardia_ms:
+            try:
+                if not await _ja_avisado_recentemente(conversa_id, realerta_h,
+                                                      company_id=company_id):
+                    from app.agents.tools.human_handoff import HumanHandoffTool
+
+                    motivo = (str(conversa.get("human_handoff_reason") or "").strip()
+                              or "o segurado pediu para falar com uma pessoa")
+                    aviso = await HumanHandoffTool(db)._avisar_suporte(
+                        company_id, conversa, motivo)
+                    if not aviso.get("avisado"):
+                        await _devolver_a_vez(conversa_id, company_id=company_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("[HandoffWatchdog] aviso tardio falhou (%s) | empresa=%s",
+                             type(exc).__name__, company_id)
+                await _devolver_a_vez(conversa_id, company_id=company_id)
 
         # =================================================================
         # 🔴 SPEC-120 D16 + D17 — O VIGIA NÃO COBRA MAIS O GRUPO. NUNCA.

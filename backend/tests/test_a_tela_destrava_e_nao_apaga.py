@@ -244,7 +244,12 @@ def test_D16_o_vigia_nao_cobra_mais_o_grupo_nem_com_nem_sem_dono():
     `test_o_grupo_so_e_chamado_quando_alguem_espera.py`.
     """
     corpo = _corpo_da_varredura()
-    assert "_avisar_suporte" not in corpo, "a varredura voltou a mandar mensagem ao grupo"
+    # ⚠️ A varredura ainda pode enviar UMA coisa: o primeiro aviso que nunca
+    # saiu, em caso recente (achado do juiz, SPEC-120). O que se cobra aqui e'
+    # que o envio mora DEPOIS do corte da janela — a prova de comportamento
+    # esta' em test_o_grupo_so_e_chamado_quando_alguem_espera.py, secao 4b.
+    assert "_janela_tardia_ms" in corpo and corpo.find("_janela_tardia_ms") < corpo.find("_avisar_suporte"), (
+        "a varredura voltou a mandar mensagem ao grupo FORA da janela tardia")
     codigo = _codigo_do_vigia()
     for texto in ("AINDA SEM ATENDIMENTO", "ASSUMIDA POR"):
         assert texto not in codigo, (
