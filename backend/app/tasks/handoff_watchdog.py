@@ -206,7 +206,11 @@ async def varrer_handoffs_parados() -> None:
                            "claimed_by, claimed_by_name, claimed_at, resolvido_em")
                    .eq("status", "HUMAN_REQUESTED")
                    .lt("last_message_at", limite)
-                   .order("last_message_at", desc=False)
+                   # 🔴 SPEC-121 (achado do builder F1): em ordem CRESCENTE o vigia
+                   #    lia as 50 MAIS ANTIGAS — 📊 29/09: 475 paradas, a mais nova
+                   #    das 50 lidas era de 14/09 — e o aviso tardio (≤ 2 h) nunca
+                   #    alcançava um caso recente. As mais novas primeiro.
+                   .order("last_message_at", desc=True)
                    .limit(_MAX_POR_PASSADA).execute().data or [])
     except Exception as exc:  # noqa: BLE001
         logger.error("[HandoffWatchdog] não consegui ler as conversas (%s)",

@@ -487,6 +487,22 @@ def _casos():
     n2 = vigia(b)
     certo(n1 == 1 and n2 == 0,
           "🔴 CONTROLE: o agente pediu e o aviso falhou → o vigia avisa UMA vez (%d, depois %d)" % (n1, n2))
+    # T2b — o MESMO pedido do agente, agora atrás de 60 conversas ANTIGAS do espelho.
+    # 📊 29/09: 475 paradas; em ordem crescente o lote de 50 só via as de 14/09.
+    ENVIOS.clear()
+    REDIS.chaves.clear()
+    velhas = [conversa("c2old%02d" % i, X, status="HUMAN_REQUESTED",
+                       claimed_by_name="Atendente pelo celular", claimed_at=antes(days=15),
+                       ultima=antes(days=10, minutes=i)) for i in range(60)]
+    ped = conversa("c2ag", X, status="HUMAN_REQUESTED", motivo="o segurado pediu uma pessoa",
+                   ultima=antes(minutes=40))
+    b = banco_com(velhas + [ped], [
+        msg("c2ag", "user", antes(minutes=60), "quero falar com alguém"),
+        msg("c2ag", "assistant", antes(minutes=55), "vou chamar a equipe"),
+        msg("c2ag", "user", antes(minutes=40), "ok, aguardo")])
+    n = vigia(b)
+    certo(n == 1,
+          "🔴 o pedido RECENTE do agente é lido mesmo com 60 conversas antigas na fila (%d aviso)" % n)
 
     # ------------------------------------------------------------------ T3
     print("\n" + "=" * 74 + "\n  T3 — C: a janela lê os 7 dias INTEIROS (o teto de 40 caiu)\n" + "=" * 74)
