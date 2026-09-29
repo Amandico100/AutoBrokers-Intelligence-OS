@@ -427,11 +427,15 @@ def test_a_justificativa_de_hoje_nomeia_o_rotulo_da_tecla():
 def test_a_resposta_errada_vem_antes_da_resposta_que_falta():
     """🔴 A ordem do §9.5: um passo que responde errado é silencioso e chega ao
     cliente; um que trava é barulhento. Com os dois, o motivo é o do errado."""
-    rota = M.rota_de("hdi", "auto", "guincho")
+    # ⚠️ ATUALIZADO NA SPEC-120 (CLAUDE.md §9.3): a rota era `hdi/auto/guincho`,
+    #    e ela deixou de ter tela órfã (📊 21 → 0, `simular_corredor --todas`).
+    #    A lição migra para `porto/auto/bateria`, cujas órfãs restantes são a
+    #    consultora da Porto (P-120-04).
+    rota = M.rota_de("porto", "auto", "bateria")
     sim = SC.simular(rota)
     assert sim.replay.orfas_funcionais, \
         "esta rota deixou de ter tela órfã — escolha outra para o teste da ORDEM"
-    plantado = CR.Achado(True, "A", "hdi", "auto", "passo_calado",
+    plantado = CR.Achado(True, "A", "porto", "auto", "passo_calado",
                          "o slot `x` não tem origem", "tela de teste")
     faixa, causa, _ = SC._faixa(rota, sim.replay, [plantado], sim.desfecho,
                                 sim.situacoes, M.get_playbook(rota.ref))
