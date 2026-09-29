@@ -661,12 +661,110 @@ def auditar_pii(texto: str, *, nomes_da_sessao: Iterable[str] = ()) -> List[str]
         achado = achar_vocativo(linha)
         if achado is not None:
             achados.append(f"NOME_NO_VOCATIVO:{achado[2][:6]}…")
+    # 🔴 SPEC-121 F3 · a apresentação da pessoa (P-120-12) — MESMA regra da máscara.
+    apres = achar_apresentacao(texto or "")
+    if apres is not None:
+        achados.append(f"NOME_NA_APRESENTACAO:{apres[:3]}…")
+    # 🔴 SPEC-121 F3 · o endereço postal — MESMA regra da máscara.
+    if _ENDERECO_POSTAL.search(texto or "") or [
+            m for m in _SOBRA_DO_ENDERECO.finditer(texto or "")
+            if m.group(0).strip() != (m.group(1) + "{ENDERECO}").strip()]:
+        achados.append("ENDERECO_POSTAL:…")
     baixo = (texto or "").lower()
     for nome in nomes_da_sessao:
         nome = (nome or "").strip()
         if len(nome) >= 3 and re.search(rf"\b{re.escape(nome.lower())}\b", baixo):
             achados.append(f"NOME_DA_SESSAO:{nome[:3]}…")
     return achados
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F3 · A APRESENTAÇÃO DA PESSOA DA SEGURADORA — fecha P-120-12.
+#
+# O vocativo ("Maria, …") já era mascarado; a APRESENTAÇÃO não. 📊 No acervo
+# versionado de 28/09 (`scratchpad/f3` · varredura por `aqui é a | meu nome é |
+# me chamo | sou a` em todos os `.jsonl`): porto `4830574a` ("Aqui é a <nome>.
+# Sou consultora de relacionamento") e yelum `9e562ae5`, `c0c3c694` ("Meu nome é
+# *_<nome>_* e vou iniciar seu atendimento") — primeiro nome de FUNCIONÁRIA num
+# arquivo global (CLAUDE.md §13.9).
+#
+# 🔴 O CONTROLE NEGATIVO é o mesmo que separa robô de pessoa em
+#    `quem_fala_na_seguradora`: a linha em que o ROBÔ se apresenta ("eu sou a
+#    <persona>, assistente virtual da zurich" — 📊 hdi, mapfre, zurich) NÃO é
+#    tocada. O nome da persona do robô é produto, não pessoa.
+# ⚠️ E papel não é nome: "Sou o Segurado", "sou a responsável" ficam.
+# ═════════════════════════════════════════════════════════════════════════════
+_APRESENTACAO_COM_NOME = re.compile(
+    r"(?i:\b(?:aqui [ée] (?:a|o)|meu nome [ée]|me chamo|sou (?:a|o)))\s+([*_]*)"
+    r"(?!(?i:segurad|terceir|respons|condutor|propriet|titular|client|corretor"
+    r"|assistente|atendente|consultor|analista|especialista|pessoa)\w*)"
+    r"([A-ZÀ-Ú][a-zà-ÿ]{2,})")
+
+
+def _e_o_robo(texto: str) -> bool:
+    import zonas_do_acervo as Z   # noqa: E402 — tardio: Z importa o motor
+    return Z.e_o_robo_se_apresentando(texto)
+
+
+def _mascarar_apresentacao(texto: str) -> Tuple[str, bool]:
+    """`Aqui é a <Nome>` → `Aqui é a {NOME}` — só quando NÃO é o robô."""
+    if not texto or _e_o_robo(texto):
+        return texto, False
+    novo, n = _APRESENTACAO_COM_NOME.subn(
+        lambda m: m.group(0)[: m.start(2) - m.start(0)] + "{NOME}", texto)
+    return novo, bool(n)
+
+
+def achar_apresentacao(texto: str) -> Optional[str]:
+    """A MESMA regra, do lado do guarda: o nome que sobrou numa apresentação."""
+    if not texto or _e_o_robo(texto):
+        return None
+    m = _APRESENTACAO_COM_NOME.search(texto)
+    return m.group(2) if m else None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F3 · O ENDEREÇO QUE O `templatize` DEIXA PELA METADE.
+#
+# 📊 Varredura independente do acervo versionado de 28/09 (`scratchpad/f3/
+#    varrer_pii.py`, regex própria, 6.048 linhas): 7 linhas em 6 sessões com o
+#    endereço do SEGURADO meio mascarado — `*1 -* AV #### ##<pedaço> DE # #####,
+#    <número da casa> - <pedaço da cidade> - SC` (allianz `8ad1d251`, `96f220ca`,
+#    `21610390`, `88eb97a9`, `f22b6d12`, `298e0c49`). O nome da rua some; o
+#    NÚMERO DA CASA, pedaços do nome e a UF ficam. É a tela de confirmar o
+#    endereço — e o recomeço da F3 traz mais delas para o acervo.
+#
+# 🔴 A forma que casa é a de ENDEREÇO POSTAL: logradouro + vírgula + número +
+#    ` - UF` no fim da linha. Nada de "rua" solta: a URA escreve "informe o nome
+#    do logradouro (rua, avenida…)" e "(Ex. Avenida Brasil)" — 📊 esses dois são
+#    os falsos positivos que a varredura mostrou, e NÃO têm número + UF.
+# ⚠️ O conserto de raiz é no `templatize` (outro dono) → pendência.
+# ═════════════════════════════════════════════════════════════════════════════
+_ENDERECO_POSTAL = re.compile(
+    # ⚠️ `R.` só COM o ponto: "R$ 150,00 - SC" não é rua.
+    r"(?:\b(?:AV|AVENIDA|RUA|ROD|RODOVIA|AL|ALAMEDA|TV|TRAVESSA|ESTR|ESTRADA|SERV|SERVIDAO"
+    r"|Av|Avenida|Rua|Rodovia|Alameda|Travessa|Estrada|Servid[ãa]o)\b\.?|\bR\.)"
+    # 🔴 da palavra do logradouro ATÉ O FIM DA LINHA, quando a linha tem vírgula e
+    #    " - UF" depois dela. 📊 O `templatize` deixa, depois do `{ENDERECO}`, o
+    #    número da casa, "BL"/"AP", pedaços do nome, bairro e cidade (allianz,
+    #    bradesco, hdi, porto, yelum — `scratchpad/f3`, 44 linhas no acervo
+    #    regerado). O número pode faltar (`96f220ca`: "<rua>,  - <cidade> - SC").
+    r"(?=[^\n]*,)(?=[^\n]*-\s*[A-Z]{2}\b)[^\n]*")
+
+
+# 🔴 E a SOBRA depois do `{ENDERECO}` que o `templatize` já pôs: 📊 acervo
+#    regerado, 30 linhas (`*Endereço:* R. {ENDERECO} - <bairro> - SC`,
+#    `*1 -* R. {ENDERECO}<pedaço da cidade> - SC`, `*1 -* RD <…>, <nº> - <…>
+#    {ENDERECO}<…> - SC`). A linha que tem `{ENDERECO}` e termina em " - UF" vira
+#    só o rótulo dela (`*Endereço:*`, `*1 -*`) + `{ENDERECO}`.
+_SOBRA_DO_ENDERECO = re.compile(
+    r"(?m)^([ \t]*(?:\*[^*\n]{0,30}\*[ \t]*)?)[^\n]*\{ENDERECO\}[^\n]*-[ \t]*[A-Z]{2}[ \t]*$")
+
+
+def _mascarar_endereco(texto: str) -> Tuple[str, bool]:
+    novo, n = _ENDERECO_POSTAL.subn("{ENDERECO}", texto or "")
+    novo, n2 = _SOBRA_DO_ENDERECO.subn(lambda m: m.group(1) + "{ENDERECO}", novo)
+    return novo, bool(n or n2)
 
 
 # ── a porta única ────────────────────────────────────────────────────────────
@@ -678,10 +776,19 @@ def higienizar(playbook: Dict[str, Any], cru: str, esqueletos_dado: set = frozen
     vira várias, uma por nome de atendente, e a contagem de sessões se fragmenta
     em silêncio.
     """
-    mascarado = M.templatize(cru)
+    # 🔴 SPEC-121 F3 · a apresentação da pessoa da seguradora (P-120-12) — sobre o
+    #    texto CRU, ANTES do `templatize`: 📊 ele troca o "Meu" de "Olá! Meu nome é
+    #    X" por `{NOME}` (vocativo depois de saudação) e deixa o X — a apresentação
+    #    precisa ser lida enquanto ainda tem a forma dela.
+    sem_apresentacao, houve_apres = _mascarar_apresentacao(cru)
+    mascarado = M.templatize(sem_apresentacao)
     mascarado, houve_senha = _preservar_capturas(playbook, cru, mascarado)
     mascarado, houve_vocativo = _mascarar_vocativo(mascarado, esqueletos_dado)
     mascarado, houve_nome = _mascarar_nomes_conhecidos(mascarado, nomes_da_sessao)
-    return mascarado, {"senha_preservada": houve_senha,
+    # 🔴 SPEC-121 F3 · o endereço que sobrou pela metade
+    mascarado, houve_end = _mascarar_endereco(mascarado)
+    return mascarado, {"endereco_mascarado": houve_end,
+                       "senha_preservada": houve_senha,
                        "vocativo_mascarado": houve_vocativo,
-                       "nome_da_sessao_mascarado": houve_nome}
+                       "nome_da_sessao_mascarado": houve_nome,
+                       "apresentacao_mascarada": houve_apres}

@@ -533,6 +533,167 @@ CAMINHO_DE_FUGA = {
 }
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F3 · NÍVEL 0 · O PEDIDO — a rota é o que o segurado PEDE, não o
+#    nome que a seguradora dá ao que ela manda.
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# O padrão-ouro lê o que a seguradora ASSINA. Na família HDI/Yelum ela assina com
+# o nome do PRESTADOR, não com o do pedido — e o produto tem uma rota por pedido:
+#
+# ```
+#   pedido (a tela da URA)                    ela assina             o corredor
+#   "pode me dizer o que aconteceu?"          "Socorro Mecânico"     yelum/auto/bateria
+#       → "Recarga de bateria"                                       (o_que_aconteceu →
+#                                                                     "Recarga de bateria")
+#   "o que aconteceu com a chave?"            "Guincho"              yelum/auto/chaveiro
+#       (a chave foi perdida; a Yelum
+#        converte em guincho)
+# ```
+#
+# 📊 Medido em 29/09/2026 (`scratchpad/f3_telas.py` sobre as 688 sessões de
+#    `observed_events`, texto `norm_para_classificar`):
+#    · "recarga de bateria" respondida em "pode me dizer o que aconteceu": yelum
+#      **5** sessões (`86769bd5`, `ba475989`, `927d8cea`, `8ac461dc`, `935c4076`),
+#      TODAS assinadas "Socorro Mecânico" e com protocolo; hdi 0.
+#    · "o que aconteceu com a chave": yelum `56bd78f7` (assinada Guincho),
+#      yelum `e6a07317` (sem etiqueta), hdi `697abd09` (já `chaveiro`).
+#    · 🔴 CONTROLE: as outras respostas à MESMA tela — `pane ou defeito` (19),
+#      `houve uma colisao` (10), `pneu furado` (3) — não estão na tabela e NÃO
+#      mudam de etiqueta: a pane pode virar socorro ou reboque, e quem decide é a
+#      seguradora (o padrão-ouro continua valendo para elas).
+#
+# ⚠️ Por que só HDI e Yelum: é a mesma URA (📊 165 telas idênticas, ver
+#    `MENUS_DE_SERVICO`). Nenhuma outra seguradora tem estas telas no acervo.
+O_PEDIDO: List[Dict[str, Any]] = [
+    # a TELA basta: ela só aparece quando o pedido é de chave
+    {"seguradoras": ("yelum", "hdi"),
+     "tela": r"o que aconteceu com a chave\?",
+     "servico": "chaveiro"},
+    # a RESPOSTA decide — e só as respostas que NOMEIAM o serviço estão aqui
+    {"seguradoras": ("yelum", "hdi"),
+     "tela": r"pode me dizer o que aconteceu\?",
+     "rotulos": {"recarga de bateria": "bateria"}},
+]
+
+
+def _o_pedido(seguradora: str, pares: List[Tuple[str, str]],
+              playbook: Optional[Dict[str, Any]]) -> Optional[str]:
+    """NÍVEL 0 — o pedido declarado numa tela da URA (`O_PEDIDO`), ou `None`.
+
+    🔴 Só devolve serviço que o PRÓPRIO corredor tem (quando há playbook): nunca
+    inventa rota.
+    """
+    for regra in O_PEDIDO:
+        if seguradora not in regra["seguradoras"]:
+            continue
+        rx = re.compile(regra["tela"], re.IGNORECASE | re.DOTALL)
+        for i, (direcao, texto) in enumerate(pares):
+            if direcao != "in" or not rx.search(texto):
+                continue
+            alvo = regra.get("servico")
+            if alvo is None:
+                for direcao2, resposta in pares[i + 1:]:
+                    if direcao2 != "out":
+                        continue
+                    r = _norm_rotulo(resposta)
+                    if not r:
+                        continue
+                    alvo = (regra.get("rotulos") or {}).get(r)
+                    break
+            if not alvo:
+                continue
+            canon = _canonizar(alvo, playbook)
+            if playbook is None or canon in (playbook.get("subservices") or {}):
+                return canon
+    return None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F3 · O APARELHO NOMEADO VENCE O PROFISSIONAL ESCOLHIDO NO MENU
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# 📊 hdi residencial, 29/09 (`scratchpad/f3_outs.py`): em `834cc238`, `ed46a953`
+#    e `b638adcd` a corretora apertou **Eletricista** no menu "qual o serviço que
+#    você precisa?" e, na conversa com o analista, pediu o conserto de um
+#    **fogão**; em `1c8d0849` a URA nem chegou ao menu (endereço fora do cadastro)
+#    e o protocolo final é do fogão ("a cobertura contempla equipamentos de até N
+#    anos… peças conforme o limite"). A investigação de 29/09
+#    (`eletrodomesticos-e-sem-desfecho.md`) leu as quatro como UM caso de fogão:
+#    uma abertura e três acompanhamentos.
+#
+# 🔴 A regra: etiqueta `eletricista` que NÃO veio da assinatura da seguradora
+#    (nível 1b ou 2) + a corretora NOMEOU um aparelho (`PADROES_DE_SERVICO_TEXTO
+#    ["eletrodomestico"]`, só `out`) → `eletrodomesticos`, se o corredor a tem.
+#    Eletricista é tomada, disjuntor, interruptor, bocal (D10 da SPEC-121);
+#    aparelho de linha branca é outro profissional.
+# ⚠️ A assinatura vence: se a seguradora escreveu "Serviço: Eletricista", fica.
+# 🔴 CONTROLE: `315f0681` (yelum eletricista, "Problema elétrico" → tomada) não
+#    nomeia aparelho e continua `eletricista` — teste `test_spec121_etiquetas`.
+_O_APARELHO = re.compile(
+    r"geladeira|fog[ãa]o|micro.?ondas|freezer|refrigerador|m[áa]quina de lavar",
+    re.IGNORECASE)
+
+
+def _o_aparelho_vence(servico: Optional[str], pares: List[Tuple[str, str]],
+                      playbook: Optional[Dict[str, Any]]) -> Optional[str]:
+    if servico != "eletricista":
+        return None
+    if not any(d == "out" and _O_APARELHO.search(t or "") for d, t in pares):
+        return None
+    alvo = _canonizar("eletrodomestico", playbook)
+    if playbook is not None and alvo not in (playbook.get("subservices") or {}):
+        return None
+    return alvo
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F3 · EXPLORAÇÃO NÃO É PEDIDO
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# 📊 hdi `13379965` (29/09, `scratchpad/f3_multi.py`): a corretora escolheu
+#    Eletricista, voltou, abriu Encanador ("Mais opções", "Voltar"), abriu Linha
+#    branca ("Voltar") e digitou SAIR. Três serviços no MESMO menu e nenhum
+#    pedido. Etiquetada `eletricista`, ela punha na rota do eletricista três telas
+#    de OUTROS serviços como órfãs — telas que o corredor nunca vê, porque ele
+#    responde "Eletricista" no menu e segue.
+#
+# 🔴 A regra: o menu de serviço respondido com ≥ 2 serviços DIFERENTES **e** a
+#    corretora saiu (`sair`) → sem etiqueta, nível `nivel-1b-exploracao`.
+#    Nota 75 × manter `eletricista` 45 (três órfãs falsas na régua) × tirar a
+#    sessão do corpus 50 (perde as telas de tronco, que são reais).
+# 🔴 CONTROLE medido: a única outra sessão com 2 serviços no menu, zurich
+#    `8e5fb8c0` (combustível → pneu), NÃO saiu e chegou ao protocolo — é
+#    correção de rota, não exploração, e continua como está.
+def _exploracao(seguradora: str, pares: List[Tuple[str, str]]) -> bool:
+    if not any(d == "out" and _norm_rotulo(t) == "sair" for d, t in pares):
+        return False
+    escolhidos = set()
+    for menu in MENUS_DE_SERVICO:
+        if menu["seguradora"] != seguradora:
+            continue
+        rx = re.compile(menu["tela"], re.DOTALL | re.IGNORECASE)
+        for i, (direcao, texto) in enumerate(pares):
+            if direcao != "in" or not rx.search(texto):
+                continue
+            for direcao2, resposta in pares[i + 1:]:
+                if direcao2 != "out":
+                    continue
+                r = _norm_rotulo(resposta)
+                if not r:
+                    continue
+                alvo = (menu.get("teclas") or {}).get(r)
+                if alvo is None:
+                    for rot, srv in (menu.get("rotulos") or {}).items():
+                        if _norm_rotulo(rot) == r:
+                            alvo = srv
+                            break
+                if alvo:
+                    escolhidos.add(alvo)
+                break
+    return len(escolhidos) >= 2
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # NÍVEL 2 · O TEXTO DIGITADO PELA CORRETORA — a reserva.
 #
@@ -550,7 +711,15 @@ PADROES_DE_SERVICO_TEXTO: Dict[str, str] = {
     "encanador":        r"encanador|hidr[áa]ulic|vazamento",
     "eletricista":      r"eletricista|reparo el[ée]trico|tomada queimada",
     "pneu":             r"pneu|borracheiro|estepe",
-    "eletrodomestico":  r"eletrodom[ée]stic|linha branca|m[áa]quina de lavar|lavadora",
+    # 🔴 SPEC-121 F3 · os APARELHOS, não só a categoria. 📊 `observed_events`
+    #    29/09 (`scratchpad/f3_eletro.py`): allianz `213af941` e `7c22675f`
+    #    (geladeira), `2802ddf8` e `eb7c521e` (microondas), hdi `834cc238`,
+    #    `ed46a953`, `b638adcd`, `1c8d0849` (fogão) — a corretora nomeia o
+    #    APARELHO, nunca "eletrodoméstico". Sem estes, geladeira saía `None`.
+    #    ⚠️ Roda sobre `norm_para_classificar` (sem acento): `fogao`, `micro-ondas`
+    #    e `microondas` — as classes com acento ficam por robustez (§9.4, dialeto).
+    "eletrodomestico":  (r"eletrodom[ée]stic|linha branca|m[áa]quina de lavar|lavadora"
+                         r"|geladeira|fog[ãa]o|micro.?ondas|freezer|refrigerador"),
     "socorro_mecanico": r"socorro mec[âa]nic|mec[âa]nico",
     "chaveiro":         r"chaveiro|chave.{0,12}(perdida|quebrada|trancad)",
     "vidro":            r"vidro|para.?brisa|retrovisor",
@@ -694,13 +863,17 @@ def _desempate_posterior(seguradora: str,
     return None
 
 
-def servico_da_sessao(seguradora: str,
-                      pares: List[Tuple[str, str]],
-                      playbook: Optional[Dict[str, Any]] = None) -> Tuple[Optional[str], str]:
-    """`[(direction, texto_normalizado), ...]` -> `(servico, nivel_que_decidiu)`.
+def _cascata(seguradora: str,
+             pares: List[Tuple[str, str]],
+             playbook: Optional[Dict[str, Any]] = None) -> Tuple[Optional[str], str]:
+    """A cascata de SEMPRE: padrão-ouro → resposta ao cardápio → texto da corretora.
 
-    A cascata inteira: padrão-ouro → resposta ao cardápio → texto da corretora.
+    ⚠️ Quem chama é `servico_da_sessao`, que a embrulha com o NÍVEL 0 e as duas
+    correções da SPEC-121 F3. Não a chame direto.
     """
+    # 🔴 SPEC-121 F3 · o rótulo GENÉRICO da seguradora não decide sozinho —
+    #    ver o ponto de uso. Guarda o "?rótulo" para o fim, se ninguém decidir.
+    adiado: Optional[Tuple[Optional[str], str]] = None
     # ── NÍVEL 1a-bis · o DESEMPATE pelo campo `problema:` ────────────────────
     #    Só roda quando o padrão-ouro deu um rótulo GENÉRICO e o playbook tem um
     #    subserviço mais específico. Nunca inventa serviço que o corredor não tem.
@@ -717,6 +890,14 @@ def servico_da_sessao(seguradora: str,
             for sub in sorted(subs, key=len, reverse=True):
                 if re.search(re.escape(sub.replace("_", " ")), problema):
                     return sub
+            # 🔴 SPEC-121 F3 · o ITEM, pelo vocabulário do nível 2: "problema:
+            #    geladeira" é eletrodoméstico mesmo que o corredor não tenha uma
+            #    rota chamada "geladeira". Só serviço que o corredor TEM.
+            for chave, padrao in PADROES_DE_SERVICO_TEXTO.items():
+                if re.search(padrao, problema):
+                    canon = _canonizar(chave, playbook)
+                    if canon in subs:
+                        return canon
         return None
 
     # ── NÍVEL 1a · o padrão-ouro ─────────────────────────────────────────────
@@ -778,6 +959,18 @@ def servico_da_sessao(seguradora: str,
                         if fino:
                             return fino, "nivel-1a-ouro+problema"
                         return achado, "nivel-1a-padrao-ouro"
+                # 🔴 SPEC-121 F3 · "CONSERTO RESIDENCIAL" (📊 allianz, 5 sessões
+                #    em 29/09: `b2946306` `ae194667` `965b3d12` `992aaa22`
+                #    `90d58fe4`) é o NOME DO PACOTE, não do serviço: o resumo não
+                #    diz o item. Resolve-se pelo item (`problema:`) ou pelos níveis
+                #    seguintes; só se ninguém decidir ele volta como "?rótulo".
+                if rotulo in SERVICOS_GENERICOS:
+                    fino = _desempatar(rotulo)
+                    if fino:
+                        return fino, "nivel-1a-ouro+problema"
+                    if adiado is None:
+                        adiado = (f"?{rotulo[:30]}", "nivel-1a-rotulo-desconhecido")
+                    continue
                 # 🔴 rotulo que a seguradora nomeia e o CODIGO nao tem: e achado
                 #    para a SPEC-084, nao ruido. 📊 `consulta veterinaria`,
                 #    `pet assistance`, `limpeza de caixa d agua`.
@@ -851,7 +1044,33 @@ def servico_da_sessao(seguradora: str,
         for chave, padrao in PADROES_DE_SERVICO_TEXTO.items():
             if re.search(padrao, texto):
                 return _canonizar(chave, playbook), "nivel-2-texto"
-    return None, "-"
+    return adiado or (None, "-")
+
+
+def servico_da_sessao(seguradora: str,
+                      pares: List[Tuple[str, str]],
+                      playbook: Optional[Dict[str, Any]] = None) -> Tuple[Optional[str], str]:
+    """`[(direction, texto_normalizado), ...]` -> `(servico, nivel_que_decidiu)`.
+
+    ```
+    NÍVEL 0   o PEDIDO numa tela da URA (`O_PEDIDO`)             SPEC-121 F3
+    NÍVEL 1a  padrão-ouro · 1b resposta ao cardápio · 2 texto    `_cascata`
+      + exploração (≥ 2 serviços no menu e `sair`) → sem etiqueta   SPEC-121 F3
+      + o aparelho nomeado vence o `eletricista` do menu            SPEC-121 F3
+    ```
+    """
+    pedido = _o_pedido(seguradora, pares, playbook)
+    if pedido:
+        return pedido, "nivel-0-pedido"
+    servico, nivel = _cascata(seguradora, pares, playbook)
+    if nivel.startswith("nivel-1a"):
+        return servico, nivel          # a assinatura da seguradora vence
+    if servico and _exploracao(seguradora, pares):
+        return None, "nivel-1b-exploracao"
+    fino = _o_aparelho_vence(servico, pares, playbook)
+    if fino:
+        return fino, nivel + "+aparelho"
+    return servico, nivel
 
 
 # ═════════════════════════════════════════════════════════════════════════════

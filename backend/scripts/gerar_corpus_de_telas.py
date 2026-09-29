@@ -220,7 +220,15 @@ def sessao_chegou_ao_fim(playbook: Dict[str, Any], telas: List[str]) -> bool:
     seguido de dígitos. Em yelum, 31 das 38 sessões "com protocolo" casam **só**
     pelos ramos largos. `extract_capture_anchors` devolve o grupo capturado, que
     é o que distingue os dois.
+
+    🔴 SPEC-121 F3 · TELA VAZIA NÃO ENTRA NO MOTOR. Quando o playbook não tem
+    âncora `password`/`eta`, o motor usa `$^` — que CASA a string vazia — e
+    `m.group(1)` lança `IndexError`. 📊 29/09: yelum-auto@v3, yelum-residencial@v1
+    e zurich-auto@v1 lançam com `""` (`scratchpad/f3` · laço sobre `M.rotas()`).
+    O produto se protege com `strip()` antes de chamar; este chamador não se
+    protegia. O conserto é AQUI — `corridor_playbooks.py` tem outro dono.
     """
+    telas = [t for t in telas if (t or "").strip()]
     for i, tela in enumerate(telas):
         if M.extract_capture_anchors(playbook, tela).get("protocol"):
             return True
@@ -262,6 +270,8 @@ MOTIVO_LINK = "a URA entregou LINK — nunca nomeou serviço executado"
 MOTIVO_SEM_MENU = "a URA nunca mostrou menu de serviço nesta sessão"
 MOTIVO_ASSUNTO = "escolheu no menu um assunto que a tabela marca None: %s"
 MOTIVO_DESCONHECIDO = "🔴 respondeu ao menu com um rótulo DESCONHECIDO: %s"
+# 🔴 SPEC-121 F3 — `PSV._exploracao`: ≥ 2 serviços no menu e a corretora saiu.
+MOTIVO_EXPLORACAO = "exploração: respondeu ao menu com 2+ serviços e saiu (sair)"
 
 
 def _rotulo_respondido(seguradora: str,
@@ -298,6 +308,8 @@ def motivo_sem_etiqueta(seguradora: str,
                         telas: List[str],
                         eventos: List[Dict[str, Any]]) -> str:
     """🔴 O motivo MEDIDO de a sessão não ter serviço. Nunca adjetivo."""
+    if PSV._exploracao(seguradora, pares):
+        return MOTIVO_EXPLORACAO
     fuga = PSV.CAMINHO_DE_FUGA.get(seguradora)
     if fuga:
         rx = _re.compile(fuga["tela"], _re.DOTALL | _re.IGNORECASE)
@@ -326,6 +338,13 @@ def motivo_sem_etiqueta(seguradora: str,
 # ─────────────────────────────────────────────────────────────────────────────
 # A ESCOLHA DAS SESSÕES — sem ambiguidade, e determinística.
 # ─────────────────────────────────────────────────────────────────────────────
+def _curto(sid: Any) -> str:
+    """O id que o corpus e o INDICE mostram: 8 caracteres da sessão, ou
+    `<sid8>+k` para o k-ésimo atendimento em que o robô recomeçou (SPEC-121 F3)."""
+    t = str(sid)
+    return t if "+" in t else t[:8]
+
+
 def _jaccard(a: Set[str], b: Set[str]) -> float:
     if not a and not b:
         return 1.0
@@ -399,7 +418,7 @@ def escolher_sessoes(
                 continue
             cota.append(sid)
             vistas[sid] = telas
-            notas.append("[%s] COM DESFECHO -> %s" % (rot, str(sid)[:8]))
+            notas.append("[%s] COM DESFECHO -> %s" % (rot, _curto(sid)))
 
         restantes = [c for c in grupo if c[0] not in cota]
         while restantes and len(cota) < piso_por_rota:
@@ -414,7 +433,7 @@ def escolher_sessoes(
             vistas[melhor[0]] = melhor[2]
             restantes.remove(melhor)
             notas.append("[%s] diversidade (jaccard %.2f) -> %s"
-                         % (rot, melhor_sim, str(melhor[0])[:8]))
+                         % (rot, melhor_sim, _curto(melhor[0])))
 
         # 🔴 O QUE FICOU FORA, SEPARADO POR DESFECHO — porque as duas coisas tem
         #    consequencias opostas. "Sem desfecho fora" e economia de bytes;
@@ -428,7 +447,7 @@ def escolher_sessoes(
                          % (rot, fora_sem_desfecho, piso_por_rota))
         for c in fora_com_desfecho:
             notas.append("[%s] 🔴 ALARME: COM DESFECHO **FORA** pelo teto de %s -> %s"
-                         % (rot, teto_de_desfecho, str(c[0])[:8]))
+                         % (rot, teto_de_desfecho, _curto(c[0])))
         escolhidas.extend(cota)
 
     return escolhidas, notas
@@ -513,173 +532,206 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False,
                 continue
             ordenados = sorted(eventos, key=lambda x: x.get("wa_timestamp") or "")
 
-            pares = [(e.get("direction"), Z.norm_para_classificar(e.get("text") or ""))
-                     for e in ordenados]
-
-            # PASSO 0 · o RAMO, pela cascata de dois níveis
-            ramo, nivel = PR.classificar_ramo(seg, pares)
-            contagem[f"ramo:{ramo}"] += 1
-            contagem[f"nivel:{nivel.split(':')[0]}"] += 1
-            # 🔴 Os três estados que NÃO viram corpus, e são coisas diferentes:
-            #    `indefinido`   a sessão não decidiu (quase toda curta)
-            #    `ambos`        colisão -> algum padrão cita cardápio (PADRAO_DE_CARDAPIO)
-            #    `sem_escolha`  a sessão é longa e legítima, mas NÃO É DE ASSISTÊNCIA
-            #                   (📊 cartão de crédito, sinistro RE, contratação)
-            # 🔴 REGRA DE ESCOPO DO FOUNDER, 21/08/2026:
-            #    *"Condominio e outros ramos que nao sejam auto e residencial NAO
-            #    entram em corredores neste momento. Tudo que for outro ramo, e
-            #    tudo que for SINISTRO, deve ser HANDOFF para o suporte humano."*
-            #
-            # ⚠️ O corpus do ramo fora de escopo NAO e gerado - mas a contagem
-            #    dele VAI para o relatorio, porque PENDENCIAS.md precisa saber
-            #    quantas sessoes ficaram de fora e de que ramo.
-            if ramo not in RAMOS_EM_ESCOPO and ramo not in ("indefinido", "ambos", "sem_escolha"):
-                contagem["FORA_DE_ESCOPO:" + ramo] += 1
-                continue
-            if ramo in ("indefinido", "ambos", "sem_escolha"):
-                if ramo == "ambos":
-                    rel["avisos"].append(
-                        f"PADRAO_DE_CARDAPIO {seg}/{str(sid)[:8]}: {nivel}")
-                continue
-
-            # 🔴 QUEM É O SEGURADO DESTA SESSÃO — levantado ANTES de mascarar.
+            # 🔴 QUEM É O SEGURADO DESTA SESSÃO — levantado ANTES de mascarar,
+            #    sobre a sessão INTEIRA (todos os atendimentos dela).
             #    O vocativo revela o nome; o resto da conversa o repete fora da
             #    posição de vocativo, onde nenhuma regra de FORMA o alcança.
             nomes_desta_sessao = H.nomes_no_vocativo(
                 e.get("text") or "" for e in ordenados if e.get("direction") == "in")
 
-            # PASSO 1 · só `direction='in'`, e só `zona='URA'`
-            linhas: List[Dict[str, Any]] = []
-            vistos: Set[str] = set()
-            for e, zona, _motivo in Z.zonas(ordenados, seg):
-                if e.get("direction") != "in":
-                    continue
-                contagem[f"zona:{zona}"] += 1
-                if zona != "URA":
-                    continue
-                bruto = Z.limpar_invisiveis(e.get("text") or "")
-                if not bruto.strip():
-                    continue
-                n = M._norm(bruto)
-
-                # PASSO 1b · a direção invertida (defeito de ingestão)
-                if Z.direcao_invertida(n):
-                    contagem["DIRECAO_INVERTIDA"] += 1
-                    continue
-
-                # PASSO 1c · o filtro ② — fala humana que a fronteira não pegou
-                if FALA_DE_GENTE.match(n.strip()):
-                    contagem["FALA_DE_GENTE"] += 1
-                    continue
-
-                # PASSO 2 · dedup por (session_id, _norm(text)). 🔴 O timestamp
-                #           NÃO entra: 📊 metade dos eventos de uma sessão é
-                #           repetição do mesmo texto, e a tokio tem 36,3% de
-                #           duplicata exata.
-                if n in vistos:
-                    contagem["dedup"] += 1
-                    continue
-                vistos.add(n)
-
-                # PASSO 3 · mascarar (§6.4 + CA-062 + CA-064 + SPEC-119 §1)
-                pb = pb_por_ramo.get(ramo)
-                limpo, marcas_ap = H.higienizar(pb or {}, bruto, esq_dado,
-                                                nomes_da_sessao=nomes_desta_sessao)
-                if marcas_ap["senha_preservada"]:
-                    contagem["senha_preservada"] += 1
-                if marcas_ap["vocativo_mascarado"]:
-                    contagem["vocativo_mascarado"] += 1
-                if marcas_ap["nome_da_sessao_mascarado"]:
-                    contagem["nome_da_sessao_mascarado"] += 1
-
-                # 🔴 O AUDITOR RECEBE OS NOMES — SPEC-119 CONSERTO A, 28/09/2026.
-                #    📊 `auditar_pii` TEM o parâmetro `nomes_da_sessao` desde a
-                #    SPEC-083, e a docstring dele diz por quê; os dois chamadores
-                #    o ignoravam. O guarda existia e não era chamado.
-                sujeira = H.auditar_pii(limpo, nomes_da_sessao=nomes_desta_sessao)
-                if sujeira:
-                    # 🔴 RECUSAR só o que sobrar sujo depois da máscara — e a
-                    #    recusa vai para o INDICE.md com sessão e motivo.
-                    #    *"some do arquivo, não do registro."*
-                    rel["recusadas"].append(
-                        {"seguradora": seg, "ramo": ramo, "session_id": str(sid)[:8],
-                         "motivo": ",".join(sorted({s.split(":")[0] for s in sujeira}))})
-                    contagem["RECUSADA"] += 1
-                    continue
-
-                linhas.append({
-                    "session_id": str(sid)[:8],
-                    "wa_timestamp": e.get("wa_timestamp"),
-                    "company_id": str(e.get("company_id") or "")[:8],
-                    "text": limpo,
-                })
-
-            if not linhas:
-                continue
-
-            # 🔴 QUAL SERVICO esta sessao percorreu -- pela cascata de tres
-            #    niveis (padrao-ouro -> resposta ao cardapio -> texto do `out`).
-            #    Sem isto o replay roda o corpus INTEIRO de (seguradora, ramo)
-            #    contra UMA rota, e as telas do eletricista viram orfas da maquina
-            #    de lavar: 📊 20 orfas onde a SPEC-083 §4.1 espera 1.
-            servico, nivel_srv = PSV.servico_da_sessao(seg, pares, pb_por_ramo.get(ramo))
-            for l in linhas:
-                l["servico"] = servico
-                l["servico_nivel"] = nivel_srv
-            contagem[f"servico:{nivel_srv.split('-')[0] if servico else 'indefinido'}"] += 1
-            pb = pb_por_ramo.get(ramo)
-            fim = sessao_chegou_ao_fim(pb, [l["text"] for l in linhas]) if pb else False
-            # 🔴 SPEC-119 F2 · o MOTIVO de a sessão não ter etiqueta, MEDIDO.
-            chave_sem = f"{seg}-{ramo}"
-            if servico:
-                rel["com_etiqueta"][chave_sem] = (
-                    rel["com_etiqueta"].get(chave_sem, 0) + 1)
-            else:
-                motivo = motivo_sem_etiqueta(
-                    seg, pares, [l["text"] for l in linhas], ordenados)
-                alvo = rel["sem_etiqueta"].setdefault(chave_sem, {})
-                d = alvo.setdefault(motivo, {"sessoes": [], "com_desfecho": 0})
-                d["sessoes"].append(str(sid)[:8])
-                d["com_desfecho"] += 1 if fim else 0
-            por_ramo[ramo].append(
-                (sid, max(l["wa_timestamp"] or "" for l in linhas),
-                 {l["text"] for l in linhas}, fim, servico, linhas))
+            # 🔴 SPEC-121 F3 · UM CANDIDATO POR ATENDIMENTO. A sessão de WhatsApp
+            #    dura dias; cada vez que o robô RECOMEÇA depois de uma pessoa
+            #    (`Z.atendimentos`), começa um atendimento novo, com o SEU ramo e
+            #    o SEU serviço. Sessão sem recomeço = um atendimento = a sessão
+            #    inteira, exatamente como antes de 29/09.
+            #    O id do atendimento k ≥ 1 é `<sid8>+k` (📊 `8ad1d251+1`).
+            for k, atendimento in enumerate(Z.atendimentos(ordenados, seg)):
+                id_do_atendimento = sid if k == 0 else f"{str(sid)[:8]}+{k}"
+                eventos_k = [e for e, _zona in atendimento]
+                pares = [(e.get("direction"), Z.norm_para_classificar(e.get("text") or ""))
+                         for e in eventos_k]
+                saida = _um_atendimento(
+                    seg, id_do_atendimento, atendimento, eventos_k, pares, pb_por_ramo,
+                    esq_dado, nomes_desta_sessao, contagem, rel)
+                if saida is not None:
+                    por_ramo[saida[0]].append(saida[1])
 
         rel["por_seguradora"][seg] = dict(contagem)
-
-        # PASSO 4 · a escolha, e PASSO 5 · gravar
-        for ramo, candidatas in por_ramo.items():
-            pb = pb_por_ramo.get(ramo)
-            n_servicos = len((pb or {}).get("subservices") or {})
-            escolhidas, notas = escolher_sessoes(
-                [(c[0], c[1], c[2], c[3], c[4]) for c in candidatas],
-                piso_por_rota, teto_de_desfecho=teto_de_desfecho)
-            mapa = {c[0]: c[5] for c in candidatas}
-            linhas = [l for sid in escolhidas for l in mapa[sid]]
-            linhas.sort(key=lambda l: (l["wa_timestamp"] or "", l["session_id"]))
-
-            nome = f"{seg}-{ramo}.jsonl"
-            corpo = "\n".join(json.dumps(l, ensure_ascii=False) for l in linhas) + "\n"
-            rel["arquivos"][nome] = {
-                "linhas": len(linhas), "bytes": len(corpo.encode("utf-8")),
-                "sessoes_no_corpus": [str(s)[:8] for s in escolhidas],
-                "sessoes_candidatas": len(candidatas),
-                "piso": piso_por_rota, "subservices": n_servicos,
-                "chegou_ao_fim": sum(1 for c in candidatas if c[3]),
-                # 🔴 SPEC-119 F2: o numero que o guarda le. Sessao COM DESFECHO
-                #    fora do corpus e o defeito, e ele fica ESCRITO no INDICE.
-                "com_desfecho_fora": sum(
-                    1 for c in candidatas
-                    if c[3] and str(c[0])[:8] not in {str(s)[:8] for s in escolhidas}),
-                "notas_da_selecao": notas,
-            }
-            if len(corpo.encode("utf-8")) > TETO_DE_BYTES_POR_ARQUIVO:
-                rel["avisos"].append(f"TETO_DE_BYTES estourado em {nome}")
-            if not dry_run:
-                os.makedirs(DESTINO, exist_ok=True)
-                with open(os.path.join(DESTINO, nome), "w", encoding="utf-8") as fh:
-                    fh.write(corpo)
+        _escolher_e_gravar(rel, por_ramo, pb_por_ramo, seg, piso_por_rota,
+                           teto_de_desfecho, dry_run)
     return rel
+
+
+def _um_atendimento(seg, sid, atendimento, ordenados, pares, pb_por_ramo,
+                    esq_dado, nomes_desta_sessao, contagem, rel):
+    """PASSOS 0–3 para UM atendimento → `(ramo, candidata)` ou `None`.
+
+    ⚠️ Era o corpo do laço por sessão até 29/09 (SPEC-121 F3); virou função para
+    rodar uma vez por ATENDIMENTO (`Z.atendimentos`). Nenhum passo mudou — só o
+    que entra nele: os eventos e os pares DAQUELE atendimento.
+    """
+    # PASSO 0 · o RAMO, pela cascata de dois níveis
+    ramo, nivel = PR.classificar_ramo(seg, pares)
+    contagem[f"ramo:{ramo}"] += 1
+    contagem[f"nivel:{nivel.split(':')[0]}"] += 1
+    # 🔴 Os três estados que NÃO viram corpus, e são coisas diferentes:
+    #    `indefinido`   a sessão não decidiu (quase toda curta)
+    #    `ambos`        colisão -> algum padrão cita cardápio (PADRAO_DE_CARDAPIO)
+    #    `sem_escolha`  a sessão é longa e legítima, mas NÃO É DE ASSISTÊNCIA
+    #                   (📊 cartão de crédito, sinistro RE, contratação)
+    # 🔴 REGRA DE ESCOPO DO FOUNDER, 21/08/2026:
+    #    *"Condominio e outros ramos que nao sejam auto e residencial NAO
+    #    entram em corredores neste momento. Tudo que for outro ramo, e
+    #    tudo que for SINISTRO, deve ser HANDOFF para o suporte humano."*
+    #
+    # ⚠️ O corpus do ramo fora de escopo NAO e gerado - mas a contagem
+    #    dele VAI para o relatorio, porque PENDENCIAS.md precisa saber
+    #    quantas sessoes ficaram de fora e de que ramo.
+    if ramo not in RAMOS_EM_ESCOPO and ramo not in ("indefinido", "ambos", "sem_escolha"):
+        contagem["FORA_DE_ESCOPO:" + ramo] += 1
+        return None
+    if ramo in ("indefinido", "ambos", "sem_escolha"):
+        if ramo == "ambos":
+            rel["avisos"].append(
+                f"PADRAO_DE_CARDAPIO {seg}/{_curto(sid)}: {nivel}")
+        return None
+
+    # PASSO 1 · só `direction='in'`, e só `zona='URA'`
+    linhas: List[Dict[str, Any]] = []
+    vistos: Set[str] = set()
+    for e, zona in atendimento:
+        if e.get("direction") != "in":
+            continue
+        contagem[f"zona:{zona}"] += 1
+        if zona != "URA":
+            continue
+        bruto = Z.limpar_invisiveis(e.get("text") or "")
+        if not bruto.strip():
+            continue
+        n = M._norm(bruto)
+
+        # PASSO 1b · a direção invertida (defeito de ingestão)
+        if Z.direcao_invertida(n):
+            contagem["DIRECAO_INVERTIDA"] += 1
+            continue
+
+        # PASSO 1c · o filtro ② — fala humana que a fronteira não pegou
+        if FALA_DE_GENTE.match(n.strip()):
+            contagem["FALA_DE_GENTE"] += 1
+            continue
+
+        # PASSO 2 · dedup por (session_id, _norm(text)). 🔴 O timestamp
+        #           NÃO entra: 📊 metade dos eventos de uma sessão é
+        #           repetição do mesmo texto, e a tokio tem 36,3% de
+        #           duplicata exata.
+        if n in vistos:
+            contagem["dedup"] += 1
+            continue
+        vistos.add(n)
+
+        # PASSO 3 · mascarar (§6.4 + CA-062 + CA-064 + SPEC-119 §1)
+        pb = pb_por_ramo.get(ramo)
+        limpo, marcas_ap = H.higienizar(pb or {}, bruto, esq_dado,
+                                        nomes_da_sessao=nomes_desta_sessao)
+        if marcas_ap["senha_preservada"]:
+            contagem["senha_preservada"] += 1
+        if marcas_ap["vocativo_mascarado"]:
+            contagem["vocativo_mascarado"] += 1
+        if marcas_ap["nome_da_sessao_mascarado"]:
+            contagem["nome_da_sessao_mascarado"] += 1
+        if marcas_ap.get("apresentacao_mascarada"):
+            contagem["apresentacao_mascarada"] += 1
+        if marcas_ap.get("endereco_mascarado"):
+            contagem["endereco_mascarado"] += 1
+
+        # 🔴 O AUDITOR RECEBE OS NOMES — SPEC-119 CONSERTO A, 28/09/2026.
+        #    📊 `auditar_pii` TEM o parâmetro `nomes_da_sessao` desde a
+        #    SPEC-083, e a docstring dele diz por quê; os dois chamadores
+        #    o ignoravam. O guarda existia e não era chamado.
+        sujeira = H.auditar_pii(limpo, nomes_da_sessao=nomes_desta_sessao)
+        if sujeira:
+            # 🔴 RECUSAR só o que sobrar sujo depois da máscara — e a
+            #    recusa vai para o INDICE.md com sessão e motivo.
+            #    *"some do arquivo, não do registro."*
+            rel["recusadas"].append(
+                {"seguradora": seg, "ramo": ramo, "session_id": _curto(sid),
+                 "motivo": ",".join(sorted({s.split(":")[0] for s in sujeira}))})
+            contagem["RECUSADA"] += 1
+            continue
+
+        linhas.append({
+            "session_id": _curto(sid),
+            "wa_timestamp": e.get("wa_timestamp"),
+            "company_id": str(e.get("company_id") or "")[:8],
+            "text": limpo,
+        })
+
+    if not linhas:
+        return None
+
+    # 🔴 QUAL SERVICO esta sessao percorreu -- pela cascata de tres
+    #    niveis (padrao-ouro -> resposta ao cardapio -> texto do `out`).
+    #    Sem isto o replay roda o corpus INTEIRO de (seguradora, ramo)
+    #    contra UMA rota, e as telas do eletricista viram orfas da maquina
+    #    de lavar: 📊 20 orfas onde a SPEC-083 §4.1 espera 1.
+    servico, nivel_srv = PSV.servico_da_sessao(seg, pares, pb_por_ramo.get(ramo))
+    for l in linhas:
+        l["servico"] = servico
+        l["servico_nivel"] = nivel_srv
+    contagem[f"servico:{nivel_srv.split('-')[0] if servico else 'indefinido'}"] += 1
+    pb = pb_por_ramo.get(ramo)
+    fim = sessao_chegou_ao_fim(pb, [l["text"] for l in linhas]) if pb else False
+    # 🔴 SPEC-119 F2 · o MOTIVO de a sessão não ter etiqueta, MEDIDO.
+    chave_sem = f"{seg}-{ramo}"
+    if servico:
+        rel["com_etiqueta"][chave_sem] = (
+            rel["com_etiqueta"].get(chave_sem, 0) + 1)
+    else:
+        motivo = motivo_sem_etiqueta(
+            seg, pares, [l["text"] for l in linhas], ordenados)
+        alvo = rel["sem_etiqueta"].setdefault(chave_sem, {})
+        d = alvo.setdefault(motivo, {"sessoes": [], "com_desfecho": 0})
+        d["sessoes"].append(_curto(sid))
+        d["com_desfecho"] += 1 if fim else 0
+    return ramo, (sid, max(l["wa_timestamp"] or "" for l in linhas),
+                  {l["text"] for l in linhas}, fim, servico, linhas)
+
+
+def _escolher_e_gravar(rel, por_ramo, pb_por_ramo, seg, piso_por_rota,
+                       teto_de_desfecho, dry_run) -> None:
+    """PASSO 4 · a escolha, e PASSO 5 · gravar — por (seguradora, ramo)."""
+    # PASSO 4 · a escolha, e PASSO 5 · gravar
+    for ramo, candidatas in por_ramo.items():
+        pb = pb_por_ramo.get(ramo)
+        n_servicos = len((pb or {}).get("subservices") or {})
+        escolhidas, notas = escolher_sessoes(
+            [(c[0], c[1], c[2], c[3], c[4]) for c in candidatas],
+            piso_por_rota, teto_de_desfecho=teto_de_desfecho)
+        mapa = {c[0]: c[5] for c in candidatas}
+        linhas = [l for sid in escolhidas for l in mapa[sid]]
+        linhas.sort(key=lambda l: (l["wa_timestamp"] or "", l["session_id"]))
+
+        nome = f"{seg}-{ramo}.jsonl"
+        corpo = "\n".join(json.dumps(l, ensure_ascii=False) for l in linhas) + "\n"
+        rel["arquivos"][nome] = {
+            "linhas": len(linhas), "bytes": len(corpo.encode("utf-8")),
+            "sessoes_no_corpus": [_curto(s) for s in escolhidas],
+            "sessoes_candidatas": len(candidatas),
+            "piso": piso_por_rota, "subservices": n_servicos,
+            "chegou_ao_fim": sum(1 for c in candidatas if c[3]),
+            # 🔴 SPEC-119 F2: o numero que o guarda le. Sessao COM DESFECHO
+            #    fora do corpus e o defeito, e ele fica ESCRITO no INDICE.
+            "com_desfecho_fora": sum(
+                1 for c in candidatas
+                if c[3] and _curto(c[0]) not in {_curto(s) for s in escolhidas}),
+            "notas_da_selecao": notas,
+        }
+        if len(corpo.encode("utf-8")) > TETO_DE_BYTES_POR_ARQUIVO:
+            rel["avisos"].append(f"TETO_DE_BYTES estourado em {nome}")
+        if not dry_run:
+            os.makedirs(DESTINO, exist_ok=True)
+            with open(os.path.join(DESTINO, nome), "w", encoding="utf-8") as fh:
+                fh.write(corpo)
 
 
 def escrever_indice(rel: Dict[str, Any]) -> str:

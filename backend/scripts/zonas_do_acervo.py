@@ -64,6 +64,7 @@ from app.services.quem_fala_na_seguradora import (  # noqa: E402,F401
     _compilados,
     _fronteira_de,
     e_fronteira,
+    e_o_robo_se_apresentando,
     limpar_invisiveis,
     norm_para_classificar,
     tem_apresentacao_humana,
@@ -87,6 +88,66 @@ def _tem_sessao(sid: Any) -> bool:
 
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F3 · O ROBÔ RECOMEÇA DEPOIS DA PESSOA — e o acervo não via.
+#
+# Até 29/09/2026 `zonas()` marcava HUMANO **tudo** o que vinha depois da primeira
+# transferência. Mas a sessão de WhatsApp da corretora com a seguradora é UMA só
+# por dias: a pessoa da seguradora encerra, a corretora escreve "oi" de novo, e
+# **o robô recomeça do Termo de Privacidade**. Esse segundo acionamento inteiro
+# ficava fora do corpus.
+#
+# 📊 BLOCO 0 da SPEC-121 §6 (`bloco0/zonas_fim.py`, 29/09): na Allianz
+#    residencial, 39 sessões têm o protocolo SÓ na zona humana, e em 19 delas o
+#    robô recomeçou. Exemplo: `8ad1d251` faz uma máquina de lavar INTEIRA pelo
+#    robô (menu, aparelho, data, período, resumo, protocolo) depois de uma
+#    transferência — e nada disso chegava ao acervo.
+#
+# 🔴 O CRITÉRIO QUE DISTINGUE ROBÔ DE PESSOA É O QUE O MÓDULO JÁ TINHA:
+#    `APRESENTACAO_DO_ROBO` (`quem_fala_na_seguradora`, o controle negativo da
+#    apresentação humana — *"sou a assistente virtual"*, *"atendimento
+#    digital"*), lido por `e_o_robo_se_apresentando`. Nenhuma tabela nova.
+#
+#    ⛔ E ele sozinho NÃO basta — a medição achou a exceção: 📊 `334a4892` (hdi)
+#    tem, depois da pessoa, *"Olá, eu sou a assistente virtual da HDI… a
+#    solicitação de … para a assistência N foi aberta com sucesso"*. É o robô,
+#    sim, mas é AVISO de uma solicitação que a PESSOA abriu. Contá-lo daria à
+#    rota um "chegou ao protocolo" que o corredor nunca percorreu. Por isso o
+#    recomeço exige as DUAS coisas:
+#
+#      ① o robô se apresenta (`APRESENTACAO_DO_ROBO`), na direção `in`, e
+#      ② a corretora RESPONDE a ele (≥ 1 `out`) antes da próxima transferência.
+#
+#    Sem ②, é notificação → continua HUMANO, como sempre foi.
+#
+# 📊 O CONTROLE que dá direito ao critério (29/09, `scratchpad/f3_medir_reabre.py`
+#    sobre as 688 sessões de `observed_events`): das 41 sessões em que o robô se
+#    reapresenta depois de uma fronteira (allianz 31 · hdi 2 · porto 2 · yelum 2 ·
+#    mapfre 1 …), **ZERO** têm uma pessoa se apresentando depois da reapresentação
+#    sem uma NOVA fronteira no meio. O robô que recomeça fala sozinho até
+#    transferir de novo — e aí a zona volta a ser HUMANO.
+# ═════════════════════════════════════════════════════════════════════════════
+MOTIVO_RECOMECO = "RECOMECO"
+
+
+def _o_robo_recomeca(eventos: List[Dict[str, Any]], i: int, seguradora: str) -> bool:
+    """O evento `i` abre um NOVO atendimento do robô? ① e ② do bloco acima."""
+    e = eventos[i]
+    if e.get("direction") != "in":
+        return False
+    if not e_o_robo_se_apresentando(e.get("text") or ""):
+        return False
+    for f in eventos[i + 1:]:
+        if not _tem_sessao(f.get("session_id")):
+            continue
+        if f.get("direction") == "out" and (f.get("text") or "").strip():
+            return True
+        if f.get("direction") == "in" and e_fronteira(
+                seguradora, norm_para_classificar(f.get("text") or "")):
+            return False
+    return False
+
+
 def zonas(eventos_da_sessao: Iterable[Dict[str, Any]],
           seguradora: str) -> Iterator[Tuple[Dict[str, Any], str, Optional[str]]]:
     """Devolve `(evento, zona, motivo)` para cada evento, em ordem de tempo.
@@ -104,21 +165,55 @@ def zonas(eventos_da_sessao: Iterable[Dict[str, Any]],
     🔴 **NÃO existe zona CORRETORA.** A tela que cita a corretora **fica no
     corpus, mascarada**. 📊 Descartá-la tiraria 66 telas de URA, uma delas a tela
     do CPF da tokio — que é o ponto de entrada obrigatório do fio dela.
+
+    🔴 SPEC-121 F3 — a zona HUMANO **acaba** quando o robô recomeça (bloco
+    acima): o evento da reapresentação volta como `(e, "URA", "RECOMECO")`, e é
+    por esse motivo que o gerador sabe onde começa o NOVO atendimento. Uma nova
+    fronteira depois dele devolve a zona a HUMANO.
     """
-    t_fronteira = None
-    for e in sorted(eventos_da_sessao, key=lambda x: (x.get("wa_timestamp") or "")):
+    ordenados = sorted(eventos_da_sessao, key=lambda x: (x.get("wa_timestamp") or ""))
+    humano = False
+    for i, e in enumerate(ordenados):
         if not _tem_sessao(e.get("session_id")):
             yield e, "ORFAO", "session_id nulo"
             continue
-        n = norm_para_classificar(e.get("text") or "")
-        if t_fronteira is None:
-            motivo = e_fronteira(seguradora, n)
-            if motivo:
-                t_fronteira = e.get("wa_timestamp")
-                # 🔴 A própria fronteira ainda é URA: é a URA anunciando.
-                yield e, "URA", motivo
+        if humano:
+            if _o_robo_recomeca(ordenados, i, seguradora):
+                humano = False
+                yield e, "URA", MOTIVO_RECOMECO
                 continue
-        yield e, ("HUMANO" if t_fronteira else "URA"), None
+            yield e, "HUMANO", None
+            continue
+        n = norm_para_classificar(e.get("text") or "")
+        motivo = e_fronteira(seguradora, n)
+        if motivo:
+            humano = True
+            # 🔴 A própria fronteira ainda é URA: é a URA anunciando.
+            yield e, "URA", motivo
+            continue
+        yield e, "URA", None
+
+
+def atendimentos(eventos_da_sessao: Iterable[Dict[str, Any]],
+                 seguradora: str) -> List[List[Tuple[Dict[str, Any], str]]]:
+    """A sessão partida em ATENDIMENTOS: um a cada vez que o robô recomeça.
+
+    `[[(evento, zona), ...], ...]` — o 1º começa no 1º evento; cada `RECOMECO`
+    de `zonas()` abre o seguinte. Sessão sem recomeço = UM atendimento, igual à
+    sessão inteira (e o gerador faz exatamente o que fazia antes de 29/09).
+
+    🔴 Por que partir, e não só devolver as telas ao corpus: 📊 `8ad1d251` tem,
+    na MESMA sessão, um acompanhamento de DESENTUPIMENTO e depois uma MÁQUINA DE
+    LAVAR inteira. Com uma etiqueta só por sessão, as telas da máquina entrariam
+    na rota do desentupimento como órfãs — telas que aquele corredor nunca vê.
+    Cada atendimento tem o SEU serviço.
+    """
+    partes: List[List[Tuple[Dict[str, Any], str]]] = [[]]
+    for e, zona, motivo in zonas(eventos_da_sessao, seguradora):
+        if motivo == MOTIVO_RECOMECO and partes[-1]:
+            partes.append([])
+        partes[-1].append((e, zona))
+    return [p for p in partes if p]
 
 
 def sessao_tem_fronteira(seguradora: str, eventos) -> bool:
