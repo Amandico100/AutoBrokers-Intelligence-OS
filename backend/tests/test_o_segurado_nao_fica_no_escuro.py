@@ -203,11 +203,33 @@ def o_agendador_nao_cai_por_causa_deste_job() -> None:
                if ln.startswith("    ") and ln.strip().startswith("from ")),
            "CONTROLE: e ele IMPORTA de app.agents, so que dentro das funcoes",
            "sem isto, um vigia que nao importasse nada passaria na linha acima")
-    corpo = vig[vig.index("async def varrer_handoffs_parados"):]
-    checar("from app.agents.tools.human_handoff import HumanHandoffTool" in corpo,
-           "o import pesado acontece POR EXECUCAO, dentro da funcao")
-    i_imp = corpo.index("from app.agents.tools.human_handoff")
-    checar("try:" in corpo[max(0, i_imp - 120):i_imp],
+    # ⚠️ MIGRADA EM 28/09/2026 — SPEC-120 D16. A varredura de conversa parada
+    # deixou de mandar mensagem ao grupo e, por isso, deixou de importar a
+    # `HumanHandoffTool`. A licao (import pesado so' POR EXECUCAO, e sob `try`,
+    # porque um ImportError no agendador derruba a aplicacao — §9.1) continua
+    # valendo para quem AINDA envia: a varredura de ESPERA VENCIDA.
+    import re as _re
+    def _corpo_de(nome):
+        i = vig.index(nome)
+        prox = _re.search(r"\n(?:async )?def ", vig[i + 10:])
+        return vig[i:i + 10 + prox.start()] if prox else vig[i:]
+    # ⚠️ SO' LINHA DE CODIGO. O comentario da propria regra CITA
+    #    `HumanHandoffTool._arun -> _avisar_suporte` (para dizer onde o aviso
+    #    da hora continua existindo), e um guarda que le comentario fica
+    #    vermelho sem defeito — ou, pior, verde com o conserto desfeito. Foi o
+    #    M2 da SPEC-119: *"o guarda lia o COMENTARIO do conserto, nao o codigo"*.
+    def _so_codigo(bloco):
+        return "\n".join(ln for ln in bloco.splitlines()
+                         if ln.strip() and not ln.strip().startswith("#"))
+    parados = _so_codigo(_corpo_de("async def varrer_handoffs_parados"))
+    checar("HumanHandoffTool" not in parados,
+           "🔴 a varredura de conversa PARADA nao importa mais a ferramenta de handoff "
+           "— ela nao manda nada ao grupo (SPEC-120 D16)")
+    esperas = _corpo_de("async def varrer_esperas_vencidas")
+    checar("from app.agents.tools.human_handoff import HumanHandoffTool" in esperas,
+           "o import pesado de quem AINDA envia acontece POR EXECUCAO, dentro da funcao")
+    i_imp = esperas.index("from app.agents.tools.human_handoff")
+    checar("try:" in esperas[:i_imp] and esperas[:i_imp].rfind("try:") > esperas[:i_imp].rfind("\n    def "),
            "e sob `try` — indisponivel vira log, nao excecao no agendador")
 
 
@@ -297,11 +319,21 @@ def a_telemetria_mede_quem_espera() -> None:
     checar("HANDOFF_ESPERA" in sli, "o SLI da espera humana tem nome canonico")
     trecho = vig[vig.index("async def varrer_handoffs_parados"):]
     checar("HANDOFF_ESPERA" in trecho, "e a varredura o registra")
-    # A telemetria vem ANTES do marcador: senao o numero sumiria justamente
-    # quando a fila estivesse pior.
-    checar(trecho.index("HANDOFF_ESPERA") < trecho.index("_ja_avisado_recentemente("),
-           "e mede TODA conversa parada, nao so as que geram aviso",
-           "medir so o que alerta faz o grafico melhorar quanto mais gente esperar")
+    # ⚠️ MIGRADA EM 28/09/2026 — SPEC-120 D16. A licao era: *a telemetria mede
+    # TODA conversa parada, nao so' as que geram aviso* — e ela ficava ANTES do
+    # marcador de lembrete para o numero nao sumir justamente quando a fila
+    # piorasse. Agora nao ha' marcador nem aviso nesta varredura: ela SO' mede.
+    # A afirmacao passa a ser a regra nova, e a prova de COMPORTAMENTO (o vigia
+    # chega a cada conversa e mede, e nenhuma mensagem sai) mora em
+    # `test_o_grupo_so_e_chamado_quando_alguem_espera.py`, chamando o motor.
+    import re as _re
+    _prox = _re.search(r"\n(?:async )?def ", trecho[10:])
+    corpo_parados = trecho[:10 + _prox.start()] if _prox else trecho
+    corpo_parados = "\n".join(ln for ln in corpo_parados.splitlines()   # so' codigo
+                               if ln.strip() and not ln.strip().startswith("#"))
+    checar("_avisar_suporte" not in corpo_parados,
+           "🔴 e a varredura de conversa parada NAO chama o envio ao grupo (SPEC-120 D16)",
+           "medir sim; cobrar o grupo sobre conversa antiga, nunca mais")
 
 
 # ==================================================================== #

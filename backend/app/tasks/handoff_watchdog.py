@@ -217,12 +217,6 @@ async def varrer_handoffs_parados() -> None:
     logger.info("[HandoffWatchdog] %d conversa(s) em HUMAN_REQUESTED há mais de %dmin",
                 len(paradas), espera_min)
 
-    try:
-        from app.agents.tools.human_handoff import HumanHandoffTool
-    except Exception as exc:  # noqa: BLE001
-        logger.error("[HandoffWatchdog] ferramenta de handoff indisponível (%s)",
-                     type(exc).__name__)
-        return
 
     for conversa in paradas:
         company_id = str(conversa.get("company_id") or "")
@@ -232,25 +226,6 @@ async def varrer_handoffs_parados() -> None:
         if not company_id or not conversa_id:
             logger.error("[HandoffWatchdog] conversa sem company_id — ignorada")
             continue
-
-        # 🔴 CLAIM FRESCO CALA; CLAIM ABANDONADO NÃO — painel da SPEC-085.
-        #
-        # A primeira versão deste conserto filtrava `claimed_by IS NULL` **na
-        # consulta**, e estava errada pelo lado que importa: uma conversa
-        # ASSUMIDA E ABANDONADA — alguém clicou em assumir, foi almoçar e não
-        # voltou — ficava PERMANENTEMENTE invisível ao Vigia. Antes do conserto
-        # ela gerava lembrete: chato, mas visível. Depois, silêncio.
-        #
-        # ⚠️ Trocar um excesso de aviso por um silêncio é trocar um defeito por
-        # um pior — é literalmente o que a SPEC-086 existe para impedir, por
-        # uma porta nova.
-        #
-        # A regra é por IDADE do claim, não pela existência dele. Enquanto a
-        # pessoa está com o caso na mão (menos que a cadência de re-alerta), o
-        # Vigia cala. Passado isso, ele volta a cobrar — e o texto DIZ que
-        # alguém assumiu, porque cobrar "ninguém assumiu" de um caso que tem
-        # dono é a mesma mentira ao contrário.
-        _dono = str(conversa.get("claimed_by") or "").strip()
 
         parada_ms = _parado_ha_ms(conversa, agora)
 
@@ -271,113 +246,40 @@ async def varrer_handoffs_parados() -> None:
         except Exception:  # noqa: BLE001
             pass
 
-        if _dono:
-            # 🔴 `claimed_at` ILEGÍVEL AVISA, NÃO CALA — juiz de confirmação.
-            #
-            # 📊 `_parado_ha_ms` devolve **0.0** para `None` e para `""`. Com o
-            # corte escrito como "idade < janela ⇒ continue", uma data ausente
-            # ou ilegível dava 0, passava no corte e calava a conversa **para
-            # sempre** — o mesmo furo que este bloco existe para fechar, mudado
-            # de `claimed_by` para `claimed_at`.
-            #
-            # A regra do módulo é "na dúvida, avisa". Data que não dá para ler
-            # é dúvida, então o claim conta como VELHO e o Vigia cobra.
-            _quando = conversa.get("claimed_at")
-            _idade_claim_ms = (_parado_ha_ms({"last_message_at": _quando}, agora)
-                               if _quando else None)
-            _janela_ms = realerta_h * 3_600_000
-            if _idade_claim_ms is not None and _idade_claim_ms < _janela_ms:
-                continue
-            logger.warning(
-                "[HandoffWatchdog] conversa ASSUMIDA e parada há mais de %sh "
-                "(ou sem data de claim legível) — o dono não voltou. empresa=%s",
-                realerta_h, company_id)
-
-        if await _ja_avisado_recentemente(conversa_id, realerta_h,
-                                          company_id=company_id):
-            continue
-
-        # 🔴 O TETO — e ele avisa que vai calar, em vez de sumir.
+        # =================================================================
+        # 🔴 SPEC-120 D16 + D17 — O VIGIA NÃO COBRA MAIS O GRUPO. NUNCA.
+        # =================================================================
         #
-        # Quatro lembretes a cada 6h cobrem 24 horas. Passado isso, mais
-        # mensagem não resolve: o que falta é gente, não aviso. E repetir para
-        # sempre é o jeito mais rápido de a equipe aprender a rolar o grupo
-        # sem ler — que é o defeito que este vigia existe para evitar.
+        # A regra, nas palavras do Founder (28/09/2026):
+        #   *"Não deve ficar enviando dossiês antigos. É um aviso só na hora do
+        #    atendimento e só se o atendimento for feito pelo agente. Agente não
+        #    se mete em atendimento de humano e não envia msg no suporte humano
+        #    quando o humano estiver atendendo."*
         #
-        # A ÚLTIMA mensagem diz que é a última. Parar em silêncio seria
-        # trocar um defeito por outro pior.
-        _n = await _contar_lembrete(conversa_id)
-        if _n > _MAX_LEMBRETES:
-            # 🔴 SPEC-085 BLOCO F.3 — o teto deixa de ser um `continue` MUDO.
-            #
-            # Ele estava certo em calar o grupo e errado em calar o REGISTRO:
-            # uma conversa passando do teto é o sinal mais forte que existe de
-            # que ninguém assumiu em 24 horas, e ele não aparecia em lugar
-            # nenhum. Quem olhasse o log via a conversa sumir.
-            #
-            # ⚠️ E a promessa da última mensagem — *"ela continua na Fila do
-            # painel, de lá ninguém a tira sozinho"* — só é verdade porque o
-            # `release` parou de devolver a conversa para `open` quando o
-            # handoff ainda está aberto (E.4). As duas coisas são um conserto
-            # só; separadas, esta frase seria mentira.
-            logger.warning(
-                "[HandoffWatchdog] conversa passou do teto de %s lembretes e o "
-                "grupo NÃO será avisado de novo — ela segue na Fila, esperando "
-                "alguém. empresa=%s", _MAX_LEMBRETES, company_id)
-            # 🔴 SPEC-086 BLOCO C.1 — O TETO DEIXA DE SER INVISÍVEL.
-            #
-            # A SPEC pergunta: *"o teto já foi atingido alguma vez? (se nunca,
-            # ou ele é frouxo demais, ou não há volume — e as duas conclusões
-            # são diferentes)"*. ⛔ Sem esta linha, a resposta continuaria
-            # sendo um `logger.warning` que ninguém consegue contar.
-            await _anotar_no_diario(
-                db, company_id, EVENTO_HANDOFF_NO_TETO,
-                "Uma conversa passou do teto de lembretes: o grupo não será avisado de novo, e ela segue na Fila.",
-                {"teto": _MAX_LEMBRETES, "lembretes": _n,
-                 "parada_ms": int(parada_ms), "tem_dono": bool(_dono)})
-            continue
-        _ultimo = _n == _MAX_LEMBRETES
-
-        horas = parada_ms / 3_600_000
-        espera = f"{horas:.0f}h" if horas >= 1 else f"{parada_ms / 60000:.0f}min"
-        if _dono:
-            motivo = (f"⏳ ASSUMIDA POR {conversa.get('claimed_by_name') or 'alguém'} "
-                      f"E PARADA há {espera} — "
-                      f"{conversa.get('human_handoff_reason') or 'motivo não registrado'}")
-        else:
-            motivo = (f"⏳ AINDA SEM ATENDIMENTO há {espera} — "
-                      f"{conversa.get('human_handoff_reason') or 'motivo não registrado'}")
-        if _ultimo:
-            motivo += ("\n\n🔕 Este é o ÚLTIMO lembrete automático desta "
-                       "conversa. Ela continua na Fila do painel — de lá "
-                       "ninguém a tira sozinho.")
-        try:
-            aviso = await HumanHandoffTool(db)._avisar_suporte(company_id, conversa, motivo)
-            if aviso.get("avisado"):
-                logger.info("[HandoffWatchdog] re-alerta enviado | empresa=%s | espera=%s",
-                            company_id, espera)
-                # 🔴 SPEC-086 BLOCO C.1 — *"quantos alertas saíram?"* passa
-                #    a ter resposta, e por corretora.
-                await _anotar_no_diario(
-                    db, company_id, EVENTO_HANDOFF_REALERTADO,
-                    "O vigia lembrou a corretora de uma conversa parada.",
-                    {"lembretes": _n, "ultimo": bool(_ultimo),
-                     "parada_ms": int(parada_ms), "tem_dono": bool(_dono)})
-            else:
-                # Ninguém foi avisado, de novo. Isto é o incidente — e agora ele
-                # tem uma linha de log com o motivo, em vez de nenhuma.
-                logger.error("[HandoffWatchdog] ❌ conversa parada há %s e o suporte "
-                             "NÃO foi avisado | empresa=%s | motivo=%s",
-                             espera, company_id, aviso.get("motivo"))
-                # 🔴 DEVOLVE A VEZ. A linha acima reservou o direito de avisar
-                # e o aviso não saiu; manter a reserva calaria a próxima
-                # varredura pelas horas inteiras do marcador, justamente no
-                # caso em que ninguém ficou sabendo.
-                await _devolver_a_vez(conversa_id, company_id=company_id)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("[HandoffWatchdog] falha ao re-alertar (%s) | empresa=%s",
-                         type(exc).__name__, company_id)
-            await _devolver_a_vez(conversa_id, company_id=company_id)
+        # 📊 O que ele viu, e por que esta porta fechou: em 21/09/2026 este
+        # varredor mandou **29 lembretes ao grupo no mesmo dia** (14 numa
+        # corretora, 15 na outra — `work_events.event_type = handoff.realertado`),
+        # sobre conversas paradas há **243 e 244 horas**: tudo o que tinha ficado
+        # parado enquanto os grupos de suporte estiveram desativados (10–21/09)
+        # saiu de uma vez quando eles voltaram.
+        #
+        # E a mensagem se contradizia: dizia *"AINDA SEM ATENDIMENTO"* e
+        # terminava com *"Atendente pelo celular já assumiu"*. 📊 A causa: este
+        # bloco decidia "há dono?" por `claimed_by`, e a atendente que assume
+        # PELO CELULAR grava só `claimed_by_name` (`espelho_chat.py:712`) — o
+        # porteiro do grupo (`_assumida_com_claim_fresco`) já tinha aprendido
+        # isso em 16/09, este bloco não. E mesmo com o campo certo, o desenho da
+        # SPEC-085 cobrava de propósito a conversa "assumida e abandonada" — que
+        # é exatamente a mensagem que o Founder não quer mais receber.
+        #
+        # ⚠️ O QUE NÃO SE PERDE: a conversa continua em `HUMAN_REQUESTED`, na
+        # **Fila do painel**, e o tempo de espera continua medido pelo SLI logo
+        # acima (`HANDOFF_ESPERA`). O que sumiu é o balão repetido no grupo.
+        #
+        # ⚠️ E o aviso que o Founder QUER continua existindo, em outro lugar e
+        # uma vez só: `HumanHandoffTool._arun` → `_avisar_suporte`, na hora em
+        # que o agente pede a pessoa. Este varredor nunca foi esse aviso — era o
+        # lembrete dele.
 
 # =============================================================================
 # 🔴 SPEC-086 BLOCO C — A ESPERA VENCIDA ACORDA ALGUÉM

@@ -1,33 +1,41 @@
 # -*- coding: utf-8 -*-
-"""O suporte humano so e cobrado quando ha alguem esperando resposta.
+"""O vigia de conversa parada NAO cobra mais o grupo — e a licao migrou.
 
-O DEFEITO, MEDIDO
-=================
-📊 21/08/2026. O Founder relatou DEZENAS de "ATENDIMENTO PRECISA DE VOCE" no
-grupo da Resulta, com a frase: *"nao tem coisa pra resolver"*.
+A HISTORIA, EM TRES DATAS
+=========================
+📊 21/08/2026 — o Founder recebeu DEZENAS de "ATENDIMENTO PRECISA DE VOCE" sobre
+conversas em que ninguem esperava nada ("Ta bom, obrigado"). Nasceram duas regras:
+so cobrar se a ULTIMA palavra foi do cliente, e no maximo 4 lembretes.
 
-Consulta no banco: quatro conversas em `HUMAN_REQUESTED`, paradas ha 43-48h,
-terminando assim --
+📊 21/09/2026 — os grupos de suporte, desativados desde 10/09, voltaram. O vigia
+mandou **29 lembretes no mesmo dia** (`work_events.handoff.realertado`: 14 numa
+corretora, 15 na outra), sobre conversas paradas ha **243 e 244 horas**. Um deles
+dizia "AINDA SEM ATENDIMENTO" e "Atendente pelo celular ja assumiu" NA MESMA
+MENSAGEM.
 
-    "Ta bom, obrigado"
-    "Olha o site desse video. Vai rolando e o carro vai andando."
-    "Vixi... to indo entao"
-    "Tem muito passo que ainda nao e feito pelo agente"
+🔴 28/09/2026 — a regra do Founder (SPEC-120, D16 e D17):
+   *"Nao deve ficar enviando dossies antigos. E um aviso so na hora do
+    atendimento e so se o atendimento for feito pelo agente. Agente nao se mete
+    em atendimento de humano e nao envia msg no suporte humano quando o humano
+    estiver atendendo."*
 
-Conversas da propria equipe, capturadas pelo observador. Em TODAS a ultima
-mensagem era do lado da corretora. **Ninguem aguardava nada.**
+O QUE ESTE ARQUIVO GUARDA AGORA
+===============================
+1. o vigia NAO manda nada ao grupo — nem sobre quem espera, nem sobre quem nao espera;
+2. e o ZERO significa algo: o vigia CHEGOU a cada conversa e MEDIU a espera
+   (o SLI `HANDOFF_ESPERA` e registrado uma vez por conversa, por varredura).
+   Sem esta linha de controle, "zero avisos" passaria tambem com o vigia
+   quebrado no inicio — e seria carimbo, nao guarda (CLAUDE.md §9.3).
 
-E o vigia as cobrava a cada 6 horas, para sempre, sem teto.
-
-AS DUAS REGRAS NOVAS
-====================
-1. so cobra se a ULTIMA palavra foi do cliente (`role='user'`)
-2. no maximo 4 lembretes por conversa -- e o ultimo AVISA que e o ultimo
-
-🔴 As duas falham para o lado de AVISAR, nunca de calar: sem leitura possivel,
-avisa todas; sem contador, ignora o teto. O defeito grave deste vigia sempre
-foi o silencio (📊 uma conversa ficou 730 horas sem ninguem olhar), e um
-conserto contra spam nao pode reintroduzi-lo.
+⚠️ O CONTRA-ARGUMENTO, QUE CONTINUA VERDADEIRO E FICA ESCRITO
+=============================================================
+A regra antiga dizia: *"o defeito grave deste vigia sempre foi o silencio —
+📊 uma conversa ficou 730 horas sem ninguem olhar"*. Isso nao deixou de ser
+verdade. O Founder decidiu aceita-lo porque o risco tem outro dono agora:
+  · o aviso da HORA (quando o agente pede a pessoa) continua saindo, uma vez;
+  · a conversa parada continua na FILA do painel, com a espera medida.
+Se um dia o grupo ficar fora do ar no momento do aviso, aquela conversa NAO sera
+lembrada no grupo — ela estara so na Fila. E o preco declarado da regra.
 """
 from __future__ import annotations
 
@@ -50,6 +58,9 @@ for _pkg in ("app", "app.agents", "app.agents.tools", "app.core",
 
 OK = 0
 FAIL = 0
+#: cada vez que o vigia MEDE uma conversa parada (o SLI). E a prova de que ele
+#: chegou ate' ela — sem isto, "zero avisos" nao distinguiria regra de quebra.
+MEDIDAS: list = []
 
 
 def certo(condicao, rotulo, detalhe=""):
@@ -194,7 +205,7 @@ def preparar(banco, redis):
 
     obs = types.ModuleType("app.services.observability")
     sli = types.SimpleNamespace(HANDOFF_ESPERA="x",
-                                registrar=lambda *a, **k: None)
+                                registrar=lambda *a, **k: MEDIDAS.append(k.get("company_id")))
     obs.sli = sli
     sys.modules["app.services.observability"] = obs
     sys.modules["app.services.observability.sli"] = sli
@@ -224,10 +235,11 @@ def rodar(banco, redis, avisos):
 
 print()
 print("=" * 74)
-print("  1. QUEM NAO ESPERA NADA NAO VIRA ALARME")
+print("  1. O VIGIA NAO COBRA O GRUPO — nem quem espera (SPEC-120 D16)")
 print("=" * 74)
 
-# Duas conversas paradas: numa a ultima palavra e do CLIENTE, na outra e nossa.
+# Duas conversas paradas ha' 48h: numa a ultima palavra e' do CLIENTE (era a que
+# a regra de 21/08 AVISAVA), na outra e' nossa.
 convs = [conversa("c-espera"), conversa("c-nao-espera")]
 msgs = [
     {"conversation_id": "c-espera", "role": "user",
@@ -236,69 +248,74 @@ msgs = [
      "created_at": "2026-08-19T10:00:00Z"},
 ]
 avisos = []
+MEDIDAS.clear()
 rodar(BancoFake(convs, msgs), RedisFake(), avisos)
-avisadas = {a[0] for a in avisos}
 
-certo("c-espera" in avisadas,
-      "🔴 CONTROLE: a conversa em que o CLIENTE falou por ultimo AVISA",
-      f"avisadas: {sorted(avisadas)}")
-certo("c-nao-espera" not in avisadas,
-      "🔴 e a que terminou com a nossa palavra NAO avisa",
-      f"avisadas: {sorted(avisadas)}")
-certo(len(avisos) == 1, f"exatamente um aviso ({len(avisos)})")
+certo(avisos == [],
+      "🔴 NENHUM aviso ao grupo — nem para a conversa em que o CLIENTE falou por ultimo",
+      f"avisos: {avisos}")
+certo(len(MEDIDAS) == 1,
+      "🔴 CONTROLE: e o vigia CHEGOU a ela — mediu a espera da que tem alguem esperando "
+      "(a que terminou com a nossa palavra ja' sai antes, pelo filtro de 21/08)",
+      f"medidas: {len(MEDIDAS)}")
+
+# 🔴 CONTROLE DO CONTROLE: o espiao do grupo FUNCIONA. Chamado de verdade, ele
+#    registra. Sem esta linha, "avisos == []" passaria com o espiao quebrado.
+import importlib  # noqa: E402
+hh = importlib.import_module("app.agents.tools.human_handoff")
+asyncio.run(hh.HumanHandoffTool._avisar_suporte(None, "emp-1", {"id": "c-prova"}, "prova"))
+certo(("c-prova", "prova") in avisos,
+      "CONTROLE: o espiao do grupo registra quando e' chamado — logo o ZERO acima e' do vigia")
+avisos.clear()
 
 print()
 print("=" * 74)
-print("  2. NAO CONSEGUIU LER? AVISA. (o defeito grave e o silencio)")
+print("  2. LEITURA FALHOU? CONTINUA SEM AVISO — e continua MEDINDO")
 print("=" * 74)
 
 avisos2 = []
+MEDIDAS.clear()
 rodar(BancoFake(convs, msgs, estoura=True), RedisFake(), avisos2)
-certo(len(avisos2) == 2,
-      "🔴 leitura de mensagens falhou -> avisa TODAS, como antes",
+certo(avisos2 == [],
+      "🔴 a leitura das mensagens falhou -> AINDA nenhum aviso (antes: avisava TODAS)",
       f"avisos: {len(avisos2)}")
-
-# CONTROLE: com a leitura funcionando, sao 1 -- entao o 2 acima veio da falha,
-# nao de o filtro nunca funcionar.
-certo(len(avisos2) > len(avisos),
-      "CONTROLE: e sao MAIS que no caso saudavel (2 > 1) — "
-      "logo o filtro existe e a falha o desliga de proposito")
+certo(len(MEDIDAS) == 2,
+      "CONTROLE: sem ler quem espera, trata as DUAS como pendentes e mede as duas "
+      "— logo o filtro de 21/08 continua existindo, so' nao vira mensagem",
+      f"medidas: {len(MEDIDAS)}")
 
 print()
 print("=" * 74)
-print("  3. CONVERSA SEM MENSAGEM NENHUMA CONTINUA ELEGIVEL")
+print("  3. CONVERSA SEM MENSAGEM NENHUMA: MEDIDA, NAO ANUNCIADA")
 print("=" * 74)
 
 avisos3 = []
+MEDIDAS.clear()
 rodar(BancoFake([conversa("c-sem-msg")], []), RedisFake(), avisos3)
-certo(len(avisos3) == 1,
-      "🔴 conversa sem transcricao NAO e silenciada",
-      "calar sobre um caso que nunca teve mensagem seria inventar um motivo")
+certo(avisos3 == [], "🔴 nenhum aviso", f"avisos: {avisos3}")
+certo(len(MEDIDAS) == 1, "CONTROLE: e ela nao some — a espera dela e' medida")
 
 print()
 print("=" * 74)
-print("  4. O TETO — quatro lembretes, e o ultimo diz que e o ultimo")
+print("  4. SETE VARREDURAS, ZERO MENSAGENS (antes: quatro)")
 print("=" * 74)
 
 redis4 = RedisFake()
-banco4 = BancoFake([conversa("c-teto")],
+banco4 = BancoFake([conversa("c-teto", horas=244)],
                    [{"conversation_id": "c-teto", "role": "user",
                      "created_at": "2026-08-19T10:00:00Z"}])
 avisos4 = []
-import importlib  # noqa: E402
+MEDIDAS.clear()
 for volta in range(7):
     redis4.chaves.clear()          # simula as 6h passando entre as varreduras
     rodar(banco4, redis4, avisos4)
 
-certo(len(avisos4) == 4,
-      f"🔴 sete varreduras produzem no maximo QUATRO avisos ({len(avisos4)})",
-      "sem teto seriam sete, e a cada 6h para sempre")
-certo(avisos4 and "ÚLTIMO lembrete" in avisos4[-1][1],
-      "🔴 e o ultimo AVISA que e o ultimo",
-      "parar em silencio seria trocar um defeito por outro pior")
-certo(avisos4 and "ÚLTIMO lembrete" not in avisos4[0][1],
-      "CONTROLE: e o primeiro NAO tem esse aviso "
-      "(logo o teste acima mediu o teto, nao um texto fixo)")
+certo(avisos4 == [],
+      f"🔴 uma conversa parada ha' 244h, varrida 7 vezes: ZERO mensagens ({len(avisos4)})",
+      "e' o caso exato do print do Founder de 21/09")
+certo(len(MEDIDAS) == 7,
+      "CONTROLE: e as sete varreduras chegaram ate' ela (7 medidas)",
+      f"medidas: {len(MEDIDAS)}")
 
 print()
 print("=" * 74)
