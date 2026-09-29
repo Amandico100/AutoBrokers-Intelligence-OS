@@ -2683,15 +2683,38 @@ _YELUM_FAMILY_STEPS = [
      "notes": "campo livre após 'Não sei' na pane — descrição real do caso"},
     {"step": "endereco_rua", "anchor": r"digite \*?somente a rua", "reply": "{local_rua}",
      "fallback_adaptive": True, "notes": "rua deduzida de local_atual pelo parser; sem dedução → adaptativo"},
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-120 (conserto do juiz) · O ENDEREÇO PARTIDO É DECIDIDO PELO
+    #    CONTEXTO, NUNCA PELA CONTAGEM
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # Estes quatro passos tinham `reply_repeat`: 1ª vez = origem, 2ª = destino.
+    # 📊 Medido no acervo em 29/09/2026: "Qual o número?" aparece 20 vezes
+    #    DEPOIS de a URA perguntar o destino (hdi 9 · yelum 11), e em 15 delas é
+    #    a PRIMEIRA vez que a tela aparece na sessão (ex. hdi fa2ceb6f, yelum
+    #    19d73270, logo depois de *"Para qual CEP devemos levar o veículo?"*). A
+    #    contagem mandava o número da casa de ONDE O CARRO ESTÁ junto com o CEP
+    #    do destino. E em yelum 29ae4344 a tela vem DUAS vezes, as duas da
+    #    ORIGEM — e a contagem mandava o destino na segunda.
+    #
+    # 🔴 O sinal certo é a pergunta do destino já ter passado: `destino_como`
+    #    (*"para onde devemos levar o veículo?"*) responde com constante, sai
+    #    SEMPRE, e em todas as sessões do acervo vem depois da origem e antes de
+    #    qualquer pedaço do destino. `reply_if_step_done` já é o mecanismo do
+    #    motor para "a resposta muda depois de outro passo" (porto `pedir_cpf`).
     {"step": "endereco_numero", "anchor": r"qual (?:[ée] )?o \*?n[úu]mero\*?\s*\?", "reply": "{local_numero}",
-     "reply_repeat": "{destino_numero}", "fallback_adaptive": True,
-     "notes": "1ª vez = nº da origem; 2ª vez = nº do destino"},
+     "reply_if_step_done": {"step": "destino_como", "reply": "{destino_numero}"},
+     "fallback_adaptive": True,
+     "notes": "antes de 'para onde devemos levar' = nº da origem; depois = nº do destino"},
     {"step": "endereco_bairro", "anchor": r"qual (?:[ée] )?o \*?bairro", "reply": "{local_bairro}",
-     "reply_repeat": "{destino_bairro}", "fallback_adaptive": True},
+     "reply_if_step_done": {"step": "destino_como", "reply": "{destino_bairro}"},
+     "fallback_adaptive": True},
     {"step": "endereco_cidade", "anchor": r"qual (?:[ée] )?a \*?cidade", "reply": "{local_cidade}",
-     "reply_repeat": "{destino_cidade}", "fallback_adaptive": True},
+     "reply_if_step_done": {"step": "destino_como", "reply": "{destino_cidade}"},
+     "fallback_adaptive": True},
     {"step": "endereco_estado", "anchor": r"qual o \*?estado", "reply": "{local_uf}",
-     "reply_repeat": "{destino_uf}", "fallback_adaptive": True},
+     "reply_if_step_done": {"step": "destino_como", "reply": "{destino_uf}"},
+     "fallback_adaptive": True},
     {"step": "confirma_endereco", "anchor": r"voc[êe] confirma o endere[çc]o", "reply": "Sim",
      "notes": "resumo geocodificado do QUE NÓS digitamos (origem e destino) — confirmar"},
     {"step": "complemento_ref", "anchor": r"quais s[ãa]o o complemento e/?ou refer[êe]ncia", "reply": "{ponto_referencia}",
@@ -2702,7 +2725,7 @@ _YELUM_FAMILY_STEPS = [
     #    respondia "Não" FIXO por cima do que ele disse — a resposta errada e
     #    silenciosa do CLAUDE.md §9.5. No guincho, quem responde é o caso; nos
     #    outros serviços (que não perguntam isto ao segurado) segue o de antes.
-    {"step": "garagem_do_caso", "anchor": r"o ve[íi]culo est[áa] em uma garagem",
+    {"step": "garagem_do_caso", "anchor": r"o ve[íi]culo est[áa] em uma garagem\s*\?",
      "reply": "{veiculo_em_garagem}", "requires": ["veiculo_em_garagem"],
      "format": "garagem_sim_nao", "classe": "decide", "fallback_adaptive": True,
      "only_subservices": ["guincho"],
@@ -2723,7 +2746,15 @@ _YELUM_FAMILY_STEPS = [
      "reply": "Nenhuma das anteriores"},
     {"step": "destino_como",
      "constante_justificada": (
-         "⚠️ `Digitar endereco` x `Informar o CEP` NAO decide nada sobre o cliente: sao dois METODOS DE ENTRADA DO MESMO DADO. O endereco em si vem do slot logo depois, e e ele que carrega o fato."), "anchor": r"para onde devemos levar o ve[íi]culo", "reply": "Digitar endereço",
+         "⚠️ `Digitar endereco` x `Informar o CEP` NAO decide nada sobre o cliente: sao dois METODOS DE ENTRADA DO MESMO DADO. O endereco em si vem do slot logo depois, e e ele que carrega o fato. "
+         "SPEC-120: na redacao 'definiremos o endereco para onde o veiculo sera levado', `Quero indicacao`, `Oficinas proximas` e `Oficinas na minha cidade` sao ESCOLHA DE OFICINA -- conteudo que o segurado ja decidiu ao dizer para onde o carro vai. 📊 yelum 705f915b (humano: Digitar endereco), b187d77a (Informar CEP), 29ae4344, 19d73270, 7c841763, a1c18e1c."),
+     # 🔴 SPEC-120: + a redação "agora definiremos o endereço para onde o veículo
+     #    será levado" (6 sessões da yelum). Ela era um passo à parte; virou
+     #    alternativa DESTE porque `endereco_numero` e irmãos decidem origem x
+     #    destino por `reply_if_step_done: destino_como` — e o sinal tem de ser UM.
+     "anchor": (r"para onde devemos levar o ve[íi]culo|"
+                r"agora definiremos \*?o endere[çc]o para onde o ve[íi]culo ser[áa] levado"),
+     "reply": "Digitar endereço",
      "notes": "guincho: informar o destino do caso (rua/nº/bairro/cidade/UF do parser)"},
     {"step": "deseja_continuar", "anchor": r"deseja continuar (?:este|com o) atendimento", "reply": "Sim"},
     {"step": "falar_analista", "anchor": r"gostaria de falar com um de nossos analistas", "reply": "Sim",
@@ -6865,8 +6896,16 @@ _BRADESCO_ENDERECO = [
     {"step": "local_cidade", "anchor": r"agora, o nome da cidade",
      "reply": "{local_cidade}", "fallback_adaptive": True,
      "notes": "📊 1 tela / 3 ses. 🔴 A VÍRGULA É A ÂNCORA."},
+    # 🔴 SPEC-120 (conserto do red team): *"Ok, agora preciso do nome da *rua*"*
+    #    é IDÊNTICA para a origem (72af1ae1) e para o destino (a10d095d), e este
+    #    passo mandava a rua da ORIGEM nas duas. O que separa é a pergunta
+    #    anterior: 📊 nas duas sessões o destino começa em *"E o endereço pra onde
+    #    você quer levar seu veículo, se encontra em uma rodovia?"*
+    #    (`destino_rodovia`, constante — sai SEMPRE), e a origem vem antes dela.
     {"step": "local_rua", "anchor": r"agora preciso do nome da rua",
-     "reply": "{local_rua}", "fallback_adaptive": True, "notes": "📊 1 tela / 4 sessões."},
+     "reply": "{local_rua}",
+     "reply_if_step_done": {"step": "destino_rodovia", "reply": "{destino_rua}"},
+     "fallback_adaptive": True, "notes": "📊 1 tela / 4 sessões — origem ou destino."},
     {"step": "local_numero", "anchor": r"n[úu]mero mais pr[óo]ximo, de onde seu ve[íi]culo",
      "reply": "{local_numero}", "fallback_adaptive": True,
      "notes": "📊 2 telas / 3 ses — cobre 'vai estar?' e 'está' com uma âncora só."},
@@ -10344,21 +10383,50 @@ def _texto_normal(valor: Any) -> str:
     return " ".join(_norm(str(valor or "")).split())
 
 
+#: 🔴 SPEC-120 (conserto do red team) — a negação em QUALQUER posição.
+#: 📊 Medido na tela real porto 77983f63: *"claro que não"*, *"pode deixar"*,
+#:    *"preciso não"*, *"quero não"* e *"precisa não, meu filho vem me buscar"*
+#:    saíam "Sim" — a primeira versão só via a negação no COMEÇO da frase. E
+#:    *"não sei ainda"* saía "Não": a DÚVIDA virava RECUSA.
+_RX_DUVIDA = re.compile(
+    r"\bnao sei\b|\btalvez\b|\bdepende\b|\bacho que\b|\bnao tenho certeza\b|"
+    r"\bvou ver\b|\bainda nao decid|\bquem sabe\b|\bpode ser\b|\btanto faz\b")
+_RX_NEGACAO = re.compile(
+    r"\bnao\b|\bn\b|\bnegativo\b|\bnem\b|\bnunca\b|\bdispens|\bpode deixar\b|"
+    r"\bsem\b|\bde jeito nenhum\b|\bnada\b")
+_RX_AFIRMACAO = re.compile(
+    r"\bsim\b|\bs\b|\bquero\b|\bpreciso\b|\bprecisa\b|\bprecisar\b|\bclaro\b|"
+    r"\bpode\b|\bpositivo\b|\bisso\b|\bcom certeza\b|\bpor favor\b")
+#: A negação que CONTÉM uma palavra afirmativa: ela é negação inteira, e sai do
+#: texto antes de se procurar afirmação ("não precisa", "preciso não").
+_RX_NEGACAO_COMPOSTA = re.compile(
+    r"\bnao (?:precis\w*|quer\w*|vai|vou|pode)\b|\b(?:precis\w*|quer\w*) nao\b|"
+    r"\bpode deixar\b|\bclaro que nao\b|\bnao,? obrigad\w*")
+
+
 def _sim_nao(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
     """O "sim"/"não" do segurado, na palavra do botão. Dúvida → `None`.
 
-    ⚠️ A NEGAÇÃO É TESTADA PRIMEIRO: *"não, obrigado"*, *"não precisa"* e
-    *"sem táxi"* começam por palavras que também aparecem em respostas
-    afirmativas (*"precisa"*), e a ordem inversa diria "Sim" a quem recusou.
+    ```
+    dúvida ("não sei", "talvez")              → None  (uma pessoa, no `sem_chute`)
+    negação em QUALQUER posição                → "Não"
+    afirmação sem negação                      → "Sim"
+    afirmação E negação soltas na mesma frase  → None  ("sim, mas não agora")
+    ```
+    ⚠️ A negação composta sai primeiro: *"não precisa"* tem "precisa", e
+    *"claro que não"* tem "claro" — os dois são recusa inteira, não conflito.
     """
     t = _texto_normal(valor)
-    if not t:
+    if not t or _RX_DUVIDA.search(t):
         return None
-    if re.match(r"^(?:nao|n|negativo|dispenso|dispensa|sem)\b", t) or re.search(
-            r"\bnao (?:precisa|preciso|quero|vai|vou)\b", t):
+    resto = _RX_NEGACAO_COMPOSTA.sub(" ", t)
+    negou = bool(_RX_NEGACAO_COMPOSTA.search(t)) or bool(_RX_NEGACAO.search(resto))
+    afirmou = bool(_RX_AFIRMACAO.search(resto))
+    if negou and afirmou:
+        return None
+    if negou:
         return "Não"
-    if re.match(r"^(?:sim|s|quero|preciso|precisa|vou precisar|vai precisar|claro|"
-                r"pode|positivo)\b", t):
+    if afirmou:
         return "Sim"
     return None
 
@@ -10394,22 +10462,35 @@ def _componente_da_familia(nome: str) -> Dict[str, Any]:
 
 
 def _garagem_sim_nao(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
-    """Primeiro pelo componente do formulário (a mesma leitura dele); depois pelo
-    "sim"/"não" dito com mais palavras (*"sim, no estacionamento do prédio"*)."""
+    """"O veículo está em uma garagem?" pelo que o segurado CONTOU.
+
+    Duas leituras, e elas têm de CONCORDAR: o "sim"/"não" dito, e o LUGAR dito
+    (garagem/estacionamento x rua). 📊 *"não tá na rua, tá no estacionamento do
+    prédio"* tem um "não" e é uma garagem — a primeira versão respondia "Não".
+    Discordou, ou disse os dois lugares → `None` (o cérebro lê o caso inteiro).
+    """
     bruto = slots.get("veiculo_em_garagem")
     opcao = _resolver_opcao_de_flow(_componente_da_familia("rb_EmGaragemOuEstacionamento"),
                                     bruto)
     if str(opcao or "") in ("1", "0"):
         return {"1": "Sim", "0": "Não"}[str(opcao)]
-    dito = _sim_nao(str(bruto or ""), slots, tela)
-    if dito:
-        return dito
     t = _texto_normal(bruto)
-    if re.search(r"garagem|estacionamento|subsolo", t):
-        return "Sim"
-    if re.search(r"na rua|via publica|na estrada|na rodovia", t):
-        return "Não"
-    return None
+    lugar_g = r"(?:garagem|estacionamento|subsolo|predio)"
+    lugar_r = r"(?:rua|via|estrada|rodovia|calcada)"
+    neg = r"\bnao (?:esta |ta |fica )?(?:em |na |no |numa |num |dentro d[ao] )?(?:uma |um )?"
+    neg_garagem = re.search(neg + lugar_g, t)
+    neg_rua = re.search(neg + lugar_r, t)
+    resto = re.sub(neg + "(?:" + lugar_g + "|" + lugar_r + ")", " ", t)
+    votos = set()
+    if neg_rua or re.search(r"\b" + lugar_g, resto):
+        votos.add("Sim")
+    if neg_garagem or re.search(r"\b" + lugar_r + r"\b|via publica", resto):
+        votos.add("Não")
+    if len(votos) == 1:
+        return votos.pop()
+    if votos:
+        return None  # os dois lugares, sem negação que desempate: ninguém chuta
+    return _sim_nao(str(bruto or ""), slots, tela)
 
 
 def _subsolo_ou_acima_da_rua(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
@@ -10430,6 +10511,8 @@ def _subsolo_ou_acima_da_rua(valor: str, slots: Dict[str, Any], tela: str) -> Op
     if _garagem_sim_nao("", slots, tela) == "Não":
         return "Não"
     t = _texto_normal(slots.get("veiculo_nivel_rua"))
+    if _RX_NEGACAO.search(t) or _RX_DUVIDA.search(t):
+        return None  # "não está no subsolo" tem "subsolo" — e é o contrário
     if re.search(r"\bsubsolo\b|\bacima\b|\belevad|abaixo do (?:nivel|solo)", t):
         return "Sim"
     if re.search(r"nivel da rua|\bna rua\b|\bterreo\b", t):
@@ -10437,17 +10520,34 @@ def _subsolo_ou_acima_da_rua(valor: str, slots: Dict[str, Any], tela: str) -> Op
     return None
 
 
-#: O que, num relato de PANE, diz que houve polícia — e a partir daí o caso é
-#: de uma pessoa (a mesma leitura do D5: acidente vira sinistro, não assistência).
-_RX_RELATO_COM_POLICIA = re.compile(
-    r"polici|acident|batid|\bbati\b|bateram|colis|capot|roub|furt|assalt|vitima|ferid|"
-    r"boletim|\bb\.?o\b")
+# 🔴 SPEC-120 (conserto do red team) · LISTA BRANCA, NÃO NEGRA.
+#
+# A primeira versão dizia "Não" a menos que o relato falasse de polícia ou
+# acidente. 📊 Medido na tela real bradesco 72af1ae1: *"o motorista do outro
+# carro fugiu"*, *"fui atingido por outro veículo"*, *"o carro pegou fogo"*,
+# *"entraram no carro e levaram tudo"* e *"me fecharam na estrada e saí da
+# pista"* saíam "Não" — uma lista negra afirma um FATO à seguradora sobre tudo o
+# que ela esqueceu de listar. Agora o "Não" só sai quando o relato é CLARAMENTE
+# pane mecânica e não tem NENHUMA palavra de ocorrência; qualquer outra coisa
+# vai a uma pessoa (`sem_chute`).
+_RX_RELATO_DE_PANE = re.compile(
+    r"nao liga|nao pega|nao da partida|nao funciona|nao anda|\bbateria\b|\bpneu|\bfur(?:ou|ado)|"
+    r"\bmotor\b|superaquec|esquent|\bmorreu\b|\bapagou\b|\bpane\b|\bengui|\bparou\b|"
+    r"\bquebrou\b|\bcambio\b|embreagem|\bcorreia\b|radiador|combustivel|gasolina|"
+    r"\bfalhando\b|\bfalha\b|luz (?:do|no) painel|\boleo\b|\bagua\b")
+_RX_RELATO_DE_OCORRENCIA = re.compile(
+    r"polici|acident|batid|\bbat(?:i|eu|eram)\b|colis|capot|roub|furt|assalt|vitima|ferid|"
+    r"boletim|\bb\.?o\b|fogo|incendi|queim|fug|atingi|atropel|fechar|saiu da pista|sai da pista|"
+    r"barranco|ribanceira|vala|capota|levaram|entraram|arromb|vandal|enchente|alag|"
+    r"\boutro (?:carro|veiculo|motorista)\b|\bterceiro")
 
 
 def _policia_pela_pane(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
     relato = _texto_normal(" ".join(str(slots.get(c) or "") for c in
                                     ("problema_descricao", "problema_relato", "descricao")))
-    if not relato or _RX_RELATO_COM_POLICIA.search(relato):
+    if not relato or _RX_RELATO_DE_OCORRENCIA.search(relato):
+        return None
+    if not _RX_RELATO_DE_PANE.search(relato):
         return None
     return "Não"
 
@@ -10461,12 +10561,16 @@ def _placa_e_modelo(valor: str, slots: Dict[str, Any], tela: str) -> Optional[st
 
 
 def _imediato_ou_agendado(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """🔴 SPEC-120 (conserto do red team): 📊 *"agora de manhã não dá, pode ser
+    hoje à noite"* saía "Imediato". Sinal dos dois lados, ou negação → `None`."""
     t = _texto_normal(slots.get("quando"))
-    if re.search(r"agend|\d{1,2}/\d{1,2}|amanha|semana que vem|depois", t):
-        return "Agendado"
-    if re.search(r"agora|urgen|imediat|\bja\b|hoje|rapido|o quanto antes", t):
-        return "Imediato"
-    return None
+    agendado = bool(re.search(r"agend|\d{1,2}/\d{1,2}|\d{1,2}\s*h\b|amanha|semana|depois|"
+                              r"mais tarde|\bnoite\b|\btarde\b|\bmanha\b|\bas \d", t))
+    imediato = bool(re.search(r"\bagora\b|urgen|imediat|\bja\b|rapido|o quanto antes|"
+                              r"o mais rapido", t))
+    if _RX_NEGACAO.search(t) or agendado == imediato:
+        return None
+    return "Agendado" if agendado else "Imediato"
 
 
 def _o_proprio_segurado(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
@@ -10506,7 +10610,28 @@ _AMPERES_POR_PORTE = (
     (50, r"\bmobi\b|\bkwid\b|\bcelta\b|\bgol\b[\s\S]{0,12}\b1[.,]0\b"),
     (60, r"\bonix\b|\bhb ?20\b|\bpolo\b|\bargo\b"),
 )
-_RX_AMPERES_DITOS = re.compile(r"\b(\d{2,3})\s*(?:ah\b|a\b|amp)")
+# 🔴 SPEC-120 (conserto do red team): 📊 `a\b` pegava a PREPOSIÇÃO — "km 120 a
+#    caminho" virava 120 Ah, "umas 40 a 50 vezes" virava 40. Só com UNIDADE, ou
+#    "bateria (...) de 70".
+_RX_AMPERES_DITOS = re.compile(
+    r"\b(\d{2,3})\s*(?:ah\b|amp)"
+    r"|\bbateria\b[^.,;]{0,25}?\bde (\d{2,3})\b(?!\s*(?:reais|r\$|anos?|km|mil|%|vezes|minutos))")
+
+
+def _amperes_sabidos(slots: Dict[str, Any]) -> Optional[int]:
+    """O Ah que o CASO sabe (dito ou porte claro) — `None` quando é só o padrão."""
+    try:
+        texto = _texto_normal(" ".join(str((slots or {}).get(c) or "") for c in (
+            "bateria_amperes", "veiculo_descricao", "problema_descricao",
+            "problema_relato")))
+        if not texto:
+            return None
+        ah = amperes_do_caso(slots)
+        if ah != AMPERES_PADRAO or any(re.search(p, texto) for a, p in _AMPERES_POR_PORTE):
+            return ah
+    except Exception:  # noqa: BLE001
+        return None
+    return None
 
 
 def amperes_do_caso(slots: Dict[str, Any]) -> int:
@@ -10516,8 +10641,9 @@ def amperes_do_caso(slots: Dict[str, Any]) -> int:
             "bateria_amperes", "veiculo_descricao", "problema_descricao",
             "problema_relato")))
         dito = _RX_AMPERES_DITOS.search(texto)
-        if dito and 30 <= int(dito.group(1)) <= 200:
-            return int(dito.group(1))  # o segurado disse — o caso manda
+        numero = int(next(g for g in dito.groups() if g)) if dito else 0
+        if 30 <= numero <= 200:
+            return numero  # o segurado disse — o caso manda
         for ah, padrao in _AMPERES_POR_PORTE:
             if re.search(padrao, texto):
                 return ah
@@ -10529,7 +10655,11 @@ def amperes_do_caso(slots: Dict[str, Any]) -> int:
 def _faixa_do_rotulo(rotulo: str) -> Optional[Tuple[float, float]]:
     """`"45 a 50 Ah"` → (45, 50) · `"até 50Ah"` → (0, 50) · `"acima de 70"` → (70, 999)."""
     t = _texto_normal(rotulo)
-    nums = [int(n) for n in re.findall(r"\d{2,3}", t)]
+    # 🔴 SPEC-120 (conserto do red team): 📊 "Bateria 45Ah - R$ 399,00" lia
+    #    [45, 399, 00]. O preço sai antes; havendo UNIDADE, só o que tem unidade.
+    t = re.sub(r"r\$\s*[\d.]+(?:,\d{2})?", " ", t)
+    com_unidade = [int(n) for n in re.findall(r"(\d{2,3})\s*(?:ah\b|amp)", t)]
+    nums = com_unidade or [int(n) for n in re.findall(r"\b\d{2,3}\b", t)]
     if not nums:
         return None
     if re.search(r"\bate\b|\bmenos de\b|\babaixo de\b", t):
@@ -10574,6 +10704,15 @@ def responder_amperes(tela: str, slots: Dict[str, Any]) -> str:
             return _sai(k, r)
         normais = [_texto_normal(r) for _k, r in conteudo]
         if set(normais) <= {"sim", "nao"} and "sim" in normais:
+            # 🔴 SPEC-120 (conserto): 📊 *"...é de 60 amperes. Está correto?"*
+            #    — a tela AFIRMA um valor. Só se diz "Não" quando o caso sabe de
+            #    verdade (o segurado disse, ou o porte é claro) e é OUTRO valor;
+            #    em qualquer dúvida, o valor da seguradora vale (é o 60 do Founder).
+            afirmado = re.search(r"\b(\d{2,3})\s*(?:ah\b|amp)", _texto_normal(tela))
+            if (afirmado and _amperes_sabidos(slots) is not None
+                    and int(afirmado.group(1)) != alvo and "nao" in normais):
+                k, r = conteudo[normais.index("nao")]
+                return _sai(k, r)
             k, r = conteudo[normais.index("sim")]
             return _sai(k, r)
         for (k, r), n in zip(conteudo, normais):
@@ -11445,11 +11584,15 @@ def missing_slots_for_subservice(playbook: Any, subservice: str, slots: Dict[str
 # As etiquetas com que as seguradoras escrevem cada campo do resumo.
 _ETIQUETAS_DO_RESUMO = (
     ("placa", r"placa"),
-    ("veiculo", r"ve[ií]culo|modelo|autom[óo]vel|carro"),
+    # 🔴 SPEC-120 (conserto do red team): 📊 bradesco a10d095d escreve
+    #    *"Destino do veículo: Rua ..."*. A etiqueta `veiculo` casava o
+    #    "veículo:" do fim, o DESTINO nunca era lido e a conferência saía `ok`
+    #    com o destino errado. O "do veículo" de um endereço não é veículo.
+    ("veiculo", r"(?<!destino do )(?<!local do )(?:ve[ií]culo|modelo|autom[óo]vel|carro)"),
     ("servico", r"servi[çc]o|assist[êe]ncia solicitada|atendimento solicitado|tipo de atendimento"),
     ("origem", r"origem|endere[çc]o(?: de origem| do local| atual)?|local do ve[íi]culo|"
                r"local de atendimento|onde est[áa]"),
-    ("destino", r"destino|local de destino|para onde|oficina"),
+    ("destino", r"destino(?: do ve[ií]culo)?|local de destino|para onde|oficina"),
 )
 _TODOS_OS_ROTULOS = r"|".join(p for _, p in _ETIQUETAS_DO_RESUMO)
 
@@ -13187,7 +13330,11 @@ _SPEC120_FAMILIA_AUTO = [
      "notes": "📊 3 telas / 3 sessões (hdi fa2ceb6f, 4b2d0c2a · yelum 6b4c37e4)."},
     # ---- D2: o nível da rua é do CASO ---------------------------------------
     {"step": "garagem_subsolo_ou_acima",
-     "anchor": r"garagem subsolo ou acima do n[íi]vel da rua",
+     # 🔴 SPEC-120 (conserto): âncora na PERGUNTA. 📊 yelum e97943bd: *"Neste
+     #    caso, como o veículo encontra-se em garagem subsolo ou acima do nível
+     #    da rua, enviaremos também o GUINCHO GARAGEM..."* é AVISO, e a âncora
+     #    larga respondia "Sim" a ele.
+     "anchor": r"o ve[íi]culo est[áa] em garagem subsolo ou acima do n[íi]vel da rua\s*\?",
      "reply": "{veiculo_nivel_rua}", "requires": ["veiculo_nivel_rua"],
      "format": "subsolo_ou_acima_da_rua", "classe": "decide",
      "fallback_adaptive": True,
@@ -13240,17 +13387,6 @@ _SPEC120_FAMILIA_AUTO = [
      "only_subservices": ["guincho"],
      "notes": "📊 hdi 2548c9c7 (humano: o nome da rua do destino). `destino_rua` "
               "sai de `local_destino` por `inject_address_slots`."},
-    {"step": "destino_com_indicacao",
-     "anchor": r"agora definiremos \*?o endere[çc]o para onde o ve[íi]culo ser[áa] levado",
-     "reply": "Digitar endereço", "only_subservices": ["guincho"],
-     "constante_justificada": (
-         "`Digitar endereco` x `Informar CEP` sao dois METODOS de entregar o MESMO "
-         "destino (`local_destino`, cobrado antes de acionar). `Quero indicacao`, "
-         "`Oficinas proximas` e `Oficinas na minha cidade` sao ESCOLHA DE OFICINA "
-         "-- conteudo que o segurado ja decidiu ao dizer para onde o carro vai. "
-         "📊 yelum 705f915b (humano: Digitar endereco), b187d77a (Informar CEP), "
-         "29ae4344, 19d73270, 7c841763, a1c18e1c."),
-     "notes": "📊 6 telas / 6 sessões, nas duas redações (botões e lista)."},
     # ---- a placa que a URA não achou ----------------------------------------
     {"step": "placa_nao_encontrada_familia",
      "anchor": r"n[ãa]o encontrei a placa, poderia tentar novamente",
@@ -13509,7 +13645,17 @@ PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) 
 #    vazio. ⛔ Nenhum `requires`, nenhum `sem_chute`: não há dado que falte.
 _PASSO_DOS_AMPERES = {
     "step": "amperes_da_bateria",
-    "anchor": r"amper(?:es|agem)|\bamp[eè]r\b",
+    # 🔴 SPEC-120 (conserto do juiz e do red team): 📊 porto f4838bb3 — *"a
+    #    bateria de 60 amperes está custando a partir de R$..."* é um AVISO DE
+    #    PREÇO, e a âncora larga mandava "60" (e, com o "Posso continuar o
+    #    agendamento? Sim/Não" na mesma rajada, "Sim" — aceitando o custo). A
+    #    âncora agora exige a FORMA DE PERGUNTA (ou o pedido de digitar), e
+    #    recusa a tela que fala de dinheiro: essa é `aceite_de_custo`, de uma
+    #    pessoa (SPEC-119). `_norm` tira acento e `*` antes do casamento.
+    "anchor": (r"^(?![\s\S]*(?:r\$|valor|preco|custando|custo|pagar|pagamento|franquia))"
+               r"[\s\S]*(?:quant\w*\s+amper|amperagem[^.?!]*\?|qual[^.?!]*amper[^.?!]*\?|"
+               r"amper[^.?!]*\?|(?:digite|informe|diga)[^.?!]{0,30}(?:amperagem|amperes)|"
+               r"amper\w*[^?!]{0,40}(?:correto|confirma)\w*\s*\?)"),
     "reply": str(AMPERES_PADRAO), "format": "amperes_da_bateria",
     "constante_justificada": (
         "D13 (Founder, 28/09/2026, SPEC-120 §3.1): 60 Ah e o padrao do mercado "
@@ -13519,6 +13665,10 @@ _PASSO_DOS_AMPERES = {
         "suporte humano nessa pergunta em nenhuma seguradora.' Em QUALQUER duvida, 60."),
     "notes": "🔴 NUNCA trava e NUNCA chama humano. Texto livre, número, botão ou lista.",
 }
+# 🔴 SPEC-120 (conserto): no FIM da lista, não no começo. 📊 Na posição 0 ele
+#    passava na frente dos `noop` que o corredor já tinha para avisos de bateria
+#    (porto `bateria_nova_preco`). Com a âncora de pergunta, o fim basta: 📊
+#    nenhum passo existente casa a pergunta dos amperes (ela era órfã).
 for _pb_amp in _PLAYBOOKS.values():
     if str(_pb_amp.get("line_kind") or "") == "auto":
-        _pb_amp["ura_steps"] = [dict(_PASSO_DOS_AMPERES)] + list(_pb_amp["ura_steps"])
+        _pb_amp["ura_steps"] = list(_pb_amp["ura_steps"]) + [dict(_PASSO_DOS_AMPERES)]
