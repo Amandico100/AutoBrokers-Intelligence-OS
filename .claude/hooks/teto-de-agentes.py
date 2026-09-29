@@ -24,9 +24,10 @@ def main():
     if dados.get("tool_name") != "Agent":
         return 0
     try:
-        # 24 por decisão do Founder em 20/09/2026 (EXTRA-001.5.2): o teto de 12 travou a confirmação e a destilação por
-        # agentes do plano. ⛔ Não "restaurar" para 12 no fechamento de SPEC: o teto baixo serializa, e serial é o que custa relógio.
-        teto = int(os.environ.get("AAA_FAST_TETO_DE_AGENTES", "24"))
+        # 50 por decisão do Founder em 29/09/2026 (depois da SPEC-120): o teto de 24 travou a SPEC-119+120 no mesmo chat,
+        # e juiz e red team tiveram de ser REUSADOS. Antes, 24 (20/09, EXTRA-001.5.2) e 12 (v12).
+        # ⛔ Não "restaurar" para menos no fechamento de SPEC: o teto baixo serializa, e serial é o que custa relógio.
+        teto = int(os.environ.get("AAA_FAST_TETO_DE_AGENTES", "50"))
         sessao = str(dados.get("session_id") or "sem-id").replace("/", "_")
         arquivo = os.path.join(tempfile.gettempdir(), "aaa-fast-agentes-%s.txt" % sessao)
         n = 0

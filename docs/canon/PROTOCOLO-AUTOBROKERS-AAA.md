@@ -338,12 +338,12 @@ NÃO). Nunca se para para entregar uma linha dela.
 SESSÃO      o GERENTE vive num chat; cada SPEC inteira nele (card → push); 2–3 SPECs por chat enquanto o
             gerente ficar ≤ 600 k. ⛔ nenhuma SPEC em duas sessões
 MODELO      🎯 gerente = Opus 5.5 · 🔧 builder = Opus 5.5 xhigh (max só a pedido do Founder) · ⚖️ juiz = Opus 5.5
-            sempre que houver juiz · 🔍 investigador = Sonnet 5 · 🗡️ red team = Opus 5.5. ⛔ não trocar no meio
+            sempre que houver juiz · 🔍 investigador = Opus 5.5 · 🗡️ red team = Opus 5.5. ⛔ não trocar no meio
 TETOS       LEVE · PADRÃO · CRÍTICO — turnos do executor ≤ 80 · 160 · 250 por fatia · contexto ≤ 200 · 250 · 300 k
-            (passou → builder novo, §5.2) · agentes por sessão ≤ 24 · relógio ≤ 40 min ·
+            (passou → builder novo, §5.2) · agentes por sessão ≤ 50 · relógio ≤ 40 min ·
             75 min · 2h30 (fatia ≤ 1h15) · juiz ≤ 80 turnos e ≤ 250 k
 APLICAÇÃO   env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=2 · CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 (.claude/settings.json) ·
-            hook bloqueia o 25º agente (`.claude/hooks/teto-de-agentes.py`, D-PROTO-11) · status line conferida em CADA gate ·
+            hook bloqueia o 51º agente (`.claude/hooks/teto-de-agentes.py`, D-PROTO-11) · status line conferida em CADA gate ·
             o script da §11 fecha a conta
 JUIZ RECEBE o card + o diff + os comandos + a lista de ataques. Nunca a SPEC inteira nem o censo
 CACHE       `subagentPromptCacheTtl: "1h"` · juiz no diretório principal, nunca FORK
