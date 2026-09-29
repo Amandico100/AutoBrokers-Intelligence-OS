@@ -774,7 +774,9 @@ POLICIA = ("bradesco-auto", "72af1ae1", r"chamar a pol")
 @pytest.mark.parametrize("relato", [
     "o motorista do outro carro fugiu", "fui atingido por outro veiculo", "o carro pegou fogo",
     "entraram no carro e levaram tudo", "me fecharam na estrada e saí da pista",
-    "o carro está parado aqui"])
+    "o carro está parado aqui",
+    # a PANE e a OCORRÊNCIA na mesma frase: a ocorrência manda
+    "bati o carro e o motor parou", "o carro pegou fogo no motor"])
 def test_B5_relato_que_nao_e_pane_clara_vai_a_uma_pessoa(relato):
     """📊 As cinco primeiras saíam "Não" (lista negra). A sexta não diz o que
     houve — e lista BRANCA não afirma fato sobre o que não sabe."""
