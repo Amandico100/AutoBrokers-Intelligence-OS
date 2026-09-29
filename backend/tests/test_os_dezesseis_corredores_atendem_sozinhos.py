@@ -525,3 +525,299 @@ def test_CONTROLE_a_constante_e_o_rotulo_conseguem_divergir():
     o rótulo `Sim` da azul não está na justificativa do blindado."""
     blindado = PB.match_ura_step(PB.get_playbook(HDI), tela("hdi-auto", "2548c9c7", r"blindado"))
     assert "nenhum dos dois" not in PB._norm(blindado["constante_justificada"])
+
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 O CONSERTO ÚNICO — juiz (66) e red team (55), cegos um ao outro, convergentes
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _com_passos(ref, texto, slots, passos, subservice="guincho"):
+    """O motor com passos JÁ respondidos na sessão (`step_counts`), que é o que
+    `reply_if_step_done` lê — a sessão de verdade chega aqui depois deles."""
+    s = _sessao(ref, slots, subservice)
+    s["step_counts"] = {p: 1 for p in passos}
+    s = M.handle_insurer_message(s, texto)
+    saidas = [t for t in (s.get("transcript") or []) if t.get("direction") == "out"]
+    return (saidas[-1]["text"] if saidas else None), s
+
+
+# ---- B1 · a recusa não vira "Sim", e a dúvida não vira recusa -------------------
+TAXI_77983F63 = ("porto-auto", "77983f63", r"al[ée]m do guincho")
+
+
+@pytest.mark.parametrize("frase", [
+    "claro que não", "pode deixar", "preciso não", "quero não",
+    "precisa não, meu filho vem me buscar", "não precisa", "Nao, obrigado"])
+def test_B1_a_recusa_em_qualquer_posicao_e_nao(frase):
+    """📊 As cinco primeiras saíam "Sim" na tela real (red team)."""
+    saiu, s = responde(PORTO, tela(*TAXI_77983F63), {**CASO_AUTO, "taxi_apos_guincho": frase})
+    assert saiu == "Não", (frase, saiu, s.get("reason"))
+
+
+@pytest.mark.parametrize("frase", ["não sei ainda", "talvez", "sim, mas não agora",
+                                   "pode ser", "acho que sim"])
+def test_B1_a_duvida_vai_a_uma_pessoa(frase):
+    """📊 "não sei ainda" saía "Não" — a dúvida virava recusa de um benefício coberto."""
+    saiu, s = responde(PORTO, tela(*TAXI_77983F63), {**CASO_AUTO, "taxi_apos_guincho": frase})
+    assert saiu is None and s["state"] == "needs_human", (frase, saiu, s.get("state"))
+
+
+@pytest.mark.parametrize("frase,esperado", [
+    ("claro que não", "Não"), ("não tá na rua, tá no estacionamento do prédio", "Sim"),
+    ("não está em garagem nenhuma", "Não"), ("sim, no estacionamento", "Sim"),
+    ("na rua, em frente ao estacionamento", None)])
+def test_B1_a_garagem_le_o_lugar_e_a_negacao(frase, esperado):
+    texto = tela("hdi-auto", "78b2de6f", r"est[áa] em uma garagem\?")
+    saiu, s = responde(HDI, texto, {**CASO_AUTO, "veiculo_em_garagem": frase})
+    assert saiu == esperado, (frase, saiu)
+    assert s["state"] != "needs_human"
+
+
+def test_B1_nao_esta_no_subsolo_nao_vira_sim():
+    texto = tela("hdi-auto", "78b2de6f", r"garagem subsolo ou acima")
+    saiu, _s = responde(HDI, texto, {**CASO_AUTO, "veiculo_nivel_rua": "não está no subsolo"})
+    assert saiu != "Sim", saiu
+
+
+# ---- B2 · a tela que SÓ AVISA não recebe resposta ------------------------------
+@pytest.mark.parametrize("ref,arquivo,sessao,padrao,sub", [
+    (PORTO, "porto-auto", "f4838bb3", r"valor da bateria", "bateria"),
+    (YELUM, "yelum-auto", "e97943bd", r"GUINCHO GARAGEM", "guincho"),
+])
+def test_B2_o_aviso_de_preco_e_o_aviso_de_garagem_nao_sao_respondidos(ref, arquivo, sessao, padrao, sub):
+    """📊 Na HEAD de antes: "60" no aviso de preço da bateria e "Sim" no aviso do
+    GUINCHO GARAGEM. Na base `0c0e070`, nada — era regressão desta SPEC."""
+    saiu, s = responde(ref, tela(arquivo, sessao, padrao),
+                       {**CASO_AUTO, "veiculo_nivel_rua": "subsolo"}, subservice=sub)
+    assert saiu is None and s["state"] != "needs_human", (saiu, s.get("state"))
+
+
+def test_B2_a_rajada_do_preco_nao_passa_pelos_amperes():
+    """Aviso de preço + "Posso continuar o agendamento? Sim/Não" na mesma rajada:
+    quem responde NÃO é o passo dos amperes (ele via Sim/Não e mandava "Sim")."""
+    rajada = (tela("porto-auto", "f4838bb3", r"valor da bateria") + "\n"
+              + tela("porto-auto", "f4838bb3", r"posso continuar o agendamento"))
+    passo = PB.match_ura_step(PB.get_playbook(PORTO), rajada, subservice="bateria")
+    assert (passo or {}).get("step") != "amperes_da_bateria", passo
+
+
+#: 🔴 O ALCANCE DE CADA PASSO NOVO NO ACERVO INTEIRO — medido em 29/09/2026,
+#: HEAD do conserto, casando cada tela dos 16 corpora com CADA serviço do
+#: corredor (não só o da etiqueta). ⚠️ É o guarda que o juiz pediu: a mutação
+#: dele (âncora dos amperes alargada até "bateria") deu 2 falhas em 177. Aqui
+#: um passo que passa a casar UMA sessão a mais fica vermelho.
+ALCANCE = {'amperes_da_bateria': ('porto-auto:4830574a',),
+ 'animal_de_estimacao': ('hdi-auto:ea61eb64', 'hdi-auto:fa2ceb6f'),
+ 'cambio_travado': ('hdi-auto:2548c9c7', 'hdi-auto:78b2de6f', 'yelum-auto:19d73270'),
+ 'confirme_veiculo_do_seguro': ('allianz-residencial:0591c1d1',),
+ 'continuar_de_onde_parou': ('yelum-auto:01bf91c2',),
+ 'datas_disponiveis_porto': ('porto-auto:910b6295',),
+ 'destino_digitado': ('hdi-auto:2548c9c7',
+                      'hdi-auto:4b2d0c2a',
+                      'hdi-auto:83d2b9e3',
+                      'yelum-auto:29ae4344',
+                      'yelum-auto:705f915b',
+                      'yelum-auto:9d2655e2',
+                      'yelum-auto:a1c18e1c',
+                      'yelum-auto:ba9f1970'),
+ 'destino_endereco_completo_porto': ('porto-auto:12203ed9',
+                                     'porto-auto:51b2ed32',
+                                     'porto-auto:77983f63',
+                                     'porto-auto:a9560e3a'),
+ 'destino_so_a_rua': ('hdi-auto:2548c9c7',),
+ 'garagem_do_caso': ('hdi-auto:21a53457',
+                     'hdi-auto:2548c9c7',
+                     'hdi-auto:2e6df205',
+                     'hdi-auto:4b2d0c2a',
+                     'hdi-auto:78b2de6f',
+                     'hdi-auto:83d2b9e3',
+                     'yelum-auto:01bf91c2',
+                     'yelum-auto:0a1a616e',
+                     'yelum-auto:29ae4344',
+                     'yelum-auto:56bd78f7',
+                     'yelum-auto:705f915b',
+                     'yelum-auto:7c841763',
+                     'yelum-auto:b187d77a',
+                     'yelum-auto:ba9f1970'),
+ 'garagem_subsolo_ou_acima': ('hdi-auto:4b2d0c2a',
+                              'hdi-auto:78b2de6f',
+                              'yelum-auto:56bd78f7',
+                              'yelum-auto:705f915b',
+                              'yelum-auto:ba9f1970'),
+ 'imediato_ou_agendado': ('porto-auto:4830574a',),
+ 'impedido_de_rodar': ('bradesco-auto:706df513', 'bradesco-auto:72af1ae1'),
+ 'informe_novamente_aviso': ('hdi-auto:2548c9c7',),
+ 'ja_tentou_abrir_aviso': ('yelum-auto:01bf91c2',),
+ 'manter_horario_oficina_fechada': ('porto-auto:12203ed9',),
+ 'nova_solicitacao_apos_protocolo': ('hdi-residencial:61b96027',),
+ 'o_proprio_segurado': ('porto-auto:4830574a',),
+ 'outro_servico_apos_protocolo': ('hdi-auto:fa2ceb6f',),
+ 'perfil_hdi_residencial': ('hdi-residencial:0a7c24ef',
+                            'hdi-residencial:13379965',
+                            'hdi-residencial:1c8d0849',
+                            'hdi-residencial:26c0546f',
+                            'hdi-residencial:61b96027',
+                            'hdi-residencial:834cc238',
+                            'hdi-residencial:b638adcd',
+                            'hdi-residencial:ed46a953'),
+ 'pesquisa_de_satisfacao_porto': ('porto-auto:4830574a',),
+ 'placa_do_beneficio_residencial': ('allianz-residencial:0591c1d1',),
+ 'placa_e_modelo': ('porto-auto:4830574a',),
+ 'placa_nao_encontrada_familia': ('hdi-auto:4b2d0c2a', 'yelum-auto:7c841763'),
+ 'placa_nao_encontrada_tenta_cpf': ('yelum-auto:29ae4344',),
+ 'pode_ligar_qualquer_azul': ('azul-auto:2f0cd86a',),
+ 'policia_no_local_pane': ('bradesco-auto:706df513', 'bradesco-auto:72af1ae1'),
+ 'repique_somente_numeros': ('allianz-residencial:590b5940',),
+ 'retomar_agendamento_porto': ('porto-auto:12203ed9',),
+ 'rodas_livres': ('hdi-auto:2548c9c7', 'hdi-auto:78b2de6f'),
+ 'servicos_disponiveis_aviso': ('hdi-residencial:61b96027',),
+ 'taxi_alem_do_guincho': ('porto-auto:12203ed9',
+                          'porto-auto:51b2ed32',
+                          'porto-auto:77983f63',
+                          'porto-auto:a9560e3a'),
+ 'taxi_pode_depois_aviso': ('porto-auto:12203ed9',
+                            'porto-auto:51b2ed32',
+                            'porto-auto:77983f63',
+                            'porto-auto:a9560e3a'),
+ 'tipo_de_atendimento_veiculo': ('porto-auto:ba772444',),
+ 'veiculo_blindado_familia': ('hdi-auto:2548c9c7',
+                              'hdi-auto:83d2b9e3',
+                              'yelum-auto:705f915b',
+                              'yelum-auto:7c841763',
+                              'yelum-auto:b187d77a',
+                              'yelum-auto:ba9f1970'),
+ 'veiculo_desatrelado': ('hdi-auto:4b2d0c2a', 'hdi-auto:fa2ceb6f', 'yelum-auto:6b4c37e4'),
+ 'veiculo_do_atendimento_porto': ('porto-auto:12203ed9',),
+ 'zona_rural_coordenada': ('hdi-auto:fa2ceb6f', 'yelum-auto:21243a23', 'yelum-auto:56bd78f7')}
+
+
+def _alcance_de_hoje():
+    import glob as _glob
+    fora = {}
+    for f in sorted(_glob.glob(str(CORPUS / "*.jsonl"))):
+        seg, ramo = Path(f).stem.split("-", 1)
+        ref = PB.resolve_playbook_ref(seg, ramo)
+        pb = PB.get_playbook(ref) if ref else None
+        if not pb:
+            continue
+        for linha in Path(f).read_text(encoding="utf-8").splitlines():
+            if not linha.strip():
+                continue
+            x = json.loads(linha)
+            for sv in sorted(set(pb.get("subservices") or {}) | {x.get("servico") or ""}):
+                passo = PB.match_ura_step(pb, x["text"], subservice=sv)
+                if passo and passo.get("step") in ALCANCE:
+                    fora.setdefault(passo["step"], set()).add(f"{seg}-{ramo}:{x['session_id']}")
+    return fora
+
+
+def test_B2_cada_passo_novo_casa_so_as_sessoes_medidas():
+    hoje = _alcance_de_hoje()
+    diferentes = {k: sorted(set(hoje.get(k, ())) ^ set(v)) for k, v in ALCANCE.items()
+                  if set(hoje.get(k, ())) != set(v)}
+    assert not diferentes, f"o alcance mudou (sessões a mais ou a menos): {diferentes}"
+    assert ALCANCE["amperes_da_bateria"] == ("porto-auto:4830574a",)
+
+
+# ---- B3 · a rua do destino da bradesco, e a conferência do destino -------------
+def test_B3_a_rua_depois_da_pergunta_do_destino_e_a_do_destino():
+    rua = tela("bradesco-auto", "a10d095d", r"nome da \*?rua")
+    assert _com_passos(BRADESCO, rua, CASO_AUTO, ())[0] == CASO_AUTO["local_rua"]
+    saiu, _s = _com_passos(BRADESCO, rua, CASO_AUTO, ("destino_rodovia",))
+    assert saiu == CASO_AUTO["destino_rua"] != CASO_AUTO["local_rua"], saiu
+
+
+def test_B3_a_conferencia_le_o_destino_do_veiculo_e_reprova_a_rua_errada():
+    """📊 Antes: `ok: True, conferidos: ['origem']` — "Destino do veículo:" era
+    lido como o campo `veiculo`, e o destino nunca era conferido."""
+    resumo = tela("bradesco-auto", "a10d095d", r"s[óo] vamos confirmar").replace(
+        "Origem: *Estrada {ENDERECO}", "Origem: *Rua das Flores, 100 - Centro, Joinville/SC")
+    errado = resumo.replace("Destino do veículo: *Rua {ENDERECO}",
+                            "Destino do veículo: *Rua das Flores, 200 - Joinville/SC")
+    assert errado != resumo, "a tela real mudou de forma — o teste não mediria nada"
+    v = PB.conferir_confirmacao(PB.get_playbook(BRADESCO), [errado], CASO_AUTO, "guincho",
+                                parse_address=PB.parse_address_br)
+    assert "destino" in v["conferidos"] and not v["ok"], v
+    assert "veiculo" not in v["resumo"], v["resumo"]
+    # CONTROLE: com o destino CERTO, a mesma conferência aprova.
+    certo = resumo.replace("Destino do veículo: *Rua {ENDERECO}",
+                           "Destino do veículo: *Avenida Brasil, 2000 - Joinville/SC")
+    v2 = PB.conferir_confirmacao(PB.get_playbook(BRADESCO), [certo], CASO_AUTO, "guincho",
+                                 parse_address=PB.parse_address_br)
+    assert v2["ok"] and "destino" in v2["conferidos"], v2
+
+
+# ---- B4 · o número do destino ---------------------------------------------------
+@pytest.mark.parametrize("ref,arquivo,sessao", [
+    (HDI, "hdi-auto", "fa2ceb6f"), (YELUM, "yelum-auto", "19d73270")])
+def test_B4_o_numero_depois_da_pergunta_do_destino_e_o_do_destino(ref, arquivo, sessao):
+    """📊 A ÚNICA pergunta de número destas sessões vem depois de "Para qual CEP
+    devemos levar o veículo?" — e saía o número da ORIGEM (`reply_repeat`)."""
+    texto = tela(arquivo, sessao, r"qual (?:[ée] )?o \*?n[úu]mero")
+    saiu, _s = _com_passos(ref, texto, CASO_AUTO, ("destino_como",))
+    assert saiu == CASO_AUTO["destino_numero"] != CASO_AUTO["local_numero"], saiu
+
+
+def test_B4_CONTROLE_a_origem_continua_origem_mesmo_na_segunda_vez():
+    """hdi 2548c9c7 (origem) e o caso de yelum 29ae4344: a tela vem DUAS vezes, as
+    duas da origem — a contagem mandava o destino na segunda."""
+    texto = tela("hdi-auto", "2548c9c7", r"qual (?:[ée] )?o \*?n[úu]mero")
+    assert _com_passos(HDI, texto, CASO_AUTO, ())[0] == CASO_AUTO["local_numero"]
+    assert _com_passos(HDI, texto, CASO_AUTO, ("endereco_numero",))[0] == CASO_AUTO["local_numero"]
+
+
+# ---- B5 · polícia: só a PANE clara diz "Não" ------------------------------------
+POLICIA = ("bradesco-auto", "72af1ae1", r"chamar a pol")
+
+
+@pytest.mark.parametrize("relato", [
+    "o motorista do outro carro fugiu", "fui atingido por outro veiculo", "o carro pegou fogo",
+    "entraram no carro e levaram tudo", "me fecharam na estrada e saí da pista",
+    "o carro está parado aqui"])
+def test_B5_relato_que_nao_e_pane_clara_vai_a_uma_pessoa(relato):
+    """📊 As cinco primeiras saíam "Não" (lista negra). A sexta não diz o que
+    houve — e lista BRANCA não afirma fato sobre o que não sabe."""
+    saiu, s = responde(BRADESCO, tela(*POLICIA), {**CASO_AUTO, "problema_descricao": relato})
+    assert saiu is None and s["state"] == "needs_human", (relato, saiu)
+
+
+@pytest.mark.parametrize("relato", ["o carro morreu e não liga mais", "a bateria arriou",
+                                    "o motor esquentou e parou"])
+def test_B5_CONTROLE_a_pane_clara_continua_respondida(relato):
+    saiu, _s = responde(BRADESCO, tela(*POLICIA), {**CASO_AUTO, "problema_descricao": relato})
+    assert saiu == "Não", (relato, saiu)
+
+
+# ---- G2 · G3 · M-b ----------------------------------------------------------------
+def test_G2_opcoes_com_preco_nao_sao_escolhidas_pelo_robo():
+    """Bateria com PREÇO na opção é aceite de custo: uma pessoa (SPEC-119)."""
+    precos = ("Você sabe quantos amperes tem a bateria?\n*1 -* Bateria 45Ah - R$ 399,00\n"
+              "*2 -* 60Ah - R$ 459,00\n*3 -* 90Ah - R$ 689,00")
+    saiu, s = responde(PORTO, precos, {**CASO_AUTO, "veiculo_descricao": "HILUX 2.8 DIESEL"},
+                       subservice="bateria")
+    assert saiu is None and s["reason"] == "tela_que_decide:aceite_de_custo", (saiu, s.get("reason"))
+    # e a faixa do rótulo não lê mais o preço como amperagem
+    assert PB._faixa_do_rotulo("Bateria 45Ah - R$ 399,00") == (45, 45)
+
+
+@pytest.mark.parametrize("veiculo,esperado", [("HILUX 2.8 DIESEL", "Não"), ("ONIX 1.0", "Sim"),
+                                              ("", "Sim")])
+def test_G2_a_tela_que_afirma_60_so_ouve_nao_de_quem_sabe(veiculo, esperado):
+    eco = "A bateria do seu veículo é de 60 amperes. Está correto?\nBotão 1: Sim\nBotão 2: Não"
+    saiu, _s = responde(PORTO, eco, {**CASO_AUTO, "veiculo_descricao": veiculo}, subservice="bateria")
+    assert saiu == esperado, (veiculo, saiu)
+
+
+@pytest.mark.parametrize("relato,ah", [
+    ("estou no km 120 a caminho", 80), ("tentei dar partida umas 40 a 50 vezes", 80),
+    ("a bateria é de 70", 70), ("bateria de 45Ah arriou", 45)])
+def test_G3_so_amperagem_com_unidade_ou_da_bateria(relato, ah):
+    assert PB.amperes_do_caso({"problema_descricao": relato, "veiculo_descricao": "HILUX DIESEL"}) == ah
+
+
+@pytest.mark.parametrize("quando,esperado", [
+    ("agora de manhã não dá, pode ser hoje à noite", None), ("agora", "Imediato"),
+    ("o quanto antes", "Imediato"), ("amanhã às 9h", "Agendado")])
+def test_Mb_imediato_ou_agendado(quando, esperado):
+    assert PB._imediato_ou_agendado("", {"quando": quando}, "") == esperado
