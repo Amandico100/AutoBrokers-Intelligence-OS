@@ -12251,3 +12251,105 @@ sobrou relógio para rodar a bateria inteira depois dela. Medir e entregar vale 
 sem prova (§9.2).
 **Custa esquecer:** 🔴 o segurado recebe *"passei seu caso"* de um robô enquanto uma pessoa já
 está com o caso — e a corretora vê dois handoffs para um atendimento só.
+
+
+---
+
+# SPEC-120 — os dezesseis corredores atendem sozinhos (29/09/2026)
+
+> 📊 O retrato da SPEC: ATENDE SOZINHO **24 → 31** de 73 rotas; telas órfãs das 10 rotas trabalhadas
+> **86 → 10**. As pendências abaixo são o que ela deixou, com dono e preço.
+
+## P-120-01 · 🤖 `carro_reserva` não tem corredor nenhum
+📊 126 telas no acervo (yelum 91, tokio 21, mapfre 14), 13 pedidos medidos, **zero passos escritos**.
+**O que destrava:** 🤖 uma SPEC de corredor novo, pelo mesmo método desta (ler as conversas, ver o que
+a atendente respondeu, escrever os passos). O Founder concordou em fazer depois dos 16.
+**Custa esquecer:** é serviço que o segurado PEDE e o produto não atende — cada pedido vira pessoa.
+
+## P-120-02 · 🧑 Os 6 corredores que respondem tudo e nunca chegaram ao protocolo
+`allianz/residencial/{desentupimento,eletrodomesticos}` · `porto/residencial/eletrodomesticos` ·
+`yelum/residencial/eletrodomesticos` · `hdi/residencial/chaveiro` · `yelum/auto/bateria`.
+📊 **Zero** telas órfãs nos seis — o que falta é UMA conversa gravada que vá até o número do protocolo.
+**O que destrava:** 🧑 um acionamento real de cada, até o fim. Não se deduz: o desfecho é a frase
+final DAQUELA URA (protocolo? link? "aguarde"?).
+**Custa esquecer:** seis rotas que provavelmente já funcionam ficam fora do "atende sozinho" sem prova.
+
+## P-120-03 · 🧑 As 31 rotas sem nenhuma conversa gravada
+Inclui as 4 da Mapfre (📊 nenhuma conversa de guincho da Mapfre existe no acervo NEM no banco).
+**O que destrava:** 🧑 acionamento dirigido, rota a rota. ⚠️ Ampliar o classificador não destrava — a
+SPEC-119 mediu isso (43 → 42 rotas com corpus, zero saíram do vazio).
+
+## P-120-04 · 🤖 A consultora da Porto que assume a conversa no meio da URA
+📊 `porto/auto/bateria`, sessão `4830574a`: 5 telas são uma PESSOA da seguradora conversando. O
+detector existe (`zonas_do_acervo.tem_apresentacao_humana` → True) mas `e_fronteira` → False.
+**O que destrava:** 🤖 reconhecer a fronteira "a URA acabou, um humano da seguradora assumiu" e passar
+o caso à corretora com o dossiê (mexe em `insurer_dispatch_service.py`).
+**Custa esquecer:** o robô tenta responder uma pessoa da seguradora como se fosse menu.
+
+## P-120-05 · 🤖 Telas de chaveiro numa sessão etiquetada guincho
+📊 yelum `56bd78f7` (e os 2 achados graves `[C]` herdados da SPEC-119). Nenhum passo de guincho foi
+escrito para elas, de propósito. **O que destrava:** 🤖 conferir a etiqueta da sessão no classificador.
+
+## P-120-06 · 🤖 A tela de limite de uso da Yelum nunca foi protegida
+O comentário dizia que `unknown_step_policy: pause_and_handoff` "pausa o acionamento" nela.
+📊 **Nenhuma linha do produto lê essa chave** (confirmado pelo builder e pelo juiz, com o motor).
+**O que destrava:** 🤖 um gatilho de handoff próprio para a tela de limite.
+**Custa esquecer:** o robô pode consumir um uso que o segurado não tem.
+
+## P-120-07 · 🤖 "Informe somente números" reenvia o número da casa, não "o último campo"
+`render_reply` não vê a conversa. Resolve a máquina de lavar da Allianz (o único caso medido), mas
+numa tela de repique depois de CEP ou telefone mandaria o número da casa.
+**O que destrava:** 🤖 um gancho no despacho que saiba o último campo enviado.
+
+## P-120-08 · 🧑 A D2 (perguntar a garagem) não foi aplicada às constantes antigas
+Azul (`garagem_subsolo` → "Não"), Bradesco e Zurich ("…subsolo ou elevada" → "2") seguem com
+constante. **O que destrava:** 🧑 decidir se essas rotas também perguntam — é uma pergunta a mais ao
+segurado. **Custa esquecer:** carro em subsolo recebe o guincho comum, que não entra.
+
+## P-120-09 · 🤖 O táxi da Porto (D9) não coleta o número de passageiros
+Se o relato não disser, vai a uma pessoa por `sem_chute`.
+
+## P-120-10 · 🤖 O bloco de conhecimento está em 6.935 de 7.000 caracteres
+📊 A próxima pergunta nova ao segurado estoura o teto.
+
+## P-120-11 · 🤖 Porto "Qual período… Tarde Noite Voltar" recebe dígito numa lista sem número
+Anterior a esta SPEC; não é tela órfã.
+
+## P-120-12 · 🔴🤖 Apresentação de funcionária da seguradora não é mascarada no acervo
+📊 2 ocorrências no acervo versionado (`porto-auto.jsonl`, *"Aqui é a …"*), só o primeiro nome. Já está
+na `main` desde a SPEC-119. O mascarador pega vocativo (*"Maria, …"*), não apresentação.
+**O que destrava:** 🤖 o padrão de apresentação em `higiene_do_corpus` + regerar o acervo (move as notas).
+**Custa esquecer:** nome de pessoa num arquivo global (§13.9).
+
+## P-120-13 · 🤖 O número de teste real do canário aparece em 8 testes e num comentário
+📊 `5547988087463` em 8 arquivos de `backend/tests/` e em `insurer_dispatch_service.py` (comentário).
+Anterior à SPEC-120; nos dois testes que esta SPEC mexeu, virou sintético. **O que destrava:** 🤖
+trocar pelos sintéticos (`5548900000047`). **Custa esquecer:** §13.9.
+
+## P-120-14 · 🧑 "Com humano atendendo, nada sai ao grupo" só vale por 6 horas
+📊 red team: claim há 5,9h → calado; há 6,1h → o grupo é avisado (`HANDOFF_REALERTA_HORAS=6`). O vigia
+de ESPERA VENCIDA ainda usa essa guarda. Anterior à SPEC-120, mas é o cenário da regra D17.
+**O que destrava:** 🧑 decidir quanto tempo "a atendente assumiu" vale sem ela falar.
+
+## P-120-15 · 🤖 Com o Redis fora do ar, o aviso tardio pode sair mais de uma vez
+O marcador responde "a vez é sua" quando não lê. Limitado à janela de 2h (`bf18e8f`).
+
+## P-120-16 · 🤖 A justificativa de "continuar de onde parou" promete uma conferência que não acontece na Yelum
+📊 Na Yelum o resumo chega DEPOIS da abertura (sessão `01bf91c2`: protocolo 14:10:37, resumo 14:10:38).
+Nenhum dano medido nessa sessão (a URA pediu o endereço de novo). **O que destrava:** 🤖 corrigir o texto
+ou conferir antes.
+
+## P-120-17 · 🧑 A rajada "preço da bateria + Posso continuar o agendamento?" da Porto responde "Sim"
+📊 Por `agendamento_seguir_porto`, que dava o mesmo "Sim" na base `0c0e070` — **não é regressão desta
+SPEC**. Mas continuar ali é aceitar o preço de uma bateria nova. **Decisão D-120-B do Founder.**
+
+## P-120-18 · 🧑 A tela de amperes COM PREÇO vai a uma pessoa
+Contraria de propósito a regra "nunca chamar humano nos amperes": escolher uma opção com preço é
+aceitar custo (regra da SPEC-119). 📊 Nenhuma tela assim existe no acervo — é defesa. **Decisão D-120-C.**
+
+## P-120-19 · 🤖 Se a URA recomeçar dentro da mesma sessão, o número da origem sai como o do destino
+📊 Achado do juiz na confirmação: a regra nova do número (B4) é *"`destino_como` já foi respondido nesta
+sessão?"*. Na hdi `4b2d0c2a` a URA pediu o destino às 13:16, disse *"está pendente"* às 13:18 e às 14:39
+recomeçou pedindo a ORIGEM. Hoje não chega a acontecer: *"está pendente"* virou gatilho de pessoa nesta SPEC
+e a nova tentativa abre sessão nova. **O que destrava:** 🤖 zerar `reply_if_step_done` quando a URA reinicia.
+**Custa esquecer:** o dia em que o gatilho mudar, o guincho vai buscar o carro no endereço do destino.

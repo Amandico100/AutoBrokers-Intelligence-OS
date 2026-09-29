@@ -281,8 +281,8 @@
   "ramo": "residencial",
   "servico": "encanador",
   "telas": 176,
-  "respondidas": 111,
-  "orfas_funcionais": 4,
+  "respondidas": 115,
+  "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -293,9 +293,9 @@
    "be8e3f8d",
    "ed379849"
   ],
-  "faixa": "FALTA CAPTURA",
-  "causa": "tela_orfa",
-  "motivo": "4 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 0591c1d1: “Para confirmamos o benefício residencial na sua apólice, informe a *PLACA* do veículo.”",
+  "faixa": "ATENDE SOZINHO",
+  "causa": "",
+  "motivo": "todas as 115 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 6 conversa(s) — a primeira é `0591c1d1`",
   "bateria_5": [
    {
     "assunto": "apolice_de_condominio_ou_empresa",
@@ -359,17 +359,17 @@
   "ramo": "residencial",
   "servico": "maquina_de_lavar",
   "telas": 112,
-  "respondidas": 85,
-  "orfas_funcionais": 1,
+  "respondidas": 86,
+  "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
    "7ac3c101",
    "b2bf40e7"
   ],
-  "faixa": "FALTA CAPTURA",
-  "causa": "tela_orfa",
-  "motivo": "1 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 590b5940: “Informe somente números.”",
+  "faixa": "ATENDE SOZINHO",
+  "causa": "",
+  "motivo": "todas as 86 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 2 conversa(s) — a primeira é `7ac3c101`",
   "bateria_5": [
    {
     "assunto": "apolice_de_condominio_ou_empresa",
@@ -417,8 +417,8 @@
   "ramo": "auto",
   "servico": "guincho",
   "telas": 228,
-  "respondidas": 114,
-  "orfas_funcionais": 1,
+  "respondidas": 115,
+  "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -429,9 +429,9 @@
    "a1a6a0d4",
    "b012d3cd"
   ],
-  "faixa": "FALTA CAPTURA",
-  "causa": "tela_orfa",
-  "motivo": "1 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 2f0cd86a: “Se for necessário, posso te ligar em qualquer um deles? *1* - Sim *2* - Não, apenas no primeiro *3* - Apenas n”",
+  "faixa": "ATENDE SOZINHO",
+  "causa": "",
+  "motivo": "todas as 115 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 6 conversa(s) — a primeira é `14398ee8`",
   "bateria_5": []
  },
  {
@@ -501,8 +501,8 @@
   "ramo": "auto",
   "servico": "guincho",
   "telas": 129,
-  "respondidas": 102,
-  "orfas_funcionais": 5,
+  "respondidas": 107,
+  "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -510,9 +510,9 @@
    "706df513",
    "bc2cfead"
   ],
-  "faixa": "FALTA CAPTURA",
-  "causa": "tela_orfa",
-  "motivo": "5 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 72af1ae1: “Sentimos muito pelo ocorrido, esperamos que todos estejam bem! Para dar continuidade ao atendimento preciso co”",
+  "faixa": "ATENDE SOZINHO",
+  "causa": "",
+  "motivo": "todas as 107 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 3 conversa(s) — a primeira é `0d5284f3`",
   "bateria_5": []
  },
  {
@@ -567,8 +567,8 @@
   "ramo": "auto",
   "servico": "guincho",
   "telas": 599,
-  "respondidas": 341,
-  "orfas_funcionais": 21,
+  "respondidas": 358,
+  "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -586,9 +586,9 @@
    "ea61eb64",
    "fa2ceb6f"
   ],
-  "faixa": "FALTA CAPTURA",
-  "causa": "tela_orfa",
-  "motivo": "21 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa fa2ceb6f: “O veículo está desatrelado? Botão 1: Sim Botão 2: Não Botão 3: Voltar”",
+  "faixa": "ATENDE SOZINHO",
+  "causa": "",
+  "motivo": "todas as 358 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 13 conversa(s) — a primeira é `21a53457`",
   "bateria_5": []
  },
  {
@@ -690,16 +690,16 @@
   "ramo": "residencial",
   "servico": "encanador",
   "telas": 55,
-  "respondidas": 31,
-  "orfas_funcionais": 2,
+  "respondidas": 32,
+  "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
    "61b96027"
   ],
-  "faixa": "FALTA CAPTURA",
-  "causa": "tela_orfa",
-  "motivo": "2 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 61b96027: “Por aqui, você pode solicitar os seguintes serviços: - *Encanador* - *Desentupimento* - *Eletricista* - *Chave”",
+  "faixa": "ATENDE SOZINHO",
+  "causa": "",
+  "motivo": "todas as 32 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `61b96027`",
   "bateria_5": []
  },
  {
@@ -767,8 +767,8 @@
   "ramo": "auto",
   "servico": "bateria",
   "telas": 164,
-  "respondidas": 76,
-  "orfas_funcionais": 10,
+  "respondidas": 80,
+  "orfas_funcionais": 5,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -778,7 +778,7 @@
   ],
   "faixa": "FALTA CAPTURA",
   "causa": "tela_orfa",
-  "motivo": "10 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 4830574a: “Olá! 😊 Aqui é a Viviane. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso ”",
+  "motivo": "5 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 4830574a: “Olá! 😊 Aqui é a Viviane. Sou consultora de relacionamento e darei continuidade ao seu atendimento. Como posso ”",
   "bateria_5": []
  },
  {
@@ -818,8 +818,8 @@
   "ramo": "auto",
   "servico": "guincho",
   "telas": 495,
-  "respondidas": 233,
-  "orfas_funcionais": 17,
+  "respondidas": 246,
+  "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -836,9 +836,9 @@
    "d6f1f8d3",
    "d801cbd8"
   ],
-  "faixa": "FALTA CAPTURA",
-  "causa": "tela_orfa",
-  "motivo": "17 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 77983f63: “Tudo bem. Depois de concluir o agendamento do guincho, *você também pode solicitar um táxi* se precisar.”",
+  "faixa": "ATENDE SOZINHO",
+  "causa": "",
+  "motivo": "todas as 246 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 12 conversa(s) — a primeira é `12203ed9`",
   "bateria_5": []
  },
  {
@@ -1095,8 +1095,8 @@
   "ramo": "auto",
   "servico": "guincho",
   "telas": 817,
-  "respondidas": 461,
-  "orfas_funcionais": 22,
+  "respondidas": 479,
+  "orfas_funcionais": 2,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -1119,7 +1119,7 @@
   ],
   "faixa": "FALTA CAPTURA",
   "causa": "tela_orfa",
-  "motivo": "22 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 19d73270: “O câmbio está travado? Botão 1: Sim Botão 2: Não Botão 3: Voltar”",
+  "motivo": "2 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 56bd78f7: “O que aconteceu com a chave? Dentro do veículo Chave está trancada dentro do veículo Perda Perdeu a chave Queb”",
   "bateria_5": []
  },
  {
