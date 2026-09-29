@@ -367,3 +367,19 @@ def test_controle_com_o_montador_o_numero_sai_clicavel():
     from app.services import insurer_dispatch_service as D
     texto = D.build_handoff_dossier(_sessao_travada(), "loop_guard")
     assert "https://wa.me/5548900000001" in texto, texto
+
+
+# ===========================================================================
+# 7 · O WhatsApp de um ESTRANGEIRO não vira o de outra pessoa no Brasil
+# ===========================================================================
+def test_numero_estrangeiro_nao_ganha_55():
+    """📊 red team (M-a): `+1 415 555 0100` virava `wa.me/5514155550100` — um
+    número brasileiro, DDD 14, de OUTRA pessoa. Com o dossiê sem máscara (D15),
+    a atendente tocaria nele."""
+    assert MOD.link_do_whatsapp("+1 415 555 0100") == "https://wa.me/14155550100"
+
+
+def test_controle_numero_brasileiro_continua_ganhando_55():
+    """🔴 CONTROLE: as regras do guarda G-D1 continuam — sem `+`, é Brasil."""
+    assert MOD.link_do_whatsapp("48988887777") == "https://wa.me/5548988887777"
+    assert MOD.link_do_whatsapp("+55 48 98888-7777") == "https://wa.me/5548988887777"

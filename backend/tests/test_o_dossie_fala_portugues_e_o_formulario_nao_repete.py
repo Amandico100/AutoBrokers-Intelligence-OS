@@ -11,7 +11,7 @@ A · O DOSSIÊ VAZAVA NOME DE CHAVE
     Seguradora: YELUM · Serviço: maquina_de_lavar
     Motivo: formulario_incompleto:rb_NivelDaRua,rb_InformacoesLocal
     - protocol: 68977599
-    - client_phone: 5547988087463
+    - client_phone: 5548900000047
 
 ⚠️ Quatro nomes internos numa tela lida com o segurado esperando — e o
 `_TITULOS` do `human_handoff` já tinha consertado exatamente isto no OUTRO
@@ -142,7 +142,7 @@ CASO = {
     **SLOTS_DO_FORMULARIO,
 }
 
-TELEFONE_DO_CLIENTE = "5547988087463"
+TELEFONE_DO_CLIENTE = "5548900000047"
 
 
 def _sessao_travada(reason: str, **extra):
@@ -280,7 +280,7 @@ def test_B1_o_telefone_do_cliente_sai_inteiro_e_clicavel():
     que a forma mascarada antiga não sobrou em lugar nenhum."""
     texto = M.build_handoff_dossier(_sessao_travada("loop_guard"))
     assert "https://wa.me/" + TELEFONE_DO_CLIENTE in texto, texto
-    assert "final 7463" not in texto, "a máscara antiga sobrou no cartão"
+    assert "final 0047" not in texto, "a máscara antiga sobrou no cartão"
     # E o telefone de contato do caso é telefone do mesmo jeito — os dois abrem juntos.
     assert "https://wa.me/5548999990000" in texto, texto
 

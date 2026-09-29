@@ -50,9 +50,18 @@ def link_do_whatsapp(telefone: Any) -> str:
     ⚠️ `_fone_bonito` (`human_handoff.py:463`) continua existindo para o texto
     LEGÍVEL. O link é outra coisa, e os dois convivem no mesmo modelo.
     """
-    digitos = re.sub(r"\D", "", str(telefone or ""))
+    bruto = str(telefone or "").strip()
+    digitos = re.sub(r"\D", "", bruto)
     if not digitos:
         return ""
+    # 🔴 SPEC-120 (red team, M-a): um número que JÁ declara o país com `+` e
+    #    não é `+55` é ESTRANGEIRO. 📊 `"+1 415 555 0100"` virava
+    #    `wa.me/5514155550100` — o WhatsApp de OUTRA pessoa, no Brasil, DDD 14.
+    #    Com o dossiê sem máscara (D15), a atendente tocaria no número errado.
+    #    O `wa.me` aceita qualquer país sem o `+`: sai como veio, se tiver o
+    #    tamanho de um telefone internacional (E.164: até 15 dígitos).
+    if bruto.startswith("+") and not digitos.startswith("55"):
+        return ("https://wa.me/%s" % digitos) if 8 <= len(digitos) <= 15 else ""
     if not digitos.startswith("55"):
         digitos = "55" + digitos
     # 55 + DDD(2) + 8 = 12 é o piso; acima de 13 já não é telefone brasileiro.

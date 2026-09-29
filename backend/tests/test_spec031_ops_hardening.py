@@ -98,7 +98,7 @@ def run():
     # ---------- Dossie de handoff mastigado ----------
     s = dispatch.new_dispatch_session(case_id="d1", company_id="co", playbook_ref="yelum-auto-whatsapp@v3", subservice="guincho", slots=dict(SLOTS))
     s = dispatch.start_dispatch(s)
-    s["client_phone"] = "5547988087463"
+    s["client_phone"] = "5548900000047"
     s["reason"] = "handoff_trigger:formulario nativo"
     dossie = dispatch.build_handoff_dossier(s, s["reason"])
     # 🔴 DUAS VERDADES VENCIDAS, MIGRADAS EM 08/09/2026 (§9.3):
@@ -111,14 +111,14 @@ def run():
     check("dossie: cabecalho + seguradora + servico", "PRECISA DE VOC" in dossie and "YELUM" in dossie and "GUINCHO" in dossie, dossie[:80])
     check("dossie: o servico NAO sai como nome de chave", "guincho" not in dossie, dossie[:80])
     check("dossie: dados do caso (CPF/placa/local)", "11122233344" in dossie and "ABC1D23" in dossie and "Rua A" in dossie)
-    check("dossie: cliente e proxima acao", "wa.me/5547988087463" in dossie and "Conversas" in dossie)
+    check("dossie: cliente e proxima acao", "wa.me/5548900000047" in dossie and "Conversas" in dossie)
     # ⚠️ MIGRADA EM 28/09/2026 — SPEC-120 D15. A regra era "o telefone NAO sai
     # inteiro"; o Founder decidiu o contrario: *"as informacoes nao podem ser
     # mascaradas... e' um humano da corretora"*. A licao migra: agora se prova
     # que ele sai INTEIRO e CLICAVEL, e que a forma mascarada SUMIU (controle).
     check("dossie: o telefone do cliente sai INTEIRO e CLICAVEL (SPEC-120 D15)",
-          "https://wa.me/5547988087463" in dossie)
-    check("dossie: CONTROLE — a forma mascarada antiga sumiu", "final 7463" not in dossie)
+          "https://wa.me/5548900000047" in dossie)
+    check("dossie: CONTROLE — a forma mascarada antiga sumiu", "final 0047" not in dossie)
 
     # ---------- Fila multi-cliente (memory fallback) ----------
     pos1 = asyncio.run(router.enqueue_dispatch("coQ", "551130039303", {"case_id": "q1", "playbook_ref": "porto-auto-whatsapp@v1", "subservice": "guincho", "slots": SLOTS, "client_phone": "111"}))
@@ -131,7 +131,7 @@ def run():
     os.environ["INSURER_DISPATCH_LIVE"] = "true"  # sender ativo p/ retry
     sess = dispatch.new_dispatch_session(case_id="r1", company_id="coR", playbook_ref="yelum-auto-whatsapp@v3", subservice="guincho", slots=dict(SLOTS))
     sess = dispatch.start_dispatch(sess, sender=lambda t: None)
-    sess["client_phone"] = "5547988087463"
+    sess["client_phone"] = "5548900000047"
     asyncio.run(router.save_active_dispatch("coR", "551131321001", sess))
     sent_ins, sent_cli = [], []
     handled = asyncio.run(router.try_route_insurer_inbound(
