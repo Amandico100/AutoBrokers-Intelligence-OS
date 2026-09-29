@@ -5428,8 +5428,16 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     (exigência do founder: 'entregar tudo mastigadinho'). Texto de WhatsApp.
 
     🔴 **Nada aqui sai em nome de chave.** Motivo, serviço, campo capturado e
-    campo de formulário passam por tradutor; telefone sai com os quatro últimos
-    dígitos e o caso se acha pelo link do painel."""
+    campo de formulário passam por tradutor.
+
+    🔴 **E nada sai mascarado — SPEC-120 D15, decisão do Founder em 28/09/2026:**
+    *"as informações não podem ser mascaradas, precisam ser reais e completas
+    porque é um humano da corretora."* O WhatsApp do segurado sai INTEIRO e
+    CLICÁVEL, para a atendente tocar e abrir a conversa com ele.
+
+    ⚠️ Este cartão NÃO vai a log (CLAUDE.md §7) nem atravessa corretora: ele só
+    sai pela porta única do grupo (`enviar_ao_grupo`), que resolve o destino
+    da PRÓPRIA corretora pelo `company_id`."""
     playbook = get_playbook(session.get("playbook_ref") or "") or {}
     slots = session.get("slots") or {}
     captured = session.get("captured") or {}
@@ -5438,6 +5446,11 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
         "🚨 *ATENDIMENTO PRECISA DE VOCÊ*",
         f"Seguradora: {insurer} · Serviço: {rotulo_do_servico(session.get('subservice') or '')}",
         f"O que aconteceu: {motivo_em_portugues(reason or session.get('reason') or '')}",
+        # 🔴 SPEC-120 — O MOMENTO. O Founder: *"existem 3 momentos: conversa
+        # inicial com o segurado, acionamento com a seguradora, pós-acionamento.
+        # Precisa explicar para o humano EM QUE MOMENTO isso aconteceu."* Este
+        # cartão só nasce DENTRO de um acionamento — é sempre o 2º.
+        "Momento: no ACIONAMENTO — a conversa com a seguradora estava em andamento",
     ]
     link = link_do_caso(session)
     if link:
@@ -5455,11 +5468,12 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     for key, label in labels.items():
         val = str(slots.get(key) or "").strip()
         if val:
-            # ⚠️ O telefone de contato é telefone do mesmo jeito que o
-            # `client_phone` lá embaixo: mascarar um e imprimir o outro
-            # protegeria metade do número da mesma pessoa.
+            # 🔴 SPEC-120 D15 — inteiro e clicável, como o `client_phone` lá
+            #    embaixo. A regra antiga mascarava os dois JUNTOS, pelo mesmo
+            #    motivo; a regra nova os abre juntos, pelo mesmo motivo.
             if key == "telefone_contato":
-                val = telefone_curto(val)
+                from app.services.os_modelos_do_grupo import link_do_whatsapp
+                val = link_do_whatsapp(val) or val
             linhas.append(f"- {label}: {val}")
     if captured:
         linhas.append("")
@@ -5543,13 +5557,20 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     # anunciar "Dossiê entregue à equipe" para um dossiê que ninguém recebeu.
     # Flag que mente encerra a investigação.
     avisado = bool(session.get("client_notified_handoff"))
-    # 🔴 O NÚMERO INTEIRO NÃO PRECISA ESTAR AQUI — e este cartão é reencaminhável.
+    # 🔴 SPEC-120 D15 — O NÚMERO INTEIRO E CLICÁVEL, decisão do Founder (28/09).
     #
-    # Ele vai para um GRUPO de WhatsApp e fica no histórico dele para sempre.
-    # Os quatro últimos dígitos bastam para a atendente CONFERIR que abriu a
-    # conversa certa; para CHEGAR nela existe o link do painel, no cabeçalho.
+    # ⚠️ A regra anterior dizia o contrário, e o argumento dela continua
+    # escrito aqui para ninguém "consertar de volta" sem saber: *"este cartão
+    # vai para um GRUPO e fica no histórico para sempre; os quatro últimos
+    # dígitos bastam para CONFERIR, e para CHEGAR existe o link do painel."*
+    # O Founder pesou isso e decidiu: o grupo é da PRÓPRIA corretora, o dado é
+    # do cliente DELA, e o que a atendente precisa é tocar no número e abrir a
+    # conversa — *"precisa ser fácil, claro, rápido"*. O link do painel
+    # continua no cabeçalho, para quem estiver no computador.
+    from app.services.os_modelos_do_grupo import link_do_whatsapp
+    _cliente = str(session.get("client_phone") or "")
     linhas.append(
-        f"Cliente no WhatsApp: {telefone_curto(session.get('client_phone') or '')} — "
+        f"Cliente no WhatsApp: {link_do_whatsapp(_cliente) or _cliente} — "
         + ("ele JÁ foi avisado que a equipe vai assumir."
            if avisado else
            "🔴 ele AINDA NÃO foi avisado. Fale com ele primeiro."))

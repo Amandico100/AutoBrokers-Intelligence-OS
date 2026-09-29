@@ -269,14 +269,20 @@ def test_A5_motivo_desconhecido_nao_vira_o_proprio_nome():
 # [B] O TELEFONE E O LINK
 # ===========================================================================
 
-def test_B1_o_telefone_do_cliente_nao_sai_inteiro():
+def test_B1_o_telefone_do_cliente_sai_inteiro_e_clicavel():
+    """⚠️ MIGRADA EM 28/09/2026 — SPEC-120 D15, decisão do Founder.
+
+    A regra antiga era *"o número inteiro não vai para um cartão que vive no
+    histórico de um grupo"*. O Founder pesou isso e decidiu o contrário: *"as
+    informações não podem ser mascaradas, precisam ser reais e completas porque
+    é um humano da corretora"* — ela precisa TOCAR no número e abrir a conversa.
+    A lição migra: agora se prova o número inteiro, clicável, e o CONTROLE de
+    que a forma mascarada antiga não sobrou em lugar nenhum."""
     texto = M.build_handoff_dossier(_sessao_travada("loop_guard"))
-    assert TELEFONE_DO_CLIENTE not in texto, (
-        "o número inteiro do segurado foi para um cartão que vive no histórico "
-        "de um grupo de WhatsApp")
-    assert "final 7463" in texto, texto
-    # E o telefone de contato do caso é telefone do mesmo jeito.
-    assert "48999990000" not in texto
+    assert "https://wa.me/" + TELEFONE_DO_CLIENTE in texto, texto
+    assert "final 7463" not in texto, "a máscara antiga sobrou no cartão"
+    # E o telefone de contato do caso é telefone do mesmo jeito — os dois abrem juntos.
+    assert "https://wa.me/5548999990000" in texto, texto
 
 
 def test_B2_com_a_URL_configurada_o_cartao_tem_o_link_do_caso(monkeypatch):

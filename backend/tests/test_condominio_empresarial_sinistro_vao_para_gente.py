@@ -246,13 +246,15 @@ def test_o_dossie_nao_vaza_nome_de_chave():
     assert not achados, f"nome de chave no dossiê: {achados}\n{dossie}"
 
 
-def test_o_dossie_nao_imprime_o_telefone_inteiro():
-    """O cartão é reencaminhável e fica no histórico do grupo para sempre."""
+def test_o_dossie_imprime_o_telefone_inteiro_e_clicavel():
+    """⚠️ MIGRADA EM 28/09/2026 — SPEC-120 D15. Era *"o cartão é reencaminhável e
+    fica no histórico do grupo para sempre"*; o Founder decidiu que a atendente
+    precisa do número inteiro para tocar e abrir a conversa com o segurado."""
     s, _ = _dossie_de_condominio()
     s["client_phone"] = "5548900000000"
     dossie = D.build_handoff_dossier(s, s.get("reason") or "")
-    assert "5548900000000" not in dossie, dossie
-    assert D.telefone_curto("5548900000000") in dossie
+    assert "https://wa.me/5548900000000" in dossie, dossie
+    assert D.telefone_curto("5548900000000") not in dossie, "a máscara antiga sobrou"
 
 
 def test_o_dossie_diz_a_verdade_sobre_o_aviso_ao_segurado():

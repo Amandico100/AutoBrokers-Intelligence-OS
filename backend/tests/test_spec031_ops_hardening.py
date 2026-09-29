@@ -61,6 +61,11 @@ _load("app.services.o_fim_do_atendimento", "app/services/o_fim_do_atendimento.py
 _load("app.atendimento.acompanhamento", "app/atendimento/acompanhamento.py")
 sys.modules["app.atendimento"].acompanhamento = sys.modules["app.atendimento.acompanhamento"]
 
+# ⚠️ SPEC-120 D15 (28/09/2026): o dossiê passou a abrir o WhatsApp do segurado
+# pelo montador de link do produto (`os_modelos_do_grupo.link_do_whatsapp`) —
+# um módulo PURO, sem import de `app` no topo. Entra pelo mesmo `_load`, pela
+# mesma regra escrita acima.
+_load("app.services.os_modelos_do_grupo", "app/services/os_modelos_do_grupo.py")
 pb = _load("app.services.corridor_playbooks", "app/services/corridor_playbooks.py")
 dispatch = _load("app.services.insurer_dispatch_service", "app/services/insurer_dispatch_service.py")
 router = _load("app.services.dispatch_router", "app/services/dispatch_router.py")
@@ -106,8 +111,14 @@ def run():
     check("dossie: cabecalho + seguradora + servico", "PRECISA DE VOC" in dossie and "YELUM" in dossie and "GUINCHO" in dossie, dossie[:80])
     check("dossie: o servico NAO sai como nome de chave", "guincho" not in dossie, dossie[:80])
     check("dossie: dados do caso (CPF/placa/local)", "11122233344" in dossie and "ABC1D23" in dossie and "Rua A" in dossie)
-    check("dossie: cliente e proxima acao", "final 7463" in dossie and "Conversas" in dossie)
-    check("dossie: o telefone do cliente NAO sai inteiro", "5547988087463" not in dossie)
+    check("dossie: cliente e proxima acao", "wa.me/5547988087463" in dossie and "Conversas" in dossie)
+    # ⚠️ MIGRADA EM 28/09/2026 — SPEC-120 D15. A regra era "o telefone NAO sai
+    # inteiro"; o Founder decidiu o contrario: *"as informacoes nao podem ser
+    # mascaradas... e' um humano da corretora"*. A licao migra: agora se prova
+    # que ele sai INTEIRO e CLICAVEL, e que a forma mascarada SUMIU (controle).
+    check("dossie: o telefone do cliente sai INTEIRO e CLICAVEL (SPEC-120 D15)",
+          "https://wa.me/5547988087463" in dossie)
+    check("dossie: CONTROLE — a forma mascarada antiga sumiu", "final 7463" not in dossie)
 
     # ---------- Fila multi-cliente (memory fallback) ----------
     pos1 = asyncio.run(router.enqueue_dispatch("coQ", "551130039303", {"case_id": "q1", "playbook_ref": "porto-auto-whatsapp@v1", "subservice": "guincho", "slots": SLOTS, "client_phone": "111"}))
