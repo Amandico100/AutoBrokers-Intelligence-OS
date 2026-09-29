@@ -224,8 +224,13 @@ def run():
     sf = dispatch.start_dispatch(sf)
     sf = dispatch.handle_insurer_message(sf, "Qual é o *bairro*?")  # 1a vez: origem tem bairro
     check("fallback: origem tem bairro -> responde", _outs(sf)[-1] == "Distrito Industrial", _outs(sf)[-1:])
+    # ⚠️ ATUALIZADO NA SPEC-120 (CLAUDE.md §9.3): o bairro do DESTINO deixou de ser
+    #    "a 2ª vez que a tela aparece" — 📊 em 15 sessões do acervo a 1ª pergunta
+    #    de número já era do destino, e em yelum 29ae4344 a 2ª era da origem. O
+    #    que decide agora é a URA ter perguntado PARA ONDE LEVAR (`destino_como`).
+    sf = dispatch.handle_insurer_message(sf, "Certo! Agora preciso que você informe para onde devemos levar o veículo. Qual dessas opções você prefere? Botão 1: Digitar endereço Botão 2: Informar o CEP Botão 3: Voltar")
     n_b = len(_outs(sf))
-    sf = dispatch.handle_insurer_message(sf, "Qual é o *bairro*?")  # 2a vez: destino SEM bairro
+    sf = dispatch.handle_insurer_message(sf, "Qual é o *bairro*?")  # depois do destino: destino SEM bairro
     check("fallback: destino sem bairro NAO chuta nem trava (acumula p/ adaptativo)",
           sf["state"] not in ("needs_human", "test_aborted") and len(_outs(sf)) == n_b
           and bool(sf.get("pending_insurer_messages")),
