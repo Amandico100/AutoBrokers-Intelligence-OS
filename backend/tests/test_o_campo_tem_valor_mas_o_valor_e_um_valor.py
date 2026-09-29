@@ -94,6 +94,9 @@ CASO = {
     "telefone_contato": "48991234567",
     "pessoa_no_local": "quem esta com o veiculo",
     "local_seguro": "sim",
+    # SPEC-120 · D9 (CLAUDE.md §9.3): o portão da porto passou a cobrar o táxi
+    #    depois do guincho — o "caso completo" ganhou a resposta do segurado.
+    "taxi_apos_guincho": "não",
     "quando": "agora",
     "ponto_referencia": "em frente ao mercado",
     # 🔴 O PIN ENTRA NO CASO BASE, e isto não é detalhe de arranjo.
