@@ -219,7 +219,7 @@ def conversa(cid, horas=48):
             "last_message_at": quando, "human_handoff_reason": "pediu humano"}
 
 
-def rodar(banco, redis, avisos, avisado=True):
+def rodar(banco, redis, avisos, avisado=True, calado=False):
     preparar(banco, redis)
     import importlib
     wd = importlib.import_module("app.tasks.handoff_watchdog")
@@ -227,7 +227,8 @@ def rodar(banco, redis, avisos, avisado=True):
 
     async def _falso(self, company_id, conv, motivo):
         avisos.append((str(conv.get("id")), motivo))
-        return {"avisado": bool(avisado), "motivo": "" if avisado else "grupo fora do ar"}
+        return {"avisado": bool(avisado), "calado": bool(calado),
+                "motivo": "" if avisado else ("humano assumiu" if calado else "grupo fora do ar")}
     hh.HumanHandoffTool._avisar_suporte = _falso
     asyncio.run(wd.varrer_handoffs_parados())
     return wd
@@ -358,6 +359,17 @@ rodar(banco_c, redis_c, avisos_c, avisado=False)
 certo(len(avisos_c) == 2,
       "🔴 grupo fora do ar: cada varredura TENTA de novo (a vez volta a ficar livre)",
       f"tentativas: {len(avisos_c)}")
+
+# (c2) a porta CALOU porque um humano assumiu (D17): nao e' falha — a vez
+#      NAO volta, e a proxima varredura nao bate de novo (confirmacao do juiz:
+#      senao seriam ate' 12 "grupo.calado" inflando o resumo das 19h).
+redis_e, avisos_e = RedisFake(), []
+banco_e = BancoFake([conversa("c-nova", horas=0.75)], _msg_cliente)
+rodar(banco_e, redis_e, avisos_e, avisado=False, calado=True)
+rodar(banco_e, redis_e, avisos_e, avisado=False, calado=True)
+certo(len(avisos_e) == 1,
+      "🔴 humano atendendo: a porta cala UMA vez, e o vigia nao insiste",
+      f"tentativas: {len(avisos_e)}")
 
 # (d) CONTROLE: a MESMA conversa fora da janela (3h) — so' medida.
 redis_d, avisos_d = RedisFake(), []

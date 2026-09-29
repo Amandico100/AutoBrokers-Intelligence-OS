@@ -287,7 +287,11 @@ async def varrer_handoffs_parados() -> None:
                               or "o segurado pediu para falar com uma pessoa")
                     aviso = await HumanHandoffTool(db)._avisar_suporte(
                         company_id, conversa, motivo)
-                    if not aviso.get("avisado"):
+                    # ⚠️ `calado` NÃO é falha (confirmação do juiz): a porta
+                    #    calou porque um humano assumiu (D17). Devolver a vez
+                    #    faria o vigia bater nela a cada varredura e inflar o
+                    #    "já com a equipe" do resumo das 19h.
+                    if not aviso.get("avisado") and not aviso.get("calado"):
                         await _devolver_a_vez(conversa_id, company_id=company_id)
             except Exception as exc:  # noqa: BLE001
                 logger.error("[HandoffWatchdog] aviso tardio falhou (%s) | empresa=%s",
