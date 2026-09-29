@@ -604,6 +604,46 @@ class InsurerDispatchInput(BaseModel):
         "paga pelo segurado (valor na visita, muda com a marca) e anote se ele "
         "aceita que o prestador busque a bateria no Centro Automotivo. Só "
         "recarga: 'recarga'."))
+    # 🔴 SPEC-121 F4b/F5 — eletricista da família, a chave do carro e o CARRO RESERVA.
+    eletricista_tipo_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial eletricista HDI/Yelum] 'falta de energia' (a casa toda, sem luz) ou 'problema elétrico' (tomada, disjuntor, chuveiro…). Falta de energia na RUA é da concessionária: não aciona."))
+    eletricista_item_opcao: Optional[str] = Field(default=None, description=(
+        '[residencial eletricista HDI/Yelum] O item: tomada | interruptor | lâmpada/bocal | reator | disjuntor/fusível | chuveiro | torneira elétrica. 🔴 Portão eletrônico NÃO é eletricista; raio/queda de energia que queimou algo é SINISTRO → request_human_agent.'))
+    eletricista_comodo: Optional[str] = Field(default=None, description=(
+        '[residencial eletricista HDI/Yelum] Em que cômodo é o problema (suíte, banheiro social, área externa, cozinha…).'))
+    veiculo_trancado: Optional[str] = Field(default=None, description=(
+        '[auto chaveiro Yelum/HDI] Sim/Não: o carro está trancado?'))
+    apolice_numero: Optional[str] = Field(default=None, description=(
+        '[carro reserva] Número da apólice, só dígitos — o da apólice consultada; pergunte só se não achar.'))
+    carro_reserva_motivo: Optional[str] = Field(default=None, description=(
+        "[carro reserva] Por que precisa: 'sinistro' (batida, carro na oficina) | 'pane' | 'reparo em outra seguradora' | 'troca de condutor'. 🔴 Só sinistro segue sozinho; os outros vão a uma pessoa."))
+    sinistro_numero: Optional[str] = Field(default=None, description=(
+        '[carro reserva] O NÚMERO do sinistro (só dígitos). 🔴 PERGUNTE ao segurado; sem número, uma pessoa da corretora o obtém — nunca invente.'))
+    carro_reserva_condutor_nome: Optional[str] = Field(default=None, description=(
+        '[carro reserva] Nome de quem vai RETIRAR o carro (pode não ser o segurado).'))
+    carro_reserva_condutor_cpf: Optional[str] = Field(default=None, description=(
+        '[carro reserva] CPF de quem vai retirar — o sistema envia só os dígitos.'))
+    carro_reserva_cidade: Optional[str] = Field(default=None, description=(
+        '[carro reserva] Cidade onde quer retirar o carro.'))
+    carro_reserva_data_hora: Optional[str] = Field(default=None, description=(
+        "[carro reserva] Data e horário desejados para a retirada (ex.: '08/10 às 15h')."))
+    carro_reserva_telefone: Optional[str] = Field(default=None, description=(
+        '[carro reserva] Celular com DDD de quem vai retirar.'))
+    carro_reserva_cnh_e_cartao: Optional[str] = Field(default=None, description=(
+        "[carro reserva] Sim/Não: quem retira tem CNH original e válida E cartão de crédito NO NOME DELE com limite para a pré-autorização? 🔴 Pergunte; nunca afirme por ele. 'Não' → uma pessoa."))
+    carro_reserva_diarias: Optional[str] = Field(default=None, description=(
+        '[carro reserva] Só se a apólice consultada disser o limite de diárias do carro reserva (número). NÃO pergunte ao segurado e NÃO prometa diárias: a seguradora confirma.'))
+    # 🔴 SPEC-121 F4b — o que o teto do bloco tinha cortado, de volta.
+    bateria_amperes: Optional[str] = Field(default=None, description=(
+        "[auto bateria Porto] Quantos amperes tem a bateria, se o segurado souber "
+        "(ex.: '60'). Não sabe? Escreva 'não sei' — o sistema usa 60 Ah."))
+    fora_da_cidade_da_apolice: Optional[str] = Field(default=None, description=(
+        "[auto bateria Porto] Sim/Não: o carro está fora da cidade da apólice? "
+        "(a consultora da Porto pergunta)"))
+    aparelho_fora_da_garantia: Optional[str] = Field(default=None, description=(
+        "[residencial eletrodomésticos Allianz] O aparelho já saiu da garantia do "
+        "fabricante? 'sim' | 'não'. Na garantia a assistência NÃO cobre — é com o "
+        "fabricante: diga isso ao segurado antes de acionar."))
     local_situacao: Optional[str] = Field(default=None, description=(
         "[auto guincho HDI/Yelum] Como é o lugar: 'local seguro' | 'escuro ou "
         "mal iluminado' | 'pouca circulação de pessoas'. 🔴 Decide a "
@@ -990,6 +1030,20 @@ class InsurerDispatchTool(BaseTool):
         # ⚠️ A frase de cada um ensina o agente a DESCOBRIR o dado, nunca a
         # adivinhá-lo — é a mesma forma dos três de cima, e é o que separa esta
         # guarda de um "tente de novo".
+        # 🔴 SPEC-121 F4b/F5 — o que vai a uma PESSOA antes de o corredor abrir
+        #    (portão ≠ eletricista, raio = sinistro, carro reserva sem nº/cartão/horário/
+        #    canal, seguradora sem caminho). Um lugar só: `antes_de_acionar`.
+        from app.services.corridor_playbooks import antes_de_acionar
+        _pessoa = antes_de_acionar(playbook_ref, subservice, slots)
+        if _pessoa:
+            return {"status": "pessoa_antes_de_acionar", "handoff_necessario": True,
+                    "codigo": _pessoa["codigo"], "missing": [], "content": (
+                        "NÃO acione a seguradora. Chame `request_human_agent` agora, com o "
+                        f"motivo: '{_pessoa['motivo']}'. Ao segurado, diga com as suas "
+                        f"palavras: \"{_pessoa['ao_segurado']}\" — e, sem o carimbo "
+                        "HANDOFF_OK, diga só que o pedido ficou registrado. Nunca prometa "
+                        "carro, prazo, diárias ou protocolo.")}
+
         is_auto = "auto" in str(playbook_ref)
         for campo, valor, ok, comojá in (
             ("telefone_contato", kwargs.get("telefone_contato"), telefone_br_valido,
@@ -1421,6 +1475,12 @@ class InsurerDispatchTool(BaseTool):
                 else (_linha_ct(kwargs.get("subservice"))[0] or "residencial"))
         digits = lambda s: "".join(ch for ch in str(s or "") if ch.isdigit())  # noqa: E731
         insurer_phone = resolve_insurer_contact(insurer_key or "allianz", line_kind=line)
+        # 🔴 SPEC-121 F5 — subserviço com CANAL PRÓPRIO (carro reserva da Yelum) nunca
+        #    sai pelo número da assistência. `antes_de_acionar` já barrou o env vazio.
+        from app.services.corridor_playbooks import contato_do_subservico
+        _var_canal, _num_canal = contato_do_subservico(playbook_ref, kwargs.get("subservice"))
+        if _var_canal:
+            insurer_phone = _num_canal
         if not insurer_phone:
             base["content"] += (
                 f"\nAVISO INTERNO: gate LIVE aberto mas o contato da seguradora não está configurado "

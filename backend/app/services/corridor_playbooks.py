@@ -9237,7 +9237,8 @@ def subservice_referral(playbook: Dict[str, Any], subservice: str) -> Dict[str, 
     return dict(sub.get("referral") or {})
 
 
-def detect_referral_step(playbook: Dict[str, Any], insurer_message: str) -> Optional[Dict[str, Any]]:
+def detect_referral_step(playbook: Dict[str, Any], insurer_message: str,
+                         subservice: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """O passo de ENCAMINHAMENTO que casou com a mensagem da seguradora.
 
     É o espelho de `detect_finalize_anchor`, do outro lado do fluxo: em vez de
@@ -9248,6 +9249,11 @@ def detect_referral_step(playbook: Dict[str, Any], insurer_message: str) -> Opti
     text = _norm(insurer_message)
     for step in playbook.get("ura_steps") or []:
         if not step.get("referral"):
+            continue
+        # 🔴 SPEC-121 F5 — o encaminhamento do carro reserva é SÓ do carro reserva
+        #    (`only_subservices`); sem `subservice` (régua, simulador) vale como antes.
+        _so = step.get("only_subservices")
+        if subservice and _so and canonical_subservice(subservice) not in _so:
             continue
         if re.search(step.get("anchor") or r"$^", text, re.IGNORECASE | re.DOTALL):
             return step
@@ -12292,7 +12298,8 @@ _COMO_PERGUNTAR = {
     "titular_nome": "o nome do titular",
     "endereco_numero": "o número da residência",
     "telefone_contato": "o telefone de quem vai receber o prestador no local",
-    "pessoa_no_local": "quem estará no local para receber o prestador",
+    # ⚠️ SPEC-121 F4b: encurtada (mesmo sentido) — aparece em 8 linhas do bloco.
+    "pessoa_no_local": "quem recebe o prestador no local",
     "problema_descricao": "o que está acontecendo (com as palavras do cliente)",
     "periodo_preferido": "o período preferido — manhã (9h-13h) ou tarde (13h-18h)",
     "aparelho_marca": "a marca do aparelho (Brastemp, Electrolux, Consul...)",
@@ -12306,7 +12313,7 @@ _COMO_PERGUNTAR = {
     "local_atual": "onde o veículo está agora",
     "local_destino": "para onde o veículo deve ser levado",
     "quando": "se precisa agora ou prefere agendar",
-    "titular_nascimento": "a data de nascimento do titular (a Mapfre confere)",
+    "titular_nascimento": "o nascimento do titular (a Mapfre confere)",
     "aparelho_marca_modelo": "a marca e o modelo do aparelho",
     "ponto_referencia": "um ponto de referencia proximo",
     "servico_texto": "qual servico o cliente precisa, em uma frase",
@@ -12349,6 +12356,41 @@ _COMO_PERGUNTAR = {
     "local_longitude": "que ele mande a localização pelo WhatsApp: clipe 📎 → "
                        "Localização → Enviar sua localização atual",
 }
+
+#: 🔴 SPEC-121 F4b — slots DIFERENTES que pedem ao segurado a MESMA coisa (a
+#: união das seguradoras junta os nomes). Chave → o GRUPO; o grupo é escrito uma
+#: vez por linha, com a redação de `_COMO_PERGUNTAR_GRUPO`. ⚠️ Só compacta o TEXTO
+#: do bloco: o portão continua cobrando cada slot pelo nome que a rota declara.
+_MESMA_PERGUNTA = {
+    "aparelho_marca": "grupo_marca_modelo",
+    "aparelho_modelo": "grupo_marca_modelo",
+    "aparelho_marca_modelo": "grupo_marca_modelo",
+    "aparelho_idade": "grupo_idade",
+    "idade_aparelho_opcao": "grupo_idade",
+    "local_situacao": "grupo_lugar",
+    "situacao_risco_opcao": "grupo_lugar",
+    "local_seguro": "grupo_lugar_seguro",
+    "local_seguro_opcao": "grupo_lugar_seguro",
+    "estepe_situacao": "grupo_estepe",
+    "ferramentas_no_veiculo": "grupo_estepe",
+    "equipamentos_troca_opcao": "grupo_estepe",
+    "estepe_opcao": "grupo_estepe",
+}
+_COMO_PERGUNTAR_GRUPO = {
+    "grupo_marca_modelo": "a marca e o modelo do aparelho (aproximado serve)",
+    "grupo_idade": "a idade do aparelho — mais de 10 anos a seguradora recusa",
+    "grupo_lugar": "se o lugar é seguro, escuro ou deserto",
+    "grupo_estepe": "se o estepe está bom e se macaco e chave de roda estão no carro",
+}
+
+def rotulo_no_bloco(slot: str) -> Optional[str]:
+    """A frase com que o bloco do agente ENSINA a pedir `slot` (a do grupo, se houver)."""
+    grupo = _MESMA_PERGUNTA.get(slot)
+    return (_COMO_PERGUNTAR_GRUPO.get(grupo) if grupo else None) or _COMO_PERGUNTAR.get(slot)
+
+
+_COMO_PERGUNTAR_GRUPO.setdefault("grupo_lugar_seguro", "se ele está num lugar seguro para esperar")
+
 
 #: Slots que o MOTOR preenche sozinho. Pedi-los ao cliente seria perguntar o
 #: número de uma tecla de menu que ele nunca viu.
@@ -12504,12 +12546,17 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
         _rotas_do_ramo = [r for r in por_rota if _ramo in por_rota[r]["ramos"]]
         if len(_rotas_do_ramo) < 3:
             continue
+        # 🔴 SPEC-121 F5 — o carro reserva não é atendimento NO LOCAL: não pergunta
+        #    onde o carro está, nem "agora ou agendar". Ele não vota no que é comum
+        #    ao ramo (senão a placa e o local voltariam a ser escritos em toda linha
+        #    de auto) — e a linha dele diz o que NÃO se pergunta (`_dispensa`).
+        _votam = [r for r in _rotas_do_ramo if not r.startswith("carro_reserva|")]
         _conta: Dict[str, int] = {}
-        for _r in _rotas_do_ramo:
+        for _r in _votam:
             for _sl in por_rota[_r]["slots"]:
                 _conta[_sl] = _conta.get(_sl, 0) + 1
         _quase = {k for k, v in _conta.items()
-                  if v >= len(_rotas_do_ramo) - 1} - comuns
+                  if v >= len(_votam) - 1} - comuns
         if not _quase:
             continue
         por_ramo[_ramo] = _quase
@@ -12531,6 +12578,21 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
         for _r in reg["ramos"]:
             _do_ramo |= por_ramo.get(_r, set())
         extras = [s for s in reg["slots"] if s not in comuns and s not in _do_ramo]
+        # 🔴 SPEC-121 F4b · A MESMA PERGUNTA NÃO SE ESCREVE DUAS VEZES NA LINHA.
+        #    📊 A linha de eletrodoméstico dizia "a marca do aparelho", "o modelo
+        #    do aparelho" e "a marca e o modelo do aparelho" — a união das
+        #    seguradoras junta nomes de slot diferentes para a MESMA pergunta. A
+        #    linha escreve o grupo UMA vez (`_MESMA_PERGUNTA`), e o espaço volta
+        #    para as perguntas que o teto de 7.000 tinha cortado.
+        _vistos: set = set()
+        _extras_unicos: List[str] = []
+        for _sl in extras:
+            _grupo = _MESMA_PERGUNTA.get(_sl, _sl)
+            if _grupo in _vistos:
+                continue
+            _vistos.add(_grupo)
+            _extras_unicos.append(_grupo)
+        extras = _extras_unicos
         _fora = _dispensa.get(rota) or []
         _nota_fora = ("" if not _fora else " — e aqui NÃO se pergunta " + "; ".join(
             _COMO_PERGUNTAR.get(x, x.replace("_", " ")) for x in _fora))
@@ -12539,7 +12601,8 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
             #    o silêncio aqui leria como "esta rota não existe".
             linhas.append(f"  · {reg['nome']}: só o de sempre{_nota_fora}")
             continue
-        itens = "; ".join(_COMO_PERGUNTAR.get(s, s.replace("_", " "))
+        itens = "; ".join(_COMO_PERGUNTAR_GRUPO.get(s) or
+                          _COMO_PERGUNTAR.get(s, s.replace("_", " "))
                           for s in extras)
         linhas.append(f"  · {reg['nome']}: também {itens}{_nota_fora}")
 
@@ -13963,18 +14026,25 @@ for _p121 in PORTO_AUTO_WHATSAPP_V1["ura_steps"]:
 #    ⚠️ O MODELO do carro (`veiculo_descricao`) NÃO entra: ele vem da apólice
 #    (`insurer_dispatch_tool`, o veículo do caso) e não tem campo no contrato da
 #    ferramenta — cobrá-lo travaria o portão sem o atendente ter onde escrever.
-#    ⚠️ AMPERES e CIDADE ficam como PERGUNTA do corredor, não do portão: o teto de
-#    7.000 caracteres do bloco do agente (`test_a_atendente_sabe_conduzir_um_
-#    acionamento`) não comporta os três, e os amperes já têm resposta honesta sem o
-#    segurado (D13: 60 Ah). Fica a que carrega o AVISO do preço (D8) — ver pendência.
-_PORTO_BATERIA_ANTES = ["bateria_busca_centro_automotivo"]
-for _sv121 in ("bateria_nova",):  # ⚠️ só a rota da bateria NOVA: teto do bloco (pendência)
+#    🔴 SPEC-121 F4b — os três VOLTAM, nas DUAS rotas (`bateria` e `bateria_nova`):
+#    o espaço veio de compactar o bloco (`_MESMA_PERGUNTA`), não de subir o teto.
+#    A pergunta da busca carrega o AVISO do preço (D8) — e o segurado de recarga
+#    responde "recarga". Os AMPERES seguem com resposta honesta sem o segurado
+#    (D13: "não sei" → 60 Ah, `amperes_do_caso`): perguntar é para o dossiê da
+#    consultora (D11), nunca para travar. A CIDADE é a pergunta da consultora
+#    ("esse cliente é do Sul e está em São Paulo?", 📊 4830574a).
+_PORTO_BATERIA_ANTES = ["bateria_busca_centro_automotivo", "bateria_amperes",
+                        "fora_da_cidade_da_apolice"]
+for _sv121 in ("bateria", "bateria_nova"):
     _sub121 = (PORTO_AUTO_WHATSAPP_V1.get("subservices") or {}).get(_sv121)
     if _sub121 is not None:
         _sub121["required_slots"] = list(_sub121.get("required_slots") or []) + [
             s for s in _PORTO_BATERIA_ANTES if s not in (_sub121.get("required_slots") or [])]
 _COMO_PERGUNTAR.update({
-    "bateria_busca_centro_automotivo": "🔴 avise: a bateria é paga por ele; busca no Centro Automotivo?",
+    "bateria_busca_centro_automotivo": ("se for bateria nova, 🔴 avise que ele paga a "
+                                        "bateria, e se aceita a busca no Centro Automotivo"),
+    "bateria_amperes": "quantos amperes tem a bateria, se souber",
+    "fora_da_cidade_da_apolice": "se o carro está fora da cidade da apólice",
 })
 
 
@@ -14023,11 +14093,18 @@ _sub_al_el.pop("eletrodomestico_opcao", None)
 #    aparelhos … que estejam fora da garantia do fabricante" — essa já está em
 #    `regras_para_o_cliente`, junto com quem paga as PEÇAS; o teto do bloco do
 #    agente não comporta mais um campo). Marca, modelo e defeito já eram cobrados.
+#    🔴 SPEC-121 F4b — a IDADE e a GARANTIA voltam ao portão (o espaço veio da
+#    compactação do bloco). As duas são de COBERTURA, e a tela as diz: "Qual a
+#    idade de fabricação do aparelho? 1-Até 10 anos 2-Mais de 10 anos" e "O serviço
+#    é destinado a aparelhos … que estejam fora da garantia do fabricante" (📊
+#    allianz-residencial, 3 telas). Perguntar ANTES evita a visita que a
+#    seguradora recusa e que CONTA como utilização.
 _sub_al_el["required_slots"] = list(_sub_al_el.get("required_slots") or []) + [
-    s for s in ("eletrodomestico_aparelho",)
+    s for s in ("eletrodomestico_aparelho", "idade_aparelho_opcao", "aparelho_fora_da_garantia")
     if s not in (_sub_al_el.get("required_slots") or [])]
 _COMO_PERGUNTAR.update({
     "eletrodomestico_aparelho": "qual é o aparelho",
+    "aparelho_fora_da_garantia": "se o aparelho já saiu da garantia do fabricante",
 })
 
 # ---- (b) HDI · CHAVEIRO: a bolha de COBERTURA não é relato de sinistro ---------
@@ -14099,3 +14176,655 @@ for _pb_d7, _passo_d7, _fmt_d7 in ((BRADESCO_AUTO_WHATSAPP_V1, "garagem_subsolo"
         _sub_d7["required_slots"] = list(_sub_d7.get("required_slots") or []) + [
             s for s in ("veiculo_em_garagem", "veiculo_nivel_rua")
             if s not in (_sub_d7.get("required_slots") or [])]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F4b · ELETRICISTA (HDI/YELUM), PORTÃO (D10) E A CHAVE DO CARRO
+# ══════════════════════════════════════════════════════════════════════════
+
+def _rotulo_por_sinonimo(pares: Sequence[Tuple[str, str]],
+                         *, sem_valor: Optional[str] = None) -> Any:
+    """Fábrica de formato: o que o segurado DISSE (slot) → a opção da TELA.
+
+    `pares` = `[(regex no valor do caso, regex no rótulo da tela)]`, na ordem de
+    prioridade. O primeiro par cujo regex casa o valor escolhe o rótulo; a tela
+    tem de oferecer UMA opção que case — duas ou nenhuma → `None` (`sem_chute`:
+    uma pessoa, ou o cérebro quando o passo é `fallback_adaptive`).
+
+    A resposta sai no idioma da tela: menu numerado (`*1* -`) → o NÚMERO; botão
+    (`Botão 1:`) ou lista sem número → o RÓTULO inteiro, como a URA o escreveu.
+    ⛔ Nenhum valor inventado: sem par que case o valor, `None`."""
+    def _fmt(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+        v = _texto_normal(valor if str(valor or "").strip() else (sem_valor or ""))
+        if not v:
+            return None
+        opcoes = opcoes_da_tela(tela or "")
+        if not opcoes:
+            return None
+        e_botao = bool(re.search(r"(?i)bot[ãa]o\s*\d", tela or ""))
+        for rx_valor, rx_rotulo in pares:
+            if not re.search(rx_valor, v):
+                continue
+            casadas: List[Tuple[str, str]] = []
+            for k, r in opcoes:
+                if re.search(rx_rotulo, _texto_normal(r)) and (k, r) not in casadas:
+                    casadas.append((k, r))
+            rotulos = {r for _k, r in casadas}
+            if len(rotulos) != 1:
+                return None
+            k, r = casadas[0]
+            return r if (e_botao or not k) else k
+        return None
+    return _fmt
+
+
+# ---- (a) HDI e YELUM · ELETRICISTA: o caminho da URA irmã ----------------------
+#    📊 yelum 315f0681 (a única conversa de eletricista da família que fechou):
+#    "…selecione abaixo a opção que corresponde com o seu problema: Falta de energia /
+#    Problema elétrico" → "Selecione abaixo qual é o problema elétrico: Tomadas /
+#    Interruptores / Lâmpadas / Reatores queimados / Disjuntores/fusíveis / Chuveiro /
+#    Torneira elétrica / Voltar" → "em qual ambiente está o chuveiro: Suíte / Banheiro
+#    social / Área externa" → "agora ou prefere agendar" → "Qual é o melhor dia…" →
+#    "Qual o melhor período?" → número da assistência. Na HDI, 📊 NINGUÉM passou da
+#    primeira (investigação §3). Hoje o `detalhe_eletrico` e o cômodo ficavam com o
+#    CÉREBRO, e `data_agendamento` não tinha origem.
+_ELETRICISTA_TIPO = _rotulo_por_sinonimo([
+    (r"falta de (?:energia|luz)|sem (?:energia|luz)|acabou a (?:energia|luz)|caiu a (?:energia|luz)",
+     r"^falta de energia"),
+    (r"problema eletric|curto|disjuntor|tomada|interruptor|lampada|bocal|reator|chuveiro|"
+     r"torneira eletrica|fusivel|fio|faisca", r"^problema eletrico"),
+])
+_ELETRICISTA_ITEM = _rotulo_por_sinonimo([
+    (r"tomada", r"^tomadas?\b"),
+    (r"interruptor", r"^interruptor"),
+    (r"lampada|bocal|luz (?:queim|nao acende)", r"^lampadas?\b"),
+    (r"reator", r"^reator"),
+    (r"disjuntor|fusivel|quadro de (?:luz|energia)|curto|caindo (?:o|a) (?:chave|energia)", r"^disjuntor"),
+    (r"chuveiro|resistencia", r"^chuveiro\b"),
+    (r"torneira eletrica", r"^torneira eletrica"),
+])
+_ELETRICISTA_COMODO = _rotulo_por_sinonimo([
+    (r"suite", r"^suite\b"),
+    (r"banheiro social|banheiro de (?:visita|servico)|lavabo", r"^banheiro social"),
+    (r"area externa|quintal|garagem|varanda|lavanderia|area de servico", r"^area externa"),
+    (r"cozinha", r"^cozinha"), (r"sala", r"^sala\b"), (r"quarto", r"^quarto"),
+    (r"banheiro", r"^banheiro"),
+])
+_FORMATOS_DA_RESPOSTA.update({
+    "eletricista_tipo_na_tela": _ELETRICISTA_TIPO,
+    "eletricista_item_na_tela": _ELETRICISTA_ITEM,
+    "comodo_na_tela": _ELETRICISTA_COMODO,
+})
+_FORMATOS_QUE_LEEM_A_TELA = _FORMATOS_QUE_LEEM_A_TELA | {
+    "eletricista_tipo_na_tela", "eletricista_item_na_tela", "comodo_na_tela"}
+
+_ELETRICISTA_DA_FAMILIA = [
+    {"step": "eletricista_tipo_do_problema", "only_subservices": ["eletricista"],
+     "anchor": r"op[çc][ãa]o que corresponde com o seu problema[\s\S]{0,60}falta de energia",
+     "reply": "{eletricista_tipo_opcao}", "requires": ["eletricista_tipo_opcao"],
+     "format": "eletricista_tipo_na_tela", "sem_chute": True, "classe": "decide",
+     "notes": "📊 yelum 315f0681; hdi (13379965, exploração). Falta de energia × "
+              "Problema elétrico — do que o segurado contou, nunca do corredor."},
+    {"step": "eletricista_item", "only_subservices": ["eletricista"],
+     "anchor": r"selecione abaixo qual [ée] o problema el[ée]trico",
+     "reply": "{eletricista_item_opcao}", "requires": ["eletricista_item_opcao"],
+     "format": "eletricista_item_na_tela", "sem_chute": True, "classe": "decide",
+     "notes": "📊 yelum 315f0681: Tomadas / Interruptores / Lâmpadas / Reatores / "
+              "Disjuntores/fusíveis / Chuveiro / Torneira elétrica."},
+    {"step": "eletricista_comodo", "only_subservices": ["eletricista"],
+     "anchor": r"em qual (?:ambiente|c[ôo]modo)",
+     "reply": "{eletricista_comodo}", "requires": ["eletricista_comodo"],
+     "format": "comodo_na_tela", "fallback_adaptive": True, "classe": "decide",
+     "notes": "📊 yelum 315f0681 ('em qual ambiente está o chuveiro: Suíte / Banheiro "
+              "social / Área externa'). Cômodo fora da lista → o cérebro, com o relato."},
+]
+for _pb_el in (HDI_RESIDENCIAL_WHATSAPP_V1, YELUM_RESIDENCIAL_WHATSAPP_V1):
+    _ura_el = list(_pb_el["ura_steps"])
+    # ⚠️ ANTES de `detalhe_eletrico` e `comodo_do_vazamento` (a ordem da lista
+    #    decide quem casa primeiro); escopados em `eletricista`, não tocam o encanador.
+    _i_el = next(i for i, p in enumerate(_ura_el) if p.get("step") == "comodo_do_vazamento")
+    _pb_el["ura_steps"] = _ura_el[:_i_el] + [dict(p) for p in _ELETRICISTA_DA_FAMILIA] + _ura_el[_i_el:]
+    _sub_el = (_pb_el.get("subservices") or {}).get("eletricista")
+    if _sub_el is not None:
+        _sub_el["required_slots"] = list(_sub_el.get("required_slots") or []) + [
+            s for s in ("eletricista_tipo_opcao", "eletricista_item_opcao", "eletricista_comodo",
+                        "quando", "data_agendamento")
+            if s not in (_sub_el.get("required_slots") or [])]
+_COMO_PERGUNTAR.update({
+    # ⚠️ curtas: o bloco do agente tem teto (`test_a_atendente_sabe_conduzir_um_acionamento`)
+    "eletricista_tipo_opcao": ("se é falta de energia na casa (na RUA é da "
+                               "concessionária) ou problema elétrico"),
+    "eletricista_item_opcao": "o item: tomada, interruptor, lâmpada, disjuntor, chuveiro…",
+    "eletricista_comodo": "em que cômodo",
+})
+
+# ---- (b) D10 · PORTÃO NÃO É ELETRICISTA; RAIO É SINISTRO ----------------------
+#    Atendente de residencial (29/09/2026): eletricista = curto, disjuntor, tomada,
+#    bocal. Portão eletrônico NÃO é eletricista. Raio/queda de energia que danificou
+#    o motor = SINISTRO de danos elétricos → uma pessoa.
+_RX_PORTAO = re.compile(r"\bportao\b|\bmotor do portao\b|\bportao eletronico\b|\bmotor de portao\b")
+_RX_DANO_ELETRICO = re.compile(
+    r"\braio\b|\bdescarga\b|queda de (?:energia|luz)[\s\S]{0,60}(?:queim|estrag|danific|parou)|"
+    r"(?:queim|estrag|danific)[\s\S]{0,60}(?:queda|pico|oscila\w*|volta) (?:de |da )?(?:energia|luz)|"
+    r"\bpico de (?:energia|luz)\b|\bsurto\b")
+
+# ---- (c) YELUM e HDI (auto) · A CHAVE DO CARRO --------------------------------
+#    📊 yelum (3 telas) "O que aconteceu com a chave? Dentro do veículo / Perda /
+#    Quebrou / Outros" e (2 telas) "O veículo está trancado? Sim / Não". Os dois
+#    ficavam com o cérebro (`fallback_adaptive`) e NENHUM era perguntado antes.
+_CHAVE_NA_TELA = _rotulo_por_sinonimo([
+    (r"dentro|trancad|esqueci[\s\S]{0,20}(?:no|dentro)", r"^dentro do veiculo"),
+    (r"perd|sumiu|nao (?:acho|encontro)|roubad|furtad", r"^perda\b"),
+    (r"quebr|partiu|entort", r"^quebrou\b"),
+    (r"\w", r"^outros\b"),
+])
+_FORMATOS_DA_RESPOSTA["chave_na_tela"] = _CHAVE_NA_TELA
+_FORMATOS_QUE_LEEM_A_TELA = _FORMATOS_QUE_LEEM_A_TELA | {"chave_na_tela"}
+for _pb_ch in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1):
+    for _p_ch in _pb_ch["ura_steps"]:
+        if _p_ch.get("step") == "chave_o_que_aconteceu":
+            _p_ch.update({"format": "chave_na_tela", "classe": "decide",
+                          "notes": "📊 yelum 3 telas · hdi 1. Do que o segurado contou: "
+                                   "Dentro do veículo / Perda / Quebrou / Outros."})
+        elif _p_ch.get("step") == "veiculo_trancado":
+            _p_ch.update({"requires": ["veiculo_trancado"], "format": "sim_nao",
+                          "classe": "decide"})
+        # 🔴 A YELUM CONVERTE CHAVE EM GUINCHO (📊 56bd78f7: "Neste caso enviaremos o
+        #    serviço de *Guincho*"). As telas DEPOIS da conversão que o chaveiro VÊ e que
+        #    só o guincho respondia passam a valer para o chaveiro — nunca o contrário.
+        #    O destino (`destino_como`, `destino_cep`) já é do tronco, sem escopo.
+        elif _p_ch.get("step") in ("garagem_do_caso", "meio_de_transporte") and \
+                "guincho" in (_p_ch.get("only_subservices") or []):
+            _p_ch["only_subservices"] = list(_p_ch["only_subservices"]) + ["chaveiro"]
+    _sub_ch = (_pb_ch.get("subservices") or {}).get("chaveiro")
+    if _sub_ch is not None:
+        _sub_ch["required_slots"] = list(_sub_ch.get("required_slots") or []) + [
+            # ⚠️ `chave_problema` NÃO entra: `new_dispatch_session` já o deriva do relato
+            #    (`test_o_contrato_alcanca_o_portao`) — perguntar seria repetir o segurado.
+            s for s in ("veiculo_trancado",)
+            if s not in (_sub_ch.get("required_slots") or [])]
+_COMO_PERGUNTAR.update({
+    "veiculo_trancado": "se o carro está trancado",
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F5 · CARRO RESERVA
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 `carro-reserva.md` (29/09/2026) + BLOCO 0 §4: quatro formas diferentes.
+#    YELUM   formulário da URA no canal "Segurado e Terceiros" → "em análise, até 3
+#            horas úteis". 📊 7 de 11 pedidos chegaram lá (6 no canal A, 1 no B).
+#    TOKIO   link de autoatendimento da Localiza (02/2026).
+#    AZUL    link `porto.vc/carroreserva` (📊 2 de 2 sessões).
+#    demais  PESSOA por desenho (CR9).
+# 🔴 O canal da Yelum é OUTRO NÚMERO: 📊 as 9 sessões do canal A foram ao
+#    `whatsapp_alternativo` do registro (status "divergente — NUNCA usar até o founder
+#    confirmar"), e a do canal B a um terceiro número que o produto não conhece. Por
+#    isso o carro reserva da Yelum só sai pelo env `INSURER_CONTACT_YELUM_CARRO_RESERVA`
+#    — sem ele, uma pessoa (`antes_de_acionar`). Pronto e desligado, com pendência.
+
+CARRO_RESERVA = "carro_reserva"
+_CARRO_RESERVA_LABEL = "carro reserva"
+#: 🔴 CR4 — o default das diárias. constante_justificada: 📊 a própria corretora
+#: digitou 15 em 5 de 7 pedidos reais da Yelum (tela "Por favor, informe a quantidade
+#: de diárias:"); "o máximo da apólice" (Founder) NÃO é legível hoje — o catálogo
+#: `insurer_assistance_services` tem limite só em yelum (2 planos) e tokio (1).
+CARRO_RESERVA_DIARIAS_PADRAO = "15"
+#: CR5 — 📊 "Nos desculpe, mas nesse momento não temos nenhum especialista
+#: disponível. Por favor, retorne o contato no horário comercial das 09h às 17h
+#: (segunda…)" — recebido às 20h, DEPOIS de todos os dados digitados.
+CARRO_RESERVA_HORARIO_YELUM = (9, 17)  # seg–sex, horário de Brasília
+
+_SUBSERVICE_ALIASES.update({
+    "carro reserva": CARRO_RESERVA, "carro_reserva": CARRO_RESERVA,
+    "veiculo reserva": CARRO_RESERVA, "carro substituto": CARRO_RESERVA,
+    "locacao": CARRO_RESERVA, "carro alugado": CARRO_RESERVA,
+})
+_LINHAS_POR_SUBSERVICO.setdefault(CARRO_RESERVA, set()).add("auto")
+
+
+def _motivo_carro_reserva(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """CR2 — só "Houve Sinistro". Pane, reparo em outra seguradora e troca de
+    condutor NÃO têm resposta aqui (→ `None` → uma pessoa)."""
+    if not re.search(r"sinistro|batida|colis|acidente|batera?m|bati\b", _texto_normal(valor)):
+        return None
+    if re.search(r"pane|outra seguradora|terceiro|condutor", _texto_normal(valor)):
+        return None
+    return _rotulo_por_sinonimo([(r"\w", r"^houve sinistro")])(valor, slots, tela)
+
+
+def _diarias_do_caso(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """CR4 — o limite do plano, quando o caso o traz (`carro_reserva_diarias`);
+    senão o default justificado (`CARRO_RESERVA_DIARIAS_PADRAO`)."""
+    d = re.sub(r"\D", "", str((slots or {}).get("carro_reserva_diarias") or ""))
+    if d and 1 <= int(d) <= 90:
+        return str(int(d))
+    return valor or None
+
+
+_FORMATOS_DA_RESPOSTA.update({
+    "motivo_carro_reserva": _motivo_carro_reserva,
+    "diarias_do_caso": _diarias_do_caso,
+    "opcao_carro_reserva": _rotulo_por_sinonimo([(r"\w", r"^carro reserva")]),
+    "opcao_sim": _rotulo_por_sinonimo([(r"\w", r"^sim\b")]),
+})
+_FORMATOS_QUE_LEEM_A_TELA = _FORMATOS_QUE_LEEM_A_TELA | {
+    "motivo_carro_reserva", "opcao_carro_reserva", "opcao_sim"}
+_O_QUE_FALTA_QUANDO_O_FORMATO_NAO_RESOLVE["motivo_carro_reserva"] = "carro_reserva_motivo"
+
+_SO_CR = [CARRO_RESERVA]
+_YELUM_CARRO_RESERVA = [
+    # --- a entrada: canal A ("Segurado e Terceiros") e canal B (corretores) ------
+    {"step": "cr_qual_seguradora", "only_subservices": _SO_CR,
+     "anchor": (r"canal exclusivo para segurado e terceiros|"
+                r"canal [ée] de uso exclusivo para corretores[\s\S]{0,80}para qual seguradora"),
+     "reply": "YELUM", "classe": "decide",
+     "constante_justificada": (
+         "`YELUM` entre `YELUM`, `ALIRO` e `INDIANA` (📊 10 de 10 sessões, as duas "
+         "versões do canal): a seguradora é a IDENTIDADE desta rota (yelum/auto)."),
+     "notes": "📊 canal A 9 sessões · canal B 1 (c0c3c694)."},
+    {"step": "cr_tres_principais", "only_subservices": _SO_CR,
+     "anchor": r"abaixo s[ãa]o os nossos 3 principais servi[çc]os",
+     "reply": "", "noop": True,
+     "notes": "📊 10 telas. Vem junto com a lista 'outros assuntos' — é ela que se responde."},
+    {"step": "cr_outros_assuntos", "only_subservices": _SO_CR,
+     "anchor": (r"se quiser falar sobre outros assuntos[\s\S]*"
+                r"\b4\s*-\s*sinistro \(informa[çc][õo]es e outros servi[çc]os\)"),
+     "reply": "4", "classe": "decide",
+     "constante_justificada": (
+         "`4` = `*4* - Sinistro (Informações e Outros serviços)` — a âncora exige o "
+         "rótulo AO LADO do 4, então a tecla só sai se a tela disser isso (📊 10 de "
+         "10: o humano respondeu `4`). É onde mora o carro reserva."),
+     "notes": "📊 10 telas / 9 sessões."},
+    {"step": "cr_sinistro_em_andamento", "only_subservices": _SO_CR,
+     "anchor": r"informa[çc][õo]es e solicita[çc][õo]es de sinistro em andamento",
+     "reply": "Voucher Mob/Carro Res...", "classe": "decide",
+     "constante_justificada": (
+         "`Voucher Mob/Carro Res...` — o título da LINHA da lista como a URA o "
+         "escreve (truncado por ela), entre `Informações`, `Oficinas`, `Vistoria de "
+         "sinistro`, `Documentos`, `Pag Indenização Integral` (📊 10 de 10: o humano "
+         "escolheu esta linha)."),
+     "notes": "📊 10 telas / 9 sessões."},
+    {"step": "cr_b_sobre_o_que", "only_subservices": _SO_CR,
+     "anchor": r"sobre o que precisa falar\?[\s\S]{0,40}\b1\s*-\s*autom[óo]vel",
+     "reply": "1", "classe": "decide",
+     "constante_justificada": (
+         "`1` = `*1* - Automóvel`, e a âncora exige o rótulo ao lado do 1: o ramo é "
+         "a IDENTIDADE da rota (📊 c0c3c694, canal B: o humano respondeu `1`)."),
+     "notes": "📊 1 sessão (canal B)."},
+    {"step": "cr_b_servicos", "only_subservices": _SO_CR,
+     "anchor": (r"hoje temos dispon[íi]vel para atendimento os seguintes servi[çc]os"
+                r"[\s\S]*\b8\s*-\s*voucher mobilidade ?/ ?carro reserva"),
+     "reply": "8", "classe": "decide",
+     "constante_justificada": (
+         "`8` = `*8* - Voucher Mobilidade / Carro reserva`, com o rótulo exigido pela "
+         "âncora ao lado do 8 (📊 c0c3c694: o humano respondeu `8`)."),
+     "notes": "📊 1 sessão (canal B)."},
+    {"step": "cr_b_helpline", "only_subservices": _SO_CR,
+     "anchor": r"se quiser solicitar uma ajuda ao helpline",
+     "reply": "", "noop": True, "notes": "📊 c0c3c694. Oferta paralela; não se responde."},
+    {"step": "cr_voucher_ou_carro", "only_subservices": _SO_CR,
+     "anchor": r"(?:voucher mobilidade ?/ ?carro reserva!|informe o que deseja)[\s\S]{0,80}voucher mobilidade",
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "format": "opcao_carro_reserva", "classe": "decide",
+     "notes": "📊 A: lista 'Carro Reserva 🚗 🔁 🚙' (9 sessões) · B: 'Botão 2: Carro Reserva 🚗' "
+              "(1). A opção sai do RÓTULO da tela ('Carro Reserva…', nunca 'Status Carro "
+              "Reserva'); o `{veiculo_placa}` só diz que o caso existe."},
+    # --- quem pede (a corretora) e o motivo -----------------------------------
+    {"step": "cr_nome_de_quem_pede", "only_subservices": _SO_CR,
+     "anchor": r"^\s*por favor,? informe seu nome\s*[.:]?\s*$",
+     "reply": "Atendimento",
+     "constante_justificada": (
+         "`Atendimento`: quem opera o canal é a CORRETORA, e é a MESMA resposta que "
+         "os corredores da família dão a 'informe o seu nome' (`informar_nome`). "
+         "📊 10 de 10 sessões: o humano escreveu o PRÓPRIO nome, nunca o do segurado. "
+         "⛔ Nome de pessoa fixo no código é proibido (CLAUDE.md §13.9)."),
+     "notes": "📊 'Por favor informe seu nome.' (4) · 'Por favor informe seu nome:' (6)."},
+    {"step": "cr_motivo", "only_subservices": _SO_CR,
+     "anchor": r"(?:me informe|selecione) o motivo da solicita[çc][ãa]o",
+     "reply": "{carro_reserva_motivo}", "requires": ["carro_reserva_motivo"],
+     "format": "motivo_carro_reserva", "sem_chute": True, "classe": "decide",
+     "notes": "📊 A: '*1* - Houve Sinistro / *2* - Houve Pane Mecânica / *3* - … outra "
+              "Seguradora / *4* - Alteração de condutor' · B: lista. 🔴 CR2: só sinistro."},
+    {"step": "cr_b_abertura_do_sinistro", "only_subservices": _SO_CR,
+     "anchor": r"houve a abertura do sinistro\?",
+     "reply": "{sinistro_numero}", "requires": ["sinistro_numero"],
+     "format": "opcao_sim", "classe": "decide",
+     "notes": "📊 c0c3c694 (canal B). Com o NÚMERO do sinistro no caso, a resposta é "
+              "'Sim' da tela — sem número o portão nem deixou acionar (CR1)."},
+    # --- os dados de quem retira (CR3) — todos do caso, perguntados ANTES ----------
+    {"step": "cr_nome_de_quem_retira", "only_subservices": _SO_CR,
+     "anchor": r"informe o nome de quem far[áa] a retirada",
+     "reply": "{carro_reserva_condutor_nome}", "requires": ["carro_reserva_condutor_nome"],
+     "notes": "📊 10 telas. Em 7 de 9 foi outra pessoa (ou não deu para saber): pergunta-se."},
+    {"step": "cr_cpf_de_quem_retira", "only_subservices": _SO_CR,
+     "anchor": (r"informe o cpf \(?sem ponto e tra[çc]o\)? de quem far[áa] a retirada|"
+                r"o cpf informado deve conter somente n[úu]meros"),
+     "reply": "{carro_reserva_condutor_cpf}", "requires": ["carro_reserva_condutor_cpf"],
+     "format": "so_digitos",
+     "notes": "🔴 SÓ DÍGITOS: 📊 4 de 11 sessões a URA recusou o CPF com ponto e traço "
+              "('O CPF informado deve conter somente números!')."},
+    {"step": "cr_cidade_de_retirada", "only_subservices": _SO_CR,
+     "anchor": r"qual ser[áa] a cidade de retirada",
+     "reply": "{carro_reserva_cidade}", "requires": ["carro_reserva_cidade"],
+     "notes": "📊 8 telas (a tela não existia em 10/2025)."},
+    {"step": "cr_data_e_horario", "only_subservices": _SO_CR,
+     "anchor": r"qual data e hor[áa]rio desejado",
+     "reply": "{carro_reserva_data_hora}", "requires": ["carro_reserva_data_hora"],
+     "notes": "📊 8 telas. Formato livre ('08/09/2026 às 15:00')."},
+    {"step": "cr_apolice", "only_subservices": _SO_CR,
+     "anchor": r"informe (?:o n[úu]mero d)?a ap[óo]lice \(?somente n[úu]meros",
+     "reply": "{apolice_numero}", "requires": ["apolice_numero"], "format": "so_digitos",
+     "notes": "📊 9 telas (A: 'o número da Apólice'; B: 'a Apólice')."},
+    {"step": "cr_placa", "only_subservices": _SO_CR,
+     "anchor": r"informe o n[úu]mero da placa do ve[íi]culo no formato",
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "format": "identificador_do_caso", "notes": "📊 8 telas."},
+    {"step": "cr_numero_do_sinistro", "only_subservices": _SO_CR,
+     "anchor": r"informe o n[úu]mero do sinistro \(?somente n[úu]meros",
+     "reply": "{sinistro_numero}", "requires": ["sinistro_numero"], "format": "so_digitos",
+     "notes": "🔴 CR1: 📊 nas 9 sessões com número, 0 veio do segurado espontaneamente — "
+              "o agente PERGUNTA; sem número, uma pessoa (`antes_de_acionar`)."},
+    {"step": "cr_telefone_de_quem_retira", "only_subservices": _SO_CR,
+     "anchor": r"informe o telefone com ddd de quem far[áa] a retirada",
+     "reply": "{carro_reserva_telefone}", "requires": ["carro_reserva_telefone"],
+     "format": "so_digitos", "notes": "📊 9 telas."},
+    {"step": "cr_diarias", "only_subservices": _SO_CR,
+     "anchor": r"informe a quantidade de di[áa]rias",
+     "reply": CARRO_RESERVA_DIARIAS_PADRAO, "format": "diarias_do_caso",
+     "constante_justificada": (
+         "`15` na tela 'Por favor, informe a quantidade de diárias:' — 📊 a corretora "
+         "digitou 15 em 5 de 7 pedidos reais (11 e 35 uma vez cada). CR4: o limite do "
+         "plano vence quando o caso o traz (`carro_reserva_diarias`); 'o máximo da "
+         "apólice' não é legível hoje. O agente NÃO promete 15: a seguradora confirma."),
+     "notes": "📊 9 telas."},
+    # --- o fim, e o que vem depois dele ------------------------------------------
+    {"step": "cr_em_analise", "only_subservices": _SO_CR,
+     "anchor": r"o processo est[áa] em an[áa]lise e o prazo para retorno [ée] de at[ée] 3 horas [úu]teis",
+     "reply": "", "noop": True, "referral": True, "outcome": OUTCOME_ENCAMINHA,
+     "notes": "📊 7 sessões (6 do canal A, 1 do B). É o FIM desta rota: a Yelum analisa e "
+              "responde fora do chat (📊 6 de 7 sem confirmação no WhatsApp observado)."},
+    {"step": "cr_upgrade", "only_subservices": _SO_CR,
+     "anchor": r"condi[çc][õo]es especiais para upgrade do carro reserva",
+     "reply": "Não, obrigado. Seguimos com o carro básico, sem upgrade.",
+     "constante_justificada": (
+         "Recusar o upgrade PAGO (CR6, Founder 29/09): 📊 c0c3c694, o humano "
+         "respondeu 'ele quer o normal mesmo'. Upgrade é cobrança ao segurado."),
+     "notes": "📊 1 sessão (canal B, analista humano)."},
+]
+YELUM_AUTO_WHATSAPP_V1["ura_steps"] = (
+    [dict(p) for p in _YELUM_CARRO_RESERVA] + list(YELUM_AUTO_WHATSAPP_V1["ura_steps"]))
+YELUM_AUTO_WHATSAPP_V1["handoff_triggers"] = list(YELUM_AUTO_WHATSAPP_V1.get("handoff_triggers") or []) + [
+    r"nenhum especialista dispon[íi]vel[\s\S]{0,160}hor[áa]rio comercial",
+    r"obrigat[óo]rio o envio do or[çc]amento de autoriza[çc][ãa]o de reparos",
+]
+YELUM_AUTO_WHATSAPP_V1.setdefault("handoff_trigger_motivos", {}).update({
+    r"nenhum especialista dispon[íi]vel[\s\S]{0,160}hor[áa]rio comercial": "fora_do_horario",
+    r"obrigat[óo]rio o envio do or[çc]amento de autoriza[çc][ãa]o de reparos": "exige_documento",
+})
+
+#: O que se diz ao SEGURADO quando a rota termina (o roteador o envia tal como está).
+_CR_O_QUE_LEVAR = ("Para retirar o carro, quem for retirar precisa levar a CNH original e "
+                   "válida e um cartão de crédito NO NOME DELE, com limite para a "
+                   "pré-autorização.")
+_CR_SLOTS_YELUM = [
+    "titular_cpf", "telefone_contato", "problema_descricao", "veiculo_placa",
+    "apolice_numero", "carro_reserva_motivo", "sinistro_numero",
+    "carro_reserva_condutor_nome", "carro_reserva_condutor_cpf", "carro_reserva_cidade",
+    "carro_reserva_data_hora", "carro_reserva_telefone", "carro_reserva_cnh_e_cartao",
+]
+YELUM_AUTO_WHATSAPP_V1["subservices"][CARRO_RESERVA] = {
+    "required_slots": list(_CR_SLOTS_YELUM),
+    "outcome": OUTCOME_ENCAMINHA,
+    "referral": {
+        "kind": "orientacao", "closes_as": "resolvido_por_encaminhamento",
+        "link_capture": "tracking_link",
+        # 🔴 CR7 (Founder OK): a Yelum analisa e confirma em até 3 horas úteis. NÃO se
+        #    inventa por onde chega a confirmação (📊 6 de 7 sem retorno no chat).
+        "client_message": ("Pronto! Pedi o carro reserva à Yelum. O pedido está em análise, "
+                           "e a Yelum confirma em até 3 horas úteis quantas diárias a sua "
+                           "apólice cobre e onde retirar. " + _CR_O_QUE_LEVAR),
+    },
+    # 🔴 O CANAL É OUTRO NÚMERO (ver o topo da seção) — sem fallback para o registro.
+    "contato_env": "INSURER_CONTACT_YELUM_CARRO_RESERVA",
+    "horario": {"dias": (0, 1, 2, 3, 4), "de": CARRO_RESERVA_HORARIO_YELUM[0],
+                "ate": CARRO_RESERVA_HORARIO_YELUM[1]},
+}
+YELUM_AUTO_WHATSAPP_V1.setdefault("subservice_labels", {})[CARRO_RESERVA] = _CARRO_RESERVA_LABEL
+
+# ---- TOKIO: o link da locadora (autoatendimento) --------------------------------
+#    📊 c1a67b4a (02/2026): menu → "Outros serviços" → "Carro reserva — Acione a
+#    cobertura de carro reserva em caso de sinistro" → "Para solicitar o *CARRO
+#    RESERVA* acesse: Autoatendimento: https://autoservicoreplacement.localiza.com/…".
+_TOKIO_CARRO_RESERVA = [
+    {"step": "cr_tokio_mais_servicos", "only_subservices": _SO_CR,
+     "anchor": r"acessar mais servi[çc]os do seguro autom[óo]vel[\s\S]*carro reserva",
+     "reply": "Carro reserva", "classe": "decide",
+     "constante_justificada": (
+         "`Carro reserva` — o rótulo da linha 'Carro reserva / Acione a cobertura de "
+         "carro reserva em caso de sinistro' (📊 b7e75c66, c1a67b4a: o humano escolheu "
+         "esta linha). É a identidade da rota."),
+     "notes": "📊 2 sessões."},
+    {"step": "cr_tokio_link", "only_subservices": _SO_CR,
+     "anchor": r"para solicitar o carro reserva acesse",
+     "reply": "", "noop": True, "referral": True, "outcome": OUTCOME_ENCAMINHA,
+     "notes": "📊 c1a67b4a (02/2026). O link vem NA MESMA mensagem."},
+]
+TOKIO_AUTO_WHATSAPP_V1["ura_steps"] = (
+    [dict(p) for p in _TOKIO_CARRO_RESERVA] + list(TOKIO_AUTO_WHATSAPP_V1["ura_steps"]))
+TOKIO_AUTO_WHATSAPP_V1["subservice_menu_map"][CARRO_RESERVA] = "Outros serviços"
+TOKIO_AUTO_WHATSAPP_V1["capture_anchors"]["tracking_link"] = (
+    r"(https?://(?:autoatendimento\.tokiomarine\.com\.br|autoservicoreplacement\.localiza\.com)/\S+)")
+TOKIO_AUTO_WHATSAPP_V1["subservices"][CARRO_RESERVA] = {
+    "required_slots": ["titular_cpf", "telefone_contato", "problema_descricao"],
+    "outcome": OUTCOME_ENCAMINHA,
+    "referral": {
+        "kind": "formulario", "closes_as": "resolvido_por_encaminhamento",
+        "link_capture": "tracking_link",
+        "client_message": ("A Tokio Marine faz o carro reserva pela locadora parceira: é só "
+                           "abrir o link abaixo e escolher a retirada. " + _CR_O_QUE_LEVAR),
+    },
+}
+TOKIO_AUTO_WHATSAPP_V1.setdefault("subservice_labels", {})[CARRO_RESERVA] = _CARRO_RESERVA_LABEL
+
+# ---- AZUL: o link `porto.vc/carroreserva` ---------------------------------------
+#    📊 9ec91e2b, 868eb8cb (02 e 03/2026): lista inicial → "Carro reserva" → "Fale com
+#    um dos nossos especialistas, clicando no link abaixo 👇" → "http://porto.vc/carroreserva".
+_AZUL_CARRO_RESERVA = [
+    {"step": "cr_azul_menu_inicial", "only_subservices": _SO_CR,
+     "anchor": r"selecione uma op[çc][ãa]o, por favor[\s\S]*carro reser",
+     "reply": "Carro reserva", "classe": "decide",
+     "constante_justificada": (
+         "`Carro reserva` — a linha da lista inicial da Azul (📊 2 de 2 sessões: o humano "
+         "escolheu esta linha). É a identidade da rota."),
+     "notes": "📊 2 sessões."},
+    {"step": "cr_azul_link", "only_subservices": _SO_CR,
+     "anchor": r"fale com um dos nossos especialistas,? clicando no link",
+     "reply": "", "noop": True, "referral": True, "outcome": OUTCOME_ENCAMINHA,
+     "notes": "📊 2 sessões. O link vem na mensagem SEGUINTE, sozinho."},
+]
+AZUL_AUTO_WHATSAPP_V1["ura_steps"] = (
+    [dict(p) for p in _AZUL_CARRO_RESERVA] + list(AZUL_AUTO_WHATSAPP_V1["ura_steps"]))
+AZUL_AUTO_WHATSAPP_V1["subservices"][CARRO_RESERVA] = {
+    "required_slots": ["titular_cpf", "telefone_contato", "problema_descricao"],
+    "outcome": OUTCOME_ENCAMINHA,
+    "referral": {
+        "kind": "formulario", "closes_as": "resolvido_por_encaminhamento",
+        "link_capture": "tracking_link",
+        # constante_justificada: `porto.vc/carroreserva` — 📊 2 de 2 sessões (02 e
+        # 03/2026). ⚠️ O link NÃO é escrito pelo produto: ele é CAPTURADO da conversa;
+        # esta frase só diz ao segurado o que fazer com ele.
+        "client_message": ("A Azul faz o carro reserva com um especialista dela: é só abrir "
+                           "o link abaixo. " + _CR_O_QUE_LEVAR),
+    },
+}
+AZUL_AUTO_WHATSAPP_V1.setdefault("subservice_labels", {})[CARRO_RESERVA] = _CARRO_RESERVA_LABEL
+
+_COMO_PERGUNTAR.update({
+    "apolice_numero": "o número da apólice (a consulta da apólice mostra)",
+    "carro_reserva_motivo": "o motivo (só sinistro com carro na oficina segue)",
+    "sinistro_numero": "o NÚMERO do sinistro (sem ele, uma pessoa pede)",
+    "carro_reserva_condutor_nome": "nome e CPF de quem retira",
+    "carro_reserva_condutor_cpf": "nome e CPF de quem retira",
+    "carro_reserva_cidade": "cidade, data e hora da retirada",
+    "carro_reserva_data_hora": "cidade, data e hora da retirada",
+    "carro_reserva_telefone": "o celular de quem retira",
+    "carro_reserva_cnh_e_cartao": ("se quem retira tem CNH original e cartão de crédito "
+                                   "NO NOME DELE com limite — 🔴 nunca afirme por ele"),
+})
+_MESMA_PERGUNTA.update({
+    "carro_reserva_condutor_nome": "carro_reserva_condutor",
+    "carro_reserva_condutor_cpf": "carro_reserva_condutor",
+    "carro_reserva_cidade": "carro_reserva_retirada",
+    "carro_reserva_data_hora": "carro_reserva_retirada",
+})
+_COMO_PERGUNTAR_GRUPO.update({
+    "carro_reserva_condutor": "nome e CPF de quem retira",
+    "carro_reserva_retirada": "cidade, data e hora da retirada",
+})
+
+#: CR9 — seguradoras em que o carro reserva vai a uma PESSOA por desenho.
+_CARRO_RESERVA_POR_DESENHO = {
+    "allianz": "a Allianz só faz carro reserva por LIGAÇÃO (não pelo WhatsApp)",
+    "hdi": "o canal de carro reserva da HDI é desconhecido",
+    "porto": "o carro reserva da Porto nunca foi pedido pelo WhatsApp (falta um acionamento real)",
+    "zurich": "a Zurich pede o carro reserva junto do sinistro; o caminho não foi observado",
+    "bradesco": "o Bradesco faz carro reserva por telefone; o menu novo nunca foi usado",
+    "mapfre": "a Mapfre passa a uma pessoa e à locadora no meio do chat (fluxo de 2025)",
+}
+
+
+def _agora_brasilia(agora: Optional[Any] = None):
+    import datetime as _dt
+    if agora is not None:
+        return agora
+    return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-3)))
+
+
+def antes_de_acionar(playbook_ref: str, subservice: str, slots: Dict[str, Any],
+                     *, agora: Optional[Any] = None,
+                     env: Optional[Dict[str, str]] = None) -> Optional[Dict[str, str]]:
+    """🔴 SPEC-121 F4b/F5 — o que vai a uma PESSOA antes de o corredor abrir.
+
+    Devolve `None` (segue) ou `{"codigo", "motivo", "ao_segurado"}`: `motivo` é o
+    que a pessoa da corretora lê no pedido de ajuda; `ao_segurado`, o que o agente
+    diz — sem prometer o que a seguradora não disse.
+
+    ```
+    eletricista  portão eletrônico → pessoa (D10) · raio/queda que queimou → sinistro (D10)
+                 falta de energia NA RUA → concessionária (não aciona)
+    carro reserva  seguradora sem caminho → pessoa (CR9) · motivo ≠ sinistro (CR2) ·
+                   sem nº do sinistro (CR1) · sem CNH/cartão confirmados (CR3) ·
+                   fora do horário da seguradora (CR5) · canal não configurado
+    ```"""
+    sub = canonical_subservice(subservice)
+    s = {k: v for k, v in (slots or {}).items()}
+    pb = get_playbook(playbook_ref) or {}
+    cia = str(pb.get("insurer_key") or "").lower()
+    texto = _texto_normal(" ".join(str(s.get(k) or "") for k in (
+        "problema_descricao", "problema_relato", "eletricista_item_opcao", "eletricista_tipo_opcao")))
+
+    if sub == "eletricista":
+        if _RX_DANO_ELETRICO.search(texto):
+            return {"codigo": "sinistro_danos_eletricos",
+                    "motivo": ("raio/queda de energia que danificou um equipamento é SINISTRO "
+                               "de danos elétricos, não assistência de eletricista"),
+                    "ao_segurado": ("Isso que aconteceu é um sinistro de danos elétricos, e quem "
+                                    "cuida dele é uma pessoa da nossa equipe — já passei para ela.")}
+        if _RX_PORTAO.search(texto):
+            return {"codigo": "portao_nao_e_eletricista",
+                    "motivo": "portão eletrônico não é eletricista (o eletricista cobre curto, "
+                              "disjuntor, tomada e bocal)",
+                    "ao_segurado": ("O conserto do portão eletrônico não entra na assistência de "
+                                    "eletricista. Passei para uma pessoa da nossa equipe ver o "
+                                    "caminho certo para você.")}
+        tipo = _texto_normal(s.get("eletricista_tipo_opcao"))
+        if re.search(r"\brua\b|\bbairro\b|vizinh|concessionaria|poste", tipo):
+            return {"codigo": "falta_de_energia_na_rua",
+                    "motivo": "falta de energia na rua é da concessionária de energia",
+                    "ao_segurado": ("Quando falta energia na rua, quem resolve é a companhia de "
+                                    "energia — a assistência só atende dentro da casa. Ligue para "
+                                    "a companhia de energia da sua cidade.")}
+        return None
+
+    if sub != CARRO_RESERVA:
+        return None
+    if CARRO_RESERVA not in (pb.get("subservices") or {}):
+        motivo = _CARRO_RESERVA_POR_DESENHO.get(
+            cia, f"não temos o caminho do carro reserva da {cia or 'seguradora'}")
+        return {"codigo": "carro_reserva_por_desenho",
+                "motivo": f"pedido de carro reserva — {motivo}",
+                "ao_segurado": ("Anotei o pedido do carro reserva. Nessa seguradora ele é feito "
+                                "por uma pessoa da nossa equipe — já passei para ela com tudo o "
+                                "que você me contou.")}
+    motivo_cr = _texto_normal(s.get("carro_reserva_motivo"))
+    req = (pb.get("subservices") or {}).get(CARRO_RESERVA, {}).get("required_slots") or []
+    if "carro_reserva_motivo" in req and motivo_cr and _motivo_carro_reserva(
+            motivo_cr, s, "*1* - Houve Sinistro") is None:
+        return {"codigo": "carro_reserva_motivo",
+                "motivo": ("pedido de carro reserva por motivo que não é sinistro "
+                           f"({motivo_cr[:60]}) — pane, reparo em outra seguradora (exige o "
+                           "PDF do orçamento) ou troca de condutor: a corretora confirma"),
+                "ao_segurado": ("Anotei. Esse tipo de pedido de carro reserva precisa de uma "
+                                "pessoa da nossa equipe para confirmar a cobertura — já passei "
+                                "para ela.")}
+    # ⚠️ VAZIO não é "não tem": o portão cobra (o agente pergunta). Só o "não tenho /
+    #    não sei" dito pelo segurado — valor sem dígito — vai a uma pessoa (CR1).
+    _num = str(s.get("sinistro_numero") or "").strip()
+    if "sinistro_numero" in req and _num and not re.sub(r"\D", "", _num):
+        return {"codigo": "carro_reserva_sem_sinistro",
+                "motivo": ("pedido de carro reserva — falta o número do sinistro; a corretora "
+                           "obtém no portal/telefone da seguradora"),
+                "ao_segurado": ("Para pedir o carro reserva a seguradora exige o número do "
+                                "sinistro. Passei para uma pessoa da nossa equipe, que consegue "
+                                "esse número e segue com o pedido.")}
+    if "carro_reserva_cnh_e_cartao" in req and str(s.get("carro_reserva_cnh_e_cartao") or "").strip() \
+            and _sim_nao(s.get("carro_reserva_cnh_e_cartao"), s, "") != "Sim":
+        return {"codigo": "carro_reserva_sem_cartao",
+                "motivo": ("pedido de carro reserva — quem retira NÃO confirmou CNH original "
+                           "e cartão de crédito no nome dele com limite"),
+                "ao_segurado": ("A locadora exige CNH original e cartão de crédito no nome de "
+                                "quem retira, com limite para a pré-autorização. Passei para "
+                                "uma pessoa da nossa equipe ver o melhor caminho com você.")}
+    horario = (pb.get("subservices") or {}).get(CARRO_RESERVA, {}).get("horario")
+    if horario:
+        now = _agora_brasilia(agora)
+        if now.weekday() not in tuple(horario.get("dias") or ()) or not (
+                int(horario.get("de") or 0) <= now.hour < int(horario.get("ate") or 24)):
+            return {"codigo": "carro_reserva_fora_do_horario",
+                    "motivo": ("pedido de carro reserva fora do horário da seguradora "
+                               f"({horario.get('de')}h às {horario.get('ate')}h, segunda a "
+                               "sexta) — pedir no próximo horário"),
+                    "ao_segurado": ("A seguradora só recebe pedido de carro reserva de segunda a "
+                                    f"sexta, das {horario.get('de')}h às {horario.get('ate')}h. "
+                                    "Deixei tudo anotado com uma pessoa da nossa equipe, que faz "
+                                    "o pedido no próximo horário.")}
+    var = str((pb.get("subservices") or {}).get(CARRO_RESERVA, {}).get("contato_env") or "")
+    if var:
+        import os as _os
+        _env = env if env is not None else _os.environ
+        if not "".join(ch for ch in str(_env.get(var) or "") if ch.isdigit()):
+            return {"codigo": "carro_reserva_canal_desligado",
+                    "motivo": (f"pedido de carro reserva — o canal da {cia or 'seguradora'} para "
+                               f"carro reserva não está configurado ({var})"),
+                    "ao_segurado": ("Anotei o pedido do carro reserva com tudo o que você me "
+                                    "contou. Uma pessoa da nossa equipe faz o pedido na "
+                                    "seguradora e te avisa.")}
+    return None
+
+
+def contato_do_subservico(playbook_ref: str, subservice: str,
+                          env: Optional[Dict[str, str]] = None) -> Tuple[str, str]:
+    """`(nome do env, dígitos)` do canal PRÓPRIO do subserviço, ou `("", "")`.
+
+    🔴 Subserviço com canal próprio NUNCA cai no número da assistência: o carro
+    reserva da Yelum mandado ao canal de guincho abre um menu que não tem a opção."""
+    import os as _os
+    sub = (((get_playbook(playbook_ref) or {}).get("subservices") or {})
+           .get(canonical_subservice(subservice)) or {})
+    var = str(sub.get("contato_env") or "")
+    if not var:
+        return "", ""
+    _env = env if env is not None else _os.environ
+    return var, "".join(ch for ch in str(_env.get(var) or "") if ch.isdigit())

@@ -240,6 +240,9 @@ _NAO_SE_COBRA_NO_PORTAO = {
     #    cobrá-lo, porque aí o portão pararia um acionamento por um dado que a
     #    seguradora aceita em branco.
     "local_complemento",
+    # 🔴 SPEC-121 F5 — opcional por desenho: o limite de diárias do PLANO, quando a
+    #    apólice consultada o traz (CR4); sem ele o corredor usa o default justificado.
+    "carro_reserva_diarias",
 }
 sobrando = sorted(CAMPOS - todos_cobrados - _NAO_SE_COBRA_NO_PORTAO)
 certo(not sobrando,

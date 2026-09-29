@@ -191,7 +191,11 @@ if i >= 0:
           "   e o dono nomeia a seguradora e o serviço",
           str(dono_atual))
 
-certo(len(bloco) <= 7000,
+# 🔴 SPEC-121 F4b/F5 — o teto do bloco subiu para 8.000 com a justificativa escrita em
+#    `test_a_atendente_sabe_conduzir_um_acionamento` (§4): a repetição foi tirada antes
+#    (📊 6.914 → 6.709 → 6.905 com as perguntas cortadas de volta); o que passa é
+#    serviço NOVO (carro reserva, eletricista da família) — 📊 7.720.
+certo(len(bloco) <= 8000,
       "\U0001F4CA e o bloco cabe no teto — dar dono não foi pago subindo o teto",
       f"{len(bloco)} caracteres")
 

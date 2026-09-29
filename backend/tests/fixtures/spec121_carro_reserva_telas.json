@@ -1,0 +1,901 @@
+[
+ {
+  "sessao": "b7e75c66",
+  "seguradora": "tokio",
+  "data": "2025-08-14",
+  "telas": [
+   {
+    "hora_utc": "16:33",
+    "texto": "Olá, {NOME} - {CORRETORA}!\n\nDigite o CPF/CNPJ do titular do Seguro."
+   },
+   {
+    "hora_utc": "16:35",
+    "texto": "Consegui identificar seu Seguro!"
+   },
+   {
+    "hora_utc": "16:35",
+    "texto": "Seu protocolo de atendimento é {CEP}"
+   },
+   {
+    "hora_utc": "16:35",
+    "texto": "Verifiquei que você possui um processo de *sinistro em andamento*, para te ajudar já vou deixar aqui onde você pode acompanhar todas as etapas do serviço! 😉\n\nhttps://autoatendimento.tokiomarine.com.br/{CAMINHO}"
+   },
+   {
+    "hora_utc": "16:35",
+    "texto": "Clique no botão abaixo para acessar o menu de serviços do *Seguro Automóvel* 🚙\nGuincho/Assist.24h\nGuincho, chaveiro, pane e pneus furados\nInformações sinistro\nRegistrar/Acompanhar sinistro, enviar docs e agendar vistoria\nPagamentos/PIX\nConsulta e pagamento de parcelas\n2ª Via da Apólice\nRoda, pneu e suspensão\nReparo ou troca\nServiços para vidros\nReparo ou reposição do para-brisa, vidros laterais ou traseiro\nLataria ou pintura\nReparar lataria ou pintura\nPara-choque/martelinho\nReparo / substituição do para-choque ou serviço de martelinho\nCartão digital\nOutros serviços\nOutros serviços para o Seguro Automóvel"
+   },
+   {
+    "hora_utc": "16:35",
+    "texto": "Clique no botão abaixo para acessar mais serviços do *Seguro Automóvel* 🚙\nCotar um Seguro\nConte com a proteção da seguradora que é sinônimo de transparência!\nAtualizar cadastro\nAtualize seus principais dados conosco\nCarro reserva\nAcione a cobertura de carro reserva em caso de sinistro\nCarta verde\nCorretores/Oficinas\nClique para localizar um Corretor ou oficina em caso de acidente.\nAutorização de débito\nConsulte as instruções de como autorizar o débito em conta.\nTermo de quitação\nClique para obter o termo de quitação de débitos junto a Tokio Marine.\nOutros atendimentos\nVoltar ao menu anterior\nMenu inicial"
+   },
+   {
+    "hora_utc": "16:36",
+    "texto": "Clique no link abaixo para conversar com um atendente e solicitar o *CARRO RESERVA.*\n\nhttps://api.whatsapp.com/{CAMINHO}"
+   },
+   {
+    "hora_utc": "16:36",
+    "texto": "Posso te ajudar em algo mais?\nBotão 1: Outro serviço\nBotão 2: Menu inicial\nBotão 3: Encerrar atendimento"
+   },
+   {
+    "hora_utc": "16:41",
+    "texto": "Oi {NOME} - {CORRETORA}, você ainda está comigo?"
+   },
+   {
+    "hora_utc": "16:41",
+    "texto": "Posso te ajudar em algo mais?\nBotão 1: Outro serviço\nBotão 2: Menu inicial\nBotão 3: Encerrar atendimento"
+   },
+   {
+    "hora_utc": "16:51",
+    "texto": "Estou finalizando este atendimento, mas não se preocupe, se ainda precisar de ajuda pode me chamar novamente. 😊"
+   },
+   {
+    "hora_utc": "16:51",
+    "texto": "Obrigada pelo seu contato. \n\nConheça o Super App da Tokio, um aplicativo pensado para você nos momentos em que mais precisar: \nhttps://www.tokiomarine.com.br/{CAMINHO}"
+   }
+  ]
+ },
+ {
+  "sessao": "39e395bb",
+  "seguradora": "yelum",
+  "data": "2025-10-02",
+  "telas": [
+   {
+    "hora_utc": "11:55",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "11:55",
+    "texto": "Estamos fora do nosso horário de atendimento, mas enquanto isso você consegue realizar os seguintes serviços.\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Aviso de Sinistro (todos produtos) 📄\n*4* - Informação de Sinistro ℹ️\n*5* - Segunda via Kit de Apólice 📄\n*6* - Rastreador 📍\n*7* - Dúvidas Frequentes ❓\n\n*0* - Finalizar 👋\n\nOutras opções estarão disponíveis durante o nosso Horário Comercial, das *09:00* às *17:00.*\n__________________________________________________________________"
+   },
+   {
+    "hora_utc": "11:59",
+    "texto": "Agradecemos o seu contato!"
+   },
+   {
+    "hora_utc": "12:02",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "12:02",
+    "texto": "Ah, perfeito!\nVamos seguir com o atendimento da *Yelum Seguradora.*\n\nAbaixo são os nossos 3 principais serviços.\nClique sobre o assunto que quer falar.\nBotão 1: ASSISTENCIA 24H\nBotão 2: ACOMPANHAR SINISTRO\nBotão 3: COBRANÇA"
+   },
+   {
+    "hora_utc": "12:02",
+    "texto": "Ah, mas se quiser falar sobre outros assuntos, escolha uma das opções abaixo\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Abertura de Sinistro (Todos os Produtos) 🤖\n*4* - Sinistro (Informações e Outros serviços) 🤖\n*5* - Segunda via kit de apólice e Cartão Virtual 📄\n*6* - Rastreador 📍\n*7* - Dúvidas de Acesso ou Cadastro / Sistemas ❓\n*8* - Dúvidas frequentes ❓\n\nA qualquer momento digite *Sair* para finalizar o atendimento ou *Voltar* para retornar ao Menu Inicial."
+   },
+   {
+    "hora_utc": "12:02",
+    "texto": "*Informações e solicitações de Sinistro em andamento.*\nInformações\nInformações sobre sinistro ℹ️\nOficinas\nEncontrar oficinas referenciadas 👨‍🔧\nVistoria de sinistro\nAgendar vistoria de sinistro ✔️\nDocumentos\nEnviar e Consultar de documentos do sinistro 📄\nPag Indenização Integral\nConsultar pagamentos do sinistro de Indenização Integral 💵\nVoucher Mob/Carro Res...\nSolicitar ou Acompanhar o status do Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "12:03",
+    "texto": "Entendi, \nVoucher Mobilidade / Carro Reserva!\n\nPor favor, informe o que deseja:\nVoucher Mobilidade 🚕\nLiberação de Créditos em Aplicativo de transporte conforme contratado.\nCarro Reserva 🚗 🔁 🚙\nLiberação de diárias para Locação de Veículo conforme contratado.\nStatus Carro Reserva ℹ️\nConsulta o andamento do Carro Reserva já solicitado."
+   },
+   {
+    "hora_utc": "12:03",
+    "texto": "Por favor informe seu nome:"
+   },
+   {
+    "hora_utc": "12:03",
+    "texto": "Por favor, me informe o motivo da solicitação:\n\n*1* - Houve Sinistro\n*2* - Houve Pane Mecânica\n*3* - O carro está sendo reparado em outra Seguradora\n*4* - Alteração de condutor\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "12:04",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "12:07",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "12:07",
+    "texto": "O CPF informado deve conter somente números!\nPor favor, informe novamente:"
+   },
+   {
+    "hora_utc": "12:07",
+    "texto": "Por favor, informe o número da Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "12:08",
+    "texto": "Por favor, informe o número da placa do veículo no formato *{PLACA}* ou *{PLACA}.*"
+   },
+   {
+    "hora_utc": "12:08",
+    "texto": "Por favor, informe o número do sinistro *(somente números).*"
+   },
+   {
+    "hora_utc": "12:09",
+    "texto": "Por favor, informe o telefone com DDD de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "12:10",
+    "texto": "Por favor, informe a quantidade de diárias:"
+   },
+   {
+    "hora_utc": "12:11",
+    "texto": "Obrigada pelas informações.\n\nO processo está em análise e o prazo para retorno é de até 3 horas úteis."
+   }
+  ]
+ },
+ {
+  "sessao": "0e9eace2",
+  "seguradora": "yelum",
+  "data": "2026-01-20",
+  "telas": [
+   {
+    "hora_utc": "13:13",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "13:13",
+    "texto": "Ah, perfeito!\nVamos seguir com o atendimento da *Yelum Seguradora.*\n\nAbaixo são os nossos 3 principais serviços.\nClique sobre o assunto que quer falar.\nBotão 1: ASSISTENCIA 24H\nBotão 2: ACOMPANHAR SINISTRO\nBotão 3: COBRANÇA"
+   },
+   {
+    "hora_utc": "13:13",
+    "texto": "Ah, mas se quiser falar sobre outros assuntos, escolha uma das opções abaixo\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Abertura de Sinistro (Todos os Produtos) 🤖\n*4* - Sinistro (Informações e Outros serviços) 🤖\n*5* - Segunda via kit de apólice e Cartão Virtual 📄\n*6* - Rastreador 📍\n*7* - Dúvidas de Acesso ou Cadastro / Sistemas ❓\n*8* - Dúvidas frequentes ❓\n\nA qualquer momento digite *Sair* para finalizar o atendimento ou *Voltar* para retornar ao Menu Inicial."
+   },
+   {
+    "hora_utc": "13:14",
+    "texto": "*Informações e solicitações de Sinistro em andamento.*\nInformações\nInformações sobre sinistro ℹ️\nOficinas\nEncontrar oficinas referenciadas 👨‍🔧\nVistoria de sinistro\nAgendar vistoria de sinistro ✔️\nDocumentos\nEnviar e Consultar de documentos do sinistro 📄\nPag Indenização Integral\nConsultar pagamentos do sinistro de Indenização Integral 💵\nVoucher Mob/Carro Res...\nSolicitar ou Acompanhar o status do Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "13:15",
+    "texto": "Entendi, \nVoucher Mobilidade / Carro Reserva!\n\nPor favor, informe o que deseja:\nVoucher Mobilidade 🚕\nLiberação de Créditos em Aplicativo de transporte conforme contratado.\nCarro Reserva 🚗 🔁 🚙\nLiberação de diárias para Locação de Veículo conforme contratado.\nStatus Carro Reserva ℹ️\nConsulta o andamento do Carro Reserva já solicitado."
+   },
+   {
+    "hora_utc": "13:15",
+    "texto": "Por favor informe seu nome:"
+   },
+   {
+    "hora_utc": "13:15",
+    "texto": "Por favor, me informe o motivo da solicitação:\n\n*1* - Houve Sinistro\n*2* - Houve Pane Mecânica\n*3* - O carro está sendo reparado em outra Seguradora\n*4* - Alteração de condutor\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "13:15",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "13:16",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "13:16",
+    "texto": "Qual será a cidade de retirada?"
+   },
+   {
+    "hora_utc": "13:16",
+    "texto": "Qual data e horário desejado?"
+   },
+   {
+    "hora_utc": "13:16",
+    "texto": "Por favor, informe o número da Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "13:17",
+    "texto": "Por favor, informe o número da placa do veículo no formato *{PLACA}* ou *{PLACA}.*"
+   },
+   {
+    "hora_utc": "13:17",
+    "texto": "Por favor, informe o número do sinistro *(somente números).*"
+   },
+   {
+    "hora_utc": "13:17",
+    "texto": "Por favor, informe o telefone com DDD de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "13:17",
+    "texto": "Por favor, informe a quantidade de diárias:"
+   },
+   {
+    "hora_utc": "13:18",
+    "texto": "Obrigada pelas informações.\n\nO processo está em análise e o prazo para retorno é de até 3 horas úteis."
+   }
+  ]
+ },
+ {
+  "sessao": "9ec91e2b",
+  "seguradora": "azul",
+  "data": "2026-02-02",
+  "telas": [
+   {
+    "hora_utc": "12:52",
+    "texto": "Selecione uma opção, por favor.\nAssistência emergencial\nGuincho, técnico e chaveiro\nSinistro\nSinistro para roubo, furto ou acidente\nVidros e faróis\nAtendimento para vidros, faróis e retrovisores\nMartelinho de ouro\nComunicar ou acompanhar a correção de pequenos amassados\nCarro reserva\nSolicitar ou prorrogar locações\nTransporte por app\nSolicitar ou prorrogar carro por aplicativo\nFinanceiro\nApólice\nConsulta de apólice\nCartão de crédito Porto\nInformações sobre cartão de crédito Porto\nContratar um seguro Azul"
+   },
+   {
+    "hora_utc": "12:52",
+    "texto": "Olá, sou a atendente virtual da Azul Seguros 👋"
+   },
+   {
+    "hora_utc": "12:52",
+    "texto": "Como eu posso te ajudar?"
+   },
+   {
+    "hora_utc": "12:53",
+    "texto": "Fale com um dos nossos especialistas, clicando no link abaixo 👇"
+   },
+   {
+    "hora_utc": "12:53",
+    "texto": "http://porto.vc/carroreserva"
+   }
+  ]
+ },
+ {
+  "sessao": "c1a67b4a",
+  "seguradora": "tokio",
+  "data": "2026-02-20",
+  "telas": [
+   {
+    "hora_utc": "17:19",
+    "texto": "Olá {NOME} - {CORRETORA}.\n\nVou iniciar seu atendimento!\n_Aguarde um instante enquanto identifico seus dados._"
+   },
+   {
+    "hora_utc": "17:19",
+    "texto": "Olá {NOME} - {CORRETORA}.\n\nVou iniciar seu atendimento!\n_Aguarde um instante enquanto identifico seus dados._"
+   },
+   {
+    "hora_utc": "17:19",
+    "texto": "Me informe o CPF/CNPJ para começarmos o atendimento."
+   },
+   {
+    "hora_utc": "17:19",
+    "texto": "Me informe o CPF/CNPJ para começarmos o atendimento."
+   },
+   {
+    "hora_utc": "17:19",
+    "texto": "O seu protocolo de atendimento é {CEP}."
+   },
+   {
+    "hora_utc": "17:19",
+    "texto": "O seu protocolo de atendimento é {CEP}."
+   },
+   {
+    "hora_utc": "17:20",
+    "texto": "Clique no botão abaixo para acessar o menu de serviços do seguro *Automóvel 🚗*\nGuincho/Assist.24h\nGuincho, chaveiro, pane e pneus furados\nInformações de sinistro\nRegistrar/Acompanhar sinistro, enviar docs e agendar vistoria\nPagamentos/PIX\nConsulta e pagamento de parcelas\n2ª Via da Apólice\nRoda, pneu e suspensão\nReparo ou troca\nServiços para vidros\nReparo ou reposição do para-brisa, vidros laterais ou traseiro\nLataria ou pintura\nReparar lataria ou pintura\nPara-choque/martelinho\nReparo / substituição do para-choque ou serviço de martelinho\nCartão digital\nOutros serviços\nOutros serviços para o Seguro Automóvel"
+   },
+   {
+    "hora_utc": "17:20",
+    "texto": "Clique no botão abaixo para acessar o menu de serviços do seguro *Automóvel 🚗*\nGuincho/Assist.24h\nGuincho, chaveiro, pane e pneus furados\nInformações de sinistro\nRegistrar/Acompanhar sinistro, enviar docs e agendar vistoria\nPagamentos/PIX\nConsulta e pagamento de parcelas\n2ª Via da Apólice\nRoda, pneu e suspensão\nReparo ou troca\nServiços para vidros\nReparo ou reposição do para-brisa, vidros laterais ou traseiro\nLataria ou pintura\nReparar lataria ou pintura\nPara-choque/martelinho\nReparo / substituição do para-choque ou serviço de martelinho\nCartão digital\nOutros serviços\nOutros serviços para o Seguro Automóvel"
+   },
+   {
+    "hora_utc": "17:20",
+    "texto": "Clique no botão abaixo para acessar mais serviços do *Seguro Automóvel 🚗*\nCotar um Seguro\nConte com a proteção da seguradora que é sinônimo de transparência!\nAtualizar cadastro\nAtualize seus principais dados conosco\nCarro reserva\nAcione a cobertura de carro reserva em caso de sinistro\nCarta verde\nCorretores/Oficinas\nClique para localizar um Corretor ou oficina em caso de acidente.\nAutorizar Débito/PIX\nConsulte as instruções de como autorizar o débito em conta ou PIX.\nTermo de quitação\nClique para obter o termo de quitação de débitos junto à Tokio Marine.\nOutros atendimentos\nVoltar ao menu anterior"
+   },
+   {
+    "hora_utc": "17:20",
+    "texto": "Clique no botão abaixo para acessar mais serviços do *Seguro Automóvel 🚗*\nCotar um Seguro\nConte com a proteção da seguradora que é sinônimo de transparência!\nAtualizar cadastro\nAtualize seus principais dados conosco\nCarro reserva\nAcione a cobertura de carro reserva em caso de sinistro\nCarta verde\nCorretores/Oficinas\nClique para localizar um Corretor ou oficina em caso de acidente.\nAutorizar Débito/PIX\nConsulte as instruções de como autorizar o débito em conta ou PIX.\nTermo de quitação\nClique para obter o termo de quitação de débitos junto à Tokio Marine.\nOutros atendimentos\nVoltar ao menu anterior"
+   },
+   {
+    "hora_utc": "17:20",
+    "texto": "Para solicitar o *CARRO RESERVA* acesse:\nAutoatendimento:\nhttps://autoservicoreplacement.localiza.com/{CAMINHO}\n\nAtendimento via WhatsApp:\nhttps://api.whatsapp.com/{CAMINHO}"
+   },
+   {
+    "hora_utc": "17:20",
+    "texto": "Para solicitar o *CARRO RESERVA* acesse:\nAutoatendimento:\nhttps://autoservicoreplacement.localiza.com/{CAMINHO}\n\nAtendimento via WhatsApp:\nhttps://api.whatsapp.com/{CAMINHO}"
+   },
+   {
+    "hora_utc": "17:20",
+    "texto": "Posso te ajudar em algo mais?\nBotão 1: Outro serviço\nBotão 2: Menu inicial\nBotão 3: Encerrar atendimento"
+   },
+   {
+    "hora_utc": "17:20",
+    "texto": "Posso te ajudar em algo mais?\nBotão 1: Outro serviço\nBotão 2: Menu inicial\nBotão 3: Encerrar atendimento"
+   },
+   {
+    "hora_utc": "17:25",
+    "texto": "Oi {NOME} - {CORRETORA}, você ainda está comigo?"
+   },
+   {
+    "hora_utc": "17:25",
+    "texto": "Oi {NOME} - {CORRETORA}, você ainda está comigo?"
+   },
+   {
+    "hora_utc": "17:30",
+    "texto": "Estou finalizando este atendimento, mas não se preocupe, se ainda precisar de ajuda\npode me chamar novamente. 😊"
+   },
+   {
+    "hora_utc": "17:30",
+    "texto": "Estou finalizando este atendimento, mas não se preocupe, se ainda precisar de ajuda\npode me chamar novamente. 😊"
+   },
+   {
+    "hora_utc": "17:30",
+    "texto": "Obrigada pelo seu contato. \n\nConheça o Super App da Tokio, um aplicativo pensado para você nos momentos em que mais precisar: \nhttps://www.tokiomarine.com.br/{CAMINHO}"
+   },
+   {
+    "hora_utc": "17:30",
+    "texto": "Obrigada pelo seu contato. \n\nConheça o Super App da Tokio, um aplicativo pensado para você nos momentos em que mais precisar: \nhttps://www.tokiomarine.com.br/{CAMINHO}"
+   }
+  ]
+ },
+ {
+  "sessao": "870ab018",
+  "seguradora": "yelum",
+  "data": "2026-03-02",
+  "telas": [
+   {
+    "hora_utc": "13:16",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "13:29",
+    "texto": "Ah, perfeito!\nVamos seguir com o atendimento da *Yelum Seguradora.*\n\nAbaixo são os nossos 3 principais serviços.\nClique sobre o assunto que quer falar.\nBotão 1: ASSISTENCIA 24H\nBotão 2: ACOMPANHAR SINISTRO\nBotão 3: COBRANÇA"
+   },
+   {
+    "hora_utc": "13:29",
+    "texto": "Ah, mas se quiser falar sobre outros assuntos, escolha uma das opções abaixo\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Abertura de Sinistro (Todos os Produtos) 🤖\n*4* - Sinistro (Informações e Outros serviços) 🤖\n*5* - Segunda via kit de apólice e Cartão Virtual 📄\n*6* - Rastreador 📍\n*7* - Dúvidas de Acesso ou Cadastro / Sistemas ❓\n*8* - Dúvidas frequentes ❓\n\nA qualquer momento digite *Sair* para finalizar o atendimento ou *Voltar* para retornar ao Menu Inicial."
+   },
+   {
+    "hora_utc": "13:33",
+    "texto": "*Informações e solicitações de Sinistro em andamento.*\nInformações\nInformações sobre sinistro ℹ️\nOficinas\nEncontrar oficinas referenciadas 👨‍🔧\nVistoria de sinistro\nAgendar vistoria de sinistro ✔️\nDocumentos\nEnviar e Consultar de documentos do sinistro 📄\nPag Indenização Integral\nConsultar pagamentos do sinistro de Indenização Integral 💵\nVoucher Mob/Carro Res...\nSolicitar ou Acompanhar o status do Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "13:45",
+    "texto": "Entendi, \nVoucher Mobilidade / Carro Reserva!\n\nPor favor, informe o que deseja:\nVoucher Mobilidade 🚕\nLiberação de Créditos em Aplicativo de transporte conforme contratado.\nCarro Reserva 🚗 🔁 🚙\nLiberação de diárias para Locação de Veículo conforme contratado.\nStatus Carro Reserva ℹ️\nConsulta o andamento do Carro Reserva já solicitado."
+   },
+   {
+    "hora_utc": "13:46",
+    "texto": "Por favor informe seu nome:"
+   },
+   {
+    "hora_utc": "13:46",
+    "texto": "Por favor, me informe o motivo da solicitação:\n\n*1* - Houve Sinistro\n*2* - Houve Pane Mecânica\n*3* - O carro está sendo reparado em outra Seguradora\n*4* - Alteração de condutor\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "13:52",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "13:56",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "13:56",
+    "texto": "Qual será a cidade de retirada?"
+   },
+   {
+    "hora_utc": "13:57",
+    "texto": "Qual data e horário desejado?"
+   },
+   {
+    "hora_utc": "13:58",
+    "texto": "Por favor, informe o número da Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "14:00",
+    "texto": "Por favor, informe o número da placa do veículo no formato *{PLACA}* ou *{PLACA}.*"
+   },
+   {
+    "hora_utc": "14:04",
+    "texto": "Por favor, informe o número do sinistro *(somente números).*"
+   },
+   {
+    "hora_utc": "14:04",
+    "texto": "Por favor, informe o telefone com DDD de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "14:05",
+    "texto": "Por favor, informe a quantidade de diárias:"
+   },
+   {
+    "hora_utc": "14:05",
+    "texto": "Obrigada pelas informações.\n\nO processo está em análise e o prazo para retorno é de até 3 horas úteis."
+   }
+  ]
+ },
+ {
+  "sessao": "868eb8cb",
+  "seguradora": "azul",
+  "data": "2026-03-03",
+  "telas": [
+   {
+    "hora_utc": "12:52",
+    "texto": "Como eu posso te ajudar?"
+   },
+   {
+    "hora_utc": "12:52",
+    "texto": "Olá, sou a atendente virtual da Azul Seguros 👋"
+   },
+   {
+    "hora_utc": "12:52",
+    "texto": "Selecione uma opção, por favor.\nAssistência emergencial\nGuincho, técnico e chaveiro\nSinistro\nSinistro para roubo, furto ou acidente\nVidros e faróis\nAtendimento para vidros, faróis e retrovisores\nMartelinho de ouro\nComunicar ou acompanhar a correção de pequenos amassados\nCarro reserva\nSolicitar ou prorrogar locações\nTransporte por app\nSolicitar ou prorrogar carro por aplicativo\nFinanceiro\nApólice\nConsulta de apólice\nCartão de crédito Porto\nInformações sobre cartão de crédito Porto\nContratar um seguro Azul"
+   },
+   {
+    "hora_utc": "12:52",
+    "texto": "Fale com um dos nossos especialistas, clicando no link abaixo 👇"
+   },
+   {
+    "hora_utc": "12:52",
+    "texto": "http://porto.vc/carroreserva"
+   }
+  ]
+ },
+ {
+  "sessao": "19187f08",
+  "seguradora": "yelum",
+  "data": "2026-03-06",
+  "telas": [
+   {
+    "hora_utc": "19:03",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "19:05",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "19:05",
+    "texto": "Ah, perfeito!\nVamos seguir com o atendimento da *Yelum Seguradora.*\n\nAbaixo são os nossos 3 principais serviços.\nClique sobre o assunto que quer falar.\nBotão 1: ASSISTENCIA 24H\nBotão 2: ACOMPANHAR SINISTRO\nBotão 3: COBRANÇA"
+   },
+   {
+    "hora_utc": "19:05",
+    "texto": "Ah, mas se quiser falar sobre outros assuntos, escolha uma das opções abaixo\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Abertura de Sinistro (Todos os Produtos) 🤖\n*4* - Sinistro (Informações e Outros serviços) 🤖\n*5* - Segunda via kit de apólice e Cartão Virtual 📄\n*6* - Rastreador 📍\n*7* - Dúvidas de Acesso ou Cadastro / Sistemas ❓\n*8* - Dúvidas frequentes ❓\n\nA qualquer momento digite *Sair* para finalizar o atendimento ou *Voltar* para retornar ao Menu Inicial."
+   },
+   {
+    "hora_utc": "19:05",
+    "texto": "*Informações e solicitações de Sinistro em andamento.*\nInformações\nInformações sobre sinistro ℹ️\nOficinas\nEncontrar oficinas referenciadas 👨‍🔧\nVistoria de sinistro\nAgendar vistoria de sinistro ✔️\nDocumentos\nEnviar e Consultar de documentos do sinistro 📄\nPag Indenização Integral\nConsultar pagamentos do sinistro de Indenização Integral 💵\nVoucher Mob/Carro Res...\nSolicitar ou Acompanhar o status do Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "19:06",
+    "texto": "Entendi, \nVoucher Mobilidade / Carro Reserva!\n\nPor favor, informe o que deseja:\nVoucher Mobilidade 🚕\nLiberação de Créditos em Aplicativo de transporte conforme contratado.\nCarro Reserva 🚗 🔁 🚙\nLiberação de diárias para Locação de Veículo conforme contratado.\nStatus Carro Reserva ℹ️\nConsulta o andamento do Carro Reserva já solicitado."
+   },
+   {
+    "hora_utc": "19:06",
+    "texto": "Por favor informe seu nome:"
+   },
+   {
+    "hora_utc": "19:06",
+    "texto": "Por favor, me informe o motivo da solicitação:\n\n*1* - Houve Sinistro\n*2* - Houve Pane Mecânica\n*3* - O carro está sendo reparado em outra Seguradora\n*4* - Alteração de condutor\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "19:06",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "19:06",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "19:07",
+    "texto": "O CPF informado deve conter somente números!\nPor favor, informe novamente:"
+   },
+   {
+    "hora_utc": "19:07",
+    "texto": "Qual será a cidade de retirada?"
+   },
+   {
+    "hora_utc": "19:07",
+    "texto": "Qual data e horário desejado?"
+   },
+   {
+    "hora_utc": "19:08",
+    "texto": "Por favor, informe o número da Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "19:08",
+    "texto": "Por favor, informe o número da placa do veículo no formato *{PLACA}* ou *{PLACA}.*"
+   },
+   {
+    "hora_utc": "19:08",
+    "texto": "Por favor, informe o número do sinistro *(somente números).*"
+   },
+   {
+    "hora_utc": "19:08",
+    "texto": "Por favor, informe o telefone com DDD de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "19:09",
+    "texto": "Por favor, informe a quantidade de diárias:"
+   },
+   {
+    "hora_utc": "19:09",
+    "texto": "Obrigada pelas informações.\n\nO processo está em análise e o prazo para retorno é de até 3 horas úteis."
+   }
+  ]
+ },
+ {
+  "sessao": "4d5bd779",
+  "seguradora": "yelum",
+  "data": "2026-03-10",
+  "telas": [
+   {
+    "hora_utc": "16:20",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "16:24",
+    "texto": "Ah, perfeito!\nVamos seguir com o atendimento da *Yelum Seguradora.*\n\nAbaixo são os nossos 3 principais serviços.\nClique sobre o assunto que quer falar.\nBotão 1: ASSISTENCIA 24H\nBotão 2: ACOMPANHAR SINISTRO\nBotão 3: COBRANÇA"
+   },
+   {
+    "hora_utc": "16:24",
+    "texto": "Ah, mas se quiser falar sobre outros assuntos, escolha uma das opções abaixo\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Abertura de Sinistro (Todos os Produtos) 🤖\n*4* - Sinistro (Informações e Outros serviços) 🤖\n*5* - Segunda via kit de apólice e Cartão Virtual 📄\n*6* - Rastreador 📍\n*7* - Dúvidas de Acesso ou Cadastro / Sistemas ❓\n*8* - Dúvidas frequentes ❓\n\nA qualquer momento digite *Sair* para finalizar o atendimento ou *Voltar* para retornar ao Menu Inicial."
+   },
+   {
+    "hora_utc": "16:24",
+    "texto": "*Informações e solicitações de Sinistro em andamento.*\nInformações\nInformações sobre sinistro ℹ️\nOficinas\nEncontrar oficinas referenciadas 👨‍🔧\nVistoria de sinistro\nAgendar vistoria de sinistro ✔️\nDocumentos\nEnviar e Consultar de documentos do sinistro 📄\nPag Indenização Integral\nConsultar pagamentos do sinistro de Indenização Integral 💵\nVoucher Mob/Carro Res...\nSolicitar ou Acompanhar o status do Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "16:25",
+    "texto": "Entendi, \nVoucher Mobilidade / Carro Reserva!\n\nPor favor, informe o que deseja:\nVoucher Mobilidade 🚕\nLiberação de Créditos em Aplicativo de transporte conforme contratado.\nCarro Reserva 🚗 🔁 🚙\nLiberação de diárias para Locação de Veículo conforme contratado.\nStatus Carro Reserva ℹ️\nConsulta o andamento do Carro Reserva já solicitado."
+   },
+   {
+    "hora_utc": "16:38",
+    "texto": "Por favor informe seu nome:"
+   },
+   {
+    "hora_utc": "16:38",
+    "texto": "Por favor, me informe o motivo da solicitação:\n\n*1* - Houve Sinistro\n*2* - Houve Pane Mecânica\n*3* - O carro está sendo reparado em outra Seguradora\n*4* - Alteração de condutor\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "16:38",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "16:38",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "16:40",
+    "texto": "O CPF informado deve conter somente números!\nPor favor, informe novamente:"
+   },
+   {
+    "hora_utc": "16:40",
+    "texto": "Qual será a cidade de retirada?"
+   },
+   {
+    "hora_utc": "16:40",
+    "texto": "Qual data e horário desejado?"
+   },
+   {
+    "hora_utc": "16:40",
+    "texto": "Por favor, informe o número da Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "16:40",
+    "texto": "Por favor, informe o número da placa do veículo no formato *{PLACA}* ou *{PLACA}.*"
+   },
+   {
+    "hora_utc": "16:41",
+    "texto": "Por favor, informe o número do sinistro *(somente números).*"
+   },
+   {
+    "hora_utc": "16:42",
+    "texto": "Por favor, informe o telefone com DDD de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "16:42",
+    "texto": "Por favor, informe a quantidade de diárias:"
+   },
+   {
+    "hora_utc": "16:43",
+    "texto": "Obrigada pelas informações.\n\nO processo está em análise e o prazo para retorno é de até 3 horas úteis."
+   }
+  ]
+ },
+ {
+  "sessao": "20d9d87c",
+  "seguradora": "yelum",
+  "data": "2026-03-20",
+  "telas": [
+   {
+    "hora_utc": "19:54",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "19:54",
+    "texto": "Ah, perfeito!\nVamos seguir com o atendimento da *Yelum Seguradora.*\n\nAbaixo são os nossos 3 principais serviços.\nClique sobre o assunto que quer falar.\nBotão 1: ASSISTENCIA 24H\nBotão 2: ACOMPANHAR SINISTRO\nBotão 3: COBRANÇA"
+   },
+   {
+    "hora_utc": "19:54",
+    "texto": "Ah, mas se quiser falar sobre outros assuntos, escolha uma das opções abaixo\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Abertura de Sinistro (Todos os Produtos) 🤖\n*4* - Sinistro (Informações e Outros serviços) 🤖\n*5* - Segunda via kit de apólice e Cartão Virtual 📄\n*6* - Rastreador 📍\n*7* - Dúvidas de Acesso ou Cadastro / Sistemas ❓\n*8* - Dúvidas frequentes ❓\n\nA qualquer momento digite *Sair* para finalizar o atendimento ou *Voltar* para retornar ao Menu Inicial."
+   },
+   {
+    "hora_utc": "19:55",
+    "texto": "*Informações e solicitações de Sinistro em andamento.*\nInformações\nInformações sobre sinistro ℹ️\nOficinas\nEncontrar oficinas referenciadas 👨‍🔧\nVistoria de sinistro\nAgendar vistoria de sinistro ✔️\nDocumentos\nEnviar e Consultar de documentos do sinistro 📄\nPag Indenização Integral\nConsultar pagamentos do sinistro de Indenização Integral 💵\nVoucher Mob/Carro Res...\nSolicitar ou Acompanhar o status do Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "19:58",
+    "texto": "Entendi, \nVoucher Mobilidade / Carro Reserva!\n\nPor favor, informe o que deseja:\nVoucher Mobilidade 🚕\nLiberação de Créditos em Aplicativo de transporte conforme contratado.\nCarro Reserva 🚗 🔁 🚙\nLiberação de diárias para Locação de Veículo conforme contratado.\nStatus Carro Reserva ℹ️\nConsulta o andamento do Carro Reserva já solicitado."
+   },
+   {
+    "hora_utc": "19:58",
+    "texto": "Por favor informe seu nome:"
+   },
+   {
+    "hora_utc": "19:58",
+    "texto": "Por favor, me informe o motivo da solicitação:\n\n*1* - Houve Sinistro\n*2* - Houve Pane Mecânica\n*3* - O carro está sendo reparado em outra Seguradora\n*4* - Alteração de condutor\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "19:58",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "19:58",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "19:59",
+    "texto": "Qual será a cidade de retirada?"
+   },
+   {
+    "hora_utc": "19:59",
+    "texto": "Qual data e horário desejado?"
+   },
+   {
+    "hora_utc": "20:00",
+    "texto": "Por favor, informe o número da Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "20:00",
+    "texto": "Por favor, informe o número da placa do veículo no formato *{PLACA}* ou *{PLACA}.*"
+   },
+   {
+    "hora_utc": "20:01",
+    "texto": "Por favor, informe o número do sinistro *(somente números).*"
+   },
+   {
+    "hora_utc": "20:01",
+    "texto": "Por favor, informe o telefone com DDD de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "20:01",
+    "texto": "Por favor, informe a quantidade de diárias:"
+   },
+   {
+    "hora_utc": "20:02",
+    "texto": "Nos desculpe, mas nesse momento não temos nenhum especialista disponível.\nPor favor, retorne o contato no horário comercial das 09h às 17h (segunda á sexta).\n\nAgradecemos o seu contato!"
+   }
+  ]
+ },
+ {
+  "sessao": "e8efabc0",
+  "seguradora": "yelum",
+  "data": "2026-06-02",
+  "telas": [
+   {
+    "hora_utc": "19:02",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "19:02",
+    "texto": "Ah, perfeito!\nVamos seguir com o atendimento da *Yelum Seguradora.*\n\nAbaixo são os nossos 3 principais serviços.\nClique sobre o assunto que quer falar.\nBotão 1: ASSISTENCIA 24H\nBotão 2: ACOMPANHAR SINISTRO\nBotão 3: COBRANÇA"
+   },
+   {
+    "hora_utc": "19:02",
+    "texto": "Ah, mas se quiser falar sobre outros assuntos, escolha uma das opções abaixo\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Abertura de Sinistro (Todos os Produtos) 🤖\n*4* - Sinistro (Informações e Outros serviços) 🤖\n*5* - Segunda via kit de apólice e Cartão Virtual 📄\n*6* - Rastreador 📍\n*7* - Dúvidas de Acesso ou Cadastro / Sistemas ❓\n*8* - Dúvidas frequentes ❓\n\nA qualquer momento digite *Sair* para finalizar o atendimento ou *Voltar* para retornar ao Menu Inicial."
+   },
+   {
+    "hora_utc": "19:03",
+    "texto": "*Informações e solicitações de Sinistro em andamento.*\nInformações\nInformações sobre sinistro ℹ️\nOficinas\nEncontrar oficinas referenciadas 👨‍🔧\nVistoria de sinistro\nAgendar vistoria de sinistro ✔️\nDocumentos\nEnviar e Consultar de documentos do sinistro 📄\nPag Indenização Integral\nConsultar pagamentos do sinistro de Indenização Integral 💵\nVoucher Mob/Carro Res...\nSolicitar ou Acompanhar o status do Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "19:05",
+    "texto": "Entendi, \nVoucher Mobilidade / Carro Reserva!\n\nPor favor, informe o que deseja:\nVoucher Mobilidade 🚕\nLiberação de Créditos em Aplicativo de transporte conforme contratado.\nCarro Reserva 🚗 🔁 🚙\nLiberação de diárias para Locação de Veículo conforme contratado.\nStatus Carro Reserva ℹ️\nConsulta o andamento do Carro Reserva já solicitado."
+   },
+   {
+    "hora_utc": "19:05",
+    "texto": "Por favor informe seu nome."
+   },
+   {
+    "hora_utc": "19:05",
+    "texto": "Por favor, me informe o motivo da solicitação:\n\n*1* - Houve Sinistro\n*2* - Houve Pane Mecânica\n*3* - O carro está sendo reparado em outra Seguradora\n*4* - Alteração de condutor\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "19:05",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "19:06",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "19:07",
+    "texto": "O CPF informado deve conter somente números!\nPor favor, informe novamente:"
+   },
+   {
+    "hora_utc": "19:07",
+    "texto": "Qual será a cidade de retirada?"
+   },
+   {
+    "hora_utc": "19:08",
+    "texto": "Qual data e horário desejado?"
+   },
+   {
+    "hora_utc": "19:08",
+    "texto": "Por favor, informe o número da Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "19:08",
+    "texto": "Por favor, informe o número da placa do veículo no formato *{PLACA}* ou *{PLACA}.*"
+   }
+  ]
+ },
+ {
+  "sessao": "c0c3c694",
+  "seguradora": "yelum",
+  "data": "2026-08-24",
+  "telas": [
+   {
+    "hora_utc": "17:10",
+    "texto": "Seja bem-vindo ao nosso atendimento.\n\nApenas lembrando, que este canal é de uso exclusivo para Corretores.\n\nPara qual seguradora deseja seu atendimento.\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "17:10",
+    "texto": "Ah, mas se quiser solicitar uma ajuda ao *HELPLINE* ou fazer uma *Consulta de Status DSO*, selecione uma das opções abaixo.\nHelpline\nAtendimento para corretor e parceiro.\nConsultar status DSO"
+   },
+   {
+    "hora_utc": "17:10",
+    "texto": "Ok, vamos lá !\n\nSobre o que precisa falar?\n\n*1* - Automóvel\n*2* - Comércio & Serviços\n*3* - Residência\n*4* - Vida\n*5* - Transporte\n*6* - Imobiliário\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "17:10",
+    "texto": "Hoje temos disponível para atendimento os seguintes serviços:\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist\n*2* - Segunda via de Kit de Apólice\n*3* - Rastreador\n*4* - Encontrar uma Oficina Referenciada\n*5* - Aceitação\n*6* - Dúvidas Frequentes Sinistro Automóvel\n*7* - Acompanhar Sinistro de um segurado\n*8* - Voucher Mobilidade / Carro reserva\n*9* - Agendamento de Vistoria de Sinistro\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "17:12",
+    "texto": "Entendi,\n\nPor favor, informe o que deseja 📌\nBotão 1: Voucher Mobilidade💳\nBotão 2: Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "17:12",
+    "texto": "Por favor informe seu nome."
+   },
+   {
+    "hora_utc": "17:12",
+    "texto": "Por favor, selecione o motivo da solicitação 📌\nHouve Sinistro 🚗⚠️\nHouve Pane Mecânica 🚗🔧\nReparo outra Seguradora\nO carro está sendo reparado em outra Seguradora 🚗🔧\nAlterar condutor 👤🔄"
+   },
+   {
+    "hora_utc": "17:13",
+    "texto": "Houve a abertura do sinistro?\nBotão 1: Sim ✅\nBotão 2: Não ❌"
+   },
+   {
+    "hora_utc": "17:13",
+    "texto": "Por favor, informe o número do sinistro *(somente números).*"
+   },
+   {
+    "hora_utc": "17:13",
+    "texto": "Para darmos continuidade, por favor, é obrigatório o envio do Orçamento de autorização de reparos nos casos de Segurado atendido como Terceiro em outra Seguradora.\n\nEnvie por aqui! \n\nO arquivo deve estar legível e em PDF."
+   },
+   {
+    "hora_utc": "17:14",
+    "texto": "Por favor, informe a Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "17:15",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "17:15",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "17:15",
+    "texto": "Qual será a cidade de retirada?"
+   },
+   {
+    "hora_utc": "17:16",
+    "texto": "Qual data e horário desejado?"
+   },
+   {
+    "hora_utc": "17:17",
+    "texto": "Por favor, informe o telefone com DDD de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "17:17",
+    "texto": "Por favor, informe a quantidade de diárias:"
+   },
+   {
+    "hora_utc": "17:18",
+    "texto": "Obrigada pelas informações.\n\nO processo está em análise e o prazo para retorno é de até 3 horas úteis."
+   },
+   {
+    "hora_utc": "17:21",
+    "texto": "Sim."
+   },
+   {
+    "hora_utc": "17:22",
+    "texto": "Para qual horário?"
+   },
+   {
+    "hora_utc": "17:22",
+    "texto": "Como cliente Yelum, você tem acesso a condições especiais para upgrade do carro reserva! 🚘✨\n\nIsso significa que, se desejar, você pode sair com um modelo superior pagando uma diferença reduzida, geralmente mais econômica do que direto na agência.\n\n👉 Exemplo: trocar um carro econômico por um Sedan ou SUV automático, como Virtus, T‑Cross, Tracker, Renegade ou similares.\n\nGostaria de conhecer as opções disponíveis para upgrade?"
+   },
+   {
+    "hora_utc": "17:24",
+    "texto": "Seu atendimento foi encerrado e pedimos, por favor, que responda a nossa Pesquisa de Satisfação.\n\nParticipe, são apenas 20 segundos do seu tempo e a sua opinião é muito importante para nós!\n\nConte conosco sempre que precisar!\n\nAgradecemos a sua participação!!!\n\nhttps://grupohdiseguros.my.site.com/{CAMINHO}"
+   }
+  ]
+ },
+ {
+  "sessao": "77a1cbaf",
+  "seguradora": "yelum",
+  "data": "2026-09-04",
+  "telas": [
+   {
+    "hora_utc": "16:20",
+    "texto": "*Olá, tudo bem?*\n\nSeja Bem-vindo ao canal exclusivo para Segurado e Terceiros.\n \n“Algumas de nossas mensagens podem não ser exibidas ao usar o App WhatsApp Desktop.\nPara uma melhor experiência, utilize o celular ou WhatsApp Web”\n \nSelecione abaixo para qual Seguradora deseja atendimento ⬇️\nBotão 1: YELUM\nBotão 2: ALIRO\nBotão 3: INDIANA"
+   },
+   {
+    "hora_utc": "16:20",
+    "texto": "Ah, perfeito!\nVamos seguir com o atendimento da *Yelum Seguradora.*\n\nAbaixo são os nossos 3 principais serviços.\nClique sobre o assunto que quer falar.\nBotão 1: ASSISTENCIA 24H\nBotão 2: ACOMPANHAR SINISTRO\nBotão 3: COBRANÇA"
+   },
+   {
+    "hora_utc": "16:20",
+    "texto": "Ah, mas se quiser falar sobre outros assuntos, escolha uma das opções abaixo\n\n*1* - Solicitação de guincho, socorro mecânica ou chaveiro para o seu carro. Eletricista, encanador ou chaveiro para sua casa. Serviços prestados pela Fácil Assist 👨‍🔧\n*2* - Cobrança 💵\n*3* - Abertura de Sinistro (Todos os Produtos) 🤖\n*4* - Sinistro (Informações e Outros serviços) 🤖\n*5* - Segunda via kit de apólice e Cartão Virtual 📄\n*6* - Rastreador 📍\n*7* - Dúvidas de Acesso ou Cadastro / Sistemas ❓\n*8* - Dúvidas frequentes ❓\n\nA qualquer momento digite *Sair* para finalizar o atendimento ou *Voltar* para retornar ao Menu Inicial."
+   },
+   {
+    "hora_utc": "16:21",
+    "texto": "*Informações e solicitações de Sinistro em andamento.*\nInformações\nInformações sobre sinistro ℹ️\nOficinas\nEncontrar oficinas referenciadas 👨‍🔧\nVistoria de sinistro\nAgendar vistoria de sinistro ✔️\nDocumentos\nEnviar e Consultar de documentos do sinistro 📄\nPag Indenização Integral\nConsultar pagamentos do sinistro de Indenização Integral 💵\nVoucher Mob/Carro Res...\nSolicitar ou Acompanhar o status do Carro Reserva 🚗"
+   },
+   {
+    "hora_utc": "16:21",
+    "texto": "Entendi, \nVoucher Mobilidade / Carro Reserva!\n\nPor favor, informe o que deseja:\nVoucher Mobilidade 🚕\nLiberação de Créditos em Aplicativo de transporte conforme contratado.\nCarro Reserva 🚗 🔁 🚙\nLiberação de diárias para Locação de Veículo conforme contratado.\nStatus Carro Reserva ℹ️\nConsulta o andamento do Carro Reserva já solicitado."
+   },
+   {
+    "hora_utc": "16:21",
+    "texto": "Por favor informe seu nome."
+   },
+   {
+    "hora_utc": "16:21",
+    "texto": "Por favor, me informe o motivo da solicitação:\n\n*1* - Houve Sinistro\n*2* - Houve Pane Mecânica\n*3* - O carro está sendo reparado em outra Seguradora\n*4* - Alteração de condutor\n\n*0* - Voltar"
+   },
+   {
+    "hora_utc": "16:21",
+    "texto": "Por favor, informe o nome de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "16:22",
+    "texto": "Por favor, informe o CPF *(sem ponto e traço)* de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "16:22",
+    "texto": "Qual será a cidade de retirada?"
+   },
+   {
+    "hora_utc": "16:22",
+    "texto": "Qual data e horário desejado?"
+   },
+   {
+    "hora_utc": "16:22",
+    "texto": "Por favor, informe o número da Apólice *(somente números).*"
+   },
+   {
+    "hora_utc": "16:22",
+    "texto": "Por favor, informe o número da placa do veículo no formato *{PLACA}* ou *{PLACA}.*"
+   },
+   {
+    "hora_utc": "16:23",
+    "texto": "Por favor, informe o número do sinistro *(somente números).*"
+   },
+   {
+    "hora_utc": "16:23",
+    "texto": "Por favor, informe o telefone com DDD de quem fará a retirada do veículo:"
+   },
+   {
+    "hora_utc": "16:23",
+    "texto": "Por favor, informe a quantidade de diárias:"
+   },
+   {
+    "hora_utc": "16:23",
+    "texto": "Obrigada pelas informações.\n\nO processo está em análise e o prazo para retorno é de até 3 horas úteis."
+   }
+  ]
+ }
+]

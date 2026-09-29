@@ -179,6 +179,12 @@ FAMILIAS_DE_TRAVAMENTO = {
     #    retomar insistiria na recusa, e contar ao segurado é de gente.
     "consultora_da_seguradora",
     "recusa_de_cobertura",
+    # 🔴 SPEC-121 F5 (carro reserva) — DIRETO AO HUMANO, as duas:
+    # `fora_do_horario` — a Yelum disse "nenhum especialista… 09h às 17h"; retomar
+    #    repete a recusa até o próximo horário (uma pessoa pede nele).
+    # `exige_documento` — o PDF do orçamento de reparo; só uma pessoa o envia.
+    "fora_do_horario",
+    "exige_documento",
 }
 
 _RE_REASON = re.compile(r'session\["reason"\]\s*=\s*(.+)')

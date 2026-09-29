@@ -221,8 +221,12 @@ def test_sao_dezesseis():
     #    NOVAS, ambas com veredito escrito (`direto_ao_humano`) —
     #    `consultora_da_seguradora` (D11: a consultora da Porto assumiu) e
     #    `recusa_de_cobertura` (F4: a Allianz disse que a apólice não cobre).
-    assert len(familias) == 26, (
-        f"o fonte tem {len(familias)} famílias de travamento, não 26: "
+    # 🔴 E VINTE E SEIS VIROU VINTE E OITO (SPEC-121 F5, carro reserva): +2, ambas
+    #    `direto_ao_humano` — `fora_do_horario` (📊 a Yelum: "nenhum especialista…
+    #    09h às 17h") e `exige_documento` (📊 o PDF do orçamento no ramo "reparo em
+    #    outra seguradora").
+    assert len(familias) == 28, (
+        f"o fonte tem {len(familias)} famílias de travamento, não 28: "
         f"{sorted(familias)}")
 
 

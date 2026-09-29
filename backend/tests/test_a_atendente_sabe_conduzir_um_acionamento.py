@@ -80,7 +80,10 @@ for ref in TODOS:
         for slot in sub.get("required_slots") or []:
             if slot in CP._NAO_SE_PERGUNTA:
                 continue
-            rotulo = CP._COMO_PERGUNTAR.get(slot)
+            # 🔴 SPEC-121 F4b — slots que pedem a MESMA coisa são escritos UMA vez,
+            #    pela redação do grupo (`rotulo_no_bloco`). O guarda continua o
+            #    mesmo: todo slot exigido tem de ser ENSINADO no bloco.
+            rotulo = CP.rotulo_no_bloco(slot)
             if not rotulo or rotulo not in BLOCO:
                 faltando.append((ref, rota, slot))
 
@@ -109,7 +112,7 @@ certo(len(req) == 8, f"a rota exige 8 dados ({len(req)})", str(req))
 for slot in req:
     if slot in CP._NAO_SE_PERGUNTA:
         continue
-    certo(CP._COMO_PERGUNTAR[slot] in SO_ALLIANZ_RESID,
+    certo(CP.rotulo_no_bloco(slot) in SO_ALLIANZ_RESID,
           f"o bloco ensina a pedir: {slot}")
 
 certo("AGENDADO" in SO_ALLIANZ_RESID and "Nao e hoje" in SO_ALLIANZ_RESID.replace("ã", "a").replace("é", "e"),
@@ -158,8 +161,17 @@ print("=" * 74)
 print("  4. O TAMANHO — conhecimento que nao cabe nao ensina")
 print("=" * 74)
 
-certo(len(BLOCO) < 7000,
-      f"o bloco cabe no prompt ({len(BLOCO)} caracteres, teto 7000)",
+# 🔴 SPEC-121 F4b/F5 · O TETO SOBE DE 7.000 PARA 8.000 — e o porquê fica escrito.
+#    O que o teto protege: o orçamento do prompt contra REPETIÇÃO (📊 7.763 quando
+#    cada rota repetia o CPF). A repetição foi tirada ANTES de subir: as perguntas
+#    iguais viraram um grupo (`_MESMA_PERGUNTA`, 📊 6.914 → 6.709) e duas redações
+#    que se repetem em 8 linhas encurtaram (📊 → 6.905 COM as perguntas que o teto
+#    tinha cortado de volta). O que passa de 7.000 é serviço NOVO, não repetição:
+#    📊 a linha do carro reserva (F5, 9 perguntas que só o segurado sabe) e 5
+#    perguntas do eletricista da HDI/Yelum → 7.720. Cortá-las devolveria o defeito
+#    que a SPEC conserta (o cérebro chutando o que ninguém perguntou).
+certo(len(BLOCO) < 8000,
+      f"o bloco cabe no prompt ({len(BLOCO)} caracteres, teto 8000)",
       "📊 uma linha por (corredor x rota) dava 7.763 e repetia 'peca o CPF' "
       "catorze vezes")
 certo(len(BLOCO) > 1500,

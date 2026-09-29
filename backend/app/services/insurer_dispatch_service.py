@@ -3967,7 +3967,8 @@ def handle_insurer_message(
     # nenhum aqui — ela entregou o caminho". Vem DEPOIS da captura de protocolo
     # (protocolo real vence sempre) e ANTES de qualquer passo de URA, porque a
     # partir daqui não há mais menu a responder.
-    passo_encaminha = detect_referral_step(playbook, insurer_message)
+    passo_encaminha = detect_referral_step(playbook, insurer_message,
+                                           session.get("subservice") or None)
     if passo_encaminha:
         session["referral"] = {
             **subservice_referral(playbook, session.get("subservice") or ""),
@@ -4455,6 +4456,14 @@ def handle_insurer_message(
         if motivo_do_gatilho(playbook, trigger) == "recusa_de_cobertura":
             session["state"] = "needs_human"
             session["reason"] = f"recusa_de_cobertura:{trigger}"
+        # 🔴 SPEC-121 F5 — as outras famílias com motivo próprio (carro reserva:
+        #    `fora_do_horario`, `exige_documento`) dizem o motivo delas também.
+        if motivo_do_gatilho(playbook, trigger) == "fora_do_horario":
+            session["state"] = "needs_human"
+            session["reason"] = f"fora_do_horario:{trigger}"
+        if motivo_do_gatilho(playbook, trigger) == "exige_documento":
+            session["state"] = "needs_human"
+            session["reason"] = f"exige_documento:{trigger}"
         return session
 
     # Pesquisa de satisfação/avaliação pós-atendimento: ignorar sempre.
@@ -5168,6 +5177,11 @@ _MOTIVOS_EM_PORTUGUES = {
                            "serviço — conte ao segurado com honestidade, com a "
                            "frase dela (no histórico abaixo), e o caminho "
                            "particular se ela ofereceu um prestador",
+    # 🔴 SPEC-121 F5 — carro reserva.
+    "fora_do_horario": "a seguradora disse que está fora do horário dela (carro reserva "
+                       "da Yelum: 9h às 17h, segunda a sexta) — peça no próximo horário",
+    "exige_documento": "a seguradora exige um documento em PDF (o orçamento de reparo) "
+                       "para seguir — só uma pessoa consegue enviá-lo",
     "encaminhado": "a seguradora não abre este chamado por aqui e mandou seguir "
                    "por outro caminho",
     "encaminhamento_sem_link": "a seguradora mandou seguir por outro caminho e "
@@ -5731,6 +5745,9 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     "consultora_da_seguradora": DIRETO_AO_HUMANO,
     # 🔴 SPEC-121 F4 — a seguradora disse NÃO; retomar insistiria na recusa.
     "recusa_de_cobertura": DIRETO_AO_HUMANO,
+    # 🔴 SPEC-121 F5 — retomar fora do horário ou sem o PDF repete a recusa.
+    "fora_do_horario": DIRETO_AO_HUMANO,
+    "exige_documento": DIRETO_AO_HUMANO,
     # O cérebro adaptativo errou duas vezes seguidas. A terceira não é melhor.
     "human_phase_guard": DIRETO_AO_HUMANO,
     # A escada de recuperação do Vigia já esgotou as tentativas dela.
