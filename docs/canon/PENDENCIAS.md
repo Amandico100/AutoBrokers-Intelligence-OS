@@ -12353,3 +12353,11 @@ sessão?"*. Na hdi `4b2d0c2a` a URA pediu o destino às 13:16, disse *"está pen
 recomeçou pedindo a ORIGEM. Hoje não chega a acontecer: *"está pendente"* virou gatilho de pessoa nesta SPEC
 e a nova tentativa abre sessão nova. **O que destrava:** 🤖 zerar `reply_if_step_done` quando a URA reinicia.
 **Custa esquecer:** o dia em que o gatilho mudar, o guincho vai buscar o carro no endereço do destino.
+
+## P-120-20 · 🤖 O harness dos guardas-script termina com um arquivo da régua mutado — e já era assim na base
+📊 29/09/2026, `pytest tests/test_todos_os_guardas_script_rodam.py`, máquina livre: HEAD `41bcab8` → *"TERMINOU com
+higiene_do_corpus.py diferente"*; base `ff5a52b` → *"TERMINOU com rubrica.py diferente"*; bateria completa → `rubrica.py`.
+O arquivo muda a cada rodada: é uma mutação de `test_a_regua_nao_tem_furo` (lista `MUTACOES`, C17) cortada pelo teto
+de 120 s. O harness **restaura** e reprova — a árvore termina limpa. **O que destrava:** 🤖 medir o tempo daquele guarda
+e tirá-lo do teto comum (ou da lista), como P-118-14 já pede. **Custa esquecer:** um vermelho permanente ensina a ignorar
+o único gate que impede mutação de chegar à `main` (CLAUDE.md §9.3).
