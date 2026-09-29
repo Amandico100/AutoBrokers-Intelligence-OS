@@ -45,6 +45,7 @@ from app.services.corridor_playbooks import (
     get_playbook,
     match_ura_step,
     missing_slots_for_subservice,
+    motivo_do_gatilho,
     _flow_components,
     # ⛔ `_resolver_opcao_de_flow` SAIU daqui na SPEC-118 F3, e o motivo é o
     #    comentário de `new_dispatch_session`: quem confere o valor de escolha
@@ -4445,6 +4446,15 @@ def handle_insurer_message(
     if trigger:
         session["state"] = "needs_human"
         session["reason"] = f"handoff_trigger:{trigger}"
+        # 🔴 SPEC-121 D11 — a seguradora pôs uma PESSOA dela na conversa (a
+        #    consultora da Porto): o motivo diz isso, e não "a seguradora pediu gente".
+        if motivo_do_gatilho(playbook, trigger) == "consultora_da_seguradora":
+            session["state"] = "needs_human"
+            session["reason"] = f"consultora_da_seguradora:{trigger}"
+        # 🔴 SPEC-121 F4 — a seguradora RECUSOU a cobertura (Allianz, 9 frases reais).
+        if motivo_do_gatilho(playbook, trigger) == "recusa_de_cobertura":
+            session["state"] = "needs_human"
+            session["reason"] = f"recusa_de_cobertura:{trigger}"
         return session
 
     # Pesquisa de satisfação/avaliação pós-atendimento: ignorar sempre.
@@ -5148,6 +5158,16 @@ _MOTIVOS_EM_PORTUGUES = {
                               "e ele não respondeu a tempo",
     # --- a seguradora pediu gente / outro caminho ----------------------
     "handoff_trigger": "a própria seguradora pediu para falar com uma pessoa",
+    # 🔴 SPEC-121 D11 (Founder, 29/09/2026) — não é travamento: é a regra.
+    "consultora_da_seguradora": "a seguradora passou a conversa para uma "
+                                "consultora dela (uma pessoa, não o robô) — "
+                                "continue você a conversa com ela; o que já foi "
+                                "coletado com o segurado está abaixo",
+    # 🔴 SPEC-121 F4 — a recusa é da seguradora; a mensagem ao segurado é de gente.
+    "recusa_de_cobertura": "a seguradora disse que a apólice NÃO cobre este "
+                           "serviço — conte ao segurado com honestidade, com a "
+                           "frase dela (no histórico abaixo), e o caminho "
+                           "particular se ela ofereceu um prestador",
     "encaminhado": "a seguradora não abre este chamado por aqui e mandou seguir "
                    "por outro caminho",
     "encaminhamento_sem_link": "a seguradora mandou seguir por outro caminho e "
@@ -5706,6 +5726,11 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     "sem_chute": DIRETO_AO_HUMANO,
     # 🔴 A URA MANDOU chamar um humano. Retomar é desobedecer a seguradora.
     "handoff_trigger": DIRETO_AO_HUMANO,
+    # 🔴 SPEC-121 D11 — uma PESSOA da seguradora assumiu; retomar o robô seria
+    #    responder a ela como se fosse a URA.
+    "consultora_da_seguradora": DIRETO_AO_HUMANO,
+    # 🔴 SPEC-121 F4 — a seguradora disse NÃO; retomar insistiria na recusa.
+    "recusa_de_cobertura": DIRETO_AO_HUMANO,
     # O cérebro adaptativo errou duas vezes seguidas. A terceira não é melhor.
     "human_phase_guard": DIRETO_AO_HUMANO,
     # A escada de recuperação do Vigia já esgotou as tentativas dela.

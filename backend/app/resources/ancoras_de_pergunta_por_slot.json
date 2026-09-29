@@ -330,9 +330,9 @@
     ],
     "local_situacao": [
       {
-        "padrao": "como (?:e|é) o lugar onde (?:ele |voc(?:e|ê) )?(?:esta|está)",
+        "padrao": "como (?:e|é) o lugar onde (?:ele |voc(?:e|ê) )?(?:esta|está)|o lugar (?:e|é) seguro, escuro ou deserto",
         "origem": "como_perguntar",
-        "fonte_texto": "como é o lugar onde ele está — seguro, escuro, ou com pouca gente passando"
+        "fonte_texto": "se o lugar é seguro, escuro ou deserto"
       }
     ],
     "local_uf": "sem_ancora",

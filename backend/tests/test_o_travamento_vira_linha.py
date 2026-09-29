@@ -171,6 +171,14 @@ FAMILIAS_DE_TRAVAMENTO = {
     # na frente e o caso inteiro no contexto, a tentativa seguinte nao tem
     # informacao NOVA — seria o loop_guard com outro nome.
     "conducao_esgotada",
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 AS DUAS DA SPEC-121 — veredito DIRETO AO HUMANO, as duas:
+    # `consultora_da_seguradora` (D11) — uma PESSOA da Porto assumiu a conversa;
+    #    retomar o robô seria responder a ela como se fosse a URA.
+    # `recusa_de_cobertura` (F4) — a Allianz disse que a apólice NÃO cobre;
+    #    retomar insistiria na recusa, e contar ao segurado é de gente.
+    "consultora_da_seguradora",
+    "recusa_de_cobertura",
 }
 
 _RE_REASON = re.compile(r'session\["reason"\]\s*=\s*(.+)')

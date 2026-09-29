@@ -10750,6 +10750,122 @@ def _data_da_lista(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str
     return datas[0]
 
 
+_RX_PLACA_NA_LINHA = re.compile(r"\bplaca\s*:?\s*([A-Z0-9#*?•●\-]{5,9})", re.IGNORECASE)
+
+
+def _veiculo_da_lista(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """🔴 SPEC-121 F2 — *"Por favor, selecione o veículo."* da Porto: o RÓTULO
+    da linha cujo veículo tem a placa MASCARADA que bate com a placa do caso.
+
+    📊 Os dois formatos do acervo (a descrição é a linha DEBAIXO do rótulo):
+        `Veículo 1` / `VOLKSWAGEN - Ano 2020 - Placa R####81`   (910b6295, 9e043112, ba772444)
+        `KIA` / `placa R####81 | ano 2021`                      (d9fac9ad, e9e8c2a2)
+    A Porto rejeita número ("Selecione o botão abaixo"): a resposta é o rótulo.
+
+    ⛔ Nunca chuta: placa que não bate (ou máscara incomparável), DUAS opções que
+    batem, ou rótulo que não parece opção → `None`, e o passo `sem_chute` chama
+    uma pessoa. ⚠️ `pick_option_by_plate` NÃO serve aqui: na linha
+    `Ano 2020 - Placa R####81` a regex dele lê `2020` como o NÚMERO DA OPÇÃO."""
+    placa = re.sub(r"[^A-Z0-9]", "", str(valor or "").upper())
+    if not placa:
+        return None
+    linhas = [" ".join(l.split()) for l in str(tela or "").splitlines()]
+    achados: List[str] = []
+    for i, linha in enumerate(linhas):
+        m = _RX_PLACA_NA_LINHA.search(linha)
+        if not m or bate_com_mascara(m.group(1), placa) is not True:
+            continue
+        rotulo = next((linhas[j] for j in range(i - 1, -1, -1) if linhas[j]), "")
+        if (not rotulo or _RX_PLACA_NA_LINHA.search(rotulo) or len(rotulo) > 40
+                or rotulo.endswith((".", "?", ":")) or rotulo_e_de_navegacao(rotulo)):
+            return None
+        achados.append(rotulo)
+    return achados[0] if len(achados) == 1 else None
+
+
+# 🔴 SPEC-121 F4 — O APARELHO QUE O SEGURADO DISSE, NA TECLA DA LISTA DA TELA.
+#    📊 allianz 7ac3c101/8ad1d251/b2bf40e7 (19/08): "Selecione o eletrodoméstico
+#    que precisa de conserto ? *1 -* Geladeira … *14 -* Máquina de Lavar roupas
+#    *15 -* Outros", e antes dela "Qual eletrodoméstico precisa de conserto ?
+#    *1 -* Linha Branca (Microondas; Fogão; …) *2 -* Ar Condicionado *3 -*
+#    Geladeira, Freezer e outros". O genérico apertava "1" e "15" FIXOS: quem
+#    pedia conserto de fogão abria chamado de "Outros".
+#    ⚠️ A ORDEM importa: "lavadora de louças" antes de "lavar"; "secadora" antes
+#    de "secar roupas" não existe na lista, só na categoria.
+_APARELHOS = (
+    ("geladeira", r"geladeira|refrigerador|frost ?free|side ?by ?side"),
+    ("freezer", r"freezer"),
+    ("frigobar", r"frigobar"),
+    ("adega", r"adega"),
+    ("micro-ondas", r"micro ?-?ondas"),
+    ("cooktop", r"cook ?top"),
+    ("fogao", r"fogao"),
+    ("forno", r"\bforno\b"),
+    ("filtro", r"filtro|purificador"),
+    ("lava-loucas", r"lava ?-?loucas|lavadora de loucas"),
+    ("coifa", r"coifa|depurador"),
+    ("exaustor", r"exaustor"),
+    ("secadora", r"secadora"),
+    ("maquina de lavar", r"maquina de lavar|lavadora de roupas?|lava e seca|tanquinho"),
+    ("ar condicionado", r"ar ?-?condicionado|split"),
+)
+#: O que procurar no RÓTULO da tela para cada aparelho — a categoria escreve
+#: "Microondas; Fogão; … Máquina de Lavar e secar roupas", a lista "Micro-ondas".
+_NO_ROTULO = {
+    "micro-ondas": r"micro ?-?ondas", "lava-loucas": r"lava(?:dora de)? ?-?loucas",
+    "maquina de lavar": r"maquina de lavar", "filtro": r"filtro|purificador",
+    "coifa": r"coifa", "ar condicionado": r"ar ?-?condicionado", "cooktop": r"cook ?top",
+    "forno": r"\bforno\b", "secadora": r"secadora|secar roupas",
+}
+
+
+def aparelho_do_caso(valor: Any) -> Optional[str]:
+    """O aparelho canônico do que o segurado disse, ou None (não reconhecido)."""
+    t = _texto_normal(valor)
+    for nome, rx in _APARELHOS:
+        if re.search(rx, t):
+            return nome
+    return None
+
+
+def _aparelho_na_tecla(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """A TECLA desta tela (categoria OU lista) para o aparelho do caso.
+
+    Um rótulo só casa → a tecla dele. Nenhum → a tecla de "outros" da própria
+    tela ("*3 -* Geladeira, Freezer e outros" · "*15 -* Outros") — a única honesta
+    para um aparelho que a lista não nomeia. Dois → None (`sem_chute`: uma pessoa).
+    ⛔ Sem aparelho no caso → None: o portão já o cobrou antes de acionar."""
+    if not str(valor or "").strip():
+        return None
+    opcoes = [(k, _texto_normal(r)) for k, r in opcoes_da_tela(tela or "") if k]
+    if not opcoes:
+        return None
+    nome = aparelho_do_caso(valor)
+    if nome:
+        rx = _NO_ROTULO.get(nome, re.escape(nome))
+        casadas = [k for k, r in opcoes if re.search(rx, r)]
+        if len(casadas) == 1:
+            return casadas[0]
+        if len(casadas) > 1:
+            return None
+    outros = [k for k, r in opcoes if re.search(r"\boutros\b", r)]
+    return outros[0] if len(outros) == 1 else None
+
+
+def _subsolo_na_tecla(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """D7 (SPEC-121) — o `subsolo_ou_acima_da_rua` do CASO, na tecla que a tela
+    numera. 📊 zurich: "O veículo está em garagem subsolo ou elevada? *1* - Sim
+    *2* - Não" — a palavra "Sim" num menu numerado não é resposta."""
+    palavra = _subsolo_ou_acima_da_rua(valor, slots, tela)
+    if not palavra:
+        return None
+    alvo = _texto_normal(palavra)
+    teclas = [k for k, r in opcoes_da_tela(tela or "") if k and _texto_normal(r).strip() == alvo]
+    if len(teclas) == 1:
+        return teclas[0]
+    return palavra if not any(k for k, _r in opcoes_da_tela(tela or "")) else None
+
+
 _FORMATOS_DA_RESPOSTA = {
     "sim_nao": _sim_nao,
     "identificador_do_caso": _identificador_do_caso,
@@ -10762,10 +10878,20 @@ _FORMATOS_DA_RESPOSTA = {
     "o_proprio_segurado": _o_proprio_segurado,
     "amperes_da_bateria": _amperes_da_bateria,
     "data_da_lista": _data_da_lista,
+    "veiculo_da_lista": _veiculo_da_lista,
+    "aparelho_na_tecla": _aparelho_na_tecla,
+    "subsolo_na_tecla": _subsolo_na_tecla,
 }
 #: Os formatos que precisam da TELA, e não só do caso — `match_ura_step` os
 #: devolve com `_tela` (numa CÓPIA do passo).
-_FORMATOS_QUE_LEEM_A_TELA = frozenset({"amperes_da_bateria", "data_da_lista"})
+_FORMATOS_QUE_LEEM_A_TELA = frozenset({"amperes_da_bateria", "data_da_lista",
+                                       "veiculo_da_lista", "aparelho_na_tecla",
+                                       "subsolo_na_tecla"})
+#: 🔴 SPEC-121 — quando o formato NÃO resolve, o que falta não é o slot do
+#: `reply`: é a ESCOLHA. Sem isto o cartão diria "falta: placa" num caso que TEM
+#: placa (a placa só não bate com nenhum veículo da lista).
+_O_QUE_FALTA_QUANDO_O_FORMATO_NAO_RESOLVE = {"veiculo_da_lista": "veiculo_opcao",
+                                             "aparelho_na_tecla": "eletrodomestico_opcao"}
 
 
 def _format_phone_br(value: str) -> str:
@@ -10807,8 +10933,10 @@ def render_reply(step: Dict[str, Any], slots: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:  # noqa: BLE001 — formatador nunca derruba o acionamento
                 pronto = None
         if not pronto:
-            faltou = (list(step.get("requires") or [])
-                      or _RX_SLOT_DO_REPLY.findall(template) or [f"formato:{formato}"])
+            faltou = ([_O_QUE_FALTA_QUANDO_O_FORMATO_NAO_RESOLVE[formato]]
+                      if formato in _O_QUE_FALTA_QUANDO_O_FORMATO_NAO_RESOLVE
+                      else (list(step.get("requires") or [])
+                            or _RX_SLOT_DO_REPLY.findall(template) or [f"formato:{formato}"]))
             return {"ok": False, "missing": faltou, "reply": None}
         reply = pronto
     return {"ok": True, "missing": [], "reply": reply}
@@ -11277,12 +11405,60 @@ def montar_resposta_de_flow(flow_schema: Dict[str, Any], slots: Dict[str, Any],
     }
 
 
+def _gatilho_so_nas_opcoes(pattern: str, texto: str, irma: Optional[str] = None) -> bool:
+    """🔴 SPEC-121 F2 — o gatilho casou SÓ dentro das OPÇÕES de um menu?
+
+    📊 Porto auto, 29/09/2026: *"Você quer falar sobre qual assunto?"* lista
+    `Sinistro` entre `Assistência` e `Assuntos financeiros`, e o `sinistro` solto
+    passava o caso a uma pessoa ANTES do serviço, em QUALQUER serviço (910b6295,
+    9e043112, ba772444, 4830574a). Opção não é relato: quem escolhe é o corredor.
+
+    Menu = um ENUNCIADO (até a 1ª linha que termina em `?` ou `:`) seguido de 2+
+    linhas curtas de opção. Se o gatilho aparece no enunciado ("vou te mostrar as
+    opções para falar sobre SINISTRO…", "o guincho seria por pane ou sinistro ?"),
+    é ASSUNTO — e dispara como sempre. ⚠️ Na dúvida (sem enunciado, opção longa,
+    opção que pergunta), devolve False: o gatilho continua valendo.
+
+    🔴 `irma`: a opção VIZINHA que prova que o menu é do caminho do corredor.
+    📊 Medido no acervo porto: sem ela, menus do FLUXO DE SINISTRO ("O que você
+    gostaria de fazer? Abertura de sinistro / Batida ou acidente…", "Acompanhar
+    sinistro / Falar com a Porto", "Lucros cessantes") deixavam de ir a uma
+    pessoa. Com ela, só o menu que oferece a ASSISTÊNCIA ao lado do sinistro
+    é tratado como escolha do corredor."""
+    linhas = [l.strip() for l in str(texto or "").split("\n")]
+    corte = next((i for i, l in enumerate(linhas) if l.endswith(("?", ":"))), None)
+    if corte is None:
+        return False
+    opcoes = [l for l in linhas[corte + 1:] if l]
+    if len(opcoes) < 2 or any(len(l) > 80 or l.endswith("?") for l in opcoes):
+        return False
+    if any(re.search(pattern, l, re.IGNORECASE) for l in linhas[:corte + 1]):
+        return False
+    if irma and not any(re.search(irma, l, re.IGNORECASE) for l in opcoes):
+        return False
+    return any(re.search(pattern, l, re.IGNORECASE) for l in opcoes)
+
+
 def detect_handoff_trigger(playbook: Dict[str, Any], insurer_message: str) -> Optional[str]:
     text = _norm(insurer_message)
+    # 🔴 SPEC-121 F2 — gatilhos que o playbook declara como "não vale quando é só
+    #    uma OPÇÃO de menu" (hoje: `sinistro` na Porto auto). Os demais, intactos.
+    #    `{gatilho: regex da opção IRMÃ que o menu precisa oferecer}`.
+    fora_de_menu = dict(playbook.get("handoff_triggers_fora_de_menu") or {})
     for pattern in playbook.get("handoff_triggers") or []:
         if re.search(pattern, text, re.IGNORECASE):
+            if pattern in fora_de_menu and _gatilho_so_nas_opcoes(
+                    pattern, text, fora_de_menu[pattern]):
+                continue
             return pattern
     return None
+
+
+def motivo_do_gatilho(playbook: Dict[str, Any], gatilho: str) -> Optional[str]:
+    """🔴 SPEC-121 F2 · D11 — a FAMÍLIA do motivo quando um gatilho tem motivo
+    próprio (`handoff_trigger_motivos`), senão None (o motor usa `handoff_trigger`).
+    A frase em português mora em `insurer_dispatch_service._MOTIVOS_EM_PORTUGUES`."""
+    return (playbook.get("handoff_trigger_motivos") or {}).get(gatilho)
 
 
 def extract_capture_anchors(playbook: Dict[str, Any], insurer_message: str) -> Dict[str, Any]:
@@ -12097,8 +12273,9 @@ _COMO_PERGUNTAR = {
     "veiculo_nivel_rua": "se o carro está no subsolo, acima do nível da rua "
                          "ou no nível dela — e se há espaço para o guincho "
                          "manobrar",
-    "local_situacao": "como é o lugar onde ele está — seguro, escuro, ou com "
-                      "pouca gente passando",
+    # ⚠️ SPEC-121: encurtada (mesmo sentido) para caber no teto do bloco quando a
+    #    bateria da Yelum passou a cobrá-la.
+    "local_situacao": "se o lugar é seguro, escuro ou deserto",
     "estepe_situacao": "se o estepe está cheio e em condições de uso",
     "ferramentas_no_veiculo": "se macaco e chave de roda estão no carro",
     "equipamentos_troca_opcao": "se tem macaco, chave de roda e estepe",
@@ -13672,3 +13849,253 @@ _PASSO_DOS_AMPERES = {
 for _pb_amp in _PLAYBOOKS.values():
     if str(_pb_amp.get("line_kind") or "") == "auto":
         _pb_amp["ura_steps"] = list(_pb_amp["ura_steps"]) + [dict(_PASSO_DOS_AMPERES)]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F2 · A PORTO AUTO VOLTA A PASSAR DO PRIMEIRO MENU
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 BLOCO 0 (29/09/2026, `observed_events`, motor rodado sobre a tela real): a
+#    Porto pôs menus NOVOS entre o menu raiz e o "De que atendimento você
+#    precisa?". Nenhum passo os casava, e o `sinistro` SOLTO do gatilho — que ali
+#    é só uma OPÇÃO listada — passava o caso a uma pessoa ANTES do serviço:
+#
+#      "Você quer falar sobre qual assunto?"        910b6295 (14/09) · 9e043112 (29/09)
+#      "Sobre o que você deseja falar?"             ba772444 · 479f49cd (Proteção Combinada)
+#      "Escolha sobre o que você quer falar:"       4830574a (cliente de atendimento personalizado)
+#      "O que você precisa sobre *Seguro Auto*?"    4830574a
+#      "Por favor, selecione o veículo."            910b6295 · 9e043112 · ba772444 · d9fac9ad · e9e8c2a2 · 479f49cd
+#
+#    📊 2 das 3 conversas de Porto auto dos últimos 30 dias vieram com o menu novo.
+#    ⚠️ E o simulador as dava como ATENDE SOZINHO: a passagem por gatilho sai do
+#    denominador. Um passo que manda a pessoa por engano é silencioso (§9.5).
+#
+# Os passos entram no FIM da lista: 📊 nenhum passo existente casa estas telas
+# (é por isso que o gatilho vencia — o motor casa o passo ANTES do gatilho).
+_PORTO_AUTO_MENU_NOVO = [
+    {"step": "menu_assunto_porto_auto",
+     "anchor": (r"(?:voc[êe] quer falar sobre qual assunto|sobre o que voc[êe] deseja falar)\?"
+                r"[\s\S]{0,80}assist[êe]ncia"),
+     "reply": "Assistência", "classe": "decide",
+     "constante_justificada": (
+         "`Assistência` entre `Assistência`, `Consultar apólice`, `Sinistro` e "
+         "`Assuntos financeiros` (📊 910b6295, 9e043112; e na variante 'Sobre o que "
+         "você deseja falar?', ba772444): o corredor existe para ABRIR assistência — "
+         "e o humano respondeu `Assistência` nas três. 🔴 `Sinistro` aqui seria "
+         "ABRIR SINISTRO pelo segurado: a regra do Founder é sinistro → pessoa, e "
+         "quem pede sinistro nunca chega a este corredor (o agente passa antes)."),
+     "notes": "📊 3 sessões (14/09, 29/09, 16/03). Lista sem número: sai o RÓTULO."},
+    {"step": "menu_seguro_auto_porto",
+     "anchor": r"o que voc[êe] precisa sobre \*?seguro auto\*?\?",
+     "reply": "Assistência", "classe": "decide",
+     "constante_justificada": (
+         "`Assistência` entre `Assistência` e `Sinistro` (📊 4830574a — o humano "
+         "respondeu `Assistência`). Mesma razão do menu de assunto: o corredor ABRE "
+         "assistência, e sinistro é trabalho de uma pessoa, decidido antes do corredor."),
+     "notes": "📊 1 sessão (4830574a) + 1 evento sem sessão."},
+    {"step": "menu_personalizado_porto",
+     "anchor": r"escolha sobre o que voc[êe] quer falar[\s\S]{0,80}seguro auto",
+     "reply": "Seguro Auto", "classe": "decide",
+     "constante_justificada": (
+         "`Seguro Auto` entre `Cartão de Crédito`, `Seguro Auto`, `Seguro Residência`, "
+         "`Seguro Saúde`…: o ramo é a IDENTIDADE desta rota (porto/AUTO). 📊 4830574a — "
+         "o humano respondeu `Seguro Auto`. É o menu raiz do cliente de 'atendimento "
+         "personalizado'."),
+     "notes": "📊 1 sessão (4830574a) + 1 evento sem sessão."},
+    # 🔴 O VEÍCULO SAI DA PLACA DO CASO — e nunca da POSIÇÃO. `sem_chute`: sem
+    #    placa que bata com UMA linha da lista, uma pessoa escolhe (nota 85 ×
+    #    cérebro escolhendo 60 × primeira posição 45 — o carro errado é recusado
+    #    no local e consome a utilização). Perguntar ao segurado no meio da URA é
+    #    da SPEC-122.
+    {"step": "selecionar_veiculo_porto",
+     "anchor": r"por favor,? selecione o ve[íi]culo[.:]",
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "format": "veiculo_da_lista", "sem_chute": True, "classe": "decide",
+     "notes": "📊 6 sessões, dois formatos (`Veículo 1` / `MARCA - Ano - Placa R####81` "
+              "e `MARCA` / `placa R####81 | ano`). O humano respondeu o RÓTULO."},
+]
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _PORTO_AUTO_MENU_NOVO])
+
+# 🔴 `sinistro` continua gatilho — mas não quando é só uma OPÇÃO do menu
+#    (`_gatilho_so_nas_opcoes`). 📊 Precedente: a Tokio já tirou o `sinistro` solto
+#    (`abrir sinistro|comunicar sinistro`). Aqui o solto FICA para o que é ASSUNTO
+#    ("o guincho seria por pane ou sinistro ?", "digite o número do sinistro",
+#    "este sinistro está em andamento") — medido no acervo, e guardado por
+#    `test_spec121_porto_menu_novo.py` [4].
+#    🔴 A IRMÃ: o menu só é "escolha do corredor" se oferece a ASSISTÊNCIA (ou o
+#    ramo/serviço que leva a ela) ao lado — `_norm` já tirou acento e `*`.
+PORTO_AUTO_WHATSAPP_V1["handoff_triggers_fora_de_menu"] = {
+    r"sinistro": r"^(?:assistencia|seguro auto|novo servico|servicos? para veiculo)\b"}
+
+# 🔴 D11 (Founder, 29/09/2026) — A CONSULTORA DA PORTO ASSUME → UMA PESSOA DA CORRETORA.
+#    📊 4830574a: *"Sou consultora de relacionamento e darei continuidade ao seu
+#    atendimento"* — daí em diante é uma PESSOA da Porto conversando, e o corredor
+#    não conversa com ela (isso fica para o futuro). ⚠️ NÃO confundir com o aviso
+#    de f4838bb3 — *"seu consultor de relacionamento atende de segunda à sexta…
+#    Mas seguiremos com seu atendimento"* —, que seguiu no robô até o protocolo:
+#    a âncora exige "SOU consultor(a)".
+_GATILHO_CONSULTORA_PORTO = r"\bsou (?:a |o )?consultora? de relacionamento"
+PORTO_AUTO_WHATSAPP_V1["handoff_triggers"] = (
+    list(PORTO_AUTO_WHATSAPP_V1["handoff_triggers"]) + [_GATILHO_CONSULTORA_PORTO])
+PORTO_AUTO_WHATSAPP_V1.setdefault("handoff_trigger_motivos", {})[
+    _GATILHO_CONSULTORA_PORTO] = "consultora_da_seguradora"
+
+# 🔴 D8 — a tela do PREÇO da bateria nova é aviso: não se responde nada a ela.
+#    📊 f4838bb3, a única sessão, o acervo classifica como `bateria` (o segurado
+#    entrou pelo submenu): escopada só em `bateria_nova`, ela ficava ÓRFÃ na rota
+#    por onde chega — o mesmo defeito já consertado em `bateria_nova_visita`.
+for _p121 in PORTO_AUTO_WHATSAPP_V1["ura_steps"]:
+    if _p121.get("step") == "bateria_nova_preco":
+        _p121["only_subservices"] = ["bateria_nova", "bateria"]
+
+# 🔴 PORTO · BATERIA — O QUE A CONSULTORA PEDIA, PERGUNTADO ANTES DE ACIONAR.
+#    📊 4830574a (a única conversa em que uma pessoa da Porto conduziu a bateria):
+#    placa e modelo · AMPERES · se o prestador pode BUSCAR a bateria no Centro
+#    Automotivo · endereço · nome e celular de quem está no local · imediato ou
+#    agendado · "esse cliente é do Sul e está em São Paulo?". Placa, endereço, quem
+#    está no local, telefone e `quando` JÁ são coletados; faltavam os três abaixo.
+#    Com D11 a consultora vai a uma pessoa da corretora — e é ESTE dossiê que a
+#    deixa responder em segundos, sem voltar ao segurado.
+#    🔴 D8 mora na pergunta da busca: o aviso do preço é ligado ao SERVIÇO (na
+#    coleta), nunca à tela "Posso continuar o agendamento?", que aparece em 5
+#    sessões de serviços diferentes (BLOCO 0 §8e).
+#    ⚠️ O MODELO do carro (`veiculo_descricao`) NÃO entra: ele vem da apólice
+#    (`insurer_dispatch_tool`, o veículo do caso) e não tem campo no contrato da
+#    ferramenta — cobrá-lo travaria o portão sem o atendente ter onde escrever.
+#    ⚠️ AMPERES e CIDADE ficam como PERGUNTA do corredor, não do portão: o teto de
+#    7.000 caracteres do bloco do agente (`test_a_atendente_sabe_conduzir_um_
+#    acionamento`) não comporta os três, e os amperes já têm resposta honesta sem o
+#    segurado (D13: 60 Ah). Fica a que carrega o AVISO do preço (D8) — ver pendência.
+_PORTO_BATERIA_ANTES = ["bateria_busca_centro_automotivo"]
+for _sv121 in ("bateria_nova",):  # ⚠️ só a rota da bateria NOVA: teto do bloco (pendência)
+    _sub121 = (PORTO_AUTO_WHATSAPP_V1.get("subservices") or {}).get(_sv121)
+    if _sub121 is not None:
+        _sub121["required_slots"] = list(_sub121.get("required_slots") or []) + [
+            s for s in _PORTO_BATERIA_ANTES if s not in (_sub121.get("required_slots") or [])]
+_COMO_PERGUNTAR.update({
+    "bateria_busca_centro_automotivo": "🔴 avise: a bateria é paga por ele; busca no Centro Automotivo?",
+})
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F4 · ELETRODOMÉSTICOS, CHAVEIRO E OS AJUSTES PEQUENOS
+# ══════════════════════════════════════════════════════════════════════════
+
+# ---- (a) ALLIANZ · ELETRODOMÉSTICOS: o APARELHO do segurado, não "15 - Outros" --
+#    As duas telas de aparelho ganham, SÓ em `eletrodomesticos`, passos que leem a
+#    tecla da tela a partir do aparelho do caso (`_aparelho_na_tecla`). Os passos
+#    de sempre continuam para `maquina_de_lavar` e `ar_condicionado`, cuja tecla É
+#    a identidade da rota. ⚠️ Os novos entram NA POSIÇÃO dos antigos (a ordem da
+#    lista decide quem casa primeiro — `match_ura_step`).
+#    📊 Geladeira/freezer → categoria "3 - Geladeira, Freezer e outros", e a URA
+#    transfere a um especialista (3 de 3 sessões): é a tecla CERTA, e a fase humana
+#    que vem depois é da seguradora, não um defeito do corredor.
+_ALLIANZ_ELETRO_APARELHO = [
+    {"step": "categoria_do_aparelho",
+     "only_subservices": ["eletrodomesticos"],
+     "anchor": r"qual eletrodom[ée]stico precisa de conserto",
+     "reply": "{eletrodomestico_aparelho}", "requires": ["eletrodomestico_aparelho"],
+     "format": "aparelho_na_tecla", "sem_chute": True, "classe": "decide",
+     "notes": "📊 17 telas (7ac3c101…). 1-Linha Branca 2-Ar 3-Geladeira, Freezer e outros."},
+    {"step": "aparelho_da_lista",
+     "only_subservices": ["eletrodomesticos"],
+     "anchor": r"selecione o eletrodom[ée]stico que precisa de conserto",
+     "reply": "{eletrodomestico_aparelho}", "requires": ["eletrodomestico_aparelho"],
+     "format": "aparelho_na_tecla", "sem_chute": True, "classe": "decide",
+     "notes": "📊 5 telas / 3 sessões. 1-Geladeira … 14-Máquina de Lavar roupas 15-Outros."},
+]
+_ura_al = ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"]
+for _p_al in _ura_al:
+    if _p_al.get("step") in ("menu_categoria_eletrodomestico", "menu_aparelho"):
+        _p_al["only_subservices"] = [x for x in _p_al.get("only_subservices") or []
+                                     if x != "eletrodomesticos"]
+_i_al = next(i for i, p in enumerate(_ura_al) if p.get("step") == "menu_categoria_eletrodomestico")
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
+    _ura_al[:_i_al] + [dict(p) for p in _ALLIANZ_ELETRO_APARELHO] + _ura_al[_i_al:])
+_sub_al_el = ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["eletrodomesticos"]
+_sub_al_el.pop("eletrodomestico_categoria_opcao", None)
+_sub_al_el.pop("eletrodomestico_opcao", None)
+#    ⚠️ Só o APARELHO entra no portão (teto de 7.000 do bloco do agente); a IDADE
+#    continua com o passo `idade_de_fabricacao` como antes. As perguntas das telas: a IDADE ("Qual a
+#    idade de fabricação do aparelho? 1-Até 10 anos 2-Mais de 10 anos" — mais de
+#    10 é recusa, e a visita conta); FORA da garantia ("O serviço é destinado a
+#    aparelhos … que estejam fora da garantia do fabricante" — essa já está em
+#    `regras_para_o_cliente`, junto com quem paga as PEÇAS; o teto do bloco do
+#    agente não comporta mais um campo). Marca, modelo e defeito já eram cobrados.
+_sub_al_el["required_slots"] = list(_sub_al_el.get("required_slots") or []) + [
+    s for s in ("eletrodomestico_aparelho",)
+    if s not in (_sub_al_el.get("required_slots") or [])]
+_COMO_PERGUNTAR.update({
+    "eletrodomestico_aparelho": "qual é o aparelho",
+})
+
+# ---- (b) HDI · CHAVEIRO: a bolha de COBERTURA não é relato de sinistro ---------
+#    📊 hdi 0a7c24ef (19/11/2025): "Garante os custos com mão de obra, quando for
+#    impossível o acesso ao interior da residência segurada … ou ainda em
+#    decorrência de SINISTRO devidamente coberto pela apólice (arrombamento, roubo
+#    ou furto)…" — é a DESCRIÇÃO do serviço, e o `sinistro` do gatilho passava o
+#    caso a uma pessoa. Aviso: não se responde nada. A pergunta que vem depois
+#    ("Porta interna / Porta principal") já é do segurado (`chaveiro_porta_opcao`).
+HDI_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = list(HDI_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "descricao_da_cobertura_chaveiro",
+     "anchor": (r"garante os custos com m[ãa]o de obra,? quando for imposs[íi]vel o "
+                r"acesso ao interior da resid[êe]ncia"),
+     "reply": "", "noop": True,
+     "notes": "📊 1 sessão (0a7c24ef). Descrição da cobertura — a palavra sinistro "
+              "ali é o que a apólice COBRE, não um relato."}]
+
+# ---- (c) ALLIANZ · RECUSA DE COBERTURA vira gatilho, com motivo próprio -------
+#    📊 BLOCO 0 §8c: 9 frases reais de recusa, e 8 não disparavam nada — o
+#    corredor seguia (ou o cérebro respondia) depois de a seguradora dizer NÃO.
+#    Valem no corredor inteiro: várias são do especialista humano da Allianz, e
+#    o que muda para o segurado é o mesmo — a seguradora recusou, e uma pessoa da
+#    corretora conta isso com honestidade (e o caminho particular, se ela ofereceu).
+#      "Sua apólice não contempla o serviço desejado." (db469d05, d543fc60, +5 sessões)
+#      "Infelizmente, não cobrimos conserto de eletrodomésticos no seu plano ESSENCIAL" (21610390)
+#      "Cláusula de Assistência Não Contratada" (eb7c521e)
+#      "Não cobrimos esse serviço dentro da sua apólice infelizmente." (90951801)
+#      "A apólice não contempla desentupimento de chuveiro" (2540f42f)
+#      "Sua apólice não contempla o serviço de limpeza de exaustor." (06fa6ea3)
+#      "Sem cobertura, infelizmente." (382cbdb7 — já disparava; ganha o motivo)
+_RECUSA_ALLIANZ = [
+    r"ap[óo]lice n[ãa]o contempla",
+    r"n[ãa]o cobrimos (?:esse|este|o|os|a|conserto)",
+    r"cl[áa]usula de assist[êe]ncia n[ãa]o contratada",
+]
+ALLIANZ_RESIDENCIAL_WHATSAPP_V1["handoff_triggers"] = (
+    list(ALLIANZ_RESIDENCIAL_WHATSAPP_V1["handoff_triggers"]) + list(_RECUSA_ALLIANZ))
+for _g_rec in _RECUSA_ALLIANZ + [r"sem cobertura", r"n[ãa]o (?:tem|possui) cobertura"]:
+    ALLIANZ_RESIDENCIAL_WHATSAPP_V1.setdefault("handoff_trigger_motivos", {})[_g_rec] = (
+        "recusa_de_cobertura")
+
+# ---- (d) YELUM · BATERIA: o formulário nativo pergunta o LOCAL ----------------
+#    📊 6 sessões (159ccc43, 21243a23, 8a6040a7, 8ac461dc, 927d8cea…): "Para
+#    continuar, precisamos entender onde o veículo está parado" — é o formulário
+#    `rb_InformacoesLocal` (`local_situacao`), e a bateria era a única rota da
+#    Yelum que passa por ele sem cobrar o dado antes.
+_sub_yl_bt = (YELUM_AUTO_WHATSAPP_V1.get("subservices") or {}).get("bateria")
+if _sub_yl_bt is not None and "local_situacao" not in (_sub_yl_bt.get("required_slots") or []):
+    _sub_yl_bt["required_slots"] = list(_sub_yl_bt.get("required_slots") or []) + ["local_situacao"]
+
+# ---- (e) D7 · BRADESCO e ZURICH PERGUNTAM A GARAGEM (como a D2 da SPEC-120) ----
+#    📊 bradesco (5 telas): "Certo, então vamos enviar um reboque. Me diz: o veículo
+#    está em garagem subsolo? Botão 1: Sim / Botão 2: Não" — respondia "Não" FIXO.
+#    📊 zurich (2 telas): "O veículo está em garagem subsolo ou elevada? *1* - Sim
+#    *2* - Não" — respondia "2" FIXO. Garagem subsolo pede OUTRO guincho; "Não"
+#    chutado manda o reboque comum a um carro que ele não alcança.
+#    ⚠️ AZUL: 📊 0 telas com "garagem"/"subsolo" no acervo da azul (events,
+#    29/09) — não se ensina ao corredor uma tela que ele nunca viu.
+for _pb_d7, _passo_d7, _fmt_d7 in ((BRADESCO_AUTO_WHATSAPP_V1, "garagem_subsolo", "subsolo_ou_acima_da_rua"),
+                                   (ZURICH_AUTO_WHATSAPP_V1, "garagem", "subsolo_na_tecla")):
+    for _p_d7 in _pb_d7["ura_steps"]:
+        if _p_d7.get("step") == _passo_d7:
+            _p_d7.update({"reply": "{veiculo_nivel_rua}", "requires": ["veiculo_nivel_rua"],
+                          "format": _fmt_d7, "classe": "decide", "fallback_adaptive": True,
+                          "notes": "🔴 D7 (Founder, 29/09/2026): do CASO — Subsolo/Acima = "
+                                   "Sim; nível da rua ou fora de garagem = Não."})
+    _sub_d7 = (_pb_d7.get("subservices") or {}).get("guincho")
+    if _sub_d7 is not None:
+        _sub_d7["required_slots"] = list(_sub_d7.get("required_slots") or []) + [
+            s for s in ("veiculo_em_garagem", "veiculo_nivel_rua")
+            if s not in (_sub_d7.get("required_slots") or [])]

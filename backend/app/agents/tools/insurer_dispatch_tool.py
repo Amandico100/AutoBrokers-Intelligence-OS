@@ -577,7 +577,7 @@ class InsurerDispatchInput(BaseModel):
     #    `model_validate` DESCARTA o extra, e o modelo só vê o que o schema
     #    anuncia.
     veiculo_em_garagem: Optional[str] = Field(default=None, description=(
-        "[auto guincho HDI/Yelum] O carro está numa garagem/estacionamento, "
+        "[auto guincho HDI/Yelum/Bradesco/Zurich] O carro está numa garagem/estacionamento, "
         "ou parado na rua? 🔴 PERGUNTE: responder 'não' sem saber faz a "
         "seguradora PULAR a pergunta que escolhe o tipo de guincho."))
     veiculo_nivel_rua: Optional[str] = Field(default=None, description=(
@@ -586,11 +586,24 @@ class InsurerDispatchInput(BaseModel):
         #    (`Nível da rua - com restrição de acesso`) matava o casamento por
         #    substring. Um modelo obediente escrevia o que lhe foi ensinado e
         #    travava o acionamento. Agora são os títulos EXATOS da seguradora.
-        "[auto guincho HDI/Yelum] Só quando está em garagem. Use uma destas "
+        "[auto guincho HDI/Yelum/Bradesco/Zurich] Só quando está em garagem. Use uma destas "
         "quatro, exatamente: 'Subsolo' | 'Acima do nível da rua' | 'Nível da "
         "rua - com restrição de acesso' | 'Nível da rua - com acesso livre'. "
         "🔴 Esta resposta escolhe o EQUIPAMENTO (plataforma, asa-delta, "
         "munck). Não deduza de 'rampa' — ela cabe em duas opções."))
+    # 🔴 SPEC-121 F2 — o que a consultora da Porto pedia, perguntado ANTES
+    #    (📊 porto 4830574a). Sem campo aqui o slot é inalcançável
+    #    (`test_o_contrato_alcanca_o_portao`).
+    # 🔴 SPEC-121 F4 — Allianz eletrodomésticos: o APARELHO vira a tecla da lista.
+    eletrodomestico_aparelho: Optional[str] = Field(default=None, description=(
+        "[residencial eletrodomésticos Allianz] Qual é o aparelho, com as palavras "
+        "do segurado: 'geladeira', 'fogão', 'micro-ondas', 'lava-louças'… A tecla "
+        "da seguradora sai daqui — nunca escreva número."))
+    bateria_busca_centro_automotivo: Optional[str] = Field(default=None, description=(
+        "[auto bateria Porto] Bateria NOVA/TROCA: AVISE antes que a bateria é "
+        "paga pelo segurado (valor na visita, muda com a marca) e anote se ele "
+        "aceita que o prestador busque a bateria no Centro Automotivo. Só "
+        "recarga: 'recarga'."))
     local_situacao: Optional[str] = Field(default=None, description=(
         "[auto guincho HDI/Yelum] Como é o lugar: 'local seguro' | 'escuro ou "
         "mal iluminado' | 'pouca circulação de pessoas'. 🔴 Decide a "

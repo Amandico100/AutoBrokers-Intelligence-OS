@@ -217,8 +217,12 @@ def test_sao_dezesseis():
     #
     # ⚠️ `playbook_not_found` NÃO entra nesta conta: ele já era contado, à mão.
     #    Hoje é descoberto pelo mesmo padrão do dicionário (ver `_familias_do_fonte`).
-    assert len(familias) == 24, (
-        f"o fonte tem {len(familias)} famílias de travamento, não 24: "
+    # 🔴 E VINTE E QUATRO VIROU VINTE E SEIS em 29/09/2026 (SPEC-121): +2 famílias
+    #    NOVAS, ambas com veredito escrito (`direto_ao_humano`) —
+    #    `consultora_da_seguradora` (D11: a consultora da Porto assumiu) e
+    #    `recusa_de_cobertura` (F4: a Allianz disse que a apólice não cobre).
+    assert len(familias) == 26, (
+        f"o fonte tem {len(familias)} famílias de travamento, não 26: "
         f"{sorted(familias)}")
 
 
@@ -253,6 +257,9 @@ def test_sao_dezesseis():
     # a mesma razão: a conversa está VIVA e falta uma decisão que só gente toma —
     # refazer recolocaria o robô diante da MESMA tela com os MESMOS dados.
     ("tela_que_decide", M.DIRETO_AO_HUMANO),
+    # 🔴 SPEC-121: uma pessoa da seguradora assumiu · a seguradora recusou.
+    ("consultora_da_seguradora", M.DIRETO_AO_HUMANO),
+    ("recusa_de_cobertura", M.DIRETO_AO_HUMANO),
     ("conducao_esgotada", M.DIRETO_AO_HUMANO),
     ("segurado_nao_respondeu", M.DIRETO_AO_HUMANO),
     ("ramo_indeterminado", M.DIRETO_AO_HUMANO),
