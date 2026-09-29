@@ -342,7 +342,7 @@ MODELO      🎯 gerente = Opus 5.5 · 🔧 builder = Opus 5.5 xhigh (max só a 
 TETOS       LEVE · PADRÃO · CRÍTICO — turnos do executor ≤ 80 · 160 · 250 por fatia · contexto ≤ 200 · 250 · 300 k
             (passou → builder novo, §5.2) · agentes por sessão ≤ 50 · relógio ≤ 40 min ·
             75 min · 2h30 (fatia ≤ 1h15) · juiz ≤ 80 turnos e ≤ 250 k
-APLICAÇÃO   env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=2 · CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 (.claude/settings.json) ·
+APLICAÇÃO   env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=4 (D-PROTO-16) · CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 (.claude/settings.json) ·
             hook bloqueia o 51º agente (`.claude/hooks/teto-de-agentes.py`, D-PROTO-11) · status line conferida em CADA gate ·
             o script da §11 fecha a conta
 JUIZ RECEBE o card + o diff + os comandos + a lista de ataques. Nunca a SPEC inteira nem o censo
