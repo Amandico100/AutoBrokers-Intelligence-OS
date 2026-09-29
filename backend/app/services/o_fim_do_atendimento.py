@@ -374,12 +374,6 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
 DESFECHOS_QUE_O_GRUPO_OUVE = (ACIONAMENTO_CONCLUIDO, FECHADO_POR_HUMANO)
 
 
-#: 🔴 SPEC-120 — o evento de onde o resumo das 19h LISTA as assistências do dia.
-#: Gravado SEMPRE que um acionamento termina, mesmo quando o ✅ é calado (uma
-#: atendente na conversa cala o balão, mas não desfaz a assistência aberta).
-EVENTO_ASSISTENCIA_DO_DIA = "acionamento.concluido"
-
-
 async def _contar_a_conclusao(db, company_id: str, conversation_id: str,
                               motivo: str,
                               detalhes: Optional[Dict[str, Any]] = None) -> None:
@@ -413,21 +407,9 @@ async def _contar_a_conclusao(db, company_id: str, conversation_id: str,
     _servico = " · ".join(p for p in (str(detalhes.get("servico") or "").strip(),
                                       str(detalhes.get("seguradora") or "").strip()) if p)
     _protocolo = str(detalhes.get("protocolo") or "").strip()
-    # 🔴 A assistência do dia fica ANOTADA antes do balão — e independente dele.
-    #    ⚠️ Só acionamento: `FECHADO_POR_HUMANO` não é assistência que o agente abriu.
-    if motivo == ACIONAMENTO_CONCLUIDO:
-        try:
-            from app.services.o_grupo_so_o_que_importa import anotar_no_diario
-            await anotar_no_diario(
-                db, company_id, EVENTO_ASSISTENCIA_DO_DIA,
-                "Uma assistência foi aberta pelo agente.",
-                {"conversa_id": str(conversation_id),
-                 "servico": str(detalhes.get("servico") or ""),
-                 "seguradora": str(detalhes.get("seguradora") or ""),
-                 "protocolo": _protocolo})
-        except Exception as erro:  # noqa: BLE001
-            logger.warning("[FIM] assistência não anotada para o resumo (%s)",
-                           type(erro).__name__)
+    # ⚠️ A assistência do dia NÃO é anotada aqui — ela nasce na ABERTURA
+    #    (`dispatch_router._anotar_assistencia_aberta`, fase `monitoring`). Aqui
+    #    é o encerramento, que chega horas depois (conserto G1 do red team).
     texto = modelo_atendimento_concluido(
         segurado=nome or "segurado",
         # 📊 Era `servico=""` — literal, sempre. O ✅ nunca disse o que foi feito.

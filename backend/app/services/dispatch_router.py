@@ -1240,6 +1240,8 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
         # ⛔ **Best-effort, e por fora do `return`:** a marca de fim vale menos
         # que o checkpoint. Se ela falhar, o acionamento continua espelhado.
         await _marcar_fim_do_atendimento(db, company_id, session, fase)
+        # 🔴 SPEC-120 — A ASSISTÊNCIA DO DIA NASCE QUANDO ABRE, NÃO QUANDO FECHA.
+        await _anotar_assistencia_aberta(db, company_id, session, fase)
 
         # 🔴 SPEC-086 BLOCO B — E A ESPERA PASSA A NASCER.
         #
@@ -1673,6 +1675,61 @@ def _env_int_espera() -> int:
     return max(1, n)
 
 
+#: A fase em que o protocolo EXISTE e o serviço está a caminho: é quando a
+#: assistência "abre" na vida do segurado. (`resolvido` só chega horas depois,
+#: quando a mensagem de encerramento sai — `dispatch_followup.py`.)
+FASE_DA_ASSISTENCIA_ABERTA = "monitoring"
+
+
+def _detalhes_do_caso(session: Dict[str, Any]) -> Dict[str, str]:
+    """`{servico, seguradora, protocolo}` da sessão — ⛔ nenhum é PII.
+
+    ⚠️ Imports LOCAIS de propósito: `get_playbook` não está no topo deste
+    módulo, e um NameError seria engolido pelo `try` de quem chama — o
+    atendimento deixaria de ser marcado como encerrado.
+    """
+    from app.services.corridor_playbooks import get_playbook as _get_pb
+    from app.services.insurer_dispatch_service import rotulo_do_servico
+    _pb = _get_pb(str(session.get("playbook_ref") or "")) or {}
+    return {
+        "servico": rotulo_do_servico(str(session.get("subservice") or "")),
+        "seguradora": str(_pb.get("insurer_key") or "").upper(),
+        "protocolo": str((session.get("captured") or {}).get("protocol") or "").strip(),
+    }
+
+
+async def _anotar_assistencia_aberta(db, company_id: str,
+                                     session: Dict[str, Any], fase: str) -> None:
+    """Uma linha `assistencia.aberta` no diário, UMA vez por sessão. ⛔ Nunca levanta.
+
+    🔴 SPEC-120 — conserto do red team (G1). A primeira versão anotava a
+    assistência no ENCERRAMENTO (`resolvido`), e 📊 `resolvido` só existe quando
+    `dispatch_followup.py:341` manda a mensagem de fechamento: follow-up + 2h30.
+    Um guincho agendado para amanhã entrava na lista de AMANHÃ; um aberto às 16h
+    com previsão de 60 min fechava depois das 19h e sumia do resumo daquele dia;
+    uma sessão sem `client_phone` nunca virava `resolvido` e nunca entrava.
+    O Founder pediu *"todas as assistências ABERTAS no dia"* — então ela nasce
+    na fase em que o protocolo existe.
+
+    ⚠️ Só a CONVERSA vai no diário (`payload_redacted` não leva PII, §7): nome
+    e WhatsApp o resumo lê da conversa, filtrada por corretora.
+    """
+    if str(fase or "") != FASE_DA_ASSISTENCIA_ABERTA or session.get("_assistencia_anotada"):
+        return
+    try:
+        from app.services.o_grupo_so_o_que_importa import anotar_no_diario
+        from app.services.os_modelos_do_grupo import EVENTO_ASSISTENCIA_DO_DIA
+
+        carga = dict(_detalhes_do_caso(session))
+        carga["conversa_id"] = str(session.get("mirror_conversation_id") or "")
+        if await anotar_no_diario(db, str(company_id), EVENTO_ASSISTENCIA_DO_DIA,
+                                  "Uma assistência foi aberta pelo agente.", carga):
+            session["_assistencia_anotada"] = True
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[FIM] assistência aberta não anotada para o resumo (%s)",
+                       type(erro).__name__)
+
+
 async def _marcar_fim_do_atendimento(db, company_id: str,
                                      session: Dict[str, Any], fase: str) -> None:
     """A conversa desta sessão terminou? — SPEC-086 BLOCO A.
@@ -1722,18 +1779,7 @@ async def _marcar_fim_do_atendimento(db, company_id: str,
         # segurado, número do protocolo, tipo de serviço, seguradora e
         # WhatsApp"*. Nenhum dos três é PII; o nome e o WhatsApp o resumo lê da
         # própria conversa, filtrada por corretora (§7).
-        from app.services.corridor_playbooks import get_playbook as _get_pb
-        from app.services.insurer_dispatch_service import rotulo_do_servico
-        # ⚠️ Import LOCAL de propósito: `get_playbook` não está no topo deste
-        #    módulo, e um NameError aqui seria engolido pelo `try` desta função —
-        #    o atendimento deixaria de ser marcado como encerrado, que é pior
-        #    que o ✅ sem serviço que este bloco conserta.
-        _pb = _get_pb(str(session.get("playbook_ref") or "")) or {}
-        detalhes = {
-            "servico": rotulo_do_servico(str(session.get("subservice") or "")),
-            "seguradora": str(_pb.get("insurer_key") or "").upper(),
-            "protocolo": str((session.get("captured") or {}).get("protocol") or "").strip(),
-        }
+        detalhes = _detalhes_do_caso(session)
         await marcar_fim(db, company_id=str(company_id), motivo=motivo,
                          conversation_id=conversa, attendance_session_id=episodio,
                          detalhes=detalhes)

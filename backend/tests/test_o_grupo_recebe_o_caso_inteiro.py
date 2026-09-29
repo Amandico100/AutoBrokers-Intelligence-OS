@@ -180,10 +180,9 @@ def test_o_check_leva_servico_seguradora_e_protocolo(monkeypatch):
     texto = enviados[0]["texto"]
     assert "GUINCHO · YELUM" in texto, texto
     assert "protocolo 2026-0928-4471" in texto, texto
-    # e a assistência do dia ficou anotada, com o que a lista das 19h precisa
-    assert (EMPRESA, FIM.EVENTO_ASSISTENCIA_DO_DIA,
-            {"conversa_id": CONVERSA, "servico": "GUINCHO", "seguradora": "YELUM",
-             "protocolo": "2026-0928-4471"}) in anotados, anotados
+    # 🔴 G1 (red team): o ENCERRAMENTO não anota mais a assistência do dia —
+    #    ela nasce na ABERTURA (seção 3b). Anotar aqui a punha no dia errado.
+    assert not [a for a in anotados if a[1] == MOD.EVENTO_ASSISTENCIA_DO_DIA], anotados
 
 
 def test_controle_sem_detalhes_o_check_volta_a_ser_so_o_nome(monkeypatch):
@@ -193,11 +192,48 @@ def test_controle_sem_detalhes_o_check_volta_a_ser_so_o_nome(monkeypatch):
     assert "protocolo" not in enviados[0]["texto"]
 
 
-def test_fechado_por_humano_nao_vira_assistencia_do_agente(monkeypatch):
-    """⛔ A lista das 19h é das assistências que o AGENTE abriu."""
-    _, anotados = _conclusao(monkeypatch, FIM.FECHADO_POR_HUMANO,
-                             {"servico": "GUINCHO", "seguradora": "YELUM", "protocolo": "1"})
-    assert not [a for a in anotados if a[1] == FIM.EVENTO_ASSISTENCIA_DO_DIA], anotados
+# ===========================================================================
+# 3b · A ASSISTÊNCIA NASCE QUANDO ABRE — conserto G1 do red team
+# ===========================================================================
+# 📊 A 1ª versão anotava no ENCERRAMENTO (`resolvido`), que só existe quando a
+# mensagem de fechamento sai: follow-up + 2h30. Guincho agendado para amanhã
+# caía na lista de amanhã; um aberto às 16h fechava depois das 19h e sumia.
+def _abrir(monkeypatch, fases, sessao=None):
+    anotados = []
+
+    async def _anotar(db, company_id, tipo, mensagem, carga, **_k):
+        anotados.append((company_id, tipo, dict(carga)))
+        return True
+
+    monkeypatch.setattr(G, "anotar_no_diario", _anotar)
+    s = sessao if sessao is not None else _sessao()
+    for fase in fases:
+        asyncio.run(R._anotar_assistencia_aberta(_Banco(), EMPRESA, s, fase))
+    return anotados
+
+
+def test_a_assistencia_e_anotada_quando_o_protocolo_existe(monkeypatch):
+    # o LITERAL, e nao a constante: um teste que segue a constante que ele testa
+    # passa junto com a mutacao dela (medido: M-G1a so' caiu pelo controle).
+    anotados = _abrir(monkeypatch, ["monitoring"])
+    assert anotados == [(EMPRESA, MOD.EVENTO_ASSISTENCIA_DO_DIA,
+                         {"servico": "GUINCHO", "seguradora": "YELUM",
+                          "protocolo": "2026-0928-4471", "conversa_id": CONVERSA})], anotados
+
+
+def test_uma_vez_so_por_sessao_mesmo_voltando_a_fase(monkeypatch):
+    """A conversa oscila (`monitoring → human_phase → monitoring`): uma linha só."""
+    anotados = _abrir(monkeypatch, [R.FASE_DA_ASSISTENCIA_ABERTA, "human_phase",
+                                    R.FASE_DA_ASSISTENCIA_ABERTA])
+    assert len(anotados) == 1, anotados
+
+
+def test_controle_outras_fases_nao_abrem_assistencia(monkeypatch):
+    """🔴 CONTROLE: `resolvido`, `needs_human`, `test_aborted`, `encaminhado`
+    NÃO são abertura de assistência pelo agente."""
+    anotados = _abrir(monkeypatch, ["resolvido", "needs_human", "test_aborted",
+                                    "encaminhado", "ura"])
+    assert anotados == [], anotados
 
 
 # ===========================================================================
@@ -237,11 +273,19 @@ def test_um_dia_so_com_assistencias_ainda_manda_o_resumo():
 def test_a_lista_so_le_a_propria_corretora_e_sai_inteira(monkeypatch):
     banco = _Banco(
         work_events=[
-            {"id": 1, "company_id": EMPRESA, "event_type": FIM.EVENTO_ASSISTENCIA_DO_DIA,
+            {"id": 1, "company_id": EMPRESA, "event_type": MOD.EVENTO_ASSISTENCIA_DO_DIA,
              "created_at": "2026-09-28T13:00:00+00:00",
              "payload_redacted": {"conversa_id": CONVERSA, "servico": "GUINCHO",
                                   "seguradora": "YELUM", "protocolo": "2026-0928-4471"}},
-            {"id": 2, "company_id": OUTRA_EMPRESA, "event_type": FIM.EVENTO_ASSISTENCIA_DO_DIA,
+            {"id": 3, "company_id": EMPRESA, "event_type": MOD.EVENTO_ASSISTENCIA_DO_DIA,
+             "created_at": "2026-09-28T13:05:00+00:00",
+             "payload_redacted": {"conversa_id": CONVERSA, "servico": "GUINCHO",
+                                  "seguradora": "YELUM", "protocolo": "2026-0928-4471"}},
+            {"id": 4, "company_id": EMPRESA, "event_type": MOD.EVENTO_ASSISTENCIA_DO_DIA,
+             "created_at": "2026-09-28T15:00:00+00:00",
+             "payload_redacted": {"conversa_id": "", "servico": "PNEU",
+                                  "seguradora": "PORTO", "protocolo": "777"}},
+            {"id": 2, "company_id": OUTRA_EMPRESA, "event_type": MOD.EVENTO_ASSISTENCIA_DO_DIA,
              "created_at": "2026-09-28T14:00:00+00:00",
              "payload_redacted": {"conversa_id": "outra", "servico": "PNEU",
                                   "seguradora": "HDI", "protocolo": "999"}},
@@ -257,9 +301,14 @@ def test_a_lista_so_le_a_propria_corretora_e_sai_inteira(monkeypatch):
     agora = datetime(2026, 9, 28, 12, tzinfo=timezone.utc)
     lista = asyncio.run(MOD.assistencias_do_dia(banco, EMPRESA, agora, agora + timedelta(days=1)))
 
+    # a mesma assistência anotada duas vezes (id 1 e 3) sai UMA vez; a sem
+    # conversa espelhada (id 4) ENTRA, só sem nome e sem WhatsApp; a da outra
+    # corretora (id 2) nunca aparece.
     assert lista == [{"nome": "Fulana Sintetica", "servico": "GUINCHO", "seguradora": "YELUM",
                       "protocolo": "2026-0928-4471",
-                      "whatsapp": "https://wa.me/5548900000001"}], lista
+                      "whatsapp": "https://wa.me/5548900000001"},
+                     {"nome": "", "servico": "PNEU", "seguradora": "PORTO",
+                      "protocolo": "777", "whatsapp": ""}], lista
     # 🔴 as DUAS leituras filtraram pela corretora
     for tabela in ("work_events", "conversations"):
         filtros = [f for t, fs in banco.consultas if t == tabela for f in fs]

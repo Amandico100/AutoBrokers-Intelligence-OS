@@ -398,9 +398,10 @@ async def contagens_do_dia(db, company_id: str, inicio_utc: datetime,
     return c
 
 
-#: O evento que `o_fim_do_atendimento._contar_a_conclusao` grava — um por
-#: assistência aberta pelo agente, mesmo quando o ✅ foi calado.
-EVENTO_ASSISTENCIA_DO_DIA = "acionamento.concluido"
+#: O evento que `dispatch_router._anotar_assistencia_aberta` grava — um por
+#: assistência ABERTA pelo agente (a fase em que o protocolo existe), mesmo
+#: quando nenhum balão sai ao grupo.
+EVENTO_ASSISTENCIA_DO_DIA = "assistencia.aberta"
 
 
 async def assistencias_do_dia(db, company_id: str, inicio_utc: datetime,
@@ -432,17 +433,26 @@ async def assistencias_do_dia(db, company_id: str, inicio_utc: datetime,
         logger.warning("[RESUMO 19h] assistências ilegíveis (%s)", type(exc).__name__)
         return []
 
-    itens = []
+    itens, vistos = [], set()
     for linha in sorted(linhas or [], key=lambda l: str((l or {}).get("created_at") or "")):
         carga = (linha or {}).get("payload_redacted") or {}
-        if isinstance(carga, dict) and carga.get("conversa_id"):
-            itens.append(carga)
+        if not isinstance(carga, dict):
+            continue
+        # ⚠️ Sem conversa espelhada (`DISPATCH_MIRROR=0`) a assistência ENTRA
+        #    assim mesmo — só sai sem nome e sem WhatsApp. Sumir com ela seria
+        #    o resumo mentir para baixo.
+        chave = (str(carga.get("conversa_id") or ""), str(carga.get("protocolo") or ""),
+                 str(carga.get("servico") or ""))
+        if chave in vistos:          # a mesma assistência anotada duas vezes
+            continue
+        vistos.add(chave)
+        itens.append(carga)
     if not itens:
         return []
 
     pessoas: Dict[str, Dict[str, Any]] = {}
     try:
-        ids = sorted({str(i["conversa_id"]) for i in itens})
+        ids = sorted({str(i["conversa_id"]) for i in itens if i.get("conversa_id")})
         achado = (_cliente(db).table("conversations")
                   .select("id, user_name, user_phone")
                   .eq("company_id", str(company_id))       # 🔴 §7
@@ -454,7 +464,7 @@ async def assistencias_do_dia(db, company_id: str, inicio_utc: datetime,
 
     saida = []
     for i in itens:
-        p = pessoas.get(str(i["conversa_id"])) or {}
+        p = pessoas.get(str(i.get("conversa_id") or "")) or {}
         nome = str(p.get("user_name") or "").strip()
         if nome.isdigit():          # ⚠️ sem `pushName`, o nome nasce = ao número
             nome = ""
