@@ -182,8 +182,14 @@ class Consulta:
             if self.b.mensagens_estouram:
                 raise RuntimeError("leitura de mensagens falhou")
             alvo = self.f.get("__in") or []
+            if "conversation_id" in self.f:
+                # 🔴 SPEC-121 F1 — o vigia passou a ler UMA conversa por vez
+                #    (`prova_de_que_o_agente_pediu` → `janela_de_mensagens`),
+                #    porque o lote global é cortado em 1000 linhas pelo PostgREST.
+                alvo = [self.f["conversation_id"]]
             r.data = [m for m in self.b.mensagens
                       if str(m["conversation_id"]) in [str(x) for x in alvo]]
+            r.data.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
         return r
 
 
@@ -225,7 +231,7 @@ def rodar(banco, redis, avisos, avisado=True, calado=False):
     wd = importlib.import_module("app.tasks.handoff_watchdog")
     hh = importlib.import_module("app.agents.tools.human_handoff")
 
-    async def _falso(self, company_id, conv, motivo):
+    async def _falso(self, company_id, conv, motivo, **_kw):
         avisos.append((str(conv.get("id")), motivo))
         return {"avisado": bool(avisado), "calado": bool(calado),
                 "motivo": "" if avisado else ("humano assumiu" if calado else "grupo fora do ar")}
@@ -325,7 +331,16 @@ print("=" * 74)
 # 📊 Achado do juiz: ao tirar o lembrete, a D16 tirou tambem a nova tentativa
 # de um aviso que FALHOU (grupos desativados de 10 a 21/09 = pedido de ajuda
 # que ninguem recebeu). Ela volta, com tres limites, e cada um e' provado aqui.
-_msg_cliente = [{"conversation_id": "c-nova", "role": "user",
+# 🔴 A LIÇÃO MIGROU (§9.3) — SPEC-121 F1, D6: o aviso tardio só sai com PROVA de
+#    que foi o AGENTE quem pediu: o motivo gravado por ele E a fala dele depois da
+#    última palavra de gente. 📊 Os 29 avisos de 21/09 não tinham essa prova. A
+#    conversa deste bloco agora é a que o agente atendeu ("vou chamar a equipe")
+#    antes de o cliente responder — é o pedido que a rede de segurança existe para
+#    não perder.
+_msg_cliente = [{"conversation_id": "c-nova", "role": "assistant",
+                 "content": "vou chamar alguém da equipe",
+                 "created_at": "2026-09-28T09:59:00Z"},
+                {"conversation_id": "c-nova", "role": "user",
                  "created_at": "2026-09-28T10:00:00Z"}]
 
 # (a) recente, e o aviso da hora nunca saiu: UM aviso — e so' um.

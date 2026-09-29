@@ -188,7 +188,9 @@ async def _support_alert_seguro(company_id: str, session: Dict[str, Any], resumo
     # mesma, então o defeito morre junto com as três linhas.
     try:
         from app.core.database import get_supabase_client
-        from app.services.o_grupo_so_o_que_importa import TIPO_VIGIA, enviar_ao_grupo
+        from app.services.o_grupo_so_o_que_importa import (
+            PROVA_ACIONAMENTO, TIPO_VIGIA, enviar_ao_grupo,
+        )
 
         aviso = ("⚠️ O aviso de protocolo NÃO chegou ao segurado.\n"
                  f"Caso: {session.get('case_id')}\n"
@@ -201,7 +203,9 @@ async def _support_alert_seguro(company_id: str, session: Dict[str, Any], resumo
             sessao=session,
             resumo="aviso de protocolo nao chegou — caso %s"
                    % str(session.get("case_id") or "")[:8],
-            motivo="aviso_nao_chegou")
+            motivo="aviso_nao_chegou",
+            # 🔴 SPEC-121 F1 — regra B: é o acionamento DO AGENTE.
+            prova_do_agente=PROVA_ACIONAMENTO)
     except Exception:  # noqa: BLE001
         logger.warning("[DISPATCH ROUTER] alerta de falha de aviso nao saiu")
 
@@ -2941,7 +2945,9 @@ async def _avisar_retomada(company_id: str, session: Dict[str, Any]) -> None:
     try:
         from app.core.database import get_supabase_client
         from app.services.dispatch_mirror import insurer_label_from_ref
-        from app.services.o_grupo_so_o_que_importa import TIPO_RETOMADA, enviar_ao_grupo
+        from app.services.o_grupo_so_o_que_importa import (
+            PROVA_ACIONAMENTO, TIPO_RETOMADA, enviar_ao_grupo,
+        )
 
         seguradora = insurer_label_from_ref(str(session.get("playbook_ref") or ""))
         caso = str(session.get("case_id") or "")[:8]
@@ -2951,7 +2957,8 @@ async def _avisar_retomada(company_id: str, session: Dict[str, Any]) -> None:
                    "— aviso quando tiver o protocolo."),
             conversation_id=str(session.get("mirror_conversation_id") or ""),
             telefone=str(session.get("client_phone") or ""), sessao=session,
-            resumo="retomada — caso %s" % caso, motivo="retomada")
+            resumo="retomada — caso %s" % caso, motivo="retomada",
+            prova_do_agente=PROVA_ACIONAMENTO)   # 🔴 SPEC-121 F1 — regra B
     except Exception as e:  # noqa: BLE001
         logger.warning("[RETOMADA] aviso ao grupo não saiu (%s)", type(e).__name__)
 
@@ -4457,7 +4464,7 @@ async def try_route_insurer_inbound(
                     #    bloco inteiro — sem dossiê, sem aviso ao segurado, sem gravar.
                     from app.core.database import get_supabase_client
                     from app.services.o_grupo_so_o_que_importa import (
-                        TIPO_PEDIDO_DE_AJUDA, enviar_ao_grupo,
+                        PROVA_ACIONAMENTO, TIPO_PEDIDO_DE_AJUDA, enviar_ao_grupo,
                     )
 
                     tentou["chamado"] = True
@@ -4470,7 +4477,10 @@ async def try_route_insurer_inbound(
                         dedup=False,
                         resumo="pedido de ajuda — caso %s"
                                % str(session.get("case_id") or "")[:8],
-                        motivo=str(reason or ""))
+                        motivo=str(reason or ""),
+                        # 🔴 SPEC-121 F1 — regra B: o dossiê nasce do
+                        #    acionamento DO AGENTE travado.
+                        prova_do_agente=PROVA_ACIONAMENTO)
                     tentou["ok"] = bool(saida.get("enviado"))
                     return bool(saida.get("enviado") or saida.get("calado"))
 

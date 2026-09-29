@@ -22,6 +22,24 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _sem_as_vencidas(mensagens: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """🔴 SPEC-121 F1 — o histórico do modelo não traz as mensagens VENCIDAS.
+
+    Regra dos 7 dias do Founder: *"não responder msgs antigas só porque deu 7
+    dias"*. As falas do segurado que ficaram sem resposta antes de um silêncio da
+    corretora maior que N dias saem daqui (a regra, PURA, é
+    `o_fim_do_atendimento.mensagens_vencidas`; este é só o ponto onde o
+    histórico é montado). ⛔ Nunca levanta: sem a regra, o histórico é o de sempre.
+    """
+    try:
+        from app.services.o_fim_do_atendimento import sem_as_mensagens_vencidas
+
+        return sem_as_mensagens_vencidas(mensagens)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[DB] corte das mensagens vencidas indisponível ({type(e).__name__})")
+        return mensagens
+
+
 class SupabaseClient:
     """Cliente Supabase com suporte a multi-tenancy"""
 
@@ -97,7 +115,7 @@ class SupabaseClient:
                 f"session {session_id}, company {company_id}"
             )
 
-            return list(reversed(messages_response.data or []))
+            return _sem_as_vencidas(list(reversed(messages_response.data or [])))
 
         except Exception as e:
             logger.error(
@@ -287,7 +305,7 @@ class AsyncSupabaseClient:
             logger.info(
                 f"[DB] Fetched {len(messages_response.data)} messages for session {session_id}"
             )
-            return list(reversed(messages_response.data or []))
+            return _sem_as_vencidas(list(reversed(messages_response.data or [])))
 
         except Exception as e:
             logger.error(f"[DB] Error fetching conversation history: {e}")

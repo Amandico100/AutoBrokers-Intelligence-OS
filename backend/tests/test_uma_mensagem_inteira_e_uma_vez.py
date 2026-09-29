@@ -164,9 +164,13 @@ _mod_po.record_platform_send = _record_platform_send
 sys.modules["app.services.platform_outbound"] = _mod_po
 
 from app.services.o_grupo_so_o_que_importa import (  # noqa: E402
-    TIPO_ESPERA_VENCIDA, TIPO_PEDIDO_DE_AJUDA, TIPO_SINISTRO, enviar_ao_grupo,
-    kind_do_grupo,
+    PROVA_ACIONAMENTO, TIPO_ESPERA_VENCIDA, TIPO_PEDIDO_DE_AJUDA, TIPO_SINISTRO,
+    enviar_ao_grupo, kind_do_grupo,
 )
+#: 🔴 SPEC-121 F1 — todo aviso de conversa diz COMO sabe que foi o agente
+#:    (regra B). Estes guardas medem REPETIÇÃO e FORMA; a prova é a do
+#:    acionamento, e o agente de atendimento está LIGADO no `BancoQuePassa`.
+_PROVA = PROVA_ACIONAMENTO
 
 EMPRESA = "11111111-1111-1111-1111-111111111111"
 CONVERSA = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -210,6 +214,8 @@ class _Q:
         return self
 
     def execute(self):
+        if self.tabela == "agents":      # 🔴 SPEC-121 F1 — a regra A: LIGADO
+            return types.SimpleNamespace(data=[{"id": "ag", "is_active": True}])
         if self.tabela == "conversations":
             return types.SimpleNamespace(data=[{
                 "id": self.f.get("id"), "company_id": self.f.get("company_id"),
@@ -247,7 +253,7 @@ _redis.chaves.clear()
 
 for i, tipo in enumerate((TIPO_PEDIDO_DE_AJUDA, TIPO_SINISTRO, "vigia")):
     saida = rodar(enviar_ao_grupo(
-        BancoQuePassa(), company_id=EMPRESA, tipo=tipo, texto=DOSSIE,
+        BancoQuePassa(), prova_do_agente=_PROVA, company_id=EMPRESA, tipo=tipo, texto=DOSSIE,
         conversation_id="conv-%d" % i, destino=DESTINO, dedup=False,
         resumo="teste"))
     certo(saida["enviado"] is True, "o caminho `%s` entregou" % tipo)
@@ -291,7 +297,7 @@ ENVIADOS.clear()
 _redis.chaves.clear()
 banco = BancoQuePassa()
 for _ in range(3):
-    rodar(enviar_ao_grupo(banco, company_id=EMPRESA, tipo=TIPO_ESPERA_VENCIDA,
+    rodar(enviar_ao_grupo(banco, prova_do_agente=_PROVA, company_id=EMPRESA, tipo=TIPO_ESPERA_VENCIDA,
                           texto="⏳ ESPERA VENCIDA", conversation_id=CONVERSA,
                           destino=DESTINO, janela_s=3600, resumo="espera"))
 certo(len(ENVIADOS) == 1,
@@ -308,7 +314,7 @@ _redis.chaves.clear()
 banco = BancoQuePassa()
 # As três sessões do 10/09: `case_id` diferente, MESMA conversa.
 for sessao in ("case-17-14", "case-17-21", "case-17-35"):
-    rodar(enviar_ao_grupo(banco, company_id=EMPRESA, tipo=TIPO_PEDIDO_DE_AJUDA,
+    rodar(enviar_ao_grupo(banco, prova_do_agente=_PROVA, company_id=EMPRESA, tipo=TIPO_PEDIDO_DE_AJUDA,
                           texto=DOSSIE, conversation_id=CONVERSA,
                           destino=DESTINO, resumo=sessao))
 certo(len(ENVIADOS) == 1,
@@ -319,7 +325,7 @@ certo(len(ENVIADOS) == 1,
 ENVIADOS.clear()
 _redis.chaves.clear()
 for conversa in (CONVERSA, OUTRA):
-    rodar(enviar_ao_grupo(BancoQuePassa(), company_id=EMPRESA,
+    rodar(enviar_ao_grupo(BancoQuePassa(), prova_do_agente=_PROVA, company_id=EMPRESA,
                           tipo=TIPO_PEDIDO_DE_AJUDA, texto=DOSSIE,
                           conversation_id=conversa, destino=DESTINO, resumo="x"))
 certo(len(ENVIADOS) == 2,
@@ -329,7 +335,7 @@ certo(len(ENVIADOS) == 2,
 ENVIADOS.clear()
 _redis.chaves.clear()
 for tipo in (TIPO_PEDIDO_DE_AJUDA, TIPO_SINISTRO):
-    rodar(enviar_ao_grupo(BancoQuePassa(), company_id=EMPRESA, tipo=tipo,
+    rodar(enviar_ao_grupo(BancoQuePassa(), prova_do_agente=_PROVA, company_id=EMPRESA, tipo=tipo,
                           texto=DOSSIE, conversation_id=CONVERSA,
                           destino=DESTINO, resumo="x"))
 certo(len(ENVIADOS) == 2,
@@ -339,7 +345,7 @@ certo(len(ENVIADOS) == 2,
 ENVIADOS.clear()
 _redis.chaves.clear()
 for empresa in (EMPRESA, "22222222-2222-2222-2222-222222222222"):
-    rodar(enviar_ao_grupo(BancoQuePassa(), company_id=empresa,
+    rodar(enviar_ao_grupo(BancoQuePassa(), prova_do_agente=_PROVA, company_id=empresa,
                           tipo=TIPO_PEDIDO_DE_AJUDA, texto=DOSSIE,
                           conversation_id=CONVERSA, destino=DESTINO, resumo="x"))
 certo(len(ENVIADOS) == 2,

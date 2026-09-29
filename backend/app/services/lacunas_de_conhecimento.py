@@ -376,7 +376,7 @@ async def registrar_lacuna(
 
     try:
         from app.services.o_grupo_so_o_que_importa import (
-            TIPO_PEDIDO_DE_AJUDA, reivindicar_o_envio,
+            PROVA_LACUNA, TIPO_PEDIDO_DE_AJUDA, reivindicar_o_envio,
         )
 
         # 🔴 O TETO DE 24 h — no MESMO mecanismo que a porta já usa (§7.5 da
@@ -400,7 +400,9 @@ async def registrar_lacuna(
             db, company_id=company_id, tipo=TIPO_PEDIDO_DE_AJUDA, texto=texto,
             conversation_id=str(conversation_id or ""), telefone=str(telefone or ""),
             motivo="lacuna de cobertura", motivo_classe="lacuna_de_cobertura",
-            agora=agora)
+            agora=agora,
+            # 🔴 SPEC-121 F1 — regra B: a lacuna nasce no TURNO do agente.
+            prova_do_agente=PROVA_LACUNA)
         saida = saida if isinstance(saida, dict) else {}
         resposta["avisou"] = bool(saida.get("enviado"))
         resposta["motivo"] = str(saida.get("motivo") or "") or resposta["motivo"]

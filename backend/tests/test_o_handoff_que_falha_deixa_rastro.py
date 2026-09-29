@@ -113,7 +113,15 @@ def mundo_do_banco_da_tool():
     return {"conversations": [conversa(CONVERSA_ALFA, CO_ALFA, "ss-alfa-1"),
                               conversa(CONVERSA_BETA, CO_BETA, "ss-beta-1")],
             "messages": [], "work_runs": [], "work_events": [],
-            "agent_activities": []}
+            "agent_activities": [],
+            # 🔴 SPEC-121 F1 — a porta do grupo pergunta se o agente de
+            #    atendimento está LIGADO (regra A). As duas corretoras deste
+            #    mundo estão ligadas ("outra ligada e muda"): o que este guarda
+            #    mede é o DESTINO, não o interruptor.
+            "agents": [{"id": "ag-alfa", "company_id": CO_ALFA,
+                        "agent_role": "attendance", "is_active": True},
+                       {"id": "ag-beta", "company_id": CO_BETA,
+                        "agent_role": "attendance", "is_active": True}]}
 
 
 class _Integracao(dict):

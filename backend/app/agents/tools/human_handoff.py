@@ -1146,7 +1146,8 @@ class HumanHandoffTool(BaseTool):
 
     async def _avisar_suporte(self, company_id: str, conversa: Dict[str, Any],
                               motivo: str, *, tipo: str = "",
-                              dedup: bool = False) -> Dict[str, Any]:
+                              dedup: bool = False,
+                              prova: str = "") -> Dict[str, Any]:
         """Envia o dossiê. Devolve o que aconteceu — sem arredondar.
 
         🔴 SPEC-EXTRA-001.3 — este método PASSOU A SER UM ADAPTADOR.
@@ -1161,6 +1162,12 @@ class HumanHandoffTool(BaseTool):
         (`_arun`, `varrer_handoffs_parados`, `varrer_esperas_vencidas`) já
         reservaram a vez em `reivindicar_o_aviso` — e o marcador é o mesmo.
         Deduplicar duas vezes calaria o segundo tipo de aviso da conversa.
+
+        🔴 SPEC-121 F1 — `prova` é a regra B da porta: COMO se sabe que foi o
+        agente quem pediu. Cada chamador declara a sua (`_arun`: o pedido; o
+        vigia: o pedido CONFERIDO; a espera: a espera do acionamento). Sem ela, a
+        porta cala — e é isso que impede o status `HUMAN_REQUESTED` do espelho
+        de virar aviso.
         """
         from app.services.o_grupo_so_o_que_importa import (
             TIPO_PEDIDO_DE_AJUDA, TIPO_SINISTRO, enviar_ao_grupo,
@@ -1196,7 +1203,7 @@ class HumanHandoffTool(BaseTool):
             telefone=str(conversa.get("user_phone") or ""),
             conversa=conversa, dedup=dedup,
             resumo="%s — conversa %s" % (_tipo, str(conversa.get("id") or "")[:8]),
-            motivo=chave, motivo_classe=classe)
+            motivo=chave, motivo_classe=classe, prova_do_agente=prova)
         if saida["enviado"]:
             logger.info("[HumanHandoff] dossiê enviado | empresa=%s | tipo=%s",
                         company_id, _tipo)
@@ -1422,7 +1429,11 @@ class HumanHandoffTool(BaseTool):
                         "foi avisada — não repeti o alerta", conversa_id[:8])
             return JA_ESTAVA_COM_A_EQUIPE
 
-        aviso = await self._avisar_suporte(company_id, conversa, motivo)
+        # 🔴 SPEC-121 F1 — este é o pedido do AGENTE, e ele diz isso à porta.
+        from app.services.o_grupo_so_o_que_importa import PROVA_PEDIDO_DO_AGENTE
+
+        aviso = await self._avisar_suporte(company_id, conversa, motivo,
+                                           prova=PROVA_PEDIDO_DO_AGENTE)
 
         if aviso["avisado"]:
             await registrar_o_desfecho_do_handoff(

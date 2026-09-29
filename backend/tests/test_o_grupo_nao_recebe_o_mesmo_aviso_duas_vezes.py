@@ -195,7 +195,10 @@ def ferramenta(banco, avisos):
     """A tool real, com `_avisar_suporte` trocado por um contador."""
     t = hh.HumanHandoffTool(banco)
 
-    async def _falso_avisar(company_id, conversa, motivo):
+    # ⚠️ `**_kw`: desde a SPEC-121 F1 o `_arun` diz à porta COMO sabe que foi
+    #    o agente (`prova=`). O dublê só conta; a prova tem guarda próprio
+    #    (`test_o_grupo_so_ouve_quem_precisa.py`).
+    async def _falso_avisar(company_id, conversa, motivo, **_kw):
         avisos.append((company_id, str(conversa.get("id")), motivo))
         return {"avisado": True, "motivo": ""}
 
@@ -268,7 +271,7 @@ banco2 = SupabaseFake(status="open")
 def ferramenta_que_falha(banco):
     t = hh.HumanHandoffTool(banco)
 
-    async def _falha(company_id, conversa, motivo):
+    async def _falha(company_id, conversa, motivo, **_kw):
         return {"avisado": False, "motivo": "a corretora nao tem grupo"}
 
     t._avisar_suporte = _falha

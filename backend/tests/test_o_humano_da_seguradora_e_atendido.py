@@ -671,10 +671,32 @@ WA.clear()
 _dossies = []
 
 
+class _AgenteLigado:
+    """🔴 SPEC-121 F1 — a guarda pergunta se o agente de atendimento está LIGADO
+    (regra A). Este dublê só responde `agents`: ligado. O que o guarda mede é o
+    DOSSIÊ do acionamento, que prova a regra B com `PROVA_ACIONAMENTO`."""
+
+    def table(self, _nome):
+        return self
+
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def execute(self):
+        return types.SimpleNamespace(data=[{"id": "ag", "is_active": True}])
+
+
 async def _dossie_pela_porta(company_id, session, dossier, wa, integration):
     """A PORTA ÚNICA da 001.3 é a real: o dossiê passa por `o_grupo_pode_saber`."""
-    pode, _ = await G.o_grupo_pode_saber(None, company_id=company_id,
-                                         tipo=G.TIPO_PEDIDO_DE_AJUDA, sessao=session)
+    pode, _ = await G.o_grupo_pode_saber(_AgenteLigado(), company_id=company_id,
+                                         tipo=G.TIPO_PEDIDO_DE_AJUDA, sessao=session,
+                                         prova_do_agente=G.PROVA_ACIONAMENTO)
     _dossies.append({"pode": pode, "texto": dossier})
     return pode
 

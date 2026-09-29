@@ -308,10 +308,24 @@ class _TabelaMinima:
     def limit(self, _n):
         return self
 
+    def order(self, *_a, **_k):
+        return self
+
     def execute(self):
         class R:
             pass
         r = R()
+        # 🔴 SPEC-121 F1 — a guarda do grupo agora LÊ o interruptor do agente
+        #    (regra A) e as mensagens da janela SEM fail-open (regra C). O duplo
+        #    responde as duas: o agente de atendimento está LIGADO, e a conversa
+        #    não tem mensagem de gente. O que este guarda mede é a LACUNA.
+        if self.alvo == "agents":
+            r.data = ([{"id": "ag", "is_active": True}]
+                      if self.filtros.get("company_id") else [])
+            return r
+        if self.alvo == "messages":
+            r.data = []
+            return r
         if self.alvo == "conversations":
             # 🔴 O filtro é APLICADO: sem `company_id`, nada casa.
             chave = (self.filtros.get("company_id"),
@@ -346,7 +360,8 @@ class _PortaFiel:
             _db, company_id=kw.get("company_id", ""),
             conversation_id=kw.get("conversation_id", ""),
             telefone=kw.get("telefone", ""), tipo=kw.get("tipo", ""),
-            conversa=self._conversa)
+            conversa=self._conversa,
+            prova_do_agente=kw.get("prova_do_agente", ""))   # 🔴 SPEC-121 F1
         if not pode:
             self.calados.append(porque)
             return {"enviado": False, "calado": True, "motivo": porque}

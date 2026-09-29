@@ -1310,7 +1310,7 @@ async def process_whatsapp_message_background(
 
             check_status = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
-                .select("id, status, claimed_by, claimed_by_name, claimed_at, resolvido_em")  # 🔴 P0-1 (097): sem resolvido_em, pausar_ia não sabe que o atendimento acabou; `claimed_at` é P-PILOTO-15 (takeover DEPOIS do encerramento protege a conversa reaberta)
+                .select("id, status, claimed_by, claimed_by_name, claimed_at, resolvido_em, human_handoff_reason")  # 🔴 SPEC-121 F1: `human_handoff_reason` separa a marca do ESPELHO do pedido do AGENTE (regra dos 7 dias) · 🔴 P0-1 (097): sem resolvido_em, pausar_ia não sabe que o atendimento acabou; `claimed_at` é P-PILOTO-15 (takeover DEPOIS do encerramento protege a conversa reaberta)
                 .eq("company_id", company_id)
                 .eq("session_id", session_id)
                 .limit(1)
@@ -1318,8 +1318,12 @@ async def process_whatsapp_message_background(
             )
             if check_status.data and len(check_status.data) > 0:
                 _linha_da_conversa = check_status.data[0]
+                # 🔴 SPEC-121 F1 — `por_mensagem_nova`: ESTA entrada é o segurado
+                #    escrevendo AGORA. Só ela deixa a marca do espelho vencer em
+                #    N dias (a regra dos 7 dias do Founder); nenhum outro caminho.
                 _calar, _motivo = await a_ia_deve_calar(
-                    supabase, company_id=str(company_id), conversa=_linha_da_conversa)
+                    supabase, company_id=str(company_id), conversa=_linha_da_conversa,
+                    por_mensagem_nova=True)
                 if _calar:
                     is_human_mode = True
                     # ⛔ A FRASE só vai para o log quando é a da JANELA: a do
@@ -1880,7 +1884,8 @@ async def process_whatsapp_message_background(
 
             _estado_agora = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
-                .select("id, status, claimed_by, claimed_by_name, claimed_at, resolvido_em")
+                .select("id, status, claimed_by, claimed_by_name, claimed_at, "
+                        "resolvido_em, human_handoff_reason")  # 🔴 SPEC-121 F1
                 .eq("company_id", company_id)
                 .eq("id", conversation_id)
                 .limit(1)
@@ -1889,7 +1894,8 @@ async def process_whatsapp_message_background(
             _linhas_agora = getattr(_estado_agora, "data", None) or []
             if _linhas_agora:
                 _assumida_no_meio, _motivo_do_silencio = await a_ia_deve_calar(
-                    supabase, company_id=str(company_id), conversa=_linhas_agora[0])
+                    supabase, company_id=str(company_id), conversa=_linhas_agora[0],
+                    por_mensagem_nova=True)   # 🔴 SPEC-121 F1 — o mesmo turno da entrada
             else:
                 _assumida_no_meio = False
         except Exception as e:  # noqa: BLE001

@@ -378,7 +378,9 @@ async def _contar_a_conclusao(db, company_id: str, conversation_id: str,
                               motivo: str,
                               detalhes: Optional[Dict[str, Any]] = None) -> None:
     """Monta o ✅ e manda pela PORTA ÚNICA. ⛔ Nunca levanta."""
-    from app.services.o_grupo_so_o_que_importa import TIPO_CONCLUSAO, enviar_ao_grupo
+    from app.services.o_grupo_so_o_que_importa import (
+        PROVA_ACIONAMENTO, TIPO_CONCLUSAO, enviar_ao_grupo,
+    )
     from app.services.os_modelos_do_grupo import modelo_atendimento_concluido
 
     linha = None
@@ -424,7 +426,12 @@ async def _contar_a_conclusao(db, company_id: str, conversation_id: str,
         conversation_id=conversation_id,
         telefone=str(linha.get("user_phone") or ""),
         resumo="conclusão — %s" % motivo, motivo=motivo,
-        motivo_classe="conclusao")
+        motivo_classe="conclusao",
+        # 🔴 SPEC-121 F1 (D5) — o ✅ obedece à regra única. Só o acionamento que o
+        #    AGENTE concluiu prova a regra B; o `fechado_por_humano` é trabalho da
+        #    equipe, que já sabe dele, e cala. E a regra C cala o ✅ quando a
+        #    atendente participou da conversa nos últimos N dias.
+        prova_do_agente=(PROVA_ACIONAMENTO if motivo == ACIONAMENTO_CONCLUIDO else ""))
 
 
 # =============================================================================
@@ -1441,6 +1448,94 @@ async def janela_de_mensagens(db, conversation_id: str, *, teto: int = 0):
     return (achado.data or []), ""
 
 
+#: 🔴 SPEC-121 F1 — a leitura LARGA da janela: o teto de UMA resposta do
+#: PostgREST. Ela só roda quando as `_MENSAGENS_DA_JANELA` linhas de sempre
+#: cabem INTEIRAS dentro dos N dias e nenhuma é de gente — o caso em que o teto
+#: de 40 escondia a atendente.
+_LEITURA_LARGA_DA_JANELA = 1000
+
+#: O `erro` de `palavra_humana_na_janela` quando nem a leitura larga chegou ao
+#: começo da janela. ⚠️ É DÚVIDA, não resposta: quem pergunta decide o lado
+#: seguro, e nesta seção o lado seguro é calar.
+LOTE_CORTADO = "lote_cortado"
+
+
+async def palavra_humana_na_janela(db, conversation_id: str, *, agora=None,
+                                   n_dias=None):
+    """`(ultima_palavra_humana | None, erro)` olhando os N dias INTEIROS.
+
+    🔴 **SPEC-121 F1 — o teto de 40 linhas mentia.** 📊 29/09/2026: das 262
+    conversas com mensagem nos últimos 7 dias, **39** têm mais de 40 mensagens
+    dentro deles (`f1/b0.sql`, última consulta). Nelas, a atendente que falou há
+    3 dias e foi seguida por 60 mensagens do segurado simplesmente **não
+    existia** para a janela — e o agente (e o grupo) voltavam a falar por cima
+    dela.
+
+    Duas leituras, e a segunda é rara de propósito (o caminho quente é o turno):
+
+    ```
+    ① as últimas `_MENSAGENS_DA_JANELA` linhas (a MESMA `janela_de_mensagens`)
+         achou gente ........................ é a mais recente: responde
+         a mais velha já é de antes da janela  a janela está coberta: None
+    ② só se as 40 cabem na janela sem gente: as falas `assistant` (é onde a
+         atendente mora), até `_LEITURA_LARGA_DA_JANELA`, filtradas pela data
+         EM PYTHON — o mesmo motivo de `janela_de_mensagens` não filtrar JSON
+         no banco: a consulta usa só o índice que existe.
+         encheu sem achar gente e sem sair da janela → `LOTE_CORTADO` (dúvida)
+    ```
+
+    ⛔ Nunca levanta. `erro` não vazio é DÚVIDA — quem chama cala.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    agora = agora or datetime.now(timezone.utc)
+    dias = janela_de_silencio_dias() if n_dias is None else int(n_dias)
+    if dias <= 0:
+        return None, ""
+    try:
+        desde = agora - timedelta(days=dias)
+    except OverflowError:
+        # ⚠️ Uma janela maior que o calendário (o override aceita qualquer
+        #    inteiro): a janela é "desde sempre".
+        desde = datetime(1, 1, 1, tzinfo=timezone.utc)
+
+    linhas, erro = await janela_de_mensagens(db, conversation_id)
+    if erro:
+        return None, erro
+    ultima = ultima_palavra_humana(linhas)
+    if ultima is not None:
+        return ultima, ""
+    datas = [q for q in (_quando((m or {}).get("created_at")) for m in linhas
+                         if isinstance(m, dict)) if q is not None]
+    if len(linhas) < _MENSAGENS_DA_JANELA or (datas and min(datas) < desde):
+        # A conversa inteira, ou a janela inteira, coube nas 40: não há gente.
+        return None, ""
+
+    try:
+        achado = await _executar(_cliente(db).table("messages")
+                                 .select("role, content, created_at, payload")
+                                 .eq("conversation_id", str(conversation_id))
+                                 .eq("role", "assistant")
+                                 .order("created_at", desc=True)
+                                 .limit(_LEITURA_LARGA_DA_JANELA))
+        largas = achado.data or []
+    except Exception as erro_largo:  # noqa: BLE001
+        logger.warning("[JANELA] leitura larga falhou (%s)", type(erro_largo).__name__)
+        return None, type(erro_largo).__name__
+    largas = [m for m in largas if isinstance(m, dict)
+              and str(m.get("role") or "").strip().lower() == "assistant"]
+    dentro = [m for m in largas
+              if (_quando(m.get("created_at")) or desde) >= desde]
+    ultima = ultima_palavra_humana(dentro)
+    if ultima is not None:
+        return ultima, ""
+    if len(largas) >= _LEITURA_LARGA_DA_JANELA and len(dentro) == len(largas):
+        # ⚠️ Mil falas nossas em N dias e nenhuma de gente: pode haver uma mais
+        #    para trás. Não saber não é permissão (a mesma regra do cabeçalho).
+        return None, LOTE_CORTADO
+    return None, ""
+
+
 # ---------------------------------------------------------------------------
 # Números de TESTE que ficam FORA da regra (Founder, 10/09/2026)
 # ---------------------------------------------------------------------------
@@ -1481,15 +1576,171 @@ def telefone_e_excecao_da_janela(telefone: Any, bruto: Optional[str] = None) -> 
         return False
 
 
+# =============================================================================
+# 🔴 SPEC-121 F1 — A REGRA DOS 7 DIAS vale para a marca do ESPELHO
+# =============================================================================
+#
+# A regra, nas palavras do Founder (29/09/2026):
+#   *"Só deve responder a partir da janela de 7 dias se tiver msg nova depois
+#    disso e não responder msgs antigas só porque deu 7 dias. O que já foi
+#    atendido antes de 7 dias continua sendo de humano e sem enviar msg no grupo.
+#    Caso seja msg nova, aí sim poderá responder normalmente como conversa nova
+#    e só vai enviar msg no grupo de ajuda se realmente precisar de ajuda pra
+#    resolver."*
+#
+# 📊 O que a impedia (29/09/2026, `f1/b0.sql`): 477 conversas em
+# `HUMAN_REQUESTED`, **todas** nascidas do espelho, com `claimed_by` NULL, e só
+# **2** com `human_handoff_reason`. O espelho grava essa marca a CADA fala da
+# atendente pelo celular (`espelho_chat.pausar_por_intervencao_humana`), e
+# `pausar_ia` a trata SEM PRAZO: religado o agente, essas conversas ficavam
+# mudas para sempre — inclusive para o segurado que volta no dia 30 com um
+# assunto novo.
+#
+# ⚠️ O que NÃO muda: a marca que o AGENTE gravou (`human_handoff_reason`
+# preenchido pelo `request_human_agent`) e o `claimed_by` do painel continuam
+# como sempre — só a pessoa devolve. E a marca vence só diante de MENSAGEM NOVA
+# (`por_mensagem_nova`, que só a entrada do webhook passa): o acompanhamento
+# proativo nunca fala por ela, e nenhuma mensagem antiga é respondida — não
+# existe varredor que as reprocesse, e este bloco não cria um.
+
+#: O motivo que o painel ADMIN grava ao pôr a conversa com uma pessoa
+#: (`webhook.py`, `update_conversation_status`). ⚠️ É mão humana, não pedido do
+#: agente — nem o vigia (prova D6) nem a regra dos 7 dias o tratam como do agente.
+MOTIVO_DO_ADMIN = "Admin Intervention"
+
+#: O rastro da reabertura. ⛔ Sem PII na carga.
+EVENTO_REABERTA_PELA_JANELA = "conversa.reaberta_pela_janela"
+
+
+def marca_do_espelho(conversa: Any) -> bool:
+    """Esta `HUMAN_REQUESTED` veio do ESPELHO, e não de um pedido do agente? **PURA.**
+
+    ```
+    status HUMAN_REQUESTED  ·  claimed_by vazio (não é o botão Assumir)
+    human_handoff_reason PRESENTE na linha e vazio (o agente não pediu)
+    ```
+    ⛔ Sem a coluna `human_handoff_reason` na linha, a resposta é **NÃO**: não
+    saber quem marcou não é prova de que foi o espelho, e o lado seguro é o de
+    sempre (a IA cala).
+    """
+    try:
+        linha = conversa or {}
+        if str(linha.get("status") or "").strip().upper() != HUMAN_REQUESTED:
+            return False
+        if str(linha.get("claimed_by") or "").strip():
+            return False
+        if "human_handoff_reason" not in linha:
+            return False
+        return not str(linha.get("human_handoff_reason") or "").strip()
+    except AttributeError:
+        return False
+
+
+async def reabrir_pela_janela(db, *, company_id: str, conversation_id: str,
+                              n_dias: int = 0) -> bool:
+    """A conversa volta a `open`, com rastro. `True` se ESTA chamada reabriu.
+
+    🔴 O UPDATE só casa a marca do espelho (status, sem `claimed_by`, sem
+    `human_handoff_reason`) — se o agente ou alguém do painel mudou a linha no
+    meio, nada é tocado. É também a idempotência: a segunda chamada casa zero
+    linhas e não escreve outro evento.
+
+    ⚠️ `claimed_by_name`/`claimed_at` saem junto, como no *"Devolver ao agente"*
+    do painel: a conversa aberta não pode seguir dizendo *"Atendente pelo
+    celular assumiu"*. ⛔ Nenhum aviso ao grupo nasce daqui (regra B).
+    """
+    empresa = str(company_id or "").strip()
+    conversa = str(conversation_id or "").strip()
+    if not empresa or not conversa:
+        return False
+    try:
+        achado = await _executar(_cliente(db).table("conversations")
+                                 .update({"status": "open", "claimed_by_name": None,
+                                          "claimed_at": None})
+                                 .eq("company_id", empresa)      # 🔴 §7
+                                 .eq("id", conversa)
+                                 .eq("status", HUMAN_REQUESTED)
+                                 .is_("claimed_by", "null")
+                                 .is_("human_handoff_reason", "null"))
+        reabriu = bool(getattr(achado, "data", None))
+    except Exception as erro:  # noqa: BLE001
+        # ⚠️ A decisão já foi tomada pela leitura; a escrita é o registro dela.
+        #    Sem ela, a próxima mensagem refaz a mesma conta e chega ao mesmo lugar.
+        logger.warning("[JANELA] reabertura não gravada (%s)", type(erro).__name__)
+        return False
+    if reabriu:
+        try:
+            from app.services.o_grupo_so_o_que_importa import anotar_no_diario
+
+            await anotar_no_diario(
+                db, empresa, EVENTO_REABERTA_PELA_JANELA,
+                "O segurado escreveu de novo depois de %d dias sem ninguém da "
+                "corretora na conversa: o agente voltou a atender, como conversa "
+                "nova." % int(n_dias or 0),
+                {"conversa": conversa[:8], "dias": int(n_dias or 0)})
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[JANELA] rastro da reabertura não gravado (%s)",
+                           type(erro).__name__)
+    return reabriu
+
+
+async def _a_marca_do_espelho_venceu(db, *, company_id: str, conversa: Dict[str, Any],
+                                     companhia: Any, agora, n_dias, calar):
+    """A marca do espelho diante de MENSAGEM NOVA: cala dentro dos N dias, reabre depois.
+
+    O sinal humano é o MAIS RECENTE entre a última palavra de gente (N dias
+    inteiros, sem o teto de 40) e o `claimed_at` que o espelho grava a cada fala
+    dela. ⛔ Falha de leitura CALA (a regra de sempre desta seção).
+    """
+    from datetime import datetime, timezone
+
+    agora = agora or datetime.now(timezone.utc)
+    dias = janela_de_silencio_dias(companhia) if n_dias is None else int(n_dias)
+    if dias <= 0:
+        # ⚠️ Janela desligada nesta corretora: a marca vale como sempre valeu.
+        return await calar("o segurado pediu para falar com uma pessoa; o agente "
+                           "fica em silêncio até alguém devolver a conversa")
+    conversa_id = str(conversa.get("id") or "")
+    ultima, erro = await palavra_humana_na_janela(db, conversa_id, agora=agora,
+                                                  n_dias=dias)
+    if erro:
+        return await calar("não consegui ler o histórico desta conversa")
+    sinais = [q for q in (ultima, _quando(conversa.get("claimed_at"))) if q is not None]
+    calar_ainda, motivo = silenciar_por_palavra_humana(
+        ultima_humana=max(sinais) if sinais else None, agora=agora, n_dias=dias)
+    if calar_ainda:
+        return await calar(motivo)
+    # ⚠️ Só reabre quem vai ATENDER. Com o agente desligado a conversa segue na
+    #    Fila do painel como está (e o webhook segue o caminho de sempre): mudar
+    #    o status ali tiraria da Fila um segurado que só a equipe vai responder.
+    try:
+        from app.services.o_grupo_so_o_que_importa import agente_de_atendimento_ligado
+
+        ligado = await agente_de_atendimento_ligado(db, str(company_id))
+    except Exception:  # noqa: BLE001
+        ligado = False
+    if not ligado:
+        return await calar("o segurado pediu para falar com uma pessoa; o agente "
+                           "fica em silêncio até alguém devolver a conversa")
+    await reabrir_pela_janela(db, company_id=company_id, conversation_id=conversa_id,
+                              n_dias=dias)
+    logger.info("[JANELA] a marca do espelho venceu (%d dias sem gente) e o "
+                "segurado escreveu de novo: conversa nova", dias)
+    return False, ""
+
+
 async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
-                          companhia: Any = None, agora=None, n_dias=None):
+                          companhia: Any = None, agora=None, n_dias=None,
+                          por_mensagem_nova: bool = False):
     """A porta inteira: `(calar, motivo)` — **e nunca levanta**.
 
     ```
     ① sem `company_id`                 fail-closed: não se fala sem saber de quem é
     ② reivindicada / HUMAN_REQUESTED   `pausar_ia`, o helper de sempre (§5)
+       ②b a marca do ESPELHO + MENSAGEM NOVA (`por_mensagem_nova`): vence em N
+          dias sem gente e a conversa REABRE (SPEC-121 F1, regra dos 7 dias)
     ③ telefone de TESTE na lista       pula SÓ a regra ④, nunca o ②
-    ④ palavra humana há menos de N     a janela
+    ④ palavra humana há menos de N     a janela — os N dias INTEIROS (SPEC-121)
     ```
 
     🔴 **A ORDEM MUDOU EM 14/09/2026, e a antiga era um defeito de produto.**
@@ -1549,24 +1800,36 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
     #
     # 🔴 A exceção de teste é a corretora dizendo *"este número eu quero que
     # seja atendido"*. Ela vence a inferência de que ele é da casa.
-    if telefone_e_excecao_da_janela((conversa or {}).get("user_phone")):
-        logger.info("[JANELA] telefone de teste: a lista de números da casa não se aplica")
-        return False, ""
     #
-    # ⛔ Falha de leitura NÃO cala aqui (o helper devolve conjunto vazio): tratar
-    # um segurado de verdade como "número da casa" por causa de uma leitura ruim
-    # seria calar o atendimento, que é o defeito grave deste arquivo inteiro.
+    # 🔴 SPEC-121 F1 (achado de passagem, P-PILOTO-15 de volta): aqui havia um
+    #    `return False, ""` — a exceção de teste saía da função ANTES do
+    #    takeover (②), e o número de teste voltava a falar por cima da
+    #    atendente. 📊 `test_o_numero_de_teste_e_conversa_nova` e o GE3a de
+    #    `test_todo_silencio_tem_motivo` estavam vermelhos por isso. A exceção
+    #    pula SÓ a lista de números da casa aqui; o takeover continua abaixo.
     try:
-        from app.services.o_grupo_so_o_que_importa import (
-            e_numero_da_casa, numeros_da_casa,
-        )
+        _e_telefone_de_teste = telefone_e_excecao_da_janela(
+            (conversa or {}).get("user_phone"))
+    except Exception:  # noqa: BLE001 — linha ilegível: o takeover (②) decide
+        _e_telefone_de_teste = False
+    if _e_telefone_de_teste:
+        logger.info("[JANELA] telefone de teste: a lista de números da casa não se aplica")
+    else:
+        # ⛔ Falha de leitura NÃO cala aqui (o helper devolve conjunto vazio):
+        # tratar um segurado de verdade como "número da casa" por causa de uma
+        # leitura ruim seria calar o atendimento, que é o defeito grave deste
+        # arquivo inteiro.
+        try:
+            from app.services.o_grupo_so_o_que_importa import (
+                e_numero_da_casa, numeros_da_casa,
+            )
 
-        _fone = (conversa or {}).get("user_phone")
-        if _fone and e_numero_da_casa(await numeros_da_casa(db, str(company_id)), _fone):
-            return await _calar(MOTIVO_NUMERO_DA_CASA)
-    except Exception as erro:  # noqa: BLE001
-        logger.warning("[JANELA] números da casa ilegíveis (%s) — sigo",
-                       type(erro).__name__)
+            _fone = (conversa or {}).get("user_phone")
+            if _fone and e_numero_da_casa(await numeros_da_casa(db, str(company_id)), _fone):
+                return await _calar(MOTIVO_NUMERO_DA_CASA)
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[JANELA] números da casa ilegíveis (%s) — sigo",
+                           type(erro).__name__)
 
     try:
         if pausar_ia(conversa or {}):
@@ -1575,6 +1838,12 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
                 return await _calar(
                     "%s assumiu esta conversa; o agente só volta pelo "
                     "botão \"Devolver ao agente\"" % (dono or "Uma pessoa da corretora"))
+            # 🔴 SPEC-121 F1 — a REGRA DOS 7 DIAS vale também aqui, mas SÓ para
+            #    a marca que veio do ESPELHO e SÓ diante de mensagem NOVA.
+            if por_mensagem_nova and marca_do_espelho(conversa):
+                return await _a_marca_do_espelho_venceu(
+                    db, company_id=str(company_id), conversa=conversa or {},
+                    companhia=companhia, agora=agora, n_dias=n_dias, calar=_calar)
             return await _calar(
                 "o segurado pediu para falar com uma pessoa; o agente "
                 "fica em silêncio até alguém devolver a conversa")
@@ -1602,7 +1871,10 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
         #    ficar vermelha (CLAUDE.md §9.3).
         return False, ""
 
-    linhas, erro = await janela_de_mensagens(db, conversa_id)
+    # 🔴 SPEC-121 F1 — a janela lê os N dias INTEIROS, não as últimas 40 linhas
+    #    (`palavra_humana_na_janela`). É a MESMA leitura da porta do grupo.
+    ultima, erro = await palavra_humana_na_janela(db, conversa_id, agora=agora,
+                                                  n_dias=dias)
     if erro == "sem_conversa":
         # ⚠️ Sem `id` não há como consultar. Não é falha do mundo: é chamador
         #    sem conversa, e aí a regra (2) simplesmente não se aplica.
@@ -1611,7 +1883,7 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
         return await _calar("não consegui ler o histórico desta conversa")
 
     calar, motivo = silenciar_por_palavra_humana(
-        ultima_humana=ultima_palavra_humana(linhas), agora=agora, n_dias=dias)
+        ultima_humana=ultima, agora=agora, n_dias=dias)
     if calar:
         return await _calar(motivo)
     return False, ""
@@ -1833,6 +2105,88 @@ def _quanto_tempo(segundos: float) -> str:
     return "poucos minutos"
 
 
+#: 🔴 SPEC-121 F1 — o que se acrescenta ao ASSUNTO NOVO quando havia mensagens
+#: do segurado paradas. ⚠️ Não é o único freio: as mesmas linhas SAEM do
+#: histórico (`sem_as_mensagens_vencidas`, aplicada na montagem do histórico em
+#: `database.get_conversation_history`). O texto diz ao modelo por que elas não
+#: estão lá — sem ele, "vi que falamos antes" puxaria o assunto velho de volta.
+_PENDENCIAS_VENCIDAS = (
+    "\n- As mensagens que o segurado mandou enquanto a conversa estava parada "
+    "NÃO são pendências e saíram do histórico: não as responda nem as retome. "
+    "Responda SÓ ao que ele escreveu agora."
+)
+
+
+def _e_da_corretora(mensagem: Any) -> bool:
+    """Fala do nosso lado — o agente ou uma pessoa da corretora. ⛔ `#nota` não
+    conta: o segurado nunca a leu, então ela não responde nada."""
+    return (isinstance(mensagem, dict)
+            and str(mensagem.get("role") or "").strip().lower() == "assistant"
+            and not e_anotacao(mensagem))
+
+
+def _fora_do_turno(mensagens, agora):
+    """`(instante, linha)` do que é ANTERIOR ao turno que está acontecendo agora."""
+    fora = []
+    for m in mensagens or ():
+        if not isinstance(m, dict):
+            continue
+        quando = _quando(m.get("created_at"))
+        if quando is not None and (agora - quando).total_seconds() >= _TURNO_SEGUNDOS:
+            fora.append((quando, m))
+    return fora
+
+
+def _ultima_da_corretora(mensagens, agora):
+    datas = [q for q, m in _fora_do_turno(mensagens, agora) if _e_da_corretora(m)]
+    return max(datas) if datas else None
+
+
+def mensagens_vencidas(mensagens, *, agora=None, n_dias=None) -> List[Dict[str, Any]]:
+    """As falas do SEGURADO que ninguém respondeu antes de um silêncio da
+    corretora MAIOR que N dias. **PURA.**
+
+    🔴 A regra dos 7 dias do Founder: *"não responder msgs antigas só porque deu
+    7 dias"*. 📊 O caso: a atendente falou há 8 dias, o segurado escreveu nos
+    dias 3 e 5 (o agente calado pela janela) e escreve de novo hoje. As dos dias
+    3 e 5 são estas.
+
+    ```
+    a última fala DA CORRETORA (agente ou gente, fora do turno) tem mais de N dias
+    → toda fala do segurado DEPOIS dela e ANTES do turno de agora
+    ```
+    ⚠️ Sem fala nenhuma da corretora na conversa → `[]`: ninguém nunca atendeu,
+    e não há silêncio de N dias a contar — o comportamento de sempre.
+    ⚠️ N = 0 desliga a regra (a mesma convenção de `janela_de_silencio_dias`).
+    """
+    from datetime import datetime, timezone
+
+    agora = agora or datetime.now(timezone.utc)
+    dias = janela_de_silencio_dias() if n_dias is None else int(n_dias)
+    if dias <= 0:
+        return []
+    nossa = _ultima_da_corretora(mensagens, agora)
+    if nossa is None or (agora - nossa).total_seconds() <= dias * 86400:
+        return []
+    return [m for q, m in _fora_do_turno(mensagens, agora)
+            if str(m.get("role") or "").strip().lower() == "user" and q > nossa]
+
+
+def sem_as_mensagens_vencidas(mensagens, *, agora=None, n_dias=None) -> List[Any]:
+    """O histórico SEM as `mensagens_vencidas`, na mesma ordem. **PURA.**
+
+    ⛔ O resto fica: o que foi conversado ANTES do silêncio é memória
+    (o `_ASSUNTO_NOVO` diz ao modelo como usá-la); o que foi escrito DEPOIS dele
+    e ninguém respondeu não é pendência de ninguém.
+    """
+    lista = list(mensagens or [])
+    vencidas = mensagens_vencidas(lista, agora=agora, n_dias=n_dias)
+    if not vencidas:
+        return lista
+    fora = {id(m) for m in vencidas}
+    return [m for m in lista if id(m) not in fora]
+
+
 def contexto_do_reencontro(mensagens, *, agora=None, n_dias=None) -> str:
     """O bloco de prompt do reencontro, ou `""`. **PURA.**
 
@@ -1849,6 +2203,16 @@ def contexto_do_reencontro(mensagens, *, agora=None, n_dias=None) -> str:
 
     agora = agora or datetime.now(timezone.utc)
     dias = janela_de_silencio_dias() if n_dias is None else int(n_dias)
+
+    # 🔴 SPEC-121 F1 — o buraco dos dias 3 e 5. O segurado escreveu enquanto a
+    #    conversa estava com a equipe e volta no dia 9: a "anterior" é a dele,
+    #    do dia 5 (< N dias), e o bloco antigo devolvia "" — o modelo recebia as
+    #    perguntas velhas SEM aviso. Agora a régua é a última fala DA CORRETORA.
+    vencidas = mensagens_vencidas(mensagens, agora=agora, n_dias=dias)
+    if vencidas:
+        nossa = _ultima_da_corretora(mensagens, agora)
+        return (_ASSUNTO_NOVO % _quanto_tempo((agora - nossa).total_seconds())
+                + _PENDENCIAS_VENCIDAS)
 
     anterior = None
     anterior_em = None

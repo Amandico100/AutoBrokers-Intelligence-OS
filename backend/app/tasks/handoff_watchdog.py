@@ -100,6 +100,62 @@ def _max_lembretes() -> int:
     return _env_int("HANDOFF_MAX_LEMBRETES", MAX_LEMBRETES_POR_CONVERSA)
 
 
+async def prova_de_que_o_agente_pediu(db, conversa: Dict[str, Any]) -> bool:
+    """🔴 SPEC-121 F1 · D6 (confirmada pelo Founder, 29/09/2026) — a PROVA.
+
+    O aviso tardio só sai com as duas, e cada uma pega o que a outra não pega:
+
+    ```
+    ① `human_handoff_reason` preenchido     o `request_human_agent` SEMPRE o
+       (e não é o do painel ADMIN)          escreve (MOTIVO_SEM_DECLARACAO no
+                                            pior caso); o espelho NUNCA
+    ② na conversa, a última fala do AGENTE  o agente estava atendendo quando
+       é POSTERIOR à última palavra de gente pediu — não a atendente
+    ③ e a última mensagem é do SEGURADO      alguém espera (a regra de 21/08)
+    ```
+
+    📊 Por quê (`f1/b0.sql`, 29/09/2026): dos 29 avisos de 21/09, **28** não
+    tinham `human_handoff_reason`, e o único que tinha (`dc54572a`, sinistro)
+    tinha a última fala do agente ANTES da atendente. Todos saíram pelo status
+    `HUMAN_REQUESTED` que o espelho grava quando a ATENDENTE responde.
+
+    ⛔ Na DÚVIDA não há prova: leitura que falha, conversa sem mensagem, lote
+    que não mostra a fala do agente — tudo isso é `False` (D4). Lê a conversa
+    POR CONVERSA (`janela_de_mensagens`), nunca pelo lote global que o
+    PostgREST corta em 1000 linhas.
+    """
+    try:
+        from app.services.o_fim_do_atendimento import (
+            MOTIVO_DO_ADMIN, _falas_do_agente, _quando, janela_de_mensagens,
+            ultima_palavra_humana,
+        )
+
+        motivo = str((conversa or {}).get("human_handoff_reason") or "").strip()
+        if not motivo or motivo == MOTIVO_DO_ADMIN:
+            return False
+        linhas, erro = await janela_de_mensagens(db, str(conversa.get("id") or ""))
+        if erro or not linhas:
+            return False
+        datadas = [(q, m) for q, m in ((_quando((m or {}).get("created_at")), m)
+                                       for m in linhas if isinstance(m, dict))
+                   if q is not None]
+        if not datadas:
+            return False
+        _, mais_nova = max(datadas, key=lambda par: par[0])
+        if str(mais_nova.get("role") or "").strip().lower() != "user":
+            return False
+        falas = _falas_do_agente(linhas)
+        if not falas:
+            return False
+        do_agente = max(q for q, _ in falas)
+        humana = ultima_palavra_humana(linhas)
+        return humana is None or do_agente > humana
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HandoffWatchdog] prova do pedido ilegível (%s) — sem aviso",
+                       type(exc).__name__)
+        return False
+
+
 def _parado_ha_ms(conversa: Dict[str, Any], agora: datetime) -> float:
     try:
         visto = datetime.fromisoformat(
@@ -185,6 +241,10 @@ async def varrer_handoffs_parados() -> None:
     # equipe nesse estado é o que ensina a ignorar o grupo — e aí, no dia em
     # que um segurado de verdade esperar, ninguém olha. É esse o custo real:
     # não é incômodo, é o alarme perdendo o significado.
+    # ⚠️ SPEC-121 F1 — este lote decide só QUEM É MEDIDO (o SLI abaixo). Ele é
+    #    cortado pelo PostgREST em 1000 linhas e, na dúvida, trata todas como
+    #    pendentes — e por isso NÃO decide mais aviso nenhum: o aviso tardio
+    #    lê a conversa inteira, uma a uma (`prova_de_que_o_agente_pediu`).
     ids = [str(c.get("id")) for c in paradas if c.get("id")]
     esperando: set = set(ids)  # sem leitura possível, mantém o comportamento antigo
     try:
@@ -277,16 +337,25 @@ async def varrer_handoffs_parados() -> None:
         _janela_tardia_ms = min(_env_int("HANDOFF_AVISO_TARDIO_HORAS",
                                          _AVISO_TARDIO_HORAS_PADRAO),
                                 max(1, realerta_h - 1)) * 3_600_000
-        if parada_ms <= _janela_tardia_ms:
+        # 🔴 SPEC-121 F1 · D6 — e SÓ COM PROVA de que foi o AGENTE quem pediu.
+        #    📊 29 de 29 avisos de 21/09 saíram por `HUMAN_REQUESTED` do espelho
+        #    (a atendente respondendo). O status não é prova; o motivo gravado
+        #    pelo agente + a fala dele depois da última palavra de gente, é.
+        #    ⛔ O motivo inventado ("o segurado pediu para falar com uma
+        #    pessoa") saiu: sem motivo do agente, não há aviso.
+        if parada_ms <= _janela_tardia_ms and await prova_de_que_o_agente_pediu(
+                db, conversa):
             try:
                 if not await _ja_avisado_recentemente(conversa_id, realerta_h,
                                                       company_id=company_id):
                     from app.agents.tools.human_handoff import HumanHandoffTool
+                    from app.services.o_grupo_so_o_que_importa import (
+                        PROVA_PEDIDO_DO_AGENTE,
+                    )
 
-                    motivo = (str(conversa.get("human_handoff_reason") or "").strip()
-                              or "o segurado pediu para falar com uma pessoa")
+                    motivo = str(conversa.get("human_handoff_reason") or "").strip()
                     aviso = await HumanHandoffTool(db)._avisar_suporte(
-                        company_id, conversa, motivo)
+                        company_id, conversa, motivo, prova=PROVA_PEDIDO_DO_AGENTE)
                     # ⚠️ `calado` NÃO é falha (confirmação do juiz): a porta
                     #    calou porque um humano assumiu (D17). Devolver a vez
                     #    faria o vigia bater nela a cada varredura e inflar o
@@ -538,7 +607,7 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
                 # `deve_expirar_a_conversa` (`o_fim_do_atendimento.py:949`) e a
                 # conversa NUNCA expira. O que muda é quantos CHEGAM ao grupo.
                 from app.services.o_grupo_so_o_que_importa import (
-                    TIPO_ESPERA_VENCIDA, anotar_no_diario,
+                    PROVA_ESPERA_DO_AGENTE, TIPO_ESPERA_VENCIDA, anotar_no_diario,
                 )
 
                 # ⛔ NADA DE `continue` AQUI. Abaixo deste bloco vêm ②b (a
@@ -561,8 +630,12 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
                 else:
                     texto = (f"⏳ ESPERA VENCIDA — esperava {' e '.join(rotulos)} "
                              f"e o prazo passou.")
+                    # 🔴 SPEC-121 F1 — regra B: toda `work_waits` nasce do
+                    #    acionamento do agente (`dispatch_router.abrir_espera`,
+                    #    os dois únicos escritores). A e C a porta confere.
                     aviso = await HumanHandoffTool(db)._avisar_suporte(
-                        empresa, linhas[0], texto, tipo=TIPO_ESPERA_VENCIDA)
+                        empresa, linhas[0], texto, tipo=TIPO_ESPERA_VENCIDA,
+                        prova=PROVA_ESPERA_DO_AGENTE)
                     if aviso.get("avisado"):
                         resumo["avisadas"] += 1
                     elif aviso.get("calado"):

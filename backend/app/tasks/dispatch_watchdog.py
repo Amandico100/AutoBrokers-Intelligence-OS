@@ -422,7 +422,9 @@ async def _support_alert(company_id: str, text: str, wa, integration,
         #    `entregar_dossie_uma_vez`, e os achados do Vigia já têm as flags
         #    `wd_*` (uma vez por sessão). Deduplicar de novo calaria o segundo
         #    tipo de aviso da mesma conversa.
-        from app.services.o_grupo_so_o_que_importa import TIPO_VIGIA, enviar_ao_grupo
+        from app.services.o_grupo_so_o_que_importa import (
+            PROVA_ACIONAMENTO, TIPO_VIGIA, enviar_ao_grupo,
+        )
 
         _conversa = str((session or {}).get("mirror_conversation_id") or "")
         saida = await enviar_ao_grupo(
@@ -434,7 +436,9 @@ async def _support_alert(company_id: str, text: str, wa, integration,
                                      str((session or {}).get("case_id") or "")[:8]),
             motivo=motivo,
             # 🔴 SPEC-EXTRA-001.4 C — a guarda vê a PAUSA HUMANA desta sessão.
-            sessao=session)
+            sessao=session,
+            # 🔴 SPEC-121 F1 — regra B: o vigia só olha acionamento DO AGENTE.
+            prova_do_agente=PROVA_ACIONAMENTO)
         if saida.get("calado") and session is not None:
             session["grupo_calado_porque"] = saida.get("motivo") or ""
         return bool(saida.get("enviado"))

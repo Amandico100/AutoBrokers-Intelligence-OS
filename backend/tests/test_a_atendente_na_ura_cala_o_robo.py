@@ -133,11 +133,57 @@ R._db = _banco_falso
 GRUPO = []
 
 
+class _Agentes:
+    """🔴 SPEC-121 F1 — a guarda pergunta se o agente de atendimento está LIGADO
+    (regra A) no banco que recebe. Este dublê só responde `agents`: as duas
+    corretoras daqui estão ligadas, e o que o guarda mede continua sendo a PAUSA."""
+
+    class _Q:
+        def __init__(self, tabela, empresa=None):
+            self.tabela, self.empresa, self.ident = tabela, empresa, None
+
+        def select(self, *_a, **_k):
+            return self
+
+        def eq(self, coluna, valor):
+            if coluna == "company_id":
+                self.empresa = valor
+            elif coluna == "id":
+                self.ident = valor
+            return self
+
+        def order(self, *_a, **_k):
+            return self
+
+        def limit(self, *_a, **_k):
+            return self
+
+        def execute(self):
+            # ⚠️ A regra C é fail-closed desde a SPEC-121: a guarda LÊ a conversa
+            #    e as mensagens. Aqui a conversa existe, sem dono e sem mensagem.
+            if self.tabela == "agents":
+                dados = [{"id": "ag", "is_active": True}] if self.empresa else []
+            elif self.tabela == "conversations" and self.empresa and self.ident:
+                dados = [{"id": self.ident, "company_id": self.empresa, "user_phone": "",
+                          "claimed_by": None, "claimed_by_name": None, "claimed_at": None}]
+            else:
+                dados = []
+            return types.SimpleNamespace(data=dados)
+
+    def table(self, nome):
+        return _Agentes._Q(nome)
+
+
+AGENTES = _Agentes()
+
+
 async def _enviar_ao_grupo_real_ate_a_guarda(db, **kw):
     """A GUARDA É A REAL; o que vem depois dela é dublê."""
     pode, porque = await G.o_grupo_pode_saber(
-        db, company_id=kw["company_id"], conversation_id=kw.get("conversation_id", ""),
-        telefone=kw.get("telefone", ""), tipo=kw["tipo"], sessao=kw.get("sessao"))
+        AGENTES if db is None else db, company_id=kw["company_id"],
+        conversation_id=kw.get("conversation_id", ""),
+        telefone=kw.get("telefone", ""), tipo=kw["tipo"], sessao=kw.get("sessao"),
+        prova_do_agente=kw.get("prova_do_agente", ""))
     GRUPO.append({"tipo": kw["tipo"], "pode": pode, "porque": porque, "texto": kw.get("texto", "")})
     return {"enviado": pode, "calado": not pode, "motivo": porque, "destino_ok": True}
 
@@ -542,20 +588,28 @@ print("[GC-3] COM A JANELA ABERTA, O GRUPO CALA — pela guarda ÚNICA, em todo 
 print("=" * 74)
 aberta = nova_sessao(A)
 D.uma_fala_da_atendente(aberta)
+_PA = G.PROVA_ACIONAMENTO   # 🔴 SPEC-121 F1 — regra B: o acionamento é do agente
 for tipo in (G.TIPO_PEDIDO_DE_AJUDA, G.TIPO_VIGIA, G.TIPO_RETOMADA, G.TIPO_ESPERA_VENCIDA):
-    pode, porque = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=tipo, sessao=aberta))
+    pode, porque = rodar(G.o_grupo_pode_saber(AGENTES, company_id=A, tipo=tipo, sessao=aberta,
+                                              prova_do_agente=_PA))
     checar(not pode and porque == G.MOTIVO_PAUSA_HUMANA, f"`{tipo}` cala com a janela aberta", porque)
-pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=G.TIPO_SINISTRO, sessao=aberta))
-checar(pode, "sinistro continua isento (a regra da 001.3 não muda)")
+# 🔴 A LIÇÃO MIGROU (§9.3) — SPEC-121 F1, D5 confirmada pelo Founder: sinistro
+#    deixou de ser isento. Com a atendente na URA, ele também cala.
+pode, porque = rodar(G.o_grupo_pode_saber(AGENTES, company_id=A, tipo=G.TIPO_SINISTRO, sessao=aberta,
+                                          prova_do_agente=G.PROVA_PEDIDO_DO_AGENTE))
+checar(not pode and porque == G.MOTIVO_PAUSA_HUMANA,
+       "sinistro também cala com a janela aberta (D5 da SPEC-121)", porque)
 # a espera.vencida não tem a sessão: o índice por telefone a cala.
 REDIS.d.clear()
 rodar(G.marcar_pausa_humana(A, G.alvos_da_pausa("conv-a", "5548988887777"), 60))
-pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=G.TIPO_ESPERA_VENCIDA,
-                                     telefone="48 98888-7777"))
+pode, _ = rodar(G.o_grupo_pode_saber(AGENTES, company_id=A, tipo=G.TIPO_ESPERA_VENCIDA,
+                                     telefone="48 98888-7777",
+                                     prova_do_agente=G.PROVA_ESPERA_DO_AGENTE))
 checar(not pode, "a `espera.vencida` (só com o telefone, noutra forma) cala pelo índice")
 # 🔴 CONTROLE: janela FECHADA não cala nada.
 D.fechar_pausa(aberta, "assumiu")
-pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=G.TIPO_PEDIDO_DE_AJUDA, sessao=aberta))
+pode, _ = rodar(G.o_grupo_pode_saber(AGENTES, company_id=A, tipo=G.TIPO_PEDIDO_DE_AJUDA, sessao=aberta,
+                                     prova_do_agente=_PA))
 checar(pode, "🔴 CONTROLE: com a janela fechada, o pedido de ajuda passa")
 # todo ponto de envio do acionamento entrega a SESSÃO à guarda (AST — o guarda diz qual).
 sem_sessao = []
@@ -661,8 +715,9 @@ rodar(R.try_route_insurer_inbound(company_id=B, from_phone=URA, text=TELA, send_
 checar(saidas_do_robo(rodar(R.load_active_dispatch(B, URA))) == ["1"],
        "🔴 CONTROLE: B, sem janela, responde a MESMA tela com a tecla do ramo (\"1\")",
        str(saidas_do_robo(rodar(R.load_active_dispatch(B, URA)))))
-pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=B, tipo=G.TIPO_PEDIDO_DE_AJUDA,
-                                     conversation_id="conv-igual", telefone="5548988887777", sessao=sb))
+pode, _ = rodar(G.o_grupo_pode_saber(AGENTES, company_id=B, tipo=G.TIPO_PEDIDO_DE_AJUDA,
+                                     conversation_id="conv-igual", telefone="5548988887777", sessao=sb,
+                                     prova_do_agente=G.PROVA_ACIONAMENTO))
 checar(pode, "o índice da janela de A (mesma conversa, mesmo telefone) NÃO cala o grupo de B")
 rodar(R.note_manual_outbound(A, URA, "2", foi_humano=True))     # A assume
 sa, sb = rodar(R.load_active_dispatch(A, URA)), rodar(R.load_active_dispatch(B, URA))

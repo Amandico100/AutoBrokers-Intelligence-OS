@@ -71,7 +71,8 @@ def rodar(coro):
 
 
 from app.services.o_grupo_so_o_que_importa import (  # noqa: E402
-    TIPO_PEDIDO_DE_AJUDA, e_numero_da_casa, numeros_da_casa, o_grupo_pode_saber,
+    PROVA_PEDIDO_DO_AGENTE, TIPO_PEDIDO_DE_AJUDA, e_numero_da_casa,
+    numeros_da_casa, o_grupo_pode_saber,
 )
 
 EMPRESA_X = "11111111-1111-1111-1111-111111111111"
@@ -147,6 +148,11 @@ banco = Banco({
     ],
     "messages": [],
     "work_events": [],
+    # 🔴 SPEC-121 F1 — a porta do grupo pergunta antes se o agente de
+    #    atendimento está LIGADO (regra A). Ligado nas duas: o que este guarda
+    #    mede é o NÚMERO DA CASA, não o interruptor.
+    "agents": [{"company_id": EMPRESA_X, "agent_role": "attendance", "is_active": True},
+               {"company_id": EMPRESA_Y, "agent_role": "attendance", "is_active": True}],
 })
 
 casa = rodar(numeros_da_casa(banco, EMPRESA_X))
@@ -158,7 +164,7 @@ certo("47988880003" in casa,
 # 🔴 EFEITO 3 — nunca vai ao grupo (a pergunta 2 da guarda).
 pode, porque = rodar(o_grupo_pode_saber(
     banco, company_id=EMPRESA_X, conversation_id="conv-x", telefone=FIXO_DA_LOJA,
-    tipo=TIPO_PEDIDO_DE_AJUDA))
+    tipo=TIPO_PEDIDO_DE_AJUDA, prova_do_agente=PROVA_PEDIDO_DO_AGENTE))
 certo(pode is False and "corretora" in porque,
       "EFEITO 3 — nunca vai ao grupo: %r" % porque[:50])
 
@@ -233,7 +239,7 @@ certo(casa_y == set(),
 
 pode, _ = rodar(o_grupo_pode_saber(
     banco, company_id=EMPRESA_Y, conversation_id="conv-y", telefone=FIXO_DA_LOJA,
-    tipo=TIPO_PEDIDO_DE_AJUDA))
+    tipo=TIPO_PEDIDO_DE_AJUDA, prova_do_agente=PROVA_PEDIDO_DO_AGENTE))
 certo(pode is True,
       "🔴 §7: o MESMO número, na corretora Y, continua sendo um caso normal "
       "(dois prédios podem ter o mesmo fixo)")

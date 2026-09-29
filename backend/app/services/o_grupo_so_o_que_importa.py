@@ -68,23 +68,103 @@ TIPO_PAUSA_HUMANA = "pausa_humana"
 #: pedido de ajuda (quem chama confere `dossier_sent`).
 TIPO_RETOMADA = "retomada"
 
-#: 🔴 O que a guarda **não** cala, e o porquê está escrito na SPEC §5.3.
+#: 🔴 O que a guarda **não** cala.
 #:
-#: `sinistro`      é NOTÍCIA DE NEGÓCIO, não lembrete de fila. A corretora
-#:                 precisa saber que existe um sinistro mesmo que alguém já
-#:                 esteja conversando.
-#: `conclusao`     é o fechamento, e é curto. Calar a conclusão porque um
-#:                 humano participou apagaria justamente o caso em que houve
-#:                 trabalho humano.
 #: `resumo_diario` é uma mensagem por dia, sobre o dia, não sobre uma conversa.
 #: `queda_de_canal` é sobre o CANAL da corretora, não sobre uma conversa; ele
 #:                 muda de DESTINATÁRIO (§7.4), não de guarda.
 #:
+#: 🔴 SPEC-121 F1 (D5, confirmada pelo Founder em 29/09/2026) — `sinistro` e
+#: `conclusao` SAÍRAM daqui. 📊 Em 21/09 o aviso de sinistro de uma conversa que
+#: a atendente tinha atendido 267 h antes saiu ao grupo porque era isento
+#: (`dc54572a`, `f1/b0.sql`). A regra do Founder não tem exceção: *"avisar o
+#: humano do que ele NÃO conhece"* — e o ✅ também cala quando a atendente
+#: participou. Eles continuam com a deduplicação própria (`JANELA_DE_DEDUP_S`).
+#:
 #: ⚠️ Uma guarda que cala tudo é tão defeituosa quanto uma que não cala nada
 #: (CLAUDE.md §9.3). O gate G-A1 mede os DOIS lados.
 TIPOS_ISENTOS = frozenset({
-    TIPO_SINISTRO, TIPO_CONCLUSAO, TIPO_RESUMO_DIARIO, TIPO_QUEDA_DE_CANAL,
+    TIPO_RESUMO_DIARIO, TIPO_QUEDA_DE_CANAL,
 })
+
+# ===========================================================================
+# 🔴 SPEC-121 F1 — A REGRA ÚNICA DO AVISO DE CONVERSA
+# ===========================================================================
+#
+# Todo aviso SOBRE UMA CONVERSA DE SEGURADO (tem `conversation_id` ou a sessão
+# do acionamento) só sai se as TRÊS forem verdadeiras:
+#
+#   A  o agente de atendimento está LIGADO          (`attendance_agent_active`,
+#                                                     fail-closed)
+#   B  foi o AGENTE quem pediu                        (o chamador PROVA — abaixo)
+#   C  nenhum humano da corretora falou com o cliente nos últimos N dias
+#      (a MESMA janela do atendimento, lida INTEIRA; o claim vale N dias; a
+#       pausa de 15 s da URA)
+#
+# 📊 Por quê (29/09/2026, `investigacoes-2026-09-29/o-grupo-de-suporte.md` e
+# `f1/b0.sql`): **29 de 29** avisos de 21/09 falavam de conversas que a
+# atendente já tinha atendido pelo celular, com o agente DESLIGADO, e que o
+# agente nunca pediu. Legítimos: **0**.
+#
+# ⚠️ Os auxiliares SEM conversa (cobrança, sentinela, fila longa, queda de
+# canal, resumo das 19h) ficam FORA da regra — eles não falam de segurado.
+
+#: As provas de que foi o AGENTE quem pediu (regra B). ⛔ O status
+#: `HUMAN_REQUESTED` NÃO é prova: o espelho o grava quando a ATENDENTE responde.
+PROVA_PEDIDO_DO_AGENTE = "pedido_do_agente"      # `request_human_agent` (_arun)
+PROVA_ACIONAMENTO = "acionamento"                # dossiê, vigia, retomada, ✅
+PROVA_ESPERA_DO_AGENTE = "espera_do_agente"      # `work_waits` do acionamento
+PROVA_LACUNA = "lacuna_no_turno_do_agente"       # a lacuna nasce no turno dele
+PROVAS_DO_AGENTE = frozenset({
+    PROVA_PEDIDO_DO_AGENTE, PROVA_ACIONAMENTO, PROVA_ESPERA_DO_AGENTE, PROVA_LACUNA,
+})
+
+MOTIVO_AGENTE_DESLIGADO = ("o agente de atendimento está desligado: quem atende "
+                           "é a equipe, e o grupo não recebe aviso de conversa")
+MOTIVO_SEM_PROVA = ("nada prova que foi o agente quem pediu ajuda nesta "
+                    "conversa")
+
+
+def e_aviso_de_conversa(tipo: str, conversation_id: Any = "", sessao: Any = None) -> bool:
+    """O aviso é sobre uma conversa de SEGURADO? — **PURA**.
+
+    Conversa (`conversation_id`) ou a sessão de um acionamento (que é de um
+    segurado mesmo quando o espelho não achou a conversa). ⛔ Os isentos nunca.
+    """
+    if str(tipo or "") in TIPOS_ISENTOS:
+        return False
+    return bool(str(conversation_id or "").strip()) or isinstance(sessao, dict)
+
+
+async def agente_de_atendimento_ligado(db, company_id: str) -> bool:
+    """A regra A — *"o agente de atendimento desta corretora está LIGADO?"*
+
+    🔴 A MESMA pergunta de `atlas.attendance_capture.attendance_agent_active`
+    (a do webhook), com a MESMA resposta: só `True` com prova — existe a linha
+    `agent_role='attendance'` e `is_active` é verdadeiro. A diferença é o
+    CLIENTE: aqui é o `db` que a porta já recebeu para ler a conversa, e não o
+    cliente global. ⚠️ Uma decisão lida de dois bancos diferentes (a conversa
+    de um, o agente de outro) é a meia-regra do §0.3. O guarda
+    `test_o_grupo_so_ouve_quem_precisa` compara as duas respostas no mesmo banco.
+
+    ⛔ Fail-closed: não conseguir ler é `False`.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        return False
+    try:
+        from app.services.o_fim_do_atendimento import _cliente, _executar
+
+        achado = await _executar(_cliente(db).table("agents")
+                                 .select("id, is_active")
+                                 .eq("company_id", empresa)     # 🔴 CLAUDE.md §7
+                                 .eq("agent_role", "attendance").limit(1))
+        linhas = achado.data or []
+        return bool(linhas) and (linhas[0] or {}).get("is_active") is True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[GRUPO] não consegui saber se o agente está ligado (%s) "
+                       "— calando o aviso de conversa", type(exc).__name__)
+        return False
 
 #: Quanto tempo a mesma (corretora, conversa, tipo) fica sem repetir — §7.5.
 #: 🔴 A chave da deduplicação é a CONVERSA, não a SESSÃO: 📊 no 10/09 saíram
@@ -157,7 +237,10 @@ async def _pausa_humana_na_conversa(empresa: str, sessao: Any, conversa_id: str,
                                     fone: str) -> bool:
     """A causa `pausa_humana` — pela SESSÃO quando ela veio, senão pelo índice.
 
-    ⛔ Fail-open, como o resto da guarda: sem conseguir ler, NÃO cala."""
+    ⚠️ Fail-open SÓ AQUI, e é deliberado: o índice é transitório (Redis) e a
+    autoridade é a sessão, que chega a esta função sem I/O. Quem não tem a
+    sessão (a espera vencida) ainda passa pela regra C, que é fail-closed desde
+    a SPEC-121."""
     if isinstance(sessao, dict):
         try:
             from app.services.insurer_dispatch_service import pausa_humana_aberta
@@ -333,45 +416,54 @@ async def o_grupo_pode_saber(db, *, company_id: str, conversation_id: str = "",
                              telefone: str = "", tipo: str,
                              companhia: Any = None, agora=None,
                              conversa: Any = None,
-                             sessao: Any = None) -> Tuple[bool, str]:
+                             sessao: Any = None,
+                             prova_do_agente: str = "") -> Tuple[bool, str]:
     """`(pode_falar, motivo_em_português)`.
 
-    As quatro perguntas, **nesta ordem**, e cada uma DELEGANDO:
+    As perguntas, **nesta ordem**, e cada uma DELEGANDO:
 
     ```
-    1  o tipo é ISENTO?                      TIPOS_ISENTOS            → passa, antes de qualquer I/O
-    2  a contraparte é NÚMERO DA CASA?       numeros_da_casa          → cala
-    3  a conversa está ASSUMIDA (claim fresco)?  conversations.claimed_*  → cala
-    4  um HUMANO da corretora falou nos últimos N dias?  a janela     → cala
+    0  o tipo é ISENTO (resumo, queda de canal)?  TIPOS_ISENTOS   → passa, antes de qualquer I/O
+    — só para AVISO DE CONVERSA (SPEC-121 F1, a regra única) —
+    A  o agente de atendimento está LIGADO?     attendance_agent_active → senão cala
+    B  foi o AGENTE quem pediu?                 `prova_do_agente`       → senão cala
+    —
+    1  a atendente está na URA AGORA (15 s)?    a pausa humana          → cala
+    2  a contraparte é NÚMERO DA CASA?          numeros_da_casa         → cala
+    C1 a conversa está ASSUMIDA há menos de N dias?  claimed_*          → cala
+    C2 um HUMANO da corretora falou nos últimos N dias (INTEIROS)?      → cala
     ```
 
-    🔴 **FAIL-OPEN por desenho.** Se não der para ler (banco fora, timeout),
-    devolve `(True, MOTIVO_SEM_LEITURA)` e loga.
-
-    ⚠️ É o OPOSTO da `a_ia_deve_calar`, que é fail-**closed** — e a assimetria é
-    deliberada: falar por cima da atendente na frente do SEGURADO é
-    irreversível; mandar um aviso a mais ao GRUPO, não. O comentário de
-    `handoff_watchdog.py:198-203` já escolheu assim e esta SPEC conserva a
-    escolha. ⛔ Um juiz que peça fail-closed aqui está pedindo silêncio de
-    atendimento por falha de infraestrutura.
+    🔴 **SPEC-121 F1 — FAIL-CLOSED para aviso de conversa** (D3/D4 do Founder:
+    *"na dúvida, a porta cala e registra o motivo"*). 📊 O fail-open de antes
+    é a causa 3 dos 29 avisos de 21/09. O pedido NÃO se perde calando: a
+    conversa continua na Fila do painel, e o silêncio vira `grupo.calado` com
+    o motivo. ⚠️ Os auxiliares sem conversa (cobrança, sentinela) nunca chegam
+    às leituras que podem falhar — para eles nada mudou.
     """
     empresa = str(company_id or "").strip()
     if not empresa:
-        # 🔴 Sem corretora não há isolamento possível (CLAUDE.md §7). Aqui o
-        #    fail-open pararia: não se resolve destino sem saber de quem é.
+        # 🔴 Sem corretora não há isolamento possível (CLAUDE.md §7).
         return False, "não sei de que corretora é este aviso"
 
-    # ---- 1. o tipo é isento? — atalho ANTES de qualquer I/O ---------------
+    # ---- 0. o tipo é isento? — atalho ANTES de qualquer I/O ---------------
     if str(tipo or "") in TIPOS_ISENTOS:
         return True, ""
 
     conversa_id = str(conversation_id or "").strip()
     fone = str(telefone or "").strip()
+    de_conversa = e_aviso_de_conversa(tipo, conversa_id, sessao)
 
-    # ---- 1-bis. 🔴 SPEC-EXTRA-001.4 C — a atendente está na URA AGORA? ------
-    #    A causa que a 001.4 acrescenta (proposta §7.3: quem executa depois
-    #    CHAMA a guarda e acrescenta a sua causa). Só o aviso da própria pausa
-    #    passa: ele é sobre ela.
+    if de_conversa:
+        # ---- A. o agente de atendimento está ligado? (D2) -----------------
+        if not await agente_de_atendimento_ligado(db, empresa):
+            return False, MOTIVO_AGENTE_DESLIGADO
+        # ---- B. foi o AGENTE quem pediu? (D1/D6) --------------------------
+        if str(prova_do_agente or "") not in PROVAS_DO_AGENTE:
+            return False, MOTIVO_SEM_PROVA
+
+    # ---- 1. 🔴 SPEC-EXTRA-001.4 C — a atendente está na URA AGORA? --------
+    #    Só o aviso da própria pausa passa: ele é sobre ela.
     if str(tipo or "") != TIPO_PAUSA_HUMANA and await _pausa_humana_na_conversa(
             empresa, sessao, conversa_id, fone):
         return False, MOTIVO_PAUSA_HUMANA
@@ -386,47 +478,42 @@ async def o_grupo_pode_saber(db, *, company_id: str, conversation_id: str = "",
             logger.warning("[GRUPO] números da casa ilegíveis (%s)", type(exc).__name__)
 
     if not conversa_id:
-        # Aviso que não é sobre uma conversa (cobrança de parcela, vigia da
-        # corretora): as perguntas 3 e 4 não têm sujeito. Passa.
+        # Aviso que não é sobre uma conversa (cobrança de parcela, sentinela)
+        # ou sessão de acionamento sem conversa espelhada: C não tem sujeito.
         return True, ""
 
-    # ---- 3 e 4 precisam da conversa e das mensagens -----------------------
+    # ---- C precisa da conversa e das mensagens — e na DÚVIDA CALA ---------
     try:
         linha = conversa if isinstance(conversa, dict) else None
         # 🔴 A LINHA RECEBIDA PODE SER PARCIAL — juiz fresco, 16/09/2026.
         #
-        # 📊 `varrer_esperas_vencidas` (`handoff_watchdog.py:562-564`) seleciona
-        # `id, company_id, session_id, user_name, user_phone,
-        # human_handoff_reason` — **sem nenhuma coluna de claim** — e passa essa
-        # linha adiante. Confiar nela fazia a pergunta 3 devolver `False` por
-        # ausência de dado, não por ausência de dono:
-        #
-        #     linha do BANCO (claim de 30 min)  → (False, "Regina assumiu…")
-        #     a MESMA conversa, linha de :562   → (True, "")   ← o grupo era avisado
-        #
-        # ⚠️ É o defeito do §0.3 em miniatura: o dado existia e quem perguntou
-        # não o tinha na mão. O teste é pela CHAVE, não pelo valor — `None` é uma
+        # 📊 `varrer_esperas_vencidas` seleciona `id, company_id, session_id,
+        # user_name, user_phone, human_handoff_reason` — **sem nenhuma coluna
+        # de claim**. O teste é pela CHAVE, não pelo valor — `None` é uma
         # resposta legítima ("ninguém assumiu"); a chave ausente é ignorância.
         if linha is not None and "claimed_by" not in linha:
             linha = None
         if linha is None:
             linha = await _ler_a_conversa(db, empresa, conversa_id)
         if linha is None:
-            return True, MOTIVO_SEM_LEITURA
+            return False, MOTIVO_SEM_LEITURA
 
         agora_utc = agora or datetime.now(timezone.utc)
 
-        # ---- 3. assumida por alguém, com claim FRESCO? --------------------
-        assumida, quem = _assumida_com_claim_fresco(linha, agora_utc)
+        from app.services.o_fim_do_atendimento import (
+            janela_de_silencio_dias, palavra_humana_na_janela,
+            silenciar_por_palavra_humana, telefone_e_excecao_da_janela,
+        )
+
+        # 🔴 A regra C NÃO TEM NÚMERO PRÓPRIO: é a MESMA janela que decide se o
+        #    agente cala com o segurado, com a MESMA env e o MESMO override por
+        #    corretora. ⛔ `JANELA_DO_GRUPO_DIAS` não existe.
+        dias = janela_de_silencio_dias(companhia)
+
+        # ---- C1. assumida por alguém há menos de N dias? -------------------
+        assumida, quem = _assumida_com_claim_fresco(linha, agora_utc, dias=dias)
         if assumida:
             return False, "%s assumiu esta conversa" % quem
-
-        # ---- 4. um humano da corretora falou nos últimos N dias? ----------
-        from app.services.o_fim_do_atendimento import (
-            janela_de_mensagens, janela_de_silencio_dias,
-            silenciar_por_palavra_humana, telefone_e_excecao_da_janela,
-            ultima_palavra_humana,
-        )
 
         # ⚠️ Os números de TESTE ficam fora da regra — a mesma exceção que o
         #    atendimento já respeita (`JANELA_SILENCIO_EXCECOES`).
@@ -434,25 +521,24 @@ async def o_grupo_pode_saber(db, *, company_id: str, conversation_id: str = "",
         if alvo_fone and telefone_e_excecao_da_janela(alvo_fone):
             return True, ""
 
-        mensagens, erro = await janela_de_mensagens(db, conversa_id)
+        # ---- C2. um humano falou nos últimos N dias — INTEIROS? ------------
+        #    📊 SPEC-121: o teto de 40 linhas escondia a atendente em 39 de 262
+        #    conversas ativas (`palavra_humana_na_janela`).
+        ultima, erro = await palavra_humana_na_janela(db, conversa_id,
+                                                      agora=agora_utc, n_dias=dias)
         if erro:
-            logger.warning("[GRUPO] janela ilegível (%s) — vou deixar avisar", erro)
-            return True, MOTIVO_SEM_LEITURA
-
-        # 🔴 A pergunta 4 NÃO TEM NÚMERO PRÓPRIO: chama a MESMA função que
-        #    decide se o agente cala com o segurado, com a MESMA env e o MESMO
-        #    override por corretora. ⛔ `JANELA_DO_GRUPO_DIAS` não existe.
-        dias = janela_de_silencio_dias(companhia)
+            logger.warning("[GRUPO] janela ilegível (%s) — calando o aviso de conversa",
+                           erro)
+            return False, MOTIVO_SEM_LEITURA
         calar, motivo = silenciar_por_palavra_humana(
-            ultima_humana=ultima_palavra_humana(mensagens),
-            agora=agora_utc, n_dias=dias)
+            ultima_humana=ultima, agora=agora_utc, n_dias=dias)
         if calar:
             return False, motivo
         return True, ""
     except Exception as exc:  # noqa: BLE001
-        logger.warning("[GRUPO] guarda não conseguiu ler (%s) — fail-open",
-                       type(exc).__name__)
-        return True, MOTIVO_SEM_LEITURA
+        logger.warning("[GRUPO] guarda não conseguiu ler (%s) — calando o aviso "
+                       "de conversa", type(exc).__name__)
+        return False, MOTIVO_SEM_LEITURA
 
 
 async def _ler_a_conversa(db, company_id: str, conversation_id: str):
@@ -474,11 +560,32 @@ def _horas_do_realerta() -> int:
         return 6
 
 
-def _assumida_com_claim_fresco(conversa: Dict[str, Any], agora) -> Tuple[bool, str]:
+def _validade_do_claim_h(dias: Optional[int]) -> float:
+    """🔴 SPEC-121 F1 (fecha P-120-14) — o claim vale N DIAS, a MESMA janela.
+
+    📊 Antes: `HANDOFF_REALERTA_HORAS` = 6 h. A atendente que assumiu às 9h
+    deixava de "estar na conversa" às 15h — e o grupo voltava a ser avisado de
+    uma conversa que tinha dona. ⚠️ Com a janela DESLIGADA (N = 0) o claim não
+    some: volta às 6 h de antes, porque desligar a janela não pode desligar
+    também o "alguém assumiu".
+    """
+    try:
+        n = int(dias) if dias is not None else None
+    except (TypeError, ValueError):
+        n = None
+    if n is None:
+        from app.services.o_fim_do_atendimento import janela_de_silencio_dias
+
+        n = janela_de_silencio_dias()
+    return float(n * 24) if n > 0 else float(_horas_do_realerta())
+
+
+def _assumida_com_claim_fresco(conversa: Dict[str, Any], agora,
+                               dias: Optional[int] = None) -> Tuple[bool, str]:
     """A MESMA régua de idade de `handoff_watchdog.py:282-287` — **PURA**.
 
     🔴 `claimed_at` ilegível AVISA, não cala. Data que não dá para ler é dúvida,
-    e a regra do módulo é "na dúvida, avisa" — senão uma data ausente calaria a
+    e aqui a dúvida não cala sozinha — a regra C2 (a janela) ainda pergunta; senão uma data ausente calaria a
     conversa para sempre, que é o furo que este bloco existe para fechar.
 
     🔴 **`claimed_by` OU `claimed_by_name` — lente do dado, 16/09/2026.**
@@ -517,7 +624,7 @@ def _assumida_com_claim_fresco(conversa: Dict[str, Any], agora) -> Tuple[bool, s
         idade_h = (agora - visto).total_seconds() / 3600.0
     except Exception:  # noqa: BLE001
         return False, ""
-    if idade_h >= _horas_do_realerta():
+    if idade_h >= _validade_do_claim_h(dias):
         return False, ""
     nome = str(conversa.get("claimed_by_name") or "").strip() or "alguém da equipe"
     return True, nome
@@ -645,7 +752,8 @@ async def enviar_ao_grupo(db, *, company_id: str, tipo: str, texto: str,
                           motivo_classe: str = "", integration: Any = None,
                           destino: str = "", dedup: bool = True,
                           janela_s: Optional[int] = None,
-                          agora=None, sessao: Any = None) -> Dict[str, Any]:
+                          agora=None, sessao: Any = None,
+                          prova_do_agente: str = "") -> Dict[str, Any]:
     """O ÚNICO caminho de uma mensagem para o grupo da corretora.
 
     ```
@@ -660,6 +768,10 @@ async def enviar_ao_grupo(db, *, company_id: str, tipo: str, texto: str,
     🔴 A guarda entra no ponto mais BAIXO possível. Colocá-la no chamador é o
     que produz o 12º caminho que ninguém lembrou, e é o defeito que o guarda
     G-A2 existe para pegar.
+
+    🔴 SPEC-121 F1 — `prova_do_agente` é a regra B: todo aviso SOBRE UMA
+    CONVERSA diz COMO sabe que foi o agente quem pediu (`PROVAS_DO_AGENTE`).
+    Sem ela, cala. ⛔ O chamador nunca "decide" a regra; ele só declara a origem.
     """
     empresa = str(company_id or "").strip()
     conversa_id = str(conversation_id or "").strip()
@@ -669,14 +781,18 @@ async def enviar_ao_grupo(db, *, company_id: str, tipo: str, texto: str,
     pode, porque = await o_grupo_pode_saber(
         db, company_id=empresa, conversation_id=conversa_id, telefone=telefone,
         tipo=tipo, companhia=companhia, agora=agora, conversa=conversa,
-        sessao=sessao)
+        sessao=sessao, prova_do_agente=prova_do_agente)
     if not pode:
         resposta.update({"calado": True, "motivo": porque})
         await anotar_no_diario(
             db, empresa, EVENTO_GRUPO_CALADO,
-            "O grupo não foi avisado porque a conversa já tem gente.",
+            # ⛔ A FRASE vai só para a carga (como sempre foi): a do claim traz o
+            #    NOME de quem assumiu, e `message_human` aparece no feed.
+            "O grupo não foi avisado (%s)." % classe_do_silencio_do_grupo(porque),
             _carga(tipo, conversa_id, motivo, motivo_classe,
-                   {"calou_porque": porque[:160]}))
+                   {"calou_porque": porque[:160],
+                    "calou_classe": classe_do_silencio_do_grupo(porque),
+                    "prova": str(prova_do_agente or "")[:40]}))
         logger.info("[GRUPO] calado | empresa=%s | tipo=%s | porque=%s",
                     empresa, tipo, porque[:80])
         return resposta
@@ -741,6 +857,18 @@ async def enviar_ao_grupo(db, *, company_id: str, tipo: str, texto: str,
             await devolver_a_vez_do_grupo(empresa, conversa_id, tipo)
         logger.error("[GRUPO] ❌ aviso NÃO entregue | empresa=%s | tipo=%s | motivo=%s",
                      empresa, tipo, resposta["motivo"])
+        # 🔴 SPEC-121 F1 — o silêncio por falta de destino também deixa rastro.
+        #    📊 29/09/2026: com os destinos desativados desde 21/09, este ramo
+        #    voltava ANTES do diário, e "ninguém foi avisado" era indistinguível
+        #    de "o job não rodou". ⚠️ `calado` continua False: não é a guarda,
+        #    é falta de destino — e quem chama trata os dois de jeitos diferentes.
+        await anotar_no_diario(
+            db, empresa, EVENTO_GRUPO_CALADO,
+            "O grupo não foi avisado (%s)." % CLASSE_SEM_DESTINO,
+            _carga(tipo, conversa_id, motivo, motivo_classe,
+                   {"calou_porque": str(resposta["motivo"])[:160],
+                    "calou_classe": CLASSE_SEM_DESTINO,
+                    "prova": str(prova_do_agente or "")[:40]}))
         return resposta
     except Exception as exc:  # noqa: BLE001
         if reservou:
@@ -761,6 +889,38 @@ async def enviar_ao_grupo(db, *, company_id: str, tipo: str, texto: str,
         db, empresa, EVENTO_GRUPO_ENVIADO, "O grupo da corretora foi avisado.",
         _carga(tipo, conversa_id, motivo, motivo_classe))
     return resposta
+
+
+#: 🔴 SPEC-121 F1 — a CLASSE de cada silêncio, estável, para contar. ⚠️ A frase
+#: continua em `calou_porque`; a classe existe para o resumo e para a SQL não
+#: precisarem de regex sobre prosa (CLAUDE.md §9.4).
+CLASSE_SEM_DESTINO = "sem_destino"
+
+
+def classe_do_silencio_do_grupo(porque: str) -> str:
+    """`agente_desligado` · `sem_prova` · `pausa_humana` · `numero_da_casa` ·
+    `sem_leitura` · `assumida` · `janela` · `outro` — **PURA**."""
+    texto = str(porque or "")
+    if texto == MOTIVO_AGENTE_DESLIGADO:
+        return "agente_desligado"
+    if texto == MOTIVO_SEM_PROVA:
+        return "sem_prova"
+    if texto == MOTIVO_PAUSA_HUMANA:
+        return "pausa_humana"
+    if texto == MOTIVO_SEM_LEITURA:
+        return "sem_leitura"
+    if "número da própria corretora" in texto:
+        return "numero_da_casa"
+    if texto.endswith("assumiu esta conversa"):
+        return "assumida"
+    try:
+        from app.services.o_fim_do_atendimento import foi_a_janela
+
+        if foi_a_janela(texto):
+            return "janela"
+    except Exception:  # noqa: BLE001
+        pass
+    return "outro"
 
 
 class _NaoSaiu(Exception):

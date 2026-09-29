@@ -67,9 +67,10 @@ from app.services.o_fim_do_atendimento import (  # noqa: E402
     janela_de_silencio_dias, silenciar_por_palavra_humana, ultima_palavra_humana,
 )
 from app.services.o_grupo_so_o_que_importa import (  # noqa: E402
-    TIPOS_ISENTOS, TIPO_CONCLUSAO, TIPO_ESPERA_VENCIDA, TIPO_PEDIDO_DE_AJUDA,
-    TIPO_RESUMO_DIARIO, TIPO_SINISTRO, TIPO_VIGIA, e_numero_da_casa,
-    o_grupo_pode_saber,
+    PROVA_ACIONAMENTO, PROVA_ESPERA_DO_AGENTE, PROVA_PEDIDO_DO_AGENTE,
+    TIPOS_ISENTOS, TIPO_COBRANCA, TIPO_CONCLUSAO, TIPO_ESPERA_VENCIDA,
+    TIPO_PEDIDO_DE_AJUDA, TIPO_RESUMO_DIARIO, TIPO_SINISTRO, TIPO_VIGIA,
+    e_numero_da_casa, o_grupo_pode_saber,
 )
 
 OK = FAIL = 0
@@ -204,9 +205,16 @@ class _Consulta:
 class BancoDeMentira:
     """Dublê minimo. 🔴 Respeita `company_id` — e e por isso que ele prova §7."""
 
-    def __init__(self, conversas=(), mensagens=(), internos=(), membros=(), fones=()):
+    def __init__(self, conversas=(), mensagens=(), internos=(), membros=(), fones=(),
+                 agentes=None):
         self.conversas, self.mensagens = list(conversas), list(mensagens)
         self.internos, self.membros, self.fones = list(internos), list(membros), list(fones)
+        # 🔴 SPEC-121 F1 — a porta pergunta se o agente de atendimento está
+        #    LIGADO (regra A). As duas corretoras deste arquivo têm o agente ligado,
+        #    para que o que se mede aqui continue sendo C (a gente na conversa).
+        self.agentes = list(agentes) if agentes is not None else [
+            {"company_id": EMPRESA_X, "agent_role": "attendance", "is_active": True},
+            {"company_id": EMPRESA_Y, "agent_role": "attendance", "is_active": True}]
         self.escritas = []
 
     def table(self, nome):
@@ -219,7 +227,7 @@ class BancoDeMentira:
         fonte = {"conversations": self.conversas, "messages": self.mensagens,
                  "company_internal_numbers": self.internos,
                  "company_members": self.membros, "users_v2": self.fones,
-                 "work_events": []}.get(tabela, [])
+                 "agents": self.agentes, "work_events": []}.get(tabela, [])
         return [linha for linha in fonte if _casa(linha)]
 
 
@@ -240,24 +248,37 @@ _conversa_limpa = {"id": CONVERSA, "company_id": EMPRESA_X, "user_phone": "55479
                    "claimed_by": None, "claimed_by_name": None, "claimed_at": None}
 
 banco = BancoDeMentira(conversas=[_conversa_limpa], mensagens=_msgs_com_humano)
+#: 🔴 SPEC-121 F1 — todo aviso de conversa diz COMO sabe que foi o agente (regra B).
+_P = PROVA_PEDIDO_DO_AGENTE
 
 pode, porque = rodar(o_grupo_pode_saber(
     banco, company_id=EMPRESA_X, conversation_id=CONVERSA,
-    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA))
+    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA, prova_do_agente=_P))
 certo(pode is False, "pergunta 4: humano falou ha 2h → o grupo NAO e avisado")
 certo("atendente" in porque.lower(),
       "e o motivo e a FRASE que a janela ja produz, nao um codigo: %r" % porque[:60])
 
 pode, _ = rodar(o_grupo_pode_saber(
     banco, company_id=EMPRESA_X, conversation_id=CONVERSA,
-    tipo=TIPO_ESPERA_VENCIDA, agora=AGORA))
+    tipo=TIPO_ESPERA_VENCIDA, agora=AGORA, prova_do_agente=PROVA_ESPERA_DO_AGENTE))
 certo(pode is False, "e a espera vencida cala pela mesma guarda")
 
-for tipo in (TIPO_SINISTRO, TIPO_CONCLUSAO, TIPO_RESUMO_DIARIO):
+# 🔴 A LIÇÃO MIGROU (CLAUDE.md §9.3) — SPEC-121 F1, D5 confirmada pelo Founder
+# em 29/09/2026. Este bloco afirmava que sinistro e ✅ PASSAVAM com humano na
+# conversa ("é notícia, não fila"). 📊 Em 21/09 foi exatamente assim que saiu o
+# aviso de sinistro de uma conversa que a atendente tinha atendido 267 h antes.
+# A regra agora não tem exceção de conversa: sinistro e ✅ CALAM com gente na
+# conversa. ⚠️ O resumo das 19h continua isento — ele não é sobre conversa.
+for tipo, prova in ((TIPO_SINISTRO, _P), (TIPO_CONCLUSAO, PROVA_ACIONAMENTO)):
     pode, _ = rodar(o_grupo_pode_saber(
-        banco, company_id=EMPRESA_X, conversation_id=CONVERSA, tipo=tipo, agora=AGORA))
-    certo(pode is True,
-          "🔴 `%s` PASSA mesmo com humano na conversa (§5.3 — e noticia, nao fila)" % tipo)
+        banco, company_id=EMPRESA_X, conversation_id=CONVERSA, tipo=tipo, agora=AGORA,
+        prova_do_agente=prova))
+    certo(pode is False,
+          "🔴 `%s` CALA com humano na conversa (D5 — a regra não tem exceção)" % tipo)
+pode, _ = rodar(o_grupo_pode_saber(
+    banco, company_id=EMPRESA_X, conversation_id=CONVERSA, tipo=TIPO_RESUMO_DIARIO,
+    agora=AGORA))
+certo(pode is True, "e o `resumo_diario` (isento, sem conversa de segurado) PASSA")
 
 # CONTROLE: a mesma conversa SEM a fala humana volta a avisar
 banco_sem = BancoDeMentira(conversas=[_conversa_limpa],
@@ -265,7 +286,7 @@ banco_sem = BancoDeMentira(conversas=[_conversa_limpa],
                                       if not m.get("payload")])
 pode, _ = rodar(o_grupo_pode_saber(
     banco_sem, company_id=EMPRESA_X, conversation_id=CONVERSA,
-    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA))
+    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA, prova_do_agente=_P))
 certo(pode is True, "🔴 CONTROLE: sem fala humana, o pedido de ajuda CHEGA")
 
 # pergunta 3 — claim fresco cala; claim velho nao
@@ -275,7 +296,7 @@ banco_claim = BancoDeMentira(conversas=[_assumida],
                              mensagens=[m for m in _msgs_com_humano if not m.get("payload")])
 pode, porque = rodar(o_grupo_pode_saber(
     banco_claim, company_id=EMPRESA_X, conversation_id=CONVERSA,
-    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA))
+    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA, prova_do_agente=_P))
 certo(pode is False and "Regina" in porque,
       "pergunta 3: claim fresco cala, e o motivo diz quem assumiu")
 
@@ -289,7 +310,8 @@ banco_claim_parcial = BancoDeMentira(
     conversas=[_assumida], mensagens=[m for m in _msgs_com_humano if not m.get("payload")])
 pode, porque = rodar(o_grupo_pode_saber(
     banco_claim_parcial, company_id=EMPRESA_X, conversation_id=CONVERSA,
-    tipo=TIPO_ESPERA_VENCIDA, agora=AGORA, conversa=_parcial))
+    tipo=TIPO_ESPERA_VENCIDA, agora=AGORA, conversa=_parcial,
+    prova_do_agente=PROVA_ESPERA_DO_AGENTE))
 certo(pode is False and "Regina" in porque,
       "🔴 linha PARCIAL (sem `claimed_by`) → a guarda LÊ o banco e cala")
 
@@ -302,19 +324,29 @@ banco_so_nome = BancoDeMentira(
     conversas=[_so_nome], mensagens=[m for m in _msgs_com_humano if not m.get("payload")])
 pode, porque = rodar(o_grupo_pode_saber(
     banco_so_nome, company_id=EMPRESA_X, conversation_id=CONVERSA,
-    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA))
+    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA, prova_do_agente=_P))
 certo(pode is False and "Saionara" in porque,
       "🔴 `claimed_by` VAZIO e `claimed_by_name` preenchido também cala — é o "
       "único escritor que acontece em produção")
 
-_velho = dict(_assumida, claimed_at=(AGORA - timedelta(hours=9)).isoformat())
+# 🔴 A LIÇÃO MIGROU (§9.3) — SPEC-121 F1 fecha P-120-14: o claim vale N DIAS,
+#    a MESMA janela, não 6 h. Um claim de 9 h agora CALA; a mordaça continua
+#    impossível, só que o prazo dela é o da regra do Founder (7 dias).
+_nove_h = dict(_assumida, claimed_at=(AGORA - timedelta(hours=9)).isoformat())
+banco_nove = BancoDeMentira(conversas=[_nove_h],
+                            mensagens=[m for m in _msgs_com_humano if not m.get("payload")])
+pode, _ = rodar(o_grupo_pode_saber(
+    banco_nove, company_id=EMPRESA_X, conversation_id=CONVERSA,
+    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA, prova_do_agente=_P))
+certo(pode is False, "🔴 claim de 9 h CALA (antes, com 6 h, avisava por cima da dona)")
+_velho = dict(_assumida, claimed_at=(AGORA - timedelta(days=7, hours=1)).isoformat())
 banco_velho = BancoDeMentira(conversas=[_velho],
                              mensagens=[m for m in _msgs_com_humano if not m.get("payload")])
 pode, _ = rodar(o_grupo_pode_saber(
     banco_velho, company_id=EMPRESA_X, conversation_id=CONVERSA,
-    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA))
+    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA, prova_do_agente=_P))
 certo(pode is True,
-      "🔴 CONTROLE: claim de 9h (o dono nao voltou) NAO cala — senao vira mordaca")
+      "🔴 CONTROLE: claim de 7 dias e 1 h (o dono nao voltou) NAO cala — senao vira mordaca")
 
 # pergunta 2 — numero da casa
 banco_casa = BancoDeMentira(
@@ -323,7 +355,8 @@ banco_casa = BancoDeMentira(
     internos=[{"company_id": EMPRESA_X, "phone": "47999990001"}])
 pode, porque = rodar(o_grupo_pode_saber(
     banco_casa, company_id=EMPRESA_X, conversation_id=CONVERSA,
-    telefone="5547999990001", tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA))
+    telefone="5547999990001", tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA,
+    prova_do_agente=_P))
 certo(pode is False and "corretora" in porque,
       "pergunta 2: numero da casa cala, e diz que e da casa")
 
@@ -340,11 +373,19 @@ class BancoMorto:
         raise RuntimeError("banco fora")
 
 
+# 🔴 A LIÇÃO MIGROU (§9.3) — SPEC-121 F1, D3/D4 do Founder: na dúvida a porta
+#    CALA o aviso de CONVERSA e registra o motivo. 📊 O fail-open era a causa 3
+#    dos 29 avisos de 21/09. ⚠️ Os auxiliares sem conversa continuam saindo — é
+#    a linha de controle: a porta não virou mordaça, virou exigente com conversa.
 pode, porque = rodar(o_grupo_pode_saber(
     BancoMorto(), company_id=EMPRESA_X, conversation_id=CONVERSA,
-    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA))
-certo(pode is True,
-      "🔴 FAIL-OPEN: banco fora do ar AVISA (falar demais ao grupo e reversivel)")
+    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA, prova_do_agente=_P))
+certo(pode is False,
+      "🔴 FAIL-CLOSED: banco fora do ar CALA o aviso de conversa (%s)" % porque[:50])
+pode, _ = rodar(o_grupo_pode_saber(
+    BancoMorto(), company_id=EMPRESA_X, conversation_id="",
+    tipo=TIPO_COBRANCA, agora=AGORA))
+certo(pode is True, "🔴 CONTROLE: a cobrança (sem conversa) com o MESMO banco fora do ar SAI")
 
 print()
 print("=" * 70)
@@ -443,9 +484,9 @@ certo("janela_de_silencio_dias(companhia)" in _gporta,
       "🔴 a pergunta 4 chama `janela_de_silencio_dias(companhia)` — a MESMA "
       "funcao, a MESMA env, o MESMO override por corretora")
 
-certo(TIPOS_ISENTOS == frozenset({TIPO_SINISTRO, TIPO_CONCLUSAO, TIPO_RESUMO_DIARIO,
-                                  "queda_de_canal"}),
-      "e a lista de isentos e literal e curta: %s" % sorted(TIPOS_ISENTOS))
+certo(TIPOS_ISENTOS == frozenset({TIPO_RESUMO_DIARIO, "queda_de_canal"}),
+      "e a lista de isentos e literal e curta — sem sinistro e sem ✅ (SPEC-121 D5): %s"
+      % sorted(TIPOS_ISENTOS))
 certo(e_numero_da_casa({"47999990001"}, "+55 (47) 99999-0001") is True,
       "o casador aceita o telefone MAL FORMATADO do membro (mascara, +55, nono)")
 certo(e_numero_da_casa({"4799990001"}, "554799990001") is True,
