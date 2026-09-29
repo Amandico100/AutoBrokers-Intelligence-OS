@@ -1,22 +1,22 @@
 {
  "acervo_por_seguradora": {
   "alfa": 9,
-  "allianz": 163,
+  "allianz": 164,
   "azul": 19,
   "bradesco": 30,
-  "hdi": 50,
+  "hdi": 51,
   "mapfre": 38,
   "porto": 142,
   "sompo": 3,
-  "tokio": 62,
-  "yelum": 117,
+  "tokio": 63,
+  "yelum": 118,
   "youse": 34,
   "zurich": 15
  },
  "comando": "cd backend && python scripts/medir_rota.py --todas --gravar-notas docs/canon/reports/NOTAS-DAS-ROTAS.json",
- "commit": "349c0a3",
- "medido_em": "2026-09-28",
- "medido_em_iso": "2026-09-28T13:27:12+00:00",
+ "commit": "ecb701e",
+ "medido_em": "2026-09-29",
+ "medido_em_iso": "2026-09-29T04:04:46+00:00",
  "rotas": [
   {
    "denominador": 0,
@@ -453,7 +453,7 @@
      16
     ],
     "B": [
-     9,
+     33,
      33
     ],
     "C": [
@@ -470,11 +470,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 4 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+20) · a rota anda sozinha (+6) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)",
-   "pct": 55,
-   "pontos": 42,
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "a rota anda sozinha (+6) · apelidos do jeito que o cliente fala (+4)",
+   "patamar": "quase(76)",
+   "pct": 87,
+   "pontos": 66,
    "portoes_abertos": [],
    "ramo": "residencial",
    "seguradora": "allianz",
@@ -523,7 +523,7 @@
      16
     ],
     "B": [
-     19,
+     33,
      33
     ],
     "C": [
@@ -540,11 +540,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 1 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+10) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)",
-   "pct": 76,
-   "pontos": 58,
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
+   "patamar": "quase(76)",
+   "pct": 95,
+   "pontos": 72,
    "portoes_abertos": [],
    "ramo": "residencial",
    "seguradora": "allianz",
@@ -609,7 +609,7 @@
      16
     ],
     "B": [
-     19,
+     33,
      33
     ],
     "C": [
@@ -626,11 +626,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 1 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+10) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)!1",
-   "pct": 76,
-   "pontos": 58,
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
+   "patamar": "quase(76)!1",
+   "pct": 95,
+   "pontos": 72,
    "portoes_abertos": [
     "notes com contagem que RECONTA"
    ],
@@ -725,7 +725,7 @@
      16
     ],
     "B": [
-     4,
+     28,
      33
     ],
     "C": [
@@ -742,11 +742,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 5 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+20) · a ROTA foi percorrida ate o fim (+12) · o cliente recebe protocolo + dia + periodo (+5) · 100% deterministico (+4)",
-   "patamar": "esqueleto(76)!1",
-   "pct": 41,
-   "pontos": 31,
+   "o_que_destrava": "🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "a ROTA foi percorrida ate o fim (+12) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4)",
+   "patamar": "parcial(76)!1",
+   "pct": 72,
+   "pontos": 55,
    "portoes_abertos": [
     "notes com contagem que RECONTA"
    ],
@@ -827,7 +827,7 @@
      16
     ],
     "B": [
-     9,
+     33,
      33
     ],
     "C": [
@@ -844,11 +844,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 21 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)!1",
-   "pct": 63,
-   "pontos": 48,
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
+   "patamar": "quase(76)!1",
+   "pct": 95,
+   "pontos": 72,
    "portoes_abertos": [
     "notes com contagem que RECONTA"
    ],
@@ -1040,7 +1040,7 @@
      16
     ],
     "B": [
-     13,
+     33,
      33
     ],
     "C": [
@@ -1057,11 +1057,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 2 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+16) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)!1",
-   "pct": 68,
-   "pontos": 52,
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
+   "patamar": "quase(76)!1",
+   "pct": 95,
+   "pontos": 72,
    "portoes_abertos": [
     "notes com contagem que RECONTA"
    ],
@@ -1150,7 +1150,7 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 10 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_destrava": "🤖 mapear 5 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
    "o_que_falta": "zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
    "patamar": "parcial(76)!1",
    "pct": 63,
@@ -1221,7 +1221,7 @@
      16
     ],
     "B": [
-     9,
+     33,
      33
     ],
     "C": [
@@ -1238,11 +1238,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 17 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)!1",
-   "pct": 63,
-   "pontos": 48,
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
+   "patamar": "quase(76)!1",
+   "pct": 95,
+   "pontos": 72,
    "portoes_abertos": [
     "notes com contagem que RECONTA"
    ],
@@ -1627,7 +1627,7 @@
      16
     ],
     "B": [
-     9,
+     13,
      33
     ],
     "C": [
@@ -1644,11 +1644,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 22 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
+   "o_que_destrava": "🤖 mapear 2 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "zero orfas funcionais (+16) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
    "patamar": "parcial(76)!1",
-   "pct": 63,
-   "pontos": 48,
+   "pct": 68,
+   "pontos": 52,
    "portoes_abertos": [
     "notes com contagem que RECONTA"
    ],

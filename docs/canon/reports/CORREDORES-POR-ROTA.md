@@ -5,16 +5,16 @@
 > | o que | medido em | de onde |
 > |---|---|---|
 > | **quantas pessoas pediram** (`pedidos`) | **28/09/2026** | `observed_events`, o banco — vivo |
-> | **a nota da régua** (`qualidade`) | **28/09/2026** | o corpus versionado no commit `349c0a3` |
-> | **dá para ligar?** | **28/09/2026** | a simulação com as telas reais no commit `a83dc06`, `simular_corredor.py --todas` |
+> | **a nota da régua** (`qualidade`) | **29/09/2026** | o corpus versionado no commit `ecb701e` |
+> | **dá para ligar?** | **29/09/2026** | a simulação com as telas reais no commit `7844542`, `simular_corredor.py --todas` |
 >
 > ⚠️ O banco é de hoje; o corpus é do commit. Comparar os dois números de uma mesma rota é legítimo — comparar sem ver as datas, não.
 
 ## 🔴 A frase que o Founder pode dizer a uma corretora
 
-> **De 73 rotas medidas, o sistema resolve sozinho 33% (24), 3% (2) vão para uma pessoa, e 64% (47) ainda não dão para ligar.**
+> **De 73 rotas medidas, o sistema resolve sozinho 42% (31), 3% (2) vão para uma pessoa, e 55% (40) ainda não dão para ligar.**
 
-⚠️ **E a segunda metade da frase é obrigatória, com o número exato:** das 47 que ainda não ligam, **31 não têm uma conversa gravada** — essas não são falha do robô, e só um acionamento real as destrava. As outras **16** têm conversa: nelas o material existe e **falta código nosso**.
+⚠️ **E a segunda metade da frase é obrigatória, com o número exato:** das 40 que ainda não ligam, **31 não têm uma conversa gravada** — essas não são falha do robô, e só um acionamento real as destrava. As outras **9** têm conversa: nelas o material existe e **falta código nosso**.
 
 ## 🔴 DUAS PERGUNTAS, NUNCA UMA
 
@@ -28,15 +28,21 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 🔴 **A `%` substituiu o `58/76`.** O denominador da régua muda por rota (76, 70, 64…), porque itens que não se aplicam saem da conta. 📊 `42/64` **parece** pior que `48/76` e é melhor: 66% contra 63%. O bruto continua na tabela, para quem for auditar.
 
 
-## ATENDE SOZINHO — 24 de 73 (33%)
+## ATENDE SOZINHO — 31 de 73 (42%)
 
 *o sistema resolve sozinho, do começo ao protocolo*
 
 | rota | pedidos | qualidade | bruto | por quê | 🔴 o que destrava |
 |---|---:|---:|---:|---|---|
 | `allianz/auto/guincho` | 29 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `porto/auto/guincho` | 25 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/residencial/encanador` | 18 | 87% | 66/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `hdi/auto/guincho` | 16 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `azul/auto/guincho` | 7 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/residencial/maquina_de_lavar` | 6 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `allianz/residencial/eletricista` | 5 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `yelum/auto/socorro_mecanico` | 5 | 93% | 54/58 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `bradesco/auto/guincho` | 5 | 72% | 55/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `alfa/auto/guincho` | 4 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `yelum/residencial/encanador` | 4 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `allianz/residencial/limpeza_caixa_dagua` | 4 | 94% | 66/70 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
@@ -44,6 +50,7 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 | `allianz/auto/bateria` | 3 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `allianz/auto/pneu` | 3 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `azul/auto/bateria` | 3 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `hdi/residencial/encanador` | 3 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `porto/residencial/encanador` | 3 | 92% | 70/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `allianz/residencial/chaveiro` | 2 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `yelum/auto/pneu` | 2 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
@@ -70,25 +77,18 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 | `porto/auto/vidros` | 1 | 53% | 37/70 | a seguradora não abre pela conversa: devolve link ou formulário | ✅ nada — é o desenho certo, e já é handoff pela SPEC-118 |
 
 
-## AINDA NÃO DÁ PARA LIGAR — 47 de 73 (64%)
+## AINDA NÃO DÁ PARA LIGAR — 40 de 73 (55%)
 
 *e a causa diz de quem é o trabalho: sem conversa é acionamento; tela sem resposta é código*
 
-📊 **Dentro desta faixa:** **31** nenhuma conversa desta rota no acervo · **10** existe conversa, e uma tela dela ninguém respondeu · **6** responde tudo o que o acervo mostra e nunca chegou ao protocolo
+📊 **Dentro desta faixa:** **31** nenhuma conversa desta rota no acervo · **6** responde tudo o que o acervo mostra e nunca chegou ao protocolo · **3** existe conversa, e uma tela dela ninguém respondeu
 
 | rota | pedidos | qualidade | bruto | por quê | 🔴 o que destrava |
 |---|---:|---:|---:|---|---|
-| `yelum/auto/guincho` | 26 | 63% | 48/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `porto/auto/guincho` | 25 | 63% | 48/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `allianz/residencial/encanador` | 18 | 55% | 42/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `hdi/auto/guincho` | 16 | 63% | 48/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `azul/auto/guincho` | 7 | 76% | 58/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `allianz/residencial/maquina_de_lavar` | 6 | 76% | 58/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
+| `yelum/auto/guincho` | 26 | 68% | 52/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
 | `porto/auto/bateria` | 5 | 63% | 48/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `bradesco/auto/guincho` | 5 | 41% | 31/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
 | `hdi/residencial/eletricista` | 5 | 30% | 23/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
 | `allianz/residencial/desentupimento` | 4 | 58% | 44/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
-| `hdi/residencial/encanador` | 3 | 68% | 52/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
 | `allianz/residencial/eletrodomesticos` | 3 | 62% | 47/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
 | `porto/residencial/eletrodomesticos` | 1 | 61% | 39/64 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
 | `yelum/residencial/eletrodomesticos` | 1 | 59% | 45/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
@@ -182,4 +182,4 @@ Enquanto elas estiverem aqui, um `—` na coluna `pedidos` **não quer dizer 'ni
 
 ---
 
-_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-28T13:27:26+00:00. **Nenhum número deste documento foi digitado à mão.**_
+_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-29T04:05:44+00:00. **Nenhum número deste documento foi digitado à mão.**_

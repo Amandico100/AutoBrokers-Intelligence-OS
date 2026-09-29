@@ -1004,6 +1004,9 @@ def _controle_do_guarda_139(demanda: Any, html: str) -> List[str]:
     return falhas
 
 
+_RX_HASH = re.compile(r"(?<![0-9A-Za-z])(?=[0-9a-f]*[0-9])[0-9a-f]{7,40}(?![0-9A-Za-z])")
+
+
 def _palavras_fora_do_produto(demanda: Any, html: str) -> List[str]:
     """Os achados do §13.9. Lista vazia = a página só publica língua do produto."""
     try:
@@ -1020,6 +1023,11 @@ def _palavras_fora_do_produto(demanda: Any, html: str) -> List[str]:
     achados: List[str] = []
     vistas: Set[str] = set()
     for origem, texto in _textos_medidos(demanda, html):
+        # 📊 SPEC-120: o commit `ecb701e` virou a "palavra" `ecb`. Um hash de
+        # commit (7–40 hexadecimais COM ao menos um dígito) nunca é nome de
+        # gente — nome não tem dígito —, então sai antes de fatiar. Só o hash:
+        # `Maria` ou `abcdef` sem dígito continuam sendo lidos.
+        texto = _RX_HASH.sub(" ", texto)
         for palavra in re.findall(r"[A-Za-zÀ-ÿ]{3,}", texto):
             n = sem_acento(palavra)
             if n in conhecidas or n in vistas:
