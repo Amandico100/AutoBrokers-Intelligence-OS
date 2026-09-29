@@ -166,6 +166,8 @@ ROTULOS = {
     "alavanca_travada_opcao": "se a alavanca do câmbio está travada",
     "bateria_tipo_opcao": "se é recarga ou bateria nova",
     "taxi_passageiros": "quantas pessoas vão no táxi",
+    # SPEC-120 · D9 — só a porto: o táxi que ela oferece junto com o guincho.
+    "taxi_apos_guincho": "se vai precisar de táxi depois do guincho",
 }
 
 #: Campos que a tool declara e que **não são dado do cliente** — lista fechada,
