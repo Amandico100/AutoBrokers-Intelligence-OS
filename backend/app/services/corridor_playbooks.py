@@ -11913,8 +11913,9 @@ _COMO_PERGUNTAR = {
     "veiculo_cor": "a cor do veículo",
     "taxi_passageiros": "quantas pessoas vão no táxi",
     # 🔴 SPEC-120 · D9 — só a porto, e é o FOUNDER quem decidiu perguntar.
-    "taxi_apos_guincho": "se ele vai precisar de um táxi para sair do local "
-                         "depois que o guincho levar o carro (a Porto oferece)",
+    #    ⚠️ CURTA DE PROPÓSITO: 📊 o bloco de conhecimento estava em 6.990 de
+    #    7.000 caracteres (`test_a_atendente_sabe_conduzir_um_acionamento`).
+    "taxi_apos_guincho": "se quer táxi após o guincho",
     "pet_nome": "o nome do animal",
     "pet_raca": "a raça do animal",
     "pet_idade": "a idade do animal",
@@ -11985,7 +11986,7 @@ _COMO_PERGUNTAR = {
     "local_atual": "onde o veículo está agora",
     "local_destino": "para onde o veículo deve ser levado",
     "quando": "se precisa agora ou prefere agendar",
-    "titular_nascimento": "a data de nascimento do titular (a Mapfre confere a identidade com ela)",
+    "titular_nascimento": "a data de nascimento do titular (a Mapfre confere)",
     "aparelho_marca_modelo": "a marca e o modelo do aparelho",
     "ponto_referencia": "um ponto de referencia proximo",
     "servico_texto": "qual servico o cliente precisa, em uma frase",
