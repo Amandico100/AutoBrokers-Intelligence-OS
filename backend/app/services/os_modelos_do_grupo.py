@@ -195,16 +195,25 @@ def _plural(n: int, um: str, muitos: str) -> str:
     return um if int(n) == 1 else muitos
 
 
-def modelo_resumo_do_dia(dia: str, c: Dict[str, int]) -> str:
+def modelo_resumo_do_dia(dia: str, c: Dict[str, int],
+                         assistencias: Optional[List[Dict[str, str]]] = None) -> str:
     """O resumo das 19h a partir das CONTAGENS já apuradas — **PURO**.
+
+    🔴 SPEC-120 — e, agora, a LISTA das assistências abertas no dia, como o
+    Founder pediu por escrito: *"relatório de assistência 1x por dia às 19h com
+    nome do segurado, número do protocolo, tipo de serviço e seguradora e
+    WhatsApp"*. Cada item vem de `assistencias_do_dia` (um dict com `nome`,
+    `servico`, `seguradora`, `protocolo`, `whatsapp`); campo vazio some da linha,
+    nunca vira "—" inventado.
 
     ⛔ Dia sem movimento devolve `""`: dia sem nada não manda mensagem dizendo
     que não houve nada.
     """
+    assistencias = list(assistencias or [])
     movimento = sum(int(c.get(k) or 0) for k in (
         "acionamentos_entregues", "sinistros_com_dossie", "ajudas_incapacidade",
         "ajudas_regra", "ajudas_desconhecidas", "duvidas", "ja_com_a_equipe",
-        "calados_pela_janela", "vigia_ura", "vigia_prazo"))
+        "calados_pela_janela", "vigia_ura", "vigia_prazo")) + len(assistencias)
     if movimento <= 0:
         return ""
 
@@ -280,6 +289,22 @@ def modelo_resumo_do_dia(dia: str, c: Dict[str, int]) -> str:
 
     if fora:
         linhas += ["", "Fora da conta:"] + fora
+
+    # 🔴 SPEC-120 — A LISTA. Depois dos números, porque os números respondem
+    #    "como foi o dia" e a lista responde "de quem eu preciso lembrar".
+    if assistencias:
+        linhas += ["", "*ASSISTÊNCIAS ABERTAS HOJE* (%d)" % len(assistencias)]
+        for i, a in enumerate(assistencias, start=1):
+            cabeca = " · ".join(p for p in (
+                str(a.get("nome") or "").strip() or "segurado",
+                str(a.get("servico") or "").strip(),
+                str(a.get("seguradora") or "").strip()) if p)
+            protocolo = str(a.get("protocolo") or "").strip()
+            if protocolo:
+                cabeca += " · protocolo %s" % protocolo
+            linhas.append("%d. %s" % (i, cabeca))
+            if str(a.get("whatsapp") or "").strip():
+                linhas.append("   %s" % str(a["whatsapp"]).strip())
 
     linhas += ["", "🤖 agente"]
     return _juntar(linhas)
@@ -373,6 +398,74 @@ async def contagens_do_dia(db, company_id: str, inicio_utc: datetime,
     return c
 
 
+#: O evento que `o_fim_do_atendimento._contar_a_conclusao` grava — um por
+#: assistência aberta pelo agente, mesmo quando o ✅ foi calado.
+EVENTO_ASSISTENCIA_DO_DIA = "acionamento.concluido"
+
+
+async def assistencias_do_dia(db, company_id: str, inicio_utc: datetime,
+                              fim_utc: datetime) -> List[Dict[str, str]]:
+    """As assistências abertas no dia, com o NOME e o WhatsApp do segurado.
+
+    ⛔ Nunca levanta: sem leitura, a lista vem vazia e o resumo sai só com os
+    números (é o comportamento de antes, não um silêncio novo).
+    🔴 §7: o diário e a conversa são lidos com `.eq("company_id")` — a lista de
+    uma corretora nunca mostra segurado de outra.
+    🔴 D15: nome e WhatsApp saem INTEIROS — o grupo é da própria corretora.
+    """
+    from app.services.o_fim_do_atendimento import _cliente
+
+    try:
+        from app.leitura_completa import ler_paginado_async
+
+        def _consulta():
+            return (_cliente(db).table("work_events")
+                    .select("id, payload_redacted, created_at")
+                    .eq("company_id", str(company_id))   # 🔴 §7
+                    .eq("event_type", EVENTO_ASSISTENCIA_DO_DIA)
+                    .gte("created_at", inicio_utc.isoformat())
+                    .lt("created_at", fim_utc.isoformat()))
+
+        linhas, _truncou = await ler_paginado_async(
+            _consulta, chave_unica="id", rotulo="assistências das 19h")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RESUMO 19h] assistências ilegíveis (%s)", type(exc).__name__)
+        return []
+
+    itens = []
+    for linha in sorted(linhas or [], key=lambda l: str((l or {}).get("created_at") or "")):
+        carga = (linha or {}).get("payload_redacted") or {}
+        if isinstance(carga, dict) and carga.get("conversa_id"):
+            itens.append(carga)
+    if not itens:
+        return []
+
+    pessoas: Dict[str, Dict[str, Any]] = {}
+    try:
+        ids = sorted({str(i["conversa_id"]) for i in itens})
+        achado = (_cliente(db).table("conversations")
+                  .select("id, user_name, user_phone")
+                  .eq("company_id", str(company_id))       # 🔴 §7
+                  .in_("id", ids).execute())
+        pessoas = {str(p.get("id")): p for p in (getattr(achado, "data", None) or [])}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RESUMO 19h] conversas ilegíveis (%s) — a lista sai sem nome",
+                       type(exc).__name__)
+
+    saida = []
+    for i in itens:
+        p = pessoas.get(str(i["conversa_id"])) or {}
+        nome = str(p.get("user_name") or "").strip()
+        if nome.isdigit():          # ⚠️ sem `pushName`, o nome nasce = ao número
+            nome = ""
+        saida.append({"nome": nome,
+                      "servico": str(i.get("servico") or ""),
+                      "seguradora": str(i.get("seguradora") or ""),
+                      "protocolo": str(i.get("protocolo") or ""),
+                      "whatsapp": link_do_whatsapp(p.get("user_phone"))})
+    return saida
+
+
 async def montar_o_resumo(db, company_id: str, *, agora=None,
                           tz_nome: Optional[str] = None) -> Tuple[str, Dict[str, int]]:
     """`(texto, contagens)`. Texto vazio = dia sem movimento, e não se manda nada."""
@@ -386,4 +479,5 @@ async def montar_o_resumo(db, company_id: str, *, agora=None,
     fim = (inicio_local + timedelta(days=1)).astimezone(timezone.utc)
 
     c = await contagens_do_dia(db, company_id, inicio, fim)
-    return modelo_resumo_do_dia(local.strftime("%d/%m"), c), c
+    lista = await assistencias_do_dia(db, company_id, inicio, fim)
+    return modelo_resumo_do_dia(local.strftime("%d/%m"), c, lista), c

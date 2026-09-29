@@ -1712,8 +1712,31 @@ async def _marcar_fim_do_atendimento(db, company_id: str,
             logger.info("[FIM] fase '%s' terminou o acionamento, mas esta sessão "
                         "não tem conversa espelhada nem episódio — nada a marcar", fase)
             return
+        # 🔴 SPEC-120 — OS DETALHES DO CASO ATRAVESSAM A PONTE.
+        #
+        # 📊 Antes, só o id da conversa passava daqui para `marcar_fim`, e o ✅
+        # que o grupo recebe saía com `servico=""` — SEMPRE vazio: a sessão do
+        # acionamento sabia o serviço, a seguradora e o protocolo, e nada disso
+        # chegava ao modelo. É também o que falta para o resumo das 19h
+        # LISTAR as assistências do dia, como o Founder pediu: *"nome do
+        # segurado, número do protocolo, tipo de serviço, seguradora e
+        # WhatsApp"*. Nenhum dos três é PII; o nome e o WhatsApp o resumo lê da
+        # própria conversa, filtrada por corretora (§7).
+        from app.services.corridor_playbooks import get_playbook as _get_pb
+        from app.services.insurer_dispatch_service import rotulo_do_servico
+        # ⚠️ Import LOCAL de propósito: `get_playbook` não está no topo deste
+        #    módulo, e um NameError aqui seria engolido pelo `try` desta função —
+        #    o atendimento deixaria de ser marcado como encerrado, que é pior
+        #    que o ✅ sem serviço que este bloco conserta.
+        _pb = _get_pb(str(session.get("playbook_ref") or "")) or {}
+        detalhes = {
+            "servico": rotulo_do_servico(str(session.get("subservice") or "")),
+            "seguradora": str(_pb.get("insurer_key") or "").upper(),
+            "protocolo": str((session.get("captured") or {}).get("protocol") or "").strip(),
+        }
         await marcar_fim(db, company_id=str(company_id), motivo=motivo,
-                         conversation_id=conversa, attendance_session_id=episodio)
+                         conversation_id=conversa, attendance_session_id=episodio,
+                         detalhes=detalhes)
     except Exception as erro:  # noqa: BLE001
         logger.warning("[FIM] a conversa não foi marcada como encerrada (%s) — "
                        "o acionamento seguiu normalmente", type(erro).__name__)

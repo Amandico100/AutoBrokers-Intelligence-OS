@@ -199,7 +199,8 @@ async def _episodio_e_sua_conversa(db, empresa: str, episodio: str):
 async def marcar_fim(db, *, company_id: str, motivo: str,
                      conversation_id: str = "", session_id: str = "",
                      attendance_session_id: str = "",
-                     quando_iso: str = "") -> Tuple[bool, str]:
+                     quando_iso: str = "",
+                     detalhes: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
     """Marca o atendimento como terminado. Devolve `(marcou, porque)`.
 
     🔴 **SPEC-097 U1.2 — o desfecho mora no EPISÓDIO.** 📊 Medido em 05/09/2026:
@@ -359,7 +360,8 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
     # marca de fim vale mais que o aviso.
     if conversa and motivo in DESFECHOS_QUE_O_GRUPO_OUVE:
         try:
-            await _contar_a_conclusao(db, empresa, str(conversa), motivo)
+            await _contar_a_conclusao(db, empresa, str(conversa), motivo,
+                                      detalhes=detalhes)
         except Exception as erro:  # noqa: BLE001
             logger.warning("[FIM] conclusão não anunciada (%s)", type(erro).__name__)
 
@@ -372,8 +374,15 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
 DESFECHOS_QUE_O_GRUPO_OUVE = (ACIONAMENTO_CONCLUIDO, FECHADO_POR_HUMANO)
 
 
+#: 🔴 SPEC-120 — o evento de onde o resumo das 19h LISTA as assistências do dia.
+#: Gravado SEMPRE que um acionamento termina, mesmo quando o ✅ é calado (uma
+#: atendente na conversa cala o balão, mas não desfaz a assistência aberta).
+EVENTO_ASSISTENCIA_DO_DIA = "acionamento.concluido"
+
+
 async def _contar_a_conclusao(db, company_id: str, conversation_id: str,
-                              motivo: str) -> None:
+                              motivo: str,
+                              detalhes: Optional[Dict[str, Any]] = None) -> None:
     """Monta o ✅ e manda pela PORTA ÚNICA. ⛔ Nunca levanta."""
     from app.services.o_grupo_so_o_que_importa import TIPO_CONCLUSAO, enviar_ao_grupo
     from app.services.os_modelos_do_grupo import modelo_atendimento_concluido
@@ -400,9 +409,30 @@ async def _contar_a_conclusao(db, company_id: str, conversation_id: str,
     if nome and nome.isdigit():     # ⚠️ sem `pushName`, o nome nasce = ao número
         nome = ""
 
+    detalhes = detalhes or {}
+    _servico = " · ".join(p for p in (str(detalhes.get("servico") or "").strip(),
+                                      str(detalhes.get("seguradora") or "").strip()) if p)
+    _protocolo = str(detalhes.get("protocolo") or "").strip()
+    # 🔴 A assistência do dia fica ANOTADA antes do balão — e independente dele.
+    #    ⚠️ Só acionamento: `FECHADO_POR_HUMANO` não é assistência que o agente abriu.
+    if motivo == ACIONAMENTO_CONCLUIDO:
+        try:
+            from app.services.o_grupo_so_o_que_importa import anotar_no_diario
+            await anotar_no_diario(
+                db, company_id, EVENTO_ASSISTENCIA_DO_DIA,
+                "Uma assistência foi aberta pelo agente.",
+                {"conversa_id": str(conversation_id),
+                 "servico": str(detalhes.get("servico") or ""),
+                 "seguradora": str(detalhes.get("seguradora") or ""),
+                 "protocolo": _protocolo})
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[FIM] assistência não anotada para o resumo (%s)",
+                           type(erro).__name__)
     texto = modelo_atendimento_concluido(
         segurado=nome or "segurado",
-        servico="",
+        # 📊 Era `servico=""` — literal, sempre. O ✅ nunca disse o que foi feito.
+        servico=_servico,
+        protocolo=_protocolo,
         minutos=minutos,
         por_humano=(str(linha.get("claimed_by_name") or "").strip()
                     if motivo == FECHADO_POR_HUMANO else ""))
