@@ -541,6 +541,9 @@ class InsurerDispatchInput(BaseModel):
         "geralmente vira REBOQUE — um estepe não resolve dois furos."))
     taxi_passageiros: Optional[str] = Field(default=None, description=(
         "[auto táxi] Quantas pessoas vão no táxi"))
+    # SPEC-120 · D9 — o portão da porto cobra; sem campo aqui o guincho nunca aciona.
+    taxi_apos_guincho: Optional[str] = Field(default=None, description=(
+        "[porto guincho] Sim/Não: vai precisar de táxi depois do guincho?"))
     chaveiro_alvo_opcao: Optional[str] = Field(default=None, description=(
         "[residencial chaveiro] O que está trancado — porta principal, "
         "portão, quarto, cofre"))
