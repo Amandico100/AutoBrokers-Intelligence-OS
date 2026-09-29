@@ -823,13 +823,19 @@ def test_o_alerta_de_handoff_passa_a_ser_CONTAVEL():
     **19/08**, dois dias ANTES do conserto.
     """
     fonte = VIGIA_PY.read_text(encoding="utf-8")
+    # ⚠️ MIGRADA EM 28/09/2026 — SPEC-120 D16. O vigia de conversa parada deixou
+    # de mandar lembrete ao grupo, então não há mais *"alerta que sai"* nem
+    # *"teto atingido"* para contar. Os NOMES dos eventos continuam declarados
+    # porque os eventos antigos continuam em `work_events` — foram eles que
+    # mediram os 29 lembretes de 21/09. A lição "o que acontece é CONTÁVEL"
+    # migra para o que a varredura faz agora: MEDIR a espera (o SLI).
     assert 'EVENTO_HANDOFF_REALERTADO = "handoff.realertado"' in fonte
     assert 'EVENTO_HANDOFF_NO_TETO = "handoff.teto_de_lembretes"' in fonte
     codigo = _so_o_codigo_py(fonte)
-    assert "_anotar_no_diario(" in codigo
-    # o alerta que SAI conta, e o teto atingido também
-    assert codigo.count("_anotar_no_diario(") >= 3, (
-        "o diário existe mas não é chamado nos dois pontos que a SPEC pergunta")
+    corpo = codigo.split("async def varrer_handoffs_parados", 1)[1].split(chr(10) + "async def ", 1)[0]
+    assert "sli.registrar(sli.HANDOFF_ESPERA" in corpo, (
+        "a varredura deixou de MEDIR a espera — sem lembrete e sem medida, a "
+        "conversa parada não é contável em lugar nenhum")
 
     # 🔴 E A CHAMADA TEM DE SER ALCANÇÁVEL. 📊 A bateria pegou este guarda
     #    VERDE: a mutação embrulhava a chamada num `if False:` e a CONTAGEM

@@ -287,3 +287,34 @@ def test_controle_sem_ninguem_atendendo_o_grupo_ouve():
     calado, _ = G._assumida_com_claim_fresco(
         {"claimed_by": None, "claimed_by_name": None, "claimed_at": None}, agora)
     assert calado is False
+
+
+# ===========================================================================
+# 6 · O DOSSIÊ NUNCA LEVANTA por causa do link — e a reserva não mascara
+# ===========================================================================
+def _sessao_travada():
+    from app.services.insurer_dispatch_service import new_dispatch_session
+    s = new_dispatch_session(case_id="t", company_id=EMPRESA,
+                             playbook_ref="yelum-auto-whatsapp@v3", subservice="guincho",
+                             slots={"titular_cpf": "11122233344",
+                                    "telefone_contato": "48900000009"})
+    s.update({"state": "needs_human", "client_phone": "5548900000001"})
+    return s
+
+
+def test_sem_o_montador_de_link_o_dossie_sai_com_o_numero_inteiro(monkeypatch):
+    """📊 28/09: três guardas com pacote `app.services` de mentira derrubavam o
+    dossiê com `ModuleNotFoundError`. Dossiê que levanta = nenhum humano avisado."""
+    import sys
+    from app.services import insurer_dispatch_service as D
+    monkeypatch.setitem(sys.modules, "app.services.os_modelos_do_grupo", None)  # import falha
+    texto = D.build_handoff_dossier(_sessao_travada(), "loop_guard")
+    assert "5548900000001" in texto and "48900000009" in texto, texto
+    assert "final " not in texto, "a reserva voltou a mascarar (D15)"
+
+
+def test_controle_com_o_montador_o_numero_sai_clicavel():
+    """🔴 CONTROLE: prova que o teste acima exercitou a RESERVA, não o caminho normal."""
+    from app.services import insurer_dispatch_service as D
+    texto = D.build_handoff_dossier(_sessao_travada(), "loop_guard")
+    assert "https://wa.me/5548900000001" in texto, texto

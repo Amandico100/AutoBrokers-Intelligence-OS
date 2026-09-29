@@ -300,7 +300,14 @@ def teste_o_humano_e_avisado_com_contexto():
     # ⚠️ O que o guarda protege e que o dossie LEVE A CONVERSA, nao o rotulo
     # dela. A licao migra para a secao que existe hoje — e ganha a que mais
     # importa, que e a que a reescrita acrescentou.
-    for campo in ("user_name", "user_phone", "*CONVERSA*"):
+    # ⚠️ MIGRADA DE NOVO EM 28/09/2026 — SPEC-120. A seção `*CONVERSA*` (as
+    # últimas mensagens) SAIU do dossiê principal em 16/09 (SPEC-EXTRA-001.3
+    # §8.0: "viravam 4 balões e a atendente lia o último"). Este guarda
+    # continuou verde por 12 dias só porque o montador de PÓS-ACIONAMENTO,
+    # esquecido, ainda a tinha — e a SPEC-120 alinhou os dois. A lição ("o
+    # dossiê leva a CONVERSA") migra para o que §8.0 pôs no lugar: o resumo
+    # em linguagem humana e o WhatsApp que ABRE a conversa num toque.
+    for campo in ("user_name", "user_phone", "O QUE ACONTECEU", "WhatsApp do segurado"):
         checar(campo in fonte, f"o dossiê leva {campo}")
     checar("O QUE FAZER" in fonte,
            "e diz o que fazer, nao so o que aconteceu",

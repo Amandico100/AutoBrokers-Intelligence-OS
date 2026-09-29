@@ -194,74 +194,62 @@ def test_o_vigia_LE_claimed_by_e_claimed_at():
         "consegue calar para sempre ou nao calar nunca")
 
 
+def _corpo_da_varredura() -> str:
+    codigo = _codigo_do_vigia()
+    corpo = codigo.split("async def varrer_handoffs_parados", 1)[1]
+    return corpo.split(chr(10) + "async def ", 1)[0].split(chr(10) + "def ", 1)[0]
+
+
 def test_CONTROLE_F2_o_claim_NAO_e_filtro_de_consulta():
-    """🔴 ASSERCAO MIGRADA no painel — e o conserto virou do avesso.
+    """🔴 A PRIMEIRA METADE DESTA LIÇÃO CONTINUA: nenhuma conversa parada some da
+    varredura por ter dono. Filtrar `claimed_by IS NULL` na consulta tiraria a
+    conversa ASSUMIDA E ABANDONADA do Vigia para sempre.
 
-    Ela exigia `is_("claimed_by", "null")` **na consulta**, com a frase *"ler
-    sem usar e o mesmo que nao ler"*. Estava errada pelo lado que importa:
-    filtrando ali, uma conversa ASSUMIDA E ABANDONADA — alguem clicou em
-    assumir, foi almocar e nao voltou — some do Vigia **para sempre**. Antes do
-    conserto ela gerava lembrete: chato, mas visivel. Depois, silencio.
-
-    ⚠️ Trocar excesso de aviso por silencio e trocar um defeito por um pior.
+    ⚠️ MIGRADA EM 28/09/2026 — SPEC-120 D16. A segunda metade (decidir pela
+    IDADE do claim se o grupo é cobrado de novo) morreu junto com o lembrete: o
+    Founder decidiu *"não deve ficar enviando dossiês antigos"*. O que a
+    varredura faz agora com TODA conversa parada é MEDIR a espera (o SLI) — e
+    é por isso que o filtro continua proibido: sem ele, a espera de quem tem
+    dono sumiria do gráfico.
     """
     codigo = _codigo_do_vigia()
     assert 'is_("claimed_by", "null")' not in codigo, (
-        "o filtro voltou para a consulta: um claim ABANDONADO fica invisivel "
-        "ao Vigia e ninguem nunca mais e cobrado por aquele caso")
-    # A decisao e' por IDADE, e a idade tem de ser comparada com a JANELA.
-    # ⚠️ Recortar "N caracteres depois de `_dono`" era fragil de proposito
-    # errado: o juiz de confirmacao mandou a telemetria para cima do corte
-    # (o contrato dela diz medir TODA conversa parada) e a janela desceu.
-    # Guarda que depende de distancia entre linhas quebra em refatoracao
-    # legitima e nao quebra em defeito. Este cobra as PECAS.
-    for peca in ("_idade_claim_ms", "_janela_ms", "realerta_h * 3_600_000"):
-        assert peca in codigo, (
-            f"sumiu `{peca}` — o Vigia deixou de decidir pela IDADE do claim: "
-            "ou ele cala para sempre, ou ele nao cala nunca")
-    assert "_REALERTA_HORAS_PADRAO * 3_600_000" not in codigo, (
-        "a janela do claim voltou a usar a CONSTANTE em vez do valor resolvido "
-        "por env — quem configurar HANDOFF_REALERTA_HORAS fica com a janela "
-        "discordando da propria cadencia de re-alerta")
+        "o filtro voltou para a consulta: a conversa assumida e abandonada some "
+        "até da MEDIÇÃO da espera")
+    assert "HANDOFF_ESPERA" in _corpo_da_varredura(), (
+        "a varredura deixou de medir a espera — sem aviso E sem medida, a "
+        "conversa parada vira invisível")
 
 
-def test_claim_SEM_DATA_LEGIVEL_avisa_em_vez_de_calar():
-    """🔴 §9.3 e a regra do proprio modulo: *na duvida, avisa.*
+def test_D16_o_vigia_nao_cobra_mais_o_grupo_nem_com_nem_sem_dono():
+    """🔴 SPEC-120 D16 + D17 — a migração de TRÊS guardas da SPEC-085.
 
-    📊 `_parado_ha_ms` devolve **0.0** para `None` e para `""`. Escrito como
-    "idade < janela ⇒ continue", uma data ausente dava 0, passava no corte e
-    calava a conversa **para sempre** — o mesmo furo que o bloco existe para
-    fechar, mudado de `claimed_by` para `claimed_at`.
+    Eles guardavam: (a) claim sem data legível AVISA em vez de calar; (b) o
+    claim abandonado é cobrado com OUTRO texto (*"ASSUMIDA POR…"*); (c) o teto
+    de lembretes não cala em silêncio. Os três eram sobre COMO cobrar o grupo
+    de novo — e o Founder aboliu a cobrança em 28/09:
+      *"Não deve ficar enviando dossiês antigos. É um aviso só na hora do
+       atendimento… Agente não se mete em atendimento de humano e não envia msg
+       no suporte humano quando o humano estiver atendendo."*
+
+    📊 O que motivou: 29 lembretes em 21/09 (`handoff.realertado`), sobre
+    conversas de 243–244h, um deles dizendo "AINDA SEM ATENDIMENTO" e
+    "Atendente pelo celular já assumiu" na MESMA mensagem.
+
+    ⚠️ O contra-argumento dos três guardas continua verdadeiro e está escrito no
+    próprio vigia: *trocar excesso de aviso por silêncio é trocar um defeito por
+    outro*. O Founder aceitou o preço com a conversa visível na FILA do painel
+    (`test_o_release_NAO_apaga_o_pedido_da_IA`, logo abaixo, guarda isso). A
+    prova de COMPORTAMENTO — o vigia chega a cada conversa e nada sai — está em
+    `test_o_grupo_so_e_chamado_quando_alguem_espera.py`.
     """
+    corpo = _corpo_da_varredura()
+    assert "_avisar_suporte" not in corpo, "a varredura voltou a mandar mensagem ao grupo"
     codigo = _codigo_do_vigia()
-    assert "if _quando else None" in codigo, (
-        "`claimed_at` ausente voltou a virar idade 0 — e idade 0 CALA")
-    assert "_idade_claim_ms is not None and _idade_claim_ms < _janela_ms" in codigo, (
-        "o corte deixou de tratar 'data ilegivel' como claim VELHO")
-
-
-def test_o_claim_ABANDONADO_e_cobrado_com_OUTRO_texto():
-    """§9.3 — prove que os dois casos CONSEGUEM ser diferentes.
-
-    Cobrar *"ninguem assumiu"* de um caso que TEM dono e a mesma mentira ao
-    contrario. Se os dois ramos dissessem a mesma frase, o guarda acima
-    passaria e o produto continuaria mentindo.
-    """
-    codigo = _codigo_do_vigia()
-    assert "ASSUMIDA POR" in codigo, (
-        "sumiu o texto do claim abandonado — o dono some do aviso e quem le "
-        "nao sabe de quem cobrar")
-    assert "AINDA SEM ATENDIMENTO" in codigo, "sumiu o texto do caso sem dono"
-    assert "claimed_by_name" in codigo, (
-        "o aviso do claim abandonado deixou de nomear quem assumiu")
-
-
-def test_o_teto_deixou_de_ser_um_continue_MUDO():
-    fonte = VIGIA.read_text(encoding="utf-8")
-    trecho = fonte.split("if _n > _MAX_LEMBRETES:", 1)[-1][:900]
-    assert "logger." in trecho, (
-        "o teto voltou a calar em silêncio — passar do teto é o sinal mais "
-        "forte de que ninguém assumiu em 24h, e ele não aparecia em lugar nenhum")
+    for texto in ("AINDA SEM ATENDIMENTO", "ASSUMIDA POR"):
+        assert texto not in codigo, (
+            f"o texto de lembrete {texto!r} voltou ao vigia — e com ele a mensagem "
+            "que dizia 'sem atendimento' e 'já assumiu' ao mesmo tempo")
 
 
 def test_o_release_NAO_apaga_o_pedido_da_IA():

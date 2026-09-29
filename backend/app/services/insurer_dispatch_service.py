@@ -5423,6 +5423,26 @@ def _rotulos_do_formulario(session: Dict[str, Any],
     return {"perguntas": perguntas, "opcoes": opcoes}
 
 
+def _whatsapp_clicavel(numero: Any) -> str:
+    """O WhatsApp do número, clicável — ou o número INTEIRO. ⛔ Nunca levanta.
+
+    🔴 SPEC-120: o dossiê é o ÚLTIMO recurso do atendimento. Se ele levantar
+    exceção, nenhum humano é avisado — e isso é pior do que um número sem
+    link. 📊 Medido em 28/09: três guardas que montam um pacote `app.services`
+    de mentira (`test_o_acionamento_nao_trava`, `test_a_confirmacao_confere_
+    antes_de_abrir`, `test_spec031_ops_hardening`) derrubavam o dossiê com
+    `ModuleNotFoundError` no import do montador de link.
+
+    ⚠️ O caminho de reserva NÃO é um segundo formatador (§5): é o número como
+    veio, INTEIRO — a regra D15 do Founder continua valendo nos dois ramos.
+    """
+    try:
+        from app.services.os_modelos_do_grupo import link_do_whatsapp
+        return link_do_whatsapp(numero) or str(numero or "")
+    except Exception:  # noqa: BLE001
+        return str(numero or "")
+
+
 def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     """Dossiê MASTIGADO para o humano assumir sem perguntar nada ao cliente
     (exigência do founder: 'entregar tudo mastigadinho'). Texto de WhatsApp.
@@ -5472,8 +5492,7 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
             #    embaixo. A regra antiga mascarava os dois JUNTOS, pelo mesmo
             #    motivo; a regra nova os abre juntos, pelo mesmo motivo.
             if key == "telefone_contato":
-                from app.services.os_modelos_do_grupo import link_do_whatsapp
-                val = link_do_whatsapp(val) or val
+                val = _whatsapp_clicavel(val)
             linhas.append(f"- {label}: {val}")
     if captured:
         linhas.append("")
@@ -5567,10 +5586,8 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     # do cliente DELA, e o que a atendente precisa é tocar no número e abrir a
     # conversa — *"precisa ser fácil, claro, rápido"*. O link do painel
     # continua no cabeçalho, para quem estiver no computador.
-    from app.services.os_modelos_do_grupo import link_do_whatsapp
-    _cliente = str(session.get("client_phone") or "")
     linhas.append(
-        f"Cliente no WhatsApp: {link_do_whatsapp(_cliente) or _cliente} — "
+        f"Cliente no WhatsApp: {_whatsapp_clicavel(session.get('client_phone'))} — "
         + ("ele JÁ foi avisado que a equipe vai assumir."
            if avisado else
            "🔴 ele AINDA NÃO foi avisado. Fale com ele primeiro."))
