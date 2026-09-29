@@ -79,8 +79,8 @@ Logo: escrever a resposta certa em cada tela órfã, e fazer o residencial TENTA
 | D1 | *"O veículo é blindado?"* | **constante: Não** | *"não vai mudar o guincho por causa disso. Não precisa perguntar."* |
 | D2 | *"garagem subsolo ou acima do nível da rua?"* | 🔴 **PERGUNTAR ao segurado** | *"precisa perguntar onde está o carro. Esse depende do caso."* |
 | D3 | *"O câmbio está travado?"* | **constante: Não** | *"sempre colocar não"* |
-| D4 | *"O veículo está desatrelado?"* | **constante: Sim** | *"deve usar a probabilidade maior"* — desatrelado = não está rebocando nada, que é o caso normal |
-| D5 | *"as rodas estão livres?"* | **constante: Sim** | mesma regra da D4; *"não podemos chamar humano para isso"* |
+| D4 | *"O veículo está desatrelado?"* | **constante: Sim** | ✅ confirmado 28/09: *"deve usar a probabilidade maior"* — desatrelado = não está preso a reboque/trailer, o caso normal |
+| D5 | *"as rodas estão livres?"* | **constante: Sim** | ✅ confirmado 28/09: *"rodas travadas são de algum acidente e aí provavelmente vira sinistro e não assistência"* |
 | D6 | *"Possui animal de estimação?"* | **constante: Não** | *"pode deixar não como padrão. Não precisa perguntar."* |
 | D7 | datas de agendamento | **a PRIMEIRA disponível** | *"pode ser a primeira data disponível"* |
 | D8 | período (manhã/tarde) | 🔴 **PERGUNTAR ao segurado** | *"horário de preferência precisa ser perguntado sim"* |
@@ -90,6 +90,23 @@ Logo: escrever a resposta certa em cada tela órfã, e fazer o residencial TENTA
 | D12 | HDI residencial: corretor ou segurado | **SEGURADO** | decisão delegada a mim; entrar como segurado é o caminho que o corredor já conhece |
 | D13 | 🔴 *"quantos amperes tem a bateria?"* | **tabela por porte, e o padrão é 60 Ah** | §3.1 |
 | D14 | 🔴 os 4 playbooks **residenciais** | **param de ir direto ao humano** | *"quero que tente fazer o atendimento normalmente, de ponta a ponta… Allianz residencial é o maior volume da Resulta"* |
+
+### 3.0 🔴 AS TRÊS REGRAS DO DOSSIÊ E DO GRUPO — ditadas pelo Founder em 28/09
+
+| # | a regra | nas palavras dele |
+|---|---|---|
+| D15 | 🔴 **o dossiê NÃO é mascarado** — telefone inteiro, WhatsApp clicável, CPF, nome, placa, endereço | *"as informações não podem ser mascaradas, precisam ser reais e completas porque é um humano da corretora"* |
+| D16 | 🔴 **nada de dossiê ANTIGO** — o aviso sai **uma vez, na hora do atendimento**, e **só se quem atende é o agente** | *"não deve ficar enviando dossiês antigos. É um aviso só na hora do atendimento"* |
+| D17 | 🔴 **o agente não se mete em atendimento de humano** — nem na conversa, nem no grupo de suporte | *"agente não se mete em atendimento de humano e não envia msg no suporte humano quando o humano estiver atendendo"* |
+
+📊 **O defeito que motivou as três, medido:** o print que o Founder mandou é o **lembrete do vigia**
+(`handoff_watchdog.py`), não o dossiê. Ele saiu sobre conversas paradas há **244h e 243h**, e diz
+*"AINDA SEM ATENDIMENTO"* **e** *"Atendente pelo celular já assumiu"* **na mesma mensagem** — dois
+campos que discordam, e um lembrete sobre um caso que **já tinha dono humano**. Viola D16 e D17 ao
+mesmo tempo.
+⚠️ **E a PII no grupo:** a SPEC-EXTRA-001.3 registrou que *"a decisão sobre PII no histórico do grupo
+é do Founder"*. **Ele decidiu: sem máscara.** O grupo é da própria corretora, e os dados são do
+cliente dela.
 
 ### 3.1 🔴 A REGRA DOS AMPERES — e ela vale para QUALQUER seguradora
 
