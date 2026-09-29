@@ -62,6 +62,10 @@ SLOTS = {
     "problema_descricao": "motor falhando, precisa de guincho",
     "telefone_contato": "48998171110",
     "pessoa_no_local": "Sergio",
+    # SPEC-120 · D2 (CLAUDE.md §9.3): "O veículo está em uma garagem?" deixou de
+    #    ser "Não" fixo no guincho — sai do que o segurado disse. A sessão real
+    #    de 16/03/2026 respondeu "Não".
+    "veiculo_em_garagem": "não",
     # ⚠️ 🔴 ESTE SLOT NAO ESTAVA AQUI, E O REPLAY PASSAVA. Depois da decisao 2
     #    do Founder (SPEC-084.1), `situacao_risco` e uma das QUATRO perguntas
     #    sem default honesto: afirmar que o segurado NAO esta numa via escura,
