@@ -83,9 +83,9 @@ PAPEIS_QUE_CONVERSAM = ("", "core", "attendance", "insured_external")
 #: Os chamadores de plataforma (despacho, destilador, atlas, marca, conselho…)
 #: passam um `agent_data` montado na hora — `{"llm_provider", "llm_model"}`, SEM
 #: a chave `agent_role`. Tratá-los como `chat_principal` (o que `papel_do_agente("")`
-#: devolve) trocaria o modelo DELES pela rota do chat: 📊 o despacho de produção
-#: roda `claude-opus-5` (EVIDENCIAS/02) e passaria a rodar `claude-sonnet-5` sem
-#: ninguém pedir. Então: sem `agent_role` no dicionário = papel SEM rota → o
+#: devolve) trocaria o modelo DELES pela rota do chat: 📊 em 23/09 o despacho de
+#: produção rodava o Opus 5 (EVIDENCIAS/02) e passaria a rodar o modelo da rota do
+#: chat (então o Sonnet 5, hoje BLOCKED — SPEC-121) sem ninguém pedir. Então: sem `agent_role` no dicionário = papel SEM rota → o
 #: resolvedor aceita o modelo do chamador SÓ se ele estiver no catálogo com
 #: lifecycle usável (senão, ERRO). A F3 troca cada um pelo `papel=` dele.
 PAPEL_SEM_PAPEL = "sem_papel"
@@ -137,10 +137,17 @@ def _sem_parametros_proibidos(payload: dict, capacidades: dict) -> dict:
 class ChatAnthropicGovernado(ChatAnthropic):
     """`ChatAnthropic` que obedece às capacidades do catálogo NO PAYLOAD.
 
-    Opus 5.5 (whats-new-opus-5-5): `tool_choice` any/tool → 400 e `thinking`
-    disabled/enabled → 400. O app não força hoje (📊 `grep -rn tool_choice app`
-    = 0), mas `with_structured_output()` e `bind_tools(tool_choice=…)` forçam
-    — e o próximo que usar não vai ler esta docstring. A porta é o payload.
+    Opus 5.5 (whats-new-opus-5-5) e Sonnet 5.5 (whats-new-sonnet-5-5):
+    `tool_choice` any/tool → 400 e `thinking` disabled/enabled → 400. O app não
+    força hoje (📊 `grep -rn tool_choice app` = 0), mas `with_structured_output()`
+    e `bind_tools(tool_choice=…)` forçam — e o próximo que usar não vai ler esta
+    docstring. A porta é o payload.
+
+    SPEC-121 (Sonnet 5.5): o catálogo diz o que "desligar o raciocínio" VIRA no
+    modelo (`capacidades.raciocinio_desligado`, hoje só `between_tools` no
+    Sonnet 5.5, aceito só com effort ≤ `raciocinio_desligado_esforco_max`). Sem
+    essa capacidade (Opus 5.5) ou com effort acima do teto, `thinking` sai do
+    payload (= adaptive, o default do modelo).
     """
 
     capacidades_do_catalogo: Dict[str, Any] = {}
@@ -160,7 +167,24 @@ class ChatAnthropicGovernado(ChatAnthropic):
             pensamento = payload.get("thinking")
             if isinstance(pensamento, dict) and pensamento.get("type") in ("disabled", "enabled"):
                 payload.pop("thinking")
+                if pensamento.get("type") == "disabled" and _raciocinio_minimo_cabe(payload, caps):
+                    # `between_tools` não aceita display/budget_tokens/block_binding.
+                    payload["thinking"] = {"type": caps["raciocinio_desligado"]}
         return _sem_parametros_proibidos(payload, caps)
+
+
+def _raciocinio_minimo_cabe(payload: dict, caps: dict) -> bool:
+    """O modelo declara o que "sem raciocínio" vira, e o esforço do pedido cabe nele."""
+    if not caps.get("raciocinio_desligado"):
+        return False
+    teto = caps.get("raciocinio_desligado_esforco_max")
+    esforco = (payload.get("output_config") or {}).get("effort")
+    if not teto or esforco is None:
+        return True  # sem esforço explícito: o default do Sonnet 5.5 é `high` (≤ teto)
+    niveis = MP.NIVEIS_DE_ESFORCO
+    if esforco not in niveis or teto not in niveis:
+        return False
+    return niveis.index(esforco) <= niveis.index(teto)
 
 
 class ChatOpenAIGovernado(ChatOpenAI):

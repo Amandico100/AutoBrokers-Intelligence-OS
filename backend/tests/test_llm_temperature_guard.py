@@ -88,7 +88,9 @@ def _sampling_no_payload(provider: str, modelo: str) -> set:
     return achadas
 
 
-RECUSAM = [("anthropic", "claude-sonnet-5"), ("anthropic", "claude-opus-5"),
+# SPEC-121 (29/09/2026): o Sonnet 5 é BLOCKED (nem a bancada o constrói) — o lugar dele
+# na régua é do Sonnet 5.5, que também recusa sampling (§9.3: a lição migra).
+RECUSAM = [("anthropic", "claude-sonnet-5-5"), ("anthropic", "claude-opus-5"),
            ("anthropic", "claude-opus-5-5"), ("anthropic", "claude-fable-5-1"),
            ("anthropic", "claude-opus-4-7"), ("anthropic", "claude-opus-4-8"),
            ("openai", "gpt-6-sol"), ("openai", "gpt-5.6-terra")]

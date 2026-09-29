@@ -1806,7 +1806,8 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     # provedor da ROTA — o que a fábrica RESOLVEU e para onde a chamada vai —,
     # nunca o `llm_provider` gravado. 📊 Agente nascido NULO (F4) indo à
     # Anthropic pela rota ficava SEM cache_control: input cheio (2,00 × 0,20
-    # US$/M no Sonnet 5) a cada turno. O gravado só vale sem rota (chamador
+    # US$/M no Sonnet 5; o Sonnet 5.5, que o substitui desde a SPEC-121, tem o
+    # mesmo preço) a cada turno. O gravado só vale sem rota (chamador
     # antigo que não passa `rota`).
     llm_provider = _provedor_do_turno(rota, agent_data, company_config)
 

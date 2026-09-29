@@ -87,7 +87,7 @@
    "preco_verificado_em": null,
    "provider": "anthropic",
    "retirada_em": "2025-10-28",
-   "substituido_por": "claude-sonnet-5",
+   "substituido_por": "claude-sonnet-5-5",
    "tipo": "chat",
    "unit": "token"
   },
@@ -117,7 +117,7 @@
    "preco_verificado_em": null,
    "provider": "anthropic",
    "retirada_em": "2025-10-28",
-   "substituido_por": "claude-sonnet-5",
+   "substituido_por": "claude-sonnet-5-5",
    "tipo": "chat",
    "unit": "token"
   },
@@ -147,7 +147,7 @@
    "preco_verificado_em": null,
    "provider": "anthropic",
    "retirada_em": null,
-   "substituido_por": "claude-sonnet-5",
+   "substituido_por": "claude-sonnet-5-5",
    "tipo": "chat",
    "unit": "token"
   },
@@ -693,7 +693,7 @@
    "preco_verificado_em": null,
    "provider": "anthropic",
    "retirada_em": null,
-   "substituido_por": "claude-sonnet-5",
+   "substituido_por": "claude-sonnet-5-5",
    "tipo": "chat",
    "unit": "token"
   },
@@ -727,7 +727,7 @@
    "preco_verificado_em": null,
    "provider": "anthropic",
    "retirada_em": null,
-   "substituido_por": "claude-sonnet-5",
+   "substituido_por": "claude-sonnet-5-5",
    "tipo": "chat",
    "unit": "token"
   },
@@ -761,7 +761,7 @@
    "preco_verificado_em": null,
    "provider": "anthropic",
    "retirada_em": null,
-   "substituido_por": "claude-sonnet-5",
+   "substituido_por": "claude-sonnet-5-5",
    "tipo": "chat",
    "unit": "token"
   },
@@ -797,7 +797,7 @@
    "preco_verificado_em": "2026-09-23",
    "provider": "anthropic",
    "retirada_em": null,
-   "substituido_por": "claude-sonnet-5",
+   "substituido_por": "claude-sonnet-5-5",
    "tipo": "chat",
    "unit": "token"
   },
@@ -836,13 +836,63 @@
    "input_price_long": null,
    "input_price_per_million": 2,
    "is_active": true,
-   "lifecycle": "DEPRECATED",
+   "lifecycle": "BLOCKED",
    "limiar_contexto_longo": null,
    "model_name": "claude-sonnet-5",
-   "notas": "2/10 permanente desde 10/08/2026 (o aumento p/ 3/15 de 01/09 no longer applies). cache hit 0,20 · write 5m 2,50 · 1h 4. Default effort high. · DEPRECATED: Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "notas": "2/10 permanente desde 10/08/2026 (o aumento p/ 3/15 de 01/09 no longer applies). cache hit 0,20 · write 5m 2,50 · 1h 4. Default effort high. · DEPRECATED: Founder 24/09/2026 — conclusão da Onda A da SPEC-116 · BLOCKED: Founder 29/09/2026 — SPEC-121: Sonnet 5 PROIBIDO; usar claude-sonnet-5-5 ou claude-opus-5-5",
    "output_price_long": null,
    "output_price_per_million": 10,
    "preco_verificado_em": "2026-09-23",
+   "provider": "anthropic",
+   "retirada_em": null,
+   "substituido_por": "claude-sonnet-5-5",
+   "tipo": "chat",
+   "unit": "token"
+  },
+  "claude-sonnet-5-5": {
+   "api_key_env": null,
+   "api_surface": "messages",
+   "base_url": null,
+   "cache_read_multiplier": 0.1,
+   "cache_write_multiplier": 1.25,
+   "cached_input_multiplier": 0.1,
+   "capacidades": {
+    "contexto": 1000000,
+    "max_output": 128000,
+    "niveis_de_esforco": [
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ],
+    "pdf": true,
+    "raciocinio_desligado": "between_tools",
+    "raciocinio_desligado_esforco_max": "high",
+    "raciocinio_ida_e_volta": true,
+    "reasoning_param": "output_config.effort",
+    "responses_obrigatoria_com_tools": false,
+    "sampling_ok": false,
+    "tool_choice_forcado_ok": false,
+    "tools": true,
+    "vision": true
+   },
+   "classes_de_dado": [
+    "interno",
+    "pii",
+    "publico"
+   ],
+   "fonte_preco_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+   "input_price_long": null,
+   "input_price_per_million": 2,
+   "is_active": true,
+   "lifecycle": "APPROVED",
+   "limiar_contexto_longo": null,
+   "model_name": "claude-sonnet-5-5",
+   "notas": "lançado 28/09/2026; cadastrado na SPEC-121 (Founder 29/09/2026: substitui o Sonnet 5). cache hit 0,20 · write 5m 2,50 · 1h 4. Default effort high. thinking disabled -> 400: o mais baixo é between_tools (effort <= high); tool_choice any/tool -> 400; sampling -> 400. Fonte técnica: https://platform.claude.com/docs/en/models/sonnet-5-5/whats-new-sonnet-5-5",
+   "output_price_long": null,
+   "output_price_per_million": 10,
+   "preco_verificado_em": "2026-09-29",
    "provider": "anthropic",
    "retirada_em": null,
    "substituido_por": null,
@@ -2499,7 +2549,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-09-24T22:00:43+00:00",
+ "gerado_em": "2026-09-29T20:11:33+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {

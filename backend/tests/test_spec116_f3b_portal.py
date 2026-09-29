@@ -416,7 +416,8 @@ def test_sem_rota_injetada_nada_muda(borda):
 
 
 @pytest.mark.parametrize("provider,model,effort,url,sem_temperatura", [
-    ("anthropic", "claude-sonnet-5", "low", "/v1/messages", True),
+    # SPEC-121: o Sonnet 5 é BLOCKED (nem a bancada o injeta) — o braço Anthropic é o 5.5
+    ("anthropic", "claude-sonnet-5-5", "low", "/v1/messages", True),
     ("openai", "gpt-6-sol", "medium", "/v1/responses", True),
     ("openai", "gpt-4o-mini", None, "/v1/chat/completions", False),
 ])

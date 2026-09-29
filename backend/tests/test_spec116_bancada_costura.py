@@ -37,7 +37,8 @@ from app.factories import model_policy as MP  # noqa: E402
 from app.services import usage_service as US  # noqa: E402
 from app.services.evals import bancada as B  # noqa: E402
 
-BRACO = "anthropic:claude-sonnet-5:low"
+#: SPEC-121: o Sonnet 5 é BLOCKED (nem a bancada o mede) — o braço de teste é o 5.5.
+BRACO = "anthropic:claude-sonnet-5-5:low"
 CHAVE_FALSA = "chave-de-teste-sem-rede"
 
 
@@ -104,9 +105,9 @@ def _provedor_que_responde(monkeypatch, uso=(1200, 80)):
         msg = AIMessage(content="Certo, vou verificar a sua apólice.",
                         usage_metadata={"input_tokens": uso[0], "output_tokens": uso[1],
                                         "total_tokens": uso[0] + uso[1]},
-                        response_metadata={"model_name": "claude-sonnet-5"})
+                        response_metadata={"model_name": "claude-sonnet-5-5"})
         return ChatResult(generations=[ChatGeneration(message=msg)],
-                          llm_output={"model_name": "claude-sonnet-5"})
+                          llm_output={"model_name": "claude-sonnet-5-5"})
 
     monkeypatch.setattr(LF.ChatAnthropicGovernado, "_agenerate", _ok)
 
@@ -182,11 +183,11 @@ def test_ledger_grava_como_bancada_sem_corretora_e_o_custo_bate(borda, monkeypat
         assert l["service_type"] == "bancada", l["service_type"]
         assert l["company_id"] is None and l["agent_id"] is None
         assert l["details"]["papel"] == "atendimento" and l["details"]["origem_da_rota"] == "bancada"
-        assert l["model"] == "claude-sonnet-5"
+        assert l["model"] == "claude-sonnet-5-5"
     # o custo do caso = soma do que o ledger gravou, pela MESMA conta, com preço do catálogo
     assert r.custo_usd > 0
     assert r.custo_usd == pytest.approx(sum(l["total_cost_usd"] for l in linhas), rel=1e-9)
-    esperado = US.UsageService.calculate_cost(borda["ledger"], "claude-sonnet-5", 1200, 80) * len(linhas)
+    esperado = US.UsageService.calculate_cost(borda["ledger"], "claude-sonnet-5-5", 1200, 80) * len(linhas)
     assert r.custo_usd == pytest.approx(esperado, rel=1e-9)
     assert r.tokens["in"] == 1200 * len(linhas) and r.tokens["out"] == 80 * len(linhas)
 
@@ -195,7 +196,7 @@ def test_braco_que_escreveria_como_produto_nao_roda(borda, monkeypatch):
     """Se a fábrica devolvesse o custo como 'plataforma' (ou com corretora), a
     bancada RECUSA construir o braço — não mede às custas do faturamento."""
     _provedor_que_responde(monkeypatch)
-    resolvido = MP.resolver("atendimento", override={"provider": "anthropic", "model": "claude-sonnet-5",
+    resolvido = MP.resolver("atendimento", override={"provider": "anthropic", "model": "claude-sonnet-5-5",
                                                      "effort": "low"})
     cru = LF.LLMFactory.criar_de_resolvido(resolvido, api_key=CHAVE_FALSA, service_type="plataforma")
     with pytest.raises(B.BancadaSemIsolamento):
@@ -209,14 +210,14 @@ def test_braco_que_escreveria_como_produto_nao_roda(borda, monkeypatch):
 def test_preco_desconhecido_recusa_o_braco(borda):
     assert B.preco_do_catalogo(B.Braco.de("openai:modelo-que-nao-existe")) is None
     p = B.preco_do_catalogo(B.Braco.de(BRACO))
-    assert p["entrada"] == US._pricing_cache["claude-sonnet-5"]["input"]
-    assert p["saida"] == US._pricing_cache["claude-sonnet-5"]["output"]
+    assert p["entrada"] == US._pricing_cache["claude-sonnet-5-5"]["input"]
+    assert p["saida"] == US._pricing_cache["claude-sonnet-5-5"]["output"]
 
 
 def test_reserva_do_teto_usa_o_max_tokens_do_braco_e_nao_o_do_catalogo(borda):
     """128 mil tokens de saída do catálogo fariam a reserva de UMA chamada de
     Sonnet custar US$ 1,28 — e um teto de US$ 0,50 nunca deixaria rodar."""
-    resolvido = MP.resolver("atendimento", override={"provider": "anthropic", "model": "claude-sonnet-5"})
+    resolvido = MP.resolver("atendimento", override={"provider": "anthropic", "model": "claude-sonnet-5-5"})
     assert int(resolvido.capacidades["max_output"]) > B.MAX_TOKENS_DA_BANCADA
     llm = _construir_isolado(resolvido, [])
     assert llm.max_tokens == B.MAX_TOKENS_DA_BANCADA

@@ -3,13 +3,15 @@
 Transforma os transcripts capturados (Parte 1: equipe da corretora <-> segurado)
 em INTELIGÊNCIA GLOBAL da AutoBrokers, em lote, fora do caminho quente:
 
-ESTÁGIO 1 (modelo braçal, env DISTILLER_LLM_MODEL, default claude-sonnet-5):
+ESTÁGIO 1 (modelo braçal = a ROTA `distiller` do Model Router; env
+DISTILLER_LLM_MODEL IGNORADA desde a SPEC-116 U8 — ver `PAPEL_PADRAO`):
   cada sessão encerrada é MASCARADA (templatize — a LLM nunca vê PII) e vira um
   resumo estruturado: tipo/ramo/serviço, conduta da atendente (ordem de
   perguntas), fatos reutilizáveis SEM dado pessoal, nota 0-100 (baseline
   humano — INTERNO, só admin; nunca no dashboard da corretora).
 
-ESTÁGIO 2 (modelo FORTE, env DISTILLER_STRONG_MODEL, default claude-opus-5):
+ESTÁGIO 2 (modelo FORTE = a ROTA `distiller_forte`; env DISTILLER_STRONG_MODEL
+IGNORADA):
   síntese dos playbooks de conduta por (ramo, serviço) — baixo volume, alto
   valor estrutural (decisão do founder 19/07: o estrutural merece o modelo
   mais forte; o braçal fica no Sonnet). Playbook nasce como DRAFT versionado —

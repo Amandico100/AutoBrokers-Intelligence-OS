@@ -11,9 +11,9 @@ falha · BLOCKED_BY_INFRA.
     # linha de controle (CLAUDE.md §9.2): o relatório TEM de separar os dois
     python scripts/bancada.py --papel atendimento --braco dublê:perfeito --braco dublê:burro --k 3 --nivel N1 --ensaio
     # braço real (depois da costura F5b), só o subconjunto crítico, com teto
-    python scripts/bancada.py --papel atendimento --braco anthropic:claude-sonnet-5:medium --critico --k 3 --teto-usd 5 --gravar
+    python scripts/bancada.py --papel atendimento --braco anthropic:claude-sonnet-5-5:medium --critico --k 3 --teto-usd 5 --gravar
     # a costura (F5b): 2 braços reais + a linha de controle no MESMO grupo
-    python scripts/bancada.py --papel atendimento --nivel N1 --braco anthropic:claude-sonnet-5:low --braco openai:gpt-6-luna:low --k 1 --casos atd-n1-cpf-guincho,atd-n1-humano-cancelar --gravar --teto-usd 0.50 --por-caso
+    python scripts/bancada.py --papel atendimento --nivel N1 --braco anthropic:claude-sonnet-5-5:low --braco openai:gpt-6-luna:low --k 1 --casos atd-n1-cpf-guincho,atd-n1-humano-cancelar --gravar --teto-usd 0.50 --por-caso
     python scripts/bancada.py --papel atendimento --nivel N1 --braco dublê:perfeito --braco dublê:burro --k 1 --casos atd-n1-cpf-guincho,atd-n1-humano-cancelar --gravar --grupo <o grupo acima>
     # ler de novo um relatório
     python scripts/bancada.py --relatorio <grupo_bancada | arquivo.json>

@@ -129,7 +129,7 @@ class _ProvedoresDoCatalogo(Mapping):
     """`provedor → [modelos]` DERIVADO do catálogo (SPEC-116 U5).
 
     Era uma lista escrita à mão — o 7º catálogo do repo (EVIDENCIAS/03 §3.0),
-    que recusava `claude-sonnet-5` na UI enquanto a produção rodava nele. Agora
+    que recusava o Sonnet 5 na UI enquanto a produção rodava nele. Agora
     é LEITURA de `llm_pricing` (cache de 60 s do Model Router): modelo de
     CONVERSA com lifecycle usável (APPROVED · CANDIDATE · DEPRECATED).
     BLOCKED/HISTORICAL somem daqui sozinhos. `openrouter` existe sempre (a

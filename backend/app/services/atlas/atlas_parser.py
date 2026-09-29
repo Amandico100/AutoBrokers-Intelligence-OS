@@ -6,8 +6,9 @@ RESÍDUO ambíguo: menus DIGITADOS (Allianz "*1-*") em que a tela seguinte não
 ecoa a escolha. Aí entra um modelo FORTE (founder 18/07: "não pode ter
 interpretação ruim") — mas só sobre esse resíduo, em LOTE, para custo mínimo.
 
-Modelo configurável (default forte): env ATLAS_PARSER_MODEL / ATLAS_PARSER_PROVIDER
-(default claude-sonnet-5 / anthropic). Desligável: ATLAS_PARSER_ENABLED=0.
+Modelo: a ROTA `atlas_parser` do Model Router (SPEC-116 U8); as envs
+ATLAS_PARSER_MODEL / ATLAS_PARSER_PROVIDER são IGNORADAS. Desligável:
+ATLAS_PARSER_ENABLED=0.
 
 Custo: o modelo NÃO lê cada mensagem — só as arestas ambíguas do mapa FINAL
 (dezenas, não centenas), uma chamada por seguradora. Independe do número de

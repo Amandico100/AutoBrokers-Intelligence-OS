@@ -56,7 +56,7 @@ do tempo → prazo vencido → pessoa, pelo caminho que já existe.
 | D1 | **Híbrido**: coletar antes o que é previsível; no meio, perguntar ao segurado **só** em custo inesperado, `sem_chute` não coletado e tela nova que pede um fato dele | 88 × tudo antes 78 × sempre no meio 55 |
 | D2 | Ida e volta **permitida** em Porto, HDI, Yelum, Zurich; **proibida** em Allianz e Alfa (URA encerra em ~3–4 min) — lá o dado vem antes | medição §1 |
 | D3 | Continua **proibido ao modelo**: aceitar custo, escolher o seguro/serviço (condomínio, sinistro), confirmar/abrir/cancelar, inventar número | — |
-| D4 | Modelos da bancada: **Sol 6** (`gpt-6-sol`) e **Sonnet 5** (`claude-sonnet-5`, mesmo preço). 📊 "Sonnet 5.5" não existe no catálogo nem na lista oficial; cadastrar um modelo exige migration | 85 × migration 40 |
+| D4 | Modelos da bancada: **Sol 6** (`gpt-6-sol`) e **Sonnet 5.5** (`claude-sonnet-5-5`, US$ 2/10 por MTok). 📊 o Sonnet 5.5 existe (`GET /v1/models`, 29/09) e foi cadastrado na SPEC-121 (migration `20260929_01`, APPROVED); o Sonnet 5 está PROIBIDO (BLOCKED, ordem do Founder 29/09) | 85 × migration 40 |
 | D5 | Liberar em produção só por seguradora/ramo, com chave **desligado → sombra → ligado** | — |
 
 ## 4. AS FATIAS
@@ -96,7 +96,7 @@ G7  mutação: tirar a proibição de aceite de custo do conferente → G1 verme
 
 ## 6. O QUE SAIU
 Conversar com consultora humana da seguradora · condomínio/empresarial · qualquer mudança no prompt do agente de
-atendimento com o segurado (📊 21.863 caracteres, não é o gargalo) · cadastrar Sonnet 5.5.
+atendimento com o segurado (📊 21.863 caracteres, não é o gargalo) · cadastrar Sonnet 5.5 (já feito na SPEC-121).
 
 ## 7. O QUE O ESTADO DA ARTE FAZ (§7.3)
 - Começar simples, dar ao agente ferramentas claras e medir antes de dar autonomia: https://www.anthropic.com/engineering/building-effective-agents
@@ -105,4 +105,4 @@ atendimento com o segurado (📊 21.863 caracteres, não é o gargalo) · cadast
 
 ## 8. BLOCO 0
 Confirmar no banco os 8.804 pares e a data em que o agente passou a responder; confirmar `gpt-6-sol` e
-`claude-sonnet-5` no catálogo e o saldo das duas contas; medir 1 chamada de cada antes de rodar a bancada.
+`claude-sonnet-5-5` (APPROVED; o Sonnet 5 está proibido) no catálogo e o saldo das duas contas; medir 1 chamada de cada antes de rodar a bancada.

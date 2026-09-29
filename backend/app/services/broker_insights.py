@@ -136,6 +136,10 @@ async def mine_conversation(company_id: str, conversation_id: str,
 # da casa continua valendo — ele só perdeu a premissa de volume que não era
 # verdade: Sonnet no braçal, Opus no estrutural (playbooks) e na voz que fala
 # com o corretor (sugestões proativas).
+#
+# ⚠️ (29/09/2026) Este é o RACIOCÍNIO de 13/08, não a escolha de hoje: quem
+# escolhe o modelo é a ROTA `garimpo` (SPEC-116 U8), e o Sonnet 5 está PROIBIDO
+# no AutoBrokers desde a SPEC-121 (ordem do Founder: Sonnet 5.5 ou Opus 5.5).
 # ------------------------------------------------------------------ #
 _LLM_KINDS = {"desejo", "dor", "pedido_feature", "duvida_seguros", "necessidade", "elogio", "risco_churn"}
 _LLM_MAX_CHARS = 8000

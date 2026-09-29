@@ -113,14 +113,14 @@ LITERAIS_PENDENTES_DAS_FATIAS: dict = {
 LITERAIS_CONHECIDOS: dict = {
     "backend/app/api/webhook.py": {"gpt-4o"},
     "backend/app/core/callbacks/cost_callback.py": {"gpt-4o-mini", "gpt-4o-mini-2024-07-18"},
-    "backend/app/factories/llm_factory.py": {"claude-opus-5", "claude-sonnet-5", "gpt-4o"},
+    # SPEC-121 (29/09/2026): o comentário do despacho deixou de citar os ids do Opus 5/Sonnet 5
+    "backend/app/factories/llm_factory.py": {"gpt-4o"},
     "backend/app/services/agent_council.py": {"gpt-4o-mini"},
     "backend/app/services/attendance_distiller.py": {"claude-opus-5", "text-embedding-3-small"},
     "backend/app/services/audio_service.py": {"gpt-transcribe"},
     "backend/app/services/global_knowledge_seed.py": {"text-embedding-3-small"},
     "backend/app/services/ingestion_service.py": {"gpt-4o-mini"},
     "backend/app/services/knowledge/insurance_corpus.py": {"text-embedding-3-small"},
-    "backend/app/services/langchain_service.py": {"claude-sonnet-5"},
     "backend/app/services/llama_guard_service.py": {"meta-llama/llama-prompt-guard-2-86m"},
     "backend/app/services/memory_service.py": {"gpt-4o-mini"},
     "backend/app/services/proactive_suggestions.py": {"claude-opus-5", "gpt-4o"},
@@ -144,8 +144,6 @@ DEPRECADOS_NAO_OPERACIONAIS: dict = {
         "gpt-4o-mini": "COMENTÁRIO: exemplo do mapeamento snapshot → id do catálogo",
         "gpt-4o-mini-2024-07-18": "COMENTÁRIO: idem"},
     "backend/app/factories/llm_factory.py": {
-        "claude-opus-5": "COMENTÁRIO/HISTÓRICO: o despacho rodava opus 5 (EVIDENCIAS/02)",
-        "claude-sonnet-5": "COMENTÁRIO/HISTÓRICO: idem",
         "gpt-4o": "COMENTÁRIO: o `or gpt-4o` que morreu"},
     "backend/app/services/agent_council.py": {"gpt-4o-mini": "COMENTÁRIO: o fallback que morreu"},
     "backend/app/services/attendance_distiller.py": {
@@ -155,7 +153,6 @@ DEPRECADOS_NAO_OPERACIONAIS: dict = {
         "gpt-4o-mini": "BASELINE: idem",
         "claude-sonnet-4-6": "BASELINE: idem"},
     "backend/app/services/ingestion_service.py": {"gpt-4o-mini": "COMENTÁRIO: o literal que morreu"},
-    "backend/app/services/langchain_service.py": {"claude-sonnet-5": "COMENTÁRIO/HISTÓRICO: a UI que o recusava"},
     "backend/app/services/llama_guard_service.py": {
         "meta-llama/llama-prompt-guard-2-86m":
             "⚠️ OPERACIONAL — DECISÃO PENDENTE: guarda de prompt (Groq), DEPRECATED desde antes "
@@ -324,8 +321,10 @@ def test_controle_um_literal_novo_num_call_site_fica_vermelho():
     assert novos.get("backend/app/services/call_site_inventado.py") == {
         "gpt-4.5-preview", "claude-3-5-haiku-20241022"}, novos
     # e um literal APROVADO no mesmo lugar NÃO acusa (o checador sabe diferenciar)
-    assert literais_do_texto('model="claude-sonnet-5"') == {"claude-sonnet-5"}
-    assert not violacoes({"x.py": {"claude-sonnet-5"}}, SNAP["catalogo"])
+    assert literais_do_texto('model="claude-sonnet-5-5"') == {"claude-sonnet-5-5"}
+    assert not violacoes({"x.py": {"claude-sonnet-5-5"}}, SNAP["catalogo"])
+    # SPEC-121: o Sonnet 5 é BLOCKED — o mesmo checador agora o ACUSA
+    assert violacoes({"x.py": {"claude-sonnet-5"}}, SNAP["catalogo"]) == {"x.py": {"claude-sonnet-5"}}
 
 
 def test_nenhum_literal_de_modelo_novo_em_codigo_de_producao():
@@ -378,32 +377,37 @@ def test_legacy_gate_nenhum_deprecated_operacional_novo():
 
 
 def test_controle_legacy_gate_fica_vermelho_com_deprecated_novo():
-    """LINHA DE CONTROLE: `gpt-4o-mini` num call site NOVO e `claude-sonnet-5` num
-    arquivo já classificado (literal não) → os dois acusados."""
+    """LINHA DE CONTROLE: `gpt-4o-mini` num call site NOVO e `claude-haiku-4-5` num
+    arquivo já classificado (literal não) → os dois acusados. (SPEC-121: o exemplo
+    era o Sonnet 5, hoje BLOCKED — quem o acusa é `violacoes`, ver acima.)"""
     cat = SNAP["catalogo"]
     assert cat["gpt-4o-mini"]["lifecycle"] == "DEPRECATED"
-    assert cat["claude-sonnet-5"]["lifecycle"] == "DEPRECATED"
+    assert cat["claude-haiku-4-5"]["lifecycle"] == "DEPRECATED"
     achados = {a: set(l) for a, l in varrer().items()}
     achados["backend/app/services/call_site_novo.py"] = literais_do_texto('ChatOpenAI(model="gpt-4o-mini")')
     achados["backend/app/services/prompt_optimizer.py"] = set(achados.get(
-        "backend/app/services/prompt_optimizer.py", set())) | {"claude-sonnet-5"}
+        "backend/app/services/prompt_optimizer.py", set())) | {"claude-haiku-4-5"}
     ruins = deprecados_nao_classificados(achados, cat, DEPRECADOS_NAO_OPERACIONAIS)
     assert ruins == {"backend/app/services/call_site_novo.py": {"gpt-4o-mini"},
-                     "backend/app/services/prompt_optimizer.py": {"claude-sonnet-5"}}, ruins
+                     "backend/app/services/prompt_optimizer.py": {"claude-haiku-4-5"}}, ruins
     # controle do controle: um APPROVED novo NÃO é acusado por ESTE checador
     assert not deprecados_nao_classificados({"x.py": {"gpt-6-sol"}}, cat, {})
 
 
 def test_controle_rota_de_producao_em_deprecated_e_recusada(banco):
-    """A rota em claude-sonnet-5 (DEPRECATED) é recusada; a BANCADA ainda o mede."""
+    """A rota em claude-opus-5 (DEPRECATED) é recusada; a BANCADA ainda o mede.
+    SPEC-121: o exemplo era o Sonnet 5 — hoje BLOCKED, recusado até pela bancada."""
     cat, pap = banco
-    assert cat["claude-sonnet-5"]["lifecycle"] == "DEPRECATED"
-    pap["chat_principal"].update(provider="anthropic", modelo_primario="claude-sonnet-5", esforco=None)
+    assert cat["claude-opus-5"]["lifecycle"] == "DEPRECATED"
+    pap["chat_principal"].update(provider="anthropic", modelo_primario="claude-opus-5", esforco=None)
     MP.limpar_cache()
     with pytest.raises(MP.ModeloNaoResolvido, match="APPROVED"):
         MP.resolver("chat_principal")
-    r = MP.resolver("juiz_eval", override={"provider": "anthropic", "model": "claude-sonnet-5"})
-    assert (r.model, r.origem, r.lifecycle) == ("claude-sonnet-5", "bancada", "DEPRECATED")
+    r = MP.resolver("juiz_eval", override={"provider": "anthropic", "model": "claude-opus-5"})
+    assert (r.model, r.origem, r.lifecycle) == ("claude-opus-5", "bancada", "DEPRECATED")
+    assert cat["claude-sonnet-5"]["lifecycle"] == "BLOCKED"
+    with pytest.raises(MP.ModeloNaoResolvido, match="BLOCKED"):
+        MP.resolver("juiz_eval", override={"provider": "anthropic", "model": "claude-sonnet-5"})
 
 
 def test_controle_luna_abaixo_do_minimo_e_recusada_em_producao(banco):

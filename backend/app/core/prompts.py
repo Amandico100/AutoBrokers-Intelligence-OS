@@ -405,7 +405,8 @@ def build_composite_prompt(
     # de cinco. Resultado: pagava-se o prêmio de ESCRITA (~1,25×) em quase toda
     # chamada e quase nunca se colhia a LEITURA (~0,1×).
     #
-    # 📊 Medido em 07/08/2026, `token_usage_logs`, 30 dias, claude-sonnet-5:
+    # 📊 Medido em 07/08/2026, `token_usage_logs`, 30 dias, modelo Sonnet 5 (BLOCKED
+    # desde 29/09/2026, SPEC-121 — hoje o Sonnet 5.5 ou o Opus 5.5):
     # apenas **104 de 4.509 chamadas (2,3%)** tiveram `cache_read_tokens > 0`.
     #
     # A DATA fica (muda uma vez por dia, e o cache de 5 min não sente). A HORA

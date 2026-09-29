@@ -187,7 +187,10 @@ def test_providers_lista_o_catalogo_sem_retirados(api, catalogo):
     assert "claude-3-5-sonnet-20240620" not in todos
     assert todos["claude-opus-5-5"]["escolhivel"] is True
     assert todos["gpt-4o-mini"]["legado"] is True and todos["gpt-4o-mini"]["escolhivel"] is False
-    assert todos["claude-sonnet-5"]["sem_temperatura"] is True
+    # SPEC-121: o Sonnet 5 é BLOCKED → some da tela; o Sonnet 5.5 entra escolhível e sem sampling
+    assert "claude-sonnet-5" not in todos
+    assert todos["claude-sonnet-5-5"]["sem_temperatura"] is True
+    assert todos["claude-sonnet-5-5"]["escolhivel"] is True
     for p in provs.values():
         assert p["models_count"] == sum(1 for m in p["modelos"] if m["escolhivel"])
     # linha de controle: o catálogo TEM retirados — a tela é que os tira
