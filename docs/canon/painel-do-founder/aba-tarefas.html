@@ -15,6 +15,24 @@
 </header>
 
 <section style="margin-top:8px">
+  <h2>SPEC-121 — o que só você faz <span style="color:var(--muted);font-size:14px">(30/09 · o grupo só ouve quando precisa)</span></h2>
+  <p class="sub">📊 Os 29 avisos errados de 21/09 viram <b>zero</b> no teste; <b>31 de 76</b> rotas atendem sozinhas no simulador; o Sonnet 5 saiu e o
+  Sonnet 5.5 entrou (a mudança no banco já foi aplicada e conferida). Passo a passo completo em <code>TAREFAS-DO-FOUNDER.md</code>, seção SPEC-121.</p>
+  <dl class="q2">
+    <dt>☐ S121.1</dt><dd><b>Implantar</b>, nesta ordem: <code>smith-api</code> → <code>smith-worker</code>. <b>O que esperar:</b> os dois verdes e um "oi" respondido no chat do painel</dd>
+    <dt>☐ S121.2</dt><dd><b>O número de carro reserva da Yelum</b> (canal "Segurado e Terceiros"): confirme o número e crie, no <code>smith-api</code>, a variável
+    <code>INSURER_CONTACT_YELUM_CARRO_RESERVA</code> (só dígitos, com 55 e DDD); Implantar de novo. <b>O que esperar:</b> em dia útil, das 9h às 17h, com número do sinistro e cartão,
+    o agente diz ao segurado que a Yelum confirma <b>em até 3 horas úteis</b>. Sem a variável, o pedido vai para uma pessoa com o resumo — nada quebra</dd>
+    <dt>☐ S121.3</dt><dd><b>Apagar as variáveis antigas de modelo</b> no <code>smith-api</code> (lista em P-121-07 — a mesma faxina da S116.7). 🔴 <b>Não</b> apague <code>GARIMPO_LLM</code> nem <code>SUGESTOES_LLM</code>, sem sufixo: são o liga/desliga. <b>O que esperar:</b> nada muda</dd>
+    <dt>☐ S121.4</dt><dd>Quando der, <b>os acionamentos reais</b> que faltam (lista em P-121-03): carro reserva Porto/Zurich/Bradesco/Mapfre, Allianz desentupimento,
+    eletrodomésticos Porto e Yelum, HDI chaveiro e eletricista, Porto com mais de um carro, Zurich garagem, a consultora da Porto</dd>
+    <dt>☐ S121.5</dt><dd><b>Decidir o <i>Admin Intervention</i></b>: a conversa pausada pelo painel volta ao agente com mensagem nova depois de 7 dias? Recomendo <b>sim, 70 × 60</b> — notas perto, a escolha é sua</dd>
+    <dt>☐ S121.6</dt><dd><b>A terceira corretora do piloto</b> tem o grupo de suporte <b>ativo</b> e o agente <b>desligado</b>. Com a SPEC-121 no ar ela fica calada (sem aviso de conversa; cobrança e resumo seguem). Confirme se o grupo dela deve continuar ativo</dd>
+    <dt>☐ S121.7</dt><dd>Continua aberta a pergunta à atendente: <b>por qual canal a Allianz, a Bradesco e a HDI atendem carro reserva?</b> Até lá, esses pedidos vão para uma pessoa</dd>
+  </dl>
+</section>
+
+<section style="margin-top:8px">
   <h2>SPEC-120 — o que só você faz <span style="color:var(--muted);font-size:14px">(29/09 · os corredores com conversa atendem sozinhos)</span></h2>
   <p class="sub">📊 24 → <b>31</b> das 73 rotas atendem sozinhas no simulador. Nada disso foi testado com uma seguradora de verdade:
   os testes abaixo são o que falta para você mandar a Resulta e a AutoFleet ligarem. Passo a passo completo em <code>TAREFAS-DO-FOUNDER.md</code>, seção SPEC-120.</p>

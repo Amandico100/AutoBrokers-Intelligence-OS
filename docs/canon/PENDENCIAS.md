@@ -11751,6 +11751,7 @@ formato ao lado do marcador.
 **Custa esquecer:** hoje o link passa e ninguém o trata.
 
 ## P-118-14 · A régua suja a árvore de trabalho — P-E0013-09 AGRAVADA 🤖
+**🟡 CONTINUA (30/09/2026):** a família reincidiu na SPEC-121 — testes e scripts que mutam arquivos da árvore compartilhada reverteram edições de builders em paralelo. Registrada com o que destrava em **P-121-13**.
 📊 26/09/2026 20:37, nesta árvore: `medir_rota.py --todas` morreu com
 `OSError: [WinError 1224] ... arquivo com uma seção mapeada pelo usuário aberta` dentro do `finally`
 que restaura a mutação, e deixou `backend/app/services/insurer_dispatch_service.py` **mutado**
@@ -12260,13 +12261,15 @@ está com o caso — e a corretora vê dois handoffs para um atendimento só.
 > 📊 O retrato da SPEC: ATENDE SOZINHO **24 → 31** de 73 rotas; telas órfãs das 10 rotas trabalhadas
 > **86 → 10**. As pendências abaixo são o que ela deixou, com dono e preço.
 
-## P-120-01 · 🤖 `carro_reserva` não tem corredor nenhum
+## P-120-01 · ✅ FECHADA · 🤖 `carro_reserva` não tem corredor nenhum
+**✅ FECHADA em 30/09/2026 pela SPEC-121 (`62c9b87`, `42a491d`):** o corredor existe — 📊 `grep -c carro_reserva backend/app/services/corridor_playbooks.py` → **51** (era **0** em `0cc1bdd`), e o simulador ganhou 3 rotas de carro reserva (Azul, Tokio, Yelum). O que falta para ele sair sozinho continua como **P-121-01/02/03**.
 📊 126 telas no acervo (yelum 91, tokio 21, mapfre 14), 13 pedidos medidos, **zero passos escritos**.
 **O que destrava:** 🤖 uma SPEC de corredor novo, pelo mesmo método desta (ler as conversas, ver o que
 a atendente respondeu, escrever os passos). O Founder concordou em fazer depois dos 16.
 **Custa esquecer:** é serviço que o segurado PEDE e o produto não atende — cada pedido vira pessoa.
 
 ## P-120-02 · 🧑 Os 6 corredores que respondem tudo e nunca chegaram ao protocolo
+**🟡 CONTINUA (30/09/2026, SPEC-121):** 📊 `yelum/auto/bateria` passou a ATENDE SOZINHO no simulador (`simular_corredor.py --todas --formato json`, 30/09). As outras cinco seguem sem conversa que chegue ao protocolo; o G5 (Allianz desentupimento/eletrodomésticos) foi **refutado** — o protocolo daquelas conversas veio de uma pessoa da seguradora (D-121-I). Absorvida pela **P-121-03**.
 `allianz/residencial/{desentupimento,eletrodomesticos}` · `porto/residencial/eletrodomesticos` ·
 `yelum/residencial/eletrodomesticos` · `hdi/residencial/chaveiro` · `yelum/auto/bateria`.
 📊 **Zero** telas órfãs nos seis — o que falta é UMA conversa gravada que vá até o número do protocolo.
@@ -12279,14 +12282,16 @@ Inclui as 4 da Mapfre (📊 nenhuma conversa de guincho da Mapfre existe no acer
 **O que destrava:** 🧑 acionamento dirigido, rota a rota. ⚠️ Ampliar o classificador não destrava — a
 SPEC-119 mediu isso (43 → 42 rotas com corpus, zero saíram do vazio).
 
-## P-120-04 · 🤖 A consultora da Porto que assume a conversa no meio da URA
+## P-120-04 · ✅ FECHADA · 🤖 A consultora da Porto que assume a conversa no meio da URA
+**✅ FECHADA no código em 30/09/2026 pela SPEC-121 (`c7b210c`, decisão D11 do Founder):** `_GATILHO_CONSULTORA_PORTO` (`corridor_playbooks.py`) reconhece *"sou consultora de relacionamento"* e passa o caso a uma pessoa da corretora com motivo e dossiê. A prova AO VIVO (uma consultora real) continua em **P-121-03**.
 📊 `porto/auto/bateria`, sessão `4830574a`: 5 telas são uma PESSOA da seguradora conversando. O
 detector existe (`zonas_do_acervo.tem_apresentacao_humana` → True) mas `e_fronteira` → False.
 **O que destrava:** 🤖 reconhecer a fronteira "a URA acabou, um humano da seguradora assumiu" e passar
 o caso à corretora com o dossiê (mexe em `insurer_dispatch_service.py`).
 **Custa esquecer:** o robô tenta responder uma pessoa da seguradora como se fosse menu.
 
-## P-120-05 · 🤖 Telas de chaveiro numa sessão etiquetada guincho
+## P-120-05 · ✅ FECHADA · 🤖 Telas de chaveiro numa sessão etiquetada guincho
+**✅ FECHADA em 30/09/2026 pela SPEC-121 (`773db2f`, etiqueta chave → chaveiro):** 📊 as 49 telas da sessão yelum `56bd78f7` eram `guincho` em `0cc1bdd` e são `chaveiro` hoje (contagem do campo `servico` em `backend/tests/corpus/telas_reais/*.jsonl`, 30/09).
 📊 yelum `56bd78f7` (e os 2 achados graves `[C]` herdados da SPEC-119). Nenhum passo de guincho foi
 escrito para elas, de propósito. **O que destrava:** 🤖 conferir a etiqueta da sessão no classificador.
 
@@ -12302,6 +12307,7 @@ numa tela de repique depois de CEP ou telefone mandaria o número da casa.
 **O que destrava:** 🤖 um gancho no despacho que saiba o último campo enviado.
 
 ## P-120-08 · 🧑 A D2 (perguntar a garagem) não foi aplicada às constantes antigas
+**🟡 CONTINUA SÓ PARA A AZUL (30/09/2026):** Bradesco e Zurich passaram a perguntar a garagem ao segurado (decisão D7 do Founder, `c7b210c`). A Azul segue com `garagem_subsolo` → "Não" porque 📊 o acervo da Azul tem **0** telas com garagem/subsolo (nota em `corridor_playbooks.py`, bloco D7) — não se ensina ao corredor uma tela que ele nunca viu. Destrava com uma conversa real da Azul que mostre a tela.
 Azul (`garagem_subsolo` → "Não"), Bradesco e Zurich ("…subsolo ou elevada" → "2") seguem com
 constante. **O que destrava:** 🧑 decidir se essas rotas também perguntam — é uma pergunta a mais ao
 segurado. **Custa esquecer:** carro em subsolo recebe o guincho comum, que não entra.
@@ -12309,13 +12315,15 @@ segurado. **Custa esquecer:** carro em subsolo recebe o guincho comum, que não 
 ## P-120-09 · 🤖 O táxi da Porto (D9) não coleta o número de passageiros
 Se o relato não disser, vai a uma pessoa por `sem_chute`.
 
-## P-120-10 · 🤖 O bloco de conhecimento está em 6.935 de 7.000 caracteres
+## P-120-10 · ✅ FECHADA · 🤖 O bloco de conhecimento está em 6.935 de 7.000 caracteres
+**✅ FECHADA em 30/09/2026 pela SPEC-121 (`62c9b87`):** as repetições foram compactadas, as perguntas cortadas voltaram e o teto subiu para **8.000** com a justificativa escrita no teste (D-121-H).
 📊 A próxima pergunta nova ao segurado estoura o teto.
 
 ## P-120-11 · 🤖 Porto "Qual período… Tarde Noite Voltar" recebe dígito numa lista sem número
 Anterior a esta SPEC; não é tela órfã.
 
-## P-120-12 · 🔴🤖 Apresentação de funcionária da seguradora não é mascarada no acervo
+## P-120-12 · ✅ FECHADA · 🔴🤖 Apresentação de funcionária da seguradora não é mascarada no acervo
+**✅ FECHADA em 30/09/2026 pela SPEC-121 (`773db2f` máscara da apresentação; `e0fa1b7` acervo regerado):** 📊 30/09, busca por *"aqui é a"* em `backend/tests/corpus/telas_reais/*.jsonl` → 2 ocorrências: a da Porto sai como `{NOME}`, a outra é o nome da **assistente virtual** da própria seguradora, não de uma pessoa. O juiz varreu o acervo com regex própria: 0 CPF/CNPJ/telefone/e-mail/placa/CEP.
 📊 2 ocorrências no acervo versionado (`porto-auto.jsonl`, *"Aqui é a …"*), só o primeiro nome. Já está
 na `main` desde a SPEC-119. O mascarador pega vocativo (*"Maria, …"*), não apresentação.
 **O que destrava:** 🤖 o padrão de apresentação em `higiene_do_corpus` + regerar o acervo (move as notas).
@@ -12326,7 +12334,8 @@ na `main` desde a SPEC-119. O mascarador pega vocativo (*"Maria, …"*), não ap
 Anterior à SPEC-120; nos dois testes que esta SPEC mexeu, virou sintético. **O que destrava:** 🤖
 trocar pelos sintéticos (`5548900000047`). **Custa esquecer:** §13.9.
 
-## P-120-14 · 🧑 "Com humano atendendo, nada sai ao grupo" só vale por 6 horas
+## P-120-14 · ✅ FECHADA · 🧑 "Com humano atendendo, nada sai ao grupo" só vale por 6 horas
+**✅ FECHADA em 30/09/2026 pela SPEC-121 (`823a845`):** na porta única do grupo (`o_grupo_so_o_que_importa._validade_do_claim_h`) o "a atendente assumiu" passou a valer a **mesma janela de 7 dias** da regra do Founder; só com a janela desligada volta às 6 h. Todo aviso de conversa, inclusive o do vigia, passa por essa porta.
 📊 red team: claim há 5,9h → calado; há 6,1h → o grupo é avisado (`HANDOFF_REALERTA_HORAS=6`). O vigia
 de ESPERA VENCIDA ainda usa essa guarda. Anterior à SPEC-120, mas é o cenário da regra D17.
 **O que destrava:** 🧑 decidir quanto tempo "a atendente assumiu" vale sem ela falar.
@@ -12339,7 +12348,8 @@ O marcador responde "a vez é sua" quando não lê. Limitado à janela de 2h (`b
 Nenhum dano medido nessa sessão (a URA pediu o endereço de novo). **O que destrava:** 🤖 corrigir o texto
 ou conferir antes.
 
-## P-120-17 · 🧑 A rajada "preço da bateria + Posso continuar o agendamento?" da Porto responde "Sim"
+## P-120-17 · ✅ FECHADA · 🧑 A rajada "preço da bateria + Posso continuar o agendamento?" da Porto responde "Sim"
+**✅ FECHADA em 30/09/2026 por decisão do Founder (D8, registrada em D-121-A) e `c7b210c`:** o agente avisa o preço da bateria nova ao segurado ANTES, e o "Sim" da URA continua.
 📊 Por `agendamento_seguir_porto`, que dava o mesmo "Sim" na base `0c0e070` — **não é regressão desta
 SPEC**. Mas continuar ali é aceitar o preço de uma bateria nova. **Decisão D-120-B do Founder.**
 
@@ -12361,3 +12371,160 @@ O arquivo muda a cada rodada: é uma mutação de `test_a_regua_nao_tem_furo` (l
 de 120 s. O harness **restaura** e reprova — a árvore termina limpa. **O que destrava:** 🤖 medir o tempo daquele guarda
 e tirá-lo do teto comum (ou da lista), como P-118-14 já pede. **Custa esquecer:** um vermelho permanente ensina a ignorar
 o único gate que impede mutação de chegar à `main` (CLAUDE.md §9.3).
+
+
+---
+
+# SPEC-121 — mais rotas atendem sozinhas, e o grupo só ouve quando precisa (30/09/2026)
+
+> 📊 O retrato da SPEC (`simular_corredor.py --todas --formato json`, 30/09, HEAD `4ccd063`): **76 rotas** (eram 73; entraram
+> 3 de carro reserva) · ATENDE SOZINHO **31** · VAI PARA UMA PESSOA **4** · FALTA CAPTURA **41**. 📊 Os 29 avisos ao grupo de
+> 21/09 vão a **zero** no teste do fio (`823a845`). ⚠️ O prefixo é **P-121-NN**; a antiga **P-121** (período da MAPFRE, linha
+> ~3474) é outra pendência. Drenadas nesta SPEC: P-120-01/04/05/10/12/14/17 ✅ · P-120-02/08 e P-118-14 🟡 (anotado em cada uma).
+> ⚠️ "P-121-F1-a…e" não existem: 📊 busca por `P-121-F1` em `docs/`, `backend/app` e no rascunho da SPEC → 0.
+
+## P-121-01 · 🧑 O número "Segurado e Terceiros" da Yelum para carro reserva
+📊 As 9 sessões reais do canal A saíram pelo `whatsapp_alternativo` do registro, marcado *"NUNCA usar até o Founder
+confirmar"* (`corridor_playbooks.py`, nota do canal). Por isso o carro reserva da Yelum só sai pela env
+`INSURER_CONTACT_YELUM_CARRO_RESERVA`, que está vazia.
+**O que destrava:** 🧑 confirmar o número e preencher a env no EasyPanel (`smith-api` e `smith-worker`).
+**Custa esquecer:** todo carro reserva da Yelum vai a uma pessoa — o corredor está pronto e desligado.
+
+## P-121-02 · 🤖 O canal B da Yelum (exclusivo de corretores) não tem número no produto
+📊 1 dos 11 pedidos medidos saiu por ele, a um número que o registro não conhece (`corridor_playbooks.py`, nota do canal).
+**O que destrava:** 🤖 cadastrar o canal com procedência, depois que o Founder o confirmar.
+**Custa esquecer:** se o canal A mudar, não há plano B.
+
+## P-121-03 · 🧑 Os acionamentos reais que faltam
+Carro reserva Porto, Zurich, Bradesco e Mapfre · HDI eletricista além de *"Falta de energia / Problema elétrico"* ·
+Allianz desentupimento (G5 refutado, D-121-I) · Porto e Yelum eletrodomésticos · HDI chaveiro · Porto com vários
+veículos na apólice · Zurich garagem · a consultora da Porto ao vivo (P-120-04 fechada só no código). Absorve a P-120-02.
+**O que destrava:** 🧑 um acionamento de cada, pelo WhatsApp da corretora, com o observador ligado, até o fim.
+**Custa esquecer:** rota que provavelmente funciona fica fora do "atende sozinho" sem prova — ou pior, é ligada sem prova.
+
+## P-121-04 · 🤖 A carta de conhecimento da D10 (portão não é eletricista; raio é sinistro) não foi aplicada
+O INSERT está preparado, mas `knowledge_cards` exige `card_hash` e ele não foi gravado.
+**O que destrava:** 🤖 calcular o hash pelo escritor oficial das cartas e aplicar com APPLY/VERIFY/ROLLBACK.
+**Custa esquecer:** o corredor sabe da regra; o agente, na conversa, não.
+
+## P-121-05 · 🤖 O leitor de diárias do catálogo de planos
+📊 O catálogo `insurer_assistance_services` tem limite de diárias em só **3 planos** (Yelum 2, Tokio 1 — nota de
+`CARRO_RESERVA_DIARIAS_PADRAO` em `corridor_playbooks.py`). Sem o limite, vale o padrão **15** (D-121-C).
+**O que destrava:** 🤖 ler o limite de diárias de cada plano da base publicada.
+**Custa esquecer:** pedir 15 diárias a quem tem direito a menos (a seguradora recusa) ou a mais.
+
+## P-121-06 · 🤖 Testes ainda usam o Sonnet 5 como dublê
+📊 30/09, busca por `claude-sonnet-5` (sem o 5.5) em `backend/tests/*.py` → 96 ocorrências em 20 arquivos, um deles o
+próprio guarda `test_o_sonnet_5_esta_proibido.py`; e `scripts/spec116-f4-nascimento.test.mjs` cita o Sonnet 5.
+**O que destrava:** 🤖 trocar os dublês pelo Sonnet 5.5 onde o teste não é sobre a proibição.
+**Custa esquecer:** o próximo leitor copia o modelo proibido de um teste.
+
+## P-121-07 · 🧑 Variáveis antigas de modelo no EasyPanel que o código ignora desde a SPEC-116
+`DISTILLER_LLM_MODEL`, `DISTILLER_STRONG_MODEL`, `DISTILLER_PROVIDER`, `ATLAS_PARSER_MODEL`, `ATLAS_PARSER_PROVIDER`,
+`GARIMPO_LLM_MODEL`, `GARIMPO_LLM_PROVIDER`, `SUGESTOES_LLM_MODEL`, `SUGESTOES_LLM_PROVIDER`, `AUXILIAR_LLM_MODEL`, `DISPATCH_LLM_MODEL`, `DISPATCH_LLM_PROVIDER` (NÃO confundir com `GARIMPO_LLM` e `SUGESTOES_LLM`, sem sufixo: são o liga/desliga).
+Inofensivas: o modelo vem do catálogo (`llm_papeis`).
+**O que destrava:** 🧑 apagar no EasyPanel.
+**Custa esquecer:** alguém muda uma delas achando que troca o modelo — e nada muda.
+
+## P-121-08 · 🤖 O CHECK `agents.chk_reasoning_effort` não aceita `xhigh` nem `max`
+O Sonnet 5.5 aceita esses esforços; o banco recusa gravar.
+**O que destrava:** 🤖 migration expand-first que amplia o CHECK.
+**Custa esquecer:** o esforço mais alto nunca chega ao agente de atendimento.
+
+## P-121-09 · 🤖 `benchmark_service.py` monta o modelo fora da fábrica
+📊 Red team: `grep ChatAnthropic(` fora da fábrica → só `benchmark_service.py:103` (`claude-sonnet-4-6`, com `temperature`).
+**O que destrava:** 🤖 passar pela `llm_factory`.
+**Custa esquecer:** é o único caminho que escapa da trava do catálogo.
+
+## P-121-10 · 🤖 O `MANIFEST.md` das migrations está desatualizado desde antes da SPEC-116
+**O que destrava:** 🤖 acrescentar as migrations de 23/09 a `20260929_01` com o estado aplicado.
+**Custa esquecer:** a autoridade de migrations deixa de dizer o que está no banco (CLAUDE.md §8).
+
+## P-121-11 · 🤖 A janela de "consulta de pedido existente" só cobre a Allianz no acervo
+A Porto (*"você tem um serviço aberto"*) e a Yelum (*"aberta nas últimas 72h"*) ainda contam como atendimento novo no
+acervo, e podem inflar ou esconder órfãs. 📊 O juiz (P3) achou as 4 órfãs de `porto/auto/guincho` num acompanhamento
+(`193c5ad6+1`).
+**O que destrava:** 🤖 as duas frases em `zonas_do_acervo`.
+
+## P-121-12 · 🤖 A máscara parcial que a própria URA faz passa pelo acervo
+CPF, placa e endereço parciais e a senha de 4 dígitos que a URA mostra.
+**O que destrava:** 🤖 padrões em `higiene_do_corpus` + regerar o acervo.
+**Custa esquecer:** fragmento de dado pessoal num arquivo global (§13.9).
+
+## P-121-13 · 🤖 Testes e scripts que MUTAM arquivos da árvore compartilhada
+`test_o_handoff_que_falha_deixa_rastro`, `medir_rota`, `test_duas_medicoes`: rodando em paralelo, reverteram edições de
+outros builders nesta SPEC. Família da P-118-14.
+**O que destrava:** 🤖 rodar em `git worktree` separado, ou respeitar o lock `.baseline/.mutacao.lock` que
+`verificar_mutacoes.py` já conhece.
+**Custa esquecer:** com quatro agentes ao mesmo tempo (D-PROTO-16), trabalho pronto some sem erro.
+
+## P-121-14 · 🤖 No chat do painel a regra dos 7 dias não vale
+`chat.py` chama `pausar_ia` antes de `a_ia_deve_calar`. 📊 Red team: só o `webhook.py` passa `por_mensagem_nova=True`.
+**O que destrava:** 🤖 a mesma ordem do webhook no canal web.
+**Custa esquecer:** o painel e o WhatsApp respondem diferente à mesma conversa.
+
+## P-121-15 · 🤖 O dossiê do acionamento conta `calado` como "saiu"
+Quando o agente é desligado no meio de um acionamento, o dossiê diz que o aviso foi enviado.
+**O que destrava:** 🤖 contar `calado` à parte.
+
+## P-121-16 · 🤖 O índice Redis da pausa de 15 s libera o aviso se o Redis falhar
+**O que destrava:** 🤖 na dúvida, calar e deixar rastro, como a porta do grupo já faz.
+**Custa esquecer:** aviso duplicado no grupo num dia de Redis instável.
+
+## P-121-17 · 🤖 Resíduos do B1 (carro reserva chegando ao grupo como NOVO SINISTRO)
+📊 Juiz de confirmação, 30/09 (`conf_a.py`): **C1** — ficha com mais de 30 min + agente sem marca e sem código + prosa própria
+com "sinistro" ainda vira 🚨 NOVO SINISTRO (exige o agente desobedecer à ferramenta e adiar o pedido); **C2** —
+`codigo_do_pedido` lê a marca sem conferir a data dela (precisa de duas falhas seguidas); **C3** — o código que o agente
+declara é aceito sem checar se é recente.
+**O que destrava:** 🤖 ler a marca do resultado da última `insurer_dispatch` do turno e exigir data recente.
+**Custa esquecer:** a atendente pode abrir um sinistro que não existe, ou tratar um sinistro real como carro reserva.
+
+## P-121-18 · 🧑 "Admin Intervention" nunca reabre pela janela de 7 dias
+É a mão humana do painel, não pedido do agente; ficou fora de D-121-D de propósito.
+**O que destrava:** 🧑 decidir se a conversa pausada no painel volta ao agente com mensagem nova depois de 7 dias.
+
+## P-121-19 · 🤖 `ficha.fase = com_humano` fica gravada depois da reabertura
+**O que destrava:** 🤖 limpar a fase quando a conversa reabre como nova.
+**Custa esquecer:** o próximo leitor da ficha acha que ainda há uma pessoa no caso.
+
+## P-121-20 · 🤖 Leituras de `messages` filtram só por `conversation_id`
+📊 Juiz de confirmação: 38 chamadas a `table("messages")` em `app/`, 0 com `company_id` nas 4 linhas seguintes. Padrão
+herdado; o `conversation_id` vem de linha já filtrada pela corretora — não é vazamento novo.
+**O que destrava:** 🤖 acrescentar o filtro (CLAUDE.md §7: filtro no repository além da RLS).
+
+## P-121-21 · 🤖 `yelum/auto/socorro_mecanico` ficou sem acervo
+📊 Juiz (P3): 179 → 0 telas; as sessões eram recarga de bateria e foram reetiquetadas (bateria 22 → 201 telas). A rota
+saiu de ATENDE SOZINHO para FALTA CAPTURA e está **sem guarda de regressão**.
+**O que destrava:** 🤖 uma conversa real de socorro mecânico da Yelum (depende da P-121-03).
+
+## P-121-22 · 🤖 `simular_corredor.py`: o padrão "abertura de sinistro" do caso `bateria_5` casa uma opção de menu
+**O que destrava:** 🤖 o mesmo critério do motor (só relato, nunca opção de menu).
+**Custa esquecer:** o simulador acusa sinistro onde o corredor não acusa.
+
+## P-121-23 · 🤖 O paraquedas `_CODIGOS_ATE_A_TABELA_DO_MOTOR` tem nome de código antigo
+📊 Juiz de confirmação (C6): `carro_reserva_sem_sinistro` no handoff × `carro_reserva_sem_numero_do_processo` no motor.
+Só vale quando a tabela do motor falta — hoje é inócuo. **O que destrava:** 🤖 alinhar o nome.
+
+## P-121-24 · 🤖 Nove rotas da Allianz residencial têm notas declaradas a recontar
+O acervo foi regerado (`e0fa1b7`) e as notas escritas ao lado dos passos são de antes.
+**O que destrava:** 🤖 recontar pelo motor sobre o acervo novo.
+
+## P-121-25 · 🧑 A janela de 15 s por clique em "destravar" NÃO existe
+Só existe a da fala da atendente na URA. Registrado, não construído.
+**O que destrava:** 🧑 dizer se quer — é comportamento novo.
+
+## P-121-26 · 🤖 Conferir na tela do painel o resumo das 19h por classe
+O resumo passou a contar os silêncios por `calou_classe` (K3, `42a491d`), inclusive o pedido de ajuda com agente desligado.
+**O que destrava:** 🤖 abrir o painel depois do Implantar e conferir que os números batem com `work_events`.
+
+## P-121-27 · 🧑 Trechos de endereço no acervo ANTIGO, que continua no histórico do git
+📊 A triagem da bateria (30/09) achou trechos de endereço (rua, apto, bloco) nas telas de `escolher_entre_dois_enderecos`
+do acervo de `0cc1bdd`; o acervo regerado (`e0fa1b7`) não tem (varredura 0 em 6.146 linhas). O antigo já está na `main`.
+**O que destrava:** 🧑 decidir se o histórico da `main` é reescrito (como na SPEC-120) ou se fica. **Custa esquecer:** dado pessoal no histórico público do repositório.
+
+## P-121-28 · 🤖 Testes que trocam uma função do produto e nunca devolvem
+`test_a_janela_esta_ligada_nos_portoes` (via `test_a_atendente_fala_e_o_robo_cala.agente_ligado`) troca `attendance_agent_active`
+e não devolve; `test_spec116_f3a_quem_escreve_pede_papel` troca `sys.modules["app.core.database"]` já na coleta.
+📊 Na suíte até o guarda do grupo: 13 falhas em `4ccd063` (o guarda do grupo ficou imune em `b0aff49`, as outras 12 seguem).
+**O que destrava:** 🤖 devolver o original num `finally`/fixture. **Custa esquecer:** falha que muda com a ordem e esconde regressão real.
+

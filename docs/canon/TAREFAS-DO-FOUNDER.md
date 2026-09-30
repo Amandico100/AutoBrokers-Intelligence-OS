@@ -884,3 +884,47 @@ Nada foi testado com seguradora de verdade: estes passos são o que falta antes 
 4. **Decidir** D-120-B (preço da bateria na Porto + "posso continuar?": recomendo perguntar ao segurado, 85) e D-120-C (amperes com preço: recomendo manter com pessoa, 80).
 5. Quando der: um acionamento real de cada rota de P-120-02 (as 6 que respondem tudo e nunca chegaram ao protocolo).
 
+
+---
+
+## SPEC-121 — o grupo só ouve quando precisa, e mais rotas atendem sozinhas (30/09/2026)
+
+📊 O grupo de suporte: os 29 avisos errados de 21/09 viram **zero** no teste (commit `823a845`). Agora só chega ao grupo aviso
+de conversa quando **o agente está ligado**, **foi o agente quem pediu ajuda** e **nenhuma pessoa da corretora falou na conversa
+nos últimos 7 dias**. 📊 No simulador: **31 de 76** rotas atendem sozinhas (eram 31 de 73; entraram 3 de carro reserva).
+O Sonnet 5 saiu do sistema e o Sonnet 5.5 entrou (a mudança no banco já foi aplicada e conferida).
+
+1. **Implantar** no EasyPanel, nesta ordem: `smith-api` → `smith-worker`.
+   **Esperar:** os dois verdes; um "oi" no chat do painel responde.
+   **Se der erro de modelo** (a palavra `sonnet` numa mensagem de erro): mande o print no chat — a troca para o Sonnet 5.5
+   depende do código novo, e é ele que o Implantar leva.
+2. **O número de carro reserva da Yelum.** A Yelum atende carro reserva por um WhatsApp diferente do de assistência
+   (o canal "Segurado e Terceiros"). O número que as atendentes usaram nas 9 conversas medidas está no registro como
+   *"não usar até o Founder confirmar"*. Confirme o número com a Yelum ou com a atendente e, no EasyPanel, em `smith-api`
+   (o `smith-worker` usa o mesmo bloco), crie a variável `INSURER_CONTACT_YELUM_CARRO_RESERVA` com o número só em dígitos,
+   com 55 e DDD. Clique Implantar de novo.
+   **Esperar:** um pedido de carro reserva da Yelum, em dia útil entre 9h e 17h, com número do sinistro e cartão de crédito,
+   termina com o agente dizendo ao segurado que a Yelum confirma **em até 3 horas úteis**.
+   **Sem a variável:** todo carro reserva da Yelum vai para uma pessoa da corretora, com o resumo do pedido — nada quebra.
+3. **Limpar as variáveis antigas de modelo** (P-121-07). No EasyPanel, em `smith-api`, apague se existirem:
+   `DISTILLER_LLM_MODEL`, `DISTILLER_STRONG_MODEL`, `DISTILLER_PROVIDER`, `ATLAS_PARSER_MODEL`, `ATLAS_PARSER_PROVIDER`,
+   `GARIMPO_LLM_MODEL`, `GARIMPO_LLM_PROVIDER`, `SUGESTOES_LLM_MODEL`, `SUGESTOES_LLM_PROVIDER`, `AUXILIAR_LLM_MODEL`,
+   `DISPATCH_LLM_MODEL`, `DISPATCH_LLM_PROVIDER`. O código não lê nenhuma delas desde a SPEC-116 (o comentário
+   *"ficam IGNORADOS"* está ao lado de cada leitura antiga); o modelo vem do catálogo. É a mesma faxina da tarefa S116.7.
+   🔴 **NÃO apague** `GARIMPO_LLM` nem `SUGESTOES_LLM` (sem sufixo): são o botão liga/desliga.
+   **Esperar:** nada muda — é faxina, para ninguém trocar uma delas achando que troca o modelo.
+4. **Os acionamentos reais que faltam** (P-121-03), quando der, um de cada, pelo WhatsApp da corretora com o observador ligado,
+   até o fim: carro reserva Porto, Zurich, Bradesco e Mapfre · HDI eletricista (um problema que não seja "falta de energia") ·
+   Allianz desentupimento · Porto e Yelum eletrodomésticos · HDI chaveiro · Porto com mais de um carro na apólice ·
+   Zurich guincho com o carro em garagem · e, se aparecer, a consultora da Porto que entra no meio da conversa.
+   **Por quê:** a SPEC provou que o desentupimento da Allianz que parecia "atende sozinho" teve o protocolo dado por uma
+   **pessoa da seguradora** — só uma conversa real diz se o robô chega lá.
+5. **Decidir o "Admin Intervention"** (P-121-18). Quando alguém pausa uma conversa pelo painel, ela nunca volta ao agente,
+   nem com mensagem nova depois de 7 dias. Opções: continuar assim (a pausa do painel é para sempre) · ou tratar como a regra
+   dos 7 dias (mensagem nova depois de 7 dias volta ao agente). Recomendo **a regra dos 7 dias, 70 × 60** — as notas estão
+   perto, então é escolha sua.
+6. **Conferir o grupo da terceira corretora do piloto** (C3 no relatório). Ela tem o grupo de suporte **ativo** e o agente
+   **desligado**. Com a SPEC-121 no ar, ela fica **calada** (agente desligado = nenhum aviso de conversa; cobrança e resumo
+   continuam). Confirme se o grupo dela deve continuar ativo.
+7. **Pergunta que continua aberta para a atendente:** por qual canal a Allianz, a Bradesco e a HDI atendem carro reserva?
+   Até ela responder, esses pedidos vão para uma pessoa da corretora, por decisão sua de 29/09.

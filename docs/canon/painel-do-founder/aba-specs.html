@@ -112,6 +112,27 @@
 </section>
 
 <section>
+  <h2>Fora da família — o grupo só ouve quando precisa (SPEC-121)</h2>
+  <p class="sub">Fora da fila, como as 118–120 (o estado de cada uma está em <code>ESTADO-DAS-SPECS.md</code>). Nasceu dos
+  <b>29 avisos errados</b> que o grupo de suporte recebeu em 21/09 e das suas decisões de 29/09. 📊 30/09/2026, relatório
+  <code>reports/SPEC-121-EXECUTION-REPORT.md</code>.</p>
+  <div class="tblbox">
+    <table style="min-width:980px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou, em uma frase</th><th>data</th><th>nota</th><th class="l">o que ainda falta <b>de você</b></th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>SPEC-121</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o grupo só ouve quando precisa</span></td>
+          <td class="ds">O grupo de suporte só recebe aviso de uma conversa quando <b>o agente está ligado</b>, <b>foi o agente</b> quem pediu ajuda e <b>ninguém da corretora</b> falou nela nos últimos 7 dias — 📊 os 29 avisos errados de 21/09 viram <b>zero</b> no teste. A sua <b>regra dos 7 dias</b> passa a valer: o agente só responde mensagem <b>nova</b> depois do prazo, e a conversa volta como nova, sem as mensagens antigas. Mais rotas: a Porto auto passa do menu novo, eletrodoméstico pela tecla do aparelho, eletricista que pergunta antes, chaveiro e <b>carro reserva</b> por seguradora (📊 <b>31 de 76</b> rotas atendem sozinhas no simulador). O <b>Sonnet 5 saiu</b> do sistema e o <b>Sonnet 5.5</b> entrou, pelo mesmo preço. 🔴 O defeito que os revisores acharam antes do push: um pedido de <b>carro reserva</b> chegava ao grupo como <b>🚨 NOVO SINISTRO</b> — consertado e confirmado</td>
+          <td class="dm">30/09</td><td class="dm">juiz 87 ‖ red team 80 → confirmação <b>88</b> · nota 89</td><td class="ds">🔴 <b>Implantar</b>; confirmar o <b>número de carro reserva da Yelum</b>; apagar as variáveis antigas de modelo; os <b>acionamentos reais</b> que faltam; decidir o <b>Admin Intervention</b> (aba <a href="#tarefas" style="color:var(--accent)">Suas tarefas</a>, bloco S121)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">⛔ <b>O que esta entrega NÃO prova, e está declarado.</b> O desentupimento e os eletrodomésticos da Allianz
+  <b>não</b> passam a atender sozinhos: 📊 o protocolo daquelas conversas foi dado por uma <b>pessoa da seguradora</b>, não pelo
+  atendimento automático — só um acionamento real prova essas rotas. E a rota de socorro mecânico da Yelum ficou <b>sem nenhuma
+  conversa guardada</b> (as que havia eram de bateria), então saiu do "atende sozinho".</p>
+</section>
+
+<section>
   <h2>A fila vigente — decidida em 20/09 (D-FILA-01)</h2>
   <div class="tblbox">
     <table style="min-width:860px">
@@ -121,6 +142,8 @@
         <tr><td class="dm">✓</td><td class="ds"><b>EXTRA-001.10.1</b> · a continuação</td><td class="ds">O acesso do robô ao pedido agora é guardado <b>cifrado</b>, e o robô <b>retoma</b> o pedido pela resposta do segurado em vez de terminar em mão humana</td><td class="ds"><b>✅ concluída 24/09, nota 88</b> (aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>) — falta o <b>canário</b>, que é seu</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>EXTRA-001.8</b> · isolamento entre corretoras <b>+ 2 itens de segurança</b></td><td class="ds">Uma corretora travada não pode derrubar a vizinha — e as duas pendências ≥ 90 de segurança foram junto (cada coisa sabe de quem é; nome de pessoa fora do dado global)</td><td class="ds"><b>✅ executada 21/09</b> — falta o <b>canário</b>, que é seu</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-117</b> · o atendimento não perde a apólice</td><td class="ds">Fora da família e fora da fila: a apólice que o agente encontra no WhatsApp se perdia no turno seguinte — e com ela morria a sua decisão de 17/09, de que o <b>ramo da apólice</b> manda no acionamento</td><td class="ds"><b>✅ executada 26/09</b> — juiz 70 ‖ red team 62 → confirmação <b>90</b>; faltam o <b>Implantar</b> e o <b>canário de duas corretoras</b>, que é seu</td></tr>
+        <tr><td class="dm">✓</td><td class="ds"><b>SPEC-121</b> · o grupo só ouve quando precisa</td><td class="ds">Fora da fila: os 29 avisos errados de 21/09 e a sua regra dos 7 dias</td><td class="ds"><b>✅ concluída 30/09</b> — confirmação <b>88</b>; faltam o <b>Implantar</b> e o número de carro reserva da Yelum, que são seus</td></tr>
+        <tr><td class="dm">→</td><td class="ds"><b>SPEC-122</b> · o agente pensa com prova</td><td class="ds">A próxima, decidida no fim da SPEC-121 (<code>specs-propostas/SPEC-122-o-agente-pensa-com-prova.md</code>)</td><td class="ds">proposta escrita</td></tr>
         <tr><td class="dm">3</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata</td><td class="ds">só no diagnóstico</td></tr>
         <tr><td class="dm">4</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
         <tr><td class="dm">5</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>

@@ -54,3 +54,7 @@
    vem do ramo `por_desenho_link` de `simular_corredor.py`, que junta link e encaminhamento.
 2. A coluna de pedidos mudou em muitas rotas porque a unidade virou **atendimentos** (commit `998f9da`);
    isso não é subida nem queda de rota.
+3. 📊 As 9 rotas da Allianz residencial perderam 1 ponto no item "as notas contam certo" (2/2 → 1/2): as telas de 3 passos
+   (`link_acompanha` = consulta de pedido, `escolher_entre_dois_enderecos`, `repique_somente_numeros`) saíram do acervo com a
+   janela de consulta e a partição por atendimento (triagem da bateria, 30/09). A régua lê "zero telas" como "a nota mente";
+   com o corpus agora excluindo zonas de propósito, isso é uma decisão sobre a régua (P-121-24).

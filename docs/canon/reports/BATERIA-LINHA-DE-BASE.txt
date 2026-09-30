@@ -1,3 +1,9 @@
+# 📊 30/09/2026, SPEC-121 (branch spec/121-grupo-e-rotas, HEAD b0aff49), worktree limpo, `cd backend && .venv/Scripts/python -m pytest tests -q -p no:cacheprovider`
+# → 40 failed · 2339 passed · 1 skipped · 32 xfailed · 1 xpassed em 3.891 s. TRIAGEM NOMINAL contra o COMMIT BASE 0cc1bdd rodado no mesmo
+#   rito (43 failed · 2252 passed em 8.217 s): 0 falhas novas · 3 sumiram (test_o_numero_de_teste_e_conversa_nova = conserto real do F1;
+#   os guardas test_o_corredor_da_porto_responde_a_ura_dela e test_o_vocabulario_viaja_na_imagem passam isolados também na base = ordem).
+#   Rodada intermediária em 4ccd063: 49 failed, 9 novas — triadas e fechadas em b0aff49 (3 de produto · 5 verdade vencida · 1 ordem).
+#   ⚠️ P-121-28: dois testes trocam função do produto e não devolvem — a lista depende da ordem.
 # 📊 26/09/2026, SPEC-117 (branch spec/117-apolice-persistente, HEAD a94887f), `cd backend && python -m pytest tests -q`
 # → 47 failed · 1566 passed · 1 skipped · 36 xfailed · 1 xpassed em 3.524 s. TRIAGEM NOMINAL (contra a base E contra o
 #   commit base 79c9e80 num worktree): 33 da base · 10 pre-existentes fora da base (Model Router/encoding, falham igual
@@ -17,16 +23,17 @@
 # Uso: depois da bateria de uma SPEC, compare a lista de FAILED com esta. Falha que não está aqui = da SPEC até prova em contrário.
 # Quem fecha uma SPEC regrava este arquivo com a lista nova e a data.
 #
+ERROR    app.api.webhook:webhook.py:1243 [WEBHOOK] palavra/pergunta do acionamento: ImportError
+ERROR    app.core.lider_do_agendador:lider_do_agendador.py:319 [AGENDADOR] LIDERANCA PERDIDA — os jobs deste processo param e ele volta a seguidor
+ERROR    app.services.lacunas_de_conhecimento:lacunas_de_conhecimento.py:354 [LACUNA] não gravada (AttributeError)
+FAILED tests/test_098_builder_a_unit.py::test_service_type_de_marca_nao_vira_chat__com_controle
 FAILED tests/test_a_atendente_aperta_o_botao_e_so_o_botao.py::test_a_ROTA_do_botao_e_executada_de_verdade
 FAILED tests/test_a_atendente_aperta_o_botao_e_so_o_botao.py::test_a_politica_de_autorizacao_passa
 FAILED tests/test_a_atendente_aperta_o_botao_e_so_o_botao.py::test_o_membro_liga_o_agente_e_o_historico_registra
 FAILED tests/test_a_central_diz_a_verdade.py::test_a_central_diz_a_verdade
 FAILED tests/test_a_cobranca_chega_a_quem_deve.py::test_a_cobranca_chega_a_quem_deve
 FAILED tests/test_a_janela_esta_ligada_nos_portoes.py::test_a_janela_esta_ligada_nos_portoes
-FAILED tests/test_a_retomada_cobre_as_dezesseis.py::test_sao_dezesseis
-FAILED tests/test_a_retomada_cobre_as_dezesseis.py::test_toda_familia_do_fonte_tem_veredito_escrito
-FAILED tests/test_a_rubrica_e_honesta.py::test_a_orfa_que_a_spec_nomeia_foi_MAPEADA_e_o_replay_ainda_acha_orfas
-FAILED tests/test_a_rubrica_e_honesta.py::test_a_regua_pontua_e_nao_bate_no_portao
+FAILED tests/test_a_lista_de_finalizacao_nao_tem_fantasma.py::test_o_health_publica_o_sinal
 FAILED tests/test_o_caso_se_explica_sozinho.py::test_o_caso_se_explica_sozinho
 FAILED tests/test_o_clique_da_atendente_nao_apaga_da_fila.py::test_o_clique_da_atendente_nao_apaga_da_fila
 FAILED tests/test_o_corpus_nao_vaza_pii.py::test_a_sessao_da_regua_classifica_como_residencial_pelo_nivel_2
@@ -35,20 +42,27 @@ FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_CONTROLE_o_handoff_do_v
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_CONTROLE_os_alertas_nao_handoff_continuam_saindo
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_a_promessa_antiga_nao_sobrou_em_lugar_nenhum
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_a_reserva_e_devolvida_quando_o_aviso_nao_sai
-FAILED tests/test_o_numero_de_teste_e_conversa_nova.py::test_excecao_nao_fura_o_takeover_mas_fura_a_janela
+FAILED tests/test_o_nome_do_agente_nao_confunde.py::test_o_nome_do_agente_nao_confunde
 FAILED tests/test_o_ramo_sai_da_conversa_nao_da_ultima_frase.py::test_o_ramo_sai_da_conversa_nao_da_ultima_frase
 FAILED tests/test_o_sinistro_deixa_rastro.py::test_o_sinistro_deixa_rastro
 FAILED tests/test_o_travamento_vira_evidencia.py::test_C3_o_codigo_dos_dois_agentes_CHAMA_o_registro
-FAILED tests/test_o_travamento_vira_linha.py::test_as_familias_do_fonte_batem_com_a_triagem
 FAILED tests/test_so_um_agendador_manda.py::test_so_um_agendador_manda
 FAILED tests/test_todo_silencio_tem_motivo.py::test_todo_silencio_tem_motivo
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_a_arvore_ficou_limpa_no_fim
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_mesma_verdade_em_duas_vozes]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_tabela_de_rotas_monta]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_as_ferramentas_de_relatorio_comercial]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_infocap_policy_output_guard]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_nenhuma_mutacao_foi_commitada]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_diagnostico_ve_o_agente_mudo]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_espelho_nao_aprende_com_a_amandus]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_espelho_nao_le_o_proprio_eco]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_numero_da_casa_nao_e_cliente]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_observador_silencio]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_ontologia_e_unica]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_sem_corredor_de_vidro_nao_e_beco]
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec016_1_answer_quality]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec016_e2e_stub]
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec016_policy_intelligence]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec031_finalize_v2]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec040_onda4_gate_council]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec073_portal_worker_mutations]
+FAILED tests/test_um_clique_liga_os_corredores.py::test_os_gates_do_bloco_G_passam

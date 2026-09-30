@@ -1,16 +1,16 @@
 <div id="tab-inicio" class="tab">
 
 <header class="top">
-  <span class="eyebrow">Painel do Founder &middot; AutoBrokers &middot; 📊 estado de 28/09/2026 &middot; um link só, nove abas</span>
+  <span class="eyebrow">Painel do Founder &middot; AutoBrokers &middot; 📊 estado de 30/09/2026 &middot; um link só, nove abas</span>
   <h1>Onde estamos hoje — e o que depende de você.</h1>
   <p class="lede">Esta página é <b>o lugar único</b> para conferir o projeto sem abrir arquivo nenhum e sem perguntar a ninguém.
   Ela junta o que antes estava em duas páginas separadas (a régua dos corredores e o mapa das SPECs), atualizada.
   🔴 <b>Se você tem cinco minutos, leia só a aba <a href="#tarefas" style="color:var(--accent)">SUAS TAREFAS</a>.</b></p>
   <div class="meta">
     <span>árvore <b>AutoBrokers-FIX</b></span>
-    <span>main <b>5f83c02</b> (29/09)</span>
-    <span>última SPEC fechada <b>SPEC-120</b> — os corredores com conversa passam a atender sozinhos: 📊 <b>24 → 31</b> das 73 rotas, e o grupo recebe <b>um aviso só, na hora, completo</b> (29/09; juiz 66 ‖ red team 55 → um conserto → juiz 82) &middot; antes dela, a <b>SPEC-119</b> (28/09) e a <b>SPEC-118</b> (27/09)</span>
-    <span>a fila: próxima <b>EXTRA-001.9</b></span>
+    <span>main <b>b0aff49</b> (30/09)</span>
+    <span>última SPEC fechada <b>SPEC-121</b> — o grupo de suporte <b>só ouve quando precisa</b> (agente ligado, pedido do agente, ninguém da corretora na conversa em 7 dias): 📊 os <b>29 avisos</b> errados de 21/09 viram <b>zero</b> no teste; <b>31 de 76</b> rotas atendem sozinhas; o Sonnet 5 saiu e o <b>Sonnet 5.5</b> entrou (30/09; juiz 87 ‖ red team 80 → um conserto → confirmação 88; nota 89) &middot; antes dela, a <b>SPEC-120</b> (29/09) e a <b>SPEC-119</b> (28/09)</span>
+    <span>a próxima: <b>SPEC-122</b> — o agente pensa com prova</span>
     <span>protocolo <b>AAA v13.2 · O FIO</b> (rito único; D-PROTO-14, 26/09)</span>
     <span>📊 = medido, com fonte &middot; 💭 = exemplo, nunca citável como fato</span>
   </div>
@@ -18,7 +18,7 @@
 
 <div class="tiles">
   <div class="tile ok"><b>0</b><em>travas de ambiente entre você e o canário: 📊 27/09 o <code>/health</code> devolve <code>allowlist_tamanho 1</code>, <code>excecoes_da_janela_fora_do_teste 0</code> e <code>finalize_abre_de_verdade</code> com os dois corredores</em></div>
-  <div class="tile cr"><b>2</b><em>coisas de <b>agora</b>: <b>Implantar</b> (a <code>main</code> tem a 120 e a produção tem a 119) &middot; o <b>canário da Porto com o PIN</b> — é o único elo que nenhum teste alcança</em></div>
+  <div class="tile cr"><b>2</b><em>coisas de <b>agora</b>: <b>Implantar</b> (a <code>main</code> tem a 121) &middot; confirmar o <b>número de carro reserva da Yelum</b> — sem ele, todo carro reserva da Yelum vai para uma pessoa</em></div>
   <div class="tile ok"><b>13</b><em>SPECs da família <b>EXTRA-001.x</b> concluídas — notas de <b>84 a 90</b>. A última: o robô <b>retoma</b> um pedido de vidro parado, em vez de terminar em mão humana</em></div>
   <div class="tile ok"><b>492</b><em>serviços de assistência <b>publicados</b>, em 108 planos e 8 seguradoras. Era <b>23</b> anteontem</em></div>
   <div class="tile cr"><b>31</b><em>das <b>73 rotas</b> não têm <b>nenhuma</b> conversa no acervo (📊 28/09) — inclusive as 4 da Mapfre. Nenhuma se resolve com código: precisam de um acionamento feito pela atendente da corretora. 🔴 A SPEC-119 mediu e a tese caiu: o classificador consertado deu <b>fundo</b> (+1.620 telas), não <b>largura</b> — <b>zero</b> rotas saíram do vazio</em></div>
@@ -27,8 +27,8 @@
 
 <div class="virada" style="border-left-color:var(--accent)">
   <span class="eyebrow" style="color:var(--accent)">A fila, em uma linha</span>
-  <h2>✓ 001.10 vidros → ✓ <b>001.10.1</b> a continuação → ✓ <b>001.8 isolamento</b> → ✓ <b>117 a apólice fica no caso</b> → 001.9 → 001.0 → triagem → EXTRA-002 Agger → 099 canais → 003 renovação → 004 cotação</h2>
-  <p class="lede" style="max-width:76ch">📊 É a ordem vigente (<b>D-FILA-01</b>). Em 21/09 fechou a <b>001.10</b> (o robô de vidros vai do WhatsApp ao desfecho, mas ainda não conseguia retomar um pedido que parou) e a <b>001.8</b> (uma corretora travada não derruba a vizinha, mais duas correções de segurança). Em 24/09 fechou a <b>001.10.1</b> — a continuação: o robô agora <b>retoma</b> o pedido de vidro pela resposta do segurado, em vez de terminar em mão humana. Em 26/09 fechou a <b>SPEC-117</b>, fora da fila: a apólice que o agente encontra no WhatsApp <b>fica no caso até o fim</b> e é ela que decide o ramo do acionamento — antes o contexto da apólice nunca nascia no atendimento, e a sua decisão de 17/09 não tinha como valer. Seguem a <b>001.9</b> (arrumar as rotas do painel),
+  <h2>✓ 001.10 vidros → ✓ <b>001.10.1</b> a continuação → ✓ <b>001.8 isolamento</b> → ✓ <b>117 a apólice fica no caso</b> → ✓ <b>118–121 corredores e grupo</b> → <b>SPEC-122 o agente pensa com prova</b> → 001.9 → 001.0 → triagem → EXTRA-002 Agger → 099 canais → 003 renovação → 004 cotação</h2>
+  <p class="lede" style="max-width:76ch">📊 É a ordem vigente (<b>D-FILA-01</b>). Em 21/09 fechou a <b>001.10</b> (o robô de vidros vai do WhatsApp ao desfecho, mas ainda não conseguia retomar um pedido que parou) e a <b>001.8</b> (uma corretora travada não derruba a vizinha, mais duas correções de segurança). Em 24/09 fechou a <b>001.10.1</b> — a continuação: o robô agora <b>retoma</b> o pedido de vidro pela resposta do segurado, em vez de terminar em mão humana. Em 26/09 fechou a <b>SPEC-117</b>, fora da fila: a apólice que o agente encontra no WhatsApp <b>fica no caso até o fim</b> e é ela que decide o ramo do acionamento — antes o contexto da apólice nunca nascia no atendimento, e a sua decisão de 17/09 não tinha como valer. De 26 a 30/09 vieram as <b>SPECs 118 a 121</b>, também fora da fila: o formulário do WhatsApp, os corredores por rota e, na <b>121</b>, o grupo de suporte que só ouve quando precisa e a sua regra dos 7 dias. A próxima é a <b>SPEC-122</b>. Depois seguem a <b>001.9</b> (arrumar as rotas do painel),
   a <b>001.0</b> (registrar o que entrou na main em 08–10/09 sem SPEC), uma <b>triagem das pendências</b>, e só então a fila de produto:
   Agger, canais, renovação, cotação, reativação, cross-sell. A série grande <b>099→114</b> continua pausada desde 07/09, sem renumerar.
   A tabela inteira está em <a href="#specs" style="color:var(--accent)">AS SPECS</a>.</p>
@@ -53,7 +53,7 @@
     <dd>A próxima SPEC (001.10): o que o robô já faz, o que falta, o que providenciar antes, e como abrir o chat.</dd>
 
     <dt><a href="#corredores" style="color:var(--accent)">Corredores</a></dt>
-    <dd>🔴 <b>Reescrita em 28/09 e agora GERADA</b>, não digitada — as 73 rotas em três faixas, com a data ao lado de cada número. <b>De 73 rotas, 42% (31) o sistema resolve sozinho, 3% (2) vão a uma pessoa por desenho da seguradora, e 55% (40) ainda não ligam</b> — dessas, 31 faltam conversa, 6 falta um acionamento que chegue ao protocolo (🧑 seus) e 3 têm tela sem resposta (🤖 nosso). 📊 29/09, commit 7844542.</dd>
+    <dd>🔴 <b>GERADA</b>, não digitada — as rotas em três faixas, com a data ao lado de cada número. <b>De 76 rotas (entraram 3 de carro reserva), 41% (31) o sistema resolve sozinho, 5% (4) vão a uma pessoa por desenho da seguradora, e 54% (41) ainda não ligam</b> — dessas, 33 faltam conversa, 5 falta um acionamento que chegue ao protocolo (🧑 seus) e 3 têm tela sem resposta (🤖 nosso). 📊 30/09, <code>simular_corredor.py --todas</code> no fim da SPEC-121.</dd>
 
     <dt><a href="#conhecimento" style="color:var(--accent)">Conhecimento</a></dt>
     <dd>O que o agente sabe de cada seguradora: a base de planos publicada, quem já foi destilado e o que falta.</dd>
