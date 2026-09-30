@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -203,17 +204,58 @@ def test_dispatch_cerebro_antes_do_segurado_usa_a_reserva(com_mapa, monkeypatch)
     assert com_mapa.banco.linhas()[0]["details"]["motivo_reserva"] == "5xx"
 
 
+#: Quem chama a rota `dispatch` DIRETO (sem o helper da reserva): `create_llm(... "dispatch" ...)`,
+#: `papel="dispatch"` ou uma constante `PAPEL_… = "dispatch"` (o apelido que um `papel=PAPEL_X` esconderia),
+#: com aspas simples ou duplas, em uma ou várias linhas.
+_DISPATCH_DIRETO = re.compile(r"""create_llm\([^)]*["']dispatch["']|papel\s*=\s*["']dispatch["']"""
+                              r"""|^\s*PAPEL\w*\s*(?::\s*\w+\s*)?=\s*["']dispatch["']""", re.S | re.M)
+#: Quem chama pelo helper: `invocar_com_reserva("dispatch", …)`, na mesma linha ou na seguinte.
+_DISPATCH_PELO_HELPER = re.compile(r"""invocar_com_reserva\(\s*(?:papel\s*=\s*)?["']dispatch["']""")
+
+#: Os chamadores de PRODUÇÃO da rota `dispatch` — todos pelo helper (com a reserva).
+CHAMADORES_DO_DISPATCH = ["dispatch_router.py", "dispatch_watchdog.py", "webhook.py"]
+#: A ÚNICA exceção declarada, com o porquê. SPEC-122 F3 + conserto único (30/09): a SOMBRA do cérebro chama o
+#: PRIMÁRIO do dispatch DIRETO, sem reserva e só com o disjuntor fechado — de propósito (juiz P2 / red team P4):
+#: pela reserva, uma falha da sombra gastaria a cota do provedor de que a produção depende naquele momento; ela
+#: decide e NÃO envia. §9.3: a lista acompanha o fato; a forma (produção passa pelo helper) não afrouxa.
+EXCECOES_SEM_RESERVA = {"acao_do_cerebro.py": "sombra do cérebro: mede o primário, não envia, não disputa a reserva"}
+
+
+def _chamadores_do_dispatch(fontes: dict) -> tuple:
+    """(diretos, pelo_helper) sobre {nome: código-fonte}."""
+    diretos = sorted(n for n, src in fontes.items() if _DISPATCH_DIRETO.search(src))
+    usam = sorted(n for n, src in fontes.items() if _DISPATCH_PELO_HELPER.search(src))
+    return diretos, usam
+
+
+def _fontes_do_app() -> dict:
+    return {p.name: p.read_text(encoding="utf-8") for p in (BACKEND / "app").rglob("*.py")}
+
+
 def test_os_tres_callsites_do_dispatch_passam_pelo_helper():
-    """Forma: nenhum `create_llm(papel="dispatch")` → `ainvoke` direto sobrou."""
-    raiz = BACKEND / "app"
-    diretos = [str(p) for p in raiz.rglob("*.py")
-               if 'papel="dispatch"' in p.read_text(encoding="utf-8")]
-    assert diretos == [], diretos
-    usam = sorted(p.name for p in raiz.rglob("*.py")
-                  if 'invocar_com_reserva("dispatch"' in p.read_text(encoding="utf-8")
-                  or ('invocar_com_reserva(\n' in p.read_text(encoding="utf-8")
-                      and '"dispatch"' in p.read_text(encoding="utf-8")))
-    assert usam == ["dispatch_router.py", "dispatch_watchdog.py", "webhook.py"], usam
+    """Forma: todo chamador de PRODUÇÃO da rota `dispatch` passa por `invocar_com_reserva` (são 3), e o único
+    chamador direto é a exceção declarada (a sombra, que não envia)."""
+    diretos, usam = _chamadores_do_dispatch(_fontes_do_app())
+    assert diretos == sorted(EXCECOES_SEM_RESERVA), diretos
+    assert usam == CHAMADORES_DO_DISPATCH, usam
+
+
+@pytest.mark.parametrize("novo", [
+    'llm = create_llm(papel="dispatch", company_id=cid)\nr = await llm.ainvoke(msgs)\n',
+    "llm = create_llm(\n    papel='dispatch',\n    company_id=cid,\n)\nr = await llm.ainvoke(msgs)\n",
+    'PAPEL_NOVO = "dispatch"\nllm = create_llm({}, {}, modelo_resolvido=resolver_para({}, {}, papel=PAPEL_NOVO))\n',
+    'r = await invocar_com_reserva(\n    "dispatch", msgs, company_id=cid)\n',
+])
+def test_CONTROLE_um_chamador_novo_do_dispatch_deixa_o_guarda_vermelho(novo):
+    """🔴 Um guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3): planta-se um chamador novo.
+    Direto (sem o helper, inclusive por apelido) → `diretos` sai da exceção declarada. Pelo helper, mas fora da
+    lista → a lista deixa de bater. As duas asserções do guarda ficariam vermelhas."""
+    fontes = {**_fontes_do_app(), "chamador_novo.py": novo}
+    diretos, usam = _chamadores_do_dispatch(fontes)
+    if "invocar_com_reserva" in novo:
+        assert "chamador_novo.py" in usam and usam != CHAMADORES_DO_DISPATCH
+    else:
+        assert "chamador_novo.py" in diretos and diretos != sorted(EXCECOES_SEM_RESERVA)
 
 
 # ---------------------------------------------------------------------------

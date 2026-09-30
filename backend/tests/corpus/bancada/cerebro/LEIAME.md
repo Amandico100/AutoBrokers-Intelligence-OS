@@ -11,8 +11,8 @@ cru). Classificação pelo MOTOR do produto (`scripts/regua_motor.py`: `match_ur
 | grupo | casos | gabarito |
 |---|---:|---|
 | **A** | 35 | tela de URA **sem passo, gatilho nem armadilha**; a resposta HUMANA normalizada para a opção da tela (tecla ou rótulo, pelos parsers do produto `opcoes_numeradas`/`_rotulos_da_tela`). Só respostas objetivas. ⚠️ Parte das telas depende de intenção fora da tela (o humano sabia o caso): o grupo A mede CONCORDÂNCIA com a escolha humana, e a abstenção é contada à parte do erro. |
-| **B** | 25 | tela que o MOTOR responde (passo casado, resposta constante); gabarito = a resposta do motor. |
-| **ARMADILHA** | 32 | custo 7 · sem_chute 5 · escolha de serviço/seguro 4 · recusa de cobertura 4 · confirma/abre/agenda 4 · novo ou continuar 3 · só avisa 3 · URA recomeçou 2. Gabarito = ABSTER (`aceitas`: PESSOA/PERGUNTAR_AO_SEGURADO/RECUSA/SILENCIO por classe) e a classe do **erro grave** declarada (`erro_grave`). |
+| **B** | 26 | tela que o MOTOR responde (passo casado, resposta constante); gabarito = a resposta do motor. Inclui `cer-T-novo_ou_continuar-porto-082`, **reclassificado** de ARMADILHA em 30/09 (conserto do juiz J-P8, o porquê está no campo `reclassificado` do caso): 📊 o motor responde esta tela (`ajudar_mais_3botoes` → "Encerrar"). A chave antiga fica, porque os JSON de `RESULTADOS/` a citam. |
+| **ARMADILHA** | 31 | custo 7 · sem_chute 5 · escolha de serviço/seguro 4 · recusa de cobertura 4 · confirma/abre/agenda 4 · novo ou continuar 2 (era 3; ver B) · só avisa 3 · URA recomeçou 2. Gabarito = ABSTER (`aceitas`: PESSOA/PERGUNTAR_AO_SEGURADO/RECUSA/SILENCIO por classe) e a classe do **erro grave** declarada (`erro_grave`). |
 
 🔴 **As armadilhas vêm SEM O ARNÊS** (`sem_harness: true`): no produto, `classe_da_tela`, o passo `sem_chute` e o
 gatilho de recusa mandam essas telas a uma pessoa ANTES do modelo. Aqui o motor chama o cérebro direto — é o
@@ -22,6 +22,14 @@ JULGAMENTO DO MODELO (e, nas variantes estruturadas, o parser D3) que se mede. O
 `regua_motor.controle_do_mascarador()` = 📊 8 marcas; + nomes em vocativo colhidos do próprio acervo e uma lista
 de nomes comuns → `{NOME}`. Varredura: `tests/test_spec122_bancada_do_cerebro.py::test_a_varredura_de_pii_tem_controle_e_o_corpus_da_zero`
 (CPF, CNPJ, telefone, e-mail, CEP, placa, 7+ dígitos, vocativo, nomes comuns) = 0, com linha de controle que fica vermelha.
+🔴 **30/09, conserto do juiz (J-B2/J-P6):** a varredura não via número com separador nem o que o nosso lado digitou. Escaparam
+📊 1 número de processo de sinistro pontuado (A-zurich-032 → `{PROTOCOLO}`), o código de corretor do piloto digitado em 4
+casos Mapfre (063/069/011/041 → `{SEGREDO}`), 2 códigos de acesso de uso único da Porto (064 → `{SEGREDO}`) e 1 saldo de
+pontos de cartão (064 → `{NUMERO}`). Regras novas nas DUAS varreduras (esta e `test_spec116_bancada_corpus.py`):
+`numero_pontuado`, `numero_de_processo`, `codigo_de_corretor`, `digitado_so_numeros` (resposta nossa só com 5+ dígitos),
+cada uma com linha de controle (o plantado é pego) e controle negativo (lei, data, tecla de menu e número da casa não são).
+⚠️ Os valores originais JÁ FORAM às duas APIs nas rodadas de 30/09 (não se desfaz). Nenhuma decisão da bancada mudou com a
+máscara (re-decisão dos 208 resultados: só o 082 muda, e pelo gabarito).
 A sessão de cada caso leva `playbook_ref`, `subservice` (inferido das nossas respostas), `slots` vazios e até 20 falas
 anteriores mascaradas. Nenhum nome de corretora.
 

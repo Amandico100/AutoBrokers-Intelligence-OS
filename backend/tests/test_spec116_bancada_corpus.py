@@ -30,6 +30,14 @@ PADROES_PII = {
     "telefone": re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}(?!\d)"),
     "placa": re.compile(r"\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b"),
     "e-mail": re.compile(r"\b[\w.+-]+@(?!exemplo\.invalid\b)[\w-]+\.[\w.]{2,}\b"),
+    # SPEC-122 · conserto do juiz (J-B2/J-P6, 30/09): um número de processo de sinistro pontuado e o código de
+    # corretor do piloto passaram por todas as regras de cima. Número com pontos/traços de ≥ 11 caracteres
+    # (data "30.09.2026" e lei "13.709/2018" ficam de fora) · número logo após processo/sinistro/protocolo ·
+    # código de corretor · o que o NOSSO lado digitou só com 5+ dígitos (menu é 1–2, número da casa 3–4).
+    "numero_pontuado": re.compile(r"(?<![\w.,/-])(?=[\d.\-]{11,})\d{2,6}(?:[.\-]\d{2,8}){2,}(?![\w/-]|[.,]\d)"),
+    "numero_de_processo": re.compile(r"(?i)\b(?:processo|sinistro|protocolo|chamado)\b[^\d{\"\n]{0,25}\d[\d.\-/]{4,}"),
+    "codigo_de_corretor": re.compile(r"(?i)c[óo]digo (?:de |do )?corretor[^\d{\"\n]{0,25}\d{4,}"),
+    "digitado_so_numeros": re.compile(r"\"direction\":\s*\"out\",\s*\"text\":\s*\"\s*\d{5,}\s*\""),
 }
 
 #: Nomes do piloto que NÃO podem aparecer — guardados em rot13 e comparados por
@@ -73,6 +81,16 @@ def test_varredura_consegue_ficar_vermelha():
     tipos = {t for t, _ in varrer_pii(materializado)}
     assert {"CPF", "telefone", "placa", "CNPJ", "e-mail"} <= tipos, tipos
     assert varrer_pii("atendimento da " + _rot13("erfhygn").upper()), "nome proibido plantado não foi achado"
+    # SPEC-122 (J-B2/J-P6): cada regra nova acha o que se planta nela — e não acha lei, data nem tecla de menu
+    plantados = {"numero_pontuado": "*Número do processo:* 31.26.123456.01",
+                 "numero_de_processo": "seu sinistro nº 4521.887",
+                 "codigo_de_corretor": "o código de corretor é 123456",
+                 "digitado_so_numeros": json.dumps({"direction": "out", "text": "123456"})}
+    for regra, texto in plantados.items():
+        assert regra in {t for t, _ in varrer_pii(texto)}, regra
+    for inocente in ("Lei nº 13.709/2018", "no dia 30.09.2026", json.dumps({"direction": "out", "text": "2"}),
+                     json.dumps({"direction": "out", "text": "1653"})):
+        assert not ({t for t, _ in varrer_pii(inocente)} & set(plantados)), inocente
 
 
 def test_corpus_sem_pii():

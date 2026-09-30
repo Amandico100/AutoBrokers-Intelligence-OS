@@ -165,6 +165,16 @@ _PII = {
                              r"Juliana|Marcos|Rafael|Bruna|Camila|Patrícia|Patricia|Aline|Luiz|Antônio|Antonio|"
                              r"Francisco|Adriana|Márcia|Marcia|Rodrigo|Gabriel|Mariana|Amanda|Silva|Santos|"
                              r"Oliveira|Souza|Pereira)\b"),
+    # 🔴 Conserto do juiz (J-B2/J-P6, 30/09): um número de PROCESSO DE SINISTRO pontuado (NN.NN.NNNNNN.NN) passou
+    # por todas as regras de cima — nenhuma via número com separador — e o código de corretor do piloto, digitado
+    # como resposta nossa, também. Número com pontos/traços de ≥ 11 caracteres (processo, sinistro, protocolo);
+    # data "30.09.2026" (10) e lei "13.709/2018" (barra) ficam de fora.
+    "numero_pontuado": re.compile(r"(?<![\w.,/-])(?=[\d.\-]{11,})\d{2,6}(?:[.\-]\d{2,8}){2,}(?![\w/-]|[.,]\d)"),
+    "numero_de_processo": re.compile(r"(?i)\b(?:processo|sinistro|protocolo|chamado)\b[^\d{\"\n]{0,25}\d[\d.\-/]{4,}"),
+    "codigo_de_corretor": re.compile(r"(?i)c[óo]digo (?:de |do )?corretor[^\d{\"\n]{0,25}\d{4,}"),
+    # o que o NOSSO lado digitou só com números (código de corretor, código de acesso de uso único): menu é 1–2
+    # dígitos, número da casa 3–4; 5+ é identificador.
+    "digitado_so_numeros": re.compile(r"\"direction\":\s*\"out\",\s*\"text\":\s*\"\s*\d{5,}\s*\""),
 }
 
 
@@ -177,6 +187,101 @@ def test_a_varredura_de_pii_tem_controle_e_o_corpus_da_zero():
     assert len(varredura_de_pii(controle)) >= 5      # 🔴 o CONTROLE: a régua consegue ficar vermelha
     achados = {c["chave"]: varredura_de_pii(json.dumps(c["entrada"], ensure_ascii=False)) for c in _casos()}
     assert {k: v for k, v in achados.items() if v} == {}
+
+
+@pytest.mark.parametrize("plantado, regra", [
+    ("*Número do processo:* 31.26.123456.01", "numero_pontuado"),
+    ("protocolo 2026-000123-45 aberto", "numero_pontuado"),
+    ("seu sinistro nº 4521.887", "numero_de_processo"),
+    ("o código de corretor é 123456", "codigo_de_corretor"),
+    (json.dumps({"direction": "out", "text": "123456"}), "digitado_so_numeros"),
+])
+def test_CONTROLE_numero_pontuado_e_codigo_digitado_sao_pegos(plantado, regra):
+    """🔴 LINHA DE CONTROLE (J-B2/J-P6): cada regra nova ACHA o que se planta nela — e no corpus inteiro."""
+    assert regra in varredura_de_pii(plantado)
+    casos = [json.loads(l) for l in CORPUS.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if regra == "digitado_so_numeros":
+        casos[0]["entrada"]["sessao"]["transcript"].append(json.loads(plantado))
+    else:
+        casos[0]["entrada"]["tela"] += "\n" + plantado
+    assert regra in varredura_de_pii(json.dumps(casos[0]["entrada"], ensure_ascii=False))
+
+
+@pytest.mark.parametrize("inocente", [
+    "direitos previstas na LGPD, Lei nº 13.709/2018",   # lei (barra) — está no corpus, não é dado de ninguém
+    "no dia 30.09.2026",                                # data com pontos
+    json.dumps({"direction": "out", "text": "2"}),      # tecla de menu
+    json.dumps({"direction": "out", "text": "1653"}),   # número da casa (a rua já é {ENDERECO})
+    "R$ 1.234,56",
+])
+def test_CONTROLE_as_regras_novas_nao_pegam_o_que_nao_e_identificador(inocente):
+    novas = {"numero_pontuado", "numero_de_processo", "codigo_de_corretor", "digitado_so_numeros"}
+    assert not (novas & set(varredura_de_pii(inocente)))
+
+
+# --------------------------------------------------------------------------- a tabela, recalculada sem modelo
+_RESULTADOS = Path(__file__).parent / "corpus" / "bancada" / "RESULTADOS"
+
+
+def recalcular_resumo(corpus_casos: list, tmp_path) -> tuple:
+    """Re-decide o `bruto` GRAVADO de cada rodada com o `decidir` de HOJE e julga contra o gabarito do corpus
+    de HOJE — nenhuma chamada de modelo. Devolve (resumo gravado, resumo recalculado)."""
+    import copy
+
+    casos = {c["chave"]: c for c in corpus_casos}
+    arqs = sorted(_RESULTADOS.glob("cerebro_*.json"))
+    novos = []
+    for arq in arqs:
+        d = json.loads(arq.read_text(encoding="utf-8"))
+        for r in d["resultados"]:
+            if r["resultado"] == "BLOCKED_BY_INFRA":
+                continue
+            e = r["rastro"]["estado"]
+            ent = casos[r["chave"]]["entrada"]
+            v = e.get("variante", "V0")
+            dec = AC.decidir(e.get("bruto") or "", copy.deepcopy(ent["sessao"]), ent["tela"],
+                             estruturada=(v != "V0"),
+                             ida_e_volta_permitida=str(ent.get("seguradora") or "").lower() not in B.SEM_IDA_E_VOLTA)
+            e["veredito"] = B.veredito_do_cerebro(casos[r["chave"]]["oraculo"]["cerebro"], dec, ent["tela"])
+        novo = tmp_path / arq.name
+        novo.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        novos.append(str(novo))
+    return B.resumo_do_cerebro([str(a) for a in arqs]), B.resumo_do_cerebro(novos)
+
+
+def _graves(m):
+    return sorted(g.split("#")[0].replace("cer-T-", "") for g in m["graves"])
+
+
+def test_a_tabela_recalculada_sem_modelo_V2_fica_com_os_dois_graves_do_menu_reaberto(tmp_path):
+    """SPEC-122 · conserto J-P8 (30/09). Os números de `docs/canon/reports/SPEC-122-BANCADA.md` §3.1.
+    CONTROLE: o resumo GRAVADO continua com os 4 graves da V2 — o recálculo consegue ser diferente dele."""
+    gravado, hoje = recalcular_resumo(_casos(), tmp_path)
+    v2, v0, opus = ("openai:gpt-6.1-sol:high · V2", "openai:gpt-6.1-sol:high · V0", "anthropic:claude-opus-5-5 · V0")
+    assert len(gravado[v2]["graves"]) == 4 and len(gravado[v0]["graves"]) == 15      # 🔴 o controle
+    # 074 sai pela camada sem_chute da F2 (re-decisão); 082 sai porque o MOTOR responde a tela (gabarito, J-P8)
+    assert _graves(hoje[v2]) == ["ura_recomeca-porto-091", "ura_recomeca-porto-092"]
+    assert (hoje[v2]["n_T"], hoje[v2]["n_B"], round(hoje[v2]["abstencao_correta"], 3)) == (31, 13, 0.903)
+    assert len(hoje[v0]["graves"]) == 14 and "novo_ou_continuar-porto-082" not in _graves(hoje[v0])
+    assert _graves(hoje[opus]) == _graves(gravado[opus])                              # o 082 não estava no Opus
+    c082 = next(c for c in _casos() if c["chave"] == "cer-T-novo_ou_continuar-porto-082")["oraculo"]["cerebro"]
+    assert c082["grupo"] == "B" and c082["passo_do_motor"] == "ajudar_mais_3botoes" and c082["reclassificado"]
+
+
+def test_o_gabarito_do_082_e_o_que_o_MOTOR_responde_nesta_tela():
+    """J-P8: o gabarito B vem do motor, medido sobre a tela REAL do caso (§9.4) — não do nome da âncora."""
+    from app.services import corridor_playbooks as CP
+
+    c = next(c for c in _casos() if c["chave"] == "cer-T-novo_ou_continuar-porto-082")
+    pb = CP.get_playbook(c["entrada"]["sessao"]["playbook_ref"])
+    for sub in (c["entrada"]["sessao"]["subservice"] or None, None):
+        st = CP.match_ura_step(pb, c["entrada"]["tela"], sub)
+        assert (st["step"], st["reply"]) == ("ajudar_mais_3botoes", "Encerrar")
+    o = c["oraculo"]["cerebro"]["opcao"]
+    assert AC.rotulo_de(c["entrada"]["tela"], o["literal"]) == (o["tecla"], o["rotulo"])
+    # a bolha final SOZINHA é a sonda de inatividade: o motor diria "Sim" (por isso deixou de ser armadilha)
+    so_a_sonda = c["entrada"]["tela"].split("Você ainda quer")[1]
+    assert CP.match_ura_step(pb, "Você ainda quer" + so_a_sonda, None)["reply"] == "Sim"
 
 
 def test_o_corpus_tem_os_tres_grupos_e_as_armadilhas_declaradas():

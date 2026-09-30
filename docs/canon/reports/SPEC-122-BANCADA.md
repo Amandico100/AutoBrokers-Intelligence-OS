@@ -42,11 +42,41 @@ Graves, nominais:
 - **6.1 V2:** novo_ou_continuar-porto-082 · sem_chute-hdi-074 · ura_recomeca-porto-091 · ura_recomeca-porto-092.
   O parser D3 segurou 4 respostas do modelo em armadilha (custo-porto-064, custo-yelum-066, escolhe_servico-allianz-071, escolhe_servico-mapfre-069 → PESSOA).
 
+### 3.1 🔴 A TABELA RECALCULADA (conserto do juiz, 📊 30/09/2026 — SEM chamar modelo)
+A tabela acima fica como foi medida. Esta é a MESMA rodada (os 208 resultados gravados, 0 `BLOCKED_BY_INFRA`), com duas
+mudanças e nenhuma chamada de modelo: (1) o `bruto` gravado de cada caso é **re-decidido** com o `acao_do_cerebro.decidir`
+de hoje (que já tem a camada `sem_chute` da F2) e (2) é julgado contra o **gabarito corrigido** do corpus (J-P8).
+Comando: `cd backend && PYTHONIOENCODING=utf-8 python -m pytest -q tests/test_spec122_bancada_do_cerebro.py -k recalculada`
+(`recalcular_resumo` no teste; o controle dentro dele confirma que o resumo GRAVADO continua com 4 graves na V2).
+
+| braço · variante | n | acerto A | erro A | acerto B | abstenção correta | graves | graves do modelo NU | formato |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Opus 5.5 · V0 | 62 (T 15) | 34,3 % | 22,9 % | 75,0 % (12) | 60,0 % (9/15) | **6 → 6** | 6 | 0 |
+| GPT-6.1 Sol high · V0 | 67 (T 32 → 31) | 37,1 % | 31,4 % | — → 0 % (0/1) | 40,6 % → 41,9 % (13/31) | **15 → 14** | 19 → 18 | 4 |
+| GPT-6.1 Sol high · V2 | 79 (T 32 → 31) | 31,4 % | 20,0 % | 33,3 % (12) → 30,8 % (4/13) | 84,4 % → 90,3 % (28/31) | **4 → 2** | 8 → 7 | 0 |
+
+O porquê de cada grave que saiu (V2: 4 → 2 = `ura_recomeca-porto-091` e `-092`, os dois MANTIDOS pelo juiz — o modelo
+escolheu "Informar outro CPF/CNPJ", troca de titular, que nenhum motor nem humano faz):
+- `sem_chute-hdi-074` → ABSTENCAO_CORRETA pela **re-decisão**: a camada `sem_chute` da F2 transforma a resposta do modelo
+  em PESSOA (`proibicao=passo_sem_chute`). Só a V2 muda; o Opus V0 e o 6.1 V0 re-decididos são idênticos ao gravado.
+- `novo_ou_continuar-porto-082` → sai das armadilhas pelo **gabarito** (J-P8): o MOTOR do produto responde esta tela, então
+  ela não é armadilha de abstenção. 📊 Medido sobre a tela REAL do caso (`match_ura_step`, com e sem subserviço): o passo
+  que casa é `ajudar_mais_3botoes` → **"Encerrar"** (tecla 3) — a tela junta 3 bolhas e o menu "Posso te ajudar com algo
+  mais?" vem antes. ⚠️ Não é o "Sim" que o laudo citou: esse é o que o motor dá à bolha final SOZINHA (`continuar_atendimento`,
+  5/5). O caso virou grupo B com gabarito "Encerrar"; o "Sim" dos dois braços 6.1 conta como ERRO de B (opção diferente
+  da do motor), não como grave. Guarda: `test_o_gabarito_do_082_e_o_que_o_MOTOR_responde_nesta_tela`.
+- A máscara nova do corpus (§6) não mudou nenhuma decisão: re-decisão com o corpus antigo × o novo = só o 082 difere.
+
 Custo real do LEDGER (📊 SQL independente, `select p.provider, t.model_name, count(*), sum(t.total_cost_usd) from token_usage_logs t join llm_pricing p … where service_type='bancada' and created_at>='2026-09-30'`):
 **OpenAI US$ 1,7557** (gpt-6.1-sol, 148 chamadas = 67 + 79 + 2 do probe) · **Anthropic US$ 1,7383** (opus-5-5 63 = 62 + 1 probe, US$ 1,7095; sonnet-5-5 2 do probe, US$ 0,0288).
 Conferido contra a soma dos JSON (1,6885 + 0,0209 + 0,0288 = 1,7382; 0,7085 + 1,0240 + 0,0231 = 1,7556).
 
 ## 4. VEREDITO
+> 🔴 **Atualizado em 30/09/2026 pelo conserto do juiz (§3.1).** A conclusão NÃO muda: nenhuma variante passa G1; V2 só em
+> sombra; o dispatch continua Opus 5.5. Muda a contagem: **V2 = 2 graves em 31 armadilhas** (091, 092 — graves de verdade),
+> abstenção correta 90,3 %. Dos "3 contestáveis" do texto abaixo, o juiz decidiu: 082 não é armadilha (o motor responde),
+> 091/092 são graves. O 074 ("legítimo") é o que a camada `sem_chute` da F2 agora segura. O texto original segue abaixo.
+
 - **Nenhuma variante passa G1–G3.** A melhor é **V2 (estruturada + contexto + D3 em código)**: formato 0, abstenção
   correta 84 % (V0: 41 %), graves 15 → 4 no mesmo braço. Dos 4 graves que sobram, **3 caem em telas que o MOTOR do
   produto responde** ("quer continuar? → Sim" da Porto; o menu da Porto depois que a URA recomeça) — o gabarito
@@ -65,8 +95,8 @@ Conferido contra a soma dos JSON (1,6885 + 0,0209 + 0,0288 = 1,7382; 0,7085 + 1,
 ## 5. Gates
 | gate | resultado | evidência |
 |---|---|---|
-| G1 zero grave | ❌ nenhuma variante | §3 (V2: 4, 3 contestáveis) |
-| G2 abstenção ≥ 90 % · A ≥ 85 % · B ≥ 97 % | ❌ | V2 84 % · 31 % · 33 % |
+| G1 zero grave | ❌ nenhuma variante | §3 (V2: 4, 3 contestáveis) → §3.1 (30/09, recalculado): V2 **2** (091, 092), ambos graves de verdade |
+| G2 abstenção ≥ 90 % · A ≥ 85 % · B ≥ 97 % | ❌ | V2 84 % · 31 % · 33 % → §3.1: 90,3 % ✅ · 31 % ❌ · 31 % ❌ |
 | G3 formato 0 · 90 % < 30 s | ✅ V2 (0; 100 %) · ❌ 6.1 V0 (4 `empty`) | §3 |
 | G4 controle V0 Opus na mesma bancada | ⚠️ PARCIAL — medido, mas 15/32 armadilhas | §2 |
 | G5 ≤ US$ 2 por provedor, do ledger | ✅ 1,7557 · 1,7383 | §3 (SQL) |
@@ -83,3 +113,12 @@ Teste do fio (`backend/tests/test_spec122_bancada_do_cerebro.py`): 📊 VERMELHO
 - Os JSON de resultado foram medidos com o corpus **antes** desse remascaramento (a chave dos casos não muda; mudam
   só palavras mascaradas em ≤ 13 casos).
 - A ordem do arquivo (A, B, armadilhas) fez o teto cortar as armadilhas do Opus. O corpus agora vem com as armadilhas PRIMEIRO (mesmas chaves) e os 5 casos remascarados; `test_corpus_sem_pii` (SPEC-116) e a varredura da 122 verdes.
+
+- 🔴 **30/09 · conserto do juiz (J-B2/J-P6): identificadores que a varredura não via.** 📊 1 número de processo de sinistro
+  pontuado (A-zurich-032), o código de corretor do piloto digitado em 4 casos Mapfre, 2 códigos de acesso de uso único e 1
+  saldo de pontos (custo-porto-064) — todos mascarados no corpus (`{PROTOCOLO}`/`{SEGREDO}`/`{NUMERO}`); os JSON de
+  `RESULTADOS/` não os continham (0). As duas varreduras (a desta SPEC e `test_corpus_sem_pii` da 116) ganharam 4 regras
+  com linha de controle; varredura inteira do corpus da bancada (corpus + RESULTADOS + outros papéis) = **0**. ⚠️ Os valores
+  já foram às duas APIs nas rodadas de 30/09. ⚠️ FORA desta SPEC e já na `origin/main`: o mesmo número de processo está num
+  comentário de `corridor_playbooks.py` e em `tests/corpus/telas_reais/zurich-auto.jsonl`; o mesmo código de corretor em
+  `tests/fixtures/mapfre_parcelas.py` e `docs/canon/portais/PORTAL-mapfre.md` (pendência).
