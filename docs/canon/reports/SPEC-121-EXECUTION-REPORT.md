@@ -131,7 +131,12 @@ P-121-01…26 em `PENDENCIAS.md` (as principais: o número de carro reserva da Y
 testes que mutam a árvore compartilhada, resíduos do B1). Drenadas: P-120-01, -04, -05, -10, -12, -14, -17 FECHADAS.
 
 ## 8. ENTREGA
-<!-- PUSH -->
+📊 30/09/2026, `git push origin HEAD:main`:
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   0cc1bdd..519aa90  HEAD -> main
+```
+`git rev-list --count origin/main..HEAD` → 0. Depois do push o Founder clica **Implantar** no EasyPanel.
 
 ## 9. NOTA E TELEMETRIA
 **Nota do gerente: 89/100** — critério: o outcome do grupo e da regra dos 7 dias está provado pelo motor com controles
