@@ -185,11 +185,11 @@ def test_opus_48_sem_temperature_pelo_catalogo(banco):
 # ---------------------------------------------------------------------------
 def test_gpt6_sol_pela_responses_com_esforco_e_store_false(banco):
     _, pap = banco
-    _rota(pap, "atendimento", provider="openai", modelo_primario="gpt-6-sol", esforco="low")
+    _rota(pap, "atendimento", provider="openai", modelo_primario="gpt-6.1-sol", esforco="low")
     llm = _llm("atendimento")
     ligado = llm.bind_tools([consultar_apolice])
     p = llm._get_request_payload([("human", "oi")], **ligado.kwargs)
-    assert p["model"] == "gpt-6-sol"
+    assert p["model"] == "gpt-6.1-sol"  # SPEC-122: o Sol da produção (o 6 é DEPRECATED)
     assert "input" in p and "messages" not in p, "Responses API"
     assert p["reasoning"]["effort"] == "low"
     assert p["store"] is False
@@ -285,7 +285,8 @@ def test_suportados_derivam_do_catalogo(banco):
     from app.services.langchain_service import SUPPORTED_PROVIDERS
 
     assert "claude-sonnet-5" in SUPPORTED_PROVIDERS["anthropic"]
-    assert "gpt-6-sol" in SUPPORTED_PROVIDERS["openai"]
+    assert "gpt-6-sol" in SUPPORTED_PROVIDERS["openai"]  # DEPRECATED ainda é listável (bancada)
+    assert "gpt-6.1-sol" in SUPPORTED_PROVIDERS["openai"]
     assert "claude-3-5-sonnet-20241022" not in SUPPORTED_PROVIDERS["anthropic"]  # BLOCKED
     assert "openrouter" in SUPPORTED_PROVIDERS
     assert "text-embedding-3-small" not in SUPPORTED_PROVIDERS.get("openai", [])  # não é conversa

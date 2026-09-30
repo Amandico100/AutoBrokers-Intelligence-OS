@@ -145,12 +145,12 @@ def test_ledger_openai_poe_o_cache_no_balde_da_openai(banco, monkeypatch):
     Anthropic). O provedor decide o balde."""
     _, pap = banco
     monkeypatch.setenv("OPENAI_API_KEY", "sk-teste-openai-falsa")
-    pap["atendimento"].update(provider="openai", modelo_primario="gpt-6-sol", esforco="medium")
+    pap["atendimento"].update(provider="openai", modelo_primario="gpt-6.1-sol", esforco="medium")
     MP.limpar_cache()
     llm = LLMFactory.create_llm({}, dict(AGENTE), company_id="11111111-1111-1111-1111-111111111111")
-    linha = _chamada(llm.callbacks[0], modelo_real="gpt-6-sol-2026-09-22", cache_creation=0)
+    linha = _chamada(llm.callbacks[0], modelo_real="gpt-6.1-sol-2026-09-29", cache_creation=0)
     assert (linha["cached_tokens"], linha["cache_read_tokens"]) == (40, 0), linha
-    assert linha["details"]["modelo_resolvido"] == "gpt-6-sol"
+    assert linha["details"]["modelo_resolvido"] == "gpt-6.1-sol"
 
 
 def test_ledger_da_reserva_grava_o_motivo(banco):

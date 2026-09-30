@@ -21,13 +21,16 @@ class Settings(BaseSettings):
 
     # Vision LLM for image descriptions
     # ⚠️ Serviço SEPARADO e SEM banco (não lê `llm_papeis`): este default acompanha
-    # À MÃO a rota `visao_documento` — Founder 24/09/2026 (conclusão da Onda A da
-    # SPEC-116, migration 20260924_01): openai/gpt-6-sol, esforço medium. Trocar a
-    # rota NÃO troca este serviço — a env VISION_MODEL/VISION_REASONING_EFFORT do
-    # EasyPanel tem de acompanhar (caixa do Founder).
-    VISION_MODEL: str = "gpt-6-sol"
-    # GPT-6 Sol no Chat Completions SEM tools aceita `reasoning_effort`
-    # (EVIDENCIAS/04 l.17/43: FC só com effort=none; sem tools, qualquer nível).
+    # À MÃO a rota `visao_documento` — SPEC-122 F0 (migration 20260930_01, Founder
+    # 30/09/2026): openai/gpt-6.1-sol, esforço medium (antes gpt-6-sol, hoje
+    # DEPRECATED). Trocar a rota NÃO troca este serviço — a env
+    # VISION_MODEL/VISION_REASONING_EFFORT do EasyPanel tem de acompanhar (caixa do
+    # Founder). O conserto de verdade (o smith-api resolver a rota e mandar o
+    # modelo no POST /parse; isto vira só paraquedas) muda o contrato do serviço
+    # (form do /parse + args da task Celery) em 4 arquivos — PENDENTE na SPEC-122.
+    VISION_MODEL: str = "gpt-6.1-sol"
+    # GPT-6.x Sol no Chat Completions SEM tools aceita `reasoning_effort`
+    # (EVIDENCIAS/04 l.17/43; o 6.1 aceita low..max — `none` dá 400, 📊 30/09/2026).
     # Vazio = não envia (modelo sem raciocínio, ex.: um gpt-4o de emergência).
     VISION_REASONING_EFFORT: str = "medium"
     VISION_MAX_COMPLETION_TOKENS: int = 8192  # raciocínio medium consome deste teto

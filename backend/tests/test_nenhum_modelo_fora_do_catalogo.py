@@ -129,8 +129,9 @@ LITERAIS_CONHECIDOS: dict = {
     "backend/app/services/vision_service.py": {"gpt-4o-mini"},
     "backend/portal_worker/adaptive.py": {"gpt-4o-mini"},
     "backend/portal_worker/modelo_do_portal.py": {"gpt-4o", "gpt-4o-mini"},
-    # serviço SEM banco: o default acompanha à mão a rota `visao_documento` (24/09/2026)
-    "docling-service/app/config.py": {"gpt-6-sol"},
+    # serviço SEM banco: o default acompanha à mão a rota `visao_documento` (24/09/2026;
+    # SPEC-122, 30/09/2026: a rota passou ao gpt-6.1-sol e o espelho foi junto)
+    "docling-service/app/config.py": {"gpt-6.1-sol"},
 }
 
 #: 🔴 LEGACY GATE (24/09/2026). Todo literal de modelo DEPRECATED que AINDA mora
@@ -391,7 +392,10 @@ def test_controle_legacy_gate_fica_vermelho_com_deprecated_novo():
     assert ruins == {"backend/app/services/call_site_novo.py": {"gpt-4o-mini"},
                      "backend/app/services/prompt_optimizer.py": {"claude-haiku-4-5"}}, ruins
     # controle do controle: um APPROVED novo NÃO é acusado por ESTE checador
-    assert not deprecados_nao_classificados({"x.py": {"gpt-6-sol"}}, cat, {})
+    assert not deprecados_nao_classificados({"x.py": {"gpt-6.1-sol"}}, cat, {})
+    # SPEC-122 (30/09/2026): o exemplo era o Sol 6 — hoje DEPRECATED, e o MESMO
+    # checador passa a acusá-lo (a lição migra com o fato, §9.3)
+    assert deprecados_nao_classificados({"x.py": {"gpt-6-sol"}}, cat, {}) == {"x.py": {"gpt-6-sol"}}
 
 
 def test_controle_rota_de_producao_em_deprecated_e_recusada(banco):
@@ -437,8 +441,11 @@ def test_controle_candidate_nao_roda_em_producao(banco):
     # e o modelo DO AGENTE (papel sem rota) também é produção
     with pytest.raises(MP.ModeloNaoResolvido, match="APPROVED"):
         MP.resolver("papel_sem_rota", agente={"llm_provider": "openai", "llm_model": "gpt-4o-mini"})
-    r = MP.resolver("papel_sem_rota", agente={"llm_provider": "openai", "llm_model": "gpt-6-sol"})
-    assert (r.model, r.origem) == ("gpt-6-sol", "agente")
+    r = MP.resolver("papel_sem_rota", agente={"llm_provider": "openai", "llm_model": "gpt-6.1-sol"})
+    assert (r.model, r.origem) == ("gpt-6.1-sol", "agente")
+    # SPEC-122: o Sol 6 (DEPRECATED desde 30/09/2026) gravado num agente também não roda
+    with pytest.raises(MP.ModeloNaoResolvido, match="DEPRECATED"):
+        MP.resolver("papel_sem_rota", agente={"llm_provider": "openai", "llm_model": "gpt-6-sol"})
 
 
 def test_pendencias_tem_dono_e_fatia_valida():

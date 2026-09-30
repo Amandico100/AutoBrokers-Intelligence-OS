@@ -1971,13 +1971,61 @@
    "input_price_long": 4,
    "input_price_per_million": 2,
    "is_active": true,
-   "lifecycle": "APPROVED",
+   "lifecycle": "DEPRECATED",
    "limiar_contexto_longo": 272000,
    "model_name": "gpt-6-sol",
-   "notas": "lançado 22/09/2026. cached 0,20 · cache write 2,50 · >272K 4/0,40/5/15. Chat Completions: tools só com reasoning_effort=none. Default effort medium. · APPROVED: Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "notas": "lançado 22/09/2026. cached 0,20 · cache write 2,50 · >272K 4/0,40/5/15. Chat Completions: tools só com reasoning_effort=none. Default effort medium. · APPROVED: Founder 24/09/2026 — conclusão da Onda A da SPEC-116 · DEPRECATED: Founder 30/09/2026 — SPEC-122: sucedido pelo gpt-6.1-sol (mesmo preço; cache 0,10)",
    "output_price_long": 15,
    "output_price_per_million": 10,
    "preco_verificado_em": "2026-09-23",
+   "provider": "openai",
+   "retirada_em": null,
+   "substituido_por": "gpt-6.1-sol",
+   "tipo": "chat",
+   "unit": "token"
+  },
+  "gpt-6.1-sol": {
+   "api_key_env": null,
+   "api_surface": "responses",
+   "base_url": null,
+   "cache_read_multiplier": 0.05,
+   "cache_write_multiplier": 1.25,
+   "cached_input_multiplier": 0.05,
+   "capacidades": {
+    "contexto": 1050000,
+    "max_output": 128000,
+    "niveis_de_esforco": [
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ],
+    "pdf": false,
+    "raciocinio_ida_e_volta": true,
+    "reasoning_param": "reasoning.effort",
+    "responses_obrigatoria_com_tools": true,
+    "sampling_ok": false,
+    "tool_choice_forcado_ok": true,
+    "tools": true,
+    "vision": true
+   },
+   "classes_de_dado": [
+    "interno",
+    "pii",
+    "publico"
+   ],
+   "fonte_preco_url": "https://developers.openai.com/api/docs/pricing",
+   "input_price_long": 4,
+   "input_price_per_million": 2,
+   "is_active": true,
+   "lifecycle": "APPROVED",
+   "limiar_contexto_longo": 272000,
+   "model_name": "gpt-6.1-sol",
+   "notas": "lançado 29/09/2026 (DevDay); cadastrado na SPEC-122 F0 (Founder 30/09/2026: sucede o gpt-6-sol). cached 0,10 · cache write 2,50 · >272K 4/0,20/5/15. Default effort medium; `none` -> 400 (canário 30/09). Chat Completions: só sem tools. PDF não listado como entrada. Fonte técnica: https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+   "output_price_long": 15,
+   "output_price_per_million": 10,
+   "preco_verificado_em": "2026-09-30",
    "provider": "openai",
    "retirada_em": null,
    "substituido_por": null,
@@ -2549,7 +2597,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-09-29T20:11:33+00:00",
+ "gerado_em": "2026-09-30T08:58:27+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {
@@ -2557,14 +2605,14 @@
    "descricao": "atendente que fala com o SEGURADO (attendance/insured_external) — graph.py via llm_factory",
    "esforco": "high",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-6-sol",
+   "modelo_primario": "gpt-6.1-sol",
    "modelo_reserva": "claude-opus-5-5",
-   "motivo": "SPEC-116-RESERVA · Founder 24/09/2026 — reserva cross-provider P0",
+   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
    "papel": "atendimento",
    "provider": "openai",
    "provider_reserva": "anthropic",
    "risco": "critico",
-   "versao": 3
+   "versao": 4
   },
   "atlas_parser": {
    "classe_de_dado": "interno",
@@ -2613,14 +2661,14 @@
    "descricao": "chat do corretor com o AutoBrokers (agente core) — graph.py via llm_factory",
    "esforco": "medium",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-6-sol",
+   "modelo_primario": "gpt-6.1-sol",
    "modelo_reserva": "claude-opus-5-5",
-   "motivo": "SPEC-116-RESERVA · Founder 24/09/2026 — reserva cross-provider P0",
+   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
    "papel": "chat_principal",
    "provider": "openai",
    "provider_reserva": "anthropic",
    "risco": "alto",
-   "versao": 3
+   "versao": 4
   },
   "chunking_agentico": {
    "classe_de_dado": "interno",
@@ -2656,13 +2704,13 @@
    "esforco": null,
    "esforco_reserva": "high",
    "modelo_primario": "claude-opus-5-5",
-   "modelo_reserva": "gpt-6-sol",
-   "motivo": "SPEC-116-RESERVA · Founder 24/09/2026 — reserva cross-provider P0",
+   "modelo_reserva": "gpt-6.1-sol",
+   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
    "papel": "dispatch",
    "provider": "anthropic",
    "provider_reserva": "openai",
    "risco": "critico",
-   "versao": 3
+   "versao": 4
   },
   "distiller": {
    "classe_de_dado": "pii",
@@ -2753,14 +2801,14 @@
    "descricao": "juiz LLM da Eval Fabric (SPEC-062) sobre corpus mascarado — evals/juiz_llm.py (hoje quebrado, F3 conserta)",
    "esforco": "medium",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-6-sol",
+   "modelo_primario": "gpt-6.1-sol",
    "modelo_reserva": null,
-   "motivo": "Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
    "papel": "juiz_eval",
    "provider": "openai",
    "provider_reserva": null,
    "risco": "medio",
-   "versao": 2
+   "versao": 3
   },
   "juiz_playbook": {
    "classe_de_dado": "pii",
@@ -2795,14 +2843,14 @@
    "descricao": "portal worker: decide o próximo clique — portal_worker/adaptive.py (PORTAL_VISION_MODEL ausente -> gpt-4o). Reserva NULA: o rebaixamento calado ao mini é defeito (F3 tira)",
    "esforco": "medium",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-6-sol",
+   "modelo_primario": "gpt-6.1-sol",
    "modelo_reserva": "claude-opus-5-5",
-   "motivo": "SPEC-116-RESERVA · Founder 24/09/2026 — reserva cross-provider P0",
+   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
    "papel": "portal_decisao",
    "provider": "openai",
    "provider_reserva": "anthropic",
    "risco": "critico",
-   "versao": 3
+   "versao": 4
   },
   "prompt_optimizer": {
    "classe_de_dado": "pii",
@@ -2837,14 +2885,14 @@
    "descricao": "subagentes do core e agentes custom — subagent_tool.py via llm_factory",
    "esforco": "medium",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-6-sol",
+   "modelo_primario": "gpt-6.1-sol",
    "modelo_reserva": null,
-   "motivo": "Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
    "papel": "subagente",
    "provider": "openai",
    "provider_reserva": null,
    "risco": "medio",
-   "versao": 2
+   "versao": 3
   },
   "sugestoes": {
    "classe_de_dado": "pii",
@@ -2879,28 +2927,28 @@
    "descricao": "visão de foto do segurado/corretor — vision_service.py, langchain_service._analyze_image, attendance_media.py, observer",
    "esforco": "medium",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-6-sol",
+   "modelo_primario": "gpt-6.1-sol",
    "modelo_reserva": null,
-   "motivo": "Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
    "papel": "visao",
    "provider": "openai",
    "provider_reserva": null,
    "risco": "alto",
-   "versao": 3
+   "versao": 4
   },
   "visao_documento": {
    "classe_de_dado": "pii",
    "descricao": "descrição de imagem dentro de PDF (docling-service VISION_MODEL)",
    "esforco": "medium",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-6-sol",
+   "modelo_primario": "gpt-6.1-sol",
    "modelo_reserva": null,
-   "motivo": "Founder 24/09/2026 — conclusão da Onda A da SPEC-116",
+   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
    "papel": "visao_documento",
    "provider": "openai",
    "provider_reserva": null,
    "risco": "medio",
-   "versao": 2
+   "versao": 3
   }
  }
 }

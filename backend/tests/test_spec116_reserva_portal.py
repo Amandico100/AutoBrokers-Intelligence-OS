@@ -52,10 +52,11 @@ def _por_fora(borda, exc):
 
 @pytest.mark.parametrize("status", [429, 500, 503])
 def test_sol_falha_transitoria_o_opus_decide_uma_vez(com_reserva, status):
-    assert MODELO_HOJE == "gpt-6-sol"
+    # SPEC-122 (30/09/2026): o Sol da rota é o gpt-6.1-sol (antes o Sol 6, hoje DEPRECATED)
+    assert MODELO_HOJE == "gpt-6.1-sol"
     com_reserva.prov.status = [status, 200]
     assert _decidir() == ACAO_OK
-    assert com_reserva.prov.modelos == ["gpt-6-sol", "claude-opus-5-5"], "UMA reserva, sem repetir"
+    assert com_reserva.prov.modelos == [MODELO_HOJE, "claude-opus-5-5"], "UMA reserva, sem repetir"
     assert com_reserva.prov.pedidos[1]["url"].endswith("/v1/messages")
     assert len(com_reserva.rest.ledger) == 1
     linha = com_reserva.rest.ledger[0]
@@ -69,7 +70,7 @@ def test_sol_falha_transitoria_o_opus_decide_uma_vez(com_reserva, status):
 def test_sol_timeout_ou_conexao_o_opus_decide(com_reserva, exc):
     _por_fora(com_reserva, exc)
     assert _decidir() == ACAO_OK
-    assert com_reserva.prov.modelos == ["gpt-6-sol", "claude-opus-5-5"]
+    assert com_reserva.prov.modelos == [MODELO_HOJE, "claude-opus-5-5"]
     assert com_reserva.rest.ledger[0]["details"]["reserva_usada"] is True
 
 
@@ -77,6 +78,6 @@ def test_sol_timeout_ou_conexao_o_opus_decide(com_reserva, exc):
 def test_sol_falha_nao_transitoria_nao_troca(com_reserva, status):
     com_reserva.prov.status = [status, 200]
     acao = _decidir()
-    assert com_reserva.prov.modelos == ["gpt-6-sol"], f"{status} virou chamada ao Opus"
+    assert com_reserva.prov.modelos == [MODELO_HOJE], f"{status} virou chamada ao Opus"
     assert acao["action"] == "ask_human" and f"HTTP {status}" in acao["value"]
     assert com_reserva.rest.ledger == []

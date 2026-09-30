@@ -42,12 +42,13 @@ from app.factories import model_policy as MP  # noqa: E402
 from test_spec116_f2_turno_e_reserva import _reserva_com_ledger, _Reserva, _estado  # noqa: E402
 from test_spec116_f3b_plataforma import EMPRESA_A, EMPRESA_B, borda  # noqa: E402,F401
 
-#: O MAPA do Founder (24/09/2026) — o mesmo da migration 20260924_02.
+#: O MAPA do Founder (24/09/2026) — o mesmo da migration 20260924_02; SPEC-122 (30/09/2026,
+#: migration 20260930_01): a reserva do dispatch passou do Sol 6 ao gpt-6.1-sol, MESMO esforço.
 MAPA = {
     "atendimento": ("anthropic", "claude-opus-5-5", None),
     "chat_principal": ("anthropic", "claude-opus-5-5", None),
     "portal_decisao": ("anthropic", "claude-opus-5-5", None),
-    "dispatch": ("openai", "gpt-6-sol", "high"),
+    "dispatch": ("openai", "gpt-6.1-sol", "high"),
 }
 
 
@@ -146,14 +147,14 @@ def test_dispatch_falha_transitoria_do_opus_a_reserva_sol_responde(com_mapa, mot
     _falhar_so(com_mapa, "claude-opus-5-5", _falhas_anthropic()[motivo])
     com_mapa.prov.resposta = "2"
     assert _sentinela() == "2"
-    assert com_mapa.prov.modelos == ["claude-opus-5-5", "gpt-6-sol"], "UMA reserva, sem repetir"
+    assert com_mapa.prov.modelos == ["claude-opus-5-5", "gpt-6.1-sol"], "UMA reserva, sem repetir"
     corpo_reserva = com_mapa.prov.payloads[1]
     assert json.dumps(corpo_reserva.get("reasoning")) == json.dumps({"effort": "high"}), corpo_reserva
     linhas = com_mapa.banco.linhas()
     assert len(linhas) == 1, "só quem respondeu grava tokens"
     d = linhas[0]["details"]
     assert (d["reserva_usada"], d["motivo_reserva"]) == (True, motivo), d
-    assert (d["papel"], d["modelo_resolvido"]) == ("dispatch", "gpt-6-sol")
+    assert (d["papel"], d["modelo_resolvido"]) == ("dispatch", "gpt-6.1-sol")
     assert linhas[0]["company_id"] == EMPRESA_A
 
 
@@ -170,7 +171,7 @@ def test_dispatch_breaker_aberto_vai_direto_para_a_reserva(com_mapa):
     asyncio.run(R._abrir(asyncio.run(R._cliente()), *R._chaves("anthropic")))
     com_mapa.prov.resposta = "1"
     assert _sentinela() == "1"
-    assert com_mapa.prov.modelos == ["gpt-6-sol"], "o primário NÃO é chamado com o breaker aberto"
+    assert com_mapa.prov.modelos == ["gpt-6.1-sol"], "o primário NÃO é chamado com o breaker aberto"
     assert com_mapa.banco.linhas()[0]["details"]["motivo_reserva"] == "breaker_aberto"
 
 
@@ -198,7 +199,7 @@ def test_dispatch_cerebro_antes_do_segurado_usa_a_reserva(com_mapa, monkeypatch)
         EMPRESA_B, {"company_id": EMPRESA_B}, slot="ponto", rotulo="ponto de referencia",
         tela="Informe o ponto"))
     assert (valor, origem) == ("em frente a padaria azul", "ficha")
-    assert com_mapa.prov.modelos == ["claude-opus-5-5", "gpt-6-sol"]
+    assert com_mapa.prov.modelos == ["claude-opus-5-5", "gpt-6.1-sol"]
     assert com_mapa.banco.linhas()[0]["details"]["motivo_reserva"] == "5xx"
 
 
@@ -218,7 +219,7 @@ def test_os_tres_callsites_do_dispatch_passam_pelo_helper():
 # ---------------------------------------------------------------------------
 # CHAT / ATENDIMENTO — o nó do turno (o que a F2 não cobria)
 # ---------------------------------------------------------------------------
-ROTA_SOL = {"papel": "atendimento", "provedor": "openai", "modelo": "gpt-6-sol",
+ROTA_SOL = {"papel": "atendimento", "provedor": "openai", "modelo": "gpt-6.1-sol",
             "provedor_reserva": "anthropic"}
 
 

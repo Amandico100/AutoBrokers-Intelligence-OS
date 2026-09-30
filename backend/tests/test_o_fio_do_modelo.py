@@ -233,15 +233,15 @@ def test_fio_esforco_nulo_na_rota_nao_inventa_esforco(banco):
 
 
 def test_fio_rota_para_outro_provedor_troca_cliente_e_api(banco, monkeypatch):
-    """A rota do atendimento vai para GPT-6 Sol: o MESMO agente (anthropic
+    """A rota do atendimento vai para o GPT-6.1 Sol (SPEC-122; antes o Sol 6): o MESMO agente (anthropic
     gravado) passa a sair pela Responses API, com reasoning.effort e store=False,
     e com a chave do provedor RESOLVIDO (não a do agente)."""
     _, pap = banco
     monkeypatch.setenv("OPENAI_API_KEY", "sk-teste-openai-falsa")
-    _trocar_rota(pap, "atendimento", provider="openai", modelo_primario="gpt-6-sol", esforco="low")
+    _trocar_rota(pap, "atendimento", provider="openai", modelo_primario="gpt-6.1-sol", esforco="low")
     llm, p = _payload(dict(AGENTE))
     assert type(llm).__name__ == "ChatOpenAIGovernado"
-    assert p["model"] == "gpt-6-sol"
+    assert p["model"] == "gpt-6.1-sol"
     assert "input" in p and "messages" not in p, "GPT-6 sai pela Responses API"
     assert p.get("reasoning", {}).get("effort") == "low"
     assert p.get("store") is False
