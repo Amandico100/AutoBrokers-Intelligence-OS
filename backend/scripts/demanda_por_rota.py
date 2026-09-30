@@ -43,15 +43,34 @@ cd backend && python scripts/demanda_por_rota.py --comparar
 
 ## A FONTE, e por que é esta
 
-`observed_events` — é o que a SPEC-119 §5 F5① manda. A sessão é a unidade:
-**uma conversa do segurado com a URA da seguradora** conta 1, por mais telas
-que tenha. A rota de uma sessão sai dos MESMOS motores que constroem o corpus,
-nunca de string:
+`observed_events` — é o que a SPEC-119 §5 F5① manda. 🔴 **A unidade é o
+ATENDIMENTO** (desde a SPEC-121 F3/F3b, 29/09/2026), a MESMA do corpus: a
+sessão de WhatsApp dura dias, e cada vez que o robô RECOMEÇA depois de uma
+pessoa começa um atendimento novo, com o seu ramo e o seu serviço (id
+`<sid8>+k`). A consulta de um pedido que já existe sai antes de classificar.
+A rota de um atendimento sai dos MESMOS motores que constroem o corpus, na
+mesma ordem, nunca de string:
 
 ```
+partir   zonas_do_acervo.atendimentos(eventos, seg)
+tirar    zonas_do_acervo.consulta_de_pedido_existente(atendimento, seg)
 ramo     padroes_de_ramo.classificar_ramo(seg, pares)
 serviço  padroes_de_servico.servico_da_sessao(seg, pares, playbook)
 ```
+
+📊 Por que a unidade mudou (29/09, conserto Z da SPEC-121): o retrato de 28/09
+contava SESSÕES e o corpus regerado conta ATENDIMENTOS, e a linha de controle
+ficou vermelha — `allianz/auto/bateria` banco=3 < corpus=5. Os 5 do corpus
+são 5 atendimentos em 4 sessões: `cea36de4` e `cea36de4+1` são duas baterias
+na MESMA sessão, e `5d34bab2+1` é o 2º atendimento de uma sessão cujo 1º não
+tem etiqueta. 📊 O CONTROLE (30/09, `scratchpad/z/controle_unidade.py`): o
+código ANTIGO rodado sobre o banco de HOJE ainda dá bateria=3, e dá banco <
+corpus em mais quatro rotas da allianz (ar_condicionado 4<5, consulta_
+veterinaria 1<2, limpeza_caixa_dagua 4<5, telhado 1<2); o código novo, no mesmo
+banco, dá ≥ em todas. Não era dado novo nem caminho quebrado: eram duas
+unidades com o mesmo nome. E os seis rótulos `?…` da allianz residencial
+(`?conserto residencial` 5 …) SOMEM: vinham do RESUMO de um pedido antigo
+consultado, que agora sai antes de classificar.
 
 ⚠️ **Medir com um motor e aplicar com outro é medir outra coisa** (CLAUDE.md
 §9.4, o corolário do dialeto). É por isso que o serviço aqui sai do mesmo
@@ -78,7 +97,8 @@ retrato também guarda quantas sessões ficaram **sem etiqueta**. Uma rota com
 ```
 BANCO    observed_events, classificado agora
 CORPUS   os arquivos versionados de tests/corpus/telas_reais/, contando
-         session_id distintos por (seguradora, ramo, servico)
+         `session_id` distintos por (seguradora, ramo, servico) — e o
+         `session_id` do corpus É o id do atendimento (`<sid8>` ou `<sid8>+k`)
 ```
 
 🔴 **O banco tem de ser ≥ o corpus em toda rota**, porque o corpus é um
@@ -218,7 +238,7 @@ def gravar(retrato: Retrato, caminho: str = CAMINHO_DO_RETRATO) -> str:
 # A VIA 1 — o BANCO
 # ═════════════════════════════════════════════════════════════════════════════
 def medir(seguradoras: Optional[List[str]] = None) -> Retrato:
-    """Conta sessões DISTINTAS por rota em `observed_events`.
+    """Conta ATENDIMENTOS distintos por rota em `observed_events`.
 
     🔴 O CONTROLE VEM PRIMEIRO: `controle_do_mascarador()` levanta se a
     medição estiver rodando sem banco. Um retrato de zeros com exit 0 é o
@@ -239,6 +259,9 @@ def medir(seguradoras: Optional[List[str]] = None) -> Retrato:
     nao_decidiu: Dict[str, int] = collections.defaultdict(int)
     eventos = 0
     sessoes = 0
+    atendimentos_n = 0
+    consultas = 0
+    orfaos = 0
 
     for seg in segs:
         pb_por_ramo = {}
@@ -252,24 +275,46 @@ def medir(seguradoras: Optional[List[str]] = None) -> Retrato:
             eventos += 1
 
         for sid, evs in por_sessao.items():
+            # 🔴 O balde de `session_id` nulo NÃO é uma conversa (é a zona
+            #    ORFAO) — o gerador o pula (`gerar_corpus_de_telas.gerar`), e
+            #    até 29/09 este laço o contava como "uma sessão".
+            if not Z._tem_sessao(sid):
+                orfaos += len(evs)
+                continue
             sessoes += 1
             ordenados = sorted(evs, key=lambda x: x.get("wa_timestamp") or "")
-            pares = [(x.get("direction"),
-                      Z.norm_para_classificar(x.get("text") or ""))
-                     for x in ordenados]
-            ramo, _nivel = PR.classificar_ramo(seg, pares)
-            if ramo in ("indefinido", "ambos", "sem_escolha"):
-                nao_decidiu[seg] += 1
-                continue
-            if ramo not in RAMOS_EM_ESCOPO:
-                fora_de_escopo[f"{seg}/{ramo}"] += 1
-                continue
-            servico, _nsrv = PSV.servico_da_sessao(
-                seg, pares, pb_por_ramo.get(ramo))
-            if not servico:
-                sem_etiqueta[f"{seg}/{ramo}"].add(sid)
-                continue
-            por_rota[chave(seg, ramo, servico)].add(sid)
+            # 🔴 SPEC-121 F3/F3b · A UNIDADE É O ATENDIMENTO, a MESMA do corpus.
+            #    Mesmos passos, mesma ordem, mesmos motores do laço de
+            #    `gerar_corpus_de_telas.gerar()`: `Z.atendimentos` parte a
+            #    sessão onde o robô recomeça; `Z.consulta_de_pedido_existente`
+            #    tira a consulta de um pedido antigo ANTES de classificar. O id
+            #    é o do corpus (`<sid8>+k`). Contar por sessão aqui e por
+            #    atendimento lá é medir duas coisas com o mesmo nome (§9.4).
+            for k, atendimento in enumerate(Z.atendimentos(ordenados, seg)):
+                id_do_atendimento = sid if k == 0 else f"{str(sid)[:8]}+{k}"
+                atendimentos_n += 1
+                consulta = Z.consulta_de_pedido_existente(
+                    [e for e, _z in atendimento], seg)
+                if consulta:
+                    consultas += 1
+                    atendimento = [p for i, p in enumerate(atendimento)
+                                   if i not in consulta]
+                pares = [(e.get("direction"),
+                          Z.norm_para_classificar(e.get("text") or ""))
+                         for e, _z in atendimento]
+                ramo, _nivel = PR.classificar_ramo(seg, pares)
+                if ramo in ("indefinido", "ambos", "sem_escolha"):
+                    nao_decidiu[seg] += 1
+                    continue
+                if ramo not in RAMOS_EM_ESCOPO:
+                    fora_de_escopo[f"{seg}/{ramo}"] += 1
+                    continue
+                servico, _nsrv = PSV.servico_da_sessao(
+                    seg, pares, pb_por_ramo.get(ramo))
+                if not servico:
+                    sem_etiqueta[f"{seg}/{ramo}"].add(id_do_atendimento)
+                    continue
+                por_rota[chave(seg, ramo, servico)].add(id_do_atendimento)
 
     # 🔴 Os serviços COM demanda e SEM corredor. `M.rotas()` só conhece o que
     #    tem playbook, então sem esta volta eles desapareceriam da página.
@@ -283,9 +328,13 @@ def medir(seguradoras: Optional[List[str]] = None) -> Retrato:
         "commit": _commit(),
         "fonte": "observed_events",
         "comando": "cd backend && python scripts/demanda_por_rota.py --medir --gravar",
-        "unidade": "sessões distintas (uma conversa do segurado com a URA = 1)",
+        "unidade": ("atendimentos distintos (a sessão partida onde o robô "
+                    "recomeça, sem a consulta de pedido existente = a unidade "
+                    "do corpus, id <sid8>+k)"),
         "controle": {"marcas_de_corretora": marcas},
-        "acervo": {"sessoes": sessoes, "eventos": eventos,
+        "acervo": {"sessoes": sessoes, "atendimentos": atendimentos_n,
+                   "atendimentos_com_consulta": consultas,
+                   "eventos": eventos, "eventos_sem_sessao": orfaos,
                    "seguradoras": len(segs)},
         "por_rota": {k: len(v) for k, v in sorted(por_rota.items())},
         "sem_etiqueta": {k: len(v) for k, v in sorted(sem_etiqueta.items())},
@@ -299,7 +348,8 @@ def medir(seguradoras: Optional[List[str]] = None) -> Retrato:
 # A VIA 2 — o CORPUS versionado (offline, independente do banco)
 # ═════════════════════════════════════════════════════════════════════════════
 def do_corpus() -> Dict[str, int]:
-    """Sessões distintas por rota, lidas dos arquivos versionados.
+    """Atendimentos distintos por rota, lidos dos arquivos versionados
+    (o campo `session_id` do corpus guarda o id do atendimento).
 
     🔴 É a via INDEPENDENTE da §5② do protocolo: o número publicado é
     reconferido por um caminho que não é o que o produziu.
@@ -357,10 +407,11 @@ def imprimir(retrato: Retrato) -> str:
     L = [f"=== DEMANDA POR ROTA — retrato de {retrato.medido_em} ===",
          retrato.carimbo,
          f"acervo: {retrato.dados['acervo']['sessoes']} sessões · "
+         f"{retrato.dados['acervo'].get('atendimentos', '?')} atendimentos · "
          f"{retrato.dados['acervo']['eventos']} eventos · "
          f"controle marcas_de_corretora = "
          f"{retrato.dados['controle']['marcas_de_corretora']}", ""]
-    L.append(f"{'rota':44s} {'sessões':>8s}")
+    L.append(f"{'rota':44s} {'atend.':>8s}")
     for k, v in sorted(retrato.dados["por_rota"].items(),
                        key=lambda kv: (-kv[1], kv[0])):
         L.append(f"{k:44s} {v:8d}")
@@ -375,7 +426,7 @@ def imprimir(retrato: Retrato) -> str:
         L.append("🔴 DEMANDA SEM CORREDOR — o segurado pede e não há playbook")
         for k, v in sorted(retrato.rotas_sem_corredor.items(),
                            key=lambda kv: (-kv[1], kv[0])):
-            L.append(f"  {k:40s} {v:4d} sessão(ões)")
+            L.append(f"  {k:40s} {v:4d} atendimento(s)")
     return "\n".join(L)
 
 

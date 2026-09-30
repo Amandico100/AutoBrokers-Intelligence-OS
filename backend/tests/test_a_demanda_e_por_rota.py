@@ -375,3 +375,35 @@ def test_a_via_do_corpus_confere_a_via_do_banco():
             "duas vias está quebrada")
         assert banco[chave] >= n, (
             f"{chave!r}: banco={banco[chave]} < corpus={n}, o que é impossível")
+
+
+def test_o_retrato_conta_a_mesma_unidade_que_o_corpus():
+    """🔴 SPEC-121 conserto Z · as duas vias contam ATENDIMENTOS.
+
+    📊 29/09/2026: o corpus regerado pela F3 passou a ser por atendimento
+    (`<sid8>+k`) e o retrato de 28/09 continuava por SESSÃO. A linha de
+    controle ficou vermelha em `allianz/auto/bateria` (banco=3 < corpus=5) sem
+    nenhum dos dois caminhos estar quebrado: `cea36de4` e `cea36de4+1` são duas
+    baterias na mesma sessão. A lição migra: a regra `banco ≥ corpus` só vale
+    se as duas vias contarem a MESMA coisa — então a unidade é afirmada.
+    """
+    r = _retrato()
+    assert "atendimento" in r.dados.get("unidade", ""), (
+        f"o retrato conta {r.dados.get('unidade')!r}, e o corpus conta "
+        "atendimentos — a comparação banco × corpus mede duas coisas")
+    assert r.dados["acervo"].get("atendimentos", 0) >= r.dados["acervo"]["sessoes"], (
+        "há menos atendimentos que sessões: a partição não rodou")
+
+
+def test_mutacao_banco_menor_que_corpus_fica_vermelha(monkeypatch):
+    """O guarda de cima TEM de conseguir acusar: tira 1 de uma rota do banco
+    que o corpus também tem, e ele fica vermelho (CLAUDE.md §9.3)."""
+    r = _retrato()
+    corpus = DPR.do_corpus()
+    vitima = next(k for k in sorted(corpus) if k in r.dados["por_rota"])
+    mutado = dict(r.dados)
+    mutado["por_rota"] = dict(r.dados["por_rota"])
+    mutado["por_rota"][vitima] = corpus[vitima] - 1
+    monkeypatch.setattr(DPR, "carregar", lambda *a, **k: DPR.Retrato(mutado))
+    with pytest.raises(AssertionError, match="impossível"):
+        test_a_via_do_corpus_confere_a_via_do_banco()
