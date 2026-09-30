@@ -22,7 +22,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _sem_as_vencidas(mensagens: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _sem_as_vencidas(mensagens: List[Dict[str, Any]],
+                     ultima_da_corretora: Any = None) -> List[Dict[str, Any]]:
     """🔴 SPEC-121 F1 — o histórico do modelo não traz as mensagens VENCIDAS.
 
     Regra dos 7 dias do Founder: *"não responder msgs antigas só porque deu 7
@@ -30,14 +31,45 @@ def _sem_as_vencidas(mensagens: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     corretora maior que N dias saem daqui (a regra, PURA, é
     `o_fim_do_atendimento.mensagens_vencidas`; este é só o ponto onde o
     histórico é montado). ⛔ Nunca levanta: sem a regra, o histórico é o de sempre.
+
+    🔴 SPEC-121 · conserto único (juiz P5): `ultima_da_corretora` é o instante
+    medido no banco quando a fatia de `limit` linhas não traz fala nenhuma nossa
+    (`_ultima_da_corretora_sincrona` / `ultima_da_corretora_no_banco`).
     """
     try:
         from app.services.o_fim_do_atendimento import sem_as_mensagens_vencidas
 
-        return sem_as_mensagens_vencidas(mensagens)
+        return sem_as_mensagens_vencidas(mensagens,
+                                         ultima_da_corretora=ultima_da_corretora)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[DB] corte das mensagens vencidas indisponível ({type(e).__name__})")
         return mensagens
+
+
+def _ultima_da_corretora_sincrona(client, conversation_id: str,
+                                  fatia: List[Dict[str, Any]], limite: int) -> Any:
+    """A irmã SÍNCRONA de `o_fim_do_atendimento.ultima_da_corretora_no_banco`:
+    a MESMA leitura e as MESMAS regras puras (lá), para o cliente síncrono.
+    ⛔ Nunca levanta; `None` no escuro."""
+    try:
+        from app.services.o_fim_do_atendimento import (
+            _MENSAGENS_DA_JANELA, precisa_medir_a_ultima_da_corretora,
+            ultima_da_corretora_de,
+        )
+
+        if not precisa_medir_a_ultima_da_corretora(fatia, limite):
+            return None
+        achado = (client.table("messages")
+                  .select("role, content, created_at, payload")
+                  .eq("conversation_id", str(conversation_id))
+                  .eq("role", "assistant")
+                  .order("created_at", desc=True)
+                  .limit(_MENSAGENS_DA_JANELA)
+                  .execute())
+        return ultima_da_corretora_de(achado.data or [])
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[DB] última fala da corretora não medida ({type(e).__name__})")
+        return None
 
 
 class SupabaseClient:
@@ -115,7 +147,9 @@ class SupabaseClient:
                 f"session {session_id}, company {company_id}"
             )
 
-            return _sem_as_vencidas(list(reversed(messages_response.data or [])))
+            fatia = list(reversed(messages_response.data or []))
+            return _sem_as_vencidas(fatia, _ultima_da_corretora_sincrona(
+                self.client, conversation_id, fatia, limit))
 
         except Exception as e:
             logger.error(
@@ -305,7 +339,16 @@ class AsyncSupabaseClient:
             logger.info(
                 f"[DB] Fetched {len(messages_response.data)} messages for session {session_id}"
             )
-            return _sem_as_vencidas(list(reversed(messages_response.data or [])))
+            fatia = list(reversed(messages_response.data or []))
+            ultima = None
+            try:
+                from app.services.o_fim_do_atendimento import ultima_da_corretora_no_banco
+
+                ultima = await ultima_da_corretora_no_banco(
+                    self._client, conversation_id, fatia, limit)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[DB] última fala da corretora não medida ({type(e).__name__})")
+            return _sem_as_vencidas(fatia, ultima)
 
         except Exception as e:
             logger.error(f"[DB] Error fetching conversation history: {e}")

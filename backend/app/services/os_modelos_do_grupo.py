@@ -222,7 +222,8 @@ def modelo_resumo_do_dia(dia: str, c: Dict[str, int],
     movimento = sum(int(c.get(k) or 0) for k in (
         "acionamentos_entregues", "sinistros_com_dossie", "ajudas_incapacidade",
         "ajudas_regra", "ajudas_desconhecidas", "duvidas", "ja_com_a_equipe",
-        "calados_pela_janela", "vigia_ura", "vigia_prazo")) + len(assistencias)
+        "calados_pela_janela", "calados_sem_destino", "vigia_ura",
+        "vigia_prazo")) + len(assistencias)
     if movimento <= 0:
         return ""
 
@@ -285,6 +286,24 @@ def modelo_resumo_do_dia(dia: str, c: Dict[str, int],
         n = int(c["calados_pela_janela"])
         fora.append("🔕 %d %s em que fiquei em silêncio pela janela" % (
             n, _plural(n, "conversa", "conversas")))
+    # 🔴 SPEC-121 · conserto único (K3) — cada silêncio na SUA linha. Antes todos
+    #    viravam "pela janela", e o número que a corretora lê era outro.
+    if c.get("calados_sem_pedido_do_agente"):
+        n = int(c["calados_sem_pedido_do_agente"])
+        fora.append("🔇 %d %s em que não fui eu que pedi ajuda — não avisei o grupo" % (
+            n, _plural(n, "conversa", "conversas")))
+    if c.get("calados_agente_desligado"):
+        n = int(c["calados_agente_desligado"])
+        fora.append("🔌 %d %s com o agente desligado — não avisei o grupo" % (
+            n, _plural(n, "aviso", "avisos")))
+    if c.get("calados_sem_destino"):
+        n = int(c["calados_sem_destino"])
+        fora.append("⚠️ %d %s não %s ao grupo: falta configurar o destino de suporte" % (
+            n, _plural(n, "aviso", "avisos"), _plural(n, "chegou", "chegaram")))
+    if c.get("calados_outros"):
+        n = int(c["calados_outros"])
+        fora.append("❔ %d %s por outro motivo (leitura, número da casa)" % (
+            n, _plural(n, "aviso calado", "avisos calados")))
     if c.get("vigia_ura") or c.get("vigia_prazo"):
         pedacos = []
         if c.get("vigia_ura"):
@@ -344,6 +363,8 @@ async def contagens_do_dia(db, company_id: str, inicio_utc: datetime,
         "acionamentos_entregues": 0, "sinistros_com_dossie": 0,
         "ajudas_incapacidade": 0, "ajudas_regra": 0, "ajudas_desconhecidas": 0,
         "duvidas": 0, "ja_com_a_equipe": 0, "calados_pela_janela": 0,
+        "calados_sem_pedido_do_agente": 0, "calados_agente_desligado": 0,
+        "calados_sem_destino": 0, "calados_outros": 0, "calados_repetidos": 0,
         "vigia_ura": 0, "vigia_prazo": 0, "calados_total": 0, "truncou": 0,
     }
     # 🔴 PAGINADO, NÃO `.limit(5000)` — guarda `test_ninguem_pede_mais_de_mil_
@@ -394,12 +415,37 @@ async def contagens_do_dia(db, company_id: str, inicio_utc: datetime,
         elif tipo == "grupo.calado":
             c["calados_total"] += 1
             porque = str(carga.get("calou_porque") or "")
-            # 🔴 As duas razões são DIFERENTES para quem lê, e por isso são
-            #    duas linhas: "a equipe já estava lá" ≠ "a janela me calou".
-            if "assumiu" in porque:
+            # 🔴 SPEC-121 · conserto único (K3) — POR CLASSE (`calou_classe`, que
+            #    a porta grava desde a SPEC-121), nunca "todo calado é janela".
+            #    📊 Antes: agente desligado, sem prova e sem destino caíam TODOS
+            #    em "fiquei em silêncio pela janela". Evento antigo sem a classe
+            #    passa pelo MESMO classificador da porta — uma régua só.
+            if porque == "repetido":
+                # a mesma notícia, não um silêncio novo — fica fora das linhas
+                c["calados_repetidos"] += 1
+                continue
+            classe_do_calado = str(carga.get("calou_classe") or "")
+            if not classe_do_calado:
+                try:
+                    from app.services.o_grupo_so_o_que_importa import (
+                        classe_do_silencio_do_grupo,
+                    )
+
+                    classe_do_calado = classe_do_silencio_do_grupo(porque)
+                except Exception:  # noqa: BLE001
+                    classe_do_calado = "outro"
+            if classe_do_calado in ("assumida", "pausa_humana"):
                 c["ja_com_a_equipe"] += 1
-            elif porque and porque != "repetido":
+            elif classe_do_calado == "janela":
                 c["calados_pela_janela"] += 1
+            elif classe_do_calado == "sem_prova":
+                c["calados_sem_pedido_do_agente"] += 1
+            elif classe_do_calado == "agente_desligado":
+                c["calados_agente_desligado"] += 1
+            elif classe_do_calado == "sem_destino":
+                c["calados_sem_destino"] += 1
+            else:
+                c["calados_outros"] += 1
         elif tipo in ("vigia.ura_silent", "vigia.human_silent_alert"):
             c["vigia_ura"] += 1
         elif tipo in ("vigia.deadline", "vigia.never_started"):

@@ -1459,6 +1459,47 @@ _LEITURA_LARGA_DA_JANELA = 1000
 #: seguro, e nesta seção o lado seguro é calar.
 LOTE_CORTADO = "lote_cortado"
 
+#: 🔴 SPEC-121 · conserto único (red P5) — a leitura LARGA é MEMORIZADA POR TURNO.
+#: 📊 Medido pelo motor (`test_spec121_conserto_grupo.py`, bloco P5): num turno do
+#: webhook ela rodava 2× (a checagem da entrada e a da saída, as duas
+#: `a_ia_deve_calar`) e 3× quando o turno avisa o grupo (`o_grupo_pode_saber`).
+#: ⚠️ A REGRA não muda: a leitura CURTA (as 40 mais novas) continua fresca a cada
+#: pergunta, e é nela que aparece qualquer fala nova de gente — só as ~1000 falas
+#: velhas são reaproveitadas, e elas não mudam dentro de um turno. A memória vive
+#: `_TURNO_SEGUNDOS`, é do PROCESSO e segura o cliente (a identidade dele é parte
+#: da chave: dois bancos nunca se confundem).
+_MEMO_DA_LEITURA_LARGA: Dict[Tuple[int, str], Tuple[float, Any, list]] = {}
+_TETO_DO_MEMO_LARGO = 500
+#: Quantas leituras largas FORAM ao banco neste processo — a régua do teste.
+LEITURAS_LARGAS = {"n": 0}
+
+
+async def _leitura_larga(db, conversation_id: str) -> list:
+    """As falas `assistant` da conversa, até `_LEITURA_LARGA_DA_JANELA` — com a
+    memória do turno. Levanta o erro do banco (quem chama decide)."""
+    import time
+
+    cliente = _cliente(db)
+    chave = (id(cliente), str(conversation_id))
+    agora_s = time.monotonic()
+    memo = _MEMO_DA_LEITURA_LARGA.get(chave)
+    if memo and memo[1] is cliente and agora_s - memo[0] < _TURNO_SEGUNDOS:
+        return list(memo[2])
+    achado = await _executar(cliente.table("messages")
+                             .select("role, content, created_at, payload")
+                             .eq("conversation_id", str(conversation_id))
+                             .eq("role", "assistant")
+                             .order("created_at", desc=True)
+                             .limit(_LEITURA_LARGA_DA_JANELA))
+    LEITURAS_LARGAS["n"] += 1
+    largas = list(achado.data or [])
+    if len(_MEMO_DA_LEITURA_LARGA) >= _TETO_DO_MEMO_LARGO:
+        for velha in [k for k, v in _MEMO_DA_LEITURA_LARGA.items()
+                      if agora_s - v[0] >= _TURNO_SEGUNDOS] or list(_MEMO_DA_LEITURA_LARGA):
+            _MEMO_DA_LEITURA_LARGA.pop(velha, None)
+    _MEMO_DA_LEITURA_LARGA[chave] = (agora_s, cliente, largas)
+    return list(largas)
+
 
 async def palavra_humana_na_janela(db, conversation_id: str, *, agora=None,
                                    n_dias=None):
@@ -1512,13 +1553,7 @@ async def palavra_humana_na_janela(db, conversation_id: str, *, agora=None,
         return None, ""
 
     try:
-        achado = await _executar(_cliente(db).table("messages")
-                                 .select("role, content, created_at, payload")
-                                 .eq("conversation_id", str(conversation_id))
-                                 .eq("role", "assistant")
-                                 .order("created_at", desc=True)
-                                 .limit(_LEITURA_LARGA_DA_JANELA))
-        largas = achado.data or []
+        largas = await _leitura_larga(db, conversation_id)
     except Exception as erro_largo:  # noqa: BLE001
         logger.warning("[JANELA] leitura larga falhou (%s)", type(erro_largo).__name__)
         return None, type(erro_largo).__name__
@@ -1636,14 +1671,82 @@ def marca_do_espelho(conversa: Any) -> bool:
         return False
 
 
+def marca_do_agente(conversa: Any) -> bool:
+    """Esta `HUMAN_REQUESTED` é um pedido do AGENTE (`request_human_agent`)? **PURA.**
+
+    ```
+    status HUMAN_REQUESTED  ·  claimed_by vazio
+    human_handoff_reason com texto (o critério de `marca_do_espelho`, ao contrário)
+    e não é o `Admin Intervention` do painel (mão humana, não pedido do agente)
+    ```
+    """
+    try:
+        linha = conversa or {}
+        if str(linha.get("status") or "").strip().upper() != HUMAN_REQUESTED:
+            return False
+        if str(linha.get("claimed_by") or "").strip():
+            return False
+        motivo = str(linha.get("human_handoff_reason") or "").strip()
+        return bool(motivo) and motivo != MOTIVO_DO_ADMIN
+    except AttributeError:
+        return False
+
+
+async def gente_atendeu_depois_do_pedido(db, conversation_id: str) -> Optional[bool]:
+    """Uma PESSOA da corretora falou DEPOIS do pedido de ajuda do agente?
+
+    🔴 SPEC-121 · conserto único (juiz P2 / red P7) — DECISÃO DO GERENTE sobre a
+    regra D3 do Founder (*"o que já foi atendido continua sendo de humano; msg
+    nova = conversa nova"*): o pedido do agente que uma pessoa ATENDEU entra na
+    regra dos 7 dias; o que ninguém atendeu, não (segue esperando gente, e o
+    vigia avisa pela prova D6).
+
+    O instante do pedido é a última fala do AGENTE (depois do `request_human_agent`
+    ele só fala o "passei para a equipe", e depois cala). Lê só as falas do nosso
+    lado (`role='assistant'`: agente E gente), para a enxurrada do segurado não
+    esconder nenhuma das duas.
+
+    `True` gente depois do agente · `False` ninguém depois · `None` DÚVIDA
+    (leitura falhou, ou não há fala do agente para datar o pedido).
+    """
+    conversa = str(conversation_id or "").strip()
+    if not conversa:
+        return None
+    try:
+        achado = await _executar(_cliente(db).table("messages")
+                                 .select("role, content, created_at, payload")
+                                 .eq("conversation_id", conversa)
+                                 .eq("role", "assistant")
+                                 .order("created_at", desc=True)
+                                 .limit(_MENSAGENS_DA_JANELA))
+        linhas = [m for m in (achado.data or []) if isinstance(m, dict)]
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[JANELA] falas da corretora não lidas (%s)", type(erro).__name__)
+        return None
+    humana = ultima_palavra_humana(linhas)
+    falas = _falas_do_agente(linhas)
+    if humana is None:
+        return False
+    if not falas:
+        # ⚠️ Lote CHEIO só de gente: o agente, se falou, falou antes de todas.
+        return True if len(linhas) >= _MENSAGENS_DA_JANELA else None
+    return humana > max(q for q, _ in falas)
+
+
 async def reabrir_pela_janela(db, *, company_id: str, conversation_id: str,
-                              n_dias: int = 0) -> bool:
+                              n_dias: int = 0, motivo_lido: Any = None) -> bool:
     """A conversa volta a `open`, com rastro. `True` se ESTA chamada reabriu.
 
-    🔴 O UPDATE só casa a marca do espelho (status, sem `claimed_by`, sem
-    `human_handoff_reason`) — se o agente ou alguém do painel mudou a linha no
-    meio, nada é tocado. É também a idempotência: a segunda chamada casa zero
-    linhas e não escreve outro evento.
+    🔴 O UPDATE só casa a linha COMO FOI LIDA (status, sem `claimed_by`, e o
+    `human_handoff_reason` exatamente igual a `motivo_lido` — NULL, `''` ou o
+    texto do agente) — se o agente ou alguém do painel mudou a linha no meio,
+    nada é tocado. É também a idempotência: a segunda chamada casa zero linhas e
+    não escreve outro evento.
+
+    🔴 SPEC-121 · conserto único (juiz P1): antes o filtro era SÓ `IS NULL`, e
+    `marca_do_espelho` trata `''` também como espelho — com `''` o agente voltava
+    a responder e a conversa ficava na Fila. Um critério só: o valor LIDO. E o
+    motivo sai junto (`NULL`): a conversa reaberta é conversa NOVA.
 
     ⚠️ `claimed_by_name`/`claimed_at` saem junto, como no *"Devolver ao agente"*
     do painel: a conversa aberta não pode seguir dizendo *"Atendente pelo
@@ -1654,14 +1757,16 @@ async def reabrir_pela_janela(db, *, company_id: str, conversation_id: str,
     if not empresa or not conversa:
         return False
     try:
-        achado = await _executar(_cliente(db).table("conversations")
-                                 .update({"status": "open", "claimed_by_name": None,
-                                          "claimed_at": None})
-                                 .eq("company_id", empresa)      # 🔴 §7
-                                 .eq("id", conversa)
-                                 .eq("status", HUMAN_REQUESTED)
-                                 .is_("claimed_by", "null")
-                                 .is_("human_handoff_reason", "null"))
+        consulta = (_cliente(db).table("conversations")
+                    .update({"status": "open", "claimed_by_name": None,
+                             "claimed_at": None, "human_handoff_reason": None})
+                    .eq("company_id", empresa)      # 🔴 §7
+                    .eq("id", conversa)
+                    .eq("status", HUMAN_REQUESTED)
+                    .is_("claimed_by", "null"))
+        consulta = (consulta.is_("human_handoff_reason", "null") if motivo_lido is None
+                    else consulta.eq("human_handoff_reason", str(motivo_lido)))
+        achado = await _executar(consulta)
         reabriu = bool(getattr(achado, "data", None))
     except Exception as erro:  # noqa: BLE001
         # ⚠️ A decisão já foi tomada pela leitura; a escrita é o registro dela.
@@ -1710,6 +1815,14 @@ async def _a_marca_do_espelho_venceu(db, *, company_id: str, conversa: Dict[str,
         ultima_humana=max(sinais) if sinais else None, agora=agora, n_dias=dias)
     if calar_ainda:
         return await calar(motivo)
+    # 🔴 SPEC-121 · conserto único (juiz P2 / red P7) — o pedido do AGENTE só
+    #    vence se uma PESSOA o atendeu depois; sem isso (ou na dúvida) ele segue
+    #    esperando gente, calado, e é o vigia (prova D6) quem avisa.
+    if marca_do_agente(conversa):
+        atendido = await gente_atendeu_depois_do_pedido(db, conversa_id)
+        if atendido is not True:
+            return await calar("o segurado pediu para falar com uma pessoa; o agente "
+                               "fica em silêncio até alguém devolver a conversa")
     # ⚠️ Só reabre quem vai ATENDER. Com o agente desligado a conversa segue na
     #    Fila do painel como está (e o webhook segue o caminho de sempre): mudar
     #    o status ali tiraria da Fila um segurado que só a equipe vai responder.
@@ -1723,7 +1836,8 @@ async def _a_marca_do_espelho_venceu(db, *, company_id: str, conversa: Dict[str,
         return await calar("o segurado pediu para falar com uma pessoa; o agente "
                            "fica em silêncio até alguém devolver a conversa")
     await reabrir_pela_janela(db, company_id=company_id, conversation_id=conversa_id,
-                              n_dias=dias)
+                              n_dias=dias,
+                              motivo_lido=conversa.get("human_handoff_reason"))
     logger.info("[JANELA] a marca do espelho venceu (%d dias sem gente) e o "
                 "segurado escreveu de novo: conversa nova", dias)
     return False, ""
@@ -1840,7 +1954,10 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
                     "botão \"Devolver ao agente\"" % (dono or "Uma pessoa da corretora"))
             # 🔴 SPEC-121 F1 — a REGRA DOS 7 DIAS vale também aqui, mas SÓ para
             #    a marca que veio do ESPELHO e SÓ diante de mensagem NOVA.
-            if por_mensagem_nova and marca_do_espelho(conversa):
+            # 🔴 SPEC-121 · conserto único (juiz P2 / red P7): e para o pedido
+            #    do AGENTE que uma pessoa atendeu (decisão do gerente, D3).
+            if por_mensagem_nova and (marca_do_espelho(conversa)
+                                      or marca_do_agente(conversa)):
                 return await _a_marca_do_espelho_venceu(
                     db, company_id=str(company_id), conversa=conversa or {},
                     companhia=companhia, agora=agora, n_dias=n_dias, calar=_calar)
@@ -2142,7 +2259,39 @@ def _ultima_da_corretora(mensagens, agora):
     return max(datas) if datas else None
 
 
-def mensagens_vencidas(mensagens, *, agora=None, n_dias=None) -> List[Dict[str, Any]]:
+def ultima_da_corretora_de(linhas, *, agora=None):
+    """O instante da última fala DA CORRETORA (agente ou gente, fora do turno,
+    sem `#nota`) em `linhas` — ou `None`. **PURA.** É a régua de
+    `mensagens_vencidas`, exposta para quem a mede no BANCO."""
+    from datetime import datetime, timezone
+
+    return _ultima_da_corretora(linhas, agora or datetime.now(timezone.utc))
+
+
+def precisa_medir_a_ultima_da_corretora(mensagens, limite: int, *, agora=None) -> bool:
+    """A fatia do histórico ESCONDE a última fala da corretora? **PURA.**
+
+    🔴 SPEC-121 · conserto único (juiz P5): o histórico carrega só as `limite`
+    mais recentes (20). Se a fatia veio CHEIA, há fala do segurado fora do turno e
+    nenhuma nossa, a última fala da corretora ficou para trás — e
+    `mensagens_vencidas` devolvia `[]`, deixando as paradas voltarem ao contexto
+    como pendências. Só nesse caso o histórico mede no banco (uma leitura a mais,
+    rara por construção).
+    """
+    from datetime import datetime, timezone
+
+    agora = agora or datetime.now(timezone.utc)
+    lista = [m for m in (mensagens or ()) if isinstance(m, dict)]
+    if int(limite or 0) <= 0 or len(lista) < int(limite):
+        return False
+    if _ultima_da_corretora(lista, agora) is not None:
+        return False
+    return any(str(m.get("role") or "").strip().lower() == "user"
+               for _q, m in _fora_do_turno(lista, agora))
+
+
+def mensagens_vencidas(mensagens, *, agora=None, n_dias=None,
+                       ultima_da_corretora=None) -> List[Dict[str, Any]]:
     """As falas do SEGURADO que ninguém respondeu antes de um silêncio da
     corretora MAIOR que N dias. **PURA.**
 
@@ -2158,6 +2307,10 @@ def mensagens_vencidas(mensagens, *, agora=None, n_dias=None) -> List[Dict[str, 
     ⚠️ Sem fala nenhuma da corretora na conversa → `[]`: ninguém nunca atendeu,
     e não há silêncio de N dias a contar — o comportamento de sempre.
     ⚠️ N = 0 desliga a regra (a mesma convenção de `janela_de_silencio_dias`).
+
+    🔴 SPEC-121 · conserto único (juiz P5): `ultima_da_corretora` é o instante
+    MEDIDO NO BANCO quando a fatia do histórico não o traz
+    (`precisa_medir_a_ultima_da_corretora`); vale o mais recente dos dois.
     """
     from datetime import datetime, timezone
 
@@ -2165,14 +2318,19 @@ def mensagens_vencidas(mensagens, *, agora=None, n_dias=None) -> List[Dict[str, 
     dias = janela_de_silencio_dias() if n_dias is None else int(n_dias)
     if dias <= 0:
         return []
-    nossa = _ultima_da_corretora(mensagens, agora)
+    candidatas = [q for q in (_ultima_da_corretora(mensagens, agora),
+                              _quando(ultima_da_corretora)
+                              if ultima_da_corretora is not None else None)
+                  if q is not None and (agora - q).total_seconds() >= _TURNO_SEGUNDOS]
+    nossa = max(candidatas) if candidatas else None
     if nossa is None or (agora - nossa).total_seconds() <= dias * 86400:
         return []
     return [m for q, m in _fora_do_turno(mensagens, agora)
             if str(m.get("role") or "").strip().lower() == "user" and q > nossa]
 
 
-def sem_as_mensagens_vencidas(mensagens, *, agora=None, n_dias=None) -> List[Any]:
+def sem_as_mensagens_vencidas(mensagens, *, agora=None, n_dias=None,
+                              ultima_da_corretora=None) -> List[Any]:
     """O histórico SEM as `mensagens_vencidas`, na mesma ordem. **PURA.**
 
     ⛔ O resto fica: o que foi conversado ANTES do silêncio é memória
@@ -2180,14 +2338,16 @@ def sem_as_mensagens_vencidas(mensagens, *, agora=None, n_dias=None) -> List[Any
     e ninguém respondeu não é pendência de ninguém.
     """
     lista = list(mensagens or [])
-    vencidas = mensagens_vencidas(lista, agora=agora, n_dias=n_dias)
+    vencidas = mensagens_vencidas(lista, agora=agora, n_dias=n_dias,
+                                  ultima_da_corretora=ultima_da_corretora)
     if not vencidas:
         return lista
     fora = {id(m) for m in vencidas}
     return [m for m in lista if id(m) not in fora]
 
 
-def contexto_do_reencontro(mensagens, *, agora=None, n_dias=None) -> str:
+def contexto_do_reencontro(mensagens, *, agora=None, n_dias=None,
+                           ultima_da_corretora=None) -> str:
     """O bloco de prompt do reencontro, ou `""`. **PURA.**
 
     ⛔ **A mensagem que acabou de chegar não conta.** `webhook.py` grava o que o
@@ -2208,10 +2368,16 @@ def contexto_do_reencontro(mensagens, *, agora=None, n_dias=None) -> str:
     #    conversa estava com a equipe e volta no dia 9: a "anterior" é a dele,
     #    do dia 5 (< N dias), e o bloco antigo devolvia "" — o modelo recebia as
     #    perguntas velhas SEM aviso. Agora a régua é a última fala DA CORRETORA.
-    vencidas = mensagens_vencidas(mensagens, agora=agora, n_dias=dias)
+    vencidas = mensagens_vencidas(mensagens, agora=agora, n_dias=dias,
+                                  ultima_da_corretora=ultima_da_corretora)
     if vencidas:
-        nossa = _ultima_da_corretora(mensagens, agora)
-        return (_ASSUNTO_NOVO % _quanto_tempo((agora - nossa).total_seconds())
+        # 🔴 conserto único (P5): a MESMA régua de `mensagens_vencidas` — a fala
+        #    da corretora pode ter vindo do banco, fora da fatia.
+        nossas = [q for q in (_ultima_da_corretora(mensagens, agora),
+                              _quando(ultima_da_corretora)
+                              if ultima_da_corretora is not None else None)
+                  if q is not None]
+        return (_ASSUNTO_NOVO % _quanto_tempo((agora - max(nossas)).total_seconds())
                 + _PENDENCIAS_VENCIDAS)
 
     anterior = None
@@ -2269,7 +2435,33 @@ async def bloco_do_reencontro(db, *, company_id: str, conversation_id: str = "",
         # ⚠️ Aqui a dúvida NÃO cala ninguém: o pior caso é o agente falar sem
         #    esta dica, que é exatamente o comportamento de antes de 09/09.
         return ""
-    return contexto_do_reencontro(linhas, agora=agora, n_dias=n_dias)
+    ultima = await ultima_da_corretora_no_banco(db, conversa, linhas,
+                                                _MENSAGENS_DA_JANELA, agora=agora)
+    return contexto_do_reencontro(linhas, agora=agora, n_dias=n_dias,
+                                  ultima_da_corretora=ultima)
+
+
+async def ultima_da_corretora_no_banco(db, conversation_id: str, fatia, limite: int,
+                                       *, agora=None):
+    """O instante da última fala da corretora MEDIDO NO BANCO — só quando a
+    `fatia` o esconde (`precisa_medir_a_ultima_da_corretora`). `None` no resto
+    e no escuro. ⛔ Nunca levanta. A leitura é a das falas do nosso lado
+    (`role='assistant'`, mais nova primeiro), a mesma forma da leitura larga
+    da janela, com o índice que existe."""
+    try:
+        if not precisa_medir_a_ultima_da_corretora(fatia, limite, agora=agora):
+            return None
+        achado = await _executar(_cliente(db).table("messages")
+                                 .select("role, content, created_at, payload")
+                                 .eq("conversation_id", str(conversation_id))
+                                 .eq("role", "assistant")
+                                 .order("created_at", desc=True)
+                                 .limit(_MENSAGENS_DA_JANELA))
+        return ultima_da_corretora_de(achado.data or [], agora=agora)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[JANELA] última fala da corretora não medida (%s)",
+                       type(erro).__name__)
+        return None
 
 
 # ===========================================================================

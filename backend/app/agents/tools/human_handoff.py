@@ -555,8 +555,15 @@ def _texto_do_caso(conversa: Dict[str, Any], motivo: str) -> str:
 
 def _titulo_humano(conversa: Dict[str, Any], motivo: str) -> str:
     """A primeira linha. Ela tem de dizer O QUE É antes de qualquer outra coisa."""
+    # 🔴 SPEC-121 · conserto único (B1): com a MARCA do motor, o título vem dela —
+    #    a prosa do motivo ("…falta o número do sinistro") não vira 🚨 SINISTRO.
+    marca = codigo_do_pedido(conversa)
+    if marca and _e_carro_reserva(conversa):
+        return "🚙 *CARRO RESERVA*"
     texto = _texto_do_caso(conversa, motivo)
     for chave, (emoji, nome) in _TITULOS.items():
+        if chave == "sinistro" and _marca_nao_e_sinistro(conversa):
+            continue
         if chave in texto:
             # Sinistro e dúvida não são "assistência de alguma coisa" — são a
             # coisa inteira. `SINISTRO · SINISTRO` é ruído que o primeiro
@@ -686,8 +693,15 @@ def _o_que_fazer(conversa: Dict[str, Any], motivo: str) -> str:
         if sugestao:
             return sugestao
 
+    # 🔴 SPEC-121 · conserto único (B1): o pedido com MARCA do motor não recebe a
+    #    ordem de "abrir o aviso na seguradora" só porque a prosa diz "sinistro".
+    marca = codigo_do_pedido(conversa)
+    if marca and _e_carro_reserva(conversa):
+        return ("Faça o pedido do carro reserva na seguradora com os dados acima e dê "
+                "o retorno ao cliente. O motivo de ter vindo para você está em "
+                "*O QUE ACONTECEU*.")
     texto = _texto_do_caso(conversa, motivo)
-    if "sinistro" in texto:
+    if "sinistro" in texto and not _marca_nao_e_sinistro(conversa):
         return ("Sinistro sempre é com pessoa. Confirme os dados com o cliente e "
                 "abra o aviso na seguradora.")
     if _o_que_falta(conversa):
@@ -826,6 +840,245 @@ def _quem_assumiu(conversa: Dict[str, Any]) -> str:
     return f"_{nome} já assumiu_" if nome else "_Ninguém assumiu ainda_"
 
 
+# ===========================================================================
+# 🔴 SPEC-121 · CONSERTO ÚNICO (B1 do red team) — O PEDIDO QUE NASCEU ANTES DO
+#    ACIONAMENTO TEM MARCA, E A MARCA VENCE A PALAVRA
+# ===========================================================================
+#
+# 📊 O defeito (red team, `rt2_dossie.py`, 29/09/2026): `corridor_playbooks.
+# antes_de_acionar` escreve o motivo em prosa ("pedido de carro reserva — falta o
+# número do sinistro…"), o agente copia a prosa para `request_human_agent`, e
+# `_avisar_suporte` passava a prosa por `claims_shadow.detectar_sinistro`: a
+# PALAVRA "sinistro" virava `🚨 *NOVO SINISTRO*` no grupo e `motivo_enum=
+# 'sinistro'` na sombra. Yelum sem nº e TODO carro reserva da Zurich (até por
+# pane, onde não existe sinistro nenhum) chegavam como sinistro novo — e a
+# atendente podia abrir um aviso que não existe.
+#
+# ⛔ O conserto NÃO depende de tirar a palavra do texto (isso é o cinto; a fatia do
+# motor o faz): o pedido carrega a MARCA do motor. Três origens, a primeira que
+# existir:
+#
+#   ① a marca NO `reason` — `[antes_de_acionar:<codigo>] motivo`, que a
+#      ferramenta de acionamento manda o agente copiar (contrato do motor:
+#      `corridor_playbooks.motivo_com_codigo` / `ler_codigo_antes_de_acionar`)
+#   ② o `codigo` declarado — o campo que a ferramenta devolve junto do
+#      `pessoa_antes_de_acionar`, repassado pelo agente (campo novo desta tool)
+#   ③ o MESMO motor, sobre a ficha que o acionamento acabou de gravar
+#      (`nodes._gravar_ficha_do_turno` grava serviço, seguradora e slots ANTES de
+#      o agente ler a resposta) — ⚠️ só com a ficha FRESCA: uma ficha de carro
+#      reserva de dias atrás não pode rebaixar um sinistro novo de hoje
+#
+# e a marca fica gravada na ficha (`CHAVE_DO_PEDIDO`), para o aviso tardio do
+# vigia (que chega por outro caminho) dizer a mesma coisa.
+#
+# 🔴 D10 é a LINHA DE CONTROLE: raio/queda que queimou equipamento É sinistro de
+#    danos elétricos, e continua `🚨 NOVO SINISTRO`.
+
+#: ⚠️ SÓ O PARAQUEDAS: o dono da tabela código → tipo é o MOTOR
+#: (`corridor_playbooks.CODIGOS_ANTES_DE_ACIONAR`, lida por `_codigos_do_motor`).
+#: Esta cópia vale apenas enquanto aquela não existir no módulo (a árvore de HEAD
+#: `e0fa1b7`), e o guarda (`test_spec121_costura_carro_reserva_grupo.py` ⑤) fica
+#: VERMELHO se as duas discordarem sobre o que é sinistro. 🔄 Gatilho de remoção:
+#: a tabela do motor publicada.
+#: constante_justificada (o único `sinistro`): D10 do Founder (29/09/2026) —
+#: *"raio/queda de energia que danificou o motor = SINISTRO de danos elétricos"*.
+_CODIGOS_ATE_A_TABELA_DO_MOTOR: Dict[str, str] = {
+    "sinistro_danos_eletricos": "sinistro",
+    "portao_nao_e_eletricista": "pedido_de_ajuda",
+    "falta_de_energia_na_rua": "pedido_de_ajuda",
+    "carro_reserva_por_desenho": "pedido_de_ajuda",
+    "carro_reserva_motivo": "pedido_de_ajuda",
+    "carro_reserva_sem_sinistro": "pedido_de_ajuda",
+    "carro_reserva_sem_cartao": "pedido_de_ajuda",
+    "carro_reserva_fora_do_horario": "pedido_de_ajuda",
+    "carro_reserva_canal_desligado": "pedido_de_ajuda",
+}
+
+
+def _codigos_do_motor() -> Dict[str, str]:
+    """código → `sinistro` | `pedido_de_ajuda`, do DONO (o motor)."""
+    try:
+        from app.services import corridor_playbooks as _cp
+
+        tabela = getattr(_cp, "CODIGOS_ANTES_DE_ACIONAR", None)
+        if isinstance(tabela, dict) and tabela:
+            return dict(tabela)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HumanHandoff] tabela de códigos do motor ilegível (%s)",
+                       type(exc).__name__)
+    return dict(_CODIGOS_ATE_A_TABELA_DO_MOTOR)
+
+
+def marca_no_motivo(reason: Any) -> tuple:
+    """`(codigo | "", motivo sem a marca)` — pela leitura do MOTOR
+    (`ler_codigo_antes_de_acionar`). Sem ela no módulo, `("", reason)`."""
+    texto = str(reason or "")
+    try:
+        from app.services import corridor_playbooks as _cp
+
+        ler = getattr(_cp, "ler_codigo_antes_de_acionar", None)
+        if callable(ler):
+            codigo, resto = ler(texto)
+            if codigo:
+                return str(codigo).strip().lower(), str(resto)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HumanHandoff] marca do motivo ilegível (%s)", type(exc).__name__)
+    return "", texto
+
+
+#: Onde a marca mora na ficha (`conversations.ficha_atendimento`).
+CHAVE_DO_PEDIDO = "pedido_antes_de_acionar"
+
+#: A ficha tem de ter sido escrita há no máximo isto para o motor valer como
+#: marca (②). 📊 O acionamento grava a ficha e o `request_human_agent` vem no
+#: MESMO turno, segundos depois; 30 min é folga para provedor lento, e fecha a
+#: porta da ficha velha de outro assunto.
+_FRESCOR_DA_FICHA_S = 30 * 60
+
+
+def _instante(bruto: Any):
+    from datetime import datetime, timezone
+
+    if hasattr(bruto, "tzinfo"):
+        return bruto if bruto.tzinfo else bruto.replace(tzinfo=timezone.utc)
+    try:
+        quando = datetime.fromisoformat(str(bruto or "").strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return quando if quando.tzinfo else quando.replace(tzinfo=timezone.utc)
+
+
+def pedido_antes_de_acionar(conversa: Dict[str, Any], codigo_declarado: Any = "",
+                            *, agora=None) -> str:
+    """O código de `antes_de_acionar` que trouxe ESTE pedido, ou `""`.
+
+    ⛔ Nunca levanta e nunca lê a prosa do motivo: ① o código declarado, se o
+    motor o conhece; ② o motor de novo, sobre a ficha fresca. `agora` só existe
+    para o teste fixar o relógio do frescor.
+    """
+    from datetime import datetime, timezone
+
+    declarado = str(codigo_declarado or "").strip().lower()
+    if declarado in _codigos_do_motor():
+        return declarado
+    try:
+        ficha = (conversa or {}).get("ficha_atendimento")
+        if not isinstance(ficha, dict) or not str(ficha.get("servico") or "").strip():
+            return ""
+        escrita = _instante(ficha.get("atualizada_em"))
+        agora = _instante(agora) if agora is not None else datetime.now(timezone.utc)
+        if escrita is None or abs((agora - escrita).total_seconds()) > _FRESCOR_DA_FICHA_S:
+            return ""
+        from app.services.attendance_ficha import linha_do_corredor, valor_de
+        from app.services.corridor_playbooks import antes_de_acionar, resolve_playbook_ref
+
+        ramo = str(ficha.get("ramo") or "").strip().lower()
+        ref = resolve_playbook_ref(str(ficha.get("seguradora") or ""),
+                                   linha_do_corredor(ramo) or ramo or "auto")
+        slots = {k: valor_de(v) for k, v in (ficha.get("confirmados") or {}).items()}
+        achado = antes_de_acionar(ref or "", str(ficha.get("servico") or ""), slots)
+        return str((achado or {}).get("codigo") or "").strip().lower()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HumanHandoff] marca do pedido ilegível (%s)", type(exc).__name__)
+        return ""
+
+
+def codigo_do_pedido(conversa: Dict[str, Any]) -> str:
+    """A marca já apurada: a pendurada no caso (`_com_o_pedido`) ou a gravada na ficha."""
+    caso = conversa or {}
+    if CHAVE_DO_PEDIDO in caso:
+        return str(caso.get(CHAVE_DO_PEDIDO) or "").strip().lower()
+    ficha = caso.get("ficha_atendimento")
+    marca = ficha.get(CHAVE_DO_PEDIDO) if isinstance(ficha, dict) else None
+    return str((marca or {}).get("codigo") or "").strip().lower() if isinstance(marca, dict) else ""
+
+
+def _com_o_pedido(conversa: Dict[str, Any], codigo: str) -> Dict[str, Any]:
+    """O MESMO caso com a marca pendurada — CÓPIA, como `_com_a_espera`."""
+    caso = dict(conversa or {})
+    caso[CHAVE_DO_PEDIDO] = str(codigo or "")
+    return caso
+
+
+def tipo_do_pedido(codigo: str, motivo: Any) -> str:
+    """`sinistro` ou `pedido_de_ajuda` — **a marca vence a palavra**.
+
+    Com marca: vale a tabela do MOTOR (só D10 é sinistro). Sem marca: o detector de
+    sempre (`claims_shadow.detectar_sinistro`) sobre o motivo — o caminho do
+    sinistro que o segurado CONTA ao agente, que não passa pelo acionamento.
+    """
+    from app.services.o_grupo_so_o_que_importa import TIPO_PEDIDO_DE_AJUDA, TIPO_SINISTRO
+
+    marca = str(codigo or "").strip().lower()
+    if marca:
+        # ⚠️ Código que a tabela não conhece (o motor o criou depois) é pedido de
+        #    ajuda: o motor o devolveu, e só D10 é sinistro — o guarda ⑤ cobra a tabela.
+        return (TIPO_SINISTRO if _codigos_do_motor().get(marca) == TIPO_SINISTRO
+                else TIPO_PEDIDO_DE_AJUDA)
+    try:
+        from app.services.claims_shadow import detectar_sinistro
+
+        if detectar_sinistro(motivo)[0]:
+            return TIPO_SINISTRO
+    except Exception as exc:  # noqa: BLE001
+        # Não saber classificar não pode calar o pedido de ajuda.
+        logger.warning("[HumanHandoff] detector de sinistro mudo (%s)", type(exc).__name__)
+    return TIPO_PEDIDO_DE_AJUDA
+
+
+def _e_carro_reserva(conversa: Dict[str, Any]) -> bool:
+    return codigo_do_pedido(conversa).startswith("carro_reserva")
+
+
+def _marca_nao_e_sinistro(conversa: Dict[str, Any]) -> bool:
+    """Há marca do motor e ela NÃO é sinistro — a prosa não decide mais o título."""
+    marca = codigo_do_pedido(conversa)
+    return bool(marca) and _codigos_do_motor().get(marca) != "sinistro"
+
+
+#: 🔴 SPEC-121 · conserto único (P3 do red team) — o que o segurado contou para o
+#: carro reserva, na ordem em que a atendente pede na seguradora. ⚠️ O agente diz
+#: *"já passei para ela com tudo o que você me contou"* (`antes_de_acionar`): sem
+#: esta seção a promessa era maior que o dossiê. Os slots são os que
+#: `insurer_dispatch` recebe e a ficha guarda (`confirmados`).
+_DADOS_DO_CARRO_RESERVA = (
+    ("carro_reserva_motivo", "Motivo"),
+    ("sinistro_numero", "Nº do sinistro"),
+    ("carro_reserva_condutor_nome", "Quem retira"),
+    ("carro_reserva_condutor_cpf", "CPF de quem retira"),
+    ("carro_reserva_telefone", "Celular de quem retira"),
+    ("carro_reserva_cidade", "Cidade da retirada"),
+    ("carro_reserva_data_hora", "Data e hora da retirada"),
+    ("carro_reserva_cnh_e_cartao", "CNH original e cartão de crédito no nome dele"),
+)
+
+
+def _o_pedido_do_carro_reserva(conversa: Dict[str, Any]) -> list:
+    """As linhas do *O PEDIDO* — **PURA**. ⛔ Sem máscara (D-120-I: o grupo é da
+    corretora e ela precisa do dado para pedir o carro) e ⛔ nunca em log."""
+    from app.services.attendance_ficha import valor_de
+
+    ficha = conversa.get("ficha_atendimento") or {}
+    confirmados = (ficha.get("confirmados") or {}) if isinstance(ficha, dict) else {}
+    linhas = []
+    for slot, rotulo in _DADOS_DO_CARRO_RESERVA:
+        valor = " ".join(str(valor_de(confirmados.get(slot)) or "").split())
+        if valor:
+            linhas.append("%s: %s" % (rotulo, valor[:120]))
+    if not linhas:
+        return ["⚠️ o agente não chegou a anotar os dados de quem retira — peça ao cliente."]
+    diarias = "".join(ch for ch in str(valor_de(confirmados.get("carro_reserva_diarias")) or "")
+                      if ch.isdigit())
+    try:
+        from app.services.corridor_playbooks import CARRO_RESERVA_DIARIAS_PADRAO as _PADRAO
+    except Exception:  # noqa: BLE001
+        _PADRAO = "15"
+    linhas.append("Diárias: %s" % (
+        "%s (limite do plano)" % diarias if diarias else
+        "o limite do plano — sem ele, %s (a seguradora confirma)" % _PADRAO))
+    return linhas
+
+
 class HumanHandoffInput(BaseModel):
     """Input schema para a HumanHandoffTool."""
 
@@ -833,6 +1086,13 @@ class HumanHandoffInput(BaseModel):
         default=None,
         description="Motivo da transferência. Exemplo: 'sinistro — exige humano', "
         "'risco grave', 'cliente pediu pessoa', 'não há corredor para esta seguradora'.",
+    )
+    # 🔴 SPEC-121 · conserto único (B1) — a MARCA, não a palavra.
+    codigo: Optional[str] = Field(
+        default=None,
+        description="Só quando a ferramenta de acionamento devolveu "
+        "status 'pessoa_antes_de_acionar': copie aqui o `codigo` que ela devolveu. "
+        "Nos outros casos, deixe vazio.",
     )
 
 
@@ -949,6 +1209,11 @@ class HumanHandoffTool(BaseTool):
         narrativa = _narrativa(conversa, motivo)
         if narrativa:
             linhas += ["", "*O QUE ACONTECEU*", narrativa]
+
+        # 🔴 SPEC-121 · conserto único (P3): o carro reserva leva o que o segurado
+        #    CONTOU — é o que a atendente digita no pedido à seguradora.
+        if _e_carro_reserva(conversa):
+            linhas += ["", "*O PEDIDO*"] + _o_pedido_do_carro_reserva(conversa)
 
         # O QUE FALTA — some quando não falta nada. Seção vazia é ruído.
         falta = _o_que_falta(conversa)
@@ -1147,7 +1412,8 @@ class HumanHandoffTool(BaseTool):
     async def _avisar_suporte(self, company_id: str, conversa: Dict[str, Any],
                               motivo: str, *, tipo: str = "",
                               dedup: bool = False,
-                              prova: str = "") -> Dict[str, Any]:
+                              prova: str = "",
+                              pedido: Optional[str] = None) -> Dict[str, Any]:
         """Envia o dossiê. Devolve o que aconteceu — sem arredondar.
 
         🔴 SPEC-EXTRA-001.3 — este método PASSOU A SER UM ADAPTADOR.
@@ -1168,29 +1434,33 @@ class HumanHandoffTool(BaseTool):
         vigia: o pedido CONFERIDO; a espera: a espera do acionamento). Sem ela, a
         porta cala — e é isso que impede o status `HUMAN_REQUESTED` do espelho
         de virar aviso.
+
+        🔴 SPEC-121 · conserto único (B1) — `pedido` é a MARCA do motor
+        (`pedido_antes_de_acionar`); o `_arun` a passa já apurada. Sem ela (o
+        vigia), vale a gravada na ficha — e a ficha é LIDA quando a linha do
+        chamador não a trouxe, porque o dossiê do carro reserva mora nela.
         """
         from app.services.o_grupo_so_o_que_importa import (
-            TIPO_PEDIDO_DE_AJUDA, TIPO_SINISTRO, enviar_ao_grupo,
+            TIPO_SINISTRO, enviar_ao_grupo,
         )
+
+        if not tipo and "ficha_atendimento" not in (conversa or {}):
+            conversa = await asyncio.to_thread(self._com_a_ficha, company_id, conversa)
 
         # 🔴 SPEC-EXTRA-001.3 BLOCO D.2 — SINISTRO TEM MODELO PRÓPRIO, e passa
         # pela guarda SEMPRE: é notícia de negócio, não lembrete de fila.
         #
         # ⛔ O detector é o MESMO `claims_shadow.detectar_sinistro` que o `_arun`
-        # já usa (:1195-1204). Dois classificadores para a mesma pergunta são
-        # dois classificadores para manter, e o segundo envelhece calado
-        # (CLAUDE.md §5).
-        _tipo = tipo or TIPO_PEDIDO_DE_AJUDA
-        if not tipo:
-            try:
-                from app.services.claims_shadow import detectar_sinistro
-
-                if detectar_sinistro(motivo)[0]:
-                    _tipo = TIPO_SINISTRO
-            except Exception as exc:  # noqa: BLE001
-                # Não saber classificar não pode calar o pedido de ajuda.
-                logger.warning("[HumanHandoff] detector de sinistro mudo (%s)",
-                               type(exc).__name__)
+        # já usa — agora atrás da MARCA (`tipo_do_pedido`, uma função para os
+        # dois): dois classificadores para a mesma pergunta são dois
+        # classificadores para manter, e o segundo envelhece calado (CLAUDE.md §5).
+        codigo_no_texto, motivo = marca_no_motivo(motivo)
+        if pedido is None:
+            codigo = codigo_do_pedido(conversa) or codigo_no_texto
+        else:
+            codigo = str(pedido or "")
+        conversa = _com_o_pedido(conversa, codigo)
+        _tipo = tipo or tipo_do_pedido(codigo, motivo)
 
         if _tipo == TIPO_SINISTRO:
             texto = await asyncio.to_thread(self._montar_sinistro, conversa, motivo)
@@ -1214,7 +1484,11 @@ class HumanHandoffTool(BaseTool):
     # execução
     # ------------------------------------------------------------------ #
     async def _arun(self, reason: Optional[str] = None, session_id: Optional[str] = None,
-                    company_id: Optional[str] = None, **kwargs) -> str:
+                    company_id: Optional[str] = None, codigo: Optional[str] = None,
+                    **kwargs) -> str:
+        # 🔴 SPEC-121 · conserto único (B1) — a marca `[antes_de_acionar:<codigo>]`
+        #    sai do texto ANTES de tudo: a Fila, o grupo e o log leem português.
+        codigo_no_texto, reason = marca_no_motivo(reason)
         motivo = str(reason or "").strip()
         # 🔴 FORA DO `try` — o rastro da falha precisa do motivo mesmo quando a
         #    marcação da conversa estoura antes de calculá-lo.
@@ -1243,6 +1517,11 @@ class HumanHandoffTool(BaseTool):
         # escreveu de novo numa conversa que já está com a equipe" — e foi
         # essa indistinção que encheu o grupo de alertas repetidos.
         ja_estava_com_a_equipe = False
+        # ⚠️ Iniciada FORA do `try`: se a leitura falha, `linha_anterior` não
+        #    pode ficar sem nome (o `_e_pos_acionamento` abaixo a usa) — e a
+        #    ficha NÃO é reescrita a partir de uma leitura que não houve.
+        linha_anterior: Dict[str, Any] = {}
+        leu_o_estado = False
         try:
             def _estado_anterior():
                 # 🔴 SPEC-097.1 U2.2/U2.3 — a leitura passou a trazer a FICHA e
@@ -1258,6 +1537,7 @@ class HumanHandoffTool(BaseTool):
 
             antes = await asyncio.to_thread(_estado_anterior)
             linha_anterior = (antes.data or [{}])[0] or {}
+            leu_o_estado = bool(antes.data)
             ja_estava_com_a_equipe = bool(
                 (antes.data or []) and
                 str(linha_anterior.get("status") or "") == "HUMAN_REQUESTED")
@@ -1266,6 +1546,12 @@ class HumanHandoffTool(BaseTool):
             # caminho que avisa. Falhar para o lado de avisar demais.
             logger.warning("[HumanHandoff] não li o estado anterior (%s) — "
                            "vou tratar como primeiro pedido", type(exc).__name__)
+
+        # 🔴 SPEC-121 · conserto único (B1) — a MARCA do pedido, apurada UMA vez,
+        #    ANTES de marcar a conversa: ela decide o tipo do aviso, o
+        #    `motivo_enum` da sombra e fica gravada na ficha para o vigia.
+        codigo_do_pedido_atual = pedido_antes_de_acionar(
+            linha_anterior, codigo_no_texto or codigo)
 
         try:
             dados: Dict[str, Any] = {"status": "HUMAN_REQUESTED"}
@@ -1330,6 +1616,23 @@ class HumanHandoffTool(BaseTool):
                     "em": datetime.now(timezone.utc).isoformat(),
                     "motivo": motivo_gravado or "pos_acionamento:N",
                 }
+                dados["ficha_atendimento"] = ficha_nova
+
+            # 🔴 SPEC-121 · conserto único (B1) — a marca vai para a ficha: é ela
+            #    que o aviso TARDIO do vigia lê (ele não passa por aqui). ⚠️ Uma
+            #    marca velha é APAGADA quando este pedido não tem marca — senão o
+            #    carro reserva de ontem rebaixaria o sinistro de hoje. ⛔ Só com a
+            #    ficha LIDA: reescrevê-la de uma leitura que falhou a apagaria.
+            _ficha_lida = linha_anterior.get("ficha_atendimento")
+            if leu_o_estado and (codigo_do_pedido_atual or (
+                    isinstance(_ficha_lida, dict) and CHAVE_DO_PEDIDO in _ficha_lida)):
+                from datetime import datetime, timezone
+
+                ficha_nova = dict(dados.get("ficha_atendimento") or (
+                    _ficha_lida if isinstance(_ficha_lida, dict) else {}))
+                ficha_nova[CHAVE_DO_PEDIDO] = {
+                    "codigo": codigo_do_pedido_atual,
+                    "em": datetime.now(timezone.utc).isoformat()}
                 dados["ficha_atendimento"] = ficha_nova
 
             # 🔴 EM THREAD — 18/08/2026, junto com o conserto do `exige_async`.
@@ -1410,9 +1713,13 @@ class HumanHandoffTool(BaseTool):
             # 🔴 O MESMO detector do BLOCO A, e não um regex novo aqui: dois
             # classificadores para a mesma pergunta são dois classificadores para
             # manter, e o segundo envelhece calado (CLAUDE.md §5).
-            from app.services.claims_shadow import detectar_sinistro, registrar_gesto
+            from app.services.claims_shadow import registrar_gesto
+            from app.services.o_grupo_so_o_que_importa import TIPO_SINISTRO
 
-            _motivo_enum = "sinistro" if detectar_sinistro(motivo)[0] else "outro"
+            # 🔴 SPEC-121 · conserto único (B1): a MESMA decisão do aviso
+            #    (`tipo_do_pedido`) — a marca vence a palavra aqui também.
+            _motivo_enum = ("sinistro" if tipo_do_pedido(codigo_do_pedido_atual, motivo)
+                            == TIPO_SINISTRO else "outro")
             await registrar_gesto(
                 self.supabase_client, company_id=str(company_id),
                 conversation_id=conversa_id,
@@ -1433,7 +1740,8 @@ class HumanHandoffTool(BaseTool):
         from app.services.o_grupo_so_o_que_importa import PROVA_PEDIDO_DO_AGENTE
 
         aviso = await self._avisar_suporte(company_id, conversa, motivo,
-                                           prova=PROVA_PEDIDO_DO_AGENTE)
+                                           prova=PROVA_PEDIDO_DO_AGENTE,
+                                           pedido=codigo_do_pedido_atual)
 
         if aviso["avisado"]:
             await registrar_o_desfecho_do_handoff(
@@ -1484,3 +1792,24 @@ class HumanHandoffTool(BaseTool):
             "HumanHandoffTool exige execução assíncrona (_arun). Quem chamou "
             "ignorou `exige_async=True` — o executor precisa aguardar `_arun`."
         )
+
+    def _com_a_ficha(self, company_id: str, conversa: Dict[str, Any]) -> Dict[str, Any]:
+        """A linha do chamador com a `ficha_atendimento` lida — CÓPIA; a mesma
+        linha no escuro. 🔴 §7: por `company_id` e `id`. ⛔ Nunca levanta."""
+        caso = dict(conversa or {})
+        ident = str(caso.get("id") or "").strip()
+        if not ident or not str(company_id or "").strip() or self.supabase_client is None:
+            return caso
+        try:
+            achado = (self.supabase_client.table("conversations")
+                      .select("id, ficha_atendimento")
+                      .eq("company_id", str(company_id))
+                      .eq("id", ident)
+                      .limit(1).execute())
+            linha = (getattr(achado, "data", None) or [{}])[0] or {}
+            if isinstance(linha.get("ficha_atendimento"), dict):
+                caso["ficha_atendimento"] = linha["ficha_atendimento"]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HumanHandoff] ficha não lida para o aviso (%s)",
+                           type(exc).__name__)
+        return caso
