@@ -400,3 +400,22 @@ def test_RT_P9_sem_acionamento_nao_ha_chave_nem_chamada(amb):
     s.pop("case_id", None)
     p = asyncio.run(AC.sombra_do_cerebro(EMPRESA_A, s, TELA_SEM_PASSO, {"acao": "RESPONDER", "valor": "x"}))
     assert p is None and amb.chamadas_ao_modelo == []
+
+
+
+def test_N1_apartamento_nao_vira_rodovia_na_bradesco():
+    """🔴 Confirmação da SPEC-122 (N1): o veto largo de rodovia não pode ESCOLHER "Rodovia".
+    CONTROLE: BR com número, "km 12", SP-330 e "rodovia" continuam escolhendo Rodovia."""
+    from app.services.insurer_dispatch_service import _derivar_teclas_do_caso
+
+    def via(endereco):
+        slots = {"local_atual": endereco}
+        _derivar_teclas_do_caso(slots)
+        return slots.get("via_ou_rodovia_opcao")
+
+    for urbano in ("Rua das Flores 10 ap 101", "Rua X 5, ap 42, bloco 3",
+                   "Av Paulista 1000 al 12", "Aracaju SE 10"):
+        assert via(urbano) != "Rodovia", urbano
+    for rodovia in ("BR 282, sentido Florianopolis", "BR-101 km 30", "SP-330 perto do posto",
+                    "Rodovia dos Bandeirantes", "estou no km 12 da estrada"):
+        assert via(rodovia) == "Rodovia", rodovia

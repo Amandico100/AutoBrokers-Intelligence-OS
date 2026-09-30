@@ -762,6 +762,20 @@ def _parece_rodovia(texto_normalizado: str) -> bool:
     return bool(_RX_RODOVIA_NO_ENDERECO.search(str(texto_normalizado or "")))
 
 
+#: 🔴 SPEC-122 (confirmação, N1): para ESCOLHER "Rodovia" pelo segurado (Bradesco) só vale a
+#: forma FORTE — o regex largo acima casa "ap 101"/"al 12" e mandaria "Rodovia" (a tela manda
+#: procurar a concessionária) para quem mora num apartamento. Sigla de UF só com hífen.
+_RX_RODOVIA_FORTE = re.compile(
+    r"\bbr\s*-?\s*\d{2,3}\b"
+    r"|\b(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)"
+    r"-\s*\d{2,3}\b"
+    r"|\brodovi|\bkm\s*\d|acostamento|pedagi")
+
+
+def _parece_rodovia_forte(texto_normalizado: str) -> bool:
+    return bool(_RX_RODOVIA_FORTE.search(str(texto_normalizado or "")))
+
+
 def _derivar_teclas_do_caso(slots: dict) -> None:
     """Traduz o que o segurado disse para as teclas que a URA espera.
 
@@ -1250,7 +1264,7 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         _onde = _norm(" ".join(str(slots.get(c) or "") for c in
                                ("local_atual", "problema_descricao",
                                 "problema_relato", "descricao")))
-        if _parece_rodovia(_onde) or any(p in _onde for p in (
+        if _parece_rodovia_forte(_onde) or any(p in _onde for p in (
                 "rodovia", "br-", "sp-", "mg-", "rs-", "pr-", "sc-",
                 "estrada", "pedagio", "pedagiada", "acostamento", "km ",
                 "marginal", "anhanguera", "bandeirantes", "dutra",
