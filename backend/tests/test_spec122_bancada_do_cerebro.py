@@ -16,8 +16,13 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import AIMessage
 
-from app.services import acao_do_cerebro as AC
-from app.services.evals import bancada as B
+# 🔴 AC e a bancada vêm do FIO COERENTE (P-121-28): a bancada importa `mensagens_da_variante` do
+#    cérebro NO TOPO e o `decidir` TARDE — com dois `acao_do_cerebro` na suíte, o `monkeypatch`
+#    do G7 caía num e o parser rodava o outro. `_fio_fixo` põe os dois no lugar a cada teste.
+from tests.test_spec122_sombra_e_sem_chute import FIO, _fio_fixo  # noqa: F401 — fixture autouse
+
+AC = FIO["app.services.acao_do_cerebro"]
+B = FIO["app.services.evals.bancada"]
 
 CORPUS = Path(__file__).parent / "corpus" / "bancada" / "cerebro" / "casos.jsonl"
 

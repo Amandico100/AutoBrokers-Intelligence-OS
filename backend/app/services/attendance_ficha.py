@@ -157,6 +157,8 @@ ROTULOS = {
     "pet_idade": "a idade do animal",
     "titular_nascimento": "a data de nascimento do titular",
     "local_seguro": "se ele está num lugar seguro para esperar",
+    # SPEC-122 · o portão da HDI passou a cobrar este slot nas rotas de socorro.
+    "via_ou_rodovia_opcao": "se o carro está numa rua da cidade ou numa rodovia",
     "estepe_situacao": "se o estepe está cheio e em condições de uso",
     "ferramentas_no_veiculo": "se macaco e chave de roda estão no carro",
     "equipamentos_troca_opcao": "se tem macaco, chave de roda e estepe",

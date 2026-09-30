@@ -14,15 +14,14 @@ import json
 
 import pytest
 
-from tests.test_spec122_sombra_e_sem_chute import (  # noqa: F401 — `amb` é a fixture do fio
-    CLIENTE, CORPUS, EMPRESA_A, REF_HDI, REF_PORTO, TELA_RISCO_HDI, TELA_SEM_PASSO, URA, amb,
-    _a_seguradora, _ao_cliente, _ligar, _responder, _risco_hdi, _turno_da_fase_humana,
-    rodar_turno, salvar, sessao, tela_real,
+# 🔴 AC/CP/R/D vêm do FIO COERENTE do arquivo irmão (P-121-28), nunca de `app.services` direto:
+#    na suíte, o `app.services.insurer_dispatch_service` do `sys.modules` pode ser a CÓPIA que
+#    outro arquivo gravou — e o `monkeypatch` cairia num motor que o roteador não chama.
+from tests.test_spec122_sombra_e_sem_chute import (  # noqa: F401 — `amb` e `_fio_fixo` são fixtures
+    AC, CLIENTE, CORPUS, CP, D, EMPRESA_A, R, REF_HDI, REF_PORTO, TELA_RISCO_HDI, TELA_SEM_PASSO,
+    URA, _a_seguradora, _ao_cliente, _fio_fixo, _ligar, _responder, _risco_hdi,
+    _turno_da_fase_humana, amb, rodar_turno, salvar, sessao, tela_real,
 )
-from app.services import acao_do_cerebro as AC
-from app.services import corridor_playbooks as CP
-from app.services import dispatch_router as R
-from app.services import insurer_dispatch_service as D
 
 
 def _carregar():

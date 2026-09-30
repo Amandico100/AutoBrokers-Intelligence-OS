@@ -38,12 +38,95 @@ sys.path.insert(0, RAIZ)
 os.environ.setdefault("INSURER_DISPATCH_LIVE", "false")
 os.environ["DISPATCH_MIRROR"] = "0"
 
-from app.services import acao_do_cerebro as AC  # noqa: E402
-from app.services import corridor_playbooks as CP  # noqa: E402
-from app.services import dispatch_router as R  # noqa: E402
-from app.services import insurer_dispatch_service as D  # noqa: E402
-from app.services import o_grupo_so_o_que_importa as G  # noqa: E402
-from app.tasks import dispatch_watchdog as W  # noqa: E402
+# =============================================================================
+# 🔴 O FIO COERENTE — o teste patcha o MESMO objeto que o produto chama (P-121-28)
+# =============================================================================
+#: Os módulos que o fio atravessa, na ordem em que um importa o outro NO TOPO:
+#: `insurer_dispatch_service` ← `corridor_playbooks` · `dispatch_router` ← o motor ·
+#: a bancada ← `acao_do_cerebro`. O resto do fio se importa TARDE (dentro da função).
+FIO_122 = (
+    "app.services.corridor_playbooks",
+    "app.services.insurer_dispatch_service",
+    "app.services.acao_do_cerebro",
+    "app.services.evals.bancada",
+    "app.services.o_grupo_so_o_que_importa",
+    "app.services.dispatch_router",
+    "app.tasks.dispatch_watchdog",
+)
+_NADA = object()
+
+
+def carregar_fio_coerente() -> dict:
+    """O fio importado UMA vez, inteiro e coerente entre si — e o `sys.modules` devolvido intacto.
+
+    📊 30/09 (bateria de 501e0ca, 72 falhas): isolados, os 89 testes da 122 passam; na suíte, 31
+    caem. Sentinela de `sys.modules` na suíte inteira: 7 arquivos coletados ANTES deste
+    (`test_o_formulario_da_hdi_bate_com_o_clique_humano` e os seus irmãos de carregador) gravam uma
+    CÓPIA do motor e dos playbooks sob o nome REAL, sem devolver. O teste segurava o motor do
+    pacote, o roteador estava amarrado (import de topo) à cópia: o `monkeypatch` caía num objeto
+    que o produto não chamava. Aqui o roteador, o motor, os playbooks, o cérebro e a bancada nascem
+    juntos; `fixar_fio` os põe no lugar a cada teste e o `monkeypatch` os tira no fim.
+    """
+    import importlib
+
+    antes = dict(sys.modules)
+    pais = {}
+    for nome in FIO_122:
+        pai, _, filho = nome.rpartition(".")
+        p = sys.modules.get(pai)
+        pais[nome] = (p, filho, getattr(p, filho, _NADA) if p is not None else _NADA)
+    try:
+        for nome in FIO_122:
+            sys.modules.pop(nome, None)
+        return {nome: importlib.import_module(nome) for nome in FIO_122}
+    finally:
+        # ⛔ Este carregamento não contamina ninguém: o que entrou do `app` sai, o que saiu volta.
+        #    (Biblioteca de terceiros fica: a numpy, por exemplo, não carrega duas vezes.)
+        for nome in [n for n in sys.modules if n not in antes and (n == "app" or n.startswith("app."))]:
+            novo = sys.modules.pop(nome)
+            pai, _, filho = nome.rpartition(".")
+            p = sys.modules.get(pai)
+            if p is not None and getattr(p, filho, None) is novo:
+                delattr(p, filho)
+        for nome in FIO_122:
+            if nome in antes:
+                sys.modules[nome] = antes[nome]
+            else:
+                sys.modules.pop(nome, None)
+            p, filho, attr = pais[nome]
+            if p is None:
+                continue
+            if attr is _NADA:
+                if hasattr(p, filho):
+                    delattr(p, filho)
+            else:
+                setattr(p, filho, attr)
+
+
+def fixar_fio(monkeypatch, fio: dict) -> None:
+    """Durante UM teste, `import x`, `from pacote import x` e o objeto do teste são o MESMO."""
+    for nome, mod in fio.items():
+        monkeypatch.setitem(sys.modules, nome, mod)
+        pai, _, filho = nome.rpartition(".")
+        p = sys.modules.get(pai)
+        if p is not None:
+            monkeypatch.setattr(p, filho, mod, raising=False)
+
+
+FIO = carregar_fio_coerente()
+CP = FIO["app.services.corridor_playbooks"]
+D = FIO["app.services.insurer_dispatch_service"]
+AC = FIO["app.services.acao_do_cerebro"]
+B = FIO["app.services.evals.bancada"]
+G = FIO["app.services.o_grupo_so_o_que_importa"]
+R = FIO["app.services.dispatch_router"]
+W = FIO["app.tasks.dispatch_watchdog"]
+
+
+@pytest.fixture(autouse=True)
+def _fio_fixo(monkeypatch):
+    fixar_fio(monkeypatch, FIO)
+    yield
 
 CORPUS = Path(RAIZ) / "tests" / "corpus" / "telas_reais"
 URA = "5511999990000"
@@ -185,7 +268,7 @@ class Ambiente:
 
 
 @pytest.fixture
-def amb(monkeypatch):
+def amb(monkeypatch, _fio_fixo):
     a = Ambiente()
 
     async def _redis():
