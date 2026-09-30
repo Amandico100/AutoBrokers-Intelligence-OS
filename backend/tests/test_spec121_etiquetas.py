@@ -15,7 +15,7 @@ do fator, e de mais nada.
 regra                         sessão real        antes              depois
 recarga de bateria (yelum)    86769bd5           socorro_mecanico   bateria
 tela da chave (yelum)         56bd78f7           guincho            chaveiro
-o aparelho vence o menu (hdi) 834cc238           eletricista        eletrodomesticos
+o aparelho pelo eletricista  834cc238           eletricista        (sem etiqueta) F3b
 exploração (hdi)              13379965           eletricista        (sem etiqueta)
 geladeira no texto (allianz)  213af941           (sem etiqueta)     eletrodomesticos
 rótulo genérico (allianz)     b2946306+b2bf40e7  ?conserto resid.   maquina_de_lavar
@@ -156,9 +156,23 @@ def _sessao_do_fogao(com_o_fogao: bool):
     return seq
 
 
-def test_o_fogao_pedido_pelo_menu_do_eletricista_sai_de_eletricista():
+def test_o_fogao_pedido_pelo_menu_do_eletricista_fica_sem_etiqueta():
+    """🔴 SPEC-121 F3b: nem `eletricista` (o pedido é um fogão) nem
+    `eletrodomesticos` (as telas são do caminho do ELETRICISTA, que o corredor
+    de eletrodoméstico nunca vê — 📊 3 órfãs falsas na régua da F3). A F3
+    etiquetava `eletrodomesticos`; a lição migra: o aparelho continua vencendo
+    o menu, e o que ele decide agora é tirar a etiqueta (decisão do gerente,
+    nota 65 × 55)."""
     assert _servico("hdi", "residencial", _sessao_do_fogao(True)) == (
-        "eletrodomesticos", "nivel-1b-resposta+aparelho")
+        None, "nivel-1b-resposta+aparelho")
+
+
+def test_o_motivo_do_aparelho_pelo_eletricista_e_escrito_no_indice():
+    pares = _pares(_sessao_do_fogao(True))
+    nivel = _servico("hdi", "residencial", _sessao_do_fogao(True))[1]
+    assert G.motivo_sem_etiqueta("hdi", pares, [], [], nivel=nivel) == G.MOTIVO_APARELHO
+    # CONTROLE: o mesmo nível sem o sufixo não dá esse motivo
+    assert G.motivo_sem_etiqueta("hdi", pares, [], [], nivel="nivel-1b-resposta")         != G.MOTIVO_APARELHO
 
 
 def test_CONTROLE_sem_o_aparelho_a_mesma_sessao_continua_eletricista():
@@ -229,9 +243,20 @@ def test_CONTROLE_sem_a_geladeira_a_sessao_de_fuga_continua_sem_etiqueta():
 # ─────────────────────────────────────────────────────────────────────────────
 # 6 · "CONSERTO RESIDENCIAL" — o nome do PACOTE não decide; o item decide
 # ─────────────────────────────────────────────────────────────────────────────
+# 📊 O resumo de `b2946306` (acervo de 29/09, mascarado; protocolo FICTÍCIO).
+# 🔴 SPEC-121 F3b: ele é o RESUMO de um pedido que JÁ EXISTIA ("Ver detalhes"), e
+#    consulta saiu do acervo (`Z.consulta_de_pedido_existente`). O texto fica
+#    escrito aqui — e as 8 ocorrências dele no acervo de 29/09 eram TODAS de
+#    consulta (`scratchpad/f3b/protelas.py`). A regra do rótulo genérico
+#    continua valendo para o classificador; no acervo de hoje, a consulta nem
+#    chega até ele.
+RESUMO_GENERICO = ("*RESUMO*\n\n*Protocolo 50000003\n*Serviço:* *CONSERTO RESIDENCIAL*;\n"
+                   "*Endereço:* {ENDERECO}\n*Tipo solicitação:* Agendado\n"
+                   "*Agendamento para:* Sexta-feira, {DATA}\n*Período:* 13:00 às 18:00 (tarde)")
+
+
 def _resumo_generico() -> str:
-    return next(t for t in _telas("allianz-residencial.jsonl", "b2946306")
-                if re.search(r"Servi[çc]o:\*? *\*?CONSERTO RESIDENCIAL", t))
+    return RESUMO_GENERICO
 
 
 def test_conserto_residencial_sem_item_continua_achado_declarado():

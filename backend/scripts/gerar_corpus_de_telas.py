@@ -154,6 +154,21 @@ DESTINO = os.path.join(RAIZ, "tests", "corpus", "telas_reais")
 #    qual a regua le o corpus — e ela e chamada uma vez por rota.
 PISO_POR_ROTA = 5
 
+# 🔴 SPEC-121 F3b · A SESSÃO SEM DESFECHO TAMBÉM É PROVA — do que FALTA.
+#    O piso de 5 conta TODAS as sessões da rota. Quando chegam sessões novas COM
+#    desfecho, elas ocupam a cota e expulsam as de diversidade — que são as que
+#    mostram as telas que o corredor ainda NÃO responde.
+#    📊 29/09, acervo regerado: `porto/auto/bateria` ganhou `9e043112` (de 29/09,
+#    com desfecho) e perdeu `4830574a` (jaccard 0,03 — a mais diferente, a única
+#    com a consultora e os amperes). O simulador subiu a rota de "tela órfã" (4)
+#    para ATENDE SOZINHO **só porque a prova das 4 órfãs saiu do acervo** — rota
+#    falsa em ATENDE SOZINHO, o pior erro da régua. Idem `590b5940` (máquina de
+#    lavar, "Informe somente números").
+#    A regra: além do piso, toda rota guarda até `PISO_DE_DIVERSIDADE` sessões
+#    SEM desfecho (as mais diferentes, pelo mesmo Jaccard). Nota 80 × subir o
+#    piso para 8 (55: mais bytes, e não garante) × aceitar a perda (30).
+PISO_DE_DIVERSIDADE = 2
+
 # 🔴 `None` = sessao COM DESFECHO **nunca** sai por teto. Um inteiro aqui
 #    reintroduz o defeito de proposito — e e assim que a mutacao do guarda
 #    `test_o_corpus_nao_joga_sessao_fora.py` prova que ele CONSEGUE ficar
@@ -272,6 +287,14 @@ MOTIVO_ASSUNTO = "escolheu no menu um assunto que a tabela marca None: %s"
 MOTIVO_DESCONHECIDO = "🔴 respondeu ao menu com um rótulo DESCONHECIDO: %s"
 # 🔴 SPEC-121 F3 — `PSV._exploracao`: ≥ 2 serviços no menu e a corretora saiu.
 MOTIVO_EXPLORACAO = "exploração: respondeu ao menu com 2+ serviços e saiu (sair)"
+# 🔴 SPEC-121 F3b · o atendimento só CONSULTOU um pedido que já existia ("Ver
+#    detalhes") e não escolheu serviço nenhum para abrir. Não é cegueira do
+#    classificador: não havia serviço pedido. (`Z.consulta_de_pedido_existente`)
+MOTIVO_CONSULTA = "consulta de pedido que já existia (Ver detalhes) — não abriu serviço"
+# 🔴 SPEC-121 F3b · o menu disse Eletricista e a corretora pediu um APARELHO
+#    (`PSV._o_aparelho_pelo_eletricista`): nem eletricista, nem eletrodoméstico —
+#    as telas são do caminho do eletricista e o pedido não é.
+MOTIVO_APARELHO = "pediu um APARELHO pelo menu do Eletricista — as telas são de outro caminho"
 
 
 def _rotulo_respondido(seguradora: str,
@@ -306,10 +329,21 @@ def _rotulo_respondido(seguradora: str,
 def motivo_sem_etiqueta(seguradora: str,
                         pares: List[Tuple[str, str]],
                         telas: List[str],
-                        eventos: List[Dict[str, Any]]) -> str:
-    """🔴 O motivo MEDIDO de a sessão não ter serviço. Nunca adjetivo."""
+                        eventos: List[Dict[str, Any]],
+                        consultou: bool = False,
+                        nivel: str = "") -> str:
+    """🔴 O motivo MEDIDO de a sessão não ter serviço. Nunca adjetivo.
+
+    ⚠️ `consultou` (SPEC-121 F3b) vem DEPOIS do rótulo respondido: quem consultou
+    e depois escolheu um assunto sem serviço tem esse assunto como motivo, que
+    diz mais. Vem ANTES da transferência: 📊 as consultas da Allianz terminam
+    quase todas em "Vou transferir seu caso", e "transferiu" esconderia que o
+    segurado só queria ver o pedido antigo.
+    """
     if PSV._exploracao(seguradora, pares):
         return MOTIVO_EXPLORACAO
+    if nivel.endswith("+aparelho"):
+        return MOTIVO_APARELHO
     fuga = PSV.CAMINHO_DE_FUGA.get(seguradora)
     if fuga:
         rx = _re.compile(fuga["tela"], _re.DOTALL | _re.IGNORECASE)
@@ -328,6 +362,8 @@ def motivo_sem_etiqueta(seguradora: str,
         rotulo, conhecido = respondido
         return ((MOTIVO_ASSUNTO if conhecido else MOTIVO_DESCONHECIDO)
                 % ("`%s`" % rotulo[:30]))
+    if consultou:
+        return MOTIVO_CONSULTA
     if Z.sessao_tem_fronteira(seguradora, eventos):
         return MOTIVO_TRANSFERIU
     if any(RX_LINK.search(t) for t in telas):
@@ -356,6 +392,7 @@ def escolher_sessoes(
     piso_por_rota: int = PISO_POR_ROTA,
     *,
     teto_de_desfecho: Optional[int] = TETO_DE_DESFECHO,
+    piso_de_diversidade: int = PISO_DE_DIVERSIDADE,
 ) -> Tuple[List[Any], List[str]]:
     """`[(sid, wa_ts, telas_norm, chegou_ao_fim, servico)]` -> `(escolhidas, notas)`.
 
@@ -421,7 +458,9 @@ def escolher_sessoes(
             notas.append("[%s] COM DESFECHO -> %s" % (rot, _curto(sid)))
 
         restantes = [c for c in grupo if c[0] not in cota]
-        while restantes and len(cota) < piso_por_rota:
+        diversas = 0
+        while restantes and (len(cota) < piso_por_rota
+                             or diversas < piso_de_diversidade):
             melhor, melhor_sim = None, 2.0
             for c in restantes:
                 sim = max((_jaccard(c[2], v) for v in vistas.values()), default=0.0)
@@ -432,6 +471,7 @@ def escolher_sessoes(
             cota.append(melhor[0])
             vistas[melhor[0]] = melhor[2]
             restantes.remove(melhor)
+            diversas += 1
             notas.append("[%s] diversidade (jaccard %.2f) -> %s"
                          % (rot, melhor_sim, _curto(melhor[0])))
 
@@ -547,12 +587,25 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False,
             #    O id do atendimento k ≥ 1 é `<sid8>+k` (📊 `8ad1d251+1`).
             for k, atendimento in enumerate(Z.atendimentos(ordenados, seg)):
                 id_do_atendimento = sid if k == 0 else f"{str(sid)[:8]}+{k}"
+                # 🔴 SPEC-121 F3b · a CONSULTA de um pedido que já existe sai
+                #    daqui, antes de tudo: nem vira tela do corpus, nem dá
+                #    etiqueta, nem conta como desfecho (`Z.consulta_de_pedido_
+                #    existente`). 📊 `8ad1d251+1`: sem isto, o RESUMO do pedido
+                #    ANTIGO fazia do atendimento um "desentupimento com
+                #    protocolo".
+                consulta = Z.consulta_de_pedido_existente([e for e, _z in atendimento], seg)
+                if consulta:
+                    contagem["CONSULTA_atendimentos"] += 1
+                    contagem["CONSULTA_telas_fora"] += sum(
+                        1 for i in consulta if atendimento[i][0].get("direction") == "in")
+                    atendimento = [p for i, p in enumerate(atendimento) if i not in consulta]
                 eventos_k = [e for e, _zona in atendimento]
                 pares = [(e.get("direction"), Z.norm_para_classificar(e.get("text") or ""))
                          for e in eventos_k]
                 saida = _um_atendimento(
                     seg, id_do_atendimento, atendimento, eventos_k, pares, pb_por_ramo,
-                    esq_dado, nomes_desta_sessao, contagem, rel)
+                    esq_dado, nomes_desta_sessao, contagem, rel,
+                    consultou=bool(consulta))
                 if saida is not None:
                     por_ramo[saida[0]].append(saida[1])
 
@@ -563,7 +616,7 @@ def gerar(seguradoras: List[str], *, dry_run: bool = False,
 
 
 def _um_atendimento(seg, sid, atendimento, ordenados, pares, pb_por_ramo,
-                    esq_dado, nomes_desta_sessao, contagem, rel):
+                    esq_dado, nomes_desta_sessao, contagem, rel, consultou=False):
     """PASSOS 0–3 para UM atendimento → `(ramo, candidata)` ou `None`.
 
     ⚠️ Era o corpo do laço por sessão até 29/09 (SPEC-121 F3); virou função para
@@ -688,7 +741,8 @@ def _um_atendimento(seg, sid, atendimento, ordenados, pares, pb_por_ramo,
             rel["com_etiqueta"].get(chave_sem, 0) + 1)
     else:
         motivo = motivo_sem_etiqueta(
-            seg, pares, [l["text"] for l in linhas], ordenados)
+            seg, pares, [l["text"] for l in linhas], ordenados, consultou=consultou,
+            nivel=nivel_srv)
         alvo = rel["sem_etiqueta"].setdefault(chave_sem, {})
         d = alvo.setdefault(motivo, {"sessoes": [], "com_desfecho": 0})
         d["sessoes"].append(_curto(sid))

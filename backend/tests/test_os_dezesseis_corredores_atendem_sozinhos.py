@@ -63,15 +63,65 @@ M = _carregar("_spec120_motor", MOTOR_PY)
 PB = sys.modules[M.get_playbook.__module__]
 
 
+#: 🔴 SPEC-121 F3b · A TELA DE UMA SESSÃO QUE SAIU DO ACERVO PELO PISO.
+#:    O acervo regerado em 29/09 não tem mais `590b5940` (allianz/máquina de
+#:    lavar): ela entrava por DIVERSIDADE, sem desfecho, e a cota da rota foi
+#:    ocupada por `8ad1d251+2` (a máquina de lavar do robô que recomeça, COM
+#:    desfecho) e por `c69826a2`, mais diferente pelo Jaccard (📊 INDICE.md do
+#:    acervo regerado). A tela é a do acervo versionado de 28/09, já mascarada —
+#:    o texto continua REAL (CLAUDE.md §9.4); só mudou de endereço. O guarda
+#:    `test_as_telas_guardadas_sao_so_de_quem_saiu_do_acervo` apaga esta lista no
+#:    dia em que ela voltar (§9.3: a verdade migra, não fica vencida).
+#:    ⚠️ `4830574a` (porto/bateria) chegou a sair também, e VOLTOU pelo
+#:    `PISO_DE_DIVERSIDADE` do gerador — ver lá por quê.
+#:    E `5e72e523` (allianz/encanador): as telas de data e período dela eram de
+#:    um REAGENDAMENTO do pedido que já existia ("Ver detalhes" → "Alterar
+#:    data/hora"), não de uma abertura — saíram com a CONSULTA
+#:    (`Z.consulta_de_pedido_existente`). A FORMA da tela é a mesma da abertura, e
+#:    é a forma que o passo responde; a de período é idêntica em 6 sessões do
+#:    acervo novo, a de data não tem gêmea exata (a lista de dias muda).
+TELAS_QUE_SAIRAM_DO_ACERVO = {
+    ("allianz-residencial", "590b5940"): ["Informe somente números."],
+    ("allianz-residencial", "5e72e523"): [
+        "Os agendamentos estão disponíveis de *segunda-feira* a *sexta-feira*, para os "
+        "próximos *7 dias*. Escolha qual data deseja agendar:\n\n*1 -* {DATA} (Sexta-feira)"
+        "\n*2 -* {DATA} (Segunda-feira)\n*3 -* {DATA} (Terça-feira)\n*4 -* {DATA} "
+        "(Quarta-feira)\n*5 -* {DATA} (Quinta-feira)\n*6 -* {DATA} (Sexta-feira)\n"
+        "*7 -* {DATA} (Terça-feira)",
+        "E quanto aos horários de agendamento, são por *períodos (manhã* - das 9:00 as "
+        "13:00 ou *tarde* - das 13:00 às 18:00).\n\nE caso o agendamento seja para o dia "
+        "seguinte, obrigatoriamente precisará ser no *período da tarde e se esse "
+        "agendamento estiver sendo feito no final de semana*, obrigatoriamente precisará "
+        "ser agendado no mínimo para *próximo dia útil a tarde*.\n\nSó lembrando que o "
+        "prestador poderá chegar *durante todo* o período agendado.\n\nEscolha qual "
+        "período:\n\n*1 - Manhã*, das 9:00 às 13:00\n*2 - Tarde*, das 13:00 às 18:00",
+    ],
+}
+
+
 def tela(arquivo: str, sessao: str, padrao: str) -> str:
-    """A tela REAL: a primeira linha do corpus daquela sessão que casa `padrao`."""
+    """A tela REAL: a primeira linha do corpus daquela sessão que casa `padrao`
+    (ou, para quem saiu do acervo pelo piso, a tela guardada acima)."""
     for linha in (CORPUS / f"{arquivo}.jsonl").read_text(encoding="utf-8").splitlines():
         if not linha.strip():
             continue
         x = json.loads(linha)
         if x["session_id"] == sessao and re.search(padrao, x["text"], re.IGNORECASE):
             return x["text"]
+    for texto in TELAS_QUE_SAIRAM_DO_ACERVO.get((arquivo, sessao), ()):
+        if re.search(padrao, texto, re.IGNORECASE):
+            return texto
     raise AssertionError(f"a tela /{padrao}/ saiu de {arquivo}.jsonl sessão {sessao}")
+
+
+def test_as_telas_guardadas_sao_so_de_quem_saiu_do_acervo():
+    """Se a sessão voltar ao acervo, a cópia guardada vira verdade vencida."""
+    for (arquivo, sessao), _telas in TELAS_QUE_SAIRAM_DO_ACERVO.items():
+        ids = {json.loads(l)["session_id"] for l in
+               (CORPUS / f"{arquivo}.jsonl").read_text(encoding="utf-8").splitlines()
+               if l.strip()}
+        assert sessao not in ids, (
+            f"{sessao} voltou a {arquivo}.jsonl — apague-a de TELAS_QUE_SAIRAM_DO_ACERVO")
 
 
 def _sessao(ref, slots=None, subservice="guincho", state="ura"):
@@ -427,7 +477,9 @@ def test_CONTROLE_a_escolha_do_servico_desconhecida_continua_indo_a_uma_pessoa()
 def test_CONTROLE_a_tela_dos_tres_ramos_continua_indo_a_uma_pessoa():
     """🔴 *"1-Residencial 2-Condomínio 3-Empresarial"* (allianz c6b63f95) sem o ramo
     da apólice: uma pessoa. Com a apólice de condomínio: uma pessoa também."""
-    texto = tela("allianz-residencial", "c6b63f95", r"qual seguro deseja utilizar")
+    # ⚠️ Era `c6b63f95`, que saiu do acervo regerado em 29/09 pelo piso (SPEC-121
+    #    F3b). A tela é IDÊNTICA, byte a byte, em `0591c1d1` (📊 e em mais 16).
+    texto = tela("allianz-residencial", "0591c1d1", r"qual seguro deseja utilizar")
     _saiu, s = responde(ALLIANZ_R, texto, {}, subservice="encanador")
     assert s["state"] == "needs_human" and s["reason"] == "ramo_indeterminado", s.get("reason")
     _saiu, s = responde(ALLIANZ_R, texto, {"qual_seguro_opcao": "Condomínio"},
@@ -607,6 +659,13 @@ def test_B2_a_rajada_do_preco_nao_passa_pelos_amperes():
 #: corredor (não só o da etiqueta). ⚠️ É o guarda que o juiz pediu: a mutação
 #: dele (âncora dos amperes alargada até "bateria") deu 2 falhas em 177. Aqui
 #: um passo que passa a casar UMA sessão a mais fica vermelho.
+#: 🔴 SPEC-121 F3b (acervo regerado em 29/09): `repique_somente_numeros` fica com
+#: ALCANCE VAZIO — `590b5940` saiu pelo piso (`TELAS_QUE_SAIRAM_DO_ACERVO`), e o
+#: teste dele segue com a tela guardada. Entram, com a MESMA tela das sessões que
+#: já estavam: `destino_digitado` ← `yelum-auto:159ccc43` ("Digite o endereço
+#: seguindo o exemplo") e `placa_nao_encontrada_tenta_cpf` ← `yelum-auto:a839a4cb`
+#: ("Não encontrei esta placa… Vamos tentar com o CPF") — sessões que entraram
+#: no acervo regerado (`scratchpad/f3b/alc2.py`).
 ALCANCE = {'amperes_da_bateria': ('porto-auto:4830574a',),
  'animal_de_estimacao': ('hdi-auto:ea61eb64', 'hdi-auto:fa2ceb6f'),
  'cambio_travado': ('hdi-auto:2548c9c7', 'hdi-auto:78b2de6f', 'yelum-auto:19d73270'),
@@ -616,6 +675,7 @@ ALCANCE = {'amperes_da_bateria': ('porto-auto:4830574a',),
  'destino_digitado': ('hdi-auto:2548c9c7',
                       'hdi-auto:4b2d0c2a',
                       'hdi-auto:83d2b9e3',
+                      'yelum-auto:159ccc43',
                       'yelum-auto:29ae4344',
                       'yelum-auto:705f915b',
                       'yelum-auto:9d2655e2',
@@ -665,10 +725,10 @@ ALCANCE = {'amperes_da_bateria': ('porto-auto:4830574a',),
  'placa_do_beneficio_residencial': ('allianz-residencial:0591c1d1',),
  'placa_e_modelo': ('porto-auto:4830574a',),
  'placa_nao_encontrada_familia': ('hdi-auto:4b2d0c2a', 'yelum-auto:7c841763'),
- 'placa_nao_encontrada_tenta_cpf': ('yelum-auto:29ae4344',),
+ 'placa_nao_encontrada_tenta_cpf': ('yelum-auto:29ae4344', 'yelum-auto:a839a4cb'),
  'pode_ligar_qualquer_azul': ('azul-auto:2f0cd86a',),
  'policia_no_local_pane': ('bradesco-auto:706df513', 'bradesco-auto:72af1ae1'),
- 'repique_somente_numeros': ('allianz-residencial:590b5940',),
+ 'repique_somente_numeros': (),
  'retomar_agendamento_porto': ('porto-auto:12203ed9',),
  'rodas_livres': ('hdi-auto:2548c9c7', 'hdi-auto:78b2de6f'),
  'servicos_disponiveis_aviso': ('hdi-residencial:61b96027',),

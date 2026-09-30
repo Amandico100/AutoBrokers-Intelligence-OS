@@ -216,6 +216,113 @@ def atendimentos(eventos_da_sessao: Iterable[Dict[str, Any]],
     return [p for p in partes if p]
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-121 F3b · CONSULTAR UM PEDIDO QUE JÁ EXISTE NÃO É ABRIR UM PEDIDO
+#
+# A Allianz, depois do CPF e do endereço, pergunta se o segurado quer ver o
+# pedido que ele JÁ TEM:
+#
+#     "Identifiquei que temos uma solicitação de serviço feita. O que deseja?
+#      *1 -* Ver detalhes  *2 -* Abrir novo atendimento"
+#
+# Quem responde "Ver detalhes" recebe o RESUMO do pedido ANTIGO — com o número
+# de protocolo dele:
+#
+#     "*RESUMO*  *Protocolo 50195469  *Serviço:* *DESENTUPIMENTO*; ..."
+#
+# ⛔ Isso NÃO é desfecho. O robô não abriu nada: leu o que alguém abriu antes.
+#    📊 29/09 (`scratchpad/f3b/consulta.py` sobre o acervo regerado pela F3): 26
+#    telas deste RESUMO em 25 atendimentos da Allianz (regex `^*RESUMO* *Protocolo`
+#    sobre allianz-auto/residencial), e o padrão-ouro `*Serviço:*` dele dava a
+#    ETIQUETA ao atendimento. No acervo de 28/09 já eram 16 telas em 15. Foi assim que
+#    `allianz/residencial/desentupimento` virou ATENDE SOZINHO pela consulta
+#    `8ad1d251+1` — rota que nunca abriu um pedido de desentupimento.
+#    ("acompanhar é outro outcome" — `servico_ja_aberto`, corridor_playbooks.)
+#
+# 📊 Onde a tela aparece (`scratchpad/f3b/ident.py`, 29/09, 688 sessões):
+#    30 vezes, TODAS na Allianz. Resposta "1" (Ver detalhes) 25 · "2" (Abrir
+#    novo) 4 · outra 1. Depois do "1" vêm a lista de pedidos, o RESUMO do pedido
+#    antigo e o menu de cancelar/remarcar — nunca uma tela de abertura.
+#
+# A JANELA DE CONSULTA:
+#   abre   a corretora responde "Ver detalhes" à tela de pedido existente
+#   fecha  a corretora escolhe "Abrir (um) novo atendimento" em qualquer menu
+#          — daí em diante é abertura de novo, e volta a contar — ou a URA
+#          anuncia a TRANSFERÊNCIA (`e_fronteira`): a fronteira é tela de
+#          tronco (a mesma frase em dezenas de sessões) e fica; o que vem
+#          depois já é zona HUMANO e nunca entrou no corpus
+#   dentro tudo sai do corpus E da classificação, MENOS a tela que OFERECE
+#          "Abrir (um) novo atendimento": ela é a PORTA por onde o corredor sai
+#          (📊 `servico_aberto_ver_ou_abrir` responde "2" a ela), e é caminho do
+#          corredor de abertura.
+#
+# ⚠️ Por que tira da CLASSIFICAÇÃO também, e não só do desfecho: com o RESUMO
+#    antigo nos pares, o padrão-ouro rotula o atendimento pelo serviço
+#    CONSULTADO, e as telas de abertura (CPF, endereço) entram numa rota que o
+#    atendimento nunca pediu. 📊 `3db870e0+2`: consultou um ENCANADOR e as telas
+#    do caminho pelo menu de AUTO entraram em `allianz/residencial/encanador`
+#    como órfãs (87 % → 68 % na régua da F3).
+# ═════════════════════════════════════════════════════════════════════════════
+_RX_PEDIDO_EXISTENTE = re.compile(
+    r"identifiquei que temos uma solicitac[a-z]{2,3} de servic[a-z]{1,2} feita")
+_RX_VER_DETALHES = re.compile(r"^ver detalhes$")
+_RX_ABRIR_NOVO = re.compile(r"abrir (?:um )?novo atendimento")
+_RX_OPCAO = re.compile(r"(?m)^\s*(\d{1,2})\s*[-–]\s*(.+?)\s*;?\s*$")
+
+
+def _rotulo_escolhido(tela_norm: str, resposta: str) -> str:
+    """O RÓTULO que a resposta escolheu na tela (`"1"` → `"ver detalhes"`).
+
+    Resposta que não é número volta normalizada — quem digita o rótulo escolheu
+    o rótulo.
+    """
+    r = norm_para_classificar(resposta or "").strip().rstrip(".;")
+    if re.fullmatch(r"\d{1,2}", r):
+        for m in _RX_OPCAO.finditer(tela_norm or ""):
+            if m.group(1) == r:
+                return m.group(2).strip().rstrip(";").strip()
+        return ""
+    return r
+
+
+def consulta_de_pedido_existente(eventos: List[Dict[str, Any]],
+                                 seguradora: Optional[str] = None) -> set:
+    """Os ÍNDICES de `eventos` (um atendimento, em ordem) que são CONSULTA.
+
+    Devolve `in` e `out` da janela (bloco acima), menos a tela-PORTA. Vazio
+    quando o atendimento não consultou nada — e aí o gerador faz exatamente o
+    que fazia antes.
+    """
+    dentro: set = set()
+    em_consulta = False
+    ultima_tela = ""
+    for i, e in enumerate(eventos):
+        texto = e.get("text") or ""
+        if e.get("direction") == "in":
+            if not texto.strip():
+                continue
+            n = norm_para_classificar(texto)
+            if em_consulta and seguradora and e_fronteira(seguradora, n):
+                em_consulta = False
+            if em_consulta and not _RX_ABRIR_NOVO.search(n):
+                dentro.add(i)
+            ultima_tela = n
+            continue
+        if e.get("direction") != "out" or not texto.strip():
+            continue
+        escolhido = _rotulo_escolhido(ultima_tela, texto)
+        if not em_consulta:
+            if (_RX_PEDIDO_EXISTENTE.search(ultima_tela)
+                    and _RX_VER_DETALHES.search(escolhido)):
+                em_consulta = True
+            continue
+        if _RX_ABRIR_NOVO.search(escolhido):
+            em_consulta = False
+            continue
+        dentro.add(i)
+    return dentro
+
+
 def sessao_tem_fronteira(seguradora: str, eventos) -> bool:
     """A URA anunciou a transferência em algum ponto?"""
     for e in eventos:

@@ -194,7 +194,8 @@ def test_sessao_SEM_desfecho_acima_do_piso_continua_fora():
     """🔴 A linha de controle que impede "aceitar tudo" de passar.
 
     Com `piso_por_rota=1`, cada rota fica com as suas sessões de desfecho **mais
-    UMA** por diversidade. Tudo o que sobrar de SEM desfecho tem de ficar fora —
+    até `PISO_DE_DIVERSIDADE`** por diversidade (era "mais UMA" até a SPEC-121
+    F3b, que passou a guardar a prova do que falta). Tudo o que sobrar de SEM desfecho tem de ficar fora —
     e o INDICE tem de dizer quantas.
     """
     achou_alguem_fora = False
@@ -369,8 +370,12 @@ def test_todo_motivo_do_indice_e_um_motivo_que_o_gerador_SABE_produzir():
     """🔴 CONTROLE contra motivo escrito à mão no índice: cada motivo listado
     tem de ser uma das constantes `MOTIVO_*` do gerador."""
     bloco = _indice().split("SEM ETIQUETA", 1)[1].split("## Linhas RECUSADAS", 1)[0]
+    # 🔴 SPEC-121 F3/F3b: exploração, consulta de pedido existente e aparelho
+    #    pedido pelo menu do eletricista são motivos que o gerador SABE produzir
+    #    desde 29/09 — faltavam aqui, e o índice regerado os escreve.
     conhecidos = [G.MOTIVO_FUGA, G.MOTIVO_TRANSFERIU, G.MOTIVO_LINK,
-                  G.MOTIVO_SEM_MENU,
+                  G.MOTIVO_SEM_MENU, G.MOTIVO_EXPLORACAO, G.MOTIVO_CONSULTA,
+                  G.MOTIVO_APARELHO,
                   G.MOTIVO_ASSUNTO.split("%s")[0].strip(),
                   G.MOTIVO_DESCONHECIDO.split("%s")[0].strip(),
                   "nenhuma sessão sem etiqueta"]
@@ -411,7 +416,12 @@ def test_a_sessao_declarada_SEM_ETIQUETA_esta_SEM_ETIQUETA_no_corpus():
         col = [c.strip() for c in l.strip("|").split("|")]
         if len(col) < 5:
             continue
-        for sid in re.findall(r"`([0-9a-f]{8})`", col[4]):
+        # 🔴 SPEC-121 F3b · o id de ATENDIMENTO (`8ad1d251+1`) também é conferido.
+        #    Desde a F3 a sessão é partida em atendimentos (o robô recomeça), e o
+        #    padrão antigo `[0-9a-f]{8}` pulava todo id com `+k` — a contagem caiu
+        #    de 41 para 39 sem nenhuma sessão ter deixado de concordar. Baixar o
+        #    piso seria aceitar a cegueira; a lição migra para o padrão.
+        for sid in re.findall(r"`([0-9a-f]{8}(?:\+\d+)?)`", col[4]):
             if sid not in servico_por_sessao:
                 continue   # sessão fora do corpus pelo piso — nada a conferir
             conferidas += 1

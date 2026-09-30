@@ -582,7 +582,14 @@ def test_a_frase_de_envio_da_hdi_aceita_as_duas_formas_medidas():
 #    cobertas pelos blocos ① e ②, tela por tela.
 PISO_DE_SESSOES_COM_ROTULO: Dict[str, int] = {
     "allianz-auto": 10,
-    "allianz-residencial": 21,
+    # 🔴 SPEC-121 F3b: era 21. 📊 No acervo de 28/09, 13 das 23 sessões com nível
+    #    1a em allianz-residencial tiravam a etiqueta do RESUMO de um pedido que JÁ
+    #    EXISTIA ("Ver detalhes" → "*Serviço:* ..." do chamado antigo) — padrão-ouro
+    #    lendo CONSULTA, o defeito que levou `desentupimento` a ATENDE SOZINHO.
+    #    A consulta saiu do acervo (`Z.consulta_de_pedido_existente`); sobram as
+    #    etiquetas de ABERTURA: 10 no acervo antigo, 13 no regerado em 29/09
+    #    (`scratchpad/f3b`, o laço deste teste sobre os dois arquivos).
+    "allianz-residencial": 13,
     "azul-auto": 9,
     "bradesco-auto": 7,      # 📊 era 0 antes da SPEC-119
     "hdi-auto": 9,           # 📊 era 7

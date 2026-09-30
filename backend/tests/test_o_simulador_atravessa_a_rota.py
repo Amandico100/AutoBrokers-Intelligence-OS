@@ -520,9 +520,18 @@ AS_25_DE_27_09 = frozenset({
 #    para as quais corredor nenhum tera' resposta — `tem_apresentacao_humana`
 #    devolve True e `e_fronteira` devolve False, que e' a fronteira de zona a
 #    consertar. Enquanto isso nao for feito, a baixa fica aqui, NOMEADA.
-BAIXAS_EXPLICADAS = frozenset({"porto/auto/bateria"})
+#
+# 📊 `yelum/auto/socorro_mecanico` saiu em 29/09/2026 (SPEC-121 F3, acervo regerado
+#    pela F3b): 179 telas -> SEM CORPUS. As 5 sessões que a punham em ATENDE
+#    SOZINHO (`86769bd5`, `ba475989`, `927d8cea`, `8ac461dc`, `935c4076`) eram
+#    RECARGA DE BATERIA — a corretora respondeu "Recarga de bateria" e a URA
+#    assinou "Socorro Mecânico". Etiquetadas `bateria` (teste
+#    `test_spec121_etiquetas`), elas levaram `yelum/auto/bateria` de "sem
+#    desfecho" a ATENDE SOZINHO. A rota não piorou: ela nunca teve uma conversa
+#    de socorro mecânico de verdade.
+BAIXAS_EXPLICADAS = frozenset({"porto/auto/bateria", "yelum/auto/socorro_mecanico"})
 
-# 📊 25 menos a baixa explicada. Nao e' numero escolhido: e' o que sobra.
+# 📊 25 menos as baixas explicadas. Nao e' numero escolhido: e' o que sobra.
 PISO_DO_PATAMAR = len(AS_25_DE_27_09 - BAIXAS_EXPLICADAS)
 
 

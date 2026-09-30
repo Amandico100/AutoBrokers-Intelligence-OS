@@ -623,10 +623,18 @@ def _o_pedido(seguradora: str, pares: List[Tuple[str, str]],
 #    uma abertura e três acompanhamentos.
 #
 # 🔴 A regra: etiqueta `eletricista` que NÃO veio da assinatura da seguradora
-#    (nível 1b ou 2) + a corretora NOMEOU um aparelho (`PADROES_DE_SERVICO_TEXTO
-#    ["eletrodomestico"]`, só `out`) → `eletrodomesticos`, se o corredor a tem.
-#    Eletricista é tomada, disjuntor, interruptor, bocal (D10 da SPEC-121);
-#    aparelho de linha branca é outro profissional.
+#    (nível 1b ou 2) + a corretora NOMEOU um aparelho (`_O_APARELHO`, só `out`)
+#    → SEM ETIQUETA, nível `<nível>+aparelho`. Eletricista é tomada, disjuntor,
+#    interruptor, bocal (D10 da SPEC-121); aparelho de linha branca é outro
+#    profissional — então `eletricista` é falso.
+# 🔴 SPEC-121 F3b · e `eletrodomesticos` TAMBÉM é falso, por isso sem etiqueta.
+#    A F3 etiquetava `eletrodomesticos` (nota 55). As telas destas sessões são
+#    do CAMINHO DO ELETRICISTA ("qual desses itens precisa de reparo", tomada,
+#    disjuntor) — o corredor de eletrodoméstico responde "Linha branca" no menu
+#    e NUNCA as vê. Com a etiqueta, entravam na rota como 📊 3 órfãs falsas
+#    (régua da F3, 29/09): o corredor certo reprovado por tela de outro caminho
+#    (CLAUDE.md §9.5, pergunta C). Sem etiqueta: nota 65, decisão do gerente
+#    da SPEC-121. O motivo vai ao INDICE (`G.MOTIVO_APARELHO`).
 # ⚠️ A assinatura vence: se a seguradora escreveu "Serviço: Eletricista", fica.
 # 🔴 CONTROLE: `315f0681` (yelum eletricista, "Problema elétrico" → tomada) não
 #    nomeia aparelho e continua `eletricista` — teste `test_spec121_etiquetas`.
@@ -635,16 +643,12 @@ _O_APARELHO = re.compile(
     re.IGNORECASE)
 
 
-def _o_aparelho_vence(servico: Optional[str], pares: List[Tuple[str, str]],
-                      playbook: Optional[Dict[str, Any]]) -> Optional[str]:
+def _o_aparelho_pelo_eletricista(servico: Optional[str],
+                                 pares: List[Tuple[str, str]]) -> bool:
+    """O menu disse `eletricista` e a corretora pediu um APARELHO? (bloco acima)"""
     if servico != "eletricista":
-        return None
-    if not any(d == "out" and _O_APARELHO.search(t or "") for d, t in pares):
-        return None
-    alvo = _canonizar("eletrodomestico", playbook)
-    if playbook is not None and alvo not in (playbook.get("subservices") or {}):
-        return None
-    return alvo
+        return False
+    return any(d == "out" and _O_APARELHO.search(t or "") for d, t in pares)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1056,7 +1060,7 @@ def servico_da_sessao(seguradora: str,
     NÍVEL 0   o PEDIDO numa tela da URA (`O_PEDIDO`)             SPEC-121 F3
     NÍVEL 1a  padrão-ouro · 1b resposta ao cardápio · 2 texto    `_cascata`
       + exploração (≥ 2 serviços no menu e `sair`) → sem etiqueta   SPEC-121 F3
-      + o aparelho nomeado vence o `eletricista` do menu            SPEC-121 F3
+      + o aparelho nomeado pelo `eletricista` do menu → sem etiqueta  SPEC-121 F3b
     ```
     """
     pedido = _o_pedido(seguradora, pares, playbook)
@@ -1067,9 +1071,8 @@ def servico_da_sessao(seguradora: str,
         return servico, nivel          # a assinatura da seguradora vence
     if servico and _exploracao(seguradora, pares):
         return None, "nivel-1b-exploracao"
-    fino = _o_aparelho_vence(servico, pares, playbook)
-    if fino:
-        return fino, nivel + "+aparelho"
+    if _o_aparelho_pelo_eletricista(servico, pares):
+        return None, nivel + "+aparelho"
     return servico, nivel
 
 
