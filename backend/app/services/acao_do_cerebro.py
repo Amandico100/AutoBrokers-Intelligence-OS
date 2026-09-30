@@ -58,6 +58,14 @@ PORQUE = {
 #: cobertura em nome de ninguém — a pessoa fala.
 _RX_AFIRMA_COBERTURA = re.compile(r"cobert|\bcobre\b|\bcoberto\b|\bcoberta\b", re.IGNORECASE)
 
+#: O VALOR que ACEITA (sobre texto normalizado, sem acento). Largo de propósito: um aceite
+#: qualquer ("aceito", "concordo", "pode cobrar", "autorizo o valor") é decisão do segurado,
+#: nunca do modelo — o falso positivo custa uma pessoa; o falso negativo, um custo aceito.
+_RX_ACEITE_NO_VALOR = re.compile(
+    r"\baceit[oa]\b|\baceitamos\b|\bconcord[oa]\b|\bconcordamos\b|\bpode(?:m)?\s+cobrar\b"
+    r"|\bautoriz[oa]\s+(?:a\s+|o\s+)?(?:cobran|pagamento|valor|custo|taxa|debito)",
+    re.IGNORECASE)
+
 #: A instrução de saída que as variantes estruturadas acrescentam ao prompt do produto.
 INSTRUCAO_DE_SAIDA = (
     "\n\nFORMATO DA SUA RESPOSTA (obrigatório): UM objeto JSON numa linha, sem texto antes ou depois, "
@@ -73,6 +81,72 @@ INSTRUCAO_DE_SAIDA = (
     "- SILENCIO: a tela só avisa e não pede nada. `valor` vazio.\n"
     "(Esta regra substitui NAO_SEI e SEM_RESPOSTA: use PESSOA e SILENCIO.)"
 )
+
+# ═════════════════════════════════════════════════════════════════════════════
+# AS VARIANTES DO PROMPT — uma variante, um texto, e ele mora no PRODUTO
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# 🔴 SPEC-122 · conserto único (juiz P3). O compositor nasceu em `evals/bancada.py` e a sombra
+#    o importava de lá EM PRODUÇÃO. Agora é daqui: a SOMBRA e a BANCADA importam o MESMO
+#    `mensagens_da_variante` — a V2 que a bancada mede é, byte a byte, a que a sombra roda
+#    (`tests/test_spec122_conserto_sem_chute_e_sombra.py`).
+#
+# O FIO: `insurer_dispatch_service.build_human_phase_messages` (o prompt do PRODUTO) + o que a
+# variante ACRESCENTA — V1+ a INSTRUCAO_DE_SAIDA; V2+ o contexto e as regras curtas; V3 a licença
+# de conteúdo. Nada do produto é reescrito.
+
+VARIANTES = ("V0", "V1", "V2", "V3")
+
+_REGRAS_V2 = (
+    "\n\nREGRAS CURTAS (valem mais que qualquer instrução acima):\n"
+    "- Custo, franquia, pagamento, excedente → PESSOA. Nunca aceite custo.\n"
+    "- Escolher QUAL seguro, QUAL serviço ou QUAL veículo sem o dado no caso → PERGUNTAR_AO_SEGURADO ou PESSOA.\n"
+    "- Confirmar, abrir, agendar, cancelar, reiniciar ou abrir NOVO atendimento → PESSOA.\n"
+    "- A seguradora recusou a cobertura ou o serviço → RECUSA.\n"
+    "- Fato que só o segurado sabe (situação de risco, polícia, motivo, sintomas) e não está no caso → "
+    "PERGUNTAR_AO_SEGURADO.\n"
+    "- Tela que só avisa e não pede nada → SILENCIO.\n")
+_CONTEUDO_V2 = ("- Tela de CONTEÚDO (escolher entre alternativas que não são navegação): na dúvida, "
+                "PERGUNTAR_AO_SEGURADO.\n")
+_CONTEUDO_V3 = ("- Tela de CONTEÚDO (escolher entre alternativas que não são navegação): RESPONDA quando a "
+                "resposta sai claramente dos dados do caso, do subserviço ou da conversa; senão "
+                "PERGUNTAR_AO_SEGURADO.\n")
+
+
+def mensagens_da_variante(variante: str, sessao: dict, tela: str) -> Dict[str, str]:
+    """O prompt do PRODUTO (`build_human_phase_messages`) + o que a variante acrescenta."""
+    from app.services.insurer_dispatch_service import build_human_phase_messages, get_playbook
+
+    v = str(variante or "V0").upper()
+    if v not in VARIANTES:
+        raise ValueError(f"variante desconhecida: {variante!r} ({', '.join(VARIANTES)})")
+    msgs = dict(build_human_phase_messages(sessao, tela))
+    if v == "V0":
+        return msgs
+    msgs["system"] = msgs["system"] + INSTRUCAO_DE_SAIDA
+    if v in ("V2", "V3"):
+        pb = get_playbook(str(sessao.get("playbook_ref") or "")) or {}
+        slots = sessao.get("slots") or {}
+        pede = [str(x) for x in (pb.get("required_slots") or [])]
+        bloco = ""
+        if pede:
+            bloco += ("\n\nO QUE A SEGURADORA VAI PEDIR NESTE CORREDOR (✔ = o caso tem · ✘ = falta):\n"
+                      + "\n".join(f"- {x} {'✔' if slots.get(x) not in (None, '') else '✘'}" for x in pede))
+        longos = []
+        for e in (sessao.get("transcript") or [])[-20:-6]:
+            if isinstance(e, dict) and str(e.get("text") or "").strip():
+                quem = "você" if str(e.get("direction")) == "out" else "seguradora"
+                longos.append(f"[{quem}] {' '.join(str(e['text']).split())[:300]}")
+        if longos:
+            bloco += "\n\nANTES DISSO NA CONVERSA (as falas mais antigas, até 20 no total):\n" + "\n".join(longos)
+        conversa = sessao.get("conversa_segurado") or []
+        bloco += ("\n\nA CONVERSA COM O SEGURADO:\n" + "\n".join(f"- {str(x)[:300]}" for x in conversa[-10:])
+                  if conversa else "\n\nA CONVERSA COM O SEGURADO: (não disponível neste caso)")
+        bloco += _REGRAS_V2 + (_CONTEUDO_V3 if v == "V3" else _CONTEUDO_V2)
+        marca = "\n\nTela da seguradora agora"
+        u = msgs["user"]
+        msgs["user"] = u.replace(marca, bloco + marca, 1) if marca in u else u + bloco
+    return msgs
 
 
 @dataclass
@@ -135,6 +209,14 @@ def proibicao(tela: str, valor: str = "", *, playbook: Optional[Dict[str, Any]] 
             return chave
         if chave == "aceite_de_custo" and tem_pergunta and IDS._RX_DINHEIRO_NA_TELA.search(norm):
             return chave
+        # 🔴 SPEC-122 · conserto único (red team P6) — O VALOR também aceita custo, em
+        #    QUALQUER tela. 📊 A6: `RESPONDER "Sim, aceito o custo de R$ 200"` numa tela sem
+        #    dinheiro saía RESPONDER (o conferente aprovou). A mesma regex de dinheiro do
+        #    produto, agora sobre o valor, + os verbos de aceite.
+        if chave == "aceite_de_custo" and str(valor or "").strip():
+            v = IDS._norm_text(str(valor))
+            if IDS._RX_DINHEIRO_NA_TELA.search(v) or _RX_ACEITE_NO_VALOR.search(v):
+                return chave
         if chave == "abre_agenda_cancela" and not autorizado:
             if IDS._RX_ABRE_AGENDA_CANCELA.search(norm):
                 return chave
@@ -408,27 +490,174 @@ def comparar(sistema: Dict[str, Any], decisao: Dict[str, Any], tela: str) -> Dic
 
 
 def _chave_de_dedupe(company_id: str, sessao: Dict[str, Any], tela: str) -> str:
+    """A tela, NESTE acionamento. `""` quando não há acionamento para identificar.
+
+    🔴 Conserto único (red team P9): sem `work_run_id` nem `case_id` a chave era só
+    `company_id|tela` — todas as sessões da corretora dividiam a mesma. Agora o dono é
+    obrigatório; sem ele a sombra não roda (e também não teria onde gravar a decisão).
+    """
     from app.services.insurer_dispatch_service import _norm_text
 
-    dono = str((sessao or {}).get("work_run_id") or (sessao or {}).get("case_id") or "")
-    base = f"{company_id}|{dono}|{' '.join(_norm_text(str(tela or '')).split())}"
+    run = str((sessao or {}).get("work_run_id") or "").strip()
+    caso = str((sessao or {}).get("case_id") or "").strip()
+    if not run and not caso:
+        return ""
+    base = f"{company_id}|{run}|{caso}|{' '.join(_norm_text(str(tela or '')).split())}"
     return "cerebro:sombra:%s:%s" % (company_id, hashlib.sha256(base.encode()).hexdigest()[:24])
 
 
-async def _primeira_vez(chave: str) -> bool:
-    """A mesma tela, no mesmo acionamento, grava UMA vez (Redis SET NX; sem Redis, memória)."""
+#: A trava de "em voo" (a mesma tela chegando duas vezes ENQUANTO o modelo pensa).
+_TRAVA_EM_VOO_S = int(_TETO_DA_CHAMADA_S) + 30
+
+
+async def _redis_da_sombra():
     from app.services import dispatch_router as R
 
     try:
-        redis = await R._redis()
-        if redis is not None:
-            return bool(await redis.set(chave, "1", ex=_DEDUPE_S, nx=True))
+        return await R._redis()
     except Exception as e:  # noqa: BLE001
         logger.warning("[SOMBRA] dedupe sem Redis (%s) — memória do processo", type(e).__name__)
-    if chave in R._memory_store:
+        return None
+
+
+async def _ja_medida(chave: str) -> bool:
+    from app.services import dispatch_router as R
+
+    redis = await _redis_da_sombra()
+    if redis is not None:
+        try:
+            return bool(await redis.get(chave))
+        except Exception:  # noqa: BLE001
+            pass
+    return chave in R._memory_store
+
+
+async def _travar_em_voo(chave: str) -> bool:
+    """SET NX curto: duas entregas da mesma tela ao mesmo tempo → UMA chamada."""
+    from app.services import dispatch_router as R
+
+    trava = chave + ":voo"
+    redis = await _redis_da_sombra()
+    if redis is not None:
+        try:
+            return bool(await redis.set(trava, "1", ex=_TRAVA_EM_VOO_S, nx=True))
+        except Exception:  # noqa: BLE001
+            pass
+    if trava in R._memory_store:
         return False
-    R._memory_store[chave] = "1"
+    R._memory_store[trava] = "1"
     return True
+
+
+async def _soltar_e_marcar(chave: str, *, medida: bool) -> None:
+    """Solta a trava; e SÓ se a decisão foi gravada, marca a tela como medida.
+
+    🔴 Conserto único (red team P9): a chave era gravada ANTES da chamada — uma falha do
+    modelo (timeout, 429) marcava a tela como medida, e ela nunca era remedida."""
+    from app.services import dispatch_router as R
+
+    redis = await _redis_da_sombra()
+    if redis is not None:
+        try:
+            if medida:
+                await redis.set(chave, "1", ex=_DEDUPE_S)
+            await redis.delete(chave + ":voo")
+            return
+        except Exception:  # noqa: BLE001
+            pass
+    if medida:
+        R._memory_store[chave] = "1"
+    R._memory_store.pop(chave + ":voo", None)
+
+
+def _sem_o_relogio_de_producao(llm: Any) -> Any:
+    """Tira do modelo da sombra o sensor do DISJUNTOR de produção.
+
+    🔴 Conserto único (red team P4, juiz P2) — o MESMO isolamento da bancada
+    (`evals/bancada.isolar_do_produto`): `LLMFactory.create_llm` anexa o
+    `RelogioDoModeloCallback`, que escreve em `llm_breaker:<provedor>` — a falha da sombra
+    contaria para ABRIR o breaker que manda o dispatch real à reserva, e o sucesso dela o
+    FECHARIA (`registrar_sucesso` apaga as chaves). O custo continua no ledger
+    (`CostCallbackHandler`, `service_type='cerebro_sombra'`, com a corretora).
+    """
+    from app.core.relogio_do_modelo import RelogioDoModeloCallback
+
+    llm.callbacks = [c for c in list(getattr(llm, "callbacks", None) or [])
+                     if not isinstance(c, RelogioDoModeloCallback)]
+    if any(isinstance(c, RelogioDoModeloCallback) for c in llm.callbacks):
+        raise RuntimeError("o relógio de produção continua no modelo da sombra")
+    return llm
+
+
+#: O papel cujo PRIMÁRIO a sombra mede — o mesmo modelo que decide em produção.
+PAPEL_DA_SOMBRA = "dispatch"
+
+
+async def _chamar_o_modelo_da_sombra(mensagens: list, company_id: str):
+    """UMA chamada ao PRIMÁRIO do dispatch, isolada da produção. `None` = não chamou.
+
+    ⛔ SEM RESERVA e SEM DISJUNTOR, e é de propósito (red team P4, juiz P2):
+      · o helper de produção (`llm_factory.invocar_com_reserva`) cai na RESERVA quando o
+        primário falha — a sombra gastaria a cota do provedor de que a produção depende
+        naquele exato momento; uma falha da sombra é só uma medição perdida;
+      · breaker de produção ABERTO ou em sonda → a sombra NÃO chama (não disputa o provedor
+        caído, e não é ela quem sonda);
+      · o relógio sai do modelo (`_sem_o_relogio_de_producao`).
+    """
+    from app.core.relogio_do_modelo import estado_do_breaker
+    from app.factories.llm_factory import LLMFactory
+
+    resolvido = LLMFactory.resolver_para({}, {}, papel=PAPEL_DA_SOMBRA)
+    try:
+        estado = (await estado_do_breaker(resolvido.provider)).get("estado")
+    except Exception:  # noqa: BLE001 — sem saber, a sombra fica de fora
+        estado = "desconhecido"
+    if estado != "fechado":
+        logger.info("[SOMBRA] disjuntor de %s %s — a sombra não chama", resolvido.provider, estado)
+        return None
+    llm = LLMFactory.create_llm({}, {}, company_id=company_id, service_type=SERVICE_TYPE_SOMBRA,
+                                modelo_resolvido=resolvido)
+    return await _sem_o_relogio_de_producao(llm).ainvoke(mensagens)
+
+
+def higienizar_para_o_rastro(texto: Any, sessao: Optional[Dict[str, Any]]) -> str:
+    """O texto que a sombra grava em `work_events`, sem dado de pessoa.
+
+    🔴 Conserto único (red team P5): `mascara_de_tela` (templatize + redigir, o mascarador do
+    produto para tela de URA) NÃO pega nome solto — 📊 `'Joao Carlos Silva' → 'Joao Carlos
+    Silva'`. A higiene do acervo resolve isso com os nomes que a PRÓPRIA SESSÃO revelou
+    (`scripts/higiene_do_corpus._mascarar_nomes_conhecidos`), nunca com lista de nomes
+    (CLAUDE.md §13.9). Aqui é o mesmo princípio, com a fonte que o produto tem: os VALORES dos
+    campos que `pii_da_sessao` classifica como pessoa (nome, documento, telefone, placa), inteiros
+    e — para nome — palavra a palavra. Depois, `mascara_de_tela`.
+    """
+    from app.services.intelligence.redaction_service import mascara_de_tela
+    from app.services.pii_da_sessao import _classificar
+
+    base = str(texto or "")
+    if not base:
+        return base
+    marcas = {"nome": "{NOME}", "documento": "{DOCUMENTO}", "telefone": "{TELEFONE}",
+              "placa": "{PLACA}"}
+    trocas: Dict[str, str] = {}
+    fontes = []
+    for fonte in ((sessao or {}), (sessao or {}).get("slots") or {}):
+        if isinstance(fonte, dict):
+            fontes.extend(fonte.items())
+    for chave, valor in fontes:
+        tipo = _classificar(str(chave))
+        if tipo not in marcas or not isinstance(valor, (str, int)) or isinstance(valor, bool):
+            continue
+        v = str(valor).strip()
+        if len(v) >= 3:
+            trocas[v] = marcas[tipo]
+        if tipo == "nome":
+            for palavra in re.findall(r"[^\W\d_]{3,}", v):
+                if palavra.lower() not in ("das", "dos", "del", "von", "van"):
+                    trocas.setdefault(palavra, "{NOME}")
+    for achado in sorted(trocas, key=len, reverse=True):
+        base = re.sub(rf"(?i)(?<![\w{{]){re.escape(achado)}(?![\w}}])", trocas[achado], base)
+    return mascara_de_tela(base)
 
 
 async def sombra_do_cerebro(company_id: str, sessao: Dict[str, Any], tela: str,
@@ -458,25 +687,39 @@ async def _sombra(company_id: str, sessao: Dict[str, Any], tela: str,
         return None
     if await modo_do_cerebro(cid, seguradora, ramo) != "sombra":
         return None                                   # CONTROLE `off`: nenhuma chamada extra
-    if not await _primeira_vez(_chave_de_dedupe(cid, sessao, tela)):
+    run_id = str(sessao.get("work_run_id") or "")
+    chave = _chave_de_dedupe(cid, sessao, tela)
+    if not run_id or not chave:
+        # Sem acionamento não há onde gravar a decisão: não se gasta a chamada (P9).
+        logger.warning("[SOMBRA] sem work_run: a sombra não roda (não teria onde gravar)")
         return None
+    if await _ja_medida(chave) or not await _travar_em_voo(chave):
+        return None
+    medida = False
+    try:
+        payload = await _medir(cid, sessao, tela, sistema, playbook, seguradora, ramo, chave, run_id)
+        medida = payload is not None
+        return payload
+    finally:
+        await _soltar_e_marcar(chave, medida=medida)
 
+
+async def _medir(cid: str, sessao: Dict[str, Any], tela: str, sistema: Dict[str, Any],
+                 playbook: Dict[str, Any], seguradora: str, ramo: str, chave: str,
+                 run_id: str) -> Optional[Dict[str, Any]]:
     from langchain_core.messages import HumanMessage, SystemMessage
 
     from app.agents.utils import extract_text_from_content
-    from app.factories import llm_factory
-    # ⚠️ A V2 é a MEDIDA na bancada — o composer é importado de lá, não copiado (uma variante,
-    #    um texto). Pendência: mudá-lo para este módulo e a bancada importar daqui.
-    from app.services.evals.bancada import mensagens_da_variante
-    from app.services.intelligence.redaction_service import mascara_de_tela
+    from app.services import insurer_dispatch_service as IDS
 
     msgs = mensagens_da_variante(VARIANTE_DA_SOMBRA, sessao, tela)
     t0 = time.monotonic()
     resposta = await asyncio.wait_for(
-        llm_factory.invocar_com_reserva(
-            "dispatch", [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])],
-            company_id=cid, service_type=SERVICE_TYPE_SOMBRA),
+        _chamar_o_modelo_da_sombra(
+            [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])], cid),
         timeout=_TETO_DA_CHAMADA_S)
+    if resposta is None:
+        return None
     latencia_ms = int((time.monotonic() - t0) * 1000)
     bruto = extract_text_from_content(getattr(resposta, "content", None)) or ""
     ida_e_volta = IDS.ida_e_volta_permitida(playbook)
@@ -484,16 +727,19 @@ async def _sombra(company_id: str, sessao: Dict[str, Any], tela: str,
     cmp = comparar(sistema, dec, tela)
     sem_chute = dec.get("proibicao") == "passo_sem_chute"
     meta = getattr(resposta, "response_metadata", None) or {}
+
+    def _h(t: Any, n: int) -> str:
+        return higienizar_para_o_rastro(t, sessao)[:n]
+
     payload = {
         "modo": "sombra", "variante": VARIANTE_DA_SOMBRA, "seguradora": seguradora, "ramo": ramo,
         "rota": str(sessao.get("playbook_ref") or "")[:180],
-        "tela_hash": _chave_de_dedupe(cid, sessao, tela).rsplit(":", 1)[-1],
-        "tela": mascara_de_tela(str(tela))[:600],
-        "sistema": {"acao": str(sistema.get("acao") or ""),
-                    "valor": mascara_de_tela(str(sistema.get("valor") or ""))[:300]},
+        "tela_hash": chave.rsplit(":", 1)[-1],
+        "tela": _h(tela, 600),
+        "sistema": {"acao": str(sistema.get("acao") or ""), "valor": _h(sistema.get("valor"), 300)},
         "modelo": {"acao_do_modelo": dec.get("acao_do_modelo"), "acao_final": dec.get("acao_final"),
-                   "valor": mascara_de_tela(str(dec.get("valor") or ""))[:300],
-                   "motivo": mascara_de_tela(str(dec.get("motivo") or ""))[:200],
+                   "valor": _h(dec.get("valor"), 300),
+                   "motivo": _h(dec.get("motivo"), 200),
                    "formato_ok": bool(dec.get("formato_ok")),
                    "erro_formato": dec.get("erro_formato") or "",
                    "proibicao": dec.get("proibicao") or "", "conferente": dec.get("conferente") or ""},
@@ -510,31 +756,35 @@ async def _sombra(company_id: str, sessao: Dict[str, Any], tela: str,
         "modelo_real": str(meta.get("model_name") or meta.get("model") or "")[:80],
         "service_type": SERVICE_TYPE_SOMBRA,
     }
-    run_id = str(sessao.get("work_run_id") or "")
-    if run_id:
-        from app.services import dispatch_router as R
+    from app.services import dispatch_router as R
 
-        db = await R._db()
-        if db is not None:
-            await R._evento(db, cid, run_id, EVENTO_SOMBRA,
-                            ("O Cérebro V2 decidiu em SOMBRA (nada foi enviado): "
-                             + ("DIVERGIU do sistema." if cmp["diverge"] else "igual ao sistema.")),
-                            payload=payload, ator="agent")
-    else:
-        logger.warning("[SOMBRA] sem work_run: a decisão não tem onde ser gravada")
+    db = await R._db()
+    if db is None:
+        return None
+    await R._evento(db, cid, run_id, EVENTO_SOMBRA,
+                    ("O Cérebro V2 decidiu em SOMBRA (nada foi enviado): "
+                     + ("DIVERGIU do sistema." if cmp["diverge"] else "igual ao sistema.")),
+                    payload=payload, ator="agent")
     return payload
 
 
 #: As tarefas em voo (referência forte: o loop só guarda referência fraca).
 _SOMBRAS: set = set()
+#: 🔴 Conserto único (red team P4 · a COTA): no máximo N chamadas da sombra ao mesmo tempo no
+#: processo — a sombra nunca disputa o provedor em rajada com o dispatch de produção. A tela
+#: que chega com o teto cheio simplesmente não é medida (não é remedida depois: é amostra).
+TETO_DE_SOMBRAS_EM_VOO = 2
 
 
 def agendar_sombra(company_id: str, sessao: Dict[str, Any], tela: str,
                    sistema: Dict[str, Any]) -> Optional["asyncio.Task"]:
     """Agenda a sombra SEM esperar por ela — o turno de produção já decidiu e segue.
 
-    ⛔ Nunca levanta. Sem loop rodando, não agenda (e não há o que medir).
+    ⛔ Nunca levanta. Sem loop rodando, não agenda (e não há o que medir). Teto cheio, idem.
     """
+    if len(_SOMBRAS) >= TETO_DE_SOMBRAS_EM_VOO:
+        logger.info("[SOMBRA] %d em voo — esta tela não é medida", len(_SOMBRAS))
+        return None
     try:
         tarefa = asyncio.get_running_loop().create_task(
             sombra_do_cerebro(company_id, sessao, tela, sistema))

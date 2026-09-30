@@ -27,6 +27,11 @@ import types
 from pathlib import Path
 
 import pytest
+from typing import Any
+
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
@@ -70,8 +75,12 @@ class _Redis:
         self.d[k] = v
         return True
 
-    async def delete(self, k):
-        self.d.pop(k, None)
+    async def delete(self, *ks):
+        for k in ks:
+            self.d.pop(k, None)
+
+    async def exists(self, k):
+        return 1 if k in self.d else 0
 
     async def lpop(self, k):
         return None
@@ -127,12 +136,41 @@ class _Wa:
         self.amb.wa.append((fone, texto))
 
 
+class _ModeloDuble(BaseChatModel):
+    """O cliente do provedor, dublado. Registra QUEM chamou (papel, ledger, corretora) e se o
+    RELÓGIO do disjuntor de produção estava anexado quando a chamada saiu."""
+
+    amb: Any = None
+    papel: str = ""
+
+    @property
+    def _llm_type(self) -> str:
+        return "duble"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kw):
+        from app.core.callbacks.cost_callback import CostCallbackHandler
+        from app.core.relogio_do_modelo import RelogioDoModeloCallback
+
+        cbs = list(self.callbacks or [])
+        custo = [c for c in cbs if isinstance(c, CostCallbackHandler)]
+        self.amb.chamadas_ao_modelo.append({
+            "papel": self.papel, "company_id": custo[0].company_id if custo else None,
+            "service_type": custo[0].service_type if custo else None,
+            "relogio": any(isinstance(c, RelogioDoModeloCallback) for c in cbs),
+            "system": messages[0].content, "user": messages[1].content})
+        saida = self.amb.saida_do_modelo
+        if isinstance(saida, BaseException):
+            raise saida
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(
+            content=str(saida or ""), response_metadata={"model_name": "dublê"}))])
+
+
 class Ambiente:
     def __init__(self):
         self.redis = _Redis()
         self.eventos, self.enviadas, self.wa, self.grupo = [], [], [], []
         self.chaves, self.banco_vaza = [], False
-        self.chamadas_ao_modelo = []
+        self.chamadas_ao_modelo, self.chamadas_de_producao = [], []
         self.saida_do_modelo = '{"acao": "RESPONDER", "valor": "1", "motivo": "dublê"}'
 
     # os dois canais que o webhook entrega ao roteador
@@ -163,14 +201,16 @@ def amb(monkeypatch):
     async def _destino(company_id):
         return {"destino": "120363000000000000@g.us", "fonte": "teste", "recusa": ""}
 
-    async def _invocar(papel, mensagens, *, company_id=None, agent_id=None, service_type=None,
-                       classe_de_dado=None):
-        # 🔴 A BORDA DO MODELO: nada sai da máquina. Guarda QUEM pediu, com que papel e ledger.
-        a.chamadas_ao_modelo.append({"papel": papel, "company_id": company_id,
-                                     "service_type": service_type,
-                                     "system": mensagens[0].content, "user": mensagens[1].content})
-        return types.SimpleNamespace(content=a.saida_do_modelo,
-                                     response_metadata={"model_name": "dublê"})
+    async def _invocar_de_producao(papel, mensagens, **kw):
+        # O helper de PRODUÇÃO (com reserva). ⛔ A sombra não pode passar por aqui (conserto
+        # único, red team P4): se passar, a chamada fica registrada e o teste a vê.
+        a.chamadas_de_producao.append({"papel": papel, **kw})
+        return types.SimpleNamespace(content=a.saida_do_modelo, response_metadata={})
+
+    def _construir(resolvido, api_key, *, max_tokens, temperature, callbacks):
+        # 🔴 A BORDA DO MODELO é o CLIENTE do provedor: `create_llm` roda de verdade (resolvedor,
+        #    ledger, relógio anexado) e só o que falaria com a rede é o dublê.
+        return _ModeloDuble(amb=a, papel=resolvido.papel, callbacks=list(callbacks or []))
 
     import app.core.database as _core_db
     import app.core.redis as _core_redis
@@ -182,7 +222,9 @@ def amb(monkeypatch):
     monkeypatch.setattr(R, "_db", _db)
     monkeypatch.setattr(R, "resolver_destino_de_suporte", _destino)
     monkeypatch.setattr(G, "enviar_ao_grupo", _porta)
-    monkeypatch.setattr(llm_factory, "invocar_com_reserva", _invocar)
+    monkeypatch.setattr(llm_factory, "invocar_com_reserva", _invocar_de_producao)
+    monkeypatch.setattr(llm_factory.LLMFactory, "construir", staticmethod(_construir))
+    monkeypatch.setattr(llm_factory.LLMFactory, "chave_para", staticmethod(lambda *x, **k: "chave-duble"))
     ws = types.ModuleType("app.services.whatsapp_service")
     ws.get_whatsapp_service = lambda: _Wa(a)
     monkeypatch.setitem(sys.modules, "app.services.whatsapp_service", ws)
@@ -435,7 +477,10 @@ def test_o_fio_do_sem_chute_hdi_pergunta_com_as_opcoes_e_a_resposta_vira_a_opcao
     esp = s["esperando_do_segurado"]
     assert esp["sem_chute"] is True and esp["slot"] == "situacao_risco_opcao" and esp["passo"] == "situacao_risco"
     [pergunta] = _ao_cliente(amb)
-    assert "rua está escura ou deserta" in pergunta and "2 - Via com pouco movimento" in pergunta
+    # A pergunta é a do SEGURADO (2ª pessoa, `SEM_CHUTE_PERGUNTAVEL`), e as opções são as de
+    # CONTEÚDO da tela: "Voltar" não é resposta de segurado (conserto único, red team B1).
+    assert "em qual destas situações está o lugar onde você está agora" in pergunta
+    assert "2 - Via com pouco movimento" in pergunta and "Voltar" not in pergunta
     assert _a_seguradora(amb) == [] and amb.grupo == [] and cerebro.chamadas == 0
     assert s["falta_para_a_ura"]["sem_chute"] is True
     # a resposta do segurado — o NÚMERO da opção
@@ -544,7 +589,12 @@ def test_situacao_de_risco_sai_da_resposta_do_segurado_a_local_situacao():
         return slots.get("situacao_risco_opcao")
     assert deriva(local_atual="Rua das Flores 10", local_situacao="escuro ou mal iluminado") == "Via com pouca iluminação"
     assert deriva(local_atual="Rua das Flores 10", local_situacao="pouca circulação de pessoas") == "Via com pouco movimento"
-    assert deriva(local_atual="Rua das Flores 10", local_situacao="local seguro") == "Nenhuma das anteriores"
+    # 🔴 CONSERTO ÚNICO (juiz B1) — a verdade mudou (§9.3): o "local seguro" do PORTÃO não
+    #    responde "Nenhuma das anteriores" (a pergunta dele não cobre Rodovia nem Alagamento).
+    #    A tela vai ao `sem_chute`, que pergunta com as opções. O relato do segurado continua:
+    assert deriva(local_atual="Rua das Flores 10", local_situacao="local seguro") is None
+    assert deriva(local_atual="Rua das Flores 10",
+                  problema_descricao="estou num lugar seguro, bem iluminado") == "Nenhuma das anteriores"
     # CONTROLE: o veto da rodovia continua valendo — "seguro" no acostamento não vira "nenhuma"
     assert deriva(local_atual="Rodovia dos Bandeirantes km 42", local_situacao="local seguro") is None
     # CONTROLE: sem resposta, sem chute

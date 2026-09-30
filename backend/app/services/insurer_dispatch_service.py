@@ -744,6 +744,24 @@ def pode_reentrar_em_fase_humana(session: Dict[str, Any], tela: str, seguradora:
     return qf.e_transferencia_para_pessoa(seguradora, tela) or qf.uma_pessoa_se_apresentou(seguradora, tela)
 
 
+#: 🔴 SPEC-122 · conserto único (juiz B1) — O ENDEREÇO É DE RODOVIA? Sobre texto JÁ
+#: normalizado (`corridor_playbooks._norm`: minúsculo, sem acento). 📊 O endereço real do
+#: caso `cer-T-sem_chute-hdi-074` era "BR 282, sentido Florianopolis": nenhuma das
+#: palavras antigas ("km ", "rodovia", "acostamento", "br-") o via. Federal (BR 282,
+#: BR-101), estadual (SC-401, SP 330 — sigla de UF + 2/3 dígitos), "rodovia", "estrada",
+#: "km". ⚠️ Largo DE PROPÓSITO: ele só VETA a conclusão de segurança — um falso positivo
+#: ("ap 101") custa uma pergunta ao segurado; um falso negativo nega "Rodovia" por ele.
+_RX_RODOVIA_NO_ENDERECO = re.compile(
+    r"\bbr\s*-?\s*\d{2,3}\b"
+    r"|\b(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)"
+    r"\s*-?\s*\d{2,3}\b"
+    r"|\brodovi|\bestrada\b|\bkm\b|\bkm\d|acostamento|pedagi")
+
+
+def _parece_rodovia(texto_normalizado: str) -> bool:
+    return bool(_RX_RODOVIA_NO_ENDERECO.search(str(texto_normalizado or "")))
+
+
 def _derivar_teclas_do_caso(slots: dict) -> None:
     """Traduz o que o segurado disse para as teclas que a URA espera.
 
@@ -1232,7 +1250,7 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         _onde = _norm(" ".join(str(slots.get(c) or "") for c in
                                ("local_atual", "problema_descricao",
                                 "problema_relato", "descricao")))
-        if any(p in _onde for p in (
+        if _parece_rodovia(_onde) or any(p in _onde for p in (
                 "rodovia", "br-", "sp-", "mg-", "rs-", "pr-", "sc-",
                 "estrada", "pedagio", "pedagiada", "acostamento", "km ",
                 "marginal", "anhanguera", "bandeirantes", "dutra",
@@ -1282,12 +1300,25 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         #    circulação de pessoas", `insurer_dispatch_tool`). A derivação ia só de
         #    `situacao_risco_opcao` → `local_situacao`, nunca de volta: a resposta
         #    DADA pelo segurado não chegava à tela de texto e o passo ia a uma pessoa.
-        #    ⚠️ É RESPOSTA do segurado, não endereço: entra nos DOIS ramos, inclusive
-        #    o seguro — e continua sujeita aos vetos de "km/rodovia/acostamento".
+        #    🔴 CONSERTO ÚNICO (juiz B1, 30/09) — ⚠️ SÓ NOS RAMOS DE RISCO, NUNCA NO
+        #    "Nenhuma das anteriores". 📊 `scratchpad/s122/juiz_br282.py`, motor real:
+        #    `local_atual="BR 282, sentido Florianopolis"` + `local_situacao="local
+        #    seguro"` respondia SOZINHO "Nenhuma das anteriores" à HDI — negando
+        #    "Rodovia" e "Ponto de alagamento", que a pergunta do portão ("seguro,
+        #    escuro ou deserto") NUNCA fez ao segurado. Dizer "nenhuma" de uma lista
+        #    que ele não viu é escolher conteúdo por ele (CLAUDE.md §9.5). Então:
+        #    "escuro"/"pouca circulação" dele → os dois ramos de risco (a resposta é
+        #    a MESMA pergunta); "local seguro" dele → NADA aqui, e a tela vai ao
+        #    `sem_chute`, que PERGUNTA com as opções da tela (D-122 D2) ou a uma
+        #    pessoa. E o veto de rodovia agora vê "BR 282", "SC-401", "estrada", "km"
+        #    (`_parece_rodovia`) — o endereço não tinha nenhuma das palavras antigas.
         _campos_de_risco = ("local_atual", "problema_descricao",
                             "problema_relato", "situacao_risco", "descricao",
                             "local_situacao")
         _sit = _norm(" ".join(str(slots.get(c) or "") for c in _campos_de_risco))
+        # O ramo "Nenhuma das anteriores" lê tudo, MENOS a resposta do portão.
+        _sit_sem_o_portao = _norm(" ".join(str(slots.get(c) or "") for c in _campos_de_risco
+                                           if c != "local_situacao"))
         # ⚠️ O ramo SEGURO lê só o RELATO — nunca o endereço.
         _relato = _norm(" ".join(str(slots.get(c) or "") for c in
                                  ("problema_descricao", "problema_relato",
@@ -1306,10 +1337,11 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
                 "pouca circulacao",
                 "nao passa ninguem", "lugar ermo", "ermo", "isolad")):
             slots["situacao_risco_opcao"] = "Via com pouco movimento"
-        elif (any(p in _sit for p in (
+        elif (any(p in _sit_sem_o_portao for p in (
                 "lugar seguro", "local seguro", "bem iluminad", "movimentad",
                 "em casa", "na garagem", "no estacionamento",
                 "posto de gasolina", "dentro do posto", "shopping"))
+                and not _parece_rodovia(_sit)
                 # 🔴 …DESDE QUE não seja PONTO DE REFERÊNCIA nem RODOVIA.
                 #
                 #    A primeira redação deste conserto proibia o ramo seguro de
@@ -3800,29 +3832,79 @@ def ida_e_volta_permitida(playbook: Any) -> bool:
     return str((playbook or {}).get("insurer_key") or "").strip().lower() in IDA_E_VOLTA_AO_SEGURADO
 
 
+#: 🔴 SPEC-122 · conserto único (red team B2) — OS PASSOS `sem_chute` QUE SE PERGUNTAM AO SEGURADO.
+#:
+#: Lista EXPLÍCITA, e só de passos de DADO: um fato que o segurado sabe e a tela pergunta. O
+#: valor é a pergunta a ELE, em 2ª pessoa e sem dica do que a seguradora cobre (a cópia de
+#: `_COMO_PERGUNTAR` é a do DOSSIÊ: fala "do cliente" e carrega nota de cobertura — 📊 red team
+#: A9: "me diga qual servico o cliente precisa" chegou ao segurado).
+#:
+#: ⛔ FORA, e cada um vai a uma PESSOA exatamente como antes da SPEC-122 — é DECISÃO, não dado:
+#:    servico_aberto_porto_auto  "mesmo tipo → pessoa" (D-120-F, juiz P3). 📊 A9/A10: virou
+#:                               pergunta, e o "Não" da URA sobrescreveu `servico_texto`
+#:    bateria_submenu (porto)    recarga × bateria NOVA × troca × garantia: quatro trabalhos,
+#:                               um deles é compra — escolher serviço/aceitar custo (D3)
+#:    taxi_oferta · taxi_alem_do_guincho   "Sim" ABRE um segundo serviço (a nota do passo);
+#:                               D9: é cobrado ANTES de acionar, não no meio da URA
+#:    selecionar_veiculo_porto   o caso tem a placa; o formatador não a achou na lista — escolher
+#:                               OUTRO veículo é escolher a apólice
+#:    cr_motivo (yelum)          o motivo DECIDE a cobertura do carro reserva (CR2: só sinistro)
+#:    (Allianz/Azul/Bradesco: fora de `IDA_E_VOLTA_AO_SEGURADO` — nem chegam aqui.)
+SEM_CHUTE_PERGUNTAVEL: Dict[str, str] = {
+    "situacao_risco": "em qual destas situações está o lugar onde você está agora",
+    "transporte_destino": ("para onde você quer ser levado enquanto o carro vai para a oficina "
+                           "(o seu destino, não o do carro)"),
+    "transporte_passageiros": "quantas pessoas vão no táxi",
+    "taxi_passageiros": "quantas pessoas vão no táxi",
+    "chaveiro_porta_do_problema": "qual é a porta com problema",
+    "geladeira_medicacao": "se a geladeira guarda algum medicamento",
+    "eletricista_tipo_do_problema": "qual é o problema elétrico",
+    "eletricista_item": "qual é o item com problema",
+}
+
+
+def navega_para_o_segurado(rotulo: Any) -> bool:
+    """A opção só MOVE a URA ("Voltar", "Menu", "Sair", "Encerrar", "Continuar"…)?
+
+    🔴 SPEC-122 · conserto único (red team B1). 📊 A8: a pergunta listava "6 - Voltar"; o segurado
+    escolheu, "Voltar" foi à URA e ao slot, e a cada volta da tela o motor respondia "Voltar"
+    sozinho — laço até a URA encerrar. Opção de navegação não é resposta de segurado.
+
+    ⛔ Não é um classificador novo: é `rotulo_e_de_navegacao` (SPEC-119/121, navegar × decidir)
+    com UMA exceção, e ela é o motivo: "Nenhuma das anteriores" está no vocabulário porque, para
+    o ROTEAMENTO, ela só move o fluxo; para quem está num lugar seguro, ela é a RESPOSTA.
+    """
+    r = " ".join(_norm_text(str(rotulo or "")).split()).strip(" .!*:")
+    if not r or r.startswith("nenhum"):
+        return False
+    return rotulo_e_de_navegacao(r)
+
+
 def sem_chute_ao_segurado(playbook: Dict[str, Any], step_name: str, faltou: List[str],
                           tela: str, session: Dict[str, Any], *,
                           estado_antes: str) -> Optional[Dict[str, Any]]:
     """O PEDIDO para perguntar ao segurado o dado de um passo `sem_chute`, ou None.
 
     None = vai a uma pessoa, EXATAMENTE como antes. Só pede quando TUDO vale:
+      · o passo é de DADO do segurado (`SEM_CHUTE_PERGUNTAVEL` — decisão vai a uma pessoa);
       · UM dado faltando (dois de uma vez não se pergunta numa frase);
       · a seguradora espera (D-122 D2 · `ida_e_volta_permitida`);
-      · o produto sabe PERGUNTAR esse dado a um leigo (`_COMO_PERGUNTAR`);
       · há um segurado para perguntar, e ele ainda não foi perguntado disso;
-      · tecla de menu (`*_opcao`): a tela tem ≥ 2 OPÇÕES legíveis, que vão junto
-        na pergunta — sem elas, a resposta não teria como virar tecla sem chute.
+      · tecla de menu (`*_opcao`): a tela tem ≥ 2 OPÇÕES de CONTEÚDO, que vão junto na
+        pergunta — sem elas, a resposta não teria como virar tecla sem chute.
 
-    ⚠️ As opções vão como a TELA as lista (inclusive "Voltar"): 📊 o vocabulário de
-    navegação do produto marca "Nenhuma das anteriores" como navegação, e ela é a
-    resposta de quem está num lugar seguro. Filtrar seria esconder uma resposta.
+    🔴 As opções de NAVEGAÇÃO saem da lista (`navega_para_o_segurado`); "Nenhuma das
+    anteriores" fica — é resposta. Tela numerada guarda o dígito DA TELA; lista de botões
+    é renumerada 1..n só para o segurado (a volta casa pelo rótulo).
     """
     faltou = [str(x) for x in (faltou or []) if str(x or "").strip()]
     if len(faltou) != 1 or not ida_e_volta_permitida(playbook):
         return None
+    rotulo = SEM_CHUTE_PERGUNTAVEL.get(str(step_name or ""))
+    if not rotulo:
+        return None
     slot = faltou[0]
-    rotulo = _COMO_PERGUNTAR.get(slot)
-    if not rotulo or not str(session.get("client_phone") or "").strip():
+    if not str(session.get("client_phone") or "").strip():
         return None
     if slot in (session.get("perguntado_ao_segurado") or []):
         return None
@@ -3831,9 +3913,11 @@ def sem_chute_ao_segurado(playbook: Dict[str, Any], step_name: str, faltou: List
     if slot.endswith("_opcao"):
         num = opcoes_numeradas(tela)
         if num:
-            opcoes, numeradas = [[str(d), str(r)] for d, r in num], True
+            opcoes = [[str(d), str(r)] for d, r in num if not navega_para_o_segurado(r)]
+            numeradas = True
         else:
-            opcoes = [[str(i), str(r)] for i, r in enumerate(_rotulos_da_tela(tela), 1)]
+            conteudo = [str(r) for r in _rotulos_da_tela(tela) if not navega_para_o_segurado(r)]
+            opcoes = [[str(i), r] for i, r in enumerate(conteudo, 1)]
         if len(opcoes) < 2:
             return None
     return {"slot": slot, "passo": str(step_name), "rotulo": str(rotulo),
@@ -3841,50 +3925,90 @@ def sem_chute_ao_segurado(playbook: Dict[str, Any], step_name: str, faltou: List
             "estado_antes": str(estado_antes or "ura")}
 
 
+_RX_NUMERO_DA_OPCAO = re.compile(r"(?:op[çc][ãa]o\s*)?(\d{1,2})\s*[.)\-]?")
+
+
+def valor_do_slot_sem_chute(espera: Dict[str, Any], resposta: str) -> Tuple[Optional[str], str]:
+    """O que a resposta do segurado vale no SLOT do passo `sem_chute` — ou `(None, porquê)`.
+
+    🔴 SPEC-122 · conserto único (red team B2/B3, juiz P1). Um só lugar decide o valor, e ele
+    vale para TODA retomada (levada, no_slot, guardada):
+      · tecla (`*_opcao`): o RÓTULO da opção que ele escolheu entre as que a pergunta MOSTROU —
+        dígito da lista ou o rótulo IGUAL (`_norm_label`), exatamente UMA. ⛔ Nunca a resposta
+        crua: 📊 A4 gravou "estou na estrada de terra perto de um posto" em
+        `situacao_risco_opcao`, e a URA reaberta o recebeu. E o rótulo, não a tecla: o dígito é
+        da tela de ONTEM; o rótulo o motor reconverte contra a tela que vier (`resolver_tecla`).
+      · texto: a resposta dele (o dado é DELE; a URA recebe o formatado — 📊 A10: o slot
+        guardava o "Não" que a URA recebeu, e o menu de serviços respondeu "Não").
+    Resposta que é só NAVEGAÇÃO ("voltar", "menu", "sair") → None, nos dois.
+    """
+    slot = str(espera.get("slot") or "")
+    bruta = str(resposta or "").strip()
+    if not slot or not bruta:
+        return None, "vazia"
+    palavras = _norm_text(bruta).split()
+    if len(palavras) <= 4 and navega_para_o_segurado(bruta):
+        return None, "navegacao"
+    if not slot.endswith("_opcao"):
+        return bruta[:300], "ok"
+    opcoes = [(str(d), str(r)) for d, r in (espera.get("opcoes") or [])]
+    m = _RX_NUMERO_DA_OPCAO.fullmatch(_norm_text(bruta).strip(" *"))
+    if m:
+        escolhidas = [(d, r) for d, r in opcoes if d == (m.group(1).lstrip("0") or "0")]
+    else:
+        # 🔴 SÓ A IGUALDADE do rótulo (a 1ª etapa de `_casar_rotulo`), nunca o casador
+        #    frouxo do Atlas: 📊 medido, "via" casava SÓ "Rodovia" — a troca exata que o
+        #    `sem_chute` de via/rodovia existe para não fazer.
+        w = _weaver()
+        alvo = w._norm_label(bruta)
+        escolhidas = [(d, r) for d, r in opcoes if alvo and w._norm_label(r) == alvo]
+    if len(escolhidas) != 1:
+        return None, ("ambigua" if escolhidas else "nao_casa")
+    rotulo = escolhidas[0][1]
+    if navega_para_o_segurado(rotulo):
+        return None, "navegacao"
+    return rotulo, "ok"
+
+
 def traduzir_resposta_do_segurado(session: Dict[str, Any], espera: Dict[str, Any],
-                                  resposta: str) -> Tuple[Optional[str], str]:
+                                  resposta: str, *,
+                                  tela_atual: Optional[str] = None) -> Tuple[Optional[str], str]:
     """A resposta do segurado a um `sem_chute` → o que vai à URA, pelo MOTOR. Ou `(None, porquê)`.
 
     🔴 SEM CHUTE, nos dois sentidos:
-      · tecla (`*_opcao`): o segurado responde o NÚMERO ou o TEXTO de uma opção que
-        a pergunta mostrou. Só passa se casar EXATAMENTE UMA — dígito da lista, ou o
-        rótulo IGUAL (`_norm_label`); e o valor ainda atravessa `resolver_tecla` contra a
-        TELA REAL — a trava do ramo e a da ambiguidade continuam valendo.
-      · texto: `render_reply` do próprio passo, com o `format` dele (o formatador
-        do produto; ele recusa o que não sabe formatar).
+      · o valor sai de `valor_do_slot_sem_chute` (a opção que ele escolheu, ou o texto dele);
+      · e é traduzido contra a tela de AGORA (`tela_atual`: as bolhas da URA desde a nossa
+        última saída — `tela_respondida`), não a da pergunta. 🔴 Conserto único (red team P2):
+        📊 "Via com pouco movimento" saiu depois de uma tela "Não entendi… Voltar / Responder
+        novamente". Tela nova que o MOTOR não casa com o MESMO passo → None (uma pessoa).
+        Mesmo passo → a tecla é resolvida nela (`resolver_tecla`: dígito da tela nova, trava do
+        ramo e da ambiguidade) ou o texto é formatado (`render_reply` do passo).
     Qualquer outra coisa → None, e o caso vai a uma pessoa.
     """
     slot = str(espera.get("slot") or "")
-    tela = str(espera.get("tela") or "")
-    bruta = str(resposta or "").strip()
     playbook = get_playbook(str(session.get("playbook_ref") or "")) or {}
     passo = next((p for p in playbook.get("ura_steps") or []
                   if str(p.get("step") or "") == str(espera.get("passo") or "")), None)
-    if not slot or not bruta or passo is None:
+    if not slot or passo is None:
         return None, "sem_passo"
+    valor, porque = valor_do_slot_sem_chute(espera, resposta)
+    if valor is None:
+        return None, porque
+    tela = str(espera.get("tela") or "")
+    agora = str(tela_atual or "").strip()
+    if agora and " ".join(_norm_text(agora).split()) != " ".join(_norm_text(tela).split()):
+        casado = match_ura_step(playbook, agora, subservice=session.get("subservice"))
+        if not casado or str(casado.get("step") or "") != str(passo.get("step") or ""):
+            return None, "tela_mudou"
+        tela = agora
     passo = {**passo, "_tela": tela}
     slots = dict(session.get("slots") or {})
+    slots[slot] = valor
     if slot.endswith("_opcao"):
-        opcoes = [(str(d), str(r)) for d, r in (espera.get("opcoes") or [])]
-        m = re.fullmatch(r"(?:op[çc][ãa]o\s*)?(\d{1,2})\s*[.)\-]?", _norm_text(bruta).strip(" *"))
-        if m:
-            escolhidas = [(d, r) for d, r in opcoes if d == (m.group(1).lstrip("0") or "0")]
-        else:
-            # 🔴 SÓ A IGUALDADE do rótulo (a 1ª etapa de `_casar_rotulo`), nunca o casador
-            #    frouxo do Atlas: 📊 medido neste teste, "via" casava SÓ "Rodovia" — a troca
-            #    exata que o `sem_chute` de via/rodovia existe para não fazer.
-            w = _weaver()
-            alvo = w._norm_label(bruta)
-            escolhidas = [(d, r) for d, r in opcoes if alvo and w._norm_label(r) == alvo]
-        if len(escolhidas) != 1:
-            return None, ("ambigua" if escolhidas else "nao_casa")
-        digito, rotulo = escolhidas[0]
-        slots[slot] = digito if espera.get("numeradas") else rotulo
         tecla = resolver_tecla(playbook, passo, {**session, "slots": slots}, tela)
         if tecla is None or tecla.get("destino") != "ura" or not str(tecla.get("valor") or "").strip():
             return None, "tecla_recusada"
         return str(tecla["valor"]), "ok"
-    slots[slot] = bruta[:300]
     rendered = render_reply(passo, slots)
     if not rendered.get("ok") or not str(rendered.get("reply") or "").strip():
         return None, "formato"

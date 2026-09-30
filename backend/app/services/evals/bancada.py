@@ -1610,62 +1610,12 @@ def relatorio_de_arquivo(caminho: str) -> str:
 #    `ultimo_passo_sem_dado`/`conduzindo`, e o motor chama o cérebro direto. É o JULGAMENTO DO MODELO
 #    (e, nas variantes estruturadas, o parser D3) que se mede. O produto continua com o arnês na frente.
 
-VARIANTES = ("V0", "V1", "V2", "V3")
+# 🔴 SPEC-122 · conserto único (juiz P3): o compositor das variantes mora no PRODUTO
+#    (`acao_do_cerebro`), e a bancada o IMPORTA de lá — a sombra roda a V2 que a bancada mede.
+from app.services.acao_do_cerebro import VARIANTES, mensagens_da_variante  # noqa: E402,F401
 
 #: As seguradoras em que a ida e volta com o segurado é PROIBIDA (D-122 D2: a URA encerra em ~3–4 min).
 SEM_IDA_E_VOLTA = frozenset({"allianz", "alfa"})
-
-_REGRAS_V2 = (
-    "\n\nREGRAS CURTAS (valem mais que qualquer instrução acima):\n"
-    "- Custo, franquia, pagamento, excedente → PESSOA. Nunca aceite custo.\n"
-    "- Escolher QUAL seguro, QUAL serviço ou QUAL veículo sem o dado no caso → PERGUNTAR_AO_SEGURADO ou PESSOA.\n"
-    "- Confirmar, abrir, agendar, cancelar, reiniciar ou abrir NOVO atendimento → PESSOA.\n"
-    "- A seguradora recusou a cobertura ou o serviço → RECUSA.\n"
-    "- Fato que só o segurado sabe (situação de risco, polícia, motivo, sintomas) e não está no caso → "
-    "PERGUNTAR_AO_SEGURADO.\n"
-    "- Tela que só avisa e não pede nada → SILENCIO.\n")
-_CONTEUDO_V2 = ("- Tela de CONTEÚDO (escolher entre alternativas que não são navegação): na dúvida, "
-                "PERGUNTAR_AO_SEGURADO.\n")
-_CONTEUDO_V3 = ("- Tela de CONTEÚDO (escolher entre alternativas que não são navegação): RESPONDA quando a "
-                "resposta sai claramente dos dados do caso, do subserviço ou da conversa; senão "
-                "PERGUNTAR_AO_SEGURADO.\n")
-
-
-def mensagens_da_variante(variante: str, sessao: dict, tela: str) -> Dict[str, str]:
-    """O prompt do PRODUTO (`build_human_phase_messages`) + o que a variante acrescenta."""
-    from app.services.acao_do_cerebro import INSTRUCAO_DE_SAIDA
-    from app.services.insurer_dispatch_service import build_human_phase_messages, get_playbook
-
-    v = str(variante or "V0").upper()
-    if v not in VARIANTES:
-        raise ValueError(f"variante desconhecida: {variante!r} ({', '.join(VARIANTES)})")
-    msgs = dict(build_human_phase_messages(sessao, tela))
-    if v == "V0":
-        return msgs
-    msgs["system"] = msgs["system"] + INSTRUCAO_DE_SAIDA
-    if v in ("V2", "V3"):
-        pb = get_playbook(str(sessao.get("playbook_ref") or "")) or {}
-        slots = sessao.get("slots") or {}
-        pede = [str(x) for x in (pb.get("required_slots") or [])]
-        bloco = ""
-        if pede:
-            bloco += ("\n\nO QUE A SEGURADORA VAI PEDIR NESTE CORREDOR (✔ = o caso tem · ✘ = falta):\n"
-                      + "\n".join(f"- {x} {'✔' if slots.get(x) not in (None, '') else '✘'}" for x in pede))
-        longos = []
-        for e in (sessao.get("transcript") or [])[-20:-6]:
-            if isinstance(e, dict) and str(e.get("text") or "").strip():
-                quem = "você" if str(e.get("direction")) == "out" else "seguradora"
-                longos.append(f"[{quem}] {' '.join(str(e['text']).split())[:300]}")
-        if longos:
-            bloco += "\n\nANTES DISSO NA CONVERSA (as falas mais antigas, até 20 no total):\n" + "\n".join(longos)
-        conversa = sessao.get("conversa_segurado") or []
-        bloco += ("\n\nA CONVERSA COM O SEGURADO:\n" + "\n".join(f"- {str(x)[:300]}" for x in conversa[-10:])
-                  if conversa else "\n\nA CONVERSA COM O SEGURADO: (não disponível neste caso)")
-        bloco += _REGRAS_V2 + (_CONTEUDO_V3 if v == "V3" else _CONTEUDO_V2)
-        marca = "\n\nTela da seguradora agora"
-        u = msgs["user"]
-        msgs["user"] = u.replace(marca, bloco + marca, 1) if marca in u else u + bloco
-    return msgs
 
 
 def _norm_opcao(s: str) -> str:

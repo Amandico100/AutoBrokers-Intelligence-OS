@@ -3764,14 +3764,30 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     # 🔴 SPEC-122 F2 — a resposta a um `sem_chute` NÃO vai crua à URA: o MOTOR a
     #    traduz para a tecla/formato do passo (`traduzir_resposta_do_segurado`). Não
     #    casou UMA opção, ou o formatador recusou → uma PESSOA, com o que ele disse.
+    # 🔴 CONSERTO ÚNICO (red team B3/P2, juiz P1) — EM TODA RETOMADA, não só na `levada`:
+    #    · `levada`: traduzida contra a tela de AGORA (`tela_respondida`), não a da pergunta —
+    #      a URA pode ter mudado de tela ou reaberto; outro passo → uma pessoa;
+    #    · `no_slot`/`guardada`: nada vai à URA agora, e o SLOT só recebe a opção que ele
+    #      ESCOLHEU (`valor_do_slot_sem_chute`), nunca o texto cru num `*_opcao` — 📊 A4: a
+    #      URA reaberta recebeu "estou na estrada de terra perto de um posto". Não casou UMA
+    #      opção: `no_slot` → uma pessoa (o acionamento reaberto não chuta); `guardada` → o
+    #      caso já é de uma pessoa: fica só a nota, com o que ele disse.
     a_seguradora = resposta[:600]
-    if espera.get("sem_chute") and retomada == "levada":
-        _traduzida, _porque = _motor().traduzir_resposta_do_segurado(session, espera, resposta)
-        if _traduzida is None:
+    valor_do_slot: Optional[str] = resposta[:300]
+    if espera.get("sem_chute"):
+        valor_do_slot, _porque = _motor().valor_do_slot_sem_chute(espera, resposta)
+        if retomada == "levada":
+            _traduzida, _porque = _motor().traduzir_resposta_do_segurado(
+                session, espera, resposta, tela_atual=_motor().tela_respondida(session))
+            if _traduzida is None:
+                return await _sem_chute_sem_resposta_valida(
+                    empresa, from_phone, insurer_phone, session, espera, resposta, _porque,
+                    vivo=vivo, send_to_client=send_to_client)
+            a_seguradora = _traduzida[:600]
+        elif valor_do_slot is None and retomada == "no_slot":
             return await _sem_chute_sem_resposta_valida(
                 empresa, from_phone, insurer_phone, session, espera, resposta, _porque,
                 vivo=vivo, send_to_client=send_to_client)
-        a_seguradora = _traduzida[:600]
     if vivo and retomada == "levada":
         integration = _canal_da_conversa(get_integration_service(), empresa, session)
         if integration is None:
@@ -3784,12 +3800,11 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
                          type(e).__name__)
             return False
     slot = str(espera.get("slot") or "")
-    if slot:
-        # `sem_chute` levado: o slot guarda o que a URA RECEBEU (a tecla/o rótulo),
-        # para o motor responder igual se a mesma tela voltar.
-        session.setdefault("slots", {})[slot] = (
-            a_seguradora[:300] if (espera.get("sem_chute") and retomada == "levada")
-            else resposta[:300])
+    if slot and valor_do_slot is not None:
+        # `sem_chute`: o slot guarda a OPÇÃO que ele escolheu (o rótulo — o motor o
+        # reconverte na tecla da tela que vier) ou o TEXTO dele; nunca o que a URA
+        # recebeu (📊 A10: "Não" em `servico_texto`) nem a resposta crua num `*_opcao`.
+        session.setdefault("slots", {})[slot] = valor_do_slot
     session.setdefault("transcript", []).append(
         {"direction": "out" if retomada == "levada" else "note",
          "text": a_seguradora if retomada == "levada" else resposta[:600],
@@ -4037,6 +4052,7 @@ async def try_route_insurer_inbound(
     _entradas_antes = len(session.get("transcript") or [])
     _saidas_antes = sum(1 for t in (session.get("transcript") or [])
                         if isinstance(t, dict) and t.get("direction") == "out")
+    _estado_antes_do_motor = str(session.get("state") or "")
     session = handle_insurer_message(session, text, sender=send_to_insurer,
                                      interactive=interactive, flow_sender=flow_sender)
     state = session.get("state")
@@ -4076,6 +4092,23 @@ async def try_route_insurer_inbound(
     #    ⛔ E a trava `_opcao` do D3 CONTINUA para o cérebro: aqui a tecla se
     #    pergunta com as OPÇÕES da tela e volta pelo MOTOR, nunca pelo modelo.
     _sc = session.pop("sem_chute_ao_segurado", None)
+    # 🔴 CONSERTO ÚNICO (red team P1) — A MESMA PERGUNTA JÁ ESTÁ NO AR. 📊 A1: a URA reenviou a
+    #    MESMA tela `sem_chute` durante a espera (repetição / 2ª bolha); o motor devolveu o mesmo
+    #    `needs_human`, e o segurado recebeu "Não consegui concluir…" LOGO DEPOIS da pergunta —
+    #    e a resposta dele virou "guardada". É a MESMA pendência: nada sai, nada muda, a espera
+    #    continua (idempotente). ⚠️ Só para o MESMO dado: outro `sem_chute` no meio da espera
+    #    segue o caminho de sempre, abaixo.
+    _espera_no_ar = session.get("esperando_do_segurado") or {}
+    if (_espera_no_ar.get("sem_chute") and state == "needs_human" and not _ja_respondeu
+            and str(session.get("reason") or "") == f"sem_chute:{_espera_no_ar.get('slot')}"):
+        session["state"] = (_estado_antes_do_motor
+                            if _estado_antes_do_motor in ("ura", "human_phase") else "ura")
+        for _k in ("reason", "missing_slots", "motivo_legivel"):
+            session.pop(_k, None)
+        logger.info("[DISPATCH ROUTER] sem_chute %s repetido com a pergunta no ar — espera mantida",
+                    _espera_no_ar.get("slot"))
+        await save_active_dispatch(company_id, from_phone, session)
+        return True
     if (isinstance(_sc, dict) and state == "needs_human"
             and str(session.get("reason") or "").startswith("sem_chute:")
             and not ainda_vem_mais and not _ja_respondeu and not _em_pausa
