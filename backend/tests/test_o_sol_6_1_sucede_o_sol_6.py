@@ -72,6 +72,8 @@ ANTES_PRIMARIO = {
 }
 #: o dispatch: Opus 5.5 primário (esforço NULO), reserva Sol 6 em high.
 ANTES_RESERVA = {"dispatch": (OPUS, "high")}
+#: Os papéis que NASCERAM depois da 20260930_01 já no 6.1 (primário) — SPEC-123 F1a, 20260930_03.
+NASCIDOS_NO_6_1 = {"destravador"}
 
 
 def _req():
@@ -104,7 +106,9 @@ def test_nenhuma_rota_de_producao_usa_mais_o_sol_6(borda):
                                                              r.get("modelo_reserva"))}
     assert usando == {}, usando
     sol = sorted(p for p, r in borda.pap.items() if r.get("modelo_primario") == NOVO)
-    assert sol == sorted(ANTES_PRIMARIO), "exatamente os 7 papéis que eram Sol 6"
+    # §9.3 — SPEC-123 F1a (migration 20260930_03): o papel `destravador` NASCEU depois, já no 6.1.
+    #    A lição fica: os 7 que ERAM Sol 6 são 6.1, e nenhum outro papel antigo virou 6.1 por engano.
+    assert sorted(set(sol) - NASCIDOS_NO_6_1) == sorted(ANTES_PRIMARIO), "exatamente os 7 papéis que eram Sol 6"
 
 
 def test_controle_luna_e_opus_nao_mudaram(borda):

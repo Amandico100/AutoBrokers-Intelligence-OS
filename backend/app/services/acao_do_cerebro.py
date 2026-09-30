@@ -22,8 +22,9 @@ A saída estruturada dá a ele cinco AÇÕES:
    As telas são reconhecidas pelas REGEX DO PRODUTO (`classe_da_tela` e vizinhas em
    `insurer_dispatch_service`) — medir com um motor e aplicar com outro é medir outra coisa (§9.4).
 
-F1: a bancada o usa. F2/F3 (SPEC-122): o produto usa `decidir` na SOMBRA do cérebro (o fim
-deste módulo), e a regra do `sem_chute` vale nas duas.
+F1: a bancada o usa (as variantes V0–V3 da SPEC-122). SPEC-123 F1a: a SOMBRA do fim deste
+módulo roda o DESTRAVADOR (`app/services/destravador.py`), que reusa daqui o `proibicao` (enxugado
+ao irreversível), o `_mesma_resposta`, o `passo_sem_chute_da_tela` e o leitor de `cerebro_modos`.
 """
 
 from __future__ import annotations
@@ -380,89 +381,101 @@ def rotulo_de(tela: str, resposta: str) -> Tuple[str, str]:
 #    decidido — sem esperar por ela. `tests/test_spec122_sombra_e_sem_chute.py` confere as duas
 #    coisas: o mesmo envio, byte a byte, com e sem sombra; e nenhum verbo de envio neste módulo.
 #
-# 🔴 A CHAVE (`cerebro_modos`, migration 20260930_02): por corretora × seguradora × ramo, com
-#    `off` e `sombra`. Sem linha = `off`. Governada no BANCO (CLAUDE.md §5: env não é
-#    autoridade); quem liga é o Founder.
+# 🔴 A CHAVE (`cerebro_modos`, migrations 20260930_02 e 20260930_03): por corretora ×
+#    seguradora × ramo, com `off`, `sombra` e — desde a SPEC-123 — `on`, mais o LIMIAR do
+#    DEDUZIR. Sem linha = `off`. Governada no BANCO (CLAUDE.md §5: env não é autoridade).
+#
+# 🔴 SPEC-123 F1a — A SOMBRA É O DESTRAVADOR. A V2 da SPEC-122 em sombra foi SUBSTITUÍDA
+#    (CONTRATO-123: "não ficam dois"): `_medir` chama `destravador.destravar(modo="sombra")`,
+#    que decide, grava a linha no DIÁRIO (`acao='nao_agiu'`) e não envia nada. O que o sistema
+#    FEZ × o que o destravador FARIA continua na linha do tempo (`cerebro.sombra`), com o id da
+#    linha do diário. A assinatura de `agendar_sombra` não mudou (dedupe, cota, disjuntor).
 
-#: Os modos que existem. ⛔ `on` NÃO está aqui, e a razão é a de `MODO_ON_RECUSADO`.
-MODOS = ("off", "sombra")
-MODO_ON_RECUSADO = (
-    "o modo `on` (a V2 decidindo o que vai à seguradora) está RECUSADO: a bancada da SPEC-122 "
-    "(30/09/2026) não aprovou nenhuma variante — G1 exige zero erro grave e a melhor (V2) teve 4 "
-    "em 32 armadilhas. Ligar exige a regra da proposta (2 semanas ou 50 telas reais em sombra sem "
-    "erro grave, medidas nas linhas `cerebro.sombra`) e uma decisão do Founder numa SPEC.")
-#: O `service_type` do ledger (`token_usage_logs`) — o custo da sombra é medido à parte.
-SERVICE_TYPE_SOMBRA = "cerebro_sombra"
+#: Os modos que existem. SPEC-123 (D5 do Founder, 30/09/2026): o `on` EXISTE — a porta de ligar
+#: deixou de ser "zero erro grave na bancada" e virou a calibração + zero violação do NUNCA, em
+#: código (`destravador.decidir_destravamento`). Quem liga é a F3/o gerente, por linha no banco.
+MODOS = ("off", "sombra", "on")
 #: O evento na linha do tempo do acionamento.
 EVENTO_SOMBRA = "cerebro.sombra"
-VARIANTE_DA_SOMBRA = "V2"
 _TTL_DA_CHAVE_S = 60.0
 _TETO_DA_CHAMADA_S = 60.0
 _DEDUPE_S = 7 * 24 * 3600
 
 
 class ModoRecusado(ValueError):
-    """O modo pedido não existe ou está recusado (o `on`)."""
+    """O modo pedido não existe (ou o limiar da linha é inválido)."""
 
 
 def validar_modo(modo: Any) -> str:
-    """`off`/`sombra` → ele mesmo. `on` (`ligado`, `ativo`) → ModoRecusado com a razão. Outro → ModoRecusado."""
+    """`off`/`sombra`/`on` → ele mesmo. Qualquer outro → ModoRecusado."""
     m = str(modo or "").strip().lower()
     if m in MODOS:
         return m
-    if m in ("on", "ligado", "ativo"):
-        raise ModoRecusado(MODO_ON_RECUSADO)
     raise ModoRecusado(f"modo desconhecido {modo!r}: os modos são {', '.join(MODOS)}")
 
 
-_CACHE_DA_CHAVE: Dict[str, Tuple[float, Dict[Tuple[str, str], str]]] = {}
+_CACHE_DA_CHAVE: Dict[str, Tuple[float, Dict[Tuple[str, str], Tuple[str, int]]]] = {}
 
 
-async def _ler_chaves(company_id: str) -> Dict[Tuple[str, str], str]:
-    """{(seguradora, ramo): modo} DESTA corretora. ⛔ Filtro por `company_id` no CÓDIGO (§7)."""
+async def _ler_chaves(company_id: str) -> Dict[Tuple[str, str], Tuple[str, int]]:
+    """{(seguradora, ramo): (modo, limiar)} DESTA corretora. ⛔ Filtro por `company_id` no CÓDIGO (§7).
+
+    Linha com modo desconhecido OU limiar fora de 70..100 vale `off` (falha fechada): o banco já
+    recusa as duas coisas (CHECKs da 20260930_03), e o código não confia no banco."""
     from app.services import dispatch_router as R
+    from app.services.destravador import LIMIAR_MINIMO, LimiarRecusado, validar_limiar
 
     db = await R._db()
     if db is None:
         return {}
-    r = await (db.client.table("cerebro_modos").select("company_id,insurer_key,ramo,modo")
+    r = await (db.client.table("cerebro_modos").select("company_id,insurer_key,ramo,modo,limiar")
                .eq("company_id", str(company_id)).execute())
-    out: Dict[Tuple[str, str], str] = {}
+    out: Dict[Tuple[str, str], Tuple[str, int]] = {}
     for linha in (getattr(r, "data", None) or []):
         if str(linha.get("company_id") or "") != str(company_id):
             continue  # cinto: a borda devolveu linha de outra corretora — nunca vale para esta
         chave = (str(linha.get("insurer_key") or "").strip().lower(),
                  str(linha.get("ramo") or "todos").strip().lower())
         try:
-            out[chave] = validar_modo(linha.get("modo"))
-        except ModoRecusado as e:
+            bruto = linha.get("limiar")
+            limiar = LIMIAR_MINIMO if bruto is None else validar_limiar(bruto)
+            out[chave] = (validar_modo(linha.get("modo")), limiar)
+        except (ModoRecusado, LimiarRecusado) as e:
             logger.error("[SOMBRA] chave %s/%s recusada — fica `off`: %s", chave[0], chave[1], e)
-            out[chave] = "off"
+            out[chave] = ("off", LIMIAR_MINIMO)
     return out
 
 
-async def modo_do_cerebro(company_id: str, insurer_key: str, ramo: str) -> str:
-    """O modo desta corretora nesta seguradora/ramo: `off` ou `sombra`. Falha → `off` (fechada).
+async def modo_e_limiar(company_id: str, insurer_key: str, ramo: str) -> Tuple[str, int]:
+    """(modo, limiar) desta corretora nesta seguradora/ramo. Falha → ('off', 70) (fechada).
 
     Precedência: (seguradora, ramo) > (seguradora, 'todos') > `off`. Cache de 60 s por corretora.
+    O leitor ÚNICO de `cerebro_modos` — `destravador.modo_do_destravador` o chama.
     """
+    from app.services.destravador import LIMIAR_MINIMO
+
     cid = str(company_id or "").strip()
     seg = str(insurer_key or "").strip().lower()
     if not cid or not seg:
-        return "off"
+        return "off", LIMIAR_MINIMO
     agora = time.monotonic()
     em_cache = _CACHE_DA_CHAVE.get(cid)
     if em_cache is None or agora - em_cache[0] > _TTL_DA_CHAVE_S:
         try:
             chaves = await _ler_chaves(cid)
-        except Exception as e:  # noqa: BLE001 — sem banco (ou sem a tabela) a sombra fica desligada
+        except Exception as e:  # noqa: BLE001 — sem banco (ou sem a tabela) fica desligado
             logger.warning("[SOMBRA] chave ilegível (%s) — `off`", type(e).__name__)
             chaves = {}
         _CACHE_DA_CHAVE[cid] = (agora, chaves)
     else:
         chaves = em_cache[1]
     r = str(ramo or "").strip().lower()
-    return chaves.get((seg, r)) or chaves.get((seg, "todos")) or "off"
+    return chaves.get((seg, r)) or chaves.get((seg, "todos")) or ("off", LIMIAR_MINIMO)
+
+
+async def modo_do_cerebro(company_id: str, insurer_key: str, ramo: str) -> str:
+    """Só o modo (`off`/`sombra`/`on`) — o de `modo_e_limiar`."""
+    return (await modo_e_limiar(company_id, insurer_key, ramo))[0]
 
 
 def _mesma_resposta(tela: str, a: str, b: str) -> bool:
@@ -589,35 +602,9 @@ def _sem_o_relogio_de_producao(llm: Any) -> Any:
     return llm
 
 
-#: O papel cujo PRIMÁRIO a sombra mede — o mesmo modelo que decide em produção.
-PAPEL_DA_SOMBRA = "dispatch"
-
-
-async def _chamar_o_modelo_da_sombra(mensagens: list, company_id: str):
-    """UMA chamada ao PRIMÁRIO do dispatch, isolada da produção. `None` = não chamou.
-
-    ⛔ SEM RESERVA e SEM DISJUNTOR, e é de propósito (red team P4, juiz P2):
-      · o helper de produção (`llm_factory.invocar_com_reserva`) cai na RESERVA quando o
-        primário falha — a sombra gastaria a cota do provedor de que a produção depende
-        naquele exato momento; uma falha da sombra é só uma medição perdida;
-      · breaker de produção ABERTO ou em sonda → a sombra NÃO chama (não disputa o provedor
-        caído, e não é ela quem sonda);
-      · o relógio sai do modelo (`_sem_o_relogio_de_producao`).
-    """
-    from app.core.relogio_do_modelo import estado_do_breaker
-    from app.factories.llm_factory import LLMFactory
-
-    resolvido = LLMFactory.resolver_para({}, {}, papel=PAPEL_DA_SOMBRA)
-    try:
-        estado = (await estado_do_breaker(resolvido.provider)).get("estado")
-    except Exception:  # noqa: BLE001 — sem saber, a sombra fica de fora
-        estado = "desconhecido"
-    if estado != "fechado":
-        logger.info("[SOMBRA] disjuntor de %s %s — a sombra não chama", resolvido.provider, estado)
-        return None
-    llm = LLMFactory.create_llm({}, {}, company_id=company_id, service_type=SERVICE_TYPE_SOMBRA,
-                                modelo_resolvido=resolvido)
-    return await _sem_o_relogio_de_producao(llm).ainvoke(mensagens)
+# ⛔ SPEC-123 F1a: a chamada ISOLADA da sombra (sem reserva, sem disjuntor, só com o breaker
+#    fechado) mora agora em `destravador._chamar_isolado` e usa o papel `destravador` — o
+#    `_chamar_o_modelo_da_sombra` do dispatch saiu com a V2 em sombra (não ficam dois).
 
 
 def higienizar_para_o_rastro(texto: Any, sessao: Optional[Dict[str, Any]]) -> str:
@@ -662,7 +649,7 @@ def higienizar_para_o_rastro(texto: Any, sessao: Optional[Dict[str, Any]]) -> st
 
 async def sombra_do_cerebro(company_id: str, sessao: Dict[str, Any], tela: str,
                             sistema: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """UMA tela da fase humana pela V2, em sombra. Devolve o payload gravado, ou None.
+    """UMA tela, pelo DESTRAVADOR em sombra (SPEC-123). Devolve o payload gravado, ou None.
 
     `sessao` é a CÓPIA que o cérebro de produção leu (antes da resposta dele); `sistema` é o
     que o produto FEZ neste turno: `{"acao": RESPONDER|SILENCIO|PESSOA|RECUSADO, "valor": …}`.
@@ -685,8 +672,11 @@ async def _sombra(company_id: str, sessao: Dict[str, Any], tela: str,
     ramo = str(playbook.get("line_kind") or "").lower()
     if not cid or not playbook or not str(tela or "").strip():
         return None
-    if await modo_do_cerebro(cid, seguradora, ramo) != "sombra":
-        return None                                   # CONTROLE `off`: nenhuma chamada extra
+    modo, limiar = await modo_e_limiar(cid, seguradora, ramo)
+    if modo != "sombra":
+        # CONTROLE `off`: nenhuma chamada extra. E `on` também não: no `on` quem decide é o
+        # destravador DE VERDADE, no roteador (F1b) — a sombra ao lado seria a mesma chamada duas vezes.
+        return None
     run_id = str(sessao.get("work_run_id") or "")
     chave = _chave_de_dedupe(cid, sessao, tela)
     if not run_id or not chave:
@@ -697,7 +687,8 @@ async def _sombra(company_id: str, sessao: Dict[str, Any], tela: str,
         return None
     medida = False
     try:
-        payload = await _medir(cid, sessao, tela, sistema, playbook, seguradora, ramo, chave, run_id)
+        payload = await _medir(cid, sessao, tela, sistema, playbook, seguradora, ramo, chave, run_id,
+                               limiar)
         medida = payload is not None
         return payload
     finally:
@@ -706,55 +697,57 @@ async def _sombra(company_id: str, sessao: Dict[str, Any], tela: str,
 
 async def _medir(cid: str, sessao: Dict[str, Any], tela: str, sistema: Dict[str, Any],
                  playbook: Dict[str, Any], seguradora: str, ramo: str, chave: str,
-                 run_id: str) -> Optional[Dict[str, Any]]:
-    from langchain_core.messages import HumanMessage, SystemMessage
+                 run_id: str, limiar: int = 70) -> Optional[Dict[str, Any]]:
+    """O DESTRAVADOR em sombra (SPEC-123 F1a) — decide, grava a linha do diário, não envia.
 
-    from app.agents.utils import extract_text_from_content
-    from app.services import insurer_dispatch_service as IDS
+    `None` = nada foi medido (o modelo não respondeu: disjuntor, falha, teto) — a tela NÃO é
+    marcada e pode ser medida de novo (red team P9 da SPEC-122)."""
+    from app.services.destravador import destravar
 
-    msgs = mensagens_da_variante(VARIANTE_DA_SOMBRA, sessao, tela)
+    gatilho = str((sistema or {}).get("gatilho") or "cerebro")
     t0 = time.monotonic()
-    resposta = await asyncio.wait_for(
-        _chamar_o_modelo_da_sombra(
-            [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])], cid),
-        timeout=_TETO_DA_CHAMADA_S)
-    if resposta is None:
+    dec = await destravar(cid, sessao, tela, gatilho=gatilho, modo="sombra", limiar=limiar)
+    if not dec.modelo_chamado:
         return None
     latencia_ms = int((time.monotonic() - t0) * 1000)
-    bruto = extract_text_from_content(getattr(resposta, "content", None)) or ""
-    ida_e_volta = IDS.ida_e_volta_permitida(playbook)
-    dec = decidir(bruto, sessao, tela, estruturada=True, ida_e_volta_permitida=ida_e_volta)
-    cmp = comparar(sistema, dec, tela)
-    sem_chute = dec.get("proibicao") == "passo_sem_chute"
-    meta = getattr(resposta, "response_metadata", None) or {}
+    decisao = {"acao_final": dec.acao, "valor": dec.valor}
+    cmp = comparar(sistema, decisao, tela)
+    sem_chute = str(dec.proibicao or "").startswith("passo_sem_chute")
 
     def _h(t: Any, n: int) -> str:
         return higienizar_para_o_rastro(t, sessao)[:n]
 
+    segunda = dec.segunda_opiniao or None
     payload = {
-        "modo": "sombra", "variante": VARIANTE_DA_SOMBRA, "seguradora": seguradora, "ramo": ramo,
+        "modo": "sombra", "motor": "destravador", "gatilho": gatilho[:120],
+        "seguradora": seguradora, "ramo": ramo,
         "rota": str(sessao.get("playbook_ref") or "")[:180],
         "tela_hash": chave.rsplit(":", 1)[-1],
         "tela": _h(tela, 600),
         "sistema": {"acao": str(sistema.get("acao") or ""), "valor": _h(sistema.get("valor"), 300)},
-        "modelo": {"acao_do_modelo": dec.get("acao_do_modelo"), "acao_final": dec.get("acao_final"),
-                   "valor": _h(dec.get("valor"), 300),
-                   "motivo": _h(dec.get("motivo"), 200),
-                   "formato_ok": bool(dec.get("formato_ok")),
-                   "erro_formato": dec.get("erro_formato") or "",
-                   "proibicao": dec.get("proibicao") or "", "conferente": dec.get("conferente") or ""},
+        "destravador": {"classe": dec.classe, "acao_do_modelo": dec.acao_do_modelo,
+                        "acao_final": dec.acao, "valor": _h(dec.valor, 300),
+                        "motivo": _h(dec.motivo, 200), "nota": dec.nota, "limiar": dec.limiar,
+                        "formato_ok": bool(dec.formato_ok), "proibicao": dec.proibicao or "",
+                        "provedor": dec.provedor, "modelo": dec.modelo[:80],
+                        "segunda_opiniao": ({"provedor": segunda.get("provedor"),
+                                             "modelo": str(segunda.get("modelo") or "")[:80],
+                                             "acao": segunda.get("acao"), "nota": segunda.get("nota"),
+                                             "valor": _h(segunda.get("valor"), 120),
+                                             "concordou": bool(segunda.get("concordou"))}
+                                            if segunda else None),
+                        "custo_usd": dec.custo_usd},
+        "diario_id": dec.diario_id,
         "diverge": cmp["diverge"], "divergencia": cmp["em"],
         # 🔴 A tela de `sem_chute` NUNCA conta como acerto, nem em sombra: nela o modelo não decide.
         "sem_chute": sem_chute,
-        "conta_como_acerto": (not cmp["diverge"]) and (not sem_chute) and bool(dec.get("formato_ok")),
-        # O modelo tentou RESPONDER e o CÓDIGO segurou (D3 / sem_chute): é o grave do modelo NU
-        # que a regra de ligar conta, mesmo quando o produto não o deixaria sair.
-        "grave_segurado_pelo_codigo": (dec.get("acao_do_modelo") == "RESPONDER"
-                                       and dec.get("acao_final") != "RESPONDER"
-                                       and bool(dec.get("proibicao"))),
-        "ida_e_volta_permitida": ida_e_volta, "latencia_ms": latencia_ms,
-        "modelo_real": str(meta.get("model_name") or meta.get("model") or "")[:80],
-        "service_type": SERVICE_TYPE_SOMBRA,
+        "conta_como_acerto": (not cmp["diverge"]) and (not sem_chute) and bool(dec.formato_ok),
+        # O modelo tentou RESPONDER e o CÓDIGO segurou (o NUNCA / sem_chute / o conferente): é o
+        # grave do modelo NU, que a calibração conta mesmo quando o produto não o deixaria sair.
+        "grave_segurado_pelo_codigo": (dec.acao_do_modelo == "RESPONDER" and dec.acao != "RESPONDER"
+                                       and bool(dec.proibicao)),
+        "latencia_ms": latencia_ms,
+        "service_type": "destravador",
     }
     from app.services import dispatch_router as R
 
@@ -762,7 +755,7 @@ async def _medir(cid: str, sessao: Dict[str, Any], tela: str, sistema: Dict[str,
     if db is None:
         return None
     await R._evento(db, cid, run_id, EVENTO_SOMBRA,
-                    ("O Cérebro V2 decidiu em SOMBRA (nada foi enviado): "
+                    ("O destravador decidiu em SOMBRA (nada foi enviado): "
                      + ("DIVERGIU do sistema." if cmp["diverge"] else "igual ao sistema.")),
                     payload=payload, ator="agent")
     return payload

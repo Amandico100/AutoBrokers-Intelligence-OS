@@ -5,9 +5,9 @@ O FIO (o do produto, nada reimplementado; dublê só na BORDA — modelo, banco,
 
   F3 · webhook → dispatch_router.try_route_insurer_inbound → handle_insurer_message (motor)
        → cérebro de PRODUÇÃO (`human_reply_provider`, dublê do modelo V0) → guard → envio
-       → acao_do_cerebro.agendar_sombra → modo_do_cerebro (a chave `cerebro_modos`)
-       → bancada.mensagens_da_variante("V2") → llm_factory.invocar_com_reserva (DUBLÊ)
-       → acao_do_cerebro.decidir → comparar → work_events `cerebro.sombra`
+       → acao_do_cerebro.agendar_sombra → modo_e_limiar (a chave `cerebro_modos`)
+       → 🔴 SPEC-123 F1a: destravador.destravar(modo="sombra") (o prompt do destravador, o
+         cliente do provedor DUBLÊ, a política em código) → comparar → work_events `cerebro.sombra`
   F2 · … → handle_insurer_message: passo `sem_chute` sem o dado → `needs_human` + o PEDIDO
        → roteador: perguntar_ao_segurado (com as OPÇÕES da tela) → espera
        → responder_pergunta_do_acionamento → traduzir_resposta_do_segurado (MOTOR) → URA
@@ -225,6 +225,7 @@ class _ModeloDuble(BaseChatModel):
 
     amb: Any = None
     papel: str = ""
+    provedor: str = ""
 
     @property
     def _llm_type(self) -> str:
@@ -244,8 +245,11 @@ class _ModeloDuble(BaseChatModel):
         saida = self.amb.saida_do_modelo
         if isinstance(saida, BaseException):
             raise saida
+        # SPEC-123: quem respondeu (o langchain real diz em `model_provider`) — a 2ª opinião do
+        # destravador só vale de OUTRO provedor.
+        meta = {"model_name": "dublê", **({"model_provider": self.provedor} if self.provedor else {})}
         return ChatResult(generations=[ChatGeneration(message=AIMessage(
-            content=str(saida or ""), response_metadata={"model_name": "dublê"}))])
+            content=str(saida or ""), response_metadata=meta))])
 
 
 class Ambiente:
@@ -254,7 +258,9 @@ class Ambiente:
         self.eventos, self.enviadas, self.wa, self.grupo = [], [], [], []
         self.chaves, self.banco_vaza = [], False
         self.chamadas_ao_modelo, self.chamadas_de_producao = [], []
-        self.saida_do_modelo = '{"acao": "RESPONDER", "valor": "1", "motivo": "dublê"}'
+        # SPEC-123: o padrão é a decisão que NÃO pede 2ª opinião (uma chamada por tela medida).
+        self.saida_do_modelo = ('{"classe": "nunca_sozinho", "acao": "PESSOA", "valor": "", "nota": 50, '
+                                '"motivo": "dublê"}')
 
     # os dois canais que o webhook entrega ao roteador
     def ura(self, texto):
@@ -293,7 +299,8 @@ def amb(monkeypatch, _fio_fixo):
     def _construir(resolvido, api_key, *, max_tokens, temperature, callbacks):
         # 🔴 A BORDA DO MODELO é o CLIENTE do provedor: `create_llm` roda de verdade (resolvedor,
         #    ledger, relógio anexado) e só o que falaria com a rede é o dublê.
-        return _ModeloDuble(amb=a, papel=resolvido.papel, callbacks=list(callbacks or []))
+        return _ModeloDuble(amb=a, papel=resolvido.papel, provedor=resolvido.provider,
+                            callbacks=list(callbacks or []))
 
     import app.core.database as _core_db
     import app.core.redis as _core_redis
@@ -313,6 +320,9 @@ def amb(monkeypatch, _fio_fixo):
     monkeypatch.setitem(sys.modules, "app.services.whatsapp_service", ws)
     is_ = types.ModuleType("app.services.integration_service")
     is_.get_integration_service = lambda *x: types.SimpleNamespace()
+    # SPEC-123: o roteador passou a importar o pacote `app.services` DENTRO do turno (`_motor`), e o
+    # `__init__` do pacote pede `IntegrationService` a este módulo — o dublê precisa tê-lo.
+    is_.IntegrationService = type("IntegrationService", (), {})
     monkeypatch.setitem(sys.modules, "app.services.integration_service", is_)
     monkeypatch.setattr(W, "_canal_da_conversa", lambda i, c, s: {"id": "canal-teste"})
 
@@ -386,8 +396,12 @@ def _ligar(amb, company, seguradora="porto", ramo="todos", modo="sombra"):
     amb.chaves.append({"company_id": company, "insurer_key": seguradora, "ramo": ramo, "modo": modo})
 
 
-def test_o_fio_da_sombra_mesmo_envio_byte_a_byte_e_a_decisao_da_V2_na_linha_do_tempo(amb):
-    """🔴 O TESTE DO FIO (F3). CONTROLE `off` × `sombra`, a MESMA tela real, o MESMO dublê de produção."""
+def test_o_fio_da_sombra_mesmo_envio_byte_a_byte_e_a_decisao_do_destravador_na_linha_do_tempo(amb):
+    """🔴 O TESTE DO FIO (F3). CONTROLE `off` × `sombra`, a MESMA tela real, o MESMO dublê de produção.
+
+    §9.3 — SPEC-123 F1a: a sombra deixou de ser a V2 da 122 e passou a ser o DESTRAVADOR (papel
+    `destravador`, ledger `destravador`). A lição fica: mesmo envio byte a byte, a decisão na linha
+    do tempo, a corretora certa."""
     # CONTROLE: sem chave → o que o produto faz hoje, e NENHUMA chamada extra.
     s_off = _turno_da_fase_humana(amb)
     envio_off = list(amb.enviadas)
@@ -399,37 +413,41 @@ def test_o_fio_da_sombra_mesmo_envio_byte_a_byte_e_a_decisao_da_V2_na_linha_do_t
     amb.redis.d.clear()
     AC._CACHE_DA_CHAVE.clear()
     _ligar(amb, EMPRESA_A)
-    amb.saida_do_modelo = '{"acao": "PESSOA", "valor": "", "motivo": "escolhe o seguro"}'
+    amb.saida_do_modelo = ('{"classe": "nunca_sozinho", "acao": "PESSOA", "valor": "", "nota": 40, '
+                           '"motivo": "escolhe o seguro"}')
     s_sombra = _turno_da_fase_humana(amb)
     # G9 — o que saiu é o MESMO, byte a byte; a sessão gravada, idem.
     assert amb.enviadas == envio_off
     assert [t.get("text") for t in s_sombra["transcript"]] == [t.get("text") for t in s_off["transcript"]]
     assert s_sombra["state"] == s_off["state"]
-    # a V2 foi chamada UMA vez, pela rota do produto, com o ledger PRÓPRIO e a corretora certa
+    # o destravador foi chamado UMA vez, pela fábrica do produto, com o ledger PRÓPRIO e a corretora certa
     assert len(amb.chamadas_ao_modelo) == 1
     ch = amb.chamadas_ao_modelo[0]
-    assert (ch["papel"], ch["service_type"], ch["company_id"]) == ("dispatch", "cerebro_sombra", EMPRESA_A)
-    assert "FORMATO DA SUA RESPOSTA" in ch["system"] and "REGRAS CURTAS" in ch["user"], "não é a V2 medida"
-    # e a decisão dela está na linha do tempo, com o que o sistema FEZ ao lado
+    assert (ch["papel"], ch["service_type"], ch["company_id"]) == ("destravador", "destravador", EMPRESA_A)
+    assert "O ROTEIRO AUTOMÁTICO TRAVOU" in ch["system"] and "O CASO, EM PALAVRAS" in ch["user"], (
+        "não é o prompt do destravador")
+    # e a decisão dele está na linha do tempo, com o que o sistema FEZ ao lado
     [ev] = amb.sombras()
     p = ev["payload_redacted"]
     assert ev["company_id"] == EMPRESA_A and ev["work_run_id"] == "run-122"
-    assert p["modo"] == "sombra" and p["variante"] == "V2" and (p["seguradora"], p["ramo"]) == ("porto", "auto")
-    assert p["sistema"]["acao"] == "RESPONDER" and p["modelo"]["acao_final"] == "PESSOA"
+    assert p["modo"] == "sombra" and p["motor"] == "destravador" and (p["seguradora"], p["ramo"]) == ("porto", "auto")
+    assert p["sistema"]["acao"] == "RESPONDER" and p["destravador"]["acao_final"] == "PESSOA"
     assert p["diverge"] is True and p["divergencia"] == "acao" and p["conta_como_acerto"] is False
 
 
 def test_a_sombra_igual_ao_sistema_nao_diverge(amb):
     _ligar(amb, EMPRESA_A)
-    amb.saida_do_modelo = '{"acao": "RESPONDER", "valor": "Para você", "motivo": "pessoa física"}'
+    # SPEC-123: o dublê responde a MESMA coisa ao destravador (openai) e à 2ª opinião (anthropic)
+    amb.saida_do_modelo = ('{"classe": "deduzir", "acao": "RESPONDER", "valor": "Para você", "nota": 90, '
+                           '"motivo": "pessoa física"}')
     _turno_da_fase_humana(amb)
     [ev] = amb.sombras()
     p = ev["payload_redacted"]
     assert p["sistema"]["acao"] == "RESPONDER"
-    if p["modelo"]["acao_final"] == "RESPONDER":        # o conferente/D3 do produto decidem
-        assert p["diverge"] is False and p["conta_como_acerto"] is True
-    else:
-        assert p["diverge"] is True and p["modelo"]["proibicao"], p["modelo"]
+    assert [c["papel"] for c in amb.chamadas_ao_modelo] == ["destravador", "destravador_segunda"]
+    assert p["destravador"]["acao_final"] == "RESPONDER", p["destravador"]
+    assert p["diverge"] is False and p["conta_como_acerto"] is True
+    assert p["destravador"]["segunda_opiniao"]["concordou"] is True
 
 
 def test_a_mesma_tela_duas_vezes_grava_uma(amb):
@@ -460,17 +478,32 @@ def test_o_cinto_do_codigo_segura_um_banco_que_vaza_outra_corretora(amb):
     assert asyncio.run(AC.modo_do_cerebro(EMPRESA_A, "porto", "auto")) == "sombra"   # CONTROLE
 
 
-def test_o_modo_on_e_recusado_com_a_razao(amb):
-    with pytest.raises(AC.ModoRecusado, match="bancada"):
-        AC.validar_modo("on")
+def test_o_modo_on_existe_mas_o_limiar_abaixo_de_70_e_recusado(amb):
+    """§9.3 — a verdade da 122 ("`on` recusado") foi VENCIDA pela SPEC-123 (D5 do Founder, 30/09): o
+    `on` existe. A lição MIGRA para o que continua proibido: modo inventado e LIMIAR abaixo de 70 (D2)
+    — o banco recusa (CHECK da 20260930_03) e o código não confia: a linha vale `off`."""
+    assert AC.validar_modo("on") == "on" and "on" in AC.MODOS
     with pytest.raises(AC.ModoRecusado):
         AC.validar_modo("talvez")
     assert AC.validar_modo("SOMBRA") == "sombra" and AC.validar_modo("off") == "off"
-    assert "on" not in AC.MODOS
-    # uma linha `on` que chegasse ao banco (a constraint a recusa) vale `off` — e nada é chamado
-    _ligar(amb, EMPRESA_A, modo="on")
+    # uma linha `sombra` com limiar 69 (a constraint a recusa) vale `off` — e nada é chamado
+    amb.chaves.append({"company_id": EMPRESA_A, "insurer_key": "porto", "ramo": "todos", "modo": "sombra",
+                       "limiar": 69})
+    assert asyncio.run(AC.modo_e_limiar(EMPRESA_A, "porto", "auto")) == ("off", 70)
     _turno_da_fase_humana(amb)
     assert amb.chamadas_ao_modelo == [] and amb.sombras() == []
+    # CONTROLE: a MESMA linha com limiar 70 vale `sombra` — e a sombra roda
+    amb.chaves[-1]["limiar"] = 70
+    AC._CACHE_DA_CHAVE.clear()
+    assert asyncio.run(AC.modo_e_limiar(EMPRESA_A, "porto", "auto")) == ("sombra", 70)
+    _turno_da_fase_humana(amb, run="run-122-limiar")
+    assert len(amb.sombras()) == 1
+    # e o `on` não roda a SOMBRA (no `on` quem decide é o destravador de verdade, no roteador)
+    amb.chaves[-1]["modo"] = "on"
+    AC._CACHE_DA_CHAVE.clear()
+    antes = len(amb.chamadas_ao_modelo)
+    _turno_da_fase_humana(amb, run="run-122-on")
+    assert len(amb.chamadas_ao_modelo) == antes and len(amb.sombras()) == 1
 
 
 def test_o_ramo_explicito_vence_o_todos(amb):
@@ -505,9 +538,10 @@ def test_a_tela_de_sem_chute_nunca_vira_responder_nem_em_sombra(amb):
     d = AC.decidir('{"acao": "RESPONDER", "valor": "Para você", "motivo": "x"}',
                    sessao(REF_PORTO, "guincho"), TELA_SEM_PASSO, estruturada=True)
     assert d["proibicao"] != "passo_sem_chute"
-    # e na SOMBRA ela fica registrada, e não conta como acerto
+    # e na SOMBRA (SPEC-123: o destravador) ela fica registrada, e não conta como acerto
     _ligar(amb, EMPRESA_A, seguradora="hdi")
-    amb.saida_do_modelo = modelo
+    amb.saida_do_modelo = ('{"classe": "deduzir", "acao": "RESPONDER", "valor": "Nenhuma das anteriores", '
+                           '"nota": 90, "motivo": "chute"}')
     p = asyncio.run(AC.sombra_do_cerebro(EMPRESA_A, s, tela, {"acao": "PESSOA", "valor": ""}))
     assert p["sem_chute"] is True and p["conta_como_acerto"] is False and p["grave_segurado_pelo_codigo"] is True
 

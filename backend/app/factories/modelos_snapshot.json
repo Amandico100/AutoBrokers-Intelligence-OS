@@ -2597,7 +2597,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-09-30T08:58:27+00:00",
+ "gerado_em": "2026-09-30T22:24:57+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {
@@ -2697,6 +2697,34 @@
    "provider_reserva": null,
    "risco": "medio",
    "versao": 2
+  },
+  "destravador": {
+   "classe_de_dado": "pii",
+   "descricao": "SPEC-123 — o destravador do acionamento: quando o roteiro fixo trava, decide UMA tela com contexto completo (classe, nota 0–100, motivo) — app/services/destravador.py",
+   "esforco": "high",
+   "esforco_reserva": null,
+   "modelo_primario": "gpt-6.1-sol",
+   "modelo_reserva": "claude-sonnet-5-5",
+   "motivo": "SPEC-123 F1a · valores PROVISÓRIOS do contrato (30/09/2026); a F2 decide pela bancada (D4)",
+   "papel": "destravador",
+   "provider": "openai",
+   "provider_reserva": "anthropic",
+   "risco": "critico",
+   "versao": 1
+  },
+  "destravador_segunda": {
+   "classe_de_dado": "pii",
+   "descricao": "SPEC-123 — a 2ª opinião do DEDUZIR, de OUTRO provedor que o que decidiu (D3) — app/services/destravador.py",
+   "esforco": null,
+   "esforco_reserva": "high",
+   "modelo_primario": "claude-sonnet-5-5",
+   "modelo_reserva": "gpt-6.1-sol",
+   "motivo": "SPEC-123 F1a · valores PROVISÓRIOS do contrato (30/09/2026); a F2 decide pela bancada (D4)",
+   "papel": "destravador_segunda",
+   "provider": "anthropic",
+   "provider_reserva": "openai",
+   "risco": "critico",
+   "versao": 1
   },
   "dispatch": {
    "classe_de_dado": "pii",

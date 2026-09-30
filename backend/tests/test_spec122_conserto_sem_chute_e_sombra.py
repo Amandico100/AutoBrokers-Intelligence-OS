@@ -28,6 +28,14 @@ def _carregar():
     return asyncio.run(R.load_active_dispatch(EMPRESA_A, URA))
 
 
+def _provedor_da_sombra() -> str:
+    """SPEC-123 F1a: a sombra chama o PRIMÁRIO do papel `destravador` (não mais o do `dispatch`)."""
+    from app.factories.llm_factory import LLMFactory
+    from app.services.destravador import PAPEL
+
+    return LLMFactory.resolver_para({}, {}, papel=PAPEL).provider
+
+
 # =============================================================================
 # RT-B1 · a NAVEGAÇÃO nunca é oferecida ao segurado, e nunca volta como resposta
 # =============================================================================
@@ -279,7 +287,10 @@ def test_RT_P4_n_falhas_da_sombra_nao_abrem_o_disjuntor_de_producao(amb, breaker
         _turno_da_fase_humana(amb, run=f"run-p4-{i}")
     assert len(amb.chamadas_ao_modelo) == 5 and amb.sombras() == []
     assert not any(c["relogio"] for c in amb.chamadas_ao_modelo)
-    assert asyncio.run(breaker.estado_do_breaker("anthropic"))["estado"] == "fechado"
+    # §9.3 — SPEC-123: o provedor que a sombra usa é o do destravador; é ESSE breaker que não pode abrir
+    prov = _provedor_da_sombra()
+    assert {c["papel"] for c in amb.chamadas_ao_modelo} == {"destravador"}
+    assert asyncio.run(breaker.estado_do_breaker(prov))["estado"] == "fechado"
     assert amb.chamadas_de_producao == [], "a sombra passou pelo helper COM reserva"
 
 
@@ -290,7 +301,9 @@ def test_RT_P4_CONTROLE_o_mesmo_modelo_com_o_relogio_abre_o_disjuntor(amb, break
     from langchain_core.messages import HumanMessage, SystemMessage
 
     amb.saida_do_modelo = ConnectionError("provedor caiu")
-    r = LLMFactory.resolver_para({}, {}, papel=AC.PAPEL_DA_SOMBRA)
+    from app.services.destravador import PAPEL
+
+    r = LLMFactory.resolver_para({}, {}, papel=PAPEL)
     for _ in range(3):
         llm = LLMFactory.create_llm({}, {}, company_id=EMPRESA_A, service_type="x", modelo_resolvido=r)
         with pytest.raises(ConnectionError):
@@ -300,7 +313,7 @@ def test_RT_P4_CONTROLE_o_mesmo_modelo_com_o_relogio_abre_o_disjuntor(amb, break
 
 def test_RT_P4_com_o_disjuntor_aberto_a_sombra_nao_chama(amb, breaker):
     _ligar(amb, EMPRESA_A)
-    asyncio.run(breaker._abrir(asyncio.run(breaker._cliente()), *breaker._chaves("anthropic")))
+    asyncio.run(breaker._abrir(asyncio.run(breaker._cliente()), *breaker._chaves(_provedor_da_sombra())))
     _turno_da_fase_humana(amb)
     assert amb.chamadas_ao_modelo == [] and amb.chamadas_de_producao == []
 
@@ -331,8 +344,10 @@ def test_RT_P5_nome_solto_nao_vai_para_work_events(amb):
 
     assert NOME in mascara_de_tela(f"o segurado é {NOME}"), "CONTROLE: o mascarador de tela sozinho deixa passar"
     _ligar(amb, EMPRESA_A)
-    amb.saida_do_modelo = json.dumps({"acao": "PERGUNTAR_AO_SEGURADO",
-                                      "valor": f"{NOME.split()[0]}, qual o seu CPF?",
+    # SPEC-123: a saída no formato do DESTRAVADOR — a pergunta com o nome CHEGA ao payload
+    #    (no formato velho ela virava "saída inválida" e o guarda passava sem nada a mascarar).
+    amb.saida_do_modelo = json.dumps({"classe": "perguntar_ao_segurado", "acao": "PERGUNTAR_AO_SEGURADO",
+                                      "valor": f"{NOME.split()[0]}, qual o seu CPF?", "nota": 50,
                                       "motivo": f"o titular é {NOME}"})
     salvar(EMPRESA_A, sessao(REF_PORTO, "guincho", estado="human_phase", slots={"nome": NOME}))
 
@@ -340,32 +355,40 @@ def test_RT_P5_nome_solto_nao_vai_para_work_events(amb):
         return f"Para {NOME}"
     rodar_turno(amb, EMPRESA_A, TELA_SEM_PASSO + f"\nOlá {NOME.upper()}", provider=_producao)
     [ev] = amb.sombras()
+    assert ev["payload_redacted"]["destravador"]["acao_final"] == "PERGUNTAR_AO_SEGURADO", (
+        "o CONTROLE: a pergunta com o nome tem de ter chegado ao payload")
     gravado = json.dumps(ev["payload_redacted"], ensure_ascii=False)
     assert not [p for p in NOME.split() if p.lower() in gravado.lower()], gravado[:600]
     assert "{NOME}" in gravado
 
 
 # =============================================================================
-# J-P3 · bancada e sombra montam o MESMO prompt V2, e a sombra não importa a bancada
+# J-P3 · o prompt que a sombra roda é o do PRODUTO, e a sombra não importa a bancada
 # =============================================================================
-def test_J_P3_bancada_e_sombra_montam_o_mesmo_prompt_v2(amb, monkeypatch):
+def test_J_P3_a_sombra_monta_o_prompt_do_destravador_do_produto(amb, monkeypatch):
+    """§9.3 — SPEC-123 F1a: a sombra deixou de rodar a V2 da bancada e passou a rodar o DESTRAVADOR.
+    A lição fica: o prompt que a sombra roda é, byte a byte, o que o compositor do PRODUTO
+    (`destravador.compor_mensagens`, o mesmo que a bancada da F2 importa) monta — e nem o módulo da
+    sombra nem o destravador importam a bancada."""
+    from app.services import destravador as DT
     from app.services.evals import bancada
 
-    assert bancada.mensagens_da_variante is AC.mensagens_da_variante
+    assert bancada.mensagens_da_variante is AC.mensagens_da_variante      # a V0–V3 da 122 continua
     assert "from app.services.evals" not in inspect.getsource(AC)
+    assert "from app.services.evals" not in inspect.getsource(DT)
     vistas = []
-    original = AC.mensagens_da_variante
+    original = DT.compor_mensagens
 
-    def _espiao(variante, sessao_, tela_):
-        vistas.append((variante, json.loads(json.dumps(sessao_, default=str)), tela_))
-        return original(variante, sessao_, tela_)
-    monkeypatch.setattr(AC, "mensagens_da_variante", _espiao)
+    def _espiao(sessao_, tela_, **k):
+        vistas.append((json.loads(json.dumps(sessao_, default=str)), tela_, dict(k)))
+        return original(sessao_, tela_, **k)
+    monkeypatch.setattr(DT, "compor_mensagens", _espiao)
     _ligar(amb, EMPRESA_A)
     _turno_da_fase_humana(amb)
     [ch] = amb.chamadas_ao_modelo
-    [(variante, s, tela)] = vistas
-    medida = bancada.mensagens_da_variante(variante, s, tela)       # o que a BANCADA mede
-    assert variante == "V2" and "REGRAS CURTAS" in medida["user"]
+    [(s, tela, k)] = vistas
+    medida = original(s, tela, **k)                                    # o que a BANCADA mediria
+    assert "O ROTEIRO AUTOMÁTICO TRAVOU" in medida["system"]
     assert (ch["system"], ch["user"]) == (medida["system"], medida["user"])
 
 
@@ -377,7 +400,7 @@ def test_RT_P9_falha_do_modelo_nao_marca_a_tela_e_ela_e_remedida(amb):
     amb.saida_do_modelo = ConnectionError("x")
     _turno_da_fase_humana(amb)
     assert amb.sombras() == [] and len(amb.chamadas_ao_modelo) == 1
-    amb.saida_do_modelo = '{"acao": "PESSOA", "valor": "", "motivo": "x"}'
+    amb.saida_do_modelo = '{"classe": "nunca_sozinho", "acao": "PESSOA", "valor": "", "nota": 30, "motivo": "x"}'
     rodar_turno(amb, EMPRESA_A, TELA_SEM_PASSO, provider=lambda *_: _async("Para você"))
     assert len(amb.sombras()) == 1 and len(amb.chamadas_ao_modelo) == 2
     # CONTROLE: gravada, a mesma tela no mesmo acionamento NÃO chama de novo
