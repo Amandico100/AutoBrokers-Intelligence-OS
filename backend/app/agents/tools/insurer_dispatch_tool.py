@@ -1033,13 +1033,24 @@ class InsurerDispatchTool(BaseTool):
         # 🔴 SPEC-121 F4b/F5 — o que vai a uma PESSOA antes de o corredor abrir
         #    (portão ≠ eletricista, raio = sinistro, carro reserva sem nº/cartão/horário/
         #    canal, seguradora sem caminho). Um lugar só: `antes_de_acionar`.
-        from app.services.corridor_playbooks import antes_de_acionar
+        # 🔴 CONSERTO ÚNICO (red team B1) — o motivo vai com o CÓDIGO na frente
+        #    (`motivo_com_codigo`), e o handoff lê o código (`ler_codigo_antes_de_acionar`)
+        #    em vez de reclassificar a frase por palavra. `tipo_do_aviso` e `reason`
+        #    também saem no retorno, para quem lê a ferramenta sem o modelo no meio.
+        from app.services.corridor_playbooks import (
+            CODIGOS_ANTES_DE_ACIONAR, antes_de_acionar, motivo_com_codigo,
+        )
         _pessoa = antes_de_acionar(playbook_ref, subservice, slots)
         if _pessoa:
+            _reason = motivo_com_codigo(_pessoa)
             return {"status": "pessoa_antes_de_acionar", "handoff_necessario": True,
-                    "codigo": _pessoa["codigo"], "missing": [], "content": (
+                    "codigo": _pessoa["codigo"],
+                    "tipo_do_aviso": CODIGOS_ANTES_DE_ACIONAR.get(_pessoa["codigo"],
+                                                                  "pedido_de_ajuda"),
+                    "reason": _reason, "missing": [], "content": (
                         "NÃO acione a seguradora. Chame `request_human_agent` agora, com o "
-                        f"motivo: '{_pessoa['motivo']}'. Ao segurado, diga com as suas "
+                        f"`reason` EXATAMENTE assim, inteiro e com a marca entre colchetes: "
+                        f"'{_reason}', e `codigo`='{_pessoa['codigo']}'. Ao segurado, diga com as suas "
                         f"palavras: \"{_pessoa['ao_segurado']}\" — e, sem o carimbo "
                         "HANDOFF_OK, diga só que o pedido ficou registrado. Nunca prometa "
                         "carro, prazo, diárias ou protocolo.")}

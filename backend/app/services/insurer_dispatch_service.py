@@ -3265,6 +3265,18 @@ def _resolver_encaminhamento(session: Dict[str, Any]) -> Dict[str, Any]:
         ref["link"] = link
         ref["entregue_em"] = _now()
         session["referral"] = ref
+        if ref.get("exige_pessoa"):
+            # 🔴 K4 (SPEC-121, conserto único) — encaminhamento que o DESENHO manda
+            #    a uma PESSOA (Tokio: a corretora abre pelo link). Fechar como
+            #    `encaminhado` encerraria o caso sem ninguém avisado; o dossiê leva o
+            #    link e `para_a_equipe`.
+            #    ⚠️ Família EXISTENTE, de propósito: na Tokio a MESMA tela do link já
+            #    é `handoff_trigger` (`_TOKIO_HANDOFF_DO_ACIONAMENTO`) — mesmo
+            #    desfecho, mesma frase à atendente, e nenhuma família nova sem triagem
+            #    (`test_o_travamento_vira_linha` §D.1).
+            session["state"] = "needs_human"
+            session["reason"] = "handoff_trigger:encaminhamento_exige_pessoa"
+            return session
         session["state"] = "encaminhado"
         session["reason"] = f"encaminhado:{ref.get('kind') or 'orientacao'}"
         return session

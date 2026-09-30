@@ -82,6 +82,27 @@ r = CP.antes_de_acionar(REF, "eletricista", {"problema_descricao": "sem luz",
 certo(r.get("codigo") == "falta_de_energia_na_rua", "falta de energia NA RUA → concessionária", str(r))
 certo(CP.antes_de_acionar(REF, "eletricista", {"problema_descricao": "tomada da cozinha dando curto"}) is None,
       "🔴 CONTROLE: curto na tomada É eletricista (segue)")
+# 🔴 CONSERTO ÚNICO (juiz P4 · red P6): a PALAVRA não é o OBJETO. 💭 relatos
+#    ilustrativos (📊 0 no acervo de `messages`, medido pelo red team) — o que se
+#    afirma é o comportamento do MOTOR (`antes_de_acionar`) sobre cada um.
+for relato, codigo in (("o portão eletrônico não abre", "portao_nao_e_eletricista"),
+                       ("não consigo abrir o portão, o motor não responde", "portao_nao_e_eletricista"),
+                       ("o controle do portão parou", "portao_nao_e_eletricista"),
+                       ("o portão automático travou no meio", "portao_nao_e_eletricista"),
+                       ("uma descarga elétrica queimou a TV", "sinistro_danos_eletricos"),
+                       ("teve um pico de energia e queimou a geladeira", "sinistro_danos_eletricos"),
+                       ("caiu um raio perto de casa", "sinistro_danos_eletricos")):
+    r = CP.antes_de_acionar(REF, "eletricista", {"problema_descricao": relato}) or {}
+    certo(r.get("codigo") == codigo, f"{relato!r} → {codigo}", str(r))
+for relato in ("a lâmpada do portão queimou", "a tomada perto do portão não funciona",
+               "a luz da garagem ao lado do portão pisca", "a válvula de descarga está vazando",
+               "teve um pico de energia e o disjuntor desarmou", "deu um surto e caiu o disjuntor"):
+    r = CP.antes_de_acionar(REF, "eletricista", {"problema_descricao": relato})
+    certo(r is None, f"🔴 CONTROLE: {relato!r} É eletricista (segue, não vai a pessoa)", str(r))
+r = CP.antes_de_acionar(REF, "eletricista", {"problema_descricao": "caiu um raio e queimou o motor do portão"}) or {}
+certo(CP.CODIGOS_ANTES_DE_ACIONAR.get(r.get("codigo")) == "sinistro"
+      and __import__("app.services.claims_shadow", fromlist=["x"]).detectar_sinistro(r.get("motivo"))[0],
+      "🔴 CONTROLE B1: raio continua SINISTRO — no código E na palavra do motivo (D10)", str(r))
 
 print()
 print("=" * 74)

@@ -108,7 +108,7 @@ certo(A(YL, "carro_reserva", CASO, agora=TERCA_10H, env=ENV_OK) is None,
 certo(A(YL, "carro_reserva", {**CASO, "sinistro_numero": ""}, agora=TERCA_10H, env=ENV_OK) is None
       and "sinistro_numero" in CP.missing_slots_for_subservice(YL, "carro_reserva", {}),
       "CONTROLE: nº do sinistro VAZIO → o portão cobra (o agente pergunta), não pessoa")
-for troca, codigo in (({"sinistro_numero": "não tenho"}, "carro_reserva_sem_sinistro"),
+for troca, codigo in (({"sinistro_numero": "não tenho"}, "carro_reserva_sem_numero_do_processo"),
                       ({"carro_reserva_cnh_e_cartao": "não tenho cartão"}, "carro_reserva_sem_cartao"),
                       ({"carro_reserva_motivo": "pane mecânica"}, "carro_reserva_motivo"),
                       ({"carro_reserva_motivo": "reparo em outra seguradora"}, "carro_reserva_motivo")):
@@ -125,6 +125,47 @@ for cia in ("allianz", "hdi", "porto", "zurich", "bradesco", "mapfre"):
     ref = CP.resolve_playbook_ref(cia, "auto")
     r = A(ref, "carro_reserva", CASO, agora=TERCA_10H, env=ENV_OK) or {}
     certo(r.get("codigo") == "carro_reserva_por_desenho", f"CR9: {cia} → pessoa por desenho")
+
+print()
+print("=" * 74)
+print("[B1] 🔴 o MOTIVO não diz 'sinistro' — e leva o CÓDIGO que o handoff lê (red team B1)")
+print("=" * 74)
+# Todos os motivos que `antes_de_acionar` escreve de VERDADE (motor, não lista à mão):
+# as 6 seguradoras por desenho (Zurich por SINISTRO e por PANE), e cada portão da Yelum.
+from app.services.claims_shadow import detectar_sinistro  # noqa: E402
+PEDIDOS = [(CP.resolve_playbook_ref(c, "auto"), m, dict(CASO, carro_reserva_motivo=m), {}, TERCA_10H)
+           for c in ("allianz", "hdi", "porto", "zurich", "bradesco", "mapfre")
+           for m in ("sinistro", "pane mecânica")]
+PEDIDOS += [(YL, k, {**CASO, **t}, e, q) for k, t, e, q in (
+    ("sem nº", {"sinistro_numero": "não tenho"}, ENV_OK, TERCA_10H),
+    ("sem cartão", {"carro_reserva_cnh_e_cartao": "não"}, ENV_OK, TERCA_10H),
+    ("pane", {"carro_reserva_motivo": "pane depois do sinistro, bati o carro"}, ENV_OK, TERCA_10H),
+    ("20h", {}, ENV_OK, dt.datetime(2026, 9, 29, 20, 0)),
+    ("canal", {}, {}, TERCA_10H))]
+vistos = set()
+for ref, rot, slots, env, quando in PEDIDOS:
+    r = A(ref, "carro_reserva", slots, agora=quando, env=env) or {}
+    vistos.add(r.get("codigo"))
+    reason = CP.motivo_com_codigo(r) if r else ""
+    certo(r and not detectar_sinistro(r["motivo"])[0] and not detectar_sinistro(reason)[0],
+          f"{ref.split('-')[0]}/{rot}: {r.get('codigo')} → o detector de sinistro NÃO casa o motivo",
+          f"motivo={r.get('motivo')!r}")
+    cod, limpo = CP.ler_codigo_antes_de_acionar(reason)
+    certo(cod == r.get("codigo") and limpo == r.get("motivo")
+          and CP.CODIGOS_ANTES_DE_ACIONAR.get(cod) == "pedido_de_ajuda"
+          and "[" not in limpo and "_" not in limpo,
+          f"   o código volta do reason e o tipo é pedido_de_ajuda ({cod})", f"{cod!r} {limpo!r}")
+certo(vistos >= {"carro_reserva_por_desenho", "carro_reserva_sem_numero_do_processo",
+                 "carro_reserva_sem_cartao", "carro_reserva_motivo",
+                 "carro_reserva_fora_do_horario", "carro_reserva_canal_desligado"},
+      "os SEIS códigos de carro reserva foram exercitados pelo motor", str(sorted(vistos)))
+r = A(YL, "carro_reserva", CASO, agora=TERCA_10H, env={}) or {}
+certo("INSURER_CONTACT" not in r.get("motivo", "") and "Yelum" in r.get("motivo", ""),
+      "red P4: o motivo do canal desligado fala em língua de gente (sem o nome da variável)",
+      r.get("motivo"))
+certo(CP.ler_codigo_antes_de_acionar("[antes_de_acionar:inventado] x") == (None, "[antes_de_acionar:inventado] x")
+      and CP.ler_codigo_antes_de_acionar("cliente pediu pessoa") == (None, "cliente pediu pessoa"),
+      "🔴 CONTROLE: código fora da tabela e motivo comum NÃO são reconhecidos (texto intacto)")
 
 print()
 print("=" * 74)

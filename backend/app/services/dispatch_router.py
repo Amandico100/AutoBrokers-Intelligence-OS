@@ -4246,6 +4246,13 @@ async def try_route_insurer_inbound(
                   f"A seguradora informou:\n“{dito}”" if dito else "",
                   str(referral.get("link") or "").strip()]
         aviso = "\n\n".join(p for p in partes if p)
+        # 🔴 K4 (SPEC-121, conserto único) — encaminhamento que o DESENHO manda a
+        #    uma pessoa (`exige_pessoa`, Tokio) não fala com o segurado por aqui:
+        #    o motor já o entrega a uma pessoa (`_resolver_encaminhamento`), e o
+        #    texto da EQUIPE mora em `para_a_equipe`, nunca em `client_message`.
+        #    Cinto: se um dia chegar aqui, nada sai ao segurado.
+        if referral.get("exige_pessoa"):
+            aviso = ""
         if aviso and client_phone and not session.get("client_notified_referral"):
             try:
                 send_to_client(client_phone, aviso)

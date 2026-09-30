@@ -189,6 +189,97 @@ certo(s.get("state") == "needs_human" and str(s.get("reason") or "").startswith(
       "🔴 CONTROLE pelo motor: 'pane ou sinistro?' vai a uma pessoa",
       f"state={s.get('state')!r} reason={s.get('reason')!r}")
 
+def na_ura(subservico="bateria", **extra):
+    """A sessão JÁ na URA — o caso de guincho do teste não tem destino/endereço
+    completos e ficaria em `preparing`; aqui só se afirma a TELA."""
+    s = sessao(subservico, **extra)
+    s["state"] = "ura"
+    return s
+
+
+# 🔴 CONSERTO ÚNICO (red team P1) — A IRMÃ PRECISA SER GUARDADA. 📊 Pelo motor sobre
+#    o acervo porto, 10 telas do FLUXO DE SINISTRO só vão a uma pessoa POR CAUSA da
+#    irmã (menu com `Sinistro` entre as opções e SEM a assistência ao lado). Três
+#    delas, texto do acervo (`porto-auto.jsonl`, nome mascarado):
+TELAS_DO_FLUXO_DE_SINISTRO = [
+    ("51b2ed32", "O que você quer fazer agora?" + Q + "Botão 1: Acompanhar sinistro" + Q +
+     "Botão 2: Falar com a Porto"),
+    ("51b2ed32", "Antes de transferir sua conversa para um especialista, por favor, escolha um assunto:" +
+     Q + "Dúvidas sobre orçamento" + Q + "Informações sobre peças" + Q + "Lucros cessantes" + Q +
+     "Vistoria" + Q + "Reagendamento ou complemento" + Q + "Mais sobre sinistro" + Q + "Voltar"),
+    ("ca755794", "O que você gostaria de fazer?" + Q + "Contrate a Porto" + Q +
+     "Confira nossos produtos e serviços" + Q + "Sinistro Auto" + Q +
+     "Abertura e acompanhamento de sinistro exclusivo para terceiros" + Q +
+     "Informar outro CPF/CNPJ" + Q + "Voltar"),
+]
+for sid, tela in TELAS_DO_FLUXO_DE_SINISTRO:
+    certo(CP.detect_handoff_trigger(PB, tela) == r"sinistro",
+          f"🔴 [P1] {sid}: menu do FLUXO DE SINISTRO (sem a irmã) ainda dispara: {tela.splitlines()[0][:40]!r}",
+          f"disparou {CP.detect_handoff_trigger(PB, tela)!r}")
+    s, r = responder(na_ura("guincho"), tela)
+    certo(r is None and s.get("state") == "needs_human",
+          f"   e pelo MOTOR vai a uma pessoa ({sid})",
+          f"respondeu {r!r} · state={s.get('state')!r} reason={s.get('reason')!r}")
+
+# 🔴 CONSERTO ÚNICO (red team P2) — a MESMA tela, NUMERADA. 📊 porto-auto 51b2ed32,
+#    0c1e8e3e, b1ff65f2, e5318468 (assistência). O passo `menu_atendimento` já a
+#    respondia; agora o GATILHO também sabe que o `*4* - Sinistro` é opção.
+TELA_ATENDIMENTO_NUMERADA = Q.join([
+    "De que atendimento você precisa?", "", "*1* - Novo serviço", "*2* - Acompanhar um serviço",
+    "*3* - Cancelar serviço agendado", "*4* - Sinistro", "*5* - Consultar extrato",
+    "*6* - Seguro e apólice", "*7* - Ajuda com o App da Porto", "*8* - Mercosul", "*9* - Voltar"])
+certo(CP.detect_handoff_trigger(PB, TELA_ATENDIMENTO_NUMERADA) is None,
+      "[P2] o gatilho NÃO dispara na forma NUMERADA ('*4* - Sinistro' é opção)",
+      f"disparou {CP.detect_handoff_trigger(PB, TELA_ATENDIMENTO_NUMERADA)!r}")
+for sub in ("guincho", "tecnico", "vidros"):
+    s, r = responder(na_ura(sub), TELA_ATENDIMENTO_NUMERADA)
+    certo(r == "Novo serviço" and s.get("state") != "needs_human",
+          f"   e pelo MOTOR ({sub}) responde 'Novo serviço'", f"respondeu {r!r} · state={s.get('state')!r}")
+TELA_NUMERADA_SEM_IRMA = Q.join(["O que você precisa?", "", "*1* - Guincho ou outros serviços",
+                                 "*2* - Informações sobre pagamento", "*3* - Sinistro de Veículos",
+                                 "*4* - Voltar"])
+certo(CP.detect_handoff_trigger(PB, TELA_NUMERADA_SEM_IRMA) == r"sinistro",
+      "🔴 CONTROLE [P2]: menu numerado SEM a irmã (📊 ca755794) continua disparando",
+      f"disparou {CP.detect_handoff_trigger(PB, TELA_NUMERADA_SEM_IRMA)!r}")
+
+print()
+print("=" * 74)
+print("[4b] 🔴 juiz P3: 'você tem um serviço aberto' — nunca abrir DUPLICADO")
+print("=" * 74)
+# 📊 observed_events: UMA ocorrência (193c5ad6+1, 09/06/2026), texto do acervo.
+ABERTO = ("Segurado(a), você tem um serviço aberto 👇" + Q + Q +
+          "1-{NUMERO}-GUINCHO PESADO, previsto para {DATA}, às 15h56" + Q + Q +
+          "Você quer falar sobre ele?" + Q + "Botão 1: Sim" + Q + "Botão 2: Não")
+s, r = responder(na_ura("guincho", servico_texto="Guincho (reboque)"), ABERTO)
+certo(r is None and s.get("state") == "needs_human",
+      "guincho pedido + GUINCHO aberto → uma pessoa (pode ser o MESMO: nunca duplicar)",
+      f"respondeu {r!r} · state={s.get('state')!r} reason={s.get('reason')!r}")
+s, r = responder(na_ura("bateria", servico_texto="Bateria"), ABERTO)
+certo(r == "Não" and s.get("state") != "needs_human",
+      "bateria pedida + GUINCHO aberto → 'Não' (abre o que o cliente pediu HOJE)",
+      f"respondeu {r!r} · state={s.get('state')!r} reason={s.get('reason')!r}")
+ILEGIVEL = ABERTO.replace("GUINCHO PESADO", "SERVIÇO")
+s, r = responder(na_ura("bateria", servico_texto="Bateria"), ILEGIVEL)
+certo(r is None and s.get("state") == "needs_human",
+      "🔴 CONTROLE: tipo do serviço aberto ilegível → uma pessoa (nunca chute)",
+      f"respondeu {r!r} · state={s.get('state')!r}")
+RECLAMACAO = Q.join(["Certo. Sobre o que você quer falar?", "Informações do serviço",
+                     "Serviço não realizado", "Problema no atendimento", "Elogio ou sugestão",
+                     "Não encontrei o assunto", "Voltar"])
+s, r = responder(na_ura("guincho"), RECLAMACAO)
+certo(r is None and s.get("state") == "needs_human",
+      "o menu de ACOMPANHAMENTO/reclamação do serviço aberto → uma pessoa",
+      f"respondeu {r!r} · state={s.get('state')!r} reason={s.get('reason')!r}")
+DICA = ("Antes de continuar, uma dica 👇" + Q + Q + "Ao solicitar algum serviço, é necessário "
+        "confirmar as informações da apólice que será acionada.")
+s, r = responder(na_ura("guincho"), DICA)
+certo(r is None and s.get("state") not in ("needs_human",), "a 'dica' é aviso: nada se responde",
+      f"respondeu {r!r} · state={s.get('state')!r}")
+EXPLIQUE = "Certo! Me explique em poucas palavras o que você precisa." + Q + Q + "Por exemplo: *agendar um guincho*."
+s, r = responder(na_ura("bateria"), EXPLIQUE)
+certo(r == CASO["problema_descricao"], "'me explique em poucas palavras' → o relato do CASO",
+      f"respondeu {r!r} · state={s.get('state')!r}")
+
 print()
 print("=" * 74)
 print("[5] 🔴 D11: a consultora da Porto assume → uma pessoa da corretora, com motivo")

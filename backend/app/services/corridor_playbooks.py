@@ -3681,12 +3681,28 @@ _TOKIO_REFERRAL = {
     #    parte (identifica a apólice, colhe o caso, guarda o link) e transfere.
     #    ⚠️ Manter a instrução vencida seria a CLAUDE.md §9.3 no arquivo que
     #    decide o que se diz a uma pessoa de verdade.
+    #
+    # 🔴 CONSERTO ÚNICO (K4, 29/09/2026) — O TEXTO DA EQUIPE ESTAVA NO CAMPO DO
+    #    SEGURADO. `client_message` é o que `dispatch_router` (estado `encaminhado`)
+    #    MANDA AO SEGURADO, e este texto falava COM a corretora ("quem abre o
+    #    chamado é uma PESSOA da corretora… está no dossiê"). Consertado o CAMPO, não
+    #    só a frase (CLAUDE.md §12.1): a instrução da equipe mora em `para_a_equipe`,
+    #    e `exige_pessoa` faz o motor entregar o caso a uma PESSOA em vez de fechá-lo
+    #    como "resolvido por encaminhamento" (`_resolver_encaminhamento`). O
+    #    `client_message` abaixo é para o segurado e não promete nada que dependa
+    #    de alguém ter sido avisado.
+    "exige_pessoa": True,
     "client_message": (
+        "A Tokio Marine não abre esse serviço pelo WhatsApp: ela faz o pedido por um "
+        "site de autoatendimento. Uma pessoa da nossa equipe segue com o seu pedido "
+        "por lá e te avisa por aqui."
+    ),
+    "para_a_equipe": (
         "A Tokio Marine NÃO abre guincho, chaveiro, pane nem pneu pelo WhatsApp: ela "
-        "entrega um LINK de autoatendimento e encerra. 🔴 Quem abre o chamado é uma "
+        "entrega um LINK de autoatendimento e encerra. Quem abre o chamado é uma "
         "PESSOA da corretora, pelo link que a seguradora mandou NESTA conversa "
         "(está no dossiê) — nunca um endereço de memória, e não é tarefa do segurado. "
-        "🔴 E o número recebido no início é PROTOCOLO DE ATENDIMENTO DO CHAT, "
+        "O número recebido no início é PROTOCOLO DE ATENDIMENTO DO CHAT, "
         "não número de serviço: não há chamado aberto até alguém usar o link."
     ),
 }
@@ -4495,21 +4511,28 @@ _VIDROS_REFERRAL_PORTO = {
     "kind": "formulario",
     "closes_as": "resolvido_por_encaminhamento",
     "link_capture": "tracking_link",  # o link chega numa mensagem sozinha
+    # 🔴 SPEC-121 conserto único (K4 · o MESMO defeito da Tokio, e ALCANÇÁVEL): este
+    #    texto vai AO SEGURADO (`dispatch_router`, estado `encaminhado` — 📊 a rota
+    #    porto/vidros fecha assim) e falava COM a equipe ("Encaminhe ao segurado…").
+    #    Agora fala com o segurado; o link é o que a Porto mandou NESTA conversa, e o
+    #    roteador o anexa logo abaixo, com as palavras da própria URA.
     "client_message": (
-        "A Porto trata vidro, retrovisor, farol e lanterna por FORMULÁRIO de sinistro de vidros — "
-        "não é chamado aberto pelo WhatsApp da assistência. Encaminhe ao segurado o link que a "
-        "seguradora enviou NESTA conversa (nunca digite um endereço de memória) e repasse o que a "
-        "própria URA diz: este acionamento para vidros não afeta a classe de bônus."
+        "A Porto cuida de vidro, retrovisor, farol e lanterna por um formulário próprio, e "
+        "não pelo chamado da assistência. É só preencher pelo link que a Porto mandou NESTA "
+        "conversa, logo abaixo. E pode ficar tranquilo: este acionamento para vidros não "
+        "afeta a sua classe de bônus."
     ),
 }
 _VIDROS_REFERRAL_ZURICH = {
     "kind": "orientacao",
     "closes_as": "resolvido_por_encaminhamento",
     "link_capture": "tracking_link",
+    # 🔴 SPEC-121 conserto único (K4): texto AO SEGURADO. As palavras da Zurich vão
+    #    logo abaixo, entre aspas e sem paráfrase (o roteador as anexa) — nada de
+    #    prazo, valor ou franquia que ela não disse.
     "client_message": (
-        "A Zurich responde vidros com ORIENTAÇÃO: onde encontrar como pedir o reparo ou a troca de "
-        "vidros, para-brisa, faróis e retrovisores. Repasse ao segurado exatamente o que a seguradora "
-        "enviou nesta conversa — sem completar com prazo, valor ou franquia que ela não disse."
+        "A Zurich cuida de vidros, para-brisa, faróis e retrovisores por um caminho "
+        "próprio, e não pelo chamado da assistência. Veja abaixo o que ela orienta."
     ),
 }
 # 🔴 DESLIGADO EM 22/08/2026: `menu_value="5"` aponta para uma tecla que morreu
@@ -11908,8 +11931,15 @@ def _tokens_comparaveis(texto: str) -> List[str]:
     return [t for t in limpo.split() if len(t) >= 3 and not re.fullmatch(_RUIDO_DE_LOGRADOURO, t)]
 
 
-def _so_digitos(v: str) -> str:
-    return re.sub(r"\D", "", str(v or "")).lstrip("0")
+def _digitos_do_numero(v: str) -> str:
+    """Os dígitos do NÚMERO do endereço, sem zero à esquerda ("0125" == "125").
+
+    🔴 K5 (SPEC-121, conserto único): esta função se chamava `_so_digitos` — o MESMO
+    nome do formato `so_digitos` (acima), e a segunda definição sombreava a primeira
+    no módulo. 📊 Sem efeito medido (o dicionário de formatos guarda a 1ª; a única
+    chamada por nome era esta, com 1 argumento) — mas o próximo `_so_digitos(x, s, t)`
+    escrito abaixo daqui quebraria calado. Uma extração de dígitos, dois nomes."""
+    return (_so_digitos(v, {}, "") or "").lstrip("0")
 
 
 def _conferir_endereco(campo: str, do_resumo: str, do_caso: str, parser) -> List[Dict[str, str]]:
@@ -11922,7 +11952,7 @@ def _conferir_endereco(campo: str, do_resumo: str, do_caso: str, parser) -> List
         return []
     a, b = parser(do_resumo), parser(do_caso)
     problemas = []
-    if a.get("numero") and b.get("numero") and _so_digitos(a["numero"]) != _so_digitos(b["numero"]):
+    if a.get("numero") and b.get("numero") and _digitos_do_numero(a["numero"]) != _digitos_do_numero(b["numero"]):
         problemas.append({"campo": f"{campo}_numero", "resumo": a["numero"], "caso": b["numero"]})
     for parte in ("cidade", "uf"):
         if a.get(parte) and b.get(parte) and _norm(a[parte]).strip() != _norm(b[parte]).strip():
@@ -13988,8 +14018,97 @@ PORTO_AUTO_WHATSAPP_V1["ura_steps"] = (
 #    `test_spec121_porto_menu_novo.py` [4].
 #    🔴 A IRMÃ: o menu só é "escolha do corredor" se oferece a ASSISTÊNCIA (ou o
 #    ramo/serviço que leva a ela) ao lado — `_norm` já tirou acento e `*`.
+#    🔴 CONSERTO ÚNICO (red team P2): a MESMA tela chega NUMERADA — "*1* - Novo
+#    serviço … *4* - Sinistro" (📊 porto-auto 51b2ed32, 0c1e8e3e, b1ff65f2, e5318468)
+#    — e depois do `_norm` a linha é "1 - novo servico": a irmã aceita o prefixo
+#    `N -` / `N.` / `N)`. ⚠️ Ali o passo `menu_atendimento` já respondia "Novo serviço"
+#    antes do gatilho (o motor casa o passo primeiro); o conserto alinha o GATILHO,
+#    que também é lido na captura de protocolo e pela régua.
 PORTO_AUTO_WHATSAPP_V1["handoff_triggers_fora_de_menu"] = {
-    r"sinistro": r"^(?:assistencia|seguro auto|novo servico|servicos? para veiculo)\b"}
+    r"sinistro": (r"^(?:\d{1,2}\s*[-.)]\s*)?"
+                  r"(?:assistencia|seguro auto|novo servico|servicos? para veiculo)\b")}
+
+# 🔴 CONSERTO ÚNICO (juiz P3, 29/09/2026) — "VOCÊ TEM UM SERVIÇO ABERTO".
+#    📊 `observed_events` inteiro: UMA ocorrência (porto 193c5ad6, 09/06/2026) —
+#    "Segurado(a), você tem um serviço aberto 👇 1-N-GUINCHO PESADO, previsto para…
+#    Você quer falar sobre ele? Botão 1: Sim / Botão 2: Não". O humano respondeu
+#    "Sim" (a tela seguinte é o menu de reclamação) e a conversa terminou em
+#    transferência, SEM protocolo: era ACOMPANHAMENTO do guincho aberto.
+#    Decisão (notas): sempre "Não" (abre outro) 45 — pode abrir um guincho
+#    DUPLICADO · sempre pessoa 70 — segura, mas trava o serviço diferente ·
+#    "Não" só quando o aberto é de OUTRO tipo, e mesmo tipo (ou tipo ilegível) →
+#    pessoa **82**. Precedentes: `servico_ja_aberto`/`servico_ja_aberto_menu`
+#    (a família responde "Novo serviço"/"Outro assunto": abre o que o cliente pediu
+#    HOJE) e D-120-F (nunca abrir duas vezes o mesmo).
+_PALAVRAS_DO_SERVICO_AUTO = r"guincho|reboque|bateria|pneu|chaveiro|vidro|taxi|tecnico"
+
+
+def _tipos_de_servico(texto: str) -> set:
+    return {("guincho" if p == "reboque" else p)
+            for p in re.findall(_PALAVRAS_DO_SERVICO_AUTO, _texto_normal(texto))}
+
+
+def _nao_se_o_aberto_e_outro(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """`Não` (seguir para o serviço NOVO) só quando o serviço aberto que a tela
+    lista é de OUTRO tipo que o do caso; mesmo tipo ou ilegível → `None` (pessoa)."""
+    nosso = _tipos_de_servico(valor)
+    m = re.search(r"servico aberto([\s\S]*?)(?:quer falar sobre|$)", _texto_normal(tela))
+    abertos = _tipos_de_servico(m.group(1) if m else "")
+    if not nosso or not abertos or nosso & abertos:
+        return None
+    return _rotulo_por_sinonimo([(r"\w", r"^nao\b")])("nao", slots, tela)
+
+
+_FORMATOS_DA_RESPOSTA["nao_se_o_aberto_e_outro"] = _nao_se_o_aberto_e_outro
+_FORMATOS_QUE_LEEM_A_TELA = _FORMATOS_QUE_LEEM_A_TELA | {"nao_se_o_aberto_e_outro"}
+
+_PORTO_AUTO_SERVICO_ABERTO = [
+    {"step": "servico_aberto_porto_auto",
+     "anchor": r"voc[êe] tem um servi[çc]o aberto[\s\S]{0,400}quer falar sobre ele",
+     "reply": "{servico_texto}", "requires": ["servico_texto"],
+     "format": "nao_se_o_aberto_e_outro", "sem_chute": True, "classe": "decide",
+     "constante_justificada": (
+         "`Não` entre `Sim`/`Não` SÓ quando o serviço aberto listado é de outro tipo "
+         "(chaveiro aberto, pedido de guincho): abre o que o cliente pediu HOJE, como "
+         "`servico_ja_aberto`. Mesmo tipo → pessoa (📊 193c5ad6: era acompanhamento do "
+         "guincho aberto; D-120-F: nunca abrir duplicado)."),
+     "notes": "📊 1 sessão em observed_events (193c5ad6+1, 09/06/2026)."},
+    {"step": "dica_titular_porto_auto",
+     "anchor": r"antes de continuar, uma dica[\s\S]{0,200}confirmar as informa[çc][õo]es da ap[óo]lice",
+     "reply": "", "noop": True,
+     "notes": "📊 193c5ad6+1. Aviso sobre escolher o titular certo; a URA segue sozinha "
+              "para a lista de veículos (a próxima tela)."},
+    {"step": "descrever_necessidade_auto",
+     "anchor": r"(?:me )?explique em poucas palavras o que voc[êe] precisa",
+     "reply": "{problema_descricao}", "requires": ["problema_descricao"],
+     "notes": "📊 193c5ad6+1 (auto). A MESMA tela do residencial (`descrever_necessidade`, "
+              "📊 3 sessões: o relato do caso levou ao agendamento). Eco do caso."},
+]
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = (
+    list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _PORTO_AUTO_SERVICO_ABERTO])
+# O menu de ACOMPANHAMENTO/RECLAMAÇÃO do serviço aberto ("Informações do serviço /
+# Serviço não realizado / Problema no atendimento…") não é acionamento: pessoa.
+# ⚠️ Dialeto do motor: `detect_handoff_trigger` casa sobre o `_norm` (sem acento).
+_GATILHO_ACOMPANHAMENTO_PORTO = r"servico nao realizado[\s\S]{0,80}problema no atendimento"
+PORTO_AUTO_WHATSAPP_V1["handoff_triggers"] = (
+    list(PORTO_AUTO_WHATSAPP_V1["handoff_triggers"]) + [_GATILHO_ACOMPANHAMENTO_PORTO])
+
+# 🔴 CONSERTO ÚNICO (juiz P3) — AZUL: "Não entendi a sua resposta. Por favor, digite
+#    um *CPF ou CNPJ válido*." ficava ÓRFÃ (ab045fdd). A CAUSA foi medida e NÃO é do
+#    corredor: 📊 `observed_events` azul, resposta a "informe o CPF ou CNPJ do(a)
+#    segurado(a)": `999.999.999-99` aceito 10/10 · 11 dígitos aceito 1/1 · **12 dígitos
+#    recusado 1/1** (ab045fdd, 10/07/2026 — o humano digitou um dígito a mais). O CPF
+#    do corredor passa por `documento_br_valido` antes de sair. Mas a tela de
+#    reparo existe, e a irmã da Porto (`cpf_invalido`) exige "Desculpe," na frente:
+#    aqui a URA a escreve sem. UMA repetição, só com dígitos (📊 aceito 1/1); a
+#    segunda recusa ("ainda não entendi") não casa a âncora e segue ao caminho de
+#    sempre.
+AZUL_AUTO_WHATSAPP_V1["ura_steps"] = list(AZUL_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    {"step": "cpf_invalido_azul",
+     "anchor": r"^n[ãa]o entendi a sua resposta[\s\S]{0,60}cpf ou cnpj v[áa]lido",
+     "reply": "{titular_cpf}", "requires": ["titular_cpf"], "format": "so_digitos",
+     "notes": "📊 ab045fdd (10/07/2026). UMA repetição; a 2ª recusa tem outra redação."},
+]
 
 # 🔴 D11 (Founder, 29/09/2026) — A CONSULTORA DA PORTO ASSUME → UMA PESSOA DA CORRETORA.
 #    📊 4830574a: *"Sou consultora de relacionamento e darei continuidade ao seu
@@ -14302,11 +14421,27 @@ _COMO_PERGUNTAR.update({
 #    Atendente de residencial (29/09/2026): eletricista = curto, disjuntor, tomada,
 #    bocal. Portão eletrônico NÃO é eletricista. Raio/queda de energia que danificou
 #    o motor = SINISTRO de danos elétricos → uma pessoa.
-_RX_PORTAO = re.compile(r"\bportao\b|\bmotor do portao\b|\bportao eletronico\b|\bmotor de portao\b")
+#
+# 🔴 CONSERTO ÚNICO (juiz P4 · red P6, 29/09/2026) — a PALAVRA não é o OBJETO.
+#    `\bportao\b` sozinho mandava a uma pessoa "a lâmpada do portão queimou", que
+#    É eletricista; `\bdescarga\b` casava a válvula de descarga (📊 as 4 "descarga"
+#    em `messages` role=user são hidráulicas); `\bpico de luz\b` e `\bsurto\b` soltos
+#    viravam SINISTRO sem dano nenhum ("teve um pico e o disjuntor desarmou").
+#    Agora: portão só quando é o PORTÃO que o eletricista não cobre (eletrônico,
+#    automático, o motor, o controle, "não abre/fecha"); dano elétrico só com o
+#    EVENTO (raio, descarga ELÉTRICA/atmosférica) ou com o DANO ao lado (queimou,
+#    estragou, danificou). Guardado por `test_spec121_eletricista_e_chaveiro.py` [b].
+_RX_PORTAO = re.compile(
+    r"\bportao (?:eletronico|automatico|basculante|deslizante|de correr)\b|"
+    r"\bmotor (?:do|de|da) portao\b|\bcontrole (?:remoto )?do portao\b|"
+    r"\bportao\b[\s\S]{0,30}\b(?:nao (?:abre|fecha|abriu|fechou)|travou|travado|emperr\w*)|"
+    r"\b(?:abrir|fechar|abre|fecha)\b[\s\S]{0,15}\bportao\b")
 _RX_DANO_ELETRICO = re.compile(
-    r"\braio\b|\bdescarga\b|queda de (?:energia|luz)[\s\S]{0,60}(?:queim|estrag|danific|parou)|"
-    r"(?:queim|estrag|danific)[\s\S]{0,60}(?:queda|pico|oscila\w*|volta) (?:de |da )?(?:energia|luz)|"
-    r"\bpico de (?:energia|luz)\b|\bsurto\b")
+    r"\braio\b|\bdescarga (?:eletrica|atmosferica)\b|"
+    r"queda de (?:energia|luz)[\s\S]{0,60}(?:queim|estrag|danific|parou)|"
+    r"(?:queim|estrag|danific)[\s\S]{0,60}(?:queda|pico|oscila\w*|volta|surto) (?:de |da )?(?:energia|luz|tensao)|"
+    r"\b(?:pico|surto|oscilacao) (?:de |da )?(?:energia|luz|tensao)\b[\s\S]{0,60}(?:queim|estrag|danific)|"
+    r"\bsurto eletrico\b[\s\S]{0,60}(?:queim|estrag|danific)")
 
 # ---- (c) YELUM e HDI (auto) · A CHAVE DO CARRO --------------------------------
 #    📊 yelum (3 telas) "O que aconteceu com a chave? Dentro do veículo / Perda /
@@ -14685,14 +14820,95 @@ _COMO_PERGUNTAR_GRUPO.update({
 })
 
 #: CR9 — seguradoras em que o carro reserva vai a uma PESSOA por desenho.
+#: ⛔ Nenhum motivo deste arquivo leva a palavra "sinistro" (nem verbo de ocorrência)
+#:    quando o pedido NÃO é sinistro: o handoff reclassifica o motivo por PALAVRA
+#:    (`claims_shadow.detectar_sinistro`) — ver `CODIGOS_ANTES_DE_ACIONAR`.
 _CARRO_RESERVA_POR_DESENHO = {
     "allianz": "a Allianz só faz carro reserva por LIGAÇÃO (não pelo WhatsApp)",
     "hdi": "o canal de carro reserva da HDI é desconhecido",
     "porto": "o carro reserva da Porto nunca foi pedido pelo WhatsApp (falta um acionamento real)",
-    "zurich": "a Zurich pede o carro reserva junto do sinistro; o caminho não foi observado",
+    "zurich": ("a Zurich pede o carro reserva junto do processo aberto na seguradora; o "
+               "caminho pelo WhatsApp não foi observado"),
     "bradesco": "o Bradesco faz carro reserva por telefone; o menu novo nunca foi usado",
     "mapfre": "a Mapfre passa a uma pessoa e à locadora no meio do chat (fluxo de 2025)",
 }
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 CONSERTO ÚNICO (red team B1, 29/09/2026) — O CONTRATO DO MOTIVO
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 O motivo de `antes_de_acionar` é o que o agente copia para
+#    `request_human_agent`, e `human_handoff._avisar_suporte` roda
+#    `claims_shadow.detectar_sinistro(motivo)`: com a palavra "sinistro" no texto
+#    ("falta o número do sinistro", "a Zurich pede junto do sinistro") o pedido de
+#    CARRO RESERVA chegava ao grupo como "🚨 NOVO SINISTRO" e gravava a sombra com
+#    `motivo_enum='sinistro'` — inclusive na Zurich por PANE, onde sinistro não há.
+#
+# Cinto e suspensório:
+#   (1) nenhum motivo abaixo tem "sinistro" nem verbo de ocorrência, exceto o
+#       que É sinistro (`sinistro_danos_eletricos`, D10);
+#   (2) cada motivo nasce com um CÓDIGO estável, e o handoff lê o código — não
+#       a palavra. Forma, no começo do `reason` (o teto de 300 do handoff corta o fim):
+#
+#           [antes_de_acionar:<codigo>] <motivo em português>
+#
+#       `ler_codigo_antes_de_acionar(reason)` → `(codigo | None, motivo_sem_a_marca)`
+#       `CODIGOS_ANTES_DE_ACIONAR[codigo]`    → "pedido_de_ajuda" | "sinistro"
+#       (os mesmos valores de `o_grupo_so_o_que_importa.TIPO_PEDIDO_DE_AJUDA` /
+#       `TIPO_SINISTRO`). Código fora da tabela não é reconhecido: devolve None e
+#       o texto intacto — o handoff segue como sempre.
+MARCA_ANTES_DE_ACIONAR = "antes_de_acionar"
+CODIGOS_ANTES_DE_ACIONAR: Dict[str, str] = {
+    "sinistro_danos_eletricos": "sinistro",          # D10: raio É sinistro — continua
+    "portao_nao_e_eletricista": "pedido_de_ajuda",
+    "falta_de_energia_na_rua": "pedido_de_ajuda",
+    "carro_reserva_por_desenho": "pedido_de_ajuda",
+    "carro_reserva_motivo": "pedido_de_ajuda",
+    "carro_reserva_sem_numero_do_processo": "pedido_de_ajuda",
+    "carro_reserva_sem_cartao": "pedido_de_ajuda",
+    "carro_reserva_fora_do_horario": "pedido_de_ajuda",
+    "carro_reserva_canal_desligado": "pedido_de_ajuda",
+}
+_RX_MARCA_ANTES_DE_ACIONAR = re.compile(
+    r"^\s*\[\s*" + MARCA_ANTES_DE_ACIONAR + r"\s*:\s*([a-z_]+)\s*\]\s*", re.IGNORECASE)
+
+
+def motivo_com_codigo(pessoa: Dict[str, str]) -> str:
+    """O `reason` que o agente passa a `request_human_agent`: marca + motivo."""
+    return f"[{MARCA_ANTES_DE_ACIONAR}:{pessoa['codigo']}] {pessoa['motivo']}"
+
+
+def ler_codigo_antes_de_acionar(reason: Any) -> Tuple[Optional[str], str]:
+    """`(codigo, motivo sem a marca)` — **PURA**. Sem marca conhecida: `(None, reason)`.
+
+    É a leitura que `human_handoff` faz ANTES de classificar por palavra: com
+    código, o tipo do aviso é `CODIGOS_ANTES_DE_ACIONAR[codigo]`, e a Fila/o grupo
+    recebem o motivo SEM a marca (língua humana; nada de nome de variável)."""
+    texto = str(reason or "")
+    m = _RX_MARCA_ANTES_DE_ACIONAR.match(texto)
+    if not m or m.group(1).lower() not in CODIGOS_ANTES_DE_ACIONAR:
+        return None, texto
+    return m.group(1).lower(), texto[m.end():].strip()
+
+
+def _nome_da_seguradora(cia: str) -> str:
+    return {"hdi": "HDI"}.get(cia, cia.capitalize()) or "seguradora"
+
+
+def _o_motivo_dito(motivo_cr: str) -> str:
+    """CR2 — o motivo que não é o do carro reserva, NOMEADO pelo produto.
+    ⛔ Nunca a frase do segurado: ela pode trazer "sinistro"/"bati o carro" e o
+    handoff a reclassificaria (red team B1)."""
+    t = _texto_normal(motivo_cr)
+    if re.search(r"pane", t):
+        return "pane mecânica"
+    if re.search(r"outra seguradora", t):
+        return "reparo em outra seguradora"
+    if re.search(r"condutor", t):
+        return "troca de condutor"
+    if re.search(r"terceiro", t):
+        return "carro de terceiro"
+    return "outro motivo"
 
 
 def _agora_brasilia(agora: Optional[Any] = None):
@@ -14752,7 +14968,7 @@ def antes_de_acionar(playbook_ref: str, subservice: str, slots: Dict[str, Any],
         return None
     if CARRO_RESERVA not in (pb.get("subservices") or {}):
         motivo = _CARRO_RESERVA_POR_DESENHO.get(
-            cia, f"não temos o caminho do carro reserva da {cia or 'seguradora'}")
+            cia, f"não temos o caminho do carro reserva da {_nome_da_seguradora(cia)}")
         return {"codigo": "carro_reserva_por_desenho",
                 "motivo": f"pedido de carro reserva — {motivo}",
                 "ao_segurado": ("Anotei o pedido do carro reserva. Nessa seguradora ele é feito "
@@ -14763,9 +14979,10 @@ def antes_de_acionar(playbook_ref: str, subservice: str, slots: Dict[str, Any],
     if "carro_reserva_motivo" in req and motivo_cr and _motivo_carro_reserva(
             motivo_cr, s, "*1* - Houve Sinistro") is None:
         return {"codigo": "carro_reserva_motivo",
-                "motivo": ("pedido de carro reserva por motivo que não é sinistro "
-                           f"({motivo_cr[:60]}) — pane, reparo em outra seguradora (exige o "
-                           "PDF do orçamento) ou troca de condutor: a corretora confirma"),
+                "motivo": (f"pedido de carro reserva por {_o_motivo_dito(motivo_cr)} — a "
+                           "seguradora só libera pelo WhatsApp quando o carro está na oficina "
+                           "por batida; pane, reparo em outra seguradora (exige o PDF do "
+                           "orçamento) ou troca de condutor: a corretora confirma a cobertura"),
                 "ao_segurado": ("Anotei. Esse tipo de pedido de carro reserva precisa de uma "
                                 "pessoa da nossa equipe para confirmar a cobertura — já passei "
                                 "para ela.")}
@@ -14773,9 +14990,10 @@ def antes_de_acionar(playbook_ref: str, subservice: str, slots: Dict[str, Any],
     #    não sei" dito pelo segurado — valor sem dígito — vai a uma pessoa (CR1).
     _num = str(s.get("sinistro_numero") or "").strip()
     if "sinistro_numero" in req and _num and not re.sub(r"\D", "", _num):
-        return {"codigo": "carro_reserva_sem_sinistro",
-                "motivo": ("pedido de carro reserva — falta o número do sinistro; a corretora "
-                           "obtém no portal/telefone da seguradora"),
+        return {"codigo": "carro_reserva_sem_numero_do_processo",
+                "motivo": ("pedido de carro reserva — falta o número do processo aberto na "
+                           "seguradora (a URA exige); a corretora obtém no portal ou no "
+                           "telefone da seguradora"),
                 "ao_segurado": ("Para pedir o carro reserva a seguradora exige o número do "
                                 "sinistro. Passei para uma pessoa da nossa equipe, que consegue "
                                 "esse número e segue com o pedido.")}
@@ -14805,9 +15023,12 @@ def antes_de_acionar(playbook_ref: str, subservice: str, slots: Dict[str, Any],
         import os as _os
         _env = env if env is not None else _os.environ
         if not "".join(ch for ch in str(_env.get(var) or "") if ch.isdigit()):
+            # 🔴 red team P4: o NOME DA VARIÁVEL não vai à corretora (jargão no
+            #    alerta). Quem configura lê a pendência K6; a atendente lê isto.
             return {"codigo": "carro_reserva_canal_desligado",
-                    "motivo": (f"pedido de carro reserva — o canal da {cia or 'seguradora'} para "
-                               f"carro reserva não está configurado ({var})"),
+                    "motivo": (f"pedido de carro reserva — o número de carro reserva da "
+                               f"{_nome_da_seguradora(cia)} ainda não foi configurado; o "
+                               "pedido é feito por uma pessoa"),
                     "ao_segurado": ("Anotei o pedido do carro reserva com tudo o que você me "
                                     "contou. Uma pessoa da nossa equipe faz o pedido na "
                                     "seguradora e te avisa.")}
