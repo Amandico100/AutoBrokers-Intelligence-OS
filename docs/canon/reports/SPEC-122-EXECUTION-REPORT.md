@@ -182,7 +182,12 @@ pelo nome · ligar a
 sombra quando quiser (SQL pronto) · os testes da S121 continuam pendentes, como ele decidiu.
 
 ## 8. ENTREGA
-ver o commit seguinte a este relatório (o push da main é carimbado depois de feito).
+📊 30/09/2026, `git push origin HEAD:main`:
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   2f1859d..c266381  HEAD -> main
+```
+`git rev-list --count origin/main..HEAD` → 0. Depois do push o Founder clica **Implantar** (smith-api → smith-worker → docling-service).
 
 ## 9. NOTA E TELEMETRIA
 86
