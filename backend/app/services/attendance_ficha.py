@@ -168,6 +168,35 @@ ROTULOS = {
     "taxi_passageiros": "quantas pessoas vão no táxi",
     # SPEC-120 · D9 — só a porto: o táxi que ela oferece junto com o guincho.
     "taxi_apos_guincho": "se vai precisar de táxi depois do guincho",
+    # ------------------------------------------------------------------ #
+    # 🔴 SPEC-121 — os 18 slots que as rotas novas passaram a exigir
+    # ------------------------------------------------------------------ #
+    # 📊 30/09/2026, medido pelo MOTOR (`test_todo_slot_do_corredor_tem_ficha`,
+    #    GC6b, no commit 4ccd063): 18 slots de `required_slots`/`requires` das
+    #    rotas novas (carro reserva, eletricista, chave do carro, eletro, bateria)
+    #    chegavam ao modelo pela CHAVE TÉCNICA. A redação é a do cliente e sai de
+    #    `corridor_playbooks._COMO_PERGUNTAR`, como nos 37 de 14/09.
+    "aparelho_fora_da_garantia": "se o aparelho já saiu da garantia do fabricante",
+    "apolice_numero": "o número da apólice",
+    "bateria_amperes": "quantos amperes tem a bateria",
+    "bateria_busca_centro_automotivo": ("se, sendo bateria nova, ele aceita buscar a "
+                                        "bateria num centro automotivo"),
+    "carro_reserva_cidade": "a cidade de retirada do carro reserva",
+    "carro_reserva_cnh_e_cartao": ("se quem retira o carro reserva tem CNH original e "
+                                   "cartão de crédito no próprio nome"),
+    "carro_reserva_condutor_cpf": "o CPF de quem vai retirar o carro reserva",
+    "carro_reserva_condutor_nome": "o nome de quem vai retirar o carro reserva",
+    "carro_reserva_data_hora": "o dia e a hora da retirada do carro reserva",
+    "carro_reserva_motivo": "o motivo do carro reserva (sinistro, pane, outro)",
+    "carro_reserva_telefone": "o celular de quem vai retirar o carro reserva",
+    "eletricista_comodo": "em que cômodo é o problema elétrico",
+    "eletricista_item_opcao": ("o item elétrico com problema (tomada, interruptor, "
+                               "lâmpada, disjuntor, chuveiro…)"),
+    "eletricista_tipo_opcao": "se é falta de energia na casa ou problema elétrico",
+    "eletrodomestico_aparelho": "qual é o aparelho",
+    "fora_da_cidade_da_apolice": "se o carro está fora da cidade da apólice",
+    "sinistro_numero": "o número do sinistro",
+    "veiculo_trancado": "se o carro está trancado",
 }
 
 #: Campos que a tool declara e que **não são dado do cliente** — lista fechada,

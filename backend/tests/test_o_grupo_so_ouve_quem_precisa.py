@@ -304,6 +304,17 @@ def _instalar_dubles():
     import app.core.database as dbreal  # o módulo REAL (a montagem do histórico)
     _ANTES.setdefault("__get_supabase_client", dbreal.get_supabase_client)
     dbreal.get_supabase_client = lambda: _Embrulho(BANCO_ATUAL["b"])
+    # 🔴 30/09/2026 (triagem da bateria da SPEC-121): na suíte inteira o
+    #    `sys.modules["app.core.database"]` e o atributo `app.core.database` podem
+    #    ser OBJETOS DIFERENTES — 📊 medido com um vigia de pytest: desde a coleta
+    #    (`test_spec116_f3a_quem_escreve_pede_papel` troca o do sys.modules). Quem
+    #    faz `from app.core.database import get_supabase_client` DENTRO da função
+    #    (como `attendance_agent_active`) lê o do sys.modules — e lia OUTRO banco.
+    #    O dublê vai nos dois, e os dois voltam.
+    dbsys = sys.modules.get("app.core.database")
+    if dbsys is not None and dbsys is not dbreal:
+        _ANTES.setdefault("__get_supabase_client_sys", (dbsys, dbsys.get_supabase_client))
+        dbsys.get_supabase_client = lambda: _Embrulho(BANCO_ATUAL["b"])
 
 
 def _restaurar():
@@ -311,6 +322,9 @@ def _restaurar():
 
     if "__get_supabase_client" in _ANTES:
         dbreal.get_supabase_client = _ANTES.pop("__get_supabase_client")
+    if "__get_supabase_client_sys" in _ANTES:
+        _dbsys, _antigo = _ANTES.pop("__get_supabase_client_sys")
+        _dbsys.get_supabase_client = _antigo
     for nome, antigo in list(_ANTES.items()):
         if antigo is None:
             sys.modules.pop(nome, None)
@@ -405,6 +419,27 @@ def rodar_tudo():
     return OK, FAIL
 
 
+def _o_attendance_agent_active_de_verdade():
+    """A função do WEBHOOK, lida do ARQUIVO — nunca a que estiver no módulo.
+
+    🔴 30/09/2026 · 📊 na bateria completa este teste ficou VERMELHO e passava
+    sozinho: `[True, False, False, False]`. Um vigia de pytest mediu a causa —
+    depois de `test_a_janela_esta_ligada_nos_portoes::teste_a_entrada_nao_aciona_a_ia_
+    quando_a_atendente_falou`, o `attendance_capture.attendance_agent_active` do
+    processo é `test_a_atendente_fala_e_o_robo_cala.agente_ligado.<locals>._resposta`
+    (sempre True), trocado e nunca devolvido. A regra A era comparada com um DUBLÊ
+    de outro teste. Carregar o fonte numa cópia privada compara com o código real,
+    em qualquer ordem — e se a função do arquivo mudar, a comparação muda junto.
+    """
+    import importlib.util
+
+    caminho = os.path.join(_RAIZ, "app", "services", "atlas", "attendance_capture.py")
+    spec = importlib.util.spec_from_file_location("_grupo_attendance_capture_do_arquivo", caminho)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.attendance_agent_active
+
+
 def _casos():
     import app.services.o_grupo_so_o_que_importa as G
     import app.services.o_fim_do_atendimento as F
@@ -435,7 +470,7 @@ def _casos():
     certo(n == 0, "regra B: o status do espelho NÃO é prova", r)
 
     # A é a MESMA pergunta do webhook — no mesmo banco, a mesma resposta
-    from app.services.atlas.attendance_capture import attendance_agent_active
+    attendance_agent_active = _o_attendance_agent_active_de_verdade()
 
     b = banco_com([])
     sem = "55555555-5555-4555-8555-555555555555"

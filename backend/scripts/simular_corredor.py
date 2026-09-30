@@ -213,7 +213,15 @@ _SITUACOES_QUE_VAO_PARA_GENTE: Dict[str, Tuple[str, str]] = {
         r"|comunicar (?:o )?sinistro|comunique seu sinistro"
         r"|conseguiu comunicar o seu sinistro"
         r"|preencher o formulario\*? de sinistro|formulario de sinistro"
-        r"|abertura de \*?sinistro"
+        # 🔴 SPEC-121 (30/09/2026) · a MESMA armadilha, agora na Yelum. 📊 O menu
+        #    "outros assuntos" do canal Segurado e Terceiros LISTA *"3 - Abertura de
+        #    Sinistro (todos os produtos)"* ao lado de *"4 - Sinistro (Informações e
+        #    Outros serviços)"* — e o 4 é onde mora o carro reserva (📊 10 de 10: o
+        #    humano respondeu `4`; 39e395bb termina em "em análise"). Rótulo de OPÇÃO
+        #    numerada não é pedido sobre o sinistro: fica de fora. A frase que PEDE
+        #    (📊 mapfre: "para fazer abertura de sinistro de automóvel…") continua
+        #    entrando — `test_o_menu_da_yelum_so_LISTA_abertura_de_sinistro`.
+        r"|(?<![0-9] - )abertura de \*?sinistro"
         r"|avisar ou acompanhar um sinistro",
         "a conversa entrou em sinistro — abrir, comunicar ou preencher formulário "
         "de sinistro é trabalho de uma pessoa, sempre",

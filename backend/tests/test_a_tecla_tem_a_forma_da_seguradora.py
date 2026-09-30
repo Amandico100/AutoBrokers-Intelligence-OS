@@ -276,6 +276,39 @@ for _ref in ("hdi-residencial", "yelum-residencial"):
 for _ref in ("allianz-residencial", "azul-auto", "hdi-auto", "hdi-residencial", "porto-auto",
              "porto-residencial", "yelum-auto", "yelum-residencial"):
     DA_ATENDENTE[(_ref, "veiculo_opcao")] = ("a lista de veículos da apólice; " + _ATENDENTE)
+# SPEC-121 F4b — o eletricista da família HDI/Yelum (📊 yelum 315f0681 · hdi 13379965):
+#    "falta de energia × problema elétrico" e "qual o item elétrico". A tecla é a
+#    PALAVRA do segurado, coletada ANTES (`required_slots` do eletricista) e
+#    convertida lendo a tela (`eletricista_tipo_na_tela` / `eletricista_item_na_tela`,
+#    `sem_chute`). ⚠️ A declaração não é de boa-fé: o laço logo abaixo (`_PROVA_DA_
+#    ATENDENTE`) confere as duas condições no MOTOR, e a tira da lista se falhar.
+_ELETRICISTA_121 = {"eletricista_tipo_opcao": "eletricista_tipo_do_problema",
+                    "eletricista_item_opcao": "eletricista_item"}
+for _ref in ("hdi-residencial", "yelum-residencial"):
+    for _slot in _ELETRICISTA_121:
+        DA_ATENDENTE[(_ref, _slot)] = ("required_slots do eletricista: " + _ATENDENTE)
+
+
+def _prova_da_atendente(ref_curto, slot, passo):
+    """A tecla declarada da atendente TEM origem no motor: o subserviço dono do
+    passo a exige em `required_slots` (o agente pergunta antes) e o `format` do
+    passo lê a tela (a palavra vira dígito). Falhando qualquer uma, a declaração
+    é só um nome numa lista — e o guarda volta a acusar."""
+    pb = next(pb for ref, pb in CP._PLAYBOOKS.items() if ref.split("-whatsapp")[0] == ref_curto)
+    p = next((x for x in pb.get("ura_steps") or [] if x.get("step") == passo), None)
+    if p is None:
+        return False
+    donos = p.get("only_subservices") or []
+    exigem = bool(donos) and all(
+        slot in ((pb.get("subservices") or {}).get(d) or {}).get("required_slots", [])
+        for d in donos)
+    return exigem and p.get("format") in CP._FORMATOS_QUE_LEEM_A_TELA
+
+
+for _ref in ("hdi-residencial", "yelum-residencial"):
+    for _slot, _passo in _ELETRICISTA_121.items():
+        if not _prova_da_atendente(_ref, _slot, _passo):
+            DA_ATENDENTE.pop((_ref, _slot), None)
 
 
 def inline_do_motor():
@@ -342,6 +375,23 @@ _acusa = sem_origem(set(_sem_eletrico), INLINE, DA_ATENDENTE)
 certo(any(s == "problema_eletrico_opcao" for _, _, s in _acusa),
       "🔴 CONTROLE: sem a derivação de `problema_eletrico_opcao`, o laço a NOMEIA",
       f"acusou {sorted({s for _, _, s in _acusa})[:4]}")
+# 🔴 CONTROLE da declaração do eletricista (SPEC-121): ela vale pela PROVA, não pelo
+#    nome. Sem o slot em `required_slots` do eletricista, a prova falha e o laço volta
+#    a nomear a tecla — conferido numa mutação em memória, restaurada em seguida.
+_pb_y = next(pb for ref, pb in CP._PLAYBOOKS.items() if ref.startswith("yelum-residencial"))
+_sub_y = _pb_y["subservices"]["eletricista"]
+_guardado_y = list(_sub_y["required_slots"])
+_sub_y["required_slots"] = [s for s in _guardado_y if s != "eletricista_item_opcao"]
+try:
+    _prova_sem = _prova_da_atendente("yelum-residencial", "eletricista_item_opcao", "eletricista_item")
+finally:
+    _sub_y["required_slots"] = _guardado_y
+certo(_prova_da_atendente("yelum-residencial", "eletricista_item_opcao", "eletricista_item")
+      and not _prova_sem,
+      "🔴 CONTROLE: sem `eletricista_item_opcao` no `required_slots` do eletricista, a "
+      "declaração da atendente PERDE a prova (e o laço de cima a nomearia)",
+      f"com={_prova_da_atendente('yelum-residencial', 'eletricista_item_opcao', 'eletricista_item')} "
+      f"sem={_prova_sem}")
 # ⚠️ E a declaração não pode envelhecer: tecla declarada que ganhou origem sai da lista.
 _velhas = sorted(k for k in DA_ATENDENTE if k[1] in VALORES or k[1] in INLINE)
 certo(not _velhas, "a lista da atendente não declara tecla que já tem derivação", f"{_velhas}")

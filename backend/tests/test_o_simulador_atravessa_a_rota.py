@@ -671,6 +671,36 @@ def test_o_menu_que_so_LISTA_sinistro_nao_entra():
             f"{l['session_id']}) — isso tira 4 rotas da Porto do ar")
 
 
+def test_o_menu_da_yelum_so_LISTA_abertura_de_sinistro():
+    """🔴 A armadilha do menu que LISTA sinistro, na Yelum (SPEC-121, 30/09/2026).
+
+    📊 O menu "outros assuntos" do canal Segurado e Terceiros lista *"3 - Abertura
+    de Sinistro"* ao lado de *"4 - Sinistro (Informações e Outros serviços)"* — e o
+    4 é o caminho do carro reserva (39e395bb termina em "em análise"). O padrão
+    `abertura de sinistro` casava o RÓTULO da opção 3 e a bateria 5 acusava a rota
+    yelum/auto/carro_reserva de responder sozinha a um sinistro.
+
+    ⚠️ CONTROLE (§9.3): a frase que PEDE a abertura continua entrando — medida na
+    tela real da mapfre, não inventada. Sem ela o conserto poderia ser apagar o
+    padrão inteiro, e o guarda passaria.
+    """
+    menus = [l for l in RP.carregar_corpus("yelum", "auto")
+             if re.search(r"\b3 - abertura de sinistro", M._norm(l["text"]))]
+    assert menus, "o menu 'outros assuntos' da Yelum saiu do acervo — o guarda ficou sem caso"
+    for l in menus:
+        assert SC.situacao_que_vai_para_gente(l["text"]) is None, (
+            f"🔴 o menu que só LISTA 'abertura de sinistro' entrou na bateria 5 "
+            f"(sessão {l['session_id']})")
+    pedidos = [l for l in RP.carregar_corpus("mapfre", "auto")
+               if re.search(r"para fazer abertura de sinistro", M._norm(l["text"]))]
+    assert pedidos, "a tela que PEDE a abertura saiu do acervo — o controle perdeu o caso"
+    for l in pedidos:
+        sit = SC.situacao_que_vai_para_gente(l["text"])
+        assert sit and sit[0] == "sinistro", (
+            f"🔴 CONTROLE VERMELHO: a tela que pede a abertura do sinistro deixou de ir "
+            f"a uma pessoa (sessão {l['session_id']}): {sit}")
+
+
 def test_toda_situacao_da_bateria_5_vai_para_uma_pessoa(sims):
     """🔴 O pedido explícito do Founder, conferido rota a rota."""
     furadas = [(s.rota, x) for s in sims for x in s.situacoes if not x[3]]

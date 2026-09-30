@@ -88,7 +88,29 @@ certo("carro_reserva" in nomeados,
 #    ⚠️ Isso NAO e' perda de amostra: e' a medicao de que ninguem pediu recarga
 #    de bateria a' bradesco neste acervo. Quem pede pane recebe TECNICO. Manter o
 #    30 aqui seria manter a verdade vencida (CLAUDE.md §9.3).
-certo(len(hoje) == 31, "as 31 rotas SEM_CORPUS tem veredito", str(len(hoje)))
+#
+# 🔴 TRINTA E UMA VIROU TRINTA E TRES em 30/09/2026 (SPEC-121), e cada uma das
+#    mudancas tem dono — medido com `RC.levantar()` na base 0cc1bdd x 4ccd063:
+#
+#      + azul/auto/carro_reserva ...... rota NOVA (F5); 📊 0 sessoes de carro
+#                                       reserva da azul etiquetadas no acervo
+#      + hdi/residencial/eletricista .. 📊 as 5 sessoes / 109 telas pediam
+#                                       conserto de FOGAO pelo menu do
+#                                       eletricista -> sem etiqueta (F3/F3b)
+#      + yelum/auto/socorro_mecanico .. 📊 179 telas: o "socorro" da Yelum era
+#                                       recarga de BATERIA (22 -> 201 telas)
+#      - yelum/auto/chaveiro .......... ganhou corpus: e6a07317 e 56bd78f7
+#                                       (📊 72 telas) passaram a ser chaveiro
+#
+#    (`reports/SPEC-121-ROTAS-ANTES-E-DEPOIS.md`.) Manter 31 seria a verdade
+#    vencida do §9.3 — e os NOMES abaixo fazem o numero ter dono: se um sair
+#    ou outro entrar, o guarda diz qual.
+_DA_SPEC_121 = {("azul", "auto", "carro_reserva"), ("hdi", "residencial", "eletricista"),
+                ("yelum", "auto", "socorro_mecanico")}
+certo(len(hoje) == 33, "as 33 rotas SEM_CORPUS tem veredito", str(len(hoje)))
+certo(_DA_SPEC_121 <= set(hoje) and ("yelum", "auto", "chaveiro") not in hoje,
+      "🔴 e as tres que a SPEC-121 acrescentou sao as nomeadas (e o chaveiro da yelum saiu)",
+      str(sorted(_DA_SPEC_121 - set(hoje))))
 certo(("bradesco", "auto", "bateria") in hoje,
       "🔴 e a 31a e' `bradesco/auto/bateria` -- a consequencia declarada da F1",
       str(sorted(k for k in hoje if k[0] == "bradesco")))
@@ -161,9 +183,9 @@ try:
 finally:
     RC.RP.carregar_corpus = _original
 
-certo(("bradesco", "auto", "bateria") not in _com_bateria and len(_com_bateria) == 30,
+certo(("bradesco", "auto", "bateria") not in _com_bateria and len(_com_bateria) == len(hoje) - 1,
       "🔴 CONTROLE: com o rotulo ANTIGO de volta, a rota ganha corpus e sobram "
-      "30 — o 31 tem causa medida, nao e' numero digitado",
+      "32 — a bateria da bradesco tem causa medida, nao e' numero digitado",
       f"{len(_com_bateria)} rotas")
 certo({k: v for k, v in _com_bateria.items() if k[0] != "bradesco"} ==
       {k: v for k, v in hoje.items() if k[0] != "bradesco"},

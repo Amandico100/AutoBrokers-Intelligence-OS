@@ -99,7 +99,22 @@ print("=" * 74)
 
 # A rota de referência tem de continuar em 2/2: o conserto não pode ser um
 # afrouxamento disfarçado.
-ref = _item("allianz", "residencial", "maquina_de_lavar")
+#
+# 🔴 A REFERÊNCIA MUDOU DE ROTA EM 30/09/2026 (SPEC-121) — e o porquê fica aqui.
+#    📊 `allianz/residencial/maquina_de_lavar` caiu de 2/2 para 1/2 (22 de 25) —
+#    e com ela as NOVE rotas de `allianz/residencial` — porque o acervo regerado
+#    (F3/F3b) tirou do corpus as telas de três passos do corredor inteiro:
+#    `link_acompanha` (📊 2 telas: é a CONSULTA de pedido já aberto, "cancelar /
+#    alterar", que a SPEC-121 exclui de propósito), `escolher_entre_dois_enderecos`
+#    (📊 3) e `repique_somente_numeros` (📊 1). A âncora acha ZERO telas no corpus
+#    novo, e o item faz o que diz: acusa. Não é o compartilhamento que falhou.
+#    Um controle que depende de a amostra continuar a mesma é refém da amostra —
+#    a mesma lição do `porto/residencial` logo abaixo. A referência passa a ser
+#    `allianz/auto/guincho`: 📊 2/2 na base 0cc1bdd E em 4ccd063 (8 de 8), e o
+#    corredor dela TEM passo compartilhado (`avisos_informativos_familia`, alfa +
+#    allianz), que é o caso que este guarda existe para conferir.
+_REF = ("allianz", "auto", "guincho")
+ref = _item(*_REF)
 certo(ref.pontos == 2, "🔴 CONTROLE: a rota de referência segue em 2/2 — o "
       "conserto não afrouxou nada", ref.evidencia)
 
@@ -115,17 +130,16 @@ certo(ref.pontos == 2, "🔴 CONTROLE: a rota de referência segue em 2/2 — o 
 # Então a note é quebrada de propósito, a RÉGUA é chamada (não uma cópia da
 # regra, §9.4), o vermelho é conferido e a note volta.
 rota_ref = [r for r in M.rotas()
-            if (r.seguradora, r.ramo, r.servico) == ("allianz", "residencial",
-                                                     "maquina_de_lavar")][0]
-antes = _item("allianz", "residencial", "maquina_de_lavar")
+            if (r.seguradora, r.ramo, r.servico) == _REF][0]
+antes = _item(*_REF)
 alvo = next(p for p in M.get_playbook(rota_ref.ref)["ura_steps"]
             if p.get("notes") and re.search(r"(\d+)\s*(?:msgs?|telas?)", str(p["notes"]))
             and p.get("anchor"))
 guardada = alvo["notes"]
 alvo["notes"] = "📊 0 telas / 0 sessões."      # declara MENOS do que o corpus tem
-quebrada = _item("allianz", "residencial", "maquina_de_lavar")
+quebrada = _item(*_REF)
 alvo["notes"] = guardada
-devolvida = _item("allianz", "residencial", "maquina_de_lavar")
+devolvida = _item(*_REF)
 
 certo(quebrada.pontos < antes.pontos,
       "🔴 CONTROLE: uma note SUB-DECLARADA derruba o item — ele consegue "

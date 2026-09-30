@@ -100,7 +100,12 @@ certo(token in orig.decode("utf-8"),
 
 depois = None
 try:
-    io.open(P, "w", encoding="utf-8").write(
+    # 🔴 `newline=""`: a mutação troca UM trecho e mais nada. 📊 30/09/2026, SPEC-121:
+    #    em árvore com CRLF (worktree com core.autocrlf), o modo texto do Windows
+    #    reescrevia cada `\r\n` como `\r\r\n` — e a continuação `and \` que a F4b pôs
+    #    em corridor_playbooks.py virava SyntaxError na recarga. O controle morria
+    #    por causa da ESCRITA, não do corredor; o conserto é escrever os bytes fiéis.
+    io.open(P, "w", encoding="utf-8", newline="").write(
         orig.decode("utf-8").replace(
             token, token + ' "noop_justificado": "CONTROLE",'))
     # \U0001f534 A LINHA QUE O TESTE ERROU NA 1a VERSAO. Sem recarregar o modulo

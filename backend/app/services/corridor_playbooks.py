@@ -2834,9 +2834,18 @@ _FLOW_CONDICOES_VEICULO_V2: Dict[str, Any] = {
     #    seguradoras — medido antes e depois, diferença ZERO. O que a declaração
     #    acrescenta é a PROCEDÊNCIA: quando um campo novo entrar no formulário,
     #    ele passa a ser cobrado por construção, e só de quem vê a tela.
+    #
+    # 🔴 SPEC-121 · 30/09/2026 — O CHAVEIRO TAMBÉM VÊ ESTA TELA.
+    #    📊 O acervo regerado (F3b) etiquetou `yelum e6a07317` como chaveiro — antes
+    #    `servico: null`. A Yelum responde *"enviaremos o serviço de CHAVEIRO para a
+    #    abertura do veículo e GUINCHO para a remoção"* e abre ESTE formulário
+    #    (garagem + nível da rua). Sem o chaveiro aqui o formulário não fechava e a
+    #    sessão parava no último portão (`test_o_formulario_nao_e_inocuo`).
     "subservicos_observados": {
         "guincho": ("📊 7 telas do corpus (hdi 4 · yelum 3) casam este formulário "
                     "pelo motor, todas em sessões de guincho"),
+        "chaveiro": ("📊 1 tela do corpus (yelum e6a07317): chaveiro + guincho de "
+                     "remoção, a Yelum converte a chave em reboque"),
     },
     # Procedência da transcrição — quem duvidar refaz a query.
     "observed": {
@@ -14476,7 +14485,12 @@ for _pb_ch in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1):
         _sub_ch["required_slots"] = list(_sub_ch.get("required_slots") or []) + [
             # ⚠️ `chave_problema` NÃO entra: `new_dispatch_session` já o deriva do relato
             #    (`test_o_contrato_alcanca_o_portao`) — perguntar seria repetir o segurado.
-            s for s in ("veiculo_trancado",)
+            # 🔴 30/09 (triagem da bateria): `garagem_do_caso` passou a valer para o
+            #    chaveiro logo acima, e o formulário de condições (garagem + nível) também
+            #    (📊 yelum e6a07317) — mas o chaveiro não COLETAVA a resposta: a tela
+            #    ia ao cérebro sem o dado e o formulário não fechava. Os dois slots vão
+            #    com os mesmos nomes do guincho (§9.5: passo que responde sem origem).
+            s for s in ("veiculo_trancado", "veiculo_em_garagem", "veiculo_nivel_rua")
             if s not in (_sub_ch.get("required_slots") or [])]
 _COMO_PERGUNTAR.update({
     "veiculo_trancado": "se o carro está trancado",
@@ -14727,6 +14741,24 @@ YELUM_AUTO_WHATSAPP_V1["subservices"][CARRO_RESERVA] = {
                 "ate": CARRO_RESERVA_HORARIO_YELUM[1]},
 }
 YELUM_AUTO_WHATSAPP_V1.setdefault("subservice_labels", {})[CARRO_RESERVA] = _CARRO_RESERVA_LABEL
+
+# 🔴 O CARRO RESERVA NÃO TEM "ONDE O VEÍCULO ESTÁ" — e o tronco cobrava.
+#    📊 30/09/2026, pelo MOTOR: `missing_slots_for_subservice(yelum-auto,
+#    "carro_reserva", <os 13 slots da rota preenchidos>)` devolvia `['local_atual']`
+#    — o passo `endereco_direto_2026` (tronco da assistência) exige `local_atual` sem
+#    escopo, e o portão o cobrava de um pedido que é feito na lista de SINISTRO e
+#    nunca vê essa tela. O agente perguntaria ao segurado onde o carro está parado
+#    para pedir um carro reserva. Guardado por `test_as_rotas_nao_se_borram` [1].
+#    O escopo sai das rotas que PEDEM `local_atual` (não de uma lista à mão), e o
+#    passo é copiado antes: o dicionário não é partilhado com a HDI, mas copiar
+#    garante que nunca venha a ser.
+_ROTAS_COM_LOCAL_YELUM = sorted(
+    r for r, s in (YELUM_AUTO_WHATSAPP_V1.get("subservices") or {}).items()
+    if "local_atual" in (s.get("required_slots") or []))
+YELUM_AUTO_WHATSAPP_V1["ura_steps"] = [
+    (dict(p, only_subservices=list(_ROTAS_COM_LOCAL_YELUM))
+     if p.get("step") == "endereco_direto_2026" and not p.get("only_subservices") else p)
+    for p in YELUM_AUTO_WHATSAPP_V1["ura_steps"]]
 
 # ---- TOKIO: o link da locadora (autoatendimento) --------------------------------
 #    📊 c1a67b4a (02/2026): menu → "Outros serviços" → "Carro reserva — Acione a
