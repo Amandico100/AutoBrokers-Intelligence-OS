@@ -1272,13 +1272,26 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         #    localização: "em frente ao posto" descreve o que se vê, não onde
         #    se está. É a mesma forma do `via_ou_rodovia_opcao` cinco linhas
         #    acima, que testa o ramo perigoso primeiro e por isso resiste.
+        # 🔴 SPEC-122 F2 · COLETAR ANTES — `local_situacao` ENTRA NA LEITURA.
+        #    📊 BLOCO 0 (30/09): `situacao_risco` é o `sem_chute` de maior volume
+        #    (hdi + yelum, 28 sessões) e "não era coletado". Era, com outro nome:
+        #    o portão já cobra `local_situacao` em hdi/yelum (guincho, pneu,
+        #    chaveiro, socorro_mecanico; bateria na yelum) — é a MESMA pergunta
+        #    (`_MESMA_PERGUNTA`: as duas no `grupo_lugar`), feita ao segurado com
+        #    as palavras dele ("local seguro" | "escuro ou mal iluminado" | "pouca
+        #    circulação de pessoas", `insurer_dispatch_tool`). A derivação ia só de
+        #    `situacao_risco_opcao` → `local_situacao`, nunca de volta: a resposta
+        #    DADA pelo segurado não chegava à tela de texto e o passo ia a uma pessoa.
+        #    ⚠️ É RESPOSTA do segurado, não endereço: entra nos DOIS ramos, inclusive
+        #    o seguro — e continua sujeita aos vetos de "km/rodovia/acostamento".
         _campos_de_risco = ("local_atual", "problema_descricao",
-                            "problema_relato", "situacao_risco", "descricao")
+                            "problema_relato", "situacao_risco", "descricao",
+                            "local_situacao")
         _sit = _norm(" ".join(str(slots.get(c) or "") for c in _campos_de_risco))
         # ⚠️ O ramo SEGURO lê só o RELATO — nunca o endereço.
         _relato = _norm(" ".join(str(slots.get(c) or "") for c in
                                  ("problema_descricao", "problema_relato",
-                                  "situacao_risco", "descricao")))
+                                  "situacao_risco", "descricao", "local_situacao")))
         if any(p in _sit for p in (
                 "pouca iluminacao", "sem iluminacao", "mal iluminad",
                 # ⚠️ RADICAL, nao a palavra: `_norm` tira acento mas nao
@@ -1289,6 +1302,8 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
             slots["situacao_risco_opcao"] = "Via com pouca iluminação"
         elif any(p in _sit for p in (
                 "pouco movimento", "sem movimento", "deserto", "desert",
+                # SPEC-122 F2: a redação que o portão ensina para `local_situacao`.
+                "pouca circulacao",
                 "nao passa ninguem", "lugar ermo", "ermo", "isolad")):
             slots["situacao_risco_opcao"] = "Via com pouco movimento"
         elif (any(p in _sit for p in (
@@ -3745,6 +3760,138 @@ def _tecla_para_humano(session: Dict[str, Any], step_name: str, tecla: Tecla) ->
 
 
 # ===========================================================================
+# 🔴 SPEC-122 F2 · O `sem_chute` PERGUNTA AO SEGURADO — só onde a URA espera
+# ===========================================================================
+#
+# 📊 BLOCO 0 (30/09): 30 passos `sem_chute`, 13 sem o dado coletado antes, 62
+# sessões. Até aqui TODOS iam direto a uma pessoa — inclusive quando só o
+# segurado sabe a resposta e a seguradora espera 10 minutos por ela. O
+# mecanismo de perguntar já existia (`dispatch_router.perguntar_ao_segurado`,
+# D3 da EXTRA-001.4); a porta não: o `sem_chute` retornava ANTES dele.
+#
+# 🔴 O CÉREBRO CONTINUA FORA: a pergunta vai ao SEGURADO, e a resposta dele é
+#    traduzida para a tecla pelo MOTOR (`resolver_tecla` / `render_reply`) — ou
+#    vai a uma pessoa. Nenhum modelo escolhe a resposta de um `sem_chute`.
+#
+#: D-122 D2 — onde a ida e volta com o segurado é PERMITIDA. 📊 Quanto a URA
+#: espera antes de encerrar por inatividade (BLOCO 0, `inat.py`, mesmo método de
+#: `inv-harness/m2_cadeia.py`, reconferido em 30/09/2026): a pergunta tem prazo de
+#: `PERGUNTA_HOLDING_S × 3 = 180 s` (`dispatch_router`), e só entra onde a
+#: mediana passa com folga.
+#: ⛔ PROIBIDA (fora desta tabela): 📊 allianz mediana 254 s (p10 183 s) · alfa
+#: mediana 313 s (n=3) — a URA encerra no meio da pergunta. E toda seguradora sem
+#: medição/decisão também fica fora: falha FECHADA, o `sem_chute` vai a uma pessoa
+#: como antes.
+IDA_E_VOLTA_AO_SEGURADO: Dict[str, str] = {
+    "porto": "📊 mediana 604 s (n=30) · D-122 D2",
+    "hdi": "📊 mediana 730 s, p10 492 s (n=10) · D-122 D2",
+    "yelum": "📊 mediana 728 s, p10 485 s (n=19) · D-122 D2",
+    "zurich": "📊 mediana 7.207 s (n=8) · D-122 D2",
+}
+
+
+def ida_e_volta_permitida(playbook: Any) -> bool:
+    """A seguradora deste corredor espera o segurado responder? (D-122 D2)
+
+    Aceita o playbook ou o `playbook_ref`. Desconhecido → False (falha fechada).
+    """
+    if isinstance(playbook, str):
+        playbook = get_playbook(playbook) or {}
+    return str((playbook or {}).get("insurer_key") or "").strip().lower() in IDA_E_VOLTA_AO_SEGURADO
+
+
+def sem_chute_ao_segurado(playbook: Dict[str, Any], step_name: str, faltou: List[str],
+                          tela: str, session: Dict[str, Any], *,
+                          estado_antes: str) -> Optional[Dict[str, Any]]:
+    """O PEDIDO para perguntar ao segurado o dado de um passo `sem_chute`, ou None.
+
+    None = vai a uma pessoa, EXATAMENTE como antes. Só pede quando TUDO vale:
+      · UM dado faltando (dois de uma vez não se pergunta numa frase);
+      · a seguradora espera (D-122 D2 · `ida_e_volta_permitida`);
+      · o produto sabe PERGUNTAR esse dado a um leigo (`_COMO_PERGUNTAR`);
+      · há um segurado para perguntar, e ele ainda não foi perguntado disso;
+      · tecla de menu (`*_opcao`): a tela tem ≥ 2 OPÇÕES legíveis, que vão junto
+        na pergunta — sem elas, a resposta não teria como virar tecla sem chute.
+
+    ⚠️ As opções vão como a TELA as lista (inclusive "Voltar"): 📊 o vocabulário de
+    navegação do produto marca "Nenhuma das anteriores" como navegação, e ela é a
+    resposta de quem está num lugar seguro. Filtrar seria esconder uma resposta.
+    """
+    faltou = [str(x) for x in (faltou or []) if str(x or "").strip()]
+    if len(faltou) != 1 or not ida_e_volta_permitida(playbook):
+        return None
+    slot = faltou[0]
+    rotulo = _COMO_PERGUNTAR.get(slot)
+    if not rotulo or not str(session.get("client_phone") or "").strip():
+        return None
+    if slot in (session.get("perguntado_ao_segurado") or []):
+        return None
+    opcoes: List[List[str]] = []
+    numeradas = False
+    if slot.endswith("_opcao"):
+        num = opcoes_numeradas(tela)
+        if num:
+            opcoes, numeradas = [[str(d), str(r)] for d, r in num], True
+        else:
+            opcoes = [[str(i), str(r)] for i, r in enumerate(_rotulos_da_tela(tela), 1)]
+        if len(opcoes) < 2:
+            return None
+    return {"slot": slot, "passo": str(step_name), "rotulo": str(rotulo),
+            "opcoes": opcoes, "numeradas": numeradas, "tela": str(tela or "")[-1500:],
+            "estado_antes": str(estado_antes or "ura")}
+
+
+def traduzir_resposta_do_segurado(session: Dict[str, Any], espera: Dict[str, Any],
+                                  resposta: str) -> Tuple[Optional[str], str]:
+    """A resposta do segurado a um `sem_chute` → o que vai à URA, pelo MOTOR. Ou `(None, porquê)`.
+
+    🔴 SEM CHUTE, nos dois sentidos:
+      · tecla (`*_opcao`): o segurado responde o NÚMERO ou o TEXTO de uma opção que
+        a pergunta mostrou. Só passa se casar EXATAMENTE UMA — dígito da lista, ou o
+        rótulo IGUAL (`_norm_label`); e o valor ainda atravessa `resolver_tecla` contra a
+        TELA REAL — a trava do ramo e a da ambiguidade continuam valendo.
+      · texto: `render_reply` do próprio passo, com o `format` dele (o formatador
+        do produto; ele recusa o que não sabe formatar).
+    Qualquer outra coisa → None, e o caso vai a uma pessoa.
+    """
+    slot = str(espera.get("slot") or "")
+    tela = str(espera.get("tela") or "")
+    bruta = str(resposta or "").strip()
+    playbook = get_playbook(str(session.get("playbook_ref") or "")) or {}
+    passo = next((p for p in playbook.get("ura_steps") or []
+                  if str(p.get("step") or "") == str(espera.get("passo") or "")), None)
+    if not slot or not bruta or passo is None:
+        return None, "sem_passo"
+    passo = {**passo, "_tela": tela}
+    slots = dict(session.get("slots") or {})
+    if slot.endswith("_opcao"):
+        opcoes = [(str(d), str(r)) for d, r in (espera.get("opcoes") or [])]
+        m = re.fullmatch(r"(?:op[çc][ãa]o\s*)?(\d{1,2})\s*[.)\-]?", _norm_text(bruta).strip(" *"))
+        if m:
+            escolhidas = [(d, r) for d, r in opcoes if d == (m.group(1).lstrip("0") or "0")]
+        else:
+            # 🔴 SÓ A IGUALDADE do rótulo (a 1ª etapa de `_casar_rotulo`), nunca o casador
+            #    frouxo do Atlas: 📊 medido neste teste, "via" casava SÓ "Rodovia" — a troca
+            #    exata que o `sem_chute` de via/rodovia existe para não fazer.
+            w = _weaver()
+            alvo = w._norm_label(bruta)
+            escolhidas = [(d, r) for d, r in opcoes if alvo and w._norm_label(r) == alvo]
+        if len(escolhidas) != 1:
+            return None, ("ambigua" if escolhidas else "nao_casa")
+        digito, rotulo = escolhidas[0]
+        slots[slot] = digito if espera.get("numeradas") else rotulo
+        tecla = resolver_tecla(playbook, passo, {**session, "slots": slots}, tela)
+        if tecla is None or tecla.get("destino") != "ura" or not str(tecla.get("valor") or "").strip():
+            return None, "tecla_recusada"
+        return str(tecla["valor"]), "ok"
+    slots[slot] = bruta[:300]
+    rendered = render_reply(passo, slots)
+    if not rendered.get("ok") or not str(rendered.get("reply") or "").strip():
+        return None, "formato"
+    return str(rendered["reply"]), "ok"
+
+
+# ===========================================================================
 # 🔴 SPEC-EXTRA-001.4 BLOCO B · A REGRA A — "OPÇÃO INVÁLIDA" É REPARADA PELO MOTOR
 # ===========================================================================
 #
@@ -4299,6 +4446,7 @@ def handle_insurer_message(
             #    tela, veria opções plausíveis e escolheria uma: seria o mesmo
             #    default de antes, agora com um parágrafo de justificativa.
             if step.get("sem_chute"):
+                _estado_antes_do_sem_chute = str(session.get("state") or "ura")
                 session["state"] = "needs_human"
                 session["reason"] = f"sem_chute:{','.join(rendered['missing'])}"
                 session["missing_slots"] = rendered["missing"]
@@ -4330,10 +4478,25 @@ def handle_insurer_message(
                     "faltou": list(rendered["missing"]),
                     "notes": str(step.get("notes") or ""),
                 }
+                # 🔴 SPEC-122 F2 — onde a URA espera (D-122 D2), o dado é PERGUNTADO
+                #    ao segurado em vez de ir direto a uma pessoa. ⚠️ A sessão sai
+                #    daqui EXATAMENTE como antes (`needs_human`) e só leva o PEDIDO:
+                #    quem pergunta é o roteador, e só ele desfaz o `needs_human` —
+                #    depois de a pergunta sair. Qualquer outro chamador deste motor
+                #    (Vigia, simulador, régua) vê o handoff de sempre: falha fechada,
+                #    e nenhum modelo é convidado a responder esta tela.
+                _pedido = sem_chute_ao_segurado(
+                    playbook, step_name, rendered["missing"], insurer_message, session,
+                    estado_antes=_estado_antes_do_sem_chute)
+                if _pedido:
+                    session["sem_chute_ao_segurado"] = _pedido
+                else:
+                    session.pop("sem_chute_ao_segurado", None)
                 logger.warning(
                     "[DISPATCH] 🔴 passo %r sem %s e marcado `sem_chute` — "
-                    "handoff, porque para este dado nao existe default honesto",
-                    step_name, rendered["missing"])
+                    "handoff, porque para este dado nao existe default honesto%s",
+                    step_name, rendered["missing"],
+                    " (a pergunta ao segurado foi pedida ao roteador)" if _pedido else "")
                 return session
 
             # ==============================================================

@@ -28,6 +28,7 @@ O Redis continua sendo o cache quente; o que ele não é mais é a única cópia
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -3238,13 +3239,22 @@ def e_resposta_de_conteudo(texto: Any) -> bool:
     return bool(limpo) and limpo not in _SO_CONFIRMACAO
 
 
-def pergunta_para_o_segurado(session: Dict[str, Any], rotulo: str) -> str:
-    """💭 Copy — a régua de língua da 001.3: uma frase, sem jargão, com o porquê."""
+def pergunta_para_o_segurado(session: Dict[str, Any], rotulo: str,
+                             opcoes: Optional[List[Any]] = None) -> str:
+    """💭 Copy — a régua de língua da 001.3: uma frase, sem jargão, com o porquê.
+
+    🔴 SPEC-122 F2 · `opcoes` (a tecla de um `sem_chute`): as opções vão COMO A TELA
+    AS ESCREVEU, numeradas — é o número ou o texto de UMA delas que o motor aceita
+    de volta (`traduzir_resposta_do_segurado`). Sem `opcoes`, a frase de sempre."""
     from app.services.dispatch_mirror import insurer_label_from_ref
 
     seguradora = insurer_label_from_ref(str(session.get("playbook_ref") or ""))
-    return (f"Só mais uma informação que a {seguradora} pediu para seguir com o seu "
-            f"atendimento: me diga {str(rotulo or 'o dado pedido').strip()}.")
+    frase = (f"Só mais uma informação que a {seguradora} pediu para seguir com o seu "
+             f"atendimento: me diga {str(rotulo or 'o dado pedido').strip()}.")
+    if opcoes:
+        linhas = chr(10).join(f"{d} - {r}" for d, r in opcoes)
+        frase += chr(10) + "Responda com o número de UMA destas opções:" + chr(10) + linhas
+    return frase
 
 
 async def _indexar_pergunta(company_id: str, client_phone: str, insurer_phone: str,
@@ -3589,7 +3599,9 @@ def uma_pessoa_da_seguradora_esta_falando(session: Dict[str, Any]) -> bool:
 async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
                                 insurer_phone: str, slot: str, rotulo: str,
                                 send_to_client: Callable[[str, str], Any],
-                                send_to_insurer: Callable[[str], Any]) -> bool:
+                                send_to_insurer: Callable[[str], Any],
+                                opcoes: Optional[List[Any]] = None,
+                                sem_chute: Optional[Dict[str, Any]] = None) -> bool:
     """① pergunta pelo canal do CLIENTE · ② "um instante" à SEGURADORA, SÓ SE
     houver uma PESSOA do outro lado · ③ a espera, na sessão.
 
@@ -3608,12 +3620,16 @@ async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
     possível, o caso vai a uma pessoa com o dossiê pela porta única da 001.3.
 
     Devolve se perguntou. ⛔ Nunca pergunta duas vezes o mesmo dado no acionamento.
+
+    🔴 SPEC-122 F2 · `sem_chute`: o PEDIDO do motor (`sem_chute_ao_segurado`) vai
+    junto na espera — é com ele (passo, opções, tela) que a resposta vira tecla
+    pelo MOTOR na volta, ou vai a uma pessoa. `opcoes` entram na pergunta.
     """
     cliente = str(session.get("client_phone") or "").strip()
     if not cliente or not slot or slot in (session.get("perguntado_ao_segurado") or []):
         return False
     intervalo, _maximo = _env_pergunta()
-    pergunta = pergunta_para_o_segurado(session, rotulo)
+    pergunta = pergunta_para_o_segurado(session, rotulo, opcoes=opcoes)
     vivo = ao_vivo(session)
     if vivo:
         try:
@@ -3644,6 +3660,13 @@ async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
         "pedido_em": agora.isoformat(), "ate": ate, "holdings": 0,
         "tela": _motor().tela_respondida(session)[-300:],
     }
+    if sem_chute:
+        # A tela INTEIRA do passo (as opções moram nela), não os 300 do fim.
+        session["esperando_do_segurado"].update({
+            "sem_chute": True, "passo": str(sem_chute.get("passo") or ""),
+            "opcoes": list(sem_chute.get("opcoes") or []),
+            "numeradas": bool(sem_chute.get("numeradas")),
+            "tela": str(sem_chute.get("tela") or "")[-1500:]})
     session["perguntado_ao_segurado"] = list(session.get("perguntado_ao_segurado") or []) + [slot]
     session["silencio_deliberado_ate"] = ate
     session.pop("pending_insurer_messages", None)
@@ -3738,22 +3761,38 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     else:
         retomada = "levada"
     vivo = ao_vivo(session)
+    # 🔴 SPEC-122 F2 — a resposta a um `sem_chute` NÃO vai crua à URA: o MOTOR a
+    #    traduz para a tecla/formato do passo (`traduzir_resposta_do_segurado`). Não
+    #    casou UMA opção, ou o formatador recusou → uma PESSOA, com o que ele disse.
+    a_seguradora = resposta[:600]
+    if espera.get("sem_chute") and retomada == "levada":
+        _traduzida, _porque = _motor().traduzir_resposta_do_segurado(session, espera, resposta)
+        if _traduzida is None:
+            return await _sem_chute_sem_resposta_valida(
+                empresa, from_phone, insurer_phone, session, espera, resposta, _porque,
+                vivo=vivo, send_to_client=send_to_client)
+        a_seguradora = _traduzida[:600]
     if vivo and retomada == "levada":
         integration = _canal_da_conversa(get_integration_service(), empresa, session)
         if integration is None:
             logger.error("[PERGUNTA] sem canal para levar a resposta à seguradora")
             return False
         try:
-            get_whatsapp_service().send_message(insurer_phone, resposta[:600], integration)
+            get_whatsapp_service().send_message(insurer_phone, a_seguradora, integration)
         except Exception as e:  # noqa: BLE001
             logger.error("[PERGUNTA] a resposta do segurado NÃO chegou à seguradora (%s)",
                          type(e).__name__)
             return False
     slot = str(espera.get("slot") or "")
     if slot:
-        session.setdefault("slots", {})[slot] = resposta[:300]
+        # `sem_chute` levado: o slot guarda o que a URA RECEBEU (a tecla/o rótulo),
+        # para o motor responder igual se a mesma tela voltar.
+        session.setdefault("slots", {})[slot] = (
+            a_seguradora[:300] if (espera.get("sem_chute") and retomada == "levada")
+            else resposta[:300])
     session.setdefault("transcript", []).append(
-        {"direction": "out" if retomada == "levada" else "note", "text": resposta[:600],
+        {"direction": "out" if retomada == "levada" else "note",
+         "text": a_seguradora if retomada == "levada" else resposta[:600],
          "at": _agora().isoformat(), "via": "segurado", "dry_run": not vivo,
          "step": "resposta_do_segurado" if retomada == "levada" else "resposta_tardia_do_segurado"})
     session.pop("esperando_do_segurado", None)
@@ -3786,6 +3825,81 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
                            "equipe está cuidando do seu caso. 🙂")
         except Exception:  # noqa: BLE001
             pass
+    return True
+
+
+def o_que_o_cerebro_de_producao_fez(session: Dict[str, Any], saidas_antes: int,
+                                    verdict: Dict[str, Any], state: Any) -> Dict[str, Any]:
+    """PURO. O que o turno do cérebro de PRODUÇÃO fez — o lado "sistema" da sombra.
+
+    RESPONDER (o que saiu à seguradora, lido do transcript) · SILENCIO · PESSOA (virou
+    `needs_human`) · RECUSADO (o conferente recusou e nada saiu neste turno)."""
+    novas = [t for t in (session.get("transcript") or [])[saidas_antes:]
+             if isinstance(t, dict) and t.get("direction") == "out"]
+    if novas:
+        return {"acao": "RESPONDER", "valor": str(novas[-1].get("text") or "")}
+    if (verdict or {}).get("silencio"):
+        return {"acao": "SILENCIO", "valor": ""}
+    if str(state or "") == "needs_human":
+        return {"acao": "PESSOA", "valor": ""}
+    return {"acao": "RECUSADO", "valor": ""}
+
+
+async def _sem_chute_sem_resposta_valida(empresa: str, from_phone: str, insurer_phone: str,
+                                        session: Dict[str, Any], espera: Dict[str, Any],
+                                        resposta: str, porque: str, *, vivo: bool,
+                                        send_to_client: Callable[[str, str], Any]) -> bool:
+    """🔴 SPEC-122 F2 — o segurado respondeu o `sem_chute`, e a resposta não vira tecla.
+
+    Nada vai à seguradora (a resposta crua seria o chute que o `sem_chute` proíbe).
+    O caso vai a uma PESSOA pelo MESMO caminho da espera vencida
+    (`dispatch_watchdog._segurar_ou_desistir`): `needs_human`, o dossiê pela porta
+    única (`_entregar_dossie_com_marcador`) e o aviso ao segurado — que aqui sai
+    pelo canal do cliente que já está na mão, e só ao vivo (o portão de `_emit`).
+    O que ele disse fica no rastro (nota), e o motivo diz o que faltou.
+    Devolve True: a mensagem ERA a resposta — o agente não a responde.
+    """
+    from app.services.insurer_dispatch_service import build_handoff_dossier
+    from app.tasks.dispatch_watchdog import _canal_da_conversa, _entregar_dossie_com_marcador
+
+    slot = str(espera.get("slot") or "")
+    rotulo = str(espera.get("rotulo") or slot or "o dado pedido")
+    session.pop("esperando_do_segurado", None)
+    session.pop("espera_vencida", None)
+    session["silencio_deliberado_ate"] = None
+    session["state"] = "needs_human"
+    session["reason"] = f"sem_chute:{slot}"
+    session["missing_slots"] = [slot] if slot else []
+    session["motivo_legivel"] = {
+        "campo": str(espera.get("passo") or ""), "slot": slot,
+        "rotulo": f"{rotulo} — o segurado respondeu, mas a resposta não é UMA das "
+                  "opções da tela; confirme com ele antes de responder à seguradora"}
+    session.setdefault("transcript", []).append(
+        {"direction": "note", "text": str(resposta or "")[:600], "at": _agora().isoformat(),
+         "via": "segurado", "dry_run": not vivo, "step": "resposta_do_segurado_sem_opcao"})
+    await _indexar_pergunta(empresa, from_phone, insurer_phone, 1, apagar=True)
+    await _anotar_ato(empresa, session, "pergunta_ao_segurado.respondida",
+                      "O segurado respondeu, a resposta não casou UMA opção da tela; "
+                      "o caso foi para uma pessoa.",
+                      {"slot": slot, "retomada": "pessoa", "porque": str(porque or "")[:40],
+                       "tardia": False})
+    try:
+        from app.services.integration_service import get_integration_service
+        from app.services.whatsapp_service import get_whatsapp_service
+
+        integration = _canal_da_conversa(get_integration_service(), empresa, session)
+        dossier = build_handoff_dossier(session, reason=f"A resposta do segurado a {rotulo} não é uma opção da tela")
+        session["dossier_sent"] = await _entregar_dossie_com_marcador(
+            empresa, session, dossier, get_whatsapp_service(), integration)
+    except Exception as e:  # noqa: BLE001 — o handoff nunca cai por causa do dossiê
+        logger.error("[PERGUNTA] dossiê do sem_chute não saiu (%s)", type(e).__name__)
+    if vivo and not session.get("client_notified_handoff"):
+        try:
+            send_to_client(from_phone, _motor().aviso_de_handoff(bool(session.get("dossier_sent"))))
+            session["client_notified_handoff"] = True
+        except Exception as e:  # noqa: BLE001
+            logger.error("[PERGUNTA] aviso de handoff ao segurado falhou (%s)", type(e).__name__)
+    await save_active_dispatch(empresa, insurer_phone, session)
     return True
 
 
@@ -3951,6 +4065,43 @@ async def try_route_insurer_inbound(
         if session.get("dossier_sent"):
             await _avisar_retomada(company_id, session)
 
+    # 🔴 SPEC-122 F2 — O `sem_chute` PERGUNTA AO SEGURADO (D-122 D1/D2).
+    #    📊 BLOCO 0: 13 passos `sem_chute` sem coleta, 62 sessões — todos iam direto
+    #    a uma pessoa, porque o motor devolvia `needs_human` ANTES de existir
+    #    `falta_para_a_ura` (o gatilho do D3 logo abaixo). O motor agora devolve o
+    #    MESMO `needs_human` + o PEDIDO (`sem_chute_ao_segurado`), e é AQUI, com o
+    #    canal do cliente na mão, que o handoff vira pergunta — só se ela SAIR.
+    #    ⛔ Nada mais muda: sem pedido, com a rajada ainda chegando, com a atendente
+    #    na conversa ou já esperando outra resposta → o handoff de sempre, abaixo.
+    #    ⛔ E a trava `_opcao` do D3 CONTINUA para o cérebro: aqui a tecla se
+    #    pergunta com as OPÇÕES da tela e volta pelo MOTOR, nunca pelo modelo.
+    _sc = session.pop("sem_chute_ao_segurado", None)
+    if (isinstance(_sc, dict) and state == "needs_human"
+            and str(session.get("reason") or "").startswith("sem_chute:")
+            and not ainda_vem_mais and not _ja_respondeu and not _em_pausa
+            and not session.get("esperando_do_segurado")):
+        _perguntou_sc = await perguntar_ao_segurado(
+            company_id, session, insurer_phone=from_phone, slot=str(_sc.get("slot") or ""),
+            rotulo=str(_sc.get("rotulo") or ""), send_to_client=send_to_client,
+            send_to_insurer=send_to_insurer, opcoes=_sc.get("opcoes") or None, sem_chute=_sc)
+        if _perguntou_sc:
+            await _rastro_do_dado_que_faltou(
+                company_id, session, slot=str(_sc.get("slot") or ""),
+                tela=str(_sc.get("tela") or ""), origem_da_resposta="segurado")
+            session["state"] = str(_sc.get("estado_antes") or "ura")
+            state = session["state"]
+            for _k in ("reason", "missing_slots", "motivo_legivel"):
+                session.pop(_k, None)
+            # O mesmo campo do D3: o dossiê (se a espera vencer) e a retomada D1
+            # ("a URA reaberta já está na tela deste dado") leem daqui.
+            session["falta_para_a_ura"] = {
+                "campo": str(_sc.get("passo") or ""), "slot": str(_sc.get("slot") or ""),
+                "rotulo": str(_sc.get("rotulo") or ""), "sem_chute": True}
+            logger.info("[DISPATCH ROUTER] sem_chute %s → pergunta ao segurado (passo %s)",
+                        _sc.get("slot"), _sc.get("passo"))
+            await save_active_dispatch(company_id, from_phone, session)
+            return True
+
     # 🔴 D3 — A TELA PEDE UM DADO QUE A FICHA NÃO TEM.
     #    `falta_para_a_ura` é o gatilho (`responder_da_ficha` já provou que a ficha
     #    não tem o dado). ⛔ Tecla de menu (`*_opcao`) não se pergunta ao segurado:
@@ -4022,6 +4173,10 @@ async def try_route_insurer_inbound(
             and not ainda_vem_mais and not _ja_respondeu and not _em_pausa
             and not session.get("esperando_do_segurado")):
         tela = _tela_do_turno(session, text)
+        # 🔴 SPEC-122 F3 — o que o cérebro de produção LÊ, congelado para a sombra (uma
+        #    cópia: a sombra nunca toca a sessão viva) e a marca do que sai deste turno.
+        _sessao_da_sombra = copy.deepcopy(session)
+        _saidas_antes_do_cerebro = len(session.get("transcript") or [])
         draft = None
         try:
             draft = await human_reply_provider(session, tela)
@@ -4205,6 +4360,14 @@ async def try_route_insurer_inbound(
                          "motivo": str(verdict.get("reason") or "")[:80],
                          "recusas_seguidas": int(session.get("human_phase_guard_fails") or 0),
                          "virou_pessoa": state == "needs_human"})
+        # 🔴 SPEC-122 F3 — A SOMBRA, DEPOIS de o turno de produção ter decidido (e enviado).
+        #    Agendada, nunca esperada: nenhum segundo a mais neste turno, e ela não recebe
+        #    sender nem a sessão viva (G9). Com a chave `off` (o padrão) ela não chama nada.
+        from app.services.acao_do_cerebro import agendar_sombra
+
+        agendar_sombra(company_id, _sessao_da_sombra, tela,
+                       o_que_o_cerebro_de_producao_fez(session, _saidas_antes_do_cerebro,
+                                                       verdict, state))
 
     if state == "test_aborted":
         # Modo TESTE: fluxo executado até a confirmação final e CANCELADO — nada

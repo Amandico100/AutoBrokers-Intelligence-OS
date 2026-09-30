@@ -15081,3 +15081,46 @@ def contato_do_subservico(playbook_ref: str, subservice: str,
         return "", ""
     _env = env if env is not None else _os.environ
     return var, "".join(ch for ch in str(_env.get(var) or "") if ch.isdigit())
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-122 F2 · COLETAR ANTES — os dois `sem_chute` de maior volume
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 BLOCO 0 (30/09/2026, `semchute.py`): 13 passos `sem_chute` sem o dado
+#    coletado antes, 62 sessões. Os dois de maior volume têm resposta que o
+#    segurado sabe na ABERTURA do caso — e por isso são perguntados ANTES de
+#    acionar, não no meio da URA (D-122 D1: coletar antes; no meio só o que não
+#    dá para saber antes):
+#
+#    `situacao_risco` (hdi, yelum · 📊 28 sessões) — o portão JÁ cobra
+#       `local_situacao` (a MESMA pergunta, `grupo_lugar`) e a derivação agora a
+#       lê (`insurer_dispatch_service._derivar_teclas_do_caso`).
+#       ⚠️ hdi/bateria continua SEM `local_situacao`, de propósito: 📊 só 1 sessão
+#       do acervo (subserviço inferido por palavra) chegou à tela de risco, e
+#       `test_o_agente_pede_antes_de_acionar::test_4` guarda a decisão do juiz 4
+#       ("interrogatório à toa" na bateria). Ali o `sem_chute` agora PERGUNTA ao
+#       segurado no meio (a hdi espera — D-122 D2): é o caso raro do D1.
+#    `via_local_rodovia` (bradesco · 📊 6 sessões, passo sem `only_subservices`)
+#       — o portão passa a cobrar `via_ou_rodovia_opcao` nas quatro rotas. ⚠️ Cobrar
+#       não é perguntar sempre: a derivação lê o endereço (`rua`, `avenida` → Via
+#       local; `rodovia`, `km`, `BR-` → Rodovia) ANTES do portão
+#       (`new_dispatch_session`), e só o que ela não resolve chega ao segurado.
+for _sub_s122, _cfg_s122 in (BRADESCO_AUTO_WHATSAPP_V1.get("subservices") or {}).items():
+    if "via_ou_rodovia_opcao" not in (_cfg_s122.get("required_slots") or []):
+        _cfg_s122["required_slots"] = list(_cfg_s122.get("required_slots") or []) + ["via_ou_rodovia_opcao"]
+# ⚠️ E COBRAR SEM FORMATAR seria mandar à URA o que a atendente escreveu ("estou na
+#    rodovia"). A tela é de BOTÃO ("Botão 1: Via local / Botão 2: Rodovia"): o valor
+#    do caso vira o RÓTULO da tela pela fábrica de sinônimos da SPEC-121 — duas ou
+#    nenhuma opção casada → `None` → o passo `sem_chute` (uma pessoa, ou a pergunta
+#    ao segurado onde a seguradora espera). O ramo PERIGOSO é testado primeiro,
+#    como na derivação: quem cita rodovia/km/BR não é mandado à "Via local".
+_VIA_OU_RODOVIA_NA_TELA = _rotulo_por_sinonimo([
+    (r"rodovia|estrada|\bbr\b|br-|\bkm\b|pedagi|acostamento", r"^rodovia\b"),
+    (r"via local|\brua\b|cidade|avenida|bairro|urban", r"^via local\b"),
+])
+_FORMATOS_DA_RESPOSTA["via_ou_rodovia_na_tela"] = _VIA_OU_RODOVIA_NA_TELA
+_FORMATOS_QUE_LEEM_A_TELA = _FORMATOS_QUE_LEEM_A_TELA | {"via_ou_rodovia_na_tela"}
+for _p_s122 in BRADESCO_AUTO_WHATSAPP_V1["ura_steps"]:
+    if _p_s122.get("step") == "via_local_rodovia":
+        _p_s122["format"] = "via_ou_rodovia_na_tela"
