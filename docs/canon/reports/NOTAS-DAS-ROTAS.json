@@ -6,7 +6,7 @@
   "bradesco": 30,
   "hdi": 51,
   "mapfre": 38,
-  "porto": 142,
+  "porto": 143,
   "sompo": 3,
   "tokio": 63,
   "yelum": 118,
@@ -14,9 +14,9 @@
   "zurich": 15
  },
  "comando": "cd backend && python scripts/medir_rota.py --todas --gravar-notas docs/canon/reports/NOTAS-DAS-ROTAS.json",
- "commit": "ecb701e",
- "medido_em": "2026-09-29",
- "medido_em_iso": "2026-09-29T04:04:46+00:00",
+ "commit": "4ccd063",
+ "medido_em": "2026-09-30",
+ "medido_em_iso": "2026-09-30T03:48:23+00:00",
  "rotas": [
   {
    "denominador": 0,
@@ -262,10 +262,12 @@
    "estado": null,
    "o_que_destrava": "🤖 ampliar handoff_triggers contra o corpus · 🤖 conferir os apelidos pelo leitor do Espelho",
    "o_que_falta": "apelidos do jeito que o cliente fala (+4) · o handoff casa >=1 tela REAL (+3) · a mais recente tem <180 dias (+2)",
-   "patamar": "quase(76)",
+   "patamar": "quase(76)!1",
    "pct": 88,
    "pontos": 67,
-   "portoes_abertos": [],
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "ar_condicionado"
@@ -297,10 +299,12 @@
    "estado": null,
    "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
    "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
-   "patamar": "quase(76)",
+   "patamar": "quase(76)!1",
    "pct": 95,
    "pontos": 72,
-   "portoes_abertos": [],
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "chaveiro"
@@ -309,7 +313,7 @@
    "denominador": 70,
    "eixos": {
     "A": [
-     12,
+     14,
      16
     ],
     "B": [
@@ -330,12 +334,14 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🧑 coleta: +1 sessão desta rota · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "apelidos do jeito que o cliente fala (+4) · >=2 sessoes distintas (+2) · a mais recente tem <180 dias (+2)",
-   "patamar": "quase(70)",
-   "pct": 89,
-   "pontos": 62,
-   "portoes_abertos": [],
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4) · a mais recente tem <180 dias (+2)",
+   "patamar": "quase(70)!1",
+   "pct": 91,
+   "pontos": 64,
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "consulta_veterinaria"
@@ -367,10 +373,12 @@
    "estado": null,
    "o_que_destrava": "🤖 client_summary com dia + período · 🤖 ampliar handoff_triggers contra o corpus · 🤖 conferir os apelidos pelo leitor do Espelho",
    "o_que_falta": "a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)",
+   "patamar": "parcial(76)!1",
    "pct": 58,
    "pontos": 44,
-   "portoes_abertos": [],
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "desentupimento"
@@ -379,7 +387,7 @@
    "denominador": 76,
    "eixos": {
     "A": [
-     16,
+     14,
      16
     ],
     "B": [
@@ -387,7 +395,7 @@
      33
     ],
     "C": [
-     11,
+     8,
      11
     ],
     "D": [
@@ -400,12 +408,14 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
-   "patamar": "quase(76)",
-   "pct": 95,
-   "pontos": 72,
-   "portoes_abertos": [],
+   "o_que_destrava": "🤖 ampliar handoff_triggers contra o corpus · 🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4) · o handoff casa >=1 tela REAL (+3) · a mais recente tem <180 dias (+2)",
+   "patamar": "quase(76)!1",
+   "pct": 88,
+   "pontos": 67,
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "eletricista"
@@ -437,10 +447,12 @@
    "estado": null,
    "o_que_destrava": "🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho",
    "o_que_falta": "a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)",
+   "patamar": "parcial(76)!1",
    "pct": 62,
    "pontos": 47,
-   "portoes_abertos": [],
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "eletrodomesticos"
@@ -472,10 +484,12 @@
    "estado": null,
    "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
    "o_que_falta": "a rota anda sozinha (+6) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "quase(76)",
+   "patamar": "quase(76)!1",
    "pct": 87,
    "pontos": 66,
-   "portoes_abertos": [],
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "encanador"
@@ -507,10 +521,12 @@
    "estado": null,
    "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
    "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
-   "patamar": "quase(70)",
+   "patamar": "quase(70)!1",
    "pct": 94,
    "pontos": 66,
-   "portoes_abertos": [],
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "limpeza_caixa_dagua"
@@ -527,7 +543,7 @@
      33
     ],
     "C": [
-     11,
+     8,
      11
     ],
     "D": [
@@ -540,12 +556,14 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
-   "patamar": "quase(76)",
-   "pct": 95,
-   "pontos": 72,
-   "portoes_abertos": [],
+   "o_que_destrava": "🤖 ampliar handoff_triggers contra o corpus · 🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4) · o handoff casa >=1 tela REAL (+3)",
+   "patamar": "quase(76)!1",
+   "pct": 91,
+   "pontos": 69,
+   "portoes_abertos": [
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "residencial",
    "seguradora": "allianz",
    "servico": "maquina_de_lavar"
@@ -586,6 +604,20 @@
    "ramo": "auto",
    "seguradora": "azul",
    "servico": "bateria"
+  },
+  {
+   "denominador": 0,
+   "eixos": {},
+   "estado": "SEM_CORPUS",
+   "o_que_destrava": "🧑 coleta dirigida: 1 acionamento observado desta rota",
+   "o_que_falta": "não há uma linha desta rota no corpus",
+   "patamar": "SEM_CORPUS",
+   "pct": null,
+   "pontos": 0,
+   "portoes_abertos": [],
+   "ramo": "auto",
+   "seguradora": "azul",
+   "servico": "carro_reserva"
   },
   {
    "denominador": 0,
@@ -897,7 +929,7 @@
    "denominador": 58,
    "eixos": {
     "A": [
-     2,
+     4,
      4
     ],
     "B": [
@@ -918,11 +950,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🧑 coleta: +1 sessão desta rota · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "apelidos do jeito que o cliente fala (+4) · >=2 sessoes distintas (+2)",
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
    "patamar": "quase(58)!1",
-   "pct": 90,
-   "pontos": 52,
+   "pct": 93,
+   "pontos": 54,
    "portoes_abertos": [
     "notes com contagem que RECONTA"
    ],
@@ -982,38 +1014,15 @@
    "servico": "desentupimento"
   },
   {
-   "denominador": 76,
-   "eixos": {
-    "A": [
-     4,
-     16
-    ],
-    "B": [
-     4,
-     33
-    ],
-    "C": [
-     3,
-     11
-    ],
-    "D": [
-     6,
-     10
-    ],
-    "F": [
-     6,
-     6
-    ]
-   },
-   "estado": null,
-   "o_que_destrava": "🤖 mapear 3 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "zero orfas funcionais (+20) · a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5)",
-   "patamar": "esqueleto(76)!1",
-   "pct": 30,
-   "pontos": 23,
-   "portoes_abertos": [
-    "notes com contagem que RECONTA"
-   ],
+   "denominador": 0,
+   "eixos": {},
+   "estado": "SEM_CORPUS",
+   "o_que_destrava": "🧑 coleta dirigida: 1 acionamento observado desta rota",
+   "o_que_falta": "não há uma linha desta rota no corpus",
+   "patamar": "SEM_CORPUS",
+   "pct": null,
+   "pontos": 0,
+   "portoes_abertos": [],
    "ramo": "residencial",
    "seguradora": "hdi",
    "servico": "eletricista"
@@ -1150,7 +1159,7 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🤖 mapear 5 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_destrava": "🤖 mapear 4 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho",
    "o_que_falta": "zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4)",
    "patamar": "parcial(76)!1",
    "pct": 63,
@@ -1506,6 +1515,41 @@
    "servico": "bateria"
   },
   {
+   "denominador": 70,
+   "eixos": {
+    "A": [
+     2,
+     16
+    ],
+    "B": [
+     28,
+     33
+    ],
+    "C": [
+     3,
+     11
+    ],
+    "D": [
+     0,
+     4
+    ],
+    "F": [
+     6,
+     6
+    ]
+   },
+   "estado": null,
+   "o_que_destrava": "🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4)",
+   "patamar": "parcial(70)",
+   "pct": 56,
+   "pontos": 39,
+   "portoes_abertos": [],
+   "ramo": "auto",
+   "seguradora": "tokio",
+   "servico": "carro_reserva"
+  },
+  {
    "denominador": 0,
    "eixos": {},
    "estado": "SEM_CORPUS",
@@ -1572,15 +1616,15 @@
    "denominador": 76,
    "eixos": {
     "A": [
-     0,
+     16,
      16
     ],
     "B": [
-     28,
+     33,
      33
     ],
     "C": [
-     3,
+     11,
      11
     ],
     "D": [
@@ -1593,11 +1637,11 @@
     ]
    },
    "estado": null,
-   "o_que_destrava": "🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4)",
-   "patamar": "parcial(76)!1",
-   "pct": 57,
-   "pontos": 43,
+   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
+   "patamar": "quase(76)!1",
+   "pct": 95,
+   "pontos": 72,
    "portoes_abertos": [
     "notes com contagem que RECONTA"
    ],
@@ -1606,15 +1650,77 @@
    "servico": "bateria"
   },
   {
-   "denominador": 0,
-   "eixos": {},
-   "estado": "SEM_CORPUS",
-   "o_que_destrava": "🧑 coleta dirigida: 1 acionamento observado desta rota",
-   "o_que_falta": "não há uma linha desta rota no corpus",
-   "patamar": "SEM_CORPUS",
-   "pct": null,
-   "pontos": 0,
-   "portoes_abertos": [],
+   "denominador": 70,
+   "eixos": {
+    "A": [
+     4,
+     16
+    ],
+    "B": [
+     4,
+     33
+    ],
+    "C": [
+     3,
+     11
+    ],
+    "D": [
+     0,
+     4
+    ],
+    "F": [
+     6,
+     6
+    ]
+   },
+   "estado": null,
+   "o_que_destrava": "🤖 mapear 4 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 client_summary com dia + período · 🤖 conferir os apelidos pelo leitor do Espelho",
+   "o_que_falta": "zero orfas funcionais (+20) · a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5)",
+   "patamar": "toco(70)!2",
+   "pct": 24,
+   "pontos": 17,
+   "portoes_abertos": [
+    "notes com contagem que RECONTA",
+    "teste nomeia a rota, chama o motor, toca >=3 telas"
+   ],
+   "ramo": "auto",
+   "seguradora": "yelum",
+   "servico": "carro_reserva"
+  },
+  {
+   "denominador": 76,
+   "eixos": {
+    "A": [
+     16,
+     16
+    ],
+    "B": [
+     9,
+     33
+    ],
+    "C": [
+     11,
+     11
+    ],
+    "D": [
+     0,
+     10
+    ],
+    "F": [
+     6,
+     6
+    ]
+   },
+   "estado": null,
+   "o_que_destrava": "🤖 mapear 3 tela(s) · 🤖 subir o determinismo acima de 85% · 🤖 conferir os apelidos pelo leitor do Espelho · 🤖 escrever as regras que a URA diz ao segurado",
+   "o_que_falta": "zero orfas funcionais (+20) · 100% deterministico (+4) · apelidos do jeito que o cliente fala (+4) · expectativa_do_desfecho existe (+3)",
+   "patamar": "parcial(76)!2",
+   "pct": 55,
+   "pontos": 42,
+   "portoes_abertos": [
+    "transcrita no bloco do subservico",
+    "notes com contagem que RECONTA"
+   ],
    "ramo": "auto",
    "seguradora": "yelum",
    "servico": "chaveiro"
@@ -1694,38 +1800,15 @@
    "servico": "pneu"
   },
   {
-   "denominador": 58,
-   "eixos": {
-    "A": [
-     4,
-     4
-    ],
-    "B": [
-     33,
-     33
-    ],
-    "C": [
-     11,
-     11
-    ],
-    "D": [
-     0,
-     4
-    ],
-    "F": [
-     6,
-     6
-    ]
-   },
-   "estado": null,
-   "o_que_destrava": "🤖 conferir os apelidos pelo leitor do Espelho",
-   "o_que_falta": "apelidos do jeito que o cliente fala (+4)",
-   "patamar": "quase(58)!1",
-   "pct": 93,
-   "pontos": 54,
-   "portoes_abertos": [
-    "notes com contagem que RECONTA"
-   ],
+   "denominador": 0,
+   "eixos": {},
+   "estado": "SEM_CORPUS",
+   "o_que_destrava": "🧑 coleta dirigida: 1 acionamento observado desta rota",
+   "o_que_falta": "não há uma linha desta rota no corpus",
+   "patamar": "SEM_CORPUS",
+   "pct": null,
+   "pontos": 0,
+   "portoes_abertos": [],
    "ramo": "auto",
    "seguradora": "yelum",
    "servico": "socorro_mecanico"

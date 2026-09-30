@@ -4,17 +4,17 @@
 >
 > | o que | medido em | de onde |
 > |---|---|---|
-> | **quantas pessoas pediram** (`pedidos`) | **28/09/2026** | `observed_events`, o banco — vivo |
-> | **a nota da régua** (`qualidade`) | **29/09/2026** | o corpus versionado no commit `ecb701e` |
-> | **dá para ligar?** | **29/09/2026** | a simulação com as telas reais no commit `7844542`, `simular_corredor.py --todas` |
+> | **quantas pessoas pediram** (`pedidos`) | **30/09/2026** | `observed_events`, o banco — vivo |
+> | **a nota da régua** (`qualidade`) | **30/09/2026** | o corpus versionado no commit `4ccd063` |
+> | **dá para ligar?** | **30/09/2026** | a simulação com as telas reais no commit `4ccd063`, `simular_corredor.py --todas` |
 >
 > ⚠️ O banco é de hoje; o corpus é do commit. Comparar os dois números de uma mesma rota é legítimo — comparar sem ver as datas, não.
 
 ## 🔴 A frase que o Founder pode dizer a uma corretora
 
-> **De 73 rotas medidas, o sistema resolve sozinho 42% (31), 3% (2) vão para uma pessoa, e 55% (40) ainda não dão para ligar.**
+> **De 76 rotas medidas, o sistema resolve sozinho 41% (31), 5% (4) vão para uma pessoa, e 54% (41) ainda não dão para ligar.**
 
-⚠️ **E a segunda metade da frase é obrigatória, com o número exato:** das 40 que ainda não ligam, **31 não têm uma conversa gravada** — essas não são falha do robô, e só um acionamento real as destrava. As outras **9** têm conversa: nelas o material existe e **falta código nosso**.
+⚠️ **E a segunda metade da frase é obrigatória, com o número exato:** das 41 que ainda não ligam, **33 não têm uma conversa gravada** — essas não são falha do robô, e só um acionamento real as destrava. As outras **8** têm conversa: nelas o material existe e **falta código nosso**.
 
 ## 🔴 DUAS PERGUNTAS, NUNCA UMA
 
@@ -28,38 +28,38 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 🔴 **A `%` substituiu o `58/76`.** O denominador da régua muda por rota (76, 70, 64…), porque itens que não se aplicam saem da conta. 📊 `42/64` **parece** pior que `48/76` e é melhor: 66% contra 63%. O bruto continua na tabela, para quem for auditar.
 
 
-## ATENDE SOZINHO — 31 de 73 (42%)
+## ATENDE SOZINHO — 31 de 76 (41%)
 
 *o sistema resolve sozinho, do começo ao protocolo*
 
 | rota | pedidos | qualidade | bruto | por quê | 🔴 o que destrava |
 |---|---:|---:|---:|---|---|
-| `allianz/auto/guincho` | 29 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `porto/auto/guincho` | 25 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/auto/guincho` | 32 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `porto/auto/guincho` | 26 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `allianz/residencial/encanador` | 18 | 87% | 66/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `hdi/auto/guincho` | 16 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `azul/auto/guincho` | 7 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `allianz/residencial/maquina_de_lavar` | 6 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `allianz/residencial/eletricista` | 5 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `yelum/auto/socorro_mecanico` | 5 | 93% | 54/58 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/residencial/maquina_de_lavar` | 7 | 91% | 69/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `yelum/auto/bateria` | 6 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/residencial/limpeza_caixa_dagua` | 6 | 94% | 66/70 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/auto/bateria` | 5 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/residencial/ar_condicionado` | 5 | 88% | 67/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `bradesco/auto/guincho` | 5 | 72% | 55/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `alfa/auto/guincho` | 4 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `yelum/residencial/encanador` | 4 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `allianz/residencial/limpeza_caixa_dagua` | 4 | 94% | 66/70 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `allianz/residencial/ar_condicionado` | 4 | 88% | 67/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `allianz/auto/bateria` | 3 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `allianz/auto/pneu` | 3 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `azul/auto/bateria` | 3 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `hdi/residencial/encanador` | 3 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `porto/residencial/encanador` | 3 | 92% | 70/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/residencial/eletricista` | 3 | 88% | 67/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `allianz/residencial/chaveiro` | 2 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `yelum/auto/pneu` | 2 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `zurich/auto/guincho` | 2 | 94% | 60/64 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `hdi/auto/socorro_mecanico` | 2 | 93% | 54/58 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `allianz/residencial/consulta_veterinaria` | 2 | 91% | 64/70 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `porto/auto/tecnico` | 2 | 91% | 64/70 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `yelum/residencial/eletricista` | 2 | 88% | 67/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `alfa/auto/pneu` | 1 | 92% | 70/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `hdi/auto/socorro_mecanico` | 1 | 90% | 52/58 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
-| `allianz/residencial/consulta_veterinaria` | 1 | 89% | 62/70 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `azul/auto/tecnico` | 1 | 89% | 62/70 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `hdi/auto/pneu` | 1 | 89% | 68/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `porto/auto/chaveiro` | 1 | 89% | 68/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
@@ -67,36 +67,38 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 | `hdi/auto/chaveiro` | 1 | 70% | 53/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 
 
-## VAI PARA UMA PESSOA — 2 de 73 (3%)
+## VAI PARA UMA PESSOA — 4 de 76 (5%)
 
 *o caso segue com alguém — por desenho da seguradora ou por defeito*
 
 | rota | pedidos | qualidade | bruto | por quê | 🔴 o que destrava |
 |---|---:|---:|---:|---|---|
+| `yelum/auto/carro_reserva` | 10 | 24% | 17/70 | a seguradora não abre pela conversa: devolve link ou formulário | ✅ nada — é o desenho certo, e já é handoff pela SPEC-118 |
 | `tokio/auto/guincho` | 3 | 70% | 45/64 | a seguradora não abre pela conversa: devolve link ou formulário | ✅ nada — é o desenho certo, e já é handoff pela SPEC-118 |
+| `tokio/auto/carro_reserva` | 2 | 56% | 39/70 | a seguradora não abre pela conversa: devolve link ou formulário | ✅ nada — é o desenho certo, e já é handoff pela SPEC-118 |
 | `porto/auto/vidros` | 1 | 53% | 37/70 | a seguradora não abre pela conversa: devolve link ou formulário | ✅ nada — é o desenho certo, e já é handoff pela SPEC-118 |
 
 
-## AINDA NÃO DÁ PARA LIGAR — 40 de 73 (55%)
+## AINDA NÃO DÁ PARA LIGAR — 41 de 76 (54%)
 
 *e a causa diz de quem é o trabalho: sem conversa é acionamento; tela sem resposta é código*
 
-📊 **Dentro desta faixa:** **31** nenhuma conversa desta rota no acervo · **6** responde tudo o que o acervo mostra e nunca chegou ao protocolo · **3** existe conversa, e uma tela dela ninguém respondeu
+📊 **Dentro desta faixa:** **33** nenhuma conversa desta rota no acervo · **5** responde tudo o que o acervo mostra e nunca chegou ao protocolo · **3** existe conversa, e uma tela dela ninguém respondeu
 
 | rota | pedidos | qualidade | bruto | por quê | 🔴 o que destrava |
 |---|---:|---:|---:|---|---|
 | `yelum/auto/guincho` | 26 | 68% | 52/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `porto/auto/bateria` | 5 | 63% | 48/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `hdi/residencial/eletricista` | 5 | 30% | 23/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
-| `allianz/residencial/desentupimento` | 4 | 58% | 44/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
-| `allianz/residencial/eletrodomesticos` | 3 | 62% | 47/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
+| `allianz/residencial/eletrodomesticos` | 9 | 62% | 47/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
+| `porto/auto/bateria` | 6 | 63% | 48/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
+| `allianz/residencial/desentupimento` | 3 | 58% | 44/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
+| `yelum/auto/chaveiro` | 2 | 55% | 42/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
 | `porto/residencial/eletrodomesticos` | 1 | 61% | 39/64 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
 | `yelum/residencial/eletrodomesticos` | 1 | 59% | 45/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
 | `hdi/residencial/chaveiro` | 1 | 57% | 43/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
-| `yelum/auto/bateria` | 1 | 57% | 43/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
 | `alfa/auto/bateria` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `alfa/auto/chaveiro` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `allianz/auto/chaveiro` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 3 pedido(s) de allianz/auto estão no acervo sob `eletricista` (1) · `encanador` (1) · `taxi` (1), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 3 pedido(s) de allianz/auto estão no acervo sob `eletricista` (1) · `encanador` (1) · `taxi` (1), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
+| `azul/auto/carro_reserva` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `azul/auto/chaveiro` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `azul/auto/pneu` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `bradesco/auto/bateria` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 2 pedido(s) de bradesco/auto estão no acervo sob `tecnico` (2), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 2 pedido(s) de bradesco/auto estão no acervo sob `tecnico` (2), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
@@ -104,6 +106,7 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 | `bradesco/auto/pneu` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 2 pedido(s) de bradesco/auto estão no acervo sob `tecnico` (2), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 2 pedido(s) de bradesco/auto estão no acervo sob `tecnico` (2), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
 | `hdi/auto/bateria` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `hdi/residencial/desentupimento` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
+| `hdi/residencial/eletricista` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `hdi/residencial/eletrodomesticos` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `mapfre/auto/bateria` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 1 pedido(s) de mapfre/auto estão no acervo sob `carro_reserva` (1), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 1 pedido(s) de mapfre/auto estão no acervo sob `carro_reserva` (1), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
 | `mapfre/auto/chaveiro` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 1 pedido(s) de mapfre/auto estão no acervo sob `carro_reserva` (1), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 1 pedido(s) de mapfre/auto estão no acervo sob `carro_reserva` (1), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
@@ -114,10 +117,10 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 | `porto/auto/taxi` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `porto/residencial/desentupimento` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `porto/residencial/eletricista` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
-| `tokio/auto/bateria` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 2 pedido(s) de tokio/auto estão no acervo sob `carro_reserva` (2), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 2 pedido(s) de tokio/auto estão no acervo sob `carro_reserva` (2), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
-| `tokio/auto/chaveiro` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 2 pedido(s) de tokio/auto estão no acervo sob `carro_reserva` (2), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 2 pedido(s) de tokio/auto estão no acervo sob `carro_reserva` (2), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
-| `tokio/auto/pneu` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 2 pedido(s) de tokio/auto estão no acervo sob `carro_reserva` (2), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 2 pedido(s) de tokio/auto estão no acervo sob `carro_reserva` (2), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
-| `yelum/auto/chaveiro` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 10 pedido(s) de yelum/auto estão no acervo sob `carro_reserva` (10), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 10 pedido(s) de yelum/auto estão no acervo sob `carro_reserva` (10), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
+| `tokio/auto/bateria` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
+| `tokio/auto/chaveiro` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
+| `tokio/auto/pneu` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
+| `yelum/auto/socorro_mecanico` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
 | `yelum/residencial/chaveiro` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 1 pedido(s) de yelum/residencial estão no acervo sob `limpeza_caixa_dagua` (1), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 1 pedido(s) de yelum/residencial estão no acervo sob `limpeza_caixa_dagua` (1), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
 | `yelum/residencial/desentupimento` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo — ⚠️ mas 1 pedido(s) de yelum/residencial estão no acervo sob `limpeza_caixa_dagua` (1), que o produto NÃO declara como rota | ⚠️ confira ANTES de gastar um acionamento: 1 pedido(s) de yelum/residencial estão no acervo sob `limpeza_caixa_dagua` (1), que o produto NÃO declara como rota — se for esta rota com outro nome, o trabalho é 🤖 (decidir o nome), não 🧑 (coletar de novo) |
 | `zurich/auto/bateria` | — | — | SEM_CORPUS | nenhuma conversa desta rota no acervo | 🧑 um acionamento real desta rota, com o observador ligado |
@@ -129,51 +132,35 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 
 ## 🔴 O segurado pede, e o produto não tem corredor nenhum
 
-📊 Medido em 28/09/2026 em `observed_events`. Estes serviços foram escolhidos por gente de verdade, e **não existe playbook para eles** — então eles não aparecem em nenhuma das faixas acima, porque a lista de rotas só conhece o que tem corredor.
+📊 Medido em 30/09/2026 em `observed_events`. Estes serviços foram escolhidos por gente de verdade, e **não existe playbook para eles** — então eles não aparecem em nenhuma das faixas acima, porque a lista de rotas só conhece o que tem corredor.
 
 | serviço pedido | conversas | o que é |
 |---|---:|---|
-| `yelum/auto/carro_reserva` | 10 | 🔴 serviço real, sem um único passo escrito |
-| `allianz/residencial/?conserto residencial` | 5 | 🔴 rótulo que o classificador não reconhece — ver a seção dos `?` abaixo |
+| `allianz/residencial/telhado` | 2 | 🔴 serviço real, sem um único passo escrito |
 | `bradesco/auto/tecnico` | 2 | 🔴 serviço real, sem um único passo escrito |
-| `tokio/auto/carro_reserva` | 2 | 🔴 serviço real, sem um único passo escrito |
 | `allianz/auto/eletricista` | 1 | 🔴 serviço real, sem um único passo escrito |
 | `allianz/auto/encanador` | 1 | 🔴 serviço real, sem um único passo escrito |
 | `allianz/auto/taxi` | 1 | 🔴 serviço real, sem um único passo escrito |
-| `allianz/residencial/?check-up lar` | 1 | 🔴 rótulo que o classificador não reconhece — ver a seção dos `?` abaixo |
-| `allianz/residencial/?limpeza` | 1 | 🔴 rótulo que o classificador não reconhece — ver a seção dos `?` abaixo |
-| `allianz/residencial/?pet assistance` | 1 | 🔴 rótulo que o classificador não reconhece — ver a seção dos `?` abaixo |
-| `allianz/residencial/?reembolso - qualidade` | 1 | 🔴 rótulo que o classificador não reconhece — ver a seção dos `?` abaixo |
-| `allianz/residencial/?retorno em garantia` | 1 | 🔴 rótulo que o classificador não reconhece — ver a seção dos `?` abaixo |
-| `allianz/residencial/guincho` | 1 | 🔴 serviço real, sem um único passo escrito |
-| `allianz/residencial/telhado` | 1 | 🔴 serviço real, sem um único passo escrito |
 | `mapfre/auto/carro_reserva` | 1 | 🔴 serviço real, sem um único passo escrito |
 | `yelum/residencial/limpeza_caixa_dagua` | 1 | 🔴 serviço real, sem um único passo escrito |
 
 
-## Os rótulos com `?` — o classificador avisando que não sabe
-
-⚠️ O `?` é **honesto**: o padrão-ouro casou uma escolha de menu cujo rótulo não está no vocabulário canônico, e o classificador **declara** isso (`nivel-1a-rotulo-desconhecido`) em vez de chutar. Mas dois deles são coisas diferentes:
-
-- **serviço real sem nome canônico** — precisa entrar no vocabulário, e aí vira rota de verdade;
-- 🔴 **`?4145720 - 26` é um NÚMERO DE PROTOCOLO virando 'serviço'** — aqui o padrão-ouro casou uma linha que não é escolha de serviço nenhuma. É defeito do padrão, não falta de vocabulário.
-
-
 ## 🔴 As conversas que existem e o classificador não etiquetou
 
-Enquanto elas estiverem aqui, um `—` na coluna `pedidos` **não quer dizer 'ninguém pediu'** — quer dizer 'não sabemos'. 📊 28/09/2026, `observed_events`.
+Enquanto elas estiverem aqui, um `—` na coluna `pedidos` **não quer dizer 'ninguém pediu'** — quer dizer 'não sabemos'. 📊 30/09/2026, `observed_events`.
 
 | seguradora / ramo | conversas sem etiqueta |
 |---|---:|
-| `allianz/residencial` | 41 |
-| `porto/auto` | 30 |
-| `mapfre/auto` | 20 |
-| `yelum/auto` | 19 |
-| `hdi/auto` | 12 |
+| `allianz/residencial` | 71 |
+| `porto/auto` | 31 |
+| `mapfre/auto` | 21 |
+| `yelum/auto` | 18 |
+| `hdi/auto` | 13 |
+| `allianz/auto` | 9 |
 | `zurich/auto` | 9 |
 | `bradesco/auto` | 8 |
-| `allianz/auto` | 6 |
-| `tokio/residencial` | 5 |
+| `tokio/residencial` | 6 |
+| `hdi/residencial` | 5 |
 | `porto/residencial` | 4 |
 | `alfa/auto` | 3 |
 | `tokio/auto` | 2 |
@@ -182,4 +169,4 @@ Enquanto elas estiverem aqui, um `—` na coluna `pedidos` **não quer dizer 'ni
 
 ---
 
-_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-29T04:05:44+00:00. **Nenhum número deste documento foi digitado à mão.**_
+_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-30T03:59:13+00:00. **Nenhum número deste documento foi digitado à mão.**_
