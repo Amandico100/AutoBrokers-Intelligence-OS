@@ -133,6 +133,27 @@
 </section>
 
 <section>
+  <h2>Fora da família — o agente pensa, com prova (SPEC-122)</h2>
+  <p class="sub">Fora da fila, como as 118–121. Nasceu da pergunta <i>"o modelo pode responder sozinho à seguradora quando a URA
+  sai do roteiro?"</i> e da chegada do <b>GPT-6.1 Sol</b> em 29/09. 📊 30/09/2026, relatório <code>reports/SPEC-122-EXECUTION-REPORT.md</code>
+  e bancada <code>reports/SPEC-122-BANCADA.md</code>.</p>
+  <div class="tblbox">
+    <table style="min-width:980px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou, em uma frase</th><th>data</th><th>nota</th><th class="l">o que ainda falta <b>de você</b></th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>SPEC-122</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o agente pensa, com prova</span></td>
+          <td class="ds">O <b>GPT-6.1 Sol</b> substituiu o Sol 6 nos 7 trabalhos que o usavam e na reserva do acionamento, <b>com o mesmo esforço</b> de antes e o mesmo preço (📊 teste real US$ 0,0073). O cérebro que responde à seguradora foi <b>medido pela primeira vez</b>, em 92 casos reais mascarados e com o cérebro de hoje como controle: 📊 Opus (o de hoje) <b>6</b> erros graves em 15 armadilhas, 6.1 com o mesmo texto <b>14</b> em 31, 6.1 com a saída estruturada <b>2</b> em 31 — <b>nenhum passou</b> na régua de zero erro grave, então <b>nada ganhou autonomia</b>: o acionamento continua no Opus 5.5 e o cérebro novo só roda <b>em sombra</b>, se você ligar. Para o segurado: na Porto, HDI, Yelum e Zurich, quando a URA pede um dado que só ele sabe, o agente <b>pergunta a ele</b> com as opções da tela, em vez de chamar uma pessoa. 🔴 O que os revisores acharam antes do push: um endereço em <b>BR</b> virava "Nenhuma das anteriores" sozinho, "Voltar" era oferecido ao segurado como resposta e um número de processo estava no material de teste — tudo consertado</td>
+          <td class="dm">30/09</td><td class="dm">juiz 78 ‖ red team 62 → confirmação confirmação 84 → N1 consertado · nota 86</td><td class="ds">🔴 <b>Implantar</b> (três serviços); conferir <b>3 variáveis de modelo</b>; ligar a <b>sombra</b> quando quiser (SQL pronto); o <b>canário</b> junto com os testes da S121 (aba <a href="#tarefas" style="color:var(--accent)">Suas tarefas</a>, bloco S122)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">⛔ <b>O que esta entrega NÃO prova, e está declarado.</b> A comparação 6.1 × Opus ficou em 15 armadilhas (o teto de
+  US$ 2 por provedor parou o Opus) e com uma repetição por caso — não é significativa. O acerto nas telas comuns ficou baixo para
+  todos (31–37 %) porque o acervo não guarda a ficha do caso. 🔴 E um primeiro nome, um número de processo e o código de corretor
+  do piloto chegaram às duas APIs antes de mascarados (P-122-11).</p>
+</section>
+
+<section>
   <h2>A fila vigente — decidida em 20/09 (D-FILA-01)</h2>
   <div class="tblbox">
     <table style="min-width:860px">
@@ -143,7 +164,7 @@
         <tr><td class="dm">✓</td><td class="ds"><b>EXTRA-001.8</b> · isolamento entre corretoras <b>+ 2 itens de segurança</b></td><td class="ds">Uma corretora travada não pode derrubar a vizinha — e as duas pendências ≥ 90 de segurança foram junto (cada coisa sabe de quem é; nome de pessoa fora do dado global)</td><td class="ds"><b>✅ executada 21/09</b> — falta o <b>canário</b>, que é seu</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-117</b> · o atendimento não perde a apólice</td><td class="ds">Fora da família e fora da fila: a apólice que o agente encontra no WhatsApp se perdia no turno seguinte — e com ela morria a sua decisão de 17/09, de que o <b>ramo da apólice</b> manda no acionamento</td><td class="ds"><b>✅ executada 26/09</b> — juiz 70 ‖ red team 62 → confirmação <b>90</b>; faltam o <b>Implantar</b> e o <b>canário de duas corretoras</b>, que é seu</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-121</b> · o grupo só ouve quando precisa</td><td class="ds">Fora da fila: os 29 avisos errados de 21/09 e a sua regra dos 7 dias</td><td class="ds"><b>✅ concluída 30/09</b> — confirmação <b>88</b>; faltam o <b>Implantar</b> e o número de carro reserva da Yelum, que são seus</td></tr>
-        <tr><td class="dm">→</td><td class="ds"><b>SPEC-122</b> · o agente pensa com prova</td><td class="ds">A próxima, decidida no fim da SPEC-121 (<code>specs-propostas/SPEC-122-o-agente-pensa-com-prova.md</code>)</td><td class="ds">proposta escrita</td></tr>
+        <tr><td class="dm">✓</td><td class="ds"><b>SPEC-122</b> · o agente pensa com prova</td><td class="ds">Fora da fila: o GPT-6.1 Sol no lugar do Sol 6 e o cérebro do acionamento medido pela primeira vez — sem autonomia nova</td><td class="ds"><b>✅ concluída 30/09</b> — faltam o <b>Implantar</b> e as 3 variáveis, que são seus</td></tr>
         <tr><td class="dm">3</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata</td><td class="ds">só no diagnóstico</td></tr>
         <tr><td class="dm">4</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
         <tr><td class="dm">5</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>

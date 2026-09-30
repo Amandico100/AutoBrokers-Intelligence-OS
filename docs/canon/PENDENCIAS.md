@@ -11410,6 +11410,9 @@ sem nenhum braço com crít^k 100 %. Causa: crédito zerado + 4 processos em par
 duas contas e rodar de novo, **um processo por provedor**, os grupos N2, dispatch e cobrança; só então decidir chat,
 atendimento, dispatch e cobrança. **Dono:** 🧑 crédito · 🤖 rodada. **Custo de esquecer:** os quatro trabalhos que o segurado
 mais lê continuam no modelo de hoje por falta de prova, não por prova.
+**🟡 CONTINUA (30/09/2026, SPEC-122):** o **cérebro** do dispatch (a fase humana, `build_human_phase_messages`) foi medido
+pela primeira vez, com controle Opus V0 (📊 `reports/SPEC-122-BANCADA.md` §3.1: nenhuma variante passa G1; o dispatch continua
+Opus 5.5). Seguem sem medição válida: o **localizador** (`o_cerebro_ja_sabe`, o motor `dispatch` da bancada), N2 e cobrança.
 
 ## P-S116-02 · 🔴 braços Anthropic não medidos depois de 19:18Z — reserva vazia em todas as rotas
 📊 23/09/2026: Sonnet 5 medium/high, Opus 5.5 medium/high, Haiku 4.5 com tools e toda a visão Anthropic ficaram
@@ -11456,6 +11459,8 @@ escolhe o ramo pelo que o modelo lembrou, não pela apólice.
 📊 23/09/2026: `docling-service/app/config.py:28` `VISION_MODEL="gpt-4o-mini"`; trocar a rota `visao_documento` não troca o
 serviço. **Destrava:** `VISION_MODEL` no EasyPanel igual à rota, ou o serviço ler o snapshot. **Dono:** 🧑 env · 🤖 leitura.
 **Custo de esquecer:** duas verdades sobre o modelo que lê documento.
+**🟡 CONTINUA (30/09/2026, SPEC-122):** o default do código passou a `gpt-6.1-sol` (`29b0b76`), igual à rota; o serviço
+segue lendo a env. Continua como **P-122-01** (🤖 ler de quem chama) e **P-122-02** (🧑 conferir a env pelo nome).
 
 ## P-S116-10 · variáveis `*_MODEL`/`*_PROVIDER` de produção agora IGNORADAS
 📊 23/09/2026 (comentários "ficam IGNORADOS" no código): `PORTAL_VISION_MODEL` · `DISPATCH_LLM_PROVIDER` ·
@@ -12425,6 +12430,8 @@ próprio guarda `test_o_sonnet_5_esta_proibido.py`; e `scripts/spec116-f4-nascim
 Inofensivas: o modelo vem do catálogo (`llm_papeis`).
 **O que destrava:** 🧑 apagar no EasyPanel.
 **Custa esquecer:** alguém muda uma delas achando que troca o modelo — e nada muda.
+**🟡 CONTINUA (30/09/2026, SPEC-122):** somam-se três nomes para **conferir** (não apagar às cegas): `VISION_MODEL`
+(`docling-service`) e `COUNCIL_MEMBERS` (`smith-api`), que o código ainda lê, e `PORTAL_VISION_MODEL`, ignorada — ver **P-122-02**.
 
 ## P-121-08 · 🤖 O CHECK `agents.chk_reasoning_effort` não aceita `xhigh` nem `max`
 O Sonnet 5.5 aceita esses esforços; o banco recusa gravar.
@@ -12439,6 +12446,7 @@ O Sonnet 5.5 aceita esses esforços; o banco recusa gravar.
 ## P-121-10 · 🤖 O `MANIFEST.md` das migrations está desatualizado desde antes da SPEC-116
 **O que destrava:** 🤖 acrescentar as migrations de 23/09 a `20260929_01` com o estado aplicado.
 **Custa esquecer:** a autoridade de migrations deixa de dizer o que está no banco (CLAUDE.md §8).
+**🟡 ABSORVIDA (30/09/2026) pela P-122-14**, que acrescenta `20260930_01` e `20260930_02` à lista.
 
 ## P-121-11 · 🤖 A janela de "consulta de pedido existente" só cobre a Allianz no acervo
 A Porto (*"você tem um serviço aberto"*) e a Yelum (*"aberta nas últimas 72h"*) ainda contam como atendimento novo no
@@ -12528,3 +12536,110 @@ e não devolve; `test_spec116_f3a_quem_escreve_pede_papel` troca `sys.modules["a
 📊 Na suíte até o guarda do grupo: 13 falhas em `4ccd063` (o guarda do grupo ficou imune em `b0aff49`, as outras 12 seguem).
 **O que destrava:** 🤖 devolver o original num `finally`/fixture. **Custa esquecer:** falha que muda com a ordem e esconde regressão real.
 
+
+
+---
+
+# SPEC-122 — o agente pensa, com prova (+ o GPT-6.1 Sol sucede o Sol 6) (30/09/2026)
+
+> 📊 O retrato da SPEC: a bancada do cérebro do acionamento (`reports/SPEC-122-BANCADA.md` §3.1, recalculada sem modelo em
+> 30/09) — **nenhuma variante passa G1** (V2 no 6.1: 2 graves em 31 armadilhas; Opus V0: 6 em 15; 6.1 V0: 14 em 31) →
+> nenhuma autonomia, o cérebro novo só em sombra, o dispatch continua Opus 5.5. 📊 Simulador (`simular_corredor.py --todas
+> --formato json`, 30/09): 31/76 antes e depois, arquivos idênticos. ⚠️ O prefixo é **P-122-NN**; as antigas **P-122
+> (original)**, **P-122 (bis)** e **P-122 · o teto de 1.000 linhas** são outras pendências.
+> Anotadas nesta SPEC: P-S116-01 🟡 · P-S116-09 🟡 · P-121-07 🟡 · P-121-10 🟡 (absorvida pela P-122-14).
+
+## P-122-01 · 🤖 O `docling-service` lê o modelo da env, não da rota
+📊 30/09: `docling-service/app/config.py` `VISION_MODEL = "gpt-6.1-sol"` (era `gpt-6-sol`); o serviço não tem banco e não lê
+`llm_papeis`. A rota `visao_documento` diz uma coisa e a env pode dizer outra. O conserto (o `smith-api` mandar o modelo no
+POST `/parse`) muda contrato em 4 arquivos. Continua a P-S116-09.
+**O que destrava:** 🤖 o serviço receber o modelo de quem chama. **Custa esquecer:** duas verdades sobre o modelo que lê documento.
+
+## P-122-02 · 🧑 Três variáveis de modelo no EasyPanel para conferir pelo nome
+`VISION_MODEL` (serviço `docling-service`) · `COUNCIL_MEMBERS` (`smith-api`; o conselho está desligado por `COUNCIL_ENABLED`)
+· `PORTAL_VISION_MODEL` (ignorada desde a SPEC-116, P-S116-10). Se alguma contiver `gpt-6-sol`, ela vence o default do código.
+**O que destrava:** 🧑 abrir cada uma: `VISION_MODEL` e `COUNCIL_MEMBERS` com `gpt-6-sol` → trocar por `gpt-6.1-sol`;
+`PORTAL_VISION_MODEL` → apagar. **Custa esquecer:** o docling continua no Sol 6 sem ninguém ver.
+
+## P-122-03 · 🧑🤖 O controle Opus V0 mediu só 15 das 32 armadilhas
+📊 30/09: o teto de US$ 2 por provedor parou a rodada em 62/79 (o arquivo tinha as armadilhas por último; a ordem já foi
+corrigida). Faltam **17 armadilhas** × 📊 US$ 0,0272 por chamada ≈ 💭 US$ 0,50 **além do teto** da Anthropic (📊 gasto de
+30/09 no ledger: US$ 1,7383). **O que destrava:** 🧑 autorizar ~US$ 0,50; 🤖 rodar a bancada `--papel cerebro --variante V0`
+com o braço `anthropic:claude-opus-5-5` só nas armadilhas. **Custa esquecer:** a comparação 6.1 × Opus fica em 15 casos, que
+não é significativa (7 × 6).
+
+## P-122-04 · 🤖 Sonnet 5.5, V1 e V3 não foram medidos
+O Sonnet 5.5 é o braço que separa "provedor" de "preço" (mesmo preço do 6.1, mesmo provedor do Opus). Não coube no teto.
+**O que destrava:** 🤖 verba de bancada + rodada. **Custa esquecer:** uma vitória futura do 6.1 não diz se veio do provedor ou do tamanho.
+
+## P-122-05 · 🤖 O corpus da bancada não tem a ficha do caso
+📊 As sessões do acervo não guardam `slots` — o modelo não confere endereço nem veículo e pergunta ao segurado. O acerto dos
+grupos A (31–37 %) e B fica deprimido para todos os braços; **G2 é inatingível** com este corpus.
+**O que destrava:** 🤖 reconstruir a ficha de cada sessão (mascarada) a partir da conversa. **Custa esquecer:** a bancada nunca aprova nada.
+
+## P-122-06 · 🤖 Uma repetição por caso (k = 1) não prova "zero grave"
+G1 exige zero grave **em todas as repetições**. Com k = 1 o zero pode ser sorte.
+**O que destrava:** 🤖 k ≥ 3 nas armadilhas da variante candidata. **Custa esquecer:** ligar com uma prova que não prova.
+
+## P-122-07 · 🤖 O prompt da sombra não é o prompt medido
+Red team P3: a sombra não passa o `ura_map` (o webhook passa) e `conversa_segurado` não tem **escritor** em sessão nenhuma
+(📊 `grep` = 0) — o bloco "A CONVERSA COM O SEGURADO" sai sempre "(não disponível)".
+**O que destrava:** 🤖 a sombra montar o mesmo contexto do webhook e alguém escrever `conversa_segurado`.
+**Custa esquecer:** a regra de ligar vai medir outra coisa que não a que foi aprovada.
+
+## P-122-08 · 🤖 O raciocínio cifrado do Sol 6 reenviado ao 6.1 não foi medido
+Red team P7: o histórico guarda `encrypted_content` do Sol 6 (`store=False`); nada o filtra, e a conversa que começou no 6
+continua no 6.1. 📊 O canário só viu raciocínio vazio.
+**O que destrava:** 🤖 um smoke de ida e volta 6 → 6.1 com raciocínio não vazio, ou filtrar blocos de outro modelo.
+**Custa esquecer:** um erro no meio de uma conversa antiga, no primeiro dia.
+
+## P-122-09 · 🤖 O localizador espera 20 s e o primário tem 90 s: a reserva nunca chega
+Red team P8 (anterior à SPEC): `o_cerebro_ja_sabe` roda sob `wait_for(20)`; com o Opus **lento** (não caído) o failover para o
+6.1 nunca acontece. O teste do failover usa erro rápido.
+**O que destrava:** 🤖 timeout do primário menor que o `wait_for`, ou failover por prazo. **Custa esquecer:** Opus lento = localizador mudo.
+
+## P-122-10 · 🤖 A resposta do segurado reentra no motor sem guarda geral
+Red team A10: um slot preenchido pela pergunta do sem_chute é lido depois por **outro** passo. O caso concreto (o serviço aberto
+da Porto gravando "Não" e respondendo o menu de serviços) foi consertado tirando o passo da lista; não há guarda para o padrão.
+**O que destrava:** 🤖 um teste que, para cada passo perguntável, confira quem mais lê o mesmo slot. **Custa esquecer:** a próxima
+entrada na lista repete o defeito.
+
+## P-122-11 · 🧑🤖 O número de processo e o código de corretor do piloto ainda estão na `main`
+Mascarados no corpus da bancada, mas seguem em: um comentário de `backend/app/services/corridor_playbooks.py` ·
+`backend/tests/corpus/telas_reais/zurich-auto.jsonl` · `backend/tests/fixtures/mapfre_parcelas.py` ·
+`docs/canon/portais/PORTAL-mapfre.md` — e no histórico da `main`. ⚠️ Os valores (e um primeiro nome, em 5 casos) já foram às
+duas APIs nas rodadas de 30/09. **O que destrava:** 🤖 mascarar os 4 arquivos com a mesma varredura; 🧑 decidir se o histórico
+é reescrito (como na SPEC-120). **Custa esquecer:** identificador de sinistro e número de corretora num repositório (CLAUDE.md §13.9).
+
+## P-122-12 · 🤖 As perguntas ao segurado usam a frase do dossiê, em 3ª pessoa
+Red team B2(b): `_COMO_PERGUNTAR` foi escrito para o dossiê da equipe ("me diga qual serviço **o cliente** precisa",
+"para onde **ele** quer ser levado"), sem acento. Agora parte dele vai ao segurado.
+**O que destrava:** 🤖 frases em 2ª pessoa para os rótulos perguntáveis. **Custa esquecer:** o segurado lê um texto que não é para ele.
+
+## P-122-13 · 🤖 O gerador do corpus não guarda a reclassificação do caso 082
+📊 O 082 virou grupo B com gabarito "Encerrar" (o motor responde a tela inteira) por conserto no arquivo; regerar o corpus o
+devolve às armadilhas. **O que destrava:** 🤖 a regra no `gerar_corpus_cerebro.py`. **Custa esquecer:** um grave falso volta.
+
+## P-122-14 · 🤖 O `MANIFEST.md` das migrations (absorve a P-121-10)
+Faltam as migrations de 23/09 a `20260930_02`. **O que destrava:** 🤖 acrescentar com o estado aplicado (📊 versões
+`20260930085813` e `20260930103232`, lidas pelo juiz em 30/09). **Custa esquecer:** a autoridade de migrations deixa de dizer o
+que está no banco (CLAUDE.md §8).
+
+## P-122-15 · 🤖 O ROLLBACK da `20260930_01` não foi ensaiado
+Juiz P10: lido e executável por leitura (o Sol 6 volta a APPROVED antes das rotas), mas 📊 as 148 linhas do ledger com
+`gpt-6.1-sol` ficariam sem catálogo e o gasto por provedor as perderia.
+**O que destrava:** 🤖 ensaiar num ramo do banco. **Custa esquecer:** a volta de emergência tem um efeito colateral não medido.
+
+## P-122-16 · 🧑 Ligar a sombra é decisão sua
+A tabela `cerebro_modos` nasce vazia (tudo desligado). O SQL pronto está em `TAREFAS-DO-FOUNDER.md`, bloco S122.
+**O que destrava:** 🧑 rodar o SQL para uma seguradora. **Custa esquecer:** a medição que a regra de ligar exige nunca começa.
+
+## P-122-17 · 🧑 O critério de ligar de verdade (`on`) ainda não existe no produto
+A proposta diz **2 semanas ou 50 telas reais em sombra sem erro grave**. O banco recusa `on` hoje (constraint
+`ck_cerebro_modos_on_recusado_a_bancada_122_nao_aprovou`); ligar exige uma SPEC que troque a constraint **e** leia as linhas
+`cerebro.sombra`. **O que destrava:** 🧑 a decisão + 🤖 a SPEC. **Custa esquecer:** a sombra roda para sempre sem virar nada.
+
+## P-122-18 · 🤖 Falta a primeira linha real de `cerebro.sombra`
+Juiz P4: a sombra é agendada com `create_task` depois do envio; o loop do produto é de vida longa, mas não há prova de que a
+tarefa completa no processo do webhook. 📊 Em 30/09: 0 linhas (chave desligada).
+**O que destrava:** 🤖 conferir o primeiro evento depois de ligar (P-122-16). **Custa esquecer:** a sombra "ligada" não mede nada.

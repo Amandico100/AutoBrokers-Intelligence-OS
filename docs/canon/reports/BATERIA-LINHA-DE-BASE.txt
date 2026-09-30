@@ -1,3 +1,5 @@
+# 📊 30/09/2026, SPEC-122 (HEAD d07dc6c), worktree limpo, pytest tests -q -p no:cacheprovider → 40 failed · 2451 passed · 1 skipped · 32 xfailed · 1 xpassed em 3.563 s.
+#   A lista de FAILED é IDÊNTICA à da SPEC-121 (b0aff49): 0 novas, 0 sumiram. Rodada intermediária em 501e0ca: 72 failed (32 novas: 1 produto + 31 contaminação de sys.modules, fechadas em d07dc6c).
 # 📊 30/09/2026, SPEC-121 (branch spec/121-grupo-e-rotas, HEAD b0aff49), worktree limpo, `cd backend && .venv/Scripts/python -m pytest tests -q -p no:cacheprovider`
 # → 40 failed · 2339 passed · 1 skipped · 32 xfailed · 1 xpassed em 3.891 s. TRIAGEM NOMINAL contra o COMMIT BASE 0cc1bdd rodado no mesmo
 #   rito (43 failed · 2252 passed em 8.217 s): 0 falhas novas · 3 sumiram (test_o_numero_de_teste_e_conversa_nova = conserto real do F1;

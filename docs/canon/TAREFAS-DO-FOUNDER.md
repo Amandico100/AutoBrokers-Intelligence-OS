@@ -889,6 +889,8 @@ Nada foi testado com seguradora de verdade: estes passos são o que falta antes 
 
 ## SPEC-121 — o grupo só ouve quando precisa, e mais rotas atendem sozinhas (30/09/2026)
 
+⏳ **Estado em 30/09/2026: PENDENTE — você disse que faz estes testes no fim.** Continuam valendo como estão abaixo.
+
 📊 O grupo de suporte: os 29 avisos errados de 21/09 viram **zero** no teste (commit `823a845`). Agora só chega ao grupo aviso
 de conversa quando **o agente está ligado**, **foi o agente quem pediu ajuda** e **nenhuma pessoa da corretora falou na conversa
 nos últimos 7 dias**. 📊 No simulador: **31 de 76** rotas atendem sozinhas (eram 31 de 73; entraram 3 de carro reserva).
@@ -928,3 +930,69 @@ O Sonnet 5 saiu do sistema e o Sonnet 5.5 entrou (a mudança no banco já foi ap
    continuam). Confirme se o grupo dela deve continuar ativo.
 7. **Pergunta que continua aberta para a atendente:** por qual canal a Allianz, a Bradesco e a HDI atendem carro reserva?
    Até ela responder, esses pedidos vão para uma pessoa da corretora, por decisão sua de 29/09.
+
+
+---
+
+## SPEC-122 — o agente pensa, com prova, e o GPT-6.1 Sol sucede o Sol 6 (30/09/2026)
+
+⏳ **Os testes da SPEC-121 (bloco acima, S121.1 a S121.7) continuam pendentes** — você disse que faz no fim. Nada da 122
+depende deles, e nada deles foi feito por aqui.
+
+📊 O que mudou: o **GPT-6.1 Sol** substituiu o Sol 6 nos 7 trabalhos que usavam o Sol 6 e na reserva do acionamento, cada um
+com o mesmo esforço de antes (a mudança no banco já foi aplicada e conferida; 📊 teste real com US$ 0,0073). O "cérebro" que
+responde à seguradora quando a URA sai do roteiro foi **medido pela primeira vez** (📊 92 casos reais mascarados, 30/09):
+nenhuma versão passou na régua de "zero erro grave", então **nada ganhou autonomia** — o acionamento continua no Opus 5.5,
+e o cérebro novo só pode rodar **em sombra** (decide ao lado, não envia nada). O que muda para o segurado: na Porto, HDI,
+Yelum e Zurich, quando a URA pede algo que só ele sabe (ex.: "o local é seguro, escuro ou deserto?"), o agente **pergunta
+a ele** com as opções da tela, em vez de passar a uma pessoa.
+
+1. **Implantar** no EasyPanel, nesta ordem: `smith-api` → `smith-worker` → `docling-service`.
+   **Esperar:** os três verdes; um "oi" no chat do painel responde.
+   **Se der erro de modelo** (as palavras `gpt-6.1-sol` ou `effort` numa mensagem de erro): mande o print no chat.
+2. **Conferir três variáveis pelo nome** (P-122-02). Abra cada uma e veja o valor — não precisa mostrar a ninguém:
+   - no serviço `docling-service`: `VISION_MODEL` — se estiver `gpt-6-sol`, troque para `gpt-6.1-sol`; se não existir, deixe assim;
+   - no `smith-api`: `COUNCIL_MEMBERS` — se contiver `gpt-6-sol`, troque esse trecho por `gpt-6.1-sol`; se não existir, deixe assim;
+   - no `smith-api`: `PORTAL_VISION_MODEL` — pode apagar (o código não a lê desde a SPEC-116).
+   Se mudou alguma, clique **Implantar** no serviço dela.
+   **Esperar:** nada muda na tela — é para a leitura de documentos não ficar no modelo antigo sem ninguém ver.
+3. **Ligar a sombra, quando quiser** (P-122-16) — **não é obrigatório**, e não muda nada do que vai à seguradora nem ao
+   segurado. Só depois do passo 1. No Supabase, **SQL Editor**, cole e rode (liga a sombra na **Porto**, para todas as
+   corretoras):
+   ```sql
+   insert into public.cerebro_modos (company_id, insurer_key, ramo, modo, motivo, ligado_por)
+   select id, 'porto', 'todos', 'sombra', 'SPEC-122: medir o cerebro V2 em sombra', 'Founder'
+     from public.companies
+   on conflict (company_id, insurer_key, ramo)
+   do update set modo = 'sombra', motivo = excluded.motivo, ligado_por = excluded.ligado_por, updated_at = now();
+   ```
+   **Esperar:** "Success" e o número de linhas = o número de corretoras. Para conferir:
+   ```sql
+   select insurer_key, ramo, modo, count(*) as corretoras from public.cerebro_modos group by 1, 2, 3;
+   ```
+   → uma linha `porto · todos · sombra · N`. Vale em até 1 minuto.
+   **Depois de alguns acionamentos da Porto**, para ver se ela está medindo e quanto custa:
+   ```sql
+   select count(*) as telas, min(created_at) as primeira, max(created_at) as ultima
+     from public.work_events where event_type = 'cerebro.sombra';
+   select count(*) as chamadas, round(sum(total_cost_usd)::numeric, 4) as dolares
+     from public.token_usage_logs where service_type = 'cerebro_sombra';
+   ```
+   💭 Custo esperado: perto de US$ 0,02 a 0,03 por tela em que a URA sai do roteiro (📊 o Opus custou US$ 0,0209–0,0272 por
+   chamada na bancada de 30/09). **Para desligar**, a qualquer momento:
+   ```sql
+   update public.cerebro_modos set modo = 'off', updated_at = now() where insurer_key = 'porto';
+   ```
+   ⚠️ O modo "ligado de verdade" **não existe**: o banco recusa. Ele só virá numa SPEC, depois de 2 semanas ou 50 telas
+   reais em sombra sem erro grave (P-122-17).
+   **Se der erro** `violates foreign key` ou `relation "cerebro_modos" does not exist`: a tabela não está no banco — mande o
+   print no chat (a migration foi aplicada em 30/09 e conferida pelo juiz).
+4. **O canário**, junto com os acionamentos reais da S121: um guincho da **HDI** ou da **Yelum** até a tela de *"situações
+   de risco"*.
+   **Esperar:** o segurado recebe *"Só mais uma informação que a HDI (ou a Yelum) pediu…"* com as opções numeradas — **sem** "Voltar";
+   ele responde com o número ou com o texto igual ao da opção, e o acionamento continua. Se ele responder outra coisa, o caso
+   vai a uma pessoa da corretora e **nada** é enviado à seguradora.
+   **Se o endereço for numa BR ou rodovia:** o agente **não** responde "Nenhuma das anteriores" sozinho — pergunta ou passa a
+   uma pessoa. Se vir o contrário, mande o print.
+5. **Autorizar, se quiser, ~US$ 0,50 para completar a medição do Opus** (P-122-03) — a bancada parou no teto de US$ 2 por
+   provedor e mediu o Opus em 15 das 32 armadilhas. Não bloqueia nada; só deixa a comparação 6.1 × Opus completa.
