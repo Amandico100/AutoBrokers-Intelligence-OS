@@ -1,9 +1,10 @@
 {
  "versao": 4,
  "gerado_em": "2026-09-26",
- "spec": "SPEC-116 U12 · SPEC-117 F4a",
+ "spec": "SPEC-116 U12 · SPEC-117 F4a · SPEC-122 F1 (cerebro)",
  "papeis": {
   "atendimento": 51,
+  "cerebro": 92,
   "chat_principal": 38,
   "cobranca": 10,
   "dispatch": 15,

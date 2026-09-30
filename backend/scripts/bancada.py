@@ -19,6 +19,9 @@ falha · BLOCKED_BY_INFRA.
     python scripts/bancada.py --relatorio <grupo_bancada | arquivo.json>
     # carregar o corpus na Eval Fabric (datasets/versões/casos; idempotente)
     python scripts/bancada.py --carregar-corpus --gravar
+    # SPEC-122 F1 — o CÉREBRO (variante V0..V3), teto POR PROVEDOR lido do ledger:
+    python scripts/bancada.py --papel cerebro --variante V1 --braco anthropic:claude-opus-5-5 --k 1         --teto-provedor 1.90 --ledger-desde 2026-09-30T00:00:00+00:00 --saida tests/corpus/bancada/RESULTADOS/x.json
+    python scripts/bancada.py --resumo-cerebro tests/corpus/bancada/RESULTADOS/cerebro_*.json
 
 `--ensaio` (padrão) NÃO toca o banco: grava só um JSON local e diz onde.
 `--gravar` escreve em `eval_runs`/`eval_case_results` (exige a migration
@@ -32,6 +35,7 @@ import argparse
 import logging
 import os
 import sys
+from pathlib import Path
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
@@ -60,6 +64,13 @@ def main(argv=None) -> int:
     p.add_argument("--relatorio", default=None, help="reimprime a tabela de um grupo_bancada ou de um arquivo .json")
     p.add_argument("--carregar-corpus", action="store_true", help="corpus → eval_datasets/versions/cases")
     p.add_argument("--verboso", action="store_true")
+    p.add_argument("--variante", default=None, help="SPEC-122: V0 (prompt de hoje) · V1 (+saída estruturada) · "
+                                                    "V2 (+contexto) · V3 (+conteúdo) — só no papel cerebro")
+    p.add_argument("--teto-provedor", type=float, default=None,
+                   help="SPEC-122: teto em US$ do PROVEDOR do braço, descontado o que o ledger "
+                        "(token_usage_logs, service_type='bancada') já registrou desde --ledger-desde")
+    p.add_argument("--ledger-desde", default=None, help="início da conta do ledger (ISO 8601)")
+    p.add_argument("--resumo-cerebro", nargs="+", default=None, help="SPEC-122: tabela braço × variante de JSONs")
     a = p.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO if a.verboso else logging.CRITICAL)
@@ -84,6 +95,21 @@ def main(argv=None) -> int:
             print(B.relatorio_do_banco(a.relatorio))
         return 0
 
+    if a.resumo_cerebro:
+        import glob
+        import json as _json
+
+        arqs = sorted({f for padrao in a.resumo_cerebro for f in glob.glob(padrao)})
+        resumo = B.resumo_do_cerebro(arqs)
+        print(B.tabela_do_cerebro(resumo))
+        for rot, m in resumo.items():
+            if m["graves"] or m["graves_do_modelo_nu"]:
+                print(f"\n{rot}\n  GRAVES (depois do parser/conferente): {m['graves'] or '—'}"
+                      f"\n  graves do modelo NU (antes de D3):    {m['graves_do_modelo_nu'] or '—'}")
+        if a.saida:
+            Path(a.saida).write_text(_json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
+        return 0
+
     if a.carregar_corpus:
         info = B.carregar_corpus(gravar=bool(a.gravar))
         for papel, i in info.items():
@@ -94,8 +120,23 @@ def main(argv=None) -> int:
     if not a.papel or not a.braco:
         p.error("--papel e ao menos um --braco são obrigatórios (ou use --relatorio / --carregar-corpus)")
 
+    teto = a.teto_usd
+    if a.teto_provedor is not None:
+        # 🔴 lei do Founder (SPEC-122): US$ por PROVEDOR, lido do LEDGER, parando sozinho
+        provs = {B.Braco.de(x).provider for x in a.braco}
+        if len(provs) != 1 or not a.ledger_desde:
+            p.error("--teto-provedor exige braços de UM provedor e --ledger-desde")
+        prov = provs.pop()
+        gasto = B.gasto_do_ledger(prov, a.ledger_desde)
+        resta = round(a.teto_provedor - gasto, 6)
+        print(f"ledger {prov} desde {a.ledger_desde}: US$ {gasto:.4f} · teto {a.teto_provedor:.2f} · resta {resta:.4f}")
+        if resta <= 0:
+            print("⛔ teto do provedor já atingido no ledger — nada roda")
+            return 2
+        teto = resta if teto is None else min(teto, resta)
     rel = B.rodar_bancada(a.papel, a.braco, k=a.k, nivel=a.nivel, gravar=bool(a.gravar),
-                          teto_usd=a.teto_usd, filtro=a.casos, critico=a.critico, grupo_bancada=a.grupo)
+                          teto_usd=teto, filtro=a.casos, critico=a.critico, grupo_bancada=a.grupo,
+                          variante=a.variante)
     print(rel.tabela())
     if a.por_caso:
         print()

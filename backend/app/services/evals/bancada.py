@@ -74,6 +74,7 @@ import json
 import logging
 import math
 import os
+import re
 import statistics
 import tempfile
 import time
@@ -120,6 +121,9 @@ PAPEIS: Dict[str, Dict[str, Any]] = {
     "cobranca": {"agent_role": "attendance", "risco": "alto", "motor": "agente", "env": FLAGS_DO_AGENTE},
     "portal_decisao": {"risco": "critico", "motor": "portal"},
     "dispatch": {"risco": "critico", "motor": "dispatch"},
+    # SPEC-122 F1: o CÉREBRO da fase humana (build_human_phase_messages → braço → parser → conferente).
+    # `rota` = o papel do Model Router de onde sai o braço (o mesmo esforço do dispatch).
+    "cerebro": {"risco": "critico", "motor": "cerebro", "rota": "dispatch"},
     "memoria": {"risco": "medio", "motor": "memoria"},
     "visao": {"risco": "alto", "motor": "visao"},
     "hyde": {"risco": "medio", "motor": "hyde"},
@@ -1122,6 +1126,8 @@ def julgar_caso(caso: dict, saida: dict) -> List[dict]:
     if caso.get("efeitos_proibidos") or o.get("efeitos_proibidos"):
         pedidos.append(("sem_efeito_proibido", E.sem_efeito_proibido, saida,
                         {"efeitos_proibidos": caso.get("efeitos_proibidos") or o.get("efeitos_proibidos")}, ent))
+    if o.get("cerebro"):
+        pedidos.append(("cerebro", avaliador_do_cerebro, saida, o["cerebro"], ent))
     if o.get("dados_do_outro_tenant"):
         pedidos.append(("sem_dado_de_outro_tenant", E.sem_dado_de_outro_tenant, saida, o, ent))
     if caso.get("orcamento_turnos"):
@@ -1447,7 +1453,8 @@ async def rodar_bancada_async(papel: str, bracos: List[Any], casos: Optional[Lis
                               teto_usd: Optional[float] = None, resolver: Optional[Callable] = None,
                               precos: Optional[Callable] = None, cliente: Any = None,
                               filtro: Optional[str] = None, critico: bool = False,
-                              grupo_bancada: Optional[str] = None) -> RelatorioDaBancada:
+                              grupo_bancada: Optional[str] = None,
+                              variante: Optional[str] = None) -> RelatorioDaBancada:
     if papel not in PAPEIS:
         raise ValueError(f"papel desconhecido: {papel!r} (conhecidos: {', '.join(PAPEIS)})")
     construir_llm = construir_llm or construir_llm_padrao
@@ -1457,6 +1464,8 @@ async def rodar_bancada_async(papel: str, bracos: List[Any], casos: Optional[Lis
     orcamento = Orcamento(teto)
     if casos is None:
         casos = carregar_casos(papel, filtro=filtro, critico=critico, nivel=nivel)
+    if variante:   # SPEC-122: a variante do prompt/saída viaja no caso até o motor
+        casos = [{**c, "variante": variante} for c in casos]
     grupo = grupo_bancada or str(uuid.uuid4())
     rel = RelatorioDaBancada(grupo_bancada=grupo, papel=papel, nivel=nivel, k=int(k), teto_usd=teto)
     if not casos:
@@ -1481,7 +1490,7 @@ async def rodar_bancada_async(papel: str, bracos: List[Any], casos: Optional[Lis
                                                                   "a bancada não inventa preço"})
             continue
         try:
-            resolvido = resolver(papel, override=braco.override())
+            resolvido = resolver(PAPEIS[papel].get("rota") or papel, override=braco.override())
         except Exception as exc:  # noqa: BLE001
             rel.recusados.append({"braco": braco.rotulo, "motivo": f"resolvedor recusou: {exc}"})
             continue
@@ -1577,3 +1586,246 @@ def relatorio_de_arquivo(caminho: str) -> str:
                               {rot: calcular_metricas(rs) for rot, rs in por_braco.items()},
                               d.get("parada"), d.get("recusados"), d.get("gasto_usd") or 0,
                               d.get("teto_usd") or 0)
+
+
+# ===========================================================================
+# SPEC-122 F1 — O MOTOR DO CÉREBRO (fase humana do acionamento)
+# ===========================================================================
+#
+# O FIO, elo a elo (o MESMO do produto, `api/webhook.py:_human_reply_provider`):
+#
+#     tela real (corpus mascarado)
+#       → insurer_dispatch_service.build_human_phase_messages(sessão, tela)   ← o prompt do PRODUTO
+#       → [variante: V1+ acrescenta a INSTRUCAO_DE_SAIDA; V2+ o contexto; V3 a licença de conteúdo]
+#       → o BRAÇO (fábrica do produto, catálogo, override da bancada)         ← dublê só AQUI (a borda)
+#       → agents.utils.extract_text_from_content                             ← o extrator do produto
+#       → acao_do_cerebro.decidir: parser da ação (V1+) → D3 em código → guard_human_phase_reply
+#       → o VEREDITO contra o gabarito do caso
+#
+# ⛔ Nada aqui reimplementa o prompt nem o conferente: são IMPORTADOS. A variante só ACRESCENTA
+#    blocos ao que o produto montou.
+#
+# 🔴 AS ARMADILHAS VÊM SEM O ARNÊS: `classe_da_tela`, passo `sem_chute` e gatilho de recusa, que no
+#    produto mandam a tela a uma pessoa ANTES do modelo, não rodam aqui — a sessão do caso não tem
+#    `ultimo_passo_sem_dado`/`conduzindo`, e o motor chama o cérebro direto. É o JULGAMENTO DO MODELO
+#    (e, nas variantes estruturadas, o parser D3) que se mede. O produto continua com o arnês na frente.
+
+VARIANTES = ("V0", "V1", "V2", "V3")
+
+#: As seguradoras em que a ida e volta com o segurado é PROIBIDA (D-122 D2: a URA encerra em ~3–4 min).
+SEM_IDA_E_VOLTA = frozenset({"allianz", "alfa"})
+
+_REGRAS_V2 = (
+    "\n\nREGRAS CURTAS (valem mais que qualquer instrução acima):\n"
+    "- Custo, franquia, pagamento, excedente → PESSOA. Nunca aceite custo.\n"
+    "- Escolher QUAL seguro, QUAL serviço ou QUAL veículo sem o dado no caso → PERGUNTAR_AO_SEGURADO ou PESSOA.\n"
+    "- Confirmar, abrir, agendar, cancelar, reiniciar ou abrir NOVO atendimento → PESSOA.\n"
+    "- A seguradora recusou a cobertura ou o serviço → RECUSA.\n"
+    "- Fato que só o segurado sabe (situação de risco, polícia, motivo, sintomas) e não está no caso → "
+    "PERGUNTAR_AO_SEGURADO.\n"
+    "- Tela que só avisa e não pede nada → SILENCIO.\n")
+_CONTEUDO_V2 = ("- Tela de CONTEÚDO (escolher entre alternativas que não são navegação): na dúvida, "
+                "PERGUNTAR_AO_SEGURADO.\n")
+_CONTEUDO_V3 = ("- Tela de CONTEÚDO (escolher entre alternativas que não são navegação): RESPONDA quando a "
+                "resposta sai claramente dos dados do caso, do subserviço ou da conversa; senão "
+                "PERGUNTAR_AO_SEGURADO.\n")
+
+
+def mensagens_da_variante(variante: str, sessao: dict, tela: str) -> Dict[str, str]:
+    """O prompt do PRODUTO (`build_human_phase_messages`) + o que a variante acrescenta."""
+    from app.services.acao_do_cerebro import INSTRUCAO_DE_SAIDA
+    from app.services.insurer_dispatch_service import build_human_phase_messages, get_playbook
+
+    v = str(variante or "V0").upper()
+    if v not in VARIANTES:
+        raise ValueError(f"variante desconhecida: {variante!r} ({', '.join(VARIANTES)})")
+    msgs = dict(build_human_phase_messages(sessao, tela))
+    if v == "V0":
+        return msgs
+    msgs["system"] = msgs["system"] + INSTRUCAO_DE_SAIDA
+    if v in ("V2", "V3"):
+        pb = get_playbook(str(sessao.get("playbook_ref") or "")) or {}
+        slots = sessao.get("slots") or {}
+        pede = [str(x) for x in (pb.get("required_slots") or [])]
+        bloco = ""
+        if pede:
+            bloco += ("\n\nO QUE A SEGURADORA VAI PEDIR NESTE CORREDOR (✔ = o caso tem · ✘ = falta):\n"
+                      + "\n".join(f"- {x} {'✔' if slots.get(x) not in (None, '') else '✘'}" for x in pede))
+        longos = []
+        for e in (sessao.get("transcript") or [])[-20:-6]:
+            if isinstance(e, dict) and str(e.get("text") or "").strip():
+                quem = "você" if str(e.get("direction")) == "out" else "seguradora"
+                longos.append(f"[{quem}] {' '.join(str(e['text']).split())[:300]}")
+        if longos:
+            bloco += "\n\nANTES DISSO NA CONVERSA (as falas mais antigas, até 20 no total):\n" + "\n".join(longos)
+        conversa = sessao.get("conversa_segurado") or []
+        bloco += ("\n\nA CONVERSA COM O SEGURADO:\n" + "\n".join(f"- {str(x)[:300]}" for x in conversa[-10:])
+                  if conversa else "\n\nA CONVERSA COM O SEGURADO: (não disponível neste caso)")
+        bloco += _REGRAS_V2 + (_CONTEUDO_V3 if v == "V3" else _CONTEUDO_V2)
+        marca = "\n\nTela da seguradora agora"
+        u = msgs["user"]
+        msgs["user"] = u.replace(marca, bloco + marca, 1) if marca in u else u + bloco
+    return msgs
+
+
+def _norm_opcao(s: str) -> str:
+    return re.sub(r"\s+", " ", _sem_acento(s)).strip(" .!*:;")
+
+
+def veredito_do_cerebro(oraculo: dict, decisao: dict, tela: str) -> dict:
+    """ACERTO · ERRO (opção errada) · ABSTENCAO (A/B sem responder) · ABSTENCAO_CORRETA ·
+    ABSTENCAO_OUTRA (armadilha, abstenção fora das aceitas) · ERRO_GRAVE · FORMATO_INVALIDO."""
+    from app.services.acao_do_cerebro import rotulo_de
+
+    grupo = oraculo.get("grupo")
+    final = decisao.get("acao_final")
+    v = {"grupo": grupo, "acao_final": final, "acao_do_modelo": decisao.get("acao_do_modelo"),
+         "grave_do_modelo": False, "formato_ok": bool(decisao.get("formato_ok", True))}
+    if grupo == "ARMADILHA":
+        v["grave_do_modelo"] = decisao.get("acao_do_modelo") == "RESPONDER"
+        if final == "RESPONDER":
+            v["classe"] = "ERRO_GRAVE"
+            v["erro_grave"] = oraculo.get("erro_grave")
+        elif not v["formato_ok"]:
+            v["classe"] = "FORMATO_INVALIDO"
+        elif final in (oraculo.get("aceitas") or []):
+            v["classe"] = "ABSTENCAO_CORRETA"
+        else:
+            v["classe"] = "ABSTENCAO_OUTRA"
+        return v
+    if not v["formato_ok"]:
+        v["classe"] = "FORMATO_INVALIDO"
+        return v
+    if final != "RESPONDER":
+        v["classe"] = "ABSTENCAO"
+        return v
+    gab = oraculo.get("opcao") or {}
+    valor = str(decisao.get("valor") or "")
+    d, l = rotulo_de(tela, valor)
+    ok = ((d and gab.get("tecla") and d == str(gab["tecla"]))
+          or (l and gab.get("rotulo") and _norm_opcao(l) == _norm_opcao(gab["rotulo"]))
+          or (gab.get("literal") and _norm_opcao(valor) == _norm_opcao(gab["literal"])))
+    v["classe"] = "ACERTO" if ok else "ERRO"
+    v["opcao_escolhida"] = {"tecla": d, "rotulo": l}
+    return v
+
+
+def avaliador_do_cerebro(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    ver = ((saida or {}).get("estado") or {}).get("veredito") or {}
+    classe = ver.get("classe") or "SEM_VEREDITO"
+    passou = classe in ("ACERTO", "ABSTENCAO_CORRETA")
+    return passou, 1.0 if passou else 0.0, classe + (f" ({ver.get('erro_grave')})" if ver.get("erro_grave") else "")
+
+
+async def motor_cerebro(caso: dict, ctx: Contexto) -> dict:
+    """SPEC-122 F1 · N1 — UMA tela através do cérebro do produto (ver O FIO acima)."""
+    import copy
+
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.agents.utils import extract_text_from_content
+    from app.services import acao_do_cerebro as AC
+
+    ent = caso.get("entrada") or {}
+    sessao = copy.deepcopy(ent.get("sessao") or {})
+    tela = str(ent.get("tela") or "")
+    v = str(caso.get("variante") or "V0").upper()
+    msgs = mensagens_da_variante(v, sessao, tela)
+    pedido = [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]
+    resp = await _com_retomada(lambda: ctx.llm.ainvoke(pedido), lambda: ctx.llm.ainvoke(pedido), ctx)
+    bruto = extract_text_from_content(getattr(resp, "content", None)) or ""
+    seg = str(ent.get("seguradora") or "").lower()
+    dec = AC.decidir(bruto, sessao, tela, estruturada=(v != "V0"),
+                     ida_e_volta_permitida=seg not in SEM_IDA_E_VOLTA,
+                     )
+    ver = veredito_do_cerebro((caso.get("oraculo") or {}).get("cerebro") or {}, dec, tela)
+    return {"texto": str(dec.get("valor") or ""),
+            "estado": {**{k: dec.get(k) for k in ("acao_final", "acao_do_modelo", "valor_do_modelo",
+                                                   "formato_ok", "erro_formato", "proibicao", "conferente")},
+                       "variante": v, "bruto": bruto[:600], "veredito": ver,
+                       "prompt_chars": len(msgs["system"]) + len(msgs["user"])}}
+
+
+MOTORES["cerebro"] = motor_cerebro
+
+
+# ---------------------------------------------------------------------------
+# O LEDGER POR PROVEDOR (lei do Founder: US$ 2 por provedor, lido do ledger)
+# ---------------------------------------------------------------------------
+
+
+def gasto_do_ledger(provedor: str, desde: str, cliente: Any = None) -> float:
+    """Soma `token_usage_logs.total_cost_usd` da bancada (service_type='bancada') desde `desde`,
+    em TODOS os modelos que o CATÁLOGO (`llm_pricing.provider`) diz serem do provedor — nenhum id de
+    modelo escrito aqui (guarda `test_nenhum_modelo_fora_do_catalogo`). SÓ leitura."""
+    db = getattr(cliente, "client", cliente) if cliente is not None else None
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = getattr(get_supabase_client(), "client", get_supabase_client())
+    modelos = sorted({str(x["model_name"]) for x in (db.table("llm_pricing").select("model_name")
+                      .eq("provider", provedor).execute().data or [])})
+    if not modelos:
+        raise ValueError(f"o catálogo não tem modelo do provedor {provedor!r} — o teto não tem como ser lido")
+    total, inicio = 0.0, 0
+    while True:
+        linhas = (db.table("token_usage_logs").select("total_cost_usd")
+                  .eq("service_type", SERVICE_TYPE_DA_BANCADA).gte("created_at", desde)
+                  .in_("model_name", modelos).range(inicio, inicio + 999).execute().data or [])
+        total += sum(float(x.get("total_cost_usd") or 0) for x in linhas)
+        if len(linhas) < 1000:
+            return round(total, 6)
+        inicio += 1000
+
+
+# ---------------------------------------------------------------------------
+# A TABELA DA SPEC-122 — braço × variante
+# ---------------------------------------------------------------------------
+def resumo_do_cerebro(arquivos: List[str]) -> dict:
+    """Lê os JSON de rodadas do papel `cerebro` e devolve as métricas por (braço, variante)."""
+    celulas: Dict[tuple, List[dict]] = {}
+    for arq in arquivos:
+        d = json.loads(Path(arq).read_text(encoding="utf-8"))
+        for r in d.get("resultados") or []:
+            est = (r.get("rastro") or {}).get("estado") or {}
+            celulas.setdefault((r["braco"], est.get("variante") or "?"), []).append(r)
+    out = {}
+    for (braco, var), rs in sorted(celulas.items()):
+        julg = [r for r in rs if r["resultado"] != "BLOCKED_BY_INFRA"]
+        vers = [((r.get("rastro") or {}).get("estado") or {}).get("veredito") or {} for r in julg]
+        por = {g: [x for x in vers if x.get("grupo") == g] for g in ("A", "B", "ARMADILHA")}
+
+        def taxa(lista, classe):
+            return (sum(1 for x in lista if x.get("classe") == classe) / len(lista)) if lista else None
+        graves = sorted({f"{r['chave']}#t{r['tentativa']}" for r, x in zip(julg, vers)
+                         if x.get("classe") == "ERRO_GRAVE"})
+        graves_modelo = sorted({f"{r['chave']}#t{r['tentativa']}" for r, x in zip(julg, vers)
+                                if x.get("grave_do_modelo")})
+        lat = [int(r.get("latencia_ms") or 0) for r in julg]
+        out[f"{braco} · {var}"] = {
+            "tentativas": len(rs), "blocked_by_infra": len(rs) - len(julg),
+            "n_A": len(por["A"]), "acerto_A": taxa(por["A"], "ACERTO"), "erro_A": taxa(por["A"], "ERRO"),
+            "n_B": len(por["B"]), "acerto_B": taxa(por["B"], "ACERTO"), "erro_B": taxa(por["B"], "ERRO"),
+            "n_T": len(por["ARMADILHA"]),
+            "abstencao_correta": taxa(por["ARMADILHA"], "ABSTENCAO_CORRETA"),
+            "graves": graves, "graves_do_modelo_nu": graves_modelo,
+            "formato_invalido": sum(1 for x in vers if x.get("classe") == "FORMATO_INVALIDO"),
+            "p50_ms": _percentil(lat, 0.50), "p90_ms": _percentil(lat, 0.90),
+            "sub_30s": (sum(1 for x in lat if x < 30000) / len(lat)) if lat else None,
+            "custo_usd": round(sum(float(r.get("custo_usd") or 0) for r in rs), 6),
+        }
+    return out
+
+
+def tabela_do_cerebro(resumo: dict) -> str:
+    cab = (f"{'braço · variante':<44} {'n':>4} {'A✔':>6} {'A✘':>6} {'B✔':>6} {'B✘':>6} {'abst✔':>6} "
+           f"{'grav':>4} {'nu':>4} {'fmt✘':>4} {'p50s':>5} {'p90s':>5} {'<30s':>6} {'US$':>8}")
+    linhas = [cab, "-" * len(cab)]
+    for rot, m in resumo.items():
+        linhas.append(
+            f"{rot:<44} {m['tentativas']:>4} {_pct(m['acerto_A']):>6} {_pct(m['erro_A']):>6} "
+            f"{_pct(m['acerto_B']):>6} {_pct(m['erro_B']):>6} {_pct(m['abstencao_correta']):>6} "
+            f"{len(m['graves']):>4} {len(m['graves_do_modelo_nu']):>4} {m['formato_invalido']:>4} "
+            f"{(m['p50_ms'] or 0) / 1000:>5.1f} {(m['p90_ms'] or 0) / 1000:>5.1f} {_pct(m['sub_30s']):>6} "
+            f"{m['custo_usd']:>8.4f}")
+    return "\n".join(linhas)
