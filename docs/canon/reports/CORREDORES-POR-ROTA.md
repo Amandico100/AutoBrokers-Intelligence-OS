@@ -12,9 +12,9 @@
 
 ## 🔴 A frase que o Founder pode dizer a uma corretora
 
-> **De 76 rotas medidas, o sistema resolve sozinho 41% (31), 5% (4) vão para uma pessoa, e 54% (41) ainda não dão para ligar.**
+> **De 76 rotas medidas, o sistema resolve sozinho 42% (32), 5% (4) vão para uma pessoa, e 53% (40) ainda não dão para ligar.**
 
-⚠️ **E a segunda metade da frase é obrigatória, com o número exato:** das 41 que ainda não ligam, **33 não têm uma conversa gravada** — essas não são falha do robô, e só um acionamento real as destrava. As outras **8** têm conversa: nelas o material existe e **falta código nosso**.
+⚠️ **E a segunda metade da frase é obrigatória, com o número exato:** das 40 que ainda não ligam, **33 não têm uma conversa gravada** — essas não são falha do robô, e só um acionamento real as destrava. As outras **7** têm conversa: nelas o material existe e **falta código nosso**.
 
 ## 🔴 DUAS PERGUNTAS, NUNCA UMA
 
@@ -28,7 +28,7 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 🔴 **A `%` substituiu o `58/76`.** O denominador da régua muda por rota (76, 70, 64…), porque itens que não se aplicam saem da conta. 📊 `42/64` **parece** pior que `48/76` e é melhor: 66% contra 63%. O bruto continua na tabela, para quem for auditar.
 
 
-## ATENDE SOZINHO — 31 de 76 (41%)
+## ATENDE SOZINHO — 32 de 76 (42%)
 
 *o sistema resolve sozinho, do começo ao protocolo*
 
@@ -36,6 +36,7 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 |---|---:|---:|---:|---|---|
 | `allianz/auto/guincho` | 32 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `porto/auto/guincho` | 26 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
+| `yelum/auto/guincho` | 26 | 68% | 52/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `allianz/residencial/encanador` | 18 | 87% | 66/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `hdi/auto/guincho` | 16 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
 | `azul/auto/guincho` | 7 | 95% | 72/76 | responde tudo e chega ao fim | ✅ nada — esta rota está pronta para ligar |
@@ -79,15 +80,14 @@ Uma rota pode ter qualidade baixa e **dar para ligar**; e uma rota com qualidade
 | `porto/auto/vidros` | 1 | 53% | 37/70 | a seguradora não abre pela conversa: devolve link ou formulário | ✅ nada — é o desenho certo, e já é handoff pela SPEC-118 |
 
 
-## AINDA NÃO DÁ PARA LIGAR — 41 de 76 (54%)
+## AINDA NÃO DÁ PARA LIGAR — 40 de 76 (53%)
 
 *e a causa diz de quem é o trabalho: sem conversa é acionamento; tela sem resposta é código*
 
-📊 **Dentro desta faixa:** **33** nenhuma conversa desta rota no acervo · **5** responde tudo o que o acervo mostra e nunca chegou ao protocolo · **3** existe conversa, e uma tela dela ninguém respondeu
+📊 **Dentro desta faixa:** **33** nenhuma conversa desta rota no acervo · **5** responde tudo o que o acervo mostra e nunca chegou ao protocolo · **2** existe conversa, e uma tela dela ninguém respondeu
 
 | rota | pedidos | qualidade | bruto | por quê | 🔴 o que destrava |
 |---|---:|---:|---:|---|---|
-| `yelum/auto/guincho` | 26 | 68% | 52/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
 | `allianz/residencial/eletrodomesticos` | 9 | 62% | 47/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
 | `porto/auto/bateria` | 6 | 63% | 48/76 | existe conversa, e uma tela dela ninguém respondeu | 🤖 escrever o passo da tela que ficou sem resposta |
 | `allianz/residencial/desentupimento` | 3 | 58% | 44/76 | responde tudo o que o acervo mostra e nunca chegou ao protocolo | 🧑 um acionamento que vá até o fim — a prova do desfecho |
@@ -169,4 +169,4 @@ Enquanto elas estiverem aqui, um `—` na coluna `pedidos` **não quer dizer 'ni
 
 ---
 
-_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-09-30T03:59:13+00:00. **Nenhum número deste documento foi digitado à mão.**_
+_Gerado por `backend/scripts/pagina_dos_corredores.py --gravar` em 2026-10-01T04:53:07+00:00. **Nenhum número deste documento foi digitado à mão.**_

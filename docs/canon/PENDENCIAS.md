@@ -12407,7 +12407,7 @@ veículos na apólice · Zurich garagem · a consultora da Porto ao vivo (P-120-
 **O que destrava:** 🧑 um acionamento de cada, pelo WhatsApp da corretora, com o observador ligado, até o fim.
 **Custa esquecer:** rota que provavelmente funciona fica fora do "atende sozinho" sem prova — ou pior, é ligada sem prova.
 
-## P-121-04 · 🤖 A carta de conhecimento da D10 (portão não é eletricista; raio é sinistro) não foi aplicada
+## P-121-04 · ✅ FECHADA (SPEC-123) · 🤖 A carta de conhecimento da D10 (portão não é eletricista; raio é sinistro) não foi aplicada
 O INSERT está preparado, mas `knowledge_cards` exige `card_hash` e ele não foi gravado.
 **O que destrava:** 🤖 calcular o hash pelo escritor oficial das cartas e aplicar com APPLY/VERIFY/ROLLBACK.
 **Custa esquecer:** o corredor sabe da regra; o agente, na conversa, não.
@@ -12530,7 +12530,7 @@ O resumo passou a contar os silêncios por `calou_classe` (K3, `42a491d`), inclu
 do acervo de `0cc1bdd`; o acervo regerado (`e0fa1b7`) não tem (varredura 0 em 6.146 linhas). O antigo já está na `main`.
 **O que destrava:** 🧑 decidir se o histórico da `main` é reescrito (como na SPEC-120) ou se fica. **Custa esquecer:** dado pessoal no histórico público do repositório.
 
-## P-121-28 · 🤖 Testes que trocam uma função do produto e nunca devolvem
+## P-121-28 · ✅ FECHADA (SPEC-123) · 🤖 Testes que trocam uma função do produto e nunca devolvem
 `test_a_janela_esta_ligada_nos_portoes` (via `test_a_atendente_fala_e_o_robo_cala.agente_ligado`) troca `attendance_agent_active`
 e não devolve; `test_spec116_f3a_quem_escreve_pede_papel` troca `sys.modules["app.core.database"]` já na coleta.
 📊 Na suíte até o guarda do grupo: 13 falhas em `4ccd063` (o guarda do grupo ficou imune em `b0aff49`, as outras 12 seguem).
@@ -12561,18 +12561,18 @@ POST `/parse`) muda contrato em 4 arquivos. Continua a P-S116-09.
 **O que destrava:** 🧑 abrir cada uma: `VISION_MODEL` e `COUNCIL_MEMBERS` com `gpt-6-sol` → trocar por `gpt-6.1-sol`;
 `PORTAL_VISION_MODEL` → apagar. **Custa esquecer:** o docling continua no Sol 6 sem ninguém ver.
 
-## P-122-03 · 🧑🤖 O controle Opus V0 mediu só 15 das 32 armadilhas
+## P-122-03 · 💀 MORREU (SPEC-123) · 🧑🤖 O controle Opus V0 mediu só 15 das 32 armadilhas
 📊 30/09: o teto de US$ 2 por provedor parou a rodada em 62/79 (o arquivo tinha as armadilhas por último; a ordem já foi
 corrigida). Faltam **17 armadilhas** × 📊 US$ 0,0272 por chamada ≈ 💭 US$ 0,50 **além do teto** da Anthropic (📊 gasto de
 30/09 no ledger: US$ 1,7383). **O que destrava:** 🧑 autorizar ~US$ 0,50; 🤖 rodar a bancada `--papel cerebro --variante V0`
 com o braço `anthropic:claude-opus-5-5` só nas armadilhas. **Custa esquecer:** a comparação 6.1 × Opus fica em 15 casos, que
 não é significativa (7 × 6).
 
-## P-122-04 · 🤖 Sonnet 5.5, V1 e V3 não foram medidos
+## P-122-04 · 🟡 FECHADA EM PARTE (SPEC-123) · 🤖 Sonnet 5.5, V1 e V3 não foram medidos
 O Sonnet 5.5 é o braço que separa "provedor" de "preço" (mesmo preço do 6.1, mesmo provedor do Opus). Não coube no teto.
 **O que destrava:** 🤖 verba de bancada + rodada. **Custa esquecer:** uma vitória futura do 6.1 não diz se veio do provedor ou do tamanho.
 
-## P-122-05 · 🤖 O corpus da bancada não tem a ficha do caso
+## P-122-05 · ✅ FECHADA (SPEC-123) · 🤖 O corpus da bancada não tem a ficha do caso
 📊 As sessões do acervo não guardam `slots` — o modelo não confere endereço nem veículo e pergunta ao segurado. O acerto dos
 grupos A (31–37 %) e B fica deprimido para todos os braços; **G2 é inatingível** com este corpus.
 **O que destrava:** 🤖 reconstruir a ficha de cada sessão (mascarada) a partir da conversa. **Custa esquecer:** a bancada nunca aprova nada.
@@ -12581,7 +12581,7 @@ grupos A (31–37 %) e B fica deprimido para todos os braços; **G2 é inatingí
 G1 exige zero grave **em todas as repetições**. Com k = 1 o zero pode ser sorte.
 **O que destrava:** 🤖 k ≥ 3 nas armadilhas da variante candidata. **Custa esquecer:** ligar com uma prova que não prova.
 
-## P-122-07 · 🤖 O prompt da sombra não é o prompt medido
+## P-122-07 · ✅ FECHADA (SPEC-123) · 🤖 O prompt da sombra não é o prompt medido
 Red team P3: a sombra não passa o `ura_map` (o webhook passa) e `conversa_segurado` não tem **escritor** em sessão nenhuma
 (📊 `grep` = 0) — o bloco "A CONVERSA COM O SEGURADO" sai sempre "(não disponível)".
 **O que destrava:** 🤖 a sombra montar o mesmo contexto do webhook e alguém escrever `conversa_segurado`.
@@ -12598,20 +12598,20 @@ Red team P8 (anterior à SPEC): `o_cerebro_ja_sabe` roda sob `wait_for(20)`; com
 6.1 nunca acontece. O teste do failover usa erro rápido.
 **O que destrava:** 🤖 timeout do primário menor que o `wait_for`, ou failover por prazo. **Custa esquecer:** Opus lento = localizador mudo.
 
-## P-122-10 · 🤖 A resposta do segurado reentra no motor sem guarda geral
+## P-122-10 · 🟡 ABSORVIDA pela P-123-17 · 🤖 A resposta do segurado reentra no motor sem guarda geral
 Red team A10: um slot preenchido pela pergunta do sem_chute é lido depois por **outro** passo. O caso concreto (o serviço aberto
 da Porto gravando "Não" e respondendo o menu de serviços) foi consertado tirando o passo da lista; não há guarda para o padrão.
 **O que destrava:** 🤖 um teste que, para cada passo perguntável, confira quem mais lê o mesmo slot. **Custa esquecer:** a próxima
 entrada na lista repete o defeito.
 
-## P-122-11 · 🧑🤖 O número de processo e o código de corretor do piloto ainda estão na `main`
+## P-122-11 · ✅ FECHADA (SPEC-123) · 🧑🤖 O número de processo e o código de corretor do piloto ainda estão na `main`
 Mascarados no corpus da bancada, mas seguem em: um comentário de `backend/app/services/corridor_playbooks.py` ·
 `backend/tests/corpus/telas_reais/zurich-auto.jsonl` · `backend/tests/fixtures/mapfre_parcelas.py` ·
 `docs/canon/portais/PORTAL-mapfre.md` — e no histórico da `main`. ⚠️ Os valores (e um primeiro nome, em 5 casos) já foram às
 duas APIs nas rodadas de 30/09. **O que destrava:** 🤖 mascarar os 4 arquivos com a mesma varredura; 🧑 decidir se o histórico
 é reescrito (como na SPEC-120). **Custa esquecer:** identificador de sinistro e número de corretora num repositório (CLAUDE.md §13.9).
 
-## P-122-12 · 🤖 As perguntas ao segurado usam a frase do dossiê, em 3ª pessoa
+## P-122-12 · ✅ FECHADA (SPEC-123) · 🤖 As perguntas ao segurado usam a frase do dossiê, em 3ª pessoa
 Red team B2(b): `_COMO_PERGUNTAR` foi escrito para o dossiê da equipe ("me diga qual serviço **o cliente** precisa",
 "para onde **ele** quer ser levado"), sem acento. Agora parte dele vai ao segurado.
 **O que destrava:** 🤖 frases em 2ª pessoa para os rótulos perguntáveis. **Custa esquecer:** o segurado lê um texto que não é para ele.
@@ -12630,16 +12630,181 @@ Juiz P10: lido e executável por leitura (o Sol 6 volta a APPROVED antes das rot
 `gpt-6.1-sol` ficariam sem catálogo e o gasto por provedor as perderia.
 **O que destrava:** 🤖 ensaiar num ramo do banco. **Custa esquecer:** a volta de emergência tem um efeito colateral não medido.
 
-## P-122-16 · 🧑 Ligar a sombra é decisão sua
+## P-122-16 · 💀 MORREU (SPEC-123) · 🧑 Ligar a sombra é decisão sua
 A tabela `cerebro_modos` nasce vazia (tudo desligado). O SQL pronto está em `TAREFAS-DO-FOUNDER.md`, bloco S122.
 **O que destrava:** 🧑 rodar o SQL para uma seguradora. **Custa esquecer:** a medição que a regra de ligar exige nunca começa.
 
-## P-122-17 · 🧑 O critério de ligar de verdade (`on`) ainda não existe no produto
+## P-122-17 · ✅ FECHADA (SPEC-123) · 🧑 O critério de ligar de verdade (`on`) ainda não existe no produto
 A proposta diz **2 semanas ou 50 telas reais em sombra sem erro grave**. O banco recusa `on` hoje (constraint
 `ck_cerebro_modos_on_recusado_a_bancada_122_nao_aprovou`); ligar exige uma SPEC que troque a constraint **e** leia as linhas
 `cerebro.sombra`. **O que destrava:** 🧑 a decisão + 🤖 a SPEC. **Custa esquecer:** a sombra roda para sempre sem virar nada.
 
-## P-122-18 · 🤖 Falta a primeira linha real de `cerebro.sombra`
+## P-122-18 · 🟡 ABSORVIDA pela P-123-14 · 🤖 Falta a primeira linha real de `cerebro.sombra`
 Juiz P4: a sombra é agendada com `create_task` depois do envio; o loop do produto é de vida longa, mas não há prova de que a
 tarefa completa no processo do webhook. 📊 Em 30/09: 0 linhas (chave desligada).
 **O que destrava:** 🤖 conferir o primeiro evento depois de ligar (P-122-16). **Custa esquecer:** a sombra "ligada" não mede nada.
+
+
+
+---
+
+# SPEC-123 — o agente destrava: decide com nota, pergunta ao segurado, registra e aprende (01/10/2026)
+
+> 📊 O retrato da SPEC (`reports/SPEC-123-EXECUTION-REPORT.md`): o destravador existe, ligado por `cerebro_modos`
+> (📊 01/10: 40 linhas `on` pela migration `20261001_02` — D5; 0 de 4 agentes de atendimento ativos); o DEDUZIR autônomo fica DESLIGADO em código porque nenhum limiar calibra
+> (📊 6.1: 6/14 = 43 % com nota ≥ 70, `SPEC-123-BANCADA.md` §2.1); 📊 G4: 42/69 travas reais destravadas certo sem pessoa
+> (61 %), 62/69 sem pessoa e seguras (90 %), antes 0 %. 📊 Simulador: 31 → 32/76 (`yelum/auto/guincho`).
+> ⚠️ O que entra no ar no Implantar SEM chave: a ida e volta em todas as seguradoras, as rotas da F6, a segunda chance do
+> atendimento e o prompt `_05` (relatório §10).
+
+## P-123-01 · 🤖🧑 Calibrar o DEDUZIR antes de dar autonomia a ele
+📊 30/09: o 6.1 dá nota 90–99 a TUDO (a nota não discrimina); 14 pares com prova; o Sonnet espalha as notas (62–90), mas só 7
+pares. **O que destrava:** 🤖 uma rodada de calibração com o **grupo B** (26 casos, todos com prova), **k ≥ 2**, e a NOTA
+dada pelo Sonnet (o 6.1 decide, o Sonnet pontua); 🧑 verba de bancada (💭 ≈ US$ 1 por provedor). Depois,
+`DEDUZIR_AUTONOMO_CALIBRADO` só vira `True` se uma faixa ≥ 70 medir ≥ 90 % (G3). **Custa esquecer:** 📊 14 de 99 travas
+seguem indo ao segurado ou a uma pessoa quando o agente poderia escolher sozinho.
+
+## P-123-02 · 🤖 O cache da OpenAI não foi comprovado
+📊 0 tokens lidos de cache nas 99 chamadas em que o 6.1 decide (527.779 tokens de entrada; casos distintos não partilham
+prefixo ≥ 1.024 — `SPEC-123-BANCADA.md` §6.3). Em produção (a MESMA sessão chamando de novo) não foi medido.
+**O que destrava:** 🤖 medir no ledger as primeiras sessões reais com `on`. **Custa esquecer:** o custo por trava pode estar
+acima do real — ou o prefixo fixo não estar servindo para nada.
+
+## P-123-03 · 🤖 O Opus só em 10 casos; grupos A/B nunca rodaram; k = 1
+📊 Opus em 10 casos do grupo D, nenhuma armadilha T; Sonnet só nos 40 comuns; grupos A e B (61 casos) em nenhum braço; 4
+casos do 6.1 sem resultado (3 corrompidos + 1 parado no teto). **O que destrava:** 🤖 verba + rodada. **Custa esquecer:** a
+escolha do 6.1 (empate D4) repousa em 40 casos e uma repetição.
+
+## P-123-04 · 🧑 O diário guarda só a tela MASCARADA
+A SPEC pedia "mascarada no log, completa na tela do painel para a corretora dona"; o diário grava só a versão higienizada
+(`higienizar_para_o_rastro`). Mostrar a tela completa exige coluna nova (com dado pessoal) e regra de acesso.
+**O que destrava:** 🧑 decidir (D-123-L); 🤖 migration + tela. **Custa esquecer:** a atendente avalia "certo/errado" sem ver
+o dado que o agente viu.
+
+## P-123-05 · 🤖 `propor_carta_sync` repete a régua de `_store_card_sync`
+O rascunho de carta do diário (`diario_de_decisoes.py`) calcula o `card_hash` e grava com a régua do escritor oficial,
+copiada. **O que destrava:** 🤖 um parâmetro de status no escritor oficial (`proposta_diario`) e apagar a cópia.
+**Custa esquecer:** duas réguas de hash divergem e a carta aprovada vira duplicata (CLAUDE.md §5).
+
+## P-123-06 · 🤖 Falta o comando que promove um caso pendente para `casos.jsonl`
+"Errado" no diário vira linha em `tests/corpus/bancada/cerebro/pendentes.jsonl` (`scripts/diario_para_bancada.py`); a
+revisão e a promoção ao corpus são à mão. **O que destrava:** 🤖 `--promover <id>` com a varredura de dado pessoal.
+**Custa esquecer:** o "aprende" do título da SPEC para no arquivo de pendentes.
+
+## P-123-07 · 🤖 A reabertura perde o `work_run_id` — o diário fica partido
+A resposta tardia reabre o acionamento (`_reabrir_com_a_resposta` → `start_live_dispatch`) com outro `work_run_id`; as
+linhas do diário da 1ª tentativa não recebem o resultado da 2ª (`marcar_resultado` é por acionamento). **O que destrava:** 🤖
+levar o id anterior na sessão reaberta e marcar as duas. **Custa esquecer:** decisões certas ficam "pendente" para sempre.
+
+## P-123-08 · 🤖🧑 Azul: prazo sem medição e sem padrão de "já existe"
+💭 o prazo curto (120 s) é escolha, não medida (nenhum encerramento por inatividade da Azul no acervo); 0 telas de "já existe
+solicitação". **O que destrava:** 🧑 um acionamento real da Azul até o fim; 🤖 medir e escrever o padrão.
+**Custa esquecer:** a Azul pode fechar antes do prazo, ou abrir um 2º pedido na retomada.
+
+## P-123-09 · 🧑 Os acionamentos reais que faltam (continua a P-121-03)
+allianz/residencial/desentupimento (📊 0 de 10 telas "De qual profissional?" escolheram desentupimento — LAUDO-C §2) ·
+allianz/residencial/eletrodomesticos (só falta a prova de desfecho: o caminho é o da máquina de lavar) ·
+hdi/residencial/chaveiro · porto/residencial/eletrodomesticos · yelum/residencial/eletrodomesticos (um item NÃO essencial) ·
+hdi/residencial/eletricista. **O que destrava:** 🧑 um acionamento de cada, com o observador ligado, até o fim.
+**Custa esquecer:** rotas que provavelmente funcionam ficam fora do "atende sozinho".
+
+## P-123-10 · 🧑🤖 A escolha entre vários endereços da Allianz não tem prova real — e não é perguntável
+O passo novo `escolher_endereco_do_caso` usa `{local_atual}`, que o caso residencial NÃO coleta; com vários endereços e
+nenhum casando → `sem_chute` → pessoa (antes ia o "1" às cegas). O passo não está em `SEM_CHUTE_PERGUNTAVEL`, e o
+casamento aceita número + cidade sem palavra de logradouro (red team P1). 📊 9 rotas respondem 2–5 telas a menos (G1, juiz).
+**O que destrava:** 🧑 um acionamento real com apólice de vários endereços; 🤖 tornar o passo perguntável e exigir ≥ 1
+palavra do logradouro. **Custa esquecer:** o segurado com 2 imóveis vai a pessoa — ou o prestador vai ao imóvel errado.
+
+## P-123-11 · 🤖 `assistencia_aberta_opcao` só existe para o guincho
+O passo `acompanhar_qual_solicitacao` da Yelum responde o serviço da assistência aberta só no guincho. **O que destrava:** 🤖
+estender aos outros serviços com tela do acervo. **Custa esquecer:** a consulta de pedido existente de chaveiro ou bateria
+trava na mesma tela que destravou o guincho.
+
+## P-123-12 · 🤖 A carta do portão: publicada, falta conferir a busca
+📊 `knowledge_cards` `2d28a771…` (SELECT 01/10): gravada 02:26Z como `pending_review` pelo escritor oficial; o destilador a
+**publicou** às 02:29Z (fecha a P-121-04). **O que destrava:** 🤖 uma busca do RAG com "portão eletrônico parado" devolver a
+carta. **Custa esquecer:** a regra existe no banco e o agente não a encontra.
+
+## P-123-13 · 🤖 O detector de sinistro ampliado também lê texto de URA gravado como `role=user`
+O conserto Y ampliou os detectores do produto num lugar só; 📊 eles passaram a casar +22 mensagens em 2 meses (medição do
+builder Y), ~10 delas menus de URA gravados como fala do usuário. **O que destrava:** 🤖 ler só as falas do segurado.
+**Custa esquecer:** uma segunda chance legítima vira pessoa (o erro é para o lado seguro, mas custa atendente).
+
+## P-123-14 · 🧑🤖 O diário isolado entre corretoras provado com dublê, não ao vivo (continua a P-122-18)
+`node scripts/o-diario-e-de-quem-decidiu.test.mjs` verde com dublê e 2 ids reais; 📊 `diario_de_decisoes` = 0 linhas (01/10).
+**O que destrava:** 🧑 ligar `on` (ou `sombra`) em duas corretoras; 🤖 conferir a 1ª linha real de cada uma e que a B não vê
+a da A (CLAUDE.md §7). **Custa esquecer:** o isolamento nunca foi visto no banco.
+
+## P-123-15 · 🤖 Testes que guardam verdade vencida (CLAUDE.md §9.3)
+`test_o_humano_e_chamado_de_verdade` (4 testes) e `test_o_travamento_vira_evidencia::test_C3` falham pelo que mudou de
+propósito (estão na linha de base). **O que destrava:** 🤖 atualizar a afirmação e migrar a lição. **Custa esquecer:** falha
+"conhecida" ensina a ignorar teste vermelho.
+
+## P-123-16 · 🤖 `test_a_atendente_na_ura_cala_o_robo` faz `sys.exit` na importação
+Coletado pelo pytest, derruba a coleta do arquivo. **O que destrava:** 🤖 trocar por função `main` chamada só no script.
+**Custa esquecer:** o guarda nunca roda na bateria.
+
+## P-123-17 · 🤖 A resposta tardia se perde quando a fila substitui a sessão (absorve a P-122-10)
+Vencida a sessão segurada, a fila inicia o próximo acionamento e a resposta tardia do segurado já não acha a pergunta; e a
+resposta do segurado ainda reentra no motor sem guarda geral (P-122-10). **O que destrava:** 🤖 guardar a pergunta por
+`conversation_id` e um teste que confira quem mais lê cada slot perguntável. **Custa esquecer:** o segurado responde e
+ninguém usa.
+
+## P-123-18 · 🤖 O motivo `ja_existe_solicitacao` não diz o serviço
+Depois do conserto Y, o pedido de outro serviço vai a pessoa com `reason=ja_existe_solicitacao`, sem o serviço que a tela
+nomeou. **O que destrava:** 🤖 `ja_existe_solicitacao:<servico>` no dossiê. **Custa esquecer:** a atendente reabre a conversa
+para descobrir o que o sistema já sabia.
+
+## P-123-19 · 🤖 O Sentinela no ponto A envia sem conferir `live` (como hoje)
+O caminho do Sentinela herda o envio de hoje e não confere a sessão `live` antes de mandar a resposta do destravador.
+**O que destrava:** 🤖 o mesmo guarda do roteador. **Custa esquecer:** um ensaio pode falar com a URA real.
+
+## P-123-20 · 🤖 O `motivo` dos papéis do destravador diz "PROVISÓRIOS"
+📊 `llm_papeis.motivo` (SELECT 01/10): "valores PROVISÓRIOS do contrato… a F2 decide pela bancada (D4)". A F2 decidiu
+(D-123-A) e os valores ficaram iguais; o texto não. **O que destrava:** 🤖 migration que reescreva o `motivo` com a evidência.
+**Custa esquecer:** quem ler o catálogo acha que a escolha nunca foi medida.
+
+## P-123-21 · 🤖 O COMMENT de `cerebro_modos` promete "o produto de hoje byte a byte"
+A frase vale só para o destravador (juiz, pendência 2): a ida e volta, as rotas, a segunda chance e o prompt `_05` mudam sem
+chave. **O que destrava:** 🤖 corrigir o COMMENT. **Custa esquecer:** quem desliga a chave acha que voltou ao produto antigo.
+
+## P-123-22 · 🤖 A reabertura depois do dossiê e a reabertura que falha (red team P2/P3)
+A resposta tardia pode reabrir DEPOIS que o Vigia entregou o caso a uma pessoa (se ela abriu por telefone, nada detecta o 2º
+pedido); se `_reabrir_com_a_resposta` falhar, o segurado ouve "alguém da equipe está cuidando" e o dossiê pode não sair.
+**O que destrava:** 🤖 não reabrir com `dossier_sent` sem confirmação da equipe; `guardada` sem dossiê → dossiê.
+**Custa esquecer:** um pedido duplicado ou um caso sem ninguém.
+
+## P-123-23 · 🤖 A sessão segurada só é protegida 45 min a partir da CRIAÇÃO do acionamento (confirmação, P-N3)
+A proteção da sessão segurada para retomar conta da criação do acionamento, não do momento em que ela foi segurada: um
+acionamento mais velho que 45 min ainda pode ter a sessão apagada pelo próximo acionamento do mesmo número da seguradora.
+**O que destrava:** 🤖 contar o prazo a partir do momento em que a sessão foi segurada (com teste e linha de controle).
+**Custa esquecer:** num acionamento longo, a resposta tardia do segurado não encontra o caso e ele some sem dossiê.
+
+## P-123-24 · 🤖 As 10 falhas da linha de base que SUMIRAM na bateria não foram conferidas no commit base
+📊 Bateria de 01/10 em `0fe9080` (`39 failed, 2821 passed…`): 10 nomes da `BATERIA-LINHA-DE-BASE.txt` não falharam. A linha
+de base foi regravada com 35, mas ninguém rodou essas 10 no commit base para saber se a SPEC as consertou ou se mudaram de nome
+ou de condição. **O que destrava:** 🤖 rodar as 10 em `20fb1c4` e em `HEAD`. **Custa esquecer:** um teste que deixou de rodar
+parece consertado — e a linha de base perde a guarda.
+
+## P-123-25 · 🤖 O parser conta as descrições da Porto como opções
+Na Porto, linhas como "Seguros e serviços para pessoa física" (a descrição embaixo de cada botão) são lidas como opções: a
+pergunta composta pelo código pode mostrar **4 opções onde a tela tem 2 botões**. **O que destrava:** 🤖 o parser de opções
+distinguir botão de descrição, com a tela real do acervo como teste. **Custa esquecer:** o segurado escolhe uma "opção" que
+não existe e a resposta não casa com a URA.
+
+## A drenagem das pendências que a SPEC-123 tocou
+| P | estado |
+|---|---|
+| P-122-01 | CONTINUA → SPEC-124 (o docling ler o modelo de quem chama) |
+| P-122-03 | MORREU — a bancada do cérebro V0 foi substituída pela do destravador (o resto em P-123-03) |
+| P-122-04 | FECHADA em parte (Sonnet 5.5 medido nos 40 comuns) · V1/V3 MORRERAM (variantes substituídas) |
+| P-122-05 | ✅ FECHADA — `entrada.ficha` no corpus (`gerar_corpus_cerebro.py`); guarda `test_spec123_bancada_destravador.py` |
+| P-122-07 | ✅ FECHADA — a sombra é `destravar(modo="sombra")`, o mesmo prompt medido; a conversa do segurado é lida do banco por `company_id` |
+| P-122-10 | CONTINUA → P-123-17 |
+| P-122-11 | ✅ FECHADA — 4 arquivos mascarados (`3200228`); histórico NÃO reescrito, decisão do Founder |
+| P-122-12 | ✅ FECHADA — 2ª pessoa (`4bf04d2`) + pergunta composta pelo código (`fbb6ebb`); guarda `test_spec123_rotas_pergunta_em_2a_pessoa.py` |
+| P-122-16 | MORREU — a sombra V2 não existe mais; ligar agora é o destravador (D-123-K) |
+| P-122-17 | ✅ FECHADA — migration `_03`: `on` aceito com limiar 70..100; o critério é G3 + G2 |
+| P-122-18 | CONTINUA → P-123-14 |
+| P-121-04 | ✅ FECHADA — carta `2d28a771…` publicada 01/10 02:29Z (a busca: P-123-12) |
+| P-121-28 | ✅ FECHADA no mecanismo — `conftest.py` devolve `sys.modules`; guarda `test_spec123_f5a_o_mundo_volta_limpo.py` (prova final: a bateria da SPEC) |

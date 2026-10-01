@@ -15,6 +15,22 @@
 </header>
 
 <section style="margin-top:8px">
+  <h2>SPEC-123 — o que só você faz <span style="color:var(--muted);font-size:14px">(01/10 · o agente destrava)</span></h2>
+  <p class="sub">⚠️ <b>Os testes das SPECs 121 e 122 (blocos abaixo) continuam pendentes</b> — nada da 123 depende deles.
+  📊 O destravador está <b>ligado</b> por sua ordem (D5): 10 seguradoras × as 4 corretoras com agente de atendimento (40 linhas
+  <code>on</code>, 01/10) — mas 0 de 4 agentes de atendimento estão ligados, então <b>nada acontece até você ligar um</b>. ⚠️ No Implantar entram <b>sem chave</b>: a pergunta ao
+  segurado nas 10 seguradoras, a lista de vários endereços da Allianz e a segunda chance do atendimento. Passo a passo completo,
+  com os comandos, em <code>TAREFAS-DO-FOUNDER.md</code>, seção SPEC-123.</p>
+  <dl class="q2">
+    <dt>☐ S123.1</dt><dd><b>Implantar</b>, nesta ordem: <code>smith-api</code> → <code>smith-worker</code> → <code>smith-web</code>. <b>O que esperar:</b> os três verdes, um "oi" respondido e o item <b>Decisões do agente</b> no menu Atendimentos</dd>
+    <dt>☐ S123.2</dt><dd><b>Ver o diário</b>: Atendimentos → Decisões do agente. Hoje vazio (nenhum agente de atendimento ligado). Cada linha diz o que a seguradora perguntou, o que o agente fez, por quê e com que certeza; botões <b>certo / errado</b></dd>
+    <dt>☐ S123.3</dt><dd><b>Ver, desligar ou só observar o destravador</b> (já ligado — D-123-K, decidida sob a sua D5). No Supabase → SQL Editor: ver <code>select insurer_key, modo, limiar from cerebro_modos order by 1;</code> (esperar 40 linhas <code>on</code>, 70) · desligar uma seguradora <code>update cerebro_modos set modo='off' where insurer_key='porto';</code> · só observar <code>update cerebro_modos set modo='sombra' where insurer_key='porto';</code> · desligar tudo <code>delete from cerebro_modos where ligado_por='migration 20261001_02_spec123_destravador_ligado';</code> · o diário <code>select created_at, seguradora, classe, acao, nota, explicacao_para_gente from diario_de_decisoes order by created_at desc limit 20;</code>. Substitui a "sombra" da S122.3</dd>
+    <dt>☐ S123.4</dt><dd><b>Testes reais</b>: um guincho da Yelum (deve fechar sozinho); um pedido em que a URA pergunta algo que só o segurado sabe (ele recebe a pergunta com as opções, sem "Voltar"); uma dúvida simples no atendimento (o agente responde) e o controle "quero falar com uma pessoa" (vai direto à equipe)</dd>
+    <dt>☐ S123.5</dt><dd><b>Decidir</b>: o diário guardar a tela completa? (D-123-L, 65 × 60 — sua) · liberar o "escolher sozinho" sem calibração? (D-123-M, manter 85 × liberar 35 — já vem decidida). D-123-K (onde ligar) já foi decidida: todas as corretoras com agente, 10 seguradoras (nota 85)</dd>
+  </dl>
+</section>
+
+<section style="margin-top:8px">
   <h2>SPEC-122 — o que só você faz <span style="color:var(--muted);font-size:14px">(30/09 · o agente pensa, com prova)</span></h2>
   <p class="sub">⏳ <b>Os testes da SPEC-121 (bloco abaixo) continuam pendentes</b> — você disse que faz no fim; nada da 122 depende deles.
   📊 O GPT-6.1 Sol substituiu o Sol 6 com o mesmo esforço (a mudança no banco já foi aplicada e conferida); o cérebro do acionamento
@@ -22,7 +38,7 @@
   <dl class="q2">
     <dt>☐ S122.1</dt><dd><b>Implantar</b>, nesta ordem: <code>smith-api</code> → <code>smith-worker</code> → <code>docling-service</code>. <b>O que esperar:</b> os três verdes e um "oi" respondido no chat do painel</dd>
     <dt>☐ S122.2</dt><dd><b>Conferir 3 variáveis pelo nome</b>: <code>VISION_MODEL</code> no <code>docling-service</code> e <code>COUNCIL_MEMBERS</code> no <code>smith-api</code> — se tiverem <code>gpt-6-sol</code>, trocar por <code>gpt-6.1-sol</code>; <code>PORTAL_VISION_MODEL</code> no <code>smith-api</code> — pode apagar. <b>O que esperar:</b> nada muda na tela</dd>
-    <dt>☐ S122.3</dt><dd><b>Ligar a sombra, quando quiser</b> (não é obrigatório e não muda nada do que é enviado): um SQL no Supabase liga para a Porto em todas as corretoras; outro desliga. 💭 ~US$ 0,02–0,03 por tela em que a URA sai do roteiro. O "ligado de verdade" o banco recusa</dd>
+    <dt>☐ S122.3</dt><dd>⚠️ <b>Substituído pela S123.3</b> (01/10: a sombra da 122 deu lugar ao destravador). <b>Ligar a sombra, quando quiser</b> (não é obrigatório e não muda nada do que é enviado): um SQL no Supabase liga para a Porto em todas as corretoras; outro desliga. 💭 ~US$ 0,02–0,03 por tela em que a URA sai do roteiro. O "ligado de verdade" o banco recusa</dd>
     <dt>☐ S122.4</dt><dd><b>O canário</b>, junto com os testes da S121: um guincho da HDI ou da Yelum até a tela de <i>situações de risco</i>. <b>O que esperar:</b> o segurado recebe a pergunta com as opções numeradas, <b>sem</b> "Voltar"; resposta que não casa com uma opção vai a uma pessoa e nada vai à seguradora</dd>
     <dt>☐ S122.5</dt><dd>Se quiser, autorizar <b>~US$ 0,50</b> para completar a medição do Opus (15 de 32 armadilhas). Não bloqueia nada</dd>
   </dl>

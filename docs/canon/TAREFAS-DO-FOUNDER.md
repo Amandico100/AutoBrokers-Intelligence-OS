@@ -956,7 +956,8 @@ a ele** com as opções da tela, em vez de passar a uma pessoa.
    - no `smith-api`: `PORTAL_VISION_MODEL` — pode apagar (o código não a lê desde a SPEC-116).
    Se mudou alguma, clique **Implantar** no serviço dela.
    **Esperar:** nada muda na tela — é para a leitura de documentos não ficar no modelo antigo sem ninguém ver.
-3. **Ligar a sombra, quando quiser** (P-122-16) — **não é obrigatório**, e não muda nada do que vai à seguradora nem ao
+3. ⚠️ **(01/10) Substituído pela S123.3** — a sombra da 122 deu lugar ao destravador; este SQL agora põe o DESTRAVADOR em sombra.
+   **Ligar a sombra, quando quiser** (P-122-16) — **não é obrigatório**, e não muda nada do que vai à seguradora nem ao
    segurado. Só depois do passo 1. No Supabase, **SQL Editor**, cole e rode (liga a sombra na **Porto**, para todas as
    corretoras):
    ```sql
@@ -996,3 +997,105 @@ a ele** com as opções da tela, em vez de passar a uma pessoa.
    uma pessoa. Se vir o contrário, mande o print.
 5. **Autorizar, se quiser, ~US$ 0,50 para completar a medição do Opus** (P-122-03) — a bancada parou no teto de US$ 2 por
    provedor e mediu o Opus em 15 das 32 armadilhas. Não bloqueia nada; só deixa a comparação 6.1 × Opus completa.
+
+
+## SPEC-123 — o agente destrava: decide, pergunta ao segurado, registra e aprende (01/10/2026)
+
+⚠️ **Os testes das SPECs 121 e 122 (blocos acima) continuam pendentes** — nada da 123 depende deles.
+
+📊 O que mudou: quando o roteiro fixo trava no WhatsApp da seguradora, existe agora um **destravador** — ele lê o caso, a
+conversa com o segurado e as telas, e decide: seguir em frente ("Continuar"), responder com um dado que o caso já tem,
+**perguntar ao segurado** o que só ele sabe, ou chamar uma pessoa no que é irreversível (custo, sinistro, cancelar, novo
+pedido, trocar o titular, confirmar a abertura). Pela sua ordem (D5), ele foi **ligado** em todas as corretoras que têm agente de atendimento, nas 10
+seguradoras (📊 01/10: `cerebro_modos` = 40 linhas `on`, limiar 70) — mas 📊 **0 de 4** agentes de atendimento estão ligados
+hoje, então **nada acontece até você ligar o agente de uma corretora**. "Escolher sozinho entre opções" (o DEDUZIR) ficou **desligado**: 📊 o modelo acertou 6 de 14 vezes com
+nota alta (`reports/SPEC-123-BANCADA.md`). Na bancada com 69 travas reais, 📊 **42 (61 %) foram destravadas certo sem
+pessoa** e 62 (90 %) sem pessoa e com segurança — antes era 0 %.
+
+🔴 **O que muda NO IMPLANTAR, mesmo sem ligar nada** (vale para todas as corretoras):
+- a pergunta ao segurado passa a valer nas **10 seguradoras** (antes só Porto, HDI, Yelum e Zurich), com prazo de **2 min**
+  na Allianz, Alfa, Mapfre e Azul e **3 min** nas outras; se a URA fechar antes da resposta, o caso fica guardado e é
+  **reaberto** quando o segurado responder (no máximo 2 vezes), sem abrir pedido duplicado;
+- `yelum/auto/guincho` passa a atender sozinho (📊 31 → 32 de 76 rotas);
+- na Allianz residencial, a lista com **vários endereços** escolhe o endereço do caso (antes mandava "1" às cegas); se nenhum
+  casar, vai a uma pessoa;
+- o agente de atendimento, quando quer chamar uma pessoa por **dúvida** ou **dado que falta**, tenta resolver **uma vez**
+  antes (1 por conversa por dia). Sinistro, condomínio, empresarial e quem **pede** uma pessoa continuam indo direto.
+
+### S123.1 · Implantar
+No EasyPanel, nesta ordem: **`smith-api` → `smith-worker` → `smith-web`**.
+**Esperar:** os três verdes; um "oi" no chat do painel responde; o menu **Atendimentos** ganha o item **Decisões do agente**.
+**Se der erro** com as palavras `destravador`, `diario_de_decisoes` ou `cerebro_modos`: mande o print no chat (as três
+migrations já estão no banco: 📊 versões `20260930220806`, `20260930222302`, `20261001022456`).
+
+### S123.2 · Ver o diário
+No painel: **Atendimentos → Decisões do agente** (`/dashboard/atendimentos/decisoes`). Cada linha diz, em português, o que
+a seguradora perguntou, o que o agente fez, por quê e com que certeza. Botões **certo** / **errado** (e "o certo era…").
+"Errado" vira um caso novo para a bancada. **Esperar hoje:** a lista **vazia** (nenhum agente de atendimento ligado). No Supabase, **SQL Editor**,
+para conferir (testado em 01/10, devolve 0 linhas enquanto nada estiver ligado):
+```sql
+select origem, modo, acao, count(*) as decisoes, count(*) filter (where veredito = 'errado') as erradas,
+       min(created_at) as primeira, max(created_at) as ultima
+  from public.diario_de_decisoes group by 1, 2, 3 order by 4 desc;
+```
+E o custo do destravador (📊 hoje: 3 + 3 chamadas de teste, US$ 0,0265 + 0,0371):
+```sql
+select service_type, count(*) as chamadas, round(sum(total_cost_usd)::numeric, 4) as dolares
+  from public.token_usage_logs
+ where service_type in ('destravador', 'destravador_segunda') and created_at >= now() - interval '7 days'
+ group by 1;
+```
+💭 Custo esperado com o destravador ligado: perto de US$ 0,01 a 0,02 por trava (📊 bancada: US$ 0,0134 por decisão do 6.1).
+
+### S123.3 · Ver, desligar ou só observar o destravador
+📊 **Já está ligado** (migration `20261001_02`, 01/10): 10 seguradoras × 4 corretoras com agente de atendimento = 40 linhas
+`on`, limiar 70 (D-123-K, decidida pela execução sob a sua D5). Ele só age quando o agente de atendimento da corretora estiver
+ligado. Para mudar, no Supabase → **SQL Editor**, cole UM destes:
+
+**Ver o que está ligado** — esperar 40 linhas, todas `on` e `70`:
+```sql
+select insurer_key, modo, limiar from cerebro_modos order by 1;
+```
+**Desligar UMA seguradora** (exemplo: Porto) — o roteiro volta a ser o de antes, nessa seguradora:
+```sql
+update cerebro_modos set modo='off' where insurer_key='porto';
+```
+**Só observar (sombra)** — ele anota no diário o que faria, mas não faz:
+```sql
+update cerebro_modos set modo='sombra' where insurer_key='porto';
+```
+**Desligar TUDO** — volta exatamente ao de antes:
+```sql
+delete from cerebro_modos where ligado_por='migration 20261001_02_spec123_destravador_ligado';
+```
+**O diário** — as últimas 20 decisões, em português:
+```sql
+select created_at, seguradora, classe, acao, nota, explicacao_para_gente from diario_de_decisoes order by created_at desc limit 20;
+```
+**Esperar hoje:** o diário **vazio** — é o certo enquanto nenhum agente de atendimento estiver ligado. **Se der erro** em
+qualquer um destes comandos: mande o print no chat.
+
+### S123.4 · Os testes reais sugeridos (com o observador ligado, até o fim)
+1. **Um guincho da Yelum** — a rota que passou a atender sozinha. **Esperar:** protocolo sem pessoa.
+2. **Um pedido em que a URA pergunta algo que só o segurado sabe** (ex.: data e período de um serviço residencial da HDI ou
+   da Yelum; o horário de um guincho). **Esperar:** o segurado recebe *"Só mais uma informação…"* com a pergunta da
+   seguradora e as opções, **sem** "Voltar"; responde, e o acionamento continua. Se demorar mais que o prazo, o caso é
+   reaberto quando ele responder.
+3. **Uma conversa de atendimento com uma dúvida simples** (ex.: "meu seguro cobre guincho?"). **Esperar:** o agente responde
+   em vez de chamar a equipe. E o **controle**: escreva *"quero falar com uma pessoa"* → vai direto para a equipe.
+4. Os acionamentos que faltam para provar rotas (P-123-09): Allianz residencial desentupimento e eletrodoméstico (um que não
+   seja máquina de lavar), HDI chaveiro, Porto eletrodomésticos, Yelum eletrodoméstico não essencial, HDI eletricista; e uma
+   apólice da Allianz com **vários endereços** (P-123-10).
+
+**Se der errado:** *"o agente perguntou ao segurado algo estranho"* → mande o print e o horário (a pergunta é montada pelo
+código a partir da tela; não deveria acontecer) · *"abriu um segundo pedido"* → print da conversa com a seguradora, é
+prioridade · *"a lista de Decisões não abre"* → confira se o `smith-web` foi implantado.
+
+### S123.5 · Decisões suas (`FOUNDER-DECISIONS.md`)
+- **D-123-K** — onde ligar o destravador: **DECIDIDA pela execução** (sua D5, nota 85): ligado em todas as corretoras com
+  agente de atendimento, nas 10 seguradoras. Para mudar, S123.3.
+- **D-123-L** — o diário guardar a tela **completa** (com dado pessoal) para a corretora dona: coluna nova **65** × manter
+  só a mascarada **60** — notas próximas, decisão sua.
+- **D-123-M** — liberar o "escolher sozinho" sem calibração: manter desligado **85** × liberar **35** — já vem decidida;
+  confirme se quiser.
+- Verba opcional: 💭 ≈ US$ 1 por provedor para calibrar o "escolher sozinho" (P-123-01).

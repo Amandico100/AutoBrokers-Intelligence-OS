@@ -1,3 +1,10 @@
+# 📊 01/10/2026, SPEC-123 (branch spec/123-o-agente-destrava, HEAD 0fe9080), worktree limpo, `cd backend && .venv/Scripts/python -m pytest tests -q -p no:cacheprovider`
+# → 39 failed · 2821 passed · 1 skipped · 32 xfailed · 1 xpassed em 5.690 s. TRIAGEM NOMINAL: 30 iguais · 10 sumiram (NÃO conferidas no commit base —
+#   lição da SPEC-117: não é prova de ganho) · 9 novas: 5 de ORDEM/CARGA (passam isoladas: test_o_atendimento_tem_relogio e os guardas
+#   test_a_lista_de_documentos_nao_perde_item, test_a_resposta_nao_abre_arquivo, test_a_resposta_traz_documento_e_pagina (estouraram 120 s),
+#   test_o_corredor_da_porto_responde_a_ura_dela (já de ordem na SPEC-121)) · 4 REGRESSÕES DA SPEC (falham isoladas, passam em 20fb1c4) —
+#   3 guardas da base de planos barrados pela trava nova do banco real + o contrato sem `assistencia_aberta_opcao` — CONSERTADAS em 6964415
+#   (meta-guarda: 4 FAILED → 4 PASSED; tests/test_spec123_*.py 531 passed) e tiradas desta lista. A lista abaixo = as 35 que sobram.
 # 📊 30/09/2026, SPEC-122 (HEAD d07dc6c), worktree limpo, pytest tests -q -p no:cacheprovider → 40 failed · 2451 passed · 1 skipped · 32 xfailed · 1 xpassed em 3.563 s.
 #   A lista de FAILED é IDÊNTICA à da SPEC-121 (b0aff49): 0 novas, 0 sumiram. Rodada intermediária em 501e0ca: 72 failed (32 novas: 1 produto + 31 contaminação de sys.modules, fechadas em d07dc6c).
 # 📊 30/09/2026, SPEC-121 (branch spec/121-grupo-e-rotas, HEAD b0aff49), worktree limpo, `cd backend && .venv/Scripts/python -m pytest tests -q -p no:cacheprovider`
@@ -34,32 +41,28 @@ FAILED tests/test_a_atendente_aperta_o_botao_e_so_o_botao.py::test_a_politica_de
 FAILED tests/test_a_atendente_aperta_o_botao_e_so_o_botao.py::test_o_membro_liga_o_agente_e_o_historico_registra
 FAILED tests/test_a_central_diz_a_verdade.py::test_a_central_diz_a_verdade
 FAILED tests/test_a_cobranca_chega_a_quem_deve.py::test_a_cobranca_chega_a_quem_deve
-FAILED tests/test_a_janela_esta_ligada_nos_portoes.py::test_a_janela_esta_ligada_nos_portoes
-FAILED tests/test_a_lista_de_finalizacao_nao_tem_fantasma.py::test_o_health_publica_o_sinal
+FAILED tests/test_o_atendimento_tem_relogio.py::test_o_atendimento_tem_relogio
 FAILED tests/test_o_caso_se_explica_sozinho.py::test_o_caso_se_explica_sozinho
 FAILED tests/test_o_clique_da_atendente_nao_apaga_da_fila.py::test_o_clique_da_atendente_nao_apaga_da_fila
-FAILED tests/test_o_corpus_nao_vaza_pii.py::test_a_sessao_da_regua_classifica_como_residencial_pelo_nivel_2
-FAILED tests/test_o_fio_inteiro_do_isolamento.py::test_o_fio_inteiro_do_isolamento
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_CONTROLE_o_handoff_do_vigia_passa_pela_regra_e_os_outros_NAO
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_CONTROLE_os_alertas_nao_handoff_continuam_saindo
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_a_promessa_antiga_nao_sobrou_em_lugar_nenhum
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_a_reserva_e_devolvida_quando_o_aviso_nao_sai
-FAILED tests/test_o_nome_do_agente_nao_confunde.py::test_o_nome_do_agente_nao_confunde
 FAILED tests/test_o_ramo_sai_da_conversa_nao_da_ultima_frase.py::test_o_ramo_sai_da_conversa_nao_da_ultima_frase
 FAILED tests/test_o_sinistro_deixa_rastro.py::test_o_sinistro_deixa_rastro
 FAILED tests/test_o_travamento_vira_evidencia.py::test_C3_o_codigo_dos_dois_agentes_CHAMA_o_registro
 FAILED tests/test_so_um_agendador_manda.py::test_so_um_agendador_manda
-FAILED tests/test_todo_silencio_tem_motivo.py::test_todo_silencio_tem_motivo
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_a_arvore_ficou_limpa_no_fim
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_lista_de_documentos_nao_perde_item]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_mesma_verdade_em_duas_vozes]
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_tabela_de_rotas_monta]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_resposta_nao_abre_arquivo]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_resposta_traz_documento_e_pagina]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_as_ferramentas_de_relatorio_comercial]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_infocap_policy_output_guard]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_nenhuma_mutacao_foi_commitada]
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_diagnostico_ve_o_agente_mudo]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_corredor_da_porto_responde_a_ura_dela]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_espelho_nao_aprende_com_a_amandus]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_espelho_nao_le_o_proprio_eco]
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_numero_da_casa_nao_e_cliente]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_observador_silencio]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_ontologia_e_unica]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_sem_corredor_de_vidro_nao_e_beco]
@@ -67,4 +70,3 @@ FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[t
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec031_finalize_v2]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec040_onda4_gate_council]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec073_portal_worker_mutations]
-FAILED tests/test_um_clique_liga_os_corredores.py::test_os_gates_do_bloco_G_passam

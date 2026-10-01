@@ -1,5 +1,22 @@
 # As telas que faltam — rota por rota, com as respostas prováveis
 
+## 🔴 Atualizado na SPEC-123 (01/10/2026) — o que mudou desde o texto abaixo
+
+> 📊 `python backend/scripts/simular_corredor.py --todas --formato json` (branch `spec/123-o-agente-destrava`, depois do
+> conserto X `fbb6ebb`, 01/10 — idêntico byte a byte ao `SIMULACAO-DOS-CORREDORES.json` commitado): **32 atendem sozinhas · 4 vão a uma pessoa · 40 falta captura** (era 31 · 4 · 41). O texto abaixo
+> é o retrato de 30/09 e continua valendo onde este bloco não diz o contrário.
+
+| rota | o que mudou |
+|---|---|
+| `yelum/auto/guincho` | ✅ **PRONTA — atende sozinha.** As 2 telas órfãs eram de uma CONSULTA de assistência já aberta: entraram os passos `acompanhar_identificacao` (responde a placa do caso) e `acompanhar_qual_solicitacao` (o serviço da assistência aberta), e a janela "aberta dentro das últimas 72h" passou a ser zona de consulta no acervo. 📊 órfãs 2 → 0, faixa FALTA CAPTURA → ATENDE SOZINHO |
+| `allianz/residencial/eletrodomesticos` | o caminho é **o mesmo da máquina de lavar**: 📊 as 3 sessões de `maquina_de_lavar` rodadas com a etiqueta `eletrodomesticos` → 0 órfãs e desfecho nas 3 (LAUDO-C, 30/09). **Nenhuma tela a escrever** — falta só a prova: um acionamento real de um item da Linha Branca que não seja máquina de lavar (P-123-09) |
+| `allianz/residencial/desentupimento` | **não dá para completar** com o que temos: 📊 0 de 10 telas "De qual profissional?" escolheram Desentupimento; nada depois é conhecido. Continua precisando de um acionamento real (P-123-09) |
+| Allianz residencial — **lista com VÁRIOS endereços** (todas as rotas) | antes o passo `confirmar_endereco` mandava **"1" às cegas**; agora o passo `escolher_endereco_do_caso` escolhe a tecla do endereço DO CASO; se nenhum casar, vai a uma pessoa. O cabeçalho "confirme o endereço" ficou calado. 📊 9 rotas respondem 2–5 telas a menos, de propósito, sem mudar de faixa. ⚠️ O caso residencial não coleta `local_atual`, e o passo ainda não pergunta ao segurado (P-123-10) |
+| `hdi/residencial/chaveiro` · `porto/residencial/eletrodomesticos` · `yelum/residencial/eletrodomesticos` · `hdi/residencial/eletricista` | sem mudança: cada uma precisa de **1 acionamento real** até o fim (P-123-09) |
+| as telas que o robô responde **"de cabeça"** (seção final) | o **destravador** passa a decidir essas telas quando o roteiro trava — **onde a corretora ligar** (`cerebro_modos`, 📊 hoje nada ligado): RESPONDE com o dado do caso quando o PASSO daquela tela declara o dado; **PERGUNTA ao segurado** o que só ele sabe (data, período, horário, peso do pet…) — agora nas **10** seguradoras, com prazo de 2 min na Allianz/Alfa/Mapfre/Azul e 3 min nas outras, e retomada se a URA fechar; o NUNCA (código de corretor inventado, custo, sinistro, novo pedido, trocar o titular) vai a uma pessoa. "Escolher sozinho" (DEDUZIR) está desligado até calibrar |
+| as 12 órfãs da bancada (seção 5 do LAUDO-C) | viraram casos do grupo D da bancada do destravador (`backend/tests/corpus/bancada/cerebro/casos_d.jsonl`, 72 travas reais) |
+
+
 > 30/09/2026 · main `84c84c7` · só leitura, nada foi mudado no produto nem no banco.
 > 📊 Medido com o motor do produto sobre o acervo mascarado (`backend/tests/corpus/telas_reais/*.jsonl`):
 > `python backend/scripts/simular_corredor.py --todas --formato json` (placar) e, rota a rota,

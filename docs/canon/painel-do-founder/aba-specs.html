@@ -133,6 +133,26 @@
 </section>
 
 <section>
+  <h2>Fora da família — o agente destrava (SPEC-123)</h2>
+  <p class="sub">Fora da fila, como as 118–122. Nasceu da sua frase de 30/09: <i>"determinístico até travar; travou, está autorizado a
+  pensar e destravar sem humano — e registra a decisão para a gente avaliar e ensinar"</i>. 📊 01/10/2026, relatório
+  <code>reports/SPEC-123-EXECUTION-REPORT.md</code> e bancada <code>reports/SPEC-123-BANCADA.md</code>.</p>
+  <div class="tblbox">
+    <table style="min-width:980px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou, em uma frase</th><th>data</th><th>nota</th><th class="l">o que ainda falta <b>de você</b></th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>SPEC-123</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o agente destrava</span></td>
+          <td class="ds">Quando o roteiro fixo trava no WhatsApp da seguradora, o <b>destravador</b> decide com o caso, a conversa e as telas: <b>segue</b>, <b>responde com o dado do caso</b>, <b>pergunta ao segurado</b> (agora nas <b>10</b> seguradoras, com prazo de 2 ou 3 min e retomada se a URA fechar, sem abrir pedido duplicado) ou chama uma pessoa no irreversível (custo, sinistro, cancelar, novo pedido, trocar o titular). Cada decisão vai ao <b>diário</b> — <i>Atendimentos → Decisões do agente</i> — com <b>certo/errado</b>, e o "errado" vira caso de treino. 📊 Na bancada com 69 travas reais: <b>61 %</b> destravadas certo sem pessoa e 90 % sem pessoa e com segurança (antes 0 %). O 6.1 decide e o Sonnet 5.5 confere (empataram; o 6.1 é o mais barato). "Escolher sozinho entre opções" ficou <b>desligado</b>: 📊 o modelo dá nota 90–99 a tudo e acertou 6 de 14. 📊 <code>yelum/auto/guincho</code> passou a atender sozinho (32/76). O agente de atendimento tenta resolver <b>uma vez</b> uma dúvida antes de chamar a equipe. 🔴 Os revisores acharam 7 defeitos antes do push — o pior: o texto livre do modelo chegava ao segurado como se fosse da seguradora, e um "Sim" do caso virava licença para confirmar qualquer tela — todos consertados, com teste que fica vermelho se voltarem</td>
+          <td class="dm">01/10</td><td class="dm">juiz 72 ‖ red team 52 → conserto em 3 partes → confirmação 86 (os 10 defeitos fechados) → 2 ajustes · bateria: 4 regressões da SPEC achadas e consertadas · <b>nota 88</b></td><td class="ds">🔴 <b>Implantar</b> (<code>smith-api</code> → <code>smith-worker</code> → <code>smith-web</code>); o destravador já está <b>ligado</b> (D5: 10 seguradoras × 4 corretoras com agente) e só age quando você ligar o <b>agente de atendimento</b> de uma corretora — desligar ou só observar: S123.3; ver o <b>diário</b>; os testes reais (aba <a href="#tarefas" style="color:var(--accent)">Suas tarefas</a>, bloco S123)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">⛔ <b>O que esta entrega NÃO prova, e está declarado.</b> Nada rodou ao vivo com o destravador ligado (📊 01/10: <code>cerebro_modos</code> = 40 linhas
+  <code>on</code>, mas 0 de 4 agentes de atendimento ligados). A bancada tem uma repetição por caso e o Opus só em 10. ⚠️ <b>Entram no ar no Implantar, sem chave:</b> a pergunta ao
+  segurado em todas as seguradoras, a lista de vários endereços da Allianz, a segunda chance do atendimento e o texto novo dos agentes.</p>
+</section>
+
+<section>
   <h2>Fora da família — o agente pensa, com prova (SPEC-122)</h2>
   <p class="sub">Fora da fila, como as 118–121. Nasceu da pergunta <i>"o modelo pode responder sozinho à seguradora quando a URA
   sai do roteiro?"</i> e da chegada do <b>GPT-6.1 Sol</b> em 29/09. 📊 30/09/2026, relatório <code>reports/SPEC-122-EXECUTION-REPORT.md</code>
@@ -165,6 +185,8 @@
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-117</b> · o atendimento não perde a apólice</td><td class="ds">Fora da família e fora da fila: a apólice que o agente encontra no WhatsApp se perdia no turno seguinte — e com ela morria a sua decisão de 17/09, de que o <b>ramo da apólice</b> manda no acionamento</td><td class="ds"><b>✅ executada 26/09</b> — juiz 70 ‖ red team 62 → confirmação <b>90</b>; faltam o <b>Implantar</b> e o <b>canário de duas corretoras</b>, que é seu</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-121</b> · o grupo só ouve quando precisa</td><td class="ds">Fora da fila: os 29 avisos errados de 21/09 e a sua regra dos 7 dias</td><td class="ds"><b>✅ concluída 30/09</b> — confirmação <b>88</b>; faltam o <b>Implantar</b> e o número de carro reserva da Yelum, que são seus</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-122</b> · o agente pensa com prova</td><td class="ds">Fora da fila: o GPT-6.1 Sol no lugar do Sol 6 e o cérebro do acionamento medido pela primeira vez — sem autonomia nova</td><td class="ds"><b>✅ concluída 30/09</b> — faltam o <b>Implantar</b> e as 3 variáveis, que são seus</td></tr>
+        <tr><td class="dm">✓</td><td class="ds"><b>SPEC-123</b> · o agente destrava</td><td class="ds">Fora da fila: quando o roteiro trava, o agente decide, pergunta ao segurado ou chama pessoa — e registra no diário</td><td class="ds"><b>✅ concluída 01/10, nota 88</b> — falta o <b>Implantar</b> e ligar o agente de atendimento de uma corretora, que são seus</td></tr>
+        <tr><td class="dm">→</td><td class="ds"><b>SPEC-124</b> · portal de vidros + visão</td><td class="ds">Fora da fila, junto com a 123 (mesmo chat): o leitor de documentos segue o catálogo e a visão por campo</td><td class="ds">em execução</td></tr>
         <tr><td class="dm">3</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata</td><td class="ds">só no diagnóstico</td></tr>
         <tr><td class="dm">4</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
         <tr><td class="dm">5</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>
