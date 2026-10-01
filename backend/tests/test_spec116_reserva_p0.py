@@ -54,6 +54,9 @@ MAPA = {
     # reserva de outro provedor (valores provisórios do contrato; a F2 reescreve pela bancada).
     "destravador": ("anthropic", "claude-sonnet-5-5", None),
     "destravador_segunda": ("openai", "gpt-6.1-sol", "high"),
+    # §9.3 — SPEC-124 F2 (01/10/2026, migration 20261001_03): `visao` ganha reserva de OUTRO
+    # provedor, Sonnet 5.5 low — 30/30 na bancada por campo (SPEC-124-BANCADA-VISAO.md §3).
+    "visao": ("anthropic", "claude-sonnet-5-5", "low"),
 }
 
 

@@ -24,6 +24,11 @@ sem promover o Sol 6), o banco do ledger (guarda o INSERT) e a rede do provedor.
   (iv)  o snapshot e a migration 20260930_01 (o texto que o Postgres aplicou) concordam;
   (v)   o cache do 6.1 custa 0,05 × entrada (US$ 0,10/MTok) no ledger — não 0,10 ×.
 
+§9.3 — SPEC-124 F2 (01/10/2026, migration 20261001_03): `visao` e `visao_documento` SAÍRAM do
+6.1 pela bancada por campo (docs/canon/reports/SPEC-124-BANCADA-VISAO.md §3: Luna 100 % = Sol 6.1
+100 % a ~1/18 do custo). A lição não morre, migra: o papel mantém o MESMO esforço (medium), nunca
+sai com `none`, e o corpo que sai é o do modelo que a bancada escolheu.
+
 Rodar (de backend/):  .venv/Scripts/python -m pytest -q tests/test_o_sol_6_1_sucede_o_sol_6.py
 """
 from __future__ import annotations
@@ -74,6 +79,15 @@ ANTES_PRIMARIO = {
 ANTES_RESERVA = {"dispatch": (OPUS, "high")}
 #: Os papéis que NASCERAM depois da 20260930_01 já no 6.1 (primário) — SPEC-123 F1a, 20260930_03.
 NASCIDOS_NO_6_1 = {"destravador"}
+#: §9.3 — os papéis que a BANCADA tirou do 6.1 depois (SPEC-124 F2, migration 20261001_03).
+#: papel → (provider, modelo, esforço — o MESMO de antes, reserva (provider, modelo, esforço)).
+#: Por quê: SPEC-124-BANCADA-VISAO.md §2–§3 — `visao_campos` k=3: Luna 30/30 = Sol 6.1 30/30,
+#: US$ 0,00016 × 0,00566 por documento; reserva de OUTRO provedor Sonnet 5.5 low (30/30);
+#: `visao_documento` sem reserva porque o docling só fala Chat Completions OpenAI.
+SAIRAM_PELA_BANCADA_124 = {
+    "visao": ("openai", "gpt-6-luna", "medium", ("anthropic", "claude-sonnet-5-5", "low")),
+    "visao_documento": ("openai", "gpt-6-luna", "medium", None),
+}
 
 
 def _req():
@@ -88,7 +102,7 @@ def _invocar(papel):
 # ---------------------------------------------------------------------------
 # (i) cada papel que era Sol → 6.1, o MESMO esforço, e é isso que sai
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("papel", sorted(ANTES_PRIMARIO))
+@pytest.mark.parametrize("papel", sorted(set(ANTES_PRIMARIO) - set(SAIRAM_PELA_BANCADA_124)))
 def test_papel_que_era_sol_resolve_para_o_6_1_com_o_mesmo_esforco(borda, papel):
     esforco, reserva = ANTES_PRIMARIO[papel]
     r = MP.resolver(papel)
@@ -101,6 +115,23 @@ def test_papel_que_era_sol_resolve_para_o_6_1_com_o_mesmo_esforco(borda, papel):
     assert not {"temperature", "top_p"} & set(corpo), "sampling_ok=false no 6.1"
 
 
+@pytest.mark.parametrize("papel", sorted(SAIRAM_PELA_BANCADA_124))
+def test_papel_que_a_bancada_tirou_do_6_1_mantem_o_esforco_e_sai_sem_none(borda, papel):
+    """§9.3 — a lição de (i) migrada: troca de MODELO pela bancada, não de esforço."""
+    prov, modelo, esforco, reserva = SAIRAM_PELA_BANCADA_124[papel]
+    assert esforco == ANTES_PRIMARIO[papel][0], "o esforço é o MESMO de quando era Sol"
+    r = MP.resolver(papel)
+    assert (r.provider, r.model, r.effort, r.lifecycle) == (prov, modelo, esforco, "APPROVED"), r
+    got = (r.reserva.provider, r.reserva.model, r.reserva.effort) if r.reserva else None
+    assert got == reserva, f"{papel}: reserva {got}"
+    _invocar(papel)
+    corpo = borda.prov.payloads[-1]
+    assert corpo["model"] == modelo
+    assert corpo.get("reasoning") == {"effort": esforco}, corpo.get("reasoning")
+    assert corpo["reasoning"]["effort"] != "none"
+    assert not {"temperature", "top_p"} & set(corpo), "sampling_ok=false na Luna"
+
+
 def test_nenhuma_rota_de_producao_usa_mais_o_sol_6(borda):
     usando = {p: r for p, r in borda.pap.items() if VELHO in (r.get("modelo_primario"),
                                                              r.get("modelo_reserva"))}
@@ -108,7 +139,8 @@ def test_nenhuma_rota_de_producao_usa_mais_o_sol_6(borda):
     sol = sorted(p for p, r in borda.pap.items() if r.get("modelo_primario") == NOVO)
     # §9.3 — SPEC-123 F1a (migration 20260930_03): o papel `destravador` NASCEU depois, já no 6.1.
     #    A lição fica: os 7 que ERAM Sol 6 são 6.1, e nenhum outro papel antigo virou 6.1 por engano.
-    assert sorted(set(sol) - NASCIDOS_NO_6_1) == sorted(ANTES_PRIMARIO), "exatamente os 7 papéis que eram Sol 6"
+    #    §9.3 — SPEC-124 F2 (20261001_03): `visao`/`visao_documento` saíram do 6.1 pela bancada.
+    assert sorted(set(sol) - NASCIDOS_NO_6_1) == sorted(set(ANTES_PRIMARIO) - set(SAIRAM_PELA_BANCADA_124)),         "exatamente os papéis que eram Sol 6, menos os que a bancada da SPEC-124 tirou"
 
 
 def test_controle_luna_e_opus_nao_mudaram(borda):

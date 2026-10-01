@@ -2597,7 +2597,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-09-30T22:24:57+00:00",
+ "gerado_em": "2026-10-01T07:19:07+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {
@@ -2954,29 +2954,29 @@
    "classe_de_dado": "pii",
    "descricao": "visão de foto do segurado/corretor — vision_service.py, langchain_service._analyze_image, attendance_media.py, observer",
    "esforco": "medium",
-   "esforco_reserva": null,
-   "modelo_primario": "gpt-6.1-sol",
-   "modelo_reserva": null,
-   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
+   "esforco_reserva": "low",
+   "modelo_primario": "gpt-6-luna",
+   "modelo_reserva": "claude-sonnet-5-5",
+   "motivo": "SPEC-124 F2 · D3 — bancada por campo 01/10/2026: Luna 100 % = Sol 6.1 100 % a ~1/18 do custo; reserva de outro provedor Sonnet 5.5 low (100 %)",
    "papel": "visao",
    "provider": "openai",
-   "provider_reserva": null,
+   "provider_reserva": "anthropic",
    "risco": "alto",
-   "versao": 4
+   "versao": 5
   },
   "visao_documento": {
    "classe_de_dado": "pii",
    "descricao": "descrição de imagem dentro de PDF (docling-service VISION_MODEL)",
    "esforco": "medium",
    "esforco_reserva": null,
-   "modelo_primario": "gpt-6.1-sol",
+   "modelo_primario": "gpt-6-luna",
    "modelo_reserva": null,
-   "motivo": "SPEC-122 F0 · Founder 30/09/2026 — GPT-6.1 Sol sucede o Sol 6 (mesmo esforço)",
+   "motivo": "SPEC-124 F2 · D3/D4 — Luna (bancada por campo 01/10/2026); sem reserva: o docling só fala Chat Completions OpenAI (PictureDescriptionApiOptions)",
    "papel": "visao_documento",
    "provider": "openai",
    "provider_reserva": null,
    "risco": "medio",
-   "versao": 3
+   "versao": 4
   }
  }
 }

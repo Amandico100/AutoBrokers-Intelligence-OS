@@ -37,10 +37,10 @@
 --   select papel, provider, modelo_primario, esforco, provider_reserva, modelo_reserva, esforco_reserva,
 --          versao, atualizado_por
 --     from public.llm_papeis where papel in ('visao','visao_documento') order by 1;
---   -- esperado: visao           openai gpt-6-luna medium anthropic claude-sonnet-5-5 low  5 migration 20261001_01
---   --           visao_documento openai gpt-6-luna medium NULL      NULL              NULL 4 migration 20261001_01
+--   -- esperado: visao           openai gpt-6-luna medium anthropic claude-sonnet-5-5 low  5 migration 20261001_03
+--   --           visao_documento openai gpt-6-luna medium NULL      NULL              NULL 4 migration 20261001_03
 --   select papel, versao, modelo_primario from public.llm_papeis_historico
---    where papel in ('visao','visao_documento') and alterado_por = 'migration 20261001_01' order by 1;
+--    where papel in ('visao','visao_documento') and alterado_por = 'migration 20261001_03' order by 1;
 --   -- esperado 2 linhas (o estado ANTERIOR: gpt-6.1-sol)
 --   -- e o produto lê a rota nova (o resolvedor, com o snapshot regerado):
 --   --   python scripts/gerar_snapshot_de_modelos.py --banco
@@ -51,7 +51,7 @@
 --   update public.llm_papeis
 --      set provider = 'openai', modelo_primario = 'gpt-6.1-sol', esforco = 'medium',
 --          provider_reserva = null, modelo_reserva = null, esforco_reserva = null,
---          motivo = 'ROLLBACK 20261001_01 — volta ao GPT-6.1 Sol', atualizado_por = 'rollback 20261001_01'
+--          motivo = 'ROLLBACK 20261001_03 — volta ao GPT-6.1 Sol', atualizado_por = 'rollback 20261001_03'
 --    where papel in ('visao', 'visao_documento');
 --   delete from supabase_migrations.schema_migrations where name = 'spec124_visao_por_bancada';
 --   -- e regerar o snapshot: python scripts/gerar_snapshot_de_modelos.py --banco
@@ -66,9 +66,9 @@
 update public.llm_papeis
    set provider = 'openai', modelo_primario = 'gpt-6-luna', esforco = 'medium',
        provider_reserva = 'anthropic', modelo_reserva = 'claude-sonnet-5-5', esforco_reserva = 'low',
-       motivo = 'SPEC-124 F2 · D3 — bancada por campo 01/10/2026: Luna 100 % = Sol 6.1 100 % a ~1/17 do custo; '
+       motivo = 'SPEC-124 F2 · D3 — bancada por campo 01/10/2026: Luna 100 % = Sol 6.1 100 % a ~1/18 do custo; '
                 || 'reserva de outro provedor Sonnet 5.5 low (100 %)',
-       atualizado_por = 'migration 20261001_01'
+       atualizado_por = 'migration 20261001_03'
  where papel = 'visao'
    and (provider, modelo_primario, esforco, provider_reserva, modelo_reserva, esforco_reserva)
        is distinct from ('openai', 'gpt-6-luna', 'medium', 'anthropic', 'claude-sonnet-5-5', 'low');
@@ -81,7 +81,7 @@ update public.llm_papeis
        provider_reserva = null, modelo_reserva = null, esforco_reserva = null,
        motivo = 'SPEC-124 F2 · D3/D4 — Luna (bancada por campo 01/10/2026); sem reserva: o docling só fala '
                 || 'Chat Completions OpenAI (PictureDescriptionApiOptions)',
-       atualizado_por = 'migration 20261001_01'
+       atualizado_por = 'migration 20261001_03'
  where papel = 'visao_documento'
    and (provider, modelo_primario, esforco, provider_reserva, modelo_reserva, esforco_reserva)
        is distinct from ('openai', 'gpt-6-luna', 'medium', null::text, null::text, null::text);
@@ -98,6 +98,6 @@ begin
       or (papel = 'visao_documento' and provider = 'openai' and modelo_primario = 'gpt-6-luna'
           and esforco = 'medium' and modelo_reserva is null);
   if n <> 2 then
-    raise exception '20261001_01: estado final inesperado (% de 2 rotas certas)', n;
+    raise exception '20261001_03: estado final inesperado (% de 2 rotas certas)', n;
   end if;
 end $$;
