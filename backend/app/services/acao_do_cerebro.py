@@ -317,10 +317,14 @@ def decidir(texto_do_modelo: Any, session: Dict[str, Any], tela: str, *,
     #    seguradora espera, vira pergunta ao segurado; onde não espera, pessoa.
     passo_sc = passo_sem_chute_da_tela(tela, playbook, session)
     if passo_sc is not None:
-        from app.services.corridor_playbooks import _COMO_PERGUNTAR
+        from app.services.corridor_playbooks import como_perguntar_ao_segurado
 
+        # SPEC-123 F5a (costura com a F6): a pergunta vai ao SEGURADO — a frase DELE (2ª
+        # pessoa, do lugar do ramo), não a do dossiê da equipe (`_COMO_PERGUNTAR`).
+        ref = str((session or {}).get("playbook_ref") or "") or None
         slots_do_passo = [f for f in (passo_sc.get("requires") or [])] or ["o dado pedido"]
-        pergunta = "; ".join(_COMO_PERGUNTAR.get(x, x.replace("_", " ")) for x in slots_do_passo)
+        pergunta = "; ".join(como_perguntar_ao_segurado(x, ref) or x.replace("_", " ")
+                             for x in slots_do_passo)
         out.update(acao_final="PERGUNTAR_AO_SEGURADO" if ida_e_volta_permitida else "PESSOA",
                    valor=pergunta if ida_e_volta_permitida else "", proibicao="passo_sem_chute",
                    passo_sem_chute=str(passo_sc.get("step") or ""))

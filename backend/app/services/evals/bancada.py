@@ -356,8 +356,10 @@ class Medidor:
                 self.estado["prompts"].add(hashlib.sha256(conteudo.encode()).hexdigest()[:12])
         estimativa = (D.estimar_tokens(texto) * self.preco["entrada"]
                       + self.max_output * self.preco["saida"]) / 1_000_000
-        self.orcamento.reservar(estimativa)
+        # 🔴 F5a: a TENTATIVA conta ANTES da reserva — uma reserva que cai por outro motivo que o
+        # teto (ledger ilegível) é chamada tentada e não concluída: o detector de infra a vê.
         self.estado["tentativas"] = self.estado.get("tentativas", 0) + 1
+        self.orcamento.reservar(estimativa)
 
     def _depois(self, resp) -> None:
         self.estado["chamadas"] += 1
@@ -917,9 +919,9 @@ def chamador_http_do_braco(modelo: Any, ctx: "Contexto", pedidos: List[dict]) ->
             (corpo.get("output_config") or {}).get("effort") or corpo.get("reasoning_effort")
         reg["formato"] = sorted(k for k in ("response_format", "text", "system") if k in corpo)
         pedidos.append(reg)
+        med.estado["tentativas"] = med.estado.get("tentativas", 0) + 1     # antes da reserva (F5a)
         med.orcamento.reservar((D.estimar_tokens(json.dumps(corpo, ensure_ascii=False)) * med.preco["entrada"]
                                 + med.max_output * med.preco["saida"]) / 1_000_000)
-        med.estado["tentativas"] = med.estado.get("tentativas", 0) + 1
         try:
             if ctx.falhas is not None:
                 ctx.falhas._talvez_falhar()
@@ -1948,7 +1950,9 @@ def carregar_casos_do_destravador(filtro: Optional[str] = None,
 # ---------------------------------------------------------------------------
 #: constante_justificada: o valor que RECUSA/declina (sobre o rótulo escolhido ou o texto, normalizado).
 #: Numa tela de custo, responder "Não" não aceita nada — é ERRO (decidiu pelo segurado), não grave.
-_RX_DECLINA = re.compile(r"^(?:nao|recus|desist|nenhum)")
+#: F5a: "Voltar" / "Voltar ao menu" também não aceita — 📊 bancada de 30/09: 4 propostas do 6.1 numa
+#: tela de custo eram "Voltar" e o juiz as contava como `aceitou_custo` (falso grave do modelo nu).
+_RX_DECLINA = re.compile(r"^(?:nao|recus|desist|nenhum|voltar)")
 #: constante_justificada: o "sim" que EXECUTA o que a tela propõe (confirmar a abertura, abrir o
 #: novo atendimento). Largo de propósito, como o do produto: o falso positivo custa um grave a mais.
 _RX_AFIRMA = re.compile(r"^(?:sim|confirm|pode|isso|ok|quero|desejo|aceito|continuar|prosseguir|seguir)")
@@ -2032,8 +2036,14 @@ def veredito_do_destravador(gab: dict, dec: dict, tela: str, sessao: dict) -> di
     v["grave_do_modelo"] = motivo_grave(gab, str(dec.get("acao_do_modelo") or ""),
                                         str(dec.get("valor_do_modelo") or ""), tela, sessao)
     # A PROPOSTA do modelo estava certa? (é o que a CALIBRAÇÃO mede: nota × acerto real)
+    # F5a: a resposta PROVADA (`aceitas`: o que a atendente respondeu e a URA aceitou) conta como
+    # proposta certa também quando o gabarito a põe em `acoes_aceitaveis` — 📊 `des-D-cerebro-porto-043`
+    # (classe PERGUNTAR, aceitas "Não sei o CEP"): o 6.1 propôs exatamente o que a atendente fez e a
+    # calibração o contava como ERRADO.
     v["proposta_certa"] = bool(
-        dec.get("acao_do_modelo") == "RESPONDER" and "RESPONDER" in (gab.get("acoes_certas") or [])
+        dec.get("acao_do_modelo") == "RESPONDER"
+        and ("RESPONDER" in (gab.get("acoes_certas") or [])
+             or ("RESPONDER" in (gab.get("acoes_aceitaveis") or []) and gab.get("aceitas")))
         and not v["grave_do_modelo"]
         and casa_com_as_aceitas(tela, str(dec.get("valor_do_modelo") or ""), gab.get("aceitas") or []))
     if not dec.get("formato_ok", True):
@@ -2166,7 +2176,16 @@ class OrcamentoDoLedger(Orcamento):
                  a_cada: int = 10):
         self.provedor = provedor
         self.desde = desde
-        self.ler = ler or (lambda p, d: gasto_do_ledger(p, d))
+        if ler is None:
+            # 🔴 F5a: o cliente do LEDGER é capturado AQUI, fora da borda. `reservar` roda DENTRO de
+            # `dubles.borda_isolada`, onde `get_supabase_client` é o dublê — a releitura pegava o
+            # dublê, `gasto_do_ledger` levantava ValueError e o destravador engolia como
+            # `modelo_falhou`. 📊 30/09: a 10ª, 20ª… chamada de cada braço (15 casos, US$ 0, 4–39 ms).
+            from app.core.database import get_supabase_client
+
+            cliente = get_supabase_client()
+            ler = lambda p, d: gasto_do_ledger(p, d, cliente=cliente)  # noqa: E731
+        self.ler = ler
         self.a_cada = max(1, int(a_cada))
         self.inicial = float(self.ler(provedor, desde))
         self.reservas = 0
@@ -2237,11 +2256,55 @@ def calcular_limiar(pares: List[tuple], *, minimo: int = 70, meta: float = ACERT
             "cobertura_perdida": 1.0 if base else None}
 
 
-def resumo_do_destravador(arquivos: List[str]) -> dict:
-    """Os JSON de rodadas do papel `destravador` → as métricas por braço (+ o braço da 2ª opinião)."""
+def _ler_rodada(arq: Any) -> dict:
+    return arq if isinstance(arq, dict) else json.loads(Path(arq).read_text(encoding="utf-8"))
+
+
+def recalcular_destravador(arquivos: List[Any], *, redecidir: bool = False) -> List[dict]:
+    """F5a — o RE-JULGAMENTO sem modelo (o molde de `recalcular_resumo` da SPEC-122): cada resultado
+    gravado é julgado de novo pelo juiz de HOJE contra o gabarito de HOJE do corpus (pela chave).
+    `redecidir=True`: antes, a PROPOSTA gravada do modelo (`acao_do_modelo`, `valor_do_modelo`, nota,
+    classe, a 2ª opinião) passa de novo pela POLÍTICA de hoje (`destravador.decidir_destravamento`) —
+    o produto como ele sai, sem gastar um centavo. Os arquivos não mudam: devolve cópias."""
+    import copy
+    import importlib
+
+    DT = importlib.import_module("app.services.destravador")
+    casos = {c["chave"]: c for c in carregar_casos_do_destravador()}
+    saida = []
+    for arq in arquivos:
+        d = copy.deepcopy(_ler_rodada(arq))
+        for r in d.get("resultados") or []:
+            est = (r.get("rastro") or {}).get("estado") or {}
+            dec = est.get("decisao")
+            caso = casos.get(r.get("chave"))
+            if r.get("resultado") == "BLOCKED_BY_INFRA" or not dec or not caso:
+                continue
+            ent = caso["entrada"]
+            gab = caso["oraculo"]["destravador"]
+            tela, sessao = str(ent.get("tela") or ""), copy.deepcopy(ent.get("sessao") or {})
+            if redecidir and dec.get("formato_ok", True) and dec.get("acao_do_modelo"):
+                proposta = DT.Proposta(classe=str(dec.get("classe") or ""), acao=str(dec["acao_do_modelo"]),
+                                       valor=str(dec.get("valor_do_modelo") or ""), nota=dec.get("nota"),
+                                       motivo=str(dec.get("motivo") or ""), formato_ok=True)
+                seg = dict(dec["segunda_opiniao"]) if dec.get("segunda_opiniao") else None
+                nova = DT.decidir_destravamento(proposta, sessao, tela, gatilho=est.get("gatilho") or "cerebro",
+                                                limiar=dec.get("limiar") or DT.LIMIAR_MINIMO,
+                                                provedor=str(dec.get("provedor") or ""), segunda_opiniao=seg)
+                nd = nova.para_dict()
+                dec = {**dec, **{k: nd.get(k) for k in ("classe", "acao", "valor", "proibicao", "segunda_opiniao")}}
+                est["decisao"] = dec
+            est["veredito_destravador"] = veredito_do_destravador(gab, dec, tela, sessao)
+        saida.append(d)
+    return saida
+
+
+def resumo_do_destravador(arquivos: List[Any]) -> dict:
+    """Os JSON de rodadas do papel `destravador` (caminhos, ou as rodadas já lidas — `recalcular_destravador`)
+    → as métricas por braço (+ o braço da 2ª opinião)."""
     celulas: Dict[str, List[dict]] = {}
     for arq in arquivos:
-        d = json.loads(Path(arq).read_text(encoding="utf-8"))
+        d = _ler_rodada(arq)
         for r in d.get("resultados") or []:
             seg = ((r.get("rastro") or {}).get("segunda") or {}).get("braco")
             celulas.setdefault(r["braco"] + (f" + 2ª {seg}" if seg else ""), []).append(r)
@@ -2305,7 +2368,7 @@ def prompts_divergentes(arquivos: List[str]) -> dict:
     recebeu (`estado.prompt_hashes`) — caso com mais de um hash entre braços é um defeito da medição."""
     por_caso: Dict[str, set] = {}
     for arq in arquivos:
-        d = json.loads(Path(arq).read_text(encoding="utf-8"))
+        d = _ler_rodada(arq)
         for r in d.get("resultados") or []:
             hs = ((r.get("rastro") or {}).get("estado") or {}).get("prompt_hashes") or []
             if hs:

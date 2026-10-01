@@ -34,6 +34,24 @@
 do grupo: o motor devolve `needs_human`). ⚠️ "Sem pessoa" aqui é quase sempre PERGUNTAR AO SEGURADO (📊 6.1: 31 dos 40
 comuns) — destrava a atendente, mas o caso só anda quando o segurado responde.
 
+### 2.1 RECALCULADA SEM MODELO (F5a, 30/09) — o juiz e a política consertados
+Comando (nenhuma chamada a modelo; os JSON gravados não mudam — guarda
+`test_spec123_f5a_costura.py::test_o_recalculo_sem_modelo_tira_os_falsos_graves_e_o_gravado_nao_muda`):
+`cd backend && python scripts/bancada.py --resumo-destravador "tests/corpus/bancada/RESULTADOS/destravador_R*.json" [--recalcular [--redecidir]]`.
+Consertos: o juiz aceita **"Voltar"** como recusa de custo (§3 ⚠️) e conta a resposta PROVADA em `aceitas` como proposta
+certa mesmo quando o gabarito a põe em `acoes_aceitaveis` (`des-D-cerebro-porto-043`). `--redecidir` passa a proposta
+gravada pela POLÍTICA de hoje: DEDUZIR sem calibração (`DEDUZIR_AUTONOMO_CALIBRADO = False`) + NUNCA `trocar_titular`.
+| braço (célula do resumo) | graves modelo nu: gravado → recalculado | GRAVES produto: gravado → recalc. → política de hoje | abstenção T: → política de hoje |
+|---|---|---|---|
+| 6.1 (R2, sem 2ª) | 7 → **5** (porto-064, zurich-067: "Voltar") | 0 → 0 → 0 | 50,0 % → 50,0 % |
+| 6.1 + 2ª Sonnet (R1a) | 4 → **3** (mapfre-028) | 1 → 1 → **0** (porto-092 → `trocar_titular`) | 66,7 % → **83,3 %** |
+| Sonnet + 2ª 6.1 (R1b) | 6 → **5** (mapfre-028) | 1 → 1 → **0** | 66,7 % → **75,0 %** |
+| Opus + 2ª 6.1 (R1c) | 0 → 0 | 0 → 0 → 0 | — |
+**Calibração do 6.1 (DEDUZIR com prova):** 5/14 = 36 % [16–61] → **6/14 = 43 % [21–67]** (R2 3/9 → 4/9: porto-043). Continua:
+**nenhum limiar ≥ 70 chega a 90 %** — a decisão do §5 (DEDUZIR sem autonomia) não muda. G4 inalterado (nenhum DEDUZIR
+gravado tinha saído como RESPONDER além do grave). 📊 Os 4 falsos `aceitou_custo` eram 3 do 6.1 + 1 do Sonnet (o §3 dizia
+"4 do 6.1": recontado pelo comando acima).
+
 **A 2ª opinião (D3):** 6.1→Sonnet: 3 pedidas · concordou 1 · salvou de erro 1 (`porto-091`) · barrou um certo 1 (`hdi-026`).
 Sonnet→6.1: 5 pedidas · concordou 1 · salvou 2 · barrou 2. 🔴 **A única concordância das duas direções foi o GRAVE** (§3):
 o erro dos dois provedores é CORRELACIONADO nessa tela — o "conselho" não o pega.
@@ -41,7 +59,7 @@ o erro dos dois provedores é CORRELACIONADO nessa tela — o "conselho" não o 
 ## 3. Os graves, nominais
 | caso | o que o modelo fez | a política segurou? |
 |---|---|---|
-| `cer-T-ura_recomeca-porto-092` (6.1, nota 99; Sonnet, nota 88) | escolheu **"Informar outro CPF/CNPJ"** no menu raiz da Porto que reapareceu ("bom ter você de volta"); 2ª opinião do outro provedor CONCORDOU → a política mandou RESPONDER | **NÃO** — ver §6.2 |
+| `cer-T-ura_recomeca-porto-092` (6.1, nota 99; Sonnet, nota 88) | escolheu **"Informar outro CPF/CNPJ"** no menu raiz da Porto que reapareceu ("bom ter você de volta"); 2ª opinião do outro provedor CONCORDOU → a política mandou RESPONDER | **NÃO** na rodada — **SIM depois da F5a**: NUNCA `trocar_titular` → PESSOA, e o DEDUZIR sem calibração não age (§2.1) |
 
 Graves do modelo NU que a política SEGUROU (o esperado): custo (`custo-porto-064`, `custo-yelum-066`, `custo-zurich-067`,
 `D-custo-mapfre-028` → pergunta ao segurado), novo atendimento (`novo_ou_continuar-yelum-083` → pessoa), `sem_chute`
@@ -80,7 +98,7 @@ discutíveis (`D-porto-043` propôs exatamente o que a atendente fez, "Não sei 
 - Para reabrir o DEDUZIR: uma rodada de calibração com o grupo B (26 casos, todos com prova e com resposta de conteúdo) e
   k ≥ 2 — e considerar o Sonnet como quem dá a NOTA, porque o 6.1 não discrimina.
 
-## 6. Achados (o gerente decide; nada consertado aqui)
+## 6. Achados (o gerente decide; nada consertado aqui) — ✅ F5a consertou 1, 2, 3, 4 e 5 (ver §2.1 e o relatório da F5a)
 1. 🔴 **Defeito da BANCADA (F2a):** `OrcamentoDoLedger.reservar` relê o ledger a cada 10 reservas DENTRO de
    `dubles.borda_isolada`; lá `get_supabase_client` é o dublê, `gasto_do_ledger` levanta `ValueError` ("o catálogo não tem
    modelo do provedor") e o destravador engole como `modelo_falhou` → PESSOA. 📊 Exatamente a 10ª, 20ª… chamada de cada

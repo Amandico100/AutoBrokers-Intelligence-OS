@@ -96,6 +96,13 @@ TELAS_QUE_SAIRAM_DO_ACERVO = {
         "prestador poderá chegar *durante todo* o período agendado.\n\nEscolha qual "
         "período:\n\n*1 - Manhã*, das 9:00 às 13:00\n*2 - Tarde*, das 13:00 às 18:00",
     ],
+    # SPEC-123 F6 → F5a (§9.3, a lição migra): o acervo regerado pela janela nova da F6 deixou de
+    # trazer a tela "concluída" desta sessão (📊 `git show 4bf04d2^:…/hdi-auto.jsonl`: ela existia;
+    # em `4bf04d2` não). A SESSÃO continua no acervo (as outras telas dela sim) — por isso o guarda
+    # abaixo confere TELA a TELA, não sessão.
+    ("hdi-auto", "4b2d0c2a"): [
+        "A solicitação de *GUINCHO* está concluída.\n\nPor favor, selecione abaixo o assunto que você deseja falar.\nPedir outro serviço\nQuestionar atraso\nSelecione esta opção se o GUINCHO ainda não chegou para te atender.\nQuestionar entrega\nSelecione esta opção se precisa de informação sobre a entrega do veiculo\nAlterar endereço\nSelecione esta opção se deseja informar um novo endereço de destino.\nOutro\nVoltar\nEncerrar conversa",
+    ],
 }
 
 
@@ -115,13 +122,19 @@ def tela(arquivo: str, sessao: str, padrao: str) -> str:
 
 
 def test_as_telas_guardadas_sao_so_de_quem_saiu_do_acervo():
-    """Se a sessão voltar ao acervo, a cópia guardada vira verdade vencida."""
-    for (arquivo, sessao), _telas in TELAS_QUE_SAIRAM_DO_ACERVO.items():
-        ids = {json.loads(l)["session_id"] for l in
-               (CORPUS / f"{arquivo}.jsonl").read_text(encoding="utf-8").splitlines()
-               if l.strip()}
-        assert sessao not in ids, (
-            f"{sessao} voltou a {arquivo}.jsonl — apague-a de TELAS_QUE_SAIRAM_DO_ACERVO")
+    """Se a TELA voltar ao acervo, a cópia guardada vira verdade vencida.
+
+    SPEC-123 F5a (§9.3): era por SESSÃO; a F6 tirou do acervo UMA tela de uma sessão que
+    continua lá (`hdi-auto:4b2d0c2a`). O que vence é a tela: nenhuma cópia guardada pode
+    existir, igual, na sessão dela no acervo."""
+    for (arquivo, sessao), telas in TELAS_QUE_SAIRAM_DO_ACERVO.items():
+        textos = {json.loads(l)["text"] for l in
+                  (CORPUS / f"{arquivo}.jsonl").read_text(encoding="utf-8").splitlines()
+                  if l.strip() and json.loads(l)["session_id"] == sessao}
+        for t in telas:
+            assert t not in textos, (
+                f"a tela guardada voltou a {arquivo}.jsonl ({sessao}) — apague-a de "
+                f"TELAS_QUE_SAIRAM_DO_ACERVO: {t[:60]!r}")
 
 
 def _sessao(ref, slots=None, subservice="guincho", state="ura"):

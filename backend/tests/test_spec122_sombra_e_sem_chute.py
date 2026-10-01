@@ -317,6 +317,11 @@ def amb(monkeypatch, _fio_fixo):
     monkeypatch.setattr(llm_factory.LLMFactory, "chave_para", staticmethod(lambda *x, **k: "chave-duble"))
     ws = types.ModuleType("app.services.whatsapp_service")
     ws.get_whatsapp_service = lambda: _Wa(a)
+    # SPEC-123 F5a: o mesmo motivo do `IntegrationService` abaixo — o `__init__` do pacote
+    # `app.services` pede `WhatsappService` a este módulo. 📊 30/09: rodado SOZINHO (o pacote
+    # ainda não importado), `test_spec122_conserto_sem_chute_e_sombra` dava 16 × ImportError;
+    # depois de outro arquivo que já importara o pacote, passava — falha de ORDEM, do dublê.
+    ws.WhatsappService = type("WhatsappService", (), {})
     monkeypatch.setitem(sys.modules, "app.services.whatsapp_service", ws)
     is_ = types.ModuleType("app.services.integration_service")
     is_.get_integration_service = lambda *x: types.SimpleNamespace()
@@ -435,7 +440,13 @@ def test_o_fio_da_sombra_mesmo_envio_byte_a_byte_e_a_decisao_do_destravador_na_l
     assert p["diverge"] is True and p["divergencia"] == "acao" and p["conta_como_acerto"] is False
 
 
-def test_a_sombra_igual_ao_sistema_nao_diverge(amb):
+def test_a_sombra_igual_ao_sistema_nao_diverge(amb, monkeypatch):
+    # SPEC-123 F5a (§9.3, a lição migra): este teste prova a sombra com o DEDUZIR CALIBRADO (2ª
+    # opinião concordando). Sem calibração (`DEDUZIR_AUTONOMO_CALIBRADO = False`, o de hoje) todo
+    # DEDUZIR é rebaixado e a 2ª opinião nem é paga — guardado em `test_spec123_f5a_costura.py`.
+    import app.services.destravador as _DT
+
+    monkeypatch.setattr(_DT, "DEDUZIR_AUTONOMO_CALIBRADO", True)
     _ligar(amb, EMPRESA_A)
     # SPEC-123: o dublê responde a MESMA coisa ao destravador (openai) e à 2ª opinião (anthropic)
     amb.saida_do_modelo = ('{"classe": "deduzir", "acao": "RESPONDER", "valor": "Para você", "nota": 90, '

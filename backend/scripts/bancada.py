@@ -26,6 +26,8 @@ falha · BLOCKED_BY_INFRA.
     # teto POR PROVEDOR lido do ledger e relido durante a rodada):
     python scripts/bancada.py --papel destravador --braco openai:gpt-6.1-sol:high --braco-segunda anthropic:claude-sonnet-5-5 --k 1 --so-grupo T --so-grupo D --teto-provedor 1.60 --ledger-desde 2026-09-30T00:00:00+00:00 --saida tests/corpus/bancada/RESULTADOS/destravador_x.json
     python scripts/bancada.py --resumo-destravador "tests/corpus/bancada/RESULTADOS/destravador_*.json"
+    # F5a — re-julgar sem modelo (e, com --redecidir, pela política de hoje):
+    python scripts/bancada.py --resumo-destravador "tests/corpus/bancada/RESULTADOS/destravador_R*.json" --recalcular
 
 `--ensaio` (padrão) NÃO toca o banco: grava só um JSON local e diz onde.
 `--gravar` escreve em `eval_runs`/`eval_case_results` (exige a migration
@@ -81,6 +83,11 @@ def main(argv=None) -> int:
     p.add_argument("--so-grupo", action="append", default=[], help="SPEC-123: T · D · A · B (repetível)")
     p.add_argument("--resumo-destravador", nargs="+", default=None,
                    help="SPEC-123: métricas por braço (acerto, graves, faixas de nota, limiar, 2ª opinião, G4)")
+    p.add_argument("--recalcular", action="store_true",
+                   help="SPEC-123 F5a: com --resumo-destravador, RE-JULGA cada resultado gravado pelo juiz e o "
+                        "gabarito de hoje (sem modelo; os arquivos não mudam)")
+    p.add_argument("--redecidir", action="store_true",
+                   help="SPEC-123 F5a: com --recalcular, passa a proposta gravada de novo pela POLÍTICA de hoje")
     a = p.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO if a.verboso else logging.CRITICAL)
@@ -125,6 +132,10 @@ def main(argv=None) -> int:
         import json as _json
 
         arqs = sorted({f for padrao in a.resumo_destravador for f in glob.glob(padrao)})
+        if a.recalcular or a.redecidir:
+            arqs = B.recalcular_destravador(arqs, redecidir=bool(a.redecidir))
+            print("RECALCULADO sem modelo: juiz e gabarito de hoje"
+                  + (" + a POLÍTICA de hoje sobre a proposta gravada" if a.redecidir else ""))
         resumo = B.resumo_do_destravador(arqs)
         print(B.tabela_do_destravador(resumo))
         pd = B.prompts_divergentes(arqs)

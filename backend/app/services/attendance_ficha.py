@@ -91,8 +91,11 @@ ROTULOS = {
     "quando": "agora ou agendado",
     "rodovia": "se está em rodovia",
     "ponto_referencia": "ponto de referência",
-    "local_cep": "CEP de onde o veículo está",
-    "local_rua": "rua onde o veículo está",
+    # SPEC-123 F5a: os `local_*` valem para AUTO e RESIDENCIAL — "onde o veículo está" ia ao
+    # dossiê de um encanador. O lugar do ramo, quando a frase vai ao SEGURADO, é de
+    # `corridor_playbooks.como_perguntar_ao_segurado(slot, playbook_ref)`.
+    "local_cep": "CEP do local do atendimento",
+    "local_rua": "rua do local do atendimento",
     "local_numero": "número do local",
     "local_bairro": "bairro do local",
     "local_cidade": "cidade do local",

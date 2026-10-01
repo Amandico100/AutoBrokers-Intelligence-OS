@@ -4171,13 +4171,15 @@ FAMILIAS_DESTRAVAVEIS = frozenset({
 #: `exige_documento`), condomínio/empresarial, rota inexistente, a confirmação que a
 #: seguradora barrou, o formulário do app (a resposta não é texto), a URA que fechou
 #: (tem retomada própria), o segurado que não respondeu, e o próprio destravador que
-#: já disse "é de gente" (senão ele se chamaria em laço).
+#: já disse "é de gente" (senão ele se chamaria em laço). F5a (pendência da F3):
+#: `ja_existe_solicitacao` — a seguradora disse que JÁ HÁ um pedido aberto e a tela não
+#: deixa seguir com ele; destravar ali seria abrir um segundo (o NUNCA `novo_atendimento`).
 FAMILIAS_QUE_NUNCA_DESTRAVAM = frozenset({
     "handoff_trigger", "recusa_de_cobertura", "consultora_da_seguradora",
     "fora_do_horario", "exige_documento", "apolice_de_condominio_ou_empresa",
     "playbook_not_found", "confirmacao_bloqueada", "insurer_closed",
     "segurado_nao_respondeu", "humano_assumiu", "finalize_test_abort",
-    "encaminhado", "encaminhamento_sem_link", "destravador",
+    "encaminhado", "encaminhamento_sem_link", "destravador", "ja_existe_solicitacao",
 })
 
 #: constante_justificada: o MESMO teto por tela do Sentinela (`MAX_TENTATIVAS_POR_TELA`
@@ -4767,9 +4769,16 @@ async def try_route_insurer_inbound(
                     origem_da_resposta="cerebro")
                 await save_active_dispatch(company_id, from_phone, session)
                 return True
+            # SPEC-123 F5a (costura com a F6): `_rotulo` é a frase do DOSSIÊ (3ª pessoa, para
+            # a equipe e para o cérebro); ao SEGURADO vai a dele, em 2ª pessoa e do lugar do
+            # ramo (`como_perguntar_ao_segurado`: num residencial o `local_*` é a casa).
+            from app.services.corridor_playbooks import como_perguntar_ao_segurado
+
+            _ao_segurado = como_perguntar_ao_segurado(
+                _slot_falta, str(session.get("playbook_ref") or "") or None) or _rotulo
             _perguntou = await perguntar_ao_segurado(
                 company_id, session, insurer_phone=from_phone, slot=_slot_falta,
-                rotulo=_rotulo, send_to_client=send_to_client,
+                rotulo=_ao_segurado, send_to_client=send_to_client,
                 send_to_insurer=send_to_insurer)
             await _rastro_do_dado_que_faltou(
                 company_id, session, slot=_slot_falta, tela=_tela_que_pede,

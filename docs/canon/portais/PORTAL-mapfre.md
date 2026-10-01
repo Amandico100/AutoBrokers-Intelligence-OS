@@ -147,7 +147,7 @@ inteira é descartada — não se grava metade.
 interno** do modal é uma terceira coisa:
 
 ```
-TODOS · 111 · 130183 · 1932        todos da MESMA AutoFleet
+TODOS · 111 · {CODIGO} · 1932        todos da MESMA AutoFleet
                                    (agencyDesc: FLORIANOPOLIS - GC DO BRASIL)
 ```
 

@@ -25,6 +25,18 @@ from tests.test_spec122_sombra_e_sem_chute import FIO, _fio_fixo  # noqa: F401 �
 B = FIO["app.services.evals.bancada"]
 AC = FIO["app.services.acao_do_cerebro"]
 
+
+@pytest.fixture(autouse=True)
+def _deduzir_calibrado(monkeypatch):
+    """F5a (§9.3 — a lição MIGRA): este arquivo prova a MECÂNICA do DEDUZIR calibrado (limiar, 2ª
+    opinião de outro provedor, discordância). Em produção ela está atrás de
+    `destravador.DEDUZIR_AUTONOMO_CALIBRADO = False` (G3 sem calibração); o comportamento de HOJE —
+    todo DEDUZIR rebaixado — é guardado em `test_spec123_f5a_costura.py`."""
+    from app.services import destravador as _DT
+
+    monkeypatch.setattr(_DT, "DEDUZIR_AUTONOMO_CALIBRADO", True)
+
+
 PASTA = Path(__file__).parent / "corpus" / "bancada" / "cerebro"
 
 

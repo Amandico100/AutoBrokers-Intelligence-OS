@@ -31,6 +31,17 @@ from tests.test_spec123_destravador_fio import (  # noqa: F401 — fixtures
 from app.services import destravador as DT
 
 
+@pytest.fixture(autouse=True)
+def _deduzir_calibrado(monkeypatch):
+    """F5a (§9.3 — a lição MIGRA): este arquivo prova a MECÂNICA do DEDUZIR calibrado (limiar, 2ª
+    opinião de outro provedor, discordância). Em produção ela está atrás de
+    `destravador.DEDUZIR_AUTONOMO_CALIBRADO = False` (G3 sem calibração); o comportamento de HOJE —
+    todo DEDUZIR rebaixado — é guardado em `test_spec123_f5a_costura.py`."""
+    from app.services import destravador as _DT
+
+    monkeypatch.setattr(_DT, "DEDUZIR_AUTONOMO_CALIBRADO", True)
+
+
 def decidir(saida: str, s: dict, tela: str, **k):
     """A saída do modelo pelo parser REAL → a política REAL."""
     return DT.decidir_destravamento(DT.ler_destravamento(saida), s, tela, **k)

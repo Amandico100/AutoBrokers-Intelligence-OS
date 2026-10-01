@@ -94,6 +94,10 @@ URA = {
               "*3 - Empresarial:* Para proteger seu negócio"),
     "cpf": "Certo! Por favor digite o *CPF* ou *CNPJ* do(a) titular da apólice ou pressione *9* para voltar",
     "endereco": "Por favor, confirme o endereço para atendimento:",
+    # SPEC-123 F6 → F5a (§9.3): o CABEÇALHO acima virou noop (a Allianz manda a LISTA logo depois,
+    # e o "1" às cegas no cabeçalho escolhia o 1º endereço sem ler). O "1" agora sai da LISTA de
+    # um endereço só — a forma real (`test_spec123_rotas_allianz_enderecos`, acervo mascarado).
+    "lista_enderecos": "*1 -* {ENDERECO}\n*2 -* Voltar\n*3 -* Sair",
     "numero": "Agora, me informe o número da residência.",
     "telefone": "Registramos o telefone *+55 (48) 99107-2089* para entrar em contato com você.\n\nDeseja adicionar outro número?",
     "celular": "Por favor, informe *o número de celular completo* com DDD",
@@ -137,11 +141,13 @@ def run():
     sender = sent_for_real.append
     s = dispatch.start_dispatch(s, sender=sender)
     replies = []
-    for key in ("menu1", "menu2", "cpf", "endereco", "numero", "telefone", "celular", "anotei", "servico"):
+    for key in ("menu1", "menu2", "cpf", "endereco", "lista_enderecos", "numero", "telefone", "celular",
+                "anotei", "servico"):
         s = dispatch.handle_insurer_message(s, URA[key], sender=sender)
         outs = [t for t in s["transcript"] if t["direction"] == "out"]
         replies.append(outs[-1]["text"] if outs else None)
 
+    # o 5º ("1") é a resposta à LISTA de endereços — o cabeçalho antes dela não responde nada
     expected = ["Olá", "2", "1", "11122233344", "1", "16783", "1", "48999998888", "1", "1"]
     got = [t["text"] for t in s["transcript"] if t["direction"] == "out"]
     check("P4: sequência da URA exata (10 mensagens)", got == expected, got)
@@ -244,7 +250,8 @@ def run():
             check("P6: inbound de cliente comum não é interceptado", other is False)
 
             # URA da seguradora -> respostas automáticas via sender.
-            for key in ("menu1", "menu2", "cpf", "endereco", "numero", "telefone", "celular", "anotei", "servico"):
+            for key in ("menu1", "menu2", "cpf", "endereco", "lista_enderecos", "numero", "telefone", "celular",
+                "anotei", "servico"):
                 handled = await router.try_route_insurer_inbound(text=URA[key], **kw)
                 assert handled
             check("P6: URA respondida automaticamente (9 respostas)", to_insurer == ["2", "1", "11122233344", "1", "16783", "1", "48999998888", "1", "1"], to_insurer)

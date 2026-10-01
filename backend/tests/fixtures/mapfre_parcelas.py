@@ -89,7 +89,7 @@ def _item(*, doc, nome, apolice, endosso="0", parcela="1", de="12",
             "dueDate": vencimento,
         },
         "brokerProductionKey": {"broker": {"brokerDesc": None, "brokerId": broker},
-                                "productionsKeys": ["130183"]},
+                                "productionsKeys": ["000000"]},
         "allowedActions": None,
     }
 

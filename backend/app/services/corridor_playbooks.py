@@ -6908,7 +6908,7 @@ ZURICH_AUTO_WHATSAPP_V1["handoff_triggers"] = ZURICH_AUTO_WHATSAPP_V1["handoff_t
 ]
 
 # 🔴 O NÚMERO DO PROCESSO NÃO É PROTOCOLO DE ASSISTÊNCIA.
-#    📊 "*Número do processo:* 31.26.333122.01" é o número do SINISTRO. Pô-lo em
+#    📊 "*Número do processo:* NN.NN.NNNNNN.NN" é o número do SINISTRO. Pô-lo em
 #    `protocol` faria o corredor de assistência encerrar um caso com o número de
 #    um processo de colisão. Âncora própria, usada só no dossiê do handoff.
 #    CONTROLE: o grupo aceita PONTO — que é o que uma âncora de dígitos

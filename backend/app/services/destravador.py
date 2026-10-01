@@ -56,6 +56,18 @@ CLASSES = ("conduzir", "responder_com_dado", "deduzir", "perguntar_ao_segurado",
 LIMIAR_MINIMO = 70
 LIMIAR_MAXIMO = 100
 
+#: constante_justificada: a PORTA do DEDUZIR autônomo é a CALIBRAÇÃO (SPEC-123 G3 / D2: "na faixa de
+#: nota em que age, acerto ≥ 90%"), e ela NÃO existe. 📊 bancada real de 30/09
+#: (`docs/canon/reports/SPEC-123-BANCADA.md` §4, `scripts/bancada.py --resumo-destravador`): o
+#: modelo principal do papel acerta 5/14 = 36 % [16–61] das propostas DEDUZIR com nota ≥ 70 — e dá nota 90–99 a
+#: TODAS, inclusive às 9 erradas (a nota não discrimina); nenhum limiar 70..100 chega a 90 %. E o único
+#: grave da bancada (`cer-T-ura_recomeca-porto-092`, nota 99, 2ª opinião CONCORDANDO) é DEDUZIR.
+#: Com False, todo DEDUZIR é rebaixado (pergunta ao segurado quando a tela pergunta, senão pessoa) com
+#: `proibicao="deduzir_sem_calibracao"` — e a 2ª opinião nem é chamada. CONDUZIR, RESPONDER COM DADO e
+#: PERGUNTAR seguem livres. ⚠️ Só vira True com uma rodada de calibração que passe o G3 (decisão do
+#: gerente/Founder). MUTAÇÃO: True → `test_spec123_f5a_costura.py::test_o_grave_porto_092_...` VERMELHO.
+DEDUZIR_AUTONOMO_CALIBRADO = False
+
 #: As ações FINAIS (depois da política). As mesmas palavras de `acao_do_cerebro.ACOES`, menos
 #: RECUSA — recusa de cobertura é gatilho do MOTOR (`recusa_de_cobertura:*`), nunca destravável.
 ACOES = ("RESPONDER", "PERGUNTAR_AO_SEGURADO", "PESSOA", "SILENCIO")
@@ -103,6 +115,7 @@ NUNCA_SOZINHO = (
     "condominio_ou_empresarial", # D10: condomínio e empresarial ficam com a atendente
     "confirmacao_final",         # confirmar/abrir de fato, fora do modo que o autoriza
     "inventar_dado",             # número/CPF/dado que não está no caso
+    "trocar_titular",            # "Informar outro CPF/CNPJ": é o "inventar CPF" do D1 (titular errado)
     "afirma_cobertura",          # só a seguradora afirma cobertura
 )
 
@@ -114,6 +127,7 @@ PORQUE = {
     "condominio_ou_empresarial": "condomínio e empresarial ficam com a atendente",
     "confirmacao_final": "a tela confirma a abertura do serviço e o modo de ensaio não autoriza",
     "inventar_dado": "a resposta traria um número que não está no caso",
+    "trocar_titular": "a resposta trocaria o CPF/CNPJ do titular — isso é com uma pessoa",
     "afirma_cobertura": "a resposta falava de cobertura — só a seguradora afirma cobertura",
 }
 
@@ -137,6 +151,15 @@ _RX_TELA_ABRE_SINISTRO = re.compile(
 #: constante_justificada: CANCELAR — o mesmo radical de `_RX_ABRE_AGENDA_CANCELA` do produto
 #: (`cancelar` / `cancelad`), agora só sobre a OPÇÃO escolhida e a tela que pergunta.
 _RX_CANCELA = re.compile(r"\bcancel")
+#: constante_justificada: TROCAR O TITULAR (sobre o rótulo escolhido, normalizado). 📊 A redação real
+#: (`tests/corpus/bancada/cerebro/casos.jsonl`, cer-T-ura_recomeca-porto-091/092 — o menu raiz da
+#: Porto que reaparece com "bom ter você de volta"): "Informar outro CPF/CNPJ". A bancada de 30/09
+#: mediu os dois braços (notas 99 e 88) escolhendo-a com a 2ª opinião CONCORDANDO — o único grave.
+#: D1 do Founder: "inventar CPF" é NUNCA SOZINHO; um CPF que não é o do caso é isso. A mesma família
+#: do juiz da bancada (`evals/bancada._RX_OPCAO_GRAVE`: outro cpf · outro titular · outro cnpj).
+_RX_TROCA_TITULAR = re.compile(
+    r"\b(?:outr[oa]|nov[oa]|diferente)\s+(?:cpf|cnpj|titular|documento)\b|"
+    r"\b(?:trocar|alterar|mudar)\s+(?:o\s+)?(?:cpf|cnpj|titular)\b")
 #: constante_justificada: ESCOLHER data/período (sobre texto normalizado, sem acento). 📊 porto-auto
 #: 910b6295: "selecione a data para quando você quer o serviço". ⚠️ NÃO é o radical `agendad` do
 #: produto: 📊 allianz-residencial "O serviço … deverá ser AGENDADO. 1 - Continuar 2 - Voltar" só
@@ -526,8 +549,8 @@ async def _com_teto(coro, padrao):
 
 
 #: 🔴 A PARTE FIXA do prompt — a MESMA em TODA chamada (toda corretora, seguradora, caso e tela) e o
-#: COMEÇO do `system`. O cache de prompt casa por PREFIXO (OpenAI: automático; Anthropic: o
-#: `cache_control` de `mensagens_para_o_provedor`): nada que varia pode vir antes dela.
+#: COMEÇO do `system`. O cache de prompt casa por PREFIXO (OpenAI: automático; Anthropic: desligado
+#: pelo número — ver `mensagens_para_o_provedor`): nada que varia pode vir antes dela.
 #: ⛔ Não interpolar nada aqui (nem seguradora, nem data): um byte variável no começo zera o cache.
 INSTRUCAO_DO_DESTRAVADOR = (
     "══════ VOCÊ FOI CHAMADO PORQUE O ROTEIRO AUTOMÁTICO TRAVOU ══════\n"
@@ -567,7 +590,7 @@ INSTRUCAO_DO_DESTRAVADOR = (
 #: Onde começa a parte do `user` que MUDA a cada tela (o porquê desta chamada, as falas antigas, o
 #: mapa, as rotas irmãs, o que o produto diz sobre esta tela, a tela). Tudo ANTES dela é o mesmo
 #: dentro de um acionamento (os dados do caso, o conhecimento do fluxo, a memória, a conversa com o
-#: segurado) — é o 3º ponto de cache. `mensagens_para_o_provedor` corta aqui.
+#: segurado) — o prefixo estável do acionamento (o cache automático da OpenAI casa por prefixo).
 _MARCA_DO_VARIAVEL = "\n\n🔴 POR QUE VOCÊ FOI CHAMADO: "
 
 #: constante_justificada: os blocos do prompt do PRODUTO (`build_human_phase_messages`) que mudam a
@@ -633,40 +656,21 @@ def compor_mensagens(sessao: Dict[str, Any], tela: str, *, gatilho: str = "cereb
 
 
 def mensagens_para_o_provedor(provedor: str, mensagens: list) -> list:
-    """As mensagens do destravador no formato de QUEM VAI RESPONDER (F1c — cache de prompt).
+    """As mensagens do destravador no formato de QUEM VAI RESPONDER — hoje, como vieram, para TODO
+    provedor: nenhum `cache_control` (F5a, pelo número; a F1c tinha posto três pontos na Anthropic).
 
-    · anthropic → `cache_control` efêmero (5 min) em três pontos, do mais estável ao menos:
-        ① o fim da INSTRUÇÃO FIXA (igual em toda chamada de toda corretora),
-        ② o fim do `system` (igual para a mesma seguradora e serviço),
-        ③ o fim da parte estável do `user` (igual em todas as telas do mesmo acionamento).
-      É o padrão do produto (`agents/nodes.py`: blocos de `system` com `cache_control`).
-    · qualquer outro → como veio. ⛔ A OpenAI recusa o campo `cache_control`; o cache dela é
-      automático por prefixo — e o prefixo já é estável pela ORDEM de `compor_mensagens`.
-    O texto NUNCA muda, só o embrulho. Sem as marcas esperadas, a mensagem vai como veio."""
-    if str(provedor or "").strip().lower() != "anthropic":
-        return list(mensagens)
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    efemero = {"type": "ephemeral"}
-    saida = []
-    for m in mensagens:
-        texto = m.content if isinstance(getattr(m, "content", None), str) else None
-        if texto is None:
-            saida.append(m)
-        elif isinstance(m, SystemMessage) and texto.startswith(INSTRUCAO_DO_DESTRAVADOR):
-            resto = texto[len(INSTRUCAO_DO_DESTRAVADOR):]
-            blocos = [{"type": "text", "text": INSTRUCAO_DO_DESTRAVADOR, "cache_control": efemero}]
-            if resto:
-                blocos.append({"type": "text", "text": resto, "cache_control": efemero})
-            saida.append(SystemMessage(content=blocos))
-        elif isinstance(m, HumanMessage) and texto.find(_MARCA_DO_VARIAVEL) > 0:
-            i = texto.find(_MARCA_DO_VARIAVEL)
-            saida.append(HumanMessage(content=[
-                {"type": "text", "text": texto[:i], "cache_control": efemero},
-                {"type": "text", "text": texto[i:]}]))
-        else:
-            saida.append(m)
-    return saida
+    📊 Bancada real de 30/09 (`tests/corpus/bancada/RESULTADOS/destravador_*.json`, soma de
+    `tokens.in / cache_read / cache_write` dos braços anthropic): o reserva decidindo, 44 chamadas —
+    entrada 330.926, lido 79.985 (×0,10), gravado 200.621 (×1,25) → 309.095 tokens-equivalentes
+    contra 330.926 sem cache (−6,6 %, na ordem MAIS favorável: casos do mesmo corredor em sequência);
+    o mesmo como 2ª opinião, 3 chamadas: +12,4 %; o maior da Anthropic, 11: +7,5 %. O ponto ③ (parte estável do `user`,
+    8–10 mil tokens) só é lido quando o MESMO acionamento chama de novo em 5 min; o ① sozinho
+    (📊 2.271 caracteres ≈ 570 tokens) fica abaixo do mínimo cacheável. Em produção a Anthropic só
+    responde como RESERVA do destravador (a 2ª opinião não é chamada enquanto o DEDUZIR está sem
+    calibração) e há poucas travas por acionamento → o prêmio de 25 % na gravação não se paga.
+    A ORDEM de `compor_mensagens` (o fixo primeiro) fica: é de graça e é o que o cache automático de
+    prefixo da OpenAI usa. Para religar: medir de novo com tráfego real e pôr o ponto que se paga."""
+    return list(mensagens)
 
 
 def texto_da_mensagem(m: Any) -> str:
@@ -947,6 +951,10 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
         if "novo_atendimento" in ligadas and _abre_novo_atendimento(alvo, norm_tela, afirma,
                                                                     tem_pergunta, sessao):
             return pessoa("novo_atendimento")
+        if "trocar_titular" in ligadas and (
+                _RX_TROCA_TITULAR.search(alvo)
+                or (afirma and tem_pergunta and _RX_TROCA_TITULAR.search(norm_tela))):
+            return pessoa("trocar_titular")
         if "condominio_ou_empresarial" in ligadas and rot:
             try:
                 from app.providers.policy_data_provider import familia_de_ramo_do_rotulo
@@ -998,6 +1006,9 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
         classe = "deduzir"            # não é dado do caso: é dedução
     base["classe"] = classe
     if classe == "deduzir":
+        if not DEDUZIR_AUTONOMO_CALIBRADO:
+            # G3 sem calibração (ver a constante): nenhum DEDUZIR age sozinho, e a 2ª opinião não é paga
+            return rebaixar("deduzir_sem_calibracao")
         if conteudo and not _rotulo_escolhido(tela, valor):
             return rebaixar("valor_fora_das_opcoes")
         if p.nota is None or p.nota < lim:

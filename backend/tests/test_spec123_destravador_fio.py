@@ -42,6 +42,17 @@ from app.services import destravador as DT
 #: O helper REAL de produção (o `amb` da SPEC-122 o troca por um espião; aqui ele volta).
 _INVOCAR_REAL = _LF.invocar_com_reserva
 
+@pytest.fixture(autouse=True)
+def _deduzir_calibrado(monkeypatch):
+    """F5a (§9.3 — a lição MIGRA): este arquivo prova a MECÂNICA do DEDUZIR calibrado (limiar, 2ª
+    opinião de outro provedor, discordância). Em produção ela está atrás de
+    `destravador.DEDUZIR_AUTONOMO_CALIBRADO = False` (G3 sem calibração); o comportamento de HOJE —
+    todo DEDUZIR rebaixado — é guardado em `test_spec123_f5a_costura.py`."""
+    from app.services import destravador as _DT
+
+    monkeypatch.setattr(_DT, "DEDUZIR_AUTONOMO_CALIBRADO", True)
+
+
 REF_YELUM_RES = "yelum-residencial-whatsapp@v1"
 #: 📊 A tela REAL (acervo mascarado) do menu de serviços da Yelum residencial. Com o serviço
 #: não informado no caso, o motor a classifica `tela_que_decide:escolhe_o_servico` e chama uma
@@ -170,18 +181,18 @@ def test_O_FIO_a_tela_real_que_hoje_trava_vira_uma_decisao_certa_sem_pessoa(dt):
     seg = dt.chamadas_ao_modelo[1]
     assert DT.texto_da_mensagem(seg["user"]) == p["user"]
     assert DT.texto_da_mensagem(seg["system"]) == p["system"]
-    # F1c — o CACHE DE PROMPT, pelo fio real (fábrica → cliente): a instrução FIXA é o começo do
-    # prompt; a OpenAI recebe texto puro (ela recusa `cache_control`); a Anthropic recebe os três
-    # pontos de cache — o fim da instrução fixa, o fim do system e o fim da parte estável do user.
+    # O CACHE DE PROMPT, pelo fio real (fábrica → cliente). F1c pôs três `cache_control` na
+    # Anthropic; F5a os TIROU pelo número (📊 bancada de 30/09: −6,6 % no melhor caso, +7,5 % e
+    # +12,4 % nos outros — ver `destravador.mensagens_para_o_provedor`). A lição que migra (§9.3):
+    # a instrução FIXA continua sendo o COMEÇO do prompt (o prefixo do cache automático da OpenAI),
+    # e os DOIS provedores recebem texto puro, sem `cache_control` em lugar nenhum.
     assert isinstance(p["system"], str) and p["system"].startswith(DT.INSTRUCAO_DO_DESTRAVADOR)
     assert isinstance(p["user"], str)
-    efemero = {"type": "ephemeral"}
-    assert [(b["text"] == DT.INSTRUCAO_DO_DESTRAVADOR, b.get("cache_control")) for b in seg["system"]] == [
-        (True, efemero), (False, efemero)], seg["system"]
-    [estavel, muda] = seg["user"]
-    assert estavel.get("cache_control") == efemero and "cache_control" not in muda
-    assert muda["text"].startswith(DT._MARCA_DO_VARIAVEL) and RELATO in estavel["text"]
-    assert "Qual o serviço que você precisa?" in muda["text"], "a TELA é a parte que muda"
+    assert isinstance(seg["system"], str) and isinstance(seg["user"], str), (seg["system"], seg["user"])
+    assert "cache_control" not in repr(seg) and "cache_control" not in repr(p)
+    i = seg["user"].find(DT._MARCA_DO_VARIAVEL)
+    assert i > 0 and RELATO in seg["user"][:i], "o estável do acionamento vem ANTES da marca"
+    assert "Qual o serviço que você precisa?" in seg["user"][i:], "a TELA é a parte que muda"
     # UMA linha no diário, legível por gente
     [linha] = dt.diario.linhas
     assert d.diario_id == "diario-1"
@@ -253,7 +264,8 @@ def test_F1c_a_injecao_decide_pelo_mesmo_fio_sem_tocar_o_catalogo(dt):
     assert len(dt.diario.linhas) == 1
     [(s1, u1)] = um.recebido
     [(s2, u2)] = dois.recebido
-    assert isinstance(s1.content, str) and isinstance(s2.content, list)        # openai × anthropic
+    # F5a: o embrulho do `cache_control` saiu (pelo número) — os dois recebem o MESMO texto puro
+    assert isinstance(s1.content, str) and isinstance(s2.content, str)        # openai × anthropic
     assert DT.texto_da_mensagem(s2) == s1.content and DT.texto_da_mensagem(u2) == u1.content
 
 
