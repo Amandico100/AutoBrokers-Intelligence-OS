@@ -1079,6 +1079,175 @@ def _o_pedido_do_carro_reserva(conversa: Dict[str, Any]) -> list:
     return linhas
 
 
+# ===========================================================================
+# 🔴 SPEC-123 F7 · D8 — O AGENTE SÓ CHAMA PESSOA QUANDO PRECISA
+# ===========================================================================
+#
+# 📊 30/09/2026 (MCP `execute_sql`, `conversations` desde 01/08): 1112 conversas,
+# 502 em `HUMAN_REQUESTED`, `human_handoff_reason` preenchido em **5**; e os 36
+# eventos `grupo.%` do mesmo período têm `motivo_classe='desconhecido'` (36 de 36).
+# Não há linha de base de POR QUE o agente chama gente — o diário de decisões
+# (`diario_de_decisoes`, `origem='atendimento'`) passa a ser ela.
+#
+# A ordem do Founder (D8): o que o agente resolve sem humano — dúvida simples,
+# dado que dá para perguntar ao segurado — não vai a pessoa; sinistro, condomínio,
+# empresarial, rota sem corredor e o cliente que pede pessoa continuam indo.
+#
+# O mecanismo é UMA segunda chance por conversa por dia:
+#
+#   motivo de REGRA ou caso que é sempre de gente → passa a pessoa como antes
+#   qualquer outro motivo, 1ª vez                  → NÃO passa: devolve ao agente a
+#                                                    instrução de resolver com o
+#                                                    segurado e grava no diário
+#   qualquer outro motivo, 2ª vez                  → passa a pessoa como antes
+#
+# ⛔ SEM LINHA NO DIÁRIO, SEM SEGUNDA CHANCE. A linha é o contador: sem ela a
+#    segunda chance viraria um laço (o agente pediria para sempre e nunca
+#    passaria). E autonomia que não fica registrada não pode ser avaliada (D7).
+#    Diário fora do ar → pessoa, exatamente como antes desta fatia.
+
+#: O estado devolvido ao agente na segunda chance — instrução, não relato.
+#: ⚠️ Escrita para modelo inteligente: diz o objetivo e a saída, sem roteiro.
+#: 🔴 SEM o carimbo `HANDOFF_OK` (o fiscal `honestidade_do_handoff` ancora nele: sem
+#:    ele, "já passei para a equipe" é reescrito) e sem verbo de transferência na
+#:    1ª pessoa do passado (o guarda do teste confere com `afirma_transferencia`).
+SEGUNDA_CHANCE_DO_HANDOFF = (
+    "HANDOFF_NAO_FEITO · SEGUNDA_CHANCE · ninguém da equipe foi chamado. "
+    "O objetivo é resolver este caso sem uma pessoa. Se falta um dado que só o "
+    "segurado tem, pergunte a ele agora. Se é uma dúvida sobre o seguro, responda "
+    "com o que você sabe (apólice, base de conhecimento) e diga ao segurado quando "
+    "não tiver certeza. Só chame `request_human_agent` de novo se realmente não "
+    "houver saída — e diga no motivo por quê. Não diga ao segurado que alguém da "
+    "equipe vai assumir."
+)
+_MARCA_DA_SEGUNDA_CHANCE = "HANDOFF_NAO_FEITO · SEGUNDA_CHANCE"
+
+
+def foi_segunda_chance(resultado: Any) -> bool:
+    """O retorno da ferramenta foi a segunda chance (nada foi passado a ninguém)?
+
+    ⚠️ Para quem lê o resultado depois (ex.: `nodes._gravar_ficha_do_turno`, que
+    hoje marca `fase='com_humano'` a QUALQUER retorno desta ferramenta).
+    """
+    return _MARCA_DA_SEGUNDA_CHANCE in str(resultado or "")
+
+
+#: A frase para gente de cada motivo de REGRA (`classificar_o_motivo`).
+#: constante_justificada: são as cinco chaves de `_MOTIVOS_DE_REGRA` — o agente PODIA,
+#: mas o produto manda passar (D-PILOTO-13); D8 mantém "o cliente pede pessoa".
+_FRASE_DA_REGRA = {
+    "vitima": "há vítima ou risco à pessoa",
+    "cliente_pediu_humano": "o segurado pediu para falar com uma pessoa",
+    "valor_acima_do_limite": "envolve valor ou aprovação acima do que o agente decide",
+    "fora_do_escopo": "o assunto está fora do que o agente atende",
+    "segurado_irritado": "o segurado está irritado ou reclamando",
+}
+
+#: Os casos que vão a pessoa NA PRIMEIRA chamada além dos de REGRA, procurados por
+#: PALAVRA INTEIRA (sem acento, minúsculo) no motivo e no ramo/serviço da ficha.
+#: ⚠️ Errar para o lado de passar é o comportamento de antes desta fatia; errar para o
+#:    lado de segurar é chamar o segurado de volta num caso que era de gente.
+_SEMPRE_DE_GENTE = (
+    # constante_justificada: D8/D10 da SPEC-123 — condomínio fica com a atendente
+    ("condominio", ("condominio", "condominial"),
+     "é seguro de condomínio, que fica com a equipe"),
+    # constante_justificada: D8/D10 — empresarial fica com a atendente ("empresa" e
+    # "cnpj" entram: passar a mais é o comportamento de antes)
+    ("empresarial", ("empresarial", "empresa", "cnpj"),
+     "é seguro empresarial, que fica com a equipe"),
+    # constante_justificada: D8 "rota sem corredor" — a ferramenta de acionamento manda
+    # o motivo "sem corredor para …"; o portal de vidros é o corredor dessa família e,
+    # quando ele não atende, não há outro caminho
+    ("sem_corredor", ("corredor", "portal"),
+     "não há caminho automático para esta seguradora ou serviço"),
+    # constante_justificada: prompt do atendimento, LIMITES — risco grave → pessoa
+    ("risco_grave", ("fogo", "fumaca", "incendio", "faisca", "choque", "queimado",
+                     "alagamento", "alagado", "emergencia"),
+     "há risco à pessoa ou ao imóvel"),
+    # constante_justificada: D10 — carro reserva está em espera com o Founder
+    ("carro_reserva", ("carro reserva",), "o carro reserva fica com a equipe"),
+    # constante_justificada: D10 — conversar com consultora humana da seguradora
+    ("consultora", ("consultora", "consultor"),
+     "a seguradora pôs uma pessoa dela na conversa"),
+)
+
+
+def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
+                                caso: Optional[Dict[str, Any]] = None,
+                                ja_com_a_equipe: bool = False) -> str:
+    """`""` = cabe a segunda chance; senão, POR QUE vai direto, em frase de gente.
+
+    **PURA** (o detector de sinistro é o MESMO `claims_shadow.detectar_sinistro` do
+    aviso ao grupo). A ordem é a do custo de errar: o que já é da equipe, a marca do
+    motor, o pós-acionamento (a R9 decide), a REGRA, o sinistro, a lista D8/D10.
+    """
+    caso = caso or {}
+    if ja_com_a_equipe:
+        # constante_justificada: a equipe já tem o caso — segurar aqui não poupa ninguém
+        return "o caso já estava com a equipe"
+    if str(codigo or "").strip():
+        # constante_justificada: `pessoa_antes_de_acionar` — o MOTOR mandou (SPEC-121 B1)
+        return "a ferramenta de acionamento mandou passar a uma pessoa antes de acionar"
+    if _e_pos_acionamento(caso):
+        # constante_justificada: depois do acionamento, quem decide é a R9
+        # (`SITUACOES_PARA_HUMANO`), não esta lista — duas verdades sobre o mesmo caso
+        return "o caso já foi acionado e o acompanhamento segue a regra do pós-acionamento"
+    classe, chave = classificar_o_motivo(motivo)
+    if classe == CLASSE_REGRA:
+        return _FRASE_DA_REGRA.get(chave, "é um caso que a regra manda para uma pessoa")
+    ficha = caso.get("ficha_atendimento") if isinstance(caso.get("ficha_atendimento"), dict) else {}
+    try:
+        from app.services.claims_shadow import detectar_sinistro
+
+        relato = " ".join(p for p in (str(motivo or ""),
+                                      str(caso.get("last_message_preview") or "")) if p)
+        if detectar_sinistro(relato, ficha or None)[0]:
+            # constante_justificada: D8 — "sinistro continua indo a pessoa"
+            return "é sinistro, e sinistro sempre vai para uma pessoa"
+    except Exception as exc:  # noqa: BLE001
+        # Não saber classificar não pode segurar um sinistro: na dúvida, pessoa.
+        logger.warning("[HumanHandoff] detector de sinistro mudo (%s)", type(exc).__name__)
+        return "não deu para conferir se é sinistro"
+    texto = _sem_acento_minusculo(" ".join((
+        _motivo_em_portugues(motivo), str(ficha.get("ramo") or ""),
+        str(ficha.get("servico") or ""))))
+    for _chave, palavras, frase in _SEMPRE_DE_GENTE:
+        for p in palavras:
+            if re.search(r"\b%s\b" % re.escape(_sem_acento_minusculo(p)), texto):
+                return frase
+    return ""
+
+
+def _dia_utc() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _chave_da_segunda_chance(conversa_id: str) -> str:
+    """UMA por conversa por dia — ⚠️ SEM o motivo de propósito: com ele, o agente que
+    trocasse a frase ganharia outra segunda chance, e o contador seria do motivo, não
+    da conversa. O dia é o "mesmo episódio": a virada só concede, no máximo, mais uma."""
+    return "atendimento:segunda_chance:%s:%s" % (conversa_id, _dia_utc())
+
+
+def _chave_de_chamou_pessoa(conversa_id: str, motivo: Any) -> str:
+    """Conversa + motivo (a CHAVE da classe, nunca a prosa: a prosa traz dado) + dia."""
+    _classe, chave = classificar_o_motivo(motivo)
+    return "atendimento:chamou_pessoa:%s:%s:%s" % (conversa_id, chave, _dia_utc())
+
+
+def _sessao_para_mascara(linha: Dict[str, Any]) -> Dict[str, Any]:
+    """Os valores da ficha que a máscara do diário troca por marca (nome, CPF, placa…)."""
+    ficha = linha.get("ficha_atendimento") if isinstance(linha.get("ficha_atendimento"), dict) else {}
+    try:
+        from app.services.attendance_ficha import valor_de
+
+        return {k: valor_de(v) for k, v in (ficha.get("confirmados") or {}).items()}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 class HumanHandoffInput(BaseModel):
     """Input schema para a HumanHandoffTool."""
 
@@ -1126,8 +1295,9 @@ class HumanHandoffTool(BaseTool):
     description: str = """
     Transfere a conversa para um atendente humano da corretora e avisa o suporte
     com um resumo do caso. Use em SINISTRO (sempre), quando não houver corredor
-    para acionar a seguradora, em risco grave, quando o cliente pedir pessoa, ou
-    quando você travar. Informe o motivo.
+    para acionar a seguradora, em risco grave, em condomínio ou empresarial, quando
+    o cliente pedir pessoa, ou quando não houver saída. Dúvida simples e dado que o
+    segurado pode informar se resolvem com ele, não com pessoa. Informe o motivo.
     """
     args_schema: Type[BaseModel] = HumanHandoffInput
 
@@ -1481,6 +1651,104 @@ class HumanHandoffTool(BaseTool):
                 "calado": bool(saida["calado"])}
 
     # ------------------------------------------------------------------ #
+    # 🔴 SPEC-123 F7 · D8 — a segunda chance e a linha no diário
+    # ------------------------------------------------------------------ #
+    async def _ja_teve_segunda_chance(self, company_id: str, conversa_id: str) -> Optional[bool]:
+        """`True`/`False` pelo diário; `None` quando não deu para ler (→ pessoa).
+
+        🔴 §7: por `company_id` E pela chave (o índice único da tabela) — a linha de
+        outra corretora com a mesma chave não conta.
+        """
+        chave = _chave_da_segunda_chance(conversa_id)
+
+        def _ler():
+            return (self.supabase_client.table("diario_de_decisoes")
+                    .select("id")
+                    .eq("company_id", str(company_id))
+                    .eq("chave_idempotencia", chave)
+                    .limit(1).execute())
+
+        try:
+            achado = await asyncio.to_thread(_ler)
+            return bool(getattr(achado, "data", None))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HumanHandoff] contador da segunda chance ilegível (%s) — "
+                           "passo a pessoa", type(exc).__name__)
+            return None
+
+    async def _registrar_no_diario(self, company_id: str, linha: Dict[str, Any], *,
+                                   motivo: str, acao: str, classe: str, chave: str,
+                                   explicacao: str) -> Optional[str]:
+        """UMA linha `origem='atendimento'` no diário. Nunca levanta; `None` = não gravou."""
+        try:
+            from app.services.diario_de_decisoes import registrar_decisao
+
+            ficha = (linha.get("ficha_atendimento")
+                     if isinstance(linha.get("ficha_atendimento"), dict) else {})
+            return await registrar_decisao(
+                company_id=str(company_id), origem="atendimento", work_run_id=None,
+                conversation_id=str(linha.get("id") or "") or None,
+                seguradora=str(ficha.get("seguradora") or ""),
+                ramo=str(ficha.get("ramo") or ""), rota="",
+                servico=str(ficha.get("servico") or ""),
+                tela=str(linha.get("last_message_preview") or ""),
+                classe=classe, acao=acao, valor=_motivo_em_portugues(motivo),
+                nota=None, limiar=None, motivo=_motivo_em_portugues(motivo),
+                explicacao_para_gente=explicacao, modelo="", segunda_opiniao=None,
+                modo="on", gatilho="request_human_agent", chave_idempotencia=chave,
+                sessao=_sessao_para_mascara(linha))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[HumanHandoff] diário não registrado (%s)", type(exc).__name__)
+            return None
+
+    async def _segunda_chance(self, company_id: str, linha: Dict[str, Any],
+                              motivo: str, direto: str) -> bool:
+        """`True` = NÃO passar agora (a linha do diário foi gravada). Senão, pessoa."""
+        conversa_id = str(linha.get("id") or "").strip()
+        if direto or not conversa_id:
+            return False
+        if await self._ja_teve_segunda_chance(company_id, conversa_id) is not False:
+            return False
+        dito = _motivo_em_portugues(motivo) or MOTIVO_SEM_DECLARACAO
+        # constante_justificada (classe/ação): o que a segunda chance FAZ é devolver a
+        # conversa ao segurado — perguntar o dado que falta ou responder a dúvida. A
+        # próxima fala do turno é ao segurado; `nao_agiu` é da SOMBRA (nada saiu) e
+        # `chamou_pessoa` seria falso.
+        diario_id = await self._registrar_no_diario(
+            company_id, linha, motivo=motivo, acao="perguntou_segurado",
+            classe="perguntar_ao_segurado", chave=_chave_da_segunda_chance(conversa_id),
+            explicacao=("O agente ia chamar uma pessoa da corretora (motivo dele: "
+                        "\"%s\"). Como não era um caso que precisa de pessoa, ele "
+                        "voltou a conversar com o segurado para resolver: perguntar o "
+                        "que falta ou responder a dúvida. Se chamar de novo, a pessoa "
+                        "é chamada." % dito[:200]))
+        return bool(diario_id)
+
+    async def _registrar_chamou_pessoa(self, company_id: str, linha: Dict[str, Any],
+                                       motivo: str, direto: str) -> None:
+        """A passagem a pessoa vira linha no diário — best-effort, depois da decisão."""
+        conversa_id = str(linha.get("id") or "").strip()
+        if not conversa_id:
+            return
+        dito = _motivo_em_portugues(motivo) or MOTIVO_SEM_DECLARACAO
+        if direto:
+            # constante_justificada: caso que SEMPRE vai a pessoa = a classe do NUNCA
+            # sozinho do contrato (o agente não decide isso sem gente).
+            classe = "nunca_sozinho"
+            explicacao = ("O agente chamou uma pessoa da corretora (motivo dele: \"%s\") "
+                          "porque %s." % (dito[:200], direto))
+        else:
+            # constante_justificada: a 2ª chamada de um caso de "dúvida/dado" — a classe
+            # que se tentou (perguntar ao segurado) e não bastou.
+            classe = "perguntar_ao_segurado"
+            explicacao = ("O agente chamou uma pessoa da corretora (motivo dele: \"%s\"). "
+                          "Ele já tinha voltado a falar com o segurado antes e não achou "
+                          "saída sem ajuda." % dito[:200])
+        await self._registrar_no_diario(
+            company_id, linha, motivo=motivo, acao="chamou_pessoa", classe=classe,
+            chave=_chave_de_chamou_pessoa(conversa_id, motivo), explicacao=explicacao)
+
+    # ------------------------------------------------------------------ #
     # execução
     # ------------------------------------------------------------------ #
     async def _arun(self, reason: Optional[str] = None, session_id: Optional[str] = None,
@@ -1552,6 +1820,25 @@ class HumanHandoffTool(BaseTool):
         #    `motivo_enum` da sombra e fica gravada na ficha para o vigia.
         codigo_do_pedido_atual = pedido_antes_de_acionar(
             linha_anterior, codigo_no_texto or codigo)
+
+        # 🔴 SPEC-123 F7 · D8 — A SEGUNDA CHANCE, ANTES DE MARCAR QUALQUER COISA.
+        #    ⛔ Só com o estado LIDO: sem ele não há conversa para contar, e o caminho
+        #    é o de antes (pessoa). Na segunda chance NADA é escrito na conversa, nada
+        #    vai ao grupo e nenhuma vez é reservada no Redis — só a linha do diário.
+        direto = ""
+        if leu_o_estado:
+            try:
+                direto = por_que_vai_direto_a_pessoa(
+                    motivo, codigo=codigo_do_pedido_atual, caso=linha_anterior,
+                    ja_com_a_equipe=ja_estava_com_a_equipe)
+                if await self._segunda_chance(company_id, linha_anterior, motivo, direto):
+                    logger.info("[HumanHandoff] segunda chance | empresa=%s | conversa=%s",
+                                company_id, str(linha_anterior.get("id") or "")[:8])
+                    return SEGUNDA_CHANCE_DO_HANDOFF
+            except Exception as exc:  # noqa: BLE001
+                # ⛔ A segunda chance nunca derruba o pedido: falhou → pessoa, como antes.
+                logger.warning("[HumanHandoff] segunda chance indisponível (%s)",
+                               type(exc).__name__)
 
         try:
             dados: Dict[str, Any] = {"status": "HUMAN_REQUESTED"}
@@ -1685,6 +1972,18 @@ class HumanHandoffTool(BaseTool):
         # merece um alerta novo mesmo dentro da janela.
         horas = _env_int("HANDOFF_REALERTA_HORAS", HORAS_ENTRE_AVISOS_PADRAO)
         conversa_id = str(conversa.get("id") or session_id)
+
+        # 🔴 SPEC-123 F7 · D8 — a passagem a pessoa vira UMA linha no diário
+        #    (idempotente por conversa + motivo + dia). ⛔ Best-effort: nunca muda o
+        #    que é marcado, enviado ou devolvido ao agente.
+        if leu_o_estado:
+            try:
+                await self._registrar_chamou_pessoa(
+                    company_id, {**linha_anterior, "id": conversa.get("id") or
+                                 linha_anterior.get("id")}, motivo, direto)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[HumanHandoff] diário da passagem não gravado (%s)",
+                               type(exc).__name__)
 
         # 🔴 SPEC-093-B BLOCO B — o robô entregou o atendimento a uma pessoa.
         #
