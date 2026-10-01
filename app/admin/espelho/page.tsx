@@ -45,6 +45,12 @@ function when(iso: string | null | undefined): string {
   try { return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch { return '—'; }
 }
 
+/** As filas de cartas que o master revisa aqui. */
+const FILAS_DE_CARTAS = [
+  { status: 'pending_review', label: 'Da destilação' },
+  { status: 'proposta_diario', label: 'Propostas do diário de decisões' },
+] as const;
+
 const SectionTitle = ({ children, hint }: { children: React.ReactNode; hint?: string }) => (
   <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 26, marginBottom: 10 }}>
     <div style={{ fontSize: 15, fontWeight: 650 }}>{children}</div>
@@ -62,14 +68,17 @@ export default function EspelhoPage() {
   const [replay, setReplay] = useState<{ id: string; timeline: ReplayItem[]; distilled: Record<string, unknown> | null } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // SPEC-123 F4 — duas filas de cartas. `proposta_diario` nasce de um "errado" do diário de
+  // decisões (/admin/decisoes) e NUNCA é publicada sozinha: só pelo botão APROVAR daqui.
+  const [filaDeCartas, setFilaDeCartas] = useState<(typeof FILAS_DE_CARTAS)[number]['status']>('pending_review');
 
   const loadAll = useCallback(() => {
     fetch('/api/admin/atlas/espelho/resumo').then((r) => r.json()).then((d) => d.ok && setResumo(d)).catch(() => undefined);
-    fetch('/api/admin/atlas/espelho/cards?status=pending_review').then((r) => r.json()).then((d) => setCards(d.cards || [])).catch(() => undefined);
+    fetch(`/api/admin/atlas/espelho/cards?status=${filaDeCartas}`).then((r) => r.json()).then((d) => setCards(d.cards || [])).catch(() => undefined);
     fetch('/api/admin/atlas/espelho/playbooks').then((r) => r.json()).then((d) => setPlaybooks(d.playbooks || [])).catch(() => undefined);
     fetch('/api/admin/atlas/espelho/sessoes').then((r) => r.json()).then((d) => setSessoes(d.sessoes || [])).catch(() => undefined);
     fetch('/api/admin/atlas/onboarding/contribuicao').then((r) => r.json()).then((d) => d.ok && setContrib(d)).catch(() => undefined);
-  }, []);
+  }, [filaDeCartas]);
 
   useEffect(() => {
     loadAll();
@@ -137,9 +146,18 @@ export default function EspelhoPage() {
       <SectionTitle hint="cada card aprovado é publicado no conhecimento global na hora — dupla checagem de PII já feita">
         Fila de aprovação — knowledge cards
       </SectionTitle>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        {FILAS_DE_CARTAS.map((f) => (
+          <button key={f.status} aria-pressed={filaDeCartas === f.status}
+            style={{ ...btn, ...(filaDeCartas === f.status ? { borderColor: '#E2A94F88', color: '#E2A94F' } : {}) }}
+            onClick={() => setFilaDeCartas(f.status)}>{f.label}</button>
+        ))}
+      </div>
       {cards.length === 0 ? (
         <div style={{ ...card, padding: '18px 20px', color: '#7C8798', fontSize: 12.5 }}>
-          Nenhum card aguardando. Eles nascem da destilação das conversas — após o pareamento das atendentes, a fila enche sozinha.
+          {filaDeCartas === 'proposta_diario'
+            ? 'Nenhuma proposta do diário. Elas nascem quando uma decisão marcada como errada vira rascunho de carta em /admin/decisoes.'
+            : 'Nenhum card aguardando. Eles nascem da destilação das conversas — após o pareamento das atendentes, a fila enche sozinha.'}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

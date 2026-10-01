@@ -21,7 +21,7 @@ export type GalleryItem = {
 };
 
 // ---------- Atendimentos ----------
-// SPEC-046: linguagem humana, sem selos de MVP — as quatro áreas estão vivas.
+// SPEC-046: linguagem humana, sem selos de MVP — as áreas estão vivas (a 5ª, Decisões, é da SPEC-123).
 export const atendimentoAreas: ModuleArea[] = [
   { key: 'fila', icon: icons.fila, title: 'Fila', description: 'O que está acontecendo agora, em tempo real.', href: '/dashboard/atendimentos/fila' },
   // 🔴 SPEC-097 · R10 — "Histórico" virou "Casos". Não é só o passado que mora
@@ -30,6 +30,8 @@ export const atendimentoAreas: ModuleArea[] = [
   { key: 'casos', icon: icons.casos, title: 'Casos', description: 'Cada atendimento, do pedido ao desfecho — busque por nome, telefone ou protocolo.', href: '/dashboard/atendimentos/casos' },
   { key: 'conversas', icon: icons.conversas, title: 'Conversas', description: 'As conversas completas, como no WhatsApp.', href: '/dashboard/atendimentos/conversas' },
   { key: 'segurados', icon: icons.equipe, title: 'Segurados', description: 'Clientes atendidos e o histórico de cada um.', href: '/dashboard/atendimentos/segurados' },
+  // SPEC-123 F4 — o diário: o que o agente decidiu sozinho, para a corretora dizer se acertou.
+  { key: 'decisoes', icon: icons.aprovacao, title: 'Decisões do agente', description: 'O que o agente decidiu sozinho quando o atendimento travou — diga se ele acertou.', href: '/dashboard/atendimentos/decisoes' },
 ];
 
 // ---------- Auxiliares ----------

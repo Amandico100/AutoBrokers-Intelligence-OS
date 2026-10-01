@@ -692,11 +692,21 @@ async def espelho_resumo(_: Any = Depends(require_master_admin)) -> Dict[str, An
     return {"ok": True, **(await asyncio.to_thread(_query))}
 
 
+#: Os status que a fila do espelho mostra. SPEC-123 F4: `proposta_diario` é a carta que nasceu
+#: de um "errado" do diário de decisões — ela NÃO é `pending_review` de propósito (esse o
+#: destilador publica sozinho, `curadoria_cartas.publicar_lote_sync`); só sai daqui pela mão
+#: do master (`/espelho/cards/{id}/decide`).
+STATUS_DA_FILA_DO_ESPELHO = ("pending_review", "proposta_diario", "rejected_pii",
+                             "rejected_fora_de_escopo", "published")
+
+
 @router.get("/espelho/cards")
 async def espelho_cards(status: str = "pending_review",
                         _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
     from app.core.database import get_supabase_client
 
+    if status not in STATUS_DA_FILA_DO_ESPELHO:
+        raise HTTPException(status_code=400, detail="status_desconhecido")
     db = get_supabase_client()
 
     def _query() -> list:
@@ -753,6 +763,24 @@ async def espelho_card_decide(card_id: str, body: Dict[str, Any],
         {"status": "published",
          "published_at": datetime.now(timezone.utc).isoformat()}).eq("id", card_id).execute())
     return {"ok": True, "status": "published"}
+
+
+@router.post("/diario/{diario_id}/carta")
+async def diario_vira_carta(diario_id: str,
+                            _: Any = Depends(require_master_admin)) -> Dict[str, Any]:
+    """SPEC-123 F4 — o botão "virar rascunho de carta" do /admin/decisoes.
+
+    A carta nasce com `status='proposta_diario'` (nenhum publicador automático lê esse
+    status) e aparece na aba "Propostas do diário" do /admin/espelho, onde o master aprova
+    ou rejeita pelo MESMO `/espelho/cards/{id}/decide` das outras.
+    """
+    from app.services.diario_de_decisoes import propor_carta_sync
+
+    r = await asyncio.to_thread(propor_carta_sync, diario_id)
+    if not r.get("ok"):
+        codigo = 404 if r.get("motivo") == "decisao_nao_encontrada" else 422
+        raise HTTPException(status_code=codigo, detail=str(r.get("motivo") or "falhou"))
+    return r
 
 
 @router.post("/espelho/curar-cartas")
