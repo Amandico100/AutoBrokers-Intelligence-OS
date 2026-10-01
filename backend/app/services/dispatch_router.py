@@ -3240,17 +3240,26 @@ def e_resposta_de_conteudo(texto: Any) -> bool:
 
 
 def pergunta_para_o_segurado(session: Dict[str, Any], rotulo: str,
-                             opcoes: Optional[List[Any]] = None) -> str:
+                             opcoes: Optional[List[Any]] = None, *,
+                             pergunta: Optional[str] = None) -> str:
     """💭 Copy — a régua de língua da 001.3: uma frase, sem jargão, com o porquê.
 
     🔴 SPEC-122 F2 · `opcoes` (a tecla de um `sem_chute`): as opções vão COMO A TELA
     AS ESCREVEU, numeradas — é o número ou o texto de UMA delas que o motor aceita
-    de volta (`traduzir_resposta_do_segurado`). Sem `opcoes`, a frase de sempre."""
+    de volta (`traduzir_resposta_do_segurado`). Sem `opcoes`, a frase de sempre.
+
+    🔴 SPEC-123 F1b · `pergunta`: o DESTRAVADOR já escreveu a pergunta inteira ("Qual a
+    amperagem da bateria?"). Embrulhá-la em "me diga …" daria "me diga Qual a…?"; ela
+    entra depois da MESMA abertura, que diz quem pediu e por quê."""
     from app.services.dispatch_mirror import insurer_label_from_ref
 
     seguradora = insurer_label_from_ref(str(session.get("playbook_ref") or ""))
-    frase = (f"Só mais uma informação que a {seguradora} pediu para seguir com o seu "
-             f"atendimento: me diga {str(rotulo or 'o dado pedido').strip()}.")
+    if str(pergunta or "").strip():
+        frase = (f"Só mais uma informação que a {seguradora} pediu para seguir com o seu "
+                 f"atendimento: {' '.join(str(pergunta).split())[:300]}")
+    else:
+        frase = (f"Só mais uma informação que a {seguradora} pediu para seguir com o seu "
+                 f"atendimento: me diga {str(rotulo or 'o dado pedido').strip()}.")
     if opcoes:
         linhas = chr(10).join(f"{d} - {r}" for d, r in opcoes)
         frase += chr(10) + "Responda com o número de UMA destas opções:" + chr(10) + linhas
@@ -3601,7 +3610,8 @@ async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
                                 send_to_client: Callable[[str, str], Any],
                                 send_to_insurer: Callable[[str], Any],
                                 opcoes: Optional[List[Any]] = None,
-                                sem_chute: Optional[Dict[str, Any]] = None) -> bool:
+                                sem_chute: Optional[Dict[str, Any]] = None,
+                                pergunta: Optional[str] = None) -> bool:
     """① pergunta pelo canal do CLIENTE · ② "um instante" à SEGURADORA, SÓ SE
     houver uma PESSOA do outro lado · ③ a espera, na sessão.
 
@@ -3629,7 +3639,7 @@ async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
     if not cliente or not slot or slot in (session.get("perguntado_ao_segurado") or []):
         return False
     intervalo, _maximo = _env_pergunta()
-    pergunta = pergunta_para_o_segurado(session, rotulo, opcoes=opcoes)
+    pergunta = pergunta_para_o_segurado(session, rotulo, opcoes=opcoes, pergunta=pergunta)
     vivo = ao_vivo(session)
     if vivo:
         try:
@@ -3777,8 +3787,15 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     if espera.get("sem_chute"):
         valor_do_slot, _porque = _motor().valor_do_slot_sem_chute(espera, resposta)
         if retomada == "levada":
-            _traduzida, _porque = _motor().traduzir_resposta_do_segurado(
-                session, espera, resposta, tela_atual=_motor().tela_respondida(session))
+            if espera.get("destravador") and not str(espera.get("passo") or ""):
+                # 🔴 SPEC-123 F1b — a pergunta do DESTRAVADOR numa tela SEM passo (a tela que
+                #    decide, que o corredor não conhece): não há passo para o motor formatar,
+                #    então a volta é a opção ESCOLHIDA, como a tela a escreveu — nunca o texto cru.
+                _traduzida, _porque = resposta_do_destravador_para_a_ura(
+                    session, espera, resposta, tela_atual=_motor().tela_respondida(session))
+            else:
+                _traduzida, _porque = _motor().traduzir_resposta_do_segurado(
+                    session, espera, resposta, tela_atual=_motor().tela_respondida(session))
             if _traduzida is None:
                 return await _sem_chute_sem_resposta_valida(
                     empresa, from_phone, insurer_phone, session, espera, resposta, _porque,
@@ -3955,6 +3972,425 @@ async def _registrar_assuncao_humana(company_id: str, session: Dict[str, Any],
                      "(%s)", run_id, type(e).__name__)
         return assumiu
     return True
+
+
+# ===========================================================================
+# 🔴 SPEC-123 F1b — O DESTRAVADOR NOS PONTOS DE TRAVA
+# ===========================================================================
+#
+# 📊 BLOCO 0 (30/09): a maior parte das travas é decidida pelo MOTOR
+# (`handle_insurer_message`) ANTES do cérebro — ele devolve `needs_human` com o
+# motivo. O destravador (`app/services/destravador.py`, dono: F1a) entra em DOIS
+# pontos, e em nenhum o motor muda (G1: simulador, régua e Vigia veem o mesmo):
+#
+#   PONTO A · o turno do cérebro da fase humana (aqui, `try_route_insurer_inbound`)
+#             e a escada do Sentinela (`tasks/dispatch_watchdog.py`): em `on`, o
+#             destravador decide NO LUGAR de `human_reply_provider` + guarda.
+#   PONTO B · o `needs_human` do motor (aqui, e no Sentinela: a tela que decide e o
+#             esgotamento), ANTES da retomada e do dossiê — o padrão já provado do
+#             `sem_chute` da SPEC-122: só o ROTEADOR desfaz o `needs_human`, e só
+#             depois que a ação do destravador SAIU.
+#
+# ⛔ Os três modos vêm de `cerebro_modos` por corretora × seguradora × ramo:
+#    `off` (sem linha = off) → o de HOJE, byte a byte · `sombra` → o destravador
+#    decide numa CÓPIA e grava no diário, NADA muda · `on` → ele age, com os
+#    EFETORES QUE JÁ EXISTEM (`_emit`/`reply_human_phase`, `perguntar_ao_segurado`).
+# ⛔ Este arquivo NUNCA chama modelo para o destravador: chama `destravar`.
+
+#: As famílias de motivo que o PONTO B leva ao destravador (contrato da SPEC-123).
+#: constante_justificada: 📊 BLOCO 0 de 30/09 — cada uma é trava REVERSÍVEL que hoje
+#: vai a uma pessoa só porque o roteiro fixo não sabe: `sem_chute`/`missing_slots`/
+#: `ramo_indeterminado` → só o segurado sabe (PERGUNTAR); `tela_que_decide` →
+#: `escolhe_o_servico` é DEDUZIR e `aceite_de_custo` a política do destravador manda
+#: ao segurado com o preço (NUNCA SOZINHO); `tecla_ambigua` → DEDUZIR;
+#: `conducao_esgotada`/`loop_guard` → CONDUZIR (voltar ao menu, teto 1);
+#: `human_phase_guard`/`sentinela_stall` → o próprio destravador no lugar do cérebro
+#: recusado; `conferencia_divergente` → RESPONDER com o dado do caso.
+FAMILIAS_DESTRAVAVEIS = frozenset({
+    "sem_chute", "tela_que_decide", "tecla_ambigua", "ramo_indeterminado",
+    "conducao_esgotada", "loop_guard", "human_phase_guard", "sentinela_stall",
+    "conferencia_divergente", "missing_slots",
+})
+
+#: ⛔ As que NUNCA vão ao destravador, mesmo em `on` — continuam indo a uma pessoa
+#: byte a byte. Lista DECLARADA ao lado da de cima, e um guarda exige que as duas
+#: sejam disjuntas (quem puser uma daqui lá em cima fica VERMELHO).
+#: constante_justificada: D1/D10 do Founder (30/09) — o IRREVERSÍVEL e o que é de
+#: gente por regra: sinistro e o que a seguradora mandou chamar gente
+#: (`handoff_trigger`, inclusive `encaminhamento_exige_pessoa`), a recusa de
+#: cobertura, a consultora da seguradora, o carro reserva (`fora_do_horario`,
+#: `exige_documento`), condomínio/empresarial, rota inexistente, a confirmação que a
+#: seguradora barrou, o formulário do app (a resposta não é texto), a URA que fechou
+#: (tem retomada própria), o segurado que não respondeu, e o próprio destravador que
+#: já disse "é de gente" (senão ele se chamaria em laço).
+FAMILIAS_QUE_NUNCA_DESTRAVAM = frozenset({
+    "handoff_trigger", "recusa_de_cobertura", "consultora_da_seguradora",
+    "fora_do_horario", "exige_documento", "apolice_de_condominio_ou_empresa",
+    "playbook_not_found", "confirmacao_bloqueada", "insurer_closed",
+    "segurado_nao_respondeu", "humano_assumiu", "finalize_test_abort",
+    "encaminhado", "encaminhamento_sem_link", "destravador",
+})
+
+#: constante_justificada: o MESMO teto por tela do Sentinela (`MAX_TENTATIVAS_POR_TELA`
+#: = 2, VoiceXML §11.2): se o destravador agiu DUAS vezes na mesma família de trava e
+#: a URA a devolveu de novo, a terceira não tem informação nova — é laço educado.
+TETO_DO_DESTRAVADOR_POR_TRAVA = 2
+#: constante_justificada: CONDUZIR "voltar ao menu" é UMA vez por sessão (contrato da
+#: SPEC-123): um segundo passeio pela mesma URA é o `loop_guard` com outro nome.
+TETO_DE_VOLTA_AO_MENU = 1
+_FAMILIAS_DE_VOLTA_AO_MENU = frozenset({"conducao_esgotada", "loop_guard", "sentinela_stall"})
+#: constante_justificada: o teto de SESSÃO do Sentinela é 6 tentativas; o destravador
+#: tem 4 — cada ação dele chega à seguradora ou ao segurado, e quatro travas
+#: destravadas no MESMO acionamento já dizem que a rota precisa de conserto, não de
+#: mais uma aposta (o que excede vai a uma pessoa, pelo caminho de hoje).
+TETO_DO_DESTRAVADOR_NA_SESSAO = 4
+_MODOS_DO_DESTRAVADOR = ("off", "sombra", "on")
+_LIMIAR_PADRAO = 70
+
+
+def familia_do_motivo(reason: Any) -> str:
+    """`tela_que_decide:escolhe_o_servico` → `tela_que_decide` (a MESMA regra do motor)."""
+    return _motor().familia_do_motivo(str(reason or ""))
+
+
+def _e_trava_de_formulario(session: Dict[str, Any]) -> bool:
+    """O `sem_chute` do FORMULÁRIO do app (o motor grava `flow_resposta` não-ok com o
+    MESMO `missing`): a resposta é o formulário, não um texto à URA — nunca destrava."""
+    fr = session.get("flow_resposta") or {}
+    return bool(fr) and not fr.get("ok") and (
+        list(fr.get("missing") or []) == list(session.get("missing_slots") or []))
+
+
+def trava_destravavel(reason: Any, session: Optional[Dict[str, Any]] = None) -> bool:
+    """PURA. O motivo do motor vai ao destravador no PONTO B?"""
+    familia = familia_do_motivo(reason)
+    if not familia or familia in FAMILIAS_QUE_NUNCA_DESTRAVAM or familia.startswith("formulario_"):
+        return False
+    if familia not in FAMILIAS_DESTRAVAVEIS:
+        return False
+    return not (session is not None and _e_trava_de_formulario(session))
+
+
+def _cabe_mais_um_destravamento(session: Dict[str, Any], familia: str) -> bool:
+    contas = session.get("destravamentos") or {}
+    teto = TETO_DE_VOLTA_AO_MENU if familia in _FAMILIAS_DE_VOLTA_AO_MENU else TETO_DO_DESTRAVADOR_POR_TRAVA
+    return (int(contas.get(familia) or 0) < teto
+            and sum(int(v or 0) for v in contas.values()) < TETO_DO_DESTRAVADOR_NA_SESSAO)
+
+
+def _seguradora_e_ramo(session: Dict[str, Any]) -> tuple:
+    try:
+        from app.services.corridor_playbooks import get_playbook
+
+        pb = get_playbook(str(session.get("playbook_ref") or "")) or {}
+    except Exception:  # noqa: BLE001
+        pb = {}
+    return (str(pb.get("insurer_key") or "").strip().lower(),
+            str(pb.get("line_kind") or "").strip().lower())
+
+
+async def modo_do_destravador_da_sessao(company_id: str, session: Dict[str, Any]) -> tuple:
+    """`(modo, limiar)` desta corretora × seguradora × ramo. ⛔ Falha fecha em `off`."""
+    try:
+        from app.services.destravador import modo_do_destravador
+
+        seg, ramo = _seguradora_e_ramo(session)
+        modo, limiar = await modo_do_destravador(str(company_id or ""), seg, ramo)
+    except Exception as e:  # noqa: BLE001 — sem a chave, o produto é o de hoje
+        logger.warning("[DESTRAVADOR] modo ilegível (%s) — off", type(e).__name__)
+        return "off", _LIMIAR_PADRAO
+    modo = str(modo or "off").strip().lower()
+    if modo not in _MODOS_DO_DESTRAVADOR:
+        return "off", _LIMIAR_PADRAO
+    try:
+        limiar = max(_LIMIAR_PADRAO, int(limiar))
+    except (TypeError, ValueError):
+        limiar = _LIMIAR_PADRAO
+    return modo, limiar
+
+
+async def pedir_ao_destravador(company_id: str, session: Dict[str, Any], *, tela: str,
+                               gatilho: str, ponto: str) -> Optional[Any]:
+    """UMA trava → no máximo UMA decisão (`Destravamento`), ou `None` = siga o de HOJE.
+
+    PONTO "B" (motivo do motor): só famílias destraváveis e dentro do teto; em `sombra`
+    agenda a decisão numa CÓPIA (`agendar_em_sombra`) e devolve None. PONTO "A" (o turno
+    do cérebro/Sentinela): quem chama já sabe que o modo é `on`; aqui só se decide.
+    ⛔ Nunca envia nada e nunca levanta."""
+    familia = familia_do_motivo(gatilho) if ponto == "B" else str(gatilho or "")
+    if ponto == "B" and not trava_destravavel(gatilho, session):
+        return None
+    modo, limiar = await modo_do_destravador_da_sessao(company_id, session)
+    if modo == "off":
+        return None
+    session["diario_do_destravador"] = True
+    if modo == "sombra":
+        if ponto == "B":
+            try:
+                from app.services.destravador import agendar_em_sombra
+
+                agendar_em_sombra(str(company_id), copy.deepcopy(session), str(tela or ""),
+                                  gatilho=str(gatilho or ""))
+            except Exception as e:  # noqa: BLE001 — a sombra nunca derruba o turno
+                logger.warning("[DESTRAVADOR] sombra não agendada (%s)", type(e).__name__)
+        return None
+    if ponto == "B":
+        if not _cabe_mais_um_destravamento(session, familia):
+            logger.info("[DESTRAVADOR] teto atingido para %s — segue o caminho de hoje", familia)
+            return None
+        contas = session.setdefault("destravamentos", {})
+        contas[familia] = int(contas.get(familia) or 0) + 1
+    try:
+        from app.services.destravador import destravar
+
+        d = await destravar(str(company_id), copy.deepcopy(session), str(tela or ""),
+                            gatilho=str(gatilho or ""), modo="on", limiar=limiar)
+    except Exception as e:  # noqa: BLE001 — o contrato diz que não levanta; se levantar, é de gente
+        logger.error("[DESTRAVADOR] destravar falhou (%s) — segue o caminho de hoje", type(e).__name__)
+        return None
+    if d is None:
+        return None
+    rastro = session.setdefault("decisoes_do_destravador", [])
+    rastro.append({"gatilho": str(gatilho or "")[:80], "classe": str(getattr(d, "classe", "") or ""),
+                   "acao": str(getattr(d, "acao", "") or ""), "nota": getattr(d, "nota", None),
+                   "diario_id": getattr(d, "diario_id", None), "em": _agora().isoformat()})
+    del rastro[:-10]
+    return d
+
+
+def _opcoes_para_o_segurado(tela: str, opcoes: Any) -> tuple:
+    """`([[dígito, rótulo], …], numeradas)` — as opções de CONTEÚDO que o destravador
+    escolheu oferecer, como a TELA as escreve. Navegação sai (`navega_para_o_segurado`)."""
+    motor = _motor()
+    da_tela = [(str(d), str(r)) for d, r in (motor.opcoes_numeradas(tela) or [])]
+    saida: List[List[str]] = []
+    for item in list(opcoes or []):
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            d, r = str(item[0]), str(item[1])
+        else:
+            r = str(item or "").strip()
+            achado = [dd for dd, rr in da_tela if " ".join(_norm(rr).split()) == " ".join(_norm(r).split())]
+            d = achado[0] if len(achado) == 1 else ""
+        if not r.strip() or motor.navega_para_o_segurado(r):
+            continue
+        saida.append([d, r])
+    numeradas = bool(saida) and bool(da_tela) and all(d for d, _ in saida)
+    if not numeradas:
+        saida = [[str(i), r] for i, (_d, r) in enumerate(saida, 1)]
+    return saida, numeradas
+
+
+def resposta_do_destravador_para_a_ura(session: Dict[str, Any], espera: Dict[str, Any],
+                                       resposta: str, *, tela_atual: Optional[str] = None) -> tuple:
+    """A resposta do segurado a uma pergunta do DESTRAVADOR numa tela SEM passo →
+    `(o que vai à URA, "ok")` ou `(None, porquê)` — e aí uma pessoa.
+
+    🔴 Sem chute: a opção vem de `valor_do_slot_sem_chute` (a do MOTOR: dígito da lista
+    ou rótulo IGUAL, exatamente UMA) e sai como a TELA a escreve (o dígito, se a tela é
+    numerada). A tela mudou desde a pergunta → None (responder outra tela é o chute)."""
+    motor = _motor()
+    valor, porque = motor.valor_do_slot_sem_chute(espera, resposta)
+    if valor is None:
+        return None, porque
+    tela = str(espera.get("tela") or "")
+    agora = str(tela_atual or "").strip()
+    if agora and " ".join(_norm(agora).split()) != " ".join(_norm(tela).split()):
+        return None, "tela_mudou"
+    if not str(espera.get("slot") or "").endswith("_opcao"):
+        return str(valor)[:600], "ok"
+    if espera.get("numeradas"):
+        for d, r in espera.get("opcoes") or []:
+            if str(r) == str(valor) and str(d).strip():
+                return str(d), "ok"
+        return None, "tecla_recusada"
+    return str(valor)[:600], "ok"
+
+
+def _limpar_a_trava(session: Dict[str, Any], familia: str) -> None:
+    """A trava foi desfeita por quem agiu: o motivo e o que só servia a ela saem."""
+    for k in ("reason", "missing_slots", "motivo_legivel", "parou_em_decisao",
+              "ultimo_passo_sem_dado"):
+        session.pop(k, None)
+    if familia == "conducao_esgotada":
+        session["telas_conduzidas"] = 0
+        session.pop("conduzindo", None)
+    if familia == "human_phase_guard":
+        session["human_phase_guard_fails"] = 0
+        session["retentou_redacao"] = False
+
+
+async def aplicar_destravamento(company_id: str, session: Dict[str, Any], d: Any, *,
+                                estado_vivo: str, insurer_phone: str, tela: str, gatilho: str,
+                                send_to_insurer: Callable[[str], Any],
+                                send_to_client: Callable[[str, str], Any]) -> str:
+    """Aplica a decisão com os EFETORES QUE JÁ EXISTEM. Devolve `respondeu` · `perguntou`
+    · `silencio` · `pessoa` (os dois últimos: quem chamou segue o caminho dele).
+
+    RESPONDER → `reply_human_phase` (fase humana) ou `_emit` (URA) — o MESMO portão ao
+    vivo, o MESMO `menu_pendente`; a sessão volta ao estado VIVO de antes da trava, com
+    `retry_count`, pausa e protocolo intactos. PERGUNTAR → `perguntar_ao_segurado`, com a
+    espera gravada como a do `sem_chute`. ⛔ Nada sai fora destes dois."""
+    motor = _motor()
+    acao = str(getattr(d, "acao", "") or "").upper()
+    valor = str(getattr(d, "valor", "") or "").strip()
+    familia = familia_do_motivo(gatilho)
+    estado_vivo = estado_vivo if estado_vivo in ("ura", "human_phase") else "ura"
+    carga = {"gatilho": str(gatilho or "")[:80], "classe": str(getattr(d, "classe", "") or ""),
+             "nota": getattr(d, "nota", None), "diario_id": getattr(d, "diario_id", None)}
+    if acao == "RESPONDER":
+        passo = f"destravador:{familia or 'turno'}"
+        # ⛔ Cinto do que NUNCA é resposta de URA (a política do destravador já validou;
+        #    isto só barra forma de dado, texto longo demais e o laço de sempre).
+        if (not valor or valor[:1] in "{[" or valor.startswith("```") or len(valor) > 400
+                or motor._would_loop(session, valor, passo)):
+            return "pessoa"
+        if estado_vivo == "human_phase":
+            session = reply_human_phase(session, valor, sender=send_to_insurer)
+        else:
+            session = motor._emit(session, valor, sender=send_to_insurer, next_state="ura", step=passo)
+        session["transcript"][-1].update({"via": "destravador", "step": passo,
+                                          "diario_id": getattr(d, "diario_id", None)})
+        _limpar_a_trava(session, familia)
+        session.pop("falta_para_a_ura", None)
+        session["destravador_agiu"] = True
+        await registrar_ato_do_agente(
+            company_id, session, agente="cerebro",
+            mensagem="O agente analisou a tela travada, respondeu à seguradora e o acionamento seguiu.",
+            payload={"desfecho": "destravou", **carga})
+        return "respondeu"
+    if acao == "PERGUNTAR_AO_SEGURADO":
+        ml = session.get("motivo_legivel") or {}
+        faltam = [str(x) for x in (session.get("missing_slots") or []) if str(x or "").strip()]
+        opcoes, numeradas = _opcoes_para_o_segurado(tela, getattr(d, "opcoes", None))
+        passo = str(ml.get("campo") or (session.get("ultimo_passo_sem_dado") or {}).get("step") or "")
+        try:
+            from app.services.corridor_playbooks import get_playbook
+
+            _passos = {str(p.get("step") or "") for p in
+                       (get_playbook(str(session.get("playbook_ref") or "")) or {}).get("ura_steps") or []}
+        except Exception:  # noqa: BLE001
+            _passos = set()
+        if passo not in _passos:
+            passo = ""   # `tela_que_decide` grava a CLASSE em `campo`, não um passo
+        if len(faltam) == 1:
+            slot = faltam[0]
+        else:
+            slot = "destravador_%s%s" % (motor.id_da_tela(tela), "_opcao" if opcoes else "")
+        rotulo = str(ml.get("rotulo") or valor or "o dado pedido")[:200]
+        pedido = ({"passo": passo, "opcoes": opcoes, "numeradas": numeradas,
+                   "tela": str(tela or "")[-1500:]} if (opcoes or passo) else None)
+        perguntou = await perguntar_ao_segurado(
+            company_id, session, insurer_phone=insurer_phone, slot=slot, rotulo=rotulo,
+            send_to_client=send_to_client, send_to_insurer=send_to_insurer,
+            opcoes=opcoes or None, sem_chute=pedido, pergunta=valor or None)
+        if not perguntou:
+            return "pessoa"
+        session["esperando_do_segurado"].update(
+            {"destravador": True, "diario_id": getattr(d, "diario_id", None)})
+        await _rastro_do_dado_que_faltou(company_id, session, slot=slot, tela=tela,
+                                         origem_da_resposta="segurado")
+        session["state"] = estado_vivo
+        _limpar_a_trava(session, familia)
+        session["falta_para_a_ura"] = {"campo": passo, "slot": slot, "rotulo": rotulo,
+                                       "sem_chute": bool(pedido)}
+        session["destravador_agiu"] = True
+        await registrar_ato_do_agente(
+            company_id, session, agente="cerebro",
+            mensagem="O agente analisou a tela travada e perguntou ao segurado o que só ele sabe.",
+            payload={"desfecho": "perguntou", **carga})
+        return "perguntou"
+    if acao == "SILENCIO":
+        return "silencio"
+    return "pessoa"
+
+
+def motivo_de_pessoa_do_destravador(d: Any) -> str:
+    """O sufixo é a regra que rebaixou (`custo_e_do_segurado`…) — nunca impresso cru ao
+    humano (`motivo_em_portugues` lê só a família `destravador`)."""
+    porque = re.sub(r"[^a-z0-9_]+", "_", _norm(str(getattr(d, "proibicao", "") or ""))).strip("_")
+    return "pessoa:%s" % (porque[:60] or "sem_saida")
+
+
+async def _turno_do_destravador(company_id: str, from_phone: str, session: Dict[str, Any],
+                                tela: str, entradas_antes: int, *,
+                                send_to_insurer: Callable[[str], Any],
+                                send_to_client: Callable[[str, str], Any]) -> str:
+    """PONTO A em `on`: o turno do cérebro da fase humana decidido pelo destravador.
+
+    Mapeia para os ramos que JÁ existem: RESPONDER → a resposta sai como a do cérebro
+    aprovado; SILENCIO → o silêncio deliberado de hoje (com o mesmo teto de três);
+    PERGUNTAR → a pergunta ao segurado; PESSOA → `needs_human` com o motivo
+    `destravador:pessoa:<regra>`, e o dossiê de sempre logo abaixo, no roteador."""
+    d = await pedir_ao_destravador(company_id, session, tela=tela, gatilho="cerebro", ponto="A")
+    # 🔴 RELER DEPOIS DE PENSAR — o mesmo cinto dos outros pontos lentos (SPEC-EXTRA-001.4 C).
+    _dela = await _a_atendente_entrou(company_id, from_phone, session, entradas_antes)
+    if _dela is not None:
+        await _gravar_a_sessao_dela(company_id, from_phone, _dela, entradas_antes)
+        return "atendente"
+    desfecho = "pessoa"
+    if d is not None:
+        desfecho = await aplicar_destravamento(
+            company_id, session, d, estado_vivo="human_phase", insurer_phone=from_phone,
+            tela=tela, gatilho="cerebro", send_to_insurer=send_to_insurer,
+            send_to_client=send_to_client)
+    if desfecho == "respondeu":
+        session["human_phase_guard_fails"] = 0
+        session["retentou_redacao"] = False
+        session["silencios_seguidos"] = 0
+        try:
+            from app.core.heartbeat import beat
+
+            await beat("cerebro", 1)
+        except Exception:  # noqa: BLE001
+            pass
+        return desfecho
+    if desfecho == "silencio":
+        quietos = int(session.get("silencios_seguidos") or 0) + 1
+        session["silencios_seguidos"] = quietos
+        session["silencio_deliberado_ate"] = (
+            datetime.now(timezone.utc) + timedelta(seconds=_SILENCIO_S)).isoformat()
+        await registrar_ato_do_agente(
+            company_id, session, agente="cerebro",
+            mensagem="O agente leu a tela e ficou em silêncio: ela não pedia nada.",
+            payload={"desfecho": "silencio", "seguidos": quietos, "por": "destravador"})
+        if quietos >= 3:
+            session["silencios_seguidos"] = 0
+            session["silencio_deliberado_ate"] = None
+        return desfecho
+    if desfecho == "perguntou":
+        return desfecho
+    session["state"] = "needs_human"
+    session["reason"] = f"destravador:{motivo_de_pessoa_do_destravador(d)}"
+    session["motivo_legivel"] = {
+        "campo": "destravador", "slot": "",
+        "rotulo": str(getattr(d, "explicacao", "") or "")[:300]
+                  or "o agente analisou a tela e concluiu que ela precisa de uma pessoa"}
+    await registrar_ato_do_agente(
+        company_id, session, agente="cerebro",
+        mensagem="O agente analisou a tela e concluiu que ela precisa de uma pessoa.",
+        payload={"desfecho": "pessoa", "gatilho": "cerebro",
+                 "diario_id": getattr(d, "diario_id", None)})
+    return "pessoa"
+
+
+async def marcar_resultado_no_diario(company_id: str, session: Dict[str, Any],
+                                     resultado: str) -> None:
+    """🔴 SPEC-123 · o RESULTADO das decisões deste acionamento no diário (best-effort).
+
+    Só quando o destravador decidiu algo aqui (`on` ou `sombra`); uma vez por resultado.
+    ⛔ Nunca derruba o turno."""
+    run = str(session.get("work_run_id") or "")
+    feitos = session.get("resultados_no_diario") or []
+    if not session.get("diario_do_destravador") or not run or resultado in feitos:
+        return
+    session["resultados_no_diario"] = list(feitos) + [resultado]
+    try:
+        from app.services.diario_de_decisoes import marcar_resultado
+
+        await marcar_resultado(company_id=str(company_id), work_run_id=run, resultado=resultado)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[DESTRAVADOR] resultado %s não anotado no diário (%s)",
+                       resultado, type(e).__name__)
 
 
 async def try_route_insurer_inbound(
@@ -4201,7 +4637,28 @@ async def try_route_insurer_inbound(
     # numa pergunta só (ver `_tela_do_turno`).
     # 🔴 SPEC-EXTRA-001.4 C — `not _em_pausa`: com a atendente na conversa, o
     #    Cérebro não redige. D3 — nem enquanto se espera o segurado.
+    #
+    # 🔴 SPEC-123 F1b · PONTO A — em `on`, o DESTRAVADOR decide este turno NO LUGAR de
+    #    `human_reply_provider` + guarda (as MESMAS condições do turno de hoje). Em
+    #    `sombra`/`off` o turno abaixo roda EXATAMENTE como hoje (a sombra dele é a
+    #    `agendar_sombra` de sempre, cujo miolo a F1a troca).
+    _o_destravador_decidiu = False
     if (state == "human_phase" and human_reply_provider is not None
+            and session.get("pending_insurer_messages")
+            and not ainda_vem_mais and not _ja_respondeu and not _em_pausa
+            and not session.get("esperando_do_segurado")):
+        _modo_a, _ = await modo_do_destravador_da_sessao(company_id, session)
+        if _modo_a == "sombra":
+            session["diario_do_destravador"] = True
+        if _modo_a == "on":
+            _o_destravador_decidiu = True
+            _desfecho_a = await _turno_do_destravador(
+                company_id, from_phone, session, _tela_do_turno(session, text), _entradas_antes,
+                send_to_insurer=send_to_insurer, send_to_client=send_to_client)
+            if _desfecho_a == "atendente":
+                return True
+            state = session.get("state")
+    if (not _o_destravador_decidiu and state == "human_phase" and human_reply_provider is not None
             and session.get("pending_insurer_messages")
             and not ainda_vem_mais and not _ja_respondeu and not _em_pausa
             and not session.get("esperando_do_segurado")):
@@ -4484,6 +4941,9 @@ async def try_route_insurer_inbound(
         return True
 
     if state == "captured":
+        # 🔴 SPEC-123 — o protocolo saiu: as decisões do destravador neste acionamento
+        #    ganham o resultado (best-effort, nunca derruba o aviso ao segurado).
+        await marcar_resultado_no_diario(company_id, session, "protocolo_saiu")
         summary = client_summary_from_capture(session)
         client_phone = str(session.get("client_phone") or "").strip()
         if summary and client_phone:
@@ -4528,6 +4988,8 @@ async def try_route_insurer_inbound(
         # 🔴 A ATENDENTE ASSUMIU: "nada mais sai". Sem retomada, sem
         #    dossiê, sem aviso ao segurado — a atendente está com o caso. Quando a
         #    URA encerra, o número da seguradora é liberado para a fila.
+        if session.get("destravador_agiu"):   # SPEC-123: a pessoa veio DEPOIS de uma decisão autônoma
+            await marcar_resultado_no_diario(company_id, session, "humano_corrigiu")
         if session.get("seguradora_encerrou"):
             await save_active_dispatch(company_id, from_phone, session)
             await clear_active_dispatch(company_id, from_phone)
@@ -4538,6 +5000,37 @@ async def try_route_insurer_inbound(
 
     if state == "needs_human":
         reason = str(session.get("reason") or "")
+        # 🔴 SPEC-123 F1b · PONTO B — a trava que o MOTOR decidiu vai ao destravador
+        #    ANTES da retomada e do dossiê (o padrão do `sem_chute` acima): só a trava
+        #    NASCIDA neste turno (estado vivo antes do motor), com a rajada inteira, sem
+        #    a atendente e sem pergunta no ar. `off` → nada aqui; `sombra` → cópia ao
+        #    diário; `on` → age, e só então o `needs_human` é desfeito.
+        if (_estado_antes_do_motor in ("ura", "human_phase") and not ainda_vem_mais
+                and not _ja_respondeu and not _em_pausa
+                and not session.get("esperando_do_segurado")
+                and trava_destravavel(reason, session)):
+            _tela_b = motor.tela_respondida(session) or str(text or "")
+            _d_b = await pedir_ao_destravador(company_id, session, tela=_tela_b,
+                                              gatilho=reason, ponto="B")
+            if _d_b is not None:
+                _dela_b = await _a_atendente_entrou(company_id, from_phone, session, _entradas_antes)
+                if _dela_b is not None:
+                    await _gravar_a_sessao_dela(company_id, from_phone, _dela_b, _entradas_antes)
+                    return True
+                _desfecho_b = await aplicar_destravamento(
+                    company_id, session, _d_b, estado_vivo=_estado_antes_do_motor,
+                    insurer_phone=from_phone, tela=_tela_b, gatilho=reason,
+                    send_to_insurer=send_to_insurer, send_to_client=send_to_client)
+                if _desfecho_b in ("respondeu", "perguntou"):
+                    logger.info("[DISPATCH ROUTER] trava %s destravada (%s)", reason, _desfecho_b)
+                    await save_active_dispatch(company_id, from_phone, session)
+                    return True
+                # PESSOA / SILENCIO: o caminho de hoje, com o motivo ORIGINAL do motor.
+        # 🔴 SPEC-123 · o resultado das decisões do destravador neste acionamento.
+        if reason == "insurer_closed":
+            await marcar_resultado_no_diario(company_id, session, "ura_fechou")
+        elif session.get("destravador_agiu"):
+            await marcar_resultado_no_diario(company_id, session, "humano_corrigiu")
         # RETOMADA AUTOMÁTICA: a URA derrubou a conversa (timeout/erro) e o fluxo
         # é idempotente até o freio → reabre SOZINHO uma vez, sem humano.
         # `not session.get("captured")` — a guarda que faltava.

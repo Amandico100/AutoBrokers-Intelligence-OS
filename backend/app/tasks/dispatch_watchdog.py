@@ -476,6 +476,104 @@ async def _anotar_vigia(company_id: str, finding: str, session: Dict[str, Any],
         severidade="warning")
 
 
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-123 F1b — o DESTRAVADOR no Sentinela (as regras moram no roteador:
+#    `dispatch_router.pedir_ao_destravador` / `aplicar_destravamento`; aqui só o
+#    TRANSPORTE do Sentinela, que roda no relógio e fala pelo canal da conversa).
+# ---------------------------------------------------------------------------
+def _canais_do_sentinela(insurer_phone: str, wa, integration):
+    def _a_ura(texto: str) -> None:
+        wa.send_message(insurer_phone, texto, integration)
+
+    def _ao_segurado(fone: str, texto: str) -> None:
+        wa.send_message(fone, texto, integration)
+
+    return _a_ura, _ao_segurado
+
+
+async def _resultado_no_diario(company_id: str, session: Dict[str, Any], resultado: str) -> None:
+    try:
+        from app.services.dispatch_router import marcar_resultado_no_diario
+
+        await marcar_resultado_no_diario(company_id, session, resultado)
+    except Exception as e:  # noqa: BLE001 — o diário nunca derruba o Vigia
+        logger.warning("[SENTINELA] resultado não anotado (%s)", type(e).__name__)
+
+
+async def _destravar_no_sentinela(company_id: str, insurer_phone: str, session: Dict[str, Any],
+                                  wa, integration, *, tela: str, gatilho: str) -> Optional[str]:
+    """PONTO B no Sentinela: a trava (`tela_que_decide:*`, `sentinela_stall`) vai ao
+    destravador ANTES do dossiê. Devolve o desfecho se ele AGIU; `None` = o de hoje."""
+    from app.services.dispatch_router import (
+        _ler_do_redis, aplicar_destravamento, pedir_ao_destravador,
+    )
+
+    d = await pedir_ao_destravador(company_id, session, tela=tela, gatilho=gatilho, ponto="B")
+    if d is None:
+        return None
+    try:
+        if _preservar_a_atendente(session, await _ler_do_redis(company_id, insurer_phone)):
+            return "pausa_humana"
+    except Exception as e:  # noqa: BLE001 — sem reler, segue como sempre seguiu
+        logger.warning("[SENTINELA] sessão não relida depois do destravador (%s)", type(e).__name__)
+    if integration is None:
+        return None   # sem canal: o handoff de hoje, que já falha ALTO
+    estado = str(session.get("state") or "")
+    a_ura, ao_segurado = _canais_do_sentinela(insurer_phone, wa, integration)
+    desfecho = await aplicar_destravamento(
+        company_id, session, d, estado_vivo=estado if estado in ("ura", "human_phase") else "ura",
+        insurer_phone=insurer_phone, tela=tela, gatilho=gatilho,
+        send_to_insurer=a_ura, send_to_client=ao_segurado)
+    if desfecho in ("respondeu", "perguntou"):
+        logger.info("[SENTINELA] trava %s destravada pelo destravador (%s)", gatilho, desfecho)
+        return f"destravador_{desfecho}"
+    return None
+
+
+async def _tentativa_do_destravador(company_id: str, insurer_phone: str, session: Dict[str, Any],
+                                    wa, integration, *, tela: str):
+    """PONTO A no Sentinela, em `on`: a tentativa da escada decidida pelo destravador.
+
+    `None` (modo não é `on` → `_adaptive_reply` de hoje) · `("resposta", texto)` (entra
+    no ENVIO de hoje, como a resposta aprovada) · `("fim", desfecho)` · `("pessoa", motivo)`."""
+    from app.services.dispatch_router import (
+        _SILENCIO_S, _ler_do_redis, aplicar_destravamento, modo_do_destravador_da_sessao,
+        motivo_de_pessoa_do_destravador, pedir_ao_destravador,
+    )
+
+    modo, _limiar = await modo_do_destravador_da_sessao(company_id, session)
+    if modo != "on":
+        return None
+    d = await pedir_ao_destravador(company_id, session, tela=tela, gatilho="sentinela", ponto="A")
+    acao = str(getattr(d, "acao", "") or "").upper() if d is not None else "PESSOA"
+    valor = str(getattr(d, "valor", "") or "").strip() if d is not None else ""
+    if acao == "RESPONDER":
+        # ⛔ O mesmo cinto do roteador: forma de dado e texto longo nunca vão à URA.
+        if valor and valor[:1] not in "{[" and not valor.startswith("```") and len(valor) <= 400:
+            session["destravador_agiu"] = True
+            return ("resposta", valor)
+        return ("pessoa", motivo_de_pessoa_do_destravador(d))
+    if acao == "SILENCIO":
+        session["silencio_deliberado_ate"] = datetime.fromtimestamp(
+            datetime.now(timezone.utc).timestamp() + _SILENCIO_S, timezone.utc).isoformat()
+        return ("fim", "silencio")
+    if acao == "PERGUNTAR_AO_SEGURADO" and integration is not None:
+        try:
+            if _preservar_a_atendente(session, await _ler_do_redis(company_id, insurer_phone)):
+                return ("fim", "pausa_humana")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[SENTINELA] sessão não relida antes da pergunta (%s)", type(e).__name__)
+        estado = str(session.get("state") or "")
+        a_ura, ao_segurado = _canais_do_sentinela(insurer_phone, wa, integration)
+        desfecho = await aplicar_destravamento(
+            company_id, session, d, estado_vivo=estado if estado in ("ura", "human_phase") else "ura",
+            insurer_phone=insurer_phone, tela=tela, gatilho="sentinela",
+            send_to_insurer=a_ura, send_to_client=ao_segurado)
+        if desfecho == "perguntou":
+            return ("fim", "perguntou")
+    return ("pessoa", motivo_de_pessoa_do_destravador(d))
+
+
 async def _sentinela_recover(
     company_id: str, insurer_phone: str, session: Dict[str, Any], wa, integration
 ) -> str:
@@ -570,12 +668,21 @@ async def _sentinela_recover(
                 logger.warning("[SENTINELA] sessão não relida antes do handoff "
                                "da tela que decide (%s)", type(e).__name__)
             
+            # 🔴 SPEC-123 F1b · PONTO B no Sentinela — a MESMA trava do corredor
+            #    (`tela_que_decide:*`) vai ao destravador antes do dossiê; `off` → nada.
+            _pelo_destravador = await _destravar_no_sentinela(
+                company_id, insurer_phone, session, wa, integration, tela=tela,
+                gatilho=f"tela_que_decide:{_classe['chave']}")
+            if _pelo_destravador:
+                return _pelo_destravador
             await _ato_do_sentinela(company_id, session, "tela_que_decide",
                                     {"classe": _classe["chave"]})
             session["state"] = "needs_human"
             session["reason"] = f"tela_que_decide:{_classe['chave']}"
             session["motivo_legivel"] = {"campo": _classe["chave"], "slot": "",
                                          "rotulo": _classe["porque"]}
+            if session.get("destravador_agiu"):   # SPEC-123: a pessoa vem DEPOIS de uma decisão autônoma
+                await _resultado_no_diario(company_id, session, "humano_corrigiu")
             dossier = build_handoff_dossier(session, reason=_classe["porque"])
             # 🔴 O DOSSIÊ E O AVISO AO SEGURADO SÃO OS MESMOS DO RAMO DE
             #    ESGOTAMENTO, logo abaixo — e a razão é a SPEC-085 B.0: handoff
@@ -598,8 +705,26 @@ async def _sentinela_recover(
                            _classe["chave"], _classe["porque"])
             return "tela_que_decide"
 
+    # 🔴 SPEC-123 F1b · PONTO A no Sentinela — em `on`, o DESTRAVADOR decide a tentativa
+    #    no lugar de `_adaptive_reply` + guarda; a escada, os tetos, a releitura da
+    #    atendente e o ENVIO continuam os de hoje (RESPONDER entra como a resposta
+    #    aprovada). `off`/`sombra` → exatamente o de hoje.
+    _pessoa_do_destravador = ""
+    _destravador_consultado = False
     if na_tela < MAX_TENTATIVAS_POR_TELA and attempts < MAX_TENTATIVAS_NA_SESSAO:
-        reply = await _adaptive_reply(company_id, session, insurer_text)
+        _pelo_destravador = await _tentativa_do_destravador(
+            company_id, insurer_phone, session, wa, integration, tela=tela)
+        if _pelo_destravador is None:
+            reply = await _adaptive_reply(company_id, session, insurer_text)
+        else:
+            _destravador_consultado = True
+            _tipo, _valor = _pelo_destravador
+            if _tipo == "fim":
+                if _valor != "pausa_humana":
+                    _consumir()
+                return _valor
+            reply = _valor if _tipo == "resposta" else None
+            _pessoa_do_destravador = _valor if _tipo == "pessoa" else ""
 
         # 🔴 O GUARDA PRECISA VER A TELA — 18/08/2026.
         #
@@ -615,7 +740,9 @@ async def _sentinela_recover(
         # FALSO.
         verdict = (guard_human_phase_reply(reply or "", session,
                                            insurer_message=insurer_text)
-                   if reply else {"ok": False})
+                   if reply and not _destravador_consultado else
+                   # SPEC-123: a resposta do destravador já passou pela POLÍTICA dele.
+                   {"ok": True} if reply else {"ok": False})
         if reply and verdict.get("ok", False):
             # 🔴 ENVIAR PRIMEIRO, GRAVAR DEPOIS — 18/08/2026.
             #
@@ -705,12 +832,30 @@ async def _sentinela_recover(
                                 {"tentativa": attempts + 1, "tentativa_na_tela": na_tela + 1,
                                  "motivo": str((verdict or {}).get("reason") or "")[:80]})
 
+    # 🔴 SPEC-123 F1b · PONTO B no Sentinela — a escada esgotou SEM o destravador ter
+    #    sido ouvido nesta volta (modo `off`/`sombra`, ou os tetos da escada): a trava
+    #    `sentinela_stall` vai a ele antes do dossiê. Se ele já decidiu PESSOA aqui, não.
+    if not _destravador_consultado:
+        _pelo_destravador = await _destravar_no_sentinela(
+            company_id, insurer_phone, session, wa, integration, tela=tela,
+            gatilho="sentinela_stall")
+        if _pelo_destravador:
+            return _pelo_destravador
     # Esgotou a escada → handoff com dossiê + alerta. Nunca fica em silêncio.
     await _ato_do_sentinela(company_id, session, "esgotou",
                             {"tentativas": attempts, "tentativas_na_tela": na_tela})
     session["state"] = "needs_human"
     session["reason"] = "sentinela_stall"
-    dossier = build_handoff_dossier(session, reason="Travou na URA e a recuperação automática esgotou")
+    if _pessoa_do_destravador:
+        # O destravador leu a tela e decidiu que é de gente: o motivo diz ISSO.
+        session["state"] = "needs_human"
+        session["reason"] = f"destravador:{_pessoa_do_destravador}"
+    if session.get("destravador_agiu"):   # a pessoa vem DEPOIS de uma decisão autônoma
+        await _resultado_no_diario(company_id, session, "humano_corrigiu")
+    dossier = build_handoff_dossier(
+        session, reason=("O agente analisou a tela e concluiu que ela precisa de uma pessoa"
+                         if _pessoa_do_destravador else
+                         "Travou na URA e a recuperação automática esgotou"))
     # 🔴 `dossier_sent = True` era INCONDICIONAL — 18/08/2026.
     #
     # `_support_alert` engole a própria exceção e loga. Com `integration=None`
@@ -748,8 +893,11 @@ async def _sentinela_recover(
     # investigação; feed que mente encerra antes ainda.
     await _anunciar_o_handoff_no_feed(
         company_id, bool(session.get("dossier_sent")), segurado_avisado,
-        "A URA parou de responder e a recuperação automática esgotou",
-        "A recuperação automática esgotou")
+        ("O agente analisou a tela e concluiu que ela precisa de uma pessoa"
+         if _pessoa_do_destravador else
+         "A URA parou de responder e a recuperação automática esgotou"),
+        ("O agente concluiu que a tela precisa de uma pessoa"
+         if _pessoa_do_destravador else "A recuperação automática esgotou"))
     logger.warning(f"[SENTINELA] escada esgotada → needs_human case={session.get('case_id')}")
     return "handoff"
 

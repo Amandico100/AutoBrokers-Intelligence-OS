@@ -5539,6 +5539,14 @@ _MOTIVOS_EM_PORTUGUES = {
                           "para não abrir o chamado em duplicidade",
     "sentinela_stall": "a conversa ficou parada e as tentativas automáticas de "
                        "retomar acabaram",
+    # --- SPEC-123 F1b: o destravador olhou a tela e decidiu chamar gente -----
+    # 🔴 O sufixo (`pessoa:custo_e_do_segurado`, `pessoa:segunda_opiniao_discordou`)
+    #    é nome de regra interna e NUNCA é impresso: a atendente lê a frase, e o
+    #    porquê detalhado mora no diário de decisões do painel.
+    "destravador": "o robô analisou a tela da seguradora com todo o contexto do caso "
+                   "e concluiu que esta decisão precisa de uma pessoa (ela é "
+                   "irreversível, custa dinheiro ao segurado ou ele não teve certeza "
+                   "suficiente) — responda você essa tela na conversa com a seguradora",
     # --- formulário do app ---------------------------------------------
     "formulario_nativo_desconhecido": "a seguradora abriu um formulário dentro "
                                       "do app que o robô ainda não conhece",
@@ -6120,6 +6128,11 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     # A resposta coletada serve para duas opções do menu. Uma pessoa desempata;
     # o robô, repetindo, empataria de novo.
     "tecla_ambigua": DIRETO_AO_HUMANO,
+    # 🔴 SPEC-123 F1b — o DESTRAVADOR, com a tela real e o caso inteiro, decidiu que
+    #    é de gente (o NUNCA SOZINHO, a segunda opinião discordou, a nota não bastou).
+    #    Retomar refaria o corredor até a MESMA tela e o destravador decidiria o mesmo
+    #    — e o teto dele por sessão já foi gasto nesta trava.
+    "destravador": DIRETO_AO_HUMANO,
 
     # ---- NÃO RETOMA, E CONTINUAR TAMBÉM NÃO RESOLVE ----
     # A conferência já tem escada própria (as correções por campo, até o teto).

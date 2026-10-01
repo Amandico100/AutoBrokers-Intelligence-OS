@@ -132,6 +132,14 @@ ISENTOS = {
     "dispatch_watchdog.py::_segurar_ou_desistir":
         "o 'um instante' vai à SEGURADORA e o aviso de handoff ao segurado CONTINUA um "
         "acionamento em curso (a pergunta que ele não respondeu) — a mesma razão do Sentinela",
+    # SPEC-123 F1b — decisão consciente, com o motivo: o TRANSPORTE do destravador no
+    # Sentinela. São os dois canais que o `_sentinela_recover` já usa inline, embrulhados
+    # para os efetores do roteador (`aplicar_destravamento`), dentro do MESMO acionamento.
+    "dispatch_watchdog.py::_canais_do_sentinela":
+        "o destravador do Sentinela responde à SEGURADORA e, quando só o segurado sabe, "
+        "pergunta a ele DENTRO de um acionamento em curso — a mesma razão de _segurar_ou_desistir",
+    "dispatch_watchdog.py::_a_ura":
+        "o destino é a SEGURADORA (a URA), não o segurado — a mesma razão de _send_to_insurer",
 }
 
 

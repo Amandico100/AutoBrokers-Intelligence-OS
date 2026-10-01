@@ -50,6 +50,10 @@ MAPA = {
     "chat_principal": ("anthropic", "claude-opus-5-5", None),
     "portal_decisao": ("anthropic", "claude-opus-5-5", None),
     "dispatch": ("openai", "gpt-6.1-sol", "high"),
+    # SPEC-123 F1a (30/09/2026, migration 20260930_03): os dois papéis do DESTRAVADOR nascem COM
+    # reserva de outro provedor (valores provisórios do contrato; a F2 reescreve pela bancada).
+    "destravador": ("anthropic", "claude-sonnet-5-5", None),
+    "destravador_segunda": ("openai", "gpt-6.1-sol", "high"),
 }
 
 
@@ -214,11 +218,11 @@ _DISPATCH_PELO_HELPER = re.compile(r"""invocar_com_reserva\(\s*(?:papel\s*=\s*)?
 
 #: Os chamadores de PRODUÇÃO da rota `dispatch` — todos pelo helper (com a reserva).
 CHAMADORES_DO_DISPATCH = ["dispatch_router.py", "dispatch_watchdog.py", "webhook.py"]
-#: A ÚNICA exceção declarada, com o porquê. SPEC-122 F3 + conserto único (30/09): a SOMBRA do cérebro chama o
-#: PRIMÁRIO do dispatch DIRETO, sem reserva e só com o disjuntor fechado — de propósito (juiz P2 / red team P4):
-#: pela reserva, uma falha da sombra gastaria a cota do provedor de que a produção depende naquele momento; ela
-#: decide e NÃO envia. §9.3: a lista acompanha o fato; a forma (produção passa pelo helper) não afrouxa.
-EXCECOES_SEM_RESERVA = {"acao_do_cerebro.py": "sombra do cérebro: mede o primário, não envia, não disputa a reserva"}
+#: As exceções declaradas, com o porquê. SPEC-122 F3 tinha UMA: a SOMBRA do cérebro chamava o primário do dispatch
+#: DIRETO. SPEC-123 F1a (30/09/2026): a sombra passou a ser o DESTRAVADOR, que chama o papel `destravador` (não o
+#: `dispatch`) — isolado do mesmo jeito (`destravador._chamar_isolado`). A exceção MORREU com a V2 em sombra.
+#: §9.3: a lista acompanha o fato; a forma (produção passa pelo helper) não afrouxa — o CONTROLE abaixo continua.
+EXCECOES_SEM_RESERVA: dict = {}
 
 
 def _chamadores_do_dispatch(fontes: dict) -> tuple:

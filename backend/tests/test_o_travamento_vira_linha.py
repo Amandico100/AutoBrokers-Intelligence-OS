@@ -185,6 +185,10 @@ FAMILIAS_DE_TRAVAMENTO = {
     # `exige_documento` — o PDF do orçamento de reparo; só uma pessoa o envia.
     "fora_do_horario",
     "exige_documento",
+    # 🔴 SPEC-123 F1b — DIRETO AO HUMANO: `destravador` (`destravador:pessoa:<regra>`).
+    #    O destravador leu a tela com o caso inteiro e decidiu que é de gente; nasce
+    #    colado no `needs_human` no roteador e no Sentinela, e o dossiê de sempre sai.
+    "destravador",
 }
 
 _RE_REASON = re.compile(r'session\["reason"\]\s*=\s*(.+)')

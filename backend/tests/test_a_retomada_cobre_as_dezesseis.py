@@ -225,8 +225,12 @@ def test_sao_dezesseis():
     #    `direto_ao_humano` — `fora_do_horario` (📊 a Yelum: "nenhum especialista…
     #    09h às 17h") e `exige_documento` (📊 o PDF do orçamento no ramo "reparo em
     #    outra seguradora").
-    assert len(familias) == 28, (
-        f"o fonte tem {len(familias)} famílias de travamento, não 28: "
+    # 🔴 E VINTE E OITO VIROU VINTE E NOVE (SPEC-123 F1b): +1, `destravador` —
+    #    `direto_ao_humano`. O destravador leu a tela com o caso inteiro e decidiu
+    #    que é de gente (o NUNCA SOZINHO, a 2ª opinião discordou, a nota não bastou):
+    #    retomar o levaria à mesma tela e à mesma decisão.
+    assert len(familias) == 29, (
+        f"o fonte tem {len(familias)} famílias de travamento, não 29: "
         f"{sorted(familias)}")
 
 
@@ -269,6 +273,7 @@ def test_sao_dezesseis():
     ("ramo_indeterminado", M.DIRETO_AO_HUMANO),
     ("tecla_ambigua", M.DIRETO_AO_HUMANO),
     ("apolice_de_condominio_ou_empresa", M.DIRETO_AO_HUMANO),
+    ("destravador", M.DIRETO_AO_HUMANO),
     # não retoma, e continuar também não resolve — falta CONSERTO
     ("conferencia_divergente", M.NAO_RETOMA),
     ("loop_guard", M.NAO_RETOMA),
