@@ -1670,8 +1670,11 @@ def relatorio_de_arquivo(caminho: str) -> str:
 #    (`acao_do_cerebro`), e a bancada o IMPORTA de lá — a sombra roda a V2 que a bancada mede.
 from app.services.acao_do_cerebro import VARIANTES, mensagens_da_variante  # noqa: E402,F401
 
-#: As seguradoras em que a ida e volta com o segurado é PROIBIDA (D-122 D2: a URA encerra em ~3–4 min).
-SEM_IDA_E_VOLTA = frozenset({"allianz", "alfa"})
+#: As seguradoras em que a ida e volta com o segurado é PROIBIDA. Era {"allianz", "alfa"} (D-122 D2:
+#: a URA encerra em ~3–4 min). 🔴 SPEC-123 D6: TODAS perguntam — a URA que fecha é retomada com a
+#: resposta (`insurer_dispatch_service.pode_retomar_com_a_resposta`); o que muda é o prazo. Vazio, e
+#: o guarda exige que continue disjunto da tabela do produto (`IDA_E_VOLTA_AO_SEGURADO`).
+SEM_IDA_E_VOLTA = frozenset()
 
 
 def _norm_opcao(s: str) -> str:
@@ -1848,9 +1851,10 @@ def tabela_do_cerebro(resumo: dict) -> str:
 #       → destravador.destravar(company_id=<tenant fictício>, sessao, tela, gatilho=<do caso>, modo="on")
 #            · o prompt é o do DESTRAVADOR (`compor_mensagens`) — o MESMO para todo braço
 #            · o parser estrito, a POLÍTICA EM CÓDIGO (classes, limiar, NUNCA, conferente) — do produto
-#            · BORDA dublada: `_chamar_quem_decide` → o BRAÇO (override da bancada, ledger 'bancada',
-#              details.papel='destravador'); `_segunda_opiniao` → o BRAÇO DA 2ª OPINIÃO
-#              (details.papel='destravador_segunda'); `registrar_decisao` → dublê (nada no diário real)
+#            · o BRAÇO entra por INJEÇÃO (`destravar(llm=ModeloInjetado, llm_segunda=…)`, F1c — nada
+#              trocado pelo nome): ledger 'bancada', details.papel='destravador' / 'destravador_segunda',
+#              as mensagens no formato do provedor (o cache de prompt de produção);
+#              `registrar_decisao` → dublê (nada no diário real)
 #       → o VEREDITO contra o gabarito (`oraculo.destravador`) — um juiz INDEPENDENTE da política
 #
 # ⛔ O juiz NÃO usa as regras do produto para decidir o que é grave: ele lê o GABARITO do caso
@@ -2077,8 +2081,6 @@ async def motor_destravador(caso: dict, ctx: Contexto) -> dict:
     """SPEC-123 F2a · N1 — UMA trava através do DESTRAVADOR do produto (ver O FIO acima)."""
     import importlib
 
-    from app.agents.utils import extract_text_from_content
-
     DT = importlib.import_module("app.services.destravador")
     ent = caso.get("entrada") or {}
     gab = (caso.get("oraculo") or {}).get("destravador") or {}
@@ -2089,36 +2091,39 @@ async def motor_destravador(caso: dict, ctx: Contexto) -> dict:
     diario: List[dict] = []
     pedidos: List[str] = []
 
-    async def _quem_decide(mensagens, company_id, modo):
-        pedidos.append(hashlib.sha256(str(getattr(mensagens[0], "content", "")).encode()).hexdigest()[:12])
-        try:
-            resp = await _com_retomada(lambda: ctx.llm.ainvoke(mensagens),
-                                       lambda: ctx.llm.ainvoke(mensagens), ctx)
-        except TetoDeGastoAtingido as exc:
-            teto["exc"] = exc
-            raise
-        return resp, ctx.braco.provider, ctx.braco.model
+    class _Braco:
+        """O braço da bancada como `destravador.ModeloInjetado.llm`: a retomada da bancada e o
+        teto (que PARA a rodada mesmo que o destravador, que nunca levanta, o engula)."""
 
-    async def _segunda(mensagens, company_id, modo, provedor, tela_):
-        seg = ctx.segunda
-        if not seg:
-            return None, 0.0
+        def __init__(self, llm, retomar: bool, hashes: bool):
+            self.llm, self.retomar, self.hashes = llm, retomar, hashes
+
+        async def ainvoke(self, mensagens):
+            if self.hashes:
+                pedidos.append(hashlib.sha256(DT.texto_da_mensagem(mensagens[0]).encode()).hexdigest()[:12])
+            try:
+                if self.retomar:
+                    return await _com_retomada(lambda: self.llm.ainvoke(mensagens),
+                                               lambda: self.llm.ainvoke(mensagens), ctx)
+                return await self.llm.ainvoke(mensagens)
+            except TetoDeGastoAtingido as exc:
+                teto["exc"] = exc
+                raise
+            except Exception as exc:  # noqa: BLE001 — a nota da rodada diz o que caiu
+                if not self.retomar:
+                    ctx.notas.append(f"2ª opinião falhou ({type(exc).__name__})")
+                raise
+
+    llm = DT.ModeloInjetado(llm=_Braco(ctx.llm, True, True), provedor=ctx.braco.provider,
+                            modelo=ctx.braco.model)
+    seg = ctx.segunda
+    llm_segunda = None
+    if seg:
         b2 = seg["braco"]
-        if b2.provider == str(provedor or "").strip().lower():
+        if b2.provider == str(ctx.braco.provider or "").strip().lower():
             ctx.notas.append("2ª opinião do MESMO provedor de quem decidiu — não chamada (D3)")
-            return None, 0.0
-        try:
-            r = await seg["llm"].ainvoke(mensagens)
-        except TetoDeGastoAtingido as exc:
-            teto["exc"] = exc
-            raise
-        except Exception as exc:  # noqa: BLE001 — como no produto: 2ª opinião que falha = sem 2ª
-            ctx.notas.append(f"2ª opinião falhou ({type(exc).__name__})")
-            return None, 0.0
-        pr = DT.ler_destravamento(extract_text_from_content(getattr(r, "content", None)) or "")
-        return ({"provedor": b2.provider, "modelo": b2.model, "classe": pr.classe,
-                 "acao": pr.acao if pr.formato_ok else "PESSOA", "valor": pr.valor, "nota": pr.nota,
-                 "formato_ok": pr.formato_ok, "concordou": False}, 0.0)
+        llm_segunda = DT.ModeloInjetado(llm=_Braco(seg["llm"], False, False), provedor=b2.provider,
+                                        modelo=b2.model)
 
     async def _diario_duble(**kw):
         diario.append({k: kw.get(k) for k in ("classe", "acao", "nota", "limiar", "modo", "gatilho",
@@ -2126,15 +2131,14 @@ async def motor_destravador(caso: dict, ctx: Contexto) -> dict:
         return f"diario-bancada-{len(diario)}"
 
     with contextlib.ExitStack() as pilha:
-        pilha.enter_context(D.atributo_trocado(DT, "_chamar_quem_decide", _quem_decide))
-        pilha.enter_context(D.atributo_trocado(DT, "_segunda_opiniao", _segunda))
         try:
             DD = importlib.import_module("app.services.diario_de_decisoes")
             pilha.enter_context(D.atributo_trocado(DD, "registrar_decisao", _diario_duble))
         except ImportError:
             ctx.notas.append("diario_de_decisoes ausente — o destravador segue sem linha")
         dec = await DT.destravar(TENANTS[caso.get("tenant") or "A"], sessao, tela, gatilho=gatilho,
-                                 modo="on", limiar=int(getattr(DT, "LIMIAR_MINIMO", 70)))
+                                 modo="on", limiar=int(getattr(DT, "LIMIAR_MINIMO", 70)),
+                                 llm=llm, llm_segunda=llm_segunda)
     if teto.get("exc"):
         raise teto["exc"]
     d = dec.para_dict() if hasattr(dec, "para_dict") else dict(dec)

@@ -595,7 +595,8 @@ class LLMFactory:
 async def invocar_com_reserva(papel: str, mensagens: list, *, company_id: Optional[str] = None,
                               agent_id: Optional[str] = None,
                               service_type: Optional[str] = None,
-                              classe_de_dado: Optional[str] = None):
+                              classe_de_dado: Optional[str] = None,
+                              preparar: Optional[Any] = None):
     """UMA chamada de decisão pelo papel, com a RESERVA declarada na rota.
 
     Para quem chama `create_llm(papel=…)` → `ainvoke` direto, SEM ferramentas
@@ -610,6 +611,11 @@ async def invocar_com_reserva(papel: str, mensagens: list, *, company_id: Option
 
     O ledger da reserva grava `reserva_usada=True` + `motivo_reserva` (o motivo
     vai no `config.metadata`, que o `CostCallbackHandler` lê).
+
+    `preparar(provedor, mensagens) -> mensagens` (SPEC-123 F1c, opcional): o
+    formato POR PROVEDOR de quem vai de fato responder — o `cache_control` da
+    Anthropic não pode ir à OpenAI (ela recusa o campo), e a reserva troca de
+    provedor. Sem `preparar`, as mensagens vão como vieram (todo chamador de antes).
     """
     from app.core.relogio_do_modelo import estado_do_breaker, motivo_de_reserva
 
@@ -623,7 +629,8 @@ async def invocar_com_reserva(papel: str, mensagens: list, *, company_id: Option
         llm_r = LLMFactory.create_llm({}, {}, company_id=company_id, agent_id=agent_id,
                                       service_type=service_type, modelo_resolvido=reserva,
                                       reserva_usada=True)
-        return await llm_r.ainvoke(mensagens, config={"metadata": {"motivo_reserva": motivo}})
+        msgs_r = preparar(reserva.provider, mensagens) if preparar else mensagens
+        return await llm_r.ainvoke(msgs_r, config={"metadata": {"motivo_reserva": motivo}})
 
     if reserva is not None:
         try:
@@ -636,7 +643,7 @@ async def invocar_com_reserva(papel: str, mensagens: list, *, company_id: Option
     llm = LLMFactory.create_llm({}, {}, company_id=company_id, agent_id=agent_id,
                                 service_type=service_type, modelo_resolvido=resolvido)
     try:
-        return await llm.ainvoke(mensagens)
+        return await llm.ainvoke(preparar(resolvido.provider, mensagens) if preparar else mensagens)
     except Exception as exc:
         if reserva is None:
             raise

@@ -320,23 +320,19 @@ def _gatilho_legivel(gatilho: str) -> str:
         return "o roteiro automático travou nesta tela"
 
 
-def _caso_em_palavras(sessao: Dict[str, Any]) -> str:
-    from app.services.insurer_dispatch_service import _rotulo
+def _caso_em_palavras(sessao: Dict[str, Any], playbook: Optional[Dict[str, Any]] = None) -> str:
+    """O serviço pedido + o que a seguradora costuma pedir nele (✔ o caso tem / ✘ falta).
 
-    slots = sessao.get("slots") or {}
-    padrao = set(sessao.get("slots_padrao") or ())
-    linhas = []
-    for k, v in slots.items():
-        if v in (None, "") or str(k).endswith("_opcao"):
-            continue
-        marca = "  (preenchido pelo sistema — o segurado NÃO confirmou)" if k in padrao else ""
-        linhas.append(f"- {_rotulo(str(k))}: {str(v)[:200]}{marca}")
-    for k, v in (sessao.get("captured") or {}).items():
-        if v not in (None, ""):
-            linhas.append(f"- capturado da seguradora — {k}: {str(v)[:120]}")
+    F1c: os VALORES do caso NÃO se repetem aqui — já estão inteiros nos "Dados do caso" do
+    produto (todo slot, a marca de padrão e o capturado da seguradora). 📊 A lista repetida
+    custava tokens em toda chamada e não acrescentava nenhum dado."""
     sub = str(sessao.get("subservice") or "").strip()
-    cab = f"Serviço pedido: {sub.replace('_', ' ') or 'não informado'}.\n"
-    return cab + ("\n".join(linhas) if linhas else "(o caso não tem dados além do serviço)")
+    txt = (f"o serviço pedido é {sub.replace('_', ' ') or 'não informado'} (os valores estão nos "
+           "dados do caso, acima).")
+    pede = _o_que_vai_pedir(playbook or {}, sessao)
+    if pede:
+        txt += "\nO que a seguradora costuma pedir neste serviço:\n" + pede
+    return txt
 
 
 def _o_que_vai_pedir(playbook: Dict[str, Any], sessao: Dict[str, Any]) -> str:
@@ -529,18 +525,23 @@ async def _com_teto(coro, padrao):
         return padrao
 
 
+#: 🔴 A PARTE FIXA do prompt — a MESMA em TODA chamada (toda corretora, seguradora, caso e tela) e o
+#: COMEÇO do `system`. O cache de prompt casa por PREFIXO (OpenAI: automático; Anthropic: o
+#: `cache_control` de `mensagens_para_o_provedor`): nada que varia pode vir antes dela.
+#: ⛔ Não interpolar nada aqui (nem seguradora, nem data): um byte variável no começo zera o cache.
 INSTRUCAO_DO_DESTRAVADOR = (
-    "\n\n══════ VOCÊ FOI CHAMADO PORQUE O ROTEIRO AUTOMÁTICO TRAVOU ══════\n"
-    "O objetivo: levar este acionamento até o PROTOCOLO da seguradora sem chamar uma pessoa da "
-    "corretora — com a resposta CERTA. O que está em jogo: cada pessoa chamada é um segurado "
-    "esperando mais, e a URA encerra a conversa se ninguém responde; cada resposta errada pode "
-    "virar um chamado recusado no local, depois de o segurado esperar horas.\n"
-    "Leia TUDO abaixo (o caso, a conversa com o segurado, as telas anteriores, as rotas parecidas "
-    "de outras seguradoras) e decida esta tela como um atendente experiente decidiria. Suas regras "
-    "acima sobre NAO_SEI e SEM_RESPOSTA são SUBSTITUÍDAS por esta instrução.\n\n"
-    "Classifique a sua decisão em UMA de cinco classes:\n"
+    "══════ VOCÊ FOI CHAMADO PORQUE O ROTEIRO AUTOMÁTICO TRAVOU ══════\n"
+    "OBJETIVO: levar este acionamento até o PROTOCOLO da seguradora sem chamar uma pessoa da "
+    "corretora — com a resposta CERTA. Cada pessoa chamada é um segurado esperando mais, e a URA "
+    "encerra a conversa se ninguém responde; cada resposta errada pode virar um chamado recusado no "
+    "local, depois de o segurado esperar horas.\n"
+    "Leia TUDO (o caso, a conversa com o segurado, as falas anteriores, as rotas parecidas) e decida "
+    "ESTA tela como um atendente experiente decidiria. Esta instrução SUBSTITUI as regras do roteiro "
+    "abaixo sobre NAO_SEI e SEM_RESPOSTA: a sua resposta é sempre o JSON pedido no fim.\n\n"
+    "CLASSES — escolha UMA:\n"
     "- conduzir: a tela só move o fluxo (Continuar, \"quer seguir?\", voltar ao menu quando a "
-    "conversa se perdeu). valor = a opção exata da tela.\n"
+    "conversa se perdeu). valor = a opção exata da tela. Se a tela só avisa e não pede nada: acao "
+    "SILENCIO, valor vazio.\n"
     "- responder_com_dado: a tela pede um dado que ESTÁ no caso (placa, endereço, CPF, quem está "
     "no local). valor = o dado, como está no caso.\n"
     "- deduzir: a tela pede para escolher entre alternativas e o caso/relato indica qual. valor = o "
@@ -548,20 +549,45 @@ INSTRUCAO_DO_DESTRAVADOR = (
     "- perguntar_ao_segurado: só o segurado sabe (a situação no local, o detalhe do problema, uma "
     "escolha que o caso não diz). valor = a pergunta a ELE, curta, em segunda pessoa (\"você\"), "
     "sem prometer cobertura.\n"
-    "- nunca_sozinho: aceitar custo, franquia ou pagamento; abrir sinistro; cancelar um pedido; "
-    "abrir um NOVO atendimento; informar dado que não está no caso; afirmar cobertura. Isso não é "
-    "seu: acao PESSOA — ou PERGUNTAR_AO_SEGURADO quando é ele quem decide (um custo, uma data).\n\n"
-    "nota: de 0 a 100, a chance REAL de a sua resposta estar certa. Seja calibrado — 90 quer dizer "
-    "que você erraria 1 em cada 10 vezes. A nota decide se você age sozinho; inflar a nota é o erro "
-    "mais caro. Tudo o que você propõe é conferido por código antes de sair.\n\n"
-    "FORMATO DA SUA RESPOSTA (obrigatório): UM objeto JSON numa linha, sem texto antes ou depois:\n"
+    "- nunca_sozinho: o que NÃO TEM VOLTA — aceitar custo, franquia ou pagamento; abrir sinistro; "
+    "cancelar um pedido; abrir um NOVO atendimento quando já há um; informar dado que não está no "
+    "caso; afirmar cobertura. acao PESSOA (valor vazio) — ou PERGUNTAR_AO_SEGURADO quando é ele quem "
+    "decide (um custo, uma data).\n\n"
+    "NOTA (0 a 100): a chance REAL de a sua resposta estar certa. Calibre: 90 quer dizer que você "
+    "erraria 1 em cada 10. A nota decide se você age sozinho; inflá-la é o erro mais caro. O código "
+    "confere tudo antes de sair.\n\n"
+    "RESPOSTA: UM objeto JSON numa linha, sem texto antes ou depois (o valor de RESPONDER vai à "
+    "seguradora exatamente como escrito):\n"
     '{"classe": "<conduzir|responder_com_dado|deduzir|perguntar_ao_segurado|nunca_sozinho>", '
     '"acao": "<RESPONDER|PERGUNTAR_AO_SEGURADO|PESSOA|SILENCIO>", "valor": "<texto>", '
-    '"nota": <0-100>, "motivo": "<até 15 palavras>"}\n'
-    "- RESPONDER: o valor vai à seguradora exatamente como escrito.\n"
-    "- SILENCIO (classe conduzir): a tela só avisa e não pede nada; valor vazio.\n"
-    "- PESSOA (classe nunca_sozinho): valor vazio."
+    '"nota": <0-100>, "motivo": "<até 15 palavras>"}\n\n'
+    "══════ O ROTEIRO DESTA SEGURADORA ══════\n"
 )
+
+#: Onde começa a parte do `user` que MUDA a cada tela (o porquê desta chamada, as falas antigas, o
+#: mapa, as rotas irmãs, o que o produto diz sobre esta tela, a tela). Tudo ANTES dela é o mesmo
+#: dentro de um acionamento (os dados do caso, o conhecimento do fluxo, a memória, a conversa com o
+#: segurado) — é o 3º ponto de cache. `mensagens_para_o_provedor` corta aqui.
+_MARCA_DO_VARIAVEL = "\n\n🔴 POR QUE VOCÊ FOI CHAMADO: "
+
+#: constante_justificada: os blocos do prompt do PRODUTO (`build_human_phase_messages`) que mudam a
+#: cada TELA — os títulos exatos com que ele os abre. O que vem antes do primeiro deles (dados do
+#: caso + CONHECIMENTO DO FLUXO + ORIENTAÇÃO DO CORREDOR) é estável no acionamento e vai para o
+#: prefixo. Se o produto mudar um título, nada se perde: o corte só cai mais cedo (a tela sempre casa).
+_BLOCOS_VARIAVEIS_DO_PRODUTO = (
+    "\n\n🔴 ONDE O AUTOMÁTICO EMPACOU", "\n\n🟢 ESTA TELA APENAS CONDUZ",
+    "\n\n🔴 A SUA ÚLTIMA RESPOSTA FOI RECUSADA", "\n\nOPÇÕES NUMERADAS DO MENU",
+    "\nMensagens anteriores da seguradora ainda sem resposta", "\n\nO QUE JÁ FOI DITO NESTA CONVERSA",
+    "\n\nTela da seguradora agora",
+)
+
+
+def _cortar_o_produto(user: str) -> Tuple[str, str]:
+    """O `user` do produto → (o que é estável no acionamento, o que muda a cada tela). Nada se perde:
+    as duas partes somadas são o texto original, byte a byte."""
+    pos = [i for i in (user.find(m) for m in _BLOCOS_VARIAVEIS_DO_PRODUTO) if i >= 0]
+    i = min(pos) if pos else 0
+    return user[:i], user[i:]
 
 
 def compor_mensagens(sessao: Dict[str, Any], tela: str, *, gatilho: str = "cerebro",
@@ -570,38 +596,85 @@ def compor_mensagens(sessao: Dict[str, Any], tela: str, *, gatilho: str = "cereb
     """O prompt do destravador: o do PRODUTO + o que o destravador ACRESCENTA. Puro (sem banco).
 
     A bancada (F2) importa ESTA função — o prompt que ela mede é, byte a byte, o que o produto roda.
+
+    A ORDEM é a do cache de prompt (F1c): do que nunca muda ao que muda a cada tela —
+      system = INSTRUCAO_DO_DESTRAVADOR (fixa) + o system do produto (seguradora, serviço, freio)
+      user   = dados do caso + conhecimento do fluxo (produto) + o caso em palavras, a memória, a
+               conversa com o segurado ║ _MARCA_DO_VARIAVEL ║ o porquê, as falas antigas, o mapa,
+               as rotas irmãs, o resto do produto e a tela.
     """
     from app.services.insurer_dispatch_service import build_human_phase_messages, get_playbook
 
     msgs = dict(build_human_phase_messages(sessao, tela))
     playbook = get_playbook(str(sessao.get("playbook_ref") or "")) or {}
-    msgs["system"] = msgs["system"] + INSTRUCAO_DO_DESTRAVADOR
-    bloco = f"\n\n🔴 POR QUE VOCÊ FOI CHAMADO: {_gatilho_legivel(gatilho)}."
-    bloco += "\n\nO CASO, EM PALAVRAS:\n" + _caso_em_palavras(sessao)
-    pede = _o_que_vai_pedir(playbook, sessao)
-    if pede:
-        bloco += "\n\nO QUE A SEGURADORA COSTUMA PEDIR NESTE SERVIÇO:\n" + pede
+    msgs["system"] = INSTRUCAO_DO_DESTRAVADOR + msgs["system"]
+    estavel, variavel = _cortar_o_produto(msgs["user"])
+    fixo = "\n\nO CASO, EM PALAVRAS: " + _caso_em_palavras(sessao, playbook)
+    if memoria:
+        fixo += "\n\nO QUE A CORRETORA JÁ ENSINOU:\n" + "\n".join(memoria)
     conversa = list(conversa or [])
-    bloco += ("\n\nA CONVERSA COM O SEGURADO (as últimas mensagens, a mais antiga primeiro):\n"
-              + "\n".join(conversa) if conversa
-              else "\n\nA CONVERSA COM O SEGURADO: (não disponível neste caso)")
+    fixo += ("\n\nA CONVERSA COM O SEGURADO (as últimas mensagens, a mais antiga primeiro):\n"
+             + "\n".join(conversa) if conversa
+             else "\n\nA CONVERSA COM O SEGURADO: (não disponível neste caso)")
+    muda = f"{_MARCA_DO_VARIAVEL}{_gatilho_legivel(gatilho)}."
     antes = _telas_antes(sessao)
     if antes:
-        bloco += "\n\nANTES DISSO NA CONVERSA COM A SEGURADORA (as falas mais antigas):\n" + antes
+        muda += "\n\nANTES DISSO NA CONVERSA COM A SEGURADORA (as falas mais antigas):\n" + antes
     if mapa:
-        bloco += ("\n\nTELAS PARECIDAS QUE JÁ VIMOS NESTA SEGURADORA (o mapa da URA, recortado):\n"
-                  + mapa)
+        muda += ("\n\nTELAS PARECIDAS QUE JÁ VIMOS NESTA SEGURADORA (o mapa da URA, recortado):\n"
+                 + mapa)
     irmas = _rotas_irmas(playbook, sessao, tela)
     if irmas:
-        bloco += ("\n\nROTAS IRMÃS (passos conhecidos parecidos com esta tela, em outros corredores "
-                  "desta seguradora ou deste serviço em outras):\n" + irmas)
-    if memoria:
-        bloco += "\n\nO QUE A CORRETORA JÁ ENSINOU:\n" + "\n".join(memoria)
-    marca = "\n\nTela da seguradora agora"
-    u = msgs["user"]
-    msgs["user"] = u.replace(marca, bloco + marca, 1) if marca in u else u + bloco
-    msgs["user"] = msgs["user"].replace("\n\nSua resposta:", "\n\nSua resposta (o JSON):")
+        muda += ("\n\nROTAS IRMÃS (passos conhecidos parecidos com esta tela, em outros corredores "
+                 "desta seguradora ou deste serviço em outras):\n" + irmas)
+    variavel = variavel.replace("\n\nSua resposta:", "\n\nSua resposta (o JSON):")
+    msgs["user"] = estavel + fixo + muda + variavel
     return msgs
+
+
+def mensagens_para_o_provedor(provedor: str, mensagens: list) -> list:
+    """As mensagens do destravador no formato de QUEM VAI RESPONDER (F1c — cache de prompt).
+
+    · anthropic → `cache_control` efêmero (5 min) em três pontos, do mais estável ao menos:
+        ① o fim da INSTRUÇÃO FIXA (igual em toda chamada de toda corretora),
+        ② o fim do `system` (igual para a mesma seguradora e serviço),
+        ③ o fim da parte estável do `user` (igual em todas as telas do mesmo acionamento).
+      É o padrão do produto (`agents/nodes.py`: blocos de `system` com `cache_control`).
+    · qualquer outro → como veio. ⛔ A OpenAI recusa o campo `cache_control`; o cache dela é
+      automático por prefixo — e o prefixo já é estável pela ORDEM de `compor_mensagens`.
+    O texto NUNCA muda, só o embrulho. Sem as marcas esperadas, a mensagem vai como veio."""
+    if str(provedor or "").strip().lower() != "anthropic":
+        return list(mensagens)
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    efemero = {"type": "ephemeral"}
+    saida = []
+    for m in mensagens:
+        texto = m.content if isinstance(getattr(m, "content", None), str) else None
+        if texto is None:
+            saida.append(m)
+        elif isinstance(m, SystemMessage) and texto.startswith(INSTRUCAO_DO_DESTRAVADOR):
+            resto = texto[len(INSTRUCAO_DO_DESTRAVADOR):]
+            blocos = [{"type": "text", "text": INSTRUCAO_DO_DESTRAVADOR, "cache_control": efemero}]
+            if resto:
+                blocos.append({"type": "text", "text": resto, "cache_control": efemero})
+            saida.append(SystemMessage(content=blocos))
+        elif isinstance(m, HumanMessage) and texto.find(_MARCA_DO_VARIAVEL) > 0:
+            i = texto.find(_MARCA_DO_VARIAVEL)
+            saida.append(HumanMessage(content=[
+                {"type": "text", "text": texto[:i], "cache_control": efemero},
+                {"type": "text", "text": texto[i:]}]))
+        else:
+            saida.append(m)
+    return saida
+
+
+def texto_da_mensagem(m: Any) -> str:
+    """O TEXTO de uma mensagem, em string ou em blocos (para comparar o prompt de dois provedores)."""
+    c = getattr(m, "content", m)
+    if isinstance(c, list):
+        return "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in c)
+    return str(c or "")
 
 
 async def mensagens_do_destravador(company_id: str, sessao: Dict[str, Any], tela: str, *,
@@ -674,12 +747,45 @@ def _rotulo_escolhido(tela: str, valor: str) -> str:
     return rotulo_de(tela, valor)[1]
 
 
-def _e_dado_do_caso(valor: str, sessao: Dict[str, Any]) -> bool:
+#: constante_justificada: um slot MASCARADO (`{ENDERECO}`, `{CPF}` — o corpus da bancada e o rastro
+#: higienizado). Normalizado, `{ENDERECO}` vira a palavra "endereco" — e qualquer rótulo com essa
+#: palavra ("Digitar endereço") passaria por dado do caso. Máscara só casa com ela mesma, crua.
+_RX_MASCARA = re.compile(r"^\{[A-Z_]+\}$")
+#: constante_justificada: o menor pedaço que conta como o MESMO dado quando um contém o outro
+#: (o segurado escreveu "Rua X 123", a tela pede "Rua X 123 fundos"). 6 caracteres E um dígito OU
+#: duas palavras: 📊 os dados de verdade são todos maiores (placa 7, CEP 8, CPF 11, endereço com
+#: número); as palavras soltas do caso que mais aparecem em rótulo ("casa", "centro", "carro",
+#: "sim") são menores ou de uma palavra só — e por igualdade continuam valendo.
+_MINIMO_DO_PEDACO = 6
+
+
+def _pedaco_do_mesmo_dado(curto: str, longo: str) -> bool:
+    """`curto` é uma sequência de PALAVRAS INTEIRAS de `longo`, e grande o bastante para ser dado."""
+    if len(curto) < _MINIMO_DO_PEDACO or not (re.search(r"\d", curto) or " " in curto):
+        return False
+    return f" {curto} " in f" {longo} "
+
+
+def _e_dado_do_caso(valor: str, sessao: Dict[str, Any], tela: str = "") -> bool:
     """O valor É um dado do caso? Os slots (sem tecla de menu `*_opcao`, sem o que o SISTEMA
-    preencheu — `slots_padrao`) e o que foi capturado da seguradora."""
+    preencheu — `slots_padrao`) e o que foi capturado da seguradora.
+
+    F1c — 📊 antes casava por SUBSTRING: com `{ENDERECO}` no caso, "Digitar endereço" (um rótulo
+    da tela) passava por dado; com bairro "Centro", "Centro de serviços" também. Agora:
+      · rótulo de NAVEGAÇÃO da tela nunca é dado;
+      · OPÇÃO de conteúdo da tela só é dado por IGUALDADE com um valor do caso ("Sim" = "Sim");
+      · máscara (`{ENDERECO}`) só casa com ela mesma, crua;
+      · senão: igualdade normalizada, ou um contém o outro em PALAVRAS INTEIRAS com o pedaço
+        menor tendo ≥ 6 caracteres e um dígito ou duas palavras (`_pedaco_do_mesmo_dado`)."""
     v = _n(valor)
     if len(v) < 2:
         return False
+    rot = _rotulo_escolhido(tela, valor) if str(tela or "").strip() else ""
+    if rot:
+        from app.services.insurer_dispatch_service import rotulo_e_de_navegacao
+
+        if rotulo_e_de_navegacao(rot):
+            return False
     padrao = set(sessao.get("slots_padrao") or ())
     fontes = [(k, x) for k, x in (sessao.get("slots") or {}).items()
               if not str(k).endswith("_opcao") and k not in padrao]
@@ -687,12 +793,61 @@ def _e_dado_do_caso(valor: str, sessao: Dict[str, Any]) -> bool:
     for _k, x in fontes:
         if not isinstance(x, (str, int)) or isinstance(x, bool):
             continue
-        d = _n(x)
+        cru = str(x).strip()
+        if _RX_MASCARA.match(cru):
+            if str(valor or "").strip() == cru:
+                return True
+            continue
+        d = _n(cru)
         if not d:
             continue
-        if v == d or (len(v) >= 3 and v in d) or (len(d) >= 4 and d in v and len(v) <= len(d) + 30):
+        if v == d:
+            return True
+        if rot:
+            continue            # opção da tela: só por igualdade
+        if _pedaco_do_mesmo_dado(v, d) or _pedaco_do_mesmo_dado(d, v):
             return True
     return False
+
+
+#: constante_justificada: a OPÇÃO que abre um SEGUNDO trabalho (normalizada, sem acento). 📊 As
+#: redações reais (`tests/corpus/telas_reais`): "Abrir novo atendimento" / "Abrir um novo
+#: atendimento" (allianz), "Não, abrir novo serviço" (allianz-auto), "Novo serviço" / "Novo
+#: atendimento" (porto, azul, yelum), "Pedir outro serviço" (hdi). ⚠️ NÃO é o
+#: `corridor_playbooks._RX_COMECA_TRABALHO_NOVO`: aquele responde "é navegação?" (errar para o
+#: lado do "não" lá só custa a régua do DEDUZIR) e casa `abrir` sozinho e `outros serviços` —
+#: 📊 F1c: a categoria "*3 -* Outros serviços" do 1º menu da Allianz (des-D-escolhe_servico-
+#: allianz-025, nota 92 + 2ª opinião concordando) ia a uma PESSOA, e "Abrir a porta" (o serviço
+#: de chaveiro da allianz-residencial) também iria. (constante_justificada: acima.)
+_RX_OPCAO_NOVO_ATENDIMENTO = re.compile(
+    r"\b(?:abrir|iniciar|pedir|solicitar|seguir para)\s+(?:um |uma |o |a )?(?:nov[oa]|outr[oa])\b|"
+    r"\bnov[oa]s? (?:atendimento|servico|solicitacao|chamado|pedido|assistencia)|"
+    r"\boutr[oa] (?:atendimento|servico|solicitacao|chamado|pedido|assistencia)\b")
+#: constante_justificada: "outros serviços" (PLURAL) é CATEGORIA de serviço no 1º menu (allianz,
+#: mapfre "2ª via de apólice e outros serviços") — e só abre trabalho novo quando a TELA mostra que
+#: já há um: 📊 "Identifiquei que temos uma solicitação de serviço feita", "A solicitação de GUINCHO
+#: está concluída", "Seu atendimento foi cancelado", "Posso te ajudar com algo mais?".
+_RX_OPCAO_OUTROS_SERVICOS = re.compile(r"\boutr[oa]s (?:servicos|atendimentos|assistencias)\b")
+_RX_TELA_COM_TRABALHO_EM_CURSO = re.compile(
+    r"conclu[ií]d|solicitacao (?:de servico )?feita|identifiquei que|ja (?:possui|tem|existe)|"
+    r"em andamento|algo mais|foi (?:cancelad|agendad|reagendad|registrad)|nao foi reagendad")
+#: constante_justificada: a TELA que pergunta se abre OUTRO trabalho — o "Sim" executaria.
+#: 📊 hdi-auto: "Gostaria de solicitar algum outro serviço? Botão 1: Sim".
+_RX_TELA_PEDE_OUTRO = re.compile(
+    r"(?:solicitar|pedir|abrir|iniciar)\s+(?:algum |um |uma )?(?:outr[oa]|nov[oa]) "
+    r"(?:servico|atendimento|solicitacao|chamado|pedido|assistencia)")
+
+
+def _abre_novo_atendimento(alvo: str, norm_tela: str, afirma: bool, tem_pergunta: bool,
+                           sessao: Dict[str, Any]) -> bool:
+    """A resposta abriria um SEGUNDO atendimento (o NUNCA `novo_atendimento`)?"""
+    if _RX_OPCAO_NOVO_ATENDIMENTO.search(alvo):
+        return True
+    em_curso = bool(_RX_TELA_COM_TRABALHO_EM_CURSO.search(norm_tela)) or any(
+        "protocol" in str(k).lower() for k in (sessao.get("captured") or {}))
+    if _RX_OPCAO_OUTROS_SERVICOS.search(alvo) and em_curso:
+        return True
+    return bool(afirma and tem_pergunta and _RX_TELA_PEDE_OUTRO.search(norm_tela))
 
 
 def _digitos_do_caso(sessao: Dict[str, Any]) -> str:
@@ -719,7 +874,6 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
     busca a 2ª opinião e chama de novo. `nunca`: as chaves do NUNCA ligadas (a MUTAÇÃO do G2).
     """
     from app.services import acao_do_cerebro as AC
-    from app.services import corridor_playbooks as CP
     from app.services import insurer_dispatch_service as IDS
 
     ligadas = NUNCA_SOZINHO if nunca is None else tuple(nunca)
@@ -790,7 +944,8 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
         if "cancelar_pedido" in ligadas and (
                 _RX_CANCELA.search(alvo) or (afirma and tem_pergunta and _RX_CANCELA.search(norm_tela))):
             return pessoa("cancelar_pedido")
-        if "novo_atendimento" in ligadas and CP._RX_COMECA_TRABALHO_NOVO.search(alvo):
+        if "novo_atendimento" in ligadas and _abre_novo_atendimento(alvo, norm_tela, afirma,
+                                                                    tem_pergunta, sessao):
             return pessoa("novo_atendimento")
         if "condominio_ou_empresarial" in ligadas and rot:
             try:
@@ -809,7 +964,7 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
                 return pessoa("inventar_dado")
             # a tela pede um DADO (placa, CPF, telefone, endereço… — a tabela do PRODUTO,
             # `_PERGUNTAS_DE_DADO`) e o valor não é opção da tela nem dado do caso
-            if not rot and not _e_dado_do_caso(valor, sessao) and any(
+            if not rot and not _e_dado_do_caso(valor, sessao, tela) and any(
                     re.search(rx, norm_tela, re.IGNORECASE) for _c, rx, _s in IDS._PERGUNTAS_DE_DADO):
                 return pessoa("inventar_dado")
         # agendar data/período → a agenda é do SEGURADO (D1: reversível, mas dele)
@@ -839,7 +994,7 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
         eco = IDS.classe_da_tela(playbook, str(tela), slots=sessao.get("slots")).get("chave") == "eco_de_dado"
         if not ((rot and IDS.rotulo_e_de_navegacao(rot)) or eco):
             classe = "deduzir"        # não é navegação: é escolha — a régua do DEDUZIR
-    if classe == "responder_com_dado" and not _e_dado_do_caso(valor, sessao):
+    if classe == "responder_com_dado" and not _e_dado_do_caso(valor, sessao, tela):
         classe = "deduzir"            # não é dado do caso: é dedução
     base["classe"] = classe
     if classe == "deduzir":
@@ -931,7 +1086,49 @@ async def _chamar_isolado(resolvido: Any, mensagens: list, company_id: str, serv
         return None
     llm = LLMFactory.create_llm({}, {}, company_id=company_id, service_type=service_type,
                                 modelo_resolvido=resolvido)
-    return await _sem_o_relogio_de_producao(llm).ainvoke(mensagens)
+    return await _sem_o_relogio_de_producao(llm).ainvoke(
+        mensagens_para_o_provedor(resolvido.provider, mensagens))
+
+
+@dataclass
+class ModeloInjetado:
+    """Um modelo de FORA do catálogo para `destravar(llm=…, llm_segunda=…)` — a bancada.
+
+    `llm` é qualquer coisa com `ainvoke(mensagens)` (o braço da bancada, um dublê); `provedor` e
+    `modelo` dizem QUEM responde (a 2ª opinião tem de ser de outro provedor — D3). As mensagens
+    chegam no formato do provedor (`mensagens_para_o_provedor`), como em produção.
+    ⛔ Produção NUNCA injeta: o modelo vem do catálogo (`llm_papeis`), nunca de fora."""
+    llm: Any
+    provedor: str
+    modelo: str = ""
+
+
+async def _chamar_injetado(m: "ModeloInjetado", mensagens: list):
+    """(resposta, provedor, modelo) do modelo injetado — as mensagens no formato dele."""
+    prov = str(m.provedor or "").strip().lower()
+    r = await asyncio.wait_for(m.llm.ainvoke(mensagens_para_o_provedor(prov, mensagens)),
+                               timeout=TETO_DA_CHAMADA_S)
+    return r, prov, str(m.modelo or "")
+
+
+async def _segunda_injetada(m: Optional["ModeloInjetado"], mensagens: list,
+                            provedor: str) -> Tuple[Optional[dict], float]:
+    """A 2ª opinião injetada. Sem ela, ou do MESMO provedor de quem decidiu → nenhuma (D3).
+    ⛔ Com `llm` injetado, a 2ª opinião NUNCA cai no catálogo: a bancada não chama produção."""
+    from app.agents.utils import extract_text_from_content
+
+    p2 = str((m.provedor if m else "") or "").strip().lower()
+    if m is None or not p2 or p2 == str(provedor or "").strip().lower():
+        return None, 0.0
+    try:
+        r, prov, modelo = await _chamar_injetado(m, mensagens)
+    except Exception as e:  # noqa: BLE001 — como no catálogo: 2ª opinião que falha = sem 2ª opinião
+        logger.warning("[DESTRAVADOR] 2ª opinião injetada falhou: %s", type(e).__name__)
+        return None, 0.0
+    pr = ler_destravamento(extract_text_from_content(getattr(r, "content", None)) or "")
+    return ({"provedor": prov, "modelo": modelo, "classe": pr.classe,
+             "acao": pr.acao if pr.formato_ok else "PESSOA", "valor": pr.valor, "nota": pr.nota,
+             "formato_ok": pr.formato_ok, "concordou": False}, _custo(r, modelo))
 
 
 async def _chamar_quem_decide(mensagens: list, company_id: str, modo: str):
@@ -945,7 +1142,8 @@ async def _chamar_quem_decide(mensagens: list, company_id: str, modo: str):
                                    timeout=TETO_DA_CHAMADA_S)
     else:
         r = await asyncio.wait_for(LF.invocar_com_reserva(PAPEL, mensagens, company_id=company_id,
-                                                          service_type=SERVICE_TYPE),
+                                                          service_type=SERVICE_TYPE,
+                                                          preparar=mensagens_para_o_provedor),
                                    timeout=TETO_DA_CHAMADA_S)
     if r is None:
         return None, "", ""
@@ -984,7 +1182,9 @@ async def _segunda_opiniao(mensagens: list, company_id: str, modo: str, provedor
             else:
                 llm = LLMFactory.create_llm({}, {}, company_id=company_id,
                                             service_type=SERVICE_TYPE_SEGUNDA, modelo_resolvido=cand)
-                r = await asyncio.wait_for(llm.ainvoke(mensagens), timeout=TETO_DA_CHAMADA_S)
+                r = await asyncio.wait_for(
+                    llm.ainvoke(mensagens_para_o_provedor(cand.provider, mensagens)),
+                    timeout=TETO_DA_CHAMADA_S)
         except Exception as e:  # noqa: BLE001
             logger.warning("[DESTRAVADOR] 2ª opinião (%s) falhou: %s", cand.provider, type(e).__name__)
             if modo == "sombra" or motivo_de_reserva(e) is None:
@@ -1084,12 +1284,18 @@ async def _registrar(company_id: str, sessao: Dict[str, Any], tela: str, d: Dest
 # O FIO — `destravar`
 # ═════════════════════════════════════════════════════════════════════════════
 async def destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, modo: str,
-                    limiar: int = 70) -> Destravamento:
+                    limiar: int = 70, llm: Optional[ModeloInjetado] = None,
+                    llm_segunda: Optional[ModeloInjetado] = None) -> Destravamento:
     """UMA trava → UMA decisão. `gatilho` = o reason do motor (ponto B) ou "cerebro"/"sentinela"
     (ponto A). Monta o contexto COMPLETO, chama o modelo do papel `destravador`, aplica a POLÍTICA
-    EM CÓDIGO, registra no diário e devolve a decisão. ⛔ Nunca envia nada. Nunca levanta."""
+    EM CÓDIGO, registra no diário e devolve a decisão. ⛔ Nunca envia nada. Nunca levanta.
+
+    `llm` / `llm_segunda` (F1c): quem decide e a 2ª opinião INJETADOS (`ModeloInjetado`) — a
+    bancada mede braços de fora do catálogo pelo MESMO fio. Com `llm` injetado, a 2ª opinião é só
+    `llm_segunda` (None → sem 2ª opinião). Produção não passa nada: tudo pelo catálogo."""
     try:
-        return await _destravar(company_id, sessao, tela, gatilho=gatilho, modo=modo, limiar=limiar)
+        return await _destravar(company_id, sessao, tela, gatilho=gatilho, modo=modo, limiar=limiar,
+                                llm=llm, llm_segunda=llm_segunda)
     except Exception as e:  # noqa: BLE001 — falha fechada
         logger.error("[DESTRAVADOR] falhou (%s) — pessoa", type(e).__name__)
         return Destravamento(classe="nunca_sozinho", acao="PESSOA", proibicao="falha_do_destravador",
@@ -1098,7 +1304,8 @@ async def destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, m
 
 
 async def _destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, modo: str,
-                     limiar: int) -> Destravamento:
+                     limiar: int, llm: Optional[ModeloInjetado] = None,
+                     llm_segunda: Optional[ModeloInjetado] = None) -> Destravamento:
     from langchain_core.messages import HumanMessage, SystemMessage
 
     from app.agents.utils import extract_text_from_content
@@ -1123,7 +1330,10 @@ async def _destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, 
     msgs = await mensagens_do_destravador(cid, sessao, tela, gatilho=g)
     conversa = [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]
     try:
-        resposta, provedor, modelo = await _chamar_quem_decide(conversa, cid, m)
+        if llm is not None:
+            resposta, provedor, modelo = await _chamar_injetado(llm, conversa)
+        else:
+            resposta, provedor, modelo = await _chamar_quem_decide(conversa, cid, m)
     except Exception as e:  # noqa: BLE001 — o modelo caiu: nada foi decidido
         logger.warning("[DESTRAVADOR] modelo falhou (%s) — pessoa", type(e).__name__)
         return Destravamento(classe="nunca_sozinho", acao="PESSOA", proibicao="modelo_falhou",
@@ -1136,7 +1346,10 @@ async def _destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, 
     d = decidir_destravamento(proposta, sessao, tela, gatilho=g, limiar=lim, modo=m,
                               provedor=provedor, pedir_segunda=True)
     if d.proibicao == "precisa_segunda_opiniao":
-        segunda, c2 = await _segunda_opiniao(conversa, cid, m, provedor, tela)
+        if llm is not None:
+            segunda, c2 = await _segunda_injetada(llm_segunda, conversa, provedor)
+        else:
+            segunda, c2 = await _segunda_opiniao(conversa, cid, m, provedor, tela)
         custo += c2
         if segunda is None:
             d = decidir_destravamento(proposta, sessao, tela, gatilho=g, limiar=lim, modo=m,

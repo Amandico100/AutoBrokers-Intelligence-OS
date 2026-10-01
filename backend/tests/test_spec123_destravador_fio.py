@@ -167,7 +167,21 @@ def test_O_FIO_a_tela_real_que_hoje_trava_vira_uma_decisao_certa_sem_pessoa(dt):
     assert RELATO in p["user"] and "A CONVERSA COM O SEGURADO" in p["user"]
     assert "Qual o serviço que você precisa?" in p["user"]
     # a 2ª opinião é INDEPENDENTE: a mesma tela e o mesmo contexto, sem a resposta da primeira
-    assert dt.chamadas_ao_modelo[1]["user"] == p["user"]
+    seg = dt.chamadas_ao_modelo[1]
+    assert DT.texto_da_mensagem(seg["user"]) == p["user"]
+    assert DT.texto_da_mensagem(seg["system"]) == p["system"]
+    # F1c — o CACHE DE PROMPT, pelo fio real (fábrica → cliente): a instrução FIXA é o começo do
+    # prompt; a OpenAI recebe texto puro (ela recusa `cache_control`); a Anthropic recebe os três
+    # pontos de cache — o fim da instrução fixa, o fim do system e o fim da parte estável do user.
+    assert isinstance(p["system"], str) and p["system"].startswith(DT.INSTRUCAO_DO_DESTRAVADOR)
+    assert isinstance(p["user"], str)
+    efemero = {"type": "ephemeral"}
+    assert [(b["text"] == DT.INSTRUCAO_DO_DESTRAVADOR, b.get("cache_control")) for b in seg["system"]] == [
+        (True, efemero), (False, efemero)], seg["system"]
+    [estavel, muda] = seg["user"]
+    assert estavel.get("cache_control") == efemero and "cache_control" not in muda
+    assert muda["text"].startswith(DT._MARCA_DO_VARIAVEL) and RELATO in estavel["text"]
+    assert "Qual o serviço que você precisa?" in muda["text"], "a TELA é a parte que muda"
     # UMA linha no diário, legível por gente
     [linha] = dt.diario.linhas
     assert d.diario_id == "diario-1"
@@ -209,3 +223,72 @@ def test_O_FIO_duas_corretoras_a_decisao_vai_ao_diario_da_dona(dt):
     assert d.acao == "PESSOA"
     assert [l["company_id"] for l in dt.diario.linhas] == [EMPRESA_B]
     assert [c["company_id"] for c in dt.chamadas_ao_modelo] == [EMPRESA_B]
+
+
+class _Injetado:
+    """Um braço de FORA do catálogo (o que a bancada injeta): guarda o que recebeu."""
+
+    def __init__(self, saida):
+        self.saida, self.recebido = saida, []
+
+    async def ainvoke(self, mensagens, **kw):
+        self.recebido.append(mensagens)
+        return AIMessage(content=self.saida)
+
+
+def test_F1c_a_injecao_decide_pelo_mesmo_fio_sem_tocar_o_catalogo(dt):
+    """F1c item 4: `destravar(llm=…, llm_segunda=…)` — a bancada injeta quem decide e a 2ª opinião
+    em vez de trocar `_chamar_quem_decide`/`_segunda_opiniao` pelo nome. A política, o conferente e o
+    diário são os mesmos; a fábrica de produção NÃO é chamada; cada braço recebe o SEU formato."""
+    s = sessao_travada()
+    um = _Injetado(js(classe="deduzir", acao="RESPONDER", valor="Encanador", nota=88, motivo="pia"))
+    dois = _Injetado(js(classe="deduzir", acao="RESPONDER", valor="Encanador", nota=90, motivo="pia"))
+    d = destravar(EMPRESA_A, s, TELA_SERVICOS,
+                  llm=DT.ModeloInjetado(um, "openai", "modelo-a"),
+                  llm_segunda=DT.ModeloInjetado(dois, "anthropic", "modelo-b"))
+    assert (d.acao, d.valor, d.classe, d.provedor, d.modelo) == ("RESPONDER", "Encanador", "deduzir",
+                                                                 "openai", "modelo-a"), d
+    assert d.segunda_opiniao["provedor"] == "anthropic" and d.segunda_opiniao["concordou"] is True
+    assert dt.chamadas_ao_modelo == [], "a injeção não pode cair no catálogo de produção"
+    assert len(dt.diario.linhas) == 1
+    [(s1, u1)] = um.recebido
+    [(s2, u2)] = dois.recebido
+    assert isinstance(s1.content, str) and isinstance(s2.content, list)        # openai × anthropic
+    assert DT.texto_da_mensagem(s2) == s1.content and DT.texto_da_mensagem(u2) == u1.content
+
+
+def test_F1c_injetado_sem_segunda_opiniao_nao_deduz_e_nao_chama_o_catalogo(dt):
+    s = sessao_travada()
+    um = _Injetado(js(classe="deduzir", acao="RESPONDER", valor="Encanador", nota=95, motivo="pia"))
+    d = destravar(EMPRESA_A, s, TELA_SERVICOS, llm=DT.ModeloInjetado(um, "openai", "modelo-a"))
+    assert d.acao != "RESPONDER" and d.proibicao == "sem_segunda_opiniao", d
+    assert dt.chamadas_ao_modelo == []
+    # e a 2ª opinião injetada do MESMO provedor também não vale (D3)
+    dois = _Injetado(js(classe="deduzir", acao="RESPONDER", valor="Encanador", nota=95, motivo="pia"))
+    d2 = destravar(EMPRESA_A, sessao_travada(run="run-123b"), TELA_SERVICOS,
+                   llm=DT.ModeloInjetado(um, "openai"), llm_segunda=DT.ModeloInjetado(dois, "openai"))
+    assert d2.acao != "RESPONDER" and dois.recebido == [], d2
+
+
+def test_F1c_a_bancada_injeta_e_nao_troca_o_destravador_pelo_nome():
+    import inspect
+
+    from app.services.evals import bancada as B
+
+    fonte = inspect.getsource(B.motor_destravador)
+    assert "atributo_trocado(DT," not in fonte and "llm=llm" in fonte and "llm_segunda=llm_segunda" in fonte
+
+
+def test_F1c_o_prefixo_do_prompt_e_o_mesmo_em_toda_chamada():
+    """O cache de prompt casa por PREFIXO: duas corretoras, duas seguradoras, duas telas → o system
+    começa pela MESMA instrução fixa, byte a byte. CONTROLE: o resto do system muda (a seguradora)."""
+    from tests.test_spec123_destravador_politica import REF_HDI, TELA_PLACA
+
+    a = DT.compor_mensagens(sessao_travada(), TELA_SERVICOS, gatilho="tela_que_decide:escolhe_o_servico")
+    b = DT.compor_mensagens(sessao(REF_HDI, "guincho", company=EMPRESA_B), TELA_PLACA, gatilho="cerebro")
+    fixo = DT.INSTRUCAO_DO_DESTRAVADOR
+    assert a["system"].startswith(fixo) and b["system"].startswith(fixo)
+    assert a["system"][len(fixo):] != b["system"][len(fixo):]
+    for m in (a, b):    # a parte que muda a cada tela vem DEPOIS da parte estável do acionamento
+        i = m["user"].find(DT._MARCA_DO_VARIAVEL)
+        assert i > 0 and m["user"].find("Dados do caso") < i < m["user"].find("Tela da seguradora agora")

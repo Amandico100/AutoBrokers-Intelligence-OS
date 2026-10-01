@@ -130,7 +130,10 @@ def test_perguntar_ao_segurado_leva_a_pergunta_e_as_opcoes_de_conteudo():
     assert not [r for r in rotulos if r.lower().startswith("volta")], rotulos
 
 
-def test_perguntar_onde_a_seguradora_nao_espera_vai_a_pessoa():
+def test_perguntar_onde_a_seguradora_nao_espera_vai_a_pessoa(monkeypatch):
+    # F1c: QUAL seguradora espera é fato que muda (a D6 abre a Allianz); a lição fica — a recusa é
+    # testada desligando a ida e volta DE PROPÓSITO (CLAUDE.md §9.3), não por um nome de seguradora.
+    monkeypatch.setattr(D, "ida_e_volta_permitida", lambda playbook: False)
     s = sessao(REF_ALLIANZ_RES, "maquina_de_lavar")
     d = decidir(js(classe="perguntar_ao_segurado", acao="PERGUNTAR_AO_SEGURADO", valor="Você quer?",
                    nota=60), s, TELA_CONTINUAR)
@@ -156,7 +159,8 @@ def test_NUNCA_custo_pergunta_ao_segurado_mostrando_o_custo_da_tela():
     assert "custo ou pagamento" in d.valor and "“" in d.valor, "a pergunta tem de MOSTRAR o trecho da tela"
 
 
-def test_NUNCA_custo_onde_a_seguradora_nao_espera_vai_a_pessoa():
+def test_NUNCA_custo_onde_a_seguradora_nao_espera_vai_a_pessoa(monkeypatch):
+    monkeypatch.setattr(D, "ida_e_volta_permitida", lambda playbook: False)   # (ver o teste acima)
     s = sessao(REF_ALLIANZ_AUTO, "guincho")
     d = decidir(deduz("1", 95), s, TELA_OFICINA_ALLIANZ, provedor="openai",
                 segunda_opiniao={**SEGUNDA_OK, "valor": "1"})
@@ -475,8 +479,9 @@ def test_o_destravador_nao_tem_como_enviar():
     proibidos = ("send_message", "reply_human_phase", "_emit(", "send_to_insurer", "send_to_client",
                  "save_active_dispatch", "enviar_ao_grupo")
     assert [p for p in proibidos if p in fonte] == []
+    # F1c: `llm`/`llm_segunda` (a injeção da bancada) — nenhum deles é um canal de envio
     assert list(inspect.signature(DT.destravar).parameters) == ["company_id", "sessao", "tela", "gatilho",
-                                                               "modo", "limiar"]
+                                                               "modo", "limiar", "llm", "llm_segunda"]
 
 
 def test_toda_regex_que_decide_tem_o_porque_ao_lado():
@@ -494,3 +499,88 @@ def test_toda_regex_que_decide_tem_o_porque_ao_lado():
 def test_nenhum_modelo_por_nome_no_destravador():
     fonte = inspect.getsource(DT)
     assert not [m for m in ("gpt-", "claude-", "sonnet", "opus") if m in fonte.lower()]
+
+
+# =============================================================================
+# F1c — os ajustes antes da bancada real (cada um reproduzido VERMELHO antes do conserto)
+# =============================================================================
+TELA_DIGITAR_ENDERECO = tela_real("hdi-auto", r"informar o endere[çc]o onde o ve[íi]culo est[áa] agora")
+TELA_TIPO_DE_SERVICO = tela_real("allianz-residencial", r"Informe o tipo de servi[çc]o:\s*\n\s*\n\*1 -\* Servi[çc]os Emerg")
+TELA_PEDE_OUTRO_HDI = tela_real("hdi-auto", r"Gostaria de solicitar algum outro servi[çc]o\?")
+TELA_ALGO_MAIS = tela_real("porto-auto", r"Posso te ajudar com algo mais\?[\s\S]*Novo atendimento")
+TELA_CHAVEIRO_ALLIANZ = tela_real("allianz-residencial", r"\*1 -\* Abrir a porta")
+TELA_JA_HA_UM_ALLIANZ = tela_real("allianz-residencial", r"Identifiquei que temos uma solicita[çc][ãa]o")
+SEGUNDA = lambda v: {**SEGUNDA_OK, "valor": v}   # noqa: E731
+
+
+@pytest.mark.parametrize("slots, valor, e_dado", [
+    # 📊 os achados: um RÓTULO passava por dado do caso porque casava por substring
+    ({"endereco_origem": "{ENDERECO}"}, "Digitar endereço", False),
+    ({"endereco_origem": "{ENDERECO}"}, "endereço", False),
+    ({"bairro": "Centro"}, "Centro de serviços", False),
+    ({"local": "casa"}, "Casa de praia", False),
+    # CONTROLE: o dado de verdade continua sendo dado
+    ({"endereco_origem": "{ENDERECO}"}, "{ENDERECO}", True),
+    ({"bairro": "Centro"}, "Centro", True),
+    ({"veiculo_placa": PLACA}, PLACA.lower(), True),
+    ({"endereco_origem": "Rua das Flores 123 fundos"}, "Rua das Flores 123", True),
+    ({"endereco_origem": "Rua das Flores 123"}, "Rua das Flores, 123 - fundos", True),
+])
+def test_e_dado_do_caso_nao_aceita_rotulo_nem_pedaco_curto(slots, valor, e_dado):
+    s = sessao(REF_HDI, "guincho", slots=slots)
+    assert DT._e_dado_do_caso(valor, s) is e_dado, (slots, valor)
+
+
+def test_a_opcao_da_tela_nao_passa_por_dado_do_caso_e_vai_a_regua_do_deduzir():
+    """📊 F1c achado 1, pela POLÍTICA: "Digitar endereço" com o endereço do caso mascarado era
+    RESPONDER livre (responder_com_dado); é uma ESCOLHA da tela — a régua do DEDUZIR vale."""
+    s = sessao(REF_HDI, "guincho", slots={"endereco_origem": "{ENDERECO}"})
+    d = decidir(js(classe="responder_com_dado", acao="RESPONDER", valor="Digitar endereço", nota=95), s,
+                TELA_DIGITAR_ENDERECO, pedir_segunda=True)
+    assert (d.classe, d.proibicao) == ("deduzir", "precisa_segunda_opiniao"), d
+    # CONTROLE: o dado do caso, na tela de placa, continua livre
+    s2 = sessao(REF_HDI, "guincho", slots={"veiculo_placa": PLACA})
+    d2 = decidir(js(classe="responder_com_dado", acao="RESPONDER", valor=PLACA, nota=95), s2, TELA_PLACA)
+    assert (d2.acao, d2.classe, d2.proibicao) == ("RESPONDER", "responder_com_dado", ""), d2
+
+
+@pytest.mark.parametrize("valor", ["3", "Outros serviços"])
+def test_a_categoria_outros_servicos_do_primeiro_menu_e_deduzir_nao_novo_atendimento(valor):
+    """📊 F1c achado 2 — `des-D-escolhe_servico-allianz-025`: nota 92 + 2ª opinião concordando deram
+    PESSOA (`novo_atendimento`), porque o NUNCA usava a régua da NAVEGAÇÃO (`_RX_COMECA_TRABALHO_NOVO`,
+    que casa "outros serviços"). No 1º menu, "Outros serviços" é CATEGORIA: não há atendimento ainda."""
+    s = sessao(REF_ALLIANZ_RES, "")
+    d = decidir(deduz(valor, 92), s, TELA_TIPO_DE_SERVICO, provedor="openai", segunda_opiniao=SEGUNDA(valor))
+    assert (d.acao, d.classe, d.proibicao) == ("RESPONDER", "deduzir", ""), d
+
+
+@pytest.mark.parametrize("tela, ref, valor", [
+    (TELA_JA_HA_UM_ALLIANZ, REF_ALLIANZ_RES, "2"),          # "Abrir novo atendimento"
+    (TELA_ALGO_MAIS, "porto-auto-whatsapp@v1", "Novo atendimento"),   # "Posso te ajudar com algo mais?"
+    (TELA_PEDE_OUTRO_HDI, REF_HDI, "Sim"),                   # o "Sim" que abriria outro serviço
+])
+def test_NUNCA_novo_atendimento_continua_onde_ja_ha_um(tela, ref, valor):
+    s = sessao(ref, "guincho")
+    d = decidir(deduz(valor, 99), s, tela, provedor="openai", segunda_opiniao=SEGUNDA(valor))
+    assert (d.acao, d.proibicao) == ("PESSOA", "novo_atendimento"), d
+
+
+def test_CONTROLE_abrir_a_porta_e_o_servico_de_chaveiro_nao_um_novo_atendimento():
+    s = sessao(REF_ALLIANZ_RES, "chaveiro")
+    d = decidir(deduz("1", 90), s, TELA_CHAVEIRO_ALLIANZ, provedor="openai", segunda_opiniao=SEGUNDA("1"))
+    assert d.proibicao != "novo_atendimento", d
+
+
+@pytest.mark.parametrize("rotulo, tela, abre", [
+    # 📊 os rótulos do acervo (git 20fb1c4): "Pedir outro serviço" (hdi, depois da solicitação concluída)
+    ("Pedir outro serviço", "", True),
+    ("Não, abrir novo serviço", "", True),
+    ("Abrir um novo atendimento", "", True),
+    # o PLURAL é categoria — só abre trabalho novo quando a tela mostra que já há um
+    ("Outros serviços", "Vamos lá! Informe o tipo de serviço:", False),
+    ("Outros serviços", "Identifiquei que temos uma solicitação de serviço feita. O que deseja?", True),
+    # CONTROLE: o serviço de chaveiro não é atendimento novo
+    ("Abrir a porta", "O que você precisa?", False),
+])
+def test_abre_novo_atendimento_pelo_rotulo(rotulo, tela, abre):
+    assert DT._abre_novo_atendimento(DT._n(rotulo), D._norm_text(tela), False, False, {}) is abre

@@ -84,7 +84,8 @@ class _Braco:
 
     async def ainvoke(self, msgs, config=None, **kw):
         self.pedidos.append(msgs)
-        user = msgs[-1].content
+        c = msgs[-1].content       # a Anthropic recebe blocos (o `cache_control`); o texto é o mesmo
+        user = "".join(b.get("text", "") for b in c) if isinstance(c, list) else c
         for tela, resp in self.respostas.items():
             if tela in user:
                 return AIMessage(content=resp, response_metadata={"model_name": self.modelo})
@@ -134,13 +135,15 @@ def test_o_fio_uma_trava_real_atravessa_o_destravador_do_produto_e_o_juiz_separa
     assert vt["classe"] == "CERTO"
     # o prompt é o do DESTRAVADOR do produto, e é o MESMO para o braço e para a 2ª opinião
     DT = __import__("importlib").import_module("app.services.destravador")
-    sistema = b1.pedidos[-1][0].content
-    assert DT.INSTRUCAO_DO_DESTRAVADOR in sistema and sistema.startswith("Você conduz, EM NOME DA CORRETORA")
-    assert b2.pedidos and b2.pedidos[0][0].content == b1.pedidos[-1][0].content
+    # F1c: a instrução FIXA vem PRIMEIRO (o prefixo do cache) e o roteiro do produto depois dela
+    sistema = DT.texto_da_mensagem(b1.pedidos[-1][0])
+    assert sistema.startswith(DT.INSTRUCAO_DO_DESTRAVADOR) and "Você conduz, EM NOME DA CORRETORA" in sistema
+    # o MESMO texto para os dois braços — só o embrulho muda (a Anthropic recebe o `cache_control`)
+    assert b2.pedidos and [DT.texto_da_mensagem(m) for m in b2.pedidos[0]] ==         [DT.texto_da_mensagem(m) for m in b1.pedidos[-1]]
     # a FICHA chegou ao modelo (P-122-05): um slot do caso está no prompt
     slots = d["entrada"]["sessao"]["slots"]
     if slots:
-        assert any(str(v) in b1.pedidos[-1][1].content for v in slots.values())
+        assert any(str(v) in DT.texto_da_mensagem(b1.pedidos[-1][1]) for v in slots.values())
     # o diário é DUBLÊ (nada no diário real) e recebeu a linha legível
     est = next(r for r in rel.resultados if r.chave == d["chave"]).rastro["estado"]
     assert est["diario"] and est["diario"][0]["modo"] == "on"
