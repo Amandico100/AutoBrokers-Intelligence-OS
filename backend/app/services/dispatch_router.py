@@ -2240,6 +2240,7 @@ async def start_live_dispatch(
             if tem_compromisso:
                 logger.info("[DISPATCH ROUTER] monitoring com follow-up pendente — nao supersede")
                 return {"ok": False, "error": "dispatch_monitoring_com_followup", "session": existing}
+        velha = False
         try:
             from datetime import datetime, timezone
 
@@ -2247,9 +2248,23 @@ async def start_live_dispatch(
             if created.tzinfo is None:
                 created = created.replace(tzinfo=timezone.utc)
             age_s = (datetime.now(timezone.utc) - created).total_seconds()
-            stale = stale or age_s > 45 * 60
+            velha = age_s > 45 * 60
+            stale = stale or velha
         except Exception:  # noqa: BLE001
             stale = True  # created_at ilegível = sessão suspeita, não bloqueia
+            velha = True
+        # 🔴 CONSERTO X3 (red team B4) — a sessão SEGURADA PARA RETOMAR não é morta.
+        #
+        # 📊 `rt-scripts/hold.py`: `_segurar_para_retomar` deixa `needs_human/insurer_closed`
+        # esperando o segurado responder; o PRÓXIMO acionamento do mesmo número da seguradora
+        # (até um que falhava por `not_ready`) a apagava aqui, antes de validar o pedido — e a
+        # resposta tardia do segurado A não achava mais o caso: sem retomada, sem dossiê, sem
+        # aviso. Enquanto o prazo do segurado corre (a espera com `ura_fechou`, que o Vigia vence
+        # e transforma em dossiê), ela conta como VIVA: o novo pedido entra na fila de hoje
+        # (`dispatch_already_active` → `enqueue_dispatch`). Vencido o prazo, o caminho de hoje.
+        if stale and not velha and sessao_segurada_no_prazo(existing):
+            logger.info("[DISPATCH ROUTER] sessão segurada para retomar — o novo pedido espera")
+            return {"ok": False, "error": "dispatch_already_active", "session": existing}
         if not stale:
             return {"ok": False, "error": "dispatch_already_active", "session": existing}
         await clear_active_dispatch(company_id, insurer)
@@ -3267,8 +3282,10 @@ def pergunta_para_o_segurado(session: Dict[str, Any], rotulo: str,
 
     seguradora = insurer_label_from_ref(str(session.get("playbook_ref") or ""))
     if str(pergunta or "").strip():
-        frase = (f"Só mais uma informação que a {seguradora} pediu para seguir com o seu "
-                 f"atendimento: {' '.join(str(pergunta).split())[:300]}")
+        # 🔴 CONSERTO X1 (red team P7): a pergunta inteira é NOSSA (composta pelo destravador) —
+        #    não se diz "a seguradora pediu"; quando a pergunta cita a tela, ela mesma diz isso.
+        frase = (f"Só mais uma informação para seguir com o seu atendimento na {seguradora}: "
+                 f"{' '.join(str(pergunta).split())[:400]}")
     else:
         frase = (f"Só mais uma informação que a {seguradora} pediu para seguir com o seu "
                  f"atendimento: me diga {str(rotulo or 'o dado pedido').strip()}.")
@@ -3909,6 +3926,18 @@ async def _ha_fila(company_id: str, insurer_phone: str) -> bool:
         return True
 
 
+def sessao_segurada_no_prazo(session: Optional[Dict[str, Any]]) -> bool:
+    """PURA. A sessão está SEGURADA PARA RETOMAR e o prazo do segurado ainda corre? (X3)
+
+    É a espera que `_segurar_para_retomar` marcou com `ura_fechou` — a MESMA que o Vigia lê
+    (`dispatch_watchdog.diagnose`) e vence: esgotado o prazo, ele a tira de
+    `esperando_do_segurado` (vira `espera_vencida` + dossiê) e esta função passa a dizer False."""
+    s = session or {}
+    espera = s.get("esperando_do_segurado") or {}
+    return bool(s.get("segurando_para_retomar") and espera.get("ura_fechou")
+                and not s.get("dossier_sent"))
+
+
 async def _segurar_para_retomar(company_id: str, insurer_phone: str,
                                 session: Dict[str, Any]) -> bool:
     """A URA fechou e há pergunta ao segurado SEM resposta: a sessão fica, à espera dela.
@@ -4195,6 +4224,13 @@ _FAMILIAS_DE_VOLTA_AO_MENU = frozenset({"conducao_esgotada", "loop_guard", "sent
 #: destravadas no MESMO acionamento já dizem que a rota precisa de conserto, não de
 #: mais uma aposta (o que excede vai a uma pessoa, pelo caminho de hoje).
 TETO_DO_DESTRAVADOR_NA_SESSAO = 4
+#: constante_justificada: CONSERTO X4 (red team P4) — o PONTO A (o turno do cérebro da fase humana e
+#: a tentativa do Sentinela) não tinha teto: cada tela da fase humana era UMA chamada ao destravador
+#: (o prompt inteiro + a 2ª opinião quando houver). O teto é o MESMO de sessão que o Sentinela já usa
+#: para as tentativas autônomas (`dispatch_watchdog.MAX_TENTATIVAS_NA_SESSAO` = 6): seis decisões
+#: autônomas num acionamento já dizem que a conversa precisa de outra coisa. Passou do teto, o turno
+#: volta a ser o de HOJE (o cérebro de produção + o conferente) — nunca mais uma aposta.
+TETO_DO_DESTRAVADOR_NO_PONTO_A = 6
 _MODOS_DO_DESTRAVADOR = ("off", "sombra", "on")
 _LIMIAR_PADRAO = 70
 
@@ -4227,6 +4263,11 @@ def _cabe_mais_um_destravamento(session: Dict[str, Any], familia: str) -> bool:
     teto = TETO_DE_VOLTA_AO_MENU if familia in _FAMILIAS_DE_VOLTA_AO_MENU else TETO_DO_DESTRAVADOR_POR_TRAVA
     return (int(contas.get(familia) or 0) < teto
             and sum(int(v or 0) for v in contas.values()) < TETO_DO_DESTRAVADOR_NA_SESSAO)
+
+
+def cabe_mais_um_no_ponto_a(session: Dict[str, Any]) -> bool:
+    """PURA. O PONTO A ainda pode chamar o destravador nesta sessão? (X4)"""
+    return int(session.get("destravamentos_ponto_a") or 0) < TETO_DO_DESTRAVADOR_NO_PONTO_A
 
 
 def _seguradora_e_ramo(session: Dict[str, Any]) -> tuple:
@@ -4291,6 +4332,11 @@ async def pedir_ao_destravador(company_id: str, session: Dict[str, Any], *, tela
             return None
         contas = session.setdefault("destravamentos", {})
         contas[familia] = int(contas.get(familia) or 0) + 1
+    else:
+        if not cabe_mais_um_no_ponto_a(session):
+            logger.info("[DESTRAVADOR] teto do ponto A atingido — segue o caminho de hoje")
+            return None
+        session["destravamentos_ponto_a"] = int(session.get("destravamentos_ponto_a") or 0) + 1
     try:
         from app.services.destravador import destravar
 
@@ -4309,9 +4355,23 @@ async def pedir_ao_destravador(company_id: str, session: Dict[str, Any], *, tela
     return d
 
 
+def _opcao_que_nao_vai_ao_segurado(rotulo: Any) -> bool:
+    """A regra do DESTRAVADOR (`destravador.opcao_que_nao_vai_ao_segurado`, com o custo liberado:
+    a pergunta do custo é a que leva opção de dinheiro). ⚠️ Import tarde (P-121-28): sem o módulo,
+    não existe pergunta do destravador para filtrar — fica só a navegação, que o motor já tira."""
+    try:
+        from app.services.destravador import opcao_que_nao_vai_ao_segurado
+    except ImportError:
+        return False
+    return bool(opcao_que_nao_vai_ao_segurado(rotulo, com_custo=True))
+
+
 def _opcoes_para_o_segurado(tela: str, opcoes: Any) -> tuple:
     """`([[dígito, rótulo], …], numeradas)` — as opções de CONTEÚDO que o destravador
-    escolheu oferecer, como a TELA as escreve. Navegação sai (`navega_para_o_segurado`)."""
+    escolheu oferecer, como a TELA as escreve. Navegação sai (`navega_para_o_segurado`).
+    🔴 CONSERTO X1 (red team B3): e o IRREVERSÍVEL também — sinistro, cancelar, novo atendimento,
+    outro CPF/titular, falar com o atendente da seguradora (`opcao_que_nao_vai_ao_segurado`, a
+    MESMA regra do destravador). O dinheiro fica: só a pergunta do CUSTO leva opção de dinheiro."""
     motor = _motor()
     da_tela = [(str(d), str(r)) for d, r in (motor.opcoes_numeradas(tela) or [])]
     saida: List[List[str]] = []
@@ -4322,7 +4382,7 @@ def _opcoes_para_o_segurado(tela: str, opcoes: Any) -> tuple:
             r = str(item or "").strip()
             achado = [dd for dd, rr in da_tela if " ".join(_norm(rr).split()) == " ".join(_norm(r).split())]
             d = achado[0] if len(achado) == 1 else ""
-        if not r.strip() or motor.navega_para_o_segurado(r):
+        if not r.strip() or motor.navega_para_o_segurado(r) or _opcao_que_nao_vai_ao_segurado(r):
             continue
         saida.append([d, r])
     numeradas = bool(saida) and bool(da_tela) and all(d for d, _ in saida)
@@ -4340,9 +4400,15 @@ def resposta_do_destravador_para_a_ura(session: Dict[str, Any], espera: Dict[str
     ou rótulo IGUAL, exatamente UMA) e sai como a TELA a escreve (o dígito, se a tela é
     numerada). A tela mudou desde a pergunta → None (responder outra tela é o chute)."""
     motor = _motor()
+    # 🔴 CONSERTO X1 (red team B3): o segurado que escreve o IRREVERSÍVEL ("Novo atendimento",
+    #    "Sinistro", "falar com atendente") NÃO o leva à URA — vai a uma pessoa, com o que ele disse.
+    if _opcao_que_nao_vai_ao_segurado(resposta) and not motor.navega_para_o_segurado(resposta):
+        return None, "opcao_irreversivel"
     valor, porque = motor.valor_do_slot_sem_chute(espera, resposta)
     if valor is None:
         return None, porque
+    if _opcao_que_nao_vai_ao_segurado(valor) and not motor.navega_para_o_segurado(valor):
+        return None, "opcao_irreversivel"
     tela = str(espera.get("tela") or "")
     agora = str(tela_atual or "").strip()
     if agora and " ".join(_norm(agora).split()) != " ".join(_norm(tela).split()):
@@ -4808,7 +4874,8 @@ async def try_route_insurer_inbound(
         _modo_a, _ = await modo_do_destravador_da_sessao(company_id, session)
         if _modo_a == "sombra":
             session["diario_do_destravador"] = True
-        if _modo_a == "on":
+        # X4: passado o teto do PONTO A, o turno é o de HOJE (o cérebro de produção, abaixo).
+        if _modo_a == "on" and cabe_mais_um_no_ponto_a(session):
             _o_destravador_decidiu = True
             _desfecho_a = await _turno_do_destravador(
                 company_id, from_phone, session, _tela_do_turno(session, text), _entradas_antes,

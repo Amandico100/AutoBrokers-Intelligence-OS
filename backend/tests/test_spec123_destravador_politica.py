@@ -534,8 +534,12 @@ SEGUNDA = lambda v: {**SEGUNDA_OK, "valor": v}   # noqa: E731
     ({"endereco_origem": "{ENDERECO}"}, "{ENDERECO}", True),
     ({"bairro": "Centro"}, "Centro", True),
     ({"veiculo_placa": PLACA}, PLACA.lower(), True),
-    ({"endereco_origem": "Rua das Flores 123 fundos"}, "Rua das Flores 123", True),
-    ({"endereco_origem": "Rua das Flores 123"}, "Rua das Flores, 123 - fundos", True),
+    ({"endereco_origem": "Rua das Flores, 123"}, "Rua das Flores 123", True),
+    # 🔴 CONSERTO X2 (§9.3 — a verdade mudou, a lição migra): o PEDAÇO deixou de ser dado. 📊 red
+    #    team B2: "Rua Inventada, 2233" passava por conter dígitos do CPF; o dado é o slot INTEIRO.
+    #    Um endereço que contém (ou está contido em) o do caso é DEDUZIR — pergunta ou pessoa.
+    ({"endereco_origem": "Rua das Flores 123 fundos"}, "Rua das Flores 123", False),
+    ({"endereco_origem": "Rua das Flores 123"}, "Rua das Flores, 123 - fundos", False),
 ])
 def test_e_dado_do_caso_nao_aceita_rotulo_nem_pedaco_curto(slots, valor, e_dado):
     s = sessao(REF_HDI, "guincho", slots=slots)

@@ -117,6 +117,7 @@ NUNCA_SOZINHO = (
     "inventar_dado",             # número/CPF/dado que não está no caso
     "trocar_titular",            # "Informar outro CPF/CNPJ": é o "inventar CPF" do D1 (titular errado)
     "afirma_cobertura",          # só a seguradora afirma cobertura
+    "confirmar_abertura",        # conserto X: confirmar a abertura sem o caso completo (ou com o resumo divergente)
 )
 
 PORQUE = {
@@ -129,6 +130,8 @@ PORQUE = {
     "inventar_dado": "a resposta traria um número que não está no caso",
     "trocar_titular": "a resposta trocaria o CPF/CNPJ do titular — isso é com uma pessoa",
     "afirma_cobertura": "a resposta falava de cobertura — só a seguradora afirma cobertura",
+    "confirmar_abertura": ("a tela confirma a abertura do serviço e o caso não está completo (ou o resumo "
+                           "não bate com o caso) — isso é com uma pessoa"),
 }
 
 #: constante_justificada: o gatilho do MOTOR que NUNCA vem ao destravador (CONTRATO-123, BLOCO 0):
@@ -171,6 +174,46 @@ _RX_AGENDA = re.compile(
 #: constante_justificada: o "sim" que CONCORDA com a pergunta da tela (a resposta que executa o que
 #: a tela propõe). Largo de propósito: o falso positivo custa uma pessoa; o negativo, um cancelamento.
 _RX_AFIRMATIVO = re.compile(r"^(?:\d\s*[-.)]?\s*)?(?:sim|confirmo|confirmar|pode|isso|ok|quero|desejo|aceito)\b")
+
+# ── CONSERTO ÚNICO · parte X (juiz B1/B2 · red team B1/B2/B3) — o vocabulário que passou ──────────
+# Todas sobre texto NORMALIZADO (`_norm_text`: minúsculo, sem acento). 📊 As redações vêm das
+# reproduções do red team (`rt-scripts/pol.py` C1–C13) e do acervo (`tests/corpus/telas_reais`).
+#: constante_justificada: CUSTO sem as palavras de `_RX_DINHEIRO_NA_TELA` do produto — 📊 pol.py
+#: C1 "participação de 150 reais", C2/C3 "o prestador poderá cobrar pelo excedente" (azul-auto, tela
+#: REAL "superior ao limite … cobrar pelo excedente"), C6 "custará cento e cinquenta reais", e "valor
+#: de". Responder a uma OPÇÃO (ou afirmar) numa tela destas é aceitar o custo: quem decide é o segurado.
+_RX_CUSTO_DA_TELA_EXTRA = re.compile(
+    r"\bparticipac(?:ao|oes)\b|\breais\b|\bcobrar\b|\bexcedente\b|\bvalor de\b|\bcustar(?:a|ao)?\b")
+#: constante_justificada: a TELA que abre SINISTRO com outras palavras — 📊 pol.py C7 "Deseja
+#: registrar a ocorrência agora?", C8 "acionar o seguro para o conserto do veículo".
+_RX_TELA_ABRE_SINISTRO_EXTRA = re.compile(
+    r"registrar (?:a |uma )?ocorrencia|acionar (?:o |a )?(?:seguro|apolice) para")
+#: constante_justificada: a TELA que CANCELA com outras palavras — 📊 pol.py C9 "Deseja desistir da
+#: solicitação?", C10 "Deseja encerrar a solicitação em andamento?" (o produto já lista `desistir` e
+#: `encerrar` como DECISÃO em `_PERGUNTAS_DE_DECISAO`; aqui é a resposta AFIRMATIVA que executa).
+_RX_TELA_CANCELA_EXTRA = re.compile(
+    r"\bdesist|\bencerrar (?:a |o |sua |seu )?(?:solicitacao|pedido|servico|chamado|assistencia)")
+#: constante_justificada: a TELA que abre OUTRO trabalho com outras palavras — 📊 pol.py C11 "Gostaria
+#: de fazer uma nova solicitação?". "nova solicitação" sozinha basta: 0 telas do acervo a usam para
+#: o pedido EM CURSO (é sempre o segundo).
+_RX_TELA_NOVO_EXTRA = re.compile(r"\bnov[oa] solicitac|\bfazer (?:um |uma )?(?:nov[oa]|outr[oa]) ")
+#: constante_justificada: a TELA que CONFIRMA A ABERTURA do serviço — 📊 acervo: allianz/alfa
+#: "Podemos confirmar o atendimento?", bradesco "Posso confirmar a abertura da sua assistência?",
+#: "Posso confirmar o agendamento da assistência?". Afirmar aqui ABRE o serviço: só com o caso
+#: completo e sem o conferente ter dito que o resumo diverge (red team e2e_conf: "Sim" a um resumo
+#: com a origem errada mandava o guincho a outro endereço).
+_RX_TELA_CONFIRMA_ABERTURA = re.compile(
+    r"(?:podemos|posso|vamos|deseja|quer) confirmar (?:a |o )?(?:abertura|atendimento|agendamento|"
+    r"servico|solicitacao|assistencia|pedido)|confirmar a abertura")
+#: constante_justificada: a OPÇÃO que nunca vai ao segurado nem volta dele à URA (X1). O mesmo
+#: irreversível do NUNCA — sinistro, cancelar, outro CPF/titular, novo atendimento — e o humano DA
+#: SEGURADORA (D10: 📊 o corredor azul diz que "Falar com atendente" joga o caso na fila dela).
+_RX_OPCAO_QUE_NAO_VAI_AO_SEGURADO = re.compile(
+    r"\bsinistro|\baviso de ocorrencia\b|\bcancel|\bdesist|\b(?:falar|conversar) com (?:um |uma |o |a )?"
+    r"(?:atendente|consultor|consultora|especialista|pessoa|humano)|\batendente\b")
+#: constante_justificada: o SIM/NÃO genérico — nunca é "dado do caso" numa tela que não declara o
+#: slot (juiz B2 · red team B1: com `pessoa_no_local="Sim"`, "Sim" passava por dado em QUALQUER tela).
+_RX_SIM_NAO = re.compile(r"^(?:sim|nao|s|n|ok|confirmo|correto|isso|claro|certo)$")
 
 
 class LimiarRecusado(ValueError):
@@ -706,17 +749,41 @@ def _n(s: Any) -> str:
     return " ".join(re.sub(r"[^\w ]+", " ", _norm_text(str(s or ""))).split())
 
 
-def opcoes_de_conteudo(tela: str) -> List[List[str]]:
+def opcao_que_nao_vai_ao_segurado(rotulo: Any, *, com_custo: bool = False) -> bool:
+    """A opção é NAVEGAÇÃO ou IRREVERSÍVEL — nunca é oferecida ao segurado, e a resposta dele que
+    a escolher nunca volta à URA (X1). `com_custo=True` é a pergunta do CUSTO (D1: lá o segurado
+    decide o custo, vendo o valor); fora dela, a opção que fala de dinheiro também sai."""
+    from app.services import insurer_dispatch_service as IDS
+
+    r = IDS._norm_text(str(rotulo or ""))
+    if not r.strip() or IDS.navega_para_o_segurado(rotulo):
+        return bool(r.strip())
+    if (_RX_OPCAO_QUE_NAO_VAI_AO_SEGURADO.search(r) or _RX_OPCAO_NOVO_ATENDIMENTO.search(_n(r))
+            or _RX_TROCA_TITULAR.search(_n(r))):
+        return True
+    return not com_custo and bool(IDS._RX_DINHEIRO_NA_TELA.search(r) or _RX_CUSTO_DA_TELA_EXTRA.search(r))
+
+
+def opcoes_de_conteudo(tela: str, *, com_custo: bool = False) -> List[List[str]]:
     """As opções de CONTEÚDO da tela ([[tecla, rótulo], …]), sem navegação — o MESMO critério da
     pergunta do `sem_chute` (`sem_chute_ao_segurado`): numerada guarda o dígito da tela; lista de
-    botões é renumerada 1..n (a volta casa pelo rótulo). "Nenhuma das anteriores" fica: é resposta."""
+    botões é renumerada 1..n (a volta casa pelo rótulo). "Nenhuma das anteriores" fica: é resposta.
+    Conserto X1: nem o IRREVERSÍVEL (`opcao_que_nao_vai_ao_segurado`)."""
     from app.services import insurer_dispatch_service as IDS
 
     num = IDS.opcoes_numeradas(str(tela or ""))
     if num:
-        return [[str(d), str(r)] for d, r in num if not IDS.navega_para_o_segurado(r)]
-    conteudo = [str(r) for r in IDS._rotulos_da_tela(str(tela or "")) if not IDS.navega_para_o_segurado(r)]
+        return [[str(d), str(r)] for d, r in num
+                if not opcao_que_nao_vai_ao_segurado(r, com_custo=com_custo)]
+    conteudo = [str(r) for r in IDS._rotulos_da_tela(str(tela or ""))
+                if not opcao_que_nao_vai_ao_segurado(r, com_custo=com_custo)]
     return [[str(i), r] for i, r in enumerate(conteudo, 1)]
+
+
+def _tela_tem_opcoes(tela: str) -> bool:
+    from app.services import insurer_dispatch_service as IDS
+
+    return bool(IDS.opcoes_numeradas(str(tela or "")) or IDS._rotulos_da_tela(str(tela or "")))
 
 
 def _pergunta_da_tela(tela: str) -> str:
@@ -734,12 +801,143 @@ def _pergunta_ao_segurado(tela: str, opcoes: List[List[str]]) -> str:
     return f"A seguradora está perguntando: “{q}” — pode me responder?"
 
 
+# ── X1 · o CONFERENTE do texto que o modelo escreve ao segurado ────────────────────────────────
+#: constante_justificada: dinheiro, pagamento e dado de cartão — 📊 juiz A1b ("taxa de R$ 350,00 a
+#: pagar via PIX"), red team perg.py ("número do seu cartão de crédito e o código de segurança",
+#: "aceita pagar a franquia de R$ 2.000?"). Nada disto sai da boca do agente ao segurado.
+_RX_DINHEIRO_AO_SEGURADO = re.compile(
+    r"r\$|\breais\b|\bpag|\bpix\b|\bcartao\b|\bcredito\b|\bdebito\b|\bboleto\b|\bcobr|\btaxa|"
+    r"\bcust[oa]|\bcustar|\bfranquia|\bvalor\b|\bdinheiro\b|\bparticipac|\bdeposit|\bsenha\b|"
+    r"\bcodigo de seguranca\b|\bcvv\b|\bexcedente\b")
+#: constante_justificada: a PROMESSA que só a seguradora faz — 📊 juiz A1a ("já foi aberto, protocolo
+#: …"), A1c ("foi cancelado … abrir um sinistro?"), A1d ("está garantido; chega em 20 minutos").
+_RX_PROMESSA_AO_SEGURADO = re.compile(
+    r"\bcancel|\bprotocolo|\bcobert|\bcobre\b|\bgarant|\bsinistro|\bindeniz|\baprovad|\bautorizad|"
+    r"\bchega(?:ra|rao|m)?\b|\bminutos?\b|\bhoras?\b|\bprazo\b|\bfoi abert|\bja foi\b|\bdesist")
+#: constante_justificada: texto que é para a EQUIPE, não para o segurado — 📊 red team perg.py
+#: "Equipe: a URA travou no resumo, alguém precisa conferir a origem manualmente".
+_RX_PARA_A_EQUIPE = re.compile(
+    r"\bequipe\b|\bura\b|\btrav|\bmanualmente\b|\balguem precisa\b|\brobo\b|\bsistema\b|\bjson\b|"
+    r"\bslot\b|\bdestravador\b|\bprompt\b|\batendente\b|\boperador\b|\bo segurado\b|\ba segurada\b|"
+    r"\bo cliente\b|\bdossie\b|\bconferente\b")
+#: constante_justificada: UMA pergunta curta — 200 caracteres, como a linha da tela que se cita.
+_TETO_DA_PERGUNTA_DO_MODELO = 200
+
+
+def conferir_texto_ao_segurado(texto: Any, sessao: Dict[str, Any], tela: str = "") -> str:
+    """O conferente ESTRITO do texto do modelo antes de ele chegar ao segurado (X1). Devolve o
+    porquê da recusa, ou "" (passa). UMA pergunta curta, em 2ª pessoa, sem número que não esteja
+    no caso nem na tela, sem dinheiro/pagamento, sem promessa (protocolo, prazo, cobertura,
+    cancelamento) e sem texto para a equipe. Recusado → a pergunta é a da TELA, composta pelo código."""
+    from app.services.insurer_dispatch_service import _norm_text
+
+    t = " ".join(str(texto or "").split())
+    if not t:
+        return "vazia"
+    if len(t) > _TETO_DA_PERGUNTA_DO_MODELO:
+        return "longa"
+    # UMA frase: termina em "?" e não tem outro fim de frase antes ("Está garantido; chega em 20
+    # minutos. Qual a placa?"). Os dois-pontos ficam: "Para quem é: para você ou outra pessoa?".
+    if not t.endswith("?") or t.count("?") != 1 or re.search(r"[.;!\n]", t[:-1]):
+        return "nao_e_uma_pergunta_so"
+    n = _norm_text(t)
+    if _RX_DINHEIRO_AO_SEGURADO.search(n):
+        return "dinheiro"
+    if _RX_PROMESSA_AO_SEGURADO.search(n):
+        return "promessa"
+    if _RX_PARA_A_EQUIPE.search(n):
+        return "texto_para_a_equipe"
+    permitidos = _tokens_de_digitos(list((sessao.get("slots") or {}).values())
+                                    + list((sessao.get("captured") or {}).values()) + [tela])
+    if any(x not in permitidos for x in re.findall(r"\d+", t)):
+        return "numero_fora_do_caso"
+    return ""
+
+
+def _slots_do_passo(sessao: Dict[str, Any], tela: str,
+                    playbook: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Os slots que o PASSO DO CORREDOR desta tela declara (`match_ura_step`: `requires` + os
+    `{slot}` da resposta). É o único slot que pode responder uma OPÇÃO como "dado do caso" (X2)."""
+    from app.services import corridor_playbooks as CP
+    from app.services.insurer_dispatch_service import get_playbook
+
+    pb = playbook if playbook is not None else (get_playbook(str(sessao.get("playbook_ref") or "")) or {})
+    if not pb or not str(tela or "").strip():
+        return []
+    try:
+        passo = CP.match_ura_step(pb, str(tela), str(sessao.get("subservice") or "")) or {}
+    except Exception:  # noqa: BLE001 — sem passo, nenhum slot declarado (o caminho mais seguro)
+        return []
+    if passo.get("noop"):
+        return []
+    saida: List[str] = []
+    for s in list(passo.get("requires") or []) + re.findall(r"\{(\w+)\}", str(passo.get("reply") or "")):
+        if str(s) not in saida:
+            saida.append(str(s))
+    return saida
+
+
+def _pergunta_composta(tela: str, conteudo: List[List[str]], sessao: Dict[str, Any],
+                       texto_do_modelo: str = "") -> str:
+    """X1 — a pergunta ao segurado, COMPOSTA PELO CÓDIGO: a frase do produto para o slot do passo
+    (`como_perguntar_ao_segurado`, 2ª pessoa) ou a pergunta da PRÓPRIA tela (+ as opções, que o
+    roteador acrescenta). O texto do modelo só entra se passar `conferir_texto_ao_segurado`; e então
+    vem com a pergunta da tela ao lado, para o segurado saber o que a seguradora perguntou."""
+    from app.services import corridor_playbooks as CP
+
+    q = _pergunta_da_tela(tela)
+    molde = ""
+    for s in _slots_do_passo(sessao, tela):
+        try:
+            molde = CP.como_perguntar_ao_segurado(s, str(sessao.get("playbook_ref") or "")) or ""
+        except Exception:  # noqa: BLE001
+            molde = ""
+        if molde:
+            break
+    modelo = " ".join(str(texto_do_modelo or "").split())
+    if modelo and conferir_texto_ao_segurado(modelo, sessao, tela):
+        modelo = ""
+    if modelo:
+        return f"{modelo} (a pergunta da seguradora: “{q}”)"[:400]
+    if molde and not conteudo:
+        return f"Me diga {molde}, por favor. (a pergunta da seguradora: “{q}”)"[:400]
+    return _pergunta_ao_segurado(tela, conteudo)
+
+
+def _texto_sem_as_opcoes(tela: str) -> str:
+    """A tela sem as LINHAS de opção — "Informações sobre pagamento" é uma opção do menu da Porto,
+    não um custo que a tela anuncia."""
+    from app.services import insurer_dispatch_service as IDS
+
+    rotulos = {IDS._norm_text(str(r)).strip(" .*:") for r in IDS._rotulos_da_tela(str(tela or ""))}
+    rotulos |= {IDS._norm_text(str(r)).strip(" .*:") for _d, r in IDS.opcoes_numeradas(str(tela or ""))}
+    rotulos.discard("")
+    fora = []
+    for linha in str(tela or "").splitlines():
+        ln = IDS._norm_text(linha).strip()
+        if any(r and r in ln and len(ln) <= len(r) + 14 for r in rotulos):
+            continue
+        fora.append(linha)
+    return "\n".join(fora)
+
+
+def _tela_anuncia_custo(tela: str) -> bool:
+    """A tela (sem as linhas de opção) fala de dinheiro — pelo regex do PRODUTO ou pelo vocabulário
+    que passou (`_RX_CUSTO_DA_TELA_EXTRA`). Sem exigir marca de pergunta: 📊 red team C3–C5, o custo
+    sem "?" e um "Continuar" que o aceita."""
+    from app.services import insurer_dispatch_service as IDS
+
+    t = IDS._norm_text(_texto_sem_as_opcoes(tela))
+    return bool(IDS._RX_DINHEIRO_NA_TELA.search(t) or _RX_CUSTO_DA_TELA_EXTRA.search(t))
+
+
 def _pergunta_do_custo(tela: str) -> str:
     """A pergunta ao segurado que MOSTRA o custo da tela — ele decide (D1)."""
     from app.services import insurer_dispatch_service as IDS
 
     linhas = [" ".join(l.replace("*", "").split()) for l in str(tela or "").splitlines()]
-    dinheiro = [l for l in linhas if l and IDS._RX_DINHEIRO_NA_TELA.search(IDS._norm_text(l))]
+    dinheiro = [l for l in linhas if l and (IDS._RX_DINHEIRO_NA_TELA.search(IDS._norm_text(l))
+                                             or _RX_CUSTO_DA_TELA_EXTRA.search(IDS._norm_text(l)))]
     trecho = " / ".join(dinheiro)[:300] or _pergunta_da_tela(tela)
     return (f"A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: "
             f"“{trecho}”. Como você quer seguir?")
@@ -770,30 +968,67 @@ def _pedaco_do_mesmo_dado(curto: str, longo: str) -> bool:
     return f" {curto} " in f" {longo} "
 
 
-def _e_dado_do_caso(valor: str, sessao: Dict[str, Any], tela: str = "") -> bool:
-    """O valor É um dado do caso? Os slots (sem tecla de menu `*_opcao`, sem o que o SISTEMA
-    preencheu — `slots_padrao`) e o que foi capturado da seguradora.
+def _compacto(s: Any) -> str:
+    """Normalizado e SEM espaço: "111.222.333-44" = "11122233344", "ABC-1D23" = "abc1d23"."""
+    return re.sub(r"\s+", "", _n(s))
 
-    F1c — 📊 antes casava por SUBSTRING: com `{ENDERECO}` no caso, "Digitar endereço" (um rótulo
-    da tela) passava por dado; com bairro "Centro", "Centro de serviços" também. Agora:
+
+def _slots_do_tipo_da_tela(tela: str) -> List[str]:
+    """Os slots do TIPO de dado que a tela pede, pela tabela do PRODUTO (`_PERGUNTAS_DE_DADO`)."""
+    from app.services import insurer_dispatch_service as IDS
+
+    nt = IDS._norm_text(str(tela or ""))
+    saida: List[str] = []
+    for _campo, rx, slots in IDS._PERGUNTAS_DE_DADO:
+        if re.search(rx, nt, re.IGNORECASE):
+            saida += [str(s) for s in slots if str(s) not in saida]
+    return saida
+
+
+def _e_dado_do_caso(valor: str, sessao: Dict[str, Any], tela: str = "") -> bool:
+    """O valor É um dado do caso? Os slots (sem o que o SISTEMA preencheu — `slots_padrao`).
+
+    F1c — 📊 antes casava por SUBSTRING ("Digitar endereço" passava por `{ENDERECO}`).
+    🔴 CONSERTO X2 (juiz B2 · red team B1/B2) — 📊 "Sim" igual a QUALQUER slot sim/não
+    (`pessoa_no_local`, `risco_confirmado_sem_fumaca`) respondia "Sim" sozinho a qualquer tela
+    sim/não (60 de 74 telas reais com "Sim" e palavra sensível; `rt-scripts/pol_corpus.py`), e o
+    pedaço de endereço passava. Agora:
       · rótulo de NAVEGAÇÃO da tela nunca é dado;
-      · OPÇÃO de conteúdo da tela só é dado por IGUALDADE com um valor do caso ("Sim" = "Sim");
-      · máscara (`{ENDERECO}`) só casa com ela mesma, crua;
-      · senão: igualdade normalizada, ou um contém o outro em PALAVRAS INTEIRAS com o pedaço
-        menor tendo ≥ 6 caracteres e um dígito ou duas palavras (`_pedaco_do_mesmo_dado`)."""
+      · escolher uma OPÇÃO da tela só é dado quando o slot é o que o PASSO DO CORREDOR desta tela
+        declara (`_slots_do_passo`) e o valor dele CASA a opção — senão é DEDUZIR;
+      · texto livre: IGUAL (normalizado, sem espaço) a um slot INTEIRO do tipo que a tela pede
+        (`_slots_do_tipo_da_tela` + o passo); tela sem tipo conhecido: igual a um slot, nunca um
+        sim/não genérico (`_RX_SIM_NAO`); nunca "contido" (o pedaço saiu);
+      · máscara (`{ENDERECO}`) só casa com ela mesma, crua."""
     v = _n(valor)
+    if len(v) < 2 and not v.isdigit():
+        return False
+    tem_tela = bool(str(tela or "").strip())
+    rot = _rotulo_escolhido(tela, valor) if tem_tela else ""
+    from app.services.insurer_dispatch_service import rotulo_e_de_navegacao
+
+    if rot and rotulo_e_de_navegacao(rot):
+        return False
+    padrao = set(sessao.get("slots_padrao") or ())
+    slots = {str(k): x for k, x in (sessao.get("slots") or {}).items() if k not in padrao}
+    do_passo = [s for s in (_slots_do_passo(sessao, tela) if tem_tela else []) if s not in padrao]
+    if rot:
+        # OPÇÃO da tela: só o slot do PASSO, e só se o valor dele casa a opção escolhida
+        alvos = {_compacto(rot), _compacto(valor)}
+        return any(_compacto(slots.get(s)) in alvos for s in do_passo
+                   if isinstance(slots.get(s), (str, int)) and not isinstance(slots.get(s), bool)
+                   and _compacto(slots.get(s)))
     if len(v) < 2:
         return False
-    rot = _rotulo_escolhido(tela, valor) if str(tela or "").strip() else ""
-    if rot:
-        from app.services.insurer_dispatch_service import rotulo_e_de_navegacao
-
-        if rotulo_e_de_navegacao(rot):
-            return False
-    padrao = set(sessao.get("slots_padrao") or ())
-    fontes = [(k, x) for k, x in (sessao.get("slots") or {}).items()
-              if not str(k).endswith("_opcao") and k not in padrao]
-    fontes += list((sessao.get("captured") or {}).items())
+    tipo = (_slots_do_tipo_da_tela(tela) if tem_tela else []) + do_passo
+    if tipo:
+        fontes = [(k, slots.get(k)) for k in tipo if k in slots]
+    else:
+        fontes = [(k, x) for k, x in slots.items() if not str(k).endswith("_opcao")]
+        fontes += list((sessao.get("captured") or {}).items())
+        if _RX_SIM_NAO.match(v):
+            return False        # sim/não genérico só vale como o slot DECLARADO pela tela
+    cv = _compacto(valor)
     for _k, x in fontes:
         if not isinstance(x, (str, int)) or isinstance(x, bool):
             continue
@@ -802,14 +1037,7 @@ def _e_dado_do_caso(valor: str, sessao: Dict[str, Any], tela: str = "") -> bool:
             if str(valor or "").strip() == cru:
                 return True
             continue
-        d = _n(cru)
-        if not d:
-            continue
-        if v == d:
-            return True
-        if rot:
-            continue            # opção da tela: só por igualdade
-        if _pedaco_do_mesmo_dado(v, d) or _pedaco_do_mesmo_dado(d, v):
+        if cv and cv == _compacto(cru):
             return True
     return False
 
@@ -859,6 +1087,63 @@ def _digitos_do_caso(sessao: Dict[str, Any]) -> str:
     return " ".join(re.sub(r"\D", "", str(x)) for x in vals if x not in (None, ""))
 
 
+def _tokens_de_digitos(valores: List[Any]) -> set:
+    """Os NÚMEROS INTEIROS dos valores: cada sequência de dígitos (separadores `.-/ ` juntados) e o
+    valor só-dígitos inteiro. 🔴 X2 (red team B2): "333" e "2233" estão DENTRO dos dígitos do CPF
+    11122233344 — e passavam por número do caso. Número do caso é um número INTEIRO do caso."""
+    saida: set = set()
+    for x in valores:
+        if x in (None, "") or isinstance(x, bool) or not isinstance(x, (str, int)):
+            continue
+        s = str(x)
+        saida.update(re.findall(r"\d+", re.sub(r"(?<=\d)[.\-/ ](?=\d)", "", s)))
+        saida.update(re.findall(r"\d+", s))
+        so = re.sub(r"\D", "", s)
+        if so:
+            saida.add(so)
+            if so.startswith("55") and len(so) >= 12:
+                saida.add(so[2:])      # o telefone com e sem o 55 do país
+    return saida
+
+
+def _numero_inventado(valor: str, sessao: Dict[str, Any]) -> bool:
+    """O valor traz um número (≥ 3 dígitos) que não é um número INTEIRO do caso?"""
+    do_caso = _tokens_de_digitos(list((sessao.get("slots") or {}).values())
+                                 + list((sessao.get("captured") or {}).values()))
+    return any(r not in do_caso for r in re.findall(r"\d{3,}", re.sub(r"[.\-/ ]", "", str(valor or ""))))
+
+
+def _caso_completo(sessao: Dict[str, Any], playbook: Dict[str, Any]) -> bool:
+    """Todo slot que o corredor exige para este serviço está preenchido (pelo segurado, não pelo
+    padrão do sistema)."""
+    slots = sessao.get("slots") or {}
+    padrao = set(sessao.get("slots_padrao") or ())
+    pede = [str(x) for x in (playbook.get("required_slots") or [])]
+    sub = ((playbook.get("subservices") or {}).get(str(sessao.get("subservice") or "")) or {})
+    pede += [str(x) for x in (sub.get("required_slots") or [])]
+    return bool(pede) and all(str(slots.get(x) or "").strip() and x not in padrao for x in pede)
+
+
+def _nunca_da_tela(norm_tela: str, tem_pergunta: bool, sessao: Dict[str, Any],
+                   playbook: Dict[str, Any], gatilho: str) -> str:
+    """A TELA cuja resposta AFIRMATIVA é irreversível → a chave do NUNCA, ou "". Usada quando a
+    resposta afirma (RESPONDER) e quando se pensa em perguntar ao segurado (a pergunta seria a
+    mesma decisão, só que terceirizada a ele sem ver o todo) — X1/X2."""
+    if _RX_TELA_ABRE_SINISTRO.search(norm_tela) or _RX_TELA_ABRE_SINISTRO_EXTRA.search(norm_tela):
+        return "abrir_sinistro"
+    if tem_pergunta and (_RX_CANCELA.search(norm_tela) or _RX_TELA_CANCELA_EXTRA.search(norm_tela)):
+        return "cancelar_pedido"
+    if tem_pergunta and (_RX_TELA_PEDE_OUTRO.search(norm_tela) or _RX_TELA_NOVO_EXTRA.search(norm_tela)):
+        return "novo_atendimento"
+    if tem_pergunta and _RX_TROCA_TITULAR.search(norm_tela):
+        return "trocar_titular"
+    if _RX_TELA_CONFIRMA_ABERTURA.search(norm_tela) and (
+            not _caso_completo(sessao, playbook)
+            or str(gatilho or "").startswith("conferencia_divergente")):
+        return "confirmar_abertura"
+    return ""
+
+
 def _provedor_diferente(segunda: Optional[dict], provedor: str) -> bool:
     p2 = str((segunda or {}).get("provedor") or "").strip().lower()
     p1 = str(provedor or "").strip().lower()
@@ -903,10 +1188,25 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
         return Destravamento(acao="PERGUNTAR_AO_SEGURADO", valor=pergunta[:400],
                              opcoes=conteudo if opcoes is None else opcoes, proibicao=porque, **base)
 
+    def perguntar_composta(porque: str, texto_do_modelo: str = "") -> Destravamento:
+        """🔴 X1 — a pergunta que o MODELO quis fazer (ou a que a régua do DEDUZIR rebaixou) sai
+        COMPOSTA PELO CÓDIGO (`_pergunta_composta`). E não sai quando a tela é irreversível (a
+        resposta do segurado executaria o NUNCA) nem quando o irreversível era TUDO o que a tela
+        oferecia (sobrou nenhuma opção para ele escolher) — aí é uma pessoa."""
+        if not ida:
+            return pessoa(porque or "ida_e_volta_proibida")
+        chave = _nunca_da_tela(norm_tela, tem_pergunta, sessao, playbook, g)
+        if chave and chave in ligadas:
+            return pessoa(chave)
+        if _tela_tem_opcoes(tela) and not conteudo:
+            # só navegação e/ou o irreversível: não sobrou NADA que o segurado possa escolher
+            return pessoa("nenhuma_opcao_para_o_segurado")
+        return perguntar(_pergunta_composta(tela, conteudo, sessao, texto_do_modelo), porque)
+
     def rebaixar(porque: str) -> Destravamento:
         """DEDUZIR que não passou: pergunta ao segurado se a tela pergunta algo; senão pessoa."""
         if ida and (len(conteudo) >= 2 or re.search(IDS._MARCA_DE_PERGUNTA, IDS._norm_text(tela))):
-            return perguntar(_pergunta_ao_segurado(tela, conteudo), porque)
+            return perguntar_composta(porque)
         return pessoa(porque)
 
     # ① A saída do modelo não é a pedida → PESSOA. E o gatilho que nunca se destrava, idem.
@@ -920,9 +1220,18 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
     norm_tela = IDS._norm_text(str(tela or ""))
     tem_pergunta = bool(re.search(IDS._MARCA_DE_PERGUNTA, norm_tela, re.IGNORECASE))
     valor = p.valor
-    custo = "aceite_de_custo" in ligadas and bool(
+    rot_da_resposta = _rotulo_escolhido(tela, valor) if p.acao == "RESPONDER" else ""
+    afirma_a_tela = p.acao == "RESPONDER" and bool(
+        _RX_AFIRMATIVO.search(_n(valor)) or _RX_AFIRMATIVO.search(_n(rot_da_resposta)))
+    custo = "aceite_de_custo" in ligadas and (bool(
         AC.proibicao(tela, valor if p.acao == "RESPONDER" else "", playbook=playbook, session=sessao,
                      proibicoes=("aceite_de_custo",)))
+        # X2 — 📊 red team C1–C6: o custo com outras palavras, ou sem "?", aceito por uma OPÇÃO
+        # ("Sim", "Continuar", "Prosseguir") ou por uma afirmação.
+        or (p.acao == "RESPONDER" and bool(rot_da_resposta or afirma_a_tela)
+            and _tela_anuncia_custo(tela)))
+    if custo:
+        conteudo = opcoes_de_conteudo(tela, com_custo=True)   # D1: aqui o segurado decide o custo
 
     # ② SILENCIO — o código prova que cabe (o MESMO discriminador do produto).
     if p.acao == "SILENCIO":
@@ -939,22 +1248,24 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
     if p.acao == "PESSOA":
         return pessoa("o_modelo_chamou_uma_pessoa")
     if p.acao == "RESPONDER":
-        rot = _rotulo_escolhido(tela, valor)
+        rot = rot_da_resposta
         alvo = _n(rot or valor)
-        afirma = bool(_RX_AFIRMATIVO.search(_n(valor)) or _RX_AFIRMATIVO.search(alvo))
-        if "abrir_sinistro" in ligadas and (
-                _RX_SINISTRO.search(alvo) or (afirma and _RX_TELA_ABRE_SINISTRO.search(norm_tela))):
+        afirma = afirma_a_tela
+        da_tela = _nunca_da_tela(norm_tela, tem_pergunta, sessao, playbook, g) if afirma else ""
+        if "abrir_sinistro" in ligadas and (_RX_SINISTRO.search(alvo) or da_tela == "abrir_sinistro"):
             return pessoa("abrir_sinistro")
         if "cancelar_pedido" in ligadas and (
-                _RX_CANCELA.search(alvo) or (afirma and tem_pergunta and _RX_CANCELA.search(norm_tela))):
+                _RX_CANCELA.search(alvo) or _RX_TELA_CANCELA_EXTRA.search(alvo)
+                or da_tela == "cancelar_pedido"):
             return pessoa("cancelar_pedido")
-        if "novo_atendimento" in ligadas and _abre_novo_atendimento(alvo, norm_tela, afirma,
-                                                                    tem_pergunta, sessao):
+        if "novo_atendimento" in ligadas and (
+                _abre_novo_atendimento(alvo, norm_tela, afirma, tem_pergunta, sessao)
+                or da_tela == "novo_atendimento"):
             return pessoa("novo_atendimento")
-        if "trocar_titular" in ligadas and (
-                _RX_TROCA_TITULAR.search(alvo)
-                or (afirma and tem_pergunta and _RX_TROCA_TITULAR.search(norm_tela))):
+        if "trocar_titular" in ligadas and (_RX_TROCA_TITULAR.search(alvo) or da_tela == "trocar_titular"):
             return pessoa("trocar_titular")
+        if "confirmar_abertura" in ligadas and da_tela == "confirmar_abertura":
+            return pessoa("confirmar_abertura")
         if "condominio_ou_empresarial" in ligadas and rot:
             try:
                 from app.providers.policy_data_provider import familia_de_ramo_do_rotulo
@@ -967,8 +1278,7 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
                 and not IDS._finalize_allowed(sessao):
             return pessoa("confirmacao_final")
         if "inventar_dado" in ligadas:
-            do_caso = _digitos_do_caso(sessao)
-            if any(r not in do_caso for r in re.findall(r"\d{3,}", re.sub(r"[.\-/ ]", "", valor))):
+            if _numero_inventado(valor, sessao):     # X2: número INTEIRO do caso, nunca "contido"
                 return pessoa("inventar_dado")
             # a tela pede um DADO (placa, CPF, telefone, endereço… — a tabela do PRODUTO,
             # `_PERGUNTAS_DE_DADO`) e o valor não é opção da tela nem dado do caso
@@ -991,16 +1301,21 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
                     else _pergunta_ao_segurado(tela, conteudo))
         return perguntar(pergunta, "passo_sem_chute")
 
-    # ⑤ PERGUNTAR — a pergunta do modelo (2ª pessoa) + as opções de CONTEÚDO da tela.
+    # ⑤ PERGUNTAR — 🔴 X1: o texto do modelo NUNCA vai cru ao segurado. A pergunta é composta
+    #    pelo código (a da tela / a frase do produto para o slot do passo + as opções de conteúdo
+    #    filtradas); o texto do modelo só entra se passar `conferir_texto_ao_segurado`.
     if p.acao == "PERGUNTAR_AO_SEGURADO":
-        return perguntar(valor, "")
+        return perguntar_composta("", texto_do_modelo=valor)
 
     # ⑥ RESPONDER, por classe.
     classe = p.classe
     if classe == "conduzir":
         rot = _rotulo_escolhido(tela, valor)
         eco = IDS.classe_da_tela(playbook, str(tela), slots=sessao.get("slots")).get("chave") == "eco_de_dado"
-        if not ((rot and IDS.rotulo_e_de_navegacao(rot)) or eco):
+        # X2 (red team B2): no ECO só CONFIRMAR o eco do caso conduz ("Sim"/"Confirmar", uma opção
+        # da tela). Texto livre ("Rua Inventada, 2233") ou "Não" num eco é escolha — DEDUZIR.
+        eco_confirmado = eco and bool(rot) and bool(_RX_AFIRMATIVO.search(_n(rot)))
+        if not ((rot and IDS.rotulo_e_de_navegacao(rot)) or eco_confirmado):
             classe = "deduzir"        # não é navegação: é escolha — a régua do DEDUZIR
     if classe == "responder_com_dado" and not _e_dado_do_caso(valor, sessao, tela):
         classe = "deduzir"            # não é dado do caso: é dedução
@@ -1226,11 +1541,35 @@ ACAO_NO_DIARIO = {
 }
 
 
+def tentativa_na_tela(sessao: Dict[str, Any], tela: str) -> str:
+    """Qual DECISÃO sobre esta tela é esta, contada pelo que JÁ ACONTECEU na conversa (X5):
+    `<vezes que a tela chegou>.<respostas do destravador depois da última vez que ela chegou>`.
+
+    🔴 Juiz pendência 4 · red team P5: a chave era empresa+acionamento+tela, e a 2ª decisão na MESMA
+    tela (a URA a repetiu; o Sentinela tentou de novo) devolvia a linha da 1ª — o diário perdia uma
+    decisão (G5: uma linha por decisão). ⛔ A MESMA entrega repetida (a mesma mensagem processada de
+    novo, sem nada novo na conversa) conta igual — e cai na MESMA linha, sem duplicar."""
+    alvo = " ".join(_n(tela).split())
+    chegou, depois = 0, 0
+    for e in (sessao or {}).get("transcript") or []:
+        if not isinstance(e, dict):
+            continue
+        texto = " ".join(_n(e.get("text")).split())
+        if str(e.get("direction") or "") == "in" and texto and alvo and texto in alvo:
+            chegou += 1
+            depois = 0
+        elif str(e.get("direction") or "") == "out" and str(e.get("via") or "") == "destravador":
+            depois += 1
+    return f"{chegou}.{depois}"
+
+
 def chave_de_idempotencia(company_id: str, sessao: Dict[str, Any], tela: str) -> str:
-    """empresa + acionamento + tela (CONTRATO-123): a mesma tela no mesmo acionamento, UMA linha."""
+    """empresa + acionamento + tela + TENTATIVA (`tentativa_na_tela`): a mesma entrega, UMA linha;
+    a 2ª decisão na mesma tela, a sua própria linha (X5)."""
     run = str((sessao or {}).get("work_run_id") or (sessao or {}).get("case_id") or "")
     t = " ".join(_n(tela).split())
-    return f"destravador:{company_id}:{run}:{hashlib.sha256(t.encode()).hexdigest()[:24]}"
+    return (f"destravador:{company_id}:{run}:{hashlib.sha256(t.encode()).hexdigest()[:24]}:"
+            f"{tentativa_na_tela(sessao, tela)}")
 
 
 def _frase_propria(*, seguradora: str, tela: str, classe: str, acao: str, valor: str, nota,
