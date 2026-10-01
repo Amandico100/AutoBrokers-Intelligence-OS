@@ -543,12 +543,16 @@ async def _tentativa_do_destravador(company_id: str, insurer_phone: str, session
     `None` (modo não é `on` → `_adaptive_reply` de hoje) · `("resposta", texto)` (entra
     no ENVIO de hoje, como a resposta aprovada) · `("fim", desfecho)` · `("pessoa", motivo)`."""
     from app.services.dispatch_router import (
-        _SILENCIO_S, _ler_do_redis, aplicar_destravamento, modo_do_destravador_da_sessao,
-        motivo_de_pessoa_do_destravador, pedir_ao_destravador,
+        _SILENCIO_S, _ler_do_redis, aplicar_destravamento, cabe_mais_um_no_ponto_a,
+        modo_do_destravador_da_sessao, motivo_de_pessoa_do_destravador, pedir_ao_destravador,
     )
 
     modo, _limiar = await modo_do_destravador_da_sessao(company_id, session)
-    if modo != "on":
+    # 🔴 CONSERTO Z2 — passado o TETO do ponto A (`TETO_DO_DESTRAVADOR_NO_PONTO_A`), a tentativa
+    #    é a de HOJE (`_adaptive_reply` + o conferente), a MESMA regra do roteador
+    #    (`cabe_mais_um_no_ponto_a` antes de `_turno_do_destravador`). Antes, o `d=None` do teto
+    #    caía abaixo como PESSOA: o mesmo caso ia ao cérebro no roteador e a uma pessoa aqui.
+    if modo != "on" or not cabe_mais_um_no_ponto_a(session):
         return None
     d = await pedir_ao_destravador(company_id, session, tela=tela, gatilho="sentinela", ponto="A")
     acao = str(getattr(d, "acao", "") or "").upper() if d is not None else "PESSOA"
@@ -1073,6 +1077,36 @@ async def _segurar_ou_desistir(company_id: str, insurer_phone: str,
     return "desistiu"
 
 
+async def _liberar_a_fila_da_espera_vencida(company_id: str, insurer_phone: str,
+                                            session: Dict[str, Any], wa, integration) -> bool:
+    """CONSERTO Z1 — o Vigia venceu a espera SEGURADA (a URA fechou com a pergunta no ar): o
+    número da seguradora fica livre, e a fila anda como no fim de sessão do roteador
+    (`_start_next_in_queue`, o mesmo do `insurer_closed` de hoje).
+
+    📊 Sem isto, o pedido que entrou na fila DURANTE a espera (o conserto X3 o manda para lá) ficava
+    parado até a fila expirar (2 h). ⚠️ Só a espera com `ura_fechou`: com a URA ABERTA a conversa
+    continua de pé e o caminho é o de hoje (o roteador libera quando ela fechar).
+    Sem fila, NADA muda: `_start_next_in_queue` não acha ninguém e a sessão fica gravada — a
+    resposta TARDIA do segurado ainda a encontra. Com fila, `start_live_dispatch` substitui a
+    sessão morta (`needs_human`, fora do prazo) e encerra o Work Run dela, como faz hoje.
+    Chamada DEPOIS do `save_active_dispatch` da volta: antes, essa gravação apagaria a sessão nova."""
+    if (str(session.get("state") or "") != "needs_human"
+            or not (session.get("espera_vencida") or {}).get("ura_fechou")):
+        return False
+    if integration is None:
+        logger.error("[VIGIA] a fila deste número NÃO andou: sem canal de saída")
+        return False
+    from app.services.dispatch_router import _start_next_in_queue
+
+    a_ura, ao_segurado = _canais_do_sentinela(insurer_phone, wa, integration)
+    try:
+        await _start_next_in_queue(company_id, insurer_phone, a_ura, ao_segurado)
+    except Exception as e:  # noqa: BLE001 — a fila nunca derruba a varredura
+        logger.error("[VIGIA] a fila não andou (%s)", type(e).__name__)
+        return False
+    return True
+
+
 async def _adaptive_reply(company_id: str, session: Dict[str, Any], insurer_text: str) -> Optional[str]:
     """Cérebro forte (mesmo caminho do human_phase do webhook). Falha → None."""
     try:
@@ -1173,6 +1207,7 @@ async def check_dispatch_watchdog() -> int:
             integration = _canal_da_conversa(integrations, company_id, session)
             case = session.get("case_id")
             label = str(session.get("playbook_ref") or "?")
+            _desfecho_da_espera = ""
 
             if finding == "stall_unanswered":
                 await _sentinela_recover(company_id, insurer_phone, session, wa, integration)
@@ -1219,7 +1254,8 @@ async def check_dispatch_watchdog() -> int:
                 session["wd_fila_longa"] = True
                 await _anotar_vigia(company_id, finding, session, label)
             elif finding == "segurado_sem_resposta":
-                await _segurar_ou_desistir(company_id, insurer_phone, session, wa, integration)
+                _desfecho_da_espera = await _segurar_ou_desistir(
+                    company_id, insurer_phone, session, wa, integration)
             # 🔴 SPEC-EXTRA-001.4 D6 — O VIGIA DEIXA RASTRO. 📊 `agente="vigia"` não
             #    tinha um único chamador, apesar de `DESTRAVADORES` já o prever.
             await _ato_do_vigia(company_id, session, finding)
@@ -1232,6 +1268,10 @@ async def check_dispatch_watchdog() -> int:
             except Exception:  # noqa: BLE001
                 pass
             await save_active_dispatch(company_id, insurer_phone, session)
+            # 🔴 CONSERTO Z1 — DEPOIS de gravar (senão esta gravação apagaria a sessão nova).
+            if finding == "segurado_sem_resposta" and _desfecho_da_espera == "desistiu":
+                await _liberar_a_fila_da_espera_vencida(company_id, insurer_phone, session,
+                                                        wa, integration)
             actions += 1
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler
         logger.error(f"[WATCHDOG] varredura falhou: {type(e).__name__}")
