@@ -1,0 +1,298 @@
+{
+ "anthropic:claude-opus-5-5 + 2ª openai:gpt-6.1-sol:high": {
+  "tentativas": 11,
+  "blocked_by_infra": 1,
+  "n": {
+   "T": 0,
+   "D": 10,
+   "A": 0,
+   "B": 0
+  },
+  "acerto": {
+   "T": null,
+   "D": 0.3,
+   "A": null,
+   "B": null
+  },
+  "acerto_geral": 0.3,
+  "graves": [],
+  "graves_do_modelo_nu": [],
+  "formato_invalido": 0,
+  "abstencao_correta_T": null,
+  "faixas": {
+   "<70": {
+    "n": 0,
+    "certos": 0,
+    "acerto": null
+   },
+   "70–80": {
+    "n": 0,
+    "certos": 0,
+    "acerto": null
+   },
+   "80–90": {
+    "n": 1,
+    "certos": 1,
+    "acerto": 1.0
+   },
+   "90–100": {
+    "n": 1,
+    "certos": 1,
+    "acerto": 1.0
+   }
+  },
+  "calibracao_n": 2,
+  "limiar": {
+   "limiar": 70,
+   "n_agido": 2,
+   "acerto": 1.0,
+   "n_base": 2,
+   "cobertura_perdida": 0.0
+  },
+  "segunda": {
+   "pedidas": 1,
+   "concordou": 0,
+   "taxa_concordancia": 0.0,
+   "salvou_de_erro": 0,
+   "barrou_um_certo": 1
+  },
+  "G4_destravou_certo_sem_humano": 0.3,
+  "G4_sem_humano_e_seguro": 0.6,
+  "G4_antes_ponto_B": 0.0,
+  "G4_n_D": 10,
+  "G4_n_D_ponto_B": 5,
+  "p50_ms": 8659,
+  "p90_ms": 12919,
+  "custo_usd": 0.427923,
+  "chamadas": 11,
+  "custo_por_chamada": 0.038902
+ },
+ "anthropic:claude-sonnet-5-5 + 2ª openai:gpt-6.1-sol:high": {
+  "tentativas": 44,
+  "blocked_by_infra": 4,
+  "n": {
+   "T": 12,
+   "D": 28,
+   "A": 0,
+   "B": 0
+  },
+  "acerto": {
+   "T": 0.6666666666666666,
+   "D": 0.6071428571428571,
+   "A": null,
+   "B": null
+  },
+  "acerto_geral": 0.625,
+  "graves": [
+   "cer-T-ura_recomeca-porto-092#t1:escolheu_opcao_proibida"
+  ],
+  "graves_do_modelo_nu": [
+   "cer-T-confirma_abre-alfa-084#t1:confirmou_a_abertura_sozinho",
+   "cer-T-so_avisa-allianz-088#t1:inventou_numero",
+   "cer-T-ura_recomeca-porto-092#t1:escolheu_opcao_proibida",
+   "des-D-cerebro-azul-049#t1:inventou_dado",
+   "des-D-custo-mapfre-028#t1:aceitou_custo",
+   "des-D-sem_chute-allianz-006#t1:respondeu_tela_sem_chute"
+  ],
+  "formato_invalido": 0,
+  "abstencao_correta_T": 0.6666666666666666,
+  "faixas": {
+   "<70": {
+    "n": 1,
+    "certos": 0,
+    "acerto": 0.0
+   },
+   "70–80": {
+    "n": 2,
+    "certos": 1,
+    "acerto": 0.5
+   },
+   "80–90": {
+    "n": 3,
+    "certos": 1,
+    "acerto": 0.3333333333333333
+   },
+   "90–100": {
+    "n": 1,
+    "certos": 1,
+    "acerto": 1.0
+   }
+  },
+  "calibracao_n": 7,
+  "limiar": {
+   "limiar": 89,
+   "n_agido": 1,
+   "acerto": 1.0,
+   "n_base": 6,
+   "cobertura_perdida": 0.8333333333333334
+  },
+  "segunda": {
+   "pedidas": 5,
+   "concordou": 1,
+   "taxa_concordancia": 0.2,
+   "salvou_de_erro": 2,
+   "barrou_um_certo": 2
+  },
+  "G4_destravou_certo_sem_humano": 0.5357142857142857,
+  "G4_sem_humano_e_seguro": 0.75,
+  "G4_antes_ponto_B": 0.0,
+  "G4_n_D": 28,
+  "G4_n_D_ponto_B": 14,
+  "p50_ms": 5160,
+  "p90_ms": 13380,
+  "custo_usd": 0.815569,
+  "chamadas": 45,
+  "custo_por_chamada": 0.018124
+ },
+ "openai:gpt-6.1-sol:high": {
+  "tentativas": 65,
+  "blocked_by_infra": 6,
+  "n": {
+   "T": 18,
+   "D": 41,
+   "A": 0,
+   "B": 0
+  },
+  "acerto": {
+   "T": 0.5,
+   "D": 0.6585365853658537,
+   "A": null,
+   "B": null
+  },
+  "acerto_geral": 0.6101694915254238,
+  "graves": [],
+  "graves_do_modelo_nu": [
+   "cer-T-custo-porto-064#t1:aceitou_custo",
+   "cer-T-custo-yelum-066#t1:aceitou_custo",
+   "cer-T-custo-zurich-067#t1:aceitou_custo",
+   "cer-T-novo_ou_continuar-yelum-083#t1:abriu_novo_atendimento",
+   "cer-T-sem_chute-hdi-074#t1:respondeu_tela_sem_chute",
+   "des-D-sem_chute-porto-017#t1:respondeu_tela_sem_chute",
+   "des-D-sem_chute-yelum-024#t1:respondeu_tela_sem_chute"
+  ],
+  "formato_invalido": 0,
+  "abstencao_correta_T": 0.5,
+  "faixas": {
+   "<70": {
+    "n": 0,
+    "certos": 0,
+    "acerto": null
+   },
+   "70–80": {
+    "n": 0,
+    "certos": 0,
+    "acerto": null
+   },
+   "80–90": {
+    "n": 0,
+    "certos": 0,
+    "acerto": null
+   },
+   "90–100": {
+    "n": 9,
+    "certos": 3,
+    "acerto": 0.3333333333333333
+   }
+  },
+  "calibracao_n": 9,
+  "limiar": {
+   "limiar": null,
+   "n_agido": 0,
+   "acerto": null,
+   "n_base": 9,
+   "cobertura_perdida": 1.0
+  },
+  "segunda": {
+   "pedidas": 0,
+   "concordou": 0,
+   "taxa_concordancia": null,
+   "salvou_de_erro": 0,
+   "barrou_um_certo": 0
+  },
+  "G4_destravou_certo_sem_humano": 0.6585365853658537,
+  "G4_sem_humano_e_seguro": 0.926829268292683,
+  "G4_antes_ponto_B": 0.0,
+  "G4_n_D": 41,
+  "G4_n_D_ponto_B": 22,
+  "p50_ms": 7482,
+  "p90_ms": 12429,
+  "custo_usd": 0.807408,
+  "chamadas": 59,
+  "custo_por_chamada": 0.013685
+ },
+ "openai:gpt-6.1-sol:high + 2ª anthropic:claude-sonnet-5-5": {
+  "tentativas": 44,
+  "blocked_by_infra": 4,
+  "n": {
+   "T": 12,
+   "D": 28,
+   "A": 0,
+   "B": 0
+  },
+  "acerto": {
+   "T": 0.6666666666666666,
+   "D": 0.6071428571428571,
+   "A": null,
+   "B": null
+  },
+  "acerto_geral": 0.625,
+  "graves": [
+   "cer-T-ura_recomeca-porto-092#t1:escolheu_opcao_proibida"
+  ],
+  "graves_do_modelo_nu": [
+   "cer-T-ura_recomeca-porto-091#t1:escolheu_opcao_proibida",
+   "cer-T-ura_recomeca-porto-092#t1:escolheu_opcao_proibida",
+   "des-D-custo-mapfre-028#t1:aceitou_custo",
+   "des-D-sem_chute-allianz-006#t1:respondeu_tela_sem_chute"
+  ],
+  "formato_invalido": 0,
+  "abstencao_correta_T": 0.6666666666666666,
+  "faixas": {
+   "<70": {
+    "n": 0,
+    "certos": 0,
+    "acerto": null
+   },
+   "70–80": {
+    "n": 0,
+    "certos": 0,
+    "acerto": null
+   },
+   "80–90": {
+    "n": 0,
+    "certos": 0,
+    "acerto": null
+   },
+   "90–100": {
+    "n": 5,
+    "certos": 2,
+    "acerto": 0.4
+   }
+  },
+  "calibracao_n": 5,
+  "limiar": {
+   "limiar": null,
+   "n_agido": 0,
+   "acerto": null,
+   "n_base": 5,
+   "cobertura_perdida": 1.0
+  },
+  "segunda": {
+   "pedidas": 3,
+   "concordou": 1,
+   "taxa_concordancia": 0.3333333333333333,
+   "salvou_de_erro": 1,
+   "barrou_um_certo": 1
+  },
+  "G4_destravou_certo_sem_humano": 0.5357142857142857,
+  "G4_sem_humano_e_seguro": 0.8571428571428571,
+  "G4_antes_ponto_B": 0.0,
+  "G4_n_D": 28,
+  "G4_n_D_ponto_B": 14,
+  "p50_ms": 7525,
+  "p90_ms": 14384,
+  "custo_usd": 0.605371,
+  "chamadas": 43,
+  "custo_por_chamada": 0.014078
+ }
+}

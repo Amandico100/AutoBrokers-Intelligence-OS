@@ -1,0 +1,524 @@
+{
+ "grupo_bancada": "41c8268a-32f4-4764-8225-0795fc31bfbc",
+ "papel": "destravador",
+ "nivel": "N1",
+ "k": 1,
+ "teto_usd": 100.0,
+ "gasto_usd": 0.0831288,
+ "parada": null,
+ "recusados": [],
+ "bracos": {
+  "anthropic:claude-sonnet-5-5": {
+   "tentativas": 4,
+   "casos": 4,
+   "pass": 2,
+   "fail": 2,
+   "partial": 0,
+   "blocked_by_infra": 0,
+   "pass_at_1": 0.5,
+   "pass_hat_k": 0.5,
+   "pass_hat_k_critico": 0.5,
+   "custo_total_usd": 0.083129,
+   "custo_por_sucesso": 0.041564,
+   "latencia_p50_ms": 4157,
+   "latencia_p95_ms": 11505,
+   "acerto_de_tool": null,
+   "acerto_de_args": null,
+   "validade_estrutural": null,
+   "efeitos_duplicados": 0,
+   "recuperacao_apos_falha": null
+  }
+ },
+ "resultados": [
+  {
+   "chave": "cer-T-so_avisa-porto-089",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.0265664,
+   "tokens": {
+    "in": 10459,
+    "out": 322,
+    "cache_read": 1087,
+    "cache_write": 8770,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 11505,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "e6b454c616b7"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "",
+    "estado": {
+     "decisao": {
+      "classe": "conduzir",
+      "acao": "SILENCIO",
+      "valor": "",
+      "nota": 72,
+      "limiar": 70,
+      "motivo": "Atendente só informou a bateria Premium; não há pergunta nem pedido de confirmação ou custo.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "SILENCIO",
+      "valor_do_modelo": "",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "T",
+      "classe_esperada": "conduzir",
+      "acao_final": "SILENCIO",
+      "classe_final": "conduzir",
+      "nota": 72,
+      "prova": "sim",
+      "acao_do_modelo": "SILENCIO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "conduzir",
+       "acao": "nao_agiu",
+       "nota": 72,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Porto Seguro perguntou \"Isso, como ele esta em São [nome] temos a bateria Premium.\". O agente apenas observou, sem responder nada porque era só um passo para seguir em frente na conversa (certeza 72%). Explicação do agente: Atendente só informou a bateria Premium; não há pergunta nem pedido de confirmação ou custo."
+      }
+     ],
+     "prompt_hashes": [
+      "61f24a99d29d"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-cerebro-bradesco-050",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.0110886,
+   "tokens": {
+    "in": 7023,
+    "out": 675,
+    "cache_read": 5393,
+    "cache_write": 0,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 6978,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "040edd8d8d1d"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "Em qual estado (UF) o seu veículo está neste momento?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "Em qual estado (UF) o seu veículo está neste momento?",
+      "nota": 72,
+      "limiar": 70,
+      "motivo": "UF da origem não consta no caso; só há UF do destino (SC), não dá para inferir.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "Em qual estado (UF) o seu veículo está neste momento?",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "perguntar_ao_segurado",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 72,
+      "prova": "nao",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 72,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Bradesco Seguros perguntou \"Por favor, digita pra mim, o nome do estado, onde seu veículo está.\". O agente perguntou ao segurado: \"Em qual estado (UF) o seu veículo está neste momento?\" porque só o segurado sabe essa resposta (certeza 72%). Explicação do agente: UF da origem não consta no caso; só há UF do destino (SC), não dá para inferir."
+      }
+     ],
+     "prompt_hashes": [
+      "847b9bee7510"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-cerebro-yelum-055",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.0278384,
+   "tokens": {
+    "in": 11156,
+    "out": 346,
+    "cache_read": 1087,
+    "cache_write": 8046,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 4157,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "1a27bfa77a66"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “- Custos acima do limite de cobertura serão pagos pelo cliente, mediante a aviso prévio. / - Custos acima do limite de cobertura serão pagos pelo cliente, mediante a aviso prévio.”. Como você quer seguir?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “- Custos acima do limite de cobertura serão pagos pelo cliente, mediante a aviso prévio. / - Custos acima do limite de cobertura serão pagos pelo cliente, mediante a aviso prévio.”. Como você quer seguir?",
+      "nota": 82,
+      "limiar": 70,
+      "motivo": "O caso não informa qual eletrodoméstico está com defeito; só o segurado sabe.",
+      "proibicao": "custo_e_do_segurado",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "Qual aparelho precisa de reparo: geladeira, geladeira Side by Side, fogão, cooktop, micro-ondas ou lava-louças?",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 82,
+      "prova": "sim",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "custo_e_do_segurado",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "ACEITAVEL"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 82,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Yelum perguntou \"Qual desses itens precisa de reparo?\". O agente perguntou ao segurado: \"A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “- Custos acima do limite de cobertura serão pagos pelo cliente, mediante a \" porque só o segurado sabe essa resposta (certeza 82%). Explicação do agente: O caso não informa qual eletrodoméstico está com defeito; só o segurado sabe."
+      }
+     ],
+     "prompt_hashes": [
+      "35a0a31cdb98"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "ACEITAVEL"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-cerebro-zurich-066",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.0176354,
+   "tokens": {
+    "in": 7821,
+    "out": 145,
+    "cache_read": 1087,
+    "cache_write": 5000,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 2361,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "45ae00e461d6"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "O que aconteceu com o seu carro? Ele não pega, tem problema no motor, no câmbio, no freio ou outro defeito?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "O que aconteceu com o seu carro? Ele não pega, tem problema no motor, no câmbio, no freio ou outro defeito?",
+      "nota": 90,
+      "limiar": 70,
+      "motivo": "O caso não diz qual pane; o pedido é guincho, mas o defeito só o segurado sabe.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "O que aconteceu com o seu carro? Ele não pega, tem problema no motor, no câmbio, no freio ou outro defeito?",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 90,
+      "prova": "sim",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "ACEITAVEL"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 90,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Zurich perguntou \"O que houve?\". O agente perguntou ao segurado: \"O que aconteceu com o seu carro? Ele não pega, tem problema no motor, no câmbio, no freio ou outro defeito?\" porque só o segurado sabe essa resposta (certeza 90%). Explicação do agente: O caso não diz qual pane; o pedido é guincho, mas o defeito só o segurado sabe."
+      }
+     ],
+     "prompt_hashes": [
+      "8f021d81d114"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "ACEITAVEL"
+    }
+   ],
+   "erro": null
+  }
+ ],
+ "runs": [],
+ "arquivo": null
+}

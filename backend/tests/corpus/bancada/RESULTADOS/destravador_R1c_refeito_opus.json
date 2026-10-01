@@ -1,0 +1,158 @@
+{
+ "grupo_bancada": "a0b47775-9fbc-42fc-ad87-a63cd17b022f",
+ "papel": "destravador",
+ "nivel": "N1",
+ "k": 1,
+ "teto_usd": 100.0,
+ "gasto_usd": 0.043251,
+ "parada": null,
+ "recusados": [],
+ "bracos": {
+  "anthropic:claude-opus-5-5": {
+   "tentativas": 1,
+   "casos": 1,
+   "pass": 0,
+   "fail": 1,
+   "partial": 0,
+   "blocked_by_infra": 0,
+   "pass_at_1": 0.0,
+   "pass_hat_k": 0.0,
+   "pass_hat_k_critico": 0.0,
+   "custo_total_usd": 0.043251,
+   "custo_por_sucesso": null,
+   "latencia_p50_ms": 12919,
+   "latencia_p95_ms": 12919,
+   "acerto_de_tool": null,
+   "acerto_de_args": null,
+   "validade_estrutural": null,
+   "efeitos_duplicados": 0,
+   "recuperacao_apos_falha": null
+  }
+ },
+ "resultados": [
+  {
+   "chave": "des-D-cerebro-zurich-066",
+   "braco": "anthropic:claude-opus-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.043251,
+   "tokens": {
+    "in": 7821,
+    "out": 294,
+    "cache_read": 0,
+    "cache_write": 6087,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 12919,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-opus-5-5"
+    ],
+    "prompt_hashes": [
+     "45ae00e461d6"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "O que aconteceu com o carro? Foi bateria, partida, câmbio/embreagem, freio, motor, vazamento, suspensão, superaquecimento, radiador, combustível ou outro problema?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "O que aconteceu com o carro? Foi bateria, partida, câmbio/embreagem, freio, motor, vazamento, suspensão, superaquecimento, radiador, combustível ou outro problema?",
+      "nota": 88,
+      "limiar": 70,
+      "motivo": "Caso não descreve o problema; só o segurado sabe qual pane ocorreu.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "O que aconteceu com o carro? Foi bateria, partida, câmbio/embreagem, freio, motor, vazamento, suspensão, superaquecimento, radiador, combustível ou outro problema?",
+      "formato_ok": true,
+      "modelo": "claude-opus-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 88,
+      "prova": "sim",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "ACEITAVEL"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 88,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Zurich perguntou \"O que houve?\". O agente perguntou ao segurado: \"O que aconteceu com o carro? Foi bateria, partida, câmbio/embreagem, freio, motor, vazamento, suspensão, superaquecimento, radiador, combustível ou outro proble\" porque só o segurado sabe essa resposta (certeza 88%). Explicação do agente: Caso não descreve o problema; só o segurado sabe qual pane ocorreu."
+      }
+     ],
+     "prompt_hashes": [
+      "8f021d81d114"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "ACEITAVEL"
+    }
+   ],
+   "erro": null
+  }
+ ],
+ "runs": [],
+ "arquivo": null
+}

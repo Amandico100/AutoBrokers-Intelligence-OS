@@ -79,3 +79,23 @@ e a reserva. ⚠️ k = 1 e 40 casos comuns: diferenças de 1–2 casos NÃO sã
 
 ## 7. As listas de casos (geradas pela regra do §4 sobre o corpus de 30/09)
 Arquivo com as três listas prontas para colar: `backend/tests/corpus/bancada/cerebro/AMOSTRAS-SPEC-123.txt`.
+
+## 8. O AJUSTE (F2b, 30/09 ~22h BRT — escrito ANTES do primeiro centavo)
+- 📊 Teto desta rodada (ordem do gerente): **OpenAI ≤ US$ 1,45 · Anthropic ≤ US$ 1,45** (o resto foi a smokes; a SPEC-124
+  precisa de 1,00/0,80). O runner roda com `--teto-provedor 1.40` (margem para a reserva por chamada e o atraso do ledger).
+  📊 Ledger antes (`service_type='bancada' and created_at >= '2026-09-30T21:00:00Z'`, por provedor): **0 linhas · US$ 0**.
+  `--ledger-desde 2026-09-30T21:00:00Z` em TODAS as rodadas.
+- O cache de prompt da Anthropic agora existe (F1c: `cache_control` em 3 pontos do system). 💭 Opus ≈ 0,027/chamada → cabe
+  em ~20–25 casos, não só nos 10. Ordem nova da Anthropic: R1a (2ª Sonnet) → R1b (Sonnet nos 40) → **R1c = Opus em OPUS-10
+  primeiro e depois o resto do COMUM até o teto** (duas chamadas, para o teto cortar a parte menos importante).
+- R2 (calibração no RESTO, sem 2ª opinião) roda com o braço que a regra D4 apontar depois de R1a/R1b (o mais barato que
+  empatar). Se for o Sonnet, R2 só roda com o que sobrar da Anthropic DEPOIS do Opus (o D4 exige os três nos mesmos casos
+  antes de dar mais casos a um).
+- Se R1a medir custo real > 1,3× o estimado (0,016), R2 e a extensão do Opus são cortadas primeiro.
+- **Ajuste 2 (depois da R1a, antes da R1b):** 📊 ledger após R1a = OpenAI 0,4706 (36 chamadas, 0,0131/chamada) ·
+  Anthropic 0,0871 (3 chamadas da 2ª opinião Sonnet, **0,029/chamada**: o `cache_control` ESCREVE 8–10 mil tokens por
+  chamada a 1,25× e lê só 1,1–1,7 mil — caso distinto a cada chamada). 💭 Sonnet nos 40 (~1,16) + Opus nos 10 (~0,53)
+  não cabem em 1,40 − 0,09. Ordem nova da Anthropic: **R1b-1 Sonnet em OPUS-10 → R1c Opus em OPUS-10 → R1b-2 Sonnet no
+  resto do COMUM (30) até o teto**. Os três braços ficam garantidos nos MESMOS 10; 6.1 × Sonnet no que o teto deixar.
+  R2 = 6.1 (o mais barato: 0,013 contra 0,029) no RESTO e, sobrando, no grupo B (26, todos com prova — é onde o DEDUZIR
+  responde; 📊 na R1a o 6.1 só propôs RESPONDER-DEDUZIR em 4 dos 40 casos comuns).

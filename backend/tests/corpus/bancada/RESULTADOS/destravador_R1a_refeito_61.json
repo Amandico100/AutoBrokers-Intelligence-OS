@@ -1,0 +1,524 @@
+{
+ "grupo_bancada": "aac95bc0-b84c-4c24-8c6d-d3c23ceb50e1",
+ "papel": "destravador",
+ "nivel": "N1",
+ "k": 1,
+ "teto_usd": 100.0,
+ "gasto_usd": 0.04772,
+ "parada": null,
+ "recusados": [],
+ "bracos": {
+  "openai:gpt-6.1-sol:high": {
+   "tentativas": 4,
+   "casos": 4,
+   "pass": 3,
+   "fail": 1,
+   "partial": 0,
+   "blocked_by_infra": 0,
+   "pass_at_1": 0.75,
+   "pass_hat_k": 0.75,
+   "pass_hat_k_critico": 0.75,
+   "custo_total_usd": 0.04772,
+   "custo_por_sucesso": 0.015907,
+   "latencia_p50_ms": 5149,
+   "latencia_p95_ms": 14351,
+   "acerto_de_tool": null,
+   "acerto_de_args": null,
+   "validade_estrutural": null,
+   "efeitos_duplicados": 0,
+   "recuperacao_apos_falha": null
+  }
+ },
+ "resultados": [
+  {
+   "chave": "cer-T-so_avisa-porto-089",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.014572,
+   "tokens": {
+    "in": 6371,
+    "out": 183,
+    "cache_read": 0,
+    "cache_write": 0,
+    "raciocinio": 139,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 14351,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "61f24a99d29d"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "",
+    "estado": {
+     "decisao": {
+      "classe": "conduzir",
+      "acao": "SILENCIO",
+      "valor": "",
+      "nota": 98,
+      "limiar": 70,
+      "motivo": "A mensagem apenas informa disponibilidade da bateria, sem pedir resposta ou autorização.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "SILENCIO",
+      "valor_do_modelo": "",
+      "formato_ok": true,
+      "modelo": "gpt-6.1-sol",
+      "provedor": "openai",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "T",
+      "classe_esperada": "conduzir",
+      "acao_final": "SILENCIO",
+      "classe_final": "conduzir",
+      "nota": 98,
+      "prova": "sim",
+      "acao_do_modelo": "SILENCIO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "conduzir",
+       "acao": "nao_agiu",
+       "nota": 98,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Porto Seguro perguntou \"Isso, como ele esta em São [nome] temos a bateria Premium.\". O agente apenas observou, sem responder nada porque era só um passo para seguir em frente na conversa (certeza 98%). Explicação do agente: A mensagem apenas informa disponibilidade da bateria, sem pedir resposta ou autorização."
+      }
+     ],
+     "prompt_hashes": [
+      "61f24a99d29d"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "anthropic:claude-sonnet-5-5",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-escolhe_servico-allianz-025",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.01453,
+   "tokens": {
+    "in": 6275,
+    "out": 198,
+    "cache_read": 0,
+    "cache_write": 0,
+    "raciocinio": 119,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 5561,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "0fb17edcf0af"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "Você precisa de encanador, eletricista, chaveiro, conserto de eletrodoméstico ou outro serviço?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "Você precisa de encanador, eletricista, chaveiro, conserto de eletrodoméstico ou outro serviço?",
+      "nota": 99,
+      "limiar": 70,
+      "motivo": "O serviço solicitado não está informado no caso nem na conversa.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "Você precisa de encanador, eletricista, chaveiro, conserto de eletrodoméstico ou outro serviço?",
+      "formato_ok": true,
+      "modelo": "gpt-6.1-sol",
+      "provedor": "openai",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "perguntar_ao_segurado",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 99,
+      "prova": "sim",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 99,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "tela_que_decide:escolhe_o_servico",
+       "explicacao_para_gente": "Allianz perguntou \"Vamos lá! Informe o tipo de serviço:\". O agente perguntou ao segurado: \"Você precisa de encanador, eletricista, chaveiro, conserto de eletrodoméstico ou outro serviço?\" porque só o segurado sabe essa resposta (certeza 99%). Explicação do agente: O serviço solicitado não está informado no caso nem na conversa."
+      }
+     ],
+     "prompt_hashes": [
+      "0fb17edcf0af"
+     ],
+     "gatilho": "tela_que_decide:escolhe_o_servico"
+    },
+    "segunda": {
+     "braco": "anthropic:claude-sonnet-5-5",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-escolhe_servico-mapfre-031",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.00667,
+   "tokens": {
+    "in": 2430,
+    "out": 181,
+    "cache_read": 0,
+    "cache_write": 0,
+    "raciocinio": 134,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 4633,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "8a82b84e4d22"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “Pagamento, 2ª via de apólice e outros serviços / Pagamento, 2ª via de apólice e outros serviços / Informações sobre pagamento, abrir assistência e outros assuntos / Pagamento ou aporte, 2ª via de proposta, certificado e outros assuntos / Pagamento, 2ª via de apólice e outros assuntos / Pagamento, 2ª”. Como você qu",
+    "estado": {
+     "decisao": {
+      "classe": "deduzir",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “Pagamento, 2ª via de apólice e outros serviços / Pagamento, 2ª via de apólice e outros serviços / Informações sobre pagamento, abrir assistência e outros assuntos / Pagamento ou aporte, 2ª via de proposta, certificado e outros assuntos / Pagamento, 2ª via de apólice e outros assuntos / Pagamento, 2ª”. Como você qu",
+      "nota": 99,
+      "limiar": 70,
+      "motivo": "O acionamento é de assistência AUTO; a opção correspondente nesta tela é Auto.",
+      "proibicao": "custo_e_do_segurado",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "RESPONDER",
+      "valor_do_modelo": "Auto",
+      "formato_ok": true,
+      "modelo": "gpt-6.1-sol",
+      "provedor": "openai",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "perguntar_ao_segurado",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "deduzir",
+      "nota": 99,
+      "prova": "sim",
+      "acao_do_modelo": "RESPONDER",
+      "proibicao": "custo_e_do_segurado",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": true,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "deduzir",
+       "acao": "perguntou_segurado",
+       "nota": 99,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "tela_que_decide:escolhe_o_servico",
+       "explicacao_para_gente": "Mapfre perguntou \"Certo! E você quer falar sobre qual seguro?\". O agente perguntou ao segurado: \"A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “Pagamento, 2ª via de apólice e outros serviços / Pagamento, 2ª via de apóli\" porque deduziu pelo que o segurado contou (certeza 99%). Explicação do agente: O acionamento é de assistência AUTO; a opção correspondente nesta tela é Auto."
+      }
+     ],
+     "prompt_hashes": [
+      "8a82b84e4d22"
+     ],
+     "gatilho": "tela_que_decide:escolhe_o_servico"
+    },
+    "segunda": {
+     "braco": "anthropic:claude-sonnet-5-5",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-cerebro-zurich-066",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.011948,
+   "tokens": {
+    "in": 4809,
+    "out": 233,
+    "cache_read": 0,
+    "cache_write": 0,
+    "raciocinio": 165,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 5149,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "8f021d81d114"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "Qual problema você percebeu no veículo?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "Qual problema você percebeu no veículo?",
+      "nota": 99,
+      "limiar": 70,
+      "motivo": "O caso informa guincho, mas não descreve a pane para escolher a opção correta.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "Qual problema você percebeu no veículo?",
+      "formato_ok": true,
+      "modelo": "gpt-6.1-sol",
+      "provedor": "openai",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 99,
+      "prova": "sim",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "ACEITAVEL"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 99,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Zurich perguntou \"O que houve?\". O agente perguntou ao segurado: \"Qual problema você percebeu no veículo?\" porque só o segurado sabe essa resposta (certeza 99%). Explicação do agente: O caso informa guincho, mas não descreve a pane para escolher a opção correta."
+      }
+     ],
+     "prompt_hashes": [
+      "8f021d81d114"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "anthropic:claude-sonnet-5-5",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "ACEITAVEL"
+    }
+   ],
+   "erro": null
+  }
+ ],
+ "runs": [],
+ "arquivo": null
+}

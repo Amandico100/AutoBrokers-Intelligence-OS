@@ -1,0 +1,342 @@
+{
+ "grupo_bancada": "da7546bc-49a1-4526-9770-3c962b305538",
+ "papel": "destravador",
+ "nivel": "N1",
+ "k": 1,
+ "teto_usd": 100.0,
+ "gasto_usd": 0.038296,
+ "parada": null,
+ "recusados": [],
+ "bracos": {
+  "openai:gpt-6.1-sol:high": {
+   "tentativas": 3,
+   "casos": 3,
+   "pass": 1,
+   "fail": 2,
+   "partial": 0,
+   "blocked_by_infra": 0,
+   "pass_at_1": 0.3333333333333333,
+   "pass_hat_k": 0.3333333333333333,
+   "pass_hat_k_critico": 0.3333333333333333,
+   "custo_total_usd": 0.038296,
+   "custo_por_sucesso": 0.038296,
+   "latencia_p50_ms": 8056,
+   "latencia_p95_ms": 8081,
+   "acerto_de_tool": null,
+   "acerto_de_args": null,
+   "validade_estrutural": null,
+   "efeitos_duplicados": 0,
+   "recuperacao_apos_falha": null
+  }
+ },
+ "resultados": [
+  {
+   "chave": "des-D-cerebro-allianz-038",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.009112,
+   "tokens": {
+    "in": 3931,
+    "out": 125,
+    "cache_read": 0,
+    "cache_write": 0,
+    "raciocinio": 75
+   },
+   "latencia_ms": 8056,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "791224aaf5c9"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "",
+    "estado": {
+     "decisao": {
+      "classe": "responder_com_dado",
+      "acao": "PESSOA",
+      "valor": "",
+      "nota": 99,
+      "limiar": 70,
+      "motivo": "O número do endereço está informado no campo local_numero do caso.",
+      "proibicao": "conferente:nao_e_frase",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "RESPONDER",
+      "valor_do_modelo": "{NUMERO}",
+      "formato_ok": true,
+      "modelo": "gpt-6.1-sol",
+      "provedor": "openai",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "responder_com_dado",
+      "acao_final": "PESSOA",
+      "classe_final": "responder_com_dado",
+      "nota": 99,
+      "prova": "sim",
+      "acao_do_modelo": "RESPONDER",
+      "proibicao": "conferente:nao_e_frase",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": true,
+      "classe": "NAO_DESTRAVOU"
+     },
+     "diario": [
+      {
+       "classe": "responder_com_dado",
+       "acao": "chamou_pessoa",
+       "nota": 99,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Allianz perguntou \"Por segurança, precisamos confirmar o número do endereço. Qual o número?\". O agente chamou uma pessoa da corretora porque a resposta é um dado do próprio caso (certeza 99%)."
+      }
+     ],
+     "prompt_hashes": [
+      "791224aaf5c9"
+     ],
+     "gatilho": "cerebro"
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "NAO_DESTRAVOU"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-escolhe_servico-porto-033",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.013598,
+   "tokens": {
+    "in": 5574,
+    "out": 245,
+    "cache_read": 0,
+    "cache_write": 0,
+    "raciocinio": 162
+   },
+   "latencia_ms": 6615,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "da85e2b9a3e4"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "Você precisa de desentupimento, atendimento para vazamento, reparo, assistência para chuveiro ou instalação?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "Você precisa de desentupimento, atendimento para vazamento, reparo, assistência para chuveiro ou instalação?",
+      "nota": 99,
+      "limiar": 70,
+      "motivo": "O caso informa apenas encanador, sem especificar o problema ou tipo de serviço.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "Você precisa de desentupimento, atendimento para vazamento, reparo, assistência para chuveiro ou instalação?",
+      "formato_ok": true,
+      "modelo": "gpt-6.1-sol",
+      "provedor": "openai",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 99,
+      "prova": "nao",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "ACEITAVEL"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 99,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "tela_que_decide:escolhe_o_servico",
+       "explicacao_para_gente": "Porto Seguro perguntou \"Para qual tipo de serviço?\". O agente perguntou ao segurado: \"Você precisa de desentupimento, atendimento para vazamento, reparo, assistência para chuveiro ou instalação?\" porque só o segurado sabe essa resposta (certeza 99%). Explicação do agente: O caso informa apenas encanador, sem especificar o problema ou tipo de serviço."
+      }
+     ],
+     "prompt_hashes": [
+      "da85e2b9a3e4"
+     ],
+     "gatilho": "tela_que_decide:escolhe_o_servico"
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "ACEITAVEL"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-escolhe_servico-yelum-036",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.015586,
+   "tokens": {
+    "in": 6213,
+    "out": 316,
+    "cache_read": 0,
+    "cache_write": 0,
+    "raciocinio": 230
+   },
+   "latencia_ms": 8081,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "871d77dbfc33"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "Qual serviço você precisa: encanador, desentupimento, eletricista, chaveiro, conserto de eletrodoméstico ou ar condicionado?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "Qual serviço você precisa: encanador, desentupimento, eletricista, chaveiro, conserto de eletrodoméstico ou ar condicionado?",
+      "nota": 99,
+      "limiar": 70,
+      "motivo": "O serviço solicitado não está informado no caso nem na conversa.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "Qual serviço você precisa: encanador, desentupimento, eletricista, chaveiro, conserto de eletrodoméstico ou ar condicionado?",
+      "formato_ok": true,
+      "modelo": "gpt-6.1-sol",
+      "provedor": "openai",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "perguntar_ao_segurado",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 99,
+      "prova": "nao",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 99,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "tela_que_decide:escolhe_o_servico",
+       "explicacao_para_gente": "Yelum perguntou \"Qual é o serviço que você precisa solicitar?\". O agente perguntou ao segurado: \"Qual serviço você precisa: encanador, desentupimento, eletricista, chaveiro, conserto de eletrodoméstico ou ar condicionado?\" porque só o segurado sabe essa resposta (certeza 99%). Explicação do agente: O serviço solicitado não está informado no caso nem na conversa."
+      }
+     ],
+     "prompt_hashes": [
+      "871d77dbfc33"
+     ],
+     "gatilho": "tela_que_decide:escolhe_o_servico"
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  }
+ ],
+ "runs": [],
+ "arquivo": null
+}

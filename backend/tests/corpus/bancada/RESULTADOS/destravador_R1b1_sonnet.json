@@ -1,0 +1,1264 @@
+{
+ "grupo_bancada": "705e1523-08aa-4a86-9fb0-49da15594e14",
+ "papel": "destravador",
+ "nivel": "N1",
+ "k": 1,
+ "teto_usd": 100.0,
+ "gasto_usd": 0.1874829,
+ "parada": null,
+ "recusados": [],
+ "bracos": {
+  "anthropic:claude-sonnet-5-5": {
+   "tentativas": 10,
+   "casos": 10,
+   "pass": 3,
+   "fail": 7,
+   "partial": 0,
+   "blocked_by_infra": 0,
+   "pass_at_1": 0.3,
+   "pass_hat_k": 0.3,
+   "pass_hat_k_critico": 0.3,
+   "custo_total_usd": 0.187483,
+   "custo_por_sucesso": 0.062494,
+   "latencia_p50_ms": 5279,
+   "latencia_p95_ms": 22118,
+   "acerto_de_tool": null,
+   "acerto_de_args": null,
+   "validade_estrutural": null,
+   "efeitos_duplicados": 0,
+   "recuperacao_apos_falha": null
+  }
+ },
+ "resultados": [
+  {
+   "chave": "des-D-cerebro-alfa-037",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.0181654,
+   "tokens": {
+    "in": 6066,
+    "out": 624,
+    "cache_read": 1087,
+    "cache_write": 3500,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 16884,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "5e769c619f9a"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "O veículo que precisa do guincho é o 2008 Crossway 1.6 16V AT Flex? Se for, pode me informar a placa dele?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "O veículo que precisa do guincho é o 2008 Crossway 1.6 16V AT Flex? Se for, pode me informar a placa dele?",
+      "nota": 62,
+      "limiar": 70,
+      "motivo": "Caso sem placa; não dá para confirmar qual veículo é o do segurado.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "O veículo que precisa do guincho é o 2008 Crossway 1.6 16V AT Flex? Se for, pode me informar a placa dele?",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 62,
+      "prova": "sim",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "ACEITAVEL"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 62,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Alfa perguntou \"Por favor, confirme o veículo para atendimento:\". O agente perguntou ao segurado: \"O veículo que precisa do guincho é o 2008 Crossway 1.6 16V AT Flex? Se for, pode me informar a placa dele?\" porque só o segurado sabe essa resposta (certeza 62%). Explicação do agente: Caso sem placa; não dá para confirmar qual veículo é o do segurado."
+      }
+     ],
+     "prompt_hashes": [
+      "ee9475e7550c"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "ACEITAVEL"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-cerebro-alfa-057",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.0191358,
+   "tokens": {
+    "in": 5940,
+    "out": 886,
+    "cache_read": 1699,
+    "cache_write": 2908,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 8415,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "5e769c619f9a"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "O guincho é para o Jeep Renegade Trailhawk 4x4 listado na apólice? Se for outro veículo, me diga qual.",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "O guincho é para o Jeep Renegade Trailhawk 4x4 listado na apólice? Se for outro veículo, me diga qual.",
+      "nota": 62,
+      "limiar": 70,
+      "motivo": "Caso não traz placa nem veículo; não dá para conferir qual opção é a certa.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "O guincho é para o Jeep Renegade Trailhawk 4x4 listado na apólice? Se for outro veículo, me diga qual.",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 62,
+      "prova": "sim",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "ACEITAVEL"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 62,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Alfa perguntou \"Por favor, confirme o veículo para atendimento:\". O agente perguntou ao segurado: \"O guincho é para o Jeep Renegade Trailhawk 4x4 listado na apólice? Se for outro veículo, me diga qual.\" porque só o segurado sabe essa resposta (certeza 62%). Explicação do agente: Caso não traz placa nem veículo; não dá para conferir qual opção é a certa."
+      }
+     ],
+     "prompt_hashes": [
+      "ee9475e7550c"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "ACEITAVEL"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-ramo_indeterminado-allianz-003",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.0346066,
+   "tokens": {
+    "in": 10550,
+    "out": 452,
+    "cache_read": 1087,
+    "cache_write": 8653,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 6410,
+     "out": 597,
+     "cache_read": 6407,
+     "cache_write": 0,
+     "raciocinio": 516
+    }
+   },
+   "latencia_ms": 22118,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "b7baf80a8c9d"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "A seguradora está perguntando: “Qual seguro deseja utilizar?” — qual destas opções vale para você?",
+    "estado": {
+     "decisao": {
+      "classe": "deduzir",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "A seguradora está perguntando: “Qual seguro deseja utilizar?” — qual destas opções vale para você?",
+      "nota": 80,
+      "limiar": 70,
+      "motivo": "Registro de chuveiro em apartamento (AP, bloco A) é unidade individual, não área comum.",
+      "proibicao": "segunda_opiniao_discordou",
+      "segunda_opiniao": {
+       "provedor": "openai",
+       "modelo": "gpt-6.1-sol",
+       "classe": "perguntar_ao_segurado",
+       "acao": "PERGUNTAR_AO_SEGURADO",
+       "valor": "Você precisa do serviço na sua casa/apartamento, em área comum do condomínio ou no seu negócio?",
+       "nota": 97,
+       "formato_ok": true,
+       "concordou": false
+      },
+      "acao_do_modelo": "RESPONDER",
+      "valor_do_modelo": "1",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "perguntar_ao_segurado",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "deduzir",
+      "nota": 80,
+      "prova": "sim",
+      "acao_do_modelo": "RESPONDER",
+      "proibicao": "segunda_opiniao_discordou",
+      "segunda": {
+       "provedor": "openai",
+       "modelo": "gpt-6.1-sol",
+       "classe": "perguntar_ao_segurado",
+       "acao": "PERGUNTAR_AO_SEGURADO",
+       "valor": "Você precisa do serviço na sua casa/apartamento, em área comum do condomínio ou no seu negócio?",
+       "nota": 97,
+       "formato_ok": true,
+       "concordou": false
+      },
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": true,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "deduzir",
+       "acao": "perguntou_segurado",
+       "nota": 80,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "ramo_indeterminado",
+       "explicacao_para_gente": "Allianz perguntou \"Qual seguro deseja utilizar?\". O agente perguntou ao segurado: \"A seguradora está perguntando: “Qual seguro deseja utilizar?” — qual destas opções vale para você?\" porque deduziu pelo que o segurado contou (certeza 80%, a segunda opinião discordou). Explicação do agente: Registro de chuveiro em apartamento (AP, bloco A) é unidade individual, não área comum."
+      }
+     ],
+     "prompt_hashes": [
+      "d3d524255e5a"
+     ],
+     "gatilho": "ramo_indeterminado"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 1,
+     "custo_usd": 0.0066167,
+     "tokens": {
+      "in": 6410,
+      "out": 597,
+      "cache_read": 6407,
+      "cache_write": 0,
+      "raciocinio": 516
+     },
+     "modelos_reais": [
+      "gpt-6.1-sol"
+     ]
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-ramo_indeterminado-allianz-005",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.0258839,
+   "tokens": {
+    "in": 9981,
+    "out": 393,
+    "cache_read": 1087,
+    "cache_write": 7897,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 4256,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "1a32dcb6e30d"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "A assistência é para qual seguro: sua residência, um condomínio ou uma empresa?",
+    "estado": {
+     "decisao": {
+      "classe": "perguntar_ao_segurado",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "A assistência é para qual seguro: sua residência, um condomínio ou uma empresa?",
+      "nota": 72,
+      "limiar": 70,
+      "motivo": "O caso não diz o tipo de seguro; escolher errado abre o chamado na apólice errada.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "valor_do_modelo": "A assistência é para qual seguro: sua residência, um condomínio ou uma empresa?",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "perguntar_ao_segurado",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "perguntar_ao_segurado",
+      "nota": 72,
+      "prova": "sim",
+      "acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "perguntar_ao_segurado",
+       "acao": "perguntou_segurado",
+       "nota": 72,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "ramo_indeterminado",
+       "explicacao_para_gente": "Allianz perguntou \"Você gostaria de solicitar serviços de assistência para:\". O agente perguntou ao segurado: \"A assistência é para qual seguro: sua residência, um condomínio ou uma empresa?\" porque só o segurado sabe essa resposta (certeza 72%). Explicação do agente: O caso não diz o tipo de seguro; escolher errado abre o chamado na apólice errada."
+      }
+     ],
+     "prompt_hashes": [
+      "0fb17edcf0af"
+     ],
+     "gatilho": "ramo_indeterminado"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-escolhe_servico-hdi-026",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.0106356,
+   "tokens": {
+    "in": 10977,
+    "out": 504,
+    "cache_read": 9088,
+    "cache_write": 0,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 5279,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "ccdc05846e58"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "",
+    "estado": {
+     "decisao": {
+      "classe": "nunca_sozinho",
+      "acao": "PESSOA",
+      "valor": "",
+      "nota": 80,
+      "limiar": 70,
+      "motivo": "Duas opções ENCANADOR idênticas, sem dado no caso; já há atendimento aberto, novo exige humano.",
+      "proibicao": "o_modelo_chamou_uma_pessoa",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PESSOA",
+      "valor_do_modelo": "",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PESSOA",
+      "classe_final": "nunca_sozinho",
+      "nota": 80,
+      "prova": "sim",
+      "acao_do_modelo": "PESSOA",
+      "proibicao": "o_modelo_chamou_uma_pessoa",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "NAO_DESTRAVOU"
+     },
+     "diario": [
+      {
+       "classe": "nunca_sozinho",
+       "acao": "chamou_pessoa",
+       "nota": 80,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "tela_que_decide:escolhe_o_servico",
+       "explicacao_para_gente": "HDI perguntou \"Selecione o serviço que você deseja acompanhar:\". O agente chamou uma pessoa da corretora porque essa decisão não pode ser tomada sem uma pessoa (custo, abertura de sinistro ou cancelamento) (certeza 80%). Explicação do agente: Duas opções ENCANADOR idênticas, sem dado no caso; já há atendimento aberto, novo exige humano."
+      }
+     ],
+     "prompt_hashes": [
+      "6e7e03a37c0d"
+     ],
+     "gatilho": "tela_que_decide:escolhe_o_servico"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "NAO_DESTRAVOU"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-escolhe_servico-mapfre-031",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.0098314,
+   "tokens": {
+    "in": 4095,
+    "out": 250,
+    "cache_read": 1087,
+    "cache_write": 2196,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 3410,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "6a570b25132c"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “Pagamento, 2ª via de apólice e outros serviços / Pagamento, 2ª via de apólice e outros serviços / Informações sobre pagamento, abrir assistência e outros assuntos / Pagamento ou aporte, 2ª via de proposta, certificado e outros assuntos / Pagamento, 2ª via de apólice e outros assuntos / Pagamento, 2ª”. Como você qu",
+    "estado": {
+     "decisao": {
+      "classe": "deduzir",
+      "acao": "PERGUNTAR_AO_SEGURADO",
+      "valor": "A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “Pagamento, 2ª via de apólice e outros serviços / Pagamento, 2ª via de apólice e outros serviços / Informações sobre pagamento, abrir assistência e outros assuntos / Pagamento ou aporte, 2ª via de proposta, certificado e outros assuntos / Pagamento, 2ª via de apólice e outros assuntos / Pagamento, 2ª”. Como você qu",
+      "nota": 90,
+      "limiar": 70,
+      "motivo": "Acionamento é de assistência AUTO; 'Auto' equivale ao 'Carro e moto' do fluxo.",
+      "proibicao": "custo_e_do_segurado",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "RESPONDER",
+      "valor_do_modelo": "Auto",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "perguntar_ao_segurado",
+      "acao_final": "PERGUNTAR_AO_SEGURADO",
+      "classe_final": "deduzir",
+      "nota": 90,
+      "prova": "sim",
+      "acao_do_modelo": "RESPONDER",
+      "proibicao": "custo_e_do_segurado",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": true,
+      "classe": "CERTO"
+     },
+     "diario": [
+      {
+       "classe": "deduzir",
+       "acao": "perguntou_segurado",
+       "nota": 90,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "tela_que_decide:escolhe_o_servico",
+       "explicacao_para_gente": "Mapfre perguntou \"Certo! E você quer falar sobre qual seguro?\". O agente perguntou ao segurado: \"A seguradora informou algo que envolve custo ou pagamento e precisa da sua decisão: “Pagamento, 2ª via de apólice e outros serviços / Pagamento, 2ª via de apóli\" porque deduziu pelo que o segurado contou (certeza 90%). Explicação do agente: Acionamento é de assistência AUTO; 'Auto' equivale ao 'Carro e moto' do fluxo."
+      }
+     ],
+     "prompt_hashes": [
+      "8a82b84e4d22"
+     ],
+     "gatilho": "tela_que_decide:escolhe_o_servico"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "CERTO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-cerebro-porto-063",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.0258529,
+   "tokens": {
+    "in": 8570,
+    "out": 772,
+    "cache_read": 1087,
+    "cache_write": 5899,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 7711,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "ae12631ec87b"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "Voltar",
+    "estado": {
+     "decisao": {
+      "classe": "conduzir",
+      "acao": "RESPONDER",
+      "valor": "Voltar",
+      "nota": 40,
+      "limiar": 70,
+      "motivo": "Conversa perdida (CNPJ enviado, perfil Empresa); produto residencial não dedutível do caso; voltar é reversível.",
+      "proibicao": "",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "RESPONDER",
+      "valor_do_modelo": "Voltar",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "conduzir",
+      "acao_final": "RESPONDER",
+      "classe_final": "conduzir",
+      "nota": 40,
+      "prova": "sim",
+      "acao_do_modelo": "RESPONDER",
+      "proibicao": "",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "ERRO"
+     },
+     "diario": [
+      {
+       "classe": "conduzir",
+       "acao": "respondeu_ura",
+       "nota": 40,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Porto Seguro perguntou \"Você deseja atendimento para algum desses produtos?\". O agente respondeu \"Voltar\" porque era só um passo para seguir em frente na conversa (certeza 40%). Explicação do agente: Conversa perdida (CNPJ enviado, perfil Empresa); produto residencial não dedutível do caso; voltar é reversível."
+      }
+     ],
+     "prompt_hashes": [
+      "e9a73ce80b1c"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "ERRO"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-cerebro-tokio-064",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.0105634,
+   "tokens": {
+    "in": 3580,
+    "out": 435,
+    "cache_read": 1087,
+    "cache_write": 2020,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 4995,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "d0f53ca2b6b1"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "",
+    "estado": {
+     "decisao": {
+      "classe": "nunca_sozinho",
+      "acao": "PESSOA",
+      "valor": "",
+      "nota": 82,
+      "limiar": 70,
+      "motivo": "Atendimento Pilkington (vidros), fora do fluxo; placa e protocolo são placeholders sem valor real; abrir novo atendimento exige pessoa.",
+      "proibicao": "o_modelo_chamou_uma_pessoa",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PESSOA",
+      "valor_do_modelo": "",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "responder_com_dado",
+      "acao_final": "PESSOA",
+      "classe_final": "nunca_sozinho",
+      "nota": 82,
+      "prova": "sim",
+      "acao_do_modelo": "PESSOA",
+      "proibicao": "o_modelo_chamou_uma_pessoa",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "NAO_DESTRAVOU"
+     },
+     "diario": [
+      {
+       "classe": "nunca_sozinho",
+       "acao": "chamou_pessoa",
+       "nota": 82,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "cerebro",
+       "explicacao_para_gente": "Tokio Marine perguntou \"Você sabia que pode abrir o seu atendimento totalmente Online?\". O agente chamou uma pessoa da corretora porque essa decisão não pode ser tomada sem uma pessoa (custo, abertura de sinistro ou cancelamento) (certeza 82%). Explicação do agente: Atendimento Pilkington (vidros), fora do fluxo; placa e protocolo são placeholders sem valor real; abrir novo atendimento exige pessoa."
+      }
+     ],
+     "prompt_hashes": [
+      "269ca4d9a621"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "NAO_DESTRAVOU"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-escolhe_servico-yelum-035",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": true,
+   "custo_usd": 0.0328079,
+   "tokens": {
+    "in": 12556,
+    "out": 493,
+    "cache_read": 1087,
+    "cache_write": 9445,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 6368,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 1,
+    "chamadas_tentadas": 1,
+    "modelos_reais": [
+     "claude-sonnet-5-5"
+    ],
+    "prompt_hashes": [
+     "0ea9aa623e16"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "",
+    "estado": {
+     "decisao": {
+      "classe": "nunca_sozinho",
+      "acao": "PESSOA",
+      "valor": "",
+      "nota": 72,
+      "limiar": 70,
+      "motivo": "Dois ENCANADOR idênticos; já há atendimento aberto, e abrir novo ou escolher um é irreversível.",
+      "proibicao": "o_modelo_chamou_uma_pessoa",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "PESSOA",
+      "valor_do_modelo": "",
+      "formato_ok": true,
+      "modelo": "claude-sonnet-5-5",
+      "provedor": "anthropic",
+      "modelo_chamado": true
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PESSOA",
+      "classe_final": "nunca_sozinho",
+      "nota": 72,
+      "prova": "sim",
+      "acao_do_modelo": "PESSOA",
+      "proibicao": "o_modelo_chamou_uma_pessoa",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "NAO_DESTRAVOU"
+     },
+     "diario": [
+      {
+       "classe": "nunca_sozinho",
+       "acao": "chamou_pessoa",
+       "nota": 72,
+       "limiar": 70,
+       "modo": "on",
+       "gatilho": "tela_que_decide:escolhe_o_servico",
+       "explicacao_para_gente": "Yelum perguntou \"Selecione o serviço que você deseja acompanhar:\". O agente chamou uma pessoa da corretora porque essa decisão não pode ser tomada sem uma pessoa (custo, abertura de sinistro ou cancelamento) (certeza 72%). Explicação do agente: Dois ENCANADOR idênticos; já há atendimento aberto, e abrir novo ou escolher um é irreversível."
+      }
+     ],
+     "prompt_hashes": [
+      "3daaa5102030"
+     ],
+     "gatilho": "tela_que_decide:escolhe_o_servico"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "NAO_DESTRAVOU"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "des-D-cerebro-zurich-066",
+   "braco": "anthropic:claude-sonnet-5-5",
+   "tentativa": 1,
+   "resultado": "BLOCKED_BY_INFRA",
+   "critico": true,
+   "custo_usd": 0.0,
+   "tokens": {
+    "in": 0,
+    "out": 0,
+    "cache_read": 0,
+    "cache_write": 0,
+    "raciocinio": 0,
+    "segunda": {
+     "in": 0,
+     "out": 0,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 0
+    }
+   },
+   "latencia_ms": 11,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 0,
+    "chamadas_tentadas": 0,
+    "modelos_reais": [],
+    "prompt_hashes": [
+     "45ae00e461d6"
+    ],
+    "tools_hashes": [],
+    "notas": [],
+    "texto": "",
+    "estado": {
+     "decisao": {
+      "classe": "nunca_sozinho",
+      "acao": "PESSOA",
+      "valor": "",
+      "nota": null,
+      "limiar": 70,
+      "motivo": "",
+      "proibicao": "modelo_falhou",
+      "segunda_opiniao": null,
+      "acao_do_modelo": "",
+      "valor_do_modelo": "",
+      "formato_ok": true,
+      "modelo": "",
+      "provedor": "",
+      "modelo_chamado": false
+     },
+     "veredito_destravador": {
+      "grupo": "D",
+      "classe_esperada": "deduzir",
+      "acao_final": "PESSOA",
+      "classe_final": "nunca_sozinho",
+      "nota": null,
+      "prova": "sim",
+      "acao_do_modelo": "",
+      "proibicao": "modelo_falhou",
+      "segunda": null,
+      "grave": null,
+      "grave_do_modelo": null,
+      "proposta_certa": false,
+      "classe": "NAO_DESTRAVOU"
+     },
+     "diario": [],
+     "prompt_hashes": [
+      "8f021d81d114"
+     ],
+     "gatilho": "cerebro"
+    },
+    "segunda": {
+     "braco": "openai:gpt-6.1-sol:high",
+     "chamadas": 0,
+     "custo_usd": 0.0,
+     "tokens": {
+      "in": 0,
+      "out": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 0
+     },
+     "modelos_reais": []
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "destravador",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "NAO_DESTRAVOU"
+    }
+   ],
+   "erro": "bancada (F2b, 30/09): a releitura do ledger de OrcamentoDoLedger.reservar (a cada 10 reservas) roda DENTRO de dubles.borda_isolada, gasto_do_ledger levanta ValueError e o destravador o engole como modelo_falhou — o modelo NAO foi chamado; refeito em destravador_*_refeito_*.json"
+  }
+ ],
+ "runs": [],
+ "arquivo": null
+}
