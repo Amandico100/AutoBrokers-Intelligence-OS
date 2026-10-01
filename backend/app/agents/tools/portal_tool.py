@@ -786,8 +786,121 @@ class PortalActionTool(BaseTool):
                 # de aprendizado. Sem esta linha toda tela nova entrava na fila
                 # como `desconhecida`, e a fila deixaria de separar por portal.
                 await self._aprender_com_a_tela_cega(str(job_id), {**job, "params": params})
+                # 🔴 SPEC-124 F1 — a parada que espera `responder:*` passa pelo DESTRAVADOR antes
+                # de virar pergunta ao segurado. `off`/sem linha: devolve None e nada muda.
+                destravado = await self._destravar_a_parada(str(job_id), job, work_run_id, params)
+                if destravado is not None:
+                    return destravado
                 return {"content": format_result(job)}
         return None
+
+    # ======================================================================
+    # 🔴 SPEC-124 F1 — O PORTAL DESTRAVA COM A MESMA POLÍTICA DO WHATSAPP
+    # ======================================================================
+    async def _destravar_a_parada(self, job_id: str, job: dict, work_run_id: Optional[str],
+                                  params: dict) -> Optional[dict]:
+        """A resposta do pedido CONTINUADO pelo destravador, ou `None` (= o caminho de hoje).
+
+        Só age quando TUDO é verdade: o job parou `needs_human` esperando `responder:<slot>`, a
+        continuação é possível, o modo da corretora para esta seguradora/ramo `vidros` é `on`, o
+        teto por pedido não estourou e a política decidiu RESPONDER (dado do caso / conduzir).
+        Agir = continuar o MESMO pedido pelo mecanismo da 001.10.1 (`montar_job_de_continuacao`,
+        `enfileirar_continuacao`), com o `confirm` lido AGORA do gate de hoje (`envio_liberado`).
+        ⛔ Nunca um segundo `abrir_atendimento`. Qualquer falha → `None` (o de hoje).
+        """
+        if str(job.get("status")) != "needs_human":
+            return None
+        ev = job.get("evidence") if isinstance(job.get("evidence"), dict) else {}
+        operacao, slot = acao_esperada(ev)
+        if operacao != "responder" or not slot or not continuacao_possivel(ev):
+            return None
+        try:
+            from app.services import destravador as DT
+
+            modo, limiar = await DT.modo_do_destravador(
+                self.company_id, DT.chave_da_seguradora_do_portal(params), DT.RAMO_DO_PORTAL)
+            if modo not in ("on", "sombra"):
+                return None                       # off / sem linha: hoje, byte a byte
+            cliente = self._client()
+            linha_do_job = self._job_inteiro(job_id)
+            if linha_do_job is None:
+                return None
+            pedido_key = self._chave_do_pedido(linha_do_job, params)
+            if not pedido_key or self._destravamentos_do_pedido(pedido_key) >= DT.TETO_DE_DESTRAVAMENTOS_POR_PEDIDO:
+                return None
+            params_do_job = linha_do_job.get("params") if isinstance(linha_do_job.get("params"), dict) else {}
+            d = await DT.destravar_parada_do_portal(
+                self.company_id, ev, params_do_job, modo=modo, limiar=limiar, job_id=job_id,
+                work_run_id=work_run_id)
+            if d is None or modo != "on" or d.acao != "RESPONDER":
+                return None                       # pergunta / pessoa / sombra: o caminho de hoje
+            parada = DT.parada_do_portal(ev)
+            respostas = DT.resposta_do_portal(parada["stage"], slot, d.valor, params_do_job)
+            if not respostas:
+                return None
+            cpf = str(params.get("cpf_cnpj") or params_do_job.get("cpf_cnpj") or "")
+            confirm = await self._envio_liberado(cpf, JOURNEY_CONTINUAR)
+            linha = montar_job_de_continuacao(
+                company_id=self.company_id, job_origem=linha_do_job, operacao="responder",
+                pedido_key=pedido_key,
+                protocolo=numero_do_pedido(linha_do_job.get("evidence")) or pedido_key,
+                confirm=confirm, respostas=respostas, extra=str(linha_do_job.get("id") or ""))
+            # A marca de quem decidiu: o teto por pedido conta por ela; a equipe a lê no job.
+            linha["params"]["_destravador"] = {"diario_id": d.diario_id or "", "parada": parada["stage"],
+                                               "classe": d.classe}
+            session_id = str(linha_do_job.get("session_id") or params.get("_conversation_id") or "")
+            if session_id:
+                linha["params"]["_conversation_id"] = session_id
+                linha["session_id"] = linha.get("session_id") or session_id
+            if work_run_id:
+                linha["work_run_id"] = work_run_id
+                linha["params"]["_work_run_id"] = work_run_id
+            novo_id, ja = enfileirar_continuacao(cliente, linha)
+            if ja is not None:
+                if str(ja.get("status")) in STATUS_EM_CURSO and ja.get("id"):
+                    resposta = await self._aguardar(str(ja["id"]), work_run_id, params)
+                    return resposta or {"content": frase_de_pedido_ja_existente({"status": "queued"})}
+                return None
+            if not novo_id:
+                return None
+            logger.info("[PortalAction] destravador continuou o pedido (parada %s, classe %s)",
+                        parada["stage"], d.classe)
+            resposta = await self._aguardar(novo_id, work_run_id, params)
+            return resposta or {"content": format_result({"status": "queued"})}
+        except Exception as exc:  # noqa: BLE001 — o destravador nunca fica entre o segurado e a resposta
+            logger.warning("[PortalAction] destravador do portal indisponivel (%s) — caminho de hoje",
+                           type(exc).__name__)
+            return None
+
+    def _job_inteiro(self, job_id: str) -> Optional[dict]:
+        """A linha completa do job que parou (o poll lê só status/evidence/error). §7: `company_id`
+        no filtro E na linha."""
+        r = (self._client().table("portal_jobs").select(_COLUNAS_DO_PEDIDO + ", idempotency_key")
+             .eq("id", job_id).eq("company_id", self.company_id).limit(1).execute())
+        linhas = [dict(x) for x in (getattr(r, "data", None) or [])]
+        if not linhas or str(linhas[0].get("company_id") or "") != str(self.company_id):
+            return None
+        return linhas[0]
+
+    @staticmethod
+    def _chave_do_pedido(linha_do_job: dict, params: dict) -> str:
+        """A chave da ABERTURA (a liga do pedido): a continuação a carrega em `_pedido_key`."""
+        p = linha_do_job.get("params") if isinstance(linha_do_job.get("params"), dict) else {}
+        return str(p.get("_pedido_key") or linha_do_job.get("idempotency_key")
+                   or p.get("_idempotency_key") or params.get("_idempotency_key") or "")
+
+    def _destravamentos_do_pedido(self, pedido_key: str) -> int:
+        """Quantas continuações DESTE pedido o destravador já criou (a marca `_destravador`).
+        Leitura que falha conta como teto estourado (fail-closed: nada vai ao portal)."""
+        try:
+            r = (self._client().table("portal_jobs").select("id, company_id, params")
+                 .eq("company_id", self.company_id).eq("journey", JOURNEY_CONTINUAR)
+                 .eq("params->>_pedido_key", pedido_key).limit(50).execute())
+        except Exception:  # noqa: BLE001
+            return 10 ** 6
+        return sum(1 for j in (getattr(r, "data", None) or [])
+                   if str(j.get("company_id") or "") == str(self.company_id)
+                   and isinstance(j.get("params"), dict) and j["params"].get("_destravador"))
 
     # ======================================================================
     # 🔴 SPEC-EXTRA-001.10.1 C1 — O PEDIDO TERMINADO PODE CONTINUAR

@@ -40,7 +40,9 @@ EVENTO = "cerebro.decisao"
 #    `test_spec123_diario_fio.py::test_as_listas_batem_com_o_banco` as confere contra o catálogo.
 ORIGENS = ("acionamento", "atendimento", "portal")
 CLASSES = ("conduzir", "responder_com_dado", "deduzir", "perguntar_ao_segurado", "nunca_sozinho")
-ACOES = ("respondeu_ura", "perguntou_segurado", "chamou_pessoa", "nao_agiu")
+#: SPEC-124 F1: `respondeu_portal` — o destravador continuou o MESMO pedido do portal de vidros com um dado
+#: do caso (migration 20261001_04, `ck_diario_acao`). A lista é a do CHECK do banco, na mesma ordem.
+ACOES = ("respondeu_ura", "perguntou_segurado", "chamou_pessoa", "nao_agiu", "respondeu_portal")
 MODOS = ("on", "sombra")
 RESULTADOS_FINAIS = ("protocolo_saiu", "seguradora_recusou", "humano_corrigiu", "ura_fechou")
 
@@ -194,6 +196,9 @@ def frase_para_gente(*, seguradora: str, tela: str, classe: str, acao: str, valo
     elif acao == "perguntou_segurado":
         feito = (f'O agente perguntou ao segurado: "{v}"' if v
                  else "O agente fez uma pergunta ao segurado")
+    elif acao == "respondeu_portal":
+        feito = (f'O agente respondeu ao portal "{v}"' if v
+                 else "O agente respondeu ao portal")
     elif acao == "chamou_pessoa":
         feito = "O agente chamou uma pessoa da corretora"
     else:  # nao_agiu — sombra: decidiu, mas nada saiu

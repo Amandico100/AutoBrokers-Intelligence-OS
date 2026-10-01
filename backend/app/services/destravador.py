@@ -1231,6 +1231,70 @@ def _provedor_diferente(segunda: Optional[dict], provedor: str) -> bool:
     return bool(p1) and bool(p2) and p1 != p2
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# O NÚCLEO DA POLÍTICA — canal-agnóstico (SPEC-124 D1: "a MESMA política nos dois canais; proibido copiar")
+# ═════════════════════════════════════════════════════════════════════════════
+# O que é IGUAL no WhatsApp e no portal mora aqui, uma vez: as chaves do NUNCA ligadas, e a régua
+# classe × nota × limiar × 2ª opinião de OUTRO provedor × DEDUZIR desligado. O que muda de canal —
+# o que é "navegação", "dado do caso", "opção" e "a mesma resposta" — entra como FUNÇÃO do canal.
+PASSO_AGE = "age"
+PASSO_REBAIXAR = "rebaixar"
+PASSO_PRECISA_SEGUNDA = "precisa_segunda"
+
+
+@dataclass
+class Veredito:
+    """O que a régua decidiu: AGIR com a `classe`, REBAIXAR (pergunta/pessoa, `porque`) ou buscar a 2ª opinião."""
+    passo: str
+    classe: str
+    porque: str = ""
+
+
+def chaves_ligadas(nunca=None) -> tuple:
+    """As chaves do NUNCA SOZINHO que valem nesta decisão (`nunca` = a MUTAÇÃO do G2, nos dois canais)."""
+    return NUNCA_SOZINHO if nunca is None else tuple(nunca)
+
+
+def regua_do_nucleo(proposta: Proposta, *, limiar: int, provedor: str = "",
+                    segunda_opiniao: Optional[dict] = None, pedir_segunda: bool = False,
+                    e_navegacao, e_dado_do_caso, tem_opcoes: bool, valor_nas_opcoes,
+                    mesma_resposta) -> Veredito:
+    """A régua de uma RESPOSTA proposta (D1–D3 do Founder). Pura; as funções do canal são PREGUIÇOSAS
+    (chamadas só quando a régua chega nelas, na mesma ordem de sempre).
+
+    CONDUZIR que não é navegação e RESPONDER COM DADO que não é dado do caso viram DEDUZIR. DEDUZIR:
+    desligado sem calibração (`DEDUZIR_AUTONOMO_CALIBRADO`); senão o valor tem de ser uma opção (se há
+    opções), nota ≥ limiar, e a 2ª opinião de OUTRO provedor escolhendo a MESMA resposta.
+    `segunda_opiniao["concordou"]` é gravado no próprio dict (o diário o lê)."""
+    classe = proposta.classe
+    if classe == "conduzir" and not e_navegacao():
+        classe = "deduzir"            # não é navegação: é escolha — a régua do DEDUZIR
+    if classe == "responder_com_dado" and not e_dado_do_caso():
+        classe = "deduzir"            # não é dado do caso: é dedução
+    if classe != "deduzir":
+        return Veredito(PASSO_AGE, classe)
+    if not DEDUZIR_AUTONOMO_CALIBRADO:
+        # G3 sem calibração (ver a constante): nenhum DEDUZIR age sozinho, e a 2ª opinião não é paga
+        return Veredito(PASSO_REBAIXAR, classe, "deduzir_sem_calibracao")
+    if tem_opcoes and not valor_nas_opcoes():
+        return Veredito(PASSO_REBAIXAR, classe, "valor_fora_das_opcoes")
+    lim = _limiar_efetivo(limiar)
+    if proposta.nota is None or proposta.nota < lim:
+        return Veredito(PASSO_REBAIXAR, classe, "nota_abaixo_do_limiar")
+    if segunda_opiniao is None:
+        if pedir_segunda:
+            return Veredito(PASSO_PRECISA_SEGUNDA, classe, "precisa_segunda_opiniao")
+        return Veredito(PASSO_REBAIXAR, classe, "sem_segunda_opiniao")
+    if not _provedor_diferente(segunda_opiniao, provedor):
+        return Veredito(PASSO_REBAIXAR, classe, "segunda_opiniao_do_mesmo_provedor")
+    concordou = (str(segunda_opiniao.get("acao") or "") == "RESPONDER"
+                 and mesma_resposta(str(segunda_opiniao.get("valor") or "")))
+    segunda_opiniao["concordou"] = bool(concordou)
+    if not concordou:
+        return Veredito(PASSO_REBAIXAR, classe, "segunda_opiniao_discordou")
+    return Veredito(PASSO_AGE, classe)
+
+
 def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str, *,
                           gatilho: str = "cerebro", limiar: int = LIMIAR_MINIMO, modo: str = "on",
                           provedor: str = "", segunda_opiniao: Optional[dict] = None,
@@ -1246,7 +1310,7 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
     from app.services import acao_do_cerebro as AC
     from app.services import insurer_dispatch_service as IDS
 
-    ligadas = NUNCA_SOZINHO if nunca is None else tuple(nunca)
+    ligadas = chaves_ligadas(nunca)
     lim = _limiar_efetivo(limiar)
     playbook = IDS.get_playbook(str(sessao.get("playbook_ref") or "")) or {}
     ida = IDS.ida_e_volta_permitida(playbook) and bool(str(sessao.get("client_phone") or "").strip())
@@ -1388,38 +1452,26 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
     if p.acao == "PERGUNTAR_AO_SEGURADO":
         return perguntar_composta("")
 
-    # ⑥ RESPONDER, por classe.
-    classe = p.classe
-    if classe == "conduzir":
+    # ⑥ RESPONDER, por classe — o NÚCLEO canal-agnóstico (`regua_do_nucleo`, SPEC-124 D1). O que é
+    #    "navegação", "dado do caso", "opção da tela" e "a mesma resposta" é do CANAL (aqui, a URA).
+    def _e_navegacao() -> bool:
         rot = _rotulo_escolhido(tela, valor)
         eco = IDS.classe_da_tela(playbook, str(tela), slots=sessao.get("slots")).get("chave") == "eco_de_dado"
         # X2 (red team B2): no ECO só CONFIRMAR o eco do caso conduz ("Sim"/"Confirmar", uma opção
         # da tela). Texto livre ("Rua Inventada, 2233") ou "Não" num eco é escolha — DEDUZIR.
         eco_confirmado = eco and bool(rot) and bool(_RX_AFIRMATIVO.search(_n(rot)))
-        if not ((rot and IDS.rotulo_e_de_navegacao(rot)) or eco_confirmado):
-            classe = "deduzir"        # não é navegação: é escolha — a régua do DEDUZIR
-    if classe == "responder_com_dado" and not _e_dado_do_caso(valor, sessao, tela):
-        classe = "deduzir"            # não é dado do caso: é dedução
-    base["classe"] = classe
-    if classe == "deduzir":
-        if not DEDUZIR_AUTONOMO_CALIBRADO:
-            # G3 sem calibração (ver a constante): nenhum DEDUZIR age sozinho, e a 2ª opinião não é paga
-            return rebaixar("deduzir_sem_calibracao")
-        if conteudo and not _rotulo_escolhido(tela, valor):
-            return rebaixar("valor_fora_das_opcoes")
-        if p.nota is None or p.nota < lim:
-            return rebaixar("nota_abaixo_do_limiar")
-        if segunda_opiniao is None:
-            if pedir_segunda:
-                return Destravamento(acao="PESSOA", valor=valor, proibicao="precisa_segunda_opiniao", **base)
-            return rebaixar("sem_segunda_opiniao")
-        if not _provedor_diferente(segunda_opiniao, provedor):
-            return rebaixar("segunda_opiniao_do_mesmo_provedor")
-        concordou = (str(segunda_opiniao.get("acao") or "") == "RESPONDER"
-                     and AC._mesma_resposta(tela, valor, str(segunda_opiniao.get("valor") or "")))
-        segunda_opiniao["concordou"] = bool(concordou)
-        if not concordou:
-            return rebaixar("segunda_opiniao_discordou")
+        return bool((rot and IDS.rotulo_e_de_navegacao(rot)) or eco_confirmado)
+
+    v = regua_do_nucleo(
+        p, limiar=lim, provedor=provedor, segunda_opiniao=segunda_opiniao, pedir_segunda=pedir_segunda,
+        e_navegacao=_e_navegacao, e_dado_do_caso=lambda: _e_dado_do_caso(valor, sessao, tela),
+        tem_opcoes=bool(conteudo), valor_nas_opcoes=lambda: bool(_rotulo_escolhido(tela, valor)),
+        mesma_resposta=lambda outro: AC._mesma_resposta(tela, valor, outro))
+    base["classe"] = v.classe
+    if v.passo == PASSO_PRECISA_SEGUNDA:
+        return Destravamento(acao="PESSOA", valor=valor, proibicao="precisa_segunda_opiniao", **base)
+    if v.passo == PASSO_REBAIXAR:
+        return rebaixar(v.porque)
 
     # ⑦ O conferente do PRODUTO sobre o valor (invented_number, protocolo sem captura, frase…).
     gr = IDS.guard_human_phase_reply(valor, sessao, insurer_message=tela)
@@ -1828,3 +1880,536 @@ def agendar_em_sombra(company_id: str, sessao_copia: dict, tela: str, *,
     except Exception as e:  # noqa: BLE001
         logger.warning("[DESTRAVADOR] sombra não agendada (%s)", type(e).__name__)
         return None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# O PORTAL DE VIDROS — o MESMO núcleo, outro canal (SPEC-124 F1 · D1/D2/D5)
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# O fio: `portal_tool._aguardar` vê o job `needs_human` com `acao_esperada = responder:<slot>` e o modo
+# `on` (`cerebro_modos`: seguradora pela chave do corredor, ramo `vidros`; a linha `todos` vale) →
+# `destravar_parada_do_portal` → a CLASSE da parada pela TABELA (código) → o modelo do papel
+# `destravador` (catálogo) só quando a tabela deixa o modelo propor → `decidir_parada_do_portal` (o
+# NÚCLEO `regua_do_nucleo` + o NUNCA do portal) → diário (`origem='portal'`) → a tool continua o MESMO
+# pedido (`montar_job_de_continuacao`, mecanismo da 001.10.1) ou segue o caminho de hoje (pergunta).
+# ⛔ Este módulo continua sem enviar nada: quem enfileira a continuação é a tool, e o `confirm` dela é
+# o gate de hoje (`portal_tool.envio_liberado`).
+ORIGEM_DO_PORTAL = "portal"
+RAMO_DO_PORTAL = "vidros"
+ROTA_DO_PORTAL = "portal:vidros_lanternas"
+
+#: A ação no diário quando o canal é o portal: a resposta foi ao PORTAL, não à URA (migration 20261001_04).
+ACAO_NO_DIARIO_DO_PORTAL = {**ACAO_NO_DIARIO, "RESPONDER": "respondeu_portal"}
+
+#: constante_justificada: quantas vezes o destravador pode continuar o MESMO pedido sozinho. 📊 O mapa
+#: fechado das paradas (`vidros_estado.ETAPA_DA_PARADA`) tem 6 etapas que esperam `responder:*` (peça,
+#: causa, lataria, cidade, questionário, reparo) — e com o DEDUZIR desligado só a UF age hoje. 3 cobre a
+#: UF + duas perguntas do questionário quando a calibração religar, e corta o laço (o portal parando
+#: sempre no mesmo ponto) antes de virar uma fila de jobs na seguradora. Passou do teto → caminho de hoje.
+TETO_DE_DESTRAVAMENTOS_POR_PEDIDO = 3
+
+#: 🔴 A CLASSE DE CADA PARADA do API-first — a tabela do laudo do BLOCO 0 da SPEC-124 (o código decide a
+#: classe; o modelo só propõe o VALOR onde a tabela deixa). Parada fora daqui = técnica: não se destrava.
+#: constante_justificada (cada linha):
+#:   uf_desconhecida         o estado do serviço é DADO DO CASO (cadastro/cidade do serviço) e a lista
+#:                           do portal é fechada (27 UFs): responder com o dado, se ele está na lista
+#:   tipo_de_telefone_…      o tipo de contato é CONTRATO nosso (D-E00110-01): conduzir — mas a parada
+#:                           espera `reler` (o vigia relê); o plugue `responder:*` não chega nela
+#:   *_ambigua · motivo_ambiguo · questionario_incompleto   escolher numa lista = DEDUZIR (desligado
+#:                           sem calibração → pergunta ao segurado; o questionário nunca "Não sabe")
+#:   pecas_de_lataria_ausentes · cidade_sem_rede · decidir_vistoria   só o segurado sabe
+#:   decidir_reparo          reparo × troca muda FRANQUIA/custo: NUNCA sozinho, pergunta (D2)
+#:   pronto_para_agendar · horario_indisponivel   loja e horário: a escolha (e a loja paga) é dele (D2)
+#:   coverage_absent · maybe_committed · pronto_para_* · prioridade_nao_medida   NUNCA → gate / pessoa
+CLASSE_DA_PARADA_DO_PORTAL: Dict[str, str] = {
+    "uf_desconhecida": "responder_com_dado",
+    "tipo_de_telefone_desconhecido": "conduzir",
+    "peca_ambigua": "deduzir",
+    "motivo_ambiguo": "deduzir",
+    "peca_de_lataria_ambigua": "deduzir",
+    "cidade_ambigua": "deduzir",
+    "questionario_incompleto": "deduzir",
+    "pecas_de_lataria_ausentes": "perguntar_ao_segurado",
+    "cidade_sem_rede": "perguntar_ao_segurado",
+    "decidir_vistoria": "perguntar_ao_segurado",
+    "decidir_reparo": "nunca_sozinho",
+    "pronto_para_agendar": "nunca_sozinho",
+    "horario_indisponivel": "nunca_sozinho",
+    "coverage_absent": "nunca_sozinho",
+    "maybe_committed": "nunca_sozinho",
+    "pronto_para_abrir": "nunca_sozinho",
+    "pronto_para_materializar": "nunca_sozinho",
+    "pronto_para_vistoria": "nunca_sozinho",
+    "prioridade_nao_medida": "nunca_sozinho",
+}
+
+#: O NUNCA de cada parada NUNCA: (a chave de `NUNCA_SOZINHO` — a MESMA lista do WhatsApp —, e o que se
+#: faz: "pergunta" ao segurado, ou "pessoa"/gate). D2 do Founder: aceitar franquia/valor/custo, escolher
+#: loja paga fora do caso, cancelar, inventar dado. Confirmar com o caso completo continua no gate de hoje.
+NUNCA_DA_PARADA_DO_PORTAL: Dict[str, Tuple[str, str]] = {
+    "decidir_reparo": ("aceite_de_custo", "pergunta"),
+    "pronto_para_agendar": ("aceite_de_custo", "pergunta"),
+    "horario_indisponivel": ("aceite_de_custo", "pergunta"),
+    "coverage_absent": ("afirma_cobertura", "pessoa"),
+    "maybe_committed": ("novo_atendimento", "pessoa"),
+    "pronto_para_abrir": ("confirmacao_final", "pessoa"),
+    "pronto_para_materializar": ("confirmacao_final", "pessoa"),
+    "pronto_para_vistoria": ("confirmacao_final", "pessoa"),
+    "prioridade_nao_medida": ("confirmacao_final", "pessoa"),
+}
+
+#: O que faltava, em palavras de gente (a frase do diário — D7: nada de nome de variável).
+_O_QUE_FALTAVA_NO_PORTAL = {
+    "uf_desconhecida": "o estado (UF) onde o serviço vai ser feito",
+    "tipo_de_telefone_desconhecido": "o tipo do telefone de contato",
+    "peca_ambigua": "escolher a peça certa na lista do portal",
+    "motivo_ambiguo": "escolher a causa do dano na lista do portal",
+    "peca_de_lataria_ambigua": "escolher a peça de lataria na lista do portal",
+    "pecas_de_lataria_ausentes": "dizer quais peças de lataria foram atingidas",
+    "cidade_ambigua": "escolher a cidade do serviço na lista do portal",
+    "cidade_sem_rede": "outra cidade com loja para o serviço",
+    "questionario_incompleto": "uma resposta do questionário da seguradora",
+    "decidir_reparo": "a escolha entre reparar ou trocar a peça",
+    "decidir_vistoria": "como o segurado prefere fazer a vistoria",
+    "pronto_para_agendar": "a escolha da loja e do horário",
+    "horario_indisponivel": "outro horário, porque o escolhido não está mais livre",
+}
+
+#: constante_justificada: o VALOR que aceita custo, no texto normalizado (`_n`: sem acento, sem "$"). D2:
+#: "aceitar franquia/valor/custo" e "loja paga". O falso positivo custa uma pergunta ao segurado; o
+#: negativo, um custo aceito por ele sem ele saber.
+_RX_CUSTO_NO_PORTAL = re.compile(
+    r"\bfranquia|\bvalor(?:es)?\b|\bcusto|\bpag(?:ar|o|a|amento|ando)\b|\bcobr|\bparticipac|\breais\b|"
+    r"\bexcedente|\bdesconto|\bpreco|\bdeposit|\bpix\b|\br \d")
+#: constante_justificada: o VALOR que cancela/desiste/encerra o pedido (D2 "cancelar") — o radical do
+#: WhatsApp (`_RX_CANCELA`) + desistir/encerrar, no texto normalizado.
+_RX_CANCELA_NO_PORTAL = re.compile(r"\bcancel|\bdesist|\bencerr")
+
+
+def chave_da_seguradora_do_portal(params: Optional[dict]) -> str:
+    """A seguradora do pedido como `cerebro_modos` a conhece: a chave do CORREDOR (`normalize_insurer_key`,
+    a régua única do produto — 📊 "LIBERTY SEGUROS S/A" → `yelum`). Nunca constante de corretora."""
+    nome = str((params or {}).get("insurer_name") or "").strip()
+    if not nome:
+        return ""
+    try:
+        from app.services.corridor_playbooks import normalize_insurer_key
+
+        return normalize_insurer_key(nome) or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _folhas(valor: Any) -> List[str]:
+    if isinstance(valor, dict):
+        return [x for v in valor.values() for x in _folhas(v)]
+    if isinstance(valor, (list, tuple)):
+        return [x for v in valor for x in _folhas(v)]
+    if isinstance(valor, bool) or valor is None:
+        return []
+    return [str(valor)]
+
+
+def valores_do_caso_no_portal(params: Optional[dict]) -> set:
+    """Os VALORES do caso (normalizados) que podem responder o portal: o que a conversa e a apólice
+    trouxeram. ⛔ Fora: as chaves internas (`_…`), o `contato` (é da CORRETORA) e o `confirm`."""
+    fora = {"contato", "confirm", "solicitante"}
+    return {_n(x) for k, v in (params or {}).items()
+            if not str(k).startswith("_") and k not in fora for x in _folhas(v) if _n(x)}
+
+
+def _opcao_igual(valor: Any, opcoes: List[str]) -> str:
+    """A opção da lista do portal que É este valor (igualdade normalizada, nunca pedaço). "" se nenhuma."""
+    alvo = _n(valor)
+    if not alvo:
+        return ""
+    iguais = [o for o in opcoes if _n(o) == alvo]
+    return iguais[0] if len(iguais) == 1 else ""
+
+
+def parada_do_portal(evidence: Any) -> Dict[str, Any]:
+    """A parada que o job do portal gravou (`evidence` = o `_augment_hitl_evidence` do worker):
+    `{stage, operacao, slot, opcoes, pergunta, mensagem}`."""
+    from app.agents.tools.portal_params import acao_esperada
+
+    ev = evidence if isinstance(evidence, dict) else {}
+    operacao, slot = acao_esperada(ev)
+    af = ev.get("api_first") if isinstance(ev.get("api_first"), dict) else {}
+    stage = str(ev.get("stage") or af.get("parou_em") or "").strip()
+    cont = ev.get("continuacao") if isinstance(ev.get("continuacao"), dict) else {}
+    opcoes = [" ".join(str(o).split()) for o in (ev.get("opcoes") or []) if str(o or "").strip()][:60]
+    return {"stage": stage, "operacao": operacao, "slot": slot, "opcoes": opcoes,
+            "pergunta": " ".join(str(ev.get("pergunta") or "").split())[:300],
+            "mensagem": " ".join(str(ev.get("message") or cont.get("motivo") or "").split())[:300]}
+
+
+def texto_da_parada(parada: Dict[str, Any]) -> str:
+    """A "tela" do portal, para o diário e para o modelo: o que faltava, a pergunta e as opções."""
+    falta = _O_QUE_FALTAVA_NO_PORTAL.get(parada.get("stage") or "", "um dado do pedido")
+    linhas = [f"O portal de vidros parou o pedido: falta {falta}."]
+    if parada.get("pergunta"):
+        linhas.append(f"Pergunta do portal: {parada['pergunta']}")
+    if parada.get("mensagem"):
+        linhas.append(f"Motivo: {parada['mensagem']}")
+    if parada.get("opcoes"):
+        linhas.append("Opções da lista do portal:")
+        linhas += [f"{i} - {o}" for i, o in enumerate(parada["opcoes"], 1)]
+    return "\n".join(linhas)
+
+
+def resposta_do_portal(stage: str, slot: str, valor: str, params: Optional[dict]) -> Dict[str, Any]:
+    """`{slot: valor}` no CONTRATO da continuação (`portal_params.respostas_da_chamada`, o MESMO da
+    001.10.1) — ou `{}` quando a resposta não tem formato para esta parada, ou é a MESMA com que o
+    portal parou (reenviá-la produziria a mesma parada e um job a mais na seguradora)."""
+    import copy
+
+    from app.agents.tools.portal_params import respostas_da_chamada
+
+    origem = params if isinstance(params, dict) else {}
+    novo = copy.deepcopy({k: v for k, v in origem.items() if k != "_runtime"})
+    valor = str(valor or "").strip()
+    if not slot or not valor:
+        return {}
+    local = dict(novo.get("local") or {})
+    cid = dict(local.get("cidade_servico") or {}) if isinstance(local.get("cidade_servico"), dict) else {}
+    if slot == "cidade_servico":
+        if stage == "uf_desconhecida":
+            if not str(cid.get("cidade") or "").strip():
+                return {}
+            cid["uf"] = valor.upper()
+        elif stage == "cidade_ambigua":
+            cid["cidade"] = valor
+        else:
+            return {}
+        local["cidade_servico"] = cid
+        novo["local"] = local
+    elif slot == "como":
+        novo["dano"] = {**dict(novo.get("dano") or {}), "como": valor}
+    elif slot == "peca" or slot.startswith("pergunta_"):
+        novo["especificos"] = {**dict(novo.get("especificos") or {}), slot: valor}
+    else:
+        return {}      # lataria (lista), reparo (NUNCA): o destravador não responde
+    return respostas_da_chamada(novo, origem, slot)
+
+
+def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any], params: Optional[dict], *,
+                             limiar: int = LIMIAR_MINIMO, modo: str = "on", provedor: str = "",
+                             segunda_opiniao: Optional[dict] = None, pedir_segunda: bool = False,
+                             nunca=None) -> Optional[Destravamento]:
+    """A POLÍTICA no portal (D1/D2), em CÓDIGO e pura: a TABELA dá a classe; o NUNCA do portal; o NÚCLEO
+    (`regua_do_nucleo`, o MESMO do WhatsApp) decide a resposta. `proposta=None` → só o código: devolve a
+    decisão quando a tabela basta, ou `None` quando o modelo tem de propor o valor."""
+    ligadas = chaves_ligadas(nunca)
+    lim = _limiar_efetivo(limiar)
+    stage = str(parada.get("stage") or "")
+    opcoes = list(parada.get("opcoes") or [])
+    classe_tab = CLASSE_DA_PARADA_DO_PORTAL.get(stage, "")
+    pode_perguntar = parada.get("operacao") == "responder"
+    base: Dict[str, Any] = dict(classe=classe_tab or "nunca_sozinho", nota=None, limiar=lim, motivo="",
+                                modo=modo, provedor=provedor, segunda_opiniao=segunda_opiniao,
+                                gatilho=f"portal:{stage}")
+    if proposta is not None:
+        base.update(nota=proposta.nota, motivo=proposta.motivo, formato_ok=proposta.formato_ok,
+                    acao_do_modelo=proposta.acao if proposta.formato_ok else "",
+                    valor_do_modelo=proposta.valor)
+
+    def pessoa(porque: str, classe: Optional[str] = None) -> Destravamento:
+        d = Destravamento(acao="PESSOA", proibicao=porque, **base)
+        if classe:
+            d.classe = classe
+        return d
+
+    def perguntar(porque: str, classe: Optional[str] = None) -> Destravamento:
+        if not pode_perguntar:
+            return pessoa(porque, classe)
+        d = Destravamento(acao="PERGUNTAR_AO_SEGURADO", proibicao=porque,
+                          valor=(parada.get("pergunta") or texto_da_parada(parada))[:400],
+                          opcoes=[[str(i), o] for i, o in enumerate(opcoes, 1)], **base)
+        if classe:
+            d.classe = classe
+        return d
+
+    # ① A parada técnica não se destrava (o vigia relê; a equipe segue pelo número).
+    if not classe_tab:
+        return pessoa("parada_tecnica", "nunca_sozinho")
+    # ② O NUNCA da TABELA — antes do modelo (nem se gasta).
+    if classe_tab == "nunca_sozinho":
+        chave, como = NUNCA_DA_PARADA_DO_PORTAL.get(stage, ("confirmacao_final", "pessoa"))
+        if chave in ligadas:
+            return perguntar(chave) if como == "pergunta" else pessoa(chave)
+    # ③ Só o segurado sabe.
+    if classe_tab == "perguntar_ao_segurado":
+        return perguntar("so_o_segurado_sabe")
+    # ④ DEDUZIR sem calibração: o NÚCLEO decide sem o modelo (a mesma régua; a 2ª opinião não é paga).
+    if classe_tab == "deduzir" and not DEDUZIR_AUTONOMO_CALIBRADO:
+        v = regua_do_nucleo(Proposta(classe="deduzir", acao="RESPONDER", nota=None), limiar=lim,
+                            e_navegacao=lambda: False, e_dado_do_caso=lambda: False,
+                            tem_opcoes=bool(opcoes), valor_nas_opcoes=lambda: False,
+                            mesma_resposta=lambda _o: False)
+        base["classe"] = v.classe
+        return perguntar(v.porque)
+    if proposta is None:
+        return None
+    # ⑤ A saída do modelo.
+    p = proposta
+    if not p.formato_ok:
+        return pessoa(f"saida_invalida:{p.erro}", "nunca_sozinho")
+    if p.acao == "PESSOA":
+        return pessoa("o_modelo_chamou_uma_pessoa")
+    if p.acao != "RESPONDER":
+        # PERGUNTAR (ou um SILENCIO, que no portal não existe): o caminho de hoje — o agente pergunta.
+        return perguntar("o_modelo_quis_perguntar" if p.acao == "PERGUNTAR_AO_SEGURADO"
+                         else "silencio_no_portal", "perguntar_ao_segurado")
+    valor = p.valor
+    nv = _n(valor)
+    opcao = _opcao_igual(valor, opcoes)
+    # ⑥ O NUNCA do portal sobre o VALOR (D2) — a mesma lista de chaves do WhatsApp.
+    if "aceite_de_custo" in ligadas and (_RX_CUSTO_NO_PORTAL.search(nv) or "r$" in str(valor).lower()):
+        return perguntar("aceite_de_custo")
+    if "cancelar_pedido" in ligadas and _RX_CANCELA_NO_PORTAL.search(nv):
+        return pessoa("cancelar_pedido")
+    if "abrir_sinistro" in ligadas and _RX_SINISTRO.search(nv):
+        return pessoa("abrir_sinistro")
+    if "afirma_cobertura" in ligadas and not opcao:
+        from app.services import acao_do_cerebro as AC
+
+        if AC._RX_AFIRMA_COBERTURA.search(valor or ""):
+            return pessoa("afirma_cobertura")
+    caso = valores_do_caso_no_portal(params)
+    if "inventar_dado" in ligadas and _numero_inventado(
+            valor, {"slots": {str(i): x for i, x in enumerate(_folhas(params or {}))}}):
+        return pessoa("inventar_dado")
+    # ⑦ O NÚCLEO. A classe é a da TABELA (o modelo não promove a parada); o código prova cada uma.
+    classe = classe_tab if classe_tab in ("conduzir", "responder_com_dado", "deduzir") else p.classe
+    v = regua_do_nucleo(
+        Proposta(classe=classe, acao="RESPONDER", valor=valor, nota=p.nota, motivo=p.motivo),
+        limiar=lim, provedor=provedor, segunda_opiniao=segunda_opiniao, pedir_segunda=pedir_segunda,
+        e_navegacao=lambda: classe_tab == "conduzir" and bool(opcao),
+        e_dado_do_caso=lambda: bool(opcao or not opcoes) and nv in caso,
+        tem_opcoes=bool(opcoes), valor_nas_opcoes=lambda: bool(opcao),
+        mesma_resposta=lambda outro: _n(outro) == nv or (bool(opcao) and _opcao_igual(outro, opcoes) == opcao))
+    base["classe"] = v.classe
+    if v.passo == PASSO_PRECISA_SEGUNDA:
+        return Destravamento(acao="PESSOA", valor=valor, proibicao="precisa_segunda_opiniao", **base)
+    if v.passo == PASSO_REBAIXAR:
+        return perguntar(v.porque)
+    final = opcao or valor
+    if not resposta_do_portal(stage, str(parada.get("slot") or ""), final, params):
+        return perguntar("resposta_sem_formato_ou_repetida")
+    return Destravamento(acao="RESPONDER", valor=final, **base)
+
+
+#: 🔴 A parte FIXA do prompt do portal: o cabeçalho do canal + as MESMAS regras de resposta do WhatsApp
+#: (classes, nota, JSON) — fatiadas da instrução de lá, nunca reescritas.
+_REGRAS_DA_RESPOSTA = INSTRUCAO_DO_DESTRAVADOR[
+    INSTRUCAO_DO_DESTRAVADOR.index("CLASSES — escolha UMA:"):INSTRUCAO_DO_DESTRAVADOR.index("══════ O ROTEIRO")]
+INSTRUCAO_DO_DESTRAVADOR_NO_PORTAL = (
+    "══════ VOCÊ FOI CHAMADO PORQUE O PORTAL DE VIDROS PAROU O PEDIDO ══════\n"
+    "OBJETIVO: continuar o MESMO pedido de vidros na seguradora sem chamar uma pessoa da corretora — com a "
+    "resposta CERTA. O pedido JÁ EXISTE no portal; a sua resposta continua ele (nunca abre outro). Leia o "
+    "caso, a conversa com o segurado e a parada, e decida como um atendente experiente decidiria.\n"
+    "No portal, \"a tela\" é a parada: o que faltava e a lista FECHADA de opções do portal. Responder = "
+    "escolher UMA opção da lista, escrita igual. Nunca aceite franquia, valor ou custo, nunca escolha loja "
+    "paga, nunca cancele, nunca invente dado: isso é do segurado ou de uma pessoa.\n\n"
+    + _REGRAS_DA_RESPOSTA)
+
+
+def _caso_do_portal_em_palavras(params: Dict[str, Any]) -> str:
+    """O que o caso diz, sem documento, placa, chassi, telefone ou e-mail (o modelo não precisa deles)."""
+    dano = params.get("dano") if isinstance(params.get("dano"), dict) else {}
+    local = params.get("local") if isinstance(params.get("local"), dict) else {}
+    cid = local.get("cidade_servico") if isinstance(local.get("cidade_servico"), dict) else {}
+    esp = params.get("especificos") if isinstance(params.get("especificos"), dict) else {}
+    linhas = [f"- seguradora: {params.get('insurer_name') or 'não informada'}",
+              f"- peça: {dano.get('peca') or 'não informada'}",
+              f"- como ocorreu: {dano.get('como') or 'não informado'}",
+              f"- onde ocorreu: {dano.get('onde') or 'não informado'}",
+              f"- cidade do serviço: {cid.get('cidade') or '?'} / estado {cid.get('uf') or '?'}",
+              f"- estado do cadastro do segurado: {local.get('estado') or '?'}"]
+    if dano.get("descricao"):
+        linhas.append(f"- relato: {' '.join(str(dano['descricao']).split())[:400]}")
+    for k, v in list(esp.items())[:20]:
+        if not str(k).startswith("_"):
+            linhas.append(f"- {str(k).replace('_', ' ')}: {' '.join(str(v).split())[:120]}")
+    return "\n".join(linhas)
+
+
+def _historico_do_pedido(evidence: Dict[str, Any], params: Dict[str, Any]) -> str:
+    est = evidence.get("vidros_estado") if isinstance(evidence.get("vidros_estado"), dict) else {}
+    cont = evidence.get("continuacao") if isinstance(evidence.get("continuacao"), dict) else {}
+    antes = params.get("_continuacao") if isinstance(params.get("_continuacao"), dict) else {}
+    linhas = [f"- estado do pedido no portal: {est.get('estado') or 'desconhecido'}",
+              f"- etapa onde parou: {cont.get('etapa') or '?'}"]
+    if antes.get("respostas"):
+        linhas.append("- respostas já levadas ao portal neste pedido: "
+                      + ", ".join(str(k).replace("_", " ") for k in antes["respostas"]))
+    return "\n".join(linhas)
+
+
+def compor_mensagens_do_portal(parada: Dict[str, Any], params: Dict[str, Any], evidence: Dict[str, Any], *,
+                               conversa: Optional[List[str]] = None,
+                               memoria: Optional[List[str]] = None) -> Dict[str, str]:
+    """O prompt do destravador no PORTAL. Puro. Fixo primeiro (o cache por prefixo), a parada por último."""
+    user = "DADOS DO CASO:\n" + _caso_do_portal_em_palavras(params)
+    if memoria:
+        user += "\n\nO QUE A CORRETORA JÁ ENSINOU:\n" + "\n".join(memoria)
+    user += ("\n\nA CONVERSA COM O SEGURADO (as últimas mensagens, a mais antiga primeiro):\n" + "\n".join(conversa)
+             if conversa else "\n\nA CONVERSA COM O SEGURADO: (não disponível neste caso)")
+    user += "\n\nO PEDIDO ATÉ AQUI:\n" + _historico_do_pedido(evidence, params)
+    user += f"{_MARCA_DO_VARIAVEL}o portal parou e esta parada pode ser respondida por aqui.\n\n"
+    user += texto_da_parada(parada) + "\n\nSua resposta (o JSON):"
+    return {"system": INSTRUCAO_DO_DESTRAVADOR_NO_PORTAL, "user": user}
+
+
+def _telefone_da_conversa(params: Dict[str, Any]) -> str:
+    sessao = str(params.get("_conversation_id") or "")
+    partes = sessao.split(":")
+    return re.sub(r"\D", "", partes[1]) if len(partes) >= 2 and partes[0] == "whatsapp" else ""
+
+
+def _frase_do_portal(seguradora: str, parada: Dict[str, Any], d: Destravamento) -> str:
+    """A frase para GENTE (D7) do portal: "No portal da loja de vidros, faltava …"."""
+    falta = _O_QUE_FALTAVA_NO_PORTAL.get(str(parada.get("stage") or ""), "um dado do pedido")
+    try:
+        from app.services.diario_de_decisoes import _POR_QUE, _nome_da_seguradora
+
+        nome, por_classe = _nome_da_seguradora(seguradora), _POR_QUE
+    except Exception:  # noqa: BLE001
+        nome, por_classe = (seguradora or "a seguradora").capitalize(), {}
+    if d.modo == "sombra":
+        fez = "apenas observou, sem responder nada" + (
+            f" (se estivesse ligado, teria respondido “{d.valor[:80]}”)" if d.acao == "RESPONDER" else "")
+    else:
+        fez = {"RESPONDER": f"respondeu ao portal “{d.valor[:80]}” e continuou o MESMO pedido",
+               "PERGUNTAR_AO_SEGURADO": "deixou a pergunta para o segurado",
+               "PESSOA": "deixou o caso para uma pessoa da corretora"}.get(d.acao, "decidiu")
+    porque = PORQUE.get(d.proibicao) or por_classe.get(d.classe, "")
+    porque = porque[len("porque "):] if porque.startswith("porque ") else porque
+    extra = []
+    if d.nota is not None:
+        extra.append(f"certeza {d.nota}%")
+    if d.segunda_opiniao and "concordou" in d.segunda_opiniao:
+        extra.append("a segunda opinião concordou" if d.segunda_opiniao.get("concordou")
+                     else "a segunda opinião discordou")
+    frase = (f"No portal da loja de vidros ({nome}), faltava {falta}. O agente {fez}"
+             + (f" porque {porque}" if porque else "") + (f" ({', '.join(extra)})." if extra else "."))
+    return frase + (" (Em sombra: nada foi enviado.)" if d.modo == "sombra" else "")
+
+
+def _sessao_para_mascarar(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Os campos de PESSOA do pedido, no formato que o mascarador do diário lê (`higienizar_para_o_rastro`)."""
+    seg = params.get("segurado") if isinstance(params.get("segurado"), dict) else {}
+    slots = {k: v for k, v in seg.items() if isinstance(v, (str, int)) and not isinstance(v, bool)}
+    slots.update({"placa": params.get("placa") or "", "cpf_cnpj": params.get("cpf_cnpj") or ""})
+    return {"slots": slots, "client_phone": _telefone_da_conversa(params)}
+
+
+def chave_do_diario_do_portal(company_id: str, job_id: str, parada: Dict[str, Any]) -> str:
+    """Empresa + o JOB que parou + a parada: a mesma parada relida, UMA linha; a próxima (outro job), outra."""
+    return f"destravador:portal:{company_id}:{job_id}:{parada.get('stage') or ''}"[:200]
+
+
+async def _registrar_do_portal(company_id: str, parada: Dict[str, Any], params: Dict[str, Any],
+                               d: Destravamento, *, job_id: str, work_run_id: Optional[str]) -> Optional[str]:
+    try:
+        from app.services import diario_de_decisoes as DD
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[DESTRAVADOR] diário indisponível (%s) — decisão sem linha", type(e).__name__)
+        return None
+    seguradora = chave_da_seguradora_do_portal(params)
+    acao = "nao_agiu" if d.modo == "sombra" else ACAO_NO_DIARIO_DO_PORTAL.get(d.acao, "chamou_pessoa")
+    d.explicacao = _frase_do_portal(seguradora, parada, d)
+    run = str(work_run_id or params.get("_work_run_id") or "").strip()
+    dano = params.get("dano") if isinstance(params.get("dano"), dict) else {}
+    try:
+        return await DD.registrar_decisao(
+            company_id=str(company_id), origem=ORIGEM_DO_PORTAL,
+            work_run_id=run if re.fullmatch(r"[0-9a-fA-F-]{36}", run) else None, conversation_id=None,
+            seguradora=seguradora, ramo=RAMO_DO_PORTAL, rota=ROTA_DO_PORTAL,
+            servico=str(dano.get("peca") or ""), tela=texto_da_parada(parada), classe=d.classe, acao=acao,
+            valor=d.valor, nota=d.nota, limiar=d.limiar, motivo=motivo_no_diario(d),
+            explicacao_para_gente=d.explicacao, modelo=d.modelo, segunda_opiniao=d.segunda_opiniao,
+            modo=d.modo, gatilho=d.gatilho, chave_idempotencia=chave_do_diario_do_portal(company_id, job_id, parada),
+            sessao=_sessao_para_mascarar(params))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[DESTRAVADOR] diário falhou (%s)", type(e).__name__)
+        return None
+
+
+async def destravar_parada_do_portal(company_id: str, evidence: Any, params: Any, *, modo: str,
+                                     limiar: int = LIMIAR_MINIMO, job_id: str = "",
+                                     work_run_id: Optional[str] = None,
+                                     llm: Optional[ModeloInjetado] = None,
+                                     llm_segunda: Optional[ModeloInjetado] = None) -> Optional[Destravamento]:
+    """UMA parada do portal → UMA decisão (ou `None`: modo off, ou a parada não espera `responder:*`).
+
+    `params` = os do JOB que parou (o que o portal usou). Monta o contexto (o caso, a conversa com o
+    segurado, a parada, o histórico do pedido), chama o modelo do papel `destravador` SÓ quando a tabela
+    deixa, aplica a política (`decidir_parada_do_portal` → `regua_do_nucleo`) e registra no diário.
+    ⛔ Nunca envia nada. Nunca levanta: falha → PESSOA (o caminho de hoje)."""
+    m = str(modo or "").strip().lower()
+    if m not in ("on", "sombra"):
+        return None
+    try:
+        return await _destravar_parada_do_portal(company_id, evidence, params, modo=m, limiar=limiar,
+                                                 job_id=job_id, work_run_id=work_run_id, llm=llm,
+                                                 llm_segunda=llm_segunda)
+    except Exception as e:  # noqa: BLE001 — falha fechada
+        logger.error("[DESTRAVADOR] portal falhou (%s) — caminho de hoje", type(e).__name__)
+        return Destravamento(classe="nunca_sozinho", acao="PESSOA", proibicao="falha_do_destravador",
+                             limiar=_limiar_efetivo(limiar), modo=m, gatilho="portal")
+
+
+async def _destravar_parada_do_portal(company_id: str, evidence: Any, params: Any, *, modo: str, limiar: int,
+                                      job_id: str, work_run_id: Optional[str],
+                                      llm: Optional[ModeloInjetado],
+                                      llm_segunda: Optional[ModeloInjetado]) -> Optional[Destravamento]:
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.agents.utils import extract_text_from_content
+
+    cid = str(company_id or "").strip()
+    ev = evidence if isinstance(evidence, dict) else {}
+    prm = dict(params) if isinstance(params, dict) else {}
+    parada = parada_do_portal(ev)
+    if parada["operacao"] != "responder" or not cid:
+        return None
+    lim = _limiar_efetivo(limiar)
+    d = decidir_parada_do_portal(None, parada, prm, limiar=lim, modo=modo)
+    if d is None:
+        conversa_seg, memoria = await asyncio.gather(
+            _com_teto(_conversa_do_segurado(cid, {"client_phone": _telefone_da_conversa(prm)}), []),
+            _com_teto(_memoria_da_corretora(cid), []))
+        msgs = compor_mensagens_do_portal(parada, prm, ev, conversa=conversa_seg, memoria=memoria)
+        conversa = [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]
+        try:
+            if llm is not None:
+                resposta, provedor, modelo = await _chamar_injetado(llm, conversa)
+            else:
+                resposta, provedor, modelo = await _chamar_quem_decide(conversa, cid, modo)
+        except Exception as e:  # noqa: BLE001 — o modelo caiu: nada foi decidido
+            logger.warning("[DESTRAVADOR] portal: modelo falhou (%s) — caminho de hoje", type(e).__name__)
+            resposta, provedor, modelo = None, "", ""
+        if resposta is None:
+            d = Destravamento(classe="nunca_sozinho", acao="PESSOA", proibicao="modelo_falhou",
+                              limiar=lim, modo=modo, gatilho=f"portal:{parada['stage']}")
+        else:
+            custo = _custo(resposta, modelo)
+            proposta = ler_destravamento(extract_text_from_content(getattr(resposta, "content", None)) or "")
+            d = decidir_parada_do_portal(proposta, parada, prm, limiar=lim, modo=modo, provedor=provedor,
+                                         pedir_segunda=True)
+            if d is not None and d.proibicao == "precisa_segunda_opiniao":
+                if llm is not None:
+                    segunda, c2 = await _segunda_injetada(llm_segunda, conversa, provedor)
+                else:
+                    segunda, c2 = await _segunda_opiniao(conversa, cid, modo, provedor,
+                                                         texto_da_parada(parada))
+                custo += c2
+                d = decidir_parada_do_portal(proposta, parada, prm, limiar=lim, modo=modo, provedor=provedor,
+                                             segunda_opiniao=segunda, pedir_segunda=False)
+            d.modelo = modelo
+            d.custo_usd = round(custo, 6)
+            d.modelo_chamado = True
+    d.diario_id = await _registrar_do_portal(cid, parada, prm, d, job_id=str(job_id or ""),
+                                             work_run_id=work_run_id)
+    return d
