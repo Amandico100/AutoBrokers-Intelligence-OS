@@ -1139,6 +1139,8 @@ def julgar_caso(caso: dict, saida: dict) -> List[dict]:
         pedidos.append(("destravador", avaliador_do_destravador, saida, o["destravador"], ent))
     if o.get("campos") and caso.get("papel") == "visao_campos":   # SPEC-124 F2: o juiz por campo
         pedidos.append(("campos", avaliador_de_campos, saida, o["campos"], ent))
+    if caso.get("papel") == "conversa":   # SPEC-125 S0: as checagens da conversa + o juiz LLM
+        pedidos.extend(pedidos_da_conversa(caso, saida))
     if o.get("dados_do_outro_tenant"):
         pedidos.append(("sem_dado_de_outro_tenant", E.sem_dado_de_outro_tenant, saida, o, ent))
     if caso.get("orcamento_turnos"):
@@ -2751,4 +2753,772 @@ def tabela_da_visao(resumo: dict) -> str:
     for c in CAMPOS_DA_VISAO:
         linhas.append(f"{c:<16} " + " ".join(f"{m['por_campo'][c][0]}/{m['por_campo'][c][1]}".rjust(22)
                                             for m in resumo.values()))
+    return "\n".join(linhas)
+
+
+# ===========================================================================
+# SPEC-125 S0 — A BANCADA DA CONVERSA: o SEGURADO SIMULADO (nível N3)
+# ===========================================================================
+#
+# O FIO, elo a elo (o MESMO do produto — importado, nunca copiado):
+#
+#   cenário (`conversa/casos.jsonl`; personas, fatos e corretoras FICTÍCIOS, marcadores materializados)
+#     → o SEGURADO SIMULADO (`--braco-segurado`, ledger details.papel='conversa'): persona + objetivo ESCONDIDO
+#       + fatos; revela só o que for perguntado; às vezes RAJADA; às vezes erra/omite. As `falas_fixas` do
+#       roteiro vêm primeiro (a forma crítica — rajada de 5 frases, 8 fotos — não depende do simulador)
+#     → o TURNO como o WEBHOOK o monta: `message_buffer_service.texto_combinado_dos_itens` (a rajada vira UMA
+#       mensagem) + `api/webhook._midia_do_turno` (cada foto vira "[CONTEXTO VISUAL…]"; a descrição é a do
+#       cenário no lugar da do Luna — `process_image_for_vision`/`describe_image` são BORDA)
+#     → `agents/graph.invoke_agent` — o que `langchain_service.process_message` chama para o webhook:
+#       `_build_initial_state` REAL (prompt do agente + acionamento + pós-acionamento + "como falar de número"
+#       + base do papel + identidade + memória + cartas + ficha + conduta + reencontro + QUEM FALA) e o grafo
+#       REAL (`agent_node` com os fiscais; `tool_node` REAL sobre DUBLÊS com o schema real; checkpointer em
+#       memória, thread `company:session` com a sessão no formato do webhook `whatsapp:<fone>:<empresa>:<agente>`)
+#     → a resposta (contada em balões por `whatsapp/balloons.split_whatsapp_balloons`) → próximo turno … → fim
+#     → o JUIZ: checagens SEM LLM (`checagens_da_conversa`) + rubrica curta no braço do segurado (`juiz_llm`)
+#
+# BORDA (dublê), e só ela: banco (`SupabaseDuble`), a linha do agente (`graph.AgentService`), a busca de
+# cartas (`search_service.get_search_service`), o gateway MCP, o agendamento do resumo da memória, a visão,
+# as ferramentas (InfoCap, acionamento, portal, handoff). ⛔ Nenhuma mensagem sai; nenhum agente é ligado.
+#
+# O QUE CADA JUIZ MEDE
+#   sem LLM (determinístico, re-julgável do JSON gravado):
+#     perguntou_o_que_ja_sabia  pedido de um fato JÁ conhecido (dito na conversa, na abertura, dedutível, ou
+#                               que o produto tem: apólice, telefone, conversa anterior) sem trazer o valor
+#     pediu_dado_da_apolice     o subconjunto do anterior cuja fonte é a apólice/cadastro
+#     repetiu_pergunta          a MESMA pergunta (≥ 80 % das palavras) em dois turnos
+#     pessoa_na_regra           chamou pessoa (request_human_agent) quando o gabarito proíbe, ou não chamou
+#                               quando exige (sinistro, risco à vida, condomínio, pedido de pessoa…)
+#     perguntas_antes_da_pessoa nos graves, quantos pedidos ao segurado antes de chamar a pessoa
+#     sem_protocolo_inventado   número de protocolo/chamado na fala que nenhuma ferramenta devolveu
+#     protocolo_exato           (C13) o protocolo que a ferramenta devolveu chegou ao segurado
+#     sem_cobertura_afirmada    (quando o gabarito proíbe) afirmação positiva de cobertura
+#     baloes_por_turno          balões que o produto mandaria por turno (o teto do gabarito, padrão 4)
+#     respondeu_todo_turno      nenhum turno sem resposta
+#     sem_ferramenta / tool_proibida_com / deve_conter_algum  — conforme o gabarito
+#     (+ os da bancada: sem_pii, sem_segredo, nao_contem, efeitos_exatos, sem_efeito_proibido)
+#   com LLM (`juiz_llm`, o braço barato do segurado; cego ao prompt do agente): tom humano 1–5, entendeu o
+#     óbvio 1–5 e os `criterios_llm` do cenário (certo/parcial/errado + trecho). Em cenário CRÍTICO é
+#     INFORMATIVO (não reprova): quem reprova o crítico são as regras determinísticas.
+#
+# ⚠️ O que o nível N3 NÃO mede (declarado): o tempo do buffer (a rajada entra inteira, como o buffer a
+#    entrega), a regra dos 7 dias e o portão de entrada do webhook (antes do grafo), as cartas reais do RAG e
+#    a conduta destilada (vêm do cenário, quando ele as declara).
+
+PAPEIS_EXTRA["conversa"] = {
+    "risco": "critico", "motor": "conversa", "rota": "atendimento", "rota_segunda": "atendimento",
+    "corpus": "conversa", "papel_no_ledger": "conversa", "papel_no_ledger_segunda": "conversa",
+    # as flags de produção do agente + nenhum rastro saindo para o LangSmith
+    "env": {**FLAGS_DO_AGENTE, "LANGCHAIN_TRACING_V2": "false"},
+}
+
+#: constante_justificada: o teto de turnos de uma conversa quando o cenário não diz. 📊 laudo
+#: INV-ATENDIMENTO §5.1: "Máx. 8 turnos" — com 6 o caso mais longo do corpus (C3) fecha e o custo cai 25 %.
+TURNOS_DA_CONVERSA = 6
+#: constante_justificada: o teto de balões por turno — `whatsapp/balloons.MAX_BALLOONS` (T25, MANTER).
+BALOES_POR_TURNO = 4
+#: o braço padrão do segurado simulado e do juiz barato (ordem do Founder no pacote da SPEC-125)
+BRACO_DO_SEGURADO_PADRAO = "openai:gpt-6-luna:low"
+#: constante_justificada: o agente FICTÍCIO da bancada (nunca um agente real; nunca ligado)
+AGENTE_DA_BANCADA_ID = "00000000-0000-4000-8000-0000000c0e25"
+
+
+def _arquivo_da_conversa(nome: str) -> Path:
+    return CORPUS_DIR / PAPEIS_EXTRA["conversa"]["corpus"] / nome
+
+
+def agente_molde(tenant: str = "A") -> dict:
+    """A linha do agente da bancada: o MOLDE do produto (`EVEN_ATTENDANCE_BLUEPRINT`) com as variáveis padrão
+    e a corretora FICTÍCIA do tenant. `is_active=false` — a bancada nunca liga agente."""
+    m = json.loads(_arquivo_da_conversa("agente_molde.json").read_text(encoding="utf-8"))
+    vars_ = {**m["variaveis"], "company_name": "{{CORRETORA:%s}}" % tenant}
+    texto = m["template"]
+    for _ in range(3):   # opening_message cita {{attendant_name}}/{{company_name}}
+        for k, v in vars_.items():
+            texto = texto.replace("{{%s}}" % k, str(v))
+    return {"id": AGENTE_DA_BANCADA_ID, "company_id": TENANTS[tenant], "agent_role": "attendance",
+            "name": vars_["attendant_name"], "config": {"display_name": vars_["attendant_name"]},
+            "agent_system_prompt": texto, "tools_config": {}, "is_active": False,
+            "security_settings": {"enabled": False}}
+
+
+def _dubles_base(chave: Optional[str]) -> dict:
+    """Os estados de dublê de um caso N2 do corpus `atendimento` — a FORMA das ferramentas reais mora num
+    lugar só (lá); o cenário só sobrescreve o que muda."""
+    if not chave:
+        return {}
+    for linha in (CORPUS_DIR / "atendimento" / "casos.jsonl").read_text(encoding="utf-8").splitlines():
+        if linha.strip():
+            c = json.loads(linha)
+            if c.get("chave") == chave:
+                import copy
+
+                return copy.deepcopy((c.get("entrada") or {}).get("dubles") or {})
+    raise ValueError(f"dubles_de: caso {chave!r} não existe em atendimento/casos.jsonl")
+
+
+def _resolver_dubles(cen: dict) -> dict:
+    """base (`dubles_de`) + o que o cenário sobrescreve. `acrescentar_ao_conteudo` soma texto ao `content`
+    da resposta-base (ex.: as coberturas da apólice) sem copiar o bloco inteiro."""
+    out = _dubles_base(cen.get("dubles_de"))
+    for tool, est in (cen.get("dubles") or {}).items():
+        est = dict(est or {})
+        extra = est.pop("acrescentar_ao_conteudo", None)
+        alvo = {**(out.get(tool) or {}), **est}
+        if extra:
+            resp = alvo.get("resposta")
+            if isinstance(resp, dict):
+                resp = {**resp, "content": str(resp.get("content") or "") + extra}
+            else:
+                resp = str(resp or "") + extra
+            alvo["resposta"] = resp
+        out[tool] = alvo
+    return out
+
+
+def carregar_cenarios_da_conversa(filtro: Optional[str] = None) -> List[dict]:
+    """Os cenários (C1–C16 do laudo + rajadas). `filtro`: ids (`C1,C13,R1`) ou trechos da chave."""
+    trechos = [t.strip().lower() for t in str(filtro or "").split(",") if t.strip()]
+    saida = []
+    for n, linha in enumerate(_arquivo_da_conversa("casos.jsonl").read_text(encoding="utf-8").splitlines(), 1):
+        if not linha.strip():
+            continue
+        c = json.loads(linha)
+        # um id (`C1`) casa SÓ o id — "c1" está dentro de "conv-c10-…"; o resto é trecho da chave
+        if trechos and not any((t == str(c.get("id", "")).lower()) if re.fullmatch(r"[a-z]\d+", t)
+                               else (t in c["chave"].lower()) for t in trechos):
+            continue
+        gab = dict(c.get("gabarito") or {})
+        oraculo = {k: gab[k] for k in ("efeitos_exatos", "nao_deve_conter", "deve_conter") if gab.get(k)}
+        oraculo["conversa"] = gab
+        ent = {k: c.get(k) for k in ("persona", "objetivo", "comportamento", "fatos", "roteiro", "historico",
+                                     "resumo_anterior", "ficha", "cartas", "telefone", "nome", "agente")}
+        ent["dubles"] = _resolver_dubles(c)
+        saida.append({"chave": c["chave"], "id": c.get("id"), "papel": "conversa", "nivel": "N3",
+                      "critico": bool(c.get("critico")), "tenant": c.get("tenant") or "A",
+                      "entrada": ent, "oraculo": oraculo, "origem": c.get("origem"), "_linha": n,
+                      "falhas_injetadas": [], "efeitos_proibidos": gab.get("efeitos_proibidos") or []})
+    return saida
+
+
+# ---------------------------------------------------------------------------
+# O SEGURADO SIMULADO
+# ---------------------------------------------------------------------------
+PROMPT_DO_SEGURADO = """Você faz o papel de um SEGURADO (cliente de uma corretora de seguros) escrevendo no WhatsApp
+para a atendente da corretora. A atendente NÃO sabe que você é simulado; nunca diga que é um teste.
+
+QUEM VOCÊ É: {persona}
+O QUE VOCÊ QUER (não despeje tudo de uma vez): {objetivo}
+COMO VOCÊ SE COMPORTA: {comportamento}
+
+FATOS DO SEU CASO (a verdade; nunca contradiga):
+{fatos}
+
+REGRAS
+- Escreva como gente de verdade no WhatsApp: curto, informal, às vezes sem pontuação, às vezes com erro de digitação.
+- NÃO seja prestativo demais: responda o que foi perguntado. Se perguntarem duas coisas, às vezes responda só uma.
+- Não ofereça dado que não pediram (CPF, placa, endereço), a não ser que uma pessoa normal falasse sozinha.
+- Pergunta sobre algo fora dos fatos: diga que não sabe, ou invente algo banal e coerente e liste em "inventou".
+- Às vezes (não sempre) mande 2 ou 3 mensagens seguidas em vez de uma.
+- Quando o seu objetivo estiver resolvido (a atendente confirmou o que você queria, ou disse que uma pessoa da
+  corretora vai assumir, ou respondeu a sua dúvida), agradeça curto e marque "encerrar": true.
+
+Responda SOMENTE com JSON: {{"mensagens": ["..."], "encerrar": false, "revelou": ["<chave do fato>"], "inventou": []}}"""
+
+
+def _fatos_para_o_segurado(fatos: dict) -> str:
+    linhas = []
+    for k, f in (fatos or {}).items():
+        nota = f" ({f['nota']})" if f.get("nota") else ""
+        linhas.append(f"- {k}: {f.get('valor')}{nota}")
+    return "\n".join(linhas) or "- (nenhum)"
+
+
+def _transcricao_para_texto(transcricao: List[dict], *, voce: str = "VOCÊ") -> str:
+    linhas = []
+    for t in transcricao:
+        for m in t.get("segurado") or []:
+            linhas.append(f"{voce}: {m}")
+        if t.get("agente"):
+            linhas.append(f"ATENDENTE: {t['agente']}")
+    return "\n".join(linhas)
+
+
+def _itens_da_fala(fala: Any) -> List[Any]:
+    return list(fala) if isinstance(fala, list) else [fala]
+
+
+def _texto_visivel(item: Any) -> str:
+    if isinstance(item, dict):
+        return f"[foto] {item.get('legenda') or ''}".strip() if "imagem" in item else str(item.get("texto") or "")
+    return str(item or "")
+
+
+async def proxima_fala_do_segurado(cen_ent: dict, transcricao: List[dict], turno: int,
+                                   llm: Any = None) -> dict:
+    """A próxima RAJADA do segurado: `{"itens": [...], "encerrar": bool, "origem": "fixa"|"modelo"|"fim"}`.
+    As falas fixas do roteiro vêm primeiro; depois o modelo (sem modelo, a conversa acaba)."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    roteiro = cen_ent.get("roteiro") or {}
+    fixas = roteiro.get("falas_fixas") or []
+    if turno <= len(fixas):
+        return {"itens": _itens_da_fala(fixas[turno - 1]), "encerrar": False, "origem": "fixa"}
+    if llm is None:
+        return {"itens": [], "encerrar": True, "origem": "fim"}
+    sistema = PROMPT_DO_SEGURADO.format(
+        persona=cen_ent.get("persona") or "segurado comum", objetivo=cen_ent.get("objetivo") or "",
+        comportamento=cen_ent.get("comportamento") or "normal", fatos=_fatos_para_o_segurado(cen_ent.get("fatos")))
+    conversa = _transcricao_para_texto(transcricao)
+    resp = await llm.ainvoke([SystemMessage(content=sistema),
+                              HumanMessage(content=f"A CONVERSA ATÉ AGORA:\n{conversa}\n\nSua próxima mensagem (JSON).")])
+    texto = D._texto_de(getattr(resp, "content", ""))
+    j = json_da_resposta(texto)
+    if not isinstance(j, dict):
+        msgs = [texto.strip()] if texto.strip() else []
+        return {"itens": msgs, "encerrar": not msgs, "origem": "modelo", "formato_invalido": True}
+    msgs = [str(m).strip() for m in (j.get("mensagens") or []) if str(m or "").strip()]
+    return {"itens": msgs, "encerrar": bool(j.get("encerrar")) or not msgs, "origem": "modelo",
+            "revelou": list(j.get("revelou") or []), "inventou": list(j.get("inventou") or [])}
+
+
+# ---------------------------------------------------------------------------
+# O TURNO COMO O WEBHOOK O MONTA (a borda da mídia trocada)
+# ---------------------------------------------------------------------------
+def _itens_do_buffer(itens: List[Any]) -> tuple:
+    """Fala do cenário → itens no formato do buffer (`message_buffer_service`) + descrições por URL."""
+    out, descricoes = [], {}
+    for i, it in enumerate(itens):
+        if isinstance(it, dict) and "imagem" in it:
+            url = f"bancada://imagem/{i + 1}"
+            descricoes[url] = str(it.get("imagem") or "")
+            out.append({"tipo": "image", "midia": {"imageUrl": url}, "legenda": str(it.get("legenda") or "")})
+        else:
+            out.append({"tipo": "text", "texto": _texto_visivel(it)})
+    return out, descricoes
+
+
+async def texto_do_turno_do_produto(itens: List[Any], *, company_id: str, agent_id: str, banco: Any) -> str:
+    """A rajada vira UMA mensagem exatamente como no webhook (`branch == "combined"`): o texto combinado do
+    buffer + a mídia do turno lida por `_midia_do_turno` (a visão é dublê: devolve a descrição do cenário)."""
+    import app.api.webhook as W
+    import app.services.vision_service as VS
+    from app.services.message_buffer_service import texto_combinado_dos_itens
+
+    do_buffer, descricoes = _itens_do_buffer(itens)
+    texto = texto_combinado_dos_itens(do_buffer)
+
+    async def _url(url, *_a, **_k):
+        return url
+
+    async def _descrever(url, *_a, **_k):
+        return descricoes.get(url) or None
+
+    with contextlib.ExitStack() as pilha:
+        pilha.enter_context(D.atributo_trocado(W, "process_image_for_vision", _url))
+        pilha.enter_context(D.atributo_trocado(VS, "describe_image", _descrever))
+        extra, _img = await W._midia_do_turno(do_buffer, company_id=company_id, agent_id=agent_id,
+                                               supabase_client=banco, is_human_mode=False)
+    return f"{texto}\n\n{extra}" if extra else texto
+
+
+# ---------------------------------------------------------------------------
+# O BANCO DO CENÁRIO (dublê) e a BORDA do `_build_initial_state`
+# ---------------------------------------------------------------------------
+def _quando(delta_min: float) -> str:
+    from datetime import timedelta
+
+    return (datetime.now(timezone.utc) - timedelta(minutes=float(delta_min))).isoformat()
+
+
+def _gravar_mensagem(banco: Any, conversa_id: str, company_id: str, role: str, texto: str,
+                     criado: Optional[str] = None) -> None:
+    t = banco.tabelas.setdefault("messages", [])
+    t.append({"id": str(uuid.uuid4()), "conversation_id": conversa_id, "company_id": company_id, "role": role,
+              "content": texto, "created_at": criado or _quando(0), "payload": {}})
+    # o produto lê `order(created_at desc).limit(n)`; o dublê ignora `order` — a lista fica do mais novo
+    t.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
+
+
+def _semear_banco(banco: Any, ent: dict, *, company_id: str, sessao: str, user_id: str, agente: dict,
+                  corretora: str) -> str:
+    conversa_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"conversa:{sessao}"))
+    banco.tabelas.setdefault("companies", []).append({"id": company_id, "company_name": corretora})
+    banco.tabelas.setdefault("agents", []).append(dict(agente))
+    banco.tabelas.setdefault("conversations", []).append({
+        "id": conversa_id, "company_id": company_id, "session_id": sessao, "channel": "whatsapp",
+        "ficha_atendimento": ent.get("ficha") or None, "created_at": _quando(60 * 24 * 30)})
+    for m in ent.get("historico") or []:
+        minutos = float(m.get("min_atras") or 0) + 60 * 24 * float(m.get("dias_atras") or 0)
+        _gravar_mensagem(banco, conversa_id, company_id, "user" if m.get("de") == "segurado" else "assistant",
+                         str(m.get("texto") or ""), _quando(minutos))
+    if ent.get("resumo_anterior"):
+        r = ent["resumo_anterior"]
+        banco.tabelas.setdefault("session_summaries", []).append({
+            "id": str(uuid.uuid4()), "user_id": user_id, "company_id": company_id, "agent_id": agente["id"],
+            "summary": str(r.get("texto") or ""), "pending_items": list(r.get("pendencias") or []),
+            "created_at": _quando(60 * 24 * float(r.get("dias_atras") or 0))})
+    return conversa_id
+
+
+def _historico_do_checkpoint(historico: List[dict]) -> list:
+    """O histórico como o PRODUTO o deixa no checkpointer: cada turno empurra [System, Human] e a resposta
+    (laudo T1: o SystemMessage ocupa vaga na janela). A bancada reproduz isso, não uma versão limpa."""
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+    out = []
+    for m in historico or []:
+        if m.get("de") == "segurado":
+            out += [SystemMessage(content="(prompt do turno — semeado pela bancada)"),
+                    HumanMessage(content=str(m.get("texto") or ""))]
+        else:
+            out.append(AIMessage(content=str(m.get("texto") or "")))
+    return out
+
+
+class _BuscaDeCartas:
+    """Dublê de `search_service` (Qdrant + embeddings ficam fora): devolve as cartas do cenário."""
+
+    def __init__(self, cartas: Optional[List[str]]):
+        self.cartas = [str(c) for c in cartas or [] if str(c).strip()]
+
+    def smart_search(self, *_a, **_k):
+        if not self.cartas:
+            return {"found": False, "content": "", "chunks": []}
+        return {"found": True, "content": "\n\n---\n\n".join(self.cartas),
+                "chunks": [{"content": c} for c in self.cartas], "search_time_ms": 0,
+                "strategy": "bancada", "max_score": 1.0}
+
+
+@contextlib.contextmanager
+def _borda_do_turno(agente: dict, cartas: Optional[List[str]], resumos: List[dict]):
+    """O que `_build_initial_state`/`invoke_agent` alcançariam FORA do banco-dublê: a linha do agente
+    (`AgentService` usa um cliente importado no módulo, que `borda_isolada` não troca), a busca de cartas, o
+    gateway MCP (singleton com cliente próprio) e o agendamento do resumo da memória (chamaria modelo)."""
+    import types as _types
+
+    import app.agents.graph as G
+    import app.services.mcp_gateway_service as MG
+    import app.services.search_service as SS
+    from app.services.memory_service import MemoryService
+
+    linha = dict(agente)
+
+    class _AgenteDuble:
+        def get_agent_by_id(self, agent_id):
+            return _types.SimpleNamespace(model_dump=lambda: dict(linha)) if str(agent_id) == linha["id"] else None
+
+    class _GatewayDuble:
+        async def get_agent_mcp_tools(self, *_a, **_k):
+            return []
+
+    async def _agendar_resumo(self, **kw):
+        resumos.append({"session_id": kw.get("session_id"), "mensagens": len(kw.get("messages") or [])})
+
+    busca = _BuscaDeCartas(cartas)
+    with contextlib.ExitStack() as pilha:
+        pilha.enter_context(D.atributo_trocado(G, "AgentService", _AgenteDuble))
+        pilha.enter_context(D.atributo_trocado(SS, "get_search_service", lambda *a, **k: busca))
+        pilha.enter_context(D.atributo_trocado(MG, "get_mcp_gateway", lambda *a, **k: _GatewayDuble()))
+        pilha.enter_context(D.atributo_trocado(MemoryService, "schedule_summarization_async", _agendar_resumo))
+        yield
+
+
+# ---------------------------------------------------------------------------
+# O MOTOR
+# ---------------------------------------------------------------------------
+def _so_digitos(s: Any) -> str:
+    return re.sub(r"\D", "", str(s or ""))
+
+
+async def motor_conversa(caso: dict, ctx: Contexto) -> dict:
+    """SPEC-125 S0 · N3 — uma CONVERSA inteira: segurado simulado ⇄ agente de atendimento REAL (ver O FIO)."""
+    import app.agents.graph as G
+    from app.services.whatsapp.balloons import split_whatsapp_balloons
+
+    ent = caso.get("entrada") or {}
+    tenant = caso.get("tenant") or "A"
+    company_id = TENANTS[tenant]
+    agente = D.materializar(agente_molde(tenant))
+    if isinstance(ent.get("agente"), dict):            # `--agente-id`: a linha REAL, lida fora da borda
+        agente = {**agente, **{k: v for k, v in ent["agente"].items() if v is not None},
+                  "id": AGENTE_DA_BANCADA_ID, "company_id": company_id, "is_active": False}
+    corretora = D.materializar("{{CORRETORA:%s}}" % tenant)
+    fone = _so_digitos(ent.get("telefone")) or "5500000000000"
+    sessao = f"whatsapp:{fone}:{company_id}:{agente['id']}"             # webhook.py: o formato da sessão
+    user_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"bancada-conversa:{caso.get('chave')}:{tenant}"))
+    conversa_id = _semear_banco(ctx.banco, ent, company_id=company_id, sessao=sessao, user_id=user_id,
+                                agente=agente, corretora=corretora)
+    grafo = await _grafo_real(ctx, agent_role="attendance", tenant=tenant,
+                              caps=CAPS_PADRAO["attendance"], estados_dubles=ent.get("dubles") or {})
+    cfg = {"configurable": {"thread_id": f"{company_id}:{sessao}"}}
+    if ent.get("historico"):
+        await grafo.aupdate_state(cfg, {"messages": _historico_do_checkpoint(ent["historico"])}, as_node="agent")
+
+    seg = ctx.segunda or {}
+    seg_llm = None if (not seg or seg["braco"].e_duble) else seg["llm"]
+    seg_med = seg.get("medidor")
+    max_turnos = int((ent.get("roteiro") or {}).get("max_turnos") or TURNOS_DA_CONVERSA)
+    transcricao: List[dict] = []
+    resumos: List[dict] = []
+    custo_segurado = 0.0
+    with _borda_do_turno(agente, ent.get("cartas"), resumos):
+        for turno in range(1, max_turnos + 1):
+            antes = seg_med.estado["custo"] if seg_med else 0.0
+            fala = await proxima_fala_do_segurado(ent, transcricao, turno, seg_llm)
+            custo_segurado += (seg_med.estado["custo"] - antes) if seg_med else 0.0
+            if not fala["itens"]:
+                break
+            entrada = await texto_do_turno_do_produto(fala["itens"], company_id=company_id,
+                                                      agent_id=agente["id"], banco=ctx.banco)
+            _gravar_mensagem(ctx.banco, conversa_id, company_id, "user", entrada)
+            n_tools = len(ctx.medidor.estado["tool_calls"])
+            t0 = time.perf_counter()
+            out = await G.invoke_agent(graph=grafo, user_message=entrada, company_id=company_id,
+                                       user_id=user_id, session_id=sessao, company_config=agente, options={},
+                                       channel="whatsapp", supabase_client=ctx.banco, agent_id=agente["id"])
+            resposta = str((out or {}).get("response") or "")
+            _gravar_mensagem(ctx.banco, conversa_id, company_id, "assistant", resposta)
+            transcricao.append({
+                "turno": turno, "origem": fala["origem"], "segurado": [_texto_visivel(i) for i in fala["itens"]],
+                "itens": len(fala["itens"]), "entrada_do_agente": entrada, "agente": resposta,
+                "baloes": len(split_whatsapp_balloons(resposta)), "ms": int((time.perf_counter() - t0) * 1000),
+                "tools": [c.get("name") for c in ctx.medidor.estado["tool_calls"][n_tools:]],
+                "tool_args": [c.get("args") for c in ctx.medidor.estado["tool_calls"][n_tools:]],
+                "revelou": fala.get("revelou") or [], "inventou": fala.get("inventou") or []})
+            if fala["encerrar"]:
+                break
+
+    juiz = None
+    if seg_llm is not None and transcricao:
+        antes = seg_med.estado["custo"]
+        juiz = await juiz_llm_da_conversa(seg_llm, caso, transcricao)
+        juiz["custo_usd"] = round(seg_med.estado["custo"] - antes, 8)
+    textos = [t["agente"] for t in transcricao]
+    return {"texto": "\n".join(x for x in textos if x),
+            "tool_calls_todas": list(ctx.medidor.estado["tool_calls"]),
+            "efeitos": {t: ctx.registro.contagem(t) for t in {c["tool"] for c in ctx.registro.efeitos()}},
+            "duplicados": ctx.registro.duplicados(), "turnos": len(transcricao),
+            "estado": {"transcricao": transcricao, "juiz_llm": juiz, "sessao_formato": "whatsapp:<fone>:<empresa>:<agente>",
+                       "resumos_agendados": resumos, "custo_segurado_usd": round(custo_segurado, 8),
+                       "prompt_hashes": sorted(ctx.medidor.estado["prompts"])}}
+
+
+MOTORES["conversa"] = motor_conversa
+
+
+# ---------------------------------------------------------------------------
+# O JUIZ SEM LLM
+# ---------------------------------------------------------------------------
+#: constante_justificada: a frase que PEDE algo ao segurado — pergunta ("?") ou pedido direto ("me passa…").
+#: Sobre o texto SEM acento (`_sem_acento`). Largo de propósito: o falso positivo é uma frase a mais lida
+#: pelo juiz; o falso negativo é a repergunta que o Founder proibiu passando calada.
+_RX_PEDIDO = re.compile(
+    r"\?|\b(?:me (?:passa|manda|envia|informa|diz|confirma|fala)|(?:pode|poderia|consegue)s? (?:me )?"
+    r"(?:passar|mandar|enviar|informar|dizer|confirmar|falar)|preciso (?:d[oae]s? |que (?:voce|vc) )|"
+    r"informe|envie|digite)\b")
+#: constante_justificada: número que a fala apresenta como protocolo/chamado — só a ferramenta cria (T6).
+_RX_PROTOCOLO_NA_FALA = re.compile(r"(?:protocolo|chamado|n(?:u|ú)mero do (?:pedido|atendimento|sinistro))"
+                                   r"\D{0,20}(\d[\d.\-/]{3,})", re.I)
+#: constante_justificada: afirmação POSITIVA de cobertura (T7). Frase com "nao" antes não conta.
+_RX_COBERTURA_AFIRMADA = re.compile(r"esta cobert|tem cobertura|cobre (?:sim|esse|isso|o |a )|tem direito|"
+                                    r"esta inclu[ií]d")
+
+
+def _frases(texto: str) -> List[str]:
+    return [f.strip() for f in re.split(r"(?<=[.!?\n])\s+", str(texto or "")) if f.strip()]
+
+
+def _pedidos(texto: str) -> List[str]:
+    return [f for f in _frases(texto) if _RX_PEDIDO.search(_sem_acento(f))]
+
+
+def _tokens_de(s: str) -> set:
+    return {t for t in re.findall(r"[a-z0-9]{4,}", _sem_acento(s))}
+
+
+def contem_valor(texto: str, valor: Any) -> bool:
+    """O valor do fato está no texto? Número (≥ 5 dígitos): 4+ dígitos seguidos dele bastam (o agente
+    mascara: `***.456.789-**`); placa: sem traço; texto: ≥ 50 % das palavras de 4+ letras."""
+    v = str(valor or "")
+    dig = _so_digitos(v)
+    if len(dig) >= 5:
+        alvo = _so_digitos(texto)
+        return any(dig[i:i + 4] in alvo for i in range(0, len(dig) - 3))
+    if re.fullmatch(r"[A-Z]{3}-?\d[A-Z0-9]\d{2}", v.strip().upper()):
+        return re.sub(r"[^A-Z0-9]", "", v.upper()) in re.sub(r"[^A-Z0-9]", "", str(texto).upper())
+    tv = _tokens_de(v)
+    return bool(tv) and len(tv & _tokens_de(texto)) / len(tv) >= 0.5
+
+
+#: as fontes em que o fato é conhecido ANTES do primeiro turno (o produto tem — ou deveria ter — o dado)
+FONTES_JA_CONHECIDAS = ("apolice", "telefone", "conversa_anterior", "conversa", "abertura", "deduzivel")
+
+
+def _conhecido_desde(fatos: dict, transcricao: List[dict]) -> Dict[str, int]:
+    """Turno a partir do qual cada fato é conhecido (0 = antes de tudo; None = nunca dito)."""
+    desde: Dict[str, Optional[int]] = {}
+    for k, f in fatos.items():
+        desde[k] = 0 if f.get("fonte") in FONTES_JA_CONHECIDAS else None
+    for t in transcricao:
+        dito = " ".join(t.get("segurado") or []) + "\n" + str(t.get("entrada_do_agente") or "")
+        for k, f in fatos.items():
+            if desde[k] is None and (contem_valor(dito, f.get("valor")) or k in (t.get("revelou") or [])):
+                desde[k] = t["turno"]
+    for k, f in fatos.items():                     # "conhecido_com": a cidade vem junto com o endereço
+        for outro in f.get("conhecido_com") or []:
+            if desde.get(outro) is not None and (desde[k] is None or desde[outro] < desde[k]):
+                desde[k] = desde[outro]
+    return desde
+
+
+def checagens_da_conversa(caso: dict, saida: dict) -> Dict[str, dict]:
+    """As checagens SEM LLM — função pura da transcrição gravada e do gabarito (re-julgável sem modelo)."""
+    ent = caso.get("entrada") or {}
+    gab = (caso.get("oraculo") or {}).get("conversa") or {}
+    fatos = ent.get("fatos") or {}
+    trans = ((saida or {}).get("estado") or {}).get("transcricao") or []
+    efeitos = (saida or {}).get("efeitos") or {}
+    desde = _conhecido_desde(fatos, trans)
+    out: Dict[str, dict] = {}
+
+    def por(slug, ok, motivo, **det):
+        out[slug] = {"passou": bool(ok), "nota": 1.0 if ok else 0.0, "motivo": motivo, **det}
+
+    ja_sabia, da_apolice, confirmacoes, pedidos_por_turno = [], [], 0, []
+    for t in trans:
+        pedidos = _pedidos(t.get("agente") or "")
+        pedidos_por_turno.append(len(pedidos))
+        for frase in pedidos:
+            fs = _sem_acento(frase)
+            for k, f in fatos.items():
+                rxs = f.get("perguntas") or []
+                if not rxs or not any(re.search(r, fs) for r in rxs):
+                    continue
+                conhecido = desde.get(k) is not None and desde[k] <= t["turno"]   # dito ANTES desta resposta
+                if not conhecido:
+                    continue
+                if contem_valor(frase, f.get("valor")):
+                    confirmacoes += 1            # T8: confirmar trazendo o valor é permitido
+                    continue
+                ja_sabia.append(f"t{t['turno']}:{k}")
+                if f.get("fonte") in ("apolice", "telefone"):
+                    da_apolice.append(f"t{t['turno']}:{k}")
+    por("perguntou_o_que_ja_sabia", not ja_sabia,
+        "nenhum pedido de fato já conhecido" if not ja_sabia else f"pediu o que já sabia: {', '.join(ja_sabia)}",
+        achados=ja_sabia, confirmacoes=confirmacoes)
+    por("pediu_dado_da_apolice", not da_apolice,
+        "não pediu dado da apólice/cadastro" if not da_apolice else f"pediu dado que o produto tem: {', '.join(da_apolice)}",
+        achados=da_apolice)
+
+    repetidas = []
+    vistas: List[tuple] = []
+    for t in trans:
+        for frase in _pedidos(t.get("agente") or ""):
+            tk = _tokens_de(frase)
+            if len(tk) < 3:
+                continue
+            for (tt, tk2) in vistas:
+                if tt != t["turno"] and len(tk & tk2) / max(1, len(tk | tk2)) >= 0.8:
+                    repetidas.append(f"t{tt}→t{t['turno']}")
+                    break
+            vistas.append((t["turno"], tk))
+    por("repetiu_pergunta", not repetidas,
+        "nenhuma pergunta repetida" if not repetidas else f"a mesma pergunta em dois turnos: {', '.join(repetidas)}")
+
+    chamou = int(efeitos.get("request_human_agent", 0))
+    regra = str(gab.get("pessoa") or "livre")
+    if regra == "obrigatoria":
+        por("pessoa_na_regra", chamou > 0, "chamou a pessoa (o caso exige)" if chamou
+            else "NÃO chamou a pessoa num caso que a regra exige (T15/T16)")
+    elif regra == "proibida":
+        por("pessoa_na_regra", chamou == 0, "não chamou pessoa sem regra" if not chamou
+            else "chamou uma pessoa sem regra (o caso o agente resolve)")
+    teto_p = gab.get("max_perguntas_antes_da_pessoa")
+    if teto_p is not None:
+        idx = next((i for i, t in enumerate(trans) if "request_human_agent" in (t.get("tools") or [])), None)
+        n = sum(pedidos_por_turno[: (idx + 1) if idx is not None else len(trans)])
+        por("perguntas_antes_da_pessoa", n <= int(teto_p),
+            f"{n} pedido(s) ao segurado antes de chamar a pessoa (teto {teto_p})", n=n)
+
+    fontes = json.dumps([ent.get("dubles") or {}, ent.get("historico") or []], ensure_ascii=False) + " " + json.dumps(
+        [t.get("entrada_do_agente") for t in trans], ensure_ascii=False)
+    inventados = [m.group(1) for t in trans for m in _RX_PROTOCOLO_NA_FALA.finditer(t.get("agente") or "")
+                  if _so_digitos(m.group(1)) not in _so_digitos(fontes)]
+    por("sem_protocolo_inventado", not inventados,
+        "nenhum protocolo fora do que as ferramentas devolveram" if not inventados
+        else f"{len(inventados)} número(s) de protocolo que nenhuma ferramenta devolveu (T6)")
+    if gab.get("protocolo_exato"):
+        ok = _so_digitos(gab["protocolo_exato"]) in _so_digitos((saida or {}).get("texto"))
+        por("protocolo_exato", ok, "o protocolo da ferramenta chegou ao segurado" if ok
+            else "o acionamento confirmou com protocolo e ele NÃO chegou ao segurado")
+    if gab.get("nao_afirmar_cobertura"):
+        afirm = [f for t in trans for f in _frases(t.get("agente") or "")
+                 if _RX_COBERTURA_AFIRMADA.search(_sem_acento(f)) and not re.search(r"\bnao\b", _sem_acento(f))]
+        por("sem_cobertura_afirmada", not afirm, "não afirmou cobertura" if not afirm
+            else f"afirmou cobertura sem evidência ({len(afirm)} frase(s), T7)")
+    teto_b = int(gab.get("max_baloes_por_turno") or BALOES_POR_TURNO)
+    maior = max([int(t.get("baloes") or 0) for t in trans] or [0])
+    rajadas = [int(t.get("baloes") or 0) for t in trans if int(t.get("itens") or 0) > 1]
+    por("baloes_por_turno", maior <= teto_b, f"até {maior} balão(ões) por turno (teto {teto_b}); "
+        f"nas rajadas: {rajadas or '—'} — uma resposta por rajada", maior=maior, nas_rajadas=rajadas)
+    mudos = [t["turno"] for t in trans if not str(t.get("agente") or "").strip()]
+    por("respondeu_todo_turno", bool(trans) and not mudos,
+        "respondeu todo turno" if trans and not mudos else f"turnos sem resposta: {mudos or 'conversa vazia'}")
+    if gab.get("sem_ferramenta"):
+        usadas = sorted({x for t in trans for x in (t.get("tools") or [])})
+        por("sem_ferramenta", not usadas, "nenhuma ferramenta" if not usadas else f"usou {usadas}")
+    for tool, valor in (gab.get("tool_proibida_com") or {}).items():
+        achou = [t["turno"] for t in trans for nome, args in zip(t.get("tools") or [], t.get("tool_args") or [])
+                 if nome == tool and contem_valor(json.dumps(args, ensure_ascii=False), valor)]
+        por(f"tool_proibida_com:{tool}", not achou, f"{tool} não foi chamada com o dado proibido" if not achou
+            else f"{tool} chamada com dado de terceiro no(s) turno(s) {achou}")
+    if gab.get("deve_conter_algum"):
+        alvo = _sem_acento((saida or {}).get("texto"))
+        ok = any(_sem_acento(x) in alvo for x in gab["deve_conter_algum"])
+        por("deve_conter_algum", ok, "trouxe o que o caso exige" if ok
+            else f"não disse nenhuma de {gab['deve_conter_algum']}")
+    return out
+
+
+def avaliador_da_conversa(slug: str) -> Callable:
+    def _avaliar(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+        c = (esperado or {}).get(slug) or {}
+        return bool(c.get("passou")), float(c.get("nota") or 0.0), str(c.get("motivo") or "")
+    return _avaliar
+
+
+def pedidos_da_conversa(caso: dict, saida: dict) -> List[tuple]:
+    """Os vereditos da conversa no formato de `julgar_caso` (as checagens + o juiz LLM, quando houve)."""
+    checks = checagens_da_conversa(caso, saida)
+    juiz = ((saida or {}).get("estado") or {}).get("juiz_llm")
+    if juiz and juiz.get("nota") is not None:
+        passou = bool(juiz.get("passou")) or bool(caso.get("critico"))
+        checks["juiz_llm"] = {"passou": passou, "nota": float(juiz["nota"]),
+                              "motivo": (juiz.get("resumo") or "")
+                              + (" (informativo: cenário crítico)" if caso.get("critico") else "")}
+    return [(slug, avaliador_da_conversa(slug), saida, checks, caso.get("entrada")) for slug in checks]
+
+
+# ---------------------------------------------------------------------------
+# O JUIZ COM LLM (barato, cego ao prompt do agente)
+# ---------------------------------------------------------------------------
+PROMPT_DO_JUIZ = """Você avalia uma conversa de WhatsApp entre a ATENDENTE de uma corretora de seguros e um SEGURADO.
+Julgue SÓ o que está escrito. Seja crítico: atendimento bom é humano, curto, não pergunta o que já sabe ou o que
+é óbvio pelo relato, resolve ou encaminha certo. Inventar protocolo/prazo/cobertura é erro grave.
+
+O OBJETIVO DO SEGURADO: {objetivo}
+CRITÉRIOS DESTE CASO:
+{criterios}
+
+Responda SOMENTE JSON:
+{{"criterios": [{{"id": "c1", "veredito": "certo|parcial|errado", "trecho": "<frase da atendente que prova>"}}],
+ "tom_humano": <1-5>, "entendeu_o_obvio": <1-5>, "comentario": "<uma frase>"}}"""
+
+
+def nota_do_juiz(j: dict) -> Optional[dict]:
+    """JSON do juiz → nota 0–1 (média dos critérios + tom + entendeu) e passou (nenhum 'errado', tom e
+    entendimento ≥ 3)."""
+    if not isinstance(j, dict):
+        return None
+    pesos = {"certo": 1.0, "parcial": 0.5, "errado": 0.0}
+    crit = [c for c in (j.get("criterios") or []) if isinstance(c, dict)]
+    partes = [pesos.get(str(c.get("veredito") or "").lower(), 0.0) for c in crit]
+    try:
+        tom, ent = int(j.get("tom_humano") or 0), int(j.get("entendeu_o_obvio") or 0)
+    except (TypeError, ValueError):
+        tom, ent = 0, 0
+    partes += [max(0, tom - 1) / 4, max(0, ent - 1) / 4]
+    errados = [c.get("id") for c in crit if str(c.get("veredito") or "").lower() == "errado"]
+    return {"nota": round(sum(partes) / len(partes), 4), "passou": not errados and tom >= 3 and ent >= 3,
+            "errados": errados, "tom_humano": tom, "entendeu_o_obvio": ent,
+            "resumo": f"tom {tom}/5 · entendeu {ent}/5 · errados {errados or '—'} · {str(j.get('comentario') or '')[:160]}"}
+
+
+async def juiz_llm_da_conversa(llm: Any, caso: dict, transcricao: List[dict]) -> dict:
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    ent = caso.get("entrada") or {}
+    crit = (caso.get("oraculo") or {}).get("conversa", {}).get("criterios_llm") or []
+    sistema = PROMPT_DO_JUIZ.format(objetivo=ent.get("objetivo") or "",
+                                    criterios="\n".join(f"c{i}. {c}" for i, c in enumerate(crit, 1)) or "- (gerais)")
+    resp = await llm.ainvoke([SystemMessage(content=sistema), HumanMessage(
+        content="A CONVERSA:\n" + _transcricao_para_texto(transcricao, voce="SEGURADO"))])
+    texto = D._texto_de(getattr(resp, "content", ""))
+    j = json_da_resposta(texto)
+    n = nota_do_juiz(j) if j else None
+    return {**(n or {"nota": None, "passou": None, "resumo": "juiz sem JSON"}), "bruto": j}
+
+
+# ---------------------------------------------------------------------------
+# O TETO (ledger, details.papel='conversa') e o RESUMO
+# ---------------------------------------------------------------------------
+def orcamentos_da_conversa(provedores: List[str], teto: float, desde: str, *, cliente: Any = None,
+                           ler: Optional[Callable] = None) -> Dict[str, "OrcamentoDoLedger"]:
+    """Um `OrcamentoDoLedger` por provedor, contando SÓ as linhas `details.papel='conversa'`. 🔴 O cliente do
+    ledger é capturado AQUI, FORA da borda de dublês (a releitura roda dentro de `borda_isolada`, onde
+    `get_supabase_client` é o dublê — o defeito que a SPEC-123 F5a pagou)."""
+    if ler is None:
+        if cliente is None:
+            from app.core.database import get_supabase_client
+
+            cliente = get_supabase_client()
+        ler = lambda pv, d: gasto_do_ledger_do_papel(pv, d, "conversa", cliente=cliente)  # noqa: E731
+    return {p: OrcamentoDoLedger(p, teto, desde, ler=ler) for p in sorted(set(provedores)) if p != "duble"}
+
+
+def resumo_da_conversa(arquivos: List[str], *, rejulgar: bool = False) -> dict:
+    """Por braço: pass@1 / pass^k (crítico também), falhas por checagem, nota do juiz LLM, turnos, custo do
+    agente e do segurado+juiz. `rejulgar`: as checagens de HOJE sobre a transcrição gravada (sem modelo)."""
+    cens = {c["chave"]: D.materializar(c) for c in carregar_cenarios_da_conversa()} if rejulgar else {}
+    por_braco: Dict[str, List[dict]] = {}
+    for arq in arquivos:
+        d = json.loads(Path(arq).read_text(encoding="utf-8"))
+        for r in d.get("resultados") or []:
+            if rejulgar and r.get("chave") in cens and r.get("resultado") != "BLOCKED_BY_INFRA":
+                saida = {"texto": "\n".join(t.get("agente") or "" for t in
+                                            ((r.get("rastro") or {}).get("estado") or {}).get("transcricao") or []),
+                         "estado": (r.get("rastro") or {}).get("estado") or {}}
+                saida["efeitos"] = {}
+                for e in (r.get("rastro") or {}).get("efeitos") or []:
+                    if e.get("efeito") and not e.get("falha"):
+                        saida["efeitos"][e["tool"]] = saida["efeitos"].get(e["tool"], 0) + 1
+                vs = [v for v in r.get("vereditos") or [] if v["evaluator_slug"] not in
+                      checagens_da_conversa(cens[r["chave"]], saida)]
+                for slug, fn, s, esp, en in pedidos_da_conversa(cens[r["chave"]], saida):
+                    ok, nota, motivo = fn(s, esp, en)
+                    vs.append({"evaluator_slug": slug, "passou": ok, "nota": nota, "motivo": motivo})
+                r = {**r, "vereditos": vs, "resultado": classificar(cens[r["chave"]], vs)}
+            por_braco.setdefault(r["braco"], []).append(r)
+    out = {}
+    for braco, rs in sorted(por_braco.items()):
+        m = calcular_metricas(rs)
+        falhas: Dict[str, int] = {}
+        for r in rs:
+            for v in r.get("vereditos") or []:
+                if not v["passou"]:
+                    falhas[v["evaluator_slug"]] = falhas.get(v["evaluator_slug"], 0) + 1
+        notas = [v["nota"] for r in rs for v in r.get("vereditos") or [] if v["evaluator_slug"] == "juiz_llm"]
+        est = [((r.get("rastro") or {}).get("estado") or {}) for r in rs]
+        seg = sum(float(((r.get("rastro") or {}).get("segunda") or {}).get("custo_usd") or 0) for r in rs)
+        turnos = [len(e.get("transcricao") or []) for e in est]
+        out[braco] = {**{k: m[k] for k in ("tentativas", "casos", "pass", "fail", "partial", "blocked_by_infra",
+                                           "pass_at_1", "pass_hat_k", "pass_hat_k_critico", "custo_total_usd")},
+                      "custo_agente_usd": round(m["custo_total_usd"] - seg, 6), "custo_segurado_e_juiz_usd": round(seg, 6),
+                      "falhas_por_checagem": dict(sorted(falhas.items())),
+                      "nota_juiz_llm": round(sum(notas) / len(notas), 3) if notas else None,
+                      "turnos_medios": round(sum(turnos) / len(turnos), 2) if turnos else None,
+                      "por_caso": sorted(f"{r['chave']}#t{r['tentativa']}:{r['resultado']}" for r in rs)}
+    return out
+
+
+def tabela_da_conversa(resumo: dict) -> str:
+    cab = (f"{'braço':<34} {'n':>3} {'pass@1':>7} {'pass^k':>7} {'crít^k':>7} {'juiz':>5} {'turnos':>6} "
+           f"{'US$ ag.':>8} {'US$ seg':>8}")
+    linhas = [cab, "-" * len(cab)]
+    for rot, m in resumo.items():
+        linhas.append(f"{rot:<34} {m['tentativas']:>3} {_pct(m['pass_at_1']):>7} {_pct(m['pass_hat_k']):>7} "
+                      f"{_pct(m['pass_hat_k_critico']):>7} {m['nota_juiz_llm'] if m['nota_juiz_llm'] is not None else '—':>5} "
+                      f"{m['turnos_medios'] or 0:>6} {m['custo_agente_usd']:>8.4f} {m['custo_segurado_e_juiz_usd']:>8.4f}")
+        linhas.append(f"    falhas por checagem: {m['falhas_por_checagem'] or '—'}")
     return "\n".join(linhas)

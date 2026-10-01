@@ -33,6 +33,10 @@ falha · BLOCKED_BY_INFRA.
     python scripts/bancada.py --papel visao_campos --braco openai:gpt-6-luna:medium --k 1 --teto-provedor 0.45 --ledger-desde 2026-10-01T00:00:00+00:00 --ledger-papel visao --saida <scratch>/visao_luna.json
     python scripts/bancada.py --resumo-visao "<scratch>/visao_*.json"
 
+    # SPEC-125 S0 — a CONVERSA (segurado simulado ⇄ agente de atendimento REAL; teto = ledger details.papel='conversa'):
+    python scripts/bancada.py --papel conversa --braco openai:gpt-6-luna:low --braco-segurado openai:gpt-6-luna:low --cenarios C14 --k 1 --teto-provedor 0.05 --ledger-desde 2026-10-01T00:00:00+00:00 --saida <scratch>/conv.json
+    python scripts/bancada.py --resumo-conversa "<scratch>/conv*.json" [--recalcular]
+
 `--ensaio` (padrão) NÃO toca o banco: grava só um JSON local e diz onde.
 `--gravar` escreve em `eval_runs`/`eval_case_results` (exige a migration
 20260923_03 aplicada). O teto em US$ vem de `--teto-usd` ou de BANCADA_TETO_USD
@@ -95,6 +99,15 @@ def main(argv=None) -> int:
                         "details.papel = este (o teto de UMA fatia; relido durante a rodada)")
     p.add_argument("--resumo-visao", nargs="+", default=None,
                    help="SPEC-124: acerto por campo, custo/documento e latência por braço (papel visao_campos)")
+    # SPEC-125 S0 — a CONVERSA
+    p.add_argument("--cenarios", default=None, help="SPEC-125: ids dos cenários da conversa (C1,C13,R1) ou trechos da chave")
+    p.add_argument("--braco-segurado", default=None,
+                   help="SPEC-125: provider:model[:effort] do SEGURADO SIMULADO e do juiz barato "
+                        "(padrão openai:gpt-6-luna:low; `duble:burro` = só as falas fixas, sem juiz LLM)")
+    p.add_argument("--agente-id", default=None,
+                   help="SPEC-125: usa o prompt REAL deste agente (SELECT, fora da borda; nunca liga) no lugar do molde")
+    p.add_argument("--resumo-conversa", nargs="+", default=None,
+                   help="SPEC-125: pass@1/pass^k, falhas por checagem, nota do juiz, custo agente × segurado")
     p.add_argument("--redecidir", action="store_true",
                    help="SPEC-123 F5a: com --recalcular, passa a proposta gravada de novo pela POLÍTICA de hoje")
     a = p.parse_args(argv)
@@ -149,6 +162,19 @@ def main(argv=None) -> int:
             Path(a.saida).write_text(_json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
         return 0
 
+    if a.resumo_conversa:
+        import glob
+        import json as _json
+
+        arqs = sorted({f for padrao in a.resumo_conversa for f in glob.glob(padrao)})
+        resumo = B.resumo_da_conversa(arqs, rejulgar=bool(a.recalcular))
+        if a.recalcular:
+            print("RE-JULGADO sem modelo: as checagens de hoje sobre as transcrições gravadas")
+        print(B.tabela_da_conversa(resumo))
+        if a.saida:
+            Path(a.saida).write_text(_json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
+        return 0
+
     if a.resumo_destravador:
         import glob
         import json as _json
@@ -179,6 +205,8 @@ def main(argv=None) -> int:
 
     teto = a.teto_usd
     orcamentos = None
+    if a.papel == "conversa":
+        return _rodar_conversa(a, p, B)
     if a.papel == "destravador":
         # 🔴 SPEC-123: o teto é POR PROVEDOR (o do braço E o da 2ª opinião), lido do LEDGER e relido
         #    durante a rodada (`OrcamentoDoLedger`) — a rodada para SOZINHA antes de estourar.
@@ -271,6 +299,56 @@ def main(argv=None) -> int:
         print(f"gravado: {len(rel.runs)} eval_run(s) — releia com --relatorio {rel.grupo_bancada}")
     else:
         print(f"ensaio (nada no banco) · relatório local: {rel.salvar(a.saida)}")
+    return 2 if rel.parada and rel.parada.startswith("teto_usd") else 0
+
+
+def _rodar_conversa(a, p, B) -> int:
+    """SPEC-125 S0 — a conversa inteira. 🔴 O teto é POR PROVEDOR, lido do LEDGER (só `details.papel='conversa'`)
+    com o cliente capturado AQUI, fora da borda de dublês, e relido durante a rodada: ela para sozinha."""
+    if a.teto_provedor is None or not a.ledger_desde:
+        p.error("--papel conversa exige --teto-provedor e --ledger-desde (o teto é lido do ledger)")
+    seg = a.braco_segurado or B.BRACO_DO_SEGURADO_PADRAO
+    casos = B.carregar_cenarios_da_conversa(a.cenarios or a.casos)
+    if not casos:
+        p.error("nenhum cenário casou com --cenarios")
+    if a.agente_id:
+        from app.core.database import get_supabase_client
+
+        linha = (get_supabase_client().client.table("agents")
+                 .select("agent_system_prompt, name, config, agent_role").eq("id", a.agente_id).limit(1).execute().data or [])
+        if not linha or linha[0].get("agent_role") != "attendance":
+            p.error("--agente-id: agente de atendimento não encontrado")
+        for c in casos:
+            c["entrada"]["agente"] = {k: linha[0].get(k) for k in ("agent_system_prompt", "name", "config")}
+        print(f"prompt REAL do agente (só leitura): {len(linha[0].get('agent_system_prompt') or '')} chars")
+    provs = {B.Braco.de(x).provider for x in a.braco} | {B.Braco.de(seg).provider}
+    orcamentos = B.orcamentos_da_conversa(sorted(provs), a.teto_provedor, a.ledger_desde)
+    for prov, o in orcamentos.items():
+        print(f"ledger {prov} papel=conversa desde {a.ledger_desde}: US$ {o.inicial:.4f} · teto {a.teto_provedor:.2f} · "
+              f"resta {o.teto_usd:.4f}")
+        if o.teto_usd <= 0:
+            print(f"⛔ teto do provedor {prov} já atingido no ledger — nada roda")
+            return 2
+    rel = B.rodar_bancada("conversa", a.braco, casos=casos, k=a.k, nivel="N3", gravar=False,
+                          teto_usd=a.teto_provedor, grupo_bancada=a.grupo, segunda=seg, orcamentos=orcamentos)
+    print(rel.tabela())
+    for r in rel.resultados:
+        est = (r.rastro.get("estado") or {})
+        falhos = [v["evaluator_slug"] for v in r.vereditos if not v["passou"]]
+        seg_c = (r.rastro.get("segunda") or {}).get("custo_usd") or 0
+        print(f"  {r.braco:<30} {r.chave:<36} t{r.tentativa} {r.resultado:<16} turnos={len(est.get('transcricao') or [])} "
+              f"US$ agente {r.custo_usd - seg_c:.5f} + segurado/juiz {seg_c:.5f} · {r.latencia_ms} ms"
+              + (f" · falhou: {', '.join(falhos)}" if falhos else "") + (f" · {r.erro[:140]}" if r.erro else ""))
+        if a.por_caso:
+            for t in est.get("transcricao") or []:
+                print(f"     t{t['turno']} SEGURADO: {' | '.join(t['segurado'])[:300]}")
+                print(f"     t{t['turno']} AGENTE ({t['baloes']} balão/ões, tools={t['tools']}): {t['agente'][:500]}")
+            if est.get("juiz_llm"):
+                print(f"     JUIZ LLM: {est['juiz_llm'].get('resumo')}")
+    for prov, o in orcamentos.items():
+        print(f"ledger {prov} papel=conversa, RELIDO depois da rodada: US$ {float(o.ler(prov, a.ledger_desde)):.6f}")
+    print(f"\ngrupo_bancada: {rel.grupo_bancada} · tentativas: {len(rel.resultados)}")
+    print(f"ensaio (nada no banco) · relatório local: {rel.salvar(a.saida)}")
     return 2 if rel.parada and rel.parada.startswith("teto_usd") else 0
 
 
