@@ -65,6 +65,7 @@ if not DSN:
     sys.exit(0)
 try:
     import psycopg
+    from trava_do_banco_real import transacao_desfeita  # noqa: E402 — tests/ é o sys.path[0] do script
 except ImportError:
     print("\n\U0001F7E1 PULADO: `psycopg` (v3) não instalado.")
     sys.exit(0)
@@ -199,7 +200,10 @@ checar(len(B.hash_do_trecho(trecho)) == 64,
 # [6] nível duplicado no mesmo produto é recusado pelo UNIQUE
 # -------------------------------------------------------------------------
 print("\n[6] dois planos no mesmo nível, no mesmo produto: o UNIQUE recusa")
-with psycopg.connect(DSN, prepare_threshold=None) as conn, conn.cursor() as cur:
+# 🔴 SPEC-123 (trava do banco real): a escrita deste guarda só passa DENTRO de `transacao_desfeita` —
+#    conexão em transação (autocommit desligado), COMMIT recusado, ROLLBACK garantido na saída.
+#    Fora da conexão abaixo, a trava continua fechada (PostgREST e conexões em autocommit inclusive).
+with psycopg.connect(DSN, prepare_threshold=None) as conn, transacao_desfeita(conn), conn.cursor() as cur:
     COLS = ("insurer_key,ramo,produto,plano,nivel,vigencia_inicio,documento_id,"
             "pagina,confianca,content_hash")
     cur.execute(

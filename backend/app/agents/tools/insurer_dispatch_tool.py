@@ -693,6 +693,21 @@ class InsurerDispatchInput(BaseModel):
         "[auto guincho, só quando há táxi] Quantas pessoas vão no táxi. "
         "⚠️ Só pergunte se o segurado JÁ pediu o transporte — quem só quer o "
         "guincho não deve ouvir esta pergunta."))
+    # 🔴 SPEC-123 (conserto da bateria, 01/10) — a MESMA classe dos três acima.
+    #    O passo `acompanhar_qual_solicitacao` (yelum/hdi auto, F6) exige
+    #    `assistencia_aberta_opcao`; o motor o injeta SÓ no guincho ("GUINCHO",
+    #    📊 yelum 75400aad — a única evidência). 📊 Nos outros 9 pares
+    #    (`test_o_contrato_alcanca_o_portao`, ex. hdi × auto × bateria) o passo
+    #    exige, o motor NÃO injeta e o passo é `sem_chute` — exatamente
+    #    `situacao_risco_opcao`. ⛔ Não se inventa o rótulo dos outros serviços
+    #    (nenhuma tela vista) e não se restringe o passo ao guincho (o desenho é
+    #    cair no sem_chute, não numa tela órfã). Carregar não é cobrar: o portão
+    #    continua pulando `sem_chute`, ninguém é perguntado antes da hora.
+    assistencia_aberta_opcao: Optional[str] = Field(default=None, description=(
+        "[auto HDI/Yelum, só se a ferramenta pedir] A URA disse que a placa já tem "
+        "uma assistência ABERTA nas últimas 72 h e lista as solicitações: o rótulo "
+        "da que é DESTE caso, como a URA escreve (ex.: 'GUINCHO'). ⛔ Nunca escolha "
+        "a solicitação de OUTRO serviço — nenhuma opção dessa tela abre serviço novo."))
 
 
     # ══════════════════════════════════════════════════════════════════════

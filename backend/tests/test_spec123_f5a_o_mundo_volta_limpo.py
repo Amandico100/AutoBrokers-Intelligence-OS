@@ -122,3 +122,97 @@ def test_o_processo_filho_sobe_com_a_trava():
 @pytest.mark.banco_real
 def test_CONTROLE_o_filho_de_um_teste_marcado_chega_a_rede():
     assert _rodar_filho() not in ("", "ERRO=EscritaNoBancoRealBloqueada")
+
+
+# =============================================================================
+# ①c a TRANSAÇÃO DESFEITA — a única abertura de um guarda-script (bateria 01/10: 3 guardas de CHECK/UNIQUE)
+#     Sem banco: um cursor de mentira chama o `execute` EMBRULHADO do psycopg. Chegar ao driver = AttributeError
+#     do cursor falso (não a trava); a trava = EscritaNoBancoRealBloqueada antes de qualquer rede.
+# =============================================================================
+class _ConexaoFalsa:
+    def __init__(self, autocommit=False):
+        self.autocommit = autocommit
+        self.rollbacks = 0
+
+    def rollback(self):
+        self.rollbacks += 1
+
+
+class _CursorFalso:
+    def __init__(self, conn):
+        self.connection = conn
+
+
+def _trava():
+    return sys.modules["trava_do_banco_real"]
+
+
+def _executar(cur, sql):
+    psycopg = pytest.importorskip("psycopg")
+    try:
+        psycopg.Cursor.execute(cur, sql)
+    except _trava().EscritaNoBancoRealBloqueada:
+        return "TRAVA"
+    except Exception:  # noqa: BLE001 — passou pela trava e caiu no driver (cursor falso)
+        return "DRIVER"
+    return "DRIVER"
+
+
+def test_CONTROLE_sem_transacao_desfeita_a_escrita_do_psycopg_e_recusada():
+    cur = _CursorFalso(_ConexaoFalsa())
+    assert _executar(cur, "insert into insurer_assistance_plans (x) values (1)") == "TRAVA"
+    assert _executar(cur, "select 1") == "DRIVER"
+
+
+def test_dentro_da_transacao_desfeita_a_escrita_chega_ao_driver_e_sai_desfeita():
+    conn = _ConexaoFalsa()
+    cur = _CursorFalso(conn)
+    with _trava().transacao_desfeita(conn):
+        assert _executar(cur, "insert into insurer_assistance_plans (x) values (1)") == "DRIVER"
+        assert _executar(cur, "savepoint sp") == "DRIVER"
+    assert conn.rollbacks == 1, "a saída do bloco não desfez a transação"
+    # fora do bloco, a MESMA conexão volta a ser recusada
+    assert _executar(cur, "insert into insurer_assistance_plans (x) values (1)") == "TRAVA"
+
+
+def test_a_transacao_desfeita_desfaz_tambem_quando_o_guarda_estoura():
+    conn = _ConexaoFalsa()
+    with pytest.raises(ZeroDivisionError):
+        with _trava().transacao_desfeita(conn):
+            1 / 0
+    assert conn.rollbacks == 1
+
+
+def test_a_transacao_desfeita_nao_abre_o_que_nao_e_desfeito():
+    t = _trava()
+    # autocommit LIGADO: cada INSERT seria definitivo — recusa já na entrada
+    with pytest.raises(t.EscritaNoBancoRealBloqueada):
+        with t.transacao_desfeita(_ConexaoFalsa(autocommit=True)):
+            pass
+    conn = _ConexaoFalsa()
+    cur = _CursorFalso(conn)
+    with t.transacao_desfeita(conn):
+        # COMMIT por SQL, ou autocommit ligado no meio: recusados
+        assert _executar(cur, "commit") == "TRAVA"
+        assert _executar(cur, "  END") == "TRAVA"
+        conn.autocommit = True
+        assert _executar(cur, "insert into t values (1)") == "TRAVA"
+        conn.autocommit = False
+        # OUTRA conexão, no mesmo processo e no mesmo bloco: continua travada
+        assert _executar(_CursorFalso(_ConexaoFalsa()), "insert into t values (1)") == "TRAVA"
+        # e o PostgREST também (a abertura é da conexão, não do processo)
+        with pytest.raises(t.EscritaNoBancoRealBloqueada):
+            _cliente_morto().from_("diario_de_decisoes").insert({"x": 1}).execute()
+
+
+def test_conn_commit_dentro_da_transacao_desfeita_e_recusado():
+    psycopg = pytest.importorskip("psycopg")
+    t = _trava()
+    conn = _ConexaoFalsa()
+    with t.transacao_desfeita(conn):
+        with pytest.raises(t.EscritaNoBancoRealBloqueada):
+            psycopg.Connection.commit(conn)
+    # CONTROLE: fora do bloco o commit passa pela trava (e cai no driver: a conexão é falsa)
+    with pytest.raises(Exception) as e:
+        psycopg.Connection.commit(conn)
+    assert not isinstance(e.value, t.EscritaNoBancoRealBloqueada)

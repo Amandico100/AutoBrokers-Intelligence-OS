@@ -16,15 +16,32 @@ Quem instala:
     script que o meta-guarda roda), porque o conftest põe essa pasta no `PYTHONPATH` e liga
     `AUTOBROKERS_TRAVA_DO_BANCO=1` enquanto a sessão de testes dura.
 Quem libera: `@pytest.mark.banco_real` (no processo) — e, para o filho dele, `AUTOBROKERS_TRAVA_DO_BANCO=0`.
+
+A TRANSAÇÃO DESFEITA (`transacao_desfeita(conn)`) — a ÚNICA abertura dentro de um guarda-script.
+📊 01/10 (bateria em `0fe9080`): 3 guardas que provam CHECK/UNIQUE/varredor de PII no schema real
+(`test_a_base_de_planos_nao_tem_dono`, `test_a_linha_sem_fonte_nao_entra`, `test_a_pagina_existe_e_o_trecho_bate`)
+fazem INSERT em `insurer_assistance_*` DENTRO de `BEGIN … ROLLBACK` — e a trava os recusava. Liberar o PROCESSO
+inteiro (variável por nome no meta-guarda) abriria também o PostgREST e as conexões em autocommit deles.
+A abertura é por CONEXÃO psycopg e por bloco `with`, e só vale enquanto:
+  · a conexão está com autocommit DESLIGADO (cada execute confere — escrita em autocommit continua recusada);
+  · nenhum COMMIT/END/PREPARE TRANSACTION passa por ela (`conn.commit()` e o SQL são recusados);
+  · e a saída do bloco SEMPRE faz `rollback()` — com sucesso ou com exceção.
+Fora do pytest (a trava não instalada) o bloco só garante o rollback.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import threading
+import weakref
 
 TRAVA = threading.local()
 ENV = "AUTOBROKERS_TRAVA_DO_BANCO"
+# As conexões psycopg dentro de um `transacao_desfeita` ativo. Fraco: a conexão morta sai sozinha.
+_DESFEITAS: "weakref.WeakSet" = weakref.WeakSet()
+_RX_FECHA_TRANSACAO = re.compile(
+    r"^\s*(?:(?:--[^\n]*\n|/\*.*?\*/)\s*)*(?:commit|end|prepare\s+transaction|commit\s+prepared)\b", re.I | re.S)
 
 _RX_ESCRITA_SQL = re.compile(
     r"^\s*(?:(?:--[^\n]*\n|/\*.*?\*/)\s*)*(?:insert|update|delete|merge|upsert|create|alter|drop|"
@@ -55,6 +72,42 @@ def sql_escreve(query) -> bool:
     if _RX_ESCRITA_SQL.search(texto):
         return True
     return texto.lstrip().lower().startswith("with") and bool(_RX_CTE_QUE_ESCREVE.search(texto))
+
+
+@contextlib.contextmanager
+def transacao_desfeita(conn):
+    """Libera a escrita SÓ nesta conexão psycopg, SÓ em transação, e DESFAZ no fim — sempre.
+    Uso: `with psycopg.connect(DSN) as conn, transacao_desfeita(conn), conn.cursor() as cur:`."""
+    if getattr(conn, "autocommit", True):
+        raise EscritaNoBancoRealBloqueada(
+            "transacao_desfeita exige a conexão com autocommit DESLIGADO (senão cada INSERT já é definitivo).")
+    _DESFEITAS.add(conn)
+    try:
+        yield conn
+    finally:
+        _DESFEITAS.discard(conn)
+        conn.rollback()
+
+
+def _na_transacao_desfeita(cursor, query) -> bool:
+    """A escrita deste cursor está DENTRO de uma transação que vai ser desfeita?"""
+    conn = getattr(cursor, "connection", None)
+    try:
+        dentro = conn is not None and conn in _DESFEITAS
+    except TypeError:
+        return False
+    if not dentro:
+        return False
+    if getattr(conn, "autocommit", True):
+        recusar("psycopg em transacao_desfeita com autocommit LIGADO")
+    return True
+
+
+def _fecha_transacao(query) -> bool:
+    texto = query if isinstance(query, (str, bytes)) else (getattr(query, "_obj", None) or str(query))
+    if isinstance(texto, bytes):
+        texto = texto.decode("utf-8", "replace")
+    return bool(_RX_FECHA_TRANSACAO.search(str(texto)))
 
 
 def _metodo_que_escreve(builder) -> bool:
@@ -103,20 +156,47 @@ def instalar() -> list:
         original = proprio or getattr(cls, nome)
         if getattr(original, "_trava_do_banco", False):
             return
+        def _conferir(self, query):
+            if liberado():
+                return
+            desfeita = _na_transacao_desfeita(self, query)
+            if desfeita and _fecha_transacao(query):
+                recusar(f"psycopg {nome}: COMMIT dentro de transacao_desfeita")
+            if sql_escreve(query) and not desfeita:
+                recusar(f"psycopg {nome}")
+
         if assincrono:
             async def f(self, query, *a, **k):
-                if not liberado() and sql_escreve(query):
-                    recusar(f"psycopg {nome}")
+                _conferir(self, query)
                 return await original(self, query, *a, **k)
         else:
             def f(self, query, *a, **k):
-                if not liberado() and sql_escreve(query):
-                    recusar(f"psycopg {nome}")
+                _conferir(self, query)
                 return original(self, query, *a, **k)
         f.__wrapped__ = original
         f._trava_do_banco = True
         setattr(cls, nome, f)
         trocas.append((cls, nome, proprio))
+
+    def _commit(cls, assincrono):
+        proprio = cls.__dict__.get("commit")
+        original = proprio or getattr(cls, "commit")
+        if getattr(original, "_trava_do_banco", False):
+            return
+        if assincrono:
+            async def commit(self, *a, **k):
+                if not liberado() and self in _DESFEITAS:
+                    recusar("psycopg commit() dentro de transacao_desfeita")
+                return await original(self, *a, **k)
+        else:
+            def commit(self, *a, **k):
+                if not liberado() and self in _DESFEITAS:
+                    recusar("psycopg commit() dentro de transacao_desfeita")
+                return original(self, *a, **k)
+        commit.__wrapped__ = original
+        commit._trava_do_banco = True
+        setattr(cls, "commit", commit)
+        trocas.append((cls, "commit", proprio))
 
     try:
         import psycopg as _pg
@@ -124,6 +204,8 @@ def instalar() -> list:
         for cls, assincrono in ((_pg.Cursor, False), (_pg.AsyncCursor, True)):
             for nome in ("execute", "executemany"):
                 _psycopg(cls, nome, assincrono)
+        _commit(_pg.Connection, False)
+        _commit(_pg.AsyncConnection, True)
     except Exception:  # noqa: BLE001
         pass
     return trocas

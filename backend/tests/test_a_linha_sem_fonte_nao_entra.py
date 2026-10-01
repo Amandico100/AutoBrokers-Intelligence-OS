@@ -69,6 +69,7 @@ if not DSN:
 
 try:
     import psycopg
+    from trava_do_banco_real import transacao_desfeita  # noqa: E402 — tests/ é o sys.path[0] do script
 except ImportError:
     print("\n\U0001F7E1 PULADO: `psycopg` (v3) não instalado neste ambiente.")
     sys.exit(0)
@@ -79,7 +80,10 @@ S = "public.insurer_assistance_services"
 
 COLS_S = ("plano_id,servico,coberto,documento_id,pagina,trecho_hash,confianca")
 
-with psycopg.connect(DSN, prepare_threshold=None) as conn, conn.cursor() as cur:
+# 🔴 SPEC-123 (trava do banco real): a escrita deste guarda só passa DENTRO de `transacao_desfeita` —
+#    conexão em transação (autocommit desligado), COMMIT recusado, ROLLBACK garantido na saída.
+#    Fora da conexão abaixo, a trava continua fechada (PostgREST e conexões em autocommit inclusive).
+with psycopg.connect(DSN, prepare_threshold=None) as conn, transacao_desfeita(conn), conn.cursor() as cur:
     cur.execute("select count(*) from " + P)
     antes_p = cur.fetchone()[0]
     cur.execute("select count(*) from " + S)
