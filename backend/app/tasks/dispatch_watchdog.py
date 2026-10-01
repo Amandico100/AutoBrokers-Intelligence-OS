@@ -141,6 +141,12 @@ def diagnose(session: Dict[str, Any]) -> Optional[str]:
     'stall_unanswered' | 'ura_silent' | 'human_silent_nudge' | 'human_silent_alert'
     | 'never_started' | 'deadline' | None (saudável)."""
     state = str(session.get("state") or "")
+    # 🔴 SPEC-123 D6 — a URA FECHOU com a pergunta no ar e o roteador segurou a sessão
+    #    (`needs_human`, terminal para todo o resto): o prazo do segurado continua sendo
+    #    do Vigia. Vencido, a espera vira pessoa com o dossiê, como na URA aberta.
+    _espera_segurada = session.get("esperando_do_segurado") or {}
+    if state == "needs_human" and _espera_segurada.get("ura_fechou"):
+        return "segurado_sem_resposta" if _age_s(_espera_segurada.get("ate")) >= 0 else None
     if state in _TERMINAL_STATES:
         return None
     last = _last_entry(session)
@@ -1003,9 +1009,11 @@ async def _segurar_ou_desistir(company_id: str, insurer_phone: str,
     )
 
     espera = dict(session.get("esperando_do_segurado") or {})
-    intervalo, maximo = _env_pergunta()
+    intervalo, maximo = _env_pergunta(session)   # SPEC-123 D6: o prazo DA seguradora
     agora = datetime.now(timezone.utc)
-    com_pessoa = uma_pessoa_da_seguradora_esta_falando(session)
+    # 🔴 SPEC-123 D6 — com a URA FECHADA não há ninguém do outro lado: nada sai a ela.
+    com_pessoa = (uma_pessoa_da_seguradora_esta_falando(session)
+                  and not espera.get("ura_fechou"))
     if int(espera.get("holdings") or 0) < maximo:
         espera["holdings"] = int(espera.get("holdings") or 0) + 1
         espera["ate"] = datetime.fromtimestamp(agora.timestamp() + intervalo, timezone.utc).isoformat()

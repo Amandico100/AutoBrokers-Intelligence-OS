@@ -2941,8 +2941,11 @@ async def _depois_da_pausa(company_id: str, session: Dict[str, Any], evento: str
         logger.warning("[PAUSA HUMANA] efeitos da janela incompletos (%s)", type(e).__name__)
 
 
-async def _avisar_retomada(company_id: str, session: Dict[str, Any]) -> None:
-    """D2 — "a seguradora respondeu, retomei", pela porta única. ⛔ Nunca levanta."""
+async def _avisar_retomada(company_id: str, session: Dict[str, Any],
+                           texto: Optional[str] = None) -> None:
+    """D2 — "a seguradora respondeu, retomei", pela porta única. ⛔ Nunca levanta.
+
+    SPEC-123 D6 — `texto`: a retomada pela RESPOSTA do segurado diz quem respondeu."""
     try:
         from app.core.database import get_supabase_client
         from app.services.dispatch_mirror import insurer_label_from_ref
@@ -2954,7 +2957,7 @@ async def _avisar_retomada(company_id: str, session: Dict[str, Any]) -> None:
         caso = str(session.get("case_id") or "")[:8]
         await enviar_ao_grupo(
             get_supabase_client(), company_id=str(company_id), tipo=TIPO_RETOMADA,
-            texto=(f"↩️ A {seguradora} respondeu no caso {caso}. Retomei o atendimento "
+            texto=(texto or f"↩️ A {seguradora} respondeu no caso {caso}. Retomei o atendimento "
                    "— aviso quando tiver o protocolo."),
             conversation_id=str(session.get("mirror_conversation_id") or ""),
             telefone=str(session.get("client_phone") or ""), sessao=session,
@@ -3207,10 +3210,19 @@ PERGUNTA_HOLDINGS_MAX = 2
 _CHAVE_DA_PERGUNTA = "dispatch:pergunta:{empresa}:{fone}"
 
 
-def _env_pergunta() -> tuple:
+def _env_pergunta(session: Optional[Dict[str, Any]] = None) -> tuple:
+    """`(intervalo, máximo de voltas)` — o prazo do segurado é `intervalo × (máximo + 1)`.
+
+    🔴 SPEC-123 D6 — com a sessão, o prazo é o DA SEGURADORA
+    (`prazo_da_pergunta_ao_segurado`): o intervalo encolhe para caber nele (Allianz:
+    120 s → 40 s × 3). O ambiente só ENCURTA, nunca passa do prazo medido."""
     motor = _motor()
-    return (motor._env_int("PERGUNTA_AO_SEGURADO_HOLDING_S", PERGUNTA_HOLDING_S) or PERGUNTA_HOLDING_S,
-            motor._env_int("PERGUNTA_AO_SEGURADO_HOLDINGS", PERGUNTA_HOLDINGS_MAX))
+    intervalo = motor._env_int("PERGUNTA_AO_SEGURADO_HOLDING_S", PERGUNTA_HOLDING_S) or PERGUNTA_HOLDING_S
+    maximo = motor._env_int("PERGUNTA_AO_SEGURADO_HOLDINGS", PERGUNTA_HOLDINGS_MAX)
+    if session is not None:
+        prazo = motor.prazo_da_pergunta_ao_segurado(str(session.get("playbook_ref") or ""))
+        intervalo = max(1, min(int(intervalo), int(prazo) // (int(maximo) + 1)))
+    return intervalo, maximo
 
 
 HOLDING_A_SEGURADORA = "Um instante, por favor — estou confirmando essa informação com o segurado."
@@ -3638,7 +3650,7 @@ async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
     cliente = str(session.get("client_phone") or "").strip()
     if not cliente or not slot or slot in (session.get("perguntado_ao_segurado") or []):
         return False
-    intervalo, _maximo = _env_pergunta()
+    intervalo, _maximo = _env_pergunta(session)
     pergunta = pergunta_para_o_segurado(session, rotulo, opcoes=opcoes, pergunta=pergunta)
     vivo = ao_vivo(session)
     if vivo:
@@ -3765,7 +3777,11 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
                        and bool(_falta_agora)
                        and _falta_agora == str(espera.get("slot") or ""))
     if not de_pe:
-        retomada = "guardada"
+        # 🔴 SPEC-123 D6 — `reaberta`: a URA FECHOU com a pergunta no ar, ninguém da
+        #    corretora assumiu e não há protocolo → a resposta REABRE o acionamento, com o
+        #    dado na ficha (`_reabrir_com_a_resposta`). Senão, `guardada`, como antes.
+        retomada = ("reaberta" if _motor().pode_retomar_com_a_resposta(session or {})
+                    else "guardada")
     elif de_outro_acionamento and not na_tela_do_slot:
         retomada = "no_slot"
     else:
@@ -3801,7 +3817,7 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
                     empresa, from_phone, insurer_phone, session, espera, resposta, _porque,
                     vivo=vivo, send_to_client=send_to_client)
             a_seguradora = _traduzida[:600]
-        elif valor_do_slot is None and retomada == "no_slot":
+        elif valor_do_slot is None and retomada in ("no_slot", "reaberta"):
             return await _sem_chute_sem_resposta_valida(
                 empresa, from_phone, insurer_phone, session, espera, resposta, _porque,
                 vivo=vivo, send_to_client=send_to_client)
@@ -3834,11 +3850,16 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     session["silencio_deliberado_ate"] = None
     await save_active_dispatch(empresa, insurer_phone, session)
     await _indexar_pergunta(empresa, from_phone, insurer_phone, 1, apagar=True)
+    if retomada == "reaberta" and await _reabrir_com_a_resposta(empresa, insurer_phone, session) is None:
+        retomada = "guardada"   # não reabriu: a resposta fica na ficha, como antes
     await _anotar_ato(empresa, session,
                       "pergunta_ao_segurado.respondida_tarde" if tardia
                       else "pergunta_ao_segurado.respondida",
                       ("O segurado respondeu e a resposta foi levada à seguradora."
                        if retomada == "levada" else
+                       "O segurado respondeu depois de a seguradora encerrar a conversa; "
+                       "o acionamento foi reaberto com o dado na ficha."
+                       if retomada == "reaberta" else
                        "O segurado respondeu depois de a seguradora encerrar; o dado "
                        "entrou na ficha e o acionamento reaberto vai usá-lo."
                        if retomada == "no_slot" else
@@ -3850,6 +3871,9 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
             send_to_client(from_phone,
                            "Obrigado! Já passei essa informação para a seguradora. 🙂"
                            if retomada == "levada" else
+                           "Obrigado! A seguradora tinha encerrado a conversa, então já "
+                           "retomei o seu atendimento com essa informação. 🙂"
+                           if retomada == "reaberta" else
                            "Obrigado! Já anotei essa informação e vou usar com a "
                            "seguradora. 🙂"
                            if retomada == "no_slot" else
@@ -3858,6 +3882,131 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
         except Exception:  # noqa: BLE001
             pass
     return True
+
+
+# ===========================================================================
+# 🔴 SPEC-123 D6 · A URA FECHOU COM A PERGUNTA NO AR — segura, e a RESPOSTA reabre
+# ===========================================================================
+#
+# 📊 BLOCO 0 (30/09): a Allianz encerra por inatividade com mediana 4,1 min e RECOMEÇA do
+# zero (Termo de Privacidade → "Em nossa última conversa, utilizamos o CPF… Quer continuar
+# com este?" → serviço e local refeitos); Alfa igual; HDI/Yelum perguntam "Deseja continuar
+# este atendimento?". Reabrir NA HORA em que ela fecha (a retomada cega de sempre) levava a
+# URA de volta à MESMA tela com a MESMA ficha vazia — e o segurado que nunca respondesse
+# gastava a reabertura à toa. Agora: a URA fechou com a pergunta no ar → o acionamento
+# ESPERA a resposta (o prazo continua com o Vigia; esgotado, uma pessoa com o dossiê) → a
+# resposta, a tempo ou tardia, REABRE com o dado na ficha.
+
+
+async def _ha_fila(company_id: str, insurer_phone: str) -> bool:
+    """Outro acionamento espera ESTE número da seguradora? (a fila multi-cliente)"""
+    try:
+        redis = await _redis()
+        if redis is not None:
+            return bool(await redis.llen(_queue_key(company_id, insurer_phone)))
+        return bool(_memory_store.get(_queue_key(company_id, insurer_phone) + ":list"))
+    except Exception:  # noqa: BLE001 — sem saber, não segura (o de hoje)
+        return True
+
+
+async def _segurar_para_retomar(company_id: str, insurer_phone: str,
+                                session: Dict[str, Any]) -> bool:
+    """A URA fechou e há pergunta ao segurado SEM resposta: a sessão fica, à espera dela.
+
+    ⛔ Não reabre (sem o dado, a URA cairia na mesma tela), não chama pessoa enquanto o
+    segurado estiver no prazo (o Vigia vence a espera e entrega o dossiê), nada sai à
+    seguradora (a conversa acabou). Não segura — e o caminho de hoje segue — quando a
+    resposta não poderia reabrir (`pode_retomar_com_a_resposta`) ou quando outro
+    acionamento espera este número na fila. Devolve se segurou."""
+    motor = _motor()
+    if not motor.pergunta_sem_resposta(session) or not motor.pode_retomar_com_a_resposta(session):
+        return False
+    if await _ha_fila(company_id, insurer_phone):
+        return False
+    viva = session.get("esperando_do_segurado")
+    vencida = dict(session.get("espera_vencida") or {})
+    if not viva and vencida.get("vencida_por") == "insurer_closed":
+        # a URA fechou DENTRO do prazo do segurado: a espera volta a correr, marcada.
+        viva = {k: v for k, v in vencida.items() if k not in ("vencida_em", "vencida_por")}
+        session.pop("espera_vencida", None)
+    if viva:
+        viva = dict(viva, ura_fechou=True)
+        session["esperando_do_segurado"] = viva
+        espera = viva
+    else:
+        vencida["ura_fechou"] = True
+        session["espera_vencida"] = vencida
+        espera = vencida
+    session["segurando_para_retomar"] = True
+    intervalo, maximo = _env_pergunta(session)
+    await _indexar_pergunta(company_id, str(espera.get("client_phone") or ""), insurer_phone,
+                            intervalo * (maximo + 2) + 3600)
+    await _anotar_ato(company_id, session, "pergunta_ao_segurado.ura_fechou",
+                      "A seguradora encerrou a conversa enquanto o segurado não respondia; "
+                      "quando ele responder, o acionamento é reaberto com o dado.",
+                      {"slot": str(espera.get("slot") or "")})
+    await save_active_dispatch(company_id, insurer_phone, session)
+    logger.info("[DISPATCH ROUTER] URA fechou com pergunta no ar — esperando a resposta para reabrir")
+    return True
+
+
+async def _reabrir_com_a_resposta(company_id: str, insurer_phone: str,
+                                  session: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Reabre o acionamento com o dado do segurado JÁ na ficha — `start_live_dispatch`.
+
+    A sessão nova leva o que não pode se perder: o teto (`retry_count`), quem já foi
+    perguntado (ninguém pergunta duas vezes) e a marca `retomada`, que liga no MOTOR o
+    detector de pedido que já existe (`solicitacao_ja_existente`). Devolve a sessão nova,
+    ou None (a antiga continua gravada, com o dado na ficha)."""
+    motor = _motor()
+    integration = None
+    if ao_vivo(session):
+        from app.services.integration_service import get_integration_service
+        from app.tasks.dispatch_watchdog import _canal_da_conversa
+
+        integration = _canal_da_conversa(get_integration_service(), company_id, session)
+        if integration is None:
+            logger.error("[RETOMADA] sem canal para reabrir o acionamento")
+            return None
+
+    def _a_seguradora(texto: str) -> None:
+        from app.services.whatsapp_service import get_whatsapp_service
+
+        get_whatsapp_service().send_message(insurer_phone, texto, integration)
+
+    n = int(session.get("retry_count") or 0) + 1
+    await clear_active_dispatch(company_id, insurer_phone)
+    try:
+        retry = await start_live_dispatch(
+            company_id=company_id, case_id=str(session.get("case_id") or "retry"),
+            playbook_ref=str(session.get("playbook_ref") or ""),
+            subservice=str(session.get("subservice") or ""), slots=session.get("slots") or {},
+            client_phone=str(session.get("client_phone") or ""), insurer_phone=insurer_phone,
+            sender=_a_seguradora)
+    except Exception as e:  # noqa: BLE001
+        logger.error("[RETOMADA] a reabertura falhou (%s)", type(e).__name__)
+        retry = {"ok": False}
+    if not retry.get("ok"):
+        await save_active_dispatch(company_id, insurer_phone, session)
+        return None
+    nova = retry["session"]
+    nova["retry_count"] = n
+    nova["retomada"] = {"n": n, "porque": "resposta_do_segurado", "em": _now_iso(),
+                        "anterior_pode_ter_aberto": motor.anterior_pode_ter_aberto(session)}
+    for chave in ("perguntado_ao_segurado", "mirror_conversation_id", "integration_id"):
+        if session.get(chave):
+            nova[chave] = session[chave]
+    await save_active_dispatch(company_id, insurer_phone, nova)
+    if session.get("dossier_sent"):
+        from app.services.dispatch_mirror import insurer_label_from_ref
+
+        await _avisar_retomada(company_id, nova, texto=(
+            "↩️ O segurado respondeu o que a %s pediu no caso %s. Retomei o atendimento com a "
+            "seguradora — aviso quando tiver o protocolo."
+            % (insurer_label_from_ref(str(session.get("playbook_ref") or "")),
+               str(session.get("case_id") or "")[:8])))
+    logger.info("[DISPATCH ROUTER] acionamento reaberto com a resposta do segurado (retomada %s)", n)
+    return nova
 
 
 def o_que_o_cerebro_de_producao_fez(session: Dict[str, Any], saidas_antes: int,
@@ -4941,6 +5090,13 @@ async def try_route_insurer_inbound(
         return True
 
     if state == "captured":
+        if (session.get("captured") or {}).get("ja_existia"):
+            # 🔴 SPEC-123 D6 — a retomada achou o pedido que a seguradora JÁ tinha: nada
+            #    foi aberto de novo, e a linha do tempo do caso diz isso à corretora.
+            await _anotar_ato(company_id, session, "acionamento.ja_existia",
+                              "Na retomada, a seguradora mostrou um pedido que já estava aberto "
+                              "para este segurado; o agente seguiu com ele e não abriu outro.",
+                              {"retomada": (session.get("retomada") or {}).get("n")})
         # 🔴 SPEC-123 — o protocolo saiu: as decisões do destravador neste acionamento
         #    ganham o resultado (best-effort, nunca derruba o aviso ao segurado).
         await marcar_resultado_no_diario(company_id, session, "protocolo_saiu")
@@ -5061,6 +5217,12 @@ async def try_route_insurer_inbound(
         # teto de uma tentativa, e nunca depois do protocolo capturado. Eles
         # foram para `pode_retomar`, no núcleo puro, porque a §F0.3 cobra o
         # gate por FAMÍLIA e isso tem de ser percorrível sem banco nem rede.
+        # 🔴 SPEC-123 D6 — a URA FECHOU com uma pergunta ao segurado SEM resposta: nem a
+        #    retomada cega (cairia na mesma tela, com a mesma ficha vazia), nem pessoa ainda
+        #    (o segurado está no prazo, ou a pessoa já tem o dossiê). A sessão fica, à espera
+        #    da resposta — é ela que reabre (`responder_pergunta_do_acionamento`).
+        if reason == "insurer_closed" and await _segurar_para_retomar(company_id, from_phone, session):
+            return True
         if _motor().pode_retomar(session):
             # 🔴 O TETO CONTA A TENTATIVA, NÃO O SUCESSO — painel da SPEC-085.
             #
@@ -5093,6 +5255,12 @@ async def try_route_insurer_inbound(
             )
             if retry.get("ok"):
                 retry["session"]["retry_count"] = int(session.get("retry_count") or 1)
+                # 🔴 SPEC-123 D6 — a sessão reaberta é uma RETOMADA: o motor liga nela o
+                #    detector de pedido que já existe, se a anterior chegou à confirmação.
+                retry["session"]["retomada"] = {
+                    "n": int(session.get("retry_count") or 1), "porque": "seguradora_encerrou",
+                    "em": _now_iso(),
+                    "anterior_pode_ter_aberto": _motor().anterior_pode_ter_aberto(session)}
                 # 🔴 O QUE A RETOMADA TEM DE LEVAR — juiz fresco, B3 (17/09).
                 #    A URA reabre do zero com os MESMOS slots, e sem isto duas
                 #    coisas quebravam: o segurado recebia a MESMA pergunta de

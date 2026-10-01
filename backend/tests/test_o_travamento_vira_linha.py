@@ -189,6 +189,10 @@ FAMILIAS_DE_TRAVAMENTO = {
     #    O destravador leu a tela com o caso inteiro e decidiu que é de gente; nasce
     #    colado no `needs_human` no roteador e no Sentinela, e o dossiê de sempre sai.
     "destravador",
+    # 🔴 SPEC-123 F3 (D6) — DIRETO AO HUMANO: `ja_existe_solicitacao`. Numa retomada que
+    #    passou da confirmação, a seguradora disse que o pedido JÁ existe e não deu o
+    #    número (ou não segue por aqui): o agente não abre outro, e quem confere é gente.
+    "ja_existe_solicitacao",
 }
 
 _RE_REASON = re.compile(r'session\["reason"\]\s*=\s*(.+)')

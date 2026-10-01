@@ -11,7 +11,7 @@ O FIO (o do produto, nada reimplementado; dublê só na BORDA — modelo, banco,
   F2 · … → handle_insurer_message: passo `sem_chute` sem o dado → `needs_human` + o PEDIDO
        → roteador: perguntar_ao_segurado (com as OPÇÕES da tela) → espera
        → responder_pergunta_do_acionamento → traduzir_resposta_do_segurado (MOTOR) → URA
-       ou → uma pessoa (resposta ambígua; e Allianz/Alfa, sempre).
+       ou → uma pessoa (resposta ambígua). SPEC-123 D6: Allianz/Alfa também perguntam.
 
 ⛔ Nada sai da máquina. As telas são REAIS (`tests/corpus/telas_reais`, mascaradas).
 """
@@ -648,9 +648,12 @@ def test_porto_taxi_tecla_de_botao_pergunta_e_volta_pelo_motor(amb):
     assert _a_seguradora(amb) == ["1 a 4"]
 
 
-def test_CONTROLE_allianz_continua_indo_a_uma_pessoa_exatamente_como_hoje(amb, monkeypatch):
-    """D-122 D2: na Allianz a URA encerra no meio da pergunta — o `sem_chute` vai a uma PESSOA.
-    E "como hoje" é medido: o MESMO envio com a regra nova e SEM ela (tabela D2 vazia)."""
+def test_CONTROLE_allianz_o_sem_chute_de_DECISAO_continua_indo_a_uma_pessoa(amb, monkeypatch):
+    """§9.3 — a lição MIGROU. Era "na Allianz a URA encerra no meio da pergunta, então o `sem_chute`
+    vai a uma PESSOA" (D-122 D2). A SPEC-123 D6 venceu isso: TODA seguradora pergunta, e a URA que
+    fecha é retomada com a resposta. O que continua indo a uma pessoa é o passo de DECISÃO (qual
+    eletrodoméstico consertar escolhe o serviço — fora de `SEM_CHUTE_PERGUNTAVEL`), e quem decide é
+    o PASSO, não a seguradora: com a tabela de ida e volta VAZIA o envio é o MESMO, byte a byte."""
     def _rodar():
         amb.enviadas.clear(); amb.wa.clear(); amb.grupo.clear(); amb.redis.d.clear()
         salvar(EMPRESA_A, sessao(REF_ALLIANZ, "eletrodomesticos"))
@@ -659,21 +662,24 @@ def test_CONTROLE_allianz_continua_indo_a_uma_pessoa_exatamente_como_hoje(amb, m
     agora = (list(amb.enviadas), list(amb.grupo), s["state"], s.get("reason"))
     assert s["state"] == "needs_human" and str(s.get("reason")).startswith("sem_chute:")
     assert "esperando_do_segurado" not in s and "sem_chute_ao_segurado" not in s
-    assert not [t for t in _ao_cliente(amb) if "Só mais uma informação" in t], "a Allianz PERGUNTOU"
+    assert not [t for t in _ao_cliente(amb) if "Só mais uma informação" in t], "uma DECISÃO virou pergunta"
     monkeypatch.setattr(D, "IDA_E_VOLTA_AO_SEGURADO", {})
     s2 = _rodar()
     assert (list(amb.enviadas), list(amb.grupo), s2["state"], s2.get("reason")) == agora
 
 
-def test_alfa_e_seguradora_sem_medicao_nao_perguntam():
-    assert not D.ida_e_volta_permitida("alfa-auto-whatsapp@v1")
-    assert not D.ida_e_volta_permitida(REF_ALLIANZ)
-    assert not D.ida_e_volta_permitida("bradesco-auto-whatsapp@v1")   # sem decisão D2 → fechado
-    assert all(D.ida_e_volta_permitida(r) for r in ("porto-auto-whatsapp@v1", REF_HDI,
-                                                     "yelum-auto-whatsapp@v3", "zurich-auto-whatsapp@v1"))
-    # a bancada e o produto não discordam sobre onde é PROIBIDO
+def test_toda_seguradora_pergunta_e_so_o_corredor_desconhecido_fica_fechado():
+    """§9.3 — a lição MIGROU. Era "Allianz, Alfa e seguradora sem medição NÃO perguntam" (D-122 D2).
+    SPEC-123 D6: TODAS perguntam (com o prazo de cada uma). O que sobrevive: o desconhecido falha
+    FECHADO, e a bancada e o produto não discordam sobre onde é proibido."""
+    assert all(D.ida_e_volta_permitida(r) for r in (
+        "alfa-auto-whatsapp@v1", REF_ALLIANZ, "bradesco-auto-whatsapp@v1", "porto-auto-whatsapp@v1",
+        REF_HDI, "yelum-auto-whatsapp@v3", "zurich-auto-whatsapp@v1"))
+    assert not D.ida_e_volta_permitida("corredor-que-nao-existe@v1")
     from app.services.evals.bancada import SEM_IDA_E_VOLTA
     assert not (set(D.IDA_E_VOLTA_AO_SEGURADO) & set(SEM_IDA_E_VOLTA))
+    # CONTROLE: a tabela CONSEGUE fechar (sem ela, nenhuma pergunta)
+    assert D.IDA_E_VOLTA_AO_SEGURADO and len(D.IDA_E_VOLTA_AO_SEGURADO) >= 10
 
 
 def test_tecla_sem_opcoes_legiveis_nao_se_pergunta():
@@ -692,7 +698,7 @@ def test_tecla_sem_opcoes_legiveis_nao_se_pergunta():
 
 def test_prazo_vencido_vai_a_uma_pessoa_pelo_caminho_que_ja_existe(amb):
     s = _risco_hdi(amb)
-    _intervalo, maximo = R._env_pergunta()
+    _intervalo, maximo = R._env_pergunta(s)
     s["esperando_do_segurado"]["holdings"] = maximo
     desfecho = asyncio.run(W._segurar_ou_desistir(EMPRESA_A, URA, s, _Wa(amb), {"id": "canal"}))
     assert desfecho == "desistiu" and s["state"] == "needs_human"

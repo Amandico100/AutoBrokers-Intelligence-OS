@@ -3819,31 +3819,65 @@ def _tecla_para_humano(session: Dict[str, Any], step_name: str, tecla: Tecla) ->
 #    traduzida para a tecla pelo MOTOR (`resolver_tecla` / `render_reply`) — ou
 #    vai a uma pessoa. Nenhum modelo escolhe a resposta de um `sem_chute`.
 #
-#: D-122 D2 — onde a ida e volta com o segurado é PERMITIDA. 📊 Quanto a URA
-#: espera antes de encerrar por inatividade (BLOCO 0, `inat.py`, mesmo método de
-#: `inv-harness/m2_cadeia.py`, reconferido em 30/09/2026): a pergunta tem prazo de
-#: `PERGUNTA_HOLDING_S × 3 = 180 s` (`dispatch_router`), e só entra onde a
-#: mediana passa com folga.
-#: ⛔ PROIBIDA (fora desta tabela): 📊 allianz mediana 254 s (p10 183 s) · alfa
-#: mediana 313 s (n=3) — a URA encerra no meio da pergunta. E toda seguradora sem
-#: medição/decisão também fica fora: falha FECHADA, o `sem_chute` vai a uma pessoa
-#: como antes.
+#: 🔴 SPEC-123 D6 (Founder, 30/09) — a ida e volta com o segurado vale para TODAS as
+#: seguradoras dos corredores. A D-122 D2 a proibia na Allianz e na Alfa porque a URA
+#: encerra no meio da pergunta; isso deixou de ser um motivo para chamar gente: a
+#: URA que fecha antes da resposta é RETOMADA com o dado na ficha
+#: (`pode_retomar_com_a_resposta`), e a que já tinha aberto um pedido não ganha outro
+#: (`solicitacao_ja_existente`). O que muda por seguradora é o PRAZO
+#: (`prazo_da_pergunta_ao_segurado`), tirado do quanto cada URA espera.
+#: 📊 Quanto cada URA espera antes de encerrar por inatividade — mediana · p10, acervo
+#: inteiro (BLOCO 0 da SPEC-123, 30/09/2026; os quatro primeiros, D-122 D2).
+#: ⛔ Desconhecido (corredor sem `insurer_key` nesta tabela) → falha FECHADA: o
+#: `sem_chute` vai a uma pessoa como antes. O guarda
+#: `test_todas_as_seguradoras_dos_corredores_tem_ida_e_volta` exige que toda
+#: seguradora com corredor esteja aqui.
 IDA_E_VOLTA_AO_SEGURADO: Dict[str, str] = {
     "porto": "📊 mediana 604 s (n=30) · D-122 D2",
-    "hdi": "📊 mediana 730 s, p10 492 s (n=10) · D-122 D2",
-    "yelum": "📊 mediana 728 s, p10 485 s (n=19) · D-122 D2",
+    "hdi": "📊 mediana 730 s, p10 492 s (n=10) · D-122 D2 · avisa 'Ainda não identificamos' aos 6,0 min",
+    "yelum": "📊 mediana 728 s, p10 485 s (n=19) · D-122 D2 · avisa aos 6,0 min (p10 5,9)",
     "zurich": "📊 mediana 7.207 s (n=8) · D-122 D2",
+    "allianz": ("📊 mediana 4,1 min, p10 4,0 min (n=33, BLOCO 0 SPEC-123); D-122 D2 mediu mediana "
+                "254 s, p10 183 s · SPEC-123 D6 — prazo CURTO (120 s + 20 s do Vigia < 183 s)"),
+    "alfa": "📊 mediana 5,2 min, p10 5,2 (n=3) · SPEC-123 D6 — prazo CURTO (amostra pequena)",
+    "bradesco": "📊 mediana 5,1 min, p10 5,0 (avisa antes de encerrar) · SPEC-123 D6",
+    "mapfre": "📊 2,9 min (n=1) · SPEC-123 D6 — prazo CURTO",
+    "tokio": "📊 mediana 5,0 min · SPEC-123 D6",
+    "azul": "💭 sem medição no acervo · SPEC-123 D6 — prazo CURTO (o mais curto medido)",
 }
+
+#: constante_justificada: o prazo de HOJE (`PERGUNTA_HOLDING_S × 3`, 60 × 3) — cabe com
+#: folga onde a URA espera ≥ 5 min (p10 ≥ 300 s: 180 s + o ciclo de 20 s do Vigia).
+PRAZO_DA_PERGUNTA_PADRAO_S = 180
+#: constante_justificada: D6 do Founder ("espera até ~2 min"). 📊 Allianz encerra com p10
+#: 183 s (D-122) e mapfre com 2,9 min (n=1): 120 s + 20 s do Vigia fecham ANTES da URA, e a
+#: resposta a tempo ainda acha a conversa viva. Seguradora sem medição fica com o curto.
+PRAZO_DA_PERGUNTA_CURTO_S = 120
+#: As seguradoras de prazo CURTO — as de URA mais apressada (📊 tabela acima) e a sem medição.
+PRAZO_CURTO_NAS_SEGURADORAS = frozenset({"allianz", "alfa", "mapfre", "azul"})
 
 
 def ida_e_volta_permitida(playbook: Any) -> bool:
-    """A seguradora deste corredor espera o segurado responder? (D-122 D2)
+    """A seguradora deste corredor espera o segurado responder? (D-122 D2 → SPEC-123 D6: todas)
 
     Aceita o playbook ou o `playbook_ref`. Desconhecido → False (falha fechada).
     """
     if isinstance(playbook, str):
         playbook = get_playbook(playbook) or {}
     return str((playbook or {}).get("insurer_key") or "").strip().lower() in IDA_E_VOLTA_AO_SEGURADO
+
+
+def prazo_da_pergunta_ao_segurado(playbook: Any) -> int:
+    """Quantos segundos o segurado tem para responder, NESTA seguradora (SPEC-123 D6).
+
+    Aceita o playbook ou o `playbook_ref`. Desconhecido → o curto (falha para o lado de
+    não deixar a URA fechar esperando)."""
+    if isinstance(playbook, str):
+        playbook = get_playbook(playbook) or {}
+    chave = str((playbook or {}).get("insurer_key") or "").strip().lower()
+    if not chave or chave not in IDA_E_VOLTA_AO_SEGURADO or chave in PRAZO_CURTO_NAS_SEGURADORAS:
+        return PRAZO_DA_PERGUNTA_CURTO_S
+    return PRAZO_DA_PERGUNTA_PADRAO_S
 
 
 #: 🔴 SPEC-122 · conserto único (red team B2) — OS PASSOS `sem_chute` QUE SE PERGUNTAM AO SEGURADO.
@@ -3863,7 +3897,7 @@ def ida_e_volta_permitida(playbook: Any) -> bool:
 #:    selecionar_veiculo_porto   o caso tem a placa; o formatador não a achou na lista — escolher
 #:                               OUTRO veículo é escolher a apólice
 #:    cr_motivo (yelum)          o motivo DECIDE a cobertura do carro reserva (CR2: só sinistro)
-#:    (Allianz/Azul/Bradesco: fora de `IDA_E_VOLTA_AO_SEGURADO` — nem chegam aqui.)
+#:    (SPEC-123 D6: toda seguradora tem ida e volta; o que decide é ESTA lista de passos.)
 SEM_CHUTE_PERGUNTAVEL: Dict[str, str] = {
     "situacao_risco": "em qual destas situações está o lugar onde você está agora",
     "transporte_destino": ("para onde você quer ser levado enquanto o carro vai para a oficina "
@@ -4309,6 +4343,18 @@ def handle_insurer_message(
                 "rotulo": (f"{espera.get('rotulo') or espera.get('slot')} — a seguradora "
                            "encerrou enquanto eu esperava o segurado responder")}
         return session
+
+    # 🔴 SPEC-123 D6 — NUNCA DUPLICAR. Só numa RETOMADA (a sessão reaberta pelo roteador,
+    #    `session["retomada"]`) e só quando o acionamento anterior chegou à confirmação —
+    #    antes disso nada pode ter sido aberto por nós, e a tela é tratada como hoje.
+    #    Vem DEPOIS do protocolo e do encerramento (que já decidiram acima) e ANTES de
+    #    qualquer passo: na retomada, "a assistência N está aberta" não é menu a responder.
+    if (session.get("retomada") or {}).get("anterior_pode_ter_aberto"):
+        ja_existe = solicitacao_ja_existente(playbook, insurer_message)
+        if ja_existe is not None:
+            seguir = seguir_com_a_solicitacao_existente(session, ja_existe)
+            if seguir is not None:
+                return seguir
 
     seguradora = _quem_fala().seguradora_do_corredor(playbook)
 
@@ -5464,6 +5510,9 @@ _MOTIVOS_EM_PORTUGUES = {
     "playbook_not_found": "não existe corredor configurado para esta seguradora — "
                           "o acionamento não chegou a começar",
     "insurer_closed": "a seguradora encerrou a conversa antes de terminar",
+    # 🔴 SPEC-123 D6 — a retomada achou um pedido que já existe; ninguém abriu outro.
+    "ja_existe_solicitacao": "a seguradora disse que já existe um pedido aberto para este "
+                             "segurado — o agente não abriu outro; confira qual é e siga com ele",
     "finalize_test_abort": "o acionamento parou de propósito: o modo de ensaio "
                            "está ligado e nada foi aberto de verdade",
     "reconciliacao_boot": "o acionamento estava aberto quando o sistema reiniciou",
@@ -6133,6 +6182,10 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     #    Retomar refaria o corredor até a MESMA tela e o destravador decidiria o mesmo
     #    — e o teto dele por sessão já foi gasto nesta trava.
     "destravador": DIRETO_AO_HUMANO,
+    # 🔴 SPEC-123 D6 — numa retomada, a seguradora disse que JÁ EXISTE um pedido aberto e
+    #    não dá para seguir com ele por aqui (ou não deu o número). Retomar de novo seria
+    #    pedir pela terceira vez o que pode já estar a caminho: quem confere é gente.
+    "ja_existe_solicitacao": DIRETO_AO_HUMANO,
 
     # ---- NÃO RETOMA, E CONTINUAR TAMBÉM NÃO RESOLVE ----
     # A conferência já tem escada própria (as correções por campo, até o teto).
@@ -6206,7 +6259,146 @@ def pode_retomar(session: Dict[str, Any]) -> bool:
     #    (pausa aberta), reabrir o acionamento é o robô falando por cima dela.
     if pausa_humana_aberta(session):
         return False
+    # 🔴 SPEC-123 D6 — 5º freio: o segurado que NÃO respondeu nunca dispara retomada.
+    #    Com uma pergunta ao segurado sem resposta, reabrir às cegas leva a URA de volta à
+    #    MESMA tela com a MESMA ficha vazia. Quem reabre é a RESPOSTA
+    #    (`pode_retomar_com_a_resposta`), com o dado já na ficha.
+    if pergunta_sem_resposta(session):
+        return False
     return not (session.get("captured") or {}).get("protocol")
+
+
+#: constante_justificada: SPEC-123 D6 — até DUAS reaberturas por caso (era uma). A
+#: primeira é a da URA que fechou (às cegas, `pode_retomar`, ou com a resposta do
+#: segurado); a segunda existe porque a reaberta 📊 recomeça do ZERO na Allianz/Alfa
+#: (Termo de Privacidade, "continuar com este CPF?", serviço e local refeitos) e pode
+#: fechar de novo esperando OUTRA resposta do segurado. A terceira não traz informação
+#: nova — e cada reabertura é uma conversa a mais com a seguradora. O que impede o
+#: pedido em dobro não é este teto: é o protocolo capturado e
+#: `solicitacao_ja_existente`.
+TETO_DE_RETOMADAS_POR_CASO = 2
+
+
+def pergunta_sem_resposta(session: Dict[str, Any]) -> bool:
+    """PURA. Há uma pergunta ao segurado no ar (ou vencida) cujo dado AINDA não está na ficha?"""
+    espera = session.get("esperando_do_segurado") or session.get("espera_vencida") or {}
+    slot = str(espera.get("slot") or "")
+    return bool(slot) and not str((session.get("slots") or {}).get(slot) or "").strip()
+
+
+def a_ura_fechou_com_a_pergunta(session: Dict[str, Any]) -> bool:
+    """PURA. A conversa com a seguradora acabou enquanto a pergunta ao segurado existia?"""
+    espera = session.get("esperando_do_segurado") or session.get("espera_vencida") or {}
+    return bool(espera) and bool(espera.get("ura_fechou")
+                                 or espera.get("vencida_por") == "insurer_closed"
+                                 or str(session.get("reason") or "") == "insurer_closed")
+
+
+def pode_retomar_com_a_resposta(session: Dict[str, Any]) -> bool:
+    """PURA. A resposta (tardia) do segurado pode REABRIR este acionamento? — SPEC-123 D6.
+
+    Só quando TUDO vale: a URA fechou com a pergunta no ar (com a conversa viva, a
+    resposta é LEVADA, não reaberta) · ninguém da corretora assumiu nem está na
+    conversa · nenhum protocolo capturado · dentro do teto de reaberturas do caso.
+    """
+    if not a_ura_fechou_com_a_pergunta(session):
+        return False
+    if (humano_assumiu(session) or str(session.get("reason") or "") == HUMANO_ASSUMIU
+            or pausa_humana_aberta(session)):
+        return False
+    if int(session.get("retry_count") or 0) >= TETO_DE_RETOMADAS_POR_CASO:
+        return False
+    return not (session.get("captured") or {}).get("protocol")
+
+
+def anterior_pode_ter_aberto(session: Dict[str, Any]) -> bool:
+    """PURA. O acionamento que vai ser reaberto chegou ao portão que ABRE o pedido?
+
+    `conferencia` nasce quando a tela de confirmação (`finalize_anchors`) aparece, e
+    `confirmacoes` guarda o "sim" que de fato saiu. Sem nenhum dos dois, a seguradora não
+    recebeu pedido nosso — e um "pedido aberto" na retomada é de OUTRO assunto."""
+    return bool(session.get("conferencia") or session.get("confirmacoes"))
+
+
+# ===========================================================================
+# 🔴 SPEC-123 D6 · "JÁ EXISTE UMA SOLICITAÇÃO" — o detector genérico, por seguradora
+# ===========================================================================
+#
+# 📊 BLOCO 0 (30/09), telas reais do acervo `tests/corpus/telas_reais`, casadas com o
+# `_norm_text` do produto (sem acento, sem o `*` do negrito — §9.4, o dialeto do motor):
+#   hdi 5 · yelum 8 ("identifiquei que a assistência *N* está aberta" / "foi aberta dentro
+#   das últimas 72h. Selecione…") · porto 2 ("você tem um serviço aberto 1-N-…" /
+#   "localizei o seguinte serviço aberto … Falar sobre 1-N-…") · mapfre 2 ("você já possui
+#   um protocolo aberto…? Sim/Não") · hdi/yelum residencial 2 ("como sua assistência já está
+#   em andamento com um de nossos prestadores, vou te transferir").
+# ⛔ "Assistência solicitada! Sua solicitação está em andamento" é o SUCESSO do próprio
+#    pedido, não um pedido anterior: fica de fora (o guarda exige).
+# ⚠️ azul: 📊 1 tela relatada no BLOCO 0 ("já consta uma solicitação aberta"), ZERO no
+#    acervo — padrão sem tela real não entra (pendência registrada).
+#
+# Tipos: `mostra_numero` → a sessão fica com ESSE número como o pedido do caso ·
+# `pergunta` → a seguradora quer saber se já há protocolo (não temos o número: pessoa) ·
+# `sem_saida` → ela mesma diz que não segue por aqui (pessoa).
+_NUMERO_DO_PEDIDO = r"([0-9a-z{}][0-9a-z{}\-./]*[0-9a-z{}])"
+_JA_ABERTA_HDI_YELUM = (
+    ("mostra_numero", r"identifiquei que a assistencia\s+" + _NUMERO_DO_PEDIDO
+                      + r"\s+(?:esta aberta|foi aberta dentro das ultimas)"),
+    ("sem_saida", r"assistencia ja esta em andamento com um de nossos prestadores"),
+)
+#: constante_justificada: os padrões são POR SEGURADORA (a mesma frase em outra URA pode
+#: significar outra coisa) e cada um foi medido sobre as telas reais citadas acima.
+JA_EXISTE_SOLICITACAO: Dict[str, Tuple[Tuple[str, str], ...]] = {
+    "hdi": _JA_ABERTA_HDI_YELUM,
+    "yelum": _JA_ABERTA_HDI_YELUM,
+    "porto": (
+        ("mostra_numero", r"voce tem um servico aberto\D{0,40}?(\d+-[0-9a-z{}]+)"),
+        ("mostra_numero", r"localizei (?:o seguinte|os seguintes) servicos? aberto[\s\S]{0,300}?"
+                          r"falar sobre\s+(\d+-[0-9a-z{}]+)"),
+    ),
+    "mapfre": (
+        ("pergunta", r"voce ja possui um protocolo aberto"),
+    ),
+}
+
+
+def solicitacao_ja_existente(playbook: Any, tela: str) -> Optional[Dict[str, str]]:
+    """PURA. A tela diz que JÁ EXISTE um pedido aberto? → `{"tipo", "numero"}` ou None."""
+    if isinstance(playbook, str):
+        playbook = get_playbook(playbook) or {}
+    chave = str((playbook or {}).get("insurer_key") or "").strip().lower()
+    texto = _norm_text(tela)
+    for tipo, padrao in JA_EXISTE_SOLICITACAO.get(chave, ()):
+        m = re.search(padrao, texto)
+        if not m:
+            continue
+        numero = (m.group(1) if m.groups() else "") or ""
+        if tipo == "mostra_numero" and not numero:
+            tipo = "sem_saida"
+        return {"tipo": tipo, "numero": numero}
+    return None
+
+
+def seguir_com_a_solicitacao_existente(session: Dict[str, Any],
+                                       ja_existe: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    """Numa RETOMADA que pode ter aberto o pedido: nunca abrir o segundo.
+
+    `mostra_numero` → o número vira o pedido do caso (`captured`, marcado `ja_existia`):
+    o roteador avisa o segurado e a corretora, e acompanha como qualquer protocolo.
+    `pergunta`/`sem_saida` → uma pessoa, com o motivo `ja_existe_solicitacao`."""
+    tipo = str(ja_existe.get("tipo") or "")
+    numero = str(ja_existe.get("numero") or "").strip()
+    if tipo == "mostra_numero" and numero:
+        session.setdefault("captured", {}).update({"protocol": numero, "ja_existia": True})
+        session["state"] = "captured"
+        return session
+    session["state"] = "needs_human"
+    session["reason"] = "ja_existe_solicitacao"
+    session["motivo_legivel"] = {
+        "campo": "ja_existe_solicitacao", "slot": "",
+        "rotulo": ("a seguradora disse que já existe um pedido aberto para este segurado e o "
+                   "acionamento foi reaberto depois da confirmação — o agente NÃO abriu outro; "
+                   "confira com a seguradora qual é o pedido e siga com ele")}
+    return session
 
 
 def aviso_de_handoff(dossie_saiu: bool) -> str:
@@ -6276,6 +6468,9 @@ def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:
     else:
         lines.append("Prontinho! ✅ Sua assistência foi aberta na seguradora.")
     lines.append(f"O número do atendimento é {captured['protocol']}.")
+    if captured.get("ja_existia"):
+        # 🔴 SPEC-123 D6 — o número é o do pedido que a seguradora JÁ tinha (retomada).
+        lines.append("A seguradora já tinha o seu pedido registrado — seguimos com ele, sem abrir outro.")
     if captured.get("password"):
         lines.append(f"O prestador vai pedir uma senha de acesso: {captured['password']}.")
     # A instrução certa para ESTE serviço.

@@ -229,8 +229,11 @@ def test_sao_dezesseis():
     #    `direto_ao_humano`. O destravador leu a tela com o caso inteiro e decidiu
     #    que é de gente (o NUNCA SOZINHO, a 2ª opinião discordou, a nota não bastou):
     #    retomar o levaria à mesma tela e à mesma decisão.
-    assert len(familias) == 29, (
-        f"o fonte tem {len(familias)} famílias de travamento, não 29: "
+    # 🔴 E VINTE E NOVE VIROU TRINTA (SPEC-123 F3, D6): +1, `ja_existe_solicitacao` —
+    #    `direto_ao_humano`. Na retomada, a seguradora disse que o pedido já existe e não
+    #    dá para seguir com ele por aqui: retomar de novo seria pedir pela terceira vez.
+    assert len(familias) == 30, (
+        f"o fonte tem {len(familias)} famílias de travamento, não 30: "
         f"{sorted(familias)}")
 
 
@@ -274,6 +277,7 @@ def test_sao_dezesseis():
     ("tecla_ambigua", M.DIRETO_AO_HUMANO),
     ("apolice_de_condominio_ou_empresa", M.DIRETO_AO_HUMANO),
     ("destravador", M.DIRETO_AO_HUMANO),
+    ("ja_existe_solicitacao", M.DIRETO_AO_HUMANO),
     # não retoma, e continuar também não resolve — falta CONSERTO
     ("conferencia_divergente", M.NAO_RETOMA),
     ("loop_guard", M.NAO_RETOMA),
