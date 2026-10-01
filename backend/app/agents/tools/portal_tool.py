@@ -835,7 +835,9 @@ class PortalActionTool(BaseTool):
             if d is None or modo != "on" or d.acao != "RESPONDER":
                 return None                       # pergunta / pessoa / sombra: o caminho de hoje
             parada = DT.parada_do_portal(ev)
-            respostas = DT.resposta_do_portal(parada["stage"], slot, d.valor, params_do_job)
+            # a LISTA da parada vai junto: a UF só sai se for sigla E estiver nela (conserto SPEC-124)
+            respostas = DT.resposta_do_portal(parada["stage"], slot, d.valor, params_do_job,
+                                              opcoes=parada["opcoes"])
             if not respostas:
                 return None
             cpf = str(params.get("cpf_cnpj") or params_do_job.get("cpf_cnpj") or "")

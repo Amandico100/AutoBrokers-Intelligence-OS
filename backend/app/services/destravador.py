@@ -1903,16 +1903,22 @@ ACAO_NO_DIARIO_DO_PORTAL = {**ACAO_NO_DIARIO, "RESPONDER": "respondeu_portal"}
 
 #: constante_justificada: quantas vezes o destravador pode continuar o MESMO pedido sozinho. 📊 O mapa
 #: fechado das paradas (`vidros_estado.ETAPA_DA_PARADA`) tem 6 etapas que esperam `responder:*` (peça,
-#: causa, lataria, cidade, questionário, reparo) — e com o DEDUZIR desligado só a UF age hoje. 3 cobre a
-#: UF + duas perguntas do questionário quando a calibração religar, e corta o laço (o portal parando
+#: causa, lataria, cidade, questionário, reparo) — e com o DEDUZIR desligado NENHUMA age hoje (conserto
+#: B1: a UF é do segurado). 3 cobre a peça/causa + duas perguntas do questionário quando a calibração
+#: religar, e corta o laço (o portal parando
 #: sempre no mesmo ponto) antes de virar uma fila de jobs na seguradora. Passou do teto → caminho de hoje.
 TETO_DE_DESTRAVAMENTOS_POR_PEDIDO = 3
 
 #: 🔴 A CLASSE DE CADA PARADA do API-first — a tabela do laudo do BLOCO 0 da SPEC-124 (o código decide a
 #: classe; o modelo só propõe o VALOR onde a tabela deixa). Parada fora daqui = técnica: não se destrava.
 #: constante_justificada (cada linha):
-#:   uf_desconhecida         o estado do serviço é DADO DO CASO (cadastro/cidade do serviço) e a lista
-#:                           do portal é fechada (27 UFs): responder com o dado, se ele está na lista
+#:   uf_desconhecida         🔴 CONSERTO SPEC-124 (juiz B1 = red team B1): SÓ O SEGURADO SABE. O produto
+#:                           só abre o pedido com a UF que o SEGURADO ESCREVEU e que é uma das 27
+#:                           (`portal_params.cidade_do_servico_valida`); esta parada nasce quando ESSA
+#:                           UF não está na lista do portal. Logo QUALQUER UF da lista é OUTRA — na
+#:                           prática a do cadastro — e manda o vidraceiro para a cidade homônima de
+#:                           outro estado (📊 "Bom Jesus/RS" → "Bom Jesus/SC"). Trocar o estado é
+#:                           DEDUZIR (desligado sem calibração), nunca "dado do caso": pergunta.
 #:   tipo_de_telefone_…      o tipo de contato é CONTRATO nosso (D-E00110-01): conduzir — mas a parada
 #:                           espera `reler` (o vigia relê); o plugue `responder:*` não chega nela
 #:   *_ambigua · motivo_ambiguo · questionario_incompleto   escolher numa lista = DEDUZIR (desligado
@@ -1922,7 +1928,8 @@ TETO_DE_DESTRAVAMENTOS_POR_PEDIDO = 3
 #:   pronto_para_agendar · horario_indisponivel   loja e horário: a escolha (e a loja paga) é dele (D2)
 #:   coverage_absent · maybe_committed · pronto_para_* · prioridade_nao_medida   NUNCA → gate / pessoa
 CLASSE_DA_PARADA_DO_PORTAL: Dict[str, str] = {
-    "uf_desconhecida": "responder_com_dado",
+    "uf_desconhecida": "perguntar_ao_segurado",   # a UF que ele escreveu não está na lista: é dele
+    #                                                (nunca outra UF da lista — a cidade homônima)
     "tipo_de_telefone_desconhecido": "conduzir",
     "peca_ambigua": "deduzir",
     "motivo_ambiguo": "deduzir",
@@ -1957,6 +1964,54 @@ NUNCA_DA_PARADA_DO_PORTAL: Dict[str, Tuple[str, str]] = {
     "pronto_para_vistoria": ("confirmacao_final", "pessoa"),
     "prioridade_nao_medida": ("confirmacao_final", "pessoa"),
 }
+
+#: 🔴 CONSERTO SPEC-124 (red team P1 · P8): o CAMPO que responde cada parada `responder:*` — o MESMO
+#: princípio do conserto X2 do WhatsApp (`_e_dado_do_caso`: só o slot DO PASSO conta). "Dado do caso"
+#: no portal é o valor DESTE campo, nunca qualquer folha dos params (o nome do segurado, a cidade do
+#: cadastro, o relato…). constante_justificada (cada linha = `vidros_estado.ETAPA_DA_PARADA` + o que o
+#: contrato da continuação lê em `portal_params._valor_do_slot`):
+#:   (slot, subcampo do dict, ou "" quando o valor do slot já é o dado)
+#:   questionario_incompleto  `pergunta_<codigo>`: o worker (`vidros_apifirst._parar`) troca o
+#:                            `responder:pergunta` genérico pelo slot ETIQUETADO; sem código não há
+#:                            pergunta pendente para responder (e o genérico reabria a mesma parada)
+_CAMPO_DA_PARADA_DO_PORTAL: Dict[str, Tuple[str, str]] = {
+    "uf_desconhecida": ("cidade_servico", "uf"),
+    "cidade_ambigua": ("cidade_servico", "cidade"),
+    "cidade_sem_rede": ("cidade_servico", "cidade"),
+    "motivo_ambiguo": ("como", ""),
+    "peca_ambigua": ("peca", ""),
+    "questionario_incompleto": ("pergunta_", ""),
+}
+
+#: constante_justificada: a etiqueta do slot do questionário que o worker grava
+#: (`responder:pergunta_<codigo>`, `vidros_apifirst._parar`) — o código é o da pergunta do portal.
+_RX_SLOT_DO_QUESTIONARIO = re.compile(r"pergunta_[A-Za-z0-9]+")
+
+
+def slot_da_parada_confere(stage: str, slot: str) -> bool:
+    """O `slot` que a parada espera é o desta etapa? (`pergunta` genérico, sem código: não.)"""
+    campo = _CAMPO_DA_PARADA_DO_PORTAL.get(str(stage or ""))
+    if not campo:
+        return False
+    if campo[0] == "pergunta_":
+        return bool(_RX_SLOT_DO_QUESTIONARIO.fullmatch(str(slot or "")))
+    return str(slot or "") == campo[0]
+
+
+def valores_do_slot_no_portal(stage: str, slot: str, params: Optional[dict]) -> set:
+    """O DADO DO CASO que responde esta parada (normalizado): o valor do CAMPO que ela espera, lido
+    pelo MESMO leitor do contrato da continuação (`portal_params._valor_do_slot`). Vazio quando a
+    parada não tem campo ou o slot não é o dela."""
+    if not slot_da_parada_confere(stage, slot):
+        return set()
+    from app.agents.tools.portal_params import _valor_do_slot
+
+    valor = _valor_do_slot(params if isinstance(params, dict) else {}, slot)
+    sub = _CAMPO_DA_PARADA_DO_PORTAL[stage][1]
+    if sub:
+        valor = valor.get(sub) if isinstance(valor, dict) else None
+    return {_n(x) for x in _folhas(valor) if _n(x)}
+
 
 #: O que faltava, em palavras de gente (a frase do diário — D7: nada de nome de variável).
 _O_QUE_FALTAVA_NO_PORTAL = {
@@ -2010,12 +2065,8 @@ def _folhas(valor: Any) -> List[str]:
     return [str(valor)]
 
 
-def valores_do_caso_no_portal(params: Optional[dict]) -> set:
-    """Os VALORES do caso (normalizados) que podem responder o portal: o que a conversa e a apólice
-    trouxeram. ⛔ Fora: as chaves internas (`_…`), o `contato` (é da CORRETORA) e o `confirm`."""
-    fora = {"contato", "confirm", "solicitante"}
-    return {_n(x) for k, v in (params or {}).items()
-            if not str(k).startswith("_") and k not in fora for x in _folhas(v) if _n(x)}
+# ⛔ (Conserto SPEC-124, red team P1) não existe mais "qualquer folha dos params" como dado do caso:
+# o dado é o do CAMPO da parada (`valores_do_slot_no_portal`).
 
 
 def _opcao_igual(valor: Any, opcoes: List[str]) -> str:
@@ -2057,26 +2108,33 @@ def texto_da_parada(parada: Dict[str, Any]) -> str:
     return "\n".join(linhas)
 
 
-def resposta_do_portal(stage: str, slot: str, valor: str, params: Optional[dict]) -> Dict[str, Any]:
+def resposta_do_portal(stage: str, slot: str, valor: str, params: Optional[dict], *,
+                       opcoes: Optional[List[str]] = None) -> Dict[str, Any]:
     """`{slot: valor}` no CONTRATO da continuação (`portal_params.respostas_da_chamada`, o MESMO da
     001.10.1) — ou `{}` quando a resposta não tem formato para esta parada, ou é a MESMA com que o
-    portal parou (reenviá-la produziria a mesma parada e um job a mais na seguradora)."""
+    portal parou (reenviá-la produziria a mesma parada e um job a mais na seguradora).
+
+    `opcoes` = a LISTA da parada. 🔴 Conserto SPEC-124 (red team B1): a UF só vai ao portal se for uma
+    SIGLA do Brasil (2 letras, `portal_params._UFS`) E estiver na lista desta parada — nunca texto
+    livre ("FLORIANOPOLIS", o nome do segurado) e nunca sem a lista."""
     import copy
 
-    from app.agents.tools.portal_params import respostas_da_chamada
+    from app.agents.tools.portal_params import _UFS, respostas_da_chamada
 
     origem = params if isinstance(params, dict) else {}
     novo = copy.deepcopy({k: v for k, v in origem.items() if k != "_runtime"})
     valor = str(valor or "").strip()
-    if not slot or not valor:
-        return {}
+    if not slot or not valor or not slot_da_parada_confere(stage, slot):
+        return {}       # o slot não é o desta parada (ou é o `pergunta` genérico, sem código): sem formato
     local = dict(novo.get("local") or {})
     cid = dict(local.get("cidade_servico") or {}) if isinstance(local.get("cidade_servico"), dict) else {}
     if slot == "cidade_servico":
         if stage == "uf_desconhecida":
-            if not str(cid.get("cidade") or "").strip():
+            uf = valor.upper()
+            lista = {" ".join(str(o).split()).upper() for o in (opcoes or [])}
+            if not str(cid.get("cidade") or "").strip() or uf not in _UFS or uf not in lista:
                 return {}
-            cid["uf"] = valor.upper()
+            cid["uf"] = uf
         elif stage == "cidade_ambigua":
             cid["cidade"] = valor
         else:
@@ -2085,7 +2143,9 @@ def resposta_do_portal(stage: str, slot: str, valor: str, params: Optional[dict]
         novo["local"] = local
     elif slot == "como":
         novo["dano"] = {**dict(novo.get("dano") or {}), "como": valor}
-    elif slot == "peca" or slot.startswith("pergunta_"):
+    elif slot == "peca" or _RX_SLOT_DO_QUESTIONARIO.fullmatch(slot):
+        # o questionário: `pergunta_<codigo>` (a etiqueta do worker) → `especificos`, onde o motor
+        # da continuação a lê (`portal_params._valor_do_slot`, o MESMO leitor do contrato)
         novo["especificos"] = {**dict(novo.get("especificos") or {}), slot: valor}
     else:
         return {}      # lataria (lista), reparo (NUNCA): o destravador não responde
@@ -2175,7 +2235,10 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
 
         if AC._RX_AFIRMA_COBERTURA.search(valor or ""):
             return pessoa("afirma_cobertura")
-    caso = valores_do_caso_no_portal(params)
+    slot = str(parada.get("slot") or "")
+    # 🔴 Conserto SPEC-124 (red team P1): o dado do caso é o do CAMPO que esta parada espera — e só
+    # vale se for uma opção da lista (nunca texto livre; sem lista, nada é "dado").
+    do_slot = valores_do_slot_no_portal(stage, slot, params)
     if "inventar_dado" in ligadas and _numero_inventado(
             valor, {"slots": {str(i): x for i, x in enumerate(_folhas(params or {}))}}):
         return pessoa("inventar_dado")
@@ -2185,7 +2248,7 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
         Proposta(classe=classe, acao="RESPONDER", valor=valor, nota=p.nota, motivo=p.motivo),
         limiar=lim, provedor=provedor, segunda_opiniao=segunda_opiniao, pedir_segunda=pedir_segunda,
         e_navegacao=lambda: classe_tab == "conduzir" and bool(opcao),
-        e_dado_do_caso=lambda: bool(opcao or not opcoes) and nv in caso,
+        e_dado_do_caso=lambda: bool(opcao) and nv in do_slot,
         tem_opcoes=bool(opcoes), valor_nas_opcoes=lambda: bool(opcao),
         mesma_resposta=lambda outro: _n(outro) == nv or (bool(opcao) and _opcao_igual(outro, opcoes) == opcao))
     base["classe"] = v.classe
@@ -2194,7 +2257,7 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
     if v.passo == PASSO_REBAIXAR:
         return perguntar(v.porque)
     final = opcao or valor
-    if not resposta_do_portal(stage, str(parada.get("slot") or ""), final, params):
+    if not resposta_do_portal(stage, slot, final, params, opcoes=opcoes):
         return perguntar("resposta_sem_formato_ou_repetida")
     return Destravamento(acao="RESPONDER", valor=final, **base)
 
@@ -2267,6 +2330,25 @@ def _telefone_da_conversa(params: Dict[str, Any]) -> str:
     return re.sub(r"\D", "", partes[1]) if len(partes) >= 2 and partes[0] == "whatsapp" else ""
 
 
+def _pessoa_vira_pergunta(parada: Dict[str, Any]) -> bool:
+    """A decisão PESSOA no portal, nesta parada, vira PERGUNTA ao segurado de fato? Sim quando a parada
+    é das que o segurado responde (`portal_params.ESTAGIOS_QUE_O_SEGURADO_RESPONDE`): a tool devolve
+    `None` e o `format_result` de hoje manda o agente perguntar. Nas outras, o texto de hoje é o da
+    equipe — aí "chamou uma pessoa" é a verdade."""
+    from app.agents.tools.portal_params import ESTAGIOS_QUE_O_SEGURADO_RESPONDE
+
+    return str(parada.get("stage") or "") in ESTAGIOS_QUE_O_SEGURADO_RESPONDE
+
+
+def acao_do_portal_no_diario(d: Destravamento, parada: Dict[str, Any]) -> str:
+    """A `acao` da linha do diário = o que ACONTECE de fato (juiz P3), não o rótulo da decisão."""
+    if d.modo == "sombra":
+        return "nao_agiu"
+    if d.acao == "PESSOA" and _pessoa_vira_pergunta(parada):
+        return "perguntou_segurado"
+    return ACAO_NO_DIARIO_DO_PORTAL.get(d.acao, "chamou_pessoa")
+
+
 def _frase_do_portal(seguradora: str, parada: Dict[str, Any], d: Destravamento) -> str:
     """A frase para GENTE (D7) do portal: "No portal da loja de vidros, faltava …"."""
     falta = _O_QUE_FALTAVA_NO_PORTAL.get(str(parada.get("stage") or ""), "um dado do pedido")
@@ -2279,6 +2361,10 @@ def _frase_do_portal(seguradora: str, parada: Dict[str, Any], d: Destravamento) 
     if d.modo == "sombra":
         fez = "apenas observou, sem responder nada" + (
             f" (se estivesse ligado, teria respondido “{d.valor[:80]}”)" if d.acao == "RESPONDER" else "")
+    elif d.acao == "PESSOA" and _pessoa_vira_pergunta(parada):
+        # 🔴 Conserto SPEC-124 (juiz P3): ninguém é chamado — a tool segue o caminho de hoje
+        # (`format_result`: "me responde que eu continuo") e o AGENTE pergunta ao segurado.
+        fez = "não respondeu sozinho, e o agente pergunta ao segurado pelo caminho de hoje"
     else:
         fez = {"RESPONDER": f"respondeu ao portal “{d.valor[:80]}” e continuou o MESMO pedido",
                "PERGUNTAR_AO_SEGURADO": "deixou a pergunta para o segurado",
@@ -2317,7 +2403,7 @@ async def _registrar_do_portal(company_id: str, parada: Dict[str, Any], params: 
         logger.warning("[DESTRAVADOR] diário indisponível (%s) — decisão sem linha", type(e).__name__)
         return None
     seguradora = chave_da_seguradora_do_portal(params)
-    acao = "nao_agiu" if d.modo == "sombra" else ACAO_NO_DIARIO_DO_PORTAL.get(d.acao, "chamou_pessoa")
+    acao = acao_do_portal_no_diario(d, parada)
     d.explicacao = _frase_do_portal(seguradora, parada, d)
     run = str(work_run_id or params.get("_work_run_id") or "").strip()
     dano = params.get("dano") if isinstance(params.get("dano"), dict) else {}

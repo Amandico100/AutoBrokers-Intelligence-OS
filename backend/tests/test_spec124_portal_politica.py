@@ -29,6 +29,11 @@ PARADA_UF = {"stage": "uf_desconhecida", "operacao": "responder", "slot": "cidad
              "opcoes": UFS, "pergunta": "", "mensagem": ""}
 PARADA_REPARO = {"stage": "decidir_reparo", "operacao": "responder", "slot": "aceita_reparo",
                  "opcoes": ["tentar o reparo", "trocar a peca"], "pergunta": "", "mensagem": ""}
+#: a parada em que o MODELO propõe o valor (DEDUZIR) — onde o NUNCA sobre o valor é exercitado quando a
+#: calibração religar. (Conserto SPEC-124: a UF deixou de ser essa parada — ela é do segurado.)
+PARADA_MOTIVO = {"stage": "motivo_ambiguo", "operacao": "responder", "slot": "como",
+                 "opcoes": ["Pedra", "Vandalismo"], "pergunta": "", "mensagem": ""}
+OUTRA_OPINIAO = {"provedor": "anthropic", "acao": "RESPONDER", "valor": "Pedra"}
 
 
 def P(valor, classe="responder_com_dado", acao="RESPONDER", nota=95):
@@ -37,6 +42,12 @@ def P(valor, classe="responder_com_dado", acao="RESPONDER", nota=95):
 
 def decide(prop, parada=PARADA_UF, **k):
     return DT.decidir_parada_do_portal(prop, parada, CASO, **k)
+
+
+@pytest.fixture
+def calibrado(monkeypatch):
+    """O dia em que a calibração religar o DEDUZIR (hoje: desligado)."""
+    monkeypatch.setattr(DT, "DEDUZIR_AUTONOMO_CALIBRADO", True)
 
 
 # ── a tabela cobre o mapa fechado ────────────────────────────────────────────────
@@ -52,27 +63,23 @@ def test_toda_parada_que_o_segurado_responde_tem_classe_na_tabela():
             assert DT.NUNCA_DA_PARADA_DO_PORTAL[st][0] in DT.NUNCA_SOZINHO   # a MESMA lista do WhatsApp
 
 
-# ── RESPONDER COM DADO: só o dado do caso, e só se está na lista do portal ─────────
-def test_uf_do_caso_na_lista_responde():
-    d = decide(P("sc"))
-    assert (d.acao, d.classe, d.valor) == ("RESPONDER", "responder_com_dado", "SC")
-    assert DT.resposta_do_portal("uf_desconhecida", "cidade_servico", d.valor, CASO) == {
-        "cidade_servico": {"uf": "SC", "cidade": "Cidade Exemplo"}}
+# ── A UF É DO SEGURADO (conserto SPEC-124, juiz B1 = red team B1) ───────────────────
+# 🔴 §9.3: estes testes afirmavam "a UF do cadastro na lista responde". Era a ação errada — a UF que o
+# segurado escreveu não está na lista, e qualquer outra manda o vidraceiro para a cidade homônima. A
+# lição migra: agora se prova que NENHUMA UF vai ao portal sozinha, nem a do cadastro, nem com nota 100.
+@pytest.mark.parametrize("valor", ["sc", "SC", "PR", "Santa Catarina"])
+def test_uf_desconhecida_e_do_segurado_nenhuma_uf_vai_ao_portal(valor):
+    d = decide(P(valor, nota=100), segunda_opiniao={"provedor": "anthropic", "acao": "RESPONDER",
+                                                     "valor": valor}, provedor="openai")
+    assert (d.acao, d.classe, d.proibicao) == ("PERGUNTAR_AO_SEGURADO", "perguntar_ao_segurado",
+                                               "so_o_segurado_sabe")
+    assert decide(None).acao == "PERGUNTAR_AO_SEGURADO"         # o CÓDIGO decide: o modelo nem é chamado
 
 
-def test_uf_da_lista_que_nao_e_do_caso_vira_pergunta():
-    d = decide(P("PR"))
-    assert d.acao == "PERGUNTAR_AO_SEGURADO" and d.proibicao == "deduzir_sem_calibracao"
-
-
-def test_valor_fora_da_lista_nunca_vai_ao_portal():
-    d = decide(P("Santa Catarina"))
-    assert d.acao != "RESPONDER"
-
-
-def test_a_mesma_resposta_com_que_o_portal_parou_nao_age():
-    caso = {**CASO, "local": {"estado": "SC", "cidade_servico": {"uf": "SC", "cidade": "Cidade Exemplo"}}}
-    d = DT.decidir_parada_do_portal(P("SC"), PARADA_UF, caso)
+def test_a_mesma_resposta_com_que_o_portal_parou_nao_age(calibrado):
+    caso = {**CASO, "dano": {**CASO["dano"], "como": "Pedra"}}
+    d = DT.decidir_parada_do_portal(P("Pedra", classe="deduzir"), PARADA_MOTIVO, caso, provedor="openai",
+                                    segunda_opiniao=dict(OUTRA_OPINIAO))
     assert d.acao == "PERGUNTAR_AO_SEGURADO" and d.proibicao == "resposta_sem_formato_ou_repetida"
 
 
@@ -101,8 +108,9 @@ def test_NUNCA_da_tabela(stage, acao):
                                              ("desistir", "cancelar_pedido"),
                                              ("abrir sinistro", "abrir_sinistro"),
                                              ("SC 88123456", "inventar_dado")])
-def test_NUNCA_sobre_o_valor(valor, proibicao):
-    d = decide(P(valor))
+def test_NUNCA_sobre_o_valor(valor, proibicao, calibrado):
+    d = decide(P(valor, classe="deduzir", nota=100), PARADA_MOTIVO, provedor="openai",
+               segunda_opiniao={**OUTRA_OPINIAO, "valor": valor})
     assert d.acao in ("PESSOA", "PERGUNTAR_AO_SEGURADO") and d.proibicao == proibicao
 
 
@@ -121,8 +129,8 @@ def test_tecnica_nao_destrava_e_perguntar_e_do_segurado():
     assert d.acao == "PERGUNTAR_AO_SEGURADO" and d.classe == "perguntar_ao_segurado"
 
 
-def test_saida_invalida_e_pessoa():
-    assert decide(DT.ler_destravamento("isto não é json")).acao == "PESSOA"
+def test_saida_invalida_e_pessoa(calibrado):
+    assert decide(DT.ler_destravamento("isto não é json"), PARADA_MOTIVO).acao == "PESSOA"
 
 
 # ── D1: o MESMO núcleo nos dois canais ───────────────────────────────────────────
@@ -135,7 +143,7 @@ def test_os_dois_canais_passam_pelo_mesmo_nucleo(monkeypatch):
         return real(*a, **k)
 
     monkeypatch.setattr(DT, "regua_do_nucleo", espia)
-    decide(P("SC"))
+    decide(P("Pedra", classe="deduzir"), PARADA_MOTIVO)
     n_portal = len(chamadas)
     assert n_portal == 1
     # o WhatsApp: uma tela de menu real do acervo (o fio da SPEC-123) chega à régua pelo mesmo nome
