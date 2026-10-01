@@ -201,7 +201,10 @@ bateria 0 regressões (1 guarda pré-existente consertado).
 ## 12. ENTREGA
 ```
 git push origin HEAD:main
-(o gerente cola)
+📊 01/10/2026:
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   a0ad834..22e459e  HEAD -> main
+`git rev-list --count origin/main..HEAD` → 0
 git rev-list --count origin/main..HEAD   → (o gerente cola; tem de ser 0)
 ```
 📊 Antes do push (01/10): `git rev-list --count origin/main..HEAD` → **4** (os 4 commits de código ainda não subiram).
