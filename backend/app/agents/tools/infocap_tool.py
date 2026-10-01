@@ -613,6 +613,7 @@ class InfocapPolicyLookupTool(BaseTool):
             # (12/07: "cadê os dados do veículo" — a ficha era só client_facing).
             if str(result.get("status") or "") == "found":
                 await self._enrich_vehicle(result, provider, document, db, key)
+                await self._risco_na_ficha(result, session_id)
             content, assistance_policy, rendered, meta = self._render_content(
                 result, user_query, detail=False,
                 atendente=await self._quem_cuida(db, user_query),
@@ -869,6 +870,41 @@ class InfocapPolicyLookupTool(BaseTool):
         except Exception as e:  # noqa: BLE001 — a ficha nunca derruba a consulta
             logger.warning(f"[InfocapPolicyLookupTool] vehicle enrich falhou: {type(e).__name__}")
 
+
+    async def _risco_na_ficha(self, result: Dict[str, Any],
+                              session_id: Optional[str]) -> None:
+        """SPEC-125 S3 · M3: placa/veículo (auto) ou cidade/UF (residencial) da
+        apólice ENCONTRADA vão para a ficha do atendimento, com origem
+        `sistema_de_gestao` — para o agente e o destravador não perguntarem o
+        que a apólice já diz. A regra do que entra mora em
+        `attendance_ficha.novidades_do_risco`; aqui só se chama o ESCRITOR que
+        já existe (`attendance_ficha.gravar`, filtro `company_id` + `session_id`).
+
+        Só no papel do segurado: a ficha é do atendimento. ⚠️ Cliente de banco
+        SÍNCRONO de propósito: `gravar`/`carregar` rodam `execute()` em
+        `to_thread`, e o `db` assíncrono desta tool devolveria uma corrotina
+        nunca aguardada (nada gravado, nada vermelho). Nunca derruba a consulta.
+        """
+        sessao = str(session_id or "").strip()
+        if not (self._client_facing and sessao and self.company_id):
+            return
+        try:
+            from app.core.database import get_supabase_client
+            from app.services import attendance_ficha as F
+
+            selected = result.get("selected") or result.get("policy") or {}
+            familia = _match_product_kind(selected) if isinstance(selected, dict) else None
+            if not familia:
+                return
+            cliente = get_supabase_client()
+            cliente = cliente.client if hasattr(cliente, "client") else cliente
+            atual = await F.carregar(cliente, self.company_id, sessao)
+            novidades = F.novidades_do_risco(result, familia, ficha=atual)
+            if novidades:
+                await F.gravar(cliente, self.company_id, sessao, novidades)
+        except Exception as e:  # noqa: BLE001 — a ficha nunca derruba a consulta
+            logger.warning("[InfocapPolicyLookupTool] risco na ficha falhou: %s",
+                           type(e).__name__)
 
     async def _a_conversa_deste_atendimento(self, db: Any,
                                             session_id: Optional[str]) -> Dict[str, Any]:

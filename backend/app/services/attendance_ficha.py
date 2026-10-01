@@ -767,6 +767,67 @@ def novidades_da_apolice(contexto: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return novidades
 
 
+#: 🔴 SPEC-125 S3 · M3 — O RISCO DA APÓLICE VAI PARA A FICHA, COM ORIGEM.
+#:
+#: 📊 01/10/2026: `infocap_tool._enrich_vehicle` já trazia placa e veículo da
+#: apólice AUTO para o `data` da consulta, e `policy_evidence_pack.risk_objects`
+#: já trazia cidade/UF do risco — e NINGUÉM gravava isso na ficha
+#: (`grep -rn vehicle_info backend/app` → só o próprio tool). O dado vivia um
+#: turno no briefing e morria; no turno seguinte o agente e o destravador
+#: perguntavam a placa que a apólice tinha.
+#:
+#: ⛔ O que NÃO entra, e a regra que proíbe: CPF, nome, telefone e endereço de
+#: rua (SPEC-117 §2 / D7, cabeçalho de `policy_context.py`: *"nunca no contexto:
+#: nome, CPF/CNPJ, telefone, e-mail, endereço…"*). No papel do segurado o
+#: conector nem devolve a rua (`infocap_connector._risk_object_from_items`,
+#: `unmasked=False`). A PLACA entra crua de propósito: é o slot
+#: `veiculo_placa` que o banco de respostas (`dados_conhecidos` →
+#: `responder_da_ficha`) dita à URA — mascarada, a URA ouviria lixo.
+#:
+#: Cada slot diz POR QUE vem desta fonte (CLAUDE.md §9.5 — constante que escolhe):
+_RISCO_POR_FAMILIA = {
+    # auto: placa e modelo são do CONTRATO; o carro do caso é o da apólice.
+    "auto": (("veiculo_placa", "placa"), ("veiculo_descricao", "veiculo")),
+    # residencial: a assistência é NO imóvel segurado — a cidade do risco É a
+    # cidade do atendimento. ⚠️ No auto NÃO: o carro quebra fora da cidade da
+    # apólice (slot `fora_da_cidade_da_apolice` existe por isso).
+    "resi": (("local_cidade", "city"), ("local_uf", "state")),
+}
+
+
+def novidades_do_risco(data: Optional[Dict[str, Any]], familia: Any,
+                       ficha: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """O que a apólice ENCONTRADA diz sobre o risco, como novidade de ficha. **PURA.**
+
+    `data` é o `result["data"]` de `infocap_policy_lookup`; `familia` é a da
+    apólice SELECIONADA (`auto`/`resi`). Toda confirmação sai com origem
+    `sistema_de_gestao` — o bloco do prompt a mostra como "confirme com uma
+    frase", nunca como "o cliente disse". Frota (2+ itens de risco) não grava a
+    cidade: qual dos itens é o do caso, o sistema não sabe.
+
+    🔴 O que o SEGURADO já disse não é sobrescrito pelo cadastro: `fundir`
+    sobrescreve slot a slot, e a placa que ele corrigiu ("troquei de carro")
+    voltaria a ser a do contrato antigo. Slot já preenchido na `ficha` fica.
+    """
+    ja = (ficha or {}).get("confirmados") or {}
+    if not isinstance(data, dict):
+        return {}
+    fam = str(familia or "").strip().lower()
+    pares = _RISCO_POR_FAMILIA.get(fam)
+    if not pares:
+        return {}
+    if fam == "auto":
+        fonte = data.get("vehicle_info") if isinstance(data.get("vehicle_info"), dict) else {}
+    else:
+        riscos = [r for r in ((data.get("policy_evidence_pack") or {}).get("risk_objects") or [])
+                  if isinstance(r, dict) and r]
+        fonte = riscos[0] if len(riscos) == 1 else {}
+    confirmados = {slot: confirmacao(str(fonte[campo]).strip(), ORIGEM_SISTEMA_DE_GESTAO)
+                   for slot, campo in pares
+                   if _tem_valor(fonte.get(campo)) and not _tem_valor(valor_de(ja.get(slot)))}
+    return {"confirmados": confirmados} if confirmados else {}
+
+
 def _bloco_da_apolice(ficha: Optional[Dict[str, Any]]) -> str:
     """A apólice do caso, em uma linha, para o modelo. `""` se não houver.
 

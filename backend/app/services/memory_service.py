@@ -30,6 +30,7 @@ import asyncio
 import inspect
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -67,6 +68,30 @@ def _texto_da_resposta(response) -> str:
 PAPEL_DA_MEMORIA = "memoria"
 #: Temperatura pedida; a fábrica a tira de quem a recusa (Claude 5).
 TEMPERATURA_DA_MEMORIA = 0.3
+
+
+_UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def filtro_do_agente_com_espelho(agent_id: Optional[str]) -> str:
+    """SPEC-125 S3 · M5 — o filtro de agente que deixa o ESPELHO passar. **PURA.**
+
+    📊 01/10/2026 (`select channel, agent_id is null, count(*) from
+    session_summaries group by 1,2`): no WhatsApp, **305** resumos sem agente
+    (as conversas do espelho, escritas antes de haver agente vinculado) contra
+    **14** com agente — e o `.eq("agent_id", …)` do leitor escondia os 305 do
+    agente que atende o MESMO segurado na MESMA corretora. `user_memories`: 218
+    sem agente × 1 com.
+
+    ⛔ O `company_id` e o `user_id` continuam nos `.eq` de quem chama — este
+    filtro só ALARGA o agente, nunca a corretora (CLAUDE.md §7). Id que não é
+    UUID volta `""` (nada é interpolado no filtro do PostgREST) e o chamador
+    não filtra por agente, como já fazia com `agent_id` vazio.
+    """
+    bruto = str(agent_id or "").strip()
+    if not bruto or not _UUID.match(bruto):
+        return ""
+    return f"agent_id.eq.{bruto},agent_id.is.null"
 
 
 class MemoryService:
@@ -1208,14 +1233,19 @@ Retorne APENAS uma lista JSON de strings: ["fato 1", "fato 2"]"""
                 .eq("company_id", company_id)
             )
 
-            if agent_id:
-                query = query.eq("agent_id", agent_id)
+            filtro = filtro_do_agente_com_espelho(agent_id)
+            if filtro:
+                query = query.or_(filtro)
 
             # CORREÇÃO: Usar _safe_execute
-            result = await self._safe_execute(query.limit(1))
+            # SPEC-125 S3 · M5: até 2 linhas (a do agente e a do espelho); a do
+            # PRÓPRIO agente vence, a do espelho é o que sobra.
+            result = await self._safe_execute(query.limit(2 if filtro else 1))
 
-            if result.data:
-                return result.data[0]
+            linhas = [l for l in (result.data or []) if isinstance(l, dict)]
+            if linhas:
+                do_agente = [l for l in linhas if str(l.get("agent_id") or "") == str(agent_id or "")]
+                return (do_agente or linhas)[0]
             return {}
 
         except Exception as e:
@@ -1238,8 +1268,9 @@ Retorne APENAS uma lista JSON de strings: ["fato 1", "fato 2"]"""
                 .eq("company_id", company_id)
             )
 
-            if agent_id:
-                query = query.eq("agent_id", agent_id)
+            filtro = filtro_do_agente_com_espelho(agent_id)
+            if filtro:
+                query = query.or_(filtro)
 
             # CORREÇÃO: Executa o cliente síncrono em uma thread
             result = await self._safe_execute(query.order("created_at", desc=True).limit(limit))
