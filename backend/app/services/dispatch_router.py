@@ -123,7 +123,7 @@ def _norm(text: str) -> str:
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
 
 
-def _tela_do_turno(session: Dict[str, Any], texto_atual: str) -> str:
+def _tela_do_turno(session: Dict[str, Any], texto_atual: str, *, preservar_linhas: bool = False) -> str:
     """A TELA INTEIRA — não o último pedaço dela.
 
     A URA não manda uma mensagem: manda uma RAJADA. O aviso vem numa bolha, o
@@ -147,8 +147,13 @@ def _tela_do_turno(session: Dict[str, Any], texto_atual: str) -> str:
     Se estourar o teto, corta pela CABEÇA e por mensagens inteiras. Cortar pelo
     fim jogaria fora justamente a pergunta.
     """
+    # 🔴 SPEC-123 (ajuste W2b): o DESTRAVADOR lê as opções da tela pelos parsers do produto
+    #    (`opcoes_numeradas`), que precisam da quebra de linha DENTRO de cada mensagem — achatada,
+    #    a pergunta ao segurado saía sem as opções. O cérebro de HOJE continua com a forma achatada
+    #    (`preservar_linhas=False`), byte a byte.
     pendentes = [
-        " ".join(str(m).split())
+        ("\n".join(" ".join(l.split()) for l in str(m).splitlines() if l.strip())
+         if preservar_linhas else " ".join(str(m).split()))
         for m in (session.get("pending_insurer_messages") or [])
         if str(m or "").strip()
     ]
@@ -4878,7 +4883,7 @@ async def try_route_insurer_inbound(
         if _modo_a == "on" and cabe_mais_um_no_ponto_a(session):
             _o_destravador_decidiu = True
             _desfecho_a = await _turno_do_destravador(
-                company_id, from_phone, session, _tela_do_turno(session, text), _entradas_antes,
+                company_id, from_phone, session, _tela_do_turno(session, text, preservar_linhas=True), _entradas_antes,
                 send_to_insurer=send_to_insurer, send_to_client=send_to_client)
             if _desfecho_a == "atendente":
                 return True

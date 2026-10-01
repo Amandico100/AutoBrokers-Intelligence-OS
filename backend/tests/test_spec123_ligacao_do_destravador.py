@@ -783,7 +783,18 @@ def test_costura_real_PERGUNTAR_do_modelo_vira_a_pergunta_ao_segurado(amb, monke
     assert amb.provider_chamado == 0 and len(amb.destravar_chamadas) == 1
     assert amb.destravar_chamadas[0]["modo"] == "on"
     [(canal, texto)] = amb.enviadas
-    assert canal == "cliente" and "para você ou para outra pessoa?" in texto, texto
+    # §9.3 — a verdade mudou no ajuste W (P-N1): o texto do MODELO não chega ao segurado. Chega a
+    # pergunta COMPOSTA pelo código — a da tela, SEM o menu (W2b). ⚠️ No PONTO A a tela chega numa
+    # linha só por bolha (`_tela_do_turno` junta as linhas de cada mensagem com espaço) — é a forma
+    # do defeito W2b, e é por isso que aqui o menu não pode vazar para dentro das aspas.
+    assert canal == "cliente", canal
+    assert "para você ou para outra pessoa?" not in texto, texto
+    assert "“Escolha a opção que melhor te atende”" in texto, texto
+    # §9.3 (ajuste W2c, gerente): com a quebra de linha preservada para o destravador, as OPÇÕES de conteúdo
+    # chegam ao segurado numeradas, uma por linha; navegação e a pergunta cortada nunca chegam.
+    assert "Para você" in texto and "Para empresas" in texto, texto
+    for pedaco in ("Voltar", "Segur”"):
+        assert pedaco not in texto, (pedaco, texto)
     assert (s.get("esperando_do_segurado") or {}).get("destravador") is True
     assert s["state"] == "human_phase" and not s.get("reason") and amb.grupo == []
     assert real.Destravamento is not Destravamento

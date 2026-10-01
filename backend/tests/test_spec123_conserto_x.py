@@ -2,7 +2,7 @@
 """SPEC-123 · CONSERTO ÚNICO, parte X (destravador + roteador) — cada guarda com a reprodução do
 juiz/red team que o deixava VERMELHO e a linha de CONTROLE que prova a causa.
 
-  X1 a pergunta ao segurado tem conferente: o texto do modelo nunca vai cru; as opções nunca levam
+  X1 a pergunta ao segurado é a do código (ajuste W: o texto do modelo não vai nem limpo); as opções nunca levam
      o irreversível; a resposta irreversível do segurado não volta à URA      (juiz B1 · RT B3/P7)
   X2 o dado do caso não fura o DEDUZIR: "Sim" igual a um slot qualquer não é dado; o eco não aceita
      texto livre; o número do caso é INTEIRO; o NUNCA lê o vocabulário que passou (juiz B2 · RT B1/B2)
@@ -16,6 +16,7 @@ Tudo pelo MOTOR e pela POLÍTICA reais (`decidir_destravamento`, `_opcoes_para_o
 
 MUTAÇÕES (uma vez cada, por cópia — resultado no relatório do conserto):
   MX1 ⑤ PERGUNTAR volta a `perguntar(valor, "")`                → os testes X1 do texto VERMELHOS
+      (ajuste W: o texto do modelo não entra nem limpo — a mutação dele está em test_spec123_ajuste_w)
   MX2 a OPÇÃO volta a ser dado por igualdade com QUALQUER slot    → os testes X2 do "Sim" VERMELHOS
   MX3 `start_live_dispatch` sem `sessao_segurada_no_prazo`        → o teste X3 VERMELHO
 """
@@ -103,27 +104,15 @@ def test_X1_o_texto_do_modelo_que_mente_nunca_chega_ao_segurado(texto, proibido,
     assert proibido not in frase and "pediu" not in frase, frase
 
 
-def test_X1_CONTROLE_a_pergunta_limpa_do_modelo_passa_e_cita_a_tela():
+def test_X1_nem_a_pergunta_limpa_do_modelo_vai_ao_segurado_ajuste_W():
+    """Ajuste W (P-N1): o conferente do texto do modelo saiu — a pergunta é SEMPRE a composta pelo
+    código. (Antes deste ajuste, este era o CONTROLE "a pergunta limpa do modelo passa".) A prova
+    com as três frases do laudo está em `test_spec123_ajuste_w.py`."""
     s = sessao(REF_HDI, "guincho", slots={"titular_cpf": CPF})
     d = decidir(perguntar("Qual é a placa do seu carro?"), s, TELA_PLACA)
-    assert d.acao == "PERGUNTAR_AO_SEGURADO" and d.valor.startswith("Qual é a placa do seu carro?"), d
-    assert "qual a placa do veículo" in d.valor.lower()
-
-
-@pytest.mark.parametrize("texto, porque", [
-    ("Qual é a placa do seu carro?", ""),
-    ("Para quem é o atendimento: para você ou para outra pessoa?", ""),
-    ("Seu guincho ja foi aberto, protocolo 98765432. Pode confirmar a placa?", "nao_e_uma_pergunta_so"),
-    ("Você aceita pagar a franquia?", "dinheiro"),
-    ("O prestador chega em quanto tempo, você sabe?", "promessa"),
-    ("A URA travou: você pode repetir a placa?", "texto_para_a_equipe"),
-    ("O seu número é 98765432?", "numero_fora_do_caso"),
-    (f"O seu CPF termina em {CPF[-4:]}?", "numero_fora_do_caso"),   # pedaço do CPF ≠ número do caso
-    (f"O seu CPF é {CPF}?", ""),                                     # o número INTEIRO do caso
-])
-def test_X1_o_conferente_do_texto_ao_segurado(texto, porque):
-    s = sessao(REF_HDI, "guincho", slots={"titular_cpf": CPF})
-    assert DT.conferir_texto_ao_segurado(texto, s, TELA_PLACA) == porque
+    assert d.acao == "PERGUNTAR_AO_SEGURADO" and "Qual é a placa do seu carro?" not in d.valor, d
+    assert "placa do veículo" in d.valor and "a pergunta da seguradora" in d.valor, d.valor
+    assert not hasattr(DT, "conferir_texto_ao_segurado"), "o conferente do texto do modelo voltou"
 
 
 def test_X1_as_opcoes_irreversiveis_nunca_vao_ao_segurado():

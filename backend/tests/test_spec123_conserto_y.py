@@ -4,14 +4,15 @@
 Y1 (juiz B3 · red team B6) — `request_human_agent` (o `HumanHandoffTool._arun` REAL) lê as últimas falas do
    segurado em `messages` (a conversa achada por `company_id`) → `por_que_vai_direto_a_pessoa` (REAL) → o
    detector de pedido de pessoa do produto (`pos_acionamento.pediu_pessoa`, a MESMA régua do rótulo `P`) e o
-   de sinistro (`claims_shadow.detectar_sinistro`, estendido com o vocabulário que passava) → pessoa NA 1ª.
+   de sinistro (`claims_shadow.detectar_sinistro`, INTACTO desde 3200228) + o vocabulário que passava, que
+   (ajuste W · P-N2) vale SÓ na segunda chance (`human_handoff.sinistro_so_na_segunda_chance`) → pessoa NA 1ª.
 Y2 (juiz B4 · red team B5) — na RETOMADA, a tela "já existe pedido" só vira o protocolo do caso quando NOMEIA
    exatamente UM serviço que é o do caso (`_PALAVRAS_DE_SERVICO`, a tabela da conferência); e a retomada só é
    marcada "o anterior pode ter aberto" quando o "sim" da confirmação SAIU (o transcript, não a tela).
 
 Telas REAIS do acervo (`tests/corpus/telas_reais`, mascaradas). Dublê só na borda (banco, Redis, WhatsApp).
 🔴 MUTAÇÕES (rodadas uma vez, por cópia, cada uma → VERMELHO aqui): Y1(a) sem `pediu_pessoa` sobre as falas ·
-Y1(b) sem `_RE_EVENTO_NOMEADO`/vocabulário novo no detector · Y2(a) adotar sem conferir o serviço ·
+Y1(b) sem `sinistro_so_na_segunda_chance` na segunda chance · Y2(a) adotar sem conferir o serviço ·
 Y2(b) `anterior_pode_ter_aberto` volta a `conferencia or confirmacoes`.
 ⛔ Nenhum dado pessoal: telas mascaradas, números e ids inventados.
 """
@@ -102,13 +103,16 @@ def test_Y1_um_detector_so_o_rotulo_P_do_pos_acionamento_e_a_segunda_chance_conc
         assert not pediu_pessoa(fala), fala
 
 
-def test_Y1b_o_detector_de_sinistro_do_produto_abre_e_a_venda_continua_trancando():
+def test_Y1b_o_sinal_da_segunda_chance_mais_o_detector_do_produto_cobrem_o_sinistro_e_a_venda_tranca():
+    """Ajuste W (P-N2): o vocabulário novo NÃO está no detector do produto (o do resumo de sinistros);
+    ele vale só como sinal ADICIONAL da segunda chance. Juntos, os dois cobrem as falas de sinistro."""
+    from app.agents.tools.human_handoff import sinistro_so_na_segunda_chance
     from app.services.claims_shadow import detectar_sinistro
 
     for fala in SINISTRO:
-        assert detectar_sinistro(fala)[0], fala
+        assert detectar_sinistro(fala)[0] or sinistro_so_na_segunda_chance(fala), fala
     for fala in CONTROLE:
-        assert not detectar_sinistro(fala)[0], fala
+        assert not detectar_sinistro(fala)[0] and not sinistro_so_na_segunda_chance(fala), fala
 
 
 # ---------------------------------------------------------------- Y1 · O FIO (a ferramenta REAL + o banco)

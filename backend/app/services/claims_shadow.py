@@ -174,33 +174,7 @@ _RE_OCORRENCIA = re.compile(
     r"|foi (?:roubad|furtad|batid|abalroad|arrombad)\w*"
     r"|aconteceu um acidente"
     r"|bateram no meu"
-    # 🔴 SPEC-123 · conserto único (red team B6): o vocabulário do RESIDENCIAL e do
-    #    clima, sempre pelo VERBO ou pelo par evento+verbo — o substantivo solto
-    #    ("seguro contra enchente", "cobertura de raio") é venda, não ocorrência.
-    r"|alag(?:ou|aram)|inund(?:ou|aram)|destelh(?:ou|aram)"
-    r"|caiu (?:um )?raio|atingid\w* por (?:um )?raio"
-    r"|(?:tive|tivemos|houve|sofremos) (?:um|uma) "
-    r"(?:colisao|batida|enchente|alagamento|incendio|furto|roubo|assalto|vendaval)"
     r")\b|pegou fogo"
-    # raio / queda de energia / curto + o verbo do DANO (até 4 palavras entre eles).
-    # ⛔ `raio-x` não é raio: o lookahead fecha "o raio-x queimou o filme".
-    r"|\b(?:raio(?!-?\s?x\b)|queda de energia|pico de energia|oscilacao de energia"
-    r"|curto[- ]?circuito|sobrecarga)\W+(?:\w+\W+){0,4}?"
-    r"(?:queimou|queimaram|danificou|danificaram|estragou|estragaram|pifou|pifaram)\b"
-    # enchente / vendaval / temporal + o verbo do DANO. "previsão de vendaval amanhã" não abre.
-    r"|\b(?:enchente|vendaval|temporal|tempestade|granizo)\W+(?:\w+\W+){0,3}?"
-    r"(?:levou|levaram|alagou|invadiu|destelhou|derrubou|arrancou|quebrou|danificou"
-    r"|destruiu|entrou|atingiu|arrastou)\b"
-)
-
-#: 🔴 SPEC-123 · conserto único (red team B6) — o EVENTO NOMEADO: o substantivo que
-#: descreve o que JÁ aconteceu ("danos elétricos na geladeira", "quebrou em batida").
-#: ⚠️ Passa pela MESMA tranca de venda que `sinistro` (b): "quanto custa a cobertura
-#: de danos elétricos?" é venda. ⛔ `a batida do motor` não casa: exige o artigo/
-#: preposição do evento (`em|numa|uma|na|da batida`), e `colisao` idem.
-_RE_EVENTO_NOMEADO = re.compile(
-    r"\bdanos? eletric\w*"
-    r"|\b(?:em|numa|uma|na|da) (?:batida|colisao)\b"
 )
 
 #: 🔴 O VERBO DE ABERTURA — "abrir/acionar/comunicar/registrar/dar entrada" + sinistro.
@@ -303,7 +277,7 @@ def detectar_sinistro(texto: Any,
     if _RE_OCORRENCIA.search(alvo) or _bati_com_alvo(alvo):
         return True, CONFIANCA_MEDIA, MOTIVO_OCORRENCIA
 
-    if _RE_SINISTRO.search(alvo) or _RE_EVENTO_NOMEADO.search(alvo):
+    if _RE_SINISTRO.search(alvo):
         # "quero fazer uma cotação de sinistro" é venda; "abri um sinistro e queria
         # saber o preço da franquia" é sinistro. O que separa é o verbo de ABERTURA.
         if _RE_VENDA.search(alvo) and not _RE_ABERTURA.search(alvo):

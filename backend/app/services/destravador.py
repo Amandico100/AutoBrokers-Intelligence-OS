@@ -786,72 +786,157 @@ def _tela_tem_opcoes(tela: str) -> bool:
     return bool(IDS.opcoes_numeradas(str(tela or "")) or IDS._rotulos_da_tela(str(tela or "")))
 
 
+# ── W2b — a PERGUNTA da tela, sem o menu ─────────────────────────────────────────────────────────
+#: constante_justificada (o teto): 📊 01/10, `_pergunta_da_tela` sobre as 56 telas que chegam ao
+#: PERGUNTAR no `casos_d.jsonl`: a mais longa tem 95 caracteres, nenhuma cortada; sobre as 1.555 telas
+#: com pergunta do acervo `telas_reais/`: 7 cortadas (parágrafos de aviso, não perguntas). O corte é
+#: por PALAVRA, com "…" — nunca no meio dela.
+_TETO_DA_PERGUNTA = 160
+#: Onde uma frase acaba: pontuação + espaço, ou um emoji ("Aguarde um momento 🙂 Por favor, …").
+#: constante_justificada: o ":" acaba a frase porque é ele que separa o comando das opções quando o
+#: menu chega numa linha só ("Escolha a opção que melhor te atende: Para você …" — o defeito W2b).
+_RX_FIM_DE_FRASE = re.compile("(?<=[.!?:…])\\s+|\\s*[\U0001F300-\U0001FAFF☀-➿⬀-⯿️]+\\s*")
+#: constante_justificada: o itálico do WhatsApp (`_…_`) é a NOTA ao lado ("_Lembrando que se você está em uma Rodovia…_",
+#: "_Aguarde um instante…_"): vira frase própria e nunca é a pergunta. 📊 bradesco-007/008/009 do
+#: `casos_d.jsonl`: sem isso, a nota era escolhida no lugar de "…via local ou rodovia?".
+_RX_ITALICO = re.compile(r"(?:(?<=\s)|^)_|_(?=\s|$|[.!?:,;])")
+#: constante_justificada: a marca de MENU dentro de um texto corrido: "Botão 1:", "1 - ", "*2* - " e a navegação com
+#: maiúscula no meio da linha (" Voltar"). Case-sensitive de propósito: "digite *voltar*" é prosa.
+_RX_MARCA_DE_MENU = re.compile(
+    r"(?:^|\s)(?:Bot[ãa]o\s*\d{1,2}\s*:|\d{1,2}\s*[-–)]\s|(?:Voltar|Sair|Menu|Encerrar)(?=\s|$|[.!]))")
+#: constante_justificada: duas frases coladas sem pontuação ("…preciso que informe Qual o horário…", "…WhatsApp Web”
+#: Selecione abaixo…"): a pergunta começa na ÚLTIMA palavra de pergunta/comando com maiúscula.
+#: Só estas palavras — maiúscula solta no meio da frase é nome próprio ("qual Seguradora").
+_RX_INICIO_DE_PERGUNTA = re.compile(
+    r"(?<=\S)\s+(?=(?:Qual|Quais|Quanto|Quantos|Quantas|Quando|Onde|Como|Informe|Digite|Selecione|"
+    r"Escolha|Confirme|Me informe|Me diga|Por favor)\b)")
+#: constante_justificada: a frase-COMANDO (além de `_MARCA_DE_PERGUNTA`, que já tem informe/digite/qual/envie/me diga):
+#: os verbos de escolha que os menus medidos usam ("Escolha a opção…", "Selecione abaixo…",
+#: "confirme o veículo…", "preciso que selecione…").
+_RX_FRASE_COMANDO = re.compile(r"\b(?:escolha|selecione|seleciona|confirme|indique|responda)\b")
+#: constante_justificada: NÃO é a pergunta — a navegação ("Se quiser mudar de opção, digite voltar",
+#: "Clique no botão abaixo…"), a condição SEM "?" ("Se não houver, é só digitar não tem") e a frase
+#: que é SÓ saudação ("Olá, tudo bem?"). 📊 yelum-065/azul-049 do `casos_d.jsonl` e os menus da tokio:
+#: com elas, a pergunta copiada era a saudação, a condição ou o "clique". ⚠️ "Se for necessário,
+#: posso te ligar…?" e "Oi, você ainda está comigo?" SÃO perguntas (porto/azul/tokio no acervo).
+_RX_FRASE_QUE_NAO_E_PERGUNTA = re.compile(
+    r"^(?:se|caso)\b[^?]*$|^(?:clique|clica|toque)\b|"
+    r"^(?:ola|oi|bom dia|boa tarde|boa noite)\W*$|"
+    r"^(?:(?:ola|oi|bom dia|boa tarde|boa noite)\b[^?]{0,40}?)?\btudo (?:bem|certo|bom)\W*$|"
+    r"\b(?:digite|digita|digitar|envie|escreva|responda|clique)\b.{0,15}\b(?:voltar|sair|menu|encerrar|inicio)\b")
+
+
 def _pergunta_da_tela(tela: str) -> str:
-    linhas = [" ".join(l.replace("*", "").split()) for l in str(tela or "").splitlines()]
-    linhas = [l for l in linhas if l]
-    com = [l for l in linhas if "?" in l]
-    q = (com[-1] if com else (linhas[0] if linhas else "")).strip()
-    return q[:200]
+    """W2b — a PERGUNTA que a tela faz, SEM o menu: a frase com "?" (a última antes da 1ª opção,
+    que não seja saudação nem nota), senão a frase-COMANDO antes da 1ª opção ("Escolha a opção que
+    melhor te atende", "Selecione…", "Informe…", "Digite…"). Sem as opções, sem navegação, sem
+    markdown, inteira (≤ `_TETO_DA_PERGUNTA`, cortada por palavra). As OPÇÕES vão SEPARADAS
+    (`opcoes_de_conteudo` → o roteador as numera, uma por linha).
+
+    🔴 As linhas de opção saem pelos PARSERS do produto (`opcoes_numeradas`, `_rotulos_da_tela` — o
+    `parse_options` do Atlas), nunca por regex nova (§9.4). Na tela que chega numa linha só, o fim
+    de frase (":" "?" "." emoji) e a marca de menu ("Botão 1:", "1 - ", " Voltar") fazem o corte.
+    📊 O defeito: `"Escolha a opção que melhor te atende: Para você Seguros e serviços… Voltar
+    Escolha a opção… Segur"` — o menu inteiro, cortado aos 200."""
+    from app.services import insurer_dispatch_service as IDS
+
+    texto = str(tela or "")
+    rotulos = {IDS._norm_text(str(r)).strip(" .*:") for r in IDS._rotulos_da_tela(texto)}
+    rotulos |= {IDS._norm_text(str(r)).strip(" .*:") for _d, r in IDS.opcoes_numeradas(texto)}
+    rotulos.discard("")
+
+    def marca(frase: str) -> bool:
+        n = IDS._norm_text(frase)
+        return bool(re.search(IDS._MARCA_DE_PERGUNTA, n) or _RX_FRASE_COMANDO.search(n))
+
+    def linha_de_opcao(linha: str) -> bool:
+        crua = linha.replace("*", "").strip()
+        if re.match(r"^(?:Bot[ãa]o\s*\d{1,2}\s*:|\d{1,2}\s*[-–.)]\s)", crua):
+            return True
+        if "?" in crua or marca(crua):
+            return False
+        ln = IDS._norm_text(crua).strip(" .*:")
+        return any(r and r in ln and len(ln) <= len(r) + 14 for r in rotulos)
+
+    def e_menu(frase: str) -> bool:
+        """Dois ou mais rótulos do menu que ocupam a maior parte da frase: é o menu corrido, não
+        uma pergunta que os cita ("…numa via local ou rodovia?", "É reparo ou instalação?")."""
+        if "?" in frase:
+            return False
+        n = IDS._norm_text(frase).strip(" .*:")
+        achados = [r for r in rotulos if len(r) >= 3 and re.search(rf"(?<!\w){re.escape(r)}(?!\w)", n)]
+        return len(achados) >= 2 and sum(map(len, achados)) * 2 >= len(n)
+
+    # ① as frases ANTES da 1ª opção (o menu e o que vem depois dele — repetição, erro — ficam fora)
+    frases: List[Tuple[str, bool]] = []          # (frase, é nota em itálico)
+    acabou = False
+    for linha in texto.replace("*", "").splitlines():
+        if not linha.strip():
+            continue
+        if linha_de_opcao(linha):
+            break
+        trechos = _RX_ITALICO.split(linha)
+        for i, trecho in enumerate(trechos):
+            italico = i % 2 == 1 and i < len(trechos) - 1   # `_` sem par (um link) não é nota
+            for pedaco in _RX_FIM_DE_FRASE.split(trecho):
+                m = _RX_MARCA_DE_MENU.search(pedaco)
+                if m:   # o menu começou no meio do texto corrido: fica só o que veio antes dele
+                    pedaco, acabou = pedaco[:m.start()], True
+                p = " ".join(pedaco.split()).strip(" _")
+                if p and p not in [f for f, _i in frases]:
+                    frases.append((p, italico))
+                if acabou:
+                    break
+            if acabou:
+                break
+        if acabou:
+            break
+    # ② a frase que é a PERGUNTA — nunca saudação, condição, nota em itálico nem o menu corrido
+    boas = [f for f, italico in frases
+            if not italico and not e_menu(f)
+            and not _RX_FRASE_QUE_NAO_E_PERGUNTA.search(IDS._norm_text(f).strip(" .:"))]
+    perguntas = [f for f in boas if "?" in f]
+    comandos = [f for f in boas if marca(f)]
+    abre_lista = [f for f in boas if f.endswith(":")]   # "Os horários que eu tenho são:"
+    if perguntas:
+        q = perguntas[-1]
+    elif comandos:
+        # com o menu reconhecido pelo parser, as frases já pararam na 1ª opção: a última é a mais
+        # perto dela. Sem ele (o menu corrido numa linha só), o comando que ABRE a tela vem antes.
+        q = comandos[0] if not rotulos and "\n" not in texto.strip() else comandos[-1]
+    elif abre_lista:
+        q = abre_lista[-1]
+    else:
+        # sem pergunta nem comando: a última frase — salvo o menu corrido que o parser não leu
+        # (o que sobrou ali é rótulo, não pergunta; melhor a frase do produto que um rótulo).
+        corrido = not rotulos and (acabou or len(frases) > 1) and "\n" not in texto.strip()
+        q = boas[-1] if boas and not corrido else ""
+    q = _RX_INICIO_DE_PERGUNTA.split(q)[-1] if marca(q) else q
+    q = q.rstrip(" :;,-–")
+    if len(q) > _TETO_DA_PERGUNTA:
+        q = q[:_TETO_DA_PERGUNTA].rsplit(" ", 1)[0].rstrip(" ,;:-–") + "…"
+    return q
 
 
 def _pergunta_ao_segurado(tela: str, opcoes: List[List[str]]) -> str:
     q = _pergunta_da_tela(tela)
+    if not q:
+        return ("A seguradora precisa de uma resposta sua para seguir — "
+                + ("qual destas opções vale para você?" if opcoes else "pode me dizer o que ela pediu?"))
     if opcoes:
         return f"A seguradora está perguntando: “{q}” — qual destas opções vale para você?"
     return f"A seguradora está perguntando: “{q}” — pode me responder?"
 
 
-# ── X1 · o CONFERENTE do texto que o modelo escreve ao segurado ────────────────────────────────
-#: constante_justificada: dinheiro, pagamento e dado de cartão — 📊 juiz A1b ("taxa de R$ 350,00 a
-#: pagar via PIX"), red team perg.py ("número do seu cartão de crédito e o código de segurança",
-#: "aceita pagar a franquia de R$ 2.000?"). Nada disto sai da boca do agente ao segurado.
-_RX_DINHEIRO_AO_SEGURADO = re.compile(
-    r"r\$|\breais\b|\bpag|\bpix\b|\bcartao\b|\bcredito\b|\bdebito\b|\bboleto\b|\bcobr|\btaxa|"
-    r"\bcust[oa]|\bcustar|\bfranquia|\bvalor\b|\bdinheiro\b|\bparticipac|\bdeposit|\bsenha\b|"
-    r"\bcodigo de seguranca\b|\bcvv\b|\bexcedente\b")
-#: constante_justificada: a PROMESSA que só a seguradora faz — 📊 juiz A1a ("já foi aberto, protocolo
-#: …"), A1c ("foi cancelado … abrir um sinistro?"), A1d ("está garantido; chega em 20 minutos").
-_RX_PROMESSA_AO_SEGURADO = re.compile(
-    r"\bcancel|\bprotocolo|\bcobert|\bcobre\b|\bgarant|\bsinistro|\bindeniz|\baprovad|\bautorizad|"
-    r"\bchega(?:ra|rao|m)?\b|\bminutos?\b|\bhoras?\b|\bprazo\b|\bfoi abert|\bja foi\b|\bdesist")
-#: constante_justificada: texto que é para a EQUIPE, não para o segurado — 📊 red team perg.py
-#: "Equipe: a URA travou no resumo, alguém precisa conferir a origem manualmente".
-_RX_PARA_A_EQUIPE = re.compile(
-    r"\bequipe\b|\bura\b|\btrav|\bmanualmente\b|\balguem precisa\b|\brobo\b|\bsistema\b|\bjson\b|"
-    r"\bslot\b|\bdestravador\b|\bprompt\b|\batendente\b|\boperador\b|\bo segurado\b|\ba segurada\b|"
-    r"\bo cliente\b|\bdossie\b|\bconferente\b")
-#: constante_justificada: UMA pergunta curta — 200 caracteres, como a linha da tela que se cita.
-_TETO_DA_PERGUNTA_DO_MODELO = 200
-
-
-def conferir_texto_ao_segurado(texto: Any, sessao: Dict[str, Any], tela: str = "") -> str:
-    """O conferente ESTRITO do texto do modelo antes de ele chegar ao segurado (X1). Devolve o
-    porquê da recusa, ou "" (passa). UMA pergunta curta, em 2ª pessoa, sem número que não esteja
-    no caso nem na tela, sem dinheiro/pagamento, sem promessa (protocolo, prazo, cobertura,
-    cancelamento) e sem texto para a equipe. Recusado → a pergunta é a da TELA, composta pelo código."""
-    from app.services.insurer_dispatch_service import _norm_text
-
-    t = " ".join(str(texto or "").split())
-    if not t:
-        return "vazia"
-    if len(t) > _TETO_DA_PERGUNTA_DO_MODELO:
-        return "longa"
-    # UMA frase: termina em "?" e não tem outro fim de frase antes ("Está garantido; chega em 20
-    # minutos. Qual a placa?"). Os dois-pontos ficam: "Para quem é: para você ou outra pessoa?".
-    if not t.endswith("?") or t.count("?") != 1 or re.search(r"[.;!\n]", t[:-1]):
-        return "nao_e_uma_pergunta_so"
-    n = _norm_text(t)
-    if _RX_DINHEIRO_AO_SEGURADO.search(n):
-        return "dinheiro"
-    if _RX_PROMESSA_AO_SEGURADO.search(n):
-        return "promessa"
-    if _RX_PARA_A_EQUIPE.search(n):
-        return "texto_para_a_equipe"
-    permitidos = _tokens_de_digitos(list((sessao.get("slots") or {}).values())
-                                    + list((sessao.get("captured") or {}).values()) + [tela])
-    if any(x not in permitidos for x in re.findall(r"\d+", t)):
-        return "numero_fora_do_caso"
-    return ""
+# ── X1 · ajuste W (P-N1) — o texto do MODELO nunca vai ao segurado ──────────────────────────────
+#: 🔴 Não há mais conferente do texto do modelo: a pergunta ao segurado é SEMPRE a composta pelo
+#: código (`_pergunta_composta`). constante_justificada (por que tirar o conferente, e não apertá-lo):
+#: 📊 laudo de confirmação da SPEC-123, P-N1 — o conferente (`conferir_texto_ao_segurado`) deixava
+#: passar "Ele esta no local agora?" (3ª pessoa), "O veiculo do segurado esta na garagem?" e
+#: "Clique em Continuar para seguir?" (navegação), e não sabia conferir se a pergunta era a da
+#: tela. Cada aperto (2ª pessoa, verbos de navegação, relação com a tela) é mais uma régua que
+#: erra em silêncio; a pergunta da TELA e a frase do produto para o slot já dizem o que a
+#: seguradora quer saber. O que o modelo quis perguntar fica só no DIÁRIO ("o modelo propôs").
 
 
 def _slots_do_passo(sessao: Dict[str, Any], tela: str,
@@ -877,12 +962,11 @@ def _slots_do_passo(sessao: Dict[str, Any], tela: str,
     return saida
 
 
-def _pergunta_composta(tela: str, conteudo: List[List[str]], sessao: Dict[str, Any],
-                       texto_do_modelo: str = "") -> str:
-    """X1 — a pergunta ao segurado, COMPOSTA PELO CÓDIGO: a frase do produto para o slot do passo
-    (`como_perguntar_ao_segurado`, 2ª pessoa) ou a pergunta da PRÓPRIA tela (+ as opções, que o
-    roteador acrescenta). O texto do modelo só entra se passar `conferir_texto_ao_segurado`; e então
-    vem com a pergunta da tela ao lado, para o segurado saber o que a seguradora perguntou."""
+def _pergunta_composta(tela: str, conteudo: List[List[str]], sessao: Dict[str, Any]) -> str:
+    """X1 · ajuste W — a pergunta ao segurado, SEMPRE COMPOSTA PELO CÓDIGO: a frase do produto para o
+    slot do passo (`como_perguntar_ao_segurado`, 2ª pessoa) ou a pergunta da PRÓPRIA tela (+ as
+    opções de conteúdo filtradas, que o roteador acrescenta). ⛔ O texto do modelo NÃO entra aqui —
+    nem limpo (P-N1): ele vai só ao diário, como "o modelo propôs" (`_registrar`)."""
     from app.services import corridor_playbooks as CP
 
     q = _pergunta_da_tela(tela)
@@ -894,13 +978,10 @@ def _pergunta_composta(tela: str, conteudo: List[List[str]], sessao: Dict[str, A
             molde = ""
         if molde:
             break
-    modelo = " ".join(str(texto_do_modelo or "").split())
-    if modelo and conferir_texto_ao_segurado(modelo, sessao, tela):
-        modelo = ""
-    if modelo:
-        return f"{modelo} (a pergunta da seguradora: “{q}”)"[:400]
     if molde and not conteudo:
-        return f"Me diga {molde}, por favor. (a pergunta da seguradora: “{q}”)"[:400]
+        if not q:
+            return f"Me diga {molde}, por favor."
+        return f"Me diga {molde}, por favor. (a pergunta da seguradora: “{q}”)"
     return _pergunta_ao_segurado(tela, conteudo)
 
 
@@ -1188,9 +1269,9 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
         return Destravamento(acao="PERGUNTAR_AO_SEGURADO", valor=pergunta[:400],
                              opcoes=conteudo if opcoes is None else opcoes, proibicao=porque, **base)
 
-    def perguntar_composta(porque: str, texto_do_modelo: str = "") -> Destravamento:
+    def perguntar_composta(porque: str) -> Destravamento:
         """🔴 X1 — a pergunta que o MODELO quis fazer (ou a que a régua do DEDUZIR rebaixou) sai
-        COMPOSTA PELO CÓDIGO (`_pergunta_composta`). E não sai quando a tela é irreversível (a
+        COMPOSTA PELO CÓDIGO (`_pergunta_composta`; o texto do modelo nunca entra). E não sai quando a tela é irreversível (a
         resposta do segurado executaria o NUNCA) nem quando o irreversível era TUDO o que a tela
         oferecia (sobrou nenhuma opção para ele escolher) — aí é uma pessoa."""
         if not ida:
@@ -1201,7 +1282,7 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
         if _tela_tem_opcoes(tela) and not conteudo:
             # só navegação e/ou o irreversível: não sobrou NADA que o segurado possa escolher
             return pessoa("nenhuma_opcao_para_o_segurado")
-        return perguntar(_pergunta_composta(tela, conteudo, sessao, texto_do_modelo), porque)
+        return perguntar(_pergunta_composta(tela, conteudo, sessao), porque)
 
     def rebaixar(porque: str) -> Destravamento:
         """DEDUZIR que não passou: pergunta ao segurado se a tela pergunta algo; senão pessoa."""
@@ -1303,9 +1384,9 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
 
     # ⑤ PERGUNTAR — 🔴 X1: o texto do modelo NUNCA vai cru ao segurado. A pergunta é composta
     #    pelo código (a da tela / a frase do produto para o slot do passo + as opções de conteúdo
-    #    filtradas); o texto do modelo só entra se passar `conferir_texto_ao_segurado`.
+    #    filtradas). Ajuste W (P-N1): o texto do modelo NUNCA entra — vai só ao diário.
     if p.acao == "PERGUNTAR_AO_SEGURADO":
-        return perguntar_composta("", texto_do_modelo=valor)
+        return perguntar_composta("")
 
     # ⑥ RESPONDER, por classe.
     classe = p.classe
@@ -1591,6 +1672,21 @@ def _frase_propria(*, seguradora: str, tela: str, classe: str, acao: str, valor:
     return f"A {nome} perguntou “{q}”. O agente {fez}{porque}" + (f" ({', '.join(extra)})." if extra else ".")
 
 
+#: O teto do `motivo` que o destravador manda ao diário (o diário mascara e corta em 400).
+_TETO_MOTIVO_NO_DIARIO = 300
+
+
+def motivo_no_diario(d: Destravamento) -> str:
+    """O `motivo` da linha do diário: o do modelo + `[proibição]` + — ajuste W (P-N1) — a pergunta
+    que o modelo PROPÔS ao segurado, que não foi ao segurado (a composta pelo código foi). É o único
+    lugar onde o texto livre do modelo fica; o diário mascara os dados do caso (`_mascarar`)."""
+    proposta = ""
+    if d.acao_do_modelo == "PERGUNTAR_AO_SEGURADO" and str(d.valor_do_modelo or "").strip():
+        proposta = f" [o modelo propôs: “{' '.join(str(d.valor_do_modelo).split())[:160]}”]"
+    base = d.motivo + (f" [{d.proibicao}]" if d.proibicao else "")
+    return base[:_TETO_MOTIVO_NO_DIARIO - len(proposta)] + proposta
+
+
 async def _registrar(company_id: str, sessao: Dict[str, Any], tela: str, d: Destravamento,
                      playbook: Dict[str, Any]) -> Optional[str]:
     """UMA linha no diário. Best-effort: sem o módulo (ainda) ou com falha, loga e segue."""
@@ -1621,7 +1717,7 @@ async def _registrar(company_id: str, sessao: Dict[str, Any], tela: str, d: Dest
             seguradora=seguradora, ramo=str(playbook.get("line_kind") or ""),
             rota=str(sessao.get("playbook_ref") or ""), servico=str(sessao.get("subservice") or ""),
             tela=str(tela or ""), classe=d.classe, acao=acao_diario, valor=d.valor, nota=d.nota,
-            limiar=d.limiar, motivo=(d.motivo + (f" [{d.proibicao}]" if d.proibicao else ""))[:300],
+            limiar=d.limiar, motivo=motivo_no_diario(d),
             explicacao_para_gente=frase, modelo=d.modelo, segunda_opiniao=d.segunda_opiniao,
             modo=d.modo, gatilho=d.gatilho or "cerebro",
             chave_idempotencia=chave_de_idempotencia(company_id, sessao, tela), sessao=sessao)

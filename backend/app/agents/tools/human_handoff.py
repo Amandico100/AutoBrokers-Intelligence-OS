@@ -1212,8 +1212,11 @@ def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
         relato = " ".join(p for p in [str(motivo or "")] + falas if p)
         # Juntos (o par "bati" + "carro" pode vir em duas falas) E cada um sozinho (a
         # tranca de venda de uma fala não pode calar o sinistro de outra).
-        if any(detectar_sinistro(t, ficha or None)[0]
-               for t in [relato, str(motivo or "")] + falas):
+        # O detector do PRODUTO (intacto desde 3200228) OU o sinal extra que só a segunda
+        # chance lê (`sinistro_so_na_segunda_chance` — o porquê está ao lado dele).
+        if (any(detectar_sinistro(t, ficha or None)[0]
+                for t in [relato, str(motivo or "")] + falas)
+                or any(sinistro_so_na_segunda_chance(t) for t in [str(motivo or "")] + falas)):
             # constante_justificada: D8 — "sinistro continua indo a pessoa"
             return "é sinistro, e sinistro sempre vai para uma pessoa"
     except Exception as exc:  # noqa: BLE001
@@ -1233,6 +1236,57 @@ def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
             if any(re.search(padrao, a) for a in alvos):
                 return frase
     return ""
+
+
+#: 🔴 SPEC-123 · ajuste W (P-N2) — o vocabulário de sinistro que SÓ A SEGUNDA CHANCE lê.
+#:
+#: constante_justificada: POR QUE AQUI, e NUNCA em `claims_shadow.detectar_sinistro`.
+#:   Aquele é o detector do PRODUTO: ele alimenta o resumo de sinistros da corretora
+#:   (`claims_shadow_digest`, pelo webhook), que lê TAMBÉM o texto da URA gravado como
+#:   `role=user` nos acionamentos. 📊 Com este vocabulário lá (conserto Y, 0fe9080),
+#:   "3 - Danos elétricos", "Caso tenha ocorrido uma batida, digite 2", "houve uma
+#:   colisão? 1-Sim" e "Assistência para danos elétricos…" viravam sinistro FALSO no
+#:   resumo (laudo de confirmação, P-N2). Aqui ele lê só o motivo do handoff e as falas
+#:   do SEGURADO, e errar é chamar uma pessoa sem a segunda chance — inofensivo; não
+#:   errar é o sinistro do residencial/clima ("alagou", "caiu um raio e queimou") ir a
+#:   uma pessoa na PRIMEIRA chamada (juiz B3 · red team B6).
+#:
+#: ⚠️ Escrito para o texto de `claims_shadow.normalizar` (sem acento, minúsculo — §9.4).
+#: ⛔ O substantivo solto ("seguro contra enchente", "cobertura de raio") é venda: o
+#:    evento só abre pelo VERBO ou pelo par evento+verbo de dano.
+_RE_OCORRENCIA_DA_SEGUNDA_CHANCE = re.compile(
+    r"\b(?:alag(?:ou|aram)|inund(?:ou|aram)|destelh(?:ou|aram)"
+    r"|caiu (?:um )?raio|atingid\w* por (?:um )?raio"
+    r"|(?:tive|tivemos|houve|sofremos) (?:um|uma) "
+    r"(?:colisao|batida|enchente|alagamento|incendio|furto|roubo|assalto|vendaval))\b"
+    # raio / queda de energia / curto + o verbo do DANO (até 4 palavras entre eles).
+    # ⛔ `raio-x` não é raio: o lookahead fecha "o raio-x queimou o filme".
+    r"|\b(?:raio(?!-?\s?x\b)|queda de energia|pico de energia|oscilacao de energia"
+    r"|curto[- ]?circuito|sobrecarga)\W+(?:\w+\W+){0,4}?"
+    r"(?:queimou|queimaram|danificou|danificaram|estragou|estragaram|pifou|pifaram)\b"
+    # enchente / vendaval / temporal + o verbo do DANO. "previsão de vendaval amanhã" não abre.
+    r"|\b(?:enchente|vendaval|temporal|tempestade|granizo)\W+(?:\w+\W+){0,3}?"
+    r"(?:levou|levaram|alagou|invadiu|destelhou|derrubou|arrancou|quebrou|danificou"
+    r"|destruiu|entrou|atingiu|arrastou)\b"
+)
+#: O EVENTO NOMEADO ("danos elétricos na geladeira", "quebrou em batida") — e a tranca de
+#: venda do produto (`tem_palavra_de_venda`): "quanto custa a cobertura de danos
+#: elétricos?" é venda. ⛔ `a batida do motor` não casa: exige o artigo/preposição do evento.
+_RE_EVENTO_NOMEADO_DA_SEGUNDA_CHANCE = re.compile(
+    r"\bdanos? eletric\w*|\b(?:em|numa|uma|na|da) (?:batida|colisao)\b")
+
+
+def sinistro_so_na_segunda_chance(texto: Any) -> bool:
+    """O sinal ADICIONAL de sinistro da segunda chance (ajuste W). Pura. Ver o porquê acima.
+    ⛔ Não é o detector do produto e não deve ser chamada fora de `por_que_vai_direto_a_pessoa`."""
+    from app.services.claims_shadow import normalizar, tem_palavra_de_venda
+
+    alvo = normalizar(texto)
+    if not alvo.strip():
+        return False
+    if _RE_OCORRENCIA_DA_SEGUNDA_CHANCE.search(alvo):
+        return True       # o VERBO de ocorrência vence a venda — a mesma ordem do produto
+    return bool(_RE_EVENTO_NOMEADO_DA_SEGUNDA_CHANCE.search(alvo)) and not tem_palavra_de_venda(alvo)
 
 
 #: Quantas falas do segurado a segunda chance lê — a MESMA janela de

@@ -135,7 +135,12 @@ def test_perguntar_ao_segurado_leva_a_pergunta_e_as_opcoes_de_conteudo():
     s = sessao(REF_HDI, "guincho")
     d = decidir(js(classe="perguntar_ao_segurado", acao="PERGUNTAR_AO_SEGURADO",
                    valor="Você está num lugar com pouca luz ou pouco movimento?", nota=60), s, TELA_RISCO_HDI)
-    assert d.acao == "PERGUNTAR_AO_SEGURADO" and d.valor.startswith("Você")
+    # §9.3 — a verdade mudou no ajuste W: o texto do MODELO não vai mais ao segurado (P-N1). A lição
+    # migra: a pergunta é a COMPOSTA pelo código, com a pergunta da própria tela — e só ela.
+    assert d.acao == "PERGUNTAR_AO_SEGURADO", d
+    assert d.valor == DT._pergunta_composta(TELA_RISCO_HDI, DT.opcoes_de_conteudo(TELA_RISCO_HDI), s), d.valor
+    assert "Você está num lugar" not in d.valor, d.valor
+    assert "situações de risco" in d.valor, d.valor
     rotulos = [o[1] for o in d.opcoes]
     assert "Rodovia" in rotulos and "Nenhuma das anteriores" in rotulos
     assert not [r for r in rotulos if r.lower().startswith("volta")], rotulos
