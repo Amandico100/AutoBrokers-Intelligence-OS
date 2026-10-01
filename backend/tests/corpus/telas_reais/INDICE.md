@@ -1,6 +1,6 @@
 # Corpus de telas reais — ÍNDICE
 
-> Gerado em **2026-09-29T23:21:15+00:00** · commit `62c9b87`
+> Gerado em **2026-10-01T00:59:37+00:00** · commit `80f1234`
 > 📊 `marcas_de_corretora()` = **8** (o CONTROLE da SPEC-084 §2.5.1.3 — se fosse 0, a geração teria rodado sem banco e o corpus **não estaria mascarado**)
 
 🔴 Este arquivo existe porque a SPEC-083 §7 proíbe pular em silêncio: *"truncar calado lê-se como 'cobrimos tudo'"*.
@@ -11,17 +11,17 @@
 |---|---:|---:|---|---:|---:|---:|---:|---:|
 | `alfa-auto.jsonl` | 121 | 37 | f25d07b1 665b5bad 0c085fc5 47c3a1d8 1b13140b fa39ff38 5872a774 406462dd | 8 | 5 | 4 | 3 | 0 |
 | `allianz-auto.jsonl` | 634 | 189 | 46e8e180 cea36de4 5d34bab2+1 cea36de4+1 b11fdfe0 d2edf0dd b60d9359 061c2960 4971b50b f94275d4 1e123686 dc6c0345 91291261+1 1eb1a682 d186210d 696c1712 d8208ce0 cd296ca3+2 38980e81 d6b1d83f 298e0c49 c6fff008 0aeaae0b 432614de e504c2d7 f1fe1650+1 5d34bab2 879eedb0 | 52 | 5 | 4 | 17 | 0 |
-| `allianz-residencial.jsonl` | 772 | 251 | 448c6aae 3d6a8467+1 287619f2 3d6a8467+2 920385e3 e70dfcaa aa2e0a68 c58a171a bb97ea04+1 3a895d36 96f220ca 2540f42f acc3e885 bf5fbbeb c63026a5 3db870e0+1 b40d7d09 eb7c521e 21610390 7c22675f 0591c1d1 9694992d e3a53c71 ed379849 be8e3f8d ac266899 96f220ca+1 bb6e16d4 eade0321+2 987572a4 382cbdb7 eade0321 7ac3c101 b2bf40e7 8ad1d251+2 a8e875fd c69826a2 5d7a1a35+1 5d7a1a35 44ff2017 2c32e8d9 5250ab35 f22b6d12 75d9671f+1 | 128 | 5 | 9 | 14 | 0 |
+| `allianz-residencial.jsonl` | 777 | 253 | 448c6aae 3d6a8467+1 287619f2 3d6a8467+2 920385e3 e70dfcaa aa2e0a68 c58a171a bb97ea04+1 3a895d36 96f220ca 2540f42f acc3e885 bf5fbbeb c63026a5 3db870e0+1 b40d7d09 eb7c521e 21610390 7c22675f 0591c1d1 9694992d e3a53c71 ed379849 be8e3f8d ac266899 96f220ca+1 bb6e16d4 eade0321+2 987572a4 382cbdb7 eade0321 7ac3c101 b2bf40e7 8ad1d251+2 a8e875fd c69826a2 5d7a1a35+1 5d7a1a35 44ff2017 b3d0cdb1+1 267eb82f acc39ae1+2 232d7eec | 130 | 5 | 9 | 14 | 0 |
 | `azul-auto.jsonl` | 382 | 110 | 4c821851 0189f34b fdec3edf b012d3cd 1cec8452 14398ee8 a1a6a0d4 6c5280df 2f0cd86a ab045fdd d70ced75 | 11 | 5 | 6 | 10 | 0 |
 | `bradesco-auto.jsonl` | 192 | 67 | bc2cfead 0d5284f3 72af1ae1 a10d095d 706df513 57149865 2c05415b c7b6d792 9daeeccb d557d3c7 8f7f1d68 b4e4ef95 | 15 | 5 | 4 | 4 | 0 |
-| `hdi-auto.jsonl` | 760 | 243 | 697abd09 3606a14f 3dc92fcf 68f511d9 bb5b0f11 2e6df205 21a53457 83d2b9e3 e476dc68 ea61eb64 4b2d0c2a 78b2de6f 2548c9c7 fa2ceb6f 27939047 334a4892 886066e5 71caf82f 4b2d0c2a+1 ddb41553 7e842aee 2bdccc04 d8b852de 17ccacad | 33 | 5 | 5 | 16 | 0 |
+| `hdi-auto.jsonl` | 755 | 240 | 697abd09 3606a14f 3dc92fcf 68f511d9 bb5b0f11 2e6df205 21a53457 83d2b9e3 e476dc68 ea61eb64 4b2d0c2a 78b2de6f 2548c9c7 fa2ceb6f 27939047 334a4892 886066e5 71caf82f 4b2d0c2a+1 ddb41553 7e842aee 2bdccc04 d8b852de 17ccacad | 33 | 5 | 5 | 16 | 0 |
 | `hdi-residencial.jsonl` | 190 | 63 | 0a7c24ef 61b96027 26c0546f a1ba53b9 13379965 1c8d0849 ed46a953 b638adcd 834cc238 | 9 | 5 | 5 | 2 | 0 |
 | `mapfre-auto.jsonl` | 114 | 37 | a68aa770 59055fb6 f6f2ec11 d857d4de b979f244 b03a6b30 | 22 | 5 | 4 | 0 | 0 |
 | `porto-auto.jsonl` | 863 | 254 | 9e043112 e3b1561f f4838bb3 c470d13d 67296ad9 4830574a d0d64bfc aef7e9d6 910b6295 d6f1f8d3 697561ab d801cbd8 ca755794 c5cafa8b ba772444 12203ed9 a9560e3a 51b2ed32 77983f63 193c5ad6+1 86f18930 e5318468 b1ff65f2 0c1e8e3e 1f2582fc 90a47771 cdcc7125 8c490e96 e17f4b74 | 67 | 5 | 8 | 20 | 0 |
 | `porto-residencial.jsonl` | 212 | 66 | 565cb39a 3854b4a2 5bcf0792 84187509 0fe42179 897c42ff 0e97bfa8 e3b9dfd6 4631b3ed | 9 | 5 | 5 | 4 | 0 |
 | `tokio-auto.jsonl` | 70 | 24 | c1a67b4a b7e75c66 d99a47a1 fa8127ef ca52ff75 641420c8 d8a81c33 | 7 | 5 | 5 | 0 | 0 |
 | `tokio-residencial.jsonl` | 52 | 19 | a89e0de2 8d9b8672 6bb9dd93 f8b83a35 e0383feb | 6 | 5 | 0 | 0 | 0 |
-| `yelum-auto.jsonl` | 1330 | 423 | 935c4076 8ac461dc 927d8cea ba475989 86769bd5 69816f6b f984d8f0 c0c3c694 4d5bd779 e8efabc0 39e395bb e6a07317 56bd78f7 259cf33b e97943bd 21243a23 a1c18e1c 8a0d25a4 c54f4a98 350492ce 9d2655e2 01bf91c2 6b4c37e4 b187d77a 74fa01a1 ba9f1970 29ae4344 0a1a616e 705f915b 7c841763 19d73270 75400aad a839a4cb 8a6040a7 8ce9f29d 159ccc43 b73ccd15 aa0f65bf 9e562ae5 859d185c | 64 | 5 | 6 | 27 | 0 |
+| `yelum-auto.jsonl` | 1330 | 422 | 935c4076 8ac461dc 927d8cea ba475989 86769bd5 69816f6b f984d8f0 c0c3c694 4d5bd779 e8efabc0 39e395bb e6a07317 56bd78f7 259cf33b e97943bd 21243a23 a1c18e1c 8a0d25a4 c54f4a98 350492ce 9d2655e2 01bf91c2 6b4c37e4 b187d77a 74fa01a1 ba9f1970 29ae4344 0a1a616e 705f915b 7c841763 19d73270 a839a4cb 30b3219e 8a6040a7 8ce9f29d 159ccc43 b73ccd15 aa0f65bf 9e562ae5 dc1a0808 | 62 | 5 | 6 | 27 | 0 |
 | `yelum-residencial.jsonl` | 186 | 63 | 9cb09e20 315f0681 bb573c0a 6376f868 01e31e80 70571f37 6a414121 81c8ba13 af3b817e | 9 | 5 | 5 | 4 | 0 |
 | `zurich-auto.jsonl` | 268 | 89 | 8e5fb8c0 9f7dbd91 c450c4c0 963f4097 4118ba36 e1349860 25d956a3 | 11 | 5 | 6 | 2 | 0 |
 
@@ -114,11 +114,11 @@
 - [telhado] diversidade (jaccard 0.00) -> 5d7a1a35+1
 - [telhado] diversidade (jaccard 0.80) -> 5d7a1a35
 - [(tronco)] COM DESFECHO -> 44ff2017
-- [(tronco)] diversidade (jaccard 0.00) -> 2c32e8d9
-- [(tronco)] diversidade (jaccard 0.12) -> 5250ab35
-- [(tronco)] diversidade (jaccard 0.18) -> f22b6d12
-- [(tronco)] diversidade (jaccard 0.25) -> 75d9671f+1
-- [(tronco)] AVISO: 66 sessao(oes) SEM desfecho fora do corpus pelo piso de 5 por rota
+- [(tronco)] diversidade (jaccard 0.00) -> b3d0cdb1+1
+- [(tronco)] diversidade (jaccard 0.00) -> 267eb82f
+- [(tronco)] diversidade (jaccard 0.22) -> acc39ae1+2
+- [(tronco)] diversidade (jaccard 0.23) -> 232d7eec
+- [(tronco)] AVISO: 68 sessao(oes) SEM desfecho fora do corpus pelo piso de 5 por rota
 
 **`azul-auto.jsonl`**
 - [bateria] COM DESFECHO -> 4c821851
@@ -290,17 +290,17 @@
 - [guincho] COM DESFECHO -> 705f915b
 - [guincho] COM DESFECHO -> 7c841763
 - [guincho] COM DESFECHO -> 19d73270
-- [guincho] diversidade (jaccard 0.02) -> 75400aad
 - [guincho] diversidade (jaccard 0.06) -> a839a4cb
-- [guincho] AVISO: 6 sessao(oes) SEM desfecho fora do corpus pelo piso de 5 por rota
+- [guincho] diversidade (jaccard 0.11) -> 30b3219e
+- [guincho] AVISO: 5 sessao(oes) SEM desfecho fora do corpus pelo piso de 5 por rota
 - [pneu] COM DESFECHO -> 8a6040a7
 - [pneu] COM DESFECHO -> 8ce9f29d
 - [(tronco)] diversidade (jaccard 0.00) -> 159ccc43
 - [(tronco)] diversidade (jaccard 0.00) -> b73ccd15
 - [(tronco)] diversidade (jaccard 0.00) -> aa0f65bf
 - [(tronco)] diversidade (jaccard 0.00) -> 9e562ae5
-- [(tronco)] diversidade (jaccard 0.03) -> 859d185c
-- [(tronco)] AVISO: 13 sessao(oes) SEM desfecho fora do corpus pelo piso de 5 por rota
+- [(tronco)] diversidade (jaccard 0.03) -> dc1a0808
+- [(tronco)] AVISO: 12 sessao(oes) SEM desfecho fora do corpus pelo piso de 5 por rota
 
 **`yelum-residencial.jsonl`**
 - [eletricista] COM DESFECHO -> 9cb09e20
@@ -337,15 +337,15 @@
 |  |  |  | a URA nunca mostrou menu de serviço nesta sessão | `5e866ea4` `f1fe1650+1` `e0efb326` | 0 |
 |  |  |  | 🔴 respondeu ao menu com um rótulo DESCONHECIDO: `voltar` | `879eedb0` | 0 |
 |  |  |  | consulta de pedido que já existia (Ver detalhes) — não abriu serviço | `5d34bab2` | 0 |
-| `allianz-residencial` | 57 | 71 | FUGA documentada (o menu de serviço vira transferência humana) | `2b6e8ed7` `deed99c3` `265e7ebe` `47c24632` `90951801` `b2946306` +24 | 0 |
-|  |  |  | transferência humana ANTES de a URA nomear o serviço | `471d582d` `1dc7b04d` `bf5fbbeb+1` `8ad1d251` `4fb97f66` `afda4452` +15 | 0 |
+| `allianz-residencial` | 57 | 73 | FUGA documentada (o menu de serviço vira transferência humana) | `2b6e8ed7` `deed99c3` `265e7ebe` `47c24632` `90951801` `b2946306` +24 | 0 |
+|  |  |  | transferência humana ANTES de a URA nomear o serviço | `471d582d` `1dc7b04d` `bf5fbbeb+1` `8ad1d251` `4fb97f66` `afda4452` +17 | 0 |
 |  |  |  | consulta de pedido que já existia (Ver detalhes) — não abriu serviço | `8ad1d251+1` `88eb97a9` `75d9671f+1` `267eb82f` `6d6164de+2` `994cddc3+1` +8 | 0 |
 |  |  |  | a URA nunca mostrou menu de serviço nesta sessão | `f22b6d12` `44ff2017` `5250ab35` `acc39ae1+2` | 1 |
 |  |  |  | 🔴 respondeu ao menu com um rótulo DESCONHECIDO: `sair` | `232d7eec` `3db870e0+2` | 0 |
 | `bradesco-auto` | 7 | 8 | a URA entregou LINK — nunca nomeou serviço executado | `100ef852` `9daeeccb` `b4e4ef95` `49f67108` `8f7f1d68` `c7b6d792` | 0 |
 |  |  |  | escolheu no menu um assunto que a tabela marca None: `7` | `1401fad2` `d557d3c7` | 0 |
 | `hdi-auto` | 20 | 13 | a URA nunca mostrou menu de serviço nesta sessão | `8e521364` `db8486c4` `23c9c929` `0c74b0f4` `794a9d2c` `638862ed` +6 | 0 |
-|  |  |  | transferência humana ANTES de a URA nomear o serviço | `d802ab56` | 0 |
+|  |  |  | consulta de pedido que já existia (Ver detalhes) — não abriu serviço | `d802ab56` | 0 |
 | `hdi-residencial` | 4 | 5 | pediu um APARELHO pelo menu do Eletricista — as telas são de outro caminho | `1c8d0849` `834cc238` `ed46a953` `b638adcd` | 0 |
 |  |  |  | exploração: respondeu ao menu com 2+ serviços e saiu (sair) | `13379965` | 0 |
 | `mapfre-auto` | 1 | 21 | escolheu no menu um assunto que a tabela marca None: `pagamento` | `b9efe2dc` `c0da4aaa` `909961f4` `c0b7dab5` `c0b7dab5+1` `2c1c86ff` +9 | 0 |
@@ -360,9 +360,8 @@
 |  |  |  | 🔴 respondeu ao menu com um rótulo DESCONHECIDO: `mais servicos` | `e3b9dfd6` | 0 |
 | `tokio-auto` | 5 | 2 | escolheu no menu um assunto que a tabela marca None: `informacoes sinistro` | `d8a81c33` `641420c8` | 0 |
 | `tokio-residencial` | 0 | 6 | a URA entregou LINK — nunca nomeou serviço executado | `8d9b8672` `f8b83a35` `e0383feb` `66c9dd9b` `6bb9dd93` `a89e0de2` | 0 |
-| `yelum-auto` | 46 | 18 | a URA nunca mostrou menu de serviço nesta sessão | `b600a42a` `6a7af05e` `9e562ae5` `0ca16eaa` `e165e51f` `cf0101bf` +3 | 0 |
+| `yelum-auto` | 45 | 17 | a URA nunca mostrou menu de serviço nesta sessão | `b600a42a` `6a7af05e` `9e562ae5` `0ca16eaa` `e165e51f` `cf0101bf` +3 | 0 |
 |  |  |  | a URA entregou LINK — nunca nomeou serviço executado | `db2270c8` `45a9eaae` `aa0f65bf` `1686352e` `e4c5867e` `e3d0e96f` +2 | 0 |
-|  |  |  | transferência humana ANTES de a URA nomear o serviço | `859d185c` | 0 |
 | `yelum-residencial` | 8 | 1 | 🔴 respondeu ao menu com um rótulo DESCONHECIDO: `voltar` | `af3b817e` | 0 |
 | `zurich-auto` | 2 | 9 | escolheu no menu um assunto que a tabela marca None: `sinistro` | `963f4097` `d5ce1862` `c450c4c0` | 0 |
 |  |  |  | escolheu no menu um assunto que a tabela marca None: `assistencia 24h` | `25d956a3` `e3f78f3d` | 0 |
@@ -379,14 +378,14 @@ _nenhuma_
 | seguradora | CONSULTA_atendimentos | CONSULTA_telas_fora | FALA_DE_GENTE | FORA_DE_ESCOPO:condominio | ORFAO_sessao | apresentacao_mascarada | dedup | endereco_mascarado | nivel:- | nivel:colisao | nivel:nivel-1-resposta | nivel:nivel-2-texto | nivel:sem-escolha-de-ramo | nome_da_sessao_mascarado | ramo:ambos | ramo:auto | ramo:condominio | ramo:indefinido | ramo:residencial | ramo:sem_escolha | senha_preservada | servico:indefinido | servico:nivel | vocativo_mascarado | zona:HUMANO | zona:URA |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | alfa | 0 | 0 | 0 | 0 | 0 | 0 | 30 | 2 | 1 | 0 | 0 | 8 | 0 | 0 | 0 | 8 | 0 | 1 | 0 | 0 | 3 | 3 | 5 | 0 | 0 | 151 |
-| allianz | 25 | 211 | 1 | 0 | 1 | 0 | 1524 | 83 | 19 | 1 | 172 | 8 | 0 | 3 | 1 | 52 | 0 | 19 | 128 | 0 | 40 | 80 | 100 | 0 | 3727 | 4208 |
+| allianz | 25 | 211 | 1 | 0 | 1 | 0 | 1525 | 83 | 19 | 1 | 174 | 8 | 0 | 3 | 1 | 52 | 0 | 19 | 130 | 0 | 40 | 82 | 100 | 0 | 3754 | 4224 |
 | azul | 0 | 0 | 0 | 0 | 0 | 0 | 68 | 1 | 3 | 0 | 0 | 11 | 5 | 0 | 0 | 11 | 0 | 3 | 0 | 5 | 9 | 0 | 11 | 28 | 22 | 450 |
 | bradesco | 0 | 0 | 0 | 0 | 0 | 0 | 19 | 3 | 15 | 0 | 0 | 15 | 0 | 0 | 0 | 15 | 0 | 15 | 0 | 0 | 0 | 8 | 7 | 2 | 0 | 227 |
-| hdi | 0 | 0 | 0 | 0 | 1 | 1 | 241 | 7 | 9 | 1 | 9 | 33 | 0 | 46 | 1 | 33 | 0 | 9 | 9 | 0 | 33 | 18 | 24 | 43 | 394 | 1258 |
+| hdi | 4 | 7 | 0 | 0 | 1 | 1 | 241 | 7 | 9 | 1 | 9 | 33 | 0 | 46 | 1 | 33 | 0 | 9 | 9 | 0 | 33 | 18 | 24 | 40 | 394 | 1251 |
 | mapfre | 0 | 0 | 0 | 0 | 1 | 0 | 130 | 0 | 17 | 0 | 0 | 22 | 0 | 0 | 0 | 22 | 0 | 17 | 0 | 0 | 0 | 21 | 1 | 0 | 205 | 552 |
 | porto | 0 | 0 | 0 | 0 | 1 | 1 | 532 | 5 | 55 | 0 | 32 | 44 | 16 | 3 | 0 | 67 | 0 | 55 | 9 | 16 | 24 | 35 | 41 | 104 | 347 | 1918 |
 | tokio | 0 | 0 | 0 | 2 | 1 | 0 | 87 | 0 | 48 | 0 | 0 | 15 | 0 | 0 | 0 | 7 | 2 | 48 | 6 | 0 | 0 | 8 | 5 | 0 | 0 | 218 |
-| yelum | 0 | 0 | 0 | 0 | 1 | 2 | 470 | 14 | 45 | 0 | 34 | 39 | 1 | 64 | 0 | 64 | 0 | 45 | 9 | 1 | 53 | 19 | 54 | 55 | 435 | 2259 |
+| yelum | 5 | 7 | 0 | 0 | 1 | 2 | 466 | 14 | 47 | 0 | 34 | 37 | 1 | 62 | 0 | 62 | 0 | 47 | 9 | 1 | 53 | 18 | 53 | 53 | 386 | 2236 |
 | zurich | 0 | 0 | 0 | 0 | 1 | 0 | 69 | 0 | 4 | 0 | 0 | 11 | 0 | 0 | 0 | 11 | 0 | 4 | 0 | 0 | 2 | 9 | 2 | 0 | 41 | 398 |
 
 ## Avisos

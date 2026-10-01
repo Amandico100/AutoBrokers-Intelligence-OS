@@ -474,10 +474,22 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             "requires": ["titular_cpf"],
         },
         {
+            # 🔴 SPEC-123 F6 · O CABEÇALHO NÃO É A LISTA — e o "1" dele era às cegas.
+            #    📊 A URA manda DUAS bolhas: "Por favor, confirme o endereço para
+            #    atendimento:" e, 1–2 s depois, a lista ("*1 -* <end.> *2 -* Voltar
+            #    *3 -* Sair", ou VÁRIOS endereços: 21610390, 96f220ca, 96f220ca+1,
+            #    f22b6d12). O motor lê bolha a bolha: este passo mandava "1" ANTES de
+            #    a lista chegar — a URA o aplicava à lista (o 1º endereço, qualquer
+            #    que fosse) e o `escolher_endereco_da_lista` mandava um SEGUNDO "1"
+            #    (📊 30/09, `handle_insurer_message` sobre as duas telas reais: duas
+            #    respostas para uma pergunta). Quem responde agora é o passo da
+            #    LISTA: um endereço → `escolher_endereco_da_lista`; vários →
+            #    `escolher_endereco_do_caso` (o do caso, ou ninguém chuta).
             "step": "confirmar_endereco",
             "anchor": r"confirme o endere[çc]o para atendimento",
-            "reply": "1",
-            "notes": "Opção 1 = endereço da apólice. Divergência de endereço → handoff.",
+            "reply": "", "noop": True,
+            "notes": "Cabeçalho da lista de endereços — calado; a lista vem na bolha "
+                     "seguinte e é ela que se responde (SPEC-123 F6).",
         },
         {
             # 🔴 A ÂNCORA NUNCA CASOU. NEM UMA VEZ — 21/08/2026.
@@ -8581,6 +8593,16 @@ PORTO_AUTO_WHATSAPP_V1["ura_steps"] = (
     list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [dict(p) for p in _PORTO_AUTO_FOLHAS]
 )
 
+#: 🔴 SPEC-123 F6 · UMA LINHA DE OPÇÃO QUE É ENDEREÇO (sobre o `_norm`: sem `*`,
+#: sem acento, minúsculo). Três formas, e cada uma é medida:
+#:   `{endereco}`        o acervo versionado (o mascarador troca o endereço inteiro)
+#:   tem `#`             a própria Allianz mascara (📊 96f220ca: "av ### ##augott…")
+#:   `…, … - uf`         o endereço em claro termina na UF (📊 f22b6d12: "… - sc")
+#: ⛔ `voltar`/`sair` nunca são endereço — o controle do teste prova a lista de UM
+#:    endereço (`2 - voltar`) fora desta âncora.
+_OPCAO_DE_ENDERECO = (r"(?!voltar\b|sair\b)(?:[^\n]*\{endereco\}[^\n]*|[^\n]*#[^\n]*"
+                      r"|[^\n]*,[^\n]*-\s*[a-z]{2})")
+
 # ==========================================================================
 # BLOCO 3 · ALLIANZ residencial — as folhas (encanador 18 · eletricista 13)
 # ==========================================================================
@@ -8750,6 +8772,29 @@ _ALLIANZ_RESID_FOLHAS = [
      "reply": "", "noop": True,
      "notes": "📊 É o DESFECHO. Quem lê o número é `capture_anchors.protocol`; o "
               "passo existe para o motor ficar calado enquanto a captura acontece."},
+
+    # ---- 🔴 SPEC-123 F6 · A LISTA COM VÁRIOS ENDEREÇOS, PELO ENDEREÇO DO CASO --
+    # 📊 21610390, 96f220ca, 96f220ca+1, f22b6d12: "*1 -* <end.> *2 -* <end.>
+    #    *3 -* <end.> *4 -* Voltar *5 -* Sair". A Allianz MASCARA o endereço
+    #    caractere a caractere ("AV ### ##AUGOTT #####, ### - APTO 101 -
+    #    ####IANÓP#### - SC"); o formato compara o que ficou VISÍVEL com o
+    #    endereço do caso (`bate_com_mascara` por palavra, a mesma regra da placa).
+    #    UM endereço casa → a tecla dele. Nenhum, ou mais de um (96f220ca e
+    #    f22b6d12 têm opções com a MESMA parte visível) → `sem_chute`: o
+    #    destravador/pergunta ao segurado assume. ⛔ Nunca a posição.
+    # ⚠️ Vem ANTES de `escolher_entre_dois_enderecos`, que casa a mesma tela em
+    #    produção (o endereço real começa com AV/R.) e mandava ao cérebro.
+    {"step": "escolher_endereco_do_caso",
+     "anchor": (r"(?:^|\n)\s*1\s*-\s*" + _OPCAO_DE_ENDERECO + r"\s*\n\s*2\s*-\s*"
+                + _OPCAO_DE_ENDERECO + r"[\s\S]{0,700}?\bvoltar\b[\s\S]{0,60}\bsair\b"),
+     # ⚠️ SEM `requires`, como o `escolher_entre_dois_enderecos` abaixo: o caso
+     #    residencial não coleta `local_atual` antes de acionar (o endereço é o da
+     #    apólice). Faltou → `render_reply` devolve `missing: local_atual` e o
+     #    `sem_chute` leva ao segurado/pessoa — nunca a posição.
+     "reply": "{local_atual}",
+     "format": "endereco_do_caso_na_lista", "sem_chute": True, "classe": "decide",
+     "notes": "📊 4 sessões. A tecla do endereço DO CASO, lida na tela; sem casar "
+              "um só → sem_chute. Ver `_endereco_do_caso_na_lista`."},
 
     # ---- 🔴 A LISTA COM MAIS DE UM ENDEREÇO -------------------------------
     # ⚠️ O `escolher_endereco_da_lista` do BLOCO 1 exige `2 - Voltar 3 - Sair`.
@@ -15124,3 +15169,240 @@ _FORMATOS_QUE_LEEM_A_TELA = _FORMATOS_QUE_LEEM_A_TELA | {"via_ou_rodovia_na_tela
 for _p_s122 in BRADESCO_AUTO_WHATSAPP_V1["ura_steps"]:
     if _p_s122.get("step") == "via_local_rodovia":
         _p_s122["format"] = "via_ou_rodovia_na_tela"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-123 F6 · AS ROTAS — guincho da Yelum, a lista de endereços da Allianz,
+#    as telas de "continuar" e a pergunta ao segurado em 2ª pessoa
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ---- (1) YELUM/HDI · A ASSISTÊNCIA ABERTA NAS ÚLTIMAS 72 h ---------------------
+# 📊 yelum 75400aad (28/04): a placa já tinha um guincho da véspera. A URA NÃO
+#    oferece abertura: pede o identificador e lista as solicitações ABERTAS
+#    ("GUINCHO · MTA - MEIO DE TRANSPORTE"). A corretora respondeu a placa e
+#    "GUINCHO"; a tela seguinte ("A solicitação de *GUINCHO* está concluída…")
+#    já é gatilho de handoff (SPEC-120) — e foi uma PESSOA da seguradora quem
+#    abriu o guincho novo. ⛔ O corredor nunca abre duplicado (D-120-F): ele
+#    leva o caso, pelo caminho da própria URA, até a pessoa.
+#    Antes: 2 telas ÓRFÃS em yelum/auto/guincho — a única causa de a rota não
+#    atender sozinha (`simular_corredor.py --todas`, 30/09).
+def _solicitacao_do_caso_na_lista(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """O rótulo da solicitação ABERTA que é do serviço do caso, como a tela o
+    escreve. Nenhum, ou mais de um com o mesmo nome → `None` (sem_chute)."""
+    alvo = _texto_normal(valor)
+    if not alvo:
+        return None
+    iguais = [r for _k, r in opcoes_da_tela(tela or "") if _texto_normal(r) == alvo]
+    return iguais[0].strip() if len(iguais) == 1 else None
+
+
+_FORMATOS_DA_RESPOSTA["solicitacao_do_caso_na_lista"] = _solicitacao_do_caso_na_lista
+_FORMATOS_QUE_LEEM_A_TELA = _FORMATOS_QUE_LEEM_A_TELA | {"solicitacao_do_caso_na_lista"}
+_O_QUE_FALTA_QUANDO_O_FORMATO_NAO_RESOLVE["solicitacao_do_caso_na_lista"] = "assistencia_aberta_opcao"
+
+_SPEC123_ACOMPANHAMENTO_FAMILIA = [
+    {"step": "acompanhar_identificacao",
+     "anchor": (r"para seguir,? por favor,? me informe o n[úu]mero da sua assist[êe]ncia,?"
+                r"\s*placa\s*ou\s*cpf"),
+     "reply": "{veiculo_placa}", "requires": ["veiculo_placa"],
+     "format": "identificador_do_caso", "classe": "conduz",
+     "notes": "📊 yelum 75400aad: a URA aceita nº da assistência, placa OU CPF; o "
+              "humano mandou a placa e a tela seguinte (a lista das 72 h) prova que "
+              "ela foi aceita. Eco de um dado que o caso JÁ TEM."},
+    {"step": "acompanhar_qual_solicitacao",
+     "anchor": (r"identifiquei que a assist[êe]ncia .{0,40}foi aberta dentro das "
+                r"[úu]ltimas 72\s*h[\s\S]{0,60}sobre qual solicita[çc][ãa]o"),
+     "reply": "{assistencia_aberta_opcao}", "requires": ["assistencia_aberta_opcao"],
+     "format": "solicitacao_do_caso_na_lista", "sem_chute": True, "classe": "decide",
+     "constante_justificada": (
+         "`GUINCHO` x `MTA - MEIO DE TRANSPORTE` (📊 yelum 75400aad): a tela só lista "
+         "solicitações JÁ ABERTAS — nenhuma opção abre serviço novo. O corredor escolhe "
+         "a do MESMO serviço do caso (`assistencia_aberta_opcao`, declarado por "
+         "subserviço: guincho → `GUINCHO`, o rótulo que a tela escreve) e a URA segue "
+         "para 'A solicitação de GUINCHO está concluída', que é handoff — foi assim que "
+         "o guincho novo foi aberto, por uma pessoa. O serviço do caso fora da lista, "
+         "ou duas linhas iguais → sem_chute: ninguém escolhe a solicitação de outro."),
+     "notes": "📊 1 tela / 1 sessão (yelum 75400aad). A tela seguinte prova: "
+              "'A solicitação de *GUINCHO* está concluída'."},
+]
+for _pb123 in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1):
+    _pb123["ura_steps"] = list(_pb123["ura_steps"]) + [dict(p) for p in _SPEC123_ACOMPANHAMENTO_FAMILIA]
+    _g123 = (_pb123.get("subservices") or {}).get("guincho")
+    if _g123 is not None:
+        # 📊 o rótulo literal da linha na tela real (yelum 75400aad). Só o guincho
+        #    tem evidência; os outros serviços ficam sem — e caem no sem_chute.
+        _g123["assistencia_aberta_opcao"] = "GUINCHO"
+
+
+# ---- (2) ALLIANZ RESIDENCIAL · O ENDEREÇO DO CASO NA LISTA DE VÁRIOS ----------
+#: Palavras que não identificam um endereço: tipo de logradouro, unidade, UF.
+_RX_RUIDO_NA_LISTA_DE_ENDERECOS = re.compile(
+    r"^(?:r|rua|av|avda|avenida|al|alameda|rod|rodovia|tv|trav|travessa|es|estr|estrada|"
+    r"pc|praca|vl|via|apto|apt|ap|apartamento|bl|bloco|casa|cs|sala|sl|loja|lj|andar|"
+    r"cond|condominio|lote|lt|qd|quadra|km|n|no|[a-z]{1,2})$")
+
+
+def _palavras_de_endereco(texto: str) -> List[str]:
+    t = re.sub(r"\{[a-z_]+\}", " ", _norm(str(texto or "")))
+    return [p for p in re.split(r"[^a-z0-9#]+", t) if p]
+
+
+def _endereco_do_caso_na_lista(valor: str, slots: Dict[str, Any], tela: str) -> Optional[str]:
+    """A tecla do endereço DO CASO numa lista de VÁRIOS endereços — ou `None`.
+
+    Cada palavra da opção que ainda diz alguma coisa depois da máscara da URA
+    (`#` = um caractere escondido, a regra de `bate_com_mascara`) tem de existir
+    no endereço do caso; número visível (o do apartamento) tem de ser IGUAL.
+    ```
+    casa  = ≥ 2 palavras informativas batem, nenhuma diverge
+    tecla = a ÚNICA opção que casa, e com mais palavras que qualquer outra
+    ```
+    Nenhuma, empate (📊 96f220ca e f22b6d12 têm opções com a MESMA parte
+    visível) ou endereço do caso vazio → `None` → `sem_chute`.
+    """
+    do_caso = " ".join(str(x or "") for x in (
+        valor, (slots or {}).get("endereco_numero"), (slots or {}).get("local_complemento")))
+    palavras_caso = set(_palavras_de_endereco(do_caso))
+    digitos_caso = {p.lstrip("0") for p in palavras_caso if p.isdigit()}
+    if not palavras_caso:
+        return None
+    placar: List[Tuple[int, bool, str]] = []
+    for tecla, rotulo in opcoes_da_tela(tela or ""):
+        if not tecla or rotulo_e_de_navegacao(rotulo):
+            continue
+        bate, diverge = 0, False
+        for p in _palavras_de_endereco(rotulo):
+            visivel = p.replace("#", "")
+            if p.isdigit():
+                if p.lstrip("0") in digitos_caso:
+                    bate += 1
+                else:
+                    diverge = True
+                continue
+            if len(visivel) < 3 or _RX_RUIDO_NA_LISTA_DE_ENDERECOS.match(p):
+                continue
+            if any(bate_com_mascara(p, c) is True for c in palavras_caso if not c.isdigit()):
+                bate += 1
+            else:
+                diverge = True
+        placar.append((bate, diverge, tecla))
+    candidatas = [c for c in placar if c[0] >= 2 and not c[1]]
+    if len(candidatas) != 1:
+        return None
+    melhor = candidatas[0]
+    if any(c[0] >= melhor[0] for c in placar if c is not melhor):
+        return None
+    return melhor[2]
+
+
+_FORMATOS_DA_RESPOSTA["endereco_do_caso_na_lista"] = _endereco_do_caso_na_lista
+_FORMATOS_QUE_LEEM_A_TELA = _FORMATOS_QUE_LEEM_A_TELA | {"endereco_do_caso_na_lista"}
+_O_QUE_FALTA_QUANDO_O_FORMATO_NAO_RESOLVE["endereco_do_caso_na_lista"] = "local_atual"
+
+
+# ---- (3) AS TELAS DE "CONTINUAR" — cada constante diz POR QUÊ (CLAUDE.md §9.5) --
+# 📊 30/09, `match_ura_step` sobre os 16 corpora (`scratchpad/f6/cont.py`): TODAS
+#    as telas de retomada já tinham passo — faltava o porquê escrito ao lado.
+_SPEC123_POR_QUE_CONTINUAR = {
+    # Allianz auto + Alfa (a Allianz residencial já tinha o seu).
+    "cpf_anterior": (
+        "🔴 `1 - Sim` x `2 - Não, inserir outro` (📊 alfa 665b5bad · allianz-auto "
+        "298e0c49, b60d9359: 'Que bom que voltou! Deseja continuar nossa conversa com o "
+        "CPF/CNPJ 802.###.###-00?'). `2 - Não, inserir outro` SEMPRE, mesmo quando os "
+        "dígitos visíveis batem com o do caso: a tela mostra 5 dos 11 dígitos, e dois "
+        "CPFs com os mesmos 5 abririam o chamado na apólice de OUTRA pessoa (o WhatsApp "
+        "é da corretora e atende N clientes). Reidentificar custa uma tela — a seguinte "
+        "pede o CPF e o caso o tem (`titular_cpf`): 📊 `observed_events` allianz, 30/09 — "
+        "as 2 vezes em que a resposta foi `2`, a tela seguinte foi 'Digite o *CPF* ou "
+        "*CNPJ* do(a) titular' (`pedir_cpf`). Nota: sempre 2 = 90 · Sim quando os "
+        "dígitos batem = 60."),
+    # HDI/Yelum auto e residencial.
+    "deseja_continuar": (
+        "`Sim` x `Não` (📊 yelum 859d185c, 7c841763 · hdi fa2ceb6f · hdi-resid "
+        "0a7c24ef: 'Ainda não identificamos a sua resposta! Deseja continuar este "
+        "atendimento? Botão 1: Sim Botão 2: Não'). É a URA perguntando se a conversa "
+        "segue depois de um silêncio — `Sim` só retoma (a URA volta ao passo, ou ao "
+        "começo: 📊 859d185c) e não afirma nada sobre o segurado; `Não` encerra o "
+        "acionamento que o caso pediu."),
+    # Bradesco — a reentrada depois de a URA encerrar.
+    "reentrada_confirma_veiculo": (
+        "`Sim` (📊 bradesco 72af1ae1, 706df513: 'Sou a Assistente Virtual da Bradesco "
+        "Seguros e vou continuar seu atendimento aqui no WhatsApp… as informações "
+        "estão corretas?'). A tela ECOA o veículo que a própria URA achou pela placa "
+        "que NÓS enviamos, e `dynamic: vehicle_by_plate` confere a placa antes — "
+        "confirmar é confirmar o dado do caso."),
+}
+for _ref123 in list_playbooks():
+    for _p123 in (get_playbook(_ref123) or {}).get("ura_steps") or []:
+        _porque = _SPEC123_POR_QUE_CONTINUAR.get(str(_p123.get("step") or ""))
+        if _porque and not _p123.get("constante_justificada"):
+            _p123["constante_justificada"] = _porque
+
+
+# ---- (4) P-122-12 · A PERGUNTA QUE VAI AO SEGURADO FALA COM ELE ----------------
+# `_COMO_PERGUNTAR` nasceu para o dossiê da EQUIPE ("qual servico o cliente
+# precisa") e fica como está — é o que a atendente e o bloco do agente leem.
+# Quando a frase vai ao SEGURADO (`pergunta_para_o_segurado`: "me diga …"), ela
+# sai daqui: 2ª pessoa, com acento. Chave sem entrada aqui já é neutra — o guarda
+# `test_spec123_rotas_pergunta_em_2a_pessoa` varre TODAS as chaves.
+_COMO_PERGUNTAR_AO_SEGURADO = {
+    "servico_texto": "qual serviço você precisa, em uma frase",
+    "problema_descricao": "o que está acontecendo, com as suas palavras",
+    "pane_opcao": "o que o carro fez, com as suas palavras",
+    "encanador_tipo_opcao": "o que está vazando, com as suas palavras",
+    "data_agendamento": "para que dia você quer o agendamento",
+    "transporte_destino": ("para onde você quer ser levado enquanto o carro vai "
+                           "para a oficina"),
+    "email_segurado": "o seu e-mail, para onde a clínica manda o encaminhamento",
+    "local_seguro": "se você está num lugar seguro para esperar",
+    "local_seguro_opcao": "se você está num lugar seguro para esperar",
+    "grupo_lugar_seguro": "se você está num lugar seguro para esperar",
+    "local_cep": ("o CEP do lugar onde o carro está — se você não souber, mande a "
+                  "localização pelo WhatsApp"),
+    "local_latitude": ("a sua localização pelo WhatsApp: toque no clipe 📎 → "
+                       "Localização → Enviar sua localização atual"),
+    "local_longitude": ("a sua localização pelo WhatsApp: toque no clipe 📎 → "
+                        "Localização → Enviar sua localização atual"),
+    "ponto_referencia": "um ponto de referência próximo",
+    "sinistro_numero": "o número do sinistro, se você tiver",
+    "veiculo_nivel_rua": ("se o carro está no subsolo, acima do nível da rua ou no "
+                          "mesmo nível da rua — e se há espaço para o guincho manobrar"),
+    "bateria_busca_centro_automotivo": (
+        "se é recarga ou bateria nova — a bateria nova é paga por você — e se você "
+        "aceita que o prestador a busque no Centro Automotivo"),
+    "carro_reserva_cnh_e_cartao": (
+        "se quem vai retirar o carro tem a CNH original e um cartão de crédito no "
+        "próprio nome, com limite"),
+}
+
+
+#: 🔴 O MESMO slot, OUTRO lugar: no RESIDENCIAL o `local_*` é a CASA, não o carro.
+#: 📊 F3 (30/09): a Allianz residencial pede "Digite um novo CEP." (96f220ca) e a
+#: pergunta saía "o CEP do lugar onde o carro está" — texto de auto, para quem
+#: espera um encanador. Escolhida pelo `line_kind` do corredor, nunca pela seguradora.
+_COMO_PERGUNTAR_AO_SEGURADO_RESIDENCIAL = {
+    "local_atual": "o endereço completo onde o serviço vai ser feito",
+    "local_cep": "o CEP do endereço onde o serviço vai ser feito",
+    "local_rua": "o nome da rua onde o serviço vai ser feito",
+    "local_numero": "o número do imóvel onde o serviço vai ser feito",
+    "local_bairro": "o bairro onde o serviço vai ser feito",
+    "local_cidade": "a cidade onde o serviço vai ser feito",
+    "local_uf": "o estado onde o serviço vai ser feito",
+    "local_complemento": "o complemento do endereço, se houver (apartamento, bloco, casa)",
+}
+
+
+def como_perguntar_ao_segurado(slot: str, playbook_ref: Optional[str] = None) -> Optional[str]:
+    """A frase do `slot` para o SEGURADO (2ª pessoa) — `None` se o produto não
+    sabe perguntar. ⛔ Nunca a do dossiê da equipe quando há a do segurado.
+
+    `playbook_ref` (opcional) escolhe o LUGAR: num corredor residencial os
+    `local_*` falam da casa, não do carro."""
+    chave = str(slot or "")
+    if playbook_ref:
+        ramo = str((get_playbook(playbook_ref) or {}).get("line_kind") or "")
+        if ramo == "residencial" and chave in _COMO_PERGUNTAR_AO_SEGURADO_RESIDENCIAL:
+            return _COMO_PERGUNTAR_AO_SEGURADO_RESIDENCIAL[chave]
+    return (_COMO_PERGUNTAR_AO_SEGURADO.get(chave)
+            or _COMO_PERGUNTAR_AO_SEGURADO.get(_MESMA_PERGUNTA.get(chave) or "")
+            or _COMO_PERGUNTAR.get(chave))

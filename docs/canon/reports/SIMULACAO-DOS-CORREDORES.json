@@ -148,7 +148,7 @@
   "ramo": "residencial",
   "servico": "ar_condicionado",
   "telas": 83,
-  "respondidas": 67,
+  "respondidas": 64,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
@@ -157,7 +157,7 @@
   ],
   "faixa": "ATENDE SOZINHO",
   "causa": "",
-  "motivo": "todas as 67 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `448c6aae`",
+  "motivo": "todas as 64 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `448c6aae`",
   "bateria_5": []
  },
  {
@@ -165,7 +165,7 @@
   "ramo": "residencial",
   "servico": "chaveiro",
   "telas": 50,
-  "respondidas": 34,
+  "respondidas": 32,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
@@ -174,7 +174,7 @@
   ],
   "faixa": "ATENDE SOZINHO",
   "causa": "",
-  "motivo": "todas as 34 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `e70dfcaa`",
+  "motivo": "todas as 32 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `e70dfcaa`",
   "bateria_5": [
    {
     "assunto": "apolice_de_condominio_ou_empresa",
@@ -189,7 +189,7 @@
   "ramo": "residencial",
   "servico": "consulta_veterinaria",
   "telas": 48,
-  "respondidas": 35,
+  "respondidas": 33,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
@@ -198,7 +198,7 @@
   ],
   "faixa": "ATENDE SOZINHO",
   "causa": "",
-  "motivo": "todas as 35 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `c58a171a`",
+  "motivo": "todas as 33 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `c58a171a`",
   "bateria_5": [
    {
     "assunto": "sinistro",
@@ -213,7 +213,7 @@
   "ramo": "residencial",
   "servico": "desentupimento",
   "telas": 40,
-  "respondidas": 32,
+  "respondidas": 30,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": false,
@@ -235,7 +235,7 @@
   "ramo": "residencial",
   "servico": "eletricista",
   "telas": 51,
-  "respondidas": 36,
+  "respondidas": 33,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
@@ -244,7 +244,7 @@
   ],
   "faixa": "ATENDE SOZINHO",
   "causa": "",
-  "motivo": "todas as 36 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `acc3e885`",
+  "motivo": "todas as 33 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 1 conversa(s) — a primeira é `acc3e885`",
   "bateria_5": []
  },
  {
@@ -252,7 +252,7 @@
   "ramo": "residencial",
   "servico": "eletrodomesticos",
   "telas": 60,
-  "respondidas": 44,
+  "respondidas": 42,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": false,
@@ -274,7 +274,7 @@
   "ramo": "residencial",
   "servico": "encanador",
   "telas": 147,
-  "respondidas": 96,
+  "respondidas": 91,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
@@ -286,7 +286,7 @@
   ],
   "faixa": "ATENDE SOZINHO",
   "causa": "",
-  "motivo": "todas as 96 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 4 conversa(s) — a primeira é `0591c1d1`",
+  "motivo": "todas as 91 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 4 conversa(s) — a primeira é `0591c1d1`",
   "bateria_5": [
    {
     "assunto": "apolice_de_condominio_ou_empresa",
@@ -313,7 +313,7 @@
   "ramo": "residencial",
   "servico": "limpeza_caixa_dagua",
   "telas": 92,
-  "respondidas": 72,
+  "respondidas": 67,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
@@ -323,7 +323,7 @@
   ],
   "faixa": "ATENDE SOZINHO",
   "causa": "",
-  "motivo": "todas as 72 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 2 conversa(s) — a primeira é `382cbdb7`",
+  "motivo": "todas as 67 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 2 conversa(s) — a primeira é `382cbdb7`",
   "bateria_5": [
    {
     "assunto": "apolice_de_condominio_ou_empresa",
@@ -350,7 +350,7 @@
   "ramo": "residencial",
   "servico": "maquina_de_lavar",
   "telas": 116,
-  "respondidas": 90,
+  "respondidas": 86,
   "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
@@ -361,7 +361,7 @@
   ],
   "faixa": "ATENDE SOZINHO",
   "causa": "",
-  "motivo": "todas as 90 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 3 conversa(s) — a primeira é `7ac3c101`",
+  "motivo": "todas as 86 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 3 conversa(s) — a primeira é `7ac3c101`",
   "bateria_5": [
    {
     "assunto": "apolice_de_condominio_ou_empresa",
@@ -575,7 +575,7 @@
   "seguradora": "hdi",
   "ramo": "auto",
   "servico": "guincho",
-  "telas": 637,
+  "telas": 634,
   "respondidas": 380,
   "orfas_funcionais": 0,
   "achados_graves": {},
@@ -621,7 +621,7 @@
   "seguradora": "hdi",
   "ramo": "auto",
   "servico": "socorro_mecanico",
-  "telas": 48,
+  "telas": 46,
   "respondidas": 24,
   "orfas_funcionais": 0,
   "achados_graves": {},
@@ -1123,22 +1123,15 @@
   "faixa": "HANDOFF",
   "causa": "por_desenho_link",
   "motivo": "esta seguradora não abre o chamado pela conversa: ela devolve um link ou um formulário. O robô entrega o link e o caso segue com uma pessoa — é o desenho, não uma falha",
-  "bateria_5": [
-   {
-    "assunto": "sinistro",
-    "sessao": "39e395bb",
-    "vai_para_gente": false,
-    "caminho": "o passo `cr_outros_assuntos` responde '4' sozinho"
-   }
-  ]
+  "bateria_5": []
  },
  {
   "seguradora": "yelum",
   "ramo": "auto",
   "servico": "chaveiro",
   "telas": 72,
-  "respondidas": 44,
-  "orfas_funcionais": 3,
+  "respondidas": 45,
+  "orfas_funcionais": 2,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -1146,16 +1139,16 @@
   ],
   "faixa": "FALTA CAPTURA",
   "causa": "tela_orfa",
-  "motivo": "3 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa e6a07317: “Para que a remoção do veículo ocorra sem imprevistos, precisamos entender o local e as condições do veículo.”",
+  "motivo": "2 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa e6a07317: “Você já possui o endereço para onde devemos levar o seu veículo? Botão 1: Sim Botão 2: Não Botão 3: Voltar”",
   "bateria_5": []
  },
  {
   "seguradora": "yelum",
   "ramo": "auto",
   "servico": "guincho",
-  "telas": 818,
-  "respondidas": 474,
-  "orfas_funcionais": 2,
+  "telas": 819,
+  "respondidas": 478,
+  "orfas_funcionais": 0,
   "achados_graves": {},
   "chegou_ao_fim": true,
   "sessoes_de_desfecho": [
@@ -1176,9 +1169,9 @@
    "c54f4a98",
    "e97943bd"
   ],
-  "faixa": "FALTA CAPTURA",
-  "causa": "tela_orfa",
-  "motivo": "2 tela(s) desta rota pedem alguma coisa e o robô não tem resposta escrita para elas. A primeira, na conversa 75400aad: “Para seguir, por favor me informe o número da sua *assistência*, *placa* ou *CPF*.”",
+  "faixa": "ATENDE SOZINHO",
+  "causa": "",
+  "motivo": "todas as 478 telas que pedem algo são respondidas, nenhuma resposta decide pelo segurado sem evidência, e a seguradora devolveu protocolo/agendamento em 16 conversa(s) — a primeira é `01bf91c2`",
   "bateria_5": []
  },
  {

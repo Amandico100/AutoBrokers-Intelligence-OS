@@ -285,16 +285,53 @@ def _rotulo_escolhido(tela_norm: str, resposta: str) -> str:
     return r
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-123 F6 · A MESMA JANELA NA FAMÍLIA YELUM/HDI (o mesmo bot white-label)
+#
+# A família não tem "Ver detalhes": ela RECONHECE sozinha que a placa tem
+# assistência recente e entra no acompanhamento por duas portas:
+#
+#   ① "identifiquei que a assistência *N* foi aberta dentro das últimas 72h.
+#      Selecione abaixo sobre qual solicitação você quer falar: GUINCHO · MTA"
+#      📊 yelum 75400aad (28/04). A tela FICA no corpus (é a PORTA, como a tela
+#      "Identifiquei que temos uma solicitação" da Allianz): a janela abre na
+#      RESPOSTA a ela. O corredor tem passo para ela (`acompanhar_qual_
+#      solicitacao`, corridor_playbooks) — é por onde o caso chega a uma pessoa.
+#   ② "A solicitação de *GUINCHO* está concluída. Por favor, selecione abaixo o
+#      assunto que você deseja falar: (Pedir outro serviço ·) Questionar atraso ·
+#      Questionar entrega · Alterar endereço · Outro…"
+#      📊 yelum 75400aad, 859d185c · hdi 27939047, 4b2d0c2a, 4b2d0c2a+1. A tela
+#      ABRE a janela e fica DENTRO dela: no produto ela já é gatilho de handoff
+#      ("acompanhamento, não abertura", SPEC-120), nunca uma porta do corredor.
+#
+# ⛔ O que vem depois é conversa sobre o pedido ANTIGO: nem etiqueta, nem
+#    desfecho. Fecha como na Allianz (fronteira) — ou quando a corretora pede
+#    serviço NOVO ("Pedir outro serviço" / "abrir novo atendimento"), e daí em
+#    diante é abertura e volta a contar.
+#
+# 📊 Controle (30/09, `scratchpad/f6`): a frase ① aparece SÓ em 75400aad e a ②
+#    só nas 5 sessões acima, todas da família; a janela da Allianz não muda (as
+#    duas regex não casam nenhuma tela da Allianz).
+# ═════════════════════════════════════════════════════════════════════════════
+_RX_ABERTA_NAS_72H = re.compile(r"foi aberta dentro das ultimas 72\s*h")
+_RX_SOLICITACAO_CONCLUIDA = re.compile(r"a solicitac[a-z]{2,3} de .{3,40}? esta conclu")
+_RX_PEDIR_NOVO_FAMILIA = re.compile(r"pedir outro servic|abrir (?:um )?novo atendimento")
+
+
 def consulta_de_pedido_existente(eventos: List[Dict[str, Any]],
                                  seguradora: Optional[str] = None) -> set:
     """Os ÍNDICES de `eventos` (um atendimento, em ordem) que são CONSULTA.
 
-    Devolve `in` e `out` da janela (bloco acima), menos a tela-PORTA. Vazio
+    Devolve `in` e `out` da janela (blocos acima), menos a tela-PORTA. Vazio
     quando o atendimento não consultou nada — e aí o gerador faz exatamente o
     que fazia antes.
+
+    Duas portas: a da Allianz ("Ver detalhes") e as da família Yelum/HDI
+    (resposta à tela das 72h, ou a tela "a solicitação de X está concluída").
     """
     dentro: set = set()
     em_consulta = False
+    familia = False          # a janela aberta é a da família (fecha com "Pedir outro serviço")
     ultima_tela = ""
     for i, e in enumerate(eventos):
         texto = e.get("text") or ""
@@ -304,7 +341,12 @@ def consulta_de_pedido_existente(eventos: List[Dict[str, Any]],
             n = norm_para_classificar(texto)
             if em_consulta and seguradora and e_fronteira(seguradora, n):
                 em_consulta = False
-            if em_consulta and not _RX_ABRIR_NOVO.search(n):
+            if not em_consulta and _RX_SOLICITACAO_CONCLUIDA.search(n):
+                em_consulta, familia = True, True
+                dentro.add(i)
+                ultima_tela = n
+                continue
+            if em_consulta and (familia or not _RX_ABRIR_NOVO.search(n)):
                 dentro.add(i)
             ultima_tela = n
             continue
@@ -314,9 +356,12 @@ def consulta_de_pedido_existente(eventos: List[Dict[str, Any]],
         if not em_consulta:
             if (_RX_PEDIDO_EXISTENTE.search(ultima_tela)
                     and _RX_VER_DETALHES.search(escolhido)):
-                em_consulta = True
+                em_consulta, familia = True, False
+            elif (_RX_ABERTA_NAS_72H.search(ultima_tela)
+                    and not _RX_PEDIR_NOVO_FAMILIA.search(escolhido)):
+                em_consulta, familia = True, True
             continue
-        if _RX_ABRIR_NOVO.search(escolhido):
+        if (_RX_PEDIR_NOVO_FAMILIA if familia else _RX_ABRIR_NOVO).search(escolhido):
             em_consulta = False
             continue
         dentro.add(i)
