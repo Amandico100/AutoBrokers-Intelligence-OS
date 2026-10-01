@@ -1099,3 +1099,52 @@ prioridade · *"a lista de Decisões não abre"* → confira se o `smith-web` fo
 - **D-123-M** — liberar o "escolher sozinho" sem calibração: manter desligado **85** × liberar **35** — já vem decidida;
   confirme se quiser.
 - Verba opcional: 💭 ≈ US$ 1 por provedor para calibrar o "escolher sozinho" (P-123-01).
+
+## SPEC-124 — o portal de vidros destrava com a mesma régua, e a leitura de documentos no modelo certo (01/10/2026)
+
+📊 O que mudou:
+- **A leitura de fotos e documentos ficou ~18 vezes mais barata, com o mesmo acerto medido.** A foto que o segurado manda
+  (CNH, documento do carro, apólice fotografada) e a imagem dentro de PDF passam a ser lidas pelo **GPT-6 Luna** em vez do
+  GPT-6.1 Sol: 📊 na bancada de 30 leituras, os dois acertaram **100 %** dos campos importantes (nome, CPF, placa, apólice,
+  vigência, coberturas, valores), e a Luna custa 📊 US$ 0,0002 por leitura contra US$ 0,0037. ⚠️ Os documentos da bancada são
+  **fabricados** (não havia documento real sem dado pessoal): o número é o melhor caso, não a garantia. Se a OpenAI cair, a
+  foto passa ao **Claude Sonnet 5.5**. Isto **já está valendo no banco** e entra no ar no Implantar do `smith-api`.
+- **O leitor de documentos (docling) passa a usar o modelo que o catálogo manda**, em vez de uma variável própria, e o custo
+  dele passa a aparecer na conta.
+- **O portal de vidros ganhou a mesma régua do WhatsApp**: quando o caminho novo do portal para numa pergunta, o mesmo
+  destravador da SPEC-123 decide, continua o MESMO pedido (sem abrir outro) e anota no diário. 🔴 **Mas, hoje, ele não
+  responde nada sozinho**: ele pergunta ao segurado ou chama uma pessoa — porque "escolher sozinho" segue desligado (SPEC-123)
+  e porque o único caso em que respondia sozinho (o estado do serviço) estava **errado** e foi consertado para perguntar.
+  E 📊 o portal de vidros **não roda desde 10/07**, e o caminho novo (onde isto foi plugado) **nunca rodou em produção** —
+  ele só é usado se você ligar `PORTAL_VIDROS_API_FIRST` (D-124-F). O caminho antigo do portal continua como estava.
+
+### S124.1 · Implantar — NESTA ORDEM
+No EasyPanel: **`docling-service` → `smith-api` → `smith-worker` → `smith-web`**.
+🔴 **O docling primeiro, e dentro dele o WORKER antes da API**: se houver um serviço separado para o worker do docling (o
+que roda `celery -A app.celery_app worker -Q docling`), implante **esse** primeiro. Com o worker antigo, o campo novo que a
+API manda dá erro (`TypeError`) e a leitura de PDF com imagem da base de conhecimento falha (📊 hoje 0 dessas leituras).
+A variável `VISION_MODEL` do docling **pode ficar como está**: agora ela só vale se quem chama não mandar o modelo.
+**Esperar:** os quatro verdes; um "oi" no chat do painel responde. **Se der erro** com `vision`, `visao_documento` ou
+`TypeError` no docling: implante de novo o worker do docling e mande o print no chat.
+
+### S124.2 · Um teste real da leitura de foto
+1. No **WhatsApp de teste**, mande uma **foto de uma CNH ou de uma apólice** (pode ser a sua) e pergunte algo sobre ela
+   (ex.: *"qual o número dessa apólice?"*).
+2. **Esperar:** o agente responde com o dado certo da foto.
+3. No Supabase → **SQL Editor**, cole:
+```sql
+select model_name, total_cost_usd, created_at from token_usage_logs where service_type='vision' order by created_at desc limit 5;
+```
+**Esperar:** a linha mais nova com `gpt-6-luna` e um custo perto de **0,0002–0,0003** (📊 o teste de 01/10 deu 0,000308).
+**Se der errado:** *"aparece `gpt-6.1-sol`"* → o `smith-api` ainda não foi implantado (S124.1) · *"o agente leu errado"* →
+mande o print da foto **com os dados cobertos** e a resposta: é exatamente o caso que a bancada não pôde medir (P-124-05).
+
+### S124.3 · Decisões suas (`FOUNDER-DECISIONS.md`)
+- **D-124-F** — ligar o caminho novo do portal de vidros (`PORTAL_VIDROS_API_FIRST`)? Ligar junto com o primeiro canário de
+  vidro, com allowlist **70** × deixar desligado até o próximo pedido real **60** — notas próximas, decisão sua. Ligado, nas
+  paradas ele **pergunta** ao segurado ou chama pessoa, e anota no diário; nada é aceito sozinho (franquia, valor, cancelar).
+- Já decididas pela execução (confirme se quiser): Luna nas duas leituras (D-124-A, 88) · reserva só na foto (D-124-B, 85) ·
+  caminho antigo do portal fora desta SPEC (D-124-C, 75) · o estado do serviço é perguntado (D-124-D, 92) · ordem do deploy
+  (D-124-E, 85).
+- Opcional, para fechar a dúvida da visão: ~10 fotos reais (CNH, documento do carro, apólice) **com os dados cobertos** para
+  uma rodada da bancada (P-124-05).

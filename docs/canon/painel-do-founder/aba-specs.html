@@ -133,6 +133,28 @@
 </section>
 
 <section>
+  <h2>Fora da família — o portal de vidros destrava, e a leitura de documentos no modelo certo (SPEC-124)</h2>
+  <p class="sub">Fora da fila, no mesmo chat da 123. Nasceu de duas frases suas de 30/09: <i>"a autonomia e o destravamento têm de
+  acontecer tanto no portal de vidros quanto no WhatsApp"</i> e <i>"praticamente todo atendimento terá apólice e documento; custo alto
+  onera cada corretora"</i>. 📊 01/10/2026, relatório <code>reports/SPEC-124-EXECUTION-REPORT.md</code> e bancada
+  <code>reports/SPEC-124-BANCADA-VISAO.md</code>.</p>
+  <div class="tblbox">
+    <table style="min-width:980px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou, em uma frase</th><th>data</th><th>nota</th><th class="l">o que ainda falta <b>de você</b></th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>SPEC-124</b><br><span class="mono" style="font-size:11px;color:var(--muted)">vidros + visão</span></td>
+          <td class="ds"><b>A leitura de fotos e documentos ficou ~18× mais barata, com o mesmo acerto medido</b>: a foto do segurado (CNH, documento do carro, apólice) e a imagem dentro do PDF passam ao <b>GPT-6 Luna</b> — 📊 numa bancada que confere campo por campo (nome, CPF, placa, apólice, vigência, coberturas, valores), Luna, GPT-6.1 Sol e Sonnet 5.5 acertaram <b>100 %</b> em 30 leituras; a Luna custa 📊 US$ 0,0002 por leitura contra 0,0037 do Sol. Se a OpenAI cair, a foto vai ao Sonnet 5.5. O leitor de PDF (docling) passa a obedecer ao catálogo e a ter o custo na conta. <b>O portal de vidros ganhou a mesma régua do WhatsApp</b>: quando o caminho novo para numa pergunta, o destravador decide, continua o MESMO pedido e anota no diário. 🔴 <b>Mas hoje ele não responde nada sozinho</b> — pergunta ao segurado ou chama pessoa. 🔴 Os dois revisores acharam o mesmo defeito: o único caso em que o portal respondia sozinho (o estado do serviço) trocava o estado que o segurado escreveu pelo do cadastro — consertado para perguntar, com teste que fica vermelho se voltar</td>
+          <td class="dm">01/10</td><td class="dm">juiz 80 ‖ red team 74 (o mesmo defeito) → conserto único → confirmação 90 (defeito fechado) · bateria: 0 regressões · <b>nota 84</b></td><td class="ds">🔴 <b>Implantar</b> <code>docling-service</code> (o worker antes da API) → <code>smith-api</code> → <code>smith-worker</code> → <code>smith-web</code>; mandar uma <b>foto de CNH/apólice</b> no WhatsApp de teste e ver <code>gpt-6-luna</code> no ledger (S124.2); decidir se liga o caminho novo do portal (<b>D-124-F</b>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">⛔ <b>O que esta entrega NÃO prova, e está declarado.</b> Os documentos da bancada são <b>fabricados</b> (não havia documento real
+  sem dado pessoal): 📊 0 erros em 30 ainda deixa até ~10 % de erro possível — e a troca para a Luna <b>já vale</b>. 📊 O portal de vidros não roda desde
+  10/07; o caminho novo (onde a régua foi plugada) <b>nunca rodou em produção</b> e só roda se você ligar <code>PORTAL_VIDROS_API_FIRST</code>; o caminho
+  antigo, o único que já rodou, ficou <b>de fora</b> (P-124-01). Sem nenhuma parada real, a calibração do portal não pôde ser medida.</p>
+</section>
+
+<section>
   <h2>Fora da família — o agente destrava (SPEC-123)</h2>
   <p class="sub">Fora da fila, como as 118–122. Nasceu da sua frase de 30/09: <i>"determinístico até travar; travou, está autorizado a
   pensar e destravar sem humano — e registra a decisão para a gente avaliar e ensinar"</i>. 📊 01/10/2026, relatório
@@ -186,7 +208,7 @@
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-121</b> · o grupo só ouve quando precisa</td><td class="ds">Fora da fila: os 29 avisos errados de 21/09 e a sua regra dos 7 dias</td><td class="ds"><b>✅ concluída 30/09</b> — confirmação <b>88</b>; faltam o <b>Implantar</b> e o número de carro reserva da Yelum, que são seus</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-122</b> · o agente pensa com prova</td><td class="ds">Fora da fila: o GPT-6.1 Sol no lugar do Sol 6 e o cérebro do acionamento medido pela primeira vez — sem autonomia nova</td><td class="ds"><b>✅ concluída 30/09</b> — faltam o <b>Implantar</b> e as 3 variáveis, que são seus</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-123</b> · o agente destrava</td><td class="ds">Fora da fila: quando o roteiro trava, o agente decide, pergunta ao segurado ou chama pessoa — e registra no diário</td><td class="ds"><b>✅ concluída 01/10, nota 88</b> — falta o <b>Implantar</b> e ligar o agente de atendimento de uma corretora, que são seus</td></tr>
-        <tr><td class="dm">→</td><td class="ds"><b>SPEC-124</b> · portal de vidros + visão</td><td class="ds">Fora da fila, junto com a 123 (mesmo chat): o leitor de documentos segue o catálogo e a visão por campo</td><td class="ds">em execução</td></tr>
+        <tr><td class="dm">✓</td><td class="ds"><b>SPEC-124</b> · portal de vidros + visão</td><td class="ds">Fora da fila, junto com a 123 (mesmo chat): a leitura de fotos no GPT-6 Luna (~1/18 do custo, mesmo acerto medido) e a régua do WhatsApp no portal de vidros — sem responder nada sozinho ainda</td><td class="ds"><b>✅ executada 01/10, nota 84</b> — faltam o <b>Implantar</b> (docling primeiro), o teste de foto e a D-124-F, que são seus</td></tr>
         <tr><td class="dm">3</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata</td><td class="ds">só no diagnóstico</td></tr>
         <tr><td class="dm">4</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
         <tr><td class="dm">5</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>

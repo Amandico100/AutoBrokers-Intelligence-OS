@@ -8,42 +8,31 @@
 ## 0. O EXECUTION CARD (definitivo, ajustado ao que aconteceu)
 
 ```
-OUTCOME ........  quando o roteiro fixo trava no WhatsApp da seguradora (o motor devolve needs_human com motivo destravável,
-                  ou o turno do cérebro/Sentinela), o DESTRAVADOR decide com o contexto inteiro (caso, conversa com o segurado,
-                  telas, Atlas, rotas irmãs, memória): CONDUZIR / RESPONDER com dado do caso / DEDUZIR (nota ≥ limiar + 2ª
-                  opinião de OUTRO provedor — DESLIGADO em código, `DEDUZIR_AUTONOMO_CALIBRADO=False`: 📊 bancada 6/14 = 43 %
-                  com nota ≥ 70) / PERGUNTAR ao segurado (TODAS as 10 seguradoras, prazo por seguradora, reabertura pela resposta
-                  tardia ≤ 2, o pedido que já existe nunca duplica) / NUNCA SOZINHO (custo → pergunta ao segurado; sinistro,
-                  cancelar, novo atendimento, trocar titular, confirmar abertura, inventar dado, afirmar cobertura → pessoa).
-                  Liga por `cerebro_modos` (off|sombra|on + limiar 70..100, por corretora × seguradora × ramo; sem linha = off).
-                  Toda decisão → `diario_de_decisoes` (tela da corretora `/dashboard/atendimentos/decisoes`, certo/errado;
-                  errado → caso pendente da bancada; master → rascunho de carta `proposta_diario`). O agente de atendimento
-                  ganha a SEGUNDA CHANCE antes de chamar pessoa por dúvida/dado (regra, sinistro e pedido de pessoa passam
-                  direto). yelum/auto/guincho passa a atender sozinho (31 → 32/76).
-FAIXA DE RELÓGIO  💭 1 dia (SPEC) · 📊 ≈ 7 h de relógio do 1º registro da sessão (30/09 18:44 BRT) ao último commit do conserto
-                  (01/10 01:47 BRT), com o BLOCO 0 e a F2 da SPEC-124 intercalados na mesma sessão
-RISCO 9 · SUPERFÍCIE 3 · PISO §3.2 (envia à URA e ao segurado; migrations que alteram estrutura e dado) · NÍVEL 🔴 CRÍTICO
-O FIO ..........  webhook → dispatch_router.try_route_insurer_inbound → IDS.handle_insurer_message (motor; needs_human+reason) →
-                  DR PONTO B (FAMILIAS_DESTRAVAVEIS/…QUE_NUNCA, pedir_ao_destravador, aplicar_destravamento) · PONTO A (turno
-                  do cérebro `_turno_do_destravador`, com teto por sessão; Sentinela `_tentativa_do_destravador`) →
-                  destravador.destravar (contexto → papel `destravador` → ler_destravamento → decidir_destravamento → 2ª
-                  opinião papel `destravador_segunda` → guard_human_phase_reply) → registrar_decisao (diário, 1 linha por
-                  tentativa) → efetor de hoje (reply_human_phase/_emit · perguntar_ao_segurado com a pergunta COMPOSTA PELO
-                  CÓDIGO) → marcar_resultado. Ida e volta: perguntar_ao_segurado (prazo por seguradora) → URA fecha →
-                  _segurar_para_retomar (sessão segurada conta como VIVA) → responder_pergunta_do_acionamento →
-                  _reabrir_com_a_resposta → detector JA_EXISTE_SOLICITACAO (só com o MESMO serviço e o "Sim" de fato enviado).
-                  Atendimento: request_human_agent → por_que_vai_direto_a_pessoa (motivo E falas do segurado) → 1ª vez
-                  SEGUNDA_CHANCE (a linha do diário é o contador) · regra/sinistro/pedido de pessoa → pessoa byte a byte.
-UNIDADES .......  F0 BLOCO 0 (4 investigadores) · F1a destravador · F1b ligação · F1c ajustes · F2a bancada · F2b bancada real ·
-                  F3 ida e volta · F4 diário · F6 rotas · F7 atendimento · F5a costura · conserto único X ‖ Y ‖ Z
-PARALELISMO ....  até 4 builders simultâneos com arquivos disjuntos (F1a ‖ F1b ‖ F4; F1c ‖ F3 ‖ F6 ‖ F7; X ‖ Y, depois Z)
+OUTCOME ........  quando o roteiro fixo trava no WhatsApp da seguradora, o DESTRAVADOR decide com o contexto inteiro (caso,
+                  conversa, telas, Atlas, rotas irmãs, memória): CONDUZIR / RESPONDER com dado do caso / DEDUZIR (DESLIGADO em
+                  código: 📊 bancada 6/14 = 43 % com nota ≥ 70) / PERGUNTAR ao segurado (10 seguradoras, prazo por seguradora,
+                  retomada ≤ 2, nunca duplica) / NUNCA SOZINHO → pessoa. Liga por `cerebro_modos`; toda decisão vai ao
+                  `diario_de_decisoes` (certo/errado → bancada). Atendimento: SEGUNDA CHANCE. yelum/auto/guincho: 31 → 32/76
+RISCO ..........  9 (ALCANCE seguradora e segurado 3 · REVERSIBILIDADE resposta enviada 3 · FREQUÊNCIA todo acionamento 3)
+SUPERFÍCIE .....  3 (cérebro, roteador, conferente, bancada, tabela do diário, tela do painel, papéis de modelo)
+PISO APLICADO ..  §3.2 — envia à URA e ao segurado; migrations que alteram estrutura e dado → CRÍTICO
+NÍVEL ..........  🔴 CRÍTICO · builders Opus 5.5 xhigh · juiz ‖ red team Opus 5.5 · conserto X ‖ Y ‖ Z · confirmação
+O FIO ..........  webhook → dispatch_router → IDS.handle_insurer_message (needs_human) → PONTO B pedir_ao_destravador · PONTO A
+                  _turno_do_destravador / Sentinela → destravador.destravar (papel `destravador` → decidir_destravamento →
+                  2ª opinião → guard_human_phase_reply) → registrar_decisao → efetor de hoje → marcar_resultado · ida e volta:
+                  perguntar_ao_segurado → _segurar_para_retomar → _reabrir_com_a_resposta · atendimento: SEGUNDA_CHANCE
+PARALELISMO ....  até 4 builders com arquivos disjuntos (F1a ‖ F1b ‖ F4; F1c ‖ F3 ‖ F6 ‖ F7; X ‖ Y, depois Z)
+UNIDADES .......  F0 BLOCO 0 · F1a · F1b · F1c · F2a · F2b · F3 · F4 · F6 · F7 · F5a · conserto X ‖ Y ‖ Z · ajuste W
 COESÃO .........  "decidir, perguntar e registrar são UMA política num lugar só" (destravador.decidir_destravamento)
 TIME ...........  4 investigadores · 11 builders · juiz ‖ red team · 3 builders do conserto · confirmação · bateria · atualizador
 REFERÊNCIA .....  interna: 📊 72 travas reais (grupo D) + 92 casos da SPEC-122 com a ficha; LAUDO-C · externa: SPEC §7
-MIGRATIONS .....  20260930_03 (cerebro_modos on + limiar; papéis) · _04 (diario_de_decisoes) · _05 (prompt de autonomia nos
-                  agentes de atendimento) — todas APLICADAS pelo MCP (§8)
 GATES ..........  G1–G9 (§4)
-ORÇAMENTO ......  📊 ledger desde 2026-09-30T21:00Z (§4 G7): bancada OpenAI 1,3546 · Anthropic 1,3016; smokes 0,0636
+O ELO ..........  "o humano é chamado porque o harness proíbe decidir, não porque o modelo não saberia": A = travas por motivo
+                  (F0) · B = acerto na bancada (📊 61 % certo sem pessoa) · B→A = teste do fio; ao vivo NÃO medido (0 com `on`)
+FAIXA DE RELÓGIO  💭 1 dia (SPEC) · 📊 ≈ 7 h (30/09 18:44 → 01/10 01:47 BRT), com a SPEC-124 intercalada
+nota da execução  88/100 (§11)
+MIGRATIONS .....  20260930_03 · _04 · _05 · 20261001_02 (ligado, D5) — APLICADAS pelo MCP (§6)
+ORÇAMENTO ......  📊 ledger desde 30/09 21:00Z: OpenAI 1,3811 · Anthropic 1,3387 (teto US$ 2 cada; §4 G7)
 ```
 ① Painel de lentes: não pedido (CRÍTICO = juiz ‖ red team). ② Auditoria: juiz ‖ red team cegos (§5). ③ Valor marginal: a calibração do DEDUZIR (P-123-01) e o Opus nos
 grupos A/B (P-123-03) — ficaram fora pelo teto de US$ 2 por provedor, não por tempo.

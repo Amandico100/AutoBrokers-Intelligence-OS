@@ -15,6 +15,19 @@
 </header>
 
 <section style="margin-top:8px">
+  <h2>SPEC-124 — o que só você faz <span style="color:var(--muted);font-size:14px">(01/10 · vidros + visão)</span></h2>
+  <p class="sub">📊 A leitura de fotos e documentos passou ao <b>GPT-6 Luna</b> (mesmo acerto medido, ~1/18 do custo — em documentos
+  fabricados, o melhor caso) e <b>já vale no banco</b>. O portal de vidros ganhou a régua do WhatsApp, mas <b>não responde nada sozinho</b>
+  hoje e só é alcançado se você ligar o caminho novo (D-124-F). 🔴 <b>Um Implantar só serve à 123 e à 124</b> — use a ordem da S124.1.
+  Passo a passo completo em <code>TAREFAS-DO-FOUNDER.md</code>, seção SPEC-124.</p>
+  <dl class="q2">
+    <dt>☐ S124.1</dt><dd><b>Implantar, NESTA ORDEM</b>: <code>docling-service</code> (se o worker do docling — o que roda <code>celery … -Q docling</code> — for um serviço separado, <b>ele primeiro</b>) → <code>smith-api</code> → <code>smith-worker</code> → <code>smith-web</code>. A variável <code>VISION_MODEL</code> do docling <b>pode ficar como está</b> (virou só paraquedas). <b>O que esperar:</b> os quatro verdes e um "oi" respondido. <b>Se der erro</b> com <code>TypeError</code> no docling: implante de novo o worker do docling</dd>
+    <dt>☐ S124.2</dt><dd><b>Um teste real</b>: no WhatsApp de teste, mande uma <b>foto de CNH ou de apólice</b> e pergunte algo dela. Depois, no Supabase → SQL Editor: <code>select model_name, total_cost_usd, created_at from token_usage_logs where service_type='vision' order by created_at desc limit 5;</code> — <b>esperar</b> <code>gpt-6-luna</code> na linha mais nova, perto de US$ 0,0003 (📊 o teste de 01/10 deu 0,000308). Aparece <code>gpt-6.1-sol</code>? O <code>smith-api</code> ainda não foi implantado</dd>
+    <dt>☐ S124.3</dt><dd><b>Decidir</b>: ligar o caminho novo do portal de vidros (<code>PORTAL_VIDROS_API_FIRST</code>)? (D-124-F: com o primeiro canário de vidro, com allowlist <b>70</b> × deixar desligado <b>60</b> — sua). As outras cinco (D-124-A…E) já vêm decididas. Opcional: ~10 fotos reais com os dados cobertos para medir a visão de verdade (P-124-05)</dd>
+  </dl>
+</section>
+
+<section style="margin-top:8px">
   <h2>SPEC-123 — o que só você faz <span style="color:var(--muted);font-size:14px">(01/10 · o agente destrava)</span></h2>
   <p class="sub">⚠️ <b>Os testes das SPECs 121 e 122 (blocos abaixo) continuam pendentes</b> — nada da 123 depende deles.
   📊 O destravador está <b>ligado</b> por sua ordem (D5): 10 seguradoras × as 4 corretoras com agente de atendimento (40 linhas

@@ -1,7 +1,7 @@
 <div id="tab-vidros" class="tab" hidden>
 
 <header class="top">
-  <span class="eyebrow">EXTRA-001.10 &middot; ✅ CONCLUÍDA 21/09/2026, nota 86 &middot; EXTRA-001.10.1 (a continuação) &middot; ✅ CONCLUÍDA 24/09/2026, nota 88 &middot; 📊 medido sobre <code>5622911</code></span>
+  <span class="eyebrow">EXTRA-001.10 &middot; ✅ CONCLUÍDA 21/09/2026, nota 86 &middot; EXTRA-001.10.1 (a continuação) &middot; ✅ CONCLUÍDA 24/09/2026, nota 88 &middot; SPEC-124 (a régua do WhatsApp no portal) &middot; executada 01/10/2026 &middot; 📊 medido sobre <code>5622911</code></span>
   <h1>O portal de vidros, do WhatsApp ao desfecho — e de volta.</h1>
   <p class="lede">O robô <b>coleta antes</b> tudo o que o portal vai pedir, <b>abre o pedido em qualquer uma das 38 seguradoras</b>
   que o portal publica, <b>lê o desfecho que o portal decidiu</b> — loja já escolhida, agenda com lojas e horários, analista ou vistoria —
@@ -29,6 +29,27 @@
   <b>ZERO</b> nas três capturas da Yelum — ele conhecia <b>3 seguradoras</b> pelo nome, e nenhuma delas era a Yelum.
   O caminho novo estava, na prática, <b>morto para 14 das 17</b> seguradoras que o agente reconhecia.</p>
 </div>
+
+<section style="margin-top:8px">
+  <h2>🟡 SPEC-124 (01/10/2026) — o portal ganhou a régua do WhatsApp, mas ainda não responde nada sozinho</h2>
+  <p class="lede" style="max-width:78ch">Quando o caminho novo para numa pergunta (a peça é ambígua, o motivo, a cidade, o questionário…),
+  o mesmo <b>destravador</b> da SPEC-123 decide com a mesma régua, <b>continua o MESMO pedido</b> (nunca abre outro) e anota no
+  <b>diário</b> (Atendimentos → Decisões do agente). As decisões irreversíveis — reparo ou troca (franquia), agendar, horário, sem
+  cobertura, abrir ou materializar — <b>nunca</b> são tomadas sozinhas: vão ao segurado ou a uma pessoa.</p>
+  <div class="tblbox">
+    <table style="min-width:860px">
+      <thead><tr><th class="l">o que</th><th class="l">o estado medido</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>O portal roda hoje?</b></td><td class="ds">🔴 📊 não: 39 pedidos de vidro de 06 a 10/07 e <b>0 desde 01/08</b> (<code>portal_jobs</code>, SELECT 30/09 e 01/10)</td></tr>
+        <tr><td class="ds"><b>O caminho novo já rodou?</b></td><td class="ds">🔴 <b>nunca em produção</b> — a chave <code>PORTAL_VIDROS_API_FIRST</code> está desligada; ligar é a decisão <b>D-124-F</b></td></tr>
+        <tr><td class="ds"><b>E o caminho antigo?</b></td><td class="ds">🟡 o único que já rodou ficou <b>fora</b>: roda num contêiner sem o cérebro e sem retomada (P-124-01)</td></tr>
+        <tr><td class="ds"><b>Ele responde sozinho?</b></td><td class="ds">🟡 <b>não, nenhuma parada</b>: "escolher sozinho" segue desligado (SPEC-123) e o único caso que respondia — o estado do serviço — trocava o estado que o segurado escreveu pelo do cadastro; os dois revisores acharam, e agora ele <b>pergunta</b></td></tr>
+        <tr><td class="ds"><b>Dá para medir o acerto?</b></td><td class="ds">⏳ só com paradas reais — 📊 0 hoje (diário <code>origem='portal'</code> = 0 linhas, 01/10)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Relatório <code>reports/SPEC-124-EXECUTION-REPORT.md</code> · pendências <code>P-124-01…15</code> · decisões <code>D-124-A…F</code>.</p>
+</section>
 
 <section style="margin-top:8px">
   <h2>O que mudou, na prática</h2>

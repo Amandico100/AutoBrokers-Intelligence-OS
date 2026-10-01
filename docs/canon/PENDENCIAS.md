@@ -11455,12 +11455,13 @@ modelo" (`selected_policy_ramo` → `insurer_dispatch`) **nunca dispara** no ate
 campos mascarados (ou o conector entregar um identificador opaco). **Dono:** 🤖. **Custo de esquecer:** o acionamento
 escolhe o ramo pelo que o modelo lembrou, não pela apólice.
 
-## P-S116-09 · docling-service lê o modelo por env
+## P-S116-09 · ✅ FECHADA (SPEC-124) · docling-service lê o modelo por env
 📊 23/09/2026: `docling-service/app/config.py:28` `VISION_MODEL="gpt-4o-mini"`; trocar a rota `visao_documento` não troca o
 serviço. **Destrava:** `VISION_MODEL` no EasyPanel igual à rota, ou o serviço ler o snapshot. **Dono:** 🧑 env · 🤖 leitura.
 **Custo de esquecer:** duas verdades sobre o modelo que lê documento.
 **🟡 CONTINUA (30/09/2026, SPEC-122):** o default do código passou a `gpt-6.1-sol` (`29b0b76`), igual à rota; o serviço
 segue lendo a env. Continua como **P-122-01** (🤖 ler de quem chama) e **P-122-02** (🧑 conferir a env pelo nome).
+**✅ FECHADA (01/10/2026, SPEC-124):** o serviço recebe o modelo de quem chama (ver P-122-01); a env é só paraquedas.
 
 ## P-S116-10 · variáveis `*_MODEL`/`*_PROVIDER` de produção agora IGNORADAS
 📊 23/09/2026 (comentários "ficam IGNORADOS" no código): `PORTAL_VISION_MODEL` · `DISPATCH_LLM_PROVIDER` ·
@@ -12549,11 +12550,14 @@ e não devolve; `test_spec116_f3a_quem_escreve_pede_papel` troca `sys.modules["a
 > (original)**, **P-122 (bis)** e **P-122 · o teto de 1.000 linhas** são outras pendências.
 > Anotadas nesta SPEC: P-S116-01 🟡 · P-S116-09 🟡 · P-121-07 🟡 · P-121-10 🟡 (absorvida pela P-122-14).
 
-## P-122-01 · 🤖 O `docling-service` lê o modelo da env, não da rota
+## P-122-01 · ✅ FECHADA (SPEC-124) · 🤖 O `docling-service` lê o modelo da env, não da rota
 📊 30/09: `docling-service/app/config.py` `VISION_MODEL = "gpt-6.1-sol"` (era `gpt-6-sol`); o serviço não tem banco e não lê
 `llm_papeis`. A rota `visao_documento` diz uma coisa e a env pode dizer outra. O conserto (o `smith-api` mandar o modelo no
 POST `/parse`) muda contrato em 4 arquivos. Continua a P-S116-09.
 **O que destrava:** 🤖 o serviço receber o modelo de quem chama. **Custa esquecer:** duas verdades sobre o modelo que lê documento.
+**✅ FECHADA (01/10/2026, SPEC-124, `1349c39`):** o `smith-api` resolve `visao_documento` no catálogo e manda
+`vision_provider/vision_model/vision_effort` no POST `/parse`; o docling usa o que recebe e `VISION_MODEL` vira só paraquedas
+(chamador antigo sem o campo). Guarda: `test_spec124_visao_docling_segue_o_catalogo.py` (G5). Restos: P-124-03, P-124-04, P-124-06.
 
 ## P-122-02 · 🧑 Três variáveis de modelo no EasyPanel para conferir pelo nome
 `VISION_MODEL` (serviço `docling-service`) · `COUNCIL_MEMBERS` (`smith-api`; o conselho está desligado por `COUNCIL_ENABLED`)
@@ -12808,3 +12812,111 @@ não existe e a resposta não casa com a URA.
 | P-122-18 | CONTINUA → P-123-14 |
 | P-121-04 | ✅ FECHADA — carta `2d28a771…` publicada 01/10 02:29Z (a busca: P-123-12) |
 | P-121-28 | ✅ FECHADA no mecanismo — `conftest.py` devolve `sys.modules`; guarda `test_spec123_f5a_o_mundo_volta_limpo.py` (prova final: a bateria da SPEC) |
+
+
+
+---
+
+# SPEC-124 — o portal de vidros destrava com a mesma régua, e a visão no modelo certo (01/10/2026)
+
+> 📊 O retrato da SPEC (`reports/SPEC-124-EXECUTION-REPORT.md`): a VISÃO mudou de verdade — `visao` e `visao_documento` no
+> `gpt-6-luna` medium (migration `20261001_03`, versão `20261001071707`), 📊 mesmo acerto do `gpt-6.1-sol` (100 % × 100 %,
+> 30 documentos SINTÉTICOS, k=3) a ~1/18 do custo (`SPEC-124-BANCADA-VISAO.md`); o docling obedece ao catálogo. O PORTAL
+> ganhou a estrutura, não a autonomia: a mesma régua do WhatsApp nas paradas do API-first, continuação do mesmo pedido e o
+> diário (`respondeu_portal`, migration `_04`, versão `20261001071232`) — mas 📊 0 jobs de vidros desde 01/08, o API-first
+> nunca rodou em produção, o DOM ficou fora, e com o DEDUZIR desligado e a UF consertada para pergunta o destravador do
+> portal **não responde nenhuma parada sozinho hoje**.
+
+## P-124-01 · 🤖🧑 O caminho DOM do portal (o único que já rodou) ficou FORA do destravador
+📊 B0 (30/09): os 39 jobs de vidros de 06–10/07 foram TODOS pelo DOM (`adaptive.run_adaptive`); `PORTAL_VIDROS_API_FIRST` é
+desligado por padrão (`vidros_apifirst.py:87`), então o DOM é o caminho vivo. Ele roda no contêiner do portal-worker, que não
+tem `app/` (o Dockerfile copia só `backend/portal_worker`) e não tem retomada (parada DOM → `possivel=False`, recomeça do
+passo 1). **O que destrava:** 🤖 o worker chamar o smith-api por HTTP na parada `ask_human`, OU dar retomada ao DOM; 🧑 ou
+decidir que o caminho é o API-first (D-124-F). **Custa esquecer:** a SPEC "o portal destrava" não alcança o único caminho
+que rodou — o portal continua chamando humano como antes.
+
+## P-124-02 · 🤖🧑 Autonomia no portal = calibrar o DEDUZIR (a mesma P-123-01)
+Depois do conserto `c3cd5c7`, a única parada que respondia sozinha (`uf_desconhecida`) virou pergunta; as demais `responder:*`
+são DEDUZIR (desligado, `DEDUZIR_AUTONOMO_CALIBRADO = False`) ou PERGUNTAR/NUNCA. Guarda:
+`test_C1_HOJE_o_destravador_do_portal_nao_responde_NENHUMA_parada_sozinho`. G3 (≥ 90 % na faixa de agir) não é mensurável:
+📊 0 paradas reais do API-first. **O que destrava:** 🤖 a calibração da P-123-01 E as primeiras paradas reais do API-first
+no diário (`origem='portal'`). **Custa esquecer:** o Founder lê "o portal destrava" e ele só pergunta.
+
+## P-124-03 · 🤖 O docling aceita QUALQUER `vision_model` e é aberto com `SERVICE_KEY` vazio
+`docling-service/app/main.py` valida só provedor (openai) e esforço; `config.py:14` `SERVICE_KEY: str = ""` por padrão. Quem
+alcança a porta escolhe modelo e esforço caros na chave OpenAI da casa (red team P4). **O que destrava:** 🤖 lista de modelos
+aceitos (os da rota) e recusar subir com `SERVICE_KEY` vazio. **Custa esquecer:** custo sem dono na chave da casa.
+
+## P-124-04 · 🤖 O ledger da visão do docling subconta
+Só a última execução do Celery volta em `metadata.visao` (retry perde as anteriores) e imagem cujo pedido falhou (texto vazio)
+não é contada (red team P6). **O que destrava:** 🤖 acumular o uso por tentativa. **Custa esquecer:** o custo por corretora
+do docling fica abaixo do real. Pequeno.
+
+## P-124-05 · 🧑🤖 A bancada da visão precisa de fotos REAIS mascaradas — a rota `visao` já está na Luna em produção
+📊 Corpus 100 % sintético (PIL); 0 erros em 30 → até ~10 % de erro pelo IC 95 % superior; foto de celular de verdade
+(reflexo, dobra, corte) não medida; o prompt de DESCRIÇÃO do produto só com k=1. Não há mascarador de imagem; o storage tem
+📊 33 jpeg + 8 png em `chat-media` e 12 PDF em `chat-docs`, todos com dado pessoal (B0). **O que destrava:** 🧑 ~10 fotos
+reais com os dados cobertos (ou autorizar um mascarador); 🤖 a rodada com os 3 braços. **Custa esquecer:** a troca para a
+Luna (já valendo) repousa num número que é TETO.
+
+## P-124-06 · 🤖 O uso de tokens do docling não foi provado ponta a ponta
+O smoke foi do PEDIDO Chat Completions (HTTP 200 com `usage`); a leitura `docling__usage` foi conferida no wheel, mas o nome
+final da chave depende de `MetaUtils.create_meta_field_name`. Se divergir, cai na estimativa marcada (`estimativa: true`).
+**O que destrava:** 🤖 um PDF com imagem pela sanitização da base (`extract_images=True`) depois do Implantar, conferindo a
+linha `details.papel='visao_documento'` no ledger. **Custa esquecer:** o custo do docling vira estimativa sem ninguém ver.
+
+## P-124-07 · 🤖 "Nunca 'Não sabe'" do questionário não está em código; `_RX_CANCELA_NO_PORTAL` duplica `_RX_CANCELA`
+A tabela de classes promete que o questionário nunca responde "Não sabe", mas nada impede; e a regex de cancelamento do
+portal repete o radical da do WhatsApp em vez de reusá-la (juiz P6). Hoje inalcançável (DEDUZIR desligado). **O que
+destrava:** 🤖 a proibição em código com teste, e uma regex só. **Custa esquecer:** quando a calibração religar, o portal
+responde "Não sabe" num questionário de sinistro; e duas regex divergem.
+
+## P-124-08 · 🤖 Esperas encadeadas da tool do portal até ~600 s
+Com o destravador agindo, `_destravar_a_parada` chama `_aguardar` (150 s) dentro de `_aguardar`, até o teto de 3
+continuações; sem timeout de tool no runtime (juiz P7 = red team P2). Hoje moot (o portal não age sozinho). **O que
+destrava:** 🤖 um relógio único por chamada. **Custa esquecer:** o agente fica até 10 min mudo com o segurado.
+
+## P-124-09 · 🤖 G1 do portal provado só com o modo `off`
+Os dublês dos scripts G1 (001.10/001.10.1) não têm `cerebro_modos`; em produção o modo é `on` (📊 01/10: 40 linhas, inclui
+`yelum` e `porto`, ramo `todos`). **O que destrava:** 🤖 rodar 1 script G1 com a linha `on` no dublê. **Custa esquecer:** o
+caminho conhecido com `on` nunca foi visto.
+
+## P-124-10 · 🤖 `visao_documento` sem reserva de outro provedor
+O docling só fala Chat Completions da OpenAI (`PictureDescriptionApiOptions`); a Anthropic precisaria de endpoint compatível
+(não verificado). **O que destrava:** 🤖 provar um endpoint compatível ou um adaptador no docling. **Custa esquecer:** OpenAI
+fora do ar = a imagem do PDF sai sem descrição.
+
+## P-124-11 · 🤖 `test_spec116_f3b_plataforma`: 2 falhas vistas na execução
+Apontadas como pré-existentes e fora da `BATERIA-LINHA-DE-BASE.txt`; 📊 isolado em `c3cd5c7` (01/10) → 16 passed — dependem
+de ordem/carga. **O que destrava:** 🤖 a triagem da bateria da SPEC-124 (entrar na linha de base com motivo, ou consertar).
+**Custa esquecer:** falha "conhecida" sem nome na linha de base esconde a próxima.
+
+## P-124-12 · 🤖 `vidros_estado.ETAPA_DA_PARADA` diz `responder:pergunta` genérico
+`questionario_incompleto` espera `responder:pergunta` (`vidros_estado.py:294`), mas o slot que responde é `pergunta_<codigo>`
+(conserto C3 fez o destravador usar o etiquetado). **O que destrava:** 🤖 o mapa dizer o slot por pergunta. **Custa
+esquecer:** duas fontes da mesma etiqueta divergem quando o DEDUZIR religar.
+
+## P-124-13 · 🧑 A ordem de deploy do docling
+API nova + worker antigo: `parse_document.apply_async(kwargs={"vision": ...})` → `TypeError` → 2 retries → falha (só com
+`extract_images=True`; 📊 `sanitization_jobs` 0 linhas). O inverso é seguro. **O que destrava:** 🧑 Implantar o WORKER do
+docling antes da API (`TAREFAS-DO-FOUNDER.md` S124.1). **Custa esquecer:** a sanitização da base com imagem falha calada.
+
+## P-124-14 · 🤖 `cidade_ambigua` escolheria a cidade homônima errada quando a calibração religar
+Achado da confirmação (P-C2): com `DEDUZIR_AUTONOMO_CALIBRADO=True`, a parada `cidade_ambigua` escolhe na lista e 📊 o ataque
+da confirmação (01/10, `c3cd5c7`) escolheu "Curitibanos" para "Curitiba". Hoje é inalcançável (o DEDUZIR está desligado).
+**O que destrava:** 🤖 a bancada da calibração (P-123-01/P-124-02) levar casos de cidade homônima e prefixo, e a escolha exigir
+igualdade normalizada antes de qualquer dedução. **Custa esquecer:** o pedido de vidro abre na cidade errada no dia em que a
+calibração religar o DEDUZIR.
+
+## P-124-15 · 🤖 a regex de `pergunta_<codigo>` recusa `_` e `-` no código da pergunta
+Achado da confirmação (P-C3): o slot etiquetado do questionário só aceita código sem `_`/`-`; um código assim cai para
+pessoa (falha SEGURA, nada vai ao portal). **O que destrava:** 🤖 alargar a regex ao formato real dos códigos do portal, com
+teste de controle. **Custa esquecer:** pergunta de questionário que poderia ser respondida com dado do caso chama pessoa.
+
+## A drenagem das pendências que a SPEC-124 tocou
+| P | estado |
+|---|---|
+| P-122-01 | ✅ FECHADA — o docling recebe o modelo de quem chama (`1349c39`); guarda G5 |
+| P-S116-09 | ✅ FECHADA — a mesma, na origem |
+| P-122-02 | CONTINUA — a env `VISION_MODEL` no EasyPanel virou só paraquedas; pode ficar como está |
+| P-123-01 | CONTINUA — agora também dá (ou não) autonomia ao portal (P-124-02) |
