@@ -2261,7 +2261,11 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
 
     if tool_name == "request_human_agent":
         # Devolvido a uma pessoa. A fase trava aqui: só um humano tira daqui.
-        novidades["fase"] = FASE_COM_HUMANO
+        # 🔴 SPEC-123 D8: a SEGUNDA CHANCE devolve a instrução ao agente e NINGUÉM
+        #    é chamado — gravar `com_humano` aí travaria a fase num caso sem pessoa.
+        from app.agents.tools.human_handoff import foi_segunda_chance
+        if not foi_segunda_chance(result):
+            novidades["fase"] = FASE_COM_HUMANO
     else:
         # Cada confirmação carrega a ORIGEM: o bloco do prompt diz ao modelo o
         # que ele NÃO pode perguntar de novo (o cliente disse) e o que ele pode
