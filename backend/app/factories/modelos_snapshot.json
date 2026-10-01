@@ -2597,7 +2597,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-10-01T07:19:07+00:00",
+ "gerado_em": "2026-10-01T22:51:04+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {
@@ -2704,27 +2704,27 @@
    "esforco": "high",
    "esforco_reserva": null,
    "modelo_primario": "gpt-6.1-sol",
-   "modelo_reserva": "claude-sonnet-5-5",
-   "motivo": "SPEC-123 F1a · valores PROVISÓRIOS do contrato (30/09/2026); a F2 decide pela bancada (D4)",
+   "modelo_reserva": "claude-opus-5-5",
+   "motivo": "SPEC-125 D8 · Founder 01/10/2026 — Opus 5.5 na reserva do destravador",
    "papel": "destravador",
    "provider": "openai",
    "provider_reserva": "anthropic",
    "risco": "critico",
-   "versao": 1
+   "versao": 2
   },
   "destravador_segunda": {
    "classe_de_dado": "pii",
    "descricao": "SPEC-123 — a 2ª opinião do DEDUZIR, de OUTRO provedor que o que decidiu (D3) — app/services/destravador.py",
    "esforco": null,
    "esforco_reserva": "high",
-   "modelo_primario": "claude-sonnet-5-5",
+   "modelo_primario": "claude-opus-5-5",
    "modelo_reserva": "gpt-6.1-sol",
-   "motivo": "SPEC-123 F1a · valores PROVISÓRIOS do contrato (30/09/2026); a F2 decide pela bancada (D4)",
+   "motivo": "SPEC-125 D8 · Founder 01/10/2026 — Opus 5.5 na 2ª opinião do destravador",
    "papel": "destravador_segunda",
    "provider": "anthropic",
    "provider_reserva": "openai",
    "risco": "critico",
-   "versao": 1
+   "versao": 2
   },
   "dispatch": {
    "classe_de_dado": "pii",
