@@ -43,6 +43,80 @@ MIME_TYPE_MAP = {
 }
 
 
+#: Os provedores que o docling-service fala na visão (o `PictureDescriptionApiOptions` do Docling
+#: só manda Chat Completions OpenAI — 📊 docling-slim 2.130.0 `utils/api_image_request.py`, lido em
+#: 01/10/2026). Espelho de `docling-service/app/tasks.py:PROVEDORES_DA_VISAO`, que RECUSA outro com
+#: 400; aqui se escolhe, na rota, o primeiro de (primário, reserva) que ele fala.
+PROVEDORES_DO_DOCLING = frozenset({"openai"})
+
+#: constante_justificada: a ESTIMATIVA por imagem quando o docling não devolve o `usage` real
+#: (versão antiga, ou provedor que não o manda). 💭 ordem de grandeza de uma imagem de página em
+#: Chat Completions (≈1.100 tokens de imagem + o prompt classificador) e uma descrição exaustiva;
+#: a linha do ledger leva `estimativa: true` — nunca se confunde com medição.
+ESTIMATIVA_DE_ENTRADA_POR_IMAGEM = 1500
+ESTIMATIVA_DE_SAIDA_POR_IMAGEM = 800
+
+
+def modelo_da_visao_do_docling() -> Dict[str, str]:
+    """Os campos do form do /parse com o modelo da rota `visao_documento` — ou {} (paraquedas).
+
+    Primário se o docling o fala; senão a reserva, se o docling a fala; senão nada (o docling usa
+    o paraquedas `VISION_MODEL`), com o motivo no log. Rota inválida no catálogo idem: o documento
+    ainda é lido (OCR + paraquedas) e o defeito fica no log, em vez de derrubar a sanitização.
+    """
+    from ..factories import model_policy as MP
+
+    try:
+        resolvido = MP.resolver("visao_documento")
+    except MP.ModeloNaoResolvido as exc:
+        logger.error("[Sanitization] rota visao_documento sem modelo governado (%s) — docling no paraquedas",
+                     exc)
+        return {}
+    for candidato in (resolvido, resolvido.reserva):
+        if candidato is not None and candidato.provider in PROVEDORES_DO_DOCLING:
+            if candidato is not resolvido:
+                logger.warning("[Sanitization] visao_documento: o docling não fala %s — usando a reserva %s",
+                               resolvido.provider, candidato.model)
+            form = {"vision_provider": candidato.provider, "vision_model": candidato.model}
+            if candidato.effort:
+                form["vision_effort"] = candidato.effort
+            return form
+    logger.warning("[Sanitization] visao_documento: nem o primário (%s) nem a reserva falam o formato do "
+                   "docling — paraquedas VISION_MODEL", resolvido.provider)
+    return {}
+
+
+def _registrar_custo_da_visao(metadata: Dict[str, Any], company_id: Optional[str]) -> None:
+    """O custo da visão do docling no LEDGER (`token_usage_logs`), na corretora que pediu.
+
+    O docling não tem banco: ele devolve `metadata.visao` (modelo usado, imagens descritas e o
+    uso REAL de tokens que o provedor respondeu). Sem uso real de TODAS as imagens → estimativa
+    MARCADA. Nunca derruba a sanitização por erro de registro.
+    """
+    visao = (metadata or {}).get("visao") or {}
+    n = int(visao.get("imagens_descritas") or 0)
+    modelo = visao.get("modelo")
+    if n <= 0 or not modelo:
+        return
+    medido = int(visao.get("imagens_com_uso") or 0) == n
+    entrada = int(visao.get("entrada") or 0) if medido else n * ESTIMATIVA_DE_ENTRADA_POR_IMAGEM
+    saida = int(visao.get("saida") or 0) if medido else n * ESTIMATIVA_DE_SAIDA_POR_IMAGEM
+    try:
+        from .usage_service import get_usage_service
+
+        get_usage_service().track_cost_sync(
+            service_type="vision", model=str(modelo), input_tokens=entrada, output_tokens=saida,
+            company_id=str(company_id) if company_id else None,
+            cached_tokens=int(visao.get("cache") or 0) if medido else 0,
+            details={"papel": "visao_documento", "origem": "docling",
+                     "origem_do_modelo": visao.get("origem"), "provedor_resolvido": visao.get("provider"),
+                     "esforco": visao.get("esforco"), "imagens_descritas": n,
+                     "raciocinio": int(visao.get("raciocinio") or 0) if medido else None,
+                     "estimativa": not medido})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Sanitization] custo da visão do docling não registrado: %s", type(exc).__name__)
+
+
 class SanitizationService:
     """
     Service for sanitizing documents into clean Markdown.
@@ -178,7 +252,8 @@ class SanitizationService:
             try:
                 # Parse with Docling
                 self._update_job(job_id, status="parsing", progress=20)
-                markdown_output, metadata = self._docling_parse(tmp_path, extract_images)
+                markdown_output, metadata = self._docling_parse(tmp_path, extract_images,
+                                                                company_id=company_id)
 
                 # Post-process
                 self._update_job(job_id, status="cleaning", progress=75)
@@ -239,7 +314,8 @@ class SanitizationService:
     # DOCLING PARSE
     # =========================================================================
 
-    def _docling_parse(self, file_path: str, extract_images: bool = False) -> Tuple[str, Dict[str, Any]]:
+    def _docling_parse(self, file_path: str, extract_images: bool = False, *,
+                       company_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
         Parse document via Docling microservice (async with polling).
 
@@ -251,6 +327,11 @@ class SanitizationService:
         This method is blocking (runs inside a Celery task),
         but the HTTP calls are non-blocking — the Docling service processes
         in its own background worker.
+
+        🔴 SPEC-124 D4 (P-122-01): com `extract_images`, o modelo da visão é o da ROTA
+        `visao_documento` do catálogo (`modelo_da_visao_do_docling`), enviado no form; o
+        `VISION_MODEL` do docling é só paraquedas. O custo que o docling devolve
+        (`metadata.visao`) entra no ledger da corretora (`_registrar_custo_da_visao`).
         """
         import httpx
 
@@ -261,12 +342,16 @@ class SanitizationService:
         if settings.DOCLING_SERVICE_KEY:
             headers["X-Service-Key"] = settings.DOCLING_SERVICE_KEY
 
+        form = {"extract_images": str(extract_images).lower()}
+        if extract_images:
+            form.update(modelo_da_visao_do_docling())
+
         # Step 1: Submit file for parsing (returns immediately with task_id)
         with open(file_path, "rb") as f:
             response = httpx.post(
                 f"{settings.DOCLING_SERVICE_URL}/parse",
                 files={"file": (filename, f)},
-                data={"extract_images": str(extract_images).lower()},
+                data=form,
                 headers=headers,
                 timeout=30,  # Upload should be fast
             )
@@ -316,6 +401,7 @@ class SanitizationService:
                     f"[Sanitization] Docling completed in ~{elapsed}s. "
                     f"Output: {len(markdown)} chars"
                 )
+                _registrar_custo_da_visao(metadata, company_id)
                 return markdown, metadata
 
             elif status == "failed":

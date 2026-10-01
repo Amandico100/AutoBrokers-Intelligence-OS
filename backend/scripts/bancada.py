@@ -29,6 +29,10 @@ falha · BLOCKED_BY_INFRA.
     # F5a — re-julgar sem modelo (e, com --redecidir, pela política de hoje):
     python scripts/bancada.py --resumo-destravador "tests/corpus/bancada/RESULTADOS/destravador_R*.json" --recalcular
 
+    # SPEC-124 F2 — a VISÃO com gabarito por campo (o teto da FATIA = só as linhas details.papel='visao'):
+    python scripts/bancada.py --papel visao_campos --braco openai:gpt-6-luna:medium --k 1 --teto-provedor 0.45 --ledger-desde 2026-10-01T00:00:00+00:00 --ledger-papel visao --saida <scratch>/visao_luna.json
+    python scripts/bancada.py --resumo-visao "<scratch>/visao_*.json"
+
 `--ensaio` (padrão) NÃO toca o banco: grava só um JSON local e diz onde.
 `--gravar` escreve em `eval_runs`/`eval_case_results` (exige a migration
 20260923_03 aplicada). O teto em US$ vem de `--teto-usd` ou de BANCADA_TETO_USD
@@ -86,6 +90,11 @@ def main(argv=None) -> int:
     p.add_argument("--recalcular", action="store_true",
                    help="SPEC-123 F5a: com --resumo-destravador, RE-JULGA cada resultado gravado pelo juiz e o "
                         "gabarito de hoje (sem modelo; os arquivos não mudam)")
+    p.add_argument("--ledger-papel", default=None,
+                   help="SPEC-124: com --teto-provedor, conta no ledger SÓ as linhas da bancada com "
+                        "details.papel = este (o teto de UMA fatia; relido durante a rodada)")
+    p.add_argument("--resumo-visao", nargs="+", default=None,
+                   help="SPEC-124: acerto por campo, custo/documento e latência por braço (papel visao_campos)")
     p.add_argument("--redecidir", action="store_true",
                    help="SPEC-123 F5a: com --recalcular, passa a proposta gravada de novo pela POLÍTICA de hoje")
     a = p.parse_args(argv)
@@ -123,6 +132,19 @@ def main(argv=None) -> int:
             if m["graves"] or m["graves_do_modelo_nu"]:
                 print(f"\n{rot}\n  GRAVES (depois do parser/conferente): {m['graves'] or '—'}"
                       f"\n  graves do modelo NU (antes de D3):    {m['graves_do_modelo_nu'] or '—'}")
+        if a.saida:
+            Path(a.saida).write_text(_json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
+        return 0
+
+    if a.resumo_visao:
+        import glob
+        import json as _json
+
+        arqs = sorted({f for padrao in a.resumo_visao for f in glob.glob(padrao)})
+        resumo = B.resumo_da_visao(arqs, rejulgar=bool(a.recalcular))
+        if a.recalcular:
+            print("RE-JULGADO sem modelo: juiz e gabarito de hoje sobre as respostas gravadas")
+        print(B.tabela_da_visao(resumo))
         if a.saida:
             Path(a.saida).write_text(_json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
         return 0
@@ -199,6 +221,31 @@ def main(argv=None) -> int:
         if len(provs) != 1 or not a.ledger_desde:
             p.error("--teto-provedor exige braços de UM provedor e --ledger-desde")
         prov = provs.pop()
+        if a.ledger_papel:
+            # 🔴 SPEC-124: o teto da FATIA — só o que ela gastou (details.papel), relido a cada 10 reservas
+            # o cliente do LEDGER é capturado AQUI, fora da borda (a releitura roda DENTRO de
+            # `dubles.borda_isolada`, onde `get_supabase_client` é o dublê — a lição da F5a da 123)
+            from app.core.database import get_supabase_client
+
+            cli_ledger = get_supabase_client()
+            o = B.OrcamentoDoLedger(prov, a.teto_provedor, a.ledger_desde,
+                                    ler=lambda pv, d: B.gasto_do_ledger_do_papel(pv, d, a.ledger_papel,
+                                                                                 cliente=cli_ledger))
+            print(f"ledger {prov} papel={a.ledger_papel} desde {a.ledger_desde}: US$ {o.inicial:.4f} · "
+                  f"teto {a.teto_provedor:.2f} · resta {o.teto_usd:.4f}")
+            if o.teto_usd <= 0:
+                print("⛔ teto da fatia já atingido no ledger — nada roda")
+                return 2
+            rel = B.rodar_bancada(a.papel, a.braco, k=a.k, nivel=a.nivel, gravar=bool(a.gravar),
+                                  teto_usd=o.teto_usd, filtro=a.casos, critico=a.critico,
+                                  grupo_bancada=a.grupo, orcamentos={prov: o})
+            print(rel.tabela())
+            for r in rel.resultados if a.por_caso else []:
+                print(f"  {r.braco:<34} {r.chave:<34} t{r.tentativa} {r.resultado:<16} US$ {r.custo_usd:.6f} "
+                      f"{r.latencia_ms} ms" + (f" · {r.erro[:140]}" if r.erro else ""))
+            print(f"\ngrupo_bancada: {rel.grupo_bancada} · tentativas: {len(rel.resultados)}")
+            print(f"ensaio (nada no banco) · relatório local: {rel.salvar(a.saida)}")
+            return 2 if rel.parada and rel.parada.startswith("teto_usd") else 0
         gasto = B.gasto_do_ledger(prov, a.ledger_desde)
         resta = round(a.teto_provedor - gasto, 6)
         print(f"ledger {prov} desde {a.ledger_desde}: US$ {gasto:.4f} · teto {a.teto_provedor:.2f} · resta {resta:.4f}")

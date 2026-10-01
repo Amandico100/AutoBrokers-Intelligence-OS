@@ -126,6 +126,9 @@ PAPEIS: Dict[str, Dict[str, Any]] = {
     "cerebro": {"risco": "critico", "motor": "cerebro", "rota": "dispatch"},
     "memoria": {"risco": "medio", "motor": "memoria"},
     "visao": {"risco": "alto", "motor": "visao"},
+    # SPEC-124 F2: a visão com GABARITO POR CAMPO — o braço sai da ROTA `visao` (a foto do segurado),
+    # e o custo vai ao ledger como details.papel='visao' (o teto da fatia é lido por ele).
+    "visao_campos": {"risco": "critico", "motor": "visao_campos", "rota": "visao", "papel_no_ledger": "visao"},
     "hyde": {"risco": "medio", "motor": "hyde"},
     "extrator_planos": {"risco": "medio", "motor": "extrator_planos"},
     "juiz": {"risco": "medio", "motor": "bloqueado",
@@ -1134,6 +1137,8 @@ def julgar_caso(caso: dict, saida: dict) -> List[dict]:
         pedidos.append(("cerebro", avaliador_do_cerebro, saida, o["cerebro"], ent))
     if o.get("destravador") and caso.get("papel") == "destravador":
         pedidos.append(("destravador", avaliador_do_destravador, saida, o["destravador"], ent))
+    if o.get("campos") and caso.get("papel") == "visao_campos":   # SPEC-124 F2: o juiz por campo
+        pedidos.append(("campos", avaliador_de_campos, saida, o["campos"], ent))
     if o.get("dados_do_outro_tenant"):
         pedidos.append(("sem_dado_de_outro_tenant", E.sem_dado_de_outro_tenant, saida, o, ent))
     if caso.get("orcamento_turnos"):
@@ -2401,4 +2406,349 @@ def tabela_do_destravador(resumo: dict) -> str:
         linhas.append(f"  G4 (D, n={m['G4_n_D']}): destravou CERTO sem humano {_pct(m['G4_destravou_certo_sem_humano'])}"
                       f" · sem humano e seguro {_pct(m['G4_sem_humano_e_seguro'])} · ANTES (ponto B, "
                       f"n={m['G4_n_D_ponto_B']}) {_pct(m['G4_antes_ponto_B'])}")
+    return "\n".join(linhas)
+
+
+# ===========================================================================
+# SPEC-124 F2 · D3 — A BANCADA DA VISÃO COM GABARITO POR CAMPO
+# ===========================================================================
+#
+# O FIO, elo a elo:
+#
+#     caso do corpus (`visao_campos/casos.jsonl`; os marcadores materializados são os MESMOS valores
+#       que `visao_campos/gerar_imagens.py` desenhou na imagem SINTÉTICA)
+#       → o braço da ROTA `visao` (resolvedor + fábrica do produto; ledger 'bancada',
+#         details.papel='visao') recebe a imagem no MESMO formato de `vision_service.describe_image`
+#         (SystemMessage + HumanMessage[text, image_url data-URI]) e UMA instrução fixa de extração,
+#         igual para todo braço (o produto só DESCREVE — não há prompt de extração a reusar)
+#       → o JSON devolvido → o JUIZ POR CAMPO (normalizado: CPF/apólice só dígitos, placa sem traço,
+#         datas ISO, valores em centavos, nome sem acento/caixa) contra o GABARITO do caso.
+#
+# ⛔ "Parece bom" não vale: cada campo é acerto, errado, faltou ou INVENTOU (campo que o documento
+#    não tem e o modelo preencheu). Inventar CPF é erro — conta contra o braço.
+
+#: A instrução FIXA, igual para todos os braços (D3: "os candidatos no MESMO prompt").
+INSTRUCAO_DE_CAMPOS = (
+    "Você lê documentos de seguro para uma corretora. Extraia os campos do documento da imagem e "
+    "responda SOMENTE com um objeto JSON (nenhum texto fora dele) com EXATAMENTE estas chaves:\n"
+    '- "tipo_documento": um de "apolice_auto", "apolice_residencial", "cnh", "crlv", "orcamento", '
+    '"boleto", "foto_dano", "outro"\n'
+    '- "nome": o nome da pessoa titular (segurado da apólice, condutor da CNH, proprietário do veículo, '
+    "cliente do orçamento ou pagador do boleto)\n"
+    '- "cpf": o CPF dessa pessoa\n'
+    '- "placa": a placa do veículo\n'
+    '- "numero_apolice": o número da apólice\n'
+    '- "vigencia_inicio" e "vigencia_fim": as datas de início e de fim da vigência (AAAA-MM-DD)\n'
+    '- "coberturas": lista de objetos {"nome": ..., "valor": ...}, uma por cobertura contratada, com o '
+    "limite máximo de indenização (LMI) em reais — não o prêmio da cobertura\n"
+    '- "valor_total": o valor total a pagar — prêmio total da apólice, total do orçamento ou valor do '
+    "boleto — em reais\n"
+    '- "franquia": a franquia básica (principal) do veículo, em reais\n'
+    '- "vencimento": a data de vencimento do boleto (AAAA-MM-DD)\n'
+    '- "validade": a data de validade da CNH (AAAA-MM-DD)\n'
+    "Valores em reais como número decimal com ponto (ex.: 1234.56). Copie números e letras exatamente "
+    "como aparecem. Use null para o que não estiver no documento ou não for legível — nunca invente "
+    "nem deduza."
+)
+
+#: As chaves do esquema, na ordem da instrução. Todo caso tem gabarito para TODAS (null = ausente).
+CAMPOS_DA_VISAO = ("tipo_documento", "nome", "cpf", "placa", "numero_apolice", "vigencia_inicio",
+                   "vigencia_fim", "coberturas", "valor_total", "franquia", "vencimento", "validade")
+
+#: constante_justificada: os campos CRÍTICOS da D3 do Founder ("nome, CPF, placa, apólice, vigência,
+#: coberturas, valores") + a franquia (o card da F2). `tipo_documento`, `vencimento` e `validade`
+#: entram no acerto geral, não no crítico.
+CAMPOS_CRITICOS_DA_VISAO = ("nome", "cpf", "placa", "numero_apolice", "vigencia_inicio", "vigencia_fim",
+                            "coberturas", "valor_total", "franquia")
+
+_TIPO_DO_CAMPO = {"cpf": "digitos", "numero_apolice": "digitos", "placa": "placa",
+                  "vigencia_inicio": "data", "vigencia_fim": "data", "vencimento": "data",
+                  "validade": "data", "valor_total": "valor", "franquia": "valor",
+                  "coberturas": "coberturas", "nome": "texto", "tipo_documento": "texto"}
+
+_VAZIOS = ("", "null", "none", "n/a", "na", "-", "—", "nao informado", "não informado", "nao consta")
+
+
+def _vazio(v: Any) -> bool:
+    if v is None:
+        return True
+    if isinstance(v, (list, dict)):
+        return len(v) == 0
+    return str(v).strip().lower() in _VAZIOS
+
+
+def _norm_texto(v: Any) -> str:
+    s = unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode().upper()
+    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _norm_digitos(v: Any) -> str:
+    return re.sub(r"\D", "", str(v or ""))
+
+
+def _norm_placa(v: Any) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+
+
+def _norm_data(v: Any) -> Optional[str]:
+    s = str(v or "").strip()
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if m:
+        a, mes, d = m.groups()
+    else:
+        m = re.match(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})", s)
+        if not m:
+            return None
+        d, mes, a = m.groups()
+    try:
+        return datetime(int(a), int(mes), int(d)).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _norm_valor(v: Any) -> Optional[int]:
+    """Reais → CENTAVOS (int). Aceita número, "1234.56", "R$ 1.234,56", "1.234", "1234,5"."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return int(round(float(v) * 100))
+    s = re.sub(r"[^\d,.\-]", "", str(v or ""))
+    if not s or not re.search(r"\d", s):
+        return None
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"-?\d{1,3}(?:\.\d{3})+", s):
+        s = s.replace(".", "")
+    try:
+        return int(round(float(s) * 100))
+    except ValueError:
+        return None
+
+
+_PALAVRAS_VAZIAS = {"A", "E", "O", "DE", "DA", "DO", "DAS", "DOS", "OU", "EM", "COM", "POR", "PARA"}
+
+
+def _tokens(nome: Any) -> set:
+    return {t for t in _norm_texto(nome).split() if t not in _PALAVRAS_VAZIAS and len(t) >= 2}
+
+
+def _coberturas_batem(esperadas: list, obtidas: Any) -> bool:
+    """Cada cobertura OBRIGATÓRIA do gabarito casa com UMA obtida (nome compatível E LMI igual em
+    centavos), e o modelo não listou nada a mais — exceto um item que o gabarito declara `opcional`
+    (linha que o documento mostra no quadro de coberturas SEM LMI, ex.: a assistência 24h: listá-la
+    sem valor é leitura defensável, omiti-la também; listá-la COM valor inventado é erro).
+    Nome compatível = os termos de um contidos nos do outro."""
+    if not isinstance(obtidas, list):
+        return False
+    livres = [ob for ob in obtidas if isinstance(ob, dict)]
+    if len(livres) != len(obtidas):
+        return False
+    for esp in esperadas:
+        t_esp, v_esp = _tokens(esp.get("nome")), _norm_valor(esp.get("valor"))
+        achou = None
+        for i, ob in enumerate(livres):
+            t_ob = _tokens(ob.get("nome"))
+            if not t_ob or not (t_ob <= t_esp or t_esp <= t_ob):
+                continue
+            if _norm_valor(ob.get("valor")) == v_esp:     # opcional: v_esp None ⇒ exige valor vazio
+                achou = i
+                break
+        if achou is None:
+            if esp.get("opcional"):
+                continue
+            return False
+        livres.pop(achou)
+    return not livres
+
+
+def comparar_campo(campo: str, esperado: Any, obtido: Any) -> str:
+    """'acerto' · 'errado' · 'faltou' (o documento tem, o modelo deixou null) · 'inventou' (o
+    documento NÃO tem, o modelo preencheu)."""
+    if _vazio(esperado):
+        return "acerto" if _vazio(obtido) else "inventou"
+    if _vazio(obtido):
+        return "faltou"
+    tipo = _TIPO_DO_CAMPO.get(campo, "texto")
+    if tipo == "digitos":
+        ok = _norm_digitos(esperado) == _norm_digitos(obtido)
+    elif tipo == "placa":
+        ok = _norm_placa(esperado) == _norm_placa(obtido)
+    elif tipo == "data":
+        ok = _norm_data(esperado) is not None and _norm_data(esperado) == _norm_data(obtido)
+    elif tipo == "valor":
+        ok = _norm_valor(esperado) is not None and _norm_valor(esperado) == _norm_valor(obtido)
+    elif tipo == "coberturas":
+        ok = _coberturas_batem(list(esperado), obtido)
+    else:
+        ok = _norm_texto(esperado) == _norm_texto(obtido)
+    return "acerto" if ok else "errado"
+
+
+def json_da_resposta(texto: str) -> Optional[dict]:
+    """O objeto JSON da resposta (tolera cerca ```json e texto em volta). Sem objeto → None."""
+    s = str(texto or "").strip()
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)
+    try:
+        v = json.loads(s)
+        return v if isinstance(v, dict) else None
+    except (ValueError, TypeError):
+        pass
+    i, j = s.find("{"), s.rfind("}")
+    if i < 0 or j <= i:
+        return None
+    try:
+        v = json.loads(s[i:j + 1])
+        return v if isinstance(v, dict) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def veredito_dos_campos(gabarito: dict, extraido: Optional[dict]) -> dict:
+    """Um veredito POR CAMPO do esquema. Resposta sem JSON → todo campo presente 'faltou' e o
+    formato é marcado inválido."""
+    ext = extraido if isinstance(extraido, dict) else {}
+    campos = {c: comparar_campo(c, gabarito.get(c), ext.get(c)) for c in CAMPOS_DA_VISAO}
+    crit = {c: campos[c] for c in CAMPOS_CRITICOS_DA_VISAO}
+    presentes = [c for c in CAMPOS_CRITICOS_DA_VISAO if not _vazio(gabarito.get(c))]
+    return {"campos": campos, "acertos": sum(1 for v in campos.values() if v == "acerto"),
+            "total": len(campos),
+            "criticos_acertos": sum(1 for v in crit.values() if v == "acerto"), "criticos_total": len(crit),
+            "presentes_acertos": sum(1 for c in presentes if campos[c] == "acerto"),
+            "presentes_total": len(presentes),
+            "inventou": sorted(c for c, v in campos.items() if v == "inventou"),
+            "formato_invalido": not isinstance(extraido, dict)}
+
+
+def avaliador_de_campos(saida: Any, esperado: dict, entrada: Any = None) -> tuple:
+    """Juiz da bancada: passa só com TODOS os campos certos; nota = fração de campos certos."""
+    v = veredito_dos_campos(esperado, (saida or {}).get("estrutura"))
+    erros = [f"{c}:{r}" for c, r in v["campos"].items() if r != "acerto"]
+    return (not erros, v["acertos"] / v["total"],
+            "todos os campos certos" if not erros else f"{len(erros)} campo(s) errado(s): {', '.join(erros)}")
+
+
+async def motor_visao_campos(caso: dict, ctx: Contexto) -> dict:
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.services.vision_service import _texto_da_resposta
+
+    ent = caso.get("entrada") or {}
+    resp = await ctx.llm.ainvoke([
+        SystemMessage(content=INSTRUCAO_DE_CAMPOS),
+        HumanMessage(content=[
+            {"type": "text", "text": "Extraia os campos deste documento:"},
+            {"type": "image_url", "image_url": {"url": _imagem_em_data_uri(ent["imagem"])}},
+        ]),
+    ])
+    texto = _texto_da_resposta(getattr(resp, "content", None))
+    estrutura = json_da_resposta(texto)
+    veredito = veredito_dos_campos((caso.get("oraculo") or {}).get("campos") or {}, estrutura)
+    # a resposta INTEIRA no estado (o rastro corta o texto em 1.500): é o que permite re-julgar sem modelo
+    return {"texto": texto, "estrutura": estrutura, "estado": {"veredito_campos": veredito, "resposta": texto}}
+
+
+MOTORES["visao_campos"] = motor_visao_campos
+
+
+def gasto_do_ledger_do_papel(provedor: str, desde: str, papel: str, cliente: Any = None) -> float:
+    """Como `gasto_do_ledger`, mas SÓ as linhas da bancada com `details.papel = papel` — o teto de UMA
+    fatia quando outra fatia gasta no mesmo provedor ao mesmo tempo. SÓ leitura."""
+    db = getattr(cliente, "client", cliente) if cliente is not None else None
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = getattr(get_supabase_client(), "client", get_supabase_client())
+    modelos = sorted({str(x["model_name"]) for x in (db.table("llm_pricing").select("model_name")
+                      .eq("provider", provedor).execute().data or [])})
+    if not modelos:
+        raise ValueError(f"o catálogo não tem modelo do provedor {provedor!r} — o teto não tem como ser lido")
+    total, inicio = 0.0, 0
+    while True:
+        linhas = (db.table("token_usage_logs").select("total_cost_usd")
+                  .eq("service_type", SERVICE_TYPE_DA_BANCADA).gte("created_at", desde)
+                  .eq("details->>papel", papel).in_("model_name", modelos)
+                  .range(inicio, inicio + 999).execute().data or [])
+        total += sum(float(x.get("total_cost_usd") or 0) for x in linhas)
+        if len(linhas) < 1000:
+            return round(total, 6)
+        inicio += 1000
+
+
+def rejulgar_visao(r: dict, gabaritos: Dict[str, dict]) -> dict:
+    """Re-julga UM resultado gravado com o juiz e o gabarito de HOJE — sem chamar modelo. O texto vem
+    de `estado.resposta` (inteiro) ou, em rodada antiga, de `rastro.texto`."""
+    if r.get("resultado") == "BLOCKED_BY_INFRA" or r.get("chave") not in gabaritos:
+        return r
+    est = dict((r.get("rastro") or {}).get("estado") or {})
+    texto = est.get("resposta") or (r.get("rastro") or {}).get("texto") or ""
+    v = veredito_dos_campos(gabaritos[r["chave"]], json_da_resposta(texto))
+    est["veredito_campos"] = v
+    todos = all(x == "acerto" for x in v["campos"].values())
+    return {**r, "resultado": "PASS" if todos else "FAIL", "rastro": {**(r.get("rastro") or {}), "estado": est}}
+
+
+def resumo_da_visao(arquivos: List[str], *, rejulgar: bool = False) -> dict:
+    """Por braço: acerto por campo, acerto geral/crítico/presente, campos inventados, formato inválido,
+    custo por documento (usage × catálogo — a conta do ledger) e latência. `rejulgar`: passa cada
+    resposta gravada pelo juiz e pelo gabarito de hoje (sem modelo)."""
+    gabaritos = ({c["chave"]: D.materializar(c)["oraculo"]["campos"] for c in carregar_casos("visao_campos")}
+                 if rejulgar else {})
+    por_braco: Dict[str, List[dict]] = {}
+    for arq in arquivos:
+        d = json.loads(Path(arq).read_text(encoding="utf-8"))
+        for r in d.get("resultados") or []:
+            por_braco.setdefault(r["braco"], []).append(rejulgar_visao(r, gabaritos) if rejulgar else r)
+    out = {}
+    for braco, rs in sorted(por_braco.items()):
+        julg = [r for r in rs if r["resultado"] != "BLOCKED_BY_INFRA"]
+        vers = [((r.get("rastro") or {}).get("estado") or {}).get("veredito_campos") or {} for r in julg]
+        por_campo = {c: [sum(1 for v in vers if (v.get("campos") or {}).get(c) == "acerto"), len(vers)]
+                     for c in CAMPOS_DA_VISAO}
+
+        def soma(k, _v=vers):
+            return sum(int(v.get(k) or 0) for v in _v)
+
+        def taxa(a, b):
+            return (soma(a) / soma(b)) if soma(b) else None
+
+        lat = [int(r.get("latencia_ms") or 0) for r in julg]
+        custo = sum(float(r.get("custo_usd") or 0) for r in rs)
+        out[braco] = {
+            "documentos": len(julg), "blocked_by_infra": len(rs) - len(julg),
+            "acerto_geral": taxa("acertos", "total"), "acerto_critico": taxa("criticos_acertos", "criticos_total"),
+            "acerto_presentes": taxa("presentes_acertos", "presentes_total"),
+            "documentos_perfeitos": sum(1 for r in julg if r["resultado"] == "PASS"),
+            "inventou": sum(len(v.get("inventou") or []) for v in vers),
+            # a NOTA DA D3: campos críticos com valor acertados ÷ (com valor + críticos INVENTADOS). O
+            # acerto "geral" conta o null certo como acerto e esconde erro (📊 o dublê burro tira 48 %).
+            "nota_d3": (soma("presentes_acertos")
+                        / (soma("presentes_total")
+                           + sum(len([c for c in (v.get("inventou") or []) if c in CAMPOS_CRITICOS_DA_VISAO])
+                                 for v in vers))) if soma("presentes_total") else None,
+            "formato_invalido": sum(1 for v in vers if v.get("formato_invalido")),
+            "por_campo": por_campo,
+            "erros": sorted(f"{r['chave']}#t{r['tentativa']}:{c}:{x}" for r, v in zip(julg, vers)
+                            for c, x in (v.get("campos") or {}).items() if x != "acerto"),
+            "custo_usd": round(custo, 6), "custo_por_documento": round(custo / len(rs), 6) if rs else None,
+            "p50_ms": _percentil(lat, 0.50), "p90_ms": _percentil(lat, 0.90),
+        }
+    return out
+
+
+def tabela_da_visao(resumo: dict) -> str:
+    cab = (f"{'braço':<34} {'docs':>4} {'D3':>6} {'geral':>6} {'crít':>6} {'pres':>6} {'perf':>4} {'inv':>3} "
+           f"{'fmt✘':>4} {'US$/doc':>8} {'p50s':>5} {'p90s':>5}")
+    linhas = [cab, "-" * len(cab)]
+    for rot, m in resumo.items():
+        linhas.append(
+            f"{rot:<34} {m['documentos']:>4} {_pct(m['nota_d3']):>6} {_pct(m['acerto_geral']):>6} {_pct(m['acerto_critico']):>6} "
+            f"{_pct(m['acerto_presentes']):>6} {m['documentos_perfeitos']:>4} {m['inventou']:>3} "
+            f"{m['formato_invalido']:>4} {(m['custo_por_documento'] or 0):>8.5f} "
+            f"{(m['p50_ms'] or 0) / 1000:>5.1f} {(m['p90_ms'] or 0) / 1000:>5.1f}")
+    linhas.append("")
+    linhas.append(f"{'campo':<16} " + " ".join(f"{rot[:22]:>22}" for rot in resumo))
+    for c in CAMPOS_DA_VISAO:
+        linhas.append(f"{c:<16} " + " ".join(f"{m['por_campo'][c][0]}/{m['por_campo'][c][1]}".rjust(22)
+                                            for m in resumo.values()))
     return "\n".join(linhas)

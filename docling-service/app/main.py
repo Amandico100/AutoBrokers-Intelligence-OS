@@ -22,7 +22,7 @@ from minio import Minio
 
 from .celery_app import celery_app
 from .config import settings
-from .tasks import parse_document
+from .tasks import NIVEIS_DE_ESFORCO, PROVEDORES_DA_VISAO, parse_document
 
 # Configure logging
 logging.basicConfig(
@@ -124,10 +124,36 @@ async def readyz():
 # PARSE (Submit)
 # =========================================================================
 
+def _visao_do_form(provider: Optional[str], model: Optional[str],
+                   effort: Optional[str]) -> Optional[dict]:
+    """O modelo da visão pedido pelo chamador (catálogo), validado — ou None (paraquedas).
+
+    ⛔ Provedor que o Docling não fala (só Chat Completions OpenAI) ou esforço fora da escala
+    → 400 explícito. Nunca troca calado pelo paraquedas: quem pediu um modelo tem de saber.
+    """
+    modelo = (model or "").strip()
+    if not modelo:
+        return None
+    prov = (provider or "openai").strip().lower()
+    if prov not in PROVEDORES_DA_VISAO:
+        raise HTTPException(status_code=400, detail=(
+            f"vision_provider {prov!r} não suportado (o Docling só fala Chat Completions: "
+            f"{sorted(PROVEDORES_DA_VISAO)})"))
+    esforco = (effort or "").strip().lower() or None
+    if esforco is not None and esforco not in NIVEIS_DE_ESFORCO:
+        raise HTTPException(status_code=400, detail=(
+            f"vision_effort {esforco!r} fora da escala {list(NIVEIS_DE_ESFORCO)}"))
+    return {"provider": prov, "model": modelo, "effort": esforco}
+
+
+
 @app.post("/parse", status_code=202)
 async def submit_parse(
     file: UploadFile = File(...),
     extract_images: bool = Form(False),
+    vision_provider: Optional[str] = Form(None),
+    vision_model: Optional[str] = Form(None),
+    vision_effort: Optional[str] = Form(None),
     x_service_key: Optional[str] = Header(None),
 ):
     """
@@ -135,8 +161,13 @@ async def submit_parse(
 
     Returns immediately with a task_id.
     Use GET /status/{task_id} to check progress and get the result.
+
+    SPEC-124 D4: `vision_provider`/`vision_model`/`vision_effort` (OPCIONAIS) = a rota
+    `visao_documento` do catálogo, resolvida pelo chamador. Sem eles vale o paraquedas
+    VISION_MODEL — o chamador antigo continua funcionando.
     """
     verify_service_key(x_service_key)
+    vision = _visao_do_form(vision_provider, vision_model, vision_effort)
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required")
@@ -167,13 +198,16 @@ async def submit_parse(
     )
 
     logger.info(
-        f"[API] Received {file.filename} ({file_size_mb:.1f}MB, extract_images={extract_images}). "
+        f"[API] Received {file.filename} ({file_size_mb:.1f}MB, extract_images={extract_images}, "
+        f"vision={(vision or {}).get('model') or 'paraquedas'}). "
         f"Task: {task_id}. Stored in MinIO: {minio_path}"
     )
 
     # Dispatch Celery task with MinIO path (not local file path)
+    # `vision` vai em kwargs e SÓ quando veio: a mensagem do chamador antigo continua idêntica.
     parse_document.apply_async(
         args=[task_id, minio_path, file.filename, extract_images],
+        kwargs={"vision": vision} if vision else {},
         task_id=task_id,
         queue="docling",
     )
@@ -252,7 +286,7 @@ async def startup():
     logger.info("Docling Service starting (async mode)...")
     logger.info(f"  Redis: {settings.REDIS_URL}")
     logger.info(f"  MinIO: {settings.MINIO_ENDPOINT} (bucket: {settings.MINIO_BUCKET})")
-    logger.info(f"  Vision model: {settings.VISION_MODEL}")
+    logger.info(f"  Vision model (paraquedas; o chamador manda o do catálogo): {settings.VISION_MODEL}")
     logger.info(f"  OCR engine: {settings.OCR_ENGINE}")
     logger.info(f"  Max file size: {settings.MAX_FILE_SIZE_MB}MB")
     logger.info(f"  Result TTL: {settings.RESULT_TTL_SECONDS}s")

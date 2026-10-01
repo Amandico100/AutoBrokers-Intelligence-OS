@@ -20,14 +20,13 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""
 
     # Vision LLM for image descriptions
-    # ⚠️ Serviço SEPARADO e SEM banco (não lê `llm_papeis`): este default acompanha
-    # À MÃO a rota `visao_documento` — SPEC-122 F0 (migration 20260930_01, Founder
-    # 30/09/2026): openai/gpt-6.1-sol, esforço medium (antes gpt-6-sol, hoje
-    # DEPRECATED). Trocar a rota NÃO troca este serviço — a env
-    # VISION_MODEL/VISION_REASONING_EFFORT do EasyPanel tem de acompanhar (caixa do
-    # Founder). O conserto de verdade (o smith-api resolver a rota e mandar o
-    # modelo no POST /parse; isto vira só paraquedas) muda o contrato do serviço
-    # (form do /parse + args da task Celery) em 4 arquivos — PENDENTE na SPEC-122.
+    # 🔴 SPEC-124 F2 · D4 (P-122-01 FECHADA): quem escolhe o modelo é o CATÁLOGO. O smith-api
+    # resolve a rota `visao_documento` (`model_policy.resolver`) e manda no POST /parse
+    # (`vision_provider`/`vision_model`/`vision_effort`). VISION_MODEL/VISION_REASONING_EFFORT
+    # viraram só PARAQUEDAS: valem quando o chamador NÃO manda o campo (chamador antigo,
+    # mensagem velha na fila, rota sem provedor que este serviço fala). O resultado diz qual
+    # valeu (`metadata.visao.origem`: chamador · paraquedas · desligada).
+    # O default acompanha a rota de 30/09/2026 (migration 20260930_01): openai/gpt-6.1-sol medium.
     VISION_MODEL: str = "gpt-6.1-sol"
     # GPT-6.x Sol no Chat Completions SEM tools aceita `reasoning_effort`
     # (EVIDENCIAS/04 l.17/43; o 6.1 aceita low..max — `none` dá 400, 📊 30/09/2026).
@@ -37,6 +36,9 @@ class Settings(BaseSettings):
     VISION_TIMEOUT_SECONDS: float = 90.0      # default do Docling (20 s) é curto para medium
     VISION_API_URL: str = "https://api.openai.com/v1/chat/completions"
     OPENAI_API_KEY: str = ""
+    # ⚠️ Só Chat Completions: o `PictureDescriptionApiOptions` do Docling 2.130 fala o formato
+    # OpenAI (`docling/utils/api_image_request.py`, lido no wheel em 01/10/2026). Reserva de
+    # OUTRO provedor (Anthropic) não passa por aqui — fica no papel `visao` (foto), pela fábrica.
 
     # OCR engine
     OCR_ENGINE: str = "easyocr"
