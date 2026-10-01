@@ -496,9 +496,16 @@ def _retomada(ref, sub, *, pode_ter_aberto=True, **extra):
                             "anterior_pode_ter_aberto": pode_ter_aberto}, **extra)
 
 
+#: 🔴 SPEC-123 · conserto único (juiz B4 · red team B5) — §9.3: este teste afirmava que a tela
+#: HDI "a assistência N está aberta" (que NÃO nomeia o serviço) e a lista de 72 h da Yelum com
+#: DOIS guinchos viravam o pedido do caso. Era a verdade vencida: agora só se adota quando a tela
+#: nomeia UM serviço que é o do caso (essas duas vão a pessoa — `test_spec123_conserto_y.py`).
+#: A Yelum de UMA solicitação é a tela real 30b3219e com a 2ª entrada tirada (a forma é a do acervo).
+JA_ABERTA_YELUM_UM_GUINCHO = re.sub(r"(GUINCHO\nSolicita\S+ \{VALOR\})\n\1", r"\1", JA_ABERTA_YELUM_72H)
+
+
 @pytest.mark.parametrize("ref,sub,tela", [
-    (REF_HDI, "guincho", JA_ABERTA_HDI),
-    (REF_YELUM, "guincho", JA_ABERTA_YELUM_72H),
+    (REF_YELUM, "guincho", JA_ABERTA_YELUM_UM_GUINCHO),
     (REF_PORTO, "guincho", SERVICO_ABERTO_PORTO),
 ])
 def test_na_retomada_a_assistencia_que_ja_existe_vira_o_pedido_do_caso_e_nada_e_aberto(amb, ref, sub, tela):

@@ -3423,6 +3423,16 @@ def _confirmacoes_que_de_fato_sairam(session: Dict[str, Any]) -> List[Dict[str, 
     trava tende a FICAR DE PÉ na dúvida. O preço de errar assim é uma pergunta
     de status a mais; o preço de errar para o outro lado é um segundo guincho.
     """
+    vivas = _confirmacoes_com_sim_enviado(session)
+    session["confirmacoes"] = vivas
+    return vivas
+
+
+def _confirmacoes_com_sim_enviado(session: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """PURA (não muda a sessão). As confirmações registradas DEPOIS das quais um "sim"
+    PARA AQUELA TELA de fato saiu no transcript — a leitura de
+    `_confirmacoes_que_de_fato_sairam`, sem a escrita. Uma régua só: quem pergunta
+    "o sim saiu?" (a trava da confirmação, o "já existe" da retomada) lê aqui."""
     transcript = list(session.get("transcript") or [])
 
     def _foi_um_sim(t: Dict[str, Any], tela: str) -> bool:
@@ -3432,13 +3442,12 @@ def _confirmacoes_que_de_fato_sairam(session: Dict[str, Any]) -> List[Dict[str, 
             return False
         return e_afirmativa(str(t.get("text") or ""), tela)
 
-    vivas = [
+    return [
         c for c in list(session.get("confirmacoes") or [])
-        if any(_foi_um_sim(t, str(c.get("tela") or ""))
-               for t in transcript[int(c.get("saida_em") or 0):])
+        if isinstance(c, dict)
+        and any(_foi_um_sim(t, str(c.get("tela") or ""))
+                for t in transcript[int(c.get("saida_em") or 0):])
     ]
-    session["confirmacoes"] = vivas
-    return vivas
 
 
 def _corrigir_em_vez_de_confirmar(session: Dict[str, Any], veredito: Dict[str, Any],
@@ -6312,12 +6321,16 @@ def pode_retomar_com_a_resposta(session: Dict[str, Any]) -> bool:
 
 
 def anterior_pode_ter_aberto(session: Dict[str, Any]) -> bool:
-    """PURA. O acionamento que vai ser reaberto chegou ao portão que ABRE o pedido?
+    """PURA. O acionamento que vai ser reaberto PASSOU pelo portão que ABRE o pedido?
 
-    `conferencia` nasce quando a tela de confirmação (`finalize_anchors`) aparece, e
-    `confirmacoes` guarda o "sim" que de fato saiu. Sem nenhum dos dois, a seguradora não
-    recebeu pedido nosso — e um "pedido aberto" na retomada é de OUTRO assunto."""
-    return bool(session.get("conferencia") or session.get("confirmacoes"))
+    🔴 SPEC-123 · conserto único (juiz B4 · red team B5): o portão é o "SIM" ENVIADO, não
+    a tela de confirmação APARECER. `conferencia` nasce quando o resumo aparece — também
+    quando ele DIVERGE e nenhum "sim" sai (`_conferir_antes_de_confirmar` → correção) —,
+    e `confirmacoes` é registrada ANTES de emitir. 📊 Com `conferencia or confirmacoes`, a
+    retomada adotava como "nosso" um pedido que a seguradora já tinha de OUTRO assunto.
+    Agora só conta a confirmação cujo "sim" está no transcript (`_confirmacoes_com_sim_enviado`,
+    a MESMA régua da trava de confirmação). Sem ele, nada pode ter sido aberto por nós."""
+    return bool(_confirmacoes_com_sim_enviado(session))
 
 
 # ===========================================================================
@@ -6361,8 +6374,61 @@ JA_EXISTE_SOLICITACAO: Dict[str, Tuple[Tuple[str, str], ...]] = {
 }
 
 
-def solicitacao_ja_existente(playbook: Any, tela: str) -> Optional[Dict[str, str]]:
-    """PURA. A tela diz que JÁ EXISTE um pedido aberto? → `{"tipo", "numero"}` ou None."""
+#: 🔴 SPEC-123 · conserto único (juiz B4 · red team B5) — OS SERVIÇOS QUE A TELA NOMEIA,
+#: cada um com o SEU número. 📊 Telas reais do acervo `tests/corpus/telas_reais`:
+#:   porto-auto 193c5ad6+1      "1-{NUMERO}-GUINCHO PESADO, previsto para…"
+#:   porto-residencial e3b9dfd6 "Falar sobre 1-{NUMERO}-CHAVEIRO - CHAVE SIMPLES, agendado…"
+#:   yelum-auto 30b3219e        "…últimas 72h. Selecione…:\nGUINCHO\nSolicitação: {VALOR}" (×2)
+#:   hdi-auto 4b2d0c2a+1 · yelum-auto 29ae4344/935c4076  "identifiquei que a assistência
+#:                              *{NUMERO}* está aberta." — NÃO nomeia serviço nenhum
+#: constante_justificada: um padrão por FORMA de lista medida acima; a seguradora nova
+#: entra com a tela real dela, nunca por palpite.
+_SERVICOS_NOMEADOS: Dict[str, Tuple[str, ...]] = {
+    # porto: "<seq>-<numero>-<SERVIÇO>" até a vírgula/quebra (o número é a parte "1-N")
+    "porto": (r"(\d+-[0-9a-z{}]+)-([^,\n]+)",),
+    # yelum: a linha do serviço e, logo abaixo, "Solicitação: <numero>"
+    "yelum": (r"(?m)^\s*([^\n:]+?)\s*\n\s*solicitacao:\s*([0-9a-z{}][0-9a-z{}\-./]*)",),
+}
+
+
+def _servicos_nomeados(chave: str, texto_norm: str) -> List[Dict[str, str]]:
+    """PURA. `[{"servico", "numero"}]` que a tela (já normalizada) lista — `[]` = não nomeia."""
+    achados: List[Dict[str, str]] = []
+    for padrao in _SERVICOS_NOMEADOS.get(chave, ()):
+        for m in re.finditer(padrao, texto_norm):
+            if chave == "yelum":
+                servico, numero = m.group(1), m.group(2)
+            else:
+                numero, servico = m.group(1), m.group(2)
+            servico = servico.strip(" -*")
+            if servico and numero:
+                achados.append({"servico": servico, "numero": numero.strip()})
+    return achados
+
+
+def _servico_casa_o_do_caso(servico_na_tela: str, subservico: str) -> bool:
+    """PURA. O serviço que a tela nomeia É o serviço do caso?
+
+    ⛔ Nenhuma tabela nova (CLAUDE.md §5): as palavras de cada serviço são as MESMAS que a
+    conferência do resumo usa (`corridor_playbooks._PALAVRAS_DE_SERVICO`, via
+    `canonical_subservice`). Casa só quando a palavra do serviço do caso está na tela E
+    nenhuma palavra de OUTRO serviço está — "GUINCHO PESADO" não é chaveiro, "MTA - MEIO DE
+    TRANSPORTE" não é guincho. Serviço sem palavras na tabela → o próprio nome do caso."""
+    from app.services.corridor_playbooks import _PALAVRAS_DE_SERVICO
+
+    canon = canonical_subservice(subservico)
+    if not canon:
+        return False
+    texto = _norm_text(servico_na_tela)
+    do_caso = _PALAVRAS_DE_SERVICO.get(canon) or re.escape(canon.replace("_", " "))
+    if not re.search(do_caso, texto):
+        return False
+    return not any(re.search(p, texto) for k, p in _PALAVRAS_DE_SERVICO.items() if k != canon)
+
+
+def solicitacao_ja_existente(playbook: Any, tela: str) -> Optional[Dict[str, Any]]:
+    """PURA. A tela diz que JÁ EXISTE um pedido aberto?
+    → `{"tipo", "numero", "servicos"}` ou None. `servicos` = o que a tela NOMEIA (pode ser [])."""
     if isinstance(playbook, str):
         playbook = get_playbook(playbook) or {}
     chave = str((playbook or {}).get("insurer_key") or "").strip().lower()
@@ -6374,23 +6440,31 @@ def solicitacao_ja_existente(playbook: Any, tela: str) -> Optional[Dict[str, str
         numero = (m.group(1) if m.groups() else "") or ""
         if tipo == "mostra_numero" and not numero:
             tipo = "sem_saida"
-        return {"tipo": tipo, "numero": numero}
+        return {"tipo": tipo, "numero": numero, "servicos": _servicos_nomeados(chave, texto)}
     return None
 
 
 def seguir_com_a_solicitacao_existente(session: Dict[str, Any],
-                                       ja_existe: Dict[str, str]) -> Optional[Dict[str, Any]]:
+                                       ja_existe: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Numa RETOMADA que pode ter aberto o pedido: nunca abrir o segundo.
 
-    `mostra_numero` → o número vira o pedido do caso (`captured`, marcado `ja_existia`):
-    o roteador avisa o segurado e a corretora, e acompanha como qualquer protocolo.
+    `mostra_numero` → o número vira o pedido do caso (`captured`, marcado `ja_existia`)
+    SÓ quando a tela NOMEIA o serviço e exatamente UM dos listados é o serviço do caso
+    (e é o número DELE que se adota): o roteador avisa o segurado e a corretora.
+    🔴 conserto único (juiz B4 · red team B5): tela que não nomeia serviço, que nomeia
+    OUTRO, ou que lista dois do mesmo serviço → uma pessoa (`ja_existe_solicitacao`).
+    📊 Antes: o chaveiro adotava o "1-N-GUINCHO PESADO" da Porto e ouvia "Prontinho!".
     `pergunta`/`sem_saida` → uma pessoa, com o motivo `ja_existe_solicitacao`."""
     tipo = str(ja_existe.get("tipo") or "")
     numero = str(ja_existe.get("numero") or "").strip()
     if tipo == "mostra_numero" and numero:
-        session.setdefault("captured", {}).update({"protocol": numero, "ja_existia": True})
-        session["state"] = "captured"
-        return session
+        do_caso = [s for s in list(ja_existe.get("servicos") or [])
+                   if _servico_casa_o_do_caso(s.get("servico") or "", session.get("subservice") or "")]
+        if len(do_caso) == 1:
+            session.setdefault("captured", {}).update(
+                {"protocol": do_caso[0]["numero"], "ja_existia": True})
+            session["state"] = "captured"
+            return session
     session["state"] = "needs_human"
     session["reason"] = "ja_existe_solicitacao"
     session["motivo_legivel"] = {

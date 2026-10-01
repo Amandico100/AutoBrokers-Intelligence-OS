@@ -224,9 +224,48 @@ _CASCATA: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
 
 #: 🔴 `P` é URGÊNCIA e vem ANTES de tudo — inclusive de K1. Um segurado que
 #: diz "tem gente ferida" não pode esperar a cascata concordar.
+#:
+#: 🔴 SPEC-123 · conserto único (juiz B3 · red team B6) — O PEDIDO DE PESSOA É UM
+#: DETECTOR SÓ, e é ESTE. A segunda chance do atendimento (`human_handoff.
+#: por_que_vai_direto_a_pessoa`) lê as falas do segurado com `pediu_pessoa` — a
+#: mesma régua que dá o rótulo `P` aqui. 📊 O padrão anterior só pegava
+#: "quero falar com (uma pessoa|um atendente|alguem)" e "me passa PARA": "me passa
+#: PRA uma pessoa", "quero uma pessoa", "atendente de verdade", "falar com o
+#: corretor" e "humano de verdade" passavam (reprodução `rt-scripts/f7.py`).
+#: ⚠️ Escrito para o texto do `_norm` (sem acento, minúsculo). ⛔ `vou falar com a
+#: corretora` é o segurado contando o que VAI fazer, não pedindo — fica de fora.
+#: constante_justificada: D8 do Founder — "o cliente que pede pessoa continua indo".
+_PEDE_PESSOA = re.compile(
+    r"(?<!vou )(?<!vamos )(?<!irei )\b(?:falar|conversar|tratar)\s+com\s+"
+    r"(?:(?:(?:um|uma|o|a|algum|alguma)\s+)?"
+    r"(?:pessoa|atendente|humano|ser humano|corretor|corretora|operador|operadora|alguem)"
+    # ⛔ "falar com A GENTE" é "falar conosco" — 📊 lente de 01/10 (25.213 mensagens): o
+    #    "pode falar com a gente por aqui" da URA casava. Só "gente" SEM artigo é pessoa.
+    r"|gente)\b"
+    r"|\b(?:me\s+)?(?:passa|passe|transfere|transfira|encaminha|encaminhe)\s+"
+    r"(?:(?:pra|para|pro|com|a|o)\s+)?(?:(?:um|uma|algum|alguma)\s+)?"
+    r"(?:pessoa|atendente|humano|alguem|corretor|corretora)\b"
+    r"|\b(?:chama|chame)\s+(?:(?:um|uma|o|a)\s+)?(?:atendente|humano|alguem|corretor|corretora)\b"
+    r"|\b(?:quero|queria|preciso de|prefiro|exijo)\s+(?:(?:um|uma|o|a)\s+)?"
+    r"(?:pessoa|atendente|humano|atendimento humano)\b"
+    r"|\batendente\s+(?:de verdade|humano|real)\b|\bpessoa\s+(?:de verdade|real)\b"
+    r"|\bhumano de verdade\b|\batendimento humano\b|\bser humano\b"
+    r"|\bnao quero (?:falar com )?(?:um )?(?:robo|bot|maquina)\b")
+
+
+def pediu_pessoa(mensagens: Any) -> bool:
+    """O segurado (ou o motivo que o agente escreveu) PEDE uma pessoa? — **PURA**.
+
+    Uma fala ou uma lista delas; cada uma conferida sozinha (uma rajada juntada
+    poderia casar o fim de uma frase com o começo da outra)."""
+    if isinstance(mensagens, (str, bytes)):
+        mensagens = [mensagens]
+    return any(_PEDE_PESSOA.search(_norm(m)) for m in (mensagens or []) if str(m or "").strip())
+
+
 _URGENCIA = re.compile(
-    r"quero falar com (uma pessoa|um atendente|alguem)|me passa para (uma pessoa|alguem)"
-    r"|\bferid|\bvitima|ambulancia|acidente agora|urgencia medica|passando mal")
+    _PEDE_PESSOA.pattern
+    + r"|\bferid|\bvitima|ambulancia|acidente agora|urgencia medica|passando mal")
 
 
 def classificar_turno(mensagens: Any) -> str:

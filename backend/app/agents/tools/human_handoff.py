@@ -1196,12 +1196,24 @@ def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
     if classe == CLASSE_REGRA:
         return _FRASE_DA_REGRA.get(chave, "é um caso que a regra manda para uma pessoa")
     ficha = caso.get("ficha_atendimento") if isinstance(caso.get("ficha_atendimento"), dict) else {}
+    # 🔴 SPEC-123 · conserto único (juiz B3 · red team B6) — O QUE O SEGURADO DISSE,
+    #    não só o que o modelo escreveu no motivo. As falas são as últimas do
+    #    segurado na conversa (`mensagens`, lidas por `_arun` da tabela que o agente
+    #    lê) e a prévia. 📊 Antes: "quero falar com um atendente humano agora" com o
+    #    motivo "dúvida sobre a franquia" ganhava a segunda chance.
+    falas = _falas_do_segurado(caso)
     try:
+        from app.atendimento.pos_acionamento import pediu_pessoa
         from app.services.claims_shadow import detectar_sinistro
 
-        relato = " ".join(p for p in (str(motivo or ""),
-                                      str(caso.get("last_message_preview") or "")) if p)
-        if detectar_sinistro(relato, ficha or None)[0]:
+        if pediu_pessoa([str(motivo or "")] + falas):
+            # constante_justificada: D8 — "o cliente que pede pessoa continua indo"
+            return _FRASE_DA_REGRA["cliente_pediu_humano"]
+        relato = " ".join(p for p in [str(motivo or "")] + falas if p)
+        # Juntos (o par "bati" + "carro" pode vir em duas falas) E cada um sozinho (a
+        # tranca de venda de uma fala não pode calar o sinistro de outra).
+        if any(detectar_sinistro(t, ficha or None)[0]
+               for t in [relato, str(motivo or "")] + falas):
             # constante_justificada: D8 — "sinistro continua indo a pessoa"
             return "é sinistro, e sinistro sempre vai para uma pessoa"
     except Exception as exc:  # noqa: BLE001
@@ -1211,11 +1223,33 @@ def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
     texto = _sem_acento_minusculo(" ".join((
         _motivo_em_portugues(motivo), str(ficha.get("ramo") or ""),
         str(ficha.get("servico") or ""))))
+    #: ⚠️ Nas falas do segurado só o RISCO GRAVE vale: "empresa", "portal",
+    #:    "consultor" na boca dele não dizem que o caso é empresarial/sem corredor.
+    texto_do_segurado = _sem_acento_minusculo(" ".join(falas))
     for _chave, palavras, frase in _SEMPRE_DE_GENTE:
+        alvos = (texto, texto_do_segurado) if _chave == "risco_grave" else (texto,)
         for p in palavras:
-            if re.search(r"\b%s\b" % re.escape(_sem_acento_minusculo(p)), texto):
+            padrao = r"\b%s\b" % re.escape(_sem_acento_minusculo(p))
+            if any(re.search(padrao, a) for a in alvos):
                 return frase
     return ""
+
+
+#: Quantas falas do segurado a segunda chance lê — a MESMA janela de
+#: `_ultimas_do_cliente` (o rótulo do turno), para as duas leituras verem o mesmo turno.
+#: constante_justificada: 📊 no acervo o turno é uma rajada de 1–4 mensagens (R1 da 097.1).
+FALAS_DO_SEGURADO_LIDAS = 4
+
+
+def _falas_do_segurado(caso: Dict[str, Any]) -> list:
+    """As últimas falas do segurado (`mensagens`) + a prévia, sem repetir, sem vazias."""
+    vistas, falas = set(), []
+    for m in list(_ultimas_do_cliente(caso)) + [str(caso.get("last_message_preview") or "")]:
+        m = str(m or "").strip()
+        if m and m not in vistas:
+            vistas.add(m)
+            falas.append(m)
+    return falas
 
 
 def _dia_utc() -> str:
@@ -1653,6 +1687,38 @@ class HumanHandoffTool(BaseTool):
     # ------------------------------------------------------------------ #
     # 🔴 SPEC-123 F7 · D8 — a segunda chance e a linha no diário
     # ------------------------------------------------------------------ #
+    async def _falas_do_segurado_no_banco(self, linha: Dict[str, Any]) -> list:
+        """As últimas falas do SEGURADO desta conversa, em ordem — as mesmas linhas de
+        `messages` que o agente leu (`database.get_conversation_history`, que o webhook
+        grava ANTES de chamar o agente).
+
+        🔴 §7: `messages` não tem `company_id`; o isolamento é a CONVERSA — `linha` veio
+        da leitura `.eq("company_id")` de `_arun`, e só o `id` dela é usado aqui.
+        ⚠️ Falhou a leitura → `[]` e a decisão usa a prévia (`last_message_preview`),
+        como antes deste conserto. Nunca levanta.
+        """
+        conversa_id = str((linha or {}).get("id") or "").strip()
+        if not conversa_id:
+            return []
+
+        def _ler():
+            return (self.supabase_client.table("messages")
+                    .select("content, created_at")
+                    .eq("conversation_id", conversa_id)
+                    .eq("role", "user")
+                    .order("created_at", desc=True)
+                    .limit(FALAS_DO_SEGURADO_LIDAS).execute())
+
+        try:
+            achado = await asyncio.to_thread(_ler)
+            linhas = list(getattr(achado, "data", None) or [])
+            return [str(l.get("content") or "") for l in reversed(linhas)
+                    if str(l.get("content") or "").strip()]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HumanHandoff] falas do segurado ilegíveis (%s) — uso a prévia",
+                           type(exc).__name__)
+            return []
+
     async def _ja_teve_segunda_chance(self, company_id: str, conversa_id: str) -> Optional[bool]:
         """`True`/`False` pelo diário; `None` quando não deu para ler (→ pessoa).
 
@@ -1828,8 +1894,14 @@ class HumanHandoffTool(BaseTool):
         direto = ""
         if leu_o_estado:
             try:
+                # 🔴 conserto único (juiz B3 · red team B6): a decisão lê o que o
+                #    SEGURADO disse — uma CÓPIA da linha com as falas penduradas.
+                caso_com_as_falas = dict(linha_anterior)
+                falas = await self._falas_do_segurado_no_banco(linha_anterior)
+                if falas:
+                    caso_com_as_falas["mensagens"] = falas
                 direto = por_que_vai_direto_a_pessoa(
-                    motivo, codigo=codigo_do_pedido_atual, caso=linha_anterior,
+                    motivo, codigo=codigo_do_pedido_atual, caso=caso_com_as_falas,
                     ja_com_a_equipe=ja_estava_com_a_equipe)
                 if await self._segunda_chance(company_id, linha_anterior, motivo, direto):
                     logger.info("[HumanHandoff] segunda chance | empresa=%s | conversa=%s",
