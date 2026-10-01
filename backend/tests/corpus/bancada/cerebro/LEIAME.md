@@ -37,3 +37,26 @@ anteriores mascaradas. Nenhum nome de corretora.
 ("vamos analisar o laudo"), `ura_recomeca-porto-091/092` (mesmo menu). Contam no G1 como as outras.
 
 Ordem do arquivo: ARMADILHAS primeiro, depois A e B (o teto em US$ corta pelo fim — a prioridade 1 é medir todas as armadilhas).
+
+
+## SPEC-123 F2a — o papel `destravador` (o MESMO corpus + as travas reais)
+
+📊 Gerado em 30/09/2026 por `backend/scripts/gerar_corpus_cerebro.py` (no repositório; lê `observed_events` só leitura,
+ou o dump do BLOCO 0 por `--dump`). Motor: `bancada.motor_destravador` → `destravador.destravar` do produto. CLI:
+`scripts/bancada.py --papel destravador …` e `--resumo-destravador`. Plano: `docs/canon/reports/SPEC-123-BANCADA-PLANO.md`.
+
+- **A FICHA (P-122-05)** mora em `entrada.ficha` (slots MASCARADOS `{PLACA}`/`{CPF}`/`{ENDERECO}`/`{NOME}`/`{NUMERO}`…,
+  `subservice`, `origem_dos_slots`, `fora_da_ficha`, `conversa_segurado`). A `entrada.sessao` da SPEC-122 NÃO mudou (a 122
+  re-decide os JSON de `RESULTADOS/` com ela); a bancada do destravador SOMA a ficha à sessão (`bancada.sessao_do_caso`).
+  Quem diz qual dado a tela pede é o MOTOR (`match_ura_step` → `{slot}`; sem passo, `_PERGUNTAS_DE_DADO`); escolha, data,
+  hora e período ficam FORA (decisão do segurado). 📊 142 de 164 casos com ficha; 4 com conversa do segurado.
+- **O gabarito do destravador** (`oraculo.destravador`): `classe_esperada`, `acoes_certas`, `acoes_aceitaveis`, `aceitas`,
+  `proibidas`, `nunca`, `sem_chute`, `prova` (sim · parcial · nao) e, quando a regra automática errava, `revisao_humana` com o
+  porquê (tabela `_REVISAO` do gerador). Só `prova: sim` entra na CALIBRAÇÃO.
+- **`casos_d.jsonl` — o grupo D (72)**: telas em que o MOTOR do produto devolve `needs_human` destravável (ponto B) ou vai à
+  fase humana numa tela de URA (ponto A, `gatilho: cerebro`). Só zona URA (`zonas_do_acervo`), carro reserva fora (D10),
+  no máximo 3 de custo por seguradora. As 10 seguradoras.
+- **Máscara a mais (30/09)**: placa e endereço que a SEGURADORA mascarou pela metade (`R####81`, `RU# MO### … 314`) e os nomes
+  do piloto que o guarda da SPEC-116 proíbe (pela lista em hash — 📊 o primeiro nome de uma atendente escapou do mascarador
+  do produto em 13 casos da 1ª geração; nenhum foi a API: nada deste corpus foi enviado a modelo até aqui).
+- `MANIFESTO.json` (contagens) · `AMOSTRAS-SPEC-123.txt` (as listas COMUM/OPUS/RESTO do plano) · `pendentes.jsonl` é da F4.

@@ -22,6 +22,10 @@ falha · BLOCKED_BY_INFRA.
     # SPEC-122 F1 — o CÉREBRO (variante V0..V3), teto POR PROVEDOR lido do ledger:
     python scripts/bancada.py --papel cerebro --variante V1 --braco anthropic:claude-opus-5-5 --k 1         --teto-provedor 1.90 --ledger-desde 2026-09-30T00:00:00+00:00 --saida tests/corpus/bancada/RESULTADOS/x.json
     python scripts/bancada.py --resumo-cerebro tests/corpus/bancada/RESULTADOS/cerebro_*.json
+    # SPEC-123 F2a — o DESTRAVADOR (o MESMO prompt para todo braço; 2ª opinião de OUTRO provedor;
+    # teto POR PROVEDOR lido do ledger e relido durante a rodada):
+    python scripts/bancada.py --papel destravador --braco openai:gpt-6.1-sol:high --braco-segunda anthropic:claude-sonnet-5-5 --k 1 --so-grupo T --so-grupo D --teto-provedor 1.60 --ledger-desde 2026-09-30T00:00:00+00:00 --saida tests/corpus/bancada/RESULTADOS/destravador_x.json
+    python scripts/bancada.py --resumo-destravador "tests/corpus/bancada/RESULTADOS/destravador_*.json"
 
 `--ensaio` (padrão) NÃO toca o banco: grava só um JSON local e diz onde.
 `--gravar` escreve em `eval_runs`/`eval_case_results` (exige a migration
@@ -71,6 +75,12 @@ def main(argv=None) -> int:
                         "(token_usage_logs, service_type='bancada') já registrou desde --ledger-desde")
     p.add_argument("--ledger-desde", default=None, help="início da conta do ledger (ISO 8601)")
     p.add_argument("--resumo-cerebro", nargs="+", default=None, help="SPEC-122: tabela braço × variante de JSONs")
+    # SPEC-123 F2a — o DESTRAVADOR
+    p.add_argument("--braco-segunda", default=None,
+                   help="SPEC-123: provider:model do braço da 2ª OPINIÃO (papel destravador; OUTRO provedor)")
+    p.add_argument("--so-grupo", action="append", default=[], help="SPEC-123: T · D · A · B (repetível)")
+    p.add_argument("--resumo-destravador", nargs="+", default=None,
+                   help="SPEC-123: métricas por braço (acerto, graves, faixas de nota, limiar, 2ª opinião, G4)")
     a = p.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO if a.verboso else logging.CRITICAL)
@@ -110,6 +120,20 @@ def main(argv=None) -> int:
             Path(a.saida).write_text(_json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
         return 0
 
+    if a.resumo_destravador:
+        import glob
+        import json as _json
+
+        arqs = sorted({f for padrao in a.resumo_destravador for f in glob.glob(padrao)})
+        resumo = B.resumo_do_destravador(arqs)
+        print(B.tabela_do_destravador(resumo))
+        pd = B.prompts_divergentes(arqs)
+        print(f"\nMESMO PROMPT (D4): {pd['casos']} casos · {len(pd['divergentes'])} com system DIFERENTE entre braços"
+              + (f": {', '.join(pd['divergentes'][:10])}" if pd["divergentes"] else ""))
+        if a.saida:
+            Path(a.saida).write_text(_json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
+        return 0
+
     if a.carregar_corpus:
         info = B.carregar_corpus(gravar=bool(a.gravar))
         for papel, i in info.items():
@@ -121,6 +145,43 @@ def main(argv=None) -> int:
         p.error("--papel e ao menos um --braco são obrigatórios (ou use --relatorio / --carregar-corpus)")
 
     teto = a.teto_usd
+    orcamentos = None
+    if a.papel == "destravador":
+        # 🔴 SPEC-123: o teto é POR PROVEDOR (o do braço E o da 2ª opinião), lido do LEDGER e relido
+        #    durante a rodada (`OrcamentoDoLedger`) — a rodada para SOZINHA antes de estourar.
+        if a.teto_provedor is None or not a.ledger_desde:
+            p.error("--papel destravador exige --teto-provedor e --ledger-desde (o teto do Founder é por provedor)")
+        provs = {B.Braco.de(x).provider for x in a.braco}
+        if a.braco_segunda:
+            b2 = B.Braco.de(a.braco_segunda)
+            if b2.provider in provs and not b2.e_duble:
+                p.error("a 2ª opinião tem de ser de OUTRO provedor (D3 do Founder)")
+            provs.add(b2.provider)
+        orcamentos = {}
+        for prov in sorted(provs):
+            if prov == "duble":
+                continue
+            o = B.OrcamentoDoLedger(prov, a.teto_provedor, a.ledger_desde)
+            print(f"ledger {prov} desde {a.ledger_desde}: US$ {o.inicial:.4f} · teto {a.teto_provedor:.2f} · "
+                  f"resta {o.teto_usd:.4f}")
+            if o.teto_usd <= 0:
+                print(f"⛔ teto do provedor {prov} já atingido no ledger — nada roda")
+                return 2
+            orcamentos[prov] = o
+        rel = B.rodar_bancada(a.papel, a.braco, k=a.k, nivel=a.nivel, gravar=bool(a.gravar),
+                              teto_usd=teto if teto is not None else 100.0, filtro=a.casos,
+                              grupo_bancada=a.grupo, segunda=a.braco_segunda, orcamentos=orcamentos,
+                              grupos=a.so_grupo or None)
+        print(rel.tabela())
+        if a.por_caso:
+            for r in rel.resultados:
+                v = (r.rastro.get("estado") or {}).get("veredito_destravador") or {}
+                print(f"  {r.braco:<30} {r.chave:<44} t{r.tentativa} {v.get('classe', r.resultado):<16} "
+                      f"acao={v.get('acao_final')} nota={v.get('nota')} US$ {r.custo_usd:.5f} {r.latencia_ms} ms"
+                      + (f" · {r.erro[:120]}" if r.erro else ""))
+        print(f"\ngrupo_bancada: {rel.grupo_bancada} · tentativas: {len(rel.resultados)}")
+        print(f"ensaio (nada no banco) · relatório local: {rel.salvar(a.saida)}")
+        return 2 if rel.parada and rel.parada.startswith("teto_usd") else 0
     if a.teto_provedor is not None:
         # 🔴 lei do Founder (SPEC-122): US$ por PROVEDOR, lido do LEDGER, parando sozinho
         provs = {B.Braco.de(x).provider for x in a.braco}

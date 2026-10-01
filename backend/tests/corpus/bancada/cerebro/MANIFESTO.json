@@ -1,0 +1,50 @@
+{
+ "papel": "destravador",
+ "spec": "SPEC-123 F2a",
+ "gerado_em": "2026-09-30",
+ "gerador": "backend/scripts/gerar_corpus_cerebro.py",
+ "fonte": "observed_events (só leitura) + work_runs/messages (conversa do segurado, só leitura)",
+ "ordem_da_bancada": [
+  "T",
+  "D",
+  "A",
+  "B"
+ ],
+ "arquivos": {
+  "casos.jsonl": 92,
+  "casos_d.jsonl": 72
+ },
+ "grupos": {
+  "T": 31,
+  "B": 26,
+  "A": 35,
+  "D": 72
+ },
+ "d_por_seguradora": {
+  "porto": 12,
+  "allianz": 9,
+  "bradesco": 7,
+  "hdi": 10,
+  "yelum": 11,
+  "mapfre": 9,
+  "alfa": 4,
+  "azul": 4,
+  "tokio": 3,
+  "zurich": 3
+ },
+ "d_por_gatilho": {
+  "loop_guard": 2,
+  "ramo_indeterminado": 3,
+  "sem_chute": 19,
+  "tela_que_decide": 12,
+  "cerebro": 36
+ },
+ "prova": {
+  "sim": 114,
+  "nao": 17,
+  "parcial": 33
+ },
+ "com_ficha": 142,
+ "com_conversa_do_segurado": 4,
+ "controle_do_mascarador": 8
+}
