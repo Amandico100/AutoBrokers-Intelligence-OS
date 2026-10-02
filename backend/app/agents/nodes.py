@@ -1699,6 +1699,83 @@ def com_o_que_foi_dito_antes_da_ferramenta(texto_final: Any, mensagens: Any) -> 
 
 
 # =====================================================================
+# 🔴 SPEC-126 U1 · pend. 4 do juiz final da 125 — o ANÚNCIO de acionar depois do `confirm_first`
+# =====================================================================
+#: constante_justificada: a frase que ANUNCIA um acionamento iminente ("Vou acionar o guincho agora",
+#:    "Já vou solicitar o socorro", "Estou acionando…"). 📊 BLOCO 0 da 126 (`scratchpad/pend4.py`):
+#:    "Vou acionar o guincho agora. Antes de acionar, me confirma…" no texto FINAL de um turno cujo
+#:    `insurer_dispatch` devolveu `confirm_first` saía INTEIRO — o segurado lê "vou acionar" e, na
+#:    mesma mensagem, um pedido de ok. Só o verbo do ACIONAMENTO (acionar/solicitar) ou um verbo de
+#:    pedir com um serviço/prestador junto: "vou chamar a equipe" não é anúncio de acionamento.
+_RX_ANUNCIO_DE_ACIONAMENTO = re.compile(
+    r"^\W*(?:(?:ok|certo|perfeito|beleza|pronto|entendi|combinado)\W+)?(?:j[aá]\s+|agora\s+)?"
+    r"(?:vou|irei|estou|vamos|to|tô)\s+(?:j[aá]\s+|agora\s+)?"
+    r"(?:acionar|acionando|solicitar|solicitando|"
+    r"(?:pedir|pedindo|chamar|chamando|mandar|mandando|enviar|enviando|abrir|abrindo|registrar|registrando)"
+    r"\b[^.!?\n]{0,40}\b(?:guincho|reboque|socorro|chaveiro|bateria|pneu|assist\w*|prestador|"
+    r"eletricista|encanador|tecnico|técnico|servi[cç]o|pedido|acionamento))\b", re.IGNORECASE)
+_RX_PEDE_O_OK = re.compile(r"confirm|\?", re.IGNORECASE)
+
+
+def _ultimo_retorno_do_acionamento(mensagens: Any) -> str:
+    """O conteúdo do ÚLTIMO `insurer_dispatch` deste turno (depois da última fala humana). **PURA.**"""
+    lista = list(mensagens or [])
+    ultimo = ""
+    for m in reversed(lista):
+        if _tipo_da_mensagem(m) in ("human", "user"):
+            break
+        if _tipo_da_mensagem(m) == "tool" and str(getattr(m, "name", "") or "") == "insurer_dispatch":
+            ultimo = extract_text_from_content(getattr(m, "content", "") or "")
+            break
+    return ultimo
+
+
+def sem_anuncio_antes_da_confirmacao(texto_final: Any, mensagens: Any) -> str:
+    """O texto do turno SEM o anúncio de acionar, quando o acionamento deste turno foi RECUSADO pelo
+    portão (`confirm_first`, o carimbo "NADA foi acionado"). **PURA.**
+
+    "Vou acionar o guincho agora. Antes de acionar, me confirma…" → "Antes de acionar, me confirma…";
+    "Vou acionar o guincho agora! Me confirma o endereço?" → "Antes de acionar, me confirma o
+    endereço?"; sobrou só o anúncio → a LINHA PRONTA do retorno (ou o pedido de ok). Nunca o anúncio
+    seguido de pedido de confirmação. ⛔ Turno sem `insurer_dispatch`, ou cujo ÚLTIMO acionamento não
+    foi recusado (acionou DE VERDADE) → o texto sai como veio."""
+    texto = str(texto_final or "")
+    retorno = _ultimo_retorno_do_acionamento(mensagens)
+    if not retorno or "NADA foi acionado" not in retorno:
+        return texto
+    frases = re.split(r"(?<=[.!?])\s+|\n+", texto.strip())
+    ficam = [f for f in frases if f.strip() and not _RX_ANUNCIO_DE_ACIONAMENTO.search(f.strip())]
+    if len(ficam) == len([f for f in frases if f.strip()]):
+        return texto
+    resto = " ".join(f.strip() for f in ficam).strip()
+    if resto and re.match(r"^(?:me\s+)?confirm\w*(?!\w)(?!:)", resto, re.IGNORECASE):   # a linha pronta ("Confirma:") fica como é
+        resto = "Antes de acionar, " + resto[0].lower() + resto[1:]
+    if not _RX_PEDE_O_OK.search(resto):
+        from app.agents.tools.insurer_dispatch_tool import LINHA_PRONTA_ABRE, LINHA_PRONTA_FECHA
+
+        m = re.search(re.escape(LINHA_PRONTA_ABRE) + r"([^" + LINHA_PRONTA_FECHA + r"]+)"
+                      + re.escape(LINHA_PRONTA_FECHA), retorno)
+        pedido = m.group(1) if m else "Antes de acionar, me confirma os dados do pedido?"
+        resto = (resto + " " + pedido).strip()
+    return resto
+
+
+#: 🔴 SPEC-126 (pedido da U4 ao gerente) — o protocolo que a FICHA guarda do retorno do acionamento.
+#:    📊 A única ficha acionada do banco guardava "agendamento": o retorno diz "…assim que o
+#:    protocolo/agendamento sair…" e o regex antigo (`[A-Za-z0-9-]{5,}`) aceitava palavra sem dígito.
+#:    constante_justificada: protocolo de seguradora tem ao menos UM dígito (em qualquer posição — o
+#:    lookahead aceita também "AB-1234", que `…*\d[…]{4,}` perderia) e ≥ 5 caracteres, como antes.
+_RX_PROTOCOLO_DO_RETORNO = re.compile(r"protocolo[^0-9A-Za-z]{0,12}(?=[A-Za-z-]*\d)([A-Za-z0-9-]{5,})",
+                                      re.IGNORECASE)
+
+
+def protocolo_do_retorno(texto: Any) -> str:
+    """O protocolo que o RETORNO da ferramenta trouxe (nunca o que o modelo escreveu), ou `""`. **PURA.**"""
+    m = _RX_PROTOCOLO_DO_RETORNO.search(str(texto or ""))
+    return m.group(1) if m else ""
+
+
+# =====================================================================
 # 🔴 SPEC-125 S4 · D7 — o diário da CONVERSA, só nos momentos de julgamento
 # =====================================================================
 # O motor é `diario_de_decisoes.registrar_julgamento_da_conversa` /
@@ -2479,6 +2556,12 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
         if _com_o_antes != _so_o_final:
             logger.info("[Agent Node] o texto dito junto da ferramenta entra na resposta")
             response = mesma_mensagem_com_texto(response, _com_o_antes)
+        # 🔴 SPEC-126 U1 · pend. 4 — acionamento RECUSADO neste turno: o anúncio "vou acionar…"
+        #    não sai junto do pedido de ok (vira "Antes de acionar, me confirma…").
+        _sem_anuncio = sem_anuncio_antes_da_confirmacao(_com_o_antes, state.get("messages") or [])
+        if _sem_anuncio != _com_o_antes:
+            logger.info("[Agent Node] anúncio de acionamento recusado pelo portão — retirado")
+            response = mesma_mensagem_com_texto(response, _sem_anuncio)
 
     if (
         _policy_intelligence_v2()
@@ -2945,10 +3028,9 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
         # Protocolo só entra se veio do RESULTADO da tool — nunca de algo que o
         # modelo tenha escrito. Protocolo inventado é o defeito que o guardrail
         # `no_fake_protocol` existe para impedir.
-        import re as _re
-        m = _re.search(r"protocolo[^0-9A-Za-z]{0,12}([A-Za-z0-9-]{5,})", texto, _re.I)
-        if m:
-            novidades["acionamento"] = {"protocolo": m.group(1)}
+        _proto = protocolo_do_retorno(texto)
+        if _proto:
+            novidades["acionamento"] = {"protocolo": _proto}
 
     if not novidades:
         return

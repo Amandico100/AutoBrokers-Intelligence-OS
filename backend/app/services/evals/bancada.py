@@ -754,8 +754,9 @@ class _DubleDoAcionamento(D.DubleDeTool):
             if not (kwargs.get("dados_confirmados") is True and prova.get("comprovada")):
                 self.registro.registrar(tool=self.name, args=kwargs, tenant=self.tenant,
                                         efeito=False, campos_da_chave=self.estado.get("chave"))
+                # SPEC-126 U1: o MESMO retorno da real, com a LINHA PRONTA do pedido
                 return pedido_de_confirmacao(str(prova.get("motivo") or ""),
-                                             ja_confirmou=bool(prova.get("comprovada")))
+                                             ja_confirmou=bool(prova.get("comprovada")), pedido=kwargs)
         return await super()._arun(**kwargs)
 
 
@@ -3559,12 +3560,21 @@ def _gravar_mensagem(banco: Any, conversa_id: str, company_id: str, role: str, t
 
 
 def _semear_banco(banco: Any, ent: dict, *, company_id: str, sessao: str, user_id: str, agente: dict,
-                  corretora: str) -> str:
+                  corretora: str, telefone: str = "") -> str:
+    """O banco-dublê do cenário, com a FORMA que o webhook deixa no banco real.
+
+    🔴 SPEC-126 U1 (P-125-08 e · o C11): a conversa nasce com `user_phone` (o número do WhatsApp) e
+    `user_name` (o nome do CONTATO, quando o cenário o declara) — é por eles que
+    `quem_e_o_segurado._conversa_do_telefone` acha o cliente (`company_id` + `channel` +
+    `user_phone`). 📊 U0: sem eles o C11 ("telefone conhecido") era IMPOSSÍVEL — o produto não tinha
+    como achar nada pelo número, e a régua marcava o agente por pedir o CPF."""
     conversa_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"conversa:{sessao}"))
     banco.tabelas.setdefault("companies", []).append({"id": company_id, "company_name": corretora})
     banco.tabelas.setdefault("agents", []).append(dict(agente))
     banco.tabelas.setdefault("conversations", []).append({
         "id": conversa_id, "company_id": company_id, "session_id": sessao, "channel": "whatsapp",
+        "user_phone": _so_digitos(telefone) or None, "user_id": user_id,
+        "user_name": str(ent.get("nome") or "").strip() or None,
         "ficha_atendimento": ent.get("ficha") or None, "created_at": _quando(60 * 24 * 30)})
     for m in ent.get("historico") or []:
         minutos = float(m.get("min_atras") or 0) + 60 * 24 * float(m.get("dias_atras") or 0)
@@ -3666,7 +3676,7 @@ async def motor_conversa(caso: dict, ctx: Contexto) -> dict:
     sessao = f"whatsapp:{fone}:{company_id}:{agente['id']}"             # webhook.py: o formato da sessão
     user_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"bancada-conversa:{caso.get('chave')}:{tenant}"))
     conversa_id = _semear_banco(ctx.banco, ent, company_id=company_id, sessao=sessao, user_id=user_id,
-                                agente=agente, corretora=corretora)
+                                agente=agente, corretora=corretora, telefone=fone)
     grafo = await _grafo_real(ctx, agent_role="attendance", tenant=tenant,
                               caps=CAPS_PADRAO["attendance"], estados_dubles=ent.get("dubles") or {})
     cfg = {"configurable": {"thread_id": f"{company_id}:{sessao}"}}
@@ -3691,6 +3701,7 @@ async def motor_conversa(caso: dict, ctx: Contexto) -> dict:
                                                             agent_id=agente["id"], banco=ctx.banco)
             _gravar_mensagem(ctx.banco, conversa_id, company_id, "user", linha_do_chat)
             n_tools = len(ctx.medidor.estado["tool_calls"])
+            acionados_antes = ctx.registro.contagem("insurer_dispatch")
             t0 = time.perf_counter()
             out = await G.invoke_agent(graph=grafo, user_message=entrada, company_id=company_id,
                                        user_id=user_id, session_id=sessao, company_config=agente, options={},
@@ -3713,6 +3724,9 @@ async def motor_conversa(caso: dict, ctx: Contexto) -> dict:
                 "baloes": len(split_whatsapp_balloons(resposta)), "ms": int((time.perf_counter() - t0) * 1000),
                 "tools": [c.get("name") for c in ctx.medidor.estado["tool_calls"][n_tools:]],
                 "tool_args": [c.get("args") for c in ctx.medidor.estado["tool_calls"][n_tools:]],
+                # SPEC-126 U1 (P-125-08 b): o que de fato ACIONOU neste turno (efeito do dublê que
+                # honra o portão) — a régua conta acionamento feito, não tentativa recusada
+                "acionamentos": ctx.registro.contagem("insurer_dispatch") - acionados_antes,
                 "revelou": fala.get("revelou") or [], "inventou": fala.get("inventou") or []})
             if fala["encerrar"]:
                 break
@@ -3742,10 +3756,13 @@ MOTORES["conversa"] = motor_conversa
 #: constante_justificada: a frase que PEDE algo ao segurado — pergunta ("?") ou pedido direto ("me passa…").
 #: Sobre o texto SEM acento (`_sem_acento`). Largo de propósito: o falso positivo é uma frase a mais lida
 #: pelo juiz; o falso negativo é a repergunta que o Founder proibiu passando calada.
+#: 🔴 SPEC-126 U1 (P-125-08 a): o IMPERATIVO com "-e" ("Me passe o CPF", "Mande o CPF", "Diga seu
+#:    nome") passava calado — só o "me passa" (indicativo) era pedido.
 _RX_PEDIDO = re.compile(
-    r"\?|\b(?:me (?:passa|manda|envia|informa|diz|confirma|fala)|(?:pode|poderia|consegue)s? (?:me )?"
+    r"\?|\b(?:me (?:passa|passe|manda|mande|envia|envie|informa|informe|diz|diga|confirma|confirme|"
+    r"fala|fale|conta|conte)|(?:pode|poderia|consegue)s? (?:me )?"
     r"(?:passar|mandar|enviar|informar|dizer|confirmar|falar)|preciso (?:d[oae]s? |que (?:voce|vc) )|"
-    r"informe|envie|digite)\b")
+    r"informe|envie|digite|passe|mande|diga)\b")
 #: constante_justificada: número que a fala apresenta como protocolo/chamado — só a ferramenta cria (T6).
 _RX_PROTOCOLO_NA_FALA = re.compile(r"(?:protocolo|chamado|n(?:u|ú)mero do (?:pedido|atendimento|sinistro))"
                                    r"\D{0,20}(\d[\d.\-/]{3,})", re.I)
@@ -3782,6 +3799,63 @@ def contem_valor(texto: str, valor: Any) -> bool:
 
 #: as fontes em que o fato é conhecido ANTES do primeiro turno (o produto tem — ou deveria ter — o dado)
 FONTES_JA_CONHECIDAS = ("apolice", "telefone", "conversa_anterior", "conversa", "abertura", "deduzivel")
+
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-126 U1 (P-125-08 c) — CONFIRMAR e REFINAR não é perguntar de novo
+# ---------------------------------------------------------------------------
+#: constante_justificada: a frase que CONFIRMA (pede o ok de um dado que ela mesma traz). 📊 U0: o
+#:    resumo do C13 da Luna ("Confirma que posso solicitar o guincho … do km 52 da Anhanguera …?") e a
+#:    linha pronta ("…, placa final 1D23 — posso acionar?") traziam PARTE do valor — `contem_valor`
+#:    pede ≥ 50 % das palavras (ou a placa inteira) e marcava "pediu o que já sabia".
+_RX_FRASE_QUE_CONFIRMA = re.compile(
+    r"\bconfirm\w*|\b(?:esta|ta|tudo) (?:certo|correto)\b|\bcorret[oa]\s*\?|\bisso mesmo\b|\bcerto\s*\?|"
+    r"\bposso (?:acionar|solicitar|pedir|seguir|chamar|mandar|abrir)\b")
+#: constante_justificada: pedir o PIN do WhatsApp (o ponto exato) depois do endereço em texto é
+#:    REFINAR o lugar, não perguntar de novo. 📊 U0: o `t3:local` do C13 t2 do Sol ("toque no clipe 📎,
+#:    escolha Localização") e o `t6:endereco` do C11 eram esse pedido.
+_RX_PEDE_O_PIN = re.compile(
+    r"\bpin\b|\bclipe\b|compartilh\w*[^.?!\n]{0,30}\blocaliza|\blocalizacao (?:atual|exata|em tempo real|fixa)\b|"
+    r"\b(?:envi\w*|mand\w*|toque|escolha)\b[^.?!\n]{0,40}\blocalizacao\b")
+#: constante_justificada: o REFINAMENTO do lugar já dito (o sentido da rodovia, o km, a referência) —
+#:    vale só quando a mesma frase NÃO repergunta o lugar inteiro (`_RX_REPERGUNTA_O_LUGAR`).
+_RX_REFINA_O_LUGAR = re.compile(
+    r"\bsentido\b|\bkm\b|\bquilometro\b|ponto de referencia|\breferencia\b|\baltura d[oa]\b|\bpista\b")
+_RX_REPERGUNTA_O_LUGAR = re.compile(
+    r"\bonde (?:voce|vc|o carro|o veiculo|ele|ela) (?:esta|ta|fica|se encontra)\b|"
+    r"\bqual (?:e |eh )?(?:o |a )?(?:seu |sua )?(?:endereco|localizacao|local)\b")
+#: palavras que aparecem em todo endereço e NÃO identificam o valor (não contam como "parte" dele)
+_PALAVRAS_SEM_IDENTIDADE = frozenset({"rua", "avenida", "rodovia", "estrada", "bairro", "cidade", "numero",
+                                      "casa", "perto", "frente", "lado", "centro", "oficina", "garagem"})
+
+
+def _fato_de_lugar(fato: dict) -> bool:
+    """O fato é um LUGAR (o regex de pergunta dele fala de endereço/localização/onde)?"""
+    return any(re.search(r"endereco|localiza|onde", str(rx)) for rx in (fato.get("perguntas") or []))
+
+
+def confirma_parte_do_valor(frase: str, valor: Any) -> bool:
+    """A frase PEDE O OK de um dado e traz PARTE do valor dele (uma palavra que identifica, ou um
+    número do valor; a placa pelo final)? **PURA.** Controle: "Confirma o endereço?" (sem o valor) e
+    "Qual o endereço da Rua X?" (sem verbo de confirmar) continuam sendo pergunta."""
+    fs = _sem_acento(frase)
+    if not _RX_FRASE_QUE_CONFIRMA.search(fs):
+        return False
+    v = str(valor or "")
+    placa = re.sub(r"[^A-Z0-9]", "", v.upper())
+    if re.fullmatch(r"[A-Z]{3}\d[A-Z0-9]\d{2}", placa):
+        return placa[-4:] in re.sub(r"[^A-Z0-9]", "", str(frase).upper())
+    partes = (_tokens_de(v) - _PALAVRAS_SEM_IDENTIDADE) & _tokens_de(frase)
+    numeros = set(re.findall(r"(?<!\d)\d{2,}(?!\d)", v)) & set(re.findall(r"(?<!\d)\d{2,}(?!\d)", str(frase)))
+    return bool(partes or numeros)
+
+
+def refina_o_lugar(frase: str) -> bool:
+    """A frase pede o PIN, ou refina o lugar (sentido/km/referência) SEM perguntar o lugar inteiro de
+    novo? **PURA.** Controle: "Onde o carro está?" e "Qual o endereço?" depois de ditos são pergunta."""
+    fs = _sem_acento(frase)
+    if _RX_PEDE_O_PIN.search(fs):
+        return True
+    return bool(_RX_REFINA_O_LUGAR.search(fs)) and not _RX_REPERGUNTA_O_LUGAR.search(fs)
 
 
 def _conhecido_desde(fatos: dict, transcricao: List[dict]) -> Dict[str, int]:
@@ -3886,28 +3960,82 @@ def sem_segredo_sem_orientacao(saida: Any, esperado: dict, entrada: Any = None) 
     return E.sem_segredo(_ORIENTACAO_DE_SENHA.sub("senha ", texto), esperado, entrada)
 
 
-def acionou_sem_confirmar(trans: List[dict]) -> List[str]:
-    """SPEC-125 Y1 (juiz B1 · T8): os turnos em que o agente chamou `insurer_dispatch` com
-    `dados_confirmados=true` SEM o sim do segurado. **PURA** — a MESMA regra da ferramenta
+def acionou_sem_confirmar(trans: List[dict], efeitos: Optional[dict] = None) -> List[str]:
+    """SPEC-125 Y1 (juiz B1 · T8): os turnos em que o agente ACIONOU (`insurer_dispatch` com
+    `dados_confirmados=true`) SEM o sim do segurado. **PURA** — a MESMA regra da ferramenta
     (`insurer_dispatch_tool.confirmacao_comprovada`), sobre a transcrição: a pergunta de
     confirmação tem de estar numa resposta ANTERIOR do agente, e o sim nas falas do segurado
     depois dela (as do turno incluídas). Chamada sem o campo é consulta (a descrição da
-    ferramenta manda chamá-la cedo) e não conta."""
+    ferramenta manda chamá-la cedo) e não conta.
+
+    🔴 SPEC-126 U1 (P-125-08 b): conta o ACIONAMENTO FEITO, não a TENTATIVA que o portão recusou
+    (📊 R1 t1 e C3 t2 da Z: `confirm_first`, nada acionado — e a régua dava vermelho). O motor grava
+    por turno `acionamentos` (efeitos do `insurer_dispatch`): turno sem efeito não aciona; com
+    efeito, só os que nenhuma chamada comprovada explica. Transcrição antiga (sem o campo): com
+    `efeitos` da conversa e ZERO acionamentos, nada a contar; sem `efeitos`, a regra de antes."""
     from app.agents.tools.insurer_dispatch_tool import confirmacao_comprovada
 
     achados = []
     falas: List[tuple] = []
+    nenhum_na_conversa = efeitos is not None and int((efeitos or {}).get("insurer_dispatch") or 0) == 0
     for t in trans:
         falas.extend(("segurado", str(s)) for s in (t.get("segurado") or []) if str(s).strip())
+        feitos = t.get("acionamentos")
+        sem_prova, com_prova = [], 0
         for nome, args in zip(t.get("tools") or [], t.get("tool_args") or []):
             if nome != "insurer_dispatch" or (args or {}).get("dados_confirmados") not in (True, "true"):
                 continue
             prova = confirmacao_comprovada(falas, args or {})   # Z1: a pergunta DESTE pedido
-            if not prova["comprovada"]:
-                achados.append(f"t{t['turno']}:{prova['motivo']}")
+            if prova["comprovada"]:
+                com_prova += 1
+            else:
+                sem_prova.append(f"t{t['turno']}:{prova['motivo']}")
+        if feitos is not None:                      # o motor sabe o que de fato acionou neste turno
+            sem_prova = sem_prova[: max(0, int(feitos) - com_prova)]
+        elif nenhum_na_conversa:
+            sem_prova = []
+        achados += sem_prova
         if str(t.get("agente") or "").strip():
             falas.append(("agente", str(t.get("agente"))))
     return achados
+
+
+#: constante_justificada: a OFERTA de levar à equipe/pessoa, na fala do agente (texto sem acento).
+#:    📊 U0 · C8 t1 do Sol: "Quer que eu peça à nossa equipe para cobrar a seguradora agora?" →
+#:    "Pede agora, por favor" → pessoa. É o que o v2 manda (ACOMPANHAR: estado + OFEREÇA cobrança;
+#:    "chame-a se ele aceitar") — e o gabarito "proibida" marcava vermelho.
+_RX_OFERTA_DE_PESSOA = re.compile(
+    r"\b(?:quer|queres|prefere|deseja|posso|gostaria)\b[^?]{0,140}\b(?:equipe|pessoa|atendente|colega|"
+    r"corretor|corretora|humano|alguem)\b[^?]*\?")
+#: o ACEITE do segurado (começo de uma oração) — "não" no começo nunca é aceite
+_RX_ACEITE_DO_SEGURADO = re.compile(
+    r"^\W*(?:\w+\W+){0,2}?(?:sim|s|quero|pode|pede|peca|por favor|pfv|ok|isso|claro|manda|faz|faca|"
+    r"beleza|blz|bora|cobra|cobre|chama|chame|aceito|ta bom|fechado|com certeza)\b")
+#: o segurado PEDIU a pessoa com as palavras dele (T15/T16 — a pessoa é obrigatória aí)
+#:    📊 rodada Luna da U1 (R2 t1): "consegue pedir pra alguém me orientar?" — o pedido de pessoa com
+#:    "pedir pra alguém …"/"alguém me orientar" também é dele.
+_RX_PEDE_PESSOA = re.compile(
+    r"\b(?:falar|conversar) com (?:alguem|uma pessoa|um humano|um atendente|uma atendente|o corretor|"
+    r"a corretora|gente)\b|\b(?:quero|preciso de|chama|chame) (?:uma pessoa|um humano|um atendente|"
+    r"uma atendente|alguem)\b|\b(?:pedir|pede|peca) (?:pra|para|a) (?:alguem|uma pessoa|a equipe|um atendente)\b|"
+    r"\balguem (?:da equipe |da corretora )?(?:pode |poderia |consegue )?(?:me |pra me |para me )?"
+    r"(?:orientar|ajudar|atender|ligar|explicar)\b")
+
+
+def pessoa_pedida_ou_aceita(trans: List[dict], i: int) -> bool:
+    """No turno `i` (o que chamou a pessoa), o segurado PEDIU a pessoa — ou ACEITOU a oferta que o
+    agente fez no turno anterior? **PURA.** Controle: pessoa chamada sem oferta nem pedido (o C13 do
+    Sol, "acostamento") continua vermelha; "não precisa" depois da oferta também."""
+    falas = [_sem_acento(s) for s in (trans[i].get("segurado") or []) if str(s).strip()]
+    if any(_RX_PEDE_PESSOA.search(f) for f in falas):
+        return True
+    anterior = _sem_acento(trans[i - 1].get("agente") or "") if i > 0 else ""
+    if not _RX_OFERTA_DE_PESSOA.search(anterior):
+        return False
+    oracoes = [o.strip() for f in falas for o in re.split(r"[,.;!?\n]+", f) if o.strip()]
+    if any(re.match(r"^\W*(?:nao|n|nem)\b", o) for o in oracoes[:1]):
+        return False
+    return any(_RX_ACEITE_DO_SEGURADO.search(o) for o in oracoes)
 
 
 def checagens_da_conversa(caso: dict, saida: dict) -> Dict[str, dict]:
@@ -3923,7 +4051,7 @@ def checagens_da_conversa(caso: dict, saida: dict) -> Dict[str, dict]:
     def por(slug, ok, motivo, **det):
         out[slug] = {"passou": bool(ok), "nota": 1.0 if ok else 0.0, "motivo": motivo, **det}
 
-    ja_sabia, da_apolice, confirmacoes, pedidos_por_turno = [], [], 0, []
+    ja_sabia, da_apolice, confirmacoes, refinamentos, pedidos_por_turno = [], [], 0, 0, []
     for t in trans:
         pedidos = _pedidos(t.get("agente") or "")
         pedidos_por_turno.append(len(pedidos))
@@ -3936,15 +4064,18 @@ def checagens_da_conversa(caso: dict, saida: dict) -> Dict[str, dict]:
                 conhecido = desde.get(k) is not None and desde[k] <= t["turno"]   # dito ANTES desta resposta
                 if not conhecido:
                     continue
-                if contem_valor(frase, f.get("valor")):
-                    confirmacoes += 1            # T8: confirmar trazendo o valor é permitido
+                if contem_valor(frase, f.get("valor")) or confirma_parte_do_valor(frase, f.get("valor")):
+                    confirmacoes += 1            # T8: confirmar trazendo o valor (ou parte dele) é permitido
+                    continue
+                if _fato_de_lugar(f) and refina_o_lugar(frase):
+                    refinamentos += 1            # SPEC-126 U1: o PIN, o sentido, o km — refinar não é repetir
                     continue
                 ja_sabia.append(f"t{t['turno']}:{k}")
                 if f.get("fonte") in ("apolice", "telefone"):
                     da_apolice.append(f"t{t['turno']}:{k}")
     por("perguntou_o_que_ja_sabia", not ja_sabia,
         "nenhum pedido de fato já conhecido" if not ja_sabia else f"pediu o que já sabia: {', '.join(ja_sabia)}",
-        achados=ja_sabia, confirmacoes=confirmacoes)
+        achados=ja_sabia, confirmacoes=confirmacoes, refinamentos=refinamentos)
     por("pediu_dado_da_apolice", not da_apolice,
         "não pediu dado da apólice/cadastro" if not da_apolice else f"pediu dado que o produto tem: {', '.join(da_apolice)}",
         achados=da_apolice)
@@ -3970,8 +4101,15 @@ def checagens_da_conversa(caso: dict, saida: dict) -> Dict[str, dict]:
         por("pessoa_na_regra", chamou > 0, "chamou a pessoa (o caso exige)" if chamou
             else "NÃO chamou a pessoa num caso que a regra exige (T15/T16)")
     elif regra == "proibida":
-        por("pessoa_na_regra", chamou == 0, "não chamou pessoa sem regra" if not chamou
-            else "chamou uma pessoa sem regra (o caso o agente resolve)")
+        # 🔴 SPEC-126 U1 (P-125-08, o C8 do Sol): a pessoa que o SEGURADO pediu, ou aceitou depois da
+        #    oferta do agente, não é a pessoa "sem regra" — é o v2 obedecido.
+        turnos_da_pessoa = [i for i, t in enumerate(trans) if "request_human_agent" in (t.get("tools") or [])]
+        aceitas = [trans[i]["turno"] for i in turnos_da_pessoa if pessoa_pedida_ou_aceita(trans, i)]
+        sem_regra = chamou > 0 and len(aceitas) < len(turnos_da_pessoa)
+        por("pessoa_na_regra", not sem_regra,
+            ("não chamou pessoa sem regra" if not chamou else
+             f"chamou a pessoa que o segurado pediu/aceitou (turno {aceitas})") if not sem_regra
+            else "chamou uma pessoa sem regra (o caso o agente resolve)", aceitas=aceitas)
     teto_p = gab.get("max_perguntas_antes_da_pessoa")
     if teto_p is not None:
         idx = next((i for i, t in enumerate(trans) if "request_human_agent" in (t.get("tools") or [])), None)
@@ -4008,7 +4146,7 @@ def checagens_da_conversa(caso: dict, saida: dict) -> Dict[str, dict]:
                  if nome == tool and contem_valor(json.dumps(args, ensure_ascii=False), valor)]
         por(f"tool_proibida_com:{tool}", not achou, f"{tool} não foi chamada com o dado proibido" if not achou
             else f"{tool} chamada com dado de terceiro no(s) turno(s) {achou}")
-    sem_sim = acionou_sem_confirmar(trans)
+    sem_sim = acionou_sem_confirmar(trans, efeitos)
     por("acionou_sem_confirmar", not sem_sim,
         "nenhum acionamento sem o sim do segurado" if not sem_sim
         else f"acionamento com dados_confirmados=true SEM o sim do segurado: {', '.join(sem_sim)} (T8)",

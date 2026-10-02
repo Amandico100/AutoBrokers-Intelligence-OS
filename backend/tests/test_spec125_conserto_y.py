@@ -240,8 +240,13 @@ def test_y1_a_bancada_conta_acionou_sem_confirmar():
     assert B.acionou_sem_confirmar(trans_boa) == []
     # e ela é uma checagem da conversa (entra no G1 como as outras)
     caso = {"entrada": {}, "oraculo": {"conversa": {}}}
-    saida = {"estado": {"transcricao": trans_ruim}, "efeitos": {}}
+    # 🔴 SPEC-126 U1 (§9.3 — a lição MIGRA): a régua conta ACIONAMENTO FEITO, não tentativa recusada
+    #    (P-125-08 b). A saída "ruim" agora diz o que ela afirma — o acionamento SAIU (1 efeito); com
+    #    `efeitos: {}` (nada acionado) a mesma chamada é a tentativa que o portão recusou → passa.
+    saida = {"estado": {"transcricao": trans_ruim}, "efeitos": {"insurer_dispatch": 1}}
     assert B.checagens_da_conversa(caso, saida)["acionou_sem_confirmar"]["passou"] is False
+    saida = {"estado": {"transcricao": trans_ruim}, "efeitos": {}}
+    assert B.checagens_da_conversa(caso, saida)["acionou_sem_confirmar"]["passou"] is True
     saida = {"estado": {"transcricao": trans_boa}, "efeitos": {}}
     assert B.checagens_da_conversa(caso, saida)["acionou_sem_confirmar"]["passou"] is True
 

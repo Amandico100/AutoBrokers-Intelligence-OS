@@ -1192,21 +1192,125 @@ def com_o_telefone_da_conversa(kwargs: dict) -> dict:
     return {**kwargs, "telefone_contato": fone} if fone else kwargs
 
 
-def pedido_de_confirmacao(motivo: str = "", *, ja_confirmou: bool = False) -> dict:
+#: 🔴 SPEC-126 U1 · O ELO DO C13 — o nome do serviço na LINHA PRONTA (como a atendente o diz).
+#:    Fora da lista, o nome do corredor com espaço no lugar do "_".
+_NOME_DO_SERVICO_NA_LINHA = {
+    "socorro_mecanico": "socorro mecânico", "troca_de_pneu": "troca de pneu", "pneu": "troca de pneu",
+    "bateria": "socorro de bateria", "taxi": "táxi", "maquina_de_lavar": "conserto da máquina de lavar",
+    "eletrodomesticos": "conserto do eletrodoméstico",
+}
+#: Delimitadores da linha pronta no texto ao modelo — o fiscal de `nodes` a reencontra por eles.
+LINHA_PRONTA_ABRE, LINHA_PRONTA_FECHA = "«", "»"
+
+
+def _limpo(valor: Any) -> str:
+    return re.sub(r"\s+", " ", str(valor or "")).strip().strip(".,;:-–— ")
+
+
+#: 📊 rodada Luna da U1 (C4 t1): `local_atual="na garagem"` saía "socorro mecânico em na garagem" — a
+#:    preposição que o modelo já escreveu sai antes de a linha pôr a dela.
+_PREPOSICAO_INICIAL = re.compile(r"^(?:em|no|na|nos|nas|à|a|o|para|pra|até|ate|do|da|de)\s+", re.IGNORECASE)
+
+
+def _lugar(valor: Any) -> str:
+    return _PREPOSICAO_INICIAL.sub("", _PREPOSICAO_INICIAL.sub("", _limpo(valor)))   # "para a oficina"
+
+
+def o_que_falta_para_a_linha(pedido: Optional[dict]) -> list:
+    """O que o pedido ainda NÃO tem para virar a linha de confirmação. **PURA.**
+
+    Sem o LOCAL não há o que confirmar (o resumo sem lugar é o pedido de ok de um guincho que
+    não se sabe aonde vai); o GUINCHO leva o carro, então sem DESTINO também não."""
+    p = pedido or {}
+    falta = []
+    if not _limpo(p.get("local_atual")):
+        falta.append("o local onde está (rua e número, rodovia e km, ou um ponto de referência)")
+    sub = str(p.get("subservice") or "").strip().lower()
+    canon = ""
+    if sub:
+        try:
+            from app.services.corridor_playbooks import canonical_subservice
+
+            canon = canonical_subservice(sub) or sub
+        except Exception:  # noqa: BLE001 — a linha nunca derruba o retorno
+            canon = sub
+    if canon == "guincho" and not _limpo(p.get("local_destino")):
+        falta.append("para onde o carro vai (a oficina ou o endereço de destino)")
+    return falta
+
+
+def linha_de_confirmacao(pedido: Optional[dict]) -> str:
+    """🔴 SPEC-126 U1 — a LINHA PRONTA do resumo, montada pelo CÓDIGO com os argumentos do
+    pedido. **PURA.** `""` quando falta o que confirmar (`o_que_falta_para_a_linha`).
+
+    📊 U0 da SPEC-126 (`reports/SPEC-126-LINHA-DE-BASE.md` §3): o C13 do Sol recebeu o
+    `confirm_first` 2/2 com o texto "monte o resumo" e nenhuma linha montada — e numa das
+    duas a conversa terminou com uma pessoa e nada acionado. A linha daqui é a pergunta que o
+    PORTÃO (`confirmacao_comprovada`) aceita: o verbo forte ("posso acionar?") e o serviço, o
+    lugar e o final da placa do PRÓPRIO pedido.
+    ⛔ Nunca o CPF; a placa e o telefone só pelo FINAL (T19). Só entra o que o pedido tem —
+    sem placa ou sem destino, a linha não inventa nem pergunta por eles."""
+    p = pedido or {}
+    if o_que_falta_para_a_linha(p):
+        return ""
+    sub = str(p.get("subservice") or "").strip().lower()
+    try:
+        from app.services.corridor_playbooks import canonical_subservice
+
+        canon = canonical_subservice(sub) or sub
+    except Exception:  # noqa: BLE001
+        canon = sub
+    servico = _NOME_DO_SERVICO_NA_LINHA.get(canon) or canon.replace("_", " ") or "assistência"
+    local, destino = _lugar(p.get("local_atual")), _lugar(p.get("local_destino"))
+    partes = [f"{servico} saindo de {local} até {destino}" if destino else f"{servico} em {local}"]
+    placa = re.sub(r"[^A-Za-z0-9]", "", str(p.get("veiculo_placa") or "")).upper()
+    if len(placa) >= 7:
+        partes.append(f"placa final {placa[-4:]}")
+    fone = _digitos(p.get("telefone_contato")) or telefone_da_conversa(p.get("session_id"))
+    if len(fone) >= 8:
+        partes.append(("contato neste número (final %s)"
+                       if fone == telefone_da_conversa(p.get("session_id"))
+                       else "contato no telefone final %s") % fone[-4:])
+    return "Confirma: " + ", ".join(partes) + " — posso acionar?"
+
+
+def instrucao_da_linha_pronta(pedido: Optional[dict]) -> str:
+    """O trecho do `confirm_first` que entrega a linha ao modelo (ou diz o que falta). **PURA.**"""
+    linha = linha_de_confirmacao(pedido)
+    if linha:
+        return ("LINHA PRONTA (montada pelo sistema com os dados deste pedido) — ENVIE ao cliente "
+                f"exatamente esta linha, sem reescrever e sem perguntar de novo o que está nela: "
+                f"{LINHA_PRONTA_ABRE}{linha}{LINHA_PRONTA_FECHA}. Antes dela cabe no máximo UMA frase "
+                "curta (segurança ou acolhimento); nunca anuncie o acionamento antes do sim. ")
+    falta = o_que_falta_para_a_linha(pedido) if pedido else []
+    if falta:
+        return ("Ainda falta " + " e ".join(falta) + ": pergunte SÓ isso, numa mensagem, e chame de "
+                "novo — a ferramenta devolve a linha pronta do resumo. ")
+    return ""
+
+
+def pedido_de_confirmacao(motivo: str = "", *, ja_confirmou: bool = False,
+                          pedido: Optional[dict] = None) -> dict:
     """O retorno quando o acionamento ainda não tem o "sim" do segurado — a forma do
-    `confirm_first` de sempre (o agente já sabe o que fazer com ele)."""
+    `confirm_first` de sempre (o agente já sabe o que fazer com ele).
+
+    🔴 SPEC-126 U1: com o `pedido` (os argumentos da chamada), o retorno traz a LINHA PRONTA
+    do resumo (`linha_de_confirmacao`) e o texto manda ENVIÁ-LA — o modelo não monta mais o
+    resumo sozinho. A linha vai também no campo `linha_pronta`."""
+    linha = linha_de_confirmacao(pedido) if (pedido and not ja_confirmou) else ""
     if ja_confirmou:
         texto = ("O cliente JÁ confirmou os dados na conversa — não pergunte de novo. Chame "
                  "esta ferramenta de novo AGORA, com os mesmos dados e dados_confirmados=true. "
                  "NADA foi acionado ainda: não diga ao cliente que foi.")
     else:
         texto = ("ANTES de acionar: a conversa ainda não tem o resumo DESTE pedido seguido do "
-                 "\"sim\" do cliente. " + REGRA_DO_RESUMO_DE_CONFIRMACAO + " Só depois do sim "
+                 "\"sim\" do cliente. " + (instrucao_da_linha_pronta(pedido) if pedido else "")
+                 + REGRA_DO_RESUMO_DE_CONFIRMACAO + " Só depois do sim "
                  "chame de novo com dados_confirmados=true — no MESMO turno em que ele disser "
                  "sim. ATENÇÃO: NADA foi acionado ainda — é PROIBIDO dizer ao cliente que a "
                  "seguradora foi acionada/contatada.")
     return {"status": "confirm_first", "missing": [], "confirmacao_comprovada": False,
-            "motivo_interno": motivo, "content": texto}
+            "motivo_interno": motivo, "content": texto, "linha_pronta": linha}
 
 
 class InsurerDispatchTool(BaseTool):
@@ -1622,8 +1726,12 @@ class InsurerDispatchTool(BaseTool):
                  % _digitos(kwargs.get("telefone_contato"))[-4:])
                 if str(kwargs.get("telefone_contato") or "").strip() else "",
             ) if x)
-            return {"status": "confirm_first", "missing": _falta, "content": (
+            # 🔴 SPEC-126 U1 — a LINHA PRONTA vem montada pelo código (o elo do C13); sem o
+            #    que confirmar (local/destino), o texto diz o que falta perguntar.
+            return {"status": "confirm_first", "missing": _falta,
+                    "linha_pronta": linha_de_confirmacao(kwargs), "content": (
                 "ANTES de acionar, confirme com o cliente NA CONVERSA. "
+                + instrucao_da_linha_pronta(kwargs)
                 + (f"O que JÁ se sabe (vai no resumo, não vira pergunta): {_sabido}. " if _sabido else "")
                 + REGRA_DO_RESUMO_DE_CONFIRMACAO + " Depois chame de novo com "
                 "dados_confirmados=true. ATENÇÃO: NADA foi acionado ainda — é PROIBIDO dizer ao cliente "
@@ -1958,7 +2066,8 @@ class InsurerDispatchTool(BaseTool):
                            "(campo=%s · %s) — NADA enviado",
                            kwargs.get("dados_confirmados"), prova.get("motivo"))
             return pedido_de_confirmacao(str(prova.get("motivo") or ""),
-                                         ja_confirmou=bool(prova.get("comprovada")))
+                                         ja_confirmou=bool(prova.get("comprovada")),
+                                         pedido=kwargs)  # SPEC-126 U1: a linha pronta
 
         from app.services.corridor_playbooks import insurer_contact_env_var, resolve_insurer_contact
 
