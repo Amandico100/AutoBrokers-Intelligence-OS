@@ -2291,19 +2291,28 @@ async def motor_destravador(caso: dict, ctx: Contexto) -> dict:
             pilha.enter_context(D.atributo_trocado(DD, "registrar_decisao", _diario_duble))
         except ImportError:
             ctx.notas.append("diario_de_decisoes ausente — o destravador segue sem linha")
+        extra = {}
+        if caso.get("calibrando"):
+            # 🔴 SPEC-126 U6 (g1): a rodada de CALIBRAÇÃO mede a porta com a dedução LIGADA (a 2ª opinião
+            #    é chamada e o que agiria fica visível). Só com o braço injetado — produção não tem isso.
+            extra["deduzir_calibrado"] = True
         dec = await DT.destravar(TENANTS[caso.get("tenant") or "A"], sessao, tela, gatilho=gatilho,
                                  modo="on", limiar=int(getattr(DT, "LIMIAR_MINIMO", 70)),
-                                 llm=llm, llm_segunda=llm_segunda)
+                                 llm=llm, llm_segunda=llm_segunda, **extra)
     if teto.get("exc"):
         raise teto["exc"]
     d = dec.para_dict() if hasattr(dec, "para_dict") else dict(dec)
     ver = veredito_do_destravador(gab, d, tela, sessao)
-    return {"texto": str(d.get("valor") or ""),
-            "estado": {"decisao": {k: d.get(k) for k in (
+    estado = {"decisao": {k: d.get(k) for k in (
                 "classe", "acao", "valor", "nota", "limiar", "motivo", "proibicao", "segunda_opiniao",
-                "acao_do_modelo", "valor_do_modelo", "formato_ok", "modelo", "provedor", "modelo_chamado")},
-                "veredito_destravador": ver, "diario": diario, "prompt_hashes": pedidos,
-                "gatilho": gatilho}}
+                "acao_do_modelo", "valor_do_modelo", "formato_ok", "modelo", "provedor", "modelo_chamado",
+                "porta_do_deduzir", "deduzir_calibrado")},
+              "veredito_destravador": ver, "diario": diario, "prompt_hashes": pedidos,
+              "gatilho": gatilho}
+    if caso.get("calibrando"):
+        estado["calibracao"] = {k: (ent.get("calibracao") or {}).get(k)
+                                for k in ("seguradora", "controle_tecla_1", "porta_esperada")}
+    return {"texto": str(d.get("valor") or ""), "estado": estado}
 
 
 MOTORES["destravador"] = motor_destravador
@@ -2546,6 +2555,300 @@ def tabela_do_destravador(resumo: dict) -> str:
         linhas.append(f"  G4 (D, n={m['G4_n_D']}): destravou CERTO sem humano {_pct(m['G4_destravou_certo_sem_humano'])}"
                       f" · sem humano e seguro {_pct(m['G4_sem_humano_e_seguro'])} · ANTES (ponto B, "
                       f"n={m['G4_n_D_ponto_B']}) {_pct(m['G4_antes_ponto_B'])}")
+    return "\n".join(linhas)
+
+
+# ===========================================================================
+# SPEC-126 U6 — A CALIBRAÇÃO DO DEDUZIR: só na PORTA, ficha REALISTA, controle "tecla 1", k ≥ 2
+# ===========================================================================
+#
+# O FIO, elo a elo (nada reimplementado — o motor é `motor_destravador` → `destravador.destravar`):
+#
+#     corpus do destravador (`cerebro/casos*.jsonl`)
+#       → (g2) `ficha_realista`: as MÁSCARAS viram valores FALSOS PLAUSÍVEIS, os mesmos na tela, na ficha e
+#         no gabarito (📊 `des-D-cerebro-allianz-038` virou PESSOA porque o modelo devolveu `{NUMERO}`)
+#       → (e1) a placa da APÓLICE na ficha do ramo auto (no produto a InfoCap a põe:
+#         `insurer_dispatch_tool` → `provider.vehicle`); o veículo que ela escolhe deixa de ser DEDUZIR
+#       → (g1) `carregar_casos_da_calibracao`: só os casos em que a resposta PROVADA, proposta como
+#         DEDUZIR, chega à PORTA pela política de hoje (`porta_do_deduzir`) — o resto não é calibração
+#       → a rodada (`--calibracao`, k ≥ 2, 2ª opinião de outro provedor) com a dedução LIGADA na bancada
+#       → `resumo_da_calibracao`: por seguradora, o que AGIRIA × o controle "tecla 1" no MESMO conjunto
+#       → `decidir_religar`: `destravador.prova_de_calibracao` (o MESMO critério do código e do CHECK)
+#       → `sql_de_religar`: o UPDATE por corretora × seguradora, para o gerente aplicar.
+
+#: constante_justificada: os valores FALSOS e PLAUSÍVEIS de cada máscara do corpus (§13.9: nenhum é de
+#: pessoa, corretora ou segurado). CPF 123.456.789-09 e CNPJ 11.222.333/0001-81 têm dígito verificador
+#: válido (o conferente do produto os aceita) e são os exemplos públicos de documentação; a placa BRA2E19 é
+#: a placa-modelo do padrão Mercosul. 📊 As máscaras do corpus (02/10): VALOR 296 · NOME 257 · ENDERECO
+#: 200 · CPF 194 · TELEFONE 152 · PLACA 132 · NUMERO 74 · DATA 54 · CEP 51 · CIDADE 32 · CORRETORA 29 ·
+#: CNPJ 23 · VALOR_RS 13 · NUM 12 · EMAIL 1. ⛔ Ficam MASCARADOS de propósito: {SEGREDO} (código de
+#: acesso), {CARTAO}, {CAMINHO} e {PROTOCOLO} — nenhum é dado que o destravador deva digitar, e um
+#: protocolo inventado seria "número que não está no caso".
+VALORES_REALISTAS: Dict[str, str] = {
+    "{CPF}": "12345678909", "{CNPJ}": "11222333000181", "{TELEFONE}": "11987654321",
+    "{PLACA}": "BRA2E19", "{NOME}": "Joana Exemplo", "{ENDERECO}": "Rua das Acacias, 120",
+    "{NUMERO}": "120", "{CIDADE}": "Campinas", "{CEP}": "13010-100", "{DATA}": "15/10/2026",
+    "{VALOR}": "150,00", "{VALOR_RS}": "R$ 150,00", "{NUM}": "2", "{CORRETORA}": "Corretora Exemplo",
+    "{EMAIL}": "contato@exemplo.com.br",
+}
+#: Como a URA MOSTRA a placa: mascarada pela metade (📊 acervo: "AB#-###2", "BB#-##44" — a docstring de
+#: `corridor_playbooks.pick_option_by_plate`). Na tela e no gabarito vai esta; na ficha, a placa inteira.
+PLACA_NA_TELA = "BR#-###9"
+#: (e1) a origem declarada da placa que a ficha ganha.
+ORIGEM_DA_PLACA_DA_APOLICE = "apólice do titular (no produto: InfoCap, insurer_dispatch_tool) — SPEC-126 U6 (e1)"
+
+
+def _trocar_mascaras(obj: Any, valores: Dict[str, str]) -> Any:
+    if isinstance(obj, str):
+        for m, v in valores.items():
+            if m in obj:
+                obj = obj.replace(m, v)
+        return obj
+    if isinstance(obj, list):
+        return [_trocar_mascaras(x, valores) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _trocar_mascaras(x, valores) for k, x in obj.items()}
+    return obj
+
+
+def ficha_realista(caso: dict) -> dict:
+    """(g2) + (e1) — uma CÓPIA do caso com as máscaras trocadas por valores falsos plausíveis, os MESMOS
+    em toda parte (tela, ficha, sessão, conversa, gabarito). A placa aparece INTEIRA na ficha e
+    MASCARADA pela metade na tela e no gabarito (como a URA mostra). No ramo AUTO com CPF, a ficha ganha
+    a placa da apólice quando não a tinha (o que a InfoCap faz no produto). O telefone da sessão continua
+    sem dígitos (`TELEFONE_DA_BANCADA`: o destravador não vai ao banco atrás da conversa)."""
+    import copy
+
+    c = copy.deepcopy(caso)
+    na_ficha = dict(VALORES_REALISTAS)
+    na_tela = {**VALORES_REALISTAS, "{PLACA}": PLACA_NA_TELA}
+    ent = dict(c.get("entrada") or {})
+    for k in ("tela",):
+        ent[k] = _trocar_mascaras(ent.get(k), na_tela)
+    sessao = _trocar_mascaras(ent.get("sessao") or {}, na_ficha)
+    # a transcrição da sessão é o que a URA MOSTROU: a placa vai mascarada como na tela
+    if isinstance((ent.get("sessao") or {}).get("transcript"), list):
+        sessao["transcript"] = _trocar_mascaras(ent["sessao"]["transcript"], na_tela)
+    ficha = _trocar_mascaras(ent.get("ficha") or {}, na_ficha)
+    slots = dict(ficha.get("slots") or {})
+    ref = str(sessao.get("playbook_ref") or "")
+    if "-auto-" in ref and slots.get("titular_cpf") and not slots.get("veiculo_placa"):
+        slots["veiculo_placa"] = VALORES_REALISTAS["{PLACA}"]
+        ficha["origem_dos_slots"] = {**dict(ficha.get("origem_dos_slots") or {}),
+                                     "veiculo_placa": {"de": ORIGEM_DA_PLACA_DA_APOLICE}}
+        sessao["slots"] = {**dict(sessao.get("slots") or {}), "veiculo_placa": slots["veiculo_placa"]}
+    ficha["slots"] = slots
+    sessao["client_phone"] = TELEFONE_DA_BANCADA
+    ent["sessao"], ent["ficha"] = sessao, ficha
+    c["entrada"] = ent
+    orc = dict(c.get("oraculo") or {})
+    if orc.get("destravador"):
+        orc["destravador"] = _trocar_mascaras(orc["destravador"], na_tela)
+    c["oraculo"] = orc
+    return c
+
+
+def _seguradora_do_caso(caso: dict) -> str:
+    ent = caso.get("entrada") or {}
+    seg = str(ent.get("seguradora") or "").strip().lower()
+    if seg:
+        return seg
+    ref = str((ent.get("sessao") or {}).get("playbook_ref") or "")
+    return ref.split("-")[0].lower() if ref else ""
+
+
+def _resposta_provada(gab: dict) -> str:
+    """A resposta que a atendente deu e a URA aceitou, como o modelo a proporia (a tecla, ou o rótulo)."""
+    for a in gab.get("aceitas") or []:
+        for k in ("tecla", "rotulo", "literal"):
+            if str(a.get(k) or "").strip():
+                return str(a[k]).strip()
+    return ""
+
+
+def controle_tecla_1(caso: dict) -> bool:
+    """🔴 A LINHA DE CONTROLE (CLAUDE.md §9.2 · INV-DEDUCAO §4.2): "a atendente apertou 1" acertaria?
+    📊 No acervo, a tecla 1 é 82/114 (72 %) das respostas ao DEDUZIR. O modelo tem de bater isto."""
+    ent = caso.get("entrada") or {}
+    gab = (caso.get("oraculo") or {}).get("destravador") or {}
+    return casa_com_as_aceitas(str(ent.get("tela") or ""), "1", gab.get("aceitas") or [])
+
+
+def porta_do_caso(caso: dict) -> dict:
+    """A resposta PROVADA, proposta como DEDUZIR (nota 90), pela POLÍTICA de hoje com a dedução
+    DESLIGADA: chega à porta? → {"porta": bool, "porque": proibição/classe, "e1": a placa a resolve}.
+    Sem modelo, sem centavo."""
+    import importlib
+
+    DT = importlib.import_module("app.services.destravador")
+    ent = caso.get("entrada") or {}
+    gab = (caso.get("oraculo") or {}).get("destravador") or {}
+    tela = str(ent.get("tela") or "")
+    sessao = sessao_do_caso(caso)
+    valor = _resposta_provada(gab)
+    if not valor:
+        return {"porta": False, "porque": "sem_resposta_provada", "e1": False}
+    slots = {k: x for k, x in (sessao.get("slots") or {}).items()
+             if k not in set(sessao.get("slots_padrao") or ())}
+    e1 = bool(DT._veiculo_da_placa_do_caso(tela, valor, slots))
+    p = DT.Proposta(classe="deduzir", acao="RESPONDER", valor=valor, nota=90, motivo="oraculo")
+    d = DT.decidir_destravamento(p, sessao, tela, gatilho=str(ent.get("gatilho") or gab.get("gatilho") or "cerebro"),
+                                 deduzir_calibrado=False)
+    return {"porta": bool(d.porta_do_deduzir) and not e1,
+            "porque": d.proibicao or d.classe, "e1": e1}
+
+
+def carregar_casos_da_calibracao(filtro: Optional[str] = None, *, com_porta: bool = True) -> List[dict]:
+    """(g1) Os casos da CALIBRAÇÃO: DEDUZIR com PROVA (`prova: sim`, `PROVAS_QUE_CALIBRAM`), resposta
+    provada no gabarito, ficha REALISTA, e — com `com_porta` — só os que chegam à PORTA do DEDUZIR pela
+    política de hoje. Cada caso sai marcado `calibrando` (o motor liga a dedução NA BANCADA) e com a
+    `calibracao` (seguradora, o controle "tecla 1", a porta esperada)."""
+    saida = []
+    for c in carregar_casos_do_destravador(filtro=filtro):
+        gab = c["oraculo"]["destravador"]
+        if gab.get("classe_esperada") != "deduzir" or gab.get("prova") not in PROVAS_QUE_CALIBRAM:
+            continue
+        if not _resposta_provada(gab):
+            continue
+        r = ficha_realista(c)
+        r["entrada"]["sessao"] = sessao_do_caso(r)
+        porta = porta_do_caso(r)
+        if com_porta and not porta["porta"]:
+            continue
+        r["calibrando"] = True
+        r["entrada"]["calibracao"] = {"seguradora": _seguradora_do_caso(r),
+                                      "controle_tecla_1": controle_tecla_1(r),
+                                      "porta_esperada": porta}
+        saida.append(r)
+    return saida
+
+
+def resumo_da_calibracao(arquivos: List[Any]) -> Dict[str, dict]:
+    """As rodadas `--calibracao` → por SEGURADORA (e `todas`): a porta, o que AGIRIA e se acertou nas k
+    tentativas, o controle "tecla 1" no MESMO conjunto, a concordância das k e a nota do 2º modelo.
+
+    Um caso é UM ponto (as k tentativas não são independentes — τ-bench pass^k):
+      · `agiu`   — alguma tentativa respondeu à URA (a porta abriu: nota ≥ limiar e a 2ª concordou);
+      · `certo`  — agiu, TODA tentativa que agiu acertou e as respostas das k CONCORDAM;
+      · `modelo_proposta_certa` — as k PROPOSTAS do modelo acertaram (o que se compara ao controle);
+      · `controle` — a tecla 1 acertaria."""
+    casos: Dict[str, dict] = {}
+    for arq in arquivos:
+        d = _ler_rodada(arq)
+        for r in d.get("resultados") or []:
+            if r.get("resultado") == "BLOCKED_BY_INFRA":
+                continue
+            est = (r.get("rastro") or {}).get("estado") or {}
+            cal = est.get("calibracao") or {}
+            dec = est.get("decisao") or {}
+            ver = est.get("veredito_destravador") or {}
+            if not cal:
+                continue
+            c = casos.setdefault(r["chave"], {"seguradora": cal.get("seguradora") or "",
+                                              "controle": bool(cal.get("controle_tecla_1")),
+                                              "tentativas": []})
+            seg = dec.get("segunda_opiniao") or {}
+            c["tentativas"].append({
+                "porta": bool(dec.get("porta_do_deduzir")), "acao": dec.get("acao"),
+                "valor": str(dec.get("valor") or ""), "valor_do_modelo": str(dec.get("valor_do_modelo") or ""),
+                "certo": ver.get("classe") == "CERTO", "proposta_certa": bool(ver.get("proposta_certa")),
+                "nota": dec.get("nota"), "nota_segunda": seg.get("nota"),
+                "segunda_concordou": seg.get("concordou")})
+    por: Dict[str, dict] = {}
+
+    def _conta(seg: str) -> dict:
+        return por.setdefault(seg, {"porta_n": 0, "agiu_n": 0, "agiu_certos": 0, "modelo_proposta_certos": 0,
+                                    "controle_certos": 0, "k_concordantes": 0, "k_min": None,
+                                    "notas_segunda": [], "casos": []})
+    for chave, c in sorted(casos.items()):
+        ts = c["tentativas"]
+        if not any(t["porta"] for t in ts):
+            continue        # a proposta do modelo não chegou à porta: fora da calibração
+        agiram = [t for t in ts if t["acao"] == "RESPONDER" and t["porta"]]
+        # autoconsistência (arXiv 2203.11171): as k PROPOSTAS escrevem a MESMA resposta. Conservador de
+        # propósito: "1" e "Residencial" contam como DIFERENTES (discordar só tira o caso do "certo")
+        props = {" ".join(t["valor_do_modelo"].lower().split()) for t in ts}
+        concordam = len(ts) >= 2 and len(props) == 1 and "" not in props
+        certo = bool(agiram) and all(t["certo"] for t in agiram) and concordam
+        proposta_certa = all(t["proposta_certa"] for t in ts)
+        for seg in (c["seguradora"], "todas"):
+            m = _conta(seg)
+            m["porta_n"] += 1
+            m["agiu_n"] += 1 if agiram else 0
+            m["agiu_certos"] += 1 if certo else 0
+            m["modelo_proposta_certos"] += 1 if proposta_certa else 0
+            m["controle_certos"] += 1 if c["controle"] else 0
+            m["k_concordantes"] += 1 if concordam else 0
+            m["k_min"] = len(ts) if m["k_min"] is None else min(m["k_min"], len(ts))
+            m["notas_segunda"] += [(t["nota_segunda"], t["proposta_certa"]) for t in ts
+                                   if t["nota_segunda"] is not None]
+            m["casos"].append({"chave": chave, "agiu": bool(agiram), "certo": certo,
+                               "proposta_certa": proposta_certa, "controle": c["controle"],
+                               "concordam": concordam})
+    import importlib
+
+    DT = importlib.import_module("app.services.destravador")
+    for m in por.values():
+        m["wilson"] = DT.wilson(m["agiu_certos"], m["agiu_n"])
+        m["faixas_nota_segunda"] = faixas_de_nota([(int(n), bool(ok)) for n, ok in m["notas_segunda"]])
+    return por
+
+
+def decidir_religar(resumo: Dict[str, dict], *, rodada: str, braco: str = "", segunda: str = "",
+                    medido_em: str = "") -> Dict[str, dict]:
+    """Por SEGURADORA: religa o DEDUZIR? Pela MESMA régua do código (`destravador.prova_de_calibracao`:
+    n ≥ `DEDUZIR_N_MINIMO`, acerto ≥ 90 %, Wilson ≥ 70 %, o controle "tecla 1" batido). A linha `todas` é
+    só informação — a chave é por seguradora (nunca se religa o agregado)."""
+    import importlib
+
+    DT = importlib.import_module("app.services.destravador")
+    out = {}
+    for seg, m in sorted(resumo.items()):
+        inf, sup = DT.wilson(m["agiu_certos"], m["agiu_n"])
+        prova = {"n": int(m["agiu_n"]), "certos": int(m["agiu_certos"]),
+                 "controle_n": int(m["porta_n"]), "controle_certos": int(m["controle_certos"]),
+                 "modelo_proposta_certos": int(m["modelo_proposta_certos"]),
+                 "wilson_inf": round(inf, 4), "wilson_sup": round(sup, 4), "k_min": m.get("k_min"),
+                 "rodada": str(rodada or ""), "braco": braco, "segunda": segunda, "medido_em": medido_em}
+        ok, porque = DT.prova_de_calibracao(prova)
+        out[seg] = {"religa": bool(ok) and seg != "todas", "porque": porque if seg != "todas" else
+                    "agregado — só informação", "calibracao": prova}
+    return out
+
+
+def sql_de_religar(decisao: Dict[str, dict], company_ids: List[str]) -> str:
+    """O UPDATE que liga o DEDUZIR — por CORRETORA × SEGURADORA, só onde `decidir_religar` disse sim, para
+    as corretoras PEDIDAS (nunca "todas"; a chave de uma não liga nada na outra). Nada é aplicado aqui."""
+    linhas = []
+    for seg, d in sorted(decisao.items()):
+        if not d.get("religa"):
+            continue
+        if not re.fullmatch(r"[a-z0-9_]{2,40}", seg):
+            raise ValueError(f"seguradora inválida: {seg!r}")
+        prova = json.dumps(d["calibracao"], ensure_ascii=False, sort_keys=True).replace("'", "''")
+        for cid in company_ids:
+            if not re.fullmatch(r"[0-9a-fA-F-]{36}", str(cid)):
+                raise ValueError(f"company_id inválido: {cid!r}")
+            linhas.append(
+                f"update public.cerebro_modos set deduzir_calibrado = true, calibracao = '{prova}'::jsonb, "
+                f"updated_at = now() where company_id = '{cid}' and insurer_key = '{seg}' and ramo = 'todos';")
+    return "\n".join(linhas) or "-- nenhuma seguradora religa: nada a aplicar (o DEDUZIR fica desligado)"
+
+
+def tabela_da_calibracao(resumo: Dict[str, dict], decisao: Dict[str, dict]) -> str:
+    """Modelo × controle, por seguradora — o que o relatório da rodada mostra."""
+    linhas = ["seguradora   porta  agiu  certos  Wilson95      modelo(propostas)  controle'1'  k-concord  RELIGA"]
+    for seg in sorted(resumo, key=lambda s: (s == "todas", s)):
+        m, d = resumo[seg], decisao.get(seg) or {}
+        inf, sup = m["wilson"]
+        linhas.append(
+            f"{seg:<12} {m['porta_n']:>5} {m['agiu_n']:>5} {m['agiu_certos']:>7}  [{inf:.0%}–{sup:.0%}]"
+            f"   {m['modelo_proposta_certos']:>3}/{m['porta_n']:<3}            {m['controle_certos']:>3}/{m['porta_n']:<3}"
+            f"    {m['k_concordantes']:>3}/{m['porta_n']:<3}   {'SIM' if d.get('religa') else 'não'} ({d.get('porque', '')})")
+    t = resumo.get("todas")
+    if t:
+        linhas.append("nota do 2º modelo × proposta certa (todas): " + " · ".join(
+            f"{k}: {v['certos']}/{v['n']}" for k, v in t["faixas_nota_segunda"].items()))
     return "\n".join(linhas)
 
 

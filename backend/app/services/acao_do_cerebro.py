@@ -418,23 +418,27 @@ def validar_modo(modo: Any) -> str:
     raise ModoRecusado(f"modo desconhecido {modo!r}: os modos são {', '.join(MODOS)}")
 
 
-_CACHE_DA_CHAVE: Dict[str, Tuple[float, Dict[Tuple[str, str], Tuple[str, int]]]] = {}
+_CACHE_DA_CHAVE: Dict[str, Tuple[float, Dict[Tuple[str, str], tuple]]] = {}
 
 
-async def _ler_chaves(company_id: str) -> Dict[Tuple[str, str], Tuple[str, int]]:
-    """{(seguradora, ramo): (modo, limiar)} DESTA corretora. ⛔ Filtro por `company_id` no CÓDIGO (§7).
+async def _ler_chaves(company_id: str) -> Dict[Tuple[str, str], tuple]:
+    """{(seguradora, ramo): (modo, limiar, deduzir_calibrado, calibracao)} DESTA corretora.
+    ⛔ Filtro por `company_id` no CÓDIGO (§7).
 
     Linha com modo desconhecido OU limiar fora de 70..100 vale `off` (falha fechada): o banco já
-    recusa as duas coisas (CHECKs da 20260930_03), e o código não confia no banco."""
+    recusa as duas coisas (CHECKs da 20260930_03), e o código não confia no banco.
+    🔴 SPEC-126 U6: `select("*")` de propósito — as colunas `deduzir_calibrado`/`calibracao` (migration
+    20261002_10) podem ainda não existir quando o código sobe; uma coluna nomeada que falta derrubaria a
+    leitura INTEIRA (todo o destravador `off`). Sem a coluna, a dedução fica desligada (o padrão)."""
     from app.services import dispatch_router as R
     from app.services.destravador import LIMIAR_MINIMO, LimiarRecusado, validar_limiar
 
     db = await R._db()
     if db is None:
         return {}
-    r = await (db.client.table("cerebro_modos").select("company_id,insurer_key,ramo,modo,limiar")
+    r = await (db.client.table("cerebro_modos").select("*")
                .eq("company_id", str(company_id)).execute())
-    out: Dict[Tuple[str, str], Tuple[str, int]] = {}
+    out: Dict[Tuple[str, str], tuple] = {}
     for linha in (getattr(r, "data", None) or []):
         if str(linha.get("company_id") or "") != str(company_id):
             continue  # cinto: a borda devolveu linha de outra corretora — nunca vale para esta
@@ -443,10 +447,12 @@ async def _ler_chaves(company_id: str) -> Dict[Tuple[str, str], Tuple[str, int]]
         try:
             bruto = linha.get("limiar")
             limiar = LIMIAR_MINIMO if bruto is None else validar_limiar(bruto)
-            out[chave] = (validar_modo(linha.get("modo")), limiar)
+            cal = linha.get("calibracao") if isinstance(linha.get("calibracao"), dict) else {}
+            out[chave] = (validar_modo(linha.get("modo")), limiar,
+                          linha.get("deduzir_calibrado") is True, dict(cal))
         except (ModoRecusado, LimiarRecusado) as e:
             logger.error("[SOMBRA] chave %s/%s recusada — fica `off`: %s", chave[0], chave[1], e)
-            out[chave] = ("off", LIMIAR_MINIMO)
+            out[chave] = ("off", LIMIAR_MINIMO, False, {})
     return out
 
 
@@ -456,12 +462,27 @@ async def modo_e_limiar(company_id: str, insurer_key: str, ramo: str) -> Tuple[s
     Precedência: (seguradora, ramo) > (seguradora, 'todos') > `off`. Cache de 60 s por corretora.
     O leitor ÚNICO de `cerebro_modos` — `destravador.modo_do_destravador` o chama.
     """
+    linha = await _linha_da_chave(company_id, insurer_key, ramo)
+    return linha[0], linha[1]
+
+
+async def calibracao_da_chave(company_id: str, insurer_key: str, ramo: str) -> Tuple[bool, Dict[str, Any]]:
+    """SPEC-126 U6 — (deduzir_calibrado, calibracao) da MESMA linha de `modo_e_limiar` (mesma
+    precedência, mesmo cache, mesmo filtro por corretora). Sem linha / sem coluna / falha → (False, {}).
+    Quem decide se a PROVA vale é `destravador.deduzir_calibrado` (o código não confia no banco)."""
+    linha = await _linha_da_chave(company_id, insurer_key, ramo)
+    return bool(linha[2]), dict(linha[3] or {})
+
+
+async def _linha_da_chave(company_id: str, insurer_key: str, ramo: str) -> tuple:
+    """(modo, limiar, deduzir_calibrado, calibracao) — a linha que vale, ou a de `off`."""
     from app.services.destravador import LIMIAR_MINIMO
 
+    desligada = ("off", LIMIAR_MINIMO, False, {})
     cid = str(company_id or "").strip()
     seg = str(insurer_key or "").strip().lower()
     if not cid or not seg:
-        return "off", LIMIAR_MINIMO
+        return desligada
     agora = time.monotonic()
     em_cache = _CACHE_DA_CHAVE.get(cid)
     if em_cache is None or agora - em_cache[0] > _TTL_DA_CHAVE_S:
@@ -474,7 +495,8 @@ async def modo_e_limiar(company_id: str, insurer_key: str, ramo: str) -> Tuple[s
     else:
         chaves = em_cache[1]
     r = str(ramo or "").strip().lower()
-    return chaves.get((seg, r)) or chaves.get((seg, "todos")) or ("off", LIMIAR_MINIMO)
+    linha = chaves.get((seg, r)) or chaves.get((seg, "todos")) or desligada
+    return tuple(linha) + desligada[len(linha):]   # cinto: linha de 2 campos (cache antigo) = sem dedução
 
 
 async def modo_do_cerebro(company_id: str, insurer_key: str, ramo: str) -> str:

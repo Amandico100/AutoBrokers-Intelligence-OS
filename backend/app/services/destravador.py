@@ -67,6 +67,116 @@ LIMIAR_MAXIMO = 100
 #: PERGUNTAR seguem livres. ⚠️ Só vira True com uma rodada de calibração que passe o G3 (decisão do
 #: gerente/Founder). MUTAÇÃO: True → `test_spec123_f5a_costura.py::test_o_grave_porto_092_...` VERMELHO.
 DEDUZIR_AUTONOMO_CALIBRADO = False
+#: 🔴 SPEC-126 U6 — A CONSTANTE ACIMA DEIXOU DE SER A CHAVE. A chave é POR CORRETORA × SEGURADORA, no banco
+#: (`cerebro_modos.deduzir_calibrado` + a PROVA em `calibracao`, conferida em código por
+#: `prova_de_calibracao`; leitura em `deduzir_calibrado`). Produção passa o valor da linha a
+#: `decidir_destravamento`/`decidir_parada_do_portal` explicitamente. A constante ficou só como a costura
+#: dos testes de MECÂNICA da 123/124 ("suponha calibrado") e TEM de ser False no código — com True ela
+#: ligaria a dedução em TODA corretora e seguradora, que é exatamente o que a U6 tirou. Guardas:
+#: `test_spec124_conserto.py`, `test_spec123_f5a_costura.py` e `test_spec126_u6_deducao_calibrada.py`.
+
+# ── SPEC-126 U6 — A PORTA DE RELIGAR O DEDUZIR, POR SEGURADORA ─────────────────────────────────────
+#: constante_justificada: a meta do G3 da 123 e do G7 da 126 — "acerto medido ≥ 90 %" na faixa em que age
+#: (D2 do Founder). É o mesmo número de `evals.bancada.ACERTO_MINIMO_NA_FAIXA`.
+DEDUZIR_ACERTO_MINIMO = 0.90
+#: constante_justificada: o limite INFERIOR do intervalo de Wilson 95 % tem de passar de 70 % — o "acima
+#: de 70 % de certeza, decide" do D2 do Founder, lido como certeza MEDIDA e não declarada pelo modelo
+#: (📊 a nota do 6.1 é 90–99 em tudo, `SPEC-123-BANCADA.md` §4). Por isso 9/10 (90 %, Wilson [60–98])
+#: NÃO religa e 10/10 (Wilson [72–100]) religa: com n pequeno, um acerto de 90 % é sorte possível.
+DEDUZIR_WILSON_MINIMO = 0.70
+#: constante_justificada: o menor n (casos DISTINTOS que agiram, cada um certo nas k tentativas) que a
+#: prova aceita. 📊 Com o Wilson ≥ 70 %, n < 9 nunca passa (8/8 = [68–100]); 10 é o primeiro número
+#: redondo acima e é o que a SPEC-126 §5 U6 chama de "n pequeno = não religa". ⚠️ MUTAÇÃO do G7: 0 aqui e
+#: no Wilson → a seguradora sem prova religa → `test_spec126_u6_*::test_G7_*` VERMELHO.
+DEDUZIR_N_MINIMO = 10
+#: constante_justificada: z do intervalo de Wilson a 95 % (o mesmo do relatório da 123, §0).
+_Z_95 = 1.959964
+
+
+def wilson(certos: int, n: int, z: float = _Z_95) -> Tuple[float, float]:
+    """O intervalo de Wilson (inferior, superior) de `certos` em `n`. n = 0 → (0, 1)."""
+    import math
+
+    n = int(n or 0)
+    if n <= 0:
+        return 0.0, 1.0
+    p = max(0, min(int(certos or 0), n)) / n
+    den = 1 + z * z / n
+    centro = p + z * z / (2 * n)
+    margem = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return max(0.0, (centro - margem) / den), min(1.0, (centro + margem) / den)
+
+
+def prova_de_calibracao(calibracao: Any) -> Tuple[bool, str]:
+    """A PROVA gravada em `cerebro_modos.calibracao` deixa o DEDUZIR agir sozinho? (ok, porquê).
+
+    ⛔ O código não confia no banco nem no JSON da rodada: RECALCULA acerto e Wilson de `certos`/`n` e
+    exige o controle "tecla 1" BATIDO no mesmo conjunto (SPEC-126 G7 · CLAUDE.md §9.2). Campos:
+    `n`, `certos` (os casos que AGIRAM, certos nas k), `controle_n`, `controle_certos`,
+    `modelo_proposta_certos` (as propostas certas nos `controle_n` casos da porta), `rodada`."""
+    c = calibracao if isinstance(calibracao, dict) else {}
+
+    def _int(k):
+        v = c.get(k)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+    n, certos = _int("n"), _int("certos")
+    cn, cc, mp = _int("controle_n"), _int("controle_certos"), _int("modelo_proposta_certos")
+    if n is None or certos is None or not 0 <= certos <= n:
+        return False, "sem_prova"
+    if not str(c.get("rodada") or "").strip():
+        return False, "prova_sem_rodada"
+    if n < DEDUZIR_N_MINIMO:
+        return False, f"n_pequeno:{n}<{DEDUZIR_N_MINIMO}"
+    if certos / n < DEDUZIR_ACERTO_MINIMO:
+        return False, f"acerto_abaixo:{certos}/{n}"
+    inf, _sup = wilson(certos, n)
+    if inf < DEDUZIR_WILSON_MINIMO:
+        return False, f"wilson_abaixo:{inf:.3f}"
+    if cn is None or cc is None or mp is None or cn <= 0 or not (0 <= cc <= cn and 0 <= mp <= cn):
+        return False, "sem_controle"
+    if mp <= cc:
+        return False, f"nao_bateu_o_controle:{mp}<={cc}/{cn}"
+    return True, "calibrado"
+
+
+async def deduzir_calibrado_da_sessao(company_id: str, sessao: Dict[str, Any],
+                                      playbook: Optional[Dict[str, Any]] = None) -> bool:
+    """A chave do DEDUZIR para a seguradora × ramo do CORREDOR desta sessão (o mesmo par que o roteador
+    usa para o modo: `insurer_key`/`line_kind` do playbook)."""
+    try:
+        if playbook is None:
+            from app.services.insurer_dispatch_service import get_playbook
+
+            playbook = get_playbook(str((sessao or {}).get("playbook_ref") or "")) or {}
+        seg = str((playbook or {}).get("insurer_key") or "").strip().lower()
+        ramo = str((playbook or {}).get("line_kind") or "").strip().lower()
+    except Exception:  # noqa: BLE001
+        return False
+    if not seg:
+        return False
+    return await deduzir_calibrado(company_id, seg, ramo)
+
+
+async def deduzir_calibrado(company_id: str, insurer_key: str, ramo: str) -> bool:
+    """SPEC-126 U6 — o DEDUZIR desta CORRETORA nesta SEGURADORA/ramo pode agir sozinho?
+
+    Lê a MESMA linha de `cerebro_modos` que dá o modo (`acao_do_cerebro.calibracao_da_chave` — o leitor
+    único) e exige `deduzir_calibrado = true` E a prova que vale (`prova_de_calibracao`). Sem linha, sem
+    coluna, prova ruim, qualquer falha → False (o DEDUZIR é rebaixado: pergunta ou pessoa)."""
+    try:
+        from app.services import acao_do_cerebro as AC
+
+        ligado, cal = await AC.calibracao_da_chave(company_id, insurer_key, ramo)
+        if not ligado:
+            return False
+        ok, porque = prova_de_calibracao(cal)
+        if not ok:
+            logger.error("[DESTRAVADOR] deduzir_calibrado=true sem prova que vale (%s/%s: %s) — desligado",
+                         insurer_key, ramo, porque)
+        return ok
+    except Exception as e:  # noqa: BLE001 — sem saber, desligado
+        logger.warning("[DESTRAVADOR] calibração ilegível (%s) — desligado", type(e).__name__)
+        return False
 
 #: As ações FINAIS (depois da política). As mesmas palavras de `acao_do_cerebro.ACOES`, menos
 #: RECUSA — recusa de cobertura é gatilho do MOTOR (`recusa_de_cobertura:*`), nunca destravável.
@@ -272,6 +382,10 @@ class Destravamento:
     provedor: str = ""          # o provedor que DECIDIU de fato (a reserva pode ter decidido)
     modelo_chamado: bool = False   # False = nenhuma resposta do modelo (falha/disjuntor) — nada medido
     gatilho: str = ""
+    #: SPEC-126 U6: a proposta chegou à PORTA do DEDUZIR (`Veredito.porta`) — o conjunto da calibração —
+    #: e a dedução estava ligada para ESTA seguradora nesta decisão.
+    porta_do_deduzir: bool = False
+    deduzir_calibrado: bool = False
 
     def para_dict(self) -> dict:
         return asdict(self)
@@ -1013,10 +1127,139 @@ def _pergunta_do_custo(tela: str) -> str:
             f"“{trecho}”. Como você quer seguir?")
 
 
+def _opcoes_cruas(tela: str) -> List[Tuple[str, str]]:
+    """TODAS as opções numeradas da tela, (tecla, rótulo normalizado), SEM tirar a tecla repetida.
+    `opcoes_numeradas` do produto guarda só a 1ª ocorrência de cada tecla (`setdefault`) — e é assim que
+    dois menus colados (📊 `des-D-ramo_indeterminado-allianz-004`: "1-Automóvel…" e "1-Residencial")
+    viram UM. Aqui a repetição aparece. Botões sem número entram numerados 1..n (como o produto)."""
+    from app.services import insurer_dispatch_service as IDS
+
+    saida: List[Tuple[str, str]] = []
+    try:
+        carto = IDS._cartographer()
+        for label in carto.parse_options(str(tela or "")):
+            numero = carto.numero_da_opcao(label)
+            if numero is None:
+                continue
+            rot = re.sub(r"^\s*\d{1,2}\s*[-–.)\]]\s*", "", label).strip()
+            saida.append((numero.lstrip("0") or "0", IDS._norm_text(rot).strip(" .!*:")))
+    except Exception:  # noqa: BLE001 — sem o parser, nada de ambiguidade inventada
+        return []
+    if not saida:
+        saida = [(str(i), IDS._norm_text(r).strip(" .!*:"))
+                 for i, r in enumerate(IDS._rotulos_da_tela(str(tela or "")), 1)]
+    return saida
+
+
 def _rotulo_escolhido(tela: str, valor: str) -> str:
+    """O rótulo da opção que `valor` escolhe. 🔴 SPEC-126 U6 (P-124-14): a IGUALDADE vem antes do
+    prefixo — `rotulo_de` do produto aceita "começa com" (≥ 4 letras) e devolve a PRIMEIRA opção que casa:
+    numa tela "1 - Curitibanos / 2 - Curitiba", "Curitiba" virava "curitibanos". Igual a exatamente
+    uma opção → é ela; senão, o de sempre."""
     from app.services.acao_do_cerebro import rotulo_de
 
+    alvo = _n(valor)
+    if alvo:
+        iguais = {r for _d, r in _opcoes_cruas(tela) if _n(r) == alvo}
+        if len(iguais) == 1:
+            return iguais.pop()
     return rotulo_de(tela, valor)[1]
+
+
+def _mesma_escolha(tela: str, a: str, b: str) -> bool:
+    """A 2ª opinião escolheu a MESMA opção? Pela igualdade primeiro (`_rotulo_escolhido`): no
+    `_mesma_resposta` do produto, "Curitiba" e "Curitibanos" caem os dois na 1ª opção que COMEÇA com eles
+    e "concordam" (P-124-14). Sem rótulo dos dois lados, o comparador do produto."""
+    from app.services.acao_do_cerebro import _mesma_resposta
+
+    ra, rb = _rotulo_escolhido(tela, a), _rotulo_escolhido(tela, b)
+    if ra and rb:
+        return ra == rb
+    return _mesma_resposta(tela, a, b)
+
+
+def _escolha_ambigua(tela: str, valor: str) -> bool:
+    """A resposta vale para MAIS DE UMA opção diferente da tela? (alavanca (c) do INV-DEDUCAO §5.3)
+      · a TECLA aparece em dois menus colados com rótulos diferentes (📊 allianz-004: "1" = Automóvel e
+        Residencial na mesma tela);
+      · o RÓTULO (igual ou prefixo) casa opções de teclas diferentes (📊 yelum-035: "ENCANADOR" ×2), sem
+        UMA igual a ele (a igualdade decide — P-124-14)."""
+    opcoes = _opcoes_cruas(tela)
+    if len(opcoes) < 2:
+        return False
+    v = " ".join(str(valor or "").split()).strip(" .!*")
+    if re.fullmatch(r"\d{1,2}", v):
+        rotulos = {r for d, r in opcoes if d == (v.lstrip("0") or "0")}
+        return len(rotulos) > 1
+    alvo = _n(v)
+    if not alvo:
+        return False
+    iguais = {(d, r) for d, r in opcoes if _n(r) == alvo}
+    if len({r for _d, r in iguais}) == 1 and len({d for d, _r in iguais}) == 1:
+        return False
+    casam = iguais or {(d, r) for d, r in opcoes if len(alvo) >= 4 and _n(r).startswith(alvo)}
+    return len({d for d, _r in casam}) > 1
+
+
+#: constante_justificada: as chaves de slot que guardam LUGAR com NOME (cidade, município, bairro). 📊 As
+#: chaves reais da ficha do corpus (`cerebro/casos*.jsonl`): local_cidade 11, destino_cidade 19,
+#: endereco_cidade 2, local_bairro 3, endereco_bairro 2. É nelas que o homônimo mora (P-124-14: "Curitiba"
+#: × "Curitibanos"; SPEC-124: "Bom Jesus/RS" × "Bom Jesus/SC"). ⛔ Rua/logradouro ficam fora: "Rua X" é
+#: prefixo legítimo de "Rua X, 120" (o mesmo lugar com o número) — ali o prefixo NÃO é outro lugar.
+_RX_SLOT_DE_LUGAR = re.compile(r"cidade|municipio|bairro")
+#: As 27 UFs — a sigla no fim do nome ("Curitiba - PR", "Bom Jesus/SC") é ESTADO, não parte da cidade.
+_UFS_DO_BRASIL = frozenset(
+    "ac al ap am ba ce df es go ma mt ms mg pa pb pr pe pi rj rn rs ro rr sc sp se to".split())
+
+
+def localidades_do_caso(sessao: Dict[str, Any]) -> List[str]:
+    """Os valores de LUGAR do caso (slots que o segurado deu; nunca o padrão do sistema, nunca máscara)."""
+    padrao = set((sessao or {}).get("slots_padrao") or ())
+    slots = (sessao or {}).get("slots") or {}
+    out = []
+    for k, x in slots.items():
+        if k in padrao or not isinstance(x, str) or _RX_MASCARA.match(x.strip()):
+            continue
+        if _RX_SLOT_DE_LUGAR.search(str(k).lower()) and x.strip():
+            # a UF irmã ("local_cidade" ↔ "local_uf") vai junto: "Bom Jesus - RS" não é "Bom Jesus - SC"
+            uf = slots.get(re.sub(r"cidade|municipio", "uf", str(k))) if "bairro" not in str(k) else None
+            uf = str(uf or "").strip().lower()
+            out.append(f"{x.strip()} - {uf}" if uf in _UFS_DO_BRASIL and _nome_e_uf(x)[1] == "" else x.strip())
+    return out
+
+
+def _nome_e_uf(s: Any) -> Tuple[str, str]:
+    """("curitiba", "pr") de "Curitiba - PR" / "CURITIBA/PR" / "Curitiba"."""
+    palavras = _n(s).split()
+    if len(palavras) >= 2 and palavras[-1] in _UFS_DO_BRASIL:
+        return " ".join(palavras[:-1]), palavras[-1]
+    return " ".join(palavras), ""
+
+
+def homonimo_do_caso(escolha: Any, valores_do_caso: List[Any]) -> bool:
+    """🔴 P-124-14 — a escolha é o HOMÔNIMO de um lugar do caso, e não ele?
+
+    Igualdade NORMALIZADA (sem acento, caixa, pontuação; a UF do fim à parte) com algum valor → NÃO é
+    homônimo (é o próprio). Senão, é homônimo se, com algum valor do caso:
+      · um nome COMEÇA com o outro (sem espaço): "Curitiba" × "Curitibanos", "São José" × "São José dos
+        Campos" — o prefixo nunca é o mesmo lugar;
+      · o nome é igual e a UF é OUTRA: "Bom Jesus/RS" × "Bom Jesus/SC".
+    Só valores com letras e ≥ 4 caracteres (número de casa e UF solta não são lugar)."""
+    ne, ue = _nome_e_uf(escolha)
+    ce = ne.replace(" ", "")
+    if len(ce) < 4 or not re.search(r"[a-z]", ce):
+        return False
+    pares = [_nome_e_uf(v) for v in valores_do_caso or []]
+    pares = [(n, u) for n, u in pares if len(n.replace(" ", "")) >= 4 and re.search(r"[a-z]", n)]
+    if any(n == ne and (not u or not ue or u == ue) for n, u in pares):
+        return False
+    for n, u in pares:
+        cn = n.replace(" ", "")
+        if n == ne and u and ue and u != ue:
+            return True
+        if cn != ce and (cn.startswith(ce) or ce.startswith(cn)):
+            return True
+    return False
 
 
 #: constante_justificada: um slot MASCARADO (`{ENDERECO}`, `{CPF}` — o corpus da bancada e o rastro
@@ -1036,6 +1279,26 @@ def _pedaco_do_mesmo_dado(curto: str, longo: str) -> bool:
     if len(curto) < _MINIMO_DO_PEDACO or not (re.search(r"\d", curto) or " " in curto):
         return False
     return f" {curto} " in f" {longo} "
+
+
+def _veiculo_da_placa_do_caso(tela: str, valor: str, slots: Dict[str, Any]) -> bool:
+    """A resposta escolhe EXATAMENTE a opção do veículo cuja placa (mascarada pela URA) bate com a placa
+    do caso? Pelo `corridor_playbooks.pick_option_by_plate` do produto — que devolve "" quando nada casa
+    ou quando DUAS opções casam (nunca chuta veículo). Sem placa no caso → False."""
+    placa = slots.get("veiculo_placa")
+    if not isinstance(placa, str) or not placa.strip() or _RX_MASCARA.match(placa.strip()):
+        return False
+    try:
+        from app.services.acao_do_cerebro import rotulo_de
+        from app.services.corridor_playbooks import pick_option_by_plate
+
+        tecla = pick_option_by_plate(str(tela or ""), placa)
+        if not tecla:
+            return False
+        escolhida = rotulo_de(tela, valor)[0] or (str(valor).strip() if str(valor).strip().isdigit() else "")
+        return bool(escolhida) and escolhida == str(tecla).strip()
+    except Exception:  # noqa: BLE001 — sem o casador do produto, não é dado do caso
+        return False
 
 
 def _compacto(s: Any) -> str:
@@ -1082,6 +1345,11 @@ def _e_dado_do_caso(valor: str, sessao: Dict[str, Any], tela: str = "") -> bool:
     padrao = set(sessao.get("slots_padrao") or ())
     slots = {str(k): x for k, x in (sessao.get("slots") or {}).items() if k not in padrao}
     do_passo = [s for s in (_slots_do_passo(sessao, tela) if tem_tela else []) if s not in padrao]
+    if rot and _veiculo_da_placa_do_caso(tela, valor, slots):
+        # 🔴 SPEC-126 U6 (e1): "confirme o veículo" — a opção que a PLACA DO CASO escolhe (o MESMO
+        #    `pick_option_by_plate` do passo `dynamic: vehicle_by_plate`) é dado do caso, não dedução.
+        #    📊 52 % do DEDUZIR real é esta tela (59/114, INV-DEDUCAO §0.3).
+        return True
     if rot:
         # OPÇÃO da tela: só o slot do PASSO, e só se o valor dele casa a opção escolhida
         alvos = {_compacto(rot), _compacto(valor)}
@@ -1237,6 +1505,9 @@ class Veredito:
     passo: str
     classe: str
     porque: str = ""
+    #: SPEC-126 U6 (g1): a proposta CHEGOU à porta do DEDUZIR (passou o NUNCA, a classe é deduzir) —
+    #: é só neste conjunto que a calibração mede. Independe de a dedução estar ligada.
+    porta: bool = False
 
 
 def chaves_ligadas(nunca=None) -> tuple:
@@ -1247,13 +1518,16 @@ def chaves_ligadas(nunca=None) -> tuple:
 def regua_do_nucleo(proposta: Proposta, *, limiar: int, provedor: str = "",
                     segunda_opiniao: Optional[dict] = None, pedir_segunda: bool = False,
                     e_navegacao, e_dado_do_caso, tem_opcoes: bool, valor_nas_opcoes,
-                    mesma_resposta) -> Veredito:
+                    mesma_resposta, deduzir_calibrado: bool = False,
+                    escolha_ambigua=None, homonimo=None) -> Veredito:
     """A régua de uma RESPOSTA proposta (D1–D3 do Founder). Pura; as funções do canal são PREGUIÇOSAS
     (chamadas só quando a régua chega nelas, na mesma ordem de sempre).
 
     CONDUZIR que não é navegação e RESPONDER COM DADO que não é dado do caso viram DEDUZIR. DEDUZIR:
-    desligado sem calibração (`DEDUZIR_AUTONOMO_CALIBRADO`); senão o valor tem de ser uma opção (se há
-    opções), nota ≥ limiar, e a 2ª opinião de OUTRO provedor escolhendo a MESMA resposta.
+    desligado sem calibração — 🔴 SPEC-126 U6: `deduzir_calibrado` é o da LINHA desta corretora ×
+    seguradora (`deduzir_calibrado(...)`), nunca global; senão o valor tem de ser UMA opção da tela, sem
+    ambiguidade (`escolha_ambigua`) e sem ser o homônimo de um dado do caso (`homonimo`), nota ≥ limiar,
+    e a 2ª opinião de OUTRO provedor escolhendo a MESMA resposta.
     `segunda_opiniao["concordou"]` é gravado no próprio dict (o diário o lê)."""
     classe = proposta.classe
     if classe == "conduzir" and not e_navegacao():
@@ -1262,32 +1536,40 @@ def regua_do_nucleo(proposta: Proposta, *, limiar: int, provedor: str = "",
         classe = "deduzir"            # não é dado do caso: é dedução
     if classe != "deduzir":
         return Veredito(PASSO_AGE, classe)
-    if not DEDUZIR_AUTONOMO_CALIBRADO:
-        # G3 sem calibração (ver a constante): nenhum DEDUZIR age sozinho, e a 2ª opinião não é paga
-        return Veredito(PASSO_REBAIXAR, classe, "deduzir_sem_calibracao")
+    # 🔴 P-124-14 — a IGUALDADE normalizada vem antes de qualquer dedução, ligada ou não: "Curitibanos"
+    #    para um caso em "Curitiba" nunca é escolha do modelo (o rebaixo é igual nos dois estados).
+    if homonimo is not None and homonimo():
+        return Veredito(PASSO_REBAIXAR, classe, "homonimo_do_caso", porta=True)
+    if not (DEDUZIR_AUTONOMO_CALIBRADO or deduzir_calibrado):
+        # sem calibração NESTA seguradora: nenhum DEDUZIR age sozinho, e a 2ª opinião não é paga
+        return Veredito(PASSO_REBAIXAR, classe, "deduzir_sem_calibracao", porta=True)
     if tem_opcoes and not valor_nas_opcoes():
-        return Veredito(PASSO_REBAIXAR, classe, "valor_fora_das_opcoes")
+        return Veredito(PASSO_REBAIXAR, classe, "valor_fora_das_opcoes", porta=True)
+    if escolha_ambigua is not None and escolha_ambigua():
+        # (c) do INV-DEDUCAO: a tecla/rótulo vale para MAIS de uma opção (📊 allianz-004, dois menus colados)
+        return Veredito(PASSO_REBAIXAR, classe, "escolha_ambigua", porta=True)
     lim = _limiar_efetivo(limiar)
     if proposta.nota is None or proposta.nota < lim:
-        return Veredito(PASSO_REBAIXAR, classe, "nota_abaixo_do_limiar")
+        return Veredito(PASSO_REBAIXAR, classe, "nota_abaixo_do_limiar", porta=True)
     if segunda_opiniao is None:
         if pedir_segunda:
-            return Veredito(PASSO_PRECISA_SEGUNDA, classe, "precisa_segunda_opiniao")
-        return Veredito(PASSO_REBAIXAR, classe, "sem_segunda_opiniao")
+            return Veredito(PASSO_PRECISA_SEGUNDA, classe, "precisa_segunda_opiniao", porta=True)
+        return Veredito(PASSO_REBAIXAR, classe, "sem_segunda_opiniao", porta=True)
     if not _provedor_diferente(segunda_opiniao, provedor):
-        return Veredito(PASSO_REBAIXAR, classe, "segunda_opiniao_do_mesmo_provedor")
+        return Veredito(PASSO_REBAIXAR, classe, "segunda_opiniao_do_mesmo_provedor", porta=True)
     concordou = (str(segunda_opiniao.get("acao") or "") == "RESPONDER"
                  and mesma_resposta(str(segunda_opiniao.get("valor") or "")))
     segunda_opiniao["concordou"] = bool(concordou)
     if not concordou:
-        return Veredito(PASSO_REBAIXAR, classe, "segunda_opiniao_discordou")
-    return Veredito(PASSO_AGE, classe)
+        return Veredito(PASSO_REBAIXAR, classe, "segunda_opiniao_discordou", porta=True)
+    return Veredito(PASSO_AGE, classe, porta=True)
 
 
 def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str, *,
                           gatilho: str = "cerebro", limiar: int = LIMIAR_MINIMO, modo: str = "on",
                           provedor: str = "", segunda_opiniao: Optional[dict] = None,
-                          pedir_segunda: bool = False, nunca=None) -> Destravamento:
+                          pedir_segunda: bool = False, nunca=None,
+                          deduzir_calibrado: bool = False) -> Destravamento:
     """A POLÍTICA (D1–D3 do Founder), em CÓDIGO. Pura: não chama modelo nem banco.
 
     `segunda_opiniao`: {"provedor","modelo","classe","acao","valor","nota"} do papel
@@ -1295,6 +1577,8 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
     `pedir_segunda=True`: quando o DEDUZIR chegou até a 2ª opinião e ela ainda não existe, a
     decisão volta com `proibicao="precisa_segunda_opiniao"` e `valor` = o candidato — quem chama
     busca a 2ª opinião e chama de novo. `nunca`: as chaves do NUNCA ligadas (a MUTAÇÃO do G2).
+    `deduzir_calibrado` (SPEC-126 U6): o DEDUZIR desta corretora × seguradora está calibrado
+    (`deduzir_calibrado(...)`, lido do banco por quem chama). Padrão: desligado.
     """
     from app.services import acao_do_cerebro as AC
     from app.services import insurer_dispatch_service as IDS
@@ -1308,7 +1592,8 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
     base = dict(classe=p.classe if p.classe in CLASSES else "nunca_sozinho", nota=p.nota, limiar=lim,
                 motivo=p.motivo, modo=modo, acao_do_modelo=p.acao if p.formato_ok else "",
                 valor_do_modelo=p.valor, formato_ok=p.formato_ok, provedor=provedor,
-                segunda_opiniao=segunda_opiniao, gatilho=str(gatilho or ""))
+                segunda_opiniao=segunda_opiniao, gatilho=str(gatilho or ""),
+                deduzir_calibrado=bool(deduzir_calibrado))
 
     def pessoa(porque: str, classe: Optional[str] = None) -> Destravamento:
         d = Destravamento(acao="PESSOA", proibicao=porque, **base)
@@ -1451,12 +1736,24 @@ def decidir_destravamento(proposta: Proposta, sessao: Dict[str, Any], tela: str,
         eco_confirmado = eco and bool(rot) and bool(_RX_AFIRMATIVO.search(_n(rot)))
         return bool((rot and IDS.rotulo_e_de_navegacao(rot)) or eco_confirmado)
 
+    if p.classe == "deduzir" and _veiculo_da_placa_do_caso(
+            tela, valor, {k: x for k, x in (sessao.get("slots") or {}).items()
+                          if k not in set(sessao.get("slots_padrao") or ())}):
+        # (e1) o veículo que a PLACA do caso escolhe não é dedução — é o dado do caso (o conferente
+        #      do ⑦ continua valendo). Estreito de propósito: só esta tela, só pelo casador do produto.
+        p = Proposta(classe="responder_com_dado", acao=p.acao, valor=p.valor, nota=p.nota,
+                     motivo=p.motivo, formato_ok=p.formato_ok, erro=p.erro)
     v = regua_do_nucleo(
         p, limiar=lim, provedor=provedor, segunda_opiniao=segunda_opiniao, pedir_segunda=pedir_segunda,
         e_navegacao=_e_navegacao, e_dado_do_caso=lambda: _e_dado_do_caso(valor, sessao, tela),
         tem_opcoes=bool(conteudo), valor_nas_opcoes=lambda: bool(_rotulo_escolhido(tela, valor)),
-        mesma_resposta=lambda outro: AC._mesma_resposta(tela, valor, outro))
+        mesma_resposta=lambda outro: _mesma_escolha(tela, valor, outro),
+        deduzir_calibrado=bool(deduzir_calibrado),
+        escolha_ambigua=lambda: _escolha_ambigua(tela, valor),
+        homonimo=lambda: homonimo_do_caso(_rotulo_escolhido(tela, valor) or valor,
+                                          localidades_do_caso(sessao)))
     base["classe"] = v.classe
+    base["porta_do_deduzir"] = v.porta
     if v.passo == PASSO_PRECISA_SEGUNDA:
         return Destravamento(acao="PESSOA", valor=valor, proibicao="precisa_segunda_opiniao", **base)
     if v.passo == PASSO_REBAIXAR:
@@ -1772,17 +2069,24 @@ async def _registrar(company_id: str, sessao: Dict[str, Any], tela: str, d: Dest
 # ═════════════════════════════════════════════════════════════════════════════
 async def destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, modo: str,
                     limiar: int = 70, llm: Optional[ModeloInjetado] = None,
-                    llm_segunda: Optional[ModeloInjetado] = None) -> Destravamento:
+                    llm_segunda: Optional[ModeloInjetado] = None,
+                    deduzir_calibrado: Optional[bool] = None) -> Destravamento:
     """UMA trava → UMA decisão. `gatilho` = o reason do motor (ponto B) ou "cerebro"/"sentinela"
     (ponto A). Monta o contexto COMPLETO, chama o modelo do papel `destravador`, aplica a POLÍTICA
     EM CÓDIGO, registra no diário e devolve a decisão. ⛔ Nunca envia nada. Nunca levanta.
 
     `llm` / `llm_segunda` (F1c): quem decide e a 2ª opinião INJETADOS (`ModeloInjetado`) — a
     bancada mede braços de fora do catálogo pelo MESMO fio. Com `llm` injetado, a 2ª opinião é só
-    `llm_segunda` (None → sem 2ª opinião). Produção não passa nada: tudo pelo catálogo."""
+    `llm_segunda` (None → sem 2ª opinião). Produção não passa nada: tudo pelo catálogo.
+
+    🔴 SPEC-126 U6: se o DEDUZIR age é a linha DESTA corretora × seguradora × ramo
+    (`deduzir_calibrado(...)`, lida aqui). `deduzir_calibrado=True/False` só vale com `llm` INJETADO (a
+    bancada da calibração mede a porta com a dedução ligada); sem `llm` o argumento é IGNORADO — produção
+    nunca liga a dedução por parâmetro."""
     try:
         return await _destravar(company_id, sessao, tela, gatilho=gatilho, modo=modo, limiar=limiar,
-                                llm=llm, llm_segunda=llm_segunda)
+                                llm=llm, llm_segunda=llm_segunda,
+                                deduzir_calibrado=deduzir_calibrado if llm is not None else None)
     except Exception as e:  # noqa: BLE001 — falha fechada
         logger.error("[DESTRAVADOR] falhou (%s) — pessoa", type(e).__name__)
         return Destravamento(classe="nunca_sozinho", acao="PESSOA", proibicao="falha_do_destravador",
@@ -1792,7 +2096,8 @@ async def destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, m
 
 async def _destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, modo: str,
                      limiar: int, llm: Optional[ModeloInjetado] = None,
-                     llm_segunda: Optional[ModeloInjetado] = None) -> Destravamento:
+                     llm_segunda: Optional[ModeloInjetado] = None,
+                     deduzir_calibrado: Optional[bool] = None) -> Destravamento:
     from langchain_core.messages import HumanMessage, SystemMessage
 
     from app.agents.utils import extract_text_from_content
@@ -1814,6 +2119,10 @@ async def _destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, 
                              proibicao="gatilho_nao_destravavel" if playbook else "sem_corredor",
                              limiar=lim, modo=m, gatilho=g)
 
+    # a chave do DEDUZIR: só a bancada (braço injetado) a passa; produção lê a linha — e só quando a
+    # proposta CHEGA à porta (a leitura não custa nada às outras classes)
+    calibrado: Optional[bool] = (bool(deduzir_calibrado) if llm is not None and deduzir_calibrado is not None
+                                 else None)
     msgs = await mensagens_do_destravador(cid, sessao, tela, gatilho=g)
     conversa = [SystemMessage(content=msgs["system"]), HumanMessage(content=msgs["user"])]
     try:
@@ -1831,7 +2140,14 @@ async def _destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, 
     custo = _custo(resposta, modelo)
     proposta = ler_destravamento(extract_text_from_content(getattr(resposta, "content", None)) or "")
     d = decidir_destravamento(proposta, sessao, tela, gatilho=g, limiar=lim, modo=m,
-                              provedor=provedor, pedir_segunda=True)
+                              provedor=provedor, pedir_segunda=True, deduzir_calibrado=bool(calibrado))
+    if calibrado is None:
+        calibrado = False
+        if d.porta_do_deduzir and not DEDUZIR_AUTONOMO_CALIBRADO:
+            calibrado = await deduzir_calibrado_da_sessao(cid, sessao, playbook)
+            if calibrado:
+                d = decidir_destravamento(proposta, sessao, tela, gatilho=g, limiar=lim, modo=m,
+                                          provedor=provedor, pedir_segunda=True, deduzir_calibrado=True)
     if d.proibicao == "precisa_segunda_opiniao":
         if llm is not None:
             segunda, c2 = await _segunda_injetada(llm_segunda, conversa, provedor)
@@ -1840,10 +2156,11 @@ async def _destravar(company_id: str, sessao: dict, tela: str, *, gatilho: str, 
         custo += c2
         if segunda is None:
             d = decidir_destravamento(proposta, sessao, tela, gatilho=g, limiar=lim, modo=m,
-                                      provedor=provedor, pedir_segunda=False)
+                                      provedor=provedor, pedir_segunda=False, deduzir_calibrado=calibrado)
         else:
             d = decidir_destravamento(proposta, sessao, tela, gatilho=g, limiar=lim, modo=m,
-                                      provedor=provedor, segunda_opiniao=segunda)
+                                      provedor=provedor, segunda_opiniao=segunda,
+                                      deduzir_calibrado=calibrado)
     d.modelo = modelo
     d.custo_usd = round(custo, 6)
     d.modelo_chamado = True
@@ -2058,6 +2375,35 @@ def _folhas(valor: Any) -> List[str]:
 # o dado é o do CAMPO da parada (`valores_do_slot_no_portal`).
 
 
+#: SPEC-126 U6 (P-124-14): as paradas do portal que escolhem um LUGAR na lista.
+_PARADAS_DE_LUGAR = frozenset({"cidade_ambigua"})
+
+
+def mesmo_lugar(escolha: Any, valores_do_caso: List[Any]) -> bool:
+    """A escolha É um lugar do caso: nome igual (normalizado) e UF igual ou ausente de um dos lados."""
+    ne, ue = _nome_e_uf(escolha)
+    return bool(ne) and any(n == ne and (not u or not ue or u == ue)
+                            for n, u in (_nome_e_uf(v) for v in valores_do_caso or []))
+
+
+def _fora_do_lugar_do_pedido(escolha: Any, params: Optional[dict]) -> bool:
+    """🔴 P-124-14 no portal: o pedido TEM a cidade do serviço e a escolha não é ela (homônimo, prefixo
+    ou outra cidade qualquer) → nunca se deduz. Sem cidade no pedido → a régua de sempre decide."""
+    try:
+        from app.agents.tools.portal_params import _valor_do_slot
+
+        cid = _valor_do_slot(params if isinstance(params, dict) else {}, "cidade_servico")
+    except Exception:  # noqa: BLE001 — sem saber o lugar do pedido, não se deduz lugar
+        return True
+    cid = cid if isinstance(cid, dict) else {}
+    nome = str(cid.get("cidade") or "").strip()
+    if not nome:
+        return False
+    uf = str(cid.get("uf") or "").strip().lower()
+    lugar = f"{nome} - {uf}" if uf in _UFS_DO_BRASIL and not _nome_e_uf(nome)[1] else nome
+    return not mesmo_lugar(escolha, [lugar])
+
+
 def _opcao_igual(valor: Any, opcoes: List[str]) -> str:
     """A opção da lista do portal que É este valor (igualdade normalizada, nunca pedaço). "" se nenhuma."""
     alvo = _n(valor)
@@ -2144,19 +2490,21 @@ def resposta_do_portal(stage: str, slot: str, valor: str, params: Optional[dict]
 def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any], params: Optional[dict], *,
                              limiar: int = LIMIAR_MINIMO, modo: str = "on", provedor: str = "",
                              segunda_opiniao: Optional[dict] = None, pedir_segunda: bool = False,
-                             nunca=None) -> Optional[Destravamento]:
+                             nunca=None, deduzir_calibrado: bool = False) -> Optional[Destravamento]:
     """A POLÍTICA no portal (D1/D2), em CÓDIGO e pura: a TABELA dá a classe; o NUNCA do portal; o NÚCLEO
     (`regua_do_nucleo`, o MESMO do WhatsApp) decide a resposta. `proposta=None` → só o código: devolve a
-    decisão quando a tabela basta, ou `None` quando o modelo tem de propor o valor."""
+    decisão quando a tabela basta, ou `None` quando o modelo tem de propor o valor.
+    `deduzir_calibrado` (SPEC-126 U6): a linha desta corretora × seguradora × `vidros`. Padrão: desligado."""
     ligadas = chaves_ligadas(nunca)
     lim = _limiar_efetivo(limiar)
     stage = str(parada.get("stage") or "")
     opcoes = list(parada.get("opcoes") or [])
     classe_tab = CLASSE_DA_PARADA_DO_PORTAL.get(stage, "")
     pode_perguntar = parada.get("operacao") == "responder"
+    calibrado = bool(DEDUZIR_AUTONOMO_CALIBRADO or deduzir_calibrado)
     base: Dict[str, Any] = dict(classe=classe_tab or "nunca_sozinho", nota=None, limiar=lim, motivo="",
                                 modo=modo, provedor=provedor, segunda_opiniao=segunda_opiniao,
-                                gatilho=f"portal:{stage}")
+                                gatilho=f"portal:{stage}", deduzir_calibrado=bool(deduzir_calibrado))
     if proposta is not None:
         base.update(nota=proposta.nota, motivo=proposta.motivo, formato_ok=proposta.formato_ok,
                     acao_do_modelo=proposta.acao if proposta.formato_ok else "",
@@ -2190,12 +2538,13 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
     if classe_tab == "perguntar_ao_segurado":
         return perguntar("so_o_segurado_sabe")
     # ④ DEDUZIR sem calibração: o NÚCLEO decide sem o modelo (a mesma régua; a 2ª opinião não é paga).
-    if classe_tab == "deduzir" and not DEDUZIR_AUTONOMO_CALIBRADO:
+    if classe_tab == "deduzir" and not calibrado:
         v = regua_do_nucleo(Proposta(classe="deduzir", acao="RESPONDER", nota=None), limiar=lim,
                             e_navegacao=lambda: False, e_dado_do_caso=lambda: False,
                             tem_opcoes=bool(opcoes), valor_nas_opcoes=lambda: False,
                             mesma_resposta=lambda _o: False)
         base["classe"] = v.classe
+        base["porta_do_deduzir"] = v.porta
         return perguntar(v.porque)
     if proposta is None:
         return None
@@ -2239,8 +2588,12 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
         e_navegacao=lambda: classe_tab == "conduzir" and bool(opcao),
         e_dado_do_caso=lambda: bool(opcao) and nv in do_slot,
         tem_opcoes=bool(opcoes), valor_nas_opcoes=lambda: bool(opcao),
-        mesma_resposta=lambda outro: _n(outro) == nv or (bool(opcao) and _opcao_igual(outro, opcoes) == opcao))
+        mesma_resposta=lambda outro: _n(outro) == nv or (bool(opcao) and _opcao_igual(outro, opcoes) == opcao),
+        deduzir_calibrado=bool(deduzir_calibrado),
+        # 🔴 P-124-14: na cidade, a escolha tem de ser o lugar DO CASO (igualdade normalizada, a UF à parte)
+        homonimo=lambda: stage in _PARADAS_DE_LUGAR and _fora_do_lugar_do_pedido(opcao or valor, params))
     base["classe"] = v.classe
+    base["porta_do_deduzir"] = v.porta
     if v.passo == PASSO_PRECISA_SEGUNDA:
         return Destravamento(acao="PESSOA", valor=valor, proibicao="precisa_segunda_opiniao", **base)
     if v.passo == PASSO_REBAIXAR:
@@ -2450,7 +2803,13 @@ async def _destravar_parada_do_portal(company_id: str, evidence: Any, params: An
     if parada["operacao"] != "responder" or not cid:
         return None
     lim = _limiar_efetivo(limiar)
-    d = decidir_parada_do_portal(None, parada, prm, limiar=lim, modo=modo)
+    # SPEC-126 U6: a chave do DEDUZIR desta corretora × seguradora do pedido × `vidros` — lida só quando a
+    # TABELA põe a parada no DEDUZIR (as outras classes não dependem dela)
+    calibrado = False
+    if CLASSE_DA_PARADA_DO_PORTAL.get(parada.get("stage") or "") == "deduzir":
+        seg = chave_da_seguradora_do_portal(prm)
+        calibrado = bool(seg) and await deduzir_calibrado(cid, seg, RAMO_DO_PORTAL)
+    d = decidir_parada_do_portal(None, parada, prm, limiar=lim, modo=modo, deduzir_calibrado=calibrado)
     if d is None:
         conversa_seg, memoria = await asyncio.gather(
             _com_teto(_conversa_do_segurado(cid, {"client_phone": _telefone_da_conversa(prm)}), []),
@@ -2472,7 +2831,7 @@ async def _destravar_parada_do_portal(company_id: str, evidence: Any, params: An
             custo = _custo(resposta, modelo)
             proposta = ler_destravamento(extract_text_from_content(getattr(resposta, "content", None)) or "")
             d = decidir_parada_do_portal(proposta, parada, prm, limiar=lim, modo=modo, provedor=provedor,
-                                         pedir_segunda=True)
+                                         pedir_segunda=True, deduzir_calibrado=calibrado)
             if d is not None and d.proibicao == "precisa_segunda_opiniao":
                 if llm is not None:
                     segunda, c2 = await _segunda_injetada(llm_segunda, conversa, provedor)
@@ -2481,7 +2840,8 @@ async def _destravar_parada_do_portal(company_id: str, evidence: Any, params: An
                                                          texto_da_parada(parada))
                 custo += c2
                 d = decidir_parada_do_portal(proposta, parada, prm, limiar=lim, modo=modo, provedor=provedor,
-                                             segunda_opiniao=segunda, pedir_segunda=False)
+                                             segunda_opiniao=segunda, pedir_segunda=False,
+                                             deduzir_calibrado=calibrado)
             d.modelo = modelo
             d.custo_usd = round(custo, 6)
             d.modelo_chamado = True

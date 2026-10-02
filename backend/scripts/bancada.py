@@ -37,6 +37,11 @@ falha · BLOCKED_BY_INFRA.
     python scripts/bancada.py --papel conversa --braco openai:gpt-6-luna:low --braco-segurado openai:gpt-6-luna:low --cenarios C14 --k 1 --teto-provedor 0.05 --ledger-desde 2026-10-01T00:00:00+00:00 --saida <scratch>/conv.json
     python scripts/bancada.py --resumo-conversa "<scratch>/conv*.json" [--recalcular]
 
+    # SPEC-126 U6 — a CALIBRAÇÃO do DEDUZIR (só a PORTA, ficha realista, controle "tecla 1", k ≥ 2):
+    python scripts/bancada.py --casos-calibracao                       # os casos da porta, sem modelo
+    python scripts/bancada.py --papel destravador --calibracao --braco openai:gpt-6.1-sol:high --braco-segunda anthropic:claude-opus-5-5 --k 2 --teto-provedor <OpenAI acumulado> --teto-segunda <Anthropic> --ledger-desde 2026-10-02T18:50:00+00:00 --saida <scratch>/calibracao_u6.json
+    python scripts/bancada.py --resumo-calibracao "<scratch>/calibracao_u6.json" --empresas <uuid>,<uuid>
+
 `--ensaio` (padrão) NÃO toca o banco: grava só um JSON local e diz onde.
 `--gravar` escreve em `eval_runs`/`eval_case_results` (exige a migration
 20260923_03 aplicada). O teto em US$ vem de `--teto-usd` ou de BANCADA_TETO_USD
@@ -116,6 +121,18 @@ def main(argv=None) -> int:
                         "do produto, PROMPT_VERSAO_PADRAO) — o lado a lado v1 × v2")
     p.add_argument("--redecidir", action="store_true",
                    help="SPEC-123 F5a: com --recalcular, passa a proposta gravada de novo pela POLÍTICA de hoje")
+    # SPEC-126 U6 — a CALIBRAÇÃO do DEDUZIR
+    p.add_argument("--calibracao", action="store_true",
+                   help="SPEC-126 U6: com --papel destravador, só os casos DEDUZIR com prova que chegam à PORTA, "
+                        "ficha REALISTA, dedução LIGADA na bancada (a 2ª opinião é chamada); exige --k >= 2")
+    p.add_argument("--teto-segunda", type=float, default=None,
+                   help="SPEC-126 U6: teto em US$ do provedor da 2ª OPINIÃO (padrão: o --teto-provedor)")
+    p.add_argument("--resumo-calibracao", nargs="+", default=None,
+                   help="SPEC-126 U6: modelo × controle 'tecla 1' por seguradora + a decisão de religar + o SQL")
+    p.add_argument("--empresas", default=None,
+                   help="SPEC-126 U6: company_ids (vírgula) para o SQL de religar; sem eles, nenhum SQL")
+    p.add_argument("--casos-calibracao", action="store_true",
+                   help="SPEC-126 U6: lista os casos da porta (sem modelo, sem centavo) e sai")
     a = p.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO if a.verboso else logging.CRITICAL)
@@ -205,6 +222,34 @@ def main(argv=None) -> int:
             Path(a.saida).write_text(_json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
         return 0
 
+    if a.casos_calibracao:
+        casos = B.carregar_casos_da_calibracao(filtro=a.casos)
+        por: dict = {}
+        for c in casos:
+            cal = c["entrada"]["calibracao"]
+            por.setdefault(cal["seguradora"], []).append(c)
+            print(f"  {c['chave']:<48} {cal['seguradora']:<9} controle'1'={'sim' if cal['controle_tecla_1'] else 'não'}")
+        print(f"\n{len(casos)} casos na PORTA · por seguradora: "
+              + " · ".join(f"{s} {len(v)}" for s, v in sorted(por.items())))
+        return 0
+
+    if a.resumo_calibracao:
+        import glob
+        import json as _json
+
+        arqs = sorted({f for padrao in a.resumo_calibracao for f in glob.glob(padrao)})
+        resumo = B.resumo_da_calibracao(arqs)
+        decisao = B.decidir_religar(resumo, rodada=",".join(Path(x).name for x in arqs),
+                                    braco=",".join(a.braco), segunda=a.braco_segunda or "")
+        print(B.tabela_da_calibracao(resumo, decisao))
+        empresas = [x.strip() for x in str(a.empresas or "").split(",") if x.strip()]
+        print("\n-- SQL (NÃO aplicado; o gerente aplica, por corretora):")
+        print(B.sql_de_religar(decisao, empresas) if empresas else "-- passe --empresas para gerar o UPDATE")
+        if a.saida:
+            Path(a.saida).write_text(_json.dumps({"resumo": resumo, "decisao": decisao}, ensure_ascii=False,
+                                                 indent=1, default=str), encoding="utf-8")
+        return 0
+
     if a.carregar_corpus:
         info = B.carregar_corpus(gravar=bool(a.gravar))
         for papel, i in info.items():
@@ -230,18 +275,29 @@ def main(argv=None) -> int:
             if b2.provider in provs and not b2.e_duble:
                 p.error("a 2ª opinião tem de ser de OUTRO provedor (D3 do Founder)")
             provs.add(b2.provider)
+        if a.calibracao and a.k < 2:
+            p.error("--calibracao exige --k >= 2 (a autoconsistência das k é o sinal; SPEC-126 U6)")
+        if a.calibracao and not a.braco_segunda:
+            p.error("--calibracao exige --braco-segunda (a 2ª opinião de OUTRO provedor decide se age)")
+        prov_segunda = B.Braco.de(a.braco_segunda).provider if a.braco_segunda else None
         orcamentos = {}
         for prov in sorted(provs):
             if prov == "duble":
                 continue
-            o = B.OrcamentoDoLedger(prov, a.teto_provedor, a.ledger_desde)
-            print(f"ledger {prov} desde {a.ledger_desde}: US$ {o.inicial:.4f} · teto {a.teto_provedor:.2f} · "
+            teto_p = (a.teto_segunda if (a.teto_segunda is not None and prov == prov_segunda)
+                      else a.teto_provedor)
+            o = B.OrcamentoDoLedger(prov, teto_p, a.ledger_desde)
+            print(f"ledger {prov} desde {a.ledger_desde}: US$ {o.inicial:.4f} · teto {teto_p:.2f} · "
                   f"resta {o.teto_usd:.4f}")
             if o.teto_usd <= 0:
                 print(f"⛔ teto do provedor {prov} já atingido no ledger — nada roda")
                 return 2
             orcamentos[prov] = o
-        rel = B.rodar_bancada(a.papel, a.braco, k=a.k, nivel=a.nivel, gravar=bool(a.gravar),
+        casos_cal = None
+        if a.calibracao:
+            casos_cal = B.carregar_casos_da_calibracao(filtro=a.casos)
+            print(f"calibração: {len(casos_cal)} casos na PORTA × k={a.k}")
+        rel = B.rodar_bancada(a.papel, a.braco, casos_cal, k=a.k, nivel=a.nivel, gravar=bool(a.gravar),
                               teto_usd=teto if teto is not None else 100.0, filtro=a.casos,
                               grupo_bancada=a.grupo, segunda=a.braco_segunda, orcamentos=orcamentos,
                               grupos=a.so_grupo or None)

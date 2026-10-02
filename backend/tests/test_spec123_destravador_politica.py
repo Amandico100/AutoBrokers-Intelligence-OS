@@ -502,9 +502,13 @@ def test_o_destravador_nao_tem_como_enviar():
     proibidos = ("send_message", "reply_human_phase", "_emit(", "send_to_insurer", "send_to_client",
                  "save_active_dispatch", "enviar_ao_grupo")
     assert [p for p in proibidos if p in fonte] == []
-    # F1c: `llm`/`llm_segunda` (a injeção da bancada) — nenhum deles é um canal de envio
+    # F1c: `llm`/`llm_segunda` (a injeção da bancada) — nenhum deles é um canal de envio.
+    # §9.3 — SPEC-126 U6 acrescentou `deduzir_calibrado` (a bancada da calibração liga a dedução com o braço
+    # injetado; sem `llm` ele é ignorado — `test_spec126_u6_*::test_O_FIO_producao_nao_liga_a_deducao_por_parametro`).
+    # A lição continua: a lista é FECHADA e nenhum parâmetro é um canal de envio.
     assert list(inspect.signature(DT.destravar).parameters) == ["company_id", "sessao", "tela", "gatilho",
-                                                               "modo", "limiar", "llm", "llm_segunda"]
+                                                               "modo", "limiar", "llm", "llm_segunda",
+                                                               "deduzir_calibrado"]
 
 
 def test_toda_regex_que_decide_tem_o_porque_ao_lado():
