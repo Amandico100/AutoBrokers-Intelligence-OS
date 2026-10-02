@@ -108,7 +108,7 @@ select model_name, count(*) chamadas, sum(input_tokens) tokens_in, sum(output_to
 📊 **US$ 0,2617 de 0,40** (OpenAI). As 36 conversas válidas custaram US$ 0,1891 (soma do JSON). O restante foi
 o processo morto (US$ 0,0558) e as tentativas que deram 429. Anthropic: US$ 0. Sol: US$ 0 (pulado).
 
-## Arquivos (NÃO commitados) em `backend/tests/corpus/bancada/RESULTADOS/`
+## Arquivos em `backend/tests/corpus/bancada/RESULTADOS/` (⚠️ corrigido no fechamento, 02/10: os `_p1..p3` FORAM commitados em `6076d5c`, remascarados depois; o `_k2_bruto_429` ficou fora do Git)
 `conversa_base_luna_p1.json` (11 válidas da 1ª rodada) · `_p2.json` (C12–C16, R1, R2 × 2) · `_p3.json` (C1–C11, t2) ·
 `conversa_base_luna_k2_bruto_429.json` (a 1ª rodada crua, com as 25 BLOCKED, guardada como prova).
 Resumo: `python scripts/bancada.py --resumo-conversa ".../RESULTADOS/conversa_base_luna_p*.json"`.

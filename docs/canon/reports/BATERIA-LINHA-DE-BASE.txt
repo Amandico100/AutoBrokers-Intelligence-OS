@@ -1,3 +1,10 @@
+# 📊 02/10/2026, SPEC-125 (branch spec/125-o-atendimento-lembra-e-pensa, HEAD 29da022), worktree limpo C:\wtbf, `cd backend && .venv/Scripts/python -m pytest tests -q -p no:cacheprovider`
+# → 46 failed · 3593 passed · 2 skipped · 33 xfailed · 1 xpassed · 5 errors · 239 warnings em 6.551,11 s (1:49:11). TRIAGEM NOMINAL contra a base da SPEC-124 (33):
+#   28 iguais · 5 sumiram (test_a_linha_de_controle_o_neto_CONSEGUE_sobreviver, test_a_arvore_ficou_limpa_no_fim, [test_a_mesma_verdade_em_duas_vozes],
+#   [test_o_vocabulario_viaja_na_imagem], [test_spec016_e2e_stub] — NÃO conferidas no commit base: não é prova de ganho) · 23 novas (18 failed + 5 errors) =
+#   AMBIENTE: a internet caiu no meio da rodada (`getaddrinfo failed`, `psycopg.OperationalError`); isoladas no mesmo worktree com a rede de volta →
+#   📊 23 passed in 196.81s → 0 regressões da SPEC-125, e ficam FORA desta lista. Rodada intermediária em c2414d2: 6 regressões, consertadas em fd52568.
+#   A lista abaixo = as 28 que sobram.
 # 📊 01/10/2026, SPEC-124 (branch spec/124-portal-destrava-e-visao, HEAD c3cd5c7), worktree limpo, `cd backend && .venv/Scripts/python -m pytest tests -q -p no:cacheprovider`
 # → 34 failed · 3070 passed · 2 skipped · 32 xfailed · 1 xpassed · 195 warnings em 5.339,81 s (1:28:59). TRIAGEM NOMINAL contra a base da SPEC-123 (35):
 #   31 iguais · 4 sumiram (guardas de ordem/carga test_a_lista_de_documentos_nao_perde_item, test_a_resposta_nao_abre_arquivo,
@@ -57,21 +64,16 @@ FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_a_promessa_antiga_nao_s
 FAILED tests/test_o_humano_e_chamado_de_verdade.py::test_a_reserva_e_devolvida_quando_o_aviso_nao_sai
 FAILED tests/test_o_ramo_sai_da_conversa_nao_da_ultima_frase.py::test_o_ramo_sai_da_conversa_nao_da_ultima_frase
 FAILED tests/test_o_sinistro_deixa_rastro.py::test_o_sinistro_deixa_rastro
-FAILED tests/test_o_timeout_nao_deixa_neto_vivo.py::test_a_linha_de_controle_o_neto_CONSEGUE_sobreviver
 FAILED tests/test_o_travamento_vira_evidencia.py::test_C3_o_codigo_dos_dois_agentes_CHAMA_o_registro
 FAILED tests/test_so_um_agendador_manda.py::test_so_um_agendador_manda
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_a_arvore_ficou_limpa_no_fim
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_mesma_verdade_em_duas_vozes]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_as_ferramentas_de_relatorio_comercial]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_infocap_policy_output_guard]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_nenhuma_mutacao_foi_commitada]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_espelho_nao_aprende_com_a_amandus]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_espelho_nao_le_o_proprio_eco]
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_vocabulario_viaja_na_imagem]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_observador_silencio]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_ontologia_e_unica]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_sem_corredor_de_vidro_nao_e_beco]
-FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec016_e2e_stub]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec031_finalize_v2]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec040_onda4_gate_council]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec073_portal_worker_mutations]
