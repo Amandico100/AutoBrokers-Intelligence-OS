@@ -1248,3 +1248,12 @@ Vale na próxima mensagem. Para voltar ao novo: o mesmo comando com `'v2'`. O pa
   ```
   **Esperar:** a mensagem `VERIFY 20261002_01 OK: insert=10 · re-save sem mudar papel=9 … · papel mudou=10`.
   **Se aparecer `FALHOU`:** me mande a linha inteira.
+  🔴 **O QUE VOCÊ VAI VER NA TELA (conferido em 02/10 lendo o bloco):** o `raise exception … 'desfaz-verify'` do meio NÃO
+  aparece — ele está dentro de um bloco que o captura (`exception when sqlstate 'P0001' then null`) só para desfazer a
+  corretora de teste. Então:
+  - **deu CERTO** → o SQL Editor do Supabase mostra só **`Success. No rows returned`** (sem vermelho). A linha `VERIFY
+    20261002_01 OK: …` é um aviso (`notice`) e o SQL Editor não costuma exibi-la; se ele mostrar uma área de mensagens, ela
+    diz `VERIFY 20261002_01 OK: insert=10 · re-save sem mudar papel=9 (apagada continua apagada) · papel mudou=10`.
+  - **deu ERRADO** → aparece um **erro em vermelho** começando com `ERROR: P0001: VERIFY 20261002_01 FALHOU: insert=…
+    resave=… mudanca=… esperado=…` (ou `VERIFY 20261002_01: a corretora de teste ficou gravada`) — me mande a linha inteira.
+  - Qualquer outro erro vermelho (ex.: `permission denied`, coluna inexistente) → nada foi gravado; me mande a linha.
