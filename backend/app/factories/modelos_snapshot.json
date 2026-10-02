@@ -2597,7 +2597,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-10-01T22:51:04+00:00",
+ "gerado_em": "2026-10-02T20:26:46+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {
@@ -2683,6 +2683,20 @@
    "provider_reserva": null,
    "risco": "medio",
    "versao": 2
+  },
+  "confirmacao": {
+   "classe_de_dado": "pii",
+   "descricao": "SPEC-126 U2 — lê a resposta do segurado à pergunta de confirmação do acionamento e devolve ok · nao · outra_coisa (portão = regex E classificador) — app/atendimento/confirmacao.py",
+   "esforco": "medium",
+   "esforco_reserva": "low",
+   "modelo_primario": "gpt-6-luna",
+   "modelo_reserva": "claude-sonnet-5-5",
+   "motivo": "SPEC-126 D5 / §3.1 opção (2) nota 92 · Luna no piso de produção (medium); reserva de outro provedor (par da visao)",
+   "papel": "confirmacao",
+   "provider": "openai",
+   "provider_reserva": "anthropic",
+   "risco": "critico",
+   "versao": 1
   },
   "conselho_lider": {
    "classe_de_dado": "pii",
