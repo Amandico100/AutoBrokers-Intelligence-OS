@@ -130,9 +130,12 @@ _VERBOS = "encaminh|repass|transfer|acion|avis|sinaliz|reforc|reforç|escal|pass
 # INFINITIVO depois de "acabei de", que sufixo nenhum alcanca. Foi o proprio
 # guarda que achou os dois -- por isso ele roda contra as quatro frases reais,
 # e nao contra frases que eu imaginaria.
-_AFIRMACOES_DE_TRANSFERENCIA = re.compile(
-    r"(?ix)"
-    r"(?:"
+#
+# 🔴 SPEC-125 S1: as alternativas (a), (b) e (c) falam de uma AÇÃO da
+# atendente e moram em `_ACAO_DA_ATENDENTE`, porque o fiscal precisa
+# reconhecê-las sozinhas — só elas podem ser ACIONAMENTO. (d), (e) e (f) falam
+# de PESSOA por construção. Uma fonte só para as duas regex, nenhuma cópia.
+_ACAO_DA_ATENDENTE = (
     # (a) primeira pessoa no passado: "encaminhei", "passamos", "reforcei"
     rf"\b(?:{_VERBOS})(?:ei|amos|i|imos)\b"
     r"|"
@@ -147,6 +150,11 @@ _AFIRMACOES_DE_TRANSFERENCIA = re.compile(
     r"\b(?:caso|chamado|solicita[çc][ãa]o|atendimento|pedido|ocorr[êe]ncia)"
     r"\s+(?:j[áa]\s+)?(?:foi|est[áa])\s+"
     rf"(?:{_VERBOS})(?:ado|ada|ido|ida)\b"
+)
+_AFIRMACOES_DE_TRANSFERENCIA = re.compile(
+    r"(?ix)"
+    r"(?:"
+    + _ACAO_DA_ATENDENTE +
     r"|"
     # (d) a equipe ja tem o caso
     r"\ba\s+equipe\s+(?:j[áa]\s+)?(?:recebeu|est[áa]\s+com|foi\s+avisada)\b"
@@ -188,9 +196,104 @@ RESPOSTA_HONESTA = (
 )
 
 
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-125 S1 (T4) — o ACIONAMENTO confirmado também é âncora
+# ---------------------------------------------------------------------------
+#
+# 📊 Laudo da SPEC-125, achado 3 (01/10/2026): "Pronto, acionei o guincho",
+# "Já solicitei o chaveiro", "Seu atendimento foi acionado na Porto" casam o
+# detector (`acion|solicit|cham`) — e, sem `HANDOFF_OK`, viravam "Registrei seu
+# pedido de atendimento humano… Ainda não consegui confirmar com a equipe".
+# Frase FALSA dita depois de um acionamento REAL. O fiscal pegava a mentira
+# certa (transferir a PESSOA) e, de quebra, a verdade errada.
+#
+# A âncora segue a mesma regra do `HANDOFF_OK`: um literal que SÓ a ferramenta
+# escreve, e SÓ no caminho em que o acionamento aconteceu.
+#   insurer_dispatch → `[ACIONAMENTO REAL INICIADO]` (`_arun`, status
+#                      `dispatched` LIVE). O `MODO TESTE` não vale: a própria
+#                      ferramenta proíbe dizer que o serviço foi aberto.
+#   portal_action    → `format_result` com o pedido EXISTINDO na seguradora:
+#                      "FOI ABERTO na seguradora", "FOI aberto no portal" ou a
+#                      parada que já tem "NUMERO DO ATENDIMENTO:".
+# `queued`, `already_active`, simulação e `failed` não carregam carimbo nenhum.
+# O guarda `test_spec125_s1_…::test_os_carimbos_existem_nos_produtores_reais`
+# fica vermelho se um produtor mudar o literal.
+CARIMBOS_DE_ACIONAMENTO = {
+    "insurer_dispatch": ("[ACIONAMENTO REAL INICIADO]",),
+    "portal_action": ("O atendimento FOI ABERTO na seguradora",
+                      "O pedido FOI aberto no portal",
+                      "NUMERO DO ATENDIMENTO:"),
+}
+
+# O acionamento só justifica o que é ACIONAMENTO. "Já passei seu caso para a
+# nossa equipe" continua exigindo `HANDOFF_OK` — um guincho a caminho não põe
+# ninguém da corretora no caso. A frase é de PESSOA quando a alternativa já
+# fala de pessoa (d/e/f), ou quando o trecho logo depois do verbo nomeia uma.
+_PESSOA = re.compile(
+    r"(?i)\b(?:equipe|time|atendentes?|colegas?|human[oa]s?|pessoas?|corretor[a]?|"
+    r"especialistas?|analistas?|consultor(?:a|es)?|setor|respons[áa]vel|gerente|"
+    r"supervisor[a]?|operador[a]?|suporte)\b")
+# `encaminhei/repassei/transferi/escalei` sem destino dito é, no uso, para
+# pessoa; só deixa de ser quando o destino é o lado da seguradora.
+_VERBOS_DE_TRANSFERENCIA = re.compile(r"(?i)encaminh|repass|transfer|escal")
+_LADO_DA_SEGURADORA = re.compile(
+    r"(?i)\b(?:seguradora|assist[êe]ncia|portal|guincho|reboque|prestador|chaveiro|"
+    r"socorro|t[ée]cnico|vidra[çc]aria|oficina)\b")
+# O trecho que diz PARA QUEM: do verbo até o fim da oração — e só dela.
+# "acionei o guincho e avisei a equipe" são DUAS afirmações; a primeira não
+# herda a pessoa da segunda (cada uma casa o detector por si).
+_FIM_DA_ORACAO = re.compile(r"[.!?;\n—,]|\s+e\s+")
+
+
+_SO_ACAO = re.compile(r"(?i)(?:" + _ACAO_DA_ATENDENTE + r")")
+
+
+def _afirmacao_de_pessoa(texto: str, achado: "re.Match") -> bool:
+    trecho = achado.group(0)
+    # alternativas (d), (e), (f): "a equipe recebeu", "eles vão te chamar",
+    # "um atendente vai assumir" — falam de pessoa por construção.
+    if not _SO_ACAO.fullmatch(trecho):
+        return True
+    resto = texto[achado.end():achado.end() + 80]
+    corte = _FIM_DA_ORACAO.search(resto)
+    oracao = trecho + (resto[:corte.start()] if corte else resto)
+    if _PESSOA.search(oracao):
+        return True
+    return bool(_VERBOS_DE_TRANSFERENCIA.search(trecho)
+                and not _LADO_DA_SEGURADORA.search(oracao))
+
+
+# A frase honesta quando o que se afirmou foi ACIONAMENTO e ele não está
+# confirmado. 🔴 Não fala em "atendimento humano": ninguém pediu pessoa, e
+# trocar uma afirmação de acionamento por um pedido de humano é a mesma
+# mentira com outro sujeito. Sem verbo de transferência no passado (o guarda
+# `test_as_respostas_honestas_nao_se_auto_reescrevem` confere).
+RESPOSTA_HONESTA_DO_ACIONAMENTO = (
+    "Ainda não tenho a confirmação de que o acionamento saiu, então não quero "
+    "te dizer que já está feito. Sigo com você por aqui — me diga o que precisa "
+    "que eu continuo ajudando."
+)
+
+
 def afirma_transferencia(texto: str) -> bool:
     """A resposta afirma, no passado, que a transferência aconteceu?"""
     return bool(_AFIRMACOES_DE_TRANSFERENCIA.search(str(texto or "")))
+
+
+def _houve_acionamento_confirmado(resultados_das_tools: Optional[Iterable]) -> bool:
+    """Alguma ferramenta de ACIONAMENTO devolveu o carimbo de sucesso?
+
+    Lê o histórico que o nó entrega (`state["messages"]`): o acionamento de um
+    turno anterior do mesmo caso continua sendo verdade no turno seguinte.
+    """
+    for msg in resultados_das_tools or []:
+        carimbos = CARIMBOS_DE_ACIONAMENTO.get(str(getattr(msg, "name", "") or ""))
+        if not carimbos:
+            continue
+        conteudo = str(getattr(msg, "content", "") or "")
+        if any(c in conteudo for c in carimbos):
+            return True
+    return False
 
 
 def _houve_handoff_confirmado(resultados_das_tools: Optional[Iterable]) -> bool:
@@ -221,10 +324,20 @@ def guardar_a_verdade_do_handoff(resposta: str, resultados_das_tools=None) -> st
         return texto
     if not afirma_transferencia(texto):
         return texto
-    if _houve_handoff_confirmado(resultados_das_tools):
+    resultados = list(resultados_das_tools or [])
+    if _houve_handoff_confirmado(resultados):
+        return texto
+
+    # 🔴 SPEC-125 S1 — cada afirmação precisa da SUA âncora. A de PESSOA só se
+    # apoia em `HANDOFF_OK` (que já faltou, acima); a de ACIONAMENTO se apoia
+    # no carimbo do acionamento. Uma frase mista ("acionei o guincho e avisei a
+    # equipe") cai pela parte que não tem âncora.
+    de_pessoa = [a for a in _AFIRMACOES_DE_TRANSFERENCIA.finditer(texto)
+                 if _afirmacao_de_pessoa(texto, a)]
+    if not de_pessoa and _houve_acionamento_confirmado(resultados):
         return texto
 
     logger.error(
-        "[HANDOFF] 🔴 resposta afirmava transferência SEM handoff confirmado — "
-        "reescrita. Trecho: %r", texto[:160])
-    return RESPOSTA_HONESTA
+        "[HANDOFF] 🔴 resposta afirmava %s SEM confirmação — reescrita. Trecho: %r",
+        "transferência" if de_pessoa else "acionamento", texto[:160])
+    return RESPOSTA_HONESTA if de_pessoa else RESPOSTA_HONESTA_DO_ACIONAMENTO
