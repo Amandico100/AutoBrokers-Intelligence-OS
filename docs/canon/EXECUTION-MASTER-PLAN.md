@@ -43,7 +43,12 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
             SPEC-124 (o portal de vidros destrava com a mesma régua; a visão no modelo certo) — EXECUTADA 01/10/2026,
               nota 84 (juiz 80 → confirmação 90; bateria 0 regressões) · visão: gpt-6-luna nas duas rotas (📊 100 % = Sol 6.1 em corpus sintético, ~1/18 do custo); docling
               segue o catálogo · portal: estrutura sem autonomia (API-first nunca rodou; DOM fora; 0 respostas sozinhas)
-            PRÓXIMA: a fila D-FILA-01 (EXTRA-001.9)
+            SPEC-125 (o atendimento lembra, entende e não pergunta o óbvio) — CONCLUÍDA 02/10/2026, nota 86
+              (juiz 68 ‖ red team 62 → confirmações 86 e 84) · conversa inteira do assunto, identidade pelo telefone,
+              prompt v2 reversível com um UPDATE, "sim" e terceiro em código · 📊 Luna 63,9 % → 77,8 %, críticos 4/6 → 5/6;
+              Sol pós-conserto nos críticos PENDENTE (P-125-01, orçamento)
+            PRÓXIMAS: SPEC-126 (o destravador deduz: calibrar o DEDUZIR — P-123-01) · SPEC-127 (o portal no nível do
+              WhatsApp — P-124-01/02) · depois a fila D-FILA-01 (EXTRA-001.9)
 A FILA      001.9  →  001.0  →  triagem de pendências (D-FILA-01)  →  EXTRA-002 (investigação Agger)
 PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
 ```

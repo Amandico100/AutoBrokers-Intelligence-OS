@@ -12920,3 +12920,118 @@ teste de controle. **Custa esquecer:** pergunta de questionário que poderia ser
 | P-S116-09 | ✅ FECHADA — a mesma, na origem |
 | P-122-02 | CONTINUA — a env `VISION_MODEL` no EasyPanel virou só paraquedas; pode ficar como está |
 | P-123-01 | CONTINUA — agora também dá (ou não) autonomia ao portal (P-124-02) |
+
+# SPEC-125 — o atendimento lembra, entende e não pergunta o óbvio (02/10/2026)
+
+> 📊 O retrato da SPEC (`reports/SPEC-125-EXECUTION-REPORT.md`, medição `reports/SPEC-125-DEPOIS.md`): o agente de atendimento
+> lê a conversa INTEIRA do assunto (40 mil tokens), reconhece o segurado pelo telefone na mesma corretora, tem prompt v2
+> reativável para v1 com um UPDATE, responde a rajada uma vez e só aciona depois do "sim" (em código). 📊 Luna k=2: pass@1
+> 63,9 % → 77,8 %, críticos 4/6 → 5/6, "Como posso ajudar?" 24/36 → 2/36, 0 acionamento sem o sim; custo do agente por
+> conversa +80 % contra o DEPOIS. Ledger da bancada: OpenAI US$ 3,7042 de 4,00 — **o orçamento de testes acabou**.
+
+## P-125-01 · 🧑🤖 Os críticos C10, C13, C15 e C16 não foram medidos no Sol (o modelo de produção) depois do conserto
+📊 Na rodada Z (`fd52568`) o teto do ledger parou o Sol depois de C1, C3, C4, C6, C7, C8 (US$ 0,13 por conversa). C10/C13/C15/C16
+no Sol só existem no DEPOIS (`420a2f2`, antes dos consertos Y/X/Z/ZN), 4/4 PASS. E o ajuste ZN + C3 t2 (`3f570a9`, `29da022`)
+não passaram por nenhuma rodada com LLM. **O que destrava:** 🧑 orçamento (💭 ≈ US$ 1,30 OpenAI para Sol k=1 nos 6 críticos + C4,
+C8, C11, R1) → 🤖 a bancada `--conversa` com o braço `openai:gpt-6.1-sol:high` nesses 10 cenários, num worktree próprio.
+**Custa esquecer:** a v2 (já padrão) vai para a vida real sem prova pós-conserto no modelo que atende.
+
+## P-125-02 · 🤖 C13 t2 (crítico): o agente chamou pessoa em vez de resumir e pedir o "sim"
+📊 Rodada Z: a Luna tentou acionar no t2 sem resumo (recusado pelo portão), repetiu a pergunta de segurança e, quando pediram o
+protocolo, chamou uma pessoa. 📊 24 recusas `confirm_first` em 36 conversas: o portão está certo, o modelo ainda não faz "resumo +
+Posso acionar?" de primeira. **O que destrava:** o prompt v2 ensina o resumo no 1º turno com dados completos; reroda C13 k=2.
+**Custa esquecer:** o acionamento confirmado (o caso que motivou o T4) vira atendente.
+
+## P-125-03 · 🤖 C8 na Luna: "cadê o guincho?" chama pessoa no 1º turno (2/2, quatro rodadas seguidas)
+O bloco "QUANDO ELE COBRA" (Z3) aparece no Sol (responde o estado), não na Luna. **O que destrava:** medir no Sol (P-125-01); se
+a Luna for usada em algum papel do atendimento, regra em código para "cobrança do estado". **Custa esquecer:** cobrança simples
+vira trabalho de atendente.
+
+## P-125-04 · 🤖 A apresentação aparece no 2º turno
+📊 Sol C1 (depois de `request_human_agent`) e Sol C4 (sem pessoa) se apresentam de novo. **O que destrava:** a marca de
+"apresentado" sobreviver ao handoff e à retenção. **Custa esquecer:** o segurado lê "Oi, aqui é a assistente…" no meio do caso.
+
+## P-125-05 · 🤖 Custo por conversa +80 % (Luna) e +38 % (Sol) contra o DEPOIS
+📊 Luna 0,00344 → 0,00618 US$ por conversa; Sol v2 0,0940 → 0,1295. Causas: turnos a mais e chamadas recusadas pelo portão; o
+histórico de até 40 mil tokens entra a cada chamada e o prompt de sistema muda a cada turno (sem cache do histórico); a rajada
+retida paga até 3 gerações. **O que destrava:** teto de custo por conversa medido no ledger; o resumo + pedido de sim no 1º
+turno (P-125-02) corta os turnos. **Custa esquecer:** o atendimento fica caro sem ninguém ver.
+
+## P-125-06 · 🤖🧑 D7 pela metade: 2 dos 4 momentos e 1 dos 4 sinais estão ligados
+`chamou_pessoa` (SPEC-123) e `respondeu_regra` escrevem; `deduziu` e `nao_chamou_pessoa` são PONTOS MARCADOS em `nodes.py`
+(não há sinal sem LLM para "deduziu" nem classificador da fala para "não chamou"). Sinais: só `agente_repetiu_pergunta`;
+`segurado_corrigiu`/`segurado_repetiu`/`segurado_pediu_pessoa` existem no banco e não são escritos. **O que destrava:** 🤖 a
+ferramenta declarar a origem do slot (dito × deduzido); `request_human_agent` no turno seguinte a uma linha pendente fecha
+como `segurado_pediu_pessoa`; 🧑 ou aceitar a redução (D-125-H). **Custa esquecer:** o placar mostra menos do que acontece.
+
+## P-125-07 · 🤖 C11: com o telefone conhecido, o agente ainda pede o CPF no 1º turno
+📊 Z: C11 PARTIAL 2/2 (o juiz marca); C2, C3 e R1 também pedem o CPF no t1. O bloco de identidade diz "confirme"; o modelo pede.
+**O que destrava:** o bloco abrir com a pergunta pronta ("É o CPF final 4725?"); medir no Sol. **Custa esquecer:** a promessa
+"reconhece pelo telefone" não chega ao segurado.
+
+## P-125-08 · 🤖 A régua da bancada N3 tem quatro falsos
+(a) `_pedidos` só vê pergunta: "Me passe o CPF" passa (controle "Qual o seu CPF?" é pego); (b) `acionou_sem_confirmar` conta
+TENTATIVA recusada (R1 t1, C3 t2); (c) C2 t1 confirmar o endereço cadastrado é marcado como "pediu dado da apólice"; (d) C4
+`max_turnos` 3 é curto para o portão; Sol C8 "pessoa" depois de o segurado ACEITAR a oferta conta como proibida.
+**O que destrava:** consertar a régua com linha de controle por item, antes da próxima rodada. **Custa esquecer:** a nota
+mente nos dois sentidos.
+
+## P-125-09 · 🧑🤖 A v2 virou padrão antes do gate completo
+📊 02/10: 4/4 agentes `attendance` em `v2`, 0 ativos (`default 'v2'` + `PROMPT_VERSAO_PADRAO='v2'`); se a leitura da chave
+falhar, o código cai na v2. **O que destrava:** P-125-01 verde; ou, até lá, `update agents set prompt_versao='v1' where
+agent_role='attendance';` antes de ligar um agente (D-125-A). **Custa esquecer:** quem ligar um agente liga a v2 sem a prova no Sol.
+
+## P-125-10 · 🤖 Duas réguas de "início do assunto"
+`quem_e_o_segurado._inicio_do_assunto_atual` (silêncio > N dias) × `historico_da_conversa.inicio_do_assunto` (silêncio contra a
+última fala da corretora + `resolvido_em`); o corte de terceiro do InfoCap usa a primeira. O bloco de identidade pode dizer "nesta
+conversa" sobre um CPF que o histórico já não mostra. **O que destrava:** uma régua, um dono (CLAUDE.md §5). **Custa esquecer:**
+um CPF de atendimento resolvido marca o do titular como terceiro, ou o contrário.
+
+## P-125-11 · 🧑🤖 O VERIFY comportamental do gatilho `20261002_01` não rodou
+O DO desfeito do arquivo (cria corretora+agente de teste, confere, desfaz) foi recusado pela ferramenta (escrita). 📊 Conferido
+só por SELECT: o corpo da função = o arquivo (md5), a guarda do UPDATE presente, `cerebro_modos` 40/0 não-on. **O que destrava:**
+🧑 rodar o bloco "VERIFY V2" do arquivo no SQL Editor (ele termina em `raise exception` e desfaz tudo), ou 🤖 numa branch do
+Supabase. **Custa esquecer:** a corretora nova pode nascer sem o destravador, e ninguém sabe até ela chamar pessoa demais.
+
+## P-125-12 · 🤖 O gatilho D9 herda o `on` de QUALQUER corretora
+Liga em toda corretora nova as seguradoras que estão `on` em alguma corretora (`select distinct … where modo='on'`): um piloto
+ligado só na A vira padrão de todas. E: UPDATE que muda só o `company_id` não cria as linhas; `insured_external` é inerte (o
+CHECK de `agent_role` não o admite). **O que destrava:** lista governada da plataforma (não derivada de clientes). **Custa
+esquecer:** decisão de uma corretora vira regra de outra.
+
+## P-125-13 · 🤖 O corte de dado de terceiro é heurística de regex
+Fecha parentesco, "o cpf dela", "apólice do Fulano" e a exceção "titular autorizou" (pedir dado nunca é serviço); 📊 confirmação 2:
+"documento do uber" ainda vira terceiro (falso, lado seguro); variantes sem parentesco e sem nome ficam com a regra 10 do v2.
+**O que destrava:** um cenário de bancada sem parentesco e a lista `_NAO_E_PESSOA` crescida pelo acervo. **Custa esquecer:**
+o caso C16 volta por uma frase que a regex não conhece.
+
+## P-125-14 · 🤖 `next start` + 1 requisição não rodou (CLAUDE.md §9.1)
+O S6 mexeu em `app/` (tela e rotas do diário/placar). 📊 `npm run test:rotas-montam` (02/10) → A TABELA DE ROTAS MONTA (307).
+**O que destrava:** `npm run build && npm start` + GET da tela do diário num worktree, ou o Implantar do `smith-web` com a tela
+aberta (T-86). **Custa esquecer:** uma tela que compila e não responde.
+
+## P-125-15 · 🤖 O ajuste ZN e o conserto do C3 t2 não passaram por juiz fresco
+`3f570a9` (sim com complemento neutro; CPF em lista nunca sai inteiro; resposta em duas mensagens; "quer que eu confirme se
+cobre" não é ok) e `29da022` ("pode acionar" no fim da frase) têm teste vermelho→verde no motor, sem auditoria independente.
+**O que destrava:** a próxima SPEC que mexer no atendimento inclui esse diff no pacote do juiz. **Custa esquecer:** um portão
+que aceita demais ou de menos, sem ninguém ter tentado quebrar.
+
+## P-125-16 · 🤖 Efeitos fora do D1 e pequenos herdados dos laudos
+(a) o `agent_node` usa `aparar_ao_teto` (52 mil tokens) para TODOS os papéis — o chat do corretor saiu de 15 mensagens (📊 canal
+web, 60 dias: p90 10 mensagens, 2,6 mil tokens — impacto pequeno); (b) resumos antigos do espelho entram sem data (red team
+P11); (c) o admin master lê `tela_completa`/`valor_completo` sem máscara de todas as corretoras (red team P12); (d) leitura de
+`messages` que falha volta ao checkpoint antigo inteiro (red team P9); (e) reclamação formal (Procon/ouvidoria) só vai à pessoa
+se ele PEDIR (confirmação 2 — coerente com "pessoa só no grave", mas o v1 dizia "relacionamento não se automatiza").
+**O que destrava:** cada item com um teste próprio na próxima SPEC do atendimento. **Custa esquecer:** pequenos que somam.
+
+## P-125-17 · 🧑 O hook local `.claude/hooks/teto-de-agentes.py` está com teto 100 e NÃO commitado
+D-PROTO-18 (01/10) autorizou 100 agentes por sessão e está no protocolo (`fb7fbf8`); o arquivo do hook foi alterado só nesta
+máquina (50 → 100). **O que destrava:** 🧑 decidir se o padrão do repositório passa a 100 (um commit de uma linha). **Custa
+esquecer:** outra máquina ou worktree para em 50 agentes no meio de uma SPEC.
+
+## A drenagem das pendências que a SPEC-125 tocou
+| P | estado |
+|---|---|
+| T1/T2/T3/T4/T11/T12/T13 e M2/M4/M5 do laudo `INV-ATENDIMENTO` | ✅ atacadas (relatório §7): a janela de 15, a fala da equipe, o fiscal da honestidade, as regras contraditórias, o fiscal de tamanho, a repetição só contra a ficha, a identidade e os resumos com `agent_id` nulo |
+| P-123-01 | CONTINUA — calibrar o DEDUZIR (a SPEC-126) |
+| P-124-01/02 | CONTINUAM — o portal (a SPEC-127) |

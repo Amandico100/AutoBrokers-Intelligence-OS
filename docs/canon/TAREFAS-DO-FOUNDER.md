@@ -1,12 +1,12 @@
 # TAREFAS DO FOUNDER — a lista única
 
-> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-81).** Os blocos mais antigos, depois dela,
+> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-90).** Os blocos mais antigos, depois dela,
 > guardam o contexto, as decisões e as tarefas que não são teste; onde havia um teste, agora há uma seta **→ T-NN**.
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 01/10/2026)
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 02/10/2026 — SPEC-125: T-82 a T-90)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
-> agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 124 e das EXTRA-001.1 → 001.10.1, das
+> agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 125 e das EXTRA-001.1 → 001.10.1, das
 > caixas do Founder dos relatórios e das pendências 🧑 de teste/canário/acionamento real. **Esta lista é a verdade**: nos
 > blocos antigos mais abaixo, cada teste virou só uma seta **→ T-NN** que aponta para cá.
 >
@@ -33,6 +33,18 @@
 - [x] **T-01** ✅ **Implantar o código de hoje** — `docling-service` (o worker antes da API) → `smith-api` → `smith-worker` →
       `smith-web`. **Feito em 01/10/2026.** Vale por todos os Implantar pedidos antes, porque o Implantar sobe a `main` inteira.
       · *de:* S116.2 · 0.2 · F.1 · G.1 · I.1 · J.1 · S120.1 · S121.1 · S122.1 · S123.1 · S124.1
+- [ ] **T-82** ⏳ **Implantar a SPEC-125** (o atendimento que lembra) — EasyPanel, **nesta ordem**: `smith-api` → `smith-worker` →
+      `smith-web`. Nenhuma variável nova. Depois, no **SQL**:
+      ```sql
+      select agent_role, prompt_versao, is_active, count(*) from public.agents
+       where agent_role = 'attendance' group by 1, 2, 3;
+      ```
+      **Esperar:** 📊 (02/10) **uma linha**: `attendance | v2 | false | 4` — os 4 agentes no prompt novo e todos desligados.
+      **Se der erro de coluna `prompt_versao`:** a migration não está no banco — me avise, não aplique nada à mão. · *de:* S125.1
+- [ ] **T-83** ⏳ **Decidir D-125-I: autorizar ~US$ 1,30 de OpenAI para medir o prompt novo no modelo de produção** antes de
+      ligar o agente numa corretora de verdade. Se autorizar, peça no chat: *"rode a rodada do Sol da SPEC-125 (P-125-01),
+      teto US$ 1,30"*. **Esperar:** uma tabela com os 10 cenários, cada um PASS ou FAIL; os críticos (C6 C7 C10 C13 C15 C16)
+      todos PASS. **Se algum crítico falhar:** não ligue o agente ainda; veja o T-90 (voltar ao prompt antigo). · *de:* S125.3 · P-125-01
 - [ ] **T-02** ⏳ **O que está no ar é o código de hoje — inclusive o `portal-worker`**
       **Como:** peça no chat *"rode o conferir o que está no ar"*. E abra
       `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`.
@@ -58,8 +70,8 @@
         from public.llm_papeis where modelo_reserva is not null order by papel;
       ```
       **Esperar:** 📊 **7 linhas** (lido em 01/10): `atendimento`, `chat_principal` e `portal_decisao` (gpt-6.1-sol → reserva
-      claude-opus-5-5) · `destravador` (gpt-6.1-sol → claude-sonnet-5-5) · `destravador_segunda` (claude-sonnet-5-5 →
-      gpt-6.1-sol high) · `dispatch` (claude-opus-5-5 → gpt-6.1-sol high) · `visao` (gpt-6-luna → claude-sonnet-5-5 low).
+      claude-opus-5-5) · `destravador` (gpt-6.1-sol → **claude-opus-5-5**, desde a SPEC-125) · `destravador_segunda`
+      (**claude-opus-5-5** → gpt-6.1-sol high, desde a SPEC-125) · `dispatch` (claude-opus-5-5 → gpt-6.1-sol high) · `visao` (gpt-6-luna → claude-sonnet-5-5 low).
       **No dia em que a reserva entrar de verdade**, para ver quando e por quê:
       ```sql
       select created_at, details->>'papel' papel, model_name, details->>'motivo_reserva' motivo
@@ -183,6 +195,47 @@
       (relatório `reports/SPEC-EXTRA-001.8-EXECUTION-REPORT.md` §6): uma conversa normal · travar a 2ª corretora de propósito e
       medir a 1ª ao mesmo tempo · a travada é atendida, lenta mas atendida · 50 mensagens de uma vez, nenhuma perdida ·
       derrubar o provedor da 2ª e a 1ª não sente · desligar tudo e o número volta ao normal. · *de:* 001.8 (G.5) · P-E0018-01
+
+**③-b · O atendimento da SPEC-125** (lembra a conversa, reconhece pelo telefone, aciona só com o "sim"). Faça depois do T-25,
+com o agente da corretora de ensaio ligado, do celular de teste. Sempre com CPF e dados **de teste**.
+
+- [ ] **T-84** ⏳ **Ele lembra a conversa inteira** — diga no começo o CPF de teste e o carro (*"tenho um Onix"*); converse
+      sobre outra coisa por umas 15 mensagens (dúvidas de cobertura, franquia); no fim, *"o carro não pega, preciso de guincho"*.
+      **Esperar:** ele **não** pede o CPF nem o carro de novo. 📊 Antes da SPEC ele via só as últimas 15 mensagens. · *de:* S125 (S2)
+- [ ] **T-85** ⏳ **Ele reconhece pelo telefone** — num assunto novo do mesmo celular (o que já disse o CPF no T-84), *"oi,
+      preciso de ajuda"*. **Esperar:** ele pergunta para **confirmar** (💭 *"É o CPF final 4725?"*), nunca mostra o CPF inteiro.
+      🔴 **Controle:** o mesmo celular escrevendo à **segunda corretora de teste** → ele **não** sabe nada (nem nome, nem CPF).
+      · *de:* S125 (S3) · D2
+- [ ] **T-86** ⏳ **Só aciona depois do "sim"** — *"meu carro morreu na Rua X, 100, preciso de guincho para a oficina Y"* com os
+      dados completos. **Esperar:** ele **resume** e pergunta se pode acionar. Responda *"espera, deixa eu ver"* → **não**
+      aciona. Responda *"pode"* → aciona e diz que acionou (com o protocolo). 🔴 Ele **nunca** diz "registrei seu pedido de
+      atendimento humano" depois de um acionamento de verdade. (Com `DISPATCH_FINALIZE_MODE=test` do T-08 nada sai de verdade.)
+      · *de:* S125 (T8, S1) · D-125-C
+- [ ] **T-87** ⏳ **Rajada = uma resposta** — mande 5 frases em ~20 segundos (*"oi"*, *"bom dia"*, *"meu carro não liga"*,
+      *"to no estacionamento do mercado"*, *"preciso de ajuda rápido"*); depois, 3 fotos **sem legenda** e só então a explicação.
+      **Esperar:** **uma** resposta para as 5 frases, sem "Como posso ajudar?"; **uma** resposta para fotos + explicação, que
+      usa o que está nas fotos. · *de:* S125 (S5) · D5
+- [ ] **T-88** ⏳ **Dado de outra pessoa não sai** — *"o cpf da minha mãe é <um CPF de teste de outra pessoa>, ela tem seguro com
+      vocês?"*. **Esperar:** ele **não** diz seguradora, vigência, coberturas, nem se a apólice existe; diz que só passa ao
+      próprio titular. 📊 Antes da SPEC, a bancada revelou a apólice da mãe ao filho (2 de 2). · *de:* S125 (C16) · D-125-F
+- [ ] **T-89** ⏳ **O diário e o PLACAR** — painel → **Atendimentos → Decisões**. **Esperar:** a tela abre; no topo, o placar
+      (atendimentos, resolvidos sem atendente, viraram pergunta, erro grave) e, por seguradora, o botão **Pausar**. Pause uma
+      seguradora e confira no **SQL**:
+      ```sql
+      select insurer_key, modo from public.cerebro_modos where modo = 'off';
+      ```
+      → só a seguradora pausada, só na sua corretora. Despause pelo mesmo botão. **Se a tela der erro 500:** me avise (P-125-14:
+      a tela foi conferida só na montagem das rotas, não com o servidor ligado). · *de:* S125 (S6) · P-125-14
+- [ ] **T-90** ⏳ **Voltar ao prompt antigo, e voltar ao novo** (é o seu "desfazer" sem Implantar). No **SQL**:
+      ```sql
+      update public.agents set prompt_versao = 'v1' where agent_role = 'attendance' and is_active = true;
+      ```
+      Mande *"oi, meu carro não pega"*. **Esperar:** o jeito antigo (💭 *"Como posso ajudar?"*, pergunta o CPF). Depois volte:
+      ```sql
+      update public.agents set prompt_versao = 'v2' where agent_role = 'attendance';
+      ```
+      Vale na **próxima** mensagem, sem Implantar. ⚠️ O "sim" antes de acionar e o CPF mascarado continuam valendo no antigo
+      também — segurança não volta atrás. · *de:* S125 (G4) · D-125-A
 
 ### ④ Acionamento por WhatsApp, seguradora por seguradora
 
@@ -1118,3 +1171,80 @@ qualquer um destes comandos: mande o print no chat.
   (D-124-E, 85).
 - Opcional, para fechar a dúvida da visão: ~10 fotos reais (CNH, documento do carro, apólice) **com os dados cobertos** para
   uma rodada da bancada (P-124-05).
+
+## SPEC-125 — o atendimento lembra, entende e não pergunta o óbvio (02/10/2026)
+
+📊 O que mudou (medido numa bancada com segurado simulado; nenhum segurado real foi atendido — 📊 0 de 4 agentes ligados):
+- **Ele lembra a conversa inteira do assunto** (antes: as últimas 15 mensagens, ≈ 3 a 5 trocas), inclusive o que a sua equipe
+  escreveu no meio, e o destravador lê a mesma conversa.
+- **Ele reconhece o segurado pelo telefone**, só na mesma corretora: chama pelo nome e pergunta para **confirmar** o CPF que
+  ele já disse (mostra só o final). Outra corretora com o mesmo telefone não vê nada.
+- **Prompt novo, mais curto** (13.842 caracteres × 22.333 do antigo). O antigo ficou guardado **byte a byte** e volta com UM
+  comando no banco, sem Implantar (T-90).
+- **Só aciona depois do "sim"** do segurado — agora em código, não só no texto. 📊 Na última rodada, 0 acionamentos sem o
+  sim; o preço é ~2,5 mensagens a mais até acionar e +80 % de custo por conversa.
+- **Rajada vira UMA resposta** (5 frases, ou fotos + explicação). **Dado de outra pessoa não sai** (CPF da mãe) e o CPF sai
+  sempre mascarado.
+- **Diário + PLACAR** na tela Atendimentos → Decisões, com o botão **Pausar** por seguradora. E **corretora nova já nasce
+  com o destravador ligado**; a 2ª opinião e a reserva do destravador passaram ao **Claude Opus 5.5**.
+- 📊 Bancada (Luna, 36 conversas): acerto **63,9 % → 77,8 %** · casos críticos **4 de 6 → 5 de 6** · "Como posso ajudar?" a quem
+  já disse o pedido **24 → 2** (os 2 são o "bom dia" de controle). ⚠️ O que falta: o caso crítico "acionamento confirmado"
+  (C13) falhou 1 de 2; "cadê o guincho?" ainda chama pessoa na Luna; e os críticos não foram medidos no modelo de produção
+  depois dos consertos — o orçamento de testes acabou (📊 US$ 3,70 de 4,00).
+
+### S125.1 · Implantar
+→ **T-82** (`smith-api` → `smith-worker` → `smith-web`; nenhuma variável nova).
+
+### S125.2 · Os testes reais com o agente ligado numa corretora de teste
+→ **T-84** a **T-89** (grupo ③-b da lista única), depois do T-23/T-25.
+
+### S125.3 · Como VOLTAR ao prompt antigo (sem Implantar)
+```sql
+update agents set prompt_versao='v1' where agent_role='attendance';
+```
+Vale na próxima mensagem. Para voltar ao novo: o mesmo comando com `'v2'`. O passo a passo com o teste → **T-90**.
+
+### S125.4 · Decisões suas (`FOUNDER-DECISIONS.md`)
+- **D-125-I** — autorizar ~US$ 1,30 para medir os críticos no modelo de produção antes de ligar (nota 85 × 40) → **T-83**.
+- **D-125-H** — o diário da conversa registra 2 dos 4 momentos pedidos: aceitar agora (65) × exigir os 4 antes de ligar (50).
+- **D-125-A** — o prompt novo fica como padrão (75 × 60): vem decidida; confirme se quiser.
+- Já decididas pela execução: a troca da frase do banco em código só no novo (D-125-B, 90) · o "sim" em código (D-125-C, 92) ·
+  memória de 40 mil tokens (D-125-D, 88) · rajada até 45 s (D-125-E, 85) · terceiro e CPF em código (D-125-F, 90) · gatilho só
+  na criação (D-125-G, 88).
+- Opcional (P-125-11): conferir que a corretora nova nasce com o destravador ligado. Cole no **SQL Editor** (ele cria uma
+  corretora de teste, confere e **desfaz tudo** no fim; é o VERIFY do arquivo `20261002_01`):
+  ```sql
+  do $$
+  declare v_nova uuid := gen_random_uuid(); v_ag uuid; v_seg text;
+          n_ins int; n_depois_resave int; n_depois_mudanca int; n_esperado int;
+  begin
+    select count(distinct insurer_key) into n_esperado from public.cerebro_modos where modo = 'on';
+    begin
+      insert into public.companies (id, company_name) values (v_nova, 'verify-125-y3');
+      insert into public.agents (company_id, name, slug, agent_role)
+        values (v_nova, 'verify-att', 'verify-att-y3', 'attendance') returning id into v_ag;
+      select count(*) into n_ins from public.cerebro_modos where company_id = v_nova;
+      -- a corretora APAGA uma linha (desliga) e o painel re-salva o agente sem mudar o papel
+      select insurer_key into v_seg from public.cerebro_modos where company_id = v_nova limit 1;
+      delete from public.cerebro_modos where company_id = v_nova and insurer_key = v_seg;
+      update public.agents set agent_role = 'attendance', company_id = v_nova where id = v_ag;
+      select count(*) into n_depois_resave from public.cerebro_modos where company_id = v_nova;
+      -- CONTROLE: o papel MUDA (core → attendance) → as linhas nascem de novo
+      update public.agents set agent_role = 'core' where id = v_ag;
+      update public.agents set agent_role = 'attendance' where id = v_ag;
+      select count(*) into n_depois_mudanca from public.cerebro_modos where company_id = v_nova;
+      raise exception using errcode = 'P0001', message = 'desfaz-verify';
+    exception when sqlstate 'P0001' then null; end;
+    if n_ins <> n_esperado or n_depois_resave <> n_esperado - 1 or n_depois_mudanca <> n_esperado then
+      raise exception 'VERIFY 20261002_01 FALHOU: insert=% resave=% mudanca=% esperado=%',
+        n_ins, n_depois_resave, n_depois_mudanca, n_esperado;
+    end if;
+    if exists (select 1 from public.companies where id = v_nova) then
+      raise exception 'VERIFY 20261002_01: a corretora de teste ficou gravada';
+    end if;
+    raise notice 'VERIFY 20261002_01 OK: insert=% · re-save sem mudar papel=% (apagada continua apagada) · papel mudou=%',
+      n_ins, n_depois_resave, n_depois_mudanca;
+  end $$;
+  ```
+  **Esperar:** a mensagem `VERIFY 20261002_01 OK: insert=10 · re-save sem mudar papel=9 … · papel mudou=10`.
+  **Se aparecer `FALHOU`:** me mande a linha inteira.
