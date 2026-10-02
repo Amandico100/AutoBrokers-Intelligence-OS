@@ -916,15 +916,28 @@ def bloco_para_o_prompt(ficha: Dict[str, Any],
     do_sistema = [(k, v) for k, v in confirmados.items()
                   if origem_de(v) == ORIGEM_SISTEMA_DE_GESTAO]
 
+    def _linha(chave: str, bruto: Any) -> str:
+        valor = valor_de(bruto)
+        linha = f"  · {ROTULOS.get(chave, chave)}: {valor}"
+        # 🔴 SPEC-125 · S8b · T19 — o documento vai INTEIRO ao modelo (as
+        # ferramentas precisam dele) e MASCARADO ao segurado. 📊 01/10/2026:
+        # 1 de 5 fichas com `confirmados` guardava `titular_cpf` cru (11
+        # dígitos) e esta linha o entregava sem a regra — a mesma frase do
+        # bloco da S3 (`quem_e_o_segurado.bloco_para_o_prompt`).
+        digitos = "".join(c for c in str(valor or "") if c.isdigit())
+        if ("cpf" in chave or "cnpj" in chave) and len(digitos) >= 4:
+            linha += f' — use nas ferramentas; a ele, só "final {digitos[-4:]}"'
+        return linha
+
     if do_cliente:
         linhas.append("JÁ CONFIRMADO com o cliente — **não pergunte de novo**:")
         for chave, bruto in do_cliente:
-            linhas.append(f"  · {ROTULOS.get(chave, chave)}: {valor_de(bruto)}")
+            linhas.append(_linha(chave, bruto))
     if do_sistema:
         linhas.append("Veio do sistema de gestão — pode confirmar com uma "
                       "frase, sem perguntar do zero:")
         for chave, bruto in do_sistema:
-            linhas.append(f"  · {ROTULOS.get(chave, chave)}: {valor_de(bruto)}")
+            linhas.append(_linha(chave, bruto))
 
     faltando = [s for s in (obrigatorios or [])
                 if not _tem_valor(valor_de(confirmados.get(s)))]

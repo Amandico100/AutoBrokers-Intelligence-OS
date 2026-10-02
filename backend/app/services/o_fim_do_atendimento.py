@@ -2579,8 +2579,45 @@ def a_resposta_se_apresenta(resposta: Any, *, agent_name: str = "") -> bool:
     return (nome in texto) if nome else True
 
 
+#: SPEC-125 · S8b — as palavras de quem SÓ cumprimentou. constante_justificada:
+#: é a lista do "oi" que não diz o que a pessoa precisa — e só ela autoriza o
+#: "Como posso ajudar?". ⚠️ Letra repetida é colapsada antes ("oiii" → "oi",
+#: "booom" → "bom"), então cada palavra entra UMA vez, já colapsada.
+_SO_CUMPRIMENTO = frozenset({
+    "oi", "ola", "alo", "opa", "eai", "eae", "e", "ai", "hi", "helo",
+    "bom", "boa", "boas", "dia", "tarde", "noite",
+    "tudo", "td", "bem", "bm", "certo", "como", "vai", "voce", "vc", "esta", "ta",
+    "tranquilo", "beleza", "blz", "pesoal", "gente", "alguem",
+})
+
+
+def so_cumprimentou(mensagem: Any) -> Optional[bool]:
+    """A mensagem do segurado é SÓ cumprimento? — **PURA**. SPEC-125 · S8b.
+
+    `True`  = "oi", "bom dia, tudo bem?" — ele ainda não disse o que precisa.
+    `False` = disse alguma coisa além do cumprimento ("oi, preciso de guincho").
+    `None`  = não dá para saber (vazia, só mídia, não veio) — quem decide é o
+              modelo, pela instrução condicional.
+
+    📊 Linha de base (`docs/canon/reports/SPEC-125-LINHA-DE-BASE.md`): 24 de 36
+    primeiras respostas abriram com "Como posso ajudar?" a quem JÁ tinha dito
+    o pedido. ⚠️ Esta régua só escolhe o TEXTO da instrução; quando e se o
+    agente se apresenta continua sendo `deve_se_apresentar` (T23).
+    """
+    if mensagem is None:
+        return None
+    texto = nome_normalizado(mensagem)
+    palavras = [re.sub(r"(.)\1+", r"\1", p) for p in re.findall(r"[a-z]+", texto)]
+    if not palavras:
+        return None
+    if len(palavras) > 8:
+        return False
+    return all(p in _SO_CUMPRIMENTO for p in palavras)
+
+
 def linha_da_apresentacao(modo: str, *, agent_name: str = "",
-                          corretora: str = "", nome_anterior: str = "") -> str:
+                          corretora: str = "", nome_anterior: str = "",
+                          mensagem_do_segurado: Optional[str] = None) -> str:
     """A ÚNICA linha que o bloco dinâmico recebe sobre apresentação. **PURA.**
 
     💭 A copy é ilustrativa (o tom final vem do Jeito de atender da corretora);
@@ -2589,6 +2626,18 @@ def linha_da_apresentacao(modo: str, *, agent_name: str = "",
     ⚠️ Nome vazio -> *"a assistente virtual da {corretora}"*. Antes desta SPEC o
     bloco de identidade inteiro sumia quando o nome estava em branco, e o
     agente ficava sem identidade nenhuma (§10.2).
+
+    🔴 SPEC-125 · S8b — a apresentação ATENDE o pedido. A linha mandava
+    *"apresente-se assim: '… Como posso ajudar?' — e só"* em toda primeira
+    resposta, e 📊 24 de 36 perguntavam como ajudar a quem já tinha dito (6
+    paravam aí). Agora, por `so_cumprimentou(mensagem_do_segurado)`:
+
+    ```
+    só cumprimentou  → apresenta e pergunta como pode ajudar (o de antes)
+    disse o pedido   → apresenta e, NA MESMA mensagem, segue para o pedido
+    não se sabe      → a instrução condicional: o modelo decide pelas duas
+    ```
+    ⛔ QUEM se apresenta e QUANDO não muda (T23): é o `modo`, decidido fora.
     """
     empresa = _corretora_no_texto(corretora)
     nome = str(agent_name or "").strip()
@@ -2607,17 +2656,28 @@ def linha_da_apresentacao(modo: str, *, agent_name: str = "",
         # (achado do juíz, 14/09/2026): a linha saía "Aqui é a AutoBrokers da
         # Resulta, assistente virtual da Resulta". ⚠️ O nome da corretora fica
         # UMA vez — ele já está dentro do nome.
-        exemplo = ("\"Oi! Aqui é a %s, assistente virtual. Como posso "
-                   "ajudar?\"" % nome)
+        frase = "Oi! Aqui é a %s, assistente virtual." % nome
     elif nome:
-        exemplo = ("\"Oi! Aqui é a %s, assistente virtual %s. Como posso "
-                   "ajudar?\"" % (nome, empresa))
+        frase = "Oi! Aqui é a %s, assistente virtual %s." % (nome, empresa)
     else:
-        exemplo = ("\"Oi! Aqui é a assistente virtual %s. Como posso ajudar?\""
-                   % empresa)
-    return ("APRESENTAÇÃO: apresente-se agora, UMA vez, assim: %s — e só. "
-            "Não repita isso em nenhuma mensagem seguinte deste atendimento."
-            % exemplo)
+        frase = "Oi! Aqui é a assistente virtual %s." % empresa
+    nao_repita = ("Não repita a apresentação em nenhuma mensagem seguinte "
+                  "deste atendimento.")
+    cumprimentou = so_cumprimentou(mensagem_do_segurado)
+    if cumprimentou is True:
+        return ("APRESENTAÇÃO: apresente-se agora, UMA vez, assim: \"%s Como "
+                "posso ajudar?\" — ele apenas cumprimentou, ainda não disse o "
+                "que precisa. %s" % (frase, nao_repita))
+    if cumprimentou is False:
+        return ("APRESENTAÇÃO: apresente-se agora, UMA vez, numa frase curta "
+                "(\"%s\") e, NA MESMA mensagem, siga direto para o que ele já "
+                "disse que precisa. ⛔ NÃO pergunte \"como posso ajudar?\" — ele "
+                "já disse. %s" % (frase, nao_repita))
+    return ("APRESENTAÇÃO: apresente-se agora, UMA vez, numa frase curta "
+            "(\"%s\"). Se ele já disse o que precisa, siga NA MESMA mensagem "
+            "para o pedido, sem perguntar \"como posso ajudar?\"; só se ele "
+            "apenas cumprimentou, termine com \"Como posso ajudar?\". %s"
+            % (frase, nao_repita))
 
 
 # ===========================================================================
@@ -3042,7 +3102,8 @@ def bloco_de_quem_fala(*, assunto_novo: bool, identidade: Dict[str, Any],
                        agent_name: str, corretora: str,
                        quem_vai_atender: Optional[str] = None,
                        agora=None,
-                       marcar_apresentacao: bool = False) -> Tuple[str, Dict[str, Any]]:
+                       marcar_apresentacao: bool = False,
+                       mensagem_do_segurado: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
     """`(bloco_do_prompt, identidade_nova)` — **PURA**.
 
     Três linhas, nunca mais: quem fala (APRESENTAÇÃO), como chamar o segurado
@@ -3066,7 +3127,8 @@ def bloco_de_quem_fala(*, assunto_novo: bool, identidade: Dict[str, Any],
     linhas = [linha_da_apresentacao(
         modo if apresenta else MODO_CALADO, agent_name=agent_name,
         corretora=corretora,
-        nome_anterior=str(ident.get("nome_da_apresentacao") or ""))]
+        nome_anterior=str(ident.get("nome_da_apresentacao") or ""),
+        mensagem_do_segurado=mensagem_do_segurado)]
 
     titular = str(ident.get("titular_nome") or "").strip()
     if titular:

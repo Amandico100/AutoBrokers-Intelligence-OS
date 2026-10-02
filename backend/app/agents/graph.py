@@ -1845,7 +1845,10 @@ async def _build_initial_state(
                 assunto_novo=bool(_assunto_novo), identidade=_ident or {},
                 agent_name=_agent_display_name,
                 corretora=_company_display_name,
-                quem_vai_atender=_quem_atende)
+                quem_vai_atender=_quem_atende,
+                # SPEC-125 S8b: com o pedido já na 1ª mensagem, a apresentação segue para ele
+                # na mesma mensagem (sem "Como posso ajudar?") — 📊 24/36 na linha de base.
+                mensagem_do_segurado=user_message)
             dynamic_context += f"\n\n{_bloco_quem_fala}"
 
             # ⚠️ Melhor-esforço, como a ficha: falhar em gravar a identidade

@@ -84,20 +84,48 @@ def _documento_valido(digitos: str) -> bool:
     return bool(documento_br_valido(digitos))
 
 
-def _parece_celular(digitos: str) -> bool:
-    """DDD + 9 + 8 dígitos. 11 dígitos SOLTOS que têm cara de celular não são CPF."""
-    return len(digitos) == 11 and digitos[2] == "9" and digitos[0] != "0"
+#: constante_justificada: as palavras com que o segurado DIZ que um número é
+#: telefone. Só elas tornam um número de 11 dígitos com DV de CPF válido
+#: ambíguo de verdade (SPEC-125 · S8b).
+_PALAVRA_DE_TELEFONE = re.compile(
+    r"\b(?:celular|cel|telefone|tel|fone|zap|whats(?:app)?|wpp|contato)\b", re.IGNORECASE)
+_JANELA_DO_ROTULO = 30
+
+
+def _dito_como_telefone(s: str, inicio: int, fim: int) -> bool:
+    """O segurado disse que ESTE número é celular/telefone/zap? — **PURA**.
+
+    🔴 SPEC-125 · S8b. Antes a régua era a CARA do número (DDD + 9): 📊 a S4
+    mediu `52998224725` — CPF de DV válido — descartado por ter o 3º dígito 9.
+    O DV decide se é CPF; só o RÓTULO dito pelo segurado o desfaz.
+
+    ⚠️ Rótulo de OUTRO número não conta: antes, só o trecho depois do último
+    dígito; depois, só se nenhum número vier em seguida ("52998224725, celular
+    11987654321" — o "celular" é do segundo).
+    """
+    antes = re.split(r"[\d\n]", s[max(0, inicio - _JANELA_DO_ROTULO):inicio])[-1]
+    if _PALAVRA_DE_TELEFONE.search(antes):
+        return True
+    depois = s[fim:fim + _JANELA_DO_ROTULO]
+    corte = re.search(r"[\d\n]", depois)
+    if corte and depois[corte.start()].isdigit():
+        return False
+    return bool(_PALAVRA_DE_TELEFONE.search(depois[:corte.start()] if corte else depois))
 
 
 def documentos_ditos(texto: Any) -> List[str]:
-    """Os CPF/CNPJ (só dígitos, válidos) que aparecem num texto, na ordem. **PURA.**"""
+    """Os CPF/CNPJ (só dígitos, válidos) que aparecem num texto, na ordem. **PURA.**
+
+    11 dígitos SOLTOS: o dígito verificador decide (abaixo); com DV válido só
+    não é CPF o número que o segurado DISSE ser telefone (`_dito_como_telefone`).
+    """
     s = str(texto or "")
     achados: List[tuple] = []
     for regra in (_CPF_FORMATADO, _CNPJ_FORMATADO, _DOC_APOS_A_PALAVRA):
         for m in regra.finditer(s):
             achados.append((m.start(), _so_digitos(m.group(1))))
     for m in _ONZE_DIGITOS.finditer(s):
-        if not _parece_celular(m.group(1)):
+        if not _dito_como_telefone(s, m.start(), m.end()):
             achados.append((m.start(), m.group(1)))
     saida: List[str] = []
     for _pos, dig in sorted(achados):
