@@ -607,13 +607,23 @@ _FECHO_DO_BLOCO = (
 )
 
 
-def bloco_do_prompt() -> str:
+def bloco_do_prompt(prompt_versao: Any = None) -> str:
     """A seção de PÓS-ACIONAMENTO do prompt do agente de atendimento.
 
     🔴 **GERADO** de `mapa_de_cartas()` e de `SITUACOES_PARA_HUMANO` — as duas
     lidas do módulo em tempo de chamada, para que trocar qualquer uma delas
     mude o texto que chega ao modelo (é o que [J1] mede).
+
+    🔴 SPEC-125 Z4: `prompt_versao` (`agents.prompt_versao`; vazio = o padrão do
+    produto, v2) — na v2 "cobrar o guincho" é andamento e K1/K2/J só viram pessoa na
+    condição (`CONDICAO_NO_ATENDIMENTO`); na v1 o bloco é o de antes, byte a byte.
     """
+    try:
+        from app.core.prompts import normalizar_prompt_versao
+
+        v1 = normalizar_prompt_versao(prompt_versao) == "v1"
+    except Exception:  # noqa: BLE001 — sem a régua da versão, o padrão do produto
+        v1 = False
     linhas = [_ABERTURA_DO_BLOCO, "", "O QUE RESPONDER, POR SITUAÇÃO:"]
     mapa = mapa_de_cartas() or {}
     if mapa:
@@ -629,13 +639,64 @@ def bloco_do_prompt() -> str:
         linhas.append("- nenhuma carta publicada: responda só com o que está "
                       "escrito no atendimento, e passe o resto para uma pessoa.")
     linhas.append("")
+    if not v1:
+        linhas.append(_COBRANCA_DO_ANDAMENTO)
+        linhas.append("")
     humanos = "\n".join(
-        "- %s → passe para uma pessoa da corretora: %s."
-        % (CATEGORIAS.get(rotulo, rotulo), razao)
+        ("- %s → passe para uma pessoa da corretora SÓ SE %s: %s."
+         % (CATEGORIAS.get(rotulo, rotulo), CONDICAO_NO_ATENDIMENTO[rotulo], razao))
+        if rotulo in CONDICAO_NO_ATENDIMENTO and not v1 else
+        ("- %s → passe para uma pessoa da corretora: %s."
+         % (CATEGORIAS.get(rotulo, rotulo), razao))
         for rotulo, razao in SITUACOES_PARA_HUMANO.items()
     )
     linhas.append(_FECHO_DO_BLOCO % humanos)
     return "\n".join(linhas)
+
+
+# ===========================================================================
+# 🔴 SPEC-125 CONSERTO Z4 — "CADÊ O GUINCHO?" É ANDAMENTO, NÃO É PESSOA
+#
+# 📊 RODADA FINAL (02/10/2026): o C8 ("terceira vez que escrevo, que demora, cade o
+# guincho??", caso já acionado, protocolo na conversa) chamou uma pessoa em TODAS as
+# rodadas (BASE, DEPOIS, FINAL; 2/2 em cada). O motivo que o modelo escreveu foi "cliente
+# irritado e cobrando o guincho… é necessário que a equipe cobre a seguradora" — as
+# PALAVRAS deste bloco: "diz que o prestador não chegou → passe para uma pessoa (cobrar a
+# seguradora AGORA)" e "está reclamando → passe para uma pessoa". O prompt v2 dizia o
+# contrário ("irritação sozinha NÃO é motivo; 'cadê o guincho?' pede o estado"), e o bloco
+# mais específico vencia. A causa era a regra INCONDICIONAL daqui.
+#
+# A ordem do Founder (01/10): pessoa só no grave — sinistro, risco à vida, condomínio/
+# empresarial, serviço sem corredor, PEDIDO de pessoa. Cobrar o guincho é andamento:
+# responde-se com o estado escrito do caso. `SITUACOES_PARA_HUMANO` continua a FONTE
+# ÚNICA da razão (dossiê e régua leem a mesma); o que muda é QUANDO o agente passa.
+# ===========================================================================
+
+#: constante_justificada: a condição em que cada situação R9 vira pessoa NO ATENDIMENTO.
+#:   K1/K2 — a ordem do Founder (01/10) e o C8 acima; J — quem cobra a seguradora é uma
+#:   pessoa, mas só quando ELE pede a cobrança (cobrar o andamento a nós não é pedir isso).
+CONDICAO_NO_ATENDIMENTO: Dict[str, str] = {
+    "K1": ("ele estiver em local de risco (pista, acostamento, à noite, sozinho), pedir uma "
+           "pessoa, ou o atendimento NÃO tiver acionamento escrito (nenhum protocolo nem "
+           "pedido registrado) — fora disso responda com o estado escrito e "
+           "ofereça pedir à equipe que cobre a seguradora"),
+    "K2": ("ele pedir uma pessoa — reclamar, cobrar ou estar irritado SOZINHO não é motivo: "
+           "acolha numa frase e responda com o estado escrito do caso"),
+    "J": ("ELE pedir que a corretora cobre a seguradora ou a oficina (ou aceitar a sua oferta "
+          "de cobrar) — perguntar \"cadê?\" não é esse pedido"),
+}
+
+_COBRANCA_DO_ANDAMENTO = (
+    "QUANDO ELE COBRA (\"cadê o guincho?\", \"que demora\", \"já é a terceira vez\"):\n"
+    "- É ANDAMENTO, não é motivo para chamar uma pessoa. Consulte o estado ESCRITO do caso — "
+    "a ficha (fase, protocolo), o que a seguradora já respondeu na conversa, a hora do pedido — "
+    "e responda com ele em uma ou duas frases: acolha a demora numa frase (\"entendo, é chato "
+    "esperar\"), diga o que está escrito (\"o guincho foi pedido às <hora do pedido>, protocolo "
+    "<o do caso>; a seguradora ainda não mandou a previsão\") e ofereça a próxima ação (\"quer que eu peça "
+    "para a equipe cobrar a seguradora agora?\").\n"
+    "- Chame uma pessoa só se ele pedir uma pessoa ou a cobrança, se houver risco no local, "
+    "ou se o caso não tiver acionamento escrito (nenhum protocolo nem pedido registrado)."
+)
 
 
 #: ⚠️ O nome que a SPEC-097.1 §4 usa em prosa. Mesmo objeto — nunca uma

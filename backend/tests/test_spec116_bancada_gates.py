@@ -139,7 +139,25 @@ def test_teto_padrao_vem_do_env(monkeypatch):
 # ---------------------------------------------------------------------------
 # G10 · efeito duplicado (tool chamada 2× com a mesma chave) ⇒ FAIL
 # ---------------------------------------------------------------------------
-def test_efeito_duplicado_e_detectado_e_reprova():
+def test_o_portao_do_sim_barra_o_acionamento_repetido():
+    """🔴 §9.3 — a lição de baixo migrou em parte (SPEC-125 conserto Z): com o T8 em código, o
+    PRODUTO barra o 2º acionamento da mensagem duplicada — o "sim" já foi gasto ("Pedido
+    registrado…"). O duplicador TENTA duas vezes; sai UMA."""
+    caso = _caso("atd-n2-guincho-msg-duplicada")
+    rel = B.rodar_bancada("atendimento", ["duble:duplicador"], [caso], k=1, nivel="N2", teto_usd=5)
+    r = rel.resultados[0]
+    tentativas = [c for c in r.rastro["tool_calls"] if c["name"] == "insurer_dispatch"]
+    saiu = [e for e in r.rastro["efeitos"] if e["tool"] == "insurer_dispatch" and e["efeito"]]
+    assert len(tentativas) == 2 and len(saiu) == 1, (len(tentativas), len(saiu))
+    assert r.rastro["duplicados"] == 0
+
+
+def test_efeito_duplicado_e_detectado_e_reprova(monkeypatch):
+    """A BANCADA vê o efeito duplicado de uma ferramenta SEM portão próprio. 🔴 SPEC-125
+    conserto Z: o acionamento ganhou o portão do "sim" (o teste acima); para a régua continuar
+    provada, o dublê do acionamento aqui é o de sempre (`DubleDeTool`, sem portão) — é a régua
+    que se mede, não o produto."""
+    monkeypatch.setattr(B, "_DubleDoAcionamento", D.DubleDeTool)
     caso = _caso("atd-n2-guincho-msg-duplicada")
     rel = B.rodar_bancada("atendimento", ["duble:perfeito", "duble:duplicador"], [caso], k=1, nivel="N2", teto_usd=5)
     por = {r.braco: r for r in rel.resultados}

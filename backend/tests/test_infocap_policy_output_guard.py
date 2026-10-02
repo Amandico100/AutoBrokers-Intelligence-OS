@@ -92,6 +92,10 @@ def _load_nodes_module():
     # verde (CLAUDE.md §9.3).
     _carregar_real("app.agents.honestidade_do_handoff",
                    "app/agents/honestidade_do_handoff.py")
+    # 🔴 SPEC-125 (conserto Z): `nodes.py` importa `app.agents.historico_da_conversa` no
+    #    topo (S2) — mesma causa, mesmo remédio: o módulo REAL, por arquivo (só stdlib no topo).
+    _carregar_real("app.agents.historico_da_conversa",
+                   "app/agents/historico_da_conversa.py")
 
     path = ROOT / "app" / "agents" / "nodes.py"
     spec = importlib.util.spec_from_file_location("app.agents.nodes", path)

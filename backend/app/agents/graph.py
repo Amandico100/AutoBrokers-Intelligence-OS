@@ -840,6 +840,23 @@ def _telefone_da_sessao(session_id: Any) -> str:
     return ""
 
 
+def linha_do_telefone_da_conversa(session_id: Any) -> str:
+    """🔴 SPEC-125 CONSERTO Z2 — a linha do prompt com o telefone DESTA conversa. **PURA.**
+
+    `""` fora do WhatsApp. O número vai inteiro (é o do próprio segurado, e as
+    ferramentas precisam dele); ao segurado, o agente o mostra pelo final.
+    """
+    from app.agents.tools.insurer_dispatch_tool import telefone_da_conversa
+
+    fone = telefone_da_conversa(session_id)
+    if not fone:
+        return ""
+    return ("📱 TELEFONE DESTA CONVERSA (o WhatsApp de quem fala): %s — é o telefone de contato do "
+            "atendimento: NÃO pergunte o telefone; no resumo diga \"contato neste número (final %s)\". "
+            "Só pergunte outro se ele disser que quem vai receber o prestador é outra pessoa."
+            % (fone, fone[-4:]))
+
+
 def _versao_do_prompt(supabase_client, company_id: Any, agent_id: Any,
                       agent_data: Optional[Dict[str, Any]] = None) -> str:
     """A chave `agents.prompt_versao` DESTE agente, NESTA corretora (SPEC-125 D3).
@@ -1380,7 +1397,10 @@ async def _build_initial_state(
         if _papel == "attendance":
             from app.atendimento.pos_acionamento import bloco_do_prompt
 
-            _bloco_pos = bloco_do_prompt()
+            # 🔴 SPEC-125 Z4: a versão do prompt decide se "cadê o guincho?" chama pessoa
+            #    (v1 = o bloco de antes, byte a byte — a volta à v1 continua sendo a de antes).
+            _bloco_pos = bloco_do_prompt(
+                prompt_versao=(real_agent_data or {}).get("prompt_versao"))
             if _bloco_pos:
                 base_instructions = f"{base_instructions}\n\n{_bloco_pos}"
                 logger.info("[PosAcionamento] bloco de acompanhamento no prompt "
@@ -1792,6 +1812,16 @@ async def _build_initial_state(
                     logger.info("[QUEM] bloco injetado (%d chars)", len(_texto_quem))
         except Exception as e:  # noqa: BLE001 — a identidade nunca derruba o turno
             logger.warning("[QUEM] bloco não injetado (%s)", type(e).__name__)
+
+        # --- 📱 O TELEFONE DESTA CONVERSA — SPEC-125 CONSERTO Z2 -------------
+        # 📊 RODADA FINAL (02/10): C2, C3 e C11 disseram "não consigo ver o número deste
+        # WhatsApp" e pediram o telefone — o número estava na sessão e não chegava ao
+        # modelo. Vai SEMPRE que a conversa é de WhatsApp (independe do bloco da S3, que
+        # só sai quando a conversa anterior diz algo). A ferramenta de acionamento usa o
+        # mesmo número quando o modelo deixa `telefone_contato` vazio.
+        _linha_fone = linha_do_telefone_da_conversa(session_id)
+        if _linha_fone:
+            dynamic_context += f"\n\n{_linha_fone}"
 
         # --- G · COMO SE CONDUZ ESTE TIPO DE ATENDIMENTO ------------------
         # 📊 16 playbooks de conduta, 12 ativos, destilados por claude-opus-5 de

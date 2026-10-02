@@ -22,7 +22,7 @@ eletrodomésticos).
 
 import logging
 import re
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -332,7 +332,10 @@ class InsurerDispatchInput(BaseModel):
         "[auto] Longitude do LOCAL, em grau decimal (ex.: -48.544253), vinda do "
         "mesmo pin de localização da latitude. As duas juntas ou nenhuma."))
     # --- Comuns ---
-    telefone_contato: Optional[str] = Field(default=None, description="Telefone de contato com DDD (somente dígitos)")
+    telefone_contato: Optional[str] = Field(default=None, description=(
+        "Telefone de contato com DDD (somente dígitos). VAZIO = o telefone DESTA conversa de "
+        "WhatsApp, que o sistema já tem e preenche sozinho — NÃO pergunte o telefone ao cliente; "
+        "preencha só se ele der OUTRO número (quem vai receber o prestador é outra pessoa)."))
     problema_descricao: Optional[str] = Field(default=None, description="Descrição curta do problema relatado pelo cliente")
     dados_confirmados: Optional[bool] = Field(default=None, description=(
         "[auto e residencial] true SOMENTE depois de você MOSTRAR ao cliente na conversa os dados do "
@@ -799,24 +802,84 @@ def _opcoes_recusadas(playbook_ref, subservice, kwargs, faltando):
 # "não" é uma confirmação a mais; o do "sim" é um guincho que não se desfaz).
 
 #: A última pergunta da corretora é de CONFIRMAÇÃO? (texto sem acento, minúsculo)
+#: 🔴 SPEC-125 CONSERTO Z1 (C4 da RODADA FINAL) — `\bconfirm\w*` solto casava "posso
+#:    CONFIRMAR COM A EQUIPE se quiser" (uma oferta, 54 min antes, sobre carro reserva).
+#:    "confirmar com …" é o AGENTE checando com outra pessoa: nunca pede o ok do segurado.
+#: 🔴 N1 do laudo de confirmação — "Quer que eu acione …?", "Aciono?", "Seguimos?" pedem o ok
+#:    e eram recusadas. ⚠️ "acionar"/"sigo" SOLTOS continuam não contando ("para eu acionar,
+#:    me passa o CPF?" é pergunta de DADO): só a forma que PERGUNTA ("aciono?", "quer que eu
+#:    acione") — e a pergunta inteira ainda precisa repetir o pedido (`_cita_o_pedido`).
 _RX_PERGUNTA_DE_CONFIRMACAO = re.compile(
-    r"\bconfirm\w*|\bposso\s+(?:acionar|chamar|pedir|solicitar|abrir|seguir|mandar|"
-    r"enviar|registrar|prosseguir|seguir)\b|\bpodemos\s+(?:acionar|seguir|prosseguir)\b|"
+    r"\bconfirm(?:a|as|e|em|ar|amos|ando|ado|ados|ada|adas)\b(?!\s+com\b)|"
+    r"\bposso\s+(?:acionar|chamar|pedir|solicitar|abrir|seguir|mandar|"
+    r"enviar|registrar|prosseguir)\b|\bpodemos\s+(?:acionar|seguir|prosseguir|pedir|solicitar)\b|"
+    r"\b(?:quer|queres|prefere|deseja)\s+que\s+(?:eu\s+)?(?:ja\s+)?(?:acione|chame|peca|solicite|"
+    r"mande|abra|siga|prossiga|registre)\b|"
+    r"\b(?:aciono|sigo|seguimos|prossigo|prosseguimos|solicito|peco|mando)\s*(?:agora\s*)?\?|"
+    r"\b(?:sigo|seguimos|prossigo|prosseguimos|posso\s+seguir)\s+com\s+(?:a|o)\s+(?:abertura|"
+    r"acionamento|pedido|chamado|solicitacao)\b[^.!]*\?|"
     r"\bpode\s+ser\b|\b(?:esta|estao|ta|tao|tudo|estiver)\s+(?:certo|certos|certa|correto|"
     r"corretos|correta|ok)\b|\bcorret[oa]s?\s*\?|\bisso\s+mesmo\b")
-# ⚠️ "acionar"/"sigo" sozinhos NÃO contam: "para eu acionar, me passa o CPF?" é
-#    pergunta de DADO, e o "ok, é 123…" dele não é o sim do acionamento.
 
-#: O segurado DISSE SIM? (as primeiras palavras da fala; texto sem acento)
+#: O segurado DISSE SIM? (as primeiras palavras de uma ORAÇÃO; texto sem acento)
 _RX_SIM_DO_SEGURADO = re.compile(
     r"^\W*(?:\w+\W+){0,2}?(?:sim|s|ss|sss|isso|exato|exatamente|correto|certo|certinho|"
     r"confirmo|confirmado|confirmada|confirma|pode|ok|okay|okey|blz|beleza|positivo|claro|"
-    r"perfeito|manda|bora|aham|uhum|yes|fechado|combinado|ta\s+certo|ta\s+bom|"
-    r"esta\s+certo|esta\s+correto|tudo\s+certo|isso\s+mesmo)\b|^\W*[\U0001F44D✅\U0001F44C]")
+    r"perfeito|manda|mande|bora|aham|uhum|yes|fechado|combinado|ta\s+certo|ta\s+bom|"
+    r"esta\s+certo|esta\s+correto|tudo\s+certo|isso\s+mesmo|aciona|acione|segue|siga)\b"
+    r"|^\W*[\U0001F44D✅\U0001F44C]"
+    # N1: o segurado irritado depois de uma confirmação repetida — "já falei que sim"
+    r"|\bja\s+(?:falei|disse|confirmei|respondi)\s+(?:que\s+)?(?:sim|pode|isso)\b")
 
-#: E o segurado disse NÃO / pediu para esperar? (a 1ª palavra)
+#: Uma ORAÇÃO que é só o "não" (ou um "está errado") — "não" + vírgula + "pode mandar" é o
+#: "não" de OUTRA pergunta ("alguém se machucou?") seguido do sim (N1 do laudo).
 _RX_NAO_DO_SEGURADO = re.compile(
-    r"^\W*(?:nao|n|negativo|errado|errada|espera|pera|calma|cancela|cancelar)\b")
+    r"^\W*(?:nao|n|negativo|errado|errada|nunca)\W*$|^\W*nao\s+(?:pode|quero|precisa|manda|e\s+(?:isso|esse|essa))\b")
+
+#: 🔴 Z1 — a OBJEÇÃO ou o ADIAMENTO, em qualquer ponto da fala: "ta bom, DEPOIS eu peço"
+#:    (o "sim" do C4), "vou ver", "sim, MAS o destino é outro", "ok — NA VERDADE a rua é Y".
+#: constante_justificada: o pior caso de errar para cá é UMA confirmação a mais; o de errar
+#:    para lá é um guincho que não se desfaz (T8). "mas rápido/por favor" não é objeção.
+_RX_OBJECAO_DO_SEGURADO = re.compile(
+    r"\b(?:depois|mais\s+tarde|amanha|outra\s+hora|vou\s+(?:ver|pensar|decidir|esperar|olhar)|"
+    r"vejo\s+(?:isso|depois)|deixa\s+(?:pra|para|que)|agora\s+nao|ainda\s+nao|espera|espere|pera|"
+    r"calma|cancela\w*|desist\w*|errad[oa]s?|corrig\w*|na\s+verdade|so\s+que|porem|"
+    r"(?:e|eh|era)\s+outr[oa]|outro\s+(?:endereco|lugar|local|destino|numero|telefone)|"
+    r"outra\s+(?:rua|placa|cidade|oficina)|mudou|mudei)\b"
+    r"|\bmas\b(?!\s+(?:rapido|logo|depressa|por\s+favor|urgente|vem|venha|manda|pode|corre))")
+
+#: 🔴 Z1 — a pergunta de confirmação repete O PEDIDO (o serviço, a placa, o lugar). O
+#:    vocabulário de cada trabalho é o dos corredores (`canonical_subservice`) + como a
+#:    atendente o escreve. constante_justificada: "posso confirmar com a equipe se quiser"
+#:    (C4) não cita trabalho nenhum — e é isso que a separa do resumo do acionamento.
+_PALAVRAS_DO_SERVICO = {
+    "guincho": ("guincho", "reboque", "remocao", "socorro", "mecanic", "pane"),
+    "bateria": ("bateria", "carga", "socorro", "pane"),
+    "pneu": ("pneu", "estepe", "borrach"),
+    "chaveiro": ("chaveiro", "chave", "trancad", "abrir a porta"),
+    "vidros": ("vidro", "para-brisa", "parabrisa", "retrovisor", "farol", "lanterna"),
+    "eletricista": ("eletricist", "eletric", "tomada", "disjuntor", "fiacao"),
+    "encanador": ("encanador", "vazamento", "hidraulic", "cano", "torneira", "registro"),
+    "desentupimento": ("desentup", "entupi"),
+    "eletrodomesticos": ("eletrodomestic", "geladeira", "maquina", "lavadora", "fogao",
+                         "microondas", "tecnico"),
+    "maquina_de_lavar": ("maquina", "lavadora", "lava e seca", "tecnico"),
+}
+#: as palavras que nomeiam O ACIONAMENTO de qualquer trabalho ("a assistência", "o prestador")
+_PALAVRAS_DE_QUALQUER_ACIONAMENTO = ("assistencia", "prestador", "acionamento", "socorro")
+#: constante_justificada: palavras de lugar que NÃO identificam o lugar (aparecem em toda frase)
+_PALAVRAS_DE_LUGAR_VAZIAS = frozenset({
+    "avenida", "numero", "bairro", "cidade", "estado", "frente", "perto", "proximo", "proxima",
+    "casa", "minha", "local", "lugar", "agora", "aqui", "esquina", "centro"})
+
+#: 🔴 Z1 — o agente ANUNCIOU um acionamento depois da pergunta: aquela confirmação foi GASTA.
+#:    📊 C8: "Confirma: guincho da Rua Sete…?" → "sim" → "Pedido registrado na seguradora,
+#:    protocolo …" → 63 min depois, "cadê o guincho?": a regra velha aceitava o sim gasto.
+_RX_ACIONAMENTO_ANUNCIADO = re.compile(
+    r"\bprotocolo\b|\b(?:foi|foram|esta|estao|ja)\s+(?:\w+\s+)?(?:acionad|solicitad|registrad|"
+    r"abert|pedid)\w*|\bprestador\s+(?:foi\s+)?designad\w*|\bacionei\b|\bsolicitei\b|"
+    r"\b(?:pedido|acionamento|chamado|solicitacao)\s+(?:de\s+\w+\s+)?(?:foi\s+)?(?:registrad|"
+    r"acionad|abert|solicitad)\w*")
 
 
 def _plano(texto) -> str:
@@ -826,16 +889,90 @@ def _plano(texto) -> str:
     return "".join(c for c in t if not unicodedata.combining(c)).lower().strip()
 
 
-def confirmacao_comprovada(falas) -> dict:
+def _termos_do_pedido(pedido: Optional[dict]) -> tuple:
+    """`(palavras do serviço, pedaços de lugar, placa)` do pedido. Sem pedido: o
+    vocabulário de TODOS os serviços (a bancada antiga, quem não sabe o pedido)."""
+    from app.services.corridor_playbooks import canonical_subservice
+
+    p = pedido or {}
+    sub = str(p.get("subservice") or "").strip().lower()
+    if not sub:
+        servico = {w for ws in _PALAVRAS_DO_SERVICO.values() for w in ws}
+    else:
+        canon = canonical_subservice(sub)
+        servico = set(_PALAVRAS_DO_SERVICO.get(canon) or ())
+        servico |= {t for t in re.split(r"[_\s]+", _plano(canon) + " " + _plano(sub)) if len(t) >= 4}
+    servico |= set(_PALAVRAS_DE_QUALQUER_ACIONAMENTO)
+    lugar = set()
+    for campo in ("local_atual", "local_destino", "local_rua", "local_bairro", "endereco_numero"):
+        for t in re.findall(r"[a-z]{5,}", _plano(p.get(campo))):
+            if t not in _PALAVRAS_DE_LUGAR_VAZIAS:
+                lugar.add(t)
+    placa = re.sub(r"[^a-z0-9]", "", _plano(p.get("veiculo_placa")))
+    return servico, lugar, placa
+
+
+def _cita_o_pedido(texto: str, pedido: Optional[dict]) -> bool:
+    """A fala do agente REPETE o pedido (o serviço, o lugar ou a placa)? **PURA.**"""
+    plano = _plano(texto)
+    servico, lugar, placa = _termos_do_pedido(pedido)
+    if any(re.search(r"\b" + re.escape(w), plano) for w in servico):
+        return True
+    if lugar and any(re.search(r"\b%s\b" % re.escape(t), plano) for t in lugar):
+        return True
+    # a placa (ou o final dela, que é como a atendente a mostra: "placa final 2F90")
+    alnum = re.sub(r"[^a-z0-9]", "", plano)
+    return len(placa) >= 7 and placa[-4:] in alnum
+
+
+def _resposta_do_segurado(texto: str) -> str:
+    """`"sim"` · `"nao"` · `"outro"` — UMA fala do segurado. **PURA.**
+
+    A fala vira ORAÇÕES (vírgula, ponto, quebra): "Não, ninguém se machucou. Pode mandar"
+    é o "não" de outra pergunta e o SIM desta (N1). Objeção/adiamento em qualquer ponto
+    vence o sim ("ta bom, depois eu peço" do C4; "sim, mas o destino é outro").
+    """
+    plano = _plano(texto)
+    if not plano:
+        return "outro"
+    if _RX_OBJECAO_DO_SEGURADO.search(plano):
+        return "nao"
+    oracoes = [o.strip() for o in re.split(r"[,.;:!?\n]+|\s+[-–—]\s+", plano) if o.strip()]
+    nao_sozinho = forte = sim = False
+    for o in oracoes:
+        if _RX_NAO_DO_SEGURADO.search(o):
+            # "não" sozinho na oração é o de OUTRA pergunta quando um sim vem junto;
+            # "não pode"/"não quero"/"não é isso" é recusa, venha o que vier.
+            if re.fullmatch(r"\W*(?:nao|n|negativo|nunca)\W*", o):
+                nao_sozinho = True
+            else:
+                forte = True
+        elif _RX_SIM_DO_SEGURADO.search(o):
+            sim = True
+    if forte:
+        return "nao"
+    if sim:
+        return "sim"
+    return "nao" if nao_sozinho else "outro"
+
+
+def confirmacao_comprovada(falas, pedido: Optional[dict] = None) -> dict:
     """O segurado CONFIRMOU o acionamento? **PURA** — a regra que a ferramenta e a
     bancada usam (uma regra, dois consumidores).
 
     `falas`: `[(quem, texto)]` do assunto, da mais antiga para a mais nova, COM as
-    do turno de agora; `quem` ∈ segurado · agente · equipe.
+    do turno de agora; `quem` ∈ segurado · agente · equipe. `pedido`: os argumentos
+    do acionamento que se quer fazer (o serviço, o lugar, a placa) — sem ele, vale o
+    vocabulário de qualquer serviço.
 
+    🔴 SPEC-125 CONSERTO Z1 (📊 C4 da RODADA FINAL, 2/2: aceitou "posso confirmar com
+    a equipe se quiser", de 54 min antes e de outro assunto, e "ta bom, depois eu peço"):
     ```
-    a ÚLTIMA pergunta da corretora (fala com "?" ou "confirm…") é de CONFIRMAÇÃO
-    e, depois dela, o segurado disse SIM — e nenhuma fala dele depois dela é NÃO
+    a ÚLTIMA pergunta da corretora (fala com "?" ou "confirm…") é a de CONFIRMAÇÃO
+      DESTE acionamento — pede o ok E repete o pedido (serviço, lugar ou placa);
+    nenhuma fala do agente DEPOIS dela anuncia um acionamento (a confirmação não foi gasta);
+    a PRÓXIMA fala do segurado depois dela é SIM de verdade (sem objeção nem adiamento),
+      e nenhuma fala dele depois dela é NÃO.
     ```
     Devolve `{"comprovada": bool, "motivo": str}`.
     """
@@ -848,21 +985,34 @@ def confirmacao_comprovada(falas) -> dict:
             break
     if ultima is None:
         return {"comprovada": False, "motivo": "nenhuma pergunta da corretora na conversa"}
-    if not _RX_PERGUNTA_DE_CONFIRMACAO.search(_plano(lista[ultima][1])):
+    pergunta = lista[ultima][1]
+    if not _RX_PERGUNTA_DE_CONFIRMACAO.search(_plano(pergunta)):
         return {"comprovada": False,
                 "motivo": "a última pergunta ao segurado não foi a de confirmação"}
-    respostas = [_plano(t) for q, t in lista[ultima + 1:] if q == "segurado" and t.strip()]
+    if not _cita_o_pedido(pergunta, pedido):
+        return {"comprovada": False,
+                "motivo": "a última pergunta não repete o pedido (serviço, lugar ou placa) — "
+                          "não é a confirmação deste acionamento"}
+    depois = lista[ultima + 1:]
+    if any(q in ("agente", "equipe") and _RX_ACIONAMENTO_ANUNCIADO.search(_plano(t))
+           for q, t in depois):
+        return {"comprovada": False,
+                "motivo": "a confirmação já foi usada num acionamento anterior"}
+    respostas = [t for q, t in depois if q == "segurado" and t.strip()]
     if not respostas:
         return {"comprovada": False,
                 "motivo": "o segurado ainda não respondeu à confirmação"}
-    if any(_RX_NAO_DO_SEGURADO.search(r) for r in respostas):
+    leituras = [_resposta_do_segurado(r) for r in respostas]
+    if "nao" in leituras:
         return {"comprovada": False, "motivo": "o segurado não disse sim"}
-    if not any(_RX_SIM_DO_SEGURADO.search(r) for r in respostas):
-        return {"comprovada": False, "motivo": "o segurado não disse sim"}
+    if leituras[0] != "sim":
+        return {"comprovada": False,
+                "motivo": "a resposta seguinte do segurado não foi o sim"}
     return {"comprovada": True, "motivo": "confirmado pelo segurado depois da pergunta"}
 
 
-async def prova_da_confirmacao(db, *, company_id: str, session_id: str) -> dict:
+async def prova_da_confirmacao(db, *, company_id: str, session_id: str,
+                               pedido: Optional[dict] = None) -> dict:
     """A prova do "sim", lida da conversa DURÁVEL. **Nunca levanta**; no escuro, sem prova."""
     try:
         from app.agents.historico_da_conversa import historico_do_atendimento
@@ -877,7 +1027,45 @@ async def prova_da_confirmacao(db, *, company_id: str, session_id: str) -> dict:
     if not getattr(hist, "lida", False):
         return {"comprovada": False,
                 "motivo": "conversa indisponível (%s)" % (getattr(hist, "erro", "") or "?")}
-    return confirmacao_comprovada([(f.quem, f.texto) for f in hist.falas])
+    return confirmacao_comprovada([(f.quem, f.texto) for f in hist.falas], pedido)
+
+
+#: 🔴 SPEC-125 CONSERTO Z2/Z3 — a confirmação é UMA linha de resumo + o ok, com o que JÁ se
+#:    sabe. 📊 RODADA FINAL: o texto antigo mandava confirmar "o telefone de contato" e o
+#:    número da conversa não chegava a ninguém — C2, C3 e C11 responderam "não consigo ver o
+#:    número deste WhatsApp" e pediram o telefone; C11 pediu o CPF de novo (2/2); o 1º
+#:    acionamento caiu do turno 1,09 para o 4,33.
+REGRA_DO_RESUMO_DE_CONFIRMACAO = (
+    "Mande ao cliente UMA linha com o resumo do pedido e peça o ok — ex.: \"Guincho para o "
+    "carro de placa final 1D23, da Rua X, 100 até a oficina Y, contato neste número "
+    "(final <os 4 últimos>). Posso acionar?\" — e ESPERE o \"sim\". NÃO pergunte o que já se sabe: o "
+    "telefone DESTA conversa já é o contato (só pergunte outro se ele disser que quem vai "
+    "receber é outra pessoa), e CPF, placa, veículo e endereço que estão na ficha, na apólice, "
+    "no bloco \"o que já sabemos\" ou na conversa entram no resumo, não viram pergunta. Pergunte "
+    "só o que NINGUÉM disse ainda, junto no mesmo resumo. Se ele corrigir um dado, use o "
+    "corrigido.")
+
+
+def telefone_da_conversa(session_id: Any) -> str:
+    """O telefone da conversa de WhatsApp (`whatsapp:{telefone}:{empresa}:{agente}`), com
+    DDD e sem o país — `""` fora do WhatsApp ou se não for telefone válido. **PURA.**"""
+    partes = str(session_id or "").split(":")
+    if len(partes) < 3 or partes[0] != "whatsapp":
+        return ""
+    d = _digitos(partes[1])
+    if d.startswith("55") and len(d) in (12, 13):
+        d = d[2:]
+    return d if telefone_br_valido(d) else ""
+
+
+def com_o_telefone_da_conversa(kwargs: dict) -> dict:
+    """🔴 Z2 — `telefone_contato` vazio vira o telefone DESTA conversa (o mesmo que o
+    `_arun` já usa como o telefone do cliente). O modelo nunca escreve este valor: vem da
+    sessão, que o `tool_node` injeta do estado. O que o segurado disser vence."""
+    if str((kwargs or {}).get("telefone_contato") or "").strip():
+        return kwargs
+    fone = telefone_da_conversa((kwargs or {}).get("session_id"))
+    return {**kwargs, "telefone_contato": fone} if fone else kwargs
 
 
 def pedido_de_confirmacao(motivo: str = "", *, ja_confirmou: bool = False) -> dict:
@@ -888,12 +1076,11 @@ def pedido_de_confirmacao(motivo: str = "", *, ja_confirmou: bool = False) -> di
                  "esta ferramenta de novo AGORA, com os mesmos dados e dados_confirmados=true. "
                  "NADA foi acionado ainda: não diga ao cliente que foi.")
     else:
-        texto = ("ANTES de acionar, CONFIRME com o cliente NA CONVERSA, numa mensagem só, os "
-                 "dados do acionamento (o serviço, o local, o destino quando houver e o "
-                 "telefone de contato) e ESPERE o \"sim\" dele: a conversa ainda não tem a sua "
-                 "pergunta de confirmação seguida da resposta dele. Só depois chame de novo com "
-                 "dados_confirmados=true. ATENÇÃO: NADA foi acionado ainda — é PROIBIDO dizer "
-                 "ao cliente que a seguradora foi acionada/contatada.")
+        texto = ("ANTES de acionar: a conversa ainda não tem o resumo DESTE pedido seguido do "
+                 "\"sim\" do cliente. " + REGRA_DO_RESUMO_DE_CONFIRMACAO + " Só depois do sim "
+                 "chame de novo com dados_confirmados=true — no MESMO turno em que ele disser "
+                 "sim. ATENÇÃO: NADA foi acionado ainda — é PROIBIDO dizer ao cliente que a "
+                 "seguradora foi acionada/contatada.")
     return {"status": "confirm_first", "missing": [], "confirmacao_comprovada": False,
             "motivo_interno": motivo, "content": texto}
 
@@ -1111,6 +1298,7 @@ class InsurerDispatchTool(BaseTool):
         from app.services.corridor_playbooks import SUBSERVICO_INVALIDO
         from app.services.insurer_dispatch_service import build_dry_run_plan
 
+        kwargs = com_o_telefone_da_conversa(kwargs)   # 🔴 Z2: o telefone desta conversa
         subservice, slots = self._extract_slots(kwargs)
         playbook_ref, insurer_key = self._resolve_playbook_ref(kwargs)
         if not playbook_ref:
@@ -1299,10 +1487,21 @@ class InsurerDispatchTool(BaseTool):
                   "ainda não respondeu, juntos na mesma mensagem — e não invente "
                   "nenhum deles."
             ) if _ainda else ""
+            # 🔴 Z2 — o que JÁ se sabe vai no resumo (com o valor), e não vira pergunta.
+            _sabido = "; ".join(x for x in (
+                f"placa {placa}" if placa != "—" else "",
+                f"local: {kwargs.get('local_atual')}" if str(kwargs.get("local_atual") or "").strip() else "",
+                f"destino: {kwargs.get('local_destino')}" if str(kwargs.get("local_destino") or "").strip() else "",
+                (("contato: o telefone desta conversa (final %s)"
+                  if _digitos(kwargs.get("telefone_contato")) == telefone_da_conversa(kwargs.get("session_id"))
+                  else "contato: o telefone final %s")
+                 % _digitos(kwargs.get("telefone_contato"))[-4:])
+                if str(kwargs.get("telefone_contato") or "").strip() else "",
+            ) if x)
             return {"status": "confirm_first", "missing": _falta, "content": (
-                "ANTES de acionar, CONFIRME com o cliente NA CONVERSA (mensagem única): "
-                f"placa {placa}, o que houve, local atual, destino e telefone de contato. "
-                "Se o cliente corrigir qualquer dado, use o valor corrigido. Depois chame de novo com "
+                "ANTES de acionar, confirme com o cliente NA CONVERSA. "
+                + (f"O que JÁ se sabe (vai no resumo, não vira pergunta): {_sabido}. " if _sabido else "")
+                + REGRA_DO_RESUMO_DE_CONFIRMACAO + " Depois chame de novo com "
                 "dados_confirmados=true. ATENÇÃO: NADA foi acionado ainda — é PROIBIDO dizer ao cliente "
                 "que a seguradora foi acionada/contatada. Só afirme acionamento quando ESTA ferramenta "
                 "retornar status 'dispatched'. Assim que o cliente confirmar, chame de novo IMEDIATAMENTE "
@@ -1596,7 +1795,8 @@ class InsurerDispatchTool(BaseTool):
         if client is None:
             return {"comprovada": False, "motivo": "sem banco"}
         return await prova_da_confirmacao(client, company_id=self.company_id,
-                                          session_id=str(kwargs.get("session_id") or ""))
+                                          session_id=str(kwargs.get("session_id") or ""),
+                                          pedido=kwargs)
 
     async def _arun(self, **kwargs) -> dict:
         """Caminho LIVE: com o agente de atendimento LIGADO, cria a sessão real,
@@ -1613,7 +1813,7 @@ class InsurerDispatchTool(BaseTool):
 
         from app.services.insurer_dispatch_service import dispatch_live_enabled
 
-        kwargs = await self._resolve_vehicle_facts(dict(kwargs))
+        kwargs = com_o_telefone_da_conversa(await self._resolve_vehicle_facts(dict(kwargs)))
         base = self._run(**kwargs)
         if base.get("status") != "ready_to_send" or not dispatch_live_enabled():
             return base

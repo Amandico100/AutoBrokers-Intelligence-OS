@@ -124,6 +124,12 @@ def _load_nodes_module():
     #    harness não pode mudar o que ele mede.
     _load_file_module("app.services.policy_facts", "app/services/policy_facts.py")
     _load_file_module("app.services.policy_context", "app/services/policy_context.py")
+    # 🔴 SPEC-125 (conserto Z · regressão da bateria em c2414d2): `nodes.py` passou a
+    #    importar `app.agents.historico_da_conversa` no topo (S2). O stub de `app.agents`
+    #    nasce sem `__path__` real, e o guarda morria em ModuleNotFoundError. O módulo
+    #    REAL só importa stdlib no topo: carrega limpo, POR ARQUIVO (a mesma regra de
+    #    `honestidade_do_handoff` acima) — nada de dublê, nada muda no que se afirma.
+    _load_file_module("app.agents.historico_da_conversa", "app/agents/historico_da_conversa.py")
     return _load_file_module("app.agents.nodes", "app/agents/nodes.py")
 
 

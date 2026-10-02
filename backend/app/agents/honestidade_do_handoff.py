@@ -529,7 +529,34 @@ def guardar_a_verdade_do_handoff(resposta: str, resultados_das_tools=None) -> st
                          "pessoa" if pessoa_sem else "acionamento de outro serviço")
             return " ".join([cortado] + notas)
 
+    # 🔴 SPEC-125 CONSERTO Z · N4 do laudo de confirmação — houve acionamento REAL (o
+    #    guincho saiu) e a frase inventou OUTRO ("Também já acionei o chaveiro"): a frase
+    #    genérica ("Ainda não tenho a confirmação de que o acionamento saiu") fazia o
+    #    segurado ler que o GUINCHO não saiu. Diz-se o que de fato saiu e o resto não.
+    if acionados and not pessoa_sem:
+        # a FRASE inteira sai (não só a oração): "…acionei o chaveiro, chega em 40 min" —
+        # o "chega em 40 min" é do chaveiro inventado, e ficaria como promessa solta.
+        trechos = [a.span() for a in acion_sem]
+        sobra = " ".join(f.group(0).strip() for f in _RX_FRASE.finditer(texto)
+                         if not any(i < f.end() and j > f.start() for i, j in trechos)).strip()
+        partes = [sobra] if sobra and not _AFIRMACOES_DE_TRANSFERENCIA.search(sobra) else []
+        logger.error("[HANDOFF] 🔴 acionamento de outro serviço sem âncora — mantido o "
+                     "acionamento real (%s), retirada a parte inventada",
+                     ",".join(sorted(acionados)))
+        return " ".join([frase_do_que_saiu(acionados)] + partes
+                        + [NOTA_DO_ACIONAMENTO_SEM_CONFIRMACAO])
+
     logger.error(
         "[HANDOFF] 🔴 resposta afirmava %s SEM confirmação — reescrita. Trecho: %r",
         "transferência" if pessoa_sem else "acionamento", texto[:160])
     return RESPOSTA_HONESTA if pessoa_sem else RESPOSTA_HONESTA_DO_ACIONAMENTO
+
+
+def frase_do_que_saiu(acionados: set) -> str:
+    """A frase com o que o carimbo PROVA que saiu (N4). **PURA.** Sem verbo de
+    transferência no passado (o fiscal não a reescreve; o guarda confere)."""
+    nomes = sorted(s.replace("_", " ") for s in (acionados or set()) if s != _QUALQUER)
+    if not nomes:
+        return "O pedido que eu confirmei com a seguradora continua valendo."
+    lista = nomes[0] if len(nomes) == 1 else ", ".join(nomes[:-1]) + " e " + nomes[-1]
+    return "O pedido de %s com a seguradora está confirmado." % lista

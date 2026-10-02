@@ -122,7 +122,12 @@ def test_acionamento_real_do_portal_passa_intacto(frase, job):
 
 def test_o_portal_nao_sustenta_o_guincho():
     frase = "Pronto, acionei o guincho pela Porto."
-    assert H.guardar_a_verdade_do_handoff(frase, [_portal(PORTAL_ABERTO)]) ==         H.RESPOSTA_HONESTA_DO_ACIONAMENTO
+    # 🔴 §9.3 — migrado no CONSERTO Z (N4 do laudo de confirmação): o portal de VIDROS saiu
+    #    de verdade; o guincho inventado sai da frase, e a reescrita diz o que saiu (antes:
+    #    "ainda não tenho a confirmação de que o acionamento saiu", que desmentia o vidro).
+    saida = H.guardar_a_verdade_do_handoff(frase, [_portal(PORTAL_ABERTO)])
+    assert "guincho" not in saida and H.frase_do_que_saiu({"vidros"}) in saida
+    assert H.NOTA_DO_ACIONAMENTO_SEM_CONFIRMACAO in saida
 
 
 def test_acionamento_de_um_turno_anterior_do_mesmo_caso_vale():

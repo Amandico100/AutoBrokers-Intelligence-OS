@@ -605,9 +605,24 @@ _ROTULO_DE_OUTRO_NUMERO = re.compile(
     r"renavam|chassi|placa|boleto|c[oó]digo|n[uú]mero do)\b", re.IGNORECASE)
 
 
+#: 🔴 SPEC-125 CONSERTO Z · N3 do laudo de confirmação — o rótulo que vem DEPOIS do número,
+#:    colado nele: "O número 12345678909 é o seu protocolo." era mascarado ("final 8909")
+#:    e o protocolo, que é T6 (sai EXATO), chegava errado. 📊 ~1 % dos números de 11 dígitos
+#:    fecham o DV de CPF (laudo, 181/20.000). ⚠️ Só a forma que DIZ o que o número é
+#:    ("X é o seu protocolo", "X (protocolo)", "X — protocolo da seguradora"): "o 529… está
+#:    certo para abrir o pedido?" NÃO desmascara (o "pedido" ali não rotula o número).
+_ROTULO_DEPOIS_DO_NUMERO = re.compile(
+    r"^\s*[-–—:(,]?\s*(?:(?:e|é|eh|era|sera|será|foi|fica|como)\s+)?(?:(?:o|a)\s+)?"
+    r"(?:(?:seu|sua|nosso|nossa)\s+)?(?:n[uú]mero\s+d[oae]\s+)?"
+    r"(?:protocolo|atendimento|assist[eê]ncia|ordem de servi[cç]o|os|pedido|chamado|sinistro|"
+    r"senha|ap[oó]lice|renavam|chassi|boleto|c[oó]digo)\b", re.IGNORECASE)
+
+
 def _rotulado_como_outro_numero(s: str, inicio: int, fim: int) -> bool:
     antes = re.split(r"[\d\n]", s[max(0, inicio - _JANELA_DO_ROTULO):inicio])[-1]
     if _ROTULO_DE_OUTRO_NUMERO.search(antes):
+        return True
+    if _ROTULO_DEPOIS_DO_NUMERO.search(s[fim:fim + _JANELA_DO_ROTULO].replace("*", "")):
         return True
     return _dito_como_telefone(s, inicio, fim)
 

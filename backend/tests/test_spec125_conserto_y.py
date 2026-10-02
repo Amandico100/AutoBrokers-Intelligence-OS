@@ -290,15 +290,18 @@ def test_y2_frase_mista_guarda_o_acionamento_real():
 def test_y2_o_carimbo_vale_so_para_o_servico_acionado():
     """🔴 RT B4: "também acionei o chaveiro" com o carimbo do GUINCHO passava intacta."""
     frase = "Também já acionei o chaveiro, chega em 40 min."
-    assert H.guardar_a_verdade_do_handoff(frase, [_carimbo("guincho")]) == \
-        H.RESPOSTA_HONESTA_DO_ACIONAMENTO
+    # 🔴 §9.3 — migrado no CONSERTO Z (N4 do laudo de confirmação): a frase do chaveiro
+    #    inventado continua SAINDO, mas a reescrita não diz mais "o acionamento não saiu" —
+    #    o guincho saiu de verdade, e é ele que a resposta confirma.
+    reescrita = H.guardar_a_verdade_do_handoff(frase, [_carimbo("guincho")])
+    assert "chaveiro" not in reescrita and H.frase_do_que_saiu({"guincho"}) in reescrita
     # CONTROLE: o carimbo do CHAVEIRO a sustenta
     assert H.guardar_a_verdade_do_handoff(frase, [_carimbo("chaveiro")]) == frase
     # e o serviço sai da CHAMADA pareada quando o resultado é antigo (sem a linha)
     chamada = AIMessage(content="", tool_calls=[{"id": "t1", "name": "insurer_dispatch",
                                                   "args": {"subservice": "guincho"}}])
-    assert H.guardar_a_verdade_do_handoff(frase, [chamada, _carimbo()]) == \
-        H.RESPOSTA_HONESTA_DO_ACIONAMENTO
+    reescrita = H.guardar_a_verdade_do_handoff(frase, [chamada, _carimbo()])
+    assert "chaveiro" not in reescrita and H.frase_do_que_saiu({"guincho"}) in reescrita
     # mista: o guincho fica, o chaveiro sai
     mista = H.guardar_a_verdade_do_handoff(
         "Acionei o guincho e também acionei o chaveiro.", [_carimbo("guincho")])

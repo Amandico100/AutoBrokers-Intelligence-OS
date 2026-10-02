@@ -388,7 +388,33 @@ _NAO_E_PESSOA = frozenset({
     "renovacao", "porto", "azul", "allianz", "bradesco", "sulamerica", "tokio", "hdi", "mapfre",
     "liberty", "yelum", "zurich", "sompo", "itau", "mitsui", "suhai", "youse", "justos", "aliro",
     "alfa", "sancor", "essor", "akad", "caixa", "unimed", "pier", "darwin", "ezze", "meu", "minha",
-    "seu", "sua", "nosso", "nossa", "dela", "dele", "qual", "que"})
+    "seu", "sua", "nosso", "nossa", "dela", "dele", "qual", "que"}) | frozenset({
+    # 🔴 SPEC-125 CONSERTO Z · N2 do laudo de confirmação — COISA, VEÍCULO e ÓRGÃO não são
+    #    gente. 📊 "preciso da apolice do onix", "documento do detran", "cadastro do app"
+    #    recusavam o PRÓPRIO titular como terceiro (02/10: 78 casamentos da régua em
+    #    `messages`, 1 com objeto fora da lista). constante_justificada: o documento do bem,
+    #    do órgão e do sistema — nenhuma destas palavras é nome de pessoa em português.
+    "detran", "app", "aplicativo", "site", "portal", "vistoria", "placa", "crlv", "crv", "renavam",
+    "chassi", "conta", "cartao", "boleto", "ipva", "licenciamento", "multa", "financiamento",
+    "financeira", "leasing", "consorcio", "oficina", "concessionaria", "locadora", "prefeitura",
+    "receita", "governo", "inss", "sus", "hospital", "escola", "faculdade", "trabalho", "servico",
+    "assistencia", "reboque", "chaveiro", "vidro", "parabrisa", "pneu", "bateria", "motor",
+    "suv", "picape", "pickup", "van", "onibus", "bike", "bicicleta", "patinete", "barco", "lancha",
+    "jetski", "trator", "reboquinho", "carreta",
+    # as marcas e os modelos mais rodados no país (o bem segurado do auto)
+    "chevrolet", "gm", "volkswagen", "vw", "fiat", "ford", "toyota", "honda", "hyundai", "renault",
+    "nissan", "jeep", "peugeot", "citroen", "mitsubishi", "kia", "byd", "caoa", "chery", "bmw",
+    "audi", "mercedes", "volvo", "land", "porsche", "ram", "suzuki", "yamaha", "dafra", "shineray",
+    "onix", "prisma", "cruze", "tracker", "spin", "s10", "montana", "celta", "corsa", "cobalt",
+    "gol", "polo", "virtus", "voyage", "fox", "up", "saveiro", "amarok", "tcross", "nivus", "taos",
+    "jetta", "golf", "uno", "palio", "mobi", "argo", "cronos", "strada", "toro", "pulse", "fastback",
+    "siena", "punto", "doblo", "fiorino", "ka", "fiesta", "ecosport", "ranger", "focus", "territory",
+    "corolla", "etios", "yaris", "hilux", "sw4", "rav4", "civic", "fit", "city", "hrv", "wrv", "crv",
+    "hb20", "creta", "tucson", "ix35", "santa", "sandero", "logan", "duster", "kwid", "captur",
+    "oroch", "kicks", "versa", "sentra", "frontier", "march", "renegade", "compass", "commander",
+    "208", "2008", "3008", "c3", "c4", "l200", "pajero", "asx", "outlander", "sportage", "cerato",
+    "dolphin", "song", "seal", "tiggo", "biz", "titan", "fan", "cg", "fazer", "lander", "pcx", "xre",
+    "factor", "nmax", "bros", "twister", "hornet", "cb", "xj6", "mt"})
 #: 🔴 X3 (juiz B3): ELE diz que o seguro É DELE — desmente o "carro é da minha esposa" e o nome.
 #: ⚠️ "não sou o titular" não casa (lookbehind do "nao ").
 _RX_O_SEGURO_E_MEU = re.compile(
