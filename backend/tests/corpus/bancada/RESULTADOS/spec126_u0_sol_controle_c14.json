@@ -1,0 +1,241 @@
+{
+ "grupo_bancada": "581955de-5555-4653-b638-d23ef0dc7ae6",
+ "papel": "conversa",
+ "nivel": "N3",
+ "k": 1,
+ "teto_usd": 2.5,
+ "gasto_usd": 0.0754361,
+ "parada": null,
+ "recusados": [],
+ "bracos": {
+  "openai:gpt-6.1-sol:high": {
+   "tentativas": 1,
+   "casos": 1,
+   "pass": 1,
+   "fail": 0,
+   "partial": 0,
+   "blocked_by_infra": 0,
+   "pass_at_1": 1.0,
+   "pass_hat_k": 1.0,
+   "pass_hat_k_critico": null,
+   "custo_total_usd": 0.075436,
+   "custo_por_sucesso": 0.075436,
+   "latencia_p50_ms": 61734,
+   "latencia_p95_ms": 61734,
+   "acerto_de_tool": null,
+   "acerto_de_args": null,
+   "validade_estrutural": null,
+   "efeitos_duplicados": 0,
+   "recuperacao_apos_falha": null
+  }
+ },
+ "resultados": [
+  {
+   "chave": "conv-c14-controle-bom-dia",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": false,
+   "custo_usd": 0.0754361,
+   "tokens": {
+    "in": 29631,
+    "out": 128,
+    "cache_read": 0,
+    "cache_write": 29625,
+    "raciocinio": 86,
+    "segunda": {
+     "in": 276,
+     "out": 108,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 35
+    }
+   },
+   "latencia_ms": 61734,
+   "rastro": {
+    "tool_calls": [],
+    "efeitos": [],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 2,
+    "chamadas_tentadas": 2,
+    "esperas_429": 0,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "acc0ee4d2e96",
+     "e5ba86e5ae01"
+    ],
+    "tools_hashes": [
+     "d694f8d73df4"
+    ],
+    "notas": [],
+    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Beta. Como posso ajudar?\nSem problema! Se precisar, é só chamar 🙂",
+    "estado": {
+     "transcricao": [
+      {
+       "turno": 1,
+       "origem": "fixa",
+       "segurado": [
+        "Bom dia"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "Bom dia",
+       "agente": "Oi! Aqui é a Clara, assistente virtual da Corretora Beta. Como posso ajudar?",
+       "baloes": 1,
+       "ms": 12475,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 2,
+       "origem": "fixa",
+       "segurado": [
+        "ops mandei sem querer, era so isso, obrigado"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "ops mandei sem querer, era so isso, obrigado",
+       "agente": "Sem problema! Se precisar, é só chamar 🙂",
+       "baloes": 1,
+       "ms": 5585,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      }
+     ],
+     "juiz_llm": {
+      "nota": 1.0,
+      "passou": true,
+      "errados": [],
+      "tom_humano": 5,
+      "entendeu_o_obvio": 5,
+      "resumo": "tom 5/5 · entendeu 5/5 · errados — · Respondeu de forma curta e cordial, sem fazer perguntas desnecessárias.",
+      "bruto": {
+       "criterios": [
+        {
+         "id": "c1",
+         "veredito": "certo",
+         "trecho": "Sem problema! Se precisar, é só chamar 🙂"
+        }
+       ],
+       "tom_humano": 5,
+       "entendeu_o_obvio": 5,
+       "comentario": "Respondeu de forma curta e cordial, sem fazer perguntas desnecessárias."
+      },
+      "custo_usd": 8.16e-05
+     },
+     "sessao_formato": "whatsapp:<fone>:<empresa>:<agente>",
+     "resumos_agendados": [],
+     "custo_segurado_usd": 0.0,
+     "prompt_versao_da_linha": "v2",
+     "prompt_hashes": [
+      "acc0ee4d2e96",
+      "e5ba86e5ae01"
+     ]
+    },
+    "segunda": {
+     "braco": "openai:gpt-6-luna:low",
+     "chamadas": 1,
+     "custo_usd": 8.16e-05,
+     "tokens": {
+      "in": 276,
+      "out": 108,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 35
+     },
+     "modelos_reais": [
+      "gpt-6-luna"
+     ]
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "efeitos_exatos",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "efeitos exatos"
+    },
+    {
+     "evaluator_slug": "perguntou_o_que_ja_sabia",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum pedido de fato já conhecido"
+    },
+    {
+     "evaluator_slug": "pediu_dado_da_apolice",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não pediu dado da apólice/cadastro"
+    },
+    {
+     "evaluator_slug": "repetiu_pergunta",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhuma pergunta repetida"
+    },
+    {
+     "evaluator_slug": "pessoa_na_regra",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não chamou pessoa sem regra"
+    },
+    {
+     "evaluator_slug": "sem_protocolo_inventado",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum protocolo fora do que as ferramentas devolveram"
+    },
+    {
+     "evaluator_slug": "baloes_por_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "até 1 balão(ões) por turno (teto 4); nas rajadas: — — uma resposta por rajada"
+    },
+    {
+     "evaluator_slug": "respondeu_todo_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "respondeu todo turno"
+    },
+    {
+     "evaluator_slug": "sem_ferramenta",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhuma ferramenta"
+    },
+    {
+     "evaluator_slug": "acionou_sem_confirmar",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum acionamento sem o sim do segurado"
+    },
+    {
+     "evaluator_slug": "juiz_llm",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "tom 5/5 · entendeu 5/5 · errados — · Respondeu de forma curta e cordial, sem fazer perguntas desnecessárias."
+    }
+   ],
+   "erro": null
+  }
+ ],
+ "runs": [],
+ "arquivo": null
+}
