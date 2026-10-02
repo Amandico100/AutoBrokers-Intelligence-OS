@@ -12946,10 +12946,25 @@ Posso acionar?" de primeira. **O que destrava:** o prompt v2 ensina o resumo no 
 O bloco "QUANDO ELE COBRA" (Z3) aparece no Sol (responde o estado), não na Luna. **O que destrava:** medir no Sol (P-125-01); se
 a Luna for usada em algum papel do atendimento, regra em código para "cobrança do estado". **Custa esquecer:** cobrança simples
 vira trabalho de atendente.
+🟡 **02/10 (endurecimento): a causa em CÓDIGO consertada; falta a prova com LLM.** No caso JÁ ACIONADO (protocolo ou
+`dispatch_state` na ficha) a segunda chance da SPEC-123 era pulada SEMPRE ("a R9 decide") sem perguntar à R9: agora
+`human_handoff._a_r9_manda_a_pessoa` classifica as últimas falas (`classificar_turno`) e só vai direto o que a R9 manda
+(K1/K2/K3/J/L/P/Z + F/B/E) ou quando não há fala. 📊 A fala do C8 sai `N`. Na bancada não aparecia (a ferramenta de pessoa
+é dublê). E o v2 de ACOMPANHAR ("AJA (ferramenta na mesma resposta)") virou "a ferramenta que AVANÇA; 'cadê o guincho?' →
+estado + oferta". Teste `test_spec125_endurecimento.py` (motivos GRAVADOS da Z; mutação → 3 failed). **Falta:** rerodar C8
+com LLM (Luna k=2 e Sol), 💭 ≈ US$ 0,10.
 
 ## P-125-04 · 🤖 A apresentação aparece no 2º turno
 📊 Sol C1 (depois de `request_human_agent`) e Sol C4 (sem pessoa) se apresentam de novo. **O que destrava:** a marca de
 "apresentado" sobreviver ao handoff e à retenção. **Custa esquecer:** o segurado lê "Oi, aqui é a assistente…" no meio do caso.
+🟡 **02/10 (endurecimento): a CAUSA era outra, e está consertada em código; falta a prova com LLM.** `invoke_agent` entrega
+só o texto do ÚLTIMO `AIMessage`: o que o modelo escreve JUNTO da chamada de ferramenta se perdia. 📊 Nos JSON do Sol
+(DEPOIS v1/v2 e Z), TODO 1º turno com ferramenta saiu sem apresentação, e o motivo do handoff dizia "Orientado a…" sobre um
+texto que não saiu (C10 fumaça: "sair da residência… ligar 193" no motivo; "as orientações que te passei" na resposta, sem
+elas). Como só conta a apresentação que SAIU (J5), o turno 2 pedia de novo. Agora `nodes.com_o_que_foi_dito_antes_da_ferramenta`
+junta o texto de antes da ferramenta (só no atendimento, só do turno corrente, sem repetir) ANTES de todos os fiscais
+(honestidade, repetição, tamanho, T19). A bancada passou a confirmar a apresentação como o webhook (passo 9). Mutação → 2 failed.
+**Falta:** rerodar Sol C1/C4/C7/C10/C15 com LLM (P-125-01) — e conferir o tom de "duas falas juntas" no WhatsApp.
 
 ## P-125-05 · 🤖 Custo por conversa +80 % (Luna) e +38 % (Sol) contra o DEPOIS
 📊 Luna 0,00344 → 0,00618 US$ por conversa; Sol v2 0,0940 → 0,1295. Causas: turnos a mais e chamadas recusadas pelo portão; o
@@ -12992,6 +13007,8 @@ O DO desfeito do arquivo (cria corretora+agente de teste, confere, desfaz) foi r
 só por SELECT: o corpo da função = o arquivo (md5), a guarda do UPDATE presente, `cerebro_modos` 40/0 não-on. **O que destrava:**
 🧑 rodar o bloco "VERIFY V2" do arquivo no SQL Editor (ele termina em `raise exception` e desfaz tudo), ou 🤖 numa branch do
 Supabase. **Custa esquecer:** a corretora nova pode nascer sem o destravador, e ninguém sabe até ela chamar pessoa demais.
+🔴 **02/10 (endurecimento): segue ABERTA.** O bloco do S125.4 (`TAREFAS-DO-FOUNDER.md`) foi mandado de novo pelo
+`execute_sql` e a ferramenta devolveu `{"status":"declined"}` (escrita recusada; nada rodou). Continua com o 🧑 no SQL Editor.
 
 ## P-125-12 · 🤖 O gatilho D9 herda o `on` de QUALQUER corretora
 Liga em toda corretora nova as seguradoras que estão `on` em alguma corretora (`select distinct … where modo='on'`): um piloto
@@ -13009,6 +13026,11 @@ o caso C16 volta por uma frase que a regex não conhece.
 O S6 mexeu em `app/` (tela e rotas do diário/placar). 📊 `npm run test:rotas-montam` (02/10) → A TABELA DE ROTAS MONTA (307).
 **O que destrava:** `npm run build && npm start` + GET da tela do diário num worktree, ou o Implantar do `smith-web` com a tela
 aberta (T-86). **Custa esquecer:** uma tela que compila e não responde.
+✅ **FECHADA 02/10 (endurecimento).** Nesta árvore: `npm run test:rotas-montam` → A TABELA DE ROTAS MONTA (307) · `npx next
+build` → EXIT 0 (a 1ª tentativa morreu no "Checking validity of types" com `worker exited with code 3221225794` = falta de
+recurso do Windows com o build e os testes juntos; a 2ª passou) · `npx next start -p 3125` → `✓ Ready in 25.2s` ·
+`GET /api/dashboard/decisoes` → **401** `{"error":"Nao autorizado"}` · `GET /api/auth/me` → **200** `{"user":null}` ·
+`POST /api/auth/login {}` → **400** `{"error":"Email e senha são obrigatórios"}` · servidor derrubado (porta 3125 livre).
 
 ## P-125-15 · 🤖 O ajuste ZN e o conserto do C3 t2 não passaram por juiz fresco
 `3f570a9` (sim com complemento neutro; CPF em lista nunca sai inteiro; resposta em duas mensagens; "quer que eu confirme se
