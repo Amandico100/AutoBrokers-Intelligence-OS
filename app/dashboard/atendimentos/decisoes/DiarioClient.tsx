@@ -21,6 +21,8 @@ import { DetailHeader } from '@/components/patterns';
 import { icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
+import PlacarDoDiario, { type Placar } from './PlacarDoDiario';
+
 interface Decisao {
   id: string;
   quando: string;
@@ -34,6 +36,10 @@ interface Decisao {
   frase: string;
   tela: string;
   valor: string;
+  /** SPEC-125 S6 — o texto inteiro, sem máscara (só a corretora dona recebe). */
+  tela_completa: string | null;
+  valor_completo: string | null;
+  momento: string | null;
   segunda_opiniao_concordou: boolean | null;
   resultado: string;
   veredito: 'certo' | 'errado' | null;
@@ -46,6 +52,8 @@ interface Payload {
   items: Decisao[];
   cursor: string | null;
   has_more: boolean;
+  placar?: Placar | null;
+  modos?: Record<string, string>;
 }
 
 const VEREDITOS = [
@@ -88,6 +96,11 @@ const O_QUE_ACONTECEU: Record<string, string> = {
   seguradora_recusou: 'Depois disso, a seguradora recusou o pedido.',
   humano_corrigiu: 'Depois disso, uma pessoa da corretora corrigiu o rumo.',
   ura_fechou: 'Depois disso, a central da seguradora encerrou a conversa.',
+  // SPEC-125 S6 — os sinais de erro leve da conversa (fecham a linha sozinhos)
+  segurado_corrigiu: 'Logo depois, o segurado corrigiu o agente.',
+  segurado_repetiu: 'Logo depois, o segurado precisou repetir o que já tinha dito.',
+  segurado_pediu_pessoa: 'Logo depois, o segurado pediu para falar com uma pessoa.',
+  agente_repetiu_pergunta: 'Logo depois, o agente repetiu uma pergunta já respondida.',
 };
 
 function nomeDaSeguradora(chave: string): string {
@@ -122,6 +135,8 @@ export default function DiarioClient() {
   const [seguradora, setSeguradora] = useState('');
   const [seguradorasVistas, setSeguradorasVistas] = useState<string[]>([]);
   const [tentativa, setTentativa] = useState(0);
+  const [placar, setPlacar] = useState<Placar | null>(null);
+  const [modos, setModos] = useState<Record<string, string>>({});
   const pedido = useRef(0);
 
   const url = useCallback(
@@ -152,6 +167,7 @@ export default function DiarioClient() {
         setItems(j.items || []);
         setCursor(j.cursor);
         setTemMais(Boolean(j.has_more));
+        if (j.placar) { setPlacar(j.placar); setModos(j.modos || {}); }
         setSeguradorasVistas((antes) => Array.from(new Set([...antes, ...(j.items || []).map((i) => i.seguradora).filter(Boolean)])).sort());
       } catch {
         if (pedido.current === meu) { setErro(true); setItems([]); }
@@ -190,6 +206,10 @@ export default function DiarioClient() {
             { label: 'Decisões do agente' },
           ]}
         />
+
+        {placar && (
+          <PlacarDoDiario placar={placar} modos={modos} podePausar onPausada={() => setTentativa((t) => t + 1)} />
+        )}
 
         {/* 📱 Os filtros GRUDAM no topo (o mesmo desenho de Casos). */}
         <div className="sticky top-0 z-20 -mx-4 mt-4 space-y-2 bg-background/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
@@ -368,18 +388,21 @@ function LinhaDaDecisao({ d, onAvaliada, onConflito }: {
       <p className="mt-2 text-sm leading-relaxed text-foreground">{semMarcas(d.frase)}</p>
       <p className="mt-1.5 text-xs text-muted-foreground">{O_QUE_ACONTECEU[d.resultado] || ''}</p>
 
-      {d.tela && (
+      {(d.tela_completa || d.tela) && (
         <button
           onClick={() => setVerTela((v) => !v)}
           className="mt-2 text-xs font-medium text-primary hover:underline"
           aria-expanded={verTela}
         >
-          {verTela ? 'Esconder a mensagem da seguradora' : 'Ver a mensagem da seguradora'}
+          {verTela
+            ? 'Esconder a mensagem completa'
+            : d.momento ? 'Ver o que o segurado escreveu' : 'Ver a mensagem da seguradora'}
         </button>
       )}
       {verTela && (
         <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-surface-2/40 p-3 font-sans text-xs text-foreground">
-          {semMarcas(d.tela)}
+          {d.tela_completa || semMarcas(d.tela)}
+          {d.valor_completo && d.momento ? `\n\nO agente: ${d.valor_completo}` : ''}
         </pre>
       )}
 

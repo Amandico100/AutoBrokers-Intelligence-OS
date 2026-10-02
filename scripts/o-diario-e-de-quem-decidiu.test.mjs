@@ -111,6 +111,8 @@ function resolvedor({ supabase, sessao, master, proxy }) {
     if (id === '@/lib/vault/server') {
       return { resolveSessionCompany: async () => sessao, getSupabaseAdmin: () => supabase };
     }
+    if (id === '@/lib/diario/placar') return carregarTS('lib/diario/placar.ts', r);   // SPEC-125 S6: o placar REAL
+    if (id === '@/lib/logger') return { logSystemAction: async () => {} };
     if (id === '@/lib/admin-proxy') return { authenticatedProxy: proxy || (async () => NextResponseFalsa.json({ proxy: true })) };
     if (id === '@/lib/admin/admin-auth' && master !== undefined) {
       // o módulo REAL, com só `requireMasterAdmin` trocado pela sessão do teste

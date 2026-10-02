@@ -8,6 +8,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import PlacarDoDiario, { type Placar } from '@/app/dashboard/atendimentos/decisoes/PlacarDoDiario';
+
 type Linha = {
   id: string; company_id: string; corretora: string; created_at: string; seguradora: string; ramo: string;
   classe: string; acao: string; nota: number | null; modo: string; explicacao_para_gente: string;
@@ -44,6 +46,7 @@ export default function AdminDecisoesPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [placar, setPlacar] = useState<Placar | null>(null);
 
   const carregar = useCallback(async () => {
     setLinhas(null);
@@ -53,6 +56,7 @@ export default function AdminDecisoesPage() {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setErro(d?.error || 'Não conseguimos carregar o diário agora.'); setLinhas([]); return; }
       setLinhas(d.items || []);
+      if (d.placar) setPlacar(d.placar);
     } catch {
       setErro('Não conseguimos carregar o diário agora. Tente novamente em instantes.');
       setLinhas([]);
@@ -86,6 +90,9 @@ export default function AdminDecisoesPage() {
       <div style={{ fontSize: 12.5, color: '#7C8798', marginTop: 4 }}>
         O que o agente decidiu sozinho para destravar atendimentos, em todas as corretoras — e o que cada corretora disse.
       </div>
+
+      {/* SPEC-125 S6 — o placar de TODAS as corretoras (o master não pausa daqui: a pausa é da corretora dona). */}
+      {placar && <PlacarDoDiario placar={placar} />}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
         {VEREDITOS.map((v) => (

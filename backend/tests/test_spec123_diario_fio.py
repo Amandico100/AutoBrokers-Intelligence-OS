@@ -260,8 +260,9 @@ def test_as_listas_batem_com_o_banco(banco):
         achados = set(re.findall(r"'(\w+)'::text", defs[nome]))
         assert achados == set(lista), (nome, achados, lista)
     achados = set(re.findall(r"'(\w+)'::text", defs["ck_diario_resultado"]))
-    assert achados == {"pendente", *D.RESULTADOS_FINAIS}, achados
-    assert len(defs) == 16, sorted(defs)
+    # SPEC-125 S6: os sinais de erro leve da conversa entraram na mesma lista (migration 20261001_05)
+    assert achados == {"pendente", *D.RESULTADOS_FINAIS, *D.SINAIS_DE_ERRO_LEVE}, achados
+    assert len(defs) == 18, sorted(defs)        # 16 da SPEC-123 + ck_diario_momento(_e_da_conversa) da SPEC-125
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -302,7 +303,11 @@ def test_o_fio_do_diario(banco, monkeypatch, tmp_path):
     diario = mundo.rows("diario_de_decisoes")
     assert len(diario) == 2, len(diario)
     la = next(l for l in diario if l["id"] == id_a)
-    texto = json.dumps(la, ensure_ascii=False)
+    # SPEC-125 S6 (ordem do Founder): o texto COMPLETO mora SÓ em `tela_completa`/`valor_completo`
+    # (a corretora dona lê); TODA outra coluna continua mascarada — a lição migra, não morre (§9.3).
+    assert "XYZ1A23" in la["tela_completa"]
+    texto = json.dumps({k: v for k, v in la.items() if k not in ("tela_completa", "valor_completo")},
+                       ensure_ascii=False)
     assert "XYZ1A23" not in texto and "Marcelino" not in texto and "Tavares" not in texto, texto
     assert la["company_id"] == A and la["work_run_id"] == run_a and la["tela_hash"]
     assert "Porto Seguro" in la["explicacao_para_gente"] and not re.search(r"\w+_\w+|\{[A-Z]",

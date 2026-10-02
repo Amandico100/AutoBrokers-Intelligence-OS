@@ -15,12 +15,14 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { requireMasterAdmin, assertSameOrigin } from '@/lib/admin/admin-auth';
 import { authenticatedProxy } from '@/lib/admin-proxy';
+import { calcularPlacar, COLUNAS_DO_PLACAR } from '@/lib/diario/placar';
 
 export const dynamic = 'force-dynamic';
 
 const SELECT =
   'id, company_id, created_at, seguradora, ramo, classe, acao, nota, modo, explicacao_para_gente, ' +
-  'resultado, veredito, o_certo_era, sugere_regra, veredito_em, virou_caso_em, caso_chave, carta_rascunho_id';
+  'resultado, veredito, o_certo_era, sugere_regra, veredito_em, virou_caso_em, caso_chave, carta_rascunho_id, ' +
+  'momento, tela_completa, valor_completo';
 const CLASSES = ['conduzir', 'responder_com_dado', 'deduzir', 'perguntar_ao_segurado', 'nunca_sozinho'];
 const FAIXAS: Record<string, [number, number]> = { '70-80': [70, 79], '80-90': [80, 89], '90-100': [90, 100] };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -65,7 +67,20 @@ export async function GET(req: NextRequest) {
     const { data: empresas } = await auth.supabase.from('companies').select('id, company_name').in('id', ids);
     for (const e of (empresas || []) as any[]) nomes[String(e.id)] = String(e.company_name || '');
   }
+  // SPEC-125 S6 — o PLACAR do master: todas as corretoras, ou a escolhida (`company_id`).
+  let placar = null;
+  if (!cursor) {
+    let qp = auth.supabase
+      .from('diario_de_decisoes')
+      .select(COLUNAS_DO_PLACAR)
+      .gte('created_at', new Date(Date.now() - 30 * 86_400_000).toISOString())
+      .limit(20000);
+    if (UUID.test(empresa)) qp = qp.eq('company_id', empresa);
+    const { data: doPlacar } = await qp;
+    placar = calcularPlacar((doPlacar || []) as any[], new Date(), 30);
+  }
   return NextResponse.json({
+    placar,
     items: pagina.map((l) => ({ ...l, corretora: nomes[String(l.company_id)] || '' })),
     cursor: temMais ? pagina[pagina.length - 1]?.created_at ?? null : null,
     has_more: temMais,

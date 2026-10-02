@@ -42,9 +42,29 @@ ORIGENS = ("acionamento", "atendimento", "portal")
 CLASSES = ("conduzir", "responder_com_dado", "deduzir", "perguntar_ao_segurado", "nunca_sozinho")
 #: SPEC-124 F1: `respondeu_portal` — o destravador continuou o MESMO pedido do portal de vidros com um dado
 #: do caso (migration 20261001_04, `ck_diario_acao`). A lista é a do CHECK do banco, na mesma ordem.
-ACOES = ("respondeu_ura", "perguntou_segurado", "chamou_pessoa", "nao_agiu", "respondeu_portal")
+#: SPEC-125 S6: `respondeu_segurado` — o agente de ATENDIMENTO respondeu sozinho ao segurado
+#: (migration 20261001_05, `ck_diario_acao`).
+ACOES = ("respondeu_ura", "perguntou_segurado", "chamou_pessoa", "nao_agiu", "respondeu_portal",
+         "respondeu_segurado")
 MODOS = ("on", "sombra")
 RESULTADOS_FINAIS = ("protocolo_saiu", "seguradora_recusou", "humano_corrigiu", "ura_fechou")
+#: SPEC-125 D7 — os sinais de ERRO LEVE da conversa: chegam sozinhos logo depois de um julgamento e
+#: fecham a linha (`fechar_como_erro_leve`). Mesma lista do `ck_diario_resultado` (migration 20261001_05).
+SINAIS_DE_ERRO_LEVE = ("segurado_corrigiu", "segurado_repetiu", "segurado_pediu_pessoa",
+                       "agente_repetiu_pergunta")
+
+#: SPEC-125 D7 — os QUATRO momentos de julgamento do agente de atendimento (e só eles: o diário não
+#: é uma linha por mensagem). Cada momento → (classe da política, ação). 🔴 Por quê, um por um:
+#:   deduziu            → `deduzir`: tirou um dado do que o segurado disse em vez de perguntar;
+#:   respondeu_regra    → `responder_com_dado`: respondeu cobertura/regra com a FONTE (apólice ou carta);
+#:   nao_chamou_pessoa  → `conduzir`: seguiu conduzindo a conversa onde a regra antiga mandava a uma pessoa;
+#:   chamou_pessoa      → `nunca_sozinho` + `chamou_pessoa`: o grave (sinistro, risco, pedido…) foi a pessoa.
+MOMENTOS = {
+    "deduziu": ("deduzir", "respondeu_segurado"),
+    "respondeu_regra": ("responder_com_dado", "respondeu_segurado"),
+    "nao_chamou_pessoa": ("conduzir", "respondeu_segurado"),
+    "chamou_pessoa": ("nunca_sozinho", "chamou_pessoa"),
+}
 
 #: Status da carta que nasce do diário. ⛔ NUNCA `pending_review`: esse status é
 #: PUBLICADO SOZINHO por `curadoria_cartas.publicar_lote_sync` (o destilador).
@@ -281,6 +301,9 @@ async def _registrar(**k: Any) -> Optional[str]:
         if valor not in lista:
             logger.warning("[DIARIO] %s fora da lista (%r) — não registrado", nome, valor[:40])
             return None
+    if k.get("momento") and (origem != "atendimento" or k["momento"] not in MOMENTOS):
+        logger.warning("[DIARIO] momento %r fora da conversa/lista — não registrado", str(k["momento"])[:40])
+        return None
     if modo == "sombra" and acao != "nao_agiu":
         # Em sombra nada saiu: a linha que diz "respondeu" mentiria (CHECK ck_diario_sombra_nao_agiu).
         acao = "nao_agiu"
@@ -315,7 +338,13 @@ async def _registrar(**k: Any) -> Optional[str]:
         "tela_mascarada": tela_m, "classe": classe, "acao": acao, "valor_mascarado": valor_m,
         "nota": nota, "limiar": limiar, "motivo": motivo_m, "explicacao_para_gente": frase,
         "modelo": str(k.get("modelo") or "")[:80], "segunda_opiniao": segunda, "modo": modo,
+        # SPEC-125 S6 — o texto COMPLETO, para a corretora dona ler (ordem do Founder, 01/10).
+        # ⛔ Só a tela do diário o lê; log, evento, bancada e carta usam as colunas mascaradas.
+        "tela_completa": tela[:_TETO_TELA] or None,
+        "valor_completo": str(k.get("valor") or "")[:_TETO_VALOR] or None,
     }
+    if k.get("momento"):
+        linha["momento"] = str(k["momento"])
 
     db = await _cliente()
     if db is None:
@@ -454,3 +483,111 @@ def propor_carta_sync(diario_id: str, *, db: Any = None) -> Dict[str, Any]:
      .eq("id", str(linha["id"])).eq("company_id", str(linha["company_id"]))
      .is_("carta_rascunho_id", "null").execute())
     return {"ok": True, "carta_id": carta_id, "motivo": motivo}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SPEC-125 S6 — o diário da CONVERSA (só os momentos de julgamento, D7)
+# ─────────────────────────────────────────────────────────────────────────────
+def _trecho(texto: str, teto: int = 160) -> str:
+    t = " ".join(str(texto or "").split())
+    return t if len(t) <= teto else t[: teto - 1].rstrip() + "…"
+
+
+def frase_da_conversa(*, momento: str, fala: str, valor: str, motivo: str, fonte: str = "",
+                      nota: Any = None) -> str:
+    """A linha que a corretora lê (D7): o que o segurado disse, o que o agente fez, por quê, com que
+    certeza. Sem jargão, sem nome de variável. Ex.: 'O segurado escreveu "derrapei na chuva na BR".
+    O agente entendeu que o local foi uma rodovia, sem perguntar de novo (certeza 85%).'"""
+    f = _trecho(fala)
+    v = _trecho(valor, 200)
+    m = " ".join(str(motivo or "").split())
+    m = "" if (not m or _PARECE_CODIGO.search(m)) else m[:200]
+    partes = [f'O segurado escreveu "{f}".' if f else "O segurado mandou uma mensagem."]
+    if momento == "deduziu":
+        feito = (f"O agente entendeu que {v}, sem perguntar de novo" if v
+                 else "O agente deduziu a resposta sem perguntar de novo")
+    elif momento == "respondeu_regra":
+        feito = (f'O agente respondeu sozinho, sem chamar ninguém: "{v}"' if v
+                 else "O agente respondeu sozinho a dúvida, sem chamar ninguém")
+        if fonte and not _PARECE_CODIGO.search(str(fonte)):
+            feito += f" (com base em: {_trecho(fonte, 80)})"
+    elif momento == "nao_chamou_pessoa":
+        feito = ("Antes, isto iria para uma pessoa da corretora; o agente continuou o atendimento sozinho"
+                 + (f' e respondeu "{v}"' if v else ""))
+    else:  # chamou_pessoa
+        feito = "O agente chamou uma pessoa da corretora"
+    if m:
+        feito += f", porque {m[0].lower() + m[1:]}"
+    try:
+        if nota is not None and str(nota).strip() != "":
+            feito += f" (certeza {int(nota)}%)"
+    except (TypeError, ValueError):
+        pass
+    partes.append(feito + ".")
+    return humanizar_marcas(" ".join(partes))[:_TETO_FRASE]
+
+
+async def registrar_julgamento_da_conversa(*, company_id: str, conversation_id: Optional[str],
+                                           momento: str, fala_do_segurado: str, valor: str = "",
+                                           motivo: str = "", fonte: str = "", nota: Optional[int] = None,
+                                           seguradora: str = "", ramo: str = "", servico: str = "",
+                                           modelo: str = "", modo: str = "on",
+                                           chave_idempotencia: str = "",
+                                           sessao: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """SPEC-125 D7 — UMA linha por momento de JULGAMENTO do agente de atendimento (a S4 chama):
+    `deduziu` · `respondeu_regra` · `nao_chamou_pessoa` · `chamou_pessoa`. Nunca uma linha por mensagem
+    (💭 1–3 por atendimento). Idempotente por (corretora, chave). Nunca levanta. Devolve o id ou None."""
+    try:
+        if momento not in MOMENTOS:
+            logger.warning("[DIARIO] momento da conversa desconhecido (%r) — não registrado", str(momento)[:40])
+            return None
+        classe, acao = MOMENTOS[momento]
+        fala_m = _mascarar(fala_do_segurado, sessao, _TETO_TELA)
+        valor_m = _mascarar(valor, sessao, _TETO_VALOR)
+        motivo_m = _mascarar(motivo, sessao, _TETO_MOTIVO)
+        frase = frase_da_conversa(momento=momento, fala=fala_m, valor=valor_m, motivo=motivo_m,
+                                  fonte=_mascarar(fonte, sessao, 200), nota=nota)
+        chave = _chave(chave_idempotencia, company_id, conversation_id, momento,
+                       _tela_hash(fala_do_segurado), _tela_hash(valor))
+        return await _registrar(
+            company_id=company_id, origem="atendimento", work_run_id=None,
+            conversation_id=conversation_id, seguradora=seguradora, ramo=ramo, rota="",
+            servico=servico, tela=fala_do_segurado, classe=classe, acao=acao, valor=valor, nota=nota,
+            limiar=None, motivo=motivo, explicacao_para_gente=frase, modelo=modelo,
+            segunda_opiniao=None, modo=modo, gatilho=f"conversa:{momento}",
+            chave_idempotencia=chave, sessao=sessao, momento=momento)
+    except Exception as e:  # noqa: BLE001 — o diário nunca derruba o atendimento
+        logger.error("[DIARIO] julgamento da conversa NÃO registrado (%s)", type(e).__name__)
+        return None
+
+
+async def fechar_como_erro_leve(*, company_id: str, conversation_id: str, sinal: str) -> int:
+    """O segurado corrigiu, repetiu ou pediu pessoa LOGO DEPOIS (ou o fiscal da repetição disparou):
+    fecha a ÚLTIMA linha `pendente` daquela conversa daquela corretora com o sinal. Devolve 0 ou 1.
+    Nunca levanta."""
+    try:
+        cid = str(company_id or "").strip()
+        conversa = str(conversation_id or "").strip()
+        if not cid or not conversa or sinal not in SINAIS_DE_ERRO_LEVE:
+            return 0
+        db = await _cliente()
+        if db is None:
+            return 0
+        r = await (db.client.table(TABELA).select("id")
+                   .eq("company_id", cid)
+                   .eq("conversation_id", conversa)
+                   .eq("origem", "atendimento")
+                   .eq("resultado", "pendente")
+                   .order("created_at", desc=True).limit(1).execute())
+        alvo = (r.data or [{}])[0].get("id")
+        if not alvo:
+            return 0
+        u = await (db.client.table(TABELA)
+                   .update({"resultado": sinal, "resultado_em": datetime.now(timezone.utc).isoformat()})
+                   .eq("id", str(alvo))
+                   .eq("company_id", cid)
+                   .eq("resultado", "pendente").execute())
+        return len(u.data or [])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[DIARIO] erro leve não marcado (%s)", type(e).__name__)
+        return 0
