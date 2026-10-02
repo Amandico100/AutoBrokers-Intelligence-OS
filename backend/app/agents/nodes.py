@@ -1637,6 +1637,10 @@ def _tipo_da_mensagem(m: Any) -> str:
     return str(tipo or "")
 
 
+#: os carimbos de "a ferramenta NÃO fez": a segunda chance do handoff e o `confirm_first`.
+_FERRAMENTA_NAO_FEZ = ("HANDOFF_NAO_FEITO", "NADA foi acionado")
+
+
 def falas_ditas_junto_da_ferramenta(mensagens: Any) -> List[str]:
     """Os textos que o modelo escreveu NO MESMO `AIMessage` de uma chamada de
     ferramenta, neste turno (depois da última fala humana). **PURA.**
@@ -1656,11 +1660,19 @@ def falas_ditas_junto_da_ferramenta(mensagens: Any) -> List[str]:
         if _tipo_da_mensagem(lista[i]) in ("human", "user"):
             inicio = i + 1
             break
+    # 🔴 JUIZ FINAL 125 — a fala dita junto de uma ferramenta que NÃO FEZ não sai: "Vou te
+    #    passar para a equipe" + segunda chance, "já acionei" + confirm_first prometiam o que
+    #    não houve (e o "já acionei" fazia o fiscal trocar a pergunta de confirmação inteira).
+    nao_fez = {str(getattr(m, "tool_call_id", "") or "") for m in lista[inicio:]
+               if _tipo_da_mensagem(m) == "tool" and any(
+                   x in str(getattr(m, "content", "") or "") for x in _FERRAMENTA_NAO_FEZ)}
     falas: List[str] = []
     for m in lista[inicio:]:
         if _tipo_da_mensagem(m) not in ("ai", "assistant"):
             continue
         if not getattr(m, "tool_calls", None):
+            continue
+        if any(str((c or {}).get("id") or "") in nao_fez for c in m.tool_calls):
             continue
         texto = extract_text_from_content(getattr(m, "content", "") or "").strip()
         if texto:

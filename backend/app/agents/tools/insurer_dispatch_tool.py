@@ -1023,6 +1023,14 @@ def _objecao_ou_adiamento(plano: str, pergunta: str = "") -> bool:
 _RX_AUTORIZA_NO_FIM = re.compile(
     r"\b(?:pode|podem)\s+(?:acionar|mandar|chamar|pedir|enviar|seguir|solicitar)\W*$")
 
+#: 🔴 JUIZ FINAL 125 — o "pode" depois de NEGAÇÃO, DÚVIDA ou PERGUNTA não autoriza nada.
+#: 📊 "a seguradora disse que não pode acionar", "não sei se pode acionar", "você não pode
+#:    acionar", "quem pode acionar?" saíam SIM — e o guincho não se desfaz (T8).
+#: constante_justificada: errar para cá custa UMA confirmação a mais ("se quiser pode mandar").
+_RX_PODE_QUE_NAO_AUTORIZA = re.compile(
+    r"\b(?:nao|n|nem|ninguem|nunca|jamais|quem|como|onde|quando|sera|se|sei|so|somente|"
+    r"apenas|pergunt\w*)\b.*\bpodem?\b")  # "já DISSE que pode" é o sim irritado (N1)
+
 
 def _resposta_do_segurado(texto: str, pergunta: str = "") -> str:
     """`"sim"` · `"nao"` · `"outro"` — UMA fala do segurado. **PURA.**
@@ -1047,7 +1055,8 @@ def _resposta_do_segurado(texto: str, pergunta: str = "") -> str:
                 nao_sozinho = True
             else:
                 forte = True
-        elif _RX_SIM_DO_SEGURADO.search(o) or _RX_AUTORIZA_NO_FIM.search(o):
+        elif ((_RX_SIM_DO_SEGURADO.search(o) or _RX_AUTORIZA_NO_FIM.search(o))
+              and not _RX_PODE_QUE_NAO_AUTORIZA.search(o)):
             sim = True
     if forte:
         return "nao"

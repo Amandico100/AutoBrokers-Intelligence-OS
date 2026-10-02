@@ -257,8 +257,9 @@ def test_o_dito_junto_da_ferramenta_passa_pelo_fiscal_da_honestidade():
     r, _v = _rodar(caso, roteiro)
     t1 = r.rastro["estado"]["transcricao"][0]["agente"]
     assert "Já passei seu caso" not in t1, t1
-    # o fiscal reescreveu o texto INTEIRO (o dito antes + o final) para a forma honesta dele
-    assert "Ainda não consegui confirmar" in t1, t1
+    # 🔴 juiz final 125: a fala de uma ferramenta que NÃO fez (segunda chance) nem entra —
+    #    antes o fiscal trocava o texto INTEIRO e a pergunta da segunda chance se perdia
+    assert t1.strip() == "Me conta: o carro está fora da pista?", t1
 
 
 def test_so_o_turno_corrente_e_sem_repetir():
