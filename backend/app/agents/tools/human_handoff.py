@@ -1172,6 +1172,39 @@ _SEMPRE_DE_GENTE = (
 )
 
 
+def _a_r9_manda_a_pessoa(caso: Dict[str, Any]) -> bool:
+    """No caso JÁ ACIONADO, a R9 manda as falas do segurado a uma pessoa? — **PURA**.
+
+    🔴 SPEC-125 · endurecimento (P-125-03). 📊 O C8 da bancada ("terceira vez que
+    escrevo, que demora, cade o guincho??", caso com protocolo) chamou pessoa em
+    TODAS as rodadas. O comentário de `por_que_vai_direto_a_pessoa` dizia "depois do
+    acionamento, quem decide é a R9" — e o código não perguntava nada à R9: TODO
+    pedido de pessoa num caso acionado ia direto, sem a segunda chance. A R9 manda
+    "quer saber o andamento" (`A`) para a CARTA, não para a pessoa; e a fala do C8
+    sai `N` em `classificar_turno`. ⚠️ Na bancada isso não aparecia: lá a ferramenta
+    de pessoa é um dublê e a segunda chance não roda.
+
+    A régua é a FONTE ÚNICA (`pos_acionamento.classificar_turno` sobre as últimas
+    falas, `vai_para_humano` + `SITUACOES_CONDICIONAIS`): os rótulos da R9 que vão a
+    pessoa (K1/K2/K3/J/L/P/Z) e os condicionais (F/B/E) continuam indo direto, como
+    antes. ⛔ Sem fala nenhuma para ler → direto, como antes (o lado de passar).
+    Fora disso, o caso cai nas mesmas perguntas de quem não foi acionado (regra do
+    motivo, pedido de pessoa, sinistro, lista D8/D10) — e a segunda chance é UMA.
+    """
+    falas = _falas_do_segurado(caso)
+    if not [f for f in falas if f.strip()]:
+        return True
+    try:
+        from app.atendimento.pos_acionamento import (SITUACOES_CONDICIONAIS,
+                                                     classificar_turno, vai_para_humano)
+
+        rotulo = classificar_turno(falas)
+        return vai_para_humano(rotulo) or rotulo in SITUACOES_CONDICIONAIS
+    except Exception as exc:  # noqa: BLE001 — sem a régua, o lado de passar
+        logger.warning("[HumanHandoff] R9 ilegível (%s) — passo a pessoa", type(exc).__name__)
+        return True
+
+
 def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
                                 caso: Optional[Dict[str, Any]] = None,
                                 ja_com_a_equipe: bool = False) -> str:
@@ -1188,7 +1221,7 @@ def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
     if str(codigo or "").strip():
         # constante_justificada: `pessoa_antes_de_acionar` — o MOTOR mandou (SPEC-121 B1)
         return "a ferramenta de acionamento mandou passar a uma pessoa antes de acionar"
-    if _e_pos_acionamento(caso):
+    if _e_pos_acionamento(caso) and _a_r9_manda_a_pessoa(caso):
         # constante_justificada: depois do acionamento, quem decide é a R9
         # (`SITUACOES_PARA_HUMANO`), não esta lista — duas verdades sobre o mesmo caso
         return "o caso já foi acionado e o acompanhamento segue a regra do pós-acionamento"
