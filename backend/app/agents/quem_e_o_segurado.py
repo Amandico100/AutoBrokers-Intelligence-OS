@@ -331,12 +331,23 @@ _SIM = re.compile(r"^\W*(?:sim|s|ss|isso|exato|exatamente|correto|certo|confirmo
                   r"pode|ok|okay|perfeito|esse mesmo|e esse|eh esse|e sim|eh sim|e o meu|eh o meu|"
                   r"e isso|eh isso|esse|este|isso mesmo|uhum|aham|beleza|blz)\b")
 _NAO = re.compile(r"\bn[aã]o\b|\bnegativo\b|\boutro\b|\berrado\b")
+#: 🔴 SPEC-126 U3-B (📊 U1 C11): "Sou eu sim" à pergunta "falo com o titular do CPF final
+#: 4725?" NÃO era confirmação — `_SIM` só olha o COMEÇO da fala ("sou" não é "sim") — e o
+#: agente pedia de novo o CPF que já estava na conversa. A fala INTEIRA tem de ser a
+#: confirmação ("sou eu", "sou eu sim", "sim, sou eu", "eu mesmo", "é ele mesmo"): "sou eu
+#: que tô com o carro do meu pai" continua NÃO confirmando o CPF (do pai).
+_SOU_EU = re.compile(
+    r"^\W*(?:(?:sim|isso|e|eh)\W+)?(?:sou eu|eu mesm[oa]|e eu|eh eu|(?:e|eh) (?:ele|ela) mesm[oa]|"
+    r"(?:o|a) propri[oa])(?:\W+(?:sim|mesm[oa]|msm|isso))?\W*$")
 
 
 def _confirmou_agora(linhas: List[Dict[str, Any]], inicio: int, doc: str) -> bool:
     """No assunto ATUAL, NÓS perguntamos pelo final deste documento e ELE disse "sim"? **PURA.**
 
     🔴 X2: só depois disso o CPF de um assunto anterior entra INTEIRO no prompt.
+    🔴 SPEC-126 U3-B: o "sim" que fala de OUTRA pessoa ("sim, sou eu que tô com o carro do
+    meu pai") não confirma — a régua é a do corte de terceiro (`_de_outra_pessoa`), não uma
+    segunda.
     """
     final = doc[-4:]
     for i in range(max(inicio, 1), len(linhas)):
@@ -347,9 +358,25 @@ def _confirmou_agora(linhas: List[Dict[str, Any]], inicio: int, doc: str) -> boo
         if _do_segurado(anterior) or final not in str(anterior.get("content") or ""):
             continue
         fala = _sem_acento(m.get("content")).strip()
-        if _SIM.search(fala) and not _NAO.search(fala):
+        if _NAO.search(fala):
+            continue
+        if (_SIM.search(fala) or _SOU_EU.search(fala)) and not _cita_outra_pessoa(
+                doc, str(m.get("content") or ""), fala):
             return True
     return False
+
+
+def _cita_outra_pessoa(doc: str, fala_crua: str, fala: str) -> bool:
+    """A resposta fala de OUTRA pessoa ("sim, sou eu que tô com o carro DO MEU PAI")? **PURA.**
+
+    O vocabulário de "dono que não é quem fala" é o do corte de terceiro
+    (`infocap_tool._DONO_OUTRO`) e a régua inteira dele (`_de_outra_pessoa`) — nunca uma
+    terceira lista (§5). ⛔ Sem a régua, cita: o pior caso é perguntar o CPF de novo."""
+    try:
+        from app.agents.tools.infocap_tool import _DONO_OUTRO
+    except Exception:  # noqa: BLE001
+        return True
+    return bool(re.search(r"\b" + _DONO_OUTRO + r"\b", fala)) or _de_outra_pessoa(doc, [fala_crua])
 
 
 def montar(*, historico: Any, user_name: Any = "", ficha: Optional[Dict[str, Any]] = None,
@@ -412,9 +439,14 @@ def _apolice_da_ficha(ficha: Optional[Dict[str, Any]]) -> str:
     if not isinstance(ficha, dict):
         return ""
     try:
-        from app.services.attendance_ficha import ORIGEM_SISTEMA_DE_GESTAO, apolice_do_caso, origem_de, valor_de
+        from app.services.attendance_ficha import (ORIGEM_SISTEMA_DE_GESTAO, apolice_de_outra_pessoa,
+                                                   apolice_do_caso, origem_de, valor_de)
         from app.services.policy_context import nome_humano_do_ramo
     except Exception:  # noqa: BLE001
+        return ""
+    # 🔴 SPEC-126 U3-B (D1): a apólice do TITULAR, com o parente falando, não volta ao prompt
+    #    por este bloco — o da ficha (`attendance_ficha._bloco_da_apolice`) já diz o que vale.
+    if apolice_de_outra_pessoa(ficha=ficha):
         return ""
     ap = apolice_do_caso(ficha=ficha) or {}
     partes = [str(ap.get("numapo") or "").strip(), nome_humano_do_ramo(ap.get("ramo")) or "",

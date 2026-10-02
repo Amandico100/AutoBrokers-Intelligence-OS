@@ -675,6 +675,65 @@ def _safe_infocap_policy_context(
     )
 
 
+def _marcar_apolice_de_outra_pessoa(contexto: Optional[Dict[str, Any]],
+                                    result: Any) -> Optional[Dict[str, Any]]:
+    """🔴 SPEC-126 U3-B (D1) — a consulta voltou AUTORIZADA para o PARENTE: o contexto da
+    apólice nasce com a marca `de_outra_pessoa`. **PURA.**
+
+    📊 Sem ela (probe da U3, motor real): depois do turno do filho,
+    `attendance_ficha.bloco_para_o_prompt` mostrava apólice + seguradora + vigência no
+    turno SEGUINTE — o `ToolMessage` estava cortado, a ficha durável não. A marca vai ao
+    durável (`policy_context.CAMPOS_DURAVEIS`) e o bloco do prompt passa a dizer só que a
+    apólice é do titular. ⛔ O contexto continua INTEIRO: o acionamento lê dele."""
+    if not isinstance(contexto, dict) or not isinstance(result, dict):
+        return contexto
+    from app.agents.tools.infocap_tool import MARCA_DO_TITULAR_AUTORIZADO
+    from app.services.policy_context import CHAVE_DE_OUTRA_PESSOA
+
+    if result.get(MARCA_DO_TITULAR_AUTORIZADO):
+        return {**contexto, CHAVE_DE_OUTRA_PESSOA: True}
+    return contexto
+
+
+async def _rastro_do_acionamento(state: Dict[str, Any], tool_args: Dict[str, Any],
+                                 result: Dict[str, Any], numapo: str) -> Dict[str, Any]:
+    """🔴 SPEC-126 U3-B (D2) — o ACIONAMENTO também deixa rastro para a contagem por telefone.
+
+    A consulta já deixava (`infocap_tool._rastrear_a_consulta`); sem esta, quem acionasse
+    três apólices sem consultar nenhuma passaria pela D2. O rastro (pseudônimos HMAC,
+    `consultas_por_telefone.rastro_da_apolice`) volta no resultado e o recorder ÚNICO o
+    grava em `tool_invocations` — e `decidir` junta o acionamento com a consulta "minha"
+    do mesmo titular/apólice. ⛔ **Nunca levanta** e nunca bloqueia: sem rastro, o
+    resultado volta igual."""
+    try:
+        from app.atendimento import consultas_por_telefone as CT
+        from app.core.database import get_supabase_client
+
+        company_id = str(state.get("company_id") or "")
+        rastro = CT.rastro_da_apolice(company_id, documento=(tool_args or {}).get("titular_cpf"),
+                                      numero_apolice=numapo or None)
+        if not rastro:
+            return result
+        await CT.conferir_e_avisar(get_supabase_client(), company_id=company_id,
+                                   session_id=str(state.get("session_id") or ""), rastro=rastro)
+        return {**result, CT.CHAVE_DO_RASTRO: rastro}
+    except Exception as exc:  # noqa: BLE001 — o rastro nunca derruba o acionamento
+        logger.warning("[ACIONAMENTO] rastro do D2 não gravado (%s)", type(exc).__name__)
+        return result
+
+
+def _sem_o_rastro(result: Any) -> Any:
+    """O rastro do D2 é do RECORDER, nunca do modelo: o `final` da apólice do titular
+    não pode voltar ao parente pelo `ToolMessage`. **PURA.**"""
+    try:
+        from app.atendimento.consultas_por_telefone import CHAVE_DO_RASTRO
+    except Exception:  # noqa: BLE001
+        return result
+    if isinstance(result, dict) and CHAVE_DO_RASTRO in result:
+        return {k: v for k, v in result.items() if k != CHAVE_DO_RASTRO}
+    return result
+
+
 def _merge_infocap_policy_context(
     prev: Optional[Dict[str, Any]], new: Optional[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
@@ -3115,6 +3174,8 @@ async def tool_node(state: AgentState, tools: list,
                 tool = tool_map[tool_name]
 
                 try:
+                    # 🔴 SPEC-126 U3-B (D2): a apólice que ESTE acionamento usa (vira rastro).
+                    _numapo_do_caso = ""
                     # Injeção de Dependências Dinâmicas (invisível para a LLM)
                     if tool_name == "knowledge_base_search":
                         # 🔥 Injeta agent_id, is_hyde_enabled e (SPEC-044) o usuário
@@ -3247,6 +3308,7 @@ async def tool_node(state: AgentState, tools: list,
                                     _seguradora_do_modelo, _seguradora_do_sistema)
                             tool_args = {**tool_args,
                                          "insurer_key": _seguradora_do_sistema}
+                        _numapo_do_caso = str((_apolice_do_caso or {}).get("numapo") or "")
                     elif tool_name == "portal_action":
                         # SPEC-020: telefone do segurado vem da sessão WhatsApp
                         # (ack imediato "tô abrindo agora" antes do portal rodar).
@@ -3382,7 +3444,12 @@ async def tool_node(state: AgentState, tools: list,
                             result = await loop.run_in_executor(
                                 None, lambda: tool._run(**tool_args)
                             )
+                        if (tool_name == "insurer_dispatch" and isinstance(result, dict)
+                                and result.get("status") == "dispatched"):
+                            result = await _rastro_do_acionamento(
+                                state, tool_args, result, _numapo_do_caso)
                         registro.ok(result)
+                    result = _sem_o_rastro(result)
                     tools_used.append(tool_name)
 
                     # SPEC-063 Bloco S — o turno deixa MEMÓRIA.
@@ -3461,6 +3528,8 @@ async def tool_node(state: AgentState, tools: list,
                                 company_id=str(state.get("company_id") or ""),
                                 papel=_papel_do_agente(state),
                             )
+                            infocap_policy_context = _marcar_apolice_de_outra_pessoa(
+                                infocap_policy_context, result)
                             content = _conteudo_da_consulta_para_o_modelo(result)
                         else:
                             content = str(result)

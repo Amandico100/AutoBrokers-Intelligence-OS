@@ -137,7 +137,22 @@ CAMPOS_DURAVEIS = (
     "selecionada_pela_fonte", "origem_por_campo", "evidencia",
     # as chaves LEGADAS que os leitores de `nodes.py` ainda consomem
     "policy_numbers", "source", "selected_policy_number", "selected_policy_ramo",
+    # 🔴 SPEC-126 U3-B (D1): a apólice é do TITULAR e quem fala é OUTRA pessoa (o parente
+    #    que aciona). Sem esta marca no DURÁVEL, o turno seguinte relia a ficha e o bloco do
+    #    prompt mostrava número, seguradora e vigência ao parente.
+    "de_outra_pessoa",
 )
+
+#: 🔴 SPEC-126 U3-B (D1) — a marca de "esta apólice é de OUTRA pessoa, não de quem fala".
+#: Quem ESCREVE é `nodes.tool_node` (quando a consulta volta com
+#: `infocap_tool.MARCA_DO_TITULAR_AUTORIZADO`); quem LÊ é `de_outra_pessoa` abaixo. O
+#: acionamento continua lendo a apólice inteira — a marca só cala o que vai ao MODELO.
+CHAVE_DE_OUTRA_PESSOA = "de_outra_pessoa"
+
+
+def de_outra_pessoa(contexto: Optional[dict]) -> bool:
+    """A apólice deste contexto é de OUTRA pessoa (o titular), não de quem fala? **PURA.**"""
+    return isinstance(contexto, dict) and contexto.get(CHAVE_DE_OUTRA_PESSOA) is True
 
 #: e o que de CADA apólice é durável — a mesma lista branca de `_resumo_da_apolice`.
 CAMPOS_DURAVEIS_DA_APOLICE = (

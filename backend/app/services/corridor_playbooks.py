@@ -12487,16 +12487,43 @@ _NAO_SE_PERGUNTA = {
 }
 
 
-def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
+def _ramo_do_playbook(pb: Dict[str, Any]) -> str:
+    """`auto` ou `residencial` — a MESMA régua da chave (rota, ramo) do bloco abaixo."""
+    return "auto" if str((pb or {}).get("line_kind") or "") == "auto" else "residencial"
+
+
+def instrucoes_do_acionamento(playbook: Dict[str, Any], servico: Any = "") -> List[str]:
+    """As instruções ao segurado de UM corredor, para UM serviço. **PURA.**
+
+    A regra é a de `insurer_dispatch_service.client_summary_from_capture` (a mensagem que
+    sai ao segurado com o protocolo): `client_instructions_por_subservico` vence quando o
+    serviço está NELE — `in`, não `or`: lista vazia é a decisão de ficar calado —; senão,
+    `client_instructions` do corredor."""
+    pb = playbook or {}
+    por_sub = pb.get("client_instructions_por_subservico") or {}
+    sub = canonical_subservice(str(servico or "")) if servico else ""
+    lista = por_sub[sub] if sub and sub in por_sub else (pb.get("client_instructions") or [])
+    return [str(i).strip() for i in lista if str(i).strip()]
+
+
+def conhecimento_de_assistencia(playbook_refs: Sequence[str], *, seguradora: Any = "",
+                                ramo: Any = "", servico: Any = "") -> str:
     """O bloco que ensina a atendente a conduzir um acionamento.
 
     Recebe os corredores que ESTA corretora pode usar e devolve texto para o
     prompt. Corretora sem corredor recebe string vazia — e um agente que não
     pode acionar não deve ler instruções sobre acionar.
+
+    🔴 SPEC-126 U3-B (T6): `seguradora` + `ramo` (+ `servico`) escopam o "AVISE TAMBÉM"
+    ao corredor do ACIONAMENTO corrente (`resolve_playbook_ref`, a mesma régua do
+    dispatch). Sem escopo (o prompt de abertura, `graph.py`), só entra a instrução que vale
+    para TODO corredor do ramo que declara instruções — ver o bloco "AVISE TAMBÉM".
     """
     refs = [r for r in (playbook_refs or []) if get_playbook(r)]
     if not refs:
         return ""
+    # ⚠️ O escopo é guardado AGORA: o laço das rotas abaixo reusa o nome `seguradora`.
+    _seguradora_do_caso, _ramo_do_caso = str(seguradora or "").strip(), str(ramo or "").strip()
 
     linhas: List[str] = [
         "=== ASSISTÊNCIA 24H: COMO CONDUZIR UM ACIONAMENTO ===",
@@ -12771,12 +12798,40 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
     #     porque tres corredores dizem a mesma coisa com palavras diferentes.
     #     Repeticao em prompt nao reforca: ocupa espaco e ensina que a lista
     #     pode ser lida na diagonal.
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-126 U3-B · T6 — A INSTRUÇÃO TEM DONO, COMO A REGRA DE COBERTURA
+    # ══════════════════════════════════════════════════════════════════════
+    # 📊 02/10/2026 (bancada U1, Luna): num CHAVEIRO de carro, o agente disse ao
+    # segurado *"o prestador pode pedir uma senha de acesso, que são os 4 últimos
+    # números do telefone informado"* — a instrução da assistência RESIDENCIAL de
+    # UMA seguradora (o comentário de `capture_anchors.password` diz que a senha "é
+    # da assistência residencial e de mais ninguém"). A lista abaixo juntava as
+    # `client_instructions` de TODOS os corredores, sem dono.
+    # A regra, nesta ordem:
+    #   · com `seguradora` + `ramo` → só o corredor do ACIONAMENTO (`resolve_playbook_ref`)
+    #     e, se ele declarar, só a lista do SERVIÇO (`instrucoes_do_acionamento`);
+    #   · sem escopo → a instrução só entra se TODO corredor do ramo que declara
+    #     instruções a declara também (corredor com `[]` é silêncio, não veto). A
+    #     instrução de UMA seguradora chega ao segurado pelo retorno do acionamento
+    #     (`client_summary_from_capture`), que já é do corredor certo.
+    _ref_do_caso = (resolve_playbook_ref(_seguradora_do_caso, _ramo_do_caso)
+                    if _seguradora_do_caso and _ramo_do_caso else None)
+    _escopo = [r for r in refs if r == _ref_do_caso] if _ref_do_caso else refs
+    _declaram: Dict[str, set] = {}
+    _listas: Dict[str, List[str]] = {}
+    for ref in _escopo:
+        pb = get_playbook(ref) or {}
+        _listas[ref] = (instrucoes_do_acionamento(pb, servico) if _ref_do_caso
+                        else [str(i).strip() for i in pb.get("client_instructions") or []])
+        if [t for t in _listas[ref] if t and not t.startswith("📊")]:
+            _declaram.setdefault(_ramo_do_playbook(pb), set()).add(ref)
+    _donos: Dict[Any, set] = {}
+
     instrucoes: List[str] = []
     assinaturas: set = set()
     _por_assinatura: Dict[Any, str] = {}
-    for ref in refs:
-        pb = get_playbook(ref) or {}
-        for i in pb.get("client_instructions") or []:
+    for ref in _escopo:
+        for i in _listas.get(ref) or []:
             texto = str(i).strip()
             if not texto or texto.startswith("📊"):
                 continue
@@ -12802,6 +12857,7 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
                     "para", "pelo", "pela", "esta", "sera", "deve",
                     "necessario", "precisa", "sobre", "and"))
             if assinatura in assinaturas:
+                _donos.setdefault(assinatura, set()).add(ref)
                 continue
             # sobreposicao alta com algo que ja entrou = mesma regra
             #
@@ -12832,6 +12888,7 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
                                                           len(a)) * 0.6))),
                 None)
             if colidiu is not None:
+                _donos.setdefault(colidiu, set()).add(ref)
                 nova_e_generica = not any(p in _norm(texto) for p in _ESPECIFICAS)
                 velha = _por_assinatura.get(colidiu, "")
                 velha_e_generica = not any(p in _norm(velha) for p in _ESPECIFICAS)
@@ -12840,8 +12897,16 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
                     _por_assinatura[colidiu] = texto
                 continue
             assinaturas.add(assinatura)
+            _donos.setdefault(assinatura, set()).add(ref)
             _por_assinatura[assinatura] = texto
             instrucoes.append(texto)
+
+    def _vale_para_todo_o_ramo(donos: set) -> bool:
+        ramos = {_ramo_do_playbook(get_playbook(r) or {}) for r in donos}
+        return all(_declaram.get(rm, set()) <= donos for rm in ramos)
+
+    _de_todos = {t for a, t in _por_assinatura.items() if _vale_para_todo_o_ramo(_donos.get(a, set()))}
+    instrucoes = [t for t in instrucoes if t in _de_todos]
     if instrucoes:
         linhas += ["", "AVISE TAMBÉM, ao confirmar o acionamento:"]
         linhas += [f"  · {i}" for i in instrucoes]

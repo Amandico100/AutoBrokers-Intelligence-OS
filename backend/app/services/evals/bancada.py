@@ -3359,13 +3359,21 @@ def _corte_de_terceiro(cen: dict, alvo: dict, corte: dict) -> dict:
     cenário e o documento consultado; a resposta, de `InfocapPolicyLookupTool._resposta_de_terceiro`
     (`TEXTO_DA_APOLICE_DE_TERCEIRO`). Se o motor NÃO reconhecer o terceiro, o dublê fica com a resposta da
     base (com os dados da apólice) — e a régua `sem_dado_do_terceiro` tem como ficar vermelha."""
-    from app.agents.tools.infocap_tool import InfocapPolicyLookupTool, de_quem_e_a_apolice
+    from app.agents.tools.infocap_tool import (MARCA_DO_TITULAR_AUTORIZADO, InfocapPolicyLookupTool,
+                                               de_quem_e_a_apolice, texto_do_titular_autorizado)
 
     falas = [str(i) for raj in ((cen.get("roteiro") or {}).get("falas_fixas") or [])
              for i in (raj if isinstance(raj, list) else [raj]) if isinstance(i, str)]
     quem = de_quem_e_a_apolice(D.materializar(str(corte.get("documento") or "")), D.materializar(falas))
     if not quem.get("terceiro"):
         return alvo
+    if quem.get("autorizado"):
+        # 🔴 SPEC-126 U3-B (D1): o PARENTE que pede SERVIÇO aciona — o produto guarda o `data` (o
+        #    acionamento acha a apólice por ele), troca o TEXTO pelo do titular autorizado e tira o
+        #    contrato (`infocap_tool._arun`). Cortar aqui seria a bancada barrar o que o produto deixa.
+        base = alvo.get("resposta") if isinstance(alvo.get("resposta"), dict) else {}
+        return {**alvo, "resposta": {**base, "content": texto_do_titular_autorizado(base.get("data") or {}),
+                                     "policy_response_contract": None, MARCA_DO_TITULAR_AUTORIZADO: True}}
     return {**alvo, "resposta": InfocapPolicyLookupTool._resposta_de_terceiro(quem)}
 
 

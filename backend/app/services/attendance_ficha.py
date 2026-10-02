@@ -828,13 +828,40 @@ def novidades_do_risco(data: Optional[Dict[str, Any]], familia: Any,
     return {"confirmados": confirmados} if confirmados else {}
 
 
+#: 🔴 SPEC-126 U3-B (D1) — o que o MODELO lê da apólice quando ela é do TITULAR e quem
+#: fala é OUTRA pessoa (o parente/motorista que aciona). ⛔ Nenhum dado dela: o
+#: acionamento lê a apólice inteira pela leitura única (`apolice_do_caso`), o prompt não.
+TEXTO_DA_APOLICE_DE_OUTRA_PESSOA = (
+    "Apólice deste caso: é do TITULAR, que NÃO é quem fala. Serve só para ACIONAR — NÃO diga "
+    "número, seguradora, vigência, cobertura nem placa a quem fala.")
+
+
+def apolice_de_outra_pessoa(ficha: Optional[Dict[str, Any]] = None,
+                            state: Optional[Dict[str, Any]] = None,
+                            contexto: Optional[Dict[str, Any]] = None) -> bool:
+    """🔴 SPEC-126 U3-B (D1) — a apólice deste caso é do titular e quem fala é OUTRA pessoa?
+
+    A marca mora no PolicyContext (`policy_context.CHAVE_DE_OUTRA_PESSOA`, escrita por
+    `nodes.tool_node` quando a consulta volta autorizada para o parente) — a mesma
+    leitura do estado → ficha de `contexto_da_apolice`. ⛔ Sem o pacote, `False`: quem
+    decide o corte do DADO é a consulta (`infocap_tool`), esta função só cala o prompt."""
+    ctx = contexto if isinstance(contexto, dict) else contexto_da_apolice(ficha=ficha, state=state)
+    try:
+        from app.services.policy_context import de_outra_pessoa
+    except ImportError:
+        return isinstance(ctx, dict) and ctx.get("de_outra_pessoa") is True
+    return de_outra_pessoa(ctx)
+
+
 def _bloco_da_apolice(ficha: Optional[Dict[str, Any]]) -> str:
     """A apólice do caso, em uma linha, para o modelo. `""` se não houver.
 
     ⛔ Nunca `cliente_ref`, `chave`, `origem_por_campo` nem `evidencia`: só o que
     a SPEC-117 §2 marca como visível — número humano, ramo, seguradora e
-    vigência.
+    vigência. 🔴 SPEC-126 U3-B (D1): e NADA disso quando a apólice é de OUTRA pessoa.
     """
+    if apolice_de_outra_pessoa(ficha=ficha):
+        return TEXTO_DA_APOLICE_DE_OUTRA_PESSOA
     apolice = apolice_do_caso(ficha=ficha)
     if not apolice:
         return ""
@@ -899,8 +926,11 @@ def bloco_para_o_prompt(ficha: Dict[str, Any],
     confirmados = ficha.get("confirmados") or {}
     linhas = ["=== 📋 FICHA DESTE ATENDIMENTO (já apurado) ==="]
 
+    # 🔴 SPEC-126 U3-B (D1): a seguradora é DADO da apólice do titular — com o parente
+    #    falando ela não vai ao modelo (o acionamento a lê da apólice, não daqui).
+    _de_outra = apolice_de_outra_pessoa(ficha=ficha)
     cabeca = " · ".join(x for x in (ficha.get("ramo"), ficha.get("servico"),
-                                    ficha.get("seguradora")) if x)
+                                    None if _de_outra else ficha.get("seguradora")) if x)
     if cabeca:
         linhas.append(f"Caso: {cabeca}")
     linhas.append(f"Fase: {ficha.get('fase')}")
@@ -913,8 +943,10 @@ def bloco_para_o_prompt(ficha: Dict[str, Any],
     # o atendente CONFIRMA; o que o segurado disse, ele NÃO repete.
     do_cliente = [(k, v) for k, v in confirmados.items()
                   if origem_de(v) != ORIGEM_SISTEMA_DE_GESTAO]
-    do_sistema = [(k, v) for k, v in confirmados.items()
-                  if origem_de(v) == ORIGEM_SISTEMA_DE_GESTAO]
+    # 🔴 SPEC-126 U3-B (D1): o que veio do sistema é do contrato do TITULAR (placa,
+    #    veículo) — o bloco manda "confirmar com uma frase", e ao parente isso é revelar.
+    do_sistema = [] if _de_outra else [(k, v) for k, v in confirmados.items()
+                                       if origem_de(v) == ORIGEM_SISTEMA_DE_GESTAO]
 
     def _linha(chave: str, bruto: Any) -> str:
         valor = valor_de(bruto)

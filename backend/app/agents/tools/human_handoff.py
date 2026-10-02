@@ -715,6 +715,29 @@ def _linha_da_apolice(conversa: Dict[str, Any]) -> str:
     return " · ".join(partes)
 
 
+def _linha_do_terceiro(conversa: Dict[str, Any]) -> str:
+    """🔴 SPEC-126 U3-B (D1) — o pedido foi feito por um PARENTE/motorista, não pelo titular.
+
+    A atendente que liga para a seguradora (ou para cancelar) precisa saber que quem
+    está no local NÃO é o titular. A marca é a do contexto da apólice
+    (`attendance_ficha.apolice_de_outra_pessoa`); o titular sai só pelas INICIAIS do nome
+    que a conversa confirmou — nunca o nome inteiro no histórico do grupo. ⛔ O vínculo
+    (filho, esposa…) não tem campo na ferramenta: "(parente/motorista)" é o que se sabe."""
+    ficha = conversa.get("ficha_atendimento") or {}
+    if not isinstance(ficha, dict):
+        return ""
+    try:
+        from app.services.attendance_ficha import apolice_de_outra_pessoa, valor_de
+    except Exception:  # noqa: BLE001
+        return ""
+    if not apolice_de_outra_pessoa(ficha=ficha):
+        return ""
+    nome = str(valor_de((ficha.get("confirmados") or {}).get("titular_nome")) or "")
+    iniciais = " ".join(p[0].upper() + "." for p in nome.split() if p[:1].isalpha())
+    return "👪 Pedido feito por terceiro (parente/motorista) — titular: %s" % (
+        iniciais or "nome não confirmado")
+
+
 def _narrativa(conversa: Dict[str, Any], motivo: str) -> str:
     """O que houve, em português, na voz de quem conta um caso."""
     ficha = conversa.get("ficha_atendimento") or {}
@@ -1760,6 +1783,8 @@ class HumanHandoffTool(BaseTool):
         apolice = _linha_da_apolice(conversa)
         if apolice:
             linhas.append(apolice)
+        if _linha_do_terceiro(conversa):
+            linhas.append(_linha_do_terceiro(conversa))
         linhas.append(_linha_do_momento(MOMENTO_CONVERSA_INICIAL))
 
         # O QUE ACONTECEU — narrativa, não campos soltos.
@@ -1871,6 +1896,8 @@ class HumanHandoffTool(BaseTool):
         apolice = _linha_da_apolice(conversa)
         if apolice:
             linhas.append(apolice)
+        if _linha_do_terceiro(conversa):
+            linhas.append(_linha_do_terceiro(conversa))
         ficha = conversa.get("ficha_atendimento") or {}
         protocolo = _protocolo_da_ficha(ficha)
         linhas.append(_linha_do_momento(MOMENTO_POS_ACIONAMENTO))
