@@ -34,8 +34,9 @@ MEMORY_SUMMARY_USER_FACTS_LIMIT = 5
 # AGENT / LLM
 # =============================================================================
 
-# Janela de contexto: últimas N mensagens enviadas ao LLM
-AGENT_CONTEXT_WINDOW_SIZE = 15
+# 🔴 SPEC-125 S2 · D1: NÃO existe mais "as últimas N mensagens". A conversa que o
+# modelo recebe é medida em TOKENS e mora em `app/agents/historico_da_conversa.py`
+# (TETO_DO_ATENDIMENTO_TOKENS e irmãos, cada um com o 📊 ao lado).
 
 
 # =============================================================================

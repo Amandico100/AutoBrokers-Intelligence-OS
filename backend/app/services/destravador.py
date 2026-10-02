@@ -425,55 +425,44 @@ def _telas_antes(sessao: Dict[str, Any]) -> str:
 
 
 async def _conversa_do_segurado(company_id: str, sessao: Dict[str, Any]) -> List[str]:
-    """As últimas ~15 mensagens da conversa do SEGURADO com a corretora (P-122-07).
+    """A conversa do SEGURADO com a corretora no atendimento em aberto — INTEIRA, por tokens.
 
+    🔴 SPEC-125 S2 · D1: a MESMA fonte e o MESMO recorte do agente de atendimento
+    (`app/agents/historico_da_conversa.py`), com o teto do destravador
+    (`TETO_DO_DESTRAVADOR_TOKENS`). 📊 Antes: 15 mensagens × 300 chars, e a conversa
+    escolhida por `.limit(5)` SEM ordem (`linhas[0]` de uma lista qualquer) — com 2+
+    conversas do mesmo telefone, uma qualquer. Agora a mais recente, decidida no código.
     🔴 ⛔ NÃO é `mirror_conversation_id` (essa é a conversa com a SEGURADORA). A do segurado se
-    acha pelo telefone dele, em TODAS as formas (`_variantes_do_telefone`), com o `company_id` no
-    filtro E conferido no código (CLAUDE.md §7). Os helpers são os do produto
-    (`o_fim_do_atendimento`, os mesmos de `dispatch_router._texto_da_conversa_do_segurado`).
-    Best-effort: qualquer falha → a lista que a sessão já trouxer (`conversa_segurado`) ou nada.
-    ⛔ Nada disto vai a log.
+    acha pelo telefone dele, em TODAS as formas, com o `company_id` no filtro E conferido no
+    código (CLAUDE.md §7 — 📊 72 telefones existem em duas corretoras). A fala da EQUIPE vem
+    marcada (`[equipe da corretora]`). Best-effort: qualquer falha → a lista que a sessão já
+    trouxer (`conversa_segurado`) ou nada. ⛔ Nada disto vai a log.
     """
-    ja = [str(x)[:300] for x in (sessao.get("conversa_segurado") or []) if str(x or "").strip()]
+    ja = [str(x) for x in (sessao.get("conversa_segurado") or []) if str(x or "").strip()]
     fone = re.sub(r"\D", "", str(sessao.get("client_phone") or ""))
     empresa = str(company_id or "").strip()
     if not fone or not empresa:
-        return ja[-15:]
+        return ja
     try:
-        from app.core.database import get_supabase_client
-        from app.services.o_fim_do_atendimento import (
-            _cliente, _executar, _variantes_do_telefone, janela_de_mensagens,
+        from app.agents.historico_da_conversa import (
+            TETO_DO_DESTRAVADOR_TOKENS, historico_do_atendimento, linhas_para_o_destravador,
         )
+        from app.core.database import get_supabase_client
 
         db = get_supabase_client()
         if db is None:
-            return ja[-15:]
-        formas = sorted(_variantes_do_telefone(fone) or {fone})
-        achado = await _executar(_cliente(db).table("conversations")
-                                 .select("id, company_id")
-                                 .eq("company_id", empresa)      # 🔴 CLAUDE.md §7
-                                 .eq("channel", "whatsapp")
-                                 .in_("user_phone", formas)
-                                 .limit(5))
-        linhas = [x for x in (getattr(achado, "data", None) or [])
-                  if str(x.get("company_id") or "") == empresa]   # cinto: nunca outra corretora
-        if not linhas:
-            return ja[-15:]
-        mensagens, erro = await janela_de_mensagens(db, str(linhas[0].get("id") or ""), teto=15)
-        if erro:
-            return ja[-15:]
-        fora = []
-        for m in reversed(mensagens or []):
-            texto = " ".join(str(m.get("content") or "").split())
-            if not texto:
-                continue
-            papel = str(m.get("role") or "")
-            quem = "segurado" if papel in ("user", "human", "cliente") else "corretora"
-            fora.append(f"[{quem}] {texto[:300]}")
-        return (fora or ja)[-15:]
+            return ja
+        # ⛔ `turno_corrente=False`: o destravador não está respondendo uma fala do segurado —
+        #    a última linha da conversa é conversa, não o turno de agora.
+        hist = await historico_do_atendimento(db, company_id=empresa, telefone=fone,
+                                              turno_corrente=False,
+                                              teto_tokens=TETO_DO_DESTRAVADOR_TOKENS)
+        if not hist.lida:
+            return ja
+        return linhas_para_o_destravador(hist) or ja
     except Exception as e:  # noqa: BLE001
         logger.warning("[DESTRAVADOR] conversa do segurado ilegível (%s)", type(e).__name__)
-        return ja[-15:]
+        return ja
 
 
 async def _recorte_do_mapa(playbook: Dict[str, Any], tela: str) -> str:
@@ -679,7 +668,7 @@ def compor_mensagens(sessao: Dict[str, Any], tela: str, *, gatilho: str = "cereb
     if memoria:
         fixo += "\n\nO QUE A CORRETORA JÁ ENSINOU:\n" + "\n".join(memoria)
     conversa = list(conversa or [])
-    fixo += ("\n\nA CONVERSA COM O SEGURADO (as últimas mensagens, a mais antiga primeiro):\n"
+    fixo += ("\n\nA CONVERSA COM O SEGURADO (o atendimento em aberto, a mais antiga primeiro):\n"
              + "\n".join(conversa) if conversa
              else "\n\nA CONVERSA COM O SEGURADO: (não disponível neste caso)")
     muda = f"{_MARCA_DO_VARIAVEL}{_gatilho_legivel(gatilho)}."
@@ -2316,7 +2305,7 @@ def compor_mensagens_do_portal(parada: Dict[str, Any], params: Dict[str, Any], e
     user = "DADOS DO CASO:\n" + _caso_do_portal_em_palavras(params)
     if memoria:
         user += "\n\nO QUE A CORRETORA JÁ ENSINOU:\n" + "\n".join(memoria)
-    user += ("\n\nA CONVERSA COM O SEGURADO (as últimas mensagens, a mais antiga primeiro):\n" + "\n".join(conversa)
+    user += ("\n\nA CONVERSA COM O SEGURADO (o atendimento em aberto, a mais antiga primeiro):\n" + "\n".join(conversa)
              if conversa else "\n\nA CONVERSA COM O SEGURADO: (não disponível neste caso)")
     user += "\n\nO PEDIDO ATÉ AQUI:\n" + _historico_do_pedido(evidence, params)
     user += f"{_MARCA_DO_VARIAVEL}o portal parou e esta parada pode ser respondida por aqui.\n\n"

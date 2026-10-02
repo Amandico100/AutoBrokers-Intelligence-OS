@@ -235,7 +235,9 @@ async def _pela_reserva(llm_reserva, tools_do_turno, llm_messages, config, rota,
     resposta = await ligado.ainvoke(mensagens, config=cfg)
     return resposta, ligado, mensagens
 
-from app.core.constants import AGENT_CONTEXT_WINDOW_SIZE
+from app.agents.historico_da_conversa import (
+    CONTEUDO_COMPRIMIDO, FERRAMENTAS_COMPRIMIDAS, aparar_ao_teto,
+)
 
 
 from app.agents.honestidade_do_handoff import (
@@ -1697,20 +1699,16 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     """
     logger.info("[Agent Node] Processando...")
 
-    # === ✂️ JANELA DESLIZANTE (SLIDING WINDOW) ===
-    # Mantém apenas as últimas 15 mensagens para o contexto imediato
+    # === 🧠 A CONVERSA — por TOKENS, nunca por contagem (SPEC-125 S2 · D1) ===
+    # 📊 Antes: as últimas 15 mensagens do checkpointer, com o SystemMessage de
+    # cada turno ocupando vaga — o CPF dito na mensagem 3 sumia na 16ª.
+    # No atendimento o estado já chega com o assunto INTEIRO, lido de `messages`
+    # (`historico_da_conversa.mensagens_do_turno`); aqui fica só a rede de
+    # segurança por tokens, que nunca apara o turno corrente e nunca corta calada.
     all_messages = state["messages"]
-    JANELA_CONTEXTO = AGENT_CONTEXT_WINDOW_SIZE
+    messages_to_process = aparar_ao_teto(all_messages)
 
-    if len(all_messages) > JANELA_CONTEXTO:
-        messages_to_process = all_messages[-JANELA_CONTEXTO:]
-        logger.info(
-            f"[Agent Node] Trimming ativo: Enviando {len(messages_to_process)} msgs (de um total de {len(all_messages)})"
-        )
-    else:
-        messages_to_process = all_messages
-
-    # === 🛡️ SANITIZAÇÃO PÓS-TRIMMING ===
+    # === 🛡️ SANITIZAÇÃO ===
     # Remove ToolMessages órfãs que perderam suas AIMessages com tool_calls
     messages_to_process = sanitize_history(messages_to_process)
     logger.debug(f"[Agent Node] Após sanitização: {len(messages_to_process)} msgs")
@@ -1878,15 +1876,21 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
                     )
                 else:
                     llm_messages.append(msg)
-            else:
-                # Comprime tools antigas
+            elif msg.name in FERRAMENTAS_COMPRIMIDAS:
+                # 🔴 SPEC-125 S2 (T2): só o RAG antigo é comprimido — ele se busca
+                # de novo e já está refletido na resposta. 📊 Antes, TODO resultado
+                # antigo virava este texto, inclusive a apólice do InfoCap e o
+                # protocolo do acionamento — e até na 2ª rodada do MESMO turno.
                 llm_messages.append(
                     ToolMessage(
-                        content="[🔍 RAG: Conteúdo bruto removido para otimização. As informações relevantes já constam na resposta anterior da Assistente.]",
+                        content=CONTEUDO_COMPRIMIDO,
                         tool_call_id=msg.tool_call_id,
                         name=msg.name,
                     )
                 )
+            else:
+                # Apólice, acionamento, handoff: fatos do caso — ficam inteiros.
+                llm_messages.append(msg)
 
         # Fallback para tipos genéricos
         elif hasattr(msg, "type"):
@@ -1895,12 +1899,16 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
             elif msg.type == "ai":
                 llm_messages.append(AIMessage(content=str(msg.content)))  # Força string
             elif msg.type == "tool":
-                # Aplica compressão simples
+                # A mesma regra de cima: só o RAG antigo é comprimido.
+                _nome = getattr(msg, "name", "") or ""
+                _id = getattr(msg, "tool_call_id", "")
                 llm_messages.append(
                     ToolMessage(
-                        content="[Conteúdo Otimizado]",
-                        tool_call_id=getattr(msg, "tool_call_id", ""),
-                        name=getattr(msg, "name", ""),
+                        content=(CONTEUDO_COMPRIMIDO
+                                 if _nome in FERRAMENTAS_COMPRIMIDAS and _id not in pending_tool_call_ids
+                                 else extract_text_from_content(getattr(msg, "content", "") or "")),
+                        tool_call_id=_id,
+                        name=_nome,
                     )
                 )
 

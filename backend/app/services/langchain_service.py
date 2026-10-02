@@ -411,24 +411,12 @@ class LangChainService:
                     return "Erro temporário de segurança. Por favor, tente novamente.", metrics
                 # Se fail_close=False, continua com texto original
 
-            # 4. Histórico — janela de 20 msgs fazia o ATENDENTE "esquecer" a
-            # conversa de 1h atrás (incidente 2026-07-12: re-pediu CPF/nome do
-            # mesmo cliente). 60 cobre horas de atendimento; env ajusta.
-            if not conversation_history:
-                try:
-                    import os as _os
-
-                    _hist_limit = int(_os.getenv("CHAT_HISTORY_WINDOW", "60") or 60)
-                    conversation_history = self.supabase.get_conversation_history(
-                        session_id=session_id, company_id=company_id, limit=_hist_limit
-                    )
-                except Exception as e:
-                    logger.error(f"[CHAT] Failed to fetch conversation history: {e}")
-                    conversation_history = []  # Fallback para lista vazia
-
-            # Garante que não é None (alguns erros retornam None ao invés de levantar exceção)
-            if conversation_history is None:
-                conversation_history = []
+            # 4. Histórico — 🔴 SPEC-125 S2: NÃO é montado aqui. 📊 Este bloco lia
+            # 60 mensagens (`CHAT_HISTORY_WINDOW`) e NINGUÉM as usava: `invoke_agent`
+            # nunca recebeu o histórico — o agente vivia das 15 do checkpointer. A
+            # conversa do atendimento agora é montada num lugar só,
+            # `app/agents/historico_da_conversa.py`, dentro de `_build_initial_state`.
+            # `conversation_history` segue na assinatura só porque `chat.py` o passa.
 
             # 5. Obter Grafo (Configurado com o Agente) - ASYNC
             graph = await get_or_create_graph(

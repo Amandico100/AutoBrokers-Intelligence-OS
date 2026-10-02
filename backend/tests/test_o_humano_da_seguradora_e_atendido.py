@@ -570,11 +570,16 @@ class _ConsultaLendo(_Consulta):
             formas = set(self.eqs.get("_in_user_phone") or [])
             achou = bool(formas & set(_VARIANTES_DO_SEGURADO))
             return types.SimpleNamespace(
-                data=[{"id": "conv-do-segurado"}]
+                data=[{"id": "conv-do-segurado", "company_id": EMPRESA}]
                 if (self.eqs.get("company_id") == EMPRESA and achou) else [])
         if self.tabela == "messages":
+            # ATUALIZADO em 01/10/2026 (SPEC-125 S2), CLAUDE.md §9.3: o leitor é o helper único
+            # `historico_da_conversa` — a linha precisa ser como a do banco (hora e conversa; a
+            # conversa, a corretora), porque ele ORDENA pela hora e confere a cerca no código (§7).
             return types.SimpleNamespace(
-                data=[{"role": "user", "content": t} for t in reversed(CONVERSA)])
+                data=[{"role": "user", "content": t, "conversation_id": "conv-do-segurado",
+                       "created_at": "2026-10-01T10:%02d:00+00:00" % i}
+                      for i, t in reversed(list(enumerate(CONVERSA)))])
         return await super().execute()
 
 

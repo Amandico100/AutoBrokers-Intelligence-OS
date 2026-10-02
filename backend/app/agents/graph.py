@@ -11,7 +11,7 @@ from datetime import datetime
 from functools import partial
 from typing import Any, Dict, Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 
 from app.core.prompts import (
@@ -1122,10 +1122,15 @@ async def _build_initial_state(
     options: Dict[str, Any] = None,
     supabase_client=None,
     agent_id: str = None,
+    graph=None,
 ) -> tuple:
     """
     Constrói o estado inicial.
     AUTH SIMPLIFICADA: Usa chaves globais do ambiente (.env).
+
+    `graph` (SPEC-125 S2): o grafo do turno, para ler o checkpoint ANTERIOR e
+    transportar os resultados de ferramenta do mesmo assunto. Sem ele, nada
+    atravessa — o resto do estado é o mesmo.
     """
     # === 1. RECUPERAR DADOS DO AGENTE ===
     real_agent_data = None
@@ -1741,7 +1746,39 @@ async def _build_initial_state(
     # Prompt completo para uso geral
     composite_prompt = static_prompt + dynamic_context
 
-    messages = [SystemMessage(content=composite_prompt), HumanMessage(content=user_message)]
+    # === 🧠 A CONVERSA DO TURNO — SPEC-125 S2 · D1 ===========================
+    # ⛔ O SystemMessage NÃO entra mais no histórico: ele vive em
+    # `system_prompt`/`static_prompt`/`dynamic_context` e o `agent_node` o monta
+    # a cada chamada. 📊 Gravado a cada turno no checkpointer, era ele que fazia
+    # uma thread chegar a 2,1 MB e ocupava uma das 15 vagas da janela antiga.
+    #
+    # 🔴 No ATENDIMENTO, a memória é o assunto INTEIRO, de `messages` (segurado,
+    # agente e EQUIPE marcada), por tokens — e o checkpointer fica só com o turno
+    # corrente (o `REMOVE_ALL` que `mensagens_do_turno` devolve). O que as
+    # ferramentas apuraram nos turnos anteriores do MESMO assunto atravessa
+    # (`resultados_que_continuam`). Conversa não lida → o comportamento de antes.
+    messages = [HumanMessage(content=user_message)]
+    if str(_agent_role_for_prompt or "").lower() in ("attendance", "insured_external") and supabase_client:
+        try:
+            from app.agents.historico_da_conversa import mensagens_do_turno
+
+            _anteriores, _checkpoint_em = [], None
+            if graph is not None:
+                try:
+                    _snap = await graph.aget_state(
+                        {"configurable": {"thread_id": f"{company_id}:{session_id}"}})
+                    _anteriores = list((getattr(_snap, "values", None) or {}).get("messages") or [])
+                    _checkpoint_em = getattr(_snap, "created_at", None)
+                except Exception as e:  # noqa: BLE001 — sem o anterior, nada atravessa
+                    logger.warning("[HISTORICO] checkpoint anterior não lido (%s)", type(e).__name__)
+            messages, _hist = await mensagens_do_turno(
+                supabase_client, company_id=str(company_id), session_id=str(session_id or ""),
+                texto_do_turno=user_message, anteriores=_anteriores, checkpoint_em=_checkpoint_em)
+            logger.info("[HISTORICO] lida=%s | falas=%d | resumo=%s | erro=%s",
+                        _hist.lida, len(_hist.falas), bool(_hist.resumo), _hist.erro or "-")
+        except Exception as e:  # noqa: BLE001 — a memória nunca derruba o turno
+            logger.warning("[HISTORICO] não montado (%s)", type(e).__name__)
+            messages = [HumanMessage(content=user_message)]
 
     initial_state = {
         "messages": messages,
@@ -1809,6 +1846,7 @@ async def invoke_agent(
         options,
         supabase_client,
         agent_id,
+        graph=graph,
     )
 
     # === LANGSMITH TRACING (Multi-Tenant) ===
@@ -2243,6 +2281,7 @@ async def stream_agent_eventos(
             options,
             supabase_client,
             agent_id,
+            graph=graph,
         )
 
         # === LANGSMITH TRACING (Multi-Tenant) ===

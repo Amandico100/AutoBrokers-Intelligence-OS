@@ -471,9 +471,15 @@ def test_a_conversa_do_segurado_vem_do_banco_so_da_corretora_dona(dt, monkeypatc
     banco = _BancoDaConversa(
         [{"id": "conv-A", "company_id": EMPRESA_A, "user_phone": fone},
          {"id": "conv-B", "company_id": EMPRESA_B, "user_phone": fone}],
-        [{"conversation_id": "conv-A", "role": "user", "content": "a pia da cozinha está vazando"},
-         {"conversation_id": "conv-A", "role": "assistant", "content": "Vou acionar a assistência."},
-         {"conversation_id": "conv-B", "role": "user", "content": "SEGREDO DA OUTRA CORRETORA"}])
+        # ATUALIZADO em 01/10/2026 (SPEC-125 S2), CLAUDE.md §9.3: o leitor agora é o helper único
+        # `historico_da_conversa` — ele ORDENA pela hora (o banco de verdade sempre a tem; o dublê
+        # antigo não a trazia) e recorta o ASSUNTO. A lição não muda: só a corretora dona.
+        [{"conversation_id": "conv-A", "role": "user", "content": "a pia da cozinha está vazando",
+          "created_at": "2026-10-01T10:00:00+00:00"},
+         {"conversation_id": "conv-A", "role": "assistant", "content": "Vou acionar a assistência.",
+          "created_at": "2026-10-01T10:01:00+00:00"},
+         {"conversation_id": "conv-B", "role": "user", "content": "SEGREDO DA OUTRA CORRETORA",
+          "created_at": "2026-10-01T10:02:00+00:00"}])
     monkeypatch.setattr(core_db, "get_supabase_client", lambda: banco)
     s = sessao_travada(slots={})
     msgs = asyncio.run(DT.mensagens_do_destravador(EMPRESA_A, s, TELA_SERVICOS, gatilho=s["reason"]))
@@ -482,6 +488,7 @@ def test_a_conversa_do_segurado_vem_do_banco_so_da_corretora_dona(dt, monkeypatc
     assert "SEGREDO DA OUTRA CORRETORA" not in msgs["user"]
     assert banco.filtros_vistos[0][0] == "conversations"
     assert banco.filtros_vistos[0][1]["company_id"] == EMPRESA_A, "o filtro da corretora não foi ao banco"
+    assert ("messages", {"conversation_id": "conv-A"}) in banco.filtros_vistos, "leu mensagens de outra conversa"
     # CONTROLE: a corretora B lê a DELA
     msgs_b = asyncio.run(DT.mensagens_do_destravador(EMPRESA_B, s, TELA_SERVICOS, gatilho=s["reason"]))
     assert "SEGREDO DA OUTRA CORRETORA" in msgs_b["user"] and "pia da cozinha" not in msgs_b["user"]

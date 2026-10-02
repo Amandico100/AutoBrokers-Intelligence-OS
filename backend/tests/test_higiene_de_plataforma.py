@@ -145,8 +145,15 @@ def teste_as_variaveis_de_envio_estao_documentadas():
               "DISPATCH_FINALIZE_LIVE_PLAYBOOKS", "CARTOGRAPHER_MODE",
               "ACIONAMENTO_FREIO_DE_EMERGENCIA",
               "ATTENDANT_INBOUND_ALLOWLIST", "CONTEXT_ASSEMBLY_MODE",
-              "DESTILADOR_TETO_POR_RODADA", "CHAT_HISTORY_WINDOW"):
+              "DESTILADOR_TETO_POR_RODADA"):
         checar(f"\n{v}=" in env, f"{v} documentada")
+    # ATUALIZADO em 01/10/2026 (SPEC-125 S2), CLAUDE.md §9.3: `CHAT_HISTORY_WINDOW`
+    # era exigida aqui, mas 📊 o histórico de 60 que ela dimensionava NUNCA chegava
+    # ao agente (`langchain_service` lia e ninguém usava). A lição migra: uma chave
+    # que não decide nada não pode ficar documentada como se decidisse.
+    checar("\nCHAT_HISTORY_WINDOW=" not in env,
+           "CHAT_HISTORY_WINDOW não está no exemplo — ela não decide nada",
+           "a conversa é medida em tokens em app/agents/historico_da_conversa.py")
 
     # ATUALIZADO em 04/08/2026 (P-90), CLAUDE.md §9.3
     # -----------------------------------------------

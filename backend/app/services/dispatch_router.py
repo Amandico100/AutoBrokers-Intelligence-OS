@@ -3342,7 +3342,6 @@ async def _indexar_pergunta(company_id: str, client_phone: str, insurer_phone: s
 # ⚠️ `CEREBRO_ANTES_DO_SEGURADO=0` desliga a consulta sem tocar em código: o
 # comportamento volta a ser o de antes (pergunta direto ao segurado).
 _TETO_DA_FONTE = 2000
-_TETO_DAS_MENSAGENS = 40
 
 
 def cerebro_antes_do_segurado_ligado() -> bool:
@@ -3451,40 +3450,29 @@ async def _texto_da_conversa_do_segurado(company_id: str, session: Dict[str, Any
     Espelho). A do segurado se acha pelo telefone dele, sempre com o
     `company_id` no filtro (CLAUDE.md §7).
 
-    🔴 **E por TODAS as formas do número** — juiz fresco, P1 (17/09). Uma
-    igualdade só (`eq("user_phone", digitos)`) deixava invisíveis 📊 ~100
-    conversas gravadas com LID de 15 dígitos e 66 com 13: o Cérebro não via a
-    conversa, não achava nada, e o segurado recebia a pergunta óbvia. A
-    autoridade das formas é a MESMA de todo o resto (`_variantes_do_telefone`).
+    🔴 SPEC-125 S2 · D1: a MESMA fonte, o MESMO recorte (o assunto em aberto) e o
+    MESMO teto do destravador — o helper único `historico_da_conversa`. 📊 Antes:
+    40 mensagens × 400 chars cortadas em 2.000 chars PELO COMEÇO (sobrava a parte
+    mais antiga das 40), de uma conversa escolhida sem ordem, achada por formas do
+    telefone SEM o 55 (📊 905 de 1.081 conversas o guardam com 55).
     """
     fone = _digits(session.get("client_phone"))
     empresa = str(company_id or "").strip()
     if not fone or not empresa:
         return ""
     try:
-        from app.core.database import get_supabase_client
-        from app.services.o_fim_do_atendimento import (
-            _cliente, _executar, _variantes_do_telefone, janela_de_mensagens,
+        from app.agents.historico_da_conversa import (
+            TETO_DO_DESTRAVADOR_TOKENS, historico_do_atendimento, linhas_para_o_destravador,
         )
+        from app.core.database import get_supabase_client
 
         db = get_supabase_client()
-        formas = sorted(_variantes_do_telefone(fone) or {fone})
-        achado = await _executar(_cliente(db).table("conversations")
-                                 .select("id")
-                                 .eq("company_id", empresa)      # 🔴 CLAUDE.md §7
-                                 .eq("channel", "whatsapp")
-                                 .in_("user_phone", formas)
-                                 .limit(5))
-        linhas = getattr(achado, "data", None) or []
-        if not linhas:
+        if db is None:
             return ""
-        mensagens, erro = await janela_de_mensagens(db, str(linhas[0].get("id") or ""),
-                                                    teto=_TETO_DAS_MENSAGENS)
-        if erro:
-            return ""
-        texto = "\n".join(str(m.get("content") or "")[:400]
-                          for m in reversed(mensagens) if m.get("content"))
-        return texto[:_TETO_DA_FONTE]
+        hist = await historico_do_atendimento(db, company_id=empresa, telefone=fone,
+                                              turno_corrente=False,
+                                              teto_tokens=TETO_DO_DESTRAVADOR_TOKENS)
+        return "\n".join(linhas_para_o_destravador(hist)) if hist.lida else ""
     except Exception as e:  # noqa: BLE001
         logger.warning("[CEREBRO ANTES] conversa do segurado ilegível (%s)", type(e).__name__)
         return ""
