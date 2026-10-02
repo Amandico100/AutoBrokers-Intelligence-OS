@@ -66,6 +66,29 @@ LUA_RENOVA_SE_FOR_MEU = (
     'return redis.call("expire",KEYS[1],ARGV[2]) else return 0 end'
 )
 
+#: 🔴 SPEC-125 conserto único (Y4 · red team P3) — GRAVA SÓ SE NINGUÉM MEXEU.
+#:
+#: 📊 O defeito, reproduzido (`test_spec125_conserto_y.py`, Redis em memória):
+#: `devolver_itens_ao_buffer` fazia GET → junta → SETEX. A FRASE-4 que o webhook
+#: gravava (`add_message`, também GET → SETEX) ENTRE os dois sumia: o SETEX da
+#: devolução escrevia por cima com o buffer que tinha lido antes dela. A janela é de
+#: milissegundos, mas a retenção da S5 a abre exatamente enquanto o segurado digita.
+#:
+#: O desenho é o de `LUA_LIBERA_SE_FOR_MEU`: o Redis compara e grava num passo só.
+#: ARGV[1] = o valor LIDO ("" = a chave não existia), ARGV[2] = o novo, ARGV[3] = TTL.
+#: Devolve 1 se gravou, 0 se alguém escreveu no meio — e quem chamou relê e junta de
+#: novo (a junção continua em Python, uma regra só; o Lua só garante a vez).
+LUA_GRAVA_SE_IGUAL = (
+    'local atual = redis.call("get",KEYS[1]) '
+    'if ((not atual) and ARGV[1] == "") or atual == ARGV[1] then '
+    'redis.call("setex",KEYS[1],ARGV[3],ARGV[2]) return 1 else return 0 end'
+)
+
+#: Quantas vezes reler-e-juntar antes de desistir da comparação. 💭 Cada volta é
+#: um GET + um EVAL; a disputa é de UM segurado com ele mesmo (o webhook × a
+#: retenção), então 2 voltas já são raras — 5 é folga, não medição.
+GRAVACOES_DO_BUFFER_MAX = 5
+
 #: O rótulo que `chave()` usa quando não há escopo nenhum. 🔴 Ele NÃO isola
 #: corretoras — é por isso que `abrir_turno` o RECUSA (§5.3, opção A).
 ESCOPO_SEM_INTEGRACAO = "sem-integracao"
@@ -582,6 +605,45 @@ class MessageBufferService:
         resolve para a função lá de cima — e a regra continua tendo UM dono)."""
         return escopo_da_chave(chave)
 
+    async def _juntar_e_gravar(self, key: str, juntar) -> tuple:
+        """Lê o buffer, junta (`juntar(bruto) -> (dados, extra)`) e grava SÓ se ninguém
+        escreveu no meio (`LUA_GRAVA_SE_IGUAL`). Devolve `(dados, extra)` do que gravou.
+
+        🔴 SPEC-125 Y4. Os dois escritores do buffer passam aqui — o webhook
+        (`add_message`) e a retenção (`devolver_itens_ao_buffer`): com só um deles
+        comparando, o outro continuaria escrevendo por cima.
+
+        ⚠️ Cliente sem `eval` (os dublês antigos da bateria) ou `eval` que recusa o
+        script: grava como antes (GET → SETEX) — perder a VEZ é o defeito de antes; perder
+        a MENSAGEM seria pior. Erro de Redis de verdade sobe no SETEX, como sempre.
+        """
+        ttl = settings.BUFFER_TTL_SECONDS
+        dados, extra = None, None
+        for _volta in range(GRAVACOES_DO_BUFFER_MAX):
+            bruto = await self.redis.get(key)
+            dados, extra = juntar(bruto)
+            novo = json.dumps(dados)
+            if not hasattr(self.redis, "eval"):
+                await self.redis.setex(key, ttl, novo)
+                return dados, extra
+            try:
+                gravou = await self.redis.eval(
+                    LUA_GRAVA_SE_IGUAL, 1, key, bruto if bruto else "", novo, str(ttl))
+            except Exception as erro:  # noqa: BLE001
+                logger.debug("[BUFFER] gravação comparada indisponível (%s) — SETEX",
+                             type(erro).__name__)
+                await self.redis.setex(key, ttl, novo)
+                return dados, extra
+            if int(gravou or 0) == 1:
+                return dados, extra
+            logger.info("[BUFFER] o buffer mudou entre a leitura e a gravação — "
+                        "relendo e juntando de novo (volta %d)", _volta + 1)
+        # ⛔ Disputa que não acaba: grava a última junção (a mensagem não se perde).
+        logger.error("[BUFFER] %d voltas sem conseguir a vez — gravando a última "
+                     "junção", GRAVACOES_DO_BUFFER_MAX)
+        await self.redis.setex(key, ttl, json.dumps(dados))
+        return dados, extra
+
     # ------------------------------------------------------------------ #
     # O BUFFER
     # ------------------------------------------------------------------ #
@@ -635,49 +697,51 @@ class MessageBufferService:
         if wa_message_id:
             item["wa_message_id"] = str(wa_message_id)
 
-        raw_data = await self.redis.get(key)
+        # 🔴 SPEC-125 Y4 — a junção é a de sempre; quem garante a VEZ é o
+        #    `_juntar_e_gravar` (lê, junta e grava só se ninguém escreveu no meio).
+        def _juntar(raw_data):
+            if raw_data:
+                data = json.loads(raw_data)
+                data.setdefault("v", 2)
+                data["itens"] = itens_do_buffer(data) + [item]
+                data.pop("messages", None)
+                data["last_at"] = now_iso
 
-        if raw_data:
-            data = json.loads(raw_data)
-            data.setdefault("v", 2)
-            data["itens"] = itens_do_buffer(data) + [item]
-            data.pop("messages", None)
-            data["last_at"] = now_iso
+                # O ÚLTIMO PAYLOAD VENCE — MENOS PARA O `interactive`.
+                #
+                # Sobrescrever o payload é o certo para telefone, id e integração: o
+                # mais recente é o mais verdadeiro. Mas o `interactive` carrega o
+                # `flow_token` do formulário nativo, e ele é ÚNICO na janela: chega
+                # numa mensagem só, e as seguintes vêm sem ele.
+                #
+                # A URA da família HDI manda rajadas — o formulário e, logo atrás,
+                # um aviso de fila. Com a sobrescrita crua, o aviso apagava o token
+                # do formulário, e a resposta ficava sem endereço. O motor pausaria
+                # com `formulario_pronto_sem_flow_token` e ninguém saberia que a
+                # causa foi um debounce de 8 segundos.
+                #
+                # Interativa nova vence a antiga; ausência não vence presença.
+                anterior = (data.get("payload") or {}).get("interactive")
+                novo = dict(payload or {})
+                if anterior and not novo.get("interactive"):
+                    novo["interactive"] = anterior
+                data["payload"] = novo
+                is_first = False
+            else:
+                data = {
+                    "v": 2,
+                    "itens": [item],
+                    "first_at": now_iso,
+                    "last_at": now_iso,
+                    "company_id": company_id,
+                    "user_id": user_id,
+                    "integration": integration,
+                    "payload": payload,
+                }
+                is_first = True
+            return data, is_first
 
-            # O ÚLTIMO PAYLOAD VENCE — MENOS PARA O `interactive`.
-            #
-            # Sobrescrever o payload é o certo para telefone, id e integração: o
-            # mais recente é o mais verdadeiro. Mas o `interactive` carrega o
-            # `flow_token` do formulário nativo, e ele é ÚNICO na janela: chega
-            # numa mensagem só, e as seguintes vêm sem ele.
-            #
-            # A URA da família HDI manda rajadas — o formulário e, logo atrás,
-            # um aviso de fila. Com a sobrescrita crua, o aviso apagava o token
-            # do formulário, e a resposta ficava sem endereço. O motor pausaria
-            # com `formulario_pronto_sem_flow_token` e ninguém saberia que a
-            # causa foi um debounce de 8 segundos.
-            #
-            # Interativa nova vence a antiga; ausência não vence presença.
-            anterior = (data.get("payload") or {}).get("interactive")
-            novo = dict(payload or {})
-            if anterior and not novo.get("interactive"):
-                novo["interactive"] = anterior
-            data["payload"] = novo
-            is_first = False
-        else:
-            data = {
-                "v": 2,
-                "itens": [item],
-                "first_at": now_iso,
-                "last_at": now_iso,
-                "company_id": company_id,
-                "user_id": user_id,
-                "integration": integration,
-                "payload": payload,
-            }
-            is_first = True
-
-        await self.redis.setex(key, settings.BUFFER_TTL_SECONDS, json.dumps(data))
+        data, is_first = await self._juntar_e_gravar(key, _juntar)
 
         msg_count = len(data["itens"])
         logger.debug(f"[BUFFER] Added message for {phone}. Count: {msg_count}")
@@ -982,12 +1046,12 @@ class MessageBufferService:
             if por_retencao:
                 item["retencoes"] = nova_retencao
         agora = datetime.now().isoformat()
-        try:
-            bruto = await self.redis.get(key)
+
+        def _juntar(bruto):
             if bruto:
                 dados = json.loads(bruto)
                 dados.setdefault("v", 2)
-                dados["itens"] = devolvidos + itens_do_buffer(dados)
+                dados["itens"] = [dict(i) for i in devolvidos] + itens_do_buffer(dados)
                 dados.pop("messages", None)
                 dados["last_at"] = agora
                 if por_retencao:
@@ -999,13 +1063,16 @@ class MessageBufferService:
                         dados["last_at"] = carimbos[-1]
             else:
                 dados = {
-                    "v": 2, "itens": devolvidos,
+                    "v": 2, "itens": [dict(i) for i in devolvidos],
                     "first_at": agora, "last_at": agora,
                     "company_id": company_id, "user_id": user_id,
                     "integration": integration or {}, "payload": payload or {},
                 }
-            await self.redis.setex(key, settings.BUFFER_TTL_SECONDS,
-                                   json.dumps(dados))
+            return dados, None
+
+        try:
+            # 🔴 SPEC-125 Y4 — GET + SETEX soltos perdiam a fala que chegasse no meio.
+            await self._juntar_e_gravar(key, _juntar)
         except Exception as erro:  # noqa: BLE001
             logger.error("[TURNO] não consegui devolver a rajada ao buffer (%s) "
                          "— %d item(ns) sem resposta", type(erro).__name__,

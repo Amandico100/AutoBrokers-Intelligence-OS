@@ -1465,6 +1465,7 @@ async def process_whatsapp_message_background(
         _itens_da_linha = _itens_do_turno
         _texto_da_linha = None
         _urls_da_linha = None
+        _texto_do_modelo = None   # 🔴 SPEC-125 Y4: só na rajada retida (abaixo)
         message_text = None
         final_audio_url = None
         final_image_url = None
@@ -1534,6 +1535,26 @@ async def process_whatsapp_message_background(
                 _urls_da_linha = [str(((i or {}).get("midia_lida") or {}).get("url"))
                                   for i in _novos_no_chat
                                   if ((i or {}).get("midia_lida") or {}).get("url")]
+                # 🔴 SPEC-125 conserto único (Y4 · red team P4) — AS FOTOS UMA VEZ SÓ.
+                # 📊 Reproduzido (`test_spec125_conserto_y.py`): a linha que o turno
+                # RETIDO gravou já leva a descrição das fotos dele, e essa linha volta
+                # ao modelo como HISTÓRICO; o turno refeito as punha de novo no texto
+                # → cada foto chegava DUAS vezes (tokens e "fotos" a mais). O texto
+                # das mensagens continua inteiro (é UMA fala); sai do turno só a
+                # descrição que já está na linha anterior, e o modelo sabe onde ela está.
+                _ja_descritas = [
+                    str(((i or {}).get("midia_lida") or {}).get("texto") or "")
+                    for i in _itens_do_turno if (i or {}).get("reentregue")]
+                _ja_descritas = [t for t in _ja_descritas if t.strip()]
+                if _ja_descritas and message_text:
+                    _sem_repetir = message_text
+                    for _descrita in _ja_descritas:
+                        _sem_repetir = _sem_repetir.replace(_descrita, "", 1)
+                    _sem_repetir = re.sub(r"\n{3,}", "\n\n", _sem_repetir).strip()
+                    _texto_do_modelo = (
+                        f"{_sem_repetir}\n\n[as {len(_ja_descritas)} foto(s)/áudio(s) "
+                        "que ele mandou antes, nesta mesma fala, já estão descritos "
+                        "logo acima, na mensagem dele — não os repito aqui]")
 
         elif branch == "audio":
             if is_human_mode:
@@ -1918,7 +1939,7 @@ async def process_whatsapp_message_background(
         # ele o CONTROLE deste bloco (CLAUDE.md §9.2).
         #
         # ⛔ O bloco é DADO para o modelo, nunca instrução que mude autorização.
-        message_for_ai = message_text
+        message_for_ai = _texto_do_modelo or message_text
         # 🔴 SPEC-125 S5 — o modelo SABE que é rajada (e que a resposta anterior
         # foi retida). ⛔ Só no texto do modelo: a linha do chat (passo 5) fica
         # limpa. Uma mensagem só e nada retido = vazio = o turno de hoje.
@@ -1926,7 +1947,7 @@ async def process_whatsapp_message_background(
             _itens_do_turno,
             resposta_retida=retencoes_da_rajada(_itens_do_turno) > 0)
         if _aviso_da_rajada:
-            message_for_ai = f"{_aviso_da_rajada}\n\n{message_text}"
+            message_for_ai = f"{_aviso_da_rajada}\n\n{message_for_ai}"
         try:
             from app.services.billing_replies import (
                 contexto_de_cobranca, telefones_da_equipe_de_cobranca,

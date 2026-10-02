@@ -335,8 +335,9 @@ class InsurerDispatchInput(BaseModel):
     telefone_contato: Optional[str] = Field(default=None, description="Telefone de contato com DDD (somente dígitos)")
     problema_descricao: Optional[str] = Field(default=None, description="Descrição curta do problema relatado pelo cliente")
     dados_confirmados: Optional[bool] = Field(default=None, description=(
-        "[auto] true SOMENTE depois de você MOSTRAR ao cliente na conversa a placa, o veículo, o local, o destino "
-        "e o telefone, e ele CONFIRMAR explicitamente. Sem essa confirmação o acionamento não sai."))
+        "[auto e residencial] true SOMENTE depois de você MOSTRAR ao cliente na conversa os dados do "
+        "acionamento (placa/veículo, local, destino, telefone — o que o serviço usa) e ele responder SIM. "
+        "A ferramenta confere na conversa a sua pergunta e o sim dele: sem os dois, o acionamento não sai."))
 
     # ══════════════════════════════════════════════════════════════════════
     # 🔴 C1 · O QUE O PORTÃO EXIGE E O CONTRATO NÃO DECLARAVA
@@ -775,6 +776,126 @@ def _opcoes_recusadas(playbook_ref, subservice, kwargs, faltando):
             if titulos:
                 fora[slot] = titulos
     return fora
+
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-125 CONSERTO ÚNICO · Y1 (juiz B1) — T8 EM CÓDIGO: O "SIM" DO SEGURADO
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 O defeito: a ÚNICA barreira do acionamento era `dados_confirmados`, e quem
+# escreve esse campo é o MODELO — no mesmo turno em que os dados chegaram, se ele
+# quiser. O residencial nem passava por ela. A linha de base da SPEC-125 mediu
+# acionamento no turno do CPF, antes de qualquer "sim" (C2 t2, C3 t1, C13 t1). T8 é
+# MANTER, e acionar é o único efeito IRREVERSÍVEL do atendimento: sai do prédio.
+#
+# A prova vem da CONVERSA DURÁVEL (`messages`, pela fonte única
+# `historico_da_conversa`, com a corretora no filtro): o que a corretora PERGUNTOU
+# ao segurado num turno ANTERIOR (a fala já gravada) e o que ELE respondeu depois.
+# O modelo não escreve nessa tabela — o campo do modelo vira a AFIRMAÇÃO, e a
+# conversa, a PROVA. Os dois são exigidos, nas duas linhas (auto e residencial).
+#
+# ⛔ Fail-closed: conversa não lida = sem prova = não aciona (o pior caso do
+# "não" é uma confirmação a mais; o do "sim" é um guincho que não se desfaz).
+
+#: A última pergunta da corretora é de CONFIRMAÇÃO? (texto sem acento, minúsculo)
+_RX_PERGUNTA_DE_CONFIRMACAO = re.compile(
+    r"\bconfirm\w*|\bposso\s+(?:acionar|chamar|pedir|solicitar|abrir|seguir|mandar|"
+    r"enviar|registrar|prosseguir|seguir)\b|\bpodemos\s+(?:acionar|seguir|prosseguir)\b|"
+    r"\bpode\s+ser\b|\b(?:esta|estao|ta|tao|tudo|estiver)\s+(?:certo|certos|certa|correto|"
+    r"corretos|correta|ok)\b|\bcorret[oa]s?\s*\?|\bisso\s+mesmo\b")
+# ⚠️ "acionar"/"sigo" sozinhos NÃO contam: "para eu acionar, me passa o CPF?" é
+#    pergunta de DADO, e o "ok, é 123…" dele não é o sim do acionamento.
+
+#: O segurado DISSE SIM? (as primeiras palavras da fala; texto sem acento)
+_RX_SIM_DO_SEGURADO = re.compile(
+    r"^\W*(?:\w+\W+){0,2}?(?:sim|s|ss|sss|isso|exato|exatamente|correto|certo|certinho|"
+    r"confirmo|confirmado|confirmada|confirma|pode|ok|okay|okey|blz|beleza|positivo|claro|"
+    r"perfeito|manda|bora|aham|uhum|yes|fechado|combinado|ta\s+certo|ta\s+bom|"
+    r"esta\s+certo|esta\s+correto|tudo\s+certo|isso\s+mesmo)\b|^\W*[\U0001F44D✅\U0001F44C]")
+
+#: E o segurado disse NÃO / pediu para esperar? (a 1ª palavra)
+_RX_NAO_DO_SEGURADO = re.compile(
+    r"^\W*(?:nao|n|negativo|errado|errada|espera|pera|calma|cancela|cancelar)\b")
+
+
+def _plano(texto) -> str:
+    import unicodedata
+
+    t = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in t if not unicodedata.combining(c)).lower().strip()
+
+
+def confirmacao_comprovada(falas) -> dict:
+    """O segurado CONFIRMOU o acionamento? **PURA** — a regra que a ferramenta e a
+    bancada usam (uma regra, dois consumidores).
+
+    `falas`: `[(quem, texto)]` do assunto, da mais antiga para a mais nova, COM as
+    do turno de agora; `quem` ∈ segurado · agente · equipe.
+
+    ```
+    a ÚLTIMA pergunta da corretora (fala com "?" ou "confirm…") é de CONFIRMAÇÃO
+    e, depois dela, o segurado disse SIM — e nenhuma fala dele depois dela é NÃO
+    ```
+    Devolve `{"comprovada": bool, "motivo": str}`.
+    """
+    lista = [(str(q or ""), str(t or "")) for q, t in (falas or [])]
+    ultima = None
+    for i in range(len(lista) - 1, -1, -1):
+        quem, texto = lista[i]
+        if quem in ("agente", "equipe") and ("?" in texto or "confirm" in _plano(texto)):
+            ultima = i
+            break
+    if ultima is None:
+        return {"comprovada": False, "motivo": "nenhuma pergunta da corretora na conversa"}
+    if not _RX_PERGUNTA_DE_CONFIRMACAO.search(_plano(lista[ultima][1])):
+        return {"comprovada": False,
+                "motivo": "a última pergunta ao segurado não foi a de confirmação"}
+    respostas = [_plano(t) for q, t in lista[ultima + 1:] if q == "segurado" and t.strip()]
+    if not respostas:
+        return {"comprovada": False,
+                "motivo": "o segurado ainda não respondeu à confirmação"}
+    if any(_RX_NAO_DO_SEGURADO.search(r) for r in respostas):
+        return {"comprovada": False, "motivo": "o segurado não disse sim"}
+    if not any(_RX_SIM_DO_SEGURADO.search(r) for r in respostas):
+        return {"comprovada": False, "motivo": "o segurado não disse sim"}
+    return {"comprovada": True, "motivo": "confirmado pelo segurado depois da pergunta"}
+
+
+async def prova_da_confirmacao(db, *, company_id: str, session_id: str) -> dict:
+    """A prova do "sim", lida da conversa DURÁVEL. **Nunca levanta**; no escuro, sem prova."""
+    try:
+        from app.agents.historico_da_conversa import historico_do_atendimento
+
+        hist = await historico_do_atendimento(
+            db, company_id=str(company_id or ""), session_id=str(session_id or ""),
+            turno_corrente=False)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[InsurerDispatch] conversa não lida para a confirmação (%s)",
+                       type(erro).__name__)
+        return {"comprovada": False, "motivo": "conversa indisponível"}
+    if not getattr(hist, "lida", False):
+        return {"comprovada": False,
+                "motivo": "conversa indisponível (%s)" % (getattr(hist, "erro", "") or "?")}
+    return confirmacao_comprovada([(f.quem, f.texto) for f in hist.falas])
+
+
+def pedido_de_confirmacao(motivo: str = "", *, ja_confirmou: bool = False) -> dict:
+    """O retorno quando o acionamento ainda não tem o "sim" do segurado — a forma do
+    `confirm_first` de sempre (o agente já sabe o que fazer com ele)."""
+    if ja_confirmou:
+        texto = ("O cliente JÁ confirmou os dados na conversa — não pergunte de novo. Chame "
+                 "esta ferramenta de novo AGORA, com os mesmos dados e dados_confirmados=true. "
+                 "NADA foi acionado ainda: não diga ao cliente que foi.")
+    else:
+        texto = ("ANTES de acionar, CONFIRME com o cliente NA CONVERSA, numa mensagem só, os "
+                 "dados do acionamento (o serviço, o local, o destino quando houver e o "
+                 "telefone de contato) e ESPERE o \"sim\" dele: a conversa ainda não tem a sua "
+                 "pergunta de confirmação seguida da resposta dele. Só depois chame de novo com "
+                 "dados_confirmados=true. ATENÇÃO: NADA foi acionado ainda — é PROIBIDO dizer "
+                 "ao cliente que a seguradora foi acionada/contatada.")
+    return {"status": "confirm_first", "missing": [], "confirmacao_comprovada": False,
+            "motivo_interno": motivo, "content": texto}
 
 
 class InsurerDispatchTool(BaseTool):
@@ -1468,6 +1589,15 @@ class InsurerDispatchTool(BaseTool):
                          "agente (%s) — mantendo simulação", type(exc).__name__)
             return False
 
+    async def _prova_da_confirmacao(self, kwargs: dict) -> dict:
+        """A prova do "sim" nesta conversa — `company_id` da ferramenta, `session_id`
+        do ESTADO (injetado pelo `tool_node`; nunca da LLM)."""
+        client = getattr(self.supabase_client, "client", self.supabase_client)
+        if client is None:
+            return {"comprovada": False, "motivo": "sem banco"}
+        return await prova_da_confirmacao(client, company_id=self.company_id,
+                                          session_id=str(kwargs.get("session_id") or ""))
+
     async def _arun(self, **kwargs) -> dict:
         """Caminho LIVE: com o agente de atendimento LIGADO, cria a sessão real,
         envia a abertura à seguradora pela integração da corretora e ativa o
@@ -1494,6 +1624,17 @@ class InsurerDispatchTool(BaseTool):
             logger.info("[InsurerDispatch] agente de atendimento desligado (ou freio "
                         "armado) — plano preparado, NADA enviado")
             return base
+
+        # 🔴 SPEC-125 Y1 (juiz B1) — o último portão antes de SAIR DO PRÉDIO: a
+        #    afirmação do modelo (`dados_confirmados`) E a prova na conversa (a pergunta
+        #    de confirmação num turno anterior + o "sim" do segurado depois dela).
+        prova = await self._prova_da_confirmacao(kwargs)
+        if not (kwargs.get("dados_confirmados") is True and prova.get("comprovada")):
+            logger.warning("[InsurerDispatch] acionamento SEM confirmação comprovada "
+                           "(campo=%s · %s) — NADA enviado",
+                           kwargs.get("dados_confirmados"), prova.get("motivo"))
+            return pedido_de_confirmacao(str(prova.get("motivo") or ""),
+                                         ja_confirmou=bool(prova.get("comprovada")))
 
         from app.services.corridor_playbooks import insurer_contact_env_var, resolve_insurer_contact
 
@@ -1612,6 +1753,9 @@ class InsurerDispatchTool(BaseTool):
         if finalize_live_for(playbook_ref):
             content = (
                 "[ACIONAMENTO REAL INICIADO]\n"
+                # 🔴 SPEC-125 Y2: o fiscal da honestidade ancora a frase no SERVIÇO
+                #    que saiu (`honestidade_do_handoff.servicos_acionados`).
+                f"SERVIÇO ACIONADO: {subservice or '-'}\n"
                 f"A conversa com a assistência da {insurer_label} foi aberta pelo WhatsApp da corretora. "
                 "A URA será respondida automaticamente com os dados coletados e o cliente será avisado "
                 "assim que o protocolo/agendamento sair.\n"

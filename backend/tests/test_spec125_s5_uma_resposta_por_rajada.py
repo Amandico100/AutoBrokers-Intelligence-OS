@@ -97,6 +97,29 @@ def _reatar_os_pacotes() -> None:
             setattr(pacote, filho, mod)
 
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _o_harness_volta_como_estava():
+    """🔴 SPEC-125 conserto único (juiz G7) — o cache do HARNESS também se devolve.
+
+    📊 02/10/2026: `test_a_janela_esta_ligada_nos_portoes` ficava VERMELHO rodado depois
+    deste arquivo (`1 failed, 14 passed`; sozinho, `7 passed`). A causa: `H.motor()` guarda
+    o webhook em `H._MODULO` — um módulo de TESTE, que o `conftest` não fotografa. No fim
+    deste arquivo o `conftest` tira de `sys.modules` o `app.api.webhook` que nasceu AQUI
+    (`tirar_novos_do_app=True`), mas `H._MODULO` continuava apontando para ele. O arquivo
+    seguinte recebia esse webhook ÓRFÃO: o dublê do agente (`H.agente_ligado`) ia para o
+    `attendance_capture` velho, o webhook importava o novo, e o turno não falava nunca.
+    Devolve o cache como achou — o próximo `H.motor()` monta o mundo de novo."""
+    antes = dict(H._MODULO)
+    try:
+        yield
+    finally:
+        H._MODULO.clear()
+        H._MODULO.update(antes)
+
+
 def _motor() -> None:
     global W, M, VS, BP
     _reatar_os_pacotes()
@@ -242,6 +265,12 @@ class RedisDuble:
         if script == M.LUA_RENOVA_SE_FOR_MEU:
             if atual == token:
                 self.dados[chave] = (atual, RELOGIO[0] + timedelta(seconds=int(resto[0])))
+                return 1
+            return 0
+        if script == getattr(M, "LUA_GRAVA_SE_IGUAL", None):
+            # SPEC-125 Y4: compara e grava num passo só (o dublê é de uma tarefa por vez).
+            if (atual is None and token == "") or atual == token:
+                self.dados[chave] = (resto[0], RELOGIO[0] + timedelta(seconds=int(resto[1])))
                 return 1
             return 0
         raise AssertionError("script Lua desconhecido no dublê")

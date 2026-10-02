@@ -465,6 +465,12 @@ class CorredorDeMentira(IT.InsurerDispatchTool):
     async def _resolve_vehicle_facts(self, kwargs):  # noqa: D102
         return kwargs
 
+    async def _prova_da_confirmacao(self, kwargs):  # noqa: D102
+        # SPEC-125 Y1: a prova do "sim" do segurado lê a CONVERSA (banco). Este
+        # arquivo mede o INTERRUPTOR, com um caso já confirmado; a regra do "sim"
+        # tem guarda próprio, com controle (`test_spec125_conserto_y.py`).
+        return {"comprovada": True, "motivo": "caso confirmado (fixture)"}
+
 
 def teste_o_corredor_de_whatsapp_so_fala_com_o_agente_ligado():
     print("\n[5] O corredor de WhatsApp: nada sai com o agente desligado")

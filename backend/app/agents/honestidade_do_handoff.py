@@ -245,6 +245,12 @@ _LADO_DA_SEGURADORA = re.compile(
 _FIM_DA_ORACAO = re.compile(r"[.!?;\n—,]|\s+e\s+")
 
 
+_EQUIPE_DA_SEGURADORA = re.compile(
+    r"(?i)\b(?:equipe|time|pessoal|t[ée]cnicos?)\s+(?:t[ée]cnica\s+)?d[aeo]s?\s+(?:\w+\s+)?"
+    r"(?:seguradora|assist[êe]ncia|guincho|reboque|prestador(?:a)?|portal|oficina|socorro|"
+    r"vidra[çc]aria|chaveiro)\b")
+
+
 _SO_ACAO = re.compile(r"(?i)(?:" + _ACAO_DA_ATENDENTE + r")")
 
 
@@ -257,6 +263,11 @@ def _afirmacao_de_pessoa(texto: str, achado: "re.Match") -> bool:
     resto = texto[achado.end():achado.end() + 80]
     corte = _FIM_DA_ORACAO.search(resto)
     oracao = trecho + (resto[:corte.start()] if corte else resto)
+    # 🔴 SPEC-125 Y2 (juiz P4) — "acionei a equipe da ASSISTÊNCIA" é o lado da
+    #    seguradora, não a corretora: virava "Registrei seu pedido de atendimento
+    #    humano…" — a frase falsa que a S1 existe para matar. A equipe/time DO lado
+    #    da seguradora sai da conta de pessoa; "a equipe" sozinha continua pessoa.
+    oracao = _EQUIPE_DA_SEGURADORA.sub(" ", oracao)
     if _PESSOA.search(oracao):
         return True
     return bool(_VERBOS_DE_TRANSFERENCIA.search(trecho)
@@ -286,14 +297,126 @@ def _houve_acionamento_confirmado(resultados_das_tools: Optional[Iterable]) -> b
     Lê o histórico que o nó entrega (`state["messages"]`): o acionamento de um
     turno anterior do mesmo caso continua sendo verdade no turno seguinte.
     """
-    for msg in resultados_das_tools or []:
-        carimbos = CARIMBOS_DE_ACIONAMENTO.get(str(getattr(msg, "name", "") or ""))
+    return bool(servicos_acionados(resultados_das_tools))
+
+
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-125 conserto único (Y2 · red team B4) — o carimbo vale para O SERVIÇO
+# ---------------------------------------------------------------------------
+#
+# 📊 Reproduzido pelo red team (E3a, com controle): com o carimbo de um GUINCHO
+# no assunto, "Também já acionei o chaveiro, chega em 40 min" passava intacta —
+# nenhum chaveiro foi pedido. Antes da S125 a frase era barrada. Um carimbo
+# provava QUALQUER "acionei X" do resto do assunto (até 7 dias).
+#
+# Agora o carimbo diz QUAL serviço saiu, e a frase só se apoia nele se nomear
+# esse serviço (ou não nomear serviço nenhum: "seu atendimento foi acionado").
+#   insurer_dispatch → a linha `SERVIÇO ACIONADO: <subserviço>` que `_arun`
+#                      escreve junto do carimbo; sem ela (resultado antigo), o
+#                      `subservice` da CHAMADA pareada pelo `tool_call_id`; sem
+#                      nenhum dos dois, vale para qualquer serviço (o de antes).
+#   portal_action    → o portal é o de VIDROS, e só (`nodes.py`, SPEC-117 F3.2).
+LINHA_DO_SERVICO_ACIONADO = "SERVIÇO ACIONADO:"
+_QUALQUER = "*"
+_SERVICO_DO_PORTAL = "vidros"
+_RX_LINHA_DO_SERVICO = re.compile(r"SERVI[ÇC]O ACIONADO:\s*([A-Za-z_ ]+)", re.I)
+
+#: Apelidos que NÃO nomeiam o trabalho acionado (são sintoma, peça ou palavra
+#: comum): "o carro que não pega", "o técnico chega" — o objeto do verbo é outro.
+_TERMOS_GENERICOS = frozenset({
+    "pane", "defeito", "nao pega", "carro nao liga", "motor falhando", "carga",
+    "chave", "pet", "split", "vazamento", "torneira", "tecnico", "combustivel",
+    "falta de combustivel", "sem combustivel", "pane eletrica", "pane mecanica",
+    "ar nao gela", "limpar caixa", "linha branca", "estepe", "transporte",
+})
+
+
+def _sem_acento(texto: str) -> str:
+    import unicodedata
+
+    t = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in t if not unicodedata.combining(c)).lower()
+
+
+_RX_DOS_SERVICOS: list = []
+
+
+def _rx_dos_servicos():
+    """`(regex, termo→canônico)` dos nomes de serviço — DERIVADO dos corredores
+    (`corridor_playbooks`: os subserviços declarados + os apelidos), nunca uma
+    lista escrita aqui. Montado uma vez por processo."""
+    if _RX_DOS_SERVICOS:
+        return _RX_DOS_SERVICOS[0]
+    mapa: dict = {}
+    try:
+        from app.services import corridor_playbooks as C
+
+        canonicos = set()
+        for pb in (getattr(C, "_PLAYBOOKS", {}) or {}).values():
+            canonicos |= set(((pb or {}).get("subservices") or {}).keys())
+        for nome in canonicos:
+            mapa[nome.replace("_", " ")] = nome
+        for apelido, nome in (getattr(C, "_SUBSERVICE_ALIASES", {}) or {}).items():
+            if nome in canonicos:
+                mapa[_sem_acento(apelido).replace("_", " ").replace("-", " ")] = nome
+    except Exception as erro:  # noqa: BLE001 — sem corredores, nenhum serviço é nomeado
+        logger.warning("[HANDOFF] nomes de serviço indisponíveis (%s)", type(erro).__name__)
+    for termo in list(mapa):
+        if termo in _TERMOS_GENERICOS:
+            mapa.pop(termo)
+    termos = sorted(mapa, key=len, reverse=True)
+    rx = (re.compile(r"\b(?:" + "|".join(re.escape(t) for t in termos) + r")s?\b")
+          if termos else None)
+    _RX_DOS_SERVICOS.append((rx, mapa))
+    return _RX_DOS_SERVICOS[0]
+
+
+def servico_nomeado(trecho: str) -> Optional[str]:
+    """O PRIMEIRO serviço nomeado no trecho (o objeto do verbo), canônico — ou None."""
+    rx, mapa = _rx_dos_servicos()
+    if rx is None:
+        return None
+    achado = rx.search(_sem_acento(trecho).replace("-", " ").replace("_", " "))
+    if not achado:
+        return None
+    termo = achado.group(0)
+    return mapa.get(termo) or mapa.get(termo[:-1])
+
+
+def servicos_acionados(resultados_das_tools: Optional[Iterable]) -> set:
+    """Os serviços (canônicos) com carimbo de acionamento — `{"*"}` = carimbo sem
+    serviço conhecido (vale para qualquer). Vazio = nenhum acionamento confirmado."""
+    msgs = list(resultados_das_tools or [])
+    chamadas: dict = {}
+    for msg in msgs:
+        for chamada in (getattr(msg, "tool_calls", None) or []):
+            if isinstance(chamada, dict) and chamada.get("id"):
+                chamadas[str(chamada["id"])] = chamada.get("args") or {}
+    servicos: set = set()
+    for msg in msgs:
+        nome = str(getattr(msg, "name", "") or "")
+        carimbos = CARIMBOS_DE_ACIONAMENTO.get(nome)
         if not carimbos:
             continue
         conteudo = str(getattr(msg, "content", "") or "")
-        if any(c in conteudo for c in carimbos):
-            return True
-    return False
+        if not any(c in conteudo for c in carimbos):
+            continue
+        if nome == "portal_action":
+            servicos.add(_SERVICO_DO_PORTAL)
+            continue
+        linha = _RX_LINHA_DO_SERVICO.search(conteudo)
+        bruto = linha.group(1) if linha else str(
+            (chamadas.get(str(getattr(msg, "tool_call_id", "") or "")) or {}).get("subservice") or "")
+        servico = servico_nomeado(bruto) if bruto.strip() else None
+        servicos.add(servico or _QUALQUER)
+    return servicos
+
+
+def _oracao_da_afirmacao(texto: str, achado: "re.Match") -> str:
+    """O verbo e o que vem depois dele, até o fim da oração — onde mora o objeto."""
+    resto = texto[achado.end():achado.end() + 80]
+    corte = _FIM_DA_ORACAO.search(resto)
+    return achado.group(0) + (resto[:corte.start()] if corte else resto)
 
 
 def _houve_handoff_confirmado(resultados_das_tools: Optional[Iterable]) -> bool:
@@ -312,6 +435,49 @@ def _houve_handoff_confirmado(resultados_das_tools: Optional[Iterable]) -> bool:
     return False
 
 
+#: 🔴 SPEC-125 Y2 (red team B3) — o que se diz no lugar da PARTE sem âncora quando
+#: o resto da frase é um acionamento VERDADEIRO. Sem verbo de transferência no
+#: passado e sem "atendimento humano" (o guarda `test_as_respostas_honestas…`).
+NOTA_DA_EQUIPE_SEM_CONFIRMACAO = (
+    "Quanto à equipe da corretora, ainda não tenho a confirmação de que ela "
+    "está com o seu caso — sigo com você por aqui.")
+NOTA_DO_ACIONAMENTO_SEM_CONFIRMACAO = (
+    "O que mais eu tinha mencionado ainda não tem confirmação, então não vou te "
+    "dizer que já está feito.")
+
+_RX_FRASE = re.compile(r"[^.!?\n]+[.!?]*")
+_RX_ENTRE_ORACOES = re.compile(r"(\s*[,;—]\s*|\s+e\s+)")
+
+
+def _cortar_oracoes(texto: str, trechos: list) -> str:
+    """Tira do texto as ORAÇÕES que contêm algum dos trechos `(início, fim)` —
+    e a frase inteira, se não sobrar oração nenhuma. **PURA.**"""
+    saida = []
+    for frase in _RX_FRASE.finditer(texto):
+        a, b = frase.span()
+        if not any(i < b and f > a for i, f in trechos):
+            saida.append(frase.group(0).strip())
+            continue
+        corpo = frase.group(0)
+        final = re.search(r"[.!?]+\s*$", corpo)
+        pontuacao = final.group(0).strip() if final else ""
+        partes = _RX_ENTRE_ORACOES.split(corpo[: final.start()] if final else corpo)
+        mantidas, pos, separador = [], a, ""
+        for k, parte in enumerate(partes):
+            ini, fim = pos, pos + len(parte)
+            pos = fim
+            if k % 2 == 1:          # separador
+                separador = parte
+                continue
+            if not parte.strip() or any(i < fim and f > ini for i, f in trechos):
+                continue
+            mantidas.append((separador if mantidas else "") + parte)
+        resto = "".join(mantidas).strip()
+        if resto:
+            saida.append(resto[0].upper() + resto[1:] + (pontuacao or "."))
+    return " ".join(p for p in saida if p).strip()
+
+
 def guardar_a_verdade_do_handoff(resposta: str, resultados_das_tools=None) -> str:
     """O fiscal. Devolve a resposta intacta, ou a versão honesta.
 
@@ -325,19 +491,45 @@ def guardar_a_verdade_do_handoff(resposta: str, resultados_das_tools=None) -> st
     if not afirma_transferencia(texto):
         return texto
     resultados = list(resultados_das_tools or [])
-    if _houve_handoff_confirmado(resultados):
+    handoff_ok = _houve_handoff_confirmado(resultados)
+    acionados = servicos_acionados(resultados)
+
+    # 🔴 SPEC-125 S1 + Y2 — CADA afirmação precisa da SUA âncora.
+    #   de PESSOA       → `HANDOFF_OK`
+    #   de ACIONAMENTO  → o carimbo do acionamento DO SERVIÇO que ela nomeia (ou de
+    #                     qualquer um, se não nomeia serviço); sem serviço nomeado,
+    #                     o `HANDOFF_OK` também a sustenta (o gesto foi o handoff).
+    pessoa_sem, acion_sem, acion_com = [], [], []
+    for a in _AFIRMACOES_DE_TRANSFERENCIA.finditer(texto):
+        if _afirmacao_de_pessoa(texto, a):
+            if not handoff_ok:
+                pessoa_sem.append(a)
+            continue
+        servico = servico_nomeado(_oracao_da_afirmacao(texto, a))
+        if acionados and (_QUALQUER in acionados or servico is None or servico in acionados):
+            acion_com.append(a)
+        elif handoff_ok and servico is None:
+            continue
+        else:
+            acion_sem.append(a)
+    if not pessoa_sem and not acion_sem:
         return texto
 
-    # 🔴 SPEC-125 S1 — cada afirmação precisa da SUA âncora. A de PESSOA só se
-    # apoia em `HANDOFF_OK` (que já faltou, acima); a de ACIONAMENTO se apoia
-    # no carimbo do acionamento. Uma frase mista ("acionei o guincho e avisei a
-    # equipe") cai pela parte que não tem âncora.
-    de_pessoa = [a for a in _AFIRMACOES_DE_TRANSFERENCIA.finditer(texto)
-                 if _afirmacao_de_pessoa(texto, a)]
-    if not de_pessoa and _houve_acionamento_confirmado(resultados):
-        return texto
+    # 🔴 Y2 (red team B3) — "Já acionei o guincho pela Porto e avisei a corretora":
+    #    o guincho saiu DE VERDADE. Reescrever a frase inteira para "Registrei seu
+    #    pedido de atendimento humano" trocava a notícia verdadeira por uma falsa.
+    #    Fica a oração que tem âncora; sai só a que não tem, e diz-se a verdade sobre ela.
+    if acion_com:
+        cortado = _cortar_oracoes(texto, [a.span() for a in pessoa_sem + acion_sem])
+        if cortado and _AFIRMACOES_DE_TRANSFERENCIA.search(cortado):
+            notas = (([NOTA_DA_EQUIPE_SEM_CONFIRMACAO] if pessoa_sem else [])
+                     + ([NOTA_DO_ACIONAMENTO_SEM_CONFIRMACAO] if acion_sem else []))
+            logger.error("[HANDOFF] 🔴 frase mista: mantido o acionamento confirmado, "
+                         "retirada a parte sem âncora (%s)",
+                         "pessoa" if pessoa_sem else "acionamento de outro serviço")
+            return " ".join([cortado] + notas)
 
     logger.error(
         "[HANDOFF] 🔴 resposta afirmava %s SEM confirmação — reescrita. Trecho: %r",
-        "transferência" if de_pessoa else "acionamento", texto[:160])
-    return RESPOSTA_HONESTA if de_pessoa else RESPOSTA_HONESTA_DO_ACIONAMENTO
+        "transferência" if pessoa_sem else "acionamento", texto[:160])
+    return RESPOSTA_HONESTA if pessoa_sem else RESPOSTA_HONESTA_DO_ACIONAMENTO

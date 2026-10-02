@@ -111,6 +111,9 @@ def main(argv=None) -> int:
     p.add_argument("--sem-espera-429", action="store_true",
                    help="SPEC-125 S8a: NÃO espera o limite de taxa (429) do provedor; a conversa vira "
                         "BLOCKED_BY_INFRA na hora (padrão: espera e tenta de novo, até 4 vezes)")
+    p.add_argument("--prompt-versao", default=None, choices=("v1", "v2"),
+                   help="SPEC-125: a coluna agents.prompt_versao da linha do agente da bancada (sem ela: o padrão "
+                        "do produto, PROMPT_VERSAO_PADRAO) — o lado a lado v1 × v2")
     p.add_argument("--redecidir", action="store_true",
                    help="SPEC-123 F5a: com --recalcular, passa a proposta gravada de novo pela POLÍTICA de hoje")
     a = p.parse_args(argv)
@@ -131,6 +134,8 @@ def main(argv=None) -> int:
     # 🔴 SPEC-125 S8a: na linha de comando o 429 ESPERA (📊 25 de 36 conversas perdidas na linha de base).
     if not a.sem_espera_429:
         os.environ.setdefault("BANCADA_ESPERA_EM_429", "1")
+    if a.prompt_versao:
+        os.environ["BANCADA_PROMPT_VERSAO"] = a.prompt_versao
 
     from app.services.evals import bancada as B
 

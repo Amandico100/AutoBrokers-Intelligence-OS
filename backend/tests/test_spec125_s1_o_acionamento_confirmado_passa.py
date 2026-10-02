@@ -102,10 +102,27 @@ def test_acionamento_real_do_whatsapp_passa_intacto(frase):
     assert H.guardar_a_verdade_do_handoff(frase, [_dispatch_real()]) == frase
 
 
-@pytest.mark.parametrize("frase", ACIONAMENTOS_LEGITIMOS)
+# 🔴 SPEC-125 conserto Y2 (red team B4): o carimbo vale para o SERVIÇO que saiu. O
+#    portal é o de VIDROS — "acionei o guincho" com o carimbo do portal deixou de ser
+#    legítimo (era o defeito: um carimbo provava QUALQUER "acionei X"). A lição migra:
+#    o portal sustenta o que é de vidro ou não nomeia serviço; o guincho, não.
+ACIONAMENTOS_DO_PORTAL = [
+    "Pronto, acionei o vidro pela Porto. Assim que o protocolo chegar, eu te aviso por aqui.",
+    "Já solicitei a troca do para-brisa.",
+    "Seu atendimento foi acionado na Porto.",
+]
+
+
+@pytest.mark.parametrize("frase", ACIONAMENTOS_DO_PORTAL)
 @pytest.mark.parametrize("job", [PORTAL_ABERTO, PORTAL_PARADO_COM_NUMERO], ids=["aberto", "parado_com_numero"])
 def test_acionamento_real_do_portal_passa_intacto(frase, job):
+    assert H.afirma_transferencia(frase), "a frase precisa CASAR o detector"
     assert H.guardar_a_verdade_do_handoff(frase, [_portal(job)]) == frase
+
+
+def test_o_portal_nao_sustenta_o_guincho():
+    frase = "Pronto, acionei o guincho pela Porto."
+    assert H.guardar_a_verdade_do_handoff(frase, [_portal(PORTAL_ABERTO)]) ==         H.RESPOSTA_HONESTA_DO_ACIONAMENTO
 
 
 def test_acionamento_de_um_turno_anterior_do_mesmo_caso_vale():
@@ -146,7 +163,17 @@ def test_transferencia_a_pessoa_nao_se_apoia_no_acionamento(frase, fonte):
     "Chamei um atendente para cuidar de você.",
 ])
 def test_frase_mista_exige_os_dois_carimbos(frase):
-    assert H.guardar_a_verdade_do_handoff(frase, [_dispatch_real()]) == H.RESPOSTA_HONESTA
+    # 🔴 SPEC-125 conserto Y2 (red team B3): com o acionamento REAL, a frase mista
+    #    não vira mais "atendimento humano" inteira — fica a parte do acionamento, sai
+    #    a de pessoa (sem âncora), e a nota diz a verdade sobre ela. Sem acionamento
+    #    nomeado na frase ("Chamei um atendente"), continua a resposta honesta inteira.
+    saida = H.guardar_a_verdade_do_handoff(frase, [_dispatch_real()])
+    if "guincho" in frase:
+        assert saida.startswith(("Pronto, acionei o guincho.", "Acionei o guincho.")), saida
+        assert H.NOTA_DA_EQUIPE_SEM_CONFIRMACAO in saida
+        assert "atendimento humano" not in saida.lower()
+    else:
+        assert saida == H.RESPOSTA_HONESTA
     handoff = ToolMessage(content=H.SUCESSO_DO_HANDOFF, tool_call_id="h", name="request_human_agent")
     assert H.guardar_a_verdade_do_handoff(frase, [_dispatch_real(), handoff]) == frase
 
