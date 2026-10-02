@@ -348,7 +348,13 @@ def test_pela_ferramenta_real_o_c8_acionado_ganha_uma_chance_e_so_uma(borda):
         b.tabelas["messages"].append({"conversation_id": cid, "role": "user", "content": fala,
                                       "created_at": "2026-10-02T10:%02d:00+00:00" % i})
     r1 = _pedir(H, b, cid, motivo)
-    assert r1 == H.SEGUNDA_CHANCE_DO_HANDOFF, r1
+    # 🔴 SPEC-126 U1 (P-125-02) — §9.3, a lição MIGRA: o motivo gravado do C8 é andamento pendente
+    #    ("ainda sem previsão", "pede resposta sobre andamento"), e a segunda chance do caso acionado
+    #    agora devolve o ESTADO (`SEGUNDA_CHANCE_DO_ANDAMENTO`) em vez da instrução genérica, que
+    #    mandava "perguntar ao segurado o dado que falta". O que este teste guardava continua aqui:
+    #    é UMA segunda chance, nada marcado, ninguém avisado, e a 2ª chamada vai à pessoa.
+    assert H.foi_segunda_chance(r1), r1
+    assert "ESTADO ESCRITO" in r1 and "900000001" in r1, r1
     assert _linha(b, cid)["status"] == "open" and ENVIOS == []
     assert len(_diario(b, cid)) == 1
     r2 = _pedir(H, b, cid, motivo)

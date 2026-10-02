@@ -478,6 +478,64 @@ def _cortar_oracoes(texto: str, trechos: list) -> str:
     return " ".join(p for p in saida if p).strip()
 
 
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-126 U4 (D4 · T5) — "CANCELEI" TAMBÉM É AÇÃO, e nenhuma ferramenta cancela
+# ---------------------------------------------------------------------------
+#
+# D4 do Founder (02/10/2026): depois de acionar, o agente NÃO promete cancelar — chama a pessoa
+# da corretora, que cancela com a seguradora. 📊 `grep -n cancel insurer_dispatch_tool.py` só acha
+# o MODO TESTE e uma objeção: não existe ferramenta que cancele. Logo "Pronto, cancelei o guincho"
+# é sempre falso — e é a frase que faz o segurado ir embora com o prestador ainda a caminho.
+#
+# A regra é a mesma do acionamento (T5): a frase só sobrevive com o CARIMBO da ferramenta que
+# cancelou. Hoje o dicionário é VAZIO de propósito; a ferramenta de cancelar (pendência da SPEC-126,
+# "cancelar sozinho") entra aqui com o literal dela — e o guarda do teste continua valendo.
+CARIMBOS_DE_CANCELAMENTO: dict = {}
+
+#: Só AFIRMAÇÃO no passado ou no estado ("cancelei", "está cancelado", "foi cancelado", "acabei de
+#: cancelar", "cancelamento feito"). ⛔ Ficam livres: a negação ("ainda não está cancelado", "não
+#: cancelei"), a intenção ("vou chamar a pessoa para cancelar") e a pergunta ("quer cancelar?").
+_NAO = r"(?<!n[ãa]o )(?<!nem )"
+_AFIRMACOES_DE_CANCELAMENTO = re.compile(
+    r"(?i)"
+    + _NAO + r"\bcancel(?:ei|amos)\b"
+    + r"|" + _NAO + r"\bacab(?:ei|o|amos)\s+de\s+cancelar\b"
+    + r"|" + _NAO + r"\b(?:est[áa]|foi|ficou|fica|j[áa]\s+est[áa]|j[áa]\s+foi)\s+(?:tudo\s+)?cancelad[oa]s?\b"
+    + r"|" + _NAO + r"\bcancelamento\s+(?:j[áa]\s+)?(?:foi\s+|est[áa]\s+)?"
+      r"(?:feito|realizado|efetuado|confirmado|conclu[íi]do)\b")
+
+#: O que se diz no lugar. Sem verbo de transferência no passado e sem afirmar cancelamento (o
+#: guarda confere que ela não se auto-reescreve).
+NOTA_DO_CANCELAMENTO_SEM_FERRAMENTA = (
+    "Ainda não está cancelado: quem cancela com a seguradora é uma pessoa da corretora, e o "
+    "serviço só para quando ela confirmar.")
+
+
+def afirma_cancelamento(texto: str) -> bool:
+    """A resposta afirma que um cancelamento ACONTECEU?"""
+    return bool(_AFIRMACOES_DE_CANCELAMENTO.search(str(texto or "")))
+
+
+def _houve_cancelamento_confirmado(resultados_das_tools: Optional[Iterable]) -> bool:
+    for msg in resultados_das_tools or []:
+        carimbos = CARIMBOS_DE_CANCELAMENTO.get(str(getattr(msg, "name", "") or ""))
+        if carimbos and any(c in str(getattr(msg, "content", "") or "") for c in carimbos):
+            return True
+    return False
+
+
+def _sem_o_cancelamento_sem_ancora(texto: str, resultados: list) -> str:
+    """Tira as FRASES que afirmam cancelamento sem carimbo e põe a nota honesta no fim. **PURA.**
+    A frase inteira sai (não só a oração): "cancelei o guincho, pode ficar tranquilo" — o
+    "pode ficar tranquilo" é consequência do cancelamento inventado."""
+    if not afirma_cancelamento(texto) or _houve_cancelamento_confirmado(resultados):
+        return texto
+    sobra = " ".join(f.group(0).strip() for f in _RX_FRASE.finditer(texto)
+                     if not afirma_cancelamento(f.group(0))).strip()
+    logger.error("[HANDOFF] 🔴 resposta afirmava CANCELAMENTO sem ferramenta — reescrita (D4/T5)")
+    return " ".join(p for p in (sobra, NOTA_DO_CANCELAMENTO_SEM_FERRAMENTA) if p)
+
+
 def guardar_a_verdade_do_handoff(resposta: str, resultados_das_tools=None) -> str:
     """O fiscal. Devolve a resposta intacta, ou a versão honesta.
 
@@ -486,6 +544,20 @@ def guardar_a_verdade_do_handoff(resposta: str, resultados_das_tools=None) -> st
     motor novo — é a segunda instância de um padrão que o produto já tem.
     """
     texto = str(resposta or "")
+    if not texto.strip():
+        return texto
+    # 🔴 SPEC-126 U4 — o cancelamento primeiro: a frase que ele tira pode carregar também uma
+    #    transferência ("cancelei e avisei a equipe"), e o resto segue para as âncoras de sempre.
+    sem_cancelamento = _sem_o_cancelamento_sem_ancora(texto, list(resultados_das_tools or []))
+    saida = _guardar_a_transferencia(sem_cancelamento, resultados_das_tools)
+    if sem_cancelamento != texto and NOTA_DO_CANCELAMENTO_SEM_FERRAMENTA not in saida:
+        # a transferência sem âncora trocou o texto inteiro: a verdade do cancelamento volta junto
+        saida = "%s %s" % (saida, NOTA_DO_CANCELAMENTO_SEM_FERRAMENTA)
+    return saida
+
+
+def _guardar_a_transferencia(texto: str, resultados_das_tools=None) -> str:
+    """As âncoras de PESSOA e de ACIONAMENTO (SPEC-125 S1/Y2/Z) — o fiscal de antes da U4."""
     if not texto.strip():
         return texto
     if not afirma_transferencia(texto):

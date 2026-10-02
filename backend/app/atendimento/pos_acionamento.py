@@ -149,12 +149,46 @@ def prazo_pos_acionamento_horas(companhia: Any) -> int:
 # comprada de quem não devia.
 # ===========================================================================
 
+#: 🔴 SPEC-126 U4 — o LUGAR de risco, para as regras de K1 abaixo. ⚠️ Lugar sozinho não basta
+#:    ("a vistoria é na rodovia" é agenda): K1 exige a PESSOA nele (sozinha, com criança, à noite).
+_LUGAR_DE_RISCO = r"(?:rodovia|estrada|pista|acostamento|\bbr\b)"
+
+#: 🔴 SPEC-126 U4 (D4) — os SERVIÇOS que se cancelam na seguradora. Cancelar UM DELES é K3 mesmo
+#:    quando a mesma frase cancela também a vistoria ("cancela a vistoria e o guincho tb"): o que já
+#:    saiu para a seguradora pesa mais que a agenda. ⛔ `vistoria/agendamento/visita/horario/data`
+#:    NÃO estão aqui de propósito — são a agenda da regra `C`.
+_SERVICO_ACIONADO = (r"(?:guincho|reboque|prestador|tecnico|chaveiro|eletricista|encanador|servico"
+                     r"|chamado|acionamento|socorro|assistencia)")
+
+#: 🔴 SPEC-126 U4 — o VERBO de cancelar, nas formas em que o segurado PEDE ou DIZ que cancela
+#:    ("cancela", "cancelem", "cancele", "cancelar", "cancelo", "cancelei") e o substantivo só
+#:    quando PEDIDO ("quero o cancelamento"). ⛔ Ficam de fora, medido no acervo (📊 02/10, 15.699
+#:    falas `user`): "cancelou?" / "processo de cancelamento" / "taxa de cancelamento" / "evitar o
+#:    cancelamento" — são pergunta de status ou conversa de inadimplência, não pedido; e a negação
+#:    ("não cancela não, já chegou", "não precisa cancelar") é o contrário de cancelar.
+_CANCELAR = (r"(?<!nao )(?<!nao precisa )(?<!nao precisam )(?<!sem )(?<!para nao )(?<!pra nao )"
+             r"\bcancel(?:a|ar|em|e|o|ei|amos)\b"
+             r"|\b(?:quero|queria|gostaria de|pedir|pedi|pediu|solicitar|solicito|solicitei|fazer|faz"
+             r"|faca|pedido de) (?:o |um )?cancelamento\b")
+
 _CASCATA: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
     ("K1", re.compile(
         r"prestador (ainda )?nao (veio|chegou|apareceu)|ninguem (veio|chegou|apareceu)"
         r"|(esperei|esperou|esperando) (um monte|ate agora|horas)"
         r"|(estou|to) (parado |presa |preso )?(no acostamento|na pista|na estrada)"
-        r"|local de risco|guincho nao (veio|chegou)")),
+        r"|local de risco|guincho nao (veio|chegou)"
+        # 🔴 SPEC-126 U4 — laudo do juiz final da 125 (pend. 1): *"tô sozinha na rodovia à noite
+        #    com duas crianças"* caía em `N`. A CONDIÇÃO de K1 (`CONDICAO_NO_ATENDIMENTO`) já dizia
+        #    "pista, acostamento, à noite, sozinho"; a cascata não via nenhum dos três.
+        #    ⛔ Não pega: "vou mandar os documentos à noite" (sem lugar), "a vistoria é na
+        #    rodovia" (sem a pessoa parada nele).
+        r"|sozinh[oa] (aqui )?(na|no|nessa|nesse) " + _LUGAR_DE_RISCO
+        + r"|" + _LUGAR_DE_RISCO + r"\W+(\w+\W+){0,4}?(a noite|de noite|no escuro|sem luz)"
+        + r"|(com|e) (as |os |meus |minhas |duas |dois |tres |uma |um |meu |minha )?"
+          r"(criancas|crianca|bebes?|filhos pequenos|filha pequena|filho pequeno)\W+(\w+\W+){0,5}?"
+        + _LUGAR_DE_RISCO
+        + r"|" + _LUGAR_DE_RISCO + r"\W+(\w+\W+){0,5}?(com|e) (as |os |meus |minhas |duas |dois |tres )?"
+          r"(criancas|crianca|bebes?)")),
     # 🔴 `mas nao foi` era largo demais — [4] do red team. 📊 *"a peça chegou
     #    mas não foi montada ainda"* virava RECLAMAÇÃO e ia para humano, quando
     #    é `H` (peça/previsão). ⚠️ O caso do acervo que a cascata precisa pegar
@@ -167,7 +201,25 @@ _CASCATA: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
         r"|nao fizeram nada|reclama(cao|r) (disso|com)|to indignad"
         # 📊 *"nao quero mais esperar, ja faz 3 horas"* era K3 (`nao quero
         #    mais`) e virava "quer cancelar" — handoff pelo motivo errado.
-        r"|nao (quero|aguento) mais esperar|nao aguento mais")),
+        r"|nao (quero|aguento) mais esperar|nao aguento mais"
+        # 🔴 SPEC-126 U4 — laudo do juiz final da 125 (pend. 1/2): o DANO feito pelo prestador, a
+        #    COBRANÇA por fora e a AMEAÇA de processo caíam em `N`/`E` — e são relacionamento (R9).
+        #    O dano exige QUEM fez (o prestador) E O QUÊ (o carro, a porta…): ⛔ "o guincho chegou,
+        #    amassou nada não" não tem o objeto. A cobrança exige o verbo de cobrar: ⛔ "a franquia eu
+        #    pago por fora?" é `E`. O processo exige a ameaça: ⛔ "processo do sinistro" não casa.
+        r"|(guincheiro|prestador|motorista|tecnico|chaveiro|eletricista|encanador|guincho|reboque"
+        r"|rapaz|moco|cara)\W+(\w+\W+){0,4}?(amassou|arranhou|riscou|danificou|quebrou|estragou"
+        r"|amassaram|arranharam|riscaram|danificaram|quebraram|estragaram) "
+        r"(o |a |meu |minha |o meu |a minha )?(carro|veiculo|moto|para-?choque|lataria|porta|roda"
+        r"|para-brisa|retrovisor|portao|piso|parede|farol|capo)"
+        r"|(cobr\w*|pediu|pediram|quer|querem|exigiu|exigiram)\W+(\w+\W+){0,5}?por fora\b"
+        r"|(vou|vamos|irei|iremos|quero) (te |vos |voces |vcs )?(processar|denunciar|entrar na justica)"
+        # ⛔ "procon"/"reclame aqui" SOZINHOS não: 📊 no acervo (02/10) eram um prêmio ("concorrendo
+        #    ao prêmio reclame aqui", "o login do reclame aqui") e uma lista de serviços ("processos
+        #    e procon"). Exige-se o GESTO de reclamar lá.
+        r"|(vou|vamos|irei|ir|recorrer|denunciar|reclamar|abrir)\W+(\w+\W+){0,3}?(no |ao |pro |para o )procon\b"
+        r"|(reclama\w*|registr\w*|abri|abrir|vou|vamos|irei|botar|colocar)\W+(\w+\W+){0,4}?"
+        r"(no |na |pro |para o )reclame aqui")),
     # 🔴 CANCELAR A VISTORIA É AGENDA, NÃO DESISTÊNCIA — [4] do red team.
     #
     # ⛔ Esta regra vem ANTES de K3 de propósito, e é a razão de a cascata ter
@@ -176,10 +228,42 @@ _CASCATA: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
     # de cancelar o agendamento"* são as duas frases medidas.
     # ⚠️ E ela NÃO come *"quero cancelar o atendimento"* (turno 18 da fixture):
     # o que se cancela ali é o serviço, e isso tem consequência na apólice.
+    #
+    # 🔴 SPEC-126 U4 (D4) — CANCELAR O SERVIÇO QUE JÁ SAIU vem ANTES da agenda. Só quando o
+    #    objeto do cancelamento é um SERVIÇO (`_SERVICO_ACIONADO`, até 5 palavras depois do verbo):
+    #    "cancela a vistoria e o guincho tb" cancela o guincho também, e o guincho já está na rua.
+    #    ⛔ "quero cancelar a vistoria" não tem serviço → segue para a regra `C` logo abaixo.
+    ("K3", re.compile(r"(?:" + _CANCELAR + r")\W+(\w+\W+){0,5}?" + _SERVICO_ACIONADO + r"\b")),
+    # 🔴 SPEC-126 U4 — laudo do juiz final da 125 (pend. 2): "remarcar a vistoria" + "indenização"
+    #    no MESMO turno saía `C` (a regra de agenda vinha antes de `L`) e a pergunta de dinheiro,
+    #    que é da pessoa (R9), sumia. ⚠️ Só quando os DOIS estão: `L` sozinho já vinha depois de K3
+    #    e continua; `C` sozinho continua `C`. Os dois termos são os MESMOS das regras L e C.
+    ("L", re.compile(
+        r"^(?=.*(?:indeniza|ser pag[ao]|pagamento (?:da|do)|prazo de pagamento))"
+        r"(?=.*(?:cancel(?:a|ar|em|e)|remarca(?:r)?|desmarca(?:r)?|adiar|mudar|trocar) "
+        r"(?:a |o |essa |esse |meu |minha )?(?:vistoria|agendamento|visita|horario|data))")),
     ("C", re.compile(
-        r"(cancelar|remarcar|desmarcar|adiar|mudar|trocar) "
+        # 🔴 SPEC-126 U4: o verbo em toda forma ("cancela", "cancelem", "remarca") — com o K3 novo
+        #    casando "cancela" sozinho, "cancela a vistoria" iria para a pessoa se a agenda só
+        #    reconhecesse o infinitivo.
+        r"(cancel(a|ar|em|e)|remarca(r)?|desmarca(r)?|adiar|mudar|trocar) "
         r"(a |o |essa |esse |meu |minha )?(vistoria|agendamento|visita|horario|data)")),
-    ("K3", re.compile(r"cancelar|desistir|nao quero mais|desisti do")),
+    # 🔴 SPEC-126 U4 (D4) — TODA forma de cancelar o serviço. 📊 Antes era
+    #    `cancelar|desistir|nao quero mais|desisti do`: "cancela o guincho", "pode cancelar",
+    #    "cancelem", "desiste", "não precisa mais do guincho" caíam em `N` → a segunda chance
+    #    mandava o agente "resolver sem pessoa" um pedido que só a corretora executa.
+    #    ⛔ Não pega: "não precisa se preocupar" (sem "mais"), "não precisa mais de nada" (é
+    #    despedida), "não cancela não" / "não precisa cancelar" (negação, em `_CANCELAR`).
+    ("K3", re.compile(
+        _CANCELAR
+        + r"|(?<!nao )\bdesist(e|i|ir|o|imos|iu)\b|nao quero mais"
+        + r"|nao (precisa|preciso|precisamos|vou precisar|vamos precisar) mais\b"
+          r"(?! (nada|de nada|esperar|me preocupar|se preocupar|nos preocupar|preocupar))"
+        + r"|nao (vou|vamos) mais precisar"
+        + r"|ja (resolvi|resolvemos|consegui|conseguimos|deu certo)\b.{0,40}"
+          r"\bnao (manda|mande|mandem|envia|envie|enviem|precisa)\b"
+        + r"|\bnao (manda|mande|mandem|envia|envie|enviem)\b( mais)? (o |a )?(guincho|reboque|prestador"
+          r"|tecnico|chaveiro|ninguem)")),
     ("L",  re.compile(r"indeniza|ser pag[ao]|pagamento (da|do)|prazo de pagamento")),
     ("I",  re.compile(
         r"abre? o (sinistro|chamado|atendimento)|abrir (outro|um novo|mais um)"
@@ -263,9 +347,25 @@ def pediu_pessoa(mensagens: Any) -> bool:
     return any(_PEDE_PESSOA.search(_norm(m)) for m in (mensagens or []) if str(m or "").strip())
 
 
-_URGENCIA = re.compile(
-    _PEDE_PESSOA.pattern
-    + r"|\bferid|\bvitima|ambulancia|acidente agora|urgencia medica|passando mal")
+#: O RISCO À VIDA dito pelo segurado — a parte de `_URGENCIA` que NÃO é pedido de pessoa.
+#: 🔴 SPEC-126 U4: a segunda chance lê ESTE padrão nas falas (`ha_risco_a_vida`), o mesmo que dá
+#:    o rótulo `P` aqui — uma fonte só (§9.4).
+_RISCO_A_VIDA = re.compile(
+    r"\bferid|\bvitima|ambulancia|acidente agora|urgencia medica|passando mal")
+
+_URGENCIA = re.compile(_PEDE_PESSOA.pattern + r"|" + _RISCO_A_VIDA.pattern)
+
+
+def ha_risco_a_vida(mensagens: Any) -> bool:
+    """O segurado diz que há risco à VIDA ("meu filho tá passando mal", "tem ferido")? — **PURA**.
+
+    🔴 SPEC-126 U4 — laudo do juiz final da 125 (pend. 2): a urgência só pesava quando estava no
+    MOTIVO que o modelo escreveu (`human_handoff._MOTIVOS_DE_REGRA['vitima']`). Dita pelo segurado
+    num caso sem acionamento, ganhava a segunda chance. Cada fala conferida sozinha, como
+    `pediu_pessoa`."""
+    if isinstance(mensagens, (str, bytes)):
+        mensagens = [mensagens]
+    return any(_RISCO_A_VIDA.search(_norm(m)) for m in (mensagens or []) if str(m or "").strip())
 
 
 def classificar_turno(mensagens: Any) -> str:
@@ -707,6 +807,6 @@ bloco_de_pos_acionamento = bloco_do_prompt
 __all__ = [
     "CARTAS", "CARTAS_POR_ID", "CATEGORIAS", "SEM_INTENCAO",
     "SITUACOES_PARA_HUMANO", "SITUACOES_CONDICIONAIS", "vai_para_humano",
-    "classificar_turno", "mapa_de_cartas", "texto_da_espera",
+    "classificar_turno", "ha_risco_a_vida", "mapa_de_cartas", "texto_da_espera",
     "e_atendimento_de_seguro", "bloco_do_prompt", "bloco_de_pos_acionamento",
 ]

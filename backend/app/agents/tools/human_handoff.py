@@ -210,6 +210,11 @@ _MOTIVOS_DE_REGRA = {
                        "não é comigo", "assunto novo"),
     "segurado_irritado": ("irritado", "nervoso", "reclamacao", "reclamação",
                           "insatisfeito", "xingou", "bravo"),
+    # 🔴 SPEC-126 U4 (D4) — SÓ o código que o prompt pede ("cancelamento_pos_acionamento"), nunca
+    #    "cancelar" solto: a palavra no motivo de um caso NÃO acionado ("cliente quer cancelar a
+    #    vistoria") continua desconhecida e na segunda chance. É `regra`: o agente obedeceu (D4).
+    "cancelamento_pos_acionamento": ("cancelamento_pos_acionamento",
+                                     "cancelamento pos acionamento"),
 }
 
 CLASSE_INCAPACIDADE = "incapacidade"
@@ -423,6 +428,12 @@ _TITULOS = {
 #    propósito: a mutação U2 troca a 1ª ocorrência dele no arquivo (juiz 097.1, P0).
 FASES_JA_ACIONADAS = ("captured", "monitoring")
 
+#: 🔴 SPEC-126 U4 — as fases da FICHA (`attendance_ficha.derivar_fase`) que só existem depois de a
+#: seguradora ser acionada: `acionado` (enviado) e `acompanhando` (há protocolo).
+#: constante_justificada: são os nomes de `attendance_ficha.FASE_ACIONADO`/`FASE_ACOMPANHANDO`,
+#: escritos aqui porque esta leitura é PURA e não importa o módulo da ficha.
+FASES_DA_FICHA_ACIONADA = ("acionado", "acompanhando")
+
 
 def _e_pos_acionamento(conversa: Dict[str, Any],
                        espera: Optional[Dict[str, Any]] = None) -> bool:
@@ -434,6 +445,17 @@ def _e_pos_acionamento(conversa: Dict[str, Any],
         if str(ficha.get("dispatch_state") or "") in FASES_JA_ACIONADAS:
             return True
         if str(ficha.get("protocolo") or "").strip():
+            return True
+        # 🔴 SPEC-126 U4 — A FORMA QUE O PRODUTO GRAVA. 📊 02/10/2026, 1.174 conversas: 0 com
+        #    `dispatch_state` e 0 com `protocolo` no topo da ficha — as duas chaves acima são as da
+        #    BANCADA, e nenhum escritor do produto as grava. O escritor real
+        #    (`nodes._gravar_ficha_do_turno` → `attendance_ficha.fundir`) grava
+        #    `acionamento.protocolo` e deriva a fase `acompanhando`/`acionado`. Sem estas linhas,
+        #    num caso acionado de verdade a R9 nunca era consultada (D4 inerte em produção).
+        acionamento = ficha.get("acionamento") if isinstance(ficha.get("acionamento"), dict) else {}
+        if str(acionamento.get("protocolo") or "").strip() or acionamento.get("enviado_em"):
+            return True
+        if str(ficha.get("fase") or "") in FASES_DA_FICHA_ACIONADA:
             return True
     if isinstance(espera, dict) and str(espera.get("scope") or "") == "pos_acionamento":
         return True
@@ -522,6 +544,75 @@ def _o_que_ele_quer(conversa: Dict[str, Any]) -> str:
         logger.warning("[HumanHandoff] rótulo do turno indisponível (%s)",
                        type(exc).__name__)
         return "não deu para entender o que ele quer"
+
+
+def _protocolo_da_ficha(ficha: Any) -> str:
+    """O protocolo do acionamento — o do topo (bancada) ou o de `acionamento` (o escritor real).
+
+    ⛔ Um "protocolo" SEM DÍGITO não é protocolo: 📊 02/10/2026, a única conversa do banco com
+    `acionamento.protocolo` guarda a palavra `agendamento` — o regex de `nodes.py` (a linha que
+    extrai o protocolo do resultado do acionamento) casa "protocolo/agendamento" do texto da
+    ferramenta. Imprimir isso como protocolo mandaria a atendente procurar um número que não existe.
+    """
+    if not isinstance(ficha, dict):
+        return ""
+    acion = ficha.get("acionamento") if isinstance(ficha.get("acionamento"), dict) else {}
+    for bruto in (ficha.get("protocolo"), acion.get("protocolo")):
+        valor = str(bruto or "").strip()
+        if valor and re.search(r"\d", valor):
+            return valor
+    return ""
+
+
+def _hora_do_acionamento(ficha: Any) -> str:
+    """`02/10 às 14:05` (fuso da corretora) — quando o acionamento saiu. `""` sem registro.
+
+    O escritor real não grava uma hora "do acionamento": ele grava a FASE com a hora em que ela
+    mudou (`attendance_ficha.fundir` → `historico[{fase, em}]`). A primeira fase acionada é a hora.
+    ⛔ Sem registro, `""` — nunca a hora de agora (R3: não se afirma o que não está escrito).
+    """
+    if not isinstance(ficha, dict):
+        return ""
+    acion = ficha.get("acionamento") if isinstance(ficha.get("acionamento"), dict) else {}
+    bruto = str(acion.get("enviado_em") or "").strip()
+    if not bruto:
+        for passo in (ficha.get("historico") or []):
+            if isinstance(passo, dict) and str(passo.get("fase") or "") in FASES_DA_FICHA_ACIONADA:
+                bruto = str(passo.get("em") or "").strip()
+                break
+    if not bruto:
+        return ""
+    from datetime import datetime, timezone
+    try:
+        from app.services.platform_outbound import fuso_da_corretora
+
+        quando = datetime.fromisoformat(bruto.replace("Z", "+00:00"))
+        if quando.tzinfo is None:
+            quando = quando.replace(tzinfo=timezone.utc)
+        local = quando.astimezone(fuso_da_corretora())
+        return "%s às %s" % (local.strftime("%d/%m"), local.strftime("%H:%M"))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _e_cancelamento(conversa: Dict[str, Any], motivo: Any) -> bool:
+    """O pedido é o cancelamento de um serviço já acionado? — a MESMA decisão de
+    `por_que_vai_direto_a_pessoa` (`_frase_do_cancelamento`), para o dossiê dizer o que a
+    decisão disse."""
+    return bool(_frase_do_cancelamento(motivo, conversa))
+
+
+def _frase_de_cancelar(conversa: Dict[str, Any]) -> str:
+    """A fala do segurado que pede o cancelamento (a última que a R9 lê como `K3`)."""
+    try:
+        from app.atendimento.pos_acionamento import classificar_turno
+
+        for fala in reversed(_falas_do_segurado(conversa)):
+            if classificar_turno([fala]) == _ROTULO_DO_CANCELAMENTO:
+                return " ".join(fala.split())[:160]
+    except Exception:  # noqa: BLE001
+        return ""
+    return ""
 
 
 def _onde_parou(conversa: Dict[str, Any], espera: Optional[Dict[str, Any]]) -> str:
@@ -1133,7 +1224,7 @@ def foi_segunda_chance(resultado: Any) -> bool:
 
 
 #: A frase para gente de cada motivo de REGRA (`classificar_o_motivo`).
-#: constante_justificada: são as cinco chaves de `_MOTIVOS_DE_REGRA` — o agente PODIA,
+#: constante_justificada: são as seis chaves de `_MOTIVOS_DE_REGRA` — o agente PODIA,
 #: mas o produto manda passar (D-PILOTO-13); D8 mantém "o cliente pede pessoa".
 _FRASE_DA_REGRA = {
     "vitima": "há vítima ou risco à pessoa",
@@ -1141,13 +1232,30 @@ _FRASE_DA_REGRA = {
     "valor_acima_do_limite": "envolve valor ou aprovação acima do que o agente decide",
     "fora_do_escopo": "o assunto está fora do que o agente atende",
     "segurado_irritado": "o segurado está irritado ou reclamando",
+    # SPEC-126 U4 (D4): a sexta chave de `_MOTIVOS_DE_REGRA`
+    "cancelamento_pos_acionamento": ("o segurado quer cancelar um serviço que já foi acionado, e só "
+                                     "uma pessoa da corretora cancela com a seguradora"),
 }
 
 #: Os casos que vão a pessoa NA PRIMEIRA chamada além dos de REGRA, procurados por
 #: PALAVRA INTEIRA (sem acento, minúsculo) no motivo e no ramo/serviço da ficha.
 #: ⚠️ Errar para o lado de passar é o comportamento de antes desta fatia; errar para o
 #:    lado de segurar é chamar o segurado de volta num caso que era de gente.
+#: O código do motivo do cancelamento depois de acionar — o que o prompt v2 pede ao agente que
+#: escreva no `reason`, e a chave que vai ao grupo (`motivo`) e ao diário.
+CANCELAMENTO_POS_ACIONAMENTO = "cancelamento_pos_acionamento"
+
 _SEMPRE_DE_GENTE = (
+    # 🔴 SPEC-126 U4 · D4 do Founder (02/10/2026) — "cancelamento depois de acionar → pessoa".
+    # constante_justificada: o guincho/técnico JÁ SAIU para a seguradora; NENHUMA ferramenta do
+    #   produto cancela (`grep cancel insurer_dispatch_tool.py` só acha o modo teste), então a
+    #   segunda chance mandaria o agente "resolver sem pessoa" o que só a corretora executa — e o
+    #   prestador seguiria a caminho. ⚠️ Esta entrada é lida de DOIS jeitos (`_frase_do_cancelamento`):
+    #   o código no motivo (estas palavras) OU a R9 dizendo `K3` nas falas de um caso JÁ ACIONADO.
+    #   Antes de acionar não há o que cancelar na seguradora: lá a segunda chance continua.
+    (CANCELAMENTO_POS_ACIONAMENTO, (CANCELAMENTO_POS_ACIONAMENTO, "cancelamento pos acionamento"),
+     "o segurado quer cancelar um serviço que já foi acionado, e só uma pessoa da corretora "
+     "cancela com a seguradora"),
     # constante_justificada: D8/D10 da SPEC-123 — condomínio fica com a atendente
     ("condominio", ("condominio", "condominial"),
      "é seguro de condomínio, que fica com a equipe"),
@@ -1190,19 +1298,158 @@ def _a_r9_manda_a_pessoa(caso: Dict[str, Any]) -> bool:
     antes. ⛔ Sem fala nenhuma para ler → direto, como antes (o lado de passar).
     Fora disso, o caso cai nas mesmas perguntas de quem não foi acionado (regra do
     motivo, pedido de pessoa, sinistro, lista D8/D10) — e a segunda chance é UMA.
-    """
-    falas = _falas_do_segurado(caso)
-    if not [f for f in falas if f.strip()]:
-        return True
-    try:
-        from app.atendimento.pos_acionamento import (SITUACOES_CONDICIONAIS,
-                                                     classificar_turno, vai_para_humano)
 
-        rotulo = classificar_turno(falas)
+    🔴 SPEC-126 U4 — `K3` (cancelar) NÃO é decidido aqui: é da entrada
+    `cancelamento_pos_acionamento` de `_SEMPRE_DE_GENTE` (D4), lida ANTES desta função por
+    `por_que_vai_direto_a_pessoa`. UMA decisão num lugar: se as duas dissessem "pessoa", tirar a
+    entrada não mudaria nada e ela não guardaria coisa nenhuma (CLAUDE.md §9.3, corolário).
+    """
+    rotulo = _rotulo_da_r9(caso)
+    if rotulo is None or rotulo == "?":
+        return True       # sem fala para ler, ou régua ilegível → o lado de passar, como antes
+    if rotulo == _ROTULO_DO_CANCELAMENTO:
+        return False
+    try:
+        from app.atendimento.pos_acionamento import SITUACOES_CONDICIONAIS, vai_para_humano
+
         return vai_para_humano(rotulo) or rotulo in SITUACOES_CONDICIONAIS
     except Exception as exc:  # noqa: BLE001 — sem a régua, o lado de passar
         logger.warning("[HumanHandoff] R9 ilegível (%s) — passo a pessoa", type(exc).__name__)
         return True
+
+
+#: O rótulo da R9 que é cancelamento (`pos_acionamento.CATEGORIAS['K3']`).
+_ROTULO_DO_CANCELAMENTO = "K3"
+
+
+def _rotulo_da_r9(caso: Dict[str, Any]) -> Optional[str]:
+    """O rótulo das últimas falas do segurado (`classificar_turno`). `None` sem fala para ler;
+    `"?"` quando a régua está ilegível (o chamador decide o lado de passar)."""
+    falas = _falas_do_segurado(caso)
+    if not [f for f in falas if f.strip()]:
+        return None
+    try:
+        from app.atendimento.pos_acionamento import classificar_turno
+
+        return classificar_turno(falas)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HumanHandoff] R9 ilegível (%s)", type(exc).__name__)
+        return "?"
+
+
+def _frase_do_cancelamento(motivo: Any, caso: Dict[str, Any]) -> str:
+    """A frase da entrada `cancelamento_pos_acionamento` de `_SEMPRE_DE_GENTE` quando o caso
+    JÁ ACIONADO é um pedido de cancelar — `""` quando não é (ou quando a entrada não existe).
+
+    **PURA.** Duas portas, as duas da mesma entrada: o CÓDIGO no motivo (o que o prompt v2 pede) ou
+    a R9 dizendo `K3` nas falas do segurado (o modelo pode escrever o motivo em prosa).
+    """
+    entrada = next((e for e in _SEMPRE_DE_GENTE if e[0] == CANCELAMENTO_POS_ACIONAMENTO), None)
+    if entrada is None:
+        return ""
+    _chave, palavras, frase = entrada
+    texto = _sem_acento_minusculo(_motivo_em_portugues(motivo))
+    if any(re.search(r"\b%s\b" % re.escape(_sem_acento_minusculo(_motivo_em_portugues(p))), texto)
+           for p in palavras):
+        return frase
+    return frase if _rotulo_da_r9(caso) == _ROTULO_DO_CANCELAMENTO else ""
+
+
+# ===========================================================================
+# 🔴 SPEC-126 U1 (2ª metade) · P-125-02 — "AINDA NÃO TENHO O PROTOCOLO" NÃO É MOTIVO DE PESSOA
+# ===========================================================================
+#
+# 📊 O C13 da bancada (SPEC-125): o acionamento saiu e o agente chamou uma pessoa com o motivo
+# "ainda não tenho o protocolo". O protocolo vem da SEGURADORA, sozinho (`insurer_dispatch_tool`:
+# "NÃO invente protocolo/senha/prazo — eles chegam sozinhos"); a pessoa da corretora não o tem mais
+# cedo. A R9 já dizia isso (`A` = andamento → carta/estado, nunca pessoa); faltava o CÓDIGO.
+
+#: O que é SÓ andamento pendente no motivo do agente (texto sem acento, minúsculo — §9.4).
+#: ⛔ Não pega: "sem corredor" (não há o que esperar), "a URA travou" (o acionamento falhou).
+_RE_ANDAMENTO_PENDENTE = re.compile(
+    r"\b(?:protocolo|numero do (?:chamado|protocolo|sinistro|atendimento|pedido)"
+    r"|previsao(?: de chegada)?|andamento|retorno da seguradora|resposta da seguradora"
+    r"|horario de chegada|prazo de chegada)\b"
+    r"|\bnao sei quando\b|\bquando (?:o (?:guincho|prestador|tecnico|reboque) )?(?:chega|vai chegar)\b")
+
+#: O que tira o motivo de "só andamento": o acionamento FALHOU, ou há outra coisa no pedido.
+#: constante_justificada: são os sinais de incapacidade REAL (`_MOTIVOS_DE_INCAPACIDADE['ura_travou']`)
+#: e de recusa — com eles o caso não está "esperando a seguradora", está parado.
+_RE_NAO_E_SO_ANDAMENTO = re.compile(
+    r"\b(?:travou|travei|falhou|falha|erro|recusou|recusada|negou|negado|nao consegui|nao conseguiu"
+    r"|cancel\w*|corredor)\b")
+
+
+def motivo_e_so_andamento_pendente(motivo: Any) -> bool:
+    """O motivo do agente é SÓ protocolo/andamento que a seguradora ainda não mandou? — **PURA**."""
+    texto = _sem_acento_minusculo(_motivo_em_portugues(motivo))
+    return bool(_RE_ANDAMENTO_PENDENTE.search(texto)) and not _RE_NAO_E_SO_ANDAMENTO.search(texto)
+
+
+def _o_segurado_manda_a_pessoa(motivo: Any, falas: list) -> str:
+    """O que o SEGURADO disse ainda manda a pessoa (pedido de pessoa, risco à vida, sinistro)?
+    `""` = não. **PURA** — os MESMOS detectores de `por_que_vai_direto_a_pessoa`."""
+    try:
+        from app.atendimento.pos_acionamento import ha_risco_a_vida, pediu_pessoa
+        from app.services.claims_shadow import detectar_sinistro
+
+        if pediu_pessoa([str(motivo or "")] + falas):
+            return _FRASE_DA_REGRA["cliente_pediu_humano"]
+        if ha_risco_a_vida(falas):
+            return _FRASE_DA_REGRA["vitima"]
+        if any(detectar_sinistro(f, None)[0] or sinistro_so_na_segunda_chance(f) for f in falas):
+            return "é sinistro, e sinistro sempre vai para uma pessoa"
+    except Exception as exc:  # noqa: BLE001 — na dúvida, pessoa (o lado de antes)
+        logger.warning("[HumanHandoff] detectores do segurado mudos (%s)", type(exc).__name__)
+        return "não deu para conferir o que o segurado disse"
+    return ""
+
+
+def _estado_escrito_do_caso(caso: Dict[str, Any]) -> str:
+    """O estado do caso acionado, numa linha — SÓ o que está escrito (R3). **PURA**."""
+    ficha = caso.get("ficha_atendimento") if isinstance(caso.get("ficha_atendimento"), dict) else {}
+    partes = []
+    servico = str(ficha.get("servico") or ficha.get("subservice") or "").strip()
+    if servico:
+        partes.append("serviço %s" % servico.replace("_", " "))
+    seguradora = str(ficha.get("seguradora") or "").strip()
+    if seguradora:
+        partes.append("seguradora %s" % seguradora.title())
+    hora = _hora_do_acionamento(ficha)
+    partes.append("acionado em %s" % hora if hora else "acionamento feito (hora não registrada)")
+    protocolo = _protocolo_da_ficha(ficha)
+    partes.append("protocolo %s" % protocolo if protocolo
+                  else "protocolo ainda não informado pela seguradora")
+    try:
+        from app.atendimento.pos_acionamento import texto_da_espera
+
+        espera = texto_da_espera(_a_espera_do_caso(caso))
+        if espera:
+            partes.append(espera)
+    except Exception:  # noqa: BLE001
+        pass
+    return " · ".join(partes)
+
+
+#: A segunda chance de um caso JÁ ACIONADO cujo motivo é só andamento pendente — ela devolve o
+#: ESTADO. 🔴 Mesmo marcador da segunda chance (`foi_segunda_chance`), SEM o carimbo `HANDOFF_OK`
+#: e sem verbo de transferência no passado (o guarda do teste confere com `afirma_transferencia`).
+SEGUNDA_CHANCE_DO_ANDAMENTO = (
+    _MARCA_DA_SEGUNDA_CHANCE + " · ninguém da equipe foi chamado. O acionamento deste atendimento "
+    "JÁ SAIU, e o que falta (protocolo, previsão) vem da SEGURADORA, sozinho — não é motivo para "
+    "chamar uma pessoa. ESTADO ESCRITO: {estado}. Responda ao segurado com este estado em uma ou duas "
+    "frases, sem inventar protocolo nem prazo, e ofereça pedir à equipe que cobre a seguradora. Só "
+    "chame `request_human_agent` de novo se ele pedir uma pessoa ou a cobrança, ou se houver risco no "
+    "local. Não diga ao segurado que alguém da equipe vai assumir."
+)
+
+
+def instrucao_da_segunda_chance(motivo: Any, caso: Dict[str, Any]) -> str:
+    """O que a segunda chance devolve ao agente: o ESTADO no caso acionado com andamento pendente;
+    a instrução de sempre no resto. **PURA**."""
+    if _e_pos_acionamento(caso, _a_espera_do_caso(caso)) and motivo_e_so_andamento_pendente(motivo):
+        return SEGUNDA_CHANCE_DO_ANDAMENTO.format(estado=_estado_escrito_do_caso(caso))
+    return SEGUNDA_CHANCE_DO_HANDOFF
 
 
 def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
@@ -1221,10 +1468,22 @@ def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
     if str(codigo or "").strip():
         # constante_justificada: `pessoa_antes_de_acionar` — o MOTOR mandou (SPEC-121 B1)
         return "a ferramenta de acionamento mandou passar a uma pessoa antes de acionar"
-    if _e_pos_acionamento(caso) and _a_r9_manda_a_pessoa(caso):
-        # constante_justificada: depois do acionamento, quem decide é a R9
-        # (`SITUACOES_PARA_HUMANO`), não esta lista — duas verdades sobre o mesmo caso
-        return "o caso já foi acionado e o acompanhamento segue a regra do pós-acionamento"
+    if _e_pos_acionamento(caso, _a_espera_do_caso(caso)):
+        # 🔴 SPEC-126 U4 (D4): cancelar o que já saiu → pessoa, NUNCA a segunda chance.
+        cancelamento = _frase_do_cancelamento(motivo, caso)
+        if cancelamento:
+            return cancelamento
+        if _a_r9_manda_a_pessoa(caso):
+            # constante_justificada: depois do acionamento, quem decide é a R9
+            # (`SITUACOES_PARA_HUMANO`), não esta lista — duas verdades sobre o mesmo caso
+            return "o caso já foi acionado e o acompanhamento segue a regra do pós-acionamento"
+        if motivo_e_so_andamento_pendente(motivo):
+            # 🔴 SPEC-126 U1 (2ª metade, P-125-02) — protocolo/andamento PENDENTE não é motivo de
+            #    pessoa: é a R9 `A`, e a segunda chance devolve o ESTADO (`instrucao_da_segunda_chance`).
+            #    ⚠️ Pula a REGRA por palavra e a lista D8/D10 de propósito: "aguardando o número do
+            #    SINISTRO" e "o PORTAL ainda não deu o protocolo" mandariam a pessoa pela palavra.
+            #    ⛔ O que o SEGURADO disse continua valendo: pedido de pessoa, risco à vida, sinistro.
+            return _o_segurado_manda_a_pessoa(motivo, _falas_do_segurado(caso))
     classe, chave = classificar_o_motivo(motivo)
     if classe == CLASSE_REGRA:
         return _FRASE_DA_REGRA.get(chave, "é um caso que a regra manda para uma pessoa")
@@ -1242,6 +1501,13 @@ def por_que_vai_direto_a_pessoa(motivo: Any, *, codigo: Any = "",
         if pediu_pessoa([str(motivo or "")] + falas):
             # constante_justificada: D8 — "o cliente que pede pessoa continua indo"
             return _FRASE_DA_REGRA["cliente_pediu_humano"]
+        from app.atendimento.pos_acionamento import ha_risco_a_vida
+
+        if ha_risco_a_vida(falas):
+            # 🔴 SPEC-126 U4 — laudo do juiz final da 125 (pend. 2): "meu filho tá passando mal"
+            #    DITO PELO SEGURADO só pesava se o modelo o repetisse no motivo.
+            # constante_justificada: o mesmo `vitima` da REGRA — risco à vida vai a pessoa
+            return _FRASE_DA_REGRA["vitima"]
         relato = " ".join(p for p in [str(motivo or "")] + falas if p)
         # Juntos (o par "bati" + "carro" pode vir em duas falas) E cada um sozinho (a
         # tranca de venda de uma fala não pode calar o sinistro de outra).
@@ -1606,7 +1872,7 @@ class HumanHandoffTool(BaseTool):
         if apolice:
             linhas.append(apolice)
         ficha = conversa.get("ficha_atendimento") or {}
-        protocolo = str((ficha or {}).get("protocolo") or "").strip() if isinstance(ficha, dict) else ""
+        protocolo = _protocolo_da_ficha(ficha)
         linhas.append(_linha_do_momento(MOMENTO_POS_ACIONAMENTO))
         # 🔴 SPEC-120 D15 — O NÚMERO DO PROTOCOLO SAI POR EXTENSO. Antes a linha
         #    dizia *"protocolo com o cliente"* — o dossiê SABIA o número e não o
@@ -1615,6 +1881,27 @@ class HumanHandoffTool(BaseTool):
         #    seguradora; não é dado para esconder.
         if protocolo:
             linhas.append(f"Acionamento já entregue · protocolo *{protocolo}*")
+
+        # 🔴 SPEC-126 U4 (D4) — O PEDIDO DE CANCELAMENTO VEM ANTES DE TUDO. A atendente tem de
+        #    ligar para a seguradora AGORA (o prestador está a caminho), e precisa dos cinco dados
+        #    sem reler a conversa: serviço, seguradora, protocolo, quando foi acionado e o que ele
+        #    escreveu. ⚠️ A frase dele é a ÚNICA fala que entra num dossiê (a decisão da
+        #    EXTRA-001.3 §8.0 tirou as mensagens): ela É o pedido — "cancela" e "já resolvi, não
+        #    manda" pedem coisas diferentes à seguradora. Uma linha, cortada em 160 caracteres.
+        if _e_cancelamento(conversa, motivo):
+            linhas += ["", "*🛑 PEDIDO DE CANCELAMENTO*",
+                       "O segurado pediu para CANCELAR o serviço já acionado. O agente NÃO cancelou "
+                       "nada — cancele com a seguradora e confirme ao segurado aqui.",
+                       "Serviço: %s · Seguradora: %s · Protocolo: %s" % (
+                           (servico or str((ficha or {}).get("servico") or (ficha or {}).get("subservice")
+                                           or "não registrado")).lower(),
+                           (str((ficha or {}).get("seguradora") or "").strip().title()
+                            or "não registrada"),
+                           protocolo or "não registrado"),
+                       "Acionado em: %s" % (_hora_do_acionamento(ficha) or "não registrado")]
+            frase = _frase_de_cancelar(conversa)
+            if frase:
+                linhas.append("O que ele escreveu: \"%s\"" % frase)
 
         linhas += ["", "*Quem fala*", _quem_fala(conversa)]
         linhas += ["", "*O que ele quer*", _o_que_ele_quer(conversa)]
@@ -1979,6 +2266,8 @@ class HumanHandoffTool(BaseTool):
         #    é o de antes (pessoa). Na segunda chance NADA é escrito na conversa, nada
         #    vai ao grupo e nenhuma vez é reservada no Redis — só a linha do diário.
         direto = ""
+        falas_lidas: list = []
+        espera_lida: Optional[Dict[str, Any]] = None
         if leu_o_estado:
             try:
                 # 🔴 conserto único (juiz B3 · red team B6): a decisão lê o que o
@@ -1987,13 +2276,22 @@ class HumanHandoffTool(BaseTool):
                 falas = await self._falas_do_segurado_no_banco(linha_anterior)
                 if falas:
                     caso_com_as_falas["mensagens"] = falas
+                    falas_lidas = list(falas)
+                # 🔴 SPEC-126 U4 — e a ESPERA do caso (`work_waits`, escopo pós-acionamento): ela
+                #    também diz que o caso foi acionado, e `por_que_vai_direto_a_pessoa` a lia
+                #    sem nunca recebê-la. 🔴 §7: a leitura é por `company_id` desta chamada.
+                espera_lida = await asyncio.to_thread(
+                    self._espera_ativa, {**linha_anterior, "company_id": company_id})
+                if espera_lida:
+                    caso_com_as_falas["espera"] = espera_lida
                 direto = por_que_vai_direto_a_pessoa(
                     motivo, codigo=codigo_do_pedido_atual, caso=caso_com_as_falas,
                     ja_com_a_equipe=ja_estava_com_a_equipe)
                 if await self._segunda_chance(company_id, linha_anterior, motivo, direto):
                     logger.info("[HumanHandoff] segunda chance | empresa=%s | conversa=%s",
                                 company_id, str(linha_anterior.get("id") or "")[:8])
-                    return SEGUNDA_CHANCE_DO_HANDOFF
+                    # 🔴 SPEC-126 U1 (P-125-02): no caso acionado com protocolo pendente, o ESTADO
+                    return instrucao_da_segunda_chance(motivo, caso_com_as_falas)
             except Exception as exc:  # noqa: BLE001
                 # ⛔ A segunda chance nunca derruba o pedido: falhou → pessoa, como antes.
                 logger.warning("[HumanHandoff] segunda chance indisponível (%s)",
@@ -2197,7 +2495,13 @@ class HumanHandoffTool(BaseTool):
         # 🔴 SPEC-121 F1 — este é o pedido do AGENTE, e ele diz isso à porta.
         from app.services.o_grupo_so_o_que_importa import PROVA_PEDIDO_DO_AGENTE
 
-        aviso = await self._avisar_suporte(company_id, conversa, motivo,
+        # 🔴 SPEC-126 U4 — no caso JÁ ACIONADO o dossiê lê a RAJADA do segurado (as falas lidas
+        #    acima), não só a prévia: é dela que saem "o que ele quer" e a frase do cancelamento.
+        #    ⚠️ Cópia da linha; nada é gravado de volta. Fora do pós-acionamento, nada muda.
+        conversa_do_aviso = conversa
+        if falas_lidas and _e_pos_acionamento(linha_anterior, espera_lida):
+            conversa_do_aviso = {**conversa, "mensagens": falas_lidas}
+        aviso = await self._avisar_suporte(company_id, conversa_do_aviso, motivo,
                                            prova=PROVA_PEDIDO_DO_AGENTE,
                                            pedido=codigo_do_pedido_atual)
 
