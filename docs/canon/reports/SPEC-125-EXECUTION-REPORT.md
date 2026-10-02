@@ -95,8 +95,8 @@ as **28** que sobram (as 23 de ambiente fora, declaradas no cabeçalho).
 confirmação 1 em `c2414d2`: `test_spec125_*` 321 passed, 67 vizinhos 9 failed (todos da linha de base) · confirmação 2 em
 `fd52568`: `test_spec125_*` + `test_spec116_bancada_gates` **502 passed** (3 erros = os testes do S6 que exigem Postgres,
 com o `.env` neutralizado). Uma bateria intermediária em `c2414d2` (6.900 s) achou 6 regressões, consertadas em `fd52568`.
-`npm run test:rotas-montam` (02/10, nesta árvore) → **A TABELA DE ROTAS MONTA** (307 rotas). ⚠️ `next start` + 1 requisição
-NÃO rodou (P-125-14).
+`npm run test:rotas-montam` (02/10, nesta árvore) → **A TABELA DE ROTAS MONTA** (307 rotas). `next build` + `next start` + as
+requisições rodaram no endurecimento final (§13): P-125-14 fechada.
 
 ## 4. GATES
 | gate | estado |
@@ -214,3 +214,33 @@ O commit deste parágrafo sobe num 2º push (o hash final fica no `git log` da `
 atendimento, o destravador e o cérebro usam; a bancada N3 é um nível da `evals/bancada.py` da SPEC-116; a rajada usa o buffer e
 a `_midia_do_turno` existentes; o diário e o placar usam `diario_de_decisoes` da SPEC-123; a versão do prompt é uma coluna de
 `agents`; os modelos vêm do Model Router (`llm_papeis`).
+
+## 13. ENDURECIMENTO FINAL (02/10, depois da entrega — sem LLM)
+Builder Opus 5.5 fresco, sobre `9e787fc`. **Não passou por juiz fresco** (o gerente chama). Nenhuma chamada a modelo pago.
+
+- **§9.1 — P-125-14 FECHADA.** 📊 `npm run test:rotas-montam` → A TABELA DE ROTAS MONTA (307) · `npx next build` → EXIT 0 (a 1ª
+  tentativa morreu no type-check com `worker exited with code 3221225794` — falta de recurso do Windows com build e testes juntos;
+  a 2ª passou) · `npx next start -p 3125` → `✓ Ready in 25.2s` · `GET /api/dashboard/decisoes` → **401** `{"error":"Nao autorizado"}` ·
+  `GET /api/auth/me` → **200** `{"user":null}` · `POST /api/auth/login {}` → **400** `{"error":"Email e senha são obrigatórios"}` ·
+  servidor derrubado (porta livre).
+- **P-125-11 SEGUE ABERTA.** O bloco do S125.4 foi mandado ao `execute_sql`: `{"status":"declined"}` — nada rodou.
+- **A apresentação no 2º turno (P-125-04) — a CAUSA era código.** `invoke_agent` entrega só o texto do ÚLTIMO `AIMessage`; o que o
+  modelo escreve JUNTO da chamada de ferramenta se perdia. 📊 Nos JSON do Sol (DEPOIS v1/v2 e Z), TODO 1º turno com ferramenta saiu
+  sem apresentação e o motivo do handoff dizia "Orientado a…" sobre um texto que não saiu (C10 fumaça: "sair da residência… ligar 193"
+  no motivo, "as orientações que te passei" na resposta, sem elas). Como só conta a apresentação que SAIU (J5), o turno 2 pedia de
+  novo. **Conserto:** `nodes.com_o_que_foi_dito_antes_da_ferramenta` (só no atendimento, só o turno corrente, sem repetir), aplicado
+  ANTES de todos os fiscais — o texto de antes da ferramenta passa pela honestidade, repetição, tamanho e T19. A bancada passou a
+  confirmar a apresentação como o webhook (passo 9); sem isso ela pedia a apresentação em todo turno.
+- **C8 "cadê o guincho?" (P-125-03) — a causa em código.** Num caso JÁ ACIONADO (protocolo ou `dispatch_state` na ficha), a segunda
+  chance da SPEC-123 era pulada SEMPRE ("a R9 decide") sem perguntar à R9. Agora `human_handoff._a_r9_manda_a_pessoa` classifica as
+  últimas falas: só vai direto o que a R9 manda (K1/K2/K3/J/L/P/Z + F/B/E) ou sem fala para ler. 📊 A fala do C8 é `N`. Na bancada não
+  aparecia (a ferramenta de pessoa é dublê). **E o texto:** o ACOMPANHAR do v2 mandava "AJA (ferramenta na mesma resposta)" (a Luna
+  "agia" chamando pessoa) → "AJA com a ferramenta que AVANÇA; nenhuma avança ('cadê o guincho?') → estado + OFEREÇA cobrança da
+  equipe; chame-a se ele aceitar." v2 = 13.844 chars (61,99 % do v1, teto 62 %). **v1 intacto** (sha256 `2713eee75b689c7b…`).
+- **Testes:** `test_spec125_endurecimento.py` — 18, pelo motor (bancada N3 com o grafo real e o modelo-dublê; `HumanHandoffTool._arun`
+  real com a borda da SPEC-123 e os MOTIVOS GRAVADOS da rodada Z), com controles (apresentou no final → cala; nunca apresentou → pede de
+  novo; K1/K2/K3/J/L/P continuam direto; o "já passei" dito junto de uma segunda chance é reescrito). **Mutações:** sem a R9 → 3 failed;
+  sem o texto de antes da ferramenta → 2 failed. 📊 `pytest tests/test_spec125_*.py tests/test_spec116_bancada_gates.py` →
+  **597 passed** · vizinhos (SPEC-123 segunda chance/W/Y/ficha, apresentação, soa humano, última palavra) → **299 passed**.
+- **Falta (com LLM):** Sol C1/C4/C7/C10/C15 e C8 Luna/Sol depois deste conserto (P-125-01/03/04). Risco: no WhatsApp, as duas falas
+  saem juntas numa mensagem (o modelo escreveu as duas); conferir o tom no 1º caso real.
