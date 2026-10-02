@@ -16,7 +16,7 @@ import logging
 import re
 import time
 import unicodedata
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -1630,6 +1630,62 @@ def mesma_mensagem_com_texto(original, texto: str):
         return AIMessage(content=texto)
 
 
+def _tipo_da_mensagem(m: Any) -> str:
+    tipo = getattr(m, "type", None)
+    if tipo is None and isinstance(m, dict):
+        tipo = m.get("type") or m.get("role")
+    return str(tipo or "")
+
+
+def falas_ditas_junto_da_ferramenta(mensagens: Any) -> List[str]:
+    """Os textos que o modelo escreveu NO MESMO `AIMessage` de uma chamada de
+    ferramenta, neste turno (depois da última fala humana). **PURA.**
+
+    🔴 SPEC-125 · endurecimento (P-125-04). `invoke_agent` entrega ao segurado só o
+    texto do ÚLTIMO `AIMessage` — e o que o modelo escreveu JUNTO da ferramenta se
+    perdia. 📊 Nas conversas gravadas do Sol (`conversa_depois_sol_v1/v2.json`,
+    `conversa_z_sol_v2.json`), todo 1º turno com ferramenta saiu SEM apresentação, e o
+    motivo do handoff dizia o que o segurado não leu: C10 "Orientado a sair da
+    residência… e ligar 193" e a resposta "…as orientações que te passei"; C1 "Orientado
+    a não se aproximar do poste ou de fios caídos". A ficha seguia pedindo a
+    apresentação (J5: só conta a que SAIU) e ela aparecia no 2º turno.
+    """
+    lista = list(mensagens or [])
+    inicio = 0
+    for i in range(len(lista) - 1, -1, -1):
+        if _tipo_da_mensagem(lista[i]) in ("human", "user"):
+            inicio = i + 1
+            break
+    falas: List[str] = []
+    for m in lista[inicio:]:
+        if _tipo_da_mensagem(m) not in ("ai", "assistant"):
+            continue
+        if not getattr(m, "tool_calls", None):
+            continue
+        texto = extract_text_from_content(getattr(m, "content", "") or "").strip()
+        if texto:
+            falas.append(texto)
+    return falas
+
+
+def com_o_que_foi_dito_antes_da_ferramenta(texto_final: Any, mensagens: Any) -> str:
+    """A resposta do turno = o que foi dito JUNTO das ferramentas + o texto final. **PURA.**
+
+    ⚠️ Repetição não entra: um trecho que o texto final já contém fica uma vez só.
+    ⛔ Os fiscais (honestidade, pergunta repetida, tamanho, T19) rodam DEPOIS, sobre o
+       texto inteiro — o que foi dito antes da ferramenta não escapa de nenhum deles.
+    """
+    final = str(texto_final or "")
+    antes: List[str] = []
+    for fala in falas_ditas_junto_da_ferramenta(mensagens):
+        if fala in final or fala in antes:
+            continue
+        antes.append(fala)
+    if not antes:
+        return final
+    return "\n\n".join(antes + ([final.strip()] if final.strip() else []))
+
+
 # =====================================================================
 # 🔴 SPEC-125 S4 · D7 — o diário da CONVERSA, só nos momentos de julgamento
 # =====================================================================
@@ -2401,6 +2457,17 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     guarded_final: Optional[str] = None
     contract = state.get("policy_response_contract")
     has_tool_calls = bool(getattr(response, "tool_calls", None))
+
+    # 🔴 SPEC-125 · endurecimento (P-125-04) — O QUE O MODELO DISSE JUNTO DA FERRAMENTA.
+    #    Antes de qualquer fiscal: todos eles leem (e reescrevem) o texto que SAI.
+    if not has_tool_calls and _do_atendimento(state):
+        _so_o_final = extract_text_from_content(getattr(response, "content", "") or "")
+        _com_o_antes = com_o_que_foi_dito_antes_da_ferramenta(
+            _so_o_final, state.get("messages") or [])
+        if _com_o_antes != _so_o_final:
+            logger.info("[Agent Node] o texto dito junto da ferramenta entra na resposta")
+            response = mesma_mensagem_com_texto(response, _com_o_antes)
+
     if (
         _policy_intelligence_v2()
         and isinstance(contract, dict)
