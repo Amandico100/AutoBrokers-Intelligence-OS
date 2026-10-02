@@ -394,6 +394,22 @@ def _origem_da_cobertura(cobertura: Any) -> Optional[dict]:
     return fora
 
 
+def _rastro_da_consulta(resultado: dict) -> Optional[dict]:
+    """🔴 SPEC-126 U3 · D2 — QUAL apólice esta chamada consultou/acionou, em pseudônimo.
+
+    É o que permite contar "o mesmo telefone, quantas apólices distintas em 5 dias" sem
+    tabela nova (CLAUDE.md §5): o telefone já está no `trace_id`, a apólice entra aqui.
+    ⛔ A regra do que pode entrar é de `consultas_por_telefone.rastro_seguro` (lista
+    fechada, forma conferida: hash de 24 hex, final de até 4 dígitos) — um CPF cru não
+    tem a forma de nenhum campo e não passa. Nunca levanta."""
+    try:
+        from app.atendimento.consultas_por_telefone import CHAVE_DO_RASTRO, rastro_seguro
+
+        return rastro_seguro(resultado.get(CHAVE_DO_RASTRO))
+    except Exception:  # noqa: BLE001 — sem a régua, o rastro não entra
+        return None
+
+
 def _resumo_da_saida(resultado: Any) -> dict:
     """Tamanho e forma da saída — nunca o conteúdo.
 
@@ -412,6 +428,9 @@ def _resumo_da_saida(resultado: Any) -> dict:
         origem = _origem_da_cobertura(resultado.get("cobertura"))
         if origem:
             resumo["cobertura"] = origem
+        rastro = _rastro_da_consulta(resultado)
+        if rastro:
+            resumo["rastro_da_consulta"] = rastro
         return resumo
     if isinstance(resultado, (list, tuple)):
         return {"tipo": "lista", "itens": len(resultado)}

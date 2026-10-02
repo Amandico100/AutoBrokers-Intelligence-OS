@@ -348,11 +348,12 @@ def _match_product_kind(match: Dict[str, Any]) -> Optional[str]:
 #      como terceiro desligaria o atendimento. Dúvida é UM sinal de terceiro sem
 #      um "meu" que o desminta — e aí vale terceiro.
 #
-# A EXCEÇÃO (ordem do gerente): o titular está JUNTO e pediu um SERVIÇO ("sou
-# filho dela, ela está aqui comigo e pediu o guincho") → o acionamento para o
-# titular continua possível; os DADOS da apólice continuam fora da conversa.
-# Pedir os dados ("me passa a apólice dela") nunca é serviço — C16 fica fechado
-# mesmo com "ela autorizou".
+# 🔴 SPEC-126 U3 · D1 (Founder, 02/10/2026) — O PARENTE ACIONA. Cônjuge, filho,
+# pai/mãe, motorista que pede um SERVIÇO (guincho, chaveiro, vidro…) para o titular
+# é AUTORIZADO A ACIONAR, sem exigir o titular junto. ⛔ O que não muda: DADO da
+# apólice (número, prêmio, cobertura, vigência, CPF) continua só do titular — "me
+# passa a apólice do meu pai" é negado com ou sem "ela autorizou". A verdade velha
+# ("só com o titular JUNTO e pedindo", SPEC-125 S8a) migrou para cá (CLAUDE.md §9.3).
 
 #: constante_justificada: quem NÃO é a pessoa da conversa — parentes e próximos.
 #: "empresa" fica fora de propósito: "o cnpj da minha empresa" é do próprio dono.
@@ -443,13 +444,13 @@ _RX_NAO_SOU_TITULAR = re.compile(
 #: "MEU cpf" — o documento que ele diz ser o dele.
 _RX_MEU_DOC = re.compile(r"\b(?:meu|o meu)\s+(?:cpf|cnpj|documento)\b")
 _RX_MEU_DOC_COM_NUMERO = re.compile(r"\b(?:meu|o meu)\s+(?:cpf|cnpj|documento)\b\D{0,15}((?:\d[\s.\-/]?){11,14})")
-#: o titular JUNTO de quem fala, ou pedindo — a autorização da exceção.
-_QUEM_E_O_TITULAR = r"(?:ela|ele|(?:a |o )?titular|(?:a |o )?(?:minha|meu) " + _PESSOA + r")"
-_RX_TITULAR_AUTORIZOU = re.compile(
-    r"\b" + _QUEM_E_O_TITULAR + r"\b[^.?!\n|]{0,20}?\b(?:esta|ta|tah|estah|fica)\s+(?:aqui\s+)?"
-    r"(?:comigo|do meu lado|ao meu lado|junto|aqui)\b|"
-    r"\b" + _QUEM_E_O_TITULAR + r"\b[^.?!\n|]{0,20}?\b(?:pediu|mandou|autorizou)\b|"
-    r"\ba pedido d(?:ela|ele|[ao] titular)\b|\bcom (?:a )?autorizacao d(?:ela|ele|[ao] titular)\b")
+#: 🔴 SPEC-126 U3 · D1 — quem fala SE APRESENTA como parente de outra pessoa já citada:
+#: "sou o filho dele", "sou a esposa do titular". ⚠️ Só com pronome/titular depois — "sou
+#: a mãe do Pedro" não entra (pode ser a própria titular falando do filho).
+#: ⛔ `_RX_TITULAR_AUTORIZOU` ("ela está aqui comigo e pediu") SAIU: o D1 não exige o
+#: titular junto, e "ela autorizou" nunca abriu DADO (C16).
+_RX_SOU_PARENTE_DE_OUTRO = re.compile(
+    r"\bsou (?:o |a )?" + _PESSOA + r"\s+d(?:ele|ela|[ao] titular|[ao] segurad[oa]|[ao] dono|[ao] dona)\b")
 #: constante_justificada: o pedido de SERVIÇO (o que a exceção permite) — reserva do vocabulário
 #: canônico (`servico_canonico`), que é a fonte; esta lista só cobre o vocabulário indisponível.
 _RX_PEDIU_SERVICO = re.compile(
@@ -485,11 +486,36 @@ def _pediu_servico(texto: str) -> bool:
     return bool(_RX_PEDIU_SERVICO.search(_sem_acento_minusculo(texto)))
 
 
+#: constante_justificada: a mensagem que só ENTREGA o documento ("o cpf dela é 529…", "segue
+#: meu cpf 529…") tem poucas palavras além do número; ela responde à pergunta do agente e
+#: não é o pedido. 💭 6 palavras cobre "o cpf da minha mae e" com folga.
+_PALAVRAS_DE_QUEM_SO_ENTREGA_O_DOCUMENTO = 6
+
+
+def _o_pedido_atual(linhas: list) -> str:
+    """A última fala que PEDE algo — o pedido de agora. ⚠️ A fala que só entrega o
+    documento (número de 11–14 dígitos e quase nada além) não é o pedido: o pedido é o
+    de antes dela ("minha mãe quer ver se cobre vidro" → "o cpf dela é 529…")."""
+    for fala in reversed(linhas or []):
+        palavras = re.findall(r"[a-z]{1,}", _sem_acento_minusculo(re.sub(r"\d", " ", str(fala))))
+        if not palavras:
+            continue
+        if _numeros_longos(fala) and len(palavras) <= _PALAVRAS_DE_QUEM_SO_ENTREGA_O_DOCUMENTO:
+            continue
+        return str(fala)
+    return ""
+
+
 def de_quem_e_a_apolice(documento: Any, falas: Any, *, inicial_do_titular: Any = "") -> Dict[str, Any]:
-    """`{"terceiro", "autorizado", "motivos"}` — a apólice consultada é de quem fala? **PURA.**
+    """`{"terceiro", "autorizado", "proprio", "motivos"}` — a apólice é de quem fala? **PURA.**
 
     `falas`: o que o SEGURADO escreveu neste assunto, da mais velha para a mais
     nova (só as dele — nunca as do agente nem as da equipe).
+
+    `autorizado` (SPEC-126 D1): terceiro que pede SERVIÇO e cujo pedido ATUAL não é
+    DADO — pode ACIONAR, nunca LER. `proprio` (D-126-C, para a contagem do D2): o
+    documento foi dito como DELE ("meu cpf é…") ou o nome que ele disse bate com o
+    titular, e nada o desmente.
     """
     doc = re.sub(r"\D", "", str(documento or ""))
     linhas = [str(f) for f in (falas or []) if str(f or "").strip()]
@@ -514,6 +540,7 @@ def de_quem_e_a_apolice(documento: Any, falas: Any, *, inicial_do_titular: Any =
     if not meu_aqui and (_RX_DOC_DE_OUTRO.search(trecho)
                          or (_RX_BEM_DE_OUTRO.search(trecho) and not seguro_e_meu)
                          or _RX_NAO_SOU_TITULAR.search(trecho)
+                         or (_RX_SOU_PARENTE_DE_OUTRO.search(tudo) and not seguro_e_meu)
                          or any(m.group(1) not in _NAO_E_PESSOA
                                 for m in _RX_DOC_DE_NOMEADO.finditer(trecho))):
         motivos.append("a conversa diz que o documento/apolice e de outra pessoa")
@@ -523,6 +550,7 @@ def de_quem_e_a_apolice(documento: Any, falas: Any, *, inicial_do_titular: Any =
     #    inicial do nome do titular — o nome do meio também é dele — e apelidos comuns); e
     #    "meu cpf"/"o seguro é meu" desmentem o sinal.
     iniciais = _iniciais(inicial_do_titular)
+    nome_confirma = False
     if iniciais and len(doc) != 14 and not seguro_e_meu and not _RX_MEU_DOC.search(tudo):
         try:
             from app.agents.quem_e_o_segurado import nome_bate_com_as_iniciais, nome_dito_como_nome
@@ -530,16 +558,20 @@ def de_quem_e_a_apolice(documento: Any, falas: Any, *, inicial_do_titular: Any =
             nome = nome_dito_como_nome(" \n ".join(linhas))
             if nome and not nome_bate_com_as_iniciais(nome, iniciais):
                 motivos.append("o nome que ele disse nao bate com o titular")
+            nome_confirma = bool(nome) and nome_bate_com_as_iniciais(nome, iniciais)
         except Exception:  # noqa: BLE001 — sem a régua do nome, o sinal não existe
             pass
 
     terceiro = bool(motivos)
-    # 🔴 X1 (RT B1): a exceção é SERVIÇO pedido pelo titular junto — pergunta de cobertura
-    #    ou de dado ("ver se cobre vidro") nunca é serviço, mesmo com "ela pediu".
-    autorizado = bool(terceiro and _RX_TITULAR_AUTORIZOU.search(tudo)
-                      and _pediu_servico(" \n ".join(linhas))
-                      and not _RX_PERGUNTA_DE_DADO.search(tudo))
-    return {"terceiro": terceiro, "autorizado": autorizado, "motivos": motivos}
+    # 🔴 SPEC-126 D1: o terceiro que pede SERVIÇO aciona — sem exigir o titular junto.
+    # 🔴 X1 (RT B1) continua: pergunta de cobertura ou de DADO ("ver se cobre vidro", "me
+    #    passa a apólice") nunca é o serviço da exceção, com ou sem "ela autorizou". Ela é
+    #    lida no PEDIDO ATUAL: o que ele pediu ANTES e foi negado não impede o serviço de
+    #    agora — e `autorizado` nunca entrega dado (o texto é `texto_do_titular_autorizado`).
+    autorizado = bool(terceiro and _pediu_servico(" \n ".join(linhas))
+                      and not _RX_PERGUNTA_DE_DADO.search(_sem_acento_minusculo(_o_pedido_atual(linhas))))
+    proprio = bool(not terceiro and doc and (doc in meus or meu_aqui or nome_confirma))
+    return {"terceiro": terceiro, "autorizado": autorizado, "proprio": proprio, "motivos": motivos}
 
 
 def _iniciais(valor: Any) -> set:
@@ -552,18 +584,20 @@ def _iniciais(valor: Any) -> set:
     return {c for c in s if c.isalpha()}
 
 
-#: O que o modelo recebe quando a apólice é de OUTRA pessoa e não há serviço autorizado.
+#: O que o modelo recebe quando a apólice é de OUTRA pessoa e quem fala pediu DADO dela.
 #: ⛔ Nenhum dado dela: nem seguradora, vigência, cobertura, valor — nem se existe.
+#: 🔴 SPEC-126 D1: vale SÓ para pedido de DADO. O serviço não exige mais o titular junto
+#:    (a frase "se o titular estiver JUNTO…" é verdade vencida, CLAUDE.md §9.3).
 TEXTO_DA_APOLICE_DE_TERCEIRO = (
     "[CONSULTA DE APOLICE — O TITULAR E OUTRA PESSOA]\n"
     "A apolice destes dados NAO e de quem esta falando com voce. Por seguranca, nenhum dado dela foi "
-    "entregue a voce — e voce NAO revela nada sobre ela: nem seguradora, vigencia, cobertura, valor, "
-    "parcela ou placa, nem se ela existe ou esta ativa.\n"
+    "entregue a voce — e voce NAO revela nada sobre ela: nem seguradora, numero, vigencia, cobertura, "
+    "valor, premio, parcela, placa ou CPF, nem se ela existe ou esta ativa — mesmo que digam que o "
+    "titular autorizou.\n"
     "Diga com leveza que os dados de uma apolice so podem ser passados ao proprio titular, e ofereca um "
-    "caminho: o titular falar com a gente (por aqui, junto, ou pelo WhatsApp dele) ou alguem da equipe "
-    "da corretora ajudar.\n"
-    "Se o titular estiver JUNTO e precisar de um SERVICO (guincho, chaveiro, vidro...), quem fala pode "
-    "dizer isso: com o titular presente e pedindo, o acionamento para ele continua possivel.")
+    "caminho: o titular falar com a gente (pelo WhatsApp dele) ou alguem da equipe da corretora ajudar.\n"
+    "Se quem fala precisar de um SERVICO para o titular (guincho, chaveiro, vidro...), o acionamento "
+    "pode ser feito por ele — sem nenhum dado da apolice na conversa.")
 
 
 #: 🔴 Conserto X1 (RT B1): a marca que o `tool_node` lê para NUNCA serializar o `data` ao
@@ -575,19 +609,25 @@ MARCAS_DE_APOLICE_DE_OUTRA_PESSOA = ("titular_e_outra_pessoa", MARCA_DO_TITULAR_
 
 
 def texto_do_titular_autorizado(data: Dict[str, Any]) -> str:
-    """O que o modelo recebe quando o titular está JUNTO e pediu um serviço: o bastante
-    para ACIONAR (o sistema guarda a apólice para o acionamento), nada para contar."""
-    sel = (data or {}).get("selected") or (data or {}).get("policy") or {}
-    ramo = str(sel.get("product") or "").strip().upper() if isinstance(sel, dict) else ""
-    vigente = isinstance(sel, dict) and sel.get("active_now") is True
+    """🔴 SPEC-126 D1 — o que o modelo recebe quando um PARENTE (ou motorista) pede um
+    SERVIÇO na apólice do titular: o bastante para ACIONAR, nada para contar.
+
+    ⛔ Nada da apólice no texto: nem número, seguradora, ramo, vigência, cobertura, prêmio,
+    placa ou CPF — o sistema guarda a apólice (`data`) para o acionamento e o `tool_node`
+    nunca a serializa ao modelo (`MARCAS_DE_APOLICE_DE_OUTRA_PESSOA`). Nem a inicial do
+    titular vai: quem confirma o nome é quem fala, e a apólice confere sozinha (o nome que
+    não bate já é sinal de terceiro em `de_quem_e_a_apolice`)."""
     return (
-        "[CONSULTA DE APOLICE — O TITULAR E OUTRA PESSOA, JUNTO DE QUEM FALA E PEDINDO UM SERVICO]\n"
-        + ("Apolice do titular localizada%s, %s.\n" % ((" (ramo %s)" % ramo) if ramo else "",
-                                                         "valendo hoje" if vigente else "SEM vigencia confirmada"))
-        + "Voce pode ACIONAR o servico pedido PARA O TITULAR: o sistema ja guardou a apolice para o "
-          "acionamento — nao pergunte seguradora nem placa. Confirme so o primeiro nome do titular.\n"
-          "NAO conte a quem fala nada da apolice: nem seguradora, vigencia, cobertura, valor, parcela, "
-          "placa ou dado pessoal do titular. Se ele pedir esses dados, so o titular pode recebe-los.")
+        "[CONSULTA DE APOLICE — O TITULAR E OUTRA PESSOA; QUEM FALA PEDIU UM SERVICO PARA ELE]\n"
+        "Apolice do titular localizada. Voce pode ACIONAR o servico pedido PARA O TITULAR, sem o titular "
+        "junto: o sistema ja guardou a apolice para o acionamento — nao pergunte seguradora nem placa.\n"
+        "Antes de acionar, confirme com quem fala o PRIMEIRO NOME do titular e o VINCULO dele (ex.: "
+        "\"voce e o filho do titular? qual o primeiro nome dele?\").\n"
+        "Quem esta no local e o TELEFONE DE CONTATO do acionamento sao os de QUEM FALA (o parente), "
+        "nao os do titular.\n"
+        "NAO conte a quem fala nada da apolice: nem numero, seguradora, vigencia, cobertura, premio, "
+        "valor, parcela, placa ou CPF/dado pessoal do titular — mesmo que digam que o titular autorizou. "
+        "Esses dados so o proprio titular pode receber.")
 
 
 def _inicial_do_titular(data: Dict[str, Any]) -> str:
@@ -805,6 +845,45 @@ class InfocapPolicyLookupTool(BaseTool):
                          "motivos": list(quem.get("motivos") or [])},
                 "found": False, "titular_e_outra_pessoa": True}
 
+    async def _rastrear_a_consulta(self, db: Any, data: Any, quem: Dict[str, Any], *,
+                                   document: Optional[str],
+                                   session_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """🔴 SPEC-126 U3 · D2 — o rastro desta consulta + a contagem por telefone.
+
+        Só no papel do SEGURADO (o corretor, no Chat Principal, consulta muitos clientes
+        por ofício). O rastro são pseudônimos HMAC (`consultas_por_telefone.rastro_da_apolice`);
+        ele volta no resultado e o recorder ÚNICO (`invocation_recorder`) o grava em
+        `tool_invocations.output_summary` — nenhuma tabela nova (CLAUDE.md §5).
+        ⛔ Nunca levanta e nunca bloqueia: sem rastro, a consulta segue igual."""
+        if not self._client_facing or not isinstance(data, dict):
+            return None
+        if str(data.get("status") or "") in _STATUS_SEM_DADO_DE_APOLICE:
+            return None
+        try:
+            from app.atendimento import consultas_por_telefone as CT
+
+            sel = data.get("selected") or data.get("policy") or {}
+            numero = sel.get("policy_number") if isinstance(sel, dict) else None
+            rastro = CT.rastro_da_apolice(
+                self.company_id, documento=document or data.get("client_document"),
+                numero_apolice=numero, proprio=bool((quem or {}).get("proprio")))
+            if rastro:
+                await CT.conferir_e_avisar(db, company_id=self.company_id,
+                                           session_id=session_id, rastro=rastro)
+            return rastro
+        except Exception as exc:  # noqa: BLE001 — o rastro nunca derruba a consulta
+            logger.warning("[InfocapPolicyLookupTool] rastro da consulta falhou: %s",
+                           type(exc).__name__)
+            return None
+
+    @staticmethod
+    def _com_rastro(resposta: Dict[str, Any], rastro: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if rastro:
+            from app.atendimento.consultas_por_telefone import CHAVE_DO_RASTRO
+
+            resposta[CHAVE_DO_RASTRO] = rastro
+        return resposta
+
     async def _quem_cuida(self, db: Any, user_query: Optional[str]) -> Optional[str]:
         """O nome da atendente desta corretora, ou `None`. **Nunca levanta.**
 
@@ -894,8 +973,10 @@ class InfocapPolicyLookupTool(BaseTool):
                 quem = await self._titular_da_consulta(
                     db, det, document=document, user_query=user_query,
                     mensagem_atual=mensagem_atual, session_id=session_id)
+                rastro = await self._rastrear_a_consulta(db, det, quem, document=document,
+                                                         session_id=session_id)
                 if quem.get("terceiro") and not quem.get("autorizado"):
-                    return self._resposta_de_terceiro(quem)
+                    return self._com_rastro(self._resposta_de_terceiro(quem), rastro)
                 content, assistance_policy, rendered, meta = self._render_content(
                     det, user_query, detail=True,
                     atendente=await self._quem_cuida(db, user_query),
@@ -905,10 +986,12 @@ class InfocapPolicyLookupTool(BaseTool):
                     content, contract = texto_do_titular_autorizado(det), None
                 await self._lacuna_vira_tarefa(db, meta, user_query, session_id,
                                            mensagem_atual)
-                return {"content": content, "data": det, "found": bool(det.get("ok")),
-                        "policy_response_contract": contract,
-                        "cobertura": (meta or {}).get("cobertura"),
-                        **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})}
+                return self._com_rastro(
+                    {"content": content, "data": det, "found": bool(det.get("ok")),
+                     "policy_response_contract": contract,
+                     "cobertura": (meta or {}).get("cobertura"),
+                     **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})},
+                    rastro)
 
             result = await provider.lookup(
                 company_id=self.company_id,
@@ -972,15 +1055,25 @@ class InfocapPolicyLookupTool(BaseTool):
             quem = await self._titular_da_consulta(
                 db, result, document=document, user_query=user_query,
                 mensagem_atual=mensagem_atual, session_id=session_id)
+            # 🔴 SPEC-126 U3 · D2 — o rastro desta consulta (pseudônimo da apólice) e a
+            #    contagem por telefone. Também na consulta CORTADA: pedir dado de apólice
+            #    alheia é justamente o sinal. Nunca bloqueia, nunca levanta.
+            rastro = await self._rastrear_a_consulta(db, result, quem, document=document,
+                                                     session_id=session_id)
             if quem.get("terceiro") and not quem.get("autorizado"):
-                return self._resposta_de_terceiro(quem)
+                return self._com_rastro(self._resposta_de_terceiro(quem), rastro)
             # FICHA do atendimento: para apólice AUTO, placa/veículo/contato vêm
             # da fonte (o atendente NUNCA pede placa ao cliente). Vale para TODOS
             # os papéis — o Chat Principal (corretor) também precisa desses dados
             # (12/07: "cadê os dados do veículo" — a ficha era só client_facing).
             if str(result.get("status") or "") == "found":
                 await self._enrich_vehicle(result, provider, document, db, key)
-                await self._risco_na_ficha(result, session_id)
+                # 🔴 SPEC-126 D1: com o PARENTE falando, a placa/veículo do titular NÃO vai
+                #    para a ficha "do sistema" — o bloco do prompt manda o agente CONFIRMAR
+                #    esses dados com quem fala, e ao terceiro isso é revelar dado. O
+                #    acionamento busca a placa pelo CPF (`insurer_dispatch._resolve_vehicle_facts`).
+                if not quem.get("autorizado"):
+                    await self._risco_na_ficha(result, session_id)
             content, assistance_policy, rendered, meta = self._render_content(
                 result, user_query, detail=False,
                 atendente=await self._quem_cuida(db, user_query),
@@ -998,10 +1091,12 @@ class InfocapPolicyLookupTool(BaseTool):
             # `invocation_recorder` a resume para `tool_invocations`. Nenhum
             # segundo registro (CLAUDE.md §5) e nenhum argumento cru: o dict vem
             # de `VereditoDeCobertura.para_registro()`, que não carrega texto.
-            return {"content": content, "data": result, "found": bool(result.get("ok")),
-                    "policy_response_contract": contract,
-                    "cobertura": (meta or {}).get("cobertura"),
-                    **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})}
+            return self._com_rastro(
+                {"content": content, "data": result, "found": bool(result.get("ok")),
+                 "policy_response_contract": contract,
+                 "cobertura": (meta or {}).get("cobertura"),
+                 **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})},
+                rastro)
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InfocapPolicyLookupTool] erro: {type(e).__name__}")
             return {"content": "Nao consegui consultar o sistema de gestao da corretora agora. Tente novamente em instantes.", "found": False, "error": type(e).__name__}
