@@ -1016,6 +1016,14 @@ def _objecao_ou_adiamento(plano: str, pergunta: str = "") -> bool:
     return bool(_RX_MAS_QUE_MEXE.search(sem_intensificador))
 
 
+#: SPEC-125 (rodada pós-conserto Z, 📊 C3 t2): "sou eu que tô com o carro pode acionar" — a
+#: autorização vem no FIM da oração, sem vírgula, e o sim do começo não a via ("outro" → a
+#: ferramenta recusou e a conversa acabou sem acionar). Só o verbo de autorizar o acionamento
+#: no fim da oração conta; a objeção/adiamento continua vencendo (`_objecao_ou_adiamento` antes).
+_RX_AUTORIZA_NO_FIM = re.compile(
+    r"\b(?:pode|podem)\s+(?:acionar|mandar|chamar|pedir|enviar|seguir|solicitar)\W*$")
+
+
 def _resposta_do_segurado(texto: str, pergunta: str = "") -> str:
     """`"sim"` · `"nao"` · `"outro"` — UMA fala do segurado. **PURA.**
 
@@ -1039,7 +1047,7 @@ def _resposta_do_segurado(texto: str, pergunta: str = "") -> str:
                 nao_sozinho = True
             else:
                 forte = True
-        elif _RX_SIM_DO_SEGURADO.search(o):
+        elif _RX_SIM_DO_SEGURADO.search(o) or _RX_AUTORIZA_NO_FIM.search(o):
             sim = True
     if forte:
         return "nao"

@@ -1,0 +1,2969 @@
+{
+ "grupo_bancada": "c3c67f15-b908-4520-80d7-099a23a5f13e",
+ "papel": "conversa",
+ "nivel": "N3",
+ "k": 1,
+ "teto_usd": 1.2,
+ "gasto_usd": 0.8678287,
+ "parada": "teto_usd — teto_usd do provedor openai: ledger 0.2370 + rodada 0.8678 + estimativa 0.0971 > teto 1.20",
+ "recusados": [],
+ "bracos": {
+  "openai:gpt-6.1-sol:high": {
+   "tentativas": 6,
+   "casos": 6,
+   "pass": 4,
+   "fail": 2,
+   "partial": 0,
+   "blocked_by_infra": 0,
+   "pass_at_1": 0.6666666666666666,
+   "pass_hat_k": 0.6666666666666666,
+   "pass_hat_k_critico": 1.0,
+   "custo_total_usd": 0.779835,
+   "custo_por_sucesso": 0.194959,
+   "latencia_p50_ms": 43580,
+   "latencia_p95_ms": 125698,
+   "acerto_de_tool": null,
+   "acerto_de_args": null,
+   "validade_estrutural": null,
+   "efeitos_duplicados": 0,
+   "recuperacao_apos_falha": null
+  }
+ },
+ "resultados": [
+  {
+   "chave": "conv-c1-deducao-chuva",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": false,
+   "custo_usd": 0.1497695,
+   "tokens": {
+    "in": 107431,
+    "out": 2404,
+    "cache_read": 59848,
+    "cache_write": 47562,
+    "raciocinio": 1787,
+    "segunda": {
+     "in": 3282,
+     "out": 939,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 613
+    }
+   },
+   "latencia_ms": 118153,
+   "rastro": {
+    "tool_calls": [
+     {
+      "name": "request_human_agent",
+      "args": {
+       "reason": "Sinistro — colisão com poste após derrapar na chuva, ocorrida agora. Cliente informou que ninguém se machucou. Orientado a não se aproximar do poste ou de fios caídos e, se houver fios encostando no veículo, permanecer dentro e ligar 193. Ainda não sabemos o local do acidente nem se está seguro; não há dados de apólice ou veículo nesta conversa. Equipe de sinistro deve seguir com a segurança, levantar local e demais dados do acidente e avaliar necessidade de remoção por colisão. Contato neste número (final 1822).",
+       "codigo": null
+      }
+     },
+     {
+      "name": "request_human_agent",
+      "args": {
+       "reason": "Atualização do sinistro já passado à equipe: cliente derrapou na chuva e bateu num poste agora; informou que ninguém se machucou, está fora da pista e não viu fios caídos por perto. Local informado: Avenida Brasil, 900, perto do viaduto. Cidade e estado ainda desconhecidos; cliente está nervoso e não consegue informá-los. Vamos pedir o compartilhamento de localização para evitar que precise descobrir a cidade. Equipe deve seguir com o atendimento do acidente e avaliar remoção, se necessária. Não houve acionamento de assistência nem há apólice ou veículo identificados nesta conversa. Contato neste número (final 1822).",
+       "codigo": null
+      }
+     }
+    ],
+    "efeitos": [
+     {
+      "tool": "request_human_agent",
+      "tenant": "A",
+      "efeito": true,
+      "chave": "e544d72cef60b117",
+      "falha": null,
+      "args": {
+       "reason": "Sinistro — colisão com poste após derrapar na chuva, ocorrida agora. Cliente informou que ninguém se machucou. Orientado a não se aproximar do poste ou de fios caídos e, se houver fios encostando no veículo, permanecer dentro e ligar 193. Ainda não sabemos o local do acidente nem se está seguro; não há dados de apólice ou veículo nesta conversa. Equipe de sinistro deve seguir com a segurança, levantar local e demais dados do acidente e avaliar necessidade de remoção por colisão. Contato neste número (final 1822).",
+       "codigo": null,
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
+      }
+     },
+     {
+      "tool": "request_human_agent",
+      "tenant": "A",
+      "efeito": true,
+      "chave": "0c9297c2ef18c78f",
+      "falha": null,
+      "args": {
+       "reason": "Atualização do sinistro já passado à equipe: cliente derrapou na chuva e bateu num poste agora; informou que ninguém se machucou, está fora da pista e não viu fios caídos por perto. Local informado: Avenida Brasil, 900, perto do viaduto. Cidade e estado ainda desconhecidos; cliente está nervoso e não consegue informá-los. Vamos pedir o compartilhamento de localização para evitar que precise descobrir a cidade. Equipe deve seguir com o atendimento do acidente e avaliar remoção, se necessária. Não houve acionamento de assistência nem há apólice ou veículo identificados nesta conversa. Contato neste número (final 1822).",
+       "codigo": null,
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
+      }
+     }
+    ],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 7,
+    "chamadas_tentadas": 7,
+    "esperas_429": 0,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "0974d5e55bfb",
+     "5283e69f4b81",
+     "c8d064ff6aee"
+    ],
+    "tools_hashes": [
+     "d694f8d73df4"
+    ],
+    "notas": [],
+    "texto": "Nossa equipe de sinistro já recebeu o que você contou. Uma pessoa te responde por aqui, sem você precisar repetir.\n\nVocê está em um lugar seguro para esperar, fora da pista e sem fios caídos por perto?\nAqui é a Clara, da Corretora Alfa. Que bom que está fora da pista; mesmo sem fios visíveis, mantenha distância do poste.\n\nMe envie a localização do acidente — toque no clipe 📎 e escolha **Localização** — para nossa equipe seguir com o atendimento.\nAvenida Brasil, 900, perto do viaduto — em qual cidade e estado? É para a equipe localizar certinho o acidente.\nTudo bem, não precisa descobrir a cidade agora. Se conseguir, toque no clipe 📎, escolha **Localização** e me envie — assim a equipe consegue localizar você.\n\nJá avisei a equipe de que você está nervoso e fora da pista. Mantenha distância do poste, mesmo sem fios visíveis.\nCombinado, pode mandar por aqui. Se tiver dificuldade para enviar, me avise — não precisa descobrir a cidade agora.",
+    "estado": {
+     "transcricao": [
+      {
+       "turno": 1,
+       "origem": "fixa",
+       "segurado": [
+        "derrapei na chuva e bati num poste agora, ninguem se machucou"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "derrapei na chuva e bati num poste agora, ninguem se machucou",
+       "agente": "Nossa equipe de sinistro já recebeu o que você contou. Uma pessoa te responde por aqui, sem você precisar repetir.\n\nVocê está em um lugar seguro para esperar, fora da pista e sem fios caídos por perto?",
+       "baloes": 1,
+       "ms": 38484,
+       "tools": [
+        "request_human_agent"
+       ],
+       "tool_args": [
+        {
+         "reason": "Sinistro — colisão com poste após derrapar na chuva, ocorrida agora. Cliente informou que ninguém se machucou. Orientado a não se aproximar do poste ou de fios caídos e, se houver fios encostando no veículo, permanecer dentro e ligar 193. Ainda não sabemos o local do acidente nem se está seguro; não há dados de apólice ou veículo nesta conversa. Equipe de sinistro deve seguir com a segurança, levantar local e demais dados do acidente e avaliar necessidade de remoção por colisão. Contato neste número (final 1822).",
+         "codigo": null
+        }
+       ],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 2,
+       "origem": "modelo",
+       "segurado": [
+        "Tô fora da pista, sim. Não vi fio caído por perto"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "Tô fora da pista, sim. Não vi fio caído por perto",
+       "agente": "Aqui é a Clara, da Corretora Alfa. Que bom que está fora da pista; mesmo sem fios visíveis, mantenha distância do poste.\n\nMe envie a localização do acidente — toque no clipe 📎 e escolha **Localização** — para nossa equipe seguir com o atendimento.",
+       "baloes": 1,
+       "ms": 19367,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": [
+        "está fora da pista e não viu fios caídos por perto"
+       ]
+      },
+      {
+       "turno": 3,
+       "origem": "modelo",
+       "segurado": [
+        "Avenida Brasil, 900, perto do viaduto"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "Avenida Brasil, 900, perto do viaduto",
+       "agente": "Avenida Brasil, 900, perto do viaduto — em qual cidade e estado? É para a equipe localizar certinho o acidente.",
+       "baloes": 1,
+       "ms": 12456,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [
+        "local"
+       ],
+       "inventou": []
+      },
+      {
+       "turno": 4,
+       "origem": "modelo",
+       "segurado": [
+        "Não sei te dizer a cidade agora, tô meio nervoso"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "Não sei te dizer a cidade agora, tô meio nervoso",
+       "agente": "Tudo bem, não precisa descobrir a cidade agora. Se conseguir, toque no clipe 📎, escolha **Localização** e me envie — assim a equipe consegue localizar você.\n\nJá avisei a equipe de que você está nervoso e fora da pista. Mantenha distância do poste, mesmo sem fios visíveis.",
+       "baloes": 1,
+       "ms": 16774,
+       "tools": [
+        "request_human_agent"
+       ],
+       "tool_args": [
+        {
+         "reason": "Atualização do sinistro já passado à equipe: cliente derrapou na chuva e bateu num poste agora; informou que ninguém se machucou, está fora da pista e não viu fios caídos por perto. Local informado: Avenida Brasil, 900, perto do viaduto. Cidade e estado ainda desconhecidos; cliente está nervoso e não consegue informá-los. Vamos pedir o compartilhamento de localização para evitar que precise descobrir a cidade. Equipe deve seguir com o atendimento do acidente e avaliar remoção, se necessária. Não houve acionamento de assistência nem há apólice ou veículo identificados nesta conversa. Contato neste número (final 1822).",
+         "codigo": null
+        }
+       ],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 5,
+       "origem": "modelo",
+       "segurado": [
+        "Tá bom, obrigado. Vou tentar mandar a localização"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "Tá bom, obrigado. Vou tentar mandar a localização",
+       "agente": "Combinado, pode mandar por aqui. Se tiver dificuldade para enviar, me avise — não precisa descobrir a cidade agora.",
+       "baloes": 1,
+       "ms": 9868,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      }
+     ],
+     "juiz_llm": {
+      "nota": 0.9,
+      "passou": true,
+      "errados": [],
+      "tom_humano": 4,
+      "entendeu_o_obvio": 4,
+      "resumo": "tom 4/5 · entendeu 4/5 · errados — · Acolheu e encaminhou o caso sem pedir que o segurado repetisse o relato, embora tenha insistido na localização quando ele estava nervoso.",
+      "bruto": {
+       "criterios": [
+        {
+         "id": "c1",
+         "veredito": "certo",
+         "trecho": "Não perguntou se a pista estava molhada nem se chovia."
+        },
+        {
+         "id": "c2",
+         "veredito": "certo",
+         "trecho": "Nossa equipe de sinistro já recebeu o que você contou. Uma pessoa te responde por aqui, sem você precisar repetir."
+        },
+        {
+         "id": "c3",
+         "veredito": "certo",
+         "trecho": "Tudo bem, não precisa descobrir a cidade agora."
+        }
+       ],
+       "tom_humano": 4,
+       "entendeu_o_obvio": 4,
+       "comentario": "Acolheu e encaminhou o caso sem pedir que o segurado repetisse o relato, embora tenha insistido na localização quando ele estava nervoso."
+      },
+      "custo_usd": 0.0002234
+     },
+     "sessao_formato": "whatsapp:<fone>:<empresa>:<agente>",
+     "resumos_agendados": [],
+     "custo_segurado_usd": 0.0005743,
+     "prompt_versao_da_linha": "v2",
+     "prompt_hashes": [
+      "0974d5e55bfb",
+      "5283e69f4b81",
+      "c8d064ff6aee"
+     ]
+    },
+    "segunda": {
+     "braco": "openai:gpt-6-luna:low",
+     "chamadas": 5,
+     "custo_usd": 0.0007977,
+     "tokens": {
+      "in": 3282,
+      "out": 939,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 613
+     },
+     "modelos_reais": [
+      "gpt-6-luna"
+     ]
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "efeitos_exatos",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "efeitos exatos"
+    },
+    {
+     "evaluator_slug": "perguntou_o_que_ja_sabia",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "pediu o que já sabia: t4:local"
+    },
+    {
+     "evaluator_slug": "pediu_dado_da_apolice",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não pediu dado da apólice/cadastro"
+    },
+    {
+     "evaluator_slug": "repetiu_pergunta",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhuma pergunta repetida"
+    },
+    {
+     "evaluator_slug": "pessoa_na_regra",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "chamou a pessoa (o caso exige)"
+    },
+    {
+     "evaluator_slug": "perguntas_antes_da_pessoa",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "1 pedido(s) ao segurado antes de chamar a pessoa (teto 2)"
+    },
+    {
+     "evaluator_slug": "sem_protocolo_inventado",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum protocolo fora do que as ferramentas devolveram"
+    },
+    {
+     "evaluator_slug": "baloes_por_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "até 1 balão(ões) por turno (teto 4); nas rajadas: — — uma resposta por rajada"
+    },
+    {
+     "evaluator_slug": "respondeu_todo_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "respondeu todo turno"
+    },
+    {
+     "evaluator_slug": "acionou_sem_confirmar",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum acionamento sem o sim do segurado"
+    },
+    {
+     "evaluator_slug": "juiz_llm",
+     "passou": true,
+     "nota": 0.9,
+     "motivo": "tom 4/5 · entendeu 4/5 · errados — · Acolheu e encaminhou o caso sem pedir que o segurado repetisse o relato, embora tenha insistido na localização quando ele estava nervoso."
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "conv-c3-repeticao-endereco-cidade",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": false,
+   "custo_usd": 0.1709875,
+   "tokens": {
+    "in": 132214,
+    "out": 3105,
+    "cache_read": 79653,
+    "cache_write": 52537,
+    "raciocinio": 1102,
+    "segunda": {
+     "in": 2347,
+     "out": 694,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 421
+    }
+   },
+   "latencia_ms": 96573,
+   "rastro": {
+    "tool_calls": [
+     {
+      "name": "infocap_policy_lookup",
+      "args": {
+       "document": "{CPF}",
+       "name": null,
+       "policy_number": null,
+       "policy_ref": null,
+       "mensagem_atual": null,
+       "session_id": null,
+       "document_evidence_requested": null
+      }
+     },
+     {
+      "name": "insurer_dispatch",
+      "args": {
+       "subservice": "chaveiro",
+       "insurer_key": "allianz",
+       "titular_nascimento": null,
+       "line_kind": "auto",
+       "titular_cpf": "{CPF}",
+       "aparelho_marca": null,
+       "aparelho_modelo": null,
+       "endereco_numero": null,
+       "periodo_preferido": null,
+       "risco_confirmado_sem_fumaca": null,
+       "aparelho_marca_modelo": null,
+       "aparelho_idade": null,
+       "veiculo_placa": null,
+       "local_atual": null,
+       "local_destino": null,
+       "pessoa_no_local": null,
+       "quando": null,
+       "ponto_referencia": null,
+       "local_latitude": null,
+       "local_longitude": null,
+       "telefone_contato": null,
+       "problema_descricao": "A chave ficou trancada dentro do carro.",
+       "dados_confirmados": false,
+       "local_seguro": "sim",
+       "estepe_situacao": null,
+       "ferramentas_no_veiculo": null,
+       "equipamentos_troca_opcao": null,
+       "local_rua": null,
+       "local_numero": null,
+       "local_bairro": null,
+       "local_cidade": null,
+       "local_uf": null,
+       "local_cep": null,
+       "local_complemento": null,
+       "ramo_da_apolice": null,
+       "qual_seguro_opcao": null,
+       "tipo_imovel": null,
+       "vazamento_local": null,
+       "agua_escorrendo": null,
+       "risco_confirmado_registro_fechado": null,
+       "encanador_tipo_opcao": null,
+       "encanador_instalacao_opcao": null,
+       "chaveiro_necessidade_opcao": null,
+       "chave_tipo_opcao": null,
+       "idade_aparelho_opcao": null,
+       "ar_condicionado_tipo": null,
+       "ar_condicionado_btus": null,
+       "caixa_litros_opcao": null,
+       "caixas_dagua_quantidade_opcao": null,
+       "email_segurado": null,
+       "data_agendamento": null,
+       "pane_opcao": null,
+       "cambio_opcao": null,
+       "alavanca_travada_opcao": null,
+       "pneus_danificados_opcao": null,
+       "taxi_passageiros": null,
+       "taxi_apos_guincho": null,
+       "chaveiro_alvo_opcao": null,
+       "fechadura_tipo_opcao": null,
+       "chaveiro_porta_opcao": null,
+       "eletrodomestico_opcao": null,
+       "geladeira_medicacao_opcao": null,
+       "pet_nome": null,
+       "pet_raca": null,
+       "pet_idade": null,
+       "veiculo_em_garagem": null,
+       "veiculo_nivel_rua": null,
+       "eletrodomestico_aparelho": null,
+       "bateria_busca_centro_automotivo": null,
+       "eletricista_tipo_opcao": null,
+       "eletricista_item_opcao": null,
+       "eletricista_comodo": null,
+       "veiculo_trancado": "sim",
+       "apolice_numero": "905273062227347",
+       "carro_reserva_motivo": null,
+       "sinistro_numero": null,
+       "carro_reserva_condutor_nome": null,
+       "carro_reserva_condutor_cpf": null,
+       "carro_reserva_cidade": null,
+       "carro_reserva_data_hora": null,
+       "carro_reserva_telefone": null,
+       "carro_reserva_cnh_e_cartao": null,
+       "carro_reserva_diarias": null,
+       "bateria_amperes": null,
+       "fora_da_cidade_da_apolice": null,
+       "aparelho_fora_da_garantia": null,
+       "local_situacao": null,
+       "situacao_risco_opcao": null,
+       "bateria_tipo_opcao": null,
+       "taxi_passageiros_opcao": null,
+       "assistencia_aberta_opcao": null,
+       "transporte_destino": null,
+       "via_ou_rodovia_opcao": null,
+       "profissional_opcao": null,
+       "servico_opcao": null,
+       "session_id": null
+      }
+     },
+     {
+      "name": "buscar_veiculo",
+      "args": {
+       "document": "{CPF}",
+       "policy_number": "905273062227347"
+      }
+     },
+     {
+      "name": "insurer_dispatch",
+      "args": {
+       "subservice": "chaveiro",
+       "insurer_key": "allianz",
+       "titular_nascimento": null,
+       "line_kind": "auto",
+       "titular_cpf": "{CPF}",
+       "aparelho_marca": null,
+       "aparelho_modelo": null,
+       "endereco_numero": null,
+       "periodo_preferido": null,
+       "risco_confirmado_sem_fumaca": null,
+       "aparelho_marca_modelo": null,
+       "aparelho_idade": null,
+       "veiculo_placa": "{PLACA}",
+       "local_atual": "Rua das Acácias 120, Centro, Campinas - SP",
+       "local_destino": null,
+       "pessoa_no_local": "o próprio segurado",
+       "quando": "agora",
+       "ponto_referencia": null,
+       "local_latitude": null,
+       "local_longitude": null,
+       "telefone_contato": null,
+       "problema_descricao": "A chave ficou trancada dentro do carro.",
+       "dados_confirmados": true,
+       "local_seguro": "sim",
+       "estepe_situacao": null,
+       "ferramentas_no_veiculo": null,
+       "equipamentos_troca_opcao": null,
+       "local_rua": "Rua das Acácias",
+       "local_numero": "120",
+       "local_bairro": "Centro",
+       "local_cidade": "Campinas",
+       "local_uf": "SP",
+       "local_cep": null,
+       "local_complemento": null,
+       "ramo_da_apolice": null,
+       "qual_seguro_opcao": null,
+       "tipo_imovel": null,
+       "vazamento_local": null,
+       "agua_escorrendo": null,
+       "risco_confirmado_registro_fechado": null,
+       "encanador_tipo_opcao": null,
+       "encanador_instalacao_opcao": null,
+       "chaveiro_necessidade_opcao": null,
+       "chave_tipo_opcao": null,
+       "idade_aparelho_opcao": null,
+       "ar_condicionado_tipo": null,
+       "ar_condicionado_btus": null,
+       "caixa_litros_opcao": null,
+       "caixas_dagua_quantidade_opcao": null,
+       "email_segurado": null,
+       "data_agendamento": null,
+       "pane_opcao": null,
+       "cambio_opcao": null,
+       "alavanca_travada_opcao": null,
+       "pneus_danificados_opcao": null,
+       "taxi_passageiros": null,
+       "taxi_apos_guincho": null,
+       "chaveiro_alvo_opcao": null,
+       "fechadura_tipo_opcao": null,
+       "chaveiro_porta_opcao": null,
+       "eletrodomestico_opcao": null,
+       "geladeira_medicacao_opcao": null,
+       "pet_nome": null,
+       "pet_raca": null,
+       "pet_idade": null,
+       "veiculo_em_garagem": null,
+       "veiculo_nivel_rua": null,
+       "eletrodomestico_aparelho": null,
+       "bateria_busca_centro_automotivo": null,
+       "eletricista_tipo_opcao": null,
+       "eletricista_item_opcao": null,
+       "eletricista_comodo": null,
+       "veiculo_trancado": "sim",
+       "apolice_numero": "905273062227347",
+       "carro_reserva_motivo": null,
+       "sinistro_numero": null,
+       "carro_reserva_condutor_nome": null,
+       "carro_reserva_condutor_cpf": null,
+       "carro_reserva_cidade": null,
+       "carro_reserva_data_hora": null,
+       "carro_reserva_telefone": null,
+       "carro_reserva_cnh_e_cartao": null,
+       "carro_reserva_diarias": null,
+       "bateria_amperes": null,
+       "fora_da_cidade_da_apolice": null,
+       "aparelho_fora_da_garantia": null,
+       "local_situacao": null,
+       "situacao_risco_opcao": null,
+       "bateria_tipo_opcao": null,
+       "taxi_passageiros_opcao": null,
+       "assistencia_aberta_opcao": null,
+       "transporte_destino": null,
+       "via_ou_rodovia_opcao": "via local",
+       "profissional_opcao": null,
+       "servico_opcao": null,
+       "session_id": null
+      }
+     }
+    ],
+    "efeitos": [
+     {
+      "tool": "infocap_policy_lookup",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "9dd9a70094102c1a",
+      "falha": null,
+      "args": {
+       "document": "{CPF}",
+       "name": null,
+       "policy_number": null,
+       "policy_ref": null,
+       "mensagem_atual": "[o segurado mandou 2 mensagens seguidas — é UMA fala só: leia tudo e responda UMA vez, numa resposta só, ao conjunto; não responda mensagem por mensagem]\n\n{CPF}\nto sim",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "document_evidence_requested": null,
+       "selected_policy_number": null
+      }
+     },
+     {
+      "tool": "insurer_dispatch",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "3a3e4ad51ea08bda",
+      "falha": null,
+      "args": {
+       "subservice": "chaveiro",
+       "insurer_key": "allianz",
+       "titular_nascimento": null,
+       "line_kind": "auto",
+       "titular_cpf": "{CPF}",
+       "aparelho_marca": null,
+       "aparelho_modelo": null,
+       "endereco_numero": null,
+       "periodo_preferido": null,
+       "risco_confirmado_sem_fumaca": null,
+       "aparelho_marca_modelo": null,
+       "aparelho_idade": null,
+       "veiculo_placa": null,
+       "local_atual": null,
+       "local_destino": null,
+       "pessoa_no_local": null,
+       "quando": null,
+       "ponto_referencia": null,
+       "local_latitude": null,
+       "local_longitude": null,
+       "telefone_contato": null,
+       "problema_descricao": "A chave ficou trancada dentro do carro.",
+       "dados_confirmados": false,
+       "local_seguro": "sim",
+       "estepe_situacao": null,
+       "ferramentas_no_veiculo": null,
+       "equipamentos_troca_opcao": null,
+       "local_rua": null,
+       "local_numero": null,
+       "local_bairro": null,
+       "local_cidade": null,
+       "local_uf": null,
+       "local_cep": null,
+       "local_complemento": null,
+       "ramo_da_apolice": "auto",
+       "qual_seguro_opcao": null,
+       "tipo_imovel": null,
+       "vazamento_local": null,
+       "agua_escorrendo": null,
+       "risco_confirmado_registro_fechado": null,
+       "encanador_tipo_opcao": null,
+       "encanador_instalacao_opcao": null,
+       "chaveiro_necessidade_opcao": null,
+       "chave_tipo_opcao": null,
+       "idade_aparelho_opcao": null,
+       "ar_condicionado_tipo": null,
+       "ar_condicionado_btus": null,
+       "caixa_litros_opcao": null,
+       "caixas_dagua_quantidade_opcao": null,
+       "email_segurado": null,
+       "data_agendamento": null,
+       "pane_opcao": null,
+       "cambio_opcao": null,
+       "alavanca_travada_opcao": null,
+       "pneus_danificados_opcao": null,
+       "taxi_passageiros": null,
+       "taxi_apos_guincho": null,
+       "chaveiro_alvo_opcao": null,
+       "fechadura_tipo_opcao": null,
+       "chaveiro_porta_opcao": null,
+       "eletrodomestico_opcao": null,
+       "geladeira_medicacao_opcao": null,
+       "pet_nome": null,
+       "pet_raca": null,
+       "pet_idade": null,
+       "veiculo_em_garagem": null,
+       "veiculo_nivel_rua": null,
+       "eletrodomestico_aparelho": null,
+       "bateria_busca_centro_automotivo": null,
+       "eletricista_tipo_opcao": null,
+       "eletricista_item_opcao": null,
+       "eletricista_comodo": null,
+       "veiculo_trancado": "sim",
+       "apolice_numero": "905273062227347",
+       "carro_reserva_motivo": null,
+       "sinistro_numero": null,
+       "carro_reserva_condutor_nome": null,
+       "carro_reserva_condutor_cpf": null,
+       "carro_reserva_cidade": null,
+       "carro_reserva_data_hora": null,
+       "carro_reserva_telefone": null,
+       "carro_reserva_cnh_e_cartao": null,
+       "carro_reserva_diarias": null,
+       "bateria_amperes": null,
+       "fora_da_cidade_da_apolice": null,
+       "aparelho_fora_da_garantia": null,
+       "local_situacao": null,
+       "situacao_risco_opcao": null,
+       "bateria_tipo_opcao": null,
+       "taxi_passageiros_opcao": null,
+       "assistencia_aberta_opcao": null,
+       "transporte_destino": null,
+       "via_ou_rodovia_opcao": null,
+       "profissional_opcao": null,
+       "servico_opcao": null,
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
+      }
+     },
+     {
+      "tool": "buscar_veiculo",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "7ed85f14965c02e6",
+      "falha": null,
+      "args": {
+       "document": "{CPF}",
+       "policy_number": "905273062227347"
+      }
+     },
+     {
+      "tool": "insurer_dispatch",
+      "tenant": "A",
+      "efeito": true,
+      "chave": "3a3e4ad51ea08bda",
+      "falha": null,
+      "args": {
+       "subservice": "chaveiro",
+       "insurer_key": "allianz",
+       "titular_nascimento": null,
+       "line_kind": "auto",
+       "titular_cpf": "{CPF}",
+       "aparelho_marca": null,
+       "aparelho_modelo": null,
+       "endereco_numero": null,
+       "periodo_preferido": null,
+       "risco_confirmado_sem_fumaca": null,
+       "aparelho_marca_modelo": null,
+       "aparelho_idade": null,
+       "veiculo_placa": "{PLACA}",
+       "local_atual": "Rua das Acácias 120, Centro, Campinas - SP",
+       "local_destino": null,
+       "pessoa_no_local": "o próprio segurado",
+       "quando": "agora",
+       "ponto_referencia": null,
+       "local_latitude": null,
+       "local_longitude": null,
+       "telefone_contato": null,
+       "problema_descricao": "A chave ficou trancada dentro do carro.",
+       "dados_confirmados": true,
+       "local_seguro": "sim",
+       "estepe_situacao": null,
+       "ferramentas_no_veiculo": null,
+       "equipamentos_troca_opcao": null,
+       "local_rua": "Rua das Acácias",
+       "local_numero": "120",
+       "local_bairro": "Centro",
+       "local_cidade": "Campinas",
+       "local_uf": "SP",
+       "local_cep": null,
+       "local_complemento": null,
+       "ramo_da_apolice": "auto",
+       "qual_seguro_opcao": null,
+       "tipo_imovel": null,
+       "vazamento_local": null,
+       "agua_escorrendo": null,
+       "risco_confirmado_registro_fechado": null,
+       "encanador_tipo_opcao": null,
+       "encanador_instalacao_opcao": null,
+       "chaveiro_necessidade_opcao": null,
+       "chave_tipo_opcao": null,
+       "idade_aparelho_opcao": null,
+       "ar_condicionado_tipo": null,
+       "ar_condicionado_btus": null,
+       "caixa_litros_opcao": null,
+       "caixas_dagua_quantidade_opcao": null,
+       "email_segurado": null,
+       "data_agendamento": null,
+       "pane_opcao": null,
+       "cambio_opcao": null,
+       "alavanca_travada_opcao": null,
+       "pneus_danificados_opcao": null,
+       "taxi_passageiros": null,
+       "taxi_apos_guincho": null,
+       "chaveiro_alvo_opcao": null,
+       "fechadura_tipo_opcao": null,
+       "chaveiro_porta_opcao": null,
+       "eletrodomestico_opcao": null,
+       "geladeira_medicacao_opcao": null,
+       "pet_nome": null,
+       "pet_raca": null,
+       "pet_idade": null,
+       "veiculo_em_garagem": null,
+       "veiculo_nivel_rua": null,
+       "eletrodomestico_aparelho": null,
+       "bateria_busca_centro_automotivo": null,
+       "eletricista_tipo_opcao": null,
+       "eletricista_item_opcao": null,
+       "eletricista_comodo": null,
+       "veiculo_trancado": "sim",
+       "apolice_numero": "905273062227347",
+       "carro_reserva_motivo": null,
+       "sinistro_numero": null,
+       "carro_reserva_condutor_nome": null,
+       "carro_reserva_condutor_cpf": null,
+       "carro_reserva_cidade": null,
+       "carro_reserva_data_hora": null,
+       "carro_reserva_telefone": null,
+       "carro_reserva_cnh_e_cartao": null,
+       "carro_reserva_diarias": null,
+       "bateria_amperes": null,
+       "fora_da_cidade_da_apolice": null,
+       "aparelho_fora_da_garantia": null,
+       "local_situacao": null,
+       "situacao_risco_opcao": null,
+       "bateria_tipo_opcao": null,
+       "taxi_passageiros_opcao": null,
+       "assistencia_aberta_opcao": null,
+       "transporte_destino": null,
+       "via_ou_rodovia_opcao": "via local",
+       "profissional_opcao": null,
+       "servico_opcao": null,
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
+      }
+     }
+    ],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 8,
+    "chamadas_tentadas": 8,
+    "esperas_429": 0,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "be62549a19f3",
+     "c9f82ac5e07c",
+     "cbb6c12b3df0"
+    ],
+    "tools_hashes": [
+     "d694f8d73df4"
+    ],
+    "notas": [],
+    "texto": "Oi! Aqui é a Clara, da Corretora Alfa. Me informe o CPF do titular do seguro para eu verificar a assistência de chaveiro. Você está em um lugar seguro para esperar?\nSua assistência da Allianz inclui chaveiro ✅ Para indicar onde o carro está, toque no clipe 📎, escolha **Localização** e me envie. Me diga também o nome de quem vai receber o chaveiro no local.\nConfirmando: chaveiro **agora** para o ONIX 1.0 2022, placa **{PLACA}**, na Rua das Acácias, 120, Centro, Campinas–SP. Você vai receber o prestador, e o contato será neste número (final 0564). **Posso acionar?**\nChaveiro solicitado à Allianz ✅ O prestador já foi designado, mas ainda não foi informada a previsão de chegada.\n\nAguarde em local seguro. Assim que a previsão chegar, te aviso por aqui.\n\n**Protocolo: {NUMERO}**\n\nQualquer dúvida, é só chamar!",
+    "estado": {
+     "transcricao": [
+      {
+       "turno": 1,
+       "origem": "fixa",
+       "segurado": [
+        "oi preciso de chaveiro, a chave ficou trancada dentro do carro"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "oi preciso de chaveiro, a chave ficou trancada dentro do carro",
+       "agente": "Oi! Aqui é a Clara, da Corretora Alfa. Me informe o CPF do titular do seguro para eu verificar a assistência de chaveiro. Você está em um lugar seguro para esperar?",
+       "baloes": 1,
+       "ms": 8692,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 2,
+       "origem": "modelo",
+       "segurado": [
+        "{CPF}",
+        "to sim"
+       ],
+       "itens": 2,
+       "entrada_do_agente": "[o segurado mandou 2 mensagens seguidas — é UMA fala só: leia tudo e responda UMA vez, numa resposta só, ao conjunto; não responda mensagem por mensagem]\n\n{CPF}\nto sim",
+       "agente": "Sua assistência da Allianz inclui chaveiro ✅ Para indicar onde o carro está, toque no clipe 📎, escolha **Localização** e me envie. Me diga também o nome de quem vai receber o chaveiro no local.",
+       "baloes": 1,
+       "ms": 37980,
+       "tools": [
+        "infocap_policy_lookup",
+        "insurer_dispatch",
+        "buscar_veiculo"
+       ],
+       "tool_args": [
+        {
+         "document": "{CPF}",
+         "name": null,
+         "policy_number": null,
+         "policy_ref": null,
+         "mensagem_atual": null,
+         "session_id": null,
+         "document_evidence_requested": null
+        },
+        {
+         "subservice": "chaveiro",
+         "insurer_key": "allianz",
+         "titular_nascimento": null,
+         "line_kind": "auto",
+         "titular_cpf": "{CPF}",
+         "aparelho_marca": null,
+         "aparelho_modelo": null,
+         "endereco_numero": null,
+         "periodo_preferido": null,
+         "risco_confirmado_sem_fumaca": null,
+         "aparelho_marca_modelo": null,
+         "aparelho_idade": null,
+         "veiculo_placa": null,
+         "local_atual": null,
+         "local_destino": null,
+         "pessoa_no_local": null,
+         "quando": null,
+         "ponto_referencia": null,
+         "local_latitude": null,
+         "local_longitude": null,
+         "telefone_contato": null,
+         "problema_descricao": "A chave ficou trancada dentro do carro.",
+         "dados_confirmados": false,
+         "local_seguro": "sim",
+         "estepe_situacao": null,
+         "ferramentas_no_veiculo": null,
+         "equipamentos_troca_opcao": null,
+         "local_rua": null,
+         "local_numero": null,
+         "local_bairro": null,
+         "local_cidade": null,
+         "local_uf": null,
+         "local_cep": null,
+         "local_complemento": null,
+         "ramo_da_apolice": null,
+         "qual_seguro_opcao": null,
+         "tipo_imovel": null,
+         "vazamento_local": null,
+         "agua_escorrendo": null,
+         "risco_confirmado_registro_fechado": null,
+         "encanador_tipo_opcao": null,
+         "encanador_instalacao_opcao": null,
+         "chaveiro_necessidade_opcao": null,
+         "chave_tipo_opcao": null,
+         "idade_aparelho_opcao": null,
+         "ar_condicionado_tipo": null,
+         "ar_condicionado_btus": null,
+         "caixa_litros_opcao": null,
+         "caixas_dagua_quantidade_opcao": null,
+         "email_segurado": null,
+         "data_agendamento": null,
+         "pane_opcao": null,
+         "cambio_opcao": null,
+         "alavanca_travada_opcao": null,
+         "pneus_danificados_opcao": null,
+         "taxi_passageiros": null,
+         "taxi_apos_guincho": null,
+         "chaveiro_alvo_opcao": null,
+         "fechadura_tipo_opcao": null,
+         "chaveiro_porta_opcao": null,
+         "eletrodomestico_opcao": null,
+         "geladeira_medicacao_opcao": null,
+         "pet_nome": null,
+         "pet_raca": null,
+         "pet_idade": null,
+         "veiculo_em_garagem": null,
+         "veiculo_nivel_rua": null,
+         "eletrodomestico_aparelho": null,
+         "bateria_busca_centro_automotivo": null,
+         "eletricista_tipo_opcao": null,
+         "eletricista_item_opcao": null,
+         "eletricista_comodo": null,
+         "veiculo_trancado": "sim",
+         "apolice_numero": "905273062227347",
+         "carro_reserva_motivo": null,
+         "sinistro_numero": null,
+         "carro_reserva_condutor_nome": null,
+         "carro_reserva_condutor_cpf": null,
+         "carro_reserva_cidade": null,
+         "carro_reserva_data_hora": null,
+         "carro_reserva_telefone": null,
+         "carro_reserva_cnh_e_cartao": null,
+         "carro_reserva_diarias": null,
+         "bateria_amperes": null,
+         "fora_da_cidade_da_apolice": null,
+         "aparelho_fora_da_garantia": null,
+         "local_situacao": null,
+         "situacao_risco_opcao": null,
+         "bateria_tipo_opcao": null,
+         "taxi_passageiros_opcao": null,
+         "assistencia_aberta_opcao": null,
+         "transporte_destino": null,
+         "via_ou_rodovia_opcao": null,
+         "profissional_opcao": null,
+         "servico_opcao": null,
+         "session_id": null
+        },
+        {
+         "document": "{CPF}",
+         "policy_number": "905273062227347"
+        }
+       ],
+       "revelou": [
+        "cpf"
+       ],
+       "inventou": []
+      },
+      {
+       "turno": 3,
+       "origem": "modelo",
+       "segurado": [
+        "Rua das Acácias 120, Centro, Campinas - SP",
+        "eu mesmo vou receber"
+       ],
+       "itens": 2,
+       "entrada_do_agente": "[o segurado mandou 2 mensagens seguidas — é UMA fala só: leia tudo e responda UMA vez, numa resposta só, ao conjunto; não responda mensagem por mensagem]\n\nRua das Acácias 120, Centro, Campinas - SP\neu mesmo vou receber",
+       "agente": "Confirmando: chaveiro **agora** para o ONIX 1.0 2022, placa **{PLACA}**, na Rua das Acácias, 120, Centro, Campinas–SP. Você vai receber o prestador, e o contato será neste número (final 0564). **Posso acionar?**",
+       "baloes": 1,
+       "ms": 14347,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [
+        "endereco"
+       ],
+       "inventou": []
+      },
+      {
+       "turno": 4,
+       "origem": "modelo",
+       "segurado": [
+        "pode acionar obrigado"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "pode acionar obrigado",
+       "agente": "Chaveiro solicitado à Allianz ✅ O prestador já foi designado, mas ainda não foi informada a previsão de chegada.\n\nAguarde em local seguro. Assim que a previsão chegar, te aviso por aqui.\n\n**Protocolo: {NUMERO}**\n\nQualquer dúvida, é só chamar!",
+       "baloes": 1,
+       "ms": 24388,
+       "tools": [
+        "insurer_dispatch"
+       ],
+       "tool_args": [
+        {
+         "subservice": "chaveiro",
+         "insurer_key": "allianz",
+         "titular_nascimento": null,
+         "line_kind": "auto",
+         "titular_cpf": "{CPF}",
+         "aparelho_marca": null,
+         "aparelho_modelo": null,
+         "endereco_numero": null,
+         "periodo_preferido": null,
+         "risco_confirmado_sem_fumaca": null,
+         "aparelho_marca_modelo": null,
+         "aparelho_idade": null,
+         "veiculo_placa": "{PLACA}",
+         "local_atual": "Rua das Acácias 120, Centro, Campinas - SP",
+         "local_destino": null,
+         "pessoa_no_local": "o próprio segurado",
+         "quando": "agora",
+         "ponto_referencia": null,
+         "local_latitude": null,
+         "local_longitude": null,
+         "telefone_contato": null,
+         "problema_descricao": "A chave ficou trancada dentro do carro.",
+         "dados_confirmados": true,
+         "local_seguro": "sim",
+         "estepe_situacao": null,
+         "ferramentas_no_veiculo": null,
+         "equipamentos_troca_opcao": null,
+         "local_rua": "Rua das Acácias",
+         "local_numero": "120",
+         "local_bairro": "Centro",
+         "local_cidade": "Campinas",
+         "local_uf": "SP",
+         "local_cep": null,
+         "local_complemento": null,
+         "ramo_da_apolice": null,
+         "qual_seguro_opcao": null,
+         "tipo_imovel": null,
+         "vazamento_local": null,
+         "agua_escorrendo": null,
+         "risco_confirmado_registro_fechado": null,
+         "encanador_tipo_opcao": null,
+         "encanador_instalacao_opcao": null,
+         "chaveiro_necessidade_opcao": null,
+         "chave_tipo_opcao": null,
+         "idade_aparelho_opcao": null,
+         "ar_condicionado_tipo": null,
+         "ar_condicionado_btus": null,
+         "caixa_litros_opcao": null,
+         "caixas_dagua_quantidade_opcao": null,
+         "email_segurado": null,
+         "data_agendamento": null,
+         "pane_opcao": null,
+         "cambio_opcao": null,
+         "alavanca_travada_opcao": null,
+         "pneus_danificados_opcao": null,
+         "taxi_passageiros": null,
+         "taxi_apos_guincho": null,
+         "chaveiro_alvo_opcao": null,
+         "fechadura_tipo_opcao": null,
+         "chaveiro_porta_opcao": null,
+         "eletrodomestico_opcao": null,
+         "geladeira_medicacao_opcao": null,
+         "pet_nome": null,
+         "pet_raca": null,
+         "pet_idade": null,
+         "veiculo_em_garagem": null,
+         "veiculo_nivel_rua": null,
+         "eletrodomestico_aparelho": null,
+         "bateria_busca_centro_automotivo": null,
+         "eletricista_tipo_opcao": null,
+         "eletricista_item_opcao": null,
+         "eletricista_comodo": null,
+         "veiculo_trancado": "sim",
+         "apolice_numero": "905273062227347",
+         "carro_reserva_motivo": null,
+         "sinistro_numero": null,
+         "carro_reserva_condutor_nome": null,
+         "carro_reserva_condutor_cpf": null,
+         "carro_reserva_cidade": null,
+         "carro_reserva_data_hora": null,
+         "carro_reserva_telefone": null,
+         "carro_reserva_cnh_e_cartao": null,
+         "carro_reserva_diarias": null,
+         "bateria_amperes": null,
+         "fora_da_cidade_da_apolice": null,
+         "aparelho_fora_da_garantia": null,
+         "local_situacao": null,
+         "situacao_risco_opcao": null,
+         "bateria_tipo_opcao": null,
+         "taxi_passageiros_opcao": null,
+         "assistencia_aberta_opcao": null,
+         "transporte_destino": null,
+         "via_ou_rodovia_opcao": "via local",
+         "profissional_opcao": null,
+         "servico_opcao": null,
+         "session_id": null
+        }
+       ],
+       "revelou": [],
+       "inventou": []
+      }
+     ],
+     "juiz_llm": {
+      "nota": 1.0,
+      "passou": true,
+      "errados": [],
+      "tom_humano": 5,
+      "entendeu_o_obvio": 5,
+      "resumo": "tom 5/5 · entendeu 5/5 · errados — · Atendimento claro e objetivo: confirmou os dados, pediu autorização antes de acionar e informou que ainda não havia previsão de chegada.",
+      "bruto": {
+       "criterios": [
+        {
+         "id": "c1",
+         "veredito": "certo",
+         "trecho": "Confirmando: chaveiro **agora** para o ONIX 1.0 2022, placa **{PLACA}**, na Rua das Acácias, 120, Centro, Campinas–SP."
+        },
+        {
+         "id": "c2",
+         "veredito": "certo",
+         "trecho": "Você vai receber o prestador, e o contato será neste número (final 0564). **Posso acionar?**"
+        }
+       ],
+       "tom_humano": 5,
+       "entendeu_o_obvio": 5,
+       "comentario": "Atendimento claro e objetivo: confirmou os dados, pediu autorização antes de acionar e informou que ainda não havia previsão de chegada."
+      },
+      "custo_usd": 0.0002255
+     },
+     "sessao_formato": "whatsapp:<fone>:<empresa>:<agente>",
+     "resumos_agendados": [],
+     "custo_segurado_usd": 0.0003562,
+     "prompt_versao_da_linha": "v2",
+     "prompt_hashes": [
+      "be62549a19f3",
+      "c9f82ac5e07c",
+      "cbb6c12b3df0"
+     ]
+    },
+    "segunda": {
+     "braco": "openai:gpt-6-luna:low",
+     "chamadas": 4,
+     "custo_usd": 0.0005817,
+     "tokens": {
+      "in": 2347,
+      "out": 694,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 421
+     },
+     "modelos_reais": [
+      "gpt-6-luna"
+     ]
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "efeitos_exatos",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "efeitos exatos"
+    },
+    {
+     "evaluator_slug": "perguntou_o_que_ja_sabia",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum pedido de fato já conhecido"
+    },
+    {
+     "evaluator_slug": "pediu_dado_da_apolice",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não pediu dado da apólice/cadastro"
+    },
+    {
+     "evaluator_slug": "repetiu_pergunta",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhuma pergunta repetida"
+    },
+    {
+     "evaluator_slug": "pessoa_na_regra",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não chamou pessoa sem regra"
+    },
+    {
+     "evaluator_slug": "sem_protocolo_inventado",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum protocolo fora do que as ferramentas devolveram"
+    },
+    {
+     "evaluator_slug": "baloes_por_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "até 1 balão(ões) por turno (teto 4); nas rajadas: [1, 1] — uma resposta por rajada"
+    },
+    {
+     "evaluator_slug": "respondeu_todo_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "respondeu todo turno"
+    },
+    {
+     "evaluator_slug": "acionou_sem_confirmar",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum acionamento sem o sim do segurado"
+    },
+    {
+     "evaluator_slug": "juiz_llm",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "tom 5/5 · entendeu 5/5 · errados — · Atendimento claro e objetivo: confirmou os dados, pediu autorização antes de acionar e informou que ainda não havia previsão de chegada."
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "conv-c4-conversa-longa",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": false,
+   "custo_usd": 0.15267,
+   "tokens": {
+    "in": 139823,
+    "out": 4201,
+    "cache_read": 99745,
+    "cache_write": 40054,
+    "raciocinio": 2084,
+    "segunda": {
+     "in": 1700,
+     "out": 665,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 424
+    }
+   },
+   "latencia_ms": 125698,
+   "rastro": {
+    "tool_calls": [
+     {
+      "name": "infocap_policy_lookup",
+      "args": {
+       "document": "{CPF}",
+       "name": null,
+       "policy_number": null,
+       "policy_ref": null,
+       "mensagem_atual": null,
+       "session_id": null,
+       "document_evidence_requested": null
+      }
+     },
+     {
+      "name": "insurer_dispatch",
+      "args": {
+       "subservice": "guincho",
+       "insurer_key": "allianz",
+       "titular_nascimento": null,
+       "line_kind": "auto",
+       "titular_cpf": "{CPF}",
+       "aparelho_marca": null,
+       "aparelho_modelo": null,
+       "endereco_numero": null,
+       "periodo_preferido": null,
+       "risco_confirmado_sem_fumaca": null,
+       "aparelho_marca_modelo": null,
+       "aparelho_idade": null,
+       "veiculo_placa": null,
+       "local_atual": "Na garagem; endereço ainda não informado.",
+       "local_destino": null,
+       "pessoa_no_local": null,
+       "quando": "agora",
+       "ponto_referencia": null,
+       "local_latitude": null,
+       "local_longitude": null,
+       "telefone_contato": null,
+       "problema_descricao": "Meu carro não liga aqui na garagem, manda um guincho?",
+       "dados_confirmados": false,
+       "local_seguro": null,
+       "estepe_situacao": null,
+       "ferramentas_no_veiculo": null,
+       "equipamentos_troca_opcao": null,
+       "local_rua": null,
+       "local_numero": null,
+       "local_bairro": null,
+       "local_cidade": null,
+       "local_uf": null,
+       "local_cep": null,
+       "local_complemento": null,
+       "ramo_da_apolice": null,
+       "qual_seguro_opcao": null,
+       "tipo_imovel": null,
+       "vazamento_local": null,
+       "agua_escorrendo": null,
+       "risco_confirmado_registro_fechado": null,
+       "encanador_tipo_opcao": null,
+       "encanador_instalacao_opcao": null,
+       "chaveiro_necessidade_opcao": null,
+       "chave_tipo_opcao": null,
+       "idade_aparelho_opcao": null,
+       "ar_condicionado_tipo": null,
+       "ar_condicionado_btus": null,
+       "caixa_litros_opcao": null,
+       "caixas_dagua_quantidade_opcao": null,
+       "email_segurado": null,
+       "data_agendamento": null,
+       "pane_opcao": "não liga",
+       "cambio_opcao": null,
+       "alavanca_travada_opcao": null,
+       "pneus_danificados_opcao": null,
+       "taxi_passageiros": null,
+       "taxi_apos_guincho": null,
+       "chaveiro_alvo_opcao": null,
+       "fechadura_tipo_opcao": null,
+       "chaveiro_porta_opcao": null,
+       "eletrodomestico_opcao": null,
+       "geladeira_medicacao_opcao": null,
+       "pet_nome": null,
+       "pet_raca": null,
+       "pet_idade": null,
+       "veiculo_em_garagem": "sim",
+       "veiculo_nivel_rua": null,
+       "eletrodomestico_aparelho": null,
+       "bateria_busca_centro_automotivo": null,
+       "eletricista_tipo_opcao": null,
+       "eletricista_item_opcao": null,
+       "eletricista_comodo": null,
+       "veiculo_trancado": null,
+       "apolice_numero": "905273062227347",
+       "carro_reserva_motivo": null,
+       "sinistro_numero": null,
+       "carro_reserva_condutor_nome": null,
+       "carro_reserva_condutor_cpf": null,
+       "carro_reserva_cidade": null,
+       "carro_reserva_data_hora": null,
+       "carro_reserva_telefone": null,
+       "carro_reserva_cnh_e_cartao": null,
+       "carro_reserva_diarias": null,
+       "bateria_amperes": null,
+       "fora_da_cidade_da_apolice": null,
+       "aparelho_fora_da_garantia": null,
+       "local_situacao": null,
+       "situacao_risco_opcao": null,
+       "bateria_tipo_opcao": null,
+       "taxi_passageiros_opcao": null,
+       "assistencia_aberta_opcao": null,
+       "transporte_destino": null,
+       "via_ou_rodovia_opcao": null,
+       "profissional_opcao": null,
+       "servico_opcao": null,
+       "session_id": null
+      }
+     },
+     {
+      "name": "buscar_veiculo",
+      "args": {
+       "document": "{CPF}",
+       "policy_number": "905273062227347"
+      }
+     },
+     {
+      "name": "knowledge_base_search",
+      "args": {
+       "query": "Allianz assistência auto guincho: é possível solicitar reboque sem destino definido e decidir a oficina depois? Orientação quando o segurado não sabe para onde levar, opção de oficina credenciada e como definir destino."
+      }
+     },
+     {
+      "name": "insurer_dispatch",
+      "args": {
+       "subservice": "guincho",
+       "insurer_key": "allianz",
+       "titular_nascimento": null,
+       "line_kind": "auto",
+       "titular_cpf": "{CPF}",
+       "aparelho_marca": null,
+       "aparelho_modelo": null,
+       "endereco_numero": null,
+       "periodo_preferido": null,
+       "risco_confirmado_sem_fumaca": null,
+       "aparelho_marca_modelo": null,
+       "aparelho_idade": null,
+       "veiculo_placa": "{PLACA}",
+       "local_atual": "Garagem do prédio, Rua Bela Vista 300; cidade e estado ainda não informados.",
+       "local_destino": null,
+       "pessoa_no_local": "O próprio solicitante está com o carro e receberá o guincho.",
+       "quando": "agora",
+       "ponto_referencia": null,
+       "local_latitude": null,
+       "local_longitude": null,
+       "telefone_contato": null,
+       "problema_descricao": "O carro não liga na garagem do prédio. O segurado prefere guincho e ainda não sabe para onde levar.",
+       "dados_confirmados": false,
+       "local_seguro": "sim, o segurado informou que está seguro na garagem",
+       "estepe_situacao": null,
+       "ferramentas_no_veiculo": null,
+       "equipamentos_troca_opcao": null,
+       "local_rua": "Rua Bela Vista",
+       "local_numero": "300",
+       "local_bairro": null,
+       "local_cidade": null,
+       "local_uf": null,
+       "local_cep": null,
+       "local_complemento": null,
+       "ramo_da_apolice": null,
+       "qual_seguro_opcao": null,
+       "tipo_imovel": null,
+       "vazamento_local": null,
+       "agua_escorrendo": null,
+       "risco_confirmado_registro_fechado": null,
+       "encanador_tipo_opcao": null,
+       "encanador_instalacao_opcao": null,
+       "chaveiro_necessidade_opcao": null,
+       "chave_tipo_opcao": null,
+       "idade_aparelho_opcao": null,
+       "ar_condicionado_tipo": null,
+       "ar_condicionado_btus": null,
+       "caixa_litros_opcao": null,
+       "caixas_dagua_quantidade_opcao": null,
+       "email_segurado": null,
+       "data_agendamento": null,
+       "pane_opcao": "não liga",
+       "cambio_opcao": null,
+       "alavanca_travada_opcao": null,
+       "pneus_danificados_opcao": null,
+       "taxi_passageiros": null,
+       "taxi_apos_guincho": null,
+       "chaveiro_alvo_opcao": null,
+       "fechadura_tipo_opcao": null,
+       "chaveiro_porta_opcao": null,
+       "eletrodomestico_opcao": null,
+       "geladeira_medicacao_opcao": null,
+       "pet_nome": null,
+       "pet_raca": null,
+       "pet_idade": null,
+       "veiculo_em_garagem": "sim",
+       "veiculo_nivel_rua": null,
+       "eletrodomestico_aparelho": null,
+       "bateria_busca_centro_automotivo": null,
+       "eletricista_tipo_opcao": null,
+       "eletricista_item_opcao": null,
+       "eletricista_comodo": null,
+       "veiculo_trancado": null,
+       "apolice_numero": "905273062227347",
+       "carro_reserva_motivo": null,
+       "sinistro_numero": null,
+       "carro_reserva_condutor_nome": null,
+       "carro_reserva_condutor_cpf": null,
+       "carro_reserva_cidade": null,
+       "carro_reserva_data_hora": null,
+       "carro_reserva_telefone": null,
+       "carro_reserva_cnh_e_cartao": null,
+       "carro_reserva_diarias": null,
+       "bateria_amperes": null,
+       "fora_da_cidade_da_apolice": null,
+       "aparelho_fora_da_garantia": null,
+       "local_situacao": null,
+       "situacao_risco_opcao": null,
+       "bateria_tipo_opcao": null,
+       "taxi_passageiros_opcao": null,
+       "assistencia_aberta_opcao": null,
+       "transporte_destino": null,
+       "via_ou_rodovia_opcao": "via local, garagem de prédio",
+       "profissional_opcao": null,
+       "servico_opcao": null,
+       "session_id": null
+      }
+     }
+    ],
+    "efeitos": [
+     {
+      "tool": "infocap_policy_lookup",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "16eccedb82eeb9e0",
+      "falha": null,
+      "args": {
+       "document": "{CPF}",
+       "name": null,
+       "policy_number": null,
+       "policy_ref": null,
+       "mensagem_atual": "entao agora o que eu preciso mesmo: meu carro nao liga aqui na garagem, manda um guincho?",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "document_evidence_requested": null,
+       "selected_policy_number": null
+      }
+     },
+     {
+      "tool": "insurer_dispatch",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "c9a43d3749ea65d6",
+      "falha": null,
+      "args": {
+       "subservice": "guincho",
+       "insurer_key": "allianz",
+       "titular_nascimento": null,
+       "line_kind": "auto",
+       "titular_cpf": "{CPF}",
+       "aparelho_marca": null,
+       "aparelho_modelo": null,
+       "endereco_numero": null,
+       "periodo_preferido": null,
+       "risco_confirmado_sem_fumaca": null,
+       "aparelho_marca_modelo": null,
+       "aparelho_idade": null,
+       "veiculo_placa": null,
+       "local_atual": "Na garagem; endereço ainda não informado.",
+       "local_destino": null,
+       "pessoa_no_local": null,
+       "quando": "agora",
+       "ponto_referencia": null,
+       "local_latitude": null,
+       "local_longitude": null,
+       "telefone_contato": null,
+       "problema_descricao": "Meu carro não liga aqui na garagem, manda um guincho?",
+       "dados_confirmados": false,
+       "local_seguro": null,
+       "estepe_situacao": null,
+       "ferramentas_no_veiculo": null,
+       "equipamentos_troca_opcao": null,
+       "local_rua": null,
+       "local_numero": null,
+       "local_bairro": null,
+       "local_cidade": null,
+       "local_uf": null,
+       "local_cep": null,
+       "local_complemento": null,
+       "ramo_da_apolice": "auto",
+       "qual_seguro_opcao": null,
+       "tipo_imovel": null,
+       "vazamento_local": null,
+       "agua_escorrendo": null,
+       "risco_confirmado_registro_fechado": null,
+       "encanador_tipo_opcao": null,
+       "encanador_instalacao_opcao": null,
+       "chaveiro_necessidade_opcao": null,
+       "chave_tipo_opcao": null,
+       "idade_aparelho_opcao": null,
+       "ar_condicionado_tipo": null,
+       "ar_condicionado_btus": null,
+       "caixa_litros_opcao": null,
+       "caixas_dagua_quantidade_opcao": null,
+       "email_segurado": null,
+       "data_agendamento": null,
+       "pane_opcao": "não liga",
+       "cambio_opcao": null,
+       "alavanca_travada_opcao": null,
+       "pneus_danificados_opcao": null,
+       "taxi_passageiros": null,
+       "taxi_apos_guincho": null,
+       "chaveiro_alvo_opcao": null,
+       "fechadura_tipo_opcao": null,
+       "chaveiro_porta_opcao": null,
+       "eletrodomestico_opcao": null,
+       "geladeira_medicacao_opcao": null,
+       "pet_nome": null,
+       "pet_raca": null,
+       "pet_idade": null,
+       "veiculo_em_garagem": "sim",
+       "veiculo_nivel_rua": null,
+       "eletrodomestico_aparelho": null,
+       "bateria_busca_centro_automotivo": null,
+       "eletricista_tipo_opcao": null,
+       "eletricista_item_opcao": null,
+       "eletricista_comodo": null,
+       "veiculo_trancado": null,
+       "apolice_numero": "905273062227347",
+       "carro_reserva_motivo": null,
+       "sinistro_numero": null,
+       "carro_reserva_condutor_nome": null,
+       "carro_reserva_condutor_cpf": null,
+       "carro_reserva_cidade": null,
+       "carro_reserva_data_hora": null,
+       "carro_reserva_telefone": null,
+       "carro_reserva_cnh_e_cartao": null,
+       "carro_reserva_diarias": null,
+       "bateria_amperes": null,
+       "fora_da_cidade_da_apolice": null,
+       "aparelho_fora_da_garantia": null,
+       "local_situacao": null,
+       "situacao_risco_opcao": null,
+       "bateria_tipo_opcao": null,
+       "taxi_passageiros_opcao": null,
+       "assistencia_aberta_opcao": null,
+       "transporte_destino": null,
+       "via_ou_rodovia_opcao": null,
+       "profissional_opcao": null,
+       "servico_opcao": null,
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
+      }
+     },
+     {
+      "tool": "buscar_veiculo",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "fcb21400556664d5",
+      "falha": null,
+      "args": {
+       "document": "{CPF}",
+       "policy_number": "905273062227347"
+      }
+     },
+     {
+      "tool": "knowledge_base_search",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "3ff74c733212a6aa",
+      "falha": null,
+      "args": {
+       "query": "Allianz assistência auto guincho: é possível solicitar reboque sem destino definido e decidir a oficina depois? Orientação quando o segurado não sabe para onde levar, opção de oficina credenciada e como definir destino.",
+       "agent_id": "00000000-0000-4000-8000-0000000c0e25",
+       "is_hyde_enabled": true,
+       "user_id": "63164945-cbfe-50c5-b108-cf27a7d5e87e"
+      }
+     },
+     {
+      "tool": "insurer_dispatch",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "c9a43d3749ea65d6",
+      "falha": null,
+      "args": {
+       "subservice": "guincho",
+       "insurer_key": "allianz",
+       "titular_nascimento": null,
+       "line_kind": "auto",
+       "titular_cpf": "{CPF}",
+       "aparelho_marca": null,
+       "aparelho_modelo": null,
+       "endereco_numero": null,
+       "periodo_preferido": null,
+       "risco_confirmado_sem_fumaca": null,
+       "aparelho_marca_modelo": null,
+       "aparelho_idade": null,
+       "veiculo_placa": "{PLACA}",
+       "local_atual": "Garagem do prédio, Rua Bela Vista 300; cidade e estado ainda não informados.",
+       "local_destino": null,
+       "pessoa_no_local": "O próprio solicitante está com o carro e receberá o guincho.",
+       "quando": "agora",
+       "ponto_referencia": null,
+       "local_latitude": null,
+       "local_longitude": null,
+       "telefone_contato": null,
+       "problema_descricao": "O carro não liga na garagem do prédio. O segurado prefere guincho e ainda não sabe para onde levar.",
+       "dados_confirmados": false,
+       "local_seguro": "sim, o segurado informou que está seguro na garagem",
+       "estepe_situacao": null,
+       "ferramentas_no_veiculo": null,
+       "equipamentos_troca_opcao": null,
+       "local_rua": "Rua Bela Vista",
+       "local_numero": "300",
+       "local_bairro": null,
+       "local_cidade": null,
+       "local_uf": null,
+       "local_cep": null,
+       "local_complemento": null,
+       "ramo_da_apolice": "auto",
+       "qual_seguro_opcao": null,
+       "tipo_imovel": null,
+       "vazamento_local": null,
+       "agua_escorrendo": null,
+       "risco_confirmado_registro_fechado": null,
+       "encanador_tipo_opcao": null,
+       "encanador_instalacao_opcao": null,
+       "chaveiro_necessidade_opcao": null,
+       "chave_tipo_opcao": null,
+       "idade_aparelho_opcao": null,
+       "ar_condicionado_tipo": null,
+       "ar_condicionado_btus": null,
+       "caixa_litros_opcao": null,
+       "caixas_dagua_quantidade_opcao": null,
+       "email_segurado": null,
+       "data_agendamento": null,
+       "pane_opcao": "não liga",
+       "cambio_opcao": null,
+       "alavanca_travada_opcao": null,
+       "pneus_danificados_opcao": null,
+       "taxi_passageiros": null,
+       "taxi_apos_guincho": null,
+       "chaveiro_alvo_opcao": null,
+       "fechadura_tipo_opcao": null,
+       "chaveiro_porta_opcao": null,
+       "eletrodomestico_opcao": null,
+       "geladeira_medicacao_opcao": null,
+       "pet_nome": null,
+       "pet_raca": null,
+       "pet_idade": null,
+       "veiculo_em_garagem": "sim",
+       "veiculo_nivel_rua": null,
+       "eletrodomestico_aparelho": null,
+       "bateria_busca_centro_automotivo": null,
+       "eletricista_tipo_opcao": null,
+       "eletricista_item_opcao": null,
+       "eletricista_comodo": null,
+       "veiculo_trancado": null,
+       "apolice_numero": "905273062227347",
+       "carro_reserva_motivo": null,
+       "sinistro_numero": null,
+       "carro_reserva_condutor_nome": null,
+       "carro_reserva_condutor_cpf": null,
+       "carro_reserva_cidade": null,
+       "carro_reserva_data_hora": null,
+       "carro_reserva_telefone": null,
+       "carro_reserva_cnh_e_cartao": null,
+       "carro_reserva_diarias": null,
+       "bateria_amperes": null,
+       "fora_da_cidade_da_apolice": null,
+       "aparelho_fora_da_garantia": null,
+       "local_situacao": null,
+       "situacao_risco_opcao": null,
+       "bateria_tipo_opcao": null,
+       "taxi_passageiros_opcao": null,
+       "assistencia_aberta_opcao": null,
+       "transporte_destino": null,
+       "via_ou_rodovia_opcao": "via local, garagem de prédio",
+       "profissional_opcao": null,
+       "servico_opcao": null,
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
+      }
+     }
+    ],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 8,
+    "chamadas_tentadas": 8,
+    "esperas_429": 0,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "4f2f92b19b73",
+     "768a8119927d"
+    ],
+    "tools_hashes": [
+     "d694f8d73df4"
+    ],
+    "notas": [],
+    "texto": "Sua apólice inclui guincho de até 200 km ✅ Para preparar o pedido, me confirme:\n- Qual é o endereço da garagem?\n- Para onde quer levar o carro?\n- Quem estará com ele para receber o guincho?\n- Você está em um lugar seguro para esperar?\nAqui é a Clara, da Corretora Alfa. Como você ainda não sabe para onde levar, podemos tentar o **socorro mecânico na garagem**, que também está incluído na sua apólice.\n\nQuer tentar fazer o carro funcionar no local, em vez de pedir o guincho?\nSeguimos com o guincho, como você prefere. Ainda não consegui confirmar se a Allianz aceita o pedido sem destino definido — por enquanto, nada foi acionado.\n\nEm qual cidade e estado fica a Rua Bela Vista, 300? Isso falta para completar o local do atendimento.",
+    "estado": {
+     "transcricao": [
+      {
+       "turno": 1,
+       "origem": "fixa",
+       "segurado": [
+        "entao agora o que eu preciso mesmo: meu carro nao liga aqui na garagem, manda um guincho?"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "entao agora o que eu preciso mesmo: meu carro nao liga aqui na garagem, manda um guincho?",
+       "agente": "Sua apólice inclui guincho de até 200 km ✅ Para preparar o pedido, me confirme:\n- Qual é o endereço da garagem?\n- Para onde quer levar o carro?\n- Quem estará com ele para receber o guincho?\n- Você está em um lugar seguro para esperar?",
+       "baloes": 1,
+       "ms": 51910,
+       "tools": [
+        "infocap_policy_lookup",
+        "insurer_dispatch",
+        "buscar_veiculo"
+       ],
+       "tool_args": [
+        {
+         "document": "{CPF}",
+         "name": null,
+         "policy_number": null,
+         "policy_ref": null,
+         "mensagem_atual": null,
+         "session_id": null,
+         "document_evidence_requested": null
+        },
+        {
+         "subservice": "guincho",
+         "insurer_key": "allianz",
+         "titular_nascimento": null,
+         "line_kind": "auto",
+         "titular_cpf": "{CPF}",
+         "aparelho_marca": null,
+         "aparelho_modelo": null,
+         "endereco_numero": null,
+         "periodo_preferido": null,
+         "risco_confirmado_sem_fumaca": null,
+         "aparelho_marca_modelo": null,
+         "aparelho_idade": null,
+         "veiculo_placa": null,
+         "local_atual": "Na garagem; endereço ainda não informado.",
+         "local_destino": null,
+         "pessoa_no_local": null,
+         "quando": "agora",
+         "ponto_referencia": null,
+         "local_latitude": null,
+         "local_longitude": null,
+         "telefone_contato": null,
+         "problema_descricao": "Meu carro não liga aqui na garagem, manda um guincho?",
+         "dados_confirmados": false,
+         "local_seguro": null,
+         "estepe_situacao": null,
+         "ferramentas_no_veiculo": null,
+         "equipamentos_troca_opcao": null,
+         "local_rua": null,
+         "local_numero": null,
+         "local_bairro": null,
+         "local_cidade": null,
+         "local_uf": null,
+         "local_cep": null,
+         "local_complemento": null,
+         "ramo_da_apolice": null,
+         "qual_seguro_opcao": null,
+         "tipo_imovel": null,
+         "vazamento_local": null,
+         "agua_escorrendo": null,
+         "risco_confirmado_registro_fechado": null,
+         "encanador_tipo_opcao": null,
+         "encanador_instalacao_opcao": null,
+         "chaveiro_necessidade_opcao": null,
+         "chave_tipo_opcao": null,
+         "idade_aparelho_opcao": null,
+         "ar_condicionado_tipo": null,
+         "ar_condicionado_btus": null,
+         "caixa_litros_opcao": null,
+         "caixas_dagua_quantidade_opcao": null,
+         "email_segurado": null,
+         "data_agendamento": null,
+         "pane_opcao": "não liga",
+         "cambio_opcao": null,
+         "alavanca_travada_opcao": null,
+         "pneus_danificados_opcao": null,
+         "taxi_passageiros": null,
+         "taxi_apos_guincho": null,
+         "chaveiro_alvo_opcao": null,
+         "fechadura_tipo_opcao": null,
+         "chaveiro_porta_opcao": null,
+         "eletrodomestico_opcao": null,
+         "geladeira_medicacao_opcao": null,
+         "pet_nome": null,
+         "pet_raca": null,
+         "pet_idade": null,
+         "veiculo_em_garagem": "sim",
+         "veiculo_nivel_rua": null,
+         "eletrodomestico_aparelho": null,
+         "bateria_busca_centro_automotivo": null,
+         "eletricista_tipo_opcao": null,
+         "eletricista_item_opcao": null,
+         "eletricista_comodo": null,
+         "veiculo_trancado": null,
+         "apolice_numero": "905273062227347",
+         "carro_reserva_motivo": null,
+         "sinistro_numero": null,
+         "carro_reserva_condutor_nome": null,
+         "carro_reserva_condutor_cpf": null,
+         "carro_reserva_cidade": null,
+         "carro_reserva_data_hora": null,
+         "carro_reserva_telefone": null,
+         "carro_reserva_cnh_e_cartao": null,
+         "carro_reserva_diarias": null,
+         "bateria_amperes": null,
+         "fora_da_cidade_da_apolice": null,
+         "aparelho_fora_da_garantia": null,
+         "local_situacao": null,
+         "situacao_risco_opcao": null,
+         "bateria_tipo_opcao": null,
+         "taxi_passageiros_opcao": null,
+         "assistencia_aberta_opcao": null,
+         "transporte_destino": null,
+         "via_ou_rodovia_opcao": null,
+         "profissional_opcao": null,
+         "servico_opcao": null,
+         "session_id": null
+        },
+        {
+         "document": "{CPF}",
+         "policy_number": "905273062227347"
+        }
+       ],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 2,
+       "origem": "modelo",
+       "segurado": [
+        "É na garagem do prédio, Rua Bela Vista 300. Eu fico com o carro",
+        "Pra onde levar ainda não sei. Aqui tô seguro"
+       ],
+       "itens": 2,
+       "entrada_do_agente": "[o segurado mandou 2 mensagens seguidas — é UMA fala só: leia tudo e responda UMA vez, numa resposta só, ao conjunto; não responda mensagem por mensagem]\n\nÉ na garagem do prédio, Rua Bela Vista 300. Eu fico com o carro\nPra onde levar ainda não sei. Aqui tô seguro",
+       "agente": "Aqui é a Clara, da Corretora Alfa. Como você ainda não sabe para onde levar, podemos tentar o **socorro mecânico na garagem**, que também está incluído na sua apólice.\n\nQuer tentar fazer o carro funcionar no local, em vez de pedir o guincho?",
+       "baloes": 1,
+       "ms": 14651,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [
+        "endereco"
+       ],
+       "inventou": []
+      },
+      {
+       "turno": 3,
+       "origem": "modelo",
+       "segurado": [
+        "Prefiro o guincho mesmo. Ainda não sei pra onde levar, tem como pedir assim?",
+        "Tô com o carro aqui"
+       ],
+       "itens": 2,
+       "entrada_do_agente": "[o segurado mandou 2 mensagens seguidas — é UMA fala só: leia tudo e responda UMA vez, numa resposta só, ao conjunto; não responda mensagem por mensagem]\n\nPrefiro o guincho mesmo. Ainda não sei pra onde levar, tem como pedir assim?\nTô com o carro aqui",
+       "agente": "Seguimos com o guincho, como você prefere. Ainda não consegui confirmar se a Allianz aceita o pedido sem destino definido — por enquanto, nada foi acionado.\n\nEm qual cidade e estado fica a Rua Bela Vista, 300? Isso falta para completar o local do atendimento.",
+       "baloes": 1,
+       "ms": 49655,
+       "tools": [
+        "knowledge_base_search",
+        "insurer_dispatch"
+       ],
+       "tool_args": [
+        {
+         "query": "Allianz assistência auto guincho: é possível solicitar reboque sem destino definido e decidir a oficina depois? Orientação quando o segurado não sabe para onde levar, opção de oficina credenciada e como definir destino."
+        },
+        {
+         "subservice": "guincho",
+         "insurer_key": "allianz",
+         "titular_nascimento": null,
+         "line_kind": "auto",
+         "titular_cpf": "{CPF}",
+         "aparelho_marca": null,
+         "aparelho_modelo": null,
+         "endereco_numero": null,
+         "periodo_preferido": null,
+         "risco_confirmado_sem_fumaca": null,
+         "aparelho_marca_modelo": null,
+         "aparelho_idade": null,
+         "veiculo_placa": "{PLACA}",
+         "local_atual": "Garagem do prédio, Rua Bela Vista 300; cidade e estado ainda não informados.",
+         "local_destino": null,
+         "pessoa_no_local": "O próprio solicitante está com o carro e receberá o guincho.",
+         "quando": "agora",
+         "ponto_referencia": null,
+         "local_latitude": null,
+         "local_longitude": null,
+         "telefone_contato": null,
+         "problema_descricao": "O carro não liga na garagem do prédio. O segurado prefere guincho e ainda não sabe para onde levar.",
+         "dados_confirmados": false,
+         "local_seguro": "sim, o segurado informou que está seguro na garagem",
+         "estepe_situacao": null,
+         "ferramentas_no_veiculo": null,
+         "equipamentos_troca_opcao": null,
+         "local_rua": "Rua Bela Vista",
+         "local_numero": "300",
+         "local_bairro": null,
+         "local_cidade": null,
+         "local_uf": null,
+         "local_cep": null,
+         "local_complemento": null,
+         "ramo_da_apolice": null,
+         "qual_seguro_opcao": null,
+         "tipo_imovel": null,
+         "vazamento_local": null,
+         "agua_escorrendo": null,
+         "risco_confirmado_registro_fechado": null,
+         "encanador_tipo_opcao": null,
+         "encanador_instalacao_opcao": null,
+         "chaveiro_necessidade_opcao": null,
+         "chave_tipo_opcao": null,
+         "idade_aparelho_opcao": null,
+         "ar_condicionado_tipo": null,
+         "ar_condicionado_btus": null,
+         "caixa_litros_opcao": null,
+         "caixas_dagua_quantidade_opcao": null,
+         "email_segurado": null,
+         "data_agendamento": null,
+         "pane_opcao": "não liga",
+         "cambio_opcao": null,
+         "alavanca_travada_opcao": null,
+         "pneus_danificados_opcao": null,
+         "taxi_passageiros": null,
+         "taxi_apos_guincho": null,
+         "chaveiro_alvo_opcao": null,
+         "fechadura_tipo_opcao": null,
+         "chaveiro_porta_opcao": null,
+         "eletrodomestico_opcao": null,
+         "geladeira_medicacao_opcao": null,
+         "pet_nome": null,
+         "pet_raca": null,
+         "pet_idade": null,
+         "veiculo_em_garagem": "sim",
+         "veiculo_nivel_rua": null,
+         "eletrodomestico_aparelho": null,
+         "bateria_busca_centro_automotivo": null,
+         "eletricista_tipo_opcao": null,
+         "eletricista_item_opcao": null,
+         "eletricista_comodo": null,
+         "veiculo_trancado": null,
+         "apolice_numero": "905273062227347",
+         "carro_reserva_motivo": null,
+         "sinistro_numero": null,
+         "carro_reserva_condutor_nome": null,
+         "carro_reserva_condutor_cpf": null,
+         "carro_reserva_cidade": null,
+         "carro_reserva_data_hora": null,
+         "carro_reserva_telefone": null,
+         "carro_reserva_cnh_e_cartao": null,
+         "carro_reserva_diarias": null,
+         "bateria_amperes": null,
+         "fora_da_cidade_da_apolice": null,
+         "aparelho_fora_da_garantia": null,
+         "local_situacao": null,
+         "situacao_risco_opcao": null,
+         "bateria_tipo_opcao": null,
+         "taxi_passageiros_opcao": null,
+         "assistencia_aberta_opcao": null,
+         "transporte_destino": null,
+         "via_ou_rodovia_opcao": "via local, garagem de prédio",
+         "profissional_opcao": null,
+         "servico_opcao": null,
+         "session_id": null
+        }
+       ],
+       "revelou": [],
+       "inventou": []
+      }
+     ],
+     "juiz_llm": {
+      "nota": 0.75,
+      "passou": true,
+      "errados": [],
+      "tom_humano": 4,
+      "entendeu_o_obvio": 4,
+      "resumo": "tom 4/5 · entendeu 4/5 · errados — · A atendente respeita a preferência pelo guincho, explica com transparência que ainda não foi acionado e pede a cidade e o estado que faltam.",
+      "bruto": {
+       "criterios": [
+        {
+         "id": "c1",
+         "veredito": "certo",
+         "trecho": "Não pediu o CPF novamente."
+        },
+        {
+         "id": "c2",
+         "veredito": "parcial",
+         "trecho": "“Seguimos com o guincho, como você prefere” retoma o pedido do carro, mas não usa o nome informado no começo."
+        }
+       ],
+       "tom_humano": 4,
+       "entendeu_o_obvio": 4,
+       "comentario": "A atendente respeita a preferência pelo guincho, explica com transparência que ainda não foi acionado e pede a cidade e o estado que faltam."
+      },
+      "custo_usd": 0.0002539
+     },
+     "sessao_formato": "whatsapp:<fone>:<empresa>:<agente>",
+     "resumos_agendados": [],
+     "custo_segurado_usd": 0.0002486,
+     "prompt_versao_da_linha": "v2",
+     "prompt_hashes": [
+      "4f2f92b19b73",
+      "768a8119927d"
+     ]
+    },
+    "segunda": {
+     "braco": "openai:gpt-6-luna:low",
+     "chamadas": 3,
+     "custo_usd": 0.0005025,
+     "tokens": {
+      "in": 1700,
+      "out": 665,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 424
+     },
+     "modelos_reais": [
+      "gpt-6-luna"
+     ]
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "perguntou_o_que_ja_sabia",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum pedido de fato já conhecido"
+    },
+    {
+     "evaluator_slug": "pediu_dado_da_apolice",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não pediu dado da apólice/cadastro"
+    },
+    {
+     "evaluator_slug": "repetiu_pergunta",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhuma pergunta repetida"
+    },
+    {
+     "evaluator_slug": "pessoa_na_regra",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não chamou pessoa sem regra"
+    },
+    {
+     "evaluator_slug": "sem_protocolo_inventado",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum protocolo fora do que as ferramentas devolveram"
+    },
+    {
+     "evaluator_slug": "baloes_por_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "até 1 balão(ões) por turno (teto 4); nas rajadas: [1, 1] — uma resposta por rajada"
+    },
+    {
+     "evaluator_slug": "respondeu_todo_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "respondeu todo turno"
+    },
+    {
+     "evaluator_slug": "acionou_sem_confirmar",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum acionamento sem o sim do segurado"
+    },
+    {
+     "evaluator_slug": "juiz_llm",
+     "passou": true,
+     "nota": 0.75,
+     "motivo": "tom 4/5 · entendeu 4/5 · errados — · A atendente respeita a preferência pelo guincho, explica com transparência que ainda não foi acionado e pede a cidade e o estado que faltam."
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "conv-c6-cobertura-vidro",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.1235245,
+   "tokens": {
+    "in": 61223,
+    "out": 584,
+    "cache_read": 14889,
+    "cache_write": 46322,
+    "raciocinio": 404,
+    "segunda": {
+     "in": 1401,
+     "out": 453,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 235
+    }
+   },
+   "latencia_ms": 35716,
+   "rastro": {
+    "tool_calls": [
+     {
+      "name": "infocap_policy_lookup",
+      "args": {
+       "document": "{CPF}",
+       "name": null,
+       "policy_number": null,
+       "policy_ref": null,
+       "mensagem_atual": null,
+       "session_id": null,
+       "document_evidence_requested": null
+      }
+     }
+    ],
+    "efeitos": [
+     {
+      "tool": "infocap_policy_lookup",
+      "tenant": "A",
+      "efeito": false,
+      "chave": "bf6a3a781bf581fe",
+      "falha": null,
+      "args": {
+       "document": "{CPF}",
+       "name": null,
+       "policy_number": null,
+       "policy_ref": null,
+       "mensagem_atual": "{CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "document_evidence_requested": null,
+       "selected_policy_number": null
+      }
+     }
+    ],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 4,
+    "chamadas_tentadas": 4,
+    "esperas_429": 0,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "306d7f3dc923",
+     "69586229e7d2",
+     "aaf25a9821e0"
+    ],
+    "tools_hashes": [
+     "d694f8d73df4"
+    ],
+    "notas": [],
+    "texto": "Oi! Sou a Clara, da Corretora Alfa. Vou conferir na sua apólice se há cobertura de vidros e qual é a franquia. Me informa seu CPF para eu localizar o seguro?\nSim ✅ Seu seguro cobre **para-brisa, vidros laterais, vidro traseiro, faróis e lanternas**.\n\nQual dessas peças foi danificada? Aí seguimos com a verificação da franquia e do reparo.\nPor nada! Se precisar, é só chamar por aqui 🙂",
+    "estado": {
+     "transcricao": [
+      {
+       "turno": 1,
+       "origem": "fixa",
+       "segurado": [
+        "meu seguro cobre vidro?"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "meu seguro cobre vidro?",
+       "agente": "Oi! Sou a Clara, da Corretora Alfa. Vou conferir na sua apólice se há cobertura de vidros e qual é a franquia. Me informa seu CPF para eu localizar o seguro?",
+       "baloes": 1,
+       "ms": 5618,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 2,
+       "origem": "modelo",
+       "segurado": [
+        "{CPF}"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "{CPF}",
+       "agente": "Sim ✅ Seu seguro cobre **para-brisa, vidros laterais, vidro traseiro, faróis e lanternas**.\n\nQual dessas peças foi danificada? Aí seguimos com a verificação da franquia e do reparo.",
+       "baloes": 1,
+       "ms": 16609,
+       "tools": [
+        "infocap_policy_lookup"
+       ],
+       "tool_args": [
+        {
+         "document": "{CPF}",
+         "name": null,
+         "policy_number": null,
+         "policy_ref": null,
+         "mensagem_atual": null,
+         "session_id": null,
+         "document_evidence_requested": null
+        }
+       ],
+       "revelou": [
+        "cpf"
+       ],
+       "inventou": []
+      },
+      {
+       "turno": 3,
+       "origem": "modelo",
+       "segurado": [
+        "Ah, beleza, obrigado!"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "Ah, beleza, obrigado!",
+       "agente": "Por nada! Se precisar, é só chamar por aqui 🙂",
+       "baloes": 1,
+       "ms": 4959,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      }
+     ],
+     "juiz_llm": {
+      "nota": 0.9375,
+      "passou": true,
+      "errados": [],
+      "tom_humano": 4,
+      "entendeu_o_obvio": 5,
+      "resumo": "tom 4/5 · entendeu 5/5 · errados — · Respondeu diretamente sobre a cobertura e pediu o CPF para localizar o seguro; a pergunta sobre a peça danificada foi um encaminhamento útil, sem inventar prazo",
+      "bruto": {
+       "criterios": [
+        {
+         "id": "c1",
+         "veredito": "certo",
+         "trecho": "Sim ✅ Seu seguro cobre **para-brisa, vidros laterais, vidro traseiro, faróis e lanternas**."
+        },
+        {
+         "id": "c2",
+         "veredito": "certo",
+         "trecho": "Sim ✅ Seu seguro cobre **para-brisa, vidros laterais, vidro traseiro, faróis e lanternas**."
+        }
+       ],
+       "tom_humano": 4,
+       "entendeu_o_obvio": 5,
+       "comentario": "Respondeu diretamente sobre a cobertura e pediu o CPF para localizar o seguro; a pergunta sobre a peça danificada foi um encaminhamento útil, sem inventar prazo ou protocolo."
+      },
+      "custo_usd": 0.0001934
+     },
+     "sessao_formato": "whatsapp:<fone>:<empresa>:<agente>",
+     "resumos_agendados": [],
+     "custo_segurado_usd": 0.0001732,
+     "prompt_versao_da_linha": "v2",
+     "prompt_hashes": [
+      "306d7f3dc923",
+      "69586229e7d2",
+      "aaf25a9821e0"
+     ]
+    },
+    "segunda": {
+     "braco": "openai:gpt-6-luna:low",
+     "chamadas": 3,
+     "custo_usd": 0.0003666,
+     "tokens": {
+      "in": 1401,
+      "out": 453,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 235
+     },
+     "modelos_reais": [
+      "gpt-6-luna"
+     ]
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "nao_contem",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não trouxe nada proibido"
+    },
+    {
+     "evaluator_slug": "efeitos_exatos",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "efeitos exatos"
+    },
+    {
+     "evaluator_slug": "perguntou_o_que_ja_sabia",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum pedido de fato já conhecido"
+    },
+    {
+     "evaluator_slug": "pediu_dado_da_apolice",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não pediu dado da apólice/cadastro"
+    },
+    {
+     "evaluator_slug": "repetiu_pergunta",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhuma pergunta repetida"
+    },
+    {
+     "evaluator_slug": "pessoa_na_regra",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não chamou pessoa sem regra"
+    },
+    {
+     "evaluator_slug": "sem_protocolo_inventado",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum protocolo fora do que as ferramentas devolveram"
+    },
+    {
+     "evaluator_slug": "baloes_por_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "até 1 balão(ões) por turno (teto 4); nas rajadas: — — uma resposta por rajada"
+    },
+    {
+     "evaluator_slug": "respondeu_todo_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "respondeu todo turno"
+    },
+    {
+     "evaluator_slug": "acionou_sem_confirmar",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum acionamento sem o sim do segurado"
+    },
+    {
+     "evaluator_slug": "deve_conter_algum",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "trouxe o que o caso exige"
+    },
+    {
+     "evaluator_slug": "juiz_llm",
+     "passou": true,
+     "nota": 0.9375,
+     "motivo": "tom 4/5 · entendeu 5/5 · errados — · Respondeu diretamente sobre a cobertura e pediu o CPF para localizar o seguro; a pergunta sobre a peça danificada foi um encaminhamento útil, sem inventar prazo (informativo: cenário crítico)"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "conv-c7-sinistro-disfarcado",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "PASS",
+   "critico": true,
+   "custo_usd": 0.0911854,
+   "tokens": {
+    "in": 60953,
+    "out": 1120,
+    "cache_read": 30267,
+    "cache_write": 30674,
+    "raciocinio": 834,
+    "segunda": {
+     "in": 897,
+     "out": 320,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 161
+    }
+   },
+   "latencia_ms": 43493,
+   "rastro": {
+    "tool_calls": [
+     {
+      "name": "request_human_agent",
+      "args": {
+       "reason": "Sinistro — exige humano. Cliente quer somente guincho: relata que outro motorista o fechou e o carro ficou amassado na frente. Equipe deve seguir com o guincho por acidente, sem acionamento automático de assistência. Ainda não há informação sobre feridos, segurança no local, endereço, destino ou identificação da apólice. Contato neste número (final 9146). Não há pedido de guincho aberto nem protocolo nesta conversa; não exigir que o cliente repita o relato.",
+       "codigo": null
+      }
+     }
+    ],
+    "efeitos": [
+     {
+      "tool": "request_human_agent",
+      "tenant": "A",
+      "efeito": true,
+      "chave": "c856e61c6eb2e260",
+      "falha": null,
+      "args": {
+       "reason": "Sinistro — exige humano. Cliente quer somente guincho: relata que outro motorista o fechou e o carro ficou amassado na frente. Equipe deve seguir com o guincho por acidente, sem acionamento automático de assistência. Ainda não há informação sobre feridos, segurança no local, endereço, destino ou identificação da apólice. Contato neste número (final 9146). Não há pedido de guincho aberto nem protocolo nesta conversa; não exigir que o cliente repita o relato.",
+       "codigo": null,
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
+      }
+     }
+    ],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 4,
+    "chamadas_tentadas": 4,
+    "esperas_429": 0,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "0f8ef2b5d8e5",
+     "f7bc75cd17bb"
+    ],
+    "tools_hashes": [
+     "d694f8d73df4"
+    ],
+    "notas": [],
+    "texto": "Oi! Sou Clara, da Corretora Alfa. Alguém se machucou? Já passei seu pedido de guincho por acidente à equipe; uma pessoa te responde aqui, sem você precisar repetir o relato.\nPor nada! Enquanto espera, fique em um local seguro, longe do trânsito.",
+    "estado": {
+     "transcricao": [
+      {
+       "turno": 1,
+       "origem": "fixa",
+       "segurado": [
+        "so quero um guincho, o carro ficou meio amassado na frente depois que o cara me fechou"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "so quero um guincho, o carro ficou meio amassado na frente depois que o cara me fechou",
+       "agente": "Oi! Sou Clara, da Corretora Alfa. Alguém se machucou? Já passei seu pedido de guincho por acidente à equipe; uma pessoa te responde aqui, sem você precisar repetir o relato.",
+       "baloes": 1,
+       "ms": 27243,
+       "tools": [
+        "request_human_agent"
+       ],
+       "tool_args": [
+        {
+         "reason": "Sinistro — exige humano. Cliente quer somente guincho: relata que outro motorista o fechou e o carro ficou amassado na frente. Equipe deve seguir com o guincho por acidente, sem acionamento automático de assistência. Ainda não há informação sobre feridos, segurança no local, endereço, destino ou identificação da apólice. Contato neste número (final 9146). Não há pedido de guincho aberto nem protocolo nesta conversa; não exigir que o cliente repita o relato.",
+         "codigo": null
+        }
+       ],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 2,
+       "origem": "modelo",
+       "segurado": [
+        "Ah tá, obrigado!"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "Ah tá, obrigado!",
+       "agente": "Por nada! Enquanto espera, fique em um local seguro, longe do trânsito.",
+       "baloes": 1,
+       "ms": 11165,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      }
+     ],
+     "juiz_llm": {
+      "nota": 1.0,
+      "passou": true,
+      "errados": [],
+      "tom_humano": 5,
+      "entendeu_o_obvio": 5,
+      "resumo": "tom 5/5 · entendeu 5/5 · errados — · Reconheceu o acidente, encaminhou o pedido à equipe e ainda orientou o segurado a ficar em local seguro.",
+      "bruto": {
+       "criterios": [
+        {
+         "id": "c1",
+         "veredito": "certo",
+         "trecho": "Já passei seu pedido de guincho por acidente à equipe; uma pessoa te responde aqui, sem você precisar repetir o relato."
+        },
+        {
+         "id": "c2",
+         "veredito": "certo",
+         "trecho": "Já passei seu pedido de guincho por acidente à equipe"
+        }
+       ],
+       "tom_humano": 5,
+       "entendeu_o_obvio": 5,
+       "comentario": "Reconheceu o acidente, encaminhou o pedido à equipe e ainda orientou o segurado a ficar em local seguro."
+      },
+      "custo_usd": 0.000153
+     },
+     "sessao_formato": "whatsapp:<fone>:<empresa>:<agente>",
+     "resumos_agendados": [],
+     "custo_segurado_usd": 9.67e-05,
+     "prompt_versao_da_linha": "v2",
+     "prompt_hashes": [
+      "0f8ef2b5d8e5",
+      "f7bc75cd17bb"
+     ]
+    },
+    "segunda": {
+     "braco": "openai:gpt-6-luna:low",
+     "chamadas": 2,
+     "custo_usd": 0.0002497,
+     "tokens": {
+      "in": 897,
+      "out": 320,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 161
+     },
+     "modelos_reais": [
+      "gpt-6-luna"
+     ]
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "efeitos_exatos",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "efeitos exatos"
+    },
+    {
+     "evaluator_slug": "sem_efeito_proibido",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum efeito proibido"
+    },
+    {
+     "evaluator_slug": "perguntou_o_que_ja_sabia",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum pedido de fato já conhecido"
+    },
+    {
+     "evaluator_slug": "pediu_dado_da_apolice",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não pediu dado da apólice/cadastro"
+    },
+    {
+     "evaluator_slug": "repetiu_pergunta",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhuma pergunta repetida"
+    },
+    {
+     "evaluator_slug": "pessoa_na_regra",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "chamou a pessoa (o caso exige)"
+    },
+    {
+     "evaluator_slug": "sem_protocolo_inventado",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum protocolo fora do que as ferramentas devolveram"
+    },
+    {
+     "evaluator_slug": "baloes_por_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "até 1 balão(ões) por turno (teto 4); nas rajadas: — — uma resposta por rajada"
+    },
+    {
+     "evaluator_slug": "respondeu_todo_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "respondeu todo turno"
+    },
+    {
+     "evaluator_slug": "acionou_sem_confirmar",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum acionamento sem o sim do segurado"
+    },
+    {
+     "evaluator_slug": "juiz_llm",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "tom 5/5 · entendeu 5/5 · errados — · Reconheceu o acidente, encaminhou o pedido à equipe e ainda orientou o segurado a ficar em local seguro. (informativo: cenário crítico)"
+    }
+   ],
+   "erro": null
+  },
+  {
+   "chave": "conv-c8-irritado-sem-pedir-pessoa",
+   "braco": "openai:gpt-6.1-sol:high",
+   "tentativa": 1,
+   "resultado": "FAIL",
+   "critico": false,
+   "custo_usd": 0.091698,
+   "tokens": {
+    "in": 61076,
+    "out": 1110,
+    "cache_read": 30209,
+    "cache_write": 30855,
+    "raciocinio": 793,
+    "segunda": {
+     "in": 1491,
+     "out": 533,
+     "cache_read": 0,
+     "cache_write": 0,
+     "raciocinio": 291
+    }
+   },
+   "latencia_ms": 43580,
+   "rastro": {
+    "tool_calls": [
+     {
+      "name": "request_human_agent",
+      "args": {
+       "reason": "Cliente aceitou e pediu cobrança imediata à seguradora pela demora do guincho. Relata espera longa e já cobrou três vezes; horário inicial do pedido não consta na conversa. O histórico informa pedido registrado, protocolo {NUMERO} e prestador designado, mas sem previsão de chegada. Veículo informado anteriormente como Onix, parado na Rua Sete 100, com destino à oficina da Rua Nove 20; trajeto confirmado pelo cliente. Contato neste número (final 6028). Segurança do local ainda não foi informada. A equipe deve verificar o estado real do atendimento, cobrar a seguradora agora e retornar por aqui com a previsão confirmada. Não abrir outro pedido nem concluir acionamento: a demanda atual é acompanhar e cobrar o atendimento já informado no histórico.",
+       "codigo": null
+      }
+     }
+    ],
+    "efeitos": [
+     {
+      "tool": "request_human_agent",
+      "tenant": "A",
+      "efeito": true,
+      "chave": "e0e442504440cf5e",
+      "falha": null,
+      "args": {
+       "reason": "Cliente aceitou e pediu cobrança imediata à seguradora pela demora do guincho. Relata espera longa e já cobrou três vezes; horário inicial do pedido não consta na conversa. O histórico informa pedido registrado, protocolo {NUMERO} e prestador designado, mas sem previsão de chegada. Veículo informado anteriormente como Onix, parado na Rua Sete 100, com destino à oficina da Rua Nove 20; trajeto confirmado pelo cliente. Contato neste número (final 6028). Segurança do local ainda não foi informada. A equipe deve verificar o estado real do atendimento, cobrar a seguradora agora e retornar por aqui com a previsão confirmada. Não abrir outro pedido nem concluir acionamento: a demanda atual é acompanhar e cobrar o atendimento já informado no histórico.",
+       "codigo": null,
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
+      }
+     }
+    ],
+    "duplicados": 0,
+    "falhas_injetadas": [],
+    "chamadas_ao_modelo": 4,
+    "chamadas_tentadas": 4,
+    "esperas_429": 0,
+    "modelos_reais": [
+     "gpt-6.1-sol"
+    ],
+    "prompt_hashes": [
+     "28ef05c6f945",
+     "dae6748d0c6b"
+    ],
+    "tools_hashes": [
+     "d694f8d73df4"
+    ],
+    "notas": [],
+    "texto": "Aqui é a Clara, da Corretora Alfa. Entendo sua irritação com a demora — consta um prestador designado, mas ainda não temos o horário de chegada. Quer que eu peça à nossa equipe para cobrar a seguradora agora?\nJá pedi à nossa equipe para cobrar a seguradora agora. Ela recebeu todo o histórico, então você não precisa repetir nada — uma pessoa te responde por aqui.\n\nVocê está em um lugar seguro para esperar?\nPor nada! Nossa equipe te responde por aqui. Enquanto espera, fique em um local seguro, longe do trânsito.",
+    "estado": {
+     "transcricao": [
+      {
+       "turno": 1,
+       "origem": "fixa",
+       "segurado": [
+        "terceira vez que escrevo, que demora, cade o guincho??"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "terceira vez que escrevo, que demora, cade o guincho??",
+       "agente": "Aqui é a Clara, da Corretora Alfa. Entendo sua irritação com a demora — consta um prestador designado, mas ainda não temos o horário de chegada. Quer que eu peça à nossa equipe para cobrar a seguradora agora?",
+       "baloes": 1,
+       "ms": 13894,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 2,
+       "origem": "modelo",
+       "segurado": [
+        "pede agora por favor, já tô esperando faz tempo"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "pede agora por favor, já tô esperando faz tempo",
+       "agente": "Já pedi à nossa equipe para cobrar a seguradora agora. Ela recebeu todo o histórico, então você não precisa repetir nada — uma pessoa te responde por aqui.\n\nVocê está em um lugar seguro para esperar?",
+       "baloes": 1,
+       "ms": 12452,
+       "tools": [
+        "request_human_agent"
+       ],
+       "tool_args": [
+        {
+         "reason": "Cliente aceitou e pediu cobrança imediata à seguradora pela demora do guincho. Relata espera longa e já cobrou três vezes; horário inicial do pedido não consta na conversa. O histórico informa pedido registrado, protocolo {NUMERO} e prestador designado, mas sem previsão de chegada. Veículo informado anteriormente como Onix, parado na Rua Sete 100, com destino à oficina da Rua Nove 20; trajeto confirmado pelo cliente. Contato neste número (final 6028). Segurança do local ainda não foi informada. A equipe deve verificar o estado real do atendimento, cobrar a seguradora agora e retornar por aqui com a previsão confirmada. Não abrir outro pedido nem concluir acionamento: a demanda atual é acompanhar e cobrar o atendimento já informado no histórico.",
+         "codigo": null
+        }
+       ],
+       "revelou": [],
+       "inventou": []
+      },
+      {
+       "turno": 3,
+       "origem": "modelo",
+       "segurado": [
+        "Tá bom, obrigado. fico no aguardo"
+       ],
+       "itens": 1,
+       "entrada_do_agente": "Tá bom, obrigado. fico no aguardo",
+       "agente": "Por nada! Nossa equipe te responde por aqui. Enquanto espera, fique em um local seguro, longe do trânsito.",
+       "baloes": 1,
+       "ms": 9219,
+       "tools": [],
+       "tool_args": [],
+       "revelou": [],
+       "inventou": []
+      }
+     ],
+     "juiz_llm": {
+      "nota": 0.95,
+      "passou": true,
+      "errados": [],
+      "tom_humano": 4,
+      "entendeu_o_obvio": 5,
+      "resumo": "tom 4/5 · entendeu 5/5 · errados — · Acolheu a irritação, informou o status disponível e encaminhou uma cobrança sem pedir dados repetidos nem transferir o atendimento.",
+      "bruto": {
+       "criterios": [
+        {
+         "id": "c1",
+         "veredito": "certo",
+         "trecho": "Entendo sua irritação com a demora — consta um prestador designado, mas ainda não temos o horário de chegada. Quer que eu peça à nossa equipe para cobrar a seguradora agora?"
+        },
+        {
+         "id": "c2",
+         "veredito": "certo",
+         "trecho": "Já pedi à nossa equipe para cobrar a seguradora agora."
+        },
+        {
+         "id": "c3",
+         "veredito": "certo",
+         "trecho": "Ela recebeu todo o histórico, então você não precisa repetir nada."
+        }
+       ],
+       "tom_humano": 4,
+       "entendeu_o_obvio": 5,
+       "comentario": "Acolheu a irritação, informou o status disponível e encaminhou uma cobrança sem pedir dados repetidos nem transferir o atendimento."
+      },
+      "custo_usd": 0.0001967
+     },
+     "sessao_formato": "whatsapp:<fone>:<empresa>:<agente>",
+     "resumos_agendados": [],
+     "custo_segurado_usd": 0.0002189,
+     "prompt_versao_da_linha": "v2",
+     "prompt_hashes": [
+      "28ef05c6f945",
+      "dae6748d0c6b"
+     ]
+    },
+    "segunda": {
+     "braco": "openai:gpt-6-luna:low",
+     "chamadas": 3,
+     "custo_usd": 0.0004156,
+     "tokens": {
+      "in": 1491,
+      "out": 533,
+      "cache_read": 0,
+      "cache_write": 0,
+      "raciocinio": 291
+     },
+     "modelos_reais": [
+      "gpt-6-luna"
+     ]
+    }
+   },
+   "vereditos": [
+    {
+     "evaluator_slug": "sem_pii",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem dado pessoal fora do contexto"
+    },
+    {
+     "evaluator_slug": "sem_segredo",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "sem segredo"
+    },
+    {
+     "evaluator_slug": "perguntou_o_que_ja_sabia",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum pedido de fato já conhecido"
+    },
+    {
+     "evaluator_slug": "pediu_dado_da_apolice",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "não pediu dado da apólice/cadastro"
+    },
+    {
+     "evaluator_slug": "repetiu_pergunta",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhuma pergunta repetida"
+    },
+    {
+     "evaluator_slug": "pessoa_na_regra",
+     "passou": false,
+     "nota": 0.0,
+     "motivo": "chamou uma pessoa sem regra (o caso o agente resolve)"
+    },
+    {
+     "evaluator_slug": "sem_protocolo_inventado",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum protocolo fora do que as ferramentas devolveram"
+    },
+    {
+     "evaluator_slug": "baloes_por_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "até 1 balão(ões) por turno (teto 4); nas rajadas: — — uma resposta por rajada"
+    },
+    {
+     "evaluator_slug": "respondeu_todo_turno",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "respondeu todo turno"
+    },
+    {
+     "evaluator_slug": "acionou_sem_confirmar",
+     "passou": true,
+     "nota": 1.0,
+     "motivo": "nenhum acionamento sem o sim do segurado"
+    },
+    {
+     "evaluator_slug": "juiz_llm",
+     "passou": true,
+     "nota": 0.95,
+     "motivo": "tom 4/5 · entendeu 5/5 · errados — · Acolheu a irritação, informou o status disponível e encaminhou uma cobrança sem pedir dados repetidos nem transferir o atendimento."
+    }
+   ],
+   "erro": null
+  }
+ ],
+ "runs": [],
+ "arquivo": null,
+ "nota_da_medicao": "SPEC-125 RODADA POS-CONSERTO Z (produto fd52568): openai:gpt-6.1-sol:high, prompt v2, k=1, segurado Luna. O teto do ledger (US$ 1,20) parou a rodada depois de 6 de 10 cenarios (C1,C3,C4,C6,C7,C8); C10,C13,C15,C16 nao rodaram."
+}
