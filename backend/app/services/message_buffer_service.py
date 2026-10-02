@@ -156,7 +156,29 @@ JANELA_FRASE_COMPLETA_SEGUNDOS = max(
 JANELA_FRASE_INACABADA_SEGUNDOS = max(
     1, int(getattr(settings, "JANELA_FRASE_INACABADA_SEGUNDOS", 18) or 18))
 
+#: 🔴 SPEC-125 S5 — O FIM DA RAJADA deixa de morar no número do "digitando…".
+#:
+#: Os 25 s acima continuam sendo o teto do INDICADOR (a Meta o descarta "after
+#: 25 seconds", E02) e o teto INCONDICIONAL da rajada. Entre 25 s e este número
+#: a rajada só continua aberta enquanto está VIVA (`rajada_ainda_viva`): o último
+#: item chegou há menos de `JANELA_FRASE_COMPLETA_SEGUNDOS`, ou o último item é
+#: mídia (o segurado manda as fotos e a explicação vem atrás).
+#:
+#: 📊 B0-125 §1 (01/10/2026, `attendance_transcripts.wa_timestamp`, rajada =
+#: entradas seguidas com intervalo <= 60 s): das 23.092 rajadas com 2+
+#: mensagens, **5.285 (22,9%) duram mais de 25 s**, p90 **46 s**; das 2.895 com
+#: imagem, **1.049 (36%)** passam de 25 s. Com o teto de 25 s cada uma delas
+#: virava 2+ respostas.
+#: 💭 45 s = o p90 medido (46 s) arredondado para BAIXO: cobre ~9 em 10 rajadas
+#: longas sem deixar quem parou de escrever esperando mais que hoje — a extensão
+#: só vale com a rajada viva, e a rajada que parou fecha pela janela de sempre.
+#: ⚠️ O env só pode DESCER (a mesma regra do teto de 25 s), e nunca abaixo dele.
+TETO_DA_RAJADA_ESTENDIDO_SEGUNDOS = 45
+
 #: Teto da re-leitura do buffer antes de gerar (§6.3).
+#: 🔴 SPEC-125 S5: é TAMBÉM o teto de quantas respostas uma rajada pode ter
+#: RETIDAS pela 4ª pergunta da saída (`retencoes_da_rajada`) — o limite de
+#: releituras que já existia, não um segundo número.
 REPLANEJAMENTOS_MAX = max(0, int(getattr(settings, "REPLANEJAMENTOS_MAX", 2) or 0))
 
 #: <= N caracteres é pré-condição de "dado curto" — nunca a regra inteira.
@@ -307,6 +329,86 @@ def teto_da_rajada() -> int:
                TETO_DA_RAJADA_SEGUNDOS)
 
 
+def teto_da_rajada_estendido() -> int:
+    """O teto da rajada VIVA (SPEC-125 S5). O env só DESCE, e nunca fica
+    abaixo do teto incondicional — senão a extensão viraria um corte."""
+    pedido = int(getattr(settings, "RAJADA_TETO_ESTENDIDO_SEGUNDOS", 0)
+                 or TETO_DA_RAJADA_ESTENDIDO_SEGUNDOS)
+    return max(teto_da_rajada(), min(pedido, TETO_DA_RAJADA_ESTENDIDO_SEGUNDOS))
+
+
+def rajada_ainda_viva(ultimo: Dict[str, Any], ocioso_s: float) -> bool:
+    """A rajada passou dos 25 s — ela ainda está CHEGANDO? PURA.
+
+    ```
+    o último item chegou há < 8 s      -> sim: a pessoa está no meio da fala
+    o último item é mídia (foto, áudio) -> sim: a explicação costuma vir atrás
+    o resto                             -> não: fecha no teto de 25 s, como hoje
+    ```
+
+    ⚠️ "8 s" é a janela da frase completa, de propósito: é a mesma régua que
+    diz "esta pessoa parou de falar" no resto do motor (uma régua, um dono).
+    """
+    tipo = str((ultimo or {}).get("tipo") or "text").strip().lower()
+    if tipo != "text":
+        return True
+    return float(ocioso_s) < JANELA_FRASE_COMPLETA_SEGUNDOS
+
+
+def retencoes_da_rajada(itens: List[Dict[str, Any]]) -> int:
+    """Quantas respostas desta rajada já foram RETIDAS pela 4ª pergunta da saída. PURA.
+
+    O contador viaja NOS ITENS (`retencoes`), e não numa chave nova: os itens
+    são a única coisa que atravessa buffer → varredor → turno → buffer.
+    """
+    maior = 0
+    for item in itens or []:
+        try:
+            maior = max(maior, int((item or {}).get("retencoes") or 0))
+        except (TypeError, ValueError):
+            continue
+    return maior
+
+
+def aviso_da_rajada(itens: List[Dict[str, Any]], *,
+                    resposta_retida: bool = False) -> str:
+    """A linha que diz ao MODELO que a rajada é UMA fala só. PURA.
+
+    🔴 Ordem do Founder (01/10/2026): *"ele fala 5 frases e o agente respondia
+    as 5… 8 imagens e uma explicação — não adianta responder todas"*.
+
+    ⛔ Vai SÓ para o texto que o modelo lê — nunca para a linha gravada em
+    `messages` (é o chat da corretora; a atendente não lê instrução de robô).
+    Vazio quando há uma mensagem só e nada foi retido: o caso de hoje não muda.
+    """
+    lista = [i for i in (itens or []) if isinstance(i, dict)]
+    n = len(lista)
+    if n < 2 and not resposta_retida:
+        return ""
+    fotos = sum(1 for i in lista
+                if str(i.get("tipo") or "").strip().lower() == "image")
+    audios = sum(1 for i in lista
+                 if str(i.get("tipo") or "").strip().lower() == "audio")
+    partes = []
+    if fotos:
+        partes.append("%d foto%s" % (fotos, "s" if fotos > 1 else ""))
+    if audios:
+        partes.append("%d áudio%s" % (audios, "s" if audios > 1 else ""))
+    detalhe = (" (%s)" % ", ".join(partes)) if partes else ""
+    if n >= 2:
+        linha = ("[o segurado mandou %d mensagens seguidas%s — é UMA fala só: "
+                 "leia tudo e responda UMA vez, numa resposta só, ao conjunto; "
+                 "não responda mensagem por mensagem]" % (n, detalhe))
+    else:
+        linha = "[o segurado mandou mais uma mensagem]"
+    if resposta_retida:
+        linha += ("\n[a sua resposta anterior NÃO foi enviada: ele continuou "
+                  "escrevendo antes de ela sair. Não suponha que ele a leu — "
+                  "responda agora tudo o que ele disse desde a sua última "
+                  "resposta ENVIADA]")
+    return linha
+
+
 def _esta_pronta(data: Dict[str, Any], agora: datetime) -> str:
     """A regra de debounce, UMA vez — devolve `""`, `"janela"` ou `"teto"`.
 
@@ -335,10 +437,16 @@ def _esta_pronta(data: Dict[str, Any], agora: datetime) -> str:
     espera = janela_de_espera(tracos_da_mensagem(
         texto_do_item(ultimo), tipo=str(ultimo.get("tipo") or "text")))
 
-    if (agora - last_at).total_seconds() >= espera:
+    ocioso = (agora - last_at).total_seconds()
+    if ocioso >= espera:
         return "janela"
-    if (agora - first_at).total_seconds() >= teto_da_rajada():
-        return "teto"
+    decorrido = (agora - first_at).total_seconds()
+    if decorrido >= teto_da_rajada():
+        # 🔴 SPEC-125 S5: dos 25 s em diante a rajada só segue aberta se está
+        # VIVA, e nunca passa do teto estendido. Parou de chegar = fecha já.
+        if (decorrido >= teto_da_rajada_estendido()
+                or not rajada_ainda_viva(ultimo, ocioso)):
+            return "teto"
     return ""
 
 
@@ -778,8 +886,10 @@ class MessageBufferService:
         releitura, ela entra na MESMA.
 
         ⚠️ O que isto NÃO mata: a mensagem que chega DURANTE a geração do
-        modelo. Essa fica no buffer e a trava impede que vire turno paralelo —
-        ela é respondida no turno seguinte, inteira.
+        modelo. Essa fica no buffer e a trava impede que vire turno paralelo.
+        🔴 SPEC-125 S5: quem a pega é a 4ª pergunta da saída
+        (`chegou_mais_da_rajada` + `devolver_itens_ao_buffer(por_retencao=True)`)
+        — a resposta pronta é RETIDA e a rajada inteira volta ao buffer.
 
         Mesmo `get`+`delete` atômico do `get_and_clear_buffer`: um motor só.
         """
@@ -801,10 +911,39 @@ class MessageBufferService:
         except Exception:  # noqa: BLE001
             return []
 
+    async def chegou_mais_da_rajada(self, key: str) -> bool:
+        """A 4ª pergunta da saída (SPEC-125 S5): chegou item novo DESTE
+        segurado enquanto o modelo pensava?
+
+        ⛔ SÓ PERGUNTA — `GET`, nunca `DEL`: quem decide consumir é quem retém
+        (`devolver_itens_ao_buffer`). A trava de turno, ainda nas mãos de quem
+        pergunta, impede o varredor de levar a chave entre a pergunta e a
+        devolução.
+
+        ⚠️ Falha de leitura devolve `False`: não conseguir provar que ele
+        continuou escrevendo nunca pode custar a resposta que já está pronta —
+        o que estiver no buffer vira o turno seguinte, como antes.
+        """
+        if not key:
+            return False
+        try:
+            bruto = await self.redis.get(key)
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[TURNO] 4ª pergunta sem leitura (%s) — a resposta sai",
+                           type(erro).__name__)
+            return False
+        if not bruto:
+            return False
+        try:
+            return bool(itens_do_buffer(json.loads(bruto)))
+        except Exception:  # noqa: BLE001
+            return False
+
     async def devolver_itens_ao_buffer(
         self, key: str, itens: List[Dict[str, Any]], *,
         payload: Optional[Dict[str, Any]] = None, company_id: str = "",
         user_id: str = "", integration: Optional[Dict[str, Any]] = None,
+        por_retencao: bool = False,
     ) -> bool:
         """Devolve ao buffer os itens de um turno que NÃO foi entregue (J2).
 
@@ -822,12 +961,26 @@ class MessageBufferService:
 
         ⛔ Nunca levanta: perder a devolução é ruim; derrubar o turno em cima
         de uma falha de Redis é pior. Devolve `True` se gravou.
+
+        🔴 `por_retencao=True` (SPEC-125 S5) — a resposta foi RETIDA porque o
+        segurado continuou escrevendo. Duas diferenças, as duas de propósito:
+
+          `retencoes`  +1 em cada item: é o contador que `retencoes_da_rajada`
+                       lê e que para o laço em `REPLANEJAMENTOS_MAX`.
+          O RELÓGIO    `first_at`/`last_at` saem do `em` dos ITENS, e não de
+                       agora: a janela continua contando da última fala REAL
+                       (não da hora em que o modelo terminou) e o teto, do
+                       começo da rajada — quem já esperou o teto é servido na
+                       varredura seguinte, não reinicia a espera.
         """
         devolvidos = [dict(i) for i in (itens or []) if isinstance(i, dict)]
         if not key or not devolvidos:
             return False
+        nova_retencao = retencoes_da_rajada(devolvidos) + 1
         for item in devolvidos:
             item["reentregue"] = True
+            if por_retencao:
+                item["retencoes"] = nova_retencao
         agora = datetime.now().isoformat()
         try:
             bruto = await self.redis.get(key)
@@ -837,6 +990,13 @@ class MessageBufferService:
                 dados["itens"] = devolvidos + itens_do_buffer(dados)
                 dados.pop("messages", None)
                 dados["last_at"] = agora
+                if por_retencao:
+                    carimbos = sorted(str(i.get("em")) for i in dados["itens"]
+                                      if str(i.get("em") or "").strip())
+                    if carimbos:
+                        dados["first_at"] = min(carimbos[0],
+                                                str(dados.get("first_at") or agora))
+                        dados["last_at"] = carimbos[-1]
             else:
                 dados = {
                     "v": 2, "itens": devolvidos,

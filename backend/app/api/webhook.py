@@ -30,7 +30,9 @@ from app.services.langchain_service import LangChainService
 from app.services.message_buffer_service import (
     REPLANEJAMENTOS_MAX,
     TETO_DA_RAJADA_SEGUNDOS,
+    aviso_da_rajada,
     get_message_buffer_service,
+    retencoes_da_rajada,
     texto_combinado_dos_itens,
 )
 from app.services.whatsapp.channel_security import (
@@ -388,6 +390,7 @@ def e_duplicata_do_banco(erro: Any) -> bool:
 async def gravar_mensagem_do_pipeline(
     supabase_client, *, dados: dict, wa_message_id: Optional[str], direcao: str,
     wa_message_ids: Optional[list] = None,
+    extras_do_payload: Optional[dict] = None,
 ) -> str:
     """Grava UMA linha em `messages` e deixa o BANCO responder se ela já estava.
 
@@ -399,7 +402,10 @@ async def gravar_mensagem_do_pipeline(
     chave existir nos dois lados sem duas grafias.
     """
     linha = dict(dados or {})
-    linha["payload"] = payload_do_pipeline(wa_message_id, direcao, wa_message_ids)
+    # ⚠️ Os extras entram PRIMEIRO: as chaves do índice (`wa_message_id`,
+    # `wa_message_ids`, `origem`, `direcao`) vencem sempre (SPEC-125 S5).
+    linha["payload"] = {**dict(extras_do_payload or {}),
+                        **payload_do_pipeline(wa_message_id, direcao, wa_message_ids)}
 
     # =====================================================================
     # \U0001F534 O ID QUE J\u00c1 EST\u00c1 DENTRO DE UMA LINHA COMBINADA (J7, 14/09/2026)
@@ -822,60 +828,118 @@ async def process_audio_for_storage(
 # ==============================================================================
 # MAIN BACKGROUND TASK
 # ==============================================================================
+#: 🔴 SPEC-125 S5 — quantas mídias do MESMO turno são lidas ao mesmo tempo.
+#: 📊 B0-125 §1: 8 fotos eram descritas UMA A UMA (`await` dentro do `for`) — o
+#: segurado esperava 8 chamadas de visão em SÉRIE antes do modelo começar.
+#: 💭 4 = a cota de turnos simultâneos por corretora (`_COTA_PADRAO`,
+#: D-PILOTO-07): o pior caso de uma corretora fica em 4 x 4 = 16 chamadas de
+#: visão em voo, e 8 fotos custam ~2 latências em vez de 8.
+#: ⚠️ UMA chamada de visão com todas as fotos foi descartada: o custo em tokens
+#: das imagens é o mesmo (cada imagem é cobrada pelos seus pixels), a economia é
+#: só o prompt de sistema repetido, e ela exigiria mudar `describe_image` (fora
+#: desta fatia) e perderia o isolamento — uma foto ilegível derrubaria as 8.
+MIDIAS_SIMULTANEAS_DO_TURNO = 4
+
+
 async def _midia_do_turno(itens, *, company_id, agent_id, supabase_client,
-                          is_human_mode: bool):
+                          is_human_mode: bool, urls_coletadas: Optional[list] = None):
     """Descreve as imagens e transcreve os áudios DO TURNO. `(texto, url)`.
 
     🔴 SPEC-EXTRA-001.2 §6.2 — a descrição e a transcrição saíam no WEBHOOK,
     num turno próprio por arquivo. Agora saem AQUI, dentro do turno que já tem
     a rajada inteira: o modelo lê a foto e a frase que a explica de uma vez.
 
+    🔴 SPEC-125 S5 — três mudanças, e a assinatura de quem já chama não muda:
+
+      EM PARALELO   `gather` com teto `MIDIAS_SIMULTANEAS_DO_TURNO`; a ORDEM
+                    dos pedaços continua a dos itens (a foto 3 é a 3ª).
+      TODAS AS URLs `urls_coletadas` (lista do chamador) recebe a URL de CADA
+                    foto. O retorno continua `(texto, última_url)` — a coluna
+                    `messages.image_url` é uma só, e quem lê o par não quebra.
+      LEMBRADA      cada item ganha `midia_lida` (`url` + `texto`): a rajada
+                    que volta ao buffer (resposta retida) não paga a visão de
+                    novo, e o webhook sabe o que cada item disse.
+
     ⚠️ Nada de motor novo: são as MESMAS `process_image_for_vision`,
     `describe_image` e `AudioService.transcribe_audio_from_url` de sempre.
     ⛔ Falha de mídia não derruba o turno — o texto do segurado ainda vale.
     """
-    pedacos = []
-    url_da_imagem = None
-    for item in itens or []:
-        tipo = str((item or {}).get("tipo") or "").strip().lower()
-        midia = (item or {}).get("midia") or {}
-        if tipo == "image" and midia.get("imageUrl"):
-            try:
-                url = await process_image_for_vision(
-                    midia["imageUrl"], company_id, supabase_client)
-                if url is FOTO_GRANDE_DEMAIS:
-                    pedacos.append(
-                        "[o cliente enviou uma foto grande demais para eu abrir]")
-                    continue
-                if not url:
-                    continue
-                url_da_imagem = url
-                if is_human_mode:
-                    continue
-                from app.services.vision_service import describe_image
+    lista = [i for i in (itens or []) if isinstance(i, dict)]
+    n_fotos = sum(1 for i in lista
+                  if str(i.get("tipo") or "").strip().lower() == "image"
+                  and (i.get("midia") or {}).get("imageUrl"))
+    portao = asyncio.Semaphore(max(1, int(MIDIAS_SIMULTANEAS_DO_TURNO)))
+    ordem_da_foto = {}
+    for item in lista:
+        if (str(item.get("tipo") or "").strip().lower() == "image"
+                and (item.get("midia") or {}).get("imageUrl")):
+            ordem_da_foto[id(item)] = len(ordem_da_foto) + 1
 
-                visao = await describe_image(
-                    url, company_id=str(company_id),
-                    agent_id=str(agent_id) if agent_id else None,
-                    purpose_hint="Atendente de corretora falando com o segurado")
-                if visao:
-                    pedacos.append(
-                        "[CONTEXTO VISUAL — imagem enviada pelo cliente]:\n%s" % visao)
+    async def _uma(item):
+        tipo = str(item.get("tipo") or "").strip().lower()
+        midia = item.get("midia") or {}
+        lida = item.get("midia_lida") or {}
+        # 🔴 JÁ LIDA num turno que reteve a resposta: não paga a visão de novo.
+        if lida.get("texto") or (is_human_mode and lida.get("url")):
+            return lida.get("texto") or None, lida.get("url") or None
+        if tipo == "image" and midia.get("imageUrl"):
+            url = None
+            try:
+                async with portao:
+                    url = await process_image_for_vision(
+                        midia["imageUrl"], company_id, supabase_client)
+                    if url is FOTO_GRANDE_DEMAIS:
+                        aviso = "[o cliente enviou uma foto grande demais para eu abrir]"
+                        item["midia_lida"] = {"url": None, "texto": aviso}
+                        return aviso, None
+                    if not url:
+                        return None, None
+                    if is_human_mode:
+                        item["midia_lida"] = {"url": url, "texto": None}
+                        return None, url
+                    from app.services.vision_service import describe_image
+
+                    visao = await describe_image(
+                        url, company_id=str(company_id),
+                        agent_id=str(agent_id) if agent_id else None,
+                        purpose_hint="Atendente de corretora falando com o segurado")
+                if not visao:
+                    item["midia_lida"] = {"url": url, "texto": None}
+                    return None, url
+                # 1 foto: a marca de SEMPRE (byte a byte). 2+: numeradas, para o
+                # modelo responder "a foto 3" sem confundir as oito.
+                if n_fotos >= 2:
+                    rotulo = ("[CONTEXTO VISUAL — foto %d de %d enviada pelo cliente]:\n%s"
+                              % (ordem_da_foto.get(id(item), 0), n_fotos, visao))
+                else:
+                    rotulo = "[CONTEXTO VISUAL — imagem enviada pelo cliente]:\n%s" % visao
+                item["midia_lida"] = {"url": url, "texto": rotulo}
+                return rotulo, url
             except Exception as erro:  # noqa: BLE001
                 logger.error("[WEBHOOK] visão do turno falhou (%s)", type(erro).__name__)
-        elif tipo == "audio" and midia.get("audioUrl") and not is_human_mode:
+                return None, (url if isinstance(url, str) else None)
+        if tipo == "audio" and midia.get("audioUrl") and not is_human_mode:
             try:
-                audio_service = AudioService(settings.OPENAI_API_KEY)
-                transcrito = await audio_service.transcribe_audio_from_url(
-                    midia["audioUrl"], company_id=company_id, agent_id=agent_id)
+                async with portao:
+                    audio_service = AudioService(settings.OPENAI_API_KEY)
+                    transcrito = await audio_service.transcribe_audio_from_url(
+                        midia["audioUrl"], company_id=company_id, agent_id=agent_id)
                 if transcrito:
-                    pedacos.append(str(transcrito))
+                    item["midia_lida"] = {"url": None, "texto": str(transcrito)}
+                    return str(transcrito), None
             except Exception as erro:  # noqa: BLE001
                 # ⛔ O mesmo desfecho do ramo de áudio de sempre: o produto NÃO
                 # fala de si para quem acabou de descrever uma batida.
                 logger.error("[WEBHOOK] transcrição do turno falhou (%s)",
                              type(erro).__name__)
-    return "\n\n".join(p for p in pedacos if p), url_da_imagem
+        return None, None
+
+    resultados = await asyncio.gather(*(_uma(i) for i in lista))
+    pedacos = [t for t, _u in resultados if t]
+    urls = [u for _t, u in resultados if u]
+    if urls_coletadas is not None:
+        urls_coletadas.extend(urls)
+    return "\n\n".join(pedacos), (urls[-1] if urls else None)
 
 
 async def _presenca(integration: dict, phone: str, estado: str,
@@ -935,6 +999,46 @@ async def _renovar_o_turno(turno, contador: list) -> bool:
         return bool(ok)
     except Exception as erro:  # noqa: BLE001
         logger.debug("[TURNO] renovação não aconteceu (%s)", type(erro).__name__)
+        return False
+
+
+async def _segurar_se_a_rajada_continuou(turno, chave_do_buffer: str, itens: list, *,
+                                         payload_dict: dict, company_id,
+                                         user_id, integration) -> bool:
+    """A 4ª pergunta da saída (SPEC-125 S5). `True` = a resposta fica RETIDA.
+
+    ```
+    sem turno / sem chave        -> False   (o caminho direto, sem buffer)
+    retenções >= MAX             -> False   (a resposta sai; o teto é o de sempre)
+    nada novo no buffer          -> False   (o caso de hoje: 1 GET a mais)
+    chegou item novo             -> devolve a rajada (+1 retenção) -> True
+    a devolução falhou           -> False   (a resposta sai: perder a fala do
+                                             segurado E a resposta seria pior)
+    ```
+
+    ⛔ Nunca levanta: um erro aqui cai no `False`, e a resposta sai como hoje.
+    """
+    if turno is None or not chave_do_buffer:
+        return False
+    try:
+        feitas = retencoes_da_rajada(itens)
+        if feitas >= REPLANEJAMENTOS_MAX:
+            return False
+        servico = await get_message_buffer_service()
+        if not await servico.chegou_mais_da_rajada(chave_do_buffer):
+            return False
+        devolveu = await servico.devolver_itens_ao_buffer(
+            chave_do_buffer, list(itens or []), payload=payload_dict,
+            company_id=str(company_id), user_id=str(user_id or ""),
+            integration=integration, por_retencao=True)
+        if devolveu:
+            logger.info("[TURNO] o segurado continuou escrevendo: resposta RETIDA "
+                        "(%d/%d) e a rajada volta inteira ao buffer",
+                        feitas + 1, REPLANEJAMENTOS_MAX)
+        return bool(devolveu)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[TURNO] 4ª pergunta falhou (%s) — a resposta sai",
+                       type(erro).__name__)
         return False
 
 
@@ -1355,6 +1459,12 @@ async def process_whatsapp_message_background(
         #    seco de antes só conseguia perdê-los.
         _itens_do_turno = list(buffered_items or [])
         _renovacoes = [0]
+        # 🔴 SPEC-125 S5 — TODAS as fotos da rajada (era só a última, :858) e a
+        # linha do chat, que numa rajada retida leva só o que ainda não está lá.
+        _urls_da_rajada: list = []
+        _itens_da_linha = _itens_do_turno
+        _texto_da_linha = None
+        _urls_da_linha = None
         message_text = None
         final_audio_url = None
         final_image_url = None
@@ -1401,11 +1511,29 @@ async def process_whatsapp_message_background(
             if _itens_do_turno:
                 _extra, _url_img = await _midia_do_turno(
                     _itens_do_turno, company_id=company_id, agent_id=agent_id,
-                    supabase_client=supabase.client, is_human_mode=is_human_mode)
+                    supabase_client=supabase.client, is_human_mode=is_human_mode,
+                    urls_coletadas=_urls_da_rajada)
                 if _url_img:
                     final_image_url = _url_img
                 if _extra:
                     message_text = f"{message_text}\n\n{_extra}"
+            # 🔴 SPEC-125 S5 — A LINHA DO CHAT É SÓ O QUE AINDA NÃO ESTÁ NELE.
+            # Item `reentregue` já foi gravado pelo turno que reteve a resposta
+            # (ou perdeu a posse, J2). Regravar a rajada inteira caía no índice
+            # único pelo id da 1ª mensagem ("ja_estava") e as mensagens NOVAS
+            # nunca chegavam ao chat da corretora. O modelo continua lendo TUDO.
+            _novos_no_chat = [i for i in _itens_do_turno
+                              if not (i or {}).get("reentregue")]
+            if _novos_no_chat and len(_novos_no_chat) < len(_itens_do_turno):
+                _itens_da_linha = _novos_no_chat
+                _lidas = [str(((i or {}).get("midia_lida") or {}).get("texto") or "")
+                          for i in _novos_no_chat]
+                _texto_da_linha = "\n\n".join(
+                    p for p in [texto_combinado_dos_itens(_novos_no_chat)] + _lidas
+                    if p.strip())
+                _urls_da_linha = [str(((i or {}).get("midia_lida") or {}).get("url"))
+                                  for i in _novos_no_chat
+                                  if ((i or {}).get("midia_lida") or {}).get("url")]
 
         elif branch == "audio":
             if is_human_mode:
@@ -1552,13 +1680,16 @@ async def process_whatsapp_message_background(
 
         # 5. Salvar Msg Usuário
         try:
+            _urls_gravadas = (_urls_da_linha if _urls_da_linha is not None
+                              else _urls_da_rajada)
             user_message_data = {
                 "conversation_id": conversation_id,
                 "role": "user",
-                "content": message_text,
+                "content": _texto_da_linha or message_text,
                 "type": "voice" if final_audio_url else "text",
                 "audio_url": final_audio_url,
-                "image_url": final_image_url,
+                "image_url": ((_urls_gravadas[-1] if _urls_gravadas else None)
+                              if _urls_da_linha is not None else final_image_url),
             }
             # 🔴 SPEC-EXTRA-001.2 E1 — a linha do segurado ENTRA no índice único.
             # `payload.messageId` é o id global do WhatsApp, o mesmo que o
@@ -1567,13 +1698,16 @@ async def process_whatsapp_message_background(
             # 🔴 TODOS os ids da rajada (J7): a linha combinada representa N
             # mensagens do WhatsApp, e não só a que fechou a janela.
             _ids_da_rajada = [str(i.get("wa_message_id") or "")
-                              for i in _itens_do_turno
+                              for i in _itens_da_linha
                               if str((i or {}).get("wa_message_id") or "").strip()]
             _desfecho = await gravar_mensagem_do_pipeline(
                 supabase.client, dados=user_message_data,
                 wa_message_id=(_ids_da_rajada[0] if _ids_da_rajada
                                else payload.messageId),
-                direcao="in", wa_message_ids=_ids_da_rajada)
+                direcao="in", wa_message_ids=_ids_da_rajada,
+                # 🔴 SPEC-125 S5: TODAS as fotos (a coluna guarda só uma).
+                extras_do_payload=({"image_urls": list(_urls_gravadas)}
+                                   if len(_urls_gravadas) > 1 else None))
             logger.info("[MESSAGES] User message saved (%s).", _desfecho)
         except Exception as e:
             logger.error(f"[MESSAGES] Failed to save user msg: {e}")
@@ -1785,6 +1919,14 @@ async def process_whatsapp_message_background(
         #
         # ⛔ O bloco é DADO para o modelo, nunca instrução que mude autorização.
         message_for_ai = message_text
+        # 🔴 SPEC-125 S5 — o modelo SABE que é rajada (e que a resposta anterior
+        # foi retida). ⛔ Só no texto do modelo: a linha do chat (passo 5) fica
+        # limpa. Uma mensagem só e nada retido = vazio = o turno de hoje.
+        _aviso_da_rajada = aviso_da_rajada(
+            _itens_do_turno,
+            resposta_retida=retencoes_da_rajada(_itens_do_turno) > 0)
+        if _aviso_da_rajada:
+            message_for_ai = f"{_aviso_da_rajada}\n\n{message_text}"
         try:
             from app.services.billing_replies import (
                 contexto_de_cobranca, telefones_da_equipe_de_cobranca,
@@ -1799,7 +1941,7 @@ async def process_whatsapp_message_background(
             if not _note:
                 _note = await context_note_for(company_id, payload.phone)
             if _note:
-                message_for_ai = f"{message_text}\n\n{_note}"
+                message_for_ai = f"{message_for_ai}\n\n{_note}"
         except Exception:  # noqa: BLE001
             pass
 
@@ -1986,6 +2128,33 @@ async def process_whatsapp_message_background(
                                "descartada e a rajada devolvida ao buffer")
                 await _presenca(integration, payload.phone, "paused")
                 return
+
+        # =====================================================================
+        # 🔴 A QUARTA PERGUNTA (SPEC-125 S5) — ELE CONTINUOU ESCREVENDO?
+        # =====================================================================
+        #
+        # 📊 B0-125 §1, com as funções REAIS: 5 frases com a digitação de
+        # verdade (4/9/6/12 s) viravam **3 respostas**; 8 fotos + a explicação
+        # viravam **2** — a 1ª respondia as fotos SEM a explicação. O que
+        # chegava enquanto o modelo pensava ficava no buffer e virava o turno
+        # SEGUINTE: duas respostas encavaladas para uma fala só.
+        #
+        # Agora: chegou item novo do MESMO segurado → a resposta pronta NÃO sai
+        # (nem é gravada), e a rajada inteira volta ao buffer, que a serve de
+        # novo com tudo quando ela fechar — pela MESMA janela e o MESMO teto.
+        # ⛔ Nenhum motor novo: é a devolução da J2 com o relógio dos itens.
+        # ⚠️ Teto: `REPLANEJAMENTOS_MAX` retenções por rajada. Esgotado, a
+        #    resposta sai e o que chegar depois é a próxima fala — quem escreve
+        #    sem parar não pode ficar sem resposta nenhuma.
+        # 🔴 Vem DEPOIS da posse (só o dono mexe no buffer) e ANTES do passo 8
+        #    pela mesma razão das outras: gravar uma fala que não vai sair põe
+        #    no chat da corretora uma frase que o segurado nunca recebeu.
+        if await _segurar_se_a_rajada_continuou(
+                turno, chave_do_buffer, _itens_do_turno,
+                payload_dict=payload_dict, company_id=company_id,
+                user_id=user_id, integration=integration):
+            await _presenca(integration, payload.phone, "paused")
+            return
 
         # 8. Salvar Resposta IA
         try:
