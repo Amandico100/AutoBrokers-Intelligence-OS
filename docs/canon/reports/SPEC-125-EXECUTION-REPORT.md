@@ -199,8 +199,16 @@ confirmação 2: 4 defeitos (Z-N1…N4) e um 3º "sim velho" (C13 t1) · bateria
 
 ## 12. ENTREGA
 ```
-@@ENTREGA@@
+git fetch origin ; git rev-list --count HEAD..origin/main   → 0
+git rev-list --count origin/main..HEAD                      → 24 (antes do push)
+git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+📊 02/10/2026:
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   180ea73..bce63a2  HEAD -> main
+git rev-list --count origin/main..HEAD                      → 0
 ```
+O commit deste parágrafo sobe num 2º push (o hash final fica no `git log` da `main`). Painel publicado (versão 28,
+`https://claude.ai/code/artifact/defe331c-9399-4584-9d1c-2126a527cea0`).
 
 **Nenhum motor paralelo foi criado.** A conversa vem de `messages` por um helper único (`historico_da_conversa`) que o
 atendimento, o destravador e o cérebro usam; a bancada N3 é um nível da `evals/bancada.py` da SPEC-116; a rajada usa o buffer e
