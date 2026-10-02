@@ -72,8 +72,8 @@
       "args": {
        "reason": "Sinistro de automóvel: segurado derrapou na chuva e bateu em um poste agora; informou que ninguém se machucou. Precisa de atendimento de sinistros e orientação sobre próximos passos. Ainda não informou local, danos, terceiros ou se o veículo está em local seguro.",
        "codigo": null,
-       "session_id": "whatsapp:99983961822:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -295,7 +295,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "28681886649",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -311,7 +311,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "28681886649",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -408,7 +408,7 @@
      {
       "name": "buscar_veiculo",
       "args": {
-       "document": "28681886649",
+       "document": "{CPF}",
        "policy_number": null
       }
      }
@@ -421,12 +421,12 @@
       "chave": "ec417347cbeeb76c",
       "falha": null,
       "args": {
-       "document": "28681886649",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "286.818.866-49",
-       "session_id": "whatsapp:99970352157:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "{CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": null,
        "selected_policy_number": null
       }
@@ -442,7 +442,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "28681886649",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -533,7 +533,7 @@
        "via_ou_rodovia_opcao": null,
        "profissional_opcao": null,
        "servico_opcao": null,
-       "session_id": "whatsapp:99970352157:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      },
      {
@@ -543,7 +543,7 @@
       "chave": "9455fea4ba9376ea",
       "falha": null,
       "args": {
-       "document": "28681886649",
+       "document": "{CPF}",
        "policy_number": null
       }
      }
@@ -564,7 +564,7 @@
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\nClaro, vou te ajudar com o socorro mecânico. Me confirma o CPF do titular do seguro para eu localizar a apólice?\nEncontrei seu Onix 2022, placa MPH2F90. O pedido de socorro foi registrado, mas ainda preciso confirmar o endereço completo de onde o carro está e um telefone para contato; pode me passar esses dois dados?\nAnotei o endereço: Rua das Palmeiras, 45, Jardim Primavera. Para o atendimento, qual telefone com DDD você quer deixar para contato?\nTudo bem, vou considerar este WhatsApp como contato. O carro está em um local seguro para você aguardar o atendimento?\nQue bom, fique em casa em segurança. O atendimento está registrado sob o protocolo 938527612375645; ainda não tenho previsão de chegada.",
+    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\nClaro, vou te ajudar com o socorro mecânico. Me confirma o CPF do titular do seguro para eu localizar a apólice?\nEncontrei seu Onix 2022, placa {PLACA}. O pedido de socorro foi registrado, mas ainda preciso confirmar o endereço completo de onde o carro está e um telefone para contato; pode me passar esses dois dados?\nAnotei o endereço: Rua das Palmeiras, 45, Jardim Primavera. Para o atendimento, qual telefone com DDD você quer deixar para contato?\nTudo bem, vou considerar este WhatsApp como contato. O carro está em um local seguro para você aguardar o atendimento?\nQue bom, fique em casa em segurança. O atendimento está registrado sob o protocolo {NUMERO}; ainda não tenho previsão de chegada.",
     "estado": {
      "transcricao": [
       {
@@ -603,11 +603,11 @@
        "turno": 3,
        "origem": "modelo",
        "segurado": [
-        "286.818.866-49"
+        "{CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "286.818.866-49",
-       "agente": "Encontrei seu Onix 2022, placa MPH2F90. O pedido de socorro foi registrado, mas ainda preciso confirmar o endereço completo de onde o carro está e um telefone para contato; pode me passar esses dois dados?",
+       "entrada_do_agente": "{CPF}",
+       "agente": "Encontrei seu Onix 2022, placa {PLACA}. O pedido de socorro foi registrado, mas ainda preciso confirmar o endereço completo de onde o carro está e um telefone para contato; pode me passar esses dois dados?",
        "baloes": 1,
        "ms": 13363,
        "tools": [
@@ -617,7 +617,7 @@
        ],
        "tool_args": [
         {
-         "document": "28681886649",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -630,7 +630,7 @@
          "insurer_key": "allianz",
          "titular_nascimento": null,
          "line_kind": "auto",
-         "titular_cpf": "28681886649",
+         "titular_cpf": "{CPF}",
          "aparelho_marca": null,
          "aparelho_modelo": null,
          "endereco_numero": null,
@@ -724,7 +724,7 @@
          "session_id": null
         },
         {
-         "document": "28681886649",
+         "document": "{CPF}",
          "policy_number": null
         }
        ],
@@ -777,7 +777,7 @@
        ],
        "itens": 1,
        "entrada_do_agente": "Sim, tá seguro aqui em casa",
-       "agente": "Que bom, fique em casa em segurança. O atendimento está registrado sob o protocolo 938527612375645; ainda não tenho previsão de chegada.",
+       "agente": "Que bom, fique em casa em segurança. O atendimento está registrado sob o protocolo {NUMERO}; ainda não tenho previsão de chegada.",
        "baloes": 1,
        "ms": 6954,
        "tools": [],
@@ -801,7 +801,7 @@
         {
          "id": "c1",
          "veredito": "certo",
-         "trecho": "Encontrei seu Onix 2022, placa MPH2F90."
+         "trecho": "Encontrei seu Onix 2022, placa {PLACA}."
         },
         {
          "id": "c2",
@@ -942,7 +942,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "21816238643",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -954,7 +954,7 @@
      {
       "name": "buscar_veiculo",
       "args": {
-       "document": "21816238643",
+       "document": "{CPF}",
        "policy_number": "905273062227347"
       }
      },
@@ -965,7 +965,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "21816238643",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -1068,12 +1068,12 @@
       "chave": "85904b7573b47476",
       "falha": null,
       "args": {
-       "document": "21816238643",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "218.162.386-43",
-       "session_id": "whatsapp:99915250564:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "{CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -1085,7 +1085,7 @@
       "chave": "7ed85f14965c02e6",
       "falha": null,
       "args": {
-       "document": "21816238643",
+       "document": "{CPF}",
        "policy_number": "905273062227347"
       }
      },
@@ -1100,7 +1100,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "21816238643",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -1191,7 +1191,7 @@
        "via_ou_rodovia_opcao": null,
        "profissional_opcao": null,
        "servico_opcao": null,
-       "session_id": "whatsapp:99915250564:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      }
     ],
@@ -1204,13 +1204,13 @@
     ],
     "prompt_hashes": [
      "c6f83ae1e768",
-     "cd3704755024"
+     "cd{FONE}"
     ],
     "tools_hashes": [
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Vou te ajudar com o chaveiro — me passa o CPF do titular do seguro, por favor?\nO chaveiro foi solicitado ✅ Protocolo: 938527612375645. Aguarde em local seguro; o prestador pedirá como senha os 4 últimos números do telefone informado.\nPor nada! 🙂 Se precisar de mais alguma coisa, é só me chamar.",
+    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Vou te ajudar com o chaveiro — me passa o CPF do titular do seguro, por favor?\nO chaveiro foi solicitado ✅ Protocolo: {NUMERO} Aguarde em local seguro; o prestador pedirá como senha os 4 últimos números do telefone informado.\nPor nada! 🙂 Se precisar de mais alguma coisa, é só me chamar.",
     "estado": {
      "transcricao": [
       {
@@ -1233,11 +1233,11 @@
        "turno": 2,
        "origem": "modelo",
        "segurado": [
-        "218.162.386-43"
+        "{CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "218.162.386-43",
-       "agente": "O chaveiro foi solicitado ✅ Protocolo: 938527612375645. Aguarde em local seguro; o prestador pedirá como senha os 4 últimos números do telefone informado.",
+       "entrada_do_agente": "{CPF}",
+       "agente": "O chaveiro foi solicitado ✅ Protocolo: {NUMERO} Aguarde em local seguro; o prestador pedirá como senha os 4 últimos números do telefone informado.",
        "baloes": 1,
        "ms": 15420,
        "tools": [
@@ -1247,7 +1247,7 @@
        ],
        "tool_args": [
         {
-         "document": "21816238643",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -1256,7 +1256,7 @@
          "document_evidence_requested": true
         },
         {
-         "document": "21816238643",
+         "document": "{CPF}",
          "policy_number": "905273062227347"
         },
         {
@@ -1264,7 +1264,7 @@
          "insurer_key": "allianz",
          "titular_nascimento": null,
          "line_kind": "auto",
-         "titular_cpf": "21816238643",
+         "titular_cpf": "{CPF}",
          "aparelho_marca": null,
          "aparelho_modelo": null,
          "endereco_numero": null,
@@ -1399,7 +1399,7 @@
         {
          "id": "c2",
          "veredito": "certo",
-         "trecho": "O chaveiro foi solicitado ✅ Protocolo: 938527612375645."
+         "trecho": "O chaveiro foi solicitado ✅ Protocolo: {NUMERO}"
         }
        ],
        "tom_humano": 4,
@@ -1413,7 +1413,7 @@
      "custo_segurado_usd": 0.0001697,
      "prompt_hashes": [
       "c6f83ae1e768",
-      "cd3704755024"
+      "cd{FONE}"
      ]
     },
     "segunda": {
@@ -1653,7 +1653,7 @@
        "policy_number": null,
        "policy_ref": null,
        "mensagem_atual": "entao agora o que eu preciso mesmo: meu carro nao liga aqui na garagem, manda um guincho?",
-       "session_id": "whatsapp:99999059400:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -1760,7 +1760,7 @@
        "via_ou_rodovia_opcao": null,
        "profissional_opcao": null,
        "servico_opcao": null,
-       "session_id": "whatsapp:99999059400:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      }
     ],
@@ -1779,7 +1779,7 @@
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "O socorro mecânico foi solicitado; protocolo **938527612375645**. A seguradora informará a previsão pelo canal dela. Aguarde em segurança e deixe as chaves e o documento do carro à mão.\nImagina! Espero que resolvam logo por aí.",
+    "texto": "O socorro mecânico foi solicitado; protocolo **{NUMERO}**. A seguradora informará a previsão pelo canal dela. Aguarde em segurança e deixe as chaves e o documento do carro à mão.\nImagina! Espero que resolvam logo por aí.",
     "estado": {
      "transcricao": [
       {
@@ -1790,7 +1790,7 @@
        ],
        "itens": 1,
        "entrada_do_agente": "entao agora o que eu preciso mesmo: meu carro nao liga aqui na garagem, manda um guincho?",
-       "agente": "O socorro mecânico foi solicitado; protocolo **938527612375645**. A seguradora informará a previsão pelo canal dela. Aguarde em segurança e deixe as chaves e o documento do carro à mão.",
+       "agente": "O socorro mecânico foi solicitado; protocolo **{NUMERO}**. A seguradora informará a previsão pelo canal dela. Aguarde em segurança e deixe as chaves e o documento do carro à mão.",
        "baloes": 1,
        "ms": 16191,
        "tools": [
@@ -2286,7 +2286,7 @@
        "policy_number": null,
        "policy_ref": null,
        "mensagem_atual": "meu seguro cobre vidro?",
-       "session_id": "whatsapp:99984242479:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -2529,8 +2529,8 @@
       "args": {
        "reason": "sinistro — colisão/fechada com dano no veículo; guincho por acidente exige atendimento humano de sinistros",
        "codigo": null,
-       "session_id": "whatsapp:99937159146:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -2745,7 +2745,7 @@
      {
       "name": "request_human_agent",
       "args": {
-       "reason": "Cliente irritado após repetidas tentativas e guincho demorando; precisa de acompanhamento imediato da assistência e confirmação do status/previsão. O atendimento anterior informou protocolo 917606624166214, mas não há atualização disponível nesta conversa.",
+       "reason": "Cliente irritado após repetidas tentativas e guincho demorando; precisa de acompanhamento imediato da assistência e confirmação do status/previsão. O atendimento anterior informou protocolo {NUMERO}, mas não há atualização disponível nesta conversa.",
        "codigo": null
       }
      }
@@ -2758,10 +2758,10 @@
       "chave": "50c4846a79c51082",
       "falha": null,
       "args": {
-       "reason": "Cliente irritado após repetidas tentativas e guincho demorando; precisa de acompanhamento imediato da assistência e confirmação do status/previsão. O atendimento anterior informou protocolo 917606624166214, mas não há atualização disponível nesta conversa.",
+       "reason": "Cliente irritado após repetidas tentativas e guincho demorando; precisa de acompanhamento imediato da assistência e confirmação do status/previsão. O atendimento anterior informou protocolo {NUMERO}, mas não há atualização disponível nesta conversa.",
        "codigo": null,
-       "session_id": "whatsapp:99920536028:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -2780,7 +2780,7 @@
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "Poxa, entendo a sua irritação — você já pediu a previsão mais de uma vez. Avisei a nossa equipe para acompanhar o guincho com urgência; ela já recebeu o histórico e não vai precisar que você repita tudo.\nAinda não tenho confirmação de que o guincho saiu nem uma previsão de chegada. A equipe está acompanhando o protocolo 917606624166214 e te atualiza por aqui assim que houver retorno.\nEntendo — ficar esperando sem previsão é muito ruim. Ainda não recebi uma estimativa da seguradora, então não quero inventar um horário; pedi à nossa equipe que acompanhe o protocolo e te avise assim que houver retorno.",
+    "texto": "Poxa, entendo a sua irritação — você já pediu a previsão mais de uma vez. Avisei a nossa equipe para acompanhar o guincho com urgência; ela já recebeu o histórico e não vai precisar que você repita tudo.\nAinda não tenho confirmação de que o guincho saiu nem uma previsão de chegada. A equipe está acompanhando o protocolo {NUMERO} e te atualiza por aqui assim que houver retorno.\nEntendo — ficar esperando sem previsão é muito ruim. Ainda não recebi uma estimativa da seguradora, então não quero inventar um horário; pedi à nossa equipe que acompanhe o protocolo e te avise assim que houver retorno.",
     "estado": {
      "transcricao": [
       {
@@ -2799,7 +2799,7 @@
        ],
        "tool_args": [
         {
-         "reason": "Cliente irritado após repetidas tentativas e guincho demorando; precisa de acompanhamento imediato da assistência e confirmação do status/previsão. O atendimento anterior informou protocolo 917606624166214, mas não há atualização disponível nesta conversa.",
+         "reason": "Cliente irritado após repetidas tentativas e guincho demorando; precisa de acompanhamento imediato da assistência e confirmação do status/previsão. O atendimento anterior informou protocolo {NUMERO}, mas não há atualização disponível nesta conversa.",
          "codigo": null
         }
        ],
@@ -2814,7 +2814,7 @@
        ],
        "itens": 1,
        "entrada_do_agente": "mas o guincho já saiu? preciso saber quanto ainda vai demorar",
-       "agente": "Ainda não tenho confirmação de que o guincho saiu nem uma previsão de chegada. A equipe está acompanhando o protocolo 917606624166214 e te atualiza por aqui assim que houver retorno.",
+       "agente": "Ainda não tenho confirmação de que o guincho saiu nem uma previsão de chegada. A equipe está acompanhando o protocolo {NUMERO} e te atualiza por aqui assim que houver retorno.",
        "baloes": 1,
        "ms": 2583,
        "tools": [],
@@ -3000,8 +3000,8 @@
       "args": {
        "reason": "cliente pediu para falar com uma pessoa",
        "codigo": null,
-       "session_id": "whatsapp:99932860785:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -3219,8 +3219,8 @@
       "args": {
        "reason": "risco grave — fumaça e cheiro de queimado no quadro elétrico; orientar segurança e atendimento humano imediato",
        "codigo": null,
-       "session_id": "whatsapp:99902213087:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -3441,7 +3441,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "29486051054",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -3457,7 +3457,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "29486051054",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -3560,12 +3560,12 @@
       "chave": "5ba5060de5a9b2a5",
       "falha": null,
       "args": {
-       "document": "29486051054",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "294.860.510-54",
-       "session_id": "whatsapp:99921830565:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "{CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -3581,7 +3581,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "29486051054",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -3672,7 +3672,7 @@
        "via_ou_rodovia_opcao": null,
        "profissional_opcao": null,
        "servico_opcao": null,
-       "session_id": "whatsapp:99921830565:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      }
     ],
@@ -3692,7 +3692,7 @@
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\nConsigo te ajudar com isso. Me passa o CPF do titular do seguro para eu localizar a apólice e verificar o chaveiro do carro.\nO chaveiro do carro foi solicitado ✅ Protocolo: 938527612375645. A seguradora ainda não informou o prazo de chegada; aviso você quando houver atualização.\nPor nada! Assim que houver uma atualização sobre o chaveiro, te aviso por aqui.",
+    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\nConsigo te ajudar com isso. Me passa o CPF do titular do seguro para eu localizar a apólice e verificar o chaveiro do carro.\nO chaveiro do carro foi solicitado ✅ Protocolo: {NUMERO} A seguradora ainda não informou o prazo de chegada; aviso você quando houver atualização.\nPor nada! Assim que houver uma atualização sobre o chaveiro, te aviso por aqui.",
     "estado": {
      "transcricao": [
       {
@@ -3731,11 +3731,11 @@
        "turno": 3,
        "origem": "modelo",
        "segurado": [
-        "294.860.510-54"
+        "{CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "294.860.510-54",
-       "agente": "O chaveiro do carro foi solicitado ✅ Protocolo: 938527612375645. A seguradora ainda não informou o prazo de chegada; aviso você quando houver atualização.",
+       "entrada_do_agente": "{CPF}",
+       "agente": "O chaveiro do carro foi solicitado ✅ Protocolo: {NUMERO} A seguradora ainda não informou o prazo de chegada; aviso você quando houver atualização.",
        "baloes": 1,
        "ms": 11783,
        "tools": [
@@ -3744,7 +3744,7 @@
        ],
        "tool_args": [
         {
-         "document": "29486051054",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -3757,7 +3757,7 @@
          "insurer_key": "allianz",
          "titular_nascimento": null,
          "line_kind": "auto",
-         "titular_cpf": "29486051054",
+         "titular_cpf": "{CPF}",
          "aparelho_marca": null,
          "aparelho_modelo": null,
          "endereco_numero": null,

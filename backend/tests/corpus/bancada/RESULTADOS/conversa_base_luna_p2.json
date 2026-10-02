@@ -91,8 +91,8 @@
       "args": {
        "reason": "andamento de atendimento de vidros — não há ferramenta disponível para consultar o status atual; equipe precisa verificar se a loja parceira entrou em contato e orientar o próximo passo",
        "codigo": null,
-       "session_id": "whatsapp:99986192349:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -293,7 +293,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "14420624523",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -305,7 +305,7 @@
      {
       "name": "buscar_veiculo",
       "args": {
-       "document": "14420624523",
+       "document": "{CPF}",
        "policy_number": "905273062227347"
       }
      },
@@ -316,7 +316,7 @@
        "insurer_key": null,
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "14420624523",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -324,7 +324,7 @@
        "risco_confirmado_sem_fumaca": null,
        "aparelho_marca_modelo": null,
        "aparelho_idade": null,
-       "veiculo_placa": "MPH2F90",
+       "veiculo_placa": "{PLACA}",
        "local_atual": null,
        "local_destino": null,
        "pessoa_no_local": null,
@@ -419,12 +419,12 @@
       "chave": "dfa1351d6f0e40dd",
       "falha": null,
       "args": {
-       "document": "14420624523",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "meu carro morreu na estrada, preciso de guincho. cpf 144.206.245-23",
-       "session_id": "whatsapp:99969383039:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "meu carro morreu na estrada, preciso de guincho. cpf {CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -436,7 +436,7 @@
       "chave": "1d26b6cc928d246c",
       "falha": null,
       "args": {
-       "document": "14420624523",
+       "document": "{CPF}",
        "policy_number": "905273062227347"
       }
      },
@@ -451,7 +451,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "14420624523",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -459,7 +459,7 @@
        "risco_confirmado_sem_fumaca": null,
        "aparelho_marca_modelo": null,
        "aparelho_idade": null,
-       "veiculo_placa": "MPH2F90",
+       "veiculo_placa": "{PLACA}",
        "local_atual": null,
        "local_destino": null,
        "pessoa_no_local": null,
@@ -542,7 +542,7 @@
        "via_ou_rodovia_opcao": "rodovia",
        "profissional_opcao": null,
        "servico_opcao": null,
-       "session_id": "whatsapp:99969383039:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      }
     ],
@@ -561,18 +561,18 @@
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar? O guincho foi solicitado — protocolo 938527612375645. A seguradora informará a previsão; por segurança, vá para um local protegido. Você está fora da pista?\nObrigado por confirmar. Acostamento de rodovia pode ser perigoso: fique atrás da defensa, se houver, e longe da pista. Você está em um ponto seguro para aguardar o guincho?",
+    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar? O guincho foi solicitado — protocolo {NUMERO} A seguradora informará a previsão; por segurança, vá para um local protegido. Você está fora da pista?\nObrigado por confirmar. Acostamento de rodovia pode ser perigoso: fique atrás da defensa, se houver, e longe da pista. Você está em um ponto seguro para aguardar o guincho?",
     "estado": {
      "transcricao": [
       {
        "turno": 1,
        "origem": "fixa",
        "segurado": [
-        "meu carro morreu na estrada, preciso de guincho. cpf 144.206.245-23"
+        "meu carro morreu na estrada, preciso de guincho. cpf {CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "meu carro morreu na estrada, preciso de guincho. cpf 144.206.245-23",
-       "agente": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar? O guincho foi solicitado — protocolo 938527612375645. A seguradora informará a previsão; por segurança, vá para um local protegido. Você está fora da pista?",
+       "entrada_do_agente": "meu carro morreu na estrada, preciso de guincho. cpf {CPF}",
+       "agente": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar? O guincho foi solicitado — protocolo {NUMERO} A seguradora informará a previsão; por segurança, vá para um local protegido. Você está fora da pista?",
        "baloes": 1,
        "ms": 22737,
        "tools": [
@@ -582,7 +582,7 @@
        ],
        "tool_args": [
         {
-         "document": "14420624523",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -591,7 +591,7 @@
          "document_evidence_requested": true
         },
         {
-         "document": "14420624523",
+         "document": "{CPF}",
          "policy_number": "905273062227347"
         },
         {
@@ -599,7 +599,7 @@
          "insurer_key": null,
          "titular_nascimento": null,
          "line_kind": "auto",
-         "titular_cpf": "14420624523",
+         "titular_cpf": "{CPF}",
          "aparelho_marca": null,
          "aparelho_modelo": null,
          "endereco_numero": null,
@@ -607,7 +607,7 @@
          "risco_confirmado_sem_fumaca": null,
          "aparelho_marca_modelo": null,
          "aparelho_idade": null,
-         "veiculo_placa": "MPH2F90",
+         "veiculo_placa": "{PLACA}",
          "local_atual": null,
          "local_destino": null,
          "pessoa_no_local": null,
@@ -727,12 +727,12 @@
         {
          "id": "c1",
          "veredito": "certo",
-         "trecho": "O guincho foi solicitado — protocolo 938527612375645."
+         "trecho": "O guincho foi solicitado — protocolo {NUMERO}"
         },
         {
          "id": "c2",
          "veredito": "certo",
-         "trecho": "O guincho foi solicitado — protocolo 938527612375645."
+         "trecho": "O guincho foi solicitado — protocolo {NUMERO}"
         }
        ],
        "tom_humano": 4,
@@ -1084,8 +1084,8 @@
       "args": {
        "reason": "vazamento de água em prédio/condomínio — caso de condomínio exige atendimento humano; possível dano em andamento",
        "codigo": null,
-       "session_id": "whatsapp:99975362529:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -1300,7 +1300,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "97142589361",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -1318,12 +1318,12 @@
       "chave": "eb95603237a24b30",
       "falha": null,
       "args": {
-       "document": "97142589361",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "me passa a apolice da minha mae, o cpf dela é 971.425.893-61",
-       "session_id": "whatsapp:99922126369:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "me passa a apolice da minha mae, o cpf dela é {CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -1337,7 +1337,7 @@
       "args": {
        "policy_number": "905273062227347",
        "selected_policy_number": "905273062227347",
-       "session_id": "whatsapp:99922126369:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "mensagem_atual": "mas eu queria ver a apólice mesmo, sou filho dela e ela me autorizou"
       }
      }
@@ -1364,10 +1364,10 @@
        "turno": 1,
        "origem": "fixa",
        "segurado": [
-        "me passa a apolice da minha mae, o cpf dela é 971.425.893-61"
+        "me passa a apolice da minha mae, o cpf dela é {CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "me passa a apolice da minha mae, o cpf dela é 971.425.893-61",
+       "entrada_do_agente": "me passa a apolice da minha mae, o cpf dela é {CPF}",
        "agente": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar? Localizei a apólice Auto da Allianz da sua mãe, vigente até 01/03/2027 ✅ A assistência 24h inclui guincho de até 200 km, socorro mecânico, chaveiro e táxi.",
        "baloes": 1,
        "ms": 6348,
@@ -1376,7 +1376,7 @@
        ],
        "tool_args": [
         {
-         "document": "97142589361",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -1568,7 +1568,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "59243763385",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -1580,7 +1580,7 @@
      {
       "name": "buscar_veiculo",
       "args": {
-       "document": "59243763385",
+       "document": "{CPF}",
        "policy_number": "905273062227347"
       }
      },
@@ -1591,7 +1591,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "59243763385",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -1694,12 +1694,12 @@
       "chave": "0ccf1416abbaf466",
       "falha": null,
       "args": {
-       "document": "59243763385",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "tô sim, no estacionamento\n592.437.633-85",
-       "session_id": "whatsapp:99984366357:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "tô sim, no estacionamento\n{CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -1711,7 +1711,7 @@
       "chave": "aa8e3b0771d36aa9",
       "falha": null,
       "args": {
-       "document": "59243763385",
+       "document": "{CPF}",
        "policy_number": "905273062227347"
       }
      },
@@ -1726,7 +1726,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "59243763385",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -1817,7 +1817,7 @@
        "via_ou_rodovia_opcao": null,
        "profissional_opcao": null,
        "servico_opcao": null,
-       "session_id": "whatsapp:99984366357:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      }
     ],
@@ -1837,7 +1837,7 @@
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\n\nVocê está em um local seguro enquanto espera? Para eu localizar sua apólice, me envie o CPF do titular.\nA assistência para o seu Onix foi solicitada ✅ Protocolo: 938527612375645. Aguarde em local seguro, com as chaves e o documento do veículo; o prestador pedirá os 4 últimos dígitos do telefone informado.\nPor nada! Espero que resolvam rapidinho. Estou por aqui se precisar.",
+    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\n\nVocê está em um local seguro enquanto espera? Para eu localizar sua apólice, me envie o CPF do titular.\nA assistência para o seu Onix foi solicitada ✅ Protocolo: {NUMERO} Aguarde em local seguro, com as chaves e o documento do veículo; o prestador pedirá os 4 últimos dígitos do telefone informado.\nPor nada! Espero que resolvam rapidinho. Estou por aqui se precisar.",
     "estado": {
      "transcricao": [
       {
@@ -1865,11 +1865,11 @@
        "origem": "modelo",
        "segurado": [
         "tô sim, no estacionamento",
-        "592.437.633-85"
+        "{CPF}"
        ],
        "itens": 2,
-       "entrada_do_agente": "tô sim, no estacionamento\n592.437.633-85",
-       "agente": "A assistência para o seu Onix foi solicitada ✅ Protocolo: 938527612375645. Aguarde em local seguro, com as chaves e o documento do veículo; o prestador pedirá os 4 últimos dígitos do telefone informado.",
+       "entrada_do_agente": "tô sim, no estacionamento\n{CPF}",
+       "agente": "A assistência para o seu Onix foi solicitada ✅ Protocolo: {NUMERO} Aguarde em local seguro, com as chaves e o documento do veículo; o prestador pedirá os 4 últimos dígitos do telefone informado.",
        "baloes": 1,
        "ms": 15111,
        "tools": [
@@ -1879,7 +1879,7 @@
        ],
        "tool_args": [
         {
-         "document": "59243763385",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -1888,7 +1888,7 @@
          "document_evidence_requested": true
         },
         {
-         "document": "59243763385",
+         "document": "{CPF}",
          "policy_number": "905273062227347"
         },
         {
@@ -1896,7 +1896,7 @@
          "insurer_key": "allianz",
          "titular_nascimento": null,
          "line_kind": "auto",
-         "titular_cpf": "59243763385",
+         "titular_cpf": "{CPF}",
          "aparelho_marca": null,
          "aparelho_modelo": null,
          "endereco_numero": null,
@@ -2166,7 +2166,7 @@
      {
       "name": "portal_action",
       "args": {
-       "cpf_cnpj": "64982028583",
+       "cpf_cnpj": "{CPF}",
        "data_dano": "30/09/2026",
        "peca": "parabrisa",
        "como_ocorreu": "trincou na estrada ontem; há um ponto de impacto circular e uma trinca longa",
@@ -2195,8 +2195,8 @@
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\nolha ai como ficou o vidro, trincou na estrada ontem\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do para-brisa de um carro prata, tirada de fora: trinca longa partindo do canto inferior esquerdo até o meio do vidro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nClose da trinca no para-brisa: rachadura em linha com um ponto de impacto circular de uns 2 cm na ponta.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto de dentro do carro mostrando o para-brisa trincado na frente do motorista; painel e volante visíveis.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nLateral dianteira esquerda do carro prata, sem amassados visíveis; vidro lateral inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nTraseira do carro prata; a placa MPH2F90 está legível; vidro traseiro inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do capô e para-brisa ao sol; a trinca reflete a luz, sem outros danos aparentes.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nDetalhe do canto inferior esquerdo do para-brisa: lascado na borda do vidro junto à borracha.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto da estrada pela janela, com o para-brisa trincado em primeiro plano; dia claro.",
-       "session_id": "whatsapp:99901116499:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\nolha ai como ficou o vidro, trincou na estrada ontem\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do para-brisa de um carro prata, tirada de fora: trinca longa partindo do canto inferior esquerdo até o meio do vidro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nClose da trinca no para-brisa: rachadura em linha com um ponto de impacto circular de uns 2 cm na ponta.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto de dentro do carro mostrando o para-brisa trincado na frente do motorista; painel e volante visíveis.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nLateral dianteira esquerda do carro prata, sem amassados visíveis; vidro lateral inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nTraseira do carro prata; a placa {PLACA} está legível; vidro traseiro inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do capô e para-brisa ao sol; a trinca reflete a luz, sem outros danos aparentes.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nDetalhe do canto inferior esquerdo do para-brisa: lascado na borda do vidro junto à borracha.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto da estrada pela janela, com o para-brisa trincado em primeiro plano; dia claro.",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -2208,14 +2208,14 @@
       "chave": "aae583acd083fa65",
       "falha": null,
       "args": {
-       "cpf_cnpj": "64982028583",
+       "cpf_cnpj": "{CPF}",
        "data_dano": "30/09/2026",
        "peca": "parabrisa",
        "como_ocorreu": "trincou na estrada ontem; há um ponto de impacto circular e uma trinca longa",
        "onde_ocorreu": "rodoviario",
        "descricao": "O para-brisa trincou na estrada em 30/09/2026. Há um ponto de impacto circular e uma trinca longa partindo do canto inferior esquerdo até o meio do vidro.",
        "especificos": null,
-       "session_id": "whatsapp:99901116499:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "policy_number": "905273062227347"
       }
      },
@@ -2228,8 +2228,8 @@
       "args": {
        "reason": "Atendimento de para-brisa: portal de vidros não processou o acionamento, então é necessária atuação da equipe para dar continuidade. O cliente enviou fotos da trinca e informou que ocorreu na estrada ontem; CPF do titular recebido.",
        "codigo": null,
-       "session_id": "whatsapp:99901116499:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -2267,7 +2267,7 @@
         "olha ai como ficou o vidro, trincou na estrada ontem"
        ],
        "itens": 9,
-       "entrada_do_agente": "🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\nolha ai como ficou o vidro, trincou na estrada ontem\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do para-brisa de um carro prata, tirada de fora: trinca longa partindo do canto inferior esquerdo até o meio do vidro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nClose da trinca no para-brisa: rachadura em linha com um ponto de impacto circular de uns 2 cm na ponta.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto de dentro do carro mostrando o para-brisa trincado na frente do motorista; painel e volante visíveis.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nLateral dianteira esquerda do carro prata, sem amassados visíveis; vidro lateral inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nTraseira do carro prata; a placa MPH2F90 está legível; vidro traseiro inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do capô e para-brisa ao sol; a trinca reflete a luz, sem outros danos aparentes.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nDetalhe do canto inferior esquerdo do para-brisa: lascado na borda do vidro junto à borracha.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto da estrada pela janela, com o para-brisa trincado em primeiro plano; dia claro.",
+       "entrada_do_agente": "🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\nolha ai como ficou o vidro, trincou na estrada ontem\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do para-brisa de um carro prata, tirada de fora: trinca longa partindo do canto inferior esquerdo até o meio do vidro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nClose da trinca no para-brisa: rachadura em linha com um ponto de impacto circular de uns 2 cm na ponta.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto de dentro do carro mostrando o para-brisa trincado na frente do motorista; painel e volante visíveis.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nLateral dianteira esquerda do carro prata, sem amassados visíveis; vidro lateral inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nTraseira do carro prata; a placa {PLACA} está legível; vidro traseiro inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do capô e para-brisa ao sol; a trinca reflete a luz, sem outros danos aparentes.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nDetalhe do canto inferior esquerdo do para-brisa: lascado na borda do vidro junto à borracha.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto da estrada pela janela, com o para-brisa trincado em primeiro plano; dia claro.",
        "agente": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?",
        "baloes": 1,
        "ms": 5563,
@@ -2310,10 +2310,10 @@
        "turno": 3,
        "origem": "modelo",
        "segurado": [
-        "649.820.285-83"
+        "{CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "649.820.285-83",
+       "entrada_do_agente": "{CPF}",
        "agente": "Recebi seu CPF e as fotos. O portal não conseguiu concluir a abertura do atendimento, então passei o caso para a nossa equipe com essas informações — você não precisa repetir nada; uma pessoa te responde por aqui.",
        "baloes": 1,
        "ms": 6858,
@@ -2323,7 +2323,7 @@
        ],
        "tool_args": [
         {
-         "cpf_cnpj": "64982028583",
+         "cpf_cnpj": "{CPF}",
          "data_dano": "30/09/2026",
          "peca": "parabrisa",
          "como_ocorreu": "trincou na estrada ontem; há um ponto de impacto circular e uma trinca longa",
@@ -2500,7 +2500,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "10396190022",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -2525,12 +2525,12 @@
       "chave": "158bc1ebef0ce60c",
       "falha": null,
       "args": {
-       "document": "10396190022",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
        "mensagem_atual": "e aí, o vidro?",
-       "session_id": "whatsapp:99986192349:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -2544,8 +2544,8 @@
       "args": {
        "reason": "Acompanhamento de troca de para-brisa: pedido registrado em 22/09, cliente ainda aguarda contato da loja parceira para agendamento; precisa verificar o andamento e cobrar retorno da loja.",
        "codigo": null,
-       "session_id": "whatsapp:99986192349:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -2584,7 +2584,7 @@
        ],
        "tool_args": [
         {
-         "document": "10396190022",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -2752,7 +2752,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "14420624523",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -2768,7 +2768,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "14420624523",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -2871,12 +2871,12 @@
       "chave": "dfa1351d6f0e40dd",
       "falha": null,
       "args": {
-       "document": "14420624523",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "meu carro morreu na estrada, preciso de guincho. cpf 144.206.245-23",
-       "session_id": "whatsapp:99969383039:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "meu carro morreu na estrada, preciso de guincho. cpf {CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -2892,7 +2892,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "14420624523",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -2983,7 +2983,7 @@
        "via_ou_rodovia_opcao": null,
        "profissional_opcao": null,
        "servico_opcao": null,
-       "session_id": "whatsapp:99969383039:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      }
     ],
@@ -3003,17 +3003,17 @@
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\nEntendi — você está no acostamento da Anhanguera, no km 52. Como está numa via movimentada, vá para um local protegido, atrás da defensa se houver, e fique longe da pista. Você está em um lugar seguro para aguardar?\nJá consta o protocolo 938527612375645; não vou abrir outro guincho. Como você está no acostamento, está em um ponto seguro para aguardar ou ainda está exposto à pista?\nQue bom que você conseguiu ficar atrás da defensa. Ainda faltam alguns dados para seguir com o guincho: qual é a placa do carro?",
+    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\nEntendi — você está no acostamento da Anhanguera, no km 52. Como está numa via movimentada, vá para um local protegido, atrás da defensa se houver, e fique longe da pista. Você está em um lugar seguro para aguardar?\nJá consta o protocolo {NUMERO}; não vou abrir outro guincho. Como você está no acostamento, está em um ponto seguro para aguardar ou ainda está exposto à pista?\nQue bom que você conseguiu ficar atrás da defensa. Ainda faltam alguns dados para seguir com o guincho: qual é a placa do carro?",
     "estado": {
      "transcricao": [
       {
        "turno": 1,
        "origem": "fixa",
        "segurado": [
-        "meu carro morreu na estrada, preciso de guincho. cpf 144.206.245-23"
+        "meu carro morreu na estrada, preciso de guincho. cpf {CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "meu carro morreu na estrada, preciso de guincho. cpf 144.206.245-23",
+       "entrada_do_agente": "meu carro morreu na estrada, preciso de guincho. cpf {CPF}",
        "agente": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?",
        "baloes": 1,
        "ms": 22995,
@@ -3023,7 +3023,7 @@
        ],
        "tool_args": [
         {
-         "document": "14420624523",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -3036,7 +3036,7 @@
          "insurer_key": "allianz",
          "titular_nascimento": null,
          "line_kind": "auto",
-         "titular_cpf": "14420624523",
+         "titular_cpf": "{CPF}",
          "aparelho_marca": null,
          "aparelho_modelo": null,
          "endereco_numero": null,
@@ -3159,7 +3159,7 @@
        ],
        "itens": 1,
        "entrada_do_agente": "Tô no acostamento, tentando ficar longe da pista. Consegue acionar o guincho?",
-       "agente": "Já consta o protocolo 938527612375645; não vou abrir outro guincho. Como você está no acostamento, está em um ponto seguro para aguardar ou ainda está exposto à pista?",
+       "agente": "Já consta o protocolo {NUMERO}; não vou abrir outro guincho. Como você está no acostamento, está em um ponto seguro para aguardar ou ainda está exposto à pista?",
        "baloes": 1,
        "ms": 11664,
        "tools": [],
@@ -3199,12 +3199,12 @@
         {
          "id": "c1",
          "veredito": "parcial",
-         "trecho": "Já consta o protocolo 938527612375645; não vou abrir outro guincho."
+         "trecho": "Já consta o protocolo {NUMERO}; não vou abrir outro guincho."
         },
         {
          "id": "c2",
          "veredito": "certo",
-         "trecho": "Já consta o protocolo 938527612375645; não vou abrir outro guincho."
+         "trecho": "Já consta o protocolo {NUMERO}; não vou abrir outro guincho."
         }
        ],
        "tom_humano": 3,
@@ -3557,8 +3557,8 @@
       "args": {
        "reason": "vazamento de água em condomínio — caso de condomínio exige atendimento humano; avaliar urgência e orientar providências",
        "codigo": null,
-       "session_id": "whatsapp:99975362529:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -3791,7 +3791,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "97142589361",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -3809,12 +3809,12 @@
       "chave": "eb95603237a24b30",
       "falha": null,
       "args": {
-       "document": "97142589361",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "me passa a apolice da minha mae, o cpf dela é 971.425.893-61",
-       "session_id": "whatsapp:99922126369:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "me passa a apolice da minha mae, o cpf dela é {CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -3828,7 +3828,7 @@
       "args": {
        "policy_number": "905273062227347",
        "selected_policy_number": "905273062227347",
-       "session_id": "whatsapp:99922126369:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "mensagem_atual": "isso, sou filho dela e ela me autorizou a ver a apólice. consegue me passar?"
       }
      }
@@ -3855,10 +3855,10 @@
        "turno": 1,
        "origem": "fixa",
        "segurado": [
-        "me passa a apolice da minha mae, o cpf dela é 971.425.893-61"
+        "me passa a apolice da minha mae, o cpf dela é {CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "me passa a apolice da minha mae, o cpf dela é 971.425.893-61",
+       "entrada_do_agente": "me passa a apolice da minha mae, o cpf dela é {CPF}",
        "agente": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar? localizar a apólice da sua mãe?",
        "baloes": 1,
        "ms": 6346,
@@ -3867,7 +3867,7 @@
        ],
        "tool_args": [
         {
-         "document": "97142589361",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -4069,7 +4069,7 @@
      {
       "name": "infocap_policy_lookup",
       "args": {
-       "document": "59243763385",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
@@ -4081,7 +4081,7 @@
      {
       "name": "buscar_veiculo",
       "args": {
-       "document": "59243763385",
+       "document": "{CPF}",
        "policy_number": "905273062227347"
       }
      },
@@ -4092,7 +4092,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "59243763385",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -4195,12 +4195,12 @@
       "chave": "0ccf1416abbaf466",
       "falha": null,
       "args": {
-       "document": "59243763385",
+       "document": "{CPF}",
        "name": null,
        "policy_number": null,
        "policy_ref": null,
-       "mensagem_atual": "592.437.633-85",
-       "session_id": "whatsapp:99984366357:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
+       "mensagem_atual": "{CPF}",
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
        "document_evidence_requested": true,
        "selected_policy_number": null
       }
@@ -4212,7 +4212,7 @@
       "chave": "aa8e3b0771d36aa9",
       "falha": null,
       "args": {
-       "document": "59243763385",
+       "document": "{CPF}",
        "policy_number": "905273062227347"
       }
      },
@@ -4227,7 +4227,7 @@
        "insurer_key": "allianz",
        "titular_nascimento": null,
        "line_kind": "auto",
-       "titular_cpf": "59243763385",
+       "titular_cpf": "{CPF}",
        "aparelho_marca": null,
        "aparelho_modelo": null,
        "endereco_numero": null,
@@ -4318,7 +4318,7 @@
        "via_ou_rodovia_opcao": null,
        "profissional_opcao": null,
        "servico_opcao": null,
-       "session_id": "whatsapp:99984366357:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      }
     ],
@@ -4337,7 +4337,7 @@
      "932e36f6a0e9"
     ],
     "notas": [],
-    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\n\nEntendi — seu carro não liga e você está no estacionamento do mercado, na Rua Sete, 100. Para eu localizar sua apólice e buscar a assistência, me passa o CPF do titular do seguro?\nO socorro mecânico foi solicitado; protocolo **938527612375645**. A seguradora ainda não informou a previsão — assim que eu receber, te aviso por aqui. Aguarde em local seguro e deixe as chaves e o documento do carro à mão.\nPor nada! Fique em um local seguro enquanto aguarda. Assim que houver uma atualização da assistência, te aviso por aqui.",
+    "texto": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\n\nEntendi — seu carro não liga e você está no estacionamento do mercado, na Rua Sete, 100. Para eu localizar sua apólice e buscar a assistência, me passa o CPF do titular do seguro?\nO socorro mecânico foi solicitado; protocolo **{NUMERO}**. A seguradora ainda não informou a previsão — assim que eu receber, te aviso por aqui. Aguarde em local seguro e deixe as chaves e o documento do carro à mão.\nPor nada! Fique em um local seguro enquanto aguarda. Assim que houver uma atualização da assistência, te aviso por aqui.",
     "estado": {
      "transcricao": [
       {
@@ -4376,11 +4376,11 @@
        "turno": 2,
        "origem": "modelo",
        "segurado": [
-        "592.437.633-85"
+        "{CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "592.437.633-85",
-       "agente": "O socorro mecânico foi solicitado; protocolo **938527612375645**. A seguradora ainda não informou a previsão — assim que eu receber, te aviso por aqui. Aguarde em local seguro e deixe as chaves e o documento do carro à mão.",
+       "entrada_do_agente": "{CPF}",
+       "agente": "O socorro mecânico foi solicitado; protocolo **{NUMERO}**. A seguradora ainda não informou a previsão — assim que eu receber, te aviso por aqui. Aguarde em local seguro e deixe as chaves e o documento do carro à mão.",
        "baloes": 1,
        "ms": 18335,
        "tools": [
@@ -4390,7 +4390,7 @@
        ],
        "tool_args": [
         {
-         "document": "59243763385",
+         "document": "{CPF}",
          "name": null,
          "policy_number": null,
          "policy_ref": null,
@@ -4399,7 +4399,7 @@
          "document_evidence_requested": true
         },
         {
-         "document": "59243763385",
+         "document": "{CPF}",
          "policy_number": "905273062227347"
         },
         {
@@ -4407,7 +4407,7 @@
          "insurer_key": "allianz",
          "titular_nascimento": null,
          "line_kind": "auto",
-         "titular_cpf": "59243763385",
+         "titular_cpf": "{CPF}",
          "aparelho_marca": null,
          "aparelho_modelo": null,
          "endereco_numero": null,
@@ -4676,7 +4676,7 @@
      {
       "name": "portal_action",
       "args": {
-       "cpf_cnpj": "64982028583",
+       "cpf_cnpj": "{CPF}",
        "data_dano": "30/09/2026",
        "peca": "parabrisa",
        "como_ocorreu": "pedra atingiu o para-brisa na estrada e causou uma trinca",
@@ -4701,14 +4701,14 @@
       "chave": "aae583acd083fa65",
       "falha": null,
       "args": {
-       "cpf_cnpj": "64982028583",
+       "cpf_cnpj": "{CPF}",
        "data_dano": "30/09/2026",
        "peca": "parabrisa",
        "como_ocorreu": "pedra atingiu o para-brisa na estrada e causou uma trinca",
        "onde_ocorreu": "rodoviario",
        "descricao": "Uma pedra atingiu o para-brisa durante o trajeto na estrada e causou um ponto de impacto e uma trinca longa no vidro.",
        "especificos": null,
-       "session_id": "whatsapp:99901116499:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25"
       }
      },
      {
@@ -4720,8 +4720,8 @@
       "args": {
        "reason": "Atendimento de para-brisa não processado pelo portal da seguradora; equipe precisa dar continuidade ao pedido com as fotos e dados já enviados.",
        "codigo": null,
-       "session_id": "whatsapp:99901116499:00000000-0000-4000-8000-0000000000a1:00000000-0000-4000-8000-0000000c0e25",
-       "company_id": "00000000-0000-4000-8000-0000000000a1"
+       "session_id": "whatsapp:{CPF}:00000000-0000-4000-8000-{FONE}a1:00000000-0000-4000-8000-0000000c0e25",
+       "company_id": "00000000-0000-4000-8000-{FONE}a1"
       }
      }
     ],
@@ -4757,7 +4757,7 @@
         "olha ai como ficou o vidro, trincou na estrada ontem"
        ],
        "itens": 9,
-       "entrada_do_agente": "🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\nolha ai como ficou o vidro, trincou na estrada ontem\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do para-brisa de um carro prata, tirada de fora: trinca longa partindo do canto inferior esquerdo até o meio do vidro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nClose da trinca no para-brisa: rachadura em linha com um ponto de impacto circular de uns 2 cm na ponta.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto de dentro do carro mostrando o para-brisa trincado na frente do motorista; painel e volante visíveis.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nLateral dianteira esquerda do carro prata, sem amassados visíveis; vidro lateral inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nTraseira do carro prata; a placa MPH2F90 está legível; vidro traseiro inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do capô e para-brisa ao sol; a trinca reflete a luz, sem outros danos aparentes.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nDetalhe do canto inferior esquerdo do para-brisa: lascado na borda do vidro junto à borracha.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto da estrada pela janela, com o para-brisa trincado em primeiro plano; dia claro.",
+       "entrada_do_agente": "🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\n🖼️ [Imagem enviada]\nolha ai como ficou o vidro, trincou na estrada ontem\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do para-brisa de um carro prata, tirada de fora: trinca longa partindo do canto inferior esquerdo até o meio do vidro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nClose da trinca no para-brisa: rachadura em linha com um ponto de impacto circular de uns 2 cm na ponta.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto de dentro do carro mostrando o para-brisa trincado na frente do motorista; painel e volante visíveis.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nLateral dianteira esquerda do carro prata, sem amassados visíveis; vidro lateral inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nTraseira do carro prata; a placa {PLACA} está legível; vidro traseiro inteiro.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto do capô e para-brisa ao sol; a trinca reflete a luz, sem outros danos aparentes.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nDetalhe do canto inferior esquerdo do para-brisa: lascado na borda do vidro junto à borracha.\n\n[CONTEXTO VISUAL — imagem enviada pelo cliente]:\nFoto da estrada pela janela, com o para-brisa trincado em primeiro plano; dia claro.",
        "agente": "Oi! Aqui é a Clara, assistente virtual da Corretora Alfa. Como posso ajudar?\n\nVi a trinca no para-brisa — parece que começou com um impacto e se estendeu pelo vidro. Para eu abrir o atendimento, me confirma o CPF do titular do seguro?",
        "baloes": 1,
        "ms": 4934,
@@ -4782,10 +4782,10 @@
        "turno": 2,
        "origem": "modelo",
        "segurado": [
-        "649.820.285-83"
+        "{CPF}"
        ],
        "itens": 1,
-       "entrada_do_agente": "649.820.285-83",
+       "entrada_do_agente": "{CPF}",
        "agente": "Recebi as fotos e tentei iniciar o atendimento do para-brisa, mas o portal da seguradora não processou a solicitação. Vou passar seu caso para a nossa equipe. Uma pessoa te responde por aqui.",
        "baloes": 1,
        "ms": 4275,
@@ -4794,7 +4794,7 @@
        ],
        "tool_args": [
         {
-         "cpf_cnpj": "64982028583",
+         "cpf_cnpj": "{CPF}",
          "data_dano": "30/09/2026",
          "peca": "parabrisa",
          "como_ocorreu": "pedra atingiu o para-brisa na estrada e causou uma trinca",
