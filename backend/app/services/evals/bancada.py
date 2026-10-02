@@ -3394,6 +3394,16 @@ async def motor_conversa(caso: dict, ctx: Contexto) -> dict:
                                        channel="whatsapp", supabase_client=ctx.banco, agent_id=agente["id"])
             resposta = str((out or {}).get("response") or "")
             _gravar_mensagem(ctx.banco, conversa_id, company_id, "assistant", resposta)
+            # SPEC-125 · endurecimento (P-125-04): o passo 9 do webhook — a apresentação só
+            # conta depois de SAIR (J5). Sem ele a bancada pedia a apresentação em TODO turno.
+            try:
+                from app.services.o_fim_do_atendimento import confirmar_apresentacao_enviada
+
+                await confirmar_apresentacao_enviada(
+                    getattr(ctx.banco, "client", ctx.banco), company_id=company_id,
+                    session_id=sessao, resposta=resposta)
+            except Exception as exc:  # noqa: BLE001 — a medição nunca derruba a conversa
+                logger.debug("[Bancada] apresentação não confirmada (%s)", type(exc).__name__)
             transcricao.append({
                 "turno": turno, "origem": fala["origem"], "segurado": [_texto_visivel(i) for i in fala["itens"]],
                 "itens": len(fala["itens"]), "entrada_do_agente": entrada, "agente": resposta,
