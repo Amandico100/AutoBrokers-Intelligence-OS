@@ -142,7 +142,7 @@ _PALAVRA_DE_TELEFONE = re.compile(
 _JANELA_DO_ROTULO = 30
 
 
-def _dito_como_telefone(s: str, inicio: int, fim: int) -> bool:
+def _dito_como_telefone(s: str, inicio: int, fim: int, corte_antes: str = r"[\d\n]") -> bool:
     """O segurado disse que ESTE número é celular/telefone/zap? — **PURA**.
 
     🔴 SPEC-125 · S8b. Antes a régua era a CARA do número (DDD + 9): 📊 a S4
@@ -153,7 +153,7 @@ def _dito_como_telefone(s: str, inicio: int, fim: int) -> bool:
     dígito; depois, só se nenhum número vier em seguida ("52998224725, celular
     11987654321" — o "celular" é do segundo).
     """
-    antes = re.split(r"[\d\n]", s[max(0, inicio - _JANELA_DO_ROTULO):inicio])[-1]
+    antes = re.split(corte_antes, s[max(0, inicio - _JANELA_DO_ROTULO):inicio])[-1]
     if _PALAVRA_DE_TELEFONE.search(antes):
         return True
     depois = s[fim:fim + _JANELA_DO_ROTULO]
@@ -599,10 +599,15 @@ def bloco_para_o_prompt(quem: Optional[Dict[str, Any]]) -> str:
 # --------------------------------------------------------------------------- #
 #: Rótulos que dizem que um número de 11/14 dígitos SEM pontuação NÃO é documento —
 #: telefone, protocolo, OS, senha, apólice, renavam… (T6: esses saem EXATOS).
+#: 🔴 AJUSTE ZN · Z-N2 — "Confirma os dados: 529…, apólice…" saía CRU porque o ARTIGO "os"
+#:    casava a sigla OS (ordem de serviço): a sigla agora só em MAIÚSCULAS. "pedido" saiu da
+#:    lista (nomeia o ASSUNTO — "dados do pedido: 529…" —, não o número; "número do pedido"
+#:    continua). E o rótulo só vale na MESMA oração do número: vírgula/ponto e vírgula de lista
+#:    cortam ("contato neste número, titular 529…" — o "contato" é do item anterior).
 _ROTULO_DE_OUTRO_NUMERO = re.compile(
     r"\b(?:celular|cel|telefone|tel|fone|zap|whats(?:app)?|wpp|contato|liga\w*|lig[ue]\w*|"
-    r"protocolo|senha|os|ordem de servi[cç]o|chamado|atendimento|pedido|sinistro|ap[oó]lice|"
-    r"renavam|chassi|placa|boleto|c[oó]digo|n[uú]mero do)\b", re.IGNORECASE)
+    r"protocolo|senha|(?-i:OS|O\.S\.?)|ordem de servi[cç]o|chamado|atendimento|sinistro|ap[oó]lice|"
+    r"renavam|chassi|placa|boleto|c[oó]digo|n[uú]mero d[oae])(?!\w)", re.IGNORECASE)
 
 
 #: 🔴 SPEC-125 CONSERTO Z · N3 do laudo de confirmação — o rótulo que vem DEPOIS do número,
@@ -611,23 +616,58 @@ _ROTULO_DE_OUTRO_NUMERO = re.compile(
 #:    fecham o DV de CPF (laudo, 181/20.000). ⚠️ Só a forma que DIZ o que o número é
 #:    ("X é o seu protocolo", "X (protocolo)", "X — protocolo da seguradora"): "o 529… está
 #:    certo para abrir o pedido?" NÃO desmascara (o "pedido" ali não rotula o número).
+#: 🔴 SPEC-125 AJUSTE ZN · Z-N2 do laudo de confirmação nº 2 — a forma acima desmascarava o
+#:    CPF de um RESUMO em lista: "Confirma os dados: 529…, apólice 1234567" e "529… (pedido de
+#:    guincho)" saíam CRUS — e a `REGRA_DO_RESUMO_DE_CONFIRMACAO` manda pôr o CPF no resumo.
+#:    constante_justificada: depois do número, só o rótulo que DIZ o que ELE é:
+#:    · PREDICADO ("é/foi/fica/será o seu protocolo", "é o número do pedido");
+#:    · APOSTO colado ("(protocolo da seguradora)", "— protocolo da assistência");
+#:    e só substantivo de IDENTIFICADOR (protocolo, senha, OS, código…). Vírgula de lista nunca
+#:    rotula; "pedido/apólice/assistência" soltos nomeiam o ASSUNTO ("pedido de guincho"), não o
+#:    número — só entram como "número do pedido". E o número que É o documento do caso
+#:    mascara sempre (`documentos_do_caso`), rotulado ou não.
+_IDENTIFICADOR_DEPOIS = (
+    r"protocolo|ordem de servi[cç]o|(?-i:OS)|senha|renavam|chassi|boleto|c[oó]digo|"
+    r"n[uú]mero\s+d[oae]\s+(?:protocolo|atendimento|assist[eê]ncia|ordem de servi[cç]o|os|"
+    r"pedido|chamado|sinistro|ap[oó]lice|boleto)")
 _ROTULO_DEPOIS_DO_NUMERO = re.compile(
-    r"^\s*[-–—:(,]?\s*(?:(?:e|é|eh|era|sera|será|foi|fica|como)\s+)?(?:(?:o|a)\s+)?"
-    r"(?:(?:seu|sua|nosso|nossa)\s+)?(?:n[uú]mero\s+d[oae]\s+)?"
-    r"(?:protocolo|atendimento|assist[eê]ncia|ordem de servi[cç]o|os|pedido|chamado|sinistro|"
-    r"senha|ap[oó]lice|renavam|chassi|boleto|c[oó]digo)\b", re.IGNORECASE)
+    r"^\s*(?:"
+    # predicado: "… é o seu protocolo", "… foi o número do atendimento", "… fica o chamado"
+    r"(?:e|é|eh|era|sera|será|foi|fica)\s+(?:(?:o|a)\s+)?(?:(?:seu|sua|nosso|nossa)\s+)?"
+    r"(?:" + _IDENTIFICADOR_DEPOIS + r"|atendimento|chamado|sinistro)\b"
+    # aposto colado: "(protocolo da seguradora)", "— protocolo da assistência"
+    r"|[-–—(]\s*(?:(?:o|a)\s+)?(?:(?:seu|sua)\s+)?(?:" + _IDENTIFICADOR_DEPOIS + r")\b)",
+    re.IGNORECASE)
+
+
+def documentos_do_caso(textos: Any) -> List[str]:
+    """Os CPF/CNPJ que pertencem ao CASO (ditos pelo segurado, na ficha, nos argumentos das
+    ferramentas) — na ordem. **PURA.** O número que o PRÓPRIO texto rotula como protocolo,
+    telefone… ("meu protocolo é 123…") não é documento do caso."""
+    saida: List[str] = []
+    for t in textos or []:
+        s = str(t or "")
+        for d in documentos_ditos(s):
+            if d in saida:
+                continue
+            soltos = list(re.finditer(r"(?<!\d)%s(?!\d)" % d, s))
+            if soltos and all(_rotulado_como_outro_numero(s, m.start(), m.end()) for m in soltos):
+                continue
+            saida.append(d)
+    return saida
 
 
 def _rotulado_como_outro_numero(s: str, inicio: int, fim: int) -> bool:
-    antes = re.split(r"[\d\n]", s[max(0, inicio - _JANELA_DO_ROTULO):inicio])[-1]
+    antes = re.split(r"[\d\n,;]", s[max(0, inicio - _JANELA_DO_ROTULO):inicio])[-1]
     if _ROTULO_DE_OUTRO_NUMERO.search(antes):
         return True
     if _ROTULO_DEPOIS_DO_NUMERO.search(s[fim:fim + _JANELA_DO_ROTULO].replace("*", "")):
         return True
-    return _dito_como_telefone(s, inicio, fim)
+    # Z-N2: na SAÍDA, o rótulo de telefone também só vale na mesma oração (a lista corta)
+    return _dito_como_telefone(s, inicio, fim, corte_antes=r"[\d\n,;]")
 
 
-def mascarar_documentos_na_saida(texto: Any) -> str:
+def mascarar_documentos_na_saida(texto: Any, documentos_do_caso: Any = None) -> str:
     """A resposta ao SEGURADO com todo CPF/CNPJ VÁLIDO inteiro trocado por `final XXXX`. **PURA.**
 
     🔴 T19 (MANTER) deixa de depender do modelo obedecer ao prompt: este é o cinto no
@@ -641,7 +681,12 @@ def mascarar_documentos_na_saida(texto: Any) -> str:
     Só o que fecha o dígito verificador vira máscara: CPF/CNPJ pontuado, ou depois da
     palavra CPF/CNPJ, sempre; 11/14 dígitos soltos, salvo quando rotulados como outro
     número (telefone, protocolo, senha, apólice… — esses saem exatos, T6).
+
+    🔴 Z-N2: `documentos_do_caso` (os CPF/CNPJ do caso — `documentos_do_caso()` sobre a
+    conversa, a ficha e os argumentos) mascaram SEMPRE, rotulados ou não: o modelo que
+    chama o CPF do titular de "protocolo" não o põe inteiro no WhatsApp.
     """
+    do_caso = {_so_digitos(d) for d in (documentos_do_caso or []) if _so_digitos(d)}
     s = str(texto or "")
     if not s or not re.search(r"\d{3}", s):
         return s
@@ -661,7 +706,7 @@ def mascarar_documentos_na_saida(texto: Any) -> str:
         dig = _so_digitos(s[ini:fim])
         if len(dig) not in (11, 14) or not _documento_valido(dig):
             continue
-        if solto and _rotulado_como_outro_numero(s, ini, fim):
+        if solto and dig not in do_caso and _rotulado_como_outro_numero(s, ini, fim):
             continue
         saida.append(s[ultimo_fim:ini] + "final " + dig[-4:])
         ultimo_fim = fim

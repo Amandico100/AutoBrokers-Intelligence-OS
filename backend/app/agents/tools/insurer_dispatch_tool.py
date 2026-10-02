@@ -809,8 +809,14 @@ def _opcoes_recusadas(playbook_ref, subservice, kwargs, faltando):
 #:    e eram recusadas. ⚠️ "acionar"/"sigo" SOLTOS continuam não contando ("para eu acionar,
 #:    me passa o CPF?" é pergunta de DADO): só a forma que PERGUNTA ("aciono?", "quer que eu
 #:    acione") — e a pergunta inteira ainda precisa repetir o pedido (`_cita_o_pedido`).
+#: 🔴 AJUSTE ZN · Z-N4 — "Quer que eu CONFIRME SE a apólice cobre guincho?" é o agente
+#:    oferecendo CHECAR outra coisa (cobertura), não pedindo o ok do acionamento: "confirm… se"
+#:    e "(quer) que eu confirme" não contam. constante_justificada: a forma "confirma que é
+#:    o carro de placa…?" ainda conta como pergunta — quem a barra é a régua de ELEMENTOS
+#:    (`confirmacao_comprovada`: pergunta fraca precisa repetir ≥ 2 partes do pedido).
 _RX_PERGUNTA_DE_CONFIRMACAO = re.compile(
-    r"\bconfirm(?:a|as|e|em|ar|amos|ando|ado|ados|ada|adas)\b(?!\s+com\b)|"
+    r"(?<!\bque\seu\s)(?<!\bque\s)\bconfirm(?:a|as|e|em|ar|amos|ando|ado|ados|ada|adas)\b"
+    r"(?!\s+(?:com|se)\b)|"
     r"\bposso\s+(?:acionar|chamar|pedir|solicitar|abrir|seguir|mandar|"
     r"enviar|registrar|prosseguir)\b|\bpodemos\s+(?:acionar|seguir|prosseguir|pedir|solicitar)\b|"
     r"\b(?:quer|queres|prefere|deseja)\s+que\s+(?:eu\s+)?(?:ja\s+)?(?:acione|chame|peca|solicite|"
@@ -820,6 +826,26 @@ _RX_PERGUNTA_DE_CONFIRMACAO = re.compile(
     r"acionamento|pedido|chamado|solicitacao)\b[^.!]*\?|"
     r"\bpode\s+ser\b|\b(?:esta|estao|ta|tao|tudo|estiver)\s+(?:certo|certos|certa|correto|"
     r"corretos|correta|ok)\b|\bcorret[oa]s?\s*\?|\bisso\s+mesmo\b")
+
+#: 🔴 Z-N4 — a pergunta FORTE pede o ok de ACIONAR (o verbo do acionamento: "posso acionar?",
+#:    "quer que eu acione…", "aciono?", "seguimos?", "sigo com o pedido?"). Basta ela repetir UMA
+#:    parte do pedido. A fraca ("confirma…?", "está certo?", "pode ser?") precisa de DUAS
+#:    (serviço + lugar, serviço + placa…): "Confirma que é o carro de placa final 1D23?" pede o
+#:    ok da PLACA, não do guincho.
+_RX_PEDIDO_DE_OK_PARA_ACIONAR = re.compile(
+    r"\bposso\s+(?:acionar|chamar|pedir|solicitar|abrir|seguir|mandar|"
+    r"enviar|registrar|prosseguir)\b|\bpodemos\s+(?:acionar|seguir|prosseguir|pedir|solicitar)\b|"
+    r"\b(?:quer|queres|prefere|deseja)\s+que\s+(?:eu\s+)?(?:ja\s+)?(?:acione|chame|peca|solicite|"
+    r"mande|abra|siga|prossiga|registre)\b|"
+    r"\b(?:aciono|sigo|seguimos|prossigo|prosseguimos|solicito|peco|mando)\s*(?:agora\s*)?\?|"
+    r"\b(?:sigo|seguimos|prossigo|prosseguimos|posso\s+seguir)\s+com\s+(?:a|o)\s+(?:abertura|"
+    r"acionamento|pedido|chamado|solicitacao)\b[^.!]*\?|"
+    # o resumo que ANUNCIA o acionamento e pede o ok (📊 C2 t2 da RODADA FINAL: "Vou solicitar
+    # socorro mecânico agora… Está tudo certo? Responda 'sim' para eu seguir.") — só conta
+    # porque a fala já passou por `_RX_PERGUNTA_DE_CONFIRMACAO`
+    r"\bvou\s+(?:ja\s+)?(?:acionar|solicitar|pedir|chamar|abrir|registrar|mandar|enviar)\b|"
+    r"\b(?:para|pra)\s+(?:que\s+)?eu\s+(?:acionar|solicitar|pedir|chamar|seguir|prosseguir|"
+    r"acione|solicite|peca|chame|siga|prossiga)\b")
 
 #: O segurado DISSE SIM? (as primeiras palavras de uma ORAÇÃO; texto sem acento)
 _RX_SIM_DO_SEGURADO = re.compile(
@@ -840,13 +866,49 @@ _RX_NAO_DO_SEGURADO = re.compile(
 #:    (o "sim" do C4), "vou ver", "sim, MAS o destino é outro", "ok — NA VERDADE a rua é Y".
 #: constante_justificada: o pior caso de errar para cá é UMA confirmação a mais; o de errar
 #:    para lá é um guincho que não se desfaz (T8). "mas rápido/por favor" não é objeção.
+#: 🔴 SPEC-125 AJUSTE ZN · Z-N1 do laudo de confirmação nº 2 — o complemento NEUTRO não pesa:
+#:    "Sim, vou esperar aqui na frente", "Sim, o endereço NÃO mudou", "sim, depois ME PASSA a
+#:    previsão" e "Sim, amanhã de manhã" (no residencial agendado, a data É a resposta) eram
+#:    recusados. constante_justificada, palavra a palavra:
+#:    · "vou esperar" saiu: é ele dizendo ONDE espera o prestador, não adiando o pedido
+#:      ("espera"/"pera" imperativos continuam — é o "segura aí");
+#:    · "mudou/mudei" só sem "não/nada" antes ("não mudou" CONFIRMA o dado);
+#:    · "depois" só quando o adiado é ELE ("depois eu peço", "depois vejo", "depois" sozinho):
+#:      "depois ME/NOS passa/manda/avisa" é pedido ao agente (`_RX_DEPOIS_PARA_O_AGENTE`);
+#:    · "amanhã/hoje à tarde…" ficam em `_RX_QUANDO_DO_SEGURADO`: só é adiamento se a
+#:      pergunta NÃO disse esse mesmo quando (`_resposta_do_segurado(…, pergunta)`);
+#:    · "mas" só é objeção quando a oração depois dele MEXE no pedido (`_RX_MAS_QUE_MEXE`):
+#:      "sim, mas o destino é outro"/"mas não é guincho"/"mas leva pra concessionária"
+#:      recusam; "sim, mas o carro é automático" é informação e passa.
 _RX_OBJECAO_DO_SEGURADO = re.compile(
-    r"\b(?:depois|mais\s+tarde|amanha|outra\s+hora|vou\s+(?:ver|pensar|decidir|esperar|olhar)|"
-    r"vejo\s+(?:isso|depois)|deixa\s+(?:pra|para|que)|agora\s+nao|ainda\s+nao|espera|espere|pera|"
+    r"\b(?:mais\s+tarde|outra\s+hora|vou\s+(?:ver|pensar|decidir|olhar)|"
+    r"vejo\s+(?:isso|depois)|deixa\s+(?:pra|para|que)|fica\s+(?:pra|para)\s+depois|"
+    r"agora\s+nao|ainda\s+nao|espera|espere|pera|"
     r"calma|cancela\w*|desist\w*|errad[oa]s?|corrig\w*|na\s+verdade|so\s+que|porem|"
     r"(?:e|eh|era)\s+outr[oa]|outro\s+(?:endereco|lugar|local|destino|numero|telefone)|"
-    r"outra\s+(?:rua|placa|cidade|oficina)|mudou|mudei)\b"
-    r"|\bmas\b(?!\s+(?:rapido|logo|depressa|por\s+favor|urgente|vem|venha|manda|pode|corre))")
+    r"outra\s+(?:rua|placa|cidade|oficina))\b"
+    r"|(?<!\bnao\s)(?<!\bnada\s)\b(?:mudou|mudei)\b")
+
+#: "depois" que é ELE adiando — salvo "depois (você) me/nos passa/manda/avisa…" (pedido ao agente).
+_RX_DEPOIS_DO_SEGURADO = re.compile(r"\bdepois\b(?!\s+(?:voce\s+|vc\s+|ce\s+)?(?:me|nos)\b)")
+
+#: o QUANDO dito pelo segurado — adiamento, salvo se a pergunta disse o mesmo quando.
+_RX_QUANDO_DO_SEGURADO = re.compile(
+    r"\b(?:depois\s+de\s+amanha|amanha|hoje\s+(?:a\s+)?(?:tarde|noite)|semana\s+que\s+vem|"
+    r"(?:na\s+)?segunda|(?:na\s+)?terca|(?:na\s+)?quarta|(?:na\s+)?quinta|(?:na\s+)?sexta|"
+    r"(?:no\s+)?sabado|(?:no\s+)?domingo)\b")
+
+#: o "mas" que é intensificador ("mas rápido", "mas pode") nunca é objeção…
+_RX_MAS_INTENSIFICADOR = re.compile(
+    r"\bmas\s+(?:rapido|logo|depressa|por\s+favor|urgente|vem|venha|manda|pode|corre)\b")
+#: …e o resto só é quando a oração depois dele MEXE no pedido: nega, corrige, troca o lugar,
+#: o destino, a placa, o contato, condiciona (custo, "tem que") ou pergunta.
+_RX_MAS_QUE_MEXE = re.compile(
+    r"\bmas\b[^.;!\n]*?(?:\b(?:nao|n|nunca|outr[oa]s?|errad\w*|diferente\w*|troc\w*|mud\w*|corrig\w*|"
+    r"quero|prefiro|preciso|precisa|gostaria|queria|melhor|so|ainda|antes|primeiro|leva\w*|"
+    r"rua|avenida|av|oficina|endereco|destino|local|lugar|placa|numero|cep|bairro|telefone|"
+    r"contato|tem\s+(?:que|de)|pag\w*|cust\w*|cobr\w*|valor|preco|franquia|gratis|"
+    r"agora|depois|amanha|hoje|cancel\w*|desist\w*|espera\w*)\b|\?)")
 
 #: 🔴 Z1 — a pergunta de confirmação repete O PEDIDO (o serviço, a placa, o lugar). O
 #:    vocabulário de cada trabalho é o dos corredores (`canonical_subservice`) + como a
@@ -870,7 +932,10 @@ _PALAVRAS_DE_QUALQUER_ACIONAMENTO = ("assistencia", "prestador", "acionamento", 
 #: constante_justificada: palavras de lugar que NÃO identificam o lugar (aparecem em toda frase)
 _PALAVRAS_DE_LUGAR_VAZIAS = frozenset({
     "avenida", "numero", "bairro", "cidade", "estado", "frente", "perto", "proximo", "proxima",
-    "casa", "minha", "local", "lugar", "agora", "aqui", "esquina", "centro"})
+    "casa", "minha", "local", "lugar", "agora", "aqui", "esquina", "centro",
+    # Z-N4: com a régua das DUAS partes, o lugar passou a contar palavras de 4 letras ("Rua
+    # SETE 100", "Sao JOSE") e o número da casa — e estas de 4 letras não identificam nada
+    "para", "pela", "pelo", "onde", "esta", "fica", "lado", "logo", "meio", "dentro"})
 
 #: 🔴 Z1 — o agente ANUNCIOU um acionamento depois da pergunta: aquela confirmação foi GASTA.
 #:    📊 C8: "Confirma: guincho da Rua Sete…?" → "sim" → "Pedido registrado na seguradora,
@@ -905,37 +970,64 @@ def _termos_do_pedido(pedido: Optional[dict]) -> tuple:
     servico |= set(_PALAVRAS_DE_QUALQUER_ACIONAMENTO)
     lugar = set()
     for campo in ("local_atual", "local_destino", "local_rua", "local_bairro", "endereco_numero"):
-        for t in re.findall(r"[a-z]{5,}", _plano(p.get(campo))):
+        # 📊 C8: "Confirma: guincho da Rua Sete 100 para a Rua Nove 20?" — com 5+ letras o
+        #    lugar sumia ("sete", "nove") e a pergunta contava UMA parte; o número da casa conta
+        for t in re.findall(r"[a-z]{4,}|(?<!\d)\d{2,}(?!\d)", _plano(p.get(campo))):
             if t not in _PALAVRAS_DE_LUGAR_VAZIAS:
                 lugar.add(t)
     placa = re.sub(r"[^a-z0-9]", "", _plano(p.get("veiculo_placa")))
     return servico, lugar, placa
 
 
-def _cita_o_pedido(texto: str, pedido: Optional[dict]) -> bool:
-    """A fala do agente REPETE o pedido (o serviço, o lugar ou a placa)? **PURA.**"""
+def _partes_do_pedido_citadas(texto: str, pedido: Optional[dict]) -> int:
+    """QUANTAS partes do pedido (serviço · lugar · placa) a fala do agente repete. **PURA.**"""
     plano = _plano(texto)
     servico, lugar, placa = _termos_do_pedido(pedido)
+    n = 0
     if any(re.search(r"\b" + re.escape(w), plano) for w in servico):
-        return True
+        n += 1
     if lugar and any(re.search(r"\b%s\b" % re.escape(t), plano) for t in lugar):
-        return True
+        n += 1
     # a placa (ou o final dela, que é como a atendente a mostra: "placa final 2F90")
     alnum = re.sub(r"[^a-z0-9]", "", plano)
-    return len(placa) >= 7 and placa[-4:] in alnum
+    if len(placa) >= 7 and placa[-4:] in alnum:
+        n += 1
+    return n
 
 
-def _resposta_do_segurado(texto: str) -> str:
+def _cita_o_pedido(texto: str, pedido: Optional[dict]) -> bool:
+    """A fala do agente REPETE o pedido (o serviço, o lugar ou a placa)? **PURA.**"""
+    return _partes_do_pedido_citadas(texto, pedido) >= 1
+
+
+def _objecao_ou_adiamento(plano: str, pergunta: str = "") -> bool:
+    """A fala (já `_plano`) OBJETA ao pedido ou ADIA o próprio acionamento? **PURA.**
+
+    Z-N1: o complemento neutro não pesa — ver a constante_justificada de
+    `_RX_OBJECAO_DO_SEGURADO`. `pergunta` (já `_plano`) é a confirmação a que ele responde:
+    o QUANDO que ela mesma disse ("…amanhã de manhã. Confirma?") repetido é a resposta.
+    """
+    if _RX_OBJECAO_DO_SEGURADO.search(plano) or _RX_DEPOIS_DO_SEGURADO.search(plano):
+        return True
+    for m in _RX_QUANDO_DO_SEGURADO.finditer(plano):
+        if not re.search(r"\b%s\b" % re.escape(m.group(0)), pergunta or ""):
+            return True
+    sem_intensificador = _RX_MAS_INTENSIFICADOR.sub(" ", plano)
+    return bool(_RX_MAS_QUE_MEXE.search(sem_intensificador))
+
+
+def _resposta_do_segurado(texto: str, pergunta: str = "") -> str:
     """`"sim"` · `"nao"` · `"outro"` — UMA fala do segurado. **PURA.**
 
     A fala vira ORAÇÕES (vírgula, ponto, quebra): "Não, ninguém se machucou. Pode mandar"
-    é o "não" de outra pergunta e o SIM desta (N1). Objeção/adiamento em qualquer ponto
-    vence o sim ("ta bom, depois eu peço" do C4; "sim, mas o destino é outro").
+    é o "não" de outra pergunta e o SIM desta (N1). Objeção ao pedido ou adiamento do
+    próprio acionamento, em qualquer ponto, vence o sim ("ta bom, depois eu peço" do C4;
+    "sim, mas o destino é outro"); o complemento neutro não (Z-N1: "Sim, vou esperar aqui").
     """
     plano = _plano(texto)
     if not plano:
         return "outro"
-    if _RX_OBJECAO_DO_SEGURADO.search(plano):
+    if _objecao_ou_adiamento(plano, _plano(pergunta)):
         return "nao"
     oracoes = [o.strip() for o in re.split(r"[,.;:!?\n]+|\s+[-–—]\s+", plano) if o.strip()]
     nao_sozinho = forte = sim = False
@@ -971,9 +1063,13 @@ def confirmacao_comprovada(falas, pedido: Optional[dict] = None) -> dict:
     a ÚLTIMA pergunta da corretora (fala com "?" ou "confirm…") é a de CONFIRMAÇÃO
       DESTE acionamento — pede o ok E repete o pedido (serviço, lugar ou placa);
     nenhuma fala do agente DEPOIS dela anuncia um acionamento (a confirmação não foi gasta);
-    a PRÓXIMA fala do segurado depois dela é SIM de verdade (sem objeção nem adiamento),
-      e nenhuma fala dele depois dela é NÃO.
+    as falas do segurado depois dela, lidas JUNTAS, têm um SIM de verdade e nenhum NÃO
+      (objeção ao pedido ou adiamento do próprio acionamento).
     ```
+    🔴 AJUSTE ZN (laudo de confirmação nº 2): Z-N1 complemento neutro não pesa ("Sim, vou
+    esperar aqui", "Sim, amanhã de manhã" quando a pergunta disse amanhã); Z-N3 o dado que
+    faltava + "pode mandar" em dois balões vale; Z-N4 a pergunta sem o verbo de acionar
+    ("confirma que é a placa…?") precisa repetir DUAS partes do pedido.
     Devolve `{"comprovada": bool, "motivo": str}`.
     """
     lista = [(str(q or ""), str(t or "")) for q, t in (falas or [])]
@@ -989,10 +1085,19 @@ def confirmacao_comprovada(falas, pedido: Optional[dict] = None) -> dict:
     if not _RX_PERGUNTA_DE_CONFIRMACAO.search(_plano(pergunta)):
         return {"comprovada": False,
                 "motivo": "a última pergunta ao segurado não foi a de confirmação"}
-    if not _cita_o_pedido(pergunta, pedido):
+    partes = _partes_do_pedido_citadas(pergunta, pedido)
+    if partes < 1:
         return {"comprovada": False,
                 "motivo": "a última pergunta não repete o pedido (serviço, lugar ou placa) — "
                           "não é a confirmação deste acionamento"}
+    # Z-N4: sem o verbo de acionar ("posso acionar?"), a pergunta precisa repetir DUAS partes
+    #       (ou todas as que o pedido tem, se ele só traz o serviço)
+    _s, _lugar, _placa = _termos_do_pedido(pedido)
+    exigidas = min(2, 1 + bool(_lugar) + (len(_placa) >= 7))
+    if partes < exigidas and not _RX_PEDIDO_DE_OK_PARA_ACIONAR.search(_plano(pergunta)):
+        return {"comprovada": False,
+                "motivo": "a última pergunta pede o ok de UMA parte (a placa, a cobertura), não "
+                          "do acionamento — falta o resumo ou o \"posso acionar?\""}
     depois = lista[ultima + 1:]
     if any(q in ("agente", "equipe") and _RX_ACIONAMENTO_ANUNCIADO.search(_plano(t))
            for q, t in depois):
@@ -1002,10 +1107,12 @@ def confirmacao_comprovada(falas, pedido: Optional[dict] = None) -> dict:
     if not respostas:
         return {"comprovada": False,
                 "motivo": "o segurado ainda não respondeu à confirmação"}
-    leituras = [_resposta_do_segurado(r) for r in respostas]
+    leituras = [_resposta_do_segurado(r, pergunta) for r in respostas]
     if "nao" in leituras:
         return {"comprovada": False, "motivo": "o segurado não disse sim"}
-    if leituras[0] != "sim":
+    # Z-N3: as falas dele depois da pergunta são lidas JUNTAS ("Oficina do Zé" + "pode
+    # mandar" em dois balões): o dado que faltava não apaga o sim que veio em seguida.
+    if "sim" not in leituras:
         return {"comprovada": False,
                 "motivo": "a resposta seguinte do segurado não foi o sim"}
     return {"comprovada": True, "motivo": "confirmado pelo segurado depois da pergunta"}

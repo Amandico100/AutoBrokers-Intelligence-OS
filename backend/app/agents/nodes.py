@@ -606,6 +606,28 @@ def _fala_ao_segurado(state: Dict[str, Any]) -> bool:
     return _papel_do_agente(state).strip().lower() not in _PAPEIS_DO_CORRETOR
 
 
+def _documentos_do_caso_no_estado(state: Dict[str, Any]) -> list:
+    """🔴 AJUSTE ZN · Z-N2 — os CPF/CNPJ do CASO: o que o segurado escreveu, o bloco "O QUE JÁ
+    SABEMOS" (`_documentos_ja_ditos`) e os argumentos de documento das ferramentas chamadas.
+    A máscara de saída os esconde mesmo quando o modelo os rotula de "protocolo". Nunca levanta."""
+    try:
+        from app.agents.quem_e_o_segurado import documentos_do_caso
+
+        textos: list = []
+        for m in state.get("messages") or []:
+            if isinstance(m, HumanMessage):
+                textos.append(extract_text_from_content(m.content))
+            for chamada in getattr(m, "tool_calls", None) or []:
+                for chave, valor in ((chamada or {}).get("args") or {}).items():
+                    if re.search(r"cpf|cnpj|document", str(chave), re.IGNORECASE):
+                        textos.append("CPF " + str(valor))
+        achados = documentos_do_caso(textos)
+        return achados + [d for d in _documentos_ja_ditos(state) if d not in achados]
+    except Exception as exc:  # noqa: BLE001 — sem a lista, a máscara segue pela régua do texto
+        logger.warning("[T19] documentos do caso indisponíveis (%s)", type(exc).__name__)
+        return []
+
+
 def _sem_documento_inteiro(texto: Any, state: Dict[str, Any]) -> Any:
     """🔴 Conserto X2 · T19 em CÓDIGO: ao segurado, CPF/CNPJ só `final XXXX`."""
     if not isinstance(texto, str) or not texto or not _fala_ao_segurado(state):
@@ -613,7 +635,7 @@ def _sem_documento_inteiro(texto: Any, state: Dict[str, Any]) -> Any:
     try:
         from app.agents.quem_e_o_segurado import mascarar_documentos_na_saida
 
-        return mascarar_documentos_na_saida(texto)
+        return mascarar_documentos_na_saida(texto, _documentos_do_caso_no_estado(state))
     except Exception as exc:  # noqa: BLE001 — sem a régua, o texto sai como veio
         logger.warning("[T19] máscara de saída indisponível (%s)", type(exc).__name__)
         return texto
