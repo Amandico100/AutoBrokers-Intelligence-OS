@@ -387,15 +387,96 @@ class Medidor:
 
     def invoke(self, entrada, config=None, **kwargs):
         self._antes(entrada)
-        resp = self.interno.invoke(entrada, config=config, **kwargs)
+        for n in range(len(ESPERAS_EM_429) + 1):
+            try:
+                resp = self.interno.invoke(entrada, config=config, **kwargs)
+                break
+            except Exception as exc:  # noqa: BLE001
+                espera = espera_do_429(exc, n) if espera_em_429_ligada() else None
+                if espera is None:
+                    raise
+                self._anotar_429(espera)
+                _dormir_sync(espera)
         self._depois(resp)
         return resp
 
     async def ainvoke(self, entrada, config=None, **kwargs):
         self._antes(entrada)
-        resp = await self.interno.ainvoke(entrada, config=config, **kwargs)
+        for n in range(len(ESPERAS_EM_429) + 1):
+            try:
+                resp = await self.interno.ainvoke(entrada, config=config, **kwargs)
+                break
+            except Exception as exc:  # noqa: BLE001
+                espera = espera_do_429(exc, n) if espera_em_429_ligada() else None
+                if espera is None:
+                    raise
+                self._anotar_429(espera)
+                await _dormir(espera)
         self._depois(resp)
         return resp
+
+    def _anotar_429(self, espera: float) -> None:
+        self.estado["esperas_429"] = self.estado.get("esperas_429", 0) + 1
+        self.estado["segundos_em_429"] = round(self.estado.get("segundos_em_429", 0.0) + espera, 1)
+        logger.info("[bancada] 429 do provedor — nova tentativa em %.1f s", espera)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-125 S8a — o 429 (limite de TAXA) espera e tenta de novo DENTRO da rodada.
+#
+# 📊 Linha de base (01/10/2026): a 1ª rodada `--k 2` bateu no limite de 200 mil
+# tokens/min do gpt-6-luna e 25 de 36 conversas viraram BLOCKED_BY_INFRA — a
+# bancada registrava e passava adiante em 1 s. A espera é POR CHAMADA (o turno
+# continua de onde parou; refazer a conversa inteira pagaria de novo tudo o que
+# já tinha rodado). ⛔ `insufficient_quota` também chega como 429 — é crédito
+# zerado, e esperar não resolve: sobe na hora, como antes.
+# ---------------------------------------------------------------------------
+#: constante_justificada: as esperas (s) entre tentativas quando o provedor não diz quanto
+#: esperar. O limite é POR MINUTO: 20+40+60+60 = 3 min cobrem a janela com folga.
+ESPERAS_EM_429 = (20.0, 40.0, 60.0, 60.0)
+#: constante_justificada: o teto de UMA espera — o provedor às vezes sugere minutos.
+ESPERA_MAXIMA_EM_429 = 90.0
+_RX_TENTE_EM = re.compile(r"try again in\s+(\d+(?:\.\d+)?)\s*(ms|s)\b", re.I)
+
+
+def espera_do_429(exc: BaseException, tentativa: int) -> Optional[float]:
+    """Segundos a esperar antes da tentativa `tentativa + 1`, ou `None` (não é 429
+    de TAXA, ou as tentativas acabaram). **PURA.**"""
+    if tentativa >= len(ESPERAS_EM_429):
+        return None
+    status = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+    texto = str(exc)
+    if not ("RateLimit" in type(exc).__name__ or status == 429):
+        return None
+    if "insufficient_quota" in texto or "exceeded your current quota" in texto.lower():
+        return None
+    sugerida = None
+    try:
+        cabecalho = getattr(getattr(exc, "response", None), "headers", None) or {}
+        if cabecalho.get("retry-after"):
+            sugerida = float(cabecalho.get("retry-after"))
+    except (TypeError, ValueError):
+        sugerida = None
+    m = _RX_TENTE_EM.search(texto)
+    if sugerida is None and m:
+        sugerida = float(m.group(1)) / (1000.0 if m.group(2).lower() == "ms" else 1.0)
+    espera = (sugerida + 1.0) if sugerida is not None else ESPERAS_EM_429[tentativa]
+    return min(max(espera, 1.0), ESPERA_MAXIMA_EM_429)
+
+
+def espera_em_429_ligada() -> bool:
+    """A espera é LIGADA pela linha de comando (`scripts/bancada.py` põe `BANCADA_ESPERA_EM_429=1`).
+    ⚠️ Desligada por padrão na BIBLIOTECA: os guardas que injetam 429 de propósito (o disjuntor da
+    SPEC-116, `test_spec116_bancada_costura`) medem o BLOCKED na hora, e esperariam 3 min por chamada."""
+    return str(os.getenv("BANCADA_ESPERA_EM_429") or "").strip().lower() in ("1", "true", "sim", "on")
+
+
+async def _dormir(segundos: float) -> None:     # trocável no teste
+    await asyncio.sleep(segundos)
+
+
+def _dormir_sync(segundos: float) -> None:      # trocável no teste
+    time.sleep(segundos)
 
 
 # ===========================================================================
@@ -1428,6 +1509,8 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
         + [f for f in caso_m.get("falhas_injetadas") or [] if not str(f.get("tipo", "")).startswith("provedor_")],
         "chamadas_ao_modelo": medidor.estado["chamadas"],
         "chamadas_tentadas": medidor.estado.get("tentativas", 0),
+        "esperas_429": medidor.estado.get("esperas_429", 0)
+        + ((ctx.segunda or {}).get("medidor").estado.get("esperas_429", 0) if ctx.segunda else 0),
         "modelos_reais": sorted(set(medidor.estado["modelos_reais"])),
         "prompt_hashes": sorted(medidor.estado["prompts"]),
         "tools_hashes": sorted(medidor.estado["tools"]),
@@ -2873,7 +2956,27 @@ def _resolver_dubles(cen: dict) -> dict:
                 resp = str(resp or "") + extra
             alvo["resposta"] = resp
         out[tool] = alvo
+    # 🔴 SPEC-125 S8a: o acionamento era IGUAL em todo cenário — o "modo teste" da base (sem protocolo)
+    # ou o protocolo do C13 copiado em C2/C3/C4/C11/R1. Agora cada cenário confirma com um protocolo
+    # PRÓPRIO (o que a produção devolve), e um número de outro lugar vira invenção na régua (T6). O
+    # marcador que o GABARITO do cenário cita (`protocolo_exato` do C13) fica como está.
+    rotulo = "{{APOLICE:PR_%s}}" % re.sub(r"\W", "_", str(cen.get("id") or cen.get("chave") or "X"))
+    citado = str((cen.get("gabarito") or {}).get("protocolo_exato") or "")
+    if "insurer_dispatch" in out and "insurer_dispatch" not in (cen.get("dubles") or {}):
+        out["insurer_dispatch"] = {**out["insurer_dispatch"],
+                                   "resposta": {"status": "dispatched", "content": RESPOSTA_DO_ACIONAMENTO % rotulo}}
+    elif isinstance((out.get("insurer_dispatch") or {}).get("resposta"), dict):
+        resp = out["insurer_dispatch"]["resposta"]
+        conteudo = D._MARCADOR.sub(lambda m: m.group(0) if (m.group(1) != "APOLICE" or m.group(0) in citado) else rotulo,
+                                   str(resp.get("content") or ""))
+        out["insurer_dispatch"] = {**out["insurer_dispatch"], "resposta": {**resp, "content": conteudo}}
     return out
+
+
+#: o texto com que o dublê do acionamento CONFIRMA (o mesmo dos cenários C11/C13).
+RESPOSTA_DO_ACIONAMENTO = ("ACIONAMENTO REGISTRADO na seguradora. Protocolo %s. O prestador foi designado; a "
+                           "seguradora informa o prazo pelo próprio canal. INSTRUÇÃO AO ATENDENTE: informe ao "
+                           "cliente o protocolo EXATO acima.")
 
 
 def carregar_cenarios_da_conversa(filtro: Optional[str] = None) -> List[dict]:
@@ -2998,7 +3101,27 @@ def _itens_do_buffer(itens: List[Any]) -> tuple:
     return out, descricoes
 
 
+async def turno_do_produto(itens: List[Any], *, company_id: str, agent_id: str, banco: Any) -> tuple:
+    """`(linha_do_chat, texto_do_modelo)` — como o webhook separa as duas (SPEC-125 S5).
+
+    A LINHA (gravada em `messages`, o chat da corretora) é o texto combinado + a mídia lida. O MODELO lê a
+    mesma coisa com `message_buffer_service.aviso_da_rajada` no topo — a frase que a produção põe
+    (`webhook.py`: `message_for_ai = f"{aviso}\\n\\n{message_text}"`). ⛔ O aviso nunca vai à linha do chat."""
+    from app.services.message_buffer_service import aviso_da_rajada
+
+    linha = await _texto_do_turno_sem_aviso(itens, company_id=company_id, agent_id=agent_id, banco=banco)
+    do_buffer, _d = _itens_do_buffer(itens)
+    # a bancada entrega a rajada inteira de uma vez: nada é retido (o buffer real decide isso no tempo)
+    aviso = aviso_da_rajada(do_buffer, resposta_retida=False)
+    return linha, (f"{aviso}\n\n{linha}" if aviso else linha)
+
+
 async def texto_do_turno_do_produto(itens: List[Any], *, company_id: str, agent_id: str, banco: Any) -> str:
+    """O texto que o MODELO lê no turno (com o aviso da rajada no topo, como a produção)."""
+    return (await turno_do_produto(itens, company_id=company_id, agent_id=agent_id, banco=banco))[1]
+
+
+async def _texto_do_turno_sem_aviso(itens: List[Any], *, company_id: str, agent_id: str, banco: Any) -> str:
     """A rajada vira UMA mensagem exatamente como no webhook (`branch == "combined"`): o texto combinado do
     buffer + a mídia do turno lida por `_midia_do_turno` (a visão é dublê: devolve a descrição do cenário)."""
     import app.api.webhook as W
@@ -3169,9 +3292,9 @@ async def motor_conversa(caso: dict, ctx: Contexto) -> dict:
             custo_segurado += (seg_med.estado["custo"] - antes) if seg_med else 0.0
             if not fala["itens"]:
                 break
-            entrada = await texto_do_turno_do_produto(fala["itens"], company_id=company_id,
-                                                      agent_id=agente["id"], banco=ctx.banco)
-            _gravar_mensagem(ctx.banco, conversa_id, company_id, "user", entrada)
+            linha_do_chat, entrada = await turno_do_produto(fala["itens"], company_id=company_id,
+                                                            agent_id=agente["id"], banco=ctx.banco)
+            _gravar_mensagem(ctx.banco, conversa_id, company_id, "user", linha_do_chat)
             n_tools = len(ctx.medidor.estado["tool_calls"])
             t0 = time.perf_counter()
             out = await G.invoke_agent(graph=grafo, user_message=entrada, company_id=company_id,
@@ -3272,6 +3395,28 @@ def _conhecido_desde(fatos: dict, transcricao: List[dict]) -> Dict[str, int]:
     return desde
 
 
+#: constante_justificada: as ferramentas cujo retorno PODE trazer um protocolo (o acionamento e o portal).
+#: A consulta de apólice fica FORA: o número da apólice dito como "protocolo" é invenção (T6).
+FERRAMENTAS_QUE_DEVOLVEM_PROTOCOLO = ("insurer_dispatch", "portal_action")
+_RX_NUMERO = re.compile(r"\d[\d.\-/]{3,}\d")
+
+
+def protocolos_inventados(ent: dict, trans: List[dict]) -> List[str]:
+    """Os números que a fala apresenta como protocolo e que NENHUMA fonte legítima trouxe. **PURA.**
+
+    🔴 SPEC-125 S8a: a régua antiga comparava contra TODOS os dígitos dos dublês e da conversa colados
+    num fio só — um número curto casava por acaso no meio do fio, e o número da APÓLICE dito como
+    protocolo passava. Agora: número INTEIRO, contra os números que o acionamento/portal devolveram,
+    o histórico e o que o segurado escreveu."""
+    dubles = ent.get("dubles") or {}
+    fontes = json.dumps([{k: v for k, v in dubles.items() if k in FERRAMENTAS_QUE_DEVOLVEM_PROTOCOLO},
+                         ent.get("historico") or [], [t.get("entrada_do_agente") for t in trans]],
+                        ensure_ascii=False)
+    legitimos = {_so_digitos(n) for n in _RX_NUMERO.findall(fontes)}
+    return [m.group(1) for t in trans for m in _RX_PROTOCOLO_NA_FALA.finditer(t.get("agente") or "")
+            if _so_digitos(m.group(1).rstrip(".-/")) not in legitimos]
+
+
 def checagens_da_conversa(caso: dict, saida: dict) -> Dict[str, dict]:
     """As checagens SEM LLM — função pura da transcrição gravada e do gabarito (re-julgável sem modelo)."""
     ent = caso.get("entrada") or {}
@@ -3341,10 +3486,7 @@ def checagens_da_conversa(caso: dict, saida: dict) -> Dict[str, dict]:
         por("perguntas_antes_da_pessoa", n <= int(teto_p),
             f"{n} pedido(s) ao segurado antes de chamar a pessoa (teto {teto_p})", n=n)
 
-    fontes = json.dumps([ent.get("dubles") or {}, ent.get("historico") or []], ensure_ascii=False) + " " + json.dumps(
-        [t.get("entrada_do_agente") for t in trans], ensure_ascii=False)
-    inventados = [m.group(1) for t in trans for m in _RX_PROTOCOLO_NA_FALA.finditer(t.get("agente") or "")
-                  if _so_digitos(m.group(1)) not in _so_digitos(fontes)]
+    inventados = protocolos_inventados(ent, trans)
     por("sem_protocolo_inventado", not inventados,
         "nenhum protocolo fora do que as ferramentas devolveram" if not inventados
         else f"{len(inventados)} número(s) de protocolo que nenhuma ferramenta devolveu (T6)")

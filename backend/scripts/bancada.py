@@ -108,6 +108,9 @@ def main(argv=None) -> int:
                    help="SPEC-125: usa o prompt REAL deste agente (SELECT, fora da borda; nunca liga) no lugar do molde")
     p.add_argument("--resumo-conversa", nargs="+", default=None,
                    help="SPEC-125: pass@1/pass^k, falhas por checagem, nota do juiz, custo agente × segurado")
+    p.add_argument("--sem-espera-429", action="store_true",
+                   help="SPEC-125 S8a: NÃO espera o limite de taxa (429) do provedor; a conversa vira "
+                        "BLOCKED_BY_INFRA na hora (padrão: espera e tenta de novo, até 4 vezes)")
     p.add_argument("--redecidir", action="store_true",
                    help="SPEC-123 F5a: com --recalcular, passa a proposta gravada de novo pela POLÍTICA de hoje")
     a = p.parse_args(argv)
@@ -124,6 +127,10 @@ def main(argv=None) -> int:
         load_dotenv(os.path.join(RAIZ, ".env"), override=False)
     except ImportError:  # pragma: no cover
         pass
+
+    # 🔴 SPEC-125 S8a: na linha de comando o 429 ESPERA (📊 25 de 36 conversas perdidas na linha de base).
+    if not a.sem_espera_429:
+        os.environ.setdefault("BANCADA_ESPERA_EM_429", "1")
 
     from app.services.evals import bancada as B
 
