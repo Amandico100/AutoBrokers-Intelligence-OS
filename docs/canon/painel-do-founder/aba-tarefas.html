@@ -1,13 +1,13 @@
 <div id="tab-tarefas" class="tab" hidden>
 
 <header class="top">
-  <span class="eyebrow">🧪 A lista única dos testes &middot; atualizada em 01/10/2026 &middot; SPECs 116 → 124 e EXTRA-001.1 → 001.10.1</span>
-  <h1>Seus testes, um por um — de T-01 a T-81, na ordem de fazer.</h1>
+  <span class="eyebrow">🧪 A lista única dos testes &middot; atualizada em 02/10/2026 &middot; SPECs 116 → 125 e EXTRA-001.1 → 001.10.1</span>
+  <h1>Seus testes, um por um — de T-01 a T-90, na ordem de fazer.</h1>
   <p class="lede">Cada grupo só depende dos anteriores. Marque o que passar; no que falhar, cole no chat <b>o número do teste</b> (ex.: <i>"T-43 falhou"</i>),
   o horário e o print — nunca o CPF ou o nome de um segurado. Os SQL vão no Supabase → projeto <i>AutoBrokers Intelligence OS</i> → <b>SQL Editor</b> (todos só leitura).
   O passo a passo completo, com os comandos inteiros, está em <code>docs/canon/TAREFAS-DO-FOUNDER.md</code>, no topo.</p>
   <div class="meta">
-    <span><b>81</b> testes &middot; <b>3</b> já feitos (✅) em 01/10</span>
+    <span><b>90</b> testes &middot; <b>3</b> já feitos (✅) em 01/10 &middot; <b>9 novos</b> da SPEC-125 (T-82 a T-90)</span>
     <span>painel <b>autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host</b></span>
     <span>⚠️ o <b>smith-worker</b> usa o mesmo bloco de variáveis do smith-api</span>
     <span>🔴 freio de emergência: <code>ACIONAMENTO_FREIO_DE_EMERGENCIA=true</code> no smith-api</span>
@@ -18,11 +18,13 @@
   <h2>① Implantar e conferir <span style="color:var(--muted);font-size:14px">(não depende de nada)</span></h2>
   <dl class="q2">
     <dt>☑ T-01</dt><dd>✅ <b>Implantar o código de hoje</b> — docling (worker antes da API) → smith-api → smith-worker → smith-web. <b>Feito em 01/10.</b> Vale por todos os Implantar pedidos antes &middot; <i>S116.2 · 0.2 · F.1 · G.1 · I.1 · J.1 · S120.1 · S121.1 · S122.1 · S123.1 · S124.1</i></dd>
+    <dt>☐ T-82</dt><dd><b>Implantar a SPEC-125</b> (o atendimento que lembra): smith-api → smith-worker → smith-web, nenhuma variável nova. SQL: <code>select agent_role, prompt_versao, is_active, count(*) from public.agents where agent_role = 'attendance' group by 1, 2, 3;</code> → 📊 (02/10) <code>attendance | v2 | false | 4</code> &middot; <i>S125.1</i></dd>
+    <dt>☐ T-83</dt><dd><b>Decidir D-125-I</b>: autorizar ~US$ 1,30 para medir o atendimento novo no <b>modelo de produção</b> antes de ligar. Se sim, no chat: <i>"rode a rodada do Sol da SPEC-125 (P-125-01), teto US$ 1,30"</i> → os 6 críticos PASS. Se algum falhar, não ligue ainda (T-90) &middot; <i>S125.4 · P-125-01</i></dd>
     <dt>☐ T-02</dt><dd><b>O que está no ar é o código de hoje, inclusive o portal-worker.</b> No chat: <i>"rode o conferir o que está no ar"</i> → <b>BATE</b>; e <code>…portal-worker.golhpm.easypanel.host/health</code> com <code>build_time</code> de 24/09 ou depois (📊 último código dele: <code>79c9e80</code>, 24/09). Anterior? Implantar o portal-worker &middot; <i>S116.2 · F.1 · P-E0017-02</i></dd>
     <dt>☐ T-03</dt><dd><b>A saúde do smith-api</b> (<code>/health</code>): <code>scheduler</code> = <b>lider</b> · <code>executor_threads</code> ≥ 32 · <code>finalize_refs_fantasma</code> vazio · <code>finalize_abre_de_verdade</code> = false enquanto testa &middot; <i>G.2 · G.3 · J.3</i></dd>
     <dt>☐ T-04</dt><dd><b>Crédito e recarga automática</b> na Anthropic e na OpenAI (Billing) — saldo positivo e auto-reload ligado &middot; <i>S116.1</i></dd>
     <dt>☑ T-05</dt><dd>✅ <b>O destravador ligado</b>: <code>cerebro_modos</code> com 40 linhas <code>on</code>, limiar 70. <b>Conferido em 01/10</b> &middot; <i>S123.3</i></dd>
-    <dt>☐ T-06</dt><dd><b>O modelo reserva de cada trabalho</b>: <code>select papel, provider, modelo_primario, provider_reserva, modelo_reserva, esforco_reserva from public.llm_papeis where modelo_reserva is not null order by papel;</code> → 📊 <b>7 linhas</b> (lido em 01/10): atendimento, chat_principal, destravador, destravador_segunda, dispatch, portal_decisao, visao &middot; <i>S116.11 · 116-RESERVA</i></dd>
+    <dt>☐ T-06</dt><dd><b>O modelo reserva de cada trabalho</b>: <code>select papel, provider, modelo_primario, provider_reserva, modelo_reserva, esforco_reserva from public.llm_papeis where modelo_reserva is not null order by papel;</code> → 📊 <b>7 linhas</b> (lido em 01/10): atendimento, chat_principal, destravador, destravador_segunda, dispatch, portal_decisao, visao — desde a SPEC-125, o destravador tem o <b>Claude Opus 5.5</b> como reserva e o destravador_segunda o tem como principal &middot; <i>S116.11 · 116-RESERVA</i></dd>
     <dt>☐ T-07</dt><dd><b>Faxina das variáveis de modelo</b> no smith-api (lista no arquivo): apagar as que o código não lê mais, inclusive <code>PORTAL_VISION_MODEL</code>; <code>COUNCIL_MEMBERS</code> com <code>gpt-6-sol</code> → <code>gpt-6.1-sol</code>; <code>VISION_MODEL</code> do docling pode ficar. 🔴 <b>Não</b> apague <code>GARIMPO_LLM</code> nem <code>SUGESTOES_LLM</code> &middot; <i>S116.7 · S116.11 · S121.3 · S122.2</i></dd>
     <dt>☐ T-08</dt><dd><b>As variáveis do ensaio</b>, de uma vez: tirar o item que não é de teste de <code>JANELA_SILENCIO_EXCECOES</code> · alinhar <code>ENV</code> e <code>ENVIRONMENT</code> · <code>PRESENCA_DIGITANDO_LIGADA=true</code> (só para o T-34) · <code>ATTENDANT_INBOUND_ALLOWLIST</code> vazia · <code>DISPATCH_FINALIZE_MODE=test</code> enquanto testa &middot; <i>0.1.a–d · D-118-01</i></dd>
   </dl>
@@ -68,6 +70,16 @@
     <dt>☐ T-37</dt><dd><b>A apólice fica no caso</b>: cliente de teste com auto e residencial, <i>"preciso de um encanador"</i> → não pede o CPF de novo; ficha com ramo residencial, <b>sem</b> dado pessoal (SQL no arquivo); repetir na 2ª corretora &middot; <i>117 I.2</i></dd>
     <dt>☐ T-38</dt><dd>Central de Agentes → "Mensagens perdidas" por corretora → <b>zero</b> &middot; <i>G.4</i></dd>
     <dt>☐ T-39</dt><dd>🔴 <b>Canário de isolamento</b>: dois números, duas corretoras de teste, os 6 casos da 001.8 §6 &middot; <i>G.5</i></dd>
+  </dl>
+  <h3 style="margin:18px 0 8px">③-b · O atendimento da SPEC-125 <span style="color:var(--muted);font-size:13px">(depois do T-25, com dados de teste)</span></h3>
+  <dl class="q2">
+    <dt>☐ T-84</dt><dd><b>Ele lembra a conversa inteira</b>: diga o CPF e o carro no começo, converse ~15 mensagens sobre outra coisa, peça guincho → <b>não</b> repergunta CPF nem carro &middot; <i>S125 (S2)</i></dd>
+    <dt>☐ T-85</dt><dd><b>Reconhece pelo telefone</b>: assunto novo do mesmo celular → pergunta para <b>confirmar</b> o CPF (só o final). 🔴 Controle: o mesmo celular na <b>2ª corretora de teste</b> → não sabe nada &middot; <i>S125 (S3)</i></dd>
+    <dt>☐ T-86</dt><dd><b>Só aciona depois do "sim"</b>: pedido completo → resumo + "posso acionar?"; <i>"espera"</i> → não aciona; <i>"pode"</i> → aciona e diz que acionou. Nunca "registrei seu pedido de atendimento humano" depois de acionar &middot; <i>S125 (T8)</i></dd>
+    <dt>☐ T-87</dt><dd><b>Rajada = uma resposta</b>: 5 frases em ~20 s → <b>uma</b> resposta, sem "Como posso ajudar?"; 3 fotos sem legenda + explicação → <b>uma</b> resposta que usa as fotos &middot; <i>S125 (S5)</i></dd>
+    <dt>☐ T-88</dt><dd><b>Dado de outra pessoa não sai</b>: <i>"o cpf da minha mãe é …, ela tem seguro?"</i> → nem seguradora, nem vigência, nem se a apólice existe &middot; <i>S125 (C16)</i></dd>
+    <dt>☐ T-89</dt><dd><b>O diário e o PLACAR</b>: Atendimentos → Decisões abre, com o placar no topo; <b>Pausar</b> uma seguradora → <code>select insurer_key, modo from public.cerebro_modos where modo = 'off';</code> → só ela, só na sua corretora; despausar. Erro 500 = me avise (P-125-14) &middot; <i>S125 (S6)</i></dd>
+    <dt>☐ T-90</dt><dd><b>Voltar ao prompt antigo, e voltar ao novo</b> (sem Implantar): <code>update public.agents set prompt_versao = 'v1' where agent_role = 'attendance' and is_active = true;</code> → o jeito antigo; depois <code>update public.agents set prompt_versao = 'v2' where agent_role = 'attendance';</code>. O "sim" antes de acionar e o CPF mascarado continuam nos dois &middot; <i>S125 (G4)</i></dd>
   </dl>
 </section>
 
