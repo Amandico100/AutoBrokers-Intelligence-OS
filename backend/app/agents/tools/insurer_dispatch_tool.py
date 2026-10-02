@@ -806,8 +806,14 @@ class InsurerDispatchTool(BaseTool):
         "algumas pedem por FORMULÁRIO dentro da conversa do WhatsApp (endereço "
         "em rua/número/bairro/cidade/estado/CEP, por exemplo). O retorno "
         "`missing_data` traz, em português, exatamente o que ESTA seguradora vai "
-        "pedir NESTE serviço — pergunte ao cliente UMA informação por vez, na "
-        "ordem em que vierem, e chame de novo. NÃO invente o que falta e NÃO "
+        # 🔴 SPEC-125 D3 · T11 — era "UMA informação por vez" (SPEC-118, 26/09),
+        #    contra "bloco de até 4" no prompt e "de uma vez só, até 12" na
+        #    conduta. A regra de como perguntar é UMA, e mora no prompt; aqui
+        #    fica a parte que só a ferramenta sabe: veja antes se já foi dito.
+        "pedir NESTE serviço — antes de perguntar, veja se a conversa, a ficha ou "
+        "a apólice já respondem; pergunte ao cliente só o que a conversa ainda não "
+        "respondeu (o que for independente vai junto, numa mensagem) e chame de "
+        "novo. NÃO invente o que falta e NÃO "
         "pergunte coordenada, latitude ou longitude a ninguém. "
         # 🔴 O pin resolve com um toque o que seis perguntas não resolvem — e o
         #    produto JÁ lê o `locationMessage` do WhatsApp (evolution_inbound.py).
@@ -1168,8 +1174,9 @@ class InsurerDispatchTool(BaseTool):
             _e_falta = (
                 " E ainda FALTAM estes dados, que esta seguradora vai pedir: "
                 + "; ".join(_ainda)
-                + ". Colete-os no MESMO turno da confirmação, UMA informação por "
-                  "vez, e não invente nenhum deles."
+                + ". Colete-os no MESMO turno da confirmação — só o que a conversa "
+                  "ainda não respondeu, juntos na mesma mensagem — e não invente "
+                  "nenhum deles."
             ) if _ainda else ""
             return {"status": "confirm_first", "missing": _falta, "content": (
                 "ANTES de acionar, CONFIRME com o cliente NA CONVERSA (mensagem única): "
@@ -1351,13 +1358,16 @@ class InsurerDispatchTool(BaseTool):
                         "esta seguradora pede: " + "; ".join(faltam) + ". "
                         "ANTES de perguntar ao cliente, PROCURE cada um na CONVERSA e na sua ficha "
                         "(CPF, endereço e telefone quase sempre JÁ foram ditos) e chame de novo com eles. "
-                        # ⚠️ "um de cada vez" é literal GUARDADO por
-                        # `test_golden_do_eletricista` (GOLD-ELEC-005): *"e com uma
-                        # pergunta por vez, não um interrogatório"*. Reescrever a
-                        # frase sem ele apagaria o guarda, não o melhoraria.
-                        "Pergunte ao cliente SOMENTE o que nunca foi informado — um de cada vez, "
-                        "com naturalidade, e chame de novo assim que ele responder: UMA informação "
-                        "por vez, nunca a lista inteira numa mensagem. "
+                        # 🔴 SPEC-125 D3 · T11 — era "um de cada vez … UMA informação
+                        #    por vez, nunca a lista inteira", contra o "bloco de até 4"
+                        #    do prompt e o "de uma vez só" da conduta. A LIÇÃO do
+                        #    GOLD-ELEC-005 (não interrogar) migra e fica guardada: o
+                        #    guarda agora afirma "SOMENTE o que nunca foi informado" e
+                        #    "nunca um interrogatório" (CLAUDE.md §9.3).
+                        "Pergunte ao cliente SOMENTE o que nunca foi informado, com naturalidade — "
+                        "o que for independente vai junto numa mensagem, o que depende de outra "
+                        "resposta vem depois; nunca um interrogatório — e chame de novo assim que "
+                        "ele responder. "
                         "Parte desta lista é o que a seguradora vai pedir num FORMULÁRIO dentro da "
                         "conversa dela (por isso ela quer o endereço quebrado em rua, número, bairro, "
                         "cidade, estado e CEP): coletar agora evita parar no meio do acionamento, com "

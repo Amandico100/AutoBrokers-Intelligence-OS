@@ -190,9 +190,16 @@ def test_1_a_mensagem_ao_agente_NOMEIA_o_campo_com_o_rotulo_da_seguradora():
     assert r["status"] == "missing_data", r
     texto = r["content"]
     assert "Qual é a situação do local onde você está?" in texto, texto
-    assert "uma informação por" in texto.lower(), (
-        "o Founder pediu UMA informação por vez, e a instrução tem de estar no "
-        "texto que o agente lê: %s" % texto)
+    # 🔴 SPEC-125 D3 · T11 (§9.3 — a lição MIGRA): era "UMA informação por vez"
+    #    (SPEC-118). A ordem do Founder de 01/10 unificou a regra de perguntar —
+    #    o mínimo, o independente junto, nunca interrogatório — e a LIÇÃO daqui
+    #    continua: a instrução de COMO perguntar tem de estar no texto que o
+    #    agente lê, e ele procura antes na conversa.
+    assert "somente o que nunca foi informado" in texto.lower(), (
+        "a instrução de perguntar só o que falta tem de estar no texto que o "
+        "agente lê: %s" % texto)
+    assert "nunca um interrogatório" in texto.lower(), texto
+    assert "procure cada um na conversa" in texto.lower(), texto
     sobrando = [c for c in _CHAVE_CRUA.findall(texto)
                 if c not in ("insurer_key", "line_kind")]
     assert not sobrando, (

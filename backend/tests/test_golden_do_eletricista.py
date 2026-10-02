@@ -519,8 +519,12 @@ def gold_005_sem_numero_da_apolice():
     checar("PROCURE cada um na CONVERSA" in r["content"],
            "o levantamento CONTINUA — a tool manda procurar antes de perguntar",
            "bloquear sem dizer como seguir é como um atendimento morre")
-    checar("um de cada vez" in r["content"],
-           "e com uma pergunta por vez, não um interrogatório")
+    # §9.3 — a lição MIGRA (SPEC-125 D3 · T11): era "um de cada vez"; a regra de
+    # perguntar ficou UMA (o mínimo, o independente junto) e o que este guarda
+    # protege — não interrogar — continua escrito no texto que o agente lê.
+    checar("SOMENTE o que nunca foi informado" in r["content"]
+           and "nunca um interrogatório" in r["content"],
+           "e pergunta só o que falta, nunca um interrogatório")
     checar(not re.search(r"est[áa] cobert|tem cobertura", r["content"], re.I),
            "nada de cobertura afirmada sem evidência")
     print("      PROVADO de ponta a ponta — nenhuma metade depende de modelo")

@@ -1523,6 +1523,245 @@ def mesma_mensagem_com_texto(original, texto: str):
         return AIMessage(content=texto)
 
 
+# =====================================================================
+# 🔴 SPEC-125 S4 · D7 — o diário da CONVERSA, só nos momentos de julgamento
+# =====================================================================
+# O motor é `diario_de_decisoes.registrar_julgamento_da_conversa` /
+# `fechar_como_erro_leve` (S6); aqui só se diz QUANDO. Os quatro momentos e
+# quem os escreve:
+#   chamou_pessoa      → JÁ escrito por `human_handoff._registrar_chamou_pessoa`
+#                        (SPEC-123 F7, idempotente por conversa+motivo+dia) —
+#                        ⛔ não se escreve de novo aqui (seria linha dobrada);
+#   respondeu_regra    → aqui: resposta final de um turno que CONSULTOU a base
+#                        (`knowledge_base_search`) ou trouxe `veredito_de_cobertura`,
+#                        sem chamar pessoa, a uma PERGUNTA do segurado;
+#   deduziu            → ⚠️ PONTO MARCADO, não ligado: o código não distingue,
+#                        sem LLM, um slot DEDUZIDO de um slot que o segurado
+#                        disse com outras palavras (o sinal certo é a ferramenta
+#                        declarar a origem do slot — pendência da SPEC);
+#   nao_chamou_pessoa  → ⚠️ PONTO MARCADO, não ligado: o classificador que existe
+#                        (`human_handoff.classificar_o_motivo`) lê o MOTIVO do
+#                        agente, não a fala do segurado — aplicá-lo à fala seria
+#                        régua de um dialeto sobre outro (CLAUDE.md §9.4).
+# E o sinal de erro leve que nasce aqui: o fiscal da pergunta repetida disparou
+# → `agente_repetiu_pergunta` fecha a última linha pendente da conversa.
+# ⛔ Tudo best-effort e FORA do caminho da resposta (`create_task`): o diário
+#    nunca atrasa nem derruba o atendimento.
+_TAREFAS_DO_DIARIO: set = set()
+
+
+def _em_segundo_plano(coro) -> None:
+    try:
+        tarefa = asyncio.get_running_loop().create_task(coro)
+        _TAREFAS_DO_DIARIO.add(tarefa)
+        tarefa.add_done_callback(_TAREFAS_DO_DIARIO.discard)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[DIARIO] não agendado (%s)", type(exc).__name__)
+        try:
+            coro.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _id_da_conversa_do_turno(state: dict) -> str:
+    """`conversations.id` desta sessão NESTA corretora (filtro + cinto, §7). `""` no escuro."""
+    company_id = str(state.get("company_id") or "").strip()
+    session_id = str(state.get("session_id") or "").strip()
+    if not (company_id and session_id):
+        return ""
+    try:
+        from app.core.database import get_supabase_client
+
+        cli = get_supabase_client()
+        cli = getattr(cli, "client", cli)
+
+        def _q():
+            return (cli.table("conversations").select("id, company_id")
+                    .eq("company_id", company_id).eq("session_id", session_id)
+                    .limit(1).execute())
+
+        r = await asyncio.to_thread(_q)
+        linhas = [x for x in (getattr(r, "data", None) or [])
+                  if isinstance(x, dict) and str(x.get("company_id") or "") == company_id]
+        return str(linhas[0].get("id") or "") if linhas else ""
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[DIARIO] conversa do turno não achada (%s)", type(exc).__name__)
+        return ""
+
+
+def _do_atendimento(state: dict) -> bool:
+    return str((state.get("agent_data") or {}).get("agent_role") or "").lower() in _PAPEIS_DE_ATENDIMENTO
+
+
+def _marcar_erro_leve_no_diario(state: dict, sinal: str) -> None:
+    """Fecha a última linha pendente da conversa com o sinal. Fora do caminho da resposta."""
+    if not _do_atendimento(state):
+        return
+
+    async def _fechar():
+        try:
+            from app.services.diario_de_decisoes import fechar_como_erro_leve
+
+            conversa = await _id_da_conversa_do_turno(state)
+            if conversa:
+                await fechar_como_erro_leve(company_id=str(state.get("company_id") or ""),
+                                            conversation_id=conversa, sinal=sinal)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[DIARIO] erro leve não fechado (%s)", type(exc).__name__)
+
+    _em_segundo_plano(_fechar())
+
+
+def _consultas_do_turno(mensagens: list) -> Tuple[bool, bool]:
+    """`(consultou_a_base, trouxe_veredito)` DESTE turno — o que veio depois da última
+    fala do segurado. **PURA.**"""
+    base = veredito = False
+    for m in reversed(list(mensagens or [])):
+        if isinstance(m, HumanMessage):
+            break
+        if isinstance(m, ToolMessage):
+            if str(getattr(m, "name", "") or "") == "knowledge_base_search":
+                base = True
+            if "veredito_de_cobertura" in str(getattr(m, "content", "") or ""):
+                veredito = True
+    return base, veredito
+
+
+def _ultima_fala_do_segurado(mensagens: list) -> str:
+    try:
+        from app.agents.historico_da_conversa import NOME_DA_EQUIPE
+    except Exception:  # noqa: BLE001
+        NOME_DA_EQUIPE = "equipe_da_corretora"
+    for m in reversed(list(mensagens or [])):
+        if isinstance(m, HumanMessage) and getattr(m, "name", None) != NOME_DA_EQUIPE:
+            return extract_text_from_content(m.content)
+    return ""
+
+
+def momento_do_turno(state: dict, resposta: str) -> Optional[Dict[str, Any]]:
+    """O momento de JULGAMENTO deste turno que o diário registra, ou `None`. **PURA.**
+
+    Só `respondeu_regra` nasce aqui (ver o mapa acima): o segurado PERGUNTOU,
+    o agente consultou a base ou a apólice trouxe veredito, e a resposta saiu
+    sem chamar pessoa. Turno comum → `None` (o diário não é uma linha por
+    mensagem, D7).
+    """
+    if not _do_atendimento(state) or not str(resposta or "").strip():
+        return None
+    mensagens = state.get("messages") or []
+    if "request_human_agent" in (state.get("tools_used") or []):
+        return None
+    fala = _ultima_fala_do_segurado(mensagens)
+    if "?" not in fala:
+        return None
+    base, veredito = _consultas_do_turno(mensagens)
+    if not (base or veredito):
+        return None
+    return {"momento": "respondeu_regra", "fala_do_segurado": fala,
+            "valor": " ".join(str(resposta).split())[:200],
+            "fonte": "a apólice do segurado" if veredito else "a base de conhecimento da corretora"}
+
+
+def _registrar_julgamento_no_diario(state: dict, achado: Dict[str, Any]) -> None:
+    async def _gravar():
+        try:
+            from app.services.diario_de_decisoes import registrar_julgamento_da_conversa
+
+            conversa = await _id_da_conversa_do_turno(state)
+            if not conversa:
+                return
+            await registrar_julgamento_da_conversa(
+                company_id=str(state.get("company_id") or ""), conversation_id=conversa,
+                momento=achado["momento"], fala_do_segurado=achado["fala_do_segurado"],
+                valor=achado.get("valor", ""), fonte=achado.get("fonte", ""), modo="on")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[DIARIO] julgamento não registrado (%s)", type(exc).__name__)
+
+    _em_segundo_plano(_gravar())
+
+
+# =====================================================================
+# 🔴 SPEC-125 S4 · T13 — a pergunta repetida olha a CONVERSA e o bloco da S3
+# =====================================================================
+# 📊 Laudo INV §2.1: 34 de 364 falas do agente (9%) pediam o CPF a quem já o
+# tinha dito — e o fiscal não via, porque comparava só com a FICHA (📊 3
+# conversas têm ficha) e porque as âncoras de `titular_cpf` são as da URA
+# ("digite o CPF ou CNPJ"), não a fala do agente.
+#
+# ⚠️ As frases abaixo vêm do ACERVO, não da imaginação (CLAUDE.md §9.4) —
+#    falas reais do agente na tabela `messages` (laudo INV §2.1, mascaradas):
+#      "… Me passa seu CPF pra eu localizar certinho?"
+#      "… se for novo, me passa seu CPF…"
+#      "… pode me passar seu CPF (só o do titular da apólice)?"
+#    Por isso a régua é VERBO DE PEDIR perto de CPF/CNPJ, e não "tem CPF e '?'":
+#    📊 o falso positivo da heurística do laudo era "esse CPF já é o mesmo…?".
+# ⚠️ CONFIRMAR não é perguntar (D2): a frase que traz o FINAL do documento
+#    ("é o CPF final 4725?") é a confirmação que o produto quer — não dispara.
+_PEDE_DOCUMENTO = re.compile(
+    r"(?:\bme\s+(?:passa|passe|manda|mande|envia|envie|informa|informe|diz|diga|fala|fale|confirma|confirme)\b"
+    r"|\bpode(?:ria)?\s+me\s+(?:passar|mandar|enviar|informar|dizer|falar)\b"
+    r"|\b(?:informe|digite|preciso\s+d[oe])\b"
+    r"|\bqual\s+(?:e|é)\s+(?:o\s+)?(?:seu\s+)?)"
+    r"[^.!?\n]{0,40}?\b(?:cpf|cnpj)\b",
+    re.IGNORECASE)
+
+
+def _documentos_ja_ditos(state: dict) -> list:
+    """Os CPF/CNPJ que o SEGURADO já disse — na conversa do turno e no bloco da S3.
+
+    O motor é o da S3 (`quem_e_o_segurado.documentos_ditos`, com a régua do
+    dígito verificador) — nunca uma segunda régua de documento aqui (§5).
+    Fontes: as falas do segurado no histórico (`HumanMessage` sem o nome da
+    equipe) e o bloco "O QUE JÁ SABEMOS" do `dynamic_context`, que é o MESMO
+    texto que o modelo leu neste turno. Nunca levanta.
+    """
+    try:
+        from app.agents.historico_da_conversa import NOME_DA_EQUIPE
+        from app.agents.quem_e_o_segurado import documentos_ditos
+    except Exception:  # noqa: BLE001
+        return []
+    achados: list = []
+    try:
+        for m in state.get("messages") or []:
+            if isinstance(m, HumanMessage) and getattr(m, "name", None) != NOME_DA_EQUIPE:
+                for d in documentos_ditos(extract_text_from_content(m.content)):
+                    if d not in achados:
+                        achados.append(d)
+        dyn = str(state.get("dynamic_context") or "")
+        i = dyn.find("O QUE JÁ SABEMOS DESTE SEGURADO")
+        if i >= 0:
+            fim = dyn.find("\n\n", i)
+            # ⚠️ O bloco é NOSSO e traz o número cru (11/14 dígitos) longe da
+            #    palavra "CPF" — e 11 dígitos soltos com cara de celular são
+            #    descartados pela régua da conversa. Aqui cada número do bloco
+            #    passa pela MESMA régua, ancorado na palavra (o dígito
+            #    verificador continua decidindo).
+            for numero in re.findall(r"(?<!\d)\d{11}(?:\d{3})?(?!\d)", dyn[i:fim if fim > 0 else len(dyn)]):
+                for d in documentos_ditos("cpf " + numero):
+                    if d not in achados:
+                        achados.append(d)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[PERGUNTA REPETIDA] documentos da conversa ilegíveis (%s)", type(exc).__name__)
+    return achados
+
+
+def pede_documento_ja_dito(texto: str, documentos: list) -> bool:
+    """A resposta PEDE de novo um CPF/CNPJ que o segurado já disse? **PURA.**
+
+    Sem documento conhecido → `False` (pedir é o certo). Frase que traz o final
+    de um documento conhecido é CONFIRMAÇÃO → `False`.
+    """
+    if not documentos:
+        return False
+    finais = {str(d)[-4:] for d in documentos if len(str(d)) >= 4}
+    for m in _PEDE_DOCUMENTO.finditer(str(texto or "")):
+        inicio = max(0, m.start() - 60)
+        trecho = str(texto)[inicio:m.end() + 40]
+        if not any(f in trecho for f in finais):
+            return True
+    return False
+
+
 async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar):
     """O fiscal da pergunta repetida. UMA regeneração — e depois ENVIA.
 
@@ -1546,9 +1785,32 @@ async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar)
 
     ficha = await _ficha_do_turno(state)
     corredor = str((ficha or {}).get("servico") or "")
-    repetidos = slots_reperguntados(texto, ficha, corredor=corredor)
+
+    # 🔴 SPEC-125 T13 — a fonte ampliada: o documento que o segurado JÁ disse na
+    #    conversa (ou que o bloco da S3 trouxe) entra como slot confirmado PELO
+    #    CLIENTE numa cópia da ficha, só para este fiscal — a ficha durável não
+    #    recebe CPF (SPEC-117 §2). O modelo lê só o FINAL na regeneração.
+    documentos = _documentos_ja_ditos(state)
+
+    def _repetidos(resposta: str) -> list:
+        achados = slots_reperguntados(resposta, ficha, corredor=corredor)
+        if "titular_cpf" not in achados and pede_documento_ja_dito(resposta, documentos):
+            achados = [*achados, "titular_cpf"]
+        return achados
+
+    repetidos = _repetidos(texto)
     if not repetidos:
         return texto, []
+    if "titular_cpf" in repetidos and documentos:
+        from app.services.attendance_ficha import ORIGEM_CLIENTE, confirmacao
+
+        ficha = {**(ficha or {}), "confirmados": {
+            **((ficha or {}).get("confirmados") or {}),
+            "titular_cpf": confirmacao(
+                "final %s — já dito na conversa; use o número da conversa nas "
+                "ferramentas e, a ele, só confirme o final" % str(documentos[-1])[-4:],
+                ORIGEM_CLIENTE)}}
+    _marcar_erro_leve_no_diario(state, "agente_repetiu_pergunta")
 
     logger.warning("[PERGUNTA REPETIDA] a resposta volta a perguntar %s — "
                    "regenerando UMA vez", repetidos)
@@ -1559,7 +1821,7 @@ async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar)
         logger.error("[PERGUNTA REPETIDA] regeneração falhou (%s) — segue a "
                      "resposta original", type(exc).__name__)
 
-    ainda = slots_reperguntados(novo, ficha, corredor=corredor) if novo else repetidos
+    ainda = _repetidos(novo) if novo else repetidos
     final = novo or texto
     if not ainda:
         return final, []
@@ -1581,6 +1843,43 @@ async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar)
     except Exception as exc:  # noqa: BLE001
         logger.debug("[PERGUNTA REPETIDA] feed indisponível: %s", type(exc).__name__)
     return final, ainda
+
+
+def _versao_do_prompt_do_estado(state: dict) -> str:
+    """A base de prompt do turno (`agent_data.prompt_versao`, que o `graph` lê do
+    banco e SEMPRE grava para o atendimento).
+
+    ⚠️ Ausente → `v1`, e não o padrão: um estado montado fora do `graph` (teste,
+    chamador antigo) não declarou a liberdade do v2, e o fiscal fica com a régua
+    de 01/10/2026. Em produção a chave sempre vem."""
+    v = str((state.get("agent_data") or {}).get("prompt_versao") or "").strip().lower()
+    return "v2" if v == "v2" else "v1"
+
+
+#: constante_justificada: D10 da SPEC-125 — "regenera só acima de 2× o teto".
+FATOR_DO_TAMANHO_V2 = 2
+
+
+def _passa_do_dobro(texto: str, classe: str) -> bool:
+    """A resposta passa de `FATOR_DO_TAMANHO_V2` × o teto da classe (em unidades OU
+    em caracteres)? **PURA.** Mesma régua (`classe_do_tamanho`) e mesmos tetos de
+    `o_fim_do_atendimento` — só multiplicados; nenhuma régua nova (§5)."""
+    from app.services.o_fim_do_atendimento import (CHARS_POR_CLASSE, TETO_POR_CLASSE,
+                                                   classe_do_tamanho)
+
+    _classe, unidades, n_chars = classe_do_tamanho(texto or "")
+    teto = TETO_POR_CLASSE.get(classe, 0)
+    teto_chars = CHARS_POR_CLASSE.get(classe, 0)
+    return ((teto > 0 and unidades > FATOR_DO_TAMANHO_V2 * teto)
+            or (teto_chars > 0 and n_chars > FATOR_DO_TAMANHO_V2 * teto_chars))
+
+
+def _regua_do_dobro(classe: str, unidades: int, teto: int, texto: str) -> str:
+    """A régua da regeneração no v2: diz o número, não um estilo."""
+    return ("A resposta ficou com mais que o DOBRO do tamanho normal deste momento "
+            "(%d de um normal de %d; %d caracteres). Reescreva bem mais curta: "
+            "mantenha só o que ele precisa para entender e agir." %
+            (unidades, teto, len(str(texto or "").strip())))
 
 
 async def _registrar_tamanho_no_feed(state: dict, classe: str, unidades: int,
@@ -1640,6 +1939,34 @@ async def _resposta_no_tamanho_da_classe(texto: str, state: dict, *, regenerar,
     estourou, classe, unidades, teto = fora_da_classe(texto or "")
     if not estourou:
         return texto, ""
+
+    # =====================================================================
+    # 🔴 SPEC-125 D10 — NO PROMPT v2 O FISCAL MEDE; SÓ REGENERA ACIMA DE 2×
+    # =====================================================================
+    # Explicar cobertura ou sinistro às vezes PRECISA de 5 frases, e o v2 diz
+    # isso ao modelo. Entre o teto e o dobro: a resposta SAI como está e o
+    # tamanho vira linha no feed (medição). Acima do dobro: UMA regeneração,
+    # com o número na régua. O `v1` segue com a régua de 01/10/2026 (a volta).
+    if _versao_do_prompt_do_estado(state) == "v2":
+        if not _passa_do_dobro(texto or "", classe):
+            logger.info("[TAMANHO] v2: fora da classe %s (%d de %d) mas abaixo do "
+                        "dobro — MEDIDO, não regenerado", classe, unidades, teto)
+            await _registrar_tamanho_no_feed(state, classe, unidades, teto, texto)
+            return texto, ""
+        if ja_regenerou:
+            await _registrar_tamanho_no_feed(state, classe, unidades, teto, texto)
+            return texto, classe
+        novo = ""
+        try:
+            novo = await regenerar(_regua_do_dobro(classe, unidades, teto, texto or ""))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[TAMANHO] regeneração falhou (%s) — segue a resposta "
+                         "original", type(exc).__name__)
+        final = novo or texto
+        if novo and not _passa_do_dobro(novo, classe):
+            return final, ""
+        await _registrar_tamanho_no_feed(state, classe, unidades, teto, final)
+        return final, classe
 
     # =====================================================================
     # 🔴 UMA REGENERAÇÃO POR TURNO, ENTRE OS DOIS FISCAIS (J8, 14/09/2026)
@@ -2054,6 +2381,17 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
             logger.error("[Agent Node] 🛡️ resposta ainda fora da classe %s — "
                          "enviada assim mesmo e registrada no feed", _classe_fora)
 
+    # 🔴 SPEC-125 D7 — o momento de JULGAMENTO do turno vai ao diário (só os
+    #    momentos, nunca uma linha por mensagem). Fora do caminho da resposta.
+    if not has_tool_calls:
+        try:
+            _achado = momento_do_turno(
+                state, extract_text_from_content(getattr(response, "content", "") or ""))
+            if _achado:
+                _registrar_julgamento_no_diario(state, _achado)
+        except Exception as exc:  # noqa: BLE001 — o diário nunca derruba o turno
+            logger.debug("[DIARIO] momento do turno ilegível (%s)", type(exc).__name__)
+
     result_update = {
         "messages": [response],
         "rag_chunks": state.get("rag_chunks", []),
@@ -2292,6 +2630,13 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
             origem = (ORIGEM_SISTEMA_DE_GESTAO
                       if tem_infocap and chave in _DO_SISTEMA_DE_GESTAO
                       else ORIGEM_CLIENTE)
+            # ⚠️ SPEC-125 S4 — o CPF continua CRU aqui de propósito: a ficha
+            #    durável é o dossiê da EQUIPE (`human_handoff` imprime "CPF de
+            #    quem retira" do carro reserva — `test_spec121_costura_carro_
+            #    reserva_grupo` ficou vermelho com a máscara aqui). O que a
+            #    SPEC-117 §2 proíbe é o CPF no CONTEXTO DO MODELO: a máscara
+            #    certa mora em `attendance_ficha.bloco_para_o_prompt` (pendência
+            #    proposta ao gerente; não é arquivo desta fatia).
             confirmados[chave] = confirmacao(valor, origem)
         # 🔴 Decisão do Founder (17/09): com o RAMO DA APÓLICE conhecido, a tecla
         #    "qual seguro" está resolvida — a ficha diz isso ao modelo, para ele

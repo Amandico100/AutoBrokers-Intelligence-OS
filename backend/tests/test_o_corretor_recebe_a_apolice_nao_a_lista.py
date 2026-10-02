@@ -473,7 +473,21 @@ def gate_GC1d():
           not prosa.search("CHAME a ferramenta infocap_policy_lookup")
           and bool(prosa.search("- Se a InfoCap respondeu, repasse.")))
 
-    from app.core.prompts import ATTENDANCE_BASE_PROMPT, CORE_BASE_PROMPT
+    # 🔴 SPEC-125 D3 (§9.3 — a lição MIGRA): o `ATTENDANCE_BASE_PROMPT` padrão é o
+    #    `v2`. As QUATRO regras abaixo são guardadas no `v1` com o texto de antes (a
+    #    volta sem deploy) E no `v2`, com a redação nova, logo depois.
+    from app.core.prompts import ATTENDANCE_BASE_PROMPT_V1 as ATTENDANCE_BASE_PROMPT
+    from app.core.prompts import ATTENDANCE_BASE_PROMPT_V2, CORE_BASE_PROMPT
+
+    for trecho, porque in (
+        ("Mais de uma apólice vigente? ESCOLHA VOCÊ", "a regra que a SPEC estende ao `core`"),
+        ("A apólice escolhida vale até o FIM do atendimento", "a escolha do cliente nao se repete"),
+        ("NUNCA escreva placeholders técnicos", "o placeholder tecnico nao vai ao segurado"),
+        ("só ofereça as com vigência ATUAL", "o texto que virou comportamento da porta"),
+        ("só pergunte se houver 2+ do MESMO ramo (e, sem número na lista, pela posição",
+         "a posição só com 2+ vigentes do mesmo ramo"),
+    ):
+        check("[GC1d] v2 mantem: %s (%s)" % (trecho[:44], porque), trecho in ATTENDANCE_BASE_PROMPT_V2)
 
     check("[GC1d] 🔴 o `CORE_BASE_PROMPT` ganhou a regra de vigencia, em UMA frase",
           "APÓLICE VIGENTE" in CORE_BASE_PROMPT

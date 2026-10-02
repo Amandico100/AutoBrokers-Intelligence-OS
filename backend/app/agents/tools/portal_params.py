@@ -916,8 +916,14 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
                                     "loja mais perto: em qual cidade e estado voce "
                                     "quer fazer o servico?"),
         }[erro_da_cidade]
-        return None, ("Falta a cidade do servico para eu abrir o pedido. PERGUNTE "
-                      "AGORA, com estas palavras:\n\n  " + motivo
+        # 🔴 SPEC-125 T14 — era "PERGUNTE AGORA, com estas palavras": forçava a
+        #    pergunta mesmo quando a conversa já tinha dito a cidade. Agora é o
+        #    mesmo padrão da CAUSA (logo abaixo): deduza primeiro, pergunte só se
+        #    a conversa não decidir. A pergunta pronta continua aqui.
+        return None, ("Falta a cidade do servico para eu abrir o pedido. Se a "
+                      "conversa ja disse a CIDADE e o ESTADO (o segurado contou "
+                      "onde mora ou onde esta), use e chame de novo; se nao "
+                      "decidir, PERGUNTE (pode ser com estas palavras):\n\n  " + motivo
                       + "\n\n[para a equipe] `cidade_para_o_servico` recusada: "
                       + erro_da_cidade
                       + (f". A pergunta do catalogo e: {p_cidade.texto}" if p_cidade else ""))
@@ -926,7 +932,11 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
     # 🔴 O PERIMETRO e um ENUM, e a classificacao acontece AQUI.
     perimetro = normalizar_perimetro(ja_sei.get("onde_ocorreu"))
     if not perimetro:
-        return None, ("Falta saber onde o dano aconteceu. PERGUNTE AGORA:\n\n"
+        # 🔴 SPEC-125 T14 — deduzir antes de perguntar ("na BR", "na estrada" →
+        #    rodoviario; "na rua", "na garagem", "no estacionamento" → urbano).
+        return None, ("Falta saber onde o dano aconteceu (o portal so aceita "
+                      "`urbano` ou `rodoviario`). Escolha pelo que ele ja "
+                      "contou; se o que ele contou nao decidir, PERGUNTE:\n\n"
                       "  Foi na cidade ou na estrada/rodovia?\n\n"
                       "[para a equipe] `onde_ocorreu` nao classificou como urbano "
                       "nem rodoviario, e o portal so aceita esses dois. Registre a "
@@ -952,8 +962,12 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
     if "aceita_reparo" in especificos:
         reparo_normalizado = normalizar_aceita_reparo(especificos.get("aceita_reparo"))
         if not reparo_normalizado:
+            # 🔴 SPEC-125 T14 — releia antes de perguntar: "pode consertar",
+            #    "quero trocar" já respondem.
             return None, ("Nao entendi se o segurado aceita o REPARO do vidro ou "
-                          "prefere a troca. PERGUNTE AGORA:\n\n  A seguradora pode "
+                          "prefere a troca. Releia o que ele respondeu: se der para "
+                          "saber, registre e chame de novo; se nao, PERGUNTE:\n\n"
+                          "  A seguradora pode "
                           "consertar o vidro sem trocar (leva uns 30 minutos e "
                           "normalmente sai sem franquia — eu confirmo o valor quando "
                           "ela responder). Voce quer tentar o reparo?\n\n"

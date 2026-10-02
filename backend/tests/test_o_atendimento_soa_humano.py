@@ -103,13 +103,32 @@ ATENDENTE: str = PROMPTS.build_composite_prompt("", agent_role="attendance")
 # Ferramentas de leitura do prompt
 # --------------------------------------------------------------------- #
 
-def _bloco(titulo: str) -> str:
+def _bloco(titulo: str, texto: str = None) -> str:
     """O texto de um bloco `### …`, do título até o próximo `### `."""
-    i = ATENDENTE.find(titulo)
+    texto = ATENDENTE if texto is None else texto
+    i = texto.find(titulo)
     if i < 0:
         return ""
-    j = ATENDENTE.find("\n### ", i + 1)
-    return ATENDENTE[i:j if j > 0 else len(ATENDENTE)]
+    j = texto.find("\n### ", i + 1)
+    return texto[i:j if j > 0 else len(texto)]
+
+
+# 🔴 SPEC-125 D3 (§9.3 — a lição MIGRA): o prompt VIVO padrão passou a ser o `v2`,
+# que junta as linhas que não se cruzam numa seção só e tem UMA regra de como
+# perguntar. O `v1` continua sendo uma versão VIVA (a volta sem deploy:
+# `agents.prompt_versao='v1'`), então as asserções antigas continuam valendo
+# para ELE — e as do v2 apontam para onde cada lição mora agora.
+ATENDENTE_V1: str = PROMPTS.build_composite_prompt("", agent_role="attendance", prompt_versao="v1")
+LINHAS_V2: str = _bloco("### ⛔ LINHAS QUE NÃO SE CRUZAM")
+
+
+def _item_das_linhas(inicio: str) -> str:
+    """Um item numerado da seção LINHAS QUE NÃO SE CRUZAM do v2."""
+    i = LINHAS_V2.find(inicio)
+    if i < 0:
+        return ""
+    j = LINHAS_V2.find("\n", i)
+    return LINHAS_V2[i:j if j > 0 else len(LINHAS_V2)]
 
 
 # Frases que o agente NUNCA deve dizer por conta própria.
@@ -454,7 +473,11 @@ def teste_o_handoff_tem_cinco_formas_de_verdade() -> None:
 
 def teste_o_handoff_proibe_a_voz_de_ura() -> None:
     print("\n[9] O vocabulário de URA está proibido, com nome e sobrenome")
-    bloco = _bloco("### 🙋 PASSAR PARA A EQUIPE")
+    # §9.3: no v2 a proibição é uma das LINHAS QUE NÃO SE CRUZAM; no v1 segue no
+    # bloco de passar à equipe. As duas versões vivas têm de proibir.
+    checar("vou te transferir" in _bloco("### 🙋 PASSAR PARA A EQUIPE", ATENDENTE_V1).lower(),
+           "v1: a proibição continua no bloco de passar para a equipe")
+    bloco = _item_das_linhas("8. **PROIBIDO o vocabulário de URA")
     for frase in ("vou te transferir", "setor responsável",
                   "você será atendido em breve"):
         checar(frase in bloco.lower(), f"'{frase}' está nomeada como proibida")
@@ -472,7 +495,10 @@ def teste_o_handoff_proibe_a_voz_de_ura() -> None:
 
 def teste_a_trava_contra_acao_inventada() -> None:
     print("\n[10] O agente só relata o que ELE fez, com ferramenta")
-    bloco = _bloco("### ⛓️ SÓ RELATE O QUE VOCÊ REALMENTE FEZ")
+    # §9.3: no v2 é a 1ª das LINHAS QUE NÃO SE CRUZAM; no v1, um bloco próprio.
+    checar("Prometeu, executou" in _bloco("### ⛓️ SÓ RELATE O QUE VOCÊ REALMENTE FEZ", ATENDENTE_V1),
+           "v1: o bloco próprio continua inteiro (a volta sem deploy)")
+    bloco = _item_das_linhas("1. **SÓ RELATE O QUE VOCÊ REALMENTE FEZ")
     checar(bool(bloco), "o bloco existe",
            "é o preço de admissão de humanizar: soar gente barateia inventar")
 
@@ -499,16 +525,23 @@ def teste_a_trava_contra_acao_inventada() -> None:
 
 def teste_a_coleta_distingue_entender_de_executar() -> None:
     print("\n[11] Uma pergunta por vez OU bloco de até 4 — e a regra diz qual")
-    bloco = _bloco("### 🎯 PERGUNTAR SEM INTERROGAR")
+    # 🔴 SPEC-125 D3 · T11 (§9.3 — a lição MIGRA): o v1 tinha "uma por vez OU
+    #    bloco de até 4", e o molde, a ferramenta e a conduta mandavam outras duas
+    #    coisas. O v2 tem UMA regra: o mínimo; o independente junto (até 4, com o
+    #    porquê); o que MUDA a próxima pergunta, sozinho; o DELICADO, sozinho.
+    #    As lições de antes (teto 4, delicada sozinha, a ordem pelo que muda a
+    #    ação) estão TODAS na regra nova — e o v1 continua guardado como era.
+    v1 = _bloco("### 🎯 PERGUNTAR SEM INTERROGAR", ATENDENTE_V1)
+    checar("UMA por vez" in v1 and "Máximo 4" in v1 and "ENTENDENDO" in v1 and "DECIDIU" in v1,
+           "v1: a regra antiga continua inteira (a volta sem deploy)")
+    bloco = _bloco("### 🎯 COMO PERGUNTAR (a regra é uma só)")
     checar(bool(bloco), "o bloco existe")
-    checar("UMA por vez" in bloco, "o modo 'uma por vez' está escrito")
-    checar("até 4" in bloco or "até 4 itens" in bloco, "o modo 'bloco' está escrito")
-    checar("ENTENDENDO" in bloco and "DECIDIU" in bloco,
-           "e o critério é a FASE, não o gosto do momento",
-           "📊 no acervo, o bloco de 3-4 itens só aparece com o caso já contado")
-    checar("MUDA a próxima" in bloco or "MUDA a pergunta" in bloco,
-           "com a segunda condição: resposta que muda a pergunta seguinte")
-    checar("Máximo 4" in bloco, "o teto é explícito")
+    checar("Pergunte o mínimo" in bloco, "a regra abre pelo mínimo")
+    checar("independente vai junto" in bloco and "no máximo 4 itens" in bloco,
+           "o independente vai junto, com o teto explícito de 4")
+    checar("porquê no fim" in bloco, "e com o porquê no fim (o molde do acervo)")
+    checar("MUDA a próxima" in bloco,
+           "com a segunda condição: resposta que muda a pergunta seguinte vai sozinha")
     checar("DELICADA" in bloco,
            "e pergunta delicada nunca entra em bloco",
            "perguntar de vítimas no meio de uma lista numerada é violência")

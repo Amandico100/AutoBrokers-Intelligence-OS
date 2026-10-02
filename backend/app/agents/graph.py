@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from functools import partial
 from typing import Any, Dict, Optional
@@ -812,7 +813,62 @@ def _slots_obrigatorios_do_caso(ficha: dict) -> list:
         return []
 
 
-async def _conduta_do_caso(supabase_client, mensagem: str) -> str:
+#: SPEC-125 D3 · T24 — o bloco de cartas do atendimento `v2`: os N trechos MAIS
+#: relevantes (o `smart_search` já os entrega em ordem de relevância), até um
+#: teto de caracteres. 📊 cartas publicadas (`knowledge_cards`, 01/10/2026,
+#: `percentile_cont` sobre `length(card_text)`): p50 212 / p90 543 / máx 1.755
+#: chars → 8 cartas no p90 ≈ 4,3 mil chars; o teto de 8 mil cobre 8 no pior caso
+#: medido com folga para trecho de documento. ANTES: até 60.000 chars por turno
+#: (💭 ≈ 15 mil tokens). O modelo continua podendo buscar mais com
+#: `knowledge_base_search` — o prompt v2 diz quando.
+#: constante_justificada: laudo INV-ATENDIMENTO T24 (💭 "3–5 melhores, ≤ 8k").
+CARTAS_NO_ATENDIMENTO_V2 = 8
+TETO_DAS_CARTAS_NO_ATENDIMENTO_V2_CHARS = 8000
+
+_PAPEIS_DO_SEGURADO = ("attendance", "insured_external")
+
+
+def _telefone_da_sessao(session_id: Any) -> str:
+    """O telefone de `whatsapp:{telefone}:{empresa}:{agente}` (`webhook.py`). **PURA.**
+
+    `""` para qualquer outro formato — sem telefone não há identidade pelo
+    telefone, e o agente pergunta como sempre.
+    """
+    partes = str(session_id or "").split(":")
+    if len(partes) >= 2 and partes[0] == "whatsapp":
+        return re.sub(r"\D", "", partes[1])
+    return ""
+
+
+def _versao_do_prompt(supabase_client, company_id: Any, agent_id: Any,
+                      agent_data: Optional[Dict[str, Any]] = None) -> str:
+    """A chave `agents.prompt_versao` DESTE agente, NESTA corretora (SPEC-125 D3).
+
+    🔴 Lida a cada turno, direto do banco — o `AgentService` tem cache de 60 s e
+    o seu modelo descarta coluna que não declara; "voltar à v1 vale no próximo
+    turno" exige ler a linha. Filtro por `id` E `company_id` no banco, e o cinto
+    no código (CLAUDE.md §7): linha de outra corretora não decide nada.
+    Sem banco, sem linha ou valor inválido → `PROMPT_VERSAO_PADRAO`. Nunca levanta.
+    """
+    from app.core.prompts import normalizar_prompt_versao
+
+    empresa = str(company_id or "").strip()
+    try:
+        if agent_id and empresa and supabase_client is not None:
+            cli = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
+            r = (cli.table("agents").select("id, company_id, prompt_versao")
+                 .eq("id", str(agent_id)).eq("company_id", empresa)
+                 .limit(1).execute())
+            linhas = [x for x in (getattr(r, "data", None) or [])
+                      if isinstance(x, dict) and str(x.get("company_id") or "") == empresa]
+            if linhas and linhas[0].get("prompt_versao"):
+                return normalizar_prompt_versao(linhas[0].get("prompt_versao"))
+    except Exception as e:  # noqa: BLE001 — a chave nunca derruba o turno
+        logger.warning("[PROMPT] versão não lida (%s) — vale o padrão", type(e).__name__)
+    return normalizar_prompt_versao((agent_data or {}).get("prompt_versao"))
+
+
+async def _conduta_do_caso(supabase_client, mensagem: str, prompt_versao: str = "v1") -> str:
     """A conduta destilada de atendimentos humanos reais, para ESTE tipo de caso.
 
     📊 16 playbooks (12 ativos), gerados por claude-opus-5 a partir de 297
@@ -966,7 +1022,17 @@ async def _conduta_do_caso(supabase_client, mensagem: str) -> str:
     # sensibilidade custa uma promessa que a corretora não pode cumprir.
     _lista("sensibilidade", "Cuidado humano (vale mais que qualquer pergunta):", 3)
     _lista("acolhimento", "Como abrir:", 2)
-    _lista("ficha_coleta", "Colete de uma vez só (não peça em conta-gotas):", 12)
+    # 🔴 SPEC-125 D3 · T11 — a conduta dizia "Colete de uma vez só" (até 12) e o
+    #    prompt v1 dizia "uma por vez OU bloco de até 4": duas regras de batelada
+    #    no mesmo turno. No `v2` a regra de como perguntar mora no prompt, uma só;
+    #    aqui a ficha vira o QUE o caso costuma precisar, não COMO perguntar. O
+    #    `v1` fica com o título de 01/10/2026, byte a byte (a volta sem deploy).
+    #    ⚠️ Duas chamadas LITERAIS, e não uma variável: o guarda
+    #    `test_a_conduta_chega_inteira_ao_agente` lê a ordem e os tetos da FONTE.
+    if prompt_versao == "v1":
+        _lista("ficha_coleta", "Colete de uma vez só (não peça em conta-gotas):", 12)
+    else:
+        _lista("ficha_coleta", "O que este caso costuma precisar (peça só o que ainda falta):", 12)
     _lista("encerramento", "Como fechar:", 2)
 
     bloco = chr(10).join(linhas)
@@ -1036,7 +1102,7 @@ TETO_DO_CONTEXTO_RECUPERADO_CHARS = int(
     os.getenv("TETO_DO_CONTEXTO_RECUPERADO_CHARS", "60000"))
 
 
-def montar_bloco_recuperado(conteudo, pergunta, teto=None):
+def montar_bloco_recuperado(conteudo, pergunta, teto=None, max_trechos=None):
     """Monta o bloco do contexto recuperado com TETO e com a PERGUNTA no fim.
 
     Devolve `(texto, meta)`.
@@ -1055,6 +1121,10 @@ def montar_bloco_recuperado(conteudo, pergunta, teto=None):
     ⚠️ Se o PRIMEIRO trecho sozinho já estoura o teto, ele entra inteiro assim
     mesmo: um bloco vazio seria pior que um bloco grande, e cortá-lo pela
     metade quebraria a regra 1.
+
+    `max_trechos` (SPEC-125 T24, atendimento `v2`): além do teto de chars, no
+    máximo N trechos — os primeiros, que o `smart_search` já ordena por
+    relevância. `None` = sem limite de contagem (o comportamento de antes).
     """
     conteudo = conteudo or ""
     if not conteudo.strip():
@@ -1073,6 +1143,8 @@ def montar_bloco_recuperado(conteudo, pergunta, teto=None):
     for trecho in trechos:
         custo = len(trecho) + (len(SEPARADOR_DE_TRECHOS) if escolhidos else 0)
         if escolhidos and tamanho + custo > teto:
+            break
+        if max_trechos is not None and len(escolhidos) >= max_trechos:
             break
         escolhidos.append(trecho)
         tamanho += custo
@@ -1150,6 +1222,16 @@ async def _build_initial_state(
                 pass  # llm_provider is used later by create_agent_graph, not here
         except Exception as e:
             logger.error(f"[Graph] Erro ao carregar agente: {e}")
+
+    # === 🔴 SPEC-125 D3 — QUAL BASE DE PROMPT ESTE AGENTE LÊ (v1 | v2) ===
+    # A chave mora NO BANCO (`agents.prompt_versao`), por agente, e cada agente
+    # é de UMA corretora. Só o atendimento tem versão; para os outros papéis a
+    # chave nem é lida. Viaja em `agent_data` para os fiscais do `agent_node`.
+    _prompt_versao = None
+    if str((real_agent_data or {}).get("agent_role") or "").strip().lower() in _PAPEIS_DO_SEGURADO:
+        _prompt_versao = _versao_do_prompt(supabase_client, company_id, agent_id, real_agent_data)
+        real_agent_data = {**real_agent_data, "prompt_versao": _prompt_versao}
+        logger.info("[PROMPT] atendimento com a base %s", _prompt_versao)
 
     # NOTE: LLM creation removed - it was dead code.
     # The graph already creates its own LLM in create_agent_graph() with proper callbacks.
@@ -1464,6 +1546,7 @@ async def _build_initial_state(
         company_display_name=_company_display_name,
         company_facts_block=_facts_block,
         jeito_block=_jeito_block,
+        prompt_versao=_prompt_versao,
     )
 
     # Prompt DINÂMICO (memória) - NÃO será cacheado
@@ -1563,8 +1646,14 @@ async def _build_initial_state(
     rag_bloco_meta = {"trechos_recuperados": 0, "trechos_no_bloco": 0,
                       "chars_antes": 0, "chars_depois": 0}
     if rag_prefetch_content:
+        # 🔴 SPEC-125 T24: no atendimento `v2`, só as melhores cartas (teto
+        #    declarado acima de `_conduta_do_caso`); o `v1` e os outros papéis
+        #    seguem com o teto de antes.
+        _rag_kw = ({"teto": TETO_DAS_CARTAS_NO_ATENDIMENTO_V2_CHARS,
+                    "max_trechos": CARTAS_NO_ATENDIMENTO_V2}
+                   if _prompt_versao == "v2" else {})
         _bloco_rag, rag_bloco_meta = montar_bloco_recuperado(
-            rag_prefetch_content, user_message)
+            rag_prefetch_content, user_message, **_rag_kw)
         dynamic_context += _bloco_rag
         if rag_bloco_meta["trechos_no_bloco"] < rag_bloco_meta["trechos_recuperados"]:
             logger.warning(
@@ -1679,6 +1768,30 @@ async def _build_initial_state(
         except Exception as e:  # noqa: BLE001 — a ficha nunca derruba o turno
             logger.warning("[FICHA] não injetada (%s)", type(e).__name__)
 
+        # --- 🪪 O QUE JÁ SABEMOS DESTE SEGURADO — SPEC-125 S3 · D2 -----------
+        #
+        # 📊 Laudo INV §2.1: 34 de 364 falas do agente (9%) pediam o CPF a quem
+        # já o tinha dito. O motor é `quem_e_o_segurado` (S3): pelo TELEFONE da
+        # sessão, SÓ nesta corretora (filtro no banco E cinto no código, §7) —
+        # nome, CPF já dito, apólice da ficha, caso anterior. O bloco diz
+        # "confirme, não pergunte"; o fiscal da pergunta repetida (`nodes`) lê
+        # este MESMO bloco. Vale nas duas versões: é dado, não política.
+        # ⚠️ Vem ANTES da linha de TRATAMENTO (QUEM FALA, a última), que segue
+        #    sendo a autoridade sobre como chamar o segurado.
+        try:
+            _fone = _telefone_da_sessao(session_id)
+            if _fone and supabase_client is not None:
+                from app.agents.quem_e_o_segurado import bloco_para_o_prompt as _bloco_quem
+                from app.agents.quem_e_o_segurado import quem_e_o_segurado
+
+                _quem = await quem_e_o_segurado(str(company_id), _fone, db=supabase_client)
+                _texto_quem = _bloco_quem(_quem)
+                if _texto_quem:
+                    dynamic_context += f"\n\n{_texto_quem}"
+                    logger.info("[QUEM] bloco injetado (%d chars)", len(_texto_quem))
+        except Exception as e:  # noqa: BLE001 — a identidade nunca derruba o turno
+            logger.warning("[QUEM] bloco não injetado (%s)", type(e).__name__)
+
         # --- G · COMO SE CONDUZ ESTE TIPO DE ATENDIMENTO ------------------
         # 📊 16 playbooks de conduta, 12 ativos, destilados por claude-opus-5 de
         # 297 atendimentos HUMANOS reais, com ficha de coleta de até 19 campos.
@@ -1687,7 +1800,8 @@ async def _build_initial_state(
         #
         # As "fases" que o agente seguia eram seis parágrafos escritos à mão.
         try:
-            _bloco_conduta = await _conduta_do_caso(supabase_client, user_message)
+            _bloco_conduta = await _conduta_do_caso(supabase_client, user_message,
+                                                    prompt_versao=_prompt_versao or "v1")
             if _bloco_conduta:
                 dynamic_context += f"\n\n{_bloco_conduta}"
         except Exception as e:  # noqa: BLE001

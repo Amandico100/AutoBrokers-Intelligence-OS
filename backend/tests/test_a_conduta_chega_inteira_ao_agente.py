@@ -189,7 +189,11 @@ def teste_a_ordem_e_por_criticidade():
 
     # CONTROLE — a ficha continua existindo e com teto. Tirá-la para caber
     # seria trocar um defeito por outro.
-    checar(i_ficha > 0 and '_lista("ficha_coleta", "Colete de uma vez só' in corpo,
+    # SPEC-125 D3 · T11: o título da ficha depende da versão do prompt (v1 = este,
+    # a volta sem deploy; v2 = "O que este caso costuma precisar"). Os dois são
+    # chamadas literais de `_lista`, e a ficha continua nas duas.
+    checar(i_ficha > 0 and '_lista("ficha_coleta", "Colete de uma vez só' in corpo
+           and '_lista("ficha_coleta", "O que este caso costuma precisar' in corpo,
            "CONTROLE — a ficha continua no bloco",
            "o conserto é de ordem e formato, não de amputação")
 
