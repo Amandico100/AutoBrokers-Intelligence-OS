@@ -36,10 +36,12 @@
 --    · PARTE A (coluna + CHECK + comentário) — APLICADA, versão 20261002012519. VERIFY (1) conferido:
 --      prompt_versao | NO | 'v2'::text · CHECK ((prompt_versao = ANY (ARRAY['v1','v2']))) · 4 agentes em 'v2',
 --      0 ativos, md5 dos 4 textos IGUAIS aos de ANTES (a parte B não rodou).
---    · PARTE B (a frase do prompt do banco) — PENDENTE: a 1ª chamada (A+B juntas) foi RECUSADA pela
---      ferramenta; a 2ª, só com a parte A, passou. Aplicar a B exige autorização (caixa do gerente/Founder).
---      Ela é idempotente e independe da A; sem ela, o prompt do banco ainda diz "colete uma informacao por
---      vez" e o prompt v2 do código diz a regra única — a do código vem ANTES e diz que é a que vale.
+--    · PARTE B (a frase do prompt do banco) — ⛔ DESCARTADA (conserto X6, 02/10/2026). NÃO APLICAR.
+--      A troca da frase passou para o CÓDIGO, na montagem e só no v2
+--      (`prompts.trocar_a_frase_do_banco_no_v2`, chamada em `build_composite_prompt`): com
+--      `prompt_versao='v1'` o texto do banco chega ao modelo byte a byte, e a volta ao v1 continua
+--      sendo UM update da chave — sem `replace` inverso. Aplicada, a B quebraria essa volta exata.
+--      O texto abaixo fica só como registro, inteiro COMENTADO.
 --
 -- EXPAND-FIRST: sim (coluna nova com padrão; nada é removido)
 -- DESTRUTIVA:   não (UPDATE de UMA frase em 4 linhas, reversível byte a byte pelo md5)
@@ -68,35 +70,35 @@ comment on column public.agents.prompt_versao is
 
 commit;
 
--- ─────────────────────────────── APPLY · PARTE B (PENDENTE — ver ESTADO acima) ───────────────────────────────
-begin;
+-- ─────────────────────────────── APPLY · PARTE B — ⛔ DESCARTADA (X6) · NÃO APLICAR ───────────────────────────────
+-- begin;
 
-update public.agents
-   set agent_system_prompt = replace(agent_system_prompt,
-         '; colete uma informacao por vez;',
-         '; pergunte so o que falta e muda a proxima acao (o que e independente vai junto, o delicado vai sozinho);')
- where agent_role in ('attendance', 'insured_external')
-   and agent_system_prompt like '%; colete uma informacao por vez;%';
+-- update public.agents
+--    set agent_system_prompt = replace(agent_system_prompt,
+--          '; colete uma informacao por vez;',
+--          '; pergunte so o que falta e muda a proxima acao (o que e independente vai junto, o delicado vai sozinho);')
+--  where agent_role in ('attendance', 'insured_external')
+--    and agent_system_prompt like '%; colete uma informacao por vez;%';
 
-do $$
-declare
-  v_antigas int;
-  v_dupla   int;
-begin
-  select count(*) into v_antigas from public.agents
-   where agent_role in ('attendance', 'insured_external')
-     and agent_system_prompt ilike '%uma informacao por vez%';
-  select count(*) into v_dupla from public.agents
-   where agent_role in ('attendance', 'insured_external')
-     and (length(agent_system_prompt)
-          - length(replace(agent_system_prompt, 'pergunte so o que falta e muda a proxima acao', '')))
-         / length('pergunte so o que falta e muda a proxima acao') > 1;
-  if v_antigas <> 0 or v_dupla <> 0 then
-    raise exception 'APPLY 20261001_07 abortado: antigas=% duplicadas=%', v_antigas, v_dupla;
-  end if;
-end $$;
+-- do $$
+-- declare
+--   v_antigas int;
+--   v_dupla   int;
+-- begin
+--   select count(*) into v_antigas from public.agents
+--    where agent_role in ('attendance', 'insured_external')
+--      and agent_system_prompt ilike '%uma informacao por vez%';
+--   select count(*) into v_dupla from public.agents
+--    where agent_role in ('attendance', 'insured_external')
+--      and (length(agent_system_prompt)
+--           - length(replace(agent_system_prompt, 'pergunte so o que falta e muda a proxima acao', '')))
+--          / length('pergunte so o que falta e muda a proxima acao') > 1;
+--   if v_antigas <> 0 or v_dupla <> 0 then
+--     raise exception 'APPLY 20261001_07 abortado: antigas=% duplicadas=%', v_antigas, v_dupla;
+--   end if;
+-- end $$;
 
-commit;
+-- commit;
 
 -- ─────────────────────────────── VERIFY (read-only) ───────────────────────────────
 -- select column_name, is_nullable, column_default from information_schema.columns

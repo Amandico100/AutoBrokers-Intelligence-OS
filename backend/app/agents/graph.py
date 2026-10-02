@@ -1778,6 +1778,7 @@ async def _build_initial_state(
         # este MESMO bloco. Vale nas duas versões: é dado, não política.
         # ⚠️ Vem ANTES da linha de TRATAMENTO (QUEM FALA, a última), que segue
         #    sendo a autoridade sobre como chamar o segurado.
+        _quem = {}
         try:
             _fone = _telefone_da_sessao(session_id)
             if _fone and supabase_client is not None:
@@ -1849,6 +1850,10 @@ async def _build_initial_state(
                 # SPEC-125 S8b: com o pedido já na 1ª mensagem, a apresentação segue para ele
                 # na mesma mensagem (sem "Como posso ajudar?") — 📊 24/36 na linha de base.
                 mensagem_do_segurado=user_message)
+            # 🔴 C11 (SPEC-125-DEPOIS, grave 5): o nome que o TELEFONE já deu (S3) chega à
+            #    linha de TRATAMENTO como nome PROVÁVEL, a confirmar — antes ela mandava
+            #    "fale sem nome" e o bloco da S3 dizia "confirme": o modelo nunca usava.
+            _bloco_quem_fala = tratamento_com_o_nome_provavel(_bloco_quem_fala, _quem)
             dynamic_context += f"\n\n{_bloco_quem_fala}"
 
             # ⚠️ Melhor-esforço, como a ficha: falhar em gravar a identidade
@@ -1934,6 +1939,55 @@ async def _build_initial_state(
     return initial_state, config, real_agent_data
 
 
+#: A linha de TRATAMENTO quando a ficha não tem o nome (`o_fim_do_atendimento.bloco_de_quem_fala`).
+_TRATAMENTO_SEM_NOME = "TRATAMENTO: ⛔ você NÃO sabe o nome"
+
+
+def tratamento_com_o_nome_provavel(bloco: str, quem: Optional[Dict[str, Any]]) -> str:
+    """A linha de TRATAMENTO com o nome PROVÁVEL que o telefone deu (S3). **PURA.**
+
+    🔴 C11 (SPEC-125-DEPOIS): sem a ficha saber o nome, a linha mandava falar sem nome
+    — e o nome da conversa anterior deste telefone (o Founder: "chamar pelo nome da
+    outra conversa") nunca chegava à fala. Agora vai o nome provável, para CONFIRMAR de
+    leve (o telefone pode ser de outra pessoa, D2) e então usar. A linha da ficha COM
+    nome não é tocada; nenhum outro nome vale.
+    """
+    nome = str((quem or {}).get("nome") or "").strip()
+    texto = str(bloco or "")
+    if not nome or _TRATAMENTO_SEM_NOME not in texto:
+        return texto
+    origem = str((quem or {}).get("nome_origem") or "do telefone").strip()
+    nova = ("TRATAMENTO: o nome provável de quem fala é **%s** (%s, deste telefone nesta "
+            "corretora). Na sua resposta, confirme de leve (\"Falo com %s?\") e siga atendendo; "
+            "confirmado, chame-o assim. Se ele disser que não é, fale sem nome. Nenhum outro "
+            "nome da memória ou do histórico vale." % (nome, origem, nome))
+    return "\n".join(nova if l.startswith(_TRATAMENTO_SEM_NOME) else l for l in texto.split("\n"))
+
+
+def entrada_sem_o_prompt(initial_state: Dict[str, Any], config: Dict[str, Any]):
+    """`(entrada, config)` para o grafo: o prompt do turno SAI da entrada e vai pelo `config`.
+
+    🔴 Conserto X4 (SPEC-125 · juiz B4 · D1 "o prompt de sistema NÃO entra no checkpoint").
+    📊 02/10/2026: 1.456 de 1.506 checkpoints com o prompt inteiro (média 15.927 chars),
+    e com o CPF cru do bloco da S3. O LangGraph persiste o ESTADO e a própria ENTRADA
+    (canal `__start__`); o `configurable` ele só copia para a metadata quando o valor é
+    str/int/float/bool — o portador (`nodes.PromptDoTurno`) é um objeto, e não vai.
+    Na entrada os três campos seguem como `None`: o checkpoint antigo que ainda os
+    carregava é sobrescrito por nada. `_build_initial_state` continua devolvendo o
+    prompt (a bancada e os testes o leem); quem invoca o grafo passa por aqui.
+    """
+    from app.agents.nodes import CAMPOS_DO_PROMPT_DO_TURNO, CHAVE_DO_PROMPT_DO_TURNO, PromptDoTurno
+
+    estado = dict(initial_state or {})
+    portador = PromptDoTurno({k: estado.get(k) for k in CAMPOS_DO_PROMPT_DO_TURNO})
+    for k in CAMPOS_DO_PROMPT_DO_TURNO:
+        if k in estado:
+            estado[k] = None
+    cfg = dict(config or {})
+    cfg["configurable"] = {**(cfg.get("configurable") or {}), CHAVE_DO_PROMPT_DO_TURNO: portador}
+    return estado, cfg
+
+
 async def invoke_agent(
     graph,
     user_message: str,
@@ -1988,7 +2042,9 @@ async def invoke_agent(
     )
 
     # Execute graph asynchronously (now using AsyncPostgresSaver)
-    result = await graph.ainvoke(initial_state, config)
+    # 🔴 Conserto X4 (D1): o prompt vai pelo `config`, nunca na entrada persistida.
+    _entrada, config = entrada_sem_o_prompt(initial_state, config)
+    result = await graph.ainvoke(_entrada, config)
 
     # Extrai resposta final
     final_response = result.get("final_response", "")
@@ -2431,7 +2487,8 @@ async def stream_agent_eventos(
     # `estado_da_volta` é o que se manda ao grafo nesta rodada; `cauda` é o fim
     # do que JÁ saiu, e é ela que ancora a emenda; `motivo`/`uso` são o que o
     # modelo declarou na ÚLTIMA volta — e é isso que vai ao `payload`.
-    estado_da_volta = initial_state
+    # 🔴 Conserto X4 (D1): o prompt vai pelo `config`, nunca na entrada persistida.
+    estado_da_volta, config = entrada_sem_o_prompt(initial_state, config)
     cauda = ""
     motivo = None
     uso = None

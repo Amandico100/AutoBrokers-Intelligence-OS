@@ -50,19 +50,69 @@ _DOC_APOS_A_PALAVRA = re.compile(r"\b(?:cpf|cnpj)\b\D{0,20}?((?:\d[\s.\-/]?){11,
 _ONZE_DIGITOS = re.compile(r"(?<!\d)(\d{11})(?!\d)")
 
 # ---- o nome que o segurado disse ------------------------------------------ #
-_NOME_EXPLICITO = re.compile(
-    r"\b(?:meu nome (?:é|e)|me chamo|aqui (?:é|e) (?:o|a)|quem fala (?:é|e)(?: o| a)?)\s+"
-    r"([A-Za-zÀ-ÿ]{3,})", re.IGNORECASE)
-#: "sou o João" só com MAIÚSCULA — "sou a segurada" não é nome.
-_NOME_SOU = re.compile(r"\bsou (?:o|a)\s+([A-ZÀ-Ý][a-zà-ÿ]{1,})")
+#: 🔴 Conserto X3 (juiz B3): o nome dito COMO NOME — "meu nome é X", "me chamo X".
+#: É a única régua que pode decidir alguma coisa (o corte de terceiro da S8a).
+_NOME_COMO_NOME = re.compile(
+    r"\b(?:meu nome (?:é|e|eh)|me chamo)\s*:?\s+([A-Za-zÀ-ÿ]{2,})", re.IGNORECASE)
+#: As formas fracas — só para o "nome provável" do bloco (que manda CONFIRMAR), e só com
+#: MAIÚSCULA: "aqui é o seguinte", "aqui é a portaria", "aqui é a minha mãe" não são nome
+#: (📊 juiz B3: viravam "Seguinte", "Portaria", "Minha"). "Sou o João" com S maiúsculo
+#: também vale (RT P12).
+_NOME_FRACO = re.compile(
+    r"\b(?:[Aa]qui (?:é|e|eh) (?:o|a)|[Qq]uem fala (?:é|e|eh)(?: o| a)?|[Ss]ou (?:o|a))\s+"
+    r"([A-ZÀ-Ý][a-zà-ÿ]{1,})")
 #: Palavras que a régua de nome casaria e não são nome de gente.
 _NAO_E_NOME = frozenset({
     "segurado", "segurada", "cliente", "titular", "dono", "dona", "proprietario",
     "proprietário", "filho", "filha", "esposo", "esposa", "marido", "mulher", "mae",
     "mãe", "pai", "irmao", "irmão", "irma", "irmã", "responsavel", "responsável",
     "motorista", "condutor", "corretor", "corretora", "sindico", "síndico", "mesmo",
-    "mesma", "que", "quem", "seu", "sua",
+    "mesma", "que", "quem", "seu", "sua", "seguinte", "problema", "minha", "meu",
+    "carro", "casa", "portaria", "porteiro", "zelador", "pessoal", "gente", "empresa",
+    "escritorio", "escritório", "recepcao", "recepção", "oficina", "mecanico", "mecânico",
+    "guincho", "loja", "administracao", "administração", "proprio", "próprio", "propria",
+    "própria", "outro", "outra", "dela", "dele", "nome",
 })
+
+#: constante_justificada: apelido → as iniciais dos nomes de que ele costuma vir (X3: "me
+#: chamo Zé" com titular J*** não é outra pessoa). Só os apelidos que NÃO começam pela
+#: inicial do nome — os outros ("Rafa", "Gabi") já batem pela inicial. "Júnior", "Neto" e
+#: "Filho" são sufixo de qualquer nome (`*`: batem com qualquer titular).
+_APELIDOS = {
+    "ze": "j", "zezinho": "j", "zeca": "j", "juca": "j", "pepe": "j",
+    "chico": "f", "chica": "f", "chiquinho": "f", "chiquinha": "f", "paco": "f", "quico": "f",
+    "kiko": "fh", "nando": "f", "nanda": "f", "lipe": "f", "fafa": "f",
+    "beto": "rahl", "betinho": "rahl", "betao": "rahl",
+    "tiao": "s", "bastiao": "s",
+    "dudu": "e", "duda": "em", "guto": "ag", "toninho": "a", "tonho": "a", "toni": "a", "tony": "a",
+    "nico": "an", "neca": "m", "lili": "aeil", "malu": "m", "manu": "em", "mila": "cm",
+    "tata": "ot", "dede": "a", "didi": "a", "caca": "c", "bia": "b", "gil": "g", "nene": "m",
+    "junior": "*", "neto": "*", "filho": "*",
+}
+
+
+def _sem_acento(texto: Any) -> str:
+    import unicodedata
+
+    s = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in s if not unicodedata.combining(c)).lower()
+
+
+def nome_bate_com_as_iniciais(nome: Any, iniciais: Any) -> bool:
+    """O nome dito pode ser do titular cujas iniciais são `iniciais`? **PURA.**
+
+    Tolerante de propósito (X3): QUALQUER inicial do nome do titular vale (quem é
+    chamado pelo nome do meio continua sendo o titular) e os apelidos comuns. Sem
+    iniciais ou sem nome → não há o que contradizer.
+    """
+    ini = {_sem_acento(i)[:1] for i in (iniciais or []) if str(i or "").strip()}
+    n = _sem_acento(nome).strip()
+    if not ini or not n:
+        return True
+    if n[:1] in ini:
+        return True
+    possiveis = _APELIDOS.get(n, "")
+    return possiveis == "*" or bool(set(possiveis) & ini)
 
 
 def _so_digitos(valor: Any) -> str:
@@ -134,14 +184,39 @@ def documentos_ditos(texto: Any) -> List[str]:
     return saida
 
 
+def _nome_valido(nome: str) -> str:
+    nome = str(nome or "").strip()
+    if not nome or nome.lower() in _NAO_E_NOME or _sem_acento(nome) in _NAO_E_NOME:
+        return ""
+    return nome[:1].upper() + nome[1:].lower()
+
+
+def nome_dito_como_nome(texto: Any) -> str:
+    """O nome que o segurado disse COMO NOME ("meu nome é", "me chamo"), ou `""`. **PURA.**
+
+    🔴 X3: é a ÚNICA régua de nome que o corte de terceiro (S8a) usa.
+    """
+    for m in _NOME_COMO_NOME.finditer(str(texto or "")):
+        nome = _nome_valido(m.group(1))
+        if nome:
+            return nome
+    return ""
+
+
 def nome_dito(texto: Any) -> str:
-    """O primeiro nome que o segurado DISSE ser o dele, ou `""`. **PURA.**"""
-    s = str(texto or "")
-    for regra in (_NOME_EXPLICITO, _NOME_SOU):
-        for m in regra.finditer(s):
-            nome = m.group(1).strip()
-            if nome.lower() not in _NAO_E_NOME:
-                return nome[:1].upper() + nome[1:].lower()
+    """O primeiro nome que o segurado DISSE ser o dele, ou `""`. **PURA.**
+
+    O nome dito como nome vence; as formas fracas ("Aqui é o João", "Sou a Ana") só
+    com maiúscula e fora da lista de não-nomes. Serve ao "nome provável" do bloco, que
+    manda CONFIRMAR antes de usar.
+    """
+    forte = nome_dito_como_nome(texto)
+    if forte:
+        return forte
+    for m in _NOME_FRACO.finditer(str(texto or "")):
+        nome = _nome_valido(m.group(1))
+        if nome:
+            return nome
     return ""
 
 
@@ -204,9 +279,77 @@ def _inicio_do_assunto_atual(linhas: List[Dict[str, Any]], n_dias: int) -> int:
 
 
 def identidade_vazia() -> Dict[str, Any]:
-    return {"nome": "", "nome_origem": "", "cpf": "", "cpf_mascarado": "",
+    return {"nome": "", "nome_origem": "", "cpf": "", "cpf_mascarado": "", "cpf_final": "",
             "cpfs_distintos": 0, "cpf_de_assunto_anterior": False, "apolice": "",
             "caso_anterior": "", "perguntar_cpf": True}
+
+
+# ---- 🔴 Conserto X2 · de QUEM é o documento (RT B2 · juiz B2) --------------- #
+def _de_outra_pessoa(doc: str, falas: List[str]) -> bool:
+    """A conversa atribui `doc` a OUTRA pessoa ("o cpf dela", "da minha mãe")? **PURA.**
+
+    A régua é a do corte de terceiro (`infocap_tool.de_quem_e_a_apolice`, S8a) — nunca
+    uma segunda (§5). ⛔ Sem a régua, o documento NÃO é oferecido: o agente pergunta
+    (o pior caso é uma pergunta a mais; o outro lado é a apólice da mãe).
+    """
+    try:
+        from app.agents.tools.infocap_tool import de_quem_e_a_apolice
+
+        return bool(de_quem_e_a_apolice(doc, falas).get("terceiro"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[QUEM] régua de terceiro indisponível (%s)", type(exc).__name__)
+        return True
+
+
+def documentos_proprios(falas: Any) -> List[str]:
+    """Os CPF/CNPJ que o segurado disse COMO SEUS nas `falas` — na ordem. **PURA.**
+
+    Fica de fora todo documento que a conversa atribui a outra pessoa (X2). Usado pelo
+    fiscal da pergunta repetida (`nodes._documentos_ja_ditos`) sobre as falas do turno.
+    """
+    textos = [str(f or "") for f in (falas or []) if str(f or "").strip()]
+    vistos: List[str] = []
+    for t in textos:
+        for d in documentos_ditos(t):
+            if d not in vistos:
+                vistos.append(d)
+    return [d for d in vistos if not _de_outra_pessoa(d, textos)]
+
+
+def _assuntos(linhas: List[Dict[str, Any]], n_dias: int) -> List[int]:
+    """O índice de início de CADA assunto (silêncio > N dias abre um novo). **PURA.**"""
+    inicios = [0]
+    for i in range(1, len(linhas)):
+        a, b = _quando(linhas[i - 1].get("created_at")), _quando(linhas[i].get("created_at"))
+        if a and b and n_dias > 0 and (b - a).total_seconds() > n_dias * 86400:
+            inicios.append(i)
+    return inicios
+
+
+#: "sim" do segurado à pergunta de confirmação do documento ("é o CPF final 4725?").
+_SIM = re.compile(r"^\W*(?:sim|s|ss|isso|exato|exatamente|correto|certo|confirmo|confirmado|positivo|"
+                  r"pode|ok|okay|perfeito|esse mesmo|e esse|eh esse|e sim|eh sim|e o meu|eh o meu|"
+                  r"e isso|eh isso|esse|este|isso mesmo|uhum|aham|beleza|blz)\b")
+_NAO = re.compile(r"\bn[aã]o\b|\bnegativo\b|\boutro\b|\berrado\b")
+
+
+def _confirmou_agora(linhas: List[Dict[str, Any]], inicio: int, doc: str) -> bool:
+    """No assunto ATUAL, NÓS perguntamos pelo final deste documento e ELE disse "sim"? **PURA.**
+
+    🔴 X2: só depois disso o CPF de um assunto anterior entra INTEIRO no prompt.
+    """
+    final = doc[-4:]
+    for i in range(max(inicio, 1), len(linhas)):
+        m = linhas[i]
+        if not _do_segurado(m):
+            continue
+        anterior = linhas[i - 1]
+        if _do_segurado(anterior) or final not in str(anterior.get("content") or ""):
+            continue
+        fala = _sem_acento(m.get("content")).strip()
+        if _SIM.search(fala) and not _NAO.search(fala):
+            return True
+    return False
 
 
 def montar(*, historico: Any, user_name: Any = "", ficha: Optional[Dict[str, Any]] = None,
@@ -215,23 +358,37 @@ def montar(*, historico: Any, user_name: Any = "", ficha: Optional[Dict[str, Any
 
     ⛔ Quem chama garante que `historico`, `ficha` e `resumos` são da MESMA
     corretora (é o que `quem_e_o_segurado` faz, com filtro e cinto).
+
+    🔴 Conserto X2: (1) só entra o documento que o segurado disse como SEU — o que a
+    conversa atribuiu a outra pessoa, em QUALQUER assunto, nunca é oferecido; (2) o de
+    um assunto ANTERIOR sai só com o FINAL (`cpf` vazio) até ele confirmar no assunto
+    atual — telefone pode ser compartilhado (D2).
     """
     saida = identidade_vazia()
     linhas = _em_ordem(historico)
-    inicio = _inicio_do_assunto_atual(linhas, n_dias)
+    inicios = _assuntos(linhas, n_dias)
+    inicio = inicios[-1]
 
+    def _assunto_de(i: int) -> int:
+        return max(k for k, ini in enumerate(inicios) if ini <= i)
+
+    falas_por_assunto: Dict[int, List[str]] = {}
     docs: List[tuple] = []   # (indice, digitos) — só o que o SEGURADO escreveu
     nome = ""
     for i, m in enumerate(linhas):
         if not _do_segurado(m):
             continue
+        falas_por_assunto.setdefault(_assunto_de(i), []).append(str(m.get("content") or ""))
         for d in documentos_ditos(m.get("content")):
             docs.append((i, d))
         nome = nome_dito(m.get("content")) or nome
+    de_outro = {d for i, d in docs if _de_outra_pessoa(d, falas_por_assunto.get(_assunto_de(i), []))}
+    docs = [(i, d) for i, d in docs if d not in de_outro]
     if docs:
         indice, ultimo = docs[-1]
-        saida.update(cpf=ultimo, cpf_mascarado=mascarar_documento(ultimo),
-                     cpfs_distintos=len({d for _i, d in docs}),
+        anterior = indice < inicio and not _confirmou_agora(linhas, inicio, ultimo)
+        saida.update(cpf="" if anterior else ultimo, cpf_mascarado=mascarar_documento(ultimo),
+                     cpf_final=ultimo[-4:], cpfs_distintos=len({d for _i, d in docs}),
                      cpf_de_assunto_anterior=indice < inicio, perguntar_cpf=False)
     if nome:
         saida.update(nome=nome, nome_origem="dito pelo segurado")
@@ -403,17 +560,25 @@ def bloco_para_o_prompt(quem: Optional[Dict[str, Any]]) -> str:
     (T19).
     """
     q = quem or {}
-    if not (q.get("nome") or q.get("cpf") or q.get("apolice") or q.get("caso_anterior")):
+    final = str(q.get("cpf_final") or str(q.get("cpf") or "")[-4:])
+    if not (q.get("nome") or q.get("cpf") or final or q.get("apolice") or q.get("caso_anterior")):
         return ""
     linhas = ["=== 🪪 O QUE JÁ SABEMOS DESTE SEGURADO (este telefone, esta corretora) ===",
               "Confirme numa linha; não pergunte do zero. Antes do \"sim\", só o 1º nome."]
     if q.get("nome"):
         linhas.append(f"· nome provável: {q['nome']} ({q.get('nome_origem')}) — confirme antes de usar")
+    mais = "; disse outro também — confirme qual" if int(q.get("cpfs_distintos") or 0) > 1 else ""
     if q.get("cpf"):
-        quando = "num assunto anterior" if q.get("cpf_de_assunto_anterior") else "nesta conversa"
-        mais = "; disse outro também — confirme qual" if int(q.get("cpfs_distintos") or 0) > 1 else ""
+        quando = ("num assunto anterior e CONFIRMOU agora" if q.get("cpf_de_assunto_anterior")
+                  else "nesta conversa")
         linhas.append(f"· CPF/CNPJ que ele disse {quando}: {q['cpf']} — use nas ferramentas; "
-                      f"a ele, só \"final {q['cpf'][-4:]}\"{mais}")
+                      f"a ele, só \"final {final}\"{mais}")
+    elif final:
+        # 🔴 X2: o de um assunto ANTERIOR não entra inteiro — o telefone pode ser de outra
+        #    pessoa agora. Confirma-se o FINAL com ele; depois do "sim" o número aparece aqui.
+        linhas.append(f"· CPF/CNPJ que ele disse num assunto anterior: final {final} — antes de usar, "
+                      f"confirme com ele (\"é o CPF final {final}?\"); o número volta aqui depois do "
+                      f"\"sim\"{mais}")
     if q.get("apolice"):
         linhas.append(f"· apólice do caso: {q['apolice']}")
     if q.get("caso_anterior"):
@@ -427,3 +592,64 @@ def bloco_para_o_prompt(quem: Optional[Dict[str, Any]]) -> str:
                   for l in linhas]
         texto = "\n".join(linhas)[:TETO_DO_BLOCO]
     return texto
+
+
+# --------------------------------------------------------------------------- #
+# 🔴 Conserto X2 · T19 EM CÓDIGO — o documento inteiro nunca SAI ao segurado
+# --------------------------------------------------------------------------- #
+#: Rótulos que dizem que um número de 11/14 dígitos SEM pontuação NÃO é documento —
+#: telefone, protocolo, OS, senha, apólice, renavam… (T6: esses saem EXATOS).
+_ROTULO_DE_OUTRO_NUMERO = re.compile(
+    r"\b(?:celular|cel|telefone|tel|fone|zap|whats(?:app)?|wpp|contato|liga\w*|lig[ue]\w*|"
+    r"protocolo|senha|os|ordem de servi[cç]o|chamado|atendimento|pedido|sinistro|ap[oó]lice|"
+    r"renavam|chassi|placa|boleto|c[oó]digo|n[uú]mero do)\b", re.IGNORECASE)
+
+
+def _rotulado_como_outro_numero(s: str, inicio: int, fim: int) -> bool:
+    antes = re.split(r"[\d\n]", s[max(0, inicio - _JANELA_DO_ROTULO):inicio])[-1]
+    if _ROTULO_DE_OUTRO_NUMERO.search(antes):
+        return True
+    return _dito_como_telefone(s, inicio, fim)
+
+
+def mascarar_documentos_na_saida(texto: Any) -> str:
+    """A resposta ao SEGURADO com todo CPF/CNPJ VÁLIDO inteiro trocado por `final XXXX`. **PURA.**
+
+    🔴 T19 (MANTER) deixa de depender do modelo obedecer ao prompt: este é o cinto no
+    código, aplicado no ponto em que a resposta final sai (`nodes.agent_node`).
+
+    DECISÃO — mascara SEMPRE, inclusive o número que o próprio segurado acabou de
+    digitar: repetir o documento inteiro não ajuda ninguém (ele já o tem), e a mensagem
+    pode ser lida por outra pessoa no mesmo telefone ou encaminhada. Confirmar pelo final
+    é a forma do produto desde a SPEC-063. O lado seguro custa zero ao atendimento.
+
+    Só o que fecha o dígito verificador vira máscara: CPF/CNPJ pontuado, ou depois da
+    palavra CPF/CNPJ, sempre; 11/14 dígitos soltos, salvo quando rotulados como outro
+    número (telefone, protocolo, senha, apólice… — esses saem exatos, T6).
+    """
+    s = str(texto or "")
+    if not s or not re.search(r"\d{3}", s):
+        return s
+    trocas: List[tuple] = []
+    for regra in (_CPF_FORMATADO, _CNPJ_FORMATADO, _DOC_APOS_A_PALAVRA):
+        for m in regra.finditer(s):
+            ini, fim = m.span(1)
+            while fim > ini and not s[fim - 1].isdigit():
+                fim -= 1
+            trocas.append((ini, fim, False))
+    for m in re.finditer(r"(?<!\d)(\d{14}|\d{11})(?!\d)", s):
+        trocas.append((m.start(1), m.end(1), True))
+    saida, ultimo_fim = [], 0
+    for ini, fim, solto in sorted(trocas):
+        if ini < ultimo_fim:
+            continue
+        dig = _so_digitos(s[ini:fim])
+        if len(dig) not in (11, 14) or not _documento_valido(dig):
+            continue
+        if solto and _rotulado_como_outro_numero(s, ini, fim):
+            continue
+        saida.append(s[ultimo_fim:ini] + "final " + dig[-4:])
+        ultimo_fim = fim
+    if not saida:
+        return s
+    return "".join(saida) + s[ultimo_fim:]

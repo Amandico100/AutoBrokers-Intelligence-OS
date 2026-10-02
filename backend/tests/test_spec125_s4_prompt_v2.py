@@ -122,7 +122,11 @@ MANTER = {
                                       "espere o \"sim\""],
     "T15 pessoa no grave": ["acione um atendente humano", "SINISTRO", "risco à vida",
                             "condomínio", "empresarial", "serviço sem corredor de acionamento",
-                            "pediu uma pessoa", "irritado E pedindo saída", "disjuntor"],
+                            "pediu uma pessoa", "irritado E pedindo saída", "disjuntor",
+                            # 🔴 conserto X5 (RT P6): o "não há saída" e a escalada da falha
+                            #    voltaram — o D6 só autorizava afrouxar o "irritado".
+                            "ou não há saída", "corrija o dado ou chame a equipe",
+                            "a equipe com o dossiê"],
     "T16 guincho por colisão = sinistro": ["Guincho por acidente/colisão é SINISTRO"],
     "T17 identidade": ["NÃO ANUNCIA", "INSISTIU", "ASSUMA", "NEGAR é mentira", "sou humano"],
     "T18 vocabulário de URA": ["PROIBIDO o vocabulário de URA", "vou te transferir",
@@ -241,12 +245,15 @@ def test_a_conduta_no_v2_nao_manda_colher_de_uma_vez():
 
 
 def test_o_prompt_do_banco_troca_so_a_frase_do_molde():
-    """O banco não se testa daqui: o que se prova é que a migration troca EXATAMENTE
-    a frase do molde antigo pela do molde novo, e guarda o caminho de volta."""
+    """🔴 Conserto X6 (§9.3 — a verdade mudou): a troca saiu da migration (parte B
+    DESCARTADA, nunca aplicada) e foi para a MONTAGEM, só no v2 — assim a volta ao v1
+    continua byte a byte sem `replace` inverso no banco. A lição migra: a frase do molde
+    antigo vira EXATAMENTE a do molde novo, e só ela."""
     sql = _ler("backend/supabase/migrations/20261001_07_spec125_prompt_v2.sql")
-    assert "'; colete uma informacao por vez;'" in sql
-    assert "'; pergunte so o que falta e muda a proxima acao (o que e independente vai junto, o delicado vai sozinho);'" in sql
-    assert "ROLLBACK" in sql and "md5" in sql
+    assert "DESCARTADA" in sql and "ROLLBACK" in sql and "md5" in sql
+    antes = "x; colete uma informacao por vez; y"
+    assert P.trocar_a_frase_do_banco_no_v2(antes) == "x; " + P.FRASE_NOVA_DO_MOLDE + "; y"
+    assert P.FRASE_NOVA_DO_MOLDE in _sem_comentarios(_ler("lib/admin/agent-blueprints-canonical.ts"))
 
 
 def test_o_portal_deduz_antes_de_perguntar():

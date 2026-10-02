@@ -147,7 +147,12 @@ def test_o_fio_o_cpf_de_um_assunto_anterior_vira_confirmacao_e_nao_pergunta():
     _o_fio(banco)
     quem = _quem(banco, EMPRESA_A)
 
-    assert quem["cpf"] == CPF and quem["perguntar_cpf"] is False
+    # 🔴 Conserto X2 (§9.3 — a verdade mudou): o CPF de um assunto ANTERIOR não volta
+    #    inteiro (o telefone pode ser de outra pessoa agora, D2). Vai o FINAL, para
+    #    confirmar; o número só entra depois do "sim" dele no assunto atual
+    #    (`test_spec125_conserto_x.py::test_x2_depois_do_sim…`). A lição — não perguntar
+    #    do zero — continua: `perguntar_cpf` é False e o bloco manda confirmar.
+    assert quem["cpf"] == "" and quem["cpf_final"] == "4725" and quem["perguntar_cpf"] is False
     assert quem["cpf_de_assunto_anterior"] is True       # veio de antes do reencontro
     assert quem["cpf_mascarado"].endswith("4725") and CPF not in quem["cpf_mascarado"]
     assert (quem["nome"], quem["nome_origem"]) == ("João", "dito pelo segurado")
@@ -156,8 +161,9 @@ def test_o_fio_o_cpf_de_um_assunto_anterior_vira_confirmacao_e_nao_pergunta():
 
     bloco = Q.bloco_para_o_prompt(quem)
     assert len(bloco) <= Q.TETO_DO_BLOCO
-    for trecho in (CPF, "João", "final 4725", "7001234", "num assunto anterior", "não pergunte"):
+    for trecho in ("João", "final 4725", "7001234", "num assunto anterior", "não pergunte", "confirme"):
         assert trecho in bloco, trecho
+    assert CPF not in bloco
 
 
 def test_o_historico_entregue_pela_s2_e_a_fonte_quando_vem():
@@ -195,7 +201,7 @@ def _vazou(de_a: dict, de_b: dict) -> bool:
 
 def test_o_mesmo_telefone_em_duas_corretoras_nada_atravessa():
     de_a, de_b = _dois_tenants(Banco())
-    assert de_a["cpf"] == CPF and de_a["nome"] == "João"
+    assert de_a["cpf_final"] == "4725" and de_a["nome"] == "João"     # X2: assunto anterior = só o final
     assert de_b["cpf"] == "" and de_b["perguntar_cpf"] is True
     assert (de_b["nome"], de_b["nome_origem"]) == ("Maria", "contato do WhatsApp")
     assert de_b["apolice"] == "" and de_b["caso_anterior"] == ""
@@ -232,9 +238,13 @@ def test_telefone_desconhecido_ou_sem_corretora_devolve_vazio():
 
 
 def test_dois_cpfs_ditos_o_ultimo_vale_e_o_bloco_manda_confirmar_qual():
+    # 🔴 Conserto X2 (§9.3): antes o 2º CPF era "o titular é meu pai, CPF …" — e o bloco o
+    #    oferecia como dele. Agora o CPF atribuído a outra pessoa nunca é oferecido
+    #    (`test_spec125_conserto_x.py::test_x2_nem_no_mesmo_assunto…`); a lição do "disse
+    #    dois, confirme qual" migra para dois CPFs que ele disse como seus.
     outro = "11144477735"
     hist = [{"role": "user", "content": f"cpf {CPF_FMT}", "created_at": _iso(0, 9)},
-            {"role": "user", "content": f"ah, o titular é meu pai, CPF {outro}", "created_at": _iso(0, 5)}]
+            {"role": "user", "content": f"opa, digitei errado, o cpf certo é {outro}", "created_at": _iso(0, 5)}]
     quem = Q.montar(historico=hist, n_dias=7)
     assert quem["cpf"] == outro and quem["cpfs_distintos"] == 2
     assert "confirme qual" in Q.bloco_para_o_prompt(quem)

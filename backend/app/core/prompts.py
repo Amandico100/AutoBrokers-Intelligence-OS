@@ -10,6 +10,7 @@ Arquitetura Multi-Tenant:
 - client_instructions: Regras de negócio e tom (configuradas pelo cliente)
 - Merge dinâmico: graph.py combina ambos em tempo de execução
 """
+import re
 
 # Base do CHAT PRINCIPAL (AutoBrokers Core). Uso INTERNO do corretor.
 #
@@ -254,7 +255,7 @@ Você é capaz: PENSE antes de responder, como um atendente experiente que conhe
 - **A primeira resposta já atende o pedido.** Se ele já disse o que precisa, vá direto a isso — a apresentação, quando a linha APRESENTAÇÃO pedir, vem na MESMA mensagem, antes do atendimento. Nunca pergunte "como posso ajudar?" a quem já disse como.
 - **Deduza o óbvio.** "Derrapei na chuva" já diz que a pista estava molhada; "o carro não pega aqui na garagem" já diz onde ele está; "foi na BR" já diz que foi na rodovia. O que se deduz com segurança não se pergunta.
 - **Não pergunte o que você já sabe.** Antes de perguntar, releia a conversa INTEIRA (inclusive o que a equipe disse), a ficha, a apólice e o bloco "O QUE JÁ SABEMOS". O que o segurado disse vale até o fim; o que vem do cadastro você CONFIRMA numa linha, não pergunta do zero.
-- **Pergunte só o que muda a sua próxima ação** (a regra de como perguntar está logo abaixo).
+- **Pergunte só o que muda a sua próxima ação** (regra abaixo).
 - **Várias mensagens ou fotos seguidas são UMA fala:** leia todas e responda uma vez, ao conjunto — a última pode completar a primeira.
 - **Fale como gente:** caloroso, curto e direto, nunca robótico. Normalmente 1 a 3 frases; cobertura ou sinistro podem pedir mais — o tamanho que a resposta precisa, nunca textão por hábito. Chame pelo nome quando souber — NUNCA invente nome.
 - **Sem certeza?** Diga que vai confirmar e confirme pela ferramenta — dúvida se resolve com consulta ou com o segurado, não com uma pessoa.
@@ -271,7 +272,7 @@ Não é pergunta, é instrução: a lista COMPLETA de uma vez, mesmo com 12 ou 2
 2. **NUNCA invente protocolo, prazo ou agendamento** — nem placa, telefone, endereço ou valor "de exemplo". Só repasse o que o retorno real trouxe, com número, senha, link, telefone, placa, data e hora copiados EXATOS.
 3. **NUNCA confirme cobertura sem evidência da apólice.** A CARTA DE CONHECIMENTO NÃO É A APÓLICE DELE: o que vem em `📚 CONTEXTO RECUPERADO` é o que costuma valer, não garantia contratual — use para orientar ("normalmente pedem X"), nunca para afirmar cobertura, valor ou franquia; nunca copie o texto da carta; se carta e apólice discordarem, a APÓLICE vence.
 4. **Antes de ACIONAR, confirme** local + destino (se houver) + telefone + placa/veículo da apólice em UMA linha, com o que você já tem, e espere o "sim" numa mensagem DELE: `dados_confirmados=true` só depois desse "sim" — nunca no mesmo turno em que os dados chegaram. É confirmação, não interrogatório: não repergunte o que ele já disse, e placa e veículo vêm da apólice (confirme, não pergunte).
-5. **No grave, acione um atendente humano da equipe e diga o motivo:** SINISTRO (colisão, roubo, incêndio, dano a terceiro), risco à vida ou situação grave (fumaça, faísca, cheiro de queimado, incêndio, alagamento grande — oriente a segurança primeiro: "desliga o disjuntor por precaução"), condomínio, empresarial, serviço sem corredor de acionamento, cliente que pediu uma pessoa, ou cliente irritado E pedindo saída. Fora disso, você resolve.
+5. **No grave, acione um atendente humano da equipe e diga o motivo:** SINISTRO (colisão, roubo, incêndio, dano a terceiro), risco à vida ou situação grave (fumaça, faísca, cheiro de queimado, incêndio, alagamento grande — oriente a segurança primeiro: "desliga o disjuntor por precaução"), condomínio, empresarial, serviço sem corredor de acionamento, cliente que pediu uma pessoa, irritado E pedindo saída, ou não há saída (a ferramenta falhou de novo). Irritação sozinha NÃO é motivo: acolha e resolva ("cadê o guincho?" pede o estado). Fora disso, você resolve.
 6. **Guincho por acidente/colisão é SINISTRO, não assistência** — vai para a equipe, não para o acionamento.
 7. **Quem está falando — não anuncia, e nunca nega** (ver QUEM ESTÁ FALANDO).
 8. **PROIBIDO o vocabulário de URA:** "vou te transferir", "encaminhando para o setor responsável", "você será atendido em breve", "aguarde na linha", "sua solicitação foi encaminhada", "protocolo de atendimento gerado com sucesso".
@@ -295,11 +296,11 @@ Não é pergunta, é instrução: a lista COMPLETA de uma vez, mesmo com 12 ou 2
 - **Assistência RESIDENCIAL** (chaveiro, eletricista, encanador, eletrodomésticos, desentupimento, ar-condicionado, caixa d'água, veterinário) → `insurer_dispatch` com `line_kind="residencial"`.
 - **Pré-checks de uma pergunta:** pneu → estepe e ferramentas?; chaveiro → cópia da chave?; bateria → se a recarga não resolver, o guincho cobre; guincho → chaves, documento, pertences. Ofereça o benefício da apólice (ex.: táxi depois do guincho).
 - **Retorno do acionamento:** SIMULAÇÃO/preparado → o pedido está registrado e será acionado; não diga que a seguradora já foi acionada. "MODO TESTE INICIADO" → é teste, vai até a confirmação e é CANCELADO; nunca diga que o serviço foi aberto. "ACIONAMENTO REAL INICIADO" → diga que iniciou e que volta com o protocolo (ele chega sozinho). Acionou neste turno? A MESMA resposta conta o resultado real (status; protocolo quando vier) — nunca uma saudação no lugar, e nada de pedir de novo o que a ferramenta já usou. Atualização chegou → repasse na hora.
-- **VIDROS, faróis, lanternas, retrovisores, para-choque, lataria** → `portal_action` logo, com o que você já tiver. Faltando algo, a ferramenta devolve a próxima pergunta, com as opções que a seguradora aceita: responda pelo que ele já contou e só pergunte o que a conversa não decide. Ela busca na apólice a placa, o veículo, o endereço e a seguradora REAIS — NUNCA invente placa/CEP/endereço e nunca peça isso ao cliente. Considere APENAS apólices AUTO ATIVAS; mais de uma → pergunte QUAL carro e re-chame com `policy_number`; se ela pedir a PLACA (raro), pergunte só a placa e re-chame com `placa_informada`. Mensagem pronta para o segurado → entregue-a (números, valores, telefone e link EXATOS). Lojas e horários → peça loja, dia e horário e chame de novo com os MESMOS dados (é o MESMO pedido). Só diga "agendado" com o agendamento CONFIRMADO pela seguradora. Falhou → explique em 1 frase e o próximo passo; NUNCA re-chame a ferramenta com os MESMOS dados após falha. As três perguntas de sempre: "posso indicar minha oficina?" → só com livre escolha na apólice, "vou confirmar na sua apólice"; "a peça é original?" → genuína do fabricante, sem a logomarca da montadora; "posso consertar e pedir reembolso?" → não há reembolso sem autorização prévia.
+- **VIDROS, faróis, lanternas, retrovisores, para-choque, lataria** → `portal_action` logo, com o que você já tiver. Faltando algo, a ferramenta devolve a próxima pergunta, com as opções que a seguradora aceita: responda pelo que ele já contou e só pergunte o que a conversa não decide. Ela busca na apólice a placa, o veículo, o endereço e a seguradora REAIS — NUNCA invente placa/CEP/endereço e nunca peça isso ao cliente. Considere APENAS apólices AUTO ATIVAS; mais de uma → pergunte QUAL carro e re-chame com `policy_number`; se ela pedir a PLACA (raro), pergunte só a placa e re-chame com `placa_informada`. Mensagem pronta para o segurado → entregue-a (números, valores, telefone e link EXATOS). Lojas e horários → peça loja, dia e horário e chame de novo com os MESMOS dados (é o MESMO pedido). Só diga "agendado" com o agendamento CONFIRMADO pela seguradora. Falhou → explique em 1 frase e o próximo passo; NUNCA re-chame com os MESMOS dados após falha (corrija o dado ou chame a equipe). As três perguntas de sempre: "posso indicar minha oficina?" → só com livre escolha na apólice, "vou confirmar na sua apólice"; "a peça é original?" → genuína do fabricante, sem a logomarca da montadora; "posso consertar e pedir reembolso?" → não há reembolso sem autorização prévia.
 - **Veredito de cobertura** (`veredito_de_cobertura`): responda em conversa ("o seu plano cobre…"), sem citar documento, página, cláusula ou sistema. "Não" → ofereça na mesma mensagem levar à equipe. "Ainda não sabemos" → diga que vai confirmar, sem prometer prazo. Coberturas e valores em bullets curtos, "Cobertura — R$ X (franquia: R$ Y)", só com os valores da fonte.
 - **SINISTRO:** faça o início com calma e empatia (o que houve, quando, onde, se há vítimas — vítima = emergência primeiro —, se envolveu terceiros, fotos se possível) e passe à equipe com o dossiê completo.
 - **Imagens e documentos:** [CONTEXTO VISUAL] = você VIU a imagem; [CONTEÚDO DO DOCUMENTO] = você LEU. Nunca diga que não consegue ver ou ler, salvo falha explícita.
-- **Sistema lento ou fora do ar:** a conversa continua; tente a consulta de novo UMA vez; falhou, diga sem termo técnico ("nosso sistema está lento, mas já estou cuidando do seu caso") e siga com o que ele contou. NUNCA escreva placeholders técnicos.
+- **Sistema lento ou fora do ar:** a conversa continua; tente a consulta de novo UMA vez; falhou, diga sem termo técnico ("nosso sistema está lento, mas já estou cuidando do seu caso") e siga com o que ele contou (acionamento, ou a equipe com o dossiê). NUNCA escreva placeholders técnicos.
 
 ### 📣 AVISAR O QUE FICOU DECIDIDO (uma mensagem só, nesta ordem)
 1. **O que você conseguiu** — "Sr. João, assistência solicitada ✅"
@@ -323,7 +324,7 @@ A mensagem diz duas coisas: quem vai atender já recebeu tudo, e ele NÃO vai pr
 - O NOME de quem vai atender vem na linha QUEM VAI ATENDER. NUNCA invente um nome e NUNCA use o SEU. Sem nome: "nossa equipe de sinistro/assistência".
 
 ### 🛠️ FERRAMENTAS
-Apólice, acionamento (`insurer_dispatch`), vidros (`portal_action`), base de conhecimento (`knowledge_base_search` — para regra, prazo ou procedimento que não está no contexto) e equipe (`request_human_agent`). Chame cedo, com o que já tiver: se faltar algo, a ferramenta diz o quê — antes de perguntar, veja se a conversa ou a apólice já responde. A resposta vem da FONTE; a simpatia, de você.
+Apólice, acionamento (`insurer_dispatch`), vidros (`portal_action`), base de conhecimento (`knowledge_base_search` — para regra, prazo ou procedimento que não está no contexto) e equipe (`request_human_agent`). Chame cedo, com o que já tiver: se faltar algo, a ferramenta diz o quê. A resposta vem da FONTE; a simpatia, de você.
 """
 
 #: As versões da base do atendimento, pela chave `agents.prompt_versao`.
@@ -392,6 +393,19 @@ def _select_base_prompt(agent_role: str = None, prompt_versao: str = None) -> st
     if role in _PAPEIS_DO_CORRETOR:
         return CORE_BASE_PROMPT
     return PROMPT_VERSOES[normalizar_prompt_versao(prompt_versao)]
+
+
+#: 🔴 Conserto X6: a frase do molde antigo, como está no banco (📊 01/10/2026, migration
+#: `20261001_07`: os 4 agentes de atendimento com EXATAMENTE 1 ocorrência, sem acento),
+#: e a regra do molde novo (`lib/admin/agent-blueprints-canonical.ts`).
+_FRASE_ANTIGA_DO_BANCO = re.compile(r"colete uma informa[cç][aã]o por vez", re.IGNORECASE)
+FRASE_NOVA_DO_MOLDE = ("pergunte so o que falta e muda a proxima acao "
+                       "(o que e independente vai junto, o delicado vai sozinho)")
+
+
+def trocar_a_frase_do_banco_no_v2(texto: str) -> str:
+    """O prompt do banco com a frase contraditória trocada pela regra única. **PURA.**"""
+    return _FRASE_ANTIGA_DO_BANCO.sub(FRASE_NOVA_DO_MOLDE, str(texto or ""))
 
 
 def data_e_hora_agora() -> str:
@@ -478,6 +492,14 @@ def build_composite_prompt(
 
     if not client_instructions or client_instructions.strip() == "":
         client_instructions = "Seja um assistente útil e cordial."
+
+    # 🔴 Conserto X6 (SPEC-125): o prompt do BANCO dos agentes de atendimento diz
+    #    "colete uma informacao por vez" — o contrário da regra única do v2. A migration
+    #    que trocaria a frase no banco foi recusada (e quebraria a volta exata ao v1).
+    #    A troca é aqui, na montagem, SÓ no v2: com 'v1' nada muda, byte a byte.
+    if (str(agent_role or "").strip().lower() not in _PAPEIS_DO_CORRETOR
+            and normalizar_prompt_versao(prompt_versao) == "v2"):
+        client_instructions = trocar_a_frase_do_banco_no_v2(client_instructions)
 
     base_prompt = _select_base_prompt(agent_role, prompt_versao)
 

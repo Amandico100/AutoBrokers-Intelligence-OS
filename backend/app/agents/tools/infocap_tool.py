@@ -356,15 +356,56 @@ def _match_product_kind(match: Dict[str, Any]) -> Optional[str]:
 
 #: constante_justificada: quem NÃO é a pessoa da conversa — parentes e próximos.
 #: "empresa" fica fora de propósito: "o cnpj da minha empresa" é do próprio dono.
-_PESSOA = (r"(?:mae|pai|esposa|esposo|marido|mulher|filho|filha|irmao|irma|sogro|sogra|avo|avoh|"
-           r"tio|tia|primo|prima|namorado|namorada|noivo|noiva|cunhado|cunhada|amigo|amiga|"
-           r"vizinho|vizinha|patrao|patroa|chefe|genro|nora|enteado|enteada|padrasto|madrasta|"
-           r"neto|neta|parente|colega|companheiro|companheira)")
-_DONO_OUTRO = (r"(?:dela|dele|d[ao]s? (?:minha|meu|minhas|meus|nossa|nosso) " + _PESSOA
+#: 🔴 Conserto X1 (RT P2): os carinhosos ("mamãe", "vovó") e o sócio/ex entraram —
+#: 📊 "o seguro da mamãe" passava como do próprio segurado.
+_PESSOA = (r"(?:mae|mamae|mainha|pai|papai|painho|esposa|esposo|marido|mulher|filho|filha|irmao|irma|"
+           r"sogro|sogra|avo|avoh|vovo|vo|tio|tia|primo|prima|namorado|namorada|noivo|noiva|cunhado|"
+           r"cunhada|amigo|amiga|vizinho|vizinha|patrao|patroa|chefe|genro|nora|enteado|enteada|"
+           r"padrasto|madrasta|neto|neta|sobrinho|sobrinha|padrinho|madrinha|afilhado|afilhada|"
+           r"parente|colega|companheiro|companheira|socio|socia|ex|ex-mulher|ex-marido)")
+#: 🔴 X1: o possessivo ficou OPCIONAL — "o cpf DA MÃE", "o seguro do pai" são de outra pessoa
+#: tanto quanto "da MINHA mãe".
+_DONO_OUTRO = (r"(?:dela|dele|d[ao]s? (?:(?:minha|meu|minhas|meus|nossa|nosso) )?" + _PESSOA
                + r"s?|de (?:minha|meu) " + _PESSOA + r"|de outra pessoa|de terceiros?)")
 #: o DOCUMENTO/APÓLICE atribuído a outra pessoa: "o cpf dela", "a apólice da minha mãe".
 _RX_DOC_DE_OUTRO = re.compile(
     r"\b(?:cpf|cnpj|documento|apolice|seguro|cadastro|nome)\b[^.?!\n|]{0,25}?\b" + _DONO_OUTRO + r"\b")
+#: 🔴 X1 (RT P2 · juiz P7): o documento de uma pessoa NOMEADA, sem parentesco — "a apólice do
+#: joão", "o cpf da maria". Só com palavra de IDENTIFICAÇÃO (cpf/cnpj/documento/cadastro/
+#: apólice): "o seguro do gol" é do carro. A palavra depois do "do/da" não pode ser coisa.
+_RX_DOC_DE_NOMEADO = re.compile(
+    r"\b(?:cpf|cnpj|documento|cadastro|apolice)\s+d[ao]\s+([a-z]{3,})\b")
+#: constante_justificada: o que vem depois de "a apólice do/da" e NÃO é gente — o bem, o ramo,
+#: a seguradora, o próprio titular, o tempo. Na dúvida a palavra conta como nome (o lado seguro
+#: aqui é não entregar dado de terceiro; o titular de verdade ainda diz "meu cpf").
+_NAO_E_PESSOA = frozenset({
+    "titular", "segurado", "segurada", "cliente", "proprietario", "proprietaria", "dono", "dona",
+    "carro", "veiculo", "moto", "caminhao", "caminhonete", "casa", "imovel", "apartamento", "predio",
+    "empresa", "condominio", "loja", "seguro", "seguradora", "auto", "automovel", "residencial",
+    "residencia", "vida", "celular", "frota", "ano", "mes", "mesmo", "mesma", "banco", "sistema",
+    "contrato", "plano", "corretor", "corretora", "sinistro", "guincho", "outro", "outra", "ultimo",
+    "ultima", "atual", "antigo", "antiga", "novo", "nova", "passado", "passada", "vencido", "vencida",
+    "renovacao", "porto", "azul", "allianz", "bradesco", "sulamerica", "tokio", "hdi", "mapfre",
+    "liberty", "yelum", "zurich", "sompo", "itau", "mitsui", "suhai", "youse", "justos", "aliro",
+    "alfa", "sancor", "essor", "akad", "caixa", "unimed", "pier", "darwin", "ezze", "meu", "minha",
+    "seu", "sua", "nosso", "nossa", "dela", "dele", "qual", "que"})
+#: 🔴 X3 (juiz B3): ELE diz que o seguro É DELE — desmente o "carro é da minha esposa" e o nome.
+#: ⚠️ "não sou o titular" não casa (lookbehind do "nao ").
+_RX_O_SEGURO_E_MEU = re.compile(
+    r"\b(?:o seguro|a apolice|o plano|a assistencia)\s+(?:e|eh|ta|esta|fica)\s+(?:(?:no|em) )?(?:meu|minha)\b|"
+    r"(?<!nao )\bsou (?:eu )?(?:o |a )?(?:titular|segurad[oa])\b|"
+    r"\b(?:ta|esta|fica)\s+(?:no|em) meu nome\b")
+#: 🔴 X1 (RT B1): pergunta de COBERTURA ou de DADO — nunca é o "serviço" da exceção. "minha
+#: mãe pediu pra eu ver se o seguro dela cobre vidro" pede DADO da apólice dela.
+#: ⚠️ Só o que pede DADO: "quanto tempo o guincho demora", "está a 5 km", "os dados dela
+#: são…" são do serviço e não entram (cortariam o acionamento legítimo do titular junto).
+_RX_PERGUNTA_DE_DADO = re.compile(
+    r"\b(?:cobre|cobrem|cobria|cobertura|coberturas|coberto|coberta|tem direito|direito a|ver se|"
+    r"saber se|veja se|olhar se|consultar|verificar se|checar se|quanto (?:custa|cobre|paga|e|fica|vale)|"
+    r"valor|valores|franquia|vigencia|vencimento|vence|parcela|parcelas|boleto|me passa|"
+    r"passar a apolice|numero da apolice|tem seguro|esta ativ\w*|ta ativ\w*|esta valendo|"
+    r"ta valendo|qual (?:e )?a seguradora|qual seguradora|inclui|incluso|incluido|reembolso|"
+    r"indeniza\w*)\b")
 #: o BEM atribuído a outra pessoa só com o verbo ("o carro É da minha esposa",
 #: "está no nome dela") — "a moto dele bateu no meu carro" (colisão) não é posse.
 _RX_BEM_DE_OUTRO = re.compile(
@@ -440,25 +481,49 @@ def de_quem_e_a_apolice(documento: Any, falas: Any, *, inicial_do_titular: Any =
     # "MEU cpf" na própria mensagem do documento desmente o que veio antes.
     meu_aqui = onde is not None and bool(_RX_MEU_DOC.search(norm[onde]))
     trecho = " \n ".join(norm[: onde + 1] if onde is not None else norm)
-    if not meu_aqui and (_RX_DOC_DE_OUTRO.search(trecho) or _RX_BEM_DE_OUTRO.search(trecho)
-                         or _RX_NAO_SOU_TITULAR.search(trecho)):
+    tudo = " \n ".join(norm)
+    # 🔴 X3: "o carro é da minha esposa MAS O SEGURO É MEU" — o bem de outra pessoa não faz
+    #    o seguro ser de outra pessoa quando ele diz que o seguro é dele.
+    seguro_e_meu = bool(_RX_O_SEGURO_E_MEU.search(tudo))
+    if not meu_aqui and (_RX_DOC_DE_OUTRO.search(trecho)
+                         or (_RX_BEM_DE_OUTRO.search(trecho) and not seguro_e_meu)
+                         or _RX_NAO_SOU_TITULAR.search(trecho)
+                         or any(m.group(1) not in _NAO_E_PESSOA
+                                for m in _RX_DOC_DE_NOMEADO.finditer(trecho))):
         motivos.append("a conversa diz que o documento/apolice e de outra pessoa")
 
-    inicial = _sem_acento_minusculo(str(inicial_do_titular or "").strip()[:1])
-    if inicial.isalpha() and len(doc) != 14:
+    # ③ o NOME — 🔴 X3 (juiz B3): só o nome dito COMO NOME ("meu nome é", "me chamo"), nunca
+    #    "aqui é o seguinte"/"aqui é a portaria"; comparado de forma TOLERANTE (qualquer
+    #    inicial do nome do titular — o nome do meio também é dele — e apelidos comuns); e
+    #    "meu cpf"/"o seguro é meu" desmentem o sinal.
+    iniciais = _iniciais(inicial_do_titular)
+    if iniciais and len(doc) != 14 and not seguro_e_meu and not _RX_MEU_DOC.search(tudo):
         try:
-            from app.agents.quem_e_o_segurado import nome_dito
+            from app.agents.quem_e_o_segurado import nome_bate_com_as_iniciais, nome_dito_como_nome
 
-            nome = _sem_acento_minusculo(nome_dito(" \n ".join(linhas)))
-        except Exception:  # noqa: BLE001
-            nome = ""
-        if nome and nome[:1] != inicial:
-            motivos.append("o nome que ele disse nao bate com o titular")
+            nome = nome_dito_como_nome(" \n ".join(linhas))
+            if nome and not nome_bate_com_as_iniciais(nome, iniciais):
+                motivos.append("o nome que ele disse nao bate com o titular")
+        except Exception:  # noqa: BLE001 — sem a régua do nome, o sinal não existe
+            pass
 
     terceiro = bool(motivos)
-    tudo = " \n ".join(norm)
-    autorizado = bool(terceiro and _RX_TITULAR_AUTORIZOU.search(tudo) and _pediu_servico(" \n ".join(linhas)))
+    # 🔴 X1 (RT B1): a exceção é SERVIÇO pedido pelo titular junto — pergunta de cobertura
+    #    ou de dado ("ver se cobre vidro") nunca é serviço, mesmo com "ela pediu".
+    autorizado = bool(terceiro and _RX_TITULAR_AUTORIZOU.search(tudo)
+                      and _pediu_servico(" \n ".join(linhas))
+                      and not _RX_PERGUNTA_DE_DADO.search(tudo))
     return {"terceiro": terceiro, "autorizado": autorizado, "motivos": motivos}
+
+
+def _iniciais(valor: Any) -> set:
+    """As iniciais do titular: `"M"`, `"ME"` ou o nome mascarado `"M*** E***"` → `{"m","e"}`."""
+    s = _sem_acento_minusculo(str(valor or "").strip())
+    if not s:
+        return set()
+    if re.search(r"[\s*]", s):
+        return {p[0] for p in re.split(r"[\s]+", s) if p and p[0].isalpha()}
+    return {c for c in s if c.isalpha()}
 
 
 #: O que o modelo recebe quando a apólice é de OUTRA pessoa e não há serviço autorizado.
@@ -473,6 +538,14 @@ TEXTO_DA_APOLICE_DE_TERCEIRO = (
     "da corretora ajudar.\n"
     "Se o titular estiver JUNTO e precisar de um SERVICO (guincho, chaveiro, vidro...), quem fala pode "
     "dizer isso: com o titular presente e pedindo, o acionamento para ele continua possivel.")
+
+
+#: 🔴 Conserto X1 (RT B1): a marca que o `tool_node` lê para NUNCA serializar o `data` ao
+#: modelo. Com a `POLICY_INTELLIGENCE_V2` desligada, o modelo recebia o `json.dumps` do
+#: resultado inteiro — e, na exceção, o `data` é a apólice da OUTRA pessoa (fica só para o
+#: acionamento achar a apólice; ao modelo vai só o `content`).
+MARCA_DO_TITULAR_AUTORIZADO = "titular_autorizado_para_servico"
+MARCAS_DE_APOLICE_DE_OUTRA_PESSOA = ("titular_e_outra_pessoa", MARCA_DO_TITULAR_AUTORIZADO)
 
 
 def texto_do_titular_autorizado(data: Dict[str, Any]) -> str:
@@ -500,7 +573,9 @@ def _inicial_do_titular(data: Dict[str, Any]) -> str:
                     if isinstance(m, dict) and m.get("holder_name_masked")), None)):
         s = str(v or "").strip()
         if s[:1].isalpha():
-            return s[:1]
+            # 🔴 X3: o nome mascarado INTEIRO ("J*** C***") — todas as iniciais valem
+            #    (quem é chamado pelo nome do meio continua sendo o titular).
+            return s
     return ""
 
 
@@ -806,7 +881,8 @@ class InfocapPolicyLookupTool(BaseTool):
                                            mensagem_atual)
                 return {"content": content, "data": det, "found": bool(det.get("ok")),
                         "policy_response_contract": contract,
-                        "cobertura": (meta or {}).get("cobertura")}
+                        "cobertura": (meta or {}).get("cobertura"),
+                        **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})}
 
             result = await provider.lookup(
                 company_id=self.company_id,
@@ -898,7 +974,8 @@ class InfocapPolicyLookupTool(BaseTool):
             # de `VereditoDeCobertura.para_registro()`, que não carrega texto.
             return {"content": content, "data": result, "found": bool(result.get("ok")),
                     "policy_response_contract": contract,
-                    "cobertura": (meta or {}).get("cobertura")}
+                    "cobertura": (meta or {}).get("cobertura"),
+                    **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})}
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InfocapPolicyLookupTool] erro: {type(e).__name__}")
             return {"content": "Nao consegui consultar o sistema de gestao da corretora agora. Tente novamente em instantes.", "found": False, "error": type(e).__name__}

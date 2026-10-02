@@ -534,6 +534,91 @@ def _papel_do_agente(state: Dict[str, Any]) -> str:
     return str((state.get("agent_data") or {}).get("agent_role") or "core")
 
 
+# =========================================================================== #
+# 🔴 Conserto X4 (SPEC-125 · juiz B4) — O PROMPT FORA DO CHECKPOINT (D1)
+# =========================================================================== #
+# 📊 02/10/2026 (juiz, SELECT): 1.456 de 1.506 `checkpoints` com o prompt inteiro
+# (`system_prompt`/`dynamic_context`, média 15.927 chars) — e, depois da S3, com o CPF
+# cru do bloco "O QUE JÁ SABEMOS". O LangGraph grava o ESTADO a cada passo; e grava a
+# ENTRADA do grafo (o canal `__start__`) também — por isso um canal "não rastreado"
+# não basta (📊 medido: `UntrackedValue` some de `channel_values`, mas o texto continua
+# no blob do `__start__`).
+#
+# O mecanismo: o prompt viaja no `config["configurable"]`, que o LangGraph entrega a
+# cada nó e NÃO persiste quando o valor não é str/int/float/bool
+# (`langgraph.checkpoint.base.get_checkpoint_metadata` copia para a metadata só esses
+# tipos). Por isso ele vai num OBJETO próprio — nunca uma string solta no `configurable`.
+# Na entrada, os três campos vão `None` (limpa o que um checkpoint antigo carregava).
+CHAVE_DO_PROMPT_DO_TURNO = "prompt_do_turno"
+CAMPOS_DO_PROMPT_DO_TURNO = ("system_prompt", "static_prompt", "dynamic_context")
+
+
+class PromptDoTurno:
+    """O prompt do turno, fora do estado persistido. ⛔ `repr` nunca mostra o texto."""
+
+    __slots__ = ("campos",)
+
+    def __init__(self, campos: Dict[str, Any]):
+        self.campos = {k: campos.get(k) for k in CAMPOS_DO_PROMPT_DO_TURNO}
+
+    def __repr__(self) -> str:  # nada do prompt em log/trace
+        return "PromptDoTurno(<%d chars>)" % sum(len(str(v or "")) for v in self.campos.values())
+
+
+def com_o_prompt_do_turno(state: Any, config: Any) -> Any:
+    """O estado do nó COM o prompt do turno (do `config`), sem tocar no estado salvo. **PURA.**
+
+    Sem o objeto no `config` (bancada, testes, chamador antigo), o estado vale como veio.
+    """
+    try:
+        portador = ((config or {}).get("configurable") or {}).get(CHAVE_DO_PROMPT_DO_TURNO)
+    except Exception:  # noqa: BLE001
+        portador = None
+    if not isinstance(portador, PromptDoTurno) or not isinstance(state, dict):
+        return state
+    return {**state, **{k: v for k, v in portador.campos.items() if v is not None}}
+
+
+def _conteudo_da_consulta_para_o_modelo(result: Dict[str, Any]) -> str:
+    """O texto que o MODELO recebe de uma consulta de apólice. **PURA.**
+
+    Com a `POLICY_INTELLIGENCE_V2`, só o briefing (SPEC-016.1 D10); sem ela, o JSON.
+    🔴 Conserto X1 (RT B1): apólice de OUTRA pessoa — cortada OU na exceção do titular
+    junto — nunca vai serializada: o `data` (que o acionamento usa) não chega ao modelo
+    com a flag em NENHUM valor; só o `content`, que não conta nada dela.
+    """
+    from app.agents.tools.infocap_tool import MARCAS_DE_APOLICE_DE_OUTRA_PESSOA
+
+    if any(result.get(m) for m in MARCAS_DE_APOLICE_DE_OUTRA_PESSOA):
+        return str(result.get("content") or "")
+    if _policy_intelligence_v2() and str(result.get("content") or "").strip():
+        # infocap_briefing_only (SPEC-016.1 D10): a LLM recebe SÓ o briefing
+        # humanizado — nunca o JSON cru com abreviações/termos internos da fonte.
+        return str(result.get("content"))
+    return json.dumps(result, ensure_ascii=False, default=str)
+
+
+def _fala_ao_segurado(state: Dict[str, Any]) -> bool:
+    """O texto deste turno vai ao SEGURADO? Todo papel que NÃO é o corretor (a mesma porta
+    de `prompts._select_base_prompt`: o desconhecido cai do lado restrito)."""
+    from app.core.prompts import _PAPEIS_DO_CORRETOR
+
+    return _papel_do_agente(state).strip().lower() not in _PAPEIS_DO_CORRETOR
+
+
+def _sem_documento_inteiro(texto: Any, state: Dict[str, Any]) -> Any:
+    """🔴 Conserto X2 · T19 em CÓDIGO: ao segurado, CPF/CNPJ só `final XXXX`."""
+    if not isinstance(texto, str) or not texto or not _fala_ao_segurado(state):
+        return texto
+    try:
+        from app.agents.quem_e_o_segurado import mascarar_documentos_na_saida
+
+        return mascarar_documentos_na_saida(texto)
+    except Exception as exc:  # noqa: BLE001 — sem a régua, o texto sai como veio
+        logger.warning("[T19] máscara de saída indisponível (%s)", type(exc).__name__)
+        return texto
+
+
 def _safe_infocap_policy_context(
     data: Dict[str, Any],
     *,
@@ -1717,16 +1802,19 @@ def _documentos_ja_ditos(state: dict) -> list:
     """
     try:
         from app.agents.historico_da_conversa import NOME_DA_EQUIPE
-        from app.agents.quem_e_o_segurado import documentos_ditos
+        from app.agents.quem_e_o_segurado import documentos_ditos, documentos_proprios
     except Exception:  # noqa: BLE001
         return []
     achados: list = []
     try:
-        for m in state.get("messages") or []:
-            if isinstance(m, HumanMessage) and getattr(m, "name", None) != NOME_DA_EQUIPE:
-                for d in documentos_ditos(extract_text_from_content(m.content)):
-                    if d not in achados:
-                        achados.append(d)
+        # 🔴 Conserto X2 (RT B2 · juiz B2): só o documento que ele disse como SEU. O CPF
+        #    que a conversa atribui a outra pessoa ("o cpf da minha mãe") nunca é "já
+        #    dito" — senão o fiscal empurra o modelo a tratar a mãe como titular.
+        falas = [extract_text_from_content(m.content) for m in state.get("messages") or []
+                 if isinstance(m, HumanMessage) and getattr(m, "name", None) != NOME_DA_EQUIPE]
+        for d in documentos_proprios(falas):
+            if d not in achados:
+                achados.append(d)
         dyn = str(state.get("dynamic_context") or "")
         i = dyn.find("O QUE JÁ SABEMOS DESTE SEGURADO")
         if i >= 0:
@@ -1736,10 +1824,18 @@ def _documentos_ja_ditos(state: dict) -> list:
             #    descartados pela régua da conversa. Aqui cada número do bloco
             #    passa pela MESMA régua, ancorado na palavra (o dígito
             #    verificador continua decidindo).
-            for numero in re.findall(r"(?<!\d)\d{11}(?:\d{3})?(?!\d)", dyn[i:fim if fim > 0 else len(dyn)]):
+            # o que as falas do turno atribuem a OUTRA pessoa não volta pelo bloco
+            de_outro = {d for f in falas for d in documentos_ditos(f)} - set(achados)
+            bloco = dyn[i:fim if fim > 0 else len(dyn)]
+            for numero in re.findall(r"(?<!\d)\d{11}(?:\d{3})?(?!\d)", bloco):
                 for d in documentos_ditos("cpf " + numero):
-                    if d not in achados:
+                    if d not in achados and d not in de_outro:
                         achados.append(d)
+            # 🔴 X2: o de um assunto ANTERIOR vem só pelo FINAL ("final 4725") — conta
+            #    como conhecido (não se pede de novo; confirma-se o final), sem o número.
+            for final in re.findall(r"assunto anterior: final (\d{4})\b", bloco):
+                if not any(str(a)[-4:] == final for a in achados):
+                    achados.append("…" + final)
     except Exception as exc:  # noqa: BLE001
         logger.debug("[PERGUNTA REPETIDA] documentos da conversa ilegíveis (%s)", type(exc).__name__)
     return achados
@@ -1804,11 +1900,21 @@ async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar)
     if "titular_cpf" in repetidos and documentos:
         from app.services.attendance_ficha import ORIGEM_CLIENTE, confirmacao
 
+        # o documento dito NESTA conversa vence o de um assunto anterior (só o final)
+        _doc_conhecido = next((d for d in reversed(documentos) if not str(d).startswith("…")),
+                              documentos[-1])
+
         ficha = {**(ficha or {}), "confirmados": {
             **((ficha or {}).get("confirmados") or {}),
+            # 🔴 X2: o fiscal não manda mais "use o número" — manda CONFIRMAR o final
+            #    com ele (e só o documento que ele disse como SEU chega até aqui).
             "titular_cpf": confirmacao(
-                "final %s — já dito na conversa; use o número da conversa nas "
-                "ferramentas e, a ele, só confirme o final" % str(documentos[-1])[-4:],
+                ("final %s — ele disse este documento como dele num assunto ANTERIOR; não "
+                 "peça de novo: confirme com ele o final (o número volta depois do sim)"
+                 if str(_doc_conhecido).startswith("…") else
+                 "final %s — ele já disse este documento como dele nesta conversa; use o "
+                 "número da conversa nas ferramentas e, a ele, só confirme o final")
+                % str(_doc_conhecido)[-4:],
                 ORIGEM_CLIENTE)}}
     _marcar_erro_leve_no_diario(state, "agente_repetiu_pergunta")
 
@@ -2025,6 +2131,8 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     não há Skill a resolver.
     """
     logger.info("[Agent Node] Processando...")
+    # 🔴 Conserto X4 (D1): o prompt do turno chega pelo `config`, fora do checkpoint.
+    state = com_o_prompt_do_turno(state, config)
 
     # === 🧠 A CONVERSA — por TOKENS, nunca por contagem (SPEC-125 S2 · D1) ===
     # 📊 Antes: as últimas 15 mensagens do checkpointer, com o SystemMessage de
@@ -2380,6 +2488,18 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
         if _classe_fora:
             logger.error("[Agent Node] 🛡️ resposta ainda fora da classe %s — "
                          "enviada assim mesmo e registrada no feed", _classe_fora)
+
+    # 🔴 Conserto X2 · T19 EM CÓDIGO — o ÚLTIMO a mexer no texto: nenhum CPF/CNPJ
+    #    inteiro sai ao segurado, venha de onde vier (o modelo ecoou, a regeneração
+    #    trouxe, o bloco do turno tinha). Fica a mensagem salva e o `final_response`.
+    if not has_tool_calls:
+        _texto_saida = extract_text_from_content(getattr(response, "content", "") or "")
+        _mascarado = _sem_documento_inteiro(_texto_saida, state)
+        if _mascarado != _texto_saida:
+            logger.warning("[T19] documento inteiro na resposta ao segurado — mascarado")
+            response = mesma_mensagem_com_texto(response, _mascarado)
+        if guarded_final:
+            guarded_final = _sem_documento_inteiro(guarded_final, state)
 
     # 🔴 SPEC-125 D7 — o momento de JULGAMENTO do turno vai ao diário (só os
     #    momentos, nunca uma linha por mensagem). Fora do caminho da resposta.
@@ -2744,12 +2864,16 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
                  novidades, obrig)
 
 
-async def tool_node(state: AgentState, tools: list) -> dict:
+async def tool_node(state: AgentState, tools: list,
+                    config: Optional[RunnableConfig] = None) -> dict:
     """
     Nó de Tools - Executa as tools chamadas pelo agente.
     Async para permitir chamadas _arun em tools que suportam (ex: SubAgentTool).
     """
     logger.info("[Tool Node] Executando tools...")
+    # 🔴 Conserto X4 (D1): a memória do turno (`dynamic_context`) que a delegação lê
+    #    (`build_task_context`) chega pelo `config`, fora do checkpoint.
+    state = com_o_prompt_do_turno(state, config)
 
     messages = state["messages"]
     last_message = messages[-1]
@@ -3154,13 +3278,7 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                                 company_id=str(state.get("company_id") or ""),
                                 papel=_papel_do_agente(state),
                             )
-                            if _policy_intelligence_v2() and str(result.get("content") or "").strip():
-                                # infocap_briefing_only (SPEC-016.1 D10): a LLM recebe
-                                # SÓ o briefing humanizado — nunca o JSON cru com
-                                # abreviações/termos internos da fonte.
-                                content = str(result.get("content"))
-                            else:
-                                content = json.dumps(result, ensure_ascii=False, default=str)
+                            content = _conteudo_da_consulta_para_o_modelo(result)
                         else:
                             content = str(result)
                     else:
@@ -3231,7 +3349,8 @@ async def tool_node(state: AgentState, tools: list) -> dict:
         # SPEC-016.1 D7: com v2, a LLM redige a resposta final (o guard pós-LLM
         # fiscaliza). Só identity_mismatch encerra direto com o texto seguro.
         if not _policy_intelligence_v2() or policy_response_contract.get("result_kind") == "identity_mismatch":
-            return_dict["final_response"] = policy_final_response
+            # 🔴 Conserto X2 · T19: esta resposta sai SEM passar pelo `agent_node`.
+            return_dict["final_response"] = _sem_documento_inteiro(policy_final_response, state)
     merged_context = _merge_infocap_policy_context(
         memo_da_apolice.get("contexto", state.get("infocap_policy_context")),
         infocap_policy_context)
