@@ -630,6 +630,24 @@ class EvolutionGoProvider:
     def send_button_reply(self, to: str, button_id: str, title: str) -> SendResult:
         return self.send_list_reply(to, button_id, title)
 
+    def send_buttons(self, to: str, text: str, botoes) -> SendResult:
+        """SPEC-126 §3.1 (1) — ORIGINAR botões de resposta rápida ("✅ Pode acionar" /
+        "✏️ Corrigir algo"). ⛔ AINDA NÃO: levanta ``NotImplementedError``, sem tocar a rede.
+
+        📊 O que se sabe: ``/send/button`` está no catálogo do swagger do GO
+        (``ROTAS_DE_ENVIO_MEDIDAS``, 03/08 e 26/09/2026) e o patch 0005 do fork mostra que
+        ``SendButton`` existe e embrulha a mensagem (``ButtonsMessage``, "Reply-only buttons").
+        🔴 O que NÃO se sabe: o CORPO (``ButtonStruct``) — o repositório não tem a transcrição
+        dos campos (o patch só mostra o último, ``videoUrl``). Montar o corpo de memória seria
+        palpite numa rota que fala com o segurado; e o canal não-oficial pode aceitar a chamada
+        e não DESENHAR o botão (CLAUDE.md §9.2). O que destrava: transcrever ``ButtonStruct`` do
+        ``/swagger/doc.json`` do serviço, provar num aparelho real (🧑 Founder) e só então ligar
+        ``interactive`` em ``_GO_CAPABILITIES``. Até lá a confirmação vai como TEXTO, pelo portão.
+        """
+        raise NotImplementedError(
+            "Evolution GO: send_buttons sem o corpo de /send/button transcrito do swagger e sem prova "
+            "em aparelho real — interactive=False; mande a pergunta como texto")
+
     def flow_reply_supported(self) -> bool:
         """Este canal sabe ENVIAR resposta de formulário nativo?
 

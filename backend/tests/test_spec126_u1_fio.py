@@ -18,6 +18,8 @@ enviar, manda um "me confirma os dados?" genérico, o portão recusa e nada acio
 """
 from __future__ import annotations
 
+import pytest
+
 import os
 import re
 import sys
@@ -47,6 +49,18 @@ CEN_FIO = {**C13, "chave": "conv-teste-u1-fio-c13",
            "roteiro": {"falas_fixas": [[f"meu carro morreu na estrada, preciso de guincho. cpf {CPF}"],
                                        ["to no acostamento da Anhanguera km 52, leva pra oficina da Rua Sete 100"],
                                        ["pode mandar"]], "max_turnos": 3}}
+
+
+@pytest.fixture(autouse=True)
+def _classificador_da_confirmacao_na_borda():
+    """🔴 SPEC-126 U2 parte B (§9.3 — a lição MIGRA): o portão do acionamento passou a ser regex E
+    classificador (`insurer_dispatch_tool.portao_da_confirmacao`). Aqui o classificador é um MODELO-DUBLÊ na
+    BORDA (`llm_factory.invocar_com_reserva`, papel `confirmacao`) que diz OK para TUDO — então quem decide
+    todo "não acionou" deste arquivo continua sendo a regex; e nenhum teste chama modelo pago."""
+    from app.services.evals import bancada_confirmacao as _BC
+
+    with _BC.classificador_duble_na_borda() as chamadas:
+        yield chamadas
 
 
 def _linha_do_retorno(texto: str) -> str:

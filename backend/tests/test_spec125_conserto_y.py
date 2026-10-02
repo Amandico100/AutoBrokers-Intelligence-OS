@@ -68,6 +68,18 @@ PERGUNTA = ("Para confirmar: guincho para a placa AAA0A91, na Rua Um, 100, levan
 # ===========================================================================
 # Y1 · a regra PURA (a mesma da ferramenta e da bancada)
 # ===========================================================================
+@pytest.fixture(autouse=True)
+def _classificador_da_confirmacao_na_borda():
+    """🔴 SPEC-126 U2 parte B (§9.3 — a lição MIGRA): o portão do acionamento passou a ser regex E
+    classificador (`insurer_dispatch_tool.portao_da_confirmacao`). Aqui o classificador é um MODELO-DUBLÊ na
+    BORDA (`llm_factory.invocar_com_reserva`, papel `confirmacao`) que diz OK para TUDO — então quem decide
+    todo "não acionou" deste arquivo continua sendo a regex; e nenhum teste chama modelo pago."""
+    from app.services.evals import bancada_confirmacao as _BC
+
+    with _BC.classificador_duble_na_borda() as chamadas:
+        yield chamadas
+
+
 def test_y1_sem_pergunta_de_confirmacao_nao_ha_prova():
     # 📊 a linha de base (C13 t1): o CPF e o pedido no MESMO turno, nenhuma pergunta antes
     falas = [("segurado", "meu carro morreu na estrada, preciso de guincho. cpf 52998224725")]

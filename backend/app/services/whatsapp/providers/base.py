@@ -28,7 +28,7 @@ caller asks for a feature the provider does not advertise.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Sequence, runtime_checkable
 
 from app.services.whatsapp.models import (
     InboundBatch,
@@ -193,5 +193,41 @@ class WhatsAppProvider(Protocol):
         """
         ...
 
+    def send_buttons(self, to: str, text: str,
+                     botoes: Sequence["BotaoDeResposta"]) -> SendResult:
+        """SPEC-126 §3.1 (1) — envia ``text`` com BOTÕES de resposta rápida.
 
-__all__ = ["ProviderCapabilities", "WhatsAppProvider"]
+        Only called when ``ProviderCapabilities.interactive`` is ``True``. 🔴 O
+        PADRÃO é NÃO SUPORTADO: o provedor que não anuncia ``interactive`` levanta
+        :class:`~app.services.whatsapp.exceptions.ProviderNotSupportedError` (como
+        ``send_template``) — e quem chama manda a mesma pergunta como TEXTO.
+        ``interactive`` só liga com a prova em APARELHO REAL (o canal não-oficial
+        pode aceitar a chamada e não desenhar o botão — CLAUDE.md §9.2).
+
+        O toque do segurado volta pelo inbound como o TEXTO do rótulo
+        (``evolution_inbound._text_from_message`` → ``rotulo or ident``) e passa
+        pelo mesmo portão da confirmação que o texto livre — o id não pula nada.
+        """
+        ...
+
+
+@dataclass(frozen=True)
+class BotaoDeResposta:
+    """Um botão de resposta rápida: ``id`` (o que volta no clique) e ``rotulo``
+    (o que a pessoa LÊ — e o que o inbound entrega ao turno)."""
+
+    id: str
+    rotulo: str
+
+
+def nao_suporta_botoes(provedor: str) -> SendResult:
+    """O padrão do contrato: o provedor sem ``interactive`` RECUSA, nunca finge.
+
+    Levanta ``ProviderNotSupportedError`` — o mesmo desenho de ``send_template``."""
+    from app.services.whatsapp.exceptions import ProviderNotSupportedError
+
+    raise ProviderNotSupportedError(
+        f"{provedor} não envia botões de resposta rápida (interactive=False)")
+
+
+__all__ = ["BotaoDeResposta", "ProviderCapabilities", "WhatsAppProvider", "nao_suporta_botoes"]

@@ -15,6 +15,8 @@ O que se afirma aqui:
 """
 from __future__ import annotations
 
+import pytest
+
 import hashlib
 import os
 import re
@@ -33,6 +35,18 @@ SHA_DO_V1 = "2713eee75b689c7b9b7889caa6e61043eb5aaff4a4db645d79d5e469df734a77"
 REGRA_DO_ACOSTAMENTO = "Carro parado no acostamento/rodovia NÃO é grave"
 FRASE_DO_CANCELAMENTO = ("Vou chamar agora a pessoa da corretora para cancelar com a seguradora; o guincho só "
                          "para quando ela confirmar.")
+
+
+@pytest.fixture(autouse=True)
+def _classificador_da_confirmacao_na_borda():
+    """🔴 SPEC-126 U2 parte B (§9.3 — a lição MIGRA): o portão do acionamento passou a ser regex E
+    classificador (`insurer_dispatch_tool.portao_da_confirmacao`). Aqui o classificador é um MODELO-DUBLÊ na
+    BORDA (`llm_factory.invocar_com_reserva`, papel `confirmacao`) que diz OK para TUDO — então quem decide
+    todo "não acionou" deste arquivo continua sendo a regex; e nenhum teste chama modelo pago."""
+    from app.services.evals import bancada_confirmacao as _BC
+
+    with _BC.classificador_duble_na_borda() as chamadas:
+        yield chamadas
 
 
 def _regra_5(texto: str) -> str:

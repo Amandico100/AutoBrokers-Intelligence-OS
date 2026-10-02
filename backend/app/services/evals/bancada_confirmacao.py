@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import hashlib
 import json
 import re
@@ -125,8 +126,11 @@ def regex_aceita(caso: dict) -> bool:
 
 
 def decisao_combinada(regex_ok: bool, leitura: str) -> bool:
-    """🔴 O portão da SPEC-126 §3.1 (2): só aciona se a regex E o classificador disserem ok."""
-    return bool(regex_ok) and leitura == "ok"
+    """🔴 O portão da SPEC-126 §3.1 (2): só aciona se a regex E o classificador disserem ok — pela
+    regra do PRÓPRIO portão (`insurer_dispatch_tool.decisao_do_portao`), nunca reimplementada (§9.4)."""
+    from app.agents.tools.insurer_dispatch_tool import decisao_do_portao
+
+    return bool(decisao_do_portao({"comprovada": bool(regex_ok)}, {"leitura": leitura})["comprovada"])
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -166,6 +170,33 @@ def _pela_regex_da_fala(pergunta: str, falas: List[str]) -> str:
     if "nao" in leituras:
         return "nao"
     return "ok" if "sim" in leituras else "outra_coisa"
+
+
+@contextlib.contextmanager
+def classificador_duble_na_borda(decidir: Optional[Callable[[str, List[str]], str]] = None):
+    """Para TESTES: troca a BORDA do classificador — a chamada ao modelo do papel `confirmacao`
+    (`llm_factory.invocar_com_reserva`) — por um `DubleDaConfirmacao`. Os outros papéis seguem a função
+    original; o prompt, a leitura do JSON, o trecho e o portão continuam os de produção (§9.4).
+
+    Padrão = diz OK para TUDO: num teste que espera "não acionou", quem decide continua sendo a regex.
+    Devolve a lista das chamadas (uma por tentativa de acionamento que a regex deixou passar)."""
+    from app.factories import llm_factory as LF
+
+    original = LF.invocar_com_reserva
+    duble = DubleDaConfirmacao(decidir or (lambda _p, _f: "ok"), "duble:borda")
+    chamadas: List[dict] = []
+
+    async def _borda(papel, mensagens, **kw):
+        if papel != PAPEL:
+            return await original(papel, mensagens, **kw)
+        chamadas.append({"papel": papel, **kw})
+        return await duble.ainvoke(mensagens)
+
+    LF.invocar_com_reserva = _borda
+    try:
+        yield chamadas
+    finally:
+        LF.invocar_com_reserva = original
 
 
 DUBLES: Dict[str, Callable[[], DubleDaConfirmacao]] = {
@@ -394,9 +425,25 @@ def rodar_pela_linha_de_comando(*, bracos: List[str], k: int = 3, casos: Optiona
     return codigo
 
 
+#: backend/ (app/services/evals/bancada_confirmacao.py → parents[3])
+_BACKEND = Path(__file__).resolve().parents[3]
+
+
+def carregar_env(caminho: Optional[Path] = None) -> bool:
+    """O `.env` do backend, como `scripts/bancada.py` faz. 📊 a 1ª rodada da U2a por `python -m` morreu com
+    `OPENAI_API_KEY ausente`: o `-m` não passa pelo script que o carrega. `override=False`: o ambiente de
+    quem chama vence. ⛔ Nenhuma chave é impressa."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # pragma: no cover
+        return False
+    return bool(load_dotenv(str(caminho or (_BACKEND / ".env")), override=False))
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    carregar_env()
     p = argparse.ArgumentParser(description="SPEC-126 U2a — a bancada do 'ok' (classificador × gabarito)")
     p.add_argument("--braco", action="append", default=[], help="provider:model[:effort] ou duble:<regex|sempre_ok|nunca_ok>")
     p.add_argument("--k", type=int, default=3)

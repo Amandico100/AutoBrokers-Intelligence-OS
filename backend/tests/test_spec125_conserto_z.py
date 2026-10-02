@@ -68,6 +68,18 @@ FINAL = CORPUS / "RESULTADOS" / "conversa_final_luna_k2.json"
 # ---------------------------------------------------------------------------
 # o acervo: os cenários do corpus e as conversas gravadas da RODADA FINAL
 # ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _classificador_da_confirmacao_na_borda():
+    """🔴 SPEC-126 U2 parte B (§9.3 — a lição MIGRA): o portão do acionamento passou a ser regex E
+    classificador (`insurer_dispatch_tool.portao_da_confirmacao`). Aqui o classificador é um MODELO-DUBLÊ na
+    BORDA (`llm_factory.invocar_com_reserva`, papel `confirmacao`) que diz OK para TUDO — então quem decide
+    todo "não acionou" deste arquivo continua sendo a regex; e nenhum teste chama modelo pago."""
+    from app.services.evals import bancada_confirmacao as _BC
+
+    with _BC.classificador_duble_na_borda() as chamadas:
+        yield chamadas
+
+
 def _cenario(id_: str) -> dict:
     for linha in (CORPUS / "conversa" / "casos.jsonl").read_text(encoding="utf-8").splitlines():
         if linha.strip():
@@ -255,13 +267,26 @@ PEDIDO = {"subservice": "guincho", "local_atual": "Rua Um, 100, Florianopolis",
     "Quer que eu acione o guincho agora?"])
 @pytest.mark.parametrize("sim", [
     "Não, ninguém se machucou. Pode mandar", "Ninguém se machucou, pode acionar",
-    "já falei que sim", "Já disse que pode", "sim", "pode", "👍", "acho que sim", "ok obrigado",
+    "já falei que sim", "Já disse que pode", "sim", "pode", "👍", "ok obrigado",
     "Sim, pode acionar", "tá certo", "isso mesmo", "oi, sim", "Pode sim, mas rápido por favor"])
 def test_z1_n1_as_formas_legitimas_acionam(pergunta, sim):
+    # 🔴 SPEC-126 U2 parte B (§9.3 — a lição MIGRA): "acho que sim" SAIU desta lista. A bancada do "ok"
+    #    (gabarito escrito ANTES, conf-130, armadilha "duvida") o classifica outra_coisa, e o classificador
+    #    leu outra_coisa nas k=3 — no portão combinado ele NUNCA acionava. Agora a rede (`_RX_DUVIDA`) diz o
+    #    mesmo; a afirmação foi para `test_z1_a_duvida_nao_e_o_sim` abaixo.
     falas = [("segurado", "meu carro morreu, preciso de guincho"), ("agente", pergunta),
              ("segurado", sim)]
     prova = IT.confirmacao_comprovada(falas, PEDIDO)
     assert prova["comprovada"] is True, (pergunta, sim, prova)
+
+
+@pytest.mark.parametrize("duvida", ["acho que sim", "Acredito que sim", "talvez", "sei lá, acho que pode"])
+def test_z1_a_duvida_nao_e_o_sim(duvida):
+    falas = [("agente", RESUMO + " Posso acionar?"), ("segurado", duvida)]
+    assert IT.confirmacao_comprovada(falas, PEDIDO)["comprovada"] is False, duvida
+    # CONTROLE: a dúvida sobre OUTRA coisa não apaga o sim dito em outra oração
+    falas = [("agente", RESUMO + " Posso acionar?"), ("segurado", "pode mandar. seguro? acho que sim")]
+    assert IT.confirmacao_comprovada(falas, PEDIDO)["comprovada"] is True
 
 
 @pytest.mark.parametrize("respostas", [

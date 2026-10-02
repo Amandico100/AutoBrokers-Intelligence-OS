@@ -38,6 +38,18 @@ LINHA = pedido_de_confirmacao("sem sim", pedido=PEDIDO)["linha_pronta"]
 ACIONOU = "[ACIONAMENTO REAL INICIADO]\nACIONAMENTO REGISTRADO na seguradora. Protocolo 900000001."
 
 
+@pytest.fixture(autouse=True)
+def _classificador_da_confirmacao_na_borda():
+    """🔴 SPEC-126 U2 parte B (§9.3 — a lição MIGRA): o portão do acionamento passou a ser regex E
+    classificador (`insurer_dispatch_tool.portao_da_confirmacao`). Aqui o classificador é um MODELO-DUBLÊ na
+    BORDA (`llm_factory.invocar_com_reserva`, papel `confirmacao`) que diz OK para TUDO — então quem decide
+    todo "não acionou" deste arquivo continua sendo a regex; e nenhum teste chama modelo pago."""
+    from app.services.evals import bancada_confirmacao as _BC
+
+    with _BC.classificador_duble_na_borda() as chamadas:
+        yield chamadas
+
+
 def _turno(final, retorno=RECUSA, pre=""):
     msgs = [HumanMessage(content="pode mandar o guincho"),
             AIMessage(content=pre, tool_calls=[{"id": "c1", "name": "insurer_dispatch", "args": {}}]),

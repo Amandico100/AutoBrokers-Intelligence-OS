@@ -96,14 +96,23 @@ def test_as_frases_reais_do_bloco_0_entraram_marcadas():
     assert Counter(c["origem"] for c in CASOS)["real_mascarada"] >= 25
 
 
-@pytest.mark.parametrize("pergunta,pedido", sorted({(c["pergunta"], tuple(sorted(c["pedido"].items())))
-                                                    for c in CASOS}), ids=lambda x: str(x)[:30])
-def test_toda_pergunta_e_a_confirmacao_do_seu_pedido_para_o_motor(pergunta, pedido):
-    """Controle: com "sim", o MOTOR do portão aceita a pergunta — o que muda o resultado é a resposta."""
+@pytest.mark.parametrize("pergunta,pedido,tipo", sorted({(c["pergunta"], tuple(sorted(c["pedido"].items())),
+                                                          c.get("tipo_de_pergunta") or "") for c in CASOS}),
+                         ids=lambda x: str(x)[:30])
+def test_toda_pergunta_e_a_confirmacao_do_seu_pedido_para_o_motor(pergunta, pedido, tipo):
+    """Controle: com o ok INEQUÍVOCO, o MOTOR do portão aceita a pergunta — o que muda o resultado é a
+    resposta.
+
+    🔴 SPEC-126 U2 parte B (§9.3 — a lição MIGRA): o "sim" deixou de ser o ok universal. Na pergunta
+    de DUAS opções ("agora ou prefere amanhã?") ele não escolhe nada (conf-090..093: o "ok" sozinho é
+    outra_coisa) — ali o controle é a ESCOLHA, "agora" (conf-053). E o "sim" lá passa a ser recusado."""
     from app.agents.tools.insurer_dispatch_tool import confirmacao_comprovada
 
-    r = confirmacao_comprovada([("agente", pergunta), ("segurado", "sim")], dict(pedido))
+    controle = "agora" if tipo == "duas_opcoes" else "sim"
+    r = confirmacao_comprovada([("agente", pergunta), ("segurado", controle)], dict(pedido))
     assert r["comprovada"], r["motivo"]
+    if tipo == "duas_opcoes":
+        assert not confirmacao_comprovada([("agente", pergunta), ("segurado", "sim")], dict(pedido))["comprovada"]
 
 
 # ─── o guarda de PII ──────────────────────────────────────────────────────────────────────

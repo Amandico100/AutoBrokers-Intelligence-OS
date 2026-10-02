@@ -29,6 +29,18 @@ PROTO_RX = re.compile(r"Protocolo (\d{6,})")
 # ---------------------------------------------------------------------------
 # Os "modelos" de teste — só a borda (o modelo) é falsa
 # ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _classificador_da_confirmacao_na_borda():
+    """🔴 SPEC-126 U2 parte B (§9.3 — a lição MIGRA): o portão do acionamento passou a ser regex E
+    classificador (`insurer_dispatch_tool.portao_da_confirmacao`). Aqui o classificador é um MODELO-DUBLÊ na
+    BORDA (`llm_factory.invocar_com_reserva`, papel `confirmacao`) que diz OK para TUDO — então quem decide
+    todo "não acionou" deste arquivo continua sendo a regex; e nenhum teste chama modelo pago."""
+    from app.services.evals import bancada_confirmacao as _BC
+
+    with _BC.classificador_duble_na_borda() as chamadas:
+        yield chamadas
+
+
 class _Modelo:
     """Duck-typed como chat model. `papel`: agente_bom · agente_ruim · segurado_e_juiz."""
 

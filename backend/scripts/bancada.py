@@ -264,6 +264,11 @@ def main(argv=None) -> int:
     orcamentos = None
     if a.papel == "conversa":
         return _rodar_conversa(a, p, B)
+    if a.papel == "confirmacao":  # SPEC-126 U2a — a bancada do "ok" (classificador × gabarito)
+        from app.services.evals import bancada_confirmacao as BC
+        return BC.rodar_pela_linha_de_comando(
+            bracos=a.braco, k=a.k, casos=a.casos, teto_provedor=a.teto_provedor,
+            ledger_desde=a.ledger_desde, ledger_papel=a.ledger_papel, saida=a.saida, por_caso=a.por_caso)
     if a.papel == "destravador":
         # 🔴 SPEC-123: o teto é POR PROVEDOR (o do braço E o da 2ª opinião), lido do LEDGER e relido
         #    durante a rodada (`OrcamentoDoLedger`) — a rodada para SOZINHA antes de estourar.
