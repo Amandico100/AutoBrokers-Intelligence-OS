@@ -1,13 +1,13 @@
 <div id="tab-tarefas" class="tab" hidden>
 
 <header class="top">
-  <span class="eyebrow">🧪 A lista única dos testes &middot; atualizada em 02/10/2026 &middot; SPECs 116 → 125 e EXTRA-001.1 → 001.10.1</span>
-  <h1>Seus testes, um por um — de T-01 a T-90, na ordem de fazer.</h1>
+  <span class="eyebrow">🧪 A lista única dos testes &middot; atualizada em 03/10/2026 &middot; SPECs 116 → 126 e EXTRA-001.1 → 001.10.1</span>
+  <h1>Seus testes, um por um — de T-01 a T-98, na ordem de fazer.</h1>
   <p class="lede">Cada grupo só depende dos anteriores. Marque o que passar; no que falhar, cole no chat <b>o número do teste</b> (ex.: <i>"T-43 falhou"</i>),
   o horário e o print — nunca o CPF ou o nome de um segurado. Os SQL vão no Supabase → projeto <i>AutoBrokers Intelligence OS</i> → <b>SQL Editor</b> (todos só leitura).
   O passo a passo completo, com os comandos inteiros, está em <code>docs/canon/TAREFAS-DO-FOUNDER.md</code>, no topo.</p>
   <div class="meta">
-    <span><b>90</b> testes &middot; <b>3</b> já feitos (✅) em 01/10 &middot; <b>9 novos</b> da SPEC-125 (T-82 a T-90)</span>
+    <span><b>98</b> testes &middot; <b>3</b> já feitos (✅) em 01/10 &middot; <b>8 novos</b> da SPEC-126 (T-91 a T-98)</span>
     <span>painel <b>autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host</b></span>
     <span>⚠️ o <b>smith-worker</b> usa o mesmo bloco de variáveis do smith-api</span>
     <span>🔴 freio de emergência: <code>ACIONAMENTO_FREIO_DE_EMERGENCIA=true</code> no smith-api</span>
@@ -20,6 +20,9 @@
     <dt>☑ T-01</dt><dd>✅ <b>Implantar o código de hoje</b> — docling (worker antes da API) → smith-api → smith-worker → smith-web. <b>Feito em 01/10.</b> Vale por todos os Implantar pedidos antes &middot; <i>S116.2 · 0.2 · F.1 · G.1 · I.1 · J.1 · S120.1 · S121.1 · S122.1 · S123.1 · S124.1</i></dd>
     <dt>☐ T-82</dt><dd><b>Implantar a SPEC-125</b> (o atendimento que lembra): smith-api → smith-worker → smith-web, nenhuma variável nova. SQL: <code>select agent_role, prompt_versao, is_active, count(*) from public.agents where agent_role = 'attendance' group by 1, 2, 3;</code> → 📊 (02/10) <code>attendance | v2 | false | 4</code> &middot; <i>S125.1</i></dd>
     <dt>☐ T-83</dt><dd><b>Decidir D-125-I</b>: autorizar ~US$ 1,30 para medir o atendimento novo no <b>modelo de produção</b> antes de ligar. Se sim, no chat: <i>"rode a rodada do Sol da SPEC-125 (P-125-01), teto US$ 1,30"</i> → os 6 críticos PASS. Se algum falhar, não ligue ainda (T-90) &middot; <i>S125.4 · P-125-01</i></dd>
+    <dt>☐ T-91</dt><dd><b>Implantar a SPEC-126</b> (o atendimento quase sem erro): smith-api → smith-worker → smith-web — pode ser o mesmo Implantar do T-82; as migrations já estão no banco, nenhuma variável nova. SQL: <code>select version, name from supabase_migrations.schema_migrations where version in ('20261002202210', '20261002202302') order by 1;</code> → 📊 (03/10) <b>duas linhas</b> (<code>spec126_u6_deduzir_calibrado</code> e <code>spec126_papel_confirmacao</code>) &middot; <i>S126.1</i></dd>
+    <dt>☐ T-92</dt><dd><b>O "juiz do ok" e o DEDUZIR travado</b>: <code>select papel, modelo_primario, esforco, modelo_reserva, esforco_reserva from public.llm_papeis where papel = 'confirmacao';</code> → 📊 <code>confirmacao | gpt-6-luna | medium | claude-sonnet-5-5 | low</code>; e <code>select modo, deduzir_calibrado, count(*) from public.cerebro_modos group by 1, 2;</code> → 📊 <code>on | false | 40</code> &middot; <i>S126.1 · G7</i></dd>
+    <dt>☐ T-98</dt><dd><b>Decidir o orçamento dos testes que ficaram de fora</b> (💭 ≈ US$ 1,00 OpenAI + 0,05 Anthropic): Luna de novo, o modelo de produção nos casos não-críticos e a reserva do "juiz do ok". No chat: <i>"autorizo US$ 1,00 de OpenAI e US$ 0,05 de Anthropic para as pendências P-126-01, P-126-02 e P-126-12"</i>. Sem autorizar, nada quebra &middot; <i>S126.4</i></dd>
     <dt>☐ T-02</dt><dd><b>O que está no ar é o código de hoje, inclusive o portal-worker.</b> No chat: <i>"rode o conferir o que está no ar"</i> → <b>BATE</b>; e <code>…portal-worker.golhpm.easypanel.host/health</code> com <code>build_time</code> de 24/09 ou depois (📊 último código dele: <code>79c9e80</code>, 24/09). Anterior? Implantar o portal-worker &middot; <i>S116.2 · F.1 · P-E0017-02</i></dd>
     <dt>☐ T-03</dt><dd><b>A saúde do smith-api</b> (<code>/health</code>): <code>scheduler</code> = <b>lider</b> · <code>executor_threads</code> ≥ 32 · <code>finalize_refs_fantasma</code> vazio · <code>finalize_abre_de_verdade</code> = false enquanto testa &middot; <i>G.2 · G.3 · J.3</i></dd>
     <dt>☐ T-04</dt><dd><b>Crédito e recarga automática</b> na Anthropic e na OpenAI (Billing) — saldo positivo e auto-reload ligado &middot; <i>S116.1</i></dd>
@@ -80,6 +83,14 @@
     <dt>☐ T-88</dt><dd><b>Dado de outra pessoa não sai</b>: <i>"o cpf da minha mãe é …, ela tem seguro?"</i> → nem seguradora, nem vigência, nem se a apólice existe &middot; <i>S125 (C16)</i></dd>
     <dt>☐ T-89</dt><dd><b>O diário e o PLACAR</b>: Atendimentos → Decisões abre, com o placar no topo; <b>Pausar</b> uma seguradora → <code>select insurer_key, modo from public.cerebro_modos where modo = 'off';</code> → só ela, só na sua corretora; despausar. Erro 500 = me avise (P-125-14) &middot; <i>S125 (S6)</i></dd>
     <dt>☐ T-90</dt><dd><b>Voltar ao prompt antigo, e voltar ao novo</b> (sem Implantar): <code>update public.agents set prompt_versao = 'v1' where agent_role = 'attendance' and is_active = true;</code> → o jeito antigo; depois <code>update public.agents set prompt_versao = 'v2' where agent_role = 'attendance';</code>. O "sim" antes de acionar e o CPF mascarado continuam nos dois &middot; <i>S125 (G4)</i></dd>
+  </dl>
+  <h3 style="margin:18px 0 8px">③-c · O atendimento da SPEC-126 <span style="color:var(--muted);font-size:13px">(depois do T-25 e do T-91, com <code>DISPATCH_FINALIZE_MODE=test</code> e dados de teste)</span></h3>
+  <dl class="q2">
+    <dt>☐ T-93</dt><dd><b>"Pode deixar" NÃO aciona; "pode mandar" aciona</b>: pedido completo → resumo numa linha + "posso acionar?"; <i>"pode deixar"</i> → não aciona; <i>"pode mandar"</i> → aciona. Controles: <i>"manda não"</i>, <i>"prefiro amanhã"</i>, <i>"sim, quanto custa?"</i> não acionam; <i>"fechou"</i>, <i>"👍"</i> acionam. Se acionar com "pode deixar": pare e me mande a hora &middot; <i>S126 (G2)</i></dd>
+    <dt>☐ T-94</dt><dd><b>Desistir depois de acionar chama a pessoa na hora</b>: depois do T-93, <i>"esquece o guincho, o carro pegou"</i> → o agente <b>não</b> diz "cancelei"; o <b>grupo</b> recebe o aviso com o resumo e o protocolo. Igual com <i>"esquece... o guincho"</i>. Controle: <i>"cadê o guincho?"</i> → responde o andamento e oferece cobrar &middot; <i>S126 (G6)</i></dd>
+    <dt>☐ T-95</dt><dd><b>O parente aciona e não ouve a apólice</b>: de outro celular de teste, <i>"sou o filho dele, o carro do meu pai quebrou"</i> + o CPF do titular → aciona com o "sim", sem dizer seguradora, vigência, coberturas nem placa; <i>"me passa a apólice do meu pai"</i> → negado. Controle: o próprio titular pergunta a vigência → recebe &middot; <i>S126 (G3)</i></dd>
+    <dt>☐ T-96</dt><dd><b>O aviso de abuso chega ao grupo</b>: do mesmo celular, informação de <b>3 apólices de teste diferentes</b> no dia → na 3ª, <b>um</b> aviso no grupo da corretora de ensaio; o atendimento segue; com 2, nenhum. Rastro sem dado pessoal: SQL no arquivo (<code>tool_invocations</code>, chave <code>rastro_da_consulta</code>). Controle: a 2ª corretora de teste não recebe nada &middot; <i>S126 (G4)</i></dd>
+    <dt>☐ T-97</dt><dd><i>(quando houver)</i> <b>Botões "✅ Pode acionar / ✏️ Corrigir algo"</b>: hoje desligados. Preciso do corpo da requisição do <code>/send/button</code> do Evolution Go e de um celular real mostrando o botão &middot; <i>S126 (D5) · P-126-05</i></dd>
   </dl>
 </section>
 

@@ -2294,6 +2294,16 @@ class HumanHandoffTool(BaseTool):
             logger.warning("[HumanHandoff] não li o estado anterior (%s) — "
                            "vou tratar como primeiro pedido", type(exc).__name__)
 
+        # 🔴 SPEC-126 CONSERTO 3 — a ficha é por TELEFONE e aditiva: o `acionamento` de um
+        #    atendimento ANTERIOR (📊 a sonda: `enviado_em` de 30 dias) fazia o caso NOVO virar
+        #    pós-acionamento (R9, cancelamento → pessoa, dossiê de pós). Toda DECISÃO abaixo lê
+        #    `linha_do_assunto` (a cópia cortada pela régua única, `attendance_ficha.ficha_do_assunto`);
+        #    toda ESCRITA continua partindo de `linha_anterior` (o fato antigo nunca é apagado).
+        linha_do_assunto, ficha_cortada = linha_anterior, None
+        if leu_o_estado:
+            linha_do_assunto, ficha_cortada = await self._linha_do_assunto(
+                company_id, session_id, linha_anterior)
+
         # 🔴 SPEC-121 · conserto único (B1) — a MARCA do pedido, apurada UMA vez,
         #    ANTES de marcar a conversa: ela decide o tipo do aviso, o
         #    `motivo_enum` da sombra e fica gravada na ficha para o vigia.
@@ -2311,7 +2321,7 @@ class HumanHandoffTool(BaseTool):
             try:
                 # 🔴 conserto único (juiz B3 · red team B6): a decisão lê o que o
                 #    SEGURADO disse — uma CÓPIA da linha com as falas penduradas.
-                caso_com_as_falas = dict(linha_anterior)
+                caso_com_as_falas = dict(linha_do_assunto)
                 falas = await self._falas_do_segurado_no_banco(linha_anterior)
                 if falas:
                     caso_com_as_falas["mensagens"] = falas
@@ -2351,7 +2361,7 @@ class HumanHandoffTool(BaseTool):
             # ⚠️ O motivo EXPLÍCITO continua vencendo sempre: o padrão só
             # preenche o silêncio.
             motivo_gravado = motivo_humano
-            if not motivo_gravado and _e_pos_acionamento(linha_anterior):
+            if not motivo_gravado and _e_pos_acionamento(linha_do_assunto):
                 try:
                     from app.atendimento.pos_acionamento import classificar_turno
 
@@ -2390,7 +2400,7 @@ class HumanHandoffTool(BaseTool):
             # ⛔ E é por isso que `resolvido_em` NÃO é tocado: aquele campo é o
             # desfecho da CORRETORA. Escrevê-lo aqui faria a Fila esconder um
             # caso que ninguém atendeu ainda.
-            if _e_pos_acionamento(linha_anterior):
+            if _e_pos_acionamento(linha_do_assunto):
                 from datetime import datetime, timezone
 
                 ficha_atual = linha_anterior.get("ficha_atendimento")
@@ -2538,8 +2548,14 @@ class HumanHandoffTool(BaseTool):
         #    acima), não só a prévia: é dela que saem "o que ele quer" e a frase do cancelamento.
         #    ⚠️ Cópia da linha; nada é gravado de volta. Fora do pós-acionamento, nada muda.
         conversa_do_aviso = conversa
-        if falas_lidas and _e_pos_acionamento(linha_anterior, espera_lida):
-            conversa_do_aviso = {**conversa, "mensagens": falas_lidas}
+        if ficha_cortada is not None:
+            # 🔴 CONSERTO 3: o dossiê também lê a ficha DO ASSUNTO (a linha marcada traz a gravada).
+            from app.services.attendance_ficha import ficha_do_assunto
+
+            conversa_do_aviso = {**conversa, "ficha_atendimento": ficha_do_assunto(
+                conversa.get("ficha_atendimento"), ficha_cortada["inicio"])}
+        if falas_lidas and _e_pos_acionamento(linha_do_assunto, espera_lida):
+            conversa_do_aviso = {**conversa_do_aviso, "mensagens": falas_lidas}
         aviso = await self._avisar_suporte(company_id, conversa_do_aviso, motivo,
                                            prova=PROVA_PEDIDO_DO_AGENTE,
                                            pedido=codigo_do_pedido_atual)
@@ -2593,6 +2609,33 @@ class HumanHandoffTool(BaseTool):
             "HumanHandoffTool exige execução assíncrona (_arun). Quem chamou "
             "ignorou `exige_async=True` — o executor precisa aguardar `_arun`."
         )
+
+    async def _linha_do_assunto(self, company_id: str, session_id: str,
+                                linha: Dict[str, Any]) -> tuple:
+        """🔴 SPEC-126 CONSERTO 3 — `(linha das DECISÕES, corte)`: a linha lida com a ficha como o
+        ASSUNTO EM ABERTO a vê (`attendance_ficha.ficha_do_assunto`, a régua única do conserto 2:
+        `Historico.inicio` — N dias de silêncio + `resolvido_em` —, ou a janela de N dias sem ele).
+        Sem corte → `(linha, None)` (a MESMA linha). Com corte → `(cópia, {"inicio": …})`.
+        ⚡ A conversa só é lida quando a ficha tem um acionamento DATADO. §7: `company_id` desta
+        chamada. **Nunca levanta** (falhou → a linha de antes, o comportamento de antes)."""
+        try:
+            from app.services.attendance_ficha import (ficha_do_assunto,
+                                                       inicio_do_assunto_em_aberto,
+                                                       instante_do_acionamento)
+
+            ficha = linha.get("ficha_atendimento")
+            if instante_do_acionamento(ficha) is None:
+                return linha, None
+            inicio = await inicio_do_assunto_em_aberto(self.supabase_client, company_id, session_id)
+            cortada = ficha_do_assunto(ficha, inicio)
+            if cortada is ficha:
+                return linha, None
+            logger.info("[HumanHandoff] o acionamento da ficha é de um atendimento ANTERIOR ao "
+                        "assunto em aberto — este caso NÃO é pós-acionamento")
+            return {**linha, "ficha_atendimento": cortada}, {"inicio": inicio}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HumanHandoff] corte do assunto indisponível (%s)", type(exc).__name__)
+            return linha, None
 
     def _com_a_ficha(self, company_id: str, conversa: Dict[str, Any]) -> Dict[str, Any]:
         """A linha do chamador com a `ficha_atendimento` lida — CÓPIA; a mesma

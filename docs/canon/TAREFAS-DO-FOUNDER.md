@@ -1,12 +1,12 @@
 # TAREFAS DO FOUNDER — a lista única
 
-> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-90).** Os blocos mais antigos, depois dela,
+> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-98).** Os blocos mais antigos, depois dela,
 > guardam o contexto, as decisões e as tarefas que não são teste; onde havia um teste, agora há uma seta **→ T-NN**.
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 02/10/2026 — SPEC-125: T-82 a T-90)
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
-> agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 125 e das EXTRA-001.1 → 001.10.1, das
+> agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 126 e das EXTRA-001.1 → 001.10.1, das
 > caixas do Founder dos relatórios e das pendências 🧑 de teste/canário/acionamento real. **Esta lista é a verdade**: nos
 > blocos antigos mais abaixo, cada teste virou só uma seta **→ T-NN** que aponta para cá.
 >
@@ -45,6 +45,36 @@
       ligar o agente numa corretora de verdade. Se autorizar, peça no chat: *"rode a rodada do Sol da SPEC-125 (P-125-01),
       teto US$ 1,30"*. **Esperar:** uma tabela com os 10 cenários, cada um PASS ou FAIL; os críticos (C6 C7 C10 C13 C15 C16)
       todos PASS. **Se algum crítico falhar:** não ligue o agente ainda; veja o T-90 (voltar ao prompt antigo). · *de:* S125.3 · P-125-01
+      ⚠️ **03/10:** a SPEC-126 já mediu os críticos no Sol (📊 11 de 12; o 12º é erro da régua, não do agente). O que falta medir
+      agora são os NÃO-críticos — está no **T-98**.
+- [ ] **T-91** ⏳ **Implantar a SPEC-126** (o atendimento quase sem erro) — EasyPanel, **nesta ordem**: `smith-api` →
+      `smith-worker` → `smith-web`. As duas migrations **já estão no banco**; nenhuma variável nova. Pode ser o mesmo Implantar do
+      T-82 (o Implantar sobe a `main` inteira). Depois, no **SQL**:
+      ```sql
+      select version, name from supabase_migrations.schema_migrations
+       where version in ('20261002202210', '20261002202302') order by 1;
+      ```
+      **Esperar:** 📊 (03/10) **duas linhas**: `20261002202210 | spec126_u6_deduzir_calibrado` e
+      `20261002202302 | spec126_papel_confirmacao`. **Se vier menos de duas:** me avise — não aplique nada à mão. · *de:* S126.1
+- [ ] **T-92** ⏳ **O "juiz do ok" e o DEDUZIR travado** (SQL, só leitura) — rode os dois, um de cada vez:
+      ```sql
+      select papel, modelo_primario, esforco, modelo_reserva, esforco_reserva
+        from public.llm_papeis where papel = 'confirmacao';
+      ```
+      **Esperar:** 📊 (03/10) uma linha `confirmacao | gpt-6-luna | medium | claude-sonnet-5-5 | low` — é o modelo que confere se
+      o "ok" do segurado é mesmo um ok (e a reserva, se ele cair).
+      ```sql
+      select modo, deduzir_calibrado, count(*) from public.cerebro_modos group by 1, 2;
+      ```
+      **Esperar:** 📊 (03/10) uma linha `on | false | 40` — o destravador ligado nas 40 combinações e o "escolher sozinho"
+      **desligado** em todas (só religa com prova medida; hoje nenhuma seguradora tem casos suficientes).
+      **Se `deduzir_calibrado` não existir:** a migration não está no banco — me avise. · *de:* S126.1 · G7
+- [ ] **T-98** ⏳ **Decidir o orçamento dos testes que ficaram de fora** (decisão sua; nada roda sem você dizer). Cole no chat,
+      se autorizar: *"autorizo US$ 1,00 de OpenAI e US$ 0,05 de Anthropic para as pendências P-126-01, P-126-02 e P-126-12"*.
+      💭 A conta: Luna de novo k=2 (≈ 0,30, P-126-01) · Sol nos 5 não-críticos (≈ 0,70, P-126-02) · a reserva do "juiz do ok" no
+      Sonnet (≈ 0,05 Anthropic, P-126-12) · a calibração do DEDUZIR (WhatsApp e portal) **só depois** de juntar ≥ 10 casos por
+      seguradora (P-126-06; hoje 📊 ≤ 5). **Esperar:** uma tabela por cenário, PASS/FAIL, e o gasto lido do ledger.
+      **Se não autorizar:** nada quebra; o agente fica com a prova que tem (críticos 12/12 na Luna e 11/12 no Sol). · *de:* S126.4
 - [ ] **T-02** ⏳ **O que está no ar é o código de hoje — inclusive o `portal-worker`**
       **Como:** peça no chat *"rode o conferir o que está no ar"*. E abra
       `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`.
@@ -236,6 +266,41 @@ com o agente da corretora de ensaio ligado, do celular de teste. Sempre com CPF 
       ```
       Vale na **próxima** mensagem, sem Implantar. ⚠️ O "sim" antes de acionar e o CPF mascarado continuam valendo no antigo
       também — segurança não volta atrás. · *de:* S125 (G4) · D-125-A
+
+**③-c · O atendimento da SPEC-126** (o "ok" que aciona, o parente, o cancelamento, o aviso de abuso). Faça depois do T-25 e do
+T-91, com o agente da corretora de ensaio ligado, `DISPATCH_FINALIZE_MODE=test` (T-08 e) e sempre com CPF e apólice **de teste**.
+
+- [ ] **T-93** ⏳ **"Pode deixar" NÃO aciona; "pode mandar" aciona** — peça um guincho com os dados completos (endereço, destino,
+      placa). Ele **resume numa linha** e pergunta se pode acionar. Responda *"pode deixar"* → **não** aciona e pergunta o que você
+      quer fazer. Peça de novo e responda *"pode mandar"* → aciona e diz que acionou. 🔴 **Controles:** *"manda não"*, *"prefiro
+      amanhã"*, *"sim, quanto custa?"* → **não** acionam; *"fechou"* e *"👍"* → acionam. 📊 Na bancada: 179 frases, 0 "ok" falso.
+      **Se acionar com "pode deixar":** pare, anote a hora e me mande — é o defeito mais grave desta SPEC. · *de:* S126 (G2) · D-126-B
+- [ ] **T-94** ⏳ **Desistir depois de acionar chama a pessoa NA HORA** — depois do T-93 ("pode mandar"), escreva *"esquece o
+      guincho, o carro pegou"*. **Esperar:** o agente **não** diz "cancelei" nem "foi cancelado"; diz que vai chamar alguém da
+      corretora para cancelar com a seguradora; e o **grupo de suporte** da corretora de ensaio recebe o aviso **com o resumo do
+      caso e o protocolo**. Repita com *"esquece... o guincho"* (com reticências) → o mesmo. 🔴 **Controle:** *"cadê o guincho?"*
+      → ele responde o andamento e **oferece** cobrar a seguradora, sem chamar ninguém de primeira (se chamar sem perguntar,
+      anote: é a P-126-01, já conhecida). · *de:* S126 (G6) · D4
+- [ ] **T-95** ⏳ **O parente aciona e não ouve a apólice** — de um 2º celular de teste: *"sou o filho dele, o carro do meu pai
+      quebrou, preciso de guincho"* + o CPF de teste do titular. **Esperar:** ele aciona (com o "sim"), mas **não** diz a
+      seguradora, a vigência, as coberturas nem a placa; o resumo diz "da seguradora". Depois: *"me passa a apólice do meu pai"* →
+      **negado**, com educação. 🔴 **Controle:** o próprio titular, do celular dele, pergunta a vigência → **recebe**. · *de:* S126 (G3) · D1
+- [ ] **T-96** ⏳ **O aviso de abuso chega ao grupo** — do MESMO celular de teste, peça informação de **3 apólices de teste
+      diferentes** (3 CPFs de teste de pessoas diferentes) no mesmo dia. **Esperar:** na 3ª, o grupo de suporte da corretora de ensaio
+      recebe **um** aviso de possível uso indevido; o atendimento **segue** normal. Com só 2 → nenhum aviso. Para ver o rastro (sem
+      dado pessoal), no **SQL**:
+      ```sql
+      select created_at, output_summary->'rastro_da_consulta'->>'apolice_final' as final_da_apolice,
+             output_summary->'rastro_da_consulta'->>'titular_proprio' as do_proprio
+        from public.tool_invocations where output_summary ? 'rastro_da_consulta'
+       order by created_at desc limit 10;
+      ```
+      → uma linha por consulta, só com os 4 últimos dígitos da apólice (📊 03/10: 0 linhas, porque ninguém consultou ainda).
+      🔴 **Controle:** a **segunda corretora de teste** não recebe aviso nenhum. · *de:* S126 (G4) · D2 · D-126-C
+- [ ] **T-97** ⏳ *(quando houver)* **Botões de "✅ Pode acionar / ✏️ Corrigir algo"** — hoje estão **desligados** (nenhum provedor
+      provou o botão). Para ligar eu preciso de duas coisas suas: (1) o **corpo da requisição** que o Evolution Go aceita em
+      `/send/button` (um print da documentação ou de um envio que funcionou); (2) um **celular de verdade** mostrando o botão.
+      **Esperar:** depois de eu ligar, o botão aparece no resumo e o toque passa pelo mesmo "juiz do ok". · *de:* S126 (D5) · P-126-05
 
 ### ④ Acionamento por WhatsApp, seguradora por seguradora
 
@@ -1257,3 +1322,38 @@ Vale na próxima mensagem. Para voltar ao novo: o mesmo comando com `'v2'`. O pa
   - **deu ERRADO** → aparece um **erro em vermelho** começando com `ERROR: P0001: VERIFY 20261002_01 FALHOU: insert=…
     resave=… mudanca=… esperado=…` (ou `VERIFY 20261002_01: a corretora de teste ficou gravada`) — me mande a linha inteira.
   - Qualquer outro erro vermelho (ex.: `permission denied`, coluna inexistente) → nada foi gravado; me mande a linha.
+
+## SPEC-126 — o atendimento quase sem erro (03/10/2026)
+
+📊 O que mudou (medido numa bancada com segurado simulado; nenhum segurado real foi atendido — 📊 0 de 4 agentes ligados):
+- **O "ok" do segurado passa por dois juízes**: a regra de texto de antes **e** um modelo barato (GPT-6 Luna) que lê a resposta.
+  Só aciona se os dois disserem "ok". "Pode deixar", "manda não", "prefiro amanhã", "sim, quanto custa?" não acionam; "pode
+  mandar", "fechou", "👍" acionam. 📊 179 frases testadas: **0** "ok" falso, 97,9 % dos ok de verdade aceitos.
+- **O parente aciona** (filho, esposa, motorista) sem o titular junto, e **não ouve** dado da apólice.
+- **Desistir depois de acionar chama a pessoa da corretora na hora**, com o resumo e o protocolo no grupo. O agente nunca diz
+  "cancelei" sem ter cancelado. 📊 Antes, o sistema nem enxergava que o caso já estava acionado (0 de 1.174 fichas).
+- **Aviso de possível abuso**: o mesmo celular pedindo 3 apólices diferentes em 5 dias avisa o grupo da corretora, sem travar o
+  atendimento. 🔴 E uma senha da assistência residencial ia a todo segurado — fechado.
+- **Apresenta-se uma vez por assunto**; o "escolher sozinho" do destravador só religa com prova (hoje nenhuma seguradora tem casos
+  suficientes: 📊 ≤ 5 de 10).
+- 📊 Bancada (Luna): acerto **77,8 % → 88,9 %** (a meta era 90 %, faltou 1 de 36) · casos críticos **12 de 12** · no modelo de
+  produção (Sol) os críticos **11 de 12** (o que falta é erro da régua, não do agente). Gasto de testes: 📊 US$ 4,28 de 4,50.
+
+### S126.1 · Implantar e conferir
+→ **T-91** (Implantar `smith-api` → `smith-worker` → `smith-web`; as migrations já estão no banco; nenhuma variável nova) e
+**T-92** (o "juiz do ok" e o DEDUZIR travado, SQL só leitura).
+
+### S126.2 · Os testes reais com o agente ligado numa corretora de teste
+→ **T-93** a **T-96** (grupo ③-c da lista única), depois do T-23/T-25. **T-97** quando houver o corpo do `/send/button`.
+
+### S126.3 · Como VOLTAR atrás
+O novo portão do "ok" vive no **código**: o desfazer é voltar o código. Peça no chat *"reverta a SPEC-126 na main"* — eu
+faço o revert e empurro — e clique **Implantar** (smith-api → smith-worker → smith-web). ⚠️ **Não** apague a linha `confirmacao` de `llm_papeis` achando que desliga o juiz: sem
+ela o juiz responde "não é ok" para tudo e **nenhum acionamento sai** (é a falha do lado seguro, de propósito).
+
+### S126.4 · Decisões suas (`FOUNDER-DECISIONS.md`)
+- **T-98** — o orçamento dos testes que ficaram de fora (💭 ≈ US$ 1,00 OpenAI + 0,05 Anthropic).
+- Já decididas, com nota: o "ok" por dois juízes (D-126-B, 92) · teto de US$ 4,50 (D-126-A, 85) · as apólices do próprio
+  titular contam uma (D-126-C, 88) · rastro sem tabela nova (D-126-D, 78) · a calibração paga do DEDUZIR adiada (D-126-E, 80) ·
+  reclamação de cobrança do prestador vai à pessoa (D-126-F, 80) · apresentação no 2º turno quando o 1º foi só segurança
+  (D-126-G, 80) · 👌 não é ok, dúvida depois do sim derruba o sim, "pode ser" não aciona (D-126-H/I/J, lado seguro).

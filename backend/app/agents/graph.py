@@ -1754,6 +1754,45 @@ async def _build_initial_state(
     except Exception as e:  # noqa: BLE001 — awareness nunca pode quebrar o chat
         logger.warning(f"[AuxContext] error ignored type={type(e).__name__}")
 
+    # === 🧠 A CONVERSA DO TURNO — SPEC-125 S2 · D1 ===========================
+    # ⛔ O SystemMessage NÃO entra mais no histórico: ele vive em
+    # `system_prompt`/`static_prompt`/`dynamic_context` e o `agent_node` o monta
+    # a cada chamada. 📊 Gravado a cada turno no checkpointer, era ele que fazia
+    # uma thread chegar a 2,1 MB e ocupava uma das 15 vagas da janela antiga.
+    #
+    # 🔴 No ATENDIMENTO, a memória é o assunto INTEIRO, de `messages` (segurado,
+    # agente e EQUIPE marcada), por tokens — e o checkpointer fica só com o turno
+    # corrente (o `REMOVE_ALL` que `mensagens_do_turno` devolve). O que as
+    # ferramentas apuraram nos turnos anteriores do MESMO assunto atravessa
+    # (`resultados_que_continuam`). Conversa não lida → o comportamento de antes.
+    #
+    # 🔴 SPEC-126 CONSERTO 4: montada ANTES da ficha (era depois do `composite_prompt`,
+    #    e nada no meio a lê) porque o bloco da ficha precisa do COMEÇO DO ASSUNTO
+    #    (`_hist.inicio`) — a MESMA leitura, sem uma segunda ida ao banco.
+    messages = [HumanMessage(content=user_message)]
+    _hist = None
+    if str(_agent_role_for_prompt or "").lower() in ("attendance", "insured_external") and supabase_client:
+        try:
+            from app.agents.historico_da_conversa import mensagens_do_turno
+
+            _anteriores, _checkpoint_em = [], None
+            if graph is not None:
+                try:
+                    _snap = await graph.aget_state(
+                        {"configurable": {"thread_id": f"{company_id}:{session_id}"}})
+                    _anteriores = list((getattr(_snap, "values", None) or {}).get("messages") or [])
+                    _checkpoint_em = getattr(_snap, "created_at", None)
+                except Exception as e:  # noqa: BLE001 — sem o anterior, nada atravessa
+                    logger.warning("[HISTORICO] checkpoint anterior não lido (%s)", type(e).__name__)
+            messages, _hist = await mensagens_do_turno(
+                supabase_client, company_id=str(company_id), session_id=str(session_id or ""),
+                texto_do_turno=user_message, anteriores=_anteriores, checkpoint_em=_checkpoint_em)
+            logger.info("[HISTORICO] lida=%s | falas=%d | resumo=%s | erro=%s",
+                        _hist.lida, len(_hist.falas), bool(_hist.resumo), _hist.erro or "-")
+        except Exception as e:  # noqa: BLE001 — a memória nunca derruba o turno
+            logger.warning("[HISTORICO] não montado (%s)", type(e).__name__)
+            messages, _hist = [HumanMessage(content=user_message)], None
+
     # ------------------------------------------------------------------ #
     # SPEC-063 Blocos S e G — a ficha do atendimento e a conduta destilada.
     #
@@ -1804,8 +1843,8 @@ async def _build_initial_state(
         _ficha, _ident, _assunto_novo, _obrig = {}, {}, False, []
         try:
             from app.services.attendance_ficha import (bloco_para_o_prompt,
-                                                       carregar, fundir,
-                                                       identidade_de)
+                                                       carregar, ficha_do_assunto,
+                                                       fundir, identidade_de)
 
             # SPEC-126 U5: a ficha já lida para o escopo do acionamento — a MESMA, uma leitura
             _ficha = (_ficha_lida if _ficha_lida is not None
@@ -1829,11 +1868,19 @@ async def _build_initial_state(
                 _ident = identidade_de(_ficha)
 
             _obrig = _slots_obrigatorios_do_caso(_ficha)
-            _bloco_ficha = bloco_para_o_prompt(_ficha, _obrig)
+            # 🔴 SPEC-126 CONSERTO 4: o modelo vê a ficha do ASSUNTO EM ABERTO — a régua única
+            #    (`ficha_do_assunto`, a mesma do dispatch e da R9). O protocolo de um caso ANTERIOR
+            #    do mesmo telefone mandava "acompanhe, não acione de novo" num guincho NOVO.
+            #    Começo do assunto = `_hist.inicio` (a leitura acima); conversa não lida → a janela
+            #    de N dias da própria régua. ⛔ Cópia só de leitura: `_ficha` (a que se grava) fica.
+            _inicio_do_assunto = _hist.inicio if (_hist is not None and _hist.lida) else None
+            _ficha_vista = ficha_do_assunto(_ficha, _inicio_do_assunto)
+            _bloco_ficha = bloco_para_o_prompt(_ficha_vista, _obrig)
             if _bloco_ficha:
                 dynamic_context += f"\n\n{_bloco_ficha}"
-                logger.info("[FICHA] injetada | fase=%s | confirmados=%d",
-                            _ficha.get("fase"), len(_ficha.get("confirmados") or {}))
+                logger.info("[FICHA] injetada | fase=%s | confirmados=%d | acionamento_anterior_cortado=%s",
+                            _ficha_vista.get("fase"), len(_ficha.get("confirmados") or {}),
+                            _ficha_vista is not _ficha)
         except Exception as e:  # noqa: BLE001 — a ficha nunca derruba o turno
             logger.warning("[FICHA] não injetada (%s)", type(e).__name__)
 
@@ -1947,39 +1994,8 @@ async def _build_initial_state(
     # Prompt completo para uso geral
     composite_prompt = static_prompt + dynamic_context
 
-    # === 🧠 A CONVERSA DO TURNO — SPEC-125 S2 · D1 ===========================
-    # ⛔ O SystemMessage NÃO entra mais no histórico: ele vive em
-    # `system_prompt`/`static_prompt`/`dynamic_context` e o `agent_node` o monta
-    # a cada chamada. 📊 Gravado a cada turno no checkpointer, era ele que fazia
-    # uma thread chegar a 2,1 MB e ocupava uma das 15 vagas da janela antiga.
-    #
-    # 🔴 No ATENDIMENTO, a memória é o assunto INTEIRO, de `messages` (segurado,
-    # agente e EQUIPE marcada), por tokens — e o checkpointer fica só com o turno
-    # corrente (o `REMOVE_ALL` que `mensagens_do_turno` devolve). O que as
-    # ferramentas apuraram nos turnos anteriores do MESMO assunto atravessa
-    # (`resultados_que_continuam`). Conversa não lida → o comportamento de antes.
-    messages = [HumanMessage(content=user_message)]
-    if str(_agent_role_for_prompt or "").lower() in ("attendance", "insured_external") and supabase_client:
-        try:
-            from app.agents.historico_da_conversa import mensagens_do_turno
-
-            _anteriores, _checkpoint_em = [], None
-            if graph is not None:
-                try:
-                    _snap = await graph.aget_state(
-                        {"configurable": {"thread_id": f"{company_id}:{session_id}"}})
-                    _anteriores = list((getattr(_snap, "values", None) or {}).get("messages") or [])
-                    _checkpoint_em = getattr(_snap, "created_at", None)
-                except Exception as e:  # noqa: BLE001 — sem o anterior, nada atravessa
-                    logger.warning("[HISTORICO] checkpoint anterior não lido (%s)", type(e).__name__)
-            messages, _hist = await mensagens_do_turno(
-                supabase_client, company_id=str(company_id), session_id=str(session_id or ""),
-                texto_do_turno=user_message, anteriores=_anteriores, checkpoint_em=_checkpoint_em)
-            logger.info("[HISTORICO] lida=%s | falas=%d | resumo=%s | erro=%s",
-                        _hist.lida, len(_hist.falas), bool(_hist.resumo), _hist.erro or "-")
-        except Exception as e:  # noqa: BLE001 — a memória nunca derruba o turno
-            logger.warning("[HISTORICO] não montado (%s)", type(e).__name__)
-            messages = [HumanMessage(content=user_message)]
+    # (A CONVERSA DO TURNO — `messages`/`_hist` — é montada ANTES da ficha: ver o
+    #  bloco "🧠 A CONVERSA DO TURNO" acima do SPEC-063 S/G. SPEC-126 conserto 4.)
 
     initial_state = {
         "messages": messages,

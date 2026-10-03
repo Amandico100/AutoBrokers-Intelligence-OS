@@ -962,22 +962,49 @@ _RX_ADIAMENTO_RELATIVO = re.compile(
 #:    (conf-166), "deixa quieto" (conf-163). constante_justificada: só vale SEM negação nas 3 palavras
 #:    antes ("o carro NÃO pegou", "NÃO consegui resolver" — controles conf-170/171 — são o problema,
 #:    não a retirada); "pegou fogo" é emergência, nunca retirada.
+#: 🔴 SPEC-126 CONSERTO 2 (pend. 1 da confirmação) — a DESCRIÇÃO do problema não é retirada:
+#:    · "esquec…" só na ORDEM ("esquece", "esqueça", "esquecer"): "eu ESQUECI a chave dentro" é o motivo
+#:      nº 1 do chaveiro (📊 sonda do juiz: "pode mandar, eu esqueci a chave dentro" pedia outro ok);
+#:    · "ligou PRA/PARA alguém" é telefonar, não o carro dar partida ("ela já ligou pra vocês antes");
+#:    · "NADA resolveu"/"ninguém conseguiu" é o problema continuando — `_NEGACOES_DA_RETIRADA`.
 _RX_RETIRADA_DO_SEGURADO = re.compile(
-    r"\besquec\w*|\bdeixa\s+quieto\b|\bja\s+(?:resolv\w*|consegui\w*|deu\s+certo)|"
+    r"\besquec(?:e|a|er|am|em)\b|\bdeixa\s+quieto\b|\bja\s+(?:resolv\w*|consegui\w*|deu\s+certo)|"
     r"\bresolv(?:i|eu|emos|ido)\b|\bconsegui\s+(?:resolver|arrumar|consertar|ligar|sozinh\w*)|"
     r"\bpegou\b(?!\s+fogo)|\bfuncionou\b|"
-    r"\b(?:o\s+carro|a\s+moto|o\s+veiculo|ele|ela)\s+(?:ja\s+)?(?:ligou|voltou|deu\s+partida)\b|"
+    r"\b(?:o\s+carro|a\s+moto|o\s+veiculo|ele|ela)\s+(?:ja\s+)?(?:ligou|voltou|deu\s+partida)\b"
+    r"(?!\s+(?:pra|pro|para|pros|pras)\b)|"
     r"\bnao\s+precis\w*\s+mais\b(?!\s+nada)|\bja\s+nao\s+precis\w*|\bdispens\w*")
-_NEGACOES_DA_RETIRADA = frozenset({"nao", "n", "nem", "ainda", "nunca"})
+_NEGACOES_DA_RETIRADA = frozenset({"nao", "n", "nem", "ainda", "nunca", "nada", "ninguem", "nenhum",
+                                   "nenhuma"})
+#: 🔴 CONSERTO 2 (pend. 2 da confirmação) — "pode mandar, ah NÃO ESQUECE" (sem objeto) é "ah não,
+#:    esquece": a retirada. ⛔ "não esquece DE trazer o macaco" tem objeto e é lembrete — fica fora.
+#:    constante_justificada: o "não esquece" que FECHA a oração, sem nada depois, é o lado seguro do T8
+#:    (uma confirmação a mais); com complemento, é pedido ao prestador.
+_RX_NAO_ESQUECE_NO_FIM = re.compile(r"\b(?:nao|n)\s+esquec(?:e|a)\b\s*(?:[,.;:!?\n…]|$)")
 
 
 def _retirou_o_pedido(plano: str) -> bool:
     """A fala (já `_plano`) RETIRA o pedido ("já resolvi", "esquece", "o carro pegou")? **PURA.**"""
+    if _RX_NAO_ESQUECE_NO_FIM.search(plano or ""):
+        return True
     for m in _RX_RETIRADA_DO_SEGURADO.finditer(plano or ""):
-        antes = re.findall(r"\w+", plano[:m.start()])[-3:]
+        # CONSERTO 2: a negação vale na MESMA oração ("nada resolveu"), nunca através da vírgula
+        #   ("sim, nada, já resolveu" é a retirada)
+        antes = re.findall(r"\w+", re.split(r"[,.;:!?\n…]", plano[:m.start()])[-1])[-3:]
         if not _NEGACOES_DA_RETIRADA.intersection(antes):
             return True
     return False
+
+
+#: 🔴 CONSERTO 2 (pend. 1) — o TEMPO PASSADO não é quando: "tô aqui FAZ 2 horas", "há 2 horas", "desde
+#:    as 18h", "tem umas 3 horas" é quanto ele já esperou. constante_justificada: só o marcador de
+#:    duração/origem logo antes do número; "às 18h", "2 horas" sozinho continuam adiamento (conf-148).
+_RX_TEMPO_PASSADO_ANTES = re.compile(
+    r"\b(?:faz|ha|desde|tem|durante|quase|mais\s+de)\s+(?:(?:umas?|uns|cerca\s+de|mais\s+de|quase|as|a)\s+)?$")
+#: 🔴 CONSERTO 2 (pend. 2) — "pode mandar... DEIXA" / "pode mandar, ah, deixa": o "deixa" que é a oração
+#:    INTEIRA. ⛔ "deixa o carro aberto"/"deixa eu te passar a placa" têm complemento — ficam fora.
+_RX_DEIXA_SOZINHO = re.compile(
+    r"(?:^|[,.;:!?\n…]|\s[-–—])\s*(?:(?:ah|ai|nao|entao|ou|opa)\W+)*deix[ae]\W*(?:[,.;:!?\n…]|$)")
 
 #: o "mas" que é intensificador ("mas rápido", "mas pode") nunca é objeção…
 _RX_MAS_INTENSIFICADOR = re.compile(
@@ -1116,7 +1143,11 @@ def _objecao_ou_adiamento(plano: str, pergunta: str = "") -> bool:
         return True
     if re.search(r"\bpod[ei]\s+deix\w*", re.sub(r"[^\w\s]+", " ", plano)):
         return True
+    if _RX_DEIXA_SOZINHO.search(plano):                  # CONSERTO 2: "pode mandar... deixa"
+        return True
     for m in _RX_QUANDO_DO_SEGURADO.finditer(plano):
+        if _RX_TEMPO_PASSADO_ANTES.search(plano[:m.start()]):
+            continue                                     # CONSERTO 2: "faz 2 horas" é espera, não adiamento
         if not re.search(r"\b%s\b" % re.escape(m.group(0)), pergunta or ""):
             return True
     sem_intensificador = _RX_MAS_INTENSIFICADOR.sub(" ", plano)
@@ -1147,7 +1178,10 @@ _RX_PODE_QUE_NAO_AUTORIZA = re.compile(
 #:    oração; agora apaga — "pode mandar. seguro? acho que sim" pede UMA confirmação a mais, o lado
 #:    seguro do T8).
 _RX_DUVIDA = re.compile(r"\b(?:acho|acredito|creio|imagino)\s+que\b|\btalvez\b|\bsei\s+la\b|"
-                        r"\bnao\s+sei\b(?!\s+(?:o|a|os|as)\s+(?:numero|nome|endereco|cep|bairro|rua)\b)")
+                        r"\bnao\s+sei\b(?!\s+(?:o|a|os|as)\s+(?:numero|nome|endereco|cep|bairro|rua)\b)"
+                        # CONSERTO 2 (pend. 1): "não sei O QUE HOUVE" é a CAUSA do defeito, não dúvida do ok
+                        r"(?!\s+(?:o\s+que|oq|o\s+q|porque|por\s+que|pq|como)\s+"
+                        r"(?:houve|aconteceu|foi|deu|ele\s+tem|ela\s+tem|tem)\b)")
 
 #: 🔴 SPEC-126 U2 (parte B) · a pergunta de DUAS opções — "Posso acionar AGORA ou prefere AMANHÃ?".
 #:    📊 laudo do BLOCO 0 item 9 / fora do escopo 6: "ok" (e "ok, prefiro amanhã") a ela ACIONAVA —
@@ -1207,6 +1241,19 @@ _RX_SERVICO_DITO = {k: re.compile(r"\b(?:%s)\b" % v) for k, v in _SERVICO_DITO.i
 #:    mecânico junto do guincho é o destino, não outro serviço. O contrário (guincho no resumo de
 #:    socorro mecânico) É a troca do C4.
 _SERVICO_DITO_TOLERADO = {"guincho": {"mecanico"}}
+#: 🔴 SPEC-126 CONSERTO 2 (pend. 1 da confirmação) — o SINTOMA que nomeia a peça não nomeia o serviço:
+#:    📊 sonda do juiz, "pode mandar, o pneu FUROU e NÃO TENHO ESTEPE" no resumo de guincho lia "pneu" e
+#:    "estepe" como troca de serviço — e é justamente o motivo do guincho. constante_justificada: só a
+#:    peça com o verbo do defeito ("pneu furou/furado/estourou/rasgou/murchou/vazio") ou a FALTA do
+#:    estepe ("não tenho estepe", "sem estepe", "estepe furado/vazio") sai antes de procurar o nome;
+#:    "troca o pneu", "manda um borracheiro", "põe o estepe" continuam nomeando o serviço.
+_RX_SINTOMA_DA_PECA = re.compile(
+    r"\bpneus?\s+(?:(?:ja|tambem|todo|dianteiro|traseiro|da\s+frente|de\s+tras)\s+)?(?:esta\s+|ta\s+|ficou\s+)?"
+    r"(?:furou|furad[oa]s?|estourou|estourad[oa]s?|rasgou|rasgad[oa]s?|murchou|murch[oa]s?|vazi[oa]s?|"
+    r"arriou|baixou)\b"
+    r"|\b(?:nao|n|nem)\s+(?:tenho|tem|tinha|temos|ha|veio\s+com)\s+(?:o\s+|um\s+|nenhum\s+)?estepe\b"
+    r"|\bsem\s+(?:o\s+|um\s+)?estepe\b"
+    r"|\bestepe\s+(?:(?:tambem|ja)\s+)?(?:esta\s+|ta\s+)?(?:furad[oa]|vazi[oa]|murch[oa]|ruim|estragad[oa])\b")
 
 
 def _familia_do_pedido(pedido: Optional[dict]) -> Optional[str]:
@@ -1235,7 +1282,8 @@ def servico_trocado(respostas, pedido: Optional[dict]) -> bool:
     Nomear o do pedido junto de outro ("pode mandar o guincho, a bateria arriou") não é troca."""
     if not pedido or not str(pedido.get("subservice") or "").strip():
         return False
-    ditos = {f for t in (respostas or []) for f, rx in _RX_SERVICO_DITO.items() if rx.search(_plano(t))}
+    ditos = {f for t in (respostas or []) for f, rx in _RX_SERVICO_DITO.items()
+             if rx.search(_RX_SINTOMA_DA_PECA.sub(" ", _plano(t)))}
     if not ditos:
         return False
     familia = _familia_do_pedido(pedido)
@@ -2507,7 +2555,39 @@ class InsurerDispatchTool(BaseTool):
                      if i is not None]
         if not instantes:
             return None
-        return {"em": max(instantes), "servico": str(acion.get("servico") or "")}
+        em = max(instantes)
+        if not await self._do_assunto_em_aberto(client, sessao, em):
+            return None
+        return {"em": em, "servico": str(acion.get("servico") or "")}
+
+    async def _do_assunto_em_aberto(self, client: Any, sessao: str, em: Any) -> bool:
+        """🔴 SPEC-126 CONSERTO 2 (BN-1 da confirmação) — o acionamento de `em` é DO ASSUNTO EM ABERTO?
+
+        📊 Sonda do juiz (02/10): ficha com `acionamento.enviado_em` de 30 dias atrás e o caso NOVO do
+        mesmo telefone ("meu carro quebrou de novo, preciso de guincho") → `already_dispatched` e o texto
+        "diga que o pedido já está com a seguradora" — com NADA enviado. A ficha é por CONVERSA (= por
+        telefone) e aditiva: `acionamento` nunca sai (`attendance_ficha.fundir`).
+        A régua do começo do assunto é a que o produto JÁ tem, e a única: `historico_do_atendimento` →
+        `falas_do_assunto` → `inicio_do_assunto` (a regra dos N dias de silêncio + `resolvido_em`, a
+        mesma do reencontro e do corte do histórico). O acionamento ANTERIOR a `Historico.inicio` é do
+        atendimento passado: não gasta a confirmação de agora e não torna nada "já acionado".
+        Conversa ilegível (ou sem fala) → sem o começo do assunto: vale a MESMA janela de N dias contada
+        de agora (um acionamento mais velho que ela não pode ser do assunto aberto — nenhuma fala o
+        sustenta). `N = 0` (regra desligada) e sem leitura → conta (o comportamento de antes).
+        🔴 CONSERTO 3: a régua mora em `attendance_ficha.de_um_assunto_anterior` (+
+        `inicio_do_assunto_em_aberto`) — a MESMA que a R9/o dossiê do `human_handoff` e `derivar_fase`
+        leem. **Nunca levanta.**"""
+        from app.services.attendance_ficha import de_um_assunto_anterior, inicio_do_assunto_em_aberto
+
+        em = _instante(em)
+        if em is None:
+            return False
+        inicio = await inicio_do_assunto_em_aberto(client, self.company_id, sessao)
+        if de_um_assunto_anterior(em, inicio):
+            logger.info("[InsurerDispatch] o acionamento da ficha é de um atendimento ANTERIOR ao "
+                        "assunto em aberto — não conta como deste pedido")
+            return False
+        return True
 
     async def _marcar_o_acionamento(self, kwargs: dict, chave: str, subservice: str,
                                     insurer_key: str) -> None:

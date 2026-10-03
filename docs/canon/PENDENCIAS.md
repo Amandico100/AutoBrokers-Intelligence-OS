@@ -12667,6 +12667,10 @@ pares. **O que destrava:** 🤖 uma rodada de calibração com o **grupo B** (26
 dada pelo Sonnet (o 6.1 decide, o Sonnet pontua); 🧑 verba de bancada (💭 ≈ US$ 1 por provedor). Depois,
 `DEDUZIR_AUTONOMO_CALIBRADO` só vira `True` se uma faixa ≥ 70 medir ≥ 90 % (G3). **Custa esquecer:** 📊 14 de 99 travas
 seguem indo ao segurado ou a uma pessoa quando o agente poderia escolher sozinho.
+🟡 **03/10 (SPEC-126 U6, `16d9a68`): CONTINUA — o MECANISMO está pronto; falta o n.** O DEDUZIR religa por seguradora só com
+a prova gravada em `cerebro_modos.calibracao` (n ≥ 10, ≥ 90 %, Wilson ≥ 70 %, controle "tecla 1" batido; CHECK
+`ck_cerebro_modos_deduzir_so_com_prova`, migration `20261002_10`). 📊 0 de 40 linhas religadas (SELECT 03/10); a porta tem 32
+casos e ≤ 5 por seguradora (`casos_cal.txt` da U6) → a rodada paga não foi feita (D-126-E). O caminho é a **P-126-06**.
 
 ## P-123-02 · 🤖 O cache da OpenAI não foi comprovado
 📊 0 tokens lidos de cache nas 99 chamadas em que o 6.1 decide (527.779 tokens de entrada; casos distintos não partilham
@@ -12901,13 +12905,6 @@ API nova + worker antigo: `parse_document.apply_async(kwargs={"vision": ...})` �
 `extract_images=True`; 📊 `sanitization_jobs` 0 linhas). O inverso é seguro. **O que destrava:** 🧑 Implantar o WORKER do
 docling antes da API (`TAREFAS-DO-FOUNDER.md` S124.1). **Custa esquecer:** a sanitização da base com imagem falha calada.
 
-## P-124-14 · 🤖 `cidade_ambigua` escolheria a cidade homônima errada quando a calibração religar
-Achado da confirmação (P-C2): com `DEDUZIR_AUTONOMO_CALIBRADO=True`, a parada `cidade_ambigua` escolhe na lista e 📊 o ataque
-da confirmação (01/10, `c3cd5c7`) escolheu "Curitibanos" para "Curitiba". Hoje é inalcançável (o DEDUZIR está desligado).
-**O que destrava:** 🤖 a bancada da calibração (P-123-01/P-124-02) levar casos de cidade homônima e prefixo, e a escolha exigir
-igualdade normalizada antes de qualquer dedução. **Custa esquecer:** o pedido de vidro abre na cidade errada no dia em que a
-calibração religar o DEDUZIR.
-
 ## P-124-15 · 🤖 a regex de `pergunta_<codigo>` recusa `_` e `-` no código da pergunta
 Achado da confirmação (P-C3): o slot etiquetado do questionário só aceita código sem `_`/`-`; um código assim cai para
 pessoa (falha SEGURA, nada vai ao portal). **O que destrava:** 🤖 alargar a regex ao formato real dos códigos do portal, com
@@ -12929,19 +12926,6 @@ teste de controle. **Custa esquecer:** pergunta de questionário que poderia ser
 > 63,9 % → 77,8 %, críticos 4/6 → 5/6, "Como posso ajudar?" 24/36 → 2/36, 0 acionamento sem o sim; custo do agente por
 > conversa +80 % contra o DEPOIS. Ledger da bancada: OpenAI US$ 3,7042 de 4,00 — **o orçamento de testes acabou**.
 
-## P-125-01 · 🧑🤖 Os críticos C10, C13, C15 e C16 não foram medidos no Sol (o modelo de produção) depois do conserto
-📊 Na rodada Z (`fd52568`) o teto do ledger parou o Sol depois de C1, C3, C4, C6, C7, C8 (US$ 0,13 por conversa). C10/C13/C15/C16
-no Sol só existem no DEPOIS (`420a2f2`, antes dos consertos Y/X/Z/ZN), 4/4 PASS. E o ajuste ZN + C3 t2 (`3f570a9`, `29da022`)
-não passaram por nenhuma rodada com LLM. **O que destrava:** 🧑 orçamento (💭 ≈ US$ 1,30 OpenAI para Sol k=1 nos 6 críticos + C4,
-C8, C11, R1) → 🤖 a bancada `--conversa` com o braço `openai:gpt-6.1-sol:high` nesses 10 cenários, num worktree próprio.
-**Custa esquecer:** a v2 (já padrão) vai para a vida real sem prova pós-conserto no modelo que atende.
-
-## P-125-02 · 🤖 C13 t2 (crítico): o agente chamou pessoa em vez de resumir e pedir o "sim"
-📊 Rodada Z: a Luna tentou acionar no t2 sem resumo (recusado pelo portão), repetiu a pergunta de segurança e, quando pediram o
-protocolo, chamou uma pessoa. 📊 24 recusas `confirm_first` em 36 conversas: o portão está certo, o modelo ainda não faz "resumo +
-Posso acionar?" de primeira. **O que destrava:** o prompt v2 ensina o resumo no 1º turno com dados completos; reroda C13 k=2.
-**Custa esquecer:** o acionamento confirmado (o caso que motivou o T4) vira atendente.
-
 ## P-125-03 · 🤖 C8 na Luna: "cadê o guincho?" chama pessoa no 1º turno (2/2, quatro rodadas seguidas)
 O bloco "QUANDO ELE COBRA" (Z3) aparece no Sol (responde o estado), não na Luna. **O que destrava:** medir no Sol (P-125-01); se
 a Luna for usada em algum papel do atendimento, regra em código para "cobrança do estado". **Custa esquecer:** cobrança simples
@@ -12953,18 +12937,9 @@ vira trabalho de atendente.
 é dublê). E o v2 de ACOMPANHAR ("AJA (ferramenta na mesma resposta)") virou "a ferramenta que AVANÇA; 'cadê o guincho?' →
 estado + oferta". Teste `test_spec125_endurecimento.py` (motivos GRAVADOS da Z; mutação → 3 failed). **Falta:** rerodar C8
 com LLM (Luna k=2 e Sol), 💭 ≈ US$ 0,10.
-
-## P-125-04 · 🤖 A apresentação aparece no 2º turno
-📊 Sol C1 (depois de `request_human_agent`) e Sol C4 (sem pessoa) se apresentam de novo. **O que destrava:** a marca de
-"apresentado" sobreviver ao handoff e à retenção. **Custa esquecer:** o segurado lê "Oi, aqui é a assistente…" no meio do caso.
-🟡 **02/10 (endurecimento): a CAUSA era outra, e está consertada em código; falta a prova com LLM.** `invoke_agent` entrega
-só o texto do ÚLTIMO `AIMessage`: o que o modelo escreve JUNTO da chamada de ferramenta se perdia. 📊 Nos JSON do Sol
-(DEPOIS v1/v2 e Z), TODO 1º turno com ferramenta saiu sem apresentação, e o motivo do handoff dizia "Orientado a…" sobre um
-texto que não saiu (C10 fumaça: "sair da residência… ligar 193" no motivo; "as orientações que te passei" na resposta, sem
-elas). Como só conta a apresentação que SAIU (J5), o turno 2 pedia de novo. Agora `nodes.com_o_que_foi_dito_antes_da_ferramenta`
-junta o texto de antes da ferramenta (só no atendimento, só do turno corrente, sem repetir) ANTES de todos os fiscais
-(honestidade, repetição, tamanho, T19). A bancada passou a confirmar a apresentação como o webhook (passo 9). Mutação → 2 failed.
-**Falta:** rerodar Sol C1/C4/C7/C10/C15 com LLM (P-125-01) — e conferir o tom de "duas falas juntas" no WhatsApp.
+🟡 **03/10 (SPEC-126): CONTINUA.** A U4 (`076bb53`) levou a R9 K1/K2/L do laudo ao código e o cancelamento a K3 → pessoa. 📊 Na
+final (`reports/SPEC-126-DEPOIS.md`) a Luna C8 deu t1 F (`request_human_agent` sem o segurado pedir e sem oferecer a cobrança) e
+t2 P; o Sol C8 não foi medido. O que falta é o mesmo caso da **P-126-01** (a meta de 90 % da Luna).
 
 ## P-125-05 · 🤖 Custo por conversa +80 % (Luna) e +38 % (Sol) contra o DEPOIS
 📊 Luna 0,00344 → 0,00618 US$ por conversa; Sol v2 0,0940 → 0,1295. Causas: turnos a mais e chamadas recusadas pelo portão; o
@@ -12972,24 +12947,10 @@ histórico de até 40 mil tokens entra a cada chamada e o prompt de sistema muda
 retida paga até 3 gerações. **O que destrava:** teto de custo por conversa medido no ledger; o resumo + pedido de sim no 1º
 turno (P-125-02) corta os turnos. **Custa esquecer:** o atendimento fica caro sem ninguém ver.
 
-## P-125-06 · 🤖🧑 D7 pela metade: 2 dos 4 momentos e 1 dos 4 sinais estão ligados
-`chamou_pessoa` (SPEC-123) e `respondeu_regra` escrevem; `deduziu` e `nao_chamou_pessoa` são PONTOS MARCADOS em `nodes.py`
-(não há sinal sem LLM para "deduziu" nem classificador da fala para "não chamou"). Sinais: só `agente_repetiu_pergunta`;
-`segurado_corrigiu`/`segurado_repetiu`/`segurado_pediu_pessoa` existem no banco e não são escritos. **O que destrava:** 🤖 a
-ferramenta declarar a origem do slot (dito × deduzido); `request_human_agent` no turno seguinte a uma linha pendente fecha
-como `segurado_pediu_pessoa`; 🧑 ou aceitar a redução (D-125-H). **Custa esquecer:** o placar mostra menos do que acontece.
-
 ## P-125-07 · 🤖 C11: com o telefone conhecido, o agente ainda pede o CPF no 1º turno
 📊 Z: C11 PARTIAL 2/2 (o juiz marca); C2, C3 e R1 também pedem o CPF no t1. O bloco de identidade diz "confirme"; o modelo pede.
 **O que destrava:** o bloco abrir com a pergunta pronta ("É o CPF final 4725?"); medir no Sol. **Custa esquecer:** a promessa
 "reconhece pelo telefone" não chega ao segurado.
-
-## P-125-08 · 🤖 A régua da bancada N3 tem quatro falsos
-(a) `_pedidos` só vê pergunta: "Me passe o CPF" passa (controle "Qual o seu CPF?" é pego); (b) `acionou_sem_confirmar` conta
-TENTATIVA recusada (R1 t1, C3 t2); (c) C2 t1 confirmar o endereço cadastrado é marcado como "pediu dado da apólice"; (d) C4
-`max_turnos` 3 é curto para o portão; Sol C8 "pessoa" depois de o segurado ACEITAR a oferta conta como proibida.
-**O que destrava:** consertar a régua com linha de controle por item, antes da próxima rodada. **Custa esquecer:** a nota
-mente nos dois sentidos.
 
 ## P-125-09 · 🧑🤖 A v2 virou padrão antes do gate completo
 📊 02/10: 4/4 agentes `attendance` em `v2`, 0 ativos (`default 'v2'` + `PROMPT_VERSAO_PADRAO='v2'`); se a leitura da chave
@@ -13057,3 +13018,136 @@ esquecer:** outra máquina ou worktree para em 50 agentes no meio de uma SPEC.
 | T1/T2/T3/T4/T11/T12/T13 e M2/M4/M5 do laudo `INV-ATENDIMENTO` | ✅ atacadas (relatório §7): a janela de 15, a fala da equipe, o fiscal da honestidade, as regras contraditórias, o fiscal de tamanho, a repetição só contra a ficha, a identidade e os resumos com `agent_id` nulo |
 | P-123-01 | CONTINUA — calibrar o DEDUZIR (a SPEC-126) |
 | P-124-01/02 | CONTINUAM — o portal (a SPEC-127) |
+
+# SPEC-126 — o atendimento quase sem erro (03/10/2026)
+
+> 📊 O retrato da SPEC (`reports/SPEC-126-EXECUTION-REPORT.md`, medição `reports/SPEC-126-DEPOIS.md`): o "ok" aciona só se a
+> regex E o classificador (papel `confirmacao`) concordarem — 📊 bancada de 179 frases, 0/294 falso ok, 97,9 % ok aceito; o
+> parente aciona sem ver a apólice; cancelar depois de acionar vai à pessoa na hora; apresentação uma vez; o DEDUZIR só religa
+> calibrado (0/40). 📊 Luna 77,8 → 88,9 % (meta 90 % não atingida), críticos Luna 12/12, Sol 11/12. Ledger da bancada:
+> OpenAI US$ 4,2796 de 4,50 (126 + 127).
+
+## P-126-01 · 🤖🧑 A Luna ficou em 88,9 % — a meta era 90 % (faltou 1 tentativa)
+📊 Final k=2, 18 cenários: 32/36. Duas falhas são do AGENTE: C8 t1 (chama pessoa sem oferecer a cobrança) e C2 t2 (aciona "em
+casa" sem citar o endereço do cadastro). **O que destrava:** 🤖 C8: oferecer a cobrança e esperar o sim antes de
+`request_human_agent` (regra no portão do handoff, não no texto); C2: a linha pronta do resumo citar o endereço da ficha; 🧑
+verba para rerodar a Luna k=2 (💭 ≈ US$ 0,30). **Custa esquecer:** a cobrança simples vira trabalho de atendente e o guincho
+pode ir ao endereço errado.
+
+## P-126-02 · 🧑🤖 O Sol (modelo de produção) não foi medido nos não-críticos depois da SPEC
+📊 A rodada C (C1 C3 C4 C8 C11) não rodou: o ledger passou de 3,80 depois da rodada B. A mutação do G1 também não rodou. **O que
+destrava:** 🧑 orçamento (💭 ≈ US$ 0,70 OpenAI) → 🤖 bancada `--conversa` com `openai:gpt-6.1-sol:high` nos 5 cenários, k=1.
+**Custa esquecer:** a meta "Sol ≥ 95 % no conjunto" fica sem número e o agente vai à vida real com metade da prova.
+
+## P-126-03 · 🤖 A régua da bancada N3: instrução a terceiro lida como pedido, e pessoa aceita contada como proibida
+📊 Sol C10 t1: "Ligue para o 193 e **informe o endereço**" → `perguntou_o_que_ja_sabia` + `pediu_dado_da_apolice` (o juiz LLM dá
+5/5). Luna R2 t2: o segurado ACEITOU a oferta de pessoa e o gabarito `pessoa: proibida` contou falha (resto da P-125-08).
+**O que destrava:** a régua de `endereco` ignorar o imperativo dirigido a terceiro (193, seguradora), com linha de controle; `pessoa:
+livre` quando aceita. **Custa esquecer:** a nota mente para baixo e esconde a falha verdadeira no meio das falsas.
+
+## P-126-04 · 🤖 A auto-checagem antes de enviar não foi implementada
+A SPEC a pedia "se a medição aprovar". 📊 0 das 6 falhas medidas na final eram do tipo que ela pega (o gerente leu as
+transcrições). E `deduziu` no diário só existe quando o modelo preenche `slots_deduzidos`. **O que destrava:** 🤖 medir de novo
+quando houver falha do tipo "cruzou uma trava" no acervo real. **Custa esquecer:** nada hoje; vira custo sem ganho se ligada às cegas.
+
+## P-126-05 · 🧑 Botões de resposta rápida desligados
+`send_buttons` está no protocolo do provedor, com `interactive=False` em todos os canais; o corpo do `/send/button` do Evolution
+Go não foi transcrito. **O que destrava:** 🧑 o corpo da requisição e um aparelho real mostrando o botão (T-97). **Custa esquecer:**
+a opção de nota 90 do D5 fica no papel; o "ok" segue só por texto.
+
+## P-126-06 · 🤖🧑 O DEDUZIR não religa em nenhuma seguradora: falta corpus
+📊 A porta tem 32 casos, ≤ 5 por seguradora (U6); o acervo tem 💭 ≈ 97 casos candidatos (contagem do gerente, não reconferida).
+**O que destrava:** 🤖 montar ≥ 10 casos por seguradora com prova; 🧑 verba da rodada (T-98). **Custa esquecer:** a P-123-01 nunca
+fecha e o destravador segue perguntando o óbvio.
+
+## P-126-07 · 🤖 A placa pode faltar na ficha em produção
+A U6 lê a placa da ficha para o DEDUZIR ("confirme o veículo"); não foi medido quantas fichas reais a têm. **O que destrava:** um
+SELECT de presença em `conversations.ficha_atendimento`. **Custa esquecer:** a calibração mede um caso que a produção não tem.
+
+## P-126-08 · 🤖 `rotulo_de` por prefixo nos outros chamadores
+O homônimo Curitiba/Curitibanos foi fechado na escolha do DEDUZIR (P-124-14); outros chamadores de `rotulo_de` ainda casam por
+prefixo. **O que destrava:** igualdade normalizada em todos, com a mesma linha de controle. **Custa esquecer:** a cidade errada
+volta por outra porta.
+
+## P-126-09 · 🤖 `work_steps.output_summary` guarda CPF em claro, legível pela própria corretora
+Mesma corretora (não atravessa tenant), mas viola a regra de nunca segredo/PII em log (CLAUDE.md §7; parente da P-223). **O que
+destrava:** passar o resumo pelo `higienizar_para_o_rastro`. **Custa esquecer:** o CPF do segurado fica em texto aberto no rastro.
+
+## P-126-10 · 🤖 `tool_invocations.trace_id` carrega o telefone em claro
+📊 forma real `whatsapp:<fone>:<uuid>:default` (laudo do juiz). O aviso de abuso conta por esse prefixo. **O que destrava:**
+pseudônimo HMAC do telefone no `trace_id` (e a contagem por ele). **Custa esquecer:** telefone de segurado em tabela de rastro.
+
+## P-126-11 · 🤖 Os furos do aviso de abuso
+Redis fora → o marcador NX falha → o aviso pode repetir a cada consulta (escolha "avisar demais"); o telefone não é normalizado
+(com e sem 55 contam separado); o titular que digita o CPF solto conta por apólice (não como "o próprio"). **O que destrava:**
+normalizar o telefone; marca durável além do Redis. **Custa esquecer:** alarme falso no grupo, ou alarme que não soa.
+
+## P-126-12 · 🤖🧑 A reserva do papel `confirmacao` (Sonnet 5.5) nunca foi medida
+Só o Luna medium passou na bancada do ok. **O que destrava:** 🧑 verba (💭 ≈ US$ 0,05 Anthropic) → 🤖 a bancada do ok no braço
+da reserva, k=3. **Custa esquecer:** se o Luna cair, quem decide o "ok" de um guincho é um modelo sem prova.
+
+## P-126-13 · 🤖 Dois processos no mesmo instante podem enfileirar dois acionamentos
+`dispatch_router.enqueue_dispatch` não deduplica por caso/telefone; o `already_dispatched` vale dentro de um processo. **O que
+destrava:** dedupe no enqueue (chave caso+serviço, NX). **Custa esquecer:** dois guinchos para o mesmo carro.
+
+## P-126-14 · 🤖 "Cancela" com o pedido só ENFILEIRADO não é pós-acionamento
+Só `enviado_em`/protocolo tornam o caso "acionado"; `enfileirado_em` não. **O que destrava:** a fase ler `enfileirado_em` e
+cancelar a fila antes da pessoa. **Custa esquecer:** o pedido sai depois de o segurado ter desistido.
+
+## P-126-15 · 🤖 Os vigias leem a ficha sem o corte do assunto
+`varrer_handoffs_parados` e as esperas leem a ficha inteira, não `ficha_do_assunto`. **O que destrava:** a mesma régua única
+(`attendance_ficha.ficha_do_assunto`). **Custa esquecer:** um vigia age sobre o acionamento de um caso antigo.
+
+## P-126-16 · 🤖 Uma espera `work_waits` antiga torna o caso novo "pós-acionamento"
+**O que destrava:** a espera também respeitar o início do assunto. **Custa esquecer:** o caso novo é tratado como já acionado.
+
+## P-126-17 · 🤖 Resíduos do fiscal do "cancelado"
+"O guincho do seu SEGURO foi cancelado" passa (`_RX_STATUS_DO_SISTEMA` vê "seguro" e trata como fato de terceiro). **O que
+destrava:** o sujeito precisa ser o serviço OU o pedido, com controle. **Custa esquecer:** a mentira "cancelado" chega ao segurado.
+
+## P-126-18 · 🤖 Resíduos da rede (regex) do "ok"
+"pode mandar, tem as 18h livre" → True (o classificador é a 2ª camada); "pode ser" e "tudo certo" ficam `outra_coisa` (D-126-J,
+lado seguro, uma confirmação a mais). **O que destrava:** medir as duas no acervo real e, se forem "ok" na vida, pô-las na
+bancada com gabarito. **Custa esquecer:** um sim legítimo que pede uma confirmação a mais, ou um adiamento lido como sim.
+
+## P-126-19 · 🤖 "Deixa pra lá, o guincho chegou" vai à pessoa como cancelamento
+Lado seguro (alguém da corretora lê), rótulo errado. **O que destrava:** K3 recusar "chegou/já veio" como desistência. **Custa
+esquecer:** trabalho de atendente à toa.
+
+## P-126-20 · 🤖 A janela de N dias do assunto é da plataforma, não da corretora
+`de_um_assunto_anterior`/`inicio_do_assunto` usam o padrão (7), não o `acionamento_profile` da corretora. 📊 Uma 2ª pane dentro
+de N dias recebe `already_dispatched` e precisa de um novo sim. **O que destrava:** ler N da corretora. **Custa esquecer:** a
+corretora que mudou a regra dos 7 dias não é obedecida.
+
+## P-126-21 · 🤖 As instruções do cliente saem duplicadas no resumo à seguradora
+`insurer_dispatch_service.client_summary_from_capture` repete as instruções. **O que destrava:** dedupe com teste. **Custa
+esquecer:** resumo feio para a URA/atendente da seguradora.
+
+## P-126-22 · 🤖 O `portal_action` abria pedido de vidro sem o "ok" → SPEC-127 P1
+Achado do juiz e do red team (P2) e da lente do G1 (R2: "já abri o atendimento" no t1). **Estado:** o gerente registra o fecho na
+SPEC-127 (P1). **Custa esquecer:** "pode deixar" num caso de vidro abre pedido real no portal.
+
+## P-126-23 · 🤖 `test_golden_do_eletricista` com 3 checks vermelhos pré-existentes
+Vermelhos antes da 126. **O que destrava:** triar cada check (verdade vencida → migra a lição; defeito → conserto). **Custa
+esquecer:** um guarda vermelho que todo mundo aprende a ignorar.
+
+## P-126-24 · 🤖 Os consertos 5 e da bateria sem juiz fresco; o MANIFEST sem as migrations da 126
+`8f63452` e o conserto da bateria têm guarda determinístico, sem auditoria independente; as mensagens do roteador ao parente
+(protocolo/agendamento da URA) não foram auditadas. 📊 `backend/supabase/migrations/MANIFEST.md` não tem as linhas de
+`20261002_10`/`_11` (`Select-String '20261002_1[01]'` → 0). **O que destrava:** o próximo juiz do atendimento leva esse diff; uma
+linha no MANIFEST por migration. **Custa esquecer:** um portão sem ninguém ter tentado quebrar e o inventário de migrations furado.
+🟡 03/10: as linhas do MANIFEST entraram em `6880e62` (sha256 do arquivo, versões, VERIFY) — resta o juiz fresco.
+
+## P-126-25 · 🤖 O guarda do vocabulário estoura 120 s no runner (carga, não regressão)
+📊 `test_o_vocabulario_viaja_na_imagem` pelo `test_todos_os_guardas_script_rodam`: HEAD 136 s / 148 s; linha de controle com o
+guarda da base `fbdecec`: 151,2 s / 107,5 s (`scratchpad/cronometra_vocab.py`, 03/10) — são 12 subprocessos que importam
+`app.services` inteiro (≈ 15 s cada). **O que destrava:** baratear o guarda (um processo só) ou declarar o teto dele. **Custa
+esquecer:** um vermelho de tempo na bateria que esconde um vermelho de verdade. 🤖
+
+## A drenagem das pendências que a SPEC-126 tocou
+| P | estado |
+|---|---|
+| P-125-01 · 02 · 04 · 06 · 08 | ✅ FECHADAS — movidas para `PENDENCIAS-FECHADAS.md` (o resto vira P-126-02/03/04) |
+| P-124-14 | ✅ FECHADA em código (U6) — movida; os outros chamadores → P-126-08 |
+| P-125-03 | 🟡 CONTINUA — a R9 em código; a Luna C8 → P-126-01 |
+| P-123-01 | 🟡 CONTINUA — o mecanismo pronto; falta o n → P-126-06 |

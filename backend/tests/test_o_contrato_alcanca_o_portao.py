@@ -243,8 +243,15 @@ _NAO_SE_COBRA_NO_PORTAO = {
     # 🔴 SPEC-121 F5 — opcional por desenho: o limite de diárias do PLANO, quando a
     #    apólice consultada o traz (CR4); sem ele o corredor usa o default justificado.
     "carro_reserva_diarias",
+    # 🔴 §9.3 — SPEC-126 U5 (a803215): `slots_deduzidos` é METACAMPO do DIÁRIO, não
+    #    slot de URA. O modelo declara quais slots DEDUZIU (sem o segurado dizer);
+    #    `insurer_dispatch_tool._run/_arun` o DESCARTA (`kwargs.pop`) antes do motor,
+    #    e só `nodes.deducoes_do_turno` o lê para o diário. Como `ramo_da_apolice`:
+    #    cobrá-lo no portão pararia um acionamento por um dado que nenhuma
+    #    seguradora recebe.
+    "slots_deduzidos",
 }
-sobrando = sorted(CAMPOS - todos_cobrados - _NAO_SE_COBRA_NO_PORTAO)
+sobrando =sorted(CAMPOS - todos_cobrados - _NAO_SE_COBRA_NO_PORTAO)
 certo(not sobrando,
       "todo campo do contrato é cobrado por alguma rota, ou está nomeado "
       "como exceção",

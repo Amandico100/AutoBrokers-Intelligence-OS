@@ -980,3 +980,68 @@ vencendo. Fixado por guarda em `backend/tests/test_o_transporte_do_formulario_e_
 ⛔ **Consequência para quem ler isto depois: NÃO existe rebuild de imagem a fazer por
 causa de formulário nativo.** O que resta é o **mapa** de cada seguradora (§2.2 da SPEC-118),
 e o da Porto passou a existir nesta SPEC.
+
+---
+
+# Fechadas pela SPEC-126 — o atendimento quase sem erro (03/10/2026)
+
+> Relatório `reports/SPEC-126-EXECUTION-REPORT.md` §7 (a drenagem). Movidas de `PENDENCIAS.md` por número.
+
+## P-124-14 · 🤖 `cidade_ambigua` escolheria a cidade homônima errada quando a calibração religar
+Achado da confirmação (P-C2): com `DEDUZIR_AUTONOMO_CALIBRADO=True`, a parada `cidade_ambigua` escolhe na lista e 📊 o ataque
+da confirmação (01/10, `c3cd5c7`) escolheu "Curitibanos" para "Curitiba". Hoje é inalcançável (o DEDUZIR está desligado).
+**O que destrava:** 🤖 a bancada da calibração (P-123-01/P-124-02) levar casos de cidade homônima e prefixo, e a escolha exigir
+igualdade normalizada antes de qualquer dedução. **Custa esquecer:** o pedido de vidro abre na cidade errada no dia em que a
+calibração religar o DEDUZIR.
+
+✅ **FECHADA 03/10/2026 em código (SPEC-126 U6, `16d9a68`).** A escolha na lista exige igualdade normalizada: 📊 "Curitibanos" para "Curitiba" é recusado por teste (`test_spec126_u6_deducao_calibrada.py`). Os OUTROS chamadores de `rotulo_de` por prefixo continuam abertos como **P-126-08**.
+
+## P-125-01 · 🧑🤖 Os críticos C10, C13, C15 e C16 não foram medidos no Sol (o modelo de produção) depois do conserto
+📊 Na rodada Z (`fd52568`) o teto do ledger parou o Sol depois de C1, C3, C4, C6, C7, C8 (US$ 0,13 por conversa). C10/C13/C15/C16
+no Sol só existem no DEPOIS (`420a2f2`, antes dos consertos Y/X/Z/ZN), 4/4 PASS. E o ajuste ZN + C3 t2 (`3f570a9`, `29da022`)
+não passaram por nenhuma rodada com LLM. **O que destrava:** 🧑 orçamento (💭 ≈ US$ 1,30 OpenAI para Sol k=1 nos 6 críticos + C4,
+C8, C11, R1) → 🤖 a bancada `--conversa` com o braço `openai:gpt-6.1-sol:high` nesses 10 cenários, num worktree próprio.
+**Custa esquecer:** a v2 (já padrão) vai para a vida real sem prova pós-conserto no modelo que atende.
+
+✅ **FECHADA 03/10/2026 (SPEC-126).** Os críticos C10/C13/C15/C16 foram medidos no Sol na U0 (`eb56b09`) e na final (`a8665b9`, `reports/SPEC-126-DEPOIS.md`): 📊 Sol críticos 11/12 (C13 0/2 → 2/2; C10 t1 vermelho FALSO da régua; C16 t2 PASS depois do conserto). O que falta — o Sol nos não-críticos — continua como **P-126-02**.
+
+## P-125-02 · 🤖 C13 t2 (crítico): o agente chamou pessoa em vez de resumir e pedir o "sim"
+📊 Rodada Z: a Luna tentou acionar no t2 sem resumo (recusado pelo portão), repetiu a pergunta de segurança e, quando pediram o
+protocolo, chamou uma pessoa. 📊 24 recusas `confirm_first` em 36 conversas: o portão está certo, o modelo ainda não faz "resumo +
+Posso acionar?" de primeira. **O que destrava:** o prompt v2 ensina o resumo no 1º turno com dados completos; reroda C13 k=2.
+**Custa esquecer:** o acionamento confirmado (o caso que motivou o T4) vira atendente.
+
+✅ **FECHADA 03/10/2026 (SPEC-126 U1, `f6f087d`).** Linha pronta do resumo no `confirm_first` e acostamento = orientar + guincho: 📊 C13 Sol 0/2 → 2/2 e Luna 2/2 na final (`reports/SPEC-126-DEPOIS.md`).
+
+## P-125-04 · 🤖 A apresentação aparece no 2º turno
+📊 Sol C1 (depois de `request_human_agent`) e Sol C4 (sem pessoa) se apresentam de novo. **O que destrava:** a marca de
+"apresentado" sobreviver ao handoff e à retenção. **Custa esquecer:** o segurado lê "Oi, aqui é a assistente…" no meio do caso.
+🟡 **02/10 (endurecimento): a CAUSA era outra, e está consertada em código; falta a prova com LLM.** `invoke_agent` entrega
+só o texto do ÚLTIMO `AIMessage`: o que o modelo escreve JUNTO da chamada de ferramenta se perdia. 📊 Nos JSON do Sol
+(DEPOIS v1/v2 e Z), TODO 1º turno com ferramenta saiu sem apresentação, e o motivo do handoff dizia "Orientado a…" sobre um
+texto que não saiu (C10 fumaça: "sair da residência… ligar 193" no motivo; "as orientações que te passei" na resposta, sem
+elas). Como só conta a apresentação que SAIU (J5), o turno 2 pedia de novo. Agora `nodes.com_o_que_foi_dito_antes_da_ferramenta`
+junta o texto de antes da ferramenta (só no atendimento, só do turno corrente, sem repetir) ANTES de todos os fiscais
+(honestidade, repetição, tamanho, T19). A bancada passou a confirmar a apresentação como o webhook (passo 9). Mutação → 2 failed.
+**Falta:** rerodar Sol C1/C4/C7/C10/C15 com LLM (P-125-01) — e conferir o tom de "duas falas juntas" no WhatsApp.
+
+✅ **FECHADA 03/10/2026 (SPEC-126 U5, `a803215`).** Apresentação por intenção, uma vez por assunto: 📊 0 conversas com apresentação em mais de 1 turno em 47 (`reports/SPEC-126-DEPOIS.md` §5).
+
+## P-125-06 · 🤖🧑 D7 pela metade: 2 dos 4 momentos e 1 dos 4 sinais estão ligados
+`chamou_pessoa` (SPEC-123) e `respondeu_regra` escrevem; `deduziu` e `nao_chamou_pessoa` são PONTOS MARCADOS em `nodes.py`
+(não há sinal sem LLM para "deduziu" nem classificador da fala para "não chamou"). Sinais: só `agente_repetiu_pergunta`;
+`segurado_corrigiu`/`segurado_repetiu`/`segurado_pediu_pessoa` existem no banco e não são escritos. **O que destrava:** 🤖 a
+ferramenta declarar a origem do slot (dito × deduzido); `request_human_agent` no turno seguinte a uma linha pendente fecha
+como `segurado_pediu_pessoa`; 🧑 ou aceitar a redução (D-125-H). **Custa esquecer:** o placar mostra menos do que acontece.
+
+✅ **FECHADA 03/10/2026 (SPEC-126 U5, `a803215`).** Os 4 momentos (`deduziu` e `nao_chamou_pessoa` ligados) e os 3 sinais (`segurado_corrigiu`, `segurado_repetiu`, `segurado_pediu_pessoa`) escrevem. ⚠️ `deduziu` depende de o modelo preencher `slots_deduzidos` no `insurer_dispatch` (registrado em **P-126-04**).
+
+## P-125-08 · 🤖 A régua da bancada N3 tem quatro falsos
+(a) `_pedidos` só vê pergunta: "Me passe o CPF" passa (controle "Qual o seu CPF?" é pego); (b) `acionou_sem_confirmar` conta
+TENTATIVA recusada (R1 t1, C3 t2); (c) C2 t1 confirmar o endereço cadastrado é marcado como "pediu dado da apólice"; (d) C4
+`max_turnos` 3 é curto para o portão; Sol C8 "pessoa" depois de o segurado ACEITAR a oferta conta como proibida.
+**O que destrava:** consertar a régua com linha de controle por item, antes da próxima rodada. **Custa esquecer:** a nota
+mente nos dois sentidos.
+
+✅ **FECHADA 03/10/2026 (SPEC-126 U1, `f6f087d`).** Os falsos (a)–(d) da régua consertados com controle. O resto que a final achou — instrução a terceiro lida como pedido (Sol C10 t1) e pessoa ACEITA contada como proibida (Luna R2 t2) — continua como **P-126-03**.
+

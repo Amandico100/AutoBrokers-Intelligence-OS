@@ -58,6 +58,11 @@ MAPA = {
     # §9.3 — SPEC-124 F2 (01/10/2026, migration 20261001_03): `visao` ganha reserva de OUTRO
     # provedor, Sonnet 5.5 low — 30/30 na bancada por campo (SPEC-124-BANCADA-VISAO.md §3).
     "visao": ("anthropic", "claude-sonnet-5-5", "low"),
+    # §9.3 — SPEC-126 U2a (02/10/2026, migration 20261002_11_spec126_papel_confirmacao): o papel
+    # `confirmacao` (o classificador do "ok" que aciona) NASCE com reserva de OUTRO provedor
+    # (primário openai/gpt-6-luna medium) — decisão D5 nota 92, o mesmo par da `visao`. A trava
+    # "papel fora do mapa não ganha reserva" segue valendo para todo papel NOVO.
+    "confirmacao": ("anthropic", "claude-sonnet-5-5", "low"),
 }
 
 
