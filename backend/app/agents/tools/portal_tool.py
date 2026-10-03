@@ -48,6 +48,7 @@ from .portal_params import (
     JOURNEY_CONTINUAR,
     PREFERENCIA_VISTORIA,
     acao_esperada,
+    aviso_de_acionamento_do_vidro,
     build_portal_params,
     chave_de_idempotencia,
     continuacao_da_evidencia,
@@ -792,12 +793,12 @@ class PortalActionTool(BaseTool):
         # mandou este recado na primeira chamada, e repeti-lo diria duas vezes que
         # estamos comecando algo que ja comecou.
         if not reaproveitado:
-            veic = (params.get("segurado") or {}).get("veiculo") or "seu veiculo"
+            # 🔴 SPEC-127 CONSERTO (juiz B1 · RT-B2): só o FINAL da placa; ao parente, nem ele
+            # (a mesma regra da linha pronta — `aviso_de_acionamento_do_vidro`).
             self._notify(
                 session_id,
-                f"Perfeito! 🙌 Ja vou acionar a seguradora pra abrir seu atendimento de vidros "
-                f"({veic}, placa {params.get('placa')}). Isso leva mais ou menos 1 minutinho — "
-                "ja volto aqui com a confirmacao, ta? 🙂",
+                aviso_de_acionamento_do_vidro(
+                    params, de_outra_pessoa=await self._apolice_de_outra_pessoa(session_id)),
                 agent_id,
             )
 
@@ -913,6 +914,16 @@ class PortalActionTool(BaseTool):
             if stage not in PARADAS_QUE_O_SEGURADO_NAO_RESPONDE:
                 return None
             cont = {**continuacao_da_evidencia(ev), "acao_esperada": "reler"}
+            # 🔴 SPEC-127 CONSERTO (RT-P1) — a parada passa ao VIGIA por ESCRITO: o vigia só relê o que a
+            # evidence diz `reler` (`vigia_do_portal._releitura_e_do_vigia`). Sem esta marca, o "já estou
+            # tentando de novo" ficaria sem ninguém; com o destravador CONDUZINDO, a marca não existe e o
+            # vigia não abre um 2º processo sobre a mesma parada. A falha da escrita não muda a resposta.
+            try:
+                self._client().table("portal_jobs").update({
+                    "evidence": {**ev, "entregue_ao_agente": True, "continuacao": cont},
+                }).eq("id", job_id).eq("company_id", self.company_id).execute()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[PortalAction] parada nao entregue ao vigia (%s)", type(exc).__name__)
             return {"content": format_result({**job, "evidence": {**ev, "continuacao": cont}})}
 
         try:

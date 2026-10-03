@@ -1355,11 +1355,15 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
                            origem="journey")
     except AcaoBloqueada as e:
         guard.acao_material_esperada = esperada_antes
+        # 🔴 SPEC-127 CONSERTO (juiz B3): NÃO é a `pronto_para_abrir` do API-first. Lá a parada vem
+        # DEPOIS do `GET /apolices` (o texto diz "a sua apolice cobre"); aqui o "Iniciar atendimento" —
+        # o clique que faz o `GET /apolices` — NÃO saiu: a apólice não foi lida. Stage próprio, texto
+        # que não afirma cobertura (`portal_params._PARADAS["pronto_para_iniciar"]`).
         return JourneyResult(
             status="needs_human",
-            captured={"stage": "pronto_para_abrir", "business_state": _ST.PRE_PROTOCOLO},
+            captured={"stage": "pronto_para_iniciar", "business_state": _ST.PRE_PROTOCOLO},
             message=("passo 1 preenchido — falta a autorizacao para abrir o pedido "
-                     f"no portal ({e}). Nada foi aberto."))
+                     f"no portal ({e}). A apolice ainda nao foi consultada. Nada foi aberto."))
 
     await _click_button(page, "Iniciar atendimento")
     await page.wait_for_timeout(4500)

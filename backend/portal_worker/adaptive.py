@@ -1328,18 +1328,6 @@ def _identidade_do_campo(campo: Dict[str, Any]) -> str:
     return _norm(" ".join(str(campo.get(k) or "") for k in ("id", "name", "placeholder", "label")))
 
 
-def _mesmo_lugar(cidade_a: Any, uf_a: Any, cidade_b: Any, uf_b: Any) -> bool:
-    """Nome IGUAL depois de normalizar, e UF igual (ou ausente de um lado).
-
-    🔴 Igualdade, nunca prefixo: "Curitiba" × "Curitibanos" NÃO é o mesmo lugar.
-    É a régua de `destravador.mesmo_lugar` (P-124-14, SPEC-126) — copiada em
-    três linhas porque o worker não importa `app/` (Dockerfile do portal-worker
-    copia só `portal_worker/`)."""
-    na, nb = _norm(cidade_a), _norm(cidade_b)
-    ua, ub = _norm(uf_a), _norm(uf_b)
-    return bool(na) and na == nb and (not ua or not ub or ua == ub)
-
-
 def local_do_servico(collected: Dict[str, Any]) -> Dict[str, str]:
     """PURO: estado, cidade e CEP de ONDE O SERVIÇO É FEITO. `{}` se o pedido
     não traz a cidade do serviço — e aí quem decide é a PARADA, nunca o cadastro.
@@ -1359,8 +1347,15 @@ def local_do_servico(collected: Dict[str, Any]) -> Dict[str, str]:
     if not cidade:
         return {}
     saida = {"estado": uf, "cidade": cidade}
-    cep = str(local.get("cep") or "").strip()
-    if cep and _mesmo_lugar(cidade, uf, local.get("cidade"), local.get("estado")):
+    # 🔴 SPEC-127 CONSERTO (RT-P4) — UMA régua do CEP, dois consumidores (CLAUDE.md §9.4): a do API-first
+    # (`vidros_apifirst.cep_do_servico`: o CEP do serviço, se veio; o do cadastro só com a MESMA cidade E a
+    # MESMA UF, as duas presentes). 📊 `rt127_probe2.py`: com a UF do cadastro vazia e o serviço em
+    # "SAO JOSE/SP", o DOM mandava o CEP do cadastro e o API-first não. Import tardio: o worker carrega
+    # o DOM sem depender da ordem dos módulos das journeys.
+    from portal_worker.journeys.vidros_apifirst import cep_do_servico
+
+    cep, _origem = cep_do_servico(local)
+    if cep:
         saida["cep"] = cep
     return saida
 

@@ -279,7 +279,9 @@ def _abrir(monkeypatch, *, confirm, inicio="yelum_passo1", insurer="Yelum", peca
 
 def test_sem_confirm_os_cliques_da_fronteira_A_NAO_saem(monkeypatch):
     r, pagina, rt, _ev = _abrir(monkeypatch, confirm=False)
-    assert r.status == "needs_human" and (r.captured or {}).get("stage") == "pronto_para_abrir"
+    # §9.3 — a lição MIGRA (conserto da 127, juiz B3): o stage era `pronto_para_abrir`, cujo texto diz "a sua
+    # apolice cobre" — falso aqui, onde o GET /apolices (o "Iniciar atendimento") NÃO saiu. Stage próprio.
+    assert r.status == "needs_human" and (r.captured or {}).get("stage") == "pronto_para_iniciar"
     assert "Iniciar atendimento" not in pagina.cliques and "Confirmar" not in pagina.cliques, pagina.cliques
     assert rt.gravacoes == []
 

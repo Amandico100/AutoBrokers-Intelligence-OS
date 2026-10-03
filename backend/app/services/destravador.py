@@ -2278,6 +2278,7 @@ CLASSE_DA_PARADA_DO_PORTAL: Dict[str, str] = {
     "coverage_absent": "nunca_sozinho",
     "maybe_committed": "nunca_sozinho",
     "pronto_para_abrir": "nunca_sozinho",
+    "pronto_para_iniciar": "nunca_sozinho",       # SPEC-127 conserto: a do DOM, antes do GET /apolices
     "pronto_para_materializar": "nunca_sozinho",
     "pronto_para_vistoria": "nunca_sozinho",
     "prioridade_nao_medida": "nunca_sozinho",
@@ -2293,6 +2294,7 @@ NUNCA_DA_PARADA_DO_PORTAL: Dict[str, Tuple[str, str]] = {
     "coverage_absent": ("afirma_cobertura", "pessoa"),
     "maybe_committed": ("novo_atendimento", "pessoa"),
     "pronto_para_abrir": ("confirmacao_final", "pessoa"),
+    "pronto_para_iniciar": ("confirmacao_final", "pessoa"),
     "pronto_para_materializar": ("confirmacao_final", "pessoa"),
     "pronto_para_vistoria": ("confirmacao_final", "pessoa"),
     "prioridade_nao_medida": ("confirmacao_final", "pessoa"),

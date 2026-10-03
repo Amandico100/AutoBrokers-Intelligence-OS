@@ -109,6 +109,21 @@ def _e_continuacao(job: Dict[str, Any]) -> bool:
     return str(job.get("journey") or "") == "continuar_atendimento"
 
 
+def _releitura_e_do_vigia(ev: Dict[str, Any]) -> bool:
+    """PURO: a parada é TÉCNICA **e** quem a conduz é o vigia (a releitura)?
+
+    🔴 SPEC-127 CONSERTO (RT-P1) — o DONO da parada é o que a evidence diz que ela espera
+    (`vidros_estado.ETAPA_DA_PARADA`, a tabela única): `responder:*` é da tool/destravador. 📊
+    `rt127_probe2.py`: `tipo_de_telefone_desconhecido` virou `responder:tipo_telefone` (o destravador o
+    CONDUZ) e continuava técnica → o vigia pedia uma `reler` sobre a MESMA parada que o destravador já
+    tinha continuado (dois processos no mesmo atendimento). Quando a tool NÃO conduz (destravador off,
+    sombra, pessoa), ela entrega a parada ao vigia gravando `acao_esperada = "reler"` no job."""
+    from app.agents.tools.portal_params import ESTAGIOS_TECNICOS, acao_esperada
+
+    stage = str((ev or {}).get("stage") or "").strip().lower()
+    return stage in ESTAGIOS_TECNICOS and acao_esperada(ev)[0] != "responder"
+
+
 def pedir_releitura(job: Dict[str, Any], agora: Optional[datetime] = None) -> bool:
     """PURO: este job deve ganhar UMA continuação "reler" agora?
 
@@ -134,7 +149,7 @@ def pedir_releitura(job: Dict[str, Any], agora: Optional[datetime] = None) -> bo
     if str(job.get("status") or "") not in ("needs_human", "failed"):
         return False
     stage = str(ev.get("stage") or "").strip().lower()
-    if stage not in ESTAGIOS_TECNICOS:
+    if stage not in ESTAGIOS_TECNICOS or not _releitura_e_do_vigia(ev):
         return False
     if not continuacao_possivel(ev) or ev.get("releitura_pedida_em"):
         return False
@@ -256,7 +271,7 @@ def diagnosticar(job: Dict[str, Any], agora: Optional[datetime] = None) -> Optio
     _pode_continuar = continuacao_possivel(ev) and (
         _stage not in ESTAGIOS_TECNICOS or pedir_releitura(job, agora))
     if ev.get("entregue_ao_agente"):
-        if (status in ("needs_human", "failed") and _stage in ESTAGIOS_TECNICOS
+        if (status in ("needs_human", "failed") and _releitura_e_do_vigia(ev)
                 and continuacao_possivel(ev) and not ev.get("releitura_pedida_em")
                 and not pedir_releitura(job, agora)):
             # O segurado ouviu "já estou tentando de novo" (pela tool), mas a

@@ -1740,7 +1740,17 @@ _PARADAS = {
         "Esta tudo conferido e a sua apolice cobre. Falta so a autorizacao "
         "interna para eu abrir o pedido — ja pedi.",
         "O guard recusou a fronteira A (confirm/approval ausente). NADA foi "
-        "aberto: este e o unico stage em que o pedido ainda NAO existe.",
+        "aberto: o pedido ainda NAO existe.",
+    ),
+    # 🔴 SPEC-127 CONSERTO (juiz B3) — a mesma recusa no caminho DOM, que para ANTES do "Iniciar
+    # atendimento" (o clique que faz o `GET /apolices`): a apólice NÃO foi lida, então o texto não
+    # afirma cobertura nenhuma (o da `pronto_para_abrir` dizia "a sua apolice cobre").
+    "pronto_para_iniciar": (
+        "Esta tudo pronto para abrir o seu pedido na seguradora. Falta so a "
+        "liberacao interna para eu abrir — ja pedi.",
+        "Caminho DOM: o guard recusou a fronteira A ANTES do \"Iniciar atendimento\" "
+        "(confirm/approval ausente). A apolice AINDA NAO foi consultada no portal "
+        "(o GET /apolices sai nesse clique). NADA foi aberto: o pedido ainda NAO existe.",
     ),
     "pronto_para_materializar": (
         "Seu pedido esta aberto e falta a autorizacao interna para eu concluir "
@@ -1909,6 +1919,14 @@ _PARADAS.update({
 _NADA_FOI_ABERTO = "Ainda NAO abri nada na seguradora. "
 _A_EQUIPE_RESOLVE_ANTES = ("A nossa equipe ja recebeu tudo e conclui com a seguradora — "
                            "eu te aviso por aqui. Voce nao precisa repetir nada.")
+#: 🔴 SPEC-127 CONSERTO (RT-P2) — a verdade para a EQUIPE nas paradas antes da fronteira que vão a ela:
+#: o job parado guarda a chave do pedido (`idx_portal_jobs_pedido_vivo`), então o AGENTE não consegue
+#: "pedir de novo" — a tool responde "PAROU ANTES ... NAO chame de novo" (`frase_de_pedido_ja_existente`).
+#: Dizer "pode pedir de novo" mandava a equipe esperar uma repetição que nunca vem. Nada foi escrito no
+#: portal: abrir à mão, uma vez, é seguro.
+_ESTE_PEDIDO_NAO_SE_REPETE = ("Este pedido NAO se repete sozinho nem pelo agente (ele fica parado para "
+                              "nao duplicar): abra o atendimento DIRETO no portal da seguradora, uma vez, "
+                              "com os dados do dossie.")
 _PARADAS.update({
     "faltou_cidade_servico": (
         _NADA_FOI_ABERTO + "Em qual CIDADE e ESTADO voce quer fazer o servico? "
@@ -1938,37 +1956,38 @@ _PARADAS.update({
     "pedido_incompleto": (
         _NADA_FOI_ABERTO + _A_EQUIPE_RESOLVE_ANTES,
         "O job chegou ao worker sem CPF, placa ou uma data DD/MM/AAAA valida — defeito de quem "
-        "montou o pedido (a tool recusa antes). NADA foi aberto. Corrija o dado e peca de novo.",
+        "montou o pedido (a tool recusa antes). NADA foi aberto. " + _ESTE_PEDIDO_NAO_SE_REPETE,
     ),
     "cadastro_da_corretora_incompleto": (
         _NADA_FOI_ABERTO + "Falta um ajuste no nosso cadastro para eu abrir o pedido. "
         + _A_EQUIPE_RESOLVE_ANTES,
         "Falta o documento ou o telefone da corretora no cadastro de acionamento "
-        "(Personalizacao -> Corretora). NADA foi aberto. Preencha e peca de novo.",
+        "(Personalizacao -> Corretora). NADA foi aberto. Preencha o cadastro (os PROXIMOS pedidos "
+        "ja saem com ele). " + _ESTE_PEDIDO_NAO_SE_REPETE,
     ),
     "apolice_nao_encontrada": (
         _NADA_FOI_ABERTO + "O sistema da seguradora nao achou a sua apolice com o CPF, a placa "
         "e a data do dano que eu tenho. " + _A_EQUIPE_RESOLVE_ANTES,
         "Preflight `policy_not_found` (GET /apolices): NADA foi aberto. Confira CPF, placa e a "
-        "data do dano (dentro da vigencia?) e abra pelo portal.",
+        "data do dano (dentro da vigencia?). " + _ESTE_PEDIDO_NAO_SE_REPETE,
     ),
     "preflight_ambiguo": (
         _NADA_FOI_ABERTO + "O sistema da seguradora achou mais de uma apolice para o seu carro "
         "nessa data. " + _A_EQUIPE_RESOLVE_ANTES,
         "Preflight `policy_ambiguous` (MaisDeUmaApoliceEncontrada): NADA foi aberto. Escolher "
-        "uma seria adivinhar; abra pelo portal escolhendo a apolice certa.",
+        "uma seria adivinhar. " + _ESTE_PEDIDO_NAO_SE_REPETE + " Escolha a apolice certa no portal.",
     ),
     "regra_do_portal_desconhecida": (
         _NADA_FOI_ABERTO + "A seguradora recusou o pedido por uma regra que eu nao conheco. "
         + _A_EQUIPE_RESOLVE_ANTES,
         "Preflight 400 com regra de negocio nao mapeada. NADA foi aberto. Leia a mensagem do "
-        "portal e decida.",
+        "portal e decida. " + _ESTE_PEDIDO_NAO_SE_REPETE,
     ),
     "abertura_sem_resposta_do_portal": (
         _NADA_FOI_ABERTO + "O sistema da seguradora nao respondeu quando fui abrir o seu "
         "pedido com a sua resposta. " + _A_EQUIPE_RESOLVE_ANTES,
         "A continuacao recomecou a abertura e a API do portal nao respondeu (seguradoras/"
-        "apolices). NADA foi aberto. Pode pedir de novo.",
+        "apolices). NADA foi aberto. " + _ESTE_PEDIDO_NAO_SE_REPETE,
     ),
     # 🔴 D-127-C — este é DEPOIS do POST: o rascunho existe e tem número.
     "atendimento_aberto_existente": (
@@ -2834,8 +2853,15 @@ def montar_job_de_continuacao(*, company_id: str, job_origem: dict, operacao: st
     # O interruptor é lido AGORA, não herdado: agente desligado entre a abertura
     # e a resposta do segurado para a continuação também (P-90).
     params["confirm"] = bool(confirm)
+    # 🔴 SPEC-127 CONSERTO (juiz B2) — a origem parou ANTES da fronteira (`etapa == "abertura"`): toda
+    # continuação dela RECOMEÇA a abertura e faz o `POST /atendimentos`. Com as respostas na chave, duas
+    # respostas DIFERENTES à mesma parada viravam dois jobs e DOIS POST (📊 `jz127_corrida.py`: 2). Sem
+    # elas, é UMA continuação de abertura por job de origem: a 2ª resposta cai no índice único e se anexa
+    # à 1ª. A cadeia segue (a próxima parada é OUTRO job de origem — `extra` muda) e, depois da fronteira,
+    # a regra de sempre (G7: resposta diferente, tentativa nova).
+    na_chave = {} if str(cont_ev.get("etapa") or "") == "abertura" else respostas
     chave = chave_de_continuacao(company_id, protocolo or pedido_key, operacao,
-                                 resumo_estavel(operacao, escolha, respostas, extra))
+                                 resumo_estavel(operacao, escolha, na_chave, extra))
     return {
         "company_id": str(company_id),
         "portal_key": PORTAL_VIDROS,
@@ -2878,10 +2904,23 @@ def pedido_para_o_portao(params: Optional[dict], *, session_id: str = "",
     ⛔ A cidade é a do SERVIÇO (`local.cidade_servico`), nunca a do cadastro. Com o
     PARENTE falando (`de_outra_pessoa`), a placa sai — é dado da apólice do titular."""
     cidade, uf = _cidade_do_servico_de(params)
+    placa = "" if de_outra_pessoa else normalizar_placa((params or {}).get("placa"))
+    # 🔴 SPEC-127 CONSERTO (RT-B1) — o "sim" vale para ESTE pedido: a pergunta precisa conter a LINHA
+    # PRONTA destes params, ou no mínimo a peça, a cidade E a UF do serviço e (titular) o final da placa
+    # DESTES params. 📊 `rt127_probe1.py`: "retrovisor em Curitibanos — posso acionar?" + "pode mandar"
+    # abria o para-brisa noutra cidade; "Posso acionar a troca do vidro?" + "sim" também (1 POST cada).
+    minimos = [_peca_da_linha(params), cidade, uf] + ([placa[-4:]] if len(placa) >= 7 else [])
     return {"subservice": SERVICO_DO_PORTAO,
             "local_atual": " ".join(x for x in (cidade, uf) if x),
-            "veiculo_placa": "" if de_outra_pessoa else normalizar_placa((params or {}).get("placa")),
-            "session_id": str(session_id or "")}
+            "veiculo_placa": placa,
+            "session_id": str(session_id or ""),
+            "exige_na_pergunta": [[linha_de_confirmacao_do_vidro(params, de_outra_pessoa=de_outra_pessoa)],
+                                  [t for t in minimos if t]]}
+
+
+def _peca_da_linha(params: Optional[dict]) -> str:
+    """A peça como a LINHA PRONTA a diz (a do segurado; "vidro" sem ela). **PURA.**"""
+    return " ".join(str(((params or {}).get("dano") or {}).get("peca") or "").split()) or "vidro"
 
 
 def linha_de_confirmacao_do_vidro(params: Optional[dict], *, de_outra_pessoa: bool = False) -> str:
@@ -2892,7 +2931,7 @@ def linha_de_confirmacao_do_vidro(params: Optional[dict], *, de_outra_pessoa: bo
     cidade do cadastro. É a pergunta que o portão aceita: "Confirma" + o verbo forte
     ("posso acionar?") + o serviço, o lugar e a placa do PRÓPRIO pedido."""
     p = params or {}
-    peca = " ".join(str((p.get("dano") or {}).get("peca") or "").split()) or "vidro"
+    peca = _peca_da_linha(p)
     cidade, uf = _cidade_do_servico_de(p)
     partes = [f"abrir na seguradora o atendimento de {peca}"]
     if cidade:
@@ -2901,6 +2940,25 @@ def linha_de_confirmacao_do_vidro(params: Optional[dict], *, de_outra_pessoa: bo
     if len(placa) >= 7 and not de_outra_pessoa:
         partes.append(f"placa final {placa[-4:]}")
     return "Confirma: " + ", ".join(partes) + " — posso acionar?"
+
+
+def aviso_de_acionamento_do_vidro(params: Optional[dict], *, de_outra_pessoa: bool = False) -> str:
+    """O aviso IMEDIATO ao WhatsApp depois do ok (não passa pelo modelo). **PURA.**
+
+    🔴 SPEC-127 CONSERTO (juiz B1 · RT-B2): ele mandava a placa INTEIRA — inclusive ao PARENTE, 1 s
+    depois de a linha pronta tirá-la (📊 `jz127_sondas.py` A: `ack_tem_placa_inteira True`). A regra é a
+    da linha pronta: a placa SÓ PELO FINAL; com o parente falando, nem o final nem o veículo (dados da
+    apólice do titular — SPEC-126 U2-B, D1)."""
+    p = params or {}
+    if de_outra_pessoa:
+        sobre = "o atendimento de vidros"
+    else:
+        veic = str((p.get("segurado") or {}).get("veiculo") or "").strip() or "seu veiculo"
+        placa = normalizar_placa(p.get("placa"))
+        sobre = (f"seu atendimento de vidros ({veic}"
+                 + (f", placa final {placa[-4:]}" if len(placa) >= 7 else "") + ")")
+    return (f"Perfeito! 🙌 Ja vou acionar a seguradora pra abrir {sobre}. Isso leva mais ou menos "
+            "1 minutinho — ja volto aqui com a confirmacao, ta? 🙂")
 
 
 def pedido_de_ok_do_vidro(motivo: str, params: Optional[dict], *,

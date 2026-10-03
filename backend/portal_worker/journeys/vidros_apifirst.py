@@ -1349,8 +1349,11 @@ def cep_do_servico(local: Dict[str, Any]) -> Tuple[str, str]:
     if proprio:
         return proprio, "servico"
     cadastro = str(local.get("cep") or "").strip()
+    # 🔴 SPEC-127 CONSERTO (RT-P4): mesma cidade E mesma UF, as DUAS presentes dos dois lados. A UF vazia
+    # (de um lado ou dos dois) não prova lugar nenhum. ⛔ É a régua ÚNICA: o DOM
+    # (`adaptive.local_do_servico`) chama esta função — antes ele aceitava UF ausente de um lado.
     mesma = (_norm(servico.get("cidade")) and _norm(servico.get("cidade")) == _norm(local.get("cidade"))
-             and _norm(servico.get("uf")) == _norm(local.get("estado")))
+             and _norm(servico.get("uf")) and _norm(servico.get("uf")) == _norm(local.get("estado")))
     if cadastro and mesma:
         return cadastro, "cadastro_na_mesma_cidade"
     return "", "ausente"

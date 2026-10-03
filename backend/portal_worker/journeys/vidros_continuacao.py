@@ -148,7 +148,8 @@ async def _recomecar_a_abertura(page, params: Dict[str, Any], cont: Dict[str, An
                          captured={"stage": ST.PARADA_ABERTURA_SEM_RESPOSTA,
                                    "business_state": ST.PRE_PROTOCOLO},
                          message=("o portal nao respondeu quando fui abrir o pedido com a "
-                                  "resposta do segurado. Nada foi enviado; vale tentar de novo."))
+                                  "resposta do segurado. Nada foi enviado; a equipe abre direto "
+                                  "no portal (este pedido nao se repete sozinho)."))
 
 
 async def continuar_atendimento(page, params: Dict[str, Any],

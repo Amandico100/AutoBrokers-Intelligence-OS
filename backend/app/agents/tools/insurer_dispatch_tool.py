@@ -1076,6 +1076,26 @@ def _partes_do_pedido_citadas(texto: str, pedido: Optional[dict]) -> int:
     return n
 
 
+def _pergunta_amarrada_ao_pedido(pergunta: str, pedido: Optional[dict]) -> bool:
+    """A pergunta de confirmação é o resumo DESTE pedido? **PURA.**
+
+    🔴 SPEC-127 CONSERTO (RT-B1) — `_partes_do_pedido_citadas` conta QUANTAS partes a pergunta cita, não
+    QUAIS: "atendimento de RETROVISOR em CURITIBANOS — posso acionar?" + "pode mandar" abria o PARA-BRISA
+    noutra cidade (📊 `rt127_probe1.py`, casos B/C → 1 POST). Quem monta o pedido pode exigir os termos:
+    `pedido["exige_na_pergunta"]` = alternativas (basta UMA), cada uma a lista de termos que a pergunta
+    precisa conter TODOS (por palavra inteira, depois de `_plano`). Sem a chave (o guincho, a bancada), nada
+    muda: a regra só APERTA. Chave presente sem alternativa que case → não amarrada (fail-closed)."""
+    alternativas = (pedido or {}).get("exige_na_pergunta")
+    if alternativas is None:
+        return True
+    plano = " ".join(_plano(pergunta).split())
+    for termos in (alternativas or ()):
+        ts = [" ".join(_plano(t).split()) for t in (termos or ()) if str(t or "").strip()]
+        if ts and all(re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(t), plano) for t in ts):
+            return True
+    return False
+
+
 def _cita_o_pedido(texto: str, pedido: Optional[dict]) -> bool:
     """A fala do agente REPETE o pedido (o serviço, o lugar ou a placa)? **PURA.**"""
     return _partes_do_pedido_citadas(texto, pedido) >= 1
@@ -1373,6 +1393,12 @@ def confirmacao_comprovada(falas, pedido: Optional[dict] = None, *, acionado_em:
         return {"comprovada": False,
                 "motivo": "a última pergunta pede o ok de UMA parte (a placa, a cobertura), não "
                           "do acionamento — falta o resumo ou o \"posso acionar?\""}
+    # 🔴 SPEC-127 CONSERTO (RT-B1): citar UMA parte não basta quando o pedido diz QUAIS (o vidro: a peça,
+    #    a cidade/UF do serviço e o final da placa DESTA chamada — ou a linha pronta inteira)
+    if not _pergunta_amarrada_ao_pedido(pergunta, pedido):
+        return {"comprovada": False,
+                "motivo": "a última pergunta não é o resumo DESTE pedido (a peça, o lugar ou a placa "
+                          "dela não são os desta chamada) — confirme de novo com a linha pronta"}
     # 🔴 CONSERTO Y (RT-B3): o FATO durável gasta a confirmação — um acionamento que saiu desta
     #    conversa DEPOIS da pergunta (ou sem como provar que a pergunta é posterior a ele).
     if acionado_em is not None:
