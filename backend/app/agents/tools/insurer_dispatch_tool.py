@@ -2548,35 +2548,20 @@ class InsurerDispatchTool(BaseTool):
         Conversa ilegível (ou sem fala) → sem o começo do assunto: vale a MESMA janela de N dias contada
         de agora (um acionamento mais velho que ela não pode ser do assunto aberto — nenhuma fala o
         sustenta). `N = 0` (regra desligada) e sem leitura → conta (o comportamento de antes).
-        **Nunca levanta.**"""
-        from datetime import datetime, timedelta, timezone
+        🔴 CONSERTO 3: a régua mora em `attendance_ficha.de_um_assunto_anterior` (+
+        `inicio_do_assunto_em_aberto`) — a MESMA que a R9/o dossiê do `human_handoff` e `derivar_fase`
+        leem. **Nunca levanta.**"""
+        from app.services.attendance_ficha import de_um_assunto_anterior, inicio_do_assunto_em_aberto
 
         em = _instante(em)
         if em is None:
             return False
-        inicio = None
-        try:
-            from app.agents.historico_da_conversa import historico_do_atendimento
-
-            hist = await historico_do_atendimento(client, company_id=str(self.company_id or ""),
-                                                  session_id=sessao, turno_corrente=False)
-            if getattr(hist, "lida", False):
-                inicio = _instante(getattr(hist, "inicio", None))
-        except Exception as erro:  # noqa: BLE001
-            logger.warning("[InsurerDispatch] começo do assunto não lido (%s)", type(erro).__name__)
-        if inicio is not None:
-            if em < inicio:
-                logger.info("[InsurerDispatch] o acionamento da ficha é de um atendimento ANTERIOR ao "
-                            "assunto em aberto — não conta como deste pedido")
-                return False
-            return True
-        try:
-            from app.services.o_fim_do_atendimento import janela_de_silencio_dias
-
-            dias = int(janela_de_silencio_dias())
-        except Exception:  # noqa: BLE001
-            dias = 0
-        return not (dias > 0 and datetime.now(timezone.utc) - em > timedelta(days=dias))
+        inicio = await inicio_do_assunto_em_aberto(client, self.company_id, sessao)
+        if de_um_assunto_anterior(em, inicio):
+            logger.info("[InsurerDispatch] o acionamento da ficha é de um atendimento ANTERIOR ao "
+                        "assunto em aberto — não conta como deste pedido")
+            return False
+        return True
 
     async def _marcar_o_acionamento(self, kwargs: dict, chave: str, subservice: str,
                                     insurer_key: str) -> None:

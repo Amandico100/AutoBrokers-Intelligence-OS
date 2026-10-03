@@ -359,12 +359,108 @@ def ficha_vazia() -> Dict[str, Any]:
     }
 
 
-def derivar_fase(ficha: Dict[str, Any], obrigatorios: Optional[List[str]] = None) -> str:
+def instante_do_acionamento(ficha: Optional[Dict[str, Any]]) -> Optional[datetime]:
+    """QUANDO o acionamento gravado na ficha aconteceu — ou `None`. **PURA.**
+
+    O carimbo do PRÓPRIO fato vence (`acionamento.enviado_em`/`enfileirado_em`, gravados no
+    instante do efeito por `InsurerDispatchTool._marcar_o_acionamento`). Sem ele (o protocolo
+    que `nodes` grava sozinho), a hora em que a fase virou acionada (`historico[{fase, em}]`,
+    a mesma leitura de `human_handoff._hora_do_acionamento`). ⛔ Sem nenhum dos dois, `None`:
+    quem chama não corta o que não sabe datar (o comportamento de antes)."""
+    from app.services.o_fim_do_atendimento import _quando
+
+    if not isinstance(ficha, dict):
+        return None
+    acion = ficha.get("acionamento") if isinstance(ficha.get("acionamento"), dict) else {}
+    do_fato = [q for q in (_quando(acion.get("enviado_em")), _quando(acion.get("enfileirado_em")))
+               if q is not None]
+    if do_fato:
+        return max(do_fato)
+    if not (acion.get("protocolo") or str(ficha.get("fase") or "") in (FASE_ACIONADO, FASE_ACOMPANHANDO)):
+        return None
+    da_fase = [_quando(p.get("em")) for p in (ficha.get("historico") or [])
+               if isinstance(p, dict) and str(p.get("fase") or "") in (FASE_ACIONADO, FASE_ACOMPANHANDO)]
+    da_fase = [q for q in da_fase if q is not None]
+    return max(da_fase) if da_fase else None
+
+
+def de_um_assunto_anterior(em: Any, inicio_do_assunto: Any, *,
+                           agora: Optional[datetime] = None) -> bool:
+    """🔴 SPEC-126 CONSERTO 2/3 — o acionamento de `em` é de um atendimento ANTERIOR ao assunto em
+    aberto? **PURA.** A régua ÚNICA (o `insurer_dispatch_tool`, a R9/o dossiê do `human_handoff` e
+    `derivar_fase` leem ESTA):
+
+    ```
+    `inicio_do_assunto` conhecido (`historico_do_atendimento` → `Historico.inicio`:
+      a regra dos N dias de silêncio + `resolvido_em`)  →  em < inicio
+    sem o começo do assunto (conversa ilegível, sem fala) →  a MESMA janela de N dias, de agora
+    N = 0 (regra desligada) e sem o começo                →  False (o comportamento de antes)
+    `em` ilegível                                         →  False (não se corta o que não se data)
+    ```"""
+    from datetime import timedelta
+
+    from app.services.o_fim_do_atendimento import _quando
+
+    em = _quando(em)
+    if em is None:
+        return False
+    inicio = _quando(inicio_do_assunto)
+    if inicio is not None:
+        return em < inicio
+    try:
+        from app.services.o_fim_do_atendimento import janela_de_silencio_dias
+
+        dias = int(janela_de_silencio_dias())
+    except Exception:  # noqa: BLE001
+        dias = 0
+    return dias > 0 and (agora or datetime.now(timezone.utc)) - em > timedelta(days=dias)
+
+
+async def inicio_do_assunto_em_aberto(db: Any, company_id: Any, session_id: Any) -> Optional[datetime]:
+    """O começo do assunto em aberto desta conversa — `historico_do_atendimento` (o helper ÚNICO,
+    `company_id` no filtro, §7) → `Historico.inicio`. `None` quando a conversa não foi lida ou não
+    tem fala. **Nunca levanta.**"""
+    try:
+        from app.agents.historico_da_conversa import historico_do_atendimento
+
+        hist = await historico_do_atendimento(db, company_id=str(company_id or ""),
+                                              session_id=str(session_id or ""), turno_corrente=False)
+        if getattr(hist, "lida", False):
+            return getattr(hist, "inicio", None)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[FICHA] começo do assunto não lido (%s)", type(erro).__name__)
+    return None
+
+
+def ficha_do_assunto(ficha: Any, inicio_do_assunto: Any = None, *,
+                     agora: Optional[datetime] = None) -> Any:
+    """A ficha como o ASSUNTO EM ABERTO a vê — CÓPIA DE LEITURA. **PURA.**
+
+    🔴 SPEC-126 CONSERTO 3: a ficha é por conversa (= por telefone) e aditiva — `acionamento` nunca
+    sai (`fundir`) e a fase fica `acionado` para sempre. O acionamento de um atendimento ANTERIOR
+    (`de_um_assunto_anterior`) sai DESTA cópia, e a fase é re-derivada sem ele: o caso novo do mesmo
+    telefone não é "pós-acionamento". ⛔ Nunca gravar a cópia de volta (o fato antigo é história)."""
+    if not isinstance(ficha, dict) or not de_um_assunto_anterior(
+            instante_do_acionamento(ficha), inicio_do_assunto, agora=agora):
+        return ficha
+    copia = dict(ficha)
+    copia["acionamento"] = {}
+    if str(copia.get("fase") or "") in (FASE_ACIONADO, FASE_ACOMPANHANDO):
+        copia["fase"] = derivar_fase(copia)
+    return copia
+
+
+def derivar_fase(ficha: Dict[str, Any], obrigatorios: Optional[List[str]] = None,
+                 inicio_do_assunto: Any = None) -> str:
     """A fase é consequência do que se sabe — não uma opinião do modelo.
 
     Ordem de precedência de cima para baixo: um caso resolvido não volta a ser
     coleta porque o cliente mandou mais uma mensagem; um caso com humano não
     volta a ser automático sozinho.
+
+    🔴 SPEC-126 CONSERTO 3 — com `inicio_do_assunto` (o `Historico.inicio` de quem o leu), o
+    acionamento de um atendimento ANTERIOR não faz a fase `acionado`/`acompanhando` do assunto de
+    agora (`de_um_assunto_anterior`, a régua única). Sem ele, o comportamento de antes.
     """
     if ficha.get("resolvido_em"):
         return FASE_RESOLVIDO
@@ -372,6 +468,9 @@ def derivar_fase(ficha: Dict[str, Any], obrigatorios: Optional[List[str]] = None
         return FASE_COM_HUMANO
 
     acion = ficha.get("acionamento") or {}
+    if inicio_do_assunto is not None and de_um_assunto_anterior(
+            instante_do_acionamento(ficha), inicio_do_assunto):
+        acion = {}
     if acion.get("protocolo"):
         return FASE_ACOMPANHANDO
     if acion.get("enviado_em"):
