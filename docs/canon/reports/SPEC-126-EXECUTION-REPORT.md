@@ -202,11 +202,16 @@ pelo conserto 2) · bateria: 5 regressões, 1 rodada.
 
 ## 12. ENTREGA
 ```
-git fetch origin ; git rev-list --count HEAD..origin/main   → (o gerente cola)
-git rev-list --count origin/main..HEAD                      → (o gerente cola)
+git fetch origin ; git rev-list --count HEAD..origin/main   → 0
+git rev-list --count origin/main..HEAD                      → 23 (antes do push)
 git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
-(o gerente cola a saída do push)
+📊 03/10/2026:
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   fbdecec..1dc6376  HEAD -> main
+git rev-list --count origin/main..HEAD                      → 0
 ```
+O commit deste parágrafo sobe num 2º push (o hash final fica no `git log` da `main`). O painel é republicado no fim da
+SPEC-127 (mesmo chat).
 
 **Nenhum motor paralelo foi criado.** O classificador é um papel do Model Router (`llm_papeis`), chamado pelo MESMO portão da
 125 (`prova_da_confirmacao`); o cancelamento usa a R9 (`pos_acionamento.classificar_turno`) e a porta única do handoff; o rastro
