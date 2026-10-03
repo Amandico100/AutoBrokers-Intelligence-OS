@@ -102,6 +102,55 @@ def _sem_sessao(evidence: Dict[str, Any], sessao_info: Dict[str, Any], *,
                          message=mensagem)
 
 
+def _parou_antes_da_fronteira(sessao_info: Dict[str, Any]) -> bool:
+    """A origem parou ANTES do `POST /atendimentos` (SPEC-127 P1): etapa
+    `abertura`, sem sessão guardada e sem número nenhum na seguradora."""
+    return (str(sessao_info.get("etapa") or "") == ST.ETAPA_ABERTURA
+            and not sessao_info.get("sessao_guardada")
+            and not str(sessao_info.get("sessao_cifrada") or "")
+            and not str(sessao_info.get("protocolo") or "").strip()
+            and not str(sessao_info.get("codigo_atendimento") or "").strip())
+
+
+async def _recomecar_a_abertura(page, params: Dict[str, Any], cont: Dict[str, Any],
+                                sessao_info: Dict[str, Any],
+                                evidence: Dict[str, Any]) -> JourneyResult:
+    """🔴 SPEC-127 P1 (D-127-D) — o ramo "abertura": a resposta do segurado entra
+    no MESMO pedido e a abertura RECOMEÇA do zero.
+
+    É seguro porque NADA foi escrito: a origem parou antes da fronteira A (sem
+    token, sem protocolo). ⛔ Não é um segundo motor: é a MESMA
+    `abrir_atendimento_api` da abertura, com os params de origem e as respostas
+    por cima (`mesclar_respostas`) — o preflight, o guard da fronteira A, a dedup
+    do portal (D-127-C), tudo vale de novo. ⛔ Nunca outro job `abrir_atendimento`
+    (o índice `idx_portal_jobs_pedido_vivo` barraria; e seria outro pedido).
+
+    API fora agora → `None` da abertura → PARADA (nada escrito): uma continuação
+    não troca de caminho para o DOM no meio do pedido."""
+    if str(cont.get("operacao") or "").strip().lower() != "responder" \
+            or not sessao_info.get("possivel"):
+        return _sem_sessao(evidence, sessao_info, stage="operacao_desconhecida",
+                           mensagem="o pedido parou antes de ser aberto e esta "
+                                    "continuacao nao traz a resposta que ele espera. "
+                                    "Nada foi enviado ao portal.")
+    evidence["continuacao_pedida"]["recomecou_a_abertura"] = True
+    p = mesclar_respostas(params, cont.get("respostas"))
+    p.pop("_continuacao", None)
+    r = await AF.abrir_atendimento_api(page, p, evidence)
+    if r is not None:
+        return r
+    # A API não respondeu agora (lista de seguradoras/preflight). Nada escrito.
+    evidence["continuacao"] = {**{k: v for k, v in sessao_info.items() if k != "sessao_cifrada"},
+                               "sessao_cifrada": "", "possivel": False,
+                               "acao_esperada": "",
+                               "motivo": "a API do portal nao respondeu ao recomecar a abertura"}
+    return JourneyResult(status="needs_human",
+                         captured={"stage": ST.PARADA_ABERTURA_SEM_RESPOSTA,
+                                   "business_state": ST.PRE_PROTOCOLO},
+                         message=("o portal nao respondeu quando fui abrir o pedido com a "
+                                  "resposta do segurado. Nada foi enviado; vale tentar de novo."))
+
+
 async def continuar_atendimento(page, params: Dict[str, Any],
                                 evidence: Dict[str, Any]) -> JourneyResult:
     """A journey registrada como `vidros_lanternas.continuar_atendimento`."""
@@ -110,6 +159,10 @@ async def continuar_atendimento(page, params: Dict[str, Any],
     sessao_info = dict(cont.get("sessao") or {})
     evidence["continuacao_pedida"] = {"operacao": operacao,
                                       "job_origem": str(cont.get("job_origem") or "")}
+
+    # ---- 0. 🔴 SPEC-127 P1 — a origem parou ANTES da fronteira A ----------
+    if _parou_antes_da_fronteira(sessao_info):
+        return await _recomecar_a_abertura(page, params, cont, sessao_info, evidence)
 
     # ---- 1. a sessão: decifrar (G4) ---------------------------------------
     cifrada = str(sessao_info.get("sessao_cifrada") or "")

@@ -39,8 +39,11 @@ primeira escrita.
 é `needs_human` com `business_state` e o que falta; toda resposta fora do
 contrato grava `evidence["tela_desconhecida"]` com as CHAVES, nunca os valores.
 
-Antes da fronteira A, devolver `None` continua sendo a resposta certa: nada
-aconteceu, e o navegador é a autoridade de último recurso.
+Antes da fronteira A, devolver `None` continua sendo a resposta certa SÓ quando
+a API não responde (ou a seguradora não é do API-first): nada aconteceu, e o
+navegador é a autoridade de último recurso. 🔴 SPEC-127 P1: o dado que FALTA e a
+apólice que o portal não acha (ou acha duas) viram PARADA antes da fronteira —
+o DOM leria a mesma tela e adivinharia.
 
 O que este módulo NÃO faz
 =========================
@@ -93,8 +96,8 @@ def data_iso(valor: Any) -> str:
     """`DD/MM/AAAA` (o formato que a conversa produz) → `AAAA-MM-DD`.
 
     Devolve `""` para qualquer coisa que não seja uma data reconhecível — e o
-    vazio faz o preflight desistir e cair para o DOM, que é o comportamento
-    certo: adivinhar a data do dano é escolher a data errada.
+    vazio PARA o pedido antes de qualquer escrita (SPEC-127 P1: era a queda para
+    o DOM): adivinhar a data do dano é escolher a data errada.
     """
     txt = str(valor or "").strip()
     if not txt:
@@ -742,6 +745,126 @@ def _parar(ex: Execucao, stage: str, mensagem: str, **capturado: Any) -> Journey
         message=mensagem)
 
 
+def _parar_antes_da_fronteira(ex: Execucao, stage: str, mensagem: str,
+                              **capturado: Any) -> JourneyResult:
+    """🔴 SPEC-127 P1 (D-127-D) — a parada ANTES de qualquer escrita. Nunca `None`.
+
+    📊 BLOCO 0 §1.1: o `None` daqui caía no DOM, que adivinha a peça, a causa e a
+    cidade (e preenche a do CADASTRO). Agora a falta vira parada `needs_human`
+    com `etapa="abertura"`: sem token e sem protocolo — nada existe na
+    seguradora. Quando o dado é do SEGURADO (`responder:<slot>`), a continuação
+    é possível e RECOMEÇA a abertura no MESMO pedido (`vidros_continuacao`); quando
+    é da corretora ou da apólice, a equipe resolve (`possivel=False`)."""
+    from datetime import timezone as _tz
+
+    etapa, acao = ST.etapa_da_parada(stage)
+    possivel = acao.startswith("responder:")
+    ex.evidence["vidros_estado"] = ex.estado.para_evidencia()
+    ex.evidence["api_first"] = {"usado": True, "parou_em": stage,
+                                "antes_da_fronteira": True,
+                                **ex.sessao.resumo_para_evidencia()}
+    ex.evidence["continuacao"] = {
+        "sessao_cifrada": "",
+        "emitida_em": datetime.now(_tz.utc).isoformat(timespec="seconds"),
+        "seguradora": ex.seguradora, "protocolo": "", "codigo_atendimento": "",
+        "categoria": "", "etapa": etapa or ST.ETAPA_ABERTURA,
+        "acao_esperada": acao if possivel else "", "possivel": possivel,
+        "sessao_guardada": False, "motivo": str(mensagem or "")[:300],
+    }
+    return JourneyResult(
+        status="needs_human",
+        captured={"stage": stage, "business_state": ST.PRE_PROTOCOLO, **capturado},
+        message=mensagem)
+
+
+#: A ORDEM em que a falta vira parada: o que só a EQUIPE resolve vem antes (a
+#: resposta do segurado não destravaria nada); depois, o dado do segurado.
+_PARADA_DO_QUE_FALTOU: Tuple[Tuple[str, str], ...] = (
+    ("contato.documento_corretor", ST.PARADA_CADASTRO_DA_CORRETORA),
+    ("contato.telefone", ST.PARADA_CADASTRO_DA_CORRETORA),
+    ("cpf", ST.PARADA_PEDIDO_INCOMPLETO),
+    ("placa", ST.PARADA_PEDIDO_INCOMPLETO),
+    ("data", ST.PARADA_PEDIDO_INCOMPLETO),
+    ("dano.peca", ST.PARADA_FALTOU_PECA),
+    ("dano.como", ST.PARADA_FALTOU_COMO),
+    ("dano.onde", ST.PARADA_FALTOU_ONDE),
+    ("local.cidade_servico", ST.PARADA_FALTOU_CIDADE),
+    ("dano.descricao", ST.PARADA_FALTOU_DESCRICAO),
+)
+
+_MENSAGEM_DA_PARADA_ANTES: Dict[str, str] = {
+    ST.PARADA_CADASTRO_DA_CORRETORA: (
+        "falta dado da CORRETORA no cadastro de acionamento (documento ou "
+        "telefone). Nada foi enviado ao portal."),
+    ST.PARADA_PEDIDO_INCOMPLETO: (
+        "o pedido chegou sem CPF, placa ou data do dano legivel. Nada foi "
+        "enviado ao portal."),
+}
+
+
+def parada_do_que_faltou(faltou: List[str]) -> str:
+    """O stage da parada para a lista "faltou" (os nomes de `abrir_atendimento_api`). **PURA.**"""
+    for prefixo, stage in _PARADA_DO_QUE_FALTOU:
+        if any(str(f).startswith(prefixo) for f in faltou):
+            return stage
+    return ST.PARADA_PEDIDO_INCOMPLETO
+
+
+def _cidade_do_servico_presente(valor: Any) -> bool:
+    """`{"uf","cidade"}` com a cidade escrita. 📊 a tool sempre manda o dict —
+    um dict com a cidade vazia passava pela lista e só travava DEPOIS do
+    protocolo, na fase da cidade."""
+    if isinstance(valor, dict):
+        return bool(str(valor.get("cidade") or "").strip())
+    return bool(valor)
+
+
+#: 🔴 SPEC-127 P1 — o preflight que NÃO é "API fora": a resposta é do portal, e o
+#: DOM leria a MESMA apólice na MESMA tela. Erro de transporte continua indo ao DOM.
+_PARADA_DO_PREFLIGHT: Dict[str, Tuple[str, str]] = {
+    API.POLICY_NOT_FOUND: (ST.PARADA_APOLICE_NAO_ENCONTRADA,
+                           "o portal nao achou apolice para este CPF, placa e "
+                           "data do dano. Nada foi enviado."),
+    API.POLICY_AMBIGUOUS: (ST.PARADA_PREFLIGHT_AMBIGUO,
+                           "o portal achou MAIS DE UMA apolice para este CPF, "
+                           "placa e data. Nada foi enviado: escolher uma seria "
+                           "adivinhar."),
+    API.BUSINESS_RULE_UNKNOWN: (ST.PARADA_REGRA_DESCONHECIDA,
+                                "o portal recusou o pedido por uma regra que eu "
+                                "nao conheco. Nada foi enviado."),
+}
+
+
+async def _ja_ha_outro_atendimento_aberto(ex: Execucao, cpf: str) -> Optional[JourneyResult]:
+    """🔴 D-127-C — a dedup do PRÓPRIO portal, logo DEPOIS do `POST /atendimentos`.
+
+    📊 BLOCO 0 §4: nos 6 HAR com abertura, o SPA chama
+    `atendimentos-abertos-existentes` DEPOIS do POST, com o `token_autorizacao`
+    que nasce nele (0 de 7 o chamam antes) — e a resposta é o booleano cru
+    (📊 `false` em 6/6). `true` = há OUTRO atendimento aberto para este carro:
+    nada mais se escreve e a equipe decide (NUNCA `novo_atendimento`). Qualquer
+    outra resposta não prova duplicidade: segue, e fica escrito."""
+    consulta = getattr(ex.sessao, "atendimento_aberto_existente", None)
+    if consulta is None or not ex.chassi:
+        ex.evidence["aberto_existente"] = {"consultado": False,
+                                           "motivo": "sem chassi" if consulta else "sessao sem a consulta"}
+        return None
+    r = await consulta(chassi=ex.chassi, cpf_cnpj=cpf)
+    # ⚠️ O booleano cru NÃO passa pelo `json` da sessão (`chamar` só decodifica `{`/`[`):
+    # lê-se o TEXTO, e só `true`/`false` exatos contam.
+    bruto = str(r.get("text") or "").strip().lower() if r.get("ok") else ""
+    resposta = r.get("json") if isinstance(r.get("json"), bool) else (
+        True if bruto == "true" else False if bruto == "false" else None)
+    ex.evidence["aberto_existente"] = {"consultado": True, "status": int(r.get("status") or 0),
+                                       "existe": resposta if isinstance(resposta, bool) else None}
+    if resposta is True:
+        return _parar(ex, ST.PARADA_ATENDIMENTO_ABERTO_EXISTENTE,
+                      "o portal diz que ja existe OUTRO atendimento aberto para "
+                      "este carro. Nada mais foi gravado: NAO abra outro — a "
+                      "equipe confere qual vale.")
+    return None
+
+
 # --------------------------------------------------------------------------
 # A journey de abertura
 # --------------------------------------------------------------------------
@@ -749,7 +872,11 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
                                 evidence: Dict[str, Any]) -> Optional[JourneyResult]:
     """O fluxo API-first, do nome da seguradora ao desfecho.
 
-    `None` = devolve ao caminho DOM, e **só acontece antes da fronteira A**.
+    `None` = devolve ao caminho DOM, e **só acontece antes da fronteira A** — e,
+    desde a SPEC-127 P1, só quando o DOM é o caminho legítimo: a API fora do ar
+    (lista de seguradoras ou preflight sem resposta), a seguradora que não casa
+    com UMA publicada, ou a fora do API-first (Bradesco). Dado faltando e apólice
+    não achada/ambígua viram PARADA (`_parar_antes_da_fronteira`).
     """
     estado = ST.EstadoDoAtendimento()
     sessao = SessaoVidros(page=page)
@@ -806,7 +933,7 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     faltou = [n for n, v in (
         ("cpf", cpf), ("placa", placa), ("data", data),
         ("dano.peca", dano.get("peca")), ("dano.como", dano.get("como")),
-        ("local.cidade_servico", local.get("cidade_servico")),
+        ("local.cidade_servico", _cidade_do_servico_presente(local.get("cidade_servico"))),
         ("contato.documento_corretor", contato["documento_corretor"]),
         ("contato.telefone", contato["telefone"]),
         # `dano.onde` existe mas não classifica como cidade ou estrada: a
@@ -821,9 +948,16 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     elif not relato:
         faltou.append("dano.descricao")
     if faltou:
-        desistir("faltam dados que o portal exige ANTES de qualquer escrita",
-                 faltou=faltou)
-        return None
+        # 🔴 SPEC-127 P1 (D-127-D) — era `return None` → o DOM, que adivinha.
+        # Agora é PARADA antes da fronteira: a pergunta sai em português (pela
+        # tool, `portal_params._PARADAS`) e a resposta volta ao MESMO pedido.
+        stage = parada_do_que_faltou(faltou)
+        return _parar_antes_da_fronteira(
+            ex, stage,
+            _MENSAGEM_DA_PARADA_ANTES.get(stage)
+            or ("falta um dado do segurado antes de abrir o pedido: "
+                + ", ".join(faltou) + ". Nada foi enviado ao portal."),
+            faltou=faltou)
 
     # ---- PREFLIGHT — read-only, e o único portão para a fronteira A --------
     tipo = API.tipo_atendimento_para(seguradora, dano.get("peca"))
@@ -850,7 +984,13 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
                      "Nenhum atendimento foi aberto."))
 
     if not veredito["pode_escrever"]:
-        # policy_not_found · policy_ambiguous · regra desconhecida · erro.
+        # 🔴 SPEC-127 P1 — policy_not_found · policy_ambiguous · regra
+        # desconhecida são RESPOSTAS do portal: o DOM leria a mesma apólice na
+        # mesma tela. Viram parada antes da fronteira (a equipe resolve). Só o
+        # ERRO de transporte (API fora) continua indo ao DOM.
+        if veredito["estado"] in _PARADA_DO_PREFLIGHT:
+            stage, mensagem = _PARADA_DO_PREFLIGHT[veredito["estado"]]
+            return _parar_antes_da_fronteira(ex, stage, mensagem)
         desistir(f"preflight={veredito['estado']}")
         return None
 
@@ -927,6 +1067,12 @@ async def abrir_atendimento_api(page, params: Dict[str, Any],
     await _checkpoint(params, {"vidros_estado": estado.para_evidencia(),
                                "protocolo": protocolo,
                                "continuacao": evidence["continuacao"]})
+
+    # 🔴 D-127-C — logo depois do POST, com o token, como o SPA faz: outro
+    # atendimento aberto para este carro → para AQUI, nada mais escrito.
+    duplicado = await _ja_ha_outro_atendimento_aberto(ex, cpf)
+    if duplicado is not None:
+        return duplicado
 
     return await rodar_fases(ex, a_partir=ST.ETAPA_CONTATO)
 
@@ -1132,6 +1278,35 @@ async def _fase_cidade(ex: Execucao) -> Optional[JourneyResult]:
     return None
 
 
+def cep_do_servico(local: Dict[str, Any]) -> Tuple[str, str]:
+    """`(cep, origem)` do CEP que vai no PATCH — o do lugar do SERVIÇO. **PURA.**
+
+    🔴 SPEC-127 P1 (G2, achado do P2): o PATCH levava `local.cep` = o CEP do CADASTRO.
+    📊 Nos 6 HAR com PATCH o `Cep` vai preenchido e NÃO aparece em resposta nenhuma antes
+    dele (`scratchpad/p1_cep2.py`): é o que a atendente DIGITA na tela "Onde você…", junto
+    da cidade do serviço. Quem mora em Palhoça e quer o vidro em Joinville não pode ir com o
+    CEP de Palhoça. Regra: o CEP do serviço, se veio (`cidade_servico.cep`); o do cadastro
+    SÓ quando a cidade do cadastro É a do serviço (mesma cidade e UF, por igualdade); senão,
+    vazio — nunca o de outra cidade."""
+    local = local if isinstance(local, dict) else {}
+    servico = local.get("cidade_servico") if isinstance(local.get("cidade_servico"), dict) else {}
+    proprio = "".join(c for c in str(servico.get("cep") or "") if c.isdigit())
+    if proprio:
+        return proprio, "servico"
+    cadastro = str(local.get("cep") or "").strip()
+    mesma = (_norm(servico.get("cidade")) and _norm(servico.get("cidade")) == _norm(local.get("cidade"))
+             and _norm(servico.get("uf")) == _norm(local.get("estado")))
+    if cadastro and mesma:
+        return cadastro, "cadastro_na_mesma_cidade"
+    return "", "ausente"
+
+
+def _cep_do_servico(ex: Execucao) -> str:
+    cep, origem = cep_do_servico(ex.local)
+    ex.evidence["cep_do_servico"] = {"origem": origem}
+    return cep
+
+
 async def _fase_materializar(ex: Execucao) -> Optional[JourneyResult]:
     """A FRONTEIRA MATERIAL DEPENDE DA CATEGORIA — P0-3. PATCH, questionário, reparo."""
     from portal_worker.guardrails import AcaoBloqueada, MATERIAL_SIDE_EFFECT
@@ -1150,7 +1325,7 @@ async def _fase_materializar(ex: Execucao) -> Optional[JourneyResult]:
         codigo_objeto_causa=ex.codigo_causa,
         avaliacao_dano=ex.relato,
         perimetro_dano=ex.perimetro,
-        cep=str(ex.local.get("cep") or ex.params.get("cep") or ""),
+        cep=_cep_do_servico(ex),
         servicos_martelinho_lataria=ex.servicos_lataria,
         item_removido=especificos.get("item_removido"),
         evento_composto=especificos.get("evento_composto"),

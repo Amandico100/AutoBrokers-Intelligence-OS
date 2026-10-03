@@ -307,6 +307,17 @@ class Ferramenta(PT.PortalActionTool):
     def _notify(self, session_id, text, agent_id=None):  # noqa: D102
         NOTIFICACOES.append(text)
 
+    async def _portao_do_ok(self, params, session_id):  # noqa: D102
+        # 🔴 SPEC-127 P1 (D-127-E) — §9.3, a lição MIGRA: o `portal_action` só cria o job
+        # depois do resumo + o "sim" do segurado (o portão da SPEC-126). Esta costura é da
+        # CONTINUAÇÃO: aqui o "sim" já foi dado (BORDA). O portão é provado pelo motor em
+        # `test_spec127_p1_o_fio_do_pedido_de_vidro.py`.
+        OKS_DADOS.append(session_id)
+        return None
+
+
+OKS_DADOS: list = []
+
 
 def _preparar_ambiente(banco_ref: dict) -> None:
     import app.core.database as DB

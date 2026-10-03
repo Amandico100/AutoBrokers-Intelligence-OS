@@ -260,6 +260,12 @@ class PortalDeMentira(PT.PortalActionTool):
     async def _fetch_infocap(self, cpf, policy_number):  # noqa: D102
         return INFOCAP
 
+    async def _portao_do_ok(self, params, session_id):  # noqa: D102
+        # 🔴 SPEC-127 P1 (D-127-E) — §9.3, a lição MIGRA: o job só nasce depois do resumo + o
+        # "sim" do segurado (o portão da SPEC-126). O assunto aqui é o INTERRUPTOR do agente
+        # (`confirm`): o "sim" é BORDA. O portão é provado em `test_spec127_p1_*`.
+        return None
+
 
 def _acionar_portal(banco: BancoDeMentira) -> dict:
     ferramenta = PortalDeMentira(company_id=EMPRESA, supabase_client=banco)

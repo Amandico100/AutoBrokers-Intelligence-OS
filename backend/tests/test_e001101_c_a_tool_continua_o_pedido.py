@@ -257,6 +257,13 @@ class PortalDeMentira(PT.PortalActionTool):
     def _notify(self, session_id, text, agent_id=None):  # noqa: D102
         NOTIFICACOES.append(text)          # ⛔ nenhuma mensagem sai
 
+    async def _portao_do_ok(self, params, session_id):  # noqa: D102
+        # 🔴 SPEC-127 P1 (D-127-E) — §9.3, a lição MIGRA: um pedido NOVO só nasce depois do
+        # resumo + o "sim" do segurado (o portão da SPEC-126). O assunto aqui é a CONTINUAÇÃO
+        # (G11, a regra de antes): o "sim" é BORDA. O portão é provado pelo motor em
+        # `test_spec127_p1_o_fio_do_pedido_de_vidro.py`.
+        return None
+
 
 _ATUAL = {"banco": None}
 

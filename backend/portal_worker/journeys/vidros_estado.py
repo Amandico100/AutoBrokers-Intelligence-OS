@@ -318,11 +318,64 @@ ETAPA_DA_PARADA: Dict[str, Tuple[str, str]] = {
 PARADAS_INCERTAS: Tuple[str, ...] = ("maybe_committed",)
 
 
+# --------------------------------------------------------------------------
+# 🔴 SPEC-127 P1 (D-127-D) — as paradas ANTES da fronteira A: nada foi escrito
+# --------------------------------------------------------------------------
+# 📊 Até a SPEC-127 o API-first devolvia `None` quando faltava um dado antes de
+# escrever (`vidros_apifirst`, a lista "faltou") ou quando o preflight não achava
+# UMA apólice — e o `None` caía no DOM, que adivinha (BLOCO 0 §1.1). Agora cada
+# falta é uma PARADA com `etapa="abertura"`: sem token, sem protocolo. A resposta
+# do segurado volta ao MESMO pedido (`vidros_continuacao`, ramo "abertura") e a
+# abertura RECOMEÇA — seguro, porque nada foi escrito.
+#
+# ⚠️ Tabela PRÓPRIA, e não `ETAPA_DA_PARADA`: aquela é o mapa das paradas DEPOIS
+# do protocolo, retomadas pelo token (`rodar_fases`, `ORDEM_DAS_ETAPAS`). Aqui a
+# retomada é outra (reabrir), e o dado que falta é do SEGURADO (cidade, peça,
+# causa, onde, relato) — nunca deduzido: a tool não manda estas paradas ao
+# destravador (`portal_tool._destravar_a_parada`).
+# `acao=""` = quem resolve é a EQUIPE (dado da corretora, apólice não achada…).
+ETAPA_ABERTURA = "abertura"
+
+PARADA_FALTOU_PECA = "faltou_peca"
+PARADA_FALTOU_COMO = "faltou_como"
+PARADA_FALTOU_ONDE = "faltou_onde"
+PARADA_FALTOU_CIDADE = "faltou_cidade_servico"
+PARADA_FALTOU_DESCRICAO = "faltou_descricao"
+PARADA_PEDIDO_INCOMPLETO = "pedido_incompleto"
+PARADA_CADASTRO_DA_CORRETORA = "cadastro_da_corretora_incompleto"
+PARADA_APOLICE_NAO_ENCONTRADA = "apolice_nao_encontrada"
+PARADA_PREFLIGHT_AMBIGUO = "preflight_ambiguo"
+PARADA_REGRA_DESCONHECIDA = "regra_do_portal_desconhecida"
+#: 🔴 D-127-C — DEPOIS do `POST /atendimentos` (o rascunho já existe): o portal diz
+#: que há OUTRO atendimento aberto para este carro. Nunca `novo_atendimento`.
+PARADA_ATENDIMENTO_ABERTO_EXISTENTE = "atendimento_aberto_existente"
+#: a continuação "abertura" recomeçou e a API do portal não respondeu (nada escrito)
+PARADA_ABERTURA_SEM_RESPOSTA = "abertura_sem_resposta_do_portal"
+
+ETAPA_ANTES_DA_FRONTEIRA: Dict[str, Tuple[str, str]] = {
+    PARADA_FALTOU_PECA: (ETAPA_ABERTURA, "responder:peca"),
+    PARADA_FALTOU_COMO: (ETAPA_ABERTURA, "responder:como"),
+    PARADA_FALTOU_ONDE: (ETAPA_ABERTURA, "responder:onde"),
+    PARADA_FALTOU_CIDADE: (ETAPA_ABERTURA, "responder:cidade_servico"),
+    PARADA_FALTOU_DESCRICAO: (ETAPA_ABERTURA, "responder:descricao"),
+    # CPF, placa e data entram na chave do pedido (ou faltam por defeito de quem
+    # montou o job): a resposta não teria como voltar ao MESMO pedido.
+    PARADA_PEDIDO_INCOMPLETO: (ETAPA_ABERTURA, ""),
+    PARADA_CADASTRO_DA_CORRETORA: (ETAPA_ABERTURA, ""),
+    PARADA_APOLICE_NAO_ENCONTRADA: (ETAPA_ABERTURA, ""),
+    PARADA_PREFLIGHT_AMBIGUO: (ETAPA_ABERTURA, ""),
+    PARADA_REGRA_DESCONHECIDA: (ETAPA_ABERTURA, ""),
+    PARADA_ABERTURA_SEM_RESPOSTA: (ETAPA_ABERTURA, ""),
+}
+
+
 def etapa_da_parada(stage: Any) -> Tuple[str, str]:
     """`(etapa, acao_esperada)` de uma parada. `("", "")` = sem continuação."""
     st = str(stage or "").strip()
     if st in PARADAS_INCERTAS:
         return ETAPA_DESFECHO, "reler"
+    if st in ETAPA_ANTES_DA_FRONTEIRA:
+        return ETAPA_ANTES_DA_FRONTEIRA[st]
     return ETAPA_DA_PARADA.get(st, ("", ""))
 
 

@@ -233,6 +233,10 @@ def test_iv_o_job_do_portal_leva_o_cpf_inteiro(borda, monkeypatch):
     monkeypatch.setattr(PT.PortalActionTool, "_garantir_work_run", _nada)
     monkeypatch.setattr(PT.PortalActionTool, "_aguardar", _pronto)
     monkeypatch.setattr(PT.PortalActionTool, "_notify", lambda *_a, **_k: None)
+    # 🔴 SPEC-127 P1 (D-127-E) — §9.3, a lição MIGRA: o job só nasce depois do resumo + o "sim"
+    # (o portão da SPEC-126). O assunto aqui é o CPF INTEIRO no job: o "sim" é BORDA (provado em
+    # `test_spec127_p1_*`).
+    monkeypatch.setattr(PT.PortalActionTool, "_portao_do_ok", _nada)
 
     msgs = [HumanMessage(content=f"quebraram o vidro do meu carro, cpf {CPF}"),
             AIMessage(content="", tool_calls=[{"name": "portal_action", "args": dict(PEDIDO_DO_PORTAL),

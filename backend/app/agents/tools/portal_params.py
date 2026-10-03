@@ -815,6 +815,66 @@ def cidade_do_servico_valida(texto):
     return nome, uf, ""
 
 
+def data_do_dano_iso(texto) -> str:
+    """`AAAA-MM-DD` de uma data do dano, ou `""`. **PURA.**
+
+    🔴 A MESMA regra de `vidros_apifirst.data_iso` (o worker não importa `app/`, então
+    a regra é repetida aqui de propósito, e o guarda `test_spec127_p1_*` prova que as
+    duas concordam): `DD/MM/AAAA` (com `/`, `-` ou `.`) ou `AAAA-MM-DD`, e um dia que
+    existe no calendário. "31/02/2026", "5/10" e "ontem" não são datas."""
+    import re as _re
+    from datetime import datetime as _dt
+
+    txt = str(texto or "").strip()
+    if _re.fullmatch(r"\d{4}-\d{2}-\d{2}", txt):
+        try:
+            _dt.strptime(txt, "%Y-%m-%d")
+        except ValueError:
+            return ""
+        return txt
+    m = _re.fullmatch(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})", txt)
+    if not m:
+        return ""
+    d, mes, ano = m.groups()
+    try:
+        _dt(int(ano), int(mes), int(d))
+    except ValueError:
+        return ""
+    return f"{ano}-{int(mes):02d}-{int(d):02d}"
+
+
+def falta_no_cadastro_da_corretora(solicitante: dict, cliente: Optional[dict] = None) -> str:
+    """🔴 SPEC-127 P1 — o que falta no CADASTRO DE ACIONAMENTO da corretora para o
+    portal aceitar o pedido, já escrito para o agente e para a equipe. `""` = nada.
+
+    📊 O portal grava o vínculo do corretor pelo DOCUMENTO (`PUT
+    /atendimentos/corretores`, 4 de 4 capturas) e exige um telefone de contato
+    (`POST /solicitantes`): o do segurado, da apólice, ou — sem ele — o da
+    corretora. Nenhum dos dois é pergunta ao segurado. ⛔ Nada de nome de
+    corretora aqui (CLAUDE.md §13.9): tudo vem do perfil daquela `company_id`."""
+    sol = solicitante or {}
+    cli = cliente or {}
+    falta = []
+    if not str(sol.get("cpf_cnpj") or "").strip():
+        falta.append(("o documento da corretora", "o CNPJ da corretora (ou o CPF/CNPJ do "
+                                                  "corretor responsavel)"))
+    if not (str(cli.get("telefone") or "").strip() or str(sol.get("telefone") or "").strip()):
+        falta.append(("o telefone da corretora", "o telefone de contato da corretora (a "
+                                                 "apolice nao trouxe o celular do segurado)"))
+    if not falta:
+        return ""
+    o_que = " e ".join(f for f, _ in falta)
+    preencher = "; ".join(p for _, p in falta)
+    return ("NAO abri o pedido: falta " + o_que + " no cadastro de acionamento. Isso NAO e "
+            "pergunta para o segurado — NAO peca nada a ele. Diga ao segurado, com estas "
+            "palavras: \"Ja anotei tudo do seu vidro. Falta um ajuste no nosso cadastro para eu "
+            "abrir o pedido na seguradora; a nossa equipe ja foi avisada e eu te retorno "
+            "assim que estiver aberto.\" E acione um humano.\n\n[para a equipe] Falta "
+            + o_que + " no cadastro de acionamento. Preencha em Personalizacao -> Corretora "
+            "(Perfil de Acionamento): " + preencher + ". Depois disso o pedido pode ser feito "
+            "de novo — nada foi enviado ao portal.")
+
+
 def build_portal_params(flat: dict, profile: dict, infocap: dict,
                         *, enviar_de_verdade: bool = False) -> Tuple[Optional[dict], Optional[str]]:
     """(params, erro). flat = decisoes do LLM (cpf, data, dano, placa_informada
@@ -857,6 +917,14 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
     veh = infocap.get("vehicle") or {}
     cli = infocap.get("client") or {}
 
+    # 🔴 SPEC-127 P1 (BLOCO 0 §7.1) — os dados da CORRETORA que o portal exige ANTES de
+    # qualquer escrita. 📊 1 de 3 corretoras com Perfil de Acionamento não tem documento:
+    # com o API-first ligado, TODO pedido de vidro dela caía no DOM pela lista "faltou".
+    # Não é pergunta ao segurado — é cadastro: a equipe preenche, e nada abre antes.
+    falta_da_corretora = falta_no_cadastro_da_corretora(sol, cli)
+    if falta_da_corretora:
+        return None, falta_da_corretora
+
     insurer = normalize_insurer(pol.get("seguradora") or pol.get("seguradora_abrev"))
     if not insurer:
         return None, "A InfoCap nao retornou a seguradora da apolice AUTO. Verifique a apolice."
@@ -867,6 +935,17 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
     if not placa:
         return None, ("A apolice na InfoCap nao trouxe a PLACA do veiculo. Pergunte a placa ao segurado "
                       "e chame de novo com placa_informada.")
+
+    # 🔴 SPEC-127 P1 — a data do dano tem de ser uma data de verdade AQUI: a journey só
+    # aceita `DD/MM/AAAA` (`vidros_apifirst.data_iso`) e, sem ela, para antes de abrir; e a
+    # data entra na CHAVE do pedido — a resposta de depois abriria OUTRO pedido em vez de
+    # continuar este. Vazia, segue: quem pergunta a data é a ficha logo abaixo (`o_que_falta`).
+    if str(flat.get("data_dano") or "").strip() and not data_do_dano_iso(flat.get("data_dano")):
+        return None, ("A data do dano precisa ser um dia do calendario, no formato DD/MM/AAAA "
+                      "(ex.: 05/10/2026). Se a conversa ja disse o dia (\"ontem\", \"sabado\"), "
+                      "converta e chame de novo; se nao disse, PERGUNTE:\n\n"
+                      "  Em que dia isso aconteceu?\n\n"
+                      "[para a equipe] `data_dano` nao e uma data DD/MM/AAAA valida.")
 
     # -------------------------------------------------------------------
     # BLOCO 7.5 — A FICHA DO ACIONAMENTO, conferida ANTES de abrir o portal.
@@ -1823,6 +1902,91 @@ _PARADAS.update({
     ),
 })
 
+# 🔴 SPEC-127 P1 (D-127-D) — as paradas ANTES de o pedido existir na seguradora
+# (`vidros_estado.ETAPA_ANTES_DA_FRONTEIRA`). ⛔ Nenhuma diz "seu pedido foi aberto"
+# nem traz número: NADA foi enviado. As que o segurado responde perguntam o dado
+# dele; as outras dizem a verdade (a equipe resolve) sem pedir nada a ele.
+_NADA_FOI_ABERTO = "Ainda NAO abri nada na seguradora. "
+_A_EQUIPE_RESOLVE_ANTES = ("A nossa equipe ja recebeu tudo e conclui com a seguradora — "
+                           "eu te aviso por aqui. Voce nao precisa repetir nada.")
+_PARADAS.update({
+    "faltou_cidade_servico": (
+        _NADA_FOI_ABERTO + "Em qual CIDADE e ESTADO voce quer fazer o servico? "
+        + _A_EQUIPE_RESOLVE_ANTES,
+        "A journey parou ANTES do `POST /atendimentos`: `local.cidade_servico` veio vazio. "
+        "NADA foi aberto. Com a cidade e o estado, o pedido recomeca do zero.",
+    ),
+    "faltou_peca": (
+        _NADA_FOI_ABERTO + "Qual peca exatamente foi danificada? " + _A_EQUIPE_RESOLVE_ANTES,
+        "A journey parou ANTES do `POST /atendimentos`: `dano.peca` veio vazio. NADA foi aberto.",
+    ),
+    "faltou_como": (
+        _NADA_FOI_ABERTO + "Me conta como o dano aconteceu? " + _A_EQUIPE_RESOLVE_ANTES,
+        "A journey parou ANTES do `POST /atendimentos`: `dano.como` veio vazio. NADA foi aberto.",
+    ),
+    "faltou_onde": (
+        _NADA_FOI_ABERTO + "Foi na cidade ou na estrada/rodovia? " + _A_EQUIPE_RESOLVE_ANTES,
+        "A journey parou ANTES do `POST /atendimentos`: o perimetro (urbano/rodoviario) nao "
+        "classificou. NADA foi aberto.",
+    ),
+    "faltou_descricao": (
+        _NADA_FOI_ABERTO + "Me descreve com um pouco mais de detalhe o que aconteceu com o "
+        "vidro? " + _A_EQUIPE_RESOLVE_ANTES,
+        "A journey parou ANTES do `POST /atendimentos`: o relato tem menos de 30 caracteres "
+        "(o portal exige). NADA foi aberto.",
+    ),
+    "pedido_incompleto": (
+        _NADA_FOI_ABERTO + _A_EQUIPE_RESOLVE_ANTES,
+        "O job chegou ao worker sem CPF, placa ou uma data DD/MM/AAAA valida — defeito de quem "
+        "montou o pedido (a tool recusa antes). NADA foi aberto. Corrija o dado e peca de novo.",
+    ),
+    "cadastro_da_corretora_incompleto": (
+        _NADA_FOI_ABERTO + "Falta um ajuste no nosso cadastro para eu abrir o pedido. "
+        + _A_EQUIPE_RESOLVE_ANTES,
+        "Falta o documento ou o telefone da corretora no cadastro de acionamento "
+        "(Personalizacao -> Corretora). NADA foi aberto. Preencha e peca de novo.",
+    ),
+    "apolice_nao_encontrada": (
+        _NADA_FOI_ABERTO + "O sistema da seguradora nao achou a sua apolice com o CPF, a placa "
+        "e a data do dano que eu tenho. " + _A_EQUIPE_RESOLVE_ANTES,
+        "Preflight `policy_not_found` (GET /apolices): NADA foi aberto. Confira CPF, placa e a "
+        "data do dano (dentro da vigencia?) e abra pelo portal.",
+    ),
+    "preflight_ambiguo": (
+        _NADA_FOI_ABERTO + "O sistema da seguradora achou mais de uma apolice para o seu carro "
+        "nessa data. " + _A_EQUIPE_RESOLVE_ANTES,
+        "Preflight `policy_ambiguous` (MaisDeUmaApoliceEncontrada): NADA foi aberto. Escolher "
+        "uma seria adivinhar; abra pelo portal escolhendo a apolice certa.",
+    ),
+    "regra_do_portal_desconhecida": (
+        _NADA_FOI_ABERTO + "A seguradora recusou o pedido por uma regra que eu nao conheco. "
+        + _A_EQUIPE_RESOLVE_ANTES,
+        "Preflight 400 com regra de negocio nao mapeada. NADA foi aberto. Leia a mensagem do "
+        "portal e decida.",
+    ),
+    "abertura_sem_resposta_do_portal": (
+        _NADA_FOI_ABERTO + "O sistema da seguradora nao respondeu quando fui abrir o seu "
+        "pedido com a sua resposta. " + _A_EQUIPE_RESOLVE_ANTES,
+        "A continuacao recomecou a abertura e a API do portal nao respondeu (seguradoras/"
+        "apolices). NADA foi aberto. Pode pedir de novo.",
+    ),
+    # 🔴 D-127-C — este é DEPOIS do POST: o rascunho existe e tem número.
+    "atendimento_aberto_existente": (
+        "A seguradora mostra que ja existe OUTRO atendimento aberto para o seu carro. Para nao "
+        "duplicar, eu nao segui com este. " + _A_EQUIPE_ASSUME,
+        "`atendimentos-abertos-existentes` = true logo depois do `POST /atendimentos`: ha OUTRO "
+        "atendimento aberto para este chassi/CPF. NADA mais foi gravado neste. NUNCA abra um "
+        "novo: confira no portal qual vale e conclua por ele.",
+    ),
+})
+
+#: As paradas ANTES da fronteira que o SEGURADO responde (a continuação RECOMEÇA a abertura no
+#: MESMO pedido — `vidros_continuacao`, ramo "abertura"). ⚠️ Fora de
+#: `ESTAGIOS_QUE_O_SEGURADO_RESPONDE` de propósito: aquela lista é a do destravador (toda
+#: parada dela tem classe na tabela do portal); estas nunca são deduzidas — o dado é dele.
+ESTAGIOS_ANTES_DA_FRONTEIRA = ("faltou_cidade_servico", "faltou_peca", "faltou_como",
+                               "faltou_onde", "faltou_descricao")
+
 #: O que substitui "a equipe assume" quando a continuação é POSSÍVEL.
 _EU_CONTINUO = ("Me responde por aqui que eu continuo o seu pedido de onde parou "
                 "— você não precisa repetir nada.")
@@ -1881,6 +2045,9 @@ def texto_da_parada(stage: Optional[str],
     if not par or continuacao_possivel is not True:
         return par
     para_ele, para_equipe = par
+    if chave in ESTAGIOS_ANTES_DA_FRONTEIRA:
+        # SPEC-127 P1: nada foi aberto — a resposta dele RECOMEÇA a abertura do mesmo pedido.
+        return para_ele.replace(_A_EQUIPE_RESOLVE_ANTES, _EU_CONTINUO), para_equipe
     if chave in ESTAGIOS_QUE_O_SEGURADO_RESPONDE:
         return para_ele.replace(_A_EQUIPE_ASSUME, _EU_CONTINUO), para_equipe
     if chave in ESTAGIOS_TECNICOS:
@@ -2356,6 +2523,14 @@ def frase_de_pedido_ja_existente(job: Optional[dict], resposta_nova: bool = Fals
         "separado (o portal so aceita um item por atendimento): descreva a peca "
         "com o lado — ex.: 'vidro da porta traseira esquerda' — e chame de novo."
     )
+    ev = job.get("evidence") if isinstance(job.get("evidence"), dict) else {}
+    if (status == "needs_human" and continuacao_da_evidencia(ev).get("etapa") == "abertura"
+            and not numero_do_pedido(ev)):
+        # 🔴 SPEC-127 P1 — a parada foi ANTES de o pedido existir: dizer "ja existe um
+        # atendimento aberto" seria mentira. Nada foi enviado; o pedido segue com a equipe.
+        return ("Este pedido PAROU ANTES de ser aberto na seguradora (nada foi enviado a ela) e "
+                "nao pode ser continuado por esta chamada. NAO chame de novo com os mesmos dados. "
+                + format_result(job))
     if status in ("done", "needs_human"):
         # 🔴 SPEC-EXTRA-001.10.1 — a resposta nova que NÃO tem como continuar.
         # Sem sessão guardada (ou sem nada que responda o que o pedido espera),
@@ -2416,6 +2591,9 @@ _CAMPO_DO_SLOT = {
     "peca": "especificos.peca (a peca exata; o campo `peca` de cima fica IGUAL)",
     "pecas_lataria": "especificos.pecas_lataria (a LISTA de pecas)",
     "aceita_reparo": "especificos.aceita_reparo (sim ou nao)",
+    # SPEC-127 P1 — as paradas ANTES de o pedido existir (nada foi aberto ainda)
+    "onde": "onde_ocorreu (urbano ou rodoviario)",
+    "descricao": "descricao (o relato dele, com 30 caracteres ou mais)",
 }
 
 
@@ -2543,6 +2721,10 @@ def _valor_do_slot(params: dict, slot: str):
         return list(dano.get("pecas_lataria") or []) or None
     if slot == "peca":
         return str(esp.get("peca") or "").strip() or None
+    if slot in ("onde", "descricao"):
+        # SPEC-127 P1 — as paradas antes da fronteira: o perímetro (o ENUM que
+        # `build_portal_params` já classificou) e o relato composto.
+        return str(dano.get(slot) or "").strip() or None
     valor = esp.get(slot)
     if isinstance(valor, (list, tuple)):
         return list(valor) or None
@@ -2614,6 +2796,14 @@ def montar_job_de_continuacao(*, company_id: str, job_origem: dict, operacao: st
     cont_origem = cont_origem if isinstance(cont_origem, dict) else {}
     params = {k: v for k, v in dict(origem.get("params") or {}).items() if k != "_continuacao"}
     respostas = dict(respostas or {})
+    cont_ev = ev.get("continuacao") if isinstance(ev.get("continuacao"), dict) else {}
+    if (str(cont_ev.get("etapa") or "") == "abertura"
+            and isinstance(cont_origem.get("respostas"), dict)):
+        # 🔴 SPEC-127 P1 — a origem é uma continuação que RECOMEÇOU a abertura e parou de novo
+        # antes da fronteira (faltava mais um dado). Nada foi escrito: as respostas que ela já
+        # trouxe NÃO estão no portal, e os `params` dela não as têm (a mescla é em memória, no
+        # worker). Sem esta linha a 2ª resposta apagaria a 1ª. A nova vence a antiga.
+        respostas = {**cont_origem["respostas"], **respostas}
     escolha_origem = cont_origem.get("escolha")
     if (operacao == "reler" and not escolha
             and cont_origem.get("operacao") in ("agendar", "reler")
@@ -2657,3 +2847,80 @@ def montar_job_de_continuacao(*, company_id: str, job_origem: dict, operacao: st
         "agent_id": origem.get("agent_id") or None,
         "work_run_id": origem.get("work_run_id") or params.get("_work_run_id") or None,
     }
+
+
+# ===========================================================================
+# 🔴 SPEC-127 P1 (D-127-E) — O PORTÃO DO OK NO PEDIDO DE VIDRO
+# ===========================================================================
+#
+# 📊 Medição final da SPEC-126: o R2 abriu pedido de vidro no 1º turno, sem resumo e sem
+# "sim" (2/2) — o `portal_action` criava o job na primeira chamada. O guincho já passava
+# pelo PORTÃO da SPEC-126 (`insurer_dispatch_tool.prova_da_confirmacao`: a REDE de regex E
+# o classificador); o vidro, não. Agora passa pelo MESMO portão — importado, nunca
+# reescrito. Aqui mora só o que é do vidro: o PEDIDO que a régua compara (serviço `vidros`,
+# a cidade do SERVIÇO, a placa) e a LINHA PRONTA, montada pelo CÓDIGO.
+
+#: o serviço do pedido para a régua do portão (`_PALAVRAS_DO_SERVICO["vidros"]`: vidro,
+#: para-brisa, retrovisor, farol, lanterna) e para o "sim que troca o serviço".
+SERVICO_DO_PORTAO = "vidros"
+
+
+def _cidade_do_servico_de(params: Optional[dict]) -> Tuple[str, str]:
+    local = (params or {}).get("local") if isinstance((params or {}).get("local"), dict) else {}
+    cid = local.get("cidade_servico") if isinstance(local.get("cidade_servico"), dict) else {}
+    return str(cid.get("cidade") or "").strip(), str(cid.get("uf") or "").strip().upper()
+
+
+def pedido_para_o_portao(params: Optional[dict], *, session_id: str = "",
+                         de_outra_pessoa: bool = False) -> dict:
+    """O pedido que o PORTÃO compara com a pergunta e com o "sim". **PURA.**
+
+    ⛔ A cidade é a do SERVIÇO (`local.cidade_servico`), nunca a do cadastro. Com o
+    PARENTE falando (`de_outra_pessoa`), a placa sai — é dado da apólice do titular."""
+    cidade, uf = _cidade_do_servico_de(params)
+    return {"subservice": SERVICO_DO_PORTAO,
+            "local_atual": " ".join(x for x in (cidade, uf) if x),
+            "veiculo_placa": "" if de_outra_pessoa else normalizar_placa((params or {}).get("placa")),
+            "session_id": str(session_id or "")}
+
+
+def linha_de_confirmacao_do_vidro(params: Optional[dict], *, de_outra_pessoa: bool = False) -> str:
+    """A LINHA PRONTA do resumo do pedido de vidro, montada pelo CÓDIGO. **PURA.**
+
+    A peça (como o segurado a disse), a cidade do SERVIÇO e a placa SÓ PELO FINAL —
+    e, com o parente falando, sem a placa (SPEC-126 U2-B, D1). ⛔ Nunca CPF, nunca a
+    cidade do cadastro. É a pergunta que o portão aceita: "Confirma" + o verbo forte
+    ("posso acionar?") + o serviço, o lugar e a placa do PRÓPRIO pedido."""
+    p = params or {}
+    peca = " ".join(str((p.get("dano") or {}).get("peca") or "").split()) or "vidro"
+    cidade, uf = _cidade_do_servico_de(p)
+    partes = [f"abrir na seguradora o atendimento de {peca}"]
+    if cidade:
+        partes.append(f"com o serviço em {cidade}" + (f"/{uf}" if uf else ""))
+    placa = normalizar_placa(p.get("placa"))
+    if len(placa) >= 7 and not de_outra_pessoa:
+        partes.append(f"placa final {placa[-4:]}")
+    return "Confirma: " + ", ".join(partes) + " — posso acionar?"
+
+
+def pedido_de_ok_do_vidro(motivo: str, params: Optional[dict], *,
+                          de_outra_pessoa: bool = False) -> dict:
+    """O `confirm_first` do `portal_action`: NADA criado, e a linha pronta para o agente
+    enviar. A forma é a do `insurer_dispatch_tool.pedido_de_confirmacao` (o agente já sabe o
+    que fazer com ela) e o carimbo "NADA foi acionado" é o que o `nodes` lê para calar o
+    anúncio dito junto da ferramenta."""
+    from app.agents.tools.insurer_dispatch_tool import (
+        LINHA_PRONTA_ABRE,
+        LINHA_PRONTA_FECHA,
+    )
+
+    linha = linha_de_confirmacao_do_vidro(params, de_outra_pessoa=de_outra_pessoa)
+    texto = ("ANTES de abrir o pedido no portal da seguradora: a conversa ainda nao tem o resumo "
+             "DESTE pedido seguido do \"sim\" do cliente. LINHA PRONTA (montada pelo sistema com os "
+             "dados deste pedido) — ENVIE ao cliente exatamente esta linha, sem reescrever e sem "
+             f"perguntar de novo o que esta nela: {LINHA_PRONTA_ABRE}{linha}{LINHA_PRONTA_FECHA}. "
+             "E ESPERE o \"sim\". So depois do sim chame portal_action de novo, com os MESMOS dados, "
+             "no MESMO turno em que ele disser sim. ATENCAO: NADA foi acionado ainda — e PROIBIDO "
+             "dizer ao cliente que o pedido foi aberto ou que a seguradora foi acionada.")
+    return {"status": "confirm_first", "missing": [], "confirmacao_comprovada": False,
+            "motivo_interno": str(motivo or ""), "content": texto, "linha_pronta": linha}

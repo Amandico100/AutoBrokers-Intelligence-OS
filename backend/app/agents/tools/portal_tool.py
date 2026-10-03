@@ -42,6 +42,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from .portal_params import (
+    ESTAGIOS_ANTES_DA_FRONTEIRA,
     ESTAGIOS_QUE_O_SEGURADO_RESPONDE,
     ESTAGIOS_TECNICOS,
     JOURNEY_CONTINUAR,
@@ -49,6 +50,7 @@ from .portal_params import (
     acao_esperada,
     build_portal_params,
     chave_de_idempotencia,
+    continuacao_da_evidencia,
     continuacao_possivel,
     descricao_da_tool,
     format_result,
@@ -56,6 +58,8 @@ from .portal_params import (
     mapear_escolha_de_agenda,
     montar_job_de_continuacao,
     numero_do_pedido,
+    pedido_de_ok_do_vidro,
+    pedido_para_o_portao,
     respostas_da_chamada,
     resumo_da_tela_desconhecida,
     slug_da_seguradora,
@@ -532,6 +536,75 @@ class PortalActionTool(BaseTool):
             logger.error(f"[PortalAction] InfoCap vehicle lookup falhou: {type(e).__name__}")
             return {"ok": False, "status": "provider_error"}
 
+    # ======================================================================
+    # 🔴 SPEC-127 P1 (D-127-E) — O PORTÃO DO OK, o MESMO do guincho
+    # ======================================================================
+    async def _apolice_de_outra_pessoa(self, session_id: str) -> bool:
+        """Quem fala é o PARENTE (a apólice é do titular)? A marca da SPEC-126 U3-B, lida da
+        ficha DURÁVEL pela leitura única (`attendance_ficha.apolice_de_outra_pessoa`), com a
+        corretora no filtro. Sem banco, sem sessão ou leitura que falha → `False`. **Nunca levanta.**"""
+        cliente = self._client()
+        if cliente is None or not session_id:
+            return False
+        try:
+            from app.services.attendance_ficha import apolice_de_outra_pessoa, carregar
+
+            return bool(apolice_de_outra_pessoa(ficha=await carregar(cliente, self.company_id,
+                                                                     session_id)))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PortalAction] marca de terceiro nao lida (%s)", type(exc).__name__)
+            return False
+
+    def _ultimo_pedido_desta_conversa(self, session_id: str):
+        """O instante do último pedido de vidro que NASCEU desta conversa (`portal_jobs`, a
+        abertura, corretora no filtro) — o FATO durável que GASTA a confirmação anterior a ele
+        (SPEC-126 CONSERTO Y, RT-B3): o "sim" do para-brisa não abre a lanterna. `None` sem
+        pedido ou se a leitura falhar (o mesmo padrão de `_acionamento_desta_conversa`)."""
+        if not session_id:
+            return None
+        try:
+            r = (self._client().table("portal_jobs").select("id, company_id, created_at")
+                 .eq("company_id", self.company_id).eq("session_id", session_id)
+                 .eq("journey", "abrir_atendimento")
+                 .order("created_at", desc=True).limit(5).execute())
+            instantes = [str(j.get("created_at") or "") for j in (getattr(r, "data", None) or [])
+                         if str(j.get("company_id") or "") == str(self.company_id)
+                         and str(j.get("created_at") or "")]
+            return max(instantes) if instantes else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PortalAction] ultimo pedido da conversa nao lido (%s)", type(exc).__name__)
+            return None
+
+    async def _portao_do_ok(self, params: dict, session_id: str) -> Optional[dict]:
+        """`None` = o segurado CONFIRMOU este pedido (pode criar o job). Senão, o
+        `confirm_first` com a LINHA PRONTA — e NADA foi criado.
+
+        ⛔ Não reimplementa nada: a prova é `insurer_dispatch_tool.prova_da_confirmacao` (a
+        conversa DURÁVEL + a REDE de regex E o classificador, `decisao_do_portao`). Daqui sai
+        só o PEDIDO do vidro (`pedido_para_o_portao`: a cidade do SERVIÇO, a placa — sem ela
+        com o parente). Sem conversa, sem banco ou classificador fora → não cria (fail-closed:
+        o pior caso é UMA confirmação a mais; o outro, um pedido na seguradora sem o ok)."""
+        from .insurer_dispatch_tool import prova_da_confirmacao
+
+        de_outra = await self._apolice_de_outra_pessoa(session_id)
+        pedido = pedido_para_o_portao(params, session_id=session_id, de_outra_pessoa=de_outra)
+        cliente = self._client()
+        if cliente is None or not session_id:
+            prova = {"comprovada": False, "motivo": "sem a conversa para provar o ok"}
+        else:
+            try:
+                prova = await prova_da_confirmacao(
+                    cliente, company_id=self.company_id, session_id=session_id, pedido=pedido,
+                    acionado_em=self._ultimo_pedido_desta_conversa(session_id))
+            except Exception as exc:  # noqa: BLE001 — a prova não levanta; cinto e suspensório
+                prova = {"comprovada": False, "motivo": f"erro:{type(exc).__name__}"}
+        if prova.get("comprovada") is True:
+            return None
+        logger.warning("[PortalAction] pedido de vidro SEM o ok do segurado (%s) — NADA criado",
+                       prova.get("motivo"))
+        return pedido_de_ok_do_vidro(str(prova.get("motivo") or ""), params,
+                                     de_outra_pessoa=de_outra)
+
     async def _arun(self, **flat) -> dict:
         session_id = str(flat.pop("session_id", "") or "")
         cpf = str(flat.get("cpf_cnpj") or "").strip()
@@ -631,6 +704,16 @@ class PortalActionTool(BaseTool):
                     "RESPOSTA desse pedido e NAO abri outro atendimento. Se for OUTRA "
                     "peca de verdade, conclua este pedido primeiro.\n\n"
                     + str((resposta or {}).get("content") or ""))}
+
+        # 🔴 SPEC-127 P1 (D-127-E) — O PORTÃO DO OK. Só o caminho que CRIA um pedido novo
+        # passa por aqui (o que já existe continua ou se anexa acima): sem o resumo deste
+        # pedido + o "sim" do segurado na conversa — o MESMO portão do guincho (regex E
+        # classificador) — NADA é criado e a linha pronta volta ao agente. 📊 SPEC-126,
+        # medição final: o R2 abria o vidro no 1º turno, sem perguntar (2/2).
+        if not existente:
+            sem_o_ok = await self._portao_do_ok(params, session_id)
+            if sem_o_ok is not None:
+                return sem_o_ok
 
         # O agente atendente e resolvido uma vez so: ele vai para o job (para quem
         # responder depois saber por qual integracao falar) e para o `_notify`.
@@ -813,6 +896,10 @@ class PortalActionTool(BaseTool):
         ev = job.get("evidence") if isinstance(job.get("evidence"), dict) else {}
         operacao, slot = acao_esperada(ev)
         if operacao != "responder" or not slot or not continuacao_possivel(ev):
+            return None
+        if continuacao_da_evidencia(ev).get("etapa") == "abertura":
+            # 🔴 SPEC-127 P1 — a parada ANTES de o pedido existir: o que falta é dado do
+            # SEGURADO (cidade, peça, causa, onde, relato). Nunca deduzido: ele responde.
             return None
         try:
             from app.services import destravador as DT
@@ -1315,7 +1402,7 @@ def fechar_work_run(company_id: str, run_id: str, job: dict) -> None:
                                                            "decidir_vistoria"))
                 or (status in ("needs_human", "failed")
                     and stage in ESTAGIOS_QUE_O_SEGURADO_RESPONDE + ESTAGIOS_TECNICOS
-                    + ("horario_indisponivel",))):
+                    + ESTAGIOS_ANTES_DA_FRONTEIRA + ("horario_indisponivel",))):
             svc.marcar_progresso(run_id, company_id,
                                  ("aguardando_escolha_do_segurado"
                                   if tipo_do_desfecho == "agenda" and status == "done"
