@@ -897,36 +897,50 @@ class PortalActionTool(BaseTool):
         operacao, slot = acao_esperada(ev)
         if operacao != "responder" or not slot or not continuacao_possivel(ev):
             return None
-        if continuacao_da_evidencia(ev).get("etapa") == "abertura":
-            # 🔴 SPEC-127 P1 — a parada ANTES de o pedido existir: o que falta é dado do
-            # SEGURADO (cidade, peça, causa, onde, relato). Nunca deduzido: ele responde.
-            return None
+        # 🔴 SPEC-127 P4 — o desvio do P1 (`etapa == "abertura"` → `None`) SAIU daqui: as paradas antes
+        # da fronteira (`faltou_*`) passam pelo destravador como as outras; a TABELA as põe em
+        # "perguntar ao segurado" (o dado é dele), o diário registra, e o caminho é o de hoje (ele responde).
+        stage = str(ev.get("stage") or "").strip()
+
+        def _hoje() -> Optional[dict]:
+            # 🔴 SPEC-127 P4 — a parada que só o CÓDIGO conduz (o tipo de telefone): quando ele não conduz
+            # (off, sombra, pessoa, falha), o agente recebe o texto de ANTES — a releitura técnica —, nunca
+            # "pergunte ao segurado" um código do portal. As outras: `None` = hoje, byte a byte.
+            try:
+                from app.services.destravador import PARADAS_QUE_O_SEGURADO_NAO_RESPONDE
+            except Exception:  # noqa: BLE001
+                return None
+            if stage not in PARADAS_QUE_O_SEGURADO_NAO_RESPONDE:
+                return None
+            cont = {**continuacao_da_evidencia(ev), "acao_esperada": "reler"}
+            return {"content": format_result({**job, "evidence": {**ev, "continuacao": cont}})}
+
         try:
             from app.services import destravador as DT
 
             modo, limiar = await DT.modo_do_destravador(
                 self.company_id, DT.chave_da_seguradora_do_portal(params), DT.RAMO_DO_PORTAL)
             if modo not in ("on", "sombra"):
-                return None                       # off / sem linha: hoje, byte a byte
+                return _hoje()                    # off / sem linha: hoje, byte a byte
             cliente = self._client()
             linha_do_job = self._job_inteiro(job_id)
             if linha_do_job is None:
-                return None
+                return _hoje()
             pedido_key = self._chave_do_pedido(linha_do_job, params)
             if not pedido_key or self._destravamentos_do_pedido(pedido_key) >= DT.TETO_DE_DESTRAVAMENTOS_POR_PEDIDO:
-                return None
+                return _hoje()
             params_do_job = linha_do_job.get("params") if isinstance(linha_do_job.get("params"), dict) else {}
             d = await DT.destravar_parada_do_portal(
                 self.company_id, ev, params_do_job, modo=modo, limiar=limiar, job_id=job_id,
                 work_run_id=work_run_id)
             if d is None or modo != "on" or d.acao != "RESPONDER":
-                return None                       # pergunta / pessoa / sombra: o caminho de hoje
+                return _hoje()                    # pergunta / pessoa / sombra: o caminho de hoje
             parada = DT.parada_do_portal(ev)
             # a LISTA da parada vai junto: a UF só sai se for sigla E estiver nela (conserto SPEC-124)
             respostas = DT.resposta_do_portal(parada["stage"], slot, d.valor, params_do_job,
                                               opcoes=parada["opcoes"])
             if not respostas:
-                return None
+                return _hoje()
             cpf = str(params.get("cpf_cnpj") or params_do_job.get("cpf_cnpj") or "")
             confirm = await self._envio_liberado(cpf, JOURNEY_CONTINUAR)
             linha = montar_job_de_continuacao(
@@ -949,9 +963,9 @@ class PortalActionTool(BaseTool):
                 if str(ja.get("status")) in STATUS_EM_CURSO and ja.get("id"):
                     resposta = await self._aguardar(str(ja["id"]), work_run_id, params)
                     return resposta or {"content": frase_de_pedido_ja_existente({"status": "queued"})}
-                return None
+                return _hoje()
             if not novo_id:
-                return None
+                return _hoje()
             logger.info("[PortalAction] destravador continuou o pedido (parada %s, classe %s)",
                         parada["stage"], d.classe)
             resposta = await self._aguardar(novo_id, work_run_id, params)
@@ -959,7 +973,7 @@ class PortalActionTool(BaseTool):
         except Exception as exc:  # noqa: BLE001 — o destravador nunca fica entre o segurado e a resposta
             logger.warning("[PortalAction] destravador do portal indisponivel (%s) — caminho de hoje",
                            type(exc).__name__)
-            return None
+            return _hoje()
 
     def _job_inteiro(self, job_id: str) -> Optional[dict]:
         """A linha completa do job que parou (o poll lê só status/evidence/error). §7: `company_id`

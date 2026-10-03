@@ -2233,15 +2233,42 @@ TETO_DE_DESTRAVAMENTOS_POR_PEDIDO = 3
 #:   decidir_reparo          reparo × troca muda FRANQUIA/custo: NUNCA sozinho, pergunta (D2)
 #:   pronto_para_agendar · horario_indisponivel   loja e horário: a escolha (e a loja paga) é dele (D2)
 #:   coverage_absent · maybe_committed · pronto_para_* · prioridade_nao_medida   NUNCA → gate / pessoa
+#:   🔴 SPEC-127 P4 (cada linha nova):
+#:   tipo_de_telefone_…      CONDUZIR pelo CÓDIGO: a opção da lista que É o contrato
+#:                           (`vidros_apifirst.opcao_do_tipo_de_telefone`); era `reler` — a releitura lia
+#:                           a mesma lista e parava no mesmo lugar. Sem opção que seja o contrato: PESSOA
+#:                           (o segurado não sabe o código do portal).
+#:   peca_ambigua · questionario_incompleto   RESPONDER COM DADO: o dado está no caso sob OUTRA chave
+#:                           (a peça que `especificos` desambigua; a resposta do 80 % já dada) — provado
+#:                           pelo CÓDIGO (`dado_do_caso_no_portal`). Sem o dado, o NÚCLEO rebaixa a
+#:                           DEDUZIR (desligado sem calibração → pergunta): o mesmo destino de antes.
+#:   faltou_* (P1) · falta_cidade_servico · perimetro_desconhecido · descricao_curta (DOM, P2)
+#:                           o dado é do SEGURADO (cidade, peça, causa, onde, relato) — nunca deduzido
+#:   decidir_oferta (DOM)    oferta/custo: NUNCA sozinho, pergunta (D2) — como o reparo
+#:   cobertura_nao_marcada (DOM)   a cobertura é marcada pelo CÓDIGO no passo 1; se não foi, PESSOA
+#:   atendimento_aberto_existente  o portal diz que há OUTRO aberto: NUNCA `novo_atendimento`, PESSOA
 CLASSE_DA_PARADA_DO_PORTAL: Dict[str, str] = {
     "uf_desconhecida": "perguntar_ao_segurado",   # a UF que ele escreveu não está na lista: é dele
     #                                                (nunca outra UF da lista — a cidade homônima)
     "tipo_de_telefone_desconhecido": "conduzir",
-    "peca_ambigua": "deduzir",
+    "peca_ambigua": "responder_com_dado",
     "motivo_ambiguo": "deduzir",
     "peca_de_lataria_ambigua": "deduzir",
     "cidade_ambigua": "deduzir",
-    "questionario_incompleto": "deduzir",
+    "questionario_incompleto": "responder_com_dado",
+    # SPEC-127 P1 — as paradas ANTES da fronteira (nada escrito): o dado é do segurado
+    "faltou_peca": "perguntar_ao_segurado",
+    "faltou_como": "perguntar_ao_segurado",
+    "faltou_onde": "perguntar_ao_segurado",
+    "faltou_cidade_servico": "perguntar_ao_segurado",
+    "faltou_descricao": "perguntar_ao_segurado",
+    # SPEC-127 P2 — as paradas do DOM com significado próprio (as outras usam os stages do API-first)
+    "falta_cidade_servico": "perguntar_ao_segurado",
+    "perimetro_desconhecido": "perguntar_ao_segurado",
+    "descricao_curta": "perguntar_ao_segurado",
+    "decidir_oferta": "nunca_sozinho",
+    "cobertura_nao_marcada": "nunca_sozinho",
+    "atendimento_aberto_existente": "nunca_sozinho",
     "pecas_de_lataria_ausentes": "perguntar_ao_segurado",
     "cidade_sem_rede": "perguntar_ao_segurado",
     "decidir_vistoria": "perguntar_ao_segurado",
@@ -2269,7 +2296,14 @@ NUNCA_DA_PARADA_DO_PORTAL: Dict[str, Tuple[str, str]] = {
     "pronto_para_materializar": ("confirmacao_final", "pessoa"),
     "pronto_para_vistoria": ("confirmacao_final", "pessoa"),
     "prioridade_nao_medida": ("confirmacao_final", "pessoa"),
+    "decidir_oferta": ("aceite_de_custo", "pergunta"),
+    "cobertura_nao_marcada": ("afirma_cobertura", "pessoa"),
+    "atendimento_aberto_existente": ("novo_atendimento", "pessoa"),
 }
+
+#: 🔴 SPEC-127 P4 — as paradas que o SEGURADO não sabe responder (a resposta é um código do portal, do
+#: CONTRATO nosso): quando o código não conduz, PESSOA — nunca uma pergunta a ele.
+PARADAS_QUE_O_SEGURADO_NAO_RESPONDE = frozenset({"tipo_de_telefone_desconhecido"})
 
 #: 🔴 CONSERTO SPEC-124 (red team P1 · P8): o CAMPO que responde cada parada `responder:*` — o MESMO
 #: princípio do conserto X2 do WhatsApp (`_e_dado_do_caso`: só o slot DO PASSO conta). "Dado do caso"
@@ -2287,11 +2321,15 @@ _CAMPO_DA_PARADA_DO_PORTAL: Dict[str, Tuple[str, str]] = {
     "motivo_ambiguo": ("como", ""),
     "peca_ambigua": ("peca", ""),
     "questionario_incompleto": ("pergunta_", ""),
+    # SPEC-127 P4: a opção CONDUZIDA vai a `especificos.tipo_telefone` (`_fase_contato` a lê e a reconfere)
+    "tipo_de_telefone_desconhecido": ("tipo_telefone", ""),
 }
 
 #: constante_justificada: a etiqueta do slot do questionário que o worker grava
 #: (`responder:pergunta_<codigo>`, `vidros_apifirst._parar`) — o código é o da pergunta do portal.
-_RX_SLOT_DO_QUESTIONARIO = re.compile(r"pergunta_[A-Za-z0-9]+")
+#: 🔴 SPEC-127 (P-124-15): o código pode trazer `_` e `-` (o formato do portal não é só dígito); a
+#: etiqueta começa por letra/dígito para "pergunta_" sozinho (sem código) continuar recusado.
+_RX_SLOT_DO_QUESTIONARIO = re.compile(r"pergunta_[A-Za-z0-9][A-Za-z0-9_-]*")
 
 
 def slot_da_parada_confere(stage: str, slot: str) -> bool:
@@ -2334,6 +2372,18 @@ _O_QUE_FALTAVA_NO_PORTAL = {
     "decidir_vistoria": "como o segurado prefere fazer a vistoria",
     "pronto_para_agendar": "a escolha da loja e do horário",
     "horario_indisponivel": "outro horário, porque o escolhido não está mais livre",
+    # SPEC-127 P4
+    "faltou_peca": "qual peça foi danificada",
+    "faltou_como": "como o dano aconteceu",
+    "faltou_onde": "se o dano foi na cidade ou na estrada",
+    "faltou_cidade_servico": "a cidade onde o serviço vai ser feito",
+    "faltou_descricao": "o relato de como aconteceu",
+    "falta_cidade_servico": "a cidade onde o serviço vai ser feito",
+    "perimetro_desconhecido": "se o dano foi na cidade ou na estrada",
+    "descricao_curta": "o relato de como aconteceu",
+    "decidir_oferta": "a decisão sobre um serviço ou custo adicional oferecido",
+    "cobertura_nao_marcada": "a cobertura do pedido",
+    "atendimento_aberto_existente": "conferir o outro atendimento aberto para o carro",
 }
 
 #: constante_justificada: o VALOR que aceita custo, no texto normalizado (`_n`: sem acento, sem "$"). D2:
@@ -2343,8 +2393,9 @@ _RX_CUSTO_NO_PORTAL = re.compile(
     r"\bfranquia|\bvalor(?:es)?\b|\bcusto|\bpag(?:ar|o|a|amento|ando)\b|\bcobr|\bparticipac|\breais\b|"
     r"\bexcedente|\bdesconto|\bpreco|\bdeposit|\bpix\b|\br \d")
 #: constante_justificada: o VALOR que cancela/desiste/encerra o pedido (D2 "cancelar") — o radical do
-#: WhatsApp (`_RX_CANCELA`) + desistir/encerrar, no texto normalizado.
-_RX_CANCELA_NO_PORTAL = re.compile(r"\bcancel|\bdesist|\bencerr")
+#: WhatsApp (`_RX_CANCELA`) + desistir/encerrar, no texto normalizado. 🔴 SPEC-127 (P-124-07): UMA regex
+#: só — o radical do WhatsApp é REUSADO (composto), nunca reescrito ao lado.
+_RX_CANCELA_NO_PORTAL = re.compile(_RX_CANCELA.pattern + r"|\bdesist|\bencerr")
 
 
 def chave_da_seguradora_do_portal(params: Optional[dict]) -> str:
@@ -2421,19 +2472,64 @@ def parada_do_portal(evidence: Any) -> Dict[str, Any]:
     ev = evidence if isinstance(evidence, dict) else {}
     operacao, slot = acao_esperada(ev)
     af = ev.get("api_first") if isinstance(ev.get("api_first"), dict) else {}
-    stage = str(ev.get("stage") or af.get("parou_em") or "").strip()
+    dom = ev.get("parada_do_dom") if isinstance(ev.get("parada_do_dom"), dict) else {}
+    if not operacao and dom:
+        # SPEC-127 P4: a parada do DOM (P2) traz a ação no próprio bloco (o DOM não tem continuação)
+        bruto, _, sl = str(dom.get("acao_esperada") or "").partition(":")
+        if bruto.strip().lower() in ("responder", "reler"):
+            operacao, slot = bruto.strip().lower(), sl.strip()
+    stage = str(ev.get("stage") or af.get("parou_em") or dom.get("stage") or "").strip()
     cont = ev.get("continuacao") if isinstance(ev.get("continuacao"), dict) else {}
-    opcoes = [" ".join(str(o).split()) for o in (ev.get("opcoes") or []) if str(o or "").strip()][:60]
+    opcoes = [" ".join(str(o).split()) for o in (ev.get("opcoes") or dom.get("opcoes") or [])
+              if str(o or "").strip()][:60]
     return {"stage": stage, "operacao": operacao, "slot": slot, "opcoes": opcoes,
             "pergunta": " ".join(str(ev.get("pergunta") or "").split())[:300],
-            "mensagem": " ".join(str(ev.get("message") or cont.get("motivo") or "").split())[:300]}
+            "mensagem": " ".join(str(ev.get("message") or cont.get("motivo") or "").split())[:300],
+            "tela": tela_da_parada_do_portal(ev),
+            "contrato": " ".join(str(ev.get("tipo_telefone_do_contrato") or "").split())[:60]}
+
+
+def _rotulo_de(x: Any) -> str:
+    if isinstance(x, dict):
+        x = x.get("label") or x.get("campo") or x.get("name") or ""
+    return " ".join(str(x or "").split())[:120]
+
+
+def tela_da_parada_do_portal(evidence: Any) -> Dict[str, Any]:
+    """🔴 SPEC-127 P8 — a TELA que parou, nos DOIS caminhos, num formato só: `{heading, campo, rotulos,
+    opcoes, pending_required}`. API-first: `evidence.tela_da_parada` (`vidros_estado.tela_da_parada`). DOM:
+    o que `adaptive._registrar_parada` grava (`passo.titulo`, `passo.obrigatorios_vazios`, `campo`,
+    `pergunta`, `opcoes`, `dropdowns_da_tela`). Só rótulos e opções do PORTAL — nenhum valor do caso."""
+    ev = evidence if isinstance(evidence, dict) else {}
+    t = ev.get("tela_da_parada") if isinstance(ev.get("tela_da_parada"), dict) else {}
+    passo = ev.get("passo") if isinstance(ev.get("passo"), dict) else {}
+    dom = ev.get("parada_do_dom") if isinstance(ev.get("parada_do_dom"), dict) else {}
+    pend = t.get("pending_required") or passo.get("obrigatorios_vazios") or []
+    rotulos = t.get("rotulos") or [d.get("campo") for d in (ev.get("dropdowns_da_tela") or [])
+                                   if isinstance(d, dict)]
+    opcoes = t.get("opcoes") or ev.get("opcoes") or dom.get("opcoes") or []
+    return {"heading": _rotulo_de(t.get("heading") or passo.get("titulo")),
+            "campo": _rotulo_de(t.get("campo") or dom.get("campo") or ev.get("campo") or ev.get("pergunta")),
+            "rotulos": [r for r in (_rotulo_de(x) for x in rotulos if x) if r][:12],
+            "opcoes": [" ".join(str(o).split()) for o in opcoes if str(o or "").strip()][:60],
+            "pending_required": [r for r in (_rotulo_de(x) for x in pend) if r][:12]}
 
 
 def texto_da_parada(parada: Dict[str, Any]) -> str:
-    """A "tela" do portal, para o diário e para o modelo: o que faltava, a pergunta e as opções."""
+    """A "tela" do portal, para o diário e para o modelo: o que faltava, a TELA (P8), a pergunta e as
+    opções REAIS."""
     falta = _O_QUE_FALTAVA_NO_PORTAL.get(parada.get("stage") or "", "um dado do pedido")
     linhas = [f"O portal de vidros parou o pedido: falta {falta}."]
-    if parada.get("pergunta"):
+    tela = parada.get("tela") if isinstance(parada.get("tela"), dict) else {}
+    if tela.get("heading"):
+        linhas.append(f"Tela do portal: {tela['heading']}")
+    if tela.get("rotulos"):
+        linhas.append("Campos desta tela: " + " · ".join(tela["rotulos"]))
+    if tela.get("campo"):
+        linhas.append(f"O campo que pede a resposta: {tela['campo']}")
+    if tela.get("pending_required"):
+        linhas.append("Ainda obrigatórios nesta tela: " + " · ".join(tela["pending_required"]))
+    if parada.get("pergunta") and parada.get("pergunta") != tela.get("campo"):
         linhas.append(f"Pergunta do portal: {parada['pergunta']}")
     if parada.get("mensagem"):
         linhas.append(f"Motivo: {parada['mensagem']}")
@@ -2478,6 +2574,11 @@ def resposta_do_portal(stage: str, slot: str, valor: str, params: Optional[dict]
         novo["local"] = local
     elif slot == "como":
         novo["dano"] = {**dict(novo.get("dano") or {}), "como": valor}
+    elif slot == "tipo_telefone":
+        # SPEC-127 P4: só uma opção IGUAL da lista desta parada (o worker reconfere o contrato)
+        if not _opcao_igual(valor, list(opcoes or [])):
+            return {}
+        novo["especificos"] = {**dict(novo.get("especificos") or {}), slot: _opcao_igual(valor, list(opcoes))}
     elif slot == "peca" or _RX_SLOT_DO_QUESTIONARIO.fullmatch(slot):
         # o questionário: `pergunta_<codigo>` (a etiqueta do worker) → `especificos`, onde o motor
         # da continuação a lê (`portal_params._valor_do_slot`, o MESMO leitor do contrato)
@@ -2485,6 +2586,115 @@ def resposta_do_portal(stage: str, slot: str, valor: str, params: Optional[dict]
     else:
         return {}      # lataria (lista), reparo (NUNCA): o destravador não responde
     return respostas_da_chamada(novo, origem, slot)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 SPEC-127 P4 — o DADO DO CASO sob OUTRA chave, provado pelo CÓDIGO (nunca pelo modelo)
+# ─────────────────────────────────────────────────────────────────────────────
+#: constante_justificada: as chaves de `especificos` que NÃO descrevem a peça nem respondem o
+#: questionário (decisões e contratos de outras paradas; a etiqueta de OUTRA pergunta). Usá-las seria
+#: o defeito de 20/09 (`vidros_questionario._candidatos_para`): o "sim" do reparo respondendo o sensor.
+_CHAVES_QUE_NAO_SAO_DO_ITEM = frozenset({
+    "aceita_reparo", "preferencia_vistoria", "preferencia_agenda", "escolha_agenda",
+    "cidade_para_o_servico", "tipo_telefone", "peca", "pecas_lataria"})
+#: um valor mais longo que isto é relato, não atributo — não estreita a lista
+_MAXIMO_DE_PALAVRAS_DO_ATRIBUTO = 4
+
+
+def _valores_do_item(params: Optional[dict]) -> List[Tuple[str, str]]:
+    esp = (params or {}).get("especificos") if isinstance((params or {}).get("especificos"), dict) else {}
+    return [(str(k), str(v)) for k, v in esp.items()
+            if isinstance(v, str) and v.strip() and not str(k).startswith(("_", "pergunta"))
+            and str(k) not in _CHAVES_QUE_NAO_SAO_DO_ITEM]
+
+
+def _peca_que_o_caso_desambigua(opcoes: List[str], params: Optional[dict]) -> str:
+    """A peça da lista que o que o segurado JÁ disse em `especificos` deixa ÚNICA. "" senão.
+
+    📊 O worker refina a peça com UMA resposta de cada vez (`vidros_apifirst._fase_peca`, `casar_peca`
+    sobre "peça + resposta") — 💭 "lanterna" + "da frente" não casa (o vocabulário não junta), e a
+    parada nasce com a resposta no caso. Aqui, com as MESMAS palavras comparáveis do worker
+    (`_palavras_comparaveis`: raízes "frente"→"diant", "dt"→"diant"), cada resposta curta ESTREITA a lista
+    (todas as palavras dela no item); a FAMÍLIA tem de ser a da peça pedida (`identidade_peca`, o veto do
+    worker: "vidro" + "xenon" nunca vira farol). Única ao fim, e estreitada ao menos uma vez → é o dado."""
+    try:
+        from portal_worker.journeys.vidros_apifirst import _palavras_comparaveis
+        from portal_worker.journeys.vidros_lanternas import identidade_peca
+    except Exception:  # noqa: BLE001 — sem a régua do worker, nada se prova
+        return ""
+    dano = (params or {}).get("dano") if isinstance((params or {}).get("dano"), dict) else {}
+    familia = identidade_peca(str(dano.get("peca") or ""))
+    if not familia:
+        return ""
+    restantes = [o for o in opcoes if identidade_peca(str(o)) & familia]
+    estreitou = False
+    for _k, v in _valores_do_item(params):
+        palavras = _palavras_comparaveis(v)
+        if not palavras or len(v.split()) > _MAXIMO_DE_PALAVRAS_DO_ATRIBUTO:
+            continue
+        sub = [o for o in restantes if palavras <= _palavras_comparaveis(o)]
+        if sub and len(sub) < len(restantes):
+            restantes, estreitou = sub, True
+    return restantes[0] if estreitou and len(restantes) == 1 else ""
+
+
+def _resposta_do_questionario_no_caso(parada: Dict[str, Any], params: Optional[dict]) -> str:
+    """A opção do questionário que o segurado JÁ deu sob a chave QUE NOMEIA a pergunta. "" senão.
+
+    A mesma regra de "própria" do worker (`vidros_questionario._candidatos_para`: as palavras da CHAVE
+    conversam com as da pergunta) — e mais estrita: o valor é IGUAL a UMA opção (nunca parecido), todas
+    as chaves próprias concordam, e a resposta do segurado ETIQUETADA com o código desta pergunta, se
+    existe, manda (ela não casou → a pergunta é dele). 📊 Medido (03/10): o worker já responde toda
+    opção exata sob chave própria (8/8 perguntas reais × todas as opções, `telas_dom.py`) — esta regra é a
+    REDE para o que chegar ao destravador por outro caminho (o DOM, a continuação), nunca uma 2ª régua."""
+    try:
+        from portal_worker.journeys.vidros_questionario import _palavras as palavras_da_pergunta
+    except Exception:  # noqa: BLE001
+        return ""
+    slot = str(parada.get("slot") or "")
+    esp = (params or {}).get("especificos") if isinstance((params or {}).get("especificos"), dict) else {}
+    if str(esp.get(slot) or "").strip():
+        return ""
+    texto = parada.get("pergunta") or (parada.get("tela") or {}).get("campo") or ""
+    alvo = palavras_da_pergunta(texto)
+    opcoes = list(parada.get("opcoes") or [])
+    if not alvo or not opcoes:
+        return ""
+    achadas = {_opcao_igual(v, opcoes) for k, v in _valores_do_item(params)
+               if palavras_da_pergunta(k) & alvo}
+    achadas.discard("")
+    return next(iter(achadas)) if len(achadas) == 1 else ""
+
+
+def dado_do_caso_no_portal(parada: Dict[str, Any], params: Optional[dict]) -> str:
+    """🔴 SPEC-127 P4 — o valor que o CÓDIGO prova para uma parada CONDUZIR / RESPONDER COM DADO: a opção
+    da lista que é o CONTRATO (tipo de telefone) ou o DADO DO CASO sob outra chave (a peça que
+    `especificos` desambigua; a resposta do 80 % já dada). "" = o código não prova nada (a parada segue
+    a régua: rebaixa a DEDUZIR). ⛔ Nunca o modelo: a CLASSE e o VALOR saem daqui, da TABELA e do caso."""
+    stage = str(parada.get("stage") or "")
+    opcoes = list(parada.get("opcoes") or [])
+    if not opcoes:
+        return ""
+    if stage == "tipo_de_telefone_desconhecido":
+        try:
+            from portal_worker.journeys import vidros_apifirst as AF
+        except Exception:  # noqa: BLE001
+            return ""
+        contrato = AF.contrato_do_tipo_de_telefone(params or {}) or parada.get("contrato") or ""
+        return AF.opcao_do_tipo_de_telefone(opcoes, contrato)
+    if stage == "peca_ambigua":
+        return _peca_que_o_caso_desambigua(opcoes, params)
+    if stage == "questionario_incompleto":
+        return _resposta_do_questionario_no_caso(parada, params)
+    return ""
+
+
+def _nao_sabe(valor: Any) -> bool:
+    """🔴 SPEC-127 (P-124-07): "Não sabe" é resposta do SEGURADO, nunca do destravador — a MESMA regra do
+    worker (`vidros_questionario._e_nao_sabe`), importada, nunca reescrita."""
+    from portal_worker.journeys.vidros_questionario import _e_nao_sabe
+
+    return bool(_e_nao_sabe(valor))
 
 
 def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any], params: Optional[dict], *,
@@ -2517,7 +2727,7 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
         return d
 
     def perguntar(porque: str, classe: Optional[str] = None) -> Destravamento:
-        if not pode_perguntar:
+        if not pode_perguntar or stage in PARADAS_QUE_O_SEGURADO_NAO_RESPONDE:
             return pessoa(porque, classe)
         d = Destravamento(acao="PERGUNTAR_AO_SEGURADO", proibicao=porque,
                           valor=(parada.get("pergunta") or texto_da_parada(parada))[:400],
@@ -2537,19 +2747,41 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
     # ③ Só o segurado sabe.
     if classe_tab == "perguntar_ao_segurado":
         return perguntar("so_o_segurado_sabe")
-    # ④ DEDUZIR sem calibração: o NÚCLEO decide sem o modelo (a mesma régua; a 2ª opinião não é paga).
-    if classe_tab == "deduzir" and not calibrado:
-        v = regua_do_nucleo(Proposta(classe="deduzir", acao="RESPONDER", nota=None), limiar=lim,
+    # ③b 🔴 SPEC-127 P4 — CONDUZIR / RESPONDER COM DADO pelo CÓDIGO: o valor é o do CONTRATO ou do CASO
+    #    (`dado_do_caso_no_portal`), e segue a MESMA régua abaixo (o NUNCA sobre o valor, o "Não sabe", o
+    #    NÚCLEO). O modelo nem é chamado.
+    do_codigo = (dado_do_caso_no_portal(parada, params)
+                 if classe_tab in ("conduzir", "responder_com_dado") else "")
+    if stage in PARADAS_QUE_O_SEGURADO_NAO_RESPONDE and not do_codigo:
+        # o código não achou UMA opção do contrato: nem o segurado nem uma dedução (calibrada ou não)
+        # escolhem o tipo do telefone — o SMS do portal iria para outra pessoa
+        return pessoa("o_codigo_nao_conduziu")
+    # ④ Sem o dado do código e sem calibração: o NÚCLEO decide sem o modelo — CONDUZIR que não é
+    #    navegação e RESPONDER COM DADO que não é dado viram DEDUZIR, e o DEDUZIR desligado pergunta (a
+    #    mesma régua; a 2ª opinião não é paga).
+    #    (Exceção: RESPONDER COM DADO cujo CAMPO tem valor do caso NA LISTA — o modelo pode propô-lo e o
+    #    NÚCLEO o prova por `e_dado_do_caso`, como desde a SPEC-124.)
+    campo_na_lista = classe_tab == "responder_com_dado" and any(
+        _n(o) in valores_do_slot_no_portal(stage, str(parada.get("slot") or ""), params) for o in opcoes)
+    if classe_tab in ("deduzir", "conduzir", "responder_com_dado") and not do_codigo and not calibrado \
+            and not campo_na_lista:
+        v = regua_do_nucleo(Proposta(classe=classe_tab, acao="RESPONDER", nota=None), limiar=lim,
                             e_navegacao=lambda: False, e_dado_do_caso=lambda: False,
                             tem_opcoes=bool(opcoes), valor_nas_opcoes=lambda: False,
                             mesma_resposta=lambda _o: False)
         base["classe"] = v.classe
         base["porta_do_deduzir"] = v.porta
         return perguntar(v.porque)
-    if proposta is None:
+    if proposta is None and not do_codigo:
         return None
-    # ⑤ A saída do modelo.
-    p = proposta
+    # ⑤ A saída do modelo — ou a proposta do CÓDIGO (③b), que tem precedência: o dado provado vence.
+    if do_codigo:
+        p = Proposta(classe=classe_tab, acao="RESPONDER", valor=do_codigo, nota=None,
+                     motivo="dado do caso provado pelo codigo" if classe_tab == "responder_com_dado"
+                     else "a opcao do contrato, pelo codigo")
+        base.update(nota=None, motivo=p.motivo, formato_ok=True, acao_do_modelo="", valor_do_modelo="")
+    else:
+        p = proposta
     if not p.formato_ok:
         return pessoa(f"saida_invalida:{p.erro}", "nunca_sozinho")
     if p.acao == "PESSOA":
@@ -2573,6 +2805,9 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
 
         if AC._RX_AFIRMA_COBERTURA.search(valor or ""):
             return pessoa("afirma_cobertura")
+    # 🔴 SPEC-127 (P-124-07): "Não sabe" é do segurado — nunca sai daqui, nem do código, nem do modelo.
+    if _nao_sabe(opcao or valor):
+        return perguntar("nao_sabe_e_do_segurado")
     slot = str(parada.get("slot") or "")
     # 🔴 Conserto SPEC-124 (red team P1): o dado do caso é o do CAMPO que esta parada espera — e só
     # vale se for uma opção da lista (nunca texto livre; sem lista, nada é "dado").
@@ -2580,13 +2815,19 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
     if "inventar_dado" in ligadas and _numero_inventado(
             valor, {"slots": {str(i): x for i, x in enumerate(_folhas(params or {}))}}):
         return pessoa("inventar_dado")
-    # ⑦ O NÚCLEO. A classe é a da TABELA (o modelo não promove a parada); o código prova cada uma.
-    classe = classe_tab if classe_tab in ("conduzir", "responder_com_dado", "deduzir") else p.classe
+    # ⑦ O NÚCLEO. 🔴 A classe é SEMPRE a da TABELA (SPEC-127 P4): o modelo não promove a parada, e uma
+    # parada NUNCA cuja chave foi tirada (a mutação `nunca=`) não vira a classe que o modelo disse.
+    if classe_tab not in ("conduzir", "responder_com_dado", "deduzir"):
+        return pessoa("a_classe_da_tabela_nao_responde")
+    classe = classe_tab
+    # o CONDUZIR é navegação só na opção que o CÓDIGO provou (o contrato); o dado do caso é o do CAMPO
+    # da parada ou o que o código achou sob outra chave — nunca "uma opção qualquer da lista"
+    do_codigo_na_lista = _opcao_igual(do_codigo, opcoes) if do_codigo else ""
     v = regua_do_nucleo(
         Proposta(classe=classe, acao="RESPONDER", valor=valor, nota=p.nota, motivo=p.motivo),
         limiar=lim, provedor=provedor, segunda_opiniao=segunda_opiniao, pedir_segunda=pedir_segunda,
-        e_navegacao=lambda: classe_tab == "conduzir" and bool(opcao),
-        e_dado_do_caso=lambda: bool(opcao) and nv in do_slot,
+        e_navegacao=lambda: classe_tab == "conduzir" and bool(opcao) and opcao == do_codigo_na_lista,
+        e_dado_do_caso=lambda: bool(opcao) and (nv in do_slot or opcao == do_codigo_na_lista),
         tem_opcoes=bool(opcoes), valor_nas_opcoes=lambda: bool(opcao),
         mesma_resposta=lambda outro: _n(outro) == nv or (bool(opcao) and _opcao_igual(outro, opcoes) == opcao),
         deduzir_calibrado=bool(deduzir_calibrado),
@@ -2806,7 +3047,8 @@ async def _destravar_parada_do_portal(company_id: str, evidence: Any, params: An
     # SPEC-126 U6: a chave do DEDUZIR desta corretora × seguradora do pedido × `vidros` — lida só quando a
     # TABELA põe a parada no DEDUZIR (as outras classes não dependem dela)
     calibrado = False
-    if CLASSE_DA_PARADA_DO_PORTAL.get(parada.get("stage") or "") == "deduzir":
+    # SPEC-127 P4: CONDUZIR e RESPONDER COM DADO sem a prova do código também caem no DEDUZIR (o NÚCLEO)
+    if CLASSE_DA_PARADA_DO_PORTAL.get(parada.get("stage") or "") in ("deduzir", "conduzir", "responder_com_dado"):
         seg = chave_da_seguradora_do_portal(prm)
         calibrado = bool(seg) and await deduzir_calibrado(cid, seg, RAMO_DO_PORTAL)
     d = decidir_parada_do_portal(None, parada, prm, limiar=lim, modo=modo, deduzir_calibrado=calibrado)

@@ -22,10 +22,10 @@ O FIO (motor real; dublê SÓ na borda — o HAR do portal, o banco, o cliente d
   → `diario_de_decisoes.registrar_decisao` (real; o banco é dublê) — `perguntou_segurado`
   → NADA vai ao portal (nenhum job de continuação) → `format_result` (o caminho de hoje).
 
-E a FIAÇÃO de agir (para quando a calibração religar o DEDUZIR — aqui ligada por `monkeypatch`, nunca
-no produto): o questionário sem uma resposta (o HAR real sem `pergunta_140`) → `questionario_incompleto`
-com o slot ETIQUETADO `responder:pergunta_140` → o modelo + a 2ª opinião de OUTRO provedor → UM job de
-continuação do MESMO pedido → o motor real continua e para no reparo → NUNCA → pergunta.
+E a FIAÇÃO calibrada (aqui ligada por `monkeypatch`, nunca no produto): o questionário sem uma resposta
+(o HAR real sem `pergunta_140`) → `questionario_incompleto` com o slot ETIQUETADO `responder:pergunta_140`
+→ a resposta real é 📊 "NÃO SABE" → 🔴 SPEC-127 (P-124-07): nunca sai do destravador → pergunta ao segurado.
+(A fiação de AGIR, com uma resposta que não é "Não sabe", está em `test_spec127_p4_o_fio_do_destravador_no_replay`.)
 
 ⛔ Nenhuma mensagem sai (`_notify` dublado), nenhum portal real, nenhum banco real, nenhum modelo real.
 ⛔ Nenhum valor pessoal do HAR é impresso nem afirmado em texto.
@@ -433,17 +433,23 @@ def test_hoje_o_DEDUZIR_desligado_o_questionario_tambem_volta_ao_segurado(mundo)
     assert "deduzir_sem_calibracao" in banco.diario[0]["motivo"]
 
 
-def test_a_FIACAO_de_agir_quando_a_calibracao_religar(mundo, monkeypatch):
-    """⚠️ `DEDUZIR_AUTONOMO_CALIBRADO` ligado AQUI por monkeypatch (no produto: desligado). Prova que,
-    no dia em que a calibração religar, a resposta vai no slot ETIQUETADO (`pergunta_<codigo>`, conserto
-    red team P8) e continua o MESMO pedido pelo mecanismo da 001.10.1 até o desfecho, com UMA linha no diário."""
+def test_a_FIACAO_calibrada_nunca_responde_NAO_SABE_por_ele(mundo, monkeypatch):
+    """🔴 §9.3 — A LIÇÃO MIGROU (SPEC-127, P-124-07). Este teste provava a fiação de agir com o DEDUZIR
+    calibrado respondendo a `pergunta_140` com a resposta REAL do HAR — que é 📊 "NÃO SABE". Era o defeito
+    que a P-124-07 anotou: o destravador respondendo "Não sabe" por ele. Agora: modelo + 2ª opinião de OUTRO
+    provedor propondo "NÃO SABE" → NADA vai ao portal, o agente pergunta ao segurado, e o diário diz por quê.
+    A fiação de AGIR (calibrada, uma resposta que não é "Não sabe", continuação até o desfecho com 1 POST)
+    mudou para `test_spec127_p4_o_fio_do_destravador_no_replay.py::test_a_FIACAO_calibrada_*`."""
     monkeypatch.setattr(DT, "DEDUZIR_AUTONOMO_CALIBRADO", True)
     certa = " ".join(str(_BASE["especificos"][PERGUNTA_QUE_FALTA]).split()).lower()
     banco, params, ev = _montar(mundo, modos=[_modo(EMPRESA_A)], sem_pergunta=True)
     opcao = next(o for o in ev["opcoes"] if " ".join(o.split()).lower() == certa)
+    from portal_worker.journeys.vidros_questionario import _e_nao_sabe
+
+    assert _e_nao_sabe(opcao)                          # 📊 a resposta real do HAR É "não sabe"
     mundo["resposta"] = _resposta(opcao, classe="deduzir", nota=95)
 
-    class _Segunda:                                   # a borda: o cliente do OUTRO provedor
+    class _Segunda:
         async def ainvoke(self, mensagens):
             mundo["modelo"].append({"papel": "destravador_segunda", "mensagens": mensagens})
             return AIMessage(content=_resposta(opcao, classe="deduzir", nota=90),
@@ -452,30 +458,11 @@ def test_a_FIACAO_de_agir_quando_a_calibracao_religar(mundo, monkeypatch):
 
     monkeypatch.setattr(LF.LLMFactory, "create_llm", staticmethod(lambda *a, **k: _Segunda()))
     saida = _aguardar(EMPRESA_A, banco, params)
-
-    assert [c["papel"] for c in mundo["modelo"]] == ["destravador", "destravador_segunda"]
-    prompt = "\n".join(str(m.content) for m in mundo["modelo"][0]["mensagens"])
-    assert str(params["cpf_cnpj"]) not in prompt and str(params["placa"]) not in prompt   # sem PII ao modelo
-    cont = [j for j in banco.jobs if j["journey"] == "continuar_atendimento"]
-    assert len(cont) == 1 and len([j for j in banco.jobs if j["journey"] == "abrir_atendimento"]) == 1
-    c = cont[0]
-    assert c["params"]["_continuacao"]["respostas"] == {PERGUNTA_QUE_FALTA: opcao}
-    assert c["params"]["_pedido_key"] == params["_idempotency_key"]
-    assert c["params"]["_destravador"]["parada"] == "questionario_incompleto"
-    assert str(c["idempotency_key"]).startswith("cont:")
-    assert c["params"]["confirm"] is False            # o gate de hoje (`envio_liberado`) não mudou
-    assert banco.continuacoes_rodadas == 1
-    escritas = banco.paginas[0].escritas()
-    assert ("POST", "/atendimentos") not in [(m, p.split("?")[0]) for m, p in escritas]
-    # o MOTOR real continuou a partir do questionário: o pedido andou até o desfecho (o reparo foi
-    # decidido pelo próprio questionário neste HAR) — e o resultado é o de HOJE (`format_result`)
-    assert c["status"] == "done" and isinstance(c["evidence"].get("desfecho"), dict)
-    assert c["evidence"].get("continuacao_pedida") is not None
-    assert [d["acao"] for d in banco.diario] == ["respondeu_portal"]
-    assert banco.diario[0]["classe"] == "deduzir"
-    assert "respondeu ao portal" in banco.diario[0]["explicacao_para_gente"]
-    assert saida == {"content": PP.format_result(c)}
-    assert mundo["notificacoes"] == []
+    assert [c["papel"] for c in mundo["modelo"]] == ["destravador"]       # parou antes da 2ª opinião
+    assert [j["journey"] for j in banco.jobs] == ["abrir_atendimento"] and banco.continuacoes_rodadas == 0
+    assert [(d["acao"], d["classe"]) for d in banco.diario] == [("perguntou_segurado", "responder_com_dado")]
+    assert "nao_sabe_e_do_segurado" in banco.diario[0]["motivo"]
+    assert saida == {"content": PP.format_result(banco.jobs[0])}
 
 
 def test_o_teto_por_pedido_devolve_o_caminho_de_hoje(mundo):

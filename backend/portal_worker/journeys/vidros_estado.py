@@ -277,7 +277,11 @@ ORDEM_DAS_ETAPAS: Tuple[str, ...] = (
 
 ETAPA_DA_PARADA: Dict[str, Tuple[str, str]] = {
     "corretor_recusado": (ETAPA_CONTATO, "reler"),
-    "tipo_de_telefone_desconhecido": (ETAPA_CONTATO, "reler"),
+    # 🔴 SPEC-127 P4: o tipo do telefone é CONTRATO nosso (D-E00110-01) — quem o CONDUZ é o destravador
+    # (a opção da lista do portal que é o contrato, pelo código), e a resposta volta ao MESMO pedido.
+    # Era `reler`: a releitura lia a MESMA lista e parava no MESMO lugar. Sem o destravador (modo off,
+    # ou nenhuma opção é o contrato), a tool devolve o texto de hoje e o vigia relê como antes.
+    "tipo_de_telefone_desconhecido": (ETAPA_CONTATO, "responder:tipo_telefone"),
     "solicitante_recusado": (ETAPA_CONTATO, "reler"),
     "catalogo_indisponivel": (ETAPA_PECA, "reler"),
     "peca_ambigua": (ETAPA_PECA, "responder:peca"),
@@ -367,6 +371,56 @@ ETAPA_ANTES_DA_FRONTEIRA: Dict[str, Tuple[str, str]] = {
     PARADA_REGRA_DESCONHECIDA: (ETAPA_ABERTURA, ""),
     PARADA_ABERTURA_SEM_RESPOSTA: (ETAPA_ABERTURA, ""),
 }
+
+
+# --------------------------------------------------------------------------
+# 🔴 SPEC-127 P8 — a parada leva a TELA, não só o resumo do código
+# --------------------------------------------------------------------------
+# O destravador do WhatsApp lê a tela inteira da URA; o do portal lia só "o que faltava" + a lista.
+# Cada parada do API-first agora grava `evidence["tela_da_parada"]` com a tela que a atendente veria
+# naquele passo: o título, o CAMPO que pede a resposta, os rótulos dos campos da tela, as opções REAIS
+# (as do portal, da resposta da API) e o que ainda é obrigatório. constante_justificada: 📊 os rótulos
+# são LITERAIS das telas reais do intake (`tests/fixtures/vidros/telas_dom.py`, gerada do HTML por
+# `tests/_arvore_do_html.py`): `yelum_parabrisa_50_peca_causa`, `yelum_contato_20`, `porto_cidade`,
+# `yelum_lataria_pecas`; o título é o `heading` delas ("Dados da apólice", o mesmo nas 11 telas).
+TITULO_DA_TELA = "Dados da apólice"
+_TELA_PECA_E_CAUSA = ("Qual foi a peça danificada?", "Como ocorreu o dano ao veículo?",
+                      "Onde ocorreu o dano ao veículo?", "Descreva como aconteceu (mín. 30 caracteres)")
+_TELA_CIDADE = ("Selecione o estado onde deseja ser atendido.",
+                "Escolha a cidade disponível para atendimento.", "CEP (opcional)")
+_TELA_CONTATO = ("Sua relação com o titular?", "Tipo de telefone", "Seu nome completo (solicitante)",
+                 "CPF ou CNPJ (solicitante)", "Telefone")
+_TELA_LATARIA = ("Peça danificada", "Motivo do dano")
+
+#: stage → (o CAMPO que a parada pede, os rótulos da tela daquele passo). Fora daqui: só o resumo.
+CAMPO_DA_TELA_DA_PARADA: Dict[str, Tuple[str, Tuple[str, ...]]] = {
+    "peca_ambigua": (_TELA_PECA_E_CAUSA[0], _TELA_PECA_E_CAUSA),
+    "faltou_peca": (_TELA_PECA_E_CAUSA[0], _TELA_PECA_E_CAUSA),
+    "motivo_ambiguo": (_TELA_PECA_E_CAUSA[1], _TELA_PECA_E_CAUSA),
+    "faltou_como": (_TELA_PECA_E_CAUSA[1], _TELA_PECA_E_CAUSA),
+    "faltou_onde": (_TELA_PECA_E_CAUSA[2], _TELA_PECA_E_CAUSA),
+    "faltou_descricao": (_TELA_PECA_E_CAUSA[3], _TELA_PECA_E_CAUSA),
+    "uf_desconhecida": (_TELA_CIDADE[0], _TELA_CIDADE),
+    "cidade_ambigua": (_TELA_CIDADE[1], _TELA_CIDADE),
+    "cidade_sem_rede": (_TELA_CIDADE[1], _TELA_CIDADE),
+    "faltou_cidade_servico": (_TELA_CIDADE[1], _TELA_CIDADE),
+    "tipo_de_telefone_desconhecido": (_TELA_CONTATO[1], _TELA_CONTATO),
+    "pecas_de_lataria_ausentes": (_TELA_LATARIA[0], _TELA_LATARIA),
+    "peca_de_lataria_ambigua": (_TELA_LATARIA[0], _TELA_LATARIA),
+}
+
+
+def tela_da_parada(stage: Any, *, opcoes: Any = None, pergunta: Any = "") -> Dict[str, Any]:
+    """A TELA da parada (P8), no MESMO formato que o DOM grava (`adaptive._registrar_parada`:
+    título, campo, obrigatórios vazios). **PURA.** O questionário: o campo É a pergunta do portal."""
+    st = str(stage or "").strip()
+    campo, rotulos = CAMPO_DA_TELA_DA_PARADA.get(st, ("", ()))
+    perg = " ".join(str(pergunta or "").split())[:300]
+    if st == "questionario_incompleto" and perg:
+        campo, rotulos = perg, (perg,)
+    lista = [" ".join(str(o).split()) for o in (opcoes or []) if str(o or "").strip()][:60]
+    return {"origem": "api_first", "heading": TITULO_DA_TELA if campo else "", "campo": campo,
+            "rotulos": list(rotulos), "opcoes": lista, "pending_required": [campo] if campo else []}
 
 
 def etapa_da_parada(stage: Any) -> Tuple[str, str]:

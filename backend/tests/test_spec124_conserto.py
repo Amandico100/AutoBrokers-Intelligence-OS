@@ -2,8 +2,10 @@
 """SPEC-124 — o CONSERTO ÚNICO (juiz B1/P3 · red team B1/P1/P8). Puro: nenhum banco, nenhum modelo.
 
 🔴 A VERDADE QUE ESTE ARQUIVO GUARDA: com o DEDUZIR desligado (sem calibração), o destravador do
-portal NÃO RESPONDE NENHUMA PARADA SOZINHO. Toda parada volta ao caminho de hoje (o agente pergunta ao
-segurado, ou a equipe nas paradas NUNCA), com a linha do diário dizendo o que aconteceu de fato.
+portal NÃO DEDUZ NADA. (§9.3, SPEC-127 P4: até o P4 era "não responde NENHUMA parada"; agora o CÓDIGO
+conduz o tipo de telefone e responde a peça que `especificos` desambigua — só o que ele PROVA.) Toda outra
+parada volta ao caminho de hoje (o agente pergunta ao segurado, ou a equipe nas paradas NUNCA), com a linha
+do diário dizendo o que aconteceu de fato.
 
 C1  `uf_desconhecida` é do SEGURADO: a UF que ele escreveu não está na lista do portal; qualquer UF da
     lista seria OUTRA (a cidade homônima). E a UF só vai ao portal como SIGLA que está na LISTA.
@@ -99,19 +101,54 @@ def test_C1_a_uf_so_sai_como_SIGLA_que_esta_na_LISTA_da_parada():
                                      opcoes=lista + [livre]) == {}, livre                    # não é sigla
 
 
-@pytest.mark.parametrize("stage", sorted(DT.CLASSE_DA_PARADA_DO_PORTAL) + ["parada_inventada"])
-def test_C1_HOJE_o_destravador_do_portal_nao_responde_NENHUMA_parada_sozinho(stage):
-    """DEDUZIR desligado: toda parada × a saída mais agressiva do modelo (nota 100, 2ª opinião de outro
-    provedor concordando, cada classe) → nada vai ao portal."""
-    assert DT.DEDUZIR_AUTONOMO_CALIBRADO is False
-    opcoes = ["SC", "Pedra", "tentar o reparo", "Sim"]
-    for slot in ("cidade_servico", "como", "peca", "pergunta_140", "aceita_reparo"):
+#: 🔴 §9.3 — A LIÇÃO MIGROU (SPEC-127 P4). Esta guarda afirmava "o destravador do portal não responde
+#: NENHUMA parada sozinho". Era verdade até o P4: agora o CÓDIGO conduz o tipo de telefone (a opção do
+#: CONTRATO) e responde a peça que `especificos` desambigua — dado PROVADO, nunca deduzido. O que ela
+#: protegia continua testado, mais forte: SEM CALIBRAÇÃO NADA É DEDUZIDO, e o que responde é EXATAMENTE o
+#: que o código prova (nunca o valor do modelo, nunca classe `deduzir`). E a linha de CONTROLE prova que a
+#: guarda consegue ver diferença: nas opções de sempre (sem prova do código), NADA responde — a de antes.
+#: 💭 Caso fictício; as opções são as REAIS do portal (`tests/fixtures/vidros/`).
+CASO_P4 = {**CASO, "dano": {**CASO["dano"], "peca": "lanterna"}, "contato": {"tipo_telefone": "segurado"},
+           "especificos": {"peca": "lanterna", "lanterna_posicao": "da frente"}}
+OPCOES_SEM_PROVA = ["SC", "Pedra", "tentar o reparo", "Sim"]
+OPCOES_COM_PROVA = ["COMERCIAL", "CELULAR DO SEGURADO", "CELULAR CORRETOR", "LANTERNA DIANTEIRA CONVENCIONAL",
+                    "LANTERNA TRASEIRA NEBLINA", "LANTERNA TRASEIRA BI-PARTIDA MALA LED", "Não Sabe"]
+SLOTS = ("cidade_servico", "como", "peca", "pergunta_140", "aceita_reparo", "tipo_telefone")
+
+
+def _decisoes(stage, opcoes, caso):
+    for slot in SLOTS:
         parada = {"stage": stage, "operacao": "responder", "slot": slot, "opcoes": opcoes}
+        prova = DT.dado_do_caso_no_portal(parada, caso)
         for valor in opcoes + ["aceito a franquia de R$ 300", "cancelar pedido", "123456789"]:
             for classe in ("responder_com_dado", "conduzir", "deduzir"):
-                d = DT.decidir_parada_do_portal(P(valor, classe=classe), parada, CASO, provedor="openai",
+                d = DT.decidir_parada_do_portal(P(valor, classe=classe), parada, caso, provedor="openai",
                                                 segunda_opiniao=_segunda(valor))
-                assert d.acao != "RESPONDER", (stage, slot, valor, classe)
+                yield slot, valor, classe, prova, d
+
+
+@pytest.mark.parametrize("stage", sorted(DT.CLASSE_DA_PARADA_DO_PORTAL) + ["parada_inventada"])
+def test_C1_HOJE_sem_calibracao_NADA_e_deduzido_no_portal_so_responde_o_que_o_CODIGO_prova(stage):
+    """DEDUZIR desligado: toda parada × a saída mais agressiva do modelo (nota 100, 2ª opinião de outro
+    provedor concordando, cada classe) → o que vai ao portal é SÓ o que o código prova (P4)."""
+    assert DT.DEDUZIR_AUTONOMO_CALIBRADO is False
+    for slot, valor, classe, prova, d in _decisoes(stage, OPCOES_COM_PROVA, CASO_P4):
+        if d.acao == "RESPONDER":
+            assert d.classe in ("conduzir", "responder_com_dado") and d.classe != "deduzir", (stage, slot, d)
+            assert prova and d.valor == prova and d.acao_do_modelo == "", (stage, slot, valor, classe, d.valor)
+            assert d.porta_do_deduzir is False
+    # CONTROLE (a guarda de antes, intacta): sem prova do código, NENHUMA parada responde
+    for slot, valor, classe, _prova, d in _decisoes(stage, OPCOES_SEM_PROVA, CASO):
+        assert d.acao != "RESPONDER", (stage, slot, valor, classe)
+
+
+def test_C1_HOJE_CONTROLE_a_guarda_consegue_ver_diferenca():
+    """§9.3 corolário: a guarda acima só guarda se o código DE FATO responde em algum lugar — o tipo de
+    telefone (o contrato) e a peça (o que `especificos` desambigua). Sem isto ela seria um carimbo."""
+    respondeu = {(st, d.valor) for st in ("tipo_de_telefone_desconhecido", "peca_ambigua")
+                 for _s, _v, _c, _p, d in _decisoes(st, OPCOES_COM_PROVA, CASO_P4) if d.acao == "RESPONDER"}
+    assert respondeu == {("tipo_de_telefone_desconhecido", "CELULAR DO SEGURADO"),
+                         ("peca_ambigua", "LANTERNA DIANTEIRA CONVENCIONAL")}
 
 
 # ═════════════════════════════════════════════════════════════════════════════

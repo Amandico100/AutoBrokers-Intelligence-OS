@@ -459,6 +459,46 @@ def _codigo_do_tipo_de_telefone(tipos: Any, dono: str) -> Optional[int]:
     return None
 
 
+def contrato_do_tipo_de_telefone(params: Dict[str, Any]) -> str:
+    """O NOME do tipo de telefone que o contrato manda (`CELULAR SEGURADO`/`CELULAR CORRETOR`). **PURA.**"""
+    return TIPO_TELEFONE_POR_DONO.get(str(_contato_de(params or {})["tipo_telefone"]).strip().lower(), "")
+
+
+def opcao_do_tipo_de_telefone(opcoes: Any, contrato: Any) -> str:
+    """🔴 SPEC-127 P4 — a opção da LISTA DO PORTAL que É o contrato, quando o nome exato sumiu. **PURA.**
+
+    A regra é UMA (o destravador a usa para CONDUZIR; `_fase_contato`, para aplicar a escolha): a
+    opção tem TODAS as palavras do contrato (`celular` + `segurado`) e NENHUMA do outro dono, e é a
+    ÚNICA assim. 💭 "CELULAR DO SEGURADO" é o contrato; "CELULAR CORRETOR" nunca é — o SMS do portal
+    iria para outra pessoa. Duas candidatas, ou nenhuma = "" (quem decide é uma pessoa)."""
+    def palavras(t: Any) -> set:
+        return set(re.findall(r"[a-z0-9]+", _norm(t)))
+
+    alvo = palavras(contrato)
+    if not alvo:
+        return ""
+    outros = {p for nome in TIPO_TELEFONE_POR_DONO.values() for p in palavras(nome)} - alvo
+    achadas = [str(o) for o in (opcoes or [])
+               if alvo <= palavras(o) and not (outros & palavras(o))]
+    return achadas[0] if len(achadas) == 1 else ""
+
+
+def _codigo_do_tipo_escolhido(tipos: Any, escolhido: Any, contrato: str) -> Optional[int]:
+    """O código da opção que a CONTINUAÇÃO trouxe (`especificos.tipo_telefone`, escolhida pelo
+    destravador) — só se ela é IGUAL a uma `Descricao` da lista E passa a mesma regra do contrato."""
+    rotulos = [str(t.get("Descricao") or "") for t in (tipos or []) if isinstance(t, dict)]
+    opcao = opcao_do_tipo_de_telefone(rotulos, contrato)
+    if not opcao or _norm(opcao) != _norm(escolhido):
+        return None
+    for t in tipos or []:
+        if isinstance(t, dict) and str(t.get("Descricao") or "") == opcao:
+            try:
+                return int(t.get("Codigo"))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 def termo_exibido(corpo: Dict[str, Any]) -> bool:
     """A regra LITERAL do SPA para `TermoExibido` (laudo §8, offset ~107338).
 
@@ -725,6 +765,9 @@ def _parar(ex: Execucao, stage: str, mensagem: str, **capturado: Any) -> Journey
     ex.evidence["vidros_estado"] = ex.estado.para_evidencia()
     ex.evidence["api_first"] = {"usado": True, "parou_em": stage,
                                 **ex.sessao.resumo_para_evidencia()}
+    # 🔴 SPEC-127 P8 — a TELA da parada (campo, rótulos, opções REAIS, obrigatórios), não só o resumo
+    ex.evidence["tela_da_parada"] = ST.tela_da_parada(stage, opcoes=capturado.get("opcoes"),
+                                                      pergunta=capturado.get("pergunta"))
     etapa, acao = ST.etapa_da_parada(stage)
     if acao == "responder:pergunta" and capturado.get("codigo_pergunta"):
         # 🔴 COSTURA (EXTRA-001.10.1): a resposta volta ETIQUETADA com o código
@@ -763,6 +806,8 @@ def _parar_antes_da_fronteira(ex: Execucao, stage: str, mensagem: str,
     ex.evidence["api_first"] = {"usado": True, "parou_em": stage,
                                 "antes_da_fronteira": True,
                                 **ex.sessao.resumo_para_evidencia()}
+    # 🔴 SPEC-127 P8 — a TELA do passo que falta (o campo que a atendente preencheria)
+    ex.evidence["tela_da_parada"] = ST.tela_da_parada(stage, opcoes=capturado.get("opcoes"))
     ex.evidence["continuacao"] = {
         "sessao_cifrada": "",
         "emitida_em": datetime.now(_tz.utc).isoformat(timespec="seconds"),
@@ -1121,11 +1166,21 @@ async def _fase_contato(ex: Execucao) -> Optional[JourneyResult]:
     rt_tel = await sessao.tipos_de_telefone()
     codigo_tipo = _codigo_do_tipo_de_telefone(rt_tel.get("json"),
                                               contato["tipo_telefone"])
+    contrato = TIPO_TELEFONE_POR_DONO.get(str(contato["tipo_telefone"]).strip().lower(), "")
+    if codigo_tipo is None and str(ex.especificos.get("tipo_telefone") or "").strip():
+        # 🔴 SPEC-127 P4 — a continuação trouxe a opção que o destravador CONDUZIU: vale só se é
+        # IGUAL a uma da lista E passa a mesma regra do contrato (nunca o tipo de outro dono).
+        codigo_tipo = _codigo_do_tipo_escolhido(rt_tel.get("json"),
+                                                ex.especificos.get("tipo_telefone"), contrato)
     if codigo_tipo is None:
         _tela_desconhecida(evidence, onde=API.EP_TIPOS_TELEFONE, resposta=rt_tel)
         return _parar(ex, "tipo_de_telefone_desconhecido",
                       "o pedido foi aberto e a lista de tipos de telefone do "
-                      "portal nao trouxe o tipo esperado. NAO reexecute.")
+                      "portal nao trouxe o tipo esperado. NAO reexecute.",
+                      # P4/P8: as opções REAIS do portal e o contrato (nome, nunca dado de pessoa)
+                      opcoes=_rotulos(rt_tel.get("json") if isinstance(rt_tel.get("json"), list)
+                                      else [], "Descricao"),
+                      tipo_telefone_do_contrato=contrato)
 
     corpo_sol = _corpo_do_solicitante(contato, codigo_tipo_telefone=codigo_tipo)
     rsol = await sessao.registrar_solicitante(corpo_sol)
