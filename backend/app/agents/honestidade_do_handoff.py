@@ -557,10 +557,68 @@ _RX_SUJEITO_ANTERIOR = re.compile(r"(?i)\b(?:anterior|antig[oa])\s+(?:\S+\s+){0,
 #: "pronto/feito/tudo certo" no começo da frase é o agente anunciando o que diz ter feito.
 _RX_ANUNCIO_DE_FEITO = re.compile(
     r"(?i)^\W*(?:pronto|prontinho|feito|tudo\s+certo|certo|ok|perfeito|resolvido|beleza)\b")
+#: 🔴 CONSERTO 5 (BE-2) — e no começo da RESPOSTA, não só da frase: 📊 "Feito! O guincho foi cancelado
+#:    pela seguradora." passava intacta (o "Feito!" é outra frase). constante_justificada: só quando a
+#:    1ª frase é SÓ o anúncio ("Feito!", "Tudo bem.", "Pronto!") — "Certo, vou verificar." não anuncia
+#:    feito nenhum e não tira a exceção do fato de terceiro das frases seguintes. E essa frase sai junto
+#:    quando a afirmação que ela anunciava sai ("Feito! Ainda não está cancelado" se contradiz).
+_RX_SO_ANUNCIO = re.compile(
+    r"(?i)^\W*(?:pronto|prontinho|feito|tudo\s+certo|tudo\s+bem|certo|certinho|ok|perfeito|resolvido"
+    r"|beleza|combinado)\W*$")
 
 
-def _participio_afirmado(texto: str) -> bool:
-    """Há um particípio de cancelar AFIRMADO como feito? **PURA.**"""
+def _resposta_abre_anunciando(texto: str) -> bool:
+    """A 1ª frase da RESPOSTA é só o anúncio do feito? **PURA.**"""
+    primeira = _RX_FRASE.search(str(texto or ""))
+    return bool(primeira and _RX_SO_ANUNCIO.search(primeira.group(0)))
+#: 🔴 SPEC-126 CONSERTO 5 (BE-2 do juiz de escalação) — o fato de terceiro olhava QUEM cancelou, não O
+#:    QUÊ. 📊 `escal126/compara.py` (03/10): "O guincho foi cancelado pela seguradora", "Seu guincho foi
+#:    cancelado pelo sistema", "Seu guincho consta como cancelado", "O guincho anterior foi cancelado",
+#:    "Seu chaveiro foi dispensado pela assistência" — 9 de 9 passavam intactas, e é a mentira da D4.
+#:    constante_justificada: o SUJEITO que é o serviço/pedido DESTE acionamento — os serviços que a
+#:    ferramenta aciona e as palavras com que o atendimento nomeia o pedido. Com ele, a exceção só vale se
+#:    uma ferramenta DO TURNO trouxe o status (`_status_de_cancelado_na_tool`); sem como saber, reescreve.
+#:    ⛔ Ficam fora de propósito: "prestador ANTERIOR/antigo" (a troca que a seguradora relata — pend. 3),
+#:    "sinistro", "vistoria/agendamento" (a agenda), "protocolo" e "assistência" (o agente da passiva).
+_RX_SUJEITO_E_O_SERVICO = re.compile(
+    r"(?i)\b(?:guinchos?|reboques?|socorros?|chaveiros?|t[ée]cnicos?|eletricistas?|encanador(?:es)?"
+    r"|vidraceiros?|mec[âa]nicos?|prestador(?:es)?(?!\s+(?:anterior|antig))|pedidos?|acionamentos?"
+    r"|chamados?|servi[çc]os?|solicita[çc](?:[ãa]o|[õo]es)|atendimentos?)\b")
+#: os auxiliares/advérbios que sobram numa oração cortada pela vírgula ("O guincho, infelizmente, FOI
+#: cancelado") — quando só eles sobram, o sujeito está antes, na frase.
+_SO_AUXILIARES = frozenset({
+    "foi", "foram", "esta", "está", "estao", "estão", "ficou", "ficaram", "ja", "já", "infelizmente",
+    "tambem", "também", "entao", "então", "agora", "consta", "constam", "aparece", "aparecem", "como",
+    "e", "mas", "porem", "porém", "que", "inclusive", "acabou", "de", "ser"})
+#: o STATUS de cancelado trazido por uma FERRAMENTA do turno (📊 `portal_params.py:1720`
+#: "A seguradora mostra este atendimento como cancelado"; o agregado `Cancelado=true`). ⛔ "será
+#: cancelado" (o aviso do modo teste do acionamento) é futuro, não status.
+_RX_STATUS_DE_CANCELADO = re.compile(
+    r"(?i)\b(?:como|est[áa]|consta|constam|aparece|status|situa[çc][ãa]o)\W{0,3}"
+    r"(?:cancelad|dispensad|desmarcad)[oa]s?\b"
+    r"|\b(?:cancelad|dispensad|desmarcad)[oa]s?\W{0,3}[=:]\s*\W?(?:true|sim|1)\b")
+
+
+def _status_de_cancelado_na_tool(resultados_das_tools: Optional[Iterable]) -> bool:
+    """Alguma FERRAMENTA deste turno trouxe o status "cancelado"? **PURA.**"""
+    return any(_RX_STATUS_DE_CANCELADO.search(str(getattr(m, "content", "") or ""))
+               for m in (resultados_das_tools or []))
+
+
+def _sujeito_e_o_servico(antes: str, oracao_antes: str, palavras: list) -> bool:
+    """O que se diz cancelado é o serviço/pedido DESTE acionamento? Lê a oração antes do particípio;
+    se ela é só auxiliar ("…, foi cancelado"), lê a frase até ali. **PURA.**"""
+    if any(p not in _SO_AUXILIARES for p in palavras):
+        return bool(_RX_SUJEITO_E_O_SERVICO.search(oracao_antes))
+    return bool(_RX_SUJEITO_E_O_SERVICO.search(antes))
+
+
+def _participio_afirmado(texto: str, *, anunciado: bool = False, status_na_tool: bool = False) -> bool:
+    """Há um particípio de cancelar AFIRMADO como feito? **PURA.**
+
+    `anunciado`: a RESPOSTA abre anunciando o feito ("Feito! …") — vale para todas as frases dela.
+    `status_na_tool`: uma ferramenta do turno trouxe o status "cancelado" (só ela sustenta o fato de
+    terceiro sobre o serviço/pedido deste acionamento)."""
     for frase in _RX_FRASE.finditer(texto):
         corpo = frase.group(0)
         if corpo.rstrip().endswith("?"):
@@ -580,12 +638,16 @@ def _participio_afirmado(texto: str) -> bool:
             if _RX_STATUS_DO_SISTEMA.search(oracao):
                 continue
             # CONSERTO 2 (pend. 3): o fato de TERCEIRO — passiva com o agente de fora, "consta como",
-            # o sujeito anterior — salvo quando a frase abre anunciando o feito ("Pronto, …")
-            if not _RX_ANUNCIO_DE_FEITO.search(corpo) and (
-                    _RX_AGENTE_DE_FORA.search(depois[: fim.start()] if fim else depois)
-                    or _RX_CONSTA_COMO.search(oracao_antes)
-                    or _RX_SUJEITO_ANTERIOR.search(re.sub(r"(?i)\b(?:foi|foram|est[áa]|est[ãa]o|ficou|"
-                                                          r"ficaram|j[áa])\s+", "", oracao_antes))):
+            # o sujeito anterior — salvo quando a frase (CONSERTO 5: ou a resposta) abre anunciando o
+            # feito ("Pronto, …"), e salvo (CONSERTO 5) quando o que se diz cancelado é o serviço/pedido
+            # deste acionamento sem uma ferramenta do turno que traga esse status.
+            if (not anunciado and not _RX_ANUNCIO_DE_FEITO.search(corpo)
+                    and (status_na_tool or not _sujeito_e_o_servico(antes, oracao_antes, palavras))
+                    and (
+                        _RX_AGENTE_DE_FORA.search(depois[: fim.start()] if fim else depois)
+                        or _RX_CONSTA_COMO.search(oracao_antes)
+                        or _RX_SUJEITO_ANTERIOR.search(re.sub(r"(?i)\b(?:foi|foram|est[áa]|est[ãa]o|ficou|"
+                                                              r"ficaram|j[áa])\s+", "", oracao_antes)))):
                 continue
             return True
     return False
@@ -597,13 +659,20 @@ NOTA_DO_CANCELAMENTO_SEM_FERRAMENTA = (
     "serviço só para quando ela confirmar.")
 
 
-def afirma_cancelamento(texto: str) -> bool:
-    """A resposta afirma que um cancelamento ACONTECEU (ou que ELE o pediu à seguradora)?"""
+def afirma_cancelamento(texto: str, resultados_das_tools: Optional[Iterable] = None, *,
+                        _anunciado: Optional[bool] = None) -> bool:
+    """A resposta afirma que um cancelamento ACONTECEU (ou que ELE o pediu à seguradora)?
+
+    CONSERTO 5: `resultados_das_tools` (as ToolMessages do turno) só servem para o fato de terceiro
+    sobre o serviço deste acionamento; sem elas, o lado seguro (afirma). `_anunciado` é passado pelo
+    fiscal ao reler frase por frase — o "Feito!" do começo da RESPOSTA vale para todas."""
     texto = str(texto or "")
     # a PERGUNTA não afirma nada ("O guincho está cancelado?" — 📊 era reescrita na U4)
     afirmativas = " ".join(f.group(0) for f in _RX_FRASE.finditer(texto)
                            if not f.group(0).rstrip().endswith("?"))
-    return bool(_AFIRMACOES_DE_CANCELAMENTO.search(afirmativas)) or _participio_afirmado(texto)
+    anunciado = _resposta_abre_anunciando(texto) if _anunciado is None else _anunciado
+    return bool(_AFIRMACOES_DE_CANCELAMENTO.search(afirmativas)) or _participio_afirmado(
+        texto, anunciado=anunciado, status_na_tool=_status_de_cancelado_na_tool(resultados_das_tools))
 
 
 def _houve_cancelamento_confirmado(resultados_das_tools: Optional[Iterable]) -> bool:
@@ -618,10 +687,14 @@ def _sem_o_cancelamento_sem_ancora(texto: str, resultados: list) -> str:
     """Tira as FRASES que afirmam cancelamento sem carimbo e põe a nota honesta no fim. **PURA.**
     A frase inteira sai (não só a oração): "cancelei o guincho, pode ficar tranquilo" — o
     "pode ficar tranquilo" é consequência do cancelamento inventado."""
-    if not afirma_cancelamento(texto) or _houve_cancelamento_confirmado(resultados):
+    if not afirma_cancelamento(texto, resultados) or _houve_cancelamento_confirmado(resultados):
         return texto
+    anunciado = _resposta_abre_anunciando(texto)
+    # CONSERTO 5: cada frase é relida com o anúncio da RESPOSTA, e a frase que é SÓ o anúncio
+    # ("Feito!") sai com a afirmação que anunciava — "Feito! Ainda não está cancelado" se contradiz.
     sobra = " ".join(f.group(0).strip() for f in _RX_FRASE.finditer(texto)
-                     if not afirma_cancelamento(f.group(0))).strip()
+                     if not afirma_cancelamento(f.group(0), resultados, _anunciado=anunciado)
+                     and not _RX_SO_ANUNCIO.search(f.group(0))).strip()
     logger.error("[HANDOFF] 🔴 resposta afirmava CANCELAMENTO sem ferramenta — reescrita (D4/T5)")
     return " ".join(p for p in (sobra, NOTA_DO_CANCELAMENTO_SEM_FERRAMENTA) if p)
 

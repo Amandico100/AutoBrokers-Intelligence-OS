@@ -135,7 +135,9 @@ FATO_DE_TERCEIRO = [
     "O sinistro foi cancelado pela seguradora em 10/09.",
     "O prestador anterior foi dispensado e um novo está a caminho.",
     "Sua vistoria foi desmarcada pela seguradora, quer remarcar?",
-    "O pedido consta como cancelado no sistema da seguradora.",
+    # 🔴 CONSERTO 5 (§9.3 — a lição MIGRA): "O pedido consta como cancelado…" saiu daqui — o sujeito é o PEDIDO
+    #    deste acionamento: sem a ferramenta do turno trazer o status, é reescrito (test_spec126_conserto5_…
+    #    ::test_be2_o_pedido_que_consta_como_cancelado_so_com_a_ferramenta prova os dois lados)
     "Esse protocolo foi cancelado pelo sistema, vou abrir outro com você.",
     "Sua apólice consta como cancelada.", "A parcela 3 está cancelada.",
 ]
