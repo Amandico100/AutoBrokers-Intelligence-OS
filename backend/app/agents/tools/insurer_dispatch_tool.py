@@ -869,14 +869,27 @@ _RX_SIM_DO_SEGURADO = re.compile(
     r"perfeito|manda|mande|bora|aham|uhum|yes|fechado|combinado|ta\s+certo|ta\s+bom|"
     r"esta\s+certo|esta\s+correto|tudo\s+certo|isso\s+mesmo|aciona|acione|segue|siga|"
     r"fechou|fexou|vai\s+la)\b"
-    r"|^\W*[\U0001F44D✅\U0001F44C]"
+    # 🔴 SPEC-126 CONSERTO Y (RT-P1): 👌 SAIU — é "ok" para uns e "beleza, entendi" para outros
+    #    (conf-158, gabarito outra_coisa escrito antes). 👍 e ✅ ficam: o Founder listou o 👍 (D5)
+    #    e o ✅ é o rótulo do botão "✅ Pode acionar". constante_justificada: errar para cá custa
+    #    UMA confirmação a mais; para lá, um guincho que não se desfaz (T8).
+    r"|^\W*[\U0001F44D✅]"
     # N1: o segurado irritado depois de uma confirmação repetida — "já falei que sim"
     r"|\bja\s+(?:falei|disse|confirmei|respondi)\s+(?:que\s+)?(?:sim|pode|isso)\b")
 
 #: Uma ORAÇÃO que é só o "não" (ou um "está errado") — "não" + vírgula + "pode mandar" é o
 #: "não" de OUTRA pergunta ("alguém se machucou?") seguido do sim (N1 do laudo).
 _RX_NAO_DO_SEGURADO = re.compile(
-    r"^\W*(?:nao|n|negativo|errado|errada|nunca)\W*$|^\W*nao\s+(?:pode|quero|precisa|manda|e\s+(?:isso|esse|essa))\b")
+    r"^\W*(?:(?:ah|ai|opa|eita|ops|epa|xi|hum+|hmm+)\W+)?(?:nao|n|negativo|errado|errada|nunca)\W*$|"
+    r"^\W*nao\s+(?:pode|quero|precisa|manda|e\s+(?:isso|esse|essa))\b")
+#: a oração que é SÓ o "não" (com a interjeição: "ah não", "opa, não") — 🔴 CONSERTO Y: ANTES do sim
+#: é o "não" de outra pergunta (N1: "Não, ninguém se machucou. Pode mandar"); DEPOIS do sim é a
+#: RETIRADA ("sim. ah não, era pro carro da minha esposa" — conf-160).
+_RX_NAO_SOZINHO = re.compile(r"\W*(?:(?:ah|ai|opa|eita|ops|epa|xi|hum+|hmm+)\W+)?(?:nao|n|negativo|nunca)\W*")
+#: 🔴 SPEC-126 CONSERTO Y (juiz B1) — a NEGAÇÃO POSPOSTA do português falado: "manda não", "pode
+#:    mandar não", "aciona não" (conf-142..144, conf-162). Só pesa na oração que, sem ela, seria o SIM.
+#:    constante_justificada: "manda não" é recusa em todo o Brasil; errar para cá é UMA confirmação a mais.
+_RX_NEGACAO_POSPOSTA = re.compile(r"\s(?:nao|n)\W*$")
 
 #: 🔴 Z1 — a OBJEÇÃO ou o ADIAMENTO, em qualquer ponto da fala: "ta bom, DEPOIS eu peço"
 #:    (o "sim" do C4), "vou ver", "sim, MAS o destino é outro", "ok — NA VERDADE a rua é Y".
@@ -905,8 +918,9 @@ _RX_NAO_DO_SEGURADO = re.compile(
 #:      acionar", conf-081 "pode, se não for cobrar nada"): o sim condicionado não é o ok do pedido;
 #:    · "o/a/pro/pelo OUTRO" — o pedido é OUTRO, não este (conf-075 "não, pode acionar o outro",
 #:      conf-076 "…o outro carro", conf-078 "não esse não, pode acionar o outro");
-#:    · a DÚVIDA ("acho que sim") fica em `_RX_DUVIDA`, por ORAÇÃO: ela não é o sim, mas também não
-#:      apaga o sim de outra oração ("pode mandar. seguro? acho que sim, tô no estacionamento").
+#:    · a DÚVIDA ("acho que sim") fica em `_RX_DUVIDA`. ⚠️ CONSERTO Y (§9.3, a lição migra): ela
+#:      deixou de valer só "por oração" — dúvida em QUALQUER oração derruba o sim ("não sei, pode",
+#:      conf-157); "pode mandar. seguro? acho que sim" pede uma confirmação a mais.
 _RX_OBJECAO_DO_SEGURADO = re.compile(
     r"\b(?:mais\s+tarde|outra\s+hora|vou\s+(?:ver|pensar|decidir|olhar)|"
     r"vejo\s+(?:isso|depois)|deixa\s+(?:pra|para|que)|fica\s+(?:pra|para)\s+depois|"
@@ -924,10 +938,46 @@ _RX_OBJECAO_DO_SEGURADO = re.compile(
 _RX_DEPOIS_DO_SEGURADO = re.compile(r"\bdepois\b(?!\s+(?:voce\s+|vc\s+|ce\s+)?(?:me|nos)\b)")
 
 #: o QUANDO dito pelo segurado — adiamento, salvo se a pergunta disse o mesmo quando.
+#: 🔴 CONSERTO Y: a HORA ("às 18h", "18:30") também é um quando (conf-148 "depois das 18h", e
+#:    "pode acionar às 18h" acionava). Se a pergunta disse a mesma hora (o residencial agendado), vale.
 _RX_QUANDO_DO_SEGURADO = re.compile(
     r"\b(?:depois\s+de\s+amanha|amanha|hoje\s+(?:a\s+)?(?:tarde|noite)|semana\s+que\s+vem|"
     r"(?:na\s+)?segunda|(?:na\s+)?terca|(?:na\s+)?quarta|(?:na\s+)?quinta|(?:na\s+)?sexta|"
-    r"(?:no\s+)?sabado|(?:no\s+)?domingo)\b")
+    r"(?:no\s+)?sabado|(?:no\s+)?domingo|\d{1,2}\s*(?:h|hs|hrs|horas?)|\d{1,2}:\d{2})\b")
+
+#: 🔴 SPEC-126 CONSERTO Y (juiz B1) — o ADIAMENTO RELATIVO: "pode mandar daqui 1 hora", "em meia
+#:    hora", "quando eu chegar lá", "assim que a gente sair" (conf-145, 146, 164). constante_justificada:
+#:    só o "quando" com EU/A GENTE é adiamento dele ("quando chegar me avisa" é o prestador chegando —
+#:    controle conf-174); "daqui" só seguido de TEMPO ("tô a 2 km daqui" — controle conf-175).
+_RX_ADIAMENTO_RELATIVO = re.compile(
+    r"\bdaqui\s+(?:a\s+)?(?:pouco|pouquinho|um\s+pouco|uns?|umas?|meia|alguns|algumas|\d+|uma?|"
+    r"duas?|dois|tres|quatro|cinco|dez|quinze|vinte|trinta|quarenta)\b|"
+    r"\bem\s+(?:uns?\s+|umas?\s+)?(?:\d+|uma?|meia|duas?|dois|tres|quatro|cinco|dez|quinze|vinte|"
+    r"trinta|quarenta)\s*(?:min\w*|h|hs|hrs|horas?)\b|"
+    r"\b(?:quando|assim\s+que|logo\s+que|depois\s+que|so\s+quando)\s+(?:eu|a\s+gente|nos)\b|"
+    r"\bmais\s+pra\s+frente\b")
+
+#: 🔴 SPEC-126 CONSERTO Y (juiz B1 · RT-P1) — a RETIRADA: o pedido deixou de existir. "pode mandar, já
+#:    resolvi" (conf-149), "esquece" (conf-150), "o carro pegou" (conf-152/153), "já resolveu aqui"
+#:    (conf-166), "deixa quieto" (conf-163). constante_justificada: só vale SEM negação nas 3 palavras
+#:    antes ("o carro NÃO pegou", "NÃO consegui resolver" — controles conf-170/171 — são o problema,
+#:    não a retirada); "pegou fogo" é emergência, nunca retirada.
+_RX_RETIRADA_DO_SEGURADO = re.compile(
+    r"\besquec\w*|\bdeixa\s+quieto\b|\bja\s+(?:resolv\w*|consegui\w*|deu\s+certo)|"
+    r"\bresolv(?:i|eu|emos|ido)\b|\bconsegui\s+(?:resolver|arrumar|consertar|ligar|sozinh\w*)|"
+    r"\bpegou\b(?!\s+fogo)|\bfuncionou\b|"
+    r"\b(?:o\s+carro|a\s+moto|o\s+veiculo|ele|ela)\s+(?:ja\s+)?(?:ligou|voltou|deu\s+partida)\b|"
+    r"\bnao\s+precis\w*\s+mais\b(?!\s+nada)|\bja\s+nao\s+precis\w*|\bdispens\w*")
+_NEGACOES_DA_RETIRADA = frozenset({"nao", "n", "nem", "ainda", "nunca"})
+
+
+def _retirou_o_pedido(plano: str) -> bool:
+    """A fala (já `_plano`) RETIRA o pedido ("já resolvi", "esquece", "o carro pegou")? **PURA.**"""
+    for m in _RX_RETIRADA_DO_SEGURADO.finditer(plano or ""):
+        antes = re.findall(r"\w+", plano[:m.start()])[-3:]
+        if not _NEGACOES_DA_RETIRADA.intersection(antes):
+            return True
+    return False
 
 #: o "mas" que é intensificador ("mas rápido", "mas pode") nunca é objeção…
 _RX_MAS_INTENSIFICADOR = re.compile(
@@ -1040,6 +1090,12 @@ def _objecao_ou_adiamento(plano: str, pergunta: str = "") -> bool:
     """
     if _RX_OBJECAO_DO_SEGURADO.search(plano) or _RX_DEPOIS_DO_SEGURADO.search(plano):
         return True
+    # 🔴 CONSERTO Y: o adiamento relativo, a retirada, e o "pode deixar" partido pela pontuação
+    #    ("Pode. Deixa", "pode... deixar" — conf-161; e em dois balões, quando a rede lê as falas JUNTAS)
+    if _RX_ADIAMENTO_RELATIVO.search(plano) or _retirou_o_pedido(plano):
+        return True
+    if re.search(r"\bpod[ei]\s+deix\w*", re.sub(r"[^\w\s]+", " ", plano)):
+        return True
     for m in _RX_QUANDO_DO_SEGURADO.finditer(plano):
         if not re.search(r"\b%s\b" % re.escape(m.group(0)), pergunta or ""):
             return True
@@ -1066,7 +1122,12 @@ _RX_PODE_QUE_NAO_AUTORIZA = re.compile(
 #:    conf-130 — gabarito outra_coisa, escrito antes; o classificador leu outra_coisa nas k=3). A ORAÇÃO
 #:    com dúvida não conta como sim (nem como não). constante_justificada: o sim de quem não tem certeza
 #:    não autoriza um guincho que não se desfaz — e o portão combinado já o recusava pelo classificador.
-_RX_DUVIDA = re.compile(r"\b(?:acho|acredito|creio|imagino)\s+que\b|\btalvez\b|\bsei\s+la\b")
+#: 🔴 CONSERTO Y (RT-P1): "não sei, pode" (conf-157) — o "não sei" é dúvida, e a dúvida em QUALQUER
+#:    oração da resposta deixa de ser o sim (a lição do U2-B migra: ela não apagava o sim de outra
+#:    oração; agora apaga — "pode mandar. seguro? acho que sim" pede UMA confirmação a mais, o lado
+#:    seguro do T8).
+_RX_DUVIDA = re.compile(r"\b(?:acho|acredito|creio|imagino)\s+que\b|\btalvez\b|\bsei\s+la\b|"
+                        r"\bnao\s+sei\b(?!\s+(?:o|a|os|as)\s+(?:numero|nome|endereco|cep|bairro|rua)\b)")
 
 #: 🔴 SPEC-126 U2 (parte B) · a pergunta de DUAS opções — "Posso acionar AGORA ou prefere AMANHÃ?".
 #:    📊 laudo do BLOCO 0 item 9 / fora do escopo 6: "ok" (e "ok, prefiro amanhã") a ela ACIONAVA —
@@ -1187,27 +1248,67 @@ def _resposta_do_segurado(texto: str, pergunta: str = "") -> str:
         escolheu = (_RX_ESCOLHEU_AGORA.search(plano) and not _RX_PODE_QUE_NAO_AUTORIZA.search(plano)
                     and not plano.rstrip().endswith("?"))
         return "sim" if escolheu else "outro"
-    oracoes = [o.strip() for o in re.split(r"[,.;:!?\n]+|\s+[-–—]\s+", plano) if o.strip()]
-    nao_sozinho = forte = sim = False
-    for o in oracoes:
+    # 🔴 SPEC-126 CONSERTO Y (juiz B1 · RT-P1) — A ÚLTIMA PALAVRA VALE. As orações são lidas EM
+    #    ORDEM, cada uma com o seu fim ("?" = pergunta). Depois do sim, o "não" sozinho é RETIRADA
+    #    ("sim. ah não…"), e a pergunta derruba o sim ("sim, quanto custa?" — conf-155: ele quer saber
+    #    antes; o agente responde e confirma de novo). ANTES do sim, o "não" sozinho continua sendo o
+    #    de outra pergunta (N1). A oração do sim com o "não" no FIM é recusa ("manda não"). A dúvida em
+    #    qualquer oração não é o sim ("não sei, pode").
+    pedacos = re.split(r"([,.;:!?\n…]+|\s+[-–—]\s+)", plano)
+    oracoes = []
+    for k in range(0, len(pedacos), 2):
+        o = pedacos[k].strip()
+        fim = pedacos[k + 1] if k + 1 < len(pedacos) else ""
+        if o:
+            oracoes.append((o, "?" in fim))
+    nao_antes = forte = sim = duvida = pergunta_depois = False
+    for o, e_pergunta in oracoes:
+        if _RX_DUVIDA.search(o):
+            duvida = True
+            continue
         if _RX_NAO_DO_SEGURADO.search(o):
-            # "não" sozinho na oração é o de OUTRA pergunta quando um sim vem junto;
+            # "não" sozinho na oração ANTES do sim é o de OUTRA pergunta; DEPOIS, a retirada;
             # "não pode"/"não quero"/"não é isso" é recusa, venha o que vier.
-            if re.fullmatch(r"\W*(?:nao|n|negativo|nunca)\W*", o):
-                nao_sozinho = True
+            if _RX_NAO_SOZINHO.fullmatch(o) and not sim:
+                nao_antes = True
             else:
                 forte = True
-        elif ((_RX_SIM_DO_SEGURADO.search(o) or _RX_AUTORIZA_NO_FIM.search(o))
-              and not _RX_PODE_QUE_NAO_AUTORIZA.search(o) and not _RX_DUVIDA.search(o)):
-            sim = True
+            continue
+        if ((_RX_SIM_DO_SEGURADO.search(o) or _RX_AUTORIZA_NO_FIM.search(o))
+                and not _RX_PODE_QUE_NAO_AUTORIZA.search(o)):
+            if _RX_NEGACAO_POSPOSTA.search(o):
+                forte = True                 # "manda não", "pode mandar não"
+            elif e_pergunta:
+                pergunta_depois = pergunta_depois or sim   # "sim?" não é o sim; nem o depois dele
+            else:
+                sim = True
+            continue
+        if e_pergunta and sim:
+            pergunta_depois = True           # "sim, quanto custa?"
     if forte:
         return "nao"
+    if duvida or pergunta_depois:
+        return "outro"
     if sim:
         return "sim"
-    return "nao" if nao_sozinho else "outro"
+    return "nao" if nao_antes else "outro"
 
 
-def confirmacao_comprovada(falas, pedido: Optional[dict] = None) -> dict:
+def _instante(valor: Any):
+    """`datetime` com fuso (UTC se vier sem) de um datetime/ISO; `None` se ilegível. **PURA.**"""
+    from datetime import datetime, timezone
+
+    if valor is None or valor == "":
+        return None
+    try:
+        dt = valor if isinstance(valor, datetime) else datetime.fromisoformat(
+            str(valor).strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def confirmacao_comprovada(falas, pedido: Optional[dict] = None, *, acionado_em: Any = None) -> dict:
     """O segurado CONFIRMOU o acionamento? **PURA** — a REDE (regex) do portão.
 
     🔴 SPEC-126 U2 (parte B): sozinha ela NÃO aciona mais nada — o portão é
@@ -1234,11 +1335,22 @@ def confirmacao_comprovada(falas, pedido: Optional[dict] = None) -> dict:
     faltava + "pode mandar" em dois balões vale; Z-N4 a pergunta sem o verbo de acionar
     ("confirma que é a placa…?") precisa repetir DUAS partes do pedido.
     Devolve `{"comprovada": bool, "motivo": str}`.
+
+    🔴 SPEC-126 CONSERTO Y (RT-B3) — a confirmação se GASTA pelo FATO, não pela prosa: `acionado_em`
+    é o instante (UTC) do último acionamento que SAIU desta conversa, lido do estado DURÁVEL (a ficha,
+    `acionamento.enviado_em`/`enfileirado_em` — `InsurerDispatchTool._acionamento_desta_conversa`). A
+    pergunta de confirmação que não é POSTERIOR a ele já foi usada → `{"gasta": True}`. As falas podem
+    vir como `(quem, texto, quando)`; sem o `quando` da pergunta e com um acionamento feito, conta como
+    gasta (o lado seguro do T8: uma confirmação a mais).
     """
-    lista = [(str(q or ""), str(t or "")) for q, t in (falas or [])]
+    lista = []
+    for f in (falas or []):
+        f = tuple(f)
+        lista.append((str(f[0] or ""), str(f[1] or ""), f[2] if len(f) > 2 else None))
+    acionado_em = _instante(acionado_em) if acionado_em is not None else None
     ultima = None
     for i in range(len(lista) - 1, -1, -1):
-        quem, texto = lista[i]
+        quem, texto, _q = lista[i]
         if quem in ("agente", "equipe") and ("?" in texto or "confirm" in _plano(texto)):
             ultima = i
             break
@@ -1261,12 +1373,21 @@ def confirmacao_comprovada(falas, pedido: Optional[dict] = None) -> dict:
         return {"comprovada": False,
                 "motivo": "a última pergunta pede o ok de UMA parte (a placa, a cobertura), não "
                           "do acionamento — falta o resumo ou o \"posso acionar?\""}
+    # 🔴 CONSERTO Y (RT-B3): o FATO durável gasta a confirmação — um acionamento que saiu desta
+    #    conversa DEPOIS da pergunta (ou sem como provar que a pergunta é posterior a ele).
+    if acionado_em is not None:
+        q_em = _instante(lista[ultima][2])
+        if q_em is None or q_em <= acionado_em:
+            return {"comprovada": False, "gasta": True,
+                    "motivo": "a confirmação já foi usada: um acionamento desta conversa saiu "
+                              "depois dela"}
     depois = lista[ultima + 1:]
+    # (cinto) a prosa do agente que anuncia o acionamento também gasta — nunca é a única trava
     if any(q in ("agente", "equipe") and _RX_ACIONAMENTO_ANUNCIADO.search(_plano(t))
-           for q, t in depois):
+           for q, t, _q in depois):
         return {"comprovada": False,
                 "motivo": "a confirmação já foi usada num acionamento anterior"}
-    respostas = [t for q, t in depois if q == "segurado" and t.strip()]
+    respostas = [t for q, t, _q in depois if q == "segurado" and t.strip()]
     if not respostas:
         return {"comprovada": False,
                 "motivo": "o segurado ainda não respondeu à confirmação"}
@@ -1278,6 +1399,15 @@ def confirmacao_comprovada(falas, pedido: Optional[dict] = None) -> dict:
     if "sim" not in leituras:
         return {"comprovada": False,
                 "motivo": "a resposta seguinte do segurado não foi o sim"}
+    # 🔴 CONSERTO Y (RT-P1) — A RAJADA: as falas JUNTAS também têm de dizer sim, e a ÚLTIMA palavra
+    #    vale: ["pode", "deixar"] é "pode deixar"; ["pode mandar", "esquece"], ["sim", "o carro
+    #    pegou"] retiram; ["sim", "vai ter custo?"] pergunta antes de acionar (conf-150..156).
+    juntas = _resposta_do_segurado("\n".join(respostas), pergunta)
+    if juntas != "sim":
+        return {"comprovada": False,
+                "motivo": ("o segurado não disse sim" if juntas == "nao" else
+                           "depois do sim o segurado perguntou ou ficou em dúvida — responda e "
+                           "confirme de novo")}
     # SPEC-126 U2 (parte B): o sim que pede OUTRO serviço não é o ok DESTE pedido (📊 C4 t1 da U1)
     if servico_trocado(respostas, pedido):
         return {"comprovada": False,
@@ -1307,7 +1437,7 @@ def decisao_do_portao(rede: dict, classificacao: Optional[dict]) -> dict:
 
 
 async def portao_da_confirmacao(falas, pedido: Optional[dict] = None, *, company_id: str,
-                                llm: Any = None) -> dict:
+                                llm: Any = None, acionado_em: Any = None) -> dict:
     """🔴 SPEC-126 U2 (parte B) — O PORTÃO do acionamento: regex E classificador. **Nunca levanta.**
 
     A regex (`confirmacao_comprovada`) é a REDE e roda primeiro, de graça: ela acha a pergunta de
@@ -1319,9 +1449,9 @@ async def portao_da_confirmacao(falas, pedido: Optional[dict] = None, *, company
 
     `llm`: só a bancada e os testes injetam o modelo; produção usa o papel `confirmacao` do Model
     Router (`classificar_confirmacao` → `invocar_com_reserva`)."""
-    rede = confirmacao_comprovada(falas, pedido)
+    rede = confirmacao_comprovada(falas, pedido, acionado_em=acionado_em)
     if not rede.get("comprovada"):
-        return decisao_do_portao(rede, None)
+        return {**decisao_do_portao(rede, None), **({"gasta": True} if rede.get("gasta") else {})}
     try:
         from app.atendimento.confirmacao import classificar_confirmacao
 
@@ -1338,9 +1468,13 @@ async def portao_da_confirmacao(falas, pedido: Optional[dict] = None, *, company
 
 
 async def prova_da_confirmacao(db, *, company_id: str, session_id: str,
-                               pedido: Optional[dict] = None, llm: Any = None) -> dict:
+                               pedido: Optional[dict] = None, llm: Any = None,
+                               acionado_em: Any = None) -> dict:
     """A prova do "sim", lida da conversa DURÁVEL, pelo PORTÃO (regex E classificador —
-    `portao_da_confirmacao`). **Nunca levanta**; no escuro, sem prova."""
+    `portao_da_confirmacao`). **Nunca levanta**; no escuro, sem prova.
+
+    🔴 CONSERTO Y (RT-B3): as falas vão COM o instante (`Fala.quando`) e `acionado_em` (o último
+    acionamento desta conversa, da ficha) gasta a pergunta que não é posterior a ele."""
     try:
         from app.agents.historico_da_conversa import historico_do_atendimento
 
@@ -1354,8 +1488,9 @@ async def prova_da_confirmacao(db, *, company_id: str, session_id: str,
     if not getattr(hist, "lida", False):
         return {"comprovada": False,
                 "motivo": "conversa indisponível (%s)" % (getattr(hist, "erro", "") or "?")}
-    return await portao_da_confirmacao([(f.quem, f.texto) for f in hist.falas], pedido,
-                                       company_id=str(company_id or ""), llm=llm)
+    return await portao_da_confirmacao(
+        [(f.quem, f.texto, getattr(f, "quando", None)) for f in hist.falas], pedido,
+        company_id=str(company_id or ""), llm=llm, acionado_em=acionado_em)
 
 
 #: 🔴 SPEC-125 CONSERTO Z2/Z3 — a confirmação é UMA linha de resumo + o ok, com o que JÁ se
@@ -1540,6 +1675,51 @@ def pedido_de_confirmacao(motivo: str = "", *, ja_confirmou: bool = False,
                  "seguradora foi acionada/contatada.")
     return {"status": "confirm_first", "missing": [], "confirmacao_comprovada": False,
             "motivo_interno": motivo, "content": texto, "linha_pronta": linha}
+
+
+def mesmo_servico(a: Any, b: Any) -> bool:
+    """Os dois subserviços são O MESMO trabalho? (o canônico dos corredores; senão a família do
+    nome). Vazio de um lado → `False`. **PURA.**"""
+    a, b = str(a or "").strip().lower(), str(b or "").strip().lower()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    try:
+        from app.services.corridor_playbooks import canonical_subservice
+
+        if (canonical_subservice(a) or a) == (canonical_subservice(b) or b):
+            return True
+    except Exception:  # noqa: BLE001 — a regra nunca derruba a ferramenta
+        pass
+    fa, fb = _familia_do_pedido({"subservice": a}), _familia_do_pedido({"subservice": b})
+    return bool(fa) and fa == fb
+
+
+def ja_acionado(pedido: Optional[dict], em: Any = None, *, de_outra_pessoa: bool = False) -> dict:
+    """🔴 SPEC-126 CONSERTO Y (RT-B3) — o retorno IDEMPOTENTE: este serviço JÁ SAIU nesta conversa
+    (a ficha durável diz quando) e não há pergunta + ok NOVOS depois dele. Nada é enviado, nada
+    entra na fila. Se o cliente pedir, com todas as letras, um SEGUNDO serviço igual, o caminho é a
+    linha pronta + um ok novo — a ferramenta só aciona de novo com os dois DEPOIS do primeiro."""
+    from datetime import datetime, timezone
+
+    servico = str((pedido or {}).get("subservice") or "este serviço").replace("_", " ")
+    quando = ""
+    instante = _instante(em)
+    if instante is not None:
+        minutos = max(0, int((datetime.now(timezone.utc) - instante).total_seconds() // 60))
+        quando = (" há %d min" % minutos if minutos < 120 else
+                  " há %d h" % (minutos // 60) if minutos < 48 * 60 else " há %d dias" % (minutos // 1440))
+    linha = linha_de_confirmacao(pedido, de_outra_pessoa=de_outra_pessoa) if pedido else ""
+    texto = ("[JÁ PEDIDO NESTA CONVERSA — NADA FOI ENVIADO DE NOVO] O pedido de %s desta conversa já "
+             "foi para a seguradora%s. NÃO chame esta ferramenta de novo para ele e NÃO peça outra "
+             "confirmação: diga ao cliente que o pedido já está com a seguradora e que você avisa "
+             "quando o protocolo/previsão chegar. Só se o cliente pedir, com todas as letras, um "
+             "SEGUNDO %s (outro problema, outro lugar, outro veículo), mande o resumo novo e espere "
+             "um novo \"sim\"%s." % (servico, quando, servico,
+                                     (": \"%s\"" % linha) if linha else ""))
+    return {"status": "already_dispatched", "missing": [], "confirmacao_comprovada": False,
+            "content": texto, "linha_pronta": linha}
 
 
 class InsurerDispatchTool(BaseTool):
@@ -2269,7 +2449,7 @@ class InsurerDispatchTool(BaseTool):
             logger.warning("[InsurerDispatch] marca de terceiro não lida (%s)", type(erro).__name__)
             return False
 
-    async def _prova_da_confirmacao(self, kwargs: dict) -> dict:
+    async def _prova_da_confirmacao(self, kwargs: dict, acionado_em: Any = None) -> dict:
         """A prova do "sim" nesta conversa — `company_id` da ferramenta, `session_id`
         do ESTADO (injetado pelo `tool_node`; nunca da LLM)."""
         client = getattr(self.supabase_client, "client", self.supabase_client)
@@ -2277,7 +2457,55 @@ class InsurerDispatchTool(BaseTool):
             return {"comprovada": False, "motivo": "sem banco"}
         return await prova_da_confirmacao(client, company_id=self.company_id,
                                           session_id=str(kwargs.get("session_id") or ""),
-                                          pedido=kwargs)
+                                          pedido=kwargs, acionado_em=acionado_em)
+
+    async def _acionamento_desta_conversa(self, kwargs: dict) -> Optional[dict]:
+        """🔴 SPEC-126 CONSERTO Y (RT-B3) — o último acionamento que SAIU (ou entrou na fila) desta
+        conversa, lido do estado DURÁVEL: a ficha (`attendance_ficha.carregar`, corretora no filtro),
+        `acionamento.enviado_em`/`enfileirado_em` + `servico`. `{"em": datetime, "servico": str}` ou
+        `None`. Nunca a memória do processo, nunca a prosa do modelo. **Nunca levanta.**"""
+        client = getattr(self.supabase_client, "client", self.supabase_client)
+        sessao = str((kwargs or {}).get("session_id") or "")
+        if client is None or not sessao:
+            return None
+        try:
+            from app.services.attendance_ficha import carregar
+
+            acion = (await carregar(client, self.company_id, sessao)).get("acionamento") or {}
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[InsurerDispatch] acionamento anterior não lido (%s)", type(erro).__name__)
+            return None
+        if not isinstance(acion, dict):
+            return None
+        instantes = [i for i in (_instante(acion.get("enviado_em")), _instante(acion.get("enfileirado_em")))
+                     if i is not None]
+        if not instantes:
+            return None
+        return {"em": max(instantes), "servico": str(acion.get("servico") or "")}
+
+    async def _marcar_o_acionamento(self, kwargs: dict, chave: str, subservice: str,
+                                    insurer_key: str) -> None:
+        """🔴 SPEC-126 CONSERTO Y (RT-B3 · juiz pendência 1) — o FATO vai para a ficha DURÁVEL no
+        instante em que o efeito aconteceu, pelo escritor ÚNICO (`attendance_ficha.gravar` →
+        `fundir`, aditivo): `acionamento.enviado_em` (saiu) ou `enfileirado_em` (fila da seguradora),
+        com o serviço e a seguradora. É ele que gasta a confirmação (`confirmacao_comprovada`), que
+        torna a 2ª chamada idempotente e que faz a R9/`_e_pos_acionamento` reconhecer o caso acionado
+        ANTES do protocolo. Escrito AQUI, ao lado do efeito, vale para todo chamador (o `tool_node`, a
+        mesma mensagem reprocessada, duas chamadas no mesmo turno). **Nunca levanta.**"""
+        client = getattr(self.supabase_client, "client", self.supabase_client)
+        sessao = str((kwargs or {}).get("session_id") or "")
+        if client is None or not sessao:
+            return
+        try:
+            from datetime import datetime, timezone
+
+            from app.services.attendance_ficha import gravar
+
+            await gravar(client, self.company_id, sessao, {"acionamento": {
+                chave: datetime.now(timezone.utc).isoformat(),
+                "servico": str(subservice or ""), "seguradora": str(insurer_key or "")}})
+        except Exception as erro:  # noqa: BLE001 — o efeito já aconteceu; a marca nunca o desfaz
+            logger.error("[InsurerDispatch] acionamento NÃO marcado na ficha (%s)", type(erro).__name__)
 
     async def _arun(self, **kwargs) -> dict:
         """Caminho LIVE: com o agente de atendimento LIGADO, cria a sessão real,
@@ -2316,11 +2544,20 @@ class InsurerDispatchTool(BaseTool):
         #    de confirmação num turno anterior + o "sim" do segurado depois dela).
         # 🔴 SPEC-126 U2 (parte B) — a prova é a do PORTÃO: regex E classificador, UMA chamada
         #    de modelo por tentativa de acionamento (só quando a regex já disse sim).
-        prova = await self._prova_da_confirmacao(kwargs)
+        # 🔴 SPEC-126 CONSERTO Y (RT-B3) — o acionamento que JÁ SAIU desta conversa (estado durável)
+        #    gasta a confirmação que veio antes dele; o MESMO serviço sem pergunta e ok NOVOS devolve
+        #    "já acionado" (nada sai, nada entra na fila) — nunca um 2º guincho com o mesmo "sim".
+        anterior = await self._acionamento_desta_conversa(kwargs)
+        if anterior is not None:
+            prova = await self._prova_da_confirmacao(kwargs, acionado_em=anterior["em"])
+        else:
+            prova = await self._prova_da_confirmacao(kwargs)
         if not (kwargs.get("dados_confirmados") is True and prova.get("comprovada")):
             logger.warning("[InsurerDispatch] acionamento SEM confirmação comprovada "
                            "(campo=%s · %s) — NADA enviado",
                            kwargs.get("dados_confirmados"), prova.get("motivo"))
+            if anterior is not None and mesmo_servico(anterior.get("servico"), kwargs.get("subservice")):
+                return ja_acionado(kwargs, anterior["em"], de_outra_pessoa=de_outra_pessoa)
             return pedido_de_confirmacao(str(prova.get("motivo") or ""),
                                          ja_confirmou=bool(prova.get("comprovada")),
                                          pedido=kwargs,  # SPEC-126 U1: a linha pronta
@@ -2404,6 +2641,15 @@ class InsurerDispatchTool(BaseTool):
         )
         if not result.get("ok"):
             if result.get("error") == "dispatch_already_active":
+                # 🔴 SPEC-126 CONSERTO Y (RT-B3): a sessão VIVA no número da seguradora é DESTE
+                #    cliente e DESTE serviço → é o acionamento que já saiu (duas chamadas no mesmo
+                #    turno, a mesma mensagem processada duas vezes ao mesmo tempo). Não entra na fila.
+                viva = result.get("session") if isinstance(result.get("session"), dict) else {}
+                if (viva and digits(viva.get("client_phone")) == client_phone
+                        and mesmo_servico(viva.get("subservice"), subservice)):
+                    logger.warning("[InsurerDispatch] a sessão viva já é deste cliente e serviço — "
+                                   "NADA enviado, nada enfileirado")
+                    return ja_acionado(kwargs, None, de_outra_pessoa=de_outra_pessoa)
                 # FILA multi-cliente: número da seguradora ocupado com OUTRO
                 # acionamento → entra na fila e inicia SOZINHO quando liberar.
                 try:
@@ -2414,6 +2660,8 @@ class InsurerDispatchTool(BaseTool):
                         "playbook_ref": playbook_ref, "subservice": subservice,
                         "slots": slots, "client_phone": client_phone,
                     })
+                    await self._marcar_o_acionamento(kwargs, "enfileirado_em", subservice,
+                                                     insurer_key or "")
                     return {
                         "status": "queued",
                         "content": (
@@ -2439,6 +2687,8 @@ class InsurerDispatchTool(BaseTool):
 
         from app.services.insurer_dispatch_service import finalize_live_for
 
+        # 🔴 SPEC-126 CONSERTO Y — SAIU: o fato vai para a ficha durável antes de qualquer outra coisa
+        await self._marcar_o_acionamento(kwargs, "enviado_em", subservice, insurer_key or "")
         insurer_label = (insurer_key or "a seguradora").upper()
         # 🔴 SPEC-126 U2-B (D1): a seguradora é dado da apólice do TITULAR — o parente não a ouve
         da_assistencia = "da seguradora" if de_outra_pessoa else f"da {insurer_label}"

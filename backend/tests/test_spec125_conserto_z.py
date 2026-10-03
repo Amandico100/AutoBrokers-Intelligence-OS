@@ -284,8 +284,12 @@ def test_z1_n1_as_formas_legitimas_acionam(pergunta, sim):
 def test_z1_a_duvida_nao_e_o_sim(duvida):
     falas = [("agente", RESUMO + " Posso acionar?"), ("segurado", duvida)]
     assert IT.confirmacao_comprovada(falas, PEDIDO)["comprovada"] is False, duvida
-    # CONTROLE: a dúvida sobre OUTRA coisa não apaga o sim dito em outra oração
+    # 🔴 SPEC-126 CONSERTO Y (§9.3 — a lição MIGRA): pergunta/dúvida DEPOIS do sim derruba o sim (o lado
+    #    seguro do T8: UMA confirmação a mais); antes, "pode mandar. seguro? acho que sim" acionava
     falas = [("agente", RESUMO + " Posso acionar?"), ("segurado", "pode mandar. seguro? acho que sim")]
+    assert IT.confirmacao_comprovada(falas, PEDIDO)["comprovada"] is False
+    # CONTROLE: o complemento SEM dúvida não derruba o sim
+    falas = [("agente", RESUMO + " Posso acionar?"), ("segurado", "pode mandar. o local é seguro sim")]
     assert IT.confirmacao_comprovada(falas, PEDIDO)["comprovada"] is True
 
 
