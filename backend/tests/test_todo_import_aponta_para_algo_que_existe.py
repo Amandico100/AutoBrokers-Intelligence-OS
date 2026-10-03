@@ -53,6 +53,24 @@ def checar(condicao: bool, o_que: str, evidencia: str = "") -> None:
         _PROBLEMAS.append(o_que)
 
 
+def _nomes_do_alvo(alvo: ast.AST) -> list:
+    """Os nomes que UM alvo de atribuição cria.
+
+    ⚠️ SPEC-126 (03/10/2026): o varredor só lia `ast.Name` e acusou como
+    inexistente `LINHA_PRONTA_ABRE, LINHA_PRONTA_FECHA = "«", "»"` — um
+    desempacotamento que o Python exporta normalmente (📊 o import real
+    funcionava). Tupla, lista e `*resto` também criam nomes no módulo.
+    Atributo e subscrito (`x.y = 1`, `d[k] = 1`) NÃO criam — continuam fora.
+    """
+    if isinstance(alvo, ast.Name):
+        return [alvo.id]
+    if isinstance(alvo, (ast.Tuple, ast.List)):
+        return [n for elt in alvo.elts for n in _nomes_do_alvo(elt)]
+    if isinstance(alvo, ast.Starred):
+        return _nomes_do_alvo(alvo.value)
+    return []
+
+
 def _nomes_do_modulo(arvore: ast.Module) -> set:
     """O que um `from modulo import X` consegue alcançar.
 
@@ -66,8 +84,7 @@ def _nomes_do_modulo(arvore: ast.Module) -> set:
             nomes.add(no.name)
         elif isinstance(no, ast.Assign):
             for alvo in no.targets:
-                if isinstance(alvo, ast.Name):
-                    nomes.add(alvo.id)
+                nomes.update(_nomes_do_alvo(alvo))
         elif isinstance(no, ast.AnnAssign) and isinstance(no.target, ast.Name):
             nomes.add(no.target.id)
         elif isinstance(no, (ast.Import, ast.ImportFrom)):
@@ -83,8 +100,7 @@ def _nomes_do_modulo(arvore: ast.Module) -> set:
                     nomes.add(filho.name)
                 elif isinstance(filho, ast.Assign):
                     for alvo in filho.targets:
-                        if isinstance(alvo, ast.Name):
-                            nomes.add(alvo.id)
+                        nomes.update(_nomes_do_alvo(alvo))
     return nomes
 
 
@@ -170,6 +186,24 @@ def teste_o_guarda_consegue_reprovar():
     dentro = ast.parse("def f():\n    escondido = 1\n    return escondido\n")
     checar("escondido" not in _nomes_do_modulo(dentro),
            "CONTROLE — nome de dentro de função não é importável")
+
+    # SPEC-126: desempacotamento no nível do módulo EXPORTA (era o falso
+    # vermelho de `LINHA_PRONTA_ABRE, LINHA_PRONTA_FECHA = "«", "»"`) — e a
+    # linha de CONTROLE prova que o conserto não abriu a porta: o nome que não
+    # está em nenhum alvo continua ausente, e atributo/subscrito não exportam.
+    tupla = ast.parse("A, B = 1, 2\n[C, *D] = [3, 4, 5]\nobj.E = 6\nd['F'] = 7\n")
+    nomes_tupla = _nomes_do_modulo(tupla)
+    checar({"A", "B", "C", "D"} <= nomes_tupla,
+           "desempacotamento em tupla/lista/*resto é visto como exportado",
+           str(sorted(nomes_tupla)))
+    checar(not ({"AUSENTE", "E", "F", "obj", "d"} & nomes_tupla),
+           "CONTROLE — nome ausente, atributo e subscrito NÃO viram exportados",
+           str(sorted(nomes_tupla)))
+    pedido = ast.parse("from m import A, B, AUSENTE\n").body[0]
+    acusados = [a.name for a in pedido.names if a.name not in nomes_tupla]
+    checar(acusados == ["AUSENTE"],
+           "CONTROLE — contra o módulo com tupla, o import de nome ausente AINDA é acusado",
+           str(acusados))
 
 
 def main() -> int:

@@ -425,8 +425,12 @@ def rodar_pela_linha_de_comando(*, bracos: List[str], k: int = 3, casos: Optiona
     return codigo
 
 
-#: backend/ (app/services/evals/bancada_confirmacao.py → parents[3])
-_BACKEND = Path(__file__).resolve().parents[3]
+import app as _pacote_app  # noqa: E402
+
+#: A raiz de `backend/` sai do PACOTE `app`, não de contar níveis a partir deste arquivo — o mesmo
+#: desenho de `bancada.CORPUS_DIR` (guarda `test_o_vocabulario_viaja_na_imagem`: `parents[n]` de
+#: cabeça quebra quando o arquivo muda de lugar). Só serve ao `.env` da execução local da bancada.
+_BACKEND = Path(_pacote_app.__file__).resolve().parent.parent
 
 
 def carregar_env(caminho: Optional[Path] = None) -> bool:
