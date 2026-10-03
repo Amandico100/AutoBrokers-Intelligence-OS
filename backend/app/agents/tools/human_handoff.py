@@ -2145,8 +2145,11 @@ class HumanHandoffTool(BaseTool):
 
     async def _registrar_no_diario(self, company_id: str, linha: Dict[str, Any], *,
                                    motivo: str, acao: str, classe: str, chave: str,
-                                   explicacao: str) -> Optional[str]:
-        """UMA linha `origem='atendimento'` no diário. Nunca levanta; `None` = não gravou."""
+                                   explicacao: str, momento: Optional[str] = None) -> Optional[str]:
+        """UMA linha `origem='atendimento'` no diário. Nunca levanta; `None` = não gravou.
+
+        🔴 SPEC-126 U5 (P-125-06) — `momento` (D7): a MESMA linha diz que julgamento ela é —
+        `nao_chamou_pessoa` na segunda chance, `chamou_pessoa` na passagem. Nunca uma 2ª linha."""
         try:
             from app.services.diario_de_decisoes import registrar_decisao
 
@@ -2163,7 +2166,7 @@ class HumanHandoffTool(BaseTool):
                 nota=None, limiar=None, motivo=_motivo_em_portugues(motivo),
                 explicacao_para_gente=explicacao, modelo="", segunda_opiniao=None,
                 modo="on", gatilho="request_human_agent", chave_idempotencia=chave,
-                sessao=_sessao_para_mascara(linha))
+                sessao=_sessao_para_mascara(linha), momento=momento)
         except Exception as exc:  # noqa: BLE001
             logger.error("[HumanHandoff] diário não registrado (%s)", type(exc).__name__)
             return None
@@ -2184,6 +2187,8 @@ class HumanHandoffTool(BaseTool):
         diario_id = await self._registrar_no_diario(
             company_id, linha, motivo=motivo, acao="perguntou_segurado",
             classe="perguntar_ao_segurado", chave=_chave_da_segunda_chance(conversa_id),
+            # 🔴 SPEC-126 U5: é o "onde a regra antiga chamaria pessoa, e não chamou" (D7)
+            momento="nao_chamou_pessoa",
             explicacao=("O agente ia chamar uma pessoa da corretora (motivo dele: "
                         "\"%s\"). Como não era um caso que precisa de pessoa, ele "
                         "voltou a conversar com o segurado para resolver: perguntar o "
@@ -2213,7 +2218,8 @@ class HumanHandoffTool(BaseTool):
                           "saída sem ajuda." % dito[:200])
         await self._registrar_no_diario(
             company_id, linha, motivo=motivo, acao="chamou_pessoa", classe=classe,
-            chave=_chave_de_chamou_pessoa(conversa_id, motivo), explicacao=explicacao)
+            chave=_chave_de_chamou_pessoa(conversa_id, motivo), explicacao=explicacao,
+            momento="chamou_pessoa")
 
     # ------------------------------------------------------------------ #
     # execução

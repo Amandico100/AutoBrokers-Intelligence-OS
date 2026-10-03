@@ -1758,6 +1758,101 @@ def com_o_que_foi_dito_antes_da_ferramenta(texto_final: Any, mensagens: Any) -> 
 
 
 # =====================================================================
+# 🔴 SPEC-126 U5 · P-125-04 (pend. 3 do juiz final da 125) — a apresentação UMA vez por assunto
+# =====================================================================
+# O modelo se apresenta JUNTO da ferramenta e de novo no texto final, com outras palavras
+# ("Oi! Aqui é a <nome>, assistente virtual da <corretora>." … "Oi, aqui é a <nome>, da
+# <corretora>!"): a junção de `com_o_que_foi_dito_antes_da_ferramenta` só tirava o trecho IDÊNTICO.
+# Agora a régua é a INTENÇÃO — cumprimento + identificação pelo NOME do agente — e é a MESMA que
+# decide se a apresentação SAIU (`o_fim_do_atendimento.trechos_de_apresentacao`, §5: uma régua).
+#
+#   o turno se apresenta 2× ............................ fica a 1ª, as outras saem
+#   o prompt disse "NÃO se apresente" (já apresentado) .. todas saem (repetir é o defeito)
+#   o turno não se apresentou e a ficha ainda pede ...... nada muda: o próximo turno pede UMA vez
+#                                                         (o Sol C1 da U0: t1 só `request_human_agent`)
+#   o segurado PERGUNTOU quem fala ....................... nada sai: a apresentação é a resposta
+#
+#: constante_justificada: a pergunta do segurado por QUEM está falando ("quem é?", "qual seu nome?",
+#:    "com quem eu falo?", "é robô?", "é uma pessoa?") — aí a apresentação é a RESPOSTA e fica.
+_PERGUNTA_QUEM_FALA = re.compile(
+    r"\bquem\s+(?:e|eh|fala|esta\s+falando|ta\s+falando)\b|\b(?:seu|teu)\s+nome\b|"
+    r"\bcom\s+quem\s+(?:eu\s+)?(?:falo|estou\s+falando|to\s+falando)\b|"
+    r"\b(?:e|eh|voce\s+e)\s+(?:um\s+)?robo\b|\b(?:e|eh|voce\s+e)\s+(?:uma\s+)?pessoa\b")
+
+
+def nome_do_agente(state: dict) -> str:
+    """O nome com que o agente se apresenta — a MESMA ordem de `graph._agent_display_name`."""
+    dados = state.get("agent_data") or {}
+    cfg = dados.get("config") if isinstance(dados.get("config"), dict) else {}
+    return str((cfg or {}).get("display_name") or dados.get("name") or "").strip()
+
+
+def ja_se_apresentou_neste_assunto(state: dict) -> bool:
+    """O prompt DESTE turno disse "NÃO se apresente" (`deve_se_apresentar` → calado)? **PURA.**
+    Lê a MESMA linha que o modelo leu — nunca uma segunda decisão sobre a ficha."""
+    from app.services.o_fim_do_atendimento import MODO_CALADO, linha_da_apresentacao
+
+    return linha_da_apresentacao(MODO_CALADO) in str(state.get("dynamic_context") or "")
+
+
+def _costurar(esq: str, dir_: str, removido: str) -> str:
+    d = dir_.lstrip()
+    e = esq.rstrip(" \t")
+    if not e or e.endswith("\n"):
+        return e + d[:1].upper() + d[1:]
+    if not d:
+        return e.rstrip(" ,—–-")
+    quebra = "\n\n" if "\n" in removido else " "
+    if e[-1] in ",—–-":
+        e = e[:-1].rstrip()
+        if e and e[-1] not in ".!?:":
+            e += "!"
+    if e and e[-1] in ".!?:":
+        d = d[:1].upper() + d[1:]
+    return e + quebra + d
+
+
+def sem_apresentacao_repetida(texto: Any, *, agent_name: str, ja_apresentado: bool,
+                              pergunta_quem_fala: bool = False) -> str:
+    """O texto com NO MÁXIMO uma apresentação — e nenhuma se o assunto já a ouviu. **PURA.**
+
+    ⛔ Nunca devolve vazio: se só sobrou a apresentação, o texto sai como veio."""
+    original = str(texto or "")
+    if pergunta_quem_fala:
+        return original
+    from app.services.o_fim_do_atendimento import trechos_de_apresentacao
+
+    trechos = trechos_de_apresentacao(original, agent_name=agent_name)
+    cortar = trechos if ja_apresentado else trechos[1:]
+    if not cortar:
+        return original
+    saida = original
+    for a, b in reversed(cortar):
+        saida = _costurar(saida[:a], saida[b:], saida[a:b])
+    saida = saida.strip()
+    return saida if saida else original
+
+
+def uma_apresentacao_por_assunto(texto: Any, state: dict) -> str:
+    """`sem_apresentacao_repetida` com o que o TURNO sabe: o nome do agente, a linha do prompt e
+    a última fala do segurado. Fora do atendimento, ou sem nome, o texto sai como veio."""
+    if not _do_atendimento(state):
+        return str(texto or "")
+    nome = nome_do_agente(state)
+    if not nome:
+        return str(texto or "")
+    fala = _sem_acento_minusculo(_ultima_fala_do_segurado(state.get("messages") or []))
+    return sem_apresentacao_repetida(
+        texto, agent_name=nome, ja_apresentado=ja_se_apresentou_neste_assunto(state),
+        pergunta_quem_fala=bool(_PERGUNTA_QUEM_FALA.search(fala)))
+
+
+def _sem_acento_minusculo(texto: Any) -> str:
+    t = unicodedata.normalize("NFKD", str(texto or "").lower())
+    return " ".join("".join(c for c in t if not unicodedata.combining(c)).split())
+
+
+# =====================================================================
 # 🔴 SPEC-126 U1 · pend. 4 do juiz final da 125 — o ANÚNCIO de acionar depois do `confirm_first`
 # =====================================================================
 #: constante_justificada: a frase que ANUNCIA um acionamento iminente ("Vou acionar o guincho agora",
@@ -1846,16 +1941,20 @@ def protocolo_do_retorno(texto: Any) -> str:
 #   respondeu_regra    → aqui: resposta final de um turno que CONSULTOU a base
 #                        (`knowledge_base_search`) ou trouxe `veredito_de_cobertura`,
 #                        sem chamar pessoa, a uma PERGUNTA do segurado;
-#   deduziu            → ⚠️ PONTO MARCADO, não ligado: o código não distingue,
-#                        sem LLM, um slot DEDUZIDO de um slot que o segurado
-#                        disse com outras palavras (o sinal certo é a ferramenta
-#                        declarar a origem do slot — pendência da SPEC);
-#   nao_chamou_pessoa  → ⚠️ PONTO MARCADO, não ligado: o classificador que existe
-#                        (`human_handoff.classificar_o_motivo`) lê o MOTIVO do
-#                        agente, não a fala do segurado — aplicá-lo à fala seria
-#                        régua de um dialeto sobre outro (CLAUDE.md §9.4).
-# E o sinal de erro leve que nasce aqui: o fiscal da pergunta repetida disparou
-# → `agente_repetiu_pergunta` fecha a última linha pendente da conversa.
+#   deduziu            → 🔴 SPEC-126 U5: aqui, no fim do turno — o `insurer_dispatch`
+#                        DECLARA no campo opcional `slots_deduzidos` os campos que o
+#                        modelo deduziu (dito × deduzido: só a ferramenta sabe; sem
+#                        LLM o código não distingue). Uma linha por (campo, valor),
+#                        idempotente: a mesma dedução numa nova tentativa não dobra;
+#   nao_chamou_pessoa  → 🔴 SPEC-126 U5: escrito por `human_handoff._segunda_chance` —
+#                        é EXATAMENTE "onde a regra antiga chamaria": o agente pediu
+#                        pessoa, o código devolveu a conversa a ele. A linha do
+#                        contador ganha `momento` (uma linha só, nunca dobrada).
+# E os sinais de erro leve que nascem aqui:
+#   agente_repetiu_pergunta → o fiscal da pergunta repetida disparou;
+#   segurado_pediu_pessoa · segurado_corrigiu · segurado_repetiu → 🔴 SPEC-126 U5:
+#                        a 1ª passada do turno lê a fala NOVA do segurado (`sinal_do_segurado`)
+#                        e fecha a última linha pendente criada ANTES deste turno, na janela.
 # ⛔ Tudo best-effort e FORA do caminho da resposta (`create_task`): o diário
 #    nunca atrasa nem derruba o atendimento.
 _TAREFAS_DO_DIARIO: set = set()
@@ -1904,7 +2003,8 @@ def _do_atendimento(state: dict) -> bool:
     return str((state.get("agent_data") or {}).get("agent_role") or "").lower() in _PAPEIS_DE_ATENDIMENTO
 
 
-def _marcar_erro_leve_no_diario(state: dict, sinal: str) -> None:
+def _marcar_erro_leve_no_diario(state: dict, sinal: str, *, criada_antes_de: Optional[str] = None,
+                                janela_min: Optional[float] = None) -> None:
     """Fecha a última linha pendente da conversa com o sinal. Fora do caminho da resposta."""
     if not _do_atendimento(state):
         return
@@ -1916,11 +2016,178 @@ def _marcar_erro_leve_no_diario(state: dict, sinal: str) -> None:
             conversa = await _id_da_conversa_do_turno(state)
             if conversa:
                 await fechar_como_erro_leve(company_id=str(state.get("company_id") or ""),
-                                            conversation_id=conversa, sinal=sinal)
+                                            conversation_id=conversa, sinal=sinal,
+                                            criada_antes_de=criada_antes_de, janela_min=janela_min)
         except Exception as exc:  # noqa: BLE001
             logger.debug("[DIARIO] erro leve não fechado (%s)", type(exc).__name__)
 
     _em_segundo_plano(_fechar())
+
+
+# ---------------------------------------------------------------------
+# 🔴 SPEC-126 U5 · P-125-06 — os três sinais do SEGURADO (D7 inteiro)
+# ---------------------------------------------------------------------
+#: constante_justificada: o segurado CORRIGE o que o agente entendeu. 📊 02/10/2026, SELECT read-only em
+#:    `messages` (120 dias, 26.575 falas `user`): uma variante mais larga casou 34 falas, e a leitura
+#:    mostrou o ruído — "na verdade estou perdida" no MEIO da fala não corrige ninguém. Por isso "na
+#:    verdade" só conta no começo ou no fim da fala ("bradesco na verdade"), e o "não, é…" exige o
+#:    complemento ("não, é na Rua 9", "não é o meu"): "não é possível" não corrige. 📊 Esta régua: 24
+#:    das 26.575 (mesmo SELECT, `N._SEGURADO_CORRIGIU.search(N._sem_acento_minusculo(f))`).
+_SEGURADO_CORRIGIU = re.compile(
+    r"^\W*nao\W*(?:e|eh|era)\s+(?:n[ao]s?|em|o|a|os|as|outr[oa]s?|um|uma|d[oa]s?)\b|"
+    r"^\W*(?:nao\W+)?na verdade\b|\bna verdade\W*$|"
+    r"\b(?:ta|esta|tah)\s+errad|\bnao e (?:isso|esse|essa|este|esta)\b|\bnao foi (?:isso|o que eu)\b|"
+    r"\bcorrigindo\b|\bme expressei mal\b|\b(?:escrevi|digitei) errado\b")
+#: constante_justificada: o segurado diz que JÁ disse. 📊 mesmo SELECT: "já enviei/mandei" casava
+#:    aviso de documento ("já enviei os documentos") — saiu; ficaram falei/disse/respondi/informei e
+#:    "pela terceira vez" (o C8 do corpus: "terceira vez que escrevo"). 📊 Esta régua: 27 das 26.575.
+_SEGURADO_JA_DISSE = re.compile(
+    r"\bja (?:te |lhe )?(?:falei|disse|respondi|informei)\b|\b(?:segunda|terceira|quarta|quinta) vez\b")
+#: constante_justificada: a fala repetida IGUAL só conta com ≥ 3 palavras — "sim"/"ok" repetidos
+#:    respondem duas perguntas, não repetem nada.
+_PALAVRAS_DA_REPETICAO = 3
+#: constante_justificada: "logo depois" (D7) — o sinal fecha uma linha criada nos últimos 30 min ANTES
+#:    deste turno; um julgamento de ontem não é corrigido pela fala de hoje.
+JANELA_DO_ERRO_LEVE_MIN = 30.0
+
+
+def _falas_do_segurado_com_posicao(mensagens: list) -> List[Tuple[int, str]]:
+    try:
+        from app.agents.historico_da_conversa import NOME_DA_EQUIPE
+    except Exception:  # noqa: BLE001
+        NOME_DA_EQUIPE = "equipe_da_corretora"
+    return [(i, extract_text_from_content(m.content)) for i, m in enumerate(list(mensagens or []))
+            if isinstance(m, HumanMessage) and getattr(m, "name", None) != NOME_DA_EQUIPE]
+
+
+def sinal_do_segurado(mensagens: list) -> Optional[str]:
+    """O sinal de ERRO LEVE que a fala NOVA do segurado traz, ou `None`. **PURA.**
+
+    Ordem: pediu pessoa (o motor do produto, `pos_acionamento.pediu_pessoa` — a régua que a segunda
+    chance já aplica às falas do segurado) > corrigiu > repetiu (a mesma fala depois de uma resposta
+    do agente, ou "já te falei")."""
+    falas = _falas_do_segurado_com_posicao(mensagens)
+    if not falas:
+        return None
+    pos, atual = falas[-1]
+    norm = _sem_acento_minusculo(atual)
+    if not norm:
+        return None
+    from app.atendimento.pos_acionamento import pediu_pessoa
+
+    if pediu_pessoa(atual):
+        return "segurado_pediu_pessoa"
+    if _SEGURADO_CORRIGIU.search(norm):
+        return "segurado_corrigiu"
+    if len(falas) >= 2:
+        pos_ant, anterior = falas[-2]
+        lista = list(mensagens or [])
+        respondeu_entre = any(isinstance(m, AIMessage) and extract_text_from_content(m.content).strip()
+                              for m in lista[pos_ant + 1:pos])
+        palavras = re.findall(r"[a-z0-9]+", norm)
+        if respondeu_entre and (
+                _SEGURADO_JA_DISSE.search(norm)
+                or (len(palavras) >= _PALAVRAS_DA_REPETICAO
+                    and palavras == re.findall(r"[a-z0-9]+", _sem_acento_minusculo(anterior)))):
+            return "segurado_repetiu"
+    return None
+
+
+def e_a_primeira_passada_do_turno(mensagens: list) -> bool:
+    """Nenhuma resposta do agente depois da última fala humana — a 1ª chamada do nó neste turno. **PURA.**"""
+    for m in reversed(list(mensagens or [])):
+        if isinstance(m, HumanMessage):
+            return True
+        if isinstance(m, (AIMessage, ToolMessage)):
+            return False
+    return False
+
+
+def _sinal_do_segurado_no_diario(state: dict) -> None:
+    """Na 1ª passada do turno: a fala nova fecha a última linha pendente criada ANTES dele."""
+    if not _do_atendimento(state):
+        return
+    mensagens = state.get("messages") or []
+    if not e_a_primeira_passada_do_turno(mensagens):
+        return
+    sinal = sinal_do_segurado(mensagens)
+    if not sinal:
+        return
+    from datetime import datetime, timezone
+
+    _marcar_erro_leve_no_diario(state, sinal, criada_antes_de=datetime.now(timezone.utc).isoformat(),
+                                janela_min=JANELA_DO_ERRO_LEVE_MIN)
+
+
+# ---------------------------------------------------------------------
+# 🔴 SPEC-126 U5 · P-125-06 — `deduziu`: a ferramenta declara a origem do slot
+# ---------------------------------------------------------------------
+#: O campo OPCIONAL do `insurer_dispatch` em que o modelo diz o que DEDUZIU (dito × deduzido).
+#: ⚠️ O lado da ferramenta (o `Field` no schema e o `pop` antes do serviço) é do dono de
+#: `insurer_dispatch_tool.py`; aqui só se LÊ o argumento da chamada — sem ele, nada se escreve.
+CAMPO_DOS_SLOTS_DEDUZIDOS = "slots_deduzidos"
+
+
+def deducoes_do_turno(mensagens: list) -> List[Dict[str, str]]:
+    """`[{"slot", "valor"}]` que o `insurer_dispatch` DESTE turno declarou deduzidos. **PURA.**
+    Só conta o slot declarado E preenchido na mesma chamada; o último valor vence."""
+    achados: Dict[str, str] = {}
+    lista = list(mensagens or [])
+    inicio = 0
+    for i in range(len(lista) - 1, -1, -1):
+        if isinstance(lista[i], HumanMessage):
+            inicio = i + 1
+            break
+    for m in lista[inicio:]:
+        if not isinstance(m, AIMessage):
+            continue
+        for chamada in getattr(m, "tool_calls", None) or []:
+            if str((chamada or {}).get("name") or "") != "insurer_dispatch":
+                continue
+            args = (chamada or {}).get("args") or {}
+            decl = args.get(CAMPO_DOS_SLOTS_DEDUZIDOS)
+            if isinstance(decl, str):
+                decl = [s for s in re.split(r"[,;\s]+", decl) if s]
+            for slot in decl if isinstance(decl, (list, tuple)) else []:
+                slot = str(slot or "").strip()
+                valor = args.get(slot)
+                if slot and slot != CAMPO_DOS_SLOTS_DEDUZIDOS and valor not in (None, "", [], {}):
+                    achados[slot] = str(valor).strip()
+    return [{"slot": s, "valor": v} for s, v in achados.items()]
+
+
+def _registrar_deducoes_no_diario(state: dict, deducoes: List[Dict[str, str]]) -> None:
+    if not deducoes or not _do_atendimento(state):
+        return
+    fala = _ultima_fala_do_segurado(state.get("messages") or [])
+
+    async def _gravar():
+        try:
+            import hashlib
+
+            from app.services.attendance_ficha import rotulo
+            from app.services.diario_de_decisoes import registrar_julgamento_da_conversa
+
+            conversa = await _id_da_conversa_do_turno(state)
+            if not conversa:
+                return
+            for d in deducoes:
+                try:
+                    nome = str(rotulo(d["slot"]) or "").strip()
+                except Exception:  # noqa: BLE001
+                    nome = ""
+                if not nome or nome == d["slot"]:          # slot sem rótulo: nunca nome de variável
+                    nome = re.sub(r"\s+opcao$", "", d["slot"].replace("_", " "))
+                nome = nome.lower()
+                marca = hashlib.sha256(d["valor"].encode("utf-8")).hexdigest()[:16]
+                await registrar_julgamento_da_conversa(
+                    company_id=str(state.get("company_id") or ""), conversation_id=conversa,
+                    momento="deduziu", fala_do_segurado=fala, valor="%s é %s" % (nome, d["valor"]),
+                    modo="on", chave_idempotencia="conversa:%s:deduziu:%s:%s" % (conversa, d["slot"], marca))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[DIARIO] dedução não registrada (%s)", type(exc).__name__)
+
+    _em_segundo_plano(_gravar())
 
 
 def _consultas_do_turno(mensagens: list) -> Tuple[bool, bool]:
@@ -2360,6 +2627,13 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     # 🔴 Conserto X4 (D1): o prompt do turno chega pelo `config`, fora do checkpoint.
     state = com_o_prompt_do_turno(state, config)
 
+    # 🔴 SPEC-126 U5 · P-125-06 — a fala NOVA do segurado (corrigiu / repetiu / pediu pessoa) fecha
+    #    a linha pendente do diário. Só na 1ª passada do turno; fora do caminho da resposta.
+    try:
+        _sinal_do_segurado_no_diario(state)
+    except Exception as exc:  # noqa: BLE001 — o diário nunca derruba o turno
+        logger.debug("[DIARIO] sinal do segurado ilegível (%s)", type(exc).__name__)
+
     # === 🧠 A CONVERSA — por TOKENS, nunca por contagem (SPEC-125 S2 · D1) ===
     # 📊 Antes: as últimas 15 mensagens do checkpointer, com o SystemMessage de
     # cada turno ocupando vaga — o CPF dito na mensagem 3 sumia na 16ª.
@@ -2621,6 +2895,12 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
         if _sem_anuncio != _com_o_antes:
             logger.info("[Agent Node] anúncio de acionamento recusado pelo portão — retirado")
             response = mesma_mensagem_com_texto(response, _sem_anuncio)
+        # 🔴 SPEC-126 U5 · P-125-04 — a apresentação UMA vez por assunto, por INTENÇÃO (antes dos
+        #    fiscais: eles leem o texto que SAI).
+        _uma_vez = uma_apresentacao_por_assunto(_sem_anuncio, state)
+        if _uma_vez != _sem_anuncio:
+            logger.info("[Agent Node] apresentação repetida retirada (uma vez por assunto)")
+            response = mesma_mensagem_com_texto(response, _uma_vez)
 
     if (
         _policy_intelligence_v2()
@@ -2752,6 +3032,8 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
                 state, extract_text_from_content(getattr(response, "content", "") or ""))
             if _achado:
                 _registrar_julgamento_no_diario(state, _achado)
+            # 🔴 SPEC-126 U5 · P-125-06 — `deduziu`, o que a ferramenta declarou deduzido
+            _registrar_deducoes_no_diario(state, deducoes_do_turno(state.get("messages") or []))
         except Exception as exc:  # noqa: BLE001 — o diário nunca derruba o turno
             logger.debug("[DIARIO] momento do turno ilegível (%s)", type(exc).__name__)
 

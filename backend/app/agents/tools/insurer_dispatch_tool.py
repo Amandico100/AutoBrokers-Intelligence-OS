@@ -341,6 +341,12 @@ class InsurerDispatchInput(BaseModel):
         "[auto e residencial] true SOMENTE depois de você MOSTRAR ao cliente na conversa os dados do "
         "acionamento (placa/veículo, local, destino, telefone — o que o serviço usa) e ele responder SIM. "
         "A ferramenta confere na conversa a sua pergunta e o sim dele: sem os dois, o acionamento não sai."))
+    # 🔴 SPEC-126 U5 (D7 da 125, P-125-06): só o diário lê (`nodes.deducoes_do_turno`); o `_run`
+    #    o descarta antes de qualquer uso — não vira slot do serviço nem da URA.
+    slots_deduzidos: Optional[list[str]] = Field(default=None, description=(
+        "Os NOMES dos campos acima que você DEDUZIU — o segurado não disse com essas palavras "
+        "(ex.: ele escreveu 'BR-101' e você pôs via_ou_rodovia_opcao='rodovia'). Campo que ele disse "
+        "ou confirmou NÃO entra. Não muda o acionamento: vai ao diário da corretora."))
 
     # ══════════════════════════════════════════════════════════════════════
     # 🔴 C1 · O QUE O PORTÃO EXIGE E O CONTRATO NÃO DECLARAVA
@@ -1746,6 +1752,7 @@ class InsurerDispatchTool(BaseTool):
     def _run(self, **kwargs) -> dict:
         """Valida e monta o plano. NUNCA envia nada — o envio real (gate aberto)
         acontece só no _arun. Honestidade: sem envio, sem alegar acionamento."""
+        kwargs.pop("slots_deduzidos", None)   # SPEC-126 U5: só o diário lê (nodes.deducoes_do_turno)
         from app.services.corridor_playbooks import SUBSERVICO_INVALIDO
         from app.services.insurer_dispatch_service import build_dry_run_plan
 
@@ -2287,7 +2294,9 @@ class InsurerDispatchTool(BaseTool):
 
         from app.services.insurer_dispatch_service import dispatch_live_enabled
 
-        kwargs = com_o_telefone_da_conversa(await self._resolve_vehicle_facts(dict(kwargs)))
+        kwargs = dict(kwargs)
+        kwargs.pop("slots_deduzidos", None)   # SPEC-126 U5: só o diário lê (nodes.deducoes_do_turno)
+        kwargs = com_o_telefone_da_conversa(await self._resolve_vehicle_facts(kwargs))
         # 🔴 SPEC-126 U2-B (D1): com o PARENTE falando, a linha pronta sai sem a placa e o texto do
         #    acionamento sem o nome da seguradora (dados da apólice do titular)
         de_outra_pessoa = await self._apolice_de_outra_pessoa(kwargs)

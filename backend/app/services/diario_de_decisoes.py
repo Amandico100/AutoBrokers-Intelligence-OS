@@ -256,9 +256,14 @@ async def registrar_decisao(*, company_id: str, origem: str, work_run_id: Option
                             explicacao_para_gente: str, modelo: str,
                             segunda_opiniao: Optional[Dict[str, Any]], modo: str, gatilho: str,
                             chave_idempotencia: str,
-                            sessao: Optional[Dict[str, Any]] = None) -> Optional[str]:
+                            sessao: Optional[Dict[str, Any]] = None,
+                            momento: Optional[str] = None) -> Optional[str]:
     """Uma linha no diário (+ o evento curto `cerebro.decisao`). Idempotente por
-    (company_id, chave_idempotencia). Nunca levanta. Devolve o id, ou None."""
+    (company_id, chave_idempotencia). Nunca levanta. Devolve o id, ou None.
+
+    🔴 SPEC-126 U5 — `momento` (D7): a linha do ATENDIMENTO que já é escrita por outro motor (a
+    segunda chance e a passagem a pessoa de `human_handoff`) diz QUAL julgamento ela é, sem uma
+    segunda linha para o mesmo fato. Fora de `origem='atendimento'` → recusada (o CHECK do banco)."""
     try:
         return await _registrar(
             company_id=company_id, origem=origem, work_run_id=work_run_id,
@@ -266,7 +271,7 @@ async def registrar_decisao(*, company_id: str, origem: str, work_run_id: Option
             servico=servico, tela=tela, classe=classe, acao=acao, valor=valor, nota=nota,
             limiar=limiar, motivo=motivo, explicacao_para_gente=explicacao_para_gente,
             modelo=modelo, segunda_opiniao=segunda_opiniao, modo=modo, gatilho=gatilho,
-            chave_idempotencia=chave_idempotencia, sessao=sessao)
+            chave_idempotencia=chave_idempotencia, sessao=sessao, momento=momento)
     except Exception as e:  # noqa: BLE001 — o diário nunca derruba o acionamento
         logger.error("[DIARIO] decisão NÃO registrada (%s)", type(e).__name__)
         return None
@@ -561,10 +566,30 @@ async def registrar_julgamento_da_conversa(*, company_id: str, conversation_id: 
         return None
 
 
-async def fechar_como_erro_leve(*, company_id: str, conversation_id: str, sinal: str) -> int:
+def _instante(valor: Any) -> Optional[datetime]:
+    try:
+        t = datetime.fromisoformat(str(valor or "").strip().replace("Z", "+00:00"))
+        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+#: constante_justificada: quantas pendentes da conversa se leem para achar a da janela (o diário tem
+#: 💭 1–3 linhas por atendimento; 20 cobre uma conversa longa sem varrer a tabela).
+_PENDENTES_LIDAS = 20
+
+
+async def fechar_como_erro_leve(*, company_id: str, conversation_id: str, sinal: str,
+                                criada_antes_de: Optional[str] = None,
+                                janela_min: Optional[float] = None) -> int:
     """O segurado corrigiu, repetiu ou pediu pessoa LOGO DEPOIS (ou o fiscal da repetição disparou):
     fecha a ÚLTIMA linha `pendente` daquela conversa daquela corretora com o sinal. Devolve 0 ou 1.
-    Nunca levanta."""
+    Nunca levanta.
+
+    🔴 SPEC-126 U5 — `criada_antes_de` (o começo do turno do segurado) e `janela_min`: o sinal da
+    fala NOVA fecha a linha do julgamento ANTERIOR a ela — nunca a que o próprio turno está
+    gravando (o `chamou_pessoa` do mesmo turno) nem um julgamento de horas atrás. Sem eles, o
+    comportamento da SPEC-125 (a última pendente)."""
     try:
         cid = str(company_id or "").strip()
         conversa = str(conversation_id or "").strip()
@@ -573,13 +598,23 @@ async def fechar_como_erro_leve(*, company_id: str, conversation_id: str, sinal:
         db = await _cliente()
         if db is None:
             return 0
-        r = await (db.client.table(TABELA).select("id")
+        r = await (db.client.table(TABELA).select("id, created_at")
                    .eq("company_id", cid)
                    .eq("conversation_id", conversa)
                    .eq("origem", "atendimento")
                    .eq("resultado", "pendente")
-                   .order("created_at", desc=True).limit(1).execute())
-        alvo = (r.data or [{}])[0].get("id")
+                   .order("created_at", desc=True).limit(_PENDENTES_LIDAS).execute())
+        linhas = [x for x in (r.data or []) if isinstance(x, dict) and x.get("id")]
+        teto = _instante(criada_antes_de) if criada_antes_de else None
+        if teto is not None:
+            from datetime import timedelta
+
+            piso = teto - timedelta(minutes=float(janela_min)) if janela_min else None
+            linhas = [x for x in linhas if (_instante(x.get("created_at")) or teto) < teto
+                      and (piso is None or (_instante(x.get("created_at")) or piso) >= piso)]
+        # a ordem é a do banco; o `sorted` estável só a garante quando o leitor não ordena
+        linhas = sorted(linhas, key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        alvo = (linhas or [{}])[0].get("id")
         if not alvo:
             return 0
         u = await (db.client.table(TABELA)

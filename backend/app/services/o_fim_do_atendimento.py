@@ -2573,10 +2573,67 @@ def a_resposta_se_apresenta(resposta: Any, *, agent_name: str = "") -> bool:
     texto = nome_normalizado(resposta)
     if not texto:
         return False
+    # 🔴 SPEC-126 U5 (P-125-04) — a apresentação é uma INTENÇÃO (identificar-se pelo NOME), não um
+    #    trecho exato. 📊 Nas conversas gravadas do Sol (`conversa_z_sol_v2.json` C1/C4 t2,
+    #    `spec126_u0_sol_*.json` C1 t2 e C6 t1) ele se apresenta "Aqui é a <nome>, da <corretora>."
+    #    — sem "assistente virtual". A régua antiga não contava, a ficha seguia pedindo, e o turno
+    #    seguinte se apresentava DE NOVO: "uma vez" virava "a cada turno".
+    if trechos_de_apresentacao(resposta, agent_name=agent_name):
+        return True
     if _MARCA_DA_APRESENTACAO not in texto:
         return False
     nome = nome_normalizado(agent_name)
     return (nome in texto) if nome else True
+
+
+#: SPEC-126 U5 — as letras com acento que o nome e as palavras da apresentação aceitam (o modelo
+#: escreve "é"/"e", "Olá"/"Ola"). A régua casa no TEXTO ORIGINAL para quem corta saber onde cortar.
+_COM_ACENTO = {"a": "aáàâãä", "e": "eéèêë", "i": "iíìîï", "o": "oóòôõö", "u": "uúùûü", "c": "cç"}
+
+
+def _padrao_sem_acento(texto: str) -> str:
+    saida = []
+    for ch in nome_normalizado(texto):
+        if ch == " ":
+            saida.append(r"\s+")
+        elif ch in _COM_ACENTO:
+            saida.append("[%s]" % _COM_ACENTO[ch])
+        else:
+            saida.append(re.escape(ch))
+    return "".join(saida)
+
+
+#: constante_justificada: as formas com que o agente se IDENTIFICA pelo nome — as do acervo gravado
+#: ("Aqui é a Clara", "Sou Clara", "sou a Clara", 📊 `spec126_u0_sol_*.json`, `conversa_*_sol_*.json`)
+#: e as equivalentes de quem atende ("me chamo", "meu nome é", "quem fala é"). ⛔ Sempre seguidas do
+#: NOME do agente: "sou eu", "sou a responsável" nunca casam.
+_IDENTIFICA = (r"(?:aqui\s+(?:quem\s+fala\s+)?[eé]\s+(?:a\s+|o\s+)?|(?:eu\s+)?sou\s+(?:a\s+|o\s+)?|"
+               r"me\s+chamo\s+|meu\s+nome\s+[eé]\s+|quem\s+fala\s+[eé]\s+(?:a\s+|o\s+)?)")
+#: o cumprimento colado na apresentação ("Oi! Aqui é…") — vai junto quando ela sai
+_CUMPRIMENTO_COLADO = r"(?:\b(?:oi|ol[aá]|opa|bom\s+dia|boa\s+tarde|boa\s+noite)\b[\s!,.]*)*"
+
+
+def trechos_de_apresentacao(texto: Any, *, agent_name: str = "") -> List[Tuple[int, int]]:
+    """Onde o texto se APRESENTA (cumprimento colado + "aqui é a <nome>[, assistente virtual][ da X]")
+    — **PURA**. `[(início, fim)]` no texto ORIGINAL, em ordem. Sem nome → `[]` (a régua antiga, da
+    marca "assistente virtual", continua valendo em `a_resposta_se_apresenta`).
+
+    🔴 SPEC-126 U5 — é a MESMA régua que decide se a apresentação SAIU (`a_resposta_se_apresenta`)
+    e onde ela se REPETE (`nodes.uma_apresentacao_por_assunto`): duas réguas dariam duas respostas.
+    """
+    nome = _padrao_sem_acento(agent_name)
+    corpo = str(texto or "")
+    if not nome or not corpo.strip():
+        return []
+    rx = re.compile(
+        _CUMPRIMENTO_COLADO + _IDENTIFICA + nome + r"\b"
+        r"(?:\s*[,—–-]?\s*(?:a\s+|o\s+|sua\s+|seu\s+)?assistente\s+virtual)?"
+        # ", da <Corretora>": só palavras com MAIÚSCULA (o nome próprio), ligadas por de/da/do —
+        # "da Corretora Alfa e vou te ajudar" corta em "Alfa"; o resto é atendimento, nunca sai.
+        r"(?:\s*,?\s*d[aoe]s?\s+(?-i:[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9][^\s.!?,—–]*"
+        r"(?:\s+(?:(?:de|da|do|das|dos)\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9][^\s.!?,—–]*){0,5}))?"
+        r"(?:\s*[.!]+\s*|\s*[—–-]\s*|\s*,\s*)?", re.IGNORECASE)
+    return [(m.start(), m.end()) for m in rx.finditer(corpo)]
 
 
 #: SPEC-125 · S8b — as palavras de quem SÓ cumprimentou. constante_justificada:

@@ -1202,6 +1202,27 @@ def montar_bloco_recuperado(conteudo, pergunta, teto=None, max_trechos=None):
     }
 
 
+def escopo_do_acionamento(ficha: Any, *, assunto_novo: bool = False) -> Dict[str, str]:
+    """`{seguradora, ramo[, servico]}` do caso VIVO da ficha — ou `{}` (o bloco de acionamento sem
+    escopo, o de antes). **PURA.** SPEC-126 U5 · (b) da U3-B.
+
+    ⛔ `{}` quando: assunto NOVO (a ficha é aditiva e ainda carrega a seguradora/ramo do caso
+    anterior — escopar por eles ensinaria a instrução do corredor ERRADO, o defeito do T6), caso
+    resolvido, ou falta seguradora OU ramo (`resolve_playbook_ref` precisa dos dois)."""
+    f = ficha if isinstance(ficha, dict) else {}
+    if assunto_novo or f.get("resolvido_em"):
+        return {}
+    seguradora = str(f.get("seguradora") or "").strip().lower()
+    ramo = str(f.get("ramo") or "").strip().lower()
+    if not (seguradora and ramo):
+        return {}
+    escopo = {"seguradora": seguradora, "ramo": ramo}
+    servico = str(f.get("servico") or "").strip().lower()
+    if servico:
+        escopo["servico"] = servico
+    return escopo
+
+
 async def _build_initial_state(
     user_message: str,
     company_id: str,
@@ -1358,6 +1379,14 @@ async def _build_initial_state(
     # 🔴 SÓ PARA QUEM TEM A FERRAMENTA. O gate é o MESMO da linha 439, que
     # anexa `InsurerDispatchTool` só para `attendance`. Ensinar a acionar quem
     # não pode acionar é prometer ao cliente o que o agente não alcança.
+    # 🔴 SPEC-126 U5 · (b) da U3-B — o ESCOPO do caso: com seguradora + ramo na ficha do assunto
+    #    CORRENTE, o "AVISE TAMBÉM" é o do corredor do caso (📊 T6 da U1: a senha da assistência
+    #    residencial de uma seguradora chegava a um chaveiro de CARRO). Sem ficha, sem seguradora,
+    #    assunto novo ou caso resolvido → a chamada de antes, sem escopo (só o que vale para todos).
+    #    ⚠️ O reencontro e a ficha lidos aqui são os MESMOS que o bloco da ficha usa adiante (lidos
+    #    uma vez só: `_reencontro_lido` / `_ficha_lida`).
+    _reencontro_lido: Optional[str] = None
+    _ficha_lida: Optional[Dict[str, Any]] = None
     try:
         _papel = str((real_agent_data or {}).get("agent_role") or "").strip().lower()
         if _papel == "attendance":
@@ -1366,7 +1395,23 @@ async def _build_initial_state(
                 conhecimento_de_assistencia,
             )
 
-            _bloco = conhecimento_de_assistencia(sorted(_PLAYBOOKS))
+            _escopo: Dict[str, str] = {}
+            if supabase_client is not None and company_id and session_id:
+                try:
+                    from app.services.attendance_ficha import carregar as _carregar_ficha
+                    from app.services.o_fim_do_atendimento import bloco_do_reencontro as _reencontro
+
+                    _reencontro_lido = await _reencontro(
+                        supabase_client, company_id=str(company_id), session_id=str(session_id or ""))
+                    _cli_cedo = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
+                    _ficha_lida = await _carregar_ficha(_cli_cedo, str(company_id), str(session_id or ""))
+                    _escopo = escopo_do_acionamento(
+                        _ficha_lida, assunto_novo="ASSUNTO NOVO" in (_reencontro_lido or ""))
+                except Exception as e:  # noqa: BLE001 — sem escopo, o bloco de antes
+                    logger.warning("[Assistencia] escopo do caso não lido (%s)", type(e).__name__)
+                    _reencontro_lido, _ficha_lida, _escopo = None, None, {}
+            _bloco = (conhecimento_de_assistencia(sorted(_PLAYBOOKS), **_escopo) if _escopo
+                      else conhecimento_de_assistencia(sorted(_PLAYBOOKS)))
             if _bloco:
                 base_instructions = f"{base_instructions}\n\n{_bloco}"
                 logger.info("[Assistencia] conhecimento de acionamento no prompt "
@@ -1747,9 +1792,11 @@ async def _build_initial_state(
         try:
             from app.services.o_fim_do_atendimento import bloco_do_reencontro
 
-            _bloco_reencontro = await bloco_do_reencontro(
-                supabase_client, company_id=str(company_id),
-                session_id=str(session_id or ""))
+            # SPEC-126 U5: já lido para o escopo do bloco de acionamento → o MESMO, uma leitura
+            _bloco_reencontro = (_reencontro_lido if _reencontro_lido is not None
+                                 else await bloco_do_reencontro(
+                                     supabase_client, company_id=str(company_id),
+                                     session_id=str(session_id or "")))
         except Exception as e:  # noqa: BLE001 — nunca derruba o turno
             logger.warning("[REENCONTRO] não injetado (%s)", type(e).__name__)
 
@@ -1760,7 +1807,9 @@ async def _build_initial_state(
                                                        carregar, fundir,
                                                        identidade_de)
 
-            _ficha = await carregar(_cli, str(company_id), str(session_id or ""))
+            # SPEC-126 U5: a ficha já lida para o escopo do acionamento — a MESMA, uma leitura
+            _ficha = (_ficha_lida if _ficha_lida is not None
+                      else await carregar(_cli, str(company_id), str(session_id or "")))
 
             # --- a identidade da thread, fixada a cada ASSUNTO NOVO ---------
             #
