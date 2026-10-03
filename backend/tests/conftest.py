@@ -416,3 +416,104 @@ def _o_arquivo_devolve_o_que_trocou(request):
         yield
     finally:
         _devolver(antes, tirar_novos_do_app=True)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-126 U2-C — A TRAVA DO MODELO PAGO: teste nenhum chama o classificador de PRODUÇÃO
+# ---------------------------------------------------------------------------
+# 📊 O defeito (U2-B): a bancada de conversa chamava `prova_da_confirmacao` sem `llm=` e o classificador
+# ia ao papel `confirmacao` pela fábrica (`llm_factory.invocar_com_reserva`) — chamada PAGA, fora do
+# ledger da bancada. Um teste que repetisse esse caminho com a chave local (= produção) pagaria calado.
+# A trava: em TODO teste, `invocar_com_reserva` com um papel de `_PAPEIS_PAGOS_TRAVADOS` deixa a
+# RESOLUÇÃO acontecer (grátis — sem rota, o erro de sempre sobe, como no original) e, em vez de criar o
+# cliente do provedor, FALHA ALTO: `pytest.fail("teste chamou modelo pago: …")`. Se o produto engolir a
+# falha, o fim do teste falha do mesmo jeito (a violação fica anotada).
+# ✅ Dublar é explícito e continua valendo: `bancada_confirmacao.classificador_duble_na_borda()` (embrulha
+# por CIMA desta trava e nunca a chama para o papel dublado), `monkeypatch.setattr(LF, "invocar_com_reserva",
+# …)` (troca a trava inteira) ou `llm=` (nunca chega à fábrica).
+# ⚠️ Só o papel `confirmacao`: travar todo papel/provedor quebraria testes que exercitam a reserva com a
+# fábrica dublada (`test_spec116_reserva_p0`, `test_o_sol_6_1_sucede_o_sol_6`) — fica como pendência.
+_PAPEIS_PAGOS_TRAVADOS = ("confirmacao",)
+_MODULO_DA_FABRICA = "app.factories.llm_factory"
+
+
+class _TravaDoModeloPago:
+    def __init__(self):
+        self.violacoes: list = []
+        self.instaladas: list = []      # (módulo, original, travada)
+
+
+def _travar_a_fabrica(modulo, trava: _TravaDoModeloPago) -> None:
+    original = getattr(modulo, "invocar_com_reserva", None)
+    if original is None or getattr(original, "__trava_do_modelo_pago__", False):
+        return
+
+    async def invocar_com_reserva(papel, mensagens, **kw):
+        if papel not in _PAPEIS_PAGOS_TRAVADOS:
+            return await original(papel, mensagens, **kw)
+        # a RESOLUÇÃO, como a 1ª linha do original: sem rota → `ModeloNaoResolvido` sobe (nada pago)
+        modulo.LLMFactory.resolver_para({}, {}, papel=papel, classe_de_dado=kw.get("classe_de_dado"))
+        msg = (f"teste chamou modelo pago: papel {papel!r} pelo `invocar_com_reserva` de produção, sem "
+               "dublê — injete `llm=`, use `classificador_duble_na_borda()` ou a rodada da bancada")
+        trava.violacoes.append(msg)
+        _pytest.fail(msg, pytrace=False)
+
+    invocar_com_reserva.__trava_do_modelo_pago__ = True
+    modulo.invocar_com_reserva = invocar_com_reserva
+    trava.instaladas.append((modulo, original, invocar_com_reserva))
+
+
+class _TravaNoImport:
+    """Meta path finder: se a fábrica for importada DURANTE o teste, ela já nasce travada."""
+
+    def __init__(self, trava: _TravaDoModeloPago):
+        self.trava = trava
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname != _MODULO_DA_FABRICA:
+            return None
+        import importlib.machinery as _maq
+
+        spec = _maq.PathFinder.find_spec(fullname, path, target)
+        loader = getattr(spec, "loader", None)
+        exec_original = getattr(loader, "exec_module", None)
+        if spec is None or exec_original is None:
+            return spec
+        trava = self.trava
+
+        def exec_module(module, _o=exec_original):
+            _o(module)
+            _travar_a_fabrica(module, trava)
+
+        try:
+            loader.exec_module = exec_module
+        except Exception:  # noqa: BLE001
+            pass
+        return spec
+
+
+@_pytest.fixture(autouse=True)
+def trava_do_modelo_pago():
+    """🔴 SPEC-126 U2-C — o papel `confirmacao` pela fábrica de produção falha o teste. Devolve a trava
+    (`.violacoes`): o teste que PROVA a trava limpa a lista depois de conferir a falha."""
+    trava = _TravaDoModeloPago()
+    gancho = None
+    modulo = _sys.modules.get(_MODULO_DA_FABRICA)
+    if modulo is not None:
+        _travar_a_fabrica(modulo, trava)
+    else:
+        gancho = _TravaNoImport(trava)
+        _sys.meta_path.insert(0, gancho)
+    try:
+        yield trava
+    finally:
+        if gancho is not None:
+            try:
+                _sys.meta_path.remove(gancho)
+            except ValueError:
+                pass
+        for mod, original, travada in reversed(trava.instaladas):
+            if getattr(mod, "invocar_com_reserva", None) is travada:
+                mod.invocar_com_reserva = original
+        if trava.violacoes:
+            _pytest.fail(trava.violacoes[0], pytrace=False)

@@ -670,6 +670,18 @@ class Contexto:
     resolvido: Any = None
     #: SPEC-123 F2a — o braço da 2ª OPINIÃO (papel destravador): {"braco", "llm", "medidor"}.
     segunda: Optional[Dict[str, Any]] = None
+    #: 🔴 SPEC-126 U2-C — o CLASSIFICADOR da confirmação DESTA rodada (um `Medidor`), construído só
+    #: na 1ª tentativa de acionamento que a regex deixa passar (`classificador_da_confirmacao`).
+    #: ⛔ Nunca o papel de produção (`invocar_com_reserva`): sem fábrica, o dublê do acionamento PARA.
+    confirmacao: Any = None
+    fabrica_da_confirmacao: Optional[Callable[[], Any]] = None
+    rotulo_da_confirmacao: Optional[str] = None
+    #: a fábrica do classificador falhou (catálogo, rota) — a rodada vira BLOCKED_BY_INFRA, nunca FAIL
+    infra_da_confirmacao: Optional[str] = None
+    #: o classificador bateu no teto — a rodada PARA (como qualquer chamada do braço)
+    teto_da_confirmacao: Optional[str] = None
+    #: o que o PORTÃO decidiu em cada chamada do `insurer_dispatch` (o motor copia por turno)
+    decisoes_do_portao: List[dict] = field(default_factory=list)
 
 
 class Bloqueado(Exception):
@@ -727,6 +739,110 @@ def _estado_base(caso: dict, braco: Braco, agent_role: str, tenant: str) -> dict
     }
 
 
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-126 U2-C — o CLASSIFICADOR da confirmação DENTRO da rodada (e do teto)
+#
+# 📊 O defeito (medido na U2-B): o dublê do acionamento chamava `prova_da_confirmacao` SEM `llm=` →
+# numa rodada de conversa o classificador ia ao papel de PRODUÇÃO (`invocar_com_reserva("confirmacao")`):
+# chamada paga, com `company_id` fictício, FORA do ledger `service_type='bancada'` e FORA do teto.
+# Agora a rodada carrega o SEU classificador:
+#   · rodada REAL (braço construído pela fábrica do produto) → o braço da bancada do "ok", montado por
+#     `bancada_confirmacao.construir_braco` (resolver_padrao do papel `confirmacao` · construir_llm_padrao
+#     ISOLADO · `details.papel='confirmacao'` no ledger · `Medidor` com o ORÇAMENTO da rodada);
+#   · rodada de DUBLÊ (braço dublê, ou modelo injetado por teste) → classificador-dublê, medido igual.
+# O portão continua o do PRODUTO (`prova_da_confirmacao` → `portao_da_confirmacao` → `decisao_do_portao`):
+# a bancada só injeta o modelo (CLAUDE.md §9.4).
+# ---------------------------------------------------------------------------
+#: constante_justificada: o classificador da rodada de DUBLÊ diz OK a tudo — quem decide o "não acionou"
+#: é a regex do portão, exatamente como nas rodadas de dublê antes da U2-B (e nos testes que dublavam a
+#: borda com `classificador_duble_na_borda()`, que também diz ok a tudo). Para medir o portão RECUSANDO
+#: pelo classificador, a rodada passa `confirmacao="duble:nunca_ok"` (ou `duble:regex`).
+CLASSIFICADOR_DUBLE_PADRAO = "duble:sempre_ok"
+
+
+class _ClassificadorDuble:
+    """Um dublê de `bancada_confirmacao.DUBLES` com `usage_metadata` ESTIMADA (≈ 4 caracteres por token,
+    como o `LLMDuble`): o custo dele entra no `Medidor` da rodada como o de qualquer braço-dublê."""
+
+    def __init__(self, nome: str):
+        from app.services.evals import bancada_confirmacao as BC
+
+        if nome not in BC.DUBLES:
+            raise ValueError(f"classificador-dublê desconhecido {nome!r} (use {sorted(BC.DUBLES)})")
+        self.interno = BC.DUBLES[nome]()
+        self.model_name = f"duble:{nome}"
+
+    async def ainvoke(self, mensagens, config=None, **_k):
+        resp = await self.interno.ainvoke(mensagens, config=config)
+        entrada = D.estimar_tokens("\n".join(D._texto_de(getattr(m, "content", m)) for m in mensagens or []))
+        saida = D.estimar_tokens(D._texto_de(getattr(resp, "content", "")))
+        resp.usage_metadata = {"input_tokens": entrada, "output_tokens": saida, "total_tokens": entrada + saida}
+        resp.response_metadata = {"model_name": self.model_name}
+        return resp
+
+
+def rotulo_da_confirmacao_de_producao() -> str:
+    """`provider:model:effort` da ROTA de produção do papel `confirmacao` (Model Router, sem override) —
+    o modelo que o produto usaria; a bancada o mede com o braço DELA (nunca pelo papel de produção)."""
+    from app.atendimento.confirmacao import PAPEL
+    from app.factories.model_policy import resolver as _resolver
+
+    r = _resolver(PAPEL)
+    effort = _campo(r, "effort")
+    return f"{_campo(r, 'provider')}:{_campo(r, 'model')}" + (f":{effort}" if effort else "")
+
+
+def fabrica_do_classificador(braco: Braco, *, real: bool, orcamento: Orcamento,
+                             orcamentos: Optional[Dict[str, Orcamento]] = None,
+                             confirmacao: Optional[str] = None) -> Callable[[], tuple]:
+    """A fábrica PREGUIÇOSA do classificador de UMA rodada → `() -> (rotulo, Medidor)`. **Nada é
+    construído aqui**: papel que nunca aciona não resolve rota nem lê catálogo.
+
+    `real`: o braço sai da fábrica do PRODUTO (`construir_llm_padrao`) e não é dublê. Só aí o
+    classificador pode ser pago — e é o da BANCADA (`bancada_confirmacao.construir_braco`), no
+    ORÇAMENTO do provedor dele (`orcamentos`) ou, sem ele, no da rodada (conta a mais, nunca a menos).
+    ⛔ Rodada de dublê com `confirmacao` pago é recusada: teste nenhum chama modelo pago."""
+    def _construir() -> tuple:
+        rotulo = confirmacao or (rotulo_da_confirmacao_de_producao() if real else CLASSIFICADOR_DUBLE_PADRAO)
+        b = Braco.de(rotulo)
+        if b.e_duble:
+            orc = orcamento
+            return b.rotulo, Medidor(_ClassificadorDuble(b.model), preco=dict(PRECO_DUBLE_PADRAO),
+                                     orcamento=orc, max_output=MAX_TOKENS_DA_BANCADA)
+        if not real:
+            raise ValueError(f"classificador pago {b.rotulo} numa rodada de dublê — recusado "
+                             "(a rodada de dublê usa `duble:<sempre_ok|nunca_ok|regex>`)")
+        from app.services.evals import bancada_confirmacao as BC
+
+        orc = (orcamentos or {}).get(b.provider) or orcamento
+        _b, medido = BC.construir_braco(b.rotulo, orcamento=orc)
+        return b.rotulo, medido
+    return _construir
+
+
+def classificador_da_confirmacao(ctx: "Contexto") -> Any:
+    """O classificador (um `Medidor`) desta rodada — construído na 1ª vez. ⛔ Sem fábrica → `Bloqueado`:
+    o dublê do acionamento nunca deixa o portão cair no papel de PRODUÇÃO."""
+    if ctx.confirmacao is None:
+        if ctx.fabrica_da_confirmacao is None:
+            raise Bloqueado("a rodada não tem o classificador da confirmação (nunca o de produção)")
+        ctx.rotulo_da_confirmacao, ctx.confirmacao = ctx.fabrica_da_confirmacao()
+    return ctx.confirmacao
+
+
+class _ClassificadorIndisponivel:
+    """A fábrica do classificador falhou: a chamada levanta → o classificador lê `outra_coisa`
+    (fail-closed, nada acionado) e a rodada é marcada BLOCKED_BY_INFRA (`ctx.infra_da_confirmacao`)."""
+
+    model_name = "indisponivel"
+
+    def __init__(self, erro: BaseException):
+        self.erro = erro
+
+    async def ainvoke(self, *_a, **_k):
+        raise Bloqueado(f"classificador indisponível: {type(self.erro).__name__}")
+
+
 class _DubleDoAcionamento(D.DubleDeTool):
     """🔴 SPEC-125 Y1 — o dublê do `insurer_dispatch` HONRA a confirmação, como a real.
 
@@ -736,28 +852,73 @@ class _DubleDoAcionamento(D.DubleDeTool):
     teria recusado. Agora, quando o estado do caso responderia `dispatched`, a MESMA
     regra da ferramenta (`insurer_dispatch_tool.prova_da_confirmacao`, sobre a conversa
     que a bancada grava no banco-dublê) decide: sem o campo E a prova, devolve o
-    `confirm_first` da real e NÃO conta efeito."""
+    `confirm_first` da real e NÃO conta efeito.
+
+    🔴 SPEC-126 U2-C: o portão é regex E classificador — e o classificador é o DA RODADA
+    (`classificador_da_confirmacao`, `llm=`), nunca o papel de produção. Cada chamada deixa a
+    decisão em `ctx.decisoes_do_portao` (o motor a grava no turno; a régua `acionou_sem_confirmar`
+    lê ESSA decisão, não uma reavaliação). O parente (`de_outra_pessoa`) recebe a linha sem a placa,
+    pela leitura da PRÓPRIA ferramenta (`InsurerDispatchTool._apolice_de_outra_pessoa`)."""
 
     banco: Any = None
+    ctx: Any = None
+
+    async def _de_outra_pessoa(self, kwargs: dict) -> bool:
+        ler = getattr(self.real, "_apolice_de_outra_pessoa", None)
+        if ler is None:
+            return False
+        try:
+            return bool(await ler(dict(kwargs)))
+        except Exception as exc:  # noqa: BLE001 — a leitura da real já não levanta; cinto e suspensório
+            logger.debug("[Bancada] marca de terceiro não lida (%s)", type(exc).__name__)
+            return False
+
+    def _anotar(self, kwargs: dict, decisao: Optional[dict], acionou: int) -> None:
+        if self.ctx is None:
+            return
+        d = decisao or {}
+        self.ctx.decisoes_do_portao.append({
+            "dados_confirmados": kwargs.get("dados_confirmados") in (True, "true"),
+            "consultado": decisao is not None, "comprovada": bool(d.get("comprovada")),
+            "camada": d.get("camada"), "leitura": d.get("leitura"),
+            "motivo": str(d.get("motivo") or "")[:300], "acionou": int(acionou)})
 
     async def _arun(self, **kwargs):
         por_tenant = self.estado.get("respostas_por_tenant") or {}
         resp = por_tenant.get(self.tenant) if por_tenant else self.estado.get("resposta")
-        sairia =isinstance(resp, dict) and str(resp.get("status")) == "dispatched"
+        sairia = isinstance(resp, dict) and str(resp.get("status")) == "dispatched"
+        antes = self.registro.contagem(self.name)
+        prova = None
         if sairia:
             from app.agents.tools.insurer_dispatch_tool import (
                 pedido_de_confirmacao, prova_da_confirmacao)
 
+            try:
+                # fora de uma rodada (só um TESTE constrói o dublê solto): o dublê padrão, grátis — nunca o
+                # papel de produção. Dentro da rodada: o classificador DELA.
+                llm = (classificador_da_confirmacao(self.ctx) if self.ctx is not None
+                       else _ClassificadorDuble(Braco.de(CLASSIFICADOR_DUBLE_PADRAO).model))
+            except Exception as exc:  # noqa: BLE001 — fail-closed: nada aciona, e a rodada vira INFRA
+                if self.ctx is not None:
+                    self.ctx.infra_da_confirmacao = f"classificador da confirmação: {type(exc).__name__}: {exc}"[:300]
+                llm = _ClassificadorIndisponivel(exc)
             prova = await prova_da_confirmacao(
                 self.banco, company_id=str(getattr(self.real, "company_id", "") or ""),
-                session_id=str(kwargs.get("session_id") or ""), pedido=kwargs)
+                session_id=str(kwargs.get("session_id") or ""), pedido=kwargs, llm=llm)
+            if self.ctx is not None and "TetoDeGastoAtingido" in str(prova.get("motivo") or ""):
+                self.ctx.teto_da_confirmacao = str(prova.get("motivo"))[:300]
             if not (kwargs.get("dados_confirmados") is True and prova.get("comprovada")):
                 self.registro.registrar(tool=self.name, args=kwargs, tenant=self.tenant,
                                         efeito=False, campos_da_chave=self.estado.get("chave"))
-                # SPEC-126 U1: o MESMO retorno da real, com a LINHA PRONTA do pedido
+                self._anotar(kwargs, prova, 0)
+                # SPEC-126 U1: o MESMO retorno da real, com a LINHA PRONTA do pedido — e, U2-C, a linha
+                # de QUEM FALA (o parente não vê a placa do titular), como a real faz
                 return pedido_de_confirmacao(str(prova.get("motivo") or ""),
-                                             ja_confirmou=bool(prova.get("comprovada")), pedido=kwargs)
-        return await super()._arun(**kwargs)
+                                             ja_confirmou=bool(prova.get("comprovada")), pedido=kwargs,
+                                             de_outra_pessoa=await self._de_outra_pessoa(kwargs))
+        saida = await super()._arun(**kwargs)
+        self._anotar(kwargs, prova, self.registro.contagem(self.name) - antes)
+        return saida
 
 
 async def _grafo_real(ctx: Contexto, *, agent_role: str, tenant: str, caps: List[str],
@@ -779,6 +940,7 @@ async def _grafo_real(ctx: Contexto, *, agent_role: str, tenant: str, caps: List
                                        estado=estados_dubles.get(t.name))
                 if classe is _DubleDoAcionamento:
                     cache[t.name].banco = ctx.banco
+                    cache[t.name].ctx = ctx          # SPEC-126 U2-C: o classificador DA RODADA
             dub.append(cache[t.name])
         return await real_tool_node(state, tools=dub)
 
@@ -1484,7 +1646,9 @@ def _marcar_papel_no_ledger(llm: Any, papel: Optional[str]) -> Any:
 
 async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
                       orcamento: Orcamento, construir_llm: Callable, tentativa: int,
-                      segunda: Optional[Dict[str, Any]] = None) -> ResultadoDoCaso:
+                      segunda: Optional[Dict[str, Any]] = None,
+                      orcamentos: Optional[Dict[str, Orcamento]] = None,
+                      confirmacao: Optional[str] = None) -> ResultadoDoCaso:
     caso_m = D.materializar(caso)
     ficha_ctx = D.CASO_ATUAL.set(caso_m)
     inicio = time.perf_counter()
@@ -1506,6 +1670,11 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
                                        defn.get("papel_no_ledger_segunda"))
         med2 = Medidor(llm2, preco=segunda["preco"], orcamento=segunda["orcamento"], max_output=max_out)
         ctx.segunda = {"braco": segunda["braco"], "llm": med2, "medidor": med2}
+    # 🔴 SPEC-126 U2-C: o classificador da confirmação é DA RODADA (preguiçoso). Real só quando o braço sai
+    #    da fábrica do PRODUTO; modelo injetado (teste) ou braço dublê → classificador-dublê.
+    ctx.fabrica_da_confirmacao = fabrica_do_classificador(
+        braco, real=(construir_llm is construir_llm_padrao and not braco.e_duble), orcamento=orcamento,
+        orcamentos=orcamentos, confirmacao=confirmacao)
     motor = MOTORES[defn["motor"]]
     saida: dict = {}
     erro = None
@@ -1514,6 +1683,8 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
     try:
         with D.borda_isolada(banco, env=defn.get("env")):
             saida = await motor(caso_m, ctx)
+            if ctx.teto_da_confirmacao:    # SPEC-126 U2-C: o classificador também PARA a rodada no teto
+                raise TetoDeGastoAtingido(f"classificador da confirmação: {ctx.teto_da_confirmacao}")
     except TetoDeGastoAtingido:
         raise
     except Bloqueado as exc:
@@ -1547,6 +1718,9 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
         if ctx.segunda:
             e2 = ctx.segunda["medidor"].estado
             falhou_calado += e2.get("tentativas", 0) - e2["chamadas"]
+        if isinstance(ctx.confirmacao, Medidor):   # SPEC-126 U2-C: o classificador que caiu é INFRA
+            e3 = ctx.confirmacao.estado
+            falhou_calado += e3.get("tentativas", 0) - e3["chamadas"]
         if (not braco.e_duble and resultado in ("FAIL", "PARTIAL") and falhou_calado > 0
                 and not (falhas and falhas.disparadas)):
             resultado = "BLOCKED_BY_INFRA"
@@ -1556,6 +1730,8 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
         if not braco.e_duble and reais and any(braco.model not in r for r in reais):
             resultado = "BLOCKED_BY_INFRA"
             erro = f"modelo_real {sorted(set(reais))} ≠ braço {braco.model} (a fábrica trocou o modelo)"
+        if ctx.infra_da_confirmacao:   # SPEC-126 U2-C: sem classificador, o portão decidiu no escuro
+            resultado, erro = "BLOCKED_BY_INFRA", ctx.infra_da_confirmacao
 
     rastro = {
         "tool_calls": medidor.estado["tool_calls"],
@@ -1586,6 +1762,14 @@ async def _rodar_caso(caso: dict, *, braco: Braco, resolvido: Any, preco: dict,
                              "custo_usd": round(e2["custo"], 8), "tokens": dict(e2["tokens"]),
                              "modelos_reais": sorted(set(e2["modelos_reais"]))}
         tokens["segunda"] = dict(e2["tokens"])
+    if isinstance(ctx.confirmacao, Medidor):
+        # 🔴 SPEC-126 U2-C: o custo do classificador ENTRA no custo do caso (e no teto, pelo orçamento)
+        e3 = ctx.confirmacao.estado
+        custo += e3["custo"]
+        rastro["confirmacao"] = {"braco": ctx.rotulo_da_confirmacao, "chamadas": e3["chamadas"],
+                                 "chamadas_tentadas": e3.get("tentativas", 0),
+                                 "custo_usd": round(e3["custo"], 8), "tokens": dict(e3["tokens"]),
+                                 "modelos_reais": sorted(set(e3["modelos_reais"]))}
     return ResultadoDoCaso(
         chave=caso["chave"], braco=braco.rotulo, tentativa=tentativa, resultado=resultado,
         critico=bool(caso.get("critico")), custo_usd=round(custo, 8),
@@ -1644,10 +1828,13 @@ async def rodar_bancada_async(papel: str, bracos: List[Any], casos: Optional[Lis
                               variante: Optional[str] = None,
                               segunda: Optional[Any] = None,
                               orcamentos: Optional[Dict[str, "Orcamento"]] = None,
-                              grupos: Optional[List[str]] = None) -> RelatorioDaBancada:
+                              grupos: Optional[List[str]] = None,
+                              confirmacao: Optional[str] = None) -> RelatorioDaBancada:
     """SPEC-123 F2a acrescenta: `segunda` (o braço da 2ª opinião do destravador), `orcamentos`
     (um `Orcamento` POR PROVEDOR — o teto do Founder é por provedor, lido do ledger) e `grupos`
-    (T · D · A · B)."""
+    (T · D · A · B). SPEC-126 U2-C: `confirmacao` (`provider:model[:effort]` ou `duble:<nome>`) — o
+    classificador do portão do acionamento na rodada; sem ele, a rota de produção do papel
+    `confirmacao` medida pelo braço da BANCADA (rodada real) ou `CLASSIFICADOR_DUBLE_PADRAO`."""
     defn = definicao_do_papel(papel)
     construir_llm = construir_llm or construir_llm_padrao
     resolver = resolver or resolver_padrao
@@ -1711,7 +1898,8 @@ async def rodar_bancada_async(papel: str, bracos: List[Any], casos: Optional[Lis
                 try:
                     r = await _rodar_caso(caso, braco=braco, resolvido=resolvido, preco=preco,
                                           orcamento=orc_do_braco, construir_llm=construir_llm,
-                                          tentativa=tentativa, segunda=seg_cfg)
+                                          tentativa=tentativa, segunda=seg_cfg,
+                                          orcamentos=orcamentos, confirmacao=confirmacao)
                 except TetoDeGastoAtingido as exc:
                     parada = "teto_usd"
                     rel.parada = f"teto_usd — {exc}"
@@ -3710,6 +3898,7 @@ async def motor_conversa(caso: dict, ctx: Contexto) -> dict:
             _gravar_mensagem(ctx.banco, conversa_id, company_id, "user", linha_do_chat)
             n_tools = len(ctx.medidor.estado["tool_calls"])
             acionados_antes = ctx.registro.contagem("insurer_dispatch")
+            portao_antes = len(ctx.decisoes_do_portao)
             t0 = time.perf_counter()
             out = await G.invoke_agent(graph=grafo, user_message=entrada, company_id=company_id,
                                        user_id=user_id, session_id=sessao, company_config=agente, options={},
@@ -3735,6 +3924,9 @@ async def motor_conversa(caso: dict, ctx: Contexto) -> dict:
                 # SPEC-126 U1 (P-125-08 b): o que de fato ACIONOU neste turno (efeito do dublê que
                 # honra o portão) — a régua conta acionamento feito, não tentativa recusada
                 "acionamentos": ctx.registro.contagem("insurer_dispatch") - acionados_antes,
+                # SPEC-126 U2-C: o que o PORTÃO (regex E classificador) decidiu em cada chamada deste turno —
+                # é o que a régua `acionou_sem_confirmar` lê (a decisão da ferramenta, não uma reavaliação)
+                "portao": [dict(d) for d in ctx.decisoes_do_portao[portao_antes:]],
                 "revelou": fala.get("revelou") or [], "inventou": fala.get("inventou") or []})
             if fala["encerrar"]:
                 break
@@ -3968,6 +4160,27 @@ def sem_segredo_sem_orientacao(saida: Any, esperado: dict, entrada: Any = None) 
     return E.sem_segredo(_ORIENTACAO_DE_SENHA.sub("senha ", texto), esperado, entrada)
 
 
+def _acionou_sem_o_portao(t: dict) -> List[str]:
+    """SPEC-126 U2-C — os acionamentos de UM turno que a decisão GRAVADA do portão não explica. **PURA.**
+
+    · a chamada com `dados_confirmados=true` que ACIONOU sem o portão ter comprovado (não consultado,
+      ou consultado e recusado) é achado; chamada sem o campo é consulta e não conta (como antes);
+    · efeito de acionamento no turno (`acionamentos`) além dos que as decisões gravadas explicam
+      também é achado — acionou por um caminho que não passou pelo portão."""
+    turno = t.get("turno")
+    achados, explicados = [], 0
+    for d in t.get("portao") or []:
+        acionou = int(d.get("acionou") or 0)
+        explicados += acionou
+        if acionou and d.get("dados_confirmados") and not (d.get("consultado") and d.get("comprovada")):
+            achados.append(f"t{turno}:" + (str(d.get("motivo") or "") if d.get("consultado")
+                                           else "acionou sem passar pelo portão"))
+    sobra = int(t.get("acionamentos") or 0) - explicados
+    if sobra > 0:
+        achados.append(f"t{turno}:{sobra} acionamento(s) sem decisão do portão gravada")
+    return achados
+
+
 def acionou_sem_confirmar(trans: List[dict], efeitos: Optional[dict] = None) -> List[str]:
     """SPEC-125 Y1 (juiz B1 · T8): os turnos em que o agente ACIONOU (`insurer_dispatch` com
     `dados_confirmados=true`) SEM o sim do segurado. **PURA** — a MESMA regra da ferramenta
@@ -3980,7 +4193,13 @@ def acionou_sem_confirmar(trans: List[dict], efeitos: Optional[dict] = None) -> 
     (📊 R1 t1 e C3 t2 da Z: `confirm_first`, nada acionado — e a régua dava vermelho). O motor grava
     por turno `acionamentos` (efeitos do `insurer_dispatch`): turno sem efeito não aciona; com
     efeito, só os que nenhuma chamada comprovada explica. Transcrição antiga (sem o campo): com
-    `efeitos` da conversa e ZERO acionamentos, nada a contar; sem `efeitos`, a regra de antes."""
+    `efeitos` da conversa e ZERO acionamentos, nada a contar; sem `efeitos`, a regra de antes.
+
+    🔴 SPEC-126 U2-C: o portão é regex E classificador — reavaliar só a regex aqui julgava com METADE
+    da regra. Turno com `portao` (gravado pelo motor: o que a FERRAMENTA decidiu em cada chamada) é
+    julgado por ESSA decisão: acionamento com `dados_confirmados=true` que o portão não comprovou —
+    ou acionamento que nenhuma decisão do portão explica — é achado. Sem `portao` (transcrição
+    gravada antes da U2-C), a regra de antes."""
     from app.agents.tools.insurer_dispatch_tool import confirmacao_comprovada
 
     achados = []
@@ -3989,6 +4208,11 @@ def acionou_sem_confirmar(trans: List[dict], efeitos: Optional[dict] = None) -> 
     for t in trans:
         falas.extend(("segurado", str(s)) for s in (t.get("segurado") or []) if str(s).strip())
         feitos = t.get("acionamentos")
+        if isinstance(t.get("portao"), list):
+            achados += _acionou_sem_o_portao(t)
+            if str(t.get("agente") or "").strip():
+                falas.append(("agente", str(t.get("agente"))))
+            continue
         sem_prova, com_prova = [], 0
         for nome, args in zip(t.get("tools") or [], t.get("tool_args") or []):
             if nome != "insurer_dispatch" or (args or {}).get("dados_confirmados") not in (True, "true"):
@@ -4249,14 +4473,26 @@ def orcamentos_da_conversa(provedores: List[str], teto: float, desde: str, *, cl
                            ler: Optional[Callable] = None) -> Dict[str, "OrcamentoDoLedger"]:
     """Um `OrcamentoDoLedger` por provedor, contando SÓ as linhas `details.papel='conversa'`. 🔴 O cliente do
     ledger é capturado AQUI, FORA da borda de dublês (a releitura roda dentro de `borda_isolada`, onde
-    `get_supabase_client` é o dublê — o defeito que a SPEC-123 F5a pagou)."""
+    `get_supabase_client` é o dublê — o defeito que a SPEC-123 F5a pagou).
+
+    🔴 SPEC-126 U2-C: o classificador da confirmação roda DENTRO da conversa e grava
+    `details.papel='confirmacao'` — o teto relido do ledger soma `PAPEIS_NO_TETO_DA_CONVERSA`, senão a
+    rodada seguinte não veria o que o classificador da anterior gastou (conta a menos, nunca a mais)."""
     if ler is None:
         if cliente is None:
             from app.core.database import get_supabase_client
 
             cliente = get_supabase_client()
-        ler = lambda pv, d: gasto_do_ledger_do_papel(pv, d, "conversa", cliente=cliente)  # noqa: E731
+        ler = lambda pv, d: round(sum(gasto_do_ledger_do_papel(pv, d, papel, cliente=cliente)  # noqa: E731
+                                      for papel in PAPEIS_NO_TETO_DA_CONVERSA), 6)
     return {p: OrcamentoDoLedger(p, teto, desde, ler=ler) for p in sorted(set(provedores)) if p != "duble"}
+
+
+#: constante_justificada: os `details.papel` do ledger que a rodada de CONVERSA gasta — o agente e o
+#: segurado/juiz (`conversa`) e o classificador do portão (`confirmacao`, SPEC-126 U2-C). ⚠️ Inclui
+#: também o que a bancada do "ok" (U2a) gastou no mesmo provedor desde o marco: o teto do card é
+#: ACUMULADO ("U1–U5 Luna + bancada do ok"), então contar junto é o lado certo.
+PAPEIS_NO_TETO_DA_CONVERSA = ("conversa", "confirmacao")
 
 
 def resumo_da_conversa(arquivos: List[str], *, rejulgar: bool = False) -> dict:
