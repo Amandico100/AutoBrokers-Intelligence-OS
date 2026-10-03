@@ -539,6 +539,24 @@ _RX_STATUS_DO_SISTEMA = re.compile(
     r"(?i)\b(?:ap[óo]lice|seguro|contrato|proposta|parcela|boleto|cart[ãa]o|cobran[çc]a|d[ée]bito"
     r"|plano|endosso)s?\b")
 _RX_FIM_DE_ORACAO = re.compile(r"[,;:—–()\n]")
+#: 🔴 SPEC-126 CONSERTO 2 (pend. 3 da confirmação) — o FATO DE TERCEIRO tem a forma da passiva com o
+#: AGENTE nomeado, e o agente não é o atendimento: 📊 sonda do juiz (02/10) — "O agendamento da vistoria
+#: foi cancelado PELA SEGURADORA", "O sinistro foi cancelado PELA SEGURADORA em 10/09" eram reescritos
+#: para "Ainda não está cancelado…" (o contrário do fato, §9.5). constante_justificada: só quem informa
+#: status ao atendimento (a seguradora, o sistema, a central/assistência dela) e o "consta/aparece como"
+#: da consulta. ⛔ "pela corretora/pela equipe/por mim" NÃO está aqui: é exatamente o cancelamento que
+#: só uma pessoa faz e que o modelo inventaria.
+_RX_AGENTE_DE_FORA = re.compile(
+    r"(?i)\bpel[oa]s?\s+(?:pr[óo]pri[oa]\s+)?(?:seguradora|sistema|central|assist[êe]ncia)\b")
+_RX_CONSTA_COMO = re.compile(r"(?i)\b(?:consta|constam|aparece|aparecem)\s+(?:\S+\s+)?como\s+$")
+#: o SUJEITO que é o anterior/antigo ("o prestador ANTERIOR foi dispensado e um novo está a caminho"):
+#: a troca de prestador quem faz é a seguradora — o agente não tem ferramenta que dispense nem que mande
+#: outro, então quem relata a troca está relatando o que a seguradora informou.
+_RX_SUJEITO_ANTERIOR = re.compile(r"(?i)\b(?:anterior|antig[oa])\s+(?:\S+\s+){0,2}$")
+#: …e o RELATO DO PRÓPRIO FEITO ("Pronto, o guincho foi cancelado pela seguradora") não ganha a exceção:
+#: "pronto/feito/tudo certo" no começo da frase é o agente anunciando o que diz ter feito.
+_RX_ANUNCIO_DE_FEITO = re.compile(
+    r"(?i)^\W*(?:pronto|prontinho|feito|tudo\s+certo|certo|ok|perfeito|resolvido|beleza)\b")
 
 
 def _participio_afirmado(texto: str) -> bool:
@@ -560,6 +578,14 @@ def _participio_afirmado(texto: str) -> bool:
             if palavras and palavras[-1] in _MODAIS_ANTES_DO_PARTICIPIO:
                 continue
             if _RX_STATUS_DO_SISTEMA.search(oracao):
+                continue
+            # CONSERTO 2 (pend. 3): o fato de TERCEIRO — passiva com o agente de fora, "consta como",
+            # o sujeito anterior — salvo quando a frase abre anunciando o feito ("Pronto, …")
+            if not _RX_ANUNCIO_DE_FEITO.search(corpo) and (
+                    _RX_AGENTE_DE_FORA.search(depois[: fim.start()] if fim else depois)
+                    or _RX_CONSTA_COMO.search(oracao_antes)
+                    or _RX_SUJEITO_ANTERIOR.search(re.sub(r"(?i)\b(?:foi|foram|est[áa]|est[ãa]o|ficou|"
+                                                          r"ficaram|j[áa])\s+", "", oracao_antes))):
                 continue
             return True
     return False

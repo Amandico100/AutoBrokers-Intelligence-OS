@@ -190,14 +190,26 @@ _DISPENSAR = (r"(?:esquece|esquecer|esqueca|esquecam|deixa pra la|deixa para la|
               r"|desmarquem|suspende|suspender|suspenda|suspendam|aborta|abortar|aborte|manda voltar"
               r"|mande voltar|mandem voltar|manda embora|mande embora|pode liberar|podem liberar)")
 #: o pedido do serviço no meio da frase desfaz o ① ("esquece aquilo, MANDA o guincho").
-_SEM_PEDIR_O_SERVICO = r"(?:(?!manda\b|mande\b|mandem\b|mandar\b|envia\b|envie\b|aciona\b|acione\b|chama\b)\w+\W+)"
+#: 🔴 SPEC-126 CONSERTO 2 (pend. 4 da confirmação) — o OBJETO do "esquece" acaba na PONTUAÇÃO da oração.
+#:    📊 sonda do juiz (02/10): "esquece a placa que mandei, o guincho é pro outro carro" (CORREÇÃO de um
+#:    dado) e "deixa pra lá, cadê o guincho?" (impaciência — ele quer o guincho) iam para a pessoa com o
+#:    rótulo CANCELAMENTO: o ① contava o "guincho" da oração SEGUINTE como objeto do "esquece".
+#:    constante_justificada: entre o verbo de dispensar e o serviço só cabem palavras da MESMA oração
+#:    (sem `,.;:!?`) — "esquece o guincho", "dispensa o reboque, vou levar empurrando" continuam K3; o
+#:    "esquece, …" sem objeto continua nas regras ② (última coisa) e ③ (+ o sinal de que se resolveu).
+_SEP_NA_ORACAO = r"[^\w,.;:!?]+"
+_SEM_PEDIR_O_SERVICO = (r"(?:(?!manda\b|mande\b|mandem\b|mandar\b|envia\b|envie\b|aciona\b|acione\b|chama\b)\w+"
+                        + _SEP_NA_ORACAO + r")")
+#: 🔴 CONSERTO 2 (pend. 5) — "esquece, ACHEI a chave" (o chaveiro na rua): achar/abrir é o "resolvi" do
+#:    chaveiro. 📊 sonda do juiz: caía em `N` e a segunda chance resolvia sem pessoa o que só ela cancela.
 _RESOLVEU = (r"(?:ja )?(?:resolvi|resolvemos|resolveu|consegui|conseguimos|conseguiu|pegou|funcionou"
-             r"|deu certo|ligou|nao precisa|nao preciso|chegou (?:um|outro))")
+             r"|deu certo|ligou|nao precisa|nao preciso|chegou (?:um|outro)"
+             r"|achei|achamos|encontrei|encontramos|abri|abrimos|abriu)")
 #: ⛔ O "esqueça" que NÃO é ordem: 📊 acervo (02/10, 15.773 falas `user`) — "não SE esqueça de buscar uma
 #:    assistência", "caso TU esqueça" (subjuntivo/conselho, não dispensa). O sujeito/pronome antes desfaz.
 _NAO_E_ORDEM = r"(?<!nao )(?<!se )(?<!tu )(?<!voce )(?<!vc )(?<!ele )(?<!ela )(?<!eu )"
 _CANCELAR_SEM_O_VERBO = (
-    _NAO_E_ORDEM + r"(?<!nao precisa )\b" + _DISPENSAR + r"\W+" + _SEM_PEDIR_O_SERVICO + r"{0,5}?"
+    _NAO_E_ORDEM + r"(?<!nao precisa )\b" + _DISPENSAR + _SEP_NA_ORACAO + _SEM_PEDIR_O_SERVICO + r"{0,5}?"
     + _SERVICO_ACIONADO + r"\b"
     + r"|" + _NAO_E_ORDEM + r"\b(?:esquece|esqueca|deixa pra la|deixa para la|deixe pra la|deixa quieto"
       r"|aborta)(?: (?:isso|tudo|entao|ai|mesmo|por favor|pf|pfv|blz|ta|ok|moco|moca|amigo|amiga))*\W*$"
