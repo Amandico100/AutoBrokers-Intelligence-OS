@@ -74,7 +74,7 @@ ORÇAMENTO ......  📊 a 127 não gastou API: ledger `bancada` desde 02/10 18:5
 `_arvore_do_html.py`. Nada fora de `backend/` (📊 `git show --name-only` dos 5, filtro `-notlike 'backend/*'` → 0).
 
 ## 3. BATERIA
-(o gerente cola a contagem e a triagem)
+📊 Suíte inteira UMA vez em `6950353` (126 + 127), worktree `C:\wt127`, 03/10: `41 failed, 5055 passed, 1 skipped, 33 xfailed, 1 xpassed in 1:27:32`. A internet caiu durante a rodada (aviso do Founder): 0 tracebacks de rede (`getaddrinfo`/`OperationalError`). Triagem nominal (`TRIAGEM-BATERIA-127.md`): 13 fora da base (11 dos "24" já estavam nela) → **1 REGRESSÃO da 127** (`test_spec123_ligacao_guardas`: `bancada_portal.py` fora de `DONOS_DO_PAPEL` — lição migrada) · 1 pré-existente da 126 (`test_spec116_bancada_corpus::test_corpus_sem_pii`: o hash `31c8fc6712640692` lido como telefone — o guarda passou a ignorar dígitos colados a letra, com controle dos dois lados) · 11 de ordem/ambiente já triados na 126 (s5 ×8, y4, árvore limpa, duas vozes). Os dois consertados no commit da entrega: `12 passed`. `BATERIA-LINHA-DE-BASE.txt` não regravada.
 Rodadas da bateria: 1 (suíte inteira em `C:\wt127`, depois do conserto, triada contra `BATERIA-LINHA-DE-BASE.txt`).
 Antes dela: juiz `tests/test_spec127_*.py` 📊 **193 passed** (37,87 s) + regressão de replay (14 `test_e00110*`/`e001101*`
 exit=0, `test_o_fio_do_portal_de_vidros` 66/0, 4 `test_spec074_*` exit=0, spec124/126 📊 143 passed); confirmação 📊 **115 passed**
@@ -91,7 +91,7 @@ exit=0, `test_o_fio_do_portal_de_vidros` 66/0, 4 `test_spec074_*` exit=0, spec12
 | **G5** destravador do portal | 🟡 replay MONTADO: 1 parada de cada tipo (conduzir · responder com dado · perguntar · deduzir calibrado) resolvida sem pessoa, 1 POST; classe sempre da TABELA (M4 vermelha); a guarda `test_C1_HOJE_…` migrou com controle (§9.3). ⚠️ red team: o "responder com dado" resolve 📊 **0/16** do gabarito real (seguro: viram pergunta) |
 | **G6** DEDUZIR do portal | ✅ mecanismo · autonomia **0**. 📊 corpus 44 casos (yelum 33, 27 calibráveis · porto 11, 5 calibráveis < 10 → nunca religa); gabarito `672441f` antes de `d6b96f2`; **nenhuma rodada paga** (sobravam 💭 ≈ US$ 0,22; Yelum sozinha 💭 0,29–0,72). 📊 `cerebro_modos` on/false/40 (SELECT 03/10). "Curitibanos" nunca por "Curitiba" (teste) |
 | **G7** ponte e 2 tenants | ⚪ **não se aplica**: a ponte HTTP não foi feita (D-127-B, nota 80 × 40); nenhum endpoint novo, `app/api/portal.py` intocado |
-| **G8** bateria + replay + custo | (bateria: o gerente cola) · replay 001.10/001.10.1/124/074 verdes (§3) · §9.1 não se aplica · custo 📊 `token_usage_logs` `service_type='bancada'` desde 02/10 18:50Z (SELECT 03/10): `gpt-6-luna 2202 · 0,7878` + `gpt-6.1-sol 140 · 3,4918` = **OpenAI US$ 4,2796**, `claude-opus-5-5 1 · 0,0002` — igual ao fim da 126: a 127 gastou 0 |
+| **G8** bateria + replay + custo | bateria `41 failed / 5055 passed`, 1 regressão consertada (§3) · replay 001.10/001.10.1/124/074 verdes (§3) · §9.1 não se aplica · custo 📊 `token_usage_logs` `service_type='bancada'` desde 02/10 18:50Z (SELECT 03/10): `gpt-6-luna 2202 · 0,7878` + `gpt-6.1-sol 140 · 3,4918` = **OpenAI US$ 4,2796**, `claude-opus-5-5 1 · 0,0002` — igual ao fim da 126: a 127 gastou 0 |
 
 ## 5. JULGAMENTO — juiz ‖ red team → conserto → confirmação
 - **Juiz (Opus 5.5 fresco, `d6b96f2`): APROVA COM 3 CONSERTOS, 80** — B1 o parente ouvia a placa inteira no aviso logo depois
@@ -179,7 +179,7 @@ Derivado (pela diferença ao relatório da 126, que leu US$ 392,88 no total e US
 (inclui o fim do atualizador e do conserto da bateria da 126). ⚠️ Os picos de 482k/497k dos builders P1 e P4 passam do teto
 CRÍTICO de 300 k (§10) — declarado. APIs do produto: 📊 0 (G8). Achados por mecanismo: BLOCO 0 (6 correções da SPEC, entre
 elas a lista "faltou" que quase nunca chega e a dedup só depois do POST) · prova mecânica (P2: 2 defeitos que travavam todo DOM)
-· juiz 3 (B2, B3 exclusivos) · red team 2 (B1 exclusivo; a placa em comum) · confirmação 0 novos · bateria: (o gerente cola).
+· juiz 3 (B2, B3 exclusivos) · red team 2 (B1 exclusivo; a placa em comum) · confirmação 0 novos · bateria: 1 regressão (guarda de ligação) + 1 falso positivo da 126 no guarda de PII, consertados.
 Nota do juiz 80 · red team 72 · confirmação 87.
 
 ## 12. ENTREGA

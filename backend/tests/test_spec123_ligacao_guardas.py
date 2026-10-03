@@ -27,7 +27,10 @@ _PAPEL_DO_DESTRAVADOR = re.compile(
 #: Quem pode chamar o modelo do destravador, com o porquê: `destravador.py` decide (F1a, o
 #: contrato da SPEC-123) · `bancada.py` MEDE o mesmo papel no corpus (F2, D4: a bancada escolhe o
 #: modelo pelo número) — mede e não envia nada. Fora daqui, ninguém.
-DONOS_DO_PAPEL = {"destravador.py", "bancada.py"}
+# 🔴 SPEC-127 P5 (§9.3 — a lição MIGRA): `bancada_portal.py` mede o papel no gabarito do portal com o modelo INJETADO,
+#    o diário vira dublê e nada é enviado — a mesma razão de `bancada.py`. O CONTROLE abaixo continua vermelho para um
+#    chamador plantado fora destes três.
+DONOS_DO_PAPEL = {"destravador.py", "bancada.py", "bancada_portal.py"}
 
 
 def _fontes_do_app() -> dict:

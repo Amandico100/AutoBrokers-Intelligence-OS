@@ -27,7 +27,9 @@ CORPUS = Path(RAIZ) / "tests" / "corpus" / "bancada"
 PADROES_PII = {
     "CPF": re.compile(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b"),
     "CNPJ": re.compile(r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b"),
-    "telefone": re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}(?!\d)"),
+    # SPEC-127 (triagem da bateria): dígitos COLADOS a letra são hash/identificador, não telefone — 📊 o `corpus_sha`
+    # "31c8fc6712640692" da bancada do ok era lido como telefone (falso positivo). O controle abaixo prova os dois lados.
+    "telefone": re.compile(r"(?<![\dA-Za-z])(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}(?![\dA-Za-z])"),
     "placa": re.compile(r"\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b"),
     "e-mail": re.compile(r"\b[\w.+-]+@(?!exemplo\.invalid\b)[\w-]+\.[\w.]{2,}\b"),
     # SPEC-122 · conserto do juiz (J-B2/J-P6, 30/09): um número de processo de sinistro pontuado e o código de
@@ -80,6 +82,9 @@ def test_varredura_consegue_ficar_vermelha():
     materializado = D.materializar("{{CPF:X}} {{FONE:X}} {{PLACA:X}} {{CNPJ:X}}") + " fulano@gmail.com"
     tipos = {t for t, _ in varrer_pii(materializado)}
     assert {"CPF", "telefone", "placa", "CNPJ", "e-mail"} <= tipos, tipos
+    # SPEC-127: o hash hexadecimal NÃO é telefone; o telefone solto (e entre aspas) continua sendo
+    assert "telefone" not in {t for t, _ in varrer_pii('"corpus_sha": "31c8fc6712640692"')}
+    assert "telefone" in {t for t, _ in varrer_pii('"fone": "11987654321"')}
     assert varrer_pii("atendimento da " + _rot13("erfhygn").upper()), "nome proibido plantado não foi achado"
     # SPEC-122 (J-B2/J-P6): cada regra nova acha o que se planta nela — e não acha lei, data nem tecla de menu
     plantados = {"numero_pontuado": "*Número do processo:* 31.26.123456.01",
