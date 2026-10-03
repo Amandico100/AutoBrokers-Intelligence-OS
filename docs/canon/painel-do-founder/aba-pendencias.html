@@ -58,7 +58,28 @@
 </section>
 
 <section>
-  <h2>As pendências da última SPEC — SPEC-126 (o atendimento quase sem erro)</h2>
+  <h2>As pendências da última SPEC — SPEC-127 (o portal de vidros no nível do WhatsApp)</h2>
+  <p class="sub">🔴 Deixadas em 03/10: <b>24</b>, em <code>PENDENCIAS.md</code> como <b>P-127-01…24</b>. Estas são as que pesam.
+  Ela <b>fechou</b> três: P-124-07 ("Não sabe" nunca sai do robô), P-124-15 (o código da pergunta com "_" e "-") e P-126-22 (o pedido de vidro sem o "ok"); a P-124-01 e a P-124-02 continuam, menores.</p>
+  <div class="tblbox">
+    <table style="min-width:880px">
+      <thead><tr><th class="l">#</th><th>de quem</th><th class="l">o que é</th><th class="l">o que custa esquecer</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>P-127-04</b></td><td class="dm">🧑🤖</td><td class="ds">O robô do portal <b>não escolhe nada sozinho</b> (📊 autonomia = 0): a medição paga não rodou e a Porto tem 📊 5 casos (a regra pede 10) — T-102, T-103</td><td class="ds">o portal só pergunta, nunca escolhe</td></tr>
+        <tr><td class="ds"><b>P-127-12</b></td><td class="dm">🧑🤖</td><td class="ds">O caminho antigo contido só foi provado contra páginas salvas — nunca contra o portal vivo (o seu canário, T-101)</td><td class="ds">o caminho antigo pode não concluir nenhum pedido sem ninguém ver</td></tr>
+        <tr><td class="ds"><b>P-127-01</b></td><td class="dm">🤖🧑</td><td class="ds">A ponte do caminho antigo ao cérebro (P6) não foi feita; precisa de variáveis novas no portal-worker</td><td class="ds">toda parada do caminho antigo vai à equipe</td></tr>
+        <tr><td class="ds"><b>P-127-05</b></td><td class="dm">🤖</td><td class="ds">A cidade só é conferida pelo portal <b>depois</b> de abrir o atendimento (📊 0 de 7 gravações mostram a consulta antes)</td><td class="ds">atendimento aberto com a cidade a corrigir</td></tr>
+        <tr><td class="ds"><b>P-127-06</b></td><td class="dm">🤖</td><td class="ds">Uma porta lateral (<code>PORTAL_EXECUTION_GATEWAY_MODE=on</code>, hoje desligada) abre pedido de vidro <b>sem</b> o "ok"</td><td class="ds">pedido real sem o segurado confirmar</td></tr>
+        <tr><td class="ds"><b>P-127-21</b></td><td class="dm">🧑</td><td class="ds">O canário tem de usar a allowlist <code>cpf:</code>, nunca <code>job:</code> (a resposta do segurado vira outro job)</td><td class="ds">o canário para no meio e parece defeito</td></tr>
+        <tr><td class="ds"><b>P-127-22</b></td><td class="dm">🧑</td><td class="ds">📊 1 de 3 corretoras com cadastro de acionamento não tem o CNPJ — T-100</td><td class="ds">todo pedido de vidro dela vai à equipe</td></tr>
+        <tr><td class="ds"><b>P-127-23</b></td><td class="dm">🤖</td><td class="ds">Alguns campos da tela ainda vão ao modelo do caminho antigo sem máscara provada</td><td class="ds">dado pessoal ao provedor por um rótulo</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>As pendências da SPEC-126 (o atendimento quase sem erro)</h2>
   <p class="sub">🔴 Deixadas em 03/10: <b>24</b>, em <code>PENDENCIAS.md</code> como <b>P-126-01…24</b>. Estas são as que pesam.
   Ela <b>fechou</b> seis: P-125-01, 02, 04, 06 e 08 (o Sol medido nos críticos, o "acionamento confirmado", a apresentação repetida, o diário pela metade e a régua) e a P-124-14 (a cidade homônima); a P-123-01 continua — o mecanismo está pronto, faltam casos.</p>
   <div class="tblbox">
@@ -72,7 +93,7 @@
         <tr><td class="ds"><b>P-126-11</b></td><td class="dm">🤖</td><td class="ds">O aviso de abuso pode repetir se o Redis cair, e o mesmo telefone com e sem 55 conta separado</td><td class="ds">alarme falso no grupo, ou alarme que não soa</td></tr>
         <tr><td class="ds"><b>P-126-12</b></td><td class="dm">🤖🧑</td><td class="ds">A reserva do "juiz do ok" (Sonnet 5.5) nunca foi medida — 💭 ~US$ 0,05</td><td class="ds">se o Luna cair, um modelo sem prova decide o acionamento</td></tr>
         <tr><td class="ds"><b>P-126-13</b></td><td class="dm">🤖</td><td class="ds">Dois processos no mesmo instante podem enfileirar dois acionamentos</td><td class="ds">dois guinchos para o mesmo carro</td></tr>
-        <tr><td class="ds"><b>P-126-22</b></td><td class="dm">🤖</td><td class="ds">O pedido de vidro no portal abria sem o "ok" — vai para a <b>SPEC-127</b> (em curso)</td><td class="ds">"pode deixar" num caso de vidro abre pedido real</td></tr>
+        <tr><td class="ds"><b>P-126-22</b></td><td class="dm">✅</td><td class="ds"><b>Fechada na 127</b> (o "ok" deste pedido). Era: o pedido de vidro no portal abria sem o "ok"</td><td class="ds">"pode deixar" num caso de vidro abre pedido real</td></tr>
         <tr><td class="ds"><b>P-126-24</b></td><td class="dm">🤖</td><td class="ds">Os dois últimos consertos não passaram por um juiz novo; o inventário de migrations não tem as duas da 126</td><td class="ds">um portão que ninguém tentou quebrar</td></tr>
       </tbody>
     </table>
@@ -80,7 +101,7 @@
 </section>
 
 <section>
-  <h2>As pendências da SPEC anterior — SPEC-125 (o atendimento lembra)</h2>
+  <h2>As pendências da SPEC-125 (o atendimento lembra)</h2>
   <p class="sub">🔴 Deixadas em 02/10: <b>17</b>, em <code>PENDENCIAS.md</code> como <b>P-125-01…17</b>. Estas são as que pesam.
   Ela atacou as travas do laudo do atendimento: a janela de 15 mensagens, a fala da equipe invisível, o fiscal que desmentia o acionamento,
   as regras que se contradiziam e a identidade pelo telefone.</p>
@@ -110,8 +131,8 @@
     <table style="min-width:880px">
       <thead><tr><th class="l">#</th><th>de quem</th><th class="l">o que é</th><th class="l">o que custa esquecer</th></tr></thead>
       <tbody>
-        <tr><td class="ds"><b>P-124-01</b></td><td class="dm">🤖🧑</td><td class="ds">O caminho antigo do portal de vidros — o único que já rodou — ficou <b>fora</b> do destravador (roda num contêiner sem o cérebro e sem retomada)</td><td class="ds">o portal continua chamando humano como antes</td></tr>
-        <tr><td class="ds"><b>P-124-02</b></td><td class="dm">🤖🧑</td><td class="ds">Autonomia no portal depende de calibrar o "escolher sozinho" (a mesma P-123-01) e de paradas reais — hoje 📊 0</td><td class="ds">"o portal destrava" e ele só pergunta</td></tr>
+        <tr><td class="ds"><b>P-124-01</b></td><td class="dm">🤖🧑</td><td class="ds">🟡 <b>Menor desde a 127</b> (o caminho antigo contido, a parada leva a tela; falta a ponte → P-127-01). Era: o caminho antigo do portal de vidros — o único que já rodou — ficou <b>fora</b> do destravador (roda num contêiner sem o cérebro e sem retomada)</td><td class="ds">o portal continua chamando humano como antes</td></tr>
+        <tr><td class="ds"><b>P-124-02</b></td><td class="dm">🤖🧑</td><td class="ds">🟡 <b>Continua</b> (mecanismo pronto na 127; a medição → P-127-04). Autonomia no portal depende de calibrar o "escolher sozinho" (a mesma P-123-01) e de paradas reais — hoje 📊 0</td><td class="ds">"o portal destrava" e ele só pergunta</td></tr>
         <tr><td class="ds"><b>P-124-05</b></td><td class="dm">🧑🤖</td><td class="ds">A bancada da visão precisa de <b>fotos reais</b> com os dados cobertos — a troca para a Luna já vale</td><td class="ds">a troca repousa num número que é o melhor caso</td></tr>
         <tr><td class="ds"><b>P-124-03</b></td><td class="dm">🤖</td><td class="ds">O docling aceita qualquer modelo pedido e fica aberto se a chave do serviço estiver vazia</td><td class="ds">custo sem dono na chave OpenAI da casa</td></tr>
         <tr><td class="ds"><b>P-124-13</b></td><td class="dm">🧑</td><td class="ds">Implantar o worker do docling antes da API (S124.1)</td><td class="ds">a leitura de PDF com imagem falha calada</td></tr>

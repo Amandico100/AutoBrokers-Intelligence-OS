@@ -1,7 +1,7 @@
 <div id="tab-vidros" class="tab" hidden>
 
 <header class="top">
-  <span class="eyebrow">EXTRA-001.10 &middot; ✅ CONCLUÍDA 21/09/2026, nota 86 &middot; EXTRA-001.10.1 (a continuação) &middot; ✅ CONCLUÍDA 24/09/2026, nota 88 &middot; SPEC-124 (a régua do WhatsApp no portal) &middot; executada 01/10/2026 &middot; 📊 medido sobre <code>5622911</code></span>
+  <span class="eyebrow">EXTRA-001.10 &middot; ✅ CONCLUÍDA 21/09/2026, nota 86 &middot; EXTRA-001.10.1 (a continuação) &middot; ✅ CONCLUÍDA 24/09/2026, nota 88 &middot; SPEC-124 (a régua do WhatsApp no portal) &middot; executada 01/10/2026 &middot; SPEC-127 (o portal como o WhatsApp) &middot; ✅ CONCLUÍDA 03/10/2026, nota 87 &middot; 📊 medido sobre <code>5622911</code> e, na 127, sobre <code>7362725</code></span>
   <h1>O portal de vidros, do WhatsApp ao desfecho — e de volta.</h1>
   <p class="lede">O robô <b>coleta antes</b> tudo o que o portal vai pedir, <b>abre o pedido em qualquer uma das 38 seguradoras</b>
   que o portal publica, <b>lê o desfecho que o portal decidiu</b> — loja já escolhida, agenda com lojas e horários, analista ou vistoria —
@@ -10,8 +10,8 @@
   em mão humana. Devolve ao segurado o <b>número do atendimento</b>, a <b>franquia</b> e o <b>próximo passo</b>, em português de gente.
   🔴 <b>E nada disso está ligado:</b> tudo mora atrás da mesma chave, que nasce desligada. O que atende hoje é o caminho antigo.</p>
   <div class="meta">
-    <span>relatórios <b>reports/SPEC-EXTRA-001.10-EXECUTION-REPORT.md</b> &middot; <b>reports/SPEC-EXTRA-001.10.1-EXECUTION-REPORT.md</b></span>
-    <span>o que ainda falta <b>PENDENCIAS.md, bloco 001.10.1</b></span>
+    <span>relatórios <b>reports/SPEC-EXTRA-001.10-EXECUTION-REPORT.md</b> &middot; <b>reports/SPEC-EXTRA-001.10.1-EXECUTION-REPORT.md</b> &middot; <b>reports/SPEC-127-EXECUTION-REPORT.md</b></span>
+    <span>o que ainda falta <b>PENDENCIAS.md, blocos 001.10.1 e SPEC-127</b></span>
     <span>a chave <b>PORTAL_VIDROS_API_FIRST = desligada</b></span>
   </div>
 </header>
@@ -29,6 +29,26 @@
   <b>ZERO</b> nas três capturas da Yelum — ele conhecia <b>3 seguradoras</b> pelo nome, e nenhuma delas era a Yelum.
   O caminho novo estava, na prática, <b>morto para 14 das 17</b> seguradoras que o agente reconhecia.</p>
 </div>
+
+<section style="margin-top:8px">
+  <h2>🟢 SPEC-127 (03/10/2026) — o portal anda como o WhatsApp: pergunta antes de escrever, e nunca sem o "ok"</h2>
+  <p class="lede" style="max-width:78ch">O pedido de vidro passou pelas mesmas regras que o guincho já tinha no WhatsApp. Tudo provado
+  <b>reproduzindo as gravações reais</b> do portal (6 com abertura), com o motor de verdade e páginas falsas — <b>nenhum pedido real</b>.</p>
+  <div class="tblbox">
+    <table style="min-width:860px">
+      <thead><tr><th class="l">o que</th><th class="l">o estado medido</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>Abre sem o "ok"?</b></td><td class="ds">🟢 <b>não</b> — o mesmo "juiz do ok" da 126, e o ok tem de ser <b>deste</b> pedido: a linha traz a peça, a cidade do serviço e o final da placa. 📊 "abrir RETROVISOR em CURITIBANOS?" + "pode mandar", num pedido de para-brisa noutra cidade → <b>0</b> pedidos</td></tr>
+        <tr><td class="ds"><b>Faltou um dado?</b></td><td class="ds">🟢 o robô <b>para antes de escrever</b> e pergunta; a resposta volta ao <b>mesmo</b> pedido. 📊 18 de 18 pedidos incompletos → <b>0</b> escritas; completos → 1</td></tr>
+        <tr><td class="ds"><b>Qual cidade?</b></td><td class="ds">🟢 a do <b>serviço</b>, nos dois caminhos. 📊 5 de 5 gravações; a do cadastro em 0. O CEP do cadastro só vai com a mesma cidade <b>e</b> o mesmo estado</td></tr>
+        <tr><td class="ds"><b>E o caminho antigo?</b></td><td class="ds">🟡 <b>contido</b>: não escolhe peça, causa, lado nem reparo; não aceita oferta nem custo; não diz "a apólice cobre" antes de consultar. Ainda <b>sem ponte</b> ao cérebro nem retomada (P-127-01/02) e nunca provado no portal vivo</td></tr>
+        <tr><td class="ds"><b>Ele escolhe sozinho?</b></td><td class="ds">🟡 <b>não</b> (📊 autonomia = 0): a medição de 44 casos está pronta e não rodou (orçamento, T-102); a Porto tem 📊 5 casos, a regra pede 10 (T-103)</td></tr>
+        <tr><td class="ds"><b>O que falta de você</b></td><td class="ds">Implantar com o <b>portal-worker</b> (T-99) · o CNPJ da corretora que falta (T-100) · o canário com a allowlist <code>cpf:</code> (T-101)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Relatório <code>reports/SPEC-127-EXECUTION-REPORT.md</code> · pendências <code>P-127-01…24</code> · decisões <code>D-127-A…G</code> · juiz 80 ‖ red team 72 → confirmação 87.</p>
+</section>
 
 <section style="margin-top:8px">
   <h2>🟡 SPEC-124 (01/10/2026) — o portal ganhou a régua do WhatsApp, mas ainda não responde nada sozinho</h2>

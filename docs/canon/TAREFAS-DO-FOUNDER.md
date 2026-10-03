@@ -1,12 +1,12 @@
 # TAREFAS DO FOUNDER — a lista única
 
-> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-98).** Os blocos mais antigos, depois dela,
+> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-103).** Os blocos mais antigos, depois dela,
 > guardam o contexto, as decisões e as tarefas que não são teste; onde havia um teste, agora há uma seta **→ T-NN**.
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98)
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
-> agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 126 e das EXTRA-001.1 → 001.10.1, das
+> agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 127 e das EXTRA-001.1 → 001.10.1, das
 > caixas do Founder dos relatórios e das pendências 🧑 de teste/canário/acionamento real. **Esta lista é a verdade**: nos
 > blocos antigos mais abaixo, cada teste virou só uma seta **→ T-NN** que aponta para cá.
 >
@@ -75,6 +75,33 @@
       Sonnet (≈ 0,05 Anthropic, P-126-12) · a calibração do DEDUZIR (WhatsApp e portal) **só depois** de juntar ≥ 10 casos por
       seguradora (P-126-06; hoje 📊 ≤ 5). **Esperar:** uma tabela por cenário, PASS/FAIL, e o gasto lido do ledger.
       **Se não autorizar:** nada quebra; o agente fica com a prova que tem (críticos 12/12 na Luna e 11/12 no Sol). · *de:* S126.4
+- [ ] **T-99** ⏳ **Implantar a SPEC-127** (o portal de vidros no nível do WhatsApp) — EasyPanel, **nesta ordem**: `smith-api` →
+      `smith-worker` → **`portal-worker`** → `smith-web`. 🔴 Desta vez o `portal-worker` **entra** (o robô do portal mudou).
+      **Nenhuma migration, nenhuma variável nova.** Pode ser o mesmo Implantar do T-82/T-91. Depois abra
+      `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`.
+      **Esperar:** `build_time` de **03/10/2026 ou depois**. Se for anterior: Implantar o `portal-worker` de novo (demora mais).
+      Nada muda para o segurado ainda: as chaves do portal (T-55) seguem desligadas e 📊 (03/10) 0 de 4 agentes estão ligados.
+      · *de:* S127.1
+- [ ] **T-100** ⏳ **Preencher o documento da corretora que falta no cadastro de acionamento** — sem ele, com o caminho novo do
+      portal ligado, **todo** pedido de vidro dessa corretora vai à equipe ("falta um ajuste no nosso cadastro"). No **SQL**:
+      ```sql
+      select company_name,
+             coalesce(nullif(acionamento_profile->>'cpf_cnpj', ''), nullif(cnpj, '')) is null as falta_documento,
+             coalesce(nullif(acionamento_profile->>'telefone', ''), nullif(primary_contact_phone, '')) is null as falta_telefone
+        from public.companies
+       where coalesce(nullif(acionamento_profile->>'email', ''), primary_contact_email) is not null
+       order by 2 desc, 1;
+      ```
+      **Esperar:** 📊 (03/10) **3 linhas**; **1** com `falta_documento = true` (a 1ª da lista) e `falta_telefone = false` em todas.
+      **O que fazer:** no painel, entre como essa corretora → **Personalização → Corretora** → preencha o **CNPJ** e salve. Rode o
+      SQL de novo → `falta_documento = false` nas 3. **Se a corretora não usa o portal de vidros:** pode deixar; só os pedidos de
+      vidro dela são afetados. · *de:* S127.1 · P-127-22
+- [ ] **T-102** ⏳ **Decidir o orçamento da bancada do portal** (decisão sua; nada roda sem você dizer). Ela mede se o robô do
+      portal pode **escolher sozinho** (peça, causa, cidade) — hoje ele só pergunta (📊 autonomia = 0). Cole no chat, se autorizar:
+      *"autorizo US$ 1,50 de OpenAI e US$ 0,20 de Anthropic para a bancada do portal (P-127-04)"*. 💭 A conta: a Yelum sozinha
+      ≈ 0,29–0,72; a Porto **só depois** do T-103 (📊 hoje 5 casos, a regra pede 10). **Esperar:** uma tabela por seguradora com o
+      acerto, o n e se religa (≥ 90 %) ou não, e o gasto lido do ledger. **Se não autorizar:** nada quebra; o portal pergunta ao
+      segurado em vez de escolher. · *de:* S127.4 · D-127-F
 - [ ] **T-02** ⏳ **O que está no ar é o código de hoje — inclusive o `portal-worker`**
       **Como:** peça no chat *"rode o conferir o que está no ar"*. E abra
       `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`.
@@ -433,6 +460,38 @@ ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguint
       questionário de vigia, farol, retrovisor, teto e para-choque · serviço a domicílio · passo 1 + itens cobertos de **outra**
       seguradora · uma captura de **outra corretora**. · *de:* F.3 (restos) · P-E00110-A3 · P-E00110-A14 · P-E00110-C-01 ·
       P-E00110-C-02 · P-E00110-C-04 · P-E001101-05
+- [ ] **T-101** ⏳ **O canário do portal depois da SPEC-127** — faça **junto** do T-56 (é o mesmo pedido de vidro de teste), depois
+      do T-99 e com as chaves do **T-55** (🔴 a allowlist é `cpf:`, **nunca** `job:` — a resposta do segurado vira outro job e o
+      `job:` a barraria no meio). Do celular de teste, peça o vidro e diga como **cidade do serviço** uma cidade **diferente** da do
+      endereço da apólice de teste.
+      **Esperar, tela a tela:** (1) antes de abrir qualquer coisa, o agente manda **uma linha** no formato *"Confirma: abrir na
+      seguradora o atendimento de <a peça>, com o serviço em <a cidade que você disse>/<UF>, placa final <4 dígitos> — posso
+      acionar?"*; (2) responda *"pode deixar"* → **nada** é aberto (ele pergunta o que você quer); (3) peça de novo e responda
+      *"pode mandar"* → o aviso *"Perfeito! 🙌 Ja vou acionar a seguradora pra abrir seu atendimento de vidros (…, placa final
+      …)"* — **sem** a placa inteira; (4) siga o T-56 até o número do atendimento; no portal, o atendimento está na **cidade do
+      serviço**, nunca na do cadastro. (5) **O parente**, de um 2º celular: *"sou o filho dele, quebrou o vidro do carro do meu
+      pai"* + o CPF de teste → a linha vem **sem placa**; responda *"pode deixar"* (para não abrir um 2º atendimento real).
+      Para ver o rastro sem dado pessoal, no **SQL**:
+      ```sql
+      select created_at, journey, status, evidence->'api_first'->>'usado' as api_first,
+             evidence->'api_first'->>'parou_em' as parou_em, evidence->'continuacao'->>'etapa' as etapa
+        from public.portal_jobs where portal_key = 'vidros_lanternas'
+       order by created_at desc limit 5;
+      ```
+      → 📊 (03/10) as 5 linhas mais novas são de **julho**, com `api_first` vazio (o caminho novo nunca rodou). Depois do canário:
+      uma linha de hoje com `api_first = true`. **Se `api_first` vier `false`:** o pedido caiu no caminho antigo — me mande a hora.
+      **Se o agente abrir sem a linha, ou com "pode deixar":** pare, anote a hora e me mande — é o defeito mais grave desta SPEC.
+      **Como DESLIGAR:** para voltar ao caminho antigo, **apague** `PORTAL_VIDROS_API_FIRST` do `portal-worker` e Implante; para
+      parar **qualquer** pedido real pelo portal, `PORTAL_EFEITO_MATERIAL_LIBERADO=false` no `smith-api` **e** no `portal-worker`
+      e Implante os dois. ⚠️ **Nunca** apague só a allowlist deixando o efeito material ligado: isso abre o portal para **todos**
+      os segurados (é o passo "verde" do T-58, não o desligar). Depois, cancele no portal como no T-58.
+      · *de:* S127 (P3) · D4 da SPEC · P-127-12 · P-127-14 · P-127-21
+- [ ] **T-103** ⏳ **Capturar mais casos da Porto no portal de vidros** (com a atendente, quando acontecer um caso de verdade) —
+      📊 hoje há **2** gravações da Porto (uma sem cobertura) e a bancada do portal precisa de **≥ 10** escolhas por seguradora
+      para medir. Peça à atendente que grave a tela (o arquivo `.har`, como nas capturas de 21/09) em pedidos de vidro da Porto com
+      peças e causas diferentes, e guarde na pasta do material do portal de vidros, no intake (**nunca** no repositório). **Esperar:**
+      nada na tela; quando houver ≥ 10, me avise no chat: *"tem HAR novo da Porto para a P-127-04"*. · *de:* S127.4 · P-127-04 ·
+      junto do T-59
 
 ### ⑥ Grupo de suporte
 
@@ -1357,3 +1416,35 @@ ela o juiz responde "não é ok" para tudo e **nenhum acionamento sai** (é a fa
   titular contam uma (D-126-C, 88) · rastro sem tabela nova (D-126-D, 78) · a calibração paga do DEDUZIR adiada (D-126-E, 80) ·
   reclamação de cobrança do prestador vai à pessoa (D-126-F, 80) · apresentação no 2º turno quando o 1º foi só segurança
   (D-126-G, 80) · 👌 não é ok, dúvida depois do sim derruba o sim, "pode ser" não aciona (D-126-H/I/J, lado seguro).
+
+## SPEC-127 — o portal de vidros no nível do WhatsApp (03/10/2026)
+
+📊 O que mudou (provado por reprodução das gravações reais do portal — nenhum pedido real foi aberto; 📊 0 pedidos de vidro desde
+01/08 e as chaves do portal seguem desligadas):
+- **Nada abre no portal sem o resumo + o "ok" do segurado**, o mesmo "juiz do ok" da SPEC-126 — e o ok tem de ser **deste** pedido:
+  a linha traz a peça, a cidade do serviço e o final da placa. "Posso acionar o vidro?" + "sim" **não** basta.
+- **Faltou um dado → o robô pergunta ANTES de escrever** no portal, e a resposta volta ao **mesmo** pedido (um atendimento só).
+  📊 18 de 18 pedidos incompletos reproduzidos: **0** escritas no portal.
+- **A cidade é a do SERVIÇO**, nunca a do cadastro (📊 5 de 5 gravações). O caminho antigo (o robô que clica na tela) não escolhe
+  mais peça, causa, lado nem reparo sozinho, e não aceita oferta nem custo.
+- O parente **não vê a placa**; a corretora sem documento no cadastro vai à equipe, sem perguntar nada ao segurado.
+- ⚠️ O robô do portal **ainda não escolhe nada sozinho** (📊 autonomia = 0): a medição paga não rodou (T-102).
+
+### S127.1 · Implantar e conferir
+→ **T-99** (Implantar `smith-api` → `smith-worker` → `portal-worker` → `smith-web`; nenhuma migration, nenhuma variável nova) e
+**T-100** (o documento da corretora que falta, SQL só leitura).
+
+### S127.2 · O canário do portal
+→ **T-101**, junto do T-55/T-56/T-58 (as chaves, o pedido de vidro de teste e o cancelamento), com a allowlist `cpf:`.
+
+### S127.3 · Como VOLTAR atrás
+Tudo vive no **código**: peça no chat *"reverta a SPEC-127 na main"* — eu faço o revert e empurro — e clique **Implantar**
+(incluindo o `portal-worker`). Para só desligar o caminho novo no ar: apague `PORTAL_VIDROS_API_FIRST` do `portal-worker` e
+Implante (o passo a passo está no T-101).
+
+### S127.4 · Decisões suas (`FOUNDER-DECISIONS.md`)
+- **T-102** — o orçamento da bancada do portal (💭 ≈ US$ 1,50 OpenAI + 0,20 Anthropic). **T-103** — mais gravações da Porto.
+- Já decididas, com nota: a retomada do caminho antigo adiada (D-127-A) · só a contenção, sem a ponte (D-127-B, 80) · a
+  consulta de "atendimento já aberto" logo depois do POST (D-127-C, 75) · faltou dado = parada antes de escrever, no mesmo
+  pedido (D-127-D, 82) · o mesmo "juiz do ok" da 126 (D-127-E) · a bancada do portal não rodou paga (D-127-F, 85) · o vigia
+  respeita a tabela e o texto honesto à equipe (D-127-G, 78 e 72).

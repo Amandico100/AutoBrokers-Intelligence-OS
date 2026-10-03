@@ -1,13 +1,13 @@
 <div id="tab-specs" class="tab" hidden>
 
 <header class="top">
-  <span class="eyebrow">O que foi feito, o que está no ar, o que só você decide &middot; 📊 atualizado em 26/09/2026</span>
+  <span class="eyebrow">O que foi feito, o que está no ar, o que só você decide &middot; 📊 atualizado em 03/10/2026</span>
   <h1>As SPECs — uma frase de negócio por entrega, e a fila do que vem.</h1>
   <p class="lede">Esta aba substitui o antigo painel de dossiês. Tudo o que lá era <i>"próximo passo"</i> e já aconteceu está marcado como <b>feito</b>;
   o que continua verdadeiro foi mantido, com a data ao lado. 🔴 <b>A família EXTRA-001.x está fechada até a 001.10.1</b> — treze entregas, todas na <code>main</code>.</p>
   <div class="meta">
     <span>árvore <b>AutoBrokers-FIX</b></span>
-    <span>main <b>5a3ba36</b></span>
+    <span>main <b>= o push da SPEC-127</b> (03/10; ver o git log da main)</span>
     <span>protocolo <b>AAA v13.2 · O FIO</b> (rito único; D-PROTO-14, 26/09)</span>
     <span>fonte <b>ESTADO-DAS-SPECS.md</b> · <b>INDICE-DE-SPECS.md</b> · os relatórios de cada SPEC</span>
   </div>
@@ -133,6 +133,23 @@
 </section>
 
 <section>
+  <h2>Fora da família — o portal de vidros no nível do WhatsApp (SPEC-127)</h2>
+  <p class="sub">Fora da fila, no mesmo chat da 126. Leva ao portal de vidros as regras que o WhatsApp já tinha: perguntar antes de escrever, voltar ao mesmo pedido e nunca escolher sozinho o que é do segurado. 📊 03/10/2026, relatório
+  <code>reports/SPEC-127-EXECUTION-REPORT.md</code>.</p>
+  <div class="tblbox">
+    <table style="min-width:980px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou, em uma frase</th><th>data</th><th>nota</th><th class="l">o que ainda falta <b>de você</b></th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>SPEC-127</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o portal como o WhatsApp</span></td>
+          <td class="ds"><b>Nada abre no portal sem o resumo + o "ok" deste pedido</b> (a linha traz a peça, a cidade do serviço e o final da placa — o mesmo "juiz do ok" da 126); <b>faltou um dado → o robô pergunta antes de escrever</b> e a resposta volta ao mesmo pedido; a <b>cidade é a do serviço</b>; o caminho antigo, que clica na tela, <b>não escolhe peça, causa, lado nem reparo sozinho</b>; o parente não vê a placa. 📊 Reproduzindo as gravações reais: 18 de 18 pedidos incompletos com <b>0</b> escritas no portal; a cidade do serviço em <b>5 de 5</b>. Nenhuma migration; 📊 US$ 0 de API</td>
+          <td class="dm">03/10</td><td class="dm">juiz 80 ‖ red team 72 (5 defeitos graves: o ok não amarrado ao pedido, a placa ao parente, 2 escritas, "a apólice cobre" sem ler) → um conserto → confirmação 87 · <b>nota 87</b></td><td class="ds">🔴 <b>Implantar</b> <code>smith-api</code> → <code>smith-worker</code> → <code>portal-worker</code> → <code>smith-web</code> (T-99); o CNPJ da corretora que falta (T-100); o canário com a allowlist <code>cpf:</code> (T-101); o orçamento da bancada do portal (T-102); mais gravações da Porto (T-103)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">⛔ <b>O que esta entrega NÃO prova, e está declarado.</b> Nenhum pedido real foi aberto (📊 0 pedidos de vidro desde 01/08; as chaves do portal seguem desligadas). O robô do portal <b>ainda não escolhe nada sozinho</b> (📊 autonomia = 0: a medição paga não rodou); o caminho antigo contido só foi provado contra páginas salvas, não contra o portal vivo; a ponte e a retomada do caminho antigo ficaram para depois; a cidade só é conferida pelo portal depois de abrir o atendimento. Só o seu canário (T-101) prova o portal de verdade.</p>
+</section>
+
+<section>
   <h2>Fora da família — o atendimento quase sem erro (SPEC-126)</h2>
   <p class="sub">Fora da fila, no mesmo chat da 127. Nasceu das suas cinco decisões de 02/10: o parente aciona, o abuso avisa o grupo, o CPF vai completo só à seguradora, desistir depois de acionar vai à pessoa e qualquer "ok" claro vale — sem errar em "pode deixar". 📊 03/10/2026, relatório
   <code>reports/SPEC-126-EXECUTION-REPORT.md</code> e medições <code>reports/SPEC-126-LINHA-DE-BASE.md</code> e <code>reports/SPEC-126-DEPOIS.md</code>.</p>
@@ -249,14 +266,14 @@
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-124</b> · portal de vidros + visão</td><td class="ds">Fora da fila, junto com a 123 (mesmo chat): a leitura de fotos no GPT-6 Luna (~1/18 do custo, mesmo acerto medido) e a régua do WhatsApp no portal de vidros — sem responder nada sozinho ainda</td><td class="ds"><b>✅ executada 01/10, nota 84</b> — faltam o <b>Implantar</b> (docling primeiro), o teste de foto e a D-124-F, que são seus</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-125</b> · o atendimento lembra</td><td class="ds">Fora da fila, no mesmo chat: conversa inteira, reconhece pelo telefone, prompt novo reversível com um comando, aciona só com o "sim" — em código</td><td class="ds"><b>✅ concluída 02/10, nota 86</b> — faltam o <b>Implantar</b> e os testes T-84…T-90, que são seus (a medição no Sol foi feita na 126)</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-126</b> · o atendimento quase sem erro</td><td class="ds">Fora da fila, no mesmo chat da 127: o "ok" com dois juízes, o parente aciona, desistir depois de acionar vai à pessoa, aviso de abuso, o "escolher sozinho" só com prova (que ainda falta: P-126-06)</td><td class="ds"><b>✅ concluída 03/10, nota 88</b> — faltam o <b>Implantar</b>, os testes T-91…T-97 e o orçamento T-98, que são seus</td></tr>
-        <tr><td class="dm">1</td><td class="ds"><b>SPEC-127</b> · o portal no nível do WhatsApp</td><td class="ds">Fechar as quedas para o caminho antigo, corrigir onde ele erra calado, ligar o caminho novo no canário (D-124-F), a ponte e a retomada do caminho antigo (P-124-01/02)</td><td class="ds">🟡 <b>em curso</b> (03/10), no mesmo chat da 126</td></tr>
-        <tr><td class="dm">2</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata</td><td class="ds">só no diagnóstico</td></tr>
-        <tr><td class="dm">3</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
-        <tr><td class="dm">4</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>
-        <tr><td class="dm">5</td><td class="ds"><b>EXTRA-002</b> · investigação Agger</td><td class="ds">Provar se dá para <b>cotar e renovar pelo Agger</b>. 📊 22/09: a tela é uma API JSON — dispara, espera, lê o resultado já padronizado com PDF. Tecnicamente dá; falta a <b>autorização da Agger</b> e um <b>usuário robô</b></td><td class="ds"><b>🧭 parte 1 (perícia) feita 22/09</b> — cético 71 · juiz 84 antes do conserto. <b>Parte 2 (prova ao vivo) espera a sua caixa</b> (<code>TAREFAS-DO-FOUNDER.md</code> §0.4.c e bloco H) e as decisões D-E002-01..08</td></tr>
-        <tr><td class="dm">6</td><td class="ds"><b>SPEC-099</b> · canais</td><td class="ds">Vários WhatsApp e e-mails, cada um com dono. Sai da pausa por dependência dos produtos</td><td class="ds">pausada, retomada aqui</td></tr>
-        <tr><td class="dm">7–11</td><td class="ds"><b>EXTRA-003</b> renovação → <b>004</b> cotação pelo chat → <b>005</b> reativação → <b>006</b> cross-sell → <b>007</b> site de captação</td><td class="ds">A fila de produto: o que faz a corretora <b>ganhar dinheiro</b>, depois que a operação estiver redonda. 📊 a <b>006</b> já depende só da 001.5, que está feita</td><td class="ds"><b>003</b> (dividida em 003-A fundação · 003-B ciclo), <b>004</b> e <b>007</b>: 📝 propostas escritas 22/09 · 005 e 006: uma linha cada</td></tr>
-        <tr><td class="dm">12–14</td><td class="ds"><b>EXTRA-008 · 009</b> Quiver e Segfy → <b>010</b> e-mail</td><td class="ds">Corretora que usa outro sistema de gestão entra sem projeto novo; o e-mail vira canal atendido como o WhatsApp</td><td class="ds">dependem da porta de conectores (101)</td></tr>
+        <tr><td class="dm">✓</td><td class="ds"><b>SPEC-127</b> · o portal no nível do WhatsApp</td><td class="ds">Fora da fila, no mesmo chat da 126: nada abre no portal sem o "ok" deste pedido, o dado que falta é perguntado antes de escrever, a cidade é a do serviço, o caminho antigo não escolhe sozinho — a ponte e a retomada do caminho antigo ficaram para depois (P-127-01/02)</td><td class="ds"><b>✅ concluída 03/10, nota 87</b> — faltam o <b>Implantar</b> (com o portal-worker), o CNPJ que falta, o canário T-101 e o orçamento T-102, que são seus</td></tr>
+        <tr><td class="dm">1</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata. <b>É a próxima</b>: o prompt de abertura existe (<code>specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.9-PRONTO.md</code>); a proposta, não</td><td class="ds">só no diagnóstico</td></tr>
+        <tr><td class="dm">2</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
+        <tr><td class="dm">3</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>
+        <tr><td class="dm">4</td><td class="ds"><b>EXTRA-002</b> · investigação Agger</td><td class="ds">Provar se dá para <b>cotar e renovar pelo Agger</b>. 📊 22/09: a tela é uma API JSON — dispara, espera, lê o resultado já padronizado com PDF. Tecnicamente dá; falta a <b>autorização da Agger</b> e um <b>usuário robô</b></td><td class="ds"><b>🧭 parte 1 (perícia) feita 22/09</b> — cético 71 · juiz 84 antes do conserto. <b>Parte 2 (prova ao vivo) espera a sua caixa</b> (<code>TAREFAS-DO-FOUNDER.md</code> §0.4.c e bloco H) e as decisões D-E002-01..08</td></tr>
+        <tr><td class="dm">5</td><td class="ds"><b>SPEC-099</b> · canais</td><td class="ds">Vários WhatsApp e e-mails, cada um com dono. Sai da pausa por dependência dos produtos</td><td class="ds">pausada, retomada aqui</td></tr>
+        <tr><td class="dm">6–10</td><td class="ds"><b>EXTRA-003</b> renovação → <b>004</b> cotação pelo chat → <b>005</b> reativação → <b>006</b> cross-sell → <b>007</b> site de captação</td><td class="ds">A fila de produto: o que faz a corretora <b>ganhar dinheiro</b>, depois que a operação estiver redonda. 📊 a <b>006</b> já depende só da 001.5, que está feita</td><td class="ds"><b>003</b> (dividida em 003-A fundação · 003-B ciclo), <b>004</b> e <b>007</b>: 📝 propostas escritas 22/09 · 005 e 006: uma linha cada</td></tr>
+        <tr><td class="dm">11–13</td><td class="ds"><b>EXTRA-008 · 009</b> Quiver e Segfy → <b>010</b> e-mail</td><td class="ds">Corretora que usa outro sistema de gestão entra sem projeto novo; o e-mail vira canal atendido como o WhatsApp</td><td class="ds">dependem da porta de conectores (101)</td></tr>
         <tr><td class="dm">⏸</td><td class="ds"><b>SPEC-099 → 114</b> · a arquitetura</td><td class="ds"><b>Pausadas por você em 07/09</b>, numeração preservada, sem cancelar. Retomam por dependência comprovada. Três já ganharam dono novo: a <b>101</b> é a porta onde Agger/Quiver/Segfy encaixam, a <b>099</b> entra logo depois dos pilotos, a <b>114</b> é o portão que autoriza vender</td><td class="ds">pausadas</td></tr>
         <tr><td class="dm">💡</td><td class="ds"><b>SPEC-115</b> · o placar e as medições no painel</td><td class="ds">Tirar estes números de uma página que alguém republica e pô-los <b>dentro do produto</b>, atualizados sozinhos. Ideia registrada em 20/09, depois da 114</td><td class="ds">💡 ideia, não é SPEC</td></tr>
       </tbody>

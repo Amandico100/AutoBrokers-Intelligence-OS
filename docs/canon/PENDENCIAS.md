@@ -12838,6 +12838,9 @@ tem `app/` (o Dockerfile copia só `backend/portal_worker`) e não tem retomada 
 passo 1). **O que destrava:** 🤖 o worker chamar o smith-api por HTTP na parada `ask_human`, OU dar retomada ao DOM; 🧑 ou
 decidir que o caminho é o API-first (D-124-F). **Custa esquecer:** a SPEC "o portal destrava" não alcança o único caminho
 que rodou — o portal continua chamando humano como antes.
+🟡 **03/10 (SPEC-127): CONTINUA, menor.** O DOM ganhou a CONTENÇÃO (não escolhe peça/causa/lado/reparo sozinho; para com a
+tela e as opções reais) e a parada leva a TELA ao destravador (P8). Falta a ponte HTTP e a continuação das paradas do DOM →
+**P-127-01/02/03**.
 
 ## P-124-02 · 🤖🧑 Autonomia no portal = calibrar o DEDUZIR (a mesma P-123-01)
 Depois do conserto `c3cd5c7`, a única parada que respondia sozinha (`uf_desconhecida`) virou pergunta; as demais `responder:*`
@@ -12845,6 +12848,9 @@ são DEDUZIR (desligado, `DEDUZIR_AUTONOMO_CALIBRADO = False`) ou PERGUNTAR/NUNC
 `test_C1_HOJE_o_destravador_do_portal_nao_responde_NENHUMA_parada_sozinho`. G3 (≥ 90 % na faixa de agir) não é mensurável:
 📊 0 paradas reais do API-first. **O que destrava:** 🤖 a calibração da P-123-01 E as primeiras paradas reais do API-first
 no diário (`origem='portal'`). **Custa esquecer:** o Founder lê "o portal destrava" e ele só pergunta.
+🟡 **03/10 (SPEC-127): CONTINUA.** O mecanismo está pronto (a régua da U6 da 126 plugada no portal; a guarda `test_C1_HOJE_…`
+migrou com controle; o CONDUZIR do tipo de telefone e a peça desambiguada por `especificos` respondem sem modelo). 📊 Autonomia do
+DEDUZIR do portal = 0: a bancada (44 casos) não rodou → **P-127-04**.
 
 ## P-124-03 · 🤖 O docling aceita QUALQUER `vision_model` e é aberto com `SERVICE_KEY` vazio
 `docling-service/app/main.py` valida só provedor (openai) e esforço; `config.py:14` `SERVICE_KEY: str = ""` por padrão. Quem
@@ -12869,16 +12875,12 @@ final da chave depende de `MetaUtils.create_meta_field_name`. Se divergir, cai n
 **O que destrava:** 🤖 um PDF com imagem pela sanitização da base (`extract_images=True`) depois do Implantar, conferindo a
 linha `details.papel='visao_documento'` no ledger. **Custa esquecer:** o custo do docling vira estimativa sem ninguém ver.
 
-## P-124-07 · 🤖 "Nunca 'Não sabe'" do questionário não está em código; `_RX_CANCELA_NO_PORTAL` duplica `_RX_CANCELA`
-A tabela de classes promete que o questionário nunca responde "Não sabe", mas nada impede; e a regex de cancelamento do
-portal repete o radical da do WhatsApp em vez de reusá-la (juiz P6). Hoje inalcançável (DEDUZIR desligado). **O que
-destrava:** 🤖 a proibição em código com teste, e uma regex só. **Custa esquecer:** quando a calibração religar, o portal
-responde "Não sabe" num questionário de sinistro; e duas regex divergem.
-
 ## P-124-08 · 🤖 Esperas encadeadas da tool do portal até ~600 s
 Com o destravador agindo, `_destravar_a_parada` chama `_aguardar` (150 s) dentro de `_aguardar`, até o teto de 3
 continuações; sem timeout de tool no runtime (juiz P7 = red team P2). Hoje moot (o portal não age sozinho). **O que
 destrava:** 🤖 um relógio único por chamada. **Custa esquecer:** o agente fica até 10 min mudo com o segurado.
+🟡 **03/10 (SPEC-127): CONTINUA, intocada.** INFERÊNCIA: o CONDUZIR do tipo de telefone (P4, sem modelo) já dispara uma
+continuação aninhada — com o API-first ligado, a espera encadeada deixa de ser só teórica.
 
 ## P-124-09 · 🤖 G1 do portal provado só com o modo `off`
 Os dublês dos scripts G1 (001.10/001.10.1) não têm `cerebro_modos`; em produção o modo é `on` (📊 01/10: 40 linhas, inclui
@@ -12904,11 +12906,6 @@ esquecer:** duas fontes da mesma etiqueta divergem quando o DEDUZIR religar.
 API nova + worker antigo: `parse_document.apply_async(kwargs={"vision": ...})` → `TypeError` → 2 retries → falha (só com
 `extract_images=True`; 📊 `sanitization_jobs` 0 linhas). O inverso é seguro. **O que destrava:** 🧑 Implantar o WORKER do
 docling antes da API (`TAREFAS-DO-FOUNDER.md` S124.1). **Custa esquecer:** a sanitização da base com imagem falha calada.
-
-## P-124-15 · 🤖 a regex de `pergunta_<codigo>` recusa `_` e `-` no código da pergunta
-Achado da confirmação (P-C3): o slot etiquetado do questionário só aceita código sem `_`/`-`; um código assim cai para
-pessoa (falha SEGURA, nada vai ao portal). **O que destrava:** 🤖 alargar a regex ao formato real dos códigos do portal, com
-teste de controle. **Custa esquecer:** pergunta de questionário que poderia ser respondida com dado do caso chama pessoa.
 
 ## A drenagem das pendências que a SPEC-124 tocou
 | P | estado |
@@ -13123,10 +13120,6 @@ corretora que mudou a regra dos 7 dias não é obedecida.
 `insurer_dispatch_service.client_summary_from_capture` repete as instruções. **O que destrava:** dedupe com teste. **Custa
 esquecer:** resumo feio para a URA/atendente da seguradora.
 
-## P-126-22 · 🤖 O `portal_action` abria pedido de vidro sem o "ok" → SPEC-127 P1
-Achado do juiz e do red team (P2) e da lente do G1 (R2: "já abri o atendimento" no t1). **Estado:** o gerente registra o fecho na
-SPEC-127 (P1). **Custa esquecer:** "pode deixar" num caso de vidro abre pedido real no portal.
-
 ## P-126-23 · 🤖 `test_golden_do_eletricista` com 3 checks vermelhos pré-existentes
 Vermelhos antes da 126. **O que destrava:** triar cada check (verdade vencida → migra a lição; defeito → conserto). **Custa
 esquecer:** um guarda vermelho que todo mundo aprende a ignorar.
@@ -13151,3 +13144,132 @@ esquecer:** um vermelho de tempo na bateria que esconde um vermelho de verdade. 
 | P-124-14 | ✅ FECHADA em código (U6) — movida; os outros chamadores → P-126-08 |
 | P-125-03 | 🟡 CONTINUA — a R9 em código; a Luna C8 → P-126-01 |
 | P-123-01 | 🟡 CONTINUA — o mecanismo pronto; falta o n → P-126-06 |
+
+# SPEC-127 — o portal de vidros no nível do WhatsApp (03/10/2026)
+
+> 📊 O retrato da SPEC (`reports/SPEC-127-EXECUTION-REPORT.md`): nada abre no portal sem o resumo + o "ok" AMARRADO ao pedido
+> (o mesmo portão da 126); faltou dado → parada antes da escrita (📊 replay: 18/18 casos com falta = 0 POST) e a resposta volta
+> ao MESMO pedido (1 POST); a cidade do SERVIÇO nos dois caminhos (📊 5/5 PATCH, cadastro 0/5); o DOM contido (não escolhe
+> peça/causa/lado/reparo). 📊 Autonomia do DEDUZIR do portal = 0 (bancada de 44 casos não rodada). Nenhuma migration; as flags
+> do portal seguem desligadas; nenhum pedido real. Juiz 80 ‖ red team 72 → confirmação 87.
+
+## P-127-01 · 🤖🧑 A ponte HTTP do DOM ao smith-api (P6) não foi feita
+D-127-B: só a CONTENÇÃO entrou (dentro do P2). A ponte exige endpoint novo, a chave interna e a URL do smith-api como variáveis
+NOVAS no contêiner do `portal-worker` (📊 grep `SMITH|BACKEND_URL|X-AutoBrokers` em `portal_worker/*.py` = 0, BLOCO 0 §7.3), e
+serve a Bradesco, que não tem HAR. **O que destrava:** 🤖 o canário medir DOM > 0 com a API respondendo; 🧑 as variáveis no
+EasyPanel. **Custa esquecer:** toda parada do DOM continua indo à equipe.
+
+## P-127-02 · 🤖 A retomada R3 do DOM (P7) foi adiada
+D-127-A (nota 25 para fazer agora): sem população — a Bradesco é proibida de escrever pela API e "API fora" impede o R3 por
+definição. O que o R3 precisa já está provado: 📊 o segmento `#/<seg>/passoN/<x>` da SPA = `token_autorizacao` em 4/4 HAR Yelum.
+**O que destrava:** o canário medir DOM > 0 com a API respondendo. **Custa esquecer:** o DOM recomeça do passo 1.
+
+## P-127-03 · 🤖 As paradas do DOM não têm continuação — vão à equipe
+`falta_cidade_servico`, `cobertura_nao_marcada` e as paradas da contenção terminam em pessoa (a 1ª é inalcançável pela tool,
+que barra a cidade antes). **O que destrava:** P-127-01 ou P-127-02. **Custa esquecer:** o segurado que cai no DOM sempre
+espera uma pessoa.
+
+## P-127-04 · 🧑🤖 A rodada paga da bancada do portal (P5) não rodou — DEDUZIR do portal = 0
+📊 44 casos com gabarito commitado antes (`672441f`): yelum 33 (27 calibráveis) · porto 11 (5 calibráveis, < 10 → nunca
+religa). Sobravam 💭 ≈ US$ 0,22 do teto; a Yelum sozinha custaria 💭 0,29–0,72. **O que destrava:** 🧑 verba (T-102) e ≥ 10
+casos da Porto (T-103) → 🤖 a rodada k ≥ 2 com a linha de controle. **Custa esquecer:** o portal só pergunta, nunca escolhe.
+
+## P-127-05 · 🤖 Cidade/UF só são validadas DEPOIS do `POST /atendimentos`
+📊 `/ufs` e `/cidades` só aparecem nos HAR com `token_autorizacao`, depois do POST (0 de 7 provam que respondem sem token).
+Cidade com erro de digitação abre o atendimento e para (1 POST, continua). **O que destrava:** o canário provar uma consulta
+antes. **Custa esquecer:** atendimento aberto com a cidade a corrigir.
+
+## P-127-06 · 🤖 O `PortalExecutionGateway` cria job SEM o portão do ok quando ligado
+Workflow `portal.operation` (`assistance.glass.request` → `abrir_atendimento`) com `PORTAL_EXECUTION_GATEWAY_MODE=on` (hoje
+ausente = `legacy`). **O que destrava:** cercar com o mesmo portão antes de ligar. **Custa esquecer:** a porta lateral abre
+pedido de vidro sem o "ok".
+
+## P-127-07 · 🤖 O "responder com dado" resolve 0/16 do gabarito real
+📊 Red team: nos 16 casos `peca_ambigua`/`questionario_incompleto` da P5, `dado_do_caso_no_portal` → 0 escolhas (0 erradas, 16
+viram pergunta); o G5 só é atingido no replay montado. **O que destrava:** medir no acervo que formas de `especificos` a
+atendente usa. **Custa esquecer:** o segurado é perguntado do que já disse.
+
+## P-127-08 · 🤖 O worker escolhe a peça por uma resposta de cada vez
+💭 CAPA … PINTADO: a escolha em várias etapas é feita resposta a resposta, sem o conjunto. **O que destrava:** a escolha olhar
+as respostas juntas, com teste. **Custa esquecer:** uma peça montada por partes que não casam.
+
+## P-127-09 · 🤖 O matcher do questionário empresta chave alheia (`adas`); a peça estreitada por qualquer chave curta
+`_peca_que_o_caso_desambigua` usa QUALQUER chave curta de `especificos` (fora a lista negra) — 💭 `posicao_do_trincado:
+"passageiro"` numa lanterna estreitaria para "direita" (juiz P4). **O que destrava:** a lista das chaves que podem
+desambiguar, com controle. **Custa esquecer:** uma resposta dada para outra pergunta decide a peça.
+
+## P-127-10 · 🤖 Lataria multipeça sem formato
+O pedido de lataria com várias peças não tem formato no contrato do portal. **O que destrava:** o formato pelo HAR `LAT`/
+`LATARIA2`. **Custa esquecer:** lataria multipeça vai à equipe.
+
+## P-127-11 · 🤖 `lxml` fora do requirements
+📊 `tests/_arvore_do_html.py:92` importa `lxml`; `Select-String lxml` nos `requirements*.txt` → 0. **O que destrava:** declarar
+no requirements de teste. **Custa esquecer:** o teste do DOM quebra numa máquina limpa.
+
+## P-127-12 · 🧑🤖 O DOM contido nunca rodou contra a SPA viva
+A contenção decide pela forma do `capture_state` (fixture `telas_dom.py`, gerada do HTML salvo) e o JS de captura só se prova
+no canário. Qualquer diferença do HTML vivo vira parada (seguro, mas pode tornar o DOM "pessoa sempre"). **O que destrava:** 🧑
+o canário (T-101). **Custa esquecer:** o DOM pode não concluir nenhum pedido sem ninguém ver.
+
+## P-127-13 · 🤖 A imagem da tela (visão) na parada não foi feita
+O P8 leva a TELA em texto (título, campo, rótulos, opções); a imagem pelo papel `visao` ficou de fora. **O que destrava:** a
+parada carregar o screenshot quando houver. **Custa esquecer:** tela sem texto útil não é lida.
+
+## P-127-14 · 🤖 Placa colada e "parabrisa" pedem uma confirmação a mais (N1)
+`_pergunta_amarrada_ao_pedido` casa o final da placa por PALAVRA e `_partes_do_pedido_citadas` por SUBSTRING: `QQZ9X87` colada e
+"parabrisa" sem hífen → `confirm_first`. Fail-closed. **O que destrava:** medir no canário os `confirm_first` repetidos.
+**Custa esquecer:** atrito com o segurado.
+
+## P-127-15 · 🤖 `portal_tool._hoje` regrava a `evidence` inteira (N2)
+O último que escreve vence: um `vigia_avisou_em`/`releitura_pedida_em` gravado no meio se perde. **O que destrava:** merge de
+`jsonb` ou update condicional. **Custa esquecer:** o vigia avisa duas vezes.
+
+## P-127-16 · 🤖 O comentário de `vidros_estado.py:283` ficou meio verdade (N3)
+"o vigia relê como antes": com o destravador DESLIGADO e a tool sem ter visto a parada, o vigia não relê mais o tipo de telefone
+(vai à equipe com texto honesto). **O que destrava:** corrigir o texto. **Custa esquecer:** o próximo leitor confia no comentário.
+
+## P-127-17 · 🤖 `_apolice_de_outra_pessoa` falha aberto (N4, padrão da 126)
+Ficha não lida → `False` → o parente ouviria o FINAL da placa (não a inteira). **O que destrava:** falhar fechado. **Custa
+esquecer:** 4 caracteres da placa a quem não é o titular.
+
+## P-127-18 · 🤖 A correção dada na mesma janela da 1ª resposta se perde (N5)
+As duas respostas antes do 1º insert: a 2ª acompanha o job da 1ª (o preço certo contra o 2º POST). INFERÊNCIA por leitura.
+**O que destrava:** medir no canário. **Custa esquecer:** o segurado corrige e a correção não chega.
+
+## P-127-19 · 🤖 "Sim, mas é a lanterna" — só o classificador segura (RT-P3)
+A regex vê "servico trocado" só quando o serviço ≠ vidros; a peça trocada dentro do vidro depende do classificador pago (não
+medido aqui). **O que destrava:** casos na bancada do ok com a peça trocada. **Custa esquecer:** abre a peça errada se o
+classificador falhar.
+
+## P-127-20 · 🤖 A amarra pergunta ↔ pedido não existe no `insurer_dispatch` (medir)
+No guincho, `_pergunta_amarrada_ao_pedido` devolve True por construção (sem a chave). **O que destrava:** medir no acervo se o
+modelo muda endereço/destino entre a pergunta e o "sim". **Custa esquecer:** o mesmo B1 do vidro, no guincho.
+
+## P-127-21 · 🧑 O canário do portal tem de usar `cpf:`, nunca `job:`
+A continuação é OUTRO job e agora faz o `POST /atendimentos` da pré-fronteira; `job:<origem>` a barra (`motivo_para_barrar`).
+**O que destrava:** T-101 (já escrito com `cpf:`). **Custa esquecer:** o canário para no meio e parece defeito.
+
+## P-127-22 · 🧑 Uma corretora com Perfil de Acionamento não tem documento
+📊 SELECT 03/10: 3 corretoras passam o gate nome + e-mail; **1** sem documento (as 3 com telefone). Com o API-first ligado, todo
+pedido de vidro dela vai à equipe ("falta um ajuste no cadastro"). **O que destrava:** 🧑 T-100. **Custa esquecer:** a
+corretora acha que o portal não funciona.
+
+## P-127-23 · 🤖 O que ainda vai ao modelo do DOM sem máscara provada (juiz P3)
+`estado_para_o_modelo` redige `text`, `inputs.value` e a URL; `mdselects[].value/options`, `selects`, `radios.label` e `questoes`
+vão crus, e a visão segue fora. Nada disso é CPF/placa por construção, mas não está provado. **O que destrava:** um teste que
+passe dado pessoal por cada campo. **Custa esquecer:** dado pessoal ao provedor por um rótulo.
+
+## P-127-24 · 🤖 Job `failed` com a fronteira A `armed` sem `submitted` (juiz P7)
+Quando o portal não acha CPF/placa no DOM (`vidros_lanternas.py`), o job falha com a fronteira armada. **O que destrava:** o
+vigia tratar `armed` sem `submitted` como "nada saiu". **Custa esquecer:** um pedido que nada enviou parece incerto.
+
+## A drenagem das pendências que a SPEC-127 tocou
+| P | estado |
+|---|---|
+| P-124-07 · P-124-15 | ✅ FECHADAS com teste — movidas para `PENDENCIAS-FECHADAS.md` |
+| P-126-22 | ✅ FECHADA — o `portal_action` passa pelo portão do ok, amarrado ao pedido — movida |
+| P-124-01 | 🟡 CONTINUA — contenção e TELA feitas; ponte/continuação → P-127-01/02/03 |
+| P-124-02 | 🟡 CONTINUA — mecanismo pronto, autonomia 0 → P-127-04 |
+| P-124-08 | 🟡 CONTINUA — intocada; agora alcançável com o API-first ligado (INFERÊNCIA) |
+| P-124-14 | ✅ já fechada na 126 (U6); o autocomplete do DOM também só aceita igual (P2) |
+| P-123-01 | 🟡 CONTINUA — o n por seguradora (P-126-06, P-127-04) |

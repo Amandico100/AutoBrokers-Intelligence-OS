@@ -1045,3 +1045,24 @@ mente nos dois sentidos.
 
 ✅ **FECHADA 03/10/2026 (SPEC-126 U1, `f6f087d`).** Os falsos (a)–(d) da régua consertados com controle. O resto que a final achou — instrução a terceiro lida como pedido (Sol C10 t1) e pessoa ACEITA contada como proibida (Luna R2 t2) — continua como **P-126-03**.
 
+## P-124-07 · 🤖 "Nunca 'Não sabe'" do questionário não está em código; `_RX_CANCELA_NO_PORTAL` duplica `_RX_CANCELA`
+A tabela de classes promete que o questionário nunca responde "Não sabe", mas nada impede; e a regex de cancelamento do
+portal repete o radical da do WhatsApp em vez de reusá-la (juiz P6). Hoje inalcançável (DEDUZIR desligado). **O que
+destrava:** 🤖 a proibição em código com teste, e uma regex só. **Custa esquecer:** quando a calibração religar, o portal
+responde "Não sabe" num questionário de sinistro; e duas regex divergem.
+
+✅ **FECHADA 03/10/2026 (SPEC-127 P4, `d6b96f2`).** "Não sabe" nunca sai do destravador, nem com o DEDUZIR calibrado (`proibicao="nao_sabe_e_do_segurado"`, com controle: a mesma régua calibrada responde outra opção); `_RX_CANCELA_NO_PORTAL` passou a ser `_RX_CANCELA.pattern` + os radicais do portal (`destravador.py:2400`). Guardas: `test_spec127_p4_o_destravador_ve_mais_paradas.py::test_P124_07_*` e o caso `nao_sabe` da bancada do portal.
+
+## P-124-15 · 🤖 a regex de `pergunta_<codigo>` recusa `_` e `-` no código da pergunta
+Achado da confirmação (P-C3): o slot etiquetado do questionário só aceita código sem `_`/`-`; um código assim cai para
+pessoa (falha SEGURA, nada vai ao portal). **O que destrava:** 🤖 alargar a regex ao formato real dos códigos do portal, com
+teste de controle. **Custa esquecer:** pergunta de questionário que poderia ser respondida com dado do caso chama pessoa.
+
+✅ **FECHADA 03/10/2026 (SPEC-127 P4, `d6b96f2`).** `_RX_SLOT_DO_QUESTIONARIO = pergunta_[A-Za-z0-9][A-Za-z0-9_-]*` (`destravador.py:2334`). Guardas: `test_P124_15_o_codigo_da_pergunta_aceita_sublinhado_e_hifen` e o CONTROLE `test_P124_15_CONTROLE_sem_codigo_continua_recusado`.
+
+## P-126-22 · 🤖 O `portal_action` abria pedido de vidro sem o "ok" → SPEC-127 P1
+Achado do juiz e do red team (P2) e da lente do G1 (R2: "já abri o atendimento" no t1). **Estado:** o gerente registra o fecho na
+SPEC-127 (P1). **Custa esquecer:** "pode deixar" num caso de vidro abre pedido real no portal.
+
+✅ **FECHADA 03/10/2026 (SPEC-127 P1 `2253cf8` + conserto `7362725`).** O `portal_action` passa pelo MESMO portão do ok da 126 (regex E classificador) antes de criar o job (D-127-E), e o ok tem de ser DESTE pedido: a pergunta traz a linha pronta ou a peça + cidade + UF + final da placa. 📊 Sondas do red team depois do conserto: "abrir RETROVISOR em CURITIBANOS?" + "pode mandar" → 0 job; "posso acionar o vidro?" + "sim" → 0 job; controle com a linha certa → 1 job, 1 POST. Mutações Ma (sem a amarra) e M2 (portão desligado) vermelhas.
+

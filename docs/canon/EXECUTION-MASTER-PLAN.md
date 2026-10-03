@@ -52,8 +52,14 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
               (📊 179 frases, 0/294 falso ok), parente aciona sem ver a apólice, cancelar depois de acionar = pessoa, aviso de
               abuso, DEDUZIR só calibrado (0/40 religadas) · 📊 Luna 77,8 → 88,9 % (meta 90 NÃO), críticos 12/12 Luna e
               11/12 Sol; Sol nos não-críticos PENDENTE (P-126-02)
-            EM CURSO: SPEC-127 (o portal no nível do WhatsApp — P-124-01/02), no mesmo chat da 126
-            DEPOIS: a fila D-FILA-01 (EXTRA-001.9)
+            SPEC-127 (o portal de vidros no nível do WhatsApp) — CONCLUÍDA 03/10/2026, nota 87, main = ver git log da main
+              (juiz 80 ‖ red team 72 → conserto único → confirmação 87) · nada abre no portal sem o "ok" AMARRADO ao pedido;
+              faltou dado → parada antes da escrita no MESMO pedido (📊 replay 18/18 = 0 POST); cidade do SERVIÇO (📊 5/5);
+              DOM contido; nenhuma migration · DEDUZIR do portal = 0 (bancada de 44 casos não rodada, P-127-04); ponte e
+              retomada do DOM adiadas (P-127-01/02); canário do Founder (T-101)
+            PRÓXIMA: a fila D-FILA-01 → EXTRA-001.9 ("o painel diz de quem é") — prompt de abertura de 21/09 em
+              specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.9-PRONTO.md; ⚠️ NÃO existe proposta escrita (o 1º passo é escrevê-la)
+              e o prompt cita o modelo Fable 5.1 — vale o Opus 5.5 (D-PROTO-13)
 A FILA      001.9  →  001.0  →  triagem de pendências (D-FILA-01)  →  EXTRA-002 (investigação Agger)
 PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
 ```
