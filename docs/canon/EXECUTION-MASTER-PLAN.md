@@ -46,9 +46,14 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
             SPEC-125 (o atendimento lembra, entende e não pergunta o óbvio) — CONCLUÍDA 02/10/2026, nota 86
               (juiz 68 ‖ red team 62 → confirmações 86 e 84) · conversa inteira do assunto, identidade pelo telefone,
               prompt v2 reversível com um UPDATE, "sim" e terceiro em código · 📊 Luna 63,9 % → 77,8 %, críticos 4/6 → 5/6;
-              Sol pós-conserto nos críticos PENDENTE (P-125-01, orçamento)
-            PRÓXIMAS: SPEC-126 (o destravador deduz: calibrar o DEDUZIR — P-123-01) · SPEC-127 (o portal no nível do
-              WhatsApp — P-124-01/02) · depois a fila D-FILA-01 (EXTRA-001.9)
+              Sol pós-conserto nos críticos medido na SPEC-126 (P-125-01 fechada)
+            SPEC-126 (o atendimento quase sem erro) — CONCLUÍDA 03/10/2026, nota 88, main = ver git log da main
+              (juiz 80 ‖ red team 60 → confirmação 74 → escalação 76 → conserto 5) · o "ok" por regex E classificador
+              (📊 179 frases, 0/294 falso ok), parente aciona sem ver a apólice, cancelar depois de acionar = pessoa, aviso de
+              abuso, DEDUZIR só calibrado (0/40 religadas) · 📊 Luna 77,8 → 88,9 % (meta 90 NÃO), críticos 12/12 Luna e
+              11/12 Sol; Sol nos não-críticos PENDENTE (P-126-02)
+            EM CURSO: SPEC-127 (o portal no nível do WhatsApp — P-124-01/02), no mesmo chat da 126
+            DEPOIS: a fila D-FILA-01 (EXTRA-001.9)
 A FILA      001.9  →  001.0  →  triagem de pendências (D-FILA-01)  →  EXTRA-002 (investigação Agger)
 PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
 ```
