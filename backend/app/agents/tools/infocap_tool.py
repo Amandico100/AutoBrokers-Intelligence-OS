@@ -432,11 +432,13 @@ _RX_PERGUNTA_DE_DADO = re.compile(
     r"valor|valores|franquia|vigencia|vencimento|vence|parcela|parcelas|boleto|me passa|"
     r"passar a apolice|numero da apolice|tem seguro|esta ativ\w*|ta ativ\w*|esta valendo|"
     r"ta valendo|qual (?:e )?a seguradora|qual seguradora|inclui|incluso|incluido|reembolso|"
-    r"indeniza\w*)\b")
+    # CONSERTO X (juiz B2): "qual o prêmio?" é DADO — 📊 a palavra não estava na régua
+    r"premio|premios|indeniza\w*)\b")
 #: o BEM atribuído a outra pessoa só com o verbo ("o carro É da minha esposa",
 #: "está no nome dela") — "a moto dele bateu no meu carro" (colisão) não é posse.
 _RX_BEM_DE_OUTRO = re.compile(
-    r"\b(?:carro|veiculo|moto|caminhao|casa|imovel|apartamento)\b[^.?!\n|]{0,15}?\b"
+    # CONSERTO X: "o SEGURO é do meu pai" dito DEPOIS do CPF (o `_RX_DOC_DE_OUTRO` só lê até o documento)
+    r"\b(?:carro|veiculo|moto|caminhao|casa|imovel|apartamento|seguro|apolice)\b[^.?!\n|]{0,15}?\b"
     r"(?:e|eh|esta no nome|ta no nome|fica no nome|esta em nome|ta em nome)\s+" + _DONO_OUTRO + r"\b")
 _RX_NAO_SOU_TITULAR = re.compile(
     r"\bnao sou (?:o |a )?(?:titular|segurad[oa]|dono|dona)\b|"
@@ -451,6 +453,49 @@ _RX_MEU_DOC_COM_NUMERO = re.compile(r"\b(?:meu|o meu)\s+(?:cpf|cnpj|documento)\b
 #: titular junto, e "ela autorizou" nunca abriu DADO (C16).
 _RX_SOU_PARENTE_DE_OUTRO = re.compile(
     r"\bsou (?:o |a )?" + _PESSOA + r"\s+d(?:ele|ela|[ao] titular|[ao] segurad[oa]|[ao] dono|[ao] dona)\b")
+#: 🔴 SPEC-126 CONSERTO X (juiz B2 · RT B4) — quem se apresenta por um papel que SÓ existe em relação a
+#: outra pessoa, sem precisar dizer "dele". 📊 Sondas de 02/10 (`rt126_probe1.py` §4): "sou o motorista",
+#: "sou o genro", "sou a nora", "sou o caseiro", "sou a diarista" + CPF solto → `terceiro=False` e a apólice
+#: INTEIRA ia ao modelo (o D1 nomeia "motorista", e a palavra não existia na régua).
+#:   · o VÍNCULO DE TRABALHO exige o artigo ("sou O motorista"): ⛔ "sou motorista (de aplicativo)" é a
+#:     PROFISSÃO do próprio titular.
+#:   · o parentesco POR AFINIDADE vale com ou sem artigo ("sou genro do seu Jorge"): genro, nora, sogro…
+#:     só existem em relação a outra pessoa. ⛔ "sou a mãe do Pedro" continua fora (pode ser a titular).
+#:   ⛔ "assistente" fica FORA: 📊 acervo (02/10) — as 8 falas que casavam eram "sou a assistente virtual
+#:     da <seguradora>" (a URA se apresentando).
+_VINCULO_DE_TRABALHO = (r"(?:motorista|caseir[oa]|diarista|funcionari[oa]|empregad[oa]|secretari[oa]"
+                        r"|zelador|zeladora|baba|cuidador|cuidadora|ajudante|manobrista"
+                        r"|frentista|jardineir[oa]|porteir[oa])")
+_RX_SOU_QUEM_NAO_E_O_TITULAR = re.compile(
+    r"\bsou (?:o |a )" + _VINCULO_DE_TRABALHO
+    + r"\b(?! (?:de aplicativo|de app|do app|do uber|da uber|de uber|do 99|da 99|de taxi|autonom[oa]))"
+    + r"|\bsou (?:o |a )?(?:genro|nora|sogro|sogra|cunhado|cunhada|enteado|enteada|padrasto|madrasta)\b"
+    + r"|\btrabalho (?:pro|pra|para|com) (?:o |a )?(?:seu|sr|senhor|senhora|dona|doutor|doutora|dr|dra"
+      r"|patrao|patroa)\b")
+#: 🔴 SPEC-126 CONSERTO X (juiz B2) — a POSSE do bem por parente SEM o verbo "é": "o carro do meu pai
+#: quebrou", "pro carro do meu sogro", "a casa da minha mãe". 📊 `j_d1.py` (02/10): com o CPF solto,
+#: `terceiro=False`. ⛔ A colisão não é posse: "o carro do meu vizinho BATEU no meu" (o bem do outro é o
+#: que causou o dano, não o segurado) — o verbo de colidir logo depois desfaz o sinal.
+#: ⛔ E o LUGAR não é posse: "leva o carro pra casa da minha mãe", "estou na casa da minha mãe" (o
+#: imóvel depois de preposição de destino/lugar é aonde ele vai/está, não o bem segurado).
+_RX_POSSE_DE_PARENTE = re.compile(
+    r"(?:\b(?:carro|carrinho|veiculo|moto|caminhao|caminhonete|seguro|apolice)"
+    r"|(?<!pra )(?<!para )(?<!pro )(?<!ate )(?<!na )(?<!no )(?<!em )(?<!perto da )(?<!frente a )"
+    r"(?<!frente da )(?<!lado da )\b(?:casa|imovel|apartamento|ape))"
+    r"\s+d[ao]s?\s+(?:(?:minha|meu|minhas|meus|nossa|nosso)\s+)?" + _PESSOA + r"s?\b"
+    r"(?!\W+(?:\w+\W+){0,3}?(?:bateu|bateram|batendo|colidiu|colidiram|acertou|atingiu|encostou|raspou"
+    r"|amassou|arranhou)\b)")
+#: ⛔ …e a colisão contada pelo outro lado: "BATI no carro do meu colega", "não VI o carro do meu colega
+#: estacionado" (📊 acervo 02/10: 1 de 6 casamentos da posse era isto — o titular contando que bateu).
+_RX_EU_BATI_ANTES = re.compile(
+    r"\b(?:bati|batemos|acertei|atingi|encostei|raspei|ralei|colidi|nao vi|bateu|bateram|batendo)\b"
+    r"[^.?!\n]{0,20}$")
+
+
+def _posse_de_parente(texto: str) -> bool:
+    """O bem (carro, casa, seguro) é de um parente/próximo — sem colisão antes nem depois. **PURA.**"""
+    return any(not _RX_EU_BATI_ANTES.search(texto[max(0, m.start() - 40): m.start()])
+               for m in _RX_POSSE_DE_PARENTE.finditer(texto))
 #: constante_justificada: o pedido de SERVIÇO (o que a exceção permite) — reserva do vocabulário
 #: canônico (`servico_canonico`), que é a fonte; esta lista só cobre o vocabulário indisponível.
 _RX_PEDIU_SERVICO = re.compile(
@@ -537,10 +582,22 @@ def de_quem_e_a_apolice(documento: Any, falas: Any, *, inicial_do_titular: Any =
     # 🔴 X3: "o carro é da minha esposa MAS O SEGURO É MEU" — o bem de outra pessoa não faz
     #    o seguro ser de outra pessoa quando ele diz que o seguro é dele.
     seguro_e_meu = bool(_RX_O_SEGURO_E_MEU.search(tudo))
+    # 🔴 SPEC-126 CONSERTO X (RT B4) — o que ele diz DEPOIS do documento também conta ("na verdade o
+    #    carro é do meu sogro", "ah, o seguro é do meu pai"), salvo quando o depois traz OUTRO documento
+    #    (aí o que se diz é sobre aquele). 📊 Antes o `trecho` parava na mensagem do CPF e a correção
+    #    dita no turno seguinte não existia.
+    #    ⚠️ Só os sinais sobre o BEM/SEGURO/titularidade — nunca o "nome dele" solto: 📊 "meu filho vai
+    #    acompanhar, o nome dele é Pedro" (o titular falando) casaria `_RX_DOC_DE_OUTRO` ("nome … dele").
+    depois = norm[onde + 1:] if onde is not None else []
+    if any(n != doc for f in depois for n in _numeros_longos(f)):
+        depois = []
+    com_o_depois = " \n ".join([trecho] + depois) if depois else trecho
     if not meu_aqui and (_RX_DOC_DE_OUTRO.search(trecho)
-                         or (_RX_BEM_DE_OUTRO.search(trecho) and not seguro_e_meu)
-                         or _RX_NAO_SOU_TITULAR.search(trecho)
+                         or (_RX_BEM_DE_OUTRO.search(com_o_depois) and not seguro_e_meu)
+                         or (_posse_de_parente(com_o_depois) and not seguro_e_meu)
+                         or _RX_NAO_SOU_TITULAR.search(com_o_depois)
                          or (_RX_SOU_PARENTE_DE_OUTRO.search(tudo) and not seguro_e_meu)
+                         or (_RX_SOU_QUEM_NAO_E_O_TITULAR.search(tudo) and not seguro_e_meu)
                          or any(m.group(1) not in _NAO_E_PESSOA
                                 for m in _RX_DOC_DE_NOMEADO.finditer(trecho))):
         motivos.append("a conversa diz que o documento/apolice e de outra pessoa")

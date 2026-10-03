@@ -167,9 +167,51 @@ _SERVICO_ACIONADO = (r"(?:guincho|reboque|prestador|tecnico|chaveiro|eletricista
 #:    cancelamento" — são pergunta de status ou conversa de inadimplência, não pedido; e a negação
 #:    ("não cancela não, já chegou", "não precisa cancelar") é o contrário de cancelar.
 _CANCELAR = (r"(?<!nao )(?<!nao precisa )(?<!nao precisam )(?<!sem )(?<!para nao )(?<!pra nao )"
-             r"\bcancel(?:a|ar|em|e|o|ei|amos)\b"
+             # CONSERTO X (RT-B2): "cancelaaaa" (a letra esticada do WhatsApp) caía em `N`
+             r"\bcancel(?:a+|ar|em|e|o|ei|amos)\b"
              r"|\b(?:quero|queria|gostaria de|pedir|pedi|pediu|solicitar|solicito|solicitei|fazer|faz"
              r"|faca|pedido de) (?:o |um )?cancelamento\b")
+
+#: 🔴 SPEC-126 CONSERTO X (RT-B2) — CANCELAR SEM O VERBO "cancelar". 📊 Sonda do red team (02/10,
+#:    `rt126_probe1.py` §2): "esquece o guincho", "deixa pra lá", "dispensa/desmarca/suspende o guincho",
+#:    "manda voltar o guincho", "não precisa mandar mais ninguém", "o guincho pode ir embora", "pode
+#:    liberar o de vocês", "aborta" → `N` → a segunda chance mandava o agente "resolver sem pessoa" o
+#:    que só a corretora executa, e o prestador seguia a caminho (D4).
+#: A ESCOLHA (o OBJETO decide — documentada no teste `test_spec126_conserto_x_cancelar_sem_o_verbo`):
+#:   ① o verbo de dispensar + um SERVIÇO até 5 palavras depois ("esquece o guincho") → K3. ⛔ Se no
+#:     meio ele PEDE o serviço ("esquece aquilo, manda o guincho"), não é K3: o objeto era outro.
+#:   ② "esquece"/"deixa pra lá"/"aborta" como a ÚLTIMA coisa do turno → K3. No pós-acionamento a
+#:     última palavra dele, sem objeto, é sobre o serviço que está na rua; errar aqui chama UMA pessoa
+#:     à toa, errar do outro lado deixa o guincho ir.  ⛔ "deixa pra lá, já entendi" (o objeto é a
+#:     explicação) não termina no "deixa" e não casa.
+#:   ③ "esquece"/"deixa pra lá" + o sinal de que se resolveu ("já resolvi", "o carro pegou") → K3.
+_DISPENSAR = (r"(?:esquece|esquecer|esqueca|esquecam|deixa pra la|deixa para la|deixe pra la"
+              r"|deixa quieto|dispensa|dispensar|dispense|dispensem|desmarca|desmarcar|desmarque"
+              r"|desmarquem|suspende|suspender|suspenda|suspendam|aborta|abortar|aborte|manda voltar"
+              r"|mande voltar|mandem voltar|manda embora|mande embora|pode liberar|podem liberar)")
+#: o pedido do serviço no meio da frase desfaz o ① ("esquece aquilo, MANDA o guincho").
+_SEM_PEDIR_O_SERVICO = r"(?:(?!manda\b|mande\b|mandem\b|mandar\b|envia\b|envie\b|aciona\b|acione\b|chama\b)\w+\W+)"
+_RESOLVEU = (r"(?:ja )?(?:resolvi|resolvemos|resolveu|consegui|conseguimos|conseguiu|pegou|funcionou"
+             r"|deu certo|ligou|nao precisa|nao preciso|chegou (?:um|outro))")
+#: ⛔ O "esqueça" que NÃO é ordem: 📊 acervo (02/10, 15.773 falas `user`) — "não SE esqueça de buscar uma
+#:    assistência", "caso TU esqueça" (subjuntivo/conselho, não dispensa). O sujeito/pronome antes desfaz.
+_NAO_E_ORDEM = r"(?<!nao )(?<!se )(?<!tu )(?<!voce )(?<!vc )(?<!ele )(?<!ela )(?<!eu )"
+_CANCELAR_SEM_O_VERBO = (
+    _NAO_E_ORDEM + r"(?<!nao precisa )\b" + _DISPENSAR + r"\W+" + _SEM_PEDIR_O_SERVICO + r"{0,5}?"
+    + _SERVICO_ACIONADO + r"\b"
+    + r"|" + _NAO_E_ORDEM + r"\b(?:esquece|esqueca|deixa pra la|deixa para la|deixe pra la|deixa quieto"
+      r"|aborta)(?: (?:isso|tudo|entao|ai|mesmo|por favor|pf|pfv|blz|ta|ok|moco|moca|amigo|amiga))*\W*$"
+    + r"|" + _NAO_E_ORDEM + r"\b(?:esquece|esqueca|deixa pra la|deixa para la|deixe pra la|deixa quieto)\b\W+"
+      r"(?:\w+\W+){0,4}?" + _RESOLVEU + r"\b"
+    + r"|\b(?:pode|podem) (?:liberar|dispensar|mandar embora|mandar voltar) (?:o|a|os|as) "
+      r"(?:de voces|de vcs|de vc|seu|seus)\b"
+    + r"|" + _SERVICO_ACIONADO + r"\W+(?:\w+\W+){0,3}?(?:pode|podem) ir embora\b"
+    + r"|\bnao (?:manda|mande|mandem|envia|envie|enviem) mais\b"
+      r"(?! (?:mensage|msg|audio|foto|document|nada|link|o link|isso))"
+    + r"|\bnao (?:precisa|precisam) (?:mais )?(?:mandar|enviar) (?:mais )?ninguem\b"
+    + r"|\bnao (?:precisa|precisam) (?:mandar|enviar|vir) (?:ninguem )?mais\b"
+      r"(?! (?:mensage|msg|audio|foto|document|nada))"
+    + r"|\bnao (?:vem|venha|venham) mais nao\b(?!\s*\?)")
 
 _CASCATA: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
     ("K1", re.compile(
@@ -234,6 +276,9 @@ _CASCATA: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
     #    "cancela a vistoria e o guincho tb" cancela o guincho também, e o guincho já está na rua.
     #    ⛔ "quero cancelar a vistoria" não tem serviço → segue para a regra `C` logo abaixo.
     ("K3", re.compile(r"(?:" + _CANCELAR + r")\W+(\w+\W+){0,5}?" + _SERVICO_ACIONADO + r"\b")),
+    # 🔴 SPEC-126 CONSERTO X (RT-B2) — cancelar SEM o verbo; também ANTES da agenda: "desmarca o
+    #    técnico" é o serviço, e a agenda (`C`) só vê vistoria/agendamento/visita/horário/data.
+    ("K3", re.compile(_CANCELAR_SEM_O_VERBO)),
     # 🔴 SPEC-126 U4 — laudo do juiz final da 125 (pend. 2): "remarcar a vistoria" + "indenização"
     #    no MESMO turno saía `C` (a regra de agenda vinha antes de `L`) e a pergunta de dinheiro,
     #    que é da pessoa (R9), sumia. ⚠️ Só quando os DOIS estão: `L` sozinho já vinha depois de K3

@@ -500,9 +500,69 @@ _AFIRMACOES_DE_CANCELAMENTO = re.compile(
     r"(?i)"
     + _NAO + r"\bcancel(?:ei|amos)\b"
     + r"|" + _NAO + r"\bacab(?:ei|o|amos)\s+de\s+cancelar\b"
-    + r"|" + _NAO + r"\b(?:est[áa]|foi|ficou|fica|j[áa]\s+est[áa]|j[áa]\s+foi)\s+(?:tudo\s+)?cancelad[oa]s?\b"
+    # ("está/foi/ficou cancelado" mudou para `_participio_afirmado`, que lê também a pergunta, o
+    #  modal e o status do sistema — CONSERTO X)
     + r"|" + _NAO + r"\bcancelamento\s+(?:j[áa]\s+)?(?:foi\s+|est[áa]\s+)?"
-      r"(?:feito|realizado|efetuado|confirmado|conclu[íi]do)\b")
+      r"(?:feito|realizado|efetuado|confirmado|conclu[íi]do)\b"
+    # 🔴 SPEC-126 CONSERTO X (RT-B1) — o FEITO em 1ª pessoa sem o verbo "cancelei": 📊 "Consegui
+    #    cancelar o guincho", "Desmarquei o guincho", "Dispensei o reboque" saíam intactos.
+    + r"|" + _NAO + r"\b(?:consegui|conseguimos|pude|pudemos)\s+(?:j[áa]\s+)?cancelar\b"
+    + r"|" + _NAO + r"\b(?:desmarquei|desmarcamos|dispensei|dispensamos|suspendi|suspendemos)\b"
+    # o cancelamento PEDIDO/REGISTRADO por ele ("Solicitei o cancelamento", "Já pedi pra seguradora
+    # cancelar", "O cancelamento já foi solicitado à seguradora") — também é ação afirmada (T5).
+    + r"|" + _NAO + r"\b(?:pedi|pedimos|solicitei|solicitamos|registrei|registramos|enviei|mandei"
+      r"|encaminhei|encaminhamos|fiz|fizemos|abri)\s+(?:\S+\s+){0,4}?cancelamento\b"
+    + r"|" + _NAO + r"\b(?:pedi|pedimos|solicitei|solicitamos)\s+(?:\S+\s+){0,4}?"
+      r"(?:pra|para|que)\s+(?:\S+\s+){0,2}?cancel(?:ar|e|em)\b"
+    + r"|" + _NAO + r"\bcancelamento\s+(?:\S+\s+){0,3}?(?:j[áa]\s+)?(?:foi|est[áa]|ficou)\s+"
+      r"(?:solicitado|pedido|enviado|registrado|encaminhado|efetivado|aprovado|aceito)\b")
+
+#: 🔴 SPEC-126 CONSERTO X (RT-B1) — o PARTICÍPIO solto ("Pronto, cancelado!", "Cancelado ✅", "Pedido
+#: cancelado com sucesso.", "o guincho foi dispensado"). 📊 Era a forma mais provável de um LLM em PT-BR
+#: e nenhuma regra acima a via. Lido pela FORMA, não por lista: vale como afirmação de feito, salvo
+#: quando a oração o nega, pergunta, põe em modal/futuro ou atribui a INTENÇÃO a alguém (abaixo).
+_RX_PARTICIPIO_DE_CANCELAR = re.compile(r"(?i)\b(?:cancelad|desmarcad|dispensad)[oa]s?\b")
+#: a NEGAÇÃO na mesma oração ("ainda não está cancelado", "o guincho não foi cancelado").
+_RX_NEGA_NA_ORACAO = re.compile(r"(?i)\b(?:n[ãa]o|nem|nunca|jamais)\b")
+#: a INTENÇÃO de alguém, não o feito ("você quer o guincho cancelado").
+_RX_INTENCAO_NA_ORACAO = re.compile(
+    r"(?i)\b(?:quer|quiser|queria|querem|deseja|desejar|gostaria|prefere|preferir|precisa|precisar)\b")
+#: o MODAL/futuro logo antes do particípio ("vai ser cancelado", "para ficar cancelado", "se for").
+_MODAIS_ANTES_DO_PARTICIPIO = frozenset({
+    "ser", "seja", "sejam", "for", "forem", "esteja", "estejam", "estiver", "estiverem", "sera",
+    "será", "serao", "serão", "seria", "seriam", "ficar", "fique", "fiquem", "ficara", "ficará",
+    "deixar", "deixo", "deixe"})
+#: constante_justificada: o STATUS que o SISTEMA informa (a apólice/parcela cancelada pela seguradora)
+#: não é ação do agente — "Sua apólice consta como cancelada" é fato da consulta, e reescrevê-lo para
+#: "Ainda não está cancelado" diria ao segurado o contrário do sistema (§9.5).
+_RX_STATUS_DO_SISTEMA = re.compile(
+    r"(?i)\b(?:ap[óo]lice|seguro|contrato|proposta|parcela|boleto|cart[ãa]o|cobran[çc]a|d[ée]bito"
+    r"|plano|endosso)s?\b")
+_RX_FIM_DE_ORACAO = re.compile(r"[,;:—–()\n]")
+
+
+def _participio_afirmado(texto: str) -> bool:
+    """Há um particípio de cancelar AFIRMADO como feito? **PURA.**"""
+    for frase in _RX_FRASE.finditer(texto):
+        corpo = frase.group(0)
+        if corpo.rstrip().endswith("?"):
+            continue                      # pergunta ("O guincho está cancelado?")
+        for m in _RX_PARTICIPIO_DE_CANCELAR.finditer(corpo):
+            antes = corpo[: m.start()]
+            corte = max((x.end() for x in _RX_FIM_DE_ORACAO.finditer(antes)), default=0)
+            oracao_antes = antes[corte:]
+            depois = corpo[m.end():]
+            fim = _RX_FIM_DE_ORACAO.search(depois)
+            oracao = oracao_antes + m.group(0) + (depois[: fim.start()] if fim else depois)
+            palavras = re.findall(r"[^\W\d_]+", oracao_antes.lower())
+            if _RX_NEGA_NA_ORACAO.search(oracao_antes) or _RX_INTENCAO_NA_ORACAO.search(oracao_antes):
+                continue
+            if palavras and palavras[-1] in _MODAIS_ANTES_DO_PARTICIPIO:
+                continue
+            if _RX_STATUS_DO_SISTEMA.search(oracao):
+                continue
+            return True
+    return False
 
 #: O que se diz no lugar. Sem verbo de transferência no passado e sem afirmar cancelamento (o
 #: guarda confere que ela não se auto-reescreve).
@@ -512,8 +572,12 @@ NOTA_DO_CANCELAMENTO_SEM_FERRAMENTA = (
 
 
 def afirma_cancelamento(texto: str) -> bool:
-    """A resposta afirma que um cancelamento ACONTECEU?"""
-    return bool(_AFIRMACOES_DE_CANCELAMENTO.search(str(texto or "")))
+    """A resposta afirma que um cancelamento ACONTECEU (ou que ELE o pediu à seguradora)?"""
+    texto = str(texto or "")
+    # a PERGUNTA não afirma nada ("O guincho está cancelado?" — 📊 era reescrita na U4)
+    afirmativas = " ".join(f.group(0) for f in _RX_FRASE.finditer(texto)
+                           if not f.group(0).rstrip().endswith("?"))
+    return bool(_AFIRMACOES_DE_CANCELAMENTO.search(afirmativas)) or _participio_afirmado(texto)
 
 
 def _houve_cancelamento_confirmado(resultados_das_tools: Optional[Iterable]) -> bool:

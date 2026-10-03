@@ -2072,6 +2072,12 @@ class HumanHandoffTool(BaseTool):
         else:
             texto = await asyncio.to_thread(self._montar_dossie, conversa, motivo)
         classe, chave = classificar_o_motivo(motivo)
+        if chave != CANCELAMENTO_POS_ACIONAMENTO and _e_cancelamento(conversa, motivo):
+            # 🔴 SPEC-126 CONSERTO X (RT-B2) — a decisão de cancelamento vem das FALAS (R9 = K3) e do
+            #    ESTADO (caso já acionado), não do código no motivo: o modelo que escreve "cliente quer
+            #    cancelar o guincho" em prosa não pode fazer o grupo/medição ler `desconhecido` num
+            #    caso que É o D4. A MESMA decisão do dossiê (`_e_cancelamento`) — uma fonte só.
+            classe, chave = CLASSE_REGRA, CANCELAMENTO_POS_ACIONAMENTO
         saida = await enviar_ao_grupo(
             self.supabase_client, company_id=str(company_id), tipo=_tipo,
             texto=texto, conversation_id=str(conversa.get("id") or ""),
