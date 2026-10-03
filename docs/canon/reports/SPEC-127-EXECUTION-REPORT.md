@@ -183,7 +183,15 @@ elas a lista "faltou" que quase nunca chega e a dedup só depois do POST) · pro
 Nota do juiz 80 · red team 72 · confirmação 87.
 
 ## 12. ENTREGA
-(o gerente cola a saída do push)
+```
+git fetch origin ; git rev-list --count HEAD..origin/main   → 0
+git rev-list --count origin/main..HEAD                      → 9 (antes do push)
+git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+📊 03/10/2026:
+   0eb83d4..df6a72b  HEAD -> main
+git rev-list --count origin/main..HEAD                      → 0
+```
+O commit deste parágrafo sobe num 2º push. Painel republicado no fim (mesmo link).
 
 **Nenhum motor paralelo foi criado.** O portão do ok é o da SPEC-126 (`insurer_dispatch_tool.confirmacao_comprovada`,
 importado, não reescrito); a continuação é a `vidros_continuacao` da 001.10.1 (ganhou o ramo "abertura"); a política das
