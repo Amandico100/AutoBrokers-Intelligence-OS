@@ -98,8 +98,8 @@
       vidro dela são afetados. · *de:* S127.1 · P-127-22
 - [ ] **T-102** ⏳ **Decidir o orçamento da bancada do portal** (decisão sua; nada roda sem você dizer). Ela mede se o robô do
       portal pode **escolher sozinho** (peça, causa, cidade) — hoje ele só pergunta (📊 autonomia = 0). Cole no chat, se autorizar:
-      *"autorizo US$ 1,50 de OpenAI e US$ 0,20 de Anthropic para a bancada do portal (P-127-04)"*. 💭 A conta: a Yelum sozinha
-      ≈ 0,29–0,72; a Porto **só depois** do T-103 (📊 hoje 5 casos, a regra pede 10). **Esperar:** uma tabela por seguradora com o
+      *"autorizo US$ 1,00 de OpenAI e US$ 1,30 de Anthropic para a bancada do portal (P-127-04)"*. 💭 A conta (builder P5, com o
+      custo por chamada medido na SPEC-123): 32 casos × k=2 → OpenAI ≈ 0,35–0,86 + 2ª opinião Anthropic ≤ 1,27; a Porto **só depois** do T-103 (📊 hoje 5 casos, a regra pede 10). **Esperar:** uma tabela por seguradora com o
       acerto, o n e se religa (≥ 90 %) ou não, e o gasto lido do ledger. **Se não autorizar:** nada quebra; o portal pergunta ao
       segurado em vez de escolher. · *de:* S127.4 · D-127-F
 - [ ] **T-02** ⏳ **O que está no ar é o código de hoje — inclusive o `portal-worker`**
@@ -1443,7 +1443,7 @@ Tudo vive no **código**: peça no chat *"reverta a SPEC-127 na main"* — eu fa
 Implante (o passo a passo está no T-101).
 
 ### S127.4 · Decisões suas (`FOUNDER-DECISIONS.md`)
-- **T-102** — o orçamento da bancada do portal (💭 ≈ US$ 1,50 OpenAI + 0,20 Anthropic). **T-103** — mais gravações da Porto.
+- **T-102** — o orçamento da bancada do portal (💭 ≈ US$ 1,00 OpenAI + 1,30 Anthropic). **T-103** — mais gravações da Porto.
 - Já decididas, com nota: a retomada do caminho antigo adiada (D-127-A) · só a contenção, sem a ponte (D-127-B, 80) · a
   consulta de "atendimento já aberto" logo depois do POST (D-127-C, 75) · faltou dado = parada antes de escrever, no mesmo
   pedido (D-127-D, 82) · o mesmo "juiz do ok" da 126 (D-127-E) · a bancada do portal não rodou paga (D-127-F, 85) · o vigia
