@@ -1150,6 +1150,61 @@ async def _select_insurer_start(page, insurer: str) -> bool:
     return "passo1" in page.url
 
 
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-127 P2 — o passo 1 do DOM com as mesmas travas do API-first
+# ---------------------------------------------------------------------------
+# 📊 HTML `PORTO/1 Atendimento Web` e `PORTO/1 RODA SEM COBERTURA`: a Porto
+# sobrescreve o passo 1 com o bloco "Verifique sua cobertura" — dois rádios
+# `name=tipoAtendimento`, `value=1` ("Vidros, faróis/lanternas E retrovisores")
+# e `value=2` ("Roda, pneu E suspensão"). Quem escolhe é a PEÇA, pela MESMA
+# função do API-first (`vidros_api.tipo_atendimento_para`) — nunca o modelo,
+# nunca a primeira opção.
+def cobertura_do_passo1(state: Dict[str, Any], insurer_name: Any, peca: Any) -> Dict[str, Any]:
+    """PURO: `{"acao": "nada"}` · `{"acao": "marcar", "valor": "1"|"2"}` ·
+    `{"acao": "parar", "motivo": ...}`."""
+    from portal_worker.journeys import vidros_api as API
+
+    radios = [r for r in (state or {}).get("radios") or []
+              if isinstance(r, dict) and _norm(r.get("name")) == "tipoatendimento"]
+    if not radios:
+        return {"acao": "nada"}
+    if any(r.get("checked") for r in radios):
+        return {"acao": "nada"}
+    slug = next((s for s in API.SEGURADORAS_COM_ESCOLHA_DE_COBERTURA
+                 if _norm(s) in _norm(insurer_name).split()), "")
+    if not slug:
+        return {"acao": "parar", "motivo": ("a tela pede a cobertura e a seguradora informada nao "
+                                            "esta entre as que oferecem essa escolha")}
+    if not str(peca or "").strip():
+        return {"acao": "parar", "motivo": "a tela pede a cobertura e o pedido nao diz a peca"}
+    tipo = API.tipo_atendimento_para(slug, peca)
+    valores = {str(r.get("value") or "") for r in radios}
+    if tipo is None or (valores != {""} and str(tipo) not in valores):
+        return {"acao": "parar", "motivo": f"a cobertura {tipo!r} nao esta entre as opcoes da tela"}
+    return {"acao": "marcar", "valor": str(tipo)}
+
+
+async def _marcar_cobertura(page, valor: str) -> bool:
+    """Marca o rádio `tipoAtendimento` pelo VALOR (o card inteiro é o `<label>`)."""
+    try:
+        el = await page.query_selector(f"input[name=tipoAtendimento][value='{valor}']")
+        if not el:
+            return False
+        await el.evaluate("e => (e.closest('label') || e).click()")
+        await page.wait_for_timeout(400)
+        return bool(await el.evaluate("e => !!e.checked"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _guard_do_dom(params: Dict[str, Any]):
+    """O guard da journey — o MESMO do API-first (`vidros_apifirst._guard_do`):
+    o do runtime, ou um que nasce SEM liberação (fail-closed)."""
+    from portal_worker.journeys.vidros_apifirst import _guard_do
+
+    return _guard_do(params)
+
+
 async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
     """Vidros PUBLICO. O agente monta os params a partir da conversa. A journey
     navega ate a tela de confirmacao (80%) e SO submete o pedido com confirm=True.
@@ -1219,6 +1274,25 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
     if not (insurer and cpf and placa and data_dano):
         return JourneyResult(status="failed", message="faltam dados: insurer_name, cpf_cnpj, placa, data_dano")
 
+    # 🔴 SPEC-127 P2 — sem a cidade do SERVIÇO o DOM nem começa. A tela do 50%
+    # pergunta "onde deseja ser atendido"; a do cadastro é onde ele MORA. Parar
+    # AQUI custa uma pergunta e nada foi escrito no portal (pré-fronteira).
+    from portal_worker.adaptive import local_do_servico
+
+    if not local_do_servico({"local": params.get("local") or {}}):
+        from portal_worker.journeys import vidros_estado as _ST
+
+        evidence["parada_do_dom"] = {"stage": "falta_cidade_servico",
+                                     "acao_esperada": "responder:cidade_servico",
+                                     "slot": "cidade_servico"}
+        return JourneyResult(
+            status="needs_human",
+            captured={"stage": "falta_cidade_servico", "acao_esperada": "responder:cidade_servico",
+                      "business_state": _ST.PRE_PROTOCOLO,
+                      "pergunta": "Em que cidade o servico deve ser feito?"},
+            message=("falta a cidade onde o servico sera feito — nunca uso a cidade do cadastro. "
+                     "Nada foi aberto no portal."))
+
     if not await _select_insurer_start(page, insurer):
         return JourneyResult(status="needs_human", message="tela inicial do portal de vidros mudou")
 
@@ -1242,15 +1316,66 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
         await page.keyboard.type(data_dano)
         await page.keyboard.press("Tab")
         await _dismiss(page)
+
+    from portal_worker import adaptive as _AD
+    from portal_worker.journeys import vidros_estado as _ST
+
+    # A COBERTURA da Porto (rádio do passo 1) — pelo CÓDIGO, pela peça.
+    dano = params.get("dano") or {}
+    cob = cobertura_do_passo1(await _AD._estado_seguro(page), insurer, dano.get("peca"))
+    if cob["acao"] == "parar":
+        evidence["parada_do_dom"] = {"stage": "cobertura_nao_marcada", "acao_esperada": "reler"}
+        return JourneyResult(status="needs_human",
+                             captured={"stage": "cobertura_nao_marcada",
+                                       "business_state": _ST.PRE_PROTOCOLO},
+                             message=f"parei no passo 1: {cob['motivo']}. Nada foi aberto no portal.")
+    if cob["acao"] == "marcar" and not await _marcar_cobertura(page, cob["valor"]):
+        evidence["parada_do_dom"] = {"stage": "cobertura_nao_marcada", "acao_esperada": "reler"}
+        return JourneyResult(status="needs_human",
+                             captured={"stage": "cobertura_nao_marcada",
+                                       "business_state": _ST.PRE_PROTOCOLO},
+                             message="parei no passo 1: nao consegui marcar a cobertura. Nada foi aberto.")
+    if cob["acao"] == "marcar":
+        evidence["cobertura_do_passo1"] = cob["valor"]
+
+    # 🔴 FRONTEIRA A NO DOM — SPEC-127 P2. 📊 Nos 6 HAR com abertura, o
+    # `POST /atendimentos` sai entre "Iniciar atendimento" (GET /apolices) e o
+    # "Confirmar" do modal "Dados da apólice". Os dois cliques ficam DENTRO do
+    # `guard.before` (o mesmo `FRONTEIRA_ABRIR` com `confirm` do API-first,
+    # `vidros_apifirst.py`); fora dele, NÃO clicam — e a parada é a mesma
+    # `pronto_para_abrir` (NUNCA sozinho, `confirmacao_final`).
+    from portal_worker.guardrails import AcaoBloqueada, MATERIAL_SIDE_EFFECT
+
+    guard = _guard_do_dom(params)
+    esperada_antes = getattr(guard, "acao_material_esperada", "")
+    guard.acao_material_esperada = _ST.FRONTEIRA_ABRIR
+    try:
+        await guard.before(action=_ST.FRONTEIRA_ABRIR, action_class=MATERIAL_SIDE_EFFECT,
+                           details={"idempotency_key": str(params.get("_idempotency_key") or "")},
+                           origem="journey")
+    except AcaoBloqueada as e:
+        guard.acao_material_esperada = esperada_antes
+        return JourneyResult(
+            status="needs_human",
+            captured={"stage": "pronto_para_abrir", "business_state": _ST.PRE_PROTOCOLO},
+            message=("passo 1 preenchido — falta a autorizacao para abrir o pedido "
+                     f"no portal ({e}). Nada foi aberto."))
+
     await _click_button(page, "Iniciar atendimento")
     await page.wait_for_timeout(4500)
     body = await page.inner_text("body")
     if any(s in _norm(body) for s in _VIDROS_ERR):
+        # GET /apolices respondeu "não achei": o POST não saiu. O armado fica
+        # registrado (honesto: houve tentativa) e o job termina.
+        guard.acao_material_esperada = esperada_antes
         return JourneyResult(status="failed", message="portal nao localizou CPF/placa (verifique a apolice)")
 
     # modal "Dados da apolice" -> Confirmar
     await _click_button(page, "Confirmar")
+    await guard.submetido()
     await page.wait_for_timeout(4000)
+    # Daqui em diante a journey espera só o material do 80% (o laço declara).
+    guard.acao_material_esperada = esperada_antes
 
     # Camada 2 (SPEC-020) — daqui pra frente o CEREBRO dirige a tela (passo2 -> 80%).
     # Variacoes por seguradora/peca sao tratadas com inteligencia; nunca trava. Para
@@ -1269,9 +1394,11 @@ async def abrir_atendimento(page, params: Dict[str, Any], evidence: Dict[str, An
     # `_runtime` e injetado pelo worker (SPEC-073 R3) e e OPCIONAL: em teste
     # offline ele nao existe, e o laco monta um guard local a partir do
     # `confirm`. A journey nao muda de contrato por causa disso.
+    # `conter=True` — SPEC-127 P2: o código escreve o que é FATO e PARA no resto;
+    # o modelo só navega e recebe só o que a tela pede.
     return await run_adaptive(page, goal, collected, evidence,
                               confirm=bool(params.get("confirm")),
-                              runtime=params.get("_runtime"))
+                              runtime=params.get("_runtime"), conter=True)
 
 
 async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:

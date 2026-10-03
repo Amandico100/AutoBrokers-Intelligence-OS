@@ -15,9 +15,10 @@ import asyncio
 import base64
 import contextvars
 import json
+import re
 import unicodedata
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from portal_worker import modelo_do_portal as _MODELO
 from portal_worker import redaction as _RED
@@ -300,14 +301,40 @@ async def capture_state(page) -> Dict[str, Any]:
                         value:(s.options[s.selectedIndex]||{}).textContent||'',
                         options:[...s.options].map(o=>o.textContent.trim()).filter(Boolean)}));
           // md-select (Angular Material): o widget REAL das telas de vidros.
+          // SPEC-127 P2: as OPCOES vem junto (o menu mora dentro do md-select ate
+          // a 1a abertura e depois em `aria-owns`) — e e com elas que o CODIGO
+          // decide o que e fato e a parada mostra a lista REAL ao segurado.
+          // `value` e o do `md-select-value`: o textContent do md-select inteiro
+          // trazia o menu junto ("Selecione uma opcao CHOQUE TERMICO ...").
+          const mdOpcoes = m => { const own = m.getAttribute('aria-owns');
+                const c = m.querySelector('.md-select-menu-container') || (own && document.getElementById(own));
+                return c ? [...c.querySelectorAll('md-option')].map(o => clean(o.textContent))
+                             .filter(t => t && !/^selecione/i.test(t)) : []; };
+          const mdValor = m => { const v = m.querySelector('md-select-value');
+                // vazio: o md-select-value mostra o PLACEHOLDER (o proprio rotulo)
+                if (/ng-empty/.test(m.className) || (v && /md-select-placeholder/.test(v.className))) return '';
+                const t = clean(v ? v.textContent : '');
+                return /^selecione/i.test(t) ? '' : t; };
           const mdselects = [...document.querySelectorAll('md-select')].filter(vis)
             .map(m => ({id:m.id, name:m.getAttribute('name')||'', label:mdLabel(m),
-                        value:clean(m.textContent),
+                        value:mdValor(m), options:mdOpcoes(m), vazio:/ng-empty/.test(m.className),
                         empty_required: /ng-invalid-required|ng-empty/.test(m.className) && /ng-required|ng-invalid/.test(m.className)}));
           const buttons = [...document.querySelectorAll('button')].filter(vis)
             .map(b => ({text:clean(b.textContent), disabled:!!b.disabled})).filter(b=>b.text);
           const radios = [...document.querySelectorAll('input[type=radio],input[type=checkbox]')].filter(vis)
-            .map(r => ({name:r.name, checked:r.checked, label:lbl(r)}));
+            .map(r => ({name:r.name, checked:r.checked, label:lbl(r), value:r.value||''}));
+          // As perguntas do 80% (md-radio-group): a pergunta, as opcoes REAIS e se ja
+          // foi respondida. Antes elas so existiam no `text` — o codigo nao tinha
+          // como responder com o que o segurado disse.
+          const questoes = [...document.querySelectorAll('md-radio-group')].filter(vis).map(g => {
+                const item = g.closest('.aw-question-item') || g.parentElement;
+                const l = item && item.querySelector('label');
+                const bts = [...g.querySelectorAll('md-radio-button')];
+                const marcada = bts.find(b => /md-checked/.test(b.className));
+                return {id:g.id||'', pergunta:clean(l ? l.textContent : ''),
+                        opcoes:bts.map(b => clean(b.getAttribute('aria-label') || b.textContent)).filter(Boolean),
+                        respondida:!!marcada,
+                        escolhida:marcada ? clean(marcada.getAttribute('aria-label') || marcada.textContent) : ''}; });
           // Resumo do que BLOQUEIA o Avancar: campos obrigatorios ainda vazios.
           const pending_required = [
             ...inputs.filter(e => e.empty_required).map(e => ({tipo:'input', label:e.label||e.id||e.name})),
@@ -315,7 +342,7 @@ async def capture_state(page) -> Dict[str, Any]:
           ];
           const h = document.querySelector('h1,h2,h3,.titulo,.title');
           return {url:location.href, heading:clean(h?h.textContent:''),
-                  inputs, selects, mdselects, buttons, radios, pending_required,
+                  inputs, selects, mdselects, buttons, radios, questoes, pending_required,
                   text:document.body.innerText.slice(0,1500)};
         }"""
     )
@@ -398,6 +425,89 @@ _FORCE_CHOOSE = (
     "ask_human dizendo EXATAMENTE qual dado falta — essa frase vira a pergunta "
     "que o atendente faz ao segurado."
 )
+
+
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-127 P2 — o PROVEDOR recebe só o que a TELA pede
+# ---------------------------------------------------------------------------
+# 📊 BLOCO 0 item 6: o `collected` inteiro ia CRU ao provedor do modelo —
+# CPF do titular, nome, apólice, chassi, CEP, endereço, telefone e e-mail do
+# segurado — em TODA chamada, por desenho ("humanos preenchem sem máscara").
+# E a `tela` ia com a URL da SPA, cujo segmento `#/<seg>/passoN/<x>` é o
+# `token_autorizacao` da sessão (📊 4/4 HAR Yelum, `b0_har_token2.py`).
+#
+# Depois da contenção o modelo só NAVEGA: o que é fato o código escreve. Então
+# ele recebe a peça (contexto, não é PII) e, de dado pessoal, SÓ o valor que um
+# campo VAZIO desta tela pede — nunca o que a tela não exige.
+_URL_TOKEN = re.compile(r"[A-Za-z0-9_\-]{16,}")
+
+
+def _url_sem_token(url: Any) -> str:
+    """A URL sem segmento que possa ser token/sessão (≥ 16 caracteres seguidos)."""
+    return _URL_TOKEN.sub("<token>", str(url or ""))
+
+
+# (caminho no `collected`, pistas do campo que o pede, pistas que desqualificam)
+_DADOS_QUE_A_TELA_PEDE = (
+    (("solicitante", "nome"), ("nome",), ("segurado",)),
+    (("solicitante", "email"), ("email", "e mail"), ()),
+    (("solicitante", "telefone"), ("telefone",), ("tipo",)),
+    (("solicitante", "cpf_cnpj"), ("cpf cnpj solicitante", "cpf ou cnpj"), ("inserir cpf",)),
+    (("segurado", "chassi"), ("chassi",), ()),
+    (("segurado", "ultimos_6_chassi"), ("chassi",), ()),
+    (("segurado", "veiculo"), ("veiculo", "modelo"), ()),
+    (("placa",), ("placa",), ()),
+)
+
+
+def _campos_vazios_da_tela(state: Dict[str, Any]) -> List[str]:
+    from portal_worker import perception as _P
+
+    vazios = []
+    for c in (state or {}).get("inputs") or []:
+        if isinstance(c, dict) and not str(c.get("value") or "").strip():
+            vazios.append(_P._palavras_de(" ".join(str(c.get(k) or "") for k in
+                                                   ("id", "name", "placeholder", "label"))))
+    for c in list((state or {}).get("mdselects") or []) + list((state or {}).get("selects") or []):
+        if isinstance(c, dict) and not str(c.get("value") or "").strip():
+            vazios.append(_P._palavras_de(" ".join(str(c.get(k) or "") for k in
+                                                   ("id", "name", "label"))))
+    return vazios
+
+
+def dados_para_o_modelo(collected: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
+    """PURO: o recorte do `collected` que vai ao PROVEDOR do modelo nesta tela."""
+    collected = collected or {}
+    saida: Dict[str, Any] = {}
+    peca = ((collected.get("dano") or {}).get("peca") or "")
+    if str(peca).strip():
+        saida["dano"] = {"peca": str(peca)}
+    vazios = _campos_vazios_da_tela(state)
+    for caminho, pistas, proibidas in _DADOS_QUE_A_TELA_PEDE:
+        if not any(any(f" {p} " in v for p in pistas) and not any(f" {x} " in v for x in proibidas)
+                   for v in vazios):
+            continue
+        valor: Any = collected
+        for k in caminho:
+            valor = valor.get(k) if isinstance(valor, dict) else None
+        if not str(valor or "").strip():
+            continue
+        alvo = saida
+        for k in caminho[:-1]:
+            alvo = alvo.setdefault(k, {})
+        alvo[caminho[-1]] = valor
+    return saida
+
+
+def estado_para_o_modelo(state: Dict[str, Any]) -> Dict[str, Any]:
+    """PURO: a tela sem PII — valor digitado vira "[preenchido]", o texto passa
+    pelo redator único e a URL perde o token da sessão."""
+    s = dict(state or {})
+    s["url"] = _url_sem_token(s.get("url"))
+    s["text"] = _RED.redigir_texto(s.get("text") or "")
+    s["inputs"] = [{**c, "value": "[preenchido]" if str(c.get("value") or "").strip() else ""}
+                   for c in (s.get("inputs") or []) if isinstance(c, dict)]
+    return s
 
 
 def _recorte_json(texto: str) -> str:
@@ -705,6 +815,16 @@ def score_option_tokens(want: str, option: str) -> int:
     return sum(1 for t in to if t in tw)
 
 
+def decidir_opcao(valor: Any, opcoes: List[str], rotulo: Any = "") -> Optional[str]:
+    """PURO: o ÚNICO placar de opção do DOM — atributo do 80% (`explicar_especifico`)
+    e, quando a lista não é dele, peça (`explicar_match`). `None` = sem confiança.
+    O `_apply_mdselect` e a contenção (SPEC-127 P2) decidem por aqui."""
+    esp = explicar_especifico(str(valor or ""), list(opcoes or []), str(rotulo or ""))
+    if esp["dominio"] != "nenhum":
+        return esp["escolha"]
+    return explicar_match(str(valor or ""), list(opcoes or []))["escolha"]
+
+
 async def _apply_mdselect(page, target: str, value: str):
     """Dirige um <md-select> do jeito CERTO (AngularJS so atualiza o ng-model assim):
     clica p/ abrir o overlay e clica no <md-option> pelo texto. Retorna None se a tela
@@ -768,6 +888,8 @@ async def _apply_mdselect(page, target: str, value: str):
             # que decide cada pergunta — nunca dois placares para a mesma.
             critico = _is_critical_select(target)
             esp = explicar_especifico(value, [t for t, _ in reais], target)
+            # (as MESMAS duas funções puras de `decidir_opcao`; as linhas ficam
+            # literais aqui porque [R6]/[7.4i] as leem para provar o placar único)
             if esp["dominio"] != "nenhum":
                 escolha = esp["escolha"]
             else:
@@ -829,13 +951,30 @@ async def _apply_mdselect(page, target: str, value: str):
 
 async def _apply_check(page, target: str, value: str) -> str:
     want = _norm(value) or _norm(target)
-    for lab in await page.query_selector_all("label, .radio, .mat-radio-label"):
+    # SPEC-127 P2: as respostas do 80% são `md-radio-button` (📊 HTML `TELA 80%`,
+    # `3 TELA DE QUAL VIDROO`), que não são `<label>`. IGUALDADE primeiro — "SIM"
+    # contido em outra resposta não pode marcar a errada — e a resposta já dada
+    # (desabilitada) nunca é clicada de novo.
+    candidatos = []
+    for lab in await page.query_selector_all(
+            "md-radio-button, [role=radio], label, .radio, .mat-radio-label"):
         try:
-            if await lab.is_visible() and want and want in _norm(await lab.inner_text()):
-                await lab.click()
-                return "checked"
+            if not await lab.is_visible():
+                continue
+            if str(await lab.get_attribute("aria-disabled") or "").lower() == "true":
+                continue
+            texto = _norm(await lab.get_attribute("aria-label") or "") or _norm(await lab.inner_text())
+            candidatos.append((texto, lab))
         except Exception:  # noqa: BLE001
             continue
+    for igual in (True, False):
+        for texto, lab in candidatos:
+            if want and ((texto == want) if igual else (want in texto)):
+                try:
+                    await lab.click()
+                    return "checked"
+                except Exception:  # noqa: BLE001
+                    continue
     return "check_notfound"
 
 
@@ -876,10 +1015,80 @@ async def _pick_autocomplete(page, value: str) -> bool:
     return False
 
 
+async def _pick_autocomplete_igual(page, value: str) -> Tuple[Optional[bool], List[str]]:
+    """🔴 SPEC-127 P2 — a sugestão do autocomplete por IGUALDADE, e só.
+
+    `_pick_autocomplete` cai em "começa com → contém → a PRIMEIRA sugestão": 📊
+    o red team da 001.10 mediu o que isso faz com a lista real de SC —
+    "Curitiba" → CURITIBANOS, "Palmas" → PALMA SOLA, "Santo Amaro" → SANTO
+    AMARO DA IMPERATRIZ. É a mesma régua de `vidros_apifirst.casar_igual` e de
+    `destravador.mesmo_lugar` (o worker não importa `app/`): nome igual depois
+    de normalizar, nunca prefixo, nunca a primeira da lista.
+
+    `(True, [])` clicou · `(False, sugestoes)` havia lista e nenhuma é IGUAL ·
+    `(None, [])` não apareceu lista nenhuma (input comum)."""
+    # O navegador só LÊ as sugestões; quem DECIDE é o Python (`sugestao_igual`),
+    # testável offline sobre a lista real — e só então o clique, pelo ÍNDICE.
+    _SUGESTOES = ("[...document.querySelectorAll('.md-autocomplete-suggestions li, "
+                  "md-autocomplete-suggestions li, li.md-autocomplete-suggestion, "
+                  "ul.md-autocomplete-suggestions li')]"
+                  ".filter(el => !!(el.offsetParent || el.getClientRects().length))"
+                  ".filter(o => !/nenhum|nao encontr|n\\u00e3o encontr|sem resultado|no results|nenhuma op/i"
+                  ".test(o.textContent||''))")
+    for _ in range(4):
+        await page.wait_for_timeout(450)
+        try:
+            textos = await page.evaluate(
+                "() => " + _SUGESTOES + ".map(o => (o.textContent||'').replace(/\\s+/g,' ').trim()).slice(0, 20)")
+        except Exception:  # noqa: BLE001
+            return False, []
+        textos = [str(t) for t in (textos or []) if str(t).strip()]
+        if not textos:
+            continue
+        i = sugestao_igual(value, textos)
+        if i is None:
+            return False, textos
+        try:
+            await page.evaluate("(i) => { const lis = " + _SUGESTOES + "; if (lis[i]) lis[i].click(); }", i)
+        except Exception:  # noqa: BLE001
+            return False, textos
+        return True, []
+    return None, []
+
+
+def sugestao_igual(valor: Any, sugestoes: List[str]) -> Optional[int]:
+    """PURO: o índice da ÚNICA sugestão IGUAL ao valor (normalizado). Prefixo,
+    "contém" e "a primeira" NÃO contam — 📊 "Curitiba" → CURITIBANOS."""
+    alvo = _norm(valor)
+    iguais = [i for i, s in enumerate(sugestoes or []) if alvo and _norm(s) == alvo]
+    return iguais[0] if len(iguais) == 1 else None
+
+
 async def apply_action(page, action: Dict[str, Any]) -> str:
     a = action.get("action")
     target = action.get("target") or ""
     value = action.get("value") or ""
+    if a == "fill" and action.get("so_igual"):
+        # Caminho do CÓDIGO (fato do caso) em autocomplete de LUGAR: só a
+        # sugestão IGUAL. Nunca chega aqui uma ação de modelo.
+        el = await _find_input(page, target)
+        if not el:
+            return "fill_notfound"
+        await el.fill(str(value))
+        try:
+            await el.evaluate("e => e.dispatchEvent(new Event('input',{bubbles:true}))")
+        except Exception:  # noqa: BLE001
+            pass
+        clicou, sugestoes = await _pick_autocomplete_igual(page, value)
+        if clicou:
+            return "filled_autocomplete"
+        if clicou is False:
+            try:
+                await el.fill("")
+            except Exception:  # noqa: BLE001
+                pass
+            return "fill_sem_igual=" + " | ".join(s[:60] for s in sugestoes)
+        return "filled"
     if a == "fill":
         el = await _find_input(page, target)
         if el:
@@ -1045,7 +1254,7 @@ def _registrar_parada(evidence: Dict[str, Any], state: Dict[str, Any], collected
     portal, e a proxima versao do match_option nao tinha com o que aprender."""
     state = state or {}
     evidence["passo"] = {
-        "url": state.get("url") or "",
+        "url": _url_sem_token(state.get("url")),
         "titulo": state.get("heading") or "",
         "obrigatorios_vazios": state.get("pending_required") or [],
     }
@@ -1082,10 +1291,18 @@ def _registrar_parada(evidence: Dict[str, Any], state: Dict[str, Any], collected
 # indisponivel` ou `nao consegui decidir`. Ele estava la, com a instrucao na
 # frente, e nao seguiu.
 #
-# Nome da corretora, e-mail, CNPJ, telefone, relacao (`Corretor`), estado,
-# cidade e CEP tem **um unico valor certo, sabido antes de a tela abrir**.
-# Mandar um modelo "decidir" preenche-los cria tres riscos de graca: ele
-# pergunta o que ja sabe, erra o formato, ou gasta passos do teto.
+# Nome da corretora, e-mail, CNPJ, telefone e relacao (`Corretor`) tem **um
+# unico valor certo, sabido antes de a tela abrir**. Mandar um modelo "decidir"
+# preenche-los cria tres riscos de graca: ele pergunta o que ja sabe, erra o
+# formato, ou gasta passos do teto.
+#
+# 🔴 SPEC-127 P2 — estado, cidade e CEP NAO tem "um valor unico": esta linha
+# dizia que tinham, e era a premissa errada. A tela pergunta "Selecione o
+# estado ONDE DESEJA SER ATENDIDO" (📊 HTML `TELA 50% CIDADE CEP`, `TELA 4`,
+# `2 LANTERNA MALA`) — a cidade do SERVICO, que mora em `local.cidade_servico`
+# (`portal_params`, P0-5). `local.cidade` e onde ele MORA (cadastro InfoCap).
+# Quem mora em Palhoça e quer o vidro em Joinville tinha o pedido aberto em
+# Palhoça, sem parada nenhuma. Agora: a do servico, ou PARADA — nunca o cadastro.
 #
 # Cada campo preenchido por codigo e um passo que nao e gasto — e o teto foi
 # atingido 9 vezes.
@@ -1111,15 +1328,55 @@ def _identidade_do_campo(campo: Dict[str, Any]) -> str:
     return _norm(" ".join(str(campo.get(k) or "") for k in ("id", "name", "placeholder", "label")))
 
 
+def _mesmo_lugar(cidade_a: Any, uf_a: Any, cidade_b: Any, uf_b: Any) -> bool:
+    """Nome IGUAL depois de normalizar, e UF igual (ou ausente de um lado).
+
+    🔴 Igualdade, nunca prefixo: "Curitiba" × "Curitibanos" NÃO é o mesmo lugar.
+    É a régua de `destravador.mesmo_lugar` (P-124-14, SPEC-126) — copiada em
+    três linhas porque o worker não importa `app/` (Dockerfile do portal-worker
+    copia só `portal_worker/`)."""
+    na, nb = _norm(cidade_a), _norm(cidade_b)
+    ua, ub = _norm(uf_a), _norm(uf_b)
+    return bool(na) and na == nb and (not ua or not ub or ua == ub)
+
+
+def local_do_servico(collected: Dict[str, Any]) -> Dict[str, str]:
+    """PURO: estado, cidade e CEP de ONDE O SERVIÇO É FEITO. `{}` se o pedido
+    não traz a cidade do serviço — e aí quem decide é a PARADA, nunca o cadastro.
+
+    O CEP do cadastro só vai quando a cidade do serviço É a do cadastro: o CEP
+    de Palhoça numa busca em Joinville acha a loja errada e oferece domicílio
+    no endereço errado. Sem ele o campo fica vazio (📊 a tela o marca
+    "CEP (opcional)")."""
+    local = (collected or {}).get("local") or {}
+    if not isinstance(local, dict):
+        return {}
+    cs = local.get("cidade_servico") or {}
+    if not isinstance(cs, dict):
+        return {}
+    cidade = str(cs.get("cidade") or "").strip()
+    uf = str(cs.get("uf") or "").strip().upper()
+    if not cidade:
+        return {}
+    saida = {"estado": uf, "cidade": cidade}
+    cep = str(local.get("cep") or "").strip()
+    if cep and _mesmo_lugar(cidade, uf, local.get("cidade"), local.get("estado")):
+        saida["cep"] = cep
+    return saida
+
+
 def fatos_da_tela(state: Dict[str, Any], collected: Dict[str, Any]) -> List[Dict[str, str]]:
     """PURO: quais campos DESTA tela tem valor conhecido e ainda estao vazios.
 
     Devolve [{'alvo', 'valor', 'de'}]. Vazio quando nao ha nada obvio a fazer —
     e ai o cerebro trabalha, que e para o que ele serve.
+
+    🔴 O lugar vem de `local_do_servico` (SPEC-127 P2): estado e cidade do
+    SERVIÇO, marcados `so_igual` — o autocomplete só aceita a sugestão IGUAL.
     """
     state = state or {}
     solicitante = (collected or {}).get("solicitante") or {}
-    local = (collected or {}).get("local") or {}
+    local = local_do_servico(collected)
     campos = [c for c in (state.get("inputs") or []) if not str(c.get("value") or "").strip()]
 
     saida: List[Dict[str, str]] = []
@@ -1136,21 +1393,34 @@ def fatos_da_tela(state: Dict[str, Any], collected: Dict[str, Any]) -> List[Dict
             if len(casaram) != 1:
                 continue
             c = casaram[0]
-            saida.append({"alvo": str(c.get("id") or c.get("name") or c.get("label") or ""),
-                          "valor": valor, "de": chave})
+            fato = {"alvo": str(c.get("id") or c.get("name") or c.get("label") or ""),
+                    "valor": valor, "de": chave}
+            if origem is local and chave in ("estado", "cidade"):
+                fato["so_igual"] = True
+            saida.append(fato)
     return saida
 
 
-async def preencher_o_que_e_fato(page, state: Dict[str, Any], collected: Dict[str, Any]) -> List[str]:
-    """Preenche os campos de valor conhecido. Devolve o que foi preenchido."""
+async def preencher_o_que_e_fato(page, state: Dict[str, Any], collected: Dict[str, Any],
+                                 falhas: Optional[List[Dict[str, Any]]] = None) -> List[str]:
+    """Preenche os campos de valor conhecido. Devolve o que foi preenchido.
+
+    `falhas` (SPEC-127 P2) recebe o lugar que o portal NÃO tem igual — a cidade
+    do serviço que não casa com nenhuma sugestão vira `cidade_ambigua` com as
+    sugestões REAIS, e não a primeira da lista."""
     feitos: List[str] = []
     for f in fatos_da_tela(state, collected):
         if not f["alvo"]:
             continue
         try:
-            r = await apply_action(page, {"action": "fill", "target": f["alvo"], "value": f["valor"]})
+            r = await apply_action(page, {"action": "fill", "target": f["alvo"], "value": f["valor"],
+                                          "so_igual": bool(f.get("so_igual"))})
         except Exception:  # noqa: BLE001
             continue
+        if str(r).startswith("fill_sem_igual") and falhas is not None:
+            falhas.append({"slot": "cidade_servico", "campo": f["alvo"], "valor_do_caso": f["de"],
+                           "opcoes": [o.strip() for o in str(r).split("=", 1)[1].split("|")
+                                      if o.strip()]})
         if str(r).startswith("filled"):
             feitos.append(f["de"])
             await page.wait_for_timeout(250)
@@ -1179,9 +1449,341 @@ async def preencher_o_que_e_fato(page, state: Dict[str, Any], collected: Dict[st
     return feitos
 
 
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-127 P2 + a CONTENÇÃO do P6 (D-127-B) — O DOM PARA DE ERRAR CALADO
+# ---------------------------------------------------------------------------
+# Antes de o modelo `portal_decisao` ver a tela, o CÓDIGO olha cada campo
+# crítico vazio (peça, causa, perímetro, descrição, a pergunta do 80%, a
+# cidade) e cada botão de decisão do segurado (reparo, oferta, custo):
+#
+#     é FATO do caso? ........ o código escreve, pelo placar ÚNICO
+#                              (`decidir_opcao`, `escolher_resposta` do 80%)
+#     não é? ................. PARADA estruturada `responder:<slot>` com as
+#                              opções REAIS da tela — volta ao segurado/
+#                              destravador, nunca ao modelo
+#
+# Os `stage` são os MESMOS do API-first (`vidros_estado.ETAPA_DA_PARADA`,
+# `destravador.CLASSE_DA_PARADA_DO_PORTAL`) quando o significado é o mesmo:
+# `peca_ambigua`, `motivo_ambiguo`, `cidade_ambigua`, `questionario_incompleto`,
+# `decidir_reparo`. Novos, só onde o DOM vê o que o API-first barra antes:
+# `falta_cidade_servico`, `perimetro_desconhecido`, `descricao_curta`,
+# `decidir_oferta`, `cobertura_nao_marcada`.
+#
+# O que SOBRA para o modelo é NAVEGAÇÃO: Avançar/Voltar, o campo de formato
+# (tipo de telefone) e o que a contenção não reconhece como crítico — e mesmo
+# assim o validador (`perception.recusa_da_contencao`) recusa campo crítico e
+# botão NUNCA que ele proponha.
+MAX_RODADAS_DA_CONTENCAO = 10
+_MINIMO_DA_DESCRICAO = 30  # 📊 a tela: "Descreva como aconteceu (mín. 30 caracteres)"
+
+_PARADA_DO_SLOT = {
+    "peca": ("peca_ambigua", "responder:peca"),
+    "pecas_lataria": ("peca_de_lataria_ambigua", "responder:pecas_lataria"),
+    "como": ("motivo_ambiguo", "responder:como"),
+    "onde": ("perimetro_desconhecido", "responder:onde"),
+    "descricao": ("descricao_curta", "responder:descricao"),
+    "pergunta": ("questionario_incompleto", "responder:pergunta"),
+    "cidade_servico": ("cidade_ambigua", "responder:cidade_servico"),
+    "aceita_reparo": ("decidir_reparo", "responder:aceita_reparo"),
+    "oferta": ("decidir_oferta", "responder:oferta"),
+    "cobertura": ("cobertura_nao_marcada", "reler"),
+}
+
+
+def _parada(slot: str, *, campo: str = "", pergunta: str = "", opcoes: Optional[List[str]] = None,
+            mensagem: str = "", stage: str = "", nunca: str = "") -> Dict[str, Any]:
+    st, acao = _PARADA_DO_SLOT.get(slot, ("contencao", "reler"))
+    return {"stage": stage or st, "acao_esperada": acao, "slot": slot, "campo": str(campo or "")[:120],
+            "pergunta": str(pergunta or "")[:200],
+            "opcoes": [str(o)[:80] for o in (opcoes or []) if str(o).strip()][:30],
+            "mensagem": mensagem, "nunca": nunca}
+
+
+def _sim_ou_nao(texto: Any) -> str:
+    t = _norm(texto)
+    if t in ("sim", "s", "aceito", "true", "quero", "pode"):
+        return "sim"
+    if t in ("nao", "n", "recuso", "false"):
+        return "nao"
+    return ""
+
+
+def _plano_do_aceite(botoes_de_custo: List[str], especificos: Dict[str, Any]) -> Dict[str, Any]:
+    """A tela pede uma decisão de CUSTO do segurado (reparo × troca, oferta).
+
+    📊 HTML `YELUM PARA BRISA/TELA 5`: "Sim, quero tentar o reparo" ·
+    "Não, prefiro seguir com a troca". O código só aperta o botão que o
+    SEGURADO escolheu (`especificos.aceita_reparo`, a mesma chave que o API-first
+    lê em `_fase_materializar`); sem a resposta dele, PARADA com os dois botões."""
+    from portal_worker import perception as _P
+
+    reparo =[b for b in botoes_de_custo if " reparo " in _P._palavras_de(b) or " troca " in _P._palavras_de(b)]
+    if reparo and len(reparo) == len(botoes_de_custo):
+        dito = _sim_ou_nao((especificos or {}).get("aceita_reparo"))
+        if dito == "sim":
+            alvo = [b for b in reparo if " reparo " in _P._palavras_de(b) and " troca " not in _P._palavras_de(b)]
+        elif dito == "nao":
+            alvo = [b for b in reparo if " troca " in _P._palavras_de(b)]
+        else:
+            alvo = []
+        if len(alvo) == 1:
+            return {"acoes": [{"action": "click", "target": alvo[0], "slot": "aceita_reparo"}],
+                    "parada": None}
+        return {"acoes": [], "parada": _parada(
+            "aceita_reparo", pergunta="O portal ofereceu REPARO em vez de troca",
+            opcoes=reparo, nunca="aceite_de_custo",
+            mensagem=("o portal ofereceu REPARO em vez de troca, e essa escolha e do segurado. "
+                      "Nada foi escolhido por mim."))}
+    # Oferta (polimento de farol, ADAS, cola rápida) ou custo: o DOM não aceita
+    # oferta nenhuma — nem com a resposta na mão (o botão de "não" de uma oferta
+    # não é identificável com segurança). Quem decide é o segurado, pela parada.
+    return {"acoes": [], "parada": _parada(
+        "oferta", pergunta="O portal ofereceu um servico/custo adicional",
+        opcoes=botoes_de_custo, nunca="aceite_de_custo",
+        mensagem="o portal ofereceu um servico ou custo adicional; aceitar e decisao do segurado.")}
+
+
+def _responder_pergunta_do_80(questao: Dict[str, Any], collected: Dict[str, Any]) -> Optional[str]:
+    """A resposta do SEGURADO para esta pergunta do 80%, pelo MESMO casador do
+    API-first (`vidros_questionario.escolher_resposta`) — que já sabe que
+    "Não sabe" só vale quando ELE disse, e só nesta pergunta."""
+    from portal_worker.journeys import vidros_questionario as QZ
+
+    opcoes = [str(o) for o in (questao.get("opcoes") or []) if str(o).strip()]
+    if not opcoes:
+        return None
+    pergunta = QZ.Pergunta(codigo=0, texto=str(questao.get("pergunta") or ""), tipo="",
+                           opcoes=[{"DescricaoResposta": o, "CodigoResposta": i + 1}
+                                   for i, o in enumerate(opcoes)])
+    dano = (collected or {}).get("dano") or {}
+    r = QZ.escolher_resposta(pergunta, respostas_do_segurado=dict((collected or {}).get("especificos") or {}),
+                             relato=str(dano.get("descricao") or ""))
+    return r.get("texto") if r.get("situacao") == "ok" and r.get("texto") else None
+
+
+def _opcao_do_perimetro(onde: Any, opcoes: List[str]) -> Optional[str]:
+    """`urbano`/`rodoviario` (o enum de `portal_params.normalizar_perimetro`) →
+    a opção que COMEÇA por essa palavra. 📊 Opções reais (HTML `TELA 3`,
+    `TELA 50% LATARIA`): "Urbano (Cidade)" · "Rodoviário" · "Não Sabe". Nunca
+    "Não Sabe"; duas candidatas = nenhuma."""
+    t = _norm(onde)
+    if t in ("u",):
+        t = "urbano"
+    if t in ("r",):
+        t = "rodoviario"
+    if t not in ("urbano", "rodoviario"):
+        return None
+    achadas = [o for o in opcoes if _norm(o).split(" ")[0:1] == [t]]
+    return achadas[0] if len(achadas) == 1 else None
+
+
+def _decidir_campo(slot: str, campo: Dict[str, Any], collected: Dict[str, Any],
+                   tipo: str) -> Dict[str, Any]:
+    """PURO: um campo crítico VAZIO → `{"acao": {...}}` (fato) ou `{"parada": {...}}`."""
+    dano = (collected or {}).get("dano") or {}
+    rotulo = str(campo.get("label") or campo.get("name") or campo.get("id") or "")
+    alvo = str(campo.get("name") or campo.get("id") or campo.get("label") or "")
+    opcoes = [str(o) for o in (campo.get("options") or []) if str(o).strip()
+              and "selecione" not in _norm(o)]
+
+    def _escolhe(valor: Any, decidida: Optional[str], slot_da_parada: str) -> Dict[str, Any]:
+        if decidida:
+            return {"acao": {"action": "select", "target": alvo or rotulo, "value": decidida, "slot": slot}}
+        return {"parada": _parada(slot_da_parada, campo=rotulo, pergunta=rotulo, opcoes=opcoes,
+                                  mensagem=(f"o portal pergunta '{rotulo}' e o que o segurado disse "
+                                            f"({str(valor or 'nada')[:60]}) nao casa com UMA opcao."))}
+
+    if slot == "peca":
+        if " servicoitens " in f" {_norm(campo.get('name'))} " or "peca danificada" == _norm(rotulo):
+            pecas = [p for p in (dano.get("pecas_lataria") or []) if str(p).strip()]
+            # 🔴 lataria multi-peça no DOM: uma peça só. Mais de uma = parada (o
+            # API-first faz a lista; o DOM é a exceção e não adivinha a ordem).
+            if len(pecas) != 1:
+                return {"parada": _parada("pecas_lataria", campo=rotulo, pergunta=rotulo, opcoes=opcoes,
+                                          mensagem="a lataria tem mais de uma peca (ou nenhuma) e o DOM nao escolhe.")}
+            valor = pecas[0]
+            return _escolhe(valor, decidir_opcao(valor, opcoes, rotulo) if opcoes else None, "pecas_lataria")
+        valor = dano.get("peca")
+        return _escolhe(valor, decidir_opcao(valor, opcoes, rotulo) if (opcoes and valor) else None, "peca")
+    if slot == "como":
+        valor = dano.get("como")
+        # A causa vem CANÔNICA (`portal_params.causa_conhecida`): igualdade e só.
+        iguais = [o for o in opcoes if valor and _norm(o) == _norm(valor)]
+        return _escolhe(valor, iguais[0] if len(iguais) == 1 else None, "como")
+    if slot == "onde":
+        valor = dano.get("onde")
+        return _escolhe(valor, _opcao_do_perimetro(valor, opcoes), "onde")
+    if slot == "descricao":
+        texto = str(dano.get("descricao") or "").strip()
+        if len(texto) >= _MINIMO_DA_DESCRICAO:
+            return {"acao": {"action": "fill", "target": alvo or rotulo, "value": texto, "slot": slot}}
+        return {"parada": _parada("descricao", campo=rotulo, pergunta=rotulo,
+                                  mensagem=f"o portal exige descricao com {_MINIMO_DA_DESCRICAO}+ caracteres.")}
+    if slot == "cobertura":
+        return {"parada": _parada("cobertura", campo=rotulo, pergunta="Selecione a cobertura",
+                                  opcoes=opcoes, mensagem="a tela pede a cobertura e ela nao foi marcada no passo 1.")}
+    # Qualquer outro slot crítico num tipo de campo inesperado: o DOM não decide.
+    return {"parada": _parada(slot, campo=rotulo, pergunta=rotulo, opcoes=opcoes,
+                              mensagem=f"campo critico '{rotulo}' sem fato do caso.")}
+
+
+def plano_de_contencao(state: Dict[str, Any], collected: Dict[str, Any]) -> Dict[str, Any]:
+    """PURO: o que o CÓDIGO faz nesta tela antes de o modelo ver qualquer coisa.
+
+    `{"acoes": [...], "parada": None}` — escrever o que é fato (pode ser `[]`);
+    `{"acoes": [], "parada": {...}}` — parar com a pergunta e as opções reais."""
+    from portal_worker import perception as _P
+
+    state = state or {}
+    collected = collected or {}
+    especificos = collected.get("especificos") or {}
+    especificos = especificos if isinstance(especificos, dict) else {}
+
+    # ① decisão de CUSTO do segurado (reparo, oferta) — antes de tudo
+    botoes = [str(b.get("text") or "") for b in (state.get("buttons") or [])
+              if isinstance(b, dict) and not b.get("disabled")]
+    de_custo = list(dict.fromkeys(b for b in botoes if _P.familia_nunca_sozinho(b) == "aceite_de_custo"))
+    if de_custo:
+        return _plano_do_aceite(de_custo, especificos)
+
+    acoes: List[Dict[str, Any]] = []
+    # ② a pergunta do 80% ainda aberta (uma por vez: a SPA revela a seguinte)
+    for q in state.get("questoes") or []:
+        if not isinstance(q, dict) or q.get("respondida") or not q.get("opcoes"):
+            continue
+        resposta = _responder_pergunta_do_80(q, collected)
+        if not resposta:
+            return {"acoes": [], "parada": _parada(
+                "pergunta", campo=q.get("id") or "", pergunta=q.get("pergunta") or "",
+                opcoes=q.get("opcoes") or [],
+                mensagem=f"o portal perguntou '{q.get('pergunta')}' e o segurado ainda nao respondeu.")}
+        acoes.append({"action": "check", "target": str(q.get("pergunta") or ""), "value": resposta,
+                      "slot": "pergunta"})
+        return {"acoes": acoes, "parada": None}
+
+    # ③ a cobertura da Porto (rádio) — é do passo 1, onde o CÓDIGO a marca
+    cobertura = [r for r in (state.get("radios") or [])
+                 if isinstance(r, dict) and _P.slot_do_campo(r) == "cobertura"]
+    if cobertura and not any(r.get("checked") for r in cobertura):
+        return {"acoes": [], "parada": _parada(
+            "cobertura", campo="tipoAtendimento", pergunta="Selecione a cobertura",
+            opcoes=[str(r.get("label") or r.get("value") or "") for r in cobertura],
+            mensagem="a tela pede a cobertura e ela nao foi marcada no passo 1.")}
+
+    # ④ os campos críticos VAZIOS
+    lugar = local_do_servico(collected)
+    # 📊 HTML `TELA 3`: cada md-select carrega um `<select>` nativo ESPELHO com o
+    # mesmo `name` (o Angular Material o esconde). O campo é o md-select.
+    espelhos = {_norm(m.get("name")) for m in (state.get("mdselects") or [])
+                if isinstance(m, dict) and m.get("name")}
+    for chave, tipo in (("mdselects", "mdselect"), ("selects", "select"), ("inputs", "input")):
+        for campo in state.get(chave) or []:
+            if not isinstance(campo, dict):
+                continue
+            if tipo == "select" and _norm(campo.get("name")) in espelhos:
+                continue
+            if tipo == "input" and str(campo.get("type") or "").lower() in ("radio", "checkbox", "hidden"):
+                continue
+            if str(campo.get("value") or "").strip():
+                continue
+            slot = _P.slot_do_campo(campo)
+            if not slot or slot == "pergunta":
+                continue
+            if slot == "cidade_servico":
+                ident = _P._palavras_de(_identidade_do_campo(campo))
+                if " cep " in ident:
+                    continue  # opcional; só vai quando é o MESMO lugar (`local_do_servico`)
+                if not lugar:
+                    return {"acoes": [], "parada": _parada(
+                        "cidade_servico", stage="falta_cidade_servico", campo=campo.get("label") or "",
+                        pergunta="Em que cidade o servico deve ser feito?",
+                        mensagem=("a tela pergunta ONDE o servico sera feito e o pedido nao traz a "
+                                  "cidade do servico — nunca uso a cidade do cadastro."))}
+                return {"acoes": [], "parada": _parada(
+                    "cidade_servico", campo=campo.get("label") or "",
+                    pergunta=str(campo.get("label") or ""),
+                    mensagem=f"nao consegui marcar {lugar.get('cidade')}/{lugar.get('estado')} nesta tela.")}
+            d = _decidir_campo(slot, campo, collected, tipo)
+            if d.get("parada"):
+                return {"acoes": [], "parada": d["parada"]}
+            acoes.append(d["acao"])
+    return {"acoes": acoes, "parada": None}
+
+
+def _resultado_falhou(slot: str, r: str) -> bool:
+    if slot == "aceita_reparo":
+        return r != "clicked"
+    if slot == "pergunta":
+        return r != "checked"
+    return not (str(r).startswith(("filled", "mdselect=", "select=")))
+
+
+async def conter_a_tela(page, state: Dict[str, Any], collected: Dict[str, Any],
+                        evidence: Dict[str, Any],
+                        falhas: Optional[List[Dict[str, Any]]] = None) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+    """Executa a contenção até a tela não ter mais nada crítico vazio.
+
+    Devolve `(parada, state)`: `parada` não-nula = o DOM PARA aqui, com a
+    pergunta e as opções reais; `state` = a tela depois do que o código escreveu.
+    Ação do código que o portal não aceita vira PARADA do slot (com as opções que
+    o portal devolveu) — nunca uma segunda tentativa às cegas, nunca o modelo."""
+    for f in falhas or []:
+        return _parada("cidade_servico", campo=f.get("campo") or "", pergunta="Em que cidade o servico deve ser feito?",
+                       opcoes=f.get("opcoes") or [],
+                       mensagem=("a cidade do servico nao casa com NENHUMA sugestao do portal por "
+                                 "igualdade — nao escolho cidade parecida.")), state
+    feitas = set()
+    for _ in range(MAX_RODADAS_DA_CONTENCAO):
+        plano = plano_de_contencao(state, collected)
+        if plano.get("parada"):
+            return plano["parada"], state
+        if not plano.get("acoes"):
+            return None, state
+        for ac in plano["acoes"]:
+            slot = str(ac.get("slot") or "")
+            assinatura = (ac.get("action"), ac.get("target"), ac.get("value"))
+            if assinatura in feitas:
+                return _parada(slot, campo=str(ac.get("target") or ""), pergunta=str(ac.get("target") or ""),
+                               mensagem=f"o portal nao aceitou o que escrevi em '{ac.get('target')}'."), state
+            feitas.add(assinatura)
+            acao = {k: v for k, v in ac.items() if k != "slot"}
+            try:
+                r = str(await apply_action(page, acao))
+            except Exception as e:  # noqa: BLE001
+                r = f"erro:{type(e).__name__}"
+            evidence.setdefault("contencao", []).append(
+                {"slot": slot, "acao": str(ac.get("action")), "alvo": str(ac.get("target") or "")[:80],
+                 "r": r[:80]})
+            if _resultado_falhou(slot, r):
+                opcoes = ([o.strip() for o in r.split("=", 1)[1].split("|") if o.strip()]
+                          if r.startswith(("mdselect_options=", "select_options=")) else [])
+                return _parada(slot, campo=str(ac.get("target") or ""), pergunta=str(ac.get("target") or ""),
+                               opcoes=opcoes,
+                               mensagem=f"o portal nao aceitou '{ac.get('value')}' em '{ac.get('target')}' ({r[:60]})."), state
+            await page.wait_for_timeout(400)
+        state = await capture_state(page)
+    return None, state
+
+
+def resultado_da_parada(evidence: Dict[str, Any], state: Dict[str, Any], collected: Dict[str, Any],
+                        parada: Dict[str, Any]) -> JourneyResult:
+    """A parada da contenção no formato que o resto do sistema lê: `needs_human`
+    com `stage` + `acao_esperada` + as opções REAIS (a régua do destravador
+    lê a TABELA pela `stage`, nunca pelo modelo)."""
+    _registrar_parada(evidence, state, collected, campo=parada.get("campo") or "",
+                      pergunta=parada.get("pergunta") or "", opcoes=parada.get("opcoes") or [])
+    evidence["parada_do_dom"] = {k: parada.get(k) for k in
+                                 ("stage", "acao_esperada", "slot", "campo", "pergunta", "opcoes", "nunca")}
+    captured = {k: parada.get(k) for k in ("stage", "acao_esperada", "campo", "pergunta", "opcoes")}
+    if parada.get("nunca"):
+        captured["nunca"] = parada["nunca"]
+    return JourneyResult(status="needs_human", captured=captured,
+                         message=aviso_de_pedido_aberto(evidence) + str(parada.get("mensagem") or ""))
+
+
 async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dict[str, Any],
                        max_steps: int = MAX_STEPS, confirm: bool = False,
-                       runtime: Any = None) -> JourneyResult:
+                       runtime: Any = None, conter: bool = False) -> JourneyResult:
     """Loop agentico: preenche o que e FATO -> enxerga -> cerebro decide o resto.
 
     `runtime` e OPCIONAL (SPEC-073 R3). Sem ele, o laco roda exatamente como
@@ -1218,7 +1820,8 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         # Antes de gastar um passo com o modelo: o que ja sabemos, escrevemos.
         # Nao consome passo do teto de proposito — preencher o conhecido nao e
         # uma decisao, e transcricao.
-        preenchidos = await preencher_o_que_e_fato(page, state, collected)
+        falhas: List[Dict[str, Any]] = []
+        preenchidos = await preencher_o_que_e_fato(page, state, collected, falhas)
         if preenchidos:
             # L0 resolveu: fato conhecido nao passa por modelo (R6).
             _escada.registrar(_P.L0_FATO)
@@ -1263,7 +1866,16 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                               pergunta=state.get("heading") or "Confirme a peca danificada")
             return JourneyResult(status="needs_human", captured={"stage": "confirme_80"},
                                  message="cheguei na confirmacao (80%) — aprove para enviar")
-        action = await decide_next_action(state, goal, collected, history)
+        if conter:
+            # 🔴 SPEC-127 P2 — o CÓDIGO escreve o que é fato e PARA no resto,
+            # ANTES de o modelo ver a tela. Ver `plano_de_contencao`.
+            parada, state = await conter_a_tela(page, state, collected, evidence, falhas)
+            if parada:
+                return resultado_da_parada(evidence, state, collected, parada)
+        # O provedor do modelo recebe só o que ESTA tela pede (SPEC-127 P2 item 6).
+        tela_do_modelo = estado_para_o_modelo(state) if conter else state
+        dados_do_modelo = dados_para_o_modelo(collected, state) if conter else collected
+        action = await decide_next_action(tela_do_modelo, goal, dados_do_modelo, history)
         _escada.registrar(_P.L3_TEXTO)
         history.append(action)
         if action["action"] == "done":
@@ -1288,7 +1900,7 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
             # Backstop anti-travamento: o cerebro tende a "pedir por educacao" em selects/radios.
             # Forca UMA re-decisao imperativa antes de desistir. So devolve needs_human se, mesmo
             # obrigado a escolher, ele ainda insistir em perguntar (dado de identidade real faltando).
-            forced = await decide_next_action(state, goal, collected, history, force=True)
+            forced = await decide_next_action(tela_do_modelo, goal, dados_do_modelo, history, force=True)
             if forced.get("action") in ("fill", "select", "check", "click"):
                 action = forced
                 history[-1] = action
@@ -1312,7 +1924,8 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
                              guard=_guard, origem=_P.L3_TEXTO,
                              # A tela do 80% E a fronteira do efeito: dela em
                              # diante, `Avancar` cria o pedido na seguradora.
-                             tela_material=is_confirm_screen(state))
+                             tela_material=is_confirm_screen(state),
+                             conter=conter)
         if not _v.ok:
             _rejeitadas += 1
             _escada.rejeitar(action, _v, camada=_P.L3_TEXTO)
@@ -1350,7 +1963,7 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         # O cerebro VE o resultado de cada acao (acoes_ja_feitas): um select que nao
         # casou volta com as opcoes REAIS (mdselect_options=...) e a proxima decisao
         # escolhe o texto exato da lista — inteligencia com a lista na mao, sem chute.
-        history[-1] = {**action, "resultado": applied[:220]}
+        history[-1] = {**action, "resultado": applied[:220], "tela": _P.assinatura_da_tela(state)}
         if applied.startswith(("mdselect_options=", "select_options=")):
             evidence["campo"] = action.get("target")
             evidence["opcoes"] = [o.strip() for o in applied.split("=", 1)[1].split("|") if o.strip()]
@@ -1365,12 +1978,16 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
         # corretora", nem para saber onde o fluxo demorou. `url`, `tela` e `ts`
         # ja estao na mao (o `state` acabou de ser lido) — custo zero de rede.
         steps.append({"a": sig[0], "t": sig[1], "v": (action.get("value") or "")[:30], "r": applied[:80],
-                      "url": str(state.get("url") or "")[:300],
+                      "url": _url_sem_token(state.get("url"))[:300],
                       "tela": _RED.redigir_texto(state.get("heading") or "")[:120],
+                      "sig": _P.assinatura_da_tela(state),
                       "ts": _agora_utc()})
         # Parada antecipada: 3 acoes identicas seguidas sem mudar nada = tela travada.
         # Para com o DOM (diagnostico) em vez de arrastar ate MAX_STEPS.
-        sigs = [(s["a"], s["t"], s["v"], s["r"]) for s in steps[-3:]]
+        # 🔴 SPEC-127 P2: "sem mudar nada" inclui a TELA. 📊 Medido no fio da 127:
+        # três `Avançar → clicked` em três telas DIFERENTES (20% → 50% → cidade)
+        # eram declarados "tela travada" — o heading é "Dados da apólice" em todas.
+        sigs = [(s["a"], s["t"], s["v"], s["r"], s.get("sig")) for s in steps[-3:]]
         if len(sigs) == 3 and len(set(sigs)) == 1:
             evidence["debug_dom"] = await _dump_dom(page)
             evidence["mdselect_overlay"] = LAST_MDSELECT_DEBUG

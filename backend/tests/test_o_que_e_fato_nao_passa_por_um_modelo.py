@@ -66,10 +66,18 @@ def _carregar():
 AD = _carregar()
 
 # O que a corretora é — vem de `companies`, nunca do LLM, nunca do segurado.
-CORRETORA = {"relacao": "Corretor", "nome": "Resulta Seguros Ltda",
-             "email": "operacional@resulta.com.br", "telefone": "4833646664",
+# (SPEC-127: sem nome de corretora real em teste — CLAUDE.md §13.9)
+CORRETORA = {"relacao": "Corretor", "nome": "Corretora de Teste Ltda",
+             "email": "operacional@corretora.invalid", "telefone": "4800000000",
              "cpf_cnpj": "12345678000199"}
-LOCAL = {"estado": "SC", "cidade": "Florianopolis", "cep": "88010-001"}
+# 🔴 MIGRADO (SPEC-127 P2, CLAUDE.md §9.3): este arquivo afirmava que "estado,
+# cidade e CEP têm um único valor certo" e montava o local SÓ com o cadastro.
+# Era a premissa errada: a tela pergunta onde ele deseja SER ATENDIDO, e isso
+# mora em `local.cidade_servico`. A lição migra — o lugar continua sendo fato
+# escrito por código, no formato que o portal aceita (sigla) — e a verdade
+# vencida vira o guarda contrário em [3b]: o cadastro sozinho NÃO escreve.
+LOCAL = {"estado": "SC", "cidade": "Florianopolis", "cep": "88010-001",
+         "cidade_servico": {"uf": "SC", "cidade": "Florianopolis"}}
 SABIDO = {"solicitante": CORRETORA, "local": LOCAL}
 
 
@@ -167,6 +175,18 @@ def teste_o_local_vai_no_formato_que_o_portal_aceita():
     checar(achados.get("estado") != achados.get("cidade"),
            "CONTROLE — estado e cidade não recebem o mesmo valor")
 
+    print("\n[3b] SPEC-127 P2 — o lugar é o do SERVIÇO; o cadastro sozinho não escreve")
+    so_cadastro = {"solicitante": CORRETORA,
+                   "local": {"estado": "SC", "cidade": "Florianopolis", "cep": "88010-001"}}
+    checar([f for f in AD.fatos_da_tela(tela, so_cadastro) if f["de"] in ("estado", "cidade", "cep")] == [],
+           "sem `cidade_servico`, NADA do cadastro vai para 'onde deseja ser atendido'")
+    outra = {"solicitante": CORRETORA,
+             "local": {**LOCAL, "cidade_servico": {"uf": "SC", "cidade": "Joinville"}}}
+    a2 = {f["de"]: f["valor"] for f in AD.fatos_da_tela(tela, outra)}
+    checar(a2.get("cidade") == "Joinville" and "cep" not in a2,
+           "cidade do serviço ≠ cadastro: vai a do SERVIÇO, e o CEP do cadastro NÃO",
+           str(a2))
+
 
 def teste_o_guarda_consegue_ficar_calado():
     print("\n[4] CONTROLE — sem dado conhecido, não inventa nada")
@@ -196,10 +216,13 @@ def teste_o_loop_usa_isso_antes_de_chamar_o_modelo():
 
     corpo = sem_com.split("async def run_adaptive", 1)[-1]
     i_fato = corpo.find("preencher_o_que_e_fato(page")
-    i_cerebro = corpo.find("decide_next_action(state")
-    checar(0 < i_fato < i_cerebro,
-           "o preenchimento vem ANTES da decisão do modelo",
-           f"fato={i_fato} cerebro={i_cerebro} — depois, seria inútil")
+    # 🔴 MIGRADO (SPEC-127 P2): o modelo agora recebe `tela_do_modelo` (a tela
+    # sem PII), não `state` cru — e entre o fato e o modelo entrou a CONTENÇÃO.
+    i_conter = corpo.find("conter_a_tela(page")
+    i_cerebro = corpo.find("decide_next_action(")
+    checar(0 < i_fato < i_conter < i_cerebro,
+           "o preenchimento e a contenção vêm ANTES da decisão do modelo",
+           f"fato={i_fato} conter={i_conter} cerebro={i_cerebro} — depois, seria inútil")
 
     # CONTROLE — o freio do 80% continua intocado. Nada disto pode ter chegado
     # perto dele: é ele que impede o pedido de ser enviado sem aprovação.

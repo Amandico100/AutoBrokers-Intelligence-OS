@@ -37,6 +37,7 @@ achar que é o próximo passo.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -138,6 +139,147 @@ def e_campo_critico(rotulo: Any) -> bool:
     return bool(t) and any(c in t for c in CAMPOS_CRITICOS)
 
 
+# --------------------------------------------------------------------------
+# 🔴 SPEC-127 P2 — o que o modelo do DOM de VIDROS nunca escolhe sozinho
+# --------------------------------------------------------------------------
+# 📊 O laudo INV-PORTAL (01/10) e o BLOCO 0 da 127: o modelo `portal_decisao`
+# escolhia peça, causa, perímetro, lado, trinca e descrição; o validador só
+# conferia que a opção EXISTIA. É DEDUZIR sem calibração — o que a SPEC-123
+# desligou no WhatsApp. A régua daqui para a frente é a do WhatsApp:
+#
+#     o que é FATO do caso ......... o CÓDIGO escreve (`adaptive.conter_a_tela`)
+#     o que não é .................. PARADA estruturada, com as opções REAIS
+#     o modelo ..................... só NAVEGA (Avançar, campo de formato)
+#
+# Os SLOTS são os mesmos nomes que a conversa e o destravador já usam
+# (`responder:peca`, `responder:como`, `responder:cidade_servico`…) — tabela de
+# FATO, não de semelhança. A ordem importa: "Descreva como aconteceu" é
+# DESCRIÇÃO antes de ser "como".
+#
+# ⚠️ Casamento por PALAVRA INTEIRA (frase cercada de espaço depois de trocar
+# pontuação por espaço), nunca por pedaço: 📊 `"cep" in "receber"` é True, e a
+# caixa "Quero receber atualizações" viraria campo de cidade.
+SLOTS_DO_DOM: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("cobertura", ("tipoatendimento", "selecione a cobertura", "cobertura")),
+    ("descricao", ("descricaododano", "descrever acontecimento", "descreva como aconteceu",
+                   "descricao do dano")),
+    ("peca", ("qualitemdanificado", "item danificado select", "servicoitens",
+              "qual foi a peca danificada", "peca danificada")),
+    ("como", ("comoocorreudanoveiculo", "objetocausaservicoitem", "selecionar objeto causa select",
+              "como ocorreu o dano", "motivo do dano")),
+    ("onde", ("ondeocorreudano", "selecionar ocorreu dano select", "onde ocorreu o dano")),
+    ("cidade_servico", ("onde deseja ser atendido", "cidade disponivel para atendimento",
+                        "cidade", "estado", "cep")),
+    ("pergunta", ("codigoresposta", "pergunta radio")),
+)
+
+# Botões e opções que NINGUÉM aperta no lugar do segurado — nem o modelo, nem
+# o código sem a resposta dele. As famílias são as chaves do `NUNCA_SOZINHO` do
+# WhatsApp e de `NUNCA_DA_PARADA_DO_PORTAL` (destravador), para a mesma régua
+# valer nos dois caminhos.
+#   📊 "Sim, quero tentar o reparo" / "Não, prefiro seguir com a troca" — HTML
+#      `YELUM PARA BRISA/Atendimento Web TELA 5` (heading "Por que vale a pena
+#      tentar o reparo?").
+#   📊 ofertas: endpoint `atendimentos/ofertas-polimentos-farois` nos HAR
+#      Porto/Yelum; ADAS e cola rápida pelo laudo INV-PORTAL.
+#   📊 "Cancelar atendimento", "Desistir do atendimento", "Novo atendimento",
+#      "Solicitar novo atendimento" — nas telas finais e em TODO passo.
+NUNCA_SOZINHO_NO_DOM: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("aceite_de_custo", ("tentar o reparo", "seguir com a troca", "quero o reparo",
+                         "prefiro a troca", "polimento", "adas", "calibracao", "cola rapida",
+                         "oferta", "franquia", "pagar", "pagamento", "aceito o valor")),
+    ("cancelar", ("cancelar atendimento", "cancelar solicitacao", "desistir do atendimento",
+                  "desistir")),
+    ("novo_atendimento", ("novo atendimento", "solicitar novo atendimento")),
+    ("nao_sabe", ("nao sabe", "nao sei")),
+)
+
+
+def _palavras_de(txt: Any) -> str:
+    """` texto normalizado com pontuação virando espaço ` — para casar frase inteira."""
+    return " " + re.sub(r"[^a-z0-9]+", " ", _norm(txt)).strip() + " "
+
+
+def _tem_frase(txt: Any, frases: Sequence[str]) -> bool:
+    alvo = _palavras_de(txt)
+    return any(f" {f} " in alvo for f in frases)
+
+
+def slot_do_campo(campo: Any) -> str:
+    """O slot do caso que este campo pede (`peca`, `como`, `cidade_servico`…), ou "".
+
+    Aceita o item do `capture_state` (dict) ou um texto solto (o `target` que o
+    modelo propôs)."""
+    if isinstance(campo, dict):
+        texto = " ".join(str(campo.get(k) or "") for k in
+                         ("label", "name", "id", "placeholder", "pergunta", "aria-label"))
+    else:
+        texto = str(campo or "")
+    if not texto.strip():
+        return ""
+    for slot, frases in SLOTS_DO_DOM:
+        if _tem_frase(texto, frases):
+            return slot
+    return ""
+
+
+def familia_nunca_sozinho(texto: Any) -> str:
+    """A família NUNCA deste botão/opção (`aceite_de_custo`, `cancelar`,
+    `novo_atendimento`, `nao_sabe`), ou "" quando é navegação comum."""
+    if not str(texto or "").strip():
+        return ""
+    for familia, frases in NUNCA_SOZINHO_NO_DOM:
+        if _tem_frase(texto, frases):
+            return familia
+    return ""
+
+
+def _item_do_alvo(target: Any, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """O elemento da tela que o alvo aponta (o mesmo casamento de `alvo_existe`)."""
+    alvo = _norm(target)
+    if not alvo:
+        return None
+    for chave in ("inputs", "selects", "mdselects", "radios", "checkboxes", "questoes"):
+        for it in _lista(state, chave):
+            for r in _rotulos_de(it) + ([_norm(it.get("pergunta"))] if it.get("pergunta") else []):
+                if r and (alvo == r or alvo in r or r in alvo):
+                    return it
+    return None
+
+
+def recusa_da_contencao(acao: Dict[str, Any], state: Dict[str, Any]) -> str:
+    """PURO: o motivo pelo qual a CONTENÇÃO recusa esta ação do modelo, ou "".
+
+    Vale só para a journey de vidros (`run_adaptive(conter=True)`). Recusa:
+      · clique em botão NUNCA (reparo/oferta/custo, cancelar, novo atendimento);
+      · `fill`/`select`/`check` em campo de slot crítico — quem preenche é o
+        código (fato do caso) ou o segurado (parada com as opções reais);
+      · qualquer valor "Não sabe" — resposta do segurado, nunca do robô.
+    """
+    nome = _norm(acao.get("action"))
+    target = acao.get("target") or ""
+    valor = acao.get("value") or ""
+    if nome == "click":
+        rotulo = _melhor_rotulo(target, state, "buttons") or str(target)
+        fam = familia_nunca_sozinho(rotulo) or familia_nunca_sozinho(target)
+        if fam:
+            return (f"nunca sozinho ({fam}): {rotulo!r} e escolha do segurado — "
+                    "o modelo do portal nao aperta")
+        return ""
+    if nome in ("fill", "select", "check"):
+        if familia_nunca_sozinho(valor) == "nao_sabe":
+            return "'Nao sabe' e resposta do segurado, nunca do modelo do portal"
+        if nome == "check" and familia_nunca_sozinho(valor or target) == "aceite_de_custo":
+            return "aceite de reparo/oferta/custo e do segurado, nunca do modelo"
+        item = _item_do_alvo(target, state)
+        slot = slot_do_campo(item) if item else ""
+        slot = slot or slot_do_campo(target)
+        if slot:
+            return (f"campo critico '{slot}': quem preenche e o codigo (fato do caso) "
+                    "ou o segurado — o modelo do portal nao escolhe")
+    return ""
+
+
 def e_checkbox_proibida(rotulo: Any) -> bool:
     t = _norm(rotulo)
     return bool(t) and any(c in t for c in CHECKBOXES_PROIBIDAS)
@@ -228,14 +370,36 @@ class Veredito:
         return self.ok
 
 
-def _ja_teve_sucesso(acao: Dict[str, Any], historico: Sequence[Any]) -> bool:
+def assinatura_da_tela(state: Dict[str, Any]) -> str:
+    """Uma impressão curta de QUAL tela é esta (heading, campos, perguntas,
+    botões) — sem valores. Duas telas do mesmo passo têm a mesma; o 20% e o
+    50% não."""
+    s = state or {}
+    partes = [_norm(s.get("heading"))]
+    for chave, k in (("inputs", "id"), ("inputs", "name"), ("mdselects", "name"),
+                     ("questoes", "pergunta"), ("buttons", "text")):
+        partes.extend(_norm(it.get(k)) for it in _lista(s, chave))
+    return hashlib.sha1("|".join(partes).encode("utf-8")).hexdigest()[:12]
+
+
+def _ja_teve_sucesso(acao: Dict[str, Any], historico: Sequence[Any],
+                     state: Optional[Dict[str, Any]] = None) -> bool:
     """A mesma ação já deu certo antes, sem a tela mudar?
 
     Repetir uma ação bem-sucedida é o sintoma clássico do laço que gastava 22
     passos: o modelo não percebe que já preencheu e tenta de novo.
+
+    🔴 SPEC-127 P2: "sem a tela mudar" agora é MEDIDO. 📊 Medido no fio da 127:
+    o `Avançar` do 20% que deu `clicked` fazia o `Avançar` do 50% — OUTRA tela —
+    ser recusado como repetição, três vezes, e o DOM parava em `acao_recusada`
+    no meio do caminho certo. Entrada do histórico que carrega a `tela` onde
+    aconteceu só conta como repetição NA MESMA tela.
     """
     assinatura = f"{_norm(acao.get('action'))}|{_norm(acao.get('target'))}|{_norm(acao.get('value'))}"
+    tela_atual = assinatura_da_tela(state) if state else ""
     for h in list(historico or [])[-8:]:
+        if tela_atual and isinstance(h, dict) and h.get("tela") and h.get("tela") != tela_atual:
+            continue
         texto = _norm(h if isinstance(h, str) else str(h))
         if not texto:
             continue
@@ -252,11 +416,16 @@ def validar_acao(acao: Dict[str, Any],
                  historico: Optional[Sequence[Any]] = None,
                  guard: Optional[G.PortalActionGuard] = None,
                  origem: str = L3_TEXTO,
-                 tela_material: bool = False) -> Veredito:
+                 tela_material: bool = False,
+                 conter: bool = False) -> Veredito:
     """O funil por onde TODA ação proposta por modelo passa antes de acontecer.
 
     Vale igual para `fill`, `select`, `click` e `check` — que é a correção
     central deste bloco. Devolve `Veredito`; quem executa só executa com `ok`.
+
+    `conter=True` (SPEC-127 P2, só a journey de vidros): acrescenta a
+    CONTENÇÃO (`recusa_da_contencao`) — o modelo só navega. Fora de vidros
+    (Allianz, cobrança) nada muda.
     """
     collected = collected or {}
     historico = historico or []
@@ -272,6 +441,13 @@ def validar_acao(acao: Dict[str, Any],
     if nome in ("done", "ask_human"):
         return Veredito(True)
 
+    # (0.5) a CONTENÇÃO vem antes de tudo: um botão NUNCA ou um campo crítico
+    # não fica liberado por existir na tela, nem pelo guard.
+    if conter:
+        motivo = recusa_da_contencao(acao, state)
+        if motivo:
+            return Veredito(False, motivo)
+
     # (1) o alvo existe na tela atual
     existe, tipo = alvo_existe(target, state)
     if not existe:
@@ -280,7 +456,7 @@ def validar_acao(acao: Dict[str, Any],
                         escalar=True)
 
     # (5) não repetir passo que já deu certo sem mudança de estado
-    if _ja_teve_sucesso(acao, historico):
+    if _ja_teve_sucesso(acao, historico, state):
         return Veredito(False,
                         f"acao {nome} em {target!r} ja teve sucesso e a tela nao mudou",
                         escalar=True)
