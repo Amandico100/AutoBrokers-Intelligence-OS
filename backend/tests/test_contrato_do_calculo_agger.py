@@ -169,14 +169,18 @@ def test_bordas_sem_pii():
     assert eventos_entre(b, a) == []              # a anterior chegou depois: ignora
 
 
-def test_pedido_do_calcularv2_tem_os_grupos_e_obrigatorio_ainda_nao_medido():
+def test_pedido_do_calcularv2_tem_os_grupos_e_o_obrigatorio_medido_no_E3():
+    # §9.3: este teste dizia "obrigatório ainda não medido" — verdade até a E3 (04/10) medir. A lição migra:
+    # agora ele fixa os 16 que a tela recusou vazios e os 4 que aceitou; o resto continua None (não medido).
     corpo = _fixture("gravacao_r1")["calculos"][0]["pedido"]
     p = pedido_de_calcularv2(corpo)
     assert p.ramo == C.RAMO_AUTO == 31
     assert len(p.seguradoras) == 17
-    for grupo in C.CAMPOS_DO_PEDIDO_AUTO:
-        campos = getattr(p, grupo)
-        assert campos and all(c.obrigatorio is None for c in campos)
+    todos = [c for grupo in C.CAMPOS_DO_PEDIDO_AUTO for c in getattr(p, grupo)]
+    assert all(getattr(p, g) for g in C.CAMPOS_DO_PEDIDO_AUTO)
+    assert sum(1 for c in todos if c.obrigatorio is True) == 16
+    assert {c.nome for c in todos if c.obrigatorio is False} == {"telefone", "email", "placa", "chassi"}
+    assert {c.nome for c in p.condutor if c.obrigatorio} >= {"tempo_habilitacao", "cpf", "nascimento"}
     assert {c.nome for c in p.veiculo} >= {"fipe", "modelo", "ano_modelo"}
     with pytest.raises(ValueError):
         C.Ajuste("preco_magico", 1)
