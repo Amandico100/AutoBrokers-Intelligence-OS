@@ -56,8 +56,9 @@ DESCONHECIDAS = {
 }
 
 
-# 🔴 G5: as capturas AO VIVO (16 cálculos, 04/10) — toda resposta da ÚLTIMA rodada tem família; nenhuma
-# DESCONHECIDA. Cada mensagem nova que aparecer no motor tem de ganhar regra, não sumir num balde.
+# 🔴 G5: as capturas AO VIVO (16 cálculos pedidos em 04/10; 📊 12 deles com rodada na captura — os 4 recálculos
+# por API foram lidos por `cotacao/versoes`, fora da captura filtrada) — toda resposta da ÚLTIMA rodada tem
+# família; nenhuma DESCONHECIDA. A varredura de TODAS as seções está em `test_g5_nenhuma_desconhecida_em_secao_nenhuma`. Cada mensagem nova que aparecer no motor tem de ganhar regra, não sumir num balde.
 @pytest.mark.parametrize("rotulo", ["vivo_conta_a", "vivo_conta_b"])
 def test_vivo_toda_resposta_tem_familia(rotulo):
     fx = _fixture(rotulo)
@@ -207,3 +208,157 @@ def test_o_fio_do_bruto_ao_leitor():
         ultima = ler_rodada(fx["calculos"][0]["rodadas"][-1])
         assert (len(ultima.ofertas), len({o.seguradora_codigo for o in ultima.ofertas})) == (n_of, n_seg)
         assert G.serializar(fx) == G._sem_cr((FIX / f"{rotulo}.json").read_bytes())
+
+
+# ---------------------------------------------------------------------------
+# Conserto único da SPEC-128 (laudos do juiz e do red team, 04/10)
+# ---------------------------------------------------------------------------
+TODAS = sorted(p.stem for p in FIX.glob("*.json") if p.name != "MANIFESTO.json")
+
+
+def _todas_as_respostas(fx: dict):
+    """(seção, RodadaDoCalculo) de TODA seção que traz respostas de seguradora:
+    `calculos[].rodadas[]`, `versoes[].corpo[]` (uma cotação por versão) e `negocio[].corpo`."""
+    for c in fx.get("calculos", []):
+        for r in c.get("rodadas", []):
+            yield "rodadas", ler_rodada(r)
+    for v in fx.get("versoes", []):
+        for cot in v.get("corpo") or []:
+            yield "versoes", ler_rodada(cot)
+    for n in fx.get("negocio", []):
+        yield "negocio", ler_rodada(n.get("corpo") or {})
+
+
+@pytest.mark.parametrize("rotulo", TODAS)
+def test_g5_nenhuma_desconhecida_em_secao_nenhuma(rotulo):
+    """P1: o G5 varria só `calculos[].rodadas`; 📊 a `versoes` da gravacao_r2 tinha 12 DESCONHECIDA
+    (3 mensagens reais sem regra). Agora: TODA seção, TODA fixture, 0."""
+    soltas = sorted({(sec, m[:60]) for sec, rod in _todas_as_respostas(_fixture(rotulo))
+                     for x in rod.respostas if x.familia == C.DESCONHECIDA for m in x.mensagens})
+    assert soltas == [], soltas
+
+
+def test_g5_varre_as_versoes_de_verdade():
+    """CONTROLE: a varredura ALCANÇA a seção `versoes` (📊 85 respostas na gravacao_r2) — sem isso o 0
+    acima poderia ser 0 de nada."""
+    secs: dict = {}
+    for sec, rod in _todas_as_respostas(_fixture("gravacao_r2")):
+        secs[sec] = secs.get(sec, 0) + len(rod.respostas)
+    assert secs.get("versoes", 0) == 85 and secs.get("rodadas", 0) > 0 and secs.get("negocio", 0) > 0
+
+
+def test_cada_regra_cita_uma_fixture_que_existe():
+    from portal_worker.multicalculo.leitor_agger import REGRAS_DE_FAMILIA
+    for familia, _padrao, fonte in REGRAS_DE_FAMILIA:
+        assert familia in C.FAMILIAS
+        assert any(r in fonte for r in TODAS), fonte
+
+
+@pytest.mark.parametrize("mensagem,familia", [
+    ("Auto - Cotação indisponível, tente mais tarde realizando cópia da cotação", C.INSTABILIDADE),
+    ("Os dados do condutor principal devem ser preenchidos.", C.DADO),
+    ("A opção selecionada para vínculo do segurado do item 1 não possui aceitação para este produto.", C.ACEITACAO),
+    ("COBERTURA CASCO FORA DO PERMITIDO", C.DADO),
+])
+def test_as_mensagens_novas_tem_familia(mensagem, familia):
+    base = {"seguradora": 99, "seguradoraTxt": "Seguradora Teste", "retorno": True}
+    assert ler_rodada([dict(base, erros=[mensagem])]).respostas[0].familia == familia
+
+
+# -- B1(b): o leitor tira URL e chave de TODA string que sai -----------------
+_CHAVE_FALSA = "AIza" + "Sy" + "0" * 33
+
+
+def test_leitor_nunca_devolve_url_nem_chave():
+    url = "https://api.seg.exemplo/v1/p?key=" + _CHAVE_FALSA
+    item = {"seguradora": 9, "seguradoraTxt": "Seg www.seg.exemplo/x", "retorno": True,
+            "erros": ["Read terminated for " + url],
+            "resultados": [{"premio": 900.0, "identificacao": "Pacote arquivos.seg.exemplo/a/b",
+                            "alertas": ["veja " + url], "observacoes": ["token=abc"],
+                            "erros": ["access_token=xyz"],
+                            "coberturas": {"tipo": url, "vidros": "sim"}}]}
+    rod = ler_rodada([item])
+    tudo = json.dumps([dataclasses.asdict(r) for r in rod.respostas], ensure_ascii=False)
+    tudo += json.dumps([dataclasses.asdict(e) for e in eventos_do_calculo([rod])], ensure_ascii=False)
+    assert not re.search(r"https?:|www[.]|seg[.]exemplo|AIza|token=|key=", tudo), "URL/chave saiu do leitor"
+    assert "<removido:url>" in tudo
+    # a mensagem continua classificável sem a URL
+    so_erro = ler_rodada([{"seguradora": 9, "retorno": True, "erros": ["Read terminated for " + url]}])
+    assert so_erro.respostas[0].familia == C.INSTABILIDADE
+
+
+# -- P10: numero() e _inteiro() nunca mentem nem levantam ---------------------
+@pytest.mark.parametrize("entrada,esperado", [
+    ("1.234,56", 1234.56), ("1,234.56", 1234.56), ("1.234", 1234.0), ("1234.56", 1234.56),
+    ("R$ 1.234,56", 1234.56), ("1.234.567", 1234567.0), ("0,00", 0.0), ("12,5", 12.5), (1234.56, 1234.56),
+    (7, 7.0), ("NaN", None), ("nan", None), ("inf", None), ("-inf", None), ("1e400", None), ("abc", None),
+    ("", None), (None, None), (True, None), (float("nan"), None), (float("inf"), None), (10 ** 400, None),
+])
+def test_numero_robusto(entrada, esperado):
+    assert numero(entrada) == esperado
+
+
+def test_lixo_numerico_nunca_vira_excecao_nem_oferta():
+    from portal_worker.multicalculo.leitor_agger import _inteiro
+    assert _inteiro("NaN") is None and _inteiro("inf") is None and _inteiro(float("nan")) is None
+    r = ler_rodada({"t_s": float("nan"), "corpo": [
+        {"seguradora": "NaN", "retorno": True, "tempoResposta": "inf",
+         "resultados": [{"premio": p, "parcelamentos": [{"parcelas": "inf", "tipoPag": "NaN"}]}]}
+        for p in ("NaN", "inf", "1e400", float("inf"), float("nan"))]})
+    assert r.t_s is None and r.ofertas == () and len(r.respostas) == 5
+    ok = ler_rodada([{"seguradora": 3, "retorno": True,
+                      "resultados": [{"premio": "1.234,56", "parcelamentos": [{"parcelas": "inf"}]}]}])
+    assert ok.ofertas[0].premio_total == 1234.56 and ok.ofertas[0].parcelamentos[0].parcelas is None
+
+
+# -- P6: eventos ---------------------------------------------------------------
+def _seg(cod, **k):
+    d = {"seguradora": cod, "seguradoraTxt": f"S{cod}", "retorno": True}
+    d.update(k)
+    return d
+
+
+def test_conjunto_fechado_sai_uma_vez_mesmo_quando_a_rodada_reabre():
+    """P6(a): A responde (fecha) → B aparece pendente (reabre) → B responde (fecharia de novo)."""
+    oferta = [{"premio": 100.0, "identificacao": "P"}]
+    r1 = ler_rodada({"t_s": 1.0, "corpo": [_seg(1, resultados=oferta)]})
+    r2 = ler_rodada({"t_s": 2.0, "corpo": [_seg(1, resultados=oferta), _seg(2, retorno=False)]})
+    r3 = ler_rodada({"t_s": 3.0, "corpo": [_seg(1, resultados=oferta),
+                                           _seg(2, resultados=[{"premio": 50, "identificacao": "Q"}])]})
+    assert (r1.fechado, r2.fechado, r3.fechado) == (True, False, True)
+    ev = [e.tipo for e in eventos_do_calculo([r1, r2, r3])]
+    assert ev.count(C.CONJUNTO_FECHADO) == 1
+    assert ev.count(C.NOVA_OFERTA) == 2
+
+
+def test_seguradora_repetida_na_rodada_nao_recusa_e_oferta_ao_mesmo_tempo():
+    """P6(b): a mesma seguradora em 2 itens (E20) — um com oferta, outro com erro: só a oferta."""
+    a = ler_rodada({"t_s": 1.0, "corpo": [_seg(5, retorno=False)]})
+    b = ler_rodada({"t_s": 2.0, "corpo": [
+        _seg(5, resultados=[{"premio": 300.0, "identificacao": "Pacote 1"}]),
+        _seg(5, erros=["A seguradora está apresentando instabilidade no momento."])]})
+    tipos = [e.tipo for e in eventos_entre(a, b)]
+    assert C.SEGURADORA_RECUSOU not in tipos and tipos.count(C.NOVA_OFERTA) == 1
+    # os 2 itens com erro → UMA recusa, não duas
+    c = ler_rodada({"t_s": 2.0, "corpo": [_seg(5, erros=["instabilidade"]), _seg(5, erros=["instabilidade"])]})
+    assert [e.tipo for e in eventos_entre(a, c)] == [C.SEGURADORA_RECUSOU, C.CONJUNTO_FECHADO]
+
+
+def test_premio_mudou_no_mesmo_pacote_vira_oferta_atualizada():
+    """P6(c): o mesmo pacote com outro prêmio é OFERTA_ATUALIZADA (com a oferta nova), não uma 2ª nova."""
+    a = ler_rodada({"t_s": 1.0, "corpo": [_seg(5, resultados=[{"premio": 300.0, "identificacao": "P", "packageType": 1}])]})
+    b = ler_rodada({"t_s": 2.0, "corpo": [_seg(5, resultados=[{"premio": 280.0, "identificacao": "P", "packageType": 1}])]})
+    ev = eventos_do_calculo([a, b])
+    assert [e.tipo for e in ev] == [C.NOVA_OFERTA, C.CONJUNTO_FECHADO, C.OFERTA_ATUALIZADA]
+    assert ev[-1].oferta.premio_total == 280.0
+    # dois itens IGUAIS na MESMA rodada (franquias diferentes) são duas ofertas, não uma atualização
+    d = ler_rodada({"t_s": 1.0, "corpo": [_seg(5, resultados=[
+        {"premio": 300.0, "identificacao": "P", "packageType": 1},
+        {"premio": 250.0, "identificacao": "P", "packageType": 1}])]})
+    assert [e.tipo for e in eventos_entre(None, d)].count(C.NOVA_OFERTA) == 2
+    # 📊 nas 5 fixtures reais: 0 OFERTA_ATUALIZADA (o prêmio não muda dentro de um cálculo) e ≤ 1 fechado
+    for rot in TODAS:
+        for c in _fixture(rot).get("calculos", []):
+            evs = eventos_do_calculo([ler_rodada(r) for r in c.get("rodadas", [])])
+            assert not any(e.tipo == C.OFERTA_ATUALIZADA for e in evs), rot
+            assert sum(e.tipo == C.CONJUNTO_FECHADO for e in evs) <= 1, rot
