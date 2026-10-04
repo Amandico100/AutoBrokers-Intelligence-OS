@@ -13331,7 +13331,7 @@ contenção é a ativação manual do rascunho pelo master admin (`admin_atlas.p
 outra ordem e sem validar. Em produção as duas existentes têm o mesmo valor, então hoje não muda nada. **O que destrava:** trocar os três
 pelo helper (toca a cobrança, que envia — CRÍTICO). **Custa esquecer:** um ambiente com valores diferentes manda link para lugar errado.
 
-## P-MC05-03 · 🧑 O `/r/` não foi provado NO AR
+## P-MC05-03 · ✅ FECHADA 04/10 — o `/r/` foi provado NO AR pelo Founder (aba anônima → "Este link não está mais disponível")
 Provado com `next build`+`next start` num app mínimo e com `next dev`. **O que destrava:** depois do Implantar, abrir um link `/r/` numa
 aba anônima (o passo a passo está na resposta do passo 0.5). **Custa esquecer:** o conserto não chega ao cliente sem ninguém ver.
 

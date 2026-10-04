@@ -8,8 +8,8 @@
 | # | Passo | Estado | Branch / commit | Portão |
 |---|---|---|---|---|
 | 0 | Fechar a 126/127 | código pronto; testes de celular do Founder | `main` `e7f76df` | — |
-| 0.5 | Registro + `/r/` + P-E0018-14 | ✅ código pronto 04/10 (juiz 84 · red team 62 → conserto → confirmação 80 → conserto com prova mecânica) | `programa-mc/passo-0.5` → `main` | 🧑 Implantar + abrir um `/r/` em aba anônima |
-| 1 | 129-A espera durável | ⏭ próxima (chat novo) — inventário já medido: ver relatório do 0.5 §1 | — | — |
+| 0.5 | Registro + `/r/` + P-E0018-14 | ✅ CONCLUÍDO e NO AR 04/10 (Founder implantou; `/r/` falso em aba anônima → "Este link não está mais disponível") (juiz 84 · red team 62 → conserto → confirmação 80 → conserto com prova mecânica) | `programa-mc/passo-0.5` → `main` | 🧑 Implantar + abrir um `/r/` em aba anônima |
+| 1 | 129-A espera durável | 🔨 em execução 04/10 (mesmo chat, a pedido do Founder) — inventário já medido: ver relatório do 0.5 §1 | — | — |
 | 2 | 128 prova do Agger | ⏳ | — | ✅ autorização da corretora declarada (04/10) |
 | 3 | 133-A prova de instalação | ⏳ | — | 🧑 serviço + domínio no EasyPanel; 10–15 testadores |
 | 4 | 129-B motor | ⏳ | — | 🧑 1 login de robô por corretora |
@@ -31,6 +31,9 @@
 - **InfoCap:** a conexão da Resulta está hoje dentro da corretora de ensaio, de propósito (D-MC-27); pode ler a da
   AutoFleet e a da corretora de ensaio.
 - **Apólices de teste:** `docs/intake/MULTICALCULO AGGER/APOLICES/` (fora do git), autorizadas para cotar e testar.
+- **Login do Agger (Founder, 04/10):** até existir o login exclusivo do robô, usar o login da Ellen (Resulta e AutoFleet). Parar se
+  o Founder mandar ou se houver outra pessoa logada (o modal de sessão única avisa — NUNCA clicar "Prosseguir" sobre sessão de outra pessoa).
+  Exceção temporária à D-MC-24, só para a 128 e testes; o motor (129-B) em uso real exige o login do robô.
 - **Segredos:** a rotação é do Founder, no fim do projeto (D-MC-35). Nenhum segredo entra em arquivo versionado.
 
 ## 3. Livro-caixa da API de modelo (verba do programa: 💭 US$ 4,00, Founder 04/10)
