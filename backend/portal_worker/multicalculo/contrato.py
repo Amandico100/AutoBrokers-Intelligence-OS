@@ -8,7 +8,9 @@ nas duas gravações de 18/09). A v1 implementa o AUTO; o residencial (E13) entr
 como mapa quando for medido.
 
 O que este módulo NUNCA carrega numa `Oferta`: login, senha, loginWs, senhaWs,
-URL ou caminho de PDF. A comissão vem em campo separado, `comissao_percentual`,
+URL ou caminho de PDF. As CHAVES são conferidas por `CHAVES_PROIBIDAS_NA_OFERTA`; URL e
+chave de API DENTRO de texto (mensagem, alerta, rótulo) o leitor troca por
+`<removido:url>`/`<redacted:...>` (`redaction.sem_url_nem_chave`, conserto B1). A comissão vem em campo separado, `comissao_percentual`,
 marcado INTERNO — nunca vai para o cliente (o adaptador da 129-B corta).
 """
 from __future__ import annotations
@@ -82,7 +84,8 @@ class Campo:
 # 📊 caminhos lidos do `calcularV2` das gravações R1/R2 de 18/09 (fixtures
 # `gravacao_r1.json`/`gravacao_r2.json`, chave `pedido.corpo`).
 # `obrigatorio` MEDIDO na SPEC-128 E3 (📊 04/10 18:59, conta_a: "Calcular" com o formulário vazio → a tela recusou
-# 16 campos, `e3_validacao.json` no rascunho do gerente) · False = a tela aceitou vazio · None = não medido.
+# 15 campos, `e3_validacao.json` no rascunho do gerente; o 16º, tempo de habilitação, a tela só exige DEPOIS, no
+# fluxo do condutor — observado, não contado no formulário vazio) · False = a tela aceitou vazio · None = não medido.
 # Os 16 obrigatórios não dizem tudo: o questionário (garagem, uso, km) vem com PADRÕES da tela e o cálculo sai com eles.
 CAMPOS_DO_PEDIDO_AUTO: dict = {
     "segurado": (
@@ -242,8 +245,12 @@ class RodadaDoCalculo:
 # Evento — a narração ao vivo (D-MC-50) só pode nascer daqui
 # --------------------------------------------------------------------------
 NOVA_OFERTA = "nova_oferta"
+# a MESMA oferta (seguradora, pacote, tipo de pacote) voltou com outro prêmio: a narração
+# TROCA o preço, não soma uma oferta. 📊 0 casos nas 5 fixtures (04/10) — o tipo existe para
+# que o caso, quando vier, não vire uma segunda "nova_oferta" do mesmo pacote.
+OFERTA_ATUALIZADA = "oferta_atualizada"
 SEGURADORA_RECUSOU = "seguradora_recusou"
-CONJUNTO_FECHADO = "conjunto_fechado"
+CONJUNTO_FECHADO = "conjunto_fechado"   # UMA vez por cálculo (leitor_agger.eventos_do_calculo)
 
 
 @dataclass(frozen=True)
