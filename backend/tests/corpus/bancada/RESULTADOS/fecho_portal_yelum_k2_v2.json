@@ -1,0 +1,3091 @@
+{
+"papel": "destravador",
+"corpus_sha": "b9cb83215505ccb2",
+"k": 2,
+"bracos": {
+"openai:gpt-6.1-sol:high": {
+"resumo": {
+"yelum": {
+"porta_n": 26,
+"agiu_n": 23,
+"agiu_certos": 17,
+"modelo_proposta_certos": 1,
+"controle_certos": 5,
+"k_concordantes": 20,
+"k_min": 2,
+"notas_segunda": [
+[
+93,
+false
+],
+[
+93,
+false
+],
+[
+88,
+false
+],
+[
+90,
+false
+],
+[
+93,
+false
+],
+[
+93,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+true
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+85,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+true
+],
+[
+90,
+false
+],
+[
+88,
+false
+],
+[
+90,
+false
+],
+[
+88,
+false
+],
+[
+90,
+false
+],
+[
+90,
+false
+],
+[
+88,
+false
+],
+[
+96,
+true
+],
+[
+96,
+true
+],
+[
+95,
+false
+],
+[
+93,
+false
+],
+[
+95,
+false
+],
+[
+96,
+true
+],
+[
+86,
+false
+],
+[
+82,
+false
+],
+[
+88,
+false
+],
+[
+86,
+false
+],
+[
+82,
+false
+],
+[
+86,
+false
+],
+[
+88,
+false
+],
+[
+86,
+false
+],
+[
+93,
+false
+],
+[
+93,
+false
+],
+[
+62,
+false
+],
+[
+60,
+false
+],
+[
+80,
+false
+],
+[
+80,
+false
+],
+[
+92,
+false
+],
+[
+90,
+false
+],
+[
+93,
+true
+],
+[
+93,
+false
+],
+[
+80,
+false
+]
+],
+"wilson": [
+0.5352999499700668,
+0.8745138402805502
+],
+"faixas_nota_segunda": {
+"<70": {
+"n": 2,
+"certos": 0,
+"acerto": 0.0
+},
+"70–80": {
+"n": 0,
+"certos": 0,
+"acerto": null
+},
+"80–90": {
+"n": 27,
+"certos": 2,
+"acerto": 0.07407407407407407
+},
+"90–100": {
+"n": 21,
+"certos": 4,
+"acerto": 0.19047619047619047
+}
+}
+},
+"todas": {
+"porta_n": 26,
+"agiu_n": 23,
+"agiu_certos": 17,
+"modelo_proposta_certos": 1,
+"controle_certos": 5,
+"k_concordantes": 20,
+"k_min": 2,
+"notas_segunda": [
+[
+93,
+false
+],
+[
+93,
+false
+],
+[
+88,
+false
+],
+[
+90,
+false
+],
+[
+93,
+false
+],
+[
+93,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+true
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+85,
+false
+],
+[
+88,
+false
+],
+[
+88,
+false
+],
+[
+88,
+true
+],
+[
+90,
+false
+],
+[
+88,
+false
+],
+[
+90,
+false
+],
+[
+88,
+false
+],
+[
+90,
+false
+],
+[
+90,
+false
+],
+[
+88,
+false
+],
+[
+96,
+true
+],
+[
+96,
+true
+],
+[
+95,
+false
+],
+[
+93,
+false
+],
+[
+95,
+false
+],
+[
+96,
+true
+],
+[
+86,
+false
+],
+[
+82,
+false
+],
+[
+88,
+false
+],
+[
+86,
+false
+],
+[
+82,
+false
+],
+[
+86,
+false
+],
+[
+88,
+false
+],
+[
+86,
+false
+],
+[
+93,
+false
+],
+[
+93,
+false
+],
+[
+62,
+false
+],
+[
+60,
+false
+],
+[
+80,
+false
+],
+[
+80,
+false
+],
+[
+92,
+false
+],
+[
+90,
+false
+],
+[
+93,
+true
+],
+[
+93,
+false
+],
+[
+80,
+false
+]
+],
+"wilson": [
+0.5352999499700668,
+0.8745138402805502
+],
+"faixas_nota_segunda": {
+"<70": {
+"n": 2,
+"certos": 0,
+"acerto": 0.0
+},
+"70–80": {
+"n": 0,
+"certos": 0,
+"acerto": null
+},
+"80–90": {
+"n": 27,
+"certos": 2,
+"acerto": 0.07407407407407407
+},
+"90–100": {
+"n": 21,
+"certos": 4,
+"acerto": 0.19047619047619047
+}
+}
+}
+},
+"decisao": {
+"todas": {
+"religa": false,
+"porque": "agregado — só informação",
+"calibracao": {
+"n": 23,
+"certos": 17,
+"controle_n": 26,
+"controle_certos": 5,
+"modelo_proposta_certos": 1,
+"wilson_inf": 0.5353,
+"wilson_sup": 0.8745,
+"k_min": 2,
+"rodada": "b9cb83215505ccb2",
+"braco": "openai:gpt-6.1-sol:high",
+"segunda": "anthropic:claude-sonnet-5-5",
+"medido_em": ""
+}
+},
+"yelum": {
+"religa": false,
+"porque": "acerto_abaixo:17/23",
+"calibracao": {
+"n": 23,
+"certos": 17,
+"controle_n": 26,
+"controle_certos": 5,
+"modelo_proposta_certos": 1,
+"wilson_inf": 0.5353,
+"wilson_sup": 0.8745,
+"k_min": 2,
+"rodada": "b9cb83215505ccb2",
+"braco": "openai:gpt-6.1-sol:high",
+"segunda": "anthropic:claude-sonnet-5-5",
+"medido_em": ""
+}
+}
+},
+"parada": "",
+"resultados": [
+{
+"chave": "portal-yelum-causa-001",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "Brita lançada por caminhão atingiu o vidro, indicando dano acidental causado por pedra.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-001",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato informa que brita lançada por caminhão atingiu o para-brisa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-002",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 98,
+"limiar": 70,
+"motivo": "Relato indica impacto de objeto voando, compatível com dano acidental por objeto.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-002",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato indica impacto acidental de objeto voando contra o para-brisa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 90,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-003",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "A causa informada é pedrada, compatível com dano causado por pedra.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-003",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "A pedrada relatada corresponde à causa de dano acidental por pedra.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-004",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 99,
+"limiar": 70,
+"motivo": "Você encontrou o veículo danificado e não presenciou a causa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-004",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo danificado e não presenciou a causa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-005",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 98,
+"limiar": 70,
+"motivo": "O relato informa que encontrou o veículo danificado ao sair do mercado.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-005",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 98,
+"limiar": 70,
+"motivo": "Você encontrou o carro danificado; o relato não confirma tentativa de roubo ou furto.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-006",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo danificado ao voltar, sem presenciar a causa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-006",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo danificado ao voltar, sem identificar a causa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-007",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 99,
+"limiar": 70,
+"motivo": "Você encontrou o carro danificado e não presenciou a causa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-007",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo quebrado e não presenciou a causa do dano.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-008",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 98,
+"limiar": 70,
+"motivo": "Relato indica que encontrou o veículo danificado ao sair do mercado.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 85,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-008",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 98,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo danificado ao sair do mercado, sem causa presenciada.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-009",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 99,
+"limiar": 70,
+"motivo": "Você encontrou o veículo danificado ao retornar, sem presenciar a causa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-009",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "ENCONTROU O VEICULO DANIFICADO",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado voltou e encontrou o veículo danificado, sem presenciar a causa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "7 - ENCONTROU O VEICULO DANIFICADO",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-010",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "COLISÃO ACIDENTAL",
+"nota": 99,
+"limiar": 70,
+"motivo": "Relato de batida de ré em poste indica colisão acidental.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - COLISÃO ACIDENTAL",
+"nota": 90,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - COLISÃO ACIDENTAL",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-010",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "COLISÃO ACIDENTAL",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato de batida de ré contra um poste indica colisão acidental.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - COLISÃO ACIDENTAL",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - COLISÃO ACIDENTAL",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-011",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "COLISÃO ACIDENTAL",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato descreve colisão acidental com outro carro durante manobra.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - COLISÃO ACIDENTAL",
+"nota": 90,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - COLISÃO ACIDENTAL",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-011",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "COLISÃO ACIDENTAL",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato de batida em outro carro durante manobra indica colisão acidental.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - COLISÃO ACIDENTAL",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - COLISÃO ACIDENTAL",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-lataria-001",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça de lataria na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Peça danificada · Motivo do dano\nO campo que pede a resposta: Peça danificada\nAinda obrigatórios nesta tela: Peça danificada\nMotivo: o portal parou o pedido (bancada)\nOpções da lista do portal:\n1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)\n2 - PORTA TR DIRE",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato indica paralamas dianteiro do lado do motorista, correspondente ao esquerdo.",
+"proibicao": "resposta_sem_formato_ou_repetida",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)",
+"nota": 90,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "lataria"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-lataria-001",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça de lataria na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Peça danificada · Motivo do dano\nO campo que pede a resposta: Peça danificada\nAinda obrigatórios nesta tela: Peça danificada\nMotivo: o portal parou o pedido (bancada)\nOpções da lista do portal:\n1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)\n2 - PORTA TR DIRE",
+"nota": 99,
+"limiar": 70,
+"motivo": "Relato indica paralamas dianteiro do lado do motorista, correspondente ao esquerdo.",
+"proibicao": "resposta_sem_formato_ou_repetida",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)",
+"nota": 90,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "lataria"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-lataria-002",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça de lataria na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Peça danificada · Motivo do dano\nO campo que pede a resposta: Peça danificada\nAinda obrigatórios nesta tela: Peça danificada\nMotivo: o portal parou o pedido (bancada)\nOpções da lista do portal:\n1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)\n2 - PORTA TR DIRE",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica a porta dianteira do lado do motorista, correspondente à esquerda.",
+"proibicao": "resposta_sem_formato_ou_repetida",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "4 - PORTA DT ESQUERDA - RLATARIA (SEM TROCA)",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - PORTA DT ESQUERDA - RLATARIA (SEM TROCA)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "lataria"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-lataria-002",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça de lataria na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Peça danificada · Motivo do dano\nO campo que pede a resposta: Peça danificada\nAinda obrigatórios nesta tela: Peça danificada\nMotivo: o portal parou o pedido (bancada)\nOpções da lista do portal:\n1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)\n2 - PORTA TR DIRE",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica a porta dianteira do motorista, correspondente à porta dianteira esquerda.",
+"proibicao": "segunda_opiniao_discordou",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "nunca_sozinho",
+"acao": "PESSOA",
+"valor": "",
+"nota": null,
+"formato_ok": false,
+"concordou": false
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - PORTA DT ESQUERDA - RLATARIA (SEM TROCA)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "lataria"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-001",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO PARABRISA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O vidro grande da frente, diante do motorista, corresponde ao para-brisa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "1 - VIDRO PARABRISA",
+"nota": 96,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-001",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO PARABRISA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O vidro grande da frente, diante do motorista, corresponde ao parabrisa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "1 - VIDRO PARABRISA",
+"nota": 96,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-002",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO PARABRISA",
+"nota": 98,
+"limiar": 70,
+"motivo": "O relato identifica o vidro dianteiro trincado por pedrada, indicando o para-brisa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "1 - VIDRO PARABRISA",
+"nota": 95,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-002",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO PARABRISA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro dianteiro trincado, correspondente ao para-brisa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "1 - VIDRO PARABRISA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-003",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO PARABRISA",
+"nota": 99,
+"limiar": 70,
+"motivo": "Vidro da frente rachado, prejudicando a visão, indica o parabrisa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "1 - VIDRO PARABRISA",
+"nota": 95,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-003",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO PARABRISA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica vidro da frente rachado, prejudicando a visão: parabrisa.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "1 - VIDRO PARABRISA",
+"nota": 96,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-004",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO DE PORTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro que sobe e desce na porta traseira.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 86,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-004",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO DE PORTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro móvel da porta traseira do lado do motorista.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 82,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-005",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO DE PORTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica explicitamente o vidro da porta do passageiro como danificado.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-005",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO DE PORTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica expressamente o vidro da porta do passageiro como danificado.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 86,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-006",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO DE PORTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro móvel da porta traseira do lado do motorista.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 82,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-006",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO DE PORTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "Relato identifica o vidro da porta traseira que sobe e desce.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 86,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-007",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO DE PORTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica explicitamente o vidro da porta do passageiro.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 88,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-007",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "VIDRO DE PORTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica expressamente o vidro da porta do passageiro.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 86,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-001",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "EM FRENTE AO CARONA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato situa a trinca em frente ao passageiro ao lado do motorista.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - EM FRENTE AO CARONA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - EM FRENTE AO CARONA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-001",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "EM FRENTE AO CARONA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato localiza a trinca em frente ao passageiro ao lado do motorista.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - EM FRENTE AO CARONA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - EM FRENTE AO CARONA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-002",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "SR.(A), PODERIA INFORMAR A POSICAO DO TRINCADO ?",
+"nota": 93,
+"limiar": 70,
+"motivo": "O relato situa o trincado no canto do para-brisa, correspondente às bordas.",
+"proibicao": "segunda_opiniao_discordou",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - EM FRENTE AO CARONA",
+"nota": 62,
+"formato_ok": true,
+"concordou": false
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "3 - NAS BORDAS",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-002",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "SR.(A), PODERIA INFORMAR A POSICAO DO TRINCADO ?",
+"nota": 94,
+"limiar": 70,
+"motivo": "O relato situa a rachadura no canto do para-brisa, correspondente às bordas.",
+"proibicao": "segunda_opiniao_discordou",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - EM FRENTE AO CARONA",
+"nota": 60,
+"formato_ok": true,
+"concordou": false
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "3 - NAS BORDAS",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-003",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "MENOR (POSSIBILIDADE DE REPARO)",
+"nota": 85,
+"limiar": 70,
+"motivo": "Furinho com rachaduras curtinhas sugere trincado menor que 10 cm.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - MENOR (POSSIBILIDADE DE REPARO)",
+"nota": 80,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - MENOR (POSSIBILIDADE DE REPARO)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-003",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "MENOR (POSSIBILIDADE DE REPARO)",
+"nota": 88,
+"limiar": 70,
+"motivo": "Furinho com rachaduras curtinhas sugere trincado menor que 10 cm.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - MENOR (POSSIBILIDADE DE REPARO)",
+"nota": 80,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - MENOR (POSSIBILIDADE DE REPARO)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-004",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "perguntar_ao_segurado",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O VEICULO POSSUI SENSOR DE DIREÇÃO/MUDANÇA DE FAIXA?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O caso não informa se o veículo possui esse sensor.",
+"proibicao": "o_modelo_quis_perguntar",
+"segunda_opiniao": null,
+"acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+"valor_do_modelo": "Você sabe se seu veículo possui sensor de direção/mudança de faixa?",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": false,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-004",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "perguntar_ao_segurado",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O VEICULO POSSUI SENSOR DE DIREÇÃO/MUDANÇA DE FAIXA?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O caso não informa se o veículo possui esse sensor.",
+"proibicao": "o_modelo_quis_perguntar",
+"segunda_opiniao": null,
+"acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+"valor_do_modelo": "Você sabe se o seu veículo possui sensor de direção ou mudança de faixa?",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": false,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-005",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "LADO DO MOTORISTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado disse que o dano foi do seu lado e que dirige.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "3 - LADO DO MOTORISTA",
+"nota": 92,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "3 - LADO DO MOTORISTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-005",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "LADO DO MOTORISTA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado disse que o dano foi do seu lado e que dirige.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "LADO DO MOTORISTA",
+"nota": 90,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "3 - LADO DO MOTORISTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-006",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DIANTEIRA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado identificou a porta do motorista, que é dianteira.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DIANTEIRA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "DIANTEIRA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-006",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DIANTEIRA",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica a porta do motorista, que é dianteira.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "DIANTEIRA",
+"nota": 93,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - DIANTEIRA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-007",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "perguntar_ao_segurado",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "QUAL O LADO DO ITEM DANIFICADO?",
+"nota": 97,
+"limiar": 70,
+"motivo": "O relato não esclarece se a esposa estava no lado do motorista ou carona.",
+"proibicao": "o_modelo_quis_perguntar",
+"segunda_opiniao": null,
+"acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+"valor_do_modelo": "Você está se referindo ao lado do carona ou do motorista?",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": false,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-007",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "LADO DO CARONA",
+"nota": 90,
+"limiar": 70,
+"motivo": "O relato sugere o lado do carona, onde a esposa senta.",
+"proibicao": "",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "LADO DO CARONA",
+"nota": 80,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - LADO DO CARONA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+}
+]
+}
+}
+}

@@ -1,0 +1,2334 @@
+{
+"papel": "destravador",
+"corpus_sha": "b9cb83215505ccb2",
+"k": 2,
+"bracos": {
+"openai:gpt-6.1-sol:high": {
+"resumo": {
+"yelum": {
+"porta_n": 26,
+"agiu_n": 0,
+"agiu_certos": 0,
+"modelo_proposta_certos": 1,
+"controle_certos": 5,
+"k_concordantes": 21,
+"k_min": 2,
+"notas_segunda": [
+[
+90,
+true
+],
+[
+90,
+true
+],
+[
+96,
+true
+],
+[
+96,
+true
+],
+[
+88,
+true
+],
+[
+90,
+true
+]
+],
+"wilson": [
+0.0,
+1.0
+],
+"faixas_nota_segunda": {
+"<70": {
+"n": 0,
+"certos": 0,
+"acerto": null
+},
+"70–80": {
+"n": 0,
+"certos": 0,
+"acerto": null
+},
+"80–90": {
+"n": 1,
+"certos": 1,
+"acerto": 1.0
+},
+"90–100": {
+"n": 5,
+"certos": 5,
+"acerto": 1.0
+}
+}
+},
+"todas": {
+"porta_n": 26,
+"agiu_n": 0,
+"agiu_certos": 0,
+"modelo_proposta_certos": 1,
+"controle_certos": 5,
+"k_concordantes": 21,
+"k_min": 2,
+"notas_segunda": [
+[
+90,
+true
+],
+[
+90,
+true
+],
+[
+96,
+true
+],
+[
+96,
+true
+],
+[
+88,
+true
+],
+[
+90,
+true
+]
+],
+"wilson": [
+0.0,
+1.0
+],
+"faixas_nota_segunda": {
+"<70": {
+"n": 0,
+"certos": 0,
+"acerto": null
+},
+"70–80": {
+"n": 0,
+"certos": 0,
+"acerto": null
+},
+"80–90": {
+"n": 1,
+"certos": 1,
+"acerto": 1.0
+},
+"90–100": {
+"n": 5,
+"certos": 5,
+"acerto": 1.0
+}
+}
+}
+},
+"decisao": {
+"todas": {
+"religa": false,
+"porque": "agregado — só informação",
+"calibracao": {
+"n": 0,
+"certos": 0,
+"controle_n": 26,
+"controle_certos": 5,
+"modelo_proposta_certos": 1,
+"wilson_inf": 0.0,
+"wilson_sup": 1.0,
+"k_min": 2,
+"rodada": "b9cb83215505ccb2",
+"braco": "openai:gpt-6.1-sol:high",
+"segunda": "anthropic:claude-sonnet-5-5",
+"medido_em": ""
+}
+},
+"yelum": {
+"religa": false,
+"porque": "n_pequeno:0<10",
+"calibracao": {
+"n": 0,
+"certos": 0,
+"controle_n": 26,
+"controle_certos": 5,
+"modelo_proposta_certos": 1,
+"wilson_inf": 0.0,
+"wilson_sup": 1.0,
+"k_min": 2,
+"rodada": "b9cb83215505ccb2",
+"braco": "openai:gpt-6.1-sol:high",
+"segunda": "anthropic:claude-sonnet-5-5",
+"medido_em": ""
+}
+}
+},
+"parada": "",
+"resultados": [
+{
+"chave": "portal-yelum-causa-001",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato descreve brita lançada por caminhão, causando dano acidental por pedra.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-001",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato informa que brita lançada por caminhão atingiu o vidro.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-002",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato indica impacto acidental de objeto voando contra o para-brisa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-002",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "Relato indica impacto de objeto voando, compatível com dano acidental por objeto.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-003",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 98,
+"limiar": 70,
+"motivo": "A pedrada de outro carro corresponde a dano acidental causado por pedra.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-003",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "A pedrada relatada corresponde à opção de dano acidental causado por pedra.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - DANO ACIDENTAL CAUSADO POR PEDRA, OBJETO OU FRUTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-004",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "Você encontrou o veículo danificado ao retornar, sem presenciar a causa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-004",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "Você encontrou o veículo quebrado ao voltar, sem presenciar a causa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-005",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 98,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo danificado ao sair do mercado, sem presenciar a causa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-005",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 98,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo danificado ao sair do mercado, sem causa identificada.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-006",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado voltou e encontrou o veículo danificado, sem presenciar a causa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-006",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo danificado ao retornar, sem identificar a causa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-007",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado encontrou o veículo quebrado e não presenciou a causa do dano.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-007",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "Você encontrou o veículo quebrado ao retornar, sem presenciar a causa do dano.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-008",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 97,
+"limiar": 70,
+"motivo": "Segurado encontrou o veículo danificado ao sair do mercado; não há causa confirmada.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-008",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 97,
+"limiar": 70,
+"motivo": "Encontrou o carro danificado ao sair do mercado; não há evidência de tentativa de furto.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-009",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado voltou após duas horas e encontrou o veículo danificado.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-009",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "Você encontrou o veículo danificado ao retornar, sem presenciar a causa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "7 - ENCONTROU O VEICULO DANIFICADO",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-010",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato de bater de ré num poste indica colisão acidental.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - COLISÃO ACIDENTAL",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-010",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato descreve colisão ao dar ré em um poste.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - COLISÃO ACIDENTAL",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-011",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato de encostar em outro carro manobrando indica colisão acidental.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - COLISÃO ACIDENTAL",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-causa-011",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a causa do dano na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Como ocorreu o dano ao veículo?\nAinda obrigatórios nesta tela: Como ocorreu o dano ao veíc",
+"nota": 99,
+"limiar": 70,
+"motivo": "Batida em outro carro ao manobrar indica colisão acidental.",
+"proibicao": "segunda_opiniao_discordou",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - COLISÃO ACIDENTAL",
+"nota": 90,
+"formato_ok": true,
+"concordou": false
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "COLISÃO ACIDENTAL",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "causa"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-lataria-001",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça de lataria na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Peça danificada · Motivo do dano\nO campo que pede a resposta: Peça danificada\nAinda obrigatórios nesta tela: Peça danificada\nMotivo: o portal parou o pedido (bancada)\nOpções da lista do portal:\n1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)\n2 - PORTA TR DIRE",
+"nota": 99,
+"limiar": 70,
+"motivo": "Relato indica paralamas dianteiro do lado do motorista, correspondente ao esquerdo.",
+"proibicao": "resposta_sem_formato_ou_repetida",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)",
+"nota": 90,
+"formato_ok": true,
+"concordou": true
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "lataria"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-lataria-001",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça de lataria na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Peça danificada · Motivo do dano\nO campo que pede a resposta: Peça danificada\nAinda obrigatórios nesta tela: Peça danificada\nMotivo: o portal parou o pedido (bancada)\nOpções da lista do portal:\n1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)\n2 - PORTA TR DIRE",
+"nota": 99,
+"limiar": 70,
+"motivo": "Relato indica paralamas dianteiro do lado do motorista, correspondente ao esquerdo.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "lataria"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-lataria-002",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça de lataria na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Peça danificada · Motivo do dano\nO campo que pede a resposta: Peça danificada\nAinda obrigatórios nesta tela: Peça danificada\nMotivo: o portal parou o pedido (bancada)\nOpções da lista do portal:\n1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)\n2 - PORTA TR DIRE",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato indica a porta dianteira do lado do motorista, correspondente à esquerda.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - PORTA DT ESQUERDA - RLATARIA (SEM TROCA)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "lataria"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-lataria-002",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça de lataria na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Peça danificada · Motivo do dano\nO campo que pede a resposta: Peça danificada\nAinda obrigatórios nesta tela: Peça danificada\nMotivo: o portal parou o pedido (bancada)\nOpções da lista do portal:\n1 - PARALAMAS DT ESQUERDO - RLATARIA (SEM TROCA)\n2 - PORTA TR DIRE",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato indica a porta dianteira do lado do motorista, correspondente à esquerda.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "4 - PORTA DT ESQUERDA - RLATARIA (SEM TROCA)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "lataria"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-001",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O vidro grande dianteiro, à frente do motorista, corresponde ao parabrisa.",
+"proibicao": "segunda_opiniao_discordou",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "1 - VIDRO PARABRISA",
+"nota": 96,
+"formato_ok": true,
+"concordou": false
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-001",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro grande dianteiro, à frente do motorista, como o para-brisa.",
+"proibicao": "segunda_opiniao_discordou",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "1 - VIDRO PARABRISA",
+"nota": 96,
+"formato_ok": true,
+"concordou": false
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-002",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro dianteiro, correspondente ao para-brisa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-002",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro dianteiro trincado, correspondente ao para-brisa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-003",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "Vidro da frente rachado e visibilidade prejudicada indicam o parabrisa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-003",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "Relato de vidro da frente rachado prejudicando a visão indica o parabrisa.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - VIDRO PARABRISA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-004",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado descreve o vidro móvel da porta traseira do lado do motorista.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-004",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro móvel da porta traseira do lado do motorista.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-005",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica explicitamente o vidro da porta do passageiro.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-005",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica explicitamente o vidro da porta do passageiro.",
+"proibicao": "segunda_opiniao_discordou",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 88,
+"formato_ok": true,
+"concordou": false
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-006",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica o vidro móvel da porta traseira do lado do motorista.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-006",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "Você descreveu o vidro da porta traseira que sobe e desce.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-007",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica explicitamente o vidro da porta do passageiro.",
+"proibicao": "segunda_opiniao_discordou",
+"segunda_opiniao": {
+"provedor": "anthropic",
+"modelo": "claude-sonnet-5-5",
+"classe": "deduzir",
+"acao": "RESPONDER",
+"valor": "2 - VIDRO DE PORTA",
+"nota": 90,
+"formato_ok": true,
+"concordou": false
+},
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-peca-007",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O portal de vidros parou o pedido: falta escolher a peça certa na lista do portal.\nTela do portal: Dados da apólice\nCampos desta tela: Qual foi a peça danificada? · Como ocorreu o dano ao veículo? · Onde ocorreu o dano ao veículo? · Descreva como aconteceu (mín. 30 caracteres)\nO campo que pede a resposta: Qual foi a peça danificada?\nAinda obrigatórios nesta tela: Qual foi a peça danificada?\nMotivo",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica explicitamente o vidro da porta do passageiro como a peça danificada.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - VIDRO DE PORTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "peca"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-001",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "SR.(A), PODERIA INFORMAR A POSICAO DO TRINCADO ?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato localiza a trinca em frente ao passageiro, ao lado do motorista.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - EM FRENTE AO CARONA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-001",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "SR.(A), PODERIA INFORMAR A POSICAO DO TRINCADO ?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato localiza a trinca à frente do passageiro ao lado do motorista.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - EM FRENTE AO CARONA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-002",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "SR.(A), PODERIA INFORMAR A POSICAO DO TRINCADO ?",
+"nota": 92,
+"limiar": 70,
+"motivo": "O relato localiza o trincado no canto do para-brisa, correspondente às bordas.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "3 - NAS BORDAS",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-002",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "SR.(A), PODERIA INFORMAR A POSICAO DO TRINCADO ?",
+"nota": 90,
+"limiar": 70,
+"motivo": "O trincado está no canto do vidro, do lado do carona, indicando as bordas.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "3 - NAS BORDAS",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-003",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O TRINCADO ESTÁ MAIOR OU MENOR QUE 10 CM?",
+"nota": 85,
+"limiar": 70,
+"motivo": "Furinho com rachaduras curtinhas sugere trincado menor que 10 cm.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - MENOR (POSSIBILIDADE DE REPARO)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-003",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O TRINCADO ESTÁ MAIOR OU MENOR QUE 10 CM?",
+"nota": 90,
+"limiar": 70,
+"motivo": "Furinho com rachaduras curtinhas indica dano menor que 10 cm.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - MENOR (POSSIBILIDADE DE REPARO)",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-004",
+"tentativa": 1,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "perguntar_ao_segurado",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O VEICULO POSSUI SENSOR DE DIREÇÃO/MUDANÇA DE FAIXA?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O caso não informa se o veículo possui esse sensor.",
+"proibicao": "o_modelo_quis_perguntar",
+"segunda_opiniao": null,
+"acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+"valor_do_modelo": "Você sabe se seu veículo possui sensor de direção ou de mudança de faixa?",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": false,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-004",
+"tentativa": 2,
+"resultado": "CERTO",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "perguntar_ao_segurado",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O VEICULO POSSUI SENSOR DE DIREÇÃO/MUDANÇA DE FAIXA?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O caso não informa se o veículo possui esse sensor.",
+"proibicao": "o_modelo_quis_perguntar",
+"segunda_opiniao": null,
+"acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+"valor_do_modelo": "Você sabe se o seu veículo possui sensor de direção ou de mudança de faixa?",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": false,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "CERTO",
+"proposta_certa": true
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-005",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "QUAL O LADO DO ITEM DANIFICADO?",
+"nota": 98,
+"limiar": 70,
+"motivo": "O segurado afirma que dirige e que o dano ocorreu do seu lado.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "3 - LADO DO MOTORISTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-005",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "QUAL O LADO DO ITEM DANIFICADO?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O segurado disse que foi do seu lado e que ele dirige.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "3 - LADO DO MOTORISTA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-006",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O VIDRO DANIFICADO É DA PORTA DIANTEIRA OU TRASEIRA?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica a porta do motorista, que é dianteira.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - DIANTEIRA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-006",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "O VIDRO DANIFICADO É DA PORTA DIANTEIRA OU TRASEIRA?",
+"nota": 99,
+"limiar": 70,
+"motivo": "O relato identifica a porta do motorista, que é dianteira.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "1 - DIANTEIRA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": true,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-007",
+"tentativa": 1,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "perguntar_ao_segurado",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "QUAL O LADO DO ITEM DANIFICADO?",
+"nota": 97,
+"limiar": 70,
+"motivo": "O relato não confirma se sua esposa estava no lado do carona ou motorista.",
+"proibicao": "o_modelo_quis_perguntar",
+"segunda_opiniao": null,
+"acao_do_modelo": "PERGUNTAR_AO_SEGURADO",
+"valor_do_modelo": "Você pode confirmar se o vidro danificado é do lado do carona ou do motorista?",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": false,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+},
+{
+"chave": "portal-yelum-questionario-007",
+"tentativa": 2,
+"resultado": "NAO_AGIU",
+"rastro": {
+"estado": {
+"decisao": {
+"classe": "deduzir",
+"acao": "PERGUNTAR_AO_SEGURADO",
+"valor": "QUAL O LADO DO ITEM DANIFICADO?",
+"nota": 90,
+"limiar": 70,
+"motivo": "A referência ao lugar onde a esposa senta indica o lado do carona.",
+"proibicao": "valor_fora_das_opcoes",
+"segunda_opiniao": null,
+"acao_do_modelo": "RESPONDER",
+"valor_do_modelo": "2 - LADO DO CARONA",
+"formato_ok": true,
+"modelo": "gpt-6.1-sol",
+"provedor": "openai",
+"modelo_chamado": true,
+"porta_do_deduzir": true,
+"deduzir_calibrado": true,
+"custo_usd": 0.0
+},
+"veredito_destravador": {
+"classe": "NAO_AGIU",
+"proposta_certa": false
+},
+"diario": [],
+"calibracao": {
+"seguradora": "yelum",
+"controle_tecla_1": false,
+"porta_esperada": null,
+"tipo": "questionario"
+}
+}
+}
+}
+]
+}
+}
+}
