@@ -482,7 +482,9 @@ class SmithWorker:
                 "cancelled_at": _agora_iso(), "finished_at": _agora_iso(),
                 "lease_owner": None, "lease_token": None, "lease_expires_at": None,
             }, de=("running", "cancelling", "planning"), lease_token=lease_token,
-                    company_id=company_id):
+                    company_id=company_id, perda_esperada=True):
+                # perda_esperada (SPEC-129-A F5): o handler pode ter FECHADO o próprio run
+                # (`falhar` aceita `cancelling`) e devolvido ESPERANDO — perder aqui não é corrida.
                 self.runs.evento(company_id, run_id, "run.cancelled",
                                  "Trabalho cancelado. Etapas já concluídas foram preservadas.")
             return
