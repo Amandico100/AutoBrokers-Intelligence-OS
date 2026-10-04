@@ -461,3 +461,43 @@ def test_o_caminho_sem_fila_continua_fechando_o_proprio_run(mundo):
     outro = _semear(mundo, status="running", runtime_kind="portal", workflow_key="portal.vidros")
     svc.concluir(outro, Y, "x")
     assert _run(mundo, outro)["status"] == "running", "fechou o run de OUTRA corretora"
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# F5 (costura) — o handler fecha o PRÓPRIO run (F2) e o worker (F1) não escreve por cima nem mente
+# ═════════════════════════════════════════════════════════════════════════════
+def test_costura_handler_fecha_o_proprio_run_sem_cas_perdido_falso(mundo):
+    """`_falhar_pela_espera` (F2) fecha o run com o token e devolve ESPERANDO; com um cancelamento
+    pedido no meio, o ramo de cancelar do worker perdia o CAS e gravava `run.cas_perdido` na linha
+    do tempo — que é a tela do corretor (`api/work_runs.py`, sem filtro de severidade)."""
+    async def cancela_e_falha(ctx):
+        R.WorkRunService(ctx["db"]).solicitar_cancelamento(ctx["run_id"], ctx["company_id"], "op")
+        return W._falhar_pela_espera(ctx, W.ESPERA_PORTAL, "op")
+
+    w, rid = _processar(mundo, "teste.129a.cancela_e_falha", cancela_e_falha)
+    assert _run(mundo, rid)["status"] == "failed" and w.runs.concluir_chamado == 0
+    assert len(_eventos(mundo, rid, "run.failed")) == 1
+    assert not _eventos(mundo, rid, "run.cas_perdido"), "cas_perdido falso na tela do corretor"
+    _auditar(mundo)
+
+
+def test_costura_cancelar_rodando_nao_grava_cas_perdido(mundo):
+    rid = _semear(mundo)
+    svc = _svc(mundo)
+    svc.adquirir_lease(rid, "A", company_id=X)
+    assert _svc(mundo, "api").solicitar_cancelamento(rid, X, "op") == "cancelling"
+    assert not _eventos(mundo, rid, "run.cas_perdido"), "cancelar um run rodando gravou cas_perdido"
+    assert len(_eventos(mundo, rid, "run.cancel_requested")) == 1
+
+
+def test_costura_CONTROLE_a_corrida_de_verdade_continua_registrada(mundo):
+    """Sem esta linha, os dois de cima passariam com um `_transicionar` que nunca registra perda."""
+    async def cancela_e_dorme(ctx):
+        R.WorkRunService(ctx["db"]).solicitar_cancelamento(ctx["run_id"], ctx["company_id"], "op")
+        return ctx["runs"].dormir(ctx["run_id"], lease_token=ctx["lease_token"], acordar_em_s=60,
+                                  wait_for={"tipo": "t", "ref": "1"}, company_id=ctx["company_id"])
+
+    _w, rid = _processar(mundo, "teste.129a.cancela_e_dorme", cancela_e_dorme)
+    assert _run(mundo, rid)["status"] == "cancelled"
+    assert len(_eventos(mundo, rid, "run.cas_perdido")) >= 1   # o dormir perdeu para o cancelamento
+    assert len(_eventos(mundo, rid, "run.cancelled")) == 1
