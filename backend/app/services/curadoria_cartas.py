@@ -46,9 +46,11 @@ igualdade com uma carta de vistoria que por acaso menciona pagamento.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import time
 import unicodedata
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +191,184 @@ def veredito_de_pii(texto: str, *,
     achados = sorted({p for p in depois
                       if depois.count(p) > antes.count(p) and p in PII_QUE_REJEITA})
     return mascarado, achados
+
+
+# ------------------------------------------------------------------ #
+# 🔴 O PORTEIRO DO CONHECIMENTO GLOBAL — P-E0018-14 · D-MC-39 (04/10/2026)
+# ------------------------------------------------------------------ #
+# `conduct_playbooks` é GLOBAL e continua global ("O Atlas é UM SÓ, e é de
+# todas" — D-MC-39: ⛔ nunca `company_id` nela). Mas o que entra nela nasce das
+# conversas de UMA corretora: o destilador e o lapidador escrevem por um funil
+# só, `attendance_distiller._save_playbook_draft_sync`. Antes deste porteiro o
+# `content` que o modelo devolvia ia para o insert como veio.
+#
+# ⛔ NÃO É UM TERCEIRO MASCARADOR (CLAUDE.md §5). Ele COMPÕE os que existem:
+#   1. limpa      `veredito_de_pii` — o `templatize` em modo prosa, a MESMA régua
+#                 das cartas; as marcas de corretora vêm de `companies` por
+#                 `templater.marcas_de_corretora` (nunca de constante, §13.9);
+#   2. confere    o que SOBROU, por três caminhos independentes:
+#                   a. o mesmo mascarador de novo — se ele ainda acha CPF, placa,
+#                      telefone, e-mail, corretora ou {NOME}, a limpeza falhou;
+#                   b. a SEGUNDA REDE, `intelligence.redaction_service`, só os
+#                      identificadores de forma (CPF, CNPJ, placa, e-mail,
+#                      telefone, cartão) — outro motor, outro dialeto de regex;
+#                   c. o nome da corretora lido do banco, sem acento e sem caixa;
+#   3. se sobrou QUALQUER coisa, ou se a lista de corretoras não pôde ser lida,
+#      quem chama NÃO GRAVA. Falha fechada: o grupo volta na rodada seguinte.
+#
+# ⚠️ A cache das marcas é CURTA (5 min) só aqui: `templatize` roda por mensagem e
+# guarda a lista para sempre; o porteiro força a releitura quando ela venceu,
+# para que uma corretora nova não atravesse o global até o próximo deploy.
+_MARCAS_VALEM_S = 300.0
+_marcas_lidas_em: Optional[float] = None
+
+#: As marcas de `redaction_service.PADROES_PII` que são IDENTIFICADOR de forma.
+#: ⚠️ Fora de propósito: `apólice …`/`sinistro …` casam prosa ("sinistro deve
+#: ser") e `[DOCUMENTO]`/`[CEP]` já são cobertos pelo `templatize`. Uma rede que
+#: reprova o próprio vocabulário do serviço comeria todo playbook.
+_SEGUNDA_REDE = frozenset({"[CPF]", "[CNPJ]", "[PLACA]", "[EMAIL]",
+                           "[TELEFONE]", "[CARTAO]"})
+
+#: O que o mascarador, rodando de NOVO sobre o texto já limpo, não pode achar.
+_RESIDUO_DO_MASCARADOR = PII_QUE_REJEITA | {"{NOME}"}
+
+
+def marcas_de_corretora_frescas() -> Tuple[str, ...]:
+    """As marcas das corretoras, lidas de `companies`, com validade de 5 min.
+
+    Vazia quando o banco não respondeu — e o porteiro trata vazia como FALHA
+    (nenhuma instalação com conversa para destilar tem zero corretoras).
+    Vazia também não marca a hora: a próxima chamada tenta ler de novo.
+    """
+    global _marcas_lidas_em
+    from app.services.atlas.templater import marcas_de_corretora
+
+    agora = time.monotonic()
+    vencida = (_marcas_lidas_em is None
+               or (agora - _marcas_lidas_em) >= _MARCAS_VALEM_S)
+    marcas = tuple(marcas_de_corretora(recarregar=vencida) or ())
+    if vencida and marcas:
+        _marcas_lidas_em = agora
+    return marcas
+
+
+def _padroes_da_segunda_rede() -> List[Tuple[re.Pattern, str]]:
+    """Os padrões de identificador da redação canônica. Levanta se não carregar.
+
+    Mesmo arranjo de `auxiliaries.factory._modulo_de_redacao`: tenta o import
+    normal e, sem o pacote montado (teste isolado, script), carrega o arquivo
+    pelo caminho. A LISTA é a de lá — aqui só se escolhe quais marcas valem.
+    """
+    import importlib
+    import importlib.util
+    import sys
+
+    nome = "app.services.intelligence.redaction_service"
+    modulo = sys.modules.get(nome)
+    if modulo is None:
+        try:
+            modulo = importlib.import_module(nome)
+        except Exception:  # noqa: BLE001 — carga isolada por caminho
+            caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "intelligence", "redaction_service.py")
+            spec = importlib.util.spec_from_file_location(nome, caminho)
+            modulo = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(modulo)
+            sys.modules[nome] = modulo
+    padroes = [(p, m) for p, m in modulo.PADROES_PII if m in _SEGUNDA_REDE]
+    if not padroes:
+        raise RuntimeError("segunda rede sem padroes")
+    return padroes
+
+
+def _vazamentos_no_texto(texto: str, marcas: Tuple[str, ...],
+                         rede: List[Tuple[re.Pattern, str]]) -> set:
+    """Os TIPOS de vazamento que sobraram em `texto`. Nunca o trecho."""
+    achou: set = set()
+    if not texto:
+        return achou
+    # a. o mesmo mascarador, de novo.
+    remascarado, _ = veredito_de_pii(texto)
+    antes = _PLACEHOLDER.findall(texto)
+    depois = _PLACEHOLDER.findall(remascarado)
+    achou.update(p for p in set(depois)
+                 if p in _RESIDUO_DO_MASCARADOR and depois.count(p) > antes.count(p))
+    # b. a segunda rede.
+    for padrao, marca in rede:
+        if padrao.search(texto):
+            achou.add(marca)
+    # c. a corretora, pelo nome que o banco dá — sem acento e sem caixa, porque
+    #    o `templatize` troca só a grafia exata.
+    alvo = _sem_acento(texto).lower()
+    for marca in marcas:
+        forma = _sem_acento(marca).lower().strip()
+        if forma and re.search(rf"\b{re.escape(forma)}\b", alvo):
+            achou.add("corretora")
+            break
+    return achou
+
+
+def _textos_de(obj: Any) -> Iterable[str]:
+    """Todo texto de um JSON: valores, CHAVES e números (telefone vira int)."""
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            yield str(k)
+            yield from _textos_de(v)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            yield from _textos_de(v)
+    elif isinstance(obj, (int, float)) and not isinstance(obj, bool):
+        yield str(obj)
+
+
+def anonimizar_para_o_global(conteudo: Any, *, tambem_conferir: Iterable[str] = ()
+                             ) -> Tuple[Any, Dict[str, int], List[str]]:
+    """(conteúdo a GRAVAR, o que foi mascarado por marca, o que SOBROU).
+
+    Lista de sobras não vazia = NÃO GRAVE. Ela traz só TIPOS (`{CPF}`,
+    `[TELEFONE]`, `corretora`, …), nunca o dado — pode ir para o log.
+    `tambem_conferir` são textos que vão para a linha sem serem mascarados
+    (as chaves `ramo`/`servico` do playbook): só se conferem, e a sobra deles
+    vem com o prefixo `chave:` para quem chama não os escrever no log.
+    """
+    try:
+        marcas = marcas_de_corretora_frescas()
+        mascarados: Dict[str, int] = {}
+
+        def _limpar(v: Any) -> Any:
+            if isinstance(v, str):
+                limpo, _ = veredito_de_pii(v)
+                antes = _PLACEHOLDER.findall(v)
+                for p in _PLACEHOLDER.findall(limpo):
+                    if p not in antes:
+                        mascarados[p] = mascarados.get(p, 0) + 1
+                return limpo
+            if isinstance(v, dict):
+                return {k: _limpar(x) for k, x in v.items()}
+            if isinstance(v, (list, tuple)):
+                return [_limpar(x) for x in v]
+            return v
+
+        limpo = _limpar(conteudo)
+        sobras: set = set()
+        if not marcas:
+            sobras.add("lista_de_corretoras_indisponivel")
+        try:
+            rede = _padroes_da_segunda_rede()
+        except Exception:  # noqa: BLE001
+            rede = []
+            sobras.add("segunda_rede_indisponivel")
+        for texto in _textos_de(limpo):
+            sobras |= _vazamentos_no_texto(texto, marcas, rede)
+        for texto in tambem_conferir:
+            sobras |= {f"chave:{t}" for t in _vazamentos_no_texto(str(texto or ""),
+                                                                   marcas, rede)}
+        return limpo, mascarados, sorted(sobras)
+    except Exception as e:  # noqa: BLE001
+        # ⛔ Porteiro que quebra não abre a porta.
+        return None, {}, [f"porteiro_falhou:{type(e).__name__}"]
 
 _VAZIAS = {
     "as", "os", "das", "dos", "ele", "ela", "com", "sem", "que", "ser", "sao",
