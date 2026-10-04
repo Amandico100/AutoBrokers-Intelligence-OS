@@ -30,17 +30,58 @@ VALIDADE_PADRAO_DIAS = 30
 VALIDADE_MAXIMA_DIAS = 180
 
 
+_ENDERECO_LOCAL = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
+
+
+def _origem_publica(valor: str) -> str:
+    """A ORIGEM (`https://host[:porta]`) de `valor`, ou "" se não serve ao cliente.
+
+    A mesma régua do irmão TS `lib/public-url.ts`: só http/https, nunca
+    localhost/127.0.0.1, sem espaço nem barra no fim — e um pouco mais, porque o
+    link sai para o WhatsApp do SEGURADO (red team de 04/10): hostname sem ponto
+    é nome INTERNO de serviço (`http://smith-web:3000`), e caminho/query
+    (`/dashboard`, `?x=1`) não fazem parte da origem.
+    """
+    from urllib.parse import urlsplit
+
+    bruto = str(valor or "").strip().strip("\"'").strip()
+    if not bruto:
+        return ""
+    try:
+        partes = urlsplit(bruto)
+        host = (partes.hostname or "").lower()
+        _ = partes.port                      # porta inválida levanta aqui
+    except ValueError:
+        return ""
+    if partes.scheme.lower() not in ("http", "https") or not host:
+        return ""
+    if host in _ENDERECO_LOCAL or "." not in host:
+        return ""
+    return f"{partes.scheme.lower()}://{partes.netloc.lower()}".rstrip("/")
+
+
 def base_publica_do_app() -> str:
     """O endereço público do painel, de onde sai o link `/r/<token>` que o cliente abre.
 
-    🔴 UM LUGAR SÓ. 📊 04/10/2026: o `smith-api` de produção NÃO tem `PUBLIC_APP_URL` nem
-    `NEXT_PUBLIC_APP_URL` — só `SMITH_WEB_URL` e `FRONTEND_URL`. Quem lia só as duas primeiras
-    devolvia link vazio ("link criado", sem link). A ordem respeita quem já configurou a pública.
+    🔴 UM LUGAR SÓ — para o link `/r/` (a rota de compartilhar e o `report_tool`).
+    📊 04/10/2026: o `smith-api` de produção NÃO tem `PUBLIC_APP_URL` nem
+    `NEXT_PUBLIC_APP_URL` — só `SMITH_WEB_URL` e `FRONTEND_URL`. Quem lia só as duas
+    primeiras devolvia link vazio ("link criado", sem link). A ordem respeita quem já
+    configurou a pública. Cada variável pode ser uma LISTA com vírgula: vale a 1ª
+    entrada válida (`_origem_publica`); uma variável sem nenhuma válida passa a vez
+    à seguinte. Nenhuma válida → "" (a resposta diz "link criado", sem link).
+
+    ⚠️ PENDÊNCIA (não alterados aqui, juiz de 04/10 A8): três leitores ainda
+    montam o endereço por conta própria, com outra ordem, e podem sair com outro
+    domínio se `SMITH_WEB_URL ≠ FRONTEND_URL` em produção —
+    `agents/tools/relatorios_comerciais.py:447` (FRONTEND_URL primeiro),
+    `agents/tools/human_handoff.py:918` e `workers/billing_core.py:344`.
     """
     for nome in ("PUBLIC_APP_URL", "NEXT_PUBLIC_APP_URL", "SMITH_WEB_URL", "FRONTEND_URL"):
-        valor = (os.getenv(nome) or "").strip().rstrip("/")
-        if valor:
-            return valor
+        for candidato in (os.getenv(nome) or "").split(","):
+            origem = _origem_publica(candidato)
+            if origem:
+                return origem
     return ""
 
 #: 🔴 SPEC-095 · B.3. A variável que faz o canário de SPEC se declarar. Mora
