@@ -167,7 +167,7 @@ errada (E19). Clientes de teste: só as apólices de `docs/intake/MULTICALCULO A
 365 dias — medir alavanca lá daria número de uma configuração que ninguém usa. A Resulta fica com o seguro novo (E3) e a comparação
 do mesmo perfil nas duas contas (E8). Nota: AutoFleet 88 × só Resulta 60. Os negócios de teste aparecem na lista da AutoFleet: o
 relatório os lista para o Founder decidir apagar (pedido dele, 04/10). Login, sessão: o modal de sessão única nunca apareceu
-(📊 4 logins, 04/10 17:16–19:40).
+(📊 4 logins, 04/10 17:16–17:45, `sessao.abrir` no navegador vivo).
 🔴 **O CAPTADOR** (scratchpad, revisto por agente fresco antes do 1º cálculo) impõe as regras por máquina, não por disciplina:
 `context.route` + `context.on("response")` em TODA aba (a E7 abre 2) que (1) conta e **aborta o 26º** `calcularV2`; (2) **bloqueia**
 todo `DELETE` e toda rota com `exclu|delet|remov|arquiv` (E17 é só observado); (3) **recusa** `calcularV2`/salvar cujo id de negócio
