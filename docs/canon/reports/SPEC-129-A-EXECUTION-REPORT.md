@@ -97,7 +97,7 @@ verba de API do PRODUTO (US$ 4,00): US$ 0,00 gasto
 achados por mecanismo: revisor cego 8 (antes do build) · costura 1 (cas_perdido falso) · juiz 2 blockers · red team 3 blockers (Q1/Q2
   exclusivos sobre o INSERT) · confirmação 0 blocker · bateria 2 (dublê sem .neq; guarda vencido pela migration aplicada)
 rodadas da bateria: 1 (+ isolamento das 15 novas)
-nota do executor: 90 (critério: os blockers fechados com prova e ataques re-rodados; a _03 ficou para o Founder)
+nota do executor: 90/100 (critério: os blockers fechados com prova e ataques re-rodados; a _03 ficou para o Founder)
 nota do juiz 78 · red team 62 · confirmação 89
 ⚠️ pico do executor 697k > teto — a sessão carregou três trabalhos; a 128 vai para chat novo (decisão do gerente)
 ```
