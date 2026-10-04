@@ -37,7 +37,9 @@ import os
 import signal
 from typing import Any, Optional
 
-from app.services.work.runs import CODIGO_EFEITO_INCERTO, EfeitoIncerto, Esperando
+from app.services.work.runs import (CODIGO_EFEITO_INCERTO, CODIGO_ETAPA_NAO_VERIFICADA,
+                                    ETAPA_NAO_VERIFICADA_VOLTA_EM_S, CancelamentoPedido,
+                                    EfeitoIncerto, EtapaNaoVerificada, Esperando)
 
 logger = logging.getLogger(__name__)
 
@@ -459,6 +461,25 @@ class SmithWorker:
 
         try:
             resumo = await handler(contexto)
+        except CancelamentoPedido:
+            # 🔴 SPEC-129-A, conserto B2/Q3: o corretor pediu CANCELAR e o handler parou entre
+            # etapas. NÃO é desligamento: fecha `cancelled` com o token — nunca `retry_scheduled`
+            # "o processador foi reiniciado" (📊 juiz: laço de 4 voltas; red team A4b: 13 voltas,
+            # 57 eventos e `expired`). O desligamento de verdade é o `CancelledError` PURO, que
+            # continua subindo até `_executar_run`.
+            self._fechar_cancelado(run_id, company_id, lease_token)
+            return
+        except EtapaNaoVerificada as exc:
+            # 🔴 SPEC-129-A, conserto B1/Q1/Q2: uma etapa EXTERNA não pôde ser conferida no banco
+            # e por isso NÃO rodou (nada saiu do prédio). Volta pelo despertador; a idade do
+            # workflow a encerra se o banco não voltar.
+            logger.warning("[SmithWorker] run %s: %s", run_id, str(exc)[:200])
+            self.runs.falhar(run_id, company_id, CODIGO_ETAPA_NAO_VERIFICADA,
+                             "Não consegui conferir no banco se uma etapa com efeito externo já "
+                             "tinha rodado — por segurança ela NÃO rodou. Nova conferência em 1 min.",
+                             retryable=True, proxima_tentativa_em=ETAPA_NAO_VERIFICADA_VOLTA_EM_S,
+                             lease_token=lease_token)
+            return
         except EfeitoIncerto as exc:
             # D-129A-4: um passo de efeito EXTERNO interrompido não se repete. Para aqui
             # e chama gente — o Reprocessar recusa este run (409) até alguém reconciliar.
@@ -478,15 +499,7 @@ class SmithWorker:
             return
 
         if self.runs.cancelamento_pedido(run_id):
-            if self.runs._transicionar(run_id, "cancelled", {
-                "cancelled_at": _agora_iso(), "finished_at": _agora_iso(),
-                "lease_owner": None, "lease_token": None, "lease_expires_at": None,
-            }, de=("running", "cancelling", "planning"), lease_token=lease_token,
-                    company_id=company_id, perda_esperada=True):
-                # perda_esperada (SPEC-129-A F5): o handler pode ter FECHADO o próprio run
-                # (`falhar` aceita `cancelling`) e devolvido ESPERANDO — perder aqui não é corrida.
-                self.runs.evento(company_id, run_id, "run.cancelled",
-                                 "Trabalho cancelado. Etapas já concluídas foram preservadas.")
+            self._fechar_cancelado(run_id, company_id, lease_token)
             return
 
         # 🔴 SPEC-129-A (problema 2): o handler DORMIU (portal, humano) → NÃO concluir.
@@ -496,6 +509,20 @@ class SmithWorker:
             return
 
         self.runs.concluir(run_id, company_id, resumo or "Trabalho concluído", lease_token=lease_token)
+
+    def _fechar_cancelado(self, run_id: str, company_id: str, lease_token: Optional[str]) -> bool:
+        """`running|cancelling|planning`(meu token) → `cancelled`, com o evento na linha do tempo."""
+        if self.runs._transicionar(run_id, "cancelled", {
+            "cancelled_at": _agora_iso(), "finished_at": _agora_iso(),
+            "lease_owner": None, "lease_token": None, "lease_expires_at": None,
+        }, de=("running", "cancelling", "planning"), lease_token=lease_token,
+                company_id=company_id, perda_esperada=True):
+            # perda_esperada (SPEC-129-A F5): o handler pode ter FECHADO o próprio run
+            # (`falhar` aceita `cancelling`) e devolvido ESPERANDO — perder aqui não é corrida.
+            self.runs.evento(company_id, run_id, "run.cancelled",
+                             "Trabalho cancelado. Etapas já concluídas foram preservadas.")
+            return True
+        return False
 
     # ------------------------------------------------------------------
 
