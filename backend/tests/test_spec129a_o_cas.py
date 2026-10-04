@@ -501,3 +501,137 @@ def test_costura_CONTROLE_a_corrida_de_verdade_continua_registrada(mundo):
     assert _run(mundo, rid)["status"] == "cancelled"
     assert len(_eventos(mundo, rid, "run.cas_perdido")) >= 1   # o dormir perdeu para o cancelamento
     assert len(_eventos(mundo, rid, "run.cancelled")) == 1
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CONSERTO ÚNICO (juiz B2 ‖ red team Q3) — cancelar um run RODANDO termina `cancelled`
+# ═════════════════════════════════════════════════════════════════════════════
+class _FilaMuda:
+    """A borda do Redis no `_executar_run`: só o `ack`."""
+
+    @staticmethod
+    async def ack(*_a):
+        return None
+
+
+def _executar(mundo, workflow_key, handler, *, cancelar_no_meio: bool = False):
+    """`SmithWorker._executar_run` REAL (lease, heartbeat, o `except CancelledError` do desligamento)."""
+    w, _proc = _worker(mundo)
+    w.queue = _FilaMuda()
+    rid = _semear(mundo, workflow_key=workflow_key)
+    W._REGISTRO[workflow_key] = handler
+
+    async def um():
+        tarefa = asyncio.create_task(w._executar_run("e", rid, X, {"workflow_key": workflow_key}))
+        if cancelar_no_meio:
+            for _ in range(5):
+                await asyncio.sleep(0)
+            tarefa.cancel()          # o DESLIGAMENTO de verdade (SIGTERM → task.cancel)
+        try:
+            await tarefa
+        except asyncio.CancelledError:
+            pass
+    try:
+        asyncio.run(um())
+    finally:
+        W._REGISTRO.pop(workflow_key, None)
+    return w, rid
+
+
+def test_conserto_cancelar_rodando_entre_passos_termina_cancelled(mundo):
+    """📊 juiz B2 (4 voltas `retry_scheduled`) / red team A4b (13 voltas, 57 eventos, `expired`): o
+    `CancelledError` do pedido de cancelar era lido como DESLIGAMENTO. Agora: `cancelled`, a etapa
+    2 não roda, nenhum "o processador foi reiniciado" na linha do tempo, e o despertador não o reabre."""
+    vezes = {"p1": 0, "p2": 0}
+
+    async def dois_passos(ctx):
+        async def p1():
+            vezes["p1"] += 1
+            # o corretor clica "Cancelar" enquanto a etapa 1 roda
+            assert _svc(mundo, "api").solicitar_cancelamento(ctx["run_id"], X, "op") == "cancelling"
+            return {"ok": True}
+
+        async def p2():
+            vezes["p2"] += 1
+            return {"ok": True}
+        await W.executar_passo(ctx, step_key="p1", ordinal=1, nome="P1", step_type="system", fn=p1,
+                               efeito="idempotente", guardar=("ok",))
+        await W.executar_passo(ctx, step_key="p2", ordinal=2, nome="P2", step_type="system", fn=p2,
+                               efeito="idempotente", guardar=("ok",))
+        return "feito"
+
+    _w, rid = _executar(mundo, "teste.129a.dois_passos", dois_passos)
+    run = _run(mundo, rid)
+    assert run["status"] == "cancelled", f"🔴 o pedido de cancelar virou {run['status']}/{run.get('error_code')}"
+    assert vezes == {"p1": 1, "p2": 0}, vezes
+    assert len(_eventos(mundo, rid, "run.cancelled")) == 1
+    assert not _eventos(mundo, rid, "step.retry_scheduled"), "🔴 'o processador foi reiniciado' — mentira"
+    assert not run.get("lease_token") and not run.get("wake_at")
+    mundo.relogio.avancar(3600)
+    assert not _svc(mundo).despertar_vencidos(REGISTRO | {"teste.129a.dois_passos": None})
+    assert _run(mundo, rid)["status"] == "cancelled"
+    _auditar(mundo)
+
+
+def test_conserto_CONTROLE_o_desligamento_de_verdade_continua_retry_scheduled(mundo):
+    """Sem esta linha, o guarda de cima passaria com um worker que trata TODO `CancelledError` como
+    cancelamento — e um deploy no meio de uma cobrança viraria `cancelled` em vez de retomar."""
+    parado = {}
+
+    async def demora(ctx):
+        async def espera_para_sempre():
+            parado["sim"] = True
+            await asyncio.Event().wait()
+        await W.executar_passo(ctx, step_key="lento", ordinal=1, nome="Lento", step_type="system",
+                               fn=espera_para_sempre, efeito="idempotente")
+        return "feito"
+
+    _w, rid = _executar(mundo, "teste.129a.desligamento", demora, cancelar_no_meio=True)
+    run = _run(mundo, rid)
+    assert parado.get("sim"), "o cenário não chegou a rodar a etapa"
+    assert (run["status"], run.get("error_code")) == ("retry_scheduled", "worker_shutdown"), run
+    assert run.get("wake_at"), "o desligamento precisa do despertador"
+    assert not _eventos(mundo, rid, "run.cancelled")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CONSERTO ÚNICO (pendência 2 do juiz ‖ P3 do red team) — `_fechar_sem_fila` não toca `smith`
+# ═════════════════════════════════════════════════════════════════════════════
+def test_conserto_fechar_sem_fila_nao_fecha_um_run_smith(mundo):
+    """📊 `vigia_do_portal` → `portal_tool.fechar_work_run(job.work_run_id)` (sem token) fecharia um
+    `portal.operation` smith por cima da espera. CONTROLE: `test_o_caminho_sem_fila_continua_fechando_o_proprio_run`."""
+    rid = _semear(mundo, status="waiting_input", workflow_key="portal.operation",
+                  wake_at=mundo.relogio.agora().isoformat())
+    svc = _svc(mundo, "portal-tool")
+    assert svc.concluir(rid, X, "Atendimento aberto") is False
+    assert svc.falhar(rid, X, "portal_erro", "x") is False
+    assert svc.falhar(rid, X, "portal_erro", "x", retryable=True, proxima_tentativa_em=30) is False
+    assert _run(mundo, rid)["status"] == "waiting_input", "🔴 o fechamento sem fila escreveu num run smith"
+    assert not _eventos(mundo, rid, "run.succeeded") and not _eventos(mundo, rid, "run.failed"), \
+        "evento de fechamento gravado sem a linha ter mudado"
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CONSERTO ÚNICO (lacuna do juiz) — o `or_` da lease falhando não é silêncio
+# ═════════════════════════════════════════════════════════════════════════════
+def test_conserto_falha_do_filtro_da_lease_e_erro_alto(mundo, caplog):
+    rid = _semear(mundo)
+    proc = mundo.processo("worker-A")
+    original = proc.db.table
+
+    def table(nome):
+        c = original(nome)
+        if nome == "work_runs":
+            exe = c.execute
+
+            def execute():
+                if c.op == "update":
+                    raise D.erro_do_banco("PGRST100", "failed to parse logic tree ((lease_expires_at.is.nul))")
+                return exe()
+            c.execute = execute
+        return c
+    proc.db.table = table
+    with caplog.at_level("ERROR"):
+        assert R.WorkRunService(proc.db).adquirir_lease(rid, "A", company_id=X) is None
+    alto = [r for r in caplog.records if r.levelname == "ERROR" and "NENHUM run pega lease" in r.getMessage()]
+    assert alto and "failed to parse" in alto[0].getMessage(), [r.getMessage() for r in caplog.records]
