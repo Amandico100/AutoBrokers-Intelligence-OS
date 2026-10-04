@@ -525,6 +525,23 @@ class _PerfilDeCorretora:
             compacto = "".join(nucleo)
             if len(compacto) >= 5:
                 self.compactos.append(compacto)
+        # 3. o NÚCLEO todo GENÉRICO de ≥ 2 palavras ("Porto Real", "Auto
+        #    Center", "Vida Plena", "Alfa Real"). 📊 A confirmação de 04/10
+        #    mediu: só o nome INTEIRO era procurado, e "aqui é da Porto Real",
+        #    "site portoreal.com.br", "a Auto Center confirma" iam ao global.
+        #    Vale como o núcleo MISTO: com MAIÚSCULA em cada palavra é a marca;
+        #    em minúscula é prosa do serviço ("leve a um auto center", "perda
+        #    total") e passa. E a forma COLADA (domínio/handle) com ≥ 8 letras.
+        #    ⛔ Uma palavra genérica SOZINHA continua nunca sendo marca (Q4), e
+        #    núcleo só de palavras de SEGURADORA ("Tokio Marine Corretora") não
+        #    vale: "a Tokio Marine abre sinistro" é conhecimento público.
+        elif (len(nucleo) >= 2
+              and not all(p in palavras_de_seguradora for p in nucleo)):
+            self.frases_com_maiuscula.append(
+                _regex_de_frase(nucleo, conectivos_opcionais=True))
+            compacto = "".join(nucleo)
+            if len(compacto) >= 8:
+                self.compactos.append(compacto)
 
 
 def _perfis_de_corretora(nomes: Tuple[str, ...]) -> List[_PerfilDeCorretora]:
