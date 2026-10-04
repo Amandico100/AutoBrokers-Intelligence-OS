@@ -293,6 +293,7 @@ def test_leitor_nunca_devolve_url_nem_chave():
     ("R$ 1.234,56", 1234.56), ("1.234.567", 1234567.0), ("0,00", 0.0), ("12,5", 12.5), (1234.56, 1234.56),
     (7, 7.0), ("NaN", None), ("nan", None), ("inf", None), ("-inf", None), ("1e400", None), ("abc", None),
     ("", None), (None, None), (True, None), (float("nan"), None), (float("inf"), None), (10 ** 400, None),
+    ("1" + "0" * 400, None),   # só dígitos, mas float() dá inf
 ])
 def test_numero_robusto(entrada, esperado):
     assert numero(entrada) == esperado
