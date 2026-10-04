@@ -203,6 +203,11 @@ def _bootstrap():
     # `curadoria_cartas`. E o Destilador importa a peça pura do pós-acionamento
     # no topo — sem as duas registradas aqui, o arquivo morria antes de testar.
     _load("app.atendimento.pos_acionamento", "app/atendimento/pos_acionamento.py")
+    # 🔴 04/10/2026 (P-E0018-14, conserto do 0.5): o porteiro do global precisa
+    # saber quem é SEGURADORA para não tratar "Porto"/"Azul" como marca de
+    # corretora — sem nenhuma tabela de seguradoras ele falha FECHADO e o draft
+    # não é salvo. Em produção o registro sempre carrega; aqui, o REAL.
+    _load("app.services.insurer_registry", "app/services/insurer_registry.py")
     _load("app.services.curadoria_cartas", "app/services/curadoria_cartas.py")
     _load("app.services.attendance_distiller", "app/services/attendance_distiller.py")
     _load("app.services.playbook_gate", "app/services/playbook_gate.py")
