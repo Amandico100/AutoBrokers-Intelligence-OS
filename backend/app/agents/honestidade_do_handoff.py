@@ -562,7 +562,17 @@ _RX_ANUNCIO_DE_FEITO = re.compile(
 #:    1ª frase é SÓ o anúncio ("Feito!", "Tudo bem.", "Pronto!") — "Certo, vou verificar." não anuncia
 #:    feito nenhum e não tira a exceção do fato de terceiro das frases seguintes. E essa frase sai junto
 #:    quando a afirmação que ela anunciava sai ("Feito! Ainda não está cancelado" se contradiz).
-_RX_SO_ANUNCIO = re.compile(
+#: 🔴 CONSERTO 6 (pend. 1 do juiz final) — no nível da RESPOSTA, só o anúncio de FEITO: 📊 "Certo! O
+#:    sinistro foi cancelado pela seguradora em 10/09.", "Ok. O prestador anterior foi dispensado pela
+#:    seguradora…", "Tudo bem. A vistoria foi desmarcada pela seguradora; ela vai te ligar…" passaram a ser
+#:    reescritas pelo conserto 5 (o contrário do fato, §9.5). constante_justificada: "certo/ok/tudo
+#:    bem/perfeito/beleza/combinado" são CONCORDÂNCIA com o segurado, não relato de algo feito; "pronto/
+#:    prontinho/feito/resolvido" relatam o feito. O BE-2 ("Tudo bem. O guincho foi cancelado…") continua
+#:    coberto pela regra do SUJEITO (`_RX_SUJEITO_E_O_SERVICO`), não por esta.
+_RX_SO_ANUNCIO = re.compile(r"(?i)^\W*(?:pronto|prontinho|feito|resolvido)\W*$")
+#: a frase que é SÓ abertura (o anúncio OU a concordância) sai junto quando a afirmação que vinha
+#: depois dela é reescrita — "Tudo bem. Ainda não está cancelado…" soa como concordar com o pedido.
+_RX_SO_ABERTURA = re.compile(
     r"(?i)^\W*(?:pronto|prontinho|feito|tudo\s+certo|tudo\s+bem|certo|certinho|ok|perfeito|resolvido"
     r"|beleza|combinado)\W*$")
 
@@ -590,18 +600,27 @@ _SO_AUXILIARES = frozenset({
     "foi", "foram", "esta", "está", "estao", "estão", "ficou", "ficaram", "ja", "já", "infelizmente",
     "tambem", "também", "entao", "então", "agora", "consta", "constam", "aparece", "aparecem", "como",
     "e", "mas", "porem", "porém", "que", "inclusive", "acabou", "de", "ser"})
-#: o STATUS de cancelado trazido por uma FERRAMENTA do turno (📊 `portal_params.py:1720`
+#: o STATUS de cancelado trazido por uma FERRAMENTA do turno (📊 `portal_params.py:1810`
 #: "A seguradora mostra este atendimento como cancelado"; o agregado `Cancelado=true`). ⛔ "será
 #: cancelado" (o aviso do modo teste do acionamento) é futuro, não status.
 _RX_STATUS_DE_CANCELADO = re.compile(
     r"(?i)\b(?:como|est[áa]|consta|constam|aparece|status|situa[çc][ãa]o)\W{0,3}"
     r"(?:cancelad|dispensad|desmarcad)[oa]s?\b"
     r"|\b(?:cancelad|dispensad|desmarcad)[oa]s?\W{0,3}[=:]\s*\W?(?:true|sim|1)\b")
+#: 🔴 CONSERTO 6 (pend. 3 do juiz final) — só a ferramenta de ACIONAMENTO sabe o status DO SERVIÇO.
+#:    📊 sonda do juiz: uma ToolMessage de apólice com "status: cancelada" deixava "O guincho foi
+#:    cancelado pela seguradora." intacta; o infocap imprime "- Situacao: {policy_status}"
+#:    (`infocap_tool.py:2248/2297`) e "Apolice consta como cancelada." (`infocap_connector.py:4043`).
+#:    constante_justificada: os `name` reais (`insurer_dispatch_tool.py:1800`, `portal_tool.py:173`);
+#:    o "como cancelado" do portal chega pelo `format_result` → `texto_da_parada("atendimento_cancelado")`
+#:    (`portal_params.py:1809`). Ferramenta nova que traga status do serviço entra aqui com o nome dela.
+TOOLS_DO_STATUS_DO_SERVICO = frozenset({"insurer_dispatch", "portal_action"})
 
 
 def _status_de_cancelado_na_tool(resultados_das_tools: Optional[Iterable]) -> bool:
-    """Alguma FERRAMENTA deste turno trouxe o status "cancelado"? **PURA.**"""
-    return any(_RX_STATUS_DE_CANCELADO.search(str(getattr(m, "content", "") or ""))
+    """Alguma ferramenta de ACIONAMENTO deste turno trouxe o status "cancelado"? **PURA.**"""
+    return any(str(getattr(m, "name", "") or "") in TOOLS_DO_STATUS_DO_SERVICO
+               and _RX_STATUS_DE_CANCELADO.search(str(getattr(m, "content", "") or ""))
                for m in (resultados_das_tools or []))
 
 
@@ -694,7 +713,7 @@ def _sem_o_cancelamento_sem_ancora(texto: str, resultados: list) -> str:
     # ("Feito!") sai com a afirmação que anunciava — "Feito! Ainda não está cancelado" se contradiz.
     sobra = " ".join(f.group(0).strip() for f in _RX_FRASE.finditer(texto)
                      if not afirma_cancelamento(f.group(0), resultados, _anunciado=anunciado)
-                     and not _RX_SO_ANUNCIO.search(f.group(0))).strip()
+                     and not _RX_SO_ABERTURA.search(f.group(0))).strip()
     logger.error("[HANDOFF] 🔴 resposta afirmava CANCELAMENTO sem ferramenta — reescrita (D4/T5)")
     return " ".join(p for p in (sobra, NOTA_DO_CANCELAMENTO_SEM_FERRAMENTA) if p)
 

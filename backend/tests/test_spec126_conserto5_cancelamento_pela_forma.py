@@ -131,8 +131,9 @@ class _ToolMsg:
         self.name, self.content = name, content
 
 
-#: 📊 `portal_params.py:1720` — o status que uma ferramenta de verdade devolve.
-STATUS_DA_TOOL = [_ToolMsg("portal", "A seguradora mostra este atendimento como cancelado, então eu não "
+#: 📊 `portal_params.py:1810` — o status que uma ferramenta de verdade devolve. CONSERTO 6 (§9.3): com o
+#: `name` REAL da ferramenta (`portal_tool.py:173`) — só a de acionamento sustenta o status do serviço.
+STATUS_DA_TOOL = [_ToolMsg("portal_action", "A seguradora mostra este atendimento como cancelado, então eu não "
                                      "consigo seguir por aqui.")]
 #: o aviso do MODO TESTE do acionamento ("será cancelado") é futuro, não status.
 AVISO_DO_MODO_TESTE = [_ToolMsg("insurer_dispatch", "este acionamento é um teste e será cancelado no final.")]
