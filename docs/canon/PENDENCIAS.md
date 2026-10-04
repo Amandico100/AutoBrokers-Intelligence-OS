@@ -13317,3 +13317,39 @@ a lição migra, não morre). **Custa esquecer:** dois guardas vermelhos que tod
 | P-124-08 | 🟡 CONTINUA — intocada; agora alcançável com o API-first ligado (INFERÊNCIA) |
 | P-124-14 | ✅ já fechada na 126 (U6); o autocomplete do DOM também só aceita igual (P2) |
 | P-123-01 | 🟡 CONTINUA — o n por seguradora (P-126-06, P-127-04) |
+
+## P-MC05 · Programa Multicálculo, passo 0.5 (04/10/2026) — o que ficou fora
+
+## P-MC05-01 · 🤖 O porteiro do conhecimento global não pega TODO nome de pessoa
+📊 04/10: pega prenome em contexto (artigo, tratamento, cargo, "falar com", assinatura; 587 prenomes) e barra. NÃO pega sobrenome sozinho
+("o Silveira"), prenome raro/estrangeiro fora da lista sem tratamento, apelido, prenome-palavra em minúscula sem contexto forte. **O que
+destrava:** um detector de entidades (modelo) no porteiro, medido numa bancada. **Custa esquecer:** um nome raro entra no global — a
+contenção é a ativação manual do rascunho pelo master admin (`admin_atlas.py:900`). Limite declarado em `curadoria_cartas.py:242`.
+
+## P-MC05-02 · 🤖 Três leitores do endereço do painel ainda divergem do `base_publica_do_app`
+`agents/tools/relatorios_comerciais.py:447`, `agents/tools/human_handoff.py:918`, `workers/billing_core.py:344` leem as variáveis em
+outra ordem e sem validar. Em produção as duas existentes têm o mesmo valor, então hoje não muda nada. **O que destrava:** trocar os três
+pelo helper (toca a cobrança, que envia — CRÍTICO). **Custa esquecer:** um ambiente com valores diferentes manda link para lugar errado.
+
+## P-MC05-03 · 🧑 O `/r/` não foi provado NO AR
+Provado com `next build`+`next start` num app mínimo e com `next dev`. **O que destrava:** depois do Implantar, abrir um link `/r/` numa
+aba anônima (o passo a passo está na resposta do passo 0.5). **Custa esquecer:** o conserto não chega ao cliente sem ninguém ver.
+
+## P-MC05-04 · 🤖 O `next build` completo do repositório nesta máquina passa de 44 min e o worker de tipos cai (0xC0000142)
+Impede a prova §9.1 com o repositório inteiro na máquina local. **O que destrava:** rodar o build no contêiner, ou medir a causa (memória).
+**Custa esquecer:** toda SPEC que mexe em `app/` prova com app mínimo em vez do build real.
+
+## P-MC05-05 · 🤖 `/r/..%2F…` não passa pelo middleware e cai no 404 da rota sem CSP
+O `matcher` exclui caminhos com ponto (já era assim). A página "Link indisponível" não tem script nem dado. **O que destrava:** CSP também
+na resposta 404 da rota. **Custa esquecer:** nada hoje; defesa em profundidade.
+
+## P-MC05-06 · 🤖 Formas exóticas ainda passam pelo porteiro
+CPF/telefone por extenso ou dígito a dígito, e-mail "(at)" ou espaçado, marca com homoglifo, erro de digitação, plural, letras espaçadas;
+"a Porto Real confirma" sem sufixo (núcleo todo genérico exige a frase completa). **O que destrava:** normalização Unicode + bancada de
+ataques. **Custa esquecer:** improvável vindo do modelo, mas possível.
+
+## P-MC05-07 · 🤖 Grupos recusados ANTES do conserto não têm marcador de recusa
+Na primeira recusa nova ganham o marcador; até lá podem ser tentados de novo (teto `DISTILLER_PLAYBOOKS_PER_RUN`). Custo baixo e transitório.
+
+## P-MC05-08 · 🤖 O teste [5] do link confere o `report_tool` pelo texto do arquivo
+CLAUDE.md §9.4 pede o motor; a rota da API é testada pelo motor, o `report_tool` não. **O que destrava:** chamar a ferramenta com dublê.

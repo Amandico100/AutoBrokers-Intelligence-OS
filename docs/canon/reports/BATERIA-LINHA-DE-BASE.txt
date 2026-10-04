@@ -1,3 +1,10 @@
+# 📊 04/10/2026, PROGRAMA MULTICÁLCULO passo 0.5 (branch programa-mc/passo-0.5, HEAD 00d53b0), worktree limpo C:\wt05,
+#   `cd backend && <venv>/python -m pytest tests -q -p no:cacheprovider` → 47 failed · 5059 passed · 8 skipped · 31 xfailed · 1 xpassed em 5.486 s (1:31:26).
+#   TRIAGEM NOMINAL contra a base (28): 28 iguais · 0 sumiram · 19 novas → isoladas no HEAD 13f5905: 10 PASSAM (ordem/carga) ·
+#   2 XPASS(strict) do meta-guarda (onda3_distiller e lapidador, que o conserto da P-E0018-14 fez passar) → tirados da quarentena em
+#   test_todos_os_guardas_script_rodam.py (2 passed) · 7 FALHAM IGUAIS NO COMMIT BASE e7f76df (📊 7 failed, 4 passed) = pré-existentes
+#   (ambiente do worktree limpo: Redis local recusado, node_modules ausente, base indisponível; e as que entraram com a 126/127 depois
+#   de 02/10) → 0 regressões do passo 0.5. As 7 entram na lista abaixo.
 # 📊 02/10/2026, SPEC-125 (branch spec/125-o-atendimento-lembra-e-pensa, HEAD 29da022), worktree limpo C:\wtbf, `cd backend && .venv/Scripts/python -m pytest tests -q -p no:cacheprovider`
 # → 46 failed · 3593 passed · 2 skipped · 33 xfailed · 1 xpassed · 5 errors · 239 warnings em 6.551,11 s (1:49:11). TRIAGEM NOMINAL contra a base da SPEC-124 (33):
 #   28 iguais · 5 sumiram (test_a_linha_de_controle_o_neto_CONSEGUE_sobreviver, test_a_arvore_ficou_limpa_no_fim, [test_a_mesma_verdade_em_duas_vozes],
@@ -77,3 +84,10 @@ FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[t
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec031_finalize_v2]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec040_onda4_gate_council]
 FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_spec073_portal_worker_mutations]
+FAILED tests/test_o_nome_do_agente_nao_confunde.py::test_o_nome_do_agente_nao_confunde
+FAILED tests/test_spec123_diario_fio.py::test_o_fio_do_diario
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_mesma_verdade_em_duas_vozes]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_a_tabela_de_rotas_monta]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_diagnostico_ve_o_agente_mudo]
+FAILED tests/test_todos_os_guardas_script_rodam.py::test_o_guarda_script_passa[test_o_numero_da_casa_nao_e_cliente]
+FAILED tests/test_um_clique_liga_os_corredores.py::test_os_gates_do_bloco_G_passam
