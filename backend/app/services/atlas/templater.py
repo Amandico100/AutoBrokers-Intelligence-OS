@@ -1450,7 +1450,12 @@ def marcas_de_corretora(recarregar: bool = False) -> Tuple[str, ...]:
                     if pode_virar_marca(pedaco, proibidas):
                         achadas.add(pedaco.strip())
     except Exception:  # noqa: BLE001
-        pass
+        # 🔴 04/10/2026 (P-E0018-14): o porteiro do global força `recarregar`
+        # a cada 5 min. Um banco mudo NESSA hora não pode trocar a lista boa
+        # por vazia — o mascarador de TODA mensagem deixaria de apagar a marca
+        # até a próxima releitura. Falhou com lista na mão: fica a lista.
+        if _CACHE_MARCAS:
+            return _CACHE_MARCAS
 
     # Maior primeiro: "Resulta Seguros" tem de ser trocado antes de "Resulta",
     # senão sobra um " Seguros" órfão no meio da frase.
