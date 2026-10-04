@@ -145,6 +145,7 @@ class _Consulta:
     def __init__(self, banco, tabela):
         self.banco, self.tabela = banco, tabela
         self.filtros, self.operacao, self.linha = {}, "select", {}
+        self.diferentes: dict = {}
 
     def select(self, *_a, **_k):
         return self
@@ -161,6 +162,13 @@ class _Consulta:
         self.filtros[campo] = valor
         return self
 
+    def neq(self, campo, valor):
+        # 🔴 SPEC-129-A (conserto): `_fechar_sem_fila` declara a cerca
+        # `runtime_kind <> 'smith'`. Semântica SQL: `NULL <> 'x'` é NULL, e a
+        # linha NÃO casa — o dublê imita isso (ver `_casa_o_neq`).
+        self.diferentes[campo] = valor
+        return self
+
     def order(self, *_a, **_k):
         return self
 
@@ -172,6 +180,22 @@ class _Consulta:
 
     def execute(self):
         return self.banco.executar(self)
+
+
+def _casa_o_neq(linha: dict, diferentes: dict) -> bool:
+    """`col <> v` do Postgres: NULL não casa (nem igual nem diferente)."""
+    return all(linha.get(k) is not None and linha.get(k) != v
+               for k, v in diferentes.items())
+
+
+#: 💭 os runs que os cenários fecham. O pedido do portal nasce `runtime_kind='portal'`
+#: (`portal_tool.RUNTIME_PORTAL`); o `smith` e o NULL existem para o CONTROLE da cerca.
+RUNS_DO_DUBLE = {
+    "run-1": {"company_id": EMPRESA_A, "runtime_kind": "portal", "status": "running"},
+    "run-9": {"company_id": EMPRESA_A, "runtime_kind": "portal", "status": "running"},
+    "run-smith": {"company_id": EMPRESA_A, "runtime_kind": "smith", "status": "running"},
+    "run-nulo": {"company_id": EMPRESA_A, "runtime_kind": None, "status": "running"},
+}
 
 
 def _campo(linha: dict, chave: str):
@@ -187,6 +211,7 @@ class BancoDeMentira:
     def __init__(self, resultado_da_continuacao: dict):
         self.jobs: list = []
         self.updates_de_run: list = []
+        self.runs = {k: {"id": k, **v} for k, v in copy.deepcopy(RUNS_DO_DUBLE).items()}
         self.resultado = resultado_da_continuacao
         self.selects_de_jobs: list = []
         # CONSERTO da 001.10.1: o "worker" pode ficar parado (continuacao EM
@@ -209,7 +234,16 @@ class BancoDeMentira:
             return _Resposta([dict(PERFIL_ROW)])
         if q.tabela == "work_runs":
             if q.operacao == "update":
-                self.updates_de_run.append({"filtros": dict(f), "patch": dict(q.linha)})
+                # registra a TENTATIVA (o que o codigo pediu) e devolve so as
+                # linhas que o filtro de verdade casaria — eq E neq.
+                self.updates_de_run.append({"filtros": dict(f), "patch": dict(q.linha),
+                                            "diferentes": dict(q.diferentes)})
+                casadas = [r for r in self.runs.values()
+                           if all(r.get(k) == v for k, v in f.items())
+                           and _casa_o_neq(r, q.diferentes)]
+                for r in casadas:
+                    r.update(q.linha)
+                return _Resposta([copy.deepcopy(r) for r in casadas])
             return _Resposta([])
         if q.tabela != "portal_jobs":
             return _Resposta([])
@@ -650,6 +684,34 @@ def c4_o_run_espera_sem_falhar() -> None:
            "CONTROLE: SEM continuacao, o run vai para a equipe (portal_aguarda_a_equipe)")
 
 
+def c5_a_cerca_do_smith() -> None:
+    print("\n[SPEC-129-A] o fechamento SEM FILA nunca escreve num run do Work OS (smith)")
+    # §9.3: a licao MIGRA. O dublê ganhou `.neq` com a semantica do SQL; o guarda
+    # prova que a cerca `runtime_kind <> 'smith'` ESTA no filtro e que o dublê a aplica.
+    job = {"status": "done", **RESULTADO_AGENDADO}
+    banco = BancoDeMentira({})
+    _ATUAL["banco"] = banco
+    PT.fechar_work_run(EMPRESA_A, "run-smith", job)
+    PT.fechar_work_run(EMPRESA_A, "run-nulo", job)
+    PT.fechar_work_run(EMPRESA_A, "run-9", job)
+    tentativas = [u for u in banco.updates_de_run if u["patch"].get("status") == "completed"]
+    checar(len(tentativas) == 3
+           and all(u["diferentes"] == {"runtime_kind": "smith"} for u in tentativas),
+           "o UPDATE sem fila DECLARA a cerca runtime_kind <> 'smith'",
+           [u["diferentes"] for u in tentativas])
+    checar(banco.runs["run-smith"]["status"] == "running",
+           "🔴 o run smith NAO foi fechado por cima da espera/CAS",
+           banco.runs["run-smith"]["status"])
+    checar(banco.runs["run-nulo"]["status"] == "running",
+           "e runtime_kind NULL nao casa o <> (semantica SQL)",
+           banco.runs["run-nulo"]["status"])
+    # CONTROLE: o MESMO fechamento num run do portal CONCLUI — senao a cerca
+    # passaria com um dublê que nunca casa nada.
+    checar(banco.runs["run-9"]["status"] == "completed",
+           "CONTROLE: o run do portal (runtime_kind='portal') fecha completed",
+           banco.runs["run-9"]["status"])
+
+
 def a17_o_cliente_real_nunca_foi_alcancado() -> None:
     print("\n[P-E00110-A17] o cliente Supabase REAL nunca foi alcancado")
     checar(not ALCANCOU_O_REAL, "zero chamadas ao cliente real", ALCANCOU_O_REAL)
@@ -668,6 +730,7 @@ if __name__ == "__main__":
     g7d_responder_so_com_resposta_nova()
     g11_dois_tenants()
     c4_o_run_espera_sem_falhar()
+    c5_a_cerca_do_smith()
     a17_o_cliente_real_nunca_foi_alcancado()
     print("\n" + "=" * 72)
     print(f"  {PASS} assercoes verdes - {FAIL} vermelhas")
