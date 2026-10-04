@@ -352,10 +352,9 @@ QUARENTENA = {
         "P-226 · a triar",
     "test_spec040_onda1_attendance_capture":
         "P-226 · a triar",
-    "test_spec040_onda3_distiller":
-        "P-226 · a triar",
-    "test_spec042_lapidador":
-        "P-226 · a triar",
+    # 🔁 04/10/2026 (programa multicálculo, passo 0.5): test_spec040_onda3_distiller e test_spec042_lapidador
+    # SAÍRAM da quarentena — o conserto da P-E0018-14 atualizou os dublês (companies fictícia, INSURER_REGISTRY real,
+    # LLMFactory pós-SPEC-116) e os dois passaram a passar (📊 25/0 e 13/0); o XPASS(strict) acusou. Lição migrada (§9.3).
     "test_spec049_pareamento_alerta_garimpo":
         "P-226 · a triar",
     "test_spec050_qr_variaveis_conhecimento_agentes":
