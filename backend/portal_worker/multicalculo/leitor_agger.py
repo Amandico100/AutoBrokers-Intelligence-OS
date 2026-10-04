@@ -2,8 +2,8 @@
 """O leitor das respostas do Agger — SPEC-128 U2.
 
     ler_rodada(json)        → RodadaDoCalculo
-    eventos_entre(a, b)     → [Evento]   (nova oferta · seguradora recusou · conjunto fechado)
-    eventos_do_calculo(rs)  → [Evento]   (as rodadas em ordem de t_s, sem duplicar)
+    eventos_entre(a, b)     → [Evento]   (nova oferta · oferta atualizada · seguradora recusou · conjunto fechado)
+    eventos_do_calculo(rs)  → [Evento]   (as rodadas em ordem de t_s, sem duplicar; conjunto fechado UMA vez)
     pedido_de_calcularv2(c) → PedidoDeCalculoAuto
 
 A entrada é a resposta CRUA de `GET .../calculo/cotacao/calculos/{id}/{versao}`
@@ -19,19 +19,26 @@ A LISTA BRANCA mora aqui porque ela é exatamente o que o leitor conhece do
 Agger. O gerador de fixtures (`backend/scripts/agger_fixtures_saneadas.py`) e o
 guarda G1 importam daqui — um lugar só.
 
+🔴 TODA string que sai daqui (mensagem, alerta, observação, rótulo, nome) passa por
+`redaction.sem_url_nem_chave`: 📊 04/10 uma seguradora devolveu, no texto do erro, a URL
+interna com `?key=` e uma chave de API (conserto B1). O adaptador da 129-B recebe a
+resposta CRUA — o leitor é a última porta antes dele.
+
 Puro: sem rede, sem banco, sem `app.*`.
 """
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from ..redaction import sem_url_nem_chave
 from .contrato import (
     ACEITACAO, CAMPOS_DO_PEDIDO_AUTO, COMERCIAL, CONJUNTO_FECHADO, CREDENCIAL,
-    DADO, DESCONHECIDA, INSTABILIDADE, NOVA_OFERTA, OFERTA, PENDENTE, PERMISSAO,
-    RAMO_AUTO, SEGURADORA_RECUSOU, Campo, Evento, Oferta, Parcelamento,
-    PedidoDeCalculoAuto, RespostaDaSeguradora, RodadaDoCalculo,
+    DADO, DESCONHECIDA, INSTABILIDADE, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA,
+    PENDENTE, PERMISSAO, RAMO_AUTO, SEGURADORA_RECUSOU, Campo, Evento, Oferta,
+    Parcelamento, PedidoDeCalculoAuto, RespostaDaSeguradora, RodadaDoCalculo,
 )
 
 # ==========================================================================
@@ -231,6 +238,10 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
     # gravacao_r1/r2: "A seguradora está apresentando instabilidade no momento. Por favor, tente novamente mais tarde."
     (INSTABILIDADE, re.compile(r"instabilidade|tente novamente mais tarde"),
      "gravacao_r1 · gravacao_r2 (erros[], rodadas intermediárias)"),
+    # gravacao_r2 (versoes[], 8×): "Auto - Cotação indisponível, tente mais tarde realizando cópia da cotação e,
+    # caso o problema persista, entre em contato…" — a regra de cima exige "tente NOVAMENTE mais tarde"
+    (INSTABILIDADE, re.compile(r"cotacao indisponivel|tente mais tarde"),
+     "gravacao_r2 (versoes[])"),
     # vivo_conta_b: "Erro ao executar servico: 105 - Read terminated …" · "… Erro ao inicializar planos …"
     (INSTABILIDADE, re.compile(r"read terminated|erro ao inicializar planos|erro ao executar servico"),
      "vivo_conta_b (erros[])"),
@@ -240,12 +251,22 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
     (DADO, re.compile(r"codigo de identificacao informado para essa renovacao|calcule como renovacao|"
                       r"periodo de renovacao|contratacao de \w+ obrigatoria|favor contratar"),
      "gravacao_r2 · vivo_conta_a · vivo_conta_b (erros[])"),
+    # gravacao_r2 (versoes[], 4×): "Os dados do condutor principal devem ser preenchidos." — falta dado no pedido
+    (DADO, re.compile(r"dados do condutor principal devem ser preenchidos|devem ser preenchidos"),
+     "gravacao_r2 (versoes[])"),
+    # vivo_conta_a (12×, ao lado de oferta): "COBERTURA CASCO FORA DO PERMITIDO" — a cobertura pedida a corrigir
+    (DADO, re.compile(r"cobertura \w+ fora do permitido"),
+     "vivo_conta_a (erros[])"),
     # gravacao_r1/r2: "Não oferecemos seguro para os dados enviados no momento" ·
     # "O valor do veículo (R$ …) está abaixo do limite mínimo de R$ … aceito por esta seguradora." ·
     # "<produto> disponível apenas para pessoa física."
     (ACEITACAO, re.compile(r"nao oferecemos seguro|abaixo do limite minimo|acima do limite maximo|"
                            r"disponivel apenas para pessoa"),
      "gravacao_r1 · gravacao_r2 (erros[])"),
+    # gravacao_r2 (versoes[], 4×): "A opção selecionada para vínculo do segurado do item 1 não possui aceitação para
+    # este produto. Cote na <seguradora>…" — a seguradora não aceita este risco neste produto
+    (ACEITACAO, re.compile(r"nao possui aceitacao"),
+     "gravacao_r2 (versoes[])"),
 )
 # A mensagem da renovação inválida (antes DESCONHECIDA) ganhou a família DADO — decisão do gerente
 # (D-128-02, nota 85 × ACEITACAO 50: não é recusa do risco, é pedido a corrigir).
@@ -263,34 +284,62 @@ def classificar_mensagens(mensagens: Sequence[str]) -> Optional[str]:
 # ==========================================================================
 # Leitura
 # ==========================================================================
+_RE_DECIMAL = re.compile(r"-?\d+(?:\.\d+)?")
+_RE_MILHAR_BR = re.compile(r"-?[1-9]\d{0,2}(?:\.\d{3})+")       # "1.234" · "1.234.567"
+_RE_MILHAR_US = re.compile(r"-?[1-9]\d{0,2}(?:,\d{3}){2,}")       # "1,234,567"
+
+
 def numero(valor: Any) -> Optional[float]:
-    """prêmio/franquia: int, float ou string ("1234.56", "1.234,56"). Lixo → None."""
+    """prêmio/franquia → float FINITO, ou None. Nunca levanta.
+
+        1234.56 · "1234.56" · "1.234,56" · "1,234.56" · "R$ 1.234,56" → 1234.56
+        "1.234" (milhar BR) → 1234.0 · "0,00" → 0.0
+        NaN · inf · 1e400 · "NaN" · "inf" · "1e400" · "abc" · "" · True · None → None
+    O separador DECIMAL é o último que aparece; com um só tipo, vírgula é decimal (BR) e
+    ponto seguido de grupos de exatamente 3 dígitos é MILHAR (BR)."""
     if isinstance(valor, bool) or valor is None:
         return None
     if isinstance(valor, (int, float)):
-        return float(valor)
-    if isinstance(valor, str):
-        s = valor.strip().replace("R$", "").replace(" ", "")
-        if not s:
-            return None
-        if "," in s:
-            s = s.replace(".", "").replace(",", ".")
         try:
-            return float(s)
-        except ValueError:
+            f = float(valor)
+        except (OverflowError, ValueError):
             return None
-    return None
+        return f if math.isfinite(f) else None
+    if not isinstance(valor, str):
+        return None
+    s = valor.strip().replace("R$", "").replace(" ", "").replace("\u00a0", "")
+    if not s:
+        return None
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")      # 1.234,56
+        else:
+            s = s.replace(",", "")                        # 1,234.56
+    elif "," in s:
+        s = s.replace(",", "") if _RE_MILHAR_US.fullmatch(s) else s.replace(",", ".")
+    elif _RE_MILHAR_BR.fullmatch(s):
+        s = s.replace(".", "")                            # 1.234 → 1234
+    if not _RE_DECIMAL.fullmatch(s):                      # "abc" · "NaN" · "inf" · "1e400"
+        return None
+    f = float(s)
+    return f if math.isfinite(f) else None
 
 
 def _inteiro(valor: Any) -> Optional[int]:
+    """Nunca levanta: `numero` só devolve finito."""
     n = numero(valor)
     return int(n) if n is not None else None
+
+
+def _limpo(valor: Any) -> str:
+    """Toda string que sai do leitor: sem URL nem chave (B1)."""
+    return sem_url_nem_chave(valor)
 
 
 def _textos(lista: Any) -> List[str]:
     if not isinstance(lista, list):
         return []
-    return [str(x) for x in lista if isinstance(x, str) and x.strip()]
+    return [_limpo(x) for x in lista if isinstance(x, str) and x.strip()]
 
 
 def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Oferta]:
@@ -298,6 +347,7 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
     if premio is None or premio <= 0:
         return None
     cob = r.get("coberturas") if isinstance(r.get("coberturas"), dict) else {}
+    cob = {k: (_limpo(v) if isinstance(v, str) else v) for k, v in cob.items()}
     parcelas = []
     for p in r.get("parcelamentos") or []:
         if isinstance(p, dict):
@@ -308,9 +358,9 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
                 demais_parcelas=numero(p.get("premioDemaisParc")),
             ))
     return Oferta(
-        seguradora=str(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""),
+        seguradora=_limpo(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""),
         seguradora_codigo=_inteiro(item.get("seguradora")),
-        pacote=str(r.get("identificacao") or ""),
+        pacote=_limpo(r.get("identificacao") or ""),
         tipo_de_pacote=_inteiro(r.get("packageType")),
         premio_total=premio,
         premio_mensal=numero(r.get("premioMensal")),
@@ -347,7 +397,7 @@ def ler_resposta(item: Dict[str, Any], ramo: int = RAMO_AUTO) -> RespostaDaSegur
             else:
                 familia = DESCONHECIDA
     return RespostaDaSeguradora(
-        seguradora=str(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""),
+        seguradora=_limpo(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""),
         seguradora_codigo=_inteiro(item.get("seguradora")),
         familia=familia,
         ofertas=ofertas,
@@ -364,7 +414,7 @@ def ler_rodada(json: Any, *, t_s: Optional[float] = None, ramo: int = RAMO_AUTO)
     corpo = json
     if isinstance(json, dict):
         if t_s is None and isinstance(json.get("t_s"), (int, float)) and not isinstance(json.get("t_s"), bool):
-            t_s = float(json["t_s"])
+            t_s = numero(json["t_s"])                     # NaN/inf → None, nunca exceção
         if "corpo" in json:
             corpo = json.get("corpo")
         elif "calculos" in json:
@@ -381,45 +431,99 @@ def _chave_seg(r: RespostaDaSeguradora) -> Any:
     return r.seguradora_codigo if r.seguradora_codigo is not None else r.seguradora
 
 
-def _chave_oferta(o: Oferta) -> Tuple[Any, ...]:
-    return (o.seguradora_codigo if o.seguradora_codigo is not None else o.seguradora,
-            o.pacote, o.tipo_de_pacote, round(o.premio_total, 2))
+def _identidades(rodada: Optional[RodadaDoCalculo]) -> Dict[Tuple[Any, ...], Tuple[Oferta, Any]]:
+    """Cada oferta da rodada pela IDENTIDADE (seguradora, pacote, tipo de pacote, ordem entre
+    as iguais) → (oferta, prêmio arredondado). A ordem separa dois itens IGUAIS da mesma
+    seguradora na mesma rodada (franquias diferentes): os dois são ofertas, não uma atualização."""
+    saida: Dict[Tuple[Any, ...], Tuple[Oferta, Any]] = {}
+    contagem: Dict[Tuple[Any, ...], int] = {}
+    for o in (rodada.ofertas if rodada else ()):
+        base = (o.seguradora_codigo if o.seguradora_codigo is not None else o.seguradora,
+                o.pacote, o.tipo_de_pacote)
+        n = contagem.get(base, 0)
+        contagem[base] = n + 1
+        saida[base + (n,)] = (o, round(o.premio_total, 2))
+    return saida
+
+
+def _familia_consolidada(respostas: Sequence[RespostaDaSeguradora]) -> str:
+    """A família de UMA seguradora numa rodada, mesmo que ela venha em mais de um item
+    (📊 E20: 31 itens; o motor pode mandar um item por pacote). Oferta em qualquer item
+    vence; senão a 1ª família que não é PENDENTE/DESCONHECIDA; senão DESCONHECIDA; senão PENDENTE."""
+    fams = [r.familia for r in respostas]
+    if OFERTA in fams:
+        return OFERTA
+    for f in fams:
+        if f not in (PENDENTE, DESCONHECIDA):
+            return f
+    return DESCONHECIDA if DESCONHECIDA in fams else PENDENTE
+
+
+def _por_seguradora(rodada: Optional[RodadaDoCalculo]) -> Dict[Any, List[RespostaDaSeguradora]]:
+    grupos: Dict[Any, List[RespostaDaSeguradora]] = {}
+    for r in (rodada.respostas if rodada else ()):
+        grupos.setdefault(_chave_seg(r), []).append(r)
+    return grupos
 
 
 def eventos_entre(anterior: Optional[RodadaDoCalculo], nova: RodadaDoCalculo) -> List[Evento]:
     """O que MUDOU de `anterior` para `nova`. Rodadas iguais → []. Rodada
-    atrasada (t_s menor que o da anterior) → [] — não se narra o passado."""
+    atrasada (t_s menor que o da anterior) → [] — não se narra o passado.
+
+    · NOVA_OFERTA: uma identidade de oferta que a anterior não tinha.
+    · OFERTA_ATUALIZADA: a MESMA identidade (seguradora, pacote, tipo) com prêmio diferente —
+      o evento carrega a oferta NOVA; a narração troca o preço, não soma uma oferta.
+    · SEGURADORA_RECUSOU: uma por seguradora, sobre a família CONSOLIDADA dos itens dela —
+      seguradora com oferta em um item e erro em outro NÃO recusou.
+    · CONJUNTO_FECHADO: a rodada fechou e a anterior não (UMA vez por cálculo:
+      `eventos_do_calculo` garante)."""
     if (anterior is not None and anterior.t_s is not None and nova.t_s is not None
             and nova.t_s < anterior.t_s):
         return []
-    ja_vistas = {_chave_oferta(o) for o in (anterior.ofertas if anterior else ())}
-    familia_antes = {_chave_seg(r): r.familia for r in (anterior.respostas if anterior else ())}
+    antes = _identidades(anterior)
+    agora = _identidades(nova)
+    familia_antes = {k: _familia_consolidada(rs) for k, rs in _por_seguradora(anterior).items()}
     eventos: List[Evento] = []
-    for r in nova.respostas:
-        for o in r.ofertas:
-            k = _chave_oferta(o)
-            if k not in ja_vistas:
-                ja_vistas.add(k)
-                eventos.append(Evento(NOVA_OFERTA, nova.t_s, r.seguradora, r.seguradora_codigo,
+    for k, rs in _por_seguradora(nova).items():
+        primeiro = rs[0]
+        for ident, (o, premio) in agora.items():
+            if ident[0] != k:
+                continue
+            if ident not in antes:
+                eventos.append(Evento(NOVA_OFERTA, nova.t_s, primeiro.seguradora, primeiro.seguradora_codigo,
                                       OFERTA, o, nova.ramo))
-        if r.familia not in (OFERTA, PENDENTE) and familia_antes.get(_chave_seg(r)) != r.familia:
-            eventos.append(Evento(SEGURADORA_RECUSOU, nova.t_s, r.seguradora, r.seguradora_codigo,
-                                  r.familia, None, nova.ramo))
+            elif antes[ident][1] != premio:
+                eventos.append(Evento(OFERTA_ATUALIZADA, nova.t_s, primeiro.seguradora,
+                                      primeiro.seguradora_codigo, OFERTA, o, nova.ramo))
+        fam = _familia_consolidada(rs)
+        if fam not in (OFERTA, PENDENTE) and familia_antes.get(k) != fam:
+            eventos.append(Evento(SEGURADORA_RECUSOU, nova.t_s, primeiro.seguradora, primeiro.seguradora_codigo,
+                                  fam, None, nova.ramo))
     if nova.fechado and not (anterior is not None and anterior.fechado):
         eventos.append(Evento(CONJUNTO_FECHADO, nova.t_s, ramo=nova.ramo))
     return eventos
 
 
 def eventos_do_calculo(rodadas: Iterable[RodadaDoCalculo]) -> List[Evento]:
-    """As rodadas em ordem de t_s (as sem t_s, na ordem dada, depois)."""
+    """As rodadas em ordem de t_s (as sem t_s, na ordem dada, depois).
+
+    🔴 CONJUNTO_FECHADO sai UMA vez por cálculo: o fechado é medido sobre as seguradoras
+    PRESENTES na rodada; se uma seguradora aparece só depois (a rodada "reabre"), a chegada
+    dela é narrada como NOVA_OFERTA/SEGURADORA_RECUSOU — o conjunto não "fecha de novo"."""
     lista = list(rodadas)
     ordenadas = sorted(
         (r for r in lista if r.t_s is not None), key=lambda r: r.t_s
     ) + [r for r in lista if r.t_s is None]
     eventos: List[Evento] = []
     anterior: Optional[RodadaDoCalculo] = None
+    ja_fechou = False
     for r in ordenadas:
-        eventos.extend(eventos_entre(anterior, r))
+        for e in eventos_entre(anterior, r):
+            if e.tipo == CONJUNTO_FECHADO:
+                if ja_fechou:
+                    continue
+                ja_fechou = True
+            eventos.append(e)
         anterior = r
     return eventos
 
