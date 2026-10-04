@@ -239,5 +239,69 @@ def test_a_fase_e_o_progresso_do_acionamento_atravessam():
     assert linha["input_fingerprint"], "o fingerprint da entrada é NOT NULL"
 
 
+# =============================================================================
+# ⑥ a maquinaria da FILA nunca toca o run sem fila — SPEC-129-A (lição migrada, §9.3)
+# =============================================================================
+#
+# Até 04/10 este arquivo afirmava, num comentário, que o varredor de órfãos não
+# alcançava estes runs PORQUE a lease deles é NULA. Era verdade — e era sorte: a
+# SPEC-129-A trouxe o RE-DESPACHO, que procura exatamente `running` SEM lease (a
+# mensagem que o Redis perdeu). A proteção passou a ser o filtro
+# `runtime_kind='smith'`, e o guarda passa a prová-la pelo MOTOR, não pelo comentário.
+
+def test_a_maquinaria_da_fila_nao_toca_o_run_sem_fila():
+    sys.path.insert(0, str(RAIZ / "tests"))
+    import dubles_do_work_os as D
+
+    empresa = PEDIDO["company_id"]
+    mundo = D.Mundo(empresas=(empresa,))
+    mundo.relogio.cobrir(_runs)
+    mundo.relogio.ativo = True
+    try:
+        linha = asyncio.run(criar_registro_sem_fila(mundo.banco.visao("dispatch"), **PEDIDO))
+        rid = linha["id"]
+        retrato = dict(mundo.banco.run(rid))
+        assert retrato["status"] == "running" and retrato["lease_owner"] is None
+
+        mundo.relogio.avancar(3 * 3600)              # parado há 3 h, sem lease: o alvo do re-despacho
+        svc = _runs.WorkRunService(mundo.banco.visao("worker"))
+        registro = {PEDIDO["workflow_key"]: None}    # mesmo com a chave dele no registro
+        svc.recuperar_orfaos()
+        svc.despertar_vencidos(registro)
+        svc.redespachar_parados(registro)
+        assert svc.adquirir_lease(rid, "worker", company_id=empresa) is None
+        assert svc.reprocessar(rid, empresa, workflows=registro)["codigo"] == "sem_fila"
+
+        assert mundo.banco.run(rid) == retrato, (
+            "a fila TOCOU um run sem fila — o worker o marcaria `failed` enquanto ele está VIVO")
+        assert not [o for o in mundo.banco.linhas("work_queue_outbox") if o["work_run_id"] == rid]
+        assert not [e for e in mundo.banco.linhas("work_events") if e.get("work_run_id") == rid]
+    finally:
+        mundo.relogio.desinstalar()
+        mundo.relogio.ativo = False
+
+
+def test_CONTROLE_o_mesmo_run_COM_fila_seria_re_despachado():
+    """🔴 O guarda acima só vale se a maquinaria AGIR sobre o mesmo run quando ele é da fila."""
+    sys.path.insert(0, str(RAIZ / "tests"))
+    import dubles_do_work_os as D
+
+    empresa = PEDIDO["company_id"]
+    mundo = D.Mundo(empresas=(empresa,))
+    mundo.relogio.cobrir(_runs)
+    mundo.relogio.ativo = True
+    try:
+        linha = asyncio.run(criar_registro_sem_fila(mundo.banco.visao("dispatch"),
+                                                    **{**PEDIDO, "runtime_kind": "smith"}))
+        mundo.relogio.avancar(15 * 60)
+        svc = _runs.WorkRunService(mundo.banco.visao("worker"))
+        svc.redespachar_parados({PEDIDO["workflow_key"]: None})
+        assert mundo.banco.run(linha["id"])["status"] == "queued", \
+            "o re-despacho não age nem sobre um run da fila: o guarda acima não provaria nada"
+    finally:
+        mundo.relogio.desinstalar()
+        mundo.relogio.ativo = False
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([os.path.abspath(__file__), "-q"]))
