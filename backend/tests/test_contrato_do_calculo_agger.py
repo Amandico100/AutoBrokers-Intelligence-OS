@@ -47,13 +47,28 @@ ESPERADO = (("gravacao_r1", 22, 12, 27, 17), ("gravacao_r2", 21, 11, 25, 17))
 # 📊 famílias da ÚLTIMA rodada, medidas pelo leitor em 04/10/2026
 FAMILIAS_DA_ULTIMA = {
     "gravacao_r1": {"OFERTA": 12, "ACEITACAO": 2, "CREDENCIAL": 1, "INSTABILIDADE": 1, "PERMISSAO": 1},
-    "gravacao_r2": {"OFERTA": 11, "ACEITACAO": 2, "CREDENCIAL": 1, "INSTABILIDADE": 2, "DESCONHECIDA": 1},
+    "gravacao_r2": {"OFERTA": 11, "ACEITACAO": 2, "CREDENCIAL": 1, "INSTABILIDADE": 2, "DADO": 1},
 }
 # 🔴 a DESCONHECIDA não fica escondida: o número EXATO e a mensagem que a produz
 DESCONHECIDAS = {
     "gravacao_r1": set(),
-    "gravacao_r2": {"O Código de Identificação informado para essa renovação é inválido."},
+    "gravacao_r2": set(),  # a renovação inválida virou DADO (D-128-02)
 }
+
+
+# 🔴 G5: as capturas AO VIVO (16 cálculos, 04/10) — toda resposta da ÚLTIMA rodada tem família; nenhuma
+# DESCONHECIDA. Cada mensagem nova que aparecer no motor tem de ganhar regra, não sumir num balde.
+@pytest.mark.parametrize("rotulo", ["vivo_conta_a", "vivo_conta_b"])
+def test_vivo_toda_resposta_tem_familia(rotulo):
+    fx = _fixture(rotulo)
+    com_rodada = [c for c in fx["calculos"] if c["rodadas"]]
+    assert com_rodada, rotulo
+    soltas = []
+    for c in com_rodada:
+        ultima = ler_rodada(c["rodadas"][-1]["corpo"] if isinstance(c["rodadas"][-1], dict) and "corpo" in c["rodadas"][-1] else c["rodadas"][-1])
+        soltas += [m for x in ultima.respostas if x.familia == C.DESCONHECIDA for m in x.mensagens]
+        assert sum(1 for x in ultima.respostas if x.familia == C.OFERTA) > 0
+    assert soltas == [], soltas
 
 
 @pytest.mark.parametrize("rotulo,n_ofertas,n_segs,n_itens,n_consultadas", ESPERADO)
