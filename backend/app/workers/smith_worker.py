@@ -15,9 +15,14 @@ Ciclo:
 
 Laços paralelos:
   · dispatcher do outbox
-  · varredor de órfãos (lease vencida)
-  · expiração de aprovações
+  · varredor de órfãos (lease vencida) + DESPERTADOR + RE-DESPACHO (SPEC-129-A)
+  · expiração de aprovações · máscara dos retratos vencidos (SPEC-129-A `_03`)
   · reconciliação de efeitos sem confirmação
+
+A espera durável (SPEC-129-A): um handler que precisa esperar (o portal, um
+humano) chama `runs.dormir(...)` e devolve `ESPERANDO` — o run fica
+`waiting_input` SEM dono, e o despertador o devolve à fila quando o relógio
+`wake_at` vence. O worker nunca conclui por cima de uma espera.
 
 Executar como serviço separado:
 
@@ -31,6 +36,8 @@ import logging
 import os
 import signal
 from typing import Any, Optional
+
+from app.services.work.runs import CODIGO_EFEITO_INCERTO, EfeitoIncerto, Esperando
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +156,10 @@ class SmithWorker:
                 await self._dormir(2)
 
     async def _laco_orfaos(self) -> None:
+        """Órfãos, DESPERTADOR e RE-DESPACHO — o mesmo laço de 60 s (D-129A-2: nenhum laço novo).
+
+        Cada varredura tem o seu `try`: uma que falha não impede as outras.
+        """
         while not self.parar.is_set():
             await self._dormir(INTERVALO_ORFAOS_S)
             try:
@@ -157,12 +168,44 @@ class SmithWorker:
                     logger.warning("[SmithWorker] %d run(s) órfão(s) recuperado(s)", len(orfaos))
             except Exception as exc:  # noqa: BLE001
                 logger.error("[SmithWorker] varredura de órfãos: %s", type(exc).__name__)
+            registro = self._registro_de_workflows()
+            try:
+                acordados = self.runs.despertar_vencidos(registro)
+                if acordados:
+                    logger.info("[SmithWorker] %d run(s) acordado(s)", len(acordados))
+            except Exception as exc:  # noqa: BLE001
+                logger.error("[SmithWorker] despertador: %s", type(exc).__name__)
+            try:
+                parados = self.runs.redespachar_parados(registro)
+                if parados:
+                    logger.warning("[SmithWorker] %d run(s) parado(s) re-despachado(s)", len(parados))
+            except Exception as exc:  # noqa: BLE001
+                logger.error("[SmithWorker] re-despacho: %s", type(exc).__name__)
+
+    @staticmethod
+    def _registro_de_workflows() -> dict:
+        """`{chave: handler}` do registro da SPEC-055/056 — o despertador só toca o que sabe rodar.
+
+        O handler pode declarar `idade_maxima_s` (D-129A-5) e `ao_desistir(db, run, motivo)`.
+        Registro ilegível → `{}`: nada é acordado nem expirado (falha fechada, nunca o contrário).
+        """
+        try:
+            from app.services.work.workflows import resolver_workflow, workflows_registrados
+
+            return {k: resolver_workflow(k) for k in workflows_registrados()}
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[SmithWorker] registro de workflows indisponível: %s", type(exc).__name__)
+            return {}
 
     async def _laco_manutencao(self) -> None:
         while not self.parar.is_set():
             await self._dormir(INTERVALO_MANUTENCAO_S)
             try:
                 self.approvals.expirar_vencidas()
+                # SPEC-129-A `_03` (P-223) — o retrato cru do acionamento só existe
+                # enquanto pode ser restaurado (`monitoring` ≤ 24 h). O que venceu é
+                # mascarado no banco; aqui só se dá a hora.
+                self._mascarar_retratos_vencidos()
                 pendentes = self.effects.pendentes_de_reconciliacao()
                 if pendentes:
                     # Não repetimos automaticamente: efeito sem confirmação
@@ -188,6 +231,16 @@ class SmithWorker:
                 await self._varrer_memoria()
             except Exception as exc:  # noqa: BLE001
                 logger.error("[SmithWorker] manutenção: %s", type(exc).__name__)
+
+    def _mascarar_retratos_vencidos(self) -> None:
+        try:
+            cli = getattr(self.db, "client", self.db)
+            res = cli.rpc("work_steps_mascarar_vencidos", {"p_horas": 24}).execute()
+            n = res.data if isinstance(getattr(res, "data", None), int) else 0
+            if n:
+                logger.info("[SmithWorker] %d retrato(s) de acionamento mascarado(s)", n)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SmithWorker] máscara dos retratos: %s", type(exc).__name__)
 
     async def _tick_de_inteligencia(self) -> None:
         try:
@@ -278,28 +331,34 @@ class SmithWorker:
             self._por_tenant[company_id] = atual
 
     async def _executar_run(self, entry_id: str, run_id: str, company_id: str, payload: dict) -> None:
-        lease = self.runs.adquirir_lease(run_id, self.worker_id)
+        # 🔴 CAS (SPEC-129-A): só `smith`, só desta corretora, só de `queued`/lease vencida.
+        lease = self.runs.adquirir_lease(run_id, self.worker_id, company_id=company_id)
         if not lease:
-            # Outro worker já assumiu, ou o run terminou. Ack e segue.
+            # Outro worker já assumiu, o run está dormindo/terminou, ou não é da fila. Ack e segue.
             await self.queue.ack(entry_id)
             return
 
-        heartbeat = asyncio.create_task(self._heartbeat(run_id, lease["lease_token"]))
+        token = lease["lease_token"]
+        heartbeat = asyncio.create_task(self._heartbeat(run_id, token))
         try:
-            await self._processar(run_id, company_id, payload)
+            await self._processar(run_id, company_id, payload, lease_token=token)
         except asyncio.CancelledError:
+            # 📊 Antes: prometia "será retomado" num `retry_scheduled` que ninguém relia.
+            # Agora a promessa é verdade: o `wake_at` põe o despertador para buscá-lo.
             self.runs.falhar(run_id, company_id, "worker_shutdown",
-                             "O processador foi encerrado. O trabalho será retomado automaticamente.",
-                             retryable=True, proxima_tentativa_em=30)
+                             "O processador foi reiniciado no meio deste trabalho. Ele volta para a "
+                             "fila em instantes e retoma do último passo seguro; uma etapa com efeito "
+                             "externo interrompida não é repetida — vai para revisão.",
+                             retryable=True, proxima_tentativa_em=30, lease_token=token)
             raise
         except Exception as exc:  # noqa: BLE001
             logger.exception("[SmithWorker] run %s falhou", run_id)
             self.runs.falhar(run_id, company_id, type(exc).__name__,
                              "Não consegui concluir este trabalho. A equipe foi notificada.",
-                             retryable=False)
+                             retryable=False, lease_token=token)
         finally:
             heartbeat.cancel()
-            self.runs.liberar_lease(run_id, lease["lease_token"])
+            self.runs.liberar_lease(run_id, token)
             await self.queue.ack(entry_id)
 
     async def _heartbeat(self, run_id: str, lease_token: str) -> None:
@@ -312,7 +371,8 @@ class SmithWorker:
                 logger.warning("[SmithWorker] lease perdida no run %s", run_id)
                 return
 
-    async def _processar(self, run_id: str, company_id: str, payload: dict) -> None:
+    async def _processar(self, run_id: str, company_id: str, payload: dict,
+                         lease_token: Optional[str] = None) -> None:
         """Executa o workflow do run.
 
         O registro de workflows é da SPEC-056 (Skill Registry). Aqui fica o
@@ -359,16 +419,27 @@ class SmithWorker:
             logger.error("[SmithWorker] nao consegui ler input_payload de %s: %s",
                          run_id, type(exc).__name__)
             self.runs.falhar(run_id, company_id, "entrada_indisponivel",
-                             "Não consegui ler a entrada deste trabalho no banco.",
-                             retryable=True)
+                             "Não consegui ler a entrada deste trabalho no banco. Tento de novo em 1 min.",
+                             retryable=True, proxima_tentativa_em=60, lease_token=lease_token)
             return
 
         handler = resolver_workflow(workflow_key)
         if handler is None:
             self.runs.falhar(run_id, company_id, "workflow_desconhecido",
                              f"Não sei executar este tipo de trabalho ainda ({workflow_key}).",
-                             retryable=False)
+                             retryable=False, lease_token=lease_token)
             return
+
+        # A espera em curso (SPEC-129-A): quantas vezes acordou, o prazo, o passo.
+        # Leitura à parte e best-effort: sem a coluna (antes da `_02`) o run roda igual.
+        espera: dict = {}
+        try:
+            res_espera = (self.db.client.table("work_runs").select("wait_for")
+                          .eq("id", run_id).eq("company_id", company_id).maybe_single().execute())
+            bruto = ((res_espera.data if res_espera is not None else None) or {}).get("wait_for")
+            espera = dict(bruto) if isinstance(bruto, dict) else {}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SmithWorker] espera de %s ilegível: %s", run_id, type(exc).__name__)
 
         contexto = {
             "run_id": run_id,
@@ -379,18 +450,50 @@ class SmithWorker:
             "approvals": self.approvals,
             "effects": self.effects,
             "worker_id": self.worker_id,
+            # 🔴 SPEC-129-A: o token da lease viaja até o handler — `runs.dormir` e
+            # `_transicionar` só escrevem com ele (CAS `running`(meu token) → …).
+            "lease_token": lease_token,
+            "espera": espera,
             "cancelado": lambda: self.runs.cancelamento_pedido(run_id),
         }
 
-        resumo = await handler(contexto)
-
-        if self.runs.cancelamento_pedido(run_id):
-            self.runs._transicionar(run_id, "cancelled", {"cancelled_at": None})
-            self.runs.evento(company_id, run_id, "run.cancelled",
-                             "Trabalho cancelado. Etapas já concluídas foram preservadas.")
+        try:
+            resumo = await handler(contexto)
+        except EfeitoIncerto as exc:
+            # D-129A-4: um passo de efeito EXTERNO interrompido não se repete. Para aqui
+            # e chama gente — o Reprocessar recusa este run (409) até alguém reconciliar.
+            motivo = ("Uma etapa com efeito externo foi interrompida no meio e PODE ter "
+                      "acontecido. Reconcilie antes de qualquer nova tentativa.")
+            self.runs.falhar(run_id, company_id, CODIGO_EFEITO_INCERTO, motivo,
+                             retryable=False, lease_token=lease_token)
+            self.runs.evento(company_id, run_id, "effect.uncertain",
+                             f"{motivo} ({str(exc)[:160] or type(exc).__name__})", severity="warning")
+            gancho = getattr(handler, "ao_desistir", None)
+            if callable(gancho):
+                try:
+                    gancho(self.db, {"id": run_id, "company_id": company_id,
+                                     "workflow_key": workflow_key, "status": "failed"}, motivo)
+                except Exception as exc_g:  # noqa: BLE001
+                    logger.warning("[SmithWorker] ao_desistir de %s: %s", run_id, type(exc_g).__name__)
             return
 
-        self.runs.concluir(run_id, company_id, resumo or "Trabalho concluído")
+        if self.runs.cancelamento_pedido(run_id):
+            if self.runs._transicionar(run_id, "cancelled", {
+                "cancelled_at": _agora_iso(), "finished_at": _agora_iso(),
+                "lease_owner": None, "lease_token": None, "lease_expires_at": None,
+            }, de=("running", "cancelling", "planning"), lease_token=lease_token,
+                    company_id=company_id):
+                self.runs.evento(company_id, run_id, "run.cancelled",
+                                 "Trabalho cancelado. Etapas já concluídas foram preservadas.")
+            return
+
+        # 🔴 SPEC-129-A (problema 2): o handler DORMIU (portal, humano) → NÃO concluir.
+        # O run está `waiting_input`/`waiting_approval`, sem dono; quem o retoma é o
+        # despertador. Concluir aqui era o worker escrevendo `completed` por cima da espera.
+        if isinstance(resumo, Esperando):
+            return
+
+        self.runs.concluir(run_id, company_id, resumo or "Trabalho concluído", lease_token=lease_token)
 
     # ------------------------------------------------------------------
 
@@ -399,6 +502,12 @@ class SmithWorker:
             await asyncio.wait_for(self.parar.wait(), timeout=segundos)
         except asyncio.TimeoutError:
             pass
+
+
+def _agora_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def main() -> None:
