@@ -29,7 +29,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .contrato import (
     ACEITACAO, CAMPOS_DO_PEDIDO_AUTO, COMERCIAL, CONJUNTO_FECHADO, CREDENCIAL,
-    DESCONHECIDA, INSTABILIDADE, NOVA_OFERTA, OFERTA, PENDENTE, PERMISSAO,
+    DADO, DESCONHECIDA, INSTABILIDADE, NOVA_OFERTA, OFERTA, PENDENTE, PERMISSAO,
     RAMO_AUTO, SEGURADORA_RECUSOU, Campo, Evento, Oferta, Parcelamento,
     PedidoDeCalculoAuto, RespostaDaSeguradora, RodadaDoCalculo,
 )
@@ -52,6 +52,10 @@ COBERTURAS_DA_OFERTA: Tuple[str, ...] = (
 # um item por seguradora (rodada, `versoes[].calculos[]`, pedido `cotacao.calculos[]`)
 ITEM_DA_SEGURADORA: Tuple[str, ...] = (
     "seguradora", "seguradoraTxt", "nomeSeguradora", "ativo",
+    # `nome` = o nome COMERCIAL da seguradora no pedido (📊 vivo 04/10: "Yelum", "HDI", "Azul por
+    # Assinatura" ao lado de nomeSeguradora "Liberty Site", "Hdi", "Azul Assinatura"). Não é pessoa:
+    # o diferencial do gerador o acusou por ter sido DESCARTADO e reaparecer em texto de erro.
+    "nome",
     "credenciaisValidas", "retorno", "retornoErro", "erros[]", "alertas[]",
     "premio", "premioMensal", "valorFranquia", "tipoFranquia", "tipoCobertura",
     "tempoResposta", "packageType", "selected",
@@ -221,9 +225,21 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
     # gravacao_r1/r2: "Oferta não disponibilizada ao Parceiro."
     (COMERCIAL, re.compile(r"nao disponibilizada ao parceiro"),
      "gravacao_r1 · gravacao_r2 (erros[])"),
+    # vivo_conta_b (11×): "DESCONTO X COMISSÃO FORA DA ABRANGÊNCIA — O desconto aplicado não pode ser concedido…"
+    (COMERCIAL, re.compile(r"desconto x comissao fora da abrangencia|desconto aplicado nao pode ser concedido"),
+     "vivo_conta_b (erros[])"),
     # gravacao_r1/r2: "A seguradora está apresentando instabilidade no momento. Por favor, tente novamente mais tarde."
     (INSTABILIDADE, re.compile(r"instabilidade|tente novamente mais tarde"),
      "gravacao_r1 · gravacao_r2 (erros[], rodadas intermediárias)"),
+    # vivo_conta_b: "Erro ao executar servico: 105 - Read terminated …" · "… Erro ao inicializar planos …"
+    (INSTABILIDADE, re.compile(r"read terminated|erro ao inicializar planos|erro ao executar servico"),
+     "vivo_conta_b (erros[])"),
+    # gravacao_r2: "O Código de Identificação informado para essa renovação é inválido." ·
+    # vivo_conta_b (9×): "Apólice em período de renovação. Calcule como Renovação …" ·
+    # vivo_conta_a: "CONTRATACAO DE DMO OBRIGATORIA" · "Favor contratar LMI RCF DM e LMI RCF DC …"
+    (DADO, re.compile(r"codigo de identificacao informado para essa renovacao|calcule como renovacao|"
+                      r"periodo de renovacao|contratacao de \w+ obrigatoria|favor contratar"),
+     "gravacao_r2 · vivo_conta_a · vivo_conta_b (erros[])"),
     # gravacao_r1/r2: "Não oferecemos seguro para os dados enviados no momento" ·
     # "O valor do veículo (R$ …) está abaixo do limite mínimo de R$ … aceito por esta seguradora." ·
     # "<produto> disponível apenas para pessoa física."
@@ -231,10 +247,8 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
                            r"disponivel apenas para pessoa"),
      "gravacao_r1 · gravacao_r2 (erros[])"),
 )
-# 🔴 SEM regra, de propósito (vira DESCONHECIDA e o G3 afirma o número exato):
-#    "O Código de Identificação informado para essa renovação é inválido."
-#    — é um DADO da renovação que a seguradora recusou; nenhuma das famílias
-#    do E10 diz isso sem mentir. Decisão do gerente (P-128-xx).
+# A mensagem da renovação inválida (antes DESCONHECIDA) ganhou a família DADO — decisão do gerente
+# (D-128-02, nota 85 × ACEITACAO 50: não é recusa do risco, é pedido a corrigir).
 
 
 def classificar_mensagens(mensagens: Sequence[str]) -> Optional[str]:
