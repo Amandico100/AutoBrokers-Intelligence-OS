@@ -11,8 +11,10 @@ O que se aplica é o TEXTO DOS ARQUIVOS (APPLY = o corpo; VERIFY e ROLLBACK = os
 cópia — mudou o arquivo, mudou a prova.
 
 ```
-_01  os presos `smith` (> 2 h por requested_at, sem lease) expiram com a marca · os "sem fila" intocados ·
-     jovem e com lease intocados · idempotente · o ROLLBACK volta tudo menos o que o RUNTIME expirou
+_01  medido pela DIFERENÇA (📊 a _01 FOI APLICADA em 04/10: VERIFY 21·21·6·0; hoje 0 presos): re-APPLY no
+     banco já aplicado = os presos de AGORA (📊 0 linhas) · os 3 do teste expiram com a marca, e SÓ eles ·
+     os "sem fila" intocados · jovem e com lease intocados · re-APPLY → 0 linhas · o ROLLBACK volta tudo
+     menos o que o RUNTIME expirou · CONTROLE + MUTAÇÃO: sem o filtro de lease o run com dono expira
 _02  2 colunas · índice · 2 CHECKs · smith dormindo sem relógio → recusado · acionamento com relógio →
      recusado · CONTROLE smith com relógio → aceito · idempotente · ROLLBACK re-enfileira com outbox
 _03  0 cru · os 17 = gêmeo · passo `ura` cru de run vivo → mascarado · `monitoring` de run vivo → cru ·
@@ -21,6 +23,9 @@ _03  0 cru · os 17 = gêmeo · passo `ura` cru de run vivo → mascarado · `mo
 CAS  o 2º UPDATE filtrado devolve 0 linhas · a sombra `running` sem lease não é pega pelo filtro `smith`
 ```
 Ao fim de cada teste, uma conexão NOVA, só leitura, confere que produção não mudou (impressão antes = depois).
+⚠️ A impressão olha o que ESTE guarda pode deixar para trás (os runs marcados do teste, a marca da _01, o
+retrato do acionamento, a estrutura) — nunca contagens globais: 📊 04/10 o worker de produção roda
+`detect_signals` ao vivo (+4 `work_events` durante um teste) e a contagem global ficava vermelha sem culpa.
 🔴 Sem banco o teste FALHA com a causa (nunca "pulado = verde").
 """
 from __future__ import annotations
@@ -99,21 +104,27 @@ def _todas(cur, sql, params=None) -> list:
     return cur.fetchall()
 
 
+#: o que ESTE arquivo pode deixar em produção se o ROLLBACK falhar — e nada que o tráfego vivo mexa
+IMPRESSAO = (
+    "select (select count(*) from public.work_runs where outcome_title = 'guarda F4 SPEC-129-A'),"
+    " (select count(*) from public.work_steps where idempotency_key like 'f4-%'),"
+    " (select md5(coalesce(string_agg(id::text||status::text||coalesce(error_code,''),',' order by id),''))"
+    "    from public.work_runs where error_code = 'expirado_sem_rodar_129a'),"
+    " (select count(*) from public.work_events where payload_redacted->>'spec' = '129-A'"
+    "    and payload_redacted->>'migration' = '_01'),"
+    " (select md5(coalesce(string_agg(id::text||md5(output_summary::text),',' order by id),''))"
+    "    from public.work_steps where step_type='dispatch_phase'),"
+    " (select count(*) from information_schema.columns where table_schema='public'"
+    "    and table_name='work_runs' and column_name in ('wake_at','wait_for')),"
+    " (select count(*) from pg_trigger where tgname in ('trg_work_steps_retrato','trg_acionamento_fechado_mascara')),"
+    " (select count(*) from pg_constraint where conname in ('ck_work_runs_wake_so_da_fila','ck_work_runs_espera_tem_relogio'))")
+
+
 def _impressao(dsn: str) -> tuple:
     """Produção, só leitura, numa conexão NOVA: o que nenhum teste pode deixar mudado."""
     with psycopg.connect(dsn, prepare_threshold=None) as c, c.cursor() as cur:
         cur.execute("set transaction read only")
-        cur.execute(
-            "select (select count(*) from public.work_runs), (select count(*) from public.work_events),"
-            " (select count(*) from public.work_steps), (select count(*) from public.work_queue_outbox),"
-            " (select md5(coalesce(string_agg(id::text||status::text||coalesce(error_code,''),',' order by id),''))"
-            "    from public.work_runs where status::text not in ('completed','failed','cancelled')),"
-            " (select md5(coalesce(string_agg(id::text||md5(output_summary::text),',' order by id),''))"
-            "    from public.work_steps where step_type='dispatch_phase'),"
-            " (select count(*) from information_schema.columns where table_schema='public'"
-            "    and table_name='work_runs' and column_name in ('wake_at','wait_for')),"
-            " (select count(*) from pg_trigger where tgname in ('trg_work_steps_retrato','trg_acionamento_fechado_mascara')),"
-            " (select count(*) from pg_constraint where conname in ('ck_work_runs_wake_so_da_fila','ck_work_runs_espera_tem_relogio'))")
+        cur.execute(IMPRESSAO)
         r = cur.fetchone()
         c.rollback()
         return r
@@ -172,27 +183,67 @@ def _saida(cur, sid):
 
 
 # =============================================================================
-# _01 — os presos expiram sem rodar
+# _01 — os presos expiram sem rodar (medido pela DIFERENÇA: a _01 já está aplicada em produção)
 # =============================================================================
 ALVO_01 = ("select id::text from public.work_runs where runtime_kind='smith' and status in ('queued','retry_scheduled')"
            " and lease_owner is null and requested_at < now() - interval '2 hours' order by id")
+MARCADOS_01 = "select id::text from public.work_runs where error_code='expirado_sem_rodar_129a' order by id"
+EVENTOS_01 = ("select count(*) from public.work_events where event_type='run.expired'"
+              " and payload_redacted->>'spec'='129-A' and payload_redacted->>'migration'='_01'")
 RUNS_HASH = ("select md5(string_agg(id::text||'|'||status::text||'|'||coalesce(error_code,'')||'|'||"
              "coalesce(error_message,'')||'|'||coalesce(finished_at::text,'')||'|'||coalesce(lease_owner,''),',' order by id))"
-             " from public.work_runs where not (id::text = any(%s))")
-EVENTOS_FORA = "select count(*) from public.work_events where work_run_id is null or not (work_run_id::text = any(%s))"
+             " from public.work_runs where id::text = any(%s)")
+SEM_FILA_HASH = ("select md5(string_agg(id::text||status::text||coalesce(error_code,''), ',' order by id))"
+                 " from public.work_runs where runtime_kind <> 'smith'")
+#: a linha do WHERE do APPLY que a MUTAÇÃO tira (o filtro de lease: "sem dono")
+FILTRO_DE_LEASE = "and lease_owner is null"
+
+
+def _apply_sem_o_filtro_de_lease() -> str:
+    """A MUTAÇÃO: o APPLY da _01 sem `lease_owner is null` — só no CORPO (o cabeçalho é comentário)."""
+    linhas = _apply(M01).splitlines(keepends=True)
+    alvo = [i for i, l in enumerate(linhas) if not l.startswith("--") and l.strip() == FILTRO_DE_LEASE]
+    assert len(alvo) == 1, "o APPLY mudou: a mutação não acha o filtro de lease"
+    del linhas[alvo[0]]
+    return "".join(linhas)
+
+
+def _cenario_01(cur) -> dict:
+    """Os runs do teste: 3 que EXPIRAM (2 corretoras · retry_scheduled · queued_at regravado) e 3 que FICAM."""
+    a, b = _duas_corretoras(cur)
+    ids = {
+        "velho_a": _run(cur, a, idade_h=3),                                       # expira
+        # retry_scheduled smith exige relógio (`ck_work_runs_espera_tem_relogio`: a _02 está aplicada)
+        "velho_b": _run(cur, b, idade_h=3, status="retry_scheduled", wake=True),  # expira (outra corretora)
+        "jovem": _run(cur, a, idade_h=1),                                         # fica: < 2 h
+        "com_lease": _run(cur, a, idade_h=3, lease=True),                         # fica: tem dono
+        "sombra": _run(cur, b, runtime="sombra", idade_h=3, workflow="claims.shadow"),  # "sem fila": nunca
+        # a idade é por requested_at, NUNCA queued_at: um velho com queued_at regravado AGORA expira igual
+        "regravado": _run(cur, a, idade_h=3),
+    }
+    cur.execute("update public.work_runs set queued_at = now() where id = %s", (ids["regravado"],))
+    return ids
+
+
+EXPIRAM = ("velho_a", "velho_b", "regravado")
 
 
 def test_01_os_presos_expiram_e_o_rollback_nao_ressuscita_o_runtime(banco):
     cur, _ = banco
-    a, b = _duas_corretoras(cur)
-    velho_a = _run(cur, a, idade_h=3)                                    # expira
-    velho_b = _run(cur, b, idade_h=3, status="retry_scheduled")          # expira (outra corretora)
-    jovem = _run(cur, a, idade_h=1)                                      # fica: < 2 h
-    com_lease = _run(cur, a, idade_h=3, lease=True)                      # fica: tem dono
-    sombra = _run(cur, b, runtime="sombra", idade_h=3, workflow="claims.shadow")  # "sem fila": nunca
-    # a idade é por requested_at, NUNCA queued_at: um velho com queued_at regravado AGORA expira igual
-    regravado = _run(cur, a, idade_h=3)
-    cur.execute("update public.work_runs set queued_at = now() where id = %s", (regravado,))
+    _a, b = _duas_corretoras(cur)
+
+    # 1) RE-APPLY no banco JÁ APLICADO: toca exatamente os presos que existem AGORA (📊 04/10: 0)
+    presos_agora = [r[0] for r in _todas(cur, ALVO_01)]
+    cur.execute(_apply(M01))
+    reapply = cur.rowcount
+    print(f"\n  _01 re-APPLY no banco já aplicado: {reapply} linha(s) (presos de agora: {len(presos_agora)})")
+    assert reapply == len(presos_agora), (reapply, presos_agora)
+    assert _todas(cur, ALVO_01) == [], "depois do APPLY não sobra preso"
+
+    # 2) a DIFERENÇA: o que a _01 já marcou (produção) + os runs do teste
+    ja = [r[0] for r in _todas(cur, MARCADOS_01)]
+    eventos_ja = _um(cur, EVENTOS_01)[0]
+    ids = _cenario_01(cur)
     # uma expiração de RUNTIME (o despertador da F1): OUTRO código, evento SEM a marca da _01
     runtime = _run(cur, b, idade_h=5)
     cur.execute("update public.work_runs set status='expired', finished_at=now(), error_code='expirado_pela_idade',"
@@ -200,34 +251,35 @@ def test_01_os_presos_expiram_e_o_rollback_nao_ressuscita_o_runtime(banco):
     cur.execute("insert into public.work_events (company_id, work_run_id, event_type, actor_type, severity,"
                 " message_human, payload_redacted) values (%s, %s, 'run.expired', 'worker', 'warning',"
                 " 'expirou pela idade', '{\"spec\":\"129-A\",\"origem\":\"despertador\"}'::jsonb)", (b, runtime))
+    # a impressão de produção CONSEGUE ver o que o teste escreve (senão o fixture não guardaria nada)
+    assert _um(cur, IMPRESSAO)[0] >= 7, "a impressão não enxerga os runs marcados do teste"
 
-    alvo = [r[0] for r in _todas(cur, ALVO_01)]
-    # o que JÁ tem a marca (produção depois do APPLY real): fica fora das contas e dos hashes
-    ja = [r[0] for r in _todas(cur, "select id::text from public.work_runs where error_code='expirado_sem_rodar_129a'")]
-    assert {velho_a, velho_b, regravado} <= set(alvo) and not {jovem, com_lease, sombra} & set(alvo)
-    sem_fila_antes = _um(cur, "select md5(string_agg(id::text||status::text||coalesce(error_code,''), ',' order by id))"
-                              " from public.work_runs where runtime_kind <> 'smith'")[0]
-    eventos_antes = _um(cur, EVENTOS_FORA, (ja,))[0]
-    hash_antes = _um(cur, RUNS_HASH, (ja,))[0]
+    alvo = {r[0] for r in _todas(cur, ALVO_01)}
+    assert alvo == {ids[k] for k in EXPIRAM}, ("o alvo devia ser SÓ os 3 do teste", alvo)
+    do_teste = list(ids.values()) + [runtime]
+    sem_fila_antes = _um(cur, SEM_FILA_HASH)[0]
+    hash_antes = _um(cur, RUNS_HASH, (do_teste,))[0]
     vivos_sem_fila = _um(cur, "select count(*) from public.work_runs where runtime_kind<>'smith'"
                               " and status::text not in ('completed','failed','cancelled','expired')")[0]
 
     cur.execute(_apply(M01))
+    escritos = cur.rowcount                                    # um run.expired por run expirado (UM comando)
     v1 = _um(cur, _bloco(M01, "VERIFY"))
-    print(f"\n  _01 VERIFY (alvo={len(alvo)}, dos quais 3 são do teste): {v1}")
-    assert v1 == (len(ja) + len(alvo), len(ja) + len(alvo), vivos_sem_fila, 0), v1
-    assert _um(cur, "select md5(string_agg(id::text||status::text||coalesce(error_code,''), ',' order by id))"
-                    " from public.work_runs where runtime_kind <> 'smith'")[0] == sem_fila_antes, "tocou um 'sem fila'"
+    print(f"  _01 APPLY: {escritos} linha(s) · VERIFY (já marcados={len(ja)}, eventos={eventos_ja}): {v1}")
+    assert escritos == len(EXPIRAM), ("a _01 tocou além dos 3 do teste", escritos)
+    assert v1 == (len(ja) + 3, eventos_ja + 3, vivos_sem_fila, 0), v1
+    assert _um(cur, SEM_FILA_HASH)[0] == sem_fila_antes, "tocou um 'sem fila'"
     estados = dict(_todas(cur, "select id::text, status::text from public.work_runs where id::text = any(%s)",
-                          ([velho_a, velho_b, jovem, com_lease, sombra, regravado],)))
-    assert estados == {velho_a: "expired", velho_b: "expired", regravado: "expired",
-                       jovem: "queued", com_lease: "queued", sombra: "queued"}, estados
-    ev = _um(cur, "select count(*), min(severity), min(company_id::text) = %s from public.work_events"
-                  " where work_run_id = %s and event_type = 'run.expired'", (b, velho_b))
-    assert ev == (1, "warning", True), ev
+                          (list(ids.values()),)))
+    assert estados == {ids["velho_a"]: "expired", ids["velho_b"]: "expired", ids["regravado"]: "expired",
+                       ids["jovem"]: "queued", ids["com_lease"]: "queued", ids["sombra"]: "queued"}, estados
+    ev = _um(cur, "select count(*), min(severity), min(company_id::text) = %s, min(payload_redacted->>'status_antes')"
+                  " from public.work_events where work_run_id = %s and event_type = 'run.expired'", (b, ids["velho_b"]))
+    assert ev == (1, "warning", True, "retry_scheduled"), ev
 
-    # idempotência: a 2ª aplicação não muda nada
+    # idempotência: o re-APPLY escreve 0 linhas e o VERIFY não muda
     cur.execute(_apply(M01))
+    assert cur.rowcount == 0, cur.rowcount
     assert _um(cur, _bloco(M01, "VERIFY")) == v1
 
     # ROLLBACK do arquivo: os da _01 voltam; o expirado pelo RUNTIME (e o evento dele) NÃO
@@ -235,9 +287,31 @@ def test_01_os_presos_expiram_e_o_rollback_nao_ressuscita_o_runtime(banco):
     assert _um(cur, "select status::text, error_code from public.work_runs where id=%s",
                (runtime,)) == ("expired", "expirado_pela_idade")
     assert _um(cur, "select count(*) from public.work_events where work_run_id=%s", (runtime,))[0] == 1
-    # e os runs voltam EXATAMENTE ao de antes (menos updated_at, que o gatilho regrava)
-    assert _um(cur, RUNS_HASH, (ja,))[0] == hash_antes
-    assert _um(cur, EVENTOS_FORA, (ja,))[0] == eventos_antes
+    # e os runs do teste voltam EXATAMENTE ao de antes (menos updated_at, que o gatilho regrava)
+    assert _um(cur, RUNS_HASH, (do_teste,))[0] == hash_antes
+    assert _um(cur, EVENTOS_01)[0] == 0
+    # os de produção também voltam ao status de antes (dentro da transação desfeita)
+    assert _um(cur, "select count(*) from public.work_runs where id::text = any(%s) and status='expired'",
+               (ja,))[0] == 0
+
+
+def test_01_CONTROLE_e_MUTACAO_sem_o_filtro_de_lease_o_dono_perde_o_run(banco):
+    """§9.3 / G7: o guarda CONSEGUE ficar vermelho. A linha de CONTROLE repete o APPLY de verdade (o run com
+    dono fica); a MUTAÇÃO tira só `lease_owner is null` — e o run com dono expira por baixo do worker."""
+    cur, _ = banco
+    cur.execute(_apply(M01))                                   # zera os presos de agora (re-APPLY)
+    ids = _cenario_01(cur)
+    cur.execute(_apply(M01))                                   # CONTROLE: o APPLY de verdade
+    assert cur.rowcount == len(EXPIRAM), cur.rowcount
+    assert _um(cur, "select status::text from public.work_runs where id=%s", (ids["com_lease"],))[0] == "queued"
+    cur.execute(_apply_sem_o_filtro_de_lease())                # a MUTAÇÃO
+    print(f"\n  _01 MUTAÇÃO (sem o filtro de lease): {cur.rowcount} linha(s)")
+    assert cur.rowcount == 1, cur.rowcount
+    estado = _um(cur, "select status::text, error_code from public.work_runs where id=%s", (ids["com_lease"],))
+    assert estado == ("expired", "expirado_sem_rodar_129a"), (
+        "sem o filtro de lease o run com dono devia expirar (senão o guarda não guarda)", estado)
+    # o "sem fila" nem a mutação toca: o filtro dele é outro (`runtime_kind='smith'`)
+    assert _um(cur, "select status::text from public.work_runs where id=%s", (ids["sombra"],))[0] == "queued"
 
 
 # =============================================================================
