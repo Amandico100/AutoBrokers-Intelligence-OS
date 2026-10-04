@@ -10,10 +10,10 @@
 | 0 | Fechar a 126/127 | código pronto; testes de celular do Founder | `main` `e7f76df` | — |
 | 0.5 | Registro + `/r/` + P-E0018-14 | ✅ CONCLUÍDO e NO AR 04/10 (Founder implantou; `/r/` falso em aba anônima → "Este link não está mais disponível") (juiz 84 · red team 62 → conserto → confirmação 80 → conserto com prova mecânica) | `programa-mc/passo-0.5` → `main` | 🧑 Implantar + abrir um `/r/` em aba anônima |
 | 1 | 129-A espera durável | ✅ CONCLUÍDA 04/10 (juiz 78 · red team 62 → conserto → confirmação 89; migrations _01 e _02 APLICADAS; _03 na caixa do Founder) — inventário já medido: ver relatório do 0.5 §1 | — | — |
-| 2 | 128 prova do Agger | ⏭ próxima (chat novo) — login da Ellen autorizado até o do robô existir | — | ✅ autorização da corretora declarada (04/10) |
-| 3 | 133-A prova de instalação | ⏳ | — | 🧑 serviço + domínio no EasyPanel; 10–15 testadores |
+| 2 | 128 prova do Agger | ✅ CONCLUÍDA 04/10 (juiz 72 ‖ red team 62 → conserto → confirmação; lente 84; 📊 16 cálculos de 25; nada apagado no Agger nem na InfoCap) — resultado em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md) · `reports/SPEC-128-EXECUTION-REPORT.md` · D-128-01…08 · P-128-01…14 | `spec/128-a-prova-do-agger` (código até `9db6372`) | ✅ autorização da corretora declarada (04/10) · 🧑 D-128-03 e os 3 negócios de teste |
+| 3 | 133-A prova de instalação | ⏭ próxima (chat novo) | — | 🧑 serviço + domínio no EasyPanel; 10–15 testadores |
 | 4 | 129-B motor | ⏳ | — | 🧑 1 login de robô por corretora |
-| 5 | 130-A comparação e proposta | ⏳ | — | 🧑 portão de preço (D-MC-45); modelo visual |
+| 5 | 130-A comparação e proposta | ⏳ | — | 🧑 portão de preço (D-MC-45) — as perguntas do portão de preço estão prontas em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md) §6; modelo visual |
 | 6 | 130-B leitor de apólice | ⏳ | — | 🧑 crédito de API; 20–30 apólices |
 | 7 | 131 renovação | ⏳ | — | 🧑 InfoCap da Resulta de volta na Resulta |
 | 8 | 132 cotação | ⏳ | — | — |
@@ -41,6 +41,7 @@
 | data | SPEC | o quê | US$ | saldo |
 |---|---|---|---:|---:|
 | 04/10 | — | abertura | 0,00 | 4,00 |
+| 04/10 | 128 | medições ao vivo e testes | 0,00 | 4,00 |
 
 Regra: nenhuma rodada paga sem estimativa escrita aqui antes. O que sobrar passa para a SPEC seguinte.
 
