@@ -13382,3 +13382,62 @@ Um run `completed` pode carregar `etapa_nao_verificada`. Nenhuma tela mostra err
 depende da ordem "passo antes do status" — um `monitoring` gravado num run já terminado que REABRE nasce mascarado; (c) run dormindo cujo
 workflow saiu do registro nunca acorda; (d) Reprocessar uma cobrança que falhou por EXCEÇÃO roda de novo (o 409 só cobre `efeito_incerto`);
 (e) job alternando `needs_human`/em curso recomeça o prazo; (f) despertador/re-despacho fazem chamadas síncronas ao PostgREST no loop.
+
+## P-128 · SPEC-128, a prova do Agger (04/10/2026)
+Fonte: `reports/SPEC-128-EXECUTION-REPORT.md` §7 · resultado `programa-multicalculo/A-PROVA-DO-AGGER.md`.
+
+## P-128-01 · 🤖 E18: o que acontece quando o token de 3 h do Agger vence — NÃO MEDIDO
+As sessões da medição duraram < 3 h. **Destrava:** a 129-B mede numa sessão longa, sob a reserva de 1 trabalho por login. **Custa
+esquecer:** o robô para no meio de um cálculo sem saber renovar o token.
+
+## P-128-02 · 🧑 E7: 2 robôs na mesma conta — exige o 2º login
+📊 A sessão aceita 2 cálculos juntos (16/16), mas 2 usuários robô da mesma conta não foram medidos. **Destrava:** o Founder cria o 2º
+login de robô. Até lá fica a reserva de 1 trabalho por login (`worker.py:1716-1725`). **Custa esquecer:** a capacidade fica pela metade sem motivo.
+
+## P-128-03 · 🤖 E12: o formato do "Imprimir" do Agger não foi medido
+`POST pdocs/calculo/print` foi barrado pelo captador. **Destrava:** medir na 129-B/130-A com a lista branca ampliada só para ele.
+**Custa esquecer:** a proposta da 130-A nasce sem saber se dá para reaproveitar o PDF do Agger.
+
+## P-128-04 · 🤖 E4: a busca externa de CPF do Agger é instável
+📊 devolveu `false` em 4 de 5 chamadas. **Destrava:** a 129-B trata como opcional (o dado vem da InfoCap/do corretor). **Custa
+esquecer:** o motor trava esperando um nome que não vem.
+
+## P-128-05 · 🤖 O contrato e o leitor do cálculo não são chamados pelo produto — por desenho
+`backend/portal_worker/multicalculo/{contrato,leitor_agger}.py` só têm testes como chamadores. **Destrava:** a 129-B liga. **Custa
+esquecer:** peça pronta e órfã, que envelhece sem uso.
+
+## P-128-06 · 🧑 A credencial Bradesco da AutoFleet é recusada pela seguradora
+📊 "Login ou senha incorreta" em 39 cálculos. **Destrava:** o Founder (ou a corretora) confere a credencial no cadastro do Agger.
+**Custa esquecer:** a AutoFleet cota sem a Bradesco, hoje e no motor.
+
+## P-128-07 · 🧑 2 negócios de pessoas na Resulta "Calculando" desde 22–23/09
+Não foram tocados (regra: nunca mexer em cotação de pessoa). **Destrava:** a corretora confere se estão travados e decide. **Custa
+esquecer:** sujeira na conta que confunde a foto da conta do captador.
+
+## P-128-08 · 🤖 E5: franquia, carro reserva e assistência não reconferidos por caminho independente
+A lente não achou par de versões que mude SÓ essa alavanca. **Destrava:** 1 recálculo de controle por alavanca na 129-B. **Custa
+esquecer:** as faixas dessas três alavancas entram no portão de preço como medidas por uma fonte só.
+
+## P-128-09 · 🤖 Os scripts que geraram os números estão no rascunho da sessão (somem)
+O documento da prova traz o comando e a fonte de cada número. **Destrava:** versionar os analisadores se a 129-B precisar remedir.
+**Custa esquecer:** remedir exige reescrever os scripts.
+
+## P-128-10 · 🤖 G2 (diferencial contra o bruto) só roda onde há intake
+Na bateria roda o G1 (varredura estrutural + URL/chave). **Destrava:** nada — por desenho; registrar se o intake for apagado (D-MC-35).
+**Custa esquecer:** achar que a bateria refaz o diferencial.
+
+## P-128-11 · 🧑 As assinaturas do Agger vencem
+📊 Resulta 13/10 (limite 20/10) · AutoFleet 21/10 (limite 28/10). **Destrava:** o Founder confere a renovação com as corretoras.
+**Custa esquecer:** o `dataLimiteCalculo` do token corta o cálculo e a 129-B para.
+
+## P-128-12 · 🤖 A lista `busca/v2` não mostra cotações anteriores a 01/09 que o "CPF JÁ COTADO" mostra
+**Destrava:** a 129-B não usa a lista para decidir "negócio novo × existente". **Custa esquecer:** o robô cria negócio duplicado de
+um cliente que já foi cotado.
+
+## P-128-13 · 🤖 A Mapfre deriva de preço entre recálculos iguais
+📊 +16 % entre a 1ª e a 9ª versão do mesmo pedido. **Destrava:** o motor não usa a Mapfre para medir alavanca. **Custa esquecer:**
+a comparação "antes × depois do ajuste" mente na Mapfre.
+
+## P-128-14 · 🧑 Decidir a D-128-03 (recálculo pelo corpo do pedido, de dentro da página)
+A D-MC-28 exige o Founder para o PRODUTO. **Destrava:** a resposta do Founder antes da 129-B. **Custa esquecer:** a 129-B nasce sem
+saber se pode recalcular pelo corpo — e clicar no formulário é mais lento e mais frágil (nota 70 × 88).
