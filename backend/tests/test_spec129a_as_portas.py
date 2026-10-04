@@ -45,6 +45,17 @@ for _n in ("app", "app.services", "app.api"):
         _m.__path__ = [str(RAIZ / _n.replace(".", "/"))]
         sys.modules[_n] = _m
 
+# `app.core.config.Settings` exige estes campos no import da rota. O teste não fala com nenhum
+# deles (banco e Redis são dublês): sem `.env` (worktree limpo, CI), valores de mentira BASTAM.
+# ⚠️ SÓ quando NÃO há `.env`: no pydantic a variável de ambiente VENCE o `.env`, e um valor de
+# mentira aqui esconderia o real dos OUTROS testes da mesma rodada da bateria.
+import os  # noqa: E402
+
+if not (RAIZ / ".env").exists():
+    for _k in ("SUPABASE_URL", "SUPABASE_KEY", "OPENAI_API_KEY", "ENCRYPTION_KEY",
+               "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD"):
+        os.environ.setdefault(_k, "http://duble.invalid" if _k == "SUPABASE_URL" else "duble-129a")
+
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
