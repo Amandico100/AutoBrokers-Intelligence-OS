@@ -13353,3 +13353,32 @@ Na primeira recusa nova ganham o marcador; até lá podem ser tentados de novo (
 
 ## P-MC05-08 · 🤖 O teste [5] do link confere o `report_tool` pelo texto do arquivo
 CLAUDE.md §9.4 pede o motor; a rota da API é testada pelo motor, o `report_tool` não. **O que destrava:** chamar a ferramenta com dublê.
+
+## P-129A · SPEC-129-A, a espera durável (04/10/2026)
+
+## P-129A-01 · 🤖 Quem perdeu as 21 mensagens da fila (B9)
+📊 21 runs `queued` com outbox `published` e nenhum `run.leased`. O re-despacho da 129-A cobre o efeito; a CAUSA não foi medida. **Destrava:**
+diagnóstico do Redis Streams (consumer group, `XPENDING`). **Custa esquecer:** a fila volta a perder sem ninguém saber por quê.
+
+## P-129A-02 · 🤖 Despertar por EVENTO do portal (hoje pelo relógio, ≤ 60 s) — 129-B/133-B
+
+## P-129A-03 · 🤖 CPF em `work_runs.input_payload` do cálculo — a 129-B decide máscara ou cofre
+
+## P-129A-04 · 🤖 Reconciliar um `efeito_incerto` (hoje: 409 no Reprocessar e mão humana)
+
+## P-129A-05 · 🧑 A migration `_03` (CPF mascarado em `work_steps`) NÃO foi aplicada
+A ferramenta de banco recusou (altera dado de forma irreversível e pede confirmação humana). 📊 hoje 17 linhas com CPF/telefone em claro.
+**Destrava:** o Founder aplica pelo SQL Editor do Supabase (passo a passo no relatório da 129-A). **Custa esquecer:** o CPF continua no rastro.
+O código novo funciona sem ela (a varredura só avisa no log).
+
+## P-129A-06 · 🤖 `concluir` não limpa `error_code`/`error_message` de uma tentativa anterior
+Um run `completed` pode carregar `etapa_nao_verificada`. Nenhuma tela mostra erro de run concluído (confirmação). Sujeira de dado.
+
+## P-129A-07 · 🤖 INSERT de `work_steps` falhando SEMPRE (erro ≠ 23505) faz as rotinas pararem e expirarem em 2 h sem alarme
+É o lado seguro (nada é enviado), mas só aparece no log e na linha do tempo. **Destrava:** alarme no `/health` ou no grupo.
+
+## P-129A-08 · 🤖 Riscos latentes do julgamento (0 casos hoje)
+(a) etapa EXTERNA que dorme e tem o worker reiniciado vira `EfeitoIncerto` (a única externa, `bridge_rotina`, não dorme); (b) a `_03`
+depende da ordem "passo antes do status" — um `monitoring` gravado num run já terminado que REABRE nasce mascarado; (c) run dormindo cujo
+workflow saiu do registro nunca acorda; (d) Reprocessar uma cobrança que falhou por EXCEÇÃO roda de novo (o 409 só cobre `efeito_incerto`);
+(e) job alternando `needs_human`/em curso recomeça o prazo; (f) despertador/re-despacho fazem chamadas síncronas ao PostgREST no loop.

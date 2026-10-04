@@ -1,3 +1,6 @@
+# 📊 04/10/2026, SPEC-129-A (branch spec/129-A-a-espera-duravel, HEAD 72b8b56), worktree limpo C:/wt129 → 50 failed · 5150 passed · 8 skipped ·
+#   31 xfailed · 1 xpassed em 4.970 s. TRIAGEM contra a base (35): 35 iguais · 0 sumiram · 15 novas: 13 de carga (passam isoladas: 9 da
+#   SPEC-125, 3 or_ no PostgREST real, árvore limpa) · 2 reais consertadas (3d616fc, 918dd4f) → 0 regressões. A lista abaixo não muda.
 # 📊 04/10/2026, PROGRAMA MULTICÁLCULO passo 0.5 (branch programa-mc/passo-0.5, HEAD 00d53b0), worktree limpo C:\wt05,
 #   `cd backend && <venv>/python -m pytest tests -q -p no:cacheprovider` → 47 failed · 5059 passed · 8 skipped · 31 xfailed · 1 xpassed em 5.486 s (1:31:26).
 #   TRIAGEM NOMINAL contra a base (28): 28 iguais · 0 sumiram · 19 novas → isoladas no HEAD 13f5905: 10 PASSAM (ordem/carga) ·

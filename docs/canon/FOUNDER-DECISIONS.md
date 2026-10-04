@@ -2279,3 +2279,16 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 
 **Verba (Founder, 04/10):** 💭 US$ 4 de API de modelo para as primeiras SPECs do programa. Cada gasto vai ao livro-caixa em
 `programa-multicalculo/ESTADO-DO-PROGRAMA.md`. Nenhuma rodada paga sem estimativa antes.
+
+## D-129A-1…10 · SPEC-129-A — a espera durável (04/10/2026, tomadas pela execução com nota 0–100; rito AAA v13 CRÍTICO)
+
+> D-129A-1 a D-129A-7: texto e notas na SPEC (`specs/SPEC-129-A-a-espera-duravel.md` §3) — espera = `waiting_input` + `wake_at`/`wait_for`
+> só `smith` (85) · acorda no laço de órfãos que já existe (85) · CAS por UPDATE filtrado + re-despacho que se cura (82) · passo EXTERNO
+> interrompido não repete → `efeito_incerto` (D-129A-4) · idade-limite 2 h por `requested_at` (D-129A-5) · o retrato cru do acionamento só
+> enquanto restaurável (D-129A-6) · `needs_human` do portal com backoff 5→60 min (D-129A-7).
+
+| # | Decisão | Notas | Onde |
+|---|---|---|---|
+| **D-129A-8** | **Passo `efeito="nenhum"` sem `guardar` continua re-executando na retomada** (intelligence, research, claims, susep, bridge.auxiliary): devolver `None` quebraria quem usa o resultado; repetir não envia nada para fora do banco (📊 juiz: grep de envio nos 5 módulos → 0; red team: o único que manda WhatsApp, o briefing, é idempotente por período) | re-executar **80** × pular todo passo concluído **50** | `workflows.py` (F2) |
+| **D-129A-9** | **Passo EXTERNO sem prova de estado não roda → `EtapaNaoVerificada`** (nada saiu do prédio) → `retry_scheduled` 60 s; a idade de 2 h encerra | `EtapaNaoVerificada` **85** × `EfeitoIncerto` **60** (avisaria "pode ter acontecido" sem ter acontecido) | `runs.py`, `workflows.py`, `smith_worker.py` (conserto) |
+| **D-129A-10** | **Cancelamento pedido termina `cancelled`** (exceção própria `CancelamentoPedido`, herdeira de `CancelledError`); desligamento real segue `retry_scheduled` | exceção própria **88** × consultar `cancel_requested_at` no except **70** | conserto único |
