@@ -13030,11 +13030,16 @@ casa" sem citar o endereço do cadastro). **O que destrava:** 🤖 C8: oferecer 
 `request_human_agent` (regra no portão do handoff, não no texto); C2: a linha pronta do resumo citar o endereço da ficha; 🧑
 verba para rerodar a Luna k=2 (💭 ≈ US$ 0,30). **Custa esquecer:** a cobrança simples vira trabalho de atendente e o guincho
 pode ir ao endereço errado.
+🟡 **04/10 (T-98, `reports/SPEC-126-127-RODADAS-AUTORIZADAS.md` §2):** rerodada k=2 → **30/36 = 83,3 %** (críticos pass^2 5/6,
+C13 1/2; 18 tentativas refeitas por 429). C8 t1 `pessoa_na_regra` é o MESMO defeito do agente; C2/C11 pedem dado já sabido.
+CONTINUA — a variância está na P-126-26.
 
 ## P-126-02 · 🧑🤖 O Sol (modelo de produção) não foi medido nos não-críticos depois da SPEC
 📊 A rodada C (C1 C3 C4 C8 C11) não rodou: o ledger passou de 3,80 depois da rodada B. A mutação do G1 também não rodou. **O que
 destrava:** 🧑 orçamento (💭 ≈ US$ 0,70 OpenAI) → 🤖 bancada `--conversa` com `openai:gpt-6.1-sol:high` nos 5 cenários, k=1.
 **Custa esquecer:** a meta "Sol ≥ 95 % no conjunto" fica sem número e o agente vai à vida real com metade da prova.
+🟡 **04/10 (T-98, §3):** k=1 → C1 P · C3 F · C4 P; o teto parou o C8 no meio e o C11 não rodou. 📊 US$ 0,10/0,23/0,25 por
+conversa. O C3 é falha da RÉGUA (`repetiu_pergunta` com o segurado sem responder). CONTINUA → P-126-26.
 
 ## P-126-03 · 🤖 A régua da bancada N3: instrução a terceiro lida como pedido, e pessoa aceita contada como proibida
 📊 Sol C10 t1: "Ligue para o 193 e **informe o endereço**" → `perguntou_o_que_ja_sabia` + `pediu_dado_da_apolice` (o juiz LLM dá
@@ -13082,6 +13087,8 @@ normalizar o telefone; marca durável além do Redis. **Custa esquecer:** alarme
 ## P-126-12 · 🤖🧑 A reserva do papel `confirmacao` (Sonnet 5.5) nunca foi medida
 Só o Luna medium passou na bancada do ok. **O que destrava:** 🧑 verba (💭 ≈ US$ 0,05 Anthropic) → 🤖 a bancada do ok no braço
 da reserva, k=3. **Custa esquecer:** se o Luna cair, quem decide o "ok" de um guincho é um modelo sem prova.
+🟡 **04/10 (T-98, §4):** Sonnet 5.5 low, k=1, só os não-ok: **falso ok 0/19** (inclui o `conf-139`, o único que a regex deixa
+passar) · p90 1760 ms · 📊 US$ 0,0021/chamada. CONTINUA só no lado "ok aceito" (não medido; os 179 casos ≈ US$ 0,38).
 
 ## P-126-13 · 🤖 Dois processos no mesmo instante podem enfileirar dois acionamentos
 `dispatch_router.enqueue_dispatch` não deduplica por caso/telefone; o `already_dispatched` vale dentro de um processo. **O que
@@ -13137,6 +13144,14 @@ guarda da base `fbdecec`: 151,2 s / 107,5 s (`scratchpad/cronometra_vocab.py`, 0
 `app.services` inteiro (≈ 15 s cada). **O que destrava:** baratear o guarda (um processo só) ou declarar o teto dele. **Custa
 esquecer:** um vermelho de tempo na bateria que esconde um vermelho de verdade. 🤖
 
+## P-126-26 · 🤖🧑 A Luna caiu para 83,3 % na rodada de 04/10 e o Sol não-crítico ficou incompleto
+📊 `reports/SPEC-126-127-RODADAS-AUTORIZADAS.md` §2–§3: Luna k=2 **30/36 = 83,3 %** (a 126 final: 88,9 %) — variância somada a
+18 tentativas `BLOCKED_BY_INFRA` por 429 de TPM refeitas k=1; Sol k=1: C1 P · **C3 F pela RÉGUA** (`repetiu_pergunta` quando o
+segurado não respondeu — o juiz dá c2 certo) · **C8/C11 sem medida** (teto). **O que destrava:** 🤖 o runner da conversa esperar o
+429 que chega como `APIError` sem status; a régua do `repetiu_pergunta` não contar a pergunta repetida sem resposta (com
+controle); 🧑 verba para o Sol em C8/C11 (💭 ≈ US$ 0,50). **Custa esquecer:** a meta de 90 % da Luna oscila sem se saber se é o
+agente ou a infra, e o Sol vai à vida real sem 2 dos 5 não-críticos.
+
 ## A drenagem das pendências que a SPEC-126 tocou
 | P | estado |
 |---|---|
@@ -13173,6 +13188,11 @@ espera uma pessoa.
 📊 44 casos com gabarito commitado antes (`672441f`): yelum 33 (27 calibráveis) · porto 11 (5 calibráveis, < 10 → nunca
 religa). Sobravam 💭 ≈ US$ 0,22 do teto; a Yelum sozinha custaria 💭 0,29–0,72. **O que destrava:** 🧑 verba (T-102) e ≥ 10
 casos da Porto (T-103) → 🤖 a rodada k ≥ 2 com a linha de controle. **Custa esquecer:** o portal só pergunta, nunca escolhe.
+🟡 **04/10 (T-102, `reports/SPEC-126-127-RODADAS-AUTORIZADAS.md` §5/§8/§8.1):** 1ª rodada Yelum 0 ações em 54 (o modelo
+devolvia "4 - X"; conserto das opções numeradas em `destravador._opcao_da_resposta`); 2ª rodada **45 ações, 45 certas**; a régua
+pela OPÇÃO (fechador) → **22/23, Wilson [79–99 %], `calibrado`**; controle "1ª opção" 5/26. 📊 OpenAI 1,243820 · Anthropic
+0,373216. O SQL de religar (só a corretora de ensaio) é a **T-104** — decisão do Founder, não aplicado. CONTINUA: aplicar
+(T-104) e a Porto (≥ 10 casos, T-103).
 
 ## P-127-05 · 🤖 Cidade/UF só são validadas DEPOIS do `POST /atendimentos`
 📊 `/ufs` e `/cidades` só aparecem nos HAR com `token_autorizacao`, depois do POST (0 de 7 provam que respondem sem token).
@@ -13262,6 +13282,30 @@ passe dado pessoal por cada campo. **Custa esquecer:** dado pessoal ao provedor 
 ## P-127-24 · 🤖 Job `failed` com a fronteira A `armed` sem `submitted` (juiz P7)
 Quando o portal não acha CPF/placa no DOM (`vidros_lanternas.py`), o job falha com a fronteira armada. **O que destrava:** o
 vigia tratar `armed` sem `submitted` como "nada saiu". **Custa esquecer:** um pedido que nada enviou parece incerto.
+
+## P-127-25 · 🧑 O intake do portal de vidros foi APAGADO em 03/10 (~10:51) — sem lixeira
+Os 7 HAR e os 36 HTML das capturas de 21/09 sumiram de `docs/intake/materiais` (fora do Git: `.gitignore:113 docs/intake/`), sem
+passar pela lixeira. Causa provável (INFERÊNCIA): uma junction de `docs/intake/materiais` dentro de um worktree temporário
+removido com `git worktree remove --force` (apaga o ALVO da junction). Restaurada a cópia de agosto em
+`docs/intake/materiais/portal-vidros-RESTAURADO-de-agosto` — 📊 `Get-ChildItem -Recurse -File` → **288 arquivos, 3 HAR**
+(04/10). ⛔ Desde então: nunca junction/link dentro de worktree. **O que destrava:** 🧑 procurar os originais (com a atendente,
+no Drive, no e-mail em que vieram) e/ou recapturar no canário (T-105, T-103). **Custa esquecer:** a bancada do portal e os
+testes que leem os HAR de 21/09 ficam sem a fonte — e ninguém refaz a prova de uma tela que só eles mostravam.
+
+## P-127-26 · 🧑🤖 Os 2 botões da vistoria pelo celular nunca foram medidos
+"Desejo inserir as fotos agora" (`GET /atendimentos/vistoriamobileonline` → `{Link}`) e "Desejo receber o link de acesso por
+E-mail" (`GET /atendimentos/vistoriamobile`) estão `CANDIDATE` com **zero** exercícios no acervo; o robô pergunta ao segurado,
+guarda a escolha e para em `vistoria_pelo_celular_com_a_equipe` (uma pessoa aperta). **O que destrava:** 🧑 o HAR do canário
+(roteiro V9.3 · T-105): o formato do link, se abre no celular, o e-mail que recebe → 🤖 promover os endpoints com teste.
+**Custa esquecer:** toda vistoria pelo celular depende de alguém da equipe apertar um botão.
+
+## P-127-27 · 🤖 Dois scripts-guarda vencidos (falham igual na base `cfe9890`)
+📊 `python backend/tests/test_o_corredor_conhece_a_tela_que_esta_na_frente.py` → `VERMELHO — 2 falha(s)` na árvore e em
+`cfe9890`; `test_o_agente_responde_a_tela_inteira.py` morre no 1º bloco nos dois (`dispatch_router.py:5074` importa
+`app.services.acao_do_cerebro`; o script esvazia o pacote `app` → `ModuleNotFoundError`). Pré-existente, não é regressão da
+vistoria. ✅ A régua da calibração pela OPÇÃO (o outro item desta pendência) FECHOU no fechador de 04/10 (§8.1 do relatório;
+`test_spec127_regua_da_calibracao_pela_opcao.py` 6 passed). **O que destrava:** atualizar os 2 scripts ao fato de hoje (§9.3 —
+a lição migra, não morre). **Custa esquecer:** dois guardas vermelhos que todo mundo aprende a ignorar.
 
 ## A drenagem das pendências que a SPEC-127 tocou
 | P | estado |

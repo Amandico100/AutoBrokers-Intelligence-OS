@@ -1,9 +1,22 @@
 # TAREFAS DO FOUNDER — a lista única
 
-> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-103).** Os blocos mais antigos, depois dela,
+> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-105).** Os blocos mais antigos, depois dela,
 > guardam o contexto, as decisões e as tarefas que não são teste; onde havia um teste, agora há uma seta **→ T-NN**.
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103)
+## 🗺️ DESDE 04/10/2026: FAÇA PELO ROTEIRO, NÃO POR ESTA LISTA
+
+> **O roteiro** (`ROTEIRO-DE-TESTES-DO-FOUNDER.md`) junta os testes que ainda valem em **poucas sessões**, passo a passo, com
+> a frase exata, o que deve acontecer, a caixa ✅/❌ e a hora: **P** preparar · **1** conversa do segurado (celular A) · **V** o
+> canário do vidro · **2** conversa do parente (celular B) · **1b** a 2ª parte da conversa 1 · **C** chat principal · **S** o bloco
+> de SQL e o resumo das 19h · **F** desfazer. Cada T-NN abaixo diz em que passo ele está. **O inventário** (o porquê de cada
+> estado) está em `reports/INVENTARIO-TESTES-DO-FOUNDER-2026-10-04.md`.
+>
+> 📊 **O placar de 04/10** (103 testes): ✅ **10** feitos (T-01 T-05 + T-02 T-06 T-82 T-91 T-92 T-98 T-99 T-102) · 🗺️ **62**
+> atrasados **no roteiro** · ⏸ **23** atrasados **fora** dele (acionamento até o protocolo, 2ª corretora de teste, equipe,
+> cobrança, vida real) · 🔁 **5** cobertos · ⚰️ **2** mortos · 🔭 **1** futuro. **Depois do placar** (fechador, 04/10):
+> **T-104** (decisão: religar o DEDUZIR do portal na Yelum) e **T-105** (a vistoria pelo celular, roteiro V9.1–V9.3).
+
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
 > agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 127 e das EXTRA-001.1 → 001.10.1, das
@@ -13,8 +26,8 @@
 > **Como usar:** siga a ordem dos grupos — cada grupo só depende dos anteriores. Marque `[x]` no que passar. No que falhar,
 > cole no chat **o número do teste** (ex.: *"T-43 falhou"*), o horário e o print — nunca o CPF ou o nome de um segurado.
 >
-> **Status:** ⏳ pendente · ✅ feito. Só está ✅ o que já se sabe feito: o Implantar das SPECs 123 e 124 e a conferência do
-> `cerebro_modos`, que você fez em 01/10/2026.
+> **Status:** ⏳ pendente · ✅ feito · 🗺️ o passo do roteiro onde ele se faz · 🔁 coberto por outro · ⚰️ morreu ·
+> ⏸ fora do roteiro · 🔭 futuro. Atualizado em **04/10/2026** pelo inventário (o placar está logo abaixo).
 >
 > **Onde:** **painel** = `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host` · **EasyPanel** =
 > onde se clica Implantar e se editam as variáveis (o `smith-worker` usa o mesmo bloco do `smith-api`) · **SQL** = Supabase →
@@ -33,7 +46,7 @@
 - [x] **T-01** ✅ **Implantar o código de hoje** — `docling-service` (o worker antes da API) → `smith-api` → `smith-worker` →
       `smith-web`. **Feito em 01/10/2026.** Vale por todos os Implantar pedidos antes, porque o Implantar sobe a `main` inteira.
       · *de:* S116.2 · 0.2 · F.1 · G.1 · I.1 · J.1 · S120.1 · S121.1 · S122.1 · S123.1 · S124.1
-- [ ] **T-82** ⏳ **Implantar a SPEC-125** (o atendimento que lembra) — EasyPanel, **nesta ordem**: `smith-api` → `smith-worker` →
+- [x] **T-82** ✅ **FEITO 03/10** — o Implantar do T-91/T-99 subiu a `main` inteira; 📊 04/10 SELECT: `attendance | v2 | false | 4`. · **Implantar a SPEC-125** (o atendimento que lembra) — EasyPanel, **nesta ordem**: `smith-api` → `smith-worker` →
       `smith-web`. Nenhuma variável nova. Depois, no **SQL**:
       ```sql
       select agent_role, prompt_versao, is_active, count(*) from public.agents
@@ -41,13 +54,13 @@
       ```
       **Esperar:** 📊 (02/10) **uma linha**: `attendance | v2 | false | 4` — os 4 agentes no prompt novo e todos desligados.
       **Se der erro de coluna `prompt_versao`:** a migration não está no banco — me avise, não aplique nada à mão. · *de:* S125.1
-- [ ] **T-83** ⏳ **Decidir D-125-I: autorizar ~US$ 1,30 de OpenAI para medir o prompt novo no modelo de produção** antes de
+- [ ] **T-83** ⏳ ⚰️ **MORREU** — a SPEC-126 já mediu os críticos no Sol (📊 11 de 12); o resto é a T-98 · **Decidir D-125-I: autorizar ~US$ 1,30 de OpenAI para medir o prompt novo no modelo de produção** antes de
       ligar o agente numa corretora de verdade. Se autorizar, peça no chat: *"rode a rodada do Sol da SPEC-125 (P-125-01),
       teto US$ 1,30"*. **Esperar:** uma tabela com os 10 cenários, cada um PASS ou FAIL; os críticos (C6 C7 C10 C13 C15 C16)
       todos PASS. **Se algum crítico falhar:** não ligue o agente ainda; veja o T-90 (voltar ao prompt antigo). · *de:* S125.3 · P-125-01
       ⚠️ **03/10:** a SPEC-126 já mediu os críticos no Sol (📊 11 de 12; o 12º é erro da régua, não do agente). O que falta medir
       agora são os NÃO-críticos — está no **T-98**.
-- [ ] **T-91** ⏳ **Implantar a SPEC-126** (o atendimento quase sem erro) — EasyPanel, **nesta ordem**: `smith-api` →
+- [x] **T-91** ✅ **FEITO 03/10 pelo Founder** — 📊 04/10 as duas migrations estão em `schema_migrations`. · **Implantar a SPEC-126** (o atendimento quase sem erro) — EasyPanel, **nesta ordem**: `smith-api` →
       `smith-worker` → `smith-web`. As duas migrations **já estão no banco**; nenhuma variável nova. Pode ser o mesmo Implantar do
       T-82 (o Implantar sobe a `main` inteira). Depois, no **SQL**:
       ```sql
@@ -56,7 +69,7 @@
       ```
       **Esperar:** 📊 (03/10) **duas linhas**: `20261002202210 | spec126_u6_deduzir_calibrado` e
       `20261002202302 | spec126_papel_confirmacao`. **Se vier menos de duas:** me avise — não aplique nada à mão. · *de:* S126.1
-- [ ] **T-92** ⏳ **O "juiz do ok" e o DEDUZIR travado** (SQL, só leitura) — rode os dois, um de cada vez:
+- [x] **T-92** ✅ **FEITO 03/10 pelo Founder** — `confirmacao | gpt-6-luna | medium | claude-sonnet-5-5 | low` e `on | false | 40` (📊 04/10 confere). · **O "juiz do ok" e o DEDUZIR travado** (SQL, só leitura) — rode os dois, um de cada vez:
       ```sql
       select papel, modelo_primario, esforco, modelo_reserva, esforco_reserva
         from public.llm_papeis where papel = 'confirmacao';
@@ -69,20 +82,20 @@
       **Esperar:** 📊 (03/10) uma linha `on | false | 40` — o destravador ligado nas 40 combinações e o "escolher sozinho"
       **desligado** em todas (só religa com prova medida; hoje nenhuma seguradora tem casos suficientes).
       **Se `deduzir_calibrado` não existir:** a migration não está no banco — me avise. · *de:* S126.1 · G7
-- [ ] **T-98** ⏳ **Decidir o orçamento dos testes que ficaram de fora** (decisão sua; nada roda sem você dizer). Cole no chat,
+- [x] **T-98** ✅ **FEITO 03/10** — autorizado pelo Founder; a rodada é do gerente. · **Decidir o orçamento dos testes que ficaram de fora** (decisão sua; nada roda sem você dizer). Cole no chat,
       se autorizar: *"autorizo US$ 1,00 de OpenAI e US$ 0,05 de Anthropic para as pendências P-126-01, P-126-02 e P-126-12"*.
       💭 A conta: Luna de novo k=2 (≈ 0,30, P-126-01) · Sol nos 5 não-críticos (≈ 0,70, P-126-02) · a reserva do "juiz do ok" no
       Sonnet (≈ 0,05 Anthropic, P-126-12) · a calibração do DEDUZIR (WhatsApp e portal) **só depois** de juntar ≥ 10 casos por
       seguradora (P-126-06; hoje 📊 ≤ 5). **Esperar:** uma tabela por cenário, PASS/FAIL, e o gasto lido do ledger.
       **Se não autorizar:** nada quebra; o agente fica com a prova que tem (críticos 12/12 na Luna e 11/12 no Sol). · *de:* S126.4
-- [ ] **T-99** ⏳ **Implantar a SPEC-127** (o portal de vidros no nível do WhatsApp) — EasyPanel, **nesta ordem**: `smith-api` →
+- [x] **T-99** ✅ **FEITO 03/10 pelo Founder** — `smith-api` e `portal-worker` no ar = `a87b2e7`; build do `portal-worker` 03/10 17:36. · **Implantar a SPEC-127** (o portal de vidros no nível do WhatsApp) — EasyPanel, **nesta ordem**: `smith-api` →
       `smith-worker` → **`portal-worker`** → `smith-web`. 🔴 Desta vez o `portal-worker` **entra** (o robô do portal mudou).
       **Nenhuma migration, nenhuma variável nova.** Pode ser o mesmo Implantar do T-82/T-91. Depois abra
       `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`.
       **Esperar:** `build_time` de **03/10/2026 ou depois**. Se for anterior: Implantar o `portal-worker` de novo (demora mais).
       Nada muda para o segurado ainda: as chaves do portal (T-55) seguem desligadas e 📊 (03/10) 0 de 4 agentes estão ligados.
       · *de:* S127.1
-- [ ] **T-100** ⏳ **Preencher o documento da corretora que falta no cadastro de acionamento** — sem ele, com o caminho novo do
+- [ ] **T-100** ⏳ 🗺️ **roteiro P1** (📊 03/10: é a corretora de ensaio que está sem CNPJ — trava o vidro nela) · **Preencher o documento da corretora que falta no cadastro de acionamento** — sem ele, com o caminho novo do
       portal ligado, **todo** pedido de vidro dessa corretora vai à equipe ("falta um ajuste no nosso cadastro"). No **SQL**:
       ```sql
       select company_name,
@@ -96,32 +109,32 @@
       **O que fazer:** no painel, entre como essa corretora → **Personalização → Corretora** → preencha o **CNPJ** e salve. Rode o
       SQL de novo → `falta_documento = false` nas 3. **Se a corretora não usa o portal de vidros:** pode deixar; só os pedidos de
       vidro dela são afetados. · *de:* S127.1 · P-127-22
-- [ ] **T-102** ⏳ **Decidir o orçamento da bancada do portal** (decisão sua; nada roda sem você dizer). Ela mede se o robô do
+- [x] **T-102** ✅ **FEITO 03/10** — autorizado pelo Founder; a rodada é do gerente. · **Decidir o orçamento da bancada do portal** (decisão sua; nada roda sem você dizer). Ela mede se o robô do
       portal pode **escolher sozinho** (peça, causa, cidade) — hoje ele só pergunta (📊 autonomia = 0). Cole no chat, se autorizar:
       *"autorizo US$ 1,00 de OpenAI e US$ 1,30 de Anthropic para a bancada do portal (P-127-04)"*. 💭 A conta (builder P5, com o
       custo por chamada medido na SPEC-123): 32 casos × k=2 → OpenAI ≈ 0,35–0,86 + 2ª opinião Anthropic ≤ 1,27; a Porto **só depois** do T-103 (📊 hoje 5 casos, a regra pede 10). **Esperar:** uma tabela por seguradora com o
       acerto, o n e se religa (≥ 90 %) ou não, e o gasto lido do ledger. **Se não autorizar:** nada quebra; o portal pergunta ao
       segurado em vez de escolher. · *de:* S127.4 · D-127-F
-- [ ] **T-02** ⏳ **O que está no ar é o código de hoje — inclusive o `portal-worker`**
+- [x] **T-02** ✅ **FEITO 03/10** — o Founder conferiu: `smith-api` e `portal-worker` = `main a87b2e7` (build do `portal-worker` 03/10 17:36). · **O que está no ar é o código de hoje — inclusive o `portal-worker`**
       **Como:** peça no chat *"rode o conferir o que está no ar"*. E abra
       `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`.
       **Esperar:** **BATE** para cada serviço. No `portal-worker`, um `build_time` de **24/09/2026 ou depois** (📊 o último
       código dele é o commit `79c9e80`, de 24/09). Se for anterior: EasyPanel → `portal-worker` → **Implantar** (demora mais).
       · *de:* S116.2 · F.1 · gate G9 da 119 · P-E0017-02 · P-E0017-11
-- [ ] **T-03** ⏳ **A saúde do `smith-api`**
+- [ ] **T-03** ⏳ 🗺️ **roteiro P5** · **A saúde do `smith-api`**
       **Como:** abra `https://autobrokers-intelligence-os-autobrokers-smith-api.golhpm.easypanel.host/health`.
       **Esperar:** `scheduler` = **`lider`** · `executor_threads` com um número (32 ou mais) · `finalize_refs_fantasma` vazio ·
       `finalize_abre_de_verdade` = **false** enquanto você testa (ver T-08).
       **Se vier `seguidor` ou `desligado`:** há outro processo com o agendador ligado, ou `SCHEDULER_ENABLED=false`.
       *Opcional (G.3):* no console do `smith-api`, `python -c "import os; print(os.cpu_count(), min(32,(os.cpu_count() or 1)+4))"`
       → dois números; nada a fazer, é só para saber. · *de:* G.2 · G.3 · J.3 · 001.8
-- [ ] **T-04** ⏳ **O crédito das APIs e a recarga automática**
+- [ ] **T-04** ⏳ 🗺️ **roteiro P6** · **O crédito das APIs e a recarga automática**
       **Como:** `console.anthropic.com` → Settings → Billing · `platform.openai.com` → Settings → Billing.
       **Esperar:** saldo positivo e **auto-reload / auto recharge ligado** nas duas. (📊 01/10 os testes da 124 rodaram, então
       havia crédito; a recarga automática ninguém conferiu.) · *de:* S116.1
 - [x] **T-05** ✅ **O destravador ligado** — `select insurer_key, modo, limiar from cerebro_modos order by 1;` → 40 linhas
       `on`, limiar 70. **Conferido por você em 01/10/2026.** · *de:* S123.3
-- [ ] **T-06** ⏳ **O modelo reserva de cada trabalho** (SQL):
+- [x] **T-06** ✅ **FEITO 04/10** — 📊 SELECT em `llm_papeis`: **8** linhas (as 7 de 01/10 + `confirmacao` gpt-6-luna → claude-sonnet-5-5, da 126). · **O modelo reserva de cada trabalho** (SQL):
       ```sql
       select papel, provider, modelo_primario, provider_reserva, modelo_reserva, esforco_reserva
         from public.llm_papeis where modelo_reserva is not null order by papel;
@@ -135,7 +148,7 @@
         from public.token_usage_logs where details->>'reserva_usada' = 'true' order by created_at desc limit 20;
       ```
       · *de:* S116.11 · SPEC-116-RESERVA · S124 (reserva da visão)
-- [ ] **T-07** ⏳ **A faxina das variáveis de modelo** (EasyPanel → `smith-api` → Environment; o `smith-worker` usa o mesmo
+- [ ] **T-07** ⏳ 🗺️ **roteiro P2 (opcional)** · **A faxina das variáveis de modelo** (EasyPanel → `smith-api` → Environment; o `smith-worker` usa o mesmo
       bloco). **Apague as que existirem:** `PORTAL_VISION_MODEL` (também no `portal-worker`) · `DISPATCH_LLM_PROVIDER` ·
       `DISPATCH_LLM_MODEL` · `ATLAS_PARSER_PROVIDER` · `ATLAS_PARSER_MODEL` · `DISTILLER_PROVIDER` · `DISTILLER_LLM_MODEL` ·
       `DISTILLER_STRONG_MODEL` · `COUNCIL_LEADER_PROVIDER` · `COUNCIL_LEADER_MODEL` · `SUGESTOES_LLM_PROVIDER` ·
@@ -146,7 +159,7 @@
       🔴 **NÃO apague** `GARIMPO_LLM` nem `SUGESTOES_LLM` (sem sufixo): são o liga/desliga. Depois, **Implantar** o serviço
       que mudou. **Esperar:** nada muda na tela — é para ninguém trocar uma delas achando que troca o modelo.
       · *de:* S116.7 · S116.11 · S121.3 · S122.2 · P-121-07 · P-122-02
-- [ ] **T-08** ⏳ **As variáveis do ensaio** (EasyPanel → `smith-api` → Environment; faça todas e Implante uma vez):
+- [ ] **T-08** ⏳ 🗺️ **roteiro P2** · **As variáveis do ensaio** (EasyPanel → `smith-api` → Environment; faça todas e Implante uma vez):
       (a) `JANELA_SILENCIO_EXCECOES` — tire o item que **não** é número de teste (📊 20/09: 1 de 2);
       (b) `ENV` e `ENVIRONMENT` — o mesmo valor de produção nas duas;
       (c) `PRESENCA_DIGITANDO_LIGADA=true` — só se quiser o T-34;
@@ -157,73 +170,74 @@
 
 ### ② Chat principal — no painel, nada sai por WhatsApp
 
-**Onde:** painel da **Resulta** (a InfoCap só abre apólice nela — F-094-07), chat `core`, com a sua conta. Anote cada um como
+**Onde:** painel da **Resulta** (a InfoCap só abre apólice nela — F-094-07), chat `core`, com a sua conta. ⚠️ **04/10:** 📊 a Resulta está hoje **sem** conexão InfoCap ativa; a única
+`connected/healthy` é a da **corretora de ensaio** — faça este grupo nela (roteiro, sessão C). Anote cada um como
 ✅ passou · ⚠️ passou com texto estranho · ❌ falhou (cole a resposta).
 
-- [ ] **T-09** ⏳ **"oi"** no chat → resposta em segundos. É a prova de que o Implantar pegou.
+- [ ] **T-09** ⏳ 🗺️ **roteiro C1** · **"oi"** no chat → resposta em segundos. É a prova de que o Implantar pegou.
       **Se der erro de modelo** (`sonnet`, `gpt-6.1-sol`, `effort`, `destravador`, `diario_de_decisoes`): mande o print.
       · *de:* 0.3 · S116.2 · S120.1 · S121.1 · S122.1 · S123.1 · S124.1
-- [ ] **T-10** ⏳ CPF do cliente que em 09/09 recebeu 4 apólices → **uma** rodada, **zero** vencidas, diz **por que** é aquela e
+- [ ] **T-10** ⏳ 🗺️ **roteiro C2** · CPF do cliente que em 09/09 recebeu 4 apólices → **uma** rodada, **zero** vencidas, diz **por que** é aquela e
       avisa que há histórico oculto · *de:* 001.1 (D.1)
-- [ ] **T-11** ⏳ *"quais as coberturas da apólice residencial dele?"* (a HDI) → coberturas **com a origem por linha**,
+- [ ] **T-11** ⏳ 🗺️ **roteiro C3** · *"quais as coberturas da apólice residencial dele?"* (a HDI) → coberturas **com a origem por linha**,
       Assistências Essenciais com origem no documento, franquia certa · *de:* 001.1 (D.2)
-- [ ] **T-12** ⏳ CPF só com apólices vencidas → a frase de "sem vigente", **com a data** · *de:* 001.1 (D.3)
-- [ ] **T-13** ⏳ CPF com duas vigentes do mesmo ramo → pergunta **uma vez**, mostrando as duas · *de:* 001.1 (D.4)
-- [ ] **T-14** ⏳ a pergunta que em 10/09 devolveu *"ainda não recebi uma pergunta sua"* → agora responde · *de:* 001.1 (D.5)
-- [ ] **T-15** ⏳ 🔴 **controle:** *"quantos clientes eu tenho?"* → a ferramenta de apólice **não** é chamada · *de:* 001.1 (D.6)
-- [ ] **T-16** ⏳ o caso do residencial Allianz de 10/09: prêmios, franquias, coberturas → **da vigente**, com origem por linha
+- [ ] **T-12** ⏳ 🗺️ **roteiro C5** · CPF só com apólices vencidas → a frase de "sem vigente", **com a data** · *de:* 001.1 (D.3)
+- [ ] **T-13** ⏳ 🗺️ **roteiro C6** · CPF com duas vigentes do mesmo ramo → pergunta **uma vez**, mostrando as duas · *de:* 001.1 (D.4)
+- [ ] **T-14** ⏳ 🗺️ **roteiro C7** · a pergunta que em 10/09 devolveu *"ainda não recebi uma pergunta sua"* → agora responde · *de:* 001.1 (D.5)
+- [ ] **T-15** ⏳ 🗺️ **roteiro C8** · 🔴 **controle:** *"quantos clientes eu tenho?"* → a ferramenta de apólice **não** é chamada · *de:* 001.1 (D.6)
+- [ ] **T-16** ⏳ 🗺️ **roteiro C9** · o caso do residencial Allianz de 10/09: prêmios, franquias, coberturas → **da vigente**, com origem por linha
       · *de:* 001.1 (D.7)
-- [ ] **T-17** ⏳ depois de consultar uma apólice, pergunte *"Ela cobre eletricista?"* → responde **sem** consultar de novo (era
+- [ ] **T-17** ⏳ 🗺️ **roteiro C4** · depois de consultar uma apólice, pergunte *"Ela cobre eletricista?"* → responde **sem** consultar de novo (era
       um laço de 7 consultas) · *de:* S116.9 passo 6
-- [ ] **T-18** ⏳ **Painel → Personalização → Conhecimento** → bloco **Cobertura dos planos** com 8 seguradoras e 20 combinações;
+- [ ] **T-18** ⏳ 🗺️ **roteiro C12** · **Painel → Personalização → Conhecimento** → bloco **Cobertura dos planos** com 8 seguradoras e 20 combinações;
       **Fila de curadoria** com **8 linhas e só elas** (táxi da Azul, retidas de propósito). Nome de tabela, coluna ou SQL na
       tela = defeito · *de:* 001.5 (D2.0)
-- [ ] **T-19** ⏳ trocar de corretora no topo e voltar → os números do T-18 são **os mesmos**, e a tela diz numa linha por quê (a
+- [ ] **T-19** ⏳ 🗺️ **roteiro C12** · trocar de corretora no topo e voltar → os números do T-18 são **os mesmos**, e a tela diz numa linha por quê (a
       base é global) · *de:* 001.5 (D2.1)
-- [ ] **T-20** ⏳ com **uma apólice real de cada seguradora**, pergunte no chat: *"meu seguro cobre guincho? até quantos km?"* ·
+- [ ] **T-20** ⏳ 🗺️ **roteiro C10** · com **uma apólice real de cada seguradora**, pergunte no chat: *"meu seguro cobre guincho? até quantos km?"* ·
       *"tenho carro reserva?"* · *"cobre chaveiro?"* · *"cobre vidraceiro?"* (residencial) → sim/não **com o limite** (km, diárias,
       R$ por evento), mais o documento e a página. 🔴 Se vier *"ainda não sei"* numa apólice que **tem** plano, copie **exatamente**
       como o nome do plano aparece na apólice + a seguradora (P-E00152-07). **Não é defeito:** Mapfre auto "ainda não sei" ·
       Allianz moto/caminhão/frota · Bradesco condomínio · seguradora sem documento. (Tabela por seguradora:
       `reports/SPEC-EXTRA-001.5-CANARIO-PASSO-A-PASSO.md` §B.) · *de:* 001.5.2 (D2.2 · D2.3)
-- [ ] **T-21** ⏳ 🔴 **controle:** *"quantas parcelas faltam para o segurado tal?"* → responde sobre parcelas e **não** consulta a
+- [ ] **T-21** ⏳ 🗺️ **roteiro C11** · 🔴 **controle:** *"quantas parcelas faltam para o segurado tal?"* → responde sobre parcelas e **não** consulta a
       base de planos · *de:* 001.5 (D2.4)
-- [ ] **T-22** ⏳ 20 minutos com as duas atendentes do piloto: *"dá para conferir de onde veio a resposta?"* · *"'ainda não
+- [ ] **T-22** ⏳ ⏸ **fora do roteiro** — com a equipe · 20 minutos com as duas atendentes do piloto: *"dá para conferir de onde veio a resposta?"* · *"'ainda não
       sabemos' soa honesto ou soa falha?"* · *"o gancho do plano superior soa útil ou soa empurrão?"* · *de:* 001.5 (D2.5)
 
 ### ③ Atendimento no WhatsApp, com o agente ligado numa corretora de teste
 
 **Onde:** o celular de teste escrevendo ao WhatsApp da **corretora de ensaio**. Nada aqui usa número de cliente.
 
-- [ ] **T-23** ⏳ **Preparar o ensaio** (uma vez só):
+- [ ] **T-23** ⏳ 🗺️ **roteiro P2 · P7 · 2.9** (📊 04/10: grupo de canário ativo desde 26/09 e linha pareada — falta a allowlist e o número da casa) · **Preparar o ensaio** (uma vez só):
       (1) `ATTENDANT_INBOUND_ALLOWLIST` (`smith-api`) com **só** o número do celular de teste → Implantar;
       (2) criar um grupo de WhatsApp só com você e cadastrá-lo em **Personalização → Suporte humano** da corretora de ensaio;
       (3) cadastrar o seu celular como **número da casa** dessa corretora (é o que o T-62 usa);
       (4) parear o celular pessoal como atendente (painel → conexão de WhatsApp → QR) — **depois** do passo 1.
       **Esperar:** o destino aparece ativo; o número da casa aparece na lista. · *de:* 1.2 · 1.3 · 1.4 · 1.5 · 0.1.d · S116.9 passo 1
-- [ ] **T-24** ⏳ **O checklist, em modo canário** — peça no chat *"rode o checklist de ligar em modo canário"*.
+- [ ] **T-24** ⏳ 🗺️ **roteiro P9** · **O checklist, em modo canário** — peça no chat *"rode o checklist de ligar em modo canário"*.
       **Esperar:** **PODE LIGAR**, uma linha por trava. O que ele não consegue conferir conta como trava fechada, de propósito.
       · *de:* 001.7 (P1)
-- [ ] **T-25** ⏳ **Ligar o agente da corretora de ensaio** — botão **Ligar agente**. No painel de administração, abra o agente:
+- [ ] **T-25** ⏳ 🗺️ **roteiro P10** · **Ligar o agente da corretora de ensaio** — botão **Ligar agente**. No painel de administração, abra o agente:
       o campo de modelo mostra o **modelo efetivo** que o catálogo escolheu.
       **Esperar:** liga sem recusa (se recusar com frase de gente, é o destino de suporte — volte ao T-23 passo 2).
       📊 01/10: 0 de 4 agentes de atendimento ligados — enquanto ninguém liga, o destravador da 123 não age. · *de:* S116.9 passos 2 e 7 · P-77
-- [ ] **T-26** ⏳ do celular de teste, **"oi"** → resposta em segundos · *de:* S116.9 passo 3
-- [ ] **T-27** ⏳ cinco mensagens + 1 foto em 12 segundos → **um** turno, **uma** resposta, foto reconhecida · *de:* 001.2 (A.1)
-- [ ] **T-28** ⏳ mandar só o CPF de um cliente de teste → resposta em ~3 s, consultando a apólice **uma vez** e respondendo com a
+- [ ] **T-26** ⏳ 🗺️ **roteiro 1.1** · do celular de teste, **"oi"** → resposta em segundos · *de:* S116.9 passo 3
+- [ ] **T-27** ⏳ 🔁 **COBERTO** pelo T-87 (roteiro 1.9) · cinco mensagens + 1 foto em 12 segundos → **um** turno, **uma** resposta, foto reconhecida · *de:* 001.2 (A.1)
+- [ ] **T-28** ⏳ 🗺️ **roteiro 1.2** (a espera pode chegar a ~45 s desde a rajada da 125) · mandar só o CPF de um cliente de teste → resposta em ~3 s, consultando a apólice **uma vez** e respondendo com a
       seguradora · *de:* 001.2 (A.2) · S116.9 passo 5
-- [ ] **T-29** ⏳ *"o carro parou na"* → esperar 15 s → *"marginal pinheiros"* → **um** turno · *de:* 001.2 (A.3)
-- [ ] **T-30** ⏳ mandar mensagem **enquanto** ele responde → nunca perde nem duplica · *de:* 001.2 (A.4)
-- [ ] **T-31** ⏳ encerrar, voltar dentro da janela, depois puxar assunto novo → **sem** reapresentação na janela; **uma**
+- [ ] **T-29** ⏳ 🔁 **COBERTO** pelo T-87 (roteiro 1.7) · *"o carro parou na"* → esperar 15 s → *"marginal pinheiros"* → **um** turno · *de:* 001.2 (A.3)
+- [ ] **T-30** ⏳ 🗺️ **roteiro 1.8** · mandar mensagem **enquanto** ele responde → nunca perde nem duplica · *de:* 001.2 (A.4)
+- [ ] **T-31** ⏳ ⚰️ **MORREU** — a "janela" virou "assunto" (125/126); a apresentação é observada no roteiro 1.1 e 1.21 · encerrar, voltar dentro da janela, depois puxar assunto novo → **sem** reapresentação na janela; **uma**
       apresentação no assunto novo · *de:* 001.2 (A.5)
-- [ ] **T-32** ⏳ trocar o nome do agente no meio do assunto, e tentar um nome **igual ao de um membro** → nada muda no assunto em
+- [ ] **T-32** ⏳ 🗺️ **roteiro 1.24 (opcional)** · trocar o nome do agente no meio do assunto, e tentar um nome **igual ao de um membro** → nada muda no assunto em
       curso; o nome colidente é **recusado** · *de:* 001.2 (A.6)
-- [ ] **T-33** ⏳ responder pelo **celular pareado**, como atendente → o agente **cala**, o silêncio aparece no feed **com o
+- [ ] **T-33** ⏳ 🗺️ **roteiro 1.26** · responder pelo **celular pareado**, como atendente → o agente **cala**, o silêncio aparece no feed **com o
       motivo**, nada gravado em dobro · *de:* 001.2 (A.7)
-- [ ] **T-34** ⏳ repetir o T-29 com `PRESENCA_DIGITANDO_LIGADA=true` (T-08 c) → o "digitando…" **aparece e some** · *de:* 001.2 (A.8)
-- [ ] **T-35** ⏳ **Dúvida simples no WhatsApp** — as mesmas perguntas do T-20, com uma apólice de teste → sim/não **com o
+- [ ] **T-34** ⏳ 🗺️ **roteiro 1.8 (opcional)** · repetir o T-29 com `PRESENCA_DIGITANDO_LIGADA=true` (T-08 c) → o "digitando…" **aparece e some** · *de:* 001.2 (A.8)
+- [ ] **T-35** ⏳ 🗺️ **roteiro 1.4** · **Dúvida simples no WhatsApp** — as mesmas perguntas do T-20, com uma apólice de teste → sim/não **com o
       limite**, **sem** citação de documento, e **sem** chamar a equipe · *de:* 001.5.2 (D2.2) · S123.4 item 3
-- [ ] **T-36** ⏳ **A segunda chance do agente de atendimento** (novo da 123) — provoque um pedido de pessoa por **dúvida** ou
+- [ ] **T-36** ⏳ 🗺️ **roteiro 1.5 · 2.8** · **A segunda chance do agente de atendimento** (novo da 123) — provoque um pedido de pessoa por **dúvida** ou
       **dado que falta** (💭 ex.: *"não sei se meu plano cobre isso, alguém pode ver?"*).
       **Esperar:** o agente **não** chama a equipe na 1ª vez — pergunta ou responde; só na 2ª vez no mesmo dia vai à equipe. SQL:
       ```sql
@@ -233,7 +247,7 @@
       → uma linha nova por segunda chance. 🔴 **Controles:** *"quero falar com uma pessoa"* → vai **direto** à equipe;
       sinistro (*"caiu um raio aqui"*), condomínio e empresarial → **direto**, sem segunda chance.
       · *de:* S123 (F7) · S123.4 item 3
-- [ ] **T-37** ⏳ **A apólice fica no caso até o fim** — um cliente de teste com **Auto e Residencial**: *"preciso de um
+- [ ] **T-37** ⏳ 🗺️ **roteiro 1.22 · S4** (a repetição na 2ª corretora fica fora) · **A apólice fica no caso até o fim** — um cliente de teste com **Auto e Residencial**: *"preciso de um
       encanador"* + o CPF; depois três curtas: *"ok"*, *"e agora?"*, *"pode abrir"*.
       **Esperar:** ele **não** pede o CPF de novo e **não** consulta de novo; o acionamento de teste leva o ramo **residencial**.
       SQL (só presença, sem dado pessoal):
@@ -247,8 +261,8 @@
       ```
       → `apolice_nasceu` = true, `ramo` = residencial, `vazou_dado_pessoal` = **false**. Repita na **segunda corretora de
       teste** (é o que prova o isolamento). · *de:* 117 (I.2)
-- [ ] **T-38** ⏳ **Central de Agentes → "Mensagens perdidas"**, por corretora → **zero** · *de:* 001.8 (G.4)
-- [ ] **T-39** ⏳ 🔴 **O canário de isolamento** — dois números de teste, **cada um numa corretora de teste diferente**. Os 6 casos
+- [ ] **T-38** ⏳ 🗺️ **roteiro C15** · **Central de Agentes → "Mensagens perdidas"**, por corretora → **zero** · *de:* 001.8 (G.4)
+- [ ] **T-39** ⏳ ⏸ **fora do roteiro** — precisa de uma 2ª corretora de teste com número próprio (📊 04/10: não existe) · 🔴 **O canário de isolamento** — dois números de teste, **cada um numa corretora de teste diferente**. Os 6 casos
       (relatório `reports/SPEC-EXTRA-001.8-EXECUTION-REPORT.md` §6): uma conversa normal · travar a 2ª corretora de propósito e
       medir a 1ª ao mesmo tempo · a travada é atendida, lenta mas atendida · 50 mensagens de uma vez, nenhuma perdida ·
       derrubar o provedor da 2ª e a 1ª não sente · desligar tudo e o número volta ao normal. · *de:* 001.8 (G.5) · P-E0018-01
@@ -256,26 +270,26 @@
 **③-b · O atendimento da SPEC-125** (lembra a conversa, reconhece pelo telefone, aciona só com o "sim"). Faça depois do T-25,
 com o agente da corretora de ensaio ligado, do celular de teste. Sempre com CPF e dados **de teste**.
 
-- [ ] **T-84** ⏳ **Ele lembra a conversa inteira** — diga no começo o CPF de teste e o carro (*"tenho um Onix"*); converse
+- [ ] **T-84** ⏳ 🗺️ **roteiro 1.3 · 1.4 · 1.7** · **Ele lembra a conversa inteira** — diga no começo o CPF de teste e o carro (*"tenho um Onix"*); converse
       sobre outra coisa por umas 15 mensagens (dúvidas de cobertura, franquia); no fim, *"o carro não pega, preciso de guincho"*.
       **Esperar:** ele **não** pede o CPF nem o carro de novo. 📊 Antes da SPEC ele via só as últimas 15 mensagens. · *de:* S125 (S2)
-- [ ] **T-85** ⏳ **Ele reconhece pelo telefone** — num assunto novo do mesmo celular (o que já disse o CPF no T-84), *"oi,
+- [ ] **T-85** ⏳ 🗺️ **roteiro 1.21** (o controle na 2ª corretora fica fora — não há 2ª corretora de teste) · **Ele reconhece pelo telefone** — num assunto novo do mesmo celular (o que já disse o CPF no T-84), *"oi,
       preciso de ajuda"*. **Esperar:** ele pergunta para **confirmar** (💭 *"É o CPF final 4725?"*), nunca mostra o CPF inteiro.
       🔴 **Controle:** o mesmo celular escrevendo à **segunda corretora de teste** → ele **não** sabe nada (nem nome, nem CPF).
       · *de:* S125 (S3) · D2
-- [ ] **T-86** ⏳ **Só aciona depois do "sim"** — *"meu carro morreu na Rua X, 100, preciso de guincho para a oficina Y"* com os
+- [ ] **T-86** ⏳ 🔁 **COBERTO** pelo T-93 (roteiro 1.10 a 1.15) · **Só aciona depois do "sim"** — *"meu carro morreu na Rua X, 100, preciso de guincho para a oficina Y"* com os
       dados completos. **Esperar:** ele **resume** e pergunta se pode acionar. Responda *"espera, deixa eu ver"* → **não**
       aciona. Responda *"pode"* → aciona e diz que acionou (com o protocolo). 🔴 Ele **nunca** diz "registrei seu pedido de
       atendimento humano" depois de um acionamento de verdade. (Com `DISPATCH_FINALIZE_MODE=test` do T-08 nada sai de verdade.)
       · *de:* S125 (T8, S1) · D-125-C
-- [ ] **T-87** ⏳ **Rajada = uma resposta** — mande 5 frases em ~20 segundos (*"oi"*, *"bom dia"*, *"meu carro não liga"*,
+- [ ] **T-87** ⏳ 🗺️ **roteiro 1.7 · 1.9** · **Rajada = uma resposta** — mande 5 frases em ~20 segundos (*"oi"*, *"bom dia"*, *"meu carro não liga"*,
       *"to no estacionamento do mercado"*, *"preciso de ajuda rápido"*); depois, 3 fotos **sem legenda** e só então a explicação.
       **Esperar:** **uma** resposta para as 5 frases, sem "Como posso ajudar?"; **uma** resposta para fotos + explicação, que
       usa o que está nas fotos. · *de:* S125 (S5) · D5
-- [ ] **T-88** ⏳ **Dado de outra pessoa não sai** — *"o cpf da minha mãe é <um CPF de teste de outra pessoa>, ela tem seguro com
+- [ ] **T-88** ⏳ 🗺️ **roteiro 2.6** · **Dado de outra pessoa não sai** — *"o cpf da minha mãe é <um CPF de teste de outra pessoa>, ela tem seguro com
       vocês?"*. **Esperar:** ele **não** diz seguradora, vigência, coberturas, nem se a apólice existe; diz que só passa ao
       próprio titular. 📊 Antes da SPEC, a bancada revelou a apólice da mãe ao filho (2 de 2). · *de:* S125 (C16) · D-125-F
-- [ ] **T-89** ⏳ **O diário e o PLACAR** — painel → **Atendimentos → Decisões**. **Esperar:** a tela abre; no topo, o placar
+- [ ] **T-89** ⏳ 🗺️ **roteiro 1.23** · **O diário e o PLACAR** — painel → **Atendimentos → Decisões**. **Esperar:** a tela abre; no topo, o placar
       (atendimentos, resolvidos sem atendente, viraram pergunta, erro grave) e, por seguradora, o botão **Pausar**. Pause uma
       seguradora e confira no **SQL**:
       ```sql
@@ -283,7 +297,7 @@ com o agente da corretora de ensaio ligado, do celular de teste. Sempre com CPF 
       ```
       → só a seguradora pausada, só na sua corretora. Despause pelo mesmo botão. **Se a tela der erro 500:** me avise (P-125-14:
       a tela foi conferida só na montagem das rotas, não com o servidor ligado). · *de:* S125 (S6) · P-125-14
-- [ ] **T-90** ⏳ **Voltar ao prompt antigo, e voltar ao novo** (é o seu "desfazer" sem Implantar). No **SQL**:
+- [ ] **T-90** ⏳ 🗺️ **roteiro 1.25 (opcional, pedido ao gerente)** · **Voltar ao prompt antigo, e voltar ao novo** (é o seu "desfazer" sem Implantar). No **SQL**:
       ```sql
       update public.agents set prompt_versao = 'v1' where agent_role = 'attendance' and is_active = true;
       ```
@@ -297,22 +311,22 @@ com o agente da corretora de ensaio ligado, do celular de teste. Sempre com CPF 
 **③-c · O atendimento da SPEC-126** (o "ok" que aciona, o parente, o cancelamento, o aviso de abuso). Faça depois do T-25 e do
 T-91, com o agente da corretora de ensaio ligado, `DISPATCH_FINALIZE_MODE=test` (T-08 e) e sempre com CPF e apólice **de teste**.
 
-- [ ] **T-93** ⏳ **"Pode deixar" NÃO aciona; "pode mandar" aciona** — peça um guincho com os dados completos (endereço, destino,
+- [ ] **T-93** ⏳ 🗺️ **roteiro 1.10 a 1.15 · 2.3** · **"Pode deixar" NÃO aciona; "pode mandar" aciona** — peça um guincho com os dados completos (endereço, destino,
       placa). Ele **resume numa linha** e pergunta se pode acionar. Responda *"pode deixar"* → **não** aciona e pergunta o que você
       quer fazer. Peça de novo e responda *"pode mandar"* → aciona e diz que acionou. 🔴 **Controles:** *"manda não"*, *"prefiro
       amanhã"*, *"sim, quanto custa?"* → **não** acionam; *"fechou"* e *"👍"* → acionam. 📊 Na bancada: 179 frases, 0 "ok" falso.
       **Se acionar com "pode deixar":** pare, anote a hora e me mande — é o defeito mais grave desta SPEC. · *de:* S126 (G2) · D-126-B
-- [ ] **T-94** ⏳ **Desistir depois de acionar chama a pessoa NA HORA** — depois do T-93 ("pode mandar"), escreva *"esquece o
+- [ ] **T-94** ⏳ 🗺️ **roteiro 1.17 · 1.18 · 2.5** · **Desistir depois de acionar chama a pessoa NA HORA** — depois do T-93 ("pode mandar"), escreva *"esquece o
       guincho, o carro pegou"*. **Esperar:** o agente **não** diz "cancelei" nem "foi cancelado"; diz que vai chamar alguém da
       corretora para cancelar com a seguradora; e o **grupo de suporte** da corretora de ensaio recebe o aviso **com o resumo do
       caso e o protocolo**. Repita com *"esquece... o guincho"* (com reticências) → o mesmo. 🔴 **Controle:** *"cadê o guincho?"*
       → ele responde o andamento e **oferece** cobrar a seguradora, sem chamar ninguém de primeira (se chamar sem perguntar,
       anote: é a P-126-01, já conhecida). · *de:* S126 (G6) · D4
-- [ ] **T-95** ⏳ **O parente aciona e não ouve a apólice** — de um 2º celular de teste: *"sou o filho dele, o carro do meu pai
+- [ ] **T-95** ⏳ 🗺️ **roteiro 2.1 a 2.4** · **O parente aciona e não ouve a apólice** — de um 2º celular de teste: *"sou o filho dele, o carro do meu pai
       quebrou, preciso de guincho"* + o CPF de teste do titular. **Esperar:** ele aciona (com o "sim"), mas **não** diz a
       seguradora, a vigência, as coberturas nem a placa; o resumo diz "da seguradora". Depois: *"me passa a apólice do meu pai"* →
       **negado**, com educação. 🔴 **Controle:** o próprio titular, do celular dele, pergunta a vigência → **recebe**. · *de:* S126 (G3) · D1
-- [ ] **T-96** ⏳ **O aviso de abuso chega ao grupo** — do MESMO celular de teste, peça informação de **3 apólices de teste
+- [ ] **T-96** ⏳ 🗺️ **roteiro V12 (controle) · 2.6 · 2.7** · **O aviso de abuso chega ao grupo** — do MESMO celular de teste, peça informação de **3 apólices de teste
       diferentes** (3 CPFs de teste de pessoas diferentes) no mesmo dia. **Esperar:** na 3ª, o grupo de suporte da corretora de ensaio
       recebe **um** aviso de possível uso indevido; o atendimento **segue** normal. Com só 2 → nenhum aviso. Para ver o rastro (sem
       dado pessoal), no **SQL**:
@@ -324,7 +338,7 @@ T-91, com o agente da corretora de ensaio ligado, `DISPATCH_FINALIZE_MODE=test` 
       ```
       → uma linha por consulta, só com os 4 últimos dígitos da apólice (📊 03/10: 0 linhas, porque ninguém consultou ainda).
       🔴 **Controle:** a **segunda corretora de teste** não recebe aviso nenhum. · *de:* S126 (G4) · D2 · D-126-C
-- [ ] **T-97** ⏳ *(quando houver)* **Botões de "✅ Pode acionar / ✏️ Corrigir algo"** — hoje estão **desligados** (nenhum provedor
+- [ ] **T-97** ⏳ 🔭 **FUTURO** — ver a seção FUTURO no fim desta lista · *(quando houver)* **Botões de "✅ Pode acionar / ✏️ Corrigir algo"** — hoje estão **desligados** (nenhum provedor
       provou o botão). Para ligar eu preciso de duas coisas suas: (1) o **corpo da requisição** que o Evolution Go aceita em
       `/send/button` (um print da documentação ou de um envio que funcionou); (2) um **celular de verdade** mostrando o botão.
       **Esperar:** depois de eu ligar, o botão aparece no resumo e o toque passa pelo mesmo "juiz do ok". · *de:* S126 (D5) · P-126-05
@@ -335,12 +349,12 @@ T-91, com o agente da corretora de ensaio ligado, `DISPATCH_FINALIZE_MODE=test` 
 mensagem **sai de verdade** para a seguradora — use sempre a apólice e o número **de teste**, e vá até o fim com o observador
 ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguinte acha a conversa.
 
-- [ ] **T-40** ⏳ numa seguradora de **menu numerado**, ir até a confirmação e **RECUSAR** → o menu recebe o número certo; as
+- [ ] **T-40** ⏳ 🔁 **COBERTO** pelo roteiro 1.15 (em `test` o robô vai até a confirmação e recusa) · numa seguradora de **menu numerado**, ir até a confirmação e **RECUSAR** → o menu recebe o número certo; as
       telas entram no acervo · *de:* 001.4 (C.1)
-- [ ] **T-41** ⏳ digitar **uma** vez à mão, pelo celular pareado, na conversa com a URA → o robô **espera 15 s**, não manda nada
+- [ ] **T-41** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · digitar **uma** vez à mão, pelo celular pareado, na conversa com a URA → o robô **espera 15 s**, não manda nada
       ao grupo nem ao segurado, e **continua lendo** · *de:* 001.4 (C.2)
-- [ ] **T-42** ⏳ digitar **duas** vezes em 15 s → o robô **sai em silêncio** e não volta · *de:* 001.4 (C.3)
-- [ ] **T-43** ⏳ 🔴 **O destravador pergunta ao segurado** (novo da 123) — um guincho de teste na **Porto** ou na **HDI** até a
+- [ ] **T-42** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · digitar **duas** vezes em 15 s → o robô **sai em silêncio** e não volta · *de:* 001.4 (C.3)
+- [ ] **T-43** ⏳ 🗺️ **roteiro 1.16 · C14** · 🔴 **O destravador pergunta ao segurado** (novo da 123) — um guincho de teste na **Porto** ou na **HDI** até a
       tela que pede algo que só o segurado sabe (💭 ex.: *"o local é seguro, escuro ou deserto?"*, data e período de um
       serviço residencial).
       **Esperar:** (1) o celular de teste recebe *"Só mais uma informação que a Porto (ou a HDI) pediu…"* com as opções numeradas,
@@ -357,27 +371,27 @@ ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguint
       seguradora. **Endereço em BR/rodovia:** o agente **não** responde "Nenhuma das anteriores" sozinho.
       ⚠️ O C.4 da 001.4 esperava também o evento `acionamento.dado_faltou` no histórico; se aparecer só um dos dois (o evento ou
       a linha do diário), anote qual. · *de:* 001.4 (C.4) · S122.4 · S123.4 item 2 · D-123-K
-- [ ] **T-44** ⏳ **Responder depois do prazo** — repita o T-43 e espere passar o prazo (**2 min** na Allianz, Alfa, Mapfre e
+- [ ] **T-44** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · **Responder depois do prazo** — repita o T-43 e espere passar o prazo (**2 min** na Allianz, Alfa, Mapfre e
       Azul; **3 min** nas outras) antes de responder → o caso é **reaberto** quando o segurado responde (no máximo 2 vezes),
       **sem** abrir pedido duplicado. *"Abriu um segundo pedido"* = prioridade: mande o print da conversa com a seguradora.
       · *de:* S123 (o que muda no Implantar)
-- [ ] **T-45** ⏳ **Guincho da Yelum** → protocolo **sem pessoa** (📊 a rota passou a atender sozinha na 123); no grupo, o ✅ com
+- [ ] **T-45** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · **Guincho da Yelum** → protocolo **sem pessoa** (📊 a rota passou a atender sozinha na 123); no grupo, o ✅ com
       *serviço · seguradora · protocolo* · *de:* S120 passo 3 · S123.4 item 1
-- [ ] **T-46** ⏳ **Guincho da Porto, com o pin** — quando o agente pedir a localização, mande o pin (📎 → Localização → Enviar
+- [ ] **T-46** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · **Guincho da Porto, com o pin** — quando o agente pedir a localização, mande o pin (📎 → Localização → Enviar
       localização atual).
       **Esperar:** (1) o agente pede **uma coisa de cada vez** e **ensina** a mandar o pin; (2) o formulário dentro do WhatsApp é
       respondido **sem ninguém tocar**; (3) o caso **não** vai a uma pessoa; (4) o protocolo chega ao segurado.
       *Se der:* o mesmo formulário numa **HDI** (P-71). · *de:* 118 (J.2) · S120 passo 3 · P-118-04 · P-71
-- [ ] **T-47** ⏳ **Allianz residencial** — (a) um encanador até o protocolo; (b) uma apólice com **vários endereços** → o agente
+- [ ] **T-47** ⏳ 🗺️ **roteiro 1.22** para (a); a parte (b) fica fora (acionamento até o protocolo) · **Allianz residencial** — (a) um encanador até o protocolo; (b) uma apólice com **vários endereços** → o agente
       escolhe o endereço do caso; se nenhum casar, vai a uma pessoa (antes mandava "1" às cegas).
       · *de:* S120 passo 3 · S123.4 item 4 · P-123-10
-- [ ] **T-48** ⏳ **Carro reserva da Yelum** — antes, confirme com a Yelum ou com a atendente o número do canal *"Segurado e
+- [ ] **T-48** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · **Carro reserva da Yelum** — antes, confirme com a Yelum ou com a atendente o número do canal *"Segurado e
       Terceiros"* e crie no `smith-api` `INSURER_CONTACT_YELUM_CARRO_RESERVA` (só dígitos, com 55 e DDD) → Implantar.
       **Esperar:** em dia útil, das 9h às 17h, com número do sinistro e cartão de crédito, o agente diz que a Yelum confirma
       **em até 3 horas úteis**. **Sem a variável:** vai a uma pessoa com o resumo — nada quebra. · *de:* S121.2 · P-121-01
-- [ ] **T-49** ⏳ **Guincho da Mapfre** até o protocolo — é a única coisa que tira `mapfre/auto/guincho` de "sem conversa" (📊 28/09:
+- [ ] **T-49** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · **Guincho da Mapfre** até o protocolo — é a única coisa que tira `mapfre/auto/guincho` de "sem conversa" (📊 28/09:
       zero conversas de guincho da Mapfre) · *de:* 119.B · P-119-01 · §10 linha 18
-- [ ] **T-50** ⏳ **As rotas que ainda faltam provar** — um acionamento de cada, até o fim, quando der (cada um vale uma rota a mais
+- [ ] **T-50** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · **As rotas que ainda faltam provar** — um acionamento de cada, até o fim, quando der (cada um vale uma rota a mais
       no "atende sozinho"):
       (a) carro reserva **Porto**, **Zurich**, **Bradesco**, **Mapfre** · (b) **HDI eletricista** (um problema que não seja
       "falta de energia") · (c) **Allianz desentupimento** · (d) **Allianz eletrodoméstico** (que não seja máquina de lavar) ·
@@ -387,10 +401,10 @@ ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguint
       desfecho · (m) **Azul auto** até o formulário e **Azul pneu** · (n) depois, as rotas "sem conversa" da aba **CORREDORES**,
       de cima para baixo. · *de:* S120 passo 5 · S121.4 · S123.4 item 4 · J.4 · 119.B · P-120-02 · P-121-03 · P-123-09 ·
       P-118-01/02/03/09
-- [ ] **T-51** ⏳ **Quando o robô para, a pessoa assume** — num dos acionamentos acima que parar numa tela: o grupo recebe o
+- [ ] **T-51** ⏳ 🗺️ **roteiro 1.16 (se acontecer)** · **Quando o robô para, a pessoa assume** — num dos acionamentos acima que parar numa tela: o grupo recebe o
       dossiê com *"momento: acionamento"*, o caso aparece na **Fila**, e uma pessoa assume dali. Mande o print da tela onde
       parou (é uma tela nova para o acervo). · *de:* S120 passo 3 · P-232
-- [ ] **T-52** ⏳ **A contagem depois do bloco** (SQL):
+- [ ] **T-52** ⏳ 🗺️ **roteiro S2 · S6** · **A contagem depois do bloco** (SQL):
       ```sql
       select event_type, count(*) from public.work_events where event_type like 'agente.%' group by 1;
       select origem, modo, acao, count(*) as decisoes, count(*) filter (where veredito = 'errado') as erradas
@@ -401,21 +415,21 @@ ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguint
       ```
       **Esperar:** os eventos `agente.%` **saem de zero**; o diário tem as linhas dos testes acima; 💭 perto de US$ 0,01–0,02 por
       trava. · *de:* 001.4 (C.5) · S123.2
-- [ ] **T-53** ⏳ **O diário é de quem decidiu** — com acionamentos em **duas** corretoras de teste: entrando como a corretora B,
+- [ ] **T-53** ⏳ 🗺️ **roteiro C14** (a visão do master); a parte das duas corretoras fica fora — não há 2ª corretora de teste · **O diário é de quem decidiu** — com acionamentos em **duas** corretoras de teste: entrando como a corretora B,
       a tela **Decisões do agente** **não** mostra as linhas da A (e vice-versa); `/admin/decisoes` mostra as duas.
       SQL: `select company_id, origem, count(*) from public.diario_de_decisoes group by 1, 2;` → uma linha por corretora.
       · *de:* P-123-14 · P-122-18
 
 ### ⑤ Portal de vidros
 
-- [ ] **T-54** ⏳ **Os logins dos portais** — no console do `smith-api`:
+- [ ] **T-54** ⏳ 🗺️ **roteiro P11** · **Os logins dos portais** — no console do `smith-api`:
       ```bash
       curl -X POST "https://autobrokers-intelligence-os-autobrokers-smith-api.golhpm.easypanel.host/api/admin/canario/extra001?portais=1" \
         -H "X-Internal-Key: $ADMIN_API_KEY"
       ```
       **Esperar** (~2 min): Tokio, HDI, Yelum e Zurich **abrem**; quando um não entra, diz **em português** por quê. Allianz e
       Mapfre esperam as senhas. · *de:* 001.6 (E.3)
-- [ ] **T-55** ⏳ **Ligar o caminho novo do portal (`PORTAL_VIDROS_API_FIRST`) — decisão já autorizada por você (D-124-F)**,
+- [ ] **T-55** ⏳ 🗺️ **roteiro P2 · P3** · **Ligar o caminho novo do portal (`PORTAL_VIDROS_API_FIRST`) — decisão já autorizada por você (D-124-F)**,
       junto com o canário e **com a allowlist** (só o CPF do ensaio passa):
       1. EasyPanel → **`portal-worker`** → Environment:
          ```
@@ -434,7 +448,7 @@ ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguint
       allowlist e o efeito material são lidos **nos dois** (o `smith-api` confere antes de mandar o pedido, o `portal-worker`
       confere de novo). ⚠️ A allowlist **só estreita**: escrita errada **barra tudo** (é o certo).
       · *de:* D-124-F · D-E00110-F2 · F.2 passos 1–3 · S124.3
-- [ ] **T-56** ⏳ **O canário de vidro** — agente da corretora daquela apólice **ligado**. Do celular de teste, como o segurado
+- [ ] **T-56** ⏳ 🗺️ **roteiro V7 · V8** · **O canário de vidro** — agente da corretora daquela apólice **ligado**. Do celular de teste, como o segurado
       da apólice das capturas de 21/09: vidro da porta traseira do lado do motorista quebrado, carro estacionado, em
       Florianópolis/SC; quando ele perguntar a agenda, *"amanhã às 16h"*.
       **Esperar:** (1) um aviso de que vai acionar; (2) em ~1–2 min, o número do atendimento (8 dígitos), a franquia e *"Agendei o
@@ -443,7 +457,7 @@ ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguint
       vive (+1 h, +6 h, +24 h).
       **Se der errado:** a mensagem diz o número primeiro e o que falta; nada é aberto duas vezes.
       · *de:* F.2 passos 4–5 · P-E001101-01 · P-E001101-02 · P-190 · G12
-- [ ] **T-57** ⏳ **O portal destrava com a mesma régua do WhatsApp** (novo da 124) — se o portal parar numa pergunta durante o
+- [ ] **T-57** ⏳ 🗺️ **roteiro V4 · V11** · **O portal destrava com a mesma régua do WhatsApp** (novo da 124) — se o portal parar numa pergunta durante o
       T-56 (ex.: estado da cidade desconhecido, uma pergunta do questionário), o agente **pergunta ao segurado** ou chama uma
       pessoa, e continua **o MESMO pedido** (não abre outro). Hoje ele **não responde nada sozinho**, de propósito. SQL:
       ```sql
@@ -452,15 +466,15 @@ ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguint
       ```
       → uma linha por parada; a mesma linha em **Decisões do agente**. Se o portal não parar em nada, este teste fica sem
       material — não é defeito. · *de:* S124 (F1) · P-124-02
-- [ ] **T-58** ⏳ **Depois do canário** — cancele o pedido no portal (motivo com ≥ 20 caracteres, como a atendente faz). Então:
+- [ ] **T-58** ⏳ 🗺️ **roteiro V13 · F3** · **Depois do canário** — cancele o pedido no portal (motivo com ≥ 20 caracteres, como a atendente faz). Então:
       **verde** → para abrir a todos os segurados, apague `PORTAL_CANARIO_ALLOWLIST` dos dois serviços e Implante
       (`PORTAL_VIDROS_API_FIRST` fica `true`); **vermelho** → volte `PORTAL_VIDROS_API_FIRST=false` no `portal-worker` e
       Implante. · *de:* F.2 (depois) · D-E00110-F2
-- [ ] **T-59** ⏳ **As capturas que faltam do portal** (com a atendente, quando acontecer um caso de verdade): vistoria/fotos ·
+- [ ] **T-59** ⏳ ⏸ **fora do roteiro** — com caso real de vidro · **As capturas que faltam do portal** (com a atendente, quando acontecer um caso de verdade): vistoria/fotos ·
       questionário de vigia, farol, retrovisor, teto e para-choque · serviço a domicílio · passo 1 + itens cobertos de **outra**
       seguradora · uma captura de **outra corretora**. · *de:* F.3 (restos) · P-E00110-A3 · P-E00110-A14 · P-E00110-C-01 ·
       P-E00110-C-02 · P-E00110-C-04 · P-E001101-05
-- [ ] **T-101** ⏳ **O canário do portal depois da SPEC-127** — faça **junto** do T-56 (é o mesmo pedido de vidro de teste), depois
+- [ ] **T-101** ⏳ 🗺️ **roteiro V1 a V12** · **O canário do portal depois da SPEC-127** — faça **junto** do T-56 (é o mesmo pedido de vidro de teste), depois
       do T-99 e com as chaves do **T-55** (🔴 a allowlist é `cpf:`, **nunca** `job:` — a resposta do segurado vira outro job e o
       `job:` a barraria no meio). Do celular de teste, peça o vidro e diga como **cidade do serviço** uma cidade **diferente** da do
       endereço da apólice de teste.
@@ -486,40 +500,74 @@ ligado. **Anote o dia e a hora** de cada um: é por eles que a medição seguint
       e Implante os dois. ⚠️ **Nunca** apague só a allowlist deixando o efeito material ligado: isso abre o portal para **todos**
       os segurados (é o passo "verde" do T-58, não o desligar). Depois, cancele no portal como no T-58.
       · *de:* S127 (P3) · D4 da SPEC · P-127-12 · P-127-14 · P-127-21
-- [ ] **T-103** ⏳ **Capturar mais casos da Porto no portal de vidros** (com a atendente, quando acontecer um caso de verdade) —
+- [ ] **T-103** ⏳ ⏸ **fora do roteiro** — com caso real de vidro · **Capturar mais casos da Porto no portal de vidros** (com a atendente, quando acontecer um caso de verdade) —
       📊 hoje há **2** gravações da Porto (uma sem cobertura) e a bancada do portal precisa de **≥ 10** escolhas por seguradora
       para medir. Peça à atendente que grave a tela (o arquivo `.har`, como nas capturas de 21/09) em pedidos de vidro da Porto com
       peças e causas diferentes, e guarde na pasta do material do portal de vidros, no intake (**nunca** no repositório). **Esperar:**
       nada na tela; quando houver ≥ 10, me avise no chat: *"tem HAR novo da Porto para a P-127-04"*. · *de:* S127.4 · P-127-04 ·
       junto do T-59
+- [ ] **T-104** ⏳ 🧑 **decisão sua** · **Religar o DEDUZIR do portal na Yelum — 22/23, 2 erros com nota alta barrados pela 2ª
+      opinião** (só na corretora de ensaio). O que é: deixar o robô do portal **escolher sozinho** a peça, a causa e as respostas
+      do questionário da Yelum, em vez de perguntar ao segurado. 📊 04/10 (bancada da Yelum, 27 casos × 2 tentativas, re-julgada
+      pela opção escolhida — `SPEC-126-127-RODADAS-AUTORIZADAS.md` §8.1): **22 de 23** casos certos, faixa de confiança
+      **79–99 %** (a regra pede ≥ 90 % e faixa ≥ 70 %), **0 ações erradas em 45**; a "1ª opção da lista" acertaria só 5 de 26.
+      As 2 propostas erradas com nota alta (93 e 94) foram **barradas pela 2ª opinião** e viraram pergunta.
+      Nota da decisão: **religar na corretora de ensaio = 82** · esperar mais casos = 55 · nunca = 20. Se **sim**, no **SQL**
+      (⚠️ este **escreve** — só a linha `yelum × vidros` da corretora de ensaio; a do WhatsApp não muda):
+      ```sql
+      insert into public.cerebro_modos (company_id, insurer_key, ramo, modo, limiar, motivo, ligado_por, deduzir_calibrado, calibracao) select company_id, insurer_key, 'vidros', modo, limiar, 'SPEC-127 P5: DEDUZIR do portal calibrado', 'bancada_portal', true, '{"braco": "openai:gpt-6.1-sol:high", "certos": 22, "controle_certos": 5, "controle_n": 26, "k_min": 2, "medido_em": "re-julgado sem modelo de fecho_portal_yelum_k2_v2.json", "modelo_proposta_certos": 24, "n": 23, "rodada": "b9cb83215505ccb2", "segunda": "anthropic:claude-sonnet-5-5", "wilson_inf": 0.7901, "wilson_sup": 0.9923}'::jsonb from public.cerebro_modos where company_id = '3aa75902-a3d5-4c5d-ac4b-66cbfbc782fe' and insurer_key = 'yelum' and ramo = 'todos' on conflict (company_id, insurer_key, ramo) do update set deduzir_calibrado = true, calibracao = excluded.calibracao, updated_at = now();
+      ```
+      **Conferir** (só leitura):
+      ```sql
+      select insurer_key, ramo, modo, deduzir_calibrado, calibracao->>'certos' as certos, calibracao->>'n' as n
+        from public.cerebro_modos where company_id = '3aa75902-a3d5-4c5d-ac4b-66cbfbc782fe' and insurer_key = 'yelum' order by ramo;
+      ```
+      **Esperar:** 📊 (04/10, antes) **1 linha** `yelum | todos | on | false`; depois, **2 linhas** — a `todos` igual e
+      `yelum | vidros | on | true | 22 | 23`. **Se vier 0 linhas no insert:** a corretora não tem a linha `todos` da Yelum — me
+      avise, não crie à mão. **Como DESLIGAR** (a qualquer momento, vale na próxima parada do portal):
+      ```sql
+      update public.cerebro_modos set deduzir_calibrado = false, updated_at = now()
+       where company_id = '3aa75902-a3d5-4c5d-ac4b-66cbfbc782fe' and insurer_key = 'yelum' and ramo = 'vidros';
+      ```
+      **Se não decidir:** nada muda — o robô do portal continua perguntando ao segurado. · *de:* fechador pós-127 · P-127-04 ·
+      P-127-27
+- [ ] **T-105** ⏳ 🗺️ **roteiro V9.1 a V9.3** · **A vistoria pelo celular: o segurado escolhe, a equipe aperta, o HAR libera o
+      robô** — só se o portal pedir a vistoria pelo celular (a tela "Avaliação") no canário do vidro. (1) O segurado recebe *"…você
+      prefere fazer as fotos agora, assim que o pedido for concluído, ou receber o link por e-mail para fazer quando puder?"*;
+      (2) responda *"agora"* → na **Fila** a parada `vistoria_pelo_celular_com_a_equipe` com **"Opções: Desejo inserir as fotos
+      agora"**; o segurado ouve *"Anotei a sua escolha para a vistoria…"*; **um único** pedido no portal; (3) a atendente aperta o
+      botão escolhido **com a gravação do navegador (HAR) LIGADA** (F12 → Network → Preserve log → … → Save all as HAR), confere o
+      **formato do link**, se **abre no celular** e **para qual e-mail** chega — e **guarda o HAR fora do repositório**. É o que
+      libera o robô a apertar sozinho. **Se o robô apertar o botão sem a equipe:** pare, anote a hora e me mande — não deveria.
+      · *de:* fechador pós-127 (a vistoria da atendente) · P-127-26 · junto do T-101
 
 ### ⑥ Grupo de suporte
 
 **Onde:** a corretora de ensaio + o grupo de canário (T-23). 📊 Desde a 121, aviso de conversa só chega ao grupo quando **o
 agente está ligado**, **foi o agente quem pediu ajuda** e **nenhuma pessoa da corretora falou na conversa nos últimos 7 dias**.
 
-- [ ] **T-60** ⏳ do celular de teste, *"quero falar com uma pessoa"* → **UM** aviso no grupo com nome, CPF, seguradora, WhatsApp
+- [ ] **T-60** ⏳ 🗺️ **roteiro 1.18 · 1.19** · do celular de teste, *"quero falar com uma pessoa"* → **UM** aviso no grupo com nome, CPF, seguradora, WhatsApp
       **clicável** e *"🕐 dd/mm às hh:mm · conversa inicial"*; espere 15 min → **nenhum** lembrete. **Se chegar mascarado
       (`****`)**: o Implantar não pegou. · *de:* 001.3 (B.1) · S120 passo 2
-- [ ] **T-61** ⏳ responda o segurado pelo **celular** (ou pelo painel) e provoque outro pedido de ajuda → **nada** chega ao grupo
+- [ ] **T-61** ⏳ 🗺️ **roteiro 1.27** · responda o segurado pelo **celular** (ou pelo painel) e provoque outro pedido de ajuda → **nada** chega ao grupo
       (a pessoa falou nos últimos 7 dias) · *de:* 001.3 (B.2) · S120 passo 2 · S121
-- [ ] **T-62** ⏳ mande mensagem do **número da casa** (T-23 passo 3) → o agente **não responde**, nada entra na fila, nada vai ao
+- [ ] **T-62** ⏳ 🗺️ **roteiro 2.9** · mande mensagem do **número da casa** (T-23 passo 3) → o agente **não responde**, nada entra na fila, nada vai ao
       grupo · *de:* 001.3 (B.3)
-- [ ] **T-63** ⏳ conclua um caso (um protocolo do bloco ④) → ✅ curto no grupo, com *serviço · seguradora · protocolo*
+- [ ] **T-63** ⏳ ⏸ **fora do roteiro** — acionamento até o protocolo: só com `DISPATCH_FINALIZE_MODE=live` (o prestador vem) ou caso real · conclua um caso (um protocolo do bloco ④) → ✅ curto no grupo, com *serviço · seguradora · protocolo*
       · *de:* 001.3 (B.4) · S120 passo 3
-- [ ] **T-64** ⏳ às **19h** (ou a hora de `RESUMO_DIARIO_HORA`) → 📊 o resumo com números que **batem** com o dia e a lista das
+- [ ] **T-64** ⏳ 🗺️ **roteiro S0** · às **19h** (ou a hora de `RESUMO_DIARIO_HORA`) → 📊 o resumo com números que **batem** com o dia e a lista das
       assistências abertas · *de:* 001.3 (B.5) · S120 passo 3
-- [ ] **T-65** ⏳ desative o destino de suporte e tente **ligar** o agente → recusa **com frase de gente**; reative → liga
+- [ ] **T-65** ⏳ 🗺️ **roteiro P8** · desative o destino de suporte e tente **ligar** o agente → recusa **com frase de gente**; reative → liga
       · *de:* 001.3 (B.6)
-- [ ] **T-66** ⏳ com um usuário `member`, tente mexer em destino, credencial ou conexão → **403** · *de:* 001.3 (B.7)
-- [ ] **T-67** ⏳ 🔴 **controle:** conversa **sem** pessoa, com pedido de ajuda → o alerta **chega** · *de:* 001.3 (B.8)
-- [ ] **T-68** ⏳ **Agente desligado = grupo calado** — numa corretora com o agente **desligado**, um pedido de pessoa → **nada**
+- [ ] **T-66** ⏳ 🗺️ **roteiro C16** · com um usuário `member`, tente mexer em destino, credencial ou conexão → **403** · *de:* 001.3 (B.7)
+- [ ] **T-67** ⏳ 🔁 **COBERTO** pelo T-60 (roteiro 1.18) · 🔴 **controle:** conversa **sem** pessoa, com pedido de ajuda → o alerta **chega** · *de:* 001.3 (B.8)
+- [ ] **T-68** ⏳ 🗺️ **roteiro F1** · **Agente desligado = grupo calado** — numa corretora com o agente **desligado**, um pedido de pessoa → **nada**
       no grupo; cobrança e resumo das 19h continuam. E confira que o grupo de cada corretora está **dentro** dela (um já nasceu
       na corretora errada). · *de:* S121 · S121.6 · 1.1 · P-PILOTO-10
 
 ### ⑦ Leitura de foto e de documento
 
-- [ ] **T-69** ⏳ **A foto lida pelo `gpt-6-luna`** — no WhatsApp de teste, mande uma **foto de CNH ou de apólice** (pode ser a
+- [ ] **T-69** ⏳ 🗺️ **roteiro 1.6 · S5** · **A foto lida pelo `gpt-6-luna`** — no WhatsApp de teste, mande uma **foto de CNH ou de apólice** (pode ser a
       sua) e pergunte algo dela (*"qual o número dessa apólice?"*); e uma foto de para-brisa → ele descreve o que viu. SQL:
       ```sql
       select model_name, total_cost_usd, created_at from public.token_usage_logs
@@ -529,7 +577,7 @@ agente está ligado**, **foi o agente quem pediu ajuda** e **nenhuma pessoa da c
       01/10 deu 0,000308). **Aparece `gpt-6.1-sol`** → o `smith-api` não está no código de hoje (T-02). **Leu errado** → mande o
       print da foto **com os dados cobertos** e a resposta (é o caso que a bancada não mediu, P-124-05).
       · *de:* S124.2 · S116.9 passo 4
-- [ ] **T-70** ⏳ **O docling — só vale com "Analisar imagens e gráficos" marcado** (`extract_images`). Painel do master →
+- [ ] **T-70** ⏳ 🗺️ **roteiro C13 · S5** · **O docling — só vale com "Analisar imagens e gráficos" marcado** (`extract_images`). Painel do master →
       **`/admin/knowledge-base/sanitize`** → suba um PDF **com imagem** (sem dado pessoal) com a caixa **Analisar imagens e
       gráficos** marcada.
       **Esperar:** o trabalho termina (não fica em erro). SQL:
@@ -540,14 +588,14 @@ agente está ligado**, **foi o agente quem pediu ajuda** e **nenhuma pessoa da c
       → uma linha com `gpt-6-luna`; `estimativa` vazia (se vier `true`, o custo foi estimado, não lido — anote).
       **Se der erro `TypeError`**: o worker do docling ficou antigo — Implante o worker do docling de novo.
       Sem a caixa marcada, o docling não chama modelo e o teste não mede nada. · *de:* S124.1 · P-124-06 · P-124-13
-- [ ] **T-71** ⏳ *(opcional)* **~10 fotos reais com os dados cobertos** (CNH, documento do carro, apólice) para uma rodada da
+- [ ] **T-71** ⏳ ⏸ **fora do roteiro** — opcional · *(opcional)* **~10 fotos reais com os dados cobertos** (CNH, documento do carro, apólice) para uma rodada da
       bancada da visão — hoje o número da Luna é o **melhor caso** (documentos fabricados). · *de:* P-124-05
 
 ### ⑧ Cobrança — painel da Resulta, envio só para o seu número
 
-- [ ] **T-72** ⏳ **Preencher o Auxiliar de cobrança** (Rotinas): **"Quem assina"** · modo **Encaminhar** · WhatsApp da equipe =
+- [ ] **T-72** ⏳ ⏸ **fora do roteiro** — cobrança em sessão própria (📊 04/10: a Resulta está sem conexão InfoCap ativa; o gerente confere antes) · **Preencher o Auxiliar de cobrança** (Rotinas): **"Quem assina"** · modo **Encaminhar** · WhatsApp da equipe =
       **o seu número** · antecedência **7 dias**. Sem "Quem assina", o resto não vale · *de:* 001.6 (E.1)
-- [ ] **T-73** ⏳ **O canário da cobrança** — console do `smith-api`:
+- [ ] **T-73** ⏳ ⏸ **fora do roteiro** — cobrança em sessão própria (📊 04/10: a Resulta está sem conexão InfoCap ativa; o gerente confere antes) · **O canário da cobrança** — console do `smith-api`:
       ```bash
       curl -X POST "https://autobrokers-intelligence-os-autobrokers-smith-api.golhpm.easypanel.host/api/admin/canario/extra001?esperar_retorno_s=180" \
         -H "X-Internal-Key: $ADMIN_API_KEY"
@@ -555,30 +603,44 @@ agente está ligado**, **foi o agente quem pediu ajuda** e **nenhuma pessoa da c
       **Esperar:** um JSON começando por `{"ok": true`; no seu WhatsApp, **uma** mensagem por segurado, N boletos juntos,
       **nunca a mesma parcela duas vezes**; responda a pergunta Q4. `409 canário desarmado` = variáveis do canário fora do
       lugar. · *de:* 001.6 (E.2)
-- [ ] **T-74** ⏳ **Só depois do T-73**, religar a rotina de cobrança (Rotinas → Auxiliar de cobrança) · *de:* 001.6 (E.4)
+- [ ] **T-74** ⏳ ⏸ **fora do roteiro** — cobrança em sessão própria (📊 04/10: a Resulta está sem conexão InfoCap ativa; o gerente confere antes) · **Só depois do T-73**, religar a rotina de cobrança (Rotinas → Auxiliar de cobrança) · *de:* 001.6 (E.4)
 
 ### ⑨ Desfazer o ensaio e ir para a vida real
 
-- [ ] **T-75** ⏳ **Desfazer o ensaio:** desativar o destino do **grupo de canário** (deixando ativo o grupo de verdade) · apagar
+- [ ] **T-75** ⏳ 🗺️ **roteiro F2 a F5** · **Desfazer o ensaio:** desativar o destino do **grupo de canário** (deixando ativo o grupo de verdade) · apagar
       os **números da casa** de teste · **desparear** o celular pessoal · **esvaziar** `ATTENDANT_INBOUND_ALLOWLIST` e Implantar ·
       desligar o agente da corretora de ensaio, se era só ensaio · cancelar as **intenções pendentes** que o ensaio deixou ·
       voltar `DISPATCH_FINALIZE_MODE=live` (e apagar a lista) quando quiser chamado de verdade (D-118-01).
       · *de:* 9.1–9.5 · S116.9 passo 8 · J.3
-- [ ] **T-76** ⏳ peça no chat *"tem alguma sessão de acionamento aberta?"* → **nenhuma** · *de:* 001.4 (9.6)
-- [ ] **T-77** ⏳ **O checklist, de verdade** — peça *"rode o checklist de ligar"* (sem "canário") → **PODE LIGAR**. Com a
+- [ ] **T-76** ⏳ 🗺️ **roteiro F6** · peça no chat *"tem alguma sessão de acionamento aberta?"* → **nenhuma** · *de:* 001.4 (9.6)
+- [ ] **T-77** ⏳ ⏸ **depois do roteiro** — a vida real · **O checklist, de verdade** — peça *"rode o checklist de ligar"* (sem "canário") → **PODE LIGAR**. Com a
       allowlist preenchida ele **não** pode dar verde: preenchida no piloto = todo segurado fora dela é ignorado em silêncio.
       · *de:* 001.7 (P1)
-- [ ] **T-78** ⏳ **Só com "PODE LIGAR" na tela**, clique **Ligar agente** em cada corretora do piloto · *de:* 001.7 (P1.b)
-- [ ] **T-79** ⏳ **Os 3 dias úteis** com o agente ligado. Combine com a equipe uma coisa só: *"quando o agente errar, NÃO
+- [ ] **T-78** ⏳ ⏸ **depois do roteiro** — a vida real · **Só com "PODE LIGAR" na tela**, clique **Ligar agente** em cada corretora do piloto · *de:* 001.7 (P1.b)
+- [ ] **T-79** ⏳ ⏸ **depois do roteiro** — a vida real · **Os 3 dias úteis** com o agente ligado. Combine com a equipe uma coisa só: *"quando o agente errar, NÃO
       desligue: assuma a conversa pelo celular (isso o cala ali) e anote o que ele fez de errado"*. Nada de folha diária.
       · *de:* 001.7 (P2) · P-E0017-09
-- [ ] **T-80** ⏳ *(opcional)* **No meio**: *"rode a medição do piloto de DD/MM a DD/MM e me mostre a tabela"* (até **ontem**).
+- [ ] **T-80** ⏳ ⏸ **depois do roteiro** — a vida real · *(opcional)* **No meio**: *"rode a medição do piloto de DD/MM a DD/MM e me mostre a tabela"* (até **ontem**).
       **Não é defeito:** "NÃO AVALIADA — amostra insuficiente" (menos de 5 casos) · "NÃO MENSURÁVEL" antes de 14/09 · "NÃO
       LIDO" (peça de novo; nunca vira zero). **Anote se** a tabela disser 0 conversas num dia em que você viu o agente
       responder. · *de:* 001.7 (P3)
-- [ ] **T-81** ⏳ **O veredito, no 4º dia** — chat novo, cole `docs/canon/PROMPT-VEREDITO-DO-PILOTO.md` (troque só as duas datas).
+- [ ] **T-81** ⏳ ⏸ **depois do roteiro** — a vida real · **O veredito, no 4º dia** — chat novo, cole `docs/canon/PROMPT-VEREDITO-DO-PILOTO.md` (troque só as duas datas).
       Responde **PASSOU** ou **NÃO PASSOU**. Cortes propostos (D-E0017-03, sua): nada abaixo do palpite de 12/09 · "aciona" ≥ 5
       casos e nota ≥ 70 · "sabe pedir ajuda" ≥ 90 · apólice errada ≤ 1 em 10. · *de:* 001.7 (P4)
+
+### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
+
+> Não são atrasos: não há o que testar até a peça existir. O plano novo (programa **multicálculo**, SPECs 128+) vive em outro
+> chat; a **EXTRA-001.9 não será executada agora**.
+
+| o quê | depende de |
+|---|---|
+| **T-97** os botões "✅ Pode acionar / ✏️ Corrigir algo" | o corpo do `/send/button` do Evolution Go + um celular real mostrando o botão, e uma execução que os ligue (P-126-05) |
+| o portal de vidros **escolher sozinho** (peça, causa, cidade) | a rodada da T-102 (em curso) e ≥ 10 gravações da Porto (T-103) — P-127-04 |
+| a ponte do DOM, a retomada R3, a cidade/UF conferida antes do POST | SPEC nova (P-127-01…24) |
+| o DEDUZIR religar no WhatsApp | ≥ 10 casos por seguradora (P-126-06; 📊 hoje ≤ 5) |
+| cotar e renovar pelo Agger (H.2–H.4, EXTRA-002 parte 2 e EXTRA-003) | a anuência da Agger e o usuário robô |
+| o programa multicálculo (SPEC-128+) · a EXTRA-001.9 | o plano do outro chat · não será executada agora |
 
 **O que ficou fora desta lista, de propósito** (não são testes): trocar chaves e senhas (S116.3, 0.4.b–d, F.5) · as decisões
 (§10, S116.8, S116.10, S120.4, S121.5, S121.7, S122.5, S123.5, S124.3 restantes, G.6, G.7, I.3, J.3) · o Agger (bloco H) · ler a aba
