@@ -225,6 +225,9 @@ async def executar_passo(
         raise asyncio_cancelado()
 
     idem = f"{company_id}:{run_id}:{step_key}"
+    externo = efeito == "externo"
+    #: o instante desta tentativa — a ASSINATURA do INSERT (ver "a resposta se perdeu", abaixo)
+    inicio_iso = _agora_iso()
     step_id: Optional[str] = None
     anterior: Optional[dict] = None
     try:
@@ -233,16 +236,39 @@ async def executar_passo(
             "ordinal": ordinal, "name": nome, "step_type": step_type,
             "status": "running", "risk_level": risk_level,
             "capability_key": capability_key, "idempotency_key": idem,
-            "started_at": _agora_iso(),
+            "started_at": inicio_iso,
         }).execute()
         step_id = (res.data or [{}])[0].get("id")
     except Exception as exc:  # noqa: BLE001
         # Etapa já existe: retomada de um run que morreu no meio. O `idem`
         # é único por (empresa, run, etapa), então o insert bate na constraint
         # e a etapa antiga é reencontrada — é assim que a retomada não duplica.
-        logger.info("[Workflows] etapa %s já registrada (retomada): %s", step_key, type(exc).__name__)
-        anterior = _localizar_step(db, run_id, company_id, step_key)
-        step_id = (anterior or {}).get("id")
+        conflito = _e_conflito_de_chave(exc)
+        logger.info("[Workflows] etapa %s: insert recusado (%s, %s)", step_key, type(exc).__name__,
+                    "já registrada — retomada" if conflito else "NÃO é conflito de chave")
+        if not externo:
+            anterior = _localizar_step(db, run_id, company_id, step_key)
+            step_id = (anterior or {}).get("id")
+        else:
+            # 🔴 SPEC-129-A, conserto B1/Q1/Q2: efeito EXTERNO é fail-CLOSED. Sem PROVA do estado
+            # da etapa, `fn()` NÃO roda — 📊 juiz caso B e red team A1/A2: rodava com `step_id=None`
+            # e a cobrança saía 2×. Nada saiu do prédio ainda: `EtapaNaoVerificada` (nova
+            # tentativa pelo despertador), nunca `EfeitoIncerto`.
+            try:
+                anterior = _localizar_step(db, run_id, company_id, step_key, levantar=True)
+            except Exception as exc_l:  # noqa: BLE001
+                raise _R.EtapaNaoVerificada(
+                    f"etapa '{step_key}': a releitura falhou ({type(exc_l).__name__})") from exc_l
+            if anterior is None:
+                raise _R.EtapaNaoVerificada(
+                    f"etapa '{step_key}': insert recusado ({type(exc).__name__}) e a etapa não existe")
+            step_id = anterior.get("id")
+            if (str(anterior.get("status") or "") == "running"
+                    and _mesmo_instante(anterior.get("started_at"), inicio_iso)):
+                # A RESPOSTA do INSERT se perdeu, mas ele GRAVOU (📊 red team A3): a etapa `running`
+                # tem a assinatura DESTA tentativa — `fn()` ainda não rodou em lugar nenhum. É a
+                # nossa etapa, não a de um processo morto: segue como primeira passagem.
+                anterior = None
 
     status_anterior = str((anterior or {}).get("status") or "")
     saida_anterior = (anterior or {}).get("output_summary")
@@ -260,7 +286,7 @@ async def executar_passo(
     # agora, nem numa volta futura (a marca fica na etapa).
     incerta = status_anterior == "running" or (
         status_anterior == "failed" and bool(saida_anterior.get("efeito_incerto")))
-    if efeito == "externo" and incerta:
+    if externo and incerta:
         if step_id:
             _atualizar_step(db, step_id, {"status": "failed", "finished_at": _agora_iso(),
                                           "output_summary": {"efeito_incerto": True}},
@@ -270,6 +296,16 @@ async def executar_passo(
                     f"{nome}: foi interrompida no meio e pode ter acontecido — não será repetida",
                     step_id=step_id, severity="warning")
         raise _R.EfeitoIncerto(f"etapa '{step_key}' interrompida no meio")
+
+    # 🔴 SPEC-129-A, conserto B1(b): uma etapa EXTERNA reencontrada (`waiting_input`, `failed`
+    # sem a marca — Reprocessar) volta a `running` ANTES de `fn()`, por CAS sobre o status que
+    # foi lido. 📊 juiz casos D/E: rodava sem regravar — morrer no meio deixava `waiting_input`/
+    # `failed` e a retomada seguinte rodava de NOVO. Agora morrer no meio deixa `running` →
+    # `EfeitoIncerto` (o controle C). CAS perdido ou erro → não roda.
+    if externo and anterior is not None:
+        if not step_id or not _reivindicar_step(db, step_id, company_id, status_anterior):
+            raise _R.EtapaNaoVerificada(
+                f"etapa '{step_key}': não consegui marcá-la em curso (estava '{status_anterior}')")
 
     # A TENTATIVA, que faltava. Sem ela, uma etapa que só passou na quarta vez
     # é indistinguível de uma que passou de primeira: `work_steps` guarda o
@@ -312,21 +348,65 @@ async def executar_passo(
 
 
 def _localizar_step(db: Any, run_id: str, company_id: str,
-                    step_key: str) -> Optional[dict]:
+                    step_key: str, *, levantar: bool = False) -> Optional[dict]:
     """Reencontra a etapa de uma retomada — com o STATUS e o que ela guardou.
 
     Sem isto, a segunda tentativa ficaria órfã — e a retomada é exatamente
     quando a tentativa importa. E sem o status, uma etapa concluída rodaria de
     novo (SPEC-129-A, achado 7)."""
     try:
-        r = (db.table("work_steps").select("id, status, output_summary")
+        r = (db.table("work_steps").select("id, status, output_summary, started_at")
              .eq("work_run_id", run_id).eq("company_id", company_id)
              .eq("step_key", step_key).limit(1).execute())
         linha = (r.data or [{}])[0]
         return dict(linha) if linha and linha.get("id") else None
     except Exception as exc:  # noqa: BLE001
+        if levantar:
+            # 🔴 efeito externo: "não consegui ler" NÃO é "não existe" (SPEC-129-A, conserto B1)
+            raise
         logger.warning("[Workflows] etapa não localizada: %s", type(exc).__name__)
         return None
+
+
+def _e_conflito_de_chave(exc: BaseException) -> bool:
+    """O INSERT bateu na trava única (`23505`) — a etapa JÁ existe. Qualquer outra coisa (rede,
+    timeout, 5xx do PostgREST) não diz nada sobre o estado da etapa."""
+    if str(getattr(exc, "code", "") or "") == "23505":
+        return True
+    texto = str(exc)
+    return "23505" in texto or "duplicate key" in texto.lower()
+
+
+def _mesmo_instante(a: Any, b: Any) -> bool:
+    """Dois carimbos ISO são o MESMO instante? (o PostgREST devolve o `timestamptz` noutro formato)"""
+    if not a or not b:
+        return False
+    from datetime import datetime, timezone
+
+    def ler(v: Any):
+        try:
+            d = datetime.fromisoformat(str(v).strip().replace("Z", "+00:00").replace(" ", "T", 1))
+        except ValueError:
+            return None
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+    da, db_ = ler(a), ler(b)
+    return da is not None and db_ is not None and da == db_
+
+
+def _reivindicar_step(db: Any, step_id: str, company_id: str, status_lido: str) -> bool:
+    """CAS `status_lido` → `running` na etapa reencontrada. `True` só se a linha mudou."""
+    if not status_lido:
+        return False
+    try:
+        res = (db.table("work_steps")
+               .update({"status": "running", "started_at": _agora_iso(), "finished_at": None})
+               .eq("id", step_id).eq("company_id", str(company_id)).eq("status", status_lido)
+               .execute())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[Workflows] etapa %s não reivindicada: %s", step_id, type(exc).__name__)
+        return False
+    return bool(res is not None and res.data)
 
 
 def _fechar_tentativas_abertas(db: Any, company_id: str, step_id: str) -> None:
@@ -461,9 +541,9 @@ def _agora_iso() -> str:
 
 
 def asyncio_cancelado() -> BaseException:
-    import asyncio
-
-    return asyncio.CancelledError()
+    """O cancelamento PEDIDO pelo corretor — `runs.CancelamentoPedido`, nunca o `CancelledError`
+    puro (que o worker lê como desligamento). SPEC-129-A, conserto B2/Q3."""
+    return _runs_mod().CancelamentoPedido()
 
 
 # ---------------------------------------------------------------------------
@@ -669,8 +749,11 @@ async def bridge_rotina(ctx: dict) -> str:
             ctx, step_key="executar_rotina", ordinal=1, nome="Executar rotina",
             step_type="routine", fn=_executar, efeito="externo",
         )
-    except _R.EfeitoIncerto:
-        raise   # o worker grava `failed efeito_incerto` e chama `_rotina_desistiu`
+    except (_R.EfeitoIncerto, _R.EtapaNaoVerificada):
+        # EfeitoIncerto: o worker grava `failed efeito_incerto` e chama `_rotina_desistiu`.
+        # EtapaNaoVerificada: a rotina NÃO rodou e volta pelo despertador — o bilhete fica
+        # `delegated` (carimbá-lo `error` agora seria mentira; a volta o carimba).
+        raise
     except Exception as exc:  # noqa: BLE001
         # A rotina FALHOU (e disse que falhou): o bilhete de entrega também é carimbado.
         try:
