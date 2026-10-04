@@ -58,6 +58,48 @@
    },
    "parcelamentos_por_oferta": 3,
    "sha256_do_bruto": "03efb7ca9c4400b2e69866c94a0018a74b5905a516cfa54cd468bc00076c27f4"
+  },
+  "vivo_conta_a": {
+   "arquivo": "vivo_conta_a.json",
+   "origem": "jsonl",
+   "conta": "conta_a",
+   "entradas_lidas": 3,
+   "rodadas": 2,
+   "calculos": 1,
+   "pseudonimos": {
+    "calculo": 11,
+    "cep": 1,
+    "chassi": 1,
+    "cpf": 1,
+    "data": 4,
+    "endereco": 3,
+    "negocio": 1,
+    "pessoa": 1,
+    "placa": 1
+   },
+   "parcelamentos_por_oferta": 3,
+   "sha256_do_bruto": "288d2b3b61cc1d125c5a9a8399169f900614830151d53bb975db091acb52dfd7"
+  },
+  "vivo_conta_b": {
+   "arquivo": "vivo_conta_b.json",
+   "origem": "jsonl",
+   "conta": "conta_b",
+   "entradas_lidas": 101,
+   "rodadas": 86,
+   "calculos": 15,
+   "pseudonimos": {
+    "calculo": 208,
+    "cep": 2,
+    "chassi": 2,
+    "cpf": 2,
+    "data": 5,
+    "endereco": 6,
+    "negocio": 4,
+    "pessoa": 2,
+    "placa": 2
+   },
+   "parcelamentos_por_oferta": 3,
+   "sha256_do_bruto": "f12d261fb323a160b09f879bf72e220f07fe506eb18d03698d0f05cc93333485"
   }
  }
 }
