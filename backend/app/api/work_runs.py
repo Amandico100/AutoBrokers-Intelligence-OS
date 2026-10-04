@@ -157,20 +157,48 @@ async def cancelar_run(
     usuario_id: Optional[str] = Query(None),
     x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
 ):
+    """Cancela um trabalho DA FILA. SPEC-129-A §6.
+
+    · dormindo ou na fila (`waiting_*`, `retry_scheduled`, `queued`) → `cancelled` NA HORA:
+      não há dono para avisar, e o despertador não o reabre.
+    · rodando → `cancelling`: o worker para entre etapas; ação externa já confirmada
+      não é desfeita (SPEC-053 §10.7).
+    · ⛔ "sem fila" (acionamento, sombra, proposta, portal) → 409, INTOCADO: quem o leva
+      é a conversa ou o portal, não a fila. 📊 Antes: esta rota gravava `cancelling` em
+      qualquer run da corretora — e nenhum worker observa um run sem fila.
+    """
     _exigir_chave_interna(x_internal_key)
-    from app.services.work.runs import WorkRunService
+    from app.services.work.runs import RUNTIME_DA_FILA, WorkRunService
 
     db = _db()
-    existe = (db.table("work_runs").select("id, status")
-              .eq("id", run_id).eq("company_id", company_id).maybe_single().execute())
-    if not existe or not existe.data:
+    try:
+        res = (db.table("work_runs").select("id, status, runtime_kind")
+               .eq("id", run_id).eq("company_id", company_id).limit(1).execute())
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[WorkAPI] cancelar: falha ao ler: %s", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="não foi possível abrir o trabalho")
+    linhas = (res.data if res is not None else None) or []
+    linha = linhas[0] if isinstance(linhas, list) and linhas else None
+    if not linha:
         raise HTTPException(status_code=404, detail="trabalho não encontrado")
+    if linha.get("runtime_kind") != RUNTIME_DA_FILA:
+        raise HTTPException(
+            status_code=409,
+            detail=("Este trabalho não roda pela fila: ele é acompanhado pela conversa ou pelo "
+                    "portal. Não dá para cancelá-lo daqui."))
 
-    WorkRunService(get_supabase_client()).solicitar_cancelamento(run_id, company_id, usuario_id)
-    return {
-        "ok": True,
-        "mensagem": "Cancelamento solicitado. Etapas já concluídas são preservadas.",
-    }
+    ficou = WorkRunService(get_supabase_client()).solicitar_cancelamento(run_id, company_id, usuario_id)
+    if ficou == "cancelled":
+        return {"ok": True, "status": "cancelled",
+                "mensagem": "Trabalho cancelado. Etapas já concluídas foram preservadas."}
+    if ficou == "cancelling":
+        return {"ok": True, "status": "cancelling",
+                "mensagem": ("Cancelamento solicitado: o trabalho para na próxima etapa. "
+                             "Etapas já concluídas são preservadas.")}
+    raise HTTPException(
+        status_code=409,
+        detail=(f"Este trabalho está '{linha.get('status')}' e não pode mais ser cancelado "
+                "(já terminou, ou mudou de estado agora mesmo). Atualize a tela."))
 
 
 @router.post("/runs/{run_id}/retry")
@@ -180,63 +208,35 @@ async def reprocessar_run(
     usuario_id: Optional[str] = Query(None),
     x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
 ):
-    """Recoloca um trabalho na fila. SPEC-061 §15.
+    """Recoloca um trabalho na fila — e ele RODA. SPEC-061 §15 · SPEC-129-A §6.
 
-    Só o que já **parou**: reprocessar algo em andamento criaria duas
-    execuções do mesmo trabalho, e a idempotência protege contra repetir o
-    efeito — não contra alguém pedir duas vezes de propósito.
+    Tudo é do motor (`runs.reprocessar`): CAS (`company_id` da linha +
+    `runtime_kind='smith'` + o status lido) e, DEPOIS do CAS, a linha do outbox
+    `run.retried` — é ela que leva o run ao worker. 📊 Antes: esta rota só trocava
+    o status para `queued`, sem outbox → o run ficava preso na fila para sempre; e
+    recusava `retry_scheduled`, que agora é antecipado.
 
-    O trabalho volta como `queued` com `next_attempt_at` agora. As etapas já
-    concluídas são preservadas: o `executar_passo` reencontra a etapa pelo
-    `idempotency_key` e abre uma tentativa NOVA, que é justamente como o
-    Cockpit passa a mostrar "passou na segunda vez".
+    Recusas, em português para a tela (o `detail` é o que o painel mostra):
+      404 não existe NESTA corretora · 409 "sem fila" (acionamento, sombra, proposta,
+      portal) · 409 sem executor registrado · 409 `efeito_incerto` (D-129A-4: um efeito
+      externo pode ter acontecido; reprocessar faria duas vezes — nunca vira laço) ·
+      409 em andamento (só `failed`, `cancelled`, `paused`, `retry_scheduled`).
+
+    As etapas já concluídas são preservadas: `executar_passo` devolve o passo
+    `succeeded` sem rodá-lo de novo.
     """
     _exigir_chave_interna(x_internal_key)
-    from datetime import datetime, timezone
+    from app.services.work.runs import WorkRunService
 
-    db = _db()
-    atual = (db.table("work_runs").select("id, status")
-             .eq("id", run_id).eq("company_id", company_id).maybe_single().execute())
-    if not atual or not atual.data:
-        raise HTTPException(status_code=404, detail="trabalho não encontrado")
-
-    status = str(atual.data.get("status") or "")
-    if status not in ("failed", "cancelled", "paused"):
-        raise HTTPException(
-            status_code=409,
-            detail=(f"este trabalho está '{status}' — só dá para reprocessar o "
-                    "que já parou. Cancele antes, se for o caso."))
-
-    agora = datetime.now(timezone.utc).isoformat()
-    try:
-        db.table("work_runs").update({
-            "status": "queued",
-            "next_attempt_at": agora,
-            "error_code": None,
-            "error_message": None,
-            # A lease do worker anterior é liberada: sem isso o run voltaria
-            # para a fila e nenhum worker conseguiria assumi-lo.
-            "lease_owner": None, "lease_token": None, "lease_expires_at": None,
-            "cancel_requested_at": None, "cancelled_at": None,
-            "updated_at": agora,
-        }).eq("id", run_id).eq("company_id", company_id).execute()
-    except Exception as exc:  # noqa: BLE001
-        logger.error("[WorkRuns] retry falhou: %s", type(exc).__name__)
-        raise HTTPException(status_code=500, detail="não consegui recolocar na fila")
-
-    try:
-        from app.services.work.runs import WorkRunService
-
-        WorkRunService(get_supabase_client()).evento(
-            company_id, run_id, "run.retried",
-            "Trabalho recolocado na fila por um operador",
-            actor_type="user", actor_id=usuario_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[WorkRuns] evento de retry: %s", type(exc).__name__)
-
-    return {"ok": True,
-            "mensagem": ("Trabalho recolocado na fila. As etapas já concluídas "
-                         "são preservadas.")}
+    r = WorkRunService(get_supabase_client()).reprocessar(run_id, company_id, usuario_id)
+    if not r.get("ok"):
+        if int(r.get("http") or 500) >= 500:
+            logger.error("[WorkRuns] retry falhou: %s", r.get("codigo"))
+        raise HTTPException(status_code=int(r.get("http") or 500),
+                            detail=str(r.get("mensagem") or "não consegui recolocar na fila"))
+    return {"ok": True, "status": r.get("status", "queued"),
+            "mensagem": r.get("mensagem") or ("Trabalho recolocado na fila. As etapas já concluídas "
+                                              "são preservadas.")}
 
 
 # ---------------------------------------------------------------------------
@@ -269,8 +269,18 @@ async def decidir_aprovacao(
     body: DecidirBody,
     x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
 ):
+    """Registra a decisão humana e acorda o run que a esperava (SPEC-129-A §6).
+
+    404 não existe nesta corretora · 409 já decidida (uma recusa não vira aprovação
+    depois) ou janela vencida · 400 decisão inválida.
+    """
     _exigir_chave_interna(x_internal_key)
-    from app.services.work.approvals import ApprovalNotGranted, WorkApprovalService
+    from app.services.work.approvals import (
+        ApprovalAlreadyDecided,
+        ApprovalExpired,
+        ApprovalNotGranted,
+        WorkApprovalService,
+    )
 
     try:
         linha = WorkApprovalService(get_supabase_client()).decidir(
@@ -282,6 +292,8 @@ async def decidir_aprovacao(
             motivo=body.motivo,
         )
         return {"ok": True, "approval": linha}
+    except (ApprovalAlreadyDecided, ApprovalExpired) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except ApprovalNotGranted as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:
@@ -317,6 +329,21 @@ async def saude_work_os(
     saida["runs_na_fila"] = _contar("work_runs", status="queued")
     saida["runs_executando"] = _contar("work_runs", status="running")
     saida["runs_aguardando_aprovacao"] = _contar("work_runs", status="waiting_approval")
+    # 🔴 SPEC-129-A — as esperas da fila (só `smith`: os "sem fila" não têm relógio)
+    saida["runs_dormindo"] = _contar("work_runs", status="waiting_input", runtime_kind="smith")
+    saida["runs_nova_tentativa_agendada"] = _contar("work_runs", status="retry_scheduled",
+                                                     runtime_kind="smith")
+    try:
+        # o despertador passa a cada 60 s; uma espera vencida há mais de 5 min = ele parou
+        from datetime import datetime, timedelta, timezone
+
+        limite = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        saida["runs_despertar_atrasado"] = (
+            db.table("work_runs").select("id", count="exact")
+            .eq("runtime_kind", "smith").in_("status", ["waiting_input", "retry_scheduled"])
+            .lt("wake_at", limite).execute().count or 0)
+    except Exception:  # noqa: BLE001
+        saida["runs_despertar_atrasado"] = -1
     saida["outbox_pendente"] = _contar("work_queue_outbox", status="pending")
     saida["outbox_abandonado"] = _contar("work_queue_outbox", status="abandoned")
     saida["efeitos_desconhecidos"] = _contar("work_effects", status="unknown")
