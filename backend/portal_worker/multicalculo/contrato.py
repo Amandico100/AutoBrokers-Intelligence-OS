@@ -27,12 +27,15 @@ PERMISSAO = "PERMISSAO"          # o usuário existe mas não tem permissão
 ACEITACAO = "ACEITACAO"          # a seguradora não aceita ESTE risco
 COMERCIAL = "COMERCIAL"          # acordo comercial: a oferta não é dada ao parceiro
 INSTABILIDADE = "INSTABILIDADE"  # a seguradora caiu; tentar de novo pode resolver
+DADO = "DADO"                    # o PEDIDO precisa de correção: dado inválido, cobertura obrigatória que
+                                 # faltou, ou "calcule como renovação" (📊 vivo 04/10 + gravacao_r2) — o
+                                 # corretor/motor conserta e recalcula; não é recusa do risco
 PENDENTE = "PENDENTE"            # ainda não respondeu nesta rodada
 DESCONHECIDA = "DESCONHECIDA"    # respondeu, sem oferta, e nenhuma regra reconheceu
 
 FAMILIAS: Tuple[str, ...] = (
     OFERTA, CREDENCIAL, PERMISSAO, ACEITACAO, COMERCIAL,
-    INSTABILIDADE, PENDENTE, DESCONHECIDA,
+    INSTABILIDADE, DADO, PENDENTE, DESCONHECIDA,
 )
 
 # --------------------------------------------------------------------------
