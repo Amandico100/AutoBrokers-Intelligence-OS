@@ -1169,6 +1169,30 @@ def _save_playbook_draft_sync(ramo: str, servico: str, content: Dict[str, Any],
                               sessions: int, model: str) -> Optional[str]:
     from app.core.database import get_supabase_client
 
+    # 🔴 O PORTEIRO DO GLOBAL — P-E0018-14 · D-MC-39 (04/10/2026).
+    #
+    # `conduct_playbooks` é lida por TODAS as corretoras e nasce da conversa de
+    # UMA. Este é o funil único de escrita dela (destilador e lapidador passam
+    # por aqui), então a porta é aqui: o conteúdo é anonimizado pela régua da
+    # casa (`curadoria_cartas.anonimizar_para_o_global`) e, se SOBROU nome de
+    # corretora, de pessoa, CPF, telefone, placa ou e-mail, NÃO GRAVA. O log diz
+    # só o TIPO do que sobrou — nunca o dado, e nem o grupo se a sobra estava
+    # nele. ⛔ Porteiro que não carrega também não grava.
+    try:
+        from app.services.curadoria_cartas import anonimizar_para_o_global
+
+        content, mascarados, sobras = anonimizar_para_o_global(
+            content, tambem_conferir=(ramo, servico))
+    except Exception as e:  # noqa: BLE001
+        content, mascarados, sobras = None, {}, [f"porteiro_falhou:{type(e).__name__}"]
+    if sobras:
+        grupo = ("<grupo oculto>" if any(s.startswith("chave:") for s in sobras)
+                 else f"{ramo}/{servico}")
+        logger.warning("[DESTILADOR] playbook %s NAO gravado — sobrou depois de "
+                       "anonimizar: %s (P-E0018-14, falha fechada)",
+                       grupo, ",".join(sobras))
+        return None
+
     db = get_supabase_client()
     try:
         existing = (db.client.table("conduct_playbooks").select("version")
@@ -1179,7 +1203,10 @@ def _save_playbook_draft_sync(ramo: str, servico: str, content: Dict[str, Any],
             "ramo": ramo, "servico": servico, "version": version, "status": "draft",
             "content": content, "model_used": model,
             "source_stats": {"sessions": sessions,
-                             "generated_at": datetime.now(timezone.utc).isoformat()},
+                             "generated_at": datetime.now(timezone.utc).isoformat(),
+                             # quantos de cada marca o porteiro trocou — a
+                             # contagem, nunca o trecho.
+                             "anonimizado": mascarados},
         }).execute()
         return (res.data or [{}])[0].get("id")
     except Exception as e:  # noqa: BLE001
