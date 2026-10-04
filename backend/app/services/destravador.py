@@ -2272,6 +2272,10 @@ CLASSE_DA_PARADA_DO_PORTAL: Dict[str, str] = {
     "pecas_de_lataria_ausentes": "perguntar_ao_segurado",
     "cidade_sem_rede": "perguntar_ao_segurado",
     "decidir_vistoria": "perguntar_ao_segurado",
+    # a tela "Avaliação" (fotos agora × link por e-mail): a escolha é do SEGURADO; e,
+    # depois dela, apertar um botão nunca medido (CANDIDATE) é de PESSOA, nunca do modelo
+    "decidir_vistoria_pelo_celular": "perguntar_ao_segurado",
+    "vistoria_pelo_celular_com_a_equipe": "nunca_sozinho",
     "decidir_reparo": "nunca_sozinho",
     "pronto_para_agendar": "nunca_sozinho",
     "horario_indisponivel": "nunca_sozinho",
@@ -2298,6 +2302,7 @@ NUNCA_DA_PARADA_DO_PORTAL: Dict[str, Tuple[str, str]] = {
     "pronto_para_materializar": ("confirmacao_final", "pessoa"),
     "pronto_para_vistoria": ("confirmacao_final", "pessoa"),
     "prioridade_nao_medida": ("confirmacao_final", "pessoa"),
+    "vistoria_pelo_celular_com_a_equipe": ("confirmacao_final", "pessoa"),
     "decidir_oferta": ("aceite_de_custo", "pergunta"),
     "cobertura_nao_marcada": ("afirma_cobertura", "pessoa"),
     "atendimento_aberto_existente": ("novo_atendimento", "pessoa"),
@@ -2372,6 +2377,8 @@ _O_QUE_FALTAVA_NO_PORTAL = {
     "questionario_incompleto": "uma resposta do questionário da seguradora",
     "decidir_reparo": "a escolha entre reparar ou trocar a peça",
     "decidir_vistoria": "como o segurado prefere fazer a vistoria",
+    "decidir_vistoria_pelo_celular": "se o segurado faz as fotos da vistoria agora ou recebe o link por e-mail",
+    "vistoria_pelo_celular_com_a_equipe": "a equipe apertar no portal o botão da vistoria que o segurado escolheu",
     "pronto_para_agendar": "a escolha da loja e do horário",
     "horario_indisponivel": "outro horário, porque o escolhido não está mais livre",
     # SPEC-127 P4
@@ -2464,6 +2471,42 @@ def _opcao_igual(valor: Any, opcoes: List[str]) -> str:
         return ""
     iguais = [o for o in opcoes if _n(o) == alvo]
     return iguais[0] if len(iguais) == 1 else ""
+
+
+#: constante_justificada: o prefixo que o PRÓPRIO prompt põe em cada opção (`texto_da_parada`: "{i} - {o}") e
+#: as formas em que o modelo o devolve — "4 - X", "4 – X", "4) X", "4. X", "4: X", "opção 4", "opção 4 - X",
+#: "4". 📊 04/10 (T-102): 45 das 54 respostas da bancada Yelum vieram "4 - DANO …" e caíam fora da lista.
+#: ⚠️ "4 X" (sem separador) NÃO é prefixo: "2 PORTAS" pode ser o texto de uma opção.
+_RX_NUMERO_DA_LISTA = re.compile(
+    r"^\s*(?:(?:op[cç][aã]o|alternativa)\s*(?:n[º°o]?\.?\s*)?)?(\d{1,2})\s*(?:[-–—).:]\s*(.*?))?\s*$",
+    re.IGNORECASE | re.DOTALL)
+
+
+def _opcao_da_resposta(valor: Any, opcoes: List[str]) -> str:
+    """A opção da lista que a RESPOSTA DO MODELO (ou da 2ª opinião) escolhe. "" se nenhuma.
+
+    🔴 Conserto pós-127 (T-102): o prompt NUMERA a lista e o modelo devolve o número junto. Vale, nesta ordem:
+      · igual a UMA opção (`_opcao_igual`, a régua de sempre) — salvo número puro numa lista que TEM opção
+        numérica: aí "2" é texto OU posição, e só vale se os dois apontam para a MESMA opção;
+      · número + texto ("4 - X") → a opção 4 SÓ se o texto é ela; número e texto divergentes → "" (pergunta);
+      · só o número ("4", "opção 4") → a opção 4, se ela existe.
+    ⛔ Só para a resposta de MODELO: o dado do caso e o contrato continuam em `_opcao_igual` (um "2" do caso
+    nunca vira a 2ª opção)."""
+    bruto = " ".join(str(valor or "").split())
+    m = _RX_NUMERO_DA_LISTA.match(bruto)
+    igual = _opcao_igual(bruto, opcoes)
+    if not m:
+        return igual
+    i = int(m.group(1))
+    do_numero = opcoes[i - 1] if 1 <= i <= len(opcoes) else ""
+    resto = (m.group(2) or "").strip()
+    if not resto:
+        if any(re.fullmatch(r"\d+", _n(o)) for o in opcoes):
+            return igual if igual and igual == do_numero else ""
+        return igual or do_numero
+    if igual:
+        return igual        # a opção ESCRITA assim na lista ("1 - A" é o texto dela)
+    return do_numero if do_numero and _opcao_igual(resto, opcoes) == do_numero else ""
 
 
 def parada_do_portal(evidence: Any) -> Dict[str, Any]:
@@ -2793,8 +2836,13 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
         return perguntar("o_modelo_quis_perguntar" if p.acao == "PERGUNTAR_AO_SEGURADO"
                          else "silencio_no_portal", "perguntar_ao_segurado")
     valor = p.valor
+    # 🔴 Conserto pós-127 (T-102): a resposta do MODELO pode vir com o número da lista ("4 - X") — vale a
+    # opção que o número E o texto apontam juntos (`_opcao_da_resposta`); daqui em diante tudo lê a OPÇÃO
+    # (o NUNCA, o "inventar dado", o dado do caso, o que vai ao portal). O valor do CÓDIGO não muda.
+    opcao = _opcao_igual(valor, opcoes) if do_codigo else _opcao_da_resposta(valor, opcoes)
+    if opcao and _n(opcao) != _n(valor):
+        valor = opcao
     nv = _n(valor)
-    opcao = _opcao_igual(valor, opcoes)
     # ⑥ O NUNCA do portal sobre o VALOR (D2) — a mesma lista de chaves do WhatsApp.
     if "aceite_de_custo" in ligadas and (_RX_CUSTO_NO_PORTAL.search(nv) or "r$" in str(valor).lower()):
         return perguntar("aceite_de_custo")
@@ -2831,7 +2879,7 @@ def decidir_parada_do_portal(proposta: Optional[Proposta], parada: Dict[str, Any
         e_navegacao=lambda: classe_tab == "conduzir" and bool(opcao) and opcao == do_codigo_na_lista,
         e_dado_do_caso=lambda: bool(opcao) and (nv in do_slot or opcao == do_codigo_na_lista),
         tem_opcoes=bool(opcoes), valor_nas_opcoes=lambda: bool(opcao),
-        mesma_resposta=lambda outro: _n(outro) == nv or (bool(opcao) and _opcao_igual(outro, opcoes) == opcao),
+        mesma_resposta=lambda outro: _n(outro) == nv or (bool(opcao) and _opcao_da_resposta(outro, opcoes) == opcao),
         deduzir_calibrado=bool(deduzir_calibrado),
         # 🔴 P-124-14: na cidade, a escolha tem de ser o lugar DO CASO (igualdade normalizada, a UF à parte)
         homonimo=lambda: stage in _PARADAS_DE_LUGAR and _fora_do_lugar_do_pedido(opcao or valor, params))
