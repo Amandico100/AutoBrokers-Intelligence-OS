@@ -419,6 +419,80 @@ def run_ataques(dist, store, cur, cap):
               len(store["attendance_sessions"]) - n)
     dist._RECUSAS_EM_MEMORIA.clear()
 
+    # [17] a cópia em MEMÓRIA do marcador vence no mesmo prazo do Redis (14 dias).
+    # Sem isso, num processo longo sem Redis, o grupo recusado e sem conversa
+    # nova ficava fora da fila para sempre (confirmação de 04/10). Relógio FALSO.
+    print("\n[17] sem Redis: o marcador em memoria vence em 14 dias (relogio falso)")
+    if hasattr(red, "get_redis_client"):
+        del red.get_redis_client
+    relogio_real = dist._relogio
+    agora = [1_000_000.0]
+    dist._relogio = lambda: agora[0]
+    try:
+        for passou, deve_voltar, rotulo in [
+                (dist._RECUSA_TTL_S - 1, False, "CONTROLE: 14 dias menos 1 s -> continua fora"),
+                (dist._RECUSA_TTL_S + 1, True, "14 dias e 1 s -> o grupo VOLTA sem material novo")]:
+            dist._RECUSAS_EM_MEMORIA.clear()
+            agora[0] = 1_000_000.0
+            _novo_mundo(store, [VAGALUME])
+            O3._seed_sessions(store)
+            for s in store["attendance_sessions"]:
+                s["summary"] = {"distilled": {"ramo": "auto", "servico": "guincho",
+                                              "at": s["started_at"]}}
+            dist._save_playbook_draft_sync("auto", "guincho",
+                                           {"objetivo": "x", "e": "a Vagalúme confirma"}, 13, "m")
+            fora = ("auto", "guincho") not in dist._grupos_sem_playbook_sync(5)
+            agora[0] += passou
+            volta = ("auto", "guincho") in dist._grupos_sem_playbook_sync(5)
+            check(f"[17] {rotulo}", fora and volta == deve_voltar, (fora, volta))
+    finally:
+        dist._relogio = relogio_real
+        dist._RECUSAS_EM_MEMORIA.clear()
+
+    # [18] o NÚCLEO todo genérico de ≥ 2 palavras, escrito SEM o sufixo
+    # (confirmação de 04/10): com maiúscula é a marca; colado é domínio/handle.
+    print("\n[18] nucleo generico de 2+ palavras: com maiuscula ou colado -> nunca chega")
+    for nome, frase, proibido in [
+        ("Porto Real Corretora", "aqui é da Porto Real, posso ajudar", "porto real"),
+        ("Porto Real Corretora", "site portoreal.com.br", "portoreal"),
+        ("Porto Real Corretora", "siga @portorealseguros", "portoreal"),
+        ("Auto Center Corretora", "a Auto Center confirma o guincho", "auto center"),
+        ("Vida Plena Corretora", "equipe Vida Plena informa", "vida plena"),
+        ("Alfa Real Seguros", "a Alfa Real confirma", "alfa real"),
+        ("Auto Center Corretora", "a AUTO CENTER confirma", "auto center"),
+    ]:
+        linha = _grava(dist, store, [VAGALUME, {"id": "c9", "company_name": nome,
+                                                "legal_name": nome + " Ltda"}],
+                       {"objetivo": "acionar guincho", "encerramento": frase})
+        check(f"[18] {nome!r}: {frase!r}", _nao_vazou(linha, proibido),
+              linha and linha["content"].get("encerramento"))
+    # CONTROLE: a mesma régua NÃO come a prosa do serviço em minúscula, nem o
+    # nome de seguradora, com os mesmos tenants de nome de ofício.
+    tenants = [VAGALUME] + [{"id": f"c{i}", "company_name": n, "legal_name": n + " Ltda"}
+                            for i, n in enumerate(("Auto Center Corretora", "Vida Plena Corretora",
+                                                   "Total Corretora de Seguros",
+                                                   "Porto Real Corretora",
+                                                   "Tokio Marine Corretora"), start=10)]
+    for frase in ["em perda total o guincho leva ao patio da seguradora",
+                  "leve a um auto center de serviços credenciado",
+                  "o seguro de vida plena cobre o funeral",
+                  "o porto real de embarque fica longe",
+                  "a Tokio Marine abre sinistro online; site tokiomarine.com.br",
+                  "acione a Porto Seguro pelo app"]:
+        conteudo = {"objetivo": "acionar guincho", "encerramento": frase}
+        linha = _grava(dist, store, tenants, conteudo)
+        check(f"[18] CONTROLE intacto {frase[:50]!r}",
+              linha is not None and linha["content"] == conteudo,
+              (linha and linha["content"].get("encerramento"))
+              or cur.anonimizar_para_o_global(conteudo)[2])
+    # Q4 segue: UMA palavra genérica sozinha nunca é marca
+    linha = _grava(dist, store, [VAGALUME, {"id": "c9", "company_name": "Total Corretora",
+                                            "legal_name": "Total Corretora Ltda"}],
+                   {"objetivo": "x", "e": "a Total cobre perda Total"})
+    check("[18] Q4: 'Total' sozinha, mesmo com maiuscula, nao e marca",
+          linha is not None and linha["content"]["e"] == "a Total cobre perda Total",
+          linha and linha["content"])
+
 
 def run():
     print("== P-E0018-14 · o conhecimento global sai sempre anonimo ==\n")
