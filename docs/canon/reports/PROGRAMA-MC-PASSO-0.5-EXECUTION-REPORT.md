@@ -94,3 +94,13 @@ nota do executor: 90 (critério: os 4 blockers do red team e o residual da confi
 nota do juiz: 84 · red team 62 · confirmação 80 (antes do conserto final, que fechou o residual com a sonda dela: 6 → 0)
 ⚠️ pico do executor 579k > teto 300k — a sessão carregou a validação inteira do plano; a 129-A vai para chat novo
 ```
+
+## 8. Entrega
+
+```text
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   e7f76df..ae16d57  HEAD -> main
+$ git rev-list --count origin/main..HEAD
+0
+```
