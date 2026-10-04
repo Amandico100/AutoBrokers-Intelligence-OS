@@ -10,10 +10,16 @@ reprova, sem playbook ativo nao roda, fiacao scheduler/endpoint. Standalone.
 import asyncio
 import importlib.util
 import json
+import os
 import sys
 import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+# O Lapidador obedece ao MESMO teto de gasto do Destilador (padrão 0 = não
+# gasta). Este teste exercita o caminho AUTORIZADO, então declara o teto como a
+# produção declara — o mesmo que `test_spec040_onda3_distiller.py` faz.
+os.environ["DESTILADOR_TETO_POR_RODADA"] = "500"
 
 ROOT = Path(__file__).resolve().parents[1]
 PASS = FAIL = 0
@@ -125,7 +131,7 @@ GOOD_CANDIDATE = {
 def _bootstrap():
     store, redis = {}, _Redis()
     for name in ("app", "app.core", "app.services", "app.services.atlas",
-                 "app.factories", "langchain_core"):
+                 "app.factories", "app.atendimento", "langchain_core"):
         m = sys.modules.setdefault(name, types.ModuleType(name))
         m.__path__ = []
     db = types.ModuleType("app.core.database")
@@ -156,9 +162,19 @@ def _bootstrap():
         calls = []
         lapidador_response = GOOD_CANDIDATE
 
+        # SPEC-116 U8: o Lapidador pede o modelo pelo PAPEL (`prompt_optimizer`)
+        # e carimba `model_used` com `resolver_para`. O falso ainda falava a
+        # assinatura antiga (`api_key` posicional) e TODA chamada morria em
+        # TypeError engolido — o arquivo inteiro vermelho por um motivo que não
+        # era o que ele guarda.
         @staticmethod
-        def create_llm(company_config, agent_data, api_key, company_id=None, agent_id=None):
-            model = agent_data.get("llm_model")
+        def resolver_para(company_config, agent_data, papel=None, **_kw):
+            return types.SimpleNamespace(provider="anthropic", model="claude-opus-5")
+
+        @staticmethod
+        def create_llm(company_config, agent_data, api_key=None, company_id=None,
+                       agent_id=None, papel=None, **_kw):
+            model = "claude-opus-5" if papel else agent_data.get("llm_model")
 
             class _LLM:
                 async def ainvoke(self, msgs):
@@ -182,6 +198,12 @@ def _bootstrap():
     sys.modules["app.services.activity_log"] = act
     _load("app.core.heartbeat", "app/core/heartbeat.py")
     _load("app.services.atlas.templater", "app/services/atlas/templater.py")
+    # 🔴 04/10/2026 (P-E0018-14): o draft do Lapidador entra na tabela GLOBAL
+    # pelo mesmo funil do Destilador, e o funil agora passa pelo porteiro de
+    # `curadoria_cartas`. E o Destilador importa a peça pura do pós-acionamento
+    # no topo — sem as duas registradas aqui, o arquivo morria antes de testar.
+    _load("app.atendimento.pos_acionamento", "app/atendimento/pos_acionamento.py")
+    _load("app.services.curadoria_cartas", "app/services/curadoria_cartas.py")
     _load("app.services.attendance_distiller", "app/services/attendance_distiller.py")
     _load("app.services.playbook_gate", "app/services/playbook_gate.py")
     opt = _load("app.services.prompt_optimizer", "app/services/prompt_optimizer.py")
@@ -206,6 +228,10 @@ def _seed(store):
         {"score": 60, "flags": ["amnesia", "re-pediu CPF"], "created_at": iso(days=1)},
         {"score": 65, "flags": ["cliente_frustrado"], "created_at": iso(days=1)},
     ]
+    # O porteiro do global confere o draft contra os nomes das corretoras, lidos
+    # de `companies`; sem a tabela ele falha FECHADO (P-E0018-14). Nome FICTÍCIO.
+    store["companies"] = [{"id": "c1", "company_name": "Vagalume Seguros",
+                           "legal_name": "Vagalume Corretora de Seguros Ltda"}]
     store["conduct_playbooks"] = [
         {"id": "pb1", "ramo": "auto", "servico": "guincho", "version": 1,
          "status": "active", "content": {"ficha_coleta": [
