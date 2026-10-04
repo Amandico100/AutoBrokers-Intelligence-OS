@@ -73,10 +73,36 @@ CHAVES_SENSIVEIS: tuple[str, ...] = (
 MARCA = "<redacted:{}>"
 
 # --------------------------------------------------------------------------
+# Segredo DENTRO de texto livre — SPEC-128 (conserto B1).
+# --------------------------------------------------------------------------
+# 📊 04/10/2026: uma seguradora devolveu, na mensagem de erro dela, a URL interna
+# com `?key=` e uma chave de API (formato Google, 39 caracteres). A mensagem é
+# texto MANTIDO (é o que classifica a família), então nenhum guarda por CHAVE a
+# via. Estes padrões pegam o segredo pela FORMA, onde quer que ele esteja.
+# Vêm ANTES dos de PII: os dígitos da chave não podem virar "telefone" pela metade.
+# 🔴 `portal_key=`/`job_key=` (nome de variável em log) NÃO casam: o `_` antes de
+# `key` impede — só o parâmetro de URL/consulta `key=`, `api_key=`, `token=`…
+_PADROES_DE_CHAVE: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    ("chave_api", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
+    ("chave_aws", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("segredo_em_parametro", re.compile(
+        r"(?i)(?<![a-z0-9_])(?:api_?key|access_token|id_token|refresh_token|client_secret|"
+        r"key|token|signature|sig|secret)=\S+")),
+)
+
+# Toda URL — com esquema, `www.` ou `host.dominio/caminho` sem esquema. Caminho e
+# query de URL de terceiro carregam id, assinatura e chave; o texto em volta basta
+# para entender a mensagem. Uso OPT-IN (`sem_url_nem_chave`): o profiler e o trace
+# do worker precisam da rota do portal, e por isso `redigir_texto` não a remove.
+RE_URL = re.compile(
+    r"(?i)\bhttps?://\S+|\bwww\.\S+|(?<![\w@./-])(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?/\S*")
+MARCA_URL = "<removido:url>"
+
+# --------------------------------------------------------------------------
 # Padrões de PII. Ordem importa: o mais específico primeiro, senão o genérico
 # come o específico (a linha digitável vira "vários números soltos").
 # --------------------------------------------------------------------------
-_PADROES: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+_PADROES: tuple[tuple[str, "re.Pattern[str]"], ...] = _PADROES_DE_CHAVE + (
     # linha digitável de boleto: 47-48 dígitos, com ou sem separador
     ("linha_digitavel", re.compile(r"\b(?:\d[\s.]?){47,48}\b")),
     # JWT — três blocos base64url separados por ponto
@@ -136,6 +162,29 @@ def redigir_texto(texto: Any, *, com_hash: bool = False) -> str:
             return MARCA.format(_n)
         s = padrao.sub(_troca, s)
     return s
+
+
+def sem_url_nem_chave(texto: Any) -> str:
+    """Texto livre de TERCEIRO (mensagem de seguradora, alerta, rótulo): toda URL
+    vira `<removido:url>` e toda chave/assinatura vira `<redacted:...>`. Não mexe
+    no resto — a mensagem continua classificável ("Read terminated for <removido:url>")."""
+    if texto is None:
+        return ""
+    s = str(texto)
+    if not s:
+        return s
+    s = RE_URL.sub(MARCA_URL, s)
+    for nome, padrao in _PADROES_DE_CHAVE:
+        s = padrao.sub(MARCA.format(nome), s)
+    return s
+
+
+def tem_url_ou_chave(texto: Any) -> List[str]:
+    """Os TIPOS de URL/chave presentes num texto. Vazio = limpo."""
+    s = "" if texto is None else str(texto)
+    achados = ["url"] if RE_URL.search(s) else []
+    achados += [nome for nome, padrao in _PADROES_DE_CHAVE if padrao.search(s)]
+    return achados
 
 
 def redigir(valor: Any, *, com_hash: bool = False, _prof: int = 0) -> Any:
