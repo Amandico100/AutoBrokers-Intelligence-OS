@@ -23,7 +23,7 @@
 
 ---
 
-## 🔴 Onde estamos hoje (21/09/2026) — a família EXTRA vem antes deste painel
+## 🔴 Onde estamos hoje (04/10/2026) — o programa multicálculo vem antes deste painel
 
 > ⚠️ O painel abaixo para na SPEC-062 e descreve a fundação. **O trabalho corrente é a família EXTRA-001.x**, e a
 > autoridade sobre ela é [`ESTADO-DAS-SPECS.md`](ESTADO-DAS-SPECS.md), que tem uma linha por SPEC com nota e
@@ -57,10 +57,13 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
               faltou dado → parada antes da escrita no MESMO pedido (📊 replay 18/18 = 0 POST); cidade do SERVIÇO (📊 5/5);
               DOM contido; nenhuma migration · DEDUZIR do portal = 0 (bancada de 44 casos não rodada, P-127-04); ponte e
               retomada do DOM adiadas (P-127-01/02); canário do Founder (T-101)
-            PRÓXIMA: a fila D-FILA-01 → EXTRA-001.9 ("o painel diz de quem é") — prompt de abertura de 21/09 em
-              specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.9-PRONTO.md; ⚠️ NÃO existe proposta escrita (o 1º passo é escrevê-la)
-              e o prompt cita o modelo Fable 5.1 — vale o Opus 5.5 (D-PROTO-13)
-A FILA      001.9  →  001.0  →  triagem de pendências (D-FILA-01)  →  EXTRA-002 (investigação Agger)
+            PROGRAMA MULTICÁLCULO (D-MC-38, 04/10/2026) — a fila nova substitui a ordem da D-FILA-01 e a D-E002-07.
+              Plano: programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md (v2.4) · estado: programa-multicalculo/ESTADO-DO-PROGRAMA.md
+A FILA      0.5 registro + /r/ + P-E0018-14  →  129-A espera durável  →  128 prova do Agger  →  133-A prova de instalação
+            →  129-B motor  →  130-A comparação e proposta  →  130-B leitor de apólice  →  131 renovação  →  132 cotação
+            →  133-B Quem Cobra Menos piloto  →  ★ canal público  →  134 WhatsApp oficial  →  135 proposta conversa
+            →  136 lembretes  →  137 público
+DEPOIS      138 · 103 · 101 + EXTRA-008/009 · outros ramos · EXTRA-005/006 · fase 3 · 001.9 · 001.0 · restante 099–114 · 115
 PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
 ```
 

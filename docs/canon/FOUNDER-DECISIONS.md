@@ -1944,7 +1944,7 @@ O Founder, ao mandar executar a 096: *"as pendências você decide, com nota 0�
 | **D-PROTO-12** (20/09/2026) | **O núcleo do AAA v13 é o ÚNICO rito de execução a partir da EXTRA-001.10** — deixa de ser "em teste" (D-PROTO-10). O rito: **O FIO** + o teste do fio como **1ª entrega** · builders Opus 5 em **PARALELO quando os arquivos são disjuntos** · **julgamento paralelo UMA vez** (juiz generalista ‖ red team, Fable 5.1, cegos um ao outro) · **conserto único** · **confirmação curta** só se houve blocker · **trava de 2 rodadas** (`rodada_do_juiz.py`) · **bateria só DEPOIS do conserto**, triada **NOMINALMENTE** contra `docs/canon/reports/BATERIA-LINHA-DE-BASE.txt`. 📊 Medido em 2 SPECs: **001.5.2** ≈ 110 min e ≈ US$ 33 (7 defeitos materiais antes do push) · **001.7** = 151 min e ≈ US$ 47 (7 defeitos materiais antes do push; juiz 62 ‖ red team 58 → confirmação 86) — contra a média medida de **US$ 146 e 4,7 h por SPEC** nas 19 anteriores. **Cinco ajustes entram junto** (lições da 001.7): **(a) LENTE DO DADO no gate do builder** — todo número publicado é conferido por um caminho independente antes do juiz (📊 a 1ª medição publicava 3 conversas onde havia 53: o dublê nasceu do mesmo filtro do código); **(b) GATE DO AMBIENTE DE USO** — comando que o Founder roda é testado **como ele roda**, dentro do contêiner (📊 `ModuleNotFoundError: portal_worker` no console do EasyPanel em 20/09); **(c) A RESPOSTA FINAL É O RELATÓRIO DO FOUNDER** (CLAUDE.md §12.2); **(d) AGENTE ATUALIZADOR DE DOCUMENTOS** no fecho de toda SPEC (ESTADO, PENDENCIAS, DECISIONS, `TAREFAS-DO-FOUNDER.md`, painel único); **(e) o produto é MULTI-CORRETORA** — nenhum nome de corretora como constante em código, teste, script ou documento de operação; prova sempre com **2 tenants**. ⚠️ Rótulos "v11", "v11.2", "opção B", "laço curto", "3 juízes", "AAA FAST sequencial" são **históricos**, nunca rito | v13 como único **93** × manter "em teste" **60** (o rito já foi medido em 2 SPECs; duplicidade de rito é o que confunde) × voltar ao v12 sequencial **35** (📊 3× o custo e 2× o relógio) | `PROTOCOLO-AUTOBROKERS-AAA.md` v13 · `CLAUDE.md` §2/§9/§12.2 · `docs/canon/pacotes/` |
 | 🧑 **D-E0017-03** (FECHADA 20/09) | **Os cortes do veredito do piloto valem como propostos** na `SPEC-EXTRA-001.5-CANARIO-PASSO-A-PASSO.md` § P4 | cortes escritos **85** × sem cortes, veredito por impressão **40** | régua do piloto |
 | 🧑 **D-E0017-04** (FECHADA 20/09, opção C) | **No 4º dia um AVALIADOR** — agente do plano Claude, **nunca a API do produto** — **lê uma amostra das conversas do piloto por SELECT** e dá as 3 notas que o produto não grava: *fala como humano · sabe calar · apólice certa de primeira*. No relatório entram **só contagens**, nunca conversa. Os escritores duráveis continuam como pendência **P-E0017-03**, para o produto medir sozinho no futuro | C **88** × folha diária da atendente **60** (🧑 o Founder disse que é difícil) × SPEC de escritores antes do piloto **70** (adia o piloto e toca o atendimento na véspera) | P-E0017-03 |
-| **D-FILA-01** (20/09/2026) | **Não haverá uma "SPEC de pendências" agora.** A regra: **(1)** pendência ≥ 90 de **SEGURANÇA/isolamento entre corretoras** entra no escopo da **EXTRA-001.8** — inclusive as duas da lista do Founder: *"três rotas apagam/alteram conexão por id sem conferir de quem é"* e *"nome de atendente real dentro de dado global de corredor"*; **(2)** toda SPEC **drena** as pendências dos arquivos que tocar (protocolo §2); **(3)** depois da 001.0/001.9 e **ANTES** de abrir a EXTRA-002, roda-se **UMA triagem de pendências** (agente leitor, ~1 h): fecha as já resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira o bloco **EXTRA-001.11 · pendências que pesam**; **(4)** o resto espera o fim da sequência principal (renovação, cotação) | esta regra **88** × SPEC de pendências agora **55** (atrasa vidros/isolamento e metade está vencida: 📊 "40 das 81 linhas erradas" já foi resolvida pela 001.5.2; "grupo da AutoFleet dentro da Resulta" e "arquivo de credenciais na árvore" foram resolvidos pelo Founder) × só no fim de tudo **45** (deixa risco de segurança aberto ao ligar a 3ª corretora) | `specs-propostas/IDEIA-BLOCO-EXTRA-001.11-PENDENCIAS-QUE-PESAM.md` |
+| **D-FILA-01** (20/09/2026) · 🔁 **a ORDEM foi substituída pela D-MC-38 em 04/10/2026**; o item (2), toda SPEC drena as pendências que toca, continua valendo | **Não haverá uma "SPEC de pendências" agora.** A regra: **(1)** pendência ≥ 90 de **SEGURANÇA/isolamento entre corretoras** entra no escopo da **EXTRA-001.8** — inclusive as duas da lista do Founder: *"três rotas apagam/alteram conexão por id sem conferir de quem é"* e *"nome de atendente real dentro de dado global de corredor"*; **(2)** toda SPEC **drena** as pendências dos arquivos que tocar (protocolo §2); **(3)** depois da 001.0/001.9 e **ANTES** de abrir a EXTRA-002, roda-se **UMA triagem de pendências** (agente leitor, ~1 h): fecha as já resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira o bloco **EXTRA-001.11 · pendências que pesam**; **(4)** o resto espera o fim da sequência principal (renovação, cotação) | esta regra **88** × SPEC de pendências agora **55** (atrasa vidros/isolamento e metade está vencida: 📊 "40 das 81 linhas erradas" já foi resolvida pela 001.5.2; "grupo da AutoFleet dentro da Resulta" e "arquivo de credenciais na árvore" foram resolvidos pelo Founder) × só no fim de tudo **45** (deixa risco de segurança aberto ao ligar a 3ª corretora) | `specs-propostas/IDEIA-BLOCO-EXTRA-001.11-PENDENCIAS-QUE-PESAM.md` |
 
 ### Decisões da SPEC-EXTRA-001.10 (21/09/2026, tomadas pela execução com nota 0–100 — regra do Founder de 13/09; rito AAA v13 · O FIO, D-PROTO-12)
 
@@ -2006,6 +2006,8 @@ O Founder, ao mandar executar a 096: *"as pendências você decide, com nota 0�
 | 🧑 **D-E0018-F1** (PROPOSTA, decide o Founder) | **Aceitar o X do G3 e o teto de turno de 300 s como os PRIMEIROS ALVOS DE LATÊNCIA declarados do projeto.** 📊 Até 21/09/2026 o projeto não tinha SLO nenhum escrito. O que se propõe: *"o p95 de uma corretora sadia com a vizinha travada não passa do p95 dela sozinha mais X, com X = max(0,120 s; p95 sozinha × 0,25)"*, e *"nenhum turno de atendimento passa de 300 s"*. ⚠️ Registrado como **proposta**, não como decidido: a execução escolheu os números para poder gatear, e transformá-los em compromisso do produto é decisão do Founder | declarar os dois como alvo **💭 85** × seguir sem alvo escrito **40** ("nenhuma interferência" volta a não ser verificável) | relatório §0.0 · SPEC §5.4 |
 
 ### Decisões da SPEC-EXTRA-002 · parte 1 (22/09/2026 — ⏳ PROPOSTAS AGUARDANDO O FOUNDER; modo investigação, nada foi executado com base nelas)
+
+> 🔁 **04/10/2026 (programa multicálculo):** D-E002-01 **substituída pela D-MC-23** · D-E002-02 **confirmada pela D-MC-24** · D-E002-04 revista pela D-MC-32 (proposta) · D-E002-07 **substituída pela D-MC-38**. As demais seguem como insumo das SPECs 129-B a 131.
 
 > ⚠️ Nenhuma das oito abaixo está decidida. A investigação recomenda uma opção e dá nota a cada alternativa; a parte 2 da EXTRA-002 e a EXTRA-003 partem da recomendação **só depois** da confirmação do Founder. Fonte: `specs-propostas/SPEC-EXTRA-002-investigacao-prova-agger.md` §10 · relatório `reports/SPEC-EXTRA-002-INVESTIGATION-REPORT.md`.
 
@@ -2220,3 +2222,60 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | **D-127-E** | **Gerente (BLOCO 0) — o `portal_action` passa pelo MESMO portão do ok da SPEC-126 (resumo + ok, regex E classificador) antes de criar o job.** 📊 medição final da 126: o R2 abria vidro no 1º turno sem perguntar (2/2). O conserto acrescentou a amarra: o ok tem de ser DESTE pedido (linha pronta, ou peça + cidade + UF + final da placa) | o mesmo portão — sem nota numérica (a regra da 126) | `portal_tool.py` · `insurer_dispatch_tool.confirmacao_comprovada` · `7362725` · P-126-22 |
 | **D-127-F** | **Gerente (P5) — a bancada do portal NÃO roda paga.** Sobravam 💭 ≈ US$ 0,22 do teto de 4,50; a Yelum sozinha custaria 💭 0,29–0,72 e a Porto (📊 n = 5 < 10) nunca religaria → DEDUZIR do portal = 0, declarado | não rodar **85** × rodada parcial **40** | `bancada_portal.py` · `672441f` · P-127-04 · T-102 |
 | **D-127-G** | **Gerente (conserto único) — (1) o vigia respeita a TABELA do destravador** (não relê a parada que ele conduz); **(2) texto honesto à equipe** quando o recomeço da abertura falha ("abra DIRETO no portal, uma vez") | (1) respeitar a tabela **78** × tirar o estágio dos técnicos **65** · (2) texto honesto **72** × retomada automática **60** × liberar a chave do pedido **55** | `vigia_do_portal.py` · `portal_params.py` · `7362725` |
+
+## D-MC-08…50 · PROGRAMA MULTICÁLCULO (04/10/2026) — a fila nova, registrada no passo 0.5
+
+> Fonte: [`programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md`](programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md) §2 (v2.4,
+> cópia fiel do anexo do Founder, 📊 sha256 `6cebc63c…` igual ao original). O texto completo de cada decisão, com a
+> consequência, está lá; aqui fica o ESTADO. Origem "Amandus" ou "por delegação" = **TOMADA**; "Recomendação" =
+> **PROPOSTA**, confirmada pela execução na SPEC de cada uma quando os fatos sustentarem (D-MC-49).
+> Prefixo D-MC- porque D8–D22 já existem neste arquivo com outro sentido.
+
+| # | Decisão (resumo) | Estado | Substitui / revê |
+|---|---|---|---|
+| D-MC-08 | Um computador para tudo do AutoBrokers; fila em linha reta | ✅ TOMADA (Amandus) | — |
+| D-MC-09 | Agger é o multicálculo oficial; outros entram como adaptador da mesma porta | ✅ TOMADA (Amandus) | — |
+| D-MC-10 | CPF obrigatório no Agger; CPF falso fora de questão; a apólice é a melhor entrada | ✅ TOMADA (Amandus) | — |
+| D-MC-11 | Começar com 1 usuário robô, depois 2 | ✅ TOMADA (Amandus) | — |
+| D-MC-12 | Escala: várias corretoras, vários robôs, vários multicálculos | ✅ TOMADA (Amandus) | — |
+| D-MC-13 | Qualquer corretora cota qualquer ramo (v1 = auto) | ✅ TOMADA (Amandus) | — |
+| D-MC-14 | 💭 (estimativa da equipe) 3 em 5 renovações pedem ajuste, quase sempre de preço | ✅ TOMADA (Amandus) | — |
+| D-MC-15 | Fases P1 humano envia · P2 agente negocia · P3 agente fecha | ✅ TOMADA (Amandus) | — |
+| D-MC-16 | Todo cálculo fica registrado (refinada pela D-MC-31) | ✅ TOMADA (Amandus) | — |
+| D-MC-17 | Custo por cálculo o menor possível, sem erro | ✅ TOMADA (Amandus) | — |
+| D-MC-18 | Nenhuma corretora em destaque na busca; a vencedora no fim | ✅ TOMADA (Amandus) | — |
+| D-MC-19 | Cobrança, parecer jurídico e copy ficam para depois | ✅ TOMADA (Amandus) | — |
+| D-MC-20 | Isca no site só se o canal travar | ✅ TOMADA (Amandus) | — |
+| D-MC-21 | A 001.9 não é prioridade | ✅ TOMADA (Amandus) | — |
+| D-MC-22 | Marca de consumo: **Quem Cobra Menos** | ✅ TOMADA (Amandus, 04/10) | — |
+| D-MC-23 | Uso do Agger com a autorização da corretora que tem o contrato; sem pedido de anuência ao Agger agora | ✅ TOMADA (Amandus) · 04/10 o Founder declarou a autorização escrita de Resulta e AutoFleet para concluir cálculos | **substitui a D-E002-01** e a tarefa H.2 |
+| D-MC-24 | Usuário robô dedicado por corretora; nunca o login de uma pessoa no motor | ✅ TOMADA (delegação) | confirma a D-E002-02 |
+| D-MC-25 | A AutoBrokers opera o canal; cada corretora controla as próprias oportunidades | ✅ TOMADA (Amandus, provisória) | — |
+| D-MC-26 | Canal = catálogo global + adesão por corretora + registro mínimo numa empresa técnica | ✅ TOMADA (delegação) | — |
+| D-MC-27 | A InfoCap da Resulta na Amandus foi intencional; volta à Resulta antes da 131 | ✅ TOMADA (Amandus) | fecha a dúvida da P-E002-X1 |
+| D-MC-28 | Transporte: interceptação como padrão | ⏳ PROPOSTA | — |
+| D-MC-29 | Preço do canal por termo com cada corretora | ⏳ PROPOSTA (portão de preço da 133-B) | — |
+| D-MC-30 | Porta do piloto: convite revogável + wa.me + teto + interruptor | ⏳ PROPOSTA | revê a D-E007-03 no piloto |
+| D-MC-31 | Contato futuro só com consentimento; anonimizar após N dias | ⏳ PROPOSTA | refina a D-MC-16 |
+| D-MC-32 | A 135 liga depois de N propostas medidas na fase 1 | ⏳ PROPOSTA | revê a D-E002-04 |
+| D-MC-33 | No piloto, o canal usa o robô da corretora de registro, com prioridade ao vivo | ⏳ PROPOSTA | revê a D-E007-06 no piloto |
+| D-MC-34 | Páginas do cliente "uau", com modelo visual aprovado antes da 130 | ✅ TOMADA (Amandus) | — |
+| D-MC-35 | Segredos e o apagar das gravações do intake: o Founder cuida fora do programa; não bloqueiam SPEC | ✅ TOMADA (Amandus) | — |
+| D-MC-36 | Prova de instalação cedo (133-A) | ✅ TOMADA (Amandus) | — |
+| D-MC-37 | O cálculo não se chama "quote" no código; porta `MulticalculoProvider` | ⏳ PROPOSTA | — |
+| D-MC-38 | A fila do plano substitui a ordem da D-FILA-01 e a D-E002-07 | ✅ TOMADA (Amandus) | **substitui a D-FILA-01 (ordem) e a D-E002-07** |
+| D-MC-39 | O conhecimento destilado continua GLOBAL; a P-E0018-14 só garante que saia anônimo; nunca `company_id` na `conduct_playbooks` | ✅ TOMADA (Amandus) | — |
+| D-MC-40 | 129-B prova isolamento com 1 robô por corretora; o roteador entre corretoras nasce na 133-B | ✅ TOMADA (delegação) | — |
+| D-MC-41 | O recálculo volta à conta da corretora, não ao mesmo login | ✅ TOMADA (delegação) | — |
+| D-MC-42 | Fila e navegador próprios para o cálculo | ✅ TOMADA (delegação) | — |
+| D-MC-43 | PDF da proposta num render próprio, fora do navegador do cálculo | ⏳ PROPOSTA (decide a 130-A) | — |
+| D-MC-44 | Proposta com 2 opções por padrão (completa e econômica) | ✅ TOMADA (Amandus) | — |
+| D-MC-45 | Portão de preço na abertura da 130-A e da 133-B | ✅ TOMADA (Amandus) | — |
+| D-MC-46 | Barrar CPF de outra pessoa (declaração + nome da apólice × nome do cadastro, nunca mostrado) | ✅ TOMADA (delegação) | — |
+| D-MC-47 | O robô marca os negócios que cria e não recalcula negócio mexido por pessoa há < 24 h | ✅ TOMADA (delegação) | — |
+| D-MC-48 | Os consertos do passo 0.5 seguem o rito CRÍTICO | ✅ TOMADA (delegação) | — |
+| D-MC-49 | Execução contínua, SPEC atrás de SPEC, parando só nos portões e no CLAUDE.md §10 | ✅ TOMADA (Amandus) | — |
+| D-MC-50 | Narração ao vivo honesta: cada frase nasce de um evento real | ✅ TOMADA (Amandus: a ideia; o desenho é da 133-B) | — |
+
+**Verba (Founder, 04/10):** 💭 US$ 4 de API de modelo para as primeiras SPECs do programa. Cada gasto vai ao livro-caixa em
+`programa-multicalculo/ESTADO-DO-PROGRAMA.md`. Nenhuma rodada paga sem estimativa antes.

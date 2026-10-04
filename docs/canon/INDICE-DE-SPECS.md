@@ -275,7 +275,12 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     — **ideia registrada, não é SPEC**; depois da 114, por decisão do Founder de 20/09.
 💡   IDEIA · bloco EXTRA-001.11 · pendências que pesam (`specs-propostas/IDEIA-BLOCO-EXTRA-001.11-PENDENCIAS-QUE-PESAM.md`)
     — **ideia registrada, não é SPEC**; nasce da triagem de D-FILA-01, antes da EXTRA-002.
-🔜   ORDEM VIGENTE (20/09/2026, D-FILA-01): 001.10 (vidros) → 001.8 (isolamento entre corretoras, + as duas de
+🔜   ORDEM VIGENTE (04/10/2026, D-MC-38 — PROGRAMA MULTICÁLCULO; plano em `programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md`):
+    0.5 → 129-A espera durável → 128 prova do Agger → 133-A prova de instalação → 129-B motor → 130-A comparação e proposta →
+    130-B leitor de apólice → 131 renovação → 132 cotação → 133-B Quem Cobra Menos piloto → ★ → 134 WhatsApp oficial →
+    135 proposta conversa → 136 lembretes → 137 público. Depois: 138 · 103 · 101 + EXTRA-008/009 · … · 001.9 · 001.0 · 099–114.
+    Absorções: EXTRA-002 parte 2 → 128 · EXTRA-003-A → 129-B · EXTRA-003-B → 131 · EXTRA-004 → 132 · EXTRA-007 → 137 (se isca).
+🕘   ORDEM HISTÓRICA (20/09/2026, D-FILA-01 — substituída pela D-MC-38): 001.10 (vidros) → 001.8 (isolamento entre corretoras, + as duas de
     segurança da lista do Founder) → 001.9 → 001.0 → triagem de pendências (D-FILA-01) → EXTRA-002 Agger →
     099 canais → EXTRA-003 renovação → EXTRA-004 cotação → EXTRA-005 reativação → EXTRA-006 cross-sell → …
 ⏸   o MASTERPLAN — SPEC-099 · Channel Fabric v2 → 114: PAUSADAS pelo Founder em 07/09/2026 (D-E001-08), numeração preservada, sem cancelar;
