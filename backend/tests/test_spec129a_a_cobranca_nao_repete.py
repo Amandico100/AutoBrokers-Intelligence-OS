@@ -371,3 +371,193 @@ def test_guardar_com_cpf_nao_chega_ao_banco(mundo, corretoras):
         ctx, step_key="guardar", ordinal=1, nome="Guardar", step_type="system", fn=fn_de_novo,
         efeito="idempotente", guardar=("portal_job_id", "business_state", "cpf")))
     assert retomado == {"portal_job_id": job, "business_state": "needs_human"} and not chamadas
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CONSERTO ÚNICO (juiz B1 ‖ red team Q1/Q2) — a etapa EXTERNA é fail-CLOSED
+# ═════════════════════════════════════════════════════════════════════════════
+class _FalhaTransitoria(Exception):
+    """O que o httpx/PostgREST levanta num soluço de rede — NÃO é 23505."""
+
+
+def _falhar_proximas(proc, tabela: str, op: str, quantas: int = 1) -> dict:
+    """Na visão do banco DESTE processo, as próximas `quantas` `op` em `tabela` levantam ANTES do banco."""
+    original = proc.db.table
+    estado = {"n": quantas}
+
+    def table(nome):
+        c = original(nome)
+        if nome != tabela:
+            return c
+        exe = c.execute
+
+        def execute():
+            if c.op == op and estado["n"] > 0:
+                estado["n"] -= 1
+                raise _FalhaTransitoria(f"soluço de rede em {op} {tabela}")
+            return exe()
+        c.execute = execute
+        return c
+    proc.db.table = table
+    return estado
+
+
+def test_conserto_q1_insert_da_etapa_falha_a_cobranca_nao_roda_sem_registro(mundo, corretoras, envios):
+    """📊 red team A1: o INSERT de `work_steps` falhava (não-23505), `fn` rodava com `step_id=None`,
+    A morria ao carimbar o bilhete e B rodava DE NOVO → 2 envios. Agora: não roda sem a etapa;
+    volta pelo despertador (`etapa_nao_verificada`) e roda UMA vez."""
+    X, _Y = corretoras
+    rid = _rotina(mundo, X)
+    run_id = _criar_run(mundo, X, rid)
+
+    async def cenario():
+        a = mundo.processo("worker-A")
+        wa = await D.ligar_worker(a, SW)
+        _falhar_proximas(a, "work_steps", "insert")
+
+        def morre_ao_carimbar(escrita):   # A morre DEPOIS do envio, antes do concluir
+            if escrita.dono == a.nome and not a.morto:
+                a.morrer()
+                raise D.MorteDoProcesso("A morreu depois do envio")
+        mundo.banco.ao_gravar("routine_runs", "update", morre_ao_carimbar)
+        await D.ciclo(wa, a)
+        assert envios.vezes["motor"] == 0, "🔴 a cobrança rodou SEM a etapa registrada"
+        run = mundo.banco.run(run_id)
+        assert (run["status"], run.get("error_code")) == ("retry_scheduled", R.CODIGO_ETAPA_NAO_VERIFICADA), run
+        assert run.get("wake_at"), "a nova tentativa precisa do despertador (wake_at)"
+        assert _bilhete(mundo, run_id)["status"] == "delegated", "o bilhete não pode virar `error`: nada rodou"
+        await _ate_terminar(mundo, wa, a, run_id)
+        if a.morto:
+            b = mundo.processo("worker-B")
+            wb = await D.ligar_worker(b, SW)
+            await _ate_terminar(mundo, wb, b, run_id)
+
+    asyncio.run(cenario())
+    run = mundo.banco.run(run_id)
+    assert envios.vezes["motor"] == 1, f"🔴 a cobrança saiu {envios.vezes['motor']}×"
+    assert run["status"] == "completed", run
+
+
+def test_conserto_q2_leitura_da_etapa_falha_na_retomada_nao_repete(mundo, corretoras, envios):
+    """📊 juiz B1(a) / red team A2: a etapa JÁ tinha terminado, a releitura falhava e `fn` rodava de
+    novo. CONTROLE: o G2.1 (mesmo cenário sem o soluço) — 1 envio."""
+    X, _Y = corretoras
+    rid = _rotina(mundo, X)
+    run_id = _criar_run(mundo, X, rid)
+
+    async def cenario():
+        a = mundo.processo("worker-A")
+        wa = await D.ligar_worker(a, SW)
+
+        def morre_quando_o_passo_conclui(escrita):
+            linha = (escrita.depois or [{}])[0]
+            if (escrita.dono == a.nome and not a.morto and linha.get("step_key") == "executar_rotina"
+                    and (escrita.payload or {}).get("status") == "succeeded"):
+                a.morrer()
+                raise D.MorteDoProcesso("A morreu depois do passo, antes do concluir")
+        mundo.banco.ao_gravar("work_steps", "update", morre_quando_o_passo_conclui)
+        await D.ciclo(wa, a)
+        assert (_passo(mundo, run_id) or {}).get("status") == "succeeded"
+        b = mundo.processo("worker-B")
+        wb = await D.ligar_worker(b, SW)
+        # 1ª leitura: a da idade, no handler (falhar ali é inofensivo); 2ª: a releitura da etapa
+        _falhar_proximas(b, "work_steps", "select", quantas=2)
+        await _ate_terminar(mundo, wb, b, run_id)
+
+    asyncio.run(cenario())
+    run = mundo.banco.run(run_id)
+    assert envios.vezes["motor"] == 1, f"🔴 a cobrança saiu {envios.vezes['motor']}× (releitura falhou)"
+    assert run["status"] == "completed", run
+    assert _eventos(mundo, run_id, "step.reused"), "a volta devia REUSAR a etapa concluída"
+
+
+def test_conserto_a3_resposta_do_insert_perdida_roda_uma_vez_sem_incerto_falso(mundo, corretoras, envios):
+    """📊 red team A3 (P1): o INSERT GRAVOU e só a resposta se perdeu → a releitura acha a etapa
+    `running` com a assinatura DESTA tentativa → é a nossa: roda UMA vez (antes: `efeito_incerto`
+    falso, 0 envios e o corretor lendo "reconcilie")."""
+    X, _Y = corretoras
+    rid = _rotina(mundo, X)
+    run_id = _criar_run(mundo, X, rid)
+
+    async def cenario():
+        a = mundo.processo("worker-A")
+        wa = await D.ligar_worker(a, SW)
+        feito = {"n": 0}
+
+        def resposta_perdida(escrita):
+            if escrita.dono == a.nome and feito["n"] == 0 and \
+                    (escrita.depois or [{}])[0].get("step_key") == "executar_rotina":
+                feito["n"] = 1
+                raise _FalhaTransitoria("timeout lendo a resposta do INSERT (a linha GRAVOU)")
+        mundo.banco.ao_gravar("work_steps", "insert", resposta_perdida)
+        await _ate_terminar(mundo, wa, a, run_id)
+
+    asyncio.run(cenario())
+    run = mundo.banco.run(run_id)
+    assert envios.vezes["motor"] == 1 and run["status"] == "completed", (envios.vezes, run["status"],
+                                                                          run.get("error_code"))
+
+
+def _semear_etapa(mundo, cid, run_id, status, **extra):
+    mundo.banco.semear("work_steps", {
+        "id": str(uuid.uuid4()), "work_run_id": run_id, "company_id": cid, "step_key": "externa",
+        "ordinal": 1, "name": "Externa", "step_type": "routine", "status": status,
+        "risk_level": "low", "idempotency_key": f"{cid}:{run_id}:externa", "output_summary": {},
+        **extra})
+
+
+def _ctx(mundo, cid, run_id):
+    db = mundo.processo("worker-A").db
+    return {"db": db, "runs": R.WorkRunService(db), "company_id": cid, "run_id": run_id,
+            "cancelado": lambda: False}
+
+
+@pytest.mark.parametrize("status_lido", ["waiting_input", "failed"])
+def test_conserto_b1b_etapa_reencontrada_volta_a_running_antes_de_rodar(mundo, corretoras, status_lido):
+    """📊 juiz B1(b) casos D/E: uma etapa EXTERNA reencontrada `waiting_input` ou `failed` SEM a marca
+    (Reprocessar) rodava `fn` sem regravar `running`; morrer no meio deixava o status velho e a
+    retomada seguinte rodava DE NOVO. Agora: morrer no meio → a retomada levanta `EfeitoIncerto`."""
+    X, _Y = corretoras
+    rid = _rotina(mundo, X)
+    run_id = _criar_run(mundo, X, rid)
+    _semear_etapa(mundo, X, run_id, status_lido)
+    ctx = _ctx(mundo, X, run_id)
+    chamadas = {"n": 0}
+    visto = []
+
+    async def envia_e_morre():
+        chamadas["n"] += 1
+        visto.append((_passo(mundo, run_id, "externa") or {}).get("status"))
+        raise D.MorteDoProcesso("morreu no meio do envio")
+
+    with pytest.raises(D.MorteDoProcesso):
+        asyncio.run(W.executar_passo(ctx, step_key="externa", ordinal=1, nome="Externa",
+                                     step_type="routine", fn=envia_e_morre, efeito="externo"))
+    assert visto == ["running"], f"🔴 a etapa externa rodou marcada {visto}, não `running`"
+    # a retomada é DEPOIS (o relógio do dublê é congelado; a assinatura da tentativa é o instante)
+    mundo.relogio.avancar(30)
+    with pytest.raises(R.EfeitoIncerto):
+        asyncio.run(W.executar_passo(ctx, step_key="externa", ordinal=1, nome="Externa",
+                                     step_type="routine", fn=envia_e_morre, efeito="externo"))
+    assert chamadas["n"] == 1, f"🔴 o efeito externo rodou {chamadas['n']}×"
+    passo = _passo(mundo, run_id, "externa") or {}
+    assert passo.get("status") == "failed" and (passo.get("output_summary") or {}).get("efeito_incerto")
+
+
+def test_conserto_b1b_CONTROLE_etapa_running_vira_incerto_sem_rodar(mundo, corretoras):
+    """O controle C do juiz: `running` de um processo morto → `EfeitoIncerto`, 0 chamadas
+    (a assinatura não é a desta tentativa)."""
+    X, _Y = corretoras
+    rid = _rotina(mundo, X)
+    run_id = _criar_run(mundo, X, rid)
+    _semear_etapa(mundo, X, run_id, "running", started_at="2026-01-01T00:00:00+00:00")
+    chamadas = []
+
+    async def fn():
+        chamadas.append(1)
+        return "x"
+
+    with pytest.raises(R.EfeitoIncerto):
+        asyncio.run(W.executar_passo(_ctx(mundo, X, run_id), step_key="externa", ordinal=1,
+                                     nome="Externa", step_type="routine", fn=fn, efeito="externo"))
+    assert not chamadas
