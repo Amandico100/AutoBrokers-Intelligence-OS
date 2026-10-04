@@ -81,28 +81,31 @@ class Campo:
 # grupo → ((nome, caminho no calcularV2, obrigatorio), ...)
 # 📊 caminhos lidos do `calcularV2` das gravações R1/R2 de 18/09 (fixtures
 # `gravacao_r1.json`/`gravacao_r2.json`, chave `pedido.corpo`).
+# `obrigatorio` MEDIDO na SPEC-128 E3 (📊 04/10 18:59, conta_a: "Calcular" com o formulário vazio → a tela recusou
+# 16 campos, `e3_validacao.json` no rascunho do gerente) · False = a tela aceitou vazio · None = não medido.
+# Os 16 obrigatórios não dizem tudo: o questionário (garagem, uso, km) vem com PADRÕES da tela e o cálculo sai com eles.
 CAMPOS_DO_PEDIDO_AUTO: dict = {
     "segurado": (
         ("tipo_pessoa", "cotacao.segurado.tipoPessoa", None),
-        ("cpf_cnpj", "cotacao.segurado.cpfCnpj", None),
-        ("nome", "cotacao.segurado.nome", None),
-        ("nascimento", "cotacao.segurado.dataNasc", None),
-        ("sexo", "cotacao.segurado.sexo", None),
-        ("estado_civil", "cotacao.segurado.estadoCivil", None),
-        ("cep", "cotacao.segurado.cep", None),
-        ("telefone", "cotacao.segurado.fone1", None),
-        ("email", "cotacao.segurado.email", None),
+        ("cpf_cnpj", "cotacao.segurado.cpfCnpj", True),
+        ("nome", "cotacao.segurado.nome", True),
+        ("nascimento", "cotacao.segurado.dataNasc", True),
+        ("sexo", "cotacao.segurado.sexo", True),
+        ("estado_civil", "cotacao.segurado.estadoCivil", True),
+        ("cep", "cotacao.segurado.cep", True),
+        ("telefone", "cotacao.segurado.fone1", False),
+        ("email", "cotacao.segurado.email", False),
         ("pcd", "cotacao.segurado.isPCD", None),
     ),
     "veiculo": (
-        ("fipe", "cotacao.automoveis[].fipe", None),
+        ("fipe", "cotacao.automoveis[].fipe", True),
         ("modelo", "cotacao.automoveis[].descricao", None),
         ("fabricante", "cotacao.automoveis[].fabricante", None),
-        ("ano_fabricacao", "cotacao.automoveis[].anoFabricacao", None),
+        ("ano_fabricacao", "cotacao.automoveis[].anoFabricacao", True),
         ("ano_modelo", "cotacao.automoveis[].anoModelo", None),
-        ("combustivel", "cotacao.automoveis[].combustivel", None),
-        ("placa", "cotacao.automoveis[].placa", None),
-        ("chassi", "cotacao.automoveis[].chassi", None),
+        ("combustivel", "cotacao.automoveis[].combustivel", True),
+        ("placa", "cotacao.automoveis[].placa", False),
+        ("chassi", "cotacao.automoveis[].chassi", False),
         ("zero_km", "cotacao.automoveis[].zeroKm", None),
         ("blindado", "cotacao.automoveis[].blindado", None),
         ("kit_gas", "cotacao.automoveis[].kitGas", None),
@@ -111,19 +114,19 @@ CAMPOS_DO_PEDIDO_AUTO: dict = {
         ("percentual_fipe", "cotacao.automoveis[].pctAjuste", None),
     ),
     "pernoite": (
-        ("cep_pernoite", "cotacao.automoveis[].cepPernoite", None),
+        ("cep_pernoite", "cotacao.automoveis[].cepPernoite", True),
         ("garagem_residencia", "cotacao.automoveis[].garagemResidencia", None),
         ("garagem_trabalho", "cotacao.automoveis[].garagemTrabalho", None),
         ("garagem_estudo", "cotacao.automoveis[].garagemEstudo", None),
     ),
     "condutor": (
         ("relacao_com_segurado", "cotacao.automoveis[].condutores[].relacComSegurado", None),
-        ("cpf", "cotacao.automoveis[].condutores[].cpfCnpj", None),
-        ("nome", "cotacao.automoveis[].condutores[].nome", None),
-        ("nascimento", "cotacao.automoveis[].condutores[].dataNasc", None),
-        ("sexo", "cotacao.automoveis[].condutores[].sexo", None),
-        ("estado_civil", "cotacao.automoveis[].condutores[].estadoCivil", None),
-        ("tempo_habilitacao", "cotacao.automoveis[].condutores[].tempoHabilitacao", None),
+        ("cpf", "cotacao.automoveis[].condutores[].cpfCnpj", True),
+        ("nome", "cotacao.automoveis[].condutores[].nome", True),
+        ("nascimento", "cotacao.automoveis[].condutores[].dataNasc", True),
+        ("sexo", "cotacao.automoveis[].condutores[].sexo", True),
+        ("estado_civil", "cotacao.automoveis[].condutores[].estadoCivil", True),
+        ("tempo_habilitacao", "cotacao.automoveis[].condutores[].tempoHabilitacao", True),
         ("jovem_condutor", "cotacao.automoveis[].jovemCondutor", None),
     ),
     "renovacao": (
