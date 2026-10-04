@@ -22,6 +22,12 @@ dublê de `companies` (§13.9).
   [7] o guarda CONSEGUE falhar: porteiro trocado por identidade → a sonda vê
       o vazamento (§9.3: prove que as duas coisas conseguem ser diferentes)
   [8] a releitura de 5 min com o banco mudo não esvazia a lista do mascarador
+      de MENSAGEM — e o porteiro, nesse caso, fica SEM lista (nunca a velha)
+  [9]-[16] o conserto único do 0.5, com o `INSURER_REGISTRY` REAL: Q2 (corretora
+      por variante: domínio, handle, núcleo), Q4 (nome de ofício nunca é marca),
+      Q3 (nome de pessoa em contexto), as formas que os dois motores deixavam
+      passar, o conhecimento público intacto, a lista velha, o log por hash e o
+      laço de custo (grupo recusado só volta com material novo)
 
 Standalone, como os irmãos: `python tests/test_o_conhecimento_global_sai_anonimo.py`.
 """
@@ -111,9 +117,313 @@ def _novo_mundo(store, companies):
     sys.modules["app.services.curadoria_cartas"]._marcas_lidas_em = None
 
 
+
+# ══════════════════════════════════════════════════════════════════════════
+# O CONSERTO ÚNICO DO 0.5 — os ataques do red team (Q2, Q3, Q4 e as
+# pendências), todos pelo caminho REAL de escrita, com o `INSURER_REGISTRY`
+# REAL carregado (📊 o red team mostrou que sem ele o teste não via Q2/Q4:
+# a lista de seguradoras vinha vazia). Tudo FICTÍCIO (§13.9).
+# ══════════════════════════════════════════════════════════════════════════
+VAGALUME = CORRETORA
+PB_CONTROLE = {
+    "objetivo": "acionar guincho sem friccao",
+    "encerramento": "em perda total o guincho leva ao patio da seguradora",
+    "pre_checks": ["confirmar a cobertura de guincho e o km",
+                   "Pode me mandar a foto da CNH de quem estava dirigindo? "
+                   "Pode ser foto legível da frente e verso."],
+}
+
+
+def _carregar_registro_real():
+    """O `INSURER_REGISTRY` de verdade, no lugar onde o porteiro o importa."""
+    import importlib.util
+    raiz = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "app.services.insurer_registry", raiz / "app/services/insurer_registry.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    sys.modules["app.services.insurer_registry"] = mod
+    return mod
+
+
+def _grava(dist, store, companies, content, ramo="auto", servico="guincho"):
+    """(linha gravada ou None) — o mundo zerado e a lista relida a cada caso."""
+    _novo_mundo(store, companies)
+    dist._save_playbook_draft_sync(ramo, servico, copy.deepcopy(content), 13, "m")
+    linhas = store.get("conduct_playbooks", [])
+    return linhas[0] if linhas else None
+
+
+def _nao_vazou(linha, proibido):
+    return linha is None or _sem_acento_baixo(proibido) not in _sem_acento_baixo(
+        json.dumps(linha, ensure_ascii=False))
+
+
+def run_ataques(dist, store, cur, cap):
+    registro = _carregar_registro_real()
+    seg = cur._seguradoras()
+    check("o registro REAL de seguradoras chegou ao porteiro (porto, azul, tokio)",
+          {"porto", "azul", "tokio"} <= set(seg[1]) and len(registro.INSURER_REGISTRY) >= 10,
+          sorted(seg[1])[:20])
+
+    # [9] Q2 — corretora por variante: domínio, handle, nome que começa com
+    # seguradora, parte distintiva.
+    print("\n[9] Q2: a corretora por variante do nome -> nunca chega ao global")
+    q2 = [
+        ([VAGALUME], "site vagalumeseguros.com.br", "vagalumeseguros"),
+        ([VAGALUME], "insta @vagalumeseguros", "vagalumeseguros"),
+        ([VAGALUME], "www.VagalumeCorretora.com", "vagalumecorretora"),
+        ([VAGALUME], "vagalume_seguros no insta", "vagalume_seguros"),
+        ([VAGALUME], "o time #VagalumeSeguros confirma", "vagalume"),
+        ([VAGALUME], "a Vaga-lume confirma", "vaga-lume"),
+        ([VAGALUME, {"id": "c2", "company_name": "Porto Real Corretora",
+                     "legal_name": "Porto Real Corretora de Seguros Ltda"}],
+         "a Porto Real Corretora confirma o guincho", "porto real corretora"),
+        ([VAGALUME, {"id": "c2", "company_name": "Azul Marinho Seguros",
+                     "legal_name": "Azul Marinho Corretora Ltda"}],
+         "a Azul Marinho confirma", "azul marinho"),
+        ([VAGALUME, {"id": "c2", "company_name": "Céu Azul Corretora",
+                     "legal_name": "Ceu Azul Corretora de Seguros Ltda"}],
+         "a Céu Azul confirma", "ceu azul"),
+        ([VAGALUME, {"id": "c2", "company_name": "Céu Azul Corretora",
+                     "legal_name": "Ceu Azul Corretora de Seguros Ltda"}],
+         "a CEU AZUL confirma", "ceu azul"),
+        ([VAGALUME, {"id": "c2", "company_name": "JR Seguros",
+                     "legal_name": "JR Corretora de Seguros Ltda"}],
+         "acesse jrseguros.com.br", "jrseguros"),
+    ]
+    for companies, frase, proibido in q2:
+        linha = _grava(dist, store, companies, {"objetivo": "acionar guincho",
+                                                "encerramento": frase})
+        check(f"Q2 {frase!r}", _nao_vazou(linha, proibido),
+              linha and linha["content"].get("encerramento"))
+    # a mesma corretora no ramo/serviço (chave do grupo)
+    linha = _grava(dist, store, [VAGALUME], dict(O3.PLAYBOOK), servico="guincho vagalumeseguros")
+    check("Q2 a forma compacta na CHAVE do grupo tambem barra", linha is None)
+
+    # [10] Q4 — palavra genérica nunca vira marca: o MESMO playbook, com um
+    # tenant de nome de ofício, grava IGUAL ao controle (byte a byte).
+    print("\n[10] Q4: tenant com nome de oficio nao apaga nem corrompe o global")
+    controle = _grava(dist, store, [VAGALUME], PB_CONTROLE)
+    check("CONTROLE: so a Vagalume -> gravado igual", controle is not None
+          and controle["content"] == PB_CONTROLE, controle and controle["content"])
+    for nome, ramo, servico in [("Auto Center Corretora", "auto", "guincho"),
+                                ("Vida Plena Corretora", "vida", "funeral"),
+                                ("Total Corretora de Seguros", "auto", "guincho"),
+                                ("Guincho Express Corretora", "auto", "guincho"),
+                                ("Casa Forte Seguros", "residencial", "chaveiro")]:
+        linha = _grava(dist, store, [VAGALUME, {"id": "c9", "company_name": nome,
+                                                "legal_name": nome + " Ltda"}],
+                       PB_CONTROLE, ramo=ramo, servico=servico)
+        check(f"Q4 tenant {nome!r} -> {ramo}/{servico} gravado IGUAL",
+              linha is not None and linha["content"] == PB_CONTROLE,
+              linha and linha["content"])
+    # e a frase INTEIRA continua sendo marca
+    linha = _grava(dist, store, [VAGALUME, {"id": "c9", "company_name": "Total Corretora de Seguros",
+                                            "legal_name": "Total Corretora de Seguros Ltda"}],
+                   {"objetivo": "x", "e": "a Total Corretora de Seguros confirma"})
+    check("Q4 mas a frase inteira 'Total Corretora de Seguros' nao chega",
+          _nao_vazou(linha, "total corretora"), linha and linha["content"])
+
+    # [11] Q3 — nome de pessoa em contexto.
+    print("\n[11] Q3: nome de pessoa em contexto -> nao grava")
+    q3 = [
+        ("Oi, aqui é a Joana da Vagalume", "joana"),
+        ("fale com a Maria da central", "maria"),
+        ("pode falar com João que ele resolve", "joao"),
+        ("confirme com a Fernanda antes", "fernanda"),
+        ("a joana pereira confirma", "joana"),
+        ("Att, Joana", "joana"),
+        ("Atenciosamente, Bruno", "bruno"),
+        ("O Carlos confirmou o horario", "carlos"),
+        ("fale com o corretor Marcos Antonio", "marcos"),
+        ("Peça para o João Silva enviar a foto.", "joao"),
+        ("Assinado: Ricardo Gomes", "ricardo"),
+        ("a Rosa do financeiro confirma", "rosa"),
+        ("falar com socorro no financeiro", "socorro"),
+    ]
+    for frase, proibido in q3:
+        linha = _grava(dist, store, [VAGALUME], {"objetivo": "acionar guincho",
+                                                 "encerramento": frase})
+        check(f"Q3 {frase!r}", _nao_vazou(linha, proibido),
+              linha and linha["content"].get("encerramento"))
+    for rot, conteudo, proibido in [
+        ("nome em CHAVE de JSON", {"objetivo": "x", "responsaveis": {"Joana Pereira": "guincho"}}, "joana"),
+        ("frase em CHAVE de JSON", {"objetivo": "x", "fale com a Maria": "guincho"}, "maria"),
+    ]:
+        linha = _grava(dist, store, [VAGALUME], conteudo)
+        check(f"Q3 {rot}", _nao_vazou(linha, proibido), linha and linha["content"])
+    for servico in ("guincho da Joana Pereira", "falar com João"):
+        linha = _grava(dist, store, [VAGALUME], dict(O3.PLAYBOOK), servico=servico)
+        check(f"Q3 nome no SERVICO {servico!r} -> nao grava", linha is None)
+
+    # [12] as formas de identificador que os dois motores deixavam passar.
+    print("\n[12] placa, telefone e CPF que passavam pelos dois motores")
+    for frase, proibido in [
+        ("placa abc-1234 parada", "abc-1234"),
+        ("placa abc 1234 parada", "abc 1234"),
+        ("placa abc 1d23 parada", "abc 1d23"),
+        ("ligue 9 9876-5432", "9876-5432"),
+        ("ligue 99876-5432", "99876-5432"),
+        ("ramal direto 3222-1144", "3222-1144"),
+        ("CPF 123/456/789-09", "123/456"),
+    ]:
+        linha = _grava(dist, store, [VAGALUME], {"objetivo": "x", "encerramento": frase})
+        check(f"forma {frase!r}", _nao_vazou(linha, proibido),
+              linha and linha["content"].get("encerramento"))
+
+    # [13] conhecimento PÚBLICO e conteúdo legítimo: gravam, e INTACTOS.
+    print("\n[13] conhecimento publico e conteudo legitimo gravam intactos")
+    intactos = [
+        "ligue 08007272766 para a assistencia",
+        "ligue 0800 727 2766, nas capitais 4004-7676 ou 3003 9303",
+        "Azul Seguros WhatsApp: (21) 3906-2985",
+        "vigencia 2025-2026, renovacao em 30 dias",
+        "acione a Porto Seguro pelo app; a Allianz exige foto do painel",
+        "Tokio Marine abre sinistro online; a Yelum pede o laudo",
+        "com ceu azul ou chuva o guincho vai",
+        "o carro azul marinho esta no patio",
+        "guincho no bairro Santa Maria, oficina em Sao Jose, voo para João Pessoa",
+        "pedido de socorro na rodovia; a rosa dos ventos",
+        "das 08:00 as 18:00; seg a sex 8h-18h",
+        "Pode me mandar a foto da CNH de quem estava dirigindo? Pode ser foto legível da frente e verso.",
+        "Sr(a). {NOME}, seu guincho foi acionado",
+        "leve a um auto center credenciado da seguradora",
+        "a corretora sempre confirma; a assessoria tecnica tambem",
+        "Encaminhe para o Atendimento Humano se pedir Cancelamento",
+        "o marcos do contrato sao a vistoria e a emissao",
+        "conforme a norma da SUSEP",
+    ]
+    companies = [VAGALUME, CORRETORA_2,
+                 {"id": "c3", "company_name": "Céu Azul Corretora",
+                  "legal_name": "Ceu Azul Corretora de Seguros Ltda"},
+                 {"id": "c4", "company_name": "Auto Center Corretora",
+                  "legal_name": "Auto Center Corretora Ltda"}]
+    for frase in intactos:
+        conteudo = {"objetivo": "acionar guincho", "encerramento": frase}
+        linha = _grava(dist, store, companies, conteudo)
+        check(f"intacto {frase[:60]!r}", linha is not None and linha["content"] == conteudo,
+              (linha and linha["content"].get("encerramento"))
+              or cur.anonimizar_para_o_global(conteudo)[2])
+    # 📊 04/10, nos 18 playbooks reais: a forma compacta SOLTA de uma corretora
+    # casava dentro de palavra comum (a marca + "do"). Substring não é marca.
+    previa = {"id": "c5", "company_name": "Prévia Corretora", "legal_name": "Previa Corretora Ltda"}
+    conteudo = {"objetivo": "x", "e": "o resultado sai previamente.pdf, depois previamente"}
+    linha = _grava(dist, store, [VAGALUME, previa], conteudo)
+    check("marca que e PREFIXO de palavra comum nao barra a palavra (nem colada)",
+          linha is not None and linha["content"] == conteudo,
+          cur.anonimizar_para_o_global(conteudo)[2])
+    linha = _grava(dist, store, [VAGALUME, previa], {"objetivo": "x", "e": "siga @previacorretora"})
+    check("CONTROLE: o handle da mesma marca barra", linha is None)
+    linha = _grava(dist, store, [VAGALUME], {"objetivo": "x",
+                                             "e": "Central 24h: (48) 3222-1144"})
+    check("telefone que NAO e de seguradora sai mascarado, sem parentese orfao",
+          linha is not None and linha["content"]["e"] == "Central 24h: {TELEFONE}",
+          linha and linha["content"])
+
+    # [14] lista velha: banco mudo na releitura -> o porteiro NÃO grava.
+    print("\n[14] banco mudo na releitura -> nao grava (nunca a lista velha)")
+    _novo_mundo(store, [VAGALUME])
+    cur.marcas_de_corretora_frescas()
+    store["companies"].append({"id": "c7", "company_name": "Pirilampo Corretora",
+                               "legal_name": "Pirilampo Ltda"})
+    banco = sys.modules["app.core.database"]
+    real_cli = banco.get_supabase_client
+
+    class _CliMudo:
+        def __init__(self):
+            self.client = self
+            self._r = real_cli().client
+
+        def table(self, nome):
+            if nome == "companies":
+                raise ConnectionError("fora")
+            return self._r.table(nome)
+
+    banco.get_supabase_client = _CliMudo
+    cur._marcas_lidas_em = None
+    cap.msgs.clear()
+    try:
+        pid = dist._save_playbook_draft_sync("auto", "guincho",
+                                             {"objetivo": "x", "e": "a Pirilampo confirma"}, 13, "m")
+    finally:
+        banco.get_supabase_client = real_cli
+    check("corretora nova + releitura falhou -> nenhum insert", pid is None
+          and not store.get("conduct_playbooks"), store.get("conduct_playbooks"))
+    check("e o motivo e a lista indisponivel",
+          any("lista_de_corretoras_indisponivel" in m for m in cap.msgs), cap.msgs[-1:])
+
+    # [15] o log da recusa: o grupo IDENTIFICÁVEL (hash curto) e só o tipo.
+    print("\n[15] o log da recusa diz o grupo por hash, sem o dado")
+    cap.msgs.clear()
+    _grava(dist, store, [VAGALUME], dict(O3.PLAYBOOK), servico="guincho da vagalume")
+    gid = dist.id_do_grupo("auto", "guincho da vagalume")
+    todos = " ".join(cap.msgs)
+    check("o log traz o id do grupo (hash curto) e o tipo",
+          gid in todos and "chave:corretora" in todos, cap.msgs)
+    check("e nao traz o grupo em claro", "vagalume" not in todos.lower(), cap.msgs)
+
+    # [16] o laço de custo: grupo recusado não volta à fila sem material novo.
+    print("\n[16] grupo recusado so volta com material NOVO (marcador transitorio)")
+
+    class _RedisSync:
+        def __init__(self):
+            self.kv = {}
+
+        def set(self, k, v, ex=None):
+            self.kv[k] = v
+
+        def get(self, k):
+            return self.kv.get(k)
+
+        def delete(self, *ks):
+            for k in ks:
+                self.kv.pop(k, None)
+
+        def scan_iter(self, match=None, count=None):
+            prefixo = (match or "").rstrip("*")
+            return [k for k in list(self.kv) if k.startswith(prefixo)]
+
+    red = sys.modules["app.core.redis"]
+    for com_redis in (True, False):
+        rotulo = "Redis" if com_redis else "SEM Redis (memoria)"
+        dist._RECUSAS_EM_MEMORIA.clear()
+        fake = _RedisSync()
+        if com_redis:
+            red.get_redis_client = lambda: fake
+        elif hasattr(red, "get_redis_client"):
+            del red.get_redis_client
+        _novo_mundo(store, [VAGALUME])
+        O3._seed_sessions(store)
+        for s in store["attendance_sessions"]:
+            s["summary"] = {"distilled": {"ramo": "auto", "servico": "guincho",
+                                          "at": s["started_at"]}}
+        check(f"[{rotulo}] antes: o grupo esta na fila",
+              ("auto", "guincho") in dist._grupos_sem_playbook_sync(5))
+        sujo = {"objetivo": "x", "e": "a Vagalúme confirma"}
+        dist._save_playbook_draft_sync("auto", "guincho", sujo, 13, "m")
+        check(f"[{rotulo}] recusado: o grupo SAI da fila (nao chama o modelo de novo)",
+              ("auto", "guincho") not in dist._grupos_sem_playbook_sync(5))
+        if com_redis:
+            check("[Redis] o marcador mora no Redis, com o material e sem o dado",
+                  any(dist.id_do_grupo("auto", "guincho") in k for k in fake.kv)
+                  and all("vagal" not in str(v).lower() for v in fake.kv.values()),
+                  fake.kv)
+        n = len(store["attendance_sessions"])
+        for i in range(5):
+            s = copy.deepcopy(store["attendance_sessions"][0])
+            s["id"] = f"novo{i}"
+            store["attendance_sessions"].append(s)
+        check(f"[{rotulo}] com 5 conversas novas o grupo VOLTA",
+              ("auto", "guincho") in dist._grupos_sem_playbook_sync(5),
+              len(store["attendance_sessions"]) - n)
+    dist._RECUSAS_EM_MEMORIA.clear()
+
+
 def run():
     print("== P-E0018-14 · o conhecimento global sai sempre anonimo ==\n")
     dist, store, _redis, _qdrant, _factory = O3._bootstrap()
+    _carregar_registro_real()       # como em produção: o porteiro sabe quem é seguradora
     cur = sys.modules["app.services.curadoria_cartas"]
     cap = _Captura()
     logging.getLogger("app.services.attendance_distiller").addHandler(cap)
@@ -244,9 +554,17 @@ def run():
     finally:
         banco.get_supabase_client = real_cli
     check("a lista lida antes tinha as marcas", "Vagalume" in antes, antes)
-    check("depois da releitura com banco mudo, a lista continua", depois == antes, depois)
+    # 🔴 O FATO MUDOU (§9.3, red team 04/10): o PORTEIRO não aceita mais a lista
+    # velha — uma corretora criada depois da última leitura atravessaria. Para
+    # ele, banco mudo na releitura = lista indisponível = não grava. A lição que
+    # este caso guardava migra inteira para a linha de baixo: o mascarador de
+    # MENSAGEM continua com a lista que tinha.
+    check("depois da releitura com banco mudo, o PORTEIRO fica sem lista (nunca a velha)",
+          depois == (), depois)
     check("e o templatize de toda mensagem continua apagando a marca",
           "Vagalume" not in mascarado and "{CORRETORA}" in mascarado, mascarado)
+
+    run_ataques(dist, store, cur, cap)
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:
