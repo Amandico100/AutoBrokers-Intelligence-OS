@@ -12,7 +12,7 @@ parse_options/classify_screen (cartographer).
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 # ─────────────────────────────────────────────────────────────────────────────
 # O QUE UMA REGRA DE NOME NUNCA PODE ATRAVESSAR: A QUEBRA DE LINHA
@@ -1463,9 +1463,14 @@ def marcas_de_corretora(recarregar: bool = False) -> Tuple[str, ...]:
     return _CACHE_MARCAS
 
 
-def _apagar_marcas_de_corretora(s: str) -> str:
-    """Troca por `{CORRETORA}` o que a configuração diz ser corretora."""
-    marcas = marcas_de_corretora()
+def _apagar_marcas_de_corretora(s: str, marcas: Optional[Iterable[str]] = None) -> str:
+    """Troca por `{CORRETORA}` o que a configuração diz ser corretora.
+
+    `marcas=None` (o padrão, e o de TODA mensagem) usa a lista de
+    `marcas_de_corretora`. Só o porteiro do conhecimento global passa a dele —
+    ver `templatize(marcas=...)`.
+    """
+    marcas = marcas_de_corretora() if marcas is None else tuple(marcas)
     if not marcas:
         return s
     for marca in marcas:
@@ -1495,7 +1500,8 @@ def _apagar_marcas_de_corretora(s: str) -> str:
 
 
 def templatize(text: str, *, documento_publico: bool = False,
-               rotulo_de_campo: bool = True) -> str:
+               rotulo_de_campo: bool = True,
+               marcas: Optional[Iterable[str]] = None) -> str:
     """Devolve a tela com a PII trocada por placeholders. Determinístico.
 
     `documento_publico=True` preserva valores em reais. Use **somente**
@@ -1524,6 +1530,13 @@ def templatize(text: str, *, documento_publico: bool = False,
     placa — continuam **todas ligadas** neste modo. Cai só a rede redundante
     sobre valor que já vem rotulado, que é a que não distingue rótulo de
     formulário de primeira palavra de frase.
+
+    🔴 `marcas` — 04/10/2026 (P-E0018-14, red team Q4). `None`, o padrão, é o
+    comportamento de SEMPRE: toda mensagem usa `marcas_de_corretora()`, e nada
+    muda para ela. O porteiro do conhecimento GLOBAL passa a lista dele, sem as
+    marcas que são palavra do ofício: uma corretora "Total Corretora" dá a marca
+    "Total" a `marcas_de_corretora`, e no global "perda total" virava
+    "perda {CORRETORA}" — conhecimento corrompido para TODAS as corretoras.
     """
     s = str(text or "")
     s, guardados = _reservar(s, documento_publico=documento_publico)
@@ -1559,7 +1572,7 @@ def templatize(text: str, *, documento_publico: bool = False,
     # os casos com sufixo e deixou `{CORRETORA}` no lugar. O que chega aqui é o
     # resto — `"<atendente> - <corretora>"`, razão social — que nenhuma regex cobre sem
     # comer português.
-    s = _apagar_marcas_de_corretora(s)
+    s = _apagar_marcas_de_corretora(s, marcas)
     return _devolver(s, guardados)
 
 
