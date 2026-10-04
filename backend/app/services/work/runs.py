@@ -37,6 +37,7 @@ PARÂMETRO (`workflows`), nunca por import.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import inspect
 import json
@@ -77,6 +78,9 @@ ESPERA_PADRAO_S = 120
 CODIGO_EXPIRADO_PELA_IDADE = "expirado_pela_idade"
 CODIGO_ESPERA_VENCIDA = "espera_vencida"
 CODIGO_EFEITO_INCERTO = "efeito_incerto"
+#: SPEC-129-A (conserto B1): a etapa EXTERNA não pôde ser conferida no banco → não rodou; volta depois
+CODIGO_ETAPA_NAO_VERIFICADA = "etapa_nao_verificada"
+ETAPA_NAO_VERIFICADA_VOLTA_EM_S = 60
 
 
 def _agora() -> datetime:
@@ -94,6 +98,23 @@ def _iso_filtro(dt: datetime) -> str:
     seria lido como espaço se alguém montasse a URL à mão. `Z` não tem esse risco.
     """
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def filtro_lease_livre(agora: datetime) -> str:
+    """O `or_` do CAS da lease: lease nula OU vencida. 🔴 A MESMA string que vai ao PostgREST —
+    o guarda `test_spec129a_o_or_no_postgrest_real.py` a roda contra o PostgREST de produção
+    (SELECT só leitura). 📊 Antes do conserto ela só tinha sido exercida pelo DUBLÊ."""
+    return f"lease_expires_at.is.null,lease_expires_at.lt.{_iso_filtro(agora)}"
+
+
+def filtros_do_redespacho(corte: datetime) -> dict[str, str]:
+    """Os `or_` do re-despacho, por status: o relógio "parado" de cada um (ver `redespachar_parados`)."""
+    c = _iso_filtro(corte)
+    return {
+        "queued": f"queued_at.lt.{c},and(queued_at.is.null,requested_at.lt.{c})",
+        "running": (f"heartbeat_at.lt.{c},and(heartbeat_at.is.null,started_at.lt.{c}),"
+                    f"and(heartbeat_at.is.null,started_at.is.null,requested_at.lt.{c})"),
+    }
 
 
 def _ler_ts(valor: Any) -> Optional[datetime]:
@@ -137,6 +158,31 @@ class EfeitoIncerto(Exception):
     D-129A-4: não se repete. O worker grava `failed` com `error_code='efeito_incerto'`
     ("reconcilie antes"), e o Reprocessar recusa esse run (409) — repetir por conta
     própria é exatamente o que produz cobrança e mensagem em dobro.
+    """
+
+
+class EtapaNaoVerificada(Exception):
+    """Uma etapa de efeito EXTERNO não pôde ser CONFERIDA no banco — e por isso NÃO rodou.
+
+    SPEC-129-A, conserto B1/Q1/Q2 (juiz ‖ red team): o INSERT de `work_steps` falhou com
+    algo que não é "a etapa já existe" (23505), ou a releitura da etapa falhou / não achou
+    nada, ou a reivindicação (`running`, CAS) da etapa reencontrada não pegou. Rodar `fn()`
+    sem saber o estado da etapa é o fail-open que mandava a cobrança DUAS vezes.
+
+    Nada saiu do prédio (a exceção nasce ANTES de `fn()`), então NÃO é `EfeitoIncerto`:
+    o worker grava `retry_scheduled` com `wake_at` (o despertador a retoma; a idade do
+    workflow a encerra se o banco não voltar). Na volta, a etapa é conferida de novo.
+    """
+
+
+class CancelamentoPedido(asyncio.CancelledError):
+    """O corretor pediu CANCELAR (`cancel_requested_at`/`cancelling`) — NÃO é desligamento.
+
+    SPEC-129-A, conserto B2/Q3: `executar_passo` levantava o `CancelledError` puro do asyncio
+    e o worker o tratava como reinício do processo (`retry_scheduled` "o processador foi
+    reiniciado") — um laço até expirar, nunca `cancelled`. O worker distingue esta classe e
+    fecha o run como `cancelled`. Herda de `CancelledError` de propósito: um `except Exception`
+    no meio do handler (a ponte da cobrança tem um) não a engole.
     """
 
 
@@ -318,11 +364,16 @@ class WorkRunService:
                 .eq("company_id", empresa)
                 .eq("runtime_kind", RUNTIME_DA_FILA)
                 .in_("status", list(ESTADOS_QUE_PEGAM_LEASE))
-                .or_(f"lease_expires_at.is.null,lease_expires_at.lt.{_iso_filtro(agora)}")
+                .or_(filtro_lease_livre(agora))
                 .execute()
             )
         except Exception as exc:  # noqa: BLE001
-            logger.error("[WorkRun] falha ao adquirir lease de %s: %s", run_id, type(exc).__name__)
+            # 🔴 ALTO (SPEC-129-A, conserto — lacuna do juiz): se o `or_` acima falhar no PostgREST,
+            # NENHUM run pega lease e o Work OS para em silêncio. A mensagem vai inteira (truncada):
+            # é o texto do PostgREST sobre o filtro, sem dado de segurado.
+            logger.error("[WorkRun] falha ao adquirir lease de %s: %s: %s — se for o filtro or_ "
+                         "do PostgREST, NENHUM run pega lease", run_id, type(exc).__name__,
+                         str(exc)[:300])
             return None
         if not (upd and upd.data):
             return None  # outro worker ganhou: segue
@@ -543,13 +594,9 @@ class WorkRunService:
         """
         agora = _agora()
         corte = agora - timedelta(seconds=PARADO_SEGUNDOS)
-        c = _iso_filtro(corte)
         colunas = "id, company_id, status, workflow_key, wait_for, requested_at, queued_at"
-        parado_na_fila = f"queued_at.lt.{c},and(queued_at.is.null,requested_at.lt.{c})"
-        parado_rodando = (f"heartbeat_at.lt.{c},and(heartbeat_at.is.null,started_at.lt.{c}),"
-                          f"and(heartbeat_at.is.null,started_at.is.null,requested_at.lt.{c})")
         candidatos: list[dict] = []
-        for status, expressao in (("queued", parado_na_fila), ("running", parado_rodando)):
+        for status, expressao in filtros_do_redespacho(corte).items():
             try:
                 res = (
                     self.db.table("work_runs").select(colunas)
@@ -562,7 +609,9 @@ class WorkRunService:
                 )
                 candidatos += [(r, expressao) for r in (res.data or [])]
             except Exception as exc:  # noqa: BLE001
-                logger.error("[WorkRun] re-despacho: falha ao ler %s: %s", status, type(exc).__name__)
+                # 🔴 ALTO: o `or_` do re-despacho falhando = a fila perdida nunca é curada.
+                logger.error("[WorkRun] re-despacho: falha ao ler %s: %s: %s", status,
+                             type(exc).__name__, str(exc)[:300])
 
         enviados: list[dict] = []
         for run, expressao in candidatos:
@@ -818,14 +867,27 @@ class WorkRunService:
         ⚠️ Não é CAS do Work OS: o run "sem fila" não tem lease nem fila; quem o
         leva é o seu dono, mensagem por mensagem. Um run `smith` NÃO se fecha por
         aqui: o worker sempre passa o `lease_token`.
+
+        🔴 SPEC-129-A (conserto, pendência 2 do juiz / P3 do red team): a cerca agora está
+        DECLARADA no filtro — `runtime_kind <> 'smith'`. 📊 `vigia_do_portal.py` →
+        `portal_tool.fechar_work_run(job.work_run_id)` chega aqui sem token; com um run
+        `portal.operation` (smith) ele escreveria `completed`/`failed` por cima da espera e do
+        CAS. Agora a escrita não casa nada e devolve `False` — e o `run.succeeded`/`run.failed`
+        de quem chamou NÃO é gravado (antes: `True` sempre, mesmo sem linha mudada).
         """
         try:
-            (self.db.table("work_runs").update({**campos, "status": novo_status})
-             .eq("id", run_id).eq("company_id", str(company_id)).execute())
-            return True
+            res = (self.db.table("work_runs").update({**campos, "status": novo_status})
+                   .eq("id", run_id).eq("company_id", str(company_id))
+                   .neq("runtime_kind", RUNTIME_DA_FILA)
+                   .execute())
         except Exception as exc:  # noqa: BLE001
             logger.error("[WorkRun] transição para %s falhou: %s", novo_status, type(exc).__name__)
             return False
+        if res is not None and res.data:
+            return True
+        logger.warning("[WorkRun] fechamento sem fila de %s → %s não casou nenhuma linha "
+                       "(run da fila, de outra corretora, ou inexistente)", run_id, novo_status)
+        return False
 
     def solicitar_cancelamento(self, run_id: str, company_id: str, ator: Optional[str] = None) -> Optional[str]:
         """Cancelar. Devolve o status que ficou (`cancelled` · `cancelling`) ou `None`.
