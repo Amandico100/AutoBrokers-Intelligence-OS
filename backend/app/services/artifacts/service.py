@@ -57,7 +57,11 @@ def _origem_publica(valor: str) -> str:
         return ""
     if host in _ENDERECO_LOCAL or "." not in host:
         return ""
-    return f"{partes.scheme.lower()}://{partes.netloc.lower()}".rstrip("/")
+    # 🔴 Só host e porta: `partes.netloc` traz o usuário e a SENHA de
+    # `https://u:pw@host`, e o link sai para o WhatsApp do segurado.
+    porta = f":{partes.port}" if partes.port is not None else ""
+    nome_host = f"[{host}]" if ":" in host else host
+    return f"{partes.scheme.lower()}://{nome_host}{porta}"
 
 
 def base_publica_do_app() -> str:
