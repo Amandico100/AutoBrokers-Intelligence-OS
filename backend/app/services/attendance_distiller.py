@@ -1096,7 +1096,17 @@ def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List
 # reinício: no pior caso, UMA chamada a mais por grupo por deploy).
 _RECUSA_PREFIXO = "destilador:playbook_recusado:"
 _RECUSA_TTL_S = 14 * 86400
-_RECUSAS_EM_MEMORIA: Dict[str, Dict[str, Any]] = {}
+#: A cópia em memória (o caminho SEM Redis) vence no MESMO prazo do Redis: sem
+#: isso, num processo longo sem Redis, um grupo recusado e sem conversa nova
+#: ficaria fora da fila para sempre (confirmação de 04/10). id → (vence_em, marcador).
+_RECUSAS_EM_MEMORIA: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def _relogio() -> float:
+    """O relógio do prazo da cópia em memória (o teste o troca por um falso)."""
+    import time
+
+    return time.monotonic()
 #: a contagem de material que a última varredura viu, por grupo
 _MATERIAL_DO_GRUPO: Dict[Tuple[str, str], int] = {}
 
@@ -1121,7 +1131,7 @@ def _marcar_recusa(ramo: str, servico: str, material: int, tipos: List[str]) -> 
     gid = id_do_grupo(ramo, servico)
     valor = {"material": int(material or 0), "tipos": sorted(tipos),
              "em": datetime.now(timezone.utc).isoformat()}
-    _RECUSAS_EM_MEMORIA[gid] = valor
+    _RECUSAS_EM_MEMORIA[gid] = (_relogio() + _RECUSA_TTL_S, valor)
     try:
         _redis_sync().set(_RECUSA_PREFIXO + gid, json.dumps(valor), ex=_RECUSA_TTL_S)
     except Exception:  # noqa: BLE001 — sem Redis, fica a memória
@@ -1139,7 +1149,11 @@ def _limpar_recusa(ramo: str, servico: str) -> None:
 
 def _recusas_marcadas() -> Dict[str, Dict[str, Any]]:
     """Os grupos recusados (id → marcador). UMA ida ao Redis por varredura."""
-    marcadas: Dict[str, Dict[str, Any]] = dict(_RECUSAS_EM_MEMORIA)
+    agora = _relogio()
+    for gid in [g for g, (vence, _v) in _RECUSAS_EM_MEMORIA.items() if vence <= agora]:
+        _RECUSAS_EM_MEMORIA.pop(gid, None)          # venceu, como a chave do Redis
+    marcadas: Dict[str, Dict[str, Any]] = {
+        gid: valor for gid, (_vence, valor) in _RECUSAS_EM_MEMORIA.items()}
     try:
         r = _redis_sync()
         for chave in r.scan_iter(match=_RECUSA_PREFIXO + "*", count=500):
