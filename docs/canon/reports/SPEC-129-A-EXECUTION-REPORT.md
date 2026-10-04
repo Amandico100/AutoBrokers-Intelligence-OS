@@ -101,3 +101,12 @@ nota do executor: 90 (critério: os blockers fechados com prova e ataques re-rod
 nota do juiz 78 · red team 62 · confirmação 89
 ⚠️ pico do executor 697k > teto — a sessão carregou três trabalhos; a 128 vai para chat novo (decisão do gerente)
 ```
+
+## 9. Entrega
+
+```text
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+   89e1a00..6e13bb2  HEAD -> main
+$ git rev-list --count origin/main..HEAD
+0
+```
