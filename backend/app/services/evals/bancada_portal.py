@@ -129,12 +129,17 @@ def controle_primeira_opcao(caso: dict) -> bool:
 
 def julgar(caso: dict, d: dict) -> dict:
     """O veredito de UMA tentativa contra o gabarito. `CERTO`: respondeu a opção da atendente (ou, quando o
-    gabarito é PERGUNTAR, não respondeu nada). `proposta_certa`: o que o MODELO propôs (antes da política)."""
+    gabarito é PERGUNTAR, não respondeu nada). `proposta_certa`: o que o MODELO propôs (antes da política) —
+    🔴 pós-127: a OPÇÃO que a proposta escolhe (`destravador._opcao_da_resposta`, a função do produto), nunca o
+    texto cru ("4 - X" é a opção X; número e texto divergentes, ou fora da lista, = proposta errada)."""
+    from app.services.destravador import _opcao_da_resposta
+
     gab = caso["gabarito"]
     respondeu = d.get("acao") == "RESPONDER"
     if gab["acao"] == "RESPONDER":
         certo = respondeu and _n(d.get("valor")) == _n(gab["resposta"])
-        proposta = _n(d.get("valor_do_modelo") or "") == _n(gab["resposta"])
+        escolhida = _opcao_da_resposta(d.get("valor_do_modelo") or "", list(caso["parada"].get("opcoes") or []))
+        proposta = bool(escolhida) and _n(escolhida) == _n(gab["resposta"])
         classe = "CERTO" if certo else ("ERRADO" if respondeu else "NAO_AGIU")
     else:
         certo = not respondeu
@@ -211,7 +216,9 @@ async def motor_portal(caso: dict, llm: Any, *, provedor: str, modelo: str, llm_
                 "porta_do_deduzir", "deduzir_calibrado", "custo_usd")},
             "veredito_destravador": julgar(caso, d), "diario": diario,
             "calibracao": {"seguradora": caso["seguradora"], "controle_tecla_1": controle_primeira_opcao(caso),
-                           "porta_esperada": None, "tipo": caso["tipo"]}}
+                           "porta_esperada": None, "tipo": caso["tipo"],
+                           # a LISTA do caso: a régua compara as k pela OPÇÃO escolhida (`resumo_da_calibracao`)
+                           "opcoes": list(caso["parada"].get("opcoes") or [])}}
 
 
 async def rodar(casos: List[dict], llm: Any, *, provedor: str, modelo: str, k: int = 2,
@@ -253,6 +260,30 @@ def resumo_e_decisao(rodada: dict, *, rotulo: str = "", segunda: str = "", medid
     decisao = B.decidir_religar(resumo, rodada=sha_do_gabarito(), braco=rotulo, segunda=segunda,
                                 medido_em=medido_em)
     return resumo, decisao
+
+
+def rejulgar(salvo: dict, casos: Optional[List[dict]] = None) -> Dict[str, dict]:
+    """Uma rodada GRAVADA (o `--saida` desta bancada: `{"bracos": {rotulo: {"resultados": …}}}`, ou uma rodada
+    `{"resultados": …}`) re-julgada SEM modelo e sem centavo: cada decisão gravada passa de novo pelo `julgar`
+    de hoje contra o gabarito do corpus (pela chave), e a `calibracao` ganha a LISTA do caso (rodadas antigas
+    não a gravavam). → `{rotulo: rodada}`, pronto para `resumo_e_decisao`. O arquivo não muda (cópia)."""
+    import copy
+
+    por_id = {c["id"]: c for c in (casos if casos is not None else carregar_casos())}
+    bracos = salvo.get("bracos") if isinstance(salvo.get("bracos"), dict) else {"rodada": salvo}
+    out: Dict[str, dict] = {}
+    for rotulo, b in bracos.items():
+        rod = {"resultados": copy.deepcopy(b.get("resultados") or []), "parada": b.get("parada") or ""}
+        for r in rod["resultados"]:
+            est = (r.get("rastro") or {}).get("estado") or {}
+            caso = por_id.get(r.get("chave"))
+            if r.get("resultado") == "BLOCKED_BY_INFRA" or not est.get("decisao") or caso is None:
+                continue
+            est["veredito_destravador"] = julgar(caso, est["decisao"])
+            r["resultado"] = est["veredito_destravador"]["classe"]
+            est.setdefault("calibracao", {})["opcoes"] = list(caso["parada"].get("opcoes") or [])
+        out[rotulo] = rod
+    return out
 
 
 def sql_de_religar_o_portal(decisao: Dict[str, dict], company_ids: List[str]) -> str:
@@ -342,7 +373,8 @@ def rodar_pela_linha_de_comando(*, bracos: List[str], segunda: Optional[str] = N
                                 casos: Optional[str] = None, tipos: Optional[List[str]] = None,
                                 teto_provedor: Optional[float] = None, ledger_desde: Optional[str] = None,
                                 saida: Optional[str] = None, paralelo: int = 4, so_corpus: bool = False,
-                                company_ids: Optional[List[str]] = None) -> int:
+                                company_ids: Optional[List[str]] = None,
+                                teto_segunda: Optional[float] = None) -> int:
     lista = carregar_casos(casos, tipos=tipos)
     sujos = {c["id"]: pii_do_caso(c) for c in lista if pii_do_caso(c)}
     if sujos:
@@ -363,9 +395,21 @@ def rodar_pela_linha_de_comando(*, bracos: List[str], segunda: Optional[str] = N
     gab = gabaritos_por_marca(lista)
     if segunda:
         b2 = B.Braco.de(segunda)
+        # 🔴 o teto da 2ª opinião é o do PROVEDOR DELA (o Founder dá tetos diferentes por provedor; o mesmo
+        #    `--teto-provedor` para os dois deixava a Anthropic com o teto da OpenAI) — o molde de `bancada.py`
+        teto2 = teto_segunda if teto_segunda is not None else teto_provedor
+        if not b2.e_duble:
+            if b2.provider in {B.Braco.de(x).provider for x in bracos}:
+                print("⛔ a 2ª opinião tem de ser de OUTRO provedor")
+                return 2
+            orc2 = B.OrcamentoDoLedger(b2.provider, teto2, ledger_desde)
+            print(f"ledger {b2.provider} (2ª opinião) desde {ledger_desde}: US$ {orc2.inicial:.4f} · "
+                  f"teto {teto2:.2f} · resta {orc2.teto_usd:.4f}")
+            if orc2.teto_usd <= 0:
+                print("⛔ teto da 2ª opinião já atingido no ledger — nada roda")
+                return 2
         llm2 = (DubleDoPortal(b2.model, gab, provedor="anthropic") if b2.e_duble else
-                construir_braco(segunda, PAPEL_SEGUNDA, orcamento=B.OrcamentoDoLedger(
-                    b2.provider, teto_provedor, ledger_desde))[1])
+                construir_braco(segunda, PAPEL_SEGUNDA, orcamento=orc2)[1])
         prov2, mod2 = ("anthropic" if b2.e_duble else b2.provider), b2.model
     else:
         llm2, prov2, mod2 = DubleDoPortal("perfeito", gab, provedor="anthropic"), "anthropic", "duble-perfeito"
@@ -413,18 +457,34 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--k", type=int, default=2)
     p.add_argument("--casos", default=None)
     p.add_argument("--tipos", default=None, help=f"vírgula: {','.join(TIPOS)}")
-    p.add_argument("--teto-provedor", type=float, default=None)
+    p.add_argument("--teto-provedor", type=float, default=None, help="US$ ACUMULADO do provedor do braço (ledger)")
+    p.add_argument("--teto-segunda", type=float, default=None,
+                   help="US$ ACUMULADO do provedor da 2ª opinião (padrão: o --teto-provedor)")
     p.add_argument("--ledger-desde", default=None)
     p.add_argument("--saida", default=None)
     p.add_argument("--paralelo", type=int, default=4)
     p.add_argument("--so-corpus", action="store_true")
     p.add_argument("--company-id", action="append", default=[], help="para imprimir o SQL de religar")
+    p.add_argument("--resumo", default=None,
+                   help="re-julga um JSON gravado (--saida) SEM modelo e imprime a tabela (e o SQL, com --company-id)")
     a = p.parse_args(argv)
+    if a.resumo:
+        salvo = json.loads(Path(a.resumo).read_text(encoding="utf-8"))
+        for rotulo, rod in rejulgar(salvo).items():
+            seg = str(((salvo.get("bracos") or {}).get(rotulo) or {}).get("decisao", {}).get("todas", {})
+                      .get("calibracao", {}).get("segunda") or a.segunda or "")
+            resumo, decisao = resumo_e_decisao(rod, rotulo=rotulo, segunda=seg,
+                                               medido_em=f"re-julgado sem modelo de {Path(a.resumo).name}")
+            print(f"== {rotulo} (re-julgado de {Path(a.resumo).name}, sem modelo) ==\n"
+                  + B.tabela_da_calibracao(resumo, decisao))
+            if a.company_id:
+                print(sql_de_religar_o_portal(decisao, a.company_id))
+        return 0
     return rodar_pela_linha_de_comando(
         bracos=a.braco, segunda=a.segunda, k=a.k, casos=a.casos,
         tipos=[t for t in str(a.tipos or "").split(",") if t] or None, teto_provedor=a.teto_provedor,
         ledger_desde=a.ledger_desde, saida=a.saida, paralelo=a.paralelo, so_corpus=a.so_corpus,
-        company_ids=a.company_id or None)
+        company_ids=a.company_id or None, teto_segunda=a.teto_segunda)
 
 
 if __name__ == "__main__":

@@ -2920,7 +2920,15 @@ def resumo_da_calibracao(arquivos: List[Any]) -> Dict[str, dict]:
       · `agiu`   — alguma tentativa respondeu à URA (a porta abriu: nota ≥ limiar e a 2ª concordou);
       · `certo`  — agiu, TODA tentativa que agiu acertou e as respostas das k CONCORDAM;
       · `modelo_proposta_certa` — as k PROPOSTAS do modelo acertaram (o que se compara ao controle);
-      · `controle` — a tecla 1 acertaria."""
+      · `controle` — a tecla 1 acertaria.
+
+    🔴 Pós-127 (§8 de `SPEC-126-127-RODADAS-AUTORIZADAS.md`): quando a rodada grava a LISTA de opções do caso
+    (`calibracao.opcoes` — o portal), as k concordam pela OPÇÃO que cada proposta escolhe, lida pela MESMA
+    função do produto (`destravador._opcao_da_resposta`): "4" e "4 - DANO X" são a mesma escolha; resposta
+    fora da lista ("") continua DISCORDÂNCIA. Sem lista (a URA), o texto cru — como sempre."""
+    import importlib
+
+    DT = importlib.import_module("app.services.destravador")
     casos: Dict[str, dict] = {}
     for arq in arquivos:
         d = _ler_rodada(arq)
@@ -2937,9 +2945,12 @@ def resumo_da_calibracao(arquivos: List[Any]) -> Dict[str, dict]:
                                               "controle": bool(cal.get("controle_tecla_1")),
                                               "tentativas": []})
             seg = dec.get("segunda_opiniao") or {}
+            opcoes = cal.get("opcoes")
             c["tentativas"].append({
                 "porta": bool(dec.get("porta_do_deduzir")), "acao": dec.get("acao"),
                 "valor": str(dec.get("valor") or ""), "valor_do_modelo": str(dec.get("valor_do_modelo") or ""),
+                "opcao_do_modelo": (DT._opcao_da_resposta(dec.get("valor_do_modelo"), [str(o) for o in opcoes])
+                                    if isinstance(opcoes, list) and opcoes else None),
                 "certo": ver.get("classe") == "CERTO", "proposta_certa": bool(ver.get("proposta_certa")),
                 "nota": dec.get("nota"), "nota_segunda": seg.get("nota"),
                 "segunda_concordou": seg.get("concordou")})
@@ -2955,8 +2966,12 @@ def resumo_da_calibracao(arquivos: List[Any]) -> Dict[str, dict]:
             continue        # a proposta do modelo não chegou à porta: fora da calibração
         agiram = [t for t in ts if t["acao"] == "RESPONDER" and t["porta"]]
         # autoconsistência (arXiv 2203.11171): as k PROPOSTAS escrevem a MESMA resposta. Conservador de
-        # propósito: "1" e "Residencial" contam como DIFERENTES (discordar só tira o caso do "certo")
-        props = {" ".join(t["valor_do_modelo"].lower().split()) for t in ts}
+        # propósito: "1" e "Residencial" contam como DIFERENTES (discordar só tira o caso do "certo").
+        # Com a lista do caso gravada (o portal), compara-se a OPÇÃO escolhida; fora da lista = "" = discorda
+        if all(t["opcao_do_modelo"] is not None for t in ts):
+            props = {t["opcao_do_modelo"] for t in ts}
+        else:
+            props = {" ".join(t["valor_do_modelo"].lower().split()) for t in ts}
         concordam = len(ts) >= 2 and len(props) == 1 and "" not in props
         certo = bool(agiram) and all(t["certo"] for t in agiram) and concordam
         proposta_certa = all(t["proposta_certa"] for t in ts)
@@ -2974,9 +2989,6 @@ def resumo_da_calibracao(arquivos: List[Any]) -> Dict[str, dict]:
             m["casos"].append({"chave": chave, "agiu": bool(agiram), "certo": certo,
                                "proposta_certa": proposta_certa, "controle": c["controle"],
                                "concordam": concordam})
-    import importlib
-
-    DT = importlib.import_module("app.services.destravador")
     for m in por.values():
         m["wilson"] = DT.wilson(m["agiu_certos"], m["agiu_n"])
         m["faixas_nota_segunda"] = faixas_de_nota([(int(n), bool(ok)) for n, ok in m["notas_segunda"]])

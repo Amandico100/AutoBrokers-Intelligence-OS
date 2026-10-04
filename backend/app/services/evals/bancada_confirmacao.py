@@ -339,9 +339,15 @@ def tabela(rotulo: str, m: dict) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 # O BRAÇO e a linha de comando
 # ═════════════════════════════════════════════════════════════════════════════
-def construir_braco(rotulo: str, *, orcamento: Optional[B.Orcamento] = None) -> tuple:
+def construir_braco(rotulo: str, *, orcamento: Optional[B.Orcamento] = None,
+                    max_saida: Optional[int] = None) -> tuple:
     """`(braco, llm_medido)`. Dublê → `DUBLES[nome]`. Real → a fábrica do produto, isolada
-    (`construir_llm_padrao`), com `details.papel='confirmacao'` no ledger e o `Medidor` (teto)."""
+    (`construir_llm_padrao`), com `details.papel='confirmacao'` no ledger e o `Medidor` (teto).
+
+    `max_saida`: o teto de saída com que o braço é CONSTRUÍDO **e** o que a reserva do teto em US$ usa (os
+    dois juntos — a reserva nunca fica abaixo do que a chamada pode gastar). Sem ele, `MAX_TOKENS_DA_BANCADA`
+    (8192): 📊 04/10, numa Sonnet 5.5 isso reserva US$ 0,08 por chamada e um teto de US$ 0,05 não deixava
+    rodar NENHUMA (a resposta do classificador mede ~60 tokens de saída)."""
     braco = B.Braco.de(rotulo)
     if braco.e_duble:
         if braco.model not in DUBLES:
@@ -351,9 +357,18 @@ def construir_braco(rotulo: str, *, orcamento: Optional[B.Orcamento] = None) -> 
     if preco is None:
         raise B.SemPrecoConhecido(f"{braco.rotulo}: sem preço no catálogo — a bancada não inventa preço")
     resolvido = B.resolver_padrao(PAPEL, override=braco.override())
-    llm = B._marcar_papel_no_ledger(B.construir_llm_padrao(resolvido), PAPEL)
+    teto_saida = int(max_saida or B.MAX_TOKENS_DA_BANCADA)
+    if teto_saida == B.MAX_TOKENS_DA_BANCADA:
+        base = B.construir_llm_padrao(resolvido)
+    else:  # a MESMA fábrica e o mesmo isolamento de `construir_llm_padrao`, só com o teto de saída menor
+        from app.factories.llm_factory import LLMFactory
+
+        base = B.isolar_do_produto(LLMFactory.criar_de_resolvido(
+            resolvido, callbacks=[], company_id=None, agent_id=None,
+            service_type=B.SERVICE_TYPE_DA_BANCADA, max_tokens=teto_saida))
+    llm = B._marcar_papel_no_ledger(base, PAPEL)
     return braco, B.Medidor(llm, preco=preco, orcamento=orcamento or B.Orcamento(B.teto_padrao()),
-                            max_output=B.MAX_TOKENS_DA_BANCADA)
+                            max_output=teto_saida)
 
 
 def _orcamento_do_ledger(provedor: str, teto: float, desde: str, ledger_papel: Optional[str]):
@@ -370,7 +385,8 @@ def rodar_pela_linha_de_comando(*, bracos: List[str], k: int = 3, casos: Optiona
                                 teto_provedor: Optional[float] = None, ledger_desde: Optional[str] = None,
                                 ledger_papel: Optional[str] = None, saida: Optional[str] = None,
                                 por_caso: bool = False, timeout_s: float = C.TETO_DA_CHAMADA_S,
-                                paralelo: int = 4, so_regex: bool = False) -> int:
+                                paralelo: int = 4, so_regex: bool = False,
+                                max_saida: Optional[int] = None) -> int:
     lista = carregar_casos(casos)
     sujos = {c["id"]: pii_do_caso(c) for c in lista if pii_do_caso(c)}
     if sujos:
@@ -403,7 +419,7 @@ def rodar_pela_linha_de_comando(*, bracos: List[str], k: int = 3, casos: Optiona
             if orc.teto_usd <= 0:
                 print("⛔ teto já atingido no ledger — nada roda")
                 return 2
-        braco, llm = construir_braco(rotulo, orcamento=orc)
+        braco, llm = construir_braco(rotulo, orcamento=orc, max_saida=max_saida)
         custo = (lambda l=llm: float(l.estado["custo"])) if isinstance(llm, B.Medidor) else None
         rod = asyncio.run(rodar(lista, llm, k=k, timeout_s=timeout_s, paralelo=paralelo, custo=custo))
         m = calcular_metricas(rod["resultados"])
@@ -460,11 +476,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--timeout-s", type=float, default=C.TETO_DA_CHAMADA_S, help="padrão: o de produção")
     p.add_argument("--paralelo", type=int, default=4)
     p.add_argument("--so-regex", action="store_true", help="só a regex de hoje, sem modelo (grátis)")
+    p.add_argument("--max-saida", type=int, default=None,
+                   help="teto de saída do braço E da reserva do teto em US$ (padrão: MAX_TOKENS_DA_BANCADA)")
     a = p.parse_args(argv)
     return rodar_pela_linha_de_comando(
         bracos=a.braco, k=a.k, casos=a.casos, teto_provedor=a.teto_provedor, ledger_desde=a.ledger_desde,
         ledger_papel=a.ledger_papel, saida=a.saida, por_caso=a.por_caso, timeout_s=a.timeout_s,
-        paralelo=a.paralelo, so_regex=a.so_regex)
+        paralelo=a.paralelo, so_regex=a.so_regex, max_saida=a.max_saida)
 
 
 if __name__ == "__main__":
