@@ -866,7 +866,8 @@ class WorkRunService:
             "cancel_requested_at": _iso(agora), "cancelled_at": _iso(agora), "finished_at": _iso(agora),
             "wake_at": None,
         }, de=("queued",) + ESTADOS_DE_ESPERA + ("waiting_approval",), company_id=company_id,
-                filtro=lambda q: q.is_("lease_owner", "null")):
+                filtro=lambda q: q.is_("lease_owner", "null"), perda_esperada=True):
+            # perda_esperada: rodando, esta 1ª tentativa perde por desenho — a 2ª (`cancelling`) vale.
             self.evento(company_id, run_id, "run.cancelled",
                         "Trabalho cancelado. Etapas já concluídas foram preservadas.",
                         actor_type="user", actor_id=ator)
@@ -892,7 +893,8 @@ class WorkRunService:
     def _transicionar(self, run_id: str, novo_status: str, campos: dict, *,
                       de: Union[str, Iterable[str]], lease_token: Optional[str] = None,
                       company_id: Optional[str] = None,
-                      filtro: Optional[Callable[[Any], Any]] = None) -> bool:
+                      filtro: Optional[Callable[[Any], Any]] = None,
+                      perda_esperada: bool = False) -> bool:
         """🔴 O CAS (SPEC-129-A §6, D-129A-3). `True` = a linha mudou; `False` = perdeu (ou falhou).
 
         UPDATE filtrado do PostgREST, que devolve a linha ou nada:
@@ -901,6 +903,11 @@ class WorkRunService:
         Perdeu → evento `run.cas_perdido` e NADA é escrito. 📊 Antes: `.eq("id")`
         sozinho — o worker concluía por cima de `waiting_approval`, e o erro do banco
         era engolido em silêncio.
+
+        `perda_esperada=True`: a tentativa É uma pergunta ("ainda está em X?"), não uma
+        corrida — perder não grava `run.cas_perdido`. A linha do tempo é a tela do corretor
+        (`api/work_runs.py`, sem filtro de severidade): um aviso de "outro processo chegou
+        antes" a cada cancelamento seria mentira na tela (SPEC-129-A F5, costura).
         """
         empresa = str(company_id) if company_id else self._empresa_do_run(run_id)
         if not empresa:
@@ -925,6 +932,8 @@ class WorkRunService:
             return False
         if res is not None and res.data:
             return True
+        if perda_esperada:
+            return False
         self.evento(empresa, run_id, "run.cas_perdido",
                     f"Transição para '{novo_status}' não aplicada: o trabalho já não estava em "
                     f"{'/'.join(estados)} (outro processo chegou antes).",
