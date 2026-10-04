@@ -82,6 +82,7 @@ class _Table:
         self._payload = None
         self._on_conflict = None
         self._eq = []
+        self._is = []
         self._order = None
         self._desc = True
         self._limit = None
@@ -98,6 +99,13 @@ class _Table:
 
     def update(self, payload): self._mode = "update"; self._payload = payload; return self
     def eq(self, col, val): self._eq.append((col, val)); return self
+
+    def is_(self, col, val):
+        """`.is_("insurer_key", "null")` — a fila do Destilador separa robô de
+        gente por aqui (SPEC-071). Sem o método, o falso morria em
+        AttributeError antes de qualquer asserção."""
+        self._is.append((col, val))
+        return self
 
     def order(self, col, desc=True):
         self._order, self._desc = col, desc
@@ -121,6 +129,9 @@ class _Table:
         rows = list(self.store.get(self.name, []))
         for col, val in self._eq:
             rows = [r for r in rows if str(_valor_em(r, col)) == str(val)]
+        for col, val in self._is:
+            if str(val) == "null":
+                rows = [r for r in rows if _valor_em(r, col) is None]
         if self._order:
             rows.sort(key=lambda r: str(r.get(self._order) or ""), reverse=self._desc)
         if self._limit:
@@ -205,7 +216,7 @@ PLAYBOOK = {
 def _bootstrap():
     store, redis, qdrant = {}, _Redis(), _QdrantRec()
     for name in ("app", "app.core", "app.services", "app.services.atlas",
-                 "app.factories", "langchain_core"):
+                 "app.factories", "app.atendimento", "langchain_core"):
         m = sys.modules.setdefault(name, types.ModuleType(name))
         m.__path__ = []
 
@@ -244,9 +255,25 @@ def _bootstrap():
     class LLMFactory:
         calls = []
 
+        # SPEC-116 U8: o destilador pede o modelo pelo PAPEL (`distiller` /
+        # `distiller_forte`) e carimba `model_used` com `resolver_para`. O falso
+        # ainda falava a assinatura antiga (`api_key` posicional, modelo no
+        # `agent_data`) e TODA chamada morria em TypeError engolido — zero
+        # sessões destiladas, e o arquivo inteiro vermelho por um motivo que não
+        # era o que ele guarda.
         @staticmethod
-        def create_llm(company_config, agent_data, api_key, company_id=None, agent_id=None):
-            model = agent_data.get("llm_model")
+        def _modelo(papel):
+            return "claude-opus-5" if papel == "distiller_forte" else "claude-sonnet-5"
+
+        @staticmethod
+        def resolver_para(company_config, agent_data, papel=None, **_kw):
+            return types.SimpleNamespace(provider="anthropic",
+                                         model=LLMFactory._modelo(papel))
+
+        @staticmethod
+        def create_llm(company_config, agent_data, api_key=None, company_id=None,
+                       agent_id=None, papel=None, **_kw):
+            model = LLMFactory._modelo(papel) if papel else agent_data.get("llm_model")
 
             class _LLM:
                 async def ainvoke(self, msgs):
@@ -296,6 +323,10 @@ def _bootstrap():
     _load("app.services.corridor_playbooks", "app/services/corridor_playbooks.py")
     _load("app.services.curadoria_cartas", "app/services/curadoria_cartas.py")
     _load("app.services.knowledge_scope", "app/services/knowledge_scope.py")
+    # O destilador passou a importar `e_atendimento_de_seguro` (peça pura do
+    # pós-acionamento) no topo. Sem registrar aqui, o arquivo inteiro morria em
+    # ModuleNotFoundError antes da primeira asserção.
+    _load("app.atendimento.pos_acionamento", "app/atendimento/pos_acionamento.py")
     dist = _load("app.services.attendance_distiller", "app/services/attendance_distiller.py")
     return dist, store, redis, qdrant, lf.LLMFactory
 
@@ -341,6 +372,12 @@ def run():
     print("== SPEC-040 Onda 3 - Destilador do Espelho ==\n")
     dist, store, redis, qdrant, factory = _bootstrap()
     _seed_sessions(store)
+    # 🔴 04/10/2026 (P-E0018-14): o playbook só entra na tabela GLOBAL depois de
+    # o porteiro conferir o texto contra os nomes das corretoras, lidos de
+    # `companies`. Sem a tabela ele falha FECHADO e nada é gravado — o fato
+    # mudou, e o teste muda com ele (CLAUDE.md §9.3). Nome FICTÍCIO (§13.9).
+    store["companies"] = [{"id": "c1", "company_name": "Vagalume Seguros",
+                           "legal_name": "Vagalume Corretora de Seguros Ltda"}]
 
     stats = asyncio.run(dist.distill_once(force=True))
 
@@ -456,9 +493,13 @@ def run():
     bad["card_text"] = "Cliente CPF 123.456.789-00 tem dois carros"
     check("card com PII NUNCA publica", dist.publish_card_sync(bad) is False)
 
-    # 7) heartbeat do Espelho pulsou na destilacao
+    # 7) 🔴 O FATO MUDOU NA SPEC-088 BLOCO E, E A LIÇÃO MIGRA (CLAUDE.md §9.3).
+    # O Destilador pulsava o card do ESPELHO — outro trabalhador — e pintava de
+    # verde um Espelho que podia estar parado há dias. O pulso saiu de propósito
+    # (`attendance_distiller.py`, nota "SPEC-088 BLOCO E"). O que se guarda agora
+    # é que a rodada do Destilador NÃO acende o card alheio.
     hb = redis.kv.get("spec034:heartbeat:espelho_atendimento")
-    check("heartbeat espelho_atendimento pulsou", hb is not None and "last_run" in str(hb))
+    check("a rodada do Destilador NAO pulsa o card do Espelho (SPEC-088 E)", hb is None, hb)
 
     # 8) resiliencia de ERP no prompt do atendente + fiacao no scheduler
     prompts_src = (ROOT / "app/core/prompts.py").read_text(encoding="utf-8")
