@@ -1079,6 +1079,81 @@ def _load_group_summaries_sync(ramo: str, servico: str, limit: int = 30) -> List
     return com_humano[:limit]
 
 
+# ------------------------------------------------------------------ #
+# 🔴 O GRUPO RECUSADO PELO PORTEIRO NÃO VOLTA SEM MATERIAL NOVO — 04/10/2026
+# ------------------------------------------------------------------ #
+# O porteiro do global (P-E0018-14) fecha com falha: o grupo recusado não ganha
+# linha em `conduct_playbooks`. Sem marcador, `_grupos_sem_playbook_sync` o
+# devolveria em TODA rodada ("os maiores primeiro"), e o modelo FORTE seria
+# pago de novo a cada 30 min para reescrever o mesmo material — e 3 grupos
+# grandes recusados tomariam todas as vagas (`por_rodada`) para sempre (juiz
+# de 04/10, pendência P-alta 1).
+#
+# O marcador é TRANSITÓRIO (CLAUDE.md §6: Redis), guarda a CONTAGEM de material
+# do grupo na hora da recusa e os TIPOS do que sobrou — nunca o dado. O grupo
+# volta quando chegaram `DISTILLER_PLAYBOOK_RECUSA_NOVAS` (padrão 5) conversas
+# novas. Sem Redis, a memória do processo segura o mesmo papel (perde-se no
+# reinício: no pior caso, UMA chamada a mais por grupo por deploy).
+_RECUSA_PREFIXO = "destilador:playbook_recusado:"
+_RECUSA_TTL_S = 14 * 86400
+_RECUSAS_EM_MEMORIA: Dict[str, Dict[str, Any]] = {}
+#: a contagem de material que a última varredura viu, por grupo
+_MATERIAL_DO_GRUPO: Dict[Tuple[str, str], int] = {}
+
+
+def id_do_grupo(ramo: str, servico: str) -> str:
+    """Um id curto e estável do grupo, para o log e o marcador sem o texto dele.
+
+    O admin acha o grupo calculando o mesmo hash sobre os grupos que conhece
+    (`id_do_grupo("auto", "guincho")`); o log nunca repete uma chave que
+    carregou nome de corretora ou de pessoa.
+    """
+    return hashlib.sha256(f"{ramo}/{servico}".encode("utf-8")).hexdigest()[:10]
+
+
+def _redis_sync():
+    from app.core.redis import get_redis_client
+
+    return get_redis_client()
+
+
+def _marcar_recusa(ramo: str, servico: str, material: int, tipos: List[str]) -> None:
+    gid = id_do_grupo(ramo, servico)
+    valor = {"material": int(material or 0), "tipos": sorted(tipos),
+             "em": datetime.now(timezone.utc).isoformat()}
+    _RECUSAS_EM_MEMORIA[gid] = valor
+    try:
+        _redis_sync().set(_RECUSA_PREFIXO + gid, json.dumps(valor), ex=_RECUSA_TTL_S)
+    except Exception:  # noqa: BLE001 — sem Redis, fica a memória
+        pass
+
+
+def _limpar_recusa(ramo: str, servico: str) -> None:
+    gid = id_do_grupo(ramo, servico)
+    _RECUSAS_EM_MEMORIA.pop(gid, None)
+    try:
+        _redis_sync().delete(_RECUSA_PREFIXO + gid)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _recusas_marcadas() -> Dict[str, Dict[str, Any]]:
+    """Os grupos recusados (id → marcador). UMA ida ao Redis por varredura."""
+    marcadas: Dict[str, Dict[str, Any]] = dict(_RECUSAS_EM_MEMORIA)
+    try:
+        r = _redis_sync()
+        for chave in r.scan_iter(match=_RECUSA_PREFIXO + "*", count=500):
+            chave = chave.decode() if isinstance(chave, (bytes, bytearray)) else str(chave)
+            bruto = r.get(chave)
+            if not bruto:
+                continue
+            bruto = bruto.decode() if isinstance(bruto, (bytes, bytearray)) else bruto
+            marcadas[chave[len(_RECUSA_PREFIXO):]] = json.loads(bruto)
+    except Exception:  # noqa: BLE001
+        pass
+    return marcadas
+
+
 def _grupos_sem_playbook_sync(limite: int) -> List[Tuple[str, str]]:
     """Grupos que já têm material suficiente e nenhum playbook ainda.
 
@@ -1159,6 +1234,21 @@ def _grupos_sem_playbook_sync(limite: int) -> List[Tuple[str, str]]:
 
         faltando = [g for g, n in sorted(contagem.items(), key=lambda x: -x[1])
                     if _entra(g, n)]
+
+        # O grupo que o porteiro recusou só volta com material NOVO (ver
+        # `_marcar_recusa`): senão ele ocuparia a vaga e o modelo forte toda rodada.
+        recusas = _recusas_marcadas()
+        if recusas:
+            novas_minimas = _env_int("DISTILLER_PLAYBOOK_RECUSA_NOVAS", 5)
+
+            def _recusado_sem_novidade(g: Tuple[str, str]) -> bool:
+                marca = recusas.get(id_do_grupo(*g))
+                return bool(marca) and contagem.get(g, 0) < (
+                    int(marca.get("material") or 0) + novas_minimas)
+
+            faltando = [g for g in faltando if not _recusado_sem_novidade(g)]
+        for g in faltando:
+            _MATERIAL_DO_GRUPO[g] = contagem.get(g, 0)
         return faltando[:limite]
     except Exception as e:  # noqa: BLE001
         logger.warning("[DESTILADOR] varredura de grupos falhou: %s", type(e).__name__)
@@ -1174,10 +1264,24 @@ def _save_playbook_draft_sync(ramo: str, servico: str, content: Dict[str, Any],
     # `conduct_playbooks` é lida por TODAS as corretoras e nasce da conversa de
     # UMA. Este é o funil único de escrita dela (destilador e lapidador passam
     # por aqui), então a porta é aqui: o conteúdo é anonimizado pela régua da
-    # casa (`curadoria_cartas.anonimizar_para_o_global`) e, se SOBROU nome de
-    # corretora, de pessoa, CPF, telefone, placa ou e-mail, NÃO GRAVA. O log diz
-    # só o TIPO do que sobrou — nunca o dado, e nem o grupo se a sobra estava
-    # nele. ⛔ Porteiro que não carrega também não grava.
+    # casa (`curadoria_cartas.anonimizar_para_o_global`) e, se SOBROU corretora
+    # (nome inteiro, núcleo, domínio/handle), CPF, telefone, placa, e-mail ou
+    # nome de pessoa EM CONTEXTO, NÃO GRAVA. ⛔ Porteiro que não carrega também
+    # não grava, e lista de corretoras que não pôde ser RELIDA também não.
+    #
+    # ⚠️ O LIMITE, DITO COMO É (não prometer o que não faz): "nome de pessoa" é
+    # prenome brasileiro COMUM (lista de dados `app/data/prenomes_brasileiros.txt`)
+    # em contexto de pessoa — artigo, tratamento, cargo, "falar com", assinatura,
+    # ou com maiúscula. NÃO pega sobrenome sozinho ("o Silveira confirmou"),
+    # prenome raro ou estrangeiro fora da lista sem tratamento, apelido, nem
+    # prenome-palavra (rosa, luz, socorro…) em minúscula sem contexto forte. Isso
+    # pediria um modelo de entidades; o que cobre o resto é a instrução ao modelo
+    # e a ativação manual do rascunho pelo master admin (`admin_atlas`).
+    #
+    # O log diz o grupo por um id curto (`id_do_grupo`) e o TIPO do que sobrou —
+    # nunca o dado, e o grupo em claro só quando a sobra não estava nele. E o
+    # grupo recusado ganha um marcador transitório (`_marcar_recusa`) para não
+    # voltar a custar o modelo forte sem material novo.
     try:
         from app.services.curadoria_cartas import anonimizar_para_o_global
 
@@ -1186,11 +1290,14 @@ def _save_playbook_draft_sync(ramo: str, servico: str, content: Dict[str, Any],
     except Exception as e:  # noqa: BLE001
         content, mascarados, sobras = None, {}, [f"porteiro_falhou:{type(e).__name__}"]
     if sobras:
-        grupo = ("<grupo oculto>" if any(s.startswith("chave:") for s in sobras)
-                 else f"{ramo}/{servico}")
+        gid = id_do_grupo(ramo, servico)
+        grupo = (f"grupo#{gid} <grupo oculto>" if any(s.startswith("chave:") for s in sobras)
+                 else f"grupo#{gid} {ramo}/{servico}")
         logger.warning("[DESTILADOR] playbook %s NAO gravado — sobrou depois de "
                        "anonimizar: %s (P-E0018-14, falha fechada)",
                        grupo, ",".join(sobras))
+        _marcar_recusa(ramo, servico, _MATERIAL_DO_GRUPO.get((ramo, servico), sessions),
+                       list(sobras))
         return None
 
     db = get_supabase_client()
@@ -1208,6 +1315,7 @@ def _save_playbook_draft_sync(ramo: str, servico: str, content: Dict[str, Any],
                              # contagem, nunca o trecho.
                              "anonimizado": mascarados},
         }).execute()
+        _limpar_recusa(ramo, servico)
         return (res.data or [{}])[0].get("id")
     except Exception as e:  # noqa: BLE001
         logger.error(f"[DESTILADOR] salvar playbook falhou: {type(e).__name__}")
