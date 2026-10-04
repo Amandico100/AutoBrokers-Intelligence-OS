@@ -67,13 +67,27 @@ export async function middleware(request: NextRequest) {
   // Criamos a resposta base para injetar headers
   const response = NextResponse.next();
 
+  // O link público do relatório (`/r/<token>`, app/r/[token]/route.ts) declara a
+  // PRÓPRIA política: `Content-Security-Policy: default-src 'none'; … frame-ancestors 'none'`
+  // e `Referrer-Policy: no-referrer`. No Next 15 o header que o middleware grava em
+  // NextResponse.next() VENCE o da rota — 📊 medido em 04/10/2026 com `next build` +
+  // `next start`: o HTML do relatório saía só com `frame-ancestors 'none';`, sem a CSP
+  // que impede um dado injetado de virar script, num caminho anônimo na origem do painel.
+  // Aqui o middleware NÃO escreve CSP nem Referrer-Policy: vale o que a rota declara.
+  const rotaDeclaraPropriaPolitica = pathname.startsWith('/r/');
+
   // Headers Globais de Segurança
   response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (!rotaDeclaraPropriaPolitica) {
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  }
   response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
 
   // Lógica Condicional: WIDGET (Embed) vs RESTO (Admin/Dashboard)
-  if (pathname.startsWith('/embed/')) {
+  if (rotaDeclaraPropriaPolitica) {
+    // Anti-clickjacking continua: X-Frame-Options aqui + `frame-ancestors 'none'` na CSP da rota.
+    response.headers.set('X-Frame-Options', 'DENY');
+  } else if (pathname.startsWith('/embed/')) {
     // 🟢 WIDGET: Permitir ser carregado em iframes de QUALQUER origem (*)
     // Isso é essencial para o widget funcionar no site dos clientes.
     response.headers.set('Content-Security-Policy', "frame-ancestors *;");
