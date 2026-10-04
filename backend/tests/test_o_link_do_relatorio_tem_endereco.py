@@ -84,6 +84,14 @@ def main() -> int:
          f"https://publico.exemplo.com/r/{TOKEN}", "aspas em volta saem"),
         ({"PUBLIC_APP_URL": "   ", "FRONTEND_URL": "https://front.exemplo.com.br"},
          f"https://front.exemplo.com.br/r/{TOKEN}", "variável em branco passa a vez"),
+        # confirmação de 04/10: usuário e SENHA da URL iam inteiros para o WhatsApp do segurado
+        ({"SMITH_WEB_URL": "https://usuario:s3nh4@app.exemplo.com.br/painel"},
+         f"https://app.exemplo.com.br/r/{TOKEN}", "usuário e senha da URL saem"),
+        ({"SMITH_WEB_URL": "https://usuario@App.Exemplo.com.br:8443"},
+         f"https://app.exemplo.com.br:8443/r/{TOKEN}", "usuário sai, a porta fica"),
+        # CONTROLE da mesma linha: sem credencial, a porta continua (a régua não come a porta)
+        ({"SMITH_WEB_URL": "https://app.exemplo.com.br:8443"},
+         f"https://app.exemplo.com.br:8443/r/{TOKEN}", "controle: porta sem credencial fica"),
     ]
     for env, esperado, nome in casos:
         r = _rota(env)
