@@ -143,7 +143,7 @@ de 66 negócios recalculados mudaram a comissão. Efeito: −5 pontos de comiss�
 
 ### E18 — o token de 3 h
 📊 O app não trocou o token sozinho em 1h24 de uso; as trocas (`POST login/pdocs`, sempre em pares) acontecem ao navegar ou
-recarregar. **O que acontece quando vence: NÃO MEDIDA** — as sessões duraram menos de 3 h (P-128-01).
+recarregar. **O que acontece quando vence: NÃO MEDIDA**, porque as sessões duraram menos de 3 h (P-128-01).
 
 ### E19 — o bloqueio por senha errada
 📊 O cadastro de usuário tem `tentativasInvalidasSenha`, `bloqueadoAte` e `bloqueioPreventivo` (0 bloqueados nas duas contas). O
