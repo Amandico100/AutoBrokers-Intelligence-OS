@@ -20,6 +20,15 @@
 //   · o MESMO middleware sem `'/r/'` (reconstruído do fonte, um fator só)
 //     redireciona `/r/<token>` para `/login` — prova que o guarda CONSEGUE
 //     ficar vermelho.
+//
+// 🔴 E os headers (red team 04/10/2026, laudo Q1): no Next 15 o header que o
+// middleware grava em `NextResponse.next()` VENCE o da rota. Gravando
+// `Content-Security-Policy: frame-ancestors 'none';` e `Referrer-Policy:
+// strict-origin-when-cross-origin` em `/r/`, o middleware APAGAVA a CSP restrita
+// da rota (`default-src 'none'; …`) e o `no-referrer`. O guarda ⑤ exige que o
+// middleware NÃO escreva esses dois em `/r/`, que a ROTA real (GET com o backend
+// dublado) declare `default-src 'none'` e `frame-ancestors 'none'`, e que a
+// mutação para o comportamento antigo fique VERMELHA.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -81,6 +90,11 @@ const atual = executar(transpilar(FONTE, 'middleware.ts'), resolverDoMiddleware)
 const FONTE_SEM_R = FONTE.replace(/^[ \t]*'\/r\/',.*\r?\n/m, '');
 const semR = executar(transpilar(FONTE_SEM_R, 'middleware.SEM_R.ts'), resolverDoMiddleware);
 
+// O middleware de ANTES do conserto dos headers: grava CSP/Referrer-Policy em /r/.
+const LINHA_DA_POLITICA = "const rotaDeclaraPropriaPolitica = pathname.startsWith('/r/');";
+const FONTE_HEADERS_ANTIGOS = FONTE.replace(LINHA_DA_POLITICA, 'const rotaDeclaraPropriaPolitica = false;');
+const headersAntigos = executar(transpilar(FONTE_HEADERS_ANTIGOS, 'middleware.HEADERS_ANTIGOS.ts'), resolverDoMiddleware);
+
 const { NextRequest } = require('next/server');
 const BASE = 'http://localhost:3000';
 // 43 caracteres base64url — o formato de `secrets.token_urlsafe(32)`.
@@ -94,6 +108,9 @@ async function rodar(mw, caminho) {
     loc,
     paraLogin: res.status >= 300 && res.status < 400 && new URL(loc, BASE).pathname === '/login',
     segue: res.headers.get('x-middleware-next') === '1',
+    csp: res.headers.get('content-security-policy'),
+    referrer: res.headers.get('referrer-policy'),
+    xfo: res.headers.get('x-frame-options'),
   };
 }
 
@@ -141,6 +158,63 @@ assert('🔴 o middleware SEM /r/ foi mesmo reconstruído (um fator só mudou)',
     }
   })(path.join(RAIZ, 'app', 'r'));
   assert('sob app/r/ só existe [token]/route.ts', arquivos.length === 1 && arquivos[0] === '[token]/route.ts', JSON.stringify(arquivos));
+}
+
+// ⑤ os headers: em /r/ vale a política da ROTA, não a do middleware
+{
+  const r = await rodar(atual, `/r/${TOKEN}`);
+  assert('/r/<token>: o middleware NÃO grava Content-Security-Policy (vale a da rota)', r.csp === null, `csp=${r.csp}`);
+  assert('/r/<token>: o middleware NÃO grava Referrer-Policy (vale o no-referrer da rota)', r.referrer === null, `referrer=${r.referrer}`);
+  assert('/r/<token>: anti-clickjacking do middleware continua (X-Frame-Options DENY)', r.xfo === 'DENY', `xfo=${r.xfo}`);
+
+  const d = await rodar(atual, '/dashboard');
+  assert('CONTROLE: /dashboard sem sessão segue indo para /login (o conserto não abriu nada)', d.paraLogin, `status ${d.status}`);
+  const login = await rodar(atual, '/login');
+  assert("CONTROLE: /login (público) continua com CSP frame-ancestors 'none'", login.csp === "frame-ancestors 'none';", `csp=${login.csp}`);
+  assert('CONTROLE: /login continua com Referrer-Policy strict-origin-when-cross-origin', login.referrer === 'strict-origin-when-cross-origin', `referrer=${login.referrer}`);
+  const reg = await rodar(atual, '/register');
+  assert("CONTROLE: /register (começa com 'r', sem a barra) NÃO perde a CSP do middleware",
+    reg.segue && reg.csp === "frame-ancestors 'none';", `csp=${reg.csp}`);
+  const e = await rodar(atual, '/embed/x');
+  assert('CONTROLE: /embed/ continua com frame-ancestors *', e.csp === 'frame-ancestors *;', `csp=${e.csp}`);
+
+  // mutação: o comportamento antigo (middleware grava CSP/Referrer em /r/) fica VERMELHO
+  assert('🔴 a mutação para os headers antigos foi mesmo aplicada (um fator só)',
+    FONTE.includes(LINHA_DA_POLITICA) && FONTE_HEADERS_ANTIGOS !== FONTE);
+  const m = await rodar(headersAntigos, `/r/${TOKEN}`);
+  assert("CONTROLE: o middleware ANTIGO grava frame-ancestors 'none'; em /r/ (o defeito do laudo Q1)",
+    m.csp === "frame-ancestors 'none';" && m.referrer === 'strict-origin-when-cross-origin', `csp=${m.csp} referrer=${m.referrer}`);
+}
+
+// ⑥ a ROTA real declara a CSP restrita com frame-ancestors (GET real, backend dublado em fetch)
+{
+  const fonteRota = fs.readFileSync(path.join(RAIZ, 'app/r/[token]/route.ts'), 'utf8');
+  const rota = executar(transpilar(fonteRota, 'route.ts'),
+    (id) => (id === 'next/server' ? require('next/server') : undefined));
+  const fetchOriginal = globalThis.fetch;
+  const envOriginal = { u: process.env.NEXT_PUBLIC_API_URL, k: process.env.BACKEND_INTERNAL_API_KEY };
+  process.env.NEXT_PUBLIC_API_URL = 'http://backend-falso.invalid';
+  process.env.BACKEND_INTERNAL_API_KEY = 'chave-falsa-de-teste';
+  let urlPedida = '';
+  globalThis.fetch = async (u) => {
+    urlPedida = String(u);
+    return new Response(JSON.stringify({ ok: true, html: '<!doctype html><p>RELATORIO_OK</p>' }),
+      { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const res = await rota.GET(new NextRequest(`${BASE}/r/${TOKEN}`), { params: Promise.resolve({ token: TOKEN }) });
+    const diretivas = (res.headers.get('content-security-policy') || '').split(/;\s*/);
+    assert('a rota foi ao backend dublado (o GET real rodou)',
+      res.status === 200 && urlPedida.endsWith(`/api/artifacts/shared/${TOKEN}`), `status ${res.status} url ${urlPedida}`);
+    assert("a ROTA declara default-src 'none'", diretivas.includes("default-src 'none'"), diretivas.join('; '));
+    assert("a ROTA declara frame-ancestors 'none' (anti-clickjacking sem o middleware)",
+      diretivas.includes("frame-ancestors 'none'"), diretivas.join('; '));
+    assert('a ROTA declara Referrer-Policy no-referrer', res.headers.get('referrer-policy') === 'no-referrer');
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    if (envOriginal.u === undefined) delete process.env.NEXT_PUBLIC_API_URL; else process.env.NEXT_PUBLIC_API_URL = envOriginal.u;
+    if (envOriginal.k === undefined) delete process.env.BACKEND_INTERNAL_API_KEY; else process.env.BACKEND_INTERNAL_API_KEY = envOriginal.k;
+  }
 }
 
 console.log(`\n${pass} ok, ${fail} falha(s)`);
