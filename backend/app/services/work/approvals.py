@@ -33,6 +33,22 @@ VALIDADE_PADRAO_HORAS = 24
 RISCO_SEM_APROVACAO = {"R0", "R1"}
 RISCO_APROVACAO_OBRIGATORIA = {"R3", "R4"}
 
+#: o status da aprovação em português, para a mensagem da tela
+_ESTADO_HUMANO = {
+    "approved": "aprovada", "rejected": "recusada", "expired": "vencida",
+    "executed": "já executada", "cancelled": "cancelada",
+}
+
+
+def _ler_instante(valor: Any) -> Optional[datetime]:
+    if not valor:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(valor).strip().replace("Z", "+00:00").replace(" ", "T", 1))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
 
 class ApprovalExpired(Exception):
     """A janela de decisão passou. Exige nova solicitação."""
@@ -44,6 +60,14 @@ class ApprovalFingerprintMismatch(Exception):
 
 class ApprovalNotGranted(Exception):
     """Não existe aprovação válida para esta ação."""
+
+
+class ApprovalAlreadyDecided(Exception):
+    """A aprovação já não está `pending`: uma decisão tomada não se troca por outra.
+
+    🔴 SPEC-129-A §0 (achado 8): `decidir` gravava por cima de qualquer status — uma
+    RECUSA podia virar APROVAÇÃO depois (e acordar o run que o humano já tinha parado).
+    """
 
 
 class WorkApprovalService:
@@ -269,9 +293,37 @@ class WorkApprovalService:
     def decidir(self, *, company_id: str, approval_id: str, decisao: str,
                 usuario_id: str, payload_editado: Optional[dict] = None,
                 motivo: Optional[str] = None) -> dict:
-        """Registra a decisão humana. Só quem pertence ao tenant decide."""
+        """Registra a decisão humana e ACORDA o run que a esperava. SPEC-129-A §6.
+
+        🔴 Só decide o que está `pending` — o UPDATE leva `.eq("status","pending")`
+        (CAS: a linha ou nada). 📊 Antes (`:288-292`): `.eq("id").eq("company_id")`
+        sozinhos — uma recusa podia virar aprovação depois, e duas decisões
+        simultâneas gravavam as duas.
+
+        Depois de gravada, a decisão acorda o run NA HORA (D-129A-2), pelo mesmo
+        caminho do despertador: `runs.despertar_por_aprovacao` — aprovado → `queued`
+        + outbox · recusado → `cancelled`. Só um run `smith` em `waiting_approval`;
+        os "sem fila" (a proposta de métrica lê `approval_requests` por conta
+        própria) nunca têm o status tocado.
+
+        Levanta: `ValueError` (decisão inválida) · `ApprovalNotGranted` (não existe
+        NESTA corretora) · `ApprovalAlreadyDecided` (já decidida, ou decidida por
+        outro agora mesmo) · `ApprovalExpired` (a janela venceu sem decisão).
+        """
         if decisao not in ("approved", "rejected", "approved_with_edit"):
             raise ValueError(f"decisão inválida: {decisao}")
+
+        atual = self._ler_aprovacao(company_id, approval_id)
+        if not atual:
+            raise ApprovalNotGranted("aprovação não encontrada para este tenant")
+        if atual.get("status") != "pending":
+            raise ApprovalAlreadyDecided(
+                f"esta aprovação já foi decidida ({_ESTADO_HUMANO.get(str(atual.get('status')), atual.get('status'))})"
+                " — uma decisão tomada não se troca por outra")
+        expira = _ler_instante(atual.get("expires_at"))
+        if expira is not None and expira < datetime.now(timezone.utc):
+            raise ApprovalExpired(
+                "a janela desta aprovação venceu sem decisão — o trabalho será encerrado sem executar a ação")
 
         agora = datetime.now(timezone.utc).isoformat()
         campos = {
@@ -288,10 +340,13 @@ class WorkApprovalService:
             campos["approval_result"] = {"motivo": motivo}
 
         # eq(company_id) é a defesa contra IDOR: aprovar recurso de outro tenant.
+        # eq(status,'pending') é o CAS: quem chegou primeiro decide; o segundo recebe nada.
         res = (self.db.table("approval_requests").update(campos)
-               .eq("id", approval_id).eq("company_id", company_id).execute())
-        if not res.data:
-            raise ApprovalNotGranted("aprovação não encontrada para este tenant")
+               .eq("id", approval_id).eq("company_id", company_id)
+               .eq("status", "pending").execute())
+        if not (res is not None and res.data):
+            raise ApprovalAlreadyDecided(
+                "esta aprovação acabou de ser decidida por outra pessoa — atualize a tela")
 
         linha = res.data[0]
         self._evento(company_id, linha.get("work_run_id"), linha.get("work_step_id"),
@@ -301,7 +356,58 @@ class WorkApprovalService:
                       "approved_with_edit": "Aprovado com edição pelo usuário",
                       "rejected": "Recusado pelo usuário"}[decisao],
                      actor_type="user", actor_id=usuario_id)
+        linha["run_despertado"] = self._despertar_run(company_id, linha.get("work_run_id"), decisao)
         return linha
+
+    # ------------------------------------------------------------------
+
+    def _ler_aprovacao(self, company_id: str, approval_id: str) -> Optional[dict]:
+        """A linha da aprovação NESTA corretora (`None` se não existe aqui)."""
+        try:
+            res = (self.db.table("approval_requests")
+                   .select("id, company_id, status, expires_at, work_run_id")
+                   .eq("id", approval_id).eq("company_id", company_id).limit(1).execute())
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[Approvals] falha ao ler a aprovação: %s", type(exc).__name__)
+            raise
+        dados = getattr(res, "data", None) if res is not None else None
+        if isinstance(dados, list):
+            return dados[0] if dados else None
+        return dados or None
+
+    def _despertar_run(self, company_id: Optional[str], run_id: Optional[str], decisao: str) -> bool:
+        """A decisão chega ao run (SPEC-129-A §2, "humano"). `True` = o run mudou de estado.
+
+        ⛔ Só um run `smith` em `waiting_approval` — conferido ANTES de chamar o
+        motor, para que um "sem fila" (proposta, acionamento, sombra) não receba
+        nem o evento de CAS perdido na linha do tempo. O motor confere de novo
+        (CAS com `runtime_kind='smith'` e `status='waiting_approval'`).
+        ⛔ Falhar aqui NÃO desfaz a decisão: ela já está gravada; um run que não
+        acordou continua em `waiting_approval` e a aprovação já não é `pending` —
+        o evento de erro diz o que houve.
+        """
+        if not company_id or not run_id:
+            return False
+        try:
+            res = (self.db.table("work_runs").select("id, status, runtime_kind")
+                   .eq("id", str(run_id)).eq("company_id", str(company_id)).limit(1).execute())
+            dados = getattr(res, "data", None) if res is not None else None
+            run = (dados[0] if dados else None) if isinstance(dados, list) else dados
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[Approvals] não deu para ler o run da aprovação: %s", type(exc).__name__)
+            return False
+        if not run or run.get("runtime_kind") != "smith" or run.get("status") != "waiting_approval":
+            return False
+        try:
+            from .runs import WorkRunService
+
+            return bool(WorkRunService(self.db).despertar_por_aprovacao(str(run_id), str(company_id), decisao))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[Approvals] a decisão não acordou o run %s: %s", run_id, type(exc).__name__)
+            self._evento(company_id, run_id, None, "run.wake_failed",
+                         "A decisão foi registrada, mas o trabalho não voltou sozinho. "
+                         "Use \"Reprocessar\" ou cancele.", severity="error")
+            return False
 
     def pendentes(self, company_id: str, limite: int = 50) -> list[dict]:
         try:
@@ -315,18 +421,29 @@ class WorkApprovalService:
             return []
 
     def expirar_vencidas(self, limite: int = 200) -> int:
+        """Vence as aprovações `pending` além de `expires_at` — e o run que as esperava.
+
+        🔴 SPEC-129-A §6: antes, a aprovação virava `expired` e o run ficava em
+        `waiting_approval` PARA SEMPRE (ninguém relê esse estado). Agora cada
+        aprovação vencida leva o seu run `smith` a `expired`, pela MESMA porta da
+        decisão humana (`runs.despertar_por_aprovacao(…, "expired")`), com o
+        `company_id` DA LINHA (CLAUDE.md §7). Os "sem fila" ficam intocados.
+        """
         agora = datetime.now(timezone.utc).isoformat()
         try:
             res = (self.db.table("approval_requests")
                    .update({"status": "expired", "decision": "expired", "resolved_at": agora})
                    .eq("status", "pending").lt("expires_at", agora).execute())
-            n = len(res.data or [])
-            if n:
-                logger.info("[Approvals] %d aprovação(ões) expirada(s)", n)
-            return n
+            vencidas = (res.data if res is not None else None) or []
         except Exception as exc:  # noqa: BLE001
             logger.error("[Approvals] falha ao expirar: %s", type(exc).__name__)
             return 0
+        n = len(vencidas)
+        if n:
+            logger.info("[Approvals] %d aprovação(ões) expirada(s)", n)
+        for ap in vencidas:
+            self._despertar_run(ap.get("company_id"), ap.get("work_run_id"), "expired")
+        return n
 
     # ------------------------------------------------------------------
 
