@@ -701,6 +701,32 @@ def normalizar_preferencia_vistoria(valor) -> str:
     return ""
 
 
+#: A tela "Avaliação" do portal (`vidros_estado.SLOT_VISTORIA_PELO_CELULAR`).
+VISTORIA_PELO_CELULAR = "vistoria_pelo_celular"
+_VISTORIA_AGORA = {"agora", "ja", "hora", "imediato", "imediata", "imediatamente",
+                   "whatsapp", "zap", "aqui"}
+_VISTORIA_EMAIL = {"email", "mail", "emails", "depois", "posterior", "tarde"}
+
+
+def normalizar_vistoria_pelo_celular(valor) -> str:
+    """Texto de gente -> `"agora"` | `"email"` | `""`.
+
+    A tela tem dois botões ("Desejo inserir as fotos agora" / "Desejo receber o
+    link de acesso por E-mail") e quem escolhe é o SEGURADO. Os dois sinais, nenhum,
+    ou um "não" no meio (*"agora não"*) é `""`: o robô pergunta de novo em vez de
+    apertar o botão errado por ele.
+    """
+    palavras = set(_palavras_soltas(valor))
+    if "nao" in palavras:
+        return ""
+    agora, email = bool(palavras & _VISTORIA_AGORA), bool(palavras & _VISTORIA_EMAIL)
+    if agora and not email:
+        return "agora"
+    if email and not agora:
+        return "email"
+    return ""
+
+
 def causa_conhecida(peca, texto):
     """A causa dita e IGUAL (normalizada) a uma das causas MEDIDAS da familia?
 
@@ -1070,6 +1096,12 @@ def build_portal_params(flat: dict, profile: dict, infocap: dict,
             especificos[PREFERENCIA_VISTORIA] = pref_v
         else:
             especificos.pop(PREFERENCIA_VISTORIA, None)
+    if VISTORIA_PELO_CELULAR in especificos:
+        celular = normalizar_vistoria_pelo_celular(especificos.get(VISTORIA_PELO_CELULAR))
+        if celular:
+            especificos[VISTORIA_PELO_CELULAR] = celular
+        else:
+            especificos.pop(VISTORIA_PELO_CELULAR, None)
     # 🔴 D-E001101-05 — domicílio FORA: a modalidade é SEMPRE loja. Sobrescreve
     # de propósito: um "domicilio" que ainda chegue (modelo com memória velha)
     # faria o caminho DOM recomendar o botão de domicílio que o produto não
@@ -1312,7 +1344,9 @@ ESTAGIOS_QUE_O_SEGURADO_RESPONDE = (
     "cidade_sem_rede", "cidade_ambigua", "uf_desconhecida", "motivo_ambiguo",
     "questionario_incompleto", "decidir_reparo", "decidir_vistoria",
     # COSTURA: a escolha sumiu da agenda — quem escolhe de novo é o segurado.
-    "horario_indisponivel")
+    "horario_indisponivel",
+    # a tela "Avaliação": fotos agora × link por e-mail — a escolha é dele
+    "decidir_vistoria_pelo_celular")
 
 
 def _hora_legivel(texto) -> str:
@@ -1570,6 +1604,18 @@ def mensagem_do_desfecho(desfecho: Optional[dict], continuacao: Optional[dict] =
             "consigo interpretar sozinho — e eu prefiro te dizer isso do que te dar "
             "uma informação errada. Já passei para a nossa equipe conferir direto com "
             "eles, e te aviso assim que tiver a resposta certa.")
+
+    # 🔴 A tela "Avaliação" — só o que o PORTAL devolveu depois do botão que ELE escolheu
+    # (`vidros_apifirst._responder_vistoria_pelo_celular`). O link sai EXATO, nunca inventado.
+    celular = str(desfecho.get(VISTORIA_PELO_CELULAR) or "").strip().lower()
+    link_vistoria = str(desfecho.get("link_vistoria") or "").strip()
+    if celular == "agora" and link_vistoria:
+        partes.append("Para a vistoria, faça as fotos do dano pelo celular, por este link: "
+                      f"{link_vistoria}")
+    elif celular == "email":
+        partes.append("O link para as fotos da vistoria vai para o e-mail cadastrado no "
+                      "pedido. Se não chegar em alguns minutos, olhe também o spam e me "
+                      "avisa aqui.")
 
     link = str(desfecho.get("link_area_segurado") or "").strip()
     if link:
@@ -1829,6 +1875,26 @@ _PARADAS.update({
         "O portal ofereceu a opcao de vistoria (`PermiteOpcaoVistoria`) e a "
         "preferencia do segurado nao foi coletada antes. No portal: registre a "
         "preferencia (link x loja) pelo numero e conclua.",
+    ),
+    # 🔴 A tela "Avaliação" (`PermiteVistoriaMobile`): o segurado ESCOLHE. ⚠️ Não promete
+    # "te mando o link aqui": enquanto o botão for CANDIDATE quem aperta é a equipe.
+    "decidir_vistoria_pelo_celular": (
+        "Para liberar o serviço, a seguradora pediu uma vistoria por fotos do dano, feita "
+        "pelo celular. Você prefere fazer as fotos agora, assim que o pedido for "
+        "concluído, ou receber o link por e-mail para fazer quando puder? "
+        + _A_EQUIPE_ASSUME,
+        "O portal parou na tela 'Avaliacao' (`PermiteVistoriaMobile`) com dois botoes: "
+        "'Desejo inserir as fotos agora' e 'Desejo receber o link de acesso por E-mail'. "
+        "A escolha e do SEGURADO. No portal: abra pelo numero e clique o que ELE escolher.",
+    ),
+    "vistoria_pelo_celular_com_a_equipe": (
+        "Anotei a sua escolha para a vistoria. Quem registra isso com a seguradora é a "
+        "nossa equipe, agora — e eles te passam o link das fotos ou o próximo passo. Você "
+        "não precisa repetir nada.",
+        "O segurado JA ESCOLHEU (a escolha esta no motivo e em `vistoria_pelo_celular`: "
+        "agora = 'Desejo inserir as fotos agora', e mande a ele o link que abrir; email = "
+        "'Desejo receber o link de acesso por E-mail'). O robo NAO apertou o botao. No "
+        "portal: abra pelo numero, tela 'Avaliacao', e clique o que ELE escolheu.",
     ),
 })
 
@@ -2613,6 +2679,9 @@ _CAMPO_DO_SLOT = {
     # SPEC-127 P1 — as paradas ANTES de o pedido existir (nada foi aberto ainda)
     "onde": "onde_ocorreu (urbano ou rodoviario)",
     "descricao": "descricao (o relato dele, com 30 caracteres ou mais)",
+    VISTORIA_PELO_CELULAR: ("especificos.vistoria_pelo_celular (\"agora\" = ele faz as fotos "
+                            "agora pelo link; \"email\" = recebe o link por e-mail). So o que "
+                            "ELE escolheu — nunca escolha por ele"),
 }
 
 

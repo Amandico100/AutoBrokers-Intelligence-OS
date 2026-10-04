@@ -74,7 +74,10 @@ JANELA_DA_RELEITURA_S = 30 * 60
 #: recebeu a mensagem (pela tool), mas a equipe tem de saber (C4: "401 ⇒ alerta
 #: humano com dossiê").
 PARADAS_SO_DA_EQUIPE = ("sessao_expirada", "sessao_indisponivel",
-                        "atendimento_cancelado", "agendamento_nao_confirmado")
+                        "atendimento_cancelado", "agendamento_nao_confirmado",
+                        # a tela "Avaliação": o segurado JÁ escolheu e o robô não aperta
+                        # (botão CANDIDATE) — só uma pessoa conclui, e ela precisa saber
+                        "vistoria_pelo_celular_com_a_equipe")
 
 
 def _instante(ts: Any) -> Optional[datetime]:

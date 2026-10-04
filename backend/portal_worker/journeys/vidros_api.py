@@ -160,6 +160,20 @@ EP_AGENDAMENTOS_INSATISFACAO_NAO_MEDIDO = "/agendamentos/insatisfacao"
 # depois de medidos — SPEC-073 G3: candidato ≠ aprovado.
 EP_FINALIZAR_NAO_MEDIDO = "/atendimentos/finalizar"
 EP_VISTORIA_MOBILE_NAO_MEDIDO = "/atendimentos/vistoriamobile"
+# 📊 A tela "Avaliação" (ramo `PermiteVistoriaMobile`, `function E` → `V()` do
+# bundle `app-332606d5f8.min.js`; `passo5.html` do HAR YELUM para-brisa, lidos em
+# 03/10/2026): "Desejo inserir as fotos agora" → `VistoriaService.
+# vistoriaMobileOnline` = `GET atendimentos/vistoriamobileonline` → `{Link}`, que o
+# SPA abre num iframe; depois `GET atendimentos/vistoriafinalizada` → bool. "Desejo
+# receber o link de acesso por E-mail" → `vistoriaMobilePosterior` = o
+# `EP_VISTORIA_MOBILE_NAO_MEDIDO` acima. `vistoriaLojaCredenciada` = `POST
+# atendimentos/vistoriacredenciado`. ⚠️ ZERO exercícios dos quatro no acervo.
+# 🔴 Registrados EXPLICITAMENTE: sem a linha, o casamento por segmento os lia como
+# `/atendimentos` (APPROVED) e um GET que CRIA a vistoria saía para a rede
+# (📊 `pode_sair("/atendimentos/vistoriamobileonline", "GET")` era `True`).
+EP_VISTORIA_MOBILE_ONLINE_NAO_MEDIDO = "/atendimentos/vistoriamobileonline"
+EP_VISTORIA_FINALIZADA_NAO_MEDIDO = "/atendimentos/vistoriafinalizada"
+EP_VISTORIA_CREDENCIADO_NAO_MEDIDO = "/atendimentos/vistoriacredenciado"
 EP_DIRECIONAMENTOS_NAO_MEDIDO = "/direcionamentos"
 EP_FOTOGRAFIAS_WEB_NAO_MEDIDO = "/atendimentos-fotografias/web"
 EP_MOTIVOS_CANCELAMENTO_NAO_MEDIDO = "/atendimentos/motivos-cancelamento"
@@ -227,6 +241,9 @@ ESTADO_DO_ENDPOINT: Dict[str, str] = {
     EP_FOTOGRAFIAS_WEB_NAO_MEDIDO: CANDIDATE,
     EP_FINALIZAR_NAO_MEDIDO: CANDIDATE,
     EP_VISTORIA_MOBILE_NAO_MEDIDO: CANDIDATE,
+    EP_VISTORIA_MOBILE_ONLINE_NAO_MEDIDO: CANDIDATE,
+    EP_VISTORIA_FINALIZADA_NAO_MEDIDO: CANDIDATE,
+    EP_VISTORIA_CREDENCIADO_NAO_MEDIDO: CANDIDATE,
     EP_MOTIVOS_CANCELAMENTO_NAO_MEDIDO: CANDIDATE,
     # 📊 `abandonar` TEM 1 exercício (HAR da PORTO, `PATCH /atendimentos/abandonar
     # {"MotivoAbandono": …}`, status 200) — a proposta dizia "zero capturas" e o
@@ -263,6 +280,7 @@ METODO_DA_ESCRITA: Dict[str, str] = {
     EP_DIRECIONAMENTOS_NAO_MEDIDO: "POST",
     EP_FOTOGRAFIAS_WEB_NAO_MEDIDO: "POST",
     EP_FINALIZAR_NAO_MEDIDO: "PATCH",
+    EP_VISTORIA_CREDENCIADO_NAO_MEDIDO: "POST",
     EP_VISTORIAS_PREVIAS_FORA: "POST",
     EP_CORRETORES_RECLAMACOES_FORA: "POST",
 }
@@ -1221,6 +1239,29 @@ PRIORIDADE_NEUTRA: Dict[str, str] = {
     "DataLimite": "Não tenho",
     "Observacao": "",
 }
+
+
+# --------------------------------------------------------------------------
+# 🔴 A TELA "AVALIAÇÃO" — a vistoria PELO CELULAR (ramo `PermiteVistoriaMobile`)
+# --------------------------------------------------------------------------
+# 📊 Rótulos LITERAIS de `passo5.html` (HAR YELUM para-brisa), os dois botões da
+# tela que a atendente vê. constante_justificada: DECIDEM entre alternativas — e
+# por isso quem escolhe é o SEGURADO (`decidir_vistoria_pelo_celular`); o código só
+# guarda a escolha dele e diz à equipe qual dos dois apertar.
+BOTAO_VISTORIA_AGORA = "Desejo inserir as fotos agora"
+BOTAO_VISTORIA_EMAIL = "Desejo receber o link de acesso por E-mail"
+#: escolha do segurado → (o endpoint que o botão chama no bundle, o rótulo dele)
+VISTORIA_PELO_CELULAR: Dict[str, Tuple[str, str]] = {
+    "agora": (EP_VISTORIA_MOBILE_ONLINE_NAO_MEDIDO, BOTAO_VISTORIA_AGORA),
+    "email": (EP_VISTORIA_MOBILE_NAO_MEDIDO, BOTAO_VISTORIA_EMAIL),
+}
+
+
+def link_da_vistoria_online(resposta: Any) -> str:
+    """O `Link` de `GET vistoriamobileonline` (bundle: `dadosVistoriaMobileOnline.Link`).
+    "" quando não veio um https — ⚠️ formato com ZERO exercícios: o canário confere."""
+    link = str((resposta or {}).get("Link") or "").strip() if isinstance(resposta, dict) else ""
+    return link if link.lower().startswith("https://") and " " not in link else ""
 
 
 def descricao_da_franquia(atendimento: Any) -> Dict[str, Any]:

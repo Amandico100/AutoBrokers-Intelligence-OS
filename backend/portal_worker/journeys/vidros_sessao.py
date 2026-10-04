@@ -509,6 +509,15 @@ class SessaoVidros:
         return await self.chamar(
             f"{API.EP_VISTORIA_MOBILE_NAO_MEDIDO}?telefone={str(telefone or '').strip()}")
 
+    async def vistoria_pelo_celular_agora(self) -> Dict[str, Any]:
+        """`GET /atendimentos/vistoriamobileonline` → `{Link}` — CANDIDATE.
+
+        📊 O botão "Desejo inserir as fotos agora" da tela "Avaliação" (bundle:
+        `VistoriaService.vistoriaMobileOnline`; o SPA abre o `Link` num iframe).
+        ZERO exercícios: o caminho fica escrito; a captura o liga. É GET e CRIA a
+        vistoria — por isso a journey arma o guard antes (semântica vence verbo)."""
+        return await self.chamar(API.EP_VISTORIA_MOBILE_ONLINE_NAO_MEDIDO)
+
     async def enviar_fotografias(self, *, codigo_atendimento: str,
                                  imagens: list) -> Dict[str, Any]:
         """`POST /atendimentos-fotografias/web` — MULTIPART, CANDIDATE.

@@ -1566,6 +1566,12 @@ async def fase_desfecho(ex: Execucao, *,
     if desfecho["tipo"] == ST.DESFECHO_VISTORIA_OPCIONAL:
         return await _responder_vistoria_opcional(ex, desfecho)
 
+    # ---- A6: a tela "Avaliação" — fotos agora × link por e-mail (o segurado escolhe)
+    if desfecho["tipo"] == ST.DESFECHO_VISTORIA \
+            and desfecho.get("ramo_vistoria") == ST.RAMO_VISTORIA_CELULAR:
+        return await _responder_vistoria_pelo_celular(ex, desfecho,
+                                                      agir=agendar_por_preferencia)
+
     # ---- conclusão: o COMPROVANTE — P1-5 --------------------------------
     if desfecho["tipo"] in (ST.DESFECHO_LOJA_DIRETA, ST.DESFECHO_ANALISTA) \
             and ex.estado.codigo_atendimento:
@@ -2170,6 +2176,97 @@ async def _responder_vistoria_opcional(ex: Execucao,
     final = ST.ler_conclusao(desfecho.get("roteador"), agregado)
     final["vistoria_preferida"] = pref
     _absorver_agregado(ex, agregado, final)
+    if ex.estado.codigo_atendimento:
+        rf = await ex.sessao.emitir_formalizado(ex.estado.codigo_atendimento)
+        final["comprovante_emitido"] = bool(rf.get("ok"))
+    return await _concluir(ex, final, agregado)
+
+
+# --------------------------------------------------------------------------
+# 🔴 A TELA "AVALIAÇÃO" — fotos agora × link por e-mail (A6, pedido da atendente)
+# --------------------------------------------------------------------------
+async def _responder_vistoria_pelo_celular(ex: Execucao, desfecho: Dict[str, Any], *,
+                                           agir: bool = True) -> JourneyResult:
+    """📊 Bundle `function E` → `V()`: com `PermiteVistoriaMobile` o SPA mostra a tela
+    "Avaliação" e espera UM clique: "Desejo inserir as fotos agora" (`GET
+    vistoriamobileonline` → `{Link}`) ou "Desejo receber o link de acesso por E-mail"
+    (`GET vistoriamobile?telefone=`). Até aqui o motor dizia `done` e a tela ficava
+    sem clique nenhum — o link nunca saía.
+
+    🔴 Quem escolhe é o SEGURADO (`especificos.vistoria_pelo_celular` ∈ agora|email):
+    sem a escolha, PARA e pergunta, nada sai. Com ela: botão CANDIDATE, sem
+    autorização, releitura ou "email" sem e-mail no pedido → a EQUIPE aperta o botão
+    que ELE escolheu (a escolha vai escrita). Promovido por captura: arma o guard,
+    aperta UMA vez, relê o agregado e conclui (o mesmo desenho do ramo 7)."""
+    from portal_worker.guardrails import AcaoBloqueada, MATERIAL_SIDE_EFFECT
+
+    escolha = _norm(ex.especificos.get(ST.SLOT_VISTORIA_PELO_CELULAR))
+    if escolha not in API.VISTORIA_PELO_CELULAR:
+        return _parar(ex, ST.PARADA_DECIDIR_VISTORIA_PELO_CELULAR,
+                      "o portal pediu a vistoria por fotos pelo celular (tela Avaliacao) e "
+                      "quer saber se o segurado faz as fotos AGORA ou recebe o link por "
+                      "E-MAIL. Quem escolhe e ele. Nada foi feito.",
+                      opcoes=[API.BOTAO_VISTORIA_AGORA, API.BOTAO_VISTORIA_EMAIL])
+    endpoint, botao = API.VISTORIA_PELO_CELULAR[escolha]
+    ex.evidence[ST.SLOT_VISTORIA_PELO_CELULAR] = escolha
+    cod = str(ex.estado.codigo_atendimento or "").strip()
+
+    def _com_a_equipe(porque: str) -> JourneyResult:
+        return _parar(ex, ST.PARADA_VISTORIA_PELO_CELULAR_COM_A_EQUIPE,
+                      f"o segurado ESCOLHEU '{botao}'. {porque} No portal, atendimento "
+                      f"{cod or '(sem numero)'}, tela Avaliacao: clique '{botao}'"
+                      + (" e mande a ele o link que abrir." if escolha == "agora" else "."),
+                      opcoes=[botao], vistoria_pelo_celular=escolha)
+
+    if not agir:
+        return _com_a_equipe("A releitura nao aperta botao.")
+    if not cod.isdigit():
+        return _parar(ex, "desfecho_ilegivel",
+                      "o portal pediu a vistoria e o atendimento veio sem numero. "
+                      "Nada foi feito.")
+    if not API.pode_sair(endpoint, "GET"):
+        return _com_a_equipe("O robo nao aperta este botao: ele nunca foi medido numa "
+                             "captura (CANDIDATE).")
+    if escolha == "email" and not str((ex.agregado or {}).get("Email") or "").strip():
+        return _com_a_equipe("O pedido nao tem e-mail do segurado no portal: o link "
+                             "iria a lugar nenhum.")
+
+    ex.guard.acao_material_esperada = ST.FRONTEIRA_VISTORIA_PELO_CELULAR
+    try:
+        await ex.guard.before(action=ST.FRONTEIRA_VISTORIA_PELO_CELULAR,
+                              action_class=MATERIAL_SIDE_EFFECT,
+                              details={"idempotency_key":
+                                       str(ex.params.get("_idempotency_key") or "")},
+                              origem="journey")
+    except AcaoBloqueada as e:
+        return _com_a_equipe(f"Falta autorizacao para o robo apertar ({e}).")
+    # 📊 telefone "" = o que o SPA manda quando já há celular de SMS, e quando a
+    # atendente fecha o diálogo em branco. O botão diz E-MAIL; o SMS não é medido.
+    r = await (ex.sessao.vistoria_pelo_celular_agora() if escolha == "agora"
+               else ex.sessao.gerar_link_vistoria(""))
+    link = API.link_da_vistoria_online(r.get("json")) if escolha == "agora" else ""
+    if not r.get("ok") or (escolha == "agora" and not link):
+        await ex.guard.incerto(motivo=f"{endpoint} sem confirmacao")
+        _tela_desconhecida(ex.evidence, onde=endpoint, resposta=r)
+        return _parar(ex, "vistoria_nao_confirmada",
+                      f"apertei '{botao}' e o portal nao confirmou. NAO repita: "
+                      "confira o atendimento.")
+    await ex.guard.confirmado(receipt=f"{endpoint}:{cod}")
+
+    rg = await ex.sessao.ler_atendimento()
+    if not rg.get("ok") or not isinstance(rg.get("json"), dict):
+        _tela_desconhecida(ex.evidence, onde=API.EP_ATENDIMENTOS, resposta=rg)
+        return _parar(ex, "desfecho_ilegivel",
+                      "a vistoria pelo celular foi pedida e nao consegui ler o que o "
+                      "portal decidiu. NAO repita: consulte o atendimento.")
+    agregado = rg["json"]
+    final = ST.ler_conclusao(desfecho.get("roteador"), agregado)
+    final[ST.SLOT_VISTORIA_PELO_CELULAR] = escolha
+    if link:
+        final["link_vistoria"] = link
+    _absorver_agregado(ex, agregado, final)
+    if link:
+        ex.evidence["link_vistoria"] = link
     if ex.estado.codigo_atendimento:
         rf = await ex.sessao.emitir_formalizado(ex.estado.codigo_atendimento)
         final["comprovante_emitido"] = bool(rf.get("ok"))

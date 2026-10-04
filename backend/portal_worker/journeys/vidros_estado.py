@@ -240,11 +240,15 @@ FRONTEIRA_ABANDONAR = "abandonar_atendimento"       # PATCH /atendimentos/abando
 FRONTEIRA_AGENDAR = "agendar_servico"               # POST /agendamentos
 FRONTEIRA_PRIORIDADE = "gravar_prioridade"          # POST /atendimentos-prioridades
 FRONTEIRA_OCORRENCIA = "gravar_ocorrencia_vistoria"  # POST /ocorrencias
+# A tela "Avaliação": o botão que o SEGURADO escolheu (GET que CRIA a vistoria ou
+# manda o link). CANDIDATE até uma captura — o guard é armado mesmo assim.
+FRONTEIRA_VISTORIA_PELO_CELULAR = "pedir_vistoria_pelo_celular"
 
 FRONTEIRAS_MATERIAIS: Tuple[str, ...] = (
     FRONTEIRA_ABRIR, FRONTEIRA_MATERIALIZAR, FRONTEIRA_ATUALIZAR,
     FRONTEIRA_CANCELAR, FRONTEIRA_ABANDONAR,
     FRONTEIRA_AGENDAR, FRONTEIRA_PRIORIDADE, FRONTEIRA_OCORRENCIA,
+    FRONTEIRA_VISTORIA_PELO_CELULAR,
 )
 
 
@@ -314,8 +318,17 @@ ETAPA_DA_PARADA: Dict[str, Tuple[str, str]] = {
     "decidir_vistoria": (ETAPA_VISTORIA, "vistoria"),
     "prioridade_nao_medida": (ETAPA_VISTORIA, "vistoria"),
     "pronto_para_vistoria": (ETAPA_VISTORIA, "vistoria"),
+    # A tela "Avaliação": a escolha é do SEGURADO e volta ao MESMO pedido. A parada
+    # "com a equipe" fica FORA da tabela de propósito (sem continuação): o botão é
+    # CANDIDATE, ou faltou autorização/e-mail — uma pessoa aperta o que ele escolheu.
+    "decidir_vistoria_pelo_celular": (ETAPA_VISTORIA, "responder:vistoria_pelo_celular"),
     "leitura_falhou": (ETAPA_DESFECHO, "reler"),
 }
+
+PARADA_DECIDIR_VISTORIA_PELO_CELULAR = "decidir_vistoria_pelo_celular"
+PARADA_VISTORIA_PELO_CELULAR_COM_A_EQUIPE = "vistoria_pelo_celular_com_a_equipe"
+#: o slot da resposta do segurado (`especificos`), "agora" | "email"
+SLOT_VISTORIA_PELO_CELULAR = "vistoria_pelo_celular"
 
 # Stages em que o efeito pode ter acontecido sem confirmação: a continuação
 # LÊ, e se o agregado não provar o estado, para — nunca repete a escrita.
@@ -407,7 +420,13 @@ CAMPO_DA_TELA_DA_PARADA: Dict[str, Tuple[str, Tuple[str, ...]]] = {
     "tipo_de_telefone_desconhecido": (_TELA_CONTATO[1], _TELA_CONTATO),
     "pecas_de_lataria_ausentes": (_TELA_LATARIA[0], _TELA_LATARIA),
     "peca_de_lataria_ambigua": (_TELA_LATARIA[0], _TELA_LATARIA),
+    # 📊 `passo5.html` (HAR YELUM para-brisa): o texto padrão da tela e os dois botões
+    "decidir_vistoria_pelo_celular": (
+        "Escolha abaixo a melhor opção para realizar a avaliação de danos.",
+        ("Desejo inserir as fotos agora", "Desejo receber o link de acesso por E-mail")),
 }
+#: as telas cujo título NÃO é "Dados da apólice" (📊 `passo5.html`: `<h3> Avaliação</h3>`)
+TITULO_DA_TELA_DA_PARADA: Dict[str, str] = {"decidir_vistoria_pelo_celular": "Avaliação"}
 
 
 def tela_da_parada(stage: Any, *, opcoes: Any = None, pergunta: Any = "") -> Dict[str, Any]:
@@ -419,7 +438,8 @@ def tela_da_parada(stage: Any, *, opcoes: Any = None, pergunta: Any = "") -> Dic
     if st == "questionario_incompleto" and perg:
         campo, rotulos = perg, (perg,)
     lista = [" ".join(str(o).split()) for o in (opcoes or []) if str(o or "").strip()][:60]
-    return {"origem": "api_first", "heading": TITULO_DA_TELA if campo else "", "campo": campo,
+    titulo = TITULO_DA_TELA_DA_PARADA.get(st, TITULO_DA_TELA)
+    return {"origem": "api_first", "heading": titulo if campo else "", "campo": campo,
             "rotulos": list(rotulos), "opcoes": lista, "pending_required": [campo] if campo else []}
 
 
@@ -508,6 +528,25 @@ _VISTORIA: Tuple[str, ...] = (
     "PermiteVistoriaAmbas", "PermiteVistoriaLoja", "PermiteVistoriaMobile",
     "RealizarVistoria",
 )
+
+
+#: 📊 A ordem do bundle (`function E(o)`): Ambas → Loja → Mobile → Realizar. Cada
+#: uma é uma TELA diferente; só "celular" é a tela "Avaliação" (fotos agora × link
+#: por e-mail). As outras três seguem com a equipe, como antes.
+_RAMOS_DA_VISTORIA: Tuple[Tuple[str, str], ...] = (
+    ("PermiteVistoriaAmbas", "ambas"), ("PermiteVistoriaLoja", "loja"),
+    ("PermiteVistoriaMobile", "celular"), ("RealizarVistoria", "realizar"),
+)
+RAMO_VISTORIA_CELULAR = "celular"
+
+
+def ramo_da_vistoria(opcoes: Any) -> str:
+    """Qual tela de vistoria o SPA mostraria, na ORDEM dele. "" = nenhuma. PURA."""
+    o = opcoes if isinstance(opcoes, dict) else {}
+    for chave, ramo in _RAMOS_DA_VISTORIA:
+        if o.get(chave) is True:
+            return ramo
+    return ""
 
 
 def ler_desfecho(opcoes: Any, agregado: Any) -> Dict[str, Any]:
@@ -626,6 +665,7 @@ def _ramos_do_roteador(o: Dict[str, Any], base: Dict[str, Any],
 
     if any(o.get(k) is True for k in _VISTORIA):
         base["tipo"] = DESFECHO_VISTORIA
+        base["ramo_vistoria"] = ramo_da_vistoria(o)
         base["motivo"] = "portal pediu vistoria"
         return base
 

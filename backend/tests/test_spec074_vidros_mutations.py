@@ -241,8 +241,13 @@ check("V13: abrir e materializar sao acoes distintas",
 # 21/09 destravaram TRÊS escritas materiais novas — agendar (`POST
 # /agendamentos`), prioridade e ocorrência de vistoria. Cada uma muda o que a
 # seguradora faz com o segurado, e todas passam pelo guard com nome próprio.
-check("V13: as oito fronteiras materiais estao declaradas",
-      len(set(E.FRONTEIRAS_MATERIAIS)) == 8, sorted(set(E.FRONTEIRAS_MATERIAIS)))
+# 🔴 ATUALIZADO de novo (03/10/2026, §9.3): a tela "Avaliação" trouxe a NONA — o botão
+# da vistoria pelo celular que o SEGURADO escolhe (um GET que cria a vistoria: semântica
+# vence verbo). CANDIDATE até uma captura, mas com nome próprio no guard desde já.
+check("V13: as nove fronteiras materiais estao declaradas",
+      len(set(E.FRONTEIRAS_MATERIAIS)) == 9, sorted(set(E.FRONTEIRAS_MATERIAIS)))
+check("V13: e a da tela Avaliacao esta entre elas",
+      E.FRONTEIRA_VISTORIA_PELO_CELULAR in E.FRONTEIRAS_MATERIAIS)
 check("V13: e as tres da 001.10.1 estao entre elas, distintas",
       {E.FRONTEIRA_AGENDAR, E.FRONTEIRA_PRIORIDADE, E.FRONTEIRA_OCORRENCIA}
       <= set(E.FRONTEIRAS_MATERIAIS)
