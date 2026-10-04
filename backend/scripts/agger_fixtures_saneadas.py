@@ -34,7 +34,9 @@ BACKEND = RAIZ / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from portal_worker.redaction import redigir_texto, tem_vazamento  # noqa: E402  (o redator ÚNICO)
+from portal_worker.redaction import (  # noqa: E402  (o redator ÚNICO)
+    redigir_texto, sem_url_nem_chave, tem_url_ou_chave, tem_vazamento,
+)
 from portal_worker.multicalculo.leitor_agger import (  # noqa: E402
     LISTA_BRANCA_POR_ENDPOINT, caminho_permitido, caminhos_de, dobra,
     lista_branca_do_arquivo,
@@ -75,12 +77,36 @@ CANONICO = {"percComissao": 10, "percDesconto": 0}  # presença e tipo; nunca o 
 # chaves cujo valor é nome de pessoa/corretora em QUALQUER endpoint do bruto
 CHAVES_DE_NOME = {"nome", "seguradonome", "customername", "usuario", "corretora",
                   "razaosocial", "nomefantasia", "nomecorretora", "apelido"}
+# 🔴 palavras COMUNS do ramo que nunca são parte de nome (conserto P3/P4 da SPEC-128).
+# 📊 04/10: o nome de um negócio de teste da conta_b tem a palavra "auto"; o crivo a
+# tratava como parte de nome e trocava "Auto" por <nome> em 495 folhas da vivo_conta_b
+# ("Azul Auto Roubo" → "Azul <nome> Roubo"): a Oferta.pacote deixava de ser a tela.
+# Sozinha, nenhuma destas palavras identifica alguém; o resto do nome continua no crivo.
+PALAVRAS_COMUNS_DO_RAMO = frozenset((
+    "auto", "autos", "automovel", "automoveis", "carro", "carros", "veiculo", "moto",
+    "seguro", "seguros", "segurado", "seguradora", "corretora", "negocio", "negocios",
+    "roubo", "furto", "vidro", "vidros", "pacote", "plano", "perfil", "basico", "basica",
+    "completo", "completa", "compreensivo", "prata", "ouro", "diamante", "bronze",
+    "platina", "premium", "essencial", "assistencia", "servico", "servicos", "reserva",
+    "residencial", "empresarial", "teste", "para", "dias", "mais", "super", "total",
+))
 # endpoints de IDENTIDADE da conta (não viram fixture; alimentam o diferencial)
 RE_IDENTIDADE = re.compile(r"/usuario/(login|listaUsuarios|usuarioBuscarPreferencias)|/cadastros/cliente")
 
 
 class Abortar(SystemExit):
     pass
+
+
+def _versao(v: Any) -> Optional[int]:
+    """a versão do cálculo (int, ou string de dígitos) — qualquer outra coisa: None."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str) and v.strip().isdigit():
+        return int(v.strip())
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +212,7 @@ class Saneador:
                           or (ep in ("negocio_busca_v2", "identidade") and chave in CHAVES_DE_NOME))
                 if pessoa:
                     for parte in re.findall(r"[^\W\d_]+", v):
-                        if len(parte) >= 4:
+                        if len(parte) >= 4 and dobra(parte) not in PALAVRAS_COMUNS_DO_RAMO:
                             self.partes_de_nome.add(dobra(parte))
                 if ep == "identidade" and len(v.strip()) >= 4:
                     self.sensiveis.append(("identidade_da_conta", caminho, v.strip()))
@@ -224,7 +250,11 @@ class Saneador:
         return self.pseudo[k]
 
     def texto(self, s: str) -> str:
-        """crivo de nome (posição a posição sobre o texto DOBRADO) + redigir."""
+        """URL/chave fora → crivo de nome (posição a posição sobre o texto DOBRADO) → redigir.
+
+        🔴 B1 (SPEC-128): a URL sai ANTES do crivo — 📊 04/10 uma seguradora devolveu, no
+        texto do erro dela, a URL interna com `?key=` e a chave de API (8× na vivo_conta_b)."""
+        s = sem_url_nem_chave(s)
         if self._re_nome is not None:
             dob = dobra(s)
             partes, fim = [], 0
@@ -315,7 +345,10 @@ class Saneador:
 
         lb = {ep: frozenset(ps) for ep, ps in LISTA_BRANCA_POR_ENDPOINT.items()}
         saida: Dict[str, Any] = {"formato": FORMATO, "rotulo": rotulo, "conta": conta, "calculos": []}
-        por_id: Dict[str, Dict[str, Any]] = {}
+        # 🔴 P5: a rodada se liga ao cálculo por (id do negócio, VERSÃO) — 📊 E7: dois
+        # recálculos SIMULTÂNEOS no mesmo negócio existem; pelo id só, as rodadas da v3 iam
+        # para o cálculo da v4.
+        por_id: Dict[Tuple[str, Optional[int]], Dict[str, Any]] = {}
         secoes: Dict[str, List[Any]] = {k: [] for k in (
             "versoes", "negocio", "busca_v2", "config", "seguradoras_renovacao", "fipe_modelo")}
         vistos_cfg: Set[str] = set()
@@ -326,19 +359,21 @@ class Saneador:
                 pedido = _json(r.get("req")) or {}
                 resp = corpo if isinstance(corpo, dict) else {}
                 id_bruto = str(resp.get("idIntegracao") or f"sem_id_{len(por_id)}")
+                versao_pedida = _versao(resp.get("versao"))
                 calc = {"id": self.pseudonimo("negocio", id_bruto),
                         "pedido": {"t_s": t_s(r), "corpo": self.projetar(pedido, lb["calcularV2"])},
                         "resposta_pedido": {"t_s": t_s(r), "corpo": self.projetar(resp, lb["calcularV2_resposta"])},
                         "rodadas": []}
-                por_id[id_bruto] = calc
+                por_id[(id_bruto, versao_pedida)] = calc
                 saida["calculos"].append(calc)
             elif ep == "cotacao_calculos":
                 partes = urlparse(r["u"]).path.rstrip("/").split("/")
                 id_bruto, versao = partes[-2], int(partes[-1])
-                calc = por_id.get(id_bruto)
+                # a resposta do pedido sem versão (None) é a de qualquer versão do negócio
+                calc = por_id.get((id_bruto, versao)) or por_id.get((id_bruto, None))
                 if calc is None:  # rodada sem o pedido na captura: um cálculo só de rodadas
                     calc = {"id": self.pseudonimo("negocio", id_bruto), "rodadas": []}
-                    por_id[id_bruto] = calc
+                    por_id[(id_bruto, versao)] = calc
                     saida["calculos"].append(calc)
                 calc["rodadas"].append({"t_s": t_s(r), "versao": versao, "status": r.get("s"),
                                         "corpo": self.projetar(corpo if isinstance(corpo, list) else [], lb[ep])})
@@ -494,6 +529,9 @@ def sanear(registros: List[Dict[str, Any]], rotulo: str, conta: str) -> Tuple[Di
         raise Abortar(f"[{rotulo}] ABORTA: {len(fora)} caminho(s) fora da lista branca: {fora[:10]}")
     if any(_RE_UUID.search(f) for f in folhas_texto(fx)):
         raise Abortar(f"[{rotulo}] ABORTA: uuid cru na saída")
+    url = sorted({t for f in folhas_texto(fx) for t in tem_url_ou_chave(f)})
+    if url:
+        raise Abortar(f"[{rotulo}] ABORTA: URL/chave em texto mantido, TIPOS {url}")
     vaz = tem_vazamento(fx)
     if vaz:
         raise Abortar(f"[{rotulo}] ABORTA: tem_vazamento acusou os TIPOS {vaz}")
