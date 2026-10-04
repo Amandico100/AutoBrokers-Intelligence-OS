@@ -65,6 +65,30 @@ def main() -> int:
     r = _rota({})
     checa("[4] controle: sem endereço -> None", r.get("url") is None)
 
+    # [4b] a base é VALIDADA como a do irmão TS `lib/public-url.ts` (red team 04/10):
+    # endereço interno, localhost, sem esquema ou com caminho NÃO vai para o segurado.
+    casos = [
+        ({"SMITH_WEB_URL": "http://smith-web:3000", "FRONTEND_URL": "https://front.exemplo.com.br"},
+         f"https://front.exemplo.com.br/r/{TOKEN}", "host interno sem ponto cai para o próximo"),
+        ({"FRONTEND_URL": "http://localhost:3000"}, None, "localhost -> sem link"),
+        ({"FRONTEND_URL": "http://127.0.0.1:3000"}, None, "127.0.0.1 -> sem link"),
+        ({"SMITH_WEB_URL": "app.exemplo.com.br"}, None, "sem esquema -> sem link"),
+        ({"SMITH_WEB_URL": "ftp://app.exemplo.com.br"}, None, "esquema que não é http(s) -> sem link"),
+        ({"SMITH_WEB_URL": "https://app.exemplo.com.br/dashboard?x=1"},
+         f"https://app.exemplo.com.br/r/{TOKEN}", "caminho e query saem: fica a origem"),
+        ({"SMITH_WEB_URL": "  https://app.exemplo.com.br//  "},
+         f"https://app.exemplo.com.br/r/{TOKEN}", "espaço e barras no fim saem"),
+        ({"SMITH_WEB_URL": "http://smith-web:3000, https://app.exemplo.com.br"},
+         f"https://app.exemplo.com.br/r/{TOKEN}", "lista com vírgula: a 1ª válida"),
+        ({"PUBLIC_APP_URL": '"https://publico.exemplo.com"'},
+         f"https://publico.exemplo.com/r/{TOKEN}", "aspas em volta saem"),
+        ({"PUBLIC_APP_URL": "   ", "FRONTEND_URL": "https://front.exemplo.com.br"},
+         f"https://front.exemplo.com.br/r/{TOKEN}", "variável em branco passa a vez"),
+    ]
+    for env, esperado, nome in casos:
+        r = _rota(env)
+        checa(f"[4b] {nome}", r.get("url") == esperado)
+
     # [5] um lugar só: nenhum dos dois leitores reimplementa a base
     raiz = Path(__file__).resolve().parents[1]
     for rel in ("app/agents/tools/report_tool.py", "app/api/artifacts.py"):
