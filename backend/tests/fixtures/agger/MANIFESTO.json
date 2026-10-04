@@ -1,0 +1,63 @@
+{
+ "formato": "agger_fixture_v1",
+ "gerador": "backend/scripts/agger_fixtures_saneadas.py",
+ "fixtures": {
+  "gravacao_config": {
+   "arquivo": "gravacao_config.json",
+   "origem": "har",
+   "conta": "conta_a",
+   "entradas_lidas": 241,
+   "rodadas": 0,
+   "calculos": 0,
+   "pseudonimos": {},
+   "parcelamentos_por_oferta": 3,
+   "sha256_do_bruto": "18834543fe55b5919c6f0a2ccdb1b076b16157a0fa36df97372f205d69cb89ca"
+  },
+  "gravacao_r1": {
+   "arquivo": "gravacao_r1.json",
+   "origem": "har",
+   "conta": "conta_a",
+   "entradas_lidas": 336,
+   "rodadas": 28,
+   "calculos": 1,
+   "pseudonimos": {
+    "apolice": 2,
+    "calculo": 37,
+    "cep": 1,
+    "chassi": 1,
+    "ci": 1,
+    "cpf": 1,
+    "data": 7,
+    "endereco": 3,
+    "negocio": 2,
+    "pessoa": 1,
+    "placa": 1
+   },
+   "parcelamentos_por_oferta": 3,
+   "sha256_do_bruto": "35a1059141b06c4c9fa551946288d63eb76d9e46e18fc849689a50fef60dbac4"
+  },
+  "gravacao_r2": {
+   "arquivo": "gravacao_r2.json",
+   "origem": "har",
+   "conta": "conta_a",
+   "entradas_lidas": 374,
+   "rodadas": 28,
+   "calculos": 1,
+   "pseudonimos": {
+    "apolice": 2,
+    "calculo": 30,
+    "cep": 1,
+    "chassi": 1,
+    "ci": 1,
+    "cpf": 2,
+    "data": 10,
+    "endereco": 3,
+    "negocio": 2,
+    "pessoa": 2,
+    "placa": 1
+   },
+   "parcelamentos_por_oferta": 3,
+   "sha256_do_bruto": "03efb7ca9c4400b2e69866c94a0018a74b5905a516cfa54cd468bc00076c27f4"
+  }
+ }
+}
