@@ -137,6 +137,9 @@ class PortalExecutionGateway:
                  dormir: Optional[Callable[[float], Any]] = None) -> None:
         self.supabase = supabase
         self._agora = agora or time.monotonic
+        # ⚠️ SPEC-129-A: este `sleep` só serve ao modo `await` (chamador síncrono, fora do
+        # Work OS). O Work Run SEMPRE pede ENFILEIRAR e chama o gateway em `to_thread`:
+        # nenhum workflow registrado alcança esta espera (`test_spec129a_o_loop_nao_trava`).
         self._dormir = dormir or time.sleep
 
     # -- passo 2 a 6: resolução pura, sem escrever nada -------------------
@@ -215,11 +218,17 @@ class PortalExecutionGateway:
         Sem chave do chamador, a ponte deriva uma da impressão do pedido. É
         pior que uma chave de negócio (não sabe que "vidro da porta" e "vidro
         de porta" são a mesma coisa), mas é infinitamente melhor que nenhuma.
+
+        🔴 SPEC-129-A: a chave do CHAMADOR vale também em LEITURA. O Work Run manda
+        `wr:<run>:<op>`; se o worker morrer depois de criar o job e antes de anotar o id,
+        a retomada precisa REENCONTRAR o job — senão cria outro, e um cálculo de 7 min vira
+        dois. 📊 Antes, leitura devolvia `None` aqui antes de olhar a chave recebida. Sem
+        chave do chamador, leitura continua sem chave (não se deriva: ler duas vezes é inócuo).
         """
-        if not C.precisa_de_idempotencia(getattr(definicao, "effect_class", "")):
-            return None
         if req.idempotency_key:
             return str(req.idempotency_key)
+        if not C.precisa_de_idempotencia(getattr(definicao, "effect_class", "")):
+            return None
         return f"gw:{req.impressao_do_pedido()}"
 
     def procurar_pedido_vivo(self, company_id: str,
@@ -308,6 +317,12 @@ class PortalExecutionGateway:
                         "resposta de outro pedido",
                         operation_key=req.operation_key, portal_key=portal_key,
                         pode_repetir=False)
+                # 🔴 SPEC-129-A: quem pediu ENFILEIRAR não espera — nem quando o pedido já
+                # existia. 📊 Antes este ramo esperava sempre (até 150 s de `time.sleep`): a
+                # retomada de um Work Run, justamente a que reencontra o job, travava o worker.
+                if req.wait_mode == C.ESPERA_ENFILEIRAR:
+                    return self._handle(str(vivo.get("id")), req, portal_key, chave,
+                                        ja_existia=True)
                 return self._esperar_e_traduzir(
                     str(vivo.get("id")), req, portal_key, chave,
                     ja_existia=True)
@@ -319,15 +334,29 @@ class PortalExecutionGateway:
                             operation_key=req.operation_key, portal_key=portal_key)
 
         if req.wait_mode == C.ESPERA_ENFILEIRAR:
-            return C.PortalExecutionResult(
-                business_state=C.NEGOCIO_PRECISA_HUMANO,
-                operation_key=req.operation_key, portal_key=portal_key,
-                portal_job_id=job_id, work_run_id=req.work_run_id,
-                idempotency_key=chave,
-                motivo="enfileirado; o desfecho chega pelo Work Run",
-                message="o trabalho foi enfileirado")
+            return self._handle(job_id, req, portal_key, chave)
 
         return self._esperar_e_traduzir(job_id, req, portal_key, chave)
+
+    @staticmethod
+    def _handle(job_id: str, req: C.PortalExecutionRequest, portal_key: str,
+                chave: Optional[str], *, ja_existia: bool = False) -> C.PortalExecutionResult:
+        """O HANDLE do modo ENFILEIRAR: o job existe, o desfecho chega pelo Work Run.
+
+        ⚠️ `business_state` é `needs_human` por contrato antigo (o chamador "decide quem
+        espera"): quem lê o handle decide pelo `portal_job_id`, nunca pelo estado — e o
+        Work Run trata resultado COM `portal_job_id` como sucesso da criação.
+        """
+        return C.PortalExecutionResult(
+            business_state=C.NEGOCIO_PRECISA_HUMANO,
+            operation_key=req.operation_key, portal_key=portal_key,
+            portal_job_id=job_id, work_run_id=req.work_run_id,
+            idempotency_key=chave,
+            pode_repetir=not ja_existia,
+            motivo=("pedido ja existia; anexei ao que estava em curso (o desfecho chega pelo "
+                    "Work Run)" if ja_existia else "enfileirado; o desfecho chega pelo Work Run"),
+            message=("o trabalho ja estava enfileirado" if ja_existia
+                     else "o trabalho foi enfileirado"))
 
     # -- privados ---------------------------------------------------------
     def _criar_job(self, req: C.PortalExecutionRequest, portal_key: str,
