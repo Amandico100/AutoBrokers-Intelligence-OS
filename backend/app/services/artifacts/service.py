@@ -29,6 +29,20 @@ logger = logging.getLogger(__name__)
 VALIDADE_PADRAO_DIAS = 30
 VALIDADE_MAXIMA_DIAS = 180
 
+
+def base_publica_do_app() -> str:
+    """O endereço público do painel, de onde sai o link `/r/<token>` que o cliente abre.
+
+    🔴 UM LUGAR SÓ. 📊 04/10/2026: o `smith-api` de produção NÃO tem `PUBLIC_APP_URL` nem
+    `NEXT_PUBLIC_APP_URL` — só `SMITH_WEB_URL` e `FRONTEND_URL`. Quem lia só as duas primeiras
+    devolvia link vazio ("link criado", sem link). A ordem respeita quem já configurou a pública.
+    """
+    for nome in ("PUBLIC_APP_URL", "NEXT_PUBLIC_APP_URL", "SMITH_WEB_URL", "FRONTEND_URL"):
+        valor = (os.getenv(nome) or "").strip().rstrip("/")
+        if valor:
+            return valor
+    return ""
+
 #: 🔴 SPEC-095 · B.3. A variável que faz o canário de SPEC se declarar. Mora
 #: AQUI, ao lado do único publicador, porque quem publica é quem marca — e
 #: porque os dois caminhos que publicam (a tool do chat e a rotina do briefing)

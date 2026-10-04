@@ -16,7 +16,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.database import get_supabase_client
-from app.services.artifacts.service import ArtifactService
+from app.services.artifacts.service import ArtifactService, base_publica_do_app
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/artifacts", tags=["Artifact Hub"])
@@ -138,7 +138,7 @@ async def compartilhar(payload: CompartilharIn,
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    base = (os.getenv("PUBLIC_APP_URL") or os.getenv("NEXT_PUBLIC_APP_URL") or "").rstrip("/")
+    base = base_publica_do_app()
     return {"ok": True, "token": s["token"], "expires_at": s["expires_at"],
             "url": f"{base}/r/{s['token']}" if base else None}
 

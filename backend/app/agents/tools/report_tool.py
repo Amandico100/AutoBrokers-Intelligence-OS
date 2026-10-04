@@ -283,7 +283,8 @@ class GerarRelatorioTool(BaseTool):
                     "Tente de novo em instantes.")
 
         marca_padrao = (criado.get("brand") or {}).get("is_fallback")
-        base = (os.getenv("PUBLIC_APP_URL") or os.getenv("NEXT_PUBLIC_APP_URL") or "").rstrip("/")
+        from app.services.artifacts.service import base_publica_do_app
+        base = base_publica_do_app()
 
         partes = [f"Relatório **{dados.titulo}** gerado."]
 
