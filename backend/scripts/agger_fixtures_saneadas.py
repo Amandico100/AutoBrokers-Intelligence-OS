@@ -475,6 +475,11 @@ def caminhos_fora_da_lista(fixture: Dict[str, Any]) -> List[str]:
     return sorted({c for c in caminhos_de(fixture) if not caminho_permitido(c, lb)})
 
 
+def _sem_cr(b: bytes) -> bytes:
+    """o checkout do Windows (core.autocrlf) pode devolver CRLF: o conteudo e o mesmo."""
+    return b.replace(bytes((13, 10)), bytes((10,)))
+
+
 def serializar(obj: Any, compacto: bool = True) -> bytes:
     if compacto:  # fixture: compacta (o juiz lê com `python -m json.tool`)
         return (json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
@@ -550,7 +555,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     arquivos["MANIFESTO.json"] = serializar(manifesto, compacto=False)
 
     if a.conferir:
-        iguais = all((saida / n).exists() and (saida / n).read_bytes() == b for n, b in arquivos.items())
+        iguais = all((saida / n).exists() and _sem_cr((saida / n).read_bytes()) == b for n, b in arquivos.items())
         print(f"conferir: {len(arquivos)} arquivo(s) gerado(s) em memória; idênticos ao disco: {iguais}")
         return 0
     saida.mkdir(parents=True, exist_ok=True)
