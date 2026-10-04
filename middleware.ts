@@ -105,6 +105,9 @@ export async function middleware(request: NextRequest) {
   // Rotas que começam com estes prefixos são públicas
   const publicPrefixes = [
     '/embed/',  // Widget embed pages (public)
+    '/r/',      // Link público do relatório (SPEC-057), aberto pelo CLIENTE do corretor, sem conta.
+                // A rota app/r/[token]/route.ts se protege sozinha pelo token. A barra final
+                // impede que o prefixo abra /register, /relatorios etc.
   ];
 
   const apiRoutes = [

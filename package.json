@@ -22,6 +22,7 @@
     "test:chat-como-corretor": "python backend/tests/test_o_chat_fala_como_corretor.py",
     "test:relatorio-abre-pelo-achado": "python backend/tests/test_o_relatorio_abre_pelo_achado.py",
     "test:rotas-montam": "node scripts/rotas-montam.test.mjs",
+    "test:link-do-relatorio": "node scripts/o-link-do-relatorio-abre-sem-login.test.mjs",
     "test:diario-de-quem-decidiu": "node scripts/o-diario-e-de-quem-decidiu.test.mjs",
     "test:central-agentes": "node scripts/central-de-agentes-mostra-o-trabalho.test.mjs",
     "test:claims-shadow-vocab": "node scripts/claims-shadow-vocab.test.mjs",
