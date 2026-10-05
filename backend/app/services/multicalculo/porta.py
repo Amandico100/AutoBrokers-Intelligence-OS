@@ -184,6 +184,16 @@ def _aplicar_ajuste(coberturas: Mapping[str, Any], ajuste: Ajuste) -> Dict[str, 
     return novas
 
 
+def _erro_publico(erro: Any) -> Optional[str]:
+    """O `erro` do cálculo como a corretora o lê: o motor já o gravou saneado; a porta saneia DE NOVO (URL, chave,
+    PII) e corta — o banco não é confiado como única rede."""
+    if not erro:
+        return None
+    from portal_worker.redaction import redigir_texto, sem_url_nem_chave
+
+    return re.sub(r"\s+", " ", redigir_texto(sem_url_nem_chave(erro))).strip()[:200] or None
+
+
 def _oferta_publica(linha: Mapping[str, Any], *, company_id: str) -> Dict[str, Any]:
     saida = {k: v for k, v in dict(linha).items() if k not in ("comissao_percentual", "pdf_path")}
     saida["corretora_company_id"] = str(linha.get("company_id"))
@@ -227,7 +237,7 @@ class MulticalculoProvider:
             return {"ramo": int(ramo), "suportado": False, "motivo": "a v1 calcula só o AUTO (31)"}
         return {"ramo": RAMO_AUTO, "suportado": True, "portal": self.provider_key, "opcoes": OPCOES,
                 "ajustes": TIPOS_DE_AJUSTE, "origens": ORIGENS, "renovacao": True,
-                "entrega": "eventos (consultar com desde_evento)"}
+                "entrega": "eventos (consultar com desde_evento)", "pdf": "pdf(company_id, oferta_id) → bytes"}
 
     # ------------------------------------------------------------------ autorização
     async def _autorizar(self, *, company_id: str, corretoras: Sequence[str]) -> str:
@@ -361,7 +371,9 @@ class MulticalculoProvider:
                             "opcao": c.get("opcao"), "status": c.get("status"), "posicao_na_fila": posicao,
                             "primeira_oferta_em": c.get("primeira_oferta_em"),
                             "quadro_pronto_em": c.get("quadro_pronto_em"), "fechado_em": c.get("fechado_em"),
-                            "origem_calculo_id": c.get("origem_calculo_id")})
+                            "origem_calculo_id": c.get("origem_calculo_id"),
+                            # conserto 129-B (juiz P4): o PORQUÊ do falhou/incerto/cancelado, saneado de novo
+                            "erro": _erro_publico(c.get("erro"))})
         ofertas_v = sorted((_oferta_publica(o, company_id=company_id) for o in ofertas
                             if str(o.get("company_id")) in visiveis),
                            key=lambda o: float(o.get("premio_total") or 0))
@@ -400,6 +412,17 @@ class MulticalculoProvider:
         if ped.get("status") == "cancelado":
             raise ValueError("pedido cancelado")
         self._conferir_origem(str(ped.get("origem")))
+        # 🔴 conserto 129-B (red P4): o clique duplo não vira 2º calcularV2 — o MESMO ajuste da MESMA origem ainda
+        # na fila ou no robô é DEVOLVIDO (o motor também cancela o repetido que escapar desta conferência)
+        em_curso = await asyncio.to_thread(self.repo.ajustes_em_curso, company_id=company_id,
+                                           origem_calculo_id=calculo_id)
+        pedido_igual = {"tipo": ajuste.tipo, "valor": ajuste.valor, "seguradora": ajuste.seguradora}
+        for c in em_curso:
+            aj = c.get("ajuste") if isinstance(c.get("ajuste"), Mapping) else {}
+            if str(c.get("company_id")) == corretora and \
+                    {k: aj.get(k) for k in ("tipo", "valor", "seguradora")} == pedido_igual:
+                return {"id": str(c["id"]), "corretora_company_id": corretora, "opcao": "ajuste",
+                        "origem_calculo_id": calculo_id, "repetido": True}
         agora = self._agora()
         novo = {
             "id": str(uuid.uuid4()), "pedido_id": str(origem["pedido_id"]), "solicitante_company_id": company_id,
@@ -416,6 +439,46 @@ class MulticalculoProvider:
         await asyncio.to_thread(self.repo.reabrir_pedido, company_id=company_id, pedido_id=str(origem["pedido_id"]))
         return {"id": str(gravado.get("id") or novo["id"]), "corretora_company_id": corretora, "opcao": "ajuste",
                 "origem_calculo_id": calculo_id}
+
+    # ------------------------------------------------------------------ o PDF
+    async def pdf(self, *, company_id: str, oferta_id: str) -> Optional[bytes]:
+        """O PDF da oferta (a FICHA: "baixa o PDF" — conserto 129-B, juiz B2), lido do NOSSO bucket privado, onde o
+        motor o copiou (`multicalculo/{corretora}/{calculo}/{oferta}.pdf`). Nunca o link do fornecedor.
+
+        Quem pode: o SOLICITANTE do pedido (se a oferta é de outra corretora, só o canal com adesão ATIVA agora —
+        a mesma regra do `consultar`) ou a CORRETORA de registro (o login dela calculou). Qualquer outro →
+        `NaoEncontrado` (não diz se existe). Sem PDF copiado → None."""
+        company_id = _uuid(company_id, "company_id")
+        oferta_id = _uuid(oferta_id, "oferta_id")
+        oferta = await asyncio.to_thread(self.repo.oferta_do_solicitante, company_id=company_id, oferta_id=oferta_id)
+        if oferta and str(oferta.get("solicitante_company_id")) == company_id:
+            dona = str(oferta.get("company_id"))
+            if dona != company_id:
+                tipos = await asyncio.to_thread(self.repo.tipos_de_empresa, [company_id])
+                if tipos.get(company_id) != KIND_CANAL or dona not in await asyncio.to_thread(
+                        self.repo.adesoes_ativas, canal_company_id=company_id, corretoras=[dona]):
+                    raise NaoEncontrado("oferta não encontrada")
+        else:
+            oferta = await asyncio.to_thread(self.repo.oferta_da_corretora, company_id=company_id,
+                                             oferta_id=oferta_id)
+            if not oferta or str(oferta.get("company_id")) != company_id:
+                raise NaoEncontrado("oferta não encontrada")
+        caminho = str(oferta.get("pdf_path") or "")
+        esperado = f"multicalculo/{oferta.get('company_id')}/{oferta.get('calculo_id')}/{oferta.get('id')}.pdf"
+        if not caminho:
+            return None
+        if caminho != esperado:
+            # o caminho gravado não é o que o motor escreve para ESTA oferta: nunca se lê outro arquivo do bucket
+            logger.warning("[MULTICALCULO] pdf_path fora do padrão na oferta %s — recusado", oferta_id)
+            return None
+        try:
+            dados = await asyncio.to_thread(self.repo.baixar_pdf, caminho)
+        except Exception as exc:  # noqa: BLE001 — o storage fora não derruba quem chama
+            logger.warning("[MULTICALCULO] baixar o PDF falhou (%s)", type(exc).__name__)
+            return None
+        if not dados or dados[:4] != b"%PDF":
+            return None
+        return dados
 
     # ------------------------------------------------------------------ cancelar
     async def cancelar(self, *, company_id: str, pedido_id: str) -> int:
