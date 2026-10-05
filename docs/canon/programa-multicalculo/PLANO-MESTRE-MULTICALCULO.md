@@ -1039,7 +1039,7 @@ Sobre "raspando o tacho das corretoras": por enquanto, só "raspando o tacho". H
   - ler a apólice: o modelo mais barato que passar na bancada (o Luna é candidato);
   - entender o ajuste: classificação curta;
   - texto ao cliente: só na conversa.
-- **Quem Cobra Menos:** a conversa é feita pelo modelo da pessoa e não custa para nós.
+- **Quem Cobra Menos (v2.5, WhatsApp):** a conversa é do NOSSO agente: 💭 ≈ US$ 0,01 de modelo (Luna) por cotação; na API oficial da Meta (134) soma-se 💭 ≈ US$ 0,05–0,10 de mensagens (Brasil ≈ US$ 0,0068 por mensagem nossa depois de 1.000 grátis/mês/número, desde 01/10/2026 — PASSAGEM-2026-10-05 §2). Na fase Evolution (133-A) a Meta não cobra. No Claude/ChatGPT (★) a conversa seria do modelo da pessoa.
 - **Pacotes:** se a E20 confirmar, as 2 opções (completa e econômica) saem de 1 cálculo em vez de 2.
 - **Ajustes:** 💭 ≈ 1,66 cálculo por renovação hoje (D-MC-14). Com a opção econômica já na proposta, a expectativa é cair (H11, medido na 131).
 - **Jev:** só para tela desconhecida ou classificação; fora do caminho principal (P-119-03).
