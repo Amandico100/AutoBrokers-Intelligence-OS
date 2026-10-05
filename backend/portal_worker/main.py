@@ -110,9 +110,31 @@ def iniciar_lacos(*, poll=None, motor=None) -> list:
             asyncio.create_task((motor or _laco_do_motor_seguro)())]
 
 
+_LACOS: list = []
+
+#: 💭 quanto o desligar espera o logout das sessões do robô. O `docker stop` dá 📊 10 s de graça antes do SIGKILL
+#: (padrão do Docker); 8 s deixam folga para o resto do shutdown. Logout que não cabe → a lease vence sozinha (90 s).
+DESLIGAR_MOTOR_S = 8.0
+
+
 @app.on_event("startup")
 async def _startup() -> None:
-    iniciar_lacos()
+    _LACOS[:] = iniciar_lacos()
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    """SPEC-129-B F4 (junta 8): o deploy/reinício faz o LOGOUT do robô e devolve as leases. Sem isto a sessão
+    ficava viva no Agger e o próximo login via o aviso de "sessão ativa" → robô `ocupada`/`pausado` a cada deploy.
+    O laço do motor para primeiro (nenhum grupo novo); o `poll_loop` não é tocado."""
+    if len(_LACOS) > 1 and not _LACOS[1].done():
+        _LACOS[1].cancel()
+    try:
+        from portal_worker.multicalculo.motor import desligar_o_motor_do_processo
+
+        await asyncio.wait_for(desligar_o_motor_do_processo(), timeout=DESLIGAR_MOTOR_S)
+    except Exception as e:  # noqa: BLE001 — o shutdown nunca trava no motor (timeout incluído)
+        logging.getLogger("portal_worker").warning("[MC] desligar o motor no shutdown: %s", type(e).__name__)
 
 
 @app.get("/health")
