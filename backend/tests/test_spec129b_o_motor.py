@@ -63,87 +63,16 @@ def rodadas(idx: int):
 # ═════════════════════════════════════════════════════════════════════════════
 # O banco: o esquema do U1 (os nomes são LEI) e as travas dele
 # ═════════════════════════════════════════════════════════════════════════════
-U = ("uuid", False, None)
-UN = ("uuid", True, None)
-TN = ("text", True, None)
-TSN = ("ts", True, None)
-ESQUEMA_U1 = {
-    "multicalculo_pedidos": {
-        "id": ("uuid", False, "UUID"), "company_id": U, "origem": ("text", False, None),
-        "ramo": ("int", False, 31), "opcoes": ("jsonb", False, "JSON:[]"), "corretoras": ("jsonb", False, "JSON:[]"),
-        "pedido_cifrado": ("text", False, None), "cpf_hmac": TN, "quadro_s": ("int", False, 60),
-        "status": ("text", False, "aberto"), "criado_em": ("ts", False, "NOW"), "atualizado_em": ("ts", False, "NOW"),
-    },
-    "multicalculo_calculos": {
-        "id": ("uuid", False, "UUID"), "pedido_id": U, "solicitante_company_id": U, "company_id": U,
-        "opcao": ("text", False, None), "coberturas": ("jsonb", False, None), "status": ("text", False, "na_fila"),
-        "account_id": UN, "negocio_ref": TN, "versao": ("int", True, None), "origem_calculo_id": UN,
-        "ajuste": ("jsonb", True, None), "prioridade": ("int", False, 5), "expira_em": TSN, "disponivel_em": TSN,
-        "tentativas": ("int", False, 0), "dono": TN, "batida_em": TSN, "disparado_em": TSN,
-        "primeira_oferta_em": TSN, "quadro_pronto_em": TSN, "fechado_em": TSN, "erro": TN,
-        "criado_em": ("ts", False, "NOW"),
-    },
-    "multicalculo_ofertas": {
-        "id": ("uuid", False, "UUID"), "calculo_id": U, "pedido_id": U, "company_id": U, "solicitante_company_id": U,
-        "seguradora": TN, "seguradora_codigo": ("int", True, None), "pacote": TN, "tipo_de_pacote": ("int", True, None),
-        "premio_total": ("num", False, None), "premio_mensal": ("num", True, None), "franquia_valor": ("num", True, None),
-        "franquia_tipo": TN, "coberturas": ("jsonb", True, None), "parcelamentos": ("jsonb", True, None),
-        "tem_pdf": ("bool", False, False), "pdf_path": TN, "alertas": ("jsonb", True, None),
-        "comissao_percentual": ("num", True, None), "recebida_em": ("ts", False, "NOW"),
-        "atualizada_em": ("ts", False, "NOW"),
-    },
-    "multicalculo_eventos": {
-        "id": ("int", False, "SERIAL"), "calculo_id": U, "pedido_id": U, "company_id": U, "solicitante_company_id": U,
-        "tipo": ("text", False, None), "seguradora": TN, "seguradora_codigo": ("int", True, None), "pacote": TN,
-        "tipo_de_pacote": ("int", True, None), "familia": TN, "oferta_id": UN, "chave": ("text", False, None),
-        "t_s": ("num", True, None), "criado_em": ("ts", False, "NOW"),
-    },
-}
-COLUNAS_ROBO = {"robo_estado": TN, "robo_teto_por_hora": ("int", True, None), "robo_janela": ("jsonb", True, None),
-                "robo_ocupada_ate": TSN, "robo_dono": TN, "robo_batida_em": TSN}
-STATUS = ("na_fila", "disparando", "calculando", "fechado", "falhou", "incerto", "cancelado", "expirado")
-FK_DO_CALCULO = (("calculo_id", "id"), ("pedido_id", "pedido_id"), ("company_id", "company_id"),
-                 ("solicitante_company_id", "solicitante_company_id"))
-
-
-class BancoU1(D.BancoEmMemoria):
-    """O banco dublê com as travas do U1 que o motor pode violar."""
-
-    def _travas(self, tabela, nova, velha):
-        super()._travas(tabela, nova, velha)
-        if tabela == "multicalculo_calculos":
-            self._check("ck_mc_calculos_status", nova["status"] in STATUS)
-            self._check("ck_mc_calculos_opcao", nova["opcao"] in ("padrao", "economica", "ajuste"))
-            self._check("ck_mc_calculos_negocio",
-                        nova["status"] not in ("calculando", "fechado")
-                        or (bool(nova.get("negocio_ref")) and nova.get("versao") is not None))
-            self._fk(tabela, "fk_mc_calculos_conta_mesma_corretora",
-                     (("account_id", "id"), ("company_id", "company_id")), "portal_accounts", nova)
-            self._fk(tabela, "fk_mc_calculos_pedido",
-                     (("pedido_id", "id"), ("solicitante_company_id", "company_id")), "multicalculo_pedidos", nova)
-        elif tabela == "multicalculo_ofertas":
-            self._fk(tabela, "fk_mc_ofertas_calculo", FK_DO_CALCULO, "multicalculo_calculos", nova)
-            self._unico(tabela, "uq_mc_ofertas", ("calculo_id", "seguradora_codigo", "pacote", "tipo_de_pacote"),
-                        nova, velha)
-            self._check("ck_mc_ofertas_premio", float(nova["premio_total"]) > 0)
-        elif tabela == "multicalculo_eventos":
-            if velha is not None:
-                raise D.erro_do_banco("P0001", "evento não se reescreve")
-            self._fk(tabela, "fk_mc_eventos_calculo", FK_DO_CALCULO, "multicalculo_calculos", nova)
-            self._unico(tabela, "uq_mc_eventos_chave", ("calculo_id", "chave"), nova, velha)
-        elif tabela == "portal_accounts":
-            self._check("ck_robo_estado", nova.get("robo_estado") in (None,) + ROB.ESTADOS)
-            self._check("ck_robo_teste_tem_janela",
-                        nova.get("robo_estado") != "teste" or nova.get("robo_janela") is not None)
+from dubles.banco_multicalculo import (  # noqa: E402  (F4: o banco dublê é UM, comum ao teste do fio)
+    COLUNAS_ROBO, ESQUEMA_U1, FK_DO_CALCULO, STATUS, BancoU1, instalar_esquema,
+)
 
 
 @pytest.fixture
 def ambiente(monkeypatch):
     from cryptography.fernet import Fernet
 
-    for tabela, cols in ESQUEMA_U1.items():
-        monkeypatch.setitem(D.ESQUEMA, tabela, cols)
-    monkeypatch.setitem(D.ESQUEMA, "portal_accounts", {**D.ESQUEMA["portal_accounts"], **COLUNAS_ROBO})
+    instalar_esquema(monkeypatch)
     monkeypatch.setenv("PORTAL_VAULT_KEY", Fernet.generate_key().decode())
     monkeypatch.delenv("PORTAL_VAULT_KEY_ANTERIOR", raising=False)
     for nome in ("MULTICALCULO_TETO_CORRETORA_HORA", "MULTICALCULO_TETO_GERAL_HORA", "AUTOBROKERS_CANARIO"):
