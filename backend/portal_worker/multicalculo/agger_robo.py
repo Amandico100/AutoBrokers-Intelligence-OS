@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from ..redaction import sem_url_nem_chave, tem_url_ou_chave
+from ..redaction import redigir_texto, sem_url_nem_chave, tem_url_ou_chave
 from .contrato import CHAVES_PROIBIDAS_NA_OFERTA, RAMO_AUTO, Ajuste, Evento, RodadaDoCalculo
 from .leitor_agger import (
     LISTA_BRANCA_POR_ENDPOINT, caminho_permitido, caminhos_de, eventos_entre, ler_resposta, ler_rodada,
@@ -53,6 +53,30 @@ LISTA_RESPOSTA = list(LISTA_BRANCA_POR_ENDPOINT["calcularV2_resposta"])
 MARCAS_PERMITIDAS = {"pathPdf": "<removido:pdf>", "pdfFileNameAgger": "<removido:pdf>"}
 POST_TIMEOUT_S = 60
 PDF_MAX_BYTES = 15 * 1024 * 1024
+# 💭 10 leituras seguidas sem resposta válida (≈ 30 s com o intervalo de 3 s): um soluço de rede passa; uma sessão
+# ou página morta para em 30 s, não nos 480 s do teto (conserto 129-B, juiz B1). 401/403 param NA HORA.
+LEITURAS_FALHAS_MAX = 10
+STATUS_SESSAO_MORTA = (401, 403)
+
+
+_RE_ESPACOS = re.compile(r"\s+")
+
+# Os códigos que a página devolve no preparo, em português de gente (o `erro` que a corretora lê pela porta).
+MOTIVOS_LEGIVEIS = {
+    "veiculo_sem_fipe_ou_ano": "o veículo não tem FIPE ou ano reconhecidos pelo Agger",
+    "nenhuma_seguradora": "nenhuma seguradora ativa na conta do Agger para este cálculo",
+    "seguradora_anterior_desconhecida": "a seguradora anterior da renovação não existe no Agger",
+    "seguradora_anterior_ambigua": "a seguradora anterior da renovação casa com mais de uma no Agger",
+    "versao_base_inexistente": "a versão de origem do recálculo não existe mais no Agger",
+    "ajuste_sem_alvo": "o ajuste não tem seguradora onde ser aplicado",
+    "sem_resposta": "a página do Agger não respondeu ao preparo",
+}
+
+
+def motivo_curto(texto: Any, limite: int = 160) -> str:
+    """O motivo que pode ir ao banco: sem URL, sem chave, sem PII, numa linha, curto (conserto 129-B, juiz P4)."""
+    s = redigir_texto(sem_url_nem_chave(texto))
+    return _RE_ESPACOS.sub(" ", s).strip()[:limite]
 
 
 class DisparoIncerto(Exception):
@@ -60,7 +84,35 @@ class DisparoIncerto(Exception):
 
 
 class DisparoRecusado(Exception):
-    """Nada saiu, ou o servidor recusou com resposta clara."""
+    """Nada saiu, ou o servidor recusou com resposta clara. `.motivo` = texto CURTO e saneado (vai ao `erro`)."""
+
+    sessao_morta = False
+
+    def __init__(self, motivo: Any = "") -> None:
+        self.motivo = motivo_curto(motivo)
+        super().__init__(self.motivo)
+
+
+class SessaoMorta(DisparoRecusado):
+    """O Agger respondeu 401/403 ANTES de qualquer cálculo sair: a sessão do robô morreu (token vencido, alguém
+    entrou com o login). Nada saiu — o motor DESCARTA a sessão e devolve o cálculo à fila (conserto 129-B, juiz B1)."""
+
+    sessao_morta = True
+
+
+class LeituraImpossivel(Exception):
+    """O acompanhamento NÃO conseguiu ler o resultado (conserto 129-B, juiz B1): 401/403 (sessão morta), página
+    fechada, ou `LEITURAS_FALHAS_MAX` leituras seguidas sem resposta válida, ou o teto sem NENHUMA leitura válida.
+    `leu` = houve ao menos uma leitura 200 · `quadro_saiu` = o `ao_quadro` já foi chamado · `rodada` = a última lida."""
+
+    def __init__(self, motivo: str, *, sessao_morta: bool = False, leu: bool = False, quadro_saiu: bool = False,
+                 rodada: Optional[RodadaDoCalculo] = None) -> None:
+        self.motivo = motivo_curto(motivo)
+        self.sessao_morta = bool(sessao_morta)
+        self.leu = bool(leu)
+        self.quadro_saiu = bool(quadro_saiu)
+        self.rodada = rodada
+        super().__init__(self.motivo)
 
 
 @dataclass(frozen=True)
@@ -225,8 +277,10 @@ _JS_COMUM = """
 JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
   const [s1, segs] = await pegar(a.api + '/calculo/seguradoras', a.tApi);
   if (s1 !== 200 || !Array.isArray(segs)) return {erro: 'seguradoras_http_' + s1};
+  window.__abSegredos = M.coletarSegredos(segs, window.__abSegredos);   // as credenciais: para REDIGIR o que volta
   const cot = a.cot;
   let negocio = null;
+  let ids = null;
   if (a.negocio_ref) {
     const [sv, vs] = await pegar(a.pdocs + '/calculo/cotacao/versoes/' + encodeURIComponent(a.negocio_ref), a.tPdocs);
     if (sv !== 200 || !Array.isArray(vs) || !vs.length) return {erro: 'versoes_http_' + sv};
@@ -244,6 +298,9 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
     }
     cot.id = v.id; cot.negocioId = v.negocioId; cot.idIntegracao = v.idIntegracao; cot.versao = v.versao;
     negocio = {id: v.negocioId};
+    // os 4 ids do negócio, como o Agger os deu para ESTE negocio_ref: a guarda só deixa o POST passar com eles
+    ids = {ref: v.idIntegracao == null ? null : String(v.idIntegracao),
+           negocio: v.negocioId == null ? null : String(v.negocioId), versao: v.id == null ? null : String(v.id)};
   }
   if (!a.da_versao) {
     const auto = cot.automoveis[0];
@@ -278,7 +335,7 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
   if (a.ajuste) { if (!M.aplicarAjuste(cot, a.ajuste)) return {erro: 'ajuste_sem_alvo'}; }
   if (!cot.calculos || !cot.calculos.length) return {erro: 'nenhuma_seguradora'};
   window.__abCorpo = {cotacao: cot, negocio: negocio, correlationId: cot.correlationId};
-  return {ok: true, seguradoras: cot.calculos.map(c => c.seguradora)};
+  return {ok: true, seguradoras: cot.calculos.map(c => c.seguradora), ids: ids};
 }"""
 
 # ENVIA o corpo preparado. Devolve só o status e o que a lista branca de `calcularV2_resposta` deixa.
@@ -291,18 +348,25 @@ JS_ENVIAR = """async (a) => {
       headers: {Authorization: a.tApi, 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*'}});
   } catch (e) { return {fase: 'post', erro: 'rede'}; }
   const t = await r.text(); let d = null; try { d = JSON.parse(t) } catch (e) {}
+  // as credenciais que ESTE corpo levou (e as da config): nenhuma volta ao Python, nem dentro de um texto
+  const segredos = M.coletarSegredos(corpo, window.__abSegredos);
   let msg = null;
   if (r.status >= 400 && d && typeof d === 'object') {
     const m = d.message || d.mensagem || d.error;
-    if (typeof m === 'string') msg = m.slice(0, 160);
+    if (typeof m === 'string') msg = M.redigirSegredos(m.slice(0, 160), segredos);
   }
-  return {fase: 'post', status: r.status, resposta: d && typeof d === 'object' ? M.filtrar(d, a.lista) : null, mensagem: msg};
+  return {fase: 'post', status: r.status,
+          resposta: d && typeof d === 'object' ? M.redigirSegredos(M.filtrar(d, a.lista), segredos) : null, mensagem: msg};
 }"""
 
+# A leitura: lista branca do endpoint E, depois dela, toda string que CONTÉM uma credencial (da config ou da própria
+# resposta crua) vira `<redacted:credencial>` — 📊 red team 05/10: uma seguradora que ecoa "usuario X senha Y" num
+# alerta levava 13 alertas com a senha ao banco (conserto 129-B, red B3).
 JS_LER_CALCULOS = """async (a) => {""" + _JS_COMUM + """
   const [s, d] = await pegar(a.pdocs + '/calculo/cotacao/calculos/' + encodeURIComponent(a.ref) + '/' + a.versao, a.tPdocs);
   if (s !== 200 || !Array.isArray(d)) return {status: s, corpo: null};
-  return {status: s, corpo: M.filtrar(d, a.lista)};
+  const segredos = M.coletarSegredos(d, window.__abSegredos);
+  return {status: s, corpo: M.redigirSegredos(M.filtrar(d, a.lista), segredos)};
 }"""
 
 JS_PESSOA_MEXEU = """async (a) => {""" + _JS_COMUM + """
@@ -391,8 +455,41 @@ def _oferta_sem_proibida(o: Any) -> bool:
         str(k).lower() in CHAVES_PROIBIDAS_NA_OFERTA for k, _ in o.coberturas)
 
 
+# O texto LIVRE de um item (o que a seguradora escreve): a 2ª rede o passa pelo redator de PII além do de URL/chave
+# (conserto 129-B, red B3). Só estes caminhos: nome, pacote, códigos e prêmios são a IDENTIDADE da oferta e ficam.
+_TEXTO_LIVRE_DO_ITEM = ("retornoErro", "erros", "alertas")
+_TEXTO_LIVRE_DO_RESULTADO = ("erros", "alertas", "observacoes")
+
+
+def _redigir_livre(valor: Any) -> Any:
+    if isinstance(valor, str):
+        return redigir_texto(sem_url_nem_chave(valor))
+    if isinstance(valor, list):
+        return [_redigir_livre(v) for v in valor]
+    return valor
+
+
+def _item_com_texto_livre_redigido(item: dict) -> dict:
+    novo = dict(item)
+    for k in _TEXTO_LIVRE_DO_ITEM:
+        if k in novo:
+            novo[k] = _redigir_livre(novo[k])
+    if isinstance(novo.get("resultados"), list):
+        res = []
+        for r in novo["resultados"]:
+            if isinstance(r, dict):
+                r = dict(r)
+                for k in _TEXTO_LIVRE_DO_RESULTADO:
+                    if k in r:
+                        r[k] = _redigir_livre(r[k])
+            res.append(r)
+        novo["resultados"] = res
+    return novo
+
+
 def separar_itens(corpo: Any, ramo: int = RAMO_AUTO) -> Tuple[List[dict], List[Tuple[Any, Optional[int]]]]:
-    """(itens limpos, [(seguradora, código) descartados]). Pura — o G5 a usa com a mutação."""
+    """(itens limpos, [(seguradora, código) descartados]). Pura — o G5 a usa com a mutação.
+    O item limpo sai com o texto LIVRE (erros, alertas, observações) já redigido (PII, URL, chave)."""
     limpos: List[dict] = []
     sujos: List[Tuple[Any, Optional[int]]] = []
     for item in corpo if isinstance(corpo, list) else []:
@@ -405,7 +502,7 @@ def separar_itens(corpo: Any, ramo: int = RAMO_AUTO) -> Tuple[List[dict], List[T
             ok = all(not tem_url_ou_chave(t) for t in _textos_da_resposta(r)) and all(
                 _oferta_sem_proibida(o) for o in r.ofertas)
         if ok:
-            limpos.append(item)
+            limpos.append(_item_com_texto_livre_redigido(item))
         else:
             sujos.append((sem_url_nem_chave(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""), cod))
     return limpos, sujos
@@ -419,6 +516,16 @@ def _args_base(sessao: Any) -> Dict[str, Any]:
             "tPdocs": sessao.token("pdocs")}
 
 
+_RE_HTTP_MORTO = re.compile(r"_http_(401|403)$")
+
+
+def _recusa_do_preparo(codigo: Any) -> DisparoRecusado:
+    codigo = str(codigo or "sem_resposta")
+    if _RE_HTTP_MORTO.search(codigo):
+        return SessaoMorta(f"a sessão do robô no Agger caiu antes do cálculo ({codigo})")
+    return DisparoRecusado(MOTIVOS_LEGIVEIS.get(codigo, f"preparo: {codigo}"))
+
+
 async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
     await sessao.garantir_token()
     try:
@@ -426,7 +533,14 @@ async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
     except Exception as e:  # noqa: BLE001 — nada saiu
         raise DisparoRecusado(f"preparo falhou ({type(e).__name__})") from None
     if not isinstance(prep, dict) or not prep.get("ok"):
-        raise DisparoRecusado(f"preparo: {(prep or {}).get('erro', 'sem_resposta') if isinstance(prep, dict) else 'sem_resposta'}")
+        raise _recusa_do_preparo(prep.get("erro") if isinstance(prep, dict) else None)
+    ids = prep.get("ids")
+    pedido_ref = args.get("negocio_ref")
+    if pedido_ref and isinstance(ids, dict) and ids.get("ref") is not None and str(ids["ref"]) == str(pedido_ref):
+        # 🔴 a guarda passa a conhecer os 4 ids DESTE negócio (red P1/juiz P1): o POST só passa com eles coerentes
+        registrar = getattr(sessao, "registrar_ids_do_negocio", None)
+        if registrar is not None:
+            registrar(str(pedido_ref), negocio_id=ids.get("negocio"), versao_id=ids.get("versao"))
     antes = sessao.contagem_de_escritas()["calcularV2"]
     t0 = time.time()
     try:
@@ -452,6 +566,9 @@ async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
         ref = str(resp["idIntegracao"])
         sessao.registrar_negocio(ref)
         return Disparo(negocio_ref=ref, versao=int(resp["versao"]), t0=t0)
+    if status in STATUS_SESSAO_MORTA:
+        # 401/403 = o servidor não autenticou: nada foi criado, a sessão morreu
+        raise SessaoMorta(f"a sessão do robô no Agger caiu (HTTP {status})")
     if 400 <= status < 500:
         msg = sem_url_nem_chave(r.get("mensagem") or "")
         raise DisparoRecusado(f"HTTP {status}" + (f": {msg}" if msg else ""))
@@ -484,10 +601,20 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
                      anterior: Optional[RodadaDoCalculo] = None, quadro_s: float = 60, teto_s: float = 480,
                      intervalo_s: float = 3, ao_quadro: Optional[Callable[[], Awaitable[Any]]] = None) -> RodadaDoCalculo:
     """Lê `calculos/{negocio}/{versao}` aos poucos (📊 184 KB constante × 373 KB das versões). Cada rodada → o
-    leitor PURO → `eventos_entre(anterior, nova)` → `ao_evento`. Fecha quando tudo respondeu ou no teto."""
+    leitor PURO → `eventos_entre(anterior, nova)` → `ao_evento`. Fecha quando tudo respondeu ou no teto.
+
+    🔴 Conserto 129-B (juiz B1): "não consegui ler" NUNCA vira uma rodada vazia. 401/403 (sessão morta), página
+    fechada, `LEITURAS_FALHAS_MAX` leituras seguidas sem resposta válida, ou o teto sem NENHUMA leitura válida →
+    `LeituraImpossivel` (com `leu`/`quadro_saiu`/`rodada`, para o motor decidir entre `fechado` e `falhou`)."""
     atual = anterior
     quadro = False
+    leu = False
+    falhas = 0
     descartadas: Set[Any] = set()
+
+    def impossivel(motivo: str, *, morta: bool) -> LeituraImpossivel:
+        return LeituraImpossivel(motivo, sessao_morta=morta, leu=leu, quadro_saiu=quadro, rodada=atual)
+
     while True:
         await sessao.garantir_token()
         t = time.time() - disparo.t0
@@ -497,8 +624,21 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
         except Exception as e:  # noqa: BLE001
             logger.warning("multicalculo.robo leitura falhou (%s)", type(e).__name__)
             r = None
+            pagina = getattr(sessao, "pagina", None)
+            fechada = False
+            try:
+                fechada = bool(pagina is not None and pagina.is_closed())
+            except Exception:  # noqa: BLE001
+                fechada = True
+            if fechada:
+                raise impossivel("a página do robô fechou durante a leitura", morta=True) from None
+        status = r.get("status") if isinstance(r, dict) else None
+        if status in STATUS_SESSAO_MORTA:
+            raise impossivel(f"o Agger recusou a leitura (HTTP {status}): a sessão do robô caiu", morta=True)
         nova = None
-        if isinstance(r, dict) and r.get("status") == 200 and isinstance(r.get("corpo"), list):
+        if isinstance(r, dict) and status == 200 and isinstance(r.get("corpo"), list):
+            leu = True
+            falhas = 0
             limpos, sujos = separar_itens(r["corpo"])
             for nome, cod in sujos:
                 chave = cod if cod is not None else nome
@@ -510,11 +650,18 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
                 for e in eventos_entre(atual, nova):
                     await ao_evento(e)
                 atual = nova
+        else:
+            falhas += 1
+            if falhas >= LEITURAS_FALHAS_MAX:
+                raise impossivel(f"{falhas} leituras seguidas sem resposta do Agger", morta=False)
         fechado = bool(atual is not None and atual.fechado)
-        if ao_quadro is not None and not quadro and (t >= quadro_s or fechado):
+        if ao_quadro is not None and not quadro and leu and (t >= quadro_s or fechado):
+            # 🔴 o quadro só "sai" com algo LIDO: sem leitura, não há quadro a mostrar
             quadro = True
             await ao_quadro()
         if fechado or t >= teto_s:
+            if not leu:
+                raise impossivel("o prazo acabou sem nenhuma leitura válida do Agger", morta=False)
             return atual if atual is not None else RodadaDoCalculo(t_s=t, respostas=(), fechado=False)
         await asyncio.sleep(intervalo_s)
 
