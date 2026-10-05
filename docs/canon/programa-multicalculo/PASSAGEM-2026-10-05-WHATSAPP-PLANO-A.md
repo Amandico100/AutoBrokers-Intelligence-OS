@@ -98,7 +98,19 @@ O motor, a comparação, o leitor de apólice, a renovação e a cotação do co
 apagar nada no Agger nem na InfoCap; nunca o login de uma pessoa no motor em uso real (D-MC-24); nenhum nome de corretora no código;
 verba de API do produto US$ 4,00 (livro-caixa no ESTADO-DO-PROGRAMA).
 
-## 6. Fontes
+## 6. Esclarecimentos (o gerente da 128 resolveu as 6 dúvidas que o atualizador do canon levantou)
+1. **Custo da conversa:** no WhatsApp a conversa é do nosso agente (§2, D-MC-52) — o plano §8 foi corrigido.
+2. **"Uma corretora de registro por cálculo" (plano §6.6) continua verdade:** cada CÁLCULO roda na conta de uma corretora; o PEDIDO do
+   cliente agora gera N cálculos (um por parceira, D-MC-56) e a vencedora é a corretora de registro do que o cliente fechar.
+3. **Preço na 133-A (piloto fechado):** vale a configuração ATUAL de cada corretora no Agger (comissão e desconto como estão hoje);
+   a regra de preço do canal (D-MC-29) só entra no portão da 133-B. Os testadores veem preços reais, sem promessa comercial.
+4. **A 137 (público)** = o Quem Cobra Menos no WhatsApp aberto a qualquer pessoa (depois da 134, na API oficial). Claude/ChatGPT é a ★,
+   depois — não é a 137.
+5. **Carga nas seguradoras:** padrão + econômica em N corretoras = 💭 2 × N cálculos por pedido. O Founder decidiu sem teto no início
+   (D-MC-53); a 129-B mede recusas e estranhamentos por seguradora, e o teto volta se aparecer sinal.
+6. **Tamanho da 133-A:** 💭 M, 2–3 etapas (o número e a instância Evolution · o agente e a conversa · os 5 testadores e a medição).
+
+## 7. Fontes
 - Meta, preço por mensagem (01/07/2025) e janela de 24 h: https://developers.facebook.com/docs/whatsapp/pricing
 - A mudança de 01/10/2026 (serviço cobrado após 1.000/mês; Brasil ~US$ 0,0068): https://periskope.app/blog/whatsapp-business-api-pricing-changes-october-1 · https://www.callbell.eu/en/new-whatsapp-business-api-prices-october-2026-meta-fees-and-how-to-manage-costs/
 - Medições: `programa-multicalculo/A-PROVA-DO-AGGER.md` (SPEC-128).
