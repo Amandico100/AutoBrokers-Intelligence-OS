@@ -18,6 +18,8 @@ CALCULOS = "multicalculo_calculos"
 OFERTAS = "multicalculo_ofertas"
 EVENTOS = "multicalculo_eventos"
 ADESOES = "multicalculo_adesoes"
+#: o bucket privado onde o motor grava o PDF (`portal_worker.worker._upload_portal_blob`)
+BUCKET_DOS_PDFS = "portal-evidence"
 
 #: o que a porta lê de um cálculo (nunca `pedido_cifrado`, que mora no pedido e só o motor decifra)
 _COLS_CALCULO = ("id, pedido_id, solicitante_company_id, company_id, opcao, coberturas, status, negocio_ref, versao, "
@@ -129,6 +131,33 @@ class RepositorioMulticalculo:
         return _dados(self.db.table(EVENTOS).select(_COLS_EVENTO)
                       .eq("pedido_id", str(pedido_id)).eq("solicitante_company_id", str(company_id))
                       .gt("id", int(desde_evento or 0)).order("id").limit(1000).execute())
+
+    def ajustes_em_curso(self, *, company_id: str, origem_calculo_id: str) -> List[Dict[str, Any]]:
+        """Os recálculos (`ajuste`) desta origem, deste solicitante, ainda na fila ou no robô (conserto 129-B, red P4)."""
+        return _dados(self.db.table(CALCULOS).select(_COLS_CALCULO)
+                      .eq("origem_calculo_id", str(origem_calculo_id)).eq("solicitante_company_id", str(company_id))
+                      .eq("opcao", "ajuste").in_("status", ["na_fila", "disparando", "calculando"])
+                      .order("criado_em").execute())
+
+    # ------------------------------------------------------------------ o PDF (conserto 129-B, juiz B2)
+    _COLS_OFERTA_PDF = "id, calculo_id, pedido_id, company_id, solicitante_company_id, tem_pdf, pdf_path"
+
+    def oferta_do_solicitante(self, *, company_id: str, oferta_id: str) -> Optional[Dict[str, Any]]:
+        """A oferta de um pedido que ESTE `company_id` fez (a visibilidade da corretora de outra empresa a porta confere)."""
+        linhas = _dados(self.db.table(OFERTAS).select(self._COLS_OFERTA_PDF)
+                        .eq("id", str(oferta_id)).eq("solicitante_company_id", str(company_id)).limit(1).execute())
+        return linhas[0] if linhas else None
+
+    def oferta_da_corretora(self, *, company_id: str, oferta_id: str) -> Optional[Dict[str, Any]]:
+        """A oferta calculada no login DESTA corretora (a corretora de registro)."""
+        linhas = _dados(self.db.table(OFERTAS).select(self._COLS_OFERTA_PDF)
+                        .eq("id", str(oferta_id)).eq("company_id", str(company_id)).limit(1).execute())
+        return linhas[0] if linhas else None
+
+    def baixar_pdf(self, caminho: str) -> Optional[bytes]:
+        """Os bytes do PDF no bucket privado onde o motor o gravou (`portal-evidence`, `_upload_portal_blob`)."""
+        dado = self.db.storage.from_(BUCKET_DOS_PDFS).download(str(caminho))
+        return bytes(dado) if dado else None
 
     def fila_a_frente(self) -> List[Dict[str, Any]]:
         """(prioridade, disponivel_em) de TODO cálculo na fila — só para contar a posição. Nenhum id sai daqui."""
