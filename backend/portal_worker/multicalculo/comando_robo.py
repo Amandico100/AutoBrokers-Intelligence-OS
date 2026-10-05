@@ -8,7 +8,7 @@
                   [--janela "seg-sex,07:00-20:00"]      senha: MULTICALCULO_SENHA ou digitada (getpass) — NUNCA argumento
                   (--estado OBRIGATÓRIO: `ativo` = login de ROBÔ em uso real; `teste` = login de PESSOA, só canário)
     pausar        --conta <uuid>
-    religar       --conta <uuid> --estado ativo|teste   pausado/bloqueado/ocupada → de volta (o motor NUNCA desfaz)
+    religar       --conta <uuid> --estado ativo|teste   pausado/bloqueado/ocupada -> de volta (o motor NUNCA desfaz)
     trocar-senha  --conta <uuid>                        senha nova (getpass); a conta fica pausada; depois `religar`
     listar        [--corretora <uuid>]                  sem senha; o usuário MASCARADO
     aderir        --canal <uuid> --corretora <uuid>     recusa se o canal não for `platform_canal`
@@ -59,8 +59,8 @@ def _uuid(valor: str, nome: str) -> str:
 
 
 def janela_de_texto(texto: Optional[str]) -> Optional[Dict[str, str]]:
-    """`"seg-sex,07:00-20:00"` → `{"dias": "seg-sex", "inicio": "07:00", "fim": "20:00"}` — o objeto que o CHECK do
-    banco exige (`jsonb_typeof = 'object'`) e que `robos.dentro_da_janela` lê. Ilegível → `Recusa` (a regra do motor
+    """`"seg-sex,07:00-20:00"` -> `{"dias": "seg-sex", "inicio": "07:00", "fim": "20:00"}` — o objeto que o CHECK do
+    banco exige (`jsonb_typeof = 'object'`) e que `robos.dentro_da_janela` lê. Ilegível -> `Recusa` (a regra do motor
     é "janela ilegível = fora", e uma conta que nunca trabalha cadastrada em silêncio é pior que a recusa)."""
     if texto is None:
         return None
@@ -142,7 +142,7 @@ def pausar(supa, args) -> str:
 
 
 def religar(supa, args) -> str:
-    """Conserto 129-B (juiz P3, red P8): `pausado`/`bloqueado`/`ocupada` → `ativo` ou `teste` — o ÚNICO caminho de
+    """Conserto 129-B (juiz P3, red P8): `pausado`/`bloqueado`/`ocupada` -> `ativo` ou `teste` — o ÚNICO caminho de
     volta (o motor nunca desfaz uma pausa). `--estado` obrigatório: religar o login de uma PESSOA como `ativo` o põe em
     uso real, e isso tem de ser escrito, nunca padrão. Recusa conta sem senha e `teste` sem janela."""
     conta = _conta(supa, _uuid(args.conta, "--conta"))
@@ -162,7 +162,7 @@ def religar(supa, args) -> str:
                    .eq("id", conta["id"]).eq("company_id", conta["company_id"]).in_("robo_estado", list(de)).execute())
     if not feito:
         raise Recusa("a conta mudou de estado enquanto o comando rodava — rode `listar` e tente de novo")
-    return f"robô religado: conta {conta['id']} ({conta.get('robo_estado')} → {estado})"
+    return f"robô religado: conta {conta['id']} ({conta.get('robo_estado')} -> {estado})"
 
 
 def trocar_senha(supa, args, *, ler_senha: Callable[[], str], cifrar: Callable[[str], str]) -> str:
@@ -223,10 +223,10 @@ def aderir(supa, args) -> str:
     if existe:
         supa.table("multicalculo_adesoes").update({"ativa": True, "desativada_em": None}).eq(
             "id", existe[0]["id"]).eq("canal_company_id", canal).execute()
-        return f"adesão reativada: canal {canal} → corretora {corretora}"
+        return f"adesão reativada: canal {canal} -> corretora {corretora}"
     supa.table("multicalculo_adesoes").insert({"canal_company_id": canal, "corretora_company_id": corretora,
                                                "ativa": True}).execute()
-    return f"adesão criada: canal {canal} → corretora {corretora}"
+    return f"adesão criada: canal {canal} -> corretora {corretora}"
 
 
 # ======================================================================================================================
@@ -248,7 +248,7 @@ def _parser() -> argparse.ArgumentParser:
                         ("trocar-senha", "troca a senha (digitada ou MULTICALCULO_SENHA) e pausa; depois `religar`")):
         s = sub.add_parser(nome, help=ajuda)
         s.add_argument("--conta", required=True)
-    s = sub.add_parser("religar", help="pausado/bloqueado/ocupada → ativo ou teste (o único caminho de volta)")
+    s = sub.add_parser("religar", help="pausado/bloqueado/ocupada -> ativo ou teste (o único caminho de volta)")
     s.add_argument("--conta", required=True)
     s.add_argument("--estado", required=True, choices=(robos.ATIVO, robos.TESTE))
     s = sub.add_parser("listar", help="lista os robôs (sem senha)")
@@ -268,6 +268,13 @@ def _senha_do_ambiente_ou_digitada() -> str:
 
 def main(argv: Optional[List[str]] = None, *, supa=None, ler_senha: Optional[Callable[[], str]] = None,
          cifrar: Optional[Callable[[str], str]] = None, escrever: Callable[[str], Any] = print) -> int:
+    # console Windows (cp1252) quebrava ao imprimir caractere fora da tabela DEPOIS de gravar no banco (confirmação
+    # 129-B, P-0): a saída nunca derruba o comando — o que não cabe vira "?"
+    for _fluxo in (sys.stdout, sys.stderr):
+        try:
+            _fluxo.reconfigure(errors="replace")
+        except Exception:  # noqa: BLE001 — fluxo substituído (testes, pipes)
+            pass
     try:
         args = _parser().parse_args(argv)
     except SystemExit as e:   # argumento faltando/errado: o argparse já explicou; é RECUSA (2), não exceção
