@@ -181,15 +181,15 @@ CPF = "52998224725"
 def _dados(perfil=True):
     d = {
         "segurado": {"cpf_cnpj": "529.982.247-25", "nome": "Pessoa Sintetica", "nascimento": "01/02/1980",
-                     "sexo": "M", "estado_civil": "casado", "cep": "01001-000"},
+                     "sexo": "M", "estado_civil": 2, "cep": "01001-000"},   # F4: CÓDIGO (o rótulo não foi medido)
         "veiculo": {"fipe": "001234-5", "ano_fabricacao": 2020, "combustivel": "flex", "placa": "abc-1d23"},
         "pernoite": {"cep_pernoite": "01001000"},
         "condutor": {"cpf": CPF, "nome": "Pessoa Sintetica", "nascimento": "1980-02-01", "sexo": "M",
-                     "estado_civil": "casado", "tempo_habilitacao": 20},
+                     "estado_civil": "2", "tempo_habilitacao": 20},
     }
     if perfil:
-        d["pernoite"]["garagem_residencia"] = "sim"
-        d["veiculo"]["uso"] = "particular"
+        d["pernoite"]["garagem_residencia"] = "2"         # F4: códigos (📊 os padrões da tela, 18/18 corpos)
+        d["veiculo"]["uso"] = 1
         d["questionario"] = {"km_mensal": 800}
         d["condutor"]["jovem_condutor"] = False
     return d
@@ -381,7 +381,7 @@ def test_recalcular_nova_versao_na_mesma_corretora_a_partir_da_origem():
     linha = next(c for c in db.linhas("multicalculo_calculos") if c["id"] == novo["id"])
     assert linha["company_id"] == A and linha["opcao"] == "ajuste" and linha["origem_calculo_id"] == padrao_a["id"]
     assert linha["pedido_id"] == aberto.pedido_id and linha["solicitante_company_id"] == CANAL
-    assert linha["coberturas"] == {**PRESETS["padrao"], "carro_reserva": 30}
+    assert linha["coberturas"] == {**PRESETS["padrao"], "carroReserva": 30}      # F4: a chave do AGGER
     assert linha["ajuste"]["versao_base"] == 3 and linha["ajuste"]["negocio_ref"] == "neg-1"
     assert linha["status"] == "na_fila"
 
@@ -416,7 +416,7 @@ def _apolice_da_fixture():
 
     doc = json.loads(FIXTURE_INFOCAP.read_text(encoding="utf-8"))["documento"][0]
     pack = {"policy_locator_ref": "infocap:1:" + doc["nosnum"], "policy_number": doc["numapo"],
-            "insurer_detected": "Seguradora Sintetica", "product_detected": "AUTO",
+            "insurer_detected": "PORT", "product_detected": "AUTO",
             "valid_from": "2025-11-01", "valid_to": "2026-11-01",
             "risk_objects": [{"item_number": 1, "plate": "XYZ9A87"}]}
     return doc, apolice_do_pack(pack, hoje=date(2026, 10, 5))
@@ -425,7 +425,7 @@ def _apolice_da_fixture():
 def test_g13_de_apolice_vira_pedido_de_renovacao_com_o_bonus_e_os_assumidos():
     doc, apolice = _apolice_da_fixture()
     perfil = {"segurado": {"cpf_cnpj": "529.982.247-25", "nome": doc["cliente"], "nascimento": "1980-02-01",
-                           "sexo": "F", "estado_civil": "solteiro", "cep": "88000-000"},
+                           "sexo": "F", "estado_civil": 1, "cep": "88000-000"},
               "veiculo": {"fipe": "009999-1", "ano_fabricacao": 2019, "ano_modelo": 2020, "combustivel": "flex",
                           "chassi": "9bw zzz377vt004251"},
               "renovacao": {"bonus_anterior": 4},
@@ -445,7 +445,8 @@ def test_g13_de_apolice_vira_pedido_de_renovacao_com_o_bonus_e_os_assumidos():
     perfil["condutor"] = {"tempo_habilitacao": 15}
     pedido = de_apolice(apolice, perfil)
     assert pedido.faltando() == []
-    assert pedido.valor("condutor", "estado_civil") == "solteiro" and "condutor.estado_civil" in pedido.assumidos
+    assert pedido.valor("condutor", "estado_civil") == 1 and "condutor.estado_civil" in pedido.assumidos
+    assert d["renovacao"]["seguradora_anterior"] == "Porto Seguro Cia Seg. Gerais"   # F4: o NOME do Agger
     db = _mundo()
     aberto = rodar(_porta(db).calcular(company_id=A, pedido=pedido, origem="auxiliar"))
     assert len(aberto.calculos) == 2 and db.linhas("multicalculo_pedidos")[0]["origem"] == "auxiliar"
@@ -511,6 +512,29 @@ def test_d129b11_post_credentials_recusa_agger_e_nao_grava(monkeypatch):
     assert ("portal_accounts", "insert") in db.log
 
 
+def test_d129b11_get_omite_e_delete_recusa_a_conta_do_robo(monkeypatch):
+    """F4 (costura, junta 9): a tela das pessoas não vê o robô e não o apaga (o DELETE cairia na FK dos cálculos)."""
+    from fastapi import HTTPException
+
+    API, db, _req = _salvar(monkeypatch, "agger")
+    for chave, rotulo in (("agger", "robo-1"), ("allianz_corretor", "principal")):
+        db.tabelas.setdefault("portal_accounts", []).append(
+            {"id": str(uuid.uuid4()), "company_id": A, "portal_key": chave, "account_label": rotulo,
+             "username": "usuario-sintetico", "health": "unknown", "updated_at": None, "secret_encrypted": "x"})
+    lista = rodar(API.list_credentials(company_id=A, x_key="chave-interna-sintetica"))["credentials"]
+    assert [c["portal_key"] for c in lista] == ["allianz_corretor"]          # o robô some; o CONTROLE fica
+    for chave in ("agger", " AGGER "):
+        with pytest.raises(HTTPException) as e:
+            rodar(API.delete_credential(company_id=A, portal_key=chave, account_label="robo-1",
+                                        x_key="chave-interna-sintetica"))
+        assert e.value.status_code == 403
+    assert len(db.linhas("portal_accounts")) == 2 and ("portal_accounts", "delete") not in db.log
+    # CONTROLE: a credencial de seguradora continua apagável
+    assert rodar(API.delete_credential(company_id=A, portal_key="allianz_corretor",
+                                       x_key="chave-interna-sintetica")) == {"ok": True}
+    assert [c["portal_key"] for c in db.linhas("portal_accounts")] == ["agger"]
+
+
 # =====================================================================================================================
 # P10 — o nome do canal não vira "marca" genérica no porteiro das cartas globais
 # =====================================================================================================================
@@ -528,3 +552,73 @@ def test_p10_o_nome_do_canal_so_mascara_o_nome_inteiro():
         p = _PerfilDeCorretora(nome)
         assert any(rx.search(nome.lower()) for rx in p.frases)
         assert not any(rx.search(comum) for rx in p.frases)
+
+
+# =====================================================================================================================
+# F4 (costura, juntas 3 · 4 · 5): o que o robô recusaria lá na frente, a porta recusa ANTES de gravar
+# =====================================================================================================================
+def test_f4_texto_sem_codigo_medido_e_pedido_incompleto_antes_de_gravar():
+    db = _mundo()
+    porta = _porta(db)
+    dados = _dados()
+    dados["segurado"]["estado_civil"] = "casado"            # rótulo sem código medido
+    dados["veiculo"]["uso"] = "particular"
+    dados["pernoite"]["garagem_residencia"] = "sim"
+    dados["condutor"]["jovem_condutor"] = "talvez"
+    with pytest.raises(PedidoIncompleto) as e:
+        rodar(porta.calcular(company_id=A, pedido=PedidoDeCalculo.de_dict(dados), origem="auxiliar"))
+    assert e.value.campos == ["condutor.jovem_condutor", "pernoite.garagem_residencia", "segurado.estado_civil",
+                              "veiculo.uso"]
+    assert "casado" not in str(e.value) and db.linhas("multicalculo_pedidos") == []
+    # CONTROLE: os rótulos MEDIDOS viram código; "não" vira False (o robô faria bool("não") = True)
+    dados = _dados()
+    dados["veiculo"]["combustivel"] = "Flex"
+    dados["segurado"]["sexo"] = "feminino"
+    dados["condutor"]["jovem_condutor"] = "não"
+    dados["condutor"]["relacao_com_segurado"] = "Próprio"
+    p = PedidoDeCalculo.de_dict(dados)
+    assert p.sem_codigo() == []
+    d = p.para_dict()
+    assert (d["veiculo"]["combustivel"], d["segurado"]["sexo"], d["condutor"]["jovem_condutor"],
+            d["condutor"]["relacao_com_segurado"], d["segurado"]["estado_civil"]) == (6, "F", False, 1, 2)
+    rodar(porta.calcular(company_id=A, pedido=p, origem="auxiliar"))
+    assert len(db.linhas("multicalculo_pedidos")) == 1
+
+
+def test_f4_renovacao_sem_seguradora_anterior_conhecida_no_agger_e_incompleta():
+    from app.providers.infocap_policy_provider import apolice_do_pack
+
+    def apolice(sigla):
+        return apolice_do_pack({"policy_locator_ref": "infocap:1:x", "policy_number": "1", "insurer_detected": sigla,
+                                "product_detected": "AUTO", "valid_from": "2025-11-01", "valid_to": "2026-11-01",
+                                "risk_objects": [{"item_number": 1, "plate": "XYZ9A87"}]}, hoje=date(2026, 10, 5))
+
+    perfil = {"segurado": dict(_dados()["segurado"]), "veiculo": dict(_dados()["veiculo"]),
+              "condutor": {"tempo_habilitacao": 10}}
+    db = _mundo()
+    for sigla in ("SULA", "Seguradora Sintetica"):          # SulAmérica: 2 no Agger, coenti UNKNOWN · desconhecida
+        with pytest.raises(PedidoIncompleto) as e:
+            rodar(_porta(db).calcular(company_id=A, pedido=de_apolice(apolice(sigla), perfil), origem="auxiliar"))
+        assert e.value.campos == ["renovacao.seguradora_anterior"]
+    assert db.linhas("multicalculo_pedidos") == []
+    # CONTROLE: a Porto (coenti 05886) vai com o nome EXATO da lista do Agger; o texto livre também é traduzido
+    for sigla in ("PORT", "TMAR", "ALLI", "BRAD"):
+        assert de_apolice(apolice(sigla), perfil).sem_codigo() == []
+    assert PedidoDeCalculo.de_dict({"renovacao": {"renovacao": True, "seguradora_anterior": "porto seguro cia seg. gerais"}}
+                                   ).valor("renovacao", "seguradora_anterior") == "Porto Seguro Cia Seg. Gerais"
+
+
+def test_f4_ajuste_vai_na_chave_do_agger_e_rotulo_sem_codigo_e_recusado():
+    db = _mundo()
+    porta = _porta(db)
+    rodar(porta.calcular(company_id=A, pedido=_pedido(), origem="auxiliar"))
+    padrao = next(c for c in db.linhas("multicalculo_calculos") if c["opcao"] == "padrao")
+    padrao.update({"status": "fechado", "negocio_ref": "neg-1", "versao": 1})
+    novo = rodar(porta.recalcular(company_id=A, calculo_id=padrao["id"], ajuste={"tipo": "franquia", "valor": "normal"}))
+    linha = next(c for c in db.linhas("multicalculo_calculos") if c["id"] == novo["id"])
+    assert linha["coberturas"] == {**PRESETS["padrao"], "tipoFranquia": 2}      # a chave do AGGER, nunca "franquia"
+    assert (linha["ajuste"]["tipo"], linha["ajuste"]["valor"]) == ("franquia", 2)
+    antes = len(db.linhas("multicalculo_calculos"))
+    with pytest.raises(ValueError):
+        rodar(porta.recalcular(company_id=A, calculo_id=padrao["id"], ajuste={"tipo": "franquia", "valor": "media"}))
+    assert len(db.linhas("multicalculo_calculos")) == antes
