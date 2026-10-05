@@ -62,6 +62,25 @@ _ECONOMICA: Dict[str, object] = dict(
 
 PRESETS: Mapping[str, Mapping[str, object]] = {PADRAO: _PADRAO, ECONOMICA: _ECONOMICA}
 
+# O AJUSTE do corretor (`contrato.Ajuste`) → a chave de cobertura que ele troca. 🔴 O GÊMEO em Python de
+# `CAMPO_DO_AJUSTE` do `montador.js` (o robô aplica lá, na página): a porta usa este para gravar em
+# `calculos.coberturas` o que o recálculo VAI mandar — sem ele, `coberturas` do ajuste guardava `{"franquia": …}`,
+# uma chave que o montador não conhece (F4, costura). `test_spec129b_o_fio` confere que os dois dizem o mesmo.
+# `percentual_fipe` mexe no AUTOMÓVEL (`pctAjuste`), não no item de cobertura: fica fora.
+CAMPO_DO_AJUSTE: Mapping[str, str] = {
+    "comissao": "percComissao", "desconto": "percDesconto", "assistencia": "assist24hs",
+    "carro_reserva": "carroReserva", "vidros": "vidros", "franquia": "tipoFranquia", "cobertura": "tipoCobertura",
+}
+# Os RÓTULOS que viram código no ajuste — só os MEDIDOS (os mesmos dos presets acima, §9.5):
+#   📊 franquia reduzida 1 · normal 2 (AF Prata × RES Prata) · vidros básico 1 · completo 2 ·
+#   📊 carro reserva 7 dias 1 · 15 dias 2 · assistência completa 1 · básica 4 (NÃO ordinal: ver o topo)
+VALORES_DO_AJUSTE: Mapping[str, Mapping[str, int]] = {
+    "franquia": {"reduzida": 1, "normal": 2},
+    "vidros": {"basico": 1, "completo": 2},
+    "carro_reserva": {"7": 1, "7 dias": 1, "15": 2, "15 dias": 2},
+    "assistencia": {"completa": 1, "basica": 4},
+}
+
 
 def coberturas_de(opcao: str) -> Dict[str, object]:
     """Uma CÓPIA do preset (quem recebe pode alterar sem contaminar o próximo pedido)."""
