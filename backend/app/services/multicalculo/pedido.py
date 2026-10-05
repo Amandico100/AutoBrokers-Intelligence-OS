@@ -16,7 +16,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
 
-from portal_worker.multicalculo.contrato import CAMPOS_DO_PEDIDO_AUTO, RAMO_AUTO
+from portal_worker.multicalculo.contrato import (
+    CAMPOS_DE_CODIGO_INTEIRO, CAMPOS_DE_CODIGO_TEXTO, CAMPOS_DO_PEDIDO_AUTO, CAMPOS_SIM_NAO, CODIGOS_MEDIDOS,
+    RAMO_AUTO, SEGURADORA_ANTERIOR_NO_AGGER,
+)
 
 #: Grupos do pedido que o motor entrega ao robô. `coberturas` e `pacotes` NÃO moram no pedido: cada CÁLCULO tem as
 #: suas (`multicalculo_calculos.coberturas`, resolvidas pela porta por opção). Ficam no dict como `{}` para que as
@@ -65,7 +68,74 @@ def _vazio(valor: Any) -> bool:
     return valor is None or (isinstance(valor, str) and not valor.strip())
 
 
+def _chave_de_texto(texto: str) -> str:
+    bruto = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in bruto if not unicodedata.combining(c)).strip().lower()
+
+
+_INTEIROS = frozenset(CAMPOS_DE_CODIGO_INTEIRO)
+_DIGITOS_TEXTO = frozenset(CAMPOS_DE_CODIGO_TEXTO)
+_SIM_NAO = frozenset(CAMPOS_SIM_NAO)
+_SIM = {"sim", "s", "true", "verdadeiro", "1"}
+_NAO = {"nao", "n", "false", "falso", "0"}
+_NOMES_NO_AGGER = {_chave_de_texto(n): n for n in SEGURADORA_ANTERIOR_NO_AGGER.values()}
+
+
+def _codificar(grupo: str, nome: str, valor: Any) -> Any:
+    """F4 (costura porta × robô): o valor no FORMATO que o robô manda ao Agger — código de lista, inteiro,
+    dígitos, sim/não, nome da seguradora anterior na lista do Agger. O que não tem código MEDIDO volta como veio
+    e `PedidoDeCalculo.sem_codigo()` o aponta (a porta recusa como `PedidoIncompleto`)."""
+    chave = (grupo, nome)
+    mapa = CODIGOS_MEDIDOS.get(chave)
+    if mapa is not None and isinstance(valor, str) and _chave_de_texto(valor) in mapa:
+        return mapa[_chave_de_texto(valor)]
+    if chave in _INTEIROS:
+        if isinstance(valor, bool):
+            return valor
+        if isinstance(valor, int):
+            return valor
+        if isinstance(valor, float) and valor.is_integer():
+            return int(valor)
+        if isinstance(valor, str) and valor.strip().isdigit():
+            return int(valor.strip())
+        return valor
+    if chave in _DIGITOS_TEXTO:
+        if isinstance(valor, int) and not isinstance(valor, bool):
+            return str(valor)
+        return valor
+    if chave in _SIM_NAO and isinstance(valor, str):
+        k = _chave_de_texto(valor)
+        return True if k in _SIM else False if k in _NAO else valor
+    if chave == ("renovacao", "seguradora_anterior"):
+        texto = str(valor).strip()
+        if texto in SEGURADORA_ANTERIOR_NO_AGGER:                 # o coenti da SUSEP
+            return SEGURADORA_ANTERIOR_NO_AGGER[texto]
+        return _NOMES_NO_AGGER.get(_chave_de_texto(texto), valor)
+    return valor
+
+
+def _tem_codigo(grupo: str, nome: str, valor: Any) -> bool:
+    chave = (grupo, nome)
+    if chave in _INTEIROS:
+        return isinstance(valor, int) and not isinstance(valor, bool)
+    if chave in _DIGITOS_TEXTO:
+        return isinstance(valor, str) and valor.isdigit()
+    if chave in _SIM_NAO:
+        return isinstance(valor, bool)
+    mapa = CODIGOS_MEDIDOS.get(chave)
+    if mapa is not None:
+        return valor in set(mapa.values())
+    if chave == ("renovacao", "seguradora_anterior"):
+        return valor in set(SEGURADORA_ANTERIOR_NO_AGGER.values())
+    return True
+
+
 def _sanear(grupo: str, nome: str, valor: Any) -> Any:
+    saneado = _sanear_bruto(grupo, nome, valor)
+    return saneado if saneado is None else _codificar(grupo, nome, saneado)
+
+
+def _sanear_bruto(grupo: str, nome: str, valor: Any) -> Any:
     if valor is None:
         return None
     if isinstance(valor, (date, datetime)):
@@ -149,7 +219,17 @@ class PedidoDeCalculo:
 
     def faltando(self) -> List[str]:
         """Os obrigatórios da E3 que faltam, como "grupo.campo" (nomes, nunca valores)."""
-        return [f"{g}.{n}" for (g, n) in OBRIGATORIOS if _vazio(self.valor(g, n))]
+        faltam = [f"{g}.{n}" for (g, n) in OBRIGATORIOS if _vazio(self.valor(g, n))]
+        # F4: o robô recusa a renovação sem a seguradora anterior (`cotacao_do_pedido`) — a porta pergunta antes
+        if self.renovacao and _vazio(self.valor("renovacao", "seguradora_anterior")):
+            faltam.append("renovacao.seguradora_anterior")
+        return faltam
+
+    def sem_codigo(self) -> List[str]:
+        """F4: os campos PRESENTES cujo valor não tem código medido no Agger (`contrato.CODIGOS_MEDIDOS`) — o robô
+        os recusaria só no disparo. A porta os devolve como `PedidoIncompleto` (nomes, nunca valores)."""
+        return sorted(f"{g}.{n}" for g, campos in self.campos.items() for n, v in campos.items()
+                      if not _vazio(v) and not _tem_codigo(g, n, v))
 
     def perfil_faltando(self) -> List[str]:
         return [f"{g}.{n}" for (g, n) in CAMPOS_DE_PERFIL
@@ -249,9 +329,12 @@ def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] =
         renov["numero_apolice_anterior"] = numero
     seg = getattr(apolice, "seguradora", None)
     if seg is not None and not renov.get("seguradora_anterior"):
-        anterior = seg.coenti if getattr(seg, "conhecida", False) else (seg.nome_listado or None)
+        # F4 (junta 4): o robô procura a anterior em `seguradorasRenovacao` pelo NOME — vai o nome EXATO da lista do
+        # Agger, pelo coenti (`contrato.SEGURADORA_ANTERIOR_NO_AGGER`). Sem linha na tabela → fica faltando e a porta
+        # pergunta (`PedidoIncompleto`), em vez de um disparo recusado lá na frente.
+        anterior = SEGURADORA_ANTERIOR_NO_AGGER.get(str(seg.coenti)) if getattr(seg, "conhecida", False) else None
         if anterior:
-            renov["seguradora_anterior"] = str(anterior)
+            renov["seguradora_anterior"] = anterior
     vig = getattr(apolice, "vigencia", None)
     fim = getattr(vig, "fim", None)
     if isinstance(fim, date):
