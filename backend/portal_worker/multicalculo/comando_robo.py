@@ -4,9 +4,12 @@
     python -m portal_worker.multicalculo.comando_robo <ação> ...     (DENTRO do contêiner do portal-worker)
     python scripts/multicalculo_robo.py <ação> ...                   (no backend / smith-api: o mesmo código)
 
-    cadastrar     --corretora <uuid> --rotulo <texto> --usuario <email> [--estado ativo|teste] [--teto N]
+    cadastrar     --corretora <uuid> --rotulo <texto> --usuario <email> --estado ativo|teste [--teto N]
                   [--janela "seg-sex,07:00-20:00"]      senha: MULTICALCULO_SENHA ou digitada (getpass) — NUNCA argumento
+                  (--estado OBRIGATÓRIO: `ativo` = login de ROBÔ em uso real; `teste` = login de PESSOA, só canário)
     pausar        --conta <uuid>
+    religar       --conta <uuid> --estado ativo|teste   pausado/bloqueado/ocupada → de volta (o motor NUNCA desfaz)
+    trocar-senha  --conta <uuid>                        senha nova (getpass); a conta fica pausada; depois `religar`
     listar        [--corretora <uuid>]                  sem senha; o usuário MASCARADO
     aderir        --canal <uuid> --corretora <uuid>     recusa se o canal não for `platform_canal`
     apagar-senha  --conta <uuid>                        a conta vira `pausado` e fica sem senha
@@ -110,11 +113,14 @@ def cadastrar(supa, args, *, ler_senha: Callable[[], str], cifrar: Callable[[str
     rotulo = str(args.rotulo or "").strip()
     if not rotulo:
         raise Recusa("--rotulo obrigatório")
-    existe = _dados(supa.table("portal_accounts").select("id").eq("company_id", corretora)
+    existe = _dados(supa.table("portal_accounts").select("id, robo_estado").eq("company_id", corretora)
                     .eq("portal_key", PORTAL_KEY).eq("account_label", rotulo).limit(1).execute())
     if existe:
-        raise Recusa("já existe uma conta com este rótulo nesta corretora — use outro rótulo, ou `apagar-senha` "
-                     "e cadastre de novo")
+        # conserto 129-B (juiz P3): a linha FICA (apagar-senha não a remove) — o caminho é trocar a senha e religar
+        cid = existe[0]["id"]
+        raise Recusa(f"já existe a conta {cid} com este rótulo nesta corretora (estado {existe[0].get('robo_estado')})"
+                     f" — para trocar a senha: `trocar-senha --conta {cid}` e depois `religar --conta {cid} --estado "
+                     f"ativo|teste`; ou cadastre com OUTRO rótulo")
     senha = ler_senha()
     if not senha:
         raise Recusa(f"senha vazia (use {ENV_SENHA} ou digite quando pedir)")
@@ -133,6 +139,45 @@ def pausar(supa, args) -> str:
     supa.table("portal_accounts").update({"robo_estado": robos.PAUSADO}).eq("id", conta["id"]).eq(
         "company_id", conta["company_id"]).execute()
     return f"robô pausado: conta {conta['id']} (era {conta.get('robo_estado')})"
+
+
+def religar(supa, args) -> str:
+    """Conserto 129-B (juiz P3, red P8): `pausado`/`bloqueado`/`ocupada` → `ativo` ou `teste` — o ÚNICO caminho de
+    volta (o motor nunca desfaz uma pausa). `--estado` obrigatório: religar o login de uma PESSOA como `ativo` o põe em
+    uso real, e isso tem de ser escrito, nunca padrão. Recusa conta sem senha e `teste` sem janela."""
+    conta = _conta(supa, _uuid(args.conta, "--conta"))
+    estado = args.estado
+    if estado not in (robos.ATIVO, robos.TESTE):
+        raise Recusa("--estado: ativo ou teste")
+    linha = _dados(supa.table("portal_accounts").select("id, secret_encrypted, robo_janela").eq("id", conta["id"])
+                   .eq("company_id", conta["company_id"]).limit(1).execute())
+    if not linha or not linha[0].get("secret_encrypted"):
+        raise Recusa("a conta está sem senha — rode `trocar-senha` antes de religar")
+    if estado == robos.TESTE and not linha[0].get("robo_janela"):
+        raise Recusa("conta 'teste' (login de PESSOA) exige janela — cadastre de novo com --janela")
+    de = (robos.PAUSADO, robos.BLOQUEADO, robos.OCUPADA)
+    if conta.get("robo_estado") not in de:
+        raise Recusa(f"a conta está '{conta.get('robo_estado')}' — religar só desfaz pausado, bloqueado ou ocupada")
+    feito = _dados(supa.table("portal_accounts").update({"robo_estado": estado, "robo_ocupada_ate": None})
+                   .eq("id", conta["id"]).eq("company_id", conta["company_id"]).in_("robo_estado", list(de)).execute())
+    if not feito:
+        raise Recusa("a conta mudou de estado enquanto o comando rodava — rode `listar` e tente de novo")
+    return f"robô religado: conta {conta['id']} ({conta.get('robo_estado')} → {estado})"
+
+
+def trocar_senha(supa, args, *, ler_senha: Callable[[], str], cifrar: Callable[[str], str]) -> str:
+    """Conserto 129-B: a senha nova (getpass ou MULTICALCULO_SENHA), cifrada. A conta fica `pausado` — o gatilho do
+    banco já faz isso quando o segredo muda; aqui é escrito junto para não depender dele — e volta com `religar`."""
+    conta = _conta(supa, _uuid(args.conta, "--conta"))
+    senha = ler_senha()
+    if not senha:
+        raise Recusa(f"senha vazia (use {ENV_SENHA} ou digite quando pedir)")
+    cifrada = cifrar(senha)
+    senha = ""  # noqa: F841 — a senha em claro não sobrevive à cifra
+    supa.table("portal_accounts").update({"secret_encrypted": cifrada, "robo_estado": robos.PAUSADO}).eq(
+        "id", conta["id"]).eq("company_id", conta["company_id"]).execute()
+    return (f"senha trocada e robô pausado: conta {conta['id']} — para voltar a usar: "
+            f"`religar --conta {conta['id']} --estado ativo|teste`")
 
 
 def apagar_senha(supa, args) -> str:
@@ -194,12 +239,18 @@ def _parser() -> argparse.ArgumentParser:
     c.add_argument("--corretora", required=True)
     c.add_argument("--rotulo", required=True)
     c.add_argument("--usuario", required=True)
-    c.add_argument("--estado", default=robos.ATIVO, choices=(robos.ATIVO, robos.TESTE))
+    # 🔴 conserto 129-B (juiz P2/P3): SEM padrão — `ativo` põe o login em uso REAL; o login de uma pessoa é `teste`
+    c.add_argument("--estado", required=True, choices=(robos.ATIVO, robos.TESTE),
+                   help="ativo (login de ROBÔ, uso real) ou teste (login de PESSOA, só no canário, exige --janela)")
     c.add_argument("--teto", type=int, default=None)
     c.add_argument("--janela", default=None, help='ex.: "seg-sex,07:00-20:00" (horário de Brasília)')
-    for nome, ajuda in (("pausar", "pausa um robô"), ("apagar-senha", "apaga a senha e pausa")):
+    for nome, ajuda in (("pausar", "pausa um robô"), ("apagar-senha", "apaga a senha e pausa"),
+                        ("trocar-senha", "troca a senha (digitada ou MULTICALCULO_SENHA) e pausa; depois `religar`")):
         s = sub.add_parser(nome, help=ajuda)
         s.add_argument("--conta", required=True)
+    s = sub.add_parser("religar", help="pausado/bloqueado/ocupada → ativo ou teste (o único caminho de volta)")
+    s.add_argument("--conta", required=True)
+    s.add_argument("--estado", required=True, choices=(robos.ATIVO, robos.TESTE))
     s = sub.add_parser("listar", help="lista os robôs (sem senha)")
     s.add_argument("--corretora", default=None)
     s = sub.add_parser("aderir", help="liga o canal a uma corretora")
@@ -217,7 +268,13 @@ def _senha_do_ambiente_ou_digitada() -> str:
 
 def main(argv: Optional[List[str]] = None, *, supa=None, ler_senha: Optional[Callable[[], str]] = None,
          cifrar: Optional[Callable[[str], str]] = None, escrever: Callable[[str], Any] = print) -> int:
-    args = _parser().parse_args(argv)
+    try:
+        args = _parser().parse_args(argv)
+    except SystemExit as e:   # argumento faltando/errado: o argparse já explicou; é RECUSA (2), não exceção
+        if e.code in (0, None):
+            return 0
+        escrever("RECUSADO: argumentos inválidos (veja a mensagem acima ou --help)")
+        return 2
     try:
         if supa is None:
             from ..worker import _supabase
@@ -234,6 +291,14 @@ def main(argv: Optional[List[str]] = None, *, supa=None, ler_senha: Optional[Cal
             escrever(cadastrar(supa, args, ler_senha=ler_senha or _senha_do_ambiente_ou_digitada, cifrar=cifrar))
         elif args.acao == "pausar":
             escrever(pausar(supa, args))
+        elif args.acao == "religar":
+            escrever(religar(supa, args))
+        elif args.acao == "trocar-senha":
+            if cifrar is None:
+                from .. import vault
+
+                cifrar = vault.encrypt
+            escrever(trocar_senha(supa, args, ler_senha=ler_senha or _senha_do_ambiente_ou_digitada, cifrar=cifrar))
         elif args.acao == "apagar-senha":
             escrever(apagar_senha(supa, args))
         elif args.acao == "listar":
