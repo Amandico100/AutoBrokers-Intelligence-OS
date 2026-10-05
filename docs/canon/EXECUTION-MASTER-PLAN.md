@@ -58,13 +58,16 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
               DOM contido; nenhuma migration · DEDUZIR do portal = 0 (bancada de 44 casos não rodada, P-127-04); ponte e
               retomada do DOM adiadas (P-127-01/02); canário do Founder (T-101)
             PROGRAMA MULTICÁLCULO (D-MC-38, 04/10/2026) — a fila nova substitui a ordem da D-FILA-01 e a D-E002-07.
-              Plano: programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md (v2.5, 05/10 — WhatsApp plano A; leia antes a
+              Plano: programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md (v2.5.1, 05/10 tarde — a fila INTERCALADA, D-MC-61; leia antes a
               PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) · estado: programa-multicalculo/ESTADO-DO-PROGRAMA.md
 A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável  →  ✔ 128 prova do Agger
-  (v2.5)    →  129-B motor (várias corretoras em paralelo)  →  130-A comparação e proposta
-            →  133-A Quem Cobra Menos no WhatsApp, piloto fechado  →  130-B leitor de apólice  →  133-B piloto ampliado
-            →  134 migração para a API oficial da Meta  →  131 renovação  →  132 cotação  →  135 proposta conversa
-            →  136 lembretes  →  ★ Claude/ChatGPT  →  137 público
+  (v2.5.1)  →  129-B motor (várias corretoras em paralelo)  →  130-A comparação e proposta
+            →  133-A Quem Cobra Menos no WhatsApp, piloto fechado  →  130-B leitor de apólice
+            →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2  →  133-B Quem Cobra Menos piloto 🚀3
+            →  135 proposta conversa 🚀4  →  136 lembretes  →  137 público no WhatsApp oficial 🚀5  →  ★ Claude/ChatGPT
+  ⇅ 134     migração para a API oficial da Meta — FLUTUANTE: entra quando a Meta aprovar, a qualquer momento depois da 133-A
+  troca     portão da 131 (InfoCap da Resulta de volta) antes do da 130-B → a 131 sobe para logo depois da 133-A · a 132 exige a 130-B
+  2 linhas  Quem Cobra Menos (leads novos para as corretoras) e Auxiliares de Renovação e de Cotação (o dia a dia, no chat principal)
 DEPOIS      138 · 103 · 101 + EXTRA-008/009 · outros ramos · EXTRA-005/006 · fase 3 · 001.9 · 001.0 · restante 099–114 · 115
 PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
 ```
