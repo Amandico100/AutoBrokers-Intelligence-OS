@@ -4031,3 +4031,11 @@ push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a bra
 
 ## 29/09/2026 · SPEC-120 · o gerente escreveu a fatia do grupo e reusou os juízes — VALIOSA
 **Problema:** o protocolo v13 pede um construtor fresco por fatia e juiz ‖ red team frescos. **Evidência:** 📊 o limite de 24 agentes por sessão (hook `teto-de-agentes.py`) foi atingido no meio da execução (SPEC-119 e 120 no mesmo chat). **Consequência:** a fatia F4 (o grupo) foi escrita pelo gerente; o juiz e o red team da SPEC-119 foram **reaproveitados** por mensagem, com o pacote novo (card, fio, §0–§3, §5, §7.3). Os dois continuaram **cegos um ao outro** e acharam defeitos reais nesta SPEC (4 blockers e graves nos corredores; G1 e D16 no grupo). O custo declarado: um juiz que já viu a SPEC-119 não é "fresco". **Autorização:** CLAUDE.md §9 (uma SPEC num só chat) prevaleceu sobre abrir sessão nova.
+
+## 05/10/2026 · SPEC-129-B · a lease do robô mora no BANCO, não no Redis (D-129B-10) — ESSENCIAL
+**Problema:** a ficha da 129-B (plano §4) manda "P-198: a reserva provada contra Redis real". **Evidência:** 📊 sem Redis,
+`LeaseDePortal.adquirir/renovar` devolvem `True` e `dono_atual` devolve `None` (`backend/portal_worker/leases.py:415-419, 441-442,
+480-486`) — para um login de sessão ÚNICA (o Agger), "conceder tudo" faria dois contêineres entrarem no mesmo robô e um derrubar o
+outro; e não há Redis nesta máquina (📊 `which redis-server` → nada) para o canário. **Consequência:** o motor usa CAS no banco
+(`portal_accounts.robo_dono/robo_batida_em` e `multicalculo_calculos.dono/batida_em`); a P-198 CONTINUA, mas só para o `portal_jobs`
+(o motor não depende dela). **Autorização:** delegação (CLAUDE.md §9 · protocolo §9: nota 85 × 65), registrada como D-129B-10 na SPEC.

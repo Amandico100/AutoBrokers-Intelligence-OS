@@ -2339,3 +2339,18 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | # | Decisão | Estado | Substitui / revê |
 |---|---|---|---|
 | D-MC-61 | **A fila intercalada (v2.5.1):** 129-B → 130-A → 133-A → 130-B → 131 → 132 → 133-B → 135 → 136 → 137 → ★, com a **134 FLUTUANTE**: entra assim que a Meta aprovar, a qualquer momento depois da 133-A, sem segurar ninguém. **Regras de troca:** se o portão da 131 (InfoCap da Resulta de volta na Resulta, D-MC-27) estiver aberto antes do da 130-B (crédito de API + 20–30 apólices), a 131 sobe para logo depois da 133-A; a 132 exige a 130-B (a cotação nova a partir da apólice de outra corretora). **Notas:** intercalada **88** · auxiliares primeiro e Quem Cobra Menos depois **75** · a v2.5 como estava **55** (a 134 depende da Meta e travava os auxiliares). **Por quê:** a 133-A é piloto fechado com 5 testadores e precisa de tempo de calendário (as rodadas de teste rodam enquanto se constroem a 131 e a 132). **Marcos:** 🚀1 renovação no ar (131) · 🚀2 cotação no chat principal (132) · 🚀3 Quem Cobra Menos piloto no WhatsApp (133-B) · 🚀4 negociação pelo WhatsApp (135; ainda exige o atendimento das corretoras ligado e a D-MC-32) · 🚀5 público (137 = o Quem Cobra Menos no WhatsApp oficial aberto; Claude/ChatGPT é a ★, depois) | ✅ TOMADA (Founder/gerente, 05/10/2026, tarde) | substitui a fila da v2.5 (PASSAGEM §3 da manhã) |
+
+## D-MC-62…65 · PROGRAMA MULTICÁLCULO — o portão de preço da 130-A (05/10/2026, madrugada)
+
+> Perguntado pelo gerente durante a SPEC-129-B (D-MC-45/D-MC-54), com os números de `programa-multicalculo/A-PROVA-DO-AGGER.md`
+> §3 E5/E16. 🧑 **Ressalva do Founder, nas palavras dele:** *"essas decisões serão usadas agora e no futuro vou fazer alguns
+> ajustes pontuais. Perguntei as estratégias dos comerciais das corretoras para cotação econômica, margem, piso e completa e,
+> quando tiver as respostas, envio para ver se fazemos alguns ajustes baseado na experiência dos comerciais."* → cada uma é
+> CONFIGURAÇÃO (presets/colunas), nunca constante espalhada, para o ajuste futuro ser troca de valor.
+
+| # | Decisão | Estado | Substitui / revê |
+|---|---|---|---|
+| D-MC-62 | **A econômica padrão** = franquia normal + vidros básicos + carro reserva 7 dias + assistência básica; casco 100 % FIPE e terceiros (RCF/APP) intactos; FIPE a 90 % fora. Notas: esta 85 · só franquia+vidros 70 · agressiva sem reserva 60 | ✅ TOMADA (Founder, 05/10/2026) — ajustável com os comerciais | fecha o rascunho da D-MC-54 (parte "econômica") |
+| D-MC-63 | **A margem da corretora** (comissão e desconto como UMA regra): o agente CALCULA a versão com margem menor e a mostra ao CORRETOR; nada vai ao cliente sem o corretor aprovar, cada vez; o motor escolhe o botão por seguradora (comissão, ou desconto onde a seguradora ignora a comissão — 📊 Porto, Azul, Itaú). Notas: propõe+aprova 85 · automático até o piso 65 · nunca mexe 55 | ✅ TOMADA (Founder, 05/10/2026) — ajustável | fecha a D-MC-54 (parte "margem") |
+| D-MC-64 | **O piso padrão da margem = comissão de 10 %** enquanto a corretora não configurar o dela. Notas: 10 % 80 · 12 % 70 · sem piso 65 | ✅ TOMADA (Founder, 05/10/2026) — ajustável | — |
+| D-MC-65 | **A completa é UM padrão único** para todas as corretoras: RCF 200/200/20 mil, APP 5 mil, franquia reduzida, vidros completos, carro reserva 15 dias, assistência completa (o motor manda as coberturas explícitas, D-128-05) — comparação igual-com-igual entre corretoras. Notas: único 85 · cada corretora a sua 60 | ✅ TOMADA (Founder, 05/10/2026) — ajustável | — |
