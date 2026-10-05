@@ -343,6 +343,19 @@ class Motor:
             await self._navegador.fechar()
             self._navegador = None
 
+    async def encerrar(self) -> None:
+        """F4 (junta 8) — o DESLIGAR do processo (deploy, reinício): para os grupos em curso e faz o logout de
+        TODAS as sessões, devolvendo as leases. 🔴 Sem isto, a sessão do robô fica viva no Agger e o próximo login
+        vê o aviso de "sessão ativa" → o robô vira `ocupada` (ou `pausado`, se for conta `teste`) por um deploy.
+        O que estava `calculando` fica para a retomada (o negócio existe; outro motor só LÊ); o que estava
+        `disparando` vira `incerto` pela retomada — nunca um 2º POST."""
+        tarefas = [t for t in list(self._tarefas) if not t.done()]
+        for t in tarefas:
+            t.cancel()
+        if tarefas:
+            await asyncio.gather(*tarefas, return_exceptions=True)
+        await self.desligar()
+
     # ======================================================================
     # Expirar · retomar · reservar
     # ======================================================================
@@ -1021,6 +1034,29 @@ def _ajuste_do_banco(valor: Any) -> Optional[Ajuste]:
 # ==========================================================================
 # O laço
 # ==========================================================================
+# O motor DESTE processo (o laço cria um só). O desligar do `portal_worker.main` o encontra aqui.
+_MOTOR_DO_PROCESSO: Optional[Motor] = None
+
+
+def registrar_motor_do_processo(motor: Optional[Motor]) -> None:
+    global _MOTOR_DO_PROCESSO
+    _MOTOR_DO_PROCESSO = motor
+
+
+async def desligar_o_motor_do_processo() -> bool:
+    """Chamado no SHUTDOWN do serviço: encerra o motor (grupos parados, logout de todas as sessões, leases
+    devolvidas). Nunca levanta. Devolve se havia motor para desligar."""
+    motor = _MOTOR_DO_PROCESSO
+    if motor is None:
+        return False
+    try:
+        await motor.encerrar()
+    except Exception as exc:  # noqa: BLE001 — o shutdown não pode travar no motor (o cancelamento passa)
+        logger.warning("[MC] desligar o motor no shutdown falhou (%s)", type(exc).__name__)
+    finally:
+        registrar_motor_do_processo(None)
+    return True
+
 async def laco_do_motor(*, supa_fabrica: Optional[Callable[[], Any]] = None,
                         fabrica_de_sessoes: Optional[Callable[[], Awaitable[Any]]] = None,
                         intervalo_s: float = VOLTA_S) -> None:
@@ -1049,6 +1085,7 @@ async def laco_do_motor(*, supa_fabrica: Optional[Callable[[], Any]] = None,
 
                     supa = await asyncio.to_thread(supa_fabrica or _supabase)
                     motor = Motor(supa, fabrica_de_sessoes=fabrica_de_sessoes)
+                    registrar_motor_do_processo(motor)
                 n = await motor.uma_volta(esperar=False)
                 if n:
                     logger.info("[MC] %s grupo(s) começaram", n)
@@ -1060,5 +1097,5 @@ async def laco_do_motor(*, supa_fabrica: Optional[Callable[[], Any]] = None,
 __all__: tuple = (
     "BATIDA_S", "LEASE_VENCE_S", "VOLTA_S", "OCUPADA_MIN", "MAX_RETOMADAS", "Motor", "Grupo",
     "laco_do_motor", "motor_ligado", "canario_ligado", "teto_corretora_hora", "teto_geral_hora",
-    "chave_do_evento", "erro_curto",
+    "chave_do_evento", "erro_curto", "registrar_motor_do_processo", "desligar_o_motor_do_processo",
 )
