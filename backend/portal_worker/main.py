@@ -87,9 +87,32 @@ def _concorrencia_efetiva() -> int:
         return 1
 
 
+async def _laco_do_motor_seguro() -> None:
+    """O laço do multicálculo (SPEC-129-B, D-MC-42): fila e navegador PRÓPRIOS, no mesmo serviço.
+
+    Import tardio e blindado: um defeito no motor novo nunca impede o `poll_loop` da cobrança e dos
+    vidros de subir. Desligado por padrão (`MULTICALCULO_MOTOR_LIGADO`, D-129B-09)."""
+    try:
+        from portal_worker.multicalculo.motor import laco_do_motor
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger("portal_worker").error(
+            "[MC] motor do multicálculo não carregou (%s) — o poll_loop segue", type(e).__name__)
+        return
+    await laco_do_motor()
+
+
+def iniciar_lacos(*, poll=None, motor=None) -> list:
+    """Os dois laços do serviço, cada um na SUA task.
+
+    🔴 Lado a lado, nunca um dentro do outro (G8): `run_lote` espera o lote inteiro
+    (`asyncio.gather`), e um cálculo de 7 min dentro dele seguraria a cobrança e os vidros."""
+    return [asyncio.create_task((poll or poll_loop)()),
+            asyncio.create_task((motor or _laco_do_motor_seguro)())]
+
+
 @app.on_event("startup")
 async def _startup() -> None:
-    asyncio.create_task(poll_loop())
+    iniciar_lacos()
 
 
 @app.get("/health")
