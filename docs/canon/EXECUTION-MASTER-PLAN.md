@@ -58,11 +58,13 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
               DOM contido; nenhuma migration · DEDUZIR do portal = 0 (bancada de 44 casos não rodada, P-127-04); ponte e
               retomada do DOM adiadas (P-127-01/02); canário do Founder (T-101)
             PROGRAMA MULTICÁLCULO (D-MC-38, 04/10/2026) — a fila nova substitui a ordem da D-FILA-01 e a D-E002-07.
-              Plano: programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md (v2.4) · estado: programa-multicalculo/ESTADO-DO-PROGRAMA.md
-A FILA      0.5 registro + /r/ + P-E0018-14  →  129-A espera durável  →  128 prova do Agger  →  133-A prova de instalação
-            →  129-B motor  →  130-A comparação e proposta  →  130-B leitor de apólice  →  131 renovação  →  132 cotação
-            →  133-B Quem Cobra Menos piloto  →  ★ canal público  →  134 WhatsApp oficial  →  135 proposta conversa
-            →  136 lembretes  →  137 público
+              Plano: programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md (v2.5, 05/10 — WhatsApp plano A; leia antes a
+              PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) · estado: programa-multicalculo/ESTADO-DO-PROGRAMA.md
+A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável  →  ✔ 128 prova do Agger
+  (v2.5)    →  129-B motor (várias corretoras em paralelo)  →  130-A comparação e proposta
+            →  133-A Quem Cobra Menos no WhatsApp, piloto fechado  →  130-B leitor de apólice  →  133-B piloto ampliado
+            →  134 migração para a API oficial da Meta  →  131 renovação  →  132 cotação  →  135 proposta conversa
+            →  136 lembretes  →  ★ Claude/ChatGPT  →  137 público
 DEPOIS      138 · 103 · 101 + EXTRA-008/009 · outros ramos · EXTRA-005/006 · fase 3 · 001.9 · 001.0 · restante 099–114 · 115
 PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
 ```
