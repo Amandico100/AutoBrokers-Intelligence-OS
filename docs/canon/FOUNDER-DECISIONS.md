@@ -2253,7 +2253,7 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | D-MC-25 | A AutoBrokers opera o canal; cada corretora controla as próprias oportunidades | ✅ TOMADA (Amandus, provisória) | — |
 | D-MC-26 | Canal = catálogo global + adesão por corretora + registro mínimo numa empresa técnica | ✅ TOMADA (delegação) | — |
 | D-MC-27 | A InfoCap da Resulta na Amandus foi intencional; volta à Resulta antes da 131 | ✅ TOMADA (Amandus) | fecha a dúvida da P-E002-X1 |
-| D-MC-28 | Transporte: interceptação como padrão | ⏳ PROPOSTA | — |
+| D-MC-28 | Transporte: interceptação como padrão | ⏳ PROPOSTA · ✅ **a parte "chamadas de dentro da página só com autorização expressa do Founder" foi RESOLVIDA em 05/10 pela D-128-03 (TOMADA):** o recálculo reenvia o corpo do pedido de dentro da página; o login continua pela tela; a interceptação continua lendo os resultados | — |
 | D-MC-29 | Preço do canal por termo com cada corretora | ⏳ PROPOSTA (portão de preço da 133-B) | — |
 | D-MC-30 | Porta do piloto: convite revogável + wa.me + teto + interruptor | ⏳ PROPOSTA · 🔁 revista em 05/10 (D-MC-51): no WhatsApp, lista de números convidados + limite por número | revê a D-E007-03 no piloto |
 | D-MC-31 | Contato futuro só com consentimento; anonimizar após N dias | ⏳ PROPOSTA | refina a D-MC-16 |
@@ -2296,13 +2296,13 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 ## D-128-01…08 · SPEC-128 — a prova do Agger (04/10/2026, tomadas pela medição com nota 0–100; rito AAA v13 CRÍTICO)
 
 > Texto e números em `programa-multicalculo/A-PROVA-DO-AGGER.md` §5 (e §3, pergunta a pergunta). D-128-01, 02 e 04…08: ✅ TOMADAS
-> (delegação, D-MC-49). 🔴 **D-128-03: ⏳ PROPOSTA — exige o Founder** (a D-MC-28 é dele para o PRODUTO; P-128-14).
+> (delegação, D-MC-49). ✅ **D-128-03: TOMADA pelo Founder em 05/10/2026** (era PROPOSTA; resolve a D-MC-28; fecha a P-128-14 e a T-107).
 
 | # | Decisão | Notas | Onde |
 |---|---|---|---|
 | **D-128-01** | ✅ **As alavancas foram medidas na AutoFleet** (configuração real de automóvel, comissão-base 15 %), não na Resulta (comissão 0) | AutoFleet **88** × Resulta **60** | A-PROVA §3 E5 |
 | **D-128-02** | ✅ **Família nova de resposta: DADO** — pedido a corrigir ("calcule como renovação", "DMO obrigatória", "CEP inválido") não é recusa do risco | DADO **85** × encaixar em ACEITACAO **50** | `multicalculo/contrato.py`, `leitor_agger.py` |
-| **D-128-03** | ⏳ **PROPOSTA — o recálculo é o corpo do pedido:** o robô reenvia o corpo com o ajuste, em vez de clicar no formulário. ⚠️ Usa o token do próprio app, de dentro da página → a **D-MC-28 exige a autorização do Founder** para o PRODUTO. A medição já fez assim (📊 recálculos da E5, E7 e E20, n = 11 versões válidas) sob a autorização ampla do Founder de 04/10 para validar | corpo do pedido **88** × interceptar e clicar **70** · 🧑 **pergunta ao Founder** antes da 129-B | A-PROVA §5 · P-128-14 |
+| **D-128-03** | ✅ **TOMADA (Founder, 05/10/2026) — o recálculo é o corpo do pedido:** o robô recalcula REENVIANDO o corpo do pedido (`calcularV2`) com o ajuste, de dentro da página, com o token do próprio app, em vez de clicar no formulário. Isso resolve a parte da **D-MC-28** que pedia a autorização expressa do Founder para chamadas de dentro da página: **o login continua pela tela; a interceptação continua lendo os resultados**. A medição já fez assim (📊 recálculos da E5, E7 e E20, n = 11 versões válidas) sob a autorização ampla do Founder de 04/10 para validar · ~~⏳ PROPOSTA~~ | corpo do pedido **88** × interceptar e clicar **70** | A-PROVA §5 · P-128-14 ✅ FECHADA · T-107 ✅ · 129-B |
 | **D-128-04** | ✅ **Proposta de 2 opções = 2 cálculos** (📊 1 pacote por cálculo, E20; o plano é "ilimitado") | **90** | A-PROVA §3 E20 |
 | **D-128-05** | ✅ **O motor manda as coberturas explícitas, nunca o pacote da conta** (📊 o "Prata" difere entre corretoras, E8) | **92** | contrato `PedidoDeCalculoAuto.coberturas` |
 | **D-128-06** | ✅ **O motor entrega aos poucos e fecha por tempo** (💭 90 s), sem esperar a seguradora calada (📊 26 de 227 nunca fecharam) | **88** | contrato `eventos_entre` → 129-B |
@@ -2328,3 +2328,14 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | D-MC-58 | **O número do Quem Cobra Menos é separado do atendimento das corretoras** e não espera "ligar o atendimento". Mesma estrutura do AutoBrokers (integração WhatsApp, webhook, agente, roteador de modelos), nenhum motor paralelo (CLAUDE.md §5); agente de escopo estreito (só cotação); a integração mora na empresa técnica (D-MC-26); as corretoras não precisam de WhatsApp próprio | ✅ TOMADA (Founder, 05/10/2026) | a 134 deixa de esperar a classe A |
 | D-MC-59 | **O agente sabe conversar e não força venda:** gatilhos honestos, nunca pressão falsa, nunca "o mais barato do mercado" sem prova (só "das N que cotei", CDC art. 37/38), nunca evento inventado (D-MC-50). O perfil (garagem, uso, km, condutor jovem) é declaração do segurado: o agente PERGUNTA; o que está na apólice vem da apólice | ✅ TOMADA (Founder, 05/10/2026) | — |
 | D-MC-60 | **O resultado no WhatsApp:** padrão e econômica calculadas ao mesmo tempo desde o 1º pedido (nota 88); narração real em poucas mensagens; o quadro aos ~30–60 s com quem respondeu (atrasada só avisada se entrar no top 3); uma linha por seguradora + as 2 melhores completas + a econômica do vencedor + "recomendo X (nota/100) porque…" + o link da página "uau" (130-A, `/r/`); mensagens compactas | ✅ TOMADA (Founder, 05/10/2026 — recomendações aceitas) | — |
+
+## D-MC-61 · PROGRAMA MULTICÁLCULO — a fila intercalada, v2.5.1 (05/10/2026, tarde)
+
+> Fonte: [`programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md`](programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) §3 e §8
+> · plano mestre **v2.5.1** §0, §0.1 e §2. O Founder notou que a fila v2.5 empurrava os AUXILIARES das corretoras (131 renovação e
+> 132 cotação no chat principal) para depois da 134, que depende da Meta. O programa tem duas linhas, e as duas andam: o Quem Cobra
+> Menos (leads novos para as corretoras) e os Auxiliares de Renovação e de Cotação (o dia a dia da corretora, no chat principal).
+
+| # | Decisão | Estado | Substitui / revê |
+|---|---|---|---|
+| D-MC-61 | **A fila intercalada (v2.5.1):** 129-B → 130-A → 133-A → 130-B → 131 → 132 → 133-B → 135 → 136 → 137 → ★, com a **134 FLUTUANTE**: entra assim que a Meta aprovar, a qualquer momento depois da 133-A, sem segurar ninguém. **Regras de troca:** se o portão da 131 (InfoCap da Resulta de volta na Resulta, D-MC-27) estiver aberto antes do da 130-B (crédito de API + 20–30 apólices), a 131 sobe para logo depois da 133-A; a 132 exige a 130-B (a cotação nova a partir da apólice de outra corretora). **Notas:** intercalada **88** · auxiliares primeiro e Quem Cobra Menos depois **75** · a v2.5 como estava **55** (a 134 depende da Meta e travava os auxiliares). **Por quê:** a 133-A é piloto fechado com 5 testadores e precisa de tempo de calendário (as rodadas de teste rodam enquanto se constroem a 131 e a 132). **Marcos:** 🚀1 renovação no ar (131) · 🚀2 cotação no chat principal (132) · 🚀3 Quem Cobra Menos piloto no WhatsApp (133-B) · 🚀4 negociação pelo WhatsApp (135; ainda exige o atendimento das corretoras ligado e a D-MC-32) · 🚀5 público (137 = o Quem Cobra Menos no WhatsApp oficial aberto; Claude/ChatGPT é a ★, depois) | ✅ TOMADA (Founder/gerente, 05/10/2026, tarde) | substitui a fila da v2.5 (PASSAGEM §3 da manhã) |
