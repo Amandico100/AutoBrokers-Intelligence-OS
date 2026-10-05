@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -148,14 +149,38 @@ def _preset_padrao(opcao: str) -> Dict[str, Any]:
     return dict(tabela[opcao])
 
 
+def _ajuste_codificado(ajuste: Ajuste) -> Ajuste:
+    """F4 (costura): o rótulo do ajuste vira o CÓDIGO que o robô manda (`presets.VALORES_DO_AJUSTE`, medidos);
+    rótulo sem código → `ValueError` na porta, nunca um recálculo recusado lá na frente."""
+    from portal_worker.multicalculo.presets import VALORES_DO_AJUSTE
+
+    valores = VALORES_DO_AJUSTE.get(ajuste.tipo)
+    if valores is None or not isinstance(ajuste.valor, str):
+        return ajuste
+    texto = ajuste.valor.strip()
+    if texto.isdigit():
+        return Ajuste(tipo=ajuste.tipo, valor=int(texto), seguradora=ajuste.seguradora)
+    chave = unicodedata.normalize("NFKD", texto)
+    chave = "".join(c for c in chave if not unicodedata.combining(c)).lower()
+    if chave not in valores:
+        raise ValueError(f"ajuste {ajuste.tipo}: valor sem código medido (aceitos: {', '.join(sorted(valores))})")
+    return Ajuste(tipo=ajuste.tipo, valor=valores[chave], seguradora=ajuste.seguradora)
+
+
 def _aplicar_ajuste(coberturas: Mapping[str, Any], ajuste: Ajuste) -> Dict[str, Any]:
-    """As coberturas da ORIGEM + o ajuste. `cobertura` com dict funde chave a chave; os outros tipos trocam a chave
-    de mesmo nome (comissão, desconto, assistência, carro reserva, vidros, franquia, % FIPE)."""
+    """As coberturas da ORIGEM + o ajuste, nas chaves do AGGER (as de `calculos.coberturas`, que o montador aplica).
+    `cobertura` com dict funde chave a chave; os outros tipos trocam a chave do item que o montador troca
+    (`presets.CAMPO_DO_AJUSTE`, gêmeo do `montador.js`); `percentual_fipe` é do automóvel e não entra aqui.
+    Ajuste de UMA seguradora não muda as coberturas gerais (o robô o aplica só no item dela)."""
+    from portal_worker.multicalculo.presets import CAMPO_DO_AJUSTE
+
     novas = dict(coberturas or {})
+    if ajuste.seguradora is not None:
+        return novas
     if ajuste.tipo == "cobertura" and isinstance(ajuste.valor, Mapping):
         novas.update(dict(ajuste.valor))
-    else:
-        novas[ajuste.tipo] = ajuste.valor
+    elif ajuste.tipo in CAMPO_DO_AJUSTE:
+        novas[CAMPO_DO_AJUSTE[ajuste.tipo]] = ajuste.valor
     return novas
 
 
@@ -257,7 +282,8 @@ class MulticalculoProvider:
 
         await self._autorizar(company_id=company_id, corretoras=alvo)
 
-        faltam = pedido.faltando()
+        # F4 (costura): o que falta E o que veio sem código medido no Agger (o robô recusaria só no disparo)
+        faltam = pedido.faltando() + [c for c in pedido.sem_codigo() if c not in pedido.faltando()]
         if faltam:
             raise PedidoIncompleto(faltam)
         if origem == "canal":
@@ -360,6 +386,7 @@ class MulticalculoProvider:
                             seguradora=ajuste.get("seguradora"))
         if not isinstance(ajuste, Ajuste):
             raise TypeError("ajuste precisa ser um contrato.Ajuste ou um dict {tipo, valor, seguradora}")
+        ajuste = _ajuste_codificado(ajuste)
         origem = await asyncio.to_thread(self.repo.calculo, company_id=company_id, calculo_id=calculo_id)
         if not origem or str(origem.get("solicitante_company_id")) != company_id:
             raise NaoEncontrado("cálculo não encontrado")
@@ -385,6 +412,8 @@ class MulticalculoProvider:
             "disponivel_em": agora.isoformat(),
         }
         gravado = await asyncio.to_thread(self.repo.inserir_calculo, novo)
+        # F4 (costura): o motor só serve pedido `aberto` — o recálculo de um pedido já fechado o reabre
+        await asyncio.to_thread(self.repo.reabrir_pedido, company_id=company_id, pedido_id=str(origem["pedido_id"]))
         return {"id": str(gravado.get("id") or novo["id"]), "corretora_company_id": corretora, "opcao": "ajuste",
                 "origem_calculo_id": calculo_id}
 
