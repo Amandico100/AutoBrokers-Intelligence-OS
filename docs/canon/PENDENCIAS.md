@@ -13441,3 +13441,23 @@ a comparação "antes × depois do ajuste" mente na Mapfre.
 ## P-128-14 · 🧑 Decidir a D-128-03 (recálculo pelo corpo do pedido, de dentro da página)
 A D-MC-28 exige o Founder para o PRODUTO. **Destrava:** a resposta do Founder antes da 129-B. **Custa esquecer:** a 129-B nasce sem
 saber se pode recalcular pelo corpo — e clicar no formulário é mais lento e mais frágil (nota 70 × 88).
+
+## P-128-15 · 🤖 O apagador de URL sem esquema confunde nome de cobertura
+`RE_URL` (redaction `sem_url_nem_chave`, aplicado pelo leitor) apaga `"Comp.Total/Parcial"`, `"Km.Livre/200"`, `"Franq.Reduzida/50%"`
+(📊 confirmação da SPEC-128; 0 ocorrências nas fixtures de hoje). **Destrava:** exigir domínio conhecido (`.com`, `.br`, `.net`…) +
+esses 4 casos como controle, na 129-B (quando o leitor for ligado). **Custa esquecer:** a corretora vê `<removido:url>` no lugar do pacote.
+
+## P-128-16 · 🤖 O redator comum ficou mais agressivo no diagnóstico
+A regra `key=`/`token=` no `redigir_texto` pega `data-key="…"` e o `\S+` engole o resto do HTML do trace (`…&token=abc">link</a>`).
+Testes do profiler e do worker verdes; só diagnóstico. **Destrava:** exceção para `-key` e parar em `"`/`&`/`<`. **Custa esquecer:**
+trace de DOM truncado ao depurar um portal.
+
+## P-128-17 · 🤖 URL com `//` e cabeçalho `x-api-key:` escapam do G1 e do redator
+Não é o formato do B1, mas é o mesmo tipo de segredo. **Destrava:** dois padrões + controle no G1, na 129-B. **Custa esquecer:** a
+próxima seguradora que devolver erro assim vaza para fixture.
+
+## P-128-18 · 🧑 A chave do B1 ainda existe no reflog LOCAL desta máquina
+Nunca subiu (📊 `git ls-remote` vazio antes da reescrita; 36 commits reescritos com 0). Fica nos objetos órfãos do `.git` local até
+`git reflog expire --expire=now --all && git gc --prune=now` (apaga a rede de recuperação de TODOS os branches locais — por isso não
+foi rodado sem o Founder). **Custa esquecer:** quase nada (é uma chave que a seguradora devolve em mensagem de erro a todo usuário
+do Agger), mas é segredo em disco.
