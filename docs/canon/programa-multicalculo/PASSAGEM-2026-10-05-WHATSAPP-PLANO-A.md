@@ -3,6 +3,8 @@
 > Leitura OBRIGATÓRIA de todo chat do programa a partir de 05/10/2026, logo depois do CLAUDE.md. Registra o que o Founder decidiu
 > na conversa que fechou a SPEC-128 (04–05/10) e reorganiza a fila. O plano mestre (v2.5) e o FOUNDER-DECISIONS (D-MC-51…60)
 > já trazem estas decisões; este arquivo é o resumo com o PORQUÊ, para nenhum chat precisar reconstruir a conversa.
+> 🔴 **Adendo da tarde de 05/10 (v2.5.1):** a fila virou INTERCALADA (D-MC-61), a D-128-03 foi TOMADA e os logins do Agger
+> estão explicados — §3, §4 e §8. Onde a manhã e a tarde discordarem, vale a tarde.
 
 ## 1. O que mudou, em uma tela
 
@@ -70,28 +72,49 @@
   - se o vencedor da econômica for outra seguradora, uma linha diz isso;
   - mensagens compactas (cada mensagem nossa custa na API oficial).
 
-## 3. A fila nova
-| # | SPEC | o quê | portões (o que espera o Founder) |
-|---|---|---|---|
-| 1 | **129-B · o motor** | calcula/recalcula sozinho, entrega aos poucos, padrão+econômica juntas, **várias corretoras em paralelo**, 1 robô por corretora isolado; mede a hipótese do CPF em 2 corretoras | **D-128-03** (recalcular reenviando o pedido — PROPOSTA, nota 88 × 70; perguntar na abertura) · **1 login de robô por corretora** (até existir: construir e testar com as fixtures da 128; a prova ao vivo espera) |
-| 2 | **130-A · comparação, proposta e página "uau"** | o resumo e a página do link; agora compara também ENTRE corretoras e indica a vencedora | portão de preço (D-MC-45) com a econômica (D-MC-54) e a margem da corretora; modelo visual |
-| 3 | **133-A · Quem Cobra Menos no WhatsApp (piloto fechado, Evolution)** | número exclusivo; agente de cotação; conversa do "oi" ao resultado com o motor e o resumo; perguntas do perfil; consentimento; lista de convidados; limite por número; 5 testadores medem: chegou ao fim? quanto tempo? onde travou? | o chip e a instância Evolution (QR) do número novo; os 5 testadores (o Founder já tem 5) |
-| 4 | **130-B · leitor de apólice** | foto/PDF da apólice no WhatsApp → ficha (Luna onde acertar) | crédito de API; 20–30 apólices |
-| 5 | **133-B · Quem Cobra Menos piloto ampliado** | foto da apólice, cotação nas corretoras parceiras com a vencedora, proteção contra CPF de outra pessoa (D-MC-46), passagem à corretora vencedora | regras de negócio entre corretoras (D-MC-56) · portão de preço do canal (D-MC-29) |
-| 6 | **134 · migração para a API oficial da Meta** | o mesmo agente, outro transporte; modelos aprovados | Meta: empresa verificada, número, nome "Quem Cobra Menos"; cartão de pagamento na conta |
-| 7 | 131 renovação · 132 cotação do corretor · 135 · 136 · 137/★ Claude/ChatGPT | como no plano | como no plano |
+## 3. A fila nova — v2.5.1, intercalada (D-MC-61, Founder 05/10 tarde)
 
-O caminho crítico externo é a **Meta** (dias a semanas): o Founder começa já. A 134 pode entrar a qualquer momento depois da 133-A.
+O programa tem **duas linhas, e as duas andam**: o **Quem Cobra Menos** (atrai clientes novos — leads — para as corretoras) e os
+**Auxiliares de Renovação e de Cotação** (a operação do dia a dia da corretora, no chat principal do AutoBrokers). A fila da manhã
+(v2.5) punha a 131 e a 132 depois da 134 — e a 134 depende da Meta, um prazo de terceiro. A tarde intercala as duas linhas:
+
+**129-B → 130-A → 133-A → 130-B → 131 → 132 → 133-B → 135 → 136 → 137 → ★**, com a **134 FLUTUANTE**.
+
+| # | SPEC | linha | o quê | portões (o que espera o Founder) | marco |
+|---|---|---|---|---|---|
+| 1 | **129-B · o motor** | base das duas | calcula/recalcula sozinho (recálculo pelo corpo do pedido, D-128-03 ✅), entrega aos poucos, padrão+econômica juntas, **várias corretoras em paralelo**, 1 robô por corretora isolado; mede a hipótese do CPF em 2 corretoras | ~~D-128-03~~ ✅ TOMADA 05/10 · construir e testar com o **login da Ellen** (§8); o **uso real** exige o login de robô de cada corretora (T-120) | — |
+| 2 | **130-A · comparação, proposta e página "uau"** | base das duas | o resumo e a página do link; compara também ENTRE corretoras e indica a vencedora | portão de preço (D-MC-45) com a econômica (D-MC-54) e a margem da corretora; modelo visual | — |
+| 3 | **133-A · Quem Cobra Menos no WhatsApp, piloto fechado (Evolution)** | Quem Cobra Menos | número exclusivo; agente de cotação; do "oi" ao resultado; perfil; consentimento; convidados; limite por número; 5 testadores medem: chegou ao fim? quanto tempo? onde travou? | chip + instância Evolution (QR) · os 5 testadores · login de robô nas corretoras ANTES de ir aos testadores (T-120) | — |
+| 4 | **130-B · leitor de apólice** | base das duas | foto/PDF da apólice → ficha (Luna onde acertar) | crédito de API; 20–30 apólices | — |
+| 5 | **131 · Auxiliar de Renovação** | Auxiliares | as renovações da janela aparecem calculadas e com proposta pronta | InfoCap da Resulta de volta na Resulta (D-MC-27) · login de robô (T-120) | 🚀1 renovação no ar |
+| 6 | **132 · Auxiliar de Cotação** | Auxiliares | "cota"/"ajusta" no chat principal; cotação nova a partir da apólice de outra corretora | **exige a 130-B** · login de robô (T-120) | 🚀2 cotação no chat principal |
+| 7 | **133-B · Quem Cobra Menos piloto ampliado** | Quem Cobra Menos | foto da apólice, corretoras parceiras com a vencedora, CPF de outra pessoa barrado (D-MC-46), passagem à vencedora | regras entre corretoras (D-MC-56) · preço do canal (D-MC-29) | 🚀3 Quem Cobra Menos piloto no WhatsApp |
+| 8 | **135 · a proposta conversa** | Auxiliares | o agente leva a proposta no WhatsApp, ajusta e passa ao humano | atendimento das corretoras ligado · D-MC-32 | 🚀4 negociação pelo WhatsApp |
+| 9 | **136 · lembretes de vencimento** | as duas | recota e avisa quem consentiu (30 e 15 dias) | opt-in | — |
+| 10 | **137 · Quem Cobra Menos público** | Quem Cobra Menos | o Quem Cobra Menos no WhatsApp oficial, aberto a qualquer pessoa | a 134 feita | 🚀5 público |
+| ★ | Claude/ChatGPT | Quem Cobra Menos | o conector e a prova de instalação | depois da 137 | — |
+| ⇅ | **134 · migração para a API oficial da Meta** — **FLUTUANTE** | Quem Cobra Menos | o mesmo agente, outro transporte; modelos aprovados | Meta aprovou empresa, número e nome · cartão na conta Meta | — |
+
+**A 134 flutua:** entra assim que a Meta aprovar, a qualquer momento depois da 133-A, sem segurar ninguém.
+**Regras de troca:** se o portão da 131 (a InfoCap da Resulta de volta na Resulta, D-MC-27) abrir antes do da 130-B (crédito de API +
+20–30 apólices), a **131 sobe para logo depois da 133-A**. A **132 exige a 130-B** (a cotação nova a partir da apólice de outra
+corretora).
+**Notas:** intercalada **88** · auxiliares primeiro e Quem Cobra Menos depois **75** · a v2.5 como estava **55** (a 134 depende da
+Meta e travava os auxiliares). **Por quê:** a 133-A é piloto fechado com 5 testadores e precisa de tempo de CALENDÁRIO — as rodadas
+de teste rodam enquanto se constroem a 131 e a 132.
 
 ## 4. O que o Founder faz, e quando
 | quando | o quê |
 |---|---|
 | já (não trava nada) | comprar o domínio quemcobramenos + uma página simples da marca (ajuda a Meta a aprovar o nome) · começar a verificação da empresa no Gerenciador de Negócios da Meta · separar um chip NOVO para o número da marca |
-| abertura da 129-B | responder a D-128-03 · dizer se os logins de robô já existem |
+| ~~abertura da 129-B~~ | ~~responder a D-128-03~~ → ✅ **respondida 05/10: TOMADA** (o robô recalcula reenviando o corpo do pedido, de dentro da página, com o token do próprio app; §8) |
+| construir e testar a 129-B | nada: o chat usa o **login da Ellen** (credenciais com o Founder), de preferência fora do horário de trabalho dela (§8) |
+| antes do USO REAL (antes de a 133-A ir aos testadores e antes da 131/132 irem para as corretoras) | criar em **cada corretora um usuário NOVO no Agger só para o robô** (ex.: um e-mail tipo `robo@<corretora>`), em Configurações → Usuários do Agger · decidir a compra da licença da Resulta se faltar (**T-120**, §8) |
 | antes da 133-A | instalar o WhatsApp Business no chip novo; o chat da 133-A entrega o passo a passo da instância Evolution e do QR |
 | abertura da 130-A | o portão de preço (o agente pergunta a econômica e a margem) |
 | abertura da 133-B | as regras de negócio entre corretoras |
-| quando a Meta aprovar | abrir a 134 (cartão de pagamento na conta Meta antes) |
+| quando a Meta aprovar | abrir a 134 (cartão de pagamento na conta Meta antes) — a qualquer momento depois da 133-A |
+| antes da 131 | devolver a conexão InfoCap da Resulta à Resulta (D-MC-27) — se vier antes do crédito de API, a 131 sobe |
 
 ## 5. O que NÃO muda
 O motor, a comparação, o leitor de apólice, a renovação e a cotação do corretor não dependem do canal. As regras de sempre: nunca
@@ -114,3 +137,26 @@ verba de API do produto US$ 4,00 (livro-caixa no ESTADO-DO-PROGRAMA).
 - Meta, preço por mensagem (01/07/2025) e janela de 24 h: https://developers.facebook.com/docs/whatsapp/pricing
 - A mudança de 01/10/2026 (serviço cobrado após 1.000/mês; Brasil ~US$ 0,0068): https://periskope.app/blog/whatsapp-business-api-pricing-changes-october-1 · https://www.callbell.eu/en/new-whatsapp-business-api-prices-october-2026-meta-fees-and-how-to-manage-costs/
 - Medições: `programa-multicalculo/A-PROVA-DO-AGGER.md` (SPEC-128).
+
+## 8. Adendo 05/10 tarde — a fila intercalada, a D-128-03 e os logins do Agger
+
+- **D-MC-61 · a fila intercalada (v2.5.1), ✅ TOMADA (Founder/gerente, 05/10 tarde):** 129-B → 130-A → 133-A → 130-B → 131 → 132 →
+  133-B → 135 → 136 → 137 → ★, com a **134 flutuante** (entra quando a Meta aprovar, depois da 133-A, sem segurar ninguém). Regras de
+  troca, notas (88 · 75 · 55) e o porquê no §3. Marcos: 🚀1 renovação no ar (131) · 🚀2 cotação no chat principal (132) · 🚀3 Quem
+  Cobra Menos piloto no WhatsApp (133-B) · 🚀4 negociação pelo WhatsApp (135; ainda exige o atendimento das corretoras ligado e a
+  D-MC-32) · 🚀5 público (137 = o Quem Cobra Menos no WhatsApp oficial aberto; Claude/ChatGPT é a ★, depois).
+- **D-128-03 · ✅ TOMADA (Founder, 05/10):** o robô recalcula REENVIANDO o corpo do pedido (`calcularV2`) com o ajuste, de dentro da
+  página, com o token do próprio app. Isso também resolve a parte da **D-MC-28** que pedia a autorização expressa do Founder para
+  chamadas de dentro da página: **o login continua pela tela; a interceptação continua lendo os resultados**. Fecha a P-128-14 e a T-107.
+- **Os logins do Agger — leia antes de abrir a 129-B:**
+  - os logins usados na 128 são os da **Ellen** — uma PESSOA —, autorizados pelo Founder para TESTES até existir o do robô;
+  - o Agger tem **sessão ÚNICA por login**: se o robô usar o login da Ellen enquanto ela trabalha, um derruba o outro;
+  - por isso (D-MC-24): **para CONSTRUIR e TESTAR a 129-B, use o login da Ellen** (credenciais com o Founder), de preferência fora do
+    horário de trabalho dela. Regras: o aviso de sessão ativa → **Cancelar e parar**; **nunca "Prosseguir"**; **nunca apagar nada**;
+    o captador de lista branca;
+  - **para o USO REAL** (o motor calculando sozinho todo dia — antes de a 133-A ir aos testadores e antes da 131/132 irem para as
+    corretoras), cada corretora precisa de **um usuário NOVO no Agger só para o robô** (ex.: um e-mail tipo `robo@<corretora>`),
+    criado pelo Founder em Configurações → Usuários do Agger (**T-120**);
+  - 📊 medido em 04/10 (`cfg/assinatura-aggilizador` e `listaUsuarios`): **Resulta 5 licenças e 6 usuários ativos · AutoFleet 8
+    licenças e 7 usuários ativos** → a AutoFleet tem 1 licença livre; a Resulta provavelmente precisa de 1 licença a mais ou liberar
+    uma (decisão de compra do Founder).
