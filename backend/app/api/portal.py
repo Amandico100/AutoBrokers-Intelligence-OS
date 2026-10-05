@@ -139,6 +139,10 @@ async def list_credentials(
     )
     out = []
     for r in res.data or []:
+        # 🔴 SPEC-129-B D-129B-11 (costura): a conta do ROBÔ não aparece na tela das pessoas — mostrar o usuário
+        # dele ali convidaria a "editar" (e o gatilho do banco pausaria o robô). Quem lista é o comando do Founder.
+        if str(r.get("portal_key") or "").strip().lower() in PORTAIS_SO_PELO_COMANDO:
+            continue
         # 🔴 SPEC-EXTRA-001.6 B3.4: o `health` ja vinha nesta lista e a tela NAO
         # o renderizava — o corretor via "Conectado" numa credencial recusada.
         # O rotulo humano nao nasce no frontend: ele vem daqui, da MESMA funcao
@@ -211,6 +215,13 @@ async def delete_credential(
     x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
 ):
     _require_internal_key(x_key)
+    # 🔴 SPEC-129-B D-129B-11 (costura): a conta do robô não se apaga pela tela. Os cálculos apontam para ela
+    # (FK composta de multicalculo_calculos) — o DELETE cairia em 500; e apagar o robô é decisão do comando
+    # do Founder (`multicalculo_robo.py pausar`/`apagar-senha`), nunca de um clique.
+    if str(portal_key or "").strip().lower() in PORTAIS_SO_PELO_COMANDO:
+        raise HTTPException(
+            status_code=403,
+            detail="este portal é do robô do multicálculo: pause ou apague a senha pelo comando do Founder")
     supa = get_supabase_client()
     (
         supa.client.table("portal_accounts").delete()
