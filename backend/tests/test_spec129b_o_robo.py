@@ -336,6 +336,9 @@ def test_g3_negocio_registrado_segundo_login_e_pdocs_por_hora():
     c = _corpo("ABC-1", {"id": "n1"}, "v1", "n1")
     assert G.decidir("POST", API + "/calculo/calcularV2", c, e)[0] is False
     e.registrar_negocio("abc1")                                    # normalizado: sem hífen, minúsculo
+    # conserto 129-B: o negócio é do robô, mas os ids que o Agger deu para ele ainda não foram conferidos → barra
+    assert G.decidir("POST", API + "/calculo/calcularV2", c, e) == (False, "ids_de_negocio_nao_conferidos")
+    e.registrar_ids("ABC-1", negocio_id="n1", versao_id="v1")      # o que `versoes/{ref}` deu, antes do POST
     assert G.decidir("POST", API + "/calculo/calcularV2", c, e) == (True, "calculo_do_robo")
     assert G.decidir("POST", API + "/calculo/calcularV2", _corpo("ABC-1", {"id": "OUTRO"}, "v1", "n1"), e) == (
         False, "ids_de_negocio_incoerentes")
