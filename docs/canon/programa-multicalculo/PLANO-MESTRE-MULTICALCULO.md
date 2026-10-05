@@ -2,9 +2,20 @@
 
 ## Renovação, cotação e Quem Cobra Menos, em linha reta
 
-**Versão 2.4 · 04/10/2026 · DEFINITIVA para a execução · desenvolvimento declarado pelo Amandus em 04/10 · nada aqui foi implementado ainda.**
+**Versão 2.5 · 05/10/2026 · DEFINITIVA para a execução · 0.5, 129-A e 128 concluídas (04/10); o resto ainda não foi implementado.**
 
 > **Para o Claude Code:** este é o plano do programa. Ele vale abaixo do CLAUDE.md e do protocolo v13. A execução é contínua (§0.1): siga SPEC atrás de SPEC e pare só nos portões e nas paradas legítimas.
+> 🔴 Leia junto, logo depois do CLAUDE.md: [`PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md`](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) — o porquê da v2.5.
+
+O que mudou da v2.4 para a v2.5 (Amandus, 05/10 — o detalhe e o porquê na [PASSAGEM](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md)):
+- **O Quem Cobra Menos vira WhatsApp: é o plano A (D-MC-51).** Claude e ChatGPT ficam para depois (★); a prova de instalação vai para a ★.
+- **Fase 1 no WhatsApp comum (Evolution Go), número exclusivo da marca; fase 2 na API oficial da Meta (D-MC-52).** A 134 vira a migração.
+- **A 133-A agora é o Quem Cobra Menos no WhatsApp, piloto fechado** (número, agente de cotação, conversa do "oi" ao resultado, 5 testadores).
+- **A fila nova (PASSAGEM §3):** 129-B → 130-A → 133-A → 130-B → 133-B → 134 → 131 → 132 → 135 → 136 → ★/137.
+- **O Quem Cobra Menos não é corretora (D-MC-55):** compara seguradoras E corretoras parceiras, calculadas em paralelo (D-MC-56), e indica a vencedora.
+- **Sem teto por seguradora por dia no início (D-MC-53); a econômica é rascunho e o agente pergunta no portão (D-MC-54).**
+- **O número da marca é separado do atendimento das corretoras e não espera "ligar o atendimento" (D-MC-58).** O agente conversa sem forçar venda (D-MC-59) e o resultado sai compacto (D-MC-60).
+- **D-MC-57 (modelo comercial) é hipótese do Amandus, não decisão.** Nenhum preço entra no código.
 
 O que mudou da v2.3 para a v2.4 (pedidos do Amandus, 04/10):
 - **Mesma pasta, sem worktree.** A 126/127 terminou no código; só faltam os testes de celular do Amandus.
@@ -63,20 +74,20 @@ Legenda: **FATO** (verificado, com fonte) · **AMANDUS** (informação ou decis�
 ## 0. Em uma página
 
 - **Um computador, uma fila, SPECs em linha reta.**
-- **O programa:**
-  1. a espera durável;
-  2. a prova do Agger;
-  3. a prova de instalação;
-  4. o motor;
-  5. a comparação e a proposta;
-  6. a renovação;
-  7. a cotação;
-  8. o Quem Cobra Menos piloto;
-  9. o canal público;
-  10. o WhatsApp oficial;
+- **O programa (ordem v2.5, PASSAGEM §3):**
+  1. a espera durável ✔;
+  2. a prova do Agger ✔;
+  3. o motor, com várias corretoras em paralelo;
+  4. a comparação e a proposta (entre seguradoras e entre corretoras);
+  5. o Quem Cobra Menos no WhatsApp, piloto fechado;
+  6. o leitor de apólice;
+  7. o Quem Cobra Menos piloto ampliado;
+  8. a migração do número para a API oficial da Meta;
+  9. a renovação;
+  10. a cotação;
   11. a proposta conversa;
   12. os lembretes;
-  13. o Quem Cobra Menos público.
+  13. Claude/ChatGPT (★) e o Quem Cobra Menos público.
 - **Quem escreve o quê:** as fichas estão aqui. O Claude Code escreve cada SPEC executável a partir da ficha, um revisor novo e cego a confere, e ela é executada em seguida (D-MC-49).
 - **Nomes e números:**
   - 📊 os números 128–138 estão livres no repositório (git grep, 03/10);
@@ -86,26 +97,27 @@ Legenda: **FATO** (verificado, com fonte) · **AMANDUS** (informação ou decis�
 | # | O quê | SPEC | Tamanho 💭 | Entra quando |
 |---|---|---|---|---|
 | 0 | Fechar a 126/127: os testes possíveis agora e os consertos | — | — | — |
-| 0.5 | Registrar as decisões e a nova fila; consertar o link público `/r/` e a P-E0018-14 | consertos curtos, rito CRÍTICO | P | desenvolvimento declarado (04/10) ✔ |
-| 1 | A espera durável (Work OS) | 129-A | M · 2 etapas | — |
-| 2 | A prova do Agger: primeiro com as gravações, depois 2 sessões ao vivo | 128 | M · 2–3 etapas | autorização escrita da corretora para concluir cálculos; login livre no horário |
-| 3 | A tomada do Quem Cobra Menos e a prova de instalação | 133-A | M · 2 etapas | 10–15 testadores leigos |
-| 4 | O motor de multicálculo | 129-B | G · 5–6 etapas | 129-A pronta; 128 respondida |
-| 5 | Comparação, proposta e registro (130-A) · leitor de apólice (130-B) | 130 | G · 4–5 etapas | modelo visual aprovado; crédito de API (T-04) |
-| 6 | Auxiliar de Renovação, fase 1 | 131 | G · 4 etapas | InfoCap da Resulta de volta na Resulta (D-MC-27) |
-| 7 | Auxiliar de Cotação, fase 1 | 132 | M · 3 etapas | — |
-| 8 | Quem Cobra Menos piloto: cotação no chat | 133-B | G · 3–4 etapas | preço do canal acertado (D-MC-29) |
-| ★ | Canal público | — | — | números da 133-A e da 133-B |
-| 9 | WhatsApp oficial | 134 | G · 3–4 etapas + prazo da Meta | atendimento ligado; verificação na Meta |
-| 10 | A proposta conversa (fase 2) | 135 | M · 2–3 etapas | atendimento ligado; fase 1 medida (D-MC-32) |
-| 11 | Lembretes de vencimento | 136 | M · 2 etapas | opt-in em nome da corretora de registro |
-| 12 | Quem Cobra Menos público | 137 | G (isca) a GG (login e conta) | decisão ★ |
+| 0.5 | Registrar as decisões e a nova fila; consertar o link público `/r/` e a P-E0018-14 | consertos curtos, rito CRÍTICO | P | ✅ CONCLUÍDO 04/10 |
+| 1 | A espera durável (Work OS) | 129-A | M · 2 etapas | ✅ CONCLUÍDA 04/10 |
+| 2 | A prova do Agger: primeiro com as gravações, depois 2 sessões ao vivo | 128 | M · 2–3 etapas | ✅ CONCLUÍDA 04/10 |
+| 3 | O motor de multicálculo, várias corretoras em paralelo (D-MC-56) | 129-B | G · 5–6 etapas | D-128-03 respondida; 1 login de robô por corretora (até lá, fixtures da 128) |
+| 4 | Comparação (entre seguradoras e entre corretoras), proposta, página "uau" e registro | 130-A | G · a 130 inteira tem 4–5 etapas | portão de preço (D-MC-45) com a econômica (D-MC-54); modelo visual aprovado |
+| 5 | Quem Cobra Menos no WhatsApp, piloto fechado (Evolution) | 133-A | 💭 a definir na SPEC | o chip e a instância Evolution (QR) do número novo; 5 testadores |
+| 6 | Leitor de apólice (foto/PDF no WhatsApp → ficha) | 130-B | parte da 130 (4–5 etapas no total) | crédito de API (T-04); 20–30 apólices |
+| 7 | Quem Cobra Menos piloto ampliado | 133-B | G · 3–4 etapas | regras de negócio entre corretoras (D-MC-56); preço do canal (D-MC-29) |
+| 8 | Migração do número para a API oficial da Meta | 134 | G · 3–4 etapas + prazo da Meta | Meta aprovou empresa, número e nome; cartão na conta Meta |
+| 9 | Auxiliar de Renovação, fase 1 | 131 | G · 4 etapas | InfoCap da Resulta de volta na Resulta (D-MC-27) |
+| 10 | Auxiliar de Cotação, fase 1 | 132 | M · 3 etapas | — |
+| 11 | A proposta conversa (fase 2) | 135 | M · 2–3 etapas | atendimento ligado; fase 1 medida (D-MC-32) |
+| 12 | Lembretes de vencimento | 136 | M · 2 etapas | opt-in em nome da corretora de registro |
+| ★ | Claude/ChatGPT: o conector e a prova de instalação (era a 133-A da v2.4) | — | — | depois do programa no WhatsApp |
+| 13 | Quem Cobra Menos público | 137 | G (isca) a GG (login e conta) | decisão ★ |
 
 Ajustes da ordem:
-- **Os passos 2 e 3 podem trocar de lugar.** Vai primeiro o que ficar pronto antes: a autorização e o horário da 128, ou os testadores da 133-A.
-- **Se a ★ escolher um diretório,** a 137 sobe para logo depois da 133-B.
+- **A 134 pode entrar a qualquer momento depois da 133-A** (PASSAGEM §3): o caminho crítico externo é a Meta, e o Amandus começa a verificação já.
+- **A 130 se divide na fila:** a 130-A vem antes da 133-A (a conversa entrega o resumo e o link da página); a 130-B vem depois (a foto da apólice entra na 133-B).
 - **Tamanho:** P/M/G/GG. Uma etapa é o que um agente faz numa sessão.
-- **Portões de preço:** antes da 130-A e antes da 133-B, o Claude Code faz ao Amandus as perguntas de preço, com os números da 128 (D-MC-45).
+- **Portões de preço:** antes da 130-A e antes da 133-B, o Claude Code faz ao Amandus as perguntas de preço, com os números da 128 (D-MC-45); na 130-A, ele traz a econômica proposta e pergunta (D-MC-54).
 
 ### 0.1 O caminho até a produção — checklist
 
@@ -120,11 +132,13 @@ Ajustes da ordem:
 3. **Para e pede ao Amandus o que precisa, de forma objetiva, só em dois casos:**
    - uma parada legítima do CLAUDE.md §10;
    - um destes portões:
-     - **128 ao vivo:** autorização escrita da corretora, 3–5 apólices autorizadas, login livre no horário;
-     - **133-A:** o serviço e o domínio no EasyPanel, e os testadores;
-     - **130-A e 133-B:** as perguntas de preço (D-MC-45), já prontas, com os números da 128;
+     - ~~128 ao vivo~~ (✔ 04/10);
+     - **129-B:** a D-128-03 (recalcular reenviando o pedido) e 1 login de robô por corretora — sem o login, constrói e testa com as fixtures da 128; a prova ao vivo espera;
+     - **130-A:** o portão de preço (D-MC-45), com a econômica proposta como rascunho e a margem da corretora (D-MC-54); o modelo visual;
+     - **133-A:** o chip novo com o WhatsApp Business e a instância Evolution (QR) do número da marca; os 5 testadores;
+     - **133-B:** as regras de negócio entre corretoras (D-MC-56) e o preço do canal (D-MC-29);
+     - **134:** a Meta aprovou empresa, número e nome "Quem Cobra Menos"; cartão de pagamento na conta Meta;
      - **131:** a InfoCap da Resulta de volta na Resulta;
-     - **134:** a verificação na Meta e o número novo;
      - **135:** o atendimento ligado;
      - **qualquer licença ou custo novo.**
 
@@ -138,79 +152,65 @@ Ajustes da ordem:
 **☐ 0 · Fechar a 126/127** — código pronto; faltam os testes de celular do Amandus
 - Se um teste falhar, o Amandus cola o erro no chat do programa, que conserta.
 
-**☐ 0.5 · Registro e dois consertos** — chat novo, mesma pasta (prompt do §12)
-- Grava este plano no repositório e registra no canon as decisões e a nova fila.
-- Conserta o link de relatório `/r/`: o cliente volta a abrir sem login.
-- Garante que o conhecimento compartilhado entre as corretoras saia sempre anônimo. Ele continua global (D-MC-39).
-- **Amandus:** implanta os 4 serviços (o relatório traz o passo a passo).
-- **Pronto quando:** um link `/r/` abre numa aba anônima.
+**☑ 0.5 · Registro e dois consertos** — ✅ CONCLUÍDO e no ar em 04/10
+- Plano gravado, decisões e fila no canon; o link `/r/` abre sem login; o conhecimento compartilhado sai sempre anônimo (D-MC-39).
 
-**☐ 1 · 129-A · Espera durável** — mesmo chat
-- O sistema espera os ~7 min do Agger sem perder nada, sobrevive a reinício e nunca roda duas vezes.
-- Antes de tudo, faz o inventário dos trabalhos presos e aplica uma regra: volta o que pode rodar; o velho expira sem rodar.
-- Tira o CPF em claro dos passos de trabalho.
-- **Amandus:** informa no prompt duas variáveis do `smith-api` no EasyPanel; implanta; testa.
-- **Pronto quando:** um trabalho de teste dorme 10 min e acorda; um reinício no meio não duplica.
+**☑ 1 · 129-A · Espera durável** — ✅ CONCLUÍDA em 04/10
+- O trabalho dorme, acorda, sobrevive a reinício e nunca roda duas vezes. A migration `_03` está na caixa do Amandus.
 
-**☐ 2 · 128 · Prova do Agger**
-- Primeiro sem conta, com as gravações; depois 2 sessões ao vivo (teto de 25 cálculos).
-- Mede:
-  - o seguro novo e a renovação a partir da InfoCap;
-  - quanto cada alavanca baixa o preço (comissão, assistência, carro reserva, vidros, franquia);
-  - se 2 opções saem de um cálculo só;
-  - o volume por dia e as cotas.
-- **Amandus:** autorização escrita da corretora; 3–5 apólices autorizadas; o login livre nos horários.
-- **Pronto quando:** tabela de capacidade com números e o contrato do cálculo.
+**☑ 2 · 128 · Prova do Agger** — ✅ CONCLUÍDA em 04/10
+- 📊 16 cálculos de 25 ao vivo, nada apagado; contrato do cálculo e fixtures saneadas. Resultado em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md).
 
-**☐ 3 · 133-A · Prova de instalação**
-- Um conector da marca, sem dado pessoal, com kit de instalação: link pessoal, 6 passos, vídeo e ajuda no WhatsApp.
-- 10–15 leigos tentam instalar no próprio celular, no Claude e no ChatGPT.
-- **Amandus:** cria o serviço e o domínio no EasyPanel; recruta os testadores.
-- **Pronto quando:** se sabe quantos instalam sozinhos, em quanto tempo e onde travam.
-
-**☐ 4 · 129-B · O motor**
+**☐ 3 · 129-B · O motor** — ⏭ próxima
 - O AutoBrokers calcula e recalcula sozinho no Agger:
-  - login de robô por corretora;
+  - login de robô por corretora, cada um isolado;
+  - **o mesmo pedido em várias corretoras em PARALELO** (D-MC-56);
+  - **padrão e econômica disparadas juntas** (D-MC-60);
   - fila e freios;
   - resultado aos poucos;
   - senhas nunca expostas.
+- Mede a hipótese do CPF: a mesma seguradora recebendo o mesmo CPF de 2 corretoras (D-MC-56).
 - Cobrança e vidros não travam durante um cálculo.
-- **Amandus:** um login de robô em cada corretora (se faltar licença, decide a compra).
-- **Pronto quando:** renovação e seguro novo de ponta a ponta pelo robô; duas corretoras isoladas.
+- **Amandus:** responde a D-128-03 na abertura; um login de robô em cada corretora (se faltar licença, decide a compra).
+- **Pronto quando:** renovação e seguro novo de ponta a ponta pelo robô; duas corretoras isoladas e calculadas em paralelo.
 
-**☐ 5 · 130-A · Comparação e proposta**
-- Portão de preço antes de começar: com os números da 128, o Claude Code pergunta como montar as 2 opções e como usar a comissão.
-- Proposta com 2 opções (completa e recomendada; econômica), nota de 0 a 100 e motivos, em página "uau" com PDF.
+**☐ 4 · 130-A · Comparação e proposta**
+- Portão de preço antes de começar: o agente traz a econômica proposta (rascunho, D-MC-54) e a margem da corretora, e o Amandus decide.
+- Compara entre seguradoras E entre corretoras parceiras e indica a vencedora (D-MC-55).
+- Proposta com 2 opções (completa e recomendada; econômica), nota de 0 a 100 e motivos, em página "uau" com PDF; o link vai no resultado do WhatsApp.
 - Registro de oportunidades e consentimentos.
 - **Amandus:** aprova o modelo visual; responde ao portão de preço.
 - **Pronto quando:** um corretor aprova a proposta.
 
+**☐ 5 · 133-A · Quem Cobra Menos no WhatsApp, piloto fechado** → 🚀 **MARCO 1: piloto do consumidor** (na v2.4 era o MARCO 3, na 133-B)
+- Número exclusivo da marca no WhatsApp comum, pela Evolution Go (D-MC-52); agente só de cotação, na estrutura que já existe (D-MC-58).
+- A conversa do "oi" ao resultado, com o motor e o resumo da 130-A; perguntas do perfil; consentimento; lista de números convidados; limite por número.
+- **Amandus:** separa o chip, instala o WhatsApp Business, lê o QR da instância Evolution (o chat entrega o passo a passo); os 5 testadores.
+- **Pronto quando:** os 5 testadores medem: chegou ao fim? quanto tempo? onde travou?
+
 **☐ 6 · 130-B · Leitor de apólice**
-- Lê PDF ou foto de qualquer seguradora e monta a ficha, com o modelo mais barato que acertar.
+- Lê a foto ou o PDF que chega pelo WhatsApp, de qualquer seguradora, e monta a ficha, com o modelo mais barato que acertar.
 - **Amandus:** 20–30 apólices autorizadas; crédito de API.
 - **Pronto quando:** o acerto está medido por campo.
 
-**☐ 7 · 131 · Renovação (fase 1)** → 🚀 **MARCO 1: renovação no ar para as corretoras**
+**☐ 7 · 133-B · Quem Cobra Menos piloto ampliado**
+- Portão na abertura: as regras de negócio entre corretoras (D-MC-56) e o preço do canal (D-MC-29).
+- Foto da apólice; cotação nas corretoras parceiras com a vencedora; proteção contra CPF de outra pessoa (D-MC-46); passagem à corretora vencedora.
+- **Pronto quando:** pessoas reais cotaram de ponta a ponta, nada vazou entre elas e os testes de abuso falham fechado.
+
+**☐ 8 · 134 · Migração para a API oficial da Meta**
+- O mesmo agente, outro transporte; modelos aprovados. Pode entrar a qualquer momento depois da 133-A.
+- **Amandus:** verificação da empresa, número e nome na Meta (começa já); cartão de pagamento na conta Meta.
+- **Pronto quando:** a mesma conversa roda pela API oficial, sem mudar uma frase.
+
+**☐ 9 · 131 · Renovação (fase 1)** → 🚀 **MARCO 2: renovação no ar para as corretoras** (era o MARCO 1)
 - As renovações da janela aparecem calculadas, comparadas e com proposta pronta; o corretor ajusta e envia.
 - **Amandus:** devolve a InfoCap à Resulta; implanta; testa com uma semana real.
 - **Pronto quando:** as renovações AUTO de uma semana real ficam prontas sem ninguém calcular.
 
-**☐ 8 · 132 · Cotação no chat (fase 1)** → 🚀 **MARCO 2: cotação no ar**
+**☐ 10 · 132 · Cotação no chat (fase 1)** → 🚀 **MARCO 3: cotação no ar** (era o MARCO 2)
 - O corretor escreve "cota" ou "ajusta" no chat do AutoBrokers e recebe ali mesmo.
 - **Pronto quando:** sai uma cotação nova a partir da apólice de outra corretora.
-
-**☐ 9 · 133-B · Quem Cobra Menos em piloto** → 🚀 **MARCO 3: piloto do consumidor**
-- Portão de preço do canal antes de começar: a comissão com Resulta e AutoFleet.
-- Pessoas cotam conversando no Claude, com narração ao vivo durante o cálculo e proteções contra abuso e contra CPF de outra pessoa.
-- **Amandus:** 10–30 pessoas reais; o acerto comercial.
-- **Pronto quando:** 10–30 pessoas cotaram de ponta a ponta e nada vazou entre elas.
-
-**☐ ★ · Escolha do canal público** — com os números da 133-A e da 133-B.
-
-**☐ 10 · 134 · WhatsApp oficial**
-- Número oficial, modelos aprovados, opt-in.
-- **Amandus:** verificação na Meta (começar durante 129–131) e um número novo.
-- **Pronto quando:** um modelo aprovado sai e a resposta volta à conversa.
 
 **☐ 11 · 135 · A proposta conversa (fase 2)** → 🚀 **MARCO 4: negociação pelo WhatsApp**
 - O agente leva a proposta no WhatsApp, ajusta e passa ao humano para fechar.
@@ -218,11 +218,13 @@ Ajustes da ordem:
 - **Pronto quando:** um ciclo completo roda com cliente de teste.
 
 **☐ 12 · 136 · Lembretes de vencimento**
-- Recota e avisa quem consentiu, 30 e 15 dias antes.
+- Recota e avisa quem consentiu, 30 e 15 dias antes, pelo mesmo número da marca (D-MC-51).
 - **Pronto quando:** a mensagem sai no dia certo, e quem recusou não recebe.
 
+**☐ ★ · Claude/ChatGPT** — o conector e a prova de instalação da v2.4 (ficha ★ no §4).
+
 **☐ 13 · 137 · Quem Cobra Menos para o público** → 🚀 **MARCO 5: público**
-- O canal escolhido na ★: diretório do Claude primeiro, ChatGPT no modo conta, ou WhatsApp.
+- O canal escolhido na ★.
 - **Pronto quando:** qualquer pessoa usa pelo celular.
 
 ---
@@ -372,17 +374,17 @@ Os locais (arquivo:linha) vêm do parecer. ✔ marca o que eu conferi por conta 
 | D-MC-27 | A conexão InfoCap da Resulta dentro da Amandus foi intencional (testes). O Amandus a devolve à Resulta quando a execução começar | Amandus, 03/10 | Condição de entrada da 131 |
 | D-MC-28 | Transporte: interceptação (provada em 23/09) como padrão; chamadas de dentro da página só com autorização expressa do Amandus, se a 128 mostrar fragilidade | Recomendação (80 × 78) | 129-B |
 | D-MC-29 | Preço no canal: termo por corretora, com comissão e desconto por seguradora; nunca fixo no código, nunca ao acaso | Recomendação (85); confirmar antes da 133-B | No piloto, acerto com Resulta e AutoFleet |
-| D-MC-30 | Porta do piloto: convite pessoal revogável dentro do próprio link do conector, wa.me no pedido de contato, teto diário e interruptor | Recomendação (82) | Substitui a D-E007-03 no piloto; o público se decide na ★ |
+| D-MC-30 | Porta do piloto: convite pessoal revogável dentro do próprio link do conector, wa.me no pedido de contato, teto diário e interruptor | Recomendação (82) | Substitui a D-E007-03 no piloto; o público se decide na ★ · 🔁 **revista em 05/10:** no WhatsApp, a porta é a lista de números convidados, com limite por número (133-A; D-MC-51) |
 | D-MC-31 | Todo cálculo é registrado; contato futuro só com consentimento; sem consentimento, os dados pessoais são anonimizados depois de N dias (💭 90) | Recomendação (85) | Refina a D-MC-16 |
 | D-MC-32 | A 135 liga depois de N propostas medidas na fase 1 (💭 50), com pouca edição, em vez de 60 dias fixos | Recomendação; confirmar ao chegar à 135 | Revê a D-E002-04 |
-| D-MC-33 | No piloto, o canal usa o usuário robô da corretora de registro, com prioridade para o pedido ao vivo e renovação em janela; no público, robô próprio do canal | Recomendação | Revê a D-E007-06 no piloto |
+| D-MC-33 | No piloto, o canal usa o usuário robô da corretora de registro, com prioridade para o pedido ao vivo e renovação em janela; no público, robô próprio do canal | Recomendação | Revê a D-E007-06 no piloto · 🔁 **revista em 05/10 pela D-MC-56:** o pedido é calculado em paralelo nas corretoras parceiras, um robô por corretora |
 | D-MC-34 | Páginas para o cliente: personalizáveis por corretora, bonitas, persuasivas e honestas ("uau"), com modelo visual aprovado antes da 130 | Amandus, 03/10 | §7 |
 | D-MC-35 | Senhas e segredos citados no parecer, inclusive apagar as gravações do intake depois das fixtures (a execução não apaga intake, CLAUDE.md §13.5): o Amandus cuida fora do programa; não bloqueiam SPEC | Amandus, 03/10 | — |
-| D-MC-36 | Prova de instalação cedo (133-A), sem dado pessoal | Amandus, 04/10 (confirmada ao declarar o início) | §4 |
+| D-MC-36 | Prova de instalação cedo (133-A), sem dado pessoal | Amandus, 04/10 (confirmada ao declarar o início) | §4 · 🔁 **revista em 05/10 (D-MC-51):** a prova de instalação vai para a ★; a 133-A passa a ser o WhatsApp |
 | D-MC-37 | No código, o cálculo não usa o nome "quote" (já é o funil). Porta proposta: `MulticalculoProvider` | Recomendação do parecer | 129-B |
 | D-MC-38 | A fila deste plano substitui a ordem da D-FILA-01 e a D-E002-07. O registro no canon é a primeira tarefa do passo 0.5 | Amandus, 04/10 (confirmada ao declarar o início) | Canon |
 | D-MC-39 | O conhecimento destilado das conversas continua **global e compartilhado** por todas as corretoras ("O Atlas é UM SÓ, e é de todas", decisão do Founder de 15/08). A P-E0018-14 só garante que ele saia sempre anônimo: um guarda obrigatório antes de gravar deixa entrar o que descreve o serviço e barra nome de corretora, nome de pessoa, telefone, CPF, placa e e-mail. **Nunca** pôr `company_id` na `conduct_playbooks`, porque isso mataria o compartilhamento | Amandus, 04/10 (o conserto pela revisão, nota 85) | Passo 0.5 |
-| D-MC-40 | A 129-B prova o isolamento com 1 robô em cada uma de 2 corretoras. O rodízio entre 2 robôs da mesma corretora é provado em teste automático, e ao vivo quando o segundo login existir. A distribuição do canal entre corretoras nasce na 133-B, como camada sobre o roteador da 129-B | Claude, por delegação (revisão, item 9) | 129-B · 133-B |
+| D-MC-40 | A 129-B prova o isolamento com 1 robô em cada uma de 2 corretoras. O rodízio entre 2 robôs da mesma corretora é provado em teste automático, e ao vivo quando o segundo login existir. A distribuição do canal entre corretoras nasce na 133-B, como camada sobre o roteador da 129-B | Claude, por delegação (revisão, item 9) | 129-B · 133-B · 🔁 **revista em 05/10 pela D-MC-56:** o cálculo em várias corretoras em paralelo entra na 129-B; na 133-B ficam as regras de negócio entre corretoras |
 | D-MC-41 | O recálculo volta à conta da corretora onde o negócio nasceu, não ao mesmo login | Claude, por delegação (revisão, item 12) | 129-B |
 | D-MC-42 | Concorrência na 129-B: fila e navegador próprios para o cálculo. Soltar o navegador depois do disparo fica descartado, porque perde o resultado aos poucos | Claude, por delegação (revisão, item 10) | 129-B |
 | D-MC-43 | O PDF da proposta sai de um render próprio, fora do navegador do cálculo: Chromium na imagem do `smith-api` ou serviço de render | Recomendação (80 × 50); decidir na 130-A | 130-A |
@@ -393,10 +395,32 @@ Os locais (arquivo:linha) vêm do parecer. ✔ marca o que eu conferi por conta 
 | D-MC-48 | Os dois consertos do passo 0.5 seguem o rito CRÍTICO (protocolo §3.2): juiz, red team e a prova do §9.1 | Claude, por delegação (revisão, ponto b) | Passo 0.5 |
 | D-MC-49 | **Execução contínua.** O Claude Code segue o plano sozinho, SPEC atrás de SPEC, na mesma pasta, sem esperar aprovação entre elas. Para só nas paradas do CLAUDE.md §10 e nos portões do §0.1. Encadeia 2–3 SPECs por chat e, quando o contexto encher, entrega o texto para o chat seguinte. O plano fica gravado no repositório | Amandus, 04/10 | §0.1 · §12 |
 | D-MC-50 | **Narração ao vivo honesta.** Durante o cálculo, o chat conta o que está acontecendo ("Cotando na Porto…", "Nova liderança…"), e cada frase nasce de um evento real do cálculo. Se demorar, mostra o que já chegou e segue atualizando; seguradora com erro ou recusa sai da espera | Amandus, 04/10 (a ideia); o desenho é recomendação | 133-B · §6.6 |
+| D-MC-51 | **WhatsApp é o plano A do Quem Cobra Menos.** Zero instalação, o telefone identifica a pessoa, foto da apólice natural, passagem à corretora na mesma conversa; o mesmo número serve aos lembretes (136). Claude/ChatGPT ficam para depois (★) | Amandus, 05/10 (WhatsApp 88 · Claude/ChatGPT primeiro 62 · os dois juntos 50) | Revê a D-MC-36 e a 133-A · PASSAGEM §2 |
+| D-MC-52 | **Fase 1 no WhatsApp comum (Evolution Go), com número EXCLUSIVO da marca; fase 2 na API oficial (134).** Risco de bloqueio aceito: estrutura temporária, piloto só com Resulta e AutoFleet. O canal é uma borda: trocar o transporte não muda a conversa | Amandus, 05/10 | 133-A · 134 · 📊 preço Meta de 01/10/2026 na PASSAGEM §2 (conferir na tabela oficial antes da 134) |
+| D-MC-53 | **Nenhum limite por seguradora por dia no início.** Só medir (cálculos por seguradora por dia, recusas); a regra volta se o volume crescer | Amandus, 05/10 | Revê a condição "teto por seguradora" da 133-B (§6.3, §13) |
+| D-MC-54 | **A econômica é rascunho.** O agente do portão de preço (abertura da 130-A) PERGUNTA ao Amandus e traz as ideias medidas (A-PROVA-DO-AGGER §3 E5) e a "margem da corretora" (comissão e desconto como uma regra, com piso) | Amandus, 05/10 | 130-A · D-MC-45 |
+| D-MC-55 | **O Quem Cobra Menos não é corretora.** Compara seguradoras E corretoras parceiras (poucas, todas clientes do AutoBrokers; no início só Resulta e AutoFleet) e entrega a corretora VENCEDORA. Comunicação honesta: comparador independente; a contratação é pela corretora parceira vencedora | Amandus, 05/10 | 130-A · 133-B · o texto final na fase de copy (D-MC-19) |
+| D-MC-56 | **Cotação em várias corretoras em PARALELO**, um robô por corretora, na conta dela; o tempo é o da mais lenta. As regras de negócio (empate, rodízio, quantas por pedido, o que a parceira paga) são do Amandus, portão da 133-B. ⚠️ Hipótese a medir na 129-B: o mesmo CPF vindo de 2 corretoras | Amandus, 05/10 | 129-B · 133-B · revê a D-MC-33 e a D-MC-40 |
+| D-MC-57 | **Modelo comercial — HIPÓTESE do Amandus, NÃO decidida:** as parceiras pagam mensalidade + o custo de API de cada cotação. Nenhum preço no código antes da decisão (CLAUDE.md §13.6) | Amandus, 05/10 (hipótese) | — |
+| D-MC-58 | **O número do Quem Cobra Menos é separado do atendimento das corretoras** e não espera "ligar o atendimento". Mesma estrutura do AutoBrokers (integração, webhook, agente, roteador de modelos), sem motor paralelo; agente de escopo estreito (só cotação); a integração mora na empresa técnica (D-MC-26); as corretoras não precisam de WhatsApp próprio | Amandus, 05/10 | 133-A · 134 |
+| D-MC-59 | **O agente sabe conversar e não força venda.** Gatilhos honestos, nunca pressão falsa, nunca "o mais barato do mercado" sem prova (só "das N que cotei"), nunca evento inventado (D-MC-50). O perfil é declaração do segurado: o agente PERGUNTA; dado da apólice vem da apólice | Amandus, 05/10 | 133-A · 133-B |
+| D-MC-60 | **Como o resultado aparece no WhatsApp:** padrão e econômica calculadas ao mesmo tempo; narração em poucas mensagens; o quadro sai aos ~30–60 s com quem respondeu; uma linha por seguradora + as 2 melhores completas + a econômica do vencedor + "recomendo X (nota/100) porque…" + o link da página "uau"; mensagens compactas | Amandus, 05/10 (recomendações aceitas; padrão+econômica juntas, nota 88) | 129-B · 130-A · 133-A |
 
 ---
 
 ## 3. Por que esta ordem
+
+**A ordem v2.5 (05/10, PASSAGEM §3).** O Quem Cobra Menos passou a ser WhatsApp (D-MC-51), e isso puxa a fila. A 129-B vem
+primeiro porque tudo calcula por ela, e agora em várias corretoras em paralelo (D-MC-56). A 130-A vem logo depois porque a
+conversa no WhatsApp entrega o resumo e o link da página "uau", e a comparação passa a ser também entre corretoras. Com motor e
+resumo prontos, a 133-A põe o número da marca no ar num piloto fechado, pela Evolution que já existe (D-MC-52): não espera
+"ligar o atendimento", porque o número é separado do atendimento das corretoras (D-MC-58). A 130-B (a foto da apólice) e a 133-B
+(o piloto ampliado, com as regras entre corretoras) vêm em seguida. A 134 deixa de ser "WhatsApp oficial depois do atendimento" e
+vira a migração do mesmo agente para a API da Meta; ela pode entrar a qualquer momento depois da 133-A, porque o caminho crítico é
+a aprovação da Meta, que o Amandus começa já. A renovação (131) e a cotação do corretor (132) não dependem do canal (PASSAGEM §5)
+e seguem depois; Claude/ChatGPT e a prova de instalação vão para a ★.
+
+**A ordem da v2.4 (histórico — onde discordar do parágrafo acima, vale o parágrafo):**
 
 - **129-A primeiro:**
   - não depende do Agger;
@@ -421,10 +445,10 @@ Os locais (arquivo:linha) vêm do parecer. ✔ marca o que eu conferi por conta 
 
 | SPEC do canon | Tema | Onde entra no programa |
 |---|---|---|
-| 099 | canais | 134 |
+| 099 | canais | 133-A (o número da marca, Evolution) e 134 (a API oficial) |
 | 107 | porta de conteúdo não confiável (PDF, MCP) | 130-B e 133-B |
 | 109 | motor headless e `renewals.radar` | 129-B e 131 |
-| 110 | gateway para ChatGPT/Claude | 133-A (primeira fatia), 133-B e 138 |
+| 110 | gateway para ChatGPT/Claude | ★ (era a 133-A da v2.4) e 138 |
 | 111 | custo e cota | 129-B e 133-B |
 | 101 | conectores de gestão | Depois do programa (D-E002-08 × D-PILOTO-16 em aberto) |
 | EXTRA-005 | reativação | 136 |
@@ -444,7 +468,7 @@ Os locais (arquivo:linha) vêm do parecer. ✔ marca o que eu conferi por conta 
 
 ## 4. As fichas
 
-Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando está pronta. Os portões G1–G20 da proposta 002 §7 valem e são citados por número nas SPECs. Exemplos:
+Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando está pronta. As fichas seguem a ordem da v2.4; **a fila que vale é a do §0 (v2.5)**. Os portões G1–G20 da proposta 002 §7 valem e são citados por número nas SPECs. Exemplos:
 - G7: detector de vazamento com teste de mutação;
 - G10: dois processos disputando um login.
 
@@ -553,34 +577,34 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
 - **Absorve:** EXTRA-002, parte 2.
 - **Tamanho:** M, 2–3 etapas.
 
-### SPEC-133-A · A tomada e a prova de instalação (nova)
-- **Objetivo:** saber, com pessoas leigas e o celular delas, se conseguem instalar o Quem Cobra Menos no Claude e no ChatGPT, quanto tempo leva e onde travam. Tudo isso antes de investir na cotação pelo chat.
+### SPEC-133-A · Quem Cobra Menos no WhatsApp, piloto fechado (v2.5)
+- **Objetivo:** o número da marca no ar, num piloto fechado: a pessoa manda "oi" e chega ao resultado da cotação na mesma conversa (PASSAGEM §3, linha 3). Na fila, vem depois da 129-B e da 130-A.
+- **Transporte (D-MC-52):** WhatsApp comum pela Evolution Go, a mesma de hoje, num número EXCLUSIVO da marca. O canal é uma borda: o agente e o motor não sabem qual transporte é, para a migração da 134 não mudar a conversa. Risco de bloqueio do número aceito pelo Amandus (estrutura temporária; piloto só com Resulta e AutoFleet).
+- **Separado do atendimento (D-MC-58):** não espera "ligar o atendimento" (os testes classe A protegem o agente que fala com os segurados das corretoras). Usa a mesma estrutura do AutoBrokers (integração WhatsApp, webhook, agente, roteador de modelos), sem motor paralelo (CLAUDE.md §5), com um agente de escopo estreito: só cotação. A integração do número mora na empresa técnica (D-MC-26); as corretoras não precisam de WhatsApp próprio — o motor usa o login de robô de cada uma.
 - **Entra:**
-  - **Servidor MCP:** serviço próprio, mesmo repositório, implantação separada, endereço próprio. Sem chave mestra do banco e sem dado pessoal.
-  - **2 ferramentas sem dado pessoal:**
-    - "como funciona / boas-vindas";
-    - "explicar termos do seguro auto" (base da 001.5 + glossário).
-  - **Link pessoal revogável:** o link que a pessoa cola já é o convite.
-  - **Kit de instalação (§6.2):**
-    - página para celular com botão "copiar meu link";
-    - atalhos para as telas certas (a conferir);
-    - vídeo de 40 s;
-    - texto pronto para WhatsApp;
-    - ajuda humana no WhatsApp.
-  - **Medição:** convite → instalou (primeira chamada) → tempo → plataforma (Claude ou ChatGPT; app ou navegador).
-  - **No ChatGPT:** testar "Create MCP App" com contas pessoais (Free, Go, Plus), porque a elegibilidade está incerta (§1.4).
-- **Protocolo:** 10–15 leigos, metade com Claude e metade com ChatGPT, cada um com o plano que já tem, sem ajuda nos primeiros 5 minutos.
-- **Antes de executar:** o Amandus cria o serviço e o domínio no EasyPanel. Usa o nome escolhido, ou um provisório (D-MC-22).
-- **Pronta quando:**
-  - 📊 % de instalações sem ajuda, por plataforma;
-  - 📊 tempo mediano;
-  - lista dos pontos de travamento;
-  - recomendação para a ★.
-- **Absorve:** a primeira fatia da SPEC-110.
-- **Tamanho:** 💭 M, 2 etapas.
+  - o número e a instância Evolution da marca;
+  - o agente de cotação e a conversa do "oi" ao resultado, com o motor (129-B) e o resumo (130-A);
+  - **as perguntas do perfil** (garagem, uso, km, condutor jovem): declaração do segurado; o agente PERGUNTA e nunca assume o padrão do Agger, porque resposta errada pode negar sinistro; o que está na apólice vem da apólice (D-MC-59);
+  - consentimento;
+  - lista de números convidados (revê a D-MC-30) e limite por número;
+  - **o resultado (D-MC-60):** padrão e econômica calculadas ao mesmo tempo; narração real em 2–3 mensagens; o quadro sai aos ~30–60 s com quem respondeu, e seguradora atrasada só é avisada se entrar no top 3 (📊 26 de 227 cálculos nunca fecham); uma linha por seguradora com oferta (menor preço primeiro; recusas numa linha só) + as 2 melhores completas + a econômica do vencedor ao lado da completa + "recomendo X (nota/100) porque…" + o link da página "uau" (130-A, via `/r/`); se o vencedor da econômica for outra seguradora, uma linha diz isso;
+  - **conversa compacta:** cada mensagem nossa custa na API oficial (D-MC-52); 💭 uma cotação ≈ 8–15 mensagens nossas;
+  - **o tom (D-MC-59):** persuasão por preço e gatilhos honestos, nunca pressão falsa, nunca "o mais barato do mercado" sem prova (só "das N que cotei", CDC art. 37/38), nunca evento inventado (D-MC-50).
+- **Não entra:** foto da apólice (130-B/133-B); as regras de negócio entre corretoras (133-B); a API oficial (134).
+- **Antes de executar:** o Amandus separa o chip novo e instala o WhatsApp Business; o chat da 133-A entrega o passo a passo da instância Evolution e do QR (CLAUDE.md §10, ação física).
+- **Pronta quando:** os 5 testadores do Amandus medem: 📊 chegou ao fim? 📊 quanto tempo? onde travou?
+- **Tamanho:** 💭 a definir na SPEC.
 
 ### SPEC-129-B · O motor de multicálculo
 - **Objetivo:** qualquer parte do AutoBrokers pede "calcule" ou "recalcule com este ajuste" e recebe o resultado aos poucos, sem saber qual multicálculo nem qual login foi usado.
+- **Portões na abertura (v2.5, PASSAGEM §3–§4):**
+  - **D-128-03** (recalcular reenviando o corpo do pedido — PROPOSTA, nota 88 × 70): o Claude Code pergunta ao Amandus na abertura (T-107);
+  - **1 login de robô por corretora:** até existir, construir e testar com as fixtures da 128; a prova ao vivo espera.
+- **Entra também (v2.5):**
+  - **várias corretoras em PARALELO (D-MC-56):** o mesmo pedido calculado nas corretoras parceiras ao mesmo tempo, um robô por corretora, cada um na conta dela e isolado; o tempo é o da mais lenta, não a soma (📊 2 cálculos simultâneos na mesma sessão fecharam 16/16, E7); rodízio entre corretoras é possível; as regras de negócio entre corretoras ficam para o portão da 133-B;
+  - **padrão e econômica disparadas juntas (D-MC-60)**, desde o 1º pedido (📊 2 opções = 2 cálculos, D-128-04);
+  - **medir a hipótese do CPF em 2 corretoras (D-MC-56):** a mesma seguradora, recebendo o mesmo CPF de 2+ corretoras, recusa, avisa "já cotado por outra corretora" ou dá preço diferente? Em especial na renovação, onde a corretora atual costuma ter prioridade;
+  - **sem teto por seguradora por dia no início (D-MC-53):** só medir cálculos por seguradora por dia e recusas.
 - **Entra:**
   - **A porta:** `MulticalculoProvider` (D-MC-37), no molde da `PolicyDataProvider` (`policy_data_provider.py:1904`). Ela calcula, consulta aos poucos, recalcula com ajuste, baixa o PDF e informa as capacidades por ramo.
   - **O adaptador do Agger** no `portal-worker` (journeys `agger.*`):
@@ -596,7 +620,7 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
   - **Roteador:**
     - compõe o `resolver_conta` de cada corretora;
     - a trava "conta da mesma corretora" do worker continua;
-    - o roteador do canal entre corretoras nasce na 133-B, como camada por cima deste (D-MC-40), sem reimplementar.
+    - o cálculo em várias corretoras em paralelo nasce aqui (D-MC-56, revê a D-MC-40); na 133-B ficam só as regras de negócio entre corretoras, como camada por cima deste roteador, sem reimplementar.
   - **Afinidade:** o recálculo volta à conta da corretora onde o negócio nasceu, não ao mesmo login (D-MC-41).
   - **Concorrência:** um cálculo de 7 minutos não pode prender o navegador da cobrança e dos vidros. A saída é fila e navegador próprios para o cálculo (D-MC-42). Soltar o navegador depois do disparo perderia o resultado aos poucos.
   - **Convivência com as pessoas:** o robô marca no Agger os negócios que cria e nunca recalcula um negócio que uma pessoa mexeu há menos de 24 h (D-MC-47).
@@ -605,7 +629,7 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
     - a sessão e o token do robô são segredo de nível máximo;
     - nenhuma resposta crua vai para log ou evidência.
   - **PDF:** o da seguradora é copiado para o nosso armazenamento; o link do fornecedor nunca é repassado.
-  - **Freios:** por usuário robô e por hora, por corretora, geral e por seguradora por dia.
+  - **Freios:** por usuário robô e por hora, por corretora e geral. Por seguradora por dia: só medir no início (D-MC-53).
 - **Não entra:** ler apólice, comparar, proposta (130), ciclo (131), conversa (132/133).
 - **Pronta quando:**
   - **com 1 usuário robô:**
@@ -627,11 +651,13 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
 
 ### SPEC-130 · Comparação, proposta e registro (130-A) · leitor de apólice (130-B)
 
-**130-A**, consumida pela 131:
+**130-A**, consumida pela 133-A e pela 131 (na v2.5 vem logo depois da 129-B):
 - **Portão de preço na abertura (D-MC-45).** Com os números da 128 (alavancas, E16, E20), o Claude Code pergunta ao Amandus:
   - como montar a opção econômica (comissão, assistência, coberturas);
   - quando o agente pode propor baixar a comissão, e até onde;
   - se a nota de 0 a 100 e os motivos aparecem para o cliente.
+- **A econômica é rascunho (D-MC-54):** o agente do portão PERGUNTA e traz as ideias para o Amandus decidir — a proposta (organização, não decisão): franquia normal + vidros básicos + carro reserva 7 dias + assistência básica; casco a 100 % da FIPE e terceiros intactos; 💭 12–20 % abaixo da completa; o ranking medido (A-PROVA-DO-AGGER §3 E5): franquia (~−7 %, até −18 %) · vidros (~−11 % sem vidros) · carro reserva · assistência · comissão/desconto (−5,6 % na maioria, sem tirar cobertura, decisão do corretor) · FIPE 90 % (nota 25, evitar). Junto, a **"margem da corretora"**: comissão e desconto como UMA regra, com piso; o motor escolhe qual botão usar por seguradora (Porto, Azul e Itaú obedecem o desconto, não a comissão).
+- **Comparação entre corretoras (D-MC-55):** compara também ENTRE as corretoras parceiras e indica a corretora VENCEDORA; o resumo e a página do link servem à conversa do WhatsApp (133-A).
 - **Duas opções por padrão (D-MC-44):**
   - a "completa (recomendada)" e a "econômica", com nota de 0 a 100 e motivos;
   - é a resposta antecipada à objeção mais comum, o preço;
@@ -656,9 +682,9 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
   - **"não me contate":** por telefone.
 - **Remuneração:** a proposta tem como mostrar a remuneração da corretora. A Res. CNSP 382/2020, art. 4º, §1º, IV, no texto original, manda informar antes da aquisição. Alteração posterior não foi conferida; o jurídico vem depois.
 
-**130-B**, consumida pela 132 e pela 133-B:
+**130-B**, consumida pela 132 e pela 133-B (na v2.5 vem depois da 133-A):
 - **Extrator apólice → ficha:**
-  - PDF e foto;
+  - PDF e foto, inclusive a que chega pelo WhatsApp;
   - origem e confiança por campo;
   - validação do CPF (dígitos), da placa e das datas;
   - o modelo mais barato que passar na bancada (o Luna é candidato).
@@ -703,55 +729,57 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
 - **Absorve:** EXTRA-004.
 - **Tamanho:** M, 3 etapas, crítica.
 
-### SPEC-133-B · Quem Cobra Menos piloto: cotação no chat
-- **Objetivo:** pessoas comuns cotam conversando no Claude (e no ChatGPT, se a 133-A mostrar que dá), com o cálculo real na conversa.
-- **Portão de preço na abertura (D-MC-45):** a comissão e o desconto do canal com Resulta e AutoFleet (D-MC-29), e quais das 2 opções o canal mostra.
-- **Narração ao vivo honesta (D-MC-50, §6.6):**
-  - a ferramenta "ver resultado" devolve as ofertas que já chegaram e os eventos reais desde a última consulta;
-  - o roteiro manda o modelo narrar esses eventos em frases curtas e consultar de novo até o fim, com teto de tempo;
-  - a página ao vivo mostra o mesmo.
-- **Corte por tempo:**
-  - passado um tempo (definido com os números da 128), mostra a melhor oferta até ali e segue atualizando;
-  - seguradora com erro ou recusa sai da espera na hora;
-  - a promessa é mostrar quem cobra menos, não ser o mais rápido.
-- **Entra** (sobre a tomada da 133-A):
-  - **ferramentas:**
-    - começar comparação, com consentimento;
-    - enviar apólice (arquivo ou campos) e CPF;
-    - ver resultado aos poucos, com página ao vivo;
-    - ajustar;
-    - explicar cobertura (complementar a base da 001.5, que hoje explica assistências e não casco ou franquia);
-    - falar com especialista: wa.me para o número de venda da corretora de registro;
-    - me avise no vencimento: opt-in em nome da corretora de registro;
-  - **proteções do §6.3,** todas condição de pronto, inclusive barrar o CPF de outra pessoa (D-MC-46);
-  - **o roteador do canal entre corretoras** (D-MC-40), por cima do roteador da 129-B;
-  - **preço:** D-MC-29;
-  - **dados:** §6.5;
-  - **roteiro versionado:**
-    - texto primeiro;
-    - objeções com suavidade;
-    - a seguradora vencedora e a corretora de registro no fim;
-    - remuneração informada a quem perguntar.
+### SPEC-133-B · Quem Cobra Menos piloto ampliado (v2.5: no WhatsApp)
+- **Objetivo:** o piloto do WhatsApp (133-A) cresce: a pessoa manda a foto da apólice, o pedido é cotado nas corretoras parceiras e ela recebe a corretora VENCEDORA, com a passagem para ela na mesma conversa (PASSAGEM §3, linha 5). Claude/ChatGPT saíram daqui para a ★ (D-MC-51).
+- **Portões na abertura:**
+  - **as regras de negócio entre corretoras (D-MC-56):** quem vence no empate, rodízio, quantas corretoras por pedido, o que a parceira paga — são do Amandus;
+  - **o preço do canal (D-MC-29, D-MC-45):** a comissão e o desconto do canal com Resulta e AutoFleet, e quais das 2 opções o canal mostra.
+- **Entra** (sobre o número e o agente da 133-A, e o motor da 129-B):
+  - **foto ou PDF da apólice** pelo WhatsApp, lida pelo leitor da 130-B;
+  - **cotação nas corretoras parceiras com a vencedora (D-MC-55, D-MC-56):** a camada das regras de negócio por cima do roteador da 129-B, sem reimplementar; falar em "disputa entre corretoras" só quando duas ou mais calcularam;
+  - **proteção contra CPF de outra pessoa (D-MC-46)** e as demais proteções do §6.3, todas condição de pronto;
+  - **passagem à corretora vencedora**, na mesma conversa (D-MC-51); o "não me contate" e o opt-in dos lembretes em nome dela;
+  - **narração ao vivo honesta (D-MC-50, §6.6)** e o resultado compacto (D-MC-60), como na 133-A;
+  - **corte por tempo:** mostra o que já chegou e segue atualizando; seguradora com erro ou recusa sai da espera na hora; a promessa é mostrar quem cobra menos, não ser o mais rápido;
+  - **preço:** D-MC-29; **dados:** §6.5;
+  - **roteiro versionado:** texto primeiro; objeções com suavidade; a seguradora vencedora e a corretora vencedora no fim; remuneração informada a quem perguntar; o tom da D-MC-59.
+- **Revisto em 05/10 (D-MC-53):** o "teto por seguradora por dia" deixou de ser condição de pronto; fica a medição (cálculos por seguradora por dia, recusas), e a regra volta se o volume crescer.
 - **Pronta quando:**
-  - 10–30 pessoas reais cotaram de ponta a ponta;
+  - 10–30 pessoas reais cotaram de ponta a ponta, pela foto da apólice;
   - 📊 tempo até a primeira oferta e até o conjunto;
   - 📊 % que pede contato;
   - nenhum dado de uma pessoa aparece para outra;
   - os testes de abuso falham fechado: CPF de outra pessoa, o mesmo CPF repetido, teto atingido.
-- **Sobrepõe:** 107, 110 e 111.
+- **Sobrepõe:** 107 e 111.
 - **Tamanho:** G, 3–4 etapas.
 
-### ★ Decisão do canal público
-- Com os números da 133-A e da 133-B. Ver §6.1.
+### ★ Claude/ChatGPT e a decisão do canal público
+- **v2.5 (D-MC-51):** o Quem Cobra Menos nasce no WhatsApp; Claude e ChatGPT ficam para depois. A prova de instalação que era a 133-A da v2.4 vem para cá, com o conteúdo abaixo, e o serviço e o domínio do conector no EasyPanel também. Ver §6.1 e §6.2.
+- **Nota — o que era a ficha da 133-A da v2.4 (a tomada e a prova de instalação), guardado para a ★:**
+  - **objetivo:** saber, com leigos e o celular deles, se instalam o Quem Cobra Menos no Claude e no ChatGPT, em quanto tempo e onde travam;
+  - **servidor MCP:** serviço próprio, mesmo repositório, implantação separada, endereço próprio; sem chave mestra do banco e sem dado pessoal; 2 ferramentas sem dado pessoal ("como funciona / boas-vindas"; "explicar termos do seguro auto", base da 001.5 + glossário);
+  - **link pessoal revogável** (o link que a pessoa cola já é o convite) e o **kit de instalação** do §6.2 (página com "copiar meu link", atalhos a conferir, vídeo de 40 s, texto para WhatsApp, ajuda humana);
+  - **medição:** convite → instalou (primeira chamada) → tempo → plataforma (Claude ou ChatGPT; app ou navegador); no ChatGPT, testar "Create MCP App" com contas pessoais (Free, Go, Plus), elegibilidade incerta (§1.4);
+  - **protocolo:** 10–15 leigos, metade Claude e metade ChatGPT, cada um com o plano que já tem, sem ajuda nos primeiros 5 minutos;
+  - **antes:** o Amandus cria o serviço e o domínio do conector no EasyPanel;
+  - **pronta quando:** 📊 % de instalações sem ajuda por plataforma, 📊 tempo mediano, os pontos de travamento e a recomendação do canal público;
+  - **absorve:** a primeira fatia da SPEC-110. 💭 M, 2 etapas.
 
-### SPEC-134 · WhatsApp oficial (recorte da 099)
+### SPEC-134 · Migração do número do Quem Cobra Menos para a API oficial da Meta (recorte da 099)
+- **Objetivo (v2.5, D-MC-52):** o mesmo agente da 133-A/133-B, outro transporte. O número da marca sai do WhatsApp comum (Evolution) e vai para a API oficial; a conversa não muda, porque o canal é uma borda.
+- **Separada do atendimento das corretoras (D-MC-58):** não espera "ligar o atendimento"; pode entrar a qualquer momento depois da 133-A, quando a Meta aprovar.
 - **Entra:**
-  - provedor Meta e webhook com assinatura;
-  - modelos, opt-in e janela de 24 h;
+  - provedor Meta e webhook com assinatura (hoje 📊 0 código de webhook ou de modelo, e a Meta é recusada no registro de provedores, §1.3);
+  - modelos aprovados, opt-in e a janela de 24 h;
   - prender o canal na conversa (`integration_service.py:318-376`);
-  - um segundo número, porque o atual faz atendimento e observação (D-Canal-01).
-- **Fora do código:** a verificação do negócio na Meta. Começa durante 129–131.
-- **Entra quando:** o atendimento estiver ligado (testes da classe A, §10).
+  - o número é o da marca, separado do número de atendimento e observação (D-Canal-01).
+- **O preço mudou em 01/10/2026 (D-MC-52, PASSAGEM §2):** 📊 a Meta passou a cobrar também as respostas (mensagens de serviço) dentro da janela de 24 h, depois de 1.000 grátis por mês por número; Brasil ≈ US$ 0,0068 por mensagem (fonte: periskope.app e callbell.eu, 04/10/2026). Continua grátis o que o CLIENTE manda, e a janela de 72 h de quem entra por anúncio "clique para o WhatsApp". 💭 Uma cotação ≈ 8–15 mensagens nossas ≈ US$ 0,05–0,10 de Meta. 🔴 **Conferir na tabela oficial da Meta antes de abrir a 134.** Fontes:
+  - https://developers.facebook.com/docs/whatsapp/pricing
+  - https://periskope.app/blog/whatsapp-business-api-pricing-changes-october-1
+  - https://www.callbell.eu/en/new-whatsapp-business-api-prices-october-2026-meta-fees-and-how-to-manage-costs/
+- **Fora do código:** a verificação da empresa no Gerenciador de Negócios da Meta, o número e o nome "Quem Cobra Menos" — o Amandus começa já; o cartão de pagamento na conta Meta antes de abrir.
+- **Entra quando:** a Meta aprovar empresa, número e nome.
+- **Pronta quando:** a mesma conversa da 133-A roda pela API oficial, com um modelo aprovado saindo e a resposta voltando à conversa.
 - **Tamanho:** G, 3–4 etapas, mais o prazo da Meta.
 
 ### SPEC-135 · A proposta conversa (fase 2)
@@ -791,6 +819,7 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
 - Um auxiliar de uma corretora usa só os robôs dela.
 - O canal Quem Cobra Menos usa os robôs das corretoras que aderiram (D-MC-26). O roteador entre corretoras nasce na 133-B (D-MC-40).
 - No piloto, o canal divide o robô da corretora de registro, com prioridade para o pedido ao vivo (D-MC-33).
+- 🔁 **v2.5 (D-MC-56):** o mesmo pedido é calculado em paralelo nas corretoras parceiras, um robô por corretora, já na 129-B; na 133-B ficam as regras de negócio entre corretoras.
 
 **Corretora de registro**
 - É a dona do login que calculou. É ela que aparece no fim, recebe a oportunidade e pode fechar.
@@ -813,7 +842,7 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
 - As seguradoras respondem em segundos ou minutos. A porta entrega cada oferta quando chega e fecha o conjunto no fim.
 
 **Proteções**
-- Freios por login, por corretora, geral e por seguradora por dia.
+- Freios por login, por corretora e geral; por seguradora por dia, só medir no início (D-MC-53).
 - Lista branca na saída.
 - Segredo de nível máximo para a sessão do robô.
 - Nenhum nome de corretora no código.
@@ -825,6 +854,8 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
 ---
 
 ## 6. Quem Cobra Menos — instalação, CPF e apólice
+
+> v2.5: o Quem Cobra Menos nasce no WhatsApp (D-MC-51). O §6.1 e o §6.2 (instalação no Claude/ChatGPT) passam a ser material da ★; o §6.3 a §6.6 valem para o WhatsApp, com as revisões marcadas 🔁.
 
 ### 6.1 Todos os caminhos (FATOS de 03/10; notas = julgamento)
 
@@ -881,13 +912,13 @@ Texto para WhatsApp (Claude):
 - Nunca CPF inventado ou de terceiro.
 
 **Proteções obrigatórias** (condição de pronto da 133-B)
-- **Porta de entrada:** convite pessoal revogável no próprio link (D-MC-30), teto diário global e interruptor.
+- **Porta de entrada:** convite pessoal revogável no próprio link (D-MC-30), teto diário global e interruptor. 🔁 No WhatsApp (v2.5): lista de números convidados e limite por número (133-A).
 - **Limites:**
   - por HMAC do CPF: uma impressão digital que só nós reproduzimos, com chave no cofre. É uma função nova; a atual (`cpf_hash_de`) continua, porque é a lista de liberação do canário (T-101);
   - por placa e por sessão;
   - falhando fechado;
   - sem confiar em IP, que no MCP é o da OpenAI ou da Anthropic.
-- **Teto por seguradora por dia:** cada oferta gera um cálculo sob o código da corretora e mexe na taxa de conversão dela.
+- **Teto por seguradora por dia:** cada oferta gera um cálculo sob o código da corretora e mexe na taxa de conversão dela. 🔁 **Revisto em 05/10 (D-MC-53):** nenhum limite no início; só medir, e a regra volta se o volume crescer.
 - **Saída:** lista branca, só ofertas. Nunca devolver os dados de cadastro que o Agger traz a partir do CPF (nome, nascimento, sexo, estado civil). Sem isso, o Quem Cobra Menos vira uma máquina de consultar CPF alheio.
 - **CPF de outra pessoa (D-MC-46):**
   - declaração "sou o segurado ou tenho autorização dele";
@@ -1059,7 +1090,7 @@ O `PENDENCIAS.md` não tem nota por item (📊 0 ocorrências), e a única lista
 **Mapa dos testes** (julgamento do parecer, com a régua "PODE LIGAR"):
 - **Em 03/10:** 101 pendentes; 55 travavam ligar o atendimento (classe A); 0 travavam o programa (classe B); 46 podiam esperar (classe C).
 - **Em 04/10:** 📊 95 pendentes e 10 feitos, de T-01 a T-105. O mapa é recontado no registro do canon (passo 0.5), com a T-104 e a T-105.
-- **A classe A trava também a 134 e a 135.**
+- **A classe A trava também a 135.** A 134 não: o número do Quem Cobra Menos é separado do atendimento das corretoras (D-MC-58, 05/10).
 - **A T-04 (crédito de API) pesa a partir da 130.**
 - **T-91 e T-99 estão conferidas até `a87b2e7`, sem o `smith-web`:**
   - `portal-worker` e `smith-api` pela digital do código;
@@ -1075,18 +1106,26 @@ O `PENDENCIAS.md` não tem nota por item (📊 0 ocorrências), e a única lista
 
 ## 11. Caixa do Amandus (o que só você faz, e quando)
 
+v2.5 — da [PASSAGEM](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) §4:
+
 | Quando | O quê |
 |---|---|
-| ✔ 04/10 | Desenvolvimento declarado e nova fila confirmada |
-| Antes de colar o prompt de execução | Ver duas variáveis no EasyPanel (serviço smith-api → Environment): `WORK_RUNS_ROUTINE_BRIDGE` e `WORK_WORKER_IN_PROCESS`. Anotar o valor de cada uma, ou "não existe" |
-| Depois do passo 0.5 | Implantar os 4 serviços pelo passo a passo do relatório e abrir um link `/r/` numa aba anônima |
-| Antes das sessões ao vivo da 128 | Autorização escrita da corretora para o agente concluir cálculos (uma mensagem basta); 3–5 apólices autorizadas; horário em que o login fica livre |
-| Antes da 133-A | Criar o serviço e o domínio no EasyPanel; 10–15 pessoas leigas para testar a instalação no próprio celular |
-| Durante 129–131 | Iniciar a verificação do negócio na Meta e separar um número novo para o WhatsApp oficial |
-| Antes da 130 | Responder ao portão de preço (D-MC-45); aprovar o modelo visual da página do cliente; crédito de API (T-04); 20–30 apólices autorizadas para a bancada |
+| Já (não trava nada) | Comprar o domínio quemcobramenos + uma página simples da marca (ajuda a Meta a aprovar o nome) · começar a verificação da empresa no Gerenciador de Negócios da Meta · separar um chip NOVO para o número da marca |
+| Abertura da 129-B | Responder a D-128-03 · dizer se os logins de robô já existem |
+| Antes da 133-A | Instalar o WhatsApp Business no chip novo; o chat da 133-A entrega o passo a passo da instância Evolution e do QR |
+| Abertura da 130-A | O portão de preço (o agente pergunta a econômica e a margem) |
+| Abertura da 133-B | As regras de negócio entre corretoras |
+| Quando a Meta aprovar | Abrir a 134 (cartão de pagamento na conta Meta antes) |
+
+Continuam valendo, da v2.4:
+
+| Quando | O quê |
+|---|---|
+| Antes da 130-A | Aprovar o modelo visual da página do cliente |
+| Antes da 130-B | Crédito de API (T-04); 20–30 apólices autorizadas para a bancada |
 | Antes da 131 | Devolver a conexão InfoCap da Resulta à Resulta (D-MC-27) |
-| Antes da 133-B | Responder ao portão de preço do canal: comissão e desconto com Resulta e AutoFleet (D-MC-29) |
-| Antes da 134 e da 135 | Os testes de "ligar o atendimento" (classe A) |
+| Antes da 133-B | O preço do canal: comissão e desconto com Resulta e AutoFleet (D-MC-29) |
+| Antes da 135 | Os testes de "ligar o atendimento" (classe A) |
 | Quando faltar licença | Decidir a compra de login de robô (o Claude Code avisa) |
 
 ---
@@ -1097,10 +1136,10 @@ O `PENDENCIAS.md` não tem nota por item (📊 0 ocorrências), e a única lista
 
 **Onde:** um chat novo do Claude Code, na mesma pasta de sempre. A 126/127 terminou no código.
 
-**Prompt de execução** (com este arquivo anexado):
+**Prompt de execução** (com este arquivo anexado) — histórico: abriu o programa em 04/10 (v2.4). Na v2.5 ficaram em dia a leitura (a PASSAGEM), a sequência e os portões:
 
 ```
-Você vai executar o PROGRAMA MULTICÁLCULO do começo ao fim, em linha reta. O Amandus declarou o início do desenvolvimento em 04/10/2026. O plano é o PLANO-MESTRE-MULTICALCULO v2.4 (anexo). Ele vale abaixo do CLAUDE.md e do protocolo v13, e já traz a sua revisão de 04/10 com arquivo:linha.
+Você vai executar o PROGRAMA MULTICÁLCULO do começo ao fim, em linha reta. O Amandus declarou o início do desenvolvimento em 04/10/2026. O plano é o PLANO-MESTRE-MULTICALCULO v2.5 (anexo); leia junto, logo depois do CLAUDE.md, docs/canon/programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md. Ele vale abaixo do CLAUDE.md e do protocolo v13, e já traz a sua revisão de 04/10 com arquivo:linha.
 
 PASTA: esta mesma pasta. A 126/127 terminou no código; só faltam testes de celular do Amandus. Se ele relatar uma falha da 126/127, conserte antes de seguir.
 
@@ -1112,7 +1151,7 @@ ANTES DA PRIMEIRA SPEC:
    - a nova fila em EXECUTION-MASTER-PLAN, ESTADO-DAS-SPECS e INDICE-DE-SPECS, com as substituições do §2;
    - o mapa de testes recontado.
 
-SEQUÊNCIA (§0 do plano): 0.5 → 129-A → 128 → 133-A → 129-B → 130-A → 130-B → 131 → 132 → 133-B → ★ → 134 → 135 → 136 → 137.
+SEQUÊNCIA (§0 do plano, v2.5): 0.5 ✔ → 129-A ✔ → 128 ✔ → 129-B → 130-A → 133-A → 130-B → 133-B → 134 → 131 → 132 → 135 → 136 → ★ → 137.
 
 PARA CADA SPEC, SEM ESPERAR APROVAÇÃO ENTRE ELAS:
 a. Escreva a SPEC executável a partir da ficha do §4, no formato do protocolo v13.
@@ -1124,11 +1163,11 @@ e. Siga direto para a próxima SPEC. Só espere o Implantar quando a próxima de
 SÓ PARE, e diga ao Amandus exatamente o que precisa, quando:
 - for uma parada legítima do CLAUDE.md §10;
 - chegar a um portão do §0.1 do plano:
-  - 128 ao vivo: autorização escrita da corretora, apólices, login livre;
-  - 133-A: serviço e domínio no EasyPanel, testadores;
-  - 130-A e 133-B: as perguntas de preço, prontas, com os números da 128;
+  - 129-B: a D-128-03 e 1 login de robô por corretora;
+  - 130-A e 133-B: as perguntas de preço, prontas, com os números da 128 (na 130-A, a econômica como rascunho, D-MC-54); na 133-B, as regras entre corretoras;
+  - 133-A: o chip novo e a instância Evolution (QR); os 5 testadores;
   - 131: a InfoCap da Resulta de volta na Resulta;
-  - 134: verificação na Meta;
+  - 134: a Meta aprovou empresa, número e nome; cartão na conta Meta;
   - 135: atendimento ligado;
   - licença ou custo novo.
 Enquanto um portão espera, avance no que não depende dele. Nunca invente decisão comercial ou de preço.
@@ -1154,7 +1193,7 @@ Comece agora, pelo "ANTES DA PRIMEIRA SPEC".
 
 ```
 Continue o PROGRAMA MULTICÁLCULO de onde parou, nesta mesma pasta, em execução contínua.
-Leia o CLAUDE.md, docs/canon/programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md e o ESTADO-DAS-SPECS.
+Leia o CLAUDE.md, docs/canon/programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md, docs/canon/programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md (v2.5) e o ESTADO-DAS-SPECS.
 Última SPEC concluída: [...]. Próxima: [...]. Portões esperando o Amandus: [...].
 Siga o §0.1 do plano: SPEC atrás de SPEC, parando só nos portões e nas paradas do CLAUDE.md §10.
 ```
@@ -1167,15 +1206,18 @@ Siga o §0.1 do plano: SPEC atrás de SPEC, parando só nos portões e nas parad
 |---|---|
 | O Agger bloqueia o uso automatizado (risco aceito na D-MC-23) | Login de robô identificado e com tetos; outro adaptador na mesma porta (a pesquisa de APIs segue); o segundo multicálculo sobe na fila |
 | Dependência do fornecedor: o Agger tem permissões de envio e fechamento e é dono da InfoCap — pode virar concorrente | Dados e regras no AutoBrokers; porta neutra; segundo multicálculo e fonte de carteira alternativa no radar |
-| A seguradora restringe a corretora por muita cotação sem emissão | Teto por seguradora por dia como condição de pronto (133-B); acompanhar a taxa de conversão com a parceira |
+| A seguradora restringe a corretora por muita cotação sem emissão | ~~Teto por seguradora por dia como condição de pronto (133-B)~~ 🔁 revisto (D-MC-53): sem limite no início, só medir cálculos por seguradora por dia e recusas; a regra volta se o volume crescer; acompanhar a taxa de conversão com a parceira |
 | O Quem Cobra Menos vira consulta de CPF alheio | Convite, limites por HMAC, lista branca na saída (§6.3) |
-| Leigos não conseguem instalar | 133-A mede cedo; diretório do Claude e WhatsApp como saídas |
+| Leigos não conseguem instalar | 🔁 v2.5: o WhatsApp não pede instalação (D-MC-51); a prova de instalação do Claude/ChatGPT foi para a ★ |
 | ChatGPT pessoal sem MCP no celular | Claude primeiro; ChatGPT pelo diretório, no modo conta |
 | E3 (seguro novo) difícil | Renovação segue pela InfoCap; a cotação nova espera a solução |
 | Um cálculo de 7 min trava cobrança e vidros | Fila e navegador próprios para o cálculo (D-MC-42) |
 | Dois chats mexendo na mesma pasta | Um chat mexe no código de cada vez. A 126/127 terminou no código; falha de teste dela vai para o chat do programa |
 | Consertar a espera ressuscita trabalhos velhos (acionamentos de dias atrás) | Inventário por tipo antes de tudo; volta só o que nasceu pela fila e tem executor; o velho expira sem rodar |
-| A Meta demora a verificar | Começar a verificação durante 129–131; a ★ não trava a 134 |
+| A Meta demora ou recusa (empresa, número ou nome) | Seguir na Evolution com o piloto fechado (133-A/133-B); o Amandus começa a verificação já (PASSAGEM §4); a 134 entra quando a Meta aprovar |
+| Bloqueio do número comum (Evolution) | Risco aceito pelo Amandus (D-MC-52): número exclusivo da marca, estrutura temporária, piloto só com Resulta e AutoFleet; o canal é uma borda, e a 134 troca o transporte sem mudar a conversa |
+| A seguradora estranha o mesmo CPF vindo de 2 corretoras (recusa, "já cotado por outra corretora", preço diferente — em especial na renovação) | Hipótese a MEDIR na 129-B com 2 corretoras (D-MC-56); as regras entre corretoras saem no portão da 133-B |
+| Custo por mensagem da Meta (📊 desde 01/10/2026 as respostas também pagam, depois de 1.000 grátis por mês por número) | Conversa compacta (D-MC-60): narração em 2–3 mensagens, resultado em 1–2 + o link; 💭 ≈ US$ 0,05–0,10 por cotação; conferir a tabela oficial antes da 134 |
 | Falta licença para robô | Compra decidida pelo Amandus; nunca o login de uma pessoa |
 
 ---
