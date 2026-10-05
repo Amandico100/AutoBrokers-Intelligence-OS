@@ -46,6 +46,8 @@ LEITURA = ("GET", "HEAD", "OPTIONS")
 DERRUBA = re.compile(r"derrub|for[cç]|prosseg|sobrescr|encerr|kill|nova\W*sess", re.I)
 # GET com cara de ação (📊 red team 05/10: `GET .../negocio/excluir/123` passava como leitura).
 LEITURA_DESTRUTIVA = re.compile(r"excluir|delet|remov|apagar", re.I)
+# o que o navegador busca para MONTAR a página (Playwright `request.resource_type`); nunca xhr/fetch/beacon/ping
+RECURSOS_DA_PAGINA = frozenset({"document", "script", "stylesheet", "font", "image", "media", "manifest"})
 _UUID = re.compile(r"[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}", re.I)
 PDOCS_POR_HORA = 6
 LOGINS_POR_CONTEXTO = 1
@@ -150,7 +152,7 @@ def ids_de_negocio(corpo: Optional[str]) -> Optional[Dict[str, str]]:
 
 
 def decidir(metodo: str, url: str, corpo: Optional[str], estado: EstadoDaGuarda,
-            agora: Optional[float] = None) -> Tuple[bool, str]:
+            agora: Optional[float] = None, tipo_de_recurso: Optional[str] = None) -> Tuple[bool, str]:
     """PURA. (permitir, motivo). Toda escrita fora da lista branca é barrada."""
     agora = time.time() if agora is None else agora
     m = (metodo or "").upper()
@@ -161,6 +163,12 @@ def decidir(metodo: str, url: str, corpo: Optional[str], estado: EstadoDaGuarda,
         # 🔴 conserto 129-B (red P1/juiz P1): leitura SÓ no domínio do Agger (a SPEC U3: `*.aggilizador.com.br`) —
         # telemetria/coletor de terceiro por GET é barrado — e nunca um GET com cara de ação destrutiva
         if not estado.host_de_leitura(host):
+            # 🔴 gerente 05/10: a PÁGINA do Agger pode montar com fonte/script/imagem de terceiro (CDN). Barrar isso
+            # quebraria o login real, que nunca foi medido com esta guarda — e na 128 (📊 14 cálculos ao vivo) o captador
+            # deixava todo GET passar. Arquivo da página passa; chamada de DADOS (fetch/xhr/beacon/ping/outro) para fora do
+            # Agger continua barrada. Sem `tipo_de_recurso` (chamada pura, testes antigos) = dado = barrado.
+            if (tipo_de_recurso or "").lower() in RECURSOS_DA_PAGINA:
+                return True, "leitura_de_pagina"
             return False, "leitura_fora_do_agger"
         if LEITURA_DESTRUTIVA.search(caminho):
             return False, "leitura_destrutiva"
@@ -229,7 +237,8 @@ async def instalar(contexto: Any, estado: EstadoDaGuarda) -> None:
             except Exception:  # noqa: BLE001
                 corpo = None
         try:
-            ok, motivo = decidir(metodo, request.url, corpo, estado)
+            ok, motivo = decidir(metodo, request.url, corpo, estado,
+                                 tipo_de_recurso=getattr(request, "resource_type", None))
         except Exception as e:  # noqa: BLE001 — surpresa: barra (falha FECHADO)
             ok, motivo = False, "erro_na_guarda:" + type(e).__name__
         if not ok:
