@@ -1,6 +1,6 @@
 # TAREFAS DO FOUNDER — a lista única
 
-> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-105).** Os blocos mais antigos, depois dela,
+> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-113).** Os blocos mais antigos, depois dela,
 > guardam o contexto, as decisões e as tarefas que não são teste; onde havia um teste, agora há uma seta **→ T-NN**.
 
 ## 🗺️ DESDE 04/10/2026: FAÇA PELO ROTEIRO, NÃO POR ESTA LISTA
@@ -14,9 +14,10 @@
 > 📊 **O placar de 04/10** (103 testes): ✅ **10** feitos (T-01 T-05 + T-02 T-06 T-82 T-91 T-92 T-98 T-99 T-102) · 🗺️ **62**
 > atrasados **no roteiro** · ⏸ **23** atrasados **fora** dele (acionamento até o protocolo, 2ª corretora de teste, equipe,
 > cobrança, vida real) · 🔁 **5** cobertos · ⚰️ **2** mortos · 🔭 **1** futuro. **Depois do placar** (fechador, 04/10):
-> **T-104** (decisão: religar o DEDUZIR do portal na Yelum) e **T-105** (a vistoria pelo celular, roteiro V9.1–V9.3).
+> **T-104** (decisão: religar o DEDUZIR do portal na Yelum) e **T-105** (a vistoria pelo celular, roteiro V9.1–V9.3). **Depois da
+> SPEC-128** (04/10): **T-106 a T-113**, o programa multicálculo (grupo ⑩) — decisões e conferências, nenhum é teste de celular.
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105)
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
 > agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 127 e das EXTRA-001.1 → 001.10.1, das
@@ -627,6 +628,48 @@ agente está ligado**, **foi o agente quem pediu ajuda** e **nenhuma pessoa da c
 - [ ] **T-81** ⏳ ⏸ **depois do roteiro** — a vida real · **O veredito, no 4º dia** — chat novo, cole `docs/canon/PROMPT-VEREDITO-DO-PILOTO.md` (troque só as duas datas).
       Responde **PASSOU** ou **NÃO PASSOU**. Cortes propostos (D-E0017-03, sua): nada abaixo do palpite de 12/09 · "aciona" ≥ 5
       casos e nota ≥ 70 · "sabe pedir ajuda" ≥ 90 · apólice errada ≤ 1 em 10. · *de:* 001.7 (P4)
+
+### ⑩ Programa multicálculo — o Agger (SPEC-128, 04/10/2026)
+
+**Onde:** o resultado da prova está em `programa-multicalculo/A-PROVA-DO-AGGER.md`. 📊 A medição fez 16 cálculos de 25 nas contas
+Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 negócios de teste. Nenhum destes itens é teste de celular.
+
+- [ ] **T-106** ⏳ 🧑 **decisão sua — antes da 130-A** · **Responder o portão de preço** (D-MC-45): as **5 perguntas** de
+      `A-PROVA-DO-AGGER.md` §6 — (1) a opção "econômica" padrão (franquia normal + vidros básicos + carro reserva de 7 dias, mantendo
+      RCF e APP; 💭 em geral 10–30 % abaixo da completa); (2) o agente pode propor baixar a **comissão**? até quanto e quem aprova
+      (📊 −5 pontos = −1,5 a −7,6 % do prêmio; Porto e Azul ignoram); (3) o **desconto** entra na mesma régua? (📊 tirar 10 % encarece
+      5,9 %); (4) qual é a "completa" padrão de **cada** corretora (o pacote "Prata" difere entre elas); (5) a FIPE abaixo de 100 %
+      (📊 baixa só 0 a 6,7 %) fica fora da econômica? **Como:** responda no chat, pergunta por pergunta (ex.: *"portão: 1 sim, 2 até
+      3 pontos com aprovação do corretor, …"*). **Se não responder:** a 130-A não abre (é o portão). · *de:* S128 · D-MC-45
+- [ ] **T-107** ⏳ 🧑 **decisão sua — antes da 129-B** · **Decidir a D-128-03: o robô recalcula reenviando o corpo do pedido**, de
+      dentro da página e com o token do próprio Agger, em vez de clicar no formulário. Nota: **corpo do pedido 88** × interceptar e
+      clicar 70. 📊 A medição já fez assim em 11 recálculos válidos, sob a sua autorização de 04/10 para validar; para o PRODUTO, a
+      D-MC-28 exige o seu sim. **Como:** *"D-128-03 sim"* ou *"D-128-03 não"* no chat. **Se não decidir:** a 129-B nasce clicando no
+      formulário (mais lento e mais frágil). · *de:* S128 · P-128-14
+- [ ] **T-108** ⏳ 🧑 **decisão sua — não bloqueia** · **Apagar (ou não) os 3 negócios de teste no Agger** — AutoFleet **2**
+      (perfil P2, compacto 2021, criado 04/10 18:17, 10 versões · perfil P1, SUV 2018, 18:42, 5 versões) e Resulta **1** (perfil P1,
+      SUV 2018, 19:00, 1 versão). **Onde:** Agger, na conta de cada corretora → menu **⋮** do negócio → **"Excluir cotação"**.
+      ⚠️ Confira a data e a hora antes: **nunca** apague um negócio feito por uma pessoa. A 129-B não depende deles (as fixtures
+      saneadas já estão no repositório); os números de cálculo nas seguradoras continuam lá de qualquer jeito. · *de:* S128 ·
+      `A-PROVA-DO-AGGER.md` §8
+- [ ] **T-109** ⏳ 🧑 **conferência** · **A credencial Bradesco da AutoFleet** — 📊 a Bradesco respondeu "Login ou senha incorreta" em
+      **39** cálculos da AutoFleet. **Onde:** Agger da AutoFleet → configuração das seguradoras → Bradesco (ou peça à corretora).
+      **Esperar:** depois de corrigida, o próximo cálculo traz oferta da Bradesco. **Se não fizer:** a AutoFleet cota sem a
+      Bradesco, hoje e no motor. · *de:* S128 · P-128-06
+- [ ] **T-110** ⏳ 🧑 **conferência** · **Os 2 negócios de pessoas na Resulta parados em "Calculando" desde 22–23/09** — a medição
+      não tocou neles (regra sua). **O que fazer:** pergunte à equipe da Resulta se estão travados e se podem ser refeitos ou
+      apagados — por eles, nunca pelo robô. · *de:* S128 · P-128-07
+- [ ] **T-111** ⏳ 🧑 **conferência — com data** · **A renovação das assinaturas do Agger** — 📊 Resulta vence **13/10** (limite
+      **20/10**) · AutoFleet vence **21/10** (limite **28/10**). Confirme com as corretoras que vão renovar. **Se vencer:** o Agger
+      corta o cálculo (o campo `dataLimiteCalculo` do login) e a 129-B para. · *de:* S128 · P-128-11
+- [ ] **T-112** ⏳ 🧑 **quando quiser — não bloqueia** · **Apagar as gravações HAR do Agger no intake** (D-MC-35): os 3 arquivos
+      `.har` em `docs/intake/MULTICALCULO AGGER/` (pastas `GERAL`, `RENOVAÇÃO 1` e `RENOVAÇÃO 2`) — elas têm CPF, senha e token reais.
+      As fixtures saneadas que a 128 tirou delas já estão no repositório (`backend/tests/fixtures/agger/`, 📊 0 URL e 0 chave). ⚠️
+      Depois de apagar, o guarda G2 (o diferencial contra o bruto) deixa de rodar nesta máquina — é esperado (P-128-10). · *de:* S128
+- [ ] **T-113** ⏳ 🧑 **o portão da próxima SPEC (133-A)** · **Criar o serviço e o domínio do Quem Cobra Menos no EasyPanel** e
+      **recrutar 10–15 testadores leigos** (pessoas fora do seguro, com celular) para a prova de instalação. **Onde:** EasyPanel →
+      novo serviço + domínio (a SPEC da 133-A diz o nome e a porta). **Se não fizer:** a 133-A não abre. · *de:* plano multicálculo
+      §0.1 passo 3 · `programa-multicalculo/ESTADO-DO-PROGRAMA.md`
 
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 
@@ -1510,3 +1553,22 @@ Implante (o passo a passo está no T-101).
   consulta de "atendimento já aberto" logo depois do POST (D-127-C, 75) · faltou dado = parada antes de escrever, no mesmo
   pedido (D-127-D, 82) · o mesmo "juiz do ok" da 126 (D-127-E) · a bancada do portal não rodou paga (D-127-F, 85) · o vigia
   respeita a tabela e o texto honesto à equipe (D-127-G, 78 e 72).
+
+## SPEC-128 — a prova do Agger (04/10/2026)
+
+📊 O que mudou (nada para o segurado; nenhuma mensagem, nenhuma migration): as 22 perguntas sobre o Agger (E0–E21) foram
+respondidas com medição ao vivo — 16 cálculos de 25, nada apagado — e o contrato do cálculo que a 129-B vai usar foi provado contra
+5 gravações saneadas. O detalhe está em `programa-multicalculo/A-PROVA-DO-AGGER.md`; o relatório em
+`reports/SPEC-128-EXECUTION-REPORT.md`.
+
+### S128.1 · Implantar
+Nada a implantar: o contrato ainda não é chamado pelo produto (a 129-B liga).
+
+### S128.2 · Decisões e conferências suas
+→ **T-106** (o portão de preço, antes da 130-A) · **T-107** (D-128-03, antes da 129-B) · **T-108** (os 3 negócios de teste) ·
+**T-109** (Bradesco da AutoFleet) · **T-110** (os 2 "Calculando" da Resulta) · **T-111** (as assinaturas vencem 13/10 e 21/10) ·
+**T-112** (apagar os HAR do intake) · **T-113** (o portão da 133-A).
+- Já decididas, com nota: alavancas medidas na AutoFleet (D-128-01, 88) · família nova DADO (D-128-02, 85) · 2 opções = 2 cálculos
+  (D-128-04, 90) · coberturas explícitas, nunca o pacote da conta (D-128-05, 92) · entregar aos poucos e fechar por tempo
+  (D-128-06, 88) · renovação com o questionário marcado como "assumido" (D-128-07, 80) · a 129-B herda a lista branca do captador
+  (D-128-08, 90).
