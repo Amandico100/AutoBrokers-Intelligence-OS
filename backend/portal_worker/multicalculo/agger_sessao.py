@@ -281,8 +281,9 @@ class Sessoes:
                 pass
 
     async def fechar_todas(self) -> None:
-        for conta_id in list(self._sessoes):
-            await self.fechar(conta_id)
+        """Logout de TODAS, em paralelo (F4, junta 8): no desligar do serviço o `docker stop` dá 📊 10 s de graça;
+        em série, N logouts pela tela (≈1–3 s cada) não cabem e o robô seguinte veria o aviso de sessão ativa."""
+        await asyncio.gather(*(self.fechar(c) for c in list(self._sessoes)), return_exceptions=True)
 
     async def _sair(self, sessao: Sessao) -> bool:
         """Logout pela TELA (o app monta `{idSessao, token}` — 📊 6 logouts 201 na 128/05/10). O menu do usuário:
