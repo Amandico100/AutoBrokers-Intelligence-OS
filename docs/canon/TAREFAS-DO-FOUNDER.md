@@ -1,6 +1,6 @@
 # TAREFAS DO FOUNDER — a lista única
 
-> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-119).** Os blocos mais antigos, depois dela,
+> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-120).** Os blocos mais antigos, depois dela,
 > guardam o contexto, as decisões e as tarefas que não são teste; onde havia um teste, agora há uma seta **→ T-NN**.
 
 ## 🗺️ DESDE 04/10/2026: FAÇA PELO ROTEIRO, NÃO POR ESTA LISTA
@@ -16,9 +16,10 @@
 > cobrança, vida real) · 🔁 **5** cobertos · ⚰️ **2** mortos · 🔭 **1** futuro. **Depois do placar** (fechador, 04/10):
 > **T-104** (decisão: religar o DEDUZIR do portal na Yelum) e **T-105** (a vistoria pelo celular, roteiro V9.1–V9.3). **Depois da
 > SPEC-128** (04/10): **T-106 a T-113**, o programa multicálculo (grupo ⑩) — decisões e conferências, nenhum é teste de celular.
-> **Depois da passagem de 05/10** (o Quem Cobra Menos vira WhatsApp, plano A): **T-114 a T-119** — a T-113 foi para a ★.
+> **Depois da passagem de 05/10** (o Quem Cobra Menos vira WhatsApp, plano A): **T-114 a T-119** — a T-113 foi para a ★. **05/10
+> tarde (v2.5.1, a fila intercalada D-MC-61):** a **T-107** está ✅ feita (D-128-03 TOMADA) e nasceu a **T-120** (o login de robô no Agger).
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119)
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
 > agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 127 e das EXTRA-001.1 → 001.10.1, das
@@ -642,7 +643,9 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       5,9 %); (4) qual é a "completa" padrão de **cada** corretora (o pacote "Prata" difere entre elas); (5) a FIPE abaixo de 100 %
       (📊 baixa só 0 a 6,7 %) fica fora da econômica? **Como:** responda no chat, pergunta por pergunta (ex.: *"portão: 1 sim, 2 até
       3 pontos com aprovação do corretor, …"*). **Se não responder:** a 130-A não abre (é o portão). · *de:* S128 · D-MC-45
-- [ ] **T-107** ⏳ 🧑 **decisão sua — antes da 129-B** · **Decidir a D-128-03: o robô recalcula reenviando o corpo do pedido**, de
+- [x] **T-107** ✅ **FEITO 05/10** — o Founder TOMOU a D-128-03: o robô recalcula reenviando o corpo do pedido (`calcularV2`) com
+      o ajuste, de dentro da página, com o token do próprio app; resolve a D-MC-28 (o login continua pela tela; a interceptação continua
+      lendo os resultados); P-128-14 FECHADA. O texto de 04/10, histórico: · **Decidir a D-128-03: o robô recalcula reenviando o corpo do pedido**, de
       dentro da página e com o token do próprio Agger, em vez de clicar no formulário. Nota: **corpo do pedido 88** × interceptar e
       clicar 70. 📊 A medição já fez assim em 11 recálculos válidos, sob a sua autorização de 04/10 para validar; para o PRODUTO, a
       D-MC-28 exige o seu sim. **Como:** *"D-128-03 sim"* ou *"D-128-03 não"* no chat. **Se não decidir:** a 129-B nasce clicando no
@@ -696,6 +699,18 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       callbell.eu, 04/10/2026 — a 134 confere na tabela oficial). **Onde:** na conta de WhatsApp Business do Gerenciador de Negócios da
       Meta, em pagamentos (o caminho exato dos menus não foi conferido na tela).
       **Se não fizer:** a 134 não abre. · *de:* PASSAGEM §2 e §4 · D-MC-52
+- [ ] **T-120** ⏳ 🧑 **antes do USO REAL do motor — não trava construir nem testar** · **Criar em cada corretora um usuário NOVO
+      no Agger só para o robô** (💭 ex.: um e-mail tipo `robo@<corretora>`). **Por quê:** os logins usados na 128 são os da **Ellen** —
+      uma PESSOA —, autorizados por você para TESTES até existir o do robô; o Agger tem **sessão ÚNICA por login**, e se o robô usar o
+      login da Ellen enquanto ela trabalha, um derruba o outro (D-MC-24). **Até lá:** a 129-B é construída e testada com o login da
+      Ellen (credenciais com você), de preferência fora do horário de trabalho dela — o aviso de sessão ativa → Cancelar e parar; nunca
+      "Prosseguir"; nunca apagar nada; captador de lista branca. **Quando:** antes de o motor calcular sozinho todo dia — antes de a
+      133-A ir aos testadores e antes da 131/132 irem para as corretoras. **Onde:** Agger de cada corretora → **Configurações →
+      Usuários** → novo usuário; depois, a senha vai para a tela de conexões da corretora no AutoBrokers (nunca em arquivo, chat ou
+      e-mail; H.4). 📊 **Licenças, medido em 04/10** (`cfg/assinatura-aggilizador` e `listaUsuarios`): Resulta **5 licenças e 6
+      usuários ativos** · AutoFleet **8 licenças e 7 usuários ativos** → a AutoFleet tem **1 licença livre**; a Resulta provavelmente
+      precisa de **1 licença a mais ou liberar uma** — decisão de compra sua. **Se não fizer:** o motor não vai a uso real; a 133-A não
+      vai aos testadores e a 131/132 não vão para as corretoras. · *de:* v2.5.1 (05/10 tarde) · D-MC-24 · PASSAGEM §8 · substitui H.3
 
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 
@@ -1063,7 +1078,7 @@ bloqueiam nada.
       de integração? (2) se não, vocês **autorizam por escrito** o acesso programático pelos mesmos endereços
       que a tela usa? (3) quanto custa **um usuário a mais** (o do robô)? 🔴 **Sem essa autorização, nenhuma
       automação** — nem por navegador. **Bloqueia:** E1–E4 da parte 2. · **EXTRA-002 · D-E002-01**
-- [ ] **H.3 Criar o usuário robô no Aggilizador** da Resulta (e da AutoFleet), com um nome que diga o que é
+- [ ] **H.3** → **T-120** (05/10, v2.5.1) · **Criar o usuário robô no Aggilizador** da Resulta (e da AutoFleet), com um nome que diga o que é
       (💭 ex.: "AutoBrokers"). **Por quê:** o Aggilizador aceita **uma sessão por usuário** — se o robô usasse o
       login de uma pessoa, ele a derrubaria no meio do trabalho. **Bloqueia:** E1. · **EXTRA-002 · D-E002-02**
 - [ ] **H.4 Guardar a senha do robô no AutoBrokers**, na **tela de conexões** da corretora — **nunca** em
@@ -1591,10 +1606,11 @@ respondidas com medição ao vivo — 16 cálculos de 25, nada apagado — e o c
 Nada a implantar: o contrato ainda não é chamado pelo produto (a 129-B liga).
 
 ### S128.2 · Decisões e conferências suas
-→ **T-106** (o portão de preço, antes da 130-A) · **T-107** (D-128-03, antes da 129-B) · **T-108** (os 3 negócios de teste) ·
+→ **T-106** (o portão de preço, antes da 130-A) · **T-107** (D-128-03 — ✅ feita 05/10, TOMADA) · **T-108** (os 3 negócios de teste) ·
 **T-109** (Bradesco da AutoFleet) · **T-110** (os 2 "Calculando" da Resulta) · **T-111** (as assinaturas vencem 13/10 e 21/10) ·
 **T-112** (apagar os HAR do intake) · **T-113** (foi para a ★ em 05/10). Depois da passagem de 05/10: **T-114** a **T-119**
-(domínio, Meta, chip, testadores, regras entre corretoras, cartão na Meta).
+(domínio, Meta, chip, testadores, regras entre corretoras, cartão na Meta) · 05/10 tarde: **T-120** (o usuário de robô no Agger, antes
+do uso real).
 - Já decididas, com nota: alavancas medidas na AutoFleet (D-128-01, 88) · família nova DADO (D-128-02, 85) · 2 opções = 2 cálculos
   (D-128-04, 90) · coberturas explícitas, nunca o pacote da conta (D-128-05, 92) · entregar aos poucos e fechar por tempo
   (D-128-06, 88) · renovação com o questionário marcado como "assumido" (D-128-07, 80) · a 129-B herda a lista branca do captador
