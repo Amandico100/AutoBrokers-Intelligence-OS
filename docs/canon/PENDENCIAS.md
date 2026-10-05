@@ -13438,7 +13438,11 @@ um cliente que já foi cotado.
 📊 +16 % entre a 1ª e a 9ª versão do mesmo pedido. **Destrava:** o motor não usa a Mapfre para medir alavanca. **Custa esquecer:**
 a comparação "antes × depois do ajuste" mente na Mapfre.
 
-## P-128-14 · 🧑 Decidir a D-128-03 (recálculo pelo corpo do pedido, de dentro da página)
+## P-128-14 · ✅ FECHADA 05/10 — o Founder TOMOU a D-128-03 · 🧑 Decidir a D-128-03 (recálculo pelo corpo do pedido, de dentro da página)
+✅ **Fechada pela decisão (Founder, 05/10/2026):** o robô recalcula REENVIANDO o corpo do pedido (`calcularV2`) com o ajuste, de
+dentro da página, com o token do próprio app. Resolve também a parte da D-MC-28 que pedia a autorização expressa do Founder (o login
+continua pela tela; a interceptação continua lendo os resultados). T-107 feita. Registro: `FOUNDER-DECISIONS.md` (D-128-03) ·
+`programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md` §8. O texto abaixo é o de 04/10, histórico.
 A D-MC-28 exige o Founder para o PRODUTO. **Destrava:** a resposta do Founder antes da 129-B. **Custa esquecer:** a 129-B nasce sem
 saber se pode recalcular pelo corpo — e clicar no formulário é mais lento e mais frágil (nota 70 × 88).
 
