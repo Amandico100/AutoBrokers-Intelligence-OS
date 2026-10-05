@@ -2292,3 +2292,19 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | **D-129A-8** | **Passo `efeito="nenhum"` sem `guardar` continua re-executando na retomada** (intelligence, research, claims, susep, bridge.auxiliary): devolver `None` quebraria quem usa o resultado; repetir não envia nada para fora do banco (📊 juiz: grep de envio nos 5 módulos → 0; red team: o único que manda WhatsApp, o briefing, é idempotente por período) | re-executar **80** × pular todo passo concluído **50** | `workflows.py` (F2) |
 | **D-129A-9** | **Passo EXTERNO sem prova de estado não roda → `EtapaNaoVerificada`** (nada saiu do prédio) → `retry_scheduled` 60 s; a idade de 2 h encerra | `EtapaNaoVerificada` **85** × `EfeitoIncerto` **60** (avisaria "pode ter acontecido" sem ter acontecido) | `runs.py`, `workflows.py`, `smith_worker.py` (conserto) |
 | **D-129A-10** | **Cancelamento pedido termina `cancelled`** (exceção própria `CancelamentoPedido`, herdeira de `CancelledError`); desligamento real segue `retry_scheduled` | exceção própria **88** × consultar `cancel_requested_at` no except **70** | conserto único |
+
+## D-128-01…08 · SPEC-128 — a prova do Agger (04/10/2026, tomadas pela medição com nota 0–100; rito AAA v13 CRÍTICO)
+
+> Texto e números em `programa-multicalculo/A-PROVA-DO-AGGER.md` §5 (e §3, pergunta a pergunta). D-128-01, 02 e 04…08: ✅ TOMADAS
+> (delegação, D-MC-49). 🔴 **D-128-03: ⏳ PROPOSTA — exige o Founder** (a D-MC-28 é dele para o PRODUTO; P-128-14).
+
+| # | Decisão | Notas | Onde |
+|---|---|---|---|
+| **D-128-01** | ✅ **As alavancas foram medidas na AutoFleet** (configuração real de automóvel, comissão-base 15 %), não na Resulta (comissão 0) | AutoFleet **88** × Resulta **60** | A-PROVA §3 E5 |
+| **D-128-02** | ✅ **Família nova de resposta: DADO** — pedido a corrigir ("calcule como renovação", "DMO obrigatória", "CEP inválido") não é recusa do risco | DADO **85** × encaixar em ACEITACAO **50** | `multicalculo/contrato.py`, `leitor_agger.py` |
+| **D-128-03** | ⏳ **PROPOSTA — o recálculo é o corpo do pedido:** o robô reenvia o corpo com o ajuste, em vez de clicar no formulário. ⚠️ Usa o token do próprio app, de dentro da página → a **D-MC-28 exige a autorização do Founder** para o PRODUTO. A medição já fez assim (📊 recálculos da E5, E7 e E20, n = 11 versões válidas) sob a autorização ampla do Founder de 04/10 para validar | corpo do pedido **88** × interceptar e clicar **70** · 🧑 **pergunta ao Founder** antes da 129-B | A-PROVA §5 · P-128-14 |
+| **D-128-04** | ✅ **Proposta de 2 opções = 2 cálculos** (📊 1 pacote por cálculo, E20; o plano é "ilimitado") | **90** | A-PROVA §3 E20 |
+| **D-128-05** | ✅ **O motor manda as coberturas explícitas, nunca o pacote da conta** (📊 o "Prata" difere entre corretoras, E8) | **92** | contrato `PedidoDeCalculoAuto.coberturas` |
+| **D-128-06** | ✅ **O motor entrega aos poucos e fecha por tempo** (💭 90 s), sem esperar a seguradora calada (📊 26 de 227 nunca fecharam) | **88** | contrato `eventos_entre` → 129-B |
+| **D-128-07** | ✅ **Renovação = InfoCap + Agger pela placa/CPF + padrões do questionário marcados como "assumido"**, para o corretor conferir | **80** | A-PROVA §3 E2 → 131 |
+| **D-128-08** | ✅ **O adaptador da 129-B herda a lista branca do captador:** a única escrita é o cálculo | **90** | A-PROVA §7 → 129-B |
