@@ -37,6 +37,7 @@ URL_BASE_AGGER = "https://aggilizador.com.br"
 TOKEN_VALE_S = 3 * 3600          # 💭 E18 (não medido): o token do Agger dura 3 h
 RENOVAR_FALTANDO_S = 20 * 60     # renova quando faltar < 20 min
 LOGIN_TIMEOUT_S = 90             # 📊 login 5–52 s (E1); 90 s de folga
+LOGOUT_INDEFINIDO_S = 25         # o logout de um login sem desfecho: a tela + 15 s da resposta, e desiste
 MONTADOR_JS = (Path(__file__).with_name("montador.js")).read_text(encoding="utf-8")
 
 # O aviso de sessão ativa: o texto (como o laboratório, 📊 "text=sessão ativa") E o diálogo que o contém.
@@ -95,6 +96,11 @@ class Sessao:
     # ---------------------------------------------------------------- interface §6.4
     def registrar_negocio(self, negocio_ref: str) -> None:
         self._estado.registrar_negocio(negocio_ref)
+
+    def registrar_ids_do_negocio(self, negocio_ref: str, *, negocio_id: Any = None, versao_id: Any = None) -> None:
+        """Os ids que o Agger deu para o negócio (lidos de `versoes/{ref}` na página): a guarda só deixa um POST
+        com ids preenchidos passar se eles forem ESTES (conserto 129-B)."""
+        self._estado.registrar_ids(negocio_ref, negocio_id=negocio_id, versao_id=versao_id)
 
     def contagem_de_escritas(self) -> Dict[str, int]:
         return self._estado.contagem()
@@ -221,6 +227,16 @@ class Sessoes:
                     raise SessaoOcupada("aviso de sessão ativa: cancelado")
                 if status_login.get("s", 0) >= 400 or await self._senha_recusada(pagina):
                     raise CredencialRecusada("login recusado pelo Agger")
+            # 🔴 conserto 129-B (red P7): o login pode ter sido ACEITO sem a tela chegar ao fim — sem logout, sobra
+            # uma sessão fantasma e o próximo login vê o aviso de "sessão ativa". Se o POST de login SAIU, tenta o
+            # logout (curto, a guarda só deixa o do próprio robô) antes de fechar o contexto.
+            if estado.logins >= 1:
+                try:
+                    await asyncio.wait_for(self._sair(sessao), timeout=LOGOUT_INDEFINIDO_S)
+                except BaseException as e:  # noqa: BLE001
+                    if isinstance(e, asyncio.CancelledError):
+                        raise
+                    logger.warning("multicalculo.sessao logout do login sem desfecho falhou (%s)", type(e).__name__)
             raise SessaoIndefinida("login sem desfecho no prazo")
         except BaseException:
             try:
@@ -279,6 +295,17 @@ class Sessoes:
                 await sessao.contexto.close()
             except Exception:  # noqa: BLE001
                 pass
+
+    async def descartar(self, conta_id: str) -> None:
+        """A sessão MORREU (401/403, página fechada): fecha o contexto SEM logout — o token não vale mais, e o
+        logout pela tela só gastaria 15 s esperando uma resposta que não vem. Nunca é reaproveitada (conserto 129-B)."""
+        sessao = self._sessoes.pop(str(conta_id), None)
+        if sessao is None:
+            return
+        try:
+            await sessao.contexto.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     async def fechar_todas(self) -> None:
         """Logout de TODAS, em paralelo (F4, junta 8): no desligar do serviço o `docker stop` dá 📊 10 s de graça;
