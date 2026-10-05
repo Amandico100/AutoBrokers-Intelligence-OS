@@ -167,5 +167,39 @@
     return anda(valor, '', null);
   }
 
-  window.__abM = {montarCalculos, montarDaVersao, aplicarAjuste, montarAutomovel, filtrar, DO_APP};
+  // 🔴 Conserto 129-B (red B3): a lista branca deixa passar TEXTO LIVRE (alertas, erros, observações) — e uma
+  // seguradora que ecoa "usuario X senha Y" num alerta levava a senha ao banco. A credencial é conhecida AQUI (a
+  // config `segs`, o corpo do POST, a resposta crua): toda string devolvida ao Python que CONTENHA um desses valores
+  // vira '<redacted:credencial>'. Chave sensível = nome que casa RE_CHAVE_SECRETA; valor com 4+ caracteres.
+  const RE_CHAVE_SECRETA = /senha|password|passwd|secret|token|login|usuario|apikey|api_key|codigocorretor|codcorretor|corretorcod|susep/i;
+  const TRIVIAIS = new Set(['null', 'true', 'false', 'undefined', 'none']);
+  const MARCA_CREDENCIAL = '<redacted:credencial>';
+  function coletarSegredos(valor, acumulado) {
+    const acc = new Set(acumulado || []);
+    const anda = (v, k, prof) => {
+      if (prof > 12) return;
+      if (Array.isArray(v)) { for (const x of v) anda(x, k, prof + 1); return; }
+      if (v && typeof v === 'object') { for (const [kk, x] of Object.entries(v)) anda(x, kk, prof + 1); return; }
+      if (k && RE_CHAVE_SECRETA.test(k) && (typeof v === 'string' || typeof v === 'number')) {
+        const s = String(v).trim();
+        if (s.length >= 4 && !TRIVIAIS.has(s.toLowerCase())) acc.add(s);
+      }
+    };
+    anda(valor, null, 0);
+    return acc;
+  }
+  function redigirSegredos(valor, segredos) {
+    const lista = [...(segredos || [])].filter(s => typeof s === 'string' && s.length >= 4);
+    if (!lista.length) return valor;
+    const anda = v => {
+      if (Array.isArray(v)) return v.map(anda);
+      if (v && typeof v === 'object') { const o = {}; for (const [k, x] of Object.entries(v)) o[k] = anda(x); return o; }
+      if (typeof v === 'string' && lista.some(s => v.includes(s))) return MARCA_CREDENCIAL;
+      return v;
+    };
+    return anda(valor);
+  }
+
+  window.__abM = {montarCalculos, montarDaVersao, aplicarAjuste, montarAutomovel, filtrar, coletarSegredos,
+                  redigirSegredos, DO_APP};
 })();
