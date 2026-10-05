@@ -133,6 +133,8 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
     contador = _Contador(intervalo_s)
     navegadores: List[Any] = []
     motores: List[Any] = []
+    # conserto 129-B (juiz P10): os motores do canário servem SÓ o pedido que ELE criou — nunca a fila inteira
+    meus_pedidos: set = set()
     pw = None
     rc = 1
 
@@ -151,7 +153,8 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
         navegadores.append(nav)
         kw = {"upload": upload} if upload is not None else {}
         m = MOT.Motor(supa, sessoes=Sessoes(nav, url_base=url_base), robo=contador.mod, canario=True,
-                      dono=f"canario:{socket.gethostname()}:{os.getpid()}:{nome}", agora=agora, **kw)
+                      dono=f"canario:{socket.gethostname()}:{os.getpid()}:{nome}", agora=agora,
+                      somente_pedidos=meus_pedidos, **kw)
         motores.append(m)
         return m
 
@@ -174,6 +177,7 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
         aberto = await porta.calcular(company_id=args.canal, pedido=pedido, corretoras=corretoras,
                                       origem="teste", quadro_s=int(args.quadro_s))
         pedido = None   # noqa: F841
+        meus_pedidos.add(aberto.pedido_id)
         escrever(f"pedido {aberto.pedido_id}: {len(aberto.calculos)} cálculos na fila")
         m1 = await novo_motor("m1")
         if args.matar_depois_do_checkpoint:
