@@ -120,4 +120,11 @@ nota do executor: 86/100 (critério: tudo medido com número e comando, nenhuma 
 ```
 
 ## 11. Entrega
-[PREENCHER: saída do push]
+Antes do push: 📊 0 atrás da origin/main · 45 a subir · 45 de 45 commits com 0 chave na fixture.
+```
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   c2e0bb9..cd7969a  HEAD -> main
+```
+Depois: o Founder clica **Implantar** no `portal-worker` e no `smith-api` (o redator e o contrato moram no worker; nada muda o que
+roda hoje).
