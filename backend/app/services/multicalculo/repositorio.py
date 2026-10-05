@@ -85,6 +85,12 @@ class RepositorioMulticalculo:
             raise RuntimeError("o banco não devolveu o cálculo gravado")
         return gravado[0]
 
+    def reabrir_pedido(self, *, company_id: str, pedido_id: str) -> None:
+        """F4 (costura): o recálculo entra num pedido que o motor já FECHOU (todos os cálculos terminais). Sem
+        reabrir, o motor cancela o cálculo novo (`pedido.status != aberto` → cancelado). Cancelado não reabre."""
+        self.db.table(PEDIDOS).update({"status": "aberto"}).eq("id", str(pedido_id)).eq(
+            "company_id", str(company_id)).eq("status", "fechado").execute()
+
     def cancelar(self, *, company_id: str, pedido_id: str) -> int:
         """Pedido → cancelado; cálculos ainda na fila → cancelado. Os que já estão no robô o motor termina."""
         feito = _dados(self.db.table(PEDIDOS).update({"status": "cancelado"})
