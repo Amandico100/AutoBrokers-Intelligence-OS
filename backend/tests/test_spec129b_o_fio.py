@@ -443,9 +443,11 @@ def test_g15_o_comando_cadastra_lista_adere_pausa_e_apaga_sem_mostrar_senha(mund
     assert ROB.dentro_da_janela(nova["robo_janela"]), "a janela gravada é a que o motor LÊ"
     # recusas: teste sem janela · janela ilegível · rótulo repetido · "corretora" que é o canal
     for argv in (["cadastrar", "--corretora", m.a, "--rotulo", "x", "--usuario", "u", "--estado", "teste"],
-                 ["cadastrar", "--corretora", m.a, "--rotulo", "x", "--usuario", "u", "--janela", "toda hora"],
-                 ["cadastrar", "--corretora", m.a, "--rotulo", "robo-2", "--usuario", "u"],
-                 ["cadastrar", "--corretora", m.canal, "--rotulo", "x", "--usuario", "u"]):
+                 # (conserto 129-B: `--estado` é obrigatório — estes o passam para a recusa ser pelo motivo do caso)
+                 ["cadastrar", "--corretora", m.a, "--rotulo", "x", "--usuario", "u", "--estado", "ativo",
+                  "--janela", "toda hora"],
+                 ["cadastrar", "--corretora", m.a, "--rotulo", "robo-2", "--usuario", "u", "--estado", "ativo"],
+                 ["cadastrar", "--corretora", m.canal, "--rotulo", "x", "--usuario", "u", "--estado", "ativo"]):
         assert CMD.main(argv, supa=supa, ler_senha=lambda: senha, escrever=saida.append) == 2, argv
     assert len([c for c in m.banco.linhas("portal_accounts") if c["account_label"] == "x"]) == 0
     assert CMD.main(["aderir", "--canal", m.a, "--corretora", m.b], supa=supa, escrever=saida.append) == 2
