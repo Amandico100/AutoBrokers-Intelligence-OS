@@ -2255,17 +2255,17 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | D-MC-27 | A InfoCap da Resulta na Amandus foi intencional; volta à Resulta antes da 131 | ✅ TOMADA (Amandus) | fecha a dúvida da P-E002-X1 |
 | D-MC-28 | Transporte: interceptação como padrão | ⏳ PROPOSTA | — |
 | D-MC-29 | Preço do canal por termo com cada corretora | ⏳ PROPOSTA (portão de preço da 133-B) | — |
-| D-MC-30 | Porta do piloto: convite revogável + wa.me + teto + interruptor | ⏳ PROPOSTA | revê a D-E007-03 no piloto |
+| D-MC-30 | Porta do piloto: convite revogável + wa.me + teto + interruptor | ⏳ PROPOSTA · 🔁 revista em 05/10 (D-MC-51): no WhatsApp, lista de números convidados + limite por número | revê a D-E007-03 no piloto |
 | D-MC-31 | Contato futuro só com consentimento; anonimizar após N dias | ⏳ PROPOSTA | refina a D-MC-16 |
 | D-MC-32 | A 135 liga depois de N propostas medidas na fase 1 | ⏳ PROPOSTA | revê a D-E002-04 |
-| D-MC-33 | No piloto, o canal usa o robô da corretora de registro, com prioridade ao vivo | ⏳ PROPOSTA | revê a D-E007-06 no piloto |
+| D-MC-33 | No piloto, o canal usa o robô da corretora de registro, com prioridade ao vivo | ⏳ PROPOSTA · 🔁 revista em 05/10 pela D-MC-56 (várias corretoras em paralelo) | revê a D-E007-06 no piloto |
 | D-MC-34 | Páginas do cliente "uau", com modelo visual aprovado antes da 130 | ✅ TOMADA (Amandus) | — |
 | D-MC-35 | Segredos e o apagar das gravações do intake: o Founder cuida fora do programa; não bloqueiam SPEC | ✅ TOMADA (Amandus) | — |
-| D-MC-36 | Prova de instalação cedo (133-A) | ✅ TOMADA (Amandus) | — |
+| D-MC-36 | Prova de instalação cedo (133-A) | ✅ TOMADA (Amandus) · 🔁 revista em 05/10 (D-MC-51): a prova de instalação vai para a ★; a 133-A passa a ser o WhatsApp | — |
 | D-MC-37 | O cálculo não se chama "quote" no código; porta `MulticalculoProvider` | ⏳ PROPOSTA | — |
 | D-MC-38 | A fila do plano substitui a ordem da D-FILA-01 e a D-E002-07 | ✅ TOMADA (Amandus) | **substitui a D-FILA-01 (ordem) e a D-E002-07** |
 | D-MC-39 | O conhecimento destilado continua GLOBAL; a P-E0018-14 só garante que saia anônimo; nunca `company_id` na `conduct_playbooks` | ✅ TOMADA (Amandus) | — |
-| D-MC-40 | 129-B prova isolamento com 1 robô por corretora; o roteador entre corretoras nasce na 133-B | ✅ TOMADA (delegação) | — |
+| D-MC-40 | 129-B prova isolamento com 1 robô por corretora; o roteador entre corretoras nasce na 133-B | ✅ TOMADA (delegação) · 🔁 revista em 05/10 pela D-MC-56: o paralelo entre corretoras entra na 129-B; na 133-B, só as regras de negócio | — |
 | D-MC-41 | O recálculo volta à conta da corretora, não ao mesmo login | ✅ TOMADA (delegação) | — |
 | D-MC-42 | Fila e navegador próprios para o cálculo | ✅ TOMADA (delegação) | — |
 | D-MC-43 | PDF da proposta num render próprio, fora do navegador do cálculo | ⏳ PROPOSTA (decide a 130-A) | — |
@@ -2308,3 +2308,23 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | **D-128-06** | ✅ **O motor entrega aos poucos e fecha por tempo** (💭 90 s), sem esperar a seguradora calada (📊 26 de 227 nunca fecharam) | **88** | contrato `eventos_entre` → 129-B |
 | **D-128-07** | ✅ **Renovação = InfoCap + Agger pela placa/CPF + padrões do questionário marcados como "assumido"**, para o corretor conferir | **80** | A-PROVA §3 E2 → 131 |
 | **D-128-08** | ✅ **O adaptador da 129-B herda a lista branca do captador:** a única escrita é o cálculo | **90** | A-PROVA §7 → 129-B |
+
+## D-MC-51…60 · PROGRAMA MULTICÁLCULO — o Quem Cobra Menos vira WhatsApp, plano A (05/10/2026)
+
+> Fonte: [`programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md`](programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) §2
+> (o porquê de cada uma) · plano mestre **v2.5** §2. Tomadas pelo Founder na conversa que fechou a SPEC-128 (04–05/10), exceto a
+> D-MC-57, que é HIPÓTESE dele, não decisão. Revêem a D-MC-30, a D-MC-33, a D-MC-36 e a D-MC-40 (marcadas acima) e a condição
+> "teto por seguradora" da 133-B.
+
+| # | Decisão (resumo) | Estado | Substitui / revê |
+|---|---|---|---|
+| D-MC-51 | **WhatsApp é o plano A** do Quem Cobra Menos (zero instalação; o telefone identifica a pessoa; foto da apólice natural; passagem à corretora na mesma conversa; o mesmo número serve aos lembretes da 136). Claude/ChatGPT ficam para depois (★). Notas: WhatsApp 88 · Claude/ChatGPT primeiro 62 · os dois juntos 50 | ✅ TOMADA (Founder, 05/10/2026) | revê a D-MC-36 e a 133-A |
+| D-MC-52 | **Fase 1 no WhatsApp comum (Evolution Go), número EXCLUSIVO da marca; fase 2 na API oficial (SPEC-134)** quando a Meta aprovar empresa, número e nome. Risco de bloqueio aceito (estrutura temporária; piloto só com Resulta e AutoFleet); o canal é uma borda e a troca de transporte não muda a conversa. 📊 Preço Meta desde 01/10/2026: respostas pagam após 1.000 grátis/mês/número, Brasil ≈ US$ 0,0068 (periskope.app e callbell.eu, 04/10/2026 — conferir na tabela oficial antes da 134) | ✅ TOMADA (Founder, 05/10/2026) | a 134 vira a migração |
+| D-MC-53 | **Nenhum limite por seguradora por dia no início**; só medir (cálculos por seguradora por dia, recusas); a regra volta se o volume crescer | ✅ TOMADA (Founder, 05/10/2026) | revê a condição "teto por seguradora" da 133-B |
+| D-MC-54 | **A econômica é rascunho.** No portão de preço (abertura da 130-A) o agente PERGUNTA ao Founder e traz as ideias medidas (A-PROVA-DO-AGGER §3 E5) e a "margem da corretora" (comissão e desconto como uma regra, com piso; o motor escolhe o botão por seguradora) | ✅ TOMADA (Founder, 05/10/2026) | detalha a D-MC-45 |
+| D-MC-55 | **O Quem Cobra Menos não é corretora:** marca/serviço do AutoBrokers que compara seguradoras E corretoras parceiras (poucas, todas clientes do AutoBrokers; no início só Resulta e AutoFleet) e entrega a corretora VENCEDORA. Comunicação honesta ("comparador independente; a contratação é feita pela corretora parceira vencedora, registrada na SUSEP"); texto final na fase de copy | ✅ TOMADA (Founder, 05/10/2026) | — |
+| D-MC-56 | **Cotação em várias corretoras em PARALELO** (um robô por corretora, na conta dela; o tempo é o da mais lenta). As regras de negócio entre corretoras (empate, rodízio, quantas por pedido, o que a parceira paga) são do Founder, portão da 133-B. ⚠️ Hipótese a MEDIR na 129-B: o mesmo CPF vindo de 2+ corretoras | ✅ TOMADA (Founder, 05/10/2026) | revê a D-MC-33 e a D-MC-40 |
+| D-MC-57 | **Modelo comercial:** as parceiras pagam mensalidade + o custo de API de cada cotação. Nenhum preço entra no código antes da decisão (CLAUDE.md §13.6, SPEC-062) | 💭 **HIPÓTESE do Founder — NÃO decidida** | — |
+| D-MC-58 | **O número do Quem Cobra Menos é separado do atendimento das corretoras** e não espera "ligar o atendimento". Mesma estrutura do AutoBrokers (integração WhatsApp, webhook, agente, roteador de modelos), nenhum motor paralelo (CLAUDE.md §5); agente de escopo estreito (só cotação); a integração mora na empresa técnica (D-MC-26); as corretoras não precisam de WhatsApp próprio | ✅ TOMADA (Founder, 05/10/2026) | a 134 deixa de esperar a classe A |
+| D-MC-59 | **O agente sabe conversar e não força venda:** gatilhos honestos, nunca pressão falsa, nunca "o mais barato do mercado" sem prova (só "das N que cotei", CDC art. 37/38), nunca evento inventado (D-MC-50). O perfil (garagem, uso, km, condutor jovem) é declaração do segurado: o agente PERGUNTA; o que está na apólice vem da apólice | ✅ TOMADA (Founder, 05/10/2026) | — |
+| D-MC-60 | **O resultado no WhatsApp:** padrão e econômica calculadas ao mesmo tempo desde o 1º pedido (nota 88); narração real em poucas mensagens; o quadro aos ~30–60 s com quem respondeu (atrasada só avisada se entrar no top 3); uma linha por seguradora + as 2 melhores completas + a econômica do vencedor + "recomendo X (nota/100) porque…" + o link da página "uau" (130-A, `/r/`); mensagens compactas | ✅ TOMADA (Founder, 05/10/2026 — recomendações aceitas) | — |
