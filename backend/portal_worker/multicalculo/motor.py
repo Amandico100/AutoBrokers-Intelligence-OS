@@ -99,6 +99,12 @@ ESTADOS_TERMINAIS = ("fechado", "falhou", "incerto", "cancelado", "expirado")
 _ORDEM_DA_OPCAO = {"padrao": 0, "economica": 1, "ajuste": 2}
 
 MOTIVO_PESSOA_MEXEU = "uma pessoa mexeu neste negócio há menos de 24 h"
+MOTIVO_SAIU_DO_CANAL = "a corretora saiu do canal"
+MOTIVO_AJUSTE_REPETIDO = "o mesmo ajuste deste cálculo já foi pedido e está em curso"
+MOTIVO_NAO_LEU = "não consegui ler o resultado no Agger"
+MOTIVO_LEU_PARTE = "o Agger parou de responder depois do quadro: fechado com o que foi lido"
+MOTIVO_TESTE_INDEFINIDO = "o login da conta de teste não chegou ao fim: o robô parou e pausou a conta"
+KIND_CANAL = "platform_canal"
 MOTIVO_INCERTO = ("o disparo PODE ter saído no portal e o motor não teve a confirmação: "
                   "não refaça sem conferir o negócio no Agger")
 MOTIVO_MORREU_NO_DISPARO = ("o motor caiu durante o disparo: o cálculo PODE ter saído no portal — "
@@ -182,10 +188,15 @@ class Grupo:
     quadro_s: float = 60
     retomada: bool = False
     ativos: set = field(default_factory=set)   # ids que a batida ainda precisa segurar
+    sessao_morta: bool = False                 # 401/403 ou página fechada: a sessão é DESCARTADA no fim do grupo
 
 
 class _PossePerdida(Exception):
     """A batida não voltou: outro motor é o dono agora. Parar de gravar é a única saída segura."""
+
+
+class _NuncaLevantada(Exception):
+    """Lugar de `LeituraImpossivel` quando o robô injetado não a declara (o `except` não casa nada)."""
 
 
 class _NavegadorProprio:
@@ -232,8 +243,12 @@ class Motor:
                  decifrar: Optional[Callable[[str], str]] = None,
                  upload: Optional[Callable[..., Awaitable[Optional[str]]]] = None,
                  freio: Optional[Callable[[], bool]] = None,
-                 canario: Optional[bool] = None) -> None:
+                 canario: Optional[bool] = None,
+                 somente_pedidos: Optional[set] = None) -> None:
         self.supa = supa
+        # Conserto 129-B (juiz P10): o motor do CANÁRIO serve só os pedidos que ele criou (o conjunto é lido a cada
+        # volta: quem o passa pode acrescentar ids depois). None = a fila inteira (o serviço).
+        self.somente_pedidos = somente_pedidos
         self._sessoes = sessoes
         self._fabrica = fabrica_de_sessoes
         self._navegador: Optional[_NavegadorProprio] = None
@@ -359,11 +374,17 @@ class Motor:
     # ======================================================================
     # Expirar · retomar · reservar
     # ======================================================================
+    def _so_meus(self, q):
+        """O filtro do canário (`somente_pedidos`). Conjunto vazio = nenhum pedido (nunca a fila inteira)."""
+        if self.somente_pedidos is None:
+            return q
+        return q.in_("pedido_id", sorted(self.somente_pedidos) or ["00000000-0000-0000-0000-000000000000"])
+
     async def _expirar(self) -> None:
         agora = _iso(self.agora())
-        r = await self._db(lambda: self.supa.table("multicalculo_calculos")
+        r = await self._db(lambda: self._so_meus(self.supa.table("multicalculo_calculos")
                            .select("id, company_id, pedido_id, solicitante_company_id")
-                           .eq("status", "na_fila").lt("expira_em", agora).limit(200).execute())
+                           .eq("status", "na_fila").lt("expira_em", agora)).limit(200).execute())
         pedidos = set()
         for c in (r.data or []):
             await self._db(lambda c=c: self.supa.table("multicalculo_calculos").update({
@@ -384,8 +405,8 @@ class Motor:
         SÓ a leitura, com um robô da MESMA corretora."""
         agora = self.agora()
         vencida = _iso(agora - timedelta(seconds=self.lease_s))
-        r = await self._db(lambda: self.supa.table("multicalculo_calculos").select("*")
-                           .in_("status", ["disparando", "calculando"]).lt("batida_em", vencida)
+        r = await self._db(lambda: self._so_meus(self.supa.table("multicalculo_calculos").select("*")
+                           .in_("status", ["disparando", "calculando"]).lt("batida_em", vencida))
                            .order("prioridade").limit(LIMITE_DA_FILA).execute())
         grupos: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
         for c in (r.data or []):
@@ -414,6 +435,8 @@ class Motor:
             pedido = await self._pedido(pedido_id, solicitante, "id, origem, quadro_s")
             if not pedido:
                 continue
+            if (pedido.get("origem") or "") == "teste" and not self.canario():
+                continue   # conserto 129-B (red P6): pedido de teste só no canário — também na retomada
             conta = await self._escolher(corretora, pedido.get("origem") or "", agora, 1)
             if conta is None:
                 continue
@@ -440,9 +463,9 @@ class Motor:
         conta, um grupo por vez (a lease)."""
         agora = self.agora()
         agora_iso = _iso(agora)
-        r = await self._db(lambda: self.supa.table("multicalculo_calculos").select("*")
+        r = await self._db(lambda: self._so_meus(self.supa.table("multicalculo_calculos").select("*")
                            .eq("status", "na_fila")
-                           .or_(f"disponivel_em.is.null,disponivel_em.lte.{agora_iso}")
+                           .or_(f"disponivel_em.is.null,disponivel_em.lte.{agora_iso}"))
                            .order("prioridade").order("criado_em").limit(LIMITE_DA_FILA).execute())
         linhas = list(r.data or [])
         if not linhas:
@@ -471,6 +494,19 @@ class Motor:
             origem = pedido.get("origem") or ""
             if origem == "teste" and not self.canario():
                 continue   # D-129B-04: pedido de teste só no processo do canário; fica até expirar
+            if not await self._canal_autorizado(solicitante, corretora):
+                # 🔴 conserto 129-B (red B2): a corretora saiu do canal com o pedido na fila — nada sai no login dela
+                for c in calcs:
+                    await self._cancelar_na_fila(c, corretora, MOTIVO_SAIU_DO_CANAL, agora_iso)
+                continue
+            calcs, repetidos = await self._separar_ajustes_repetidos(calcs, corretora)
+            for c in repetidos:
+                await self._cancelar_na_fila(c, corretora, MOTIVO_AJUSTE_REPETIDO, agora_iso)
+            if not calcs:
+                continue
+            espera, conta_fixa = await self._conta_do_grupo(pedido_id, corretora, {c["id"] for c in calcs})
+            if espera:
+                continue   # um cálculo irmão está saindo AGORA noutro motor: o negócio dele ainda não existe
             if corretora not in por_corretora:
                 por_corretora[corretora] = await self._db(lambda c=corretora: robos.calculos_na_ultima_hora(
                     self.supa, company_id=c, agora=agora))
@@ -481,7 +517,7 @@ class Motor:
             if por_corretora[corretora] + n > teto_corretora_hora():
                 logger.warning("[MC] teto da corretora %s por hora atingido — o grupo espera", corretora)
                 continue
-            conta = await self._escolher(corretora, origem, agora, n)
+            conta = await self._escolher(corretora, origem, agora, n, somente=conta_fixa)
             if conta is None:
                 continue
             tomados = []
@@ -502,21 +538,102 @@ class Motor:
                                 float(pedido.get("quadro_s") or 60)), conta))
         return pares
 
-    async def _escolher(self, corretora: str, origem: str, agora: datetime, quantos: int):
+    async def _escolher(self, corretora: str, origem: str, agora: datetime, quantos: int,
+                        somente: Optional[str] = None):
         """`robos.escolher` + a marca EM USO já na seleção: dois grupos da mesma volta nunca pegam o
         mesmo robô, nem quando a lease dele já é deste motor (sessão ociosa)."""
         conta = await self._db(lambda: robos.escolher(
             self.supa, corretora, origem, dono=self.dono, agora=agora, quantos=quantos,
-            canario=self.canario(), lease_s=self.lease_s, ignorar=set(self._contas_em_uso)))
+            canario=self.canario(), lease_s=self.lease_s, ignorar=set(self._contas_em_uso), somente=somente))
         if conta is not None:
             self._contas_em_uso.add(conta["id"])
             self._ociosas.pop(conta["id"], None)
         return conta
 
-    async def _soltar_conta(self, conta: Dict[str, Any], *, perdeu: bool = False) -> None:
+    # ------------------------------------------------------------------ as reconferências NA HORA do efeito
+    async def _canal_autorizado(self, solicitante: str, corretora: str) -> bool:
+        """🔴 Conserto 129-B (red B2): o login de uma corretora só trabalha para OUTRO solicitante se ele é a empresa
+        do canal (`platform_canal`) E a adesão canal → corretora está ATIVA — conferido AGORA, não quando o pedido
+        entrou na fila. Falha de leitura = não autorizado (fail-closed)."""
+        if str(solicitante) == str(corretora):
+            return True
+        try:
+            emp = await self._db(lambda: self.supa.table("companies").select("id, company_kind")
+                                 .eq("id", solicitante).limit(1).execute())
+            if ((emp.data or [{}])[0]).get("company_kind") != KIND_CANAL:
+                return False
+            ad = await self._db(lambda: self.supa.table("multicalculo_adesoes").select("id, ativa")
+                                .eq("canal_company_id", solicitante).eq("corretora_company_id", corretora)
+                                .eq("ativa", True).limit(1).execute())
+            return bool([x for x in (ad.data or []) if x.get("ativa") is True])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[MC] não consegui conferir a adesão (%s) — o cálculo não sai", type(exc).__name__)
+            return False
+
+    async def _cancelar_na_fila(self, c: Dict[str, Any], corretora: str, motivo: str, agora_iso: str) -> None:
+        await self._db(lambda: self.supa.table("multicalculo_calculos").update({
+            "status": "cancelado", "fechado_em": agora_iso, "erro": erro_curto(motivo),
+        }).eq("id", c["id"]).eq("company_id", corretora).eq("status", "na_fila").execute())
+        await self._fechar_pedido_se_terminou(c["pedido_id"], c["solicitante_company_id"])
+
+    @staticmethod
+    def _chave_do_ajuste(c: Dict[str, Any]) -> Optional[str]:
+        if c.get("opcao") != "ajuste":
+            return None
+        aj = c.get("ajuste") if isinstance(c.get("ajuste"), dict) else {}
+        return json.dumps([str(c.get("origem_calculo_id")), aj.get("tipo"), aj.get("valor"), aj.get("seguradora")],
+                          sort_keys=True, default=str)
+
+    async def _separar_ajustes_repetidos(self, calcs: List[Dict[str, Any]], corretora: str):
+        """🔴 Conserto 129-B (red P4): o MESMO ajuste da MESMA origem duas vezes (clique duplo) sai UMA vez. Repetido =
+        outro igual neste grupo (fica o mais antigo) ou um igual já `disparando`/`calculando`."""
+        ajustes = [c for c in calcs if c.get("opcao") == "ajuste"]
+        if not ajustes:
+            return calcs, []
+        origens = sorted({str(c.get("origem_calculo_id")) for c in ajustes if c.get("origem_calculo_id")})
+        em_curso = set()
+        if origens:
+            r = await self._db(lambda: self.supa.table("multicalculo_calculos")
+                               .select("id, opcao, origem_calculo_id, ajuste, status")
+                               .eq("company_id", corretora).in_("origem_calculo_id", origens)
+                               .in_("status", ["disparando", "calculando"]).execute())
+            em_curso = {self._chave_do_ajuste(x) for x in (r.data or [])} - {None}
+        vistos, manter, repetidos = set(em_curso), [], []
+        for c in sorted(calcs, key=lambda x: str(x.get("criado_em") or "")):
+            k = self._chave_do_ajuste(c)
+            if k is not None and k in vistos:
+                repetidos.append(c)
+                continue
+            if k is not None:
+                vistos.add(k)
+            manter.append(c)
+        return manter, repetidos
+
+    async def _conta_do_grupo(self, pedido_id: str, corretora: str, ids_do_grupo: set):
+        """🔴 Conserto 129-B (juiz P11): (esperar, conta). Os cálculos de um mesmo (pedido, corretora) ficam na MESMA
+        conta: a econômica (e o ajuste) entram no negócio que já existe, e o negócio é DA conta que o abriu. Um irmão
+        ainda `disparando` (o negócio dele não existe ainda) → o grupo ESPERA, nunca abre negócio novo noutra conta."""
+        r = await self._db(lambda: self.supa.table("multicalculo_calculos")
+                           .select("id, status, account_id, negocio_ref, opcao, criado_em")
+                           .eq("pedido_id", pedido_id).eq("company_id", corretora)
+                           .in_("status", ["disparando", "calculando", "fechado"]).order("criado_em").execute())
+        irmaos = [x for x in (r.data or []) if x["id"] not in ids_do_grupo]
+        if any(x.get("status") == "disparando" for x in irmaos):
+            return True, None
+        com_negocio = [x for x in irmaos if x.get("account_id") and x.get("negocio_ref")]
+        com_negocio.sort(key=lambda x: (x.get("opcao") == "ajuste", str(x.get("criado_em") or "")))
+        return False, (str(com_negocio[0]["account_id"]) if com_negocio else None)
+
+    async def _soltar_conta(self, conta: Dict[str, Any], *, perdeu: bool = False, descartar: bool = False) -> None:
         """Fim do uso do robô. Sessão aberta de conta `ativo` → fica OCIOSA com a lease (reaproveita o
-        login); conta `teste` (login de PESSOA) → logout e lease devolvida (D-129B-04)."""
+        login); conta `teste` (login de PESSOA) → logout e lease devolvida (D-129B-04). Sessão MORTA (401/403)
+        → descartada sem logout e NUNCA reaproveitada (conserto 129-B, juiz B1)."""
         self._contas_em_uso.discard(conta["id"])
+        if descartar:
+            self._ociosas.pop(conta["id"], None)
+            await self._descartar_sessao(conta["id"])
+            await self._db(lambda: robos.liberar(self.supa, conta, self.dono))
+            return
         if (conta["id"] in self._contas_com_sessao and conta.get("robo_estado") != robos.TESTE
                 and not perdeu):
             agora = self.agora()
@@ -581,7 +698,7 @@ class Motor:
         finally:
             batida.cancel()
             espera.cancel()
-            await self._soltar_conta(conta, perdeu=perdeu.is_set())
+            await self._soltar_conta(conta, perdeu=perdeu.is_set(), descartar=g.sessao_morta)
             await self._fechar_pedido_se_terminou(g.pedido_id, g.solicitante_company_id)
 
     async def _bater(self, g: Grupo, conta: Dict[str, Any], perdeu: asyncio.Event) -> None:
@@ -665,6 +782,16 @@ class Motor:
             await self._credencial_recusada(g, conta, g.calculos)
             return None
         except Exception as exc:  # noqa: BLE001 — nada saiu: o login falhou antes de qualquer POST
+            indefinida = getattr(self.sessao_mod, "SessaoIndefinida", None)
+            if (indefinida is not None and isinstance(exc, indefinida)
+                    and conta.get("robo_estado") == robos.TESTE):
+                # 🔴 conserto 129-B (red P7): o login da PESSOA sem desfecho — o robô não tenta de novo de 1 em 1
+                # minuto no login de alguém: pausa a conta e para (como a SessaoOcupada numa conta `teste`)
+                await self._marcar(conta, robos.PAUSADO)
+                logger.warning("[MC] conta de teste %s: login sem desfecho — pausada", conta["id"])
+                for c in list(g.calculos):
+                    await self._encerrar(g, c, "falhou", MOTIVO_TESTE_INDEFINIDO)
+                return None
             logger.error("[MC] a sessão do robô %s não abriu (%s)", conta["id"], type(exc).__name__)
             await self._devolver_a_fila(g, g.calculos, com_espera=True)
             return None
@@ -679,16 +806,24 @@ class Motor:
         que não saiu volta à fila."""
         calcs = list(calcs)
         if conta.get("robo_estado") == robos.TESTE:
-            await self._db(lambda: robos.marcar_estado(self.supa, conta, robos.PAUSADO, agora=self.agora()))
+            await self._marcar(conta, robos.PAUSADO)
             logger.warning("[MC] conta de teste %s em uso por uma pessoa — pausada", conta["id"])
             for c in calcs:
                 await self._encerrar(g, c, "falhou",
                                      "a conta de teste estava em uso por uma pessoa: o robô cancelou e parou")
             return
-        await self._db(lambda: robos.marcar_estado(self.supa, conta, robos.OCUPADA, agora=self.agora(),
-                                                   ocupada_min=OCUPADA_MIN))
+        await self._marcar(conta, robos.OCUPADA, ocupada_min=OCUPADA_MIN)
         logger.warning("[MC] robô %s ocupado por uma pessoa — afastado por %s min", conta["id"], OCUPADA_MIN)
         await self._devolver_a_fila(g, calcs)
+
+    async def _marcar(self, conta: Dict[str, Any], estado: str, **kw) -> bool:
+        """`robos.marcar_estado` (CAS a partir do estado LIDO): a pausa do Founder vence o motor (red B1)."""
+        try:
+            return bool(await self._db(lambda: robos.marcar_estado(self.supa, conta, estado, agora=self.agora(),
+                                                                  **kw)))
+        except ValueError as exc:
+            logger.warning("[MC] robô %s: %s", conta.get("id"), exc)
+            return False
 
     async def _credencial_recusada(self, g: Grupo, conta: Dict[str, Any],
                                    calcs: Iterable[Dict[str, Any]]) -> None:
@@ -696,7 +831,7 @@ class Motor:
         a conta da corretora é bloqueada na seguradora). O que não saiu volta à fila: outro robô da
         mesma corretora pode servir; sem outro, o cálculo expira no prazo dele."""
         calcs = list(calcs)
-        await self._db(lambda: robos.marcar_estado(self.supa, conta, robos.BLOQUEADO, agora=self.agora()))
+        await self._marcar(conta, robos.BLOQUEADO)
         logger.error("[MC] robô %s com login/senha recusados — bloqueado", conta["id"])
         for c in calcs:
             await self._gravar_linha_de_evento(g, c, {
@@ -712,6 +847,17 @@ class Motor:
             await self._sessoes.fechar(conta_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning("[MC] fechar a sessão %s falhou (%s)", conta_id, type(exc).__name__)
+
+    async def _descartar_sessao(self, conta_id: str) -> None:
+        """A sessão morreu: fecha SEM logout (`Sessoes.descartar`); quem não tem `descartar` fecha normal."""
+        self._contas_com_sessao.pop(conta_id, None)
+        if self._sessoes is None:
+            return
+        try:
+            descartar = getattr(self._sessoes, "descartar", None)
+            await (descartar(conta_id) if descartar is not None else self._sessoes.fechar(conta_id))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[MC] descartar a sessão %s falhou (%s)", conta_id, type(exc).__name__)
 
     # ======================================================================
     # Disparar · checkpoint
@@ -745,14 +891,29 @@ class Motor:
                 logger.warning("[MC] freio puxado no meio do grupo — o que não saiu volta à fila")
                 await self._devolver_a_fila(g, ordem[i:])
                 break
+            if not await self._canal_autorizado(g.solicitante_company_id, g.company_id):
+                # 🔴 conserto 129-B (red B2): reconferido IMEDIATAMENTE antes de cada POST
+                for resto in ordem[i:]:
+                    await self._encerrar(g, resto, "cancelado", MOTIVO_SAIU_DO_CANAL)
+                break
             try:
                 if c.get("opcao") == "ajuste":
                     d = await self._recalcular(g, c, sessao)
                     if d is None:
                         continue
                 else:
+                    if negocio is not None and not await self._ninguem_mexeu(g, c, sessao, negocio):
+                        # 🔴 conserto 129-B (red B4/juiz P2): TODO disparo num negócio que já existe confere a
+                        # D-MC-47 — a econômica adiada, a retomada de um grupo partido
+                        continue
                     d = await robo.disparar(sessao, pedido, c.get("coberturas") or {}, negocio_ref=negocio)
             except robo.DisparoRecusado as exc:
+                if getattr(exc, "sessao_morta", False):
+                    # nada saiu (401/403 antes do cálculo): a sessão é DESCARTADA e o que não saiu volta à fila
+                    g.sessao_morta = True
+                    logger.error("[MC] sessão do robô %s morta no disparo — descartada", conta["id"])
+                    await self._devolver_a_fila(g, ordem[i:], com_espera=True)
+                    break
                 await self._encerrar(g, c, "falhou", _motivo_recusado(exc))
                 continue
             except SessaoOcupada:
@@ -803,6 +964,13 @@ class Motor:
             await self._encerrar(g, c, "falhou", "o ajuste deste recálculo é inválido")
             return None
         ref = origem["negocio_ref"]
+        if not await self._ninguem_mexeu(g, c, sessao, ref):
+            return None
+        return await self.robo.recalcular(sessao, ref, versao_base=int(origem["versao"]), ajuste=ajuste)
+
+    async def _ninguem_mexeu(self, g: Grupo, c: Dict[str, Any], sessao, ref: str) -> bool:
+        """D-MC-47: nenhuma pessoa mexeu no negócio `ref` nas últimas 24 h? Não → o cálculo `falhou` com o motivo e
+        NADA sai. Sem conseguir conferir → também não sai (na dúvida, não se escreve por cima da pessoa)."""
         rv = await self._db(lambda: self.supa.table("multicalculo_calculos").select("versao")
                             .eq("company_id", g.company_id).eq("negocio_ref", ref).execute())
         versoes = {int(x["versao"]) for x in (rv.data or []) if x.get("versao") is not None}
@@ -811,11 +979,11 @@ class Motor:
         except Exception as exc:  # noqa: BLE001 — sem saber, não recalcula
             logger.error("[MC] não consegui conferir as versões do negócio (%s)", type(exc).__name__)
             await self._encerrar(g, c, "falhou", "não consegui conferir se uma pessoa mexeu no negócio")
-            return None
+            return False
         if mexeu:
             await self._encerrar(g, c, "falhou", MOTIVO_PESSOA_MEXEU)
-            return None
-        return await self.robo.recalcular(sessao, ref, versao_base=int(origem["versao"]), ajuste=ajuste)
+            return False
+        return True
 
     # ======================================================================
     # Acompanhar · gravar · PDF · fechar
@@ -837,16 +1005,38 @@ class Motor:
                            .eq("id", c["id"]).eq("company_id", g.company_id).eq("dono", self.dono)
                            .is_("quadro_pronto_em", "null").execute())
 
+        leitura_impossivel = getattr(self.robo, "LeituraImpossivel", None) or _NuncaLevantada
         try:
-            await self.robo.acompanhar(sessao, d, ao_evento=ao_evento, anterior=anterior,
-                                       quadro_s=g.quadro_s, ao_quadro=ao_quadro)
+            rodada = await self.robo.acompanhar(sessao, d, ao_evento=ao_evento, anterior=anterior,
+                                                quadro_s=g.quadro_s, ao_quadro=ao_quadro)
         except _PossePerdida:
+            return
+        except leitura_impossivel as exc:
+            # 🔴 conserto 129-B (juiz B1): "não consegui ler" nunca vira `fechado` com 0 ofertas
+            if getattr(exc, "sessao_morta", False):
+                g.sessao_morta = True
+            if perdeu.is_set():
+                return
+            leu = bool(getattr(exc, "leu", False)) or bool(anterior is not None and anterior.respostas)
+            quadro = bool(getattr(exc, "quadro_saiu", False)) or bool(c.get("quadro_pronto_em"))
+            logger.error("[MC] não consegui ler o cálculo %s (leu=%s, quadro=%s, sessão morta=%s)", c["id"], leu,
+                         quadro, g.sessao_morta)
+            if leu and quadro:
+                if not g.sessao_morta:
+                    await self._copiar_pdfs(g, c, sessao, d)
+                await self._encerrar(g, c, "fechado", MOTIVO_LEU_PARTE)
+            else:
+                await self._encerrar(g, c, "falhou", MOTIVO_NAO_LEU)
             return
         except Exception as exc:  # noqa: BLE001 — fica `calculando`: a retomada relê, nunca re-POST
             logger.error("[MC] acompanhar o cálculo %s caiu (%s) — fica para a retomada", c["id"],
                          type(exc).__name__)
             return
         if perdeu.is_set():
+            return
+        if rodada is None:
+            # o robô devolveu NADA: não se fecha o que não foi lido
+            await self._encerrar(g, c, "falhou", MOTIVO_NAO_LEU)
             return
         await self._copiar_pdfs(g, c, sessao, d)
         await self._encerrar(g, c, "fechado", None)
