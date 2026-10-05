@@ -18,6 +18,9 @@ from app.services.saude_do_portal import rotulo_e_acao
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/portal", tags=["Portal"])
 
+#: SPEC-129-B D-129B-11 — portais cuja credencial NÃO se grava pela tela (só pelo comando do Founder).
+PORTAIS_SO_PELO_COMANDO = frozenset({"agger"})
+
 
 def _require_internal_key(provided: Optional[str]) -> None:
     expected = os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
@@ -167,6 +170,13 @@ async def save_credential(
     label = str(body.get("account_label") or "principal")
     if not company_id or not portal_key or not username:
         raise HTTPException(status_code=400, detail="company_id, portal_key e username sao obrigatorios")
+    # 🔴 SPEC-129-B D-129B-11: o login do ROBÔ do multicálculo não passa por esta tela. O upsert abaixo é por
+    # (empresa, portal, rótulo) e trocaria o login do robô pelo de uma pessoa. Quem cadastra é o comando do
+    # Founder (`backend/scripts/multicalculo_robo.py`); e o gatilho do banco pausa o robô se alguém trocar mesmo assim.
+    if portal_key.strip().lower() in PORTAIS_SO_PELO_COMANDO:
+        raise HTTPException(
+            status_code=403,
+            detail="este portal é do robô do multicálculo: o login é cadastrado pelo comando do Founder, não por aqui")
 
     supa = get_supabase_client()
     row = {
