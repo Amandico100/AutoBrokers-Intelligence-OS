@@ -6,15 +6,20 @@ branca, passou 14 cálculos ao vivo e barrou 51 escritas de telemetria em 05/10 
 Instalada no BrowserContext ANTES da 1ª aba (`instalar` recusa contexto com aba), por `context.route`
 (https://playwright.dev/python/docs/network#modify-requests): cada requisição passa por `decidir`.
 
-    LEITURA (GET · HEAD · OPTIONS) .... passa — 📊 o app do Agger só funcionou ao vivo assim (captador v2)
+    LEITURA (GET · HEAD · OPTIONS) .... passa SÓ no domínio do Agger e nos subdomínios dele (`*.aggilizador.com.br`,
+                                       SPEC U3; conserto 129-B) e nunca com "excluir/delet/remov/apagar" no caminho.
+                                       ⚠️ fonte/script/telemetria de terceiro (Google, Clarity, Refiner) é barrado
+                                       também por GET — 📊 o captador v2 já barrava os POST deles ao vivo; o GET deles
+                                       só se mede no canário (se a tela não montar, é aqui)
     ESCRITA, só no host da API (api-prod.<host do Agger>):
       POST usuario/login ............. 1 por CONTEXTO; corpo sem "derrubar/forçar/prosseguir/encerrar/nova sessão"
                                        (o aviso de sessão ativa: o robô CANCELA; nunca derruba a pessoa)
       POST usuario/login/pdocs ....... ≤ 6 por HORA (📊 o app chama 2× por login; 6/h = 3 logins/h, já anômalo)
       POST usuario/deslogaSessao ..... o logout do PRÓPRIO robô (o token no header é o dele)
-      POST calculo/calcularV2 ........ ids de negócio NULOS = negócio NOVO; ids preenchidos SÓ se o
-                                       `cotacao.idIntegracao` está em `negocios_do_robo` (e `negocio.id` bate
-                                       com `cotacao.negocioId`) — nunca recalcular o negócio de uma pessoa
+      POST calculo/calcularV2 ........ ids de negócio NULOS = negócio NOVO; ids preenchidos SÓ com os QUATRO
+                                       presentes: `cotacao.idIntegracao` em `negocios_do_robo`, `negocio.id` ==
+                                       `cotacao.negocioId`, e os dois + `cotacao.id` iguais aos que o Agger deu
+                                       para ESSE negócio (`registrar_ids`) — nunca o negócio de uma pessoa
     TUDO O MAIS ..................... abortado e CONTADO. URL com "derrub" é abortada até em leitura.
     WebSocket ....................... fechado (route_web_socket quando a versão do Playwright tem; e um
                                        stub de `window.WebSocket` por init script SEMPRE — a imagem do worker
@@ -39,6 +44,8 @@ logger = logging.getLogger("portal_worker.multicalculo")
 
 LEITURA = ("GET", "HEAD", "OPTIONS")
 DERRUBA = re.compile(r"derrub|for[cç]|prosseg|sobrescr|encerr|kill|nova\W*sess", re.I)
+# GET com cara de ação (📊 red team 05/10: `GET .../negocio/excluir/123` passava como leitura).
+LEITURA_DESTRUTIVA = re.compile(r"excluir|delet|remov|apagar", re.I)
 _UUID = re.compile(r"[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}", re.I)
 PDOCS_POR_HORA = 6
 LOGINS_POR_CONTEXTO = 1
@@ -59,6 +66,12 @@ def norm_id(valor: Any) -> str:
     return re.sub(r"-", "", str(valor or "").strip().lower())
 
 
+def dominio_de(host_api: str) -> str:
+    """`api-prod.aggilizador.com.br` → `aggilizador.com.br` (o dublê: `api-prod.agg.localhost` → `agg.localhost`)."""
+    h = str(host_api or "").strip().lower()
+    return h[len("api-prod."):] if h.startswith("api-prod.") else h
+
+
 @dataclass
 class EstadoDaGuarda:
     """O que a guarda sabe de UM contexto (uma sessão de robô)."""
@@ -70,11 +83,33 @@ class EstadoDaGuarda:
     logout: int = 0
     barradas: int = 0
     motivos_barrados: Dict[str, int] = field(default_factory=dict)
+    # 🔴 conserto 129-B (red P1/juiz P1): os ids que o Agger deu para cada negócio do robô (lidos de
+    # `versoes/{ref}` DENTRO da página, antes do POST). idIntegracao → {"negocio": {...}, "versao": {...}}
+    ids_do_negocio: Dict[str, Dict[str, Set[str]]] = field(default_factory=dict)
+    dominio: str = ""                               # leitura só neste domínio e nos subdomínios dele
+
+    def __post_init__(self) -> None:
+        if not self.dominio:
+            self.dominio = dominio_de(self.host_api)
 
     def registrar_negocio(self, negocio_ref: str) -> None:
         n = norm_id(negocio_ref)
         if n:
             self.negocios_do_robo.add(n)
+
+    def registrar_ids(self, negocio_ref: str, *, negocio_id: Any = None, versao_id: Any = None) -> None:
+        n = norm_id(negocio_ref)
+        if not n:
+            return
+        d = self.ids_do_negocio.setdefault(n, {"negocio": set(), "versao": set()})
+        if norm_id(negocio_id):
+            d["negocio"].add(norm_id(negocio_id))
+        if norm_id(versao_id):
+            d["versao"].add(norm_id(versao_id))
+
+    def host_de_leitura(self, host: str) -> bool:
+        h = (host or "").lower()
+        return bool(self.dominio) and (h == self.dominio or h.endswith("." + self.dominio))
 
     def pdocs_na_ultima_hora(self, agora: float) -> int:
         return sum(1 for t in self.pdocs if agora - t < 3600)
@@ -121,9 +156,15 @@ def decidir(metodo: str, url: str, corpo: Optional[str], estado: EstadoDaGuarda,
     m = (metodo or "").upper()
     if re.search(r"derrub", url or "", re.I):
         return False, "derruba_sessao"
-    if m in LEITURA:
-        return True, "leitura"
     host, caminho = _caminho(url)
+    if m in LEITURA:
+        # 🔴 conserto 129-B (red P1/juiz P1): leitura SÓ no domínio do Agger (a SPEC U3: `*.aggilizador.com.br`) —
+        # telemetria/coletor de terceiro por GET é barrado — e nunca um GET com cara de ação destrutiva
+        if not estado.host_de_leitura(host):
+            return False, "leitura_fora_do_agger"
+        if LEITURA_DESTRUTIVA.search(caminho):
+            return False, "leitura_destrutiva"
+        return True, "leitura"
     if host != estado.host_api:
         return False, "escrita_fora_da_api"
     if corpo is None:
@@ -153,7 +194,16 @@ def decidir(metodo: str, url: str, corpo: Optional[str], estado: EstadoDaGuarda,
         ref = ids.get("cotacao.idIntegracao")
         if not ref or ref not in estado.negocios_do_robo:
             return False, "negocio_que_nao_e_do_robo"
-        if "negocio.id" in ids and "cotacao.negocioId" in ids and ids["negocio.id"] != ids["cotacao.negocioId"]:
+        # 🔴 conserto 129-B: qualquer id preenchido exige os QUATRO, coerentes entre si e com o que o Agger deu
+        # para ESTE negócio (registrado antes do POST) — nunca o negócio de uma pessoa num id e o do robô noutro
+        if any(c not in ids for c in CAMPOS_DE_ID):
+            return False, "ids_de_negocio_incompletos"
+        if ids["negocio.id"] != ids["cotacao.negocioId"]:
+            return False, "ids_de_negocio_incoerentes"
+        conhecidos = estado.ids_do_negocio.get(ref)
+        if not conhecidos:
+            return False, "ids_de_negocio_nao_conferidos"
+        if ids["negocio.id"] not in conhecidos["negocio"] or ids["cotacao.id"] not in conhecidos["versao"]:
             return False, "ids_de_negocio_incoerentes"
         return True, "calculo_do_robo"
     return False, "escrita_fora_da_lista_branca"
