@@ -107,8 +107,32 @@ FAIXA DE RELÓGIO .....  💭 9–13 h · canário só FORA do horário da Ellen
 | P11 | **montar o corpo sem a tela funciona** | ⏳ medidor M1 — §4.1 | se NÃO: o 1º disparo preenche a tela (fallback); o recálculo segue pelo corpo |
 | P12 | **a hipótese do CPF em 2 corretoras** | ⏳ medidor M2 — §4.1 | informa o portão da 133-B |
 
-### 4.1 O que o medidor ao vivo mediu
-_(o gerente preenche ao voltar o laudo: M0 config × corpo, GETs de placa/CPF, marcador do negócio, usuário por versão; M1; M2; M3)_
+### 4.1 O que o medidor ao vivo mediu (05/10, 03:40–04:03, login da Ellen, captador; laudo `LAUDO-M0-M3.md` no rascunho)
+📊 8 cálculos (`grep -c '"m": "POST".*calcularV2' raw/*.jsonl` → AutoFleet 5 · Resulta 3, todos 201) · logout das duas (201) · G7: 0
+negócios sumiram, 0 de 92 + 9 negócios AUTO de pessoas alterados · aviso de sessão ativa nunca apareceu.
+- **P11 ✅ SIM — o corpo montado na página funciona.** Fonte das seguradoras: `GET api-prod/calculo/seguradoras` (a config achatada):
+  📊 88 de 111 chaves de cada item vêm dela, 23 o app escolhe (coberturas, nome, ids); a Porto alimenta Itaú/Azul/Mitsui, a Liberty
+  ("Yelum") alimenta a Aliro. O montador do laboratório (`m/montador.js`, 40 linhas) reproduz o corpo da tela 📊 786/786 chaves
+  (AutoFleet) e 657/657 (Resulta). Veículo: `calculo/buscaPlaca` + `calculo/fipeModelo` (descrição vem do modelo FIPE; `fipeTxt`
+  vai o texto `"null"`), 0 campo diferente da tela. Ao vivo: 201, 13 seguradoras/26 ofertas (a tela deu 14/27; a HDI caiu),
+  fechou 16/16 em 90 s, menor preço igual (1,000) em 11 de 13. → **o 1º disparo também vai pelo corpo; sem fallback de tela.**
+- **Marca do robô (D-MC-47):** o negócio não tem observação/etiqueta (📊 0 em 24 leituras); o `correlationId` que o robô gera volta
+  gravado na versão e no negócio (📊 15/15 na 128; 8/8 hoje) → **o robô marca com prefixo próprio no `correlationId`**. A versão traz
+  `usuarioId`: com login de ROBÔ ele separa robô de pessoa; com o login da Ellen, não (📊 1 usuário em 227 versões). Regra:
+  "pessoa mexeu" = existe versão nas últimas 24 h cujo `correlationId` NÃO tem o prefixo do robô OU cujo `usuarioId` ≠ o do robô
+  (quando a conta é `ativo`). `isAgger` não serve (vem `true` em negócio de pessoa).
+- **P12 ✅ a hipótese do CPF NÃO se confirma** (corpo idêntico, comissão 15, desconto 0): disparo simultâneo → menor preço igual em
+  9 de 10 seguradoras (Zurich 0,981); sequencial (203 s) → 10 de 11 (Zurich 0,984); renovação → 7 de 8 (Zurich 0,987); controle na
+  mesma conta 14/14 com deriva 0. Nº de cálculo da seguradora diferente nas duas contas (10/10, não é cache). 0 mensagens de
+  "cotado/outra corretora/prioridade/duplicado/bloqueio"; `seguradoCotadoRecentemente` só enxerga a própria conta. Não medido:
+  Tokio (credencial da Resulta recusada 3/3), ordem inversa.
+- **Consultar aos poucos:** 📊 `calculos/{id}/{v}` 184 KB constante × `versoes/{id}` 373 KB com 2 versões (+186 KB por versão) → ⑦.
+- **Token:** só trocou no login; o vencimento das 3 h segue NÃO MEDIDO (P-128-01 continua).
+- **Leitor:** 2 mensagens mal classificadas ("Risco sem aceitação para este cenário…" → DESCONHECIDA, devia ACEITACAO; "Cobertura
+  … Vidros não pode ser contratada. Favor, recalcular" → INSTABILIDADE, devia DADO) → conserto na F2 (`leitor_agger.py` entra).
+- Fora do escopo: `seguradoCotadoRecentemente` da AutoFleet mostra e-mail de usuários fora das duas contas (P-129B-03, possível
+  vazamento no fornecedor) · Tokio da Resulta com senha inválida (P-129B-04, Founder) · desconto padrão 10 da AutoFleet derruba a
+  Mitsui (dado para o portão de preço).
 
 ## 5. O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS
 
