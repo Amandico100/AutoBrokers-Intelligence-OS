@@ -1,9 +1,14 @@
-"""Cofre Fernet do smith-api para credenciais de portal (SPEC-020).
+"""Cofre Fernet do smith-api para credenciais de portal (SPEC-020) — com DUAS chaves (SPEC-129-B U5, P-182).
 
-Cifra a senha do portal antes de gravar em portal_accounts. Usa PORTAL_VAULT_KEY
-— a MESMA chave do portal-worker (que decifra na hora de logar no portal). Senha
-NUNCA em claro/log/LLM. Multi-tenant: a credencial é escopada por company_id na
-tabela; este módulo só cifra/decifra e mascara para exibição.
+Cifra a senha do portal antes de gravar em portal_accounts, e o pedido do multicálculo antes de gravar em
+multicalculo_pedidos. Usa PORTAL_VAULT_KEY — a MESMA chave do portal-worker (que decifra). Senha NUNCA em
+claro/log/LLM. Multi-tenant: a credencial é escopada por company_id na tabela; este módulo só cifra/decifra e
+mascara para exibição.
+
+Troca de chave sem recifrar tudo (MultiFernet, https://cryptography.io/en/latest/fernet/#cryptography.fernet.MultiFernet):
+    PORTAL_VAULT_KEY           a ATUAL — toda cifra nova sai com ela
+    PORTAL_VAULT_KEY_ANTERIOR  opcional — só DECIFRA o que foi cifrado antes da troca
+Sem a anterior, o comportamento é idêntico ao de antes. O gêmeo do worker (`portal_worker/vault.py`) faz o mesmo.
 """
 from __future__ import annotations
 
@@ -11,12 +16,16 @@ import os
 
 
 def _fernet():
-    from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet, MultiFernet
 
     key = os.getenv("PORTAL_VAULT_KEY", "")
     if not key:
         raise RuntimeError("PORTAL_VAULT_KEY ausente — configure no smith-api e no portal-worker")
-    return Fernet(key.encode() if isinstance(key, str) else key)
+    chaves = [Fernet(key.encode() if isinstance(key, str) else key)]
+    anterior = os.getenv("PORTAL_VAULT_KEY_ANTERIOR", "")
+    if anterior and anterior != key:
+        chaves.append(Fernet(anterior.encode() if isinstance(anterior, str) else anterior))
+    return MultiFernet(chaves)
 
 
 def encrypt(plaintext: str) -> str:
