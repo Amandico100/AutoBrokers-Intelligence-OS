@@ -166,6 +166,64 @@ CAMPOS_DO_PEDIDO_AUTO: dict = {
 }
 
 
+# --------------------------------------------------------------------------
+# Os CÓDIGOS dos campos de lista do Agger — SPEC-129-B F4 (a costura porta × robô)
+# --------------------------------------------------------------------------
+# O robô (`agger_robo.cotacao_do_pedido`) manda CÓDIGO nos campos de lista; texto sem código medido o robô recusa
+# só no disparo, lá na frente. A PORTA traduz com ESTA tabela e recusa o resto como `PedidoIncompleto` (nunca um
+# disparo recusado depois de o pedido entrar na fila). 🔴 Só entra aqui texto→código MEDIDO (CLAUDE.md §9.5):
+#   📊 sexo "M"/"F" ............ 18/18 corpos do `calcularV2` das fixtures (gravacao_r1/r2, vivo_conta_a/b)
+#   📊 combustível Flex = 6 .... 18/18 corpos (e `montador.js` COMBUSTIVEL)
+#   📊 relação "próprio" = 1 ... 17/18 condutores (o 18º, código 14, não tem rótulo medido)
+# Estado civil (📊 códigos 1, 2 e 4 nas fixtures), uso, garagem, fabricante: o RÓTULO de cada código NÃO foi
+# medido — só o código entra (P-129B-05: medir a lista de opções da tela e acrescentar aqui).
+CODIGOS_MEDIDOS: dict = {
+    ("segurado", "sexo"): {"m": "M", "masculino": "M", "f": "F", "feminino": "F"},
+    ("condutor", "sexo"): {"m": "M", "masculino": "M", "f": "F", "feminino": "F"},
+    ("segurado", "tipo_pessoa"): {"f": "F", "fisica": "F", "j": "J", "juridica": "J"},
+    ("veiculo", "combustivel"): {"flex": 6},
+    ("condutor", "relacao_com_segurado"): {"proprio": 1},
+}
+#: campos que o robô manda como NÚMERO inteiro (`agger_robo._int`): código de lista ou quantidade
+CAMPOS_DE_CODIGO_INTEIRO: Tuple[Tuple[str, str], ...] = (
+    ("segurado", "estado_civil"), ("condutor", "estado_civil"), ("condutor", "relacao_com_segurado"),
+    ("condutor", "tempo_habilitacao"), ("veiculo", "fabricante"), ("veiculo", "ano_fabricacao"),
+    ("veiculo", "ano_modelo"), ("veiculo", "combustivel"), ("veiculo", "uso"), ("veiculo", "percentual_fipe"),
+    ("renovacao", "bonus_anterior"), ("renovacao", "sinistros_anterior"), ("questionario", "km_mensal"),
+)
+#: campos que o robô manda como TEXTO de dígitos (📊 `garagemResidencia: "2"` em 18/18 corpos)
+CAMPOS_DE_CODIGO_TEXTO: Tuple[Tuple[str, str], ...] = (
+    ("pernoite", "garagem_residencia"), ("pernoite", "garagem_trabalho"), ("pernoite", "garagem_estudo"),
+)
+#: campos sim/não (o robô faz `bool(valor)`: o texto "não" viraria VERDADEIRO — a porta converte ou recusa)
+CAMPOS_SIM_NAO: Tuple[Tuple[str, str], ...] = (
+    ("segurado", "pcd"), ("veiculo", "zero_km"), ("veiculo", "blindado"), ("veiculo", "kit_gas"),
+    ("veiculo", "alienado"), ("condutor", "jovem_condutor"), ("renovacao", "renovacao"),
+)
+
+# A SEGURADORA ANTERIOR da renovação: o robô a acha em `calculo/seguradorasRenovacao` pelo NOME (o id é do Agger).
+# A ficha da InfoCap dá o `coenti` (SUSEP, `susep_ses_provider.coenti_de`); esta tabela leva o coenti ao nome
+# EXATO da lista do Agger. 📊 nomes: `gravacao_r1.json` `seguradoras_renovacao` (69 itens, 05/10); 📊 coenti:
+# `mapa_de_seguradoras()` (15 chaves). Cada linha diz por que é a mesma empresa (§9.5).
+# ⛔ Fora daqui (a porta recusa como `PedidoIncompleto`): SulAmérica (coenti UNKNOWN no mapa e DUAS entradas no
+# Agger) · Unimed (`auto=false` no Agger).
+SEGURADORA_ANTERIOR_NO_AGGER: dict = {
+    "05177": "Allianz",                               # única Allianz da lista
+    "05355": "Azul Companhia de Seguros Gerais",      # o MESMO nome da SUSEP (AZUL COMPANHIA DE SEGUROS GERAIS)
+    "05312": "Bradesco Auto/RE Cia de Seg.",          # BRADESCO AUTO/RE COMPANHIA DE SEGUROS, abreviado
+    "06572": "HDI",                                   # única HDI
+    "06238": "Mapfre Vera Cruz Seguradora S/A",       # única Mapfre da lista
+    "05886": "Porto Seguro Cia Seg. Gerais",          # PORTO SEGURO COMPANHIA DE SEGUROS GERAIS, abreviado
+    "04952": "Suhai Seguradora",                      # única Suhai
+    "06751": "Seguro Sura S.A.",                      # única Sura
+    "06190": "Tokio Marine Seguradora S.A",           # TOKIO MARINE SEGURADORA S.A.
+    "05185": "Yelum Seguradora",                      # YELUM SEGUROS S.A. (a ex-Liberty; única Yelum)
+    "05495": "Zurich - Minas Brasil",                 # ZURICH MINAS BRASIL SEGUROS S.A.
+    "06467": "Alfa Seguros e Previdência S.A.",       # única Alfa da lista
+    "05720": "Sompo Seguros",                         # SOMPO SEGUROS S.A. (a outra, "Sompo Consumer", não)
+}
+
+
 @dataclass(frozen=True)
 class PedidoDeCalculoAuto:
     ramo: int = RAMO_AUTO
