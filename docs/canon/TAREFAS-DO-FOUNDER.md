@@ -1,6 +1,6 @@
 # TAREFAS DO FOUNDER — a lista única
 
-> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-113).** Os blocos mais antigos, depois dela,
+> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-119).** Os blocos mais antigos, depois dela,
 > guardam o contexto, as decisões e as tarefas que não são teste; onde havia um teste, agora há uma seta **→ T-NN**.
 
 ## 🗺️ DESDE 04/10/2026: FAÇA PELO ROTEIRO, NÃO POR ESTA LISTA
@@ -16,8 +16,9 @@
 > cobrança, vida real) · 🔁 **5** cobertos · ⚰️ **2** mortos · 🔭 **1** futuro. **Depois do placar** (fechador, 04/10):
 > **T-104** (decisão: religar o DEDUZIR do portal na Yelum) e **T-105** (a vistoria pelo celular, roteiro V9.1–V9.3). **Depois da
 > SPEC-128** (04/10): **T-106 a T-113**, o programa multicálculo (grupo ⑩) — decisões e conferências, nenhum é teste de celular.
+> **Depois da passagem de 05/10** (o Quem Cobra Menos vira WhatsApp, plano A): **T-114 a T-119** — a T-113 foi para a ★.
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113)
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
 > agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 127 e das EXTRA-001.1 → 001.10.1, das
@@ -666,10 +667,35 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       `.har` em `docs/intake/MULTICALCULO AGGER/` (pastas `GERAL`, `RENOVAÇÃO 1` e `RENOVAÇÃO 2`) — elas têm CPF, senha e token reais.
       As fixtures saneadas que a 128 tirou delas já estão no repositório (`backend/tests/fixtures/agger/`, 📊 0 URL e 0 chave). ⚠️
       Depois de apagar, o guarda G2 (o diferencial contra o bruto) deixa de rodar nesta máquina — é esperado (P-128-10). · *de:* S128
-- [ ] **T-113** ⏳ 🧑 **o portão da próxima SPEC (133-A)** · **Criar o serviço e o domínio do Quem Cobra Menos no EasyPanel** e
-      **recrutar 10–15 testadores leigos** (pessoas fora do seguro, com celular) para a prova de instalação. **Onde:** EasyPanel →
-      novo serviço + domínio (a SPEC da 133-A diz o nome e a porta). **Se não fizer:** a 133-A não abre. · *de:* plano multicálculo
-      §0.1 passo 3 · `programa-multicalculo/ESTADO-DO-PROGRAMA.md`
+- [ ] **T-113** 🔭 🧑 **futuro — foi para a ★ (05/10, D-MC-51); NÃO é mais o portão da 133-A** · ~~Criar o serviço e o domínio do
+      Quem Cobra Menos no EasyPanel e recrutar 10–15 testadores leigos~~ para a prova de instalação no Claude/ChatGPT. O serviço e o
+      domínio do **conector** no EasyPanel e os testadores de instalação só voltam quando a ★ (Claude/ChatGPT) abrir. A 133-A agora é
+      o WhatsApp: os portões dela são a **T-116** e a **T-117**. · *de:* plano multicálculo v2.5 §4 (ficha ★) ·
+      `programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md`
+- [ ] **T-114** ⏳ 🧑 **já — não trava nada** · **Comprar o domínio quemcobramenos + uma página simples da marca** — a página ajuda a
+      Meta a aprovar o nome "Quem Cobra Menos" (T-115). **Onde:** o registrador de domínios que você usa; a página pode ser uma tela
+      só com o nome e o que o serviço faz. **Se não fizer:** a verificação do nome na Meta pode demorar ou ser recusada, e a 134
+      atrasa. · *de:* PASSAGEM §4 · D-MC-22 · D-MC-52
+- [ ] **T-115** ⏳ 🧑 **já — o caminho crítico externo** · **Começar a verificação da empresa no Gerenciador de Negócios da Meta**
+      (empresa, número e nome "Quem Cobra Menos") — a Meta leva de dias a semanas. **Onde:** Gerenciador de Negócios da Meta
+      (business.facebook.com), na verificação da empresa — o caminho exato dos menus não foi conferido na tela. **Se não fizer:** a 134 (migração para a API oficial) não abre; o
+      piloto segue na Evolution. · *de:* PASSAGEM §3–§4 · D-MC-52
+- [ ] **T-116** ⏳ 🧑 **antes da 133-A — o portão** · **Separar um chip NOVO para o número da marca e instalar nele o WhatsApp
+      Business** — número exclusivo do Quem Cobra Menos, separado do atendimento das corretoras (D-MC-58). Separar o chip: **já**;
+      instalar o WhatsApp Business: antes da 133-A. O chat da 133-A entrega o passo a passo da instância Evolution e do QR.
+      **Se não fizer:** a 133-A não abre. · *de:* PASSAGEM §3–§4 · D-MC-52
+- [ ] **T-117** ⏳ 🧑 **antes da 133-A** · **Os 5 testadores do WhatsApp** — você já tem os 5. Eles medem a conversa do "oi" ao
+      resultado: chegou ao fim? quanto tempo? onde travou? **O que fazer:** deixar os 5 avisados; o chat da 133-A diz quando e
+      quais números entram na lista de convidados. **Se não fizer:** a 133-A fica sem a medição que a fecha. · *de:* PASSAGEM §3
+- [ ] **T-118** ⏳ 🧑 **decisão sua — na abertura da 133-B** · **As regras de negócio entre corretoras** — quem vence no empate,
+      rodízio, quantas corretoras por pedido, o que a parceira paga (D-MC-56). **Como:** o chat da 133-B pergunta, uma por uma.
+      ⚠️ O modelo comercial (D-MC-57) ainda é hipótese sua: nenhum preço entra no código antes da sua decisão. **Se não decidir:** a
+      133-B não abre (é o portão). · *de:* PASSAGEM §2–§4 · D-MC-56
+- [ ] **T-119** ⏳ 🧑 **antes da 134** · **Cadastrar o cartão de pagamento na conta da Meta** — 📊 desde 01/10/2026 a Meta cobra
+      também as respostas, depois de 1.000 grátis por mês por número (Brasil ≈ US$ 0,0068 por mensagem; fonte: periskope.app e
+      callbell.eu, 04/10/2026 — a 134 confere na tabela oficial). **Onde:** na conta de WhatsApp Business do Gerenciador de Negócios da
+      Meta, em pagamentos (o caminho exato dos menus não foi conferido na tela).
+      **Se não fizer:** a 134 não abre. · *de:* PASSAGEM §2 e §4 · D-MC-52
 
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 
@@ -1567,7 +1593,8 @@ Nada a implantar: o contrato ainda não é chamado pelo produto (a 129-B liga).
 ### S128.2 · Decisões e conferências suas
 → **T-106** (o portão de preço, antes da 130-A) · **T-107** (D-128-03, antes da 129-B) · **T-108** (os 3 negócios de teste) ·
 **T-109** (Bradesco da AutoFleet) · **T-110** (os 2 "Calculando" da Resulta) · **T-111** (as assinaturas vencem 13/10 e 21/10) ·
-**T-112** (apagar os HAR do intake) · **T-113** (o portão da 133-A).
+**T-112** (apagar os HAR do intake) · **T-113** (foi para a ★ em 05/10). Depois da passagem de 05/10: **T-114** a **T-119**
+(domínio, Meta, chip, testadores, regras entre corretoras, cartão na Meta).
 - Já decididas, com nota: alavancas medidas na AutoFleet (D-128-01, 88) · família nova DADO (D-128-02, 85) · 2 opções = 2 cálculos
   (D-128-04, 90) · coberturas explícitas, nunca o pacote da conta (D-128-05, 92) · entregar aos poucos e fechar por tempo
   (D-128-06, 88) · renovação com o questionário marcado como "assumido" (D-128-07, 80) · a 129-B herda a lista branca do captador
