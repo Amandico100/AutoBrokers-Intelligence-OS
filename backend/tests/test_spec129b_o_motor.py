@@ -72,7 +72,9 @@ from dubles.banco_multicalculo import (  # noqa: E402  (F4: o banco dublê é UM
 def ambiente(monkeypatch):
     from cryptography.fernet import Fernet
 
-    instalar_esquema(monkeypatch)
+    # conserto 129-B (red B2): o motor reconfere o tipo do solicitante e a adesão ANTES de cada POST — o banco dublê
+    # tem `companies.company_kind` e `multicalculo_adesoes` (o esquema da porta)
+    instalar_esquema(monkeypatch, com_porta=True)
     monkeypatch.setenv("PORTAL_VAULT_KEY", Fernet.generate_key().decode())
     monkeypatch.delenv("PORTAL_VAULT_KEY_ANTERIOR", raising=False)
     for nome in ("MULTICALCULO_TETO_CORRETORA_HORA", "MULTICALCULO_TETO_GERAL_HORA", "AUTOBROKERS_CANARIO"):
@@ -196,6 +198,7 @@ class RoboDuble:
     DisparoIncerto = DisparoIncerto
     DisparoRecusado = DisparoRecusado
     Disparo = Disparo
+    LeituraImpossivel = None   # o conserto (test_spec129b_o_conserto) põe a do robô REAL quando a usa
 
     def __init__(self, mundo: MundoAgger, visao):
         self.m, self.visao = mundo, visao
@@ -286,10 +289,26 @@ class RoboDuble:
 # ═════════════════════════════════════════════════════════════════════════════
 # A semeadura e o motor
 # ═════════════════════════════════════════════════════════════════════════════
-def empresa(amb) -> str:
+def empresa(amb, kind: str = "client") -> str:
     cid = str(uuid4())
-    amb.banco.semear("companies", {"id": cid})
+    amb.banco.semear("companies", {"id": cid, "company_kind": kind})
     return cid
+
+
+def _canal_com_adesao(amb, solicitante, corretoras) -> None:
+    """O pedido de OUTRO solicitante só existe se ele é o canal com adesão ATIVA (a porta recusa o resto, e desde o
+    conserto 129-B o motor reconfere na hora do POST): o semeador põe o mundo que a porta exigiria."""
+    outras = [c for c in corretoras if c != solicitante]
+    if not outras:
+        return
+    for e in amb.banco.linhas("companies"):
+        if e["id"] == solicitante:
+            e["company_kind"] = "platform_canal"
+    for c in outras:
+        if not [x for x in amb.banco.linhas("multicalculo_adesoes")
+                if x["canal_company_id"] == solicitante and x["corretora_company_id"] == c]:
+            amb.banco.semear("multicalculo_adesoes", {"canal_company_id": solicitante, "corretora_company_id": c,
+                                                      "ativa": True})
 
 
 def robo(amb, corretora, *, estado="ativo", teto=None, janela=None, rotulo=None) -> str:
@@ -308,6 +327,7 @@ def pedido(amb, solicitante, corretoras, *, opcoes=("padrao", "economica"), orig
            prioridade=0) -> tuple:
     from portal_worker import vault
 
+    _canal_com_adesao(amb, solicitante, corretoras)
     pid = str(uuid4())
     amb.banco.semear("multicalculo_pedidos", {
         "id": pid, "company_id": solicitante, "origem": origem, "opcoes": list(opcoes), "corretoras": list(corretoras),
