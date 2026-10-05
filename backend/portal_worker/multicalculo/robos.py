@@ -243,15 +243,19 @@ def adquirir(supa, conta: Dict[str, Any], dono: str, agora: datetime,
 
 def escolher(supa, corretora_id: str, origem: str, *, dono: str, agora: Optional[datetime] = None,
              quantos: int = 1, canario: bool = False, lease_s: int = LEASE_VENCE_S,
-             ignorar: Iterable[str] = ()) -> Optional[Dict[str, Any]]:
+             ignorar: Iterable[str] = (), somente: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """A conta-robô que vai rodar `quantos` cálculos desta corretora — com a lease JÁ tomada — ou None.
 
     Percorre as candidatas (a menos usada primeiro); a ocupada por outro motor perde o CAS e a próxima
-    é tentada. `ocupada` com o prazo vencido volta a `ativo` ao ser tomada."""
+    é tentada. `ocupada` com o prazo vencido volta a `ativo` ao ser tomada — por CAS: se o Founder a
+    pausou nesse meio tempo, ela NÃO volta e a lease é devolvida (conserto 129-B, red B1).
+
+    `somente` (conserto 129-B, juiz P11): o grupo já tem negócio aberto numa conta — só ELA serve. A
+    econômica nunca abre negócio novo noutra conta; sem ela livre, o grupo espera."""
     agora = agora or _agora()
     pulo = set(ignorar or ())
     for conta in candidatos(supa, corretora_id):
-        if conta["id"] in pulo:
+        if conta["id"] in pulo or (somente is not None and conta["id"] != somente):
             continue
         ok, _motivo = conta_elegivel(conta, origem, agora, canario=canario)
         if not ok:
@@ -263,9 +267,14 @@ def escolher(supa, corretora_id: str, origem: str, *, dono: str, agora: Optional
         if not adquirir(supa, conta, dono, agora, lease_s):
             continue
         if conta.get("robo_estado") == OCUPADA:
-            (supa.table("portal_accounts").update({"robo_estado": ATIVO, "robo_ocupada_ate": None})
-             .eq("id", conta["id"]).eq("company_id", corretora_id).eq("robo_dono", dono)
-             .eq("robo_estado", OCUPADA).execute())
+            r = (supa.table("portal_accounts").update({"robo_estado": ATIVO, "robo_ocupada_ate": None})
+                 .eq("id", conta["id"]).eq("company_id", corretora_id).eq("robo_dono", dono)
+                 .eq("robo_estado", OCUPADA).lt("robo_ocupada_ate", _iso(agora)).execute())
+            if not r.data:
+                # o estado mudou entre a leitura e o CAS (o Founder pausou, o gatilho da senha pausou):
+                # a conta NÃO é usada e a lease volta
+                liberar(supa, conta, dono)
+                continue
             conta = {**conta, "robo_estado": ATIVO, "robo_ocupada_ate": None}
         return {**conta, "robo_dono": dono, "robo_batida_em": _iso(agora)}
     return None
@@ -287,15 +296,41 @@ def liberar(supa, conta: Dict[str, Any], dono: str) -> None:
         logger.warning("[MC] não consegui soltar o robô %s (%s)", conta.get("id"), type(exc).__name__)
 
 
+# 🔴 As transições que o MOTOR pode fazer (conserto 129-B, red B1). Cada uma é um CAS com o estado de ORIGEM:
+# o motor grava só se a conta AINDA está no estado em que ele a leu. `pausado` e `bloqueado` NUNCA saem daqui —
+# só o comando do Founder (`comando_robo religar`) os desfaz. Sem isto, o motor que leu `ativo` antes da pausa do
+# Founder (ou do gatilho de senha trocada) gravava `ocupada` por cima — e 30 min depois a conta voltava a `ativo`.
+#   ativo → ocupada ............ uma pessoa entrou com o login do robô (SessaoOcupada)
+#   ativo|ocupada|teste → bloqueado   senha recusada (1 tentativa). `teste` entra: login de pessoa recusado
+#                                     também nunca se retenta
+#   teste → pausado ............ a conta de PESSOA estava em uso, ou o login dela não teve desfecho (D-129B-04)
+#   ocupada → ativo ............ só em `escolher`, com o prazo vencido (o CAS de lá também confere o prazo)
+TRANSICOES_DO_MOTOR: Dict[str, tuple] = {
+    OCUPADA: (ATIVO,),
+    BLOQUEADO: (ATIVO, OCUPADA, TESTE),
+    PAUSADO: (TESTE,),
+}
+
+
 def marcar_estado(supa, conta: Dict[str, Any], estado: str, *, agora: Optional[datetime] = None,
-                  ocupada_min: Optional[int] = None) -> None:
+                  ocupada_min: Optional[int] = None) -> bool:
+    """CAS do estado da conta, a partir do estado em que o motor a LEU (`conta['robo_estado']`).
+    Devolve se gravou. Transição fora de `TRANSICOES_DO_MOTOR` → `ValueError` (nada é gravado)."""
     if estado not in ESTADOS:
         raise ValueError(f"estado de robô desconhecido: {estado!r}")
+    de = conta.get("robo_estado")
+    if de not in TRANSICOES_DO_MOTOR.get(estado, ()):
+        raise ValueError(f"o motor não faz a transição {de!r} → {estado!r}")
     patch: Dict[str, Any] = {"robo_estado": estado}
     if estado == OCUPADA:
         patch["robo_ocupada_ate"] = _iso((agora or _agora()) + timedelta(minutes=int(ocupada_min or 30)))
-    (supa.table("portal_accounts").update(patch)
-     .eq("id", conta["id"]).eq("company_id", conta["company_id"]).execute())
+    r = (supa.table("portal_accounts").update(patch)
+         .eq("id", conta["id"]).eq("company_id", conta["company_id"]).eq("robo_estado", de).execute())
+    if not r.data:
+        logger.warning("[MC] robô %s mudou de estado por fora (não era mais %s) — %s não gravado",
+                       conta.get("id"), de, estado)
+        return False
+    return True
 
 
 def conta_publica(conta: Dict[str, Any]) -> Dict[str, Any]:
@@ -308,6 +343,6 @@ __all__: tuple = (
     "PORTAL_KEY", "ESTADOS", "ATIVO", "PAUSADO", "BLOQUEADO", "OCUPADA", "TESTE",
     "TETO_PADRAO_POR_HORA", "LEASE_VENCE_S", "dentro_da_janela", "conta_elegivel", "teto_da_conta",
     "calculos_na_ultima_hora", "candidatos", "adquirir", "escolher", "renovar", "liberar",
-    "marcar_estado", "conta_publica",
+    "marcar_estado", "conta_publica", "TRANSICOES_DO_MOTOR",
 )
 
