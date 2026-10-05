@@ -235,6 +235,14 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
     # vivo_conta_b (11×): "DESCONTO X COMISSÃO FORA DA ABRANGÊNCIA — O desconto aplicado não pode ser concedido…"
     (COMERCIAL, re.compile(r"desconto x comissao fora da abrangencia|desconto aplicado nao pode ser concedido"),
      "vivo_conta_b (erros[])"),
+    # A COBERTURA pedida a corrigir (DADO) — duas formas, uma regra:
+    #   vivo_conta_a (12×, ao lado de oferta): "COBERTURA CASCO FORA DO PERMITIDO"
+    #   📊 ao vivo 05/10 (SPEC-129-B BLOCO 0, LAUDO-M0-M3 §M2, HDI nas duas contas, intermitente; AINDA NÃO está em
+    #   fixture — pendência da 129-B): "Cobertura HDI Auto Vidros não pode ser contratada. Favor, recalcular".
+    # 🔴 Vem ANTES das regras de INSTABILIDADE de propósito: 📊 o leitor dava INSTABILIDADE quando o texto dos vidros
+    # chegava junto do "Read terminated" — e INSTABILIDADE convida a repetir o MESMO pedido, que falha de novo.
+    (DADO, re.compile(r"cobertura \w+ fora do permitido|cobertura .{0,80}nao pode ser contratada"),
+     "vivo_conta_a (erros[]) · LAUDO-M0-M3 §M2 (ao vivo 05/10, a 2ª forma)"),
     # gravacao_r1/r2: "A seguradora está apresentando instabilidade no momento. Por favor, tente novamente mais tarde."
     (INSTABILIDADE, re.compile(r"instabilidade|tente novamente mais tarde"),
      "gravacao_r1 · gravacao_r2 (erros[], rodadas intermediárias)"),
@@ -254,9 +262,6 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
     # gravacao_r2 (versoes[], 4×): "Os dados do condutor principal devem ser preenchidos." — falta dado no pedido
     (DADO, re.compile(r"dados do condutor principal devem ser preenchidos|devem ser preenchidos"),
      "gravacao_r2 (versoes[])"),
-    # vivo_conta_a (12×, ao lado de oferta): "COBERTURA CASCO FORA DO PERMITIDO" — a cobertura pedida a corrigir
-    (DADO, re.compile(r"cobertura \w+ fora do permitido"),
-     "vivo_conta_a (erros[])"),
     # gravacao_r1/r2: "Não oferecemos seguro para os dados enviados no momento" ·
     # "O valor do veículo (R$ …) está abaixo do limite mínimo de R$ … aceito por esta seguradora." ·
     # "<produto> disponível apenas para pessoa física."
@@ -265,8 +270,10 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
      "gravacao_r1 · gravacao_r2 (erros[])"),
     # gravacao_r2 (versoes[], 4×): "A opção selecionada para vínculo do segurado do item 1 não possui aceitação para
     # este produto. Cote na <seguradora>…" — a seguradora não aceita este risco neste produto
-    (ACEITACAO, re.compile(r"nao possui aceitacao"),
-     "gravacao_r2 (versoes[])"),
+    # 📊 ao vivo 05/10 (LAUDO-M0-M3 §M2, renovação, Aliro e Yelum nas duas contas): "Risco sem aceitação para este
+    # cenário nesta seguradora" — antes DESCONHECIDA. MEDICOES E10 traz a mesma forma ("Veículo sem aceitação", Ezze).
+    (ACEITACAO, re.compile(r"nao possui aceitacao|sem aceitacao"),
+     "gravacao_r2 (versoes[]) · LAUDO-M0-M3 §M2 (ao vivo 05/10)"),
 )
 # A mensagem da renovação inválida (antes DESCONHECIDA) ganhou a família DADO — decisão do gerente
 # (D-128-02, nota 85 × ACEITACAO 50: não é recusa do risco, é pedido a corrigir).
