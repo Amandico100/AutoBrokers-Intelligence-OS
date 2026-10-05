@@ -1,9 +1,10 @@
 # Estado do Programa Multicálculo — o que está feito, o que espera, o que se gastou
 
-> Arquivo vivo. Todo chat do programa lê este arquivo junto com o [plano](PLANO-MESTRE-MULTICALCULO.md) e o
-> atualiza ao fechar cada SPEC. Decisões em [`FOUNDER-DECISIONS.md`](../FOUNDER-DECISIONS.md) (D-MC-08…50).
+> Arquivo vivo. Todo chat do programa lê este arquivo junto com a [PASSAGEM de 05/10](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) e o
+> [plano](PLANO-MESTRE-MULTICALCULO.md) (v2.5) e o atualiza ao fechar cada SPEC. Decisões em
+> [`FOUNDER-DECISIONS.md`](../FOUNDER-DECISIONS.md) (D-MC-08…60).
 
-## 1. O checklist (§0.1 do plano)
+## 1. O checklist (§0.1 do plano, v2.5 — a fila nova de 05/10)
 
 | # | Passo | Estado | Branch / commit | Portão |
 |---|---|---|---|---|
@@ -11,15 +12,16 @@
 | 0.5 | Registro + `/r/` + P-E0018-14 | ✅ CONCLUÍDO e NO AR 04/10 (Founder implantou; `/r/` falso em aba anônima → "Este link não está mais disponível") (juiz 84 · red team 62 → conserto → confirmação 80 → conserto com prova mecânica) | `programa-mc/passo-0.5` → `main` | 🧑 Implantar + abrir um `/r/` em aba anônima |
 | 1 | 129-A espera durável | ✅ CONCLUÍDA 04/10 (juiz 78 · red team 62 → conserto → confirmação 89; migrations _01 e _02 APLICADAS; _03 na caixa do Founder) — inventário já medido: ver relatório do 0.5 §1 | — | — |
 | 2 | 128 prova do Agger | ✅ CONCLUÍDA 04/10 (juiz 72 ‖ red team 62 → conserto → confirmação; lente 84; 📊 16 cálculos de 25; nada apagado no Agger nem na InfoCap) — resultado em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md) · `reports/SPEC-128-EXECUTION-REPORT.md` · D-128-01…08 · P-128-01…14 | `spec/128-a-prova-do-agger` (código até `9db6372`) | ✅ autorização da corretora declarada (04/10) · 🧑 D-128-03 e os 3 negócios de teste |
-| 3 | 133-A prova de instalação | ⏭ próxima (chat novo) | — | 🧑 serviço + domínio no EasyPanel; 10–15 testadores |
-| 4 | 129-B motor | ⏳ | — | 🧑 1 login de robô por corretora |
-| 5 | 130-A comparação e proposta | ⏳ | — | 🧑 portão de preço (D-MC-45) — as perguntas do portão de preço estão prontas em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md) §6; modelo visual |
+| 3 | 129-B motor (várias corretoras em paralelo, D-MC-56; padrão + econômica juntas, D-MC-60; medir a hipótese do CPF em 2 corretoras) | ⏭ **próxima** (chat novo) | — | 🧑 **D-128-03** (recalcular reenviando o pedido; perguntar na abertura, T-107) · 🧑 **1 login de robô por corretora** (até existir: construir e testar com as fixtures da 128; a prova ao vivo espera) |
+| 4 | 130-A comparação (entre seguradoras e entre corretoras), proposta e página "uau" | ⏳ | — | 🧑 portão de preço (D-MC-45) com a econômica como rascunho e a margem da corretora (D-MC-54) — perguntas prontas em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md) §6; modelo visual |
+| 5 | 133-A Quem Cobra Menos no WhatsApp, piloto fechado (Evolution) | ⏳ | — | 🧑 chip novo + WhatsApp Business + instância Evolution (QR); os 5 testadores |
 | 6 | 130-B leitor de apólice | ⏳ | — | 🧑 crédito de API; 20–30 apólices |
-| 7 | 131 renovação | ⏳ | — | 🧑 InfoCap da Resulta de volta na Resulta |
-| 8 | 132 cotação | ⏳ | — | — |
-| 9 | 133-B Quem Cobra Menos piloto | ⏳ | — | 🧑 portão de preço do canal |
-| ★ | canal público | ⏳ | — | números da 133-A/B |
-| 10–13 | 134 · 135 · 136 · 137 | ⏳ | — | Meta · atendimento ligado · opt-in · ★ |
+| 7 | 133-B Quem Cobra Menos piloto ampliado | ⏳ | — | 🧑 regras de negócio entre corretoras (D-MC-56) · preço do canal (D-MC-29) |
+| 8 | 134 migração do número para a API oficial da Meta | ⏳ (pode entrar a qualquer momento depois da 133-A) | — | 🧑 Meta: empresa verificada, número, nome · cartão na conta Meta |
+| 9 | 131 renovação | ⏳ | — | 🧑 InfoCap da Resulta de volta na Resulta |
+| 10 | 132 cotação | ⏳ | — | — |
+| 11–12 | 135 · 136 | ⏳ | — | atendimento ligado · opt-in |
+| ★ / 13 | Claude/ChatGPT (o conector e a prova de instalação da v2.4) · 137 público | ⏳ | — | ★ |
 
 ## 2. O que o Founder informou na abertura (04/10/2026)
 
@@ -35,6 +37,14 @@
   o Founder mandar ou se houver outra pessoa logada (o modal de sessão única avisa — NUNCA clicar "Prosseguir" sobre sessão de outra pessoa).
   Exceção temporária à D-MC-24, só para a 128 e testes; o motor (129-B) em uso real exige o login do robô.
 - **Segredos:** a rotação é do Founder, no fim do projeto (D-MC-35). Nenhum segredo entra em arquivo versionado.
+
+## 2.1 O que o Founder decidiu em 05/10/2026
+
+Na conversa que fechou a SPEC-128 (04–05/10), o Founder mudou o canal e a fila. O resumo com o porquê está na
+[PASSAGEM](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md); as decisões são a D-MC-51 a D-MC-60 (a D-MC-57, modelo comercial, é
+hipótese, não decisão). Em uma linha: o Quem Cobra Menos nasce no WhatsApp comum (Evolution), num número exclusivo da marca,
+separado do atendimento das corretoras; migra para a API oficial da Meta na 134; compara seguradoras e corretoras parceiras,
+calculadas em paralelo, e indica a vencedora; Claude/ChatGPT ficam para a ★.
 
 ## 3. Livro-caixa da API de modelo (verba do programa: 💭 US$ 4,00, Founder 04/10)
 
@@ -53,7 +63,7 @@ A classe é a régua "PODE LIGAR" da validação de 03/10, reaplicada por script
 
 | classe | quantos | quais |
 |---|---:|---|
-| **A · trava ligar o atendimento** (e por isso trava a 134 e a 135) | **48** | T-03 04 08 · 23–30 32 33 · 35–44 · 51 53 · 60–63 · 65–69 · 75–78 · 84–88 · 90 · 93–96 |
+| **A · trava ligar o atendimento** (e por isso trava a 135; a 134 não, D-MC-58) | **48** | T-03 04 08 · 23–30 32 33 · 35–44 · 51 53 · 60–63 · 65–69 · 75–78 · 84–88 · 90 · 93–96 |
 | **B · trava o programa** | **0** | — (o que travava a 128 estava fora da lista T: bloco H → D-MC-23/24/27/35) |
 | **C · pode esperar** | **47** | T-07 · 09–22 · 31 · 34 · 45–50 · 52 · 54–59 · 64 · 70–74 · 79–81 · 83 · 89 · 97 · 100 · 101 · 103–105 |
 
