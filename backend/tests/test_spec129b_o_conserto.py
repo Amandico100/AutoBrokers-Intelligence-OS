@@ -419,6 +419,13 @@ def test_item7_a_guarda_corpo_misto_e_leitura_fora_do_agger():
     assert G.decidir("GET", "https://quotation-files.aggilizador.com.br/pdf/x.pdf", None, est) == (True, "leitura")
     assert G.decidir("GET", "https://aggilizador.com.br/cotacoes", None, est) == (True, "leitura")
     assert G.decidir("GET", "https://aggilizador.com.br.evil.example/x", None, est)[0] is False
+    # gerente 05/10: a PÁGINA monta com arquivo de terceiro (CDN) — passa; DADO para fora do Agger — barrado
+    for tipo in ("script", "stylesheet", "font", "image", "document"):
+        assert G.decidir("GET", "https://cdn.terceiro.example/a.js", None, est, tipo_de_recurso=tipo) == (True, "leitura_de_pagina")
+    for tipo in ("xhr", "fetch", "ping", "beacon", "other", "websocket", None):
+        assert G.decidir("GET", "https://coletor.terceiro.example/px", None, est, tipo_de_recurso=tipo) == (False, "leitura_fora_do_agger")
+    # e a ação destrutiva no Agger continua barrada mesmo vestida de arquivo da página
+    assert G.decidir("GET", "https://api-prod.aggilizador.com.br/negocio/excluir/1", None, est, tipo_de_recurso="script")[0] is False
 
 
 # =====================================================================================================================
