@@ -1,3 +1,7 @@
+# 📊 06/10/2026, SPEC-129-B (branch spec/129-B-o-motor, HEAD dc6d712), worktree limpo C:/wt129b, em DUAS METADES (a inteira > 2 h nesta
+#   máquina) → m1: 14 failed · 1399 passed · m2: 30 failed · 3916 passed · 7 skipped · 31 xfailed · 1 xpassed · 27 errors. TRIAGEM: 46 na
+#   base · NOVAS: 29 da 129-A + 6 do G7 + 1 guarda de mil linhas = REGRESSÕES DESTA SPEC, consertadas (5618070, f5cd345, 8d225ac) e
+#   verdes isoladas · 2 de carga (árvore limpa, Porto: 5 passed isoladas) → 0 regressões em aberto. A lista abaixo não muda.
 # 📊 04/10/2026, SPEC-128 (branch spec/128-a-prova-do-agger, HEAD 9db6372), worktree limpo C:/wt128 → 48 failed · 5236 passed · 9 skipped ·
 #   31 xfailed · 1 xpassed em 5.829 s. TRIAGEM contra a base (38): 35 iguais · 3 sumiram · 13 novas = as 13 de carga da 129-A (passam isoladas:
 #   14 passed; a árvore limpa = arquivo da bateria na raiz do worktree) → 0 regressões. A lista abaixo não muda.
