@@ -280,3 +280,8 @@ com logout 201. 🔴 **Lição para o robô:** nunca `goto` entre telas de uma s
 **Ficou por medir:** os nomes dos códigos 69, 93, 46, 100 (e qual código é Viagem/Aluguel/Bike/Celular/Vida Global/AP) · o
 formulário visto pela conta da Resulta (a lista de seguradoras de condomínio/empresarial dela) · os rótulos de preço e o resultado
 desses ramos (exige cálculo — fica para a 129-C, com o login do robô).
+
+**Adendo 07:36 (06/10):** nova tentativa na Resulta depois do vencimento do token de 3 h da sessão das 04:23 → o aviso de sessão
+ativa **apareceu de novo** → Cancelar e parar (nenhuma outra tentativa). 💭 Ou a sessão no servidor do Agger sobrevive ao vencimento
+do token (o que tornaria o logout OBRIGATÓRIO e a sessão fantasma um risco real para a pessoa — liga-se à P-128-01), ou a Ellen já
+estava logada às 07:36; daqui não dá para distinguir. 🧑 Se a Ellen vir o aviso ao entrar hoje, é o login DELA: ela pode prosseguir.
