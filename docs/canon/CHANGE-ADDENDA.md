@@ -4039,3 +4039,18 @@ push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a bra
 outro; e não há Redis nesta máquina (📊 `which redis-server` → nada) para o canário. **Consequência:** o motor usa CAS no banco
 (`portal_accounts.robo_dono/robo_batida_em` e `multicalculo_calculos.dono/batida_em`); a P-198 CONTINUA, mas só para o `portal_jobs`
 (o motor não depende dela). **Autorização:** delegação (CLAUDE.md §9 · protocolo §9: nota 85 × 65), registrada como D-129B-10 na SPEC.
+
+## 06/10/2026 · SPEC-130-A · o registro do lead e do consentimento sai da 130-A e vai para a 133-A (D-130A-06) — ESSENCIAL
+**Problema:** a ficha da 130-A (plano §4, §0.1 passo 4) pedia "registro de oportunidades e consentimentos". **Evidência:** quem colhe
+o "sim" da pessoa é a conversa do WhatsApp, que nasce na 133-A; na 130-A não existe ainda um canal que pergunte e guarde o
+consentimento — um registro de consentimento sem a conversa que o colhe seria uma tabela sem escritor. **Consequência:** na 130-A, a
+proposta publicada (artefato `proposal.quote` no Artifact Hub) + o pedido são o registro da oportunidade; o lead e o consentimento
+entram na 133-A, onde a conversa os colhe. O escopo não foi reduzido em silêncio: mudou de SPEC, com decisão. **Autorização:** Founder,
+06/10/2026, na pergunta única da abertura (D-130A-06; notas 80 × já na 130-A 55).
+
+## 06/10/2026 · SPEC-130-A · o PDF da proposta é o "imprimir/salvar PDF" do navegador; o do servidor fica para depois (D-130A-07) — ESSENCIAL
+**Problema:** a ficha da 130-A pedia a página "uau" **com PDF**, e a D-MC-43 recomendava gerá-lo num render próprio, fora do navegador
+do cálculo (Chromium na imagem do `smith-api` ou serviço de render). **Evidência:** esse render não existe hoje; o único Chromium do
+produto é o do robô (`portal-worker`), que a D-MC-42 reserva para o cálculo. **Consequência:** a página tem CSS de impressão e o
+cliente salva o PDF pelo próprio navegador; o PDF gerado no servidor entra quando houver o render fora do robô (D-MC-43 segue aberta).
+**Autorização:** Founder, 06/10/2026, na pergunta única da abertura (D-130A-07; notas 75 × já 50).
