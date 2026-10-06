@@ -126,4 +126,11 @@ nota do executor: 89/100 (critério: canário real na produção, 4 blockers fec
 ```
 
 ## 12. Entrega
-ENTREGA_AQUI
+Antes do push: 📊 0 atrás da origin/main · 92 commits a subir · 92 de 92 com 0 segredo (`git show <c> | grep -cE 'AIza…|sk-proj-|sk-ant-|eyJhbGciOi|<senhas>'`).
+```
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   5952324..cfbecf8  HEAD -> main
+```
+Depois: o Founder clica **Implantar** no `smith-api`, no `smith-web` e no `portal-worker` (T-124). As 3 migrations já estão aplicadas.
+O canário foi republicado com o código novo (versão 2, `/r/7rZvxCDu…`): hoje abre sem script; depois do Implantar, com.
