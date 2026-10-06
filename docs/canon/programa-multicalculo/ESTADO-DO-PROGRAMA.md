@@ -2,7 +2,7 @@
 
 > Arquivo vivo. Todo chat do programa lê este arquivo junto com a [PASSAGEM de 05/10](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) e o
 > [plano](PLANO-MESTRE-MULTICALCULO.md) (v2.5.1) e o atualiza ao fechar cada SPEC. Decisões em
-> [`FOUNDER-DECISIONS.md`](../FOUNDER-DECISIONS.md) (D-MC-08…61).
+> [`FOUNDER-DECISIONS.md`](../FOUNDER-DECISIONS.md) (D-MC-08…65).
 
 ## 1. O checklist (§0.1 do plano, v2.5.1 — a fila INTERCALADA de 05/10 tarde, D-MC-61)
 
@@ -16,8 +16,8 @@ qualquer momento depois da 133-A. Se o portão da 131 abrir antes do da 130-B, a
 | 0.5 | Registro + `/r/` + P-E0018-14 | — | ✅ CONCLUÍDO e NO AR 04/10 (Founder implantou; `/r/` falso em aba anônima → "Este link não está mais disponível") (juiz 84 · red team 62 → conserto → confirmação 80 → conserto com prova mecânica) | `programa-mc/passo-0.5` → `main` | 🧑 Implantar + abrir um `/r/` em aba anônima | — |
 | 1 | 129-A espera durável | base | ✅ CONCLUÍDA 04/10 (juiz 78 · red team 62 → conserto → confirmação 89; migrations _01 e _02 APLICADAS; _03 na caixa do Founder) — inventário já medido: ver relatório do 0.5 §1 | — | — | — |
 | 2 | 128 prova do Agger | base | ✅ CONCLUÍDA 04/10 (juiz 72 ‖ red team 62 → conserto → confirmação; lente 84; 📊 16 cálculos de 25; nada apagado no Agger nem na InfoCap) — resultado em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md) · `reports/SPEC-128-EXECUTION-REPORT.md` · D-128-01…08 · P-128-01…14 | `spec/128-a-prova-do-agger` (código até `9db6372`) | ✅ autorização da corretora declarada (04/10) · ✅ D-128-03 TOMADA 05/10 · 🧑 os 3 negócios de teste | — |
-| 3 | 129-B motor (várias corretoras em paralelo, D-MC-56; padrão + econômica juntas, D-MC-60; medir a hipótese do CPF em 2 corretoras) | base | ⏭ **próxima** (chat novo) | — | ✅ **D-128-03 TOMADA 05/10** (recálculo pelo corpo do pedido; T-107 feita) · construir e testar com o **login da Ellen** (§2.2) · 🧑 o uso real exige **1 usuário novo de robô por corretora** (T-120) | — |
-| 4 | 130-A comparação (entre seguradoras e entre corretoras), proposta e página "uau" | base | ⏳ | — | 🧑 portão de preço (D-MC-45) com a econômica como rascunho e a margem da corretora (D-MC-54) — perguntas prontas em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md) §6; modelo visual | — |
+| 3 | 129-B motor (várias corretoras em paralelo, D-MC-56; padrão + econômica juntas, D-MC-60; medir a hipótese do CPF em 2 corretoras) | base | ✅ **CONCLUÍDA 05/10** (juiz 80 ‖ red team 62 → conserto → confirmação 85; nota 86; canário AO VIVO 📊 5/5 cálculos fechados, 104 ofertas, retomada +0 `calcularV2`, 0 senha nas 5 tabelas; migration `20261005_01` APLICADA; o motor nasce DESLIGADO) — `reports/SPEC-129-B-EXECUTION-REPORT.md` · D-129B-01…11 · P-129B-01…13 | `spec/129-B-o-motor` | ✅ D-128-03 · ✅ portão de preço respondido (D-MC-62…65) · 🧑 Implantar + 1 usuário de robô por corretora (T-120) + `MULTICALCULO_HMAC_KEY` | — |
+| 4 | 130-A comparação (entre seguradoras e entre corretoras), proposta e página "uau" | base | ⏭ **próxima** (chat novo) | — | ✅ **portão de preço RESPONDIDO 05/10** (D-MC-62…65; 🧑 ressalva: o Founder ajusta depois com os comerciais das corretoras → tudo CONFIGURAÇÃO) · 🔴 separar ofertas NÃO comparáveis (P-129B-06) · 🧑 modelo visual | — |
 | 5 | 133-A Quem Cobra Menos no WhatsApp, piloto fechado (Evolution) | QCM | ⏳ | — | 🧑 chip novo + WhatsApp Business + instância Evolution (QR); os 5 testadores · login de robô nas corretoras antes de ir aos testadores (T-120) | — (as rodadas correm no calendário enquanto se constroem a 131 e a 132) |
 | 6 | 130-B leitor de apólice | base | ⏳ | — | 🧑 crédito de API; 20–30 apólices | — |
 | 7 | 131 renovação | AUX | ⏳ (sobe para logo depois da 133-A se o portão abrir antes do da 130-B) | — | 🧑 InfoCap da Resulta de volta na Resulta (D-MC-27) · login de robô (T-120) | 🚀1 renovação no ar |
@@ -65,12 +65,22 @@ calculadas em paralelo, e indica a vencedora; Claude/ChatGPT ficam para a ★.
   (T-120). 📊 04/10 (`cfg/assinatura-aggilizador` e `listaUsuarios`): Resulta 5 licenças e 6 usuários ativos · AutoFleet 8 e 7 → a
   AutoFleet tem 1 licença livre; a Resulta provavelmente precisa de 1 a mais ou liberar uma (decisão de compra do Founder).
 
+## 2.3 O que o Founder decidiu em 05/10/2026, à noite (o portão de preço da 130-A)
+
+- **D-MC-62 · a econômica padrão:** franquia normal + vidros básicos + carro reserva 7 dias + assistência básica; casco 100 % FIPE e RCF/APP intactos (FIPE a 90 % fora).
+- **D-MC-63 · a margem da corretora** (comissão e desconto como UMA regra): o agente calcula a versão com margem menor e a mostra ao CORRETOR; nada vai ao cliente sem ele aprovar, cada vez.
+- **D-MC-64 · o piso padrão da margem** = comissão de 10 % enquanto a corretora não configurar o dela.
+- **D-MC-65 · a completa é UM padrão único** para todas as corretoras (RCF 200/200/20 mil, APP 5 mil, franquia reduzida, vidros completos, reserva 15 dias, assistência completa).
+- 🧑 **Ressalva do Founder:** são usadas agora; ele perguntou aos comerciais das corretoras e fará ajustes pontuais quando tiver as respostas → cada uma é CONFIGURAÇÃO (presets/colunas), nunca constante espalhada.
+- 📊 Medido no canário da 129-B (05/10, 3ª rodada): econômica ÷ padrão por seguradora, média **0,873** (corretora A, 14 seguradoras) e **0,872** (B, 11) — a D-MC-62 estimava 💭 12–20 % abaixo.
+
 ## 3. Livro-caixa da API de modelo (verba do programa: 💭 US$ 4,00, Founder 04/10)
 
 | data | SPEC | o quê | US$ | saldo |
 |---|---|---|---:|---:|
 | 04/10 | — | abertura | 0,00 | 4,00 |
 | 04/10 | 128 | medições ao vivo e testes | 0,00 | 4,00 |
+| 05/10 | 129-B | medições ao vivo e canário | 0,00 | 4,00 |
 
 Regra: nenhuma rodada paga sem estimativa escrita aqui antes. O que sobrar passa para a SPEC seguinte.
 
