@@ -63,7 +63,8 @@ class BancoU1(D.BancoEmMemoria):
         super()._travas(tabela, nova, velha)
         if tabela == "multicalculo_calculos":
             self._check("ck_mc_calculos_status", nova["status"] in STATUS)
-            self._check("ck_mc_calculos_opcao", nova["opcao"] in ("padrao", "economica", "ajuste"))
+            # o CHECK de HOJE: 20261005_01 alargado pela 20261006_02 (SPEC-130-A F4, a completa+)
+            self._check("ck_mc_calculos_opcao", nova["opcao"] in ("padrao", "economica", "completa_mais", "ajuste"))
             self._check("ck_mc_calculos_negocio",
                         nova["status"] not in ("calculando", "fechado")
                         or (bool(nova.get("negocio_ref")) and nova.get("versao") is not None))
