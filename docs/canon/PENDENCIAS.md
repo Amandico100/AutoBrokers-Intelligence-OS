@@ -13475,16 +13475,16 @@ Fonte: `reports/SPEC-130-A-EXECUTION-REPORT.md` · SPEC `specs/SPEC-130-A-a-comp
 
 ## P-130A-01 · 🧑 O WhatsApp de atendimento não está no cadastro de marca das duas corretoras
 O botão "Quero fechar" leva ao WhatsApp da corretora vencedora; sem o número, **publicar RECUSA** (de propósito: proposta sem canal de
-fechamento não sai). **Destrava:** o Founder cadastra o WhatsApp de atendimento em Configurações → Identidade da corretora, na Resulta e
-na AutoFleet (T-124). **Custa esquecer:** nenhuma proposta real é publicada.
+fechamento não sai). **Destrava:** o Founder cadastra o WhatsApp de atendimento em Personalização → Corretora → Identidade da corretora, na
+Resulta e na AutoFleet (T-125). **Custa esquecer:** nenhuma proposta real é publicada.
 
 ## P-130A-02 · 🧑 O nº SUSEP não está no cadastro de marca
-**Destrava:** o Founder cadastra o nº SUSEP das duas corretoras em Configurações → Identidade da corretora (T-124). **Custa esquecer:**
+**Destrava:** o Founder cadastra o nº SUSEP das duas corretoras em Personalização → Corretora → Identidade da corretora (T-125). **Custa esquecer:**
 a proposta vai ao cliente sem o dado que prova que a corretora é registrada.
 
 ## P-130A-03 · 🧑 A marca da AutoFleet não foi capturada nem publicada
 📊 Canário 06/10 (pedido `d0bb15ba`): a anfitriã foi a AutoFleet, **sem marca publicada**. **Destrava:** capturar e publicar a marca da
-AutoFleet (T-124). **Custa esquecer:** a página "carteira" chega ao cliente sem a cor nem o logo de quem vende.
+AutoFleet (T-125). **Custa esquecer:** a página "carteira" chega ao cliente sem a cor nem o logo de quem vende.
 
 ## P-130A-04 · 🧑 A ficha do Google de cada corretora tem de ser CONFIRMADA na config — nunca achada por nome
 📊 06/10: a busca "AutoFleet" no Google Places achou **outra empresa**. **Destrava:** o Founder confirma qual ficha é de cada corretora e
@@ -13517,7 +13517,7 @@ ou se fica livre por corretora. **Custa esquecer:** um erro de digitação faz o
 atual" numa opção com coberturas diferentes.
 
 ## P-130A-11 · 🤖 A CSP e a prévia dentro do navegador interno do WhatsApp não foram medidas
-**Destrava:** abrir o link no WhatsApp de um celular real (T-125). **Custa esquecer:** o navegador interno bloqueia o script ou não
+**Destrava:** abrir o link no WhatsApp de um celular real (T-126). **Custa esquecer:** o navegador interno bloqueia o script ou não
 mostra a prévia — o "uau" some justamente no canal principal.
 
 ## P-130A-12 · 🤖 Os pesos da nota e os limites da negociação são palpites iniciais
@@ -13535,7 +13535,7 @@ A `cotacao_alvo` está provada só com o dublê. **Destrava:** uma rodada ao viv
 a negociação falha no primeiro cliente que perguntar "fecha por R$ X?".
 
 ## P-130A-16 · 🧑 A leitura jurídica da remuneração da corretora (Res. CNSP 382, art. 4º)
-A opção existe na config e está DESLIGADA (D-130A-08). **Destrava:** o jurídico diz se e como mostrar (T-126). **Custa esquecer:** a
+A opção existe na config e está DESLIGADA (D-130A-08). **Destrava:** o jurídico diz se e como mostrar (T-127). **Custa esquecer:** a
 proposta fica fora da regra de transparência quando a regra exigir.
 
 ## P-130A-17 · 🤖 Os nomes dos ramos 69/93/46/100 e a lista de seguradoras da Resulta nos formulários
@@ -13546,7 +13546,7 @@ seguradoras cada ramo calcula.
 📊 06/10 (A-PROVA-DO-AGGER §10): uma sessão às 04:23 não saiu (o logout não aconteceu); o aviso de "sessão ativa" apareceu às 04:38 e às
 07:36 — cancelado e parado as duas vezes. Liga-se à P-128-01. **Destrava:** o robô faz logout SEMPRE, inclusive no erro, e mede quanto a
 sessão sobrevive ao token. **Custa esquecer:** a pessoa da corretora encontra "sessão ativa" ao entrar e acha que alguém usa o login
-dela (T-127).
+dela (T-128).
 
 ## P-130A-19 · 🤖 `financial.billing_collection` sem seed (pré-existente)
 Achado na bateria da 130-A, não criado por ela. **Destrava:** a seed do template. **Custa esquecer:** o guarda dos templates aponta um
@@ -13554,4 +13554,4 @@ buraco antigo, e um aviso real se perde no meio dele.
 
 ## P-130A-20 · 🤖 Republicar a proposta do canário depois do Implantar
 O conserto mudou o script da página, e a CSP aceita só o hash novo. **Destrava:** o gerente republica o pedido `d0bb15ba` depois do
-Implantar (T-123/T-125). **Custa esquecer:** o link do canário abre com o script bloqueado.
+Implantar (T-124/T-126). **Custa esquecer:** o link do canário abre com o script bloqueado.
