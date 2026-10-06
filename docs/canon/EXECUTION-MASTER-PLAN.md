@@ -63,13 +63,19 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
             SPEC-129-B (o motor de multicálculo) — CONCLUÍDA 05/10/2026, nota 86, branch spec/129-B-o-motor, main `c0ba3a9`
               (juiz 80 ‖ red team 62 → conserto → confirmação 85) · 📊 canário ao vivo: 5/5 cálculos, 104 ofertas, retomada +0;
               nasce DESLIGADO; portão de preço da 130-A respondido (D-MC-62…65)
+            SPEC-130-A (a comparação e a proposta) — CONCLUÍDA 06/10/2026, branch spec/130-A-a-proposta, base `5952324`
+              (revisor cego 68 → v1.1 · juiz 80 ‖ red team 74 → conserto único → 219 testes verdes; crítico de design 91) ·
+              igual-com-igual por opção, vencedora entre corretoras, 3 opções por situação, nota 0–100, mensagem ≤ 2 opções + link,
+              a página "carteira" pelo /r/ · 📊 canário: pedido d0bb15ba publicado, 16 seguradoras · 13 completas;
+              migrations 20261006_01/_02/_03 APLICADAS · D-MC-66…74 · D-130A-06…11 · P-130A-01…20
 A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável  →  ✔ 128 prova do Agger
-  (v2.5.1)  →  ✔ 129-B motor (várias corretoras em paralelo)  →  130-A comparação e proposta (⏭ próxima)
-            →  133-A Quem Cobra Menos no WhatsApp, piloto fechado  →  130-B leitor de apólice
+  (v2.5.1)  →  ✔ 129-B motor (várias corretoras em paralelo)  →  ✔ 130-A comparação e proposta
+            →  133-A Quem Cobra Menos no WhatsApp, piloto fechado (⏭ próxima)  →  129-C mais ramos do Agger (D-MC-73)
+            →  130-B leitor de apólice
             →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2  →  133-B Quem Cobra Menos piloto 🚀3
             →  135 proposta conversa 🚀4  →  136 lembretes  →  137 público no WhatsApp oficial 🚀5  →  ★ Claude/ChatGPT
   ⇅ 134     migração para a API oficial da Meta — FLUTUANTE: entra quando a Meta aprovar, a qualquer momento depois da 133-A
-  troca     portão da 131 (InfoCap da Resulta de volta) antes do da 130-B → a 131 sobe para logo depois da 133-A · a 132 exige a 130-B
+  troca     portão da 131 (InfoCap da Resulta de volta) antes do da 130-B → a 131 sobe para logo depois da 129-C · a 132 exige a 130-B
   2 linhas  Quem Cobra Menos (leads novos para as corretoras) e Auxiliares de Renovação e de Cotação (o dia a dia, no chat principal)
 DEPOIS      138 · 103 · 101 + EXTRA-008/009 · outros ramos · EXTRA-005/006 · fase 3 · 001.9 · 001.0 · restante 099–114 · 115
 PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
