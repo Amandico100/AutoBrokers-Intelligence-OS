@@ -161,5 +161,11 @@ class RepositorioMulticalculo:
 
     def fila_a_frente(self) -> List[Dict[str, Any]]:
         """(prioridade, disponivel_em) de TODO cálculo na fila — só para contar a posição. Nenhum id sai daqui."""
-        return _dados(self.db.table(CALCULOS).select("prioridade, disponivel_em")
-                      .eq("status", "na_fila").order("prioridade").limit(5000).execute())
+        # 📊 o PostgREST devolve no máximo 1000 linhas por pedido (guarda `test_ninguem_pede_mais_de_mil_linhas_de_novo`,
+        # bateria da 129-B 05/10): com a fila maior, a posição sairia errada — lê paginado e devolve só o par
+        from app.leitura_completa import ler_paginado
+
+        linhas, _truncou = ler_paginado(
+            lambda: self.db.table(CALCULOS).select("id, prioridade, disponivel_em").eq("status", "na_fila"),
+            chave_unica="id", rotulo="multicalculo.fila_a_frente")
+        return [{"prioridade": x.get("prioridade"), "disponivel_em": x.get("disponivel_em")} for x in linhas]
