@@ -488,3 +488,151 @@ class MulticalculoProvider:
         if not ped:
             raise NaoEncontrado("pedido não encontrado")
         return await asyncio.to_thread(self.repo.cancelar, company_id=company_id, pedido_id=pedido_id)
+
+    # ------------------------------------------------------------------ SPEC-130-A U3: a negociação
+    # 🔴 Só a corretora DONA negocia (D-MC-63): o canal recebe a comissão como None e não decide margem alheia →
+    # `{"status": "so_a_corretora_negocia"}`, ANTES de qualquer leitura de oferta ou efeito. A decisão é PURA
+    # (`negociacao.py`); a porta autoriza, lê pela `consultar` e ENFILEIRA pela `recalcular` (que já existe).
+    async def _negociacao_da_dona(self, *, company_id: str) -> Optional[Dict[str, Any]]:
+        tipos = await asyncio.to_thread(self.repo.tipos_de_empresa, [company_id])
+        kind = tipos.get(company_id)
+        if kind == KIND_CANAL:
+            return {"status": "so_a_corretora_negocia",
+                    "motivo": "a margem é da corretora: só ela negocia comissão e desconto (D-MC-63)"}
+        if kind != KIND_CORRETORA:
+            raise NaoAutorizado("só uma corretora cliente negocia")
+        return None
+
+    async def _config_e_andamento(self, *, company_id: str, pedido_id: str) -> Tuple[Dict[str, Any], "Andamento"]:
+        from app.services.multicalculo.config import carregar
+
+        andamento = await self.consultar(company_id=company_id, pedido_id=pedido_id)
+        cfg = await asyncio.to_thread(carregar, company_id, db=self.repo.db)
+        return cfg, andamento
+
+    async def ordem_do_mais_barato(self, *, company_id: str, oferta_ref: Mapping[str, Any],
+                                   concorrencia_declarada: bool = False) -> Dict[str, Any]:
+        """Os `Ajuste`s, na ordem D-MC-67, que a seguradora da oferta OBEDECE (desconto onde ela ignora a comissão —
+        a lista vem da config). `oferta_ref = {"pedido_id", "oferta_id"}`; a oferta tem de ser DESTA corretora."""
+        from app.services.multicalculo import negociacao
+
+        company_id = _uuid(company_id, "company_id")
+        if not isinstance(oferta_ref, Mapping):
+            raise TypeError("oferta_ref = {'pedido_id': …, 'oferta_id': …}")
+        pedido_id = _uuid(oferta_ref.get("pedido_id"), "pedido_id")
+        oferta_id = _uuid(oferta_ref.get("oferta_id"), "oferta_id")
+        recusa = await self._negociacao_da_dona(company_id=company_id)
+        if recusa:
+            return recusa
+        cfg, andamento = await self._config_e_andamento(company_id=company_id, pedido_id=pedido_id)
+        oferta = next((o for o in andamento.ofertas if str(o.get("id")) == oferta_id
+                       and str(o.get("corretora_company_id")) == company_id), None)
+        if oferta is None:
+            raise NaoEncontrado("oferta não encontrada")
+        passos = negociacao.ordem_do_mais_barato(oferta, config=cfg, concorrencia_declarada=concorrencia_declarada)
+        return {"status": "ok", "ajustes": [p.ajuste for p in passos], "passos": [p.para_dict() for p in passos]}
+
+    async def _enfileirar(self, *, company_id: str, plano: Mapping[str, Any]) -> Dict[str, Any]:
+        tentativas = list(plano.get("tentativas") or ())
+        feitos = await asyncio.gather(*(self.recalcular(company_id=company_id, calculo_id=t["origem_calculo_id"],
+                                                        ajuste=t["ajuste"]) for t in tentativas),
+                                      return_exceptions=True)
+        enfileiradas, falhas = [], []
+        for t, r in zip(tentativas, feitos):
+            publico = {k: v for k, v in t.items() if k != "ajuste"}
+            if isinstance(r, BaseException):
+                if isinstance(r, (NaoAutorizado, OrigemRecusada)):
+                    raise r
+                falhas.append({**publico, "erro": type(r).__name__})
+                continue
+            enfileiradas.append({**publico, "calculo_id": str(r.get("id")), "repetido": bool(r.get("repetido"))})
+        aguardam = [{k: v for k, v in t.items() if k != "ajuste"} for t in plano.get("precisa_aprovacao") or ()]
+        status = "em_andamento" if enfileiradas else ("precisa_aprovacao" if aguardam else "sem_caminho")
+        saida = {"status": status, "tentativas": enfileiradas, "precisa_aprovacao": aguardam, "falhas": falhas,
+                 "custo": "1 recálculo da corretora inteira por tentativa"}
+        if plano.get("melhor_parcial"):
+            saida["melhor_parcial"] = plano["melhor_parcial"]
+        return saida
+
+    async def cotacao_alvo(self, *, company_id: str, pedido_id: str, alvo: float, seguradora: Any = None,
+                           aprovado_pelo_corretor: bool = False, concorrencia_declarada: bool = False,
+                           tentativas_anteriores: Optional[Sequence[Mapping[str, Any]]] = None) -> Dict[str, Any]:
+        """D-MC-72 "fecha por R$ X?": planeja (puro) e ENFILEIRA as tentativas pela `recalcular`, em paralelo.
+        Devolve `em_andamento` com os cálculos; quem chama lê depois com `avaliar_cotacao_alvo`. Com
+        `tentativas_anteriores` (o que a avaliação devolveu como `proxima_etapa`), enfileira a etapa ENCADEADA.
+        Abaixo de `comissao.autonomo_minimo` sem `aprovado_pelo_corretor` → fica em `precisa_aprovacao`; o piso só
+        com `concorrencia_declarada`; nunca abaixo dele."""
+        from app.services.multicalculo import negociacao
+        from app.services.multicalculo.comparacao import comparar
+
+        company_id = _uuid(company_id, "company_id")
+        pedido_id = _uuid(pedido_id, "pedido_id")
+        try:
+            alvo = float(alvo)
+        except (TypeError, ValueError):
+            raise ValueError("alvo precisa ser um número") from None
+        if alvo <= 0:
+            raise ValueError("alvo precisa ser positivo")
+        recusa = await self._negociacao_da_dona(company_id=company_id)
+        if recusa:
+            return recusa
+        cfg, andamento = await self._config_e_andamento(company_id=company_id, pedido_id=pedido_id)
+        if tentativas_anteriores:
+            avaliacao = await self._avaliar(company_id=company_id, andamento=andamento, cfg=cfg, alvo=alvo,
+                                            tentativas=tentativas_anteriores,
+                                            concorrencia_declarada=concorrencia_declarada,
+                                            aprovado_pelo_corretor=aprovado_pelo_corretor)
+            if avaliacao["status"] != "proxima_etapa":
+                return avaliacao
+            return await self._enfileirar(company_id=company_id, plano=avaliacao)
+        ped = await asyncio.to_thread(self.repo.pedido, company_id=company_id, pedido_id=pedido_id)
+        quadro = comparar(andamento.ofertas, andamento.eventos, estados=andamento.estados, config=cfg,
+                          ramo=int((ped or {}).get("ramo") or RAMO_AUTO))
+        por_id = {str(o.get("id")): o for o in andamento.ofertas}
+        candidatas = [por_id[e["oferta_id"]] for e in quadro.ranking(quadro.opcao_completa, company_id)
+                      if e["oferta_id"] in por_id]
+        plano = negociacao.planejar(candidatas, alvo=alvo, config=cfg, seguradora=seguradora,
+                                    concorrencia_declarada=concorrencia_declarada,
+                                    aprovado_pelo_corretor=aprovado_pelo_corretor)
+        if plano["status"] != "planejado":
+            return dict(plano)
+        return await self._enfileirar(company_id=company_id, plano=plano)
+
+    async def avaliar_cotacao_alvo(self, *, company_id: str, pedido_id: str, alvo: float,
+                                   tentativas: Sequence[Mapping[str, Any]], concorrencia_declarada: bool = False,
+                                   aprovado_pelo_corretor: bool = False) -> Dict[str, Any]:
+        """Lê as tentativas pela `consultar` e DECIDE (sem efeito): `em_andamento` (ainda calculando) · `chegou`
+        (a de MAIOR comissão, margem antes de cobertura, cortes listados e se recomenda) · `proxima_etapa` (o plano
+        encadeado — enfileira-se com `cotacao_alvo(tentativas_anteriores=…)`) · `sem_caminho` ("não recomendo")."""
+        company_id = _uuid(company_id, "company_id")
+        pedido_id = _uuid(pedido_id, "pedido_id")
+        alvo = float(alvo)
+        recusa = await self._negociacao_da_dona(company_id=company_id)
+        if recusa:
+            return recusa
+        cfg, andamento = await self._config_e_andamento(company_id=company_id, pedido_id=pedido_id)
+        return await self._avaliar(company_id=company_id, andamento=andamento, cfg=cfg, alvo=alvo,
+                                   tentativas=tentativas, concorrencia_declarada=concorrencia_declarada,
+                                   aprovado_pelo_corretor=aprovado_pelo_corretor)
+
+    async def _avaliar(self, *, company_id: str, andamento: "Andamento", cfg: Mapping[str, Any], alvo: float,
+                       tentativas: Sequence[Mapping[str, Any]], concorrencia_declarada: bool,
+                       aprovado_pelo_corretor: bool) -> Dict[str, Any]:
+        from app.services.multicalculo import negociacao
+
+        status = {str(e.get("calculo_id")): e.get("status") for e in andamento.estados}
+        meus = [t for t in tentativas if str(t.get("calculo_id")) in status]
+        if not meus:
+            raise NaoEncontrado("nenhuma tentativa deste pedido")
+        pendentes = [t for t in meus if status.get(str(t["calculo_id"])) in negociacao.STATUS_PENDENTES]
+        if pendentes:
+            return {"status": "em_andamento", "pendentes": len(pendentes), "total": len(meus)}
+        resultados = [{**dict(t), "oferta": negociacao.resultado_da_tentativa(t, andamento.ofertas,
+                                                                              company_id=company_id, config=cfg)}
+                      for t in meus]
+        etapa = negociacao.proxima_etapa(resultados, alvo=alvo, config=cfg,
+                                         concorrencia_declarada=concorrencia_declarada,
+                                         aprovado_pelo_corretor=aprovado_pelo_corretor)
+        if isinstance(etapa.get("escolhida"), dict):
+            etapa["escolhida"] = {k: v for k, v in etapa["escolhida"].items() if k != "_oferta"}
+        return etapa
