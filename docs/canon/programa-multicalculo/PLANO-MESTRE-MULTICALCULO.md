@@ -181,7 +181,7 @@ Ajustes da ordem:
 
 **☑ 4 · 130-A · Comparação e proposta** — ✅ CONCLUÍDA em 06/10 (revisor cego 68 → v1.1 · juiz 80 ‖ red team 74 → conserto único → 219 testes verdes)
 - Igual-com-igual por opção (produto diferente e assinatura à parte), vencedora entre corretoras, 3 opções por situação (D-MC-66/69), nota 0–100 com motivos, validade, mensagem ≤ 2 opções + link (D-MC-74) e a página "carteira" (D-130A-11) servida pelo `/r/`, com prévia, abertura e clique medidos. Registro do lead e consentimento → 133-A (D-130A-06); PDF = imprimir do navegador (D-130A-07).
-- Canário real: pedido `d0bb15ba` publicado na produção (📊 16 seguradoras cotadas, 13 completas). **Amandus:** Implantar os 3 serviços; WhatsApp de atendimento e nº SUSEP no cadastro de marca (T-123…T-127). Relatório: `reports/SPEC-130-A-EXECUTION-REPORT.md`.
+- Canário real: pedido `d0bb15ba` publicado na produção (📊 16 seguradoras cotadas, 13 completas). **Amandus:** Implantar os 3 serviços; WhatsApp de atendimento e nº SUSEP no cadastro de marca (T-124…T-128). Relatório: `reports/SPEC-130-A-EXECUTION-REPORT.md`.
 
 **☐ 5 · 133-A · QCM · Quem Cobra Menos no WhatsApp, piloto fechado** (sem marco: as rodadas dos 5 testadores correm no calendário enquanto se constroem a 131 e a 132, D-MC-61)
 - Número exclusivo da marca no WhatsApp comum, pela Evolution Go (D-MC-52); agente só de cotação, na estrutura que já existe (D-MC-58).
