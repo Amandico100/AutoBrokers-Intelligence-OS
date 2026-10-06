@@ -252,7 +252,7 @@ def test_so_a_proposta_tem_gancho_e_kind_proposal():
     assert com_gancho == ["proposal.quote"]
     tpl = POR_CHAVE["proposal.quote"]
     assert (tpl.kind, tpl.audience, tpl.category) == ("proposal", "client", "client_facing")
-    assert tpl.renderizador is PH.render_proposta
+    assert tpl.renderizador(_modelo()) == PH.render_proposta(_modelo())
     assert all(t.kind == "report" for t in CATALOGO if t.key != "proposal.quote")
 
 
@@ -475,6 +475,20 @@ def test_o_modelo_de_outra_corretora_nao_e_lido_pelo_link():
             v["company_id"] = OUTRA
     assert SV.ArtifactService(b).fechar_compartilhado(TOKEN, "recomendada") is None
     assert SV.ArtifactService(b).previa_compartilhada(TOKEN) is None
+
+
+def test_templates_carrega_sozinho_fora_do_pacote():
+    """Guardas do catálogo carregam `templates.py` SOZINHO (sem pacote pai): ele não pode importar relativo no topo."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "templates_solto_130a", BACKEND / "app" / "services" / "artifacts" / "templates.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["templates_solto_130a"] = mod
+    try:
+        spec.loader.exec_module(mod)
+        assert "proposal.quote" in mod.POR_CHAVE
+    finally:
+        sys.modules.pop("templates_solto_130a", None)
 
 
 def test_o_route_e_o_script_usam_o_mesmo_parametro_do_fechar():
