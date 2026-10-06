@@ -21,8 +21,11 @@
 > (portão de preço respondido, D-MC-62…65) e nasceram a **T-121** (Implantar), a **T-122** (as 2 variáveis do motor) e a **T-123**
 > (Tokio da Resulta + pergunta ao fornecedor); a T-120 ganhou os comandos prontos. 📊 Recontado 05/10 noite (no `docs/canon/`):
 > `grep -cE '^- \[ \] \*\*T-[0-9]+' TAREFAS-DO-FOUNDER.md` → **111 pendentes** · `grep -cE '^- \[x\] \*\*T-[0-9]+'` → **12 feitos** (T-01…T-123).
+> **06/10 (SPEC-130-A, a comparação e a proposta):** nasceram a **T-124** (Implantar os 3 serviços), a **T-125** (WhatsApp de
+> atendimento + SUSEP no cadastro de marca e a marca da AutoFleet), a **T-126** (abrir o link do canário no celular), a **T-127**
+> (jurídico da remuneração) e a **T-128** (o recado à Ellen). 📊 Recontado 06/10 com os mesmos comandos → **116 pendentes** · **12 feitos** (T-01…T-128).
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123)
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123 · SPEC-130-A: T-124 a T-128)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
 > agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 127 e das EXTRA-001.1 → 001.10.1, das
@@ -742,6 +745,33 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       vazamento no fornecedor (P-129B-03). (2) **A senha da Tokio na Resulta, no Agger**, está recusada (📊 3 de 3 cálculos) —
       confira no Agger da Resulta → configuração das seguradoras → Tokio, ou peça à corretora (P-129B-04). **Se não fizer:** (1)
       dado de outras corretoras pode estar circulando sem ninguém saber; (2) a Resulta cota sem a Tokio, hoje e no motor. · *de:* S129-B
+- [ ] **T-124** ⏳ 🧑 **já — a proposta só chega ao cliente depois disto** · **Implantar a SPEC-130-A** (a comparação e a proposta) —
+      EasyPanel, **nesta ordem**: `smith-api` → `smith-web` → `portal-worker` (a 130-A mexeu nos três). As 3 migrations já estão
+      aplicadas (📊 06/10: `20261006084655`, `20261006090505`, `20261006121020`). Depois abra
+      `https://autobrokers-intelligence-os-autobrokers-smith-api.golhpm.easypanel.host/health` e
+      `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`. **Esperar:** os dois respondem, e o do
+      `portal-worker` mostra `build_time` de **06/10/2026 ou depois**. **Se for anterior:** Implantar aquele serviço de novo. **Se um
+      `/health` não responder:** o serviço não subiu — copie as últimas linhas do log do contêiner para o chat. · *de:* S130-A · P-130A-20
+- [ ] **T-125** ⏳ 🧑 **antes da 1ª proposta real** · **O WhatsApp de atendimento e o nº SUSEP no cadastro de marca — Resulta e
+      AutoFleet — e a marca da AutoFleet** — **Onde:** painel → **Personalização → Corretora → Identidade da corretora**, logado em
+      cada corretora: (1) preencha o **WhatsApp de atendimento** (o número que fecha o seguro) e o **Código SUSEP**; (2) na AutoFleet,
+      clique em **capturar** a marca (lê o site da corretora) e confira cores e logo antes de publicar. **Esperar:** a tela mostra a
+      marca publicada com o WhatsApp e o SUSEP. **Se não fizer:** publicar a proposta **RECUSA** (de propósito: sem o WhatsApp, o
+      botão "Quero fechar" não leva a ninguém), e a página da AutoFleet sai sem a cor e o logo dela. · *de:* S130-A · P-130A-01/02/03
+- [ ] **T-126** ⏳ 🧑 **depois da T-124 — o chat republica antes** · **Abrir no celular o link da proposta do canário** — o gerente
+      republica o pedido do canário depois do Implantar (o conserto mudou o script da página) e manda o link novo no chat. **Como:**
+      mande o link para você mesmo **pelo WhatsApp** e abra tocando nele (é o navegador de dentro do WhatsApp que importa).
+      **Esperar:** a prévia do link mostra uma imagem com o melhor preço; a página abre com os cartões de arrastar para o lado, sem
+      comissão e sem o nome da corretora que perdeu. **Se não bater** (página em branco, cartões que não arrastam, prévia sem
+      imagem): mande um print no chat. · *de:* S130-A · P-130A-11 · P-130A-20
+- [ ] **T-127** ⏳ 🧑 **quando puder — não bloqueia** · **Pedir ao jurídico a leitura da remuneração da corretora** (Res. CNSP 382,
+      art. 4º): se e como a proposta precisa mostrar a remuneração da corretora ao cliente. Hoje a opção existe na configuração e está
+      **DESLIGADA** (D-130A-08). **Como:** mande a resposta do jurídico no chat; o chat liga a opção (ou não) por corretora. **Se não
+      fizer:** a proposta segue sem mostrar a remuneração, e fica fora da regra se a regra exigir. · *de:* S130-A · P-130A-16
+- [ ] **T-128** ⏳ 🧑 **hoje** · **Avisar a Ellen sobre o aviso de "sessão ativa" no Agger** — 📊 06/10 uma sessão aberta pelo robô
+      com o login dela não saiu às 04:23 (o logout não aconteceu); o robô viu o aviso de sessão ativa às 04:38 e às 07:36, cancelou e parou.
+      **O recado:** *"se aparecer 'sessão ativa' ao entrar no Agger hoje, é o seu próprio login (a sessão que o robô deixou) — pode prosseguir"*. **Se
+      não avisar:** ela pode achar que alguém está usando o login dela. · *de:* S130-A · P-130A-18 · `A-PROVA-DO-AGGER.md` §10
 
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 
