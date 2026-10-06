@@ -22,6 +22,7 @@ O FIO ................  porta.consultar → comparacao.comparar/opcoes → propo
 PARALELISMO REAL .....  D0 (3 designers ‖) · F1 ‖ D0 · F4 · F2a ‖ D0 · F2b ‖ F3 (arquivos disjuntos)
 UNIDADES .............  U1 comparação · U2 config + manual + migration · U3 negociação na porta · U4 proposta · U5 página + /r/ ·
                         U6 mensagem · U7 publicar + comando + canário · (F4) completa+
+COESÃO ...............  U1+U2+U3 (a comparação lê a config; a negociação usa as duas) · U5 contra o CONTRATO · U4+U6+U7 (a costura)
 TIME .................  gerente · investigador · 3 designers · 8 críticos (4 rodadas) · revisor cego da SPEC · F1 F4 F2a F2b F3 ·
                         crítico final · juiz ‖ red team · conserto único · confirmação · atualizador
 REFERÊNCIA ...........  interna: Artifact Hub, brand, porta, /r/ · externa: SPEC §8 (8 URLs)
