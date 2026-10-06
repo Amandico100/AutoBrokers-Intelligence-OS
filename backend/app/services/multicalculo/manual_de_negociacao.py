@@ -48,17 +48,24 @@ _OBJECOES: List[Dict[str, str]] = [
     {"chave": "melhorar_preco", "pergunta": "Dá para melhorar o preço?",
      "resposta": "Talvez. Posso pedir o desconto que a seguradora libera e rever a minha margem. Me diga quanto "
                  "você quer pagar que eu procuro o caminho.",
+     "resposta_canal": "Talvez. A corretora pode pedir o desconto que a seguradora libera e rever a margem dela. "
+                       "Diga a ela quanto você quer pagar.",
      "acao": "cotacao_alvo"},
     {"chave": "reduzir_franquia", "pergunta": "Tem como reduzir a franquia mantendo o valor?",
      "resposta": "Franquia menor costuma deixar o seguro um pouco mais caro. Posso recalcular com a franquia "
                  "reduzida e te mostrar a diferença exata.",
+     "resposta_canal": "Franquia menor costuma deixar o seguro um pouco mais caro. A corretora pode recalcular com a "
+                       "franquia reduzida e mostrar a diferença exata.",
      "acao": "recalcular_franquia_reduzida"},
     {"chave": "outras_seguradoras", "pergunta": "Outras seguradoras não ficaram melhores?",
      "resposta": "Cotei em todas que aceitaram o seu perfil. A lista completa, do menor preço ao maior, está na "
                  "página — inclusive as que ofereceram um produto diferente, com o porquê.",
+     "resposta_canal": "Cotamos em todas que aceitaram o seu perfil. A lista completa, do menor preço ao maior, está "
+                       "nesta página — inclusive as que ofereceram um produto diferente, com o porquê.",
      "acao": "mostrar_ranking"},
     {"chave": "qual_tenho_hoje", "pergunta": "Qual opção eu tenho hoje?",
-     "resposta": "A opção \"igual à sua atual\" repete as coberturas da sua apólice; as outras mostram o que muda.",
+     "resposta": "É a opção com a mesma seguradora da sua apólice de hoje, com cobertura completa; as outras opções "
+                 "mostram o que muda.",
      "acao": "mostrar_igual_a_atual"},
     {"chave": "banco_cooperativa", "pergunta": "No banco ou na cooperativa é mais barato.",
      "resposta": "Pode ser — compare franquia, carro reserva e o valor para terceiros. Proteção de cooperativa não "
@@ -66,6 +73,8 @@ _OBJECOES: List[Dict[str, str]] = [
      "acao": "comparar_coberturas"},
     {"chave": "endosso_concessionaria", "pergunta": "Vou ver se o endosso da concessionária compensa.",
      "resposta": "Combinado. Quando tiver o valor, me mande que eu comparo as coberturas lado a lado para você.",
+     "resposta_canal": "Combinado. Quando tiver o valor, mande para a corretora, que ela compara as coberturas lado a "
+                       "lado para você.",
      "acao": "comparar_coberturas"},
     {"chave": "parcelar_mais", "pergunta": "Dá para parcelar mais?",
      "resposta": "Cada seguradora tem o seu limite de parcelas. As que aparecem são as maiores que ela aceita; "
@@ -73,10 +82,13 @@ _OBJECOES: List[Dict[str, str]] = [
      "acao": "mostrar_parcelas"},
     {"chave": "sinistro_quem_ligo", "pergunta": "Se eu bater, ligo para quem? Para o 0800?",
      "resposta": "Para a sua corretora, pelo WhatsApp. Ela orienta o que fazer e abre o aviso na seguradora com você.",
+     "resposta_sem_whatsapp": "Para a sua corretora. Ela orienta o que fazer e abre o aviso na seguradora com você.",
      "acao": "mostrar_sinistro"},
     {"chave": "uso_aplicativo", "pergunta": "Uso o carro para aplicativo (Uber).",
      "resposta": "Obrigado por avisar — muda a cotação. Nem toda seguradora aceita carro de aplicativo e o preço é "
                  "diferente; eu calculo só nas que aceitam.",
+     "resposta_canal": "Obrigado por avisar — muda a cotação. Nem toda seguradora aceita carro de aplicativo e o preço "
+                       "é diferente; a corretora recalcula só nas que aceitam.",
      "acao": "recalcular_uso_aplicativo"},
 ]
 
@@ -106,6 +118,8 @@ _ESTRATEGIAS: Dict[str, Dict[str, Any]] = {
 }
 
 # os passos do sinistro que são VERDADE para qualquer corretora (a dela, se cadastrada, troca estes)
+#: 🔴 J-B1 (juiz, 06/10): sem WhatsApp de atendimento da corretora, NENHUM passo promete WhatsApp (o 1º troca por este)
+_SINISTRO_1_SEM_WHATSAPP = "Avise a sua corretora assim que puder"
 _SINISTRO: List[str] = [
     "Avise a sua corretora pelo WhatsApp assim que puder",
     "Ela orienta o que fazer e abre o aviso de sinistro na seguradora",
@@ -157,22 +171,39 @@ def _num(v: Any) -> str:
     return str(int(f)) if f.is_integer() else f"{f:.1f}".replace(".", ",")
 
 
-def faq_padrao(config: Optional[Mapping[str, Any]] = None) -> List[Dict[str, str]]:
-    """As dúvidas da PÁGINA = as objeções reais (§1.5), pergunta e resposta curta. A corretora troca pela config
-    (`faq`: lista de {pergunta, resposta})."""
+def faq_da_corretora(config: Optional[Mapping[str, Any]]) -> bool:
+    """A corretora escreveu a PRÓPRIA FAQ na config (lista de {pergunta, resposta}) — ela vale inteira."""
     proprio = (config or {}).get("faq")
-    if isinstance(proprio, list) and proprio and all(
-            isinstance(i, Mapping) and i.get("pergunta") and i.get("resposta") for i in proprio):
-        return [{"pergunta": str(i["pergunta"]), "resposta": str(i["resposta"])} for i in proprio]
-    return [{"pergunta": o["pergunta"], "resposta": o["resposta"]} for o in _OBJECOES]
+    return bool(isinstance(proprio, list) and proprio and all(
+        isinstance(i, Mapping) and i.get("pergunta") and i.get("resposta") for i in proprio))
 
 
-def sinistro_padrao(config: Optional[Mapping[str, Any]] = None) -> List[str]:
-    """Os passos do sinistro que são verdade para QUALQUER corretora; a dela (config `sinistro`) substitui."""
+def faq_padrao(config: Optional[Mapping[str, Any]] = None, *, voz: str = "corretora",
+               com_whatsapp: bool = True) -> List[Dict[str, str]]:
+    """As dúvidas da PÁGINA = as objeções reais (§1.5), pergunta e resposta curta. A corretora troca pela config
+    (`faq`: lista de {pergunta, resposta}).
+
+    `voz="canal"` (J-P6, juiz 06/10): na página do CANAL quem fala é o comparador — a resposta nunca usa a 1ª pessoa
+    DA CORRETORA ("rever a minha margem" de quem?). `com_whatsapp=False` (J-B1): sem WhatsApp de atendimento cadastrado,
+    nenhuma resposta promete WhatsApp."""
+    if faq_da_corretora(config):
+        return [{"pergunta": str(i["pergunta"]), "resposta": str(i["resposta"])} for i in config["faq"]]
+    saida = []
+    for o in _OBJECOES:
+        r = o.get("resposta_canal") if voz == "canal" and o.get("resposta_canal") else o["resposta"]
+        if not com_whatsapp and o.get("resposta_sem_whatsapp"):
+            r = o["resposta_sem_whatsapp"]
+        saida.append({"pergunta": o["pergunta"], "resposta": r})
+    return saida
+
+
+def sinistro_padrao(config: Optional[Mapping[str, Any]] = None, *, com_whatsapp: bool = True) -> List[str]:
+    """Os passos do sinistro que são verdade para QUALQUER corretora; a dela (config `sinistro`) substitui.
+    `com_whatsapp=False` (J-B1): o 1º passo não promete um canal que a corretora não cadastrou."""
     proprio = (config or {}).get("sinistro")
     if isinstance(proprio, list) and proprio and all(isinstance(i, str) and i.strip() for i in proprio):
         return [i.strip() for i in proprio]
-    return list(_SINISTRO)
+    return list(_SINISTRO) if com_whatsapp else [_SINISTRO_1_SEM_WHATSAPP] + list(_SINISTRO[1:])
 
 
 def objecao(chave: str) -> Optional[Dict[str, str]]:
