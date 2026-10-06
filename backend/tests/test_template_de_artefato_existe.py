@@ -105,6 +105,8 @@ def teste_o_catalogo_e_indexado_por_chave():
 SEEDS_DE_TEMPLATE = (
     "20260730_01_spec057_seed_templates.sql",
     "20260903_01_spec094_seed_template_pulse360.sql",
+    # SPEC-130-A F2a: a proposta (`proposal.quote`), o 1º template com renderizador próprio.
+    "20261006_03_spec130a_seed_template_proposta.sql",
 )
 
 
