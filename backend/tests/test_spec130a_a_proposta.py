@@ -203,7 +203,8 @@ def test_a_faq_e_do_caso_e_so_sobre_opcoes_que_existem(monkeypatch):
     outras = next(f["r"] for f in sem["faq"] if f["p"].startswith("Outras seguradoras"))
     assert f"{sem['resumo']['seguradoras_cotadas']} seguradoras consultadas" in outras
     com = _montar(m, situacao="novo_com_apolice", apolice_atual={"seguradora": "Tokio", "premio_anual": 6100})
-    assert com["opcoes"][0]["id"] == "igual_a_atual"
+    # RT-B1: a menor completa no topo; a seguradora da apólice como "igual", na posição verdadeira dela
+    assert [o["id"] for o in com["opcoes"]][:2] == ["recomendada", "igual_a_atual"]
     assert "Qual opção eu tenho hoje?" in [f["p"] for f in com["faq"]]
 
 
