@@ -142,7 +142,7 @@ Ajustes da ordem:
      - ~~128 ao vivo~~ (✔ 04/10);
      - ~~**129-B:** a D-128-03~~ ✅ TOMADA 05/10; construir e testar com o login da Ellen (regras na PASSAGEM §8);
      - **uso real do motor** (antes de a 133-A ir aos testadores e antes da 131/132 irem para as corretoras): 1 usuário novo de robô no Agger em cada corretora (T-120);
-     - **130-A:** o portão de preço (D-MC-45), com a econômica proposta como rascunho e a margem da corretora (D-MC-54); o modelo visual;
+     - ~~**130-A:** o portão de preço (D-MC-45)~~ ✅ RESPONDIDO 05/10 (D-MC-62…65; o Amandus ajusta depois com os comerciais das corretoras); falta o modelo visual;
      - **133-A:** o chip novo com o WhatsApp Business e a instância Evolution (QR) do número da marca; os 5 testadores;
      - **130-B:** crédito de API; 20–30 apólices;
      - **131:** a InfoCap da Resulta de volta na Resulta (se vier antes do portão da 130-B, a 131 sobe para logo depois da 133-A);
@@ -171,25 +171,16 @@ Ajustes da ordem:
 **☑ 2 · 128 · Prova do Agger** — ✅ CONCLUÍDA em 04/10
 - 📊 16 cálculos de 25 ao vivo, nada apagado; contrato do cálculo e fixtures saneadas. Resultado em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md).
 
-**☐ 3 · 129-B · O motor** — ⏭ próxima
-- O AutoBrokers calcula e recalcula sozinho no Agger:
-  - login de robô por corretora, cada um isolado;
-  - **o mesmo pedido em várias corretoras em PARALELO** (D-MC-56);
-  - **padrão e econômica disparadas juntas** (D-MC-60);
-  - fila e freios;
-  - resultado aos poucos;
-  - senhas nunca expostas.
-- Mede a hipótese do CPF: a mesma seguradora recebendo o mesmo CPF de 2 corretoras (D-MC-56).
-- Cobrança e vidros não travam durante um cálculo.
-- **Amandus:** ~~responde a D-128-03~~ (✅ TOMADA 05/10); para construir e testar, o chat usa o login da Ellen; para o uso real, um usuário novo de robô em cada corretora (T-120; a Resulta talvez precise de 1 licença a mais).
-- **Pronto quando:** renovação e seguro novo de ponta a ponta pelo robô; duas corretoras isoladas e calculadas em paralelo.
+**☑ 3 · 129-B · O motor** — ✅ CONCLUÍDA em 05/10 (nota 86; juiz 80 ‖ red team 62 → conserto → confirmação 85)
+- Canário AO VIVO em 2 corretoras: 📊 5 de 5 cálculos fechados, 104 ofertas, padrão e econômica juntas, recálculo com ajuste, retomada sem recalcular (+0 `calcularV2`), 0 senha nas 5 tabelas. Migration `20261005_01` aplicada; o motor nasce DESLIGADO.
+- A hipótese do CPF em 2 corretoras NÃO se confirmou (📊 menor preço igual em 9 de 10 seguradoras). Uso real: Implantar + 1 usuário de robô por corretora (T-120). Relatório: `reports/SPEC-129-B-EXECUTION-REPORT.md`.
 
 **☐ 4 · 130-A · Comparação e proposta**
-- Portão de preço antes de começar: o agente traz a econômica proposta (rascunho, D-MC-54) e a margem da corretora, e o Amandus decide.
+- ~~Portão de preço antes de começar~~ ✅ RESPONDIDO 05/10 (D-MC-62…65).
 - Compara entre seguradoras E entre corretoras parceiras e indica a vencedora (D-MC-55).
 - Proposta com 2 opções (completa e recomendada; econômica), nota de 0 a 100 e motivos, em página "uau" com PDF; o link vai no resultado do WhatsApp.
 - Registro de oportunidades e consentimentos.
-- **Amandus:** aprova o modelo visual; responde ao portão de preço.
+- **Amandus:** aprova o modelo visual (o portão de preço já foi respondido, D-MC-62…65).
 - **Pronto quando:** um corretor aprova a proposta.
 
 **☐ 5 · 133-A · QCM · Quem Cobra Menos no WhatsApp, piloto fechado** (sem marco: as rodadas dos 5 testadores correm no calendário enquanto se constroem a 131 e a 132, D-MC-61)
@@ -670,6 +661,7 @@ Cada ficha diz o objetivo, o que entra, o que não entra, o que absorve e quando
 ### SPEC-130 · Comparação, proposta e registro (130-A) · leitor de apólice (130-B)
 
 **130-A**, consumida pela 133-A e pela 131 (na v2.5 vem logo depois da 129-B):
+- ✅ **Portão de preço RESPONDIDO 05/10 (D-MC-62…65)** · 🔴 separar ofertas NÃO comparáveis (P-129B-06: Azul por Assinatura "proteção para terceiros", sem casco).
 - **Portão de preço na abertura (D-MC-45).** Com os números da 128 (alavancas, E16, E20), o Claude Code pergunta ao Amandus:
   - como montar a opção econômica (comissão, assistência, coberturas);
   - quando o agente pode propor baixar a comissão, e até onde;
