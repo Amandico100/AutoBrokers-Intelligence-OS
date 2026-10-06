@@ -4898,28 +4898,6 @@ não argumentar, mandar o link do estado certo.
 
 ---
 
-## P-182 · 🟠 `PORTAL_VAULT_KEY` é uma chave única e global, sem rotação
-
-**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder decide, 🤖 execução implementa
-
-📊 `portal_vault.py:13-19` e `portal_worker/vault.py:8-14` fazem
-`Fernet(os.getenv("PORTAL_VAULT_KEY"))`. **Uma** chave, compartilhada entre
-smith-api e portal-worker, sem key-id no ciphertext e sem caminho de rotação no
-repositório. Comprometer essa env decifra as senhas de **todas** as corretoras.
-
-Fernet carrega timestamp mas não identificador de chave, então hoje não há como
-saber com qual chave um segredo foi cifrado — o que é exatamente o que uma
-rotação precisa saber.
-
-**O que destrava:** 🤖 `MultiFernet` com lista de chaves (decifra com qualquer
-uma, cifra sempre com a primeira) + recifragem em lote + procedimento escrito.
-**O que custa esquecer:** nada hoje. No dia de um vazamento de env, a
-alternativa a ter rotação é pedir a 16 contas que troquem a senha no portal.
-
-Fora do escopo da SPEC-073 por decisão do Founder (CA-041).
-
----
-
 ## P-183 · 🟠 `portal_jobs.evidence` acumula PII de segurado sem retenção
 
 **Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, na SPEC de segurança/LGPD
@@ -5372,6 +5350,8 @@ Depois: 🤖 ler os diffs de alguns dias de cobrança real e conferir que
 ---
 
 ## P-198 · 🟠 O lease foi provado contra um Redis FALSO, não contra um real
+
+> 🔁 **CONTINUA (SPEC-129-B, 05/10) — só para o `portal_jobs`.** O motor de multicálculo NÃO depende dela: a lease do robô mora no BANCO (D-129B-10 · `CHANGE-ADDENDA.md` 05/10), porque sem Redis `LeaseDePortal.adquirir` devolve `True` (`leases.py:415-419`) — inaceitável num login de sessão única.
 
 **Aberta em:** 16/08/2026 · **Dono:** 🤖 execução, quando houver Redis no worker
 
@@ -13390,9 +13370,13 @@ Fonte: `reports/SPEC-128-EXECUTION-REPORT.md` §7 · resultado `programa-multica
 As sessões da medição duraram < 3 h. **Destrava:** a 129-B mede numa sessão longa, sob a reserva de 1 trabalho por login. **Custa
 esquecer:** o robô para no meio de um cálculo sem saber renovar o token.
 
+🔁 **CONTINUA (SPEC-129-B, 05/10):** o canário não teve sessão de 3 h; 📊 o token só trocou no login (SPEC-129-B §4.1). Medição repassada como P-129B-13.
+
 ## P-128-02 · 🧑 E7: 2 robôs na mesma conta — exige o 2º login
 📊 A sessão aceita 2 cálculos juntos (16/16), mas 2 usuários robô da mesma conta não foram medidos. **Destrava:** o Founder cria o 2º
 login de robô. Até lá fica a reserva de 1 trabalho por login (`worker.py:1716-1725`). **Custa esquecer:** a capacidade fica pela metade sem motivo.
+
+🔁 **CONTINUA (SPEC-129-B, 05/10):** a 129-B provou 1 robô em cada uma de 2 corretoras, em paralelo; o 2º login de robô na mesma corretora ainda não existe (T-120). O motor reserva 1 trabalho por login com lease NO BANCO (D-129B-10).
 
 ## P-128-03 · 🤖 E12: o formato do "Imprimir" do Agger não foi medido
 `POST pdocs/calculo/print` foi barrado pelo captador. **Destrava:** medir na 129-B/130-A com a lista branca ampliada só para ele.
@@ -13401,10 +13385,6 @@ login de robô. Até lá fica a reserva de 1 trabalho por login (`worker.py:1716
 ## P-128-04 · 🤖 E4: a busca externa de CPF do Agger é instável
 📊 devolveu `false` em 4 de 5 chamadas. **Destrava:** a 129-B trata como opcional (o dado vem da InfoCap/do corretor). **Custa
 esquecer:** o motor trava esperando um nome que não vem.
-
-## P-128-05 · 🤖 O contrato e o leitor do cálculo não são chamados pelo produto — por desenho
-`backend/portal_worker/multicalculo/{contrato,leitor_agger}.py` só têm testes como chamadores. **Destrava:** a 129-B liga. **Custa
-esquecer:** peça pronta e órfã, que envelhece sem uso.
 
 ## P-128-06 · 🧑 A credencial Bradesco da AutoFleet é recusada pela seguradora
 📊 "Login ou senha incorreta" em 39 cálculos. **Destrava:** o Founder (ou a corretora) confere a credencial no cadastro do Agger.
@@ -13438,30 +13418,63 @@ um cliente que já foi cotado.
 📊 +16 % entre a 1ª e a 9ª versão do mesmo pedido. **Destrava:** o motor não usa a Mapfre para medir alavanca. **Custa esquecer:**
 a comparação "antes × depois do ajuste" mente na Mapfre.
 
-## P-128-14 · ✅ FECHADA 05/10 — o Founder TOMOU a D-128-03 · 🧑 Decidir a D-128-03 (recálculo pelo corpo do pedido, de dentro da página)
-✅ **Fechada pela decisão (Founder, 05/10/2026):** o robô recalcula REENVIANDO o corpo do pedido (`calcularV2`) com o ajuste, de
-dentro da página, com o token do próprio app. Resolve também a parte da D-MC-28 que pedia a autorização expressa do Founder (o login
-continua pela tela; a interceptação continua lendo os resultados). T-107 feita. Registro: `FOUNDER-DECISIONS.md` (D-128-03) ·
-`programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md` §8. O texto abaixo é o de 04/10, histórico.
-A D-MC-28 exige o Founder para o PRODUTO. **Destrava:** a resposta do Founder antes da 129-B. **Custa esquecer:** a 129-B nasce sem
-saber se pode recalcular pelo corpo — e clicar no formulário é mais lento e mais frágil (nota 70 × 88).
-
-## P-128-15 · 🤖 O apagador de URL sem esquema confunde nome de cobertura
-`RE_URL` (redaction `sem_url_nem_chave`, aplicado pelo leitor) apaga `"Comp.Total/Parcial"`, `"Km.Livre/200"`, `"Franq.Reduzida/50%"`
-(📊 confirmação da SPEC-128; 0 ocorrências nas fixtures de hoje). **Destrava:** exigir domínio conhecido (`.com`, `.br`, `.net`…) +
-esses 4 casos como controle, na 129-B (quando o leitor for ligado). **Custa esquecer:** a corretora vê `<removido:url>` no lugar do pacote.
-
-## P-128-16 · 🤖 O redator comum ficou mais agressivo no diagnóstico
-A regra `key=`/`token=` no `redigir_texto` pega `data-key="…"` e o `\S+` engole o resto do HTML do trace (`…&token=abc">link</a>`).
-Testes do profiler e do worker verdes; só diagnóstico. **Destrava:** exceção para `-key` e parar em `"`/`&`/`<`. **Custa esquecer:**
-trace de DOM truncado ao depurar um portal.
-
-## P-128-17 · 🤖 URL com `//` e cabeçalho `x-api-key:` escapam do G1 e do redator
-Não é o formato do B1, mas é o mesmo tipo de segredo. **Destrava:** dois padrões + controle no G1, na 129-B. **Custa esquecer:** a
-próxima seguradora que devolver erro assim vaza para fixture.
-
 ## P-128-18 · 🧑 A chave do B1 ainda existe no reflog LOCAL desta máquina
 Nunca subiu (📊 `git ls-remote` vazio antes da reescrita; 36 commits reescritos com 0). Fica nos objetos órfãos do `.git` local até
 `git reflog expire --expire=now --all && git gc --prune=now` (apaga a rede de recuperação de TODOS os branches locais — por isso não
 foi rodado sem o Founder). **Custa esquecer:** quase nada (é uma chave que a seguradora devolve em mensagem de erro a todo usuário
 do Agger), mas é segredo em disco.
+
+## P-129B · SPEC-129-B, o motor de multicálculo (05/10/2026)
+Fonte: `reports/SPEC-129-B-EXECUTION-REPORT.md` §8 · SPEC `specs/SPEC-129-B-o-motor-de-multicalculo.md`.
+
+## P-129B-01 · 🤖 O texto REAL do aviso de "sessão ativa" do Agger nunca foi visto
+O dublê usa um texto escrito à mão; o robô só clica "Cancelar" exato. **Destrava:** capturar o aviso real no 1º uso com login de
+robô e trocar a fixture. **Custa esquecer:** o aviso real tem outro texto, o robô não o reconhece e pode derrubar a sessão de uma pessoa.
+
+## P-129B-02 · 🤖 Nenhum chamador do produto ainda — por desenho
+A porta `MulticalculoProvider` só tem os testes e o canário como chamadores. **Destrava:** a 130-A/131/133-A chamam. **Custa
+esquecer:** peça pronta e órfã (a mesma lição da P-128-05).
+
+## P-129B-03 · 🧑 `seguradoCotadoRecentemente` da AutoFleet mostra e-mail de usuários de FORA das duas contas
+Possível vazamento no fornecedor (Agger). **Destrava:** o Founder pergunta ao fornecedor por que a consulta "CPF já cotado" traz
+usuários de outras contas. **Custa esquecer:** dado de outras corretoras chegando à nossa tela — e o inverso pode estar acontecendo.
+
+## P-129B-04 · 🧑 A credencial da Tokio na Resulta (no Agger) está recusada
+📊 3 de 3 cálculos recusados (SPEC-129-B §4.1). **Destrava:** o Founder (ou a corretora) confere a senha da Tokio no cadastro do
+Agger da Resulta. **Custa esquecer:** a Resulta cota sem a Tokio, hoje e no motor; e a hipótese do CPF segue sem medida nela.
+
+## P-129B-05 · 🤖 Rótulos de estado civil, uso, garagem e fabricante não medidos
+O pedido só aceita CÓDIGO por enquanto. **Destrava:** medir os rótulos ao vivo e aceitar o texto. **Custa esquecer:** cada chamador
+(130-A/133-A) traduz para código por conta própria — e cada um de um jeito.
+
+## P-129B-06 · 🤖 Para a 130-A: separar ofertas NÃO comparáveis
+📊 Canário 05/10: o menor preço da corretora A (R$ 186,78) é da Azul por Assinatura, "plano proteção para terceiros" — sem casco,
+prêmio de assinatura. **Destrava:** a 130-A marca e separa essas ofertas antes do "menor preço". **Custa esquecer:** o Quem Cobra
+Menos indica como vencedora uma oferta que não cobre o carro.
+
+## P-129B-07 · 🤖 O modo do Chromium do contêiner (`--headless=new`) não abriu nesta máquina Windows
+📊 1ª rodada do canário: 0 cálculo em 180 s; o canário usou o modo clássico. No contêiner Linux o portal-worker já roda assim.
+**Destrava:** conferir no 1º uso real (Implantar). **Custa esquecer:** o motor liga no ar e não abre navegador nenhum.
+
+## P-129B-08 · 🤖 Riscos menores do red team (0 casos hoje)
+(a) WebSocket aberto por Web Worker escapa da guarda (red P2); (b) relógio entre máquinas > 70 s pode virar `incerto` (P3); (c) falso
+`incerto` entre os 2 checkpoints (P5); (d) navegador que cai sozinho não é reaberto (a retomada esgota e vira `falhou`). **Destrava:**
+um conserto por item, com teste. **Custa esquecer:** cálculo perdido, ou escrita fora da lista branca, em caso raro.
+
+## P-129B-09 · 🤖 `pessoa_mexeu_recentemente` com leitura falha devolve "uma pessoa mexeu"
+O efeito — não recalcular — está certo; a mensagem está errada. **Destrava:** devolver "não consegui conferir". **Custa esquecer:**
+o corretor ouve que alguém mexeu no negócio quando ninguém mexeu.
+
+## P-129B-10 · 🤖 O G7 trava `companies`/`portal_accounts` da PRODUÇÃO por ~10–20 s a cada rodada da bateria
+**Destrava:** rodar o G7 num branch do Supabase. **Custa esquecer:** a bateria segura a produção por segundos a cada rodada.
+
+## P-129B-11 · 🤖 `proactive_suggestions.py:163` lê `companies.name` (coluna que não existe) e não roda para ninguém
+**Destrava:** consertar a coluna E filtrar `is_technical` junto. **Custa esquecer:** quem consertar só a coluna faz as 3 empresas
+técnicas passarem a gerar chamada PAGA de modelo.
+
+## P-129B-12 · 🤖 A mensagem dos vidros ("cobertura … não pode ser contratada") não tem fixture própria
+A regra do leitor cita o laudo de 05/10. **Destrava:** gravar a fixture saneada. **Custa esquecer:** a regra quebra sem teste que a veja.
+
+## P-129B-13 · 🤖 O vencimento do token de 3 h segue NÃO medido
+Repassa a P-128-01 (que CONTINUA). **Destrava:** uma sessão longa no 1º uso real com login de robô. **Custa esquecer:** o robô para
+no meio de um cálculo sem saber renovar o token.
