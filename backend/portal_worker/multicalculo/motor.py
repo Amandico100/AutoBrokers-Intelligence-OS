@@ -43,6 +43,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tup
 from .. import redaction as _R
 from ..runtime import kill_switch_ativo
 from ..worker import _inteiro_do_ambiente, _upload_portal_blob, portal_real_enabled
+from . import presets as _presets
 from . import robos
 from .contrato import (
     CONJUNTO_FECHADO, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA, SEGURADORA_RECUSOU, Ajuste, Evento, Oferta,
@@ -96,7 +97,10 @@ TETO_CORRETORA_HORA_PADRAO = 120
 TETO_GERAL_HORA_PADRAO = 400
 
 ESTADOS_TERMINAIS = ("fechado", "falhou", "incerto", "cancelado", "expirado")
-_ORDEM_DA_OPCAO = {"padrao": 0, "economica": 1, "ajuste": 2}
+# A ordem do disparo no MESMO negócio vem dos presets (padrão → econômica → completa+, SPEC-130-A F4); o ajuste do
+# corretor sai DEPOIS de todas (ele recalcula a partir de uma delas). Opção desconhecida (o CHECK do banco não deixa
+# existir) fica por último, como antes.
+_ORDEM_DA_OPCAO = {**{o: i for i, o in enumerate(_presets.ORDEM)}, "ajuste": len(_presets.ORDEM)}
 
 MOTIVO_PESSOA_MEXEU = "uma pessoa mexeu neste negócio há menos de 24 h"
 MOTIVO_SAIU_DO_CANAL = "a corretora saiu do canal"
@@ -897,7 +901,8 @@ class Motor:
         return {x["negocio_ref"] for x in (r.data or []) if x.get("negocio_ref")}
 
     async def _negocio_do_pedido(self, g: Grupo) -> Optional[str]:
-        """A econômica entra no negócio da padrão (D-129B-03) — mesmo quando a padrão saiu noutro grupo."""
+        """A econômica (e a completa+) entra no negócio da padrão (D-129B-03) — mesmo quando a padrão saiu noutro
+        grupo."""
         r = await self._db(lambda: self.supa.table("multicalculo_calculos").select("negocio_ref, opcao")
                            .eq("pedido_id", g.pedido_id).eq("company_id", g.company_id)
                            .not_.is_("negocio_ref", "null").order("criado_em").execute())
