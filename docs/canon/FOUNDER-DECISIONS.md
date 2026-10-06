@@ -2384,3 +2384,8 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | D-130A-06 | **Registro do lead e do consentimento vão para a 133-A**, onde a conversa do WhatsApp colhe o "sim"; na 130-A a proposta publicada + o pedido são o registro da oportunidade. Notas 80 × já na 130-A 55 | ✅ TOMADA (Founder, 06/10/2026) | a ficha da 130-A (plano §4) |
 | D-130A-07 | **PDF da proposta = o "imprimir/salvar PDF" do navegador** (CSS de impressão); o PDF gerado no servidor fica para quando houver render fora do robô (D-MC-43). Notas 75 × já 50 | ✅ TOMADA (Founder, 06/10/2026) | a ficha da 130-A |
 | D-130A-08 | **A remuneração da corretora (Res. CNSP 382, art. 4º) fica como opção da config, DESLIGADA até o jurídico** (caixa do Founder). Notas 70 × mostrar já 55 | ✅ TOMADA (Founder, 06/10/2026) | — |
+
+| # | Decisão (gerente da 130-A, 06/10/2026 — registradas na SPEC §10) | Estado | Substitui / revê |
+|---|---|---|---|
+| D-130A-09 | **A 3ª opção:** sem apólice → Recomendada · Mais em conta · Mais completa (completa+ quando calculada; sem ela, "Outra completa"/"Menor franquia"); com apólice → a Recomendada (a melhor completa, para o título nunca mentir — conserto RT-B1) + Igual à sua atual + Mais em conta (P-130A-22 decide a completa+ na 131) | ✅ TOMADA (gerente, nota 80) | D-MC-69 (ajustada pelo RT-B1) |
+| D-130A-10 | **O artefato da proposta mora no SOLICITANTE** (a corretora no pedido dela; o canal no pedido do canal); a marca da anfitriã vai no modelo da página. Notas: 85 × na anfitriã 45 | ✅ TOMADA (gerente) | — |
