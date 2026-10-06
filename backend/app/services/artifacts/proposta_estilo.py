@@ -49,7 +49,7 @@ CSS_DA_PROPOSTA = _font_face() + r"""
   --ink-strong:#15191D;--ink:#2C3238;--ink-muted:#5A626A;--line:#E0E4E7;--line-strong:#C3C9CE;
   --p:#2E3740;--p-on:#FFFFFF;--p-soft:#E9EDF0;--p-text:#2E3740;--a:#2E3740;--pos:#00824F;--neg:#B24B58;
   --pass1:#2E3740;--pass1-on:#fff;--pass2:#E6EAED;--pass2-on:#15191D;--pass3:#F4F6F8;--pass3-on:#15191D;--badge:#fff;--badge-on:#000;
-  --shadow-tint:15 19 23;--gutter:16px;--seam:226px;--cta:#2E3740;--cta-on:#fff;--pos-bg:#E6F3EC;--neg-bg:#F7E9EB;
+  --shadow-tint:15 19 23;--gutter:16px;--seam:242px;--cta:#2E3740;--cta-on:#fff;--pos-bg:#E6F3EC;--neg-bg:#F7E9EB;
   --font:'Instrument Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
 *,*::before,*::after{box-sizing:border-box}
@@ -103,6 +103,9 @@ summary>svg:last-child{transition:transform .2s}
 @media (min-width:600px){.ticks.n{display:none}.ticks.w{display:block}}
 .tick{position:absolute;top:53px;transform:translateX(-50%);font-size:13px;color:var(--ink-muted);white-space:nowrap;line-height:1;font-variation-settings:'wdth' 100}
 .tick.first{transform:none}.tick.last{transform:translateX(-100%)}
+/* a marca no eixo, exatamente no valor (crítico final): no centro do rótulo; na ponta, na borda dele */
+.tick::before{content:"";position:absolute;left:50%;top:-12px;width:1px;height:7px;background:var(--line-strong)}
+.tick.first::before{left:0}.tick.last::before{left:auto;right:0}
 .dot{position:absolute;top:calc(40px - 4.5px - var(--r, 0) * 11px);width:9px;height:9px;margin-left:-4.5px;border-radius:50%;
   border:1.5px solid var(--ink-muted);background:var(--canvas)}
 .dot.mine{width:12px;height:12px;margin-left:-6px;top:calc(40px - 6px - var(--r, 0) * 11px);border:0;background:var(--p-text);box-shadow:0 0 0 2px var(--canvas)}
@@ -178,13 +181,15 @@ summary>svg:last-child{transition:transform .2s}
 .badge{display:inline-flex;align-items:center;min-height:28px;padding:3px 11px;border-radius:999px;font-size:13.5px;font-weight:600;line-height:1.15;
   background:color-mix(in srgb, var(--on) 10%, transparent);color:var(--on);max-width:62%}
 .pass[data-v="1"] .badge{background:var(--badge);color:var(--badge-on)}
-/* a aba já nomeia a opção (< 1024 px): o selo do 1º cartão diz OUTRA coisa; sem abas (≥ 1024), o rótulo */
-.badge .b-rot{display:none}
-@media (min-width:1024px){.badge .b-alt{display:none}.badge .b-rot{display:inline}}
-.field{display:grid;justify-items:end;line-height:1;color:var(--on);flex:none}
+/* UM nome para o 1º cartão (crítico final): o rótulo. Abaixo de 1024 px a aba logo acima já o diz — o selo some
+   para não repetir; de 1024 em diante (sem abas) ele aparece */
+.badge.b1{display:none}
+@media (min-width:1024px){.badge.b1{display:inline-flex}}
+.field{display:grid;justify-items:end;line-height:1;color:var(--on);flex:none;margin-left:auto}
 .fl{font-size:13px;opacity:.82}
 .fv{font-size:26px;font-weight:650;letter-spacing:-.02em;font-variation-settings:'wdth' 85;margin-top:3px}
 .fv small{font-size:14px;font-weight:550;opacity:.78;margin-left:1px;letter-spacing:0}
+.fh{font-size:12px;opacity:.8;margin-top:4px;line-height:1.15;white-space:nowrap}
 .insurer{margin:10px 0 0;font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 .product{font-size:14.5px;font-weight:500;letter-spacing:0;opacity:.8;margin-left:4px}
 .price{margin:auto 0 0;display:flex;align-items:baseline;flex-wrap:wrap;line-height:1;letter-spacing:-.035em;font-variation-settings:'wdth' 82}
@@ -226,6 +231,7 @@ summary>svg:last-child{transition:transform .2s}
 .ci svg{width:20px;height:20px;display:block}
 .cn{font-size:14px;font-weight:550;color:var(--ink-strong);line-height:1.3}
 .cv{font-size:13.5px;color:var(--ink-muted);line-height:1.35}
+.nw{white-space:nowrap}
 .selo{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:13px;font-weight:600;line-height:1.45;
   background:var(--surface-2);color:var(--ink);white-space:nowrap;vertical-align:1px}
 .selo.up{background:var(--pos-bg);color:var(--pos)}
@@ -353,6 +359,13 @@ section.s{padding:48px 0 0}
 .close .t b{font-size:16.5px;font-weight:650}
 .close .t span{font-size:13.5px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .close .t span.swap{animation:swap .35s ease}
+/* sem JavaScript o "Quero fechar" do rodapé não acompanha o cartão na tela: some, e fica o texto neutro */
+.pick{display:none;flex:1;align-items:center;min-height:52px;padding:5px 14px;border-radius:16px;border:1px dashed var(--line-strong);
+  font-size:14px;line-height:1.3;color:var(--ink)}
+.no-js .dock .close{display:none}
+.no-js .dock .pick{display:flex}
+.fim .close{margin-top:16px;max-width:520px}
+.vencido .valid{font-weight:600}
 @keyframes swap{from{opacity:0;transform:translateY(4px)}to{opacity:.9;transform:none}}
 
 @media (min-width:760px){
@@ -396,7 +409,8 @@ section.s{padding:48px 0 0}
   :root{--canvas:#fff;--surface:#fff;--surface-2:#f2f2f2;--ink-strong:#000;--ink:#111;--ink-muted:#333;--line:#bbb;--line-strong:#888;
     --pass1:#fff;--pass1-on:#000;--pass2:#fff;--pass2-on:#000;--pass3:#fff;--pass3-on:#000;--badge:#fff;--badge-on:#000;--p-text:#000;--band:transparent}
   html,body{background:#fff;color:#000;overflow:visible}
-  .dock,.navrow,.nav,.endpad,.flag,.compare-btn svg,.chan{display:none!important}
+  .dock,.navrow,.nav,.tabs,.endpad,.flag,.compare-btn svg,.chan,.fim{display:none!important}
+  .badge.b1{display:inline-flex!important}
   .hero{padding-top:0;text-align:left}
   .hero h1{font-size:24pt;max-width:none}
   .widewrap,.wrap{max-width:none;padding:0}
