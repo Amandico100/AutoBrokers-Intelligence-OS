@@ -39,7 +39,12 @@ from app.services.multicalculo.repositorio import RepositorioMulticalculo
 
 logger = logging.getLogger(__name__)
 
-OPCOES: Tuple[str, ...] = ("padrao", "economica")
+#: as opções que a porta ACEITA — cada uma com preset em `portal_worker/multicalculo/presets.py` e na MESMA ordem de
+#: `presets.ORDEM` (padrão abre o negócio; econômica e completa+ são versões dele). SPEC-130-A F4: a completa+
+#: (D-MC-69 / D-130A-09). O CHECK do banco (migration 20261006_02) aceita exatamente estas.
+OPCOES: Tuple[str, ...] = ("padrao", "economica", "completa_mais")
+#: o que sai quando o chamador não escolhe: as duas da 129-B (a completa+ é PEDIDA, quando couber — D-MC-66)
+OPCOES_PADRAO: Tuple[str, ...] = ("padrao", "economica")
 ORIGENS: Tuple[str, ...] = ("auxiliar", "canal", "teste")
 KIND_CANAL = "platform_canal"
 KIND_CORRETORA = "client"
@@ -268,7 +273,7 @@ class MulticalculoProvider:
     # ------------------------------------------------------------------ calcular
     async def calcular(self, *, company_id: str, pedido: PedidoDeCalculo,
                        corretoras: Optional[Iterable[str]] = None,
-                       opcoes: Iterable[str] = OPCOES,
+                       opcoes: Iterable[str] = OPCOES_PADRAO,
                        coberturas: Optional[Mapping[str, Mapping[str, Any]]] = None,
                        origem: str, quadro_s: int = 60) -> PedidoAberto:
         company_id = _uuid(company_id, "company_id")
@@ -280,10 +285,10 @@ class MulticalculoProvider:
                 alvo.append(u)
         if not alvo:
             raise ValueError("nenhuma corretora pedida")
-        escolhidas = [o for o in OPCOES if o in set(opcoes)]
-        desconhecidas = set(opcoes) - set(OPCOES)
-        if desconhecidas or not escolhidas:
-            raise ValueError("opções aceitas: padrao, economica")
+        pedidas = set(opcoes)
+        escolhidas = [o for o in OPCOES if o in pedidas]     # a ordem é a de OPCOES (a do disparo), nunca a do chamador
+        if (pedidas - set(OPCOES)) or not escolhidas:
+            raise ValueError("opções aceitas: " + ", ".join(OPCOES))
         quadro = int(quadro_s)
         if not 5 <= quadro <= 600:
             raise ValueError("quadro_s entre 5 e 600")
