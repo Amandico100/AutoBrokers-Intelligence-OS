@@ -81,6 +81,25 @@ SCRIPT_DA_PROPOSTA = """(function () {
   var ind = $("#tab-ind"), cmp = $("#comparar"), count = $("#count"), prev = $("#prev"), next = $("#next");
   var close = $("#ab-fechar"), sub = $("#close-sub");
   var n = slots.length, active = -1, raf = 0;
+  /* the price expired (RT-8): the server already wrote "valid until" next to each price; here it turns into
+     "expired on", and every close button asks for an updated price instead (texts come from the server) */
+  var V = DATA && DATA.vencido, VENCIDO = false;
+  if (V && typeof V.ate === "string" && V.ate.length === 10) {
+    var d0 = new Date();
+    var hoje = d0.getFullYear() + "-" + ("0" + (d0.getMonth() + 1)).slice(-2) + "-" + ("0" + d0.getDate()).slice(-2);
+    VENCIDO = hoje > V.ate;
+  }
+  if (VENCIDO) {
+    doc.classList.add("vencido");
+    document.querySelectorAll(".valid").forEach(function (el) { el.textContent = V.aviso; });
+    document.querySelectorAll(".want, #ab-fechar, .fim-fechar").forEach(function (a) {
+      if (V.url) { a.setAttribute("href", V.url); a.setAttribute("rel", "noopener"); }
+      var b = a.querySelector("b");
+      if (b) { b.textContent = V.botao; } else if (a.lastChild) { a.lastChild.nodeValue = V.botao; }
+      a.setAttribute("aria-label", V.botao);
+    });
+    document.querySelectorAll("#close-sub, .fim-sub").forEach(function (el) { el.textContent = V.sub; });
+  }
   var PAD = parseFloat(getComputedStyle(track).scrollPaddingLeft) || 16;
   if (!n) { return; }
 
@@ -111,7 +130,7 @@ SCRIPT_DA_PROPOSTA = """(function () {
     document.querySelectorAll(".regua [data-opt]").forEach(function (d) { d.classList.toggle("on", d.getAttribute("data-opt") === String(i)); });
     document.querySelectorAll(".regua [data-flag]").forEach(function (f) { f.classList.toggle("on", f.getAttribute("data-flag") === String(i)); });
     var o = OPS[i];
-    if (o && close && o.id) {
+    if (o && close && o.id && !VENCIDO) {
       close.setAttribute("href", "?fechar=" + encodeURIComponent(o.id));
       if (o.aria) { close.setAttribute("aria-label", o.aria); }
       if (sub && o.sub) {
@@ -259,9 +278,23 @@ def _opcoes(modelo: dict) -> list[dict]:
     return saida
 
 
+def e_a_melhor_do_ranking(modelo: dict, o: Optional[dict]) -> bool:
+    """🔴 RT-B1 (red team, 06/10): a opção É a 1ª do ranking das completas? Lido do RANKING do modelo (o menor preço,
+    a mesma seguradora), nunca da posição da opção na lista. Só ela pode ser "a melhor das N", "Recomendada" no topo e
+    o título da prévia — com apólice, a seguradora atual (11ª de 11) não vira "a melhor"."""
+    rk = _ranking(modelo)
+    if not o or not rk:
+        return False
+    menor = min(rk, key=lambda x: AP.dec(x["premio_anual"]))
+    return _mesma(o, menor)
+
+
 def opcao_recomendada(modelo: dict) -> Optional[dict]:
-    """A `recomendada` se houver; senão a primeira. Nenhuma → None."""
+    """A opção que é a 1ª do ranking real; senão a `recomendada`; senão a primeira. Nenhuma → None."""
     ops = _opcoes(modelo)
+    for o in ops:
+        if e_a_melhor_do_ranking(modelo, o):
+            return o
     for o in ops:
         if o.get("id") == "recomendada":
             return o
@@ -436,13 +469,23 @@ def _cabeca_parcelas(o: dict) -> str:
     return ""
 
 
+def _nome_com_selo(nome: Any, kind: Optional[str]) -> str:
+    """O selo ("melhor"/"mais simples") anda COLADO à última palavra do rótulo (crítico final, 06/10: em
+    "Guincho e assistência ! mais simples" o selo quebrava sozinho numa linha)."""
+    texto = AP.nbsp(str(nome or ""))
+    if not kind:
+        return _e(texto)
+    inicio, _, ultima = texto.rpartition(" ")
+    return (_e(inicio + " ") if inicio else "") + f'<span class="nw">{_e(ultima)}{_selo(kind)}</span>'
+
+
 def _celula_cobertura(k: str, o: dict, rec: dict, tag: str) -> str:
     c = AP.cobertura(o, k)
     if c is None:
         return '<div class="sec cov" aria-hidden="true"></div>' if tag == "div" else ""
     kind, nota = AP.comparar_cobertura(k, o, rec)
     extra = f'<span class="cx">{_e(AP.nbsp(nota))}</span>' if nota else ""
-    corpo = (f'<span class="ci">{ICO.get(k, ICO["check"])}</span><span class="cn">{_e(AP.nbsp(c["nome"]))}{_selo(kind)}</span>'
+    corpo = (f'<span class="ci">{ICO.get(k, ICO["check"])}</span><span class="cn">{_nome_com_selo(c["nome"], kind)}</span>'
              f'<span class="cv">{_e(AP.nbsp(AP.valor_da_cobertura(c)))}{extra}</span>')
     return f'<div class="sec cov">{corpo}</div>' if tag == "div" else f"<li>{corpo}</li>"
 
@@ -457,7 +500,8 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
 
     if i == 0:
         motivos = [m for m in o.get("motivos") or [] if isinstance(m, str) and m.strip()]
-        blk = (f'<h3>{_e(V["porque"])}</h3><ul class="why">'
+        porque = V["porque"] if e_a_melhor_do_ranking(modelo, o) else "Sobre esta opção"
+        blk = (f'<h3>{_e(porque)}</h3><ul class="why">'
                + "".join(f'<li>{ICO["check"]}<span>{_e(AP.nbsp(x))}</span></li>' for x in motivos) + "</ul>") if motivos else ""
     elif isinstance(o.get("por_que_mais_barata"), str) and o["por_que_mais_barata"].strip():
         fora = f" Por isso fica fora da lista das {nc} com cobertura completa." if nc else ""
@@ -467,7 +511,7 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
         fala_franquia = any("franquia" in x.lower() for x in muda)
         itens = muda + [m for m in o.get("motivos") or [] if isinstance(m, str) and m.strip()
                         and not (fala_franquia and "franquia" in m.lower())]
-        blk = ('<h3>O que muda em relação à recomendada</h3><ul class="diffs">'
+        blk = (f'<h3>O que muda em relação {_e(_a_referencia(rec))}</h3><ul class="diffs">'
                + "".join(f"<li>{_e(AP.nbsp(x))}</li>" for x in itens) + "</ul>") if itens else ""
 
     mais = ""
@@ -479,12 +523,13 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
                 + f'</span>{ICO["chev"]}</summary><ul class="covs">{lis}</ul></details>')
 
     nota = AP.numero_inteiro(o.get("nota"))
-    campo = (f'<span class="field"><span class="fl">{_e(V["nota"])}</span><span class="fv">{nota}<small>/100</small></span></span>'
+    campo = (f'<span class="field"><span class="fl">{_e(V["nota"])}</span><span class="fv">{nota}<small>/100</small></span>'
+             f'<span class="fh">{_e(AP.LEGENDA_DA_NOTA)}</span></span>'
              if nota is not None and 0 <= nota <= 100 else "")
     if i == 0 and n > 1:
-        # a aba já diz "Recomendada" (< 1024 px): o selo diz OUTRA coisa, curta (cabe em 1 linha)
-        alt = f"A melhor das {nc}" if modelo.get("origem") == "canal" and nc and nc > 1 else V["escolha"]
-        badge = f'<span class="badge"><span class="b-alt">{_e(alt)}</span><span class="b-rot">{_e(rotulo)}</span></span>'
+        # crítico final (06/10): UM nome só para o 1º cartão — o rótulo, em toda largura e na prévia. Abaixo de
+        # 1024 px a aba logo acima já o diz (o selo some ali para não repetir); de 1024 em diante (sem abas), o selo
+        badge = f'<span class="badge b1">{_e(rotulo)}</span>'
     else:
         badge = f'<span class="badge">{_e(rotulo)}</span>'
     produto = AP.sem_seguradora(o.get("produto"), o.get("seguradora"))
@@ -518,6 +563,13 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
 <div class="sec morewrap">{mais}</div>
 <div class="sec foot">{want}</div>
 </article></div>'''
+
+
+def _a_referencia(rec: dict) -> str:
+    """"à recomendada" — ou à opção do topo pelo NOME dela, quando ela não se chama "Recomendada" (com apólice, a
+    seguradora atual pode ser a do topo: "em relação à opção “Igual à sua atual”")."""
+    rot = str((rec or {}).get("rotulo") or "").strip()
+    return "à recomendada" if not rot or rot.lower() == "recomendada" else f"à opção “{rot}”"
 
 
 def _mesma(o: dict, x: dict) -> bool:
@@ -571,8 +623,10 @@ def _regua(modelo: dict, ops: list[dict]) -> str:
 
     def ticks(lista: list[int], cls: str) -> str:
         out = []
-        for k, t in enumerate(lista):
-            extra = " first" if k == 0 else (" last" if k == len(lista) - 1 else "")
+        for t in lista:
+            # crítico final (06/10): o rótulo só se ancora na ponta quando ESTÁ na ponta (0 % / 100 %); no meio do
+            # eixo ele é centrado no valor — o "R$ 8 mil" a 80 % alinhado à direita se lia como R$ 7,6 mil
+            extra = " first" if t == lo else (" last" if t == hi else "")
             out.append(f'<span class="tick{extra}" style="left:{(t - lo) / (hi - lo) * 100:.2f}%">{_e(AP.rotulo_do_tick(t))}</span>')
         return f'<span class="ticks {cls}" aria-hidden="true">{"".join(out)}</span>'
 
@@ -679,7 +733,7 @@ def _comparar(ops: list[dict]) -> str:
 <summary class="compare-btn">{ICO["cols"]}<span>Comparar lado a lado</span>{ICO["chev"]}</summary>
 <div class="cmp-in">
 <div class="cmp-tools"><label class="only"><input type="checkbox" id="only"><span>Mostrar só o que muda</span></label>
-<p class="key">{_pill("up", "melhor")}{_pill("down", "pior")}em relação à recomendada</p></div>
+<p class="key">{_pill("up", "melhor")}{_pill("down", "pior")}em relação {_e(_a_referencia(rec))}</p></div>
 <div class="cmp-grid">
 <div class="cmp-head cols">{cab}</div>
 {"".join(linhas)}</div>
@@ -719,6 +773,41 @@ def _faq(modelo: dict, ops: list[dict]) -> str:
 # =====================================================================================================================
 # a página
 # =====================================================================================================================
+def _conta_do_resumo(modelo: dict) -> Optional[dict]:
+    """J-B3 (juiz, 06/10): os QUATRO números do resumo, e o total É a soma das partes (o que a frase afirma tem de
+    fechar). As partes vêm do resumo do modelo; faltando uma, a lista que a página mostra."""
+    resumo = (modelo or {}).get("resumo") if isinstance((modelo or {}).get("resumo"), dict) else {}
+    completas = AP.numero_inteiro(resumo.get("com_preco_comparavel"))
+    if completas is None:
+        completas = len(_ranking(modelo))
+    diferentes = AP.numero_inteiro(resumo.get("com_produto_diferente")) or 0
+    nr = AP.numero_inteiro(resumo.get("nao_responderam"))
+    if nr is None:
+        nr = len([x for x in (modelo or {}).get("nao_responderam") or [] if isinstance(x, dict)])
+    if min(completas, diferentes, nr) < 0 or completas < 1:
+        return None
+    return {"cotadas": completas + diferentes + nr, "completas": completas, "diferentes": diferentes, "nr": nr}
+
+
+def _frase_da_conta(c: Optional[dict], ofertas_que_cobrem_menos: int) -> str:
+    """ "Cotamos em 16 seguradoras: 13 deram preço com a mesma cobertura completa, 1 só ofereceu um produto
+    diferente e 2 não deram preço." — cada seguradora em UM lugar só, e as partes somam o total."""
+    if not c:
+        return ""
+    partes = [f"{c['completas']} {'deu' if c['completas'] == 1 else 'deram'} preço com a mesma cobertura completa"]
+    if c["diferentes"]:
+        partes.append(f"{c['diferentes']} só {'ofereceu um produto diferente' if c['diferentes'] == 1 else 'ofereceram produtos diferentes'}")
+    if c["nr"]:
+        partes.append(f"{c['nr']} não {'deu' if c['nr'] == 1 else 'deram'} preço")
+    corpo = partes[0] if len(partes) == 1 else ", ".join(partes[:-1]) + " e " + partes[-1]
+    frase = f"Cotamos em {c['cotadas']} seguradora{'s' if c['cotadas'] > 1 else ''}: {corpo}."
+    if ofertas_que_cobrem_menos:
+        k = ofertas_que_cobrem_menos
+        frase += (f" {'A' if k == 1 else 'As'} {k} oferta{'s' if k > 1 else ''} que cobre{'m' if k > 1 else ''} menos "
+                  f"aparece{'m' if k > 1 else ''} à parte.")
+    return frase
+
+
 def render_proposta(modelo: dict) -> str:
     """O documento inteiro da proposta, a partir do modelo do CONTRATO §5 (D-130A-11, "carteira" v4).
 
@@ -770,13 +859,18 @@ def render_proposta(modelo: dict) -> str:
 
     # ---- título
     if rec is not None and AP.brl(rec.get("premio_anual")):
-        das = f"a melhor das {nc}" if nc and nc > 1 else "a melhor opção"
         para = f" para o seu {_e(bem['apelido'])}" if bem["apelido"] else ""
-        frase = f"{das}{para}: {_e(rec.get('seguradora') or '')}, {_e(AP.brl(rec.get('premio_anual'), False))} por ano."
+        valor = f"{_e(rec.get('seguradora') or '')}, {_e(AP.brl(rec.get('premio_anual'), False))} por ano"
+        if e_a_melhor_do_ranking(modelo, rec):
+            das = f"a melhor das {nc}" if nc and nc > 1 else "a melhor opção"
+            frase = f"{das}{para}: {valor}."
+        else:   # RT-B1: nenhuma opção é a 1ª do ranking → o título diz QUAL é, sem afirmar posição
+            frase = f"a sua proposta{para}: {valor} ({_e(rec.get('rotulo') or rec.get('id'))})."
         h1 = (f'<span class="hello">{_e(nome)}, </span>{frase}' if nome else frase[:1].upper() + frase[1:])
     else:
         h1 = "Sua proposta de seguro"
-    cotadas = AP.numero_inteiro(resumo.get("seguradoras_cotadas"))
+    conta_num = _conta_do_resumo(modelo)
+    cotadas = conta_num["cotadas"] if conta_num else AP.numero_inteiro(resumo.get("seguradoras_cotadas"))
     lede = ", ".join(x for x in (bem["descricao"], bem["ano"]) if x)
     if cotadas:
         em = f"em {cotadas} seguradora{'s' if cotadas > 1 else ''}"
@@ -817,12 +911,7 @@ def render_proposta(modelo: dict) -> str:
                      f'{_e(AP.brl(econ.get("premio_anual")))}) não está nesta lista: {_e(AP.nbsp(pq[:1].lower() + pq[1:]))}</p>')
     pdif = [x for x in modelo.get("produto_diferente") or [] if isinstance(x, dict) and str(x.get("seguradora") or "").strip()]
     nr = [x for x in modelo.get("nao_responderam") or [] if isinstance(x, dict) and str(x.get("seguradora") or "").strip()]
-    conta = ""
-    if cotadas and rk:
-        conta = (f"Cotamos em {cotadas} seguradoras: {len(rk)} deram preço com a mesma cobertura completa"
-                 + (f" e {len(nr)} não {'deu' if len(nr) == 1 else 'deram'} preço" if nr else "") + "."
-                 + (f" Algumas também mandaram {len(pdif)} oferta{'s' if len(pdif) > 1 else ''} que cobre"
-                    f"{'m' if len(pdif) > 1 else ''} menos, mostrada{'s' if len(pdif) > 1 else ''} à parte." if pdif else ""))
+    conta = _frase_da_conta(conta_num, len(pdif)) if rk else ""
     pd_html = ""
     if pdif:
         pd_html = (f'<details class="line"><summary><span><b>{len(pdif)} oferta{"s" if len(pdif) > 1 else ""} '
@@ -839,6 +928,12 @@ def render_proposta(modelo: dict) -> str:
                            for x in nr) + ".</p>") if nr else ""
     duelo = ""
     ec = [c for c in modelo.get("entre_corretoras") or [] if isinstance(c, dict) and AP.dec(c.get("melhor_completa")) is not None]
+    # crítico final (06/10): o duelo só se afirma se o preço da VENCEDORA é o da opção do topo — senão a página diria
+    # "AutoFleet R$ 3.730" com o título em R$ 4.784. Divergiu → omitido (e a frase "teve o menor preço" também)
+    venc = next((c for c in ec if c.get("vencedora") is True), None)
+    if venc is None or rec is None or AP.dec(rec.get("premio_anual")) is None \
+            or AP.dec(venc["melhor_completa"]) != AP.dec(rec.get("premio_anual")):
+        ec = []
     if len(ec) >= 2:
         linhas_duelo = "".join(
             f'<div class="duel-row{" win" if c.get("vencedora") is True else ""}"><span>'
@@ -864,8 +959,8 @@ def render_proposta(modelo: dict) -> str:
         fatos.append(f'<div class="fact"><b>{_e(susep)}</b><span>registro na SUSEP</span></div>')
     cidade = str(anf.get("cidade") or "").strip()
     tagline = str(anf.get("tagline") or "").strip()
-    ganhou = (f'<p class="sub0">Teve o menor preço com cobertura completa entre as {len(ec)} corretoras comparadas e '
-              f'atende você pelo WhatsApp.</p>' if len(ec) >= 2 else "")
+    ganhou = (f'<p class="sub0">Teve o menor preço com cobertura completa entre as {len(ec)} corretoras comparadas'
+              + (" e atende você pelo WhatsApp." if digitos else ".") + "</p>" if len(ec) >= 2 else "")
     o_que_e = ""
     if canal:
         nm = _e(AP.nome_do_canal(modelo))
@@ -920,7 +1015,7 @@ def render_proposta(modelo: dict) -> str:
     def aria_de(o: dict) -> str:
         return (f"Quero fechar: {o.get('seguradora') or o.get('rotulo') or ''}"
                 + (f", {_brl(o.get('premio_anual'))} por ano" if _brl(o.get("premio_anual")) else "")
-                + (f", no WhatsApp da {nome_anf}" if nome_anf else ", no WhatsApp"))
+                + ((f", no WhatsApp da {nome_anf}" if nome_anf else ", no WhatsApp") if digitos else ""))
 
     dock = ""
     if rec is not None and digitos:
@@ -930,11 +1025,31 @@ def render_proposta(modelo: dict) -> str:
                 f'<a class="ask" href="{_e(wa(duvida))}" rel="noopener">Tirar uma dúvida</a>'
                 f'<a class="close" id="ab-fechar" href="{_e(href_fechar(rec))}" rel="nofollow" aria-label="{_e(aria_de(rec))}">'
                 f'{ICO["wa"]}<span class="t"><b>Quero fechar</b><span id="close-sub">{_e(sub_de(rec))}</span></span></a>'
+                # crítico final: SEM JavaScript o botão não acompanha o cartão na tela — some, e fica o texto neutro
+                f'<span class="pick nojs">Escolha uma opção acima</span>'
                 f'</div><p class="dock-note">Abre a conversa{f" com a {_e(nome_anf)}" if nome_anf else ""} no WhatsApp. '
                 f'Nada é cobrado agora.</p></div>')
 
+    # o fecho de quem rola até o fim (crítico final): a opção do topo, com o NOME dela escrito — vale sem JS
+    fim = ""
+    if rec is not None and digitos:
+        fim = (f'<section class="s fim" aria-labelledby="h-fim"><h2 id="h-fim">Pronto para fechar?</h2>'
+               f'<p class="sub">Você pode fechar a opção “{_e(rec.get("rotulo") or rec.get("id"))}” aqui, ou escolher '
+               f'outra nos cartões acima.</p>'
+               f'<a class="close fim-fechar" href="{_e(href_fechar(rec))}" rel="nofollow" aria-label="{_e(aria_de(rec))}">'
+               f'{ICO["wa"]}<span class="t"><b>Quero fechar</b><span class="fim-sub">'
+               f'{_e(str(rec.get("rotulo") or rec.get("id")) + " · " + sub_de(rec))}</span></span></a></section>')
+
     dados = {"opcoes": [{"id": o["id"], "rotulo": o.get("rotulo"), "seguradora": o.get("seguradora"),
                          "sub": sub_de(o), "aria": aria_de(o)} for o in ops]}
+    vence = re.match(r"^\d{4}-\d{2}-\d{2}$", str(modelo.get("validade_ate") or ""))
+    if vence and digitos:                       # RT-8: o script troca o "Quero fechar" por "Pedir preço atualizado"
+        dia = _data_curta(modelo.get("validade_ate"))
+        pedir = (f"Olá!{' Aqui é ' + nome + '.' if nome else ''} A proposta do seguro {sobre_o_bem} venceu em "
+                 f"{AP.data_br(modelo.get('validade_ate'))}. Pode atualizar o preço?")
+        dados["vencido"] = {"ate": vence.group(0), "aviso": f"Preço vencido em {dia} — peça uma atualização",
+                            "botao": "Pedir preço atualizado", "sub": f"a proposta venceu em {dia}",
+                            "url": wa(pedir)}
 
     titulo_pagina = f"Sua proposta de seguro · {nome_anf}" if nome_anf else "Sua proposta de seguro"
     navrow = ""
@@ -990,6 +1105,7 @@ def render_proposta(modelo: dict) -> str:
 {anfitria_html}
 {sinistro}
 {faq_html}
+{fim}
 {legal}
 <div class="endpad"></div>
 </div>
