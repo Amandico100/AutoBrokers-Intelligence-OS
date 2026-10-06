@@ -1,0 +1,509 @@
+{
+ "_contrato": "SPEC-130-A §5 — o MODELO da página (fatos). Produzido por multicalculo/proposta.py:montar_proposta (F3); consumido por artifacts/proposta_html.py:render_proposta (F2b). Exemplo com os preços REAIS do canário 05/10; nome do cliente e WhatsApp ilustrativos. Campo ausente/None = não aparece.",
+ "versao_do_contrato": 1,
+ "origem": "corretora",
+ "ramo": 31,
+ "cliente": {
+  "primeiro_nome": "Mariana"
+ },
+ "bem": {
+  "rotulo": "carro",
+  "descricao": "Jeep Compass Limited 2.0 flex automático",
+  "ano": "2018/2019",
+  "apelido": "Compass"
+ },
+ "situacao": "novo_sem_apolice",
+ "resumo": {
+  "seguradoras_cotadas": 12,
+  "com_preco_comparavel": 11,
+  "com_produto_diferente": 4,
+  "nao_responderam": 1,
+  "tempo_do_calculo_s": 62
+ },
+ "opcoes": [
+  {
+   "id": "recomendada",
+   "rotulo": "Recomendada",
+   "seguradora": "Bradesco",
+   "produto": "Auto Tradicional",
+   "premio_anual": 4784.27,
+   "parcelas": {
+    "vezes": 10,
+    "valor": 555.83
+   },
+   "franquia": {
+    "valor": 5170.54,
+    "tipo": "Reduzida"
+   },
+   "coberturas": [
+    {
+     "chave": "casco",
+     "nome": "Batida, roubo e incêndio",
+     "valor": "100% da tabela FIPE",
+     "nivel": null
+    },
+    {
+     "chave": "terceiros",
+     "nome": "Danos a outros carros e pessoas",
+     "valor": "R$ 200 mil + R$ 200 mil",
+     "nivel": null
+    },
+    {
+     "chave": "vidros",
+     "nome": "Vidros",
+     "valor": "Vidro Protegido Plus (024)",
+     "nivel": null
+    },
+    {
+     "chave": "reserva",
+     "nome": "Carro reserva",
+     "valor": "Auto Reserva 15 dias (111)",
+     "nivel": null
+    },
+    {
+     "chave": "assistencia",
+     "nome": "Guincho e assistência 24 h",
+     "valor": "Assist. Dia/Noite Ilimitado (108)",
+     "nivel": null
+    },
+    {
+     "chave": "app",
+     "nome": "Acidentes com passageiros",
+     "valor": "R$ 5 mil por pessoa",
+     "nivel": null
+    },
+    {
+     "chave": "morais",
+     "nome": "Danos morais",
+     "valor": "R$ 20 mil",
+     "nivel": null
+    }
+   ],
+   "nota": 91,
+   "motivos": [
+    "Menor preço entre as 11 seguradoras com cobertura completa",
+    "Franquia reduzida: R$ 5.171 se precisar consertar",
+    "Carro reserva por 15 dias"
+   ],
+   "o_que_muda": [],
+   "tem_pdf_da_seguradora": true
+  },
+  {
+   "id": "outra_completa",
+   "rotulo": "Menor franquia",
+   "seguradora": "Tokio",
+   "produto": "Auto Clássico",
+   "premio_anual": 6061.17,
+   "parcelas": {
+    "vezes": 12,
+    "valor": 620.61
+   },
+   "franquia": {
+    "valor": 4795.0,
+    "tipo": "Reduzida"
+   },
+   "coberturas": [
+    {
+     "chave": "casco",
+     "nome": "Batida, roubo e incêndio",
+     "valor": "100% da tabela FIPE",
+     "nivel": null
+    },
+    {
+     "chave": "terceiros",
+     "nome": "Danos a outros carros e pessoas",
+     "valor": "R$ 200 mil + R$ 200 mil",
+     "nivel": null
+    },
+    {
+     "chave": "vidros",
+     "nome": "Vidros",
+     "valor": "Completo",
+     "nivel": null
+    },
+    {
+     "chave": "reserva",
+     "nome": "Carro reserva",
+     "valor": "15 diárias",
+     "nivel": null
+    },
+    {
+     "chave": "assistencia",
+     "nome": "Guincho e assistência 24 h",
+     "valor": "VIP com Guincho Adicional Ilimitado",
+     "nivel": null
+    },
+    {
+     "chave": "app",
+     "nome": "Acidentes com passageiros",
+     "valor": "R$ 5 mil por pessoa",
+     "nivel": null
+    },
+    {
+     "chave": "morais",
+     "nome": "Danos morais",
+     "valor": "R$ 20 mil",
+     "nivel": null
+    }
+   ],
+   "nota": 84,
+   "motivos": [
+    "A menor franquia do quadro: R$ 4.795",
+    "Assistência VIP com guincho ilimitado"
+   ],
+   "o_que_muda": [
+    "R$ 1.277 a mais por ano que a recomendada",
+    "Franquia R$ 376 menor"
+   ],
+   "tem_pdf_da_seguradora": true
+  },
+  {
+   "id": "economica",
+   "rotulo": "Mais em conta",
+   "seguradora": "Bradesco",
+   "produto": "Auto Tradicional",
+   "premio_anual": 4168.45,
+   "parcelas": {
+    "vezes": 10,
+    "valor": 484.27
+   },
+   "franquia": {
+    "valor": 10341.08,
+    "tipo": "Normal"
+   },
+   "coberturas": [
+    {
+     "chave": "casco",
+     "nome": "Batida, roubo e incêndio",
+     "valor": "100% da tabela FIPE",
+     "nivel": null
+    },
+    {
+     "chave": "terceiros",
+     "nome": "Danos a outros carros e pessoas",
+     "valor": "R$ 200 mil + R$ 200 mil",
+     "nivel": null
+    },
+    {
+     "chave": "vidros",
+     "nome": "Vidros",
+     "valor": "Vidro Protegido (025)",
+     "nivel": null
+    },
+    {
+     "chave": "reserva",
+     "nome": "Carro reserva",
+     "valor": "Auto Reserva 07 Dias (060)",
+     "nivel": null
+    },
+    {
+     "chave": "assistencia",
+     "nome": "Guincho e assistência 24 h",
+     "valor": "Assist Dia/Noite 200Km (043)",
+     "nivel": null
+    },
+    {
+     "chave": "app",
+     "nome": "Acidentes com passageiros",
+     "valor": "R$ 5 mil por pessoa",
+     "nivel": null
+    },
+    {
+     "chave": "morais",
+     "nome": "Danos morais",
+     "valor": "R$ 20 mil",
+     "nivel": null
+    }
+   ],
+   "nota": 78,
+   "motivos": [
+    "R$ 616 a menos por ano que a recomendada",
+    "Mesma proteção para batida, roubo e terceiros"
+   ],
+   "o_que_muda": [
+    "Franquia normal: R$ 10.341 (o dobro)",
+    "Vidros básicos",
+    "Carro reserva por 7 dias",
+    "Assistência básica"
+   ],
+   "tem_pdf_da_seguradora": true,
+   "por_que_mais_barata": "Mesma Bradesco da recomendada, com franquia normal (o dobro), vidros e carro reserva mais simples."
+  }
+ ],
+ "ranking": [
+  {
+   "seguradora": "Bradesco",
+   "premio_anual": 4784.27,
+   "franquia": 5170.54
+  },
+  {
+   "seguradora": "Aliro",
+   "premio_anual": 5963.99,
+   "franquia": 5914.0
+  },
+  {
+   "seguradora": "Tokio",
+   "premio_anual": 6061.17,
+   "franquia": 4795.0
+  },
+  {
+   "seguradora": "Mapfre",
+   "premio_anual": 6985.1,
+   "franquia": 6497.5
+  },
+  {
+   "seguradora": "Azul",
+   "premio_anual": 7167.64,
+   "franquia": 6150.0
+  },
+  {
+   "seguradora": "Yelum",
+   "premio_anual": 7254.51,
+   "franquia": 5280.0
+  },
+  {
+   "seguradora": "Zurich",
+   "premio_anual": 7324.3,
+   "franquia": 7608.57
+  },
+  {
+   "seguradora": "HDI",
+   "premio_anual": 7956.37,
+   "franquia": 5325.92
+  },
+  {
+   "seguradora": "Mitsui",
+   "premio_anual": 8290.15,
+   "franquia": 6150.0
+  },
+  {
+   "seguradora": "Itaú",
+   "premio_anual": 8380.8,
+   "franquia": 6150.0
+  },
+  {
+   "seguradora": "Porto",
+   "premio_anual": 8460.29,
+   "franquia": 5857.0
+  }
+ ],
+ "produto_diferente": [
+  {
+   "seguradora": "Azul",
+   "produto": "Azul Auto Roubo",
+   "premio_anual": 2695.72,
+   "por_que_nao_compara": "não cobre batida no seu carro"
+  },
+  {
+   "seguradora": "Bradesco",
+   "produto": "Light",
+   "premio_anual": 3242.36,
+   "por_que_nao_compara": "paga só 80% da tabela FIPE"
+  },
+  {
+   "seguradora": "Tokio",
+   "produto": "Auto Roubo",
+   "premio_anual": 3793.93,
+   "por_que_nao_compara": "não cobre batida no seu carro"
+  },
+  {
+   "seguradora": "Itaú",
+   "produto": " Itaú Seguro Auto Compacto",
+   "premio_anual": 5568.05,
+   "por_que_nao_compara": "paga só 85% da tabela FIPE"
+  }
+ ],
+ "nao_responderam": [
+  {
+   "seguradora": "Allianz",
+   "motivo": "não respondeu a tempo"
+  }
+ ],
+ "entre_corretoras": null,
+ "anfitria": {
+  "nome": "Resulta Seguros",
+  "marca_cadastrada": true,
+  "logo_data_url": "data:image/png;base64,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",
+  "cores": {
+   "primaria": "#1D5579",
+   "acento": "#EE7501"
+  },
+  "tema_claro": {
+   "ink": {
+    "base": "#2D373E",
+    "faint": "#878F94",
+    "muted": "#626A70",
+    "strong": "#121D25"
+   },
+   "grid": "#E3E9ED",
+   "info": {
+    "on": "#FFFFFF",
+    "fill": "#0078BA",
+    "soft": "#D7F4FF",
+    "text": "#0076B8"
+   },
+   "mode": "light",
+   "chart": [
+    "#3F7BA4",
+    "#BF975C",
+    "#4C4B82",
+    "#9AC68E",
+    "#A9719A",
+    "#64271E",
+    "#1A8583",
+    "#809FD7"
+   ],
+   "accent": {
+    "on": "#000000",
+    "fill": "#EE7501",
+    "soft": "#FFE8D2",
+    "text": "#C14C00"
+   },
+   "border": {
+    "strong": "#C4CED5",
+    "hairline": "#DCE3E8"
+   },
+   "canvas": "#FBFDFF",
+   "primary": {
+    "on": "#FFFFFF",
+    "fill": "#1D5579",
+    "soft": "#DDF4FF",
+    "text": "#1D5579"
+   },
+   "surface": "#FFFFFF",
+   "warning": {
+    "on": "#FFFFFF",
+    "fill": "#916B00",
+    "soft": "#FFEECD",
+    "text": "#916B00"
+   },
+   "elevated": "#FFFFFF",
+   "negative": {
+    "on": "#FFFFFF",
+    "fill": "#B24B58",
+    "soft": "#FFE6E8",
+    "text": "#B24B58"
+   },
+   "positive": {
+    "on": "#000000",
+    "fill": "#008955",
+    "soft": "#D3FCE3",
+    "text": "#00824F"
+   },
+   "surface_2": "#F1F7FB"
+  },
+  "tema_escuro": {
+   "ink": {
+    "base": "#D9DFE3",
+    "faint": "#777E84",
+    "muted": "#A3AAB0",
+    "strong": "#F2F6F9"
+   },
+   "grid": "#282C2F",
+   "info": {
+    "on": "#000000",
+    "fill": "#2A8DD1",
+    "soft": "#04253C",
+    "text": "#3B9BE0"
+   },
+   "mode": "dark",
+   "chart": [
+    "#6FACD8",
+    "#997338",
+    "#B5B7F7",
+    "#476F3C",
+    "#B67DA6",
+    "#FFBBAD",
+    "#57B7B4",
+    "#5D7AB0"
+   ],
+   "accent": {
+    "on": "#000000",
+    "fill": "#EE7501",
+    "soft": "#3E1800",
+    "text": "#EE7501"
+   },
+   "border": {
+    "strong": "#444F57",
+    "hairline": "#2C343A"
+   },
+   "canvas": "#080D11",
+   "primary": {
+    "on": "#FFFFFF",
+    "fill": "#1D5579",
+    "soft": "#152733",
+    "text": "#649AC2"
+   },
+   "surface": "#12181D",
+   "warning": {
+    "on": "#000000",
+    "fill": "#A97F00",
+    "soft": "#2E2000",
+    "text": "#B98E22"
+   },
+   "elevated": "#262F36",
+   "negative": {
+    "on": "#000000",
+    "fill": "#CA606C",
+    "soft": "#39161A",
+    "text": "#E0747F"
+   },
+   "positive": {
+    "on": "#000000",
+    "fill": "#179E69",
+    "soft": "#012B19",
+    "text": "#29A873"
+   },
+   "surface_2": "#1C2329"
+  },
+  "cidade": "Florianópolis, SC",
+  "desde": 2009,
+  "susep": null,
+  "google": {
+   "nota": 5.0,
+   "avaliacoes": 14,
+   "fonte": "Google, ficha 'RESULTA CORRETORA DE SEGUROS', 06/10/2026"
+  },
+  "site": "resultaseguros.com.br",
+  "whatsapp": "5548999999999"
+ },
+ "faq": [
+  {
+   "p": "Dá para melhorar o preço?",
+   "r": "Talvez. A corretora pode pedir condições especiais à seguradora e ajustar a franquia ou o carro reserva. Toque em “Tirar uma dúvida” e diga quanto quer pagar."
+  },
+  {
+   "p": "Dá para reduzir a franquia?",
+   "r": "Dá. Uma franquia menor deixa o seguro um pouco mais caro. Compare a opção “Menor franquia” no carrossel."
+  },
+  {
+   "p": "As outras seguradoras não ficaram melhores?",
+   "r": "Cotamos em todas que aceitaram o seu perfil. A lista completa, do menor preço ao maior, está acima — inclusive as que ofereceram um produto diferente."
+  },
+  {
+   "p": "No banco ou na cooperativa é mais barato. Por quê?",
+   "r": "Proteção veicular de cooperativa não é seguro regulado pela SUSEP, e muitas vezes cobre menos. Compare franquia, carro reserva e o valor para terceiros antes de decidir."
+  },
+  {
+   "p": "Dá para parcelar mais?",
+   "r": "Cada seguradora tem o seu limite. As parcelas mostradas são as maiores que ela aceita."
+  },
+  {
+   "p": "Se eu bater, ligo para quem?",
+   "r": "Para a sua corretora, pelo WhatsApp. Ela abre o sinistro e acompanha tudo com você."
+  },
+  {
+   "p": "Uso o carro para aplicativo. Muda alguma coisa?",
+   "r": "Muda. Nem toda seguradora aceita, e o preço é diferente. Avise a corretora antes de fechar para cotarmos do jeito certo."
+  }
+ ],
+ "sinistro": [
+  "Você avisa a corretora pelo WhatsApp",
+  "Ela orienta e abre o aviso na seguradora",
+  "Acompanha a oficina e o carro reserva com você"
+ ],
+ "validade_ate": "2026-10-13",
+ "gerado_em": "2026-10-06T08:00:00-03:00",
+ "aviso_legal": "Comparação feita com os preços que as seguradoras devolveram no cálculo. O preço final depende da aceitação da seguradora e da vistoria, se houver. A contratação é feita pela corretora, registrada na SUSEP.",
+ "mostrar_remuneracao": false
+}
