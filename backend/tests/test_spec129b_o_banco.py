@@ -121,6 +121,10 @@ def test_g7_verify_estrutural_e_comportamental(banco):
     r = _um(cur, _bloco("VERIFY (read-only"))
     assert tuple(r[:9]) == (1, 1, 1, 6, 5, 1, 1, 0, 0), r
     assert r[9] >= 5 and r[10] == 2, r
+    # 🔁 05/10 (APPLY real + canário ao vivo): as adesões canal → corretora EXISTEM de verdade; o VERIFY comportamental
+    # cria a dele e bateria na unique (23505). Dentro DESTA transação (desfeita no fim) o estado volta ao de antes do
+    # canário — o VERIFY continua provando a regra, não o dado de hoje (CLAUDE.md §9.3: o teste muda com o fato)
+    cur.execute("delete from public.multicalculo_adesoes")
     cur.execute(_bloco("VERIFY comportamental"))
     assert any(str(a).startswith("VERIFY 20261005_01 OK") for a in avisos), avisos
     print("\n" + next(str(a) for a in avisos if str(a).startswith("VERIFY 20261005_01 OK")))
@@ -144,8 +148,11 @@ def test_g7_grants_service_role_le_e_o_publico_nao(banco):
 
 def test_g7_as_16_contas_de_hoje_intocadas_e_o_canal_e_tecnico(banco):
     cur, _c, _a = banco
-    assert _um(cur, "select count(*) from public.portal_accounts where robo_estado is not null "
-                    "or robo_dono is not null or robo_janela is not null")[0] == 0
+    # 🔁 05/10: depois do canário existem contas `agger` (pausadas, sem senha); a intenção do guarda é que as contas
+    # que NÃO são de robô continuem intocadas — e são elas que ele mede (📊 16 em 05/10)
+    assert _um(cur, "select count(*) from public.portal_accounts where portal_key <> 'agger' and (robo_estado is not null "
+                    "or robo_dono is not null or robo_janela is not null)")[0] == 0
+    assert _um(cur, "select count(*) from public.portal_accounts where portal_key <> 'agger'")[0] >= 16
     linha = _um(cur, "select is_technical, status, agent_enabled, allow_web_search, use_langchain, "
                      "split_part(company_name,' ',1) from public.companies where company_kind='platform_canal'")
     assert linha == (True, "active", False, False, False, "AutoBrokers"), linha
