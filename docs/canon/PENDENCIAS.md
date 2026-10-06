@@ -13555,3 +13555,14 @@ buraco antigo, e um aviso real se perde no meio dele.
 ## P-130A-20 · 🤖 Republicar a proposta do canário depois do Implantar
 O conserto mudou o script da página, e a CSP aceita só o hash novo. **Destrava:** o gerente republica o pedido `d0bb15ba` depois do
 Implantar (T-124/T-126). **Custa esquecer:** o link do canário abre com o script bloqueado.
+
+## P-130A-21 · 🤖 Na renovação, a mensagem não cita o preço de renovar na seguradora atual
+Achado da confirmação (06/10, defeito novo do conserto): com apólice/renovação, `mensagem._escolhidas` leva a Recomendada e a Mais em
+conta; se a seguradora atual não é a mais barata, o preço de renovar nela some da mensagem (continua na página). **Destrava:** a 131
+(o 1º chamador com apólice) decide e fixa por teste: Recomendada + "Sua renovação" quando forem diferentes. **Custa esquecer:** o
+cliente da renovação não vê, no WhatsApp, quanto custa ficar onde está.
+
+## P-130A-22 · 🤖 Com apólice, a "Mais completa" sai do carrossel de 3
+Achado da confirmação (06/10): com apólice, Recomendada + Igual à atual + Mais em conta ocupam os 3 cartões e a completa+ calculada
+não aparece (D-MC-69 pedia igual · econômica · completa+; o conserto RT-B1 pôs a Recomendada para não mentir no título). **Destrava:**
+a 131 decide entre 4 cartões ou a regra de qual sai. **Custa esquecer:** um cálculo feito e não mostrado.
