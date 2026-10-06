@@ -153,4 +153,12 @@ nota do executor: 86/100 (critério: provado ao vivo de ponta a ponta com númer
 ```
 
 ## 12. Entrega
-_(o push e a saída dele — preenchido no fim)_
+Antes do push: 📊 0 atrás da origin/main · 79 commits a subir · 79 de 79 com 0 segredo (`git show <c> | grep -cE 'AIza…|<senha>|<chave do
+cofre>|sk-proj-|eyJhbGciOi'`).
+```
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   420e848..c0ba3a9  HEAD -> main
+```
+Depois: o Founder clica **Implantar** no `smith-api` e no `portal-worker` (T-121). O motor nasce DESLIGADO e sem robô: nada muda no que
+roda hoje. Para ligar: T-120 (usuário de robô por corretora + o comando) e T-122 (as duas variáveis).
