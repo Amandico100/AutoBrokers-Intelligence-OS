@@ -605,7 +605,8 @@ def test_o_selo_fica_no_fim_da_linha_do_rotulo_nunca_entre_duas_linhas():
     assert cvs
     for cv in cvs:
         assert 'class="selo' not in cv, cv
-    assert re.search(r'<span class="cn">[^<]+<span class="selo up">', doc)
+    # o selo anda colado à ÚLTIMA palavra do rótulo (`.nw`, sem quebra): nunca sozinho numa linha (crítico final)
+    assert re.search(r'<span class="cn">[^<]*<span class="nw">[^< ]+<span class="selo up">', doc)
     # no comparar: o selo FECHA a célula
     celulas = [c for c in re.findall(r'<div class="cell">(.*?)</div>', doc) if 'class="cx"' in c and 'class="selo' in c]
     assert celulas
@@ -826,7 +827,9 @@ def test_1280_tres_colunas_alinhadas_sem_rolagem_e_com_o_rotulo(navegador):
         assert pg.evaluate("document.documentElement.scrollWidth") <= 1280
         tops = pg.evaluate("[...document.querySelectorAll('.pass')].map(p => Math.round(p.getBoundingClientRect().top))")
         assert len(tops) == 3 and len(set(tops)) == 1
-        assert pg.evaluate("getComputedStyle(document.querySelector('.badge .b-rot')).display") != "none"
+        # UM nome para o 1º cartão (crítico final): o selo com o RÓTULO aparece sem as abas (≥ 1024 px)
+        assert pg.evaluate("getComputedStyle(document.querySelector('.badge.b1')).display") != "none"
+        assert pg.evaluate("document.querySelector('.badge.b1').textContent") == "Recomendada"
         assert erros == []
     finally:
         ctx.close()
@@ -842,8 +845,8 @@ def test_MUTACOES_os_guardas_do_navegador_ficam_vermelhos(navegador):
         # o botão de antes: sem padding e encolhido no pé do cartão
         "quero esta": base.replace(extra, ".want{padding:0!important;min-height:30px!important}"
                                    ".sec.foot{align-self:end!important}" + extra, 1),
-        # o selo do 1º cartão volta a dizer "Recomendada"
-        "recomendada": base.replace('<span class="b-alt">Nossa escolha</span>', '<span class="b-alt">Recomendada</span>', 1),
+        # o selo do 1º cartão volta a aparecer debaixo da aba que já diz "Recomendada" (o nome repetido na 1ª tela)
+        "recomendada": base.replace(extra, ".badge.b1{display:inline-flex!important}" + extra, 1),
         # o rodapé translúcido de antes (88 %)
         "rodapé": base.replace(extra, ".dock{background:color-mix(in srgb, var(--canvas) 88%, transparent)!important}"
                                + extra, 1),
