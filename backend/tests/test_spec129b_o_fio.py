@@ -356,6 +356,67 @@ def test_morte_e_retomada_com_o_robo_real_nao_reposta_nem_duplica(mundo):
 
 
 # =====================================================================================================================
+# G6 com o DESLIGAR EDUCADO (`encerrar()`, o caminho do deploy) — 📊 o canário ao vivo de 05/10 21:27 pegou os 4
+# cálculos `calculando` virando `falhou` "não consegui ler o resultado no Agger" 2–5 s DEPOIS do encerrar: a tarefa do
+# acompanhamento sobrevivia ao cancelamento do grupo, o `desligar()` fechava a página e o `TargetClosedError` virava
+# `LeituraImpossivel(sessão morta)` → `falhou`. O G6 acima só matava BRUSCO (o banco "morre"); este encerra educado.
+# =====================================================================================================================
+def test_g6_o_desligar_educado_no_meio_do_acompanhamento_deixa_tudo_para_a_retomada(mundo, caplog):
+    m = mundo
+    caplog.set_level(logging.INFO)
+
+    async def tudo(d, novo_navegador):
+        aberto = await m.porta.calcular(company_id=m.canal, pedido=PedidoDeCalculo.de_dict(dados_do_pedido()),
+                                        corretoras=[m.a, m.b], origem="canal")
+        m1 = motor(m, "motor-1", await novo_navegador(), d)
+        # o dublê LENTO: 0,5 s entre leituras × 6–8 rodadas por versão = 3–4 s de acompanhamento — a morte cai no meio
+        lento = SimpleNamespace(**vars(ROBO_RAPIDO))
+        lento.acompanhar = functools.partial(R.acompanhar, intervalo_s=0.5)
+        m1._robo = lento
+        await m1.uma_volta(esperar=False)
+        t0 = asyncio.get_running_loop().time()
+        while asyncio.get_running_loop().time() - t0 < 60:
+            cs = linhas(m, "multicalculo_calculos", pedido_id=aberto.pedido_id)
+            if len(cs) == 4 and {c["status"] for c in cs} == {"calculando"} and \
+                    linhas(m, "multicalculo_eventos", pedido_id=aberto.pedido_id):
+                break
+            await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("o checkpoint + 1º evento não chegaram")
+        assert len(d.posts_calcular) == 4
+        n_ev_antes = len(linhas(m, "multicalculo_eventos", pedido_id=aberto.pedido_id))
+        saidas_antes = d.contagem.get("POST api-prod/usuario/deslogaSessao", 0)
+
+        await m1.encerrar()                      # o desligar do serviço (deploy): o MESMO caminho do canário
+        await asyncio.sleep(1.5)                 # um acompanhamento órfão escreveria AGORA (📊 ao vivo: 2–5 s depois)
+
+        # (a) o que estava `calculando` FICA `calculando` — nunca `falhou`/`fechado` escrito por quem está morrendo
+        calcs = linhas(m, "multicalculo_calculos", pedido_id=aberto.pedido_id)
+        assert [(c["status"], c["erro"], c["fechado_em"]) for c in calcs] == [("calculando", None, None)] * 4, \
+            [(c["opcao"], c["status"], c["erro"]) for c in calcs]
+        assert "não consegui ler o cálculo" not in caplog.text
+        n_ev_morte = len(linhas(m, "multicalculo_eventos", pedido_id=aberto.pedido_id))
+        assert n_ev_antes <= n_ev_morte < sum(esperado(d, c["versao"])[1] for c in calcs), "a morte não caiu no meio"
+        # (b) o logout das 2 sessões e as leases dos robôs devolvidas; nenhuma conta mudou de estado
+        assert d.contagem.get("POST api-prod/usuario/deslogaSessao", 0) - saidas_antes == 2, d.contagem
+        assert {(c["robo_dono"], c["robo_estado"]) for c in m.banco.linhas("portal_accounts")} == {(None, "ativo")}
+
+        # (c) outro motor, depois da lease vencer, RETOMA só a leitura e fecha os 4 completos — 0 calcularV2 novo
+        m.relogio.avancar(MOT.LEASE_VENCE_S + 1)
+        m2 = motor(m, "motor-2", await novo_navegador(), d)
+        await ate_esvaziar(m2, m)
+        assert len(d.posts_calcular) == 4, "a retomada fez calcularV2 de novo"
+        for c in linhas(m, "multicalculo_calculos", pedido_id=aberto.pedido_id):
+            evs = linhas(m, "multicalculo_eventos", calculo_id=c["id"])
+            assert (c["status"], c["erro"], c["dono"]) == ("fechado", None, "motor-2"), (c["status"], c["erro"])
+            assert len(evs) == len({e["chave"] for e in evs}) == esperado(d, c["versao"])[1]
+            assert len(linhas(m, "multicalculo_ofertas", calculo_id=c["id"])) == esperado(d, c["versao"])[0]
+        await m2.desligar()
+
+    rodar(com_agger_e_navegador(tudo))
+
+
+# =====================================================================================================================
 # G13 — a RENOVAÇÃO de ponta a ponta: ficha da InfoCap → porta → motor → robô → o corpo que o Agger recebe
 # =====================================================================================================================
 def _apolice(sigla: str):
