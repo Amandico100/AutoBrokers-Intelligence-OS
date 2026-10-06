@@ -1,0 +1,1928 @@
+{
+ "fonte": "medição ao vivo 06/10/2026 04:30–04:41 (conta AutoFleet, login de teste, ZERO cálculos) — A-PROVA-DO-AGGER §10",
+ "ramos_codigo": {
+  "31": "auto (carro, caminhão, motocicleta)",
+  "2": "residencial",
+  "16": "condominio",
+  "18": "empresarial",
+  "91": "vida"
+ },
+ "formularios": {
+  "condominio": {
+   "n_campos": 83,
+   "n_obrigatorios": 43,
+   "campos": [
+    {
+     "fc": "cpfCnpj",
+     "tag": "input",
+     "rotulo": "CNPJ",
+     "obrigatorio": true
+    },
+    {
+     "fc": "nome",
+     "tag": "input",
+     "rotulo": "Razão Social",
+     "obrigatorio": true
+    },
+    {
+     "fc": "fone",
+     "tag": "input",
+     "rotulo": "Telefone",
+     "obrigatorio": false
+    },
+    {
+     "fc": "email",
+     "tag": "input",
+     "rotulo": "Email",
+     "obrigatorio": false
+    },
+    {
+     "fc": "cep",
+     "tag": "input",
+     "rotulo": "CEP",
+     "obrigatorio": true
+    },
+    {
+     "fc": "uf",
+     "tag": "mat-select",
+     "rotulo": "UF",
+     "obrigatorio": true
+    },
+    {
+     "fc": "cidade",
+     "tag": "input",
+     "rotulo": "Cidade",
+     "obrigatorio": true
+    },
+    {
+     "fc": "bairro",
+     "tag": "input",
+     "rotulo": "Bairro",
+     "obrigatorio": true
+    },
+    {
+     "fc": "logradouro",
+     "tag": "input",
+     "rotulo": "Logradouro",
+     "obrigatorio": true
+    },
+    {
+     "fc": "numero",
+     "tag": "input",
+     "rotulo": "Número",
+     "obrigatorio": false
+    },
+    {
+     "fc": "complemento",
+     "tag": "input",
+     "rotulo": "Complemento",
+     "obrigatorio": false
+    },
+    {
+     "fc": "imovelAtividade",
+     "tag": "mat-select",
+     "rotulo": "Tipo de Condomínio",
+     "obrigatorio": true
+    },
+    {
+     "fc": "anoFundacao",
+     "tag": "input",
+     "rotulo": "Ano de Fundação",
+     "obrigatorio": true
+    },
+    {
+     "fc": "areaConstruida",
+     "tag": "input",
+     "rotulo": "Área Construída",
+     "obrigatorio": false
+    },
+    {
+     "fc": "qtdFuncionarios",
+     "tag": "input",
+     "rotulo": "Qtd. de Funcionários",
+     "obrigatorio": false
+    },
+    {
+     "fc": "estruturaCondominio",
+     "tag": "mat-select",
+     "rotulo": "Estrutura",
+     "obrigatorio": true
+    },
+    {
+     "fc": "qtdBlocos",
+     "tag": "input",
+     "rotulo": "Qtd. de Blocos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "qtdElevadores",
+     "tag": "input",
+     "rotulo": "Qtd. de Elevadores",
+     "obrigatorio": true
+    },
+    {
+     "fc": "pavimentos",
+     "tag": "input",
+     "rotulo": "Qtd. de Pavimentos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "equipamentosSeguranca",
+     "tag": "mat-select",
+     "rotulo": "Equipamentos de Segurança",
+     "obrigatorio": false
+    },
+    {
+     "fc": "equipamentosIncendio",
+     "tag": "mat-select",
+     "rotulo": "Equipamentos de Incêndio",
+     "obrigatorio": false
+    },
+    {
+     "fc": "perguntasAdicionais",
+     "tag": "mat-select",
+     "rotulo": "Perguntas Extras",
+     "obrigatorio": false
+    },
+    {
+     "fc": "vigenciaIni",
+     "tag": "input",
+     "rotulo": "Início Vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vigenciaFim",
+     "tag": "input",
+     "rotulo": "Final Vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "renovacao",
+     "tag": "mat-checkbox",
+     "rotulo": "Início Vigência",
+     "obrigatorio": false
+    },
+    {
+     "fc": "vigFimAnterior",
+     "tag": "input",
+     "rotulo": "Final Vigência anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "seguradoraAnteriorId",
+     "tag": "mat-select",
+     "rotulo": "Seguradora anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "numeroRenovacao",
+     "tag": "input",
+     "rotulo": "Número apólice anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "sinistrosAnterior",
+     "tag": "mat-select",
+     "rotulo": "Sinistros",
+     "obrigatorio": false
+    },
+    {
+     "fc": "bonusAnterior",
+     "tag": "mat-select",
+     "rotulo": "Novo Bônus",
+     "obrigatorio": false
+    },
+    {
+     "fc": "assist24hs",
+     "tag": "mat-select",
+     "rotulo": "Assistência 24hs",
+     "obrigatorio": true
+    },
+    {
+     "fc": "valorDeNovo",
+     "tag": "mat-select",
+     "rotulo": "Valor de Novo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosIncendioRaioExplosao",
+     "tag": "input",
+     "rotulo": "Básica (Incêndio / Raio / Explosão)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosIncendioRaioExplosaoCond",
+     "tag": "input",
+     "rotulo": "Incêndio de conteúdo (Condômino)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isValorCondominio",
+     "tag": "input",
+     "rotulo": "RC Condomínio",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isValorSindico",
+     "tag": "input",
+     "rotulo": "RC Síndico",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosEletricos",
+     "tag": "input",
+     "rotulo": "Danos elétricos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosVendaval",
+     "tag": "input",
+     "rotulo": "Vendaval",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosImpactoVeiculo",
+     "tag": "input",
+     "rotulo": "Impacto Veículos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosRoubo",
+     "tag": "input",
+     "rotulo": "Roubo de bens",
+     "obrigatorio": true
+    },
+    {
+     "fc": "rouboCondomino",
+     "tag": "input",
+     "rotulo": "Roubo de bens (Condômino)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosPortoes",
+     "tag": "input",
+     "rotulo": "Portões",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosMorais",
+     "tag": "input",
+     "rotulo": "Danos Morais",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vidros",
+     "tag": "input",
+     "rotulo": "Vidros",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosDesmoronamento",
+     "tag": "input",
+     "rotulo": "Desmoronamento",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosAluguel",
+     "tag": "input",
+     "rotulo": "Perda / pagto aluguel (Condômino)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosVazamentoTanquesTubulacoes",
+     "tag": "input",
+     "rotulo": "Vazamento de tanques e tubulações",
+     "obrigatorio": true
+    },
+    {
+     "fc": "anunciosLuminosos",
+     "tag": "input",
+     "rotulo": "Anúncios Luminosos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tumultoGreveLockOut",
+     "tag": "input",
+     "rotulo": "Tumultos, Greves e Lock-out",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosAlagamento",
+     "tag": "input",
+     "rotulo": "Alagamento",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosDespesasFixas",
+     "tag": "input",
+     "rotulo": "Danos Despesas Fixas",
+     "obrigatorio": true
+    },
+    {
+     "fc": "equipamentos",
+     "tag": "input",
+     "rotulo": "Equipamentos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isEmpregador",
+     "tag": "input",
+     "rotulo": "RC Empregador",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isVGFuncionarios",
+     "tag": "input",
+     "rotulo": "VG Funcionários",
+     "obrigatorio": true
+    },
+    {
+     "fc": "garagista",
+     "tag": "input",
+     "rotulo": "RC Garagista (Compreensiva)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "garagistaExclusiva",
+     "tag": "input",
+     "rotulo": "RC Garagista (Exclusiva)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "chuveiroSprinkler",
+     "tag": "input",
+     "rotulo": "Chuveiro / Sprinkler",
+     "obrigatorio": true
+    },
+    {
+     "fc": "placasSolares",
+     "tag": "input",
+     "rotulo": "Placas Solares",
+     "obrigatorio": true
+    }
+   ],
+   "opcoes": {
+    "imovelAtividade": [
+     "Residencial",
+     "Escritório",
+     "Consultório",
+     "Comercial",
+     "Flat/Apart Hotel",
+     "Shopping Center",
+     "Misto"
+    ],
+    "estruturaCondominio": [
+     "Vertical",
+     "Horizontal"
+    ],
+    "equipamentosSeguranca": [
+     "Alarme",
+     "Catraca Eletrônica",
+     "Cerca Elétrica",
+     "Circuito Fechado de CFTV",
+     "Porteiro Eletrônico"
+    ],
+    "equipamentosIncendio": [
+     "Brigada de Incêndio",
+     "Detector de Fumaça",
+     "Extintores",
+     "Hidrantes",
+     "Sprinklers"
+    ],
+    "perguntasAdicionais": [
+     "Condomínio possui área comercial",
+     "Desmoronamento (mesmo que parcial) ou alagamento nos últimos cinco anos",
+     "Imóvel tombado pelo patrimônio histórico"
+    ],
+    "assist24hs": [
+     "Não",
+     "Básica",
+     "Intermediária",
+     "Completa"
+    ],
+    "valorDeNovo": [
+     "Não",
+     "Sim"
+    ]
+   }
+  },
+  "empresarial": {
+   "n_campos": 59,
+   "n_obrigatorios": 16,
+   "campos": [
+    {
+     "fc": "cpfCnpj",
+     "tag": "input",
+     "rotulo": "CPF / CNPJ",
+     "obrigatorio": true
+    },
+    {
+     "fc": "nome",
+     "tag": "input",
+     "rotulo": "Nome completo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "fone",
+     "tag": "input",
+     "rotulo": "Telefone",
+     "obrigatorio": false
+    },
+    {
+     "fc": "email",
+     "tag": "input",
+     "rotulo": "Email",
+     "obrigatorio": false
+    },
+    {
+     "fc": "cep",
+     "tag": "input",
+     "rotulo": "CEP",
+     "obrigatorio": true
+    },
+    {
+     "fc": "uf",
+     "tag": "mat-select",
+     "rotulo": "UF",
+     "obrigatorio": true
+    },
+    {
+     "fc": "cidade",
+     "tag": "input",
+     "rotulo": "Cidade",
+     "obrigatorio": true
+    },
+    {
+     "fc": "bairro",
+     "tag": "input",
+     "rotulo": "Bairro",
+     "obrigatorio": true
+    },
+    {
+     "fc": "logradouro",
+     "tag": "input",
+     "rotulo": "Logradouro",
+     "obrigatorio": true
+    },
+    {
+     "fc": "numero",
+     "tag": "input",
+     "rotulo": "Número",
+     "obrigatorio": false
+    },
+    {
+     "fc": "complemento",
+     "tag": "input",
+     "rotulo": "Complemento",
+     "obrigatorio": false
+    },
+    {
+     "fc": "imovelPavimentacao",
+     "tag": "mat-select",
+     "rotulo": "Pavimento/Andar",
+     "obrigatorio": true
+    },
+    {
+     "fc": "anoConstrucao",
+     "tag": "input",
+     "rotulo": "Ano Construção",
+     "obrigatorio": false
+    },
+    {
+     "fc": "imovelConstrucao",
+     "tag": "mat-select",
+     "rotulo": "Construção",
+     "obrigatorio": true
+    },
+    {
+     "fc": "imovelLocalEstabelecimento",
+     "tag": "mat-select",
+     "rotulo": "Localização",
+     "obrigatorio": true
+    },
+    {
+     "fc": "equipamentosSeguranca",
+     "tag": "mat-select",
+     "rotulo": "Equipamentos de Segurança",
+     "obrigatorio": false
+    },
+    {
+     "fc": "equipamentosIncendio",
+     "tag": "mat-select",
+     "rotulo": "Equipamentos de Incêndio",
+     "obrigatorio": false
+    },
+    {
+     "fc": "perguntasAdicionais",
+     "tag": "mat-select",
+     "rotulo": "Perguntas Extras",
+     "obrigatorio": false
+    },
+    {
+     "fc": "imovelAtividadeProfissionalLocal",
+     "tag": "input",
+     "rotulo": "Buscar por atividade",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vigenciaIni",
+     "tag": "input",
+     "rotulo": "Início Vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vigenciaFim",
+     "tag": "input",
+     "rotulo": "Final Vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "renovacao",
+     "tag": "mat-checkbox",
+     "rotulo": "Início Vigência",
+     "obrigatorio": false
+    },
+    {
+     "fc": "vigFimAnterior",
+     "tag": "input",
+     "rotulo": "Final Vigência Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "seguradoraAnteriorId",
+     "tag": "mat-select",
+     "rotulo": "Seguradora Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "numeroRenovacao",
+     "tag": "input",
+     "rotulo": "Número Apólice Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "sinistrosAnterior",
+     "tag": "mat-select",
+     "rotulo": "Sinistros",
+     "obrigatorio": false
+    },
+    {
+     "fc": "bonusAnterior",
+     "tag": "mat-select",
+     "rotulo": "Novo Bônus",
+     "obrigatorio": false
+    },
+    {
+     "fc": "assist24hs",
+     "tag": "mat-select",
+     "rotulo": "Assistência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "imovelObjetoSegurado",
+     "tag": "mat-select",
+     "rotulo": "Objeto Segurado (Verba)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "valorDeNovo",
+     "tag": "mat-select",
+     "rotulo": "Valor de Novo",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosIncendioRaioExplosao",
+     "tag": "input",
+     "rotulo": "Básica (Incêndio / Raio / Explosão)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosEletricos",
+     "tag": "input",
+     "rotulo": "Danos Elétricos",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosVendaval",
+     "tag": "input",
+     "rotulo": "Vendaval",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosImpactoVeiculo",
+     "tag": "input",
+     "rotulo": "Impacto Veículos",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosAluguel",
+     "tag": "input",
+     "rotulo": "Perda / Pagto Aluguel",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosRoubo",
+     "tag": "input",
+     "rotulo": "Roubo de Bens",
+     "obrigatorio": false
+    },
+    {
+     "fc": "rouboFurtoDeValores",
+     "tag": "input",
+     "rotulo": "Roubo de Valores",
+     "obrigatorio": false
+    },
+    {
+     "fc": "vidros",
+     "tag": "input",
+     "rotulo": "Vidros",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosVazamentoTanquesTubulacoes",
+     "tag": "input",
+     "rotulo": "Vazamento",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosDespesasFixas",
+     "tag": "input",
+     "rotulo": "Danos Despesas Fixas",
+     "obrigatorio": false
+    },
+    {
+     "fc": "equipamentos",
+     "tag": "input",
+     "rotulo": "Equipamentos",
+     "obrigatorio": false
+    },
+    {
+     "fc": "anunciosLuminosos",
+     "tag": "input",
+     "rotulo": "Anúncios Luminosos",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isEmpregador",
+     "tag": "input",
+     "rotulo": "RC Empregador",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosMorais",
+     "tag": "input",
+     "rotulo": "Danos Morais",
+     "obrigatorio": false
+    },
+    {
+     "fc": "responsabilidadeCivil",
+     "tag": "input",
+     "rotulo": "RC Operações",
+     "obrigatorio": false
+    },
+    {
+     "fc": "recomposicaoDocumentos",
+     "tag": "input",
+     "rotulo": "Recomposição de Documentos",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isGuardaVeiculoValor",
+     "tag": "input",
+     "rotulo": "RC Garagista",
+     "obrigatorio": false
+    },
+    {
+     "fc": "tumultoGreveLockOut",
+     "tag": "input",
+     "rotulo": "Tumultos, Greves e Lock-out",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosDesmoronamento",
+     "tag": "input",
+     "rotulo": "Desmoronamento",
+     "obrigatorio": false
+    },
+    {
+     "fc": "chuveiroSprinkler",
+     "tag": "input",
+     "rotulo": "Chuveiro / Sprinkler",
+     "obrigatorio": false
+    },
+    {
+     "fc": "fidelidade",
+     "tag": "input",
+     "rotulo": "Fidelidade",
+     "obrigatorio": false
+    },
+    {
+     "fc": "placasSolares",
+     "tag": "input",
+     "rotulo": "Placas Solares",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosAlagamento",
+     "tag": "input",
+     "rotulo": "Alagamento",
+     "obrigatorio": false
+    },
+    {
+     "fc": "lucroCessante",
+     "tag": "input",
+     "rotulo": "Lucros Cessantes",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDanosContaminacaoDeterioracao",
+     "tag": "input",
+     "rotulo": "Contaminação / Deterioração",
+     "obrigatorio": false
+    }
+   ],
+   "opcoes": {
+    "imovelPavimentacao": [
+     "Primeiro",
+     "Segundo em diante",
+     "Térreo"
+    ],
+    "imovelConstrucao": [
+     "Superior",
+     "Sólida",
+     "Mista",
+     "Inferior"
+    ],
+    "imovelLocalEstabelecimento": [
+     "Aeroporto",
+     "Ceasa/Mercado",
+     "Condomínio Comercial",
+     "Outros",
+     "Shopping",
+     "Supermercado"
+    ],
+    "equipamentosSeguranca": [
+     "Alarme local",
+     "Alarme monitorado",
+     "Circuito fechado CFTV",
+     "Grade e Fechadura Tetra",
+     "Sensor infravermelho",
+     "Vigilância 24h"
+    ],
+    "equipamentosIncendio": [
+     "Brigada de incêndio",
+     "Detector de fumaça",
+     "Extintor de incêndio",
+     "Hidrante",
+     "Sprinkler"
+    ],
+    "perguntasAdicionais": [
+     "Imóvel em construção ou reforma",
+     "Imóvel possui caixas eletrônicos em sua estrutura",
+     "Imóvel possui isopainel em sua construção",
+     "Imóvel possui telha ou estrutura de metal",
+     "Imóvel tombado pelo patrimônio histórico",
+     "Local faz divisa com terreno baldio",
+     "Local utilizado como depósito de materiais"
+    ],
+    "assist24hs": [
+     "Não",
+     "Básica",
+     "Intermediária",
+     "Completa"
+    ],
+    "imovelObjetoSegurado": [
+     "Prédio",
+     "Conteúdo",
+     "Prédio + Conteúdo"
+    ],
+    "valorDeNovo": [
+     "Não",
+     "Sim"
+    ]
+   }
+  },
+  "residencial": {
+   "n_campos": 86,
+   "n_obrigatorios": 33,
+   "campos": [
+    {
+     "fc": "cpfCnpj",
+     "tag": "input",
+     "rotulo": "CPF / CNPJ",
+     "obrigatorio": true
+    },
+    {
+     "fc": "nome",
+     "tag": "input",
+     "rotulo": "Nome",
+     "obrigatorio": true
+    },
+    {
+     "fc": "dataNasc",
+     "tag": "input",
+     "rotulo": "Data de Nascimento",
+     "obrigatorio": true
+    },
+    {
+     "fc": "fone",
+     "tag": "input",
+     "rotulo": "Telefone",
+     "obrigatorio": false
+    },
+    {
+     "fc": "email",
+     "tag": "input",
+     "rotulo": "Email",
+     "obrigatorio": false
+    },
+    {
+     "fc": "cep",
+     "tag": "input",
+     "rotulo": "CEP",
+     "obrigatorio": true
+    },
+    {
+     "fc": "uf",
+     "tag": "mat-select",
+     "rotulo": "UF",
+     "obrigatorio": true
+    },
+    {
+     "fc": "cidade",
+     "tag": "input",
+     "rotulo": "Cidade",
+     "obrigatorio": true
+    },
+    {
+     "fc": "bairro",
+     "tag": "input",
+     "rotulo": "Bairro",
+     "obrigatorio": true
+    },
+    {
+     "fc": "logradouro",
+     "tag": "input",
+     "rotulo": "Logradouro",
+     "obrigatorio": true
+    },
+    {
+     "fc": "numero",
+     "tag": "input",
+     "rotulo": "Número",
+     "obrigatorio": false
+    },
+    {
+     "fc": "complemento",
+     "tag": "input",
+     "rotulo": "Complemento",
+     "obrigatorio": false
+    },
+    {
+     "fc": "imovelConstrucao",
+     "tag": "mat-select",
+     "rotulo": "Construção",
+     "obrigatorio": true
+    },
+    {
+     "fc": "imovelTipoResidencia",
+     "tag": "mat-select",
+     "rotulo": "Tipo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "imovelUso",
+     "tag": "mat-select",
+     "rotulo": "Uso",
+     "obrigatorio": true
+    },
+    {
+     "fc": "equipamentosSeguranca",
+     "tag": "mat-select",
+     "rotulo": "Equipamentos de Segurança",
+     "obrigatorio": false
+    },
+    {
+     "fc": "perguntasAdicionais",
+     "tag": "mat-select",
+     "rotulo": "Perguntas Extras",
+     "obrigatorio": false
+    },
+    {
+     "fc": "vigenciaIni",
+     "tag": "input",
+     "rotulo": "Início Vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vigenciaFim",
+     "tag": "input",
+     "rotulo": "Final Vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "renovacao",
+     "tag": "mat-checkbox",
+     "rotulo": "Início Vigência",
+     "obrigatorio": false
+    },
+    {
+     "fc": "vigFimAnterior",
+     "tag": "input",
+     "rotulo": "Final Vigência Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "seguradoraAnteriorId",
+     "tag": "mat-select",
+     "rotulo": "Seguradora Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "numeroRenovacao",
+     "tag": "input",
+     "rotulo": "Número Apólice Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "sinistrosAnterior",
+     "tag": "mat-select",
+     "rotulo": "Sinistros",
+     "obrigatorio": false
+    },
+    {
+     "fc": "bonusAnterior",
+     "tag": "mat-select",
+     "rotulo": "Novo Bônus",
+     "obrigatorio": false
+    },
+    {
+     "fc": "assist24hs",
+     "tag": "mat-select",
+     "rotulo": "Assistência 24hs",
+     "obrigatorio": true
+    },
+    {
+     "fc": "imovelObjetoSegurado",
+     "tag": "mat-select",
+     "rotulo": "Objeto Segurado (Verba)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "valorDeNovo",
+     "tag": "mat-select",
+     "rotulo": "Valor de Novo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosIncendioRaioExplosao",
+     "tag": "input",
+     "rotulo": "Incênd / Raio / Explosão",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosEletricos",
+     "tag": "input",
+     "rotulo": "Danos Elétricos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosEquipamentosEletronicos",
+     "tag": "input",
+     "rotulo": "Danos Equipamentos Eletrônicos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosRegistrosDocumentos",
+     "tag": "input",
+     "rotulo": "Desp. de Recomp. de Registros e Documentos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosVendaval",
+     "tag": "input",
+     "rotulo": "Vendaval",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosImpactoVeiculo",
+     "tag": "input",
+     "rotulo": "Impacto Veículos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosAluguel",
+     "tag": "input",
+     "rotulo": "Perda / Pagamento Aluguel",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosRoubo",
+     "tag": "input",
+     "rotulo": "Roubo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "responsabilidadeCivil",
+     "tag": "input",
+     "rotulo": "Resp. Civil Familiar",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosAlagamento",
+     "tag": "input",
+     "rotulo": "Alagamento",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosDesmoronamento",
+     "tag": "input",
+     "rotulo": "Desmoronamento",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vidros",
+     "tag": "input",
+     "rotulo": "Vidros",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosMorais",
+     "tag": "input",
+     "rotulo": "Danos Morais",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tumultoGreveLockOut",
+     "tag": "input",
+     "rotulo": "Tumultos, Greves e Lock-out",
+     "obrigatorio": true
+    },
+    {
+     "fc": "placasSolares",
+     "tag": "input",
+     "rotulo": "Placas Solares",
+     "obrigatorio": true
+    },
+    {
+     "fc": "bike",
+     "tag": "input",
+     "rotulo": "Bike",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosVazamentoTanquesTubulacoes",
+     "tag": "input",
+     "rotulo": "Vazamento Tanques Tubulações",
+     "obrigatorio": true
+    }
+   ],
+   "opcoes": {
+    "imovelConstrucao": [
+     "Superior",
+     "Sólida",
+     "Mista",
+     "Inferior"
+    ],
+    "imovelTipoResidencia": [
+     "Casa",
+     "Casa em condomínio Fechado",
+     "Apartamento"
+    ],
+    "imovelUso": [
+     "Habitual",
+     "Veraneio",
+     "Desocupado"
+    ],
+    "equipamentosSeguranca": [
+     "Alarme",
+     "Alarme monitorado",
+     "Cerca elétrica",
+     "Circuito Fechado de TV",
+     "Grades",
+     "Porteiro Eletrônico",
+     "Vigilância 24h"
+    ],
+    "perguntasAdicionais": [
+     "A moradia está próxima de cortiços, favelas e similares e/ou faz divisa com terrenos baldios e/ou imóveis desocupados",
+     "Atividade profissional no local",
+     "Imóvel localizado na zona rural",
+     "Imóvel tombado pelo patrimônio histórico",
+     "Segurado é o proprietário do imóvel"
+    ],
+    "assist24hs": [
+     "Não",
+     "Básica",
+     "Intermediária",
+     "Completa"
+    ],
+    "imovelObjetoSegurado": [
+     "Prédio",
+     "Conteúdo",
+     "Prédio + Conteúdo"
+    ],
+    "valorDeNovo": [
+     "Não",
+     "Sim"
+    ]
+   }
+  },
+  "vida": {
+   "n_campos": 47,
+   "n_obrigatorios": 12,
+   "campos": [
+    {
+     "fc": "cpf",
+     "tag": "input",
+     "rotulo": "CPF",
+     "obrigatorio": true
+    },
+    {
+     "fc": "nome",
+     "tag": "input",
+     "rotulo": "Nome completo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "dataNasc",
+     "tag": "input",
+     "rotulo": "Data de Nascimento",
+     "obrigatorio": true
+    },
+    {
+     "fc": "sexo",
+     "tag": "mat-select",
+     "rotulo": "Sexo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "estadoCivil",
+     "tag": "mat-select",
+     "rotulo": "Estado civil",
+     "obrigatorio": true
+    },
+    {
+     "fc": "cep",
+     "tag": "input",
+     "rotulo": "CEP Residencial",
+     "obrigatorio": true
+    },
+    {
+     "fc": "fone",
+     "tag": "input",
+     "rotulo": "Telefone",
+     "obrigatorio": false
+    },
+    {
+     "fc": "email",
+     "tag": "input",
+     "rotulo": "Email",
+     "obrigatorio": false
+    },
+    {
+     "fc": "altura",
+     "tag": "input",
+     "rotulo": "Altura (m)",
+     "obrigatorio": false
+    },
+    {
+     "fc": "peso",
+     "tag": "input",
+     "rotulo": "Peso (kg)",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isFumante",
+     "tag": "mat-select",
+     "rotulo": "Fumante",
+     "obrigatorio": true
+    },
+    {
+     "fc": "rendaMensal",
+     "tag": "input",
+     "rotulo": "Renda Mensal",
+     "obrigatorio": true
+    },
+    {
+     "fc": "profissao",
+     "tag": "input",
+     "rotulo": "Busca por profissão*",
+     "obrigatorio": true
+    },
+    {
+     "fc": "praticaEsporteRadical",
+     "tag": "input",
+     "rotulo": "Pratica esportes radicais",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vigenciaIni",
+     "tag": "input",
+     "rotulo": "Início de vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "assistMorte",
+     "tag": "input",
+     "rotulo": "Morte",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isAppMorteAcidental",
+     "tag": "input",
+     "rotulo": "Morte acidental",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isAppInvalidez",
+     "tag": "input",
+     "rotulo": "Invalidez permanente (IPA)",
+     "obrigatorio": false
+    },
+    {
+     "fc": "assistFuneral",
+     "tag": "mat-select",
+     "rotulo": "Assistência funeral",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isDespesasMedicasHospitalares",
+     "tag": "input",
+     "rotulo": "Diária de Internação Hospitalar (DIH)",
+     "obrigatorio": false
+    },
+    {
+     "fc": "isInvalidezDoenca",
+     "tag": "input",
+     "rotulo": "Invalidez por doença (IFPD)",
+     "obrigatorio": false
+    },
+    {
+     "fc": "valorDIT",
+     "tag": "input",
+     "rotulo": "Diária de Incapacidade Temporária (DIT)",
+     "obrigatorio": false
+    },
+    {
+     "fc": "valorDoencasGraves",
+     "tag": "input",
+     "rotulo": "Doenças graves",
+     "obrigatorio": false
+    }
+   ],
+   "opcoes": {
+    "sexo": [
+     "Feminino",
+     "Masculino"
+    ],
+    "estadoCivil": [
+     "Solteiro(a)",
+     "Casado(a)",
+     "Separado(a)",
+     "Divorciado(a)",
+     "Viúvo(a)",
+     "União Estável"
+    ],
+    "isFumante": [
+     "Sim",
+     "Não"
+    ],
+    "assistFuneral": [
+     "Sem Assistência",
+     "Individual",
+     "Familiar"
+    ]
+   }
+  },
+  "auto": {
+   "n_campos": 139,
+   "n_obrigatorios": 63,
+   "campos": [
+    {
+     "fc": "cpfCnpj",
+     "tag": "input",
+     "rotulo": "CPF / CNPJ",
+     "obrigatorio": true
+    },
+    {
+     "fc": "nome",
+     "tag": "input",
+     "rotulo": "Nome Completo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "dataNasc",
+     "tag": "input",
+     "rotulo": "Data de Nascimento",
+     "obrigatorio": true
+    },
+    {
+     "fc": "sexo",
+     "tag": "mat-select",
+     "rotulo": "Sexo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "estadoCivil",
+     "tag": "mat-select",
+     "rotulo": "Estado Civil",
+     "obrigatorio": true
+    },
+    {
+     "fc": "cep",
+     "tag": "input",
+     "rotulo": "CEP Residencial",
+     "obrigatorio": true
+    },
+    {
+     "fc": "fone",
+     "tag": "input",
+     "rotulo": "Telefone",
+     "obrigatorio": false
+    },
+    {
+     "fc": "email",
+     "tag": "input",
+     "rotulo": "Email",
+     "obrigatorio": false
+    },
+    {
+     "fc": "placa",
+     "tag": "input",
+     "rotulo": "Placa",
+     "obrigatorio": false
+    },
+    {
+     "fc": "chassi",
+     "tag": "input",
+     "rotulo": "Chassi",
+     "obrigatorio": false
+    },
+    {
+     "fc": "anoFab",
+     "tag": "input",
+     "rotulo": "Ano Fabricação",
+     "obrigatorio": true
+    },
+    {
+     "fc": "anoMod",
+     "tag": "mat-select",
+     "rotulo": "Ano Modelo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "zeroKm",
+     "tag": "mat-select",
+     "rotulo": "Zero KM",
+     "obrigatorio": true
+    },
+    {
+     "fc": "fipe",
+     "tag": "input",
+     "rotulo": "FIPE",
+     "obrigatorio": true
+    },
+    {
+     "fc": "modelo",
+     "tag": "input",
+     "rotulo": "Modelo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "valReferenciado",
+     "tag": "input",
+     "rotulo": "Valor Referenciado (R$)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "combustivel",
+     "tag": "mat-select",
+     "rotulo": "Combustível",
+     "obrigatorio": true
+    },
+    {
+     "fc": "nrEixos",
+     "tag": "input",
+     "rotulo": "Eixos",
+     "obrigatorio": false
+    },
+    {
+     "fc": "cepPernoite",
+     "tag": "input",
+     "rotulo": "CEP Pernoite",
+     "obrigatorio": true
+    },
+    {
+     "fc": "rastreador",
+     "tag": "mat-select",
+     "rotulo": "Rastreador",
+     "obrigatorio": true
+    },
+    {
+     "fc": "dispAntiFurto",
+     "tag": "mat-select",
+     "rotulo": "Dispositivo Anti-furto",
+     "obrigatorio": true
+    },
+    {
+     "fc": "blindado",
+     "tag": "mat-select",
+     "rotulo": "Blindado",
+     "obrigatorio": true
+    },
+    {
+     "fc": "kitGas",
+     "tag": "mat-select",
+     "rotulo": "Kit Gás",
+     "obrigatorio": true
+    },
+    {
+     "fc": "gasInstalValor",
+     "tag": "input",
+     "rotulo": "Valor kit Gás",
+     "obrigatorio": false
+    },
+    {
+     "fc": "alienado",
+     "tag": "mat-select",
+     "rotulo": "Alienado",
+     "obrigatorio": true
+    },
+    {
+     "fc": "relacaoSegurado",
+     "tag": "mat-select",
+     "rotulo": "Condutor Principal",
+     "obrigatorio": true
+    },
+    {
+     "fc": "cpfCnpj",
+     "tag": "input",
+     "rotulo": "CPF",
+     "obrigatorio": true
+    },
+    {
+     "fc": "nome",
+     "tag": "input",
+     "rotulo": "Nome Completo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "dataNasc",
+     "tag": "input",
+     "rotulo": "Data de Nascimento",
+     "obrigatorio": true
+    },
+    {
+     "fc": "sexo",
+     "tag": "mat-select",
+     "rotulo": "Sexo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "estadoCivil",
+     "tag": "mat-select",
+     "rotulo": "Estado Civil",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tempoHabilitacao",
+     "tag": "mat-select",
+     "rotulo": "Tempo de Habilitação",
+     "obrigatorio": true
+    },
+    {
+     "fc": "garagemResidencia",
+     "tag": "mat-select",
+     "rotulo": "Garagem na Residência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "garagemTrabalho",
+     "tag": "mat-select",
+     "rotulo": "Garagem no Trabalho",
+     "obrigatorio": true
+    },
+    {
+     "fc": "garagemEstudo",
+     "tag": "mat-select",
+     "rotulo": "Garagem no Local de Estudo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tpUso",
+     "tag": "mat-select",
+     "rotulo": "Tipo de Uso",
+     "obrigatorio": true
+    },
+    {
+     "fc": "jovemCondutor",
+     "tag": "mat-select",
+     "rotulo": "Jovem Condutor (17 à 25 Anos)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "idadeJovem",
+     "tag": "mat-select",
+     "rotulo": "Idade do Mais Novo",
+     "obrigatorio": true
+    },
+    {
+     "fc": "jovemSexo",
+     "tag": "mat-select",
+     "rotulo": "Sexo dos Jovens",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tipoResidencia",
+     "tag": "mat-select",
+     "rotulo": "Tipo de Residência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "kmMensal",
+     "tag": "mat-select",
+     "rotulo": "Quilometragem (Mensal)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isPCD",
+     "tag": "mat-select",
+     "rotulo": "PCD",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isencaoFiscal",
+     "tag": "mat-select",
+     "rotulo": "Isenção Fiscal",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tpUso",
+     "tag": "mat-select",
+     "rotulo": "Tipo de Uso",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tpCarroceria",
+     "tag": "mat-select",
+     "rotulo": "Tipo de Carroceria",
+     "obrigatorio": true
+    },
+    {
+     "fc": "equipamento",
+     "tag": "mat-select",
+     "rotulo": "Equipamentos",
+     "obrigatorio": true
+    },
+    {
+     "fc": "risco",
+     "tag": "mat-select",
+     "rotulo": "Gerenciamento de Risco",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tipoCarga",
+     "tag": "mat-select",
+     "rotulo": "Tipos de Carga",
+     "obrigatorio": true
+    },
+    {
+     "fc": "seguroCarga",
+     "tag": "mat-select",
+     "rotulo": "Seguro da Carga",
+     "obrigatorio": true
+    },
+    {
+     "fc": "areaCirculacao",
+     "tag": "mat-select",
+     "rotulo": "Área de Maior Circulação",
+     "obrigatorio": true
+    },
+    {
+     "fc": "periodoUso",
+     "tag": "mat-select",
+     "rotulo": "Período de Uso",
+     "obrigatorio": true
+    },
+    {
+     "fc": "perguntasAdicionais",
+     "tag": "mat-select",
+     "rotulo": "Perguntas Adicionais",
+     "obrigatorio": false
+    },
+    {
+     "fc": "vigenciaIni",
+     "tag": "input",
+     "rotulo": "Início Vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vigenciaFim",
+     "tag": "input",
+     "rotulo": "Final Vigência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "renovacao",
+     "tag": "mat-checkbox",
+     "rotulo": "Início Vigência",
+     "obrigatorio": false
+    },
+    {
+     "fc": "vigFimAnterior",
+     "tag": "input",
+     "rotulo": "Final Vigência Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "seguradoraAnteriorId",
+     "tag": "mat-select",
+     "rotulo": "Seguradora Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "numeroRenovacao",
+     "tag": "input",
+     "rotulo": "Número Apólice Anterior",
+     "obrigatorio": false
+    },
+    {
+     "fc": "CI",
+     "tag": "input",
+     "rotulo": "Código Interno (CI)",
+     "obrigatorio": false
+    },
+    {
+     "fc": "sinistrosAnterior",
+     "tag": "mat-select",
+     "rotulo": "Quantidade de Sinistros",
+     "obrigatorio": false
+    },
+    {
+     "fc": "bonusAnterior",
+     "tag": "mat-select",
+     "rotulo": "Novo Bônus",
+     "obrigatorio": false
+    },
+    {
+     "fc": "tipoCobertura",
+     "tag": "mat-select",
+     "rotulo": "Selecione o pacote de coberturas",
+     "obrigatorio": true
+    },
+    {
+     "fc": "tipoFranquia",
+     "tag": "mat-select",
+     "rotulo": "% Franquia",
+     "obrigatorio": true
+    },
+    {
+     "fc": "pctAjuste",
+     "tag": "mat-select",
+     "rotulo": "Fipe (%)",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosMateriais",
+     "tag": "input",
+     "rotulo": "Danos materiais",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosCorporais",
+     "tag": "input",
+     "rotulo": "Danos corporais",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isDanosMorais",
+     "tag": "input",
+     "rotulo": "Danos morais",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isAppMorte",
+     "tag": "input",
+     "rotulo": "Morte/Invalidez",
+     "obrigatorio": true
+    },
+    {
+     "fc": "isBlindagemValor",
+     "tag": "input",
+     "rotulo": "Blindagem",
+     "obrigatorio": false
+    },
+    {
+     "fc": "assist24hs",
+     "tag": "mat-select",
+     "rotulo": "Assistência",
+     "obrigatorio": true
+    },
+    {
+     "fc": "vidros",
+     "tag": "mat-select",
+     "rotulo": "Vidros",
+     "obrigatorio": true
+    },
+    {
+     "fc": "carroReserva",
+     "tag": "mat-select",
+     "rotulo": "Carro Reserva",
+     "obrigatorio": true
+    },
+    {
+     "fc": "carroReservaAr",
+     "tag": "mat-select",
+     "rotulo": "Carro Reserva c/ Ar",
+     "obrigatorio": true
+    },
+    {
+     "fc": "valorDeNovo",
+     "tag": "mat-select",
+     "rotulo": "Valor Novo",
+     "obrigatorio": false
+    },
+    {
+     "fc": "despesasExtra",
+     "tag": "mat-select",
+     "rotulo": "Despesas Extra",
+     "obrigatorio": true
+    },
+    {
+     "fc": "reparoRapido",
+     "tag": "mat-select",
+     "rotulo": "Reparo Rápido",
+     "obrigatorio": true
+    },
+    {
+     "fc": "protecaoPneuRodas",
+     "tag": "mat-select",
+     "rotulo": "Proteção Pneu e Rodas",
+     "obrigatorio": true
+    }
+   ],
+   "opcoes": {
+    "sexo": [
+     "Feminino",
+     "Masculino"
+    ],
+    "estadoCivil": [
+     "Casado ou União Estável",
+     "Divorciado(a)",
+     "Separado(a)",
+     "Solteiro(a)",
+     "Viúvo(a)"
+    ],
+    "zeroKm": [
+     "Sim",
+     "Não"
+    ],
+    "combustivel": [
+     "ALCOOL",
+     "DIESEL",
+     "ELÉTRICO",
+     "FLEX",
+     "GASOLINA",
+     "HÍBRIDO",
+     "TETRAFUEL"
+    ],
+    "rastreador": [
+     "Não Possui",
+     "AutoTrac",
+     "Car System",
+     "Celtec",
+     "Cielo",
+     "Graber",
+     "Ituran",
+     "Tracker",
+     "Omnilink",
+     "Positron",
+     "Sascar",
+     "DAF-V",
+     "CEABS",
+     "OnStar",
+     "Lo Jack",
+     "Original de Fábrica",
+     "SEGSAT",
+     "SAT COMPANY"
+    ],
+    "dispAntiFurto": [
+     "Não possui",
+     "Alarme",
+     "Bloqueador de Ignição",
+     "Trava Carneiro",
+     "Trava Mul-T-Lock",
+     "Outros"
+    ],
+    "blindado": [
+     "Sim",
+     "Não"
+    ],
+    "kitGas": [
+     "Sim",
+     "Não"
+    ],
+    "alienado": [
+     "Sim",
+     "Não"
+    ],
+    "relacaoSegurado": [
+     "Sem perfil",
+     "Próprio",
+     "Cônjuge",
+     "Filho(a)",
+     "Outros",
+     "Empregado(a)",
+     "Pai/Mãe",
+     "Irmão(a)",
+     "Proprietário"
+    ],
+    "garagemResidencia": [
+     "Com portão eletrônico",
+     "Com portão manual",
+     "Não possui garagem"
+    ],
+    "garagemTrabalho": [
+     "Não utiliza para este fim",
+     "Não",
+     "Sim",
+     "Não trabalha"
+    ],
+    "garagemEstudo": [
+     "Não utiliza para este fim",
+     "Não",
+     "Sim",
+     "Não estuda"
+    ],
+    "tpUso": [
+     "Particular",
+     "Profissional",
+     "Motorista de App",
+     "Táxi"
+    ],
+    "jovemCondutor": [
+     "Sim",
+     "Não"
+    ],
+    "tipoResidencia": [
+     "Casa",
+     "Apartamento",
+     "Condomínio",
+     "Outros"
+    ],
+    "kmMensal": [
+     "Até 500 km",
+     "De 501 km até 800 km",
+     "De 801 km até 1.500 km",
+     "Mais de 1.500 km"
+    ],
+    "isPCD": [
+     "Sim",
+     "Não"
+    ],
+    "tipoCobertura": [
+     "Prata",
+     "Ouro",
+     "Diamante",
+     "Personalizada"
+    ],
+    "tipoFranquia": [
+     "25%",
+     "50%",
+     "75%"
+    ],
+    "pctAjuste": [
+     "75 %",
+     "80 %",
+     "85 %",
+     "90 %",
+     "95 %",
+     "100 %",
+     "105 %",
+     "110 %"
+    ],
+    "assist24hs": [
+     "Não",
+     "Básica",
+     "Intermediária",
+     "Completa"
+    ],
+    "vidros": [
+     "Não",
+     "Básico",
+     "Completo"
+    ],
+    "carroReserva": [
+     "Não contratar",
+     "Básico 7 dias",
+     "Básico 15 dias",
+     "Básico 30 dias"
+    ],
+    "carroReservaAr": [
+     "Sim",
+     "Não"
+    ]
+   }
+  }
+ }
+}
