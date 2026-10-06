@@ -226,3 +226,57 @@ Fonte: `reports/SPEC-129-B-EXECUTION-REPORT.md` §2–§3 e `specs/SPEC-129-B-o-
 - **🔴 Oferta que não é comparável (para a 130-A, P-129B-06):** o menor preço da corretora A (📊 R$ 186,78) veio da **Azul por
   Assinatura**, "plano proteção para terceiros" — **sem casco** e com prêmio de assinatura. Não pode disputar "menor preço" com uma
   apólice completa; a 130-A separa essas ofertas antes de comparar.
+
+## 10. 06/10 — os ramos do plano, o volume por ramo e o formulário dos mais usados (modo investigação, ZERO cálculos)
+Fonte: `medir_ramos.py` no rascunho do gerente da 130-A, sobre a guarda de produção da 129-B (`agger_guarda`) com **toda escrita
+fora de login/troca de token/logout barrada** (o cálculo nem chega à lista branca). Login da Ellen (teste), madrugada, fora do horário
+dela. 📊 `calcularV2` = **0** nas 4 entradas · escritas barradas = só telemetria de terceiros (`/g/collect`, `/collect`, `identify-user`).
+Mapas sem dado pessoal na main: `backend/tests/fixtures/agger_formularios/formularios_por_ramo.json`.
+
+**Os ramos do menu "Nova Cotação"** (📊 13 entradas, as mesmas nas duas contas; o plano diz "14 ramos"): Carro · Caminhão ·
+Motocicleta · Residencial · Condomínio · Empresarial · Vida Individual · Vida Global · Acidentes Pessoais · Viagem · Aluguel · Bike ·
+Celular. Rota de cada um: `/cotacao/<auto|caminhao|motocicleta|residencial|condominio|empresarial|vida|vida_global|acidentes_pessoais|viagem|aluguel|bike|celular>/formulario`.
+
+**Código → ramo** (📊 cruzando os links de resultado da lista com a foto de negócios de 05/10, 13 negócios casados):
+**16 = Condomínio** (7) · **2 = Residencial** (3) · **18 = Empresarial** (1) · **91 = Vida** (1) · **31 = Auto** — e o 31 cobre
+também Caminhão e Motocicleta (📊 AutoFleet: 48 · 2 · 1 links do código 31). Os códigos 69, 93, 46, 100 (1–3 negócios cada) ficaram
+**sem nome medido**.
+
+**Volume por ramo** (📊 `GET pdocs/calculo/negocio/busca/v2`, `periodo=730`, contagem de `ramo`; negócios, não cálculos):
+
+| conta | ramo | 730 d | 365 d | 90 d | 30 d |
+|---|---|---:|---:|---:|---:|
+| Resulta (📊 1.021 negócios) | 16 Condomínio | 672 | 567 | 145 | 33 |
+| | 18 Empresarial | 182 | 150 | 53 | 15 |
+| | 2 Residencial | 115 | 89 | 51 | 26 |
+| | 91 Vida | 32 | 28 | 9 | 4 |
+| | 31 Auto | 14 | 14 | 7 | 7 |
+| | 69 · 100 · 93 · 46 | 3 · 1 · 1 · 1 | | | |
+| AutoFleet (📊 104) | 31 Auto | 103 | 103 | 103 | 91 |
+| | 18 Empresarial | 1 | 1 | 1 | — |
+
+⚠️ O Auto da Resulta subiu de 9 para 14 = os 5 negócios de teste do robô (05/10). Medição das 04:23 (Resulta) e 04:30 (AutoFleet).
+
+**→ Os 3 ramos mais usados são Condomínio, Empresarial e Residencial (a Resulta) e Auto (a AutoFleet).** O formulário de cada
+(📊 mapa do DOM, sem preencher, sem salvar; obrigatórios = visíveis com `required`):
+
+| ramo | campos | obrigatórios | seções | o que pede de diferente do Auto |
+|---|---:|---:|---|---|
+| **Condomínio** | 83 | 43 | Segurado · Endereço · Condomínio · Seguro · Renovação · Coberturas · Seguradoras · Configurações | CNPJ + razão social; tipo (Residencial · Escritório · Consultório · Comercial · Flat · Shopping · Misto); Vertical/Horizontal; ano de fundação; blocos, pavimentos, elevadores; sprinkler; valor de novo; **28 coberturas** obrigatórias (básica, conteúdo do condômino, RC condomínio/síndico/empregador/garagista, VG funcionários, vidros, vendaval, alagamento…) |
+| **Empresarial** | 59 | 16 | Segurado · Endereço · Imóvel · Seguro · Renovação · Coberturas · Seguradoras | **atividade** (busca por atividade); construção (Superior · Sólida · Mista · Inferior); localização (Aeroporto · Ceasa · Condomínio Comercial · Shopping · Supermercado · Outros); pavimento; objeto (Prédio · Conteúdo · Prédio + Conteúdo); só a básica obrigatória |
+| **Residencial** | 86 | 33 | Segurado · Endereço · Imóvel · Seguro · Renovação · Coberturas · Seguradoras · Configurações | tipo (Casa · Casa em condomínio · Apartamento); uso (Habitual · Veraneio · Desocupado); construção; objeto; **17 coberturas** obrigatórias (E13) |
+| Auto | 139 | 63 | o da 128 (`form_auto.json`) | — |
+| Vida Individual | 47 | 12 | — | (medido por acréscimo) |
+
+Os três ramos novos têm a MESMA moldura (Segurado → Endereço → bem → Seguro/Renovação → Coberturas → Seguradoras → Configurações):
+💭 o montador da 129-B estende-se por ramo (um pedido + um preset por ramo), não um motor novo — a proposta é a **SPEC-129-C** (D-MC-73).
+
+**Paradas e incidentes:** na 1ª entrada da Resulta (04:23) o script recarregava a página a cada formulário; cada recarga gasta 1
+troca de token, a guarda cortou na 6ª (`PDOCS_POR_HORA`, ela funcionou), o app perdeu a autenticação e **o logout não saiu** (tempo
+esgotado). Na 2ª entrada (04:38) apareceu o **aviso de sessão ativa** — a sessão fantasma da 1ª — → **Cancelar e parar**, como manda a
+regra. O script passou a navegar dentro do app (sem recarga: 📊 trocas de token = 2 por entrada) e as 2 entradas da AutoFleet saíram
+com logout 201. 🔴 **Lição para o robô:** nunca `goto` entre telas de uma sessão viva — cada recarga custa uma troca de token.
+
+**Ficou por medir:** os nomes dos códigos 69, 93, 46, 100 (e qual código é Viagem/Aluguel/Bike/Celular/Vida Global/AP) · o
+formulário visto pela conta da Resulta (a lista de seguradoras de condomínio/empresarial dela) · os rótulos de preço e o resultado
+desses ramos (exige cálculo — fica para a 129-C, com o login do robô).
