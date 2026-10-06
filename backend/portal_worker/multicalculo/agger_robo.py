@@ -106,9 +106,11 @@ class LeituraImpossivel(Exception):
     `leu` = houve ao menos uma leitura 200 · `quadro_saiu` = o `ao_quadro` já foi chamado · `rodada` = a última lida."""
 
     def __init__(self, motivo: str, *, sessao_morta: bool = False, leu: bool = False, quadro_saiu: bool = False,
-                 rodada: Optional[RodadaDoCalculo] = None) -> None:
+                 rodada: Optional[RodadaDoCalculo] = None, pagina_fechada: bool = False) -> None:
         self.motivo = motivo_curto(motivo)
         self.sessao_morta = bool(sessao_morta)
+        # conserto 129-B: a PÁGINA fechou (o nosso navegador, não o Agger) — o motor deixa para a retomada
+        self.pagina_fechada = bool(pagina_fechada)
         self.leu = bool(leu)
         self.quadro_saiu = bool(quadro_saiu)
         self.rodada = rodada
@@ -612,8 +614,9 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
     falhas = 0
     descartadas: Set[Any] = set()
 
-    def impossivel(motivo: str, *, morta: bool) -> LeituraImpossivel:
-        return LeituraImpossivel(motivo, sessao_morta=morta, leu=leu, quadro_saiu=quadro, rodada=atual)
+    def impossivel(motivo: str, *, morta: bool, pagina_fechada: bool = False) -> LeituraImpossivel:
+        return LeituraImpossivel(motivo, sessao_morta=morta, leu=leu, quadro_saiu=quadro, rodada=atual,
+                                 pagina_fechada=pagina_fechada)
 
     while True:
         await sessao.garantir_token()
@@ -631,7 +634,7 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
             except Exception:  # noqa: BLE001
                 fechada = True
             if fechada:
-                raise impossivel("a página do robô fechou durante a leitura", morta=True) from None
+                raise impossivel("a página do robô fechou durante a leitura", morta=True, pagina_fechada=True) from None
         status = r.get("status") if isinstance(r, dict) else None
         if status in STATUS_SESSAO_MORTA:
             raise impossivel(f"o Agger recusou a leitura (HTTP {status}): a sessão do robô caiu", morta=True)
