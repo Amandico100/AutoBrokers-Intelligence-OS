@@ -181,6 +181,8 @@ Assinatura 82/210 · Aliro 68/210 · Darwin 56/138 · Sura 26/211 · Mitsui 19/2
 | D-128-08 | o adaptador da 129-B herda a lista branca do captador: a única escrita é o cálculo | 90 |
 
 ## 6. 🧑 O portão de preço (D-MC-45) — as perguntas para responder antes da 130-A
+> ✅ **RESPONDIDO 05/10 — D-MC-62…65** (`FOUNDER-DECISIONS.md`; ajustáveis depois com os comerciais das corretoras). As perguntas abaixo ficam como registro.
+
 1. **A opção econômica.** Com os números da E5, a proposta é: "econômica" = **franquia normal + vidros básicos + carro reserva de 7
    dias**, mantendo RCF e APP. 💭 Em geral isso fica 10–30 % abaixo da completa. Pode ser esse o padrão?
 2. **A comissão.** Baixar 5 pontos de comissão reduz 📊 de 1,5 a 7,6 % do prêmio (5,6 % na maioria), mas Porto e Azul ignoram a comissão (a Itaú ficou indeterminada). Nelas, o que
@@ -207,3 +209,20 @@ consertos listados aplicados), 31/31 casos, mutações vermelhas, ensaios ao viv
 
 Podem ser apagados: a 129-B não depende deles (as fixtures saneadas já estão na main). Os números de cálculo nas seguradoras
 continuam lá de qualquer forma.
+
+## 9. 05/10 — o que a 129-B mediu ao vivo
+Fonte: `reports/SPEC-129-B-EXECUTION-REPORT.md` §2–§3 e `specs/SPEC-129-B-o-motor-de-multicalculo.md` §4.1 (login da Ellen, captador;
+📊 18 cálculos no Agger no dia — 8 no BLOCO 0 + 4 + 1 + 5 no canário —, todos em negócios NOVOS do robô; nada apagado).
+
+- **Calcular sem a tela funciona.** O corpo do `calcularV2` montado DENTRO da página reproduz o da tela 📊 786/786 chaves (AutoFleet)
+  e 657/657 (Resulta); ao vivo o servidor respondeu 📊 201 e o menor preço ficou igual ao da tela em 📊 11 de 13 seguradoras. → o 1º
+  disparo também vai pelo corpo, sem fallback de tela (as senhas das seguradoras nunca chegam ao Python).
+- **🔴 A hipótese do CPF em 2 corretoras NÃO se confirma** (D-MC-56; corpo idêntico nas duas contas, comissão 15, desconto 0): disparo
+  simultâneo → menor preço igual em 📊 9 de 10 seguradoras (Zurich 0,981) · sequencial → 📊 10 de 11 (Zurich 0,984) · renovação →
+  📊 7 de 8 (Zurich 0,987) · 📊 0 mensagens de "já cotado / outra corretora / prioridade". O nº de cálculo na seguradora difere entre as
+  contas (📊 10/10 — não é cache). Não medido: a Tokio (credencial da Resulta recusada, P-129B-04) e a ordem inversa.
+- **Econômica ÷ padrão por seguradora** (canário, 3ª rodada, presets da D-MC-62): média 📊 **0,873** (corretora A, 14 seguradoras) e
+  📊 **0,872** (corretora B, 11); mín 📊 0,766, máx 📊 1,000. A D-MC-62 estimava 💭 12–20 % abaixo — o medido fica na faixa (~13 %).
+- **🔴 Oferta que não é comparável (para a 130-A, P-129B-06):** o menor preço da corretora A (📊 R$ 186,78) veio da **Azul por
+  Assinatura**, "plano proteção para terceiros" — **sem casco** e com prêmio de assinatura. Não pode disputar "menor preço" com uma
+  apólice completa; a 130-A separa essas ofertas antes de comparar.
