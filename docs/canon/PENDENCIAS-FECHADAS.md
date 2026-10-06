@@ -1066,3 +1066,67 @@ SPEC-127 (P1). **Custa esquecer:** "pode deixar" num caso de vidro abre pedido r
 
 ✅ **FECHADA 03/10/2026 (SPEC-127 P1 `2253cf8` + conserto `7362725`).** O `portal_action` passa pelo MESMO portão do ok da 126 (regex E classificador) antes de criar o job (D-127-E), e o ok tem de ser DESTE pedido: a pergunta traz a linha pronta ou a peça + cidade + UF + final da placa. 📊 Sondas do red team depois do conserto: "abrir RETROVISOR em CURITIBANOS?" + "pode mandar" → 0 job; "posso acionar o vidro?" + "sim" → 0 job; controle com a linha certa → 1 job, 1 POST. Mutações Ma (sem a amarra) e M2 (portão desligado) vermelhas.
 
+
+## P-128-05 · 🤖 O contrato e o leitor do cálculo não são chamados pelo produto — por desenho
+`backend/portal_worker/multicalculo/{contrato,leitor_agger}.py` só têm testes como chamadores. **Destrava:** a 129-B liga. **Custa
+esquecer:** peça pronta e órfã, que envelhece sem uso.
+
+
+✅ **FECHADA 05/10/2026 (SPEC-129-B).** O motor liga o contrato e o leitor: `backend/portal_worker/multicalculo/{motor,agger_robo}.py` os chamam a cada cálculo; 📊 canário ao vivo 05/10 22:15: 5 de 5 cálculos fechados, 104 ofertas lidas (`reports/SPEC-129-B-EXECUTION-REPORT.md` §3). O chamador do PRODUTO (130-A/131/133-A) segue como P-129B-02.
+
+## P-128-14 · ✅ FECHADA 05/10 — o Founder TOMOU a D-128-03 · 🧑 Decidir a D-128-03 (recálculo pelo corpo do pedido, de dentro da página)
+✅ **Fechada pela decisão (Founder, 05/10/2026):** o robô recalcula REENVIANDO o corpo do pedido (`calcularV2`) com o ajuste, de
+dentro da página, com o token do próprio app. Resolve também a parte da D-MC-28 que pedia a autorização expressa do Founder (o login
+continua pela tela; a interceptação continua lendo os resultados). T-107 feita. Registro: `FOUNDER-DECISIONS.md` (D-128-03) ·
+`programa-multicalculo/PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md` §8. O texto abaixo é o de 04/10, histórico.
+A D-MC-28 exige o Founder para o PRODUTO. **Destrava:** a resposta do Founder antes da 129-B. **Custa esquecer:** a 129-B nasce sem
+saber se pode recalcular pelo corpo — e clicar no formulário é mais lento e mais frágil (nota 70 × 88).
+
+
+✅ **Movida para cá na SPEC-129-B (05/10/2026)**, que implementou o recálculo pelo corpo do pedido: 📊 canário 05/10 — recálculo da PADRÃO a partir da versão 1 → versão 3, fechado (`reports/SPEC-129-B-EXECUTION-REPORT.md` §3).
+
+## P-128-15 · 🤖 O apagador de URL sem esquema confunde nome de cobertura
+`RE_URL` (redaction `sem_url_nem_chave`, aplicado pelo leitor) apaga `"Comp.Total/Parcial"`, `"Km.Livre/200"`, `"Franq.Reduzida/50%"`
+(📊 confirmação da SPEC-128; 0 ocorrências nas fixtures de hoje). **Destrava:** exigir domínio conhecido (`.com`, `.br`, `.net`…) +
+esses 4 casos como controle, na 129-B (quando o leitor for ligado). **Custa esquecer:** a corretora vê `<removido:url>` no lugar do pacote.
+
+
+✅ **FECHADA 05/10/2026 (SPEC-129-B).** Fechada pelo redator + lista branca do endpoint + redação de credencial DENTRO da página (`reports/SPEC-129-B-EXECUTION-REPORT.md` §1 e §8); 📊 varredura de senha/token/URL nas 5 tabelas no canário = 0.
+
+## P-128-16 · 🤖 O redator comum ficou mais agressivo no diagnóstico
+A regra `key=`/`token=` no `redigir_texto` pega `data-key="…"` e o `\S+` engole o resto do HTML do trace (`…&token=abc">link</a>`).
+Testes do profiler e do worker verdes; só diagnóstico. **Destrava:** exceção para `-key` e parar em `"`/`&`/`<`. **Custa esquecer:**
+trace de DOM truncado ao depurar um portal.
+
+
+✅ **FECHADA 05/10/2026 (SPEC-129-B).** Fechada junto com a P-128-15/17 (redator + lista branca + redação de credencial na página — `reports/SPEC-129-B-EXECUTION-REPORT.md` §8).
+
+## P-128-17 · 🤖 URL com `//` e cabeçalho `x-api-key:` escapam do G1 e do redator
+Não é o formato do B1, mas é o mesmo tipo de segredo. **Destrava:** dois padrões + controle no G1, na 129-B. **Custa esquecer:** a
+próxima seguradora que devolver erro assim vaza para fixture.
+
+
+✅ **FECHADA 05/10/2026 (SPEC-129-B).** Fechada junto com a P-128-15/16 (redator + lista branca + redação de credencial na página — `reports/SPEC-129-B-EXECUTION-REPORT.md` §8); 📊 lente do dado no canário: 0 de 86 linhas com `senha|loginws|senhaws|token|authorization|https?://`.
+
+## P-182 · 🟠 `PORTAL_VAULT_KEY` é uma chave única e global, sem rotação
+
+**Aberta em:** 16/08/2026 · **Dono:** 🧑 Founder decide, 🤖 execução implementa
+
+📊 `portal_vault.py:13-19` e `portal_worker/vault.py:8-14` fazem
+`Fernet(os.getenv("PORTAL_VAULT_KEY"))`. **Uma** chave, compartilhada entre
+smith-api e portal-worker, sem key-id no ciphertext e sem caminho de rotação no
+repositório. Comprometer essa env decifra as senhas de **todas** as corretoras.
+
+Fernet carrega timestamp mas não identificador de chave, então hoje não há como
+saber com qual chave um segredo foi cifrado — o que é exatamente o que uma
+rotação precisa saber.
+
+**O que destrava:** 🤖 `MultiFernet` com lista de chaves (decifra com qualquer
+uma, cifra sempre com a primeira) + recifragem em lote + procedimento escrito.
+**O que custa esquecer:** nada hoje. No dia de um vazamento de env, a
+alternativa a ter rotação é pedir a 16 contas que troquem a senha no portal.
+
+Fora do escopo da SPEC-073 por decisão do Founder (CA-041).
+
+
+✅ **FECHADA 05/10/2026 (SPEC-129-B).** Os dois cofres (`backend/portal_worker/vault.py` e `backend/app/services/portal_vault.py`) usam `MultiFernet`: `PORTAL_VAULT_KEY` cifra, `PORTAL_VAULT_KEY_ANTERIOR` (opcional) só decifra o que foi cifrado antes da troca — a chave troca sem pedir a ninguém que troque senha. ⚠️ Recifragem em lote não foi escrita (com a anterior decifrando, ela não é pré-requisito da troca). A rotação em si continua do Founder no fim do projeto (D-MC-35).
