@@ -13431,10 +13431,6 @@ Fonte: `reports/SPEC-129-B-EXECUTION-REPORT.md` §8 · SPEC `specs/SPEC-129-B-o-
 O dublê usa um texto escrito à mão; o robô só clica "Cancelar" exato. **Destrava:** capturar o aviso real no 1º uso com login de
 robô e trocar a fixture. **Custa esquecer:** o aviso real tem outro texto, o robô não o reconhece e pode derrubar a sessão de uma pessoa.
 
-## P-129B-02 · 🤖 Nenhum chamador do produto ainda — por desenho
-A porta `MulticalculoProvider` só tem os testes e o canário como chamadores. **Destrava:** a 130-A/131/133-A chamam. **Custa
-esquecer:** peça pronta e órfã (a mesma lição da P-128-05).
-
 ## P-129B-03 · 🧑 `seguradoCotadoRecentemente` da AutoFleet mostra e-mail de usuários de FORA das duas contas
 Possível vazamento no fornecedor (Agger). **Destrava:** o Founder pergunta ao fornecedor por que a consulta "CPF já cotado" traz
 usuários de outras contas. **Custa esquecer:** dado de outras corretoras chegando à nossa tela — e o inverso pode estar acontecendo.
@@ -13446,11 +13442,6 @@ Agger da Resulta. **Custa esquecer:** a Resulta cota sem a Tokio, hoje e no moto
 ## P-129B-05 · 🤖 Rótulos de estado civil, uso, garagem e fabricante não medidos
 O pedido só aceita CÓDIGO por enquanto. **Destrava:** medir os rótulos ao vivo e aceitar o texto. **Custa esquecer:** cada chamador
 (130-A/133-A) traduz para código por conta própria — e cada um de um jeito.
-
-## P-129B-06 · 🤖 Para a 130-A: separar ofertas NÃO comparáveis
-📊 Canário 05/10: o menor preço da corretora A (R$ 186,78) é da Azul por Assinatura, "plano proteção para terceiros" — sem casco,
-prêmio de assinatura. **Destrava:** a 130-A marca e separa essas ofertas antes do "menor preço". **Custa esquecer:** o Quem Cobra
-Menos indica como vencedora uma oferta que não cobre o carro.
 
 ## P-129B-07 · 🤖 O modo do Chromium do contêiner (`--headless=new`) não abriu nesta máquina Windows
 📊 1ª rodada do canário: 0 cálculo em 180 s; o canário usou o modo clássico. No contêiner Linux o portal-worker já roda assim.
@@ -13478,3 +13469,89 @@ A regra do leitor cita o laudo de 05/10. **Destrava:** gravar a fixture saneada.
 ## P-129B-13 · 🤖 O vencimento do token de 3 h segue NÃO medido
 Repassa a P-128-01 (que CONTINUA). **Destrava:** uma sessão longa no 1º uso real com login de robô. **Custa esquecer:** o robô para
 no meio de um cálculo sem saber renovar o token.
+
+## P-130A · SPEC-130-A, a comparação e a proposta (06/10/2026)
+Fonte: `reports/SPEC-130-A-EXECUTION-REPORT.md` · SPEC `specs/SPEC-130-A-a-comparacao-e-a-proposta.md` · decisões D-MC-66…74 e D-130A-06…11.
+
+## P-130A-01 · 🧑 O WhatsApp de atendimento não está no cadastro de marca das duas corretoras
+O botão "Quero fechar" leva ao WhatsApp da corretora vencedora; sem o número, **publicar RECUSA** (de propósito: proposta sem canal de
+fechamento não sai). **Destrava:** o Founder cadastra o WhatsApp de atendimento em Configurações → Identidade da corretora, na Resulta e
+na AutoFleet (T-124). **Custa esquecer:** nenhuma proposta real é publicada.
+
+## P-130A-02 · 🧑 O nº SUSEP não está no cadastro de marca
+**Destrava:** o Founder cadastra o nº SUSEP das duas corretoras em Configurações → Identidade da corretora (T-124). **Custa esquecer:**
+a proposta vai ao cliente sem o dado que prova que a corretora é registrada.
+
+## P-130A-03 · 🧑 A marca da AutoFleet não foi capturada nem publicada
+📊 Canário 06/10 (pedido `d0bb15ba`): a anfitriã foi a AutoFleet, **sem marca publicada**. **Destrava:** capturar e publicar a marca da
+AutoFleet (T-124). **Custa esquecer:** a página "carteira" chega ao cliente sem a cor nem o logo de quem vende.
+
+## P-130A-04 · 🧑 A ficha do Google de cada corretora tem de ser CONFIRMADA na config — nunca achada por nome
+📊 06/10: a busca "AutoFleet" no Google Places achou **outra empresa**. **Destrava:** o Founder confirma qual ficha é de cada corretora e
+o identificador dela vai para a `multicalculo_config`. **Custa esquecer:** a página mostra a nota e as avaliações de uma empresa que não
+é a corretora — um engano público.
+
+## P-130A-05 · 🤖 A validade real por seguradora não foi medida
+Hoje vale o padrão da config (5 dias); a D-MC-71 pede a menor validade das seguradoras do quadro. 📊 0 de 98 PDFs copiados no negócio de
+05/10. **Destrava:** copiar os PDFs logo ao fechar o 1º cálculo real e ler a validade de cada seguradora. **Custa esquecer:** "válido
+até" promete um prazo que a seguradora não honra.
+
+## P-130A-06 · 🤖 Uma versão nova da proposta não revoga o link antigo
+**Destrava:** a 133-A revoga o `/r/` da versão anterior ao publicar a nova. **Custa esquecer:** o cliente abre o link velho e vê um
+preço que já mudou.
+
+## P-130A-07 · 🤖 Publicação concorrente do mesmo pedido não tem trava no banco
+**Destrava:** um índice único (migration expand-only, com APPLY/VERIFY/ROLLBACK). **Custa esquecer:** dois links para o mesmo pedido,
+com números que podem divergir.
+
+## P-130A-08 · 🤖 O desconto sai da comissão de ENTRADA, não da devolvida pela seguradora
+**Destrava:** ler a comissão efetiva da oferta e descontar dela. **Custa esquecer:** a margem calculada diverge da real quando a
+seguradora devolve outra comissão.
+
+## P-130A-09 · 🧑 A config aceita piso de comissão abaixo de 10 %
+A D-MC-64 fixa 10 % como piso padrão, mas a `multicalculo_config` aceita um número menor. **Destrava:** o Founder decide se vira trava
+ou se fica livre por corretora. **Custa esquecer:** um erro de digitação faz o agente oferecer comissão abaixo do que a corretora aceita.
+
+## P-130A-10 · 🤖 "Igual à sua atual" casa só a SEGURADORA, não as coberturas
+**Destrava:** a 130-B (leitor de apólice) traz as coberturas, e a opção passa a casá-las. **Custa esquecer:** o cliente lê "igual à sua
+atual" numa opção com coberturas diferentes.
+
+## P-130A-11 · 🤖 A CSP e a prévia dentro do navegador interno do WhatsApp não foram medidas
+**Destrava:** abrir o link no WhatsApp de um celular real (T-125). **Custa esquecer:** o navegador interno bloqueia o script ou não
+mostra a prévia — o "uau" some justamente no canal principal.
+
+## P-130A-12 · 🤖 Os pesos da nota e os limites da negociação são palpites iniciais
+Moram na config, nunca no código, mas nenhum foi calibrado com dado. **Destrava:** calibrar com as respostas dos comerciais e os
+primeiros fechamentos. **Custa esquecer:** a nota 0–100 recomenda por um critério que ninguém validou.
+
+## P-130A-13 · 🤖 As coberturas são lidas por regex do texto livre da oferta
+**Destrava:** um catálogo de coberturas. **Custa esquecer:** uma seguradora muda a frase e a cobertura some da comparação, em silêncio.
+
+## P-130A-14 · 🤖 "MPFI" vira "Mpfi" no nome do carro
+**Destrava:** preservar siglas na normalização. **Custa esquecer:** a página parece descuidada.
+
+## P-130A-15 · 🤖 O recálculo com Ajuste por seguradora nunca rodou ao vivo
+A `cotacao_alvo` está provada só com o dublê. **Destrava:** uma rodada ao vivo no 1º uso real (login de robô, T-120). **Custa esquecer:**
+a negociação falha no primeiro cliente que perguntar "fecha por R$ X?".
+
+## P-130A-16 · 🧑 A leitura jurídica da remuneração da corretora (Res. CNSP 382, art. 4º)
+A opção existe na config e está DESLIGADA (D-130A-08). **Destrava:** o jurídico diz se e como mostrar (T-126). **Custa esquecer:** a
+proposta fica fora da regra de transparência quando a regra exigir.
+
+## P-130A-17 · 🤖 Os nomes dos ramos 69/93/46/100 e a lista de seguradoras da Resulta nos formulários
+**Destrava:** a 129-C (D-MC-73) mede os nomes e a lista de seguradoras por ramo. **Custa esquecer:** a 129-C começa sem saber em que
+seguradoras cada ramo calcula.
+
+## P-130A-18 · 🤖 A sessão fantasma do Agger: o logout é obrigatório e a sessão pode sobreviver ao token
+📊 06/10 (A-PROVA-DO-AGGER §10): uma sessão às 04:23 não saiu (o logout não aconteceu); o aviso de "sessão ativa" apareceu às 04:38 e às
+07:36 — cancelado e parado as duas vezes. Liga-se à P-128-01. **Destrava:** o robô faz logout SEMPRE, inclusive no erro, e mede quanto a
+sessão sobrevive ao token. **Custa esquecer:** a pessoa da corretora encontra "sessão ativa" ao entrar e acha que alguém usa o login
+dela (T-127).
+
+## P-130A-19 · 🤖 `financial.billing_collection` sem seed (pré-existente)
+Achado na bateria da 130-A, não criado por ela. **Destrava:** a seed do template. **Custa esquecer:** o guarda dos templates aponta um
+buraco antigo, e um aviso real se perde no meio dele.
+
+## P-130A-20 · 🤖 Republicar a proposta do canário depois do Implantar
+O conserto mudou o script da página, e a CSP aceita só o hash novo. **Destrava:** o gerente republica o pedido `d0bb15ba` depois do
+Implantar (T-123/T-125). **Custa esquecer:** o link do canário abre com o script bloqueado.
