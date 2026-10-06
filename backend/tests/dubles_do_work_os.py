@@ -493,10 +493,21 @@ def _parse_logico(texto: str) -> list:
     return itens
 
 
+def _valor_da_coluna(linha: dict, coluna: str) -> Any:
+    """A coluna — ou o caminho JSON de UM nível `col->>chave` (o PostgREST devolve TEXTO: o número vira "7")."""
+    if "->>" not in coluna:
+        return linha.get(coluna)
+    base, chave = (p.strip() for p in coluna.split("->>", 1))
+    doc = linha.get(base)
+    v = doc.get(chave) if isinstance(doc, dict) else None
+    return v if v is None or isinstance(v, str) else json.dumps(v)
+
+
 def _casa_filtro(tabela: str, linha: dict, f: Filtro) -> bool:
-    if f.coluna not in linha and tabela in ESQUEMA:
-        raise erro_do_banco("42703", f"column {tabela}.{f.coluna} does not exist")
-    x = linha.get(f.coluna)
+    base = f.coluna.split("->>", 1)[0].strip()
+    if base not in linha and tabela in ESQUEMA:
+        raise erro_do_banco("42703", f"column {tabela}.{base} does not exist")
+    x = _valor_da_coluna(linha, f.coluna)
     if f.op == "is":
         v = f.valor
         if v is None or str(v).lower() == "null":
