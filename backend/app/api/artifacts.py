@@ -143,11 +143,44 @@ async def compartilhar(payload: CompartilharIn,
             "url": f"{base}/r/{s['token']}" if base else None}
 
 
+class FecharIn(BaseModel):
+    opcao: str = Field(..., max_length=64)
+
+
 @router.get("/shared/{token}")
-async def abrir(token: str, x_internal_key: Optional[str] = Header(None)):
+async def abrir(token: str, x_internal_key: Optional[str] = Header(None),
+                x_visitante_user_agent: Optional[str] = Header(None)):
+    """A peça do link. SPEC-130-A: `X-Visitante-User-Agent` é o User-Agent de
+    quem abriu, repassado pelo `route.ts` — o robô de prévia não conta (G17).
+    A resposta traz `kind` e, só para `proposal`, `csp_script_hashes`."""
     _autorizar(x_internal_key)
-    r = ArtifactService(get_supabase_client()).abrir_compartilhado(token)
+    r = ArtifactService(get_supabase_client()).abrir_compartilhado(
+        token, user_agent=(x_visitante_user_agent or "")[:512] or None)
     if not r:
         # Mesmo vazio para todos os motivos — ver docstring do módulo.
         raise HTTPException(404, "indisponivel")
     return {"ok": True, **r}
+
+
+@router.get("/shared/{token}/previa.png")
+async def previa_do_link(token: str, x_internal_key: Optional[str] = Header(None)):
+    """A imagem da prévia (og:image) de uma PROPOSTA — 1200×630, sem dado pessoal."""
+    from fastapi import Response
+
+    _autorizar(x_internal_key)
+    png = ArtifactService(get_supabase_client()).previa_compartilhada(token)
+    if not png:
+        raise HTTPException(404, "indisponivel")
+    return Response(content=png, media_type="image/png")
+
+
+@router.post("/shared/{token}/fechar")
+async def fechar(token: str, payload: FecharIn,
+                 x_internal_key: Optional[str] = Header(None)):
+    """O "Quero fechar": registra `share.clicked` e devolve o `wa.me` montado do
+    modelo guardado. Opção desconhecida = o mesmo 404 de link inexistente."""
+    _autorizar(x_internal_key)
+    destino = ArtifactService(get_supabase_client()).fechar_compartilhado(token, payload.opcao)
+    if not destino:
+        raise HTTPException(404, "indisponivel")
+    return {"ok": True, "destino": destino}
