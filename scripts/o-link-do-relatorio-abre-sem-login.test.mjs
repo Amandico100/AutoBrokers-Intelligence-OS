@@ -148,7 +148,11 @@ assert('🔴 o middleware SEM /r/ foi mesmo reconstruído (um fator só mudou)',
   assert('CONTROLE: o middleware SEM /r/ manda /r/<token> para /login (o defeito de 03/10)', r.paraLogin, `status ${r.status} location ${r.loc}`);
 }
 
-// ④ a pasta não pode abrir outra coisa: sob app/r/ só existe [token]/route.ts
+// ④ a pasta não pode abrir outra coisa: sob app/r/ só existem os arquivos CONHECIDOS.
+// 🔴 §9.3: era "só [token]/route.ts" até a SPEC-130-A pôr a imagem da prévia da proposta
+// (`[token]/previa.png/route.ts`, que se protege pelo token como a página). A lição
+// migra: a lista é fechada e escrita à mão — qualquer arquivo novo deixa o guarda vermelho.
+const ARQUIVOS_DE_R = ['[token]/previa.png/route.ts', '[token]/route.ts'];
 {
   const arquivos = [];
   (function anda(dir) {
@@ -157,7 +161,8 @@ assert('🔴 o middleware SEM /r/ foi mesmo reconstruído (um fator só mudou)',
       if (e.isDirectory()) anda(p); else arquivos.push(path.relative(path.join(RAIZ, 'app', 'r'), p).replace(/\\/g, '/'));
     }
   })(path.join(RAIZ, 'app', 'r'));
-  assert('sob app/r/ só existe [token]/route.ts', arquivos.length === 1 && arquivos[0] === '[token]/route.ts', JSON.stringify(arquivos));
+  assert('sob app/r/ só existem os arquivos conhecidos',
+    JSON.stringify(arquivos.sort()) === JSON.stringify(ARQUIVOS_DE_R), JSON.stringify(arquivos));
 }
 
 // ⑤ os headers: em /r/ vale a política da ROTA, não a do middleware
