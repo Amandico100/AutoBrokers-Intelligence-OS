@@ -1,6 +1,6 @@
 # TAREFAS DO FOUNDER — a lista única
 
-> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-120).** Os blocos mais antigos, depois dela,
+> 🔴 **Desde 01/10/2026, os TESTES estão todos na seção logo abaixo (T-01 a T-123).** Os blocos mais antigos, depois dela,
 > guardam o contexto, as decisões e as tarefas que não são teste; onde havia um teste, agora há uma seta **→ T-NN**.
 
 ## 🗺️ DESDE 04/10/2026: FAÇA PELO ROTEIRO, NÃO POR ESTA LISTA
@@ -17,9 +17,12 @@
 > **T-104** (decisão: religar o DEDUZIR do portal na Yelum) e **T-105** (a vistoria pelo celular, roteiro V9.1–V9.3). **Depois da
 > SPEC-128** (04/10): **T-106 a T-113**, o programa multicálculo (grupo ⑩) — decisões e conferências, nenhum é teste de celular.
 > **Depois da passagem de 05/10** (o Quem Cobra Menos vira WhatsApp, plano A): **T-114 a T-119** — a T-113 foi para a ★. **05/10
-> tarde (v2.5.1, a fila intercalada D-MC-61):** a **T-107** está ✅ feita (D-128-03 TOMADA) e nasceu a **T-120** (o login de robô no Agger).
+> tarde (v2.5.1, a fila intercalada D-MC-61):** a **T-107** está ✅ feita (D-128-03 TOMADA) e nasceu a **T-120** (o login de robô no Agger). **05/10 noite (SPEC-129-B, o motor):** a **T-106** está ✅ feita
+> (portão de preço respondido, D-MC-62…65) e nasceram a **T-121** (Implantar), a **T-122** (as 2 variáveis do motor) e a **T-123**
+> (Tokio da Resulta + pergunta ao fornecedor); a T-120 ganhou os comandos prontos. 📊 Recontado 05/10 noite (no `docs/canon/`):
+> `grep -cE '^- \[ \] \*\*T-[0-9]+' TAREFAS-DO-FOUNDER.md` → **111 pendentes** · `grep -cE '^- \[x\] \*\*T-[0-9]+'` → **12 feitos** (T-01…T-123).
 
-## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120)
+## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123)
 
 > **Para que serve:** é a fila de testes para você fazer **um por um**, ajustar o que não funcionar e, no fim, ligar os
 > agentes na vida real. Ela junta **todos** os testes pendentes das SPECs 116 → 127 e das EXTRA-001.1 → 001.10.1, das
@@ -636,7 +639,10 @@ agente está ligado**, **foi o agente quem pediu ajuda** e **nenhuma pessoa da c
 **Onde:** o resultado da prova está em `programa-multicalculo/A-PROVA-DO-AGGER.md`. 📊 A medição fez 16 cálculos de 25 nas contas
 Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 negócios de teste. Nenhum destes itens é teste de celular.
 
-- [ ] **T-106** ⏳ 🧑 **decisão sua — antes da 130-A** · **Responder o portão de preço** (D-MC-45): as **5 perguntas** de
+- [x] **T-106** ✅ **FEITO 05/10** — o Founder respondeu o portão de preço: **D-MC-62** (a econômica padrão) · **D-MC-63** (a margem:
+      o agente propõe, o corretor aprova cada vez) · **D-MC-64** (piso = comissão de 10 %) · **D-MC-65** (a completa é um padrão
+      único). Ressalva sua: ajustes pontuais depois, com as respostas dos comerciais das corretoras (cada uma é configuração). O texto
+      de 04/10, histórico: · **Responder o portão de preço** (D-MC-45): as **5 perguntas** de
       `A-PROVA-DO-AGGER.md` §6 — (1) a opção "econômica" padrão (franquia normal + vidros básicos + carro reserva de 7 dias, mantendo
       RCF e APP; 💭 em geral 10–30 % abaixo da completa); (2) o agente pode propor baixar a **comissão**? até quanto e quem aprova
       (📊 −5 pontos = −1,5 a −7,6 % do prêmio; Porto e Azul ignoram); (3) o **desconto** entra na mesma régua? (📊 tirar 10 % encarece
@@ -711,6 +717,31 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       usuários ativos** · AutoFleet **8 licenças e 7 usuários ativos** → a AutoFleet tem **1 licença livre**; a Resulta provavelmente
       precisa de **1 licença a mais ou liberar uma** — decisão de compra sua. **Se não fizer:** o motor não vai a uso real; a 133-A não
       vai aos testadores e a 131/132 não vão para as corretoras. · *de:* v2.5.1 (05/10 tarde) · D-MC-24 · PASSAGEM §8 · substitui H.3
+      🔁 **05/10 noite (SPEC-129-B) — o COMANDO, pronto:** a senha do robô NÃO vai pela tela de conexões (ela recusa `agger`,
+      D-129B-11); vai por este comando, **dentro do contêiner do `portal-worker`** (EasyPanel → serviço `portal-worker` → Console),
+      depois da **T-121**. Troque só `<uuid>` (o id da corretora) e `<email-do-robo>` (o login novo que você criou no Agger):
+      `python -m portal_worker.multicalculo.comando_robo cadastrar --corretora <uuid> --rotulo robo-1 --usuario <email-do-robo> --estado ativo --janela "seg-sex,07:00-20:00"`
+      — a **senha é pedida na tela** (não aparece enquanto você digita; nunca vai como argumento). Depois confira:
+      `python -m portal_worker.multicalculo.comando_robo listar` → **Esperar:** uma linha por robô, com o usuário MASCARADO, sem
+      senha. Uma vez por corretora. **Se aparecer** *"precisa ser um uuid"* ou *"precisa ser uma empresa cliente"*: o id está
+      errado — copie o `company_id` da corretora no Supabase; *"já existe a conta … com este rótulo"*: use `--rotulo robo-2` ou `listar`. Outros comandos: `pausar`, `religar`, `trocar-senha`, `apagar-senha` (`--conta <uuid>`). · *de:* S129-B · U6
+- [ ] **T-121** ⏳ 🧑 **quando quiser — não muda nada no que roda hoje** · **Implantar a SPEC-129-B** (o motor de multicálculo) —
+      EasyPanel, **nesta ordem**: `smith-api` → **`portal-worker`**. A migration já está aplicada (📊 05/10 18:03). 🔴 O motor nasce
+      **DESLIGADO** (`MULTICALCULO_MOTOR_LIGADO` ausente = desligado) e sem conta de robô: a cobrança e os vidros seguem iguais.
+      Depois abra `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`. **Esperar:** `"status": "healthy"`
+      e `build_time` de **05/10/2026 ou depois**. Se for anterior: Implantar o `portal-worker` de novo. **Se o `/health` não
+      responder:** o worker não subiu — copie as últimas linhas do log do contêiner para o chat. · *de:* S129-B · P-129B-07 (o
+      navegador do contêiner é conferido no 1º uso real)
+- [ ] **T-122** ⏳ 🧑 **antes da 130-A/133-A chamarem o motor** · **As 2 variáveis do motor** — (1) no **`smith-api`**:
+      `MULTICALCULO_HMAC_KEY` = um texto aleatório longo (💭 ≥ 40 caracteres; nunca em arquivo, chat ou e-mail). **Sem ela a porta
+      RECUSA calcular** (de propósito: o CPF nunca é guardado sem chave). (2) no **`portal-worker`**: `MULTICALCULO_MOTOR_LIGADO=true`
+      **SÓ quando houver robô cadastrado (T-120)** — antes disso, ligado não faz nada. Cada variável exige Implantar o serviço dela.
+      **Se não fizer:** a 130-A/133-A chegam ao motor e ele recusa ou não anda. · *de:* S129-B · D-129B-09
+- [ ] **T-123** ⏳ 🧑 **conferências — não bloqueiam** · (1) **Perguntar ao fornecedor do Agger** por que a consulta "CPF já
+      cotado" (`seguradoCotadoRecentemente`) da AutoFleet mostra **e-mails de usuários de FORA** das duas contas — possível
+      vazamento no fornecedor (P-129B-03). (2) **A senha da Tokio na Resulta, no Agger**, está recusada (📊 3 de 3 cálculos) —
+      confira no Agger da Resulta → configuração das seguradoras → Tokio, ou peça à corretora (P-129B-04). **Se não fizer:** (1)
+      dado de outras corretoras pode estar circulando sem ninguém saber; (2) a Resulta cota sem a Tokio, hoje e no motor. · *de:* S129-B
 
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 
@@ -1606,7 +1637,7 @@ respondidas com medição ao vivo — 16 cálculos de 25, nada apagado — e o c
 Nada a implantar: o contrato ainda não é chamado pelo produto (a 129-B liga).
 
 ### S128.2 · Decisões e conferências suas
-→ **T-106** (o portão de preço, antes da 130-A) · **T-107** (D-128-03 — ✅ feita 05/10, TOMADA) · **T-108** (os 3 negócios de teste) ·
+→ **T-106** (o portão de preço — ✅ feita 05/10, D-MC-62…65) · **T-107** (D-128-03 — ✅ feita 05/10, TOMADA) · **T-108** (os 3 negócios de teste) ·
 **T-109** (Bradesco da AutoFleet) · **T-110** (os 2 "Calculando" da Resulta) · **T-111** (as assinaturas vencem 13/10 e 21/10) ·
 **T-112** (apagar os HAR do intake) · **T-113** (foi para a ★ em 05/10). Depois da passagem de 05/10: **T-114** a **T-119**
 (domínio, Meta, chip, testadores, regras entre corretoras, cartão na Meta) · 05/10 tarde: **T-120** (o usuário de robô no Agger, antes
