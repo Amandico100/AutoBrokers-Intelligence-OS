@@ -326,6 +326,14 @@ ESQUEMA: dict[str, dict[str, tuple]] = {
         "health": ("text", False, 'unknown'),
         "created_at": ("ts", False, 'NOW'),
         "updated_at": ("ts", False, 'NOW'),
+        # 📊 SPEC-129-B `20261005_01` (APLICADA 05/10/2026): a conta de ROBÔ do multicálculo — nulas = conta que não é
+        # de robô (todas as que o Work OS usa); o retrato acompanha o banco vivo
+        "robo_estado": ("text", True, None),
+        "robo_teto_por_hora": ("int", True, None),
+        "robo_janela": ("jsonb", True, None),
+        "robo_ocupada_ate": ("ts", True, None),
+        "robo_dono": ("text", True, None),
+        "robo_batida_em": ("ts", True, None),
     },
     "companies": {
         "id": ("uuid", False, 'UUID'),
