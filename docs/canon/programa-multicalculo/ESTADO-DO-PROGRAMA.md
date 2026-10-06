@@ -2,13 +2,14 @@
 
 > Arquivo vivo. Todo chat do programa lê este arquivo junto com a [PASSAGEM de 05/10](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) e o
 > [plano](PLANO-MESTRE-MULTICALCULO.md) (v2.5.1) e o atualiza ao fechar cada SPEC. Decisões em
-> [`FOUNDER-DECISIONS.md`](../FOUNDER-DECISIONS.md) (D-MC-08…65).
+> [`FOUNDER-DECISIONS.md`](../FOUNDER-DECISIONS.md) (D-MC-08…74 · D-130A-06…11).
 
-## 1. O checklist (§0.1 do plano, v2.5.1 — a fila INTERCALADA de 05/10 tarde, D-MC-61)
+## 1. O checklist (§0.1 do plano, v2.5.1 — a fila INTERCALADA de 05/10 tarde, D-MC-61, com a 129-C da D-MC-73)
 
 Duas linhas que andam juntas: **QCM** = Quem Cobra Menos (leads novos para as corretoras) · **AUX** = Auxiliares de Renovação e de
 Cotação (o dia a dia da corretora, no chat principal) · **base** = serve às duas. A **134 flutua**: entra assim que a Meta aprovar, a
-qualquer momento depois da 133-A. Se o portão da 131 abrir antes do da 130-B, a 131 sobe para logo depois da 133-A; a 132 exige a 130-B.
+qualquer momento depois da 133-A. **A 129-C (mais ramos do Agger) entra logo depois da 133-A e antes da 130-B/131 (D-MC-73, 06/10).** Se o
+portão da 131 abrir antes do da 130-B, a 131 sobe para logo depois da 129-C; a 132 exige a 130-B.
 
 | # | Passo | Linha | Estado | Branch / commit | Portão | Marco |
 |---|---|---|---|---|---|---|
@@ -17,10 +18,11 @@ qualquer momento depois da 133-A. Se o portão da 131 abrir antes do da 130-B, a
 | 1 | 129-A espera durável | base | ✅ CONCLUÍDA 04/10 (juiz 78 · red team 62 → conserto → confirmação 89; migrations _01 e _02 APLICADAS; _03 na caixa do Founder) — inventário já medido: ver relatório do 0.5 §1 | — | — | — |
 | 2 | 128 prova do Agger | base | ✅ CONCLUÍDA 04/10 (juiz 72 ‖ red team 62 → conserto → confirmação; lente 84; 📊 16 cálculos de 25; nada apagado no Agger nem na InfoCap) — resultado em [`A-PROVA-DO-AGGER.md`](A-PROVA-DO-AGGER.md) · `reports/SPEC-128-EXECUTION-REPORT.md` · D-128-01…08 · P-128-01…14 | `spec/128-a-prova-do-agger` (código até `9db6372`) | ✅ autorização da corretora declarada (04/10) · ✅ D-128-03 TOMADA 05/10 · 🧑 os 3 negócios de teste | — |
 | 3 | 129-B motor (várias corretoras em paralelo, D-MC-56; padrão + econômica juntas, D-MC-60; medir a hipótese do CPF em 2 corretoras) | base | ✅ **CONCLUÍDA 05/10** (juiz 80 ‖ red team 62 → conserto → confirmação 85; nota 86; canário AO VIVO 📊 5/5 cálculos fechados, 104 ofertas, retomada +0 `calcularV2`, 0 senha nas 5 tabelas; migration `20261005_01` APLICADA; o motor nasce DESLIGADO) — `reports/SPEC-129-B-EXECUTION-REPORT.md` · D-129B-01…11 · P-129B-01…13 | `spec/129-B-o-motor` | ✅ D-128-03 · ✅ portão de preço respondido (D-MC-62…65) · 🧑 Implantar + 1 usuário de robô por corretora (T-120) + `MULTICALCULO_HMAC_KEY` | — |
-| 4 | 130-A comparação (entre seguradoras e entre corretoras), proposta e página "uau" | base | ⏭ **próxima** (chat novo) | — | ✅ **portão de preço RESPONDIDO 05/10** (D-MC-62…65; 🧑 ressalva: o Founder ajusta depois com os comerciais das corretoras → tudo CONFIGURAÇÃO) · 🔴 separar ofertas NÃO comparáveis (P-129B-06) · 🧑 modelo visual | — |
-| 5 | 133-A Quem Cobra Menos no WhatsApp, piloto fechado (Evolution) | QCM | ⏳ | — | 🧑 chip novo + WhatsApp Business + instância Evolution (QR); os 5 testadores · login de robô nas corretoras antes de ir aos testadores (T-120) | — (as rodadas correm no calendário enquanto se constroem a 131 e a 132) |
+| 4 | 130-A comparação (entre seguradoras e entre corretoras), proposta e página "uau" | base | ✅ **CONCLUÍDA 06/10** no código (revisor cego da SPEC 68 → v1.1 · juiz 80 (3 blockers) ‖ red team 74 QUEBREI (1 blocker) · crítico final de design 91 · conserto único: 4 blockers + pendências, 21 guardas sobre o HTML servido, 219 testes verdes; migrations `20261006_01/_02/_03` APLICADAS) — igual-com-igual por opção (só compreensiva casco 100 % anual; produto diferente e assinatura à parte), vencedora entre corretoras, 3 opções por situação (D-MC-66/69, D-130A-09), nota 0–100 com motivos, validade (padrão 5 dias da config), mensagem ≤ 2 opções + link (D-MC-74), a página "carteira" (D-130A-11) como artefato `proposal.quote` servido pelo `/r/`, prévia PNG 1200×630, abertura e clique "Quero fechar" medidos, `ordem_do_mais_barato` e `cotacao_alvo` na porta, `multicalculo_config` por corretora, a completa+ no motor. Canário real: pedido `d0bb15ba` publicado na produção (📊 16 seguradoras · 13 completas · 1 só produto diferente · 2 sem resposta) — `reports/SPEC-130-A-EXECUTION-REPORT.md` · P-130A-01…20 | `spec/130-A-a-proposta` (base `5952324`) | ✅ portão de preço (D-MC-62…65) · ✅ D-MC-66…74 · ✅ modelo visual (D-130A-11) · 🧑 **sobram:** Implantar os 3 serviços (T-123) · WhatsApp de atendimento + nº SUSEP no cadastro de marca e a marca da AutoFleet (T-124; sem o WhatsApp, publicar RECUSA) · abrir o link do canário no celular (T-125) · jurídico da remuneração (T-126) | — |
+| 5 | 133-A Quem Cobra Menos no WhatsApp, piloto fechado (Evolution) | QCM | ⏭ **próxima** (chat novo) | — | 🧑 chip novo + WhatsApp Business + instância Evolution (QR); os 5 testadores · login de robô nas corretoras antes de ir aos testadores (T-120) | — (as rodadas correm no calendário enquanto se constroem a 131 e a 132) |
+| 5.5 | 129-C mais ramos do Agger (Condomínio, Empresarial e Residencial primeiro; o mesmo motor e montador da 129-B, um pedido e um preset por ramo — nunca motor novo) | base | ⏳ (D-MC-73: logo depois da 133-A, antes da 130-B/131) | — | os nomes dos ramos 69/93/46/100 e a lista de seguradoras da Resulta nos formulários (P-130A-17) · login de robô (T-120) | — |
 | 6 | 130-B leitor de apólice | base | ⏳ | — | 🧑 crédito de API; 20–30 apólices | — |
-| 7 | 131 renovação | AUX | ⏳ (sobe para logo depois da 133-A se o portão abrir antes do da 130-B) | — | 🧑 InfoCap da Resulta de volta na Resulta (D-MC-27) · login de robô (T-120) | 🚀1 renovação no ar |
+| 7 | 131 renovação | AUX | ⏳ (sobe para logo depois da 129-C se o portão abrir antes do da 130-B) | — | 🧑 InfoCap da Resulta de volta na Resulta (D-MC-27) · login de robô (T-120) | 🚀1 renovação no ar |
 | 8 | 132 cotação no chat principal | AUX | ⏳ | — | a 130-B · login de robô (T-120) | 🚀2 cotação no chat principal |
 | 9 | 133-B Quem Cobra Menos piloto ampliado | QCM | ⏳ | — | 🧑 regras de negócio entre corretoras (D-MC-56) · preço do canal (D-MC-29) | 🚀3 Quem Cobra Menos piloto no WhatsApp |
 | 10 | 135 a proposta conversa | AUX | ⏳ | — | atendimento das corretoras ligado · D-MC-32 | 🚀4 negociação pelo WhatsApp |
@@ -74,13 +76,23 @@ calculadas em paralelo, e indica a vencedora; Claude/ChatGPT ficam para a ★.
 - 🧑 **Ressalva do Founder:** são usadas agora; ele perguntou aos comerciais das corretoras e fará ajustes pontuais quando tiver as respostas → cada uma é CONFIGURAÇÃO (presets/colunas), nunca constante espalhada.
 - 📊 Medido no canário da 129-B (05/10, 3ª rodada): econômica ÷ padrão por seguradora, média **0,873** (corretora A, 14 seguradoras) e **0,872** (B, 11) — a D-MC-62 estimava 💭 12–20 % abaixo.
 
-## 3. Livro-caixa da API de modelo (verba do programa: 💭 US$ 4,00, Founder 04/10)
+## 2.4 O que o Founder decidiu em 06/10/2026 (a abertura da 130-A)
+
+- **D-MC-66…69 · a estratégia das comerciais:** três situações (renovação · novo com apólice · novo sem apólice), cada uma com a sua estratégia e as suas 3 opções ("igual à atual" sempre que houver apólice); a ordem do "mais barato" (desconto da seguradora → comissão 15 → 12 % → franquia → reserva → vidros/assistência); o agente aplica sozinho até 12 %, 10 % só com o corretor aprovando.
+- **D-MC-70…72 · o agente e a negociação:** "usa o carro para aplicativo?" é a 1ª pergunta; validade e lembretes honestos (nunca cronômetro falso); a cotação-alvo procura o alvo com a MAIOR comissão possível.
+- **D-MC-73 · a 129-C** (mais ramos do Agger) entra logo depois da 133-A e antes da 130-B/131 · **D-MC-74 · o WhatsApp leva no máximo 2 opções + 1 linha-resumo + o link**; o resto mora na página.
+- **D-130A-06/07/08 · escopo:** registro do lead e consentimento → 133-A; PDF = imprimir do navegador (o do servidor depois, D-MC-43); a remuneração da corretora (CNSP 382) desligada até o jurídico.
+- **D-130A-11 · o modelo visual = a "carteira"** (painel cego de 4 rodadas, 8 críticos: 85/83 → 89/88 → 90/92 → 91/90); protótipo claude.ai/artifact/K3pGqdMQ9dvThA7r6AZSZC. Tudo é CONFIGURAÇÃO por corretora (`multicalculo_config`), nunca constante.
+
+## 3. Livro-caixa da API do produto — modelos e serviços pagos (verba do programa: 💭 US$ 4,00, Founder 04/10)
 
 | data | SPEC | o quê | US$ | saldo |
 |---|---|---|---:|---:|
 | 04/10 | — | abertura | 0,00 | 4,00 |
 | 04/10 | 128 | medições ao vivo e testes | 0,00 | 4,00 |
 | 05/10 | 129-B | medições ao vivo e canário | 0,00 | 4,00 |
+| 06/10 | 130-A | Google Places: 2 buscas (Text Search) para a ficha das corretoras — 💭 estimado pela tabela pública do Google | 💭 0,07 | 💭 3,93 |
+| 06/10 | 130-A | modelos de linguagem | 0,00 | 💭 3,93 |
 
 Regra: nenhuma rodada paga sem estimativa escrita aqui antes. O que sobrar passa para a SPEC seguinte.
 
