@@ -202,15 +202,40 @@ def test_opcoes_sem_apolice_recomendada_mais_em_conta_e_a_terceira(dados, quadro
 
 
 def test_opcoes_com_apolice_e_renovacao(quadro):
+    """🔴 RT-B1 (red team, 06/10): a 1ª opção é SEMPRE a menor completa; a seguradora da apólice entra como "igual" na
+    posição VERDADEIRA dela (antes ela ia para o topo e a página a chamava de "a melhor das N")."""
     apolice = {"seguradora": "Bradesco", "premio_anual": 4500}
     ops = C.opcoes(quadro, situacao="novo_com_apolice", apolice_atual=apolice)
-    assert [o["rotulo"] for o in ops] == ["Igual à sua atual", "Mais em conta", "Recomendada"]
-    assert ops[0]["seguradora"] == "Bradesco" and ops[0]["premio_anual"] == 4458.32
-    assert any("que a sua apólice atual" in m for m in ops[0]["motivos"])
+    assert [o["rotulo"] for o in ops] == ["Recomendada", "Igual à sua atual", "Mais em conta"]
+    assert (ops[0]["seguradora"], ops[0]["premio_anual"]) == ("Youse", 3730.56)
+    assert ops[1]["seguradora"] == "Bradesco" and ops[1]["premio_anual"] == 4458.32
+    assert any("que a sua apólice atual" in m for m in ops[1]["motivos"])
+    assert any(m.endswith("menor preço entre as 13 seguradoras com cobertura completa") and not m.startswith("Menor")
+               for m in ops[1]["motivos"])                                   # a posição dela, não "a menor"
     ren = C.opcoes(quadro, situacao="renovacao", apolice_atual=apolice)
-    assert ren[0]["rotulo"] == "Sua renovação" and ren[0]["id"] == "sua_renovacao"
+    assert [o["id"] for o in ren][:2] == ["recomendada", "sua_renovacao"] and ren[1]["rotulo"] == "Sua renovação"
     with pytest.raises(ValueError):
         C.opcoes(quadro, situacao="qualquer")
+
+
+def test_RT_B1_a_seguradora_da_apolice_que_ja_e_a_menor_vem_primeiro_como_igual(quadro):
+    ops = C.opcoes(quadro, situacao="novo_com_apolice", apolice_atual={"seguradora": "Youse", "premio_anual": 3900})
+    assert [o["id"] for o in ops][0] == "igual_a_atual" and ops[0]["premio_anual"] == 3730.56
+    assert ops[0]["motivos"][0] == "Menor preço entre as 13 seguradoras com cobertura completa"
+    assert "recomendada" not in [o["id"] for o in ops]                    # a mesma oferta não aparece duas vezes
+
+
+@pytest.mark.parametrize("situacao", ["novo_com_apolice", "renovacao"])
+def test_J_B2_sem_a_apolice_recusa_e_seguradora_fora_do_quadro_nao_vira_igual(quadro, situacao):
+    """🔴 J-B2 (juiz, 06/10): sem a apólice, recusa (nunca um "Igual à sua atual" inventado); com uma seguradora que
+    não deu preço completo, NÃO existe opção "igual" — antes era a menor completa, de outra seguradora, com o rótulo."""
+    for vazia in (None, {}, {"seguradora": "  "}, {"premio_anual": 5000}):
+        with pytest.raises(ValueError, match="apólice atual"):
+            C.opcoes(quadro, situacao=situacao, apolice_atual=vazia)
+    ops = C.opcoes(quadro, situacao=situacao, apolice_atual={"seguradora": "Seguradora Que Nao Cotou", "premio_anual": 5000})
+    ids = [o["id"] for o in ops]
+    assert "igual_a_atual" not in ids and "sua_renovacao" not in ids and ids[0] == "recomendada"
+    assert any("que a sua apólice atual" in m for m in ops[0]["motivos"])  # a comparação com a apólice continua
 
 
 def test_completa_mais_vira_a_terceira_quando_houver_calculo(dados):
@@ -221,12 +246,37 @@ def test_completa_mais_vira_a_terceira_quando_houver_calculo(dados):
     youse = next(o for o in dados["ofertas"] if o["seguradora"] == "Youse" and o["premio_total"] == 3730.56)
     mais = dict(copy.deepcopy(youse), id="c0ffee00-0000-4000-8000-0000000000of",
                 calculo_id="c0ffee00-0000-4000-8000-0000000000cm", premio_total=4100.0)
+    # a completa+ como o robô a grava: a padrão + pequenos reparos (`reparoRapido`, presets._COMPLETA_MAIS). Sem a
+    # diferença de cobertura ela seria a MESMA oferta com outro rótulo (J-P4 — o teste abaixo)
+    mais["coberturas"] = dict(mais["coberturas"], reparoRapido=True)
     q = C.comparar(dados["ofertas"] + [mais], dados["eventos"], estados=estados)
     ops = C.opcoes(q, situacao="novo_sem_apolice")
     assert [o["id"] for o in ops] == ["recomendada", "mais_em_conta", "mais_completa"]
     assert ops[2]["premio_anual"] == 4100.0
     com = C.opcoes(q, situacao="novo_com_apolice", apolice_atual={"seguradora": "Bradesco"})
-    assert [o["id"] for o in com] == ["igual_a_atual", "mais_em_conta", "mais_completa"]
+    assert [o["id"] for o in com] == ["recomendada", "igual_a_atual", "mais_em_conta"]       # RT-B1: a menor no topo
+    com_youse = C.opcoes(q, situacao="novo_com_apolice", apolice_atual={"seguradora": "Youse"})
+    assert [o["id"] for o in com_youse] == ["igual_a_atual", "mais_em_conta", "mais_completa"]
+
+
+def test_J_P4_a_completa_mais_igual_a_recomendada_nao_vira_terceira_opcao(dados):
+    """🔴 J-P4 (juiz, 06/10): a "Mais completa" que é a MESMA seguradora com o mesmo prêmio (ou as mesmas coberturas)
+    da recomendada não é opção — cai para a "Menor franquia"/"Outra completa". Controle: com outra cobertura, entra."""
+    a = dados["corretoras"]["corretora_a"]
+    estados = copy.deepcopy(dados["estados"]) + [{"calculo_id": "c0ffee00-0000-4000-8000-0000000000cm",
+                                                  "corretora_company_id": a, "opcao": "completa_mais"}]
+    youse = next(o for o in dados["ofertas"] if o["seguradora"] == "Youse" and o["premio_total"] == 3730.56)
+    base = dict(copy.deepcopy(youse), id="c0ffee00-0000-4000-8000-0000000000of",
+                calculo_id="c0ffee00-0000-4000-8000-0000000000cm")
+    mesmo_preco = dict(copy.deepcopy(base), premio_total=3730.90)
+    mesmas_coberturas = dict(copy.deepcopy(base), premio_total=4100.0)
+    for repetida in (mesmo_preco, mesmas_coberturas):
+        q = C.comparar(dados["ofertas"] + [repetida], dados["eventos"], estados=estados)
+        assert "mais_completa" not in [o["id"] for o in C.opcoes(q, situacao="novo_sem_apolice")]
+    controle = copy.deepcopy(mesmas_coberturas)
+    controle["coberturas"]["reparoRapido"] = True                           # acrescenta pequenos reparos
+    q = C.comparar(dados["ofertas"] + [controle], dados["eventos"], estados=estados)
+    assert [o["id"] for o in C.opcoes(q, situacao="novo_sem_apolice")][2] == "mais_completa"
 
 
 def test_g3_nenhuma_comissao_sai_da_comparacao_nem_das_opcoes(dados):
@@ -235,7 +285,8 @@ def test_g3_nenhuma_comissao_sai_da_comparacao_nem_das_opcoes(dados):
         o["comissao_percentual"] = 15.0                # a corretora DONA lê a comissão — a comparação não a passa
     q = C.comparar(ofertas, dados["eventos"], estados=dados["estados"])
     saidas = [q.por_opcao, q.diferentes_por_opcao, q.nao_responderam_por_opcao, q.entre_corretoras, q.resumo]
-    for sit, ap in (("novo_sem_apolice", None), ("novo_com_apolice", {"seguradora": "Bradesco"}), ("renovacao", None)):
+    for sit, ap in (("novo_sem_apolice", None), ("novo_com_apolice", {"seguradora": "Bradesco"}),
+                    ("renovacao", {"seguradora": "Tokio"})):
         saidas.append(C.opcoes(q, situacao=sit, apolice_atual=ap))
     assert _sem_chave(saidas)
     # CONTROLE: a varredura acha a chave quando ela está lá
