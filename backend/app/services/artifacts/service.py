@@ -119,6 +119,37 @@ def tags_do_canario() -> Optional[list[str]]:
     return [TAG_DO_CANARIO] if e_canario() else None
 
 
+#: SPEC-130-A — a espécie de peça que leva script (pelo hash) e prévia com imagem.
+KIND_PROPOSTA = "proposal"
+
+#: 🔴 SPEC-130-A G17 — os robôs que buscam o link para montar a PRÉVIA na
+#: conversa. Eles abrem a página sem ninguém ter tocado nela: contá-los faria
+#: toda proposta enviada nascer "aberta". (nome no evento, pedaço do User-Agent)
+#: ⚠️ `WhatsApp/` COM a barra: é o robô (`WhatsApp/2.23.20.0 A`); o navegador
+#: que o segurado usa ao tocar no link tem User-Agent de navegador.
+ROBOS_DE_PREVIA: tuple[tuple[str, str], ...] = (
+    ("whatsapp", "whatsapp/"),
+    ("facebook", "facebookexternalhit"),
+    ("facebook", "facebot"),
+    ("twitter", "twitterbot"),
+    ("telegram", "telegrambot"),
+    ("slack", "slackbot"),
+    ("linkedin", "linkedinbot"),
+    ("discord", "discordbot"),
+)
+
+
+def robo_de_previa(user_agent: Optional[str]) -> Optional[str]:
+    """O nome do robô de prévia que fez o pedido, ou None se foi uma pessoa (ou não se sabe)."""
+    ua = str(user_agent or "").lower()
+    if not ua:
+        return None
+    for nome, pedaco in ROBOS_DE_PREVIA:
+        if pedaco in ua:
+            return nome
+    return None
+
+
 def _agora() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -151,7 +182,7 @@ class ArtifactService:
     def criar(self, *, company_id: str, title: str, template_key: str,
               payload: dict, composition: list[dict],
               subtitle: Optional[str] = None, summary: Optional[str] = None,
-              kind: str = "report", origin: str = "chat",
+              kind: Optional[str] = None, origin: str = "chat",
               work_run_id: Optional[str] = None, requested_by: Optional[str] = None,
               conversation_id: Optional[str] = None,
               data_sources: Optional[list[dict]] = None,
@@ -173,8 +204,15 @@ class ArtifactService:
         """
         from ..brand.capture import BrandCaptureService
 
+        from .templates import POR_CHAVE
+
         self._garantir_template(template_key)
         marca = BrandCaptureService(self.db).snapshot_para_artefato(company_id)
+        # SPEC-130-A: a espécie vem do TEMPLATE quando o chamador não diz
+        # (`proposal.quote` → 'proposal'). Os de antes declaram 'report' — nada muda.
+        if not kind:
+            tpl_da_peca = POR_CHAVE.get(template_key)
+            kind = getattr(tpl_da_peca, "kind", None) or "report"
 
         conversa = self._conversa_da_peca(company_id, work_run_id, conversation_id)
 
@@ -466,13 +504,24 @@ class ArtifactService:
                   or (tpl.visual_style if tpl else "aurora"))
 
         inicio = _agora()
-        html, diag = render_html(
-            brand=marca,
-            composition=v.get("composition") or (tpl.composition if tpl else []),
-            visual_style=estilo,
-            title=f"{art.get('title', 'Relatório')} · {marca.get('name', '')}".strip(" ·"),
-            data_sources=v.get("data_sources") or [],
-        )
+        gancho = getattr(tpl, "renderizador", None) if tpl else None
+        if gancho is not None:
+            # 🔴 SPEC-130-A §10.2 — o template que traz o PRÓPRIO renderizador
+            # recebe o payload da versão e devolve o documento inteiro. A marca
+            # que vale nele é a do MODELO (D-130A-10: a da anfitriã), não o
+            # `brand_snapshot` do artefato (o do solicitante).
+            html = gancho(v.get("payload") or {})
+            diag = {"renderizador": tpl.key, "blocos": 0, "desconhecidos": [],
+                    "falhas": [], "estilo": estilo,
+                    "marca_padrao": bool(marca.get("is_fallback"))}
+        else:
+            html, diag = render_html(
+                brand=marca,
+                composition=v.get("composition") or (tpl.composition if tpl else []),
+                visual_style=estilo,
+                title=f"{art.get('title', 'Relatório')} · {marca.get('name', '')}".strip(" ·"),
+                data_sources=v.get("data_sources") or [],
+            )
         ms = int((_agora() - inicio).total_seconds() * 1000)
 
         # Conteúdo inline: o HTML de uma peça fica na casa dos 50 KB. Ida ao
@@ -583,13 +632,13 @@ class ArtifactService:
         }).eq("id", share_id).eq("company_id", company_id).execute()).data
         return bool(r)
 
-    def abrir_compartilhado(self, token: str) -> Optional[dict]:
-        """Resolve um token público. Fecha em qualquer sinal de invalidez.
+    def _share_valido(self, token: str) -> Optional[dict]:
+        """A linha do link, se ele ainda vale. Qualquer sinal de invalidez → None.
 
-        Não recebe `company_id` de propósito: quem abre não tem sessão. Por isso
-        o token é a única credencial, e cada motivo de recusa devolve o mesmo
-        resultado vazio — distinguir "expirado" de "inexistente" ajudaria quem
-        estivesse tentando adivinhar tokens.
+        UM lugar para as quatro recusas (inexistente · revogado · expirado ·
+        esgotado), usado pela página, pela imagem da prévia e pelo "Quero
+        fechar": um link morto não abre a página nem serve a imagem nem leva ao
+        WhatsApp.
         """
         s = (self.db.table("artifact_shares")
              .select("id, company_id, artifact_id, artifact_version_id, expires_at, "
@@ -604,6 +653,45 @@ class ArtifactService:
             return None
         if s.get("max_views") and int(s["view_count"] or 0) >= int(s["max_views"]):
             return None
+        return s
+
+    def _artefato_do_share(self, s: dict) -> dict:
+        return (self.db.table("artifacts").select("title, subtitle, kind")
+                .eq("id", s["artifact_id"]).eq("company_id", s["company_id"])
+                .maybe_single().execute()).data or {}
+
+    def _modelo_da_proposta(self, s: dict) -> Optional[dict]:
+        """O `payload` (o modelo do CONTRATO §5) da versão do link — SÓ se a peça é `proposal`."""
+        if self._artefato_do_share(s).get("kind") != KIND_PROPOSTA:
+            return None
+        v = (self.db.table("artifact_versions").select("payload")
+             .eq("id", s["artifact_version_id"]).eq("company_id", s["company_id"])
+             .maybe_single().execute()).data or {}
+        modelo = v.get("payload")
+        return modelo if isinstance(modelo, dict) else None
+
+    def abrir_compartilhado(self, token: str, *,
+                            user_agent: Optional[str] = None) -> Optional[dict]:
+        """Resolve um token público. Fecha em qualquer sinal de invalidez.
+
+        Não recebe `company_id` de propósito: quem abre não tem sessão. Por isso
+        o token é a única credencial, e cada motivo de recusa devolve o mesmo
+        resultado vazio — distinguir "expirado" de "inexistente" ajudaria quem
+        estivesse tentando adivinhar tokens.
+
+        🔴 SPEC-130-A:
+        * `user_agent` é o de QUEM ABRIU (o `route.ts` repassa). O robô que monta
+          a prévia do link (WhatsApp, Facebook, Telegram…) NÃO conta visualização
+          nem grava `share.viewed` (G17) — senão toda proposta enviada nasceria
+          "aberta" antes de o segurado tocar nela. Grava `share.previewed`.
+        * devolve `kind` e, SÓ para `proposal`, `csp_script_hashes` — o hash da
+          CONSTANTE do script (`proposta_html.HASH_DO_SCRIPT`), nunca recalculado
+          do HTML guardado (G16).
+        * na proposta, a og:image ABSOLUTA entra no marcador do `<head>`.
+        """
+        s = self._share_valido(token)
+        if not s:
+            return None
 
         render = (self.db.table("artifact_renders")
                   .select("inline_content, storage_ref")
@@ -613,26 +701,81 @@ class ArtifactService:
         if not render or not render.get("inline_content"):
             return None
 
-        art = (self.db.table("artifacts").select("title, subtitle, kind")
-               .eq("id", s["artifact_id"]).maybe_single().execute()).data or {}
+        art = self._artefato_do_share(s)
+        kind = art.get("kind") or "report"
+        robo = robo_de_previa(user_agent)
 
         try:
-            self.db.table("artifact_shares").update({
-                "view_count": int(s["view_count"] or 0) + 1,
-                "last_viewed_at": _agora().isoformat(),
-            }).eq("id", s["id"]).execute()
-            self._evento(s["company_id"], s["artifact_id"], "share.viewed",
-                         actor_kind="public",
-                         detalhe={"audiencia": s.get("audience_label")})
+            if robo:
+                self._evento(s["company_id"], s["artifact_id"], "share.previewed",
+                             actor_kind="public", detalhe={"robo": robo})
+            else:
+                self.db.table("artifact_shares").update({
+                    "view_count": int(s["view_count"] or 0) + 1,
+                    "last_viewed_at": _agora().isoformat(),
+                }).eq("id", s["id"]).execute()
+                self._evento(s["company_id"], s["artifact_id"], "share.viewed",
+                             actor_kind="public",
+                             detalhe={"audiencia": s.get("audience_label")})
         except Exception:  # noqa: BLE001
             pass  # contar visualização nunca pode impedir a leitura
 
-        return {
-            "html": render["inline_content"],
+        documento = render["inline_content"]
+        saida = {
             "title": art.get("title") or "Relatório",
             "subtitle": art.get("subtitle"),
             "white_label": bool(s.get("white_label", True)),
+            "kind": kind,
         }
+        if kind == KIND_PROPOSTA:
+            from .proposta_html import HASH_DO_SCRIPT, injetar_previa
+
+            base = base_publica_do_app()
+            if base:
+                documento = injetar_previa(
+                    documento, url_da_imagem=f"{base}/r/{token}/previa.png",
+                    url_da_pagina=f"{base}/r/{token}")
+            saida["csp_script_hashes"] = [HASH_DO_SCRIPT]
+        saida["html"] = documento
+        return saida
+
+    def previa_compartilhada(self, token: str) -> Optional[bytes]:
+        """O PNG 1200×630 da prévia do link de uma PROPOSTA. Não conta visualização.
+
+        Link morto, peça que não é proposta, ou Pillow ausente → None (404).
+        """
+        s = self._share_valido(token)
+        if not s:
+            return None
+        modelo = self._modelo_da_proposta(s)
+        if modelo is None:
+            return None
+        from .proposta_previa import render_previa_png
+        return render_previa_png(modelo)
+
+    def fechar_compartilhado(self, token: str, opcao: Any) -> Optional[str]:
+        """O "Quero fechar": registra `share.clicked` e devolve o `wa.me` da corretora.
+
+        🔴 Só para uma opção que EXISTE no modelo guardado, e o destino é montado
+        aqui a partir dele (`proposta_html.destino_do_fechar`) — nunca da query.
+        Qualquer outra coisa → None, e nada é gravado.
+        """
+        s = self._share_valido(token)
+        if not s:
+            return None
+        modelo = self._modelo_da_proposta(s)
+        if modelo is None:
+            return None
+        from .proposta_html import destino_do_fechar
+        d = destino_do_fechar(modelo, opcao)
+        if not d:
+            return None
+        self._evento(s["company_id"], s["artifact_id"], "share.clicked",
+                     actor_kind="public",
+                     detalhe={"opcao": d["opcao"], "rotulo": d.get("rotulo"),
+                              "seguradora": d.get("seguradora"),
+                              "audiencia": s.get("audience_label")})
+        return d["destino"]
 
     # ------------------------------------------------------------------
     # Catálogo
