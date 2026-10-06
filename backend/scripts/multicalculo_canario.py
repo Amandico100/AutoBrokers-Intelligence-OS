@@ -13,7 +13,7 @@ O que faz, no PROCESSO (navegador local; o motor do serviço não é tocado):
      do serviço: grupos cancelados, logout) e religa outro depois da lease vencer; imprime os calcularV2 antes/depois
   ④ recalcula a PADRÃO da 1ª corretora com o ajuste  ⑤ imprime os eventos SEM dado pessoal (seguradora, família,
      prêmio) e os tempos  ⑥ isolamento por SELECT  ⑦ varre TODAS as colunas de texto das 5 tabelas procurando
-     senha|loginws|senhaws|token|authorization|https?://  ⑧ SEMPRE (finally): logout, contas `teste` → `pausado` e
+     senha|loginws|senhaws|token|authorization|https?://  ⑧ SEMPRE (finally): logout, contas `teste` -> `pausado` e
      senha apagada.
 ⛔ O perfil (o pedido com os dados da apólice autorizada) NUNCA é impresso. Renovação ao vivo: não roda aqui (declarado).
 """
@@ -125,6 +125,15 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
     escrever(f"pedido: {pedido!r}")
 
     url_base = args.url_base or URL_BASE_AGGER
+    def _letra(company_id: Any) -> str:
+        """A corretora como A/B (a ordem do --corretora): o nome nunca sai na tela."""
+        cid = str(company_id).strip().lower()
+        return "AB"[corretoras.index(cid)] if cid in corretoras else "?"
+
+    def _dt(c: Dict[str, Any], a: str, b: str) -> str:
+        ta, tb = MOT._ts(c.get(a)), MOT._ts(c.get(b))
+        return f"{(tb - ta).total_seconds():.0f}s" if ta and tb else "-"
+
     contas = []
     for c in corretoras:
         contas += [x for x in ROB.candidatos(supa, c)]
@@ -213,7 +222,7 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
             novo = await porta.recalcular(company_id=args.canal, calculo_id=pad["id"], ajuste=ajuste)
             await ate_terminar(ativo, aberto.pedido_id)
             aj = linhas("multicalculo_calculos", id=novo["id"])[0]
-            escrever(f"RECÁLCULO {ajuste['tipo']}: {aj['status']} · versão base {pad['versao']} → nova {aj['versao']}"
+            escrever(f"RECÁLCULO {ajuste['tipo']}: {aj['status']} · versão base {pad['versao']} -> nova {aj['versao']}"
                      + (f" · {aj['erro']}" if aj.get("erro") else ""))
         else:
             escrever("RECÁLCULO: não rodou (a padrão da 1ª corretora não tem negócio)")
@@ -230,7 +239,7 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
                 if not ta or not tb:
                     return "-"
                 return f"{(MOT._ts(tb) - MOT._ts(ta)).total_seconds():.0f}s"
-            escrever(f"  cálculo {c['opcao']:<9} corretora {c['company_id'][:8]} · {c['status']:<9} · 1º evento "
+            escrever(f"  cálculo {c['opcao']:<9} corretora {_letra(c['company_id'])} · {c['status']:<9} · 1º evento "
                      f"{seg('disparado_em', 'primeira_oferta_em')} · quadro {seg('disparado_em', 'quadro_pronto_em')}"
                      f" · fechado {seg('disparado_em', 'fechado_em')} · tentativas {c.get('tentativas')}")
         escrever(f"ofertas: {len(andamento.ofertas)} · comissão vista pelo canal: "
@@ -259,8 +268,21 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
                         escrever(f"  ⚠️ {t}.{k} (linha {r.get('id')}) casou o padrão proibido")
         escrever(f"varredura senha|loginws|senhaws|token|authorization|url nas 5 tabelas: {achados}")
         rc = 0 if not achados and not fora else 1
+
+        # ⑨ o RESUMO por cálculo (conserto 129-B, canário 05/10): opção · corretora A/B (nunca o nome) · status ·
+        # ofertas · seguradoras com oferta · tempo até a 1ª oferta e até o quadro. Sem dado pessoal.
+        escrever("RESUMO (opção · corretora · status · ofertas · seguradoras com oferta · 1ª oferta · quadro):")
+        for c in sorted(linhas("multicalculo_calculos", pedido_id=aberto.pedido_id),
+                        key=lambda x: (_letra(x["company_id"]), str(x.get("criado_em") or ""))):
+            ofs_c = [o for o in ofs if o.get("calculo_id") == c["id"]] or linhas("multicalculo_ofertas",
+                                                                                calculo_id=c["id"])
+            segs = {o.get("seguradora_codigo") if o.get("seguradora_codigo") is not None else o.get("seguradora")
+                    for o in ofs_c}
+            escrever(f"  {c['opcao']:<9} · {_letra(c['company_id'])} · {c['status']:<9} · ofertas {len(ofs_c):>3} · "
+                     f"seguradoras {len(segs):>2} · 1ª oferta {_dt(c, 'disparado_em', 'primeira_oferta_em')} · "
+                     f"quadro {_dt(c, 'disparado_em', 'quadro_pronto_em')}")
     finally:
-        # ⑧ SEMPRE: logout, contas `teste` → pausado e senha apagada
+        # ⑧ SEMPRE: logout, contas `teste` -> pausado e senha apagada
         for m in motores:
             try:
                 await m.encerrar()
@@ -282,6 +304,13 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # 📊 05/10 21:27: o console Windows (cp1252) derrubou o canário com UnicodeEncodeError no meio da execução — a
+    # saída nunca derruba o canário: o que não cabe na tabela do console vira "?" (como `comando_robo.main`)
+    for _fluxo in (sys.stdout, sys.stderr):
+        try:
+            _fluxo.reconfigure(errors="replace")
+        except Exception:  # noqa: BLE001 — fluxo substituído (testes, pipes)
+            pass
     args = _parser().parse_args(argv)
     if os.environ.get("AUTOBROKERS_CANARIO") != "1":
         print("RECUSADO: o canário exige AUTOBROKERS_CANARIO=1 no processo")
