@@ -97,8 +97,9 @@ def secao_do_ranking(documento: str) -> str:
 
 
 def ordem_das_opcoes(documento: str):
+    """A ordem em que as opções APARECEM: cada cartão leva o "Quero esta" (`?fechar=<id>`, o contrato do `route.ts`)."""
     vistos = []
-    for o in re.findall(r'data-opcao="([^"]+)"', documento):
+    for o in re.findall(r'(?:data-opcao="|[?&](?:amp;)?fechar=)([A-Za-z0-9_-]+)', documento):
         if o not in vistos:
             vistos.append(o)
     return vistos
@@ -121,9 +122,12 @@ def _modelo_gravado(m, artifact_id):
 # =====================================================================================================================
 # O FIO — pedido do CANAL nas duas corretoras (o canário real)
 # =====================================================================================================================
-def test_o_fio_do_canal_pedido_real_ate_o_html_servido(monkeypatch):
+@pytest.mark.parametrize("canal_com_marca", [False, True], ids=["canal_como_em_producao_sem_linha_de_marca",
+                                                              "canal_com_linha_de_marca_rascunho"])
+def test_o_fio_do_canal_pedido_real_ate_o_html_servido(monkeypatch, canal_com_marca):
+    """📊 06/10 o canal de produção NÃO tem linha em `brand_profiles` — o 1º caso é o retrato real."""
     monkeypatch.setenv("PUBLIC_APP_URL", BASE)
-    m = M.montar_mundo(monkeypatch, solicitante="canal")
+    m = M.montar_mundo(monkeypatch, solicitante="canal", canal_com_marca=canal_com_marca)
     d = m.dados
 
     # 🔬 a lente: quem VENCE, recalculado sem o motor
