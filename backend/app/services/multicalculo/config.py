@@ -86,6 +86,9 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
     "google_confirmado": None,
     # D-130A-08 — a remuneração da corretora (CNSP 382): DESLIGADA até o jurídico
     "remuneracao_cnsp_382": {"ligada": False},
+    # D-MC-55 — o nome do CANAL comparador (marca do PRODUTO, não de corretora). É configuração, não constante da
+    # página: a proposta do canal leva `canal.nome` no modelo (laudo do red team, 06/10: RT-10)
+    "canal": {"nome": "Quem Cobra Menos"},
 }
 
 
