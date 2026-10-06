@@ -38,19 +38,19 @@
 --     if a is null then raise exception 'VERIFY 20261006_01: falta uma corretora cliente'; end if;
 --     begin
 --       insert into public.multicalculo_config (company_id, config) values (a, '{"comissao":{"piso":11}}');
---       res := res || 'objeto=aceito';
+--       res := res || 'objeto=aceito'::text;
 --       begin insert into public.multicalculo_config (company_id, config) values (a, '{}'); r := 'aceito';
---       exception when unique_violation then r := 'recusado'; end;  res := res || ('segunda_linha='||r);
+--       exception when unique_violation then r := 'recusado'; end;  res := res || ('segunda_linha='||r)::text;
 --       begin update public.multicalculo_config set config='[1,2]' where company_id=a; r := 'aceito';
---       exception when check_violation then r := 'recusado'; end;  res := res || ('lista='||r);
+--       exception when check_violation then r := 'recusado'; end;  res := res || ('lista='||r)::text;
 --       begin insert into public.multicalculo_config (company_id, config)
 --               values ('00000000-0000-4000-8000-000000000000', '{}'); r := 'aceito';
---       exception when foreign_key_violation then r := 'recusado'; end;  res := res || ('sem_empresa='||r);
+--       exception when foreign_key_violation then r := 'recusado'; end;  res := res || ('sem_empresa='||r)::text;
 --       raise exception using errcode='P0001', message='desfaz';
 --     exception when sqlstate 'P0001' then null;
 --     end;
---     res := res || ('anon_le=' || has_table_privilege('anon','public.multicalculo_config','select')::text)
---                || ('authenticated_escreve=' || has_table_privilege('authenticated','public.multicalculo_config','insert')::text);
+--     res := res || ('anon_le=' || has_table_privilege('anon','public.multicalculo_config','select')::text)::text
+--                || ('authenticated_escreve=' || has_table_privilege('authenticated','public.multicalculo_config','insert')::text)::text;
 --     if res is distinct from array['objeto=aceito','segunda_linha=recusado','lista=recusado','sem_empresa=recusado',
 --                                   'anon_le=false','authenticated_escreve=false'] then
 --       raise exception 'VERIFY 20261006_01 FALHOU: %', res;
