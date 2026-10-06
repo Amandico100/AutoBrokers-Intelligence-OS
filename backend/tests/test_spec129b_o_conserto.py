@@ -171,6 +171,48 @@ def test_juiz_b1_controle_leu_e_o_quadro_saiu_fecha_com_o_que_leu(ambiente):
     assert c["status"] == "fechado" and c["erro"] == MOT.MOTIVO_LEU_PARTE and c["quadro_pronto_em"]
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# 📊 canário ao vivo 05/10 21:27 — o desligar educado (`encerrar`, o deploy) virava os `calculando` em `falhou`. O fio
+# (`test_spec129b_o_fio::test_g6_o_desligar_educado…`) prova o conjunto; estes dois guardam CADA camada sozinha.
+# CONTROLE de ambos: `test_juiz_b1_sessao_401_vira_falhou_e_a_sessao_e_descartada` (o mesmo 401, sem encerrar → falhou).
+# ---------------------------------------------------------------------------------------------------------------------
+def test_canario_0510_encerrando_a_leitura_que_cai_nao_grava_estado_nem_descarta(ambiente):
+    amb = ambiente
+    a = TM.empresa(amb)
+    ra = TM.robo(amb, a)
+    _pid, ids = TM.pedido(amb, a, [a], origem="auxiliar", opcoes=("padrao",))
+    m = _motor_com_roteiro(amb, "motor-1", [{"status": 401}])
+    m._encerrando = True        # a leitura cai DURANTE o encerrar: o erro é efeito da morte, não do Agger
+    rodar(m.uma_volta())
+    c = TM.calc(amb, ids[0])
+    assert (c["status"], c["erro"], c["fechado_em"]) == ("calculando", None, None), (c["status"], c["erro"])
+    assert c["negocio_ref"], "o checkpoint (verdade: o POST saiu) continua gravado"
+    assert m._sessoes.descartadas == [], "encerrando, a sessão sai com LOGOUT, não descartada"
+    assert TM.conta(amb, ra)["robo_estado"] == "ativo"
+
+
+class _SessoesComPaginaFechada(_SessoesComRoteiro):
+    async def obter(self, conta, *, senha, negocios_do_robo):
+        s = await super().obter(conta, senha=senha, negocios_do_robo=negocios_do_robo)
+        s.pagina = SimpleNamespace(is_closed=lambda: True)
+        return s
+
+
+def test_canario_0510_a_pagina_que_fecha_sozinha_fica_para_a_retomada(ambiente):
+    """O navegador caiu SEM o motor encerrar: não é o Agger dizendo "não" — o negócio existe, a retomada lê."""
+    amb = ambiente
+    a = TM.empresa(amb)
+    ra = TM.robo(amb, a)
+    _pid, ids = TM.pedido(amb, a, [a], origem="auxiliar", opcoes=("padrao",))
+    m = TM.motor(amb, "motor-1")
+    m._sessoes = _SessoesComPaginaFechada(amb.mundo, "motor-1", [RuntimeError("TargetClosedError")])
+    m._robo = _RoboComLeituraReal(amb.mundo, m.supa)
+    rodar(m.uma_volta())
+    c = TM.calc(amb, ids[0])
+    assert (c["status"], c["erro"], c["fechado_em"]) == ("calculando", None, None), (c["status"], c["erro"])
+    assert m._sessoes.descartadas == [ra], "a página morta é DESCARTADA (não reaproveitada)"
+
+
 class _SessaoMortaDuble(TM.DisparoRecusado):
     sessao_morta = True
 
