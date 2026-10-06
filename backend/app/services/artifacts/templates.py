@@ -23,8 +23,6 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from .proposta_html import render_proposta
-
 
 @dataclass(frozen=True)
 class Template:
@@ -931,6 +929,16 @@ PULSO_360 = Template(
 # A proposta de seguro — SPEC-130-A · U5
 # ==========================================================================
 
+def _renderizar_proposta(modelo: dict) -> str:
+    """O gancho da proposta. 🔴 Import TARDIO de propósito: este módulo é carregado
+    SOZINHO, fora do pacote, por guardas do catálogo (📊 06/10: `test_a_fabrica_de_
+    relatorios` [6] e `test_o_pulso_360_nao_pertence_a_infocap` [9] usam
+    `spec_from_file_location`) — um `from .proposta_html` no topo os derrubava com
+    "attempted relative import with no known parent package"."""
+    from .proposta_html import render_proposta
+    return render_proposta(modelo)
+
+
 #: 🔴 A página "uau" da cotação, servida pelo `/r/` ao SEGURADO. Não usa a grade
 #: de blocos: o `renderizador` monta o documento a partir do modelo do CONTRATO
 #: §5 (`proposta.montar_proposta`). `composition` vazia de propósito — o gancho
@@ -956,7 +964,7 @@ PROPOSTA = Template(
         "`proposta.montar_proposta`, que lê a porta já sem comissão para quem não "
         "é dono.\n\n"
         "Ausente não aparece: um campo sem valor some da página, nunca vira '—'."),
-    renderizador=render_proposta,
+    renderizador=_renderizar_proposta,
     kind="proposal",
 )
 
