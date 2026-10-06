@@ -4,6 +4,10 @@
 A PORTA resolve as coberturas de cada opção com estes presets e grava em `multicalculo_calculos.coberturas`;
 o robô só aplica o que recebe. A 130-A troca os presets depois do portão de preço.
 
+🔴 Este arquivo é a ÚNICA fonte do CORPO do Agger por opção (SPEC-130-A F4). A config comercial da corretora
+(`app/services/multicalculo/config.py`, `calculo_por_papel`) só ESCOLHE qual cálculo alimenta cada papel da
+proposta — nunca repete um código de cobertura (os códigos são medidos e NÃO ordinais; ver abaixo).
+
 🔴 Por que o motor manda as coberturas EXPLÍCITAS: 📊 o "pacote Prata" é configuração de CADA conta do Agger
 (MEDICOES §E-pacotes: AF franquia reduzida/RCF 200-200-20/APP 5 mil × RES franquia normal/RCF 0) — o mesmo
 pedido sem coberturas explícitas sairia com coberturas diferentes em cada corretora.
@@ -18,10 +22,11 @@ Os CÓDIGOS são os do corpo do `calcularV2`, medidos (CLAUDE.md §9.5: cada con
 """
 from __future__ import annotations
 
-from typing import Dict, Mapping
+from typing import Dict, Mapping, Tuple
 
 PADRAO = "padrao"
 ECONOMICA = "economica"
+COMPLETA_MAIS = "completa_mais"
 
 # As 15 chaves de cobertura que o APP escolhe (📊 laudo M0a: 23 chaves só existem no pedido; estas são as de
 # cobertura). O montador aplica exatamente estas sobre cada item da seguradora.
@@ -60,7 +65,21 @@ _ECONOMICA: Dict[str, object] = dict(
     assist24hs=4,                # BÁSICA (📊 RES Prata — código 4)
 )
 
-PRESETS: Mapping[str, Mapping[str, object]] = {PADRAO: _PADRAO, ECONOMICA: _ECONOMICA}
+# A COMPLETA+ (D-MC-69 / D-130A-09): a padrão (D-MC-65 — franquia reduzida, vidros completos, reserva 15 d,
+# assistência completa: a "franquia reduzida" da completa+ JÁ é da padrão) + PEQUENOS REPAROS. Uma chave só muda.
+#   📊 `reparoRapido` é booleano no corpo do `calcularV2`: `true` aparece 49× em `tests/fixtures/agger/gravacao_r1.json`
+#      (`grep -o '"reparoRapido":true' … | wc -l`, 06/10), eco do pedido de uma conta real; a padrão manda `false`.
+_COMPLETA_MAIS: Dict[str, object] = dict(
+    _PADRAO,
+    reparoRapido=True,           # PEQUENOS REPAROS (D-MC-69: "completa+ com franquia reduzida e pequenos reparos")
+)
+
+PRESETS: Mapping[str, Mapping[str, object]] = {PADRAO: _PADRAO, ECONOMICA: _ECONOMICA, COMPLETA_MAIS: _COMPLETA_MAIS}
+
+# A ORDEM do disparo no MESMO negócio (D-129B-03): a padrão ABRE o negócio (versão 1); a econômica e a completa+ são
+# versões seguintes dele, nesta ordem. O motor ordena por aqui (o ajuste do corretor vem depois de todas) e a porta
+# aceita exatamente estas opções (`porta.OPCOES` — o teste confere que as duas listas dizem o mesmo).
+ORDEM: Tuple[str, ...] = (PADRAO, ECONOMICA, COMPLETA_MAIS)
 
 # O AJUSTE do corretor (`contrato.Ajuste`) → a chave de cobertura que ele troca. 🔴 O GÊMEO em Python de
 # `CAMPO_DO_AJUSTE` do `montador.js` (o robô aplica lá, na página): a porta usa este para gravar em
