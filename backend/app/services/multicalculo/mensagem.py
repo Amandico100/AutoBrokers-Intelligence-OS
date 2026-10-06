@@ -69,8 +69,28 @@ def _escolhidas(modelo: Mapping[str, Any], quantas: int) -> List[Mapping[str, An
     return saida
 
 
-def _porque(o: Mapping[str, Any]) -> Optional[str]:
-    texto = next(iter(o.get("motivos") or []), None) or o.get("por_que_mais_barata")
+def _cobre_menos(o: Mapping[str, Any], *, curto: bool = False) -> Optional[str]:
+    """J-P1 (juiz, 06/10) · D-MC-67: a opção mais barata porque CORTA cobertura diz o que corta, em UMA linha — nunca
+    só "R$ X a menos". Vem do `por_que_mais_barata` do modelo ("Mesma Youse da recomendada, com franquia … e …")."""
+    texto = re.sub(r"\s+", " ", str(o.get("por_que_mais_barata") or "")).strip().rstrip(".")
+    if not texto:
+        return None
+    m = re.search(r",\s*com\s+(.+)$", texto)
+    corpo = m.group(1) if m else texto
+    if curto:
+        partes = re.split(r",\s*|\s+e\s+(?=[^,]+$)", corpo)
+        corpo = partes[0] + (" e outras diferenças" if len(partes) > 1 else "")
+    return f"_Cobre menos: {corpo}._"
+
+
+def _porque(o: Mapping[str, Any], *, com_motivo: bool = True, curto: bool = False) -> Optional[str]:
+    """A linha de "por quê": o que a opção cobre a menos (nunca cai), senão o 1º motivo (cai primeiro no aperto)."""
+    corte = _cobre_menos(o, curto=curto)
+    if corte:
+        return corte
+    if not com_motivo:
+        return None
+    texto = next(iter(o.get("motivos") or []), None)
     texto = re.sub(r"\s+", " ", str(texto or "")).strip().rstrip(".")
     return f"_{texto}._" if texto else None
 
@@ -102,6 +122,15 @@ def _abertura(modelo: Mapping[str, Any]) -> str:
     return f"{ola} {conta}, {iguais} {verbo} preço com a mesma cobertura completa. {EMOJI_DO_RESULTADO}"
 
 
+def _mesmo_preco_da_1a(modelo: Mapping[str, Any], preco: Any) -> bool:
+    """O duelo entre corretoras só se afirma se o preço da vencedora É o da 1ª opção (crítico final, 06/10)."""
+    ops = [o for o in (modelo.get("opcoes") or []) if isinstance(o, Mapping)]
+    try:
+        return bool(ops) and abs(float(preco) - float(ops[0].get("premio_anual"))) < 0.01
+    except (TypeError, ValueError):
+        return False
+
+
 def _linha_da_anfitria(modelo: Mapping[str, Any]) -> Optional[str]:
     """UMA linha, só com dado verdadeiro do modelo, nesta ordem de força: a vitória entre corretoras (canal), a nota
     do Google CONFIRMADA, os anos de casa. Nada disso → só quem atende."""
@@ -110,7 +139,8 @@ def _linha_da_anfitria(modelo: Mapping[str, Any]) -> Optional[str]:
     if not nome:
         return None
     entre = [e for e in (modelo.get("entre_corretoras") or []) if isinstance(e, Mapping)]
-    if len(entre) > 1 and any(e.get("vencedora") and e.get("corretora") == nome for e in entre):
+    venc = next((e for e in entre if e.get("vencedora") and e.get("corretora") == nome), None)
+    if len(entre) > 1 and venc is not None and _mesmo_preco_da_1a(modelo, venc.get("melhor_completa")):
         return f"Quem atende é a {nome}, que teve o menor preço entre as {len(entre)} corretoras comparadas."
     g = anf.get("google")
     if isinstance(g, Mapping) and g.get("nota") and g.get("avaliacoes"):
@@ -140,13 +170,15 @@ def mensagem_whatsapp(modelo: Mapping[str, Any], link: str, *, config: Optional[
         segundo.append(anf)
     balao2 = "\n".join(s for s in segundo if s)
 
-    tentativas = [(True, True, True), (False, True, True), (False, False, True), (False, False, False)]
+    # o aperto tira, nesta ordem: o motivo, o convite, as parcelas — e só no fim encurta o "cobre menos" (nunca o tira)
+    tentativas = [(True, True, True, False), (False, True, True, False), (False, False, True, False),
+                  (False, False, False, False), (False, False, False, True)]
     balao1 = ""
-    for com_porque, com_convite, com_parcelas in tentativas:
+    for com_porque, com_convite, com_parcelas, curto in tentativas:
         blocos = [_abertura(modelo)]
         for o in ops:
             linha = _linha_da_opcao(o, com_parcelas=com_parcelas)
-            pq = _porque(o) if com_porque else None
+            pq = _porque(o, com_motivo=com_porque, curto=curto)
             blocos.append(linha + (f"\n{pq}" if pq else ""))
         if com_convite:
             blocos.append(convite)
