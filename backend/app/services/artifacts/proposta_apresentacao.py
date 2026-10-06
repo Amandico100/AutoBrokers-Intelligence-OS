@@ -487,14 +487,16 @@ def rotulo_do_tick(v: int) -> str:
 
 
 def caixas(ticks: list[int], lo: int, hi: int, largura: float) -> list[tuple[float, float]]:
-    """A caixa (x0, x1) de cada rótulo: o 1º ancorado à esquerda, o último à direita, o resto centrado."""
+    """A caixa (x0, x1) de cada rótulo, como a página o desenha: na ponta ESQUERDA do eixo (o valor `lo`) ancorado à
+    esquerda, na ponta DIREITA (o valor `hi`) à direita, e todo o resto CENTRADO no valor — inclusive o último rótulo
+    quando ele não cai na ponta (crítico final, 06/10: o "R$ 8 mil" a 80 % ancorado à direita se lia como 7,6 mil)."""
     out = []
-    for i, t in enumerate(ticks):
+    for t in ticks:
         x = (t - lo) / (hi - lo) * largura
         w = largura_do_rotulo(rotulo_do_tick(t))
-        if i == 0:
+        if t == lo:
             out.append((x, x + w))
-        elif i == len(ticks) - 1:
+        elif t == hi:
             out.append((x - w, x))
         else:
             out.append((x - w / 2, x + w / 2))
@@ -544,21 +546,28 @@ def eixo_da_regua(valores: Iterable[Any]) -> Optional[dict]:
 # =====================================================================================================================
 # textos que dependem da origem
 # =====================================================================================================================
-#: O nome do canal comparador (o PRODUTO, não uma corretora). O modelo pode trazer `canal.nome`.
-NOME_DO_CANAL = "Quem Cobra Menos"
+#: A legenda curta da nota, ao lado dela no cartão (crítico final, 06/10: "nossa nota 91/100" só se explicava no
+#: rodapé). Os PESOS são da config; o que a nota olha é fixo do produto.
+LEGENDA_DA_NOTA = "preço, franquia e coberturas"
 
 
 def nome_do_canal(modelo: dict) -> str:
+    """O nome do canal comparador (o PRODUTO, não uma corretora): o do modelo (`canal.nome`, que a proposta grava da
+    config); sem ele, o padrão do produto na config (RT-10: configuração, nunca constante desta página)."""
     canal = modelo.get("canal") if isinstance(modelo.get("canal"), dict) else {}
-    return str(canal.get("nome") or "").strip() or NOME_DO_CANAL
+    nome = str(canal.get("nome") or "").strip()
+    if nome:
+        return nome
+    from app.services.multicalculo.config import PADRAO_DO_PRODUTO
+
+    return str((PADRAO_DO_PRODUTO.get("canal") or {}).get("nome") or "").strip() or "o comparador"
 
 
 def voz(modelo: dict) -> dict:
     if modelo.get("origem") == "canal":
         return {"nota": "nota do comparador", "porque": "Por que o comparador recomenda",
-                "nota_longa": f"A nota do {nome_do_canal(modelo)}, de 0 a 100,", "escolha": "Escolha do comparador"}
-    return {"nota": "nossa nota", "porque": "Por que recomendamos", "nota_longa": "Nossa nota, de 0 a 100,",
-            "escolha": "Nossa escolha"}
+                "nota_longa": f"A nota do {nome_do_canal(modelo)}, de 0 a 100,"}
+    return {"nota": "nossa nota", "porque": "Por que recomendamos", "nota_longa": "Nossa nota, de 0 a 100,"}
 
 
 def aviso_legal(texto: Any, susep: Any) -> str:
