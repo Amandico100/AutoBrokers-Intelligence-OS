@@ -1130,3 +1130,18 @@ Fora do escopo da SPEC-073 por decisão do Founder (CA-041).
 
 
 ✅ **FECHADA 05/10/2026 (SPEC-129-B).** Os dois cofres (`backend/portal_worker/vault.py` e `backend/app/services/portal_vault.py`) usam `MultiFernet`: `PORTAL_VAULT_KEY` cifra, `PORTAL_VAULT_KEY_ANTERIOR` (opcional) só decifra o que foi cifrado antes da troca — a chave troca sem pedir a ninguém que troque senha. ⚠️ Recifragem em lote não foi escrita (com a anterior decifrando, ela não é pré-requisito da troca). A rotação em si continua do Founder no fim do projeto (D-MC-35).
+
+
+## P-129B-02 · 🤖 Nenhum chamador do produto ainda — por desenho
+A porta `MulticalculoProvider` só tem os testes e o canário como chamadores. **Destrava:** a 130-A/131/133-A chamam. **Custa
+esquecer:** peça pronta e órfã (a mesma lição da P-128-05).
+
+✅ **FECHADA 06/10/2026 (SPEC-130-A).** O 1º chamador do produto é a 130-A: `backend/app/services/multicalculo/proposta.py` e `comando_proposta.py` usam a porta (`porta.py`), que ganhou `ordem_do_mais_barato` e `cotacao_alvo`; 📊 canário 06/10: o pedido `d0bb15ba` foi comparado e publicado na produção pela porta.
+
+
+## P-129B-06 · 🤖 Para a 130-A: separar ofertas NÃO comparáveis
+📊 Canário 05/10: o menor preço da corretora A (R$ 186,78) é da Azul por Assinatura, "plano proteção para terceiros" — sem casco,
+prêmio de assinatura. **Destrava:** a 130-A marca e separa essas ofertas antes do "menor preço". **Custa esquecer:** o Quem Cobra
+Menos indica como vencedora uma oferta que não cobre o carro.
+
+✅ **FECHADA 06/10/2026 (SPEC-130-A).** A comparação é igual-com-igual por opção: só compreensiva com casco 100 % e prêmio anual entra no ranking; a Azul por Assinatura e os produtos diferentes ficam à parte. Prova: `backend/tests/test_spec130a_o_fio.py` (0 produto diferente no ranking; a Azul por Assinatura fora do ranking e o preço dela em lugar nenhum da página); 📊 canário 06/10: 16 seguradoras · 13 completas · 1 só com produto diferente · 2 sem resposta.
