@@ -60,8 +60,11 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
             PROGRAMA MULTICÁLCULO (D-MC-38, 04/10/2026) — a fila nova substitui a ordem da D-FILA-01 e a D-E002-07.
               Plano: programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md (v2.5.1, 05/10 tarde — a fila INTERCALADA, D-MC-61; leia antes a
               PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) · estado: programa-multicalculo/ESTADO-DO-PROGRAMA.md
+            SPEC-129-B (o motor de multicálculo) — CONCLUÍDA 05/10/2026, nota 86, branch spec/129-B-o-motor, main 〈push〉
+              (juiz 80 ‖ red team 62 → conserto → confirmação 85) · 📊 canário ao vivo: 5/5 cálculos, 104 ofertas, retomada +0;
+              nasce DESLIGADO; portão de preço da 130-A respondido (D-MC-62…65)
 A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável  →  ✔ 128 prova do Agger
-  (v2.5.1)  →  129-B motor (várias corretoras em paralelo)  →  130-A comparação e proposta
+  (v2.5.1)  →  ✔ 129-B motor (várias corretoras em paralelo)  →  130-A comparação e proposta (⏭ próxima)
             →  133-A Quem Cobra Menos no WhatsApp, piloto fechado  →  130-B leitor de apólice
             →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2  →  133-B Quem Cobra Menos piloto 🚀3
             →  135 proposta conversa 🚀4  →  136 lembretes  →  137 público no WhatsApp oficial 🚀5  →  ★ Claude/ChatGPT
