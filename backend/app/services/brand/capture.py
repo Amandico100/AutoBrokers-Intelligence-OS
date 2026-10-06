@@ -1403,8 +1403,11 @@ class BrandCaptureService:
         padrão em vez de sair quebrada. O que ela nunca faz é sair sem marca
         nenhuma — o `CHECK` do banco recusaria publicar.
         """
-        p = (self.db.table("brand_profiles").select("*")
-             .eq("company_id", company_id).maybe_single().execute()).data
+        # 🔴 SPEC-130-A: com o postgrest instalado, `maybe_single()` SEM linha devolve `None` (não um objeto com
+        # `.data = None`) — a empresa do canal não tem `brand_profiles` e publicar uma proposta em nome dela quebrava aqui.
+        r = (self.db.table("brand_profiles").select("*")
+             .eq("company_id", company_id).maybe_single().execute())
+        p = r.data if r is not None else None
         if not p or not (p.get("palette") or {}).get("primary"):
             sistema = build_design_system(FALLBACK_PRIMARIA, FALLBACK_ACENTO)
             nome = (p or {}).get("display_name") or "Corretora"
