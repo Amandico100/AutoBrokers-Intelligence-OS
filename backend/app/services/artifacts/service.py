@@ -154,6 +154,13 @@ def _agora() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _linha(resp: Any) -> Optional[dict]:
+    """A linha de um `maybe_single()`. 🔴 Com o postgrest instalado, SEM linha ele devolve `None` (não um objeto com
+    `.data = None`): `(...).data` virava AttributeError → 500 num token inexistente (RT-9/J-P7, 06/10 — o mesmo
+    defeito que a 130-A consertou em `capture.py`). Sem linha = None = "não encontrado" (404) para quem chama."""
+    return getattr(resp, "data", None) if resp is not None else None
+
+
 class ArtifactService:
     def __init__(self, supabase_client: Any):
         self.db = getattr(supabase_client, "client", supabase_client)
@@ -350,8 +357,13 @@ class ArtifactService:
                     title: Optional[str] = None, subtitle: Optional[str] = None,
                     summary: Optional[str] = None,
                     data_as_of: Optional[datetime] = None,
-                    confidence_note: Optional[str] = None) -> dict:
+                    confidence_note: Optional[str] = None,
+                    subject_ref: Optional[dict] = None) -> dict:
         """Nova versão de um artefato existente. A marca é recongelada agora.
+
+        🔴 SPEC-130-A (RT-3, red team 06/10): `subject_ref` atualiza o ASSUNTO da peça junto com a versão. A proposta
+        guarda nele a anfitriã e as ofertas de cada opção; se a vencedora muda entre as versões e o assunto fica o da
+        v1, quem lê a peça depois (a 133-A) negocia com a corretora e as ofertas erradas.
 
         🔴 SPEC-095 · B.1: a versão nova pode **retitular a peça**. A mesma
         pergunta feita em outubro e em dezembro é a mesma PEÇA — mas o achado
@@ -365,9 +377,9 @@ class ArtifactService:
         """
         from ..brand.capture import BrandCaptureService
 
-        atual = (self.db.table("artifacts").select("current_version, title")
+        atual = _linha(self.db.table("artifacts").select("current_version, title")
                  .eq("id", artifact_id).eq("company_id", company_id)
-                 .maybe_single().execute()).data or {}
+                 .maybe_single().execute()) or {}
         proxima = int(atual.get("current_version") or 0) + 1
         # 🔴 O título ANTERIOR é copiado AGORA, antes de qualquer escrita.
         # 📊 Achado pelo `--simular` do canário em 04/09/2026: lê-lo depois do
@@ -384,7 +396,8 @@ class ArtifactService:
                                    confidence_note=confidence_note)
 
         mudancas = {k: v for k, v in (("title", title), ("subtitle", subtitle),
-                                      ("summary", summary)) if v is not None}
+                                      ("summary", summary), ("subject_ref", subject_ref))
+                    if v is not None}
         if mudancas:
             self.db.table("artifacts").update(mudancas) \
                 .eq("id", artifact_id).eq("company_id", company_id).execute()
@@ -489,14 +502,14 @@ class ArtifactService:
         from .render import render_html
         from .templates import POR_CHAVE
 
-        v = (self.db.table("artifact_versions").select("*")
+        v = _linha(self.db.table("artifact_versions").select("*")
              .eq("id", version_id).eq("company_id", company_id)
-             .maybe_single().execute()).data
+             .maybe_single().execute())
         if not v:
             raise ValueError("versao inexistente")
 
-        art = (self.db.table("artifacts").select("title, template_key")
-               .eq("id", v["artifact_id"]).maybe_single().execute()).data or {}
+        art = _linha(self.db.table("artifacts").select("title, template_key")
+               .eq("id", v["artifact_id"]).maybe_single().execute()) or {}
 
         marca = v.get("brand_snapshot") or {}
         tpl = POR_CHAVE.get(art.get("template_key") or "")
@@ -543,9 +556,9 @@ class ArtifactService:
     def publicar(self, *, company_id: str, version_id: str,
                  user_id: Optional[str] = None) -> dict:
         """Publica a versão. A partir daqui ela é imutável — o banco garante."""
-        v = (self.db.table("artifact_versions").select("id, artifact_id, version, status, brand_snapshot")
+        v = _linha(self.db.table("artifact_versions").select("id, artifact_id, version, status, brand_snapshot")
              .eq("id", version_id).eq("company_id", company_id)
-             .maybe_single().execute()).data
+             .maybe_single().execute())
         if not v:
             raise ValueError("versao inexistente")
 
@@ -640,10 +653,10 @@ class ArtifactService:
         fechar": um link morto não abre a página nem serve a imagem nem leva ao
         WhatsApp.
         """
-        s = (self.db.table("artifact_shares")
+        s = _linha(self.db.table("artifact_shares")
              .select("id, company_id, artifact_id, artifact_version_id, expires_at, "
                      "revoked_at, max_views, view_count, white_label, audience_label")
-             .eq("token", token).maybe_single().execute()).data
+             .eq("token", token).maybe_single().execute())
         if not s or s.get("revoked_at"):
             return None
         try:
@@ -656,17 +669,17 @@ class ArtifactService:
         return s
 
     def _artefato_do_share(self, s: dict) -> dict:
-        return (self.db.table("artifacts").select("title, subtitle, kind")
+        return _linha(self.db.table("artifacts").select("title, subtitle, kind")
                 .eq("id", s["artifact_id"]).eq("company_id", s["company_id"])
-                .maybe_single().execute()).data or {}
+                .maybe_single().execute()) or {}
 
     def _modelo_da_proposta(self, s: dict) -> Optional[dict]:
         """O `payload` (o modelo do CONTRATO §5) da versão do link — SÓ se a peça é `proposal`."""
         if self._artefato_do_share(s).get("kind") != KIND_PROPOSTA:
             return None
-        v = (self.db.table("artifact_versions").select("payload")
+        v = _linha(self.db.table("artifact_versions").select("payload")
              .eq("id", s["artifact_version_id"]).eq("company_id", s["company_id"])
-             .maybe_single().execute()).data or {}
+             .maybe_single().execute()) or {}
         modelo = v.get("payload")
         return modelo if isinstance(modelo, dict) else None
 
@@ -693,11 +706,11 @@ class ArtifactService:
         if not s:
             return None
 
-        render = (self.db.table("artifact_renders")
+        render = _linha(self.db.table("artifact_renders")
                   .select("inline_content, storage_ref")
                   .eq("artifact_version_id", s["artifact_version_id"])
                   .eq("format", "html").eq("status", "ready")
-                  .maybe_single().execute()).data
+                  .maybe_single().execute())
         if not render or not render.get("inline_content"):
             return None
 
