@@ -1,6 +1,6 @@
 # SPEC-130-A — A comparação, a proposta e a página "uau"
 
-> v1.0 · 06/10/2026 · Programa Multicálculo, passo 4 (base das duas linhas) · rito AAA v13, 🔴 CRÍTICO por piso ·
+> v1.1 (revisão cega 68 → §10) · 06/10/2026 · Programa Multicálculo, passo 4 (base das duas linhas) · rito AAA v13, 🔴 CRÍTICO por piso ·
 > branch `spec/130-A-a-proposta` · ficha: `programa-multicalculo/PLANO-MESTRE-MULTICALCULO.md` §4 "SPEC-130" (130-A) ·
 > decisões: D-MC-44, 55, 60, 62–74 (`FOUNDER-DECISIONS.md`) · insumo: `programa-multicalculo/ESTRATEGIA-COMERCIAL-DAS-CORRETORAS.md`
 
@@ -157,3 +157,36 @@ dela, AutoFleet neutra, nenhum nome de corretora no código · G5 a página: 390
 servida com o hash certo e SEM `unsafe-inline` de script (rota real no `next start`) · G6 a mensagem ≤ 700 caracteres, 2 opções,
 sem frase proibida · G7 migration VERIFY · G8 `grep` dos números comerciais fora de `config.py` = 0 · G9 `npm run test:rotas-montam`
 + `next start` + 1 requisição `/api/...` + 1 `/r/<token>` real · G10 cada guarda novo com mutação vermelha · G11 bateria em 2 metades.
+
+## 10. A revisão cega (nota 68) — o que mudou na v1.1 (vale sobre o texto acima)
+1. **Onde mora o artefato (D-130A-10):** no SOLICITANTE (a corretora, no pedido dela; o CANAL, no pedido do canal). A marca da
+   anfitriã vai no MODELO da página (lida de `brand_profiles` publicado + o logo baixado e embutido como `data:`), nunca no
+   `brand_snapshot` do artefato. Notas: no solicitante 85 × na anfitriã 45 (escrita entre corretoras e a biblioteca dela guardaria o
+   preço da concorrente). A prova com 2 tenants cobre: a anfitriã nunca recebe linha; o canal nunca vê comissão.
+2. **O Hub ganha um gancho de renderizador:** `Template.renderizador` (opcional); `renderizar` usa o gancho quando existe (senão os
+   blocos, como hoje). `abrir_compartilhado` e `GET /api/artifacts/shared/{token}` passam a devolver `kind` e `csp_script_hashes`
+   (SÓ para `proposal`). O hash vem da CONSTANTE do script, calculado no código — nunca do HTML guardado. O template entra no
+   registro e na seed de `report_templates` (o guarda `test_template_de_artefato_existe.py` cobre). F2 é dona de `service.py`,
+   `api/artifacts.py`, `templates.py`, `route.ts` e da seed.
+3. **A negociação é assíncrona:** `recalcular` só enfileira 1 ajuste. `planejar` (puro) → `cotacao_alvo` enfileira as tentativas de
+   1 passo e devolve `em_andamento` → `avaliar_cotacao_alvo` lê pela `consultar` e decide ou encadeia a 2ª etapa. Cada tentativa =
+   1 recálculo da corretora inteira (~30–50 s, plano ilimitado). Só a corretora DONA negocia (o canal recebe `comissao=None` →
+   `so_a_corretora_negocia`, D-MC-63). 10 % só com concorrência declarada E o corretor aprovando (D-MC-67/68).
+4. **Comparar por opção:** a opção vem do `calculo_id` (estados), cada opção ranqueada à parte; `ajuste` nunca no ranking.
+   📊 06/10 pedido `d0bb15ba`: 38 padrão · 44 econômica · 22 ajuste. Gate novo G12: a econômica nunca entra no ranking da padrão.
+5. **Assinatura:** `premio_mensal` é sempre `premio_total/12` (derivado). Lista `produtos_de_assinatura` na config → "preço de
+   assinatura", e o mensal derivado nunca aparece para eles.
+6. **Escopo devolvido:** a prévia do link com IMAGEM por proposta (D-MC-74: `og:image` gerada pelo backend, sem dado pessoal) e a
+   medição de ABERTURA (sem contar o robô de prévia do WhatsApp/Facebook) e de CLIQUE em "Quero fechar" (redirecionamento que
+   registra o evento e leva ao WhatsApp) entram na F2. D-130A-06 (registro/consentimento → 133-A) e D-130A-07 (PDF do servidor
+   depois) vão à pergunta única ao Founder e ao CHANGE-ADDENDA.
+7. **A 3ª opção (D-130A-09):** sem apólice → Recomendada · Mais em conta · Mais completa (completa+ = a padrão + pequenos reparos,
+   quando calculada; sem ela, "Outra completa"/"Menor franquia"). Com apólice → Igual à sua atual · Mais em conta · Mais completa
+   (D-MC-69). O preset `completa_mais` e a opção na porta/constraint são a fatia **F4** (migration de constraint, expand-only).
+   `apolice_atual` vem do chamador (131: InfoCap; 130-B: leitor) — nesta SPEC, parâmetro.
+8. **Fontes que faltavam:** `faq` = as objeções reais (manual, sobrescrevível) · `sinistro` = passos verdadeiros para qualquer
+   corretora, sobrescrevíveis · `veiculo` = `coberturas.modeloSelecionado` da oferta (o pedido é cifrado).
+9. **Gates acrescidos:** G12 (acima) · G13 negociação (ordem, piso 12 %, `precisa_aprovacao`, 10 % com concorrência, canal recusado)
+   · G14 um ramo ≠ 31 sintético passa · G15 vencedora reconferida por SQL independente · G16 o hash da CSP não muda se o HTML
+   guardado mudar · G17 a prévia do WhatsApp não conta visualização. G8 lista os números e os arquivos (os novos de F1/F3).
+   Migration no padrão da 129-B (RLS sem policy + REVOKE) e teste com 2 tenants. O teste do fio nasce VERMELHO no início da F3.
