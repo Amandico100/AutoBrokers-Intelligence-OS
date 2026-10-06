@@ -271,6 +271,9 @@ class Motor:
         self._contas_com_sessao: Dict[str, Dict[str, Any]] = {}
         self._ociosas: Dict[str, Dict[str, Any]] = {}
         self._abrindo = asyncio.Lock()
+        # 🔴 conserto 129-B (canário ao vivo 05/10): o motor que está ENCERRANDO (deploy) não grava estado de cálculo
+        # nem de conta por caminho de erro — o erro é efeito da própria morte, não do Agger. Ver `encerrar()`.
+        self._encerrando = False
 
     # -- as bordas, resolvidas tarde (o robô da F2 é importado só quando é usado) ----------
     @property
@@ -363,7 +366,15 @@ class Motor:
         TODAS as sessões, devolvendo as leases. 🔴 Sem isto, a sessão do robô fica viva no Agger e o próximo login
         vê o aviso de "sessão ativa" → o robô vira `ocupada` (ou `pausado`, se for conta `teste`) por um deploy.
         O que estava `calculando` fica para a retomada (o negócio existe; outro motor só LÊ); o que estava
-        `disparando` vira `incerto` pela retomada — nunca um 2º POST."""
+        `disparando` vira `incerto` pela retomada — nunca um 2º POST.
+
+        🔴 Conserto 129-B (📊 canário ao vivo 05/10 21:27): os 4 cálculos `calculando` viraram `falhou` "não consegui
+        ler" 2–5 s DEPOIS deste encerrar. Causa: cancelar a tarefa do grupo não cancelava a do TRABALHO (o
+        `asyncio.wait` não cancela o que espera); o acompanhamento seguia órfão, o `desligar()` fechava a página e o
+        `TargetClosedError` virava `LeituraImpossivel(sessão morta)` → `falhou`. Agora, nesta ordem: (1) a marca
+        `_encerrando` ANTES de cancelar — nenhum caminho de erro grava estado; (2) cancelar e AGUARDAR os grupos (cada
+        grupo aguarda o trabalho, as leituras filhas e a batida); (3) só então logout e navegador."""
+        self._encerrando = True
         tarefas = [t for t in list(self._tarefas) if not t.done()]
         for t in tarefas:
             t.cancel()
@@ -696,15 +707,23 @@ class Motor:
                         raise exc
                     logger.error("[MC] o grupo do pedido %s falhou (%s)", g.pedido_id, type(exc).__name__)
         finally:
-            batida.cancel()
-            espera.cancel()
-            await self._soltar_conta(conta, perdeu=perdeu.is_set(), descartar=g.sessao_morta)
+            # 🔴 conserto 129-B: o TRABALHO também (o `asyncio.wait` cancelado não cancela o que esperava) — e todos
+            # AGUARDADOS: nenhuma leitura pode sobreviver ao grupo e tropeçar na página que o `desligar()` fecha
+            for t in (trabalho, batida, espera):
+                t.cancel()
+            await asyncio.gather(trabalho, batida, espera, return_exceptions=True)
+            # encerrando, a sessão sai com LOGOUT (a "morte" pode ser efeito do próprio desligar): descartar sem logout
+            # deixaria a sessão viva no Agger e o próximo login veria o aviso de sessão ativa
+            await self._soltar_conta(conta, perdeu=perdeu.is_set(),
+                                     descartar=g.sessao_morta and not self._encerrando)
             await self._fechar_pedido_se_terminou(g.pedido_id, g.solicitante_company_id)
 
     async def _bater(self, g: Grupo, conta: Dict[str, Any], perdeu: asyncio.Event) -> None:
         ultimo_ok = self.agora()
         while True:
             await asyncio.sleep(self.batida_s)
+            if self._encerrando:
+                return   # quem encerra não perde a posse por engano: a batida para e a lease vence sozinha
             try:
                 agora = self.agora()
                 if not await self._db(lambda: robos.renovar(self.supa, conta, self.dono, agora)):
@@ -724,6 +743,8 @@ class Motor:
                         return
                 ultimo_ok = agora
             except Exception as exc:  # noqa: BLE001
+                if self._encerrando:
+                    return
                 logger.warning("[MC] batida falhou (%s)", type(exc).__name__)
                 if (self.agora() - ultimo_ok).total_seconds() > self.lease_s - self.batida_s:
                     perdeu.set()
@@ -804,6 +825,8 @@ class Motor:
         """O aviso de sessão ativa apareceu e foi CANCELADO: uma pessoa está no login.
         `teste` (login de PESSOA) → `pausado` e PARAR (PASSAGEM §8); `ativo` → `ocupada` 💭 30 min e o
         que não saiu volta à fila."""
+        if self._encerrando:
+            return   # conserto 129-B: o motor que encerra não muda o estado da conta nem dos cálculos
         calcs = list(calcs)
         if conta.get("robo_estado") == robos.TESTE:
             await self._marcar(conta, robos.PAUSADO)
@@ -818,6 +841,9 @@ class Motor:
 
     async def _marcar(self, conta: Dict[str, Any], estado: str, **kw) -> bool:
         """`robos.marcar_estado` (CAS a partir do estado LIDO): a pausa do Founder vence o motor (red B1)."""
+        if self._encerrando:
+            logger.warning("[MC] encerrando: o robô %s não muda para %s", conta.get("id"), estado)
+            return False
         try:
             return bool(await self._db(lambda: robos.marcar_estado(self.supa, conta, estado, agora=self.agora(),
                                                                   **kw)))
@@ -830,6 +856,8 @@ class Motor:
         """Senha recusada: UMA tentativa → `bloqueado` + evento `robo_bloqueado`. Nunca retenta (é como
         a conta da corretora é bloqueada na seguradora). O que não saiu volta à fila: outro robô da
         mesma corretora pode servir; sem outro, o cálculo expira no prazo dele."""
+        if self._encerrando:
+            return   # conserto 129-B: a recusa vista enquanto o motor morre não bloqueia a conta
         calcs = list(calcs)
         await self._marcar(conta, robos.BLOQUEADO)
         logger.error("[MC] robô %s com login/senha recusados — bloqueado", conta["id"])
@@ -1013,6 +1041,11 @@ class Motor:
             return
         except leitura_impossivel as exc:
             # 🔴 conserto 129-B (juiz B1): "não consegui ler" nunca vira `fechado` com 0 ofertas
+            if self._encerrando:
+                # 🔴 conserto 129-B (canário 05/10): a leitura caiu PORQUE o motor está encerrando — o negócio existe;
+                # fica `calculando` e outro motor só LÊ (D-129B-06). Nem `falhou`, nem `fechado` com o que leu.
+                logger.warning("[MC] encerrando: o cálculo %s fica para a retomada", c["id"])
+                return
             if getattr(exc, "sessao_morta", False):
                 g.sessao_morta = True
             if perdeu.is_set():
@@ -1025,6 +1058,12 @@ class Motor:
                 if not g.sessao_morta:
                     await self._copiar_pdfs(g, c, sessao, d)
                 await self._encerrar(g, c, "fechado", MOTIVO_LEU_PARTE)
+            elif getattr(exc, "pagina_fechada", False):
+                # 🔴 conserto 129-B: a PÁGINA fechou sem o motor encerrar (o navegador caiu sozinho; um SIGTERM que
+                # chegou ao Chromium antes do encerrar). Não é o Agger dizendo "não": o negócio existe e um login novo
+                # o lê. Fica `calculando` → a retomada (limitada a MAX_RETOMADAS, depois `falhou` com o motivo).
+                # 401/403 (o Agger recusou) segue `falhou` (juiz B1). 💭 nota 80 × 55 de `falhou` sem leitura alguma.
+                logger.warning("[MC] a página do cálculo %s fechou — fica para a retomada", c["id"])
             else:
                 await self._encerrar(g, c, "falhou", MOTIVO_NAO_LEU)
             return
@@ -1126,7 +1165,13 @@ class Motor:
 
     async def _encerrar(self, g: Grupo, c: Dict[str, Any], status: str, erro: Optional[str]) -> None:
         """Estado final de um cálculo deste grupo. Sai de `ativos` ANTES de gravar (a batida não pode
-        confundir "fechou" com "perdi")."""
+        confundir "fechou" com "perdi").
+        🔴 Conserto 129-B: com o motor ENCERRANDO, nada é gravado — `calculando` fica para a retomada (só leitura) e
+        `disparando` vira `incerto` por ela (nunca um 2º POST). A guarda é AQUI, na escrita, e não em cada `except`:
+        um caminho de erro novo não consegue esquecê-la."""
+        if self._encerrando:
+            logger.warning("[MC] encerrando: o cálculo %s não é gravado como %s", c["id"], status)
+            return
         g.ativos.discard(c["id"])
         patch: Dict[str, Any] = {"status": status, "fechado_em": _iso(self.agora())}
         if erro is not None:
@@ -1139,7 +1184,11 @@ class Motor:
                                com_espera: bool = False) -> None:
         """Só o que NADA tocou no portal volta (status `disparando`, antes de qualquer POST). Os que
         estão `calculando` ficam: o negócio existe e a retomada lê. `com_espera` (falha de login sem
-        causa conhecida): `disponivel_em` = agora + 60 s × tentativas, teto 15 min."""
+        causa conhecida): `disponivel_em` = agora + 60 s × tentativas, teto 15 min.
+        🔴 Conserto 129-B: encerrando, nada volta — o erro pode ser a própria morte no MEIO de um POST; `disparando`
+        vencido vira `incerto` pela retomada (o lado seguro: nunca um 2º POST)."""
+        if self._encerrando:
+            return
         for c in list(calcs):
             if g.retomada or c.get("status") == "calculando":
                 continue
