@@ -265,8 +265,11 @@ def test_g7_migration_idempotente_rls_sem_policy_e_revoke():
         assert proibido not in c, proibido
 
 
-def test_g7_manifest_registra_a_migration_nao_aplicada():
+def test_g7_manifest_registra_a_migration_aplicada_com_o_verify():
+    # §9.3: o fato mudou em 06/10 (aplicada pelo gerente, versão 20261006084655) — a lição migra: a linha tem de
+    # trazer a versão registrada e o VERIFY esperado, nunca "aplicada" sem prova.
     texto = MANIFEST.read_text(encoding="utf-8")
     assert "20261006_01_spec130a_config.sql" in texto
     linha = next(l for l in texto.splitlines() if "20261006_01_spec130a_config.sql" in l)
-    assert "NÃO APLICADA" in linha
+    assert "**APLICADA**" in linha and "NÃO APLICADA" not in linha
+    assert "20261006084655" in linha and "1·1·1·0·0·1·4" in linha and "VERIFY 20261006_01 OK" in linha
