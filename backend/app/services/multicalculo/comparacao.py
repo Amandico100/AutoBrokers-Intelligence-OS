@@ -648,19 +648,51 @@ def _opcao(e: Mapping[str, Any], id_: str, rotulo: str, papel: str, **ctx: Any) 
     }
 
 
+def _repete(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    """J-P4 (juiz, 06/10): a "Mais completa" que não acrescenta nada à referência — a MESMA seguradora com o mesmo
+    prêmio (± R$ 1) ou com as mesmas coberturas devolvidas — não é uma opção, é a mesma repetida com outro rótulo."""
+    if normalizar(a.get("seguradora")) != normalizar(b.get("seguradora")):
+        return False
+    if abs(float(a["premio_anual"]) - float(b["premio_anual"])) < 1.0:
+        return True
+    return (assinatura_de_coberturas({"coberturas": a.get("coberturas_brutas") or {}})
+            == assinatura_de_coberturas({"coberturas": b.get("coberturas_brutas") or {}}))
+
+
+def precisa_de_apolice(situacao: str) -> bool:
+    return situacao in ("novo_com_apolice", "renovacao")
+
+
+def conferir_apolice(situacao: str, apolice_atual: Optional[Mapping[str, Any]]) -> None:
+    """J-B2 (juiz, 06/10): com apólice / renovação SEM a apólice atual, a página rotularia "Igual à sua atual" ou "Sua
+    renovação" uma seguradora que não é a do cliente. Recusa com o motivo — nunca um rótulo inventado."""
+    if not precisa_de_apolice(situacao):
+        return
+    seg = str((apolice_atual or {}).get("seguradora") or "").strip() if isinstance(apolice_atual, Mapping) else ""
+    if not seg:
+        raise ValueError(f"a situação {situacao!r} precisa da apólice atual do cliente (ao menos a seguradora): sem "
+                         "ela a página chamaria de \"igual à sua atual\" uma seguradora que não é a dele")
+
+
 def opcoes(comparacao: Comparacao, *, situacao: str, apolice_atual: Optional[Mapping[str, Any]] = None,
            config: Optional[Mapping[str, Any]] = None, corretora: Optional[str] = None) -> List[Dict[str, Any]]:
     """As opções da proposta (D-130A-09), na ordem em que aparecem (as 2 primeiras vão ao WhatsApp, D-MC-74):
 
     sem apólice  → Recomendada (menor completa) · Mais em conta (menor econômica, se MAIS BARATA) · Mais completa
-                   (se houver cálculo `completa_mais`) — senão "Menor franquia" (se a menor franquia do quadro é de
-                   OUTRA seguradora) ou "Outra completa" (2ª menor completa)
-    com apólice  → Igual à sua atual ("Sua renovação" na renovação: a mesma seguradora; senão a menor completa) ·
-    / renovação    Mais em conta (mais barata que a atual) · Mais completa — senão a Recomendada (se for outra), senão
-                   a "Outra completa"/"Menor franquia"
+                   (se houver cálculo `completa_mais` que acrescente algo) — senão "Menor franquia" (se a menor
+                   franquia do quadro é de OUTRA seguradora) ou "Outra completa" (2ª menor completa)
+    com apólice  → a seguradora da apólice É a menor completa: "Igual à sua atual" ("Sua renovação") em 1º · Mais em
+    / renovação    conta · Mais completa (senão a "Outra completa"/"Menor franquia")
+                   não é: Recomendada (a menor completa) em 1º · "Igual à sua atual" · Mais em conta (senão Mais completa)
+                   a seguradora da apólice não está no quadro: como sem apólice (nenhum "igual" inventado)
+
+    🔴 A 1ª opção é SEMPRE a menor completa (RT-B1, red team 06/10): é ela que a página chama de "a melhor das N" e a
+    mensagem leva primeiro. A seguradora da apólice entra como "igual", na posição VERDADEIRA dela no ranking.
+    `apolice_atual` obrigatória com apólice/renovação (J-B2: `ValueError`).
     `corretora`: de quem são as ofertas (padrão: a VENCEDORA — a anfitriã fecha o que mostra)."""
     if situacao not in SITUACOES:
         raise ValueError(f"situação desconhecida: {situacao!r} (aceitas: {', '.join(SITUACOES)})")
+    conferir_apolice(situacao, apolice_atual)
     cfg = config or PADRAO_DO_PRODUTO
     papeis = comparacao.papeis
     dona = corretora or comparacao.vencedora
@@ -686,37 +718,30 @@ def opcoes(comparacao: Comparacao, *, situacao: str, apolice_atual: Optional[Map
                 return (menor, "menor_franquia", "Menor franquia", "completa")
         return (resto[0], "outra_completa", "Outra completa", "completa")
 
-    if situacao == "novo_sem_apolice":
-        rec = C[0]
-        escolhidas.append((rec, "recomendada", "Recomendada", "completa"))
-        if E and E[0]["premio_anual"] < rec["premio_anual"]:
-            escolhidas.append((E[0], "mais_em_conta", "Mais em conta", "economica"))
-        if M:
-            escolhidas.append((M[0], "mais_completa", "Mais completa", "completa_mais"))
-        else:
-            t = terceira_completa([rec["oferta_id"]])
-            if t:
-                escolhidas.append(t)
+    melhor = C[0]                                               # a menor completa: a 1ª opção, sempre
+    igual = None
+    if precisa_de_apolice(situacao):
+        atual_seg = str(apolice_atual["seguradora"]).strip()
+        # só a MESMA seguradora vira "igual" — se ela não está no quadro, não existe opção "igual" (J-B2/P4b)
+        igual = next((c for c in C if casa_seguradora(c["seguradora_original"], [atual_seg])
+                      or casa_seguradora(c["seguradora"], [atual_seg])
+                      or casa_seguradora(atual_seg, [c["seguradora_original"]])
+                      or casa_seguradora(atual_seg, [c["seguradora"]])), None)
+    id_igual, rot_igual = (("sua_renovacao", "Sua renovação") if situacao == "renovacao"
+                           else ("igual_a_atual", "Igual à sua atual"))
+    if igual is not None and igual["oferta_id"] == melhor["oferta_id"]:
+        escolhidas.append((melhor, id_igual, rot_igual, "igual"))   # a seguradora dele JÁ é a menor completa
     else:
-        atual_seg = (apolice_atual or {}).get("seguradora")
-        igual = next((c for c in C if atual_seg and (casa_seguradora(c["seguradora_original"], [atual_seg])
-                                                     or casa_seguradora(c["seguradora"], [atual_seg])
-                                                     or casa_seguradora(atual_seg, [c["seguradora_original"]]))),
-                     None) or C[0]
-        if situacao == "renovacao":
-            escolhidas.append((igual, "sua_renovacao", "Sua renovação", "igual"))
-        else:
-            escolhidas.append((igual, "igual_a_atual", "Igual à sua atual", "igual"))
-        if E and E[0]["premio_anual"] < igual["premio_anual"]:
-            escolhidas.append((E[0], "mais_em_conta", "Mais em conta", "economica"))
-        if M:
-            escolhidas.append((M[0], "mais_completa", "Mais completa", "completa_mais"))
-        elif C[0]["oferta_id"] != igual["oferta_id"]:
-            escolhidas.append((C[0], "recomendada", "Recomendada", "completa"))
-        else:
-            t = terceira_completa([igual["oferta_id"]])
-            if t:
-                escolhidas.append(t)
+        escolhidas.append((melhor, "recomendada", "Recomendada", "completa"))
+        if igual is not None:
+            escolhidas.append((igual, id_igual, rot_igual, "igual"))
+    if E and E[0]["premio_anual"] < melhor["premio_anual"]:
+        escolhidas.append((E[0], "mais_em_conta", "Mais em conta", "economica"))
+    if M and not _repete(M[0], melhor):
+        escolhidas.append((M[0], "mais_completa", "Mais completa", "completa_mais"))
+    t = terceira_completa([e[0]["oferta_id"] for e in escolhidas])
+    if t:
+        escolhidas.append(t)
 
     vistos: set = set()
     unicas = []
