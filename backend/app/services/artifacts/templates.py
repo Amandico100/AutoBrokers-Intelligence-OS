@@ -21,7 +21,9 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Optional
+
+from .proposta_html import render_proposta
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,15 @@ class Template:
     composition: list[dict]
     data_contract: dict = field(default_factory=dict)
     instruction_md: str = ""
+    #: 🔴 SPEC-130-A §10.2 — o GANCHO de renderização. `None` (todos os templates
+    #: de antes) = a peça sai dos BLOCOS, como sempre. Preenchido = o
+    #: `ArtifactService.renderizar` entrega o `payload` da versão a esta função e
+    #: guarda o documento que ela devolver (`payload -> str`). É o que deixa a
+    #: proposta ser uma peça do Hub (D-130A-01) sem caber na grade de blocos.
+    renderizador: Optional[Callable[[dict], str]] = None
+    #: A espécie gravada em `artifacts.kind` (CHECK da 057: report · dossier ·
+    #: proposal · …). O `/r/` decide a CSP por ela.
+    kind: str = "report"
 
     def content_hash(self) -> str:
         base = json.dumps(
@@ -916,6 +927,40 @@ PULSO_360 = Template(
 )
 
 
+# ==========================================================================
+# A proposta de seguro — SPEC-130-A · U5
+# ==========================================================================
+
+#: 🔴 A página "uau" da cotação, servida pelo `/r/` ao SEGURADO. Não usa a grade
+#: de blocos: o `renderizador` monta o documento a partir do modelo do CONTRATO
+#: §5 (`proposta.montar_proposta`). `composition` vazia de propósito — o gancho
+#: é o caminho, e um bloco aqui seria um segundo desenho que ninguém mantém.
+#: ⛔ Fora do `escolher`: a proposta nasce do motor do multicálculo
+#: (`publicar_proposta`), nunca de um pedido de relatório no chat.
+PROPOSTA = Template(
+    key="proposal.quote",
+    name="Proposta de seguro",
+    description="As opções comparadas igual com igual, a recomendada e o caminho para fechar pelo WhatsApp.",
+    category="client_facing", narrative_shape="comparative", audience="client",
+    visual_style="aurora", page_format="web",
+    composition=[],
+    data_contract={
+        "opcoes": _campo("array", "2 a 3 opções com id, rótulo, seguradora, prêmio, nota e motivos"),
+        "resumo": _campo("object", "quantas seguradoras cotadas, comparáveis, diferentes e sem resposta"),
+        "anfitria": _campo("object", "a corretora anfitriã: nome, marca, WhatsApp"),
+        "cta": _campo("object", "o WhatsApp da corretora e o texto por opção"),
+        "validade_ate": _campo("string", "a data até quando os preços valem"),
+    },
+    instruction_md=(
+        "⛔ A comissão nunca chega a esta peça. O modelo é montado pela "
+        "`proposta.montar_proposta`, que lê a porta já sem comissão para quem não "
+        "é dono.\n\n"
+        "Ausente não aparece: um campo sem valor some da página, nunca vira '—'."),
+    renderizador=render_proposta,
+    kind="proposal",
+)
+
+
 CATALOGO: tuple[Template, ...] = (
     PANORAMA, COMISSOES, FUNIL, PESQUISA,
     DOSSIE_CLIENTE, RENOVACOES, SINISTROS, BRIEFING,
@@ -923,7 +968,7 @@ CATALOGO: tuple[Template, ...] = (
     DOSSIE_OPORTUNIDADE, RADAR_DE_DEMANDA,
     EVIDENCE_PACK, MATRIZ_CONCORRENTES, AUDITORIA_SITE,
     RADAR_REGULATORIO, PLANILHA_EMPRESAS, RELATORIO_DE_MUDANCA,
-    COBRANCA, PULSO_360,
+    COBRANCA, PULSO_360, PROPOSTA,
 )
 
 POR_CHAVE: dict[str, Template] = {t.key: t for t in CATALOGO}
