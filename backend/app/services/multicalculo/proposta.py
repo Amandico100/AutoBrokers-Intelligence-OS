@@ -65,6 +65,11 @@ class LinkSemEndereco(RuntimeError):
     """Sem o endereço público do painel o link nasceria sem host — recusado ANTES de gravar."""
 
 
+class SemCanalDeFechamento(RuntimeError):
+    """J-B1 (juiz, 06/10): a anfitriã não tem WhatsApp de atendimento — a página sairia sem "Quero fechar" e o
+    segurado sem como fechar. Recusado ANTES de gravar, salvo `permitir_sem_whatsapp=True` explícito."""
+
+
 # =====================================================================================================================
 # o relógio e o dinheiro
 # =====================================================================================================================
@@ -143,6 +148,37 @@ def _digitos_de_whatsapp(valor: Any) -> Optional[str]:
     return dig if re.fullmatch(r"\d{12,15}", dig) else None
 
 
+#: o que a seguradora escreve no modelo e o segurado não precisa ler: tração (4X2), válvulas (16V), portas (4P)
+_RE_FICHA_TECNICA = re.compile(r"^(?:\d+x\d+|\d{1,2}v|\d\s?p)$", re.I)
+#: as palavras de motor/câmbio, por extenso e em minúscula (a chave é o texto sem acento e sem pontuação)
+_PALAVRAS_DO_MOTOR = {"flex": "flex", "aut": "automático", "automatico": "automático", "automatica": "automático",
+                      "mec": "manual", "manual": "manual", "turbo": "turbo", "tb": "turbo", "diesel": "diesel",
+                      "gasolina": "gasolina", "hibrido": "híbrido", "eletrico": "elétrico"}
+
+
+def descricao_do_veiculo(bruto: Any) -> str:
+    """O modelo como o segurado o chama, a partir do texto CRU da seguradora (crítico final, 06/10):
+    "COMPASS LIMITED 2.0 4X2 FLEX 16V AUT." → "Compass Limited 2.0 flex automático". Regras simples: tira a ficha
+    técnica (tração, válvulas, portas), escreve motor/câmbio por extenso em minúscula, nome com inicial maiúscula
+    (sigla sem vogal fica em maiúscula: LTZ), mantém a cilindrada. Nunca acrescenta o que não veio (marca, ano)."""
+    saida: List[str] = []
+    for bruto_p in str(bruto or "").split():
+        t = bruto_p.strip(".,;:")
+        if not t or _RE_FICHA_TECNICA.match(t):
+            continue
+        chave = CFG.normalizar(t)
+        if chave in _PALAVRAS_DO_MOTOR:
+            if _PALAVRAS_DO_MOTOR[chave] not in saida:
+                saida.append(_PALAVRAS_DO_MOTOR[chave])
+        elif re.fullmatch(r"\d+(?:[.,]\d+)?", t):
+            saida.append(t.replace(",", "."))
+        elif t.isalpha():
+            saida.append(t.upper() if not re.search(r"[aeiouáéíóúâêôãõ]", t, re.I) else t.capitalize())
+        else:
+            saida.append(t.upper())
+    return " ".join(saida)
+
+
 def _bem(ofertas: Sequence[Mapping[str, Any]], ramo: int) -> Optional[Dict[str, Any]]:
     """O que foi cotado, da OFERTA (`coberturas.modeloSelecionado`) — o pedido é cifrado e a proposta não o decifra."""
     modelos = Counter(str((o.get("coberturas") or {}).get("modeloSelecionado") or "").strip()
@@ -150,15 +186,10 @@ def _bem(ofertas: Sequence[Mapping[str, Any]], ramo: int) -> Optional[Dict[str, 
     modelos.pop("", None)
     if not modelos:
         return None
-    bruto = modelos.most_common(1)[0][0]
-    palavras = []
-    for p in bruto.split():
-        if p.isalpha():
-            palavras.append(p.capitalize() if len(p) > 1 else p)
-        else:
-            palavras.append(re.sub(r"(?<=\d)X(?=\d)", "x", p))
-    descricao = " ".join(palavras)
-    apelido = next((p for p in palavras if p.isalpha() and len(p) > 2), None)
+    descricao = descricao_do_veiculo(modelos.most_common(1)[0][0])
+    if not descricao:
+        return None
+    apelido = next((p for p in descricao.split() if p.isalpha() and len(p) > 2 and p[:1].isupper()), None)
     return {"rotulo": "carro" if int(ramo) == CMP.RAMO_AUTO else None, "descricao": descricao, "apelido": apelido}
 
 
@@ -414,9 +445,9 @@ async def montar_anfitria(db: Any, company_id: str, cfg: Mapping[str, Any], *,
 # a FAQ do caso — as objeções reais, com os números DESTE quadro, só sobre opções que existem
 # =====================================================================================================================
 def _faq(cfg_anf: Mapping[str, Any], *, resumo: Mapping[str, Any], opcoes: List[Dict[str, Any]],
-         situacao: str) -> List[Dict[str, str]]:
-    base = MANUAL.faq_padrao(cfg_anf)
-    if cfg_anf.get("faq") is not None and base != MANUAL.faq_padrao(None):     # a FAQ da corretora vale inteira
+         situacao: str, voz: str = "corretora", com_whatsapp: bool = True) -> List[Dict[str, str]]:
+    base = MANUAL.faq_padrao(cfg_anf, voz=voz, com_whatsapp=com_whatsapp)
+    if MANUAL.faq_da_corretora(cfg_anf):                                       # a FAQ da corretora vale inteira
         return [{"p": i["pergunta"], "r": i["resposta"]} for i in base]
     por_pergunta = {}
     for chave in ("melhorar_preco", "reduzir_franquia", "outras_seguradoras", "qual_tenho_hoje", "banco_cooperativa",
@@ -481,6 +512,7 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     company_id, pedido_id = _uuid(company_id, "company_id"), _uuid(pedido_id, "pedido_id")
     if situacao not in CMP.SITUACOES:
         raise ValueError(f"situação desconhecida: {situacao!r} (aceitas: {', '.join(CMP.SITUACOES)})")
+    CMP.conferir_apolice(situacao, apolice_atual)                    # J-B2: nunca um "igual à sua atual" inventado
     repo = RepositorioMulticalculo(db)
     porta = MulticalculoProvider(repo, cifrar=_so_leitura)
     andamento = await porta.consultar(company_id=company_id, pedido_id=pedido_id)   # 🔴 a autorização de leitura
@@ -579,14 +611,19 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
         "nao_responderam": [{"seguradora": n["seguradora"], "motivo": n["motivo"]} for n in quadro.nao_responderam],
         "entre_corretoras": entre,
         "anfitria": anfitria,
-        "faq": _faq(cfg_anf, resumo=resumo, opcoes=opcoes, situacao=situacao),
-        "sinistro": MANUAL.sinistro_padrao(cfg_anf),
+        "faq": _faq(cfg_anf, resumo=resumo, opcoes=opcoes, situacao=situacao, voz=origem,
+                    com_whatsapp=bool(whats)),
+        "sinistro": MANUAL.sinistro_padrao(cfg_anf, com_whatsapp=bool(whats)),
         "validade_ate": validade_ate,
         "gerado_em": hoje.replace(microsecond=0).isoformat(),
         "aviso_legal": AVISO_LEGAL_CANAL if origem == "canal" else AVISO_LEGAL_CORRETORA,
         "cta": cta,
         "mostrar_remuneracao": bool((cfg_anf.get("remuneracao_cnsp_382") or {}).get("ligada") is True),
     }
+    if origem == "canal":                       # RT-10: o nome do canal é CONFIGURAÇÃO do produto, não constante
+        nome_canal = str((cfg_sol.get("canal") or {}).get("nome") or "").strip()
+        if nome_canal:
+            modelo["canal"] = {"nome": nome_canal}
     _sem_comissao(modelo)
     if _contexto is not None:                       # o que `publicar_proposta` precisa e a página não mostra
         _contexto.update({"anfitria_id": anfitria_id, "cfg_sol": cfg_sol, "dias": dias, "hoje": hoje,
@@ -599,9 +636,12 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
 # =====================================================================================================================
 def _proposta_existente(db: Any, company_id: str, pedido_id: str) -> Optional[Dict[str, Any]]:
     """A proposta JÁ publicada deste pedido por este solicitante (o ajuste vira VERSÃO nova dela, nunca outra peça)."""
+    # 🔴 RT-1/J-P3 (06/10): filtrada PELO PEDIDO no banco. Antes eram "as 200 mais novas" filtradas em Python — no
+    # canal (uma company para todas as propostas), passada a 200ª, republicar um pedido antigo virava OUTRA peça.
     linhas = _dados(db.table("artifacts").select("id, subject_ref, template_key, current_version, created_at")
                     .eq("company_id", company_id).eq("template_key", TEMPLATE_DA_PROPOSTA)
-                    .order("created_at", desc=True).limit(200).execute())
+                    .eq("subject_ref->>pedido_id", pedido_id)
+                    .order("created_at", desc=True).limit(1).execute())
     for l in linhas:
         ref = l.get("subject_ref") or {}
         if isinstance(ref, Mapping) and str(ref.get("pedido_id") or "") == pedido_id:
@@ -611,13 +651,16 @@ def _proposta_existente(db: Any, company_id: str, pedido_id: str) -> Optional[Di
 
 async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apolice_atual: Optional[Mapping] = None,
                             primeiro_nome: Optional[str] = None, *, db: Any, base_url: Optional[str] = None,
-                            agora: Optional[datetime] = None, baixar_logo: Optional[BaixarLogo] = None
-                            ) -> Dict[str, Any]:
+                            agora: Optional[datetime] = None, baixar_logo: Optional[BaixarLogo] = None,
+                            permitir_sem_whatsapp: bool = False) -> Dict[str, Any]:
     """Monta, cria/versiona, renderiza, publica e compartilha. Devolve {url, token, artifact_id, versao, mensagem}.
 
     🔴 Nada é gravado antes de: o pedido ser deste solicitante (a porta), haver o que propor e haver endereço público
     para o link. O artefato mora no SOLICITANTE; a anfitriã nunca recebe linha (D-130A-10). Publicar de novo o mesmo
-    pedido = VERSÃO nova da mesma peça (a publicada é imutável)."""
+    pedido = VERSÃO nova da mesma peça (a publicada é imutável), e o assunto (anfitriã, ofertas) acompanha a versão.
+
+    🔴 J-B1: sem WhatsApp de atendimento da anfitriã → `SemCanalDeFechamento` antes de gravar (a página não teria como
+    fechar). Só `permitir_sem_whatsapp=True` publica assim — e aí nenhuma frase da página promete WhatsApp."""
     from app.services.artifacts.service import ArtifactService, base_publica_do_app, tags_do_canario
     from app.services.multicalculo.mensagem import mensagem_whatsapp
 
@@ -629,6 +672,13 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
     ctx: Dict[str, Any] = {}
     modelo = await montar_proposta(company_id, pedido_id, situacao, apolice_atual, primeiro_nome, db=db, agora=agora,
                                    baixar_logo=baixar_logo, _contexto=ctx)
+    if not (modelo.get("anfitria") or {}).get("whatsapp") and not permitir_sem_whatsapp:
+        quem = (modelo.get("anfitria") or {}).get("nome") or "a corretora anfitriã"
+        raise SemCanalDeFechamento(
+            f"{quem} não tem WhatsApp de atendimento cadastrado (nem na marca publicada, nem numa integração de "
+            "atendimento ativa): a página sairia sem o botão \"Quero fechar\" e o cliente não teria como fechar. "
+            "Cadastre o WhatsApp de atendimento dela — ou publique assim mesmo, de propósito, com "
+            "permitir_sem_whatsapp (no comando: --sem-whatsapp). Nada foi gravado.")
     rec = modelo["opcoes"][0]
     bem = (modelo.get("bem") or {}).get("descricao")
     titulo = f"Proposta de seguro{' · ' + bem if bem else ''}"
@@ -645,7 +695,8 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
     if existente:
         artifact_id = str(existente["id"])
         versao = svc.nova_versao(company_id=company_id, artifact_id=artifact_id, payload=modelo, composition=[],
-                                 data_sources=fontes, title=titulo, summary=resumo_peca)
+                                 data_sources=fontes, title=titulo, summary=resumo_peca,
+                                 subject_ref=subject)                # RT-3: o assunto acompanha a versão nova
     else:
         criado = svc.criar(company_id=company_id, title=titulo, template_key=TEMPLATE_DA_PROPOSTA, payload=modelo,
                            composition=[], summary=resumo_peca, origin="system", data_sources=fontes,
