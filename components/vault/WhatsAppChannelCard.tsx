@@ -14,6 +14,7 @@ import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
 
 import { WhatsAppPairingFlow } from './WhatsAppPairingFlow';
+import { comQuery, endpointDoCartao } from './whatsapp-channel-endpoint';
 
 type ChannelState = 'unknown' | 'connecting' | 'open' | 'close' | 'error' | 'not_configured';
 
@@ -40,7 +41,31 @@ function stateLabel(state: ChannelState, connected: boolean): { text: string; to
   return { text: 'Verificando…', tone: 'text-muted-foreground' };
 }
 
-export function WhatsAppChannelCard() {
+interface WhatsAppChannelCardProps {
+  /**
+   * SPEC-133-A F4 (D-133A-10) — a rota com que o cartão fala. Sem ela: o hub da
+   * corretora (ENDPOINT_DAS_CORRETORAS), byte a byte como antes. O
+   * portal admin passa `/api/admin/canais/whatsapp` para parear o canal.
+   */
+  endpoint?: string;
+  /** Título e linha de apoio do cartão. Sem eles: os textos da corretora. */
+  titulo?: string;
+  descricao?: string;
+  /**
+   * A caixa "Seus Auxiliares podem enviar por este número?" é da CORRETORA. O
+   * canal da plataforma não tem Auxiliares — lá ela seria uma pergunta sem
+   * sentido. Padrão: mostrar (o hub da corretora não muda).
+   */
+  comAutorizacaoDeAuxiliar?: boolean;
+}
+
+export function WhatsAppChannelCard({
+  endpoint,
+  titulo = 'WhatsApp da corretora',
+  descricao = 'O número que atende seus segurados — conecte por QR code em 2 minutos.',
+  comAutorizacaoDeAuxiliar = true,
+}: WhatsAppChannelCardProps = {}) {
+  const ENDPOINT = endpointDoCartao(endpoint);
   const [state, setState] = useState<ChannelState>('unknown');
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -73,7 +98,7 @@ export function WhatsAppChannelCard() {
     setAutorizacaoBusy(true);
     setAutorizacaoMsg('');
     try {
-      const res = await fetch('/api/dashboard/whatsapp-channel', {
+      const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'set-auxiliary-authorization', permitir }),
@@ -102,7 +127,7 @@ export function WhatsAppChannelCard() {
     if (statusInFlightRef.current) return;
     statusInFlightRef.current = true;
     try {
-      const res = await fetch('/api/dashboard/whatsapp-channel?action=status', { cache: 'no-store' });
+      const res = await fetch(comQuery(ENDPOINT, 'action=status'), { cache: 'no-store' });
       const json: StatusResponse = await res.json().catch(() => ({}));
       if (res.status === 503 || json.detail === 'evolution_go_not_configured' || json.detail === 'evolution_not_configured') {
         setState('not_configured');
@@ -138,7 +163,7 @@ export function WhatsAppChannelCard() {
     } finally {
       statusInFlightRef.current = false;
     }
-  }, []);
+  }, [ENDPOINT]);
 
   useEffect(() => {
     let active = true;
@@ -157,7 +182,7 @@ export function WhatsAppChannelCard() {
     setAlertBusy(true);
     setAlertMsg('');
     try {
-      const res = await fetch('/api/dashboard/whatsapp-channel', {
+      const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'set-alert', mode: alertMode, alert_number: alertMode === 'number' ? alertNumber : undefined }),
@@ -192,7 +217,7 @@ export function WhatsAppChannelCard() {
     setBusy(true);
     setMessage('');
     try {
-      const res = await fetch('/api/dashboard/whatsapp-channel', {
+      const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'disconnect' }),
@@ -229,10 +254,8 @@ export function WhatsAppChannelCard() {
               <Icon icon={icons.whatsapp ?? icons.conectores} size={18} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">WhatsApp da corretora</p>
-              <p className="text-xs text-muted-foreground">
-                O número que atende seus segurados — conecte por QR code em 2 minutos.
-              </p>
+              <p className="text-sm font-semibold text-foreground">{titulo}</p>
+              <p className="text-xs text-muted-foreground">{descricao}</p>
             </div>
           </div>
           <span className={`text-xs font-medium ${label.tone}`}>{label.text}</span>
@@ -247,6 +270,7 @@ export function WhatsAppChannelCard() {
         {/* ---------- PASSO 1 — PAREAMENTO CONTROLADO ---------- */}
         {!connected && state !== 'not_configured' && (
           <WhatsAppPairingFlow
+            endpoint={endpoint}
             onConnected={() => {
               setConnected(true);
               setState('open');
@@ -287,7 +311,7 @@ export function WhatsAppChannelCard() {
             sairiam pelo número que existe para ficar calado". A proibição
             continua sendo o padrão; esta caixa é onde a corretora abre a
             exceção, com os olhos abertos, para ESTE número. */}
-        {connected && (
+        {connected && comAutorizacaoDeAuxiliar && (
           <div className="rounded-lg border border-border bg-surface p-3">
             <p className="text-xs font-semibold text-foreground">
               Seus Auxiliares podem enviar por este número?

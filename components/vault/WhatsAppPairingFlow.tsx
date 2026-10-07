@@ -5,8 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 import { PairingState, PairingStateView } from './PairingStateView';
+import { chaveDaTentativa, comQuery, endpointDoCartao } from './whatsapp-channel-endpoint';
 
-const STORAGE_KEY = 'autobrokers-whatsapp-observer-attempt';
 const TERMINAL = new Set([
   'connected', 'already_connected', 'qr_expired', 'passkey_expired', 'passkey_failed',
   'passkey_socket_restarted', 're_pair_required', 'provider_unavailable',
@@ -14,7 +14,16 @@ const TERMINAL = new Set([
   'technical_error', 'cancelled',
 ]);
 
-export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void }) {
+export function WhatsAppPairingFlow({
+  onConnected,
+  endpoint,
+}: {
+  onConnected?: () => void;
+  /** SPEC-133-A F4 — para onde falar. Sem ele: o hub da corretora, como sempre. */
+  endpoint?: string;
+}) {
+  const ENDPOINT = endpointDoCartao(endpoint);
+  const STORAGE_KEY = chaveDaTentativa(endpoint);
   const [pairing, setPairing] = useState<PairingState | null>(null);
   const [busy, setBusy] = useState(false);
   const [phoneMode, setPhoneMode] = useState(false);
@@ -36,7 +45,7 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
     if (!mountedRef.current) return;
     setPairing(null);
     setSecondsLeft(null);
-  }, [stopPolling]);
+  }, [STORAGE_KEY, stopPolling]);
 
   const applyState = useCallback((next: PairingState) => {
     if (!mountedRef.current) return;
@@ -49,14 +58,14 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
     if (next.state === 'connected' || next.state === 'already_connected') {
       onConnected?.();
     }
-  }, [onConnected]);
+  }, [STORAGE_KEY, onConnected]);
 
   const poll = useCallback(async (attemptId: string) => {
     if (inFlightRef.current || !mountedRef.current) return;
     inFlightRef.current = true;
     try {
       const response = await fetch(
-        `/api/dashboard/whatsapp-channel?action=pairing&attempt_id=${encodeURIComponent(attemptId)}`,
+        comQuery(ENDPOINT, `action=pairing&attempt_id=${encodeURIComponent(attemptId)}`),
         { cache: 'no-store' },
       );
       const json = (await response.json().catch(() => ({}))) as PairingState & { detail?: string };
@@ -86,7 +95,7 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
     } finally {
       inFlightRef.current = false;
     }
-  }, [applyState, resetToStart, stopPolling]);
+  }, [ENDPOINT, applyState, resetToStart, stopPolling]);
 
   const start = useCallback(async (action: 'pairing' | 'retry' = 'pairing') => {
     if (inFlightRef.current) return;
@@ -99,7 +108,7 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
       setSecondsLeft(null);
     }
     try {
-      const response = await fetch('/api/dashboard/whatsapp-channel', {
+      const response = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -140,14 +149,14 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
       inFlightRef.current = false;
       setBusy(false);
     }
-  }, [applyState, pairing?.attempt_id, phoneMode, phoneNumber, poll, resetToStart, stopPolling]);
+  }, [ENDPOINT, STORAGE_KEY, applyState, pairing?.attempt_id, phoneMode, phoneNumber, poll, resetToStart, stopPolling]);
 
   const cancel = useCallback(async () => {
     if (!pairing?.attempt_id || inFlightRef.current) return;
     inFlightRef.current = true;
     stopPolling();
     try {
-      const response = await fetch('/api/dashboard/whatsapp-channel', {
+      const response = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'cancel', attempt_id: pairing.attempt_id }),
@@ -172,7 +181,7 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
     } finally {
       inFlightRef.current = false;
     }
-  }, [applyState, pairing?.attempt_id, stopPolling]);
+  }, [ENDPOINT, applyState, pairing?.attempt_id, stopPolling]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -183,7 +192,7 @@ export function WhatsAppPairingFlow({ onConnected }: { onConnected?: () => void 
       stopPolling();
       if (clockTimerRef.current) clearTimeout(clockTimerRef.current);
     };
-  }, [poll, stopPolling]);
+  }, [STORAGE_KEY, poll, stopPolling]);
 
   useEffect(() => {
     if (clockTimerRef.current) clearTimeout(clockTimerRef.current);

@@ -366,6 +366,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       submenu: [
         { href: '/admin/insurer-action-channels', label: 'Canais de seguradora' },
         { href: '/admin/atlas', label: 'Atlas de rotas' },
+        // SPEC-133-A F4 — o QR do número do Quem Cobra Menos (canal da plataforma).
+        { href: '/admin/canais/quem-cobra-menos/whatsapp', label: 'Canais: Quem Cobra Menos (WhatsApp)' },
       ],
     },
     {

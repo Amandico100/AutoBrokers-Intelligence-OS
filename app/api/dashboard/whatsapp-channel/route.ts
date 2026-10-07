@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
 import { getSupabaseAdmin, resolveSessionCompany } from '@/lib/vault/server';
+// SPEC-133-A F4 — a ponte ao backend saiu daqui sem mudar (o admin do canal usa a mesma).
+import { backendRequest, correlationId, internalKey } from '@/lib/vault/whatsapp-channel-proxy';
 
 import { porteiroDeConfiguracao, registrarNaAuditoria } from '@/lib/admin/porteiro-de-configuracao';
 
 export const dynamic = 'force-dynamic';
 
-const BACKEND_TIMEOUT_MS = 20_000;
 const PURPOSE = 'observer';
 const PROVIDER = 'evolution-go';
 
@@ -58,62 +58,6 @@ const PAPEIS_DO_NUMERO = {
       'Para ele RESPONDER os segurados, é outro botão: Ligar Agente de Atendimento.',
   },
 } as const;
-
-function internalKey(): string | null {
-  return process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY || null;
-}
-
-function correlationId(req: NextRequest): string {
-  return req.headers.get('X-Correlation-ID') || crypto.randomUUID();
-}
-
-async function backendRequest(
-  path: string,
-  key: string,
-  correlation: string,
-  init: RequestInit = {},
-): Promise<NextResponse> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
-  try {
-    const backend = getBackendUrl();
-    const res = await fetch(`${backend}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-AutoBrokers-Internal-Key': key,
-        'X-Correlation-ID': correlation,
-        ...(init.headers || {}),
-      },
-      cache: 'no-store',
-      signal: controller.signal,
-    });
-    const json = await res.json().catch(() => ({ detail: `backend_http_${res.status}` }));
-    return NextResponse.json(json, {
-      status: res.status,
-      headers: { 'X-Correlation-ID': correlation },
-    });
-  } catch (error) {
-    if (error instanceof BackendUrlError) {
-      return NextResponse.json(
-        { detail: 'backend_not_configured', correlation_id: correlation },
-        { status: 500, headers: { 'X-Correlation-ID': correlation } },
-      );
-    }
-    if ((error as { name?: string })?.name === 'AbortError') {
-      return NextResponse.json(
-        { detail: 'backend_timed_out', correlation_id: correlation },
-        { status: 504, headers: { 'X-Correlation-ID': correlation } },
-      );
-    }
-    return NextResponse.json(
-      { detail: 'backend_unavailable', correlation_id: correlation },
-      { status: 502, headers: { 'X-Correlation-ID': correlation } },
-    );
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /**
  * Lê os dois interruptores que a tela precisa mostrar, direto do banco.
