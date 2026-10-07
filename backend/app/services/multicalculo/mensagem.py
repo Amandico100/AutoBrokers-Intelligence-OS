@@ -293,13 +293,27 @@ def _abertura_do_canal(modelo: Mapping[str, Any]) -> List[str]:
     return linhas
 
 
-def _numeros_do_canal(modelo: Mapping[str, Any]) -> List[str]:
+def _tempo_que_se_mostra(segundos: Any, cfg: Mapping[str, Any]) -> Optional[str]:
+    """D-130A1-14: o tempo é verdadeiro ou não aparece — e só aparece até o teto da config (`canal.tempo_exibido_ate_s`).
+    📊 canário 07/10: 1º preço aos 284 s, último aos 495 s (fila do robô + corretoras em série) — "8 min 15 s" contra a
+    promessa de segundos. Acima do teto a linha SOME; nunca se mostra um tempo menor que o medido."""
+    s = _n(segundos)
+    teto = _n((cfg.get("canal") or {}).get("tempo_exibido_ate_s"))
+    if teto is None:
+        teto = _n(PADRAO_DO_PRODUTO["canal"]["tempo_exibido_ate_s"])
+    if s is None or teto is None or s > teto:
+        return None
+    return _tempo(s)
+
+
+def _numeros_do_canal(modelo: Mapping[str, Any], cfg: Optional[Mapping[str, Any]] = None) -> List[str]:
+    cfg = cfg or PADRAO_DO_PRODUTO
     r = modelo.get("resumo") or {}
     linhas = []
     n = _n(r.get("cotacoes_realizadas"))
     if n:
         linhas.append(f"Cotações realizadas: *{n}*")
-    t = _tempo(r.get("tempo_do_calculo_s"))
+    t = _tempo_que_se_mostra(r.get("tempo_do_calculo_s"), cfg)
     if t:
         linhas.append(f"Tempo: *{t}*")
     eco = r.get("economia") if isinstance(r.get("economia"), Mapping) else {}
@@ -460,7 +474,7 @@ def mensagem_do_canal(modelo: Mapping[str, Any], link: str, *, config: Optional[
     quantas = (_n((cfg.get("canal") or {}).get("lista_por_seguradora"))
                or int(PADRAO_DO_PRODUTO["canal"]["lista_por_seguradora"]))
 
-    balao1 = "\n\n".join(b for b in ("\n".join(_abertura_do_canal(modelo)), "\n".join(_numeros_do_canal(modelo)),
+    balao1 = "\n\n".join(b for b in ("\n".join(_abertura_do_canal(modelo)), "\n".join(_numeros_do_canal(modelo, cfg)),
                                      "\n".join(_vencedor(modelo, rec))) if b)
 
     barata = _mais_em_conta(modelo)

@@ -24,6 +24,7 @@
 > **06/10 (SPEC-130-A, a comparação e a proposta):** nasceram a **T-124** (Implantar os 3 serviços), a **T-125** (WhatsApp de
 > atendimento + SUSEP no cadastro de marca e a marca da AutoFleet), a **T-126** (abrir o link do canário no celular), a **T-127**
 > (jurídico da remuneração) e a **T-128** (o recado à Ellen). 📊 Recontado 06/10 com os mesmos comandos → **116 pendentes** · **12 feitos** (T-01…T-128).
+> **07/10 (SPEC-130-A.1, o Quem Cobra Menos):** a **T-124** está ✅ feita, a **T-127** foi ❌ cancelada (D-130A-08 revogada) e nasceram a **T-129** (Implantar), a **T-130** (a lista do Nível 5) e a **T-131** (testadores, verba e o robô do Agger para a 133-A). 📊 Recontado 07/10 com os mesmos comandos → **117 pendentes** · **13 feitos** (a T-127 cancelada fica fora das duas contas).
 
 ## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123 · SPEC-130-A: T-124 a T-128)
 
@@ -745,7 +746,7 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       vazamento no fornecedor (P-129B-03). (2) **A senha da Tokio na Resulta, no Agger**, está recusada (📊 3 de 3 cálculos) —
       confira no Agger da Resulta → configuração das seguradoras → Tokio, ou peça à corretora (P-129B-04). **Se não fizer:** (1)
       dado de outras corretoras pode estar circulando sem ninguém saber; (2) a Resulta cota sem a Tokio, hoje e no motor. · *de:* S129-B
-- [ ] **T-124** ⏳ 🧑 **já — a proposta só chega ao cliente depois disto** · **Implantar a SPEC-130-A** (a comparação e a proposta) —
+- [x] **T-124** ✅ **FEITA 06/10 noite** (📊 07/10: o `/health` do `portal-worker` mostra `build_time` 2026-10-06T23:35:14Z; o Founder rodou o ensaio da proposta dentro do contêiner do backend) · **Implantar a SPEC-130-A** (a comparação e a proposta) —
       EasyPanel, **nesta ordem**: `smith-api` → `smith-web` → `portal-worker` (a 130-A mexeu nos três). As 3 migrations já estão
       aplicadas (📊 06/10: `20261006084655`, `20261006090505`, `20261006121020`). Depois abra
       `https://autobrokers-intelligence-os-autobrokers-smith-api.golhpm.easypanel.host/health` e
@@ -755,7 +756,7 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
 - [ ] **T-125** ⏳ 🧑 **antes da 1ª proposta real** · **O WhatsApp de atendimento e o nº SUSEP no cadastro de marca — Resulta e
       AutoFleet — e a marca da AutoFleet** — **Onde:** painel → **Personalização → Corretora → Identidade da corretora**, logado em
       cada corretora: (1) preencha o **WhatsApp de atendimento** (o número que fecha o seguro) e o **Código SUSEP**; (2) na AutoFleet,
-      clique em **capturar** a marca (lê o site da corretora) e confira cores e logo antes de publicar. **Esperar:** a tela mostra a
+      clique em **capturar** a marca (lê o site da corretora) e confira cores e logo antes de publicar. ⚠️ 📊 07/10: a captura da AutoFleet está PRESA em "lendo o site" (nunca terminou) e o site dela é uma cópia de um tema pronto de WordPress — preencha o Instagram/Google da AutoFleet no cadastro e envie o logo à mão; o conserto da captura é a P-130A1-01. 📊 Ensaio real 07/10: a marca da AutoFleet está **não publicada** — por isso o SUSEP que você preencheu NÃO aparece na mensagem; preencha também o **ano de fundação** ("17 anos de mercado") e clique em **Publicar** (P-130A1-09). **Esperar:** a tela mostra a
       marca publicada com o WhatsApp e o SUSEP. **Se não fizer:** publicar a proposta **RECUSA** (de propósito: sem o WhatsApp, o
       botão "Quero fechar" não leva a ninguém), e a página da AutoFleet sai sem a cor e o logo dela. · *de:* S130-A · P-130A-01/02/03
 - [ ] **T-126** ⏳ 🧑 **depois da T-124 — o chat republica antes** · **Abrir no celular o link da proposta do canário** — o gerente
@@ -769,6 +770,22 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       com o login dela não saiu às 04:23 (o logout não aconteceu); o robô viu o aviso de sessão ativa às 04:38 e às 07:36, cancelou e parou.
       **O recado:** *"se aparecer 'sessão ativa' ao entrar no Agger hoje, é o seu próprio login (a sessão que o robô deixou) — pode prosseguir"*. **Se
       não avisar:** ela pode achar que alguém está usando o login dela. · *de:* S130-A · P-130A-18 · `A-PROVA-DO-AGGER.md` §10
+
+- [ ] **T-129** ⏳ 🧑 **já — antes da 133-A** · **Implantar a SPEC-130-A.1** (a mensagem do Quem Cobra Menos, o mínimo do mínimo e a
+      margem corrigida) — EasyPanel, **nesta ordem**: `smith-api` → `portal-worker` (o `smith-web` não mudou). A migration
+      `20261006_04` o chat já aplicou (📊 07/10, versão `20261007040359`, VERIFY `1·1·2·1` + comportamental OK). Depois abra
+      `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`. **Esperar:** `build_time` de **07/10/2026 ou
+      depois**. **Se for anterior:** Implantar o `portal-worker` de novo. · *de:* S130-A.1
+- [ ] **T-130** ⏳ 🧑 **antes de abrir o Quem Cobra Menos ao público (não trava o piloto fechado)** · **Lapidar a lista do "Corretora
+      Nível 5"** — o rascunho dos 5 itens está em `docs/canon/programa-multicalculo/PRONTIDAO-DA-133-A.md` §8 (SUSEP ativa · cota em
+      todas que aceitam · responde na hora · acompanha o sinistro · reputação conferida). **Como:** responda no chat "a lista do Nível 5
+      fica assim: …" (ou "pode usar o rascunho"). **Se não fizer:** o selo aparece na mensagem sem um critério escrito por trás — é
+      promessa que o Procon pode cobrar. · *de:* S130-A.1 · P-130A1-02
+- [ ] **T-131** ⏳ 🧑 **para a 133-A — antes dos testadores** · **Separar os 5 testadores e a verba de API** — (1) 5 pessoas leigas com
+      carro próprio e WhatsApp (o que elas precisam ter à mão e o que precisam saber está em `PRONTIDAO-DA-133-A.md` §5: a cotação é
+      REAL e aparece no Agger da corretora); (2) a verba de API para o agente conversar (💭 US$ 5–10 para construir e para as rodadas);
+      (3) a T-120 (o usuário-robô do Agger em cada corretora) — sem ela o robô usa o login da Ellen e derruba a sessão dela no meio do
+      dia. **Se não fizer:** a 133-A fica pronta e ninguém testa. · *de:* S130-A.1 · `PRONTIDAO-DA-133-A.md`
 
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 

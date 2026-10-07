@@ -130,6 +130,12 @@ def test_1_o_tempo_vai_ate_a_ultima_oferta_das_opcoes_nunca_a_do_recalculo(monke
     modelo, cfg = _montar(m)
     assert modelo["resumo"]["tempo_do_calculo_s"] == 495
     texto = "\n".join(MSG.mensagem_para(modelo, LINK, config=cfg))
+    # D-130A1-14 (§9.3 — a lição migra): no teto padrão 495 s não se mostra; nenhum dos dois tempos aparece
+    assert "Tempo:" not in texto and "8 min 15 s" not in texto and "10 min 48 s" not in texto
+    # com um teto acima dos DOIS (o do ajuste também caberia), o texto mostra o das opções — nunca o do recálculo
+    largo = copy.deepcopy(cfg)
+    largo["canal"]["tempo_exibido_ate_s"] = 1000
+    texto = "\n".join(MSG.mensagem_para(modelo, LINK, config=largo))
     assert "Tempo: *8 min 15 s*" in texto and "10 min 48 s" not in texto
 
 

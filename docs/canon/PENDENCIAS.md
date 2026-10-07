@@ -13592,3 +13592,20 @@ página pública da corretora no Reclame Aqui, com data. **Custa esquecer:** fal
 📊 `vivo_conta_b.json` #4 × #6: 1.738 → 3.484. **Destrava:** olhar a oferta da Ezze no próximo cálculo real. **Custa esquecer:** um preço
 estranho entra na lista "melhor preço por seguradora".
 
+## P-130A1-07 · 🤖 Um passo que não cabe no trecho devolve a seção inteira da comissão ao padrão
+📊 confirmação 07/10: entrada 13 com autônomo 12,5 (ou entrada = autônomo = 12) → `_coerente` volta toda a seção ao padrão (entrada 15 %,
+MAIOR que a pedida), só com log. Nenhuma config real tem a seção hoje. **Destrava:** ajustar o passo ao trecho, ou recusar na tela da
+config. **Custa esquecer:** uma corretora que pediu entrada menor cota mais caro sem saber.
+
+## P-130A1-08 · 🤖 O tempo do cálculo não é "em segundos": fila de 85 s e corretoras em SÉRIE
+📊 canário real 07/10 (`d0bb15ba`, leitura no banco): o robô disparou aos 85 s; a 1ª corretora deu o 1º preço aos 285 s, a 2ª aos 480 s;
+o último preço das opções chegou aos 495 s. O `/health` do `portal-worker` diz `concurrency: 1`. **Destrava (133-A):** baixar a fila
+(o canal com prioridade) e rodar as corretoras em PARALELO (D-MC-56 — o motor já sabe; é a concorrência do worker e um navegador por
+corretora); medir de novo. **Custa esquecer:** a mensagem do canal esconde a linha "Tempo" (D-130A1-14) e a promessa "cotações em
+segundos" da VSL fica sem prova — e o testador espera 8 minutos no WhatsApp.
+
+## P-130A1-09 · 🧑 A marca da AutoFleet não está PUBLICADA — o SUSEP e os anos não aparecem
+📊 ensaio real 07/10: "anfitriã: AutoFleet · marca publicada: não"; o balão 3 sai só com o nome e o selo (o SUSEP preenchido no cadastro
+não aparece porque a página/mensagem leem a marca PUBLICADA; `founded_year` vazio → sem "anos de mercado"). **Destrava:** T-125
+(publicar a marca da AutoFleet, preencher o ano de fundação). **Custa esquecer:** a corretora que mais vence aparece sem prova.
+

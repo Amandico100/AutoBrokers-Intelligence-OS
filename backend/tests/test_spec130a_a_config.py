@@ -176,7 +176,9 @@ _CAMINHOS_COMERCIAIS = ("comissao", "alvo_abaixo_da_atual_pct", "renovacao", "va
                         "nota", "opcoes", "negociacao.max_seguradoras", "negociacao.max_tentativas_por_etapa",
                         "link",
                         # SPEC-130-A.1 — as chaves novas do canal (os lembretes e o tamanho da lista)
-                        "canal.lista_por_seguradora", "canal.follow_up")
+                        "canal.lista_por_seguradora", "canal.follow_up",
+                        # D-130A1-14 — o teto da linha "Tempo" da mensagem do canal
+                        "canal.tempo_exibido_ate_s")
 #: números genéricos demais para proibir (0, 1, 2 e 100 aparecem em arredondamento, índice, nota máxima)
 _GENERICOS = {0, 1, 2, 100}
 #: o que da porta.py é desta SPEC (o resto da porta é da 129-B e não entra na varredura)
@@ -237,6 +239,18 @@ def test_g8_nenhum_numero_comercial_fora_da_config():
 def test_g8_controle_a_varredura_acha_o_numero_quando_ele_esta_la():
     assert {15.0, 12.0, 10.0, 5.0, 24.0, 60.0, 25.0} <= proibidos()
     assert {6.0, 20.0} <= proibidos()                     # as chaves novas do canal entram na varredura (130-A.1)
+    assert float(CFG.PADRAO_DO_PRODUTO["canal"]["tempo_exibido_ate_s"]) in proibidos()   # D-130A1-14
+
+
+def test_g8_um_teto_de_tempo_solto_na_mensagem_fica_vermelho():
+    """D-130A1-14: a mensagem.py REAL com o teto escrito à mão (no lugar da leitura da config) é achada pela varredura."""
+    teto = CFG.PADRAO_DO_PRODUTO["canal"]["tempo_exibido_ate_s"]
+    fonte = (SERVICO / "mensagem.py").read_text(encoding="utf-8")
+    assert varrer(fonte, "mensagem.py") == []                            # controle: a de hoje passa
+    alvo = 'teto = _n((cfg.get("canal") or {}).get("tempo_exibido_ate_s"))'
+    assert fonte.count(alvo) == 1
+    achados = varrer(fonte.replace(alvo, f"teto = {teto}"), "mensagem.py")
+    assert len(achados) == 1 and achados[0].endswith(f"número {teto!r}")
     assert varrer("PISO = 10.0\n", "x.py") == ["x.py:1 número 10.0"]
     assert varrer("t = 'aplica até 12 % sozinho'\n", "x.py") == ["x.py:1 texto '12 %'"]
     assert varrer("t = f'válido por {d} dias, 5 dias no máximo'\n", "x.py") == ["x.py:1 texto '5 dias'"]

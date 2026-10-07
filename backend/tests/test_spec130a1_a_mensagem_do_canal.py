@@ -243,8 +243,87 @@ def test_g4_o_tempo_aparece_quando_foi_medido_pelo_caminho_real(monkeypatch):
     modelo, cfg = _montar(m)
     assert modelo["resumo"]["tempo_do_calculo_s"] == 47
     assert "Tempo: *47 segundos*" in _texto(modelo, cfg)
+    # D-130A1-14 (§9.3 — a lição migra): 135 s passa do teto padrão e a linha SOME; com o teto da config, aparece
     modelo["resumo"]["tempo_do_calculo_s"] = 135
-    assert "Tempo: *2 min 15 s*" in _texto(modelo, cfg)
+    assert "Tempo:" not in _texto(modelo, cfg)
+    largo = copy.deepcopy(cfg)
+    largo["canal"]["tempo_exibido_ate_s"] = 600
+    assert "Tempo: *2 min 15 s*" in _texto(modelo, largo)
+
+
+# =====================================================================================================================
+# D-130A1-14 — o tempo é verdadeiro ou não aparece, e só até o teto da config do SOLICITANTE
+# 📊 canário real 07/10: último preço aos 495 s ("8 min 15 s") contra a promessa de segundos
+# =====================================================================================================================
+def _com_tempo(monkeypatch, segundos, *, teto_do_canal=None, teto_da_anfitria=None):
+    """O caminho real (`montar_proposta` → `CFG.carregar`): o tempo medido nas ofertas do dublê e os tetos escritos
+    nas linhas de `multicalculo_config` do SOLICITANTE (o canal) e da ANFITRIÃ (corretora_a)."""
+    m = M.montar_mundo(monkeypatch, solicitante="canal")
+    if teto_do_canal is not None:
+        m.banco.semear("multicalculo_config", {"company_id": m.canal,
+                                               "config": {"canal": {"tempo_exibido_ate_s": teto_do_canal}}})
+    if teto_da_anfitria is not None:
+        linha = next(l for l in m.banco.linhas("multicalculo_config") if l["company_id"] == m.alfa)
+        linha["config"]["canal"] = {"tempo_exibido_ate_s": teto_da_anfitria}
+    criado = datetime.fromisoformat(m.banco.linhas("multicalculo_pedidos")[0]["criado_em"].replace("Z", "+00:00"))
+    for o in m.banco.linhas("multicalculo_ofertas"):
+        o["recebida_em"] = (criado + timedelta(seconds=segundos)).isoformat()
+    modelo, cfg = _montar(m)
+    assert modelo["resumo"]["tempo_do_calculo_s"] == segundos
+    return "\n".join(MSG.mensagem_para(modelo, LINK, config=cfg)), cfg
+
+
+def _linhas_de_tempo(texto):
+    return [l for l in texto.splitlines() if l.startswith("Tempo")]
+
+
+def test_d14_o_padrao_do_teto_vem_da_config():
+    assert CFG.PADRAO_DO_PRODUTO["canal"]["tempo_exibido_ate_s"] > 0
+
+
+def test_d14_47_segundos_aparece(monkeypatch):
+    texto, cfg = _com_tempo(monkeypatch, 47)
+    assert "tempo_exibido_ate_s" in cfg["canal"]                         # o padrão chega mesmo sem a linha
+    assert _linhas_de_tempo(texto) == ["Tempo: *47 segundos*"]
+
+
+def test_d14_495_segundos_nenhuma_linha_de_tempo(monkeypatch):
+    """O canário: 8 min 15 s — a linha some, e nenhum tempo menor que o medido toma o lugar dela."""
+    texto, _ = _com_tempo(monkeypatch, 495)
+    assert _linhas_de_tempo(texto) == [] and "8 min" not in texto and "segundos" not in texto
+    assert "*Quem cobra menos?*" in texto and LINK in texto              # o resto da mensagem continua de pé
+
+
+def test_d14_teto_600_na_config_do_solicitante_mostra_8_min_15_s(monkeypatch):
+    texto, cfg = _com_tempo(monkeypatch, 495, teto_do_canal=600)
+    assert cfg["canal"]["tempo_exibido_ate_s"] == 600
+    assert _linhas_de_tempo(texto) == ["Tempo: *8 min 15 s*"]
+
+
+def test_d14_o_teto_da_anfitria_nao_vale_para_o_canal(monkeypatch):
+    """A config que chega é a do SOLICITANTE: a anfitriã com teto 600 não destrava o tempo do pedido do canal."""
+    texto, cfg = _com_tempo(monkeypatch, 495, teto_da_anfitria=600)
+    assert cfg["canal"]["tempo_exibido_ate_s"] == CFG.PADRAO_DO_PRODUTO["canal"]["tempo_exibido_ate_s"]
+    assert _linhas_de_tempo(texto) == []
+
+
+def test_d14_teto_igual_ao_tempo_aparece(monkeypatch):
+    texto, _ = _com_tempo(monkeypatch, 495, teto_do_canal=495)
+    assert _linhas_de_tempo(texto) == ["Tempo: *8 min 15 s*"]
+    texto, _ = _com_tempo(monkeypatch, 496, teto_do_canal=495)          # controle: um segundo acima, some
+    assert _linhas_de_tempo(texto) == []
+
+
+def test_d14_sem_a_chave_na_config_vale_o_padrao(canal):
+    modelo, cfg = canal
+    sem = copy.deepcopy(cfg)
+    sem["canal"].pop("tempo_exibido_ate_s")
+    padrao = CFG.PADRAO_DO_PRODUTO["canal"]["tempo_exibido_ate_s"]
+    m = copy.deepcopy(modelo)
+    m["resumo"]["tempo_do_calculo_s"] = padrao
+    assert any(l.startswith("Tempo") for l in _texto(m, sem).splitlines())
+    m["resumo"]["tempo_do_calculo_s"] = padrao + 1
+    assert not any(l.startswith("Tempo") for l in _texto(m, sem).splitlines())
 
 
 def test_g4_o_dubl_e_sem_relogio_nao_inventa_tempo(canal):

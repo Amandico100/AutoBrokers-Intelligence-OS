@@ -68,8 +68,12 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
               igual-com-igual por opção, vencedora entre corretoras, 3 opções por situação, nota 0–100, mensagem ≤ 2 opções + link,
               a página "carteira" pelo /r/ · 📊 canário: pedido d0bb15ba publicado, 16 seguradoras · 13 completas;
               migrations 20261006_01/_02/_03 APLICADAS · D-MC-66…74 · D-130A-06…11 · P-130A-01…20
+            SPEC-130-A.1 (Quem Cobra Menos: a mensagem, o mínimo do mínimo e a margem) — CONCLUÍDA 07/10/2026, branch
+              spec/130-A1-quem-cobra-menos, base `705b67f` (juiz 82 ‖ red team 70 → conserto único → confirmação) · a mensagem do
+              canal com volume REAL (📊 82), o 4º cálculo minima, a margem até 10 % passo a passo (D-MC-68 corrigida), sem a
+              remuneração CNSP (D-130A-08 revogada) · migration 20261006_04 APLICADA · D-130A1-01…13 · P-130A1-01…06
 A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável  →  ✔ 128 prova do Agger
-  (v2.5.1)  →  ✔ 129-B motor (várias corretoras em paralelo)  →  ✔ 130-A comparação e proposta
+  (v2.5.1)  →  ✔ 129-B motor (várias corretoras em paralelo)  →  ✔ 130-A comparação e proposta  →  ✔ 130-A.1 a mensagem do QCM
             →  133-A Quem Cobra Menos no WhatsApp, piloto fechado (⏭ próxima)  →  129-C mais ramos do Agger (D-MC-73)
             →  130-B leitor de apólice
             →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2  →  133-B Quem Cobra Menos piloto 🚀3

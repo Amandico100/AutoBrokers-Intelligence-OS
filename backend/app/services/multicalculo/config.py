@@ -102,6 +102,9 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         "selo": {"nome": "Corretora Nível 5", "ligado": True},
         # quantas seguradoras a mensagem lista em "Melhor preço por seguradora" (o resto está no link)
         "lista_por_seguradora": 6,
+        # D-130A1-14 — a linha "Tempo" só aparece até este teto 💭 (acima, some; nunca um tempo menor que o medido).
+        # 📊 canário 07/10: último preço aos 495 s (fila do robô + corretoras em série, portal-worker com concorrência 1)
+        "tempo_exibido_ate_s": 90,
         # D-130A1-06 — termina com UMA pergunta; sem resposta, até 2 lembretes, nunca mais que isso 💭
         "follow_up": {"primeiro_apos_min": 15, "segundo_apos_h": 24, "max_sem_resposta": 2,
                       "horario_comercial": {"inicio_h": 9, "fim_h": 20}},
