@@ -633,7 +633,7 @@ def test_canal_sem_marca_e_a_perdedora_anonima():
 
 def test_remuneracao_e_comissao_nunca_aparecem():
     m = _A()
-    m["mostrar_remuneracao"] = False
+    m["mostrar_remuneracao"] = True       # SPEC-130-A.1: o campo saiu do modelo (G9); um modelo sujo não o faz aparecer
     m["comissao"] = 12.34
     m["remuneracao"] = "Remuneração da corretora: 12,34 %"
     for o in m["opcoes"]:

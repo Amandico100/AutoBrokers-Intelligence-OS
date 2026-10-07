@@ -172,65 +172,71 @@ def _o(seg, cod, comissao=15.0, **kw):
 
 
 def test_a_ordem_margem_antes_de_cobertura_e_o_botao_por_seguradora():
+    # SPEC-130-A.1 (D-MC-68 corrigida): a margem desce PASSO A PASSO (15 → 14 → 13 → 12), nunca direto
     bra = N.ordem_do_mais_barato(_o("Bradesco", 1))
-    assert [p.id for p in bra] == ["comissao:12.0", "franquia:normal", "carro_reserva:7 dias", "vidros:basico",
-                                   "assistencia:basica"]
-    assert [p.corta_cobertura for p in bra] == [False, True, True, True, True]
-    assert all(p.ajuste.seguradora == 1 for p in bra) and not any(p.precisa_aprovacao for p in bra)
+    assert [p.id for p in bra] == ["comissao:14.0", "comissao:13.0", "comissao:12.0", "franquia:normal",
+                                   "carro_reserva:7 dias", "vidros:basico", "assistencia:basica"]
+    assert [p.corta_cobertura for p in bra] == [False, False, False, True, True, True, True]
+    assert all(p.ajuste.seguradora == 1 for p in bra) and not any(p.fechamento for p in bra)
     porto = N.ordem_do_mais_barato(_o("Porto Seguro", 8))
-    assert [p.id for p in porto][:2] == ["desconto:3.0", "franquia:normal"]       # 15 − 12 = 3 de desconto
-    assert porto[0].comissao_resultante == 12.0 and not any(p.alavanca == "comissao" for p in porto)
+    assert [p.id for p in porto][:4] == ["desconto:1.0", "desconto:2.0", "desconto:3.0", "franquia:normal"]
+    assert porto[2].comissao_resultante == 12.0 and not any(p.alavanca == "comissao" for p in porto)
     # a lista vem da CONFIG, não do código
     sem_lista = mesclar({"seguradoras_que_obedecem_desconto": []})
-    assert N.ordem_do_mais_barato(_o("Porto Seguro", 8), config=sem_lista)[0].id == "comissao:12.0"
+    assert N.ordem_do_mais_barato(_o("Porto Seguro", 8), config=sem_lista)[0].id == "comissao:14.0"
     # o desconto que a seguradora libera (①), quando a corretora o configurou
     com_desc = mesclar({"desconto_permitido_pct": {"Bradesco": 4}})
     assert [p.id for p in N.ordem_do_mais_barato(_o("Bradesco", 1), config=com_desc)][:2] == ["desconto:4.0",
-                                                                                            "comissao:12.0"]
+                                                                                            "comissao:14.0"]
     # o que já está no corte não vira passo · sem código de seguradora → nenhum passo
     ja = _o("Bradesco", 1, franquia="Normal", cob=dict(COB, carroReserva="7 dias", vidros="Básico", assist24hs="Básica"))
-    assert [p.id for p in N.ordem_do_mais_barato(ja)] == ["comissao:12.0"]
+    assert [p.id for p in N.ordem_do_mais_barato(ja)] == ["comissao:14.0", "comissao:13.0", "comissao:12.0"]
     assert N.ordem_do_mais_barato(_o("Bradesco", None)) == []
 
 
-def test_o_piso_so_com_concorrencia_e_aprovacao_e_nunca_abaixo():
+def test_o_piso_sem_aprovacao_so_no_fechamento_e_nunca_abaixo():
+    # §9.3: a regra vencida ("o piso só com concorrência E aprovação") saiu; a lição MIGRA — o piso continua sendo
+    # o chão, agora alcançado SOZINHO e só quando o cliente sinaliza que fecha (`fechamento=True`)
     sem = N.ordem_do_mais_barato(_o("Bradesco", 1))
     assert all(p.comissao_resultante >= 12.0 for p in sem if p.alavanca == "comissao")
-    com = N.ordem_do_mais_barato(_o("Bradesco", 1), concorrencia_declarada=True)
+    com = N.ordem_do_mais_barato(_o("Bradesco", 1), fechamento=True)
     margem = [p for p in com if p.alavanca == "comissao"]
-    assert [(p.ajuste.valor, p.precisa_aprovacao) for p in margem] == [(12.0, False), (10.0, True)]
-    porto = [p for p in N.ordem_do_mais_barato(_o("Porto", 8), concorrencia_declarada=True) if p.alavanca == "desconto"]
-    assert [(p.ajuste.valor, p.precisa_aprovacao) for p in porto] == [(3.0, False), (5.0, True)]
-    # já em 12: só o piso (com concorrência); já no piso: nenhuma margem; nunca abaixo do piso da corretora
-    assert [p.id for p in N.ordem_do_mais_barato(_o("Bradesco", 1, comissao=12.0), concorrencia_declarada=True)
-            if p.alavanca == "comissao"] == ["comissao:10.0"]
-    assert not [p for p in N.ordem_do_mais_barato(_o("Bradesco", 1, comissao=10.0), concorrencia_declarada=True)
+    assert [(p.ajuste.valor, p.fechamento) for p in margem] == [(14.0, False), (13.0, False), (12.0, False),
+                                                                (11.0, True), (10.0, True)]
+    porto = [p for p in N.ordem_do_mais_barato(_o("Porto", 8), fechamento=True) if p.alavanca == "desconto"]
+    assert [(p.ajuste.valor, p.fechamento) for p in porto] == [(1.0, False), (2.0, False), (3.0, False), (4.0, True),
+                                                               (5.0, True)]
+    # já em 12: só a alavanca (com fechamento); já no piso: nenhuma margem; nunca abaixo do piso da corretora
+    assert [p.id for p in N.ordem_do_mais_barato(_o("Bradesco", 1, comissao=12.0), fechamento=True)
+            if p.alavanca == "comissao"] == ["comissao:11.0", "comissao:10.0"]
+    assert not [p for p in N.ordem_do_mais_barato(_o("Bradesco", 1, comissao=10.0), fechamento=True)
                 if p.alavanca == "comissao"]
     piso_alto = mesclar({"comissao": {"piso": 11.0}})
     valores = [p.ajuste.valor for p in N.ordem_do_mais_barato(_o("Bradesco", 1), config=piso_alto,
-                                                              concorrencia_declarada=True) if p.alavanca == "comissao"]
-    assert valores == [12.0, 11.0] and min(valores) >= 11.0
+                                                              fechamento=True) if p.alavanca == "comissao"]
+    assert valores == [14.0, 13.0, 12.0, 11.0] and min(valores) >= 11.0
 
 
-def test_planejar_passo_a_passo_e_precisa_aprovacao():
+def test_planejar_passo_a_passo_e_o_fechamento_guardado():
     ofertas = [dict(_o("Bradesco", 1), id="b", premio_total=4458.32), dict(_o("Porto Seguro", 8), id="p", premio_total=4700.0),
                dict(_o("Tokio", 11), id="t", premio_total=5000.0), dict(_o("Mapfre", 3), id="m", premio_total=5100.0)]
     assert N.planejar(ofertas, alvo=4500)["status"] == "ja_no_alvo"
     plano = N.planejar(ofertas, alvo=4300)
-    assert plano["status"] == "planejado" and plano["precisa_aprovacao"] == []
+    assert plano["status"] == "planejado" and plano["fechamento_disponivel"] is True
+    # o 1º degrau de todas antes do 2º de qualquer; o teto (6) corta a etapa — a cobertura nem entra nesta
     assert [(t["seguradora"], t["passos"]) for t in plano["tentativas"]] == [
-        ("Bradesco", ["comissao:12.0"]), ("Porto", ["desconto:3.0"]), ("Tokio Marine", ["comissao:12.0"]),
-        ("Bradesco", ["franquia:normal"]), ("Porto", ["franquia:normal"]), ("Tokio Marine", ["franquia:normal"])]
+        ("Bradesco", ["comissao:14.0"]), ("Porto", ["desconto:1.0"]), ("Tokio Marine", ["comissao:14.0"]),
+        ("Bradesco", ["comissao:13.0"]), ("Porto", ["desconto:2.0"]), ("Tokio Marine", ["comissao:13.0"])]
+    assert plano["fora_do_teto"] > 0
     assert "Mapfre" not in {t["seguradora"] for t in plano["tentativas"]}          # teto de seguradoras
-    # concorrência SEM aprovação → o piso espera o corretor
-    conc = N.planejar(ofertas, alvo=4300, concorrencia_declarada=True)
-    assert {t["passo"]["id"] for t in conc["precisa_aprovacao"]} == {"comissao:10.0", "desconto:5.0"}
-    assert all(t["passo"]["comissao_resultante"] >= 12.0 for t in conc["tentativas"])
-    # concorrência + aprovação → o piso entra; aprovação SEM concorrência → o piso nem existe
-    ok = N.planejar(ofertas, alvo=4300, concorrencia_declarada=True, aprovado_pelo_corretor=True)
-    assert "comissao:10.0" in {t["passo"]["id"] for t in ok["tentativas"]} and ok["precisa_aprovacao"] == []
-    so_aprov = N.planejar(ofertas, alvo=4300, aprovado_pelo_corretor=True)
-    assert not any(t["passo"]["comissao_resultante"] < 12.0 for t in so_aprov["tentativas"])
+    assert all(t["passo"]["comissao_resultante"] >= 12.0 for t in plano["tentativas"])
+    # com o fechamento pedido e sem teto: o piso entra SEM aprovação humana e SEM concorrência declarada
+    grande = mesclar({"negociacao": {"max_tentativas_por_etapa": 50}})
+    ok = N.planejar(ofertas, alvo=4300, config=grande, fechamento=True)
+    assert {"comissao:10.0", "desconto:5.0"} <= {t["passo"]["id"] for t in ok["tentativas"]}
+    assert ok["fechamento_disponivel"] is False and "precisa_aprovacao" not in ok
+    sem = N.planejar(ofertas, alvo=4300, config=grande)
+    assert not any(t["passo"]["comissao_resultante"] < 12.0 for t in sem["tentativas"])
     assert N.planejar(ofertas, alvo=4300, seguradora="Porto")["tentativas"][0]["seguradora"] == "Porto"
 
 
@@ -264,15 +270,28 @@ def test_cotacao_alvo_enfileira_pela_recalcular_e_o_repetido_nao_duplica():
     assert len(fila) == len(r["tentativas"]) == PADRAO_DO_PRODUTO["negociacao"]["max_tentativas_por_etapa"]
     assert {c["id"] for c in fila} == {t["calculo_id"] for t in r["tentativas"]}
     assert all(c["origem_calculo_id"] == calc["id"] and c["status"] == "na_fila" and c["company_id"] == A for c in fila)
-    primeiro = next(c for c in fila if c["ajuste"]["tipo"] == "comissao" and c["ajuste"]["seguradora"] == 1)
-    assert primeiro["ajuste"]["valor"] == 12.0
-    franquia = next(c for c in fila if c["ajuste"]["tipo"] == "franquia" and c["ajuste"]["seguradora"] == 1)
-    assert franquia["ajuste"]["valor"] == 2                                   # "normal" → o CÓDIGO medido
+    # passo a passo (D-MC-68 corrigida): a 1ª etapa é só MARGEM, os degraus menores primeiro, nada abaixo de 12
+    margem_bra = sorted(c["ajuste"]["valor"] for c in fila if c["ajuste"]["tipo"] == "comissao"
+                        and c["ajuste"]["seguradora"] == 1)
+    assert margem_bra == [13.0, 14.0]
+    assert not any(c["ajuste"]["tipo"] == "comissao" and c["ajuste"]["valor"] < 12.0 for c in fila)
+    assert r["fechamento_disponivel"] is True and "precisa_aprovacao" not in r
     assert "Auto Roubo" not in str(r)                                           # o pacote sem batida não negocia
     assert db.linhas("multicalculo_pedidos")[0]["status"] == "aberto"            # o pedido fechado foi reaberto
     # o MESMO pedido de novo → `repetido`, nenhuma linha nova
     r2 = rodar(porta.cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4300))
     assert all(t["repetido"] for t in r2["tentativas"]) and len(_ajustes_na_fila(db)) == len(fila)
+
+
+def test_o_corte_de_cobertura_vai_codificado_e_so_depois_da_margem():
+    # a lição da 130-A (o rótulo "normal" vira o CÓDIGO medido) migra: com a margem passo a passo, o corte só entra
+    # numa etapa com espaço — aqui, sem o teto
+    db, pedido, calc = _mundo(config_de_a={"negociacao": {"max_tentativas_por_etapa": 50}})
+    r = rodar(_porta(db).cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4300, seguradora="Bradesco"))
+    ids = [t["passo"]["id"] for t in r["tentativas"]]
+    assert ids[:4] == ["comissao:14.0", "comissao:13.0", "comissao:12.0", "franquia:normal"]
+    franquia = next(c for c in _ajustes_na_fila(db) if c["ajuste"]["tipo"] == "franquia")
+    assert franquia["ajuste"]["valor"] == 2 and franquia["ajuste"]["seguradora"] == 1   # "normal" → o CÓDIGO medido
 
 
 def test_o_canal_nao_negocia_e_a_outra_corretora_nao_le():
@@ -297,7 +316,12 @@ def test_ordem_do_mais_barato_pela_porta_le_a_config_da_corretora():
     porta = _porta(db)
     bra = next(o for o in db.linhas("multicalculo_ofertas") if o["seguradora"] == "Bradesco")
     r = rodar(porta.ordem_do_mais_barato(company_id=A, oferta_ref={"pedido_id": pedido["id"], "oferta_id": bra["id"]}))
-    assert r["status"] == "ok" and r["passos"][0]["id"] == "desconto:3.0"          # a CONFIG dela trocou o botão
+    assert r["status"] == "ok" and r["passos"][0]["id"] == "desconto:1.0"          # a CONFIG dela trocou o botão
+    assert [p["id"] for p in r["passos"]][:3] == ["desconto:1.0", "desconto:2.0", "desconto:3.0"]   # passo a passo
+    assert not any(p["fechamento"] for p in r["passos"])                        # a alavanca só com `fechamento`
+    rf = rodar(porta.ordem_do_mais_barato(company_id=A, oferta_ref={"pedido_id": pedido["id"], "oferta_id": bra["id"]},
+                                          fechamento=True))
+    assert [p["id"] for p in rf["passos"] if p["fechamento"]] == ["desconto:4.0", "desconto:5.0"]
     assert r["ajustes"][0].tipo == "desconto" and r["ajustes"][0].seguradora == 1
     with pytest.raises(NaoEncontrado):
         rodar(porta.ordem_do_mais_barato(company_id=A, oferta_ref={"pedido_id": pedido["id"],
@@ -326,16 +350,17 @@ def test_avaliar_espera_depois_escolhe_a_margem_e_ignora_o_pacote_sem_batida():
     tent = r["tentativas"]
     av = rodar(porta.avaliar_cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4300, tentativas=tent))
     assert av == {"status": "em_andamento", "pendentes": len(tent), "total": len(tent)}
-    tokio_c12 = next(t for t in tent if t["seguradora_codigo"] == 11 and t["passos"] == ["comissao:12.0"])
+    tokio_c13 = next(t for t in tent if t["seguradora_codigo"] == 11 and t["passos"] == ["comissao:13.0"])
     # a Tokio NÃO devolveu o pacote completo no recálculo — só o "Auto Roubo" de 1.999 (sem batida, abaixo do alvo)
-    _motor_responde(db, tent, {(1, "comissao:12.0"): (4290.0, 12.0), (1, "franquia:normal"): (4100.0, 15.0),
-                               (8, "desconto:3.0"): (4560.0, 15.0)},
-                    extra=[(tokio_c12["calculo_id"], ("Tokio", 11, 1999.0))])
+    _motor_responde(db, tent, {(1, "comissao:14.0"): (4390.0, 14.0), (1, "comissao:13.0"): (4290.0, 13.0),
+                               (8, "desconto:2.0"): (4560.0, 15.0)},
+                    extra=[(tokio_c13["calculo_id"], ("Tokio", 11, 1999.0))])
     db.tabelas["multicalculo_ofertas"][-1].update(pacote="Auto Roubo", coberturas={"tipoPadronizado": "Roubo/Furto"},
-                                                  comissao_percentual=12.0)
+                                                  comissao_percentual=13.0)
     av = rodar(porta.avaliar_cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4300, tentativas=tent))
     assert av["status"] == "chegou" and av["escolhida"]["seguradora"] == "Bradesco"
-    assert av["escolhida"]["passos"] == ["comissao:12.0"] and av["corta_cobertura"] == [] and av["recomenda"]
+    assert av["escolhida"]["passos"] == ["comissao:13.0"] and av["corta_cobertura"] == [] and av["recomenda"]
+    assert av["fechamento"] is None                                            # na margem normal, sem alavanca
     assert "_oferta" not in av["escolhida"]
     # o canal não avalia
     assert rodar(porta.avaliar_cotacao_alvo(company_id=CANAL, pedido_id=pedido["id"], alvo=4300,
@@ -346,15 +371,19 @@ def test_nao_chegou_vira_etapa_encadeada_sobre_o_melhor_parcial():
     db, pedido, calc = _mundo()
     porta = _porta(db)
     tent = rodar(porta.cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4000))["tentativas"]
-    _motor_responde(db, tent, {(1, "comissao:12.0"): (4290.0, 12.0), (1, "franquia:normal"): (4350.0, 15.0),
-                               (8, "desconto:3.0"): (4560.0, 15.0)})
+    _motor_responde(db, tent, {(1, "comissao:13.0"): (4290.0, 13.0), (1, "comissao:14.0"): (4350.0, 14.0),
+                               (8, "desconto:2.0"): (4560.0, 15.0)})
     av = rodar(porta.avaliar_cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4000, tentativas=tent))
     assert av["status"] == "proxima_etapa"
     parcial = av["melhor_parcial"]
-    assert parcial["premio_anual"] == 4290.0 and parcial["passos"] == ["comissao:12.0"]
-    assert all(t["passos"][0] == "comissao:12.0" and len(t["passos"]) == 2 for t in av["tentativas"])
+    assert parcial["premio_anual"] == 4290.0 and parcial["passos"] == ["comissao:13.0"]
+    assert all(t["passos"][0] == "comissao:13.0" and len(t["passos"]) == 2 for t in av["tentativas"])
     assert all(t["origem_calculo_id"] == parcial["calculo_id"] for t in av["tentativas"])
-    assert all(t["comissao_resultante"] == 12.0 for t in av["tentativas"])      # a margem já atingida segue junto
+    # passo a passo continua de onde parou (13 → 12) e a margem já atingida segue junto nos cortes; sem o fechamento
+    # pedido, nada abaixo de 12 — e a alavanca segue guardada
+    assert av["tentativas"][0]["passos"] == ["comissao:13.0", "comissao:12.0"]
+    assert all(t["comissao_resultante"] in (12.0, 13.0) for t in av["tentativas"])
+    assert av["fechamento_disponivel"] is True
     # enfileira a etapa encadeada pela mesma porta
     antes = len(_ajustes_na_fila(db))
     r2 = rodar(porta.cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4000, tentativas_anteriores=tent))
@@ -370,3 +399,36 @@ def test_sem_passo_restante_e_nao_recomendo():
           "oferta": oferta}]
     e = N.proxima_etapa(r, alvo=4000)
     assert e["status"] == "sem_caminho" and e["recomendacao"].startswith("não recomendo")
+    assert e["fechamento_disponivel"] is True                                  # ainda há a última cartada
+
+
+def test_o_fio_do_fechamento_pela_porta_ate_a_frase():
+    """O FIO da fatia: porta.cotacao_alvo(fechamento=True) → negociacao.planejar → recalcular (a fila real) → o motor
+    devolve os preços → porta.avaliar_cotacao_alvo → negociacao.escolher → a alavanca em REAIS. Sem o fechamento, o
+    mesmo pedido nunca enfileira degrau abaixo de 12. Só o transporte é dublê."""
+    cfg = {"negociacao": {"max_tentativas_por_etapa": 50}}
+    db0, pedido0, _ = _mundo(config_de_a=cfg)
+    r0 = rodar(_porta(db0).cotacao_alvo(company_id=A, pedido_id=pedido0["id"], alvo=4100, seguradora="Bradesco"))
+    assert r0["fechamento_disponivel"] is True
+    assert not any(c["ajuste"]["tipo"] == "comissao" and c["ajuste"]["valor"] < 12.0 for c in _ajustes_na_fila(db0))
+
+    db, pedido, calc = _mundo(config_de_a=cfg)
+    porta = _porta(db)
+    r = rodar(porta.cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4100, seguradora="Bradesco",
+                                 fechamento=True))
+    assert r["status"] == "em_andamento" and r["fechamento_disponivel"] is False
+    na_fila = sorted(c["ajuste"]["valor"] for c in _ajustes_na_fila(db) if c["ajuste"]["tipo"] == "comissao")
+    assert na_fila == [10.0, 11.0, 12.0, 13.0, 14.0]                           # sem aprovação humana, até o piso
+    tent = r["tentativas"]
+    _motor_responde(db, tent, {(1, "comissao:14.0"): (4400.0, 14.0), (1, "comissao:13.0"): (4350.0, 13.0),
+                               (1, "comissao:12.0"): (4300.0, 12.0), (1, "comissao:11.0"): (4180.0, 11.0),
+                               (1, "comissao:10.0"): (4060.0, 10.0), (1, "franquia:normal"): (3990.0, 15.0)})
+    av = rodar(porta.avaliar_cotacao_alvo(company_id=A, pedido_id=pedido["id"], alvo=4100, tentativas=tent,
+                                          fechamento=True))
+    assert av["status"] == "chegou" and av["corta_cobertura"] == []              # fecha SEM tirar cobertura
+    assert av["escolhida"]["passos"] == ["comissao:10.0"]
+    f = av["fechamento"]
+    assert (f["preco_antes"], f["preco_depois"], f["diferenca"]) == (4300.0, 4060.0, 240.0)
+    assert f["texto"]["corretora"] == ("Falei com a seguradora e consegui R$ 240 a menos no ano (fica R$ 4.060 por "
+                                       "ano). Vale se você fechar comigo.")
+    assert "%" not in f["texto"]["corretora"] and "%" not in f["texto"]["canal"]

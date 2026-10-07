@@ -41,10 +41,14 @@ logger = logging.getLogger(__name__)
 
 #: as opções que a porta ACEITA — cada uma com preset em `portal_worker/multicalculo/presets.py` e na MESMA ordem de
 #: `presets.ORDEM` (padrão abre o negócio; econômica e completa+ são versões dele). SPEC-130-A F4: a completa+
-#: (D-MC-69 / D-130A-09). O CHECK do banco (migration 20261006_02) aceita exatamente estas.
-OPCOES: Tuple[str, ...] = ("padrao", "economica", "completa_mais")
-#: o que sai quando o chamador não escolhe: as duas da 129-B (a completa+ é PEDIDA, quando couber — D-MC-66)
+#: (D-MC-69 / D-130A-09). SPEC-130-A.1 F3: a mínima (a econômica sem carro reserva, D-130A1-05), a ÚLTIMA. O CHECK do
+#: banco (migration 20261006_04, que alarga a 20261006_02) aceita exatamente estas.
+OPCOES: Tuple[str, ...] = ("padrao", "economica", "completa_mais", "minima")
+#: o que sai quando o chamador não escolhe: as duas da 129-B (a completa+ é PEDIDA, quando couber — D-MC-66). A carteira
+#: NÃO gasta o cálculo da mínima (D-130A1-05)
 OPCOES_PADRAO: Tuple[str, ...] = ("padrao", "economica")
+#: o que o CANAL pede (D-130A1-05): as duas da 129-B + o "mínimo do mínimo" (a maior economia, nunca a recomendada)
+OPCOES_DO_CANAL: Tuple[str, ...] = ("padrao", "economica", "minima")
 ORIGENS: Tuple[str, ...] = ("auxiliar", "canal", "teste")
 KIND_CANAL = "platform_canal"
 KIND_CORRETORA = "client"
@@ -516,9 +520,10 @@ class MulticalculoProvider:
         return cfg, andamento
 
     async def ordem_do_mais_barato(self, *, company_id: str, oferta_ref: Mapping[str, Any],
-                                   concorrencia_declarada: bool = False) -> Dict[str, Any]:
+                                   fechamento: bool = False) -> Dict[str, Any]:
         """Os `Ajuste`s, na ordem D-MC-67, que a seguradora da oferta OBEDECE (desconto onde ela ignora a comissão —
-        a lista vem da config). `oferta_ref = {"pedido_id", "oferta_id"}`; a oferta tem de ser DESTA corretora."""
+        a lista vem da config). `oferta_ref = {"pedido_id", "oferta_id"}`; a oferta tem de ser DESTA corretora.
+        `fechamento=True` inclui os degraus da alavanca de fechamento (D-MC-68 corrigida: sem aprovação humana)."""
         from app.services.multicalculo import negociacao
 
         company_id = _uuid(company_id, "company_id")
@@ -534,7 +539,7 @@ class MulticalculoProvider:
                        and str(o.get("corretora_company_id")) == company_id), None)
         if oferta is None:
             raise NaoEncontrado("oferta não encontrada")
-        passos = negociacao.ordem_do_mais_barato(oferta, config=cfg, concorrencia_declarada=concorrencia_declarada)
+        passos = negociacao.ordem_do_mais_barato(oferta, config=cfg, fechamento=fechamento)
         return {"status": "ok", "ajustes": [p.ajuste for p in passos], "passos": [p.para_dict() for p in passos]}
 
     async def _enfileirar(self, *, company_id: str, plano: Mapping[str, Any]) -> Dict[str, Any]:
@@ -551,22 +556,22 @@ class MulticalculoProvider:
                 falhas.append({**publico, "erro": type(r).__name__})
                 continue
             enfileiradas.append({**publico, "calculo_id": str(r.get("id")), "repetido": bool(r.get("repetido"))})
-        aguardam = [{k: v for k, v in t.items() if k != "ajuste"} for t in plano.get("precisa_aprovacao") or ()]
-        status = "em_andamento" if enfileiradas else ("precisa_aprovacao" if aguardam else "sem_caminho")
-        saida = {"status": status, "tentativas": enfileiradas, "precisa_aprovacao": aguardam, "falhas": falhas,
+        saida = {"status": "em_andamento" if enfileiradas else "sem_caminho", "tentativas": enfileiradas,
+                 "falhas": falhas, "fechamento_disponivel": bool(plano.get("fechamento_disponivel")),
                  "custo": "1 recálculo da corretora inteira por tentativa"}
         if plano.get("melhor_parcial"):
             saida["melhor_parcial"] = plano["melhor_parcial"]
         return saida
 
     async def cotacao_alvo(self, *, company_id: str, pedido_id: str, alvo: float, seguradora: Any = None,
-                           aprovado_pelo_corretor: bool = False, concorrencia_declarada: bool = False,
+                           fechamento: bool = False,
                            tentativas_anteriores: Optional[Sequence[Mapping[str, Any]]] = None) -> Dict[str, Any]:
         """D-MC-72 "fecha por R$ X?": planeja (puro) e ENFILEIRA as tentativas pela `recalcular`, em paralelo.
         Devolve `em_andamento` com os cálculos; quem chama lê depois com `avaliar_cotacao_alvo`. Com
         `tentativas_anteriores` (o que a avaliação devolveu como `proxima_etapa`), enfileira a etapa ENCADEADA.
-        Abaixo de `comissao.autonomo_minimo` sem `aprovado_pelo_corretor` → fica em `precisa_aprovacao`; o piso só
-        com `concorrencia_declarada`; nunca abaixo dele."""
+        D-MC-68 corrigida: a margem desce passo a passo SEM aprovação humana; os degraus abaixo de
+        `comissao.autonomo_minimo` (a alavanca de fechamento) só entram com `fechamento=True` — o cliente sinalizou
+        que fecha se melhorar; nunca abaixo do piso. `fechamento_disponivel` diz se a alavanca ainda está guardada."""
         from app.services.multicalculo import negociacao
         from app.services.multicalculo.comparacao import comparar
 
@@ -584,9 +589,7 @@ class MulticalculoProvider:
         cfg, andamento = await self._config_e_andamento(company_id=company_id, pedido_id=pedido_id)
         if tentativas_anteriores:
             avaliacao = await self._avaliar(company_id=company_id, andamento=andamento, cfg=cfg, alvo=alvo,
-                                            tentativas=tentativas_anteriores,
-                                            concorrencia_declarada=concorrencia_declarada,
-                                            aprovado_pelo_corretor=aprovado_pelo_corretor)
+                                            tentativas=tentativas_anteriores, fechamento=fechamento)
             if avaliacao["status"] != "proxima_etapa":
                 return avaliacao
             return await self._enfileirar(company_id=company_id, plano=avaliacao)
@@ -596,16 +599,14 @@ class MulticalculoProvider:
         por_id = {str(o.get("id")): o for o in andamento.ofertas}
         candidatas = [por_id[e["oferta_id"]] for e in quadro.ranking(quadro.opcao_completa, company_id)
                       if e["oferta_id"] in por_id]
-        plano = negociacao.planejar(candidatas, alvo=alvo, config=cfg, seguradora=seguradora,
-                                    concorrencia_declarada=concorrencia_declarada,
-                                    aprovado_pelo_corretor=aprovado_pelo_corretor)
+        plano = negociacao.planejar(candidatas, alvo=alvo, config=cfg, seguradora=seguradora, fechamento=fechamento)
         if plano["status"] != "planejado":
             return dict(plano)
         return await self._enfileirar(company_id=company_id, plano=plano)
 
     async def avaliar_cotacao_alvo(self, *, company_id: str, pedido_id: str, alvo: float,
-                                   tentativas: Sequence[Mapping[str, Any]], concorrencia_declarada: bool = False,
-                                   aprovado_pelo_corretor: bool = False) -> Dict[str, Any]:
+                                   tentativas: Sequence[Mapping[str, Any]],
+                                   fechamento: bool = False) -> Dict[str, Any]:
         """Lê as tentativas pela `consultar` e DECIDE (sem efeito): `em_andamento` (ainda calculando) · `chegou`
         (a de MAIOR comissão, margem antes de cobertura, cortes listados e se recomenda) · `proxima_etapa` (o plano
         encadeado — enfileira-se com `cotacao_alvo(tentativas_anteriores=…)`) · `sem_caminho` ("não recomendo")."""
@@ -617,12 +618,10 @@ class MulticalculoProvider:
             return recusa
         cfg, andamento = await self._config_e_andamento(company_id=company_id, pedido_id=pedido_id)
         return await self._avaliar(company_id=company_id, andamento=andamento, cfg=cfg, alvo=alvo,
-                                   tentativas=tentativas, concorrencia_declarada=concorrencia_declarada,
-                                   aprovado_pelo_corretor=aprovado_pelo_corretor)
+                                   tentativas=tentativas, fechamento=fechamento)
 
     async def _avaliar(self, *, company_id: str, andamento: "Andamento", cfg: Mapping[str, Any], alvo: float,
-                       tentativas: Sequence[Mapping[str, Any]], concorrencia_declarada: bool,
-                       aprovado_pelo_corretor: bool) -> Dict[str, Any]:
+                       tentativas: Sequence[Mapping[str, Any]], fechamento: bool) -> Dict[str, Any]:
         from app.services.multicalculo import negociacao
 
         status = {str(e.get("calculo_id")): e.get("status") for e in andamento.estados}
@@ -635,9 +634,7 @@ class MulticalculoProvider:
         resultados = [{**dict(t), "oferta": negociacao.resultado_da_tentativa(t, andamento.ofertas,
                                                                               company_id=company_id, config=cfg)}
                       for t in meus]
-        etapa = negociacao.proxima_etapa(resultados, alvo=alvo, config=cfg,
-                                         concorrencia_declarada=concorrencia_declarada,
-                                         aprovado_pelo_corretor=aprovado_pelo_corretor)
+        etapa = negociacao.proxima_etapa(resultados, alvo=alvo, config=cfg, fechamento=fechamento)
         if isinstance(etapa.get("escolhida"), dict):
             etapa["escolhida"] = {k: v for k, v in etapa["escolhida"].items() if k != "_oferta"}
         return etapa

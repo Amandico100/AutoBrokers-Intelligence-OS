@@ -63,7 +63,9 @@ def test_o_preset_da_completa_mais_e_a_padrao_com_pequenos_reparos():
 
 
 def test_porta_presets_e_motor_dizem_as_mesmas_opcoes_na_mesma_ordem():
-    assert PORTA.OPCOES == P.ORDEM == TRES
+    # §9.3 (SPEC-130-A.1 F3): a mínima entrou DEPOIS da completa+ — a lição migra: as 3 da 130-A continuam as 3
+    # primeiras, na mesma ordem, e a porta e os presets continuam dizendo o mesmo (a 4ª: test_spec130a1_minima)
+    assert PORTA.OPCOES == P.ORDEM and PORTA.OPCOES[:3] == TRES
     assert set(P.PRESETS) == set(PORTA.OPCOES), "opção aceita pela porta sem preset (ou preset que ninguém pede)"
     assert PORTA.OPCOES_PADRAO == ("padrao", "economica"), "o default da 129-B não muda: a completa+ é PEDIDA"
     ordem = MOT._ORDEM_DA_OPCAO
@@ -79,8 +81,10 @@ def test_a_migration_alarga_as_duas_checks_e_nada_mais():
     pedidos = re.search(r"opcoes <@ array\[([^\]]*)\]::text\[\]", corpo)
     calculos = re.search(r"check \(opcao in \(([^)]*)\)\)", corpo)
     assert pedidos and calculos
-    assert tuple(re.findall(r"'([a-z_]+)'", pedidos.group(1))) == PORTA.OPCOES
-    assert tuple(re.findall(r"'([a-z_]+)'", calculos.group(1))) == PORTA.OPCOES + ("ajuste",)
+    # §9.3: a 20261006_02 é HISTÓRICA (aplicada 06/10) — as listas dela são as 3 da 130-A; a de HOJE (com a mínima) é
+    # conferida contra a porta na 20261006_04 (test_spec130a1_minima)
+    assert tuple(re.findall(r"'([a-z_]+)'", pedidos.group(1))) == TRES
+    assert tuple(re.findall(r"'([a-z_]+)'", calculos.group(1))) == TRES + ("ajuste",)
     assert "cardinality(opcoes) >= 1" in corpo, "a cardinalidade ≥ 1 do pedido não pode cair"
     # idempotente e numa transação: as duas trocas dentro do MESMO bloco DO, cada uma guardada pelo texto atual
     assert corpo.count("do $$") == 1 and corpo.count("like '%completa_mais%'") == 2

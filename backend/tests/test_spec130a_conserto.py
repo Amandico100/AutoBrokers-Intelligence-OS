@@ -37,7 +37,8 @@ from app.services.artifacts import proposta_html as PH  # noqa: E402
 from app.services.artifacts.service import ArtifactService  # noqa: E402
 from app.services.multicalculo import proposta as P  # noqa: E402
 from app.services.multicalculo.comando_proposta import executar  # noqa: E402
-from app.services.multicalculo.mensagem import conferir, mensagem_whatsapp  # noqa: E402
+from app.services.multicalculo.mensagem import (TETO_POR_BALAO_DO_CANAL, conferir_do_canal,  # noqa: E402
+                                                mensagem_whatsapp)
 from dubles import mundo_da_proposta as M  # noqa: E402
 from test_spec130a_o_fio import CHROME, secao_do_ranking, texto_visivel  # noqa: E402
 
@@ -297,11 +298,13 @@ def test_J_P1_a_mais_em_conta_da_mensagem_diz_o_que_cobre_a_menos(monkeypatch):
     monkeypatch.setenv("PUBLIC_APP_URL", BASE)
     m = M.montar_mundo(monkeypatch, solicitante="canal")
     r = _publicar(m, nome="Mariana")
-    b1 = r["mensagem"][0]
-    bloco = b1.split("*Mais em conta:*")[1].split("\n\n")[0]
+    # SPEC-130-A.1 (§9.3 — a lição MIGRA): o pedido do CANAL leva a mensagem do canal (D-130A1-01); a "Mais em conta"
+    # mora no cartão do balão 2 e continua dizendo o que cobre a menos, logo abaixo do preço
+    b2 = r["mensagem"][1]
+    bloco = b2.split("*Mais em conta*")[1].split("\n\n")[0]
     linhas = bloco.split("\n")
-    assert len(linhas) == 2 and linhas[1].startswith("_Cobre menos: franquia normal de R$ ") and "vidros" in linhas[1]
-    assert conferir(r["mensagem"])["caracteres"] <= 700
+    assert len(linhas) == 3 and linhas[2].startswith("_Cobre menos: franquia normal de R$ ") and "vidros" in linhas[2]
+    assert max(conferir_do_canal(r["mensagem"])["caracteres_por_balao"]) <= TETO_POR_BALAO_DO_CANAL
 
 
 def test_J_P6_a_pagina_do_canal_nao_fala_na_primeira_pessoa_da_corretora(monkeypatch):

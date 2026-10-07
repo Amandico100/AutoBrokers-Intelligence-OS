@@ -27,6 +27,7 @@ from typing import Dict, Mapping, Tuple
 PADRAO = "padrao"
 ECONOMICA = "economica"
 COMPLETA_MAIS = "completa_mais"
+MINIMA = "minima"
 
 # As 15 chaves de cobertura que o APP escolhe (📊 laudo M0a: 23 chaves só existem no pedido; estas são as de
 # cobertura). O montador aplica exatamente estas sobre cada item da seguradora.
@@ -74,12 +75,31 @@ _COMPLETA_MAIS: Dict[str, object] = dict(
     reparoRapido=True,           # PEQUENOS REPAROS (D-MC-69: "completa+ com franquia reduzida e pequenos reparos")
 )
 
-PRESETS: Mapping[str, Mapping[str, object]] = {PADRAO: _PADRAO, ECONOMICA: _ECONOMICA, COMPLETA_MAIS: _COMPLETA_MAIS}
+# A MÍNIMA — o "mínimo do mínimo" (SPEC-130-A.1 D-130A1-05): a econômica SEM carro reserva. Uma chave só muda.
+# Só o canal a pede (`porta.OPCOES_DO_CANAL`); ela mostra a maior economia e NUNCA é a recomendada (comparacao.opcoes).
+#   📊 `carroReserva: 0` ↔ "Não contratar" (tests/fixtures/agger/vivo_conta_b.json, medido 07/10 pelo builder F3):
+#      o cálculo #4 do acervo variou UM fator só (carroReserva 0; o resto igual ao #6) → 112 itens de seguradora com 0
+#      nas rodadas; as 90 ofertas que devolveram `coberturas.carroReserva` dizem TODAS "Não contratar" (13 seguradoras)
+#      e 16/16 seguradoras devolveram oferta (nenhuma recusou o 0). `test_spec130a1_minima` reconta isto no acervo.
+#      ⚠️ "Não" (102×, Azul por Assinatura) e "Não desejo contratar" (52×, Bradesco) vieram com o código 2: é a
+#      seguradora sem carro reserva naquele produto, não a resposta ao 0 (a comparação lê os três como 0 dias).
+#   📊 efeito no menor preço por seguradora (#4 × #6): de −0,3 % a −6,9 % em 10 de 13; iguais em 2; Zurich +1,4 %.
+#   Vidros FICAM básicos (sem vidros a Allianz recusa — acima) e terceiros/APP intactos (RCF 0 → recusas — acima).
+#   Franquia "majorada" NÃO entra: o código 4 aparece no acervo, mas o rótulo dele não foi medido (§9.5).
+#   A comissão é a NORMAL: nenhum preset carrega `percComissao` (ela vem da conta / da negociação).
+_MINIMA: Dict[str, object] = dict(
+    _ECONOMICA,
+    carroReserva=0,              # SEM CARRO RESERVA (📊 0 → "Não contratar", 90/90 ofertas)
+)
 
-# A ORDEM do disparo no MESMO negócio (D-129B-03): a padrão ABRE o negócio (versão 1); a econômica e a completa+ são
-# versões seguintes dele, nesta ordem. O motor ordena por aqui (o ajuste do corretor vem depois de todas) e a porta
-# aceita exatamente estas opções (`porta.OPCOES` — o teste confere que as duas listas dizem o mesmo).
-ORDEM: Tuple[str, ...] = (PADRAO, ECONOMICA, COMPLETA_MAIS)
+PRESETS: Mapping[str, Mapping[str, object]] = {PADRAO: _PADRAO, ECONOMICA: _ECONOMICA, COMPLETA_MAIS: _COMPLETA_MAIS,
+                                               MINIMA: _MINIMA}
+
+# A ORDEM do disparo no MESMO negócio (D-129B-03): a padrão ABRE o negócio (versão 1); a econômica, a completa+ e a
+# mínima são versões seguintes dele, nesta ordem (a mínima por ÚLTIMO das opções: é a que o canal pode dispensar). O
+# motor ordena por aqui (o ajuste do corretor vem depois de todas) e a porta aceita exatamente estas opções
+# (`porta.OPCOES` — o teste confere que as duas listas dizem o mesmo).
+ORDEM: Tuple[str, ...] = (PADRAO, ECONOMICA, COMPLETA_MAIS, MINIMA)
 
 # O AJUSTE do corretor (`contrato.Ajuste`) → a chave de cobertura que ele troca. 🔴 O GÊMEO em Python de
 # `CAMPO_DO_AJUSTE` do `montador.js` (o robô aplica lá, na página): a porta usa este para gravar em

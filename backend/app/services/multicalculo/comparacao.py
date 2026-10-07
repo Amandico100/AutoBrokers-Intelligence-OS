@@ -605,7 +605,11 @@ def _motivos(e: Mapping[str, Any], papel: str, *, ranking_completa: Sequence[Map
     return m
 
 
-def _o_que_muda(e: Mapping[str, Any], ref: Optional[Mapping[str, Any]], rotulo_ref: Optional[str]) -> List[str]:
+def _o_que_muda(e: Mapping[str, Any], ref: Optional[Mapping[str, Any]], rotulo_ref: Optional[str],
+                papel: str = "") -> List[str]:
+    """`papel == "minima"` (D-130A1-05): a mínima foi PEDIDA sem carro reserva. Se a seguradora não informou o carro
+    reserva, "Sem carro reserva" é a leitura que cobre MENOS (nunca a que promete a mais); se ela DEU dias mesmo assim,
+    vale o que ela devolveu."""
     if ref is None or ref["oferta_id"] == e["oferta_id"]:
         return []
     r = rotulo_ref or "recomendada"
@@ -622,6 +626,8 @@ def _o_que_muda(e: Mapping[str, Any], ref: Optional[Mapping[str, Any]], rotulo_r
     if ce["reserva"] is not None and cr["reserva"] is not None and ce["reserva"] != cr["reserva"]:
         saida.append("Sem carro reserva" if ce["reserva"] == 0
                      else f"Carro reserva por {ce['reserva']} dias (na opção \"{r}\": {cr['reserva']})")
+    elif papel == "minima" and not ce["reserva"] and cr["reserva"] != 0:
+        saida.append("Sem carro reserva")
     if ce["vidros"] is not None and cr["vidros"] is not None and ce["vidros"] != cr["vidros"]:
         texto = _limpo((e.get("coberturas_brutas") or {}).get("vidros")) or "não inclui"
         saida.append(f"Vidros: {texto}")
@@ -641,7 +647,7 @@ def _opcao(e: Mapping[str, Any], id_: str, rotulo: str, papel: str, **ctx: Any) 
         "motivos": _motivos(e, papel, ranking_completa=ctx["ranking_completa"],
                             referencia=None if ref is None or ref["oferta_id"] == e["oferta_id"] else ref,
                             rotulo_ref=rotulo_ref, pool=ctx["pool"], apolice_atual=ctx["apolice_atual"], ramo=ramo),
-        "o_que_muda": _o_que_muda(e, ref, rotulo_ref),
+        "o_que_muda": _o_que_muda(e, ref, rotulo_ref, papel),
         "tem_pdf_da_seguradora": e.get("tem_pdf_da_seguradora", False),
         "ref": {"oferta_id": e["oferta_id"], "calculo_id": e["calculo_id"],
                 "corretora_company_id": e["corretora_company_id"], "opcao": e["opcao"]},
@@ -704,9 +710,11 @@ def opcoes(comparacao: Comparacao, *, situacao: str, apolice_atual: Optional[Map
     C = comparacao.ranking(papeis.get("completa", "padrao"), dona)
     E = comparacao.ranking(papeis.get("economica", "economica"), dona)
     M = comparacao.ranking(papeis.get("completa_mais", "completa_mais"), dona)
+    # a mínima (D-130A1-05) só existe para quem a PEDE: sem `incluir_minima`, o cálculo dela nem entra no pool da nota
+    Mn = comparacao.ranking(papeis.get("minima", "minima"), dona) if incluir_minima else []
     if not C:
         return []
-    pool = C + E + M
+    pool = C + E + M + Mn
     escolhidas: List[Tuple[Dict[str, Any], str, str, str]] = []   # (entrada, id, rótulo, papel)
 
     def terceira_completa(excluir: Iterable[str]) -> Optional[Tuple[Dict[str, Any], str, str, str]]:
@@ -738,8 +746,14 @@ def opcoes(comparacao: Comparacao, *, situacao: str, apolice_atual: Optional[Map
         escolhidas.append((melhor, "recomendada", "Recomendada", "completa"))
         if igual is not None:
             escolhidas.append((igual, id_igual, rot_igual, "igual"))
-    if E and E[0]["premio_anual"] < melhor["premio_anual"]:
-        escolhidas.append((E[0], "mais_em_conta", "Mais em conta", "economica"))
+    # "Mais em conta" = a MAIS BARATA entre a menor econômica e a menor mínima (empate: a econômica, que cobre mais),
+    # se for mais barata que a 1ª. 🔴 G7: a mínima nunca é a 1ª (a 1ª já foi escolhida, de C) nem entra em C
+    candidatas = [(x, papel) for x, papel in ((E[0] if E else None, "economica"), (Mn[0] if Mn else None, "minima"))
+                  if x is not None]
+    if candidatas:
+        barata, papel_barata = min(candidatas, key=lambda xp: xp[0]["premio_anual"])
+        if barata["premio_anual"] < melhor["premio_anual"]:
+            escolhidas.append((barata, "mais_em_conta", "Mais em conta", papel_barata))
     if M and not _repete(M[0], melhor):
         escolhidas.append((M[0], "mais_completa", "Mais completa", "completa_mais"))
     t = terceira_completa([e[0]["oferta_id"] for e in escolhidas])

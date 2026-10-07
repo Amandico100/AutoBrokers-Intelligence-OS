@@ -10,7 +10,8 @@ O fio, elo a elo:
     adesão ativa) → comparacao.comparar (o quadro inteiro: quem VENCE entre as corretoras) → comparacao.comparar só da
     ANFITRIÃ (ranking, produto diferente, não responderam, o resumo que fecha a conta) → comparacao.opcoes → o modelo
     (bem, anfitriã com a marca PUBLICADA, FAQ do caso, sinistro, validade, nível por cobertura, juros com nome,
-    arredondamento único) → ArtifactService (no SOLICITANTE, D-130A-10) → mensagem.mensagem_whatsapp(link).
+    arredondamento único) → ArtifactService (no SOLICITANTE, D-130A-10) → mensagem.mensagem_para(link) (a do canal ou
+    a da carteira, pela ORIGEM — SPEC-130-A.1 D-130A1-01).
 
 🔴 Regras que moram aqui:
   · a ANFITRIÃ é a vencedora no pedido do canal e a própria corretora no pedido dela. A página mostra o quadro DELA
@@ -372,7 +373,7 @@ def _whatsapp_da_anfitria(db: Any, company_id: str, marca: Optional[Mapping[str,
     try:
         linhas = _dados(db.table("integrations").select("paired_phone_e164, purpose, is_active")
                         .eq("company_id", company_id).eq("purpose", "attendance").eq("is_active", True)
-                        .limit(20).execute())
+                        .limit(50).execute())   # o teto da leitura (o G8 proíbe os números da config)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[PROPOSTA] integrações ilegíveis: %s", type(exc).__name__)
         return None
@@ -479,6 +480,88 @@ def _faq(cfg_anf: Mapping[str, Any], *, resumo: Mapping[str, Any], opcoes: List[
 # =====================================================================================================================
 # MONTAR
 # =====================================================================================================================
+def _instante(valor: Any) -> Optional[datetime]:
+    if isinstance(valor, datetime):
+        return valor if valor.tzinfo else valor.replace(tzinfo=timezone.utc)
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    try:
+        d = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _preco(o: Mapping[str, Any]) -> Optional[float]:
+    try:
+        v = float(o.get("premio_total"))
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def resumo_do_volume(ofertas: Sequence[Mapping[str, Any]], pedido: Mapping[str, Any],
+                     cfg: Mapping[str, Any]) -> Dict[str, Any]:
+    """SPEC-130-A.1 D-130A1-02 — o VOLUME que o consumidor lê, contado das ofertas REAIS do pedido (as que a porta
+    devolveu ao solicitante), nunca de uma fórmula:
+
+      · `cotacoes_realizadas` = os preços que VOLTARAM: toda oferta com prêmio > 0, de todas as opções e corretoras.
+        🔴 "seguradoras × 3 × corretoras + 100" NÃO entra: o +100 é um número que não aconteceu (CDC art. 37).
+      · `seguradoras_com_preco` = seguradoras distintas (por código; sem código, pelo nome) com algum preço. O produto
+        de ASSINATURA (config `produtos_de_assinatura`) é uma linha de uma seguradora, não outra seguradora.
+      · `tempo_do_calculo_s` = do pedido criado à última dessas ofertas recebida. Sem os dois instantes, ou < 1 s (o
+        mesmo instante não é medida), o campo NÃO existe — e a linha da mensagem some."""
+    precos = [o for o in ofertas if _preco(o) is not None]
+    saida: Dict[str, Any] = {"cotacoes_realizadas": len(precos)}
+    segs = set()
+    for o in precos:
+        if CFG.e_produto_de_assinatura(o.get("seguradora"), o.get("pacote"), cfg):
+            continue
+        cod = o.get("seguradora_codigo")
+        segs.add(f"cod:{cod}" if cod not in (None, "") and not isinstance(cod, bool)
+                 else "nome:" + CFG.normalizar(CMP.nome_de_exibicao(o.get("seguradora"))))
+    saida["seguradoras_com_preco"] = len(segs)
+    inicio = _instante(pedido.get("criado_em"))
+    chegadas = [t for t in (_instante(o.get("recebida_em")) for o in precos) if t is not None]
+    if inicio and chegadas:
+        segundos = (max(chegadas) - inicio).total_seconds()
+        if segundos >= 1:
+            saida["tempo_do_calculo_s"] = int(segundos + 0.5)
+    return saida
+
+
+def economia(ranking_completo_do_pedido: Sequence[Mapping[str, Any]], opcoes: Sequence[Mapping[str, Any]],
+             refs: Sequence[Mapping[str, Any]], *, opcao_completa: str,
+             apolice_atual: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
+    """SPEC-130-A.1 D-130A1-03 — "Você economiza até R$ X", com a ORIGEM da conta:
+
+      · `ate` = `de` − `para`: `de` = a MAIS CARA com a mesma cobertura completa (o ranking completo do pedido, todas as
+        corretoras); `para` = a mais barata MOSTRADA (entre as opções do modelo — a mínima, se houver).
+        `mesma_cobertura` diz se a `para` é uma completa (a frase muda: a mais em conta cobre menos).
+      · `vs_atual` só quando há apólice lida com prêmio: o prêmio atual − a 1ª opção (a menor completa), se a menos."""
+    saida: Dict[str, Any] = {}
+    precos = [float(r["premio_anual"]) for r in ranking_completo_do_pedido if r.get("premio_anual")]
+    validas = [(o, r) for o, r in zip(opcoes, refs) if o.get("premio_anual")]
+    if precos and validas:
+        de = max(precos)
+        o_para, r_para = min(validas, key=lambda x: float(x[0]["premio_anual"]))
+        para = float(o_para["premio_anual"])
+        if de - para >= 0.01:
+            saida.update({"ate": round(de - para, 2), "de": round(de, 2), "para": round(para, 2),
+                          "para_opcao": o_para.get("id"),
+                          "mesma_cobertura": str((r_para or {}).get("opcao") or "") == opcao_completa})
+    atual = (apolice_atual or {}).get("premio_anual") if isinstance(apolice_atual, Mapping) else None
+    if atual and opcoes and opcoes[0].get("premio_anual"):
+        try:
+            atual_f, base = float(atual), float(opcoes[0]["premio_anual"])
+        except (TypeError, ValueError):
+            atual_f, base = 0.0, 0.0
+        if atual_f - base >= 0.01:
+            saida["vs_atual"] = {"atual": round(atual_f, 2), "para": round(base, 2), "valor": round(atual_f - base, 2)}
+    return saida or None
+
+
 def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[str, Dict[str, Any]]:
     """O desempate D-130A-04 (só lido, nunca exibido): a nota do Google CONFIRMADA e a ordem de adesão ao canal."""
     info: Dict[str, Dict[str, Any]] = {c: {} for c in corretoras}
@@ -537,7 +620,9 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     ofertas_a = [o for o in ofertas if de_anf(o)]
     quadro = CMP.comparar(ofertas_a, [e for e in eventos if de_anf(e)], estados=[e for e in estados if de_anf(e)],
                           config=cfg_sol, ramo=ramo)
-    ops = CMP.opcoes(quadro, situacao=situacao, apolice_atual=apolice_atual, config=cfg_sol, corretora=anfitria_id)
+    # SPEC-130-A.1 D-130A1-05: só o CANAL pede o "mínimo do mínimo" (a carteira não gasta 1 cálculo a mais)
+    ops = CMP.opcoes(quadro, situacao=situacao, apolice_atual=apolice_atual, config=cfg_sol, corretora=anfitria_id,
+                     incluir_minima=origem == "canal")
     ranking = quadro.ranking(quadro.opcao_completa, anfitria_id)
     if not ops or not ranking:
         raise PropostaImpossivel("a corretora anfitriã não tem oferta com cobertura completa neste pedido")
@@ -557,8 +642,11 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
             item["parcelas_sem_juros"] = sem_juros
         opcoes.append(item)
     _niveis(opcoes, [b.get("coberturas") or {} for b in brutas])
-    for item, bruta in zip(opcoes[1:], brutas[1:]):
-        if item["id"] == "mais_em_conta":
+    # a opção que vem de um cálculo MAIS BARATO (a econômica, ou a mínima no canal — D-130A1-05) diz o que corta
+    papeis = cfg_sol.get("calculo_por_papel") or {}
+    calculos_baratos = {str(papeis.get("economica") or "economica"), str(papeis.get("minima") or "minima")}
+    for item, bruta, o in zip(opcoes[1:], brutas[1:], ops[1:]):
+        if item["id"] == "mais_em_conta" or str(o["ref"].get("opcao") or "") in calculos_baratos:
             frase = _por_que_mais_barata(item, opcoes[0], bruta, brutas[0])
             if frase:
                 item["por_que_mais_barata"] = frase
@@ -569,6 +657,12 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     comparou_corretoras = origem == "canal" and len(linhas_entre) > 1
     if comparou_corretoras:
         resumo["corretoras_comparadas"] = len(linhas_entre)
+    # SPEC-130-A.1 U4 — o volume REAL (todas as ofertas do pedido que a porta devolveu) e a economia com a origem
+    resumo.update(resumo_do_volume(ofertas, ped, cfg_sol))
+    eco = economia(quadro_todo.ranking(quadro_todo.opcao_completa), opcoes, [o["ref"] for o in ops],
+                   opcao_completa=quadro_todo.opcao_completa, apolice_atual=apolice_atual)
+    if eco:
+        resumo["economia"] = eco
 
     hoje = _agora(agora)
     seguradoras_do_quadro = ([str(r.get("seguradora_original") or r["seguradora"]) for r in ranking]
@@ -577,6 +671,12 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     validade_ate = (hoje.date() + timedelta(days=dias)).isoformat()
 
     anfitria = await montar_anfitria(db, anfitria_id, cfg_anf, baixar_logo=baixar_logo)
+    if origem == "canal":
+        # D-130A1-04: o selo do PROGRAMA, da config da ANFITRIÃ (ela pode desligá-lo). Só o canal o leva: a proposta da
+        # carteira não fala do canal (G3).
+        selo = (cfg_anf.get("canal") or {}).get("selo") or {}
+        if selo.get("ligado") is True and str(selo.get("nome") or "").strip():
+            anfitria["selo"] = str(selo["nome"]).strip()
     # D-MC-55: a perdedora entra SEM nome (só o preço dela) — e nenhum dado dela é lido para a página
     entre = [{"corretora": anfitria.get("nome") if l["corretora_company_id"] == anfitria_id else None,
               "melhor_completa": l["melhor_completa"], "vencedora": bool(l["vencedora"])}
@@ -618,7 +718,7 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
         "gerado_em": hoje.replace(microsecond=0).isoformat(),
         "aviso_legal": AVISO_LEGAL_CANAL if origem == "canal" else AVISO_LEGAL_CORRETORA,
         "cta": cta,
-        "mostrar_remuneracao": bool((cfg_anf.get("remuneracao_cnsp_382") or {}).get("ligada") is True),
+        # D-130A-08 REVOGADA (SPEC-130-A.1): "nós não vendemos seguros" — nenhuma remuneração no modelo (G9)
     }
     if origem == "canal":                       # RT-10: o nome do canal é CONFIGURAÇÃO do produto, não constante
         nome_canal = str((cfg_sol.get("canal") or {}).get("nome") or "").strip()
@@ -662,7 +762,7 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
     🔴 J-B1: sem WhatsApp de atendimento da anfitriã → `SemCanalDeFechamento` antes de gravar (a página não teria como
     fechar). Só `permitir_sem_whatsapp=True` publica assim — e aí nenhuma frase da página promete WhatsApp."""
     from app.services.artifacts.service import ArtifactService, base_publica_do_app, tags_do_canario
-    from app.services.multicalculo.mensagem import mensagem_whatsapp
+    from app.services.multicalculo.mensagem import mensagem_para
 
     company_id, pedido_id = _uuid(company_id, "company_id"), _uuid(pedido_id, "pedido_id")
     base = (base_url or base_publica_do_app() or "").strip().rstrip("/")
@@ -711,4 +811,4 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
     logger.info("[PROPOSTA] publicada: versão %s, %s opções", publicada.get("version"), len(modelo["opcoes"]))
     return {"url": url, "token": share["token"], "artifact_id": artifact_id,
             "versao": int(publicada.get("version") or versao.get("version") or 1),
-            "mensagem": mensagem_whatsapp(modelo, url, config=ctx["cfg_sol"]), "validade_ate": modelo["validade_ate"]}
+            "mensagem": mensagem_para(modelo, url, config=ctx["cfg_sol"]), "validade_ate": modelo["validade_ate"]}

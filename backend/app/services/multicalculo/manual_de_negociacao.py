@@ -8,6 +8,13 @@ limite) vem de `config` (o `PADRAO_DO_PRODUTO` ⊕ a corretora) e entra no texto
 
 Regras de texto (CLAUDE.md §13.9 e D-MC-59/71): resposta curta, honesta, sem promessa que a corretora não controla,
 sem nome de corretora, sem "o mais barato do mercado", sem urgência falsa.
+
+SPEC-130-A.1 (D-130A1-07): o manual tem CONTEXTO — `montar(config, contexto=)`:
+    carteira   renovação e cotação de quem JÁ é cliente: o tom de quem conhece (o manual da 130-A)
+    canal      consumidor FRIO do comparador (`canal.nome`): prova primeiro (o volume real de cotações, o vencedor, a
+               economia), a corretora entra como "quem atende", as objeções na voz do comparador (`resposta_canal`),
+               a alavanca de fechamento na voz do canal, a estratégia do canal e o follow-up (`canal.follow_up`)
+A régua da margem é a MESMA nos dois (D-MC-68 corrigida — `negociacao.py`).
 """
 from __future__ import annotations
 
@@ -15,6 +22,9 @@ import copy
 from typing import Any, Dict, List, Mapping, Optional
 
 from app.services.multicalculo.config import PADRAO_DO_PRODUTO
+from app.services.multicalculo.negociacao import COM_QUEM, FRASE_DA_ALAVANCA
+
+CONTEXTOS = ("carteira", "canal")
 
 
 def _pct(v: Any) -> str:
@@ -30,8 +40,9 @@ _ALAVANCAS: Dict[str, Dict[str, Any]] = {
                  "como": "o percentual de desconto da seguradora no Agger (`percDesconto`); nas seguradoras que "
                          "ignoram a comissão é o ÚNICO botão da margem"},
     "comissao": {"nome": "comissão da corretora", "corta_cobertura": False,
-                 "como": "de {entrada} para {autonomo} sozinho; {piso} só com concorrência declarada E o corretor "
-                         "aprovando; nunca abaixo de {piso}"},
+                 "como": "de {entrada} para {autonomo} sozinho, {passo} por vez (nunca direto); de {autonomo} até "
+                         "{piso} é a alavanca de fechamento: sem aprovação humana, guardada até o cliente sinalizar "
+                         "que fecha e dita em reais, nunca em percentual; nunca abaixo de {piso}"},
     "franquia": {"nome": "franquia maior", "corta_cobertura": True,
                  "como": "franquia {franquia} — dito ao cliente em \"o que mudou\""},
     "carro_reserva": {"nome": "menos dias de carro reserva", "corta_cobertura": True,
@@ -117,6 +128,50 @@ _ESTRATEGIAS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+#: SPEC-130-A.1 — a estratégia do CANAL (consumidor frio, D-130A1-01/02/03/05/07). Os números vêm do modelo da
+#: proposta (cotações que VOLTARAM, tempo medido, economia da mais cara à mais em conta), nunca daqui.
+_ESTRATEGIA_DO_CANAL: Dict[str, Any] = {
+    "quando": "logo depois do cálculo, na mensagem do comparador ({canal}) ao consumidor que pediu a cotação",
+    "comissao": "{entrada}, a mesma régua da carteira",
+    "mira": "o vencedor entre todas as corretoras e seguradoras = a menor completa; o mínimo do mínimo só mostra a "
+            "maior economia possível e nunca é a recomendada; com apólice lida, a economia também contra o preço atual",
+    "mostra": ["o vencedor em destaque (a corretora e a seguradora)",
+               "o volume REAL de cotações: os preços que voltaram, nunca uma fórmula",
+               "o tempo do cálculo, medido",
+               "a economia em reais, dizendo de onde vem a conta",
+               "as opções com o que cada uma deixa de cobrir",
+               "o melhor preço por seguradora (o resto no link)",
+               "quem é a corretora: só os dados que existem"],
+    "opcoes": ["recomendada", "mais_em_conta", "minima"],
+}
+
+#: a ordem da conversa por contexto: o que vem primeiro (D-130A1-07)
+_ROTEIRO: Dict[str, List[str]] = {
+    "carteira": ["o que mudou desde a última apólice (ou o que o cliente pediu)",
+                 "a recomendada, com a mesma proteção de hoje",
+                 "a mais em conta, dizendo o que deixa de cobrir",
+                 "a negociação pela régua da margem; a alavanca de fechamento só quando o cliente sinaliza que fecha"],
+    "canal": ["a PROVA primeiro: o volume real de cotações, o vencedor e a economia",
+              "as opções, cada uma com o que deixa de cobrir",
+              "a corretora entra como quem atende: os dados dela que existem, nunca a corretora que perdeu",
+              "a pergunta que abre a conversa",
+              "a negociação é da corretora, pela mesma régua; a alavanca de fechamento na voz do canal"],
+}
+
+#: o follow-up como DADO para a 133-A (quem envia). Os tempos vêm de config (`canal.follow_up` no canal,
+#: `lembretes` na carteira). 🔴 Nenhum lembrete com urgência falsa; a validade é dita como data, porque é verdade.
+_FOLLOW_UP_TEXTOS: Dict[str, List[str]] = {
+    "carteira": ["Oi! Ficou alguma dúvida sobre a proposta? Quer que eu te ajude a escolher?",
+                 "Passando para lembrar: os preços valem até {validade}. Quer que eu reserve para você?"],
+    "canal": ["Oi! Ficou alguma dúvida sobre as cotações? Quer que a corretora te ajude a escolher?",
+              "Passando para lembrar: os preços valem até {validade}. Quer que a corretora reserve esse preço "
+              "para você?"],
+}
+_FOLLOW_UP_REGRAS = ["a mensagem termina com UMA pergunta (abre a conversa e a janela do WhatsApp)",
+                     "só em horário comercial",
+                     "parar no primeiro sinal de resposta ou se a pessoa pedir para parar",
+                     "nunca urgência falsa (\"só hoje\", \"corra\", \"expira\"); a validade é dita como data"]
+
 # os passos do sinistro que são VERDADE para qualquer corretora (a dela, se cadastrada, troca estes)
 #: 🔴 J-B1 (juiz, 06/10): sem WhatsApp de atendimento da corretora, NENHUM passo promete WhatsApp (o 1º troca por este)
 _SINISTRO_1_SEM_WHATSAPP = "Avise a sua corretora assim que puder"
@@ -129,14 +184,18 @@ _SINISTRO: List[str] = [
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-def montar(config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
-    """O manual inteiro, com os números DA CORRETORA (config) já no texto. Devolve uma cópia."""
+def montar(config: Optional[Mapping[str, Any]] = None, contexto: str = "carteira") -> Dict[str, Any]:
+    """O manual inteiro, com os números DA CORRETORA (config) já no texto, para o `contexto` (carteira · canal —
+    D-130A1-07). Devolve uma cópia."""
+    if contexto not in CONTEXTOS:
+        raise ValueError("contexto: " + " · ".join(CONTEXTOS))
     cfg = config or PADRAO_DO_PRODUTO
     com = cfg["comissao"]
     cortes = cfg["cortes_de_cobertura"]
     ren = cfg["renovacao"]
     alvo = cfg["alvo_abaixo_da_atual_pct"]
     valores = {"entrada": _pct(com["entrada"]), "autonomo": _pct(com["autonomo_minimo"]), "piso": _pct(com["piso"]),
+               "passo": _num(com["passo_pp"]) + " pp", "canal": (cfg.get("canal") or {}).get("nome") or "o comparador",
                "franquia": cortes.get("franquia"), "carro_reserva": cortes.get("carro_reserva"),
                "vidros": cortes.get("vidros"), "assistencia": cortes.get("assistencia"),
                "antecedencia": ren["antecedencia_dias"], "mais_min": _num(ren["comissao_a_mais_pp"]["minimo"]),
@@ -149,21 +208,61 @@ def montar(config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
             continue
         alavancas.append({"ordem": i, "chave": chave, "nome": base["nome"],
                           "corta_cobertura": base["corta_cobertura"], "como": base["como"].format(**valores)})
+    fonte = _ESTRATEGIAS if contexto == "carteira" else {"canal": _ESTRATEGIA_DO_CANAL}
     estrategias = {}
-    for sit, e in _ESTRATEGIAS.items():
+    for sit, e in fonte.items():
         estrategias[sit] = {k: (v.format(**valores) if isinstance(v, str) else list(v)) for k, v in e.items()}
+    voz = "corretora" if contexto == "carteira" else "canal"
+    objecoes = copy.deepcopy(_OBJECOES)
+    if contexto == "canal":                    # na voz do comparador: nunca a 1ª pessoa DA corretora (J-P6)
+        for o in objecoes:
+            if o.get("resposta_canal"):
+                o["resposta"] = o["resposta_canal"]
     return {
+        "contexto": contexto,
+        "roteiro": list(_ROTEIRO[contexto]),
         "alavancas": alavancas,
         "limites": {"comissao_entrada": float(com["entrada"]), "comissao_autonoma_minima": float(com["autonomo_minimo"]),
-                    "comissao_piso": float(com["piso"]),
-                    "regra": f"até {valores['autonomo']} o agente aplica sozinho; {valores['piso']} só com "
-                             f"concorrência declarada e o corretor aprovando (D-MC-68); nunca abaixo de "
+                    "comissao_piso": float(com["piso"]), "passo_pp": float(com["passo_pp"]),
+                    "precisa_aprovacao_humana": False,
+                    "regra": f"a comissão desce {valores['passo']} por vez, nunca direto; de {valores['entrada']} até "
+                             f"{valores['autonomo']} é a negociação normal; de {valores['autonomo']} até "
+                             f"{valores['piso']} é a alavanca de fechamento — sem aprovação humana, só quando o "
+                             f"cliente sinaliza que fecha, e dita em reais (D-MC-68 corrigida); nunca abaixo de "
                              f"{valores['piso']}"},
-        "objecoes": copy.deepcopy(_OBJECOES),
+        "alavanca_de_fechamento": {
+            "de": float(com["autonomo_minimo"]), "ate": float(com["piso"]), "voz": voz,
+            "frase": FRASE_DA_ALAVANCA.replace("{com_quem}", COM_QUEM[voz]),
+            "quando": "só depois de o cliente sinalizar que fecha se melhorar; é a última cartada, para fechar sem "
+                      "tirar cobertura (no plano, antes de qualquer corte)",
+            "regras": ["a diferença em reais vem do recálculo (o preço que a seguradora devolveu), nunca de uma conta",
+                       "nunca dizer percentual nem comissão",
+                       "condicionada ao fechamento; nunca urgência falsa"],
+        },
+        "objecoes": objecoes,
         "estrategias": estrategias,
-        "faq": faq_padrao(cfg),
+        "follow_up": _follow_up(cfg, contexto),
+        "faq": faq_padrao(cfg, voz=voz),
         "sinistro": sinistro_padrao(cfg),
     }
+
+
+def _follow_up(cfg: Mapping[str, Any], contexto: str) -> Dict[str, Any]:
+    """O follow-up como dado para a 133-A: os tempos da config (`canal.follow_up` no canal, `lembretes` na carteira),
+    os modelos de texto (`{validade}` = a data da proposta) e as regras."""
+    if contexto == "canal":
+        f = dict((cfg.get("canal") or {}).get("follow_up") or {})
+        tempos = {"primeiro_apos_min": f.get("primeiro_apos_min"), "segundo_apos_h": f.get("segundo_apos_h"),
+                  "max_sem_resposta": f.get("max_sem_resposta"),
+                  "horario_comercial": dict(f.get("horario_comercial") or {})}
+        maximo = f.get("max_sem_resposta")
+    else:
+        lem = cfg.get("lembretes") or {}
+        tempos = {"primeiro_apos_h": lem.get("primeiro_apos_h"), "antes_de_vencer_h": lem.get("antes_de_vencer_h"),
+                  "horario_comercial": dict(lem.get("horario_comercial") or {})}
+        maximo = len(_FOLLOW_UP_TEXTOS[contexto])
+    textos = list(_FOLLOW_UP_TEXTOS[contexto])[: int(maximo) if isinstance(maximo, int) else None]
+    return {"tempos": tempos, "textos": textos, "regras": list(_FOLLOW_UP_REGRAS)}
 
 
 def _num(v: Any) -> str:

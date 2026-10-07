@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""A NEGOCIAÇÃO do multicálculo, PURA — SPEC-130-A U3 (D-MC-63/67/68/72).
+"""A NEGOCIAÇÃO do multicálculo, PURA — SPEC-130-A U3 (D-MC-63/67/72) · SPEC-130-A.1 U1 (D-MC-68 CORRIGIDA).
 
 A porta (`porta.ordem_do_mais_barato`, `porta.cotacao_alvo`, `porta.avaliar_cotacao_alvo`) autoriza, lê e
 ENFILEIRA; aqui só se DECIDE, sem I/O:
@@ -8,17 +8,34 @@ ENFILEIRA; aqui só se DECIDE, sem I/O:
     planejar(ofertas, alvo, config)         a 1ª etapa: tentativas de UM passo a partir do cálculo de origem
     escolher(resultados, alvo, config)      chegou no alvo? → a de MAIOR comissão (margem antes de cobertura)
     proxima_etapa(resultados, ...)          não chegou → o próximo passo ENCADEADO sobre o melhor parcial
+    texto_da_alavanca(antes, depois, voz)   a frase da alavanca de fechamento, em REAIS
 
-🔴 A regra da margem (D-MC-68 revendo a D-MC-63): até `comissao.autonomo_minimo` o agente aplica SOZINHO; o
-`comissao.piso` só com `concorrencia_declarada` E `aprovado_pelo_corretor` (D-MC-67); NUNCA abaixo do piso.
+🔴 A régua da margem — D-MC-68 CORRIGIDA (Founder, 06/10 23h: "o agente PODE ir até o piso SEM autorização humana,
+mas não direto — aos poucos; e usar os últimos pontos como alavanca de fechamento"). A versão anterior ("o piso só com
+concorrência declarada E o corretor aprovando") estava ERRADA e saiu. (Os números ficam na config — o guarda G8.)
+  · a comissão desce de `comissao.passo_pp` em `passo_pp` a partir da comissão ATUAL da oferta (um ponto por vez com
+    o padrão), NUNCA pulando direto; o último degrau de cada trecho cai exatamente no limite dele (nunca o atravessa);
+  · `entrada` → `autonomo_minimo` = a negociação NORMAL: sempre no plano;
+  · `autonomo_minimo` → `piso` = a ALAVANCA DE FECHAMENTO: os degraus existem, NÃO pedem aprovação humana nem
+    concorrência declarada, mas só entram no plano quando o chamador pede o fechamento (`fechamento=True` — o cliente
+    sinalizou que fecha se melhorar). Ao cliente ela sai em REAIS (`texto_da_alavanca`), nunca em "%";
+  · NUNCA abaixo do `piso` da corretora (a config dela pode ter um piso maior que o do produto).
 🔴 Nas seguradoras que obedecem o desconto e ignoram a comissão (config `seguradoras_que_obedecem_desconto` —
-📊 Porto, Azul, Itaú, 128 E5) o botão da margem é o DESCONTO = entrada − nível: "comissão e desconto como UMA
-regra" (D-MC-63).
+📊 Porto, Azul, Itaú, 128 E5) o botão da margem é o DESCONTO = entrada − nível, com os MESMOS degraus: "comissão e
+desconto como UMA regra" (D-MC-63).
+🔴 A ORDEM fechamento × cortes de cobertura (decisão desta fatia): com `fechamento=True`, os degraus da alavanca vêm
+LOGO DEPOIS dos degraus normais, ANTES de qualquer corte de cobertura. Porquê: o Founder quer o fechamento como a
+ÚLTIMA cartada para fechar SEM tirar cobertura — "última" é no TEMPO da conversa (ela só existe quando o cliente
+sinaliza que fecha; até lá o plano só tem a margem normal e os cortes), não na fila do plano; e D-MC-67 manda gastar
+margem antes de cobertura. Pôr a alavanca depois dos cortes faria o cliente que já ia fechar perder carro reserva ou
+vidros para a corretora guardar uns pontos de margem — o oposto do que ela existe para fazer.
 🔴 Cobertura só cai DEPOIS da margem e todo corte é LISTADO (o cliente ouve "o que mudou").
-Cada tentativa = 1 recálculo da corretora inteira (📊 ~30–50 s, E7): o plano é curto e tem teto na config.
+Cada tentativa = 1 recálculo da corretora inteira (📊 ~30–50 s, E7): o plano é curto e tem teto na config; os degraus
+menores entram primeiro, e `escolher` fica com a MAIOR comissão que chega — a corretora nunca cede mais que o preciso.
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
@@ -33,6 +50,14 @@ STATUS_PENDENTES = ("na_fila", "disparando", "calculando")
 ALAVANCAS_DE_MARGEM = ("desconto", "comissao")
 _DESCRICAO = {"franquia": "franquia {v}", "carro_reserva": "carro reserva {v}", "vidros": "vidros {v}",
               "assistencia": "assistência {v}"}
+_EPS = 1e-9
+
+#: A frase da alavanca de fechamento (D-MC-68 corrigida). 🔴 Em REAIS, condicionada ao fechamento, sem "%", sem
+#: "comissão", sem urgência falsa. `{diferenca}` e `{preco}` vêm do RECÁLCULO (`texto_da_alavanca`), nunca de conta.
+FRASE_DA_ALAVANCA = ("Falei com a seguradora e consegui {diferenca} a menos no ano (fica {preco} por ano). "
+                     "Vale se você fechar {com_quem}.")
+#: quem fala: a corretora com o cliente dela (carteira) ou o canal comparador com o consumidor (D-130A1-07)
+COM_QUEM = {"corretora": "comigo", "canal": "com a corretora"}
 
 
 @dataclass(frozen=True)
@@ -41,7 +66,7 @@ class Passo:
     ajuste: Ajuste
     comissao_resultante: Optional[float]
     corta_cobertura: bool
-    precisa_aprovacao: bool
+    fechamento: bool                    # degrau da ALAVANCA DE FECHAMENTO (abaixo de `autonomo_minimo`)
     descricao: str
 
     @property
@@ -52,7 +77,7 @@ class Passo:
         return {"id": self.id, "alavanca": self.alavanca,
                 "ajuste": {"tipo": self.ajuste.tipo, "valor": self.ajuste.valor, "seguradora": self.ajuste.seguradora},
                 "comissao_resultante": self.comissao_resultante, "corta_cobertura": self.corta_cobertura,
-                "precisa_aprovacao": self.precisa_aprovacao, "descricao": self.descricao}
+                "fechamento": self.fechamento, "descricao": self.descricao}
 
 
 def _pct(v: float) -> str:
@@ -81,18 +106,42 @@ def obedece_desconto(seguradora: Any, config: Mapping[str, Any]) -> bool:
     return casa_seguradora(seguradora, config.get("seguradoras_que_obedecem_desconto") or ())
 
 
+def degraus(de: float, ate: float, passo: float) -> List[float]:
+    """Os níveis estritamente abaixo de `de`, descendo de `passo` em `passo`, até `ate` INCLUSIVE. O último degrau cai
+    exatamente em `ate` (nunca o atravessa); nenhum degrau é maior que `passo`. `de <= ate` → nenhum."""
+    de, ate, passo = float(de), float(ate), float(passo)
+    if passo <= 0:
+        raise ValueError("passo precisa ser positivo")
+    saida: List[float] = []
+    n = de
+    while n - ate > _EPS:
+        n = max(round(n - passo, 2), ate)
+        saida.append(n)
+    return saida
+
+
+def niveis_de_margem(atual: float, cfg: Mapping[str, Any]) -> List[tuple]:
+    """[(nível, é_fechamento)] a partir da comissão `atual`: os degraus normais até `autonomo_minimo` e, depois, os da
+    alavanca de fechamento até o `piso`. Quem decide se os de fechamento entram é o chamador."""
+    com = cfg["comissao"]
+    autonomo, piso, passo = float(com["autonomo_minimo"]), float(com["piso"]), float(com["passo_pp"])
+    normais = degraus(atual, autonomo, passo)
+    fech = degraus(min(float(atual), autonomo), piso, passo)
+    return [(n, False) for n in normais] + [(n, True) for n in fech]
+
+
 def ordem_do_mais_barato(oferta: Mapping[str, Any], *, config: Optional[Mapping[str, Any]] = None,
-                         concorrencia_declarada: bool = False) -> List[Passo]:
+                         fechamento: bool = False) -> List[Passo]:
     """Os passos de UMA oferta, na ordem da config (D-MC-67), que a seguradora DELA obedece. Sem código de
-    seguradora → nenhum passo (um ajuste sem seguradora mudaria TODAS as ofertas)."""
+    seguradora → nenhum passo (um ajuste sem seguradora mudaria TODAS as ofertas).
+    `fechamento=True` acrescenta os degraus da alavanca de fechamento logo depois dos normais (antes dos cortes)."""
     cfg = config or PADRAO_DO_PRODUTO
     cod = _codigo(oferta)
     if cod is None:
         return []
-    com = cfg["comissao"]
-    entrada, autonomo, piso = float(com["entrada"]), float(com["autonomo_minimo"]), float(com["piso"])
+    entrada = float(cfg["comissao"]["entrada"])
     atual = _comissao_atual(oferta, cfg)
-    niveis = [n for n in ([autonomo] + ([piso] if concorrencia_declarada else [])) if piso <= n < atual]
+    niveis = [(n, f) for n, f in niveis_de_margem(atual, cfg) if fechamento or not f]
     por_desconto = obedece_desconto(oferta.get("seguradora"), cfg)
     cob = oferta.get("coberturas") if isinstance(oferta.get("coberturas"), Mapping) else {}
     cortes = cfg.get("cortes_de_cobertura") or {}
@@ -100,13 +149,12 @@ def ordem_do_mais_barato(oferta: Mapping[str, Any], *, config: Optional[Mapping[
     for alavanca in cfg.get("ordem_do_mais_barato") or ():
         if alavanca == "desconto":
             if por_desconto:              # a margem DESTA seguradora é o desconto (D-MC-63)
-                for n in niveis:
+                for n, fech in niveis:
                     valor = round(entrada - n, 2)
                     if valor <= 0:
                         continue
                     passos.append(Passo("desconto", Ajuste(tipo="desconto", valor=valor, seguradora=cod), n, False,
-                                        n < autonomo, f"desconto de {_pct(valor)} (a margem da corretora fica em "
-                                                      f"{_pct(n)})"))
+                                        fech, f"desconto de {_pct(valor)} (a margem da corretora fica em {_pct(n)})"))
             else:
                 tabela = {normalizar(k): v for k, v in (cfg.get("desconto_permitido_pct") or {}).items()}
                 lib = tabela.get(normalizar(oferta.get("seguradora")))
@@ -116,9 +164,11 @@ def ordem_do_mais_barato(oferta: Mapping[str, Any], *, config: Optional[Mapping[
         elif alavanca == "comissao":
             if por_desconto:
                 continue                  # a seguradora ignora a comissão: o passo já saiu como desconto
-            for n in niveis:
-                passos.append(Passo("comissao", Ajuste(tipo="comissao", valor=n, seguradora=cod), n, False,
-                                    n < autonomo, f"comissão da corretora de {_pct(atual)} para {_pct(n)}"))
+            anterior = atual
+            for n, fech in niveis:
+                passos.append(Passo("comissao", Ajuste(tipo="comissao", valor=n, seguradora=cod), n, False, fech,
+                                    f"comissão da corretora de {_pct(anterior)} para {_pct(n)}"))
+                anterior = n
         elif alavanca in _DESCRICAO and cortes.get(alavanca):
             alvo = cortes[alavanca]
             if not _ja_esta_no_corte(alavanca, alvo, oferta, cob):
@@ -142,6 +192,11 @@ def _ja_esta_no_corte(alavanca: str, alvo: Any, oferta: Mapping[str, Any], cob: 
     return False
 
 
+def _fechamento_guardado(oferta: Mapping[str, Any], cfg: Mapping[str, Any], feitos: Sequence[str] = ()) -> bool:
+    """Ainda há degraus da alavanca de fechamento para ESTA oferta (o agente sabe que tem a última cartada)."""
+    return any(p.fechamento and p.id not in feitos for p in ordem_do_mais_barato(oferta, config=cfg, fechamento=True))
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 def _tentativa(oferta: Mapping[str, Any], passo: Passo, passos_antes: Sequence[str]) -> Dict[str, Any]:
     return {"origem_calculo_id": str(oferta.get("calculo_id") or ""), "oferta_de_origem_id": str(oferta.get("id") or ""),
@@ -151,27 +206,24 @@ def _tentativa(oferta: Mapping[str, Any], passo: Passo, passos_antes: Sequence[s
             "passo": passo.para_dict(), "ajuste": passo.ajuste,
             "comissao_resultante": passo.comissao_resultante,
             "corta_cobertura": _cortes_acumulados(list(passos_antes) + [passo.id]),
-            "precisa_aprovacao": passo.precisa_aprovacao}
+            "fechamento": passo.fechamento}
 
 
 def _cortes_acumulados(passos: Sequence[str]) -> List[str]:
     return [p.split(":", 1)[0] for p in passos if p.split(":", 1)[0] not in ALAVANCAS_DE_MARGEM]
 
 
-def _separar(tentativas: List[Dict[str, Any]], cfg: Mapping[str, Any], aprovado: bool) -> Dict[str, Any]:
+def _no_teto(tentativas: List[Dict[str, Any]], cfg: Mapping[str, Any]) -> Dict[str, Any]:
     teto = int(cfg["negociacao"]["max_tentativas_por_etapa"])
-    permitidas = [t for t in tentativas if aprovado or not t["precisa_aprovacao"]]
-    aguardam = [t for t in tentativas if t["precisa_aprovacao"] and not aprovado]
-    return {"tentativas": permitidas[:teto], "precisa_aprovacao": aguardam,
-            "fora_do_teto": max(0, len(permitidas) - teto)}
+    return {"tentativas": tentativas[:teto], "fora_do_teto": max(0, len(tentativas) - teto)}
 
 
 def planejar(ofertas: Iterable[Mapping[str, Any]], *, alvo: float, config: Optional[Mapping[str, Any]] = None,
-             seguradora: Any = None, concorrencia_declarada: bool = False,
-             aprovado_pelo_corretor: bool = False) -> Dict[str, Any]:
+             seguradora: Any = None, fechamento: bool = False) -> Dict[str, Any]:
     """A 1ª ETAPA da cotação-alvo. `ofertas` = as COMPLETAS da corretora DONA (com `calculo_id` e a comissão).
     Tentativas de UM passo a partir do cálculo de origem, passo a passo na ordem D-MC-67 entre as seguradoras mais
-    baratas (teto `negociacao.max_seguradoras`/`max_tentativas_por_etapa`)."""
+    baratas (teto `negociacao.max_seguradoras`/`max_tentativas_por_etapa`). Sem `fechamento`, nenhum degrau abaixo
+    de `comissao.autonomo_minimo`; `fechamento_disponivel` diz se a alavanca ainda está guardada."""
     cfg = config or PADRAO_DO_PRODUTO
     alvo = float(alvo)
     if alvo <= 0:
@@ -182,16 +234,16 @@ def planejar(ofertas: Iterable[Mapping[str, Any]], *, alvo: float, config: Optio
             casa_seguradora(o.get("seguradora"), [seguradora]) or casa_seguradora(nome_de_exibicao(o.get("seguradora")),
                                                                                 [seguradora])))]
     if not lista:
-        return {"status": "sem_oferta", "tentativas": [], "precisa_aprovacao": []}
+        return {"status": "sem_oferta", "tentativas": []}
     no_alvo = [o for o in lista if float(o["premio_total"]) <= alvo]
     if no_alvo:
         melhor = max(no_alvo, key=lambda o: (_comissao_atual(o, cfg), -float(o["premio_total"])))
         return {"status": "ja_no_alvo", "oferta_id": str(melhor.get("id") or ""),
                 "seguradora": nome_de_exibicao(melhor.get("seguradora")), "premio_anual": float(melhor["premio_total"]),
-                "tentativas": [], "precisa_aprovacao": []}
+                "tentativas": []}
     candidatas = sorted(lista, key=lambda o: float(o["premio_total"]))[: int(cfg["negociacao"]["max_seguradoras"])]
-    por_candidata = [(o, ordem_do_mais_barato(o, config=cfg, concorrencia_declarada=concorrencia_declarada))
-                     for o in candidatas]
+    por_candidata = [(o, ordem_do_mais_barato(o, config=cfg, fechamento=fechamento)) for o in candidatas]
+    guardado = (not fechamento) and any(_fechamento_guardado(o, cfg) for o in candidatas)
     tentativas: List[Dict[str, Any]] = []
     profundidade = max((len(p) for _, p in por_candidata), default=0)
     for i in range(profundidade):                      # passo-a-passo: o 1º passo de todas antes do 2º de qualquer
@@ -199,15 +251,38 @@ def planejar(ofertas: Iterable[Mapping[str, Any]], *, alvo: float, config: Optio
             if i < len(passos):
                 tentativas.append(_tentativa(o, passos[i], []))
     if not tentativas:
-        return {"status": "sem_caminho", "tentativas": [], "precisa_aprovacao": [],
+        return {"status": "sem_caminho", "tentativas": [], "fechamento_disponivel": guardado,
                 "recomendacao": "nenhum ajuste permitido nestas seguradoras"}
-    return {"status": "planejado", **_separar(tentativas, cfg, aprovado_pelo_corretor)}
+    return {"status": "planejado", "fechamento_disponivel": guardado, **_no_teto(tentativas, cfg)}
+
+
+def texto_da_alavanca(preco_antes: float, preco_depois: float, *, voz: str = "corretora") -> str:
+    """A frase da ALAVANCA DE FECHAMENTO, em REAIS (D-MC-68 corrigida). `preco_antes` = o preço que o cliente já
+    ouviu; `preco_depois` = o que a seguradora DEVOLVEU no recálculo com a margem de fechamento — a diferença é a
+    conta entre dois preços reais, nunca um percentual nem um número inventado. 🔴 Nunca "%", nunca "comissão",
+    nunca urgência ("só hoje", "corra", "expira"): a única condição é o fechamento."""
+    if voz not in COM_QUEM:
+        raise ValueError("voz: " + " · ".join(COM_QUEM))
+    antes, depois = float(preco_antes), float(preco_depois)
+    if depois <= 0 or antes - depois < 0.01:
+        raise ValueError("a alavanca precisa de uma diferença positiva entre dois preços reais")
+    return FRASE_DA_ALAVANCA.format(diferenca=reais(antes - depois), preco=reais(depois), com_quem=COM_QUEM[voz])
+
+
+def reais(v: float) -> str:
+    """R$ no formato brasileiro, sem arredondar para cima: "R$ 1.312,40"; centavos zerados somem ("R$ 312")."""
+    centavos = int(math.floor(float(v) * 100 + _EPS))
+    inteiro, cent = divmod(centavos, 100)
+    texto = f"{inteiro:,}".replace(",", ".")
+    return f"R$ {texto}" + (f",{cent:02d}" if cent else "")
 
 
 def escolher(resultados: Iterable[Mapping[str, Any]], *, alvo: float,
              config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """`resultados` = cada tentativa com a `oferta` que voltou (ou None). Chegou → entre as SEM corte, a de MAIOR
-    comissão; só com corte → a de maior comissão com menos cortes, os cortes listados e a recomendação."""
+    comissão; só com corte → a de maior comissão com menos cortes, os cortes listados e a recomendação.
+    A escolhida abaixo de `autonomo_minimo` traz `fechamento` = o preço antes (o que o cliente já ouviu da MESMA
+    seguradora, sem corte, na margem normal), o depois (o recálculo) e a frase em reais."""
     cfg = config or PADRAO_DO_PRODUTO
     alvo = float(alvo)
     validos = [r for r in resultados if r.get("oferta") and float(r["oferta"].get("premio_total") or 0) > 0]
@@ -232,13 +307,34 @@ def escolher(resultados: Iterable[Mapping[str, Any]], *, alvo: float,
         cs = cortes(r)
         recomendaveis = set(cfg["negociacao"].get("cortes_recomendaveis") or ())
         recomenda = not cs or (len(cs) == 1 and cs[0] in recomendaveis)
-        return {"status": "chegou", "recomenda": recomenda, "corta_cobertura": cs,
-                "escolhida": _resumo(r, comissao(r)),
-                "recomendacao": ("chega no alvo sem mexer na cobertura" if not cs else
-                                 ("chega no alvo mudando: " + ", ".join(cs) + (" — recomendo" if recomenda
-                                                                               else " — NÃO recomendo")))}
+        saida = {"status": "chegou", "recomenda": recomenda, "corta_cobertura": cs,
+                 "escolhida": _resumo(r, comissao(r)),
+                 "recomendacao": ("chega no alvo sem mexer na cobertura" if not cs else
+                                  ("chega no alvo mudando: " + ", ".join(cs) + (" — recomendo" if recomenda
+                                                                                else " — NÃO recomendo"))),
+                 "fechamento": None}
+        if comissao(r) < float(cfg["comissao"]["autonomo_minimo"]) - _EPS:
+            saida["fechamento"] = _a_alavanca(r, validos, cfg, comissao)
+        return saida
     melhor = min(validos, key=lambda x: float(x["oferta"]["premio_total"]))
     return {"status": "nao_chegou", "melhor_parcial": _resumo(melhor, comissao(melhor))}
+
+
+def _a_alavanca(r: Mapping[str, Any], validos: Sequence[Mapping[str, Any]], cfg: Mapping[str, Any],
+                comissao) -> Optional[Dict[str, Any]]:
+    """O antes e o depois da alavanca, ambos preços que a SEGURADORA devolveu: o depois é o da escolhida; o antes é o
+    menor preço da MESMA seguradora, sem corte, ainda na margem normal (senão, o preço da origem da tentativa)."""
+    cod = r.get("seguradora_codigo", _codigo(r["oferta"]))
+    autonomo = float(cfg["comissao"]["autonomo_minimo"])
+    normais = [float(x["oferta"]["premio_total"]) for x in validos
+               if x.get("seguradora_codigo", _codigo(x["oferta"])) == cod and not _cortes_acumulados(x.get("passos") or ())
+               and comissao(x) >= autonomo - _EPS]
+    antes = min(normais) if normais else float(r.get("premio_de_origem") or 0)
+    depois = float(r["oferta"]["premio_total"])
+    if antes - depois < 0.01:
+        return None                       # a margem de fechamento não baixou o preço: não há o que oferecer em reais
+    return {"preco_antes": round(antes, 2), "preco_depois": round(depois, 2), "diferenca": round(antes - depois, 2),
+            "texto": {voz: texto_da_alavanca(antes, depois, voz=voz) for voz in COM_QUEM}}
 
 
 def _resumo(r: Mapping[str, Any], comissao: float) -> Dict[str, Any]:
@@ -251,31 +347,30 @@ def _resumo(r: Mapping[str, Any], comissao: float) -> Dict[str, Any]:
 
 
 def proxima_etapa(resultados: Iterable[Mapping[str, Any]], *, alvo: float, config: Optional[Mapping[str, Any]] = None,
-                  concorrencia_declarada: bool = False, aprovado_pelo_corretor: bool = False) -> Dict[str, Any]:
+                  fechamento: bool = False) -> Dict[str, Any]:
     """Não chegou: os passos que FALTAM, encadeados sobre o MELHOR parcial (o novo cálculo de origem é o dele).
-    Sem passo restante → "não recomendo" com o melhor parcial."""
+    Sem passo restante → "não recomendo" com o melhor parcial (e se a alavanca de fechamento ainda está guardada)."""
     cfg = config or PADRAO_DO_PRODUTO
     decisao = escolher(resultados, alvo=alvo, config=cfg)
     if decisao["status"] == "chegou":
         return {"status": "chegou", **{k: v for k, v in decisao.items() if k != "status"}}
     parcial = decisao.get("melhor_parcial")
     if not parcial:
-        return {"status": "sem_caminho", "tentativas": [], "precisa_aprovacao": [],
-                "recomendacao": "nenhuma tentativa devolveu preço"}
+        return {"status": "sem_caminho", "tentativas": [], "recomendacao": "nenhuma tentativa devolveu preço"}
     oferta = dict(parcial["_oferta"])
     oferta["calculo_id"] = parcial["calculo_id"]
     # a margem JÁ atingida pelo parcial: os níveis iguais ou acima dela não voltam (nem como desconto)
     oferta["comissao_percentual"] = parcial["comissao_percentual"]
     feitos = list(parcial["passos"])
-    restantes = [p for p in ordem_do_mais_barato(oferta, config=cfg, concorrencia_declarada=concorrencia_declarada)
-                 if p.id not in feitos]
+    restantes = [p for p in ordem_do_mais_barato(oferta, config=cfg, fechamento=fechamento) if p.id not in feitos]
+    guardado = (not fechamento) and _fechamento_guardado(oferta, cfg, feitos)
+    publico = {k: v for k, v in parcial.items() if k != "_oferta"}
     if not restantes:
-        return {"status": "sem_caminho", "tentativas": [], "precisa_aprovacao": [],
-                "melhor_parcial": {k: v for k, v in parcial.items() if k != "_oferta"},
+        return {"status": "sem_caminho", "tentativas": [], "melhor_parcial": publico, "fechamento_disponivel": guardado,
                 "recomendacao": "não recomendo: nem com todos os ajustes permitidos chega no alvo"}
     tentativas = [_tentativa(oferta, p, feitos) for p in restantes]
-    return {"status": "proxima_etapa", "melhor_parcial": {k: v for k, v in parcial.items() if k != "_oferta"},
-            **_separar(tentativas, cfg, aprovado_pelo_corretor)}
+    return {"status": "proxima_etapa", "melhor_parcial": publico, "fechamento_disponivel": guardado,
+            **_no_teto(tentativas, cfg)}
 
 
 def resultado_da_tentativa(tentativa: Mapping[str, Any], ofertas: Iterable[Mapping[str, Any]], *,

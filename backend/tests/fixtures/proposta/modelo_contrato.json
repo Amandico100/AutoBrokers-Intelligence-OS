@@ -18,7 +18,10 @@
   "com_preco_comparavel": 11,
   "com_produto_diferente": 4,
   "nao_responderam": 1,
-  "tempo_do_calculo_s": 62
+  "tempo_do_calculo_s": 62,
+  "cotacoes_realizadas": 32,
+  "seguradoras_com_preco": 11,
+  "economia": {"ate": 4291.84, "de": 8460.29, "para": 4168.45, "para_opcao": "economica", "mesma_cobertura": false}
  },
  "opcoes": [
   {
@@ -504,6 +507,5 @@
  ],
  "validade_ate": "2026-10-13",
  "gerado_em": "2026-10-06T08:00:00-03:00",
- "aviso_legal": "Comparação feita com os preços que as seguradoras devolveram no cálculo. O preço final depende da aceitação da seguradora e da vistoria, se houver. A contratação é feita pela corretora, registrada na SUSEP.",
- "mostrar_remuneracao": false
+ "aviso_legal": "Comparação feita com os preços que as seguradoras devolveram no cálculo. O preço final depende da aceitação da seguradora e da vistoria, se houver. A contratação é feita pela corretora, registrada na SUSEP."
 }

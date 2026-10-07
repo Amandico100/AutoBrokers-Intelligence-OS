@@ -14,7 +14,8 @@ sem nenhuma frase que prometa WhatsApp. Sem a bandeira, a publicação é recusa
 
 Sem `--confirmar` o comando MONTA a proposta e imprime o que a página e a mensagem diriam, sem gravar uma linha
 (decisão F3, nota 85 × publicar direto 65: o link é público e fica no banco do solicitante — ensaiar não custa nada,
-desfazer custa revogar). Com `--confirmar` cria/versiona o artefato, publica e imprime a URL e os 2 balões.
+desfazer custa revogar). Com `--confirmar` cria/versiona o artefato, publica e imprime a URL e os balões: a mensagem
+do CANAL (≤ 3 balões) ou a da CARTEIRA (2), pela origem do pedido (SPEC-130-A.1 D-130A1-01).
 ⛔ Nenhuma mensagem é ENVIADA (o envio é da 133-A). ⛔ Nada de segredo na saída: nem chave, nem env, nem comissão.
 
 O solicitante: o dono do pedido (lido de `multicalculo_pedidos` pelo id); `--solicitante` só confere. Saída 0 = ok ·
@@ -110,8 +111,17 @@ def _imprimir_modelo(modelo: dict, saida, *, sem_whatsapp: bool = False) -> None
     print(f"válida até {modelo.get('validade_ate')}", file=saida)
 
 
+def _qual(modelo: dict) -> str:
+    """SPEC-130-A.1 D-130A1-01: a mensagem sai pela ORIGEM do pedido — o comando diz qual."""
+    return "do CANAL" if str(modelo.get("origem") or "") == "canal" else "da CARTEIRA"
+
+
+def _baloes(baloes: List[str]) -> str:
+    return "\n\n".join(f"[balão {i}]\n{b}" for i, b in enumerate(baloes, 1))
+
+
 async def executar(argv: Optional[List[str]] = None, *, db: Any = None, saida=None) -> int:
-    from app.services.multicalculo.mensagem import mensagem_whatsapp
+    from app.services.multicalculo.mensagem import mensagem_para
     from app.services.multicalculo.porta import NaoEncontrado
     from app.services.multicalculo.proposta import (LinkSemEndereco, PropostaImpossivel, SemCanalDeFechamento,
                                                     montar_proposta, publicar_proposta)
@@ -136,11 +146,13 @@ async def executar(argv: Optional[List[str]] = None, *, db: Any = None, saida=No
     try:
         apolice = ler_apolice(a.apolice, a.situacao)
         if not a.confirmar:
-            modelo = await montar_proposta(dono, pedido, a.situacao, apolice, primeiro_nome=a.nome, db=db)
+            ctx: Dict[str, Any] = {}
+            modelo = await montar_proposta(dono, pedido, a.situacao, apolice, primeiro_nome=a.nome, db=db,
+                                           _contexto=ctx)
             print("ENSAIO (nada foi gravado). Para publicar, repita com --confirmar.", file=saida)
             _imprimir_modelo(modelo, saida, sem_whatsapp=a.sem_whatsapp)
-            print("\n--- a mensagem (o link real sai ao publicar) ---", file=saida)
-            print("\n\n[balão 2]\n".join(mensagem_whatsapp(modelo, "<o link sai ao publicar>")), file=saida)
+            print(f"\n--- a mensagem {_qual(modelo)} (o link real sai ao publicar) ---", file=saida)
+            print(_baloes(mensagem_para(modelo, "<o link sai ao publicar>", config=ctx.get("cfg_sol"))), file=saida)
             return 0
         r = await publicar_proposta(dono, pedido, a.situacao, apolice, primeiro_nome=a.nome, db=db,
                                     permitir_sem_whatsapp=a.sem_whatsapp)
@@ -151,7 +163,7 @@ async def executar(argv: Optional[List[str]] = None, *, db: Any = None, saida=No
     print(f"link: {r['url']}", file=saida)
     print(f"versão: {r['versao']} · válida até {r['validade_ate']} · artefato {r['artifact_id']}", file=saida)
     print("\n--- a mensagem (NÃO foi enviada; o envio é da 133-A) ---", file=saida)
-    print("\n\n[balão 2]\n".join(r["mensagem"]), file=saida)
+    print(_baloes(r["mensagem"]), file=saida)
     return 0
 
 

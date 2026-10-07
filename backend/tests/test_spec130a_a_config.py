@@ -84,7 +84,12 @@ def test_o_padrao_tem_as_decisoes_do_founder():
     assert (p["opcoes"]["no_whatsapp"], p["opcoes"]["na_pagina"]) == (2, 3)
     assert p["seguradoras_que_obedecem_desconto"] == ["porto", "azul", "itau"]
     assert p["ordem_do_mais_barato"] == ["desconto", "comissao", "franquia", "carro_reserva", "vidros", "assistencia"]
-    assert p["remuneracao_cnsp_382"]["ligada"] is False
+    # SPEC-130-A.1: D-130A-08 REVOGADA ("nós não vendemos seguros; só informamos") — a remuneração CNSP saiu;
+    # D-MC-68 corrigida — a comissão desce de `passo_pp` em `passo_pp`; o canal comparador tem a config dele
+    assert "remuneracao_cnsp_382" not in p and not any("remuneracao" in k for k in p)
+    assert p["comissao"]["passo_pp"] == 1.0
+    assert p["canal"]["selo"] == {"nome": "Corretora Nível 5", "ligado": True}
+    assert p["canal"]["follow_up"]["max_sem_resposta"] == 2 and p["canal"]["lista_por_seguradora"] == 6
     assert CFG.casa_seguradora("Porto Seguro", p["seguradoras_que_obedecem_desconto"])
     assert CFG.casa_seguradora("Itaú", p["seguradoras_que_obedecem_desconto"])
     assert not CFG.casa_seguradora("Bradesco", p["seguradoras_que_obedecem_desconto"])
@@ -118,6 +123,11 @@ def test_sem_linha_e_o_padrao_e_banco_fora_recusa():
 def test_valor_quebrado_ou_regua_incoerente_fica_o_padrao():
     c = mesclar({"comissao": {"piso": 13.0}})                     # piso acima do autônomo
     assert c["comissao"] == PADRAO_DO_PRODUTO["comissao"]
+    c = mesclar({"comissao": {"passo_pp": 0}})                    # passo zero: a régua nunca desceria
+    assert c["comissao"] == PADRAO_DO_PRODUTO["comissao"]
+    c = mesclar({"comissao": {"passo_pp": -1}})                   # negativo: o número é recusado
+    assert c["comissao"]["passo_pp"] == PADRAO_DO_PRODUTO["comissao"]["passo_pp"]
+    assert mesclar({"comissao": {"passo_pp": 0.5}})["comissao"]["passo_pp"] == 0.5
     c = mesclar({"nota": {"pesos": {"preco": 90, "franquia": 25, "coberturas": 15}}})   # soma 130
     assert c["nota"] == PADRAO_DO_PRODUTO["nota"]
     c = mesclar({"comissao": {"entrada": "quinze"}, "chave_inventada": 1, "opcoes": {"na_pagina": 0}})
@@ -136,7 +146,9 @@ def test_manual_alavancas_objecoes_estrategias_com_os_numeros_da_config():
     assert [a["corta_cobertura"] for a in m["alavancas"]] == [False, False, True, True, True, True]
     assert len(m["objecoes"]) == 9 and m["objecoes"][-1]["chave"] == "uso_aplicativo"
     assert set(m["estrategias"]) == {"renovacao", "novo_com_apolice", "novo_sem_apolice"}
+    # D-MC-68 corrigida (a régua inteira é afirmada em test_spec130a1_a_margem.py): sem aprovação humana
     assert "até 12 %" in m["limites"]["regra"] and "10 %" in m["limites"]["regra"]
+    assert "sem aprovação humana" in m["limites"]["regra"] and "aprovando" not in m["limites"]["regra"]
     outra = mesclar({"comissao": {"entrada": 14.0, "autonomo_minimo": 11.0, "piso": 9.0}})
     m2 = MANUAL.montar(outra)
     assert "até 11 %" in m2["limites"]["regra"] and "9 %" in m2["limites"]["regra"] and "12 %" not in m2["limites"]["regra"]
@@ -161,7 +173,9 @@ def test_faq_e_sinistro_padrao_e_os_da_corretora():
 # =====================================================================================================================
 _CAMINHOS_COMERCIAIS = ("comissao", "alvo_abaixo_da_atual_pct", "renovacao", "validade.padrao_dias", "lembretes",
                         "nota", "opcoes", "negociacao.max_seguradoras", "negociacao.max_tentativas_por_etapa",
-                        "link")
+                        "link",
+                        # SPEC-130-A.1 — as chaves novas do canal (os lembretes e o tamanho da lista)
+                        "canal.lista_por_seguradora", "canal.follow_up")
 #: números genéricos demais para proibir (0, 1, 2 e 100 aparecem em arredondamento, índice, nota máxima)
 _GENERICOS = {0, 1, 2, 100}
 #: o que da porta.py é desta SPEC (o resto da porta é da 129-B e não entra na varredura)
@@ -221,6 +235,7 @@ def test_g8_nenhum_numero_comercial_fora_da_config():
 
 def test_g8_controle_a_varredura_acha_o_numero_quando_ele_esta_la():
     assert {15.0, 12.0, 10.0, 5.0, 24.0, 60.0, 25.0} <= proibidos()
+    assert {6.0, 20.0} <= proibidos()                     # as chaves novas do canal entram na varredura (130-A.1)
     assert varrer("PISO = 10.0\n", "x.py") == ["x.py:1 número 10.0"]
     assert varrer("t = 'aplica até 12 % sozinho'\n", "x.py") == ["x.py:1 texto '12 %'"]
     assert varrer("t = f'válido por {d} dias, 5 dias no máximo'\n", "x.py") == ["x.py:1 texto '5 dias'"]
