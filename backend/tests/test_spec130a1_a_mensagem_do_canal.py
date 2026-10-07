@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import io
+import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -40,8 +41,8 @@ from dubles import mundo_da_proposta as M  # noqa: E402
 
 LINK = "https://app.exemplo.test/r/tOkEn_ficticio_0123456789abcdefghijklmnopq"
 AGORA = datetime(2026, 10, 6, 11, 0, tzinfo=timezone.utc)
-SCRATCH = Path(r"C:\Users\amand\AppData\Local\Temp\claude\c--Users-amand-Projetos-AUTOBROKERS-RESULTA-AutoBrokers-FIX"
-               r"\b3415c3e-ddbb-4379-985f-2dbbe1d5eff8\scratchpad\f2-130a1")
+#: onde gravar os balões do canário para leitura humana — só quando a variável existe (nunca um caminho de máquina)
+SCRATCH = Path(os.environ["MC_BALOES_DIR"]) if os.environ.get("MC_BALOES_DIR") else None
 
 
 def _montar(m, situacao="novo_sem_apolice", apolice=None):
@@ -58,15 +59,24 @@ def _br_inteiro(v: float) -> str:
 # =====================================================================================================================
 # a LENTE independente — direto da fixture, sem `comparacao` nem `proposta`
 # =====================================================================================================================
-def lente_cotacoes(dados, corretoras):
-    """D-130A1-02: os preços que VOLTARAM = toda oferta com prêmio > 0, de todas as opções e corretoras do pedido."""
-    return sum(1 for o in dados["ofertas"] if o["corretora_company_id"] in corretoras and float(o["premio_total"]) > 0)
+#: as OPÇÕES do pedido (escritas aqui à mão, não importadas da porta: a lente não lê o código que confere)
+OPCOES_DO_PEDIDO = ("padrao", "economica", "completa_mais", "minima")
 
 
-def lente_seguradoras(dados, corretoras):
-    """Seguradoras distintas (por código) com preço; o produto de ASSINATURA é linha de uma seguradora, não outra."""
+def lente_cotacoes(dados, corretoras, *, com_ajuste=False):
+    """D-130A1-02 (conserto 130-A.1): os preços que VOLTARAM nos cálculos das OPÇÕES do pedido, de todas as
+    corretoras — o recálculo (`opcao='ajuste'`) NÃO é comparação. `com_ajuste=True` = a conta ERRADA (o defeito)."""
+    op = {e["calculo_id"]: e["opcao"] for e in dados["estados"]}
+    return sum(1 for o in dados["ofertas"] if o["corretora_company_id"] in corretoras and float(o["premio_total"]) > 0
+               and (com_ajuste or op.get(o["calculo_id"]) in OPCOES_DO_PEDIDO))
+
+
+def lente_seguradoras_das_opcoes(dados, corretoras):
+    """Seguradoras distintas (por código) com preço NAS OPÇÕES; o produto de ASSINATURA é linha de uma seguradora."""
+    op = {e["calculo_id"]: e["opcao"] for e in dados["estados"]}
     return len({o["seguradora_codigo"] for o in dados["ofertas"] if o["corretora_company_id"] in corretoras
-                and float(o["premio_total"]) > 0 and "assinatura" not in str(o["seguradora"]).lower()})
+                and float(o["premio_total"]) > 0 and op.get(o["calculo_id"]) in OPCOES_DO_PEDIDO
+                and "assinatura" not in str(o["seguradora"]).lower()})
 
 
 def lente_mais_cara_completa(dados, corretoras):
@@ -105,10 +115,14 @@ def test_o_fio_do_canal_pedido_real_ate_os_baloes(monkeypatch):
 
     # --- 🔬 G2: o volume é o número REAL de preços que voltaram — contado por fora
     n = lente_cotacoes(m.dados, m.corretoras)
-    assert n == 104                                                  # 📊 o canário de 05/10
+    assert n == 82                     # 📊 o canário d0bb15ba (05/10): 38 padrão + 44 econômica; o ajuste (22) fora
     assert modelo["resumo"]["cotacoes_realizadas"] == n
     assert f"Cotações realizadas: *{n}*" in texto and f"*{n} comparações*" in texto
-    segs = lente_seguradoras(m.dados, m.corretoras)
+    # 🔴 CONTROLE (§9.3 corolário): com o recálculo de volta na conta, o número é OUTRO — e não aparece no texto
+    errado = lente_cotacoes(m.dados, m.corretoras, com_ajuste=True)
+    assert errado == 104 and errado != n
+    assert f"Cotações realizadas: *{errado}*" not in texto and f"*{errado} comparações*" not in texto
+    segs = lente_seguradoras_das_opcoes(m.dados, m.corretoras)
     assert modelo["resumo"]["seguradoras_com_preco"] == segs
     assert f"entre 2 corretoras e {segs} seguradoras" in texto
     # o guarda CONSEGUE ver a diferença: a fórmula do Founder daria outro número (§9.3 corolário)
@@ -149,9 +163,10 @@ def test_o_fio_do_canal_pedido_real_ate_os_baloes(monkeypatch):
     if len(modelo["ranking"]) > quantas:
         assert f"{modelo['ranking'][quantas]['seguradora']} · " not in texto
 
-    SCRATCH.mkdir(parents=True, exist_ok=True)
-    (SCRATCH / "baloes_canario.txt").write_text(
-        "\n\n".join(f"[balão {i}] ({len(b)} caracteres)\n{b}" for i, b in enumerate(baloes, 1)), encoding="utf-8")
+    if SCRATCH is not None:
+        SCRATCH.mkdir(parents=True, exist_ok=True)
+        (SCRATCH / "baloes_canario.txt").write_text(
+            "\n\n".join(f"[balão {i}] ({len(b)} caracteres)\n{b}" for i, b in enumerate(baloes, 1)), encoding="utf-8")
 
 
 def test_g3_a_mensagem_da_carteira_nao_fala_do_canal(monkeypatch):
@@ -268,7 +283,8 @@ def test_juros_com_nome_e_sem_juros_so_quando_verdade(canal):
     rec["parcelas"] = {"vezes": 12, "valor": 345.82}
     rec["parcelas_sem_juros"] = {"vezes": 6, "valor": 621.76}
     b1 = MSG.mensagem_do_canal(m2, LINK, config=cfg)[0]
-    assert "*12x de R$ 345,82* com juros, total R$ 4.150" in b1 and "até 6x sem juros" in b1
+    assert "*12x de R$ 345,82* com juros, total R$ 4.150" in b1
+    assert f"ou *6x de R$ 621,76* sem juros ({MSG._brl(rec['premio_anual'])})" in b1
     rec["parcelas_sem_juros"] = {"vezes": 12, "valor": 345.82}
     b1 = MSG.mensagem_do_canal(m2, LINK, config=cfg)[0]
     assert "*12x de R$ 345,82* sem juros" in b1 and "com juros" not in b1

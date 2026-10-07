@@ -516,9 +516,9 @@ def _B() -> dict:
     """A variação B: origem CANAL, anfitriã SEM marca cadastrada, duas corretoras comparadas."""
     b = _A()
     b["origem"] = "canal"
-    b["anfitria"] = {"nome": "AutoFleet", "marca_cadastrada": False, "whatsapp": "5547999999999"}
+    b["anfitria"] = {"nome": "Atlas Fortis Ficticia", "marca_cadastrada": False, "whatsapp": "5547999999999"}
     b["resumo"]["corretoras_comparadas"] = 2
-    b["entre_corretoras"] = [{"corretora": "AutoFleet", "melhor_completa": 4784.27, "vencedora": True},
+    b["entre_corretoras"] = [{"corretora": "Atlas Fortis Ficticia", "melhor_completa": 4784.27, "vencedora": True},
                              {"corretora": "Corretora Que Perdeu", "melhor_completa": 5120.0, "vencedora": False}]
     return b
 

@@ -162,13 +162,28 @@ def _mesclar(base: Any, extra: Any, caminho: str) -> Any:
 
 _TABELAS_LIVRES = frozenset({"por_seguradora", "desconto_permitido_pct"})
 
+#: a TRAVA DE PRODUTO da régua da margem (conserto 130-A.1, red P2 / juiz 4): sem humano no laço (D-MC-68 corrigida),
+#: um erro de config chegaria ao consumidor sem ninguém ver. O passo mínimo 💭 0,5 pp (abaixo disso o plano vira
+#: centenas de recálculos — 📊 juiz 07/10: passo 0,01 → 504 passos). O piso mínimo é o do PRODUTO (`comissao.piso`).
+PASSO_PP_MINIMO = 0.5
+
 
 def _coerente(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    """As réguas que não podem quebrar: piso ≤ autônomo ≤ entrada (todos > 0) · pesos somam 100 · opções ≥ 1."""
+    """As réguas que não podem quebrar: piso ≤ autônomo ≤ entrada (todos > 0) · piso ≥ o piso do PRODUTO ·
+    `PASSO_PP_MINIMO` ≤ passo ≤ entrada − autônomo · pesos somam 100 · opções ≥ 1. Fora disso: o padrão da seção."""
     pad = PADRAO_DO_PRODUTO
     c = cfg["comissao"]
+    piso_do_produto = float(pad["comissao"]["piso"])
     if not (0 < c["piso"] <= c["autonomo_minimo"] <= c["entrada"]) or not (0 < c["passo_pp"] <= c["entrada"]):
         logger.warning("[MC-CONFIG] comissão incoerente (piso ≤ autônomo ≤ entrada) — fica o padrão")
+        cfg["comissao"] = copy.deepcopy(pad["comissao"])
+    elif c["piso"] < piso_do_produto:
+        # o Founder: "até 10 %" — a corretora pode SUBIR o piso dela, nunca descer abaixo do do produto
+        logger.warning("[MC-CONFIG] piso da comissão abaixo do piso do produto — fica o padrão")
+        cfg["comissao"] = copy.deepcopy(pad["comissao"])
+    elif not (PASSO_PP_MINIMO <= c["passo_pp"] <= c["entrada"] - c["autonomo_minimo"]):
+        # o passo desce "aos poucos, não direto": nunca menor que o mínimo, nunca maior que o trecho normal inteiro
+        logger.warning("[MC-CONFIG] passo da comissão fora de [mínimo, entrada − autônomo] — fica o padrão")
         cfg["comissao"] = copy.deepcopy(pad["comissao"])
     pesos = cfg["nota"]["pesos"]
     if set(pesos) != set(pad["nota"]["pesos"]) or abs(sum(float(v) for v in pesos.values()) - 100.0) > 1e-6:

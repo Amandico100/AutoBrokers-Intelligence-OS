@@ -61,7 +61,9 @@ def test_a_comissao_desce_um_passo_por_vez_e_sem_fechamento_para_no_autonomo():
     assert not any(p.fechamento for p in bra)
     assert min(p.comissao_resultante for p in margem) == PADRAO_DO_PRODUTO["comissao"]["autonomo_minimo"]
     assert margem[0].descricao == "comissão da corretora de 15 % para 14 %"
-    assert margem[1].descricao == "comissão da corretora de 14 % para 13 %"
+    # conserto 130-A.1 (juiz 6): cada tentativa recalcula da ORIGEM — a descrição diz a origem real, não o degrau anterior
+    assert margem[1].descricao == "comissão da corretora de 15 % para 13 %"
+    assert all(p.descricao.startswith("comissão da corretora de 15 % para ") for p in margem)
 
 
 def test_plano_sem_fechamento_nunca_tem_degrau_abaixo_do_autonomo():
@@ -208,11 +210,12 @@ def test_manual_regra_nova_com_os_numeros_da_config():
     como = m["alavancas"][1]["como"]
     assert "de 15 % para 12 % sozinho, 1 pp por vez" in como and "alavanca de fechamento" in como
     assert "aprovando" not in como
-    outra = mesclar({"comissao": {"entrada": 14.0, "autonomo_minimo": 11.0, "piso": 9.0, "passo_pp": 0.5}})
+    # (conserto 130-A.1: o piso nunca abaixo do do produto — a régua de exemplo sobe o piso em vez de descê-lo)
+    outra = mesclar({"comissao": {"entrada": 16.0, "autonomo_minimo": 14.0, "piso": 11.0, "passo_pp": 0.5}})
     m2 = MANUAL.montar(outra)
-    assert "0,5 pp por vez" in m2["limites"]["regra"] and "até 11 %" in m2["limites"]["regra"]
-    assert "9 %" in m2["limites"]["regra"] and "12 %" not in m2["limites"]["regra"]
-    assert m2["alavanca_de_fechamento"]["de"] == 11.0 and m2["alavanca_de_fechamento"]["ate"] == 9.0
+    assert "0,5 pp por vez" in m2["limites"]["regra"] and "até 14 %" in m2["limites"]["regra"]
+    assert "11 %" in m2["limites"]["regra"] and "12 %" not in m2["limites"]["regra"]
+    assert m2["alavanca_de_fechamento"]["de"] == 14.0 and m2["alavanca_de_fechamento"]["ate"] == 11.0
 
 
 def test_manual_carteira_e_canal():

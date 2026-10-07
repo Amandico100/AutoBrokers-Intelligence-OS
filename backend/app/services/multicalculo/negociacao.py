@@ -164,11 +164,11 @@ def ordem_do_mais_barato(oferta: Mapping[str, Any], *, config: Optional[Mapping[
         elif alavanca == "comissao":
             if por_desconto:
                 continue                  # a seguradora ignora a comissão: o passo já saiu como desconto
-            anterior = atual
+            # a descrição diz a comissão de ORIGEM real da tentativa (a da oferta de onde o recálculo parte), nunca um
+            # degrau intermediário que não foi aplicado (conserto 130-A.1, juiz 6): cada tentativa recalcula da origem
             for n, fech in niveis:
                 passos.append(Passo("comissao", Ajuste(tipo="comissao", valor=n, seguradora=cod), n, False, fech,
-                                    f"comissão da corretora de {_pct(anterior)} para {_pct(n)}"))
-                anterior = n
+                                    f"comissão da corretora de {_pct(atual)} para {_pct(n)}"))
         elif alavanca in _DESCRICAO and cortes.get(alavanca):
             alvo = cortes[alavanca]
             if not _ja_esta_no_corte(alavanca, alvo, oferta, cob):

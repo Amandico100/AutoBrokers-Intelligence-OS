@@ -37,7 +37,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Mapping, Opti
 from app.services.multicalculo import comparacao as CMP
 from app.services.multicalculo import config as CFG
 from app.services.multicalculo import manual_de_negociacao as MANUAL
-from app.services.multicalculo.porta import KIND_CANAL, MulticalculoProvider, NaoEncontrado
+from app.services.multicalculo.porta import KIND_CANAL, OPCOES as OPCOES_DO_PEDIDO, MulticalculoProvider, NaoEncontrado
 from app.services.multicalculo.repositorio import RepositorioMulticalculo
 
 logger = logging.getLogger(__name__)
@@ -218,6 +218,30 @@ def _parcelas_sem_juros(oferta: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     return melhor
 
 
+def _total_do_parcelamento(oferta: Mapping[str, Any], parcelas: Any) -> Optional[float]:
+    """O TOTAL do parcelamento que a opção mostra, como a SEGURADORA o devolveu: 1ª parcela + demais × (vezes − 1),
+    do mesmo parcelamento (mesmas vezes e mesmo valor). Sem esse parcelamento na oferta → None (a mensagem usa
+    vezes × valor). Conserto 130-A.1: a 1ª parcela diferente não some do total (juiz, pendência 9)."""
+    if not isinstance(parcelas, Mapping):
+        return None
+    try:
+        vezes, valor = int(parcelas.get("vezes")), round(float(parcelas.get("valor")), 2)
+    except (TypeError, ValueError):
+        return None
+    for p in oferta.get("parcelamentos") or ():
+        if not isinstance(p, Mapping):
+            continue
+        try:
+            v = int(p.get("parcelas"))
+            demais = float(p.get("demais_parcelas") or p.get("primeira_parcela"))
+            primeira = float(p.get("primeira_parcela") or demais)
+        except (TypeError, ValueError):
+            continue
+        if v == vezes and round(demais, 2) == valor and v >= 1:
+            return round(primeira + demais * (v - 1), 2)
+    return None
+
+
 def _quantidades(cob: Mapping[str, Any]) -> Dict[str, Optional[float]]:
     """O que dá para ORDENAR em cada cobertura (maior = melhor). None = a seguradora não informou."""
     def num(v: Any) -> Optional[float]:
@@ -255,18 +279,35 @@ def _niveis(opcoes: List[Dict[str, Any]], brutas: List[Mapping[str, Any]]) -> No
                     c["nivel"] = (valores.index(v) + 1) if v is not None else None
 
 
+def _sem_carro_reserva(qa: Mapping[str, Any], qr: Mapping[str, Any], *, minima: bool) -> bool:
+    """A MESMA leitura de `comparacao._o_que_muda` (a página): 0 dias contra uma referência com dias → sem carro
+    reserva; a MÍNIMA (pedida sem carro reserva, D-130A1-05) que não informa os dias → sem carro reserva (a leitura que
+    cobre MENOS, nunca a que promete a mais). Conserto 130-A.1 (red B1): a página e a mensagem dizem o mesmo."""
+    a, r = qa.get("reserva"), qr.get("reserva")
+    if a is not None and r is not None:
+        return a == 0 and r > 0
+    return minima and not a and r != 0
+
+
 def _por_que_mais_barata(op: Mapping[str, Any], ref: Mapping[str, Any], bruta: Mapping[str, Any],
-                         bruta_ref: Mapping[str, Any]) -> Optional[str]:
-    """Uma frase de FATOS: o que a opção mais em conta tem de diferente da referência (só o que pesa contra ela)."""
+                         bruta_ref: Mapping[str, Any], *, minima: bool = False) -> Optional[str]:
+    """Uma frase de FATOS: o que a opção mais em conta tem de diferente da referência (só o que pesa contra ela).
+    "sem carro reserva" (zero dias, ou a mínima que não informa) vem PRIMEIRO — é o corte que define a mínima e o que
+    sobra quando a mensagem encurta; "menos dias de carro reserva" só quando ainda há dias."""
     partes: List[str] = []
+    qa, qr = _quantidades(bruta.get("coberturas") or {}), _quantidades(bruta_ref.get("coberturas") or {})
+    sem_reserva = _sem_carro_reserva(qa, qr, minima=minima)
+    if sem_reserva:
+        partes.append("sem carro reserva")
     fv, fr = (op.get("franquia") or {}).get("valor"), (ref.get("franquia") or {}).get("valor")
     if fv is not None and fr is not None and fv > fr + 0.5:
         tipo = str((op.get("franquia") or {}).get("tipo") or "").strip().lower()
         dobro = " (o dobro)" if fr > 0 and abs(fv / fr - 2) < 0.05 else ""
         partes.append(f"franquia {tipo + ' ' if tipo else 'maior '}de {reais_inteiros(fv)}{dobro}".replace("  ", " "))
-    qa, qr = _quantidades(bruta.get("coberturas") or {}), _quantidades(bruta_ref.get("coberturas") or {})
     for chave, texto in (("vidros", "vidros mais simples"), ("reserva", "menos dias de carro reserva"),
                          ("assistencia", "assistência mais simples"), ("terceiros", "menos cobertura para terceiros")):
+        if chave == "reserva" and sem_reserva:
+            continue
         if qa[chave] is not None and qr[chave] is not None and qa[chave] < qr[chave]:
             partes.append(texto)
     if not partes:
@@ -502,17 +543,22 @@ def _preco(o: Mapping[str, Any]) -> Optional[float]:
 
 
 def resumo_do_volume(ofertas: Sequence[Mapping[str, Any]], pedido: Mapping[str, Any],
-                     cfg: Mapping[str, Any]) -> Dict[str, Any]:
+                     cfg: Mapping[str, Any], estados: Sequence[Mapping[str, Any]] = ()) -> Dict[str, Any]:
     """SPEC-130-A.1 D-130A1-02 — o VOLUME que o consumidor lê, contado das ofertas REAIS do pedido (as que a porta
     devolveu ao solicitante), nunca de uma fórmula:
 
-      · `cotacoes_realizadas` = os preços que VOLTARAM: toda oferta com prêmio > 0, de todas as opções e corretoras.
-        🔴 "seguradoras × 3 × corretoras + 100" NÃO entra: o +100 é um número que não aconteceu (CDC art. 37).
+      · `cotacoes_realizadas` = os preços que VOLTARAM nos cálculos das OPÇÕES do pedido (`porta.OPCOES`: padrão,
+        econômica, completa+, mínima), de todas as corretoras. 🔴 O RECÁLCULO (`opcao='ajuste'`, a negociação e a
+        cotação-alvo) NÃO conta: é a mesma corretora re-precificando a si mesma, não uma comparação (conserto 130-A.1,
+        juiz B1 + red B2 — 📊 canário d0bb15ba: 82 preços das opções + 22 do ajuste). Oferta de cálculo sem estado
+        conhecido também não conta (nunca inflar). "seguradoras × 3 × corretoras + 100" NÃO entra (CDC art. 37).
       · `seguradoras_com_preco` = seguradoras distintas (por código; sem código, pelo nome) com algum preço. O produto
         de ASSINATURA (config `produtos_de_assinatura`) é uma linha de uma seguradora, não outra seguradora.
-      · `tempo_do_calculo_s` = do pedido criado à última dessas ofertas recebida. Sem os dois instantes, ou < 1 s (o
-        mesmo instante não é medida), o campo NÃO existe — e a linha da mensagem some."""
-    precos = [o for o in ofertas if _preco(o) is not None]
+      · `tempo_do_calculo_s` = do pedido criado à última dessas MESMAS ofertas recebida (o recálculo também fica de
+        fora). Sem os dois instantes, ou < 1 s (o mesmo instante não é medida), o campo NÃO existe — e a linha some."""
+    opcao_do_calculo = {str(e.get("calculo_id")): str(e.get("opcao") or "") for e in estados}
+    precos = [o for o in ofertas if _preco(o) is not None
+              and opcao_do_calculo.get(str(o.get("calculo_id"))) in OPCOES_DO_PEDIDO]
     saida: Dict[str, Any] = {"cotacoes_realizadas": len(precos)}
     segs = set()
     for o in precos:
@@ -638,16 +684,21 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
         item["motivos"] = [arredondar_texto(_texto_de_parcela(t, sem_juros)) for t in o["motivos"]]
         item["o_que_muda"] = [arredondar_texto(t) for t in o["o_que_muda"]]
         item["coberturas"] = [dict(c) for c in o["coberturas"]]
+        total = _total_do_parcelamento(bruta, item.get("parcelas"))
+        if total is not None:
+            item["parcelas"] = dict(item["parcelas"], total=total)
         if sem_juros:
             item["parcelas_sem_juros"] = sem_juros
         opcoes.append(item)
     _niveis(opcoes, [b.get("coberturas") or {} for b in brutas])
     # a opção que vem de um cálculo MAIS BARATO (a econômica, ou a mínima no canal — D-130A1-05) diz o que corta
     papeis = cfg_sol.get("calculo_por_papel") or {}
-    calculos_baratos = {str(papeis.get("economica") or "economica"), str(papeis.get("minima") or "minima")}
+    calculo_minima = str(papeis.get("minima") or "minima")
+    calculos_baratos = {str(papeis.get("economica") or "economica"), calculo_minima}
     for item, bruta, o in zip(opcoes[1:], brutas[1:], ops[1:]):
         if item["id"] == "mais_em_conta" or str(o["ref"].get("opcao") or "") in calculos_baratos:
-            frase = _por_que_mais_barata(item, opcoes[0], bruta, brutas[0])
+            frase = _por_que_mais_barata(item, opcoes[0], bruta, brutas[0],
+                                         minima=str(o["ref"].get("opcao") or "") == calculo_minima)
             if frase:
                 item["por_que_mais_barata"] = frase
 
@@ -658,7 +709,7 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     if comparou_corretoras:
         resumo["corretoras_comparadas"] = len(linhas_entre)
     # SPEC-130-A.1 U4 — o volume REAL (todas as ofertas do pedido que a porta devolveu) e a economia com a origem
-    resumo.update(resumo_do_volume(ofertas, ped, cfg_sol))
+    resumo.update(resumo_do_volume(ofertas, ped, cfg_sol, estados))
     eco = economia(quadro_todo.ranking(quadro_todo.opcao_completa), opcoes, [o["ref"] for o in ops],
                    opcao_completa=quadro_todo.opcao_completa, apolice_atual=apolice_atual)
     if eco:
@@ -672,10 +723,12 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
 
     anfitria = await montar_anfitria(db, anfitria_id, cfg_anf, baixar_logo=baixar_logo)
     if origem == "canal":
-        # D-130A1-04: o selo do PROGRAMA, da config da ANFITRIÃ (ela pode desligá-lo). Só o canal o leva: a proposta da
-        # carteira não fala do canal (G3).
-        selo = (cfg_anf.get("canal") or {}).get("selo") or {}
-        if selo.get("ligado") is True and str(selo.get("nome") or "").strip():
+        # D-130A1-04: o selo é do PROGRAMA — o NOME e o "ligado" vêm da config do CANAL (o solicitante); a config da
+        # ANFITRIÃ só pode DESLIGAR o selo dela (`canal.selo.ligado: false`), nunca renomeá-lo: a corretora não escreve
+        # o que o canal afirma ao consumidor (conserto 130-A.1, red P1). Só o canal o leva: a carteira não fala do canal.
+        selo = (cfg_sol.get("canal") or {}).get("selo") or {}
+        selo_anf = (cfg_anf.get("canal") or {}).get("selo") or {}
+        if selo.get("ligado") is True and selo_anf.get("ligado") is not False and str(selo.get("nome") or "").strip():
             anfitria["selo"] = str(selo["nome"]).strip()
     # D-MC-55: a perdedora entra SEM nome (só o preço dela) — e nenhum dado dela é lido para a página
     entre = [{"corretora": anfitria.get("nome") if l["corretora_company_id"] == anfitria_id else None,

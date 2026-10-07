@@ -149,10 +149,11 @@ def test_manual_alavancas_objecoes_estrategias_com_os_numeros_da_config():
     # D-MC-68 corrigida (a régua inteira é afirmada em test_spec130a1_a_margem.py): sem aprovação humana
     assert "até 12 %" in m["limites"]["regra"] and "10 %" in m["limites"]["regra"]
     assert "sem aprovação humana" in m["limites"]["regra"] and "aprovando" not in m["limites"]["regra"]
-    outra = mesclar({"comissao": {"entrada": 14.0, "autonomo_minimo": 11.0, "piso": 9.0}})
+    # (conserto 130-A.1: o piso nunca abaixo do do produto — a régua de exemplo sobe o piso em vez de descê-lo)
+    outra = mesclar({"comissao": {"entrada": 16.0, "autonomo_minimo": 14.0, "piso": 11.0}})
     m2 = MANUAL.montar(outra)
-    assert "até 11 %" in m2["limites"]["regra"] and "9 %" in m2["limites"]["regra"] and "12 %" not in m2["limites"]["regra"]
-    assert "de 14 % para 11 %" in m2["alavancas"][1]["como"]
+    assert "até 14 %" in m2["limites"]["regra"] and "11 %" in m2["limites"]["regra"] and "12 %" not in m2["limites"]["regra"]
+    assert "de 16 % para 14 %" in m2["alavancas"][1]["como"]
 
 
 def test_faq_e_sinistro_padrao_e_os_da_corretora():

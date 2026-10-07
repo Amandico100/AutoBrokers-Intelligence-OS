@@ -324,8 +324,8 @@ def test_J_P6_a_pagina_do_canal_nao_fala_na_primeira_pessoa_da_corretora(monkeyp
 def _B(vencedora_preco):
     b = copy.deepcopy(CONTRATO)
     b["origem"] = "canal"
-    b["anfitria"] = {"nome": "AutoFleet", "marca_cadastrada": False, "whatsapp": "5547999999999"}
-    b["entre_corretoras"] = [{"corretora": "AutoFleet", "melhor_completa": vencedora_preco, "vencedora": True},
+    b["anfitria"] = {"nome": "Atlas Fortis Ficticia", "marca_cadastrada": False, "whatsapp": "5547999999999"}
+    b["entre_corretoras"] = [{"corretora": "Atlas Fortis Ficticia", "melhor_completa": vencedora_preco, "vencedora": True},
                              {"corretora": None, "melhor_completa": 5120.0, "vencedora": False}]
     return b
 
@@ -333,10 +333,10 @@ def _B(vencedora_preco):
 def test_o_duelo_entre_corretoras_so_aparece_com_o_preco_da_recomendada():
     diverge = texto_visivel(PH.render_proposta(_B(3730.56)))               # 📊 o caso B do crítico final
     assert "Outra corretora parceira" not in diverge and "Teve o menor preço com cobertura completa" not in diverge
-    assert "Quem atende é a AutoFleet, que teve" not in "\n".join(mensagem_whatsapp(_B(3730.56), BASE))
+    assert "Quem atende é a Atlas Fortis Ficticia, que teve" not in "\n".join(mensagem_whatsapp(_B(3730.56), BASE))
     igual = texto_visivel(PH.render_proposta(_B(4784.27)))                 # CONTROLE: o mesmo preço → o duelo aparece
     assert "Outra corretora parceira" in igual and "Teve o menor preço" in igual
-    assert "Quem atende é a AutoFleet, que teve" in "\n".join(mensagem_whatsapp(_B(4784.27), BASE))
+    assert "Quem atende é a Atlas Fortis Ficticia, que teve" in "\n".join(mensagem_whatsapp(_B(4784.27), BASE))
 
 
 @pytest.mark.parametrize("bruto,esperado", [

@@ -247,17 +247,27 @@ def _de_quem(nome: str) -> str:
 
 
 def _preco_do_vencedor(o: Mapping[str, Any]) -> List[str]:
-    """O parcelado em DESTAQUE, com os juros com NOME e o total; "sem juros" só quando é verdade."""
+    """O parcelado em DESTAQUE (o MAIOR parcelamento que a oferta trouxe), com os juros com NOME e o total; embaixo, o
+    máximo de parcelas SEM juros com o prêmio anual (o pedido do Founder: "12x em destaque + valor total + o máximo
+    sem juros"). "sem juros" só quando é verdade. Só dado do modelo: as vezes são as da oferta, nunca constante.
+    O total com juros = o `parcelas.total` que a proposta leu do parcelamento da seguradora; sem ele, vezes × valor."""
     premio = _brl(o["premio_anual"])
     p, sj = o.get("parcelas"), o.get("parcelas_sem_juros")
     p = p if isinstance(p, Mapping) and _n(p.get("vezes")) and p.get("valor") else None
     sj = sj if isinstance(sj, Mapping) and _n(sj.get("vezes")) and sj.get("valor") else None
     if p and int(p["vezes"]) > 1:
         vezes, valor = int(p["vezes"]), float(p["valor"])
-        if sj and int(sj["vezes"]) == vezes:
+        if sj and int(sj["vezes"]) >= vezes:
             return [f"*{vezes}x de {_brl(valor)}* sem juros", f"Total: *{premio}* por ano"]
-        linhas = [f"*{vezes}x de {_brl(valor)}* com juros, total {_brl_inteiro(vezes * valor)}"]
-        linhas.append(f"ou *{premio}* por ano" + (f" · até {int(sj['vezes'])}x sem juros" if sj else ""))
+        try:
+            total = float(p.get("total")) if p.get("total") is not None else vezes * valor
+        except (TypeError, ValueError):
+            total = vezes * valor
+        linhas = [f"*{vezes}x de {_brl(valor)}* com juros, total {_brl_inteiro(total)}"]
+        if sj and int(sj["vezes"]) > 1:
+            linhas.append(f"ou *{int(sj['vezes'])}x de {_brl(float(sj['valor']))}* sem juros ({premio})")
+        else:
+            linhas.append(f"ou *{premio}* por ano")
         return linhas
     return [f"*{premio}* por ano" + (f" · até {int(sj['vezes'])}x sem juros" if sj else "")]
 
