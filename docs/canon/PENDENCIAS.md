@@ -13534,10 +13534,6 @@ primeiros fechamentos. **Custa esquecer:** a nota 0–100 recomenda por um crit�
 A `cotacao_alvo` está provada só com o dublê. **Destrava:** uma rodada ao vivo no 1º uso real (login de robô, T-120). **Custa esquecer:**
 a negociação falha no primeiro cliente que perguntar "fecha por R$ X?".
 
-## P-130A-16 · 🧑 A leitura jurídica da remuneração da corretora (Res. CNSP 382, art. 4º)
-A opção existe na config e está DESLIGADA (D-130A-08). **Destrava:** o jurídico diz se e como mostrar (T-127). **Custa esquecer:** a
-proposta fica fora da regra de transparência quando a regra exigir.
-
 ## P-130A-17 · 🤖 Os nomes dos ramos 69/93/46/100 e a lista de seguradoras da Resulta nos formulários
 **Destrava:** a 129-C (D-MC-73) mede os nomes e a lista de seguradoras por ramo. **Custa esquecer:** a 129-C começa sem saber em que
 seguradoras cada ramo calcula.

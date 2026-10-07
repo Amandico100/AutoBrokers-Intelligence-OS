@@ -764,10 +764,7 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       **Esperar:** a prévia do link mostra uma imagem com o melhor preço; a página abre com os cartões de arrastar para o lado, sem
       comissão e sem o nome da corretora que perdeu. **Se não bater** (página em branco, cartões que não arrastam, prévia sem
       imagem): mande um print no chat. · *de:* S130-A · P-130A-11 · P-130A-20
-- [ ] **T-127** ⏳ 🧑 **quando puder — não bloqueia** · **Pedir ao jurídico a leitura da remuneração da corretora** (Res. CNSP 382,
-      art. 4º): se e como a proposta precisa mostrar a remuneração da corretora ao cliente. Hoje a opção existe na configuração e está
-      **DESLIGADA** (D-130A-08). **Como:** mande a resposta do jurídico no chat; o chat liga a opção (ou não) por corretora. **Se não
-      fizer:** a proposta segue sem mostrar a remuneração, e fica fora da regra se a regra exigir. · *de:* S130-A · P-130A-16
+- [x] ~~**T-127**~~ ❌ **CANCELADA 06/10 23h pelo Founder** (D-130A-08 revogada: *"nós não vendemos seguros; nós só informamos através da tecnologia"*). A opção saiu da configuração e da página na SPEC-130-A.1. · *de:* S130-A · P-130A-16 (fechada)
 - [ ] **T-128** ⏳ 🧑 **hoje** · **Avisar a Ellen sobre o aviso de "sessão ativa" no Agger** — 📊 06/10 uma sessão aberta pelo robô
       com o login dela não saiu às 04:23 (o logout não aconteceu); o robô viu o aviso de sessão ativa às 04:38 e às 07:36, cancelou e parou.
       **O recado:** *"se aparecer 'sessão ativa' ao entrar no Agger hoje, é o seu próprio login (a sessão que o robô deixou) — pode prosseguir"*. **Se

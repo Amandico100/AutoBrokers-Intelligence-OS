@@ -1145,3 +1145,10 @@ prêmio de assinatura. **Destrava:** a 130-A marca e separa essas ofertas antes 
 Menos indica como vencedora uma oferta que não cobre o carro.
 
 ✅ **FECHADA 06/10/2026 (SPEC-130-A).** A comparação é igual-com-igual por opção: só compreensiva com casco 100 % e prêmio anual entra no ranking; a Azul por Assinatura e os produtos diferentes ficam à parte. Prova: `backend/tests/test_spec130a_o_fio.py` (0 produto diferente no ranking; a Azul por Assinatura fora do ranking e o preço dela em lugar nenhum da página); 📊 canário 06/10: 16 seguradoras · 13 completas · 1 só com produto diferente · 2 sem resposta.
+
+
+## P-130A-16 · 🧑 A leitura jurídica da remuneração da corretora (Res. CNSP 382, art. 4º)
+A opção existe na config e está DESLIGADA (D-130A-08). **Destrava:** o jurídico diz se e como mostrar (T-127). **Custa esquecer:** a
+proposta fica fora da regra de transparência quando a regra exigir.
+
+❌ **FECHADA SEM FAZER 06/10/2026 (decisão do Founder, D-130A-08 revogada).** *"Isso não será feito. Nós não vendemos seguros; nós só informamos através da tecnologia."* A chave `remuneracao_cnsp_382` saiu de `config.py` e o campo `mostrar_remuneracao` do modelo da página (SPEC-130-A.1); a T-127 foi cancelada.
