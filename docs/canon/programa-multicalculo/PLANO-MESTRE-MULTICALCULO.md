@@ -9,6 +9,8 @@
 
 Acréscimo de 06/10 (sem mudar a versão): **a SPEC-129-C (mais ramos do Agger: Condomínio, Empresarial e Residencial primeiro) entra na fila logo depois da 133-A e antes da 130-B/131 (D-MC-73)** — o mesmo motor e montador da 129-B, um pedido e um preset por ramo, nunca motor novo. A 130-A ✅ CONCLUÍDA 06/10.
 
+Acréscimo de 07/10 (sem mudar a versão): **a 133-A ✅ CONCLUÍDA no código em 07/10** (nota 88; `reports/SPEC-133-A-EXECUTION-REPORT.md`). O envio ao vivo espera o Amandus (T-132 Implantar · T-133 QR · T-134 convidados · T-135 robô do Agger); as rodadas dos testadores correm no calendário. A próxima é a **129-C**.
+
 O que mudou da v2.5 para a v2.5.1 (Amandus/gerente, 05/10 tarde — [PASSAGEM](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) §3 e §8):
 - **A fila virou INTERCALADA (D-MC-61):** 129-B → 130-A → 133-A → 130-B → 131 → 132 → 133-B → 135 → 136 → 137 → ★, com a **134 flutuante** (entra quando a Meta aprovar, depois da 133-A). As duas linhas andam juntas: o Quem Cobra Menos (leads novos para as corretoras) e os Auxiliares de Renovação e de Cotação (o dia a dia da corretora, no chat principal).
 - **A D-128-03 foi TOMADA (05/10):** o robô recalcula reenviando o corpo do pedido, de dentro da página; isso resolve a autorização que a D-MC-28 pedia. Para construir e testar a 129-B, o login da Ellen; para o uso real, um usuário novo de robô em cada corretora (T-120).
@@ -109,7 +111,7 @@ Legenda: **FATO** (verificado, com fonte) · **AMANDUS** (informação ou decis�
 | 2 | A prova do Agger: primeiro com as gravações, depois 2 sessões ao vivo | 128 | M · 2–3 etapas | ✅ CONCLUÍDA 04/10 |
 | 3 | O motor de multicálculo, várias corretoras em paralelo (D-MC-56) · base das duas linhas | 129-B | G · 5–6 etapas | ✅ D-128-03 TOMADA 05/10 · construir e testar com o login da Ellen; o uso real exige 1 login de robô por corretora (T-120) |
 | 4 | Comparação (entre seguradoras e entre corretoras), proposta, página "uau" e registro · base das duas | 130-A | G · a 130 inteira tem 4–5 etapas | ✅ CONCLUÍDA 06/10 (o registro do lead e o consentimento foram para a 133-A, D-130A-06) |
-| 5 | QCM · Quem Cobra Menos no WhatsApp, piloto fechado (Evolution) | 133-A | 💭 a definir na SPEC | o chip e a instância Evolution (QR) do número novo; 5 testadores; login de robô nas corretoras antes de ir aos testadores (T-120) |
+| 5 | QCM · Quem Cobra Menos no WhatsApp, piloto fechado (Evolution) | 133-A | 💭 a definir na SPEC | ✅ CONCLUÍDA no código 07/10 (nota 88) · falta do Amandus: Implantar, o QR, os convidados e o login do robô (T-132…T-135) |
 | 5.5 | Mais ramos do Agger (Condomínio, Empresarial, Residencial primeiro) · base (D-MC-73, 06/10) | 129-C | 💭 a definir na SPEC | a 133-A; os nomes dos ramos e a lista de seguradoras nos formulários (P-130A-17); login de robô (T-120) |
 | 6 | Leitor de apólice (foto/PDF no WhatsApp → ficha) · base das duas | 130-B | parte da 130 (4–5 etapas no total) | crédito de API (T-04); 20–30 apólices |
 | 7 | Auxiliares · Auxiliar de Renovação, fase 1 → 🚀1 renovação no ar | 131 | G · 4 etapas | InfoCap da Resulta de volta na Resulta (D-MC-27); login de robô (T-120) |
@@ -183,7 +185,7 @@ Ajustes da ordem:
 - Igual-com-igual por opção (produto diferente e assinatura à parte), vencedora entre corretoras, 3 opções por situação (D-MC-66/69), nota 0–100 com motivos, validade, mensagem ≤ 2 opções + link (D-MC-74) e a página "carteira" (D-130A-11) servida pelo `/r/`, com prévia, abertura e clique medidos. Registro do lead e consentimento → 133-A (D-130A-06); PDF = imprimir do navegador (D-130A-07).
 - Canário real: pedido `d0bb15ba` publicado na produção (📊 16 seguradoras cotadas, 13 completas). **Amandus:** Implantar os 3 serviços; WhatsApp de atendimento e nº SUSEP no cadastro de marca (T-124…T-128). Relatório: `reports/SPEC-130-A-EXECUTION-REPORT.md`.
 
-**☐ 5 · 133-A · QCM · Quem Cobra Menos no WhatsApp, piloto fechado** (sem marco: as rodadas dos 5 testadores correm no calendário enquanto se constroem a 131 e a 132, D-MC-61)
+**☑ 5 · 133-A · QCM · Quem Cobra Menos no WhatsApp, piloto fechado** — ✅ CONCLUÍDA no código em 07/10 (nota 88; juiz 74 ‖ red team 68 → conserto único → confirmação 84 → 88; o envio ao vivo espera T-132…T-135) (sem marco: as rodadas dos 5 testadores correm no calendário enquanto se constroem a 131 e a 132, D-MC-61)
 - Número exclusivo da marca no WhatsApp comum, pela Evolution Go (D-MC-52); agente só de cotação, na estrutura que já existe (D-MC-58).
 - A conversa do "oi" ao resultado, com o motor e o resumo da 130-A; perguntas do perfil; consentimento; lista de números convidados; limite por número.
 - **Amandus:** separa o chip, instala o WhatsApp Business, lê o QR da instância Evolution (o chat entrega o passo a passo); os 5 testadores; o login de robô em cada corretora antes de ir aos testadores (T-120).

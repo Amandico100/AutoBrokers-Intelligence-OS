@@ -72,9 +72,15 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
               spec/130-A1-quem-cobra-menos, base `705b67f` (juiz 82 ‖ red team 70 → conserto único → confirmação) · a mensagem do
               canal com volume REAL (📊 82), o 4º cálculo minima, a margem até 10 % passo a passo (D-MC-68 corrigida), sem a
               remuneração CNSP (D-130A-08 revogada) · migration 20261006_04 APLICADA · D-130A1-01…13 · P-130A1-01…06
+            SPEC-133-A (Quem Cobra Menos no WhatsApp, piloto fechado) — CONCLUÍDA 07/10/2026 no código, nota 88, branch
+              spec/133-A-qcm-whatsapp, base `de66449` (juiz 74 ‖ red team 68 → conserto único → confirmação 84 → 88) · o desvio do
+              canal no webhook antes do observer (só convidados, anti-laço), consentimento + 11 perguntas, o pedido ao motor, a página
+              da marca QCM, 2 lembretes, a passagem com card no Inbox, o QR no admin · 📊 O FIO 17 casos, 4 controles com ZERO envio ·
+              migrations 20261007_01/_02 APLICADAS · D-133A-01…16 · P-133A-01…08 · 🧑 T-132…T-135 (Implantar, QR, convidados, robô)
 A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável  →  ✔ 128 prova do Agger
   (v2.5.1)  →  ✔ 129-B motor (várias corretoras em paralelo)  →  ✔ 130-A comparação e proposta  →  ✔ 130-A.1 a mensagem do QCM
-            →  133-A Quem Cobra Menos no WhatsApp, piloto fechado (⏭ próxima)  →  129-C mais ramos do Agger (D-MC-73)
+            →  ✔ 133-A Quem Cobra Menos no WhatsApp, piloto fechado (as rodadas dos testadores correm no calendário)
+            →  129-C mais ramos do Agger (⏭ próxima, D-MC-73)
             →  130-B leitor de apólice
             →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2  →  133-B Quem Cobra Menos piloto 🚀3
             →  135 proposta conversa 🚀4  →  136 lembretes  →  137 público no WhatsApp oficial 🚀5  →  ★ Claude/ChatGPT

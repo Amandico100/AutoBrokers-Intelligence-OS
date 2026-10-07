@@ -58,7 +58,27 @@
 </section>
 
 <section>
-  <h2>As pendências das últimas SPECs — 130-A e 130-A.1 (o multicálculo)</h2>
+  <h2>As pendências da SPEC-133-A (o Quem Cobra Menos no WhatsApp)</h2>
+  <p class="sub">🔴 Deixadas em 07/10: <b>8</b>, em <code>PENDENCIAS.md</code> como <b>P-133A-01…08</b>. Nenhuma trava o piloto fechado; todas pesam antes de abrir ao público.</p>
+  <div class="tblbox">
+    <table style="min-width:880px">
+      <thead><tr><th class="l">#</th><th>de quem</th><th class="l">o que é</th><th class="l">o que custa esquecer</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>P-133A-02</b></td><td class="dm">🧑</td><td class="ds">📊 07/10 nenhuma das corretoras do canal tem <b>grupo de suporte nem WhatsApp</b> no cadastro: o "quero fechar" vira um cartão no Inbox do admin (e o WhatsApp da corretora, se houver). Destrava com a T-125 ou um grupo por corretora</td><td class="ds">o cliente que quer fechar espera alguém olhar o Inbox</td></tr>
+        <tr><td class="ds"><b>P-133A-07</b></td><td class="dm">🤖</td><td class="ds">O motor nunca rodou no contêiner; o tempo do "oi" ao quadro se mede no 1º pedido real do canal, depois das T-132 e T-135 (o motor já é paralelo, D-133A-11)</td><td class="ds">a promessa de tempo fica sem prova</td></tr>
+        <tr><td class="ds"><b>P-133A-01</b></td><td class="dm">🤖</td><td class="ds">O "oi" dos testes reproduz a forma que o conversor aceita, não uma captura real — trocar pela 1ª mensagem real ao número pareado</td><td class="ds">um campo diferente no payload real cala o canal sem nenhum teste ficar vermelho</td></tr>
+        <tr><td class="ds"><b>P-133A-03</b></td><td class="dm">🤖</td><td class="ds">Garagem, uso e estado civil são <b>assumidos</b> e declarados no pedido (os códigos do Agger não foram medidos, D-133A-14)</td><td class="ds">o preço sai com um perfil diferente do real — e muda na contratação</td></tr>
+        <tr><td class="ds"><b>P-133A-05</b></td><td class="dm">🤖</td><td class="ds">Fotos e apólices continuam guardadas depois do "parar" e do prazo de retenção (falta a rotina de limpeza, pelo Work OS)</td><td class="ds">dado pessoal guardado sem prazo (LGPD)</td></tr>
+        <tr><td class="ds"><b>P-133A-04</b></td><td class="dm">🤖</td><td class="ds">A trava "convidado antes de baixar a mídia" só existe na rota que o canal usa (Evolution GO)</td><td class="ds">se o canal mudar de rota, a apólice de quem não foi convidado é guardada</td></tr>
+        <tr><td class="ds"><b>P-133A-06</b></td><td class="dm">🤖</td><td class="ds">A corrida entre a resposta do cliente e o lembrete ficou menor, não fechada</td><td class="ds">raramente, um "quero fechar" no mesmo segundo de um lembrete se perde</td></tr>
+        <tr><td class="ds"><b>P-133A-08</b></td><td class="dm">🤖</td><td class="ds">A tela de identidade não tem botão "Publicar"; um logo em SVG não aparece na proposta</td><td class="ds">outra corretora não publica a própria marca sozinha</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>As pendências das SPECs 130-A e 130-A.1 (o multicálculo)</h2>
   <p class="sub">🔴 Deixadas em 06 e 07/10, em <code>PENDENCIAS.md</code>: <b>P-130A-01…22</b> (a 130-A) e <b>P-130A1-01…09</b> (a 130-A.1).
   A 130-A.1 <b>fechou</b> a P-130A-16 (o jurídico da remuneração — a opção saiu, D-130A-08 revogada). Estas são as que pesam.</p>
   <div class="tblbox">
@@ -69,7 +89,7 @@
         <tr><td class="ds"><b>P-130A-02</b></td><td class="dm">🧑</td><td class="ds">O <b>nº SUSEP</b> não está no cadastro de marca (T-125)</td><td class="ds">a proposta vai ao cliente sem o dado que prova que a corretora é registrada</td></tr>
         <tr><td class="ds"><b>P-130A-03 · P-130A1-09</b></td><td class="dm">🧑</td><td class="ds">A marca da AutoFleet não está <b>publicada</b>: 📊 no ensaio de 07/10 o SUSEP e os "anos de mercado" não apareceram (T-125)</td><td class="ds">a corretora que mais vence aparece sem logo, sem cor e sem prova</td></tr>
         <tr><td class="ds"><b>P-130A1-01</b></td><td class="dm">🤖</td><td class="ds">A leitura da marca da AutoFleet ficou <b>presa em "lendo o site"</b> (📊 07/10), e o site é uma cópia de um tema pronto de WordPress</td><td class="ds">qualquer corretora com site fraco aparece sem logo e sem cor</td></tr>
-        <tr><td class="ds"><b>P-130A1-08</b></td><td class="dm">🤖</td><td class="ds">🔴 O tempo do cálculo não é "em segundos": 📊 07/10, fila de 85 s, a 1ª corretora aos 285 s, a 2ª aos 480 s, o último preço aos 495 s; o <code>portal-worker</code> faz uma coisa de cada vez. Destrava na 133-A (as corretoras em paralelo)</td><td class="ds">o testador espera 8 minutos no WhatsApp, e a promessa "em segundos" fica sem prova</td></tr>
+        <tr><td class="ds"><b>P-130A1-08</b></td><td class="dm">🤖</td><td class="ds">🔴 O tempo do cálculo não é "em segundos": 📊 07/10, fila de 85 s, a 1ª corretora aos 285 s, a 2ª aos 480 s, o último preço aos 495 s; o <code>portal-worker</code> faz uma coisa de cada vez. 🔁 A 133-A corrigiu a leitura: o motor <b>já</b> calcula as corretoras em paralelo; os 8 minutos vieram de uma parada provocada e da espera da vaga (D-133A-11) — a medição ficou na P-133A-07</td><td class="ds">o testador espera 8 minutos no WhatsApp, e a promessa "em segundos" fica sem prova</td></tr>
         <tr><td class="ds"><b>P-130A1-02</b></td><td class="dm">🧑</td><td class="ds">A lista do <b>"Corretora Nível 5"</b> tem de estar escrita antes de abrir ao público (T-130)</td><td class="ds">um selo sem critério escrito é promessa que o Procon pode cobrar</td></tr>
         <tr><td class="ds"><b>P-130A-04</b></td><td class="dm">🧑</td><td class="ds">A ficha do Google de cada corretora tem de ser <b>confirmada</b> na configuração, nunca achada por nome — 📊 06/10 a busca "AutoFleet" achou outra empresa</td><td class="ds">a página mostra a nota e as avaliações de uma empresa que não é a corretora</td></tr>
         <tr><td class="ds"><b>P-130A1-05</b></td><td class="dm">🤖</td><td class="ds">Ninguém pede o <b>mínimo do mínimo</b> ainda — a 133-A pede</td><td class="ds">a mensagem do canal nunca mostra o mínimo do mínimo</td></tr>
