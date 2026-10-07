@@ -107,4 +107,11 @@ que tinham "AutoFleet" passaram a um nome fictício.
 confirmação ~21 min · bateria ~71 min (a metade mais lenta). Custo de API externa: 0 (nenhum modelo de linguagem do produto foi chamado).
 
 ## 12. Entrega
-(preenchido no fecho: bateria, trava do tempo, push com a saída colada)
+```
+$ git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   705b67f..0780684  HEAD -> main
+$ git rev-list --count origin/main..HEAD
+0
+```
+🧑 Depois disto: Implantar `smith-api` → `portal-worker` (T-129); a migration já está aplicada.
