@@ -41,6 +41,18 @@ CAMPOS_DE_PERFIL: Tuple[Tuple[str, str], ...] = (
     ("condutor", "jovem_condutor"),       # jovem condutor
 )
 
+#: SPEC-133-A D-133A-03 — no CANAL a PLACA supre FIPE, ano de fabricação e combustível (a pessoa sabe a placa; ninguém
+#: sabe o código FIPE). 🔴 Por que é verdade (CLAUDE.md §9.5), lido no robô que monta o pedido ao Agger:
+#:   · `portal_worker/multicalculo/agger_robo.py:178-179` o robô só exige `veiculo.placa` OU `veiculo.fipe`;
+#:   · `agger_robo.py:310-311` com placa ele chama `/calculo/buscaPlaca` e usa a FIPE dela (`fipe = auto.fipe || bp.fipe`);
+#:   · `montador.js:121-129` preenche `anoFabricacao` (bp.anoFab||anoMod), `fipe` (bp.fipe) e `combustivel` (Flex→6 da
+#:     tabela FIPE) quando o pedido NÃO os traz — "o pedido VENCE; os GETs preenchem".
+#: ⚠️ combustível ≠ Flex fica nulo no montador (📊 só Flex=6 medido) — o Agger decide; a porta não inventa código.
+#: Só na origem `canal`; a carteira (auxiliar/teste) continua exigindo os três.
+CAMPOS_QUE_A_PLACA_SUPRE: Tuple[Tuple[str, str], ...] = (
+    ("veiculo", "fipe"), ("veiculo", "ano_fabricacao"), ("veiculo", "combustivel"),
+)
+
 _CATALOGO: Dict[str, Tuple[str, ...]] = {
     grupo: tuple(c[0] for c in campos)
     for grupo, campos in {**CAMPOS_DO_PEDIDO_AUTO, **CAMPOS_EXTRAS}.items()
@@ -217,9 +229,25 @@ class PedidoDeCalculo:
     def valor(self, grupo: str, nome: str) -> Any:
         return (self.campos.get(grupo) or {}).get(nome)
 
-    def faltando(self) -> List[str]:
-        """Os obrigatórios da E3 que faltam, como "grupo.campo" (nomes, nunca valores)."""
-        faltam = [f"{g}.{n}" for (g, n) in OBRIGATORIOS if _vazio(self.valor(g, n))]
+    def supridos_pela_placa(self, origem: Optional[str] = None) -> FrozenSet[str]:
+        """D-133A-03: na origem `canal`, com placa, os campos de `CAMPOS_QUE_A_PLACA_SUPRE` ausentes ficam com o robô."""
+        if origem != "canal" or _vazio(self.valor("veiculo", "placa")):
+            return frozenset()
+        return frozenset(f"{g}.{n}" for (g, n) in CAMPOS_QUE_A_PLACA_SUPRE if _vazio(self.valor(g, n)))
+
+    def assumindo_pela_placa(self) -> "PedidoDeCalculo":
+        """O que a placa supre vira `assumido` ("o Agger preenche pela placa") — nunca valor inventado."""
+        novos = self.supridos_pela_placa("canal")
+        if not novos:
+            return self
+        return PedidoDeCalculo(campos=self.campos, ramo=self.ramo, seguradoras=self.seguradoras,
+                               assumidos=frozenset(self.assumidos | novos))
+
+    def faltando(self, *, origem: Optional[str] = None) -> List[str]:
+        """Os obrigatórios da E3 que faltam, como "grupo.campo" (nomes, nunca valores). `origem='canal'`: a placa
+        supre FIPE/ano/combustível (D-133A-03)."""
+        supridos = self.supridos_pela_placa(origem)
+        faltam = [f"{g}.{n}" for (g, n) in OBRIGATORIOS if _vazio(self.valor(g, n)) and f"{g}.{n}" not in supridos]
         # F4: o robô recusa a renovação sem a seguradora anterior (`cotacao_do_pedido`) — a porta pergunta antes
         if self.renovacao and _vazio(self.valor("renovacao", "seguradora_anterior")):
             faltam.append("renovacao.seguradora_anterior")

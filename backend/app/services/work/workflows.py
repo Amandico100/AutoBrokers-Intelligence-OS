@@ -70,7 +70,8 @@ def carregar_extras() -> None:
         return
     _extras_carregados = True
     for spec, modulo in (("SPEC-059", "app.services.intelligence.workflows"),
-                         ("SPEC-060", "app.services.research.workflows")):
+                         ("SPEC-060", "app.services.research.workflows"),
+                         ("SPEC-133-A", "app.services.canal.workflows")):
         try:
             __import__(modulo)
         except Exception as exc:  # noqa: BLE001

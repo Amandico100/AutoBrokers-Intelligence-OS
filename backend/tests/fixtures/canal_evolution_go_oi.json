@@ -1,0 +1,34 @@
+{
+  "_o_que_e_isto": [
+    "SPEC-133-A F1 — o 'oi' de um convidado ao canal, na FORMA do evento whatsmeow que o Evolution GO entrega",
+    "em POST /api/v1/webhook/evolution-go/{token} (event 'Message', data.Info + data.Message).",
+    "",
+    "🔴 HONESTIDADE (CLAUDE.md §12.1): NÃO é uma captura byte a byte. O acervo não guarda o corpo cru:",
+    "📊 07/10/2026 `select column_name from information_schema.columns where table_name='observed_events'` → 15 colunas,",
+    "nenhuma de payload; e `grep -rl IsFromMe backend/tests/fixtures` → 0 arquivos. A forma é a que",
+    "`app/services/whatsapp/evolution_go_events.py:go_event_to_v2_envelope` converte (confirmada ao vivo na SPEC-034/038",
+    "e usada em test_spec038_observer.py e test_a_atendente_fala_e_o_robo_cala.py), com o Timestamp em ISO como o",
+    "whatsmeow serializa. Pendência P-133A-F1-01: trocar por uma captura real do 1º 'oi' ao número do canal pareado.",
+    "",
+    "Sem dado pessoal: DDD 00 não existe; nome genérico; id de mensagem inventado."
+  ],
+  "evento": {
+    "event": "Message",
+    "instanceId": "ab-obs-0000000000-1",
+    "data": {
+      "Info": {
+        "Chat": "5500999990001@s.whatsapp.net",
+        "Sender": "5500999990001@s.whatsapp.net",
+        "IsFromMe": false,
+        "IsGroup": false,
+        "ID": "3EB0C0A0000000000000F1",
+        "PushName": "Convidado",
+        "Timestamp": "2026-10-07T12:00:00Z",
+        "Type": "text"
+      },
+      "Message": {
+        "conversation": "oi"
+      }
+    }
+  }
+}

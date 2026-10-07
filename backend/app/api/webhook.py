@@ -1117,6 +1117,25 @@ async def process_whatsapp_message_background(
         company_id = integration["company_id"]
         agent_id = integration.get("agent_id")
 
+        # 🔴 SPEC-133-A D-133A-02 — O TURNO DO CANAL DE COTAÇÃO (desvio 2 de 2). A rajada já passou por token, dedup,
+        # mídia e buffer; daqui o canal vai para `canal.entrada.turno` (anti-laço, convidado, limite, estado, conversa,
+        # envio) — ANTES do cartógrafo, do acionamento, da allowlist GLOBAL do atendimento (que descartaria todo
+        # convidado, BLOCO 0 §1.2), do portão de silêncio e do LangChain. Nenhum agente "attendance" no canal.
+        try:
+            from app.services.canal.repositorio import eh_canal
+
+            _do_canal = await asyncio.to_thread(eh_canal, supabase.client, str(company_id or ""))
+        except Exception as e:  # noqa: BLE001 — na dúvida, o caminho de sempre
+            logger.error(f"[WEBHOOK BG] desvio do canal indisponível: {type(e).__name__}")
+            _do_canal = False
+        if _do_canal:
+            from app.services.canal.entrada import turno as _turno_do_canal
+
+            _itens_do_canal = [i for i in (buffered_items or []) if isinstance(i, dict)] or [
+                {"tipo": "text", "texto": str(combined_message or (payload.text.message if payload.text else "") or "")}]
+            await _turno_do_canal(supabase.client, integration, str(payload.phone or ""), _itens_do_canal)
+            return
+
         # CARTÓGRAFO (SPEC-034): com CARTOGRAPHER_MODE=1 e exploração ATIVA para
         # este número de seguradora, o mapeador consome a mensagem — antes do
         # motor de acionamento (que continua tendo prioridade via checagem no
@@ -2873,6 +2892,30 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
     TODO o pipeline (normalizador, formulário nativo, buffer, dispatch)."""
     integration = await _resolve_webhook_integration("evolution-go", token)
     body = await request.json()
+
+    # 🔴 SPEC-133-A D-133A-02 — O CANAL DE COTAÇÃO NÃO PASSA PELO OBSERVADOR (desvio 1 de 2; o 2º é no turno).
+    # O hub pareia TUDO com `purpose='observer'` e o canal não tem agente: sem este desvio o "oi" do convidado
+    # morreria no `observer_tap` (BLOCO 0 §1.2). `fromMe` e grupo morrem AQUI (D-133A-06) — antes do espelho/pausa
+    # do ramo `from_me`, que gravaria no chat da empresa do canal. Histórico/clique (sem `Message`) são ignorados: o
+    # celular do canal nunca vira acervo. `connection.update` segue o caminho de sempre (o tap grava o pareamento).
+    # As corretoras não passam por este bloco.
+    try:
+        from app.services.canal.repositorio import eh_canal
+
+        _do_canal = await asyncio.to_thread(eh_canal, supabase.client, str(integration.get("company_id") or ""))
+    except Exception as e:  # noqa: BLE001 — na dúvida, o caminho de sempre (o canal cala no observer)
+        logger.error(f"[WEBHOOK EVOLUTION-GO] desvio do canal indisponível: {type(e).__name__}")
+        _do_canal = False
+    from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope
+
+    env = go_event_to_v2_envelope(body if isinstance(body, dict) else {}) if _do_canal else {}
+    if _do_canal and env.get("event") != "connection.update":
+        if env.get("event") == "unknown":
+            return {"status": "ignored", "reason": "unrecognized_payload"}
+        _chave = (env.get("data") or {}).get("key") or {}
+        if _chave.get("fromMe") or str(_chave.get("remoteJid") or "").endswith("@g.us"):
+            return {"status": "ignored", "reason": "canal_from_me_ou_grupo"}
+        return await _handle_evolution_like_inbound(integration, env, background_tasks, "evolution-go")
 
     # SPEC-EXTRA-001 §4 — ANTES do tap, porque o tap CONSOME (📊 4/4 agentes
     # desligados; a Resulta recebe por instância `purpose='observer'`).

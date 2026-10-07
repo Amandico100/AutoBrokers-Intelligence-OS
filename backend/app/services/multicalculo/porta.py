@@ -302,10 +302,14 @@ class MulticalculoProvider:
         await self._autorizar(company_id=company_id, corretoras=alvo)
 
         # F4 (costura): o que falta E o que veio sem código medido no Agger (o robô recusaria só no disparo)
-        faltam = pedido.faltando() + [c for c in pedido.sem_codigo() if c not in pedido.faltando()]
+        # SPEC-133-A D-133A-03: no canal a PLACA supre FIPE/ano/combustível (o robô preenche pela placa — ver
+        # `pedido.CAMPOS_QUE_A_PLACA_SUPRE`, com a evidência no robô)
+        ausentes = pedido.faltando(origem=origem)
+        faltam = ausentes + [c for c in pedido.sem_codigo() if c not in ausentes]
         if faltam:
             raise PedidoIncompleto(faltam)
         if origem == "canal":
+            pedido = pedido.assumindo_pela_placa()
             perfil = pedido.perfil_faltando()
             if perfil:
                 raise PerfilIncompleto(perfil)

@@ -445,3 +445,23 @@ nesta tabela no APPLY.
 | versão / arquivo | sha256[0:16] | classe | o que faz | VERIFY (esperado) |
 |---|---|---|---|---|
 | `20261006_04_spec130a1_minima.sql` · versão `20261007040359` | `2A7F906FC8B20BE9` | **APLICADA** (07/10/2026, psycopg numa transação com `lock_timeout 5s`, 0,86 s; versão `20261007040359` registrada em `schema_migrations`) · 📊 VERIFY estrutural ANTES `0·0·2·1` → DEPOIS `1·1·2·1` · comportamental `OK: pedido_com_minima=aceito, pedido_tres=aceito, pedido_desconhecida=recusado, pedido_vazio=recusado, calculo_padrao=aceito, calculo_minima=aceito, calculo_desconhecida=recusado, minima_com_origem=recusado, calculo_completa_mais=aceito, ajuste=aceito` · sobra 0 linhas | SPEC-130-A.1 F3 (D-130A1-05): `ck_mc_pedidos_opcoes` e `ck_mc_calculos_opcao` passam a aceitar `minima` (a econômica sem carro reserva, `presets._MINIMA`) — drop + add no MESMO bloco DO, cada troca só se o texto atual ainda não admite `'minima'`. A cardinalidade ≥ 1 e `ck_mc_calculos_ajuste` intactas. **Só CHECK · expand-only · idempotente · não destrutiva** (ROLLBACK no arquivo com o texto exato de 20261006_02, recusa se houver pedido/cálculo da mínima) | read-only do cabeçalho: antes `0 · 0 · 2 · 1` → depois `1 · 1 · 2 · 1` (pedidos_opcoes · calculos_opcao · validadas · ajuste_intacto) · DO comportamental termina em `VERIFY 20261006_04 OK` (10 casos: pedido com a mínima e cálculo da mínima aceitos · as 3 opções da 130-A, a completa+ e o ajuste continuam · desconhecida, pedido vazio e mínima com origem recusados) |
+
+## SPEC-133-A — o papel da conversa do canal (07/10/2026) · F2
+
+🔴 **APPLY pelo gerente** (o builder não toca o banco), **ANTES do Implantar do código da conversa** (sem a linha, `conversa.entender`
+cai em ModeloNaoResolvido → a conversa pergunta de novo: fail-closed, nunca inventa). sha256 da cópia de TRABALHO (a do blob
+commitado entra aqui no APPLY).
+
+| versão / arquivo | sha256[0:16] | classe | o que faz | VERIFY (esperado) |
+|---|---|---|---|---|
+| `20261007_02_spec133a_papel_canal_cotacao.sql` · versão: a gravar no APPLY | `1BB3F31E5B5B9986` | **NÃO APLICADA** — pronta | SPEC-133-A U4 (D-133A-01): papel `canal_cotacao` em `llm_papeis` (openai gpt-6-luna medium · reserva anthropic claude-sonnet-5-5 low · pii · alto) — só ENTENDE a resposta livre que a regra não entendeu; a regra reconfere. **Só DADO · 1 INSERT · ON CONFLICT DO NOTHING · expand-first · idempotente · não destrutiva** (ROLLBACK no arquivo) | `select … from llm_papeis where papel='canal_cotacao'` → `openai · gpt-6-luna · medium · anthropic · claude-sonnet-5-5 · low · pii · alto · 1` · DO comportamental termina em `VERIFY 20261007_02 OK` (luna low recusada, medium aceita, nada gravado) · snapshot regerado |
+
+## SPEC-133-A — as tabelas do canal: convidados, consentimento, lead, conversa (07/10/2026) · F1
+
+🔴 **APPLY pelo gerente** (o builder não toca o banco), **ANTES do Implantar do código da entrada** (sem as tabelas,
+`canal.repositorio.convidado` falha → `entrada.turno` CALA: fail-closed, nenhum envio). Ordem: `_01` (esta) antes de `_02`
+(independentes; a numeração é a da SPEC). sha256 da cópia de TRABALHO (a do blob commitado entra aqui no APPLY).
+
+| versão / arquivo | sha256[0:16] | classe | o que faz | VERIFY (esperado) |
+|---|---|---|---|---|
+| `20261007_01_spec133a_canal.sql` · versão: a gravar no APPLY | `5B3B1611B7478243` | **NÃO APLICADA** — pronta | SPEC-133-A U2 (D-133A-04/05/06): 4 tabelas novas — `canal_convidados` (telefone E.164 só dígitos, apelido, ativo, limite_dia; UNIQUE company+telefone) · `canal_consentimentos` (append-only: aceito + versão do texto) · `canal_leads` (primeiro nome + pedido com FK COMPOSTA `(pedido_id, company_id)` → `multicalculo_pedidos(id, company_id)`, `on delete set null (pedido_id)`) · `canal_conversas` (estado CIFRADO por `portal_vault` + contadores do dia: cotações = o limite, enviadas = o teto anti-laço, aviso do limite). CHECK de telefone `^[1-9][0-9]{9,14}$`. RLS ligada SEM policy + REVOKE de anon/authenticated (molde 20261005_01/20261006_01); o filtro company_id mora em `app/services/canal/repositorio.py`. **Estrutura · expand-first · idempotente · não destrutiva** (ROLLBACK no arquivo, recusa se houver dado do canal) | read-only do cabeçalho: `4 · 0 · 0 · 3 · 1 · 4 · 4` (tabelas_com_rls · policies · grants_publicos · uniques_por_telefone · fk_composta · checks_de_telefone · comentarios) · DO comportamental termina em `VERIFY 20261007_01 OK` (convidado aceito · mesmo telefone recusado · o mesmo telefone noutra empresa aceito e o canal lê só o dele (1) · telefone formatado recusado · consentimento sim+não aceitos · lead com pedido de OUTRA empresa recusado · contador negativo recusado · anon/authenticated sem privilégio) |
