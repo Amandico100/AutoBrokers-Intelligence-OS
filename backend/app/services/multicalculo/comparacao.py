@@ -675,7 +675,8 @@ def conferir_apolice(situacao: str, apolice_atual: Optional[Mapping[str, Any]]) 
 
 
 def opcoes(comparacao: Comparacao, *, situacao: str, apolice_atual: Optional[Mapping[str, Any]] = None,
-           config: Optional[Mapping[str, Any]] = None, corretora: Optional[str] = None) -> List[Dict[str, Any]]:
+           config: Optional[Mapping[str, Any]] = None, corretora: Optional[str] = None,
+           incluir_minima: bool = False) -> List[Dict[str, Any]]:
     """As opções da proposta (D-130A-09), na ordem em que aparecem (as 2 primeiras vão ao WhatsApp, D-MC-74):
 
     sem apólice  → Recomendada (menor completa) · Mais em conta (menor econômica, se MAIS BARATA) · Mais completa
@@ -689,7 +690,9 @@ def opcoes(comparacao: Comparacao, *, situacao: str, apolice_atual: Optional[Map
     🔴 A 1ª opção é SEMPRE a menor completa (RT-B1, red team 06/10): é ela que a página chama de "a melhor das N" e a
     mensagem leva primeiro. A seguradora da apólice entra como "igual", na posição VERDADEIRA dela no ranking.
     `apolice_atual` obrigatória com apólice/renovação (J-B2: `ValueError`).
-    `corretora`: de quem são as ofertas (padrão: a VENCEDORA — a anfitriã fecha o que mostra)."""
+    `corretora`: de quem são as ofertas (padrão: a VENCEDORA — a anfitriã fecha o que mostra).
+    `incluir_minima` (SPEC-130-A.1 D-130A1-05, só o canal): a "Mais em conta" pode vir do cálculo `minima` (o mínimo do
+    mínimo) quando ele é mais barato — sempre dizendo o que deixa de cobrir; nunca é a 1ª opção."""
     if situacao not in SITUACOES:
         raise ValueError(f"situação desconhecida: {situacao!r} (aceitas: {', '.join(SITUACOES)})")
     conferir_apolice(situacao, apolice_atual)

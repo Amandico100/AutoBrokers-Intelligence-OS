@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""A configuração COMERCIAL do multicálculo — SPEC-130-A U2 (D-MC-62…72, D-130A-04/05/08).
+"""A configuração COMERCIAL do multicálculo — SPEC-130-A U2 (D-MC-62…72, D-130A-04/05) · SPEC-130-A.1 (D-130A1-*).
 
 🔴 Este é o ÚNICO lugar com os números comerciais (comissão, alvo, validade, lembretes, pesos da nota, quantas
 opções). O Founder (06/10): *"ajustes futuros virão dos comerciais: deixe tudo como CONFIGURAÇÃO, nunca constante
@@ -33,10 +33,15 @@ class ConfigIndisponivel(RuntimeError):
 #: 📊 = declarado pelas comerciais (n = 4, ESTRATEGIA §1) ou decidido pelo Founder · 💭 = valor inicial a calibrar
 PADRAO_DO_PRODUTO: Dict[str, Any] = {
     # D-MC-66/67/68/64 — a margem. % de comissão da corretora.
+    # 🔴 D-MC-68 CORRIGIDA (Founder 06/10, 23h: "EU NÃO FALEI ISSO"): o agente desce até o PISO SOZINHO, sem aprovação
+    # humana, mas PASSO A PASSO (`passo_pp`), nunca direto. De `entrada` até `autonomo_minimo` ele negocia; o trecho
+    # `autonomo_minimo` → `piso` (≈ 2 pp) é a ALAVANCA DE FECHAMENTO: guardada para o fim, oferecida em R$ (nunca em %)
+    # como a condição que a seguradora devolveu no recálculo, e só com o cliente fechando.
     "comissao": {
         "entrada": 15.0,          # 📊 cliente novo: 15 % (as 4 comerciais, §1.2/§1.3)
-        "autonomo_minimo": 12.0,  # 📊 D-MC-68: até 12 % o agente aplica sozinho
-        "piso": 10.0,             # 📊 D-MC-64: o piso de todas; 10 % só com o corretor aprovando (D-MC-68)
+        "autonomo_minimo": 12.0,  # 📊 D-MC-68: até 12 % é a negociação normal, passo a passo
+        "piso": 10.0,             # 📊 D-MC-64/68: o piso de todas; o agente chega aqui SOZINHO, só como fechamento
+        "passo_pp": 1.0,          # 💭 de quanto em quanto a comissão desce (o Founder: "aos poucos, não direto")
     },
     # D-MC-66 — novo COM apólice: mirar 💭 ~10–15 % abaixo do preço atual quando der, guardando margem
     "alvo_abaixo_da_atual_pct": {"minimo": 10.0, "maximo": 15.0},
@@ -55,7 +60,10 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
     "opcoes": {"no_whatsapp": 2, "na_pagina": 3},
     # qual CÁLCULO (a opção da porta) alimenta cada papel da proposta. `completa_mais` entra numa fatia própria
     # (o preset e a constraint): sem cálculo dela, a 3ª opção é "Outra completa" (D-130A-09)
-    "calculo_por_papel": {"completa": "padrao", "economica": "economica", "completa_mais": "completa_mais"},
+    "calculo_por_papel": {"completa": "padrao", "economica": "economica", "completa_mais": "completa_mais",
+                          # SPEC-130-A.1 — o "mínimo do mínimo" (D-130A1-05): só o canal pede; mostra a MAIOR economia
+                          # possível, sempre com o que deixa de cobrir. Nunca é a recomendada.
+                          "minima": "minima"},
     # D-130A-04 — vencedora entre corretoras = a menor completa; empate: estes critérios, nesta ordem
     "desempate_entre_corretoras": ["nota_google", "ordem_de_adesao"],
     # D-MC-63/67 — 📊 128 E5: estas seguradoras OBEDECEM o desconto e IGNORAM a comissão (o botão da margem nelas é
@@ -84,11 +92,20 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
     # U4 — prova social: a ficha do Google SÓ quando a corretora a CONFIRMOU (📊 06/10 a busca por nome achou
     # outra empresa para uma das corretoras). {"nota", "avaliacoes", "data", "fonte"} ou None
     "google_confirmado": None,
-    # D-130A-08 — a remuneração da corretora (CNSP 382): DESLIGADA até o jurídico
-    "remuneracao_cnsp_382": {"ligada": False},
     # D-MC-55 — o nome do CANAL comparador (marca do PRODUTO, não de corretora). É configuração, não constante da
     # página: a proposta do canal leva `canal.nome` no modelo (laudo do red team, 06/10: RT-10)
-    "canal": {"nome": "Quem Cobra Menos"},
+    # SPEC-130-A.1 — o canal comparador ao consumidor (marca própria, D-130A1-01): a mensagem pós-cálculo e o follow-up.
+    "canal": {
+        "nome": "Quem Cobra Menos",
+        # 🔴 "Corretora Nível 5" é o selo do PROGRAMA (D-130A1-04): toda corretora que entra no canal cumpre a lista dele;
+        # não é medida de porte. A corretora pode desligar o selo na própria config (ex.: enquanto não cumpre a lista).
+        "selo": {"nome": "Corretora Nível 5", "ligado": True},
+        # quantas seguradoras a mensagem lista em "Melhor preço por seguradora" (o resto está no link)
+        "lista_por_seguradora": 6,
+        # D-130A1-06 — termina com UMA pergunta; sem resposta, até 2 lembretes, nunca mais que isso 💭
+        "follow_up": {"primeiro_apos_min": 15, "segundo_apos_h": 24, "max_sem_resposta": 2,
+                      "horario_comercial": {"inicio_h": 9, "fim_h": 20}},
+    },
 }
 
 
@@ -150,7 +167,7 @@ def _coerente(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """As réguas que não podem quebrar: piso ≤ autônomo ≤ entrada (todos > 0) · pesos somam 100 · opções ≥ 1."""
     pad = PADRAO_DO_PRODUTO
     c = cfg["comissao"]
-    if not (0 < c["piso"] <= c["autonomo_minimo"] <= c["entrada"]):
+    if not (0 < c["piso"] <= c["autonomo_minimo"] <= c["entrada"]) or not (0 < c["passo_pp"] <= c["entrada"]):
         logger.warning("[MC-CONFIG] comissão incoerente (piso ≤ autônomo ≤ entrada) — fica o padrão")
         cfg["comissao"] = copy.deepcopy(pad["comissao"])
     pesos = cfg["nota"]["pesos"]
