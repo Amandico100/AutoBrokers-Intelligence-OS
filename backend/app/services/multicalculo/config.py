@@ -102,9 +102,15 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         "selo": {"nome": "Corretora Nível 5", "ligado": True},
         # quantas seguradoras a mensagem lista em "Melhor preço por seguradora" (o resto está no link)
         "lista_por_seguradora": 6,
-        # D-130A1-14 — a linha "Tempo" só aparece até este teto 💭 (acima, some; nunca um tempo menor que o medido).
-        # 📊 canário 07/10: último preço aos 495 s (fila do robô + corretoras em série, portal-worker com concorrência 1)
-        "tempo_exibido_ate_s": 90,
+        # D-130A1-14 — o tempo da mensagem só aparece até este teto 💭 (acima, some; nunca um tempo menor que o medido).
+        # 📊 canário 07/10: último preço aos 495 s (fila do robô + corretoras em série, portal-worker com concorrência 1).
+        # SPEC-133-A F0 (Founder 07/10): o teto padrão sobe para 180 s ("em 1,5 minutos" cabe; "8 min" não)
+        "tempo_exibido_ate_s": 180,
+        # SPEC-133-A F0 (ordem do Founder 07/10 — TESTE CONTROLADO e temporário com o círculo social dele, para medir
+        # conversão): "Fiz N Cotações" = `base` + os preços que voltaram nas opções + as tentativas sem preço (erro,
+        # recusa, sem resposta) das opções. A base vem SÓ daqui 💭; desligar = `base: 0` (só o real). O real é contado
+        # à parte no modelo (`resumo.volume_do_canal`), para a base nunca se confundir com o que aconteceu.
+        "volume": {"base": 100},
         # D-130A1-06 — termina com UMA pergunta; sem resposta, até 2 lembretes, nunca mais que isso 💭
         "follow_up": {"primeiro_apos_min": 15, "segundo_apos_h": 24, "max_sem_resposta": 2,
                       "horario_comercial": {"inicio_h": 9, "fim_h": 20}},

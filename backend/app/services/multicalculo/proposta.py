@@ -542,8 +542,16 @@ def _preco(o: Mapping[str, Any]) -> Optional[float]:
     return v if v > 0 else None
 
 
+def _chave_da_seguradora(o: Mapping[str, Any]) -> str:
+    """A seguradora por CÓDIGO; sem código, pelo nome de exibição normalizado."""
+    cod = o.get("seguradora_codigo")
+    return (f"cod:{cod}" if cod not in (None, "") and not isinstance(cod, bool)
+            else "nome:" + CFG.normalizar(CMP.nome_de_exibicao(o.get("seguradora"))))
+
+
 def resumo_do_volume(ofertas: Sequence[Mapping[str, Any]], pedido: Mapping[str, Any],
-                     cfg: Mapping[str, Any], estados: Sequence[Mapping[str, Any]] = ()) -> Dict[str, Any]:
+                     cfg: Mapping[str, Any], estados: Sequence[Mapping[str, Any]] = (),
+                     eventos: Sequence[Mapping[str, Any]] = ()) -> Dict[str, Any]:
     """SPEC-130-A.1 D-130A1-02 — o VOLUME que o consumidor lê, contado das ofertas REAIS do pedido (as que a porta
     devolveu ao solicitante), nunca de uma fórmula:
 
@@ -555,19 +563,41 @@ def resumo_do_volume(ofertas: Sequence[Mapping[str, Any]], pedido: Mapping[str, 
       · `seguradoras_com_preco` = seguradoras distintas (por código; sem código, pelo nome) com algum preço. O produto
         de ASSINATURA (config `produtos_de_assinatura`) é uma linha de uma seguradora, não outra seguradora.
       · `tempo_do_calculo_s` = do pedido criado à última dessas MESMAS ofertas recebida (o recálculo também fica de
-        fora). Sem os dois instantes, ou < 1 s (o mesmo instante não é medida), o campo NÃO existe — e a linha some."""
+        fora). Sem os dois instantes, ou < 1 s (o mesmo instante não é medida), o campo NÃO existe — e a linha some.
+
+    SPEC-133-A F0 (Founder 07/10, "tudo gera ponto"):
+      · `tentativas_sem_preco` = as tentativas que deram erro, recusa ou não responderam: pares DISTINTOS (cálculo das
+        OPÇÕES × seguradora) com um evento de recusa/pendência que a porta devolveu (a mesma régua de evento da
+        `comparacao`: `seguradora_recusou` ou família PENDENTE, nunca OFERTA). A recusa de um pacote numa seguradora que
+        deu preço noutro pacote do mesmo cálculo conta (é outra tentativa); a pendência que depois deu preço no mesmo
+        cálculo NÃO conta (é a mesma tentativa, que respondeu). O recálculo (`ajuste`) nunca.
+      · `seguradoras_consultadas` = as seguradoras que RECEBERAM o pedido nas opções: com oferta (com ou sem preço) ou
+        com tentativa sem preço — inclusive as que deram erro ou não responderam."""
     opcao_do_calculo = {str(e.get("calculo_id")): str(e.get("opcao") or "") for e in estados}
-    precos = [o for o in ofertas if _preco(o) is not None
-              and opcao_do_calculo.get(str(o.get("calculo_id"))) in OPCOES_DO_PEDIDO]
+    das_opcoes = lambda x: opcao_do_calculo.get(str(x.get("calculo_id"))) in OPCOES_DO_PEDIDO   # noqa: E731
+    precos = [o for o in ofertas if _preco(o) is not None and das_opcoes(o)]
     saida: Dict[str, Any] = {"cotacoes_realizadas": len(precos)}
     segs = set()
     for o in precos:
         if CFG.e_produto_de_assinatura(o.get("seguradora"), o.get("pacote"), cfg):
             continue
-        cod = o.get("seguradora_codigo")
-        segs.add(f"cod:{cod}" if cod not in (None, "") and not isinstance(cod, bool)
-                 else "nome:" + CFG.normalizar(CMP.nome_de_exibicao(o.get("seguradora"))))
+        segs.add(_chave_da_seguradora(o))
     saida["seguradoras_com_preco"] = len(segs)
+    com_oferta = {(str(o.get("calculo_id")), _chave_da_seguradora(o)) for o in ofertas if das_opcoes(o)}
+    falhas = set()
+    for ev in eventos:
+        familia = str(ev.get("familia") or "").upper()
+        if not das_opcoes(ev) or not familia or familia == CMP.OFERTA:
+            continue
+        par = (str(ev.get("calculo_id")), _chave_da_seguradora(ev))
+        if ev.get("tipo") == CMP.SEGURADORA_RECUSOU or (familia == CMP.PENDENTE and par not in com_oferta):
+            falhas.add(par)
+    saida["tentativas_sem_preco"] = len(falhas)
+    # D-130A1-15 (Founder, 07/10: "tudo gera ponto"): conta cada seguradora que o Agger CONSULTOU, como ele lista — a
+    # "Azul Assinatura" (código próprio no Agger) conta à parte. 📊 canário d0bb15ba: 16 consultadas.
+    saida["seguradoras_consultadas"] = len(
+        {_chave_da_seguradora(o) for o in ofertas if das_opcoes(o)}
+        | {k for _c, k in falhas})
     inicio = _instante(pedido.get("criado_em"))
     chegadas = [t for t in (_instante(o.get("recebida_em")) for o in precos) if t is not None]
     if inicio and chegadas:
@@ -577,35 +607,57 @@ def resumo_do_volume(ofertas: Sequence[Mapping[str, Any]], pedido: Mapping[str, 
     return saida
 
 
-def economia(ranking_completo_do_pedido: Sequence[Mapping[str, Any]], opcoes: Sequence[Mapping[str, Any]],
-             refs: Sequence[Mapping[str, Any]], *, opcao_completa: str,
-             apolice_atual: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
-    """SPEC-130-A.1 D-130A1-03 — "Você economiza até R$ X", com a ORIGEM da conta:
-
-      · `ate` = `de` − `para`: `de` = a MAIS CARA com a mesma cobertura completa (o ranking completo do pedido, todas as
-        corretoras); `para` = a mais barata MOSTRADA (entre as opções do modelo — a mínima, se houver).
-        `mesma_cobertura` diz se a `para` é uma completa (a frase muda: a mais em conta cobre menos).
-      · `vs_atual` só quando há apólice lida com prêmio: o prêmio atual − a 1ª opção (a menor completa), se a menos."""
-    saida: Dict[str, Any] = {}
-    precos = [float(r["premio_anual"]) for r in ranking_completo_do_pedido if r.get("premio_anual")]
-    validas = [(o, r) for o, r in zip(opcoes, refs) if o.get("premio_anual")]
-    if precos and validas:
-        de = max(precos)
-        o_para, r_para = min(validas, key=lambda x: float(x[0]["premio_anual"]))
-        para = float(o_para["premio_anual"])
-        if de - para >= 0.01:
-            saida.update({"ate": round(de - para, 2), "de": round(de, 2), "para": round(para, 2),
-                          "para_opcao": o_para.get("id"),
-                          "mesma_cobertura": str((r_para or {}).get("opcao") or "") == opcao_completa})
-    atual = (apolice_atual or {}).get("premio_anual") if isinstance(apolice_atual, Mapping) else None
-    if atual and opcoes and opcoes[0].get("premio_anual"):
+def premio_atual(apolice_atual: Optional[Mapping[str, Any]], premio_atual_declarado: Any = None) -> Optional[float]:
+    """SPEC-133-A F0 — o preço do seguro ATUAL do cliente: (a) o prêmio da apólice lida (`premio_anual`, ou `premio`)
+    quando houver; senão (b) o que a pessoa DISSE na conversa ("quanto você paga hoje?"). Nada válido → None."""
+    candidatos = []
+    if isinstance(apolice_atual, Mapping):
+        candidatos += [apolice_atual.get("premio_anual"), apolice_atual.get("premio")]
+    candidatos.append(premio_atual_declarado)
+    for v in candidatos:
+        if v is None or isinstance(v, bool):
+            continue
         try:
-            atual_f, base = float(atual), float(opcoes[0]["premio_anual"])
+            f = float(v)
         except (TypeError, ValueError):
-            atual_f, base = 0.0, 0.0
-        if atual_f - base >= 0.01:
-            saida["vs_atual"] = {"atual": round(atual_f, 2), "para": round(base, 2), "valor": round(atual_f - base, 2)}
-    return saida or None
+            continue
+        if f > 0:
+            return round(f, 2)
+    return None
+
+
+def economia(quadro_todo: "CMP.Comparacao", *, atual: Optional[float]) -> Optional[Dict[str, Any]]:
+    """SPEC-133-A F0 (Founder 07/10) — "Você deve economizar até R$ X por ano":
+
+      · `para` = o MENOR preço de todos: o menor entre todas as ofertas das OPÇÕES do pedido (padrão, econômica,
+        completa+, mínima — nunca o recálculo), de TODAS as corretoras, que cobrem o carro (as completas da
+        `comparacao`: produto diferente e assinatura não contam). A mínima entra.
+      · `de` = o preço ATUAL do cliente (`premio_atual`), quando houver (`contra='atual'`); senão o MAIOR preço de
+        todos, pelas mesmas regras (`contra='maior'` — o maior entre os preços de cada seguradora × corretora × opção).
+      · `ate` = `de` − `para`, só quando ≥ R$ 0,01 (a mensagem só mostra a partir de R$ 1)."""
+    precos = [float(l["premio_anual"]) for op in OPCOES_DO_PEDIDO for l in quadro_todo.por_opcao.get(op, [])
+              if l.get("premio_anual")]
+    if not precos:
+        return None
+    para = min(precos)
+    de, contra = (float(atual), "atual") if atual else (max(precos), "maior")
+    if de - para < 0.01:
+        return None
+    return {"ate": round(de - para, 2), "de": round(de, 2), "para": round(para, 2), "contra": contra}
+
+
+def volume_do_canal(resumo: Mapping[str, Any], cfg: Mapping[str, Any]) -> Dict[str, int]:
+    """SPEC-133-A F0 (ordem do Founder 07/10, teste controlado): o número de "Cotações" da mensagem do canal =
+    `canal.volume.base` da CONFIG + os preços que voltaram + as tentativas sem preço. A base vem SÓ da config (base 0
+    → só o real); o real fica à parte, para o modelo guardar de onde vem cada parcela."""
+    try:
+        base = int(((cfg.get("canal") or {}).get("volume") or {}).get("base") or 0)
+    except (TypeError, ValueError):
+        base = 0
+    base = max(0, base)
+    precos = int(resumo.get("cotacoes_realizadas") or 0)
+    sem_preco = int(resumo.get("tentativas_sem_preco") or 0)
+    return {"base": base, "precos": precos, "sem_preco": sem_preco, "total": base + precos + sem_preco}
 
 
 def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[str, Dict[str, Any]]:
@@ -632,9 +684,11 @@ def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[
 
 async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolice_atual: Optional[Mapping] = None,
                           primeiro_nome: Optional[str] = None, *, db: Any, agora: Optional[datetime] = None,
-                          baixar_logo: Optional[BaixarLogo] = None, _contexto: Optional[dict] = None
-                          ) -> Dict[str, Any]:
+                          baixar_logo: Optional[BaixarLogo] = None, premio_atual_declarado: Optional[float] = None,
+                          _contexto: Optional[dict] = None) -> Dict[str, Any]:
     """O MODELO da página (CONTRATO §5). `company_id` = o SOLICITANTE (a corretora, ou o canal).
+    `premio_atual_declarado` (SPEC-133-A F0): o preço que a pessoa disse pagar hoje — a economia é contra ele quando
+    não há apólice com prêmio.
 
     Recusas: `ValueError` (uuid/situação) · `NaoEncontrado` (o pedido não é deste solicitante) ·
     `PropostaImpossivel` (a anfitriã não tem oferta completa) · `config.ConfigIndisponivel` (banco fora)."""
@@ -642,6 +696,8 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     if situacao not in CMP.SITUACOES:
         raise ValueError(f"situação desconhecida: {situacao!r} (aceitas: {', '.join(CMP.SITUACOES)})")
     CMP.conferir_apolice(situacao, apolice_atual)                    # J-B2: nunca um "igual à sua atual" inventado
+    if premio_atual_declarado is not None and premio_atual(None, premio_atual_declarado) is None:
+        raise ValueError("o prêmio atual declarado precisa ser um número maior que zero")
     repo = RepositorioMulticalculo(db)
     porta = MulticalculoProvider(repo, cifrar=_so_leitura)
     andamento = await porta.consultar(company_id=company_id, pedido_id=pedido_id)   # 🔴 a autorização de leitura
@@ -709,9 +765,10 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     if comparou_corretoras:
         resumo["corretoras_comparadas"] = len(linhas_entre)
     # SPEC-130-A.1 U4 — o volume REAL (todas as ofertas do pedido que a porta devolveu) e a economia com a origem
-    resumo.update(resumo_do_volume(ofertas, ped, cfg_sol, estados))
-    eco = economia(quadro_todo.ranking(quadro_todo.opcao_completa), opcoes, [o["ref"] for o in ops],
-                   opcao_completa=quadro_todo.opcao_completa, apolice_atual=apolice_atual)
+    resumo.update(resumo_do_volume(ofertas, ped, cfg_sol, estados, eventos))
+    if origem == "canal":                       # SPEC-133-A F0: a base da config + o real, cada parcela à parte
+        resumo["volume_do_canal"] = volume_do_canal(resumo, cfg_sol)
+    eco = economia(quadro_todo, atual=premio_atual(apolice_atual, premio_atual_declarado))
     if eco:
         resumo["economia"] = eco
 
@@ -805,7 +862,8 @@ def _proposta_existente(db: Any, company_id: str, pedido_id: str) -> Optional[Di
 async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apolice_atual: Optional[Mapping] = None,
                             primeiro_nome: Optional[str] = None, *, db: Any, base_url: Optional[str] = None,
                             agora: Optional[datetime] = None, baixar_logo: Optional[BaixarLogo] = None,
-                            permitir_sem_whatsapp: bool = False) -> Dict[str, Any]:
+                            permitir_sem_whatsapp: bool = False, premio_atual_declarado: Optional[float] = None
+                            ) -> Dict[str, Any]:
     """Monta, cria/versiona, renderiza, publica e compartilha. Devolve {url, token, artifact_id, versao, mensagem}.
 
     🔴 Nada é gravado antes de: o pedido ser deste solicitante (a porta), haver o que propor e haver endereço público
@@ -824,7 +882,8 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
 
     ctx: Dict[str, Any] = {}
     modelo = await montar_proposta(company_id, pedido_id, situacao, apolice_atual, primeiro_nome, db=db, agora=agora,
-                                   baixar_logo=baixar_logo, _contexto=ctx)
+                                   baixar_logo=baixar_logo, premio_atual_declarado=premio_atual_declarado,
+                                   _contexto=ctx)
     if not (modelo.get("anfitria") or {}).get("whatsapp") and not permitir_sem_whatsapp:
         quem = (modelo.get("anfitria") or {}).get("nome") or "a corretora anfitriã"
         raise SemCanalDeFechamento(

@@ -7,7 +7,7 @@ com o defeito reintroduzido e uma linha de controle.
      "sem carro reserva" (a página diz "Sem carro reserva"); a "Mais em conta" é a mínima; a economia vai até ela
   3. (red P1) o NOME do selo vem do CANAL; a anfitriã só pode desligar o dela
   4. (red P2 / juiz 4) a trava de produto na régua: piso ≥ o do produto; passo em [mínimo, entrada − autônomo]
-  5. (Founder) o maior parcelamento em destaque com o total, e embaixo o máximo SEM juros com o prêmio anual
+  5. (Founder) a parcela em destaque — migrou na SPEC-133-A F0 (§9.3): o MENOR valor de parcela, `12x de *R$ …*`
 
 O fio é o REAL (porta → comparação → proposta → mensagem); a borda é só o banco DUBLÊ (CLAUDE.md §9.4).
 🔬 LENTE: toda contagem é refeita AQUI, direto das linhas do dublê, sem `proposta` nem `comparacao`.
@@ -85,6 +85,31 @@ def lente_cotacoes(m, *, com_ajuste=False):
                and (com_ajuste or op.get(o["calculo_id"]) in OPCOES_DO_PEDIDO))
 
 
+def lente_falhas(m):
+    """SPEC-133-A F0: pares DISTINTOS (cálculo das OPÇÕES × seguradora) com recusa — contados nas linhas do dublê."""
+    op = {c["id"]: c["opcao"] for c in m.banco.linhas("multicalculo_calculos")}
+    return len({(e["calculo_id"], e["seguradora_codigo"]) for e in m.banco.linhas("multicalculo_eventos")
+                if op.get(e["calculo_id"]) in OPCOES_DO_PEDIDO and e["tipo"] == "seguradora_recusou"})
+
+
+def lente_maior_de_todos(m):
+    """O MAIOR preço de todos: a menor oferta de cada seguradora × corretora × opção que cobre o carro; o maior delas."""
+    op = {c["id"]: c["opcao"] for c in m.banco.linhas("multicalculo_calculos")}
+    menor = {}
+    for o in m.banco.linhas("multicalculo_ofertas"):
+        c = o["coberturas"]
+        if (op.get(o["calculo_id"]) in OPCOES_DO_PEDIDO and float(o["premio_total"]) > 0
+                and str(c.get("tipoPadronizado") or c.get("tipo") or "") == "Compreensiva" and c.get("casco") == 100
+                and "assinatura" not in str(o["seguradora"]).lower()):
+            k = (o["company_id"], o["seguradora_codigo"], op[o["calculo_id"]])
+            menor[k] = min(menor.get(k, float("inf")), float(o["premio_total"]))
+    return max(menor.values())
+
+
+def _fiz(m, cfg, precos):
+    return f"Fiz {cfg['canal']['volume']['base'] + precos + lente_falhas(m)} Cotações "
+
+
 def _cobre_menos(texto):
     return [l for l in texto.splitlines() if l.startswith("_Cobre menos:")]
 
@@ -113,10 +138,11 @@ def test_1_o_recalculo_nao_e_cotacao_e_a_negociacao_nao_infla_o_volume(monkeypat
     texto = "\n".join(MSG.mensagem_para(depois, LINK, config=cfg))
     assert depois["resumo"]["cotacoes_realizadas"] == lente_cotacoes(m) == 82
     assert depois["resumo"]["seguradoras_com_preco"] == antes["resumo"]["seguradoras_com_preco"]
-    assert "Cotações realizadas: *82*" in texto and "*82 comparações*" in texto
+    assert depois["resumo"]["seguradoras_consultadas"] == antes["resumo"]["seguradoras_consultadas"]
+    assert _fiz(m, cfg, 82) in texto                                  # SPEC-133-A F0: a base + o real
     # 🔴 CONTROLE: a conta com o recálculo é OUTRA (o guarda consegue ver a diferença) e não está no texto
     errado = lente_cotacoes(m, com_ajuste=True)
-    assert errado == 82 + 22 + n_ajuste and str(errado) not in texto
+    assert errado == 82 + 22 + n_ajuste and _fiz(m, cfg, errado) not in texto
 
 
 def test_1_o_tempo_vai_ate_a_ultima_oferta_das_opcoes_nunca_a_do_recalculo(monkeypatch):
@@ -131,12 +157,12 @@ def test_1_o_tempo_vai_ate_a_ultima_oferta_das_opcoes_nunca_a_do_recalculo(monke
     assert modelo["resumo"]["tempo_do_calculo_s"] == 495
     texto = "\n".join(MSG.mensagem_para(modelo, LINK, config=cfg))
     # D-130A1-14 (§9.3 — a lição migra): no teto padrão 495 s não se mostra; nenhum dos dois tempos aparece
-    assert "Tempo:" not in texto and "8 min 15 s" not in texto and "10 min 48 s" not in texto
+    assert "minutos" not in texto and "segundos" not in texto
     # com um teto acima dos DOIS (o do ajuste também caberia), o texto mostra o das opções — nunca o do recálculo
     largo = copy.deepcopy(cfg)
     largo["canal"]["tempo_exibido_ate_s"] = 1000
     texto = "\n".join(MSG.mensagem_para(modelo, LINK, config=largo))
-    assert "Tempo: *8 min 15 s*" in texto and "10 min 48 s" not in texto
+    assert " Seguradoras em 8,3 minutos." in texto and "10,8 minutos" not in texto     # 495 s → 8,25 → 8,3
 
 
 # =====================================================================================================================
@@ -169,10 +195,12 @@ def test_2_costura_canal_com_minima_ate_os_baloes(monkeypatch, reserva):
     esperado = round(economica["premio_anual"] * FATOR_DA_MINIMA, 2)
     assert barata["seguradora"] == economica["seguradora"] and esperado in precos_minima
     assert round(barata["premio_anual"], 2) == esperado < economica["premio_anual"]
+    # SPEC-133-A F0: a mínima é o MENOR de todos; sem preço atual, a economia vai do MAIOR de todos até ela
     assert modelo["resumo"]["economia"]["para"] == esperado
-    assert modelo["resumo"]["economia"]["para_opcao"] == "mais_em_conta"
-    assert modelo["resumo"]["economia"]["mesma_cobertura"] is False
-    assert "para a opção mais em conta, que cobre menos" in texto
+    assert modelo["resumo"]["economia"]["contra"] == "maior"
+    de = lente_maior_de_todos(m)
+    assert modelo["resumo"]["economia"]["de"] == round(de, 2)
+    assert f"Você deve economizar até *R$ {int(de - esperado + 0.5):,}* por ano".replace(",", ".") in texto
 
     # a página e a mensagem dizem o MESMO: sem carro reserva — nunca "menos dias"
     assert "Sem carro reserva" in barata["o_que_muda"]
@@ -184,7 +212,7 @@ def test_2_costura_canal_com_minima_ate_os_baloes(monkeypatch, reserva):
 
     # a contagem bate: a mínima é uma OPÇÃO do pedido (entra); 82 + as dela
     assert modelo["resumo"]["cotacoes_realizadas"] == lente_cotacoes(m) == 82 + len(precos_minima)
-    assert f"Cotações realizadas: *{82 + len(precos_minima)}*" in texto
+    assert _fiz(m, cfg, 82 + len(precos_minima)) in texto
     assert max(len(b) for b in baloes) <= MSG.TETO_POR_BALAO_DO_CANAL
 
 
@@ -285,7 +313,8 @@ def test_4_controle_dentro_da_trava_vale_a_da_corretora():
 
 
 # =====================================================================================================================
-# 5 · o maior parcelamento em destaque + o total + o máximo sem juros
+# 5 · a parcela em destaque (§9.3 — a lição MIGRA, SPEC-133-A F0): o MENOR valor de parcela da oferta vencedora,
+#     `12x de *R$ 341,00*` — o número em negrito, o "12x de" não; sem o total, sem "juros", sem o preço cheio
 # =====================================================================================================================
 def _parcelar_o_vencedor(m, vezes, primeira, demais):
     """Acrescenta à oferta da 1ª opção (a Youse padrão da anfitriã, 📊 4x sem juros) um parcelamento COM juros."""
@@ -298,34 +327,39 @@ def _parcelar_o_vencedor(m, vezes, primeira, demais):
     return o
 
 
-def test_5_o_maior_parcelamento_em_destaque_com_o_total_e_o_sem_juros_embaixo(monkeypatch):
+def _vencedor(b1):
+    return next(l for l in b1.splitlines() if l.startswith("*Quem cobra menos?*"))
+
+
+def test_5_a_menor_parcela_em_destaque_pelo_caminho_real(monkeypatch):
     m = M.montar_mundo(monkeypatch, solicitante="canal")
     o = _parcelar_o_vencedor(m, 12, 352.10, 341.00)
     modelo, cfg = _montar(m)
     rec = modelo["opcoes"][0]
     assert rec["seguradora"] == "Youse" and rec["parcelas"]["vezes"] == 12
-    total = round(352.10 + 341.00 * 11, 2)                                   # a 1ª parcela diferente conta
-    assert rec["parcelas"]["total"] == total
     b1 = MSG.mensagem_para(modelo, LINK, config=cfg)[0]
-    assert "*12x de R$ 341,00* com juros, total R$ " + f"{int(total + 0.5):,}".replace(",", ".") in b1
-    assert int(total + 0.5) != int(12 * 341.00 + 0.5)    # o total da seguradora, não vezes × valor (dá para ver)
-    assert f"ou *4x de R$ 932,64* sem juros ({MSG._brl(o['premio_total'])})" in b1
-    assert "Total:" not in b1
+    assert _vencedor(b1).endswith("com Youse · 12x de *R$ 341,00*")
+    assert "932,64" not in b1 and "juros" not in b1 and "Total" not in b1 and "*12x" not in b1
+    assert MSG._brl(o["premio_total"]) not in b1                                # o preço cheio fica nos cartões
     # o "12" é o que a oferta trouxe: com 10x, o destaque é 10x (nenhuma constante)
     m2 = M.montar_mundo(monkeypatch, solicitante="canal")
     _parcelar_o_vencedor(m2, 10, 400.0, 400.0)
     modelo2, cfg2 = _montar(m2)
     b1b = MSG.mensagem_para(modelo2, LINK, config=cfg2)[0]
-    assert "*10x de R$ 400,00* com juros, total R$ 4.000" in b1b and "12x" not in b1b
+    assert _vencedor(b1b).endswith("10x de *R$ 400,00*") and "12x" not in b1b
 
 
-def test_5_controle_sem_parcelamento_maior_fica_como_esta(monkeypatch):
+def test_5_controle_sem_parcelamento_maior_fica_o_sem_juros(monkeypatch):
     m = M.montar_mundo(monkeypatch, solicitante="canal")
     modelo, cfg = _montar(m)
     b1 = MSG.mensagem_para(modelo, LINK, config=cfg)[0]
-    assert "*4x de R$ 932,64* sem juros" in b1 and "Total: *R$ 3.730,56* por ano" in b1 and "com juros" not in b1
+    assert _vencedor(b1).endswith("4x de *R$ 932,64*") and "R$ 3.730,56" not in b1
 
 
-def test_5_sem_o_parcelamento_na_oferta_o_total_e_vezes_por_valor():
-    modelo = {"premio_anual": 3600.0, "parcelas": {"vezes": 12, "valor": 330.0}}
-    assert MSG._preco_do_vencedor(modelo) == ["*12x de R$ 330,00* com juros, total R$ 3.960", "ou *R$ 3.600,00* por ano"]
+def test_5_a_parcela_em_destaque_e_pura():
+    assert MSG._parcela_em_destaque({"premio_anual": 3600.0, "parcelas": {"vezes": 12, "valor": 330.0}}) == \
+        "12x de *R$ 330,00*"
+    assert MSG._parcela_em_destaque({"premio_anual": 3600.0, "parcelas": {"vezes": 12, "valor": 330.0},
+                                     "parcelas_sem_juros": {"vezes": 6, "valor": 600.0}}) == "12x de *R$ 330,00*"
+    assert MSG._parcela_em_destaque({"premio_anual": 3600.0}) is None
+    assert MSG._parcela_em_destaque({"premio_anual": 3600.0, "parcelas": {"vezes": 1, "valor": 3600.0}}) is None

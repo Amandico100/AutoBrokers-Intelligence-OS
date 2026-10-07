@@ -5,12 +5,15 @@
     python -m app.services.multicalculo.comando_proposta --pedido <uuid do pedido> --confirmar     (publica o link)
         [--situacao novo_sem_apolice|novo_com_apolice|renovacao] [--apolice <arquivo.json>]
         [--nome <primeiro nome do cliente>] [--solicitante <uuid de quem pediu>] [--sem-whatsapp]
+        [--atual <quanto o cliente paga hoje, ex.: 4200,00>]
 
 `--apolice` (obrigatório com `novo_com_apolice`/`renovacao` — J-B2): um JSON com a apólice atual do cliente,
 `{"seguradora": "Porto", "premio_anual": 8200, "coberturas": {...}}` (a seguradora é obrigatória; o resto, quando
 houver). Sem ele, essas situações são RECUSADAS: a página chamaria de "igual à sua atual" uma seguradora qualquer.
 `--sem-whatsapp` (J-B1): publica mesmo sem o WhatsApp de atendimento da anfitriã — a página sai SEM "Quero fechar" e
 sem nenhuma frase que prometa WhatsApp. Sem a bandeira, a publicação é recusada e o comando diz por quê.
+`--atual` (SPEC-133-A F0): o preço que a pessoa DISSE pagar hoje ("quanto você paga hoje?") — a economia da mensagem do
+canal é contra ele quando não há apólice com prêmio. Aceita "4200,00", "4.200,00" ou "4200.00".
 
 Sem `--confirmar` o comando MONTA a proposta e imprime o que a página e a mensagem diriam, sem gravar uma linha
 (decisão F3, nota 85 × publicar direto 65: o link é público e fica no banco do solicitante — ensaiar não custa nada,
@@ -46,6 +49,8 @@ def _argumentos(argv: Optional[List[str]]) -> argparse.Namespace:
     p.add_argument("--solicitante", default=None, help="confere o dono do pedido (opcional)")
     p.add_argument("--sem-whatsapp", dest="sem_whatsapp", action="store_true",
                    help="publica mesmo sem o WhatsApp de atendimento da corretora (a página sai sem 'Quero fechar')")
+    p.add_argument("--atual", default=None,
+                   help="quanto o cliente paga hoje pelo seguro (ex.: 4200,00) — a economia é contra este preço")
     p.add_argument("--confirmar", action="store_true", help="publica de verdade (sem isto: só o ensaio)")
     return p.parse_args(argv)
 
@@ -80,6 +85,22 @@ def ler_apolice(caminho: Optional[str], situacao: str) -> Optional[Dict[str, Any
     return apolice
 
 
+def ler_premio_atual(texto: Optional[str]) -> Optional[float]:
+    """O `--atual` em reais: "4200,00", "4.200,00", "4200.00" ou "4200". `ValueError` com a frase do problema."""
+    if texto is None:
+        return None
+    t = re.sub(r"[R$\s]", "", str(texto))
+    if "," in t:
+        t = t.replace(".", "").replace(",", ".")
+    try:
+        valor = float(t)
+    except ValueError:
+        raise ValueError(f"--atual precisa ser um valor em reais (ex.: 4200,00), não {texto!r}") from None
+    if not valor > 0:
+        raise ValueError("--atual precisa ser maior que zero")
+    return round(valor, 2)
+
+
 def dono_do_pedido(db: Any, pedido_id: str) -> Optional[str]:
     """O solicitante do pedido. Leitura de operador (service role) que devolve SÓ o company_id — a porta refaz o
     filtro de tenant em tudo o que vem depois."""
@@ -105,6 +126,16 @@ def _imprimir_modelo(modelo: dict, saida, *, sem_whatsapp: bool = False) -> None
           f"{r.get('com_produto_diferente')} só com produto diferente · {r.get('nao_responderam')} sem resposta"
           + (f" · {r['corretoras_comparadas']} corretoras comparadas" if r.get("corretoras_comparadas") else ""),
           file=saida)
+    v = r.get("volume_do_canal")
+    if isinstance(v, dict):
+        print(f"volume da mensagem: base da config {v.get('base')} + {v.get('precos')} preços + {v.get('sem_preco')} "
+              f"tentativas sem preço = {v.get('total')} · {r.get('seguradoras_consultadas')} seguradoras consultadas",
+              file=saida)
+    eco = r.get("economia")
+    if isinstance(eco, dict):
+        contra = "o preço atual" if eco.get("contra") == "atual" else "o maior preço"
+        print(f"economia: {contra} R$ {eco.get('de')} − o menor de todos R$ {eco.get('para')} = R$ {eco.get('ate')}",
+              file=saida)
     for o in modelo.get("opcoes") or []:
         print(f"  {o['rotulo']}: {o['seguradora']} · R$ {o['premio_anual']:,.2f} por ano · nota {o['nota']}"
               .replace(",", "§").replace(".", ",").replace("§", "."), file=saida)
@@ -145,17 +176,18 @@ async def executar(argv: Optional[List[str]] = None, *, db: Any = None, saida=No
         return 2
     try:
         apolice = ler_apolice(a.apolice, a.situacao)
+        atual = ler_premio_atual(a.atual)
         if not a.confirmar:
             ctx: Dict[str, Any] = {}
             modelo = await montar_proposta(dono, pedido, a.situacao, apolice, primeiro_nome=a.nome, db=db,
-                                           _contexto=ctx)
+                                           premio_atual_declarado=atual, _contexto=ctx)
             print("ENSAIO (nada foi gravado). Para publicar, repita com --confirmar.", file=saida)
             _imprimir_modelo(modelo, saida, sem_whatsapp=a.sem_whatsapp)
             print(f"\n--- a mensagem {_qual(modelo)} (o link real sai ao publicar) ---", file=saida)
             print(_baloes(mensagem_para(modelo, "<o link sai ao publicar>", config=ctx.get("cfg_sol"))), file=saida)
             return 0
         r = await publicar_proposta(dono, pedido, a.situacao, apolice, primeiro_nome=a.nome, db=db,
-                                    permitir_sem_whatsapp=a.sem_whatsapp)
+                                    permitir_sem_whatsapp=a.sem_whatsapp, premio_atual_declarado=atual)
     except (NaoEncontrado, PropostaImpossivel, LinkSemEndereco, SemCanalDeFechamento, ValueError) as exc:
         print(f"recusado: {exc}", file=saida)
         return 2

@@ -19,12 +19,18 @@ o volume REAL de cotações, o tempo, a economia com a origem da conta, 2 cartõ
 é a corretora e UMA pergunta no fim). `mensagem_para` escolhe pela ORIGEM: canal → a do canal; senão → a da carteira
 (esta, `mensagem_whatsapp`, não muda e não fala do canal — G3).
 
+SPEC-133-A F0 (a copy do Founder, 07/10 — teste controlado): o balão 1 do canal vira "Prontinho, <nome>! Descobrimos
+<canal> no Seguro do seu <carro>" · "Fiz <N> Cotações entre Corretoras de Nível 5 e <M> Seguradoras em <tempo>." ·
+"Você deve economizar até *R$ X* por ano" · "*Quem cobra menos?* <corretora> com <seguradora> · 12x de *R$ …*".
+N vem do modelo (`resumo.volume_do_canal`, a base da config + o real); NUNCA o número de corretoras.
+
 PURA: só lê o modelo (o CONTRATO §5) e devolve texto. Quem ENVIA é a 133-A.
 """
 from __future__ import annotations
 
 import re
 from datetime import timedelta
+from decimal import ROUND_CEILING, Decimal
 from typing import Any, Dict, List, Mapping, Optional
 
 from app.services.multicalculo.config import PADRAO_DO_PRODUTO, normalizar
@@ -208,7 +214,6 @@ def conferir(baloes: List[str]) -> Dict[str, Any]:
 # =====================================================================================================================
 #: cada balão do canal cabe numa tela de celular sem "ler mais" (💭 ~650, o pedido do gerente)
 TETO_POR_BALAO_DO_CANAL = 650
-EMOJI_DO_VENCEDOR = "🏆"
 EMOJI_DO_SELO = "✅"
 #: o canal não fala de desconto em "%" nem de "desconto" (o Founder: nunca "%" de desconto) — além das da carteira
 FRASES_PROIBIDAS_NO_CANAL = FRASES_PROIBIDAS + ("%", "desconto")
@@ -229,16 +234,17 @@ def _n(v: Any) -> Optional[int]:
 
 
 def _tempo(segundos: Any) -> Optional[str]:
+    """SPEC-133-A F0 (Founder 07/10): "45 segundos" abaixo de 1 minuto; a partir dele, minutos com UMA casa e vírgula
+    ("1,5 minutos") arredondados para CIMA — nunca um tempo menor que o medido (95 s → "1,6 minutos", nunca "1,5")."""
     s = _n(segundos)
     if s is None:
         return None
     if s < _MINUTO:
         return f"{s} segundo{'s' if s != 1 else ''}"
-    m, r = divmod(s, _MINUTO)
-    if m < _MINUTO:
-        return f"{m} min {r} s" if r else f"{m} min"
-    h, m = divmod(m, _MINUTO)
-    return f"{h} h {m} min" if m else f"{h} h"
+    minutos = (Decimal(s) / Decimal(_MINUTO)).quantize(Decimal("0.1"), rounding=ROUND_CEILING)
+    if minutos == minutos.to_integral_value():
+        minutos = minutos.to_integral_value()
+    return f"{str(minutos).replace('.', ',')} minuto{'s' if minutos != 1 else ''}"
 
 
 def _de_quem(nome: str) -> str:
@@ -246,57 +252,70 @@ def _de_quem(nome: str) -> str:
     return nome if "corretora" in normalizar(nome) else f"Corretora {nome}"
 
 
-def _preco_do_vencedor(o: Mapping[str, Any]) -> List[str]:
-    """O parcelado em DESTAQUE (o MAIOR parcelamento que a oferta trouxe), com os juros com NOME e o total; embaixo, o
-    máximo de parcelas SEM juros com o prêmio anual (o pedido do Founder: "12x em destaque + valor total + o máximo
-    sem juros"). "sem juros" só quando é verdade. Só dado do modelo: as vezes são as da oferta, nunca constante.
-    O total com juros = o `parcelas.total` que a proposta leu do parcelamento da seguradora; sem ele, vezes × valor."""
-    premio = _brl(o["premio_anual"])
-    p, sj = o.get("parcelas"), o.get("parcelas_sem_juros")
-    p = p if isinstance(p, Mapping) and _n(p.get("vezes")) and p.get("valor") else None
-    sj = sj if isinstance(sj, Mapping) and _n(sj.get("vezes")) and sj.get("valor") else None
-    if p and int(p["vezes"]) > 1:
-        vezes, valor = int(p["vezes"]), float(p["valor"])
-        if sj and int(sj["vezes"]) >= vezes:
-            return [f"*{vezes}x de {_brl(valor)}* sem juros", f"Total: *{premio}* por ano"]
-        try:
-            total = float(p.get("total")) if p.get("total") is not None else vezes * valor
-        except (TypeError, ValueError):
-            total = vezes * valor
-        linhas = [f"*{vezes}x de {_brl(valor)}* com juros, total {_brl_inteiro(total)}"]
-        if sj and int(sj["vezes"]) > 1:
-            linhas.append(f"ou *{int(sj['vezes'])}x de {_brl(float(sj['valor']))}* sem juros ({premio})")
-        else:
-            linhas.append(f"ou *{premio}* por ano")
-        return linhas
-    return [f"*{premio}* por ano" + (f" · até {int(sj['vezes'])}x sem juros" if sj else "")]
+def _parcela_em_destaque(o: Mapping[str, Any]) -> Optional[str]:
+    """SPEC-133-A F0 (Founder 07/10, técnica de preço): o MENOR valor de parcela que a oferta vencedora trouxe (o maior
+    parcelamento, com ou sem juros) — `12x de *R$ 345,82*`: o NÚMERO em negrito, o "12x de" não. As vezes são as da
+    oferta, nunca constante. O preço cheio NÃO entra aqui (os cartões do balão seguinte trazem o anual)."""
+    candidatas = []
+    for p in (o.get("parcelas"), o.get("parcelas_sem_juros")):
+        if isinstance(p, Mapping) and _n(p.get("vezes")) and int(p["vezes"]) > 1:
+            try:
+                valor = float(p.get("valor"))
+            except (TypeError, ValueError):
+                continue
+            if valor > 0:
+                candidatas.append((valor, -int(p["vezes"])))
+    if not candidatas:
+        return None
+    valor, menos_vezes = min(candidatas)
+    return f"{-menos_vezes}x de *{_brl(valor)}*"
 
 
-def _abertura_do_canal(modelo: Mapping[str, Any]) -> List[str]:
+def _plural(n: int, singular: str, plural: str) -> str:
+    return f"{n} {singular if n == 1 else plural}"
+
+
+def _entre_quem(modelo: Mapping[str, Any]) -> Optional[str]:
+    """ "Corretoras de Nível 5" — o selo do programa no plural, SEM número (Founder 07/10: nunca quantas corretoras).
+    Só quando a anfitriã leva o selo (o canal o liga e ela não o desligou): senão a frase afirmaria o que não é."""
+    selo = str((modelo.get("anfitria") or {}).get("selo") or "").strip()
+    if not selo:
+        return None
+    m = re.match(r"^corretora\s+(.+)$", selo, re.I)
+    return f"Corretoras de {m.group(1)}" if m else f"corretoras com o selo {selo}"
+
+
+def _abertura_do_canal(modelo: Mapping[str, Any], cfg: Mapping[str, Any]) -> List[str]:
+    """SPEC-133-A F0 (a copy do Founder, 07/10):
+        Prontinho, <nome>! Descobrimos <canal> no Seguro do seu <apelido>
+        Fiz <N> Cotações entre Corretoras de Nível 5 e <M> Seguradoras em <tempo>.
+    N = `resumo.volume_do_canal.total` (a base da config + o real, montado na proposta) · M = as seguradoras
+    CONSULTADAS · o tempo só se medido e até o teto da config. Linha sem dado some; nunca o número de corretoras."""
     from app.services.multicalculo.comparacao import RAMO_AUTO
 
-    canal = str((modelo.get("canal") or {}).get("nome") or "").strip()
-    seguro = "seguro auto" if _n(modelo.get("ramo")) == RAMO_AUTO else "seguro"
-    titulo = (f"*{canal} no seu {seguro} foi encontrado* {EMOJI_DO_VENCEDOR}" if canal
-              else f"*Encontramos quem cobra menos no seu {seguro}* {EMOJI_DO_VENCEDOR}")
+    nome = str((modelo.get("cliente") or {}).get("primeiro_nome") or "").strip()
+    apelido = str((modelo.get("bem") or {}).get("apelido") or "").strip()
+    canal = str((modelo.get("canal") or {}).get("nome") or "").strip() or "quem cobra menos"
+    if apelido:
+        onde = f"no Seguro do seu {apelido}"
+    else:
+        onde = "no seu Seguro Auto" if _n(modelo.get("ramo")) == RAMO_AUTO else "no seu Seguro"
+    linhas = [f"{'Prontinho, ' + nome + '!' if nome else 'Prontinho!'} Descobrimos {canal} {onde}"]
     r = modelo.get("resumo") or {}
-    n = _n(r.get("cotacoes_realizadas"))
-    segs, corrs = _n(r.get("seguradoras_com_preco")), _n(r.get("corretoras_comparadas"))
-    linhas = [titulo]
-    if n:                 # 🔴 D-130A1-02: o número REAL de preços que voltaram — lido do resumo, nunca recalculado aqui
-        if segs and corrs and corrs > 1:
-            linhas.append(f"Vencedor em *{n} comparações* entre {corrs} corretoras e {segs} seguradoras.")
-        elif segs:
-            linhas.append(f"Vencedor em *{n} comparações* de {segs} seguradoras.")
-        else:
-            linhas.append(f"Vencedor em *{n} comparações*.")
+    vol = r.get("volume_do_canal") if isinstance(r.get("volume_do_canal"), Mapping) else {}
+    n, segs = _n(vol.get("total")), _n(r.get("seguradoras_consultadas"))
+    if n:
+        entre = [x for x in (_entre_quem(modelo), _plural(segs, "Seguradora", "Seguradoras") if segs else None) if x]
+        t = _tempo_que_se_mostra(r.get("tempo_do_calculo_s"), cfg)
+        linhas.append(f"Fiz {_plural(n, 'Cotação', 'Cotações')}"
+                      + (f" entre {' e '.join(entre)}" if entre else "") + (f" em {t}" if t else "") + ".")
     return linhas
 
 
 def _tempo_que_se_mostra(segundos: Any, cfg: Mapping[str, Any]) -> Optional[str]:
     """D-130A1-14: o tempo é verdadeiro ou não aparece — e só aparece até o teto da config (`canal.tempo_exibido_ate_s`).
-    📊 canário 07/10: 1º preço aos 284 s, último aos 495 s (fila do robô + corretoras em série) — "8 min 15 s" contra a
-    promessa de segundos. Acima do teto a linha SOME; nunca se mostra um tempo menor que o medido."""
+    📊 canário 07/10: 1º preço aos 284 s, último aos 495 s (fila do robô + corretoras em série). Acima do teto o tempo
+    SOME da frase; nunca se mostra um tempo menor que o medido."""
     s = _n(segundos)
     teto = _n((cfg.get("canal") or {}).get("tempo_exibido_ate_s"))
     if teto is None:
@@ -306,38 +325,25 @@ def _tempo_que_se_mostra(segundos: Any, cfg: Mapping[str, Any]) -> Optional[str]
     return _tempo(s)
 
 
-def _numeros_do_canal(modelo: Mapping[str, Any], cfg: Optional[Mapping[str, Any]] = None) -> List[str]:
-    cfg = cfg or PADRAO_DO_PRODUTO
-    r = modelo.get("resumo") or {}
-    linhas = []
-    n = _n(r.get("cotacoes_realizadas"))
-    if n:
-        linhas.append(f"Cotações realizadas: *{n}*")
-    t = _tempo_que_se_mostra(r.get("tempo_do_calculo_s"), cfg)
-    if t:
-        linhas.append(f"Tempo: *{t}*")
-    eco = r.get("economia") if isinstance(r.get("economia"), Mapping) else {}
-    if eco.get("ate") and eco.get("de") and float(eco["ate"]) >= 0.5:
-        if eco.get("mesma_cobertura"):
-            origem = (f"da cotação completa mais cara, {_brl_inteiro(eco['de'])}, para a mais barata com a mesma "
-                      "cobertura")
-        else:
-            rot = next((str(o.get("rotulo") or "") for o in modelo.get("opcoes") or []
-                        if isinstance(o, Mapping) and o.get("id") == eco.get("para_opcao")), "") or "mais em conta"
-            origem = (f"da cotação completa mais cara, {_brl_inteiro(eco['de'])}, para a opção "
-                      f"{rot.lower()}, que cobre menos")
-        linhas.append(f"Você economiza até *{_brl_inteiro(eco['ate'])}* por ano _({origem})_")
-    va = eco.get("vs_atual") if isinstance(eco.get("vs_atual"), Mapping) else None
-    if va and va.get("valor") and float(va["valor"]) >= 0.5:
-        linhas.append(f"São *{_brl_inteiro(va['valor'])} a menos que o seu seguro atual* "
-                      f"({_brl_inteiro(va['atual'])} por ano), com cobertura completa")
-    return linhas
+def _economia_do_canal(modelo: Mapping[str, Any]) -> Optional[str]:
+    """SPEC-133-A F0: "Você deve economizar até *R$ X* por ano" — X = o preço atual (ou, sem ele, o maior de todos) −
+    o menor de todos (`proposta.economia`). Sem parêntese (o Founder: ridículo). Só a partir de R$ 1."""
+    eco = (modelo.get("resumo") or {}).get("economia")
+    if not isinstance(eco, Mapping):
+        return None
+    try:
+        ate = float(eco.get("ate"))
+    except (TypeError, ValueError):
+        return None
+    return f"Você deve economizar até *{_brl_inteiro(ate)}* por ano" if ate >= 1 else None
 
 
-def _vencedor(modelo: Mapping[str, Any], rec: Mapping[str, Any]) -> List[str]:
+def _vencedor(modelo: Mapping[str, Any], rec: Mapping[str, Any]) -> str:
+    """ "*Quem cobra menos?* Corretora X com Youse · 12x de *R$ 345,82*" — uma linha, sem o preço cheio."""
     nome = str((modelo.get("anfitria") or {}).get("nome") or "").strip()
     quem = f"{_de_quem(nome)} com {rec.get('seguradora')}" if nome else str(rec.get("seguradora") or "")
-    return ["*Quem cobra menos?*", quem] + _preco_do_vencedor(rec)
+    parcela = _parcela_em_destaque(rec)
+    return f"*Quem cobra menos?* {quem}" + (f" · {parcela}" if parcela else "")
 
 
 def _basicas(o: Mapping[str, Any]) -> Optional[str]:
@@ -460,7 +466,8 @@ def _motivo_do_link(modelo: Mapping[str, Any]) -> Optional[str]:
 
 def mensagem_do_canal(modelo: Mapping[str, Any], link: str, *, config: Optional[Mapping[str, Any]] = None
                       ) -> List[str]:
-    """Os ≤ 3 balões do CANAL (D-130A1-01): ① o vencedor, o volume REAL, o tempo, a economia com a origem da conta ·
+    """Os ≤ 3 balões do CANAL (D-130A1-01 · SPEC-133-A F0): ① a abertura, o volume, as seguradoras, o tempo, a economia
+    e o vencedor com a menor parcela ·
     ② os 2 cartões (a 1ª opção com as coberturas básicas; a mais em conta com o que deixa de cobrir) e o melhor preço
     por seguradora · ③ quem é a corretora, o selo, o link com a validade e UMA pergunta no fim (D-130A1-06).
 
@@ -474,8 +481,8 @@ def mensagem_do_canal(modelo: Mapping[str, Any], link: str, *, config: Optional[
     quantas = (_n((cfg.get("canal") or {}).get("lista_por_seguradora"))
                or int(PADRAO_DO_PRODUTO["canal"]["lista_por_seguradora"]))
 
-    balao1 = "\n\n".join(b for b in ("\n".join(_abertura_do_canal(modelo)), "\n".join(_numeros_do_canal(modelo, cfg)),
-                                     "\n".join(_vencedor(modelo, rec))) if b)
+    balao1 = "\n\n".join(b for b in ("\n".join(_abertura_do_canal(modelo, cfg)), _economia_do_canal(modelo),
+                                     _vencedor(modelo, rec)) if b)
 
     barata = _mais_em_conta(modelo)
     balao2 = ""

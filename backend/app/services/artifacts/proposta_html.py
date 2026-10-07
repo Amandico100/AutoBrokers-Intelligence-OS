@@ -364,9 +364,9 @@ def previa_do_modelo(modelo: dict) -> dict:
         comparadas = AP.numero_inteiro(resumo.get("seguradoras_cotadas"))
     if comparadas is not None and comparadas < 1:
         comparadas = None
-    corretoras = AP.numero_inteiro(resumo.get("corretoras_comparadas"))
-    if corretoras is not None and corretoras < 2:
-        corretoras = None
+    # SPEC-133-A F0 (Founder 07/10): a página do canal NUNCA diz quantas corretoras foram comparadas — nem na prévia
+    # (o campo só existe no canal; a carteira não muda). A chave fica, vazia, para quem desenha a prévia.
+    corretoras = None
     marca = str(anfitria.get("nome") or "").strip()
     validade = _data_curta(modelo.get("validade_ate"))
     fq = rec.get("franquia") if isinstance(rec.get("franquia"), dict) else {}
@@ -941,7 +941,7 @@ def render_proposta(modelo: dict) -> str:
             f'<b>{_e(AP.brl(c["melhor_completa"]))}</b></div>'
             for c in sorted(ec, key=lambda c: c.get("vencedora") is not True))
         quem = f"O {_e(AP.nome_do_canal(modelo))} comparou" if canal else "Comparamos"
-        duelo = (f'<div class="duel"><p>{quem} {len(ec)} corretoras pelo melhor preço com cobertura completa:</p>'
+        duelo = (f'<div class="duel"><p>{quem} corretoras parceiras pelo melhor preço com cobertura completa:</p>'
                  f'{linhas_duelo}'
                  + (f'<p class="src">A {_e(nome_anf)} teve o menor e é quem vai atender você.</p>' if nome_anf else "")
                  + "</div>")
@@ -959,7 +959,7 @@ def render_proposta(modelo: dict) -> str:
         fatos.append(f'<div class="fact"><b>{_e(susep)}</b><span>registro na SUSEP</span></div>')
     cidade = str(anf.get("cidade") or "").strip()
     tagline = str(anf.get("tagline") or "").strip()
-    ganhou = (f'<p class="sub0">Teve o menor preço com cobertura completa entre as {len(ec)} corretoras comparadas'
+    ganhou = (f'<p class="sub0">Teve o menor preço com cobertura completa entre as corretoras comparadas'
               + (" e atende você pelo WhatsApp." if digitos else ".") + "</p>" if len(ec) >= 2 else "")
     o_que_e = ""
     if canal:

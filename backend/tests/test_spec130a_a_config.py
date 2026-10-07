@@ -178,7 +178,10 @@ _CAMINHOS_COMERCIAIS = ("comissao", "alvo_abaixo_da_atual_pct", "renovacao", "va
                         # SPEC-130-A.1 — as chaves novas do canal (os lembretes e o tamanho da lista)
                         "canal.lista_por_seguradora", "canal.follow_up",
                         # D-130A1-14 — o teto da linha "Tempo" da mensagem do canal
-                        "canal.tempo_exibido_ate_s")
+                        "canal.tempo_exibido_ate_s",
+                        # SPEC-133-A F0 — a base do volume ("Fiz N Cotações"); o padrão (100) é genérico para esta
+                        # varredura, por isso tem o guarda próprio abaixo
+                        "canal.volume")
 #: números genéricos demais para proibir (0, 1, 2 e 100 aparecem em arredondamento, índice, nota máxima)
 _GENERICOS = {0, 1, 2, 100}
 #: o que da porta.py é desta SPEC (o resto da porta é da 129-B e não entra na varredura)
@@ -257,6 +260,29 @@ def test_g8_um_teto_de_tempo_solto_na_mensagem_fica_vermelho():
     assert varrer("def ordem_do_mais_barato():\n    return 15\ndef outra():\n    return 15\n", "p.py",
                   so_funcoes={"ordem_do_mais_barato"}) == ["p.py:2 número 15"]
     assert varrer("x = round(v, 2)\nnota = min(100, n)\n", "x.py") == []
+
+
+def _constantes_iguais(fonte: str, valor, funcoes=None):
+    arvore = ast.parse(fonte)
+    alvos = [arvore] if funcoes is None else [
+        n for n in ast.walk(arvore) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in funcoes]
+    return [n.lineno for a in alvos for n in ast.walk(a) if isinstance(n, ast.Constant)
+            and isinstance(n.value, (int, float)) and not isinstance(n.value, bool) and float(n.value) == float(valor)]
+
+
+def test_g8_a_base_do_volume_do_canal_so_vem_da_config():
+    """🔴 SPEC-133-A F0 (ordem do Founder: teste controlado, desligável): a base de "Fiz N Cotações" mora SÓ em
+    `canal.volume.base`. O varredor comum não a vê (100 é genérico); este procura O VALOR DELA nas funções do volume da
+    proposta e na mensagem inteira — e fica VERMELHO com a base escrita à mão no lugar da leitura da config."""
+    base = CFG.PADRAO_DO_PRODUTO["canal"]["volume"]["base"]
+    assert base > 0
+    proposta = (SERVICO / "proposta.py").read_text(encoding="utf-8")
+    funcoes = {"volume_do_canal", "resumo_do_volume"}
+    assert _constantes_iguais(proposta, base, funcoes) == []                       # controle: a de hoje passa
+    assert _constantes_iguais((SERVICO / "mensagem.py").read_text(encoding="utf-8"), base) == []
+    alvo = 'base = int(((cfg.get("canal") or {}).get("volume") or {}).get("base") or 0)'
+    assert proposta.count(alvo) == 1
+    assert len(_constantes_iguais(proposta.replace(alvo, f"base = {base}"), base, funcoes)) == 1   # a mutação
 
 
 # =====================================================================================================================
