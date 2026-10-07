@@ -120,6 +120,13 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         # resultado e lembretes contam).
         "limite_cotacoes_por_dia": 3,
         "teto_mensagens_por_dia": 60,
+        # SPEC-133-A (conserto B2) — quanto tempo a pessoa pode ficar em "calculando" com o run vivo 💭: passou disso
+        # sem resultado, a conversa SAI (etapa `falhou`, as respostas somem, UMA frase honesta). O run do canal tem
+        # teto de acompanhamento de 11 min (`canal/workflows.TETO_DO_ACOMPANHAMENTO_S`) + publicar e mandar.
+        "tempo_max_calculando_min": 20,
+        # SPEC-133-A (conserto 7) — a conversa parada há mais que isto 💭 tem as respostas apagadas no próximo acesso
+        # (o registro do consentimento, append-only em `canal_consentimentos`, fica).
+        "retencao_conversa_dias": 30,
         # SPEC-133-A (costura) — a RESERVA do número da conversa do canal (o "Quero fechar" da página volta para ele).
         # O primeiro é SEMPRE o da integração ativa do canal (`canal.envio.numero_do_canal`); vazio = sem reserva.
         "whatsapp": "",

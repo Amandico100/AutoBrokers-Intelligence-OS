@@ -6,7 +6,11 @@ primeiro pela REGRA (placa antiga/Mercosul, CEP de 8 dígitos, CPF com dígito v
 régua). Só a resposta LIVRE que a regra não entende vai ao MODELO, pelo papel `canal_cotacao` do Model Router
 (`llm_factory.invocar_com_reserva` — nenhum cliente de LLM novo), e o que o modelo devolve é RECONFERIDO pela mesma
 regra. Modelo fora, lento ou inventando → a conversa pergunta de novo; nunca inventa. CPF, placa, CEP, nome e datas
-NUNCA vão ao modelo (só regra).
+NUNCA vão ao modelo (só regra) — e o que a pessoa escreve de solto numa etapa com modelo passa ANTES pela máscara
+(`mascarar_para_o_modelo`: 8+ dígitos, placa, CEP, data e e-mail viram marcadores), DENTRO de `entender`, o único
+caminho até o modelo. O CONSENTIMENTO é só regra: antes do "sim", nada vai ao modelo (conserto B1, 07/10).
+🔴 MÍDIA NUNCA É RESPOSTA, em etapa nenhuma (conserto B1): num documento a "fala" é o CONTEÚDO extraído do PDF (a
+apólice, com nome, CPF e endereço). Guarda só a referência (depois do "sim"), agradece e repete a pergunta da etapa.
 
     responder(db, company_id, telefone_e164, texto, midia, estado, *, config) → Resposta(baloes, estado, disparar)
 
@@ -41,6 +45,11 @@ SERVICE_TYPE = "canal_cotacao"
 TETO_DO_MODELO_S = 8.0
 MAX_TENTATIVAS = 3
 VERSAO_DO_ESTADO = 1
+#: conversão de unidade (não é número comercial — a varredura G8 olha `responder`/`_responder`): os tetos de tempo
+#: vêm da config em minutos/dias
+SEGUNDOS_POR_MINUTO = 60
+SEGUNDOS_POR_DIA = 86400
+_CORTE_DO_LOG = 30
 NOME_PADRAO_DO_CANAL = "Quem Cobra Menos"   # só se a config não trouxer `canal.nome` (D-MC-55: é config, não constante)
 
 #: 📊 `tests/fixtures/agger/*.json` (gravações R1/R2 + vivo_conta_a/b, 07/10): estadoCivil 2 em 32 de 47 corpos com
@@ -255,6 +264,28 @@ _INSTRUCAO = (
     "fora_do_escopo = true só quando a pessoa pede outra coisa (sinistro, falar com alguém, outro seguro).")
 
 
+#: conserto B1 — o que nunca chega ao modelo, nem dentro de uma resposta livre. A ORDEM importa: e-mail antes dos
+#: números (um e-mail pode ter dígitos), placa antes dos números (a placa tem 4 dígitos), sequências de 8+ dígitos com
+#: ou sem separador (CPF 11, celular 10–13, cartão 16, CEP 8) antes do CEP com traço e da data.
+#: 🔴 Por que 8 e não 11: nenhuma resposta que vai ao modelo tem 8 dígitos (km ≤ 20.000 → 5; prêmio ≤ 60.000,00 → 7;
+#: anos de carteira ≤ 80 → 2); um CEP ou um celular sem DDD têm 8 — a régua mais larga só pega dado pessoal.
+_MASCARAS = (
+    (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "[EMAIL]"),
+    (re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{3}[\s-]?\d[A-Za-z0-9]\d{2}(?![A-Za-z0-9])"), "[PLACA]"),
+    (re.compile(r"(?<!\d)\d(?:[\s.,\-/()]{0,2}\d){7,}(?!\d)"), "[NUMERO]"),
+    (re.compile(r"(?<!\d)\d{5}-\d{3}(?!\d)"), "[CEP]"),
+    (re.compile(r"(?<!\d)\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}(?!\d)"), "[DATA]"),
+)
+
+
+def mascarar_para_o_modelo(texto: Any) -> str:
+    """A fala SEM dado pessoal (CPF, telefone, cartão, placa, CEP, data, e-mail) — o que pode ir ao modelo."""
+    t = str(texto or "")
+    for padrao, marcador in _MASCARAS:
+        t = padrao.sub(marcador, t)
+    return t
+
+
 def _objeto_json(texto: str) -> Optional[dict]:
     m = re.search(r"\{.*\}", str(texto or ""), re.S)
     if not m:
@@ -274,9 +305,11 @@ async def _chamar_o_papel(mensagens: list, company_id: str) -> Any:
 
 async def entender(tipo: str, pergunta: str, texto: str, *, company_id: str, llm: Any = None) -> Optional[dict]:
     """{"valor", "fora_do_escopo"} ou None (modelo fora, lento, ou saída inválida). Nunca levanta."""
+    # 🔴 conserto B1: a máscara ANTES do corte (cortar primeiro poderia partir um CPF e deixar 9 dígitos à mostra)
     mensagens = [{"role": "system", "content": _INSTRUCAO},
                  {"role": "user", "content": json.dumps({"tipo": tipo, "pergunta": pergunta,
-                                                          "resposta": str(texto or "")[:300]}, ensure_ascii=False)}]
+                                                          "resposta": mascarar_para_o_modelo(texto)[:300]},
+                                                         ensure_ascii=False)}]
     try:
         chamada = llm.ainvoke(mensagens) if llm is not None else _chamar_o_papel(mensagens, company_id)
         resposta = await asyncio.wait_for(chamada, timeout=TETO_DO_MODELO_S)
@@ -358,7 +391,32 @@ async def _registrar_consentimento(db: Any, company_id: str, telefone: str, acei
 # =====================================================================================================================
 #: as etapas em que a próxima fala RECOMEÇA a conversa do zero (a apresentação). A ENTRADA (F1) usa a mesma lista para
 #: saber quem está COMEÇANDO uma conversa (o portão do limite do dia) — uma lista só (`abre_conversa_nova`).
-ETAPAS_DE_RECOMECO = ("recusou", "encerrado", "falhou", "sem_preco")
+ETAPAS_DE_RECOMECO = ("recusou", "encerrado", "falhou", "sem_preco", "parou")
+#: conserto B2 — a frase de quando a cotação começou e NÃO terminou (o run desistiu, ou passou o teto de "calculando")
+FRASE_NAO_TERMINOU = "Não consegui terminar a cotação agora. Se quiser tentar de novo, é só mandar *nova cotação*."
+#: conserto 7 — a palavra de saída: apaga as respostas, confirma em UMA frase e cancela os lembretes
+FRASE_PAROU = ("Pronto, parei por aqui e apaguei as suas respostas. Se um dia quiser cotar de novo, é só mandar "
+               "um oi.")
+#: a frase inteira é a palavra (curta e ambígua dentro de uma resposta: "uso pra sair no fim de semana" não é saída)
+_SAIR_SOZINHO = re.compile(r"^(parar|para|pare|sair|sai|stop|chega|cancela|cancelar|encerrar|encerra)[.! ]*$")
+#: o pedido explícito vale em qualquer lugar da frase
+_SAIR_NA_FRASE = re.compile(r"\b(desisto|quero desistir|apag(a|ar|ue|uem) (os |todos os )?meus dados|"
+                            r"nao quero mais|para de me mandar|pare de me mandar|me tira da lista)\b")
+#: o que fica de um estado que SAIU (parou, falhou): só o registro do consentimento (o resto é dado da pessoa)
+_FICA_NA_SAIDA = ("versao", "consentimento", "consentimento_em")
+
+
+def quer_sair(texto: Any) -> bool:
+    b = _sem_acento(texto)
+    return bool(_SAIR_SOZINHO.match(b) or _SAIR_NA_FRASE.search(b))
+
+
+def estado_de_saida(est: Mapping[str, Any], etapa: str, **extra: Any) -> Dict[str, Any]:
+    """O estado que SAI: só o consentimento + a etapa (+ o motivo). Respostas, mídias, resultado, nome… somem."""
+    novo = {k: est[k] for k in _FICA_NA_SAIDA if k in (est or {})}
+    novo.setdefault("versao", VERSAO_DO_ESTADO)
+    novo.update({"etapa": etapa, **extra})
+    return novo
 #: as etapas em que a pessoa já tem o resultado (a página) — o botão "Quero fechar" dela ainda vale
 _ETAPAS_COM_RESULTADO = ("resultado", "oferta_passagem", "encerrado")
 
@@ -384,15 +442,62 @@ def abre_conversa_nova(estado: Mapping[str, Any], texto: Any = "") -> bool:
     return str(est.get("etapa") or "") in ("", *ETAPAS_DE_RECOMECO)
 
 
+def _da_config(config: Any, chave: str) -> int:
+    """Um número do canal: a config (já mesclada) ou o padrão do PRODUTO (`PADRAO_DO_PRODUTO["canal"]`, o único lugar
+    do número — G8). Ausente, ilegível ou ≤ 0 → o padrão (um teto zero prenderia ou apagaria tudo na hora)."""
+    from app.services.multicalculo.config import PADRAO_DO_PRODUTO
+
+    canal = (config or {}).get("canal") if isinstance(config, Mapping) else None
+    valor = canal.get(chave) if isinstance(canal, Mapping) else None
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)) or valor <= 0:
+        return int(PADRAO_DO_PRODUTO["canal"][chave])
+    return int(valor)
+
+
+async def _cancelar_o_run(db: Any, company_id: str, est: Mapping[str, Any]) -> None:
+    """Pede o cancelamento do run do canal (lembretes, ou o cálculo que ainda corre). Best-effort, nunca levanta."""
+    if not (est or {}).get("run_id"):
+        return
+    try:
+        from app.services.canal import cotacao
+
+        await asyncio.to_thread(cotacao.cancelar_lembretes, db, company_id, est)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[CANAL] cancelamento do run não pedido (%s)", type(exc).__name__)
+
+
 async def responder(db: Any, company_id: str, telefone_e164: str, texto: str, midia: Optional[dict],
                     estado: dict, *, config: Any = None, llm: Any = None) -> Resposta:
     """Um turno. `estado` é o que `repositorio.carregar_estado` devolveu ({} na 1ª vez); a resposta traz o NOVO estado
     (quem chama salva) e, quando o perfil fecha, `disparar` (quem chama passa a `cotacao.disparar`)."""
     est = copy.deepcopy(estado or {})
+    # 🔴 conserto 7 — RETENÇÃO: conversa parada há mais que `canal.retencao_conversa_dias` perde tudo o que guardava
+    # (respostas, mídias, resultado) neste acesso e recomeça do consentimento
+    if est and str(est.get("etapa") or "") not in ETAPAS_DE_RECOMECO and est.get("atualizado_em") and _passou(
+            est.get("atualizado_em"), _da_config(config, "retencao_conversa_dias") * SEGUNDOS_POR_DIA):
+        est = estado_de_saida(est, "parou", parou_em=_agora_iso(), motivo="retencao")
+    r = await _responder(db, company_id, telefone_e164, texto, midia, est, config=config, llm=llm)
+    if isinstance(r.estado, dict) and str(r.estado.get("etapa") or "") not in ETAPAS_DE_RECOMECO:
+        r.estado["atualizado_em"] = _agora_iso()     # o relógio da retenção (estado de saída não guarda nada)
+    return r
+
+
+async def _responder(db: Any, company_id: str, telefone_e164: str, texto: str, midia: Optional[dict],
+                     est: dict, *, config: Any = None, llm: Any = None) -> Resposta:
     t = str(texto or "").strip()
     baixo = _sem_acento(t)
     nome_canal = _nome_do_canal(config)
     etapa = str(est.get("etapa") or "")
+
+    # 🔴 conserto B1 — MÍDIA NUNCA É RESPOSTA, em etapa nenhuma: o texto (num PDF, o conteúdo da apólice) não vai à
+    # regra, nem ao modelo, nem à palavra de saída, nem ao botão da página
+    if midia:
+        return await _midia_nao_e_resposta(db, company_id, midia, est, nome_canal)
+
+    # 🔴 conserto 7 — a palavra de saída: apaga as respostas (fica o consentimento + o pedido de saída), cancela o run
+    if quer_sair(t):
+        await _cancelar_o_run(db, company_id, est)
+        return Resposta([FRASE_PAROU], estado_de_saida(est, "parou", parou_em=_agora_iso()))
 
     if pede_fechar_pela_pagina(est, t):
         # o botão da página: a passagem direto (vale também depois de um "não" — a pessoa mudou de ideia)
@@ -411,6 +516,16 @@ async def responder(db: Any, company_id: str, telefone_e164: str, texto: str, mi
         return await _no_consentimento(db, company_id, telefone_e164, t, est, nome_canal, llm)
 
     if etapa == "calculando":
+        if _RECOMECAR.search(baixo):
+            # conserto B2: "nova cotação" tira a pessoa de "calculando" SEMPRE (o run antigo é cancelado, e ele não
+            # escreve por cima de uma conversa que não é mais a dele — `workflows._ainda_e_a_conversa`)
+            await _cancelar_o_run(db, company_id, est)
+            return _apresentacao(nome_canal)
+        if est.get("run_id") and _passou(est.get("disparado_em"),
+                                         _da_config(config, "tempo_max_calculando_min") * SEGUNDOS_POR_MINUTO):
+            # conserto B2: o run morreu sem o Work OS avisar (ou demorou além do teto): a conversa SAI, honesta
+            await _cancelar_o_run(db, company_id, est)
+            return Resposta([FRASE_NAO_TERMINOU], estado_de_saida(est, "falhou", falha="teto_de_calculando"))
         if not est.get("run_id") and _passou(est.get("disparado_em"), SEM_DISPARO_APOS_S):
             # o perfil fechou mas a cotação NÃO começou (ex.: o limite do dia barrou o disparo na entrada): a pessoa
             # não fica presa em "calculando" e as respostas (CPF…) não ficam guardadas
@@ -448,7 +563,7 @@ async def responder(db: Any, company_id: str, telefone_e164: str, texto: str, mi
     if etapa in ETAPAS:
         return await _no_roteiro(db, company_id, telefone_e164, t, midia, est, llm)
 
-    logger.warning("[CANAL] etapa desconhecida no estado (%s) — recomeço", etapa[:30])
+    logger.warning("[CANAL] etapa desconhecida no estado (%s) — recomeço", etapa[:_CORTE_DO_LOG])
     return _apresentacao(nome_canal)
 
 
@@ -459,12 +574,26 @@ def _apresentacao(nome_canal: str) -> Resposta:
                      _texto_do_consentimento(nome_canal) + "\n\nPosso seguir? (sim ou não)"], est)
 
 
+def consentimento_pela_regra(texto: Any) -> Optional[bool]:
+    """O sim/não do consentimento SÓ pela regra (conserto B1: antes do "sim" nada vai ao modelo). Além da frase inteira
+    (`sim_nao`), vale a 1ª oração: "sim, pode. meu cpf é …" → sim (o resto não é guardado); "sim, mas não…" → None."""
+    r = sim_nao(texto)
+    if r is not None:
+        return r
+    b = _sem_acento(texto)
+    primeira = re.split(r"[,.;!?\n]", b, maxsplit=1)[0].strip()
+    resto = b[len(primeira):]
+    r = sim_nao(primeira) if primeira else None
+    if r is True and not re.search(r"\b(nao|mas)\b", resto):
+        return True
+    if r is False and not re.search(r"\b(sim|pode)\b", resto):
+        return False
+    return None
+
+
 async def _no_consentimento(db, company_id, telefone, t, est, nome_canal, llm) -> Resposta:
-    resposta = sim_nao(t)
-    if resposta is None and t:
-        lido = await entender("sim_nao", "Posso seguir com a cotação?", t, company_id=company_id, llm=llm)
-        v = (lido or {}).get("valor")
-        resposta = v if isinstance(v, bool) else None
+    # 🔴 conserto B1: SÓ regra — nada do que a pessoa escreve antes do "sim" vai ao modelo; não entendeu, pergunta de novo
+    resposta = consentimento_pela_regra(t)
     if resposta is True:
         await _registrar_consentimento(db, company_id, telefone, True)
         est.update({"etapa": ETAPAS[0], "consentimento": "sim", "consentimento_em": _agora_iso(),
@@ -490,14 +619,7 @@ async def _no_roteiro(db, company_id, telefone, t, midia, est, llm) -> Resposta:
         est.update({"etapa": ETAPAS[0], "respostas": {}, "tentativas": {}})
         return Resposta(["Vamos do começo então.", ROTEIRO[0].pergunta], est)
 
-    if midia:
-        # 🔴 a fala de uma mídia NÃO é resposta: num documento o texto é o CONTEÚDO extraído do PDF (a apólice, com CPF,
-        # nome e endereço — `webhook._handle_evolution_like_inbound`), e ele nunca pode ir à regra nem ao modelo
-        ref = {"tipo": str(midia.get("tipo") or "midia")[:20], "ref": _referencia_da_midia(midia)}
-        if ref["ref"]:
-            est.setdefault("midias", []).append(ref)
-        return Resposta(["Recebi, obrigado! Guardei aqui.", passo.pergunta], est)
-
+    # (mídia nunca chega aqui: o guarda único é `_midia_nao_e_resposta`, no começo de `_responder`)
     if _FORA_DO_ESCOPO.search(baixo):
         return _oferecer_ajuda(est, "fora_do_escopo", voltar_para=etapa)
 
@@ -540,6 +662,41 @@ async def _no_roteiro(db, company_id, telefone, t, midia, est, llm) -> Resposta:
     est["disparado_em"] = _agora_iso()
     return Resposta(["Perfeito, obrigado! Já estou calculando nas seguradoras pelas corretoras parceiras. Leva uns "
                      "minutinhos — te mando o resultado aqui."], est, disparar=perfil)
+
+
+async def _midia_nao_e_resposta(db, company_id, midia: Mapping[str, Any], est: dict, nome_canal: str) -> Resposta:
+    """🔴 Conserto B1 — foto, PDF (apólice) ou áudio NUNCA são resposta, em etapa nenhuma. O texto que veio com a mídia
+    (num documento, o CONTEÚDO extraído — `webhook._handle_evolution_like_inbound`) é DESCARTADO: não vai à regra, ao
+    modelo, à palavra de saída nem à passagem. Depois do "sim" guarda só a REFERÊNCIA; antes, nada. Repete a pergunta."""
+    etapa = str(est.get("etapa") or "")
+    if not etapa or etapa in ETAPAS_DE_RECOMECO:
+        return _apresentacao(nome_canal)
+    if etapa == "consentimento":
+        return Resposta(["Recebi, mas antes de qualquer coisa preciso do seu ok. " + _texto_do_consentimento(nome_canal)
+                         + "\n\nPosso seguir? (sim ou não)"], est)
+    ref = {"tipo": str(midia.get("tipo") or "midia")[:20], "ref": _referencia_da_midia(midia)}
+    guarda = est.get("consentimento") == "sim" and bool(ref["ref"])     # só depois do "sim", e só a referência
+    if guarda:
+        est.setdefault("midias", []).append(ref)
+    agradece = "Recebi, obrigado! Guardei aqui." if guarda else "Recebi, obrigado!"
+    quem = (est.get("resultado") or {}).get("anfitria_nome") or "a corretora"
+    if etapa in ("resultado", "oferta_passagem"):
+        # é uma resposta da pessoa (os lembretes param), mas NÃO é "quero fechar": a pergunta volta, sim ou não
+        est["respondeu_em"] = _agora_iso()
+        await _cancelar_o_run(db, company_id, est)
+        est["etapa"] = "oferta_passagem"
+        return Resposta([agradece, f"Quer que eu peça para alguém da {quem} falar com você? (sim ou não)"], est)
+    if etapa == "calculando":
+        return Resposta([agradece, "Ainda estou calculando nas seguradoras. Assim que ficar pronto, te mando aqui."],
+                        est)
+    if etapa == "passado":
+        return Resposta([agradece, f"Já pedi para {quem} falar com você. Se quiser fazer uma nova cotação, é só "
+                                   "escrever *nova cotação*."], est)
+    if etapa == "oferta_ajuda":
+        return Resposta([agradece, "Quer que eu passe para uma pessoa? Pode responder sim ou não."], est)
+    if etapa in ETAPAS:
+        return Resposta([agradece, _POR_CHAVE[etapa].pergunta], est)
+    return _apresentacao(nome_canal)
 
 
 #: o perfil fechou e nenhum run nasceu depois disto → a cotação não começou

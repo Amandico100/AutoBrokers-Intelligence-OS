@@ -183,7 +183,9 @@ _CAMINHOS_COMERCIAIS = ("comissao", "alvo_abaixo_da_atual_pct", "renovacao", "va
                         # varredura, por isso tem o guarda próprio abaixo
                         "canal.volume",
                         # SPEC-133-A costura — o limite de cotações por número/dia e o teto anti-laço de mensagens
-                        "canal.limite_cotacoes_por_dia", "canal.teto_mensagens_por_dia")
+                        "canal.limite_cotacoes_por_dia", "canal.teto_mensagens_por_dia",
+                        # SPEC-133-A conserto — o teto de "calculando" (B2) e a retenção da conversa (item 7)
+                        "canal.tempo_max_calculando_min", "canal.retencao_conversa_dias")
 #: números genéricos demais para proibir (0, 1, 2 e 100 aparecem em arredondamento, índice, nota máxima)
 _GENERICOS = {0, 1, 2, 100}
 #: o que da porta.py é desta SPEC (o resto da porta é da 129-B e não entra na varredura)
@@ -263,6 +265,24 @@ def test_g8_o_limite_e_o_teto_do_canal_so_vem_da_config():
     assert repo.count(alvo) == 2
     mutado = repo.replace(alvo, f"return _inteiro(_config_do_canal(config).get(chave), {teto})", 1)
     assert len(varrer(mutado, "repositorio.py", so_funcoes=funcoes)) == 1                # a mutação fica vermelha
+
+
+def test_g8_o_teto_de_calculando_e_a_retencao_so_vem_da_config():
+    """SPEC-133-A conserto (B2 · item 7): `tempo_max_calculando_min` e `retencao_conversa_dias` moram SÓ em
+    `PADRAO_DO_PRODUTO["canal"]`; a conversa os lê por `_da_config(config, "<chave>")`. Mutação: o número no lugar da
+    leitura → VERMELHO (a varredura acha o número solto em `_responder`/`responder`)."""
+    canal = BACKEND / "app" / "services" / "canal"
+    teto = CFG.PADRAO_DO_PRODUTO["canal"]["tempo_max_calculando_min"]
+    dias = CFG.PADRAO_DO_PRODUTO["canal"]["retencao_conversa_dias"]
+    assert {float(teto), float(dias)} <= proibidos()
+    fonte = (canal / "conversa.py").read_text(encoding="utf-8")
+    funcoes = {"responder", "_responder", "_da_config"}
+    assert varrer(fonte, "conversa.py", so_funcoes=funcoes) == []                         # controle: a de hoje passa
+    for chave, valor in (("tempo_max_calculando_min", teto), ("retencao_conversa_dias", dias)):
+        alvo = f'_da_config(config, "{chave}")'
+        assert fonte.count(alvo) == 1, chave
+        mutado = fonte.replace(alvo, str(valor), 1)
+        assert len(varrer(mutado, "conversa.py", so_funcoes=funcoes)) == 1, chave       # a mutação fica vermelha
 
 
 def test_g8_um_teto_de_tempo_solto_na_mensagem_fica_vermelho():

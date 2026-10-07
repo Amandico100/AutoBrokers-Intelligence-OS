@@ -89,6 +89,13 @@ class RepoDuble:
     def mascarar(self, telefone):
         return "..." + str(telefone)[-4:]
 
+    # conserto 133-A (item 4): o run confere o convite ANTES de cada lembrete — o dublê responde como a F1 (o convidado
+    # ativo, ou None depois de removido)
+    removidos: set = set()
+
+    def convidado(self, db, company_id, telefone_e164):
+        return None if (company_id, telefone_e164) in self.removidos else {"id": "convidado-ficticio"}
+
 
 class EnvioDuble:
     def __init__(self):
@@ -134,8 +141,9 @@ def canal(monkeypatch):
     mod_repo = types.ModuleType("app.services.canal.repositorio")
     mod_env = types.ModuleType("app.services.canal.envio")
     repo.enviadas = {}
+    repo.removidos = set()
     for nome in ("eh_canal", "registrar_consentimento", "registrar_lead", "carregar_estado", "salvar_estado",
-                 "teto_de_mensagens", "enviadas_hoje", "contar_enviadas", "mascarar"):
+                 "teto_de_mensagens", "enviadas_hoje", "contar_enviadas", "mascarar", "convidado"):
         setattr(mod_repo, nome, getattr(repo, nome))
     mod_env.enviar = envio.enviar
     mod_env.numero_do_canal = envio.numero_do_canal

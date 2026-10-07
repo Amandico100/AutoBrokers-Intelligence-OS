@@ -10,6 +10,11 @@
 
 Registrado por `work.workflows.carregar_extras` (o dono do registro). Efeitos externos (`entregar`, `lembrete_i:enviar`)
 são `externo`: interrompidos no meio NÃO se repetem (EfeitoIncerto) — melhor um lembrete a menos que dois iguais.
+
+🔴 Conserto B2 (07/10) — o run que DESISTE devolve a conversa: `ao_desistir` (o gancho do Work OS para run expirado ou
+efeito incerto) e qualquer erro do próprio run chamam `desistir_da_cotacao` → a conversa vai a `falhou`, perde o que
+guardava e a pessoa recebe UMA frase honesta (`conversa.FRASE_NAO_TERMINOU`). E o run nunca escreve por cima de uma
+conversa que não é mais a dele (`_ainda_e_a_conversa`: a pessoa recomeçou, parou, ou o teto a tirou de "calculando").
 """
 from __future__ import annotations
 
@@ -43,13 +48,19 @@ def _fuso():
         return timezone(timedelta(hours=-3))
 
 
+#: conserto 5 (decisão do gerente, nota 80): lembrete só de segunda a sábado — domingo empurra para segunda
+DIA_SEM_LEMBRETE = 6   # `datetime.weekday()`: segunda 0 … domingo 6
+
+
 def no_horario_comercial(instante: datetime, horario: Mapping[str, Any]) -> datetime:
-    """O instante, ou o próximo início do horário comercial (hora local de Brasília)."""
+    """O instante, ou o próximo início do horário comercial (hora local de Brasília), de segunda a sábado."""
     inicio, fim = int(horario.get("inicio_h", 9)), int(horario.get("fim_h", 20))
     local = instante.astimezone(_fuso())
     if local.hour < inicio:
         local = local.replace(hour=inicio, minute=0, second=0, microsecond=0)
     elif local.hour >= fim:
+        local = (local + timedelta(days=1)).replace(hour=inicio, minute=0, second=0, microsecond=0)
+    if local.weekday() == DIA_SEM_LEMBRETE:
         local = (local + timedelta(days=1)).replace(hour=inicio, minute=0, second=0, microsecond=0)
     return local.astimezone(timezone.utc)
 
@@ -125,8 +136,85 @@ def _anfitria_do_artefato(db: Any, company_id: str, artifact_id: str) -> Dict[st
     return saida
 
 
-@registrar_workflow(WORKFLOW_KEY, idade_maxima_s=3 * 86400)
+def _ainda_e_a_conversa(est: Mapping[str, Any], pedido_id: str) -> bool:
+    """A conversa ainda espera ESTE cálculo? (a pessoa não recomeçou, não parou, o teto não a tirou de "calculando")"""
+    return str((est or {}).get("pedido_id") or "") == pedido_id and (est or {}).get("etapa") == "calculando"
+
+
+async def desistir_da_cotacao(db: Any, company_id: str, payload: Mapping[str, Any], motivo: str) -> bool:
+    """🔴 Conserto B2 — o run do canal não vai entregar: a conversa SAI de "calculando" (etapa `falhou`, só o
+    consentimento fica) e a pessoa recebe UMA frase honesta, que conta no teto do dia. Só mexe se a conversa ainda é a
+    deste cálculo (não pisa numa conversa nova, num "parar" ou num resultado já entregue). Nunca levanta."""
+    from app.services.canal import repositorio
+    from app.services.canal.conversa import FRASE_NAO_TERMINOU, estado_de_saida
+    from app.services.canal.cotacao import decifrar_contato
+
+    db = getattr(db, "client", db)
+    try:
+        pedido_id = str((payload or {}).get("pedido_id") or "")
+        telefone = str(decifrar_contato(str((payload or {}).get("contato") or "")).get("telefone") or "")
+        if not pedido_id or not telefone:
+            return False
+        est = await asyncio.to_thread(repositorio.carregar_estado, db, company_id, telefone)
+        if not _ainda_e_a_conversa(est, pedido_id):
+            return False
+        await asyncio.to_thread(repositorio.salvar_estado, db, company_id, telefone,
+                                estado_de_saida(est, "falhou", falha="run_desistiu"))
+        await _enviar_e_contar(db, company_id, telefone, [FRASE_NAO_TERMINOU], respeitar_teto=False)
+        logger.warning("[CANAL] a cotação de %s não terminou (%s) — a pessoa foi avisada",
+                       repositorio.mascarar(telefone), str(motivo or "")[:80])
+        return True
+    except Exception as exc:  # noqa: BLE001 — o teto de "calculando" da conversa é a 2ª rede
+        logger.warning("[CANAL] desistência do run não aplicada (%s)", type(exc).__name__)
+        return False
+
+
+#: as tarefas lançadas pelo gancho síncrono (referência forte: o laço não as perde para o coletor)
+_DESISTENCIAS: set = set()
+
+
+def _canal_desistiu(db: Any, run: dict, motivo: str) -> None:
+    """`ao_desistir(db, run, motivo)` do `canal.cotacao` — o Work OS desistiu (expirou ou efeito incerto). O gancho é
+    SÍNCRONO (o worker e o despertador o chamam assim); a desistência manda mensagem (assíncrona): dentro de um laço
+    vira tarefa, fora dele roda até o fim. Nunca levanta."""
+    run_id, company_id = str((run or {}).get("id") or ""), str((run or {}).get("company_id") or "")
+    if not run_id or not company_id:
+        return
+    try:
+        cliente = getattr(db, "client", db)
+        r = (cliente.table("work_runs").select("id, company_id, input_payload").eq("id", run_id)
+             .eq("company_id", company_id).limit(1).execute())
+        payload = dict(((getattr(r, "data", None) or [{}])[0] or {}).get("input_payload") or {})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[CANAL] entrada do run ilegível na desistência (%s)", type(exc).__name__)
+        return
+    coro = desistir_da_cotacao(db, company_id, payload, motivo)
+    try:
+        laco = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)
+        return
+    tarefa = laco.create_task(coro)
+    _DESISTENCIAS.add(tarefa)
+    tarefa.add_done_callback(_DESISTENCIAS.discard)
+
+
+@registrar_workflow(WORKFLOW_KEY, idade_maxima_s=3 * 86400, ao_desistir=_canal_desistiu)
 async def workflow_canal_cotacao(ctx: dict) -> Any:
+    """O run. Erro do próprio run (porta, publicar, banco) → a conversa é devolvida ANTES de o erro subir ao worker
+    (que marca `failed` sem chamar o gancho). Efeito incerto / etapa não verificada são do worker (ele chama o gancho);
+    o cancelamento (`CancelamentoPedido`) não é desistência — é a pessoa que respondeu ou recomeçou."""
+    _R = _runs_mod()
+    try:
+        return await _cotacao(ctx)
+    except (_R.EfeitoIncerto, _R.EtapaNaoVerificada):
+        raise
+    except Exception as exc:  # noqa: BLE001
+        await desistir_da_cotacao(ctx["db"], str(ctx["company_id"]), ctx.get("payload") or {}, type(exc).__name__)
+        raise
+
+
+async def _cotacao(ctx: dict) -> Any:
     from app.services.canal import envio, repositorio
     from app.services.canal.cotacao import _porta, decifrar_contato
 
@@ -159,6 +247,11 @@ async def workflow_canal_cotacao(ctx: dict) -> Any:
     async def _entregar() -> dict:
         from app.services.multicalculo.proposta import SemCanalDeFechamento, publicar_proposta
 
+        # 🔴 conserto B2: a conversa ainda espera ESTE cálculo? Se a pessoa recomeçou, parou ou o teto a tirou de
+        # "calculando", o run não publica, não manda e não escreve por cima
+        if not _ainda_e_a_conversa(await asyncio.to_thread(repositorio.carregar_estado, db, company_id, telefone),
+                                   pedido_id):
+            return {"situacao": "abandonada", "enviados": 0}
         if (r1 or {}).get("situacao") != "com_preco":
             n = await _enviar_e_contar(db, company_id, telefone, [
                 "Não consegui preço nas seguradoras desta vez. Isso acontece quando elas estão fora do ar ou pedem "
@@ -193,12 +286,17 @@ async def workflow_canal_cotacao(ctx: dict) -> Any:
     r2 = await executar_passo(ctx, step_key="entregar", ordinal=2, nome="Publicar a proposta e mandar no WhatsApp",
                               step_type="tool", fn=_entregar, efeito="externo",
                               guardar=("situacao", "artifact_id", "versao", "enviados"))
+    if (r2 or {}).get("situacao") == "abandonada":
+        return "A conversa não espera mais este cálculo (a pessoa recomeçou, parou ou o teto a tirou): nada saiu."
     if (r2 or {}).get("situacao") != "entregue":
         return "A cotação terminou sem preço; a pessoa foi avisada."
 
     # ③ até 2 lembretes — dormem no Work OS; a resposta da pessoa (estado) os cancela
     fu = await asyncio.to_thread(_follow_up, db, company_id)
-    quantos = max(0, min(MAX_LEMBRETES, int(fu.get("max_sem_resposta") or MAX_LEMBRETES)))
+    # conserto 3: `max_sem_resposta: 0` DESLIGA os lembretes (antes `0 or 2` dava 2); ausente/ilegível = o teto
+    pedido = fu.get("max_sem_resposta")
+    quantos = MAX_LEMBRETES if pedido is None or isinstance(pedido, bool) or not isinstance(pedido, (int, float)) \
+        else max(0, min(MAX_LEMBRETES, int(pedido)))
     horario = dict(fu.get("horario_comercial") or {})
     atrasos = [timedelta(minutes=float(fu.get("primeiro_apos_min") or 15)),
                timedelta(hours=float(fu.get("segundo_apos_h") or 24))]
@@ -235,9 +333,21 @@ async def workflow_canal_cotacao(ctx: dict) -> Any:
                 return {"enviado": False, "motivo": "respondeu"}
             if int(est.get("lembretes") or 0) >= min(i, MAX_LEMBRETES):
                 return {"enviado": False, "motivo": "ja_enviado"}
+            # 🔴 conserto 4: o número AINDA é convidado? (o Founder pode tê-lo removido depois do resultado) — sem ler
+            # o convite, o lembrete (cortesia) cala
+            try:
+                ainda = await asyncio.to_thread(repositorio.convidado, db, company_id, telefone)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[CANAL] convite ilegível antes do lembrete (%s) — não sai", type(exc).__name__)
+                ainda = None
+            if ainda is None:
+                return {"enviado": False, "motivo": "nao_convidado"}
             n = await _enviar_e_contar(db, company_id, telefone, [_lembrete(i, est)], respeitar_teto=True)
-            est["lembretes"] = i
-            await asyncio.to_thread(repositorio.salvar_estado, db, company_id, telefone, est)
+            # relê ANTES de gravar e só soma o contador: uma resposta ("quero fechar") que chegou durante o envio fica
+            atual = await asyncio.to_thread(repositorio.carregar_estado, db, company_id, telefone)
+            if str(atual.get("pedido_id") or "") == pedido_id:
+                atual["lembretes"] = max(int(atual.get("lembretes") or 0), i)
+                await asyncio.to_thread(repositorio.salvar_estado, db, company_id, telefone, atual)
             return {"enviado": bool(n), "motivo": "enviado"}
 
         env = await executar_passo(ctx, step_key=f"{ref}:enviar", ordinal=2 + 2 * i, nome=f"Lembrete {i}",

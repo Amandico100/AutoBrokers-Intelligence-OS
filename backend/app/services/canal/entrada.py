@@ -115,6 +115,19 @@ async def turno(db, integration: dict, telefone_e164: str, itens: list[dict]) ->
             return
 
         r = await conversa.responder(db, company_id, tel, texto, midia, estado, config=config)
+        # 🔴 conserto B2 (a corrida): o run do canal pode ter gravado o RESULTADO enquanto este turno pensava. Relê
+        # antes de gravar: se a conversa saiu de "calculando" por fora, o RUN tem precedência — este turno ("ainda
+        # estou calculando") não grava nem manda nada; a pessoa já recebeu o resultado. Fora disso, o contador de
+        # lembretes que o run somou no meio do turno é preservado.
+        atual = await asyncio.to_thread(repo.carregar_estado, db, company_id, tel)
+        if atual != estado:
+            if str((estado or {}).get("etapa") or "") == "calculando" and str(atual.get("etapa") or "") != "calculando":
+                logger.info("[CANAL] o run entregou durante o turno de %s — o run tem precedência",
+                            repo.mascarar(tel))
+                return
+            if atual.get("lembretes") is not None and isinstance(r.estado, dict) and \
+                    str(atual.get("pedido_id") or "") == str(r.estado.get("pedido_id") or ""):
+                r.estado["lembretes"] = max(int(atual.get("lembretes") or 0), int(r.estado.get("lembretes") or 0))
         await asyncio.to_thread(repo.salvar_estado, db, company_id, tel, r.estado)
         baloes = list(r.baloes or [])[: max(0, teto - ja_enviadas)]
         saiu = await envio.enviar(db, company_id, tel, baloes)
@@ -126,7 +139,8 @@ async def turno(db, integration: dict, telefone_e164: str, itens: list[dict]) ->
                 return
             from app.services.canal import cotacao   # F2
 
-            await cotacao.disparar(db, company_id, tel, r.disparar, r.estado)
-            await asyncio.to_thread(repo.contar_cotacao, db, company_id, tel)
+            run_id = await cotacao.disparar(db, company_id, tel, r.disparar, r.estado)
+            if run_id:   # conserto 8: a cotação que NÃO começou ("" — a pessoa foi avisada) não gasta o limite do dia
+                await asyncio.to_thread(repo.contar_cotacao, db, company_id, tel)
     except Exception as erro:  # noqa: BLE001 — o canal cala; o erro vai para o log, sem dado pessoal
         logger.error("[CANAL] turno de %s não concluído (%s)", repo.mascarar(tel), type(erro).__name__)

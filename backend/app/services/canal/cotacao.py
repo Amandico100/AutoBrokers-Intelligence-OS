@@ -70,6 +70,19 @@ def decifrar_contato(token: str) -> Dict[str, Any]:
     return json.loads(portal_vault.decrypt(token))
 
 
+def nome_do_canal(db: Any, company_id: str) -> str:
+    """O nome do canal DA CONFIG (`canal.nome`, D-MC-55) — o mesmo que a conversa usa. Config ilegível → o padrão do
+    produto (`conversa.NOME_PADRAO_DO_CANAL`): um aviso nunca deixa de sair por causa do nome."""
+    from app.services.canal.conversa import _nome_do_canal
+    from app.services.multicalculo import config as CFG
+
+    try:
+        return _nome_do_canal(CFG.carregar(company_id, db=_cliente(db)))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[CANAL] config ilegível para o nome do canal (%s) — fica o padrão", type(exc).__name__)
+        return _nome_do_canal(None)
+
+
 def _porta(db: Any) -> Any:
     from app.services.multicalculo.porta import MulticalculoProvider
     from app.services.multicalculo.repositorio import RepositorioMulticalculo
@@ -101,14 +114,17 @@ async def disparar(db: Any, company_id: str, telefone_e164: str, perfil: dict, e
         estado.update({"etapa": "falhou", "falha": type(exc).__name__})
         estado.pop("respostas", None)
         await asyncio.to_thread(repositorio.salvar_estado, db, company_id, telefone_e164, estado)
-        await envio.enviar(db, company_id, telefone_e164, [FRASE_SEM_COMECAR])
+        saiu = await envio.enviar(db, company_id, telefone_e164, [FRASE_SEM_COMECAR])
+        if saiu:   # conserto 8: o aviso de falha é mensagem nossa — conta no teto do dia
+            await asyncio.to_thread(repositorio.contar_enviadas, db, company_id, telefone_e164, saiu)
         return ""
 
     contato = cifrar_contato({"telefone": telefone_e164, "primeiro_nome": perfil.get("primeiro_nome"),
                               "premio_atual_declarado": perfil.get("premio_atual_declarado")})
     linha = await asyncio.to_thread(
         WorkRunService(_cliente(db)).criar, company_id=company_id, source_type="chat", outcome_type=OUTCOME_TYPE,
-        outcome_title="Cotação do Quem Cobra Menos pelo WhatsApp", workflow_key=WORKFLOW_KEY,
+        outcome_title=f"Cotação do {await asyncio.to_thread(nome_do_canal, db, company_id)} pelo WhatsApp",
+        workflow_key=WORKFLOW_KEY,
         idempotency_key=f"{WORKFLOW_KEY}:{aberto.pedido_id}",
         input_payload={"pedido_id": aberto.pedido_id, "contato": contato},
         source_id=aberto.pedido_id, priority=10, risk_level="high")
@@ -208,7 +224,8 @@ async def passar_para_corretora(db: Any, company_id: str, telefone_e164: str, es
     anfitria = str(res.get("anfitria_id") or "")
     quem = str(res.get("anfitria_nome") or "a corretora")
     nome = (estado or {}).get("primeiro_nome") or "Um cliente"
-    texto = (f"🟢 Quem Cobra Menos — {nome} quer FECHAR o seguro do carro com vocês.\n"
+    canal = await asyncio.to_thread(nome_do_canal, db, company_id)
+    texto = (f"🟢 {canal} — {nome} quer FECHAR o seguro do carro com vocês.\n"
              f"WhatsApp: {telefone_e164}\nProposta: {res.get('url') or '(sem link)'}\n"
              "Fale com a pessoa por esse número — ela já viu o preço e respondeu que quer fechar.")
     avisou = await _avisar(db, anfitria, texto, "canal: quer fechar") if anfitria else False
@@ -229,5 +246,6 @@ async def pedir_ajuda_humana(db: Any, company_id: str, telefone_e164: str, estad
                              motivo: str) -> bool:
     """Fora do escopo antes do resultado: avisa o suporte do PRÓPRIO canal (sem CPF — só o motivo e o contato)."""
     nome = (estado or {}).get("primeiro_nome") or "Uma pessoa"
-    texto = (f"Quem Cobra Menos — {nome} pediu para falar com alguém ({motivo}).\nWhatsApp: {telefone_e164}")
+    canal = await asyncio.to_thread(nome_do_canal, db, company_id)
+    texto = f"{canal} — {nome} pediu para falar com alguém ({motivo}).\nWhatsApp: {telefone_e164}"
     return await _avisar(db, company_id, texto, f"canal: {motivo}"[:60])

@@ -2915,6 +2915,24 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
         _chave = (env.get("data") or {}).get("key") or {}
         if _chave.get("fromMe") or str(_chave.get("remoteJid") or "").endswith("@g.us"):
             return {"status": "ignored", "reason": "canal_from_me_ou_grupo"}
+        # 🔴 SPEC-133-A conserto 6 — o PORTÃO DO CONVITE (e o anti-laço) ANTES da mídia: a foto/apólice de quem não foi
+        # convidado (ou da linha de uma corretora) não é baixada, nem gravada no storage, nem lida. O telefone é o do
+        # MESMO normalizador do pipeline; o turno (`canal.entrada.turno`) confere de novo (o cinto). Erro → cala.
+        _norm = normalize_evolution_inbound(env)
+        if not _norm.get("skip"):
+            try:
+                from app.services.canal import repositorio as _repo_canal
+
+                _cid_canal = str(integration.get("company_id") or "")
+                _tel_canal = _repo_canal.canonico(_norm.get("phone"))
+                _pode = bool(_tel_canal) and not await asyncio.to_thread(
+                    _repo_canal.numero_de_corretora, supabase.client, _tel_canal) and await asyncio.to_thread(
+                    _repo_canal.convidado, supabase.client, _cid_canal, _tel_canal) is not None
+            except Exception as e:  # noqa: BLE001 — sem conferir o convite, o canal cala (fail-closed)
+                logger.error(f"[WEBHOOK EVOLUTION-GO] convite do canal não conferido: {type(e).__name__}")
+                _pode = False
+            if not _pode:
+                return {"status": "ignored", "reason": "canal_nao_convidado"}
         return await _handle_evolution_like_inbound(integration, env, background_tasks, "evolution-go")
 
     # SPEC-EXTRA-001 §4 — ANTES do tap, porque o tap CONSOME (📊 4/4 agentes
