@@ -51,17 +51,11 @@ def _texto_e_midia(itens: List[Dict[str, Any]]) -> Tuple[str, Optional[Dict[str,
     return "\n".join(partes), midia
 
 
-#: as etapas em que a conversa da F2 RECOMEÇA do zero (`conversa.responder`: "not etapa or etapa in (…)"). A F2 pode
-#: expor `conversa.ETAPAS_DE_RECOMECO`; sem ela vale esta cópia — costura: as duas listas não podem divergir.
-_ETAPAS_DE_RECOMECO = ("recusou", "encerrado", "falhou", "sem_preco")
-
-
-def _comecando(estado: Dict[str, Any], conversa: Any) -> bool:
-    """A próxima fala abre uma conversa NOVA (o portão do limite vale)? Estado vazio ou etapa de recomeço."""
-    if not estado:
-        return True
-    etapas = getattr(conversa, "ETAPAS_DE_RECOMECO", None) or _ETAPAS_DE_RECOMECO
-    return str(estado.get("etapa") or "") in ("", *etapas)
+def _comecando(estado: Dict[str, Any], conversa: Any, texto: str) -> bool:
+    """A próxima fala abre uma conversa NOVA (o portão do limite vale)? A regra é UMA, da conversa (F2):
+    `conversa.abre_conversa_nova` — estado vazio ou etapa de recomeço (`conversa.ETAPAS_DE_RECOMECO`), salvo o
+    botão "Quero fechar" da página (a passagem nunca esbarra no limite do dia)."""
+    return bool(conversa.abre_conversa_nova(estado, texto))
 
 
 def _carregar_config(db, company_id: str) -> Dict[str, Any]:
@@ -109,7 +103,8 @@ async def turno(db, integration: dict, telefone_e164: str, itens: list[dict]) ->
 
         # ④ o limite de cotações vale para quem COMEÇA uma conversa; quem está no meio de uma — a pergunta final, o
         #    "quero fechar" — continua. O 2º portão é antes de disparar (abaixo).
-        if _comecando(estado, conversa) and not await asyncio.to_thread(
+        texto, midia = _texto_e_midia(itens)
+        if _comecando(estado, conversa, texto) and not await asyncio.to_thread(
                 repo.dentro_do_limite, db, company_id, tel, config):
             await _avisar_do_limite(db, company_id, tel, teto)
             return
@@ -119,7 +114,6 @@ async def turno(db, integration: dict, telefone_e164: str, itens: list[dict]) ->
             logger.warning("[CANAL] teto de %d mensagens/dia atingido com %s — o canal cala", teto, repo.mascarar(tel))
             return
 
-        texto, midia = _texto_e_midia(itens)
         r = await conversa.responder(db, company_id, tel, texto, midia, estado, config=config)
         await asyncio.to_thread(repo.salvar_estado, db, company_id, tel, r.estado)
         baloes = list(r.baloes or [])[: max(0, teto - ja_enviadas)]

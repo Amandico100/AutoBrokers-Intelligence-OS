@@ -417,6 +417,10 @@ def mundo(monkeypatch):
     conversa, cotacao = ConversaFalsa(), CotacaoFalsa()
     mod_conversa = types.ModuleType("app.services.canal.conversa")
     mod_conversa.responder, mod_conversa.Resposta = conversa.responder, Resposta
+    # a regra de "quem está começando" é UMA, da conversa real (F2) — a entrada não tem cópia (costura 133-A)
+    from app.services.canal.conversa import abre_conversa_nova as _abre
+
+    mod_conversa.abre_conversa_nova = _abre
     mod_cotacao = types.ModuleType("app.services.canal.cotacao")
     mod_cotacao.disparar = cotacao.disparar
     monkeypatch.setitem(sys.modules, "app.services.canal.conversa", mod_conversa)
@@ -544,7 +548,7 @@ def test_conversa_encerrada_acima_do_limite_recebe_o_aviso(mundo):
 def test_o_teto_de_mensagens_cala(mundo):
     mundo.banco.dados["canal_conversas"] = [{"company_id": CANAL, "telefone": CONVIDADO, "estado_cifrado": None,
                                             "cotacoes_dia": None, "cotacoes_no_dia": 0, "enviadas_dia": mundo.repo.hoje(),
-                                            "enviadas_no_dia": mundo.repo.TETO_MENSAGENS_PADRAO,
+                                            "enviadas_no_dia": mundo.repo.teto_de_mensagens(None),
                                             "aviso_limite_dia": None}]
     mundo.postar(evento())
     mundo.drenar()

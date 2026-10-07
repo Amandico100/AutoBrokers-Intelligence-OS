@@ -174,6 +174,12 @@ def test_J_B1_sem_whatsapp_nenhuma_frase_do_html_servido_promete_whatsapp(monkey
     controle = _servido(m, _publicar(m)["token"])
     assert "whatsapp" in texto_visivel(controle).lower()
     _sem_whatsapp(m, anf)
+    if solicitante == "canal":
+        # SPEC-133-A (D-133A-13): no canal o "Quero fechar" volta à CONVERSA do canal — o canal sem número é o caso
+        _sem_whatsapp(m, m.canal)
+        for i in m.banco.linhas("integrations"):
+            if i["company_id"] == m.canal:
+                i["is_active"] = False
     r = _publicar(m, permitir_sem_whatsapp=True)
     doc = _servido(m, r["token"])
     assert "whatsapp" not in texto_visivel(doc).lower()

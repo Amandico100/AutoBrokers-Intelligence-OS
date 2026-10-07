@@ -75,6 +75,37 @@ def _lembrete(i: int, estado: Mapping[str, Any]) -> str:
     return f"Passando só pra lembrar:{fim} Se fizer sentido pra você, me responde. Se não, tudo bem também!"
 
 
+async def _enviar_e_contar(db: Any, company_id: str, telefone: str, baloes: list, *, respeitar_teto: bool) -> int:
+    """O envio do run conta no MESMO teto do dia que a entrada usa (`repositorio.contar_enviadas`): o resultado e os
+    lembretes são mensagens nossas. `respeitar_teto=True` (lembrete — cortesia): no teto, cala. O resultado sai mesmo
+    no teto (a pessoa pediu a cotação e está esperando) — mas conta."""
+    from app.services.canal import envio, repositorio
+
+    if respeitar_teto:
+        try:
+            teto = repositorio.teto_de_mensagens(await asyncio.to_thread(_config_do_canal, db, company_id))
+            if await asyncio.to_thread(repositorio.enviadas_hoje, db, company_id, telefone) >= teto:
+                logger.warning("[CANAL] teto do dia atingido com %s — o lembrete não sai",
+                               repositorio.mascarar(telefone))
+                return 0
+        except Exception as exc:  # noqa: BLE001 — sem saber o teto, o lembrete (cortesia) cala
+            logger.warning("[CANAL] teto do dia ilegível (%s) — o lembrete não sai", type(exc).__name__)
+            return 0
+    n = await envio.enviar(db, company_id, telefone, baloes)
+    if n:
+        try:
+            await asyncio.to_thread(repositorio.contar_enviadas, db, company_id, telefone, n)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[CANAL] contagem do dia não gravada (%s)", type(exc).__name__)
+    return n
+
+
+def _config_do_canal(db: Any, company_id: str) -> Dict[str, Any]:
+    from app.services.multicalculo import config as CFG
+
+    return CFG.carregar(company_id, db=db)
+
+
 def _anfitria_do_artefato(db: Any, company_id: str, artifact_id: str) -> Dict[str, Any]:
     """Quem é a anfitriã (a vencedora) da proposta publicada — do assunto e do modelo da versão, com o filtro do canal."""
     saida: Dict[str, Any] = {}
@@ -129,9 +160,9 @@ async def workflow_canal_cotacao(ctx: dict) -> Any:
         from app.services.multicalculo.proposta import SemCanalDeFechamento, publicar_proposta
 
         if (r1 or {}).get("situacao") != "com_preco":
-            n = await envio.enviar(db, company_id, telefone, [
+            n = await _enviar_e_contar(db, company_id, telefone, [
                 "Não consegui preço nas seguradoras desta vez. Isso acontece quando elas estão fora do ar ou pedem "
-                "uma análise a mais. Se quiser tentar de novo mais tarde, é só escrever *nova cotação*."])
+                "uma análise a mais. Se quiser tentar de novo mais tarde, é só escrever *nova cotação*."], respeitar_teto=False)
             est = await asyncio.to_thread(repositorio.carregar_estado, db, company_id, telefone)
             est.update({"etapa": "sem_preco"})
             await asyncio.to_thread(repositorio.salvar_estado, db, company_id, telefone, est)
@@ -142,12 +173,14 @@ async def workflow_canal_cotacao(ctx: dict) -> Any:
         try:
             pub = await publicar_proposta(**kw)
         except SemCanalDeFechamento:
-            # decisão do gerente (piloto, T-125 aberta): publica sem o botão "Quero fechar" e REGISTRA
-            ctx["runs"].evento(company_id, run_id, "canal.sem_whatsapp_da_corretora",
-                               "A corretora vencedora não tem WhatsApp de atendimento cadastrado: a proposta saiu "
-                               "sem o botão \"Quero fechar\" (piloto, T-125).", severity="warning")
+            # decisão do gerente (piloto): publica sem o botão "Quero fechar" e REGISTRA. No canal o botão volta à
+            # CONVERSA do canal (D-133A-13): sem o número pareado do canal (nem a reserva `canal.whatsapp`), não há botão
+            ctx["runs"].evento(company_id, run_id, "canal.sem_botao_quero_fechar",
+                               "O canal não tem número de WhatsApp pareado (nem a reserva canal.whatsapp na config): a "
+                               "proposta saiu sem o botão \"Quero fechar\" — a pessoa ainda fecha respondendo aqui.",
+                               severity="warning")
             pub = await publicar_proposta(**kw, permitir_sem_whatsapp=True)
-        n = await envio.enviar(db, company_id, telefone, list(pub["mensagem"]))
+        n = await _enviar_e_contar(db, company_id, telefone, list(pub["mensagem"]), respeitar_teto=False)
         anf = await asyncio.to_thread(_anfitria_do_artefato, db, company_id, str(pub["artifact_id"]))
         est = await asyncio.to_thread(repositorio.carregar_estado, db, company_id, telefone)
         est.update({"etapa": "resultado", "respondeu_em": None, "lembretes": 0,
@@ -202,7 +235,7 @@ async def workflow_canal_cotacao(ctx: dict) -> Any:
                 return {"enviado": False, "motivo": "respondeu"}
             if int(est.get("lembretes") or 0) >= min(i, MAX_LEMBRETES):
                 return {"enviado": False, "motivo": "ja_enviado"}
-            n = await envio.enviar(db, company_id, telefone, [_lembrete(i, est)])
+            n = await _enviar_e_contar(db, company_id, telefone, [_lembrete(i, est)], respeitar_teto=True)
             est["lembretes"] = i
             await asyncio.to_thread(repositorio.salvar_estado, db, company_id, telefone, est)
             return {"enviado": bool(n), "motivo": "enviado"}

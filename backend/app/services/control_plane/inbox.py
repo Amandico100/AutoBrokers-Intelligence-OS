@@ -130,6 +130,7 @@ class CaixaDeEntrada:
             itens += self._aprovacoes_pendentes()
         if "work_runs.read" in permissions:
             itens += self._trabalhos_travados()
+            itens += self._canal_quer_fechar()
         if "research.read" in permissions:
             itens += self._monitores_com_falha()
         if "intelligence.read" in permissions:
@@ -240,6 +241,27 @@ class CaixaDeEntrada:
             metadata={"workflow": l.get("workflow_key"),
                       "erro": l.get("error_code")}) for l in falhos]
         return itens
+
+    def _canal_quer_fechar(self) -> list[ItemDaCaixa]:
+        """SPEC-133-A — a pessoa do canal comparador disse "quero fechar" e a corretora vencedora NÃO foi avisada
+        automaticamente (sem grupo de suporte). Lê a autoridade (`work_events` do run `canal.cotacao`, gravado por
+        `canal.cotacao.registrar_passagem`); só os de `severity='warning'` (os avisados já chegaram ao grupo)."""
+        linhas = self._ler("work_events",
+                           "id, company_id, work_run_id, event_type, severity, message_human, "
+                           "payload_redacted, created_at",
+                           filtros={"event_type": "canal.quer_fechar", "severity": "warning"})
+        return [ItemDaCaixa(
+            fonte="canal_quer_fechar", chave=str(l["id"]),
+            titulo="Cliente do canal quer fechar",
+            detalhe=str(l.get("message_human") or "")[:300],
+            severidade="high", company_id=l.get("company_id"),
+            ocorrido_em=l.get("created_at"), href="/admin/trabalhos",
+            acao_sugerida="Passar o contato à corretora vencedora",
+            permission_para_agir="work_runs.read",
+            # cada pessoa é UM cartão: a "causa" do agrupamento leva o run (não são oito sintomas de uma causa só)
+            metadata={"run": l.get("work_run_id"), "workflow": f"canal.cotacao:{l.get('work_run_id')}",
+                      "corretora": (l.get("payload_redacted") or {}).get("anfitria_company_id")})
+            for l in linhas]
 
     def _monitores_com_falha(self) -> list[ItemDaCaixa]:
         linhas = self._ler("research_monitors",

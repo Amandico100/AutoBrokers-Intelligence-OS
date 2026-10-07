@@ -70,6 +70,25 @@ class RepoDuble:
     def salvar_estado(self, db, company_id, telefone_e164, estado):
         self.estados[(company_id, telefone_e164)] = copy.deepcopy(estado)
 
+    # o teto do dia (costura 133-A: o resultado e os lembretes do run contam nele) — a régua REAL da F1
+    enviadas: dict = {}
+
+    def teto_de_mensagens(self, config):
+        from app.services.multicalculo.config import PADRAO_DO_PRODUTO
+
+        chave = "teto_mensagens_por_dia"
+        return int(((config or {}).get("canal") or {}).get(chave) or PADRAO_DO_PRODUTO["canal"][chave])
+
+    def enviadas_hoje(self, db, company_id, telefone_e164):
+        return self.enviadas.get((company_id, telefone_e164), 0)
+
+    def contar_enviadas(self, db, company_id, telefone_e164, quantas):
+        self.enviadas[(company_id, telefone_e164)] = self.enviadas_hoje(db, company_id, telefone_e164) + quantas
+        return self.enviadas[(company_id, telefone_e164)]
+
+    def mascarar(self, telefone):
+        return "..." + str(telefone)[-4:]
+
 
 class EnvioDuble:
     def __init__(self):
@@ -78,6 +97,14 @@ class EnvioDuble:
     async def enviar(self, db, company_id, telefone_e164, baloes):
         self.enviados.append((company_id, telefone_e164, list(baloes)))
         return len(baloes)
+
+    @staticmethod
+    def numero_do_canal(db, company_id):
+        """O número pareado da integração ATIVA do canal (a régua da F1, sobre o MESMO banco do mundo)."""
+        linhas = getattr(db.table("integrations").select("*").eq("company_id", company_id).eq("is_active", True)
+                         .execute(), "data", None) or []
+        dig = "".join(ch for l in linhas[:1] for ch in str(l.get("paired_phone_e164") or "") if ch.isdigit())
+        return dig or None
 
     def textos(self, telefone=TEL):
         return ["\n".join(b) for (_c, t, b) in self.enviados if t == telefone]
@@ -106,9 +133,12 @@ def canal(monkeypatch):
     repo, envio = RepoDuble(), EnvioDuble()
     mod_repo = types.ModuleType("app.services.canal.repositorio")
     mod_env = types.ModuleType("app.services.canal.envio")
-    for nome in ("eh_canal", "registrar_consentimento", "registrar_lead", "carregar_estado", "salvar_estado"):
+    repo.enviadas = {}
+    for nome in ("eh_canal", "registrar_consentimento", "registrar_lead", "carregar_estado", "salvar_estado",
+                 "teto_de_mensagens", "enviadas_hoje", "contar_enviadas", "mascarar"):
         setattr(mod_repo, nome, getattr(repo, nome))
     mod_env.enviar = envio.enviar
+    mod_env.numero_do_canal = envio.numero_do_canal
     monkeypatch.setitem(sys.modules, "app.services.canal.repositorio", mod_repo)
     monkeypatch.setitem(sys.modules, "app.services.canal.envio", mod_env)
     monkeypatch.setattr(pacote, "repositorio", mod_repo, raising=False)

@@ -181,7 +181,9 @@ _CAMINHOS_COMERCIAIS = ("comissao", "alvo_abaixo_da_atual_pct", "renovacao", "va
                         "canal.tempo_exibido_ate_s",
                         # SPEC-133-A F0 — a base do volume ("Fiz N Cotações"); o padrão (100) é genérico para esta
                         # varredura, por isso tem o guarda próprio abaixo
-                        "canal.volume")
+                        "canal.volume",
+                        # SPEC-133-A costura — o limite de cotações por número/dia e o teto anti-laço de mensagens
+                        "canal.limite_cotacoes_por_dia", "canal.teto_mensagens_por_dia")
 #: números genéricos demais para proibir (0, 1, 2 e 100 aparecem em arredondamento, índice, nota máxima)
 _GENERICOS = {0, 1, 2, 100}
 #: o que da porta.py é desta SPEC (o resto da porta é da 129-B e não entra na varredura)
@@ -243,6 +245,24 @@ def test_g8_controle_a_varredura_acha_o_numero_quando_ele_esta_la():
     assert {15.0, 12.0, 10.0, 5.0, 24.0, 60.0, 25.0} <= proibidos()
     assert {6.0, 20.0} <= proibidos()                     # as chaves novas do canal entram na varredura (130-A.1)
     assert float(CFG.PADRAO_DO_PRODUTO["canal"]["tempo_exibido_ate_s"]) in proibidos()   # D-130A1-14
+
+
+def test_g8_o_limite_e_o_teto_do_canal_so_vem_da_config():
+    """SPEC-133-A costura: `limite_cotacoes_por_dia` e `teto_mensagens_por_dia` moram SÓ em `PADRAO_DO_PRODUTO["canal"]`
+    — a porta de entrada do canal (repositório + entrada) não os escreve à mão. Mutação: o número de volta no lugar
+    da leitura da config → VERMELHO."""
+    canal = BACKEND / "app" / "services" / "canal"
+    limite = CFG.PADRAO_DO_PRODUTO["canal"]["limite_cotacoes_por_dia"]
+    teto = CFG.PADRAO_DO_PRODUTO["canal"]["teto_mensagens_por_dia"]
+    assert {float(limite), float(teto)} <= proibidos()
+    funcoes = {"limite_padrao", "teto_de_mensagens", "dentro_do_limite", "_padrao_do_canal"}
+    repo = (canal / "repositorio.py").read_text(encoding="utf-8")
+    assert varrer(repo, "repositorio.py", so_funcoes=funcoes) == []                      # controle: a de hoje passa
+    assert varrer((canal / "entrada.py").read_text(encoding="utf-8"), "entrada.py") == []
+    alvo = "return _inteiro(_config_do_canal(config).get(chave), _padrao_do_canal(chave))"
+    assert repo.count(alvo) == 2
+    mutado = repo.replace(alvo, f"return _inteiro(_config_do_canal(config).get(chave), {teto})", 1)
+    assert len(varrer(mutado, "repositorio.py", so_funcoes=funcoes)) == 1                # a mutação fica vermelha
 
 
 def test_g8_um_teto_de_tempo_solto_na_mensagem_fica_vermelho():

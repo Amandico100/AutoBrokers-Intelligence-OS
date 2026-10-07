@@ -156,15 +156,31 @@ def test_no_horario_comercial(hora_utc, esperado_utc):
     assert r.hour == esperado_utc and (r >= t)
 
 
-def test_corretora_sem_whatsapp_publica_assim_mesmo_e_registra(mundo, canal):
+def test_canal_sem_numero_publica_assim_mesmo_e_registra(mundo, canal):
+    """Costura 133-A (D-133A-13): o botão da página do canal volta à CONVERSA do canal — quem decide se há botão é o
+    número pareado do CANAL, não o WhatsApp da corretora. Corretora sem WhatsApp + canal pareado = botão; canal sem
+    número = publica sem botão e registra."""
+    m, c = mundo, canal
+    for b in m.banco.linhas("brand_profiles"):
+        if b["company_id"] == m.alfa:
+            b["contact"] = {}
+    for i in m.banco.linhas("integrations"):
+        if i["company_id"] == m.canal:
+            i["is_active"] = False
+    run_id = _ate_o_resultado(m, c)
+    assert "Prontinho" in c.envio.textos()[-1] and "/r/" in c.envio.textos()[-1]
+    eventos = [e for e in m.banco.linhas("work_events") if e.get("work_run_id") == run_id]
+    assert any(e["event_type"] == "canal.sem_botao_quero_fechar" for e in eventos)
+
+
+def test_corretora_sem_whatsapp_com_o_canal_pareado_tem_o_botao(mundo, canal):
     m, c = mundo, canal
     for b in m.banco.linhas("brand_profiles"):
         if b["company_id"] == m.alfa:
             b["contact"] = {}
     run_id = _ate_o_resultado(m, c)
-    assert "Prontinho" in c.envio.textos()[-1] and "/r/" in c.envio.textos()[-1]
     eventos = [e for e in m.banco.linhas("work_events") if e.get("work_run_id") == run_id]
-    assert any(e["event_type"] == "canal.sem_whatsapp_da_corretora" for e in eventos)
+    assert not any(e["event_type"] == "canal.sem_botao_quero_fechar" for e in eventos)
 
 
 def test_dois_telefones_dois_estados_nenhum_cruza(mundo, canal):

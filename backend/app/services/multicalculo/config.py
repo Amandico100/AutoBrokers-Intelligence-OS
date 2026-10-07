@@ -114,6 +114,15 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         # D-130A1-06 — termina com UMA pergunta; sem resposta, até 2 lembretes, nunca mais que isso 💭
         "follow_up": {"primeiro_apos_min": 15, "segundo_apos_h": 24, "max_sem_resposta": 2,
                       "horario_comercial": {"inicio_h": 9, "fim_h": 20}},
+        # SPEC-133-A (F1, costura) — o piloto fechado: quantas cotações um número convidado faz por dia 💭 (o convidado
+        # pode ter `limite_dia` próprio, que vence) e o teto anti-laço de mensagens NOSSAS por conversa por dia 💭 (a
+        # conversa inteira cabe em ~15: consentimento + ~12 perguntas + resultado + pergunta final + 2 lembretes;
+        # resultado e lembretes contam).
+        "limite_cotacoes_por_dia": 3,
+        "teto_mensagens_por_dia": 60,
+        # SPEC-133-A (costura) — a RESERVA do número da conversa do canal (o "Quero fechar" da página volta para ele).
+        # O primeiro é SEMPRE o da integração ativa do canal (`canal.envio.numero_do_canal`); vazio = sem reserva.
+        "whatsapp": "",
     },
 }
 

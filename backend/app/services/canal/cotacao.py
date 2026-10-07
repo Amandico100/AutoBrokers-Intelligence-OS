@@ -157,6 +157,47 @@ async def _avisar(db: Any, company_id: str, texto: str, rotulo: str) -> bool:
         return False
 
 
+#: o evento durável da passagem (Work OS): a caixa do operador (`control_plane.inbox`) o lê — ver `registrar_passagem`
+EVENTO_QUER_FECHAR = "canal.quer_fechar"
+
+
+def registrar_passagem(db: Any, company_id: str, estado: Mapping[str, Any], *, telefone_e164: str, avisou: bool
+                       ) -> bool:
+    """SPEC-133-A costura (item 6) — a passagem fica ESCRITA no Work Run do canal, SEMPRE (avisando ou não o grupo).
+
+    📊 07/10 (SELECT no banco do produto): as 3 integrações ativas são `observer`; das 2 corretoras aderidas ao canal,
+    NENHUMA tem destino ativo em `human_support_destinations` e só 1 autorizou o observador para trabalho de Auxiliar
+    — o `avisar_suporte_humano` (o caminho do grupo) hoje não entrega a nenhuma das duas, e nenhuma tem `contact.whatsapp`
+    na marca publicada. Sem este registro, o "quero fechar" morreria num log. O evento é do CANAL (quem consentiu levar
+    o contato foi a pessoa ao canal; nada é escrito na corretora) e aparece na caixa do operador da plataforma
+    (`control_plane.inbox._canal_quer_fechar`), que passa o lead (`canal_leads`) à vencedora.
+    ⛔ Sem o telefone inteiro no evento (só os 4 últimos): o número mora cifrado no estado e em `canal_leads`."""
+    run_id = str((estado or {}).get("run_id") or "")
+    if not run_id:
+        return False
+    from app.services.canal import repositorio
+    from app.services.work.runs import WorkRunService
+
+    res = dict((estado or {}).get("resultado") or {})
+    quem = str(res.get("anfitria_nome") or "a corretora vencedora")
+    nome = (estado or {}).get("primeiro_nome") or "Uma pessoa"
+    try:
+        WorkRunService(_cliente(db)).evento(
+            company_id, run_id, EVENTO_QUER_FECHAR,
+            (f"{nome} quer fechar com {quem}. "
+             + ("O grupo da corretora foi avisado." if avisou else
+                "A corretora NÃO foi avisada automaticamente (sem grupo de suporte): passe o contato a ela.")),
+            severity="info" if avisou else "warning",
+            payload={"anfitria_company_id": str(res.get("anfitria_id") or ""),
+                     "pedido_id": str((estado or {}).get("pedido_id") or ""),
+                     "telefone_final": repositorio.mascarar(telefone_e164), "avisou_o_grupo": bool(avisou),
+                     "proposta_url": res.get("url")})
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[CANAL] passagem não registrada no run (%s)", type(exc).__name__)
+        return False
+
+
 async def passar_para_corretora(db: Any, company_id: str, telefone_e164: str, estado: Mapping[str, Any]
                                 ) -> List[str]:
     """"Quero fechar" → avisa a VENCEDORA (resumo + link + o telefone, que a pessoa consentiu levar às corretoras) e
@@ -173,6 +214,7 @@ async def passar_para_corretora(db: Any, company_id: str, telefone_e164: str, es
     avisou = await _avisar(db, anfitria, texto, "canal: quer fechar") if anfitria else False
     await asyncio.to_thread(repositorio.registrar_lead, db, company_id, telefone_e164,
                             primeiro_nome=(estado or {}).get("primeiro_nome"), pedido_id=(estado or {}).get("pedido_id"))
+    await asyncio.to_thread(registrar_passagem, db, company_id, estado, telefone_e164=telefone_e164, avisou=avisou)
     if avisou:
         return [f"Ótimo! Avisei a {quem}. Alguém de lá vai falar com você por aqui no WhatsApp."]
     whats = str(res.get("whatsapp") or "")

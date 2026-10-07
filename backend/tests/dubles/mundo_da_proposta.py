@@ -48,6 +48,10 @@ NOME_CANAL = "Canal Comparador Ficticio"
 WHATS_ALFA = "5548999990001"                    # declarado na marca publicada (contact.whatsapp)
 WHATS_BETA_ATENDIMENTO = "+55 48 99999-0002"    # integração de ATENDIMENTO ativa
 WHATS_BETA_OBSERVER = "+55 48 99999-0003"       # integração OBSERVER (o número do observador — não é o da venda)
+#: SPEC-133-A (costura) — o número PAREADO do canal (DDD 00 não existe; sem o 9, como o WhatsApp grava contas antigas):
+#: o "Quero fechar" da página do canal volta para ele (D-133A-13). Os dígitos são o que a página usa.
+PAREADO_DO_CANAL = "+550090000001"
+WHATS_DO_CANAL = "550090000001"
 
 
 def dados_do_canario() -> Dict[str, Any]:
@@ -63,7 +67,7 @@ def _paleta(primaria: str, acento: str) -> Dict[str, Any]:
 
 
 def montar_mundo(monkeypatch, *, solicitante: str = "canal", comissao: Optional[float] = COMISSAO_NO_BANCO,
-                 canal_com_marca: bool = False) -> SimpleNamespace:
+                 canal_com_marca: bool = False, canal_pareado: bool = True) -> SimpleNamespace:
     """O banco com o pedido do canário gravado.
 
     `solicitante="canal"`: o pedido do CANAL nas duas corretoras (o canário real de 05/10).
@@ -108,6 +112,11 @@ def montar_mundo(monkeypatch, *, solicitante: str = "canal", comissao: Optional[
     banco.semear("integrations", {"company_id": beta, "provider": "evolution-go", "purpose": "attendance",
                                   "is_active": True, "channel_status": "connected",
                                   "paired_phone_e164": WHATS_BETA_ATENDIMENTO})
+    if canal_pareado:
+        # SPEC-133-A: o canal pareado no hub (F4) — como o pareamento grava: `purpose='observer'`, conectado
+        banco.semear("integrations", {"company_id": canal, "provider": "evolution-go", "purpose": "observer",
+                                      "is_active": True, "channel_status": "connected",
+                                      "paired_phone_e164": PAREADO_DO_CANAL})
     # a ficha do Google CONFIRMADA só pela Orion (a busca por nome nunca entra — U4)
     banco.semear("multicalculo_config", {"company_id": alfa, "config": {
         "google_confirmado": {"nota": 4.9, "avaliacoes": 37, "data": "06/10/2026", "fonte": "Google, ficha confirmada"}}})

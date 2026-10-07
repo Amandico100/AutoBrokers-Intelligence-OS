@@ -29,8 +29,9 @@ PAUSA_ENTRE_BALOES_S = 0.7
 _PROVEDORES = ("evolution-go", "evolution", "evolution-api", "z-api", "zapi")
 
 
-def integracao_do_canal(db, company_id: str) -> Optional[Dict[str, Any]]:
-    """A integração ATIVA do canal (conectada primeiro), com os segredos decifrados para o envio. Sem ela → None."""
+def _linha_do_canal(db, company_id: str) -> Optional[Dict[str, Any]]:
+    """A linha da integração ATIVA do canal (conectada primeiro), como está no banco. Sem ela → None.
+    A MESMA escolha serve ao envio (`integracao_do_canal`) e ao número da conversa (`numero_do_canal`)."""
     cid = repo._cid(company_id)
     linhas = repo._dados(db.table("integrations").select("*").eq("company_id", cid).eq("is_active", True).execute())
     linhas = [x for x in repo._da_empresa(linhas, cid)
@@ -38,9 +39,32 @@ def integracao_do_canal(db, company_id: str) -> Optional[Dict[str, Any]]:
     if not linhas:
         return None
     linhas.sort(key=lambda x: 0 if str(x.get("channel_status") or "").lower() == "connected" else 1)
+    return linhas[0]
+
+
+def integracao_do_canal(db, company_id: str) -> Optional[Dict[str, Any]]:
+    """A integração ATIVA do canal, com os segredos decifrados para o envio. Sem ela → None."""
+    linha = _linha_do_canal(db, company_id)
+    if not linha:
+        return None
     from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
 
-    return prepare_integration_for_runtime(linhas[0])
+    return prepare_integration_for_runtime(linha)
+
+
+def numero_do_canal(db, company_id: str) -> Optional[str]:
+    """O número da CONVERSA do canal — o `paired_phone_e164` da MESMA integração por onde os balões saem (o "Quero
+    fechar" da página volta para ele). Só dígitos, como o WhatsApp o pareou (é a conta real: não se acrescenta o 9).
+    Empresa que não é o canal, sem integração ativa ou sem número pareado → None. Nunca levanta."""
+    try:
+        if not repo.eh_canal(db, company_id):
+            return None
+        linha = _linha_do_canal(db, company_id)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[CANAL] número do canal ilegível (%s)", type(erro).__name__)
+        return None
+    digitos = "".join(ch for ch in str((linha or {}).get("paired_phone_e164") or "") if ch.isdigit())
+    return digitos if 10 <= len(digitos) <= 15 else None
 
 
 async def enviar(db, company_id: str, telefone_e164: str, baloes: List[str]) -> int:

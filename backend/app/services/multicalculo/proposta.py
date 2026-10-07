@@ -426,6 +426,29 @@ def _whatsapp_da_anfitria(db: Any, company_id: str, marca: Optional[Mapping[str,
     return None
 
 
+def whatsapp_do_canal(db: Any, company_id: str, cfg: Mapping[str, Any]) -> Optional[str]:
+    """SPEC-133-A (costura) — o número da CONVERSA do canal, para onde o "Quero fechar" da página do canal volta:
+    1. o `paired_phone_e164` da integração ATIVA do próprio canal (`canal.envio.numero_do_canal` — a MESMA escolha
+       por onde os balões saem; nunca uma 2ª busca);
+    2. a reserva da config do canal (`canal.whatsapp`).
+    Sem nenhum → None (a página sai sem o botão)."""
+    try:
+        from app.services.canal.envio import numero_do_canal
+
+        dig = numero_do_canal(db, company_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[PROPOSTA] número do canal ilegível: %s", type(exc).__name__)
+        dig = None
+    return dig or _digitos_de_whatsapp((cfg.get("canal") or {}).get("whatsapp"))
+
+
+def numero_do_fechar(modelo: Mapping[str, Any]) -> Optional[str]:
+    """Para onde o "Quero fechar" da página vai: no canal, a conversa do canal (D-133A-13); na carteira, a corretora."""
+    if modelo.get("origem") == "canal":
+        return (modelo.get("canal") or {}).get("whatsapp")
+    return (modelo.get("anfitria") or {}).get("whatsapp")
+
+
 def _site(url: Any) -> Optional[str]:
     m = re.match(r"^\s*(?:https?://)?(?:www\.)?([a-z0-9.-]+\.[a-z]{2,})(?:[/:?#]|\s*$)", str(url or ""), re.I)
     return m.group(1).lower() if m else None
@@ -792,17 +815,20 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
               "melhor_completa": l["melhor_completa"], "vencedora": bool(l["vencedora"])}
              for l in linhas_entre] if comparou_corretoras else None
     whats = anfitria.get("whatsapp")
+    # o "Quero fechar": no canal volta à CONVERSA do canal (o número da integração do canal), nunca à corretora
+    whats_canal = whatsapp_do_canal(db, company_id, cfg_sol) if origem == "canal" else None
+    destino_fechar = whats_canal if origem == "canal" else whats
     nome = _primeiro_nome(primeiro_nome)
     bem = _bem(ofertas_a, ramo)
     ref_curta = pedido_id[:8]
     cta = None
-    if whats:
+    if destino_fechar:
         textos = {}
         for o in opcoes:
             preco = reais_inteiros(o["premio_anual"])
             textos[o["id"]] = (f"Olá!{' Aqui é ' + nome + '.' if nome else ''} Quero fechar a opção {o['rotulo']} "
                                f"({o['seguradora']}, {preco} por ano). Ref. {ref_curta}")
-        cta = {"whatsapp_url": f"https://wa.me/{whats}", "texto_por_opcao": textos}
+        cta = {"whatsapp_url": f"https://wa.me/{destino_fechar}", "texto_por_opcao": textos}
 
     modelo: Dict[str, Any] = {
         "versao_do_contrato": VERSAO_DO_CONTRATO,
@@ -831,9 +857,14 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
         # D-130A-08 REVOGADA (SPEC-130-A.1): "nós não vendemos seguros" — nenhuma remuneração no modelo (G9)
     }
     if origem == "canal":                       # RT-10: o nome do canal é CONFIGURAÇÃO do produto, não constante
-        nome_canal = str((cfg_sol.get("canal") or {}).get("nome") or "").strip()
+        cfg_canal = cfg_sol.get("canal") or {}
+        bloco: Dict[str, Any] = {"tempo_exibido_ate_s": cfg_canal.get("tempo_exibido_ate_s")}
+        nome_canal = str(cfg_canal.get("nome") or "").strip()
         if nome_canal:
-            modelo["canal"] = {"nome": nome_canal}
+            bloco["nome"] = nome_canal
+        if whats_canal:                         # sem número a chave NÃO existe (a página tira o botão)
+            bloco["whatsapp"] = whats_canal
+        modelo["canal"] = bloco
     _sem_comissao(modelo)
     if _contexto is not None:                       # o que `publicar_proposta` precisa e a página não mostra
         _contexto.update({"anfitria_id": anfitria_id, "cfg_sol": cfg_sol, "dias": dias, "hoje": hoje,
@@ -884,7 +915,11 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
     modelo = await montar_proposta(company_id, pedido_id, situacao, apolice_atual, primeiro_nome, db=db, agora=agora,
                                    baixar_logo=baixar_logo, premio_atual_declarado=premio_atual_declarado,
                                    _contexto=ctx)
-    if not (modelo.get("anfitria") or {}).get("whatsapp") and not permitir_sem_whatsapp:
+    if modelo.get("origem") == "canal" and not numero_do_fechar(modelo) and not permitir_sem_whatsapp:
+        raise SemCanalDeFechamento(
+            "o canal não tem número de WhatsApp (nenhuma integração ativa com número pareado, nem a reserva "
+            "`canal.whatsapp` na config): a página sairia sem o botão \"Quero fechar\". Nada foi gravado.")
+    if modelo.get("origem") != "canal" and not numero_do_fechar(modelo) and not permitir_sem_whatsapp:
         quem = (modelo.get("anfitria") or {}).get("nome") or "a corretora anfitriã"
         raise SemCanalDeFechamento(
             f"{quem} não tem WhatsApp de atendimento cadastrado (nem na marca publicada, nem numa integração de "

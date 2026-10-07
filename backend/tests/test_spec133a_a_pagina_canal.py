@@ -49,7 +49,7 @@ from test_spec130a1_a_mensagem_do_canal import (RE_NUMERO_DE_CORRETORAS, lente_c
 from test_spec130a_o_fio import CHROME, texto_visivel  # noqa: E402
 
 BASE = "https://app.exemplo.test"
-WHATS_DO_CANAL = "5547900000001"           # fictício: o número da conversa do canal
+WHATS_DO_CANAL = M.WHATS_DO_CANAL          # fictício: o número da conversa do canal (a integração do canal no mundo)
 CONTRATO = json.loads((BACKEND / "tests" / "fixtures" / "proposta" / "modelo_contrato.json").read_text(encoding="utf-8"))
 #: 📊 07/10/2026 — sha256 do HTML e do PNG da CARTEIRA (o contrato da 130-A) gerados ANTES do diff da F3 (HEAD 098b26c,
 #: `scratchpad/f3-133a/antes`) e iguais depois. A carteira muda só por decisão: quem a mudar de propósito atualiza aqui.
@@ -63,14 +63,10 @@ _MONTAR_REAL = P.montar_proposta
 # o caminho real
 # =====================================================================================================================
 def _com_numero_do_canal(monkeypatch, numero=WHATS_DO_CANAL):
-    original = P.montar_proposta
-
-    async def embrulho(*a, **k):
-        modelo = await original(*a, **k)
-        if modelo.get("origem") == "canal" and numero:
-            modelo.setdefault("canal", {}).setdefault("whatsapp", numero)
-        return modelo
-    monkeypatch.setattr(P, "montar_proposta", embrulho)
+    """Costura 133-A: o número vem do REAL — `proposta.whatsapp_do_canal` lê a integração ativa do canal, semeada pelo
+    mundo (`montar_mundo(canal_pareado=True)`). O antigo embrulho escrevia `canal.whatsapp` DEPOIS do `cta` — e
+    escondia que o texto do botão (com a "Ref.") não existia sem o WhatsApp da corretora."""
+    assert numero == WHATS_DO_CANAL
 
 
 def _publicar(m):
@@ -239,12 +235,14 @@ def test_o_quero_fechar_volta_a_conversa_do_canal_pelo_redirecionamento_medido(s
 def test_sem_o_numero_do_canal_o_botao_some_e_nada_redireciona(monkeypatch):
     monkeypatch.setenv("PUBLIC_APP_URL", BASE)
     monkeypatch.setattr(P, "montar_proposta", _MONTAR_REAL)
-    m = M.montar_mundo(monkeypatch, solicitante="canal")
-    r = _publicar(m)
+    m = M.montar_mundo(monkeypatch, solicitante="canal", canal_pareado=False)
+    with pytest.raises(P.SemCanalDeFechamento):            # sem o número do canal, publicar recusa (nada gravado)
+        _publicar(m)
+    r = asyncio.run(P.publicar_proposta(company_id=m.dono, pedido_id=m.pedido_id, situacao="novo_sem_apolice",
+                                        primeiro_nome="Mariana", db=m.db, base_url=BASE, permitir_sem_whatsapp=True))
     doc = _servir(m, r["token"])["html"]
     modelo = _modelo_gravado(m, r["artifact_id"])
-    if (modelo.get("canal") or {}).get("whatsapp"):
-        pytest.skip("proposta.py já escreve canal.whatsapp — este caso passa a ser o de um canal sem integração")
+    assert "whatsapp" not in (modelo.get("canal") or {}), "sem número a chave NÃO existe"
     sem_script = re.sub(r"<script\b.*?</script>", "", doc, flags=re.S)
     assert "?fechar=" not in sem_script and "wa.me" not in doc and "Quero fechar" not in texto_visivel(doc)
     assert ArtifactService(m.banco.visao("rota-publica")).fechar_compartilhado(r["token"], "recomendada") is None

@@ -30,13 +30,6 @@ LEADS = "canal_leads"
 CONVERSAS = "canal_conversas"
 KIND_DO_CANAL = "platform_canal"
 
-# TODO(gerente 133-A): as duas chaves abaixo entram em `multicalculo/config.py` → `PADRAO_DO_PRODUTO["canal"]`
-#   ("limite_cotacoes_por_dia" e "teto_mensagens_por_dia"). Até lá `_mesclar` IGNORA a chave desconhecida e vale o
-#   padrão local. 💭 3 cotações/dia por número (piloto com o círculo do Founder) e 💭 60 mensagens nossas/dia por conversa
-#   (a conversa inteira cabe em ~15: consentimento + ~12 perguntas + resultado + pergunta final + 2 lembretes).
-LIMITE_COTACOES_PADRAO = 3
-TETO_MENSAGENS_PADRAO = 60
-
 #: o dia do limite é o dia de Brasília (sem horário de verão desde 2019)
 FUSO_DO_CANAL = timezone(timedelta(hours=-3))
 
@@ -117,12 +110,23 @@ def _inteiro(valor: Any, padrao: int) -> int:
     return int(valor)
 
 
+def _padrao_do_canal(chave: str) -> int:
+    """O padrão do PRODUTO (`multicalculo/config.py` → `PADRAO_DO_PRODUTO["canal"]`) — o único lugar do número (G8)."""
+    from app.services.multicalculo.config import PADRAO_DO_PRODUTO
+
+    return int(PADRAO_DO_PRODUTO["canal"][chave])
+
+
 def limite_padrao(config: Any) -> int:
-    return _inteiro(_config_do_canal(config).get("limite_cotacoes_por_dia"), LIMITE_COTACOES_PADRAO)
+    """Cotações por número/dia: a config do canal (já mesclada com o padrão do produto por `config.carregar`)."""
+    chave = "limite_cotacoes_por_dia"
+    return _inteiro(_config_do_canal(config).get(chave), _padrao_do_canal(chave))
 
 
 def teto_de_mensagens(config: Any) -> int:
-    return _inteiro(_config_do_canal(config).get("teto_mensagens_por_dia"), TETO_MENSAGENS_PADRAO)
+    """O teto anti-laço de mensagens NOSSAS por conversa por dia (resultado e lembretes contam)."""
+    chave = "teto_mensagens_por_dia"
+    return _inteiro(_config_do_canal(config).get(chave), _padrao_do_canal(chave))
 
 
 # ---------------------------------------------------------------------------------------------------------------------

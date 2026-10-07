@@ -201,6 +201,9 @@ _FORA_DO_ESCOPO = re.compile(r"\b(atendente|humano|pessoa de verdade|falar com (
                              r"uma pessoa)|sinistro|bati o carro|batida|guincho|reboque|segunda via|boleto|"
                              r"cancelar (o |meu )?seguro|seguro de vida|seguro residencial|plano de saude)\b")
 _RECOMECAR = re.compile(r"\b(recomecar|comecar de novo|nova cotacao|cotar de novo|outra cotacao|reiniciar)\b")
+#: "Quero fechar a opção X (…). Ref. abcd1234" — o texto que o botão da PÁGINA do canal manda de volta a esta conversa
+#: (`proposta.montar_proposta` → `cta.texto_por_opcao`, a referência = os 8 primeiros do `pedido_id`)
+_REF_DO_PEDIDO = re.compile(r"\bref\.?\s*([0-9a-f]{8})\b")
 _QUER_FECHAR = re.compile(r"\b(quero fechar|fechar|fecha|quero sim|vamos fechar|bora fechar|quero contratar|"
                           r"contratar|quero esse|quero essa|pode fechar)\b")
 
@@ -353,6 +356,34 @@ async def _registrar_consentimento(db: Any, company_id: str, telefone: str, acei
 # =====================================================================================================================
 # responder
 # =====================================================================================================================
+#: as etapas em que a próxima fala RECOMEÇA a conversa do zero (a apresentação). A ENTRADA (F1) usa a mesma lista para
+#: saber quem está COMEÇANDO uma conversa (o portão do limite do dia) — uma lista só (`abre_conversa_nova`).
+ETAPAS_DE_RECOMECO = ("recusou", "encerrado", "falhou", "sem_preco")
+#: as etapas em que a pessoa já tem o resultado (a página) — o botão "Quero fechar" dela ainda vale
+_ETAPAS_COM_RESULTADO = ("resultado", "oferta_passagem", "encerrado")
+
+
+def pede_fechar_pela_pagina(estado: Mapping[str, Any], texto: Any) -> bool:
+    """O texto é o do botão "Quero fechar" da página DESTE resultado ("… Ref. <8 do pedido>")? Vale também depois de um
+    "não" (etapa `encerrado`): a pessoa mudou de ideia e tocou o botão — isso é a passagem, nunca uma conversa nova."""
+    est = estado or {}
+    if str(est.get("etapa") or "") not in _ETAPAS_COM_RESULTADO or not est.get("resultado"):
+        return False
+    m = _REF_DO_PEDIDO.search(_sem_acento(texto))
+    return (bool(m) and str(est.get("pedido_id") or "").lower().startswith(m.group(1))
+            and bool(_QUER_FECHAR.search(_sem_acento(texto))))
+
+
+def abre_conversa_nova(estado: Mapping[str, Any], texto: Any = "") -> bool:
+    """A próxima fala abre uma conversa NOVA? (estado vazio ou etapa de recomeço — salvo o botão da página)."""
+    est = estado or {}
+    if not est:
+        return True
+    if pede_fechar_pela_pagina(est, texto):
+        return False
+    return str(est.get("etapa") or "") in ("", *ETAPAS_DE_RECOMECO)
+
+
 async def responder(db: Any, company_id: str, telefone_e164: str, texto: str, midia: Optional[dict],
                     estado: dict, *, config: Any = None, llm: Any = None) -> Resposta:
     """Um turno. `estado` é o que `repositorio.carregar_estado` devolveu ({} na 1ª vez); a resposta traz o NOVO estado
@@ -363,7 +394,10 @@ async def responder(db: Any, company_id: str, telefone_e164: str, texto: str, mi
     nome_canal = _nome_do_canal(config)
     etapa = str(est.get("etapa") or "")
 
-    if not etapa or etapa in ("recusou", "encerrado", "falhou", "sem_preco"):
+    if pede_fechar_pela_pagina(est, t):
+        # o botão da página: a passagem direto (vale também depois de um "não" — a pessoa mudou de ideia)
+        return await _depois_do_resultado(db, company_id, telefone_e164, t, est, llm)
+    if not etapa or etapa in ETAPAS_DE_RECOMECO:
         return _apresentacao(nome_canal)
     if etapa in ("passado", "resultado", "oferta_passagem", "oferta_ajuda") and _RECOMECAR.search(baixo):
         return _apresentacao(nome_canal)
@@ -457,11 +491,12 @@ async def _no_roteiro(db, company_id, telefone, t, midia, est, llm) -> Resposta:
         return Resposta(["Vamos do começo então.", ROTEIRO[0].pergunta], est)
 
     if midia:
+        # 🔴 a fala de uma mídia NÃO é resposta: num documento o texto é o CONTEÚDO extraído do PDF (a apólice, com CPF,
+        # nome e endereço — `webhook._handle_evolution_like_inbound`), e ele nunca pode ir à regra nem ao modelo
         ref = {"tipo": str(midia.get("tipo") or "midia")[:20], "ref": _referencia_da_midia(midia)}
         if ref["ref"]:
             est.setdefault("midias", []).append(ref)
-        if not t:
-            return Resposta(["Recebi, obrigado! Guardei aqui.", passo.pergunta], est)
+        return Resposta(["Recebi, obrigado! Guardei aqui.", passo.pergunta], est)
 
     if _FORA_DO_ESCOPO.search(baixo):
         return _oferecer_ajuda(est, "fora_do_escopo", voltar_para=etapa)
@@ -520,13 +555,27 @@ def _passou(iso: Any, segundos: float) -> bool:
     return (datetime.now(timezone.utc) - t).total_seconds() > segundos
 
 
+#: `.../storage/v1/object/(sign|public)/<bucket>/<caminho>?token=…` → `<bucket>/<caminho>` (sem o token)
+_CAMINHO_NO_STORAGE = re.compile(r"/storage/v1/object/(?:sign|public|authenticated)/([^?#\s]+)")
+
+
 def _referencia_da_midia(midia: Mapping[str, Any]) -> str:
-    """Só a REFERÊNCIA da mídia (id/caminho no storage), nunca o conteúdo nem uma URL com credencial."""
+    """Só a REFERÊNCIA da mídia, nunca o conteúdo nem uma URL com credencial.
+
+    📊 O que a entrada (F1) entrega é `{"tipo", **item["midia"]}`, e o `item["midia"]` do webhook é (webhook.py,
+    `_handle_evolution_like_inbound`): foto `{"imageUrl": <URL ASSINADA do storage>, "caption"}` · áudio
+    `{"audioUrl": <URL assinada>}` · documento `{"fileName"}` (o documento não leva URL). Da URL assinada fica só
+    `<bucket>/<caminho>` — o token da assinatura é credencial e expira."""
     for chave in ("ref", "storage_ref", "path", "media_id", "id", "message_id"):
         v = str(midia.get(chave) or "").strip()
         if v and not v.lower().startswith(("http://", "https://", "data:")):
             return v[:200]
-    return ""
+    for chave in ("imageUrl", "audioUrl", "documentUrl", "url"):
+        m = _CAMINHO_NO_STORAGE.search(str(midia.get(chave) or ""))
+        if m:
+            return m.group(1)[:200]
+    nome = str(midia.get("fileName") or "").strip()
+    return f"arquivo:{nome[:120]}" if nome else ""
 
 
 def _pela_regra(passo: Passo, t: str) -> Tuple[Any, bool]:
