@@ -94,4 +94,21 @@ Hub e a marca são os que já existiam; o canal é um desvio por tipo de empresa
 telefone em código.
 
 ## 9. Entrega
-(o push com a saída colada — preenchido no fecho)
+O código, os testes e o relatório (07/10):
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   de66449..6926b8d  HEAD -> main
+```
+O estado do programa, a fila e o painel (`docs(133-A): estado do programa, fila e painel`, 07/10):
+```
+$ git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   6926b8d..563f7c9  HEAD -> main
+$ git push origin HEAD:spec/133-A-qcm-whatsapp
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   6926b8d..563f7c9  HEAD -> spec/133-A-qcm-whatsapp
+$ git rev-list --count origin/main..HEAD
+0
+```
+Painel do Founder republicado (versão 32): https://claude.ai/code/artifact/defe331c-9399-4584-9d1c-2126a527cea0 — abas início, tarefas
+(T-132…T-135 na ordem), specs e pendências (P-133A-01…08).
