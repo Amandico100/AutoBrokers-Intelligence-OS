@@ -13562,3 +13562,33 @@ cliente da renovação não vê, no WhatsApp, quanto custa ficar onde está.
 Achado da confirmação (06/10): com apólice, Recomendada + Igual à atual + Mais em conta ocupam os 3 cartões e a completa+ calculada
 não aparece (D-MC-69 pedia igual · econômica · completa+; o conserto RT-B1 pôs a Recomendada para não mentir no título). **Destrava:**
 a 131 decide entre 4 cartões ou a regra de qual sai. **Custa esquecer:** um cálculo feito e não mostrado.
+
+## P-130A1-01 · 🤖 A captura de marca da AutoFleet ficou presa em "lendo o site" e o site é um modelo pronto
+📊 07/10 (leitura no banco): `brand_profiles.capture_status = 'capturing'` sem `capture_error` e sem `captured_at` — o trabalho morreu e a
+tela mostra a frase genérica "A leitura não foi adiante". 📊 O site responde 200, mas é uma cópia HTTrack do tema WordPress "Insuranlife"
+(o texto não é da corretora). **Destrava:** (1) o estado preso volta a "falhou" com o motivo depois de um tempo-limite; (2) a captura lê
+também Instagram, LinkedIn e Google Meu Negócio e aceita o logo enviado à mão; (3) o Founder confere a marca da AutoFleet. **Custa
+esquecer:** a página do Quem Cobra Menos (133-A) mostra a corretora que mais vence sem logo e sem cor — e qualquer corretora com site
+fraco passa pelo mesmo.
+
+## P-130A1-02 · 🧑 A lista do "Corretora Nível 5" tem de estar escrita antes de abrir ao público
+O selo já aparece na mensagem do canal (config `canal.selo`). 💭 Rascunho dos 5 itens em `programa-multicalculo/PRONTIDAO-DA-133-A.md`
+§8. **Destrava:** o Founder lapida a lista; a página do Quem Cobra Menos (133-A, fatia C) a publica. **Custa esquecer:** um selo sem
+critério escrito é promessa que o Procon pode cobrar.
+
+## P-130A1-03 · 🤖 A franquia "majorada" (código 4) não foi medida
+📊 o código `tipoFranquia: 4` aparece 35× no acervo, sem o rótulo confirmado. **Destrava:** um cálculo medido com o código 4 (fora do
+horário da Ellen). **Custa esquecer:** o mínimo do mínimo deixa de mostrar a maior economia possível.
+
+## P-130A1-04 · 🤖 Reclame Aqui sem fonte
+A linha está pronta na mensagem (`anfitria.reclame_aqui`), mas não há de onde ler. **Destrava:** a captura de marca (P-130A1-01) lê a
+página pública da corretora no Reclame Aqui, com data. **Custa esquecer:** falta um dos 5 itens de reputação do Nível 5.
+
+## P-130A1-05 · 🤖 Ninguém pede o `minima` ainda
+`porta.OPCOES_DO_CANAL` existe; o `calcular` do canal ainda usa o padrão. **Destrava:** a 133-A pede com `opcoes=OPCOES_DO_CANAL`.
+**Custa esquecer:** a mensagem do canal nunca mostra o mínimo do mínimo.
+
+## P-130A1-06 · 🤖 A Ezze dobrou o preço sem carro reserva (+100 %) e ninguém sabe por quê
+📊 `vivo_conta_b.json` #4 × #6: 1.738 → 3.484. **Destrava:** olhar a oferta da Ezze no próximo cálculo real. **Custa esquecer:** um preço
+estranho entra na lista "melhor preço por seguradora".
+
