@@ -13609,3 +13609,35 @@ segundos" da VSL fica sem prova — e o testador espera 8 minutos no WhatsApp.
 não aparece porque a página/mensagem leem a marca PUBLICADA; `founded_year` vazio → sem "anos de mercado"). **Destrava:** T-125
 (publicar a marca da AutoFleet, preencher o ano de fundação). **Custa esquecer:** a corretora que mais vence aparece sem prova.
 
+## P-133A-01 · 🤖 A fixture do "oi" do Evolution Go não é captura real
+`tests/fixtures/canal_evolution_go_oi.json` reproduz a forma que o conversor aceita. **Destrava:** capturar o 1º "oi" real ao número do
+canal pareado e trocar a fixture. **Custa esquecer:** um campo diferente no payload real cala o canal sem nenhum teste ficar vermelho.
+
+## P-133A-02 · 🧑 Nenhuma corretora aderida tem destino de aviso — a passagem cai no Inbox do operador
+📊 07/10: as 2 corretoras do canal não têm grupo de suporte nem WhatsApp de marca no cadastro. "Quero fechar" registra evento + card no
+Inbox do admin e dá à pessoa o wa.me da corretora (se houver). **Destrava:** T-125 (WhatsApp de atendimento) ou um grupo de suporte por
+corretora. **Custa esquecer:** o cliente que quer fechar espera alguém olhar o Inbox.
+
+## P-133A-03 · 🤖 Garagem, uso e estado civil ASSUMIDOS (códigos do Agger não medidos)
+D-133A-14. **Destrava:** medir os rótulos no Agger (P-129B-05) e acrescentar as perguntas. **Custa esquecer:** preço calculado com perfil
+diferente do real — na contratação a seguradora corrige e o preço muda.
+
+## P-133A-04 · 🤖 O portão do convite antes da mídia só existe na rota Evolution GO
+As rotas Evolution v2 e z-api ainda baixam a mídia antes do convite. O canal usa GO. **Custa esquecer:** se o canal mudar de rota, a
+apólice de quem não foi convidado é guardada.
+
+## P-133A-05 · 🤖 Mídias continuam no storage depois do "parar" e da retenção; retenção só no próximo acesso
+**Destrava:** uma rotina de expurgo (Work OS, não scheduler novo) para arquivos e conversas paradas. **Custa esquecer:** dado pessoal
+guardado sem prazo (LGPD).
+
+## P-133A-06 · 🤖 A corrida turno × run ficou menor, não fechada
+Releitura antes de gravar; falta a gravação condicional (CAS). **Custa esquecer:** raramente, um "quero fechar" no mesmo segundo de um
+lembrete se perde.
+
+## P-133A-07 · 🤖 O motor nunca rodou no contêiner; a medição do tempo (F5) espera o Implantar e o robô
+D-133A-11: o motor já é paralelo entre corretoras; os 8 minutos do canário vieram da morte proposital + espera da lease. **Destrava:** o
+1º pedido real do canal depois de T-132/T-135 — medir disparo→quadro. **Custa esquecer:** a promessa de tempo fica sem prova.
+
+## P-133A-08 · 🤖 A tela de identidade não tem botão "Publicar"; logo SVG não aparece na proposta
+**Custa esquecer:** outra corretora não publica a própria marca sozinha; um logo SVG some da página.
+

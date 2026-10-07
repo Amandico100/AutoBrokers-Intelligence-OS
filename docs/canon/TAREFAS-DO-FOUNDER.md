@@ -25,6 +25,7 @@
 > atendimento + SUSEP no cadastro de marca e a marca da AutoFleet), a **T-126** (abrir o link do canário no celular), a **T-127**
 > (jurídico da remuneração) e a **T-128** (o recado à Ellen). 📊 Recontado 06/10 com os mesmos comandos → **116 pendentes** · **12 feitos** (T-01…T-128).
 > **07/10 (SPEC-130-A.1, o Quem Cobra Menos):** a **T-124** está ✅ feita, a **T-127** foi ❌ cancelada (D-130A-08 revogada) e nasceram a **T-129** (Implantar), a **T-130** (a lista do Nível 5) e a **T-131** (testadores, verba e o robô do Agger para a 133-A). 📊 Recontado 07/10 com os mesmos comandos → **117 pendentes** · **13 feitos** (a T-127 cancelada fica fora das duas contas).
+> **07/10 tarde (SPEC-133-A, o Quem Cobra Menos no WhatsApp):** nasceram a **T-132** (Implantar), a **T-133** (o QR no admin), a **T-134** (os testadores) e a **T-135** (o login do Agger do robô no piloto).
 
 ## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123 · SPEC-130-A: T-124 a T-128)
 
@@ -786,6 +787,29 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       REAL e aparece no Agger da corretora); (2) a verba de API para o agente conversar (💭 US$ 5–10 para construir e para as rodadas);
       (3) a T-120 (o usuário-robô do Agger em cada corretora) — sem ela o robô usa o login da Ellen e derruba a sessão dela no meio do
       dia. **Se não fizer:** a 133-A fica pronta e ninguém testa. · *de:* S130-A.1 · `PRONTIDAO-DA-133-A.md`
+
+- [ ] **T-132** ⏳ 🧑 **1º passo do piloto do Quem Cobra Menos** · **Implantar a SPEC-133-A** — EasyPanel, **nesta ordem**: `smith-api` →
+      `smith-worker` → `portal-worker` → `smith-web`. As 2 migrations já estão aplicadas (📊 07/10: `20261007091841`, `20261007091910`).
+      **Variáveis** (se ainda não estiverem, T-122): `smith-api` → `MULTICALCULO_HMAC_KEY` (texto aleatório ≥ 40 caracteres);
+      `portal-worker` → `MULTICALCULO_MOTOR_LIGADO=true`; `smith-worker` → confira que existe `PUBLIC_APP_URL` (ou `SMITH_WEB_URL`) com o
+      endereço do app — sem ela o link da proposta não sai. **Esperar:** o `/health` do `portal-worker` com `build_time` de 07/10 ou depois.
+      · *de:* S133-A
+- [ ] **T-133** ⏳ 🧑 **depois da T-132** · **Ler o QR do número do Quem Cobra Menos** — no **portal ADMIN** → menu **Conexões** →
+      **Canais: Quem Cobra Menos (WhatsApp)** → "Conectar" → no celular do 47 98808-7463: WhatsApp → **Aparelhos conectados** → **Conectar
+      aparelho** → aponte para o QR. **Esperar:** a tela mostra "conectado". O número continua funcionando no seu celular (é um aparelho a
+      mais) e continua sendo o cliente de teste do atendimento. **Se der erro "canal não cadastrado"/"dois canais":** mande print no chat.
+      · *de:* S133-A · D-133A-10
+- [ ] **T-134** ⏳ 🧑 **depois da T-132** · **Cadastrar os testadores** — no **Console do `smith-api`** (EasyPanel → serviço → Console),
+      um por pessoa, com DDI+DDD+número só com dígitos:
+      `python -m app.services.canal.comando_convidados --adicionar 55DDDNUMERO --apelido "Nome do testador"` e confira com
+      `python -m app.services.canal.comando_convidados --listar` (**Esperar:** os números aparecem MASCARADOS). Para tirar alguém:
+      `--remover 55DDDNUMERO`. Cadastre também o SEU número pessoal para o primeiro teste. **Se aparecer "banco indisponível":** a T-132
+      não terminou. · *de:* S133-A · D-133A-04
+- [ ] **T-135** ⏳ 🧑 **antes dos testadores — escolha uma** · **O login do Agger que o robô usa no piloto** — (A, o certo) o usuário-robô
+      de cada corretora (T-120) cadastrado pelo `comando_robo` com `--estado ativo --janela "seg-sab,08:00-22:00"`; ou (B, provisório, só
+      com a sua autorização) o login da **Ellen**, cadastrado pelo mesmo comando com `--janela "seg-sex,20:00-23:59"` (fora do horário
+      dela — o robô e ela não podem usar o mesmo login ao mesmo tempo). Hoje as duas contas estão **pausadas e sem senha**: sem isto,
+      NENHUMA cotação do canal sai. · *de:* S133-A · D-133A-12 · T-120
 
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 
