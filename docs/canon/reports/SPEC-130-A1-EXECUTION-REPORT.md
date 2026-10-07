@@ -58,10 +58,16 @@ FAIXA DE RELÓGIO .....  💭 3–4 h · 📊 ~6 h (23:15 → ~05:30), incluindo
 - conserto: `287 passed in 131.78s` (14 arquivos do pacote + `test_spec130a1_conserto.py`)
 - confirmação: `179 passed, 1 failed` (corrida com o commit do MANIFEST no meio da rodada) → `test_spec130a1_minima.py` de novo:
   `15 passed`; regressão extra `107 passed`
-- a trava do tempo (D-130A1-14): ver §12
+- a trava do tempo (D-130A1-14): `85 passed in 41.68s` (5 arquivos); mutações: sem a comparação com o teto → 6 vermelhos; `>` → `>=` → 2
 
 ## 4. Bateria (2 metades em paralelo, worktrees `C:\wt130a1a`/`C:\wt130a1b` no commit `55f21f8`)
-Ver §12 (preenchido na entrega com a saída real e a comparação com a linha de base da 130-A: 15 + 21 falhas pré-existentes).
+- metade 1: `9 failed, 3011 passed, 3 skipped in 1685.79s (0:28:05)` — 8 da linha de base da 130-A; 1 nova
+  (`test_spec125_conserto_y.py::test_y4…`) → isolada: `19 passed in 18.86s` (carga, não regressão)
+- metade 2: `29 failed, 2585 passed, 6 skipped, 31 xfailed, 1 xpassed in 4271.56s (1:11:11)` — 27 da linha de base; 2 novas:
+  `test_so_um_agendador_manda` → isolada `1 passed in 58.77s`; `test_todos_os_guardas_script_rodam::test_a_arvore_ficou_limpa_no_fim`
+  (o guarda que restaura `corridor_playbooks.py`/`replay.py` dos scripts de mutação antigos reprova sob carga; a árvore terminou limpa
+  — `git status` vazio — e o diff da 130-A.1 não toca nenhum dos dois: `git diff --name-only 705b67f..HEAD | grep -c …` → 0)
+- **0 regressão atribuível à 130-A.1.**
 
 ## 5. Migration (APLICADA em produção)
 `20261006_04_spec130a1_minima.sql` · versão `20261007040359` · psycopg numa transação, `lock_timeout 5s`, 0,86 s · VERIFY estrutural
@@ -97,7 +103,8 @@ da mesma porta; a margem é a mesma `negociacao.py`; o manual é o mesmo módulo
 que tinham "AutoFleet" passaram a um nome fictício.
 
 ## 11. Telemetria
-Ver §12.
+💭 relógio ~6 h (23:15 → ~05:30): 3 builders em paralelo (~42–45 min cada) · juiz ~12 min ‖ red team ~15 min · conserto ~23 min ·
+confirmação ~21 min · bateria ~71 min (a metade mais lenta). Custo de API externa: 0 (nenhum modelo de linguagem do produto foi chamado).
 
 ## 12. Entrega
 (preenchido no fecho: bateria, trava do tempo, push com a saída colada)
