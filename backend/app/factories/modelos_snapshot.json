@@ -2597,7 +2597,7 @@
   }
  },
  "fonte": "llm_pricing + llm_papeis",
- "gerado_em": "2026-10-02T20:26:46+00:00",
+ "gerado_em": "2026-10-07T09:22:44+00:00",
  "origem": "banco",
  "papeis": {
   "atendimento": {
@@ -2655,6 +2655,20 @@
    "provider_reserva": null,
    "risco": "baixo",
    "versao": 2
+  },
+  "canal_cotacao": {
+   "classe_de_dado": "pii",
+   "descricao": "SPEC-133-A U4 — entende a resposta LIVRE da pessoa na conversa do canal (sim/não, número, intenção) e devolve {valor, fora_do_escopo}; a regra reconfere — app/services/canal/conversa.py",
+   "esforco": "medium",
+   "esforco_reserva": "low",
+   "modelo_primario": "gpt-6-luna",
+   "modelo_reserva": "claude-sonnet-5-5",
+   "motivo": "SPEC-133-A D-133A-01 nota 86 · o mais barato aprovado (gpt-6-luna, piso de produção medium); reserva de outro provedor (par da confirmacao)",
+   "papel": "canal_cotacao",
+   "provider": "openai",
+   "provider_reserva": "anthropic",
+   "risco": "alto",
+   "versao": 1
   },
   "chat_principal": {
    "classe_de_dado": "pii",
