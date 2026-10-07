@@ -65,7 +65,11 @@ def test_pairing_state_contract_and_provider_normalization():
 
 def test_api_proxy_and_modal_contracts():
     api = (ROOT / "app/api/whatsapp_channel.py").read_text(encoding="utf-8")
-    proxy = (WEB / "app/api/dashboard/whatsapp-channel/route.ts").read_text(encoding="utf-8")
+    # §9.3 (SPEC-133-A F4, 07/10): a ponte do backend saiu da rota para `lib/vault/whatsapp-channel-proxy.ts`, compartilhada com a
+    # rota do canal no admin — o contrato (timeout, correlação, status) é lido onde ele mora agora, e a rota tem de usá-la.
+    rota = (WEB / "app/api/dashboard/whatsapp-channel/route.ts").read_text(encoding="utf-8")
+    assert "whatsapp-channel-proxy" in rota
+    proxy = rota + (WEB / "lib/vault/whatsapp-channel-proxy.ts").read_text(encoding="utf-8")
     flow = (WEB / "components/vault/WhatsAppPairingFlow.tsx").read_text(encoding="utf-8")
     view = (WEB / "components/vault/PairingStateView.tsx").read_text(encoding="utf-8")
 
