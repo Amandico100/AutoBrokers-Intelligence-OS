@@ -30,6 +30,8 @@ O ELO ................  "o número de cotações é o número de preços que vol
 FAIXA DE RELÓGIO .....  💭 3–4 h · 📊 ~6 h (23:15 → ~05:30), incluindo a bateria inteira (2 metades em paralelo, ~50 min)
 ```
 
+**Nota da execução: 88/100** (confirmação 07/10, depois do conserto; juiz 82 · red team 70).
+
 ## 1. O que mudou
 - **A margem (D-MC-68 corrigida):** `negociacao.py` desce de `passo_pp` em `passo_pp` (15→14→13→12); 12→10 só com `fechamento=True` (o
   cliente sinalizou que fecha) — sem `precisa_aprovacao`, sem `aprovado_pelo_corretor`, sem `concorrencia_declarada` (saíram: quem

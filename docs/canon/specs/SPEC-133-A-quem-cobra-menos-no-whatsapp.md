@@ -99,6 +99,15 @@ carteira byte a byte igual · G7 o QR no admin: `npm run test:rotas-montam` + `n
 param na resposta da pessoa e nunca passam de 2 · G9 migration com APPLY/VERIFY/ROLLBACK e teste com dois tenants · G10 bateria sem
 regressão · G11 nada de nome de corretora/número como constante.
 
+## 7.3 O que o estado da arte faz (referências de produto)
+- Comparadores ao consumidor por WhatsApp/chat (💭 leitura de produto, sem medição nossa): a cotação em poucas perguntas, uma por vez, com
+  o resultado como "achado" e o preço em parcela (Lemonade — conversa curta e honesta, https://www.lemonade.com; Minuto Seguros —
+  comparador brasileiro, https://www.minutoseguros.com.br; Buscapé — economia em destaque, https://www.buscape.com.br).
+- Booking/Airbnb (https://www.booking.com, https://www.airbnb.com.br): a marca do comparador por fora, o anfitrião DENTRO, com selo do
+  programa (Superhost/Genius) e critérios públicos — o modelo do "Corretora Nível 5".
+- WhatsApp Business (https://business.whatsapp.com/policy): opt-in explícito, saída fácil ("parar"), sem mensagem a quem não pediu — as
+  travas do convite, do consentimento e da palavra de saída.
+
 ## 6. Fora
 A leitura da apólice (130-B) · as regras entre corretoras (133-B) · a API oficial (134) · o login de robô (T-120, Founder) · a medição do
 motor no contêiner (F5, depois do Implantar + robôs).
