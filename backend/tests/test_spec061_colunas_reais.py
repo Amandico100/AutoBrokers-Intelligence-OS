@@ -89,6 +89,12 @@ SCHEMA: dict[str, set[str]] = {
         "id admin_user_id source_type source_id state snoozed_until "
         "note_redacted updated_at".split()),
     "companies": set("id company_name created_at".split()),
+    # SPEC-133-A — a caixa do operador lê `canal.quer_fechar` daqui (`_canal_quer_fechar`).
+    # 📊 07/10/2026, `information_schema.columns` no banco de produção (mesma query do topo).
+    "work_events": set(
+        "id company_id work_run_id work_step_id attempt_id event_type "
+        "actor_type actor_id severity message_human payload_redacted "
+        "created_at".split()),
 
     # As três que o Vigia do cérebro lê (`_cerebro_parado`, 05/08/2026).
     # 📊 Copiadas de `information_schema.columns` no banco de produção, não da

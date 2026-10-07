@@ -411,6 +411,10 @@ ISENTOS = {
         "so CONTA corretoras sem destino no /health — nao envia nada",
     "app/api/porteiro_do_agente.py":
         "so PERGUNTA 'posso ligar?' — grep send_message|enviar_ao_grupo = 0",
+    # SPEC-133-A: o anti-laço do canal so LE `human_support_destinations` (numero de
+    # suporte => o canal CALA). Nao resolve destino para enviar, nao envia.
+    "app/services/canal/repositorio.py":
+        "anti-laço (D-133A-06/07): so LE o destino para calar o canal — nao envia",
 }
 GATILHOS = ("resolver_destino_de_suporte", "_support_contact",
             "human_support_destinations")
@@ -430,7 +434,11 @@ for raiz, _dirs, arquivos in os.walk(os.path.join(_RAIZ, "app")):
         # resolve destino nem envia — delega para `enviar_ao_grupo`. Aceitar os
         # dois nomes é o que impede o guarda de exigir refatoração cosmética
         # sem deixar de pegar o caminho NOVO que não passa por nenhum dos dois.
+        # SPEC-133-A: `billing_collection.avisar_suporte_humano` tambem e a porta com
+        # outro nome (delega para `enviar_ao_grupo` — provado logo abaixo). O canal
+        # (`canal/cotacao.py`) chega ao grupo por ele.
         if PORTA not in texto and "_avisar_suporte" not in texto \
+                and "avisar_suporte_humano" not in texto \
                 and rel not in ISENTOS:
             fora.append(rel)
 
@@ -438,6 +446,12 @@ certo(len(achados) >= 6,
       "a varredura encontrou %d arquivos que resolvem destino de suporte" % len(achados))
 certo(not fora,
       "🔴 nenhum caminho novo manda ao grupo sem a porta unica — fora: %s" % (fora or "nenhum"))
+_cobranca = open(os.path.join(_RAIZ, "app", "services", "billing_collection.py"),
+                 encoding="utf-8").read()
+_corpo = re.split(r"\n(?:async )?def ",
+                  _cobranca.split("async def avisar_suporte_humano(")[1])[0]
+certo(PORTA + "(" in _corpo,
+      "🔴 e `avisar_suporte_humano` (o outro nome aceito) DELEGA para `enviar_ao_grupo`")
 certo(PORTA in open(os.path.join(_RAIZ, "app", "services",
                                  "o_grupo_so_o_que_importa.py"),
                     encoding="utf-8").read(),
