@@ -20,6 +20,7 @@ Três regras que não se negociam
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -152,6 +153,96 @@ def frase_humana_do_firecrawl(motivo: Optional[str]) -> Optional[str]:
 
 def _agora() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ==========================================================================
+# SPEC-133-A · FM — o logo que a corretora ENVIA, o ano de fundação e a
+# captura que ficou presa
+# ==========================================================================
+
+class EntradaRecusada(ValueError):
+    """Entrada do corretor recusada. A mensagem é a frase que ELE lê na tela."""
+
+
+#: O logo enviado mora onde a captura já guardava o logo da Resulta
+#: (`brand_assets.storage_ref` como `data:` URL, `source_kind='upload'`) — os
+#: dois leitores (`snapshot_para_artefato` → `render.py` e
+#: `multicalculo.proposta.logo_embutido`) já entendem esse formato. Um bucket
+#: novo seria um armazenamento paralelo (CLAUDE.md §5) que nenhum leitor lê.
+LOGO_TIPOS_ACEITOS = {
+    "image/png": "PNG", "image/jpeg": "JPG", "image/svg+xml": "SVG", "image/webp": "WebP",
+}
+#: 2 MB: um logo de marca bem exportado tem dezenas de KB (📊 o da Resulta tem
+#: 4.694 bytes). O teto barra foto de celular enviada por engano, que viraria
+#: uma `data:` URL de vários MB dentro de toda página de proposta.
+LOGO_TETO_BYTES = 2 * 1024 * 1024
+
+#: O banco aceita 1800…2200 (`brand_profiles_founded_year_check`); a tela é mais
+#: estreita porque ano futuro ou anterior a 1900 é sempre erro de digitação — e o
+#: número vira "N anos de mercado" na mensagem ao segurado.
+ANO_FUNDACAO_MINIMO = 1900
+
+#: Quanto tempo um `capturing` pode durar antes de ser tratado como falha.
+#: 📊 07/10/2026: a AutoFleet ficou em `capturing` desde 01:32 (site lido em
+#: 5,8 s) — o processo morreu no meio e ninguém virou o estado. A rota do painel
+#: desiste da captura aos 90 s (`brand-identity/route.ts`); 10 minutos é mais de
+#: seis vezes isso, então nada vivo é declarado morto.
+CAPTURA_VENCE_EM_S = 600
+FRASE_CAPTURA_VENCIDA = "a leitura demorou demais e não terminou — pode tentar de novo"
+FRASE_CAPTURA_QUEBROU = "a leitura parou no meio por uma falha nossa — pode tentar de novo"
+
+
+def validar_ano_fundacao(valor: Any, *, ano_atual: Optional[int] = None) -> Optional[int]:
+    """`None`/vazio limpa o campo; fora de 1900…ano atual é recusado com frase de gente."""
+    teto = ano_atual or datetime.now(timezone.utc).year
+    frase = f"O ano de fundação precisa ser um número entre {ANO_FUNDACAO_MINIMO} e {teto}."
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return None
+    if isinstance(valor, bool):
+        raise EntradaRecusada(frase)
+    if isinstance(valor, float) and valor.is_integer():
+        valor = int(valor)
+    if isinstance(valor, str) and valor.strip().isdigit():
+        valor = int(valor.strip())
+    if not isinstance(valor, int) or not (ANO_FUNDACAO_MINIMO <= valor <= teto):
+        raise EntradaRecusada(frase)
+    return valor
+
+
+def tipo_do_logo(dados: bytes) -> Optional[str]:
+    """O tipo pelo CONTEÚDO, não pelo nome nem pelo cabeçalho que o navegador mandou."""
+    if dados.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if dados.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if dados[:4] == b"RIFF" and dados[8:12] == b"WEBP":
+        return "image/webp"
+    cabeca = dados[:1024].lstrip().lower()
+    if cabeca.startswith((b"<svg", b"<?xml")) and b"<svg" in dados[:4096].lower():
+        return "image/svg+xml"
+    return None
+
+
+def _svg_perigoso(dados: bytes) -> bool:
+    """SVG é texto que pode carregar script. Um logo não precisa de nenhum."""
+    t = dados.lower()
+    return (b"<script" in t or b"javascript:" in t or b"<foreignobject" in t
+            or re.search(rb"\son[a-z]+\s*=", t) is not None)
+
+
+def _vencida(perfil: dict, *, agora: Optional[datetime] = None) -> bool:
+    if perfil.get("capture_status") != "capturing":
+        return False
+    bruto = str(perfil.get("updated_at") or "").strip()
+    if not bruto:
+        return True     # `capturing` sem carimbo nenhum não tem como estar vivo
+    try:
+        quando = datetime.fromisoformat(bruto.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if quando.tzinfo is None:
+        quando = quando.replace(tzinfo=timezone.utc)
+    return ((agora or datetime.now(timezone.utc)) - quando).total_seconds() > CAPTURA_VENCE_EM_S
 
 
 def _norm_url(u: Optional[str]) -> Optional[str]:
@@ -531,12 +622,31 @@ class BrandCaptureService:
             r = (self.db.table("brand_profiles").select("*")
                  .eq("company_id", company_id).limit(1).execute())
             if r and r.data:
-                return r.data[0]
+                return self._destravar_se_vencida(r.data[0])
         except Exception as exc:  # noqa: BLE001
             logger.warning("[brand] leitura de perfil falhou: %s", type(exc).__name__)
         novo = (self.db.table("brand_profiles")
                 .insert({"company_id": company_id}).execute()).data
         return novo[0] if novo else {}
+
+    def _destravar_se_vencida(self, perfil: dict) -> dict:
+        """P-130A1-01 (parte 1): `capturing` velho vira `failed` com o motivo. Nada é apagado.
+
+        A troca só acontece se a linha AINDA estiver em `capturing` (filtro no
+        UPDATE): uma captura que terminou no meio-tempo não é rebaixada.
+        """
+        if not _vencida(perfil):
+            return perfil
+        patch = {"capture_status": "failed", "capture_error": FRASE_CAPTURA_VENCIDA,
+                 "updated_at": _agora()}
+        try:
+            (self.db.table("brand_profiles").update(patch)
+             .eq("id", perfil["id"]).eq("company_id", perfil["company_id"])
+             .eq("capture_status", "capturing").execute())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[brand] captura vencida nao destravada: %s", type(exc).__name__)
+            return perfil
+        return {**perfil, **patch}
 
     def _protegidos(self, profile_id: str) -> set[str]:
         """Campos que o humano editou — recaptura não encosta."""
@@ -571,6 +681,24 @@ class BrandCaptureService:
             "capture_error": None, "updated_at": _agora(),
         }).eq("id", pid).execute()
 
+        # 🔴 SPEC-133-A · FM — quem marcou `capturing` responde por desmarcar.
+        # 📊 Antes daqui, uma exceção no meio deixava a linha em `capturing` para
+        # sempre (a AutoFleet, 07/10/2026). A falha continua subindo (a rota
+        # devolve 500), mas a tela passa a mostrar o motivo e o botão volta.
+        try:
+            return await self._capturar_marcado(company_id, pid, urls, declaradas, forcar)
+        except Exception:
+            try:
+                (self.db.table("brand_profiles").update({
+                    "capture_status": "failed", "capture_error": FRASE_CAPTURA_QUEBROU,
+                    "updated_at": _agora(),
+                }).eq("id", pid).eq("company_id", company_id).execute())
+            except Exception as exc2:  # noqa: BLE001
+                logger.warning("[brand] estado da captura nao gravado: %s", type(exc2).__name__)
+            raise
+
+    async def _capturar_marcado(self, company_id: str, pid: str, urls: dict,
+                                declaradas: list[str], forcar: bool) -> ResultadoCaptura:
         resultado = ResultadoCaptura(pid, company_id=str(company_id))
         protegidos = set() if forcar else self._protegidos(pid)
         sinais_por_fonte: dict[str, SinaisWeb] = {}
@@ -653,7 +781,8 @@ class BrandCaptureService:
         await self._propor_por_leitura(resultado, sinais_por_fonte, id_do_site)
 
         # ---- 3. logo e cor -------------------------------------------------
-        await self._propor_visual(resultado, company_id, pid, site, declaradas, id_do_site)
+        await self._propor_visual(resultado, company_id, pid, site, declaradas, id_do_site,
+                                  logo_protegido="logo_asset_id" in protegidos)
 
         # ---- 4. gravar respeitando o que é humano --------------------------
         aplicados = self._aplicar(company_id, pid, resultado, protegidos)
@@ -746,7 +875,7 @@ class BrandCaptureService:
 
     async def _propor_visual(self, res: ResultadoCaptura, company_id: str, pid: str,
                              s: Optional[SinaisWeb], allowlist: list[str],
-                             sid: Optional[str]) -> None:
+                             sid: Optional[str], *, logo_protegido: bool = False) -> None:
         """Baixa candidatos a logo, mede a tinta e monta o sistema de design."""
         analise = None
         origem_logo = ""
@@ -769,8 +898,13 @@ class BrandCaptureService:
             if not a or not a.ink_colors:
                 continue
 
-            gravado = (self.db.table("brand_assets").upsert({
-                "company_id": company_id,
+            # 🔴 SPEC-133-A · FM — era `upsert(on_conflict="company_id,kind")`, e
+            # 📊 o banco só tem o índice PARCIAL `brand_assets_one_current_per_kind`
+            # (`WHERE is_current`): o Postgres responde 42P10 e a captura morria
+            # aqui, em todo site com logo, deixando `capturing` para trás.
+            # Logo que o corretor ENVIOU (`logo_asset_id` protegido) continua o
+            # atual: o do site entra no histórico, não no lugar dele.
+            gravado = self._gravar_ativo(company_id, {
                 "kind": "logo_primary" if a.primary and not analise else "symbol",
                 "storage_ref": url,          # SPEC-057 B: reescrito ao subir p/ storage
                 "mime_type": mime.split(";")[0] or None,
@@ -778,13 +912,13 @@ class BrandCaptureService:
                 "has_transparency": a.has_transparency,
                 "ink_colors": [c.as_dict() for c in a.ink_colors],
                 "source_url": url, "source_kind": "website",
-                "confidence": a.confidence, "is_current": analise is None,
-            }, on_conflict="company_id,kind").execute()).data
+                "confidence": a.confidence,
+            }, atual=analise is None and not logo_protegido)
             res.assets.append({"url": url, "confidence": a.confidence,
                                "cores": [c.hex for c in a.ink_colors[:3]]})
             if analise is None and a.confidence >= 0.4:
                 analise, origem_logo = a, url
-                asset_id = gravado[0]["id"] if gravado else None
+                asset_id = gravado.get("id") if gravado else None
 
         # --- decidir a cor ---------------------------------------------------
         primaria = acento = None
@@ -972,23 +1106,102 @@ class BrandCaptureService:
             logger.warning("[brand] versao nao gravada: %s", type(exc).__name__)
 
     # ------------------------------------------------------------------
+    # Ativos de marca (logo) — um escritor só, para a captura e para o envio
+    # ------------------------------------------------------------------
+
+    def _gravar_ativo(self, company_id: str, linha: dict, *, atual: bool) -> dict:
+        """Grava um `brand_assets` sem apagar nada e sem violar o índice parcial.
+
+        Nasce `is_current=false`; se é para ser o atual, os atuais do MESMO tipo
+        DESTA corretora descem para o histórico e só então ele sobe. Nessa
+        ordem, uma falha no meio nunca deixa duas linhas atuais.
+        """
+        nova = {**linha, "company_id": company_id, "is_current": False}
+        gravada = _linhas(self.db.table("brand_assets").insert(nova).execute())
+        if not gravada:
+            return {}
+        novo_id = gravada[0]["id"]
+        if atual:
+            antigos = _linhas(self.db.table("brand_assets").select("id")
+                              .eq("company_id", company_id).eq("kind", linha["kind"])
+                              .eq("is_current", True).execute())
+            for a in antigos:
+                if str(a["id"]) != str(novo_id):
+                    (self.db.table("brand_assets").update({"is_current": False})
+                     .eq("id", a["id"]).eq("company_id", company_id).execute())
+            (self.db.table("brand_assets").update({"is_current": True})
+             .eq("id", novo_id).eq("company_id", company_id).execute())
+            gravada[0]["is_current"] = True
+        return gravada[0]
+
+    def trocar_logo(self, company_id: str, dados: bytes, mime_declarado: str = "",
+                    user_id: Optional[str] = None) -> dict:
+        """O corretor envia o logo. Vale como edição humana: nenhuma captura o troca."""
+        if not dados:
+            raise EntradaRecusada("O arquivo chegou vazio. Escolha o logo de novo.")
+        if len(dados) > LOGO_TETO_BYTES:
+            mb = len(dados) / (1024 * 1024)
+            raise EntradaRecusada(
+                f"O arquivo tem {mb:.1f} MB e o limite é 2 MB. Exporte o logo menor e tente de novo.")
+        mime = tipo_do_logo(dados)
+        if mime not in LOGO_TIPOS_ACEITOS:
+            raise EntradaRecusada(
+                "Esse arquivo não é uma imagem que dê para usar como logo. Envie PNG, JPG, SVG ou WebP.")
+        if mime == "image/svg+xml" and _svg_perigoso(dados):
+            raise EntradaRecusada(
+                "Esse SVG traz código dentro dele e não pode ser usado. Exporte o logo como PNG.")
+        try:
+            a = analisar_logo(dados, mime)
+        except Exception:  # noqa: BLE001 — sem medida o logo ainda serve; só a cor não vem dele
+            a = None
+        data_url = f"data:{mime};base64,{base64.b64encode(dados).decode('ascii')}"
+        ativo = self._gravar_ativo(company_id, {
+            "kind": "logo_primary", "storage_ref": data_url, "mime_type": mime,
+            "byte_size": len(dados),
+            "width": (a.width or None) if a else None,
+            "height": (a.height or None) if a else None,
+            "has_transparency": a.has_transparency if a else None,
+            "ink_colors": [c.as_dict() for c in a.ink_colors] if a and a.ink_colors else [],
+            "source_url": None, "source_kind": "upload", "confidence": 1.0,
+        }, atual=True)
+        if not ativo:
+            raise RuntimeError("logo nao gravado")
+        perfil = self.editar(company_id, {"logo_asset_id": ativo["id"]}, user_id)
+        return {"asset": {k: ativo.get(k) for k in ("id", "kind", "mime_type", "byte_size",
+                                                     "width", "height", "is_current")},
+                "profile": perfil}
+
+    # ------------------------------------------------------------------
     # Edição humana
     # ------------------------------------------------------------------
 
     def editar(self, company_id: str, campos: dict[str, Any],
                user_id: Optional[str] = None) -> dict:
         """Grava edição do corretor e marca os campos como protegidos."""
+        patch = {k: v for k, v in campos.items() if k not in ("id", "company_id")}
+        # SPEC-133-A · FM — a validação vem ANTES de qualquer escrita.
+        if "founded_year" in patch:
+            patch["founded_year"] = validar_ano_fundacao(patch["founded_year"])
+        if patch.get("logo_asset_id"):
+            # 🔴 §7: o logo apontado tem de ser DESTA corretora. Sem este filtro,
+            # quem soubesse o id do logo de outra corretora o tornaria seu.
+            dono = _linhas(self.db.table("brand_assets").select("id")
+                           .eq("id", str(patch["logo_asset_id"]))
+                           .eq("company_id", company_id).limit(1).execute())
+            if not dono:
+                raise EntradaRecusada("Esse logo não pertence à sua corretora.")
+
         perfil = self.obter_ou_criar(company_id)
         pid = perfil["id"]
 
-        patch = {k: v for k, v in campos.items() if k not in ("id", "company_id")}
         if "palette" in patch and isinstance(patch["palette"], dict):
             # Cor escolhida à mão também precisa de sistema completo e de
             # contraste conferido — senão a edição manual vira o caminho fácil
             # para gerar peça ilegível.
             sistema = build_design_system(
                 patch["palette"].get("primary"), patch["palette"].get("accent"),
-                typography=patch.get("typography") or perfil.get("typography"))
+                typography=patch.get("typography") or perfil.get("typography"),
+                neutro_e_escolha=True)
             patch["palette"] = {
                 "primary": sistema["primary"], "accent": sistema["accent"],
                 "scales": sistema["scales"], "themes": sistema["themes"],
@@ -997,8 +1210,16 @@ class BrandCaptureService:
 
         patch["updated_at"] = _agora()
         patch["updated_by"] = user_id
-        if perfil.get("capture_status") == "empty":
+        estado = perfil.get("capture_status")
+        if "capture_status" not in patch and (
+                estado == "empty"
+                # SPEC-133-A · FM: depois de uma leitura que FALHOU, cor ou logo
+                # postos à mão são da corretora — a faixa "as cores são o padrão
+                # da casa" deixaria de ser verdade. `capturing` vivo não é tocado.
+                or (estado == "failed" and ({"palette", "logo_asset_id"} & set(patch)))):
             patch["capture_status"] = "manual"
+            if estado == "failed":
+                patch["capture_error"] = None     # o motivo da falha deixou de descrever o estado
         self.db.table("brand_profiles").update(patch).eq("id", pid).execute()
 
         agora = _agora()
@@ -1418,7 +1639,9 @@ class BrandCaptureService:
         if p.get("logo_asset_id"):
             a = (self.db.table("brand_assets")
                  .select("storage_ref, width, height, has_transparency, mime_type")
-                 .eq("id", p["logo_asset_id"]).maybe_single().execute()).data
+                 .eq("id", p["logo_asset_id"]).eq("company_id", company_id)
+                 .maybe_single().execute())
+            a = a.data if a is not None else None
             if a:
                 logo = a
 
@@ -1456,6 +1679,14 @@ class BrandCaptureService:
 # --------------------------------------------------------------------------
 # Auxiliares
 # --------------------------------------------------------------------------
+
+def _linhas(resp: Any) -> list:
+    """`.data` de uma resposta do PostgREST, tolerando `None` (maybe_single sem linha)."""
+    dados = getattr(resp, "data", None) if resp is not None else None
+    if dados is None:
+        return []
+    return dados if isinstance(dados, list) else [dados]
+
 
 def _valor_vazio(valor: Any) -> bool:
     """Mede CONTEUDO, nao presenca — o mesmo criterio de `jeito_de_atender.vazio`.

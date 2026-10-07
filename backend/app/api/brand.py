@@ -15,14 +15,17 @@ se perde isolamento entre corretoras.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import os
 from typing import Any, Optional
 
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.services.brand.capture import BrandCaptureService
+from app.services.brand.capture import LOGO_TETO_BYTES, BrandCaptureService, EntradaRecusada
 from app.core.database import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -156,8 +159,44 @@ async def editar(payload: EdicaoIn, x_internal_key: Optional[str] = Header(None)
         raise HTTPException(400, "nenhum campo editavel no corpo")
 
     svc = BrandCaptureService(get_supabase_client())
-    perfil = svc.editar(payload.company_id, valores, payload.user_id)
+    try:
+        perfil = svc.editar(payload.company_id, valores, payload.user_id)
+    except EntradaRecusada as exc:
+        # SPEC-133-A · FM — a frase vai em `error` (o contrato da tela, E14).
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     return {"ok": True, "profile": perfil, "campos": sorted(valores.keys())}
+
+
+class LogoIn(BaseModel):
+    company_id: str
+    user_id: Optional[str] = None
+    mime_type: str = ""
+    #: o arquivo em base64 — o BFF já leu o upload e conferiu o tamanho.
+    data_base64: str
+
+
+@router.post("/logo")
+async def trocar_logo(payload: LogoIn, x_internal_key: Optional[str] = Header(None)):
+    """SPEC-133-A · FM — o corretor troca o logo. Grava no MESMO `brand_assets` da captura."""
+    _autorizar(x_internal_key)
+    # Corta antes de decodificar: 4/3 do teto em base64, com folga de quebra de linha.
+    if len(payload.data_base64 or "") > (LOGO_TETO_BYTES * 4) // 3 + 1024:
+        return JSONResponse({"ok": False, "error": "O arquivo passa de 2 MB. Exporte o logo menor e tente de novo."},
+                            status_code=400)
+    try:
+        dados = base64.b64decode(payload.data_base64 or "", validate=True)
+    except (binascii.Error, ValueError):
+        return JSONResponse({"ok": False, "error": "O arquivo chegou corrompido. Escolha o logo de novo."},
+                            status_code=400)
+    svc = BrandCaptureService(get_supabase_client())
+    try:
+        r = svc.trocar_logo(payload.company_id, dados, payload.mime_type, payload.user_id)
+    except EntradaRecusada as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("[brand] troca de logo falhou")
+        raise HTTPException(500, f"falha ao gravar o logo: {type(exc).__name__}") from exc
+    return {"ok": True, **r}
 
 
 class ProporJeitoIn(BaseModel):

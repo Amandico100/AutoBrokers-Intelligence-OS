@@ -229,8 +229,13 @@ def build_design_system(
     accent: str | tuple[int, int, int] | None = None,
     *,
     typography: Optional[dict] = None,
+    neutro_e_escolha: bool = False,
 ) -> dict:
     """Sistema completo a partir da(s) cor(es) da marca.
+
+    `neutro_e_escolha=True` (SPEC-133-A · FM): a cor veio da MÃO do corretor, não
+    de um logo lido — preto escolhido é marca (📊 a AutoFleet é preto sobre
+    branco), e trocá-lo pelo azul da casa seria sobrescrever edição humana.
 
     `accent` ausente não é problema: a maioria das marcas de corretora tem uma
     cor só. Deriva-se um acento análogo — mesmo matiz-família, luminosidade e
@@ -238,7 +243,7 @@ def build_design_system(
     """
     p = _rgb(primary, _rgb(FALLBACK_PRIMARIA, (44, 110, 143)))
 
-    if is_neutral(p):
+    if is_neutral(p) and not neutro_e_escolha:
         # Logo preto/cinza é comum e não dá cor nenhuma. Vale mais assumir o
         # fallback da casa do que gerar um sistema inteiro sobre cinza morto.
         p = _rgb(FALLBACK_PRIMARIA, (44, 110, 143))

@@ -124,6 +124,51 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json(r.body, { status: r.status });
 }
 
+/**
+ * SPEC-133-A · FM — TROCAR O LOGO. O arquivo vem em multipart (`logo`); a
+ * corretora vem da SESSÃO. O backend confere o tipo pelo CONTEÚDO e grava no
+ * mesmo `brand_assets` que a captura usa — aqui só se barra o óbvio cedo.
+ */
+const LOGO_TETO_BYTES = 2 * 1024 * 1024;
+const LOGO_TIPOS = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+
+export async function PUT(req: NextRequest) {
+  const xo = assertSameOrigin(req);
+  if (xo) return NextResponse.json({ ok: false, error: xo.error }, { status: xo.status });
+  const auth = await requireCompanyMember({ write: true });
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+
+  const form = await req.formData().catch(() => null);
+  const arquivo = form?.get('logo');
+  if (!arquivo || typeof arquivo === 'string') {
+    return NextResponse.json({ ok: false, error: 'Escolha o arquivo do logo.' }, { status: 400 });
+  }
+  if (arquivo.size > LOGO_TETO_BYTES) {
+    return NextResponse.json(
+      { ok: false, error: 'O arquivo passa de 2 MB. Exporte o logo menor e tente de novo.' },
+      { status: 400 },
+    );
+  }
+  if (arquivo.type && !LOGO_TIPOS.includes(arquivo.type)) {
+    return NextResponse.json(
+      { ok: false, error: 'Envie o logo em PNG, JPG, SVG ou WebP.' },
+      { status: 400 },
+    );
+  }
+  const bytes = Buffer.from(await arquivo.arrayBuffer());
+  const r = await chamar('/api/brand/logo', {
+    method: 'POST',
+    timeoutMs: 30_000,
+    body: JSON.stringify({
+      company_id: auth.ctx.companyId,
+      user_id: auth.ctx.userId ?? null,
+      mime_type: arquivo.type || '',
+      data_base64: bytes.toString('base64'),
+    }),
+  });
+  return NextResponse.json(r.body, { status: r.status });
+}
+
 export async function POST(req: NextRequest) {
   const xo = assertSameOrigin(req);
   if (xo) return NextResponse.json({ ok: false, error: xo.error }, { status: xo.status });

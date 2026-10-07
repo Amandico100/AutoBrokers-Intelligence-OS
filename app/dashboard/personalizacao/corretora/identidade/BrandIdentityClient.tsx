@@ -220,6 +220,32 @@ const campoCls =
   'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground ' +
   'outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/15';
 
+// SPEC-133-A · FM — as mesmas regras do backend (`capture.py`), ditas cedo e em português.
+// O backend confere de novo: a tela ajuda, não protege.
+const ANO_FUNDACAO_MINIMO = 1900;
+const LOGO_TETO_BYTES = 2 * 1024 * 1024;
+const LOGO_TIPOS = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+const LOGO_ACCEPT = '.png,.jpg,.jpeg,.svg,.webp,' + LOGO_TIPOS.join(',');
+
+export function motivoParaRecusarLogo(arquivo: { size: number; type: string }): string | null {
+  if (!LOGO_TIPOS.includes(arquivo.type)) return 'Envie o logo em PNG, JPG, SVG ou WebP.';
+  if (arquivo.size > LOGO_TETO_BYTES) {
+    return `O arquivo tem ${(arquivo.size / (1024 * 1024)).toFixed(1)} MB e o limite é 2 MB. Exporte o logo menor.`;
+  }
+  if (arquivo.size === 0) return 'O arquivo está vazio. Escolha o logo de novo.';
+  return null;
+}
+
+export function anoDeFundacao(bruto: unknown, anoAtual: number): { valor: number | null; erro: string } {
+  const texto = String(bruto ?? '').trim();
+  if (!texto) return { valor: null, erro: '' };
+  const n = Number(texto);
+  if (!/^\d{4}$/.test(texto) || !Number.isInteger(n) || n < ANO_FUNDACAO_MINIMO || n > anoAtual) {
+    return { valor: null, erro: `O ano de fundação precisa ser um número entre ${ANO_FUNDACAO_MINIMO} e ${anoAtual}.` };
+  }
+  return { valor: n, erro: '' };
+}
+
 export function BrandIdentityClient() {
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [bruto, setBruto] = useState<any>(null);
@@ -234,6 +260,9 @@ export function BrandIdentityClient() {
   const [avisosDaCaptura, setAvisosDaCaptura] = useState<string[]>([]);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
+  // SPEC-133-A · FM — o logo escolhido fica em PRÉVIA até o corretor confirmar.
+  const [logoNovo, setLogoNovo] = useState<{ arquivo: File; url: string } | null>(null);
+  const [enviandoLogo, setEnviandoLogo] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -301,9 +330,44 @@ export function BrandIdentityClient() {
     setSalvando(false);
   };
 
+  const escolherLogo = (arquivo: File | undefined) => {
+    setAviso(''); setErro('');
+    if (!arquivo) return;
+    const motivo = motivoParaRecusarLogo(arquivo);
+    if (motivo) { setErro(motivo); return; }
+    if (logoNovo) URL.revokeObjectURL(logoNovo.url);
+    setLogoNovo({ arquivo, url: URL.createObjectURL(arquivo) });
+  };
+
+  const cancelarLogo = () => {
+    if (logoNovo) URL.revokeObjectURL(logoNovo.url);
+    setLogoNovo(null);
+  };
+
+  const enviarLogo = async () => {
+    if (!logoNovo) return;
+    setEnviandoLogo(true); setAviso(''); setErro('');
+    try {
+      const corpo = new FormData();
+      corpo.append('logo', logoNovo.arquivo);
+      const r = await fetch('/api/dashboard/brand-identity', { method: 'PUT', body: corpo });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) {
+        cancelarLogo();
+        setAviso('Logo trocado. É ele que vai nas propostas e nas peças — nenhuma leitura do site o substitui.');
+        await carregar();
+      } else setErro(j?.error || 'Não foi possível trocar o logo. Tente de novo.');
+    } catch {
+      setErro('Não foi possível trocar o logo. Tente de novo.');
+    }
+    setEnviandoLogo(false);
+  };
+
   const paleta = (perfil?.palette || {}) as any;
   const completude = Math.round(Number(perfil?.completeness || 0) * 100);
-  const logo = assets.find((a) => a.kind === 'logo_primary') || assets[0];
+  // O logo que VALE é o que o perfil aponta — é o mesmo que a proposta e as peças leem.
+  const logo = assets.find((a) => a.id === perfil?.logo_asset_id)
+    || assets.find((a) => a.kind === 'logo_primary') || assets[0];
 
   const estadoId: string = capturando
     ? 'capturing'
@@ -343,12 +407,51 @@ export function BrandIdentityClient() {
             className="flex h-20 w-32 flex-none items-center justify-center rounded-xl border border-border bg-background p-3"
             style={temMarca ? { borderColor: `${paleta.primary}33` } : undefined}
           >
-            {logo?.storage_ref ? (
+            {logoNovo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoNovo.url} alt="Prévia do novo logo" className="max-h-full max-w-full object-contain" />
+            ) : logo?.storage_ref ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logo.storage_ref} alt="Logo da corretora" className="max-h-full max-w-full object-contain" />
             ) : (
               <span className="text-xs text-muted-foreground">sem logo</span>
             )}
+          </div>
+
+          {/* SPEC-133-A · FM — trocar o logo à mão. */}
+          <div className="flex flex-col gap-1.5">
+            {logoNovo ? (
+              <>
+                <span className="text-xs font-medium text-foreground">Prévia — ainda não salvo</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={enviarLogo}
+                    disabled={enviandoLogo}
+                    className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40"
+                  >
+                    {enviandoLogo ? 'Enviando…' : 'Usar este logo'}
+                  </button>
+                  <button
+                    onClick={cancelarLogo}
+                    disabled={enviandoLogo}
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-secondary disabled:opacity-40"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <label className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-center text-xs font-medium text-foreground transition hover:bg-secondary">
+                Trocar o logo
+                <input
+                  type="file"
+                  accept={LOGO_ACCEPT}
+                  className="sr-only"
+                  onChange={(e) => { escolherLogo(e.target.files?.[0]); e.target.value = ''; }}
+                />
+              </label>
+            )}
+            <span className="text-[11px] text-muted-foreground">PNG, JPG, SVG ou WebP · até 2 MB</span>
           </div>
 
           <div className="min-w-0 flex-1 sm:min-w-[220px]">
@@ -718,6 +821,15 @@ function AbaSobre({ rascunho, setRascunho, proc, salvar, salvando }: any) {
     ['mission', 'Missão', '', true],
   ];
   const servicos: any[] = Array.isArray(rascunho.services) ? rascunho.services : [];
+  const [erroAno, setErroAno] = useState('');
+  const anoAtual = new Date().getFullYear();
+
+  const salvarSobre = () => {
+    const ano = anoDeFundacao(rascunho.founded_year, anoAtual);
+    if (ano.erro) { setErroAno(ano.erro); return; }
+    setErroAno('');
+    salvar({ ...Object.fromEntries(campos.map(([c]) => [c, rascunho[c] ?? null])), founded_year: ano.valor });
+  };
 
   return (
     <div className="space-y-4">
@@ -751,6 +863,28 @@ function AbaSobre({ rascunho, setRascunho, proc, salvar, salvando }: any) {
               )}
             </label>
           ))}
+          {/* SPEC-133-A · FM — vira "N anos de mercado" na proposta ao segurado. */}
+          <label>
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="text-xs font-medium text-foreground-2">Ano de fundação</span>
+              <Origem proc={proc} campo="founded_year" />
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={ANO_FUNDACAO_MINIMO}
+              max={anoAtual}
+              step={1}
+              className={`mt-1 ${campoCls}`}
+              placeholder="Ex.: 2011"
+              value={rascunho.founded_year ?? ''}
+              onChange={(e) => { setErroAno(''); setRascunho({ ...rascunho, founded_year: e.target.value }); }}
+            />
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              Vira &ldquo;anos de mercado&rdquo; na proposta que o cliente recebe.
+            </span>
+            {erroAno && <span className="mt-1 block text-xs text-destructive">{erroAno}</span>}
+          </label>
         </div>
       </section>
 
@@ -772,7 +906,7 @@ function AbaSobre({ rascunho, setRascunho, proc, salvar, salvando }: any) {
 
       <div className="flex justify-end">
         <button
-          onClick={() => salvar(Object.fromEntries(campos.map(([c]) => [c, rascunho[c] ?? null])))}
+          onClick={salvarSobre}
           disabled={salvando}
           className="w-full rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40 sm:w-auto"
         >
