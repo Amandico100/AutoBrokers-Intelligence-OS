@@ -499,6 +499,96 @@ def test_7_controle_sair_dentro_de_uma_resposta_nao_e_saida(efeitos):
     assert r.estado["etapa"] == "km_mensal" and r.estado["respostas"]["aplicativo"] is False
 
 
+# B3 (confirmação 07/10) — "não quero mais" DENTRO de uma resposta não é saída; o "quero fechar" vence o parar
+_PREMIO = {"etapa": "premio", "consentimento": "sim",
+           "respostas": {"placa": "ABC1D23", "cep": "01001000", "aplicativo": False, "km_mensal": 800, "jovem": False,
+                         "cpf": CPF, "nome": "Pessoa Sintetica", "nascimento": "1980-02-01", "sexo": "M",
+                         "habilitacao": 20}}
+
+
+def test_b3_nao_quero_mais_no_meio_da_resposta_do_premio_nao_apaga(efeitos):
+    from app.services.canal.conversa import FRASE_PAROU
+
+    r = _responder("uns 4 mil, não quero mais pagar tanto", json.loads(json.dumps(_PREMIO)), llm=Espiao(4000))
+    assert r.estado["etapa"] != "parou" and FRASE_PAROU not in r.baloes and efeitos["cancel"] == []
+
+
+def test_b3_nao_quero_mais_o_seguro_atual_quero_fechar_dispara_a_passagem(efeitos):
+    from app.services.canal.conversa import FRASE_PAROU
+
+    r = _responder("não quero mais o meu seguro atual, quero fechar", dict(_RESULTADO), llm=Espiao("fechar"))
+    assert r.estado["etapa"] != "parou" and FRASE_PAROU not in r.baloes
+    assert efeitos["passagem"] == [TEL]
+
+
+@pytest.mark.parametrize("fala,sai", [
+    ("não quero mais", True), ("Não quero mais!", True), ("nao quero mais, obrigado", True),
+    ("não quero mais nada", True), ("pode apagar", True), ("desisto, quero fechar", True),
+    ("quero fechar, mas apaga meus dados depois", True), ("para de me mandar mensagem", True),
+    ("não quero fechar, me tira da lista", True),
+    ("uns 4 mil, não quero mais pagar tanto", False), ("não quero mais o meu seguro atual, quero fechar", False),
+    ("me tira da lista de espera e quero fechar", False), ("quero fechar", False),
+])
+def test_b3_a_regua_da_saida(fala, sai):
+    from app.services.canal.conversa import quer_sair
+
+    assert quer_sair(fala) is sai
+
+
+@pytest.mark.parametrize("fala", ["não quero mais", "o carro é da minha mãe, apaga meus dados por favor"])
+def test_b3_controle_saida_sozinha_e_apagar_no_meio_param(efeitos, fala):
+    from app.services.canal.conversa import FRASE_PAROU
+
+    r = _responder(fala, json.loads(json.dumps(_PREMIO)))
+    assert r.baloes == [FRASE_PAROU] and r.estado["etapa"] == "parou" and not _tem_cpf(json.dumps(r.estado))
+
+
+# pendência 1 da confirmação — o CPF com separador incomum ou dígito não-ASCII chega mascarado ao modelo
+_FORMATOS_DO_CPF = {
+    "pontuado": "529.982.247-25", "espacos": "529 982 247 25", "1_por_espaco": "5 2 9 9 8 2 2 4 7 2 5",
+    "virgula_espaco": "5, 2, 9, 9, 8, 2, 2, 4, 7, 2, 5", "quebras_de_linha": "529\n982\n247\n25",
+    "fullwidth": "５２９９８２２４７２５", "colado_em_letra": "cpf529982247-25",
+    "espaco_traco_espaco": "529 - 982 - 247 - 25", "travessao": "529–982–247–25", "travessao_longo": "529—982—247—25",
+    "ponto_medio": "529·982·247·25", "underscore": "529_982_247_25", "3_espacos": "529   982   247   25",
+    "barra_c_espacos": "529 / 982 / 247 / 25", "por_extenso": "cinco dois nove nove oito dois dois quatro sete dois cinco",
+    "keycap_emoji": "".join(d + "️⃣" for d in CPF),
+    # o enfeite do emoji (2 caracteres) + " - " passa da janela de 3: só a normalização para ASCII pega este
+    "keycap_com_traco": " - ".join(d + "️⃣" for d in CPF),
+}
+_POR_EXTENSO = {"zero": "0", "um": "1", "dois": "2", "tres": "3", "quatro": "4", "cinco": "5", "seis": "6",
+                "sete": "7", "oito": "8", "nove": "9"}
+
+
+def _vazou_o_cpf(s: str) -> bool:
+    import re
+    import unicodedata
+
+    digitos = "".join(str(unicodedata.digit(c)) for c in s if unicodedata.digit(c, None) is not None)
+    palavras = "".join(_POR_EXTENSO.get(w, "") for w in re.findall(r"\w+", s.lower()))
+    return CPF in digitos or CPF in palavras
+
+
+@pytest.mark.parametrize("formato", list(_FORMATOS_DO_CPF))
+def test_p1_o_cpf_em_qualquer_formato_chega_mascarado_ao_modelo(efeitos, formato):
+    from app.services.canal.conversa import mascarar_para_o_modelo
+
+    fala = f"rodo uns 800 km, meu cpf {_FORMATOS_DO_CPF[formato]}"
+    assert _vazou_o_cpf(fala)                                    # a régua consegue ver o CPF (prova que pode falhar)
+    assert not _vazou_o_cpf(mascarar_para_o_modelo(fala))
+    llm = Espiao()
+    _responder(fala, {"etapa": "km_mensal", "consentimento": "sim", "respostas": {"placa": "ABC1D23"}}, llm=llm)
+    assert not any(_vazou_o_cpf(json.loads(v)[1]["content"]) for v in llm.vistos)
+
+
+@pytest.mark.parametrize("fala", ["uns 1200 km por mês", "depende, entre 1.000 e 1.500 por mes", "12x de 287,50"])
+def test_p1_controle_a_resposta_normal_chega_legivel(fala):
+    from app.services.canal.conversa import mascarar_para_o_modelo
+
+    assert mascarar_para_o_modelo(fala) == fala
+    # e a placa de verdade, no meio da mesma frase, continua mascarada (a exceção é só da palavra)
+    assert "[PLACA]" in mascarar_para_o_modelo(f"{fala}, placa abc 1234") and "[PLACA]" in mascarar_para_o_modelo("uns1200")
+
+
 def test_7_retencao_conversa_parada_perde_as_respostas(efeitos):
     from app.services.canal import conversa
 
@@ -582,3 +672,12 @@ def test_17_lembrete_nao_apaga_o_quero_fechar_que_chegou_no_meio(mundo, canal, m
     asyncio.run(rodar_o_run(m.db, run_id, m.canal))
     est = c.repo.carregar_estado(m.db, m.canal, TEL_DO_MUNDO)
     assert est["etapa"] == "passado" and est["lembretes"] == 1
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Gerente 07/10 — "não quero fechar" depois do resultado nunca dispara a passagem (achado do builder do B3)
+def test_nao_quero_fechar_depois_do_resultado_nao_e_passagem():
+    from app.services.canal import conversa as CV
+    assert CV.quer_fechar("quero fechar") is True                       # controle
+    assert CV.quer_fechar("não quero fechar agora") is False
+    assert CV._NAO_FECHAR.search(CV._sem_acento("não quero fechar agora"))

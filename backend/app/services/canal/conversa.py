@@ -269,18 +269,37 @@ _INSTRUCAO = (
 #: ou sem separador (CPF 11, celular 10–13, cartão 16, CEP 8) antes do CEP com traço e da data.
 #: 🔴 Por que 8 e não 11: nenhuma resposta que vai ao modelo tem 8 dígitos (km ≤ 20.000 → 5; prêmio ≤ 60.000,00 → 7;
 #: anos de carteira ≤ 80 → 2); um CEP ou um celular sem DDD têm 8 — a régua mais larga só pega dado pessoal.
+#: 🔴 pendência 1 da confirmação (07/10): o separador entre dois dígitos é QUALQUER coisa que não seja letra ou dígito,
+#: até 3 caracteres ("529 - 982", "529–982", "529·982", "529_982", "529   982", "529 / 982"); uma LETRA quebra a
+#: sequência ("entre 1.000 e 1.500 por mês" chega legível). Antes da régua, `_digitos_ascii` (emoji/fullwidth → ASCII).
 _MASCARAS = (
     (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "[EMAIL]"),
-    (re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{3}[\s-]?\d[A-Za-z0-9]\d{2}(?![A-Za-z0-9])"), "[PLACA]"),
-    (re.compile(r"(?<!\d)\d(?:[\s.,\-/()]{0,2}\d){7,}(?!\d)"), "[NUMERO]"),
+    # 📊 07/10: sem a exceção, "uns 1200 km por mês" virava "[PLACA] km por mês" — uma PALAVRA de 3 letras seguida de
+    # espaço e 4 dígitos não é placa (a placa colada, "uns1200", continua mascarada)
+    (re.compile(r"(?<![A-Za-z0-9])(?!(?i:uns|uma|por|tem|mes|com|ate|sao|faz|dos|das|nos|mil|uso|ano|dia|que|mas|"
+                r"pra|pro|ele|ela|era|vou|sim|nao)[\s-]\d)"
+                r"[A-Za-z]{3}[\s-]?\d[A-Za-z0-9]\d{2}(?![A-Za-z0-9])"), "[PLACA]"),
+    (re.compile(r"(?<!\d)\d(?:[\W_]{0,3}\d){7,}(?!\d)"), "[NUMERO]"),
+    # o mesmo, ditado por extenso ("cinco dois nove nove oito…"): 8+ algarismos falados em sequência
+    (re.compile(r"(?i)\b(?:{a})(?:[\W_]{{1,3}}(?:{a})\b){{7,}}".format(
+        a=r"zero|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|meia|sete|oito|nove")), "[NUMERO]"),
     (re.compile(r"(?<!\d)\d{5}-\d{3}(?!\d)"), "[CEP]"),
     (re.compile(r"(?<!\d)\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}(?!\d)"), "[DATA]"),
 )
+#: o que acompanha um dígito emoji: o seletor de variação (U+FE0F) e a tecla (U+20E3) — "5️⃣" vira "5"
+_ENFEITE_DE_DIGITO = re.compile("[️⃣]")
+
+
+def _digitos_ascii(texto: str) -> str:
+    """Todo dígito decimal (fullwidth, árabe-índico, emoji de tecla…) vira o dígito ASCII: a máscara vê um alfabeto só."""
+    t = _ENFEITE_DE_DIGITO.sub("", texto)
+    return "".join(c if c.isascii() or unicodedata.decimal(c, None) is None else str(unicodedata.decimal(c))
+                   for c in t)
 
 
 def mascarar_para_o_modelo(texto: Any) -> str:
     """A fala SEM dado pessoal (CPF, telefone, cartão, placa, CEP, data, e-mail) — o que pode ir ao modelo."""
-    t = str(texto or "")
+    t = _digitos_ascii(str(texto or ""))
     for padrao, marcador in _MASCARAS:
         t = padrao.sub(marcador, t)
     return t
@@ -397,18 +416,36 @@ FRASE_NAO_TERMINOU = "Não consegui terminar a cotação agora. Se quiser tentar
 #: conserto 7 — a palavra de saída: apaga as respostas, confirma em UMA frase e cancela os lembretes
 FRASE_PAROU = ("Pronto, parei por aqui e apaguei as suas respostas. Se um dia quiser cotar de novo, é só mandar "
                "um oi.")
-#: a frase inteira é a palavra (curta e ambígua dentro de uma resposta: "uso pra sair no fim de semana" não é saída)
-_SAIR_SOZINHO = re.compile(r"^(parar|para|pare|sair|sai|stop|chega|cancela|cancelar|encerrar|encerra)[.! ]*$")
-#: o pedido explícito vale em qualquer lugar da frase
-_SAIR_NA_FRASE = re.compile(r"\b(desisto|quero desistir|apag(a|ar|ue|uem) (os |todos os )?meus dados|"
-                            r"nao quero mais|para de me mandar|pare de me mandar|me tira da lista)\b")
+#: a frase inteira é a palavra (curta e ambígua dentro de uma resposta: "uso pra sair no fim de semana" não é saída).
+#: 🔴 conserto B3 (confirmação 07/10): "não quero mais" mora AQUI, nunca no meio da frase — "uns 4 mil, não quero mais
+#: pagar tanto" (a pergunta do prêmio convida a reclamação) e "não quero mais o meu seguro atual, quero fechar" são
+#: RESPOSTAS. Sozinho, ou com um fecho curto ("não quero mais, obrigado"), é saída.
+_SAIR_SOZINHO = re.compile(r"^(parar|para|pare|sair|sai|stop|chega|cancela|cancelar|encerrar|encerra|"
+                           r"nao quero mais( nada)?)[.,!; ]*((muito )?obrigad[oa]|obg|valeu|tchau)?[.! ]*$")
+#: o pedido explícito de APAGAR / desistir vale em qualquer lugar da frase — e vence até um "quero fechar" na mesma fala
+_APAGAR_NA_FRASE = re.compile(r"\b(desisto|quero desistir|apag(a|ar|ue|uem) (os |todos os )?meus dados|"
+                              r"pode apagar|apaga tudo)\b")
+#: o pedido de parar de receber vale em qualquer lugar da frase — salvo quando a mesma fala quer FECHAR (B3)
+_SAIR_NA_FRASE = re.compile(r"\b(para de me mandar|pare de me mandar|me tira da lista)\b")
+#: "não quero fechar" não é a intenção de fechar
+_NAO_FECHAR = re.compile(r"\bnao (quero |vou |vamos |pode )?(fechar|fecha|contratar)\b")
 #: o que fica de um estado que SAIU (parou, falhou): só o registro do consentimento (o resto é dado da pessoa)
 _FICA_NA_SAIDA = ("versao", "consentimento", "consentimento_em")
 
 
-def quer_sair(texto: Any) -> bool:
+def quer_fechar(texto: Any) -> bool:
+    """A fala diz que quer fechar (e não "não quero fechar")?"""
     b = _sem_acento(texto)
-    return bool(_SAIR_SOZINHO.match(b) or _SAIR_NA_FRASE.search(b))
+    return bool(_QUER_FECHAR.search(b)) and not _NAO_FECHAR.search(b)
+
+
+def quer_sair(texto: Any) -> bool:
+    """A palavra de saída. Precedência (B3): apagar/desistir explícito > querer fechar > parar de receber; a palavra
+    curta (e o "não quero mais") só vale como a frase inteira."""
+    b = _sem_acento(texto)
+    if _SAIR_SOZINHO.match(b) or _APAGAR_NA_FRASE.search(b):
+        return True
+    return bool(_SAIR_NA_FRASE.search(b)) and not quer_fechar(b)
 
 
 def estado_de_saida(est: Mapping[str, Any], etapa: str, **extra: Any) -> Dict[str, Any]:
@@ -782,14 +819,16 @@ async def _depois_do_resultado(db, company_id, telefone, t, est, llm) -> Respost
     quem = res.get("anfitria_nome") or "a corretora"
     baixo = _sem_acento(t)
 
-    if _FORA_DO_ESCOPO.search(baixo) and not _QUER_FECHAR.search(baixo):
+    if _FORA_DO_ESCOPO.search(baixo) and not quer_fechar(t):
         est["etapa"] = "oferta_passagem"
         return Resposta([f"Isso a {quem} resolve melhor que eu. Quer que eu peça para alguém de lá falar com você?"],
                         est)
 
     intencao = None
     resp = sim_nao(t)
-    if _QUER_FECHAR.search(baixo) or resp is True:
+    if _NAO_FECHAR.search(baixo):                      # "não quero fechar" nunca é fechar (confirmação 07/10)
+        intencao = "nao"
+    elif quer_fechar(t) or resp is True:
         intencao = "fechar"
     elif resp is False:
         intencao = "nao"
