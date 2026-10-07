@@ -133,10 +133,12 @@ def test_a_migration_aceita_a_minima_nas_duas_checks_e_nada_mais():
     assert appends and all(l.rstrip().endswith(")::text;") for l in appends), appends
 
 
-def test_o_manifesto_registra_a_minima_nao_aplicada():
+def test_o_manifesto_registra_a_minima_aplicada_com_o_verify():
+    """§9.3: nasceu afirmando NÃO APLICADA; o gerente aplicou em 07/10 — o guarda passa a exigir a versão e a saída real."""
     texto = (BACKEND / "supabase" / "migrations" / "MANIFEST.md").read_text(encoding="utf-8")
     linha = next(l for l in texto.splitlines() if "20261006_04_spec130a1_minima.sql" in l)
-    assert "NÃO APLICADA" in linha and "1 · 1 · 2 · 1" in linha and "VERIFY 20261006_04 OK" in linha
+    assert "**APLICADA**" in linha and "NÃO APLICADA" not in linha and "20261007040359" in linha
+    assert "1 · 1 · 2 · 1" in linha and "VERIFY 20261006_04 OK" in linha and "comportamental `OK:" in linha
 
 
 def test_a_porta_aceita_a_minima_e_grava_o_carro_reserva_zero():
