@@ -1216,6 +1216,9 @@ def destino_do_fechar(modelo: dict, opcao: Any) -> Optional[dict]:
     opções que o servidor já conhece. O texto: `cta.texto_por_opcao` quando o
     modelo traz; senão o do desenho aprovado (`_texto_do_fechar`).
     """
+    if isinstance(modelo, dict) and modelo.get("origem") == "canal":    # SPEC-133-A D-133A-13: volta à conversa do canal
+        from .proposta_canal_html import destino_do_fechar_do_canal
+        return destino_do_fechar_do_canal(modelo, opcao)
     if not isinstance(opcao, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", opcao):
         return None
     escolhida = next((o for o in _opcoes(modelo) if o.get("id") == opcao), None)

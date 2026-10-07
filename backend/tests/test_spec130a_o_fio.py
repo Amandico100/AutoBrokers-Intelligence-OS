@@ -196,11 +196,18 @@ def test_o_fio_do_canal_pedido_real_ate_o_html_servido(monkeypatch, canal_com_ma
     for o in assinatura:
         assert _br(o["premio_total"]) not in tudo and _br(o["premio_mensal"]) not in tudo
 
-    # --- o "Quero fechar": o servidor monta o wa.me da ANFITRIÃ (nunca da query)
+    # --- o "Quero fechar": o servidor monta o destino DO MODELO (nunca da query). SPEC-133-A D-133A-13 (§9.3, a lição
+    # migra): no CANAL ele volta à CONVERSA do canal (`canal.whatsapp`), nunca ao WhatsApp da anfitriã; sem o número
+    # no modelo, nada redireciona (a página do canal não mostra o botão)
     svc = ArtifactService(m.banco.visao("rota-publica"))
+    numero_do_canal = (modelo.get("canal") or {}).get("whatsapp")
     for i in ids:
         destino = svc.fechar_compartilhado(r["token"], i)
-        assert destino and destino.startswith(f"https://wa.me/{M.WHATS_ALFA}?text=")
+        if numero_do_canal:
+            assert destino and destino.startswith(f"https://wa.me/{numero_do_canal}?text=")
+        else:
+            assert destino is None
+        assert not str(destino or "").startswith(f"https://wa.me/{M.WHATS_ALFA}")
     assert svc.fechar_compartilhado(r["token"], "nao_existe") is None
 
     # --- a mensagem do WhatsApp sai junto, com o link e sem comissão nem perdedora

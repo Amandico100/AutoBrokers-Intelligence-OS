@@ -936,6 +936,9 @@ def _renderizar_proposta(modelo: dict) -> str:
     `spec_from_file_location`) — um `from .proposta_html` no topo os derrubava com
     "attempted relative import with no known parent package"."""
     from .proposta_html import render_proposta
+    if isinstance(modelo, dict) and modelo.get("origem") == "canal":   # SPEC-133-A D-133A-09: a página da marca do canal
+        from .proposta_canal_html import render_proposta_do_canal
+        return render_proposta_do_canal(modelo)
     return render_proposta(modelo)
 
 

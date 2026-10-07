@@ -60,6 +60,24 @@ def _cores(modelo: dict) -> dict:
     }
 
 
+#: SPEC-133-A F3 — as cores da MARCA do canal na prévia do canal (o marinho e o verde-limão do símbolo); a carteira
+#: continua com as da anfitriã (`_cores`)
+_CORES_DO_CANAL = {"p": "#1B3756", "p_on": "#FFFFFF", "suave": "#F1F9D2", "selo": "#D6F25C", "selo_on": "#1B3756",
+                   "tinta": "#121D25", "tinta2": "#3E4850", "tinta3": "#4F5A62", "linha": "#C4CED5"}
+#: o rabo do "Q" na caixa 100×100 (o mesmo de `proposta_canal_html._RABO`)
+_RABO_DO_Q = ((50.4, 47.6), (50.9, 73.2), (60.1, 87.1), (90.3, 87.1))
+
+
+def _desenhar_q(pg, pymupdf, x: float, y: float, lado: float) -> None:
+    """O "Q" do canal: o anel marinho, a fresta (branca — a coluna da esquerda é sempre branca) e o rabo limão."""
+    k = lado / 100
+    pg.draw_circle(pymupdf.Point(x + 50 * k, y + 50 * k), 31.8 * k, color=_rgb("#1B3756"), width=20.4 * k)
+    pts = [pymupdf.Point(x + a * k, y + b * k) for a, b in _RABO_DO_Q]
+    pg.draw_polyline(pts + [pts[0]], color=(1, 1, 1), fill=(1, 1, 1), width=7 * k, closePath=True, lineJoin=1)
+    pg.draw_polyline(pts + [pts[0]], color=_rgb("#D6F25C"), fill=_rgb("#D6F25C"), width=3.2 * k, closePath=True,
+                     lineJoin=1)
+
+
 def _imagem_do_logo(data_url: Optional[str]) -> Optional[bytes]:
     m = re.match(r"^data:image/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$", data_url or "")
     if not m:
@@ -78,8 +96,12 @@ def render_previa_png(modelo: dict) -> Optional[bytes]:
         logger.info("[PROPOSTA] PyMuPDF ausente — prévia sem imagem")
         return None
 
-    p = previa_do_modelo(modelo)
-    c = _cores(modelo)
+    canal = isinstance(modelo, dict) and modelo.get("origem") == "canal"
+    if canal:                       # SPEC-133-A F3: a prévia do canal leva a marca DO CANAL (a carteira não muda)
+        from .proposta_canal_html import previa_do_canal
+        p, c = previa_do_canal(modelo), dict(_CORES_DO_CANAL)
+    else:
+        p, c = previa_do_modelo(modelo), _cores(modelo)
     doc = pymupdf.open()
     try:
         pg = doc.new_page(width=PREVIA_LARGURA, height=PREVIA_ALTURA)
@@ -105,15 +127,24 @@ def render_previa_png(modelo: dict) -> Optional[bytes]:
         # ---- coluna da esquerda
         x0, util = 68, 520
         linhas_t1 = _quebrar(p["manchete"], 70, util, lambda s, t: larg(s, t, "is6c"))
-        t2 = (f"{p['comparadas']} seguradoras comparadas por {p['corretoras']} corretoras" if p["comparadas"] and p["corretoras"]
+        t2 = (f"{p['cotacoes']} cotações em {p['seguradoras']} seguradoras" if p.get("cotacoes") and p.get("seguradoras")
+              else f"{p['comparadas']} seguradoras comparadas por {p['corretoras']} corretoras" if p["comparadas"] and p["corretoras"]
               else f"{p['comparadas']} seguradoras comparadas com a mesma cobertura completa" if p["comparadas"] else "")
         linhas_t2 = _quebrar(t2, 36, 490, lambda s, t: larg(s, t, "is5")) if t2 else []
         alt_marca = 78
-        altura = alt_marca + 26 + len(linhas_t1) * 71 + (18 + len(linhas_t2) * 43 if linhas_t2 else 0) + (64 if p["canal"] else 0)
+        selo_do_canal = bool(p["canal"]) and not p.get("marca_do_canal")
+        altura = alt_marca + 26 + len(linhas_t1) * 71 + (18 + len(linhas_t2) * 43 if linhas_t2 else 0) + (64 if selo_do_canal else 0)
         y = max(40, (PREVIA_ALTURA - altura) / 2)
-        logo = _imagem_do_logo(p["logo"])
+        logo = None if p.get("marca_do_canal") else _imagem_do_logo(p["logo"])
         desenhou_logo = False
-        if logo:
+        if p.get("marca_do_canal"):
+            _desenhar_q(pg, pymupdf, x0, y, alt_marca)
+            nome = p["marca_do_canal"]
+            while larg(nome, 40, "is6") > 420 and len(nome) > 4:
+                nome = nome[:-2].rstrip() + "…"
+            txt((x0 + 96, y + 53), nome, 40, c["p"], "is6")
+            desenhou_logo = True
+        elif logo:
             try:
                 info = pymupdf.Pixmap(logo)
                 w = alt_marca * info.width / max(info.height, 1)
@@ -138,7 +169,7 @@ def render_previa_png(modelo: dict) -> Optional[bytes]:
             for ln in linhas_t2:
                 y += 43
                 txt((x0, y - 8), ln, 36, c["tinta2"], "is5")
-        if p["canal"]:
+        if selo_do_canal:
             selo = f"Comparação independente · {p['canal']}"
             w = larg(selo, 22, "is5") + 36
             y += 18

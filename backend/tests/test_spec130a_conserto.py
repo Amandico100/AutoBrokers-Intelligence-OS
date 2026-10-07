@@ -228,7 +228,9 @@ def test_J_B3_a_frase_do_resumo_fecha_a_conta_no_html_servido(monkeypatch):
     frase, total, partes = _numeros_da_conta(doc)
     assert total == sum(partes) and len(partes) == 3, frase
     assert (total, partes) == (16, [13, 1, 2]), frase                      # 📊 reconferido por SQL pelo juiz (G15)
-    assert f"cotado em {total} seguradoras" in texto_visivel(doc)
+    # SPEC-133-A (§9.3): a página do CANAL diz DE QUEM é o ranking (o da corretora que cobra menos) — o topo dela conta
+    # as seguradoras consultadas por TODAS; a lede "cotado em N" era da página da carteira, que o canal não usa mais
+    assert f"Cotamos em {total} seguradoras pela {M.MARCA_ALFA}:" in frase
     assert "Algumas também" not in texto_visivel(doc)
 
 
@@ -352,8 +354,10 @@ def test_a_descricao_do_carro_normalizada_do_texto_cru(bruto, esperado):
 def test_a_descricao_do_carro_no_html_servido(monkeypatch):
     monkeypatch.setenv("PUBLIC_APP_URL", BASE)
     m = M.montar_mundo(monkeypatch, solicitante="canal")
-    lede = texto_visivel(re.search(r'<p class="lede">(.*?)</p>', _servido(m, _publicar(m)["token"]), re.S).group(1))
-    assert lede.startswith("Compass Limited 2.0 flex automático, cotado em ") and "4X2" not in lede and "16V" not in lede
+    # SPEC-133-A (§9.3): a página do canal escreve o carro numa linha própria (`lede`), sem o "cotado em N" da carteira
+    lede = texto_visivel(re.search(r'<p class="[^"]*\blede\b[^"]*">(.*?)</p>', _servido(m, _publicar(m)["token"]),
+                                   re.S).group(1))
+    assert lede.startswith("Compass Limited 2.0 flex automático") and "4X2" not in lede and "16V" not in lede
 
 
 # =====================================================================================================================
