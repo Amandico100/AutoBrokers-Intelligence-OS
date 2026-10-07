@@ -1,17 +1,60 @@
 <div id="tab-specs" class="tab" hidden>
 
 <header class="top">
-  <span class="eyebrow">O que foi feito, o que está no ar, o que só você decide &middot; 📊 atualizado em 03/10/2026</span>
+  <span class="eyebrow">O que foi feito, o que está no ar, o que só você decide &middot; 📊 atualizado em 07/10/2026</span>
   <h1>As SPECs — uma frase de negócio por entrega, e a fila do que vem.</h1>
   <p class="lede">Esta aba substitui o antigo painel de dossiês. Tudo o que lá era <i>"próximo passo"</i> e já aconteceu está marcado como <b>feito</b>;
   o que continua verdadeiro foi mantido, com a data ao lado. 🔴 <b>A família EXTRA-001.x está fechada até a 001.10.1</b> — treze entregas, todas na <code>main</code>.</p>
   <div class="meta">
     <span>árvore <b>AutoBrokers-FIX</b></span>
-    <span>main <b>= o push da SPEC-127</b> (03/10; ver o git log da main)</span>
+    <span>main <b><code>6abae9b</code></b> (07/10 — o push da SPEC-130-A.1 e a entrega dela)</span>
     <span>protocolo <b>AAA v13.2 · O FIO</b> (rito único; D-PROTO-14, 26/09)</span>
     <span>fonte <b>ESTADO-DAS-SPECS.md</b> · <b>INDICE-DE-SPECS.md</b> · os relatórios de cada SPEC</span>
   </div>
 </header>
+
+<section style="margin-top:8px">
+  <h2>O Programa Multicálculo — o Quem Cobra Menos e as propostas (04 a 07/10)</h2>
+  <p class="sub">Fora da fila D-FILA-01: um programa com plano próprio (v2.5.1, fila intercalada <b>D-MC-61</b>) e duas linhas — o <b>Quem Cobra Menos</b>
+  (leads novos para as corretoras, pelo WhatsApp) e os <b>auxiliares de renovação e de cotação</b>. 📊 Estado em
+  <code>programa-multicalculo/ESTADO-DO-PROGRAMA.md</code>; relatórios <code>reports/SPEC-130-A-EXECUTION-REPORT.md</code> e
+  <code>reports/SPEC-130-A1-EXECUTION-REPORT.md</code>.</p>
+  <div class="tblbox">
+    <table style="min-width:980px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou, em uma frase</th><th>data</th><th>nota</th><th class="l">o que ainda falta <b>de você</b></th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>SPEC-130-A.1</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o Quem Cobra Menos fala</span></td>
+          <td class="ds">O pedido do canal sai com a <b>mensagem de comparador ao consumidor</b>: o vencedor com o parcelado (12x em destaque quando existe), o número <b>real</b> de cotações (sem contar recálculo), a economia com a origem da conta, 2 cartões, o melhor preço por seguradora, a corretora em lista e a pergunta final. Nasce o <b>4º cálculo, o mínimo do mínimo</b> (a econômica sem carro reserva — 📊 tirar só o carro reserva barateia de 0,3 % a 6,9 % em 10 de 13 seguradoras), só no canal. A <b>margem</b> desce sem aprovação humana, passo a passo, de 15 a 12 %, e de 12 a 10 % só quando o cliente sinaliza que fecha — falando em R$, nunca em %. A remuneração da corretora (CNSP) saiu. 📊 Ensaio real em 07/10, sobre um pedido de teste: <b>82</b> cotações, 2 corretoras, 14 seguradoras, Youse R$ 3.730,56 vencedora, economia "até" R$ 5.484 — <b>nada enviado</b>. 🔴 O que os revisores pegaram antes do push: o número de cotações contava o recálculo (104 em vez de 82), a mínima chegava ao WhatsApp dizendo "menos dias de carro reserva", e a corretora vencedora podia renomear o selo</td>
+          <td class="dm">07/10</td><td class="dm">juiz 82 ‖ red team 70 (3 defeitos graves) → um conserto → confirmação 88 · 1 migration aplicada · bateria: 0 regressão · <b>nota 88</b></td><td class="ds">🔴 <b>Implantar</b> <code>smith-api</code> → <code>portal-worker</code> (T-129); a lista do Nível 5 (T-130); os testadores, a verba e o robô do Agger (T-131, T-120)</td></tr>
+        <tr><td class="ds"><b>SPEC-130-A</b><br><span class="mono" style="font-size:11px;color:var(--muted)">a proposta</span></td>
+          <td class="ds">Um pedido do motor vira <b>proposta</b>: as ofertas comparadas igual-com-igual (só a compreensiva com casco 100 % e prêmio anual entra no ranking; produto diferente e assinatura ficam à parte, com o motivo), a <b>corretora vencedora</b>, <b>3 opções</b> por situação (renovação · novo com apólice · novo sem apólice) com nota 0–100 e motivos, validade (5 dias, da configuração), a mensagem de WhatsApp com no máximo 2 opções + o link, e a página <b>"carteira"</b> no link <code>/r/</code>, na marca da corretora, com prévia em imagem e o clique "Quero fechar" medido. Tudo é configuração por corretora, nunca constante. 📊 Canário real: a proposta de um pedido de teste publicada na produção — 16 seguradoras (13 completas, 1 produto diferente, 2 sem resposta), 0 "comissão", 0 nome da corretora que perdeu. 🔴 Antes do push: com apólice, a opção mais cara virava "a melhor das 11" no título; a página prometia WhatsApp sem WhatsApp; o resumo dizia 16 onde eram 13 + 2</td>
+          <td class="dm">06/10</td><td class="dm">revisor da SPEC 68 → v1.1 · juiz 80 ‖ red team 74 (4 defeitos graves) → conserto único → confirmação 88 · desenho 91 · 3 migrations aplicadas · bateria: 0 regressão · <b>nota 88</b></td><td class="ds">✅ Implantar feito (T-124) · 🔴 o WhatsApp, o SUSEP e a marca da AutoFleet (T-125); abrir o link do canário no celular (T-126); avisar a Ellen (T-128)</td></tr>
+        <tr><td class="ds"><b>SPEC-129-B</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o motor</span></td>
+          <td class="ds">O motor de multicálculo calcula em <b>várias corretoras em paralelo</b>, a padrão e a econômica juntas, e retoma sem recalcular. 📊 Canário ao vivo em 05/10: 5 de 5 cálculos fechados, 104 ofertas, 0 senha nas 5 tabelas. Nasce <b>desligado</b></td>
+          <td class="dm">05/10</td><td class="dm">juiz 80 ‖ red team 62 → conserto → confirmação 85 · 1 migration aplicada · <b>nota 86</b></td><td class="ds">🔴 1 usuário de robô por corretora (T-120); o Implantar e as 2 variáveis do motor (T-121, T-122)</td></tr>
+        <tr><td class="ds"><b>SPEC-128</b><br><span class="mono" style="font-size:11px;color:var(--muted)">a prova do Agger</span></td>
+          <td class="ds">A prova ao vivo de cotar pelo Agger das corretoras: 📊 16 cálculos de 25; nada apagado no Agger nem na InfoCap. Você tomou a <b>D-128-03</b>: o robô recalcula reenviando o pedido de dentro da página</td>
+          <td class="dm">04/10</td><td class="dm">juiz 72 ‖ red team 62 → conserto → confirmação · lente 84</td><td class="ds">decidir se apaga os 3 negócios de teste no Agger (T-108)</td></tr>
+        <tr><td class="ds"><b>SPEC-129-A</b><br><span class="mono" style="font-size:11px;color:var(--muted)">a espera durável</span></td>
+          <td class="ds">A <b>espera durável</b> — a base em que o motor e as rotinas esperam um resultado. Migrations _01 e _02 aplicadas</td>
+          <td class="dm">04/10</td><td class="dm">juiz 78 · red team 62 → conserto → confirmação 89</td><td class="ds">a migration _03, que está na sua caixa</td></tr>
+        <tr><td class="ds"><b>Passo 0.5</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o registro e o link /r/</span></td>
+          <td class="ds">O link público <code>/r/</code> das propostas. Um link falso, aberto em aba anônima, responde "Este link não está mais disponível". <b>No ar desde 04/10</b> — você implantou e conferiu</td>
+          <td class="dm">04/10</td><td class="dm">juiz 84 · red team 62 → conserto → confirmação 80 → conserto com prova mecânica</td><td class="ds">✅ nada</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">⛔ <b>O que estas entregas NÃO provam, e está declarado.</b> Nenhuma mensagem saiu para cliente nenhum: o ensaio da 130-A.1 montou a mensagem
+  sem enviar, e o canário da 130-A publicou a página de um pedido de teste. 📊 O cálculo levou 495 s (fila de 85 s e as corretoras em série — o
+  <code>portal-worker</code> faz uma coisa de cada vez): a promessa "cotações em segundos" ainda não tem prova (P-130A1-08). A validade real por seguradora,
+  a negociação ao vivo ("fecha por R$ X?") e a página dentro do navegador do WhatsApp não foram medidas (P-130A-05, -15, -11). A "economia até" é a conta
+  mais forte possível — honesta, mas forte (D-130A1-03).</p>
+  <p class="note" style="border-left-color:var(--accent)">⏭ <b>A próxima: SPEC-133-A</b>, neste mesmo chat — o Quem Cobra Menos no WhatsApp, piloto fechado:
+  o número da marca com o QR lido numa página do admin, o agente de cotação do "oi" ao resultado, a página do Quem Cobra Menos e a lista de números
+  convidados. O canal responde só a números convidados e nunca a uma linha de corretora — para dois robôs não conversarem sozinhos. Depois:
+  <b>129-C</b> (mais ramos do Agger) → <b>130-B</b> (leitor de apólice) e <b>131</b> (renovação) → <b>132</b> (cotação no chat principal) →
+  <b>133-B</b> (piloto ampliado). Prontidão em <code>programa-multicalculo/PRONTIDAO-DA-133-A.md</code>.</p>
+</section>
 
 <section style="margin-top:8px">
   <h2>A família EXTRA-001.x — os pilotos</h2>
@@ -267,7 +310,9 @@
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-125</b> · o atendimento lembra</td><td class="ds">Fora da fila, no mesmo chat: conversa inteira, reconhece pelo telefone, prompt novo reversível com um comando, aciona só com o "sim" — em código</td><td class="ds"><b>✅ concluída 02/10, nota 86</b> — faltam o <b>Implantar</b> e os testes T-84…T-90, que são seus (a medição no Sol foi feita na 126)</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-126</b> · o atendimento quase sem erro</td><td class="ds">Fora da fila, no mesmo chat da 127: o "ok" com dois juízes, o parente aciona, desistir depois de acionar vai à pessoa, aviso de abuso, o "escolher sozinho" só com prova (que ainda falta: P-126-06)</td><td class="ds"><b>✅ concluída 03/10, nota 88</b> — faltam o <b>Implantar</b>, os testes T-91…T-97 e o orçamento T-98, que são seus</td></tr>
         <tr><td class="dm">✓</td><td class="ds"><b>SPEC-127</b> · o portal no nível do WhatsApp</td><td class="ds">Fora da fila, no mesmo chat da 126: nada abre no portal sem o "ok" deste pedido, o dado que falta é perguntado antes de escrever, a cidade é a do serviço, o caminho antigo não escolhe sozinho — a ponte e a retomada do caminho antigo ficaram para depois (P-127-01/02)</td><td class="ds"><b>✅ concluída 03/10, nota 87</b> — faltam o <b>Implantar</b> (com o portal-worker), o CNPJ que falta, o canário T-101 e o orçamento T-102, que são seus</td></tr>
-        <tr><td class="dm">1</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata. <b>É a próxima</b>: o prompt de abertura existe (<code>specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.9-PRONTO.md</code>); a proposta, não</td><td class="ds">só no diagnóstico</td></tr>
+        <tr><td class="dm">✓</td><td class="ds"><b>Programa Multicálculo</b> · 0.5 → 129-A → 128 → 129-B → 130-A → 130-A.1</td><td class="ds">Fora da fila D-FILA-01, com plano próprio (v2.5.1, D-MC-61): o Quem Cobra Menos e os auxiliares de renovação e de cotação</td><td class="ds"><b>✅ concluídas de 04 a 07/10</b> — 130-A nota 88 · 130-A.1 nota 88 (a tabela está no topo desta aba)</td></tr>
+        <tr><td class="dm">→</td><td class="ds"><b>SPEC-133-A</b> · o Quem Cobra Menos no WhatsApp</td><td class="ds">Piloto fechado com 5 testadores, no número da marca; depois 129-C → 130-B / 131 → 132 → 133-B</td><td class="ds"><b>⏭ a próxima</b>, neste mesmo chat</td></tr>
+        <tr><td class="dm">1</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata. Era a próxima da fila D-FILA-01 — hoje atrás do Programa Multicálculo: o prompt de abertura existe (<code>specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.9-PRONTO.md</code>); a proposta, não</td><td class="ds">só no diagnóstico</td></tr>
         <tr><td class="dm">2</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
         <tr><td class="dm">3</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>
         <tr><td class="dm">4</td><td class="ds"><b>EXTRA-002</b> · investigação Agger</td><td class="ds">Provar se dá para <b>cotar e renovar pelo Agger</b>. 📊 22/09: a tela é uma API JSON — dispara, espera, lê o resultado já padronizado com PDF. Tecnicamente dá; falta a <b>autorização da Agger</b> e um <b>usuário robô</b></td><td class="ds"><b>🧭 parte 1 (perícia) feita 22/09</b> — cético 71 · juiz 84 antes do conserto. <b>Parte 2 (prova ao vivo) espera a sua caixa</b> (<code>TAREFAS-DO-FOUNDER.md</code> §0.4.c e bloco H) e as decisões D-E002-01..08</td></tr>
