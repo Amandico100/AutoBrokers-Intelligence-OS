@@ -63,6 +63,10 @@ MAPA = {
     # (primário openai/gpt-6-luna medium) — decisão D5 nota 92, o mesmo par da `visao`. A trava
     # "papel fora do mapa não ganha reserva" segue valendo para todo papel NOVO.
     "confirmacao": ("anthropic", "claude-sonnet-5-5", "low"),
+    # §9.3 — SPEC-133-A F2 (07/10/2026, migration 20261007_02_spec133a_papel_canal_cotacao): o papel
+    # `canal_cotacao` (entender resposta livre na conversa do Quem Cobra Menos) nasce com reserva de OUTRO
+    # provedor — o mesmo par da `confirmacao` (primário openai/gpt-6-luna medium).
+    "canal_cotacao": ("anthropic", "claude-sonnet-5-5", "low"),
 }
 
 
