@@ -24,11 +24,15 @@ medidos; perguntar e não conseguir usar a resposta seria enganar a pessoa):
     estado civil  → `ESTADO_CIVIL_PADRAO` (o código medido mais frequente), declarado em `assumidos`
     garagem       → fica o PADRÃO DA TELA (`agger_robo.PADROES_DO_QUESTIONARIO`), declarado em `assumidos`
     uso           → pergunta "aplicativo?" (D-MC-70); "não" → o padrão da tela (assumido); "sim" → passa à corretora
+    sexo          → SPEC-133-A.1 (D-133A1-02): sai do PRIMEIRO nome pela tabela do IBGE quando ≥ `canal.sexo_pelo_nome_min_pct`
+                    de um lado (a pergunta some, sem anunciar o palpite; `condutor.sexo` vai em `assumidos`); nome
+                    ambíguo ou fora da tabela → pergunta. Só regra: o nome nunca vai ao modelo.
 """
 from __future__ import annotations
 
 import asyncio
 import copy
+import functools
 import hashlib
 import json
 import logging
@@ -36,6 +40,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -143,6 +148,51 @@ def validar_nome(texto: Any) -> Optional[str]:
     if len(partes) < 2 or len(t) > 120 or not all(re.fullmatch(r"[A-Za-zÀ-ÿ'´`.\-]+", p) for p in partes):
         return None
     return t
+
+
+#: SPEC-133-A.1 F2 (D-133A1-02) — 📊 IBGE, Censo 2010 "Nomes no Brasil" (API servicodados.ibge.gov.br/api/v2/censos/
+#: nomes), coletado em 10/10/2026 por `backend/scripts/gerar_nomes_por_sexo.py`: 630 primeiros nomes, nome → [homens,
+#: mulheres]. Dado agregado do Censo, não dado pessoal; o canal só LÊ (nada vai à rede, nada vai ao modelo).
+TABELA_DE_NOMES = Path(__file__).resolve().parents[2] / "data" / "nomes_por_sexo_ibge.json"
+
+
+@functools.lru_cache(maxsize=1)
+def nomes_por_sexo() -> Dict[str, Tuple[int, int]]:
+    """A tabela do IBGE (nome sem acento, minúsculo → (homens, mulheres)). Ausente ou ilegível → {} (pergunta sempre)."""
+    try:
+        bruto = json.loads(TABELA_DE_NOMES.read_text(encoding="utf-8")).get("nomes") or {}
+        return {str(n): (int(v[0]), int(v[1])) for n, v in bruto.items()}
+    except (OSError, ValueError, TypeError, AttributeError, IndexError) as exc:
+        logger.warning("[CANAL] tabela de nomes ilegível (%s) — o sexo será perguntado", type(exc).__name__)
+        return {}
+
+
+def sexo_pelo_nome(nome: Any, *, min_pct: float) -> Optional[str]:
+    """"M"/"F" quando o PRIMEIRO nome é desse sexo em ≥ `min_pct` % das pessoas com o nome no Censo; senão None
+    (ambíguo, fora da tabela, sem nome). `min_pct` > 50 (quem chama garante — `limiar_do_sexo_pelo_nome`)."""
+    primeiro = re.split(r"[\s\-]+", _sem_acento(nome))[0] if str(nome or "").strip() else ""
+    primeiro = re.sub(r"[^a-z]", "", primeiro)
+    homens, mulheres = nomes_por_sexo().get(primeiro, (0, 0)) if primeiro else (0, 0)
+    total = homens + mulheres
+    if total <= 0:
+        return None
+    if homens * 100 >= min_pct * total:
+        return "M"
+    if mulheres * 100 >= min_pct * total:
+        return "F"
+    return None
+
+
+def limiar_do_sexo_pelo_nome(config: Any) -> float:
+    """`canal.sexo_pelo_nome_min_pct` da config (já mesclada) ou o padrão do PRODUTO (o único lugar do número — G8).
+    Fora de (50, 100] → o padrão: abaixo de 50 os dois lados "passariam" e o palpite seria do acaso."""
+    from app.services.multicalculo.config import PADRAO_DO_PRODUTO
+
+    canal = (config or {}).get("canal") if isinstance(config, Mapping) else None
+    valor = canal.get("sexo_pelo_nome_min_pct") if isinstance(canal, Mapping) else None
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)) or not 50 < valor <= 100:
+        return float(PADRAO_DO_PRODUTO["canal"]["sexo_pelo_nome_min_pct"])
+    return float(valor)
 
 
 def validar_sexo(texto: Any) -> Optional[str]:
@@ -363,12 +413,13 @@ def _primeiro_nome(nome: Any) -> Optional[str]:
     return p.capitalize() if p else None
 
 
-def montar_perfil(respostas: Mapping[str, Any]) -> Dict[str, Any]:
+def montar_perfil(respostas: Mapping[str, Any], inferidos: Any = ()) -> Dict[str, Any]:
     """As respostas → {pedido (grupos do contrato), assumidos, premio_atual_declarado, primeiro_nome}.
 
     O condutor principal (quem respondeu "CPF de quem mais dirige") é também o segurado: os campos do segurado que vêm
     dele, o CEP do segurado (= o de pernoite) e a relação "próprio" são `assumidos`. Garagem e uso ficam com o padrão
-    da tela (assumidos). FIPE/ano/combustível: a placa supre (D-133A-03, `pedido.CAMPOS_QUE_A_PLACA_SUPRE`)."""
+    da tela (assumidos). FIPE/ano/combustível: a placa supre (D-133A-03, `pedido.CAMPOS_QUE_A_PLACA_SUPRE`).
+    `inferidos` (o `inferido_pelo_nome` do estado): o sexo que a pessoa NÃO disse — `condutor.sexo` também é assumido."""
     r = respostas
     pessoa = {"nome": r["nome"], "nascimento": r["nascimento"], "sexo": r["sexo"],
               "estado_civil": ESTADO_CIVIL_PADRAO}
@@ -382,7 +433,8 @@ def montar_perfil(respostas: Mapping[str, Any]) -> Dict[str, Any]:
     }
     assumidos = sorted({"segurado.cpf_cnpj", "segurado.nome", "segurado.nascimento", "segurado.sexo",
                         "segurado.estado_civil", "condutor.estado_civil", "segurado.cep",
-                        "condutor.relacao_com_segurado", "pernoite.garagem_residencia", "veiculo.uso"})
+                        "condutor.relacao_com_segurado", "pernoite.garagem_residencia", "veiculo.uso",
+                        *(("condutor.sexo",) if "sexo" in (inferidos or ()) else ())})
     return {"pedido": pedido, "assumidos": assumidos, "premio_atual_declarado": r.get("premio"),
             "primeiro_nome": _primeiro_nome(r["nome"])}
 
@@ -598,7 +650,7 @@ async def _responder(db: Any, company_id: str, telefone_e164: str, texto: str, m
         return Resposta(["Quer que eu passe para uma pessoa? Pode responder sim ou não."], est)
 
     if etapa in ETAPAS:
-        return await _no_roteiro(db, company_id, telefone_e164, t, midia, est, llm)
+        return await _no_roteiro(db, company_id, telefone_e164, t, midia, est, llm, config=config)
 
     logger.warning("[CANAL] etapa desconhecida no estado (%s) — recomeço", etapa[:_CORTE_DO_LOG])
     return _apresentacao(nome_canal)
@@ -647,13 +699,14 @@ async def _no_consentimento(db, company_id, telefone, t, est, nome_canal, llm) -
                      + "\n\nPosso seguir? (sim ou não)"], est)
 
 
-async def _no_roteiro(db, company_id, telefone, t, midia, est, llm) -> Resposta:
+async def _no_roteiro(db, company_id, telefone, t, midia, est, llm, *, config: Any = None) -> Resposta:
     etapa = est["etapa"]
     passo = _POR_CHAVE[etapa]
     baixo = _sem_acento(t)
 
     if _RECOMECAR.search(baixo):
         est.update({"etapa": ETAPAS[0], "respostas": {}, "tentativas": {}})
+        est.pop("inferido_pelo_nome", None)
         return Resposta(["Vamos do começo então.", ROTEIRO[0].pergunta], est)
 
     # (mídia nunca chega aqui: o guarda único é `_midia_nao_e_resposta`, no começo de `_responder`)
@@ -684,11 +737,20 @@ async def _no_roteiro(db, company_id, telefone, t, midia, est, llm) -> Resposta:
 
     est.setdefault("respostas", {})[etapa] = valor
     proxima = ETAPAS.index(etapa) + 1
+    if proxima < len(ETAPAS) and ETAPAS[proxima] == "sexo":
+        # D-133A1-02 — o nome claro (≥ limiar no IBGE) responde "homem ou mulher?": a pergunta some, sem anunciar
+        sexo = sexo_pelo_nome(est["respostas"].get("nome"), min_pct=limiar_do_sexo_pelo_nome(config))
+        if sexo:
+            est["respostas"]["sexo"] = sexo
+            est["inferido_pelo_nome"] = ["sexo"]
+            proxima += 1
+        else:
+            est.pop("inferido_pelo_nome", None)
     if proxima < len(ETAPAS):
         est["etapa"] = ETAPAS[proxima]
         return Resposta([ROTEIRO[proxima].pergunta], est)
 
-    perfil = montar_perfil(est["respostas"])
+    perfil = montar_perfil(est["respostas"], est.get("inferido_pelo_nome"))
     falta = _perfil_fecha(perfil)
     if falta:   # defeito de código, nunca da pessoa — passa a uma pessoa em vez de mandar um pedido que a porta recusa
         logger.error("[CANAL] o perfil da conversa não fecha o pedido: %s", ", ".join(falta))

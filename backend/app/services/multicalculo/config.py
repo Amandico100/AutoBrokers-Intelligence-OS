@@ -127,6 +127,10 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         # SPEC-133-A (conserto 7) — a conversa parada há mais que isto 💭 tem as respostas apagadas no próximo acesso
         # (o registro do consentimento, append-only em `canal_consentimentos`, fica).
         "retencao_conversa_dias": 30,
+        # SPEC-133-A.1 F2 (D-133A1-02, Founder 10/10) — a conversa só PULA "homem ou mulher?" quando o primeiro nome é
+        # deste lado em pelo menos esta % das pessoas com o nome no Censo 2010 do IBGE 💭 ("70 % homem, podemos
+        # concluir; 60/40 talvez seja ideal perguntar"). Vale de 50 (exclusive) a 100; fora disso, este padrão.
+        "sexo_pelo_nome_min_pct": 70,
         # SPEC-133-A (costura) — a RESERVA do número da conversa do canal (o "Quero fechar" da página volta para ele).
         # O primeiro é SEMPRE o da integração ativa do canal (`canal.envio.numero_do_canal`); vazio = sem reserva.
         "whatsapp": "",
