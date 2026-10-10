@@ -15,8 +15,8 @@ destino_do_fechar_do_canal   o wa.me de VOLTA À CONVERSA do canal (`canal.whats
 em quantidade de linhas — e nenhum nome de corretora perdedora. O duelo entre corretoras da carteira não entra.
 
 O SCRIPT é o MESMO da carteira (`proposta_html.SCRIPT_DA_PROPOSTA`, o hash da CSP não muda e `service.py` fica
-intocado). Esta página não tem carrossel (`#track`): o script só tira a classe `no-js` e sai. Tudo funciona sem ele —
-os cartões são uma lista, o comparar e as dúvidas são `<details>`, o "Quero fechar" é um link comum (`?fechar=`), o
+intocado). Esta página não tem o `#track` da carteira: o script só tira a classe `no-js` e sai. Tudo funciona sem ele —
+os cartões são um carrossel de CSS (`.ops`, scroll-snap; lado a lado em grade a partir de 880 px — SPEC-133-A.1), o comparar e as dúvidas são `<details>`, o "Quero fechar" é um link comum (`?fechar=`), o
 mesmo redirecionamento medido (`share.clicked`) da carteira.
 
 As frases que a mensagem do canal também diz (a parcela em destaque, o tempo até o teto, "Corretoras de Nível 5", os
@@ -58,8 +58,9 @@ def _msg():
 
 
 def _com_preco(modelo: dict) -> list[dict]:
-    """As opções na ORDEM do modelo, só as que têm id e preço (a 1ª é a do balão "Quem cobra menos?")."""
-    return [o for o in PH._opcoes(modelo) if AP.dec(o.get("premio_anual")) is not None][:3]
+    """As opções na ORDEM do modelo, só as que têm id e preço (a 1ª é a do balão "Quem cobra menos?"). Até 4 (o Founder,
+    10/10: "as 3 ou 4 opções" lado a lado — hoje a comparação entrega 2 a 3)."""
+    return [o for o in PH._opcoes(modelo) if AP.dec(o.get("premio_anual")) is not None][:4]
 
 
 def _nome_do_canal(modelo: dict) -> str:
@@ -81,6 +82,51 @@ def _parcela(o: dict) -> Optional[tuple[str, str]]:
     t = _msg()._parcela_em_destaque(o)
     m = re.fullmatch(r"(\d+x de) \*(.+)\*", t or "")
     return (m.group(1), m.group(2)) if m else None
+
+
+def _menor_parcela_do_cartao(o: dict) -> Optional[tuple[int, str, Optional[bool]]]:
+    """(vezes, "R$ 412,02", sem_juros) — a MESMA menor parcela do balão (`_parcela`) e se ela tem juros, lido do
+    parcelamento da oferta que a produziu (`parcela_menor`, `parcelas_sem_juros` ou `parcelas`). Sem como saber → None
+    no terceiro campo (a página não afirma nem um nem outro). SPEC-133-A.1 F1."""
+    pc = _parcela(o)
+    if not pc:
+        return None
+    vezes = int(pc[0].split("x")[0])
+    M = _msg()
+    sj: Optional[bool] = None
+    for chave in ("parcela_menor", "parcela_sem_juros_maior", "parcelas_sem_juros", "parcelas"):
+        p = o.get(chave)
+        if not isinstance(p, dict):
+            continue
+        try:
+            igual = int(p.get("vezes")) == vezes and M._brl(float(p.get("valor"))) == pc[1]
+        except (TypeError, ValueError):
+            continue
+        if not igual:
+            continue
+        if chave == "parcela_menor" and isinstance(p.get("sem_juros"), bool):
+            sj = p["sem_juros"]
+        elif chave in ("parcela_sem_juros_maior", "parcelas_sem_juros"):
+            sj = True
+        else:
+            total, anual = AP.dec(p.get("total")), AP.dec(o.get("premio_anual"))
+            if total is not None and anual is not None and anual > 0:   # a régua de `proposta._e_sem_juros`
+                sj = float(total) - float(anual) <= max(1.0, float(anual) * 0.0025)
+        if sj is not None:
+            break
+    return vezes, pc[1], sj
+
+
+def _maior_sem_juros(o: dict) -> Optional[tuple[int, str]]:
+    """(vezes, "R$ 841,12") — o MAIOR parcelamento sem juros que a seguradora mandou: `parcela_sem_juros_maior` (a
+    régua do canal, que não confunde centavo de arredondamento com juros) e, num modelo de antes, `parcelas_sem_juros`.
+    Sem ele → None (a linha some)."""
+    p = o.get("parcela_sem_juros_maior") or o.get("parcelas_sem_juros")
+    try:
+        vezes, valor = int(p.get("vezes")), float(p.get("valor"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return (vezes, _msg()._brl(valor)) if vezes > 1 and valor > 0 else None
 
 
 def _selo(modelo: dict) -> str:
@@ -285,8 +331,17 @@ details[open]>summary svg{transform:rotate(180deg)}
 .s>h2{font-size:23px;line-height:1.15;font-weight:700;letter-spacing:-.02em;color:var(--ink-strong);text-wrap:balance}
 .s>.sub{margin-top:6px;font-size:15px;color:var(--ink-muted);max-width:62ch}
 
-/* as opções */
-.ops{margin-top:14px;display:grid;gap:12px}
+/* as opções — SPEC-133-A.1 (Founder 10/10): LADO A LADO em carrossel. No celular arrasta para o lado (scroll-snap de
+   CSS, sem script) e o próximo cartão aparece na borda; do computador (≥ 880 px) os cartões ficam lado a lado em grade */
+.ops{margin:14px -16px 0;display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;
+  scroll-padding-inline:16px;padding:4px 16px 14px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.ops::-webkit-scrollbar{display:none}
+.ops:focus-visible{outline:2px solid var(--focus);outline-offset:-2px;border-radius:18px}
+.ops>.op{flex:0 0 min(320px, calc(100% - 52px));scroll-snap-align:start;scroll-snap-stop:always}
+.ops>.op:last-child{scroll-snap-align:end}
+.ops.um>.op{flex-basis:100%}
+.arraste{margin-top:10px;font-size:13.5px;color:var(--ink-muted);display:flex;align-items:center;gap:6px}
+.arraste svg{width:16px;height:16px;flex:none}
 .op{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px}
 .op.rec{border:2px solid var(--navy);box-shadow:0 10px 28px -18px rgb(var(--shadow)/.6)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .op.rec{border-color:var(--lime)}}
@@ -303,6 +358,7 @@ details[open]>summary svg{transform:rotate(180deg)}
 .op-p{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
 .op-p .x{font-size:15px;color:var(--ink-muted)}
 .op-p b{font-size:28px;line-height:1.05;font-weight:700;color:var(--ink-strong);letter-spacing:-.025em}
+.op-p .j{font-size:13px;font-weight:600;color:var(--ink-muted)}
 .op-a{font-size:14.5px;color:var(--ink-muted)}
 .op-a strong{color:var(--ink-strong);font-weight:600}
 .meter{height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden}
@@ -426,10 +482,14 @@ details[open]>summary svg{transform:rotate(180deg)}
 
 @media (min-width:640px){
   .hero h1{font-size:40px}
-  .ops{grid-template-columns:repeat(var(--n),minmax(0,1fr))}
   .facts{grid-template-columns:repeat(4,minmax(0,1fr))}
   .n5{grid-template-columns:120px 1fr;column-gap:24px;align-items:start;padding:28px}
   .n5 .s5{width:120px;height:120px;grid-row:span 3}
+}
+@media (min-width:880px){
+  .ops{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));overflow:visible;margin:14px 0 0;padding:0}
+  .ops>.op{flex:none}
+  .arraste{display:none}
 }
 @media (min-width:960px){
   .hero{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:32px;align-items:center;padding-top:22px}
@@ -440,7 +500,8 @@ details[open]>summary svg{transform:rotate(180deg)}
 }
 @media (prefers-reduced-motion:no-preference){.op,.win{animation:sobe .45s ease-out both}
   @keyframes sobe{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
-@media print{.dock,.cta,.want{display:none!important}.endpad{height:0}body{background:#fff}}
+@media print{.dock,.cta,.want,.arraste{display:none!important}.endpad{height:0}body{background:#fff}
+  .ops{display:block;overflow:visible;margin:14px 0 0;padding:0}.ops>.op{margin-bottom:12px;break-inside:avoid}}
 """
 
 
@@ -453,13 +514,22 @@ def _cartao(o: dict, i: int, rec: dict, barata: Optional[dict], modelo: dict, hr
     nota = AP.numero_inteiro(o.get("nota"))
     nota_html = (f'<span class="nota" title="nota do comparador, de 0 a 100"><b>{nota}</b>/100</span>'
                  if nota is not None and 0 <= nota <= 100 else "")
-    pc = _parcela(o)
     preco = PH._e(AP.brl(o.get("premio_anual")))
-    # o cartão COMPARA opções: o preço ANUAL na frente (entre opções a menor parcela engana — 12x de um preço maior
-    # parece menos que 4x de um menor); a parcela em destaque é só a do vencedor, como no balão (D-130A1-15)
-    cabeca = f'<p class="op-p"><b>{preco}</b><span class="x">por ano</span></p>'
-    if pc:
-        cabeca += f'<p class="op-a">ou <strong>{PH._e(pc[0])} {PH._e(AP.nbsp(pc[1]))}</strong></p>'
+    # SPEC-133-A.1 (Founder 10/10, só o QCM — D-133A1-01), NESTA ORDEM: (a) a MENOR parcela da oferta no topo, (b) o
+    # preço à vista, (c) o MAIOR parcelamento SEM juros que a seguradora mandou. Só dado da oferta; linha sem dado some;
+    # (c) some quando é a mesma parcela de (a) — aí (a) já diz "sem juros". Revoga, no canal, o "anual na frente".
+    menor, sem_juros = _menor_parcela_do_cartao(o), _maior_sem_juros(o)
+    if menor:
+        vezes, valor, sj = menor
+        juros = {True: "sem juros", False: "com juros"}.get(sj)
+        cabeca = (f'<p class="op-p op-menor"><span class="x">{vezes}x de</span><b>{PH._e(AP.nbsp(valor))}</b>'
+                  + (f'<span class="j">{juros}</span>' if juros else "") + "</p>"
+                  f'<p class="op-a op-vista"><strong>{preco}</strong> à vista</p>')
+        if sem_juros and (sem_juros[0], sem_juros[1]) != (vezes, valor):
+            cabeca += (f'<p class="op-a op-sj">ou <strong>{sem_juros[0]}x sem juros</strong> de '
+                       f'{PH._e(AP.nbsp(sem_juros[1]))}</p>')
+    else:
+        cabeca = f'<p class="op-p op-vista"><b>{preco}</b><span class="x">à vista</span></p>'
     fq = o.get("franquia") if isinstance(o.get("franquia"), dict) else {}
     if AP.brl(fq.get("valor")):
         tipo = str(fq.get("tipo") or "").strip().lower()
@@ -620,8 +690,12 @@ def render_proposta_do_canal(modelo: dict) -> str:
         opcoes = (f'<section class="s" aria-labelledby="h-ops"><h2 id="h-ops">'
                   f'{"As opções que separamos" if len(ops) > 1 else "A opção que separamos"}</h2>'
                   f'<p class="sub">A mesma comparação, lado a lado. A nota vai de 0 a 100 e pesa preço, franquia e coberturas.</p>'
-                  f'<div class="ops" style="--n:{len(ops)}">{cartoes}</div>'
-                  f'<div style="--n:{len(ops)}">{_comparar(ops)}</div></section>')
+                  f'<div class="ops{" um" if len(ops) == 1 else ""}" style="--n:{len(ops)}" tabindex="0" role="region" '
+                  f'aria-roledescription="carrossel" aria-label="{PH._e(f"As {len(ops)} opções, lado a lado" if len(ops) > 1 else "A opção")}">'
+                  f'{cartoes}</div>'
+                  + (f'<p class="arraste">{PH.ICO["right"]}Arraste para o lado para ver as outras opções</p>'
+                     if len(ops) > 1 else "")
+                  + f'<div style="--n:{len(ops)}">{_comparar(ops)}</div></section>')
 
     # ---- a corretora
     corretora = ""

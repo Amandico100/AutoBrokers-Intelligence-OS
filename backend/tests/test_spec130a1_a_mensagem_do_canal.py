@@ -453,6 +453,10 @@ def test_a_parcela_em_destaque_e_o_menor_valor_com_o_numero_em_negrito(canal):
     modelo, cfg = canal
     m2 = copy.deepcopy(modelo)
     rec = m2["opcoes"][0]
+    # SPEC-133-A.1 F1 (§9.3): o modelo do canal agora traz `parcela_menor` (a menor de TODAS as formas de pagamento);
+    # este teste exercita as chaves de antes, então a tira — e no fim prova que, sozinha, ela também dá a linha
+    menor_do_modelo = rec.pop("parcela_menor", None)
+    rec.pop("parcela_sem_juros_maior", None)
     rec["parcelas"] = {"vezes": 12, "valor": 345.82}
     rec["parcelas_sem_juros"] = {"vezes": 6, "valor": 621.76}
     b1 = MSG.mensagem_do_canal(m2, LINK, config=cfg)[0]
@@ -468,6 +472,10 @@ def test_a_parcela_em_destaque_e_o_menor_valor_com_o_numero_em_negrito(canal):
     rec.pop("parcelas")
     rec.pop("parcelas_sem_juros")                                              # sem parcelamento: sem preço na linha
     assert _linha_do_vencedor(MSG.mensagem_do_canal(m2, LINK, config=cfg)[0]).endswith(f"com {rec['seguradora']}")
+    assert menor_do_modelo, "o modelo do canal deveria trazer `parcela_menor` (SPEC-133-A.1)"
+    rec["parcela_menor"] = menor_do_modelo                                     # só ela: a linha volta, com as vezes dela
+    assert _linha_do_vencedor(MSG.mensagem_do_canal(m2, LINK, config=cfg)[0]).endswith(
+        f"{menor_do_modelo['vezes']}x de *{MSG._brl(menor_do_modelo['valor'])}*")
 
 
 def test_a_mais_em_conta_diz_o_que_deixa_de_cobrir(canal):

@@ -218,6 +218,63 @@ def _parcelas_sem_juros(oferta: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     return melhor
 
 
+#: SPEC-133-A.1 F1 — quanto o total de um parcelamento pode passar do prêmio e ainda ser SEM juros (arredondamento de
+#: centavos). 📊 10/10/2026, os 2.862 parcelamentos (≥ 2x) das 104 ofertas reais da fixture do canário: a diferença
+#: total − prêmio fica em [−0,049 %, +0,024 %] (centavos: Tokio 12x −R$ 1,58, Zurich 12x +R$ 1,10) ou é ≥ +0,99 % (juros:
+#: Liberty 2x +R$ 71,81) — nada entre os dois. 0,25 % fica no vão. O `_parcelas_sem_juros` da carteira (|dif| < R$ 1)
+#: NÃO muda (D-133A1-01) — e por isso chama de "com juros" o 12x da Tokio que é mais barato que o prêmio.
+TOLERANCIA_SEM_JUROS = 0.0025
+
+
+def _e_sem_juros(total: float, premio: Optional[float]) -> Optional[bool]:
+    if premio is None or premio <= 0:
+        return None
+    return total - premio <= max(1.0, premio * TOLERANCIA_SEM_JUROS)
+
+
+def _parcelamentos_do_canal(oferta: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """Os parcelamentos de 2x ou mais da oferta, em QUALQUER forma de pagamento: vezes, valor (as demais), total
+    (1ª + demais × (vezes − 1)) e se é sem juros (`_e_sem_juros`)."""
+    try:
+        premio: Optional[float] = float(oferta.get("premio_total"))
+    except (TypeError, ValueError):
+        premio = None
+    saida = []
+    for p in oferta.get("parcelamentos") or ():
+        if not isinstance(p, Mapping):
+            continue
+        try:
+            vezes = int(p.get("parcelas"))
+            valor = round(float(p.get("demais_parcelas") or p.get("primeira_parcela")), 2)
+            primeira = float(p.get("primeira_parcela") or valor)
+        except (TypeError, ValueError):
+            continue
+        if vezes < 2 or valor <= 0:
+            continue
+        total = round(primeira + valor * (vezes - 1), 2)
+        saida.append({"vezes": vezes, "valor": valor, "total": total, "sem_juros": _e_sem_juros(total, premio)})
+    return saida
+
+
+def _parcela_menor(oferta: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """SPEC-133-A.1 F1 (Founder 10/10, só o CANAL — D-133A1-01): a MENOR parcela que a oferta trouxe, em qualquer forma
+    de pagamento, com ou sem juros (o menor valor; empate → mais vezes, e sem juros antes de com juros). As vezes são as
+    da seguradora — 📊 10/10: a Youse do pedido d0bb15ba só devolve 1x..4x, então ali a menor é 4x; nunca um 12
+    inventado. Sem parcelamento de 2x ou mais → None (a página mostra o à vista no topo)."""
+    todas = _parcelamentos_do_canal(oferta)
+    return dict(min(todas, key=lambda p: (p["valor"], -p["vezes"], p["sem_juros"] is not True))) if todas else None
+
+
+def _parcela_sem_juros_maior(oferta: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """SPEC-133-A.1 F1 (só o CANAL): o MAIOR número de parcelas SEM juros que a seguradora mandou (empate → a menor
+    parcela). Sem nenhum sem juros de 2x ou mais → None (a linha some)."""
+    sj = [p for p in _parcelamentos_do_canal(oferta) if p["sem_juros"] is True]
+    if not sj:
+        return None
+    p = max(sj, key=lambda p: (p["vezes"], -p["valor"]))
+    return {"vezes": p["vezes"], "valor": p["valor"]}
+
+
 def _total_do_parcelamento(oferta: Mapping[str, Any], parcelas: Any) -> Optional[float]:
     """O TOTAL do parcelamento que a opção mostra, como a SEGURADORA o devolveu: 1ª parcela + demais × (vezes − 1),
     do mesmo parcelamento (mesmas vezes e mesmo valor). Sem esse parcelamento na oferta → None (a mensagem usa
@@ -768,6 +825,12 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
             item["parcelas"] = dict(item["parcelas"], total=total)
         if sem_juros:
             item["parcelas_sem_juros"] = sem_juros
+        if origem == "canal":                   # SPEC-133-A.1 F1: só o QCM (a carteira não ganha chave — D-133A1-01)
+            menor, maior_sj = _parcela_menor(bruta), _parcela_sem_juros_maior(bruta)
+            if menor:
+                item["parcela_menor"] = menor
+            if maior_sj:
+                item["parcela_sem_juros_maior"] = maior_sj
         opcoes.append(item)
     _niveis(opcoes, [b.get("coberturas") or {} for b in brutas])
     # a opção que vem de um cálculo MAIS BARATO (a econômica, ou a mínima no canal — D-130A1-05) diz o que corta

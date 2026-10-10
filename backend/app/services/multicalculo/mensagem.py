@@ -257,7 +257,8 @@ def _parcela_em_destaque(o: Mapping[str, Any]) -> Optional[str]:
     parcelamento, com ou sem juros) — `12x de *R$ 345,82*`: o NÚMERO em negrito, o "12x de" não. As vezes são as da
     oferta, nunca constante. O preço cheio NÃO entra aqui (os cartões do balão seguinte trazem o anual)."""
     candidatas = []
-    for p in (o.get("parcelas"), o.get("parcelas_sem_juros")):
+    # SPEC-133-A.1 F1: `parcela_menor` (só o canal a tem) é a menor de TODAS as formas de pagamento da oferta
+    for p in (o.get("parcela_menor"), o.get("parcelas"), o.get("parcelas_sem_juros")):
         if isinstance(p, Mapping) and _n(p.get("vezes")) and int(p["vezes"]) > 1:
             try:
                 valor = float(p.get("valor"))
