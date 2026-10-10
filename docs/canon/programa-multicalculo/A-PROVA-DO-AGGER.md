@@ -285,3 +285,73 @@ desses ramos (exige cálculo — fica para a 129-C, com o login do robô).
 ativa **apareceu de novo** → Cancelar e parar (nenhuma outra tentativa). 💭 Ou a sessão no servidor do Agger sobrevive ao vencimento
 do token (o que tornaria o logout OBRIGATÓRIO e a sessão fantasma um risco real para a pessoa — liga-se à P-128-01), ou a Ellen já
 estava logada às 07:36; daqui não dá para distinguir. 🧑 Se a Ellen vir o aviso ao entrar hoje, é o login DELA: ela pode prosseguir.
+
+## 11. As contas dedicadas do robô (10/10)
+Fonte: `medir_contas.py` no rascunho do medidor da 133-A.1 (F4), sobre a guarda de produção da 129-B (`agger_guarda`) com **toda escrita
+fora de login/troca de token/logout barrada** — ZERO cálculos. Login `cotador@` de cada corretora (D-133A1-03, autorizado pelo Founder em
+10/10), 2 entradas por conta, navegação só pelo menu da tela (📊 trocas de token = 2 por entrada, nenhuma recarga), logout pela tela
+nas 4 (📊 `deslogaSessao` 201). Nunca apareceu o aviso de sessão ativa. Relógio da máquina: AutoFleet 19:33–19:34 e 19:40–19:41,
+Resulta 19:37–19:38 e 19:41–19:42. Leituras: `GET calculo/seguradoras` (ativo, credencial válida, comissão; do usuário e da senha da
+seguradora só se leu se estão preenchidos ou vazios), `GET cfg/cobertura` (os pacotes), `GET cfg/assinatura-aggilizador`, o
+formulário de Carro aberto sem preencher. 📊 `calcularV2` = **0** nas 4 entradas · escritas barradas = telemetria de terceiros e 2
+gravações do próprio app (`usuarioSalvarPreferencias`, `login/hub`, ao abrir "Minhas plataformas" na Resulta).
+
+**Em uma tela:**
+
+| | AutoFleet (robô) | Resulta (robô) | diferença para o login da Ellen |
+|---|---|---|---|
+| entrar e sair | 📊 34 s e 14 s · logout 201 | 📊 39 s e 12 s · logout 201 | igual (E1: 5–52 s) |
+| negócios que o login enxerga (730 d) | 📊 **0** | 📊 **0** | a Ellen enxergava a conta toda (📊 AutoFleet 104, Resulta 1.021 — §10) |
+| menu | Cotações · Configurações → Seguradoras | Cotações · Dashboard · Tarefas · Minhas plataformas · Configurações → Seguradoras **e Coberturas** | os dois robôs têm perfis DIFERENTES |
+| licenças (campo `qtdeLicenca`) | 📊 **9** | 📊 **6** | 📊 eram 8 e 5 (§2): +1 em cada = o robô |
+| campo `licenca` da assinatura | 📊 20/10/2026 | 📊 **13/10/2026** | 💭 data de renovação do plano — conferir |
+| seguradoras configuradas | 📊 15, todas ativas | 📊 14, todas ativas | AutoFleet: as MESMAS 15 (E14); Resulta: o mesmo número (14), ver abaixo |
+| credencial válida (último teste guardado pelo Agger) | 📊 **15 de 15** | 📊 **13 de 14 — HDI inválida** | a HDI respondeu com o login da Ellen em 04/10 |
+| tipo da configuração | 📊 `compartilhada` nas 15 | 📊 `compartilhada` nas 14 | 💭 as senhas das seguradoras são da CORRETORA, não do usuário: o robô cota com as mesmas credenciais das comerciais |
+| comissão padrão por seguradora (auto) | 📊 14–20 % (Youse 14; Azul, Mitsui, Porto 20; as outras 15) | 📊 **0 % em todas** | igual à conta da Ellen nas duas (E14) |
+| desconto padrão | 📊 0–15 % (Allianz 15; Azul, Mitsui, Porto, Sura 10) | 📊 só a Allianz, 25 % | igual |
+
+**AutoFleet — as 15 seguradoras** (📊 todas `ativo` e com credencial válida; usuário e senha preenchidos em todas; Tokio e Sura também com
+o login do serviço web): Allianz · Azul · Azul por Assinatura · Bradesco · Darwin · Ezze · HDI · Liberty (Yelum/Aliro) · Mapfre · Mitsui ·
+Porto · Sura · Tokio · Youse · Zurich. **Idêntica** à lista medida com o login da Ellen (E14/E21). A Bradesco, que dava "Login ou senha
+incorreta" no histórico (E10), está válida.
+
+**Resulta — as 14 seguradoras** (📊 todas `ativo`): Alfa · Allianz · Axa · Bradesco · Chubb · **HDI (credencial inválida)** · Liberty · Mapfre ·
+Metlife · Porto · Sompo · SulAmérica · Tokio · Zurich. As que cotam **automóvel** são 8 (Allianz, Bradesco, HDI, Liberty → Yelum/Aliro,
+Mapfre, Porto → Azul/Itaú, Tokio, Zurich); as outras 6 servem condomínio, empresarial, residencial ou vida. Comparação com o único cálculo
+de automóvel da Resulta pelo login da Ellen (04/10, `vivo_conta_a.json`): responderam ali 12 nomes, entre eles **Mitsui** (com oferta) e
+**HDI** (com oferta) — a Mitsui **não está** configurada na conta do robô e a HDI está com a credencial inválida. A **Tokio** (P-129B-04,
+recusada em 05/10) aparece hoje como válida, mas **sem o login do serviço web** (na AutoFleet ele está preenchido) — só um cálculo confirma.
+A lista nominal das 14 da Resulta no login da Ellen não foi registrada na 128 (só a contagem), então "o mesmo número" não prova "as mesmas".
+
+**Os pacotes de automóvel** (📊 `cfg/cobertura`, ramo 31; a tradução dos códigos vem do formulário de Carro aberto em cada conta):
+
+| pacote | AutoFleet | Resulta |
+|---|---|---|
+| **Prata** (o padrão) | franquia 50 % (reduzida) · RCF 200/200/20 mil · APP 5 mil · assistência completa · vidros completo · reserva 15 dias | franquia 100 % (normal) · **RCF e APP zerados** · assistência básica · vidros básico · reserva 7 dias |
+| **Ouro** | franquia reduzida · RCF 150/150/10 mil · APP 5/5 mil · vidros completo · assistência completa · reserva 15 dias · **comissão 25 % dentro do pacote** | **idêntico à Prata** |
+| **Diamante** | RCF 150/300/50 mil · APP 20/20 mil · vidros básico · despesas extras · reserva código 3 (💭 30 dias) · **comissão 25 %** | **idêntico à Prata** |
+
+📊 A Prata das duas contas é a MESMA medida com o login da Ellen (E8) — os pacotes são da corretora, não do usuário. Nada disto muda o
+motor, que manda as coberturas explícitas (D-128-05); muda o que uma pessoa vê ao abrir o formulário. Os outros ramos têm só a Prata
+(residencial, condomínio, empresarial etc.), com quase tudo zerado nas duas contas.
+
+**O cálculo de conferência: NÃO FEITO, porque** o único perfil usado nas medições (128 e canário da 129-B) é a apólice autorizada, com
+dado pessoal real, guardada fora do git (`multicalculo_canario.py --perfil` recusa arquivo dentro do repositório) — não existe perfil de teste
+sem dado pessoal. A conferência "as seguradoras respondem pelas contas novas" fica para o canário, com o perfil que o Founder autorizar.
+
+**🧑 O que o Founder corrige no Agger** (entrando com um login administrador de cada corretora):
+1. **Resulta · HDI com credencial inválida** → Configurações → Seguradoras → HDI → corrigir usuário/senha → "Validar". Sem isso a HDI não cota.
+2. **Resulta · Mitsui ausente** (cotou em 04/10 pelo login da Ellen) → Configurações → Seguradoras → Mitsui → cadastrar, se a Resulta tem código Mitsui.
+3. **Resulta · Tokio sem o login do serviço web** → Configurações → Seguradoras → Tokio → preencher o login/senha do serviço web (como na AutoFleet) → "Validar".
+4. **Resulta · assinatura** → o campo `licenca` diz 13/10/2026 (daqui a 3 dias): conferir no "Meu plano" se é a renovação.
+5. **Resulta · perfil do robô** maior que o da AutoFleet (vê Dashboard, Tarefas, Minhas plataformas e pode mudar as Coberturas) → no cadastro
+   de usuários do Agger, dar ao `cotador@` da Resulta o mesmo perfil restrito do da AutoFleet (o robô só precisa de Cotações).
+6. **Resulta · pacotes e comissão** (não trava o robô; trava a pessoa): Ouro e Diamante iguais à Prata e com RCF/APP zerados → Configurações →
+   Coberturas → Automóvel; comissão padrão 0 % em todas → Configurações → Seguradoras → cada uma.
+7. **As duas · conferir o selo de credencial** → Configurações → Seguradoras → "Validar todas as credenciais": o "válida" lido aqui é o último
+   teste guardado pelo Agger, não um teste de hoje (o medidor não apertou o botão: é escrita).
+
+**Consequência para o motor:** 💭 o robô não enxerga os negócios feitos pelo login da Ellen (📊 0 visíveis), então os 8 negócios de teste de
+04–05/10 só se recalculam pelo login dela; os do robô nascem do zero na conta nova. E como as seguradoras são `compartilhadas`, o preço do
+robô deve ser o mesmo da comercial — o que só o canário com cálculo prova.
