@@ -12,6 +12,15 @@ import { Loader2, Plus, X } from 'lucide-react';
 // mora AQUI, no card Equipe, e não em card próprio.
 import { NumerosDaCasa } from './NumerosDaCasa';
 
+// 🔴 SPEC-133-A.1 (achado do planejador, 10/10): a senha provisória era sempre "mudar123" — quem soubesse o e-mail de um
+// membro novo entrava. Agora cada pessoa nasce com uma senha aleatória, que o admin vê (e pode trocar) antes de salvar.
+function senhaProvisoria(): string {
+  const letras = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint32Array(12);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => letras[b % letras.length]).join('');
+}
+
 type Member = {
   user_id: string; name: string; first_name: string; last_name: string;
   email: string | null; phone: string | null; role: string; role_label: string;
@@ -63,7 +72,7 @@ export function TeamClient() {
     setSelected(null);
     setAdding(true);
     setNotice('');
-    setForm({ first_name: '', last_name: '', email: '', phone: '', role: 'member', password: 'mudar123' });
+    setForm({ first_name: '', last_name: '', email: '', phone: '', role: 'member', password: senhaProvisoria() });
   };
 
   const close = () => { setSelected(null); setAdding(false); };

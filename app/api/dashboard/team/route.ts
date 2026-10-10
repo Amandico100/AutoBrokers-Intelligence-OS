@@ -8,6 +8,7 @@ import { requireCompanyMember, assertSameOrigin } from '@/lib/admin/admin-auth';
 import { canWriteTenantConfig } from '@/lib/admin/admin-auth-policy';
 import { getTeam } from '@/lib/admin/tenant-overview-store';
 import { hashPassword } from '@/lib/auth';
+import { randomBytes } from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,9 @@ export async function POST(req: NextRequest) {
   const lastName = String(body.last_name || '').trim();
   const phone = digits(body.phone);
   const role = ALLOWED_ROLES.has(String(body.role)) ? String(body.role) : 'member';
-  const password = String(body.password || 'mudar123');
+  // 🔴 SPEC-133-A.1: nunca mais uma senha padrão conhecida ("mudar123"); sem senha no pedido → aleatória, devolvida UMA vez
+  const senhaGerada = !body.password;
+  const password = String(body.password || randomBytes(12).toString('base64url'));
   if (!email || !email.includes('@')) return NextResponse.json({ ok: false, error: 'E-mail inválido.' }, { status: 400 });
   if (!firstName) return NextResponse.json({ ok: false, error: 'Informe o nome.' }, { status: 400 });
   if (password.length < 6) return NextResponse.json({ ok: false, error: 'Senha provisória muito curta (mínimo 6).' }, { status: 400 });
@@ -99,7 +102,8 @@ export async function POST(req: NextRequest) {
     console.error('[TEAM] membership error:', memberErr.message);
     return NextResponse.json({ ok: false, error: 'Não foi possível vincular à empresa.' }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, user_id: userId, existed: Boolean(existing) });
+  return NextResponse.json({ ok: true, user_id: userId, existed: Boolean(existing),
+    ...(senhaGerada && !existing ? { senha_provisoria: password } : {}) });
 }
 
 export async function PATCH(req: NextRequest) {
