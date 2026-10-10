@@ -794,6 +794,7 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       `portal-worker` → `MULTICALCULO_MOTOR_LIGADO=true`; `smith-worker` → confira que existe `PUBLIC_APP_URL` (ou `SMITH_WEB_URL`) com o
       endereço do app — sem ela o link da proposta não sai. **Esperar:** o `/health` do `portal-worker` com `build_time` de 07/10 ou depois.
       · *de:* S133-A
+      🔁 **10/10:** as variáveis NÃO aparecem sozinhas — você ADICIONA cada uma em **Ambiente** do serviço e clica Implantar. Valores: `MULTICALCULO_HMAC_KEY` = um texto aleatório (gere no Console do `smith-api`: `python -c "import secrets;print(secrets.token_urlsafe(48))"` e cole); `MULTICALCULO_MOTOR_LIGADO` = `true` (no `portal-worker`); `PUBLIC_APP_URL` (no `smith-api` E no `smith-worker`) = `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host`.
 - [ ] **T-133** ⏳ 🧑 **depois da T-132** · **Ler o QR do número do Quem Cobra Menos** — no **portal ADMIN** → menu **Conexões** →
       **Canais: Quem Cobra Menos (WhatsApp)** → "Conectar" → no celular do 47 98808-7463: WhatsApp → **Aparelhos conectados** → **Conectar
       aparelho** → aponte para o QR. **Esperar:** a tela mostra "conectado". O número continua funcionando no seu celular (é um aparelho a
@@ -805,11 +806,17 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       `python -m app.services.canal.comando_convidados --listar` (**Esperar:** os números aparecem MASCARADOS). Para tirar alguém:
       `--remover 55DDDNUMERO`. Cadastre também o SEU número pessoal para o primeiro teste. **Se aparecer "banco indisponível":** a T-132
       não terminou. · *de:* S133-A · D-133A-04
-- [ ] **T-135** ⏳ 🧑 **antes dos testadores — escolha uma** · **O login do Agger que o robô usa no piloto** — (A, o certo) o usuário-robô
-      de cada corretora (T-120) cadastrado pelo `comando_robo` com `--estado ativo --janela "seg-sab,08:00-22:00"`; ou (B, provisório, só
-      com a sua autorização) o login da **Ellen**, cadastrado pelo mesmo comando com `--janela "seg-sex,20:00-23:59"` (fora do horário
-      dela — o robô e ela não podem usar o mesmo login ao mesmo tempo). Hoje as duas contas estão **pausadas e sem senha**: sem isto,
-      NENHUMA cotação do canal sai. · *de:* S133-A · D-133A-12 · T-120
+- [ ] **T-135** ⏳ 🧑 **antes dos testes — agora pela TELA** · **Ligar o Agger de cada corretora (as contas `cotador@`)** — depois do
+      Implantar (T-132), logado em CADA corretora no painel → **Personalização → Conectores → "Agger da corretora"** → login
+      `cotador@…` + senha → **Salvar**. **Esperar:** o cartão mostra "aguardando o 1º cálculo" (e, depois do primeiro teste, "funcionando").
+      A senha nunca volta para a tela. (O comando de console da T-120 continua valendo, mas não precisa mais.) · *de:* S133-A.1 · D-133A1-03
+
+- [ ] **T-136** ⏳ 🧑 **antes dos testes com a Resulta** · **Corrigir a conta `cotador@` da Resulta no Agger** (📊 medido 10/10, A-PROVA §11),
+      entrando com um login de ADMINISTRADOR da Resulta: (1) **HDI** credencial inválida → Configurações → Seguradoras → HDI → corrigir
+      usuário e senha → Validar; (2) **Mitsui** não cadastrada → Configurações → Seguradoras → Mitsui → cadastrar (se houver código);
+      (3) **Tokio** sem o login do serviço web → Configurações → Seguradoras → Tokio → preencher → Validar; (4) **assinatura**: a data no
+      campo de licença é **13/10/2026** → conferir em "Meu plano"; (5) **permissões**: dar ao `cotador@` o perfil restrito do robô da
+      AutoFleet. A AutoFleet está igual à conta da Ellen (15 seguradoras válidas). · *de:* S133-A.1
 
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 
