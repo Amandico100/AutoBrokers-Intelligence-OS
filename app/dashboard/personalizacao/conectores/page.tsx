@@ -24,9 +24,18 @@ import { CreateConnectionModal } from '@/components/vault/CreateConnectionModal'
 import { ConfigureWhatsAppModal } from '@/components/vault/ConfigureWhatsAppModal';
 import { ConfigureInfocapModal } from '@/components/vault/ConfigureInfocapModal';
 import { PermissionGrantPanel } from '@/components/vault/PermissionGrantPanel';
+import { AggerDaCorretoraModal, tomDaSituacao, type ContaDoAgger } from '@/components/vault/AggerDaCorretoraModal';
+import { oQueOCatalogoAbre, rotuloDoCartao } from '@/lib/vault/conector-do-catalogo';
 import { riskPill, connectionStatusPill, slugIcon, fmtDateTime } from '@/components/vault/labels';
 
 type Tab = 'catalog' | 'connections';
+
+function rotuloDoCartaoDoAgger(c: ContaDoAgger): string {
+  if (!c.tem_senha) return 'Desconectado';
+  if (c.situacao === 'senha_recusada') return 'Senha recusada';
+  if (c.situacao === 'pausado') return 'Pausado';
+  return 'Conectado';
+}
 
 function Loading() {
   return (
@@ -53,6 +62,10 @@ export default function ConectoresPage() {
   const [infocapOpen, setInfocapOpen] = useState(false); // SPEC-014 C-FIX-1 (F)
   const [infocapConnId, setInfocapConnId] = useState<string | null>(null); // C-FIX-2
   const [ownerChoice, setOwnerChoice] = useState<string | null>(null); // SPEC-044: escolha corretora/pessoal (OAuth)
+  // SPEC-133-A.1 F3: o Agger da corretora (conta do robô do multicálculo) e a conexão EXISTENTE que o catálogo abriu
+  const [aggerOpen, setAggerOpen] = useState(false);
+  const [aggerConta, setAggerConta] = useState<ContaDoAgger | null>(null);
+  const [focusConnId, setFocusConnId] = useState<string | null>(null);
 
   const loadConnections = () =>
     fetchTenantConnections()
@@ -73,7 +86,18 @@ export default function ConectoresPage() {
       .then((d) => setTemplates(d.templates || []))
       .catch(() => setError(true));
     loadConnections();
+    fetch('/api/dashboard/agger-da-corretora', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setAggerConta(j?.conta || null))
+      .catch(() => setAggerConta(null));
   }, []);
+
+  // SPEC-133-A.1 F3: a conexão existente que o catálogo abriu fica à vista (rolada e destacada) na lista.
+  useEffect(() => {
+    if (tab !== 'connections' || !focusConnId) return;
+    const el = document.getElementById(`conexao-${focusConnId}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [tab, focusConnId, connections]);
 
   // Founder 14/07: o card do WhatsApp deve refletir o estado REAL da instância
   // Evolution ("Conectado"), não o rótulo fixo "QR code".
@@ -185,8 +209,13 @@ export default function ConectoresPage() {
     }
   };
 
-  // C-FIX-2: abrir modal InfoCap apontando para a conexão certa.
-  const openInfocap = (id: string) => { setInfocapConnId(id); setInfocapOpen(true); };
+  // C-FIX-2: abrir modal InfoCap apontando para a conexão certa. `null` = a corretora não tem InfoCap: o modal cria a
+  // conexão com o nome escolhido e grava login/senha nela, num gesto só (SPEC-133-A.1 F3).
+  const openInfocap = (id: string | null) => { setInfocapConnId(id); setInfocapOpen(true); };
+  const infocapConnName = (connections || []).find((c) => c.id === infocapConnId)?.name || null;
+
+  // SPEC-133-A.1 F3: o conector JÁ conectado abre a conexão que existe — nunca um formulário de "nova".
+  const abrirExistente = (id: string) => { setFocusConnId(id); setTab('connections'); };
 
   const doTestInfocap = async (id: string) => {
     setNotice('Testando conexão InfoCap…');
@@ -282,6 +311,20 @@ export default function ConectoresPage() {
                 cta="Conectar portais"
                 href="/dashboard/personalizacao/conectores/portais"
               />
+              {/* SPEC-133-A.1 F3 (D-133A1-03/04): o Agger da corretora — o login do robô que calcula o Quem Cobra
+                  Menos. Mesmo jeito da InfoCap: clicar → login e senha. Já conectado → abre a conexão. */}
+              <GalleryCard
+                key="agger_da_corretora"
+                icon={icons.seguradoras}
+                title="Agger da corretora"
+                description="O login do Agger que o robô usa para calcular as cotações do Quem Cobra Menos. Use um login só do robô (ex.: cotador@)."
+                category="Multicálculo"
+                status={aggerConta && aggerConta.situacao !== 'nao_conectado'
+                  ? { tone: tomDaSituacao(aggerConta.situacao), label: rotuloDoCartaoDoAgger(aggerConta) }
+                  : undefined}
+                cta={aggerConta?.id ? 'Gerenciar conexão' : 'Conectar'}
+                onClick={() => setAggerOpen(true)}
+              />
               {/* SPEC-047: o pareamento tem UMA casa — Personalização → Corretora →
                   WhatsApp. O card aqui é só um atalho para lá (nada de segundo
                   fluxo de conexão). Slug real do template legado: whatsapp_zapi. */}
@@ -297,6 +340,7 @@ export default function ConectoresPage() {
                   : connStatus ? connectionStatusPill(connStatus) : riskPill(t.risk_level);
                 const connected = connStatus === 'connected';
                 const oauthKey = SLUG_TO_OAUTH_PROVIDER[t.slug]; // google_drive/notion → fluxo OAuth oficial
+                const acao = oQueOCatalogoAbre(t.id, connections);
                 return (
                   <GalleryCard
                     key={t.id}
@@ -309,12 +353,15 @@ export default function ConectoresPage() {
                     cta={
                       isWhatsappChannel
                         ? 'Gerenciar no hub da corretora'
-                        : connected ? 'Gerenciar conexão' : oauthKey ? 'Conectar' : 'Preparar conexão'
+                        : rotuloDoCartao(acao, { conectada: connected, conectaDeUmaVez: Boolean(oauthKey) || t.slug === 'infocap' })
                     }
                     onClick={() => {
                       if (isWhatsappChannel) { router.push('/dashboard/personalizacao/corretora/whatsapp'); return; }
-                      if (connected) { setTab('connections'); return; }
+                      // 🔴 SPEC-133-A.1 F3: QUALQUER conexão não arquivada (conectada, configurando, com erro,
+                      // desconectada, rascunho) → abre ela. Antes só `connected` abria; o resto criava uma NOVA.
+                      if (acao.tipo === 'abrir') { abrirExistente(acao.connectionId); return; }
                       if (oauthKey) { setOwnerChoice(oauthKey); return; } // SPEC-044: corretora ou pessoal
+                      if (t.slug === 'infocap') { openInfocap(null); return; } // nome + login + senha, de uma vez
                       openCreate(t);
                     }}
                   />
@@ -346,10 +393,16 @@ export default function ConectoresPage() {
                 const slug = slugByTemplate[c.connector_template_id];
                 const isWhatsApp = slug === 'whatsapp_zapi';
                 const isInfocap = slug === 'infocap';
+                const oauthKeyDaConexao = slug ? SLUG_TO_OAUTH_PROVIDER[slug] : undefined;
+                const emFoco = focusConnId === c.id;
                 const isConfigured = c.status === 'connected' || Boolean(c.technical_ref_id);
                 const isDraft = c.status === 'draft';
                 return (
-                  <div key={c.id} className="rounded-xl border border-border bg-surface">
+                  <div
+                    key={c.id}
+                    id={`conexao-${c.id}`}
+                    className={cn('rounded-xl border bg-surface', emFoco ? 'border-primary/60 ring-2 ring-primary/30' : 'border-border')}
+                  >
                     <div className="flex items-start justify-between gap-3 p-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -383,6 +436,8 @@ export default function ConectoresPage() {
                               {open ? 'Fechar acesso' : 'Gerenciar acesso'}
                             </DropdownMenuItem>
                             {isInfocap && <DropdownMenuItem onClick={() => doTestInfocap(c.id)}>Testar conexão</DropdownMenuItem>}
+                            {/* "adicionar outra" só aqui, explícito, e só onde cabe mais de uma (OAuth: corretora + pessoal) */}
+                            {oauthKeyDaConexao && <DropdownMenuItem onClick={() => setOwnerChoice(oauthKeyDaConexao)}>Adicionar outra conta</DropdownMenuItem>}
                             {isWhatsApp && isConfigured && <DropdownMenuItem onClick={() => handleTestWhatsApp(c.id)}>Testar conexão</DropdownMenuItem>}
                             {isConfigured && <DropdownMenuItem onClick={() => doManage(c.id, 'disconnect', 'Desconectar')}>Desconectar</DropdownMenuItem>}
                             {isDraft && <DropdownMenuItem onClick={() => doManage(c.id, 'delete', 'Excluir rascunho vazio')}>Excluir rascunho vazio</DropdownMenuItem>}
@@ -431,8 +486,11 @@ export default function ConectoresPage() {
         open={infocapOpen}
         onOpenChange={setInfocapOpen}
         connectionId={infocapConnId}
+        connectionName={infocapConnName}
         onConfigured={() => { setNotice('InfoCap conectada com segurança.'); loadConnections(); }}
       />
+
+      <AggerDaCorretoraModal open={aggerOpen} onOpenChange={setAggerOpen} onChanged={setAggerConta} />
 
       {/* SPEC-044: escolha do DONO da conexão OAuth (padrão ChatGPT Enterprise).
           Elementos nativos (regra do tema) — sem Radix portal. */}

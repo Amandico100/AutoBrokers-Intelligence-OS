@@ -18,7 +18,11 @@ from app.services.saude_do_portal import rotulo_e_acao
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/portal", tags=["Portal"])
 
-#: SPEC-129-B D-129B-11 — portais cuja credencial NÃO se grava pela tela (só pelo comando do Founder).
+#: SPEC-129-B D-129B-11 — portais cuja credencial NÃO se grava pela tela GENÉRICA de credenciais (`/credentials`).
+#: 🔴 SPEC-133-A.1 D-133A1-03 revê a D-129B-11: o Agger agora ENTRA pela tela — mas só pela porta própria dele
+#: (`/agger-da-corretora`, abaixo), e só para a conta GLOBAL do robô da corretora. O `/credentials` continua
+#: recusando o Agger porque o upsert genérico grava login/senha sem estado de robô, sem janela, e por (empresa,
+#: portal, rótulo) — trocaria o login do robô e o gatilho do banco o pausaria em silêncio.
 PORTAIS_SO_PELO_COMANDO = frozenset({"agger"})
 
 
@@ -229,3 +233,75 @@ async def delete_credential(
         .execute()
     )
     return {"ok": True}
+
+
+# =====================================================================================================================
+# SPEC-133-A.1 F3 — o "Agger da corretora" na tela de conexões (D-133A1-03/04)
+# =====================================================================================================================
+# 🔴 POR QUE A TELA AGORA ACEITA O AGGER (revê a D-129B-11): a D-129B-11 proibia a tela porque o único login que existia
+# era o de uma PESSOA (uma comercial) — e o robô usando o login de uma pessoa derruba a sessão dela. Com os logins
+# DEDICADOS de robô (cotador@), é o admin da corretora quem libera o Agger dela, pelo painel, como faz com a InfoCap —
+# não o Founder por um comando no EasyPanel (que é estrutura GLOBAL). Por isso esta porta:
+#   · grava SÓ a conta global (`conta_do_robo.ROTULO_DA_CORRETORA`) — as contas do rodízio e do canário (login de
+#     pessoa) continuam só do comando;
+#   · grava pelo MESMO serviço do `comando_robo cadastrar` (`portal_worker.multicalculo.conta_do_robo`) — uma regra;
+#   · a conta nasce e volta SEMPRE `ativo` (nunca `teste`);
+#   · `company_id` vem da SESSÃO (o proxy Next, `porteiroDeConfiguracao` para escrever: só admin da corretora);
+#   · a senha nunca volta (só `tem_senha`) e nunca vai para log — nem o corpo da exceção, que pode trazer a linha.
+def _conta_do_robo():
+    from portal_worker.multicalculo import conta_do_robo
+
+    return conta_do_robo
+
+
+@router.get("/agger-da-corretora")
+async def agger_da_corretora(
+    company_id: str,
+    x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+):
+    _require_internal_key(x_key)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id obrigatorio")
+    CR = _conta_do_robo()
+    supa = get_supabase_client()
+    try:
+        return {"conta": CR.retrato(supa.client, company_id)}
+    except Exception as e:  # noqa: BLE001
+        logger.error("[PORTAL] agger-da-corretora: leitura falhou (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="não consegui ler o Agger da corretora agora")
+
+
+@router.post("/agger-da-corretora")
+async def agger_da_corretora_agir(
+    request: Request,
+    x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+):
+    """`acao`: conectar (login + senha; também é o "trocar senha") · pausar · religar · desconectar · janela."""
+    _require_internal_key(x_key)
+    body = await request.json()
+    company_id = str(body.get("company_id") or "")
+    acao = str(body.get("acao") or "")
+    if not company_id or not acao:
+        raise HTTPException(status_code=400, detail="company_id e acao sao obrigatorios")
+    CR = _conta_do_robo()
+    supa = get_supabase_client().client
+    janela = body.get("janela") if isinstance(body.get("janela"), dict) else None
+    try:
+        if acao in ("conectar", "trocar_senha"):
+            senha = str(body.get("senha") or "")
+            try:
+                CR.conectar_da_corretora(supa, company_id, usuario=str(body.get("usuario") or ""), senha=senha,
+                                         cifrar=portal_vault.encrypt, janela=janela)
+            finally:
+                senha = ""  # noqa: F841
+        else:
+            CR.agir_da_corretora(supa, company_id, acao, janela=janela)
+    except CR.Recusa as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except RuntimeError as e:  # o cofre sem chave (`portal_vault._fernet`)
+        logger.error("[PORTAL] agger-da-corretora: cofre indisponivel (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="cofre indisponivel — PORTAL_VAULT_KEY configurada no smith-api?")
+    except Exception as e:  # noqa: BLE001 — nunca o corpo: pode trazer a linha com o segredo
+        logger.error("[PORTAL] agger-da-corretora: %s falhou (%s)", acao, type(e).__name__)
+        raise HTTPException(status_code=500, detail="não consegui salvar agora — nada mudou além do que já aparece")
+    return {"ok": True, "conta": CR.retrato(supa, company_id)}

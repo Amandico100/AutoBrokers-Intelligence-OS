@@ -10,20 +10,29 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
+import { createTenantConnection, updateConnection } from '@/lib/vault/api';
 
 /**
  * SPEC-014 C-FIX-1 (F) — conectar a InfoCap de forma simples e segura.
  * Login/senha vão APENAS server-side (rota cifra no Vault/Fernet). A URL é global (não pedimos).
  * Conectar NÃO exige aprovação humana — o próprio corretor está autorizando.
+ *
+ * SPEC-133-A.1 F3 — UM gesto: nome da conexão + login + senha → salvar.
+ *   · sem `connectionId` (a corretora não tem InfoCap): cria a conexão com o nome escolhido e grava o segredo nela;
+ *   · com `connectionId` (já existe): é a MESMA conexão — "Reconectar", o nome editável, nunca uma conexão nova.
+ * O que se grava é o mesmo de antes (`tenant_connections` + `/api/attendance/connectors/infocap/secret`).
  */
 export function ConfigureInfocapModal({
-  open, onOpenChange, onConfigured, connectionId,
+  open, onOpenChange, onConfigured, connectionId, connectionName,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   onConfigured?: () => void;
   connectionId?: string | null;
+  connectionName?: string | null;
 }) {
+  const existe = Boolean(connectionId);
+  const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -31,8 +40,10 @@ export function ConfigureInfocapModal({
   const [okMsg, setOkMsg] = useState('');
 
   useEffect(() => {
-    if (open) { setUsername(''); setPassword(''); setError(''); setOkMsg(''); }
-  }, [open]);
+    if (open) {
+      setName(connectionName || 'InfoCap'); setUsername(''); setPassword(''); setError(''); setOkMsg('');
+    }
+  }, [open, connectionName]);
 
   const close = (o: boolean) => { if (!o) { setPassword(''); } onOpenChange(o); };
 
@@ -40,10 +51,19 @@ export function ConfigureInfocapModal({
     if (!username.trim() || !password) { setError('Informe login e senha.'); return; }
     setSaving(true); setError(''); setOkMsg('');
     try {
+      let alvo = connectionId || null;
+      const nome = name.trim() || 'InfoCap';
+      if (!alvo) {
+        const criada = await createTenantConnection({ connector_template_slug: 'infocap', name: nome, status: 'draft' });
+        if (!criada.connection) { setError(criada.error || 'Não foi possível criar a conexão.'); return; }
+        alvo = criada.connection.id;
+      } else if (nome !== (connectionName || '')) {
+        await updateConnection(alvo, { name: nome });
+      }
       const res = await fetch('/api/attendance/connectors/infocap/secret', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password, tenant_connection_id: connectionId || undefined }),
+        body: JSON.stringify({ username: username.trim(), password, tenant_connection_id: alvo }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
@@ -54,6 +74,8 @@ export function ConfigureInfocapModal({
         if (invalid) { setError('Login ou senha inválidos na InfoCap. Confira e tente de novo.'); }
         else { onConfigured?.(); setTimeout(() => onOpenChange(false), 800); }
       } else {
+        // a conexão recém-criada fica; o próximo clique no catálogo ABRE ela (nunca cria outra)
+        if (!existe) onConfigured?.();
         setError(data.error || 'Não foi possível conectar a InfoCap.');
       }
     } catch {
@@ -71,23 +93,28 @@ export function ConfigureInfocapModal({
             <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface-2 text-primary">
               <Icon icon={icons.seguradoras} size={18} />
             </span>
-            <DialogTitle className="text-base">Conectar InfoCap</DialogTitle>
+            <DialogTitle className="text-base">{existe ? 'Reconectar InfoCap' : 'Conectar InfoCap'}</DialogTitle>
           </div>
           <DialogDescription className="pt-1">
-            Informe o login e a senha da InfoCap da sua corretora. Eles são{' '}
-            <span className="font-medium text-foreground">criptografados no servidor</span> e nunca exibidos de novo.
-            Cada corretora usa as próprias credenciais.
+            {existe
+              ? 'Esta é a conexão que você já tem. Coloque o login e a senha de novo para trocá-los — nenhuma conexão nova é criada.'
+              : 'Informe o login e a senha da InfoCap da sua corretora.'}{' '}
+            Eles são <span className="font-medium text-foreground">criptografados no servidor</span> e nunca exibidos de novo.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="ic-name" className="text-foreground">Nome da conexão</Label>
+            <Input id="ic-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" className="bg-background" />
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="ic-user" className="text-foreground">Login (e-mail InfoCap)</Label>
             <Input id="ic-user" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="corretora@api.com.br" autoComplete="off" className="bg-background" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ic-pass" className="text-foreground">Senha</Label>
-            <Input id="ic-pass" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-background" />
+            <Input id="ic-pass" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-background" />
           </div>
         </div>
 
@@ -101,7 +128,7 @@ export function ConfigureInfocapModal({
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => close(false)} disabled={saving}>Cancelar</Button>
           <Button onClick={submit} disabled={saving || !username.trim() || !password}>
-            {saving ? 'Conectando…' : 'Conectar'}
+            {saving ? 'Salvando…' : existe ? 'Salvar' : 'Conectar'}
           </Button>
         </DialogFooter>
       </DialogContent>
