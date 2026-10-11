@@ -102,9 +102,13 @@ def _extras_da_gravacao(nome: str) -> dict:
             if k in cob and isinstance(v, (int, float)) and not isinstance(v, bool) and v}
 
 
-def dados(ramo: int, **troca) -> dict:
-    cfg = carregar(GRAVACAO_DO_FIO[ramo])["versao"]["configuracoes"]
-    risco = {**ENDERECO, "valor_basica": cfg[PED.CHAVE_DA_BASICA], "extras": _extras_da_gravacao(GRAVACAO_DO_FIO[ramo])}
+def dados(ramo: int, gravacao: str | None = None, **troca) -> dict:
+    """O pedido sintético de UMA gravação real (padrão: a do fio). Conserto 129-C (§9.3, a lição migra): a régua de RE
+    compara a oferta com o PEDIDO — o pedido tem de ser o daquele negócio (a básica e as coberturas dele); antes, toda
+    gravação era comparada com o pedido da gravação do fio e só passava porque a régua lia a moda do quadro."""
+    gravacao = gravacao or GRAVACAO_DO_FIO[ramo]
+    cfg = carregar(gravacao)["versao"]["configuracoes"]
+    risco = {**ENDERECO, "valor_basica": cfg[PED.CHAVE_DA_BASICA], "extras": _extras_da_gravacao(gravacao)}
     if ramo == 16:
         seg = {"cpf_cnpj": "11.222.333/0001-81", "nome": "Condominio Ficticio"}
         risco.update(tipo_imovel="Residencial", estrutura="Vertical", ano_fundacao=cfg["anoFundacao"],
@@ -176,7 +180,7 @@ def motor_grava_a_gravacao(m, pedido_id: str, calculo: dict, gravacao: dict, *, 
 
 def calcular_e_comparar(m, ramo: int, gravacao: str, *, company=None, sem_basica=False, eventos_extra=()):
     company = company or m.a
-    pedido = PED.PedidoDeCalculo.de_dict(dados(ramo), ramo=ramo)
+    pedido = PED.PedidoDeCalculo.de_dict(dados(ramo, gravacao), ramo=ramo)
     aberto = rodar(m.porta.calcular(company_id=company, pedido=pedido, origem="auxiliar"))
     calc = next(c for c in m.banco.linhas("multicalculo_calculos")
                 if c["pedido_id"] == aberto.pedido_id and c["opcao"] == "padrao")
@@ -200,18 +204,26 @@ def _contagem_independente(gravacao: str):
 # =====================================================================================================================
 # 🔴 O TESTE DO FIO, por ramo
 # =====================================================================================================================
-#: 📊 o esperado CONTADO À MÃO nas gravações (resultados[].coberturas · premio), com a régua escrita na SPEC:
-#:  condomínio_1: HDI sem impacto/RC condomínio/portões, Porto sem impacto, Axa sem RC síndico → só Allianz e Tokio
-#:  residencial_2: as 8 com básica 550.000, elétricos 10.000 e vendaval 45.000 (RC não vem em nenhuma → não exigida)
-#:  empresarial_2: Tokio sem danos elétricos (4 das 5 o trazem) → Chubb, HDI, Bradesco, Porto
+#: 📊 o esperado CONTADO À MÃO nas gravações (resultados[].coberturas · premio), com a régua do CONSERTO 129-C (a oferta
+#: contra o PEDIDO; não ecoar = "não informou", fica; ecoar menos numa essencial = sai):
+#:  condomínio_1: as 5 com a básica do pedido; HDI devolve a RC SOMADA em `isValorSindico` (1 mi = 500 mil + 500 mil) e
+#:  a Axa em `isValorCondominio` (1 mi) — as duas RC cobertas; HDI e Porto não DEVOLVEM impacto (e a HDI, portões) →
+#:  ficam, com o aviso. Nenhuma ecoa menos → as 5 no ranking.
+#:  residencial_2: as 8 com básica 550.000, elétricos 10.000 e vendaval 45.000 (a RC do pedido não vem em nenhuma → aviso)
+#:  empresarial_2: a Tokio não DEVOLVE danos elétricos → fica, com o aviso → Chubb, HDI, Tokio, Bradesco, Porto
+#: §9.3/§9.4 (a lição migra): a contagem anterior repetia a leitura do código ("HDI não inclui RC Condomínio", "Axa não
+#: inclui RC Síndico"); a conferência independente do red team (`scratchpad/red/a3_rc_somada.py`) leu a SOMA no JSON cru.
+#: A conta à mão desta tabela: `scratchpad/esperado_a_mao.py` (reimplementa a régua sem `comparacao.py`).
 ESPERADO = {
-    16: {"ranking": [("Allianz", 10427.56), ("Tokio Marine", 13841.45)],
-         "diferentes": {"HDI", "Axa", "Porto"}, "recusas": {"Chubb", "Bradesco"}},
+    16: {"ranking": [("Allianz", 10427.56), ("Tokio Marine", 13841.45), ("Axa", 14878.88), ("HDI", 15622.25),
+                     ("Porto", 20369.41)],
+         "diferentes": set(), "recusas": {"Chubb", "Bradesco"}},
     2: {"ranking": [("Bradesco", 475.48), ("Zurich", 511.68), ("Allianz", 568.32), ("Mapfre", 568.37),
                     ("Yelum", 641.13), ("HDI", 752.12), ("Tokio Marine", 1246.3), ("Porto", 1654.76)],
         "diferentes": set(), "recusas": set()},
-    18: {"ranking": [("Chubb", 333.84), ("HDI", 413.2), ("Bradesco", 553.84), ("Porto", 678.89)],
-         "diferentes": {"Tokio Marine"}, "recusas": {"Axa", "Mapfre", "Allianz", "Yelum"}},
+    18: {"ranking": [("Chubb", 333.84), ("HDI", 413.2), ("Tokio Marine", 507.96), ("Bradesco", 553.84),
+                     ("Porto", 678.89)],
+         "diferentes": set(), "recusas": {"Axa", "Mapfre", "Allianz", "Yelum"}},
 }
 
 
@@ -249,9 +261,12 @@ def test_o_fio_por_ramo_pedido_porta_banco_leitor_comparacao(mundo, ramo):
     basica, extras = claro["risco"]["valor_basica"], claro["risco"]["extras"]
     assert extras
     for opcao, c in calcs.items():
-        assert c["coberturas"] == PRE.coberturas_re(ramo, opcao, basica, extras)
+        # conserto 129-C (red P6, §9.3 — a lição migra): na "mais em conta" só ficam as extras que a opção cobre
+        base = PRE.coberturas_re(ramo, opcao, basica, {})
+        extras_op = extras if opcao == "padrao" else {k: v for k, v in extras.items() if base.get(k)}
+        assert c["coberturas"] == PRE.coberturas_re(ramo, opcao, basica, extras_op)
         assert c["coberturas"][PED.CHAVE_DA_BASICA] == basica
-        assert all(c["coberturas"][k] == v for k, v in extras.items())
+        assert all(c["coberturas"][k] == v for k, v in extras_op.items())
 
     # ── a comparação: o ranking por prêmio anual, conferido contra a contagem à mão e a contagem crua ──
     esp = ESPERADO[ramo]
@@ -272,11 +287,15 @@ def test_o_fio_por_ramo_pedido_porta_banco_leitor_comparacao(mundo, ramo):
 
 
 def test_os_motivos_do_condominio_dizem_o_que_falta_em_portugues(mundo):
+    """§9.3/§9.4 (conserto 129-C): o "não inclui RC Condomínio" da HDI e o "não inclui RC Síndico" da Axa eram FALSOS
+    (📊 as duas devolvem as duas RC SOMADAS numa chave, no valor exato do pedido). A lição migra: o que a seguradora
+    não DEVOLVE vira aviso "não informou", e as RC somadas não aparecem em aviso nenhum."""
     _a, _p, q, _and = calcular_e_comparar(mundo, 16, "gravacao_condominio_1")
-    motivos = {d["seguradora"]: d["motivo"] for d in q.diferentes}
-    assert motivos["HDI"] == "não inclui Impacto de veículos, RC Condomínio, Portões"
-    assert motivos["Porto"] == "não inclui Impacto de veículos"
-    assert motivos["Axa"] == "não inclui RC Síndico"
+    avisos = {l["seguradora"]: l["avisos"] for l in q.ranking()}
+    assert avisos["HDI"] == ["não informou Impacto de veículos, Portões"]
+    assert avisos["Porto"] == ["não informou Impacto de veículos"]
+    assert avisos["Axa"] == [] and avisos["Allianz"] == [] and avisos["Tokio Marine"] == []
+    assert q.diferentes == []
     assert {r["seguradora"]: r["motivo"] for r in q.nao_responderam}["Chubb"] == "não aceitou este risco"
 
 

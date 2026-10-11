@@ -46,6 +46,10 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         # corretora o Agger traz percComissaoEmpres = 0 nas 10 seguradoras do empresarial; Cond/Resid = 10). Por
         # ramo (chave = o código do ramo como texto); None = a `entrada` acima (o padrão do produto, igual ao auto).
         "por_ramo": {"16": None, "2": None, "18": None},
+        # Red P4 (conserto 129-C) — o TETO da comissão explícita do item (o pedido, a config por ramo, o ajuste de RE):
+        # acima disso é erro de digitação (o red passou 500 %), nunca uma comissão. 💭 50 = valor inicial a calibrar
+        # (nenhuma das comerciais citou comissão acima de 30 %). Piso: > 0 (o 0 escrito é o que a D-129C-05 evita).
+        "teto_pct": 50.0,
     },
     # D-MC-66 — novo COM apólice: mirar 💭 ~10–15 % abaixo do preço atual quando der, guardando margem
     "alvo_abaixo_da_atual_pct": {"minimo": 10.0, "maximo": 15.0},
@@ -254,10 +258,16 @@ def _coerente(cfg: Dict[str, Any]) -> Dict[str, Any]:
     if int(cfg["validade"]["padrao_dias"]) < 1:
         cfg["validade"]["padrao_dias"] = pad["validade"]["padrao_dias"]
     # SPEC-129-C — as tabelas por ramo: um valor fora da faixa vale o padrão DAQUELE ramo, nunca um número quebrado
+    c = cfg["comissao"]
+    if not (c["entrada"] <= c["teto_pct"] <= 100):
+        logger.warning("[MC-CONFIG] comissao.teto_pct fora de [entrada, 100] — fica o padrão")
+        cfg["comissao"] = copy.deepcopy(pad["comissao"])
+    teto = float(cfg["comissao"]["teto_pct"])
     por_ramo = cfg["comissao"].get("por_ramo") or {}
     for r, v in list(por_ramo.items()):
-        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100):
-            logger.warning("[MC-CONFIG] comissao.por_ramo.%s inválida — fica a entrada", r)
+        # red P4 (conserto 129-C): 0 não é comissão (é o padrão do Agger que a D-129C-05 evita) → volta à entrada
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v <= teto):
+            logger.warning("[MC-CONFIG] comissao.por_ramo.%s inválida (fora de (0, teto]) — fica a entrada", r)
             por_ramo[r] = None
     reaj = cfg["renovacao"].get("reajuste_basica_pct") or {}
     for r, v in list(reaj.items()):
@@ -287,6 +297,15 @@ def comissao_do_ramo(config: Mapping[str, Any], ramo: Any) -> float:
     return float(com["entrada"])
 
 
+def teto_da_comissao(config: Mapping[str, Any]) -> float:
+    """Red P4 (conserto 129-C): o teto da comissão explícita do item (`comissao.teto_pct`)."""
+    com = config.get("comissao") or {}
+    v = com.get("teto_pct")
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+        return float(v)
+    return float(PADRAO_DO_PRODUTO["comissao"]["teto_pct"])
+
+
 def reajuste_basica_pct(config: Mapping[str, Any], ramo: Any) -> Optional[float]:
     """D-129C-06: o reajuste da básica na renovação, em %. None = o ramo não tem a regra (o auto)."""
     v = _do_ramo((config.get("renovacao") or {}).get("reajuste_basica_pct"), ramo)
@@ -294,7 +313,11 @@ def reajuste_basica_pct(config: Mapping[str, Any], ramo: Any) -> Optional[float]
 
 
 def basica_renovada(config: Mapping[str, Any], ramo: Any, basica_anterior: Any) -> Optional[float]:
-    """A básica do ano novo = a anterior + o reajuste do ramo (None sem regra ou sem valor anterior positivo)."""
+    """A básica do ano novo = a anterior + o reajuste do ramo (None sem regra ou sem valor anterior positivo).
+
+    ⚠️ SEM CHAMADOR NESTA SPEC (juiz P2, conserto 129-C): chamada pela 131 (o auxiliar de renovação), que monta o
+    pedido de renovação de RE com `risco.valor_basica = basica_renovada(...)`. Até lá a renovação de RE sai com a
+    Básica que o pedido trouxer — pronto e desligado, anotado em PENDENCIAS pelo gerente."""
     pct = reajuste_basica_pct(config, ramo)
     try:
         anterior = float(basica_anterior)

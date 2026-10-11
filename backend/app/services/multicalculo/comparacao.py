@@ -99,6 +99,7 @@ class Classe:
                                      # configuracao_diferente · sem_preco
     motivo: Optional[str] = None     # a frase humana (None quando comparável)
     exibe_preco: bool = True         # assinatura: o prêmio NÃO é anual — nunca se mostra
+    avisos: Tuple[str, ...] = ()     # RE (conserto 129-C): COMPARÁVEL, mas com o que a seguradora não informou
 
 
 COMPLETA = Classe(True, "completa")
@@ -106,7 +107,13 @@ COMPLETA = Classe(True, "completa")
 
 def _sem_margem(cob: Dict[str, Any]) -> Dict[str, Any]:
     """🔴 G3 (SPEC-129-C): 📊 as 9 gravações de RE trazem `percComissao` DENTRO de `resultados[].coberturas` (ex.: 30)
-    — a margem da corretora não pode sair por uma linha de cobertura nem pela `coberturas_brutas` do ranking."""
+    — a margem da corretora não pode sair por uma linha de cobertura nem pela `coberturas_brutas` do ranking.
+
+    ⚠️ DECLARADO (red P7, conserto 129-C): vale para TODOS os ramos, o AUTO inclusive — `percComissao*`/`percDesconto*`
+    saem também da `coberturas_brutas` do auto e da assinatura que `_repete` compara (a "Mais completa" que difere da
+    referência SÓ no desconto passa a contar como repetida). Nada VISÍVEL muda no auto: a régua do auto lê
+    `tipoPadronizado`/`casco`, as linhas públicas leem chaves nomeadas e nenhum consumidor do app/front lê essas chaves
+    na `coberturas_brutas` — `test_spec129c_conserto_app.py::test_sem_margem_nao_muda_nada_visivel_no_auto` prova."""
     return {k: v for k, v in cob.items() if not str(k).lower().startswith(("perccomissao", "percdesconto"))}
 
 
@@ -202,9 +209,10 @@ def _moda(valores: Sequence[float]) -> Optional[float]:
 
 
 def referencia_re(ofertas: Iterable[Mapping[str, Any]], essenciais: Iterable[str]) -> Dict[str, Any]:
-    """A CONFIGURAÇÃO do quadro de RE numa opção, lida das ofertas COM PREÇO: a básica = a mais comum entre as que a
-    devolvem; cada essencial (config, por ramo) entra quando a MAIORIA das ofertas a devolve > 0, com o valor mais
-    comum. Sem nenhuma básica devolvida → `basica: None` (a régua de RE não se aplica; vale a genérica, marcada)."""
+    """A CONFIGURAÇÃO do quadro de RE numa opção, lida das ofertas COM PREÇO — só o PLANO B (conserto 129-C, red P2):
+    a régua compara com o PEDIDO (`pedido_re`); isto vale apenas quando o estado do cálculo não traz as coberturas
+    pedidas (a régua sai marcada `re_sem_pedido`). A básica = a mais comum; cada essencial entra quando a MAIORIA a
+    devolve > 0, com o valor mais comum. Sem nenhuma básica devolvida → `basica: None` (vale a genérica, marcada)."""
     com_preco = [o for o in ofertas if _premio(o) is not None]
     basicas = [b for b in (_num(_coberturas(o).get(CHAVE_DA_BASICA)) for o in com_preco) if b and b > 0]
     exigidas: Dict[str, float] = {}
@@ -223,31 +231,91 @@ def _nome_re(chave: str) -> str:
     return NOME_DA_COBERTURA_RE.get(chave, chave)
 
 
+#: o que NÃO se compara em R$: a assistência vai como CÓDIGO (1/2/3) e volta como o TEXTO da seguradora (📊 canário
+#: 11/10 §3.6: "Plano Plus", "COMPLETO") — comparar os dois seria inventar "cobre menos"
+_FORA_DA_COMPARACAO_RE = frozenset({"assist24hs", CHAVE_DA_BASICA})
+#: 🔴 as EQUIVALÊNCIAS DE ECO do condomínio (16) — cada uma com a evidência (CLAUDE.md §9.5):
+#:  · RC SOMADA: 📊 nas 3/3 gravações de condomínio (`fixtures/agger_ramos/gravacao_condominio_{1,2,3}.json`,
+#:    `resultados[].coberturas`), a HDI devolve a RC Condomínio + a RC Síndico SOMADAS em `isValorSindico` e a Axa em
+#:    `isValorCondominio`, no valor EXATO da soma do pedido (1 mi = 500 mil + 500 mil · 2 mi = 1 mi + 1 mi · 400 mil =
+#:    200 mil + 200 mil; prova crua: `scratchpad/red/a3_rc_somada.py` do red team 129-C). O canário ao vivo repetiu
+#:    (CANARIO-AO-VIVO §3.6: HDI síndico 600 mil e Axa condomínio 600 mil, pedido 300 mil + 300 mil). Regra: UMA chave
+#:    de RC ecoada, a outra ausente, e o valor ecoado ≥ a soma do pedido → as duas RC do pedido estão cobertas.
+#:  · `responsabilidadeCivil` = RC Condomínio: 📊 gravacao_condominio_3, a Allianz devolve `isValorSindico` 200 mil +
+#:    `responsabilidadeCivil` 200 mil e NENHUM `isValorCondominio` (pedido: 200 mil + 200 mil). O formulário do
+#:    condomínio NÃO tem a chave `responsabilidadeCivil` (`presets.CHAVES_DE_COBERTURA_RE[16]`): no ramo 16 ela só pode
+#:    ser a RC do condomínio. Vale só quando `isValorCondominio` não veio.
+RC_DO_CONDOMINIO: Tuple[str, str] = ("isValorCondominio", "isValorSindico")
+RC_CONDOMINIO_COMO_A_SEGURADORA_CHAMA = "responsabilidadeCivil"
+RAMO_CONDOMINIO = 16
+
+
+def pedido_re(coberturas_pedidas: Any) -> Optional[Dict[str, float]]:
+    """As coberturas que o CÁLCULO mandou (a linha `multicalculo_calculos.coberturas`, que a porta devolve no estado
+    como `coberturas_pedidas`) em número; sem a básica → None (não há o que comparar)."""
+    if not isinstance(coberturas_pedidas, Mapping):
+        return None
+    saida = {str(k): _num(v) for k, v in _sem_margem(dict(coberturas_pedidas)).items()}
+    saida = {k: v for k, v in saida.items() if v is not None}
+    return saida if (saida.get(CHAVE_DA_BASICA) or 0) > 0 else None
+
+
+def ecos_re(cob: Mapping[str, Any], pedido: Mapping[str, float], ramo: int) -> Dict[str, Optional[float]]:
+    """Cada cobertura PEDIDA (> 0, menos básica e assistência) → o valor que a seguradora ECOOU para ela, com as
+    equivalências medidas acima; None = não ecoou (FATO: não devolveu — nunca a inferência "não cobre")."""
+    eco = {k: _num(v) for k, v in cob.items()}
+    if int(ramo) == RAMO_CONDOMINIO:
+        cond, sind = RC_DO_CONDOMINIO
+        if eco.get(cond) is None and eco.get(RC_CONDOMINIO_COMO_A_SEGURADORA_CHAMA) is not None:
+            eco[cond] = eco[RC_CONDOMINIO_COMO_A_SEGURADORA_CHAMA]
+        ecoadas = [k for k in RC_DO_CONDOMINIO if eco.get(k) is not None]
+        soma = sum(pedido.get(k) or 0 for k in RC_DO_CONDOMINIO)
+        if len(ecoadas) == 1 and soma > 0 and eco[ecoadas[0]] >= soma - 1.0:
+            for k in RC_DO_CONDOMINIO:                    # a RC somada cobre as duas do pedido
+                if (pedido.get(k) or 0) > 0:
+                    eco[k] = pedido[k]
+    return {k: eco.get(k) for k, v in pedido.items() if v and v > 0 and k not in _FORA_DA_COMPARACAO_RE}
+
+
 def _classificar_re(oferta: Mapping[str, Any], referencia: Any = None) -> Classe:
-    """RE: COMPARÁVEL = a MESMA básica do quadro (± R$ 1) e as coberturas essenciais da maioria com o mesmo valor ou
-    mais. Sem referência de básica (nenhuma oferta a devolveu) → a régua genérica (mesma configuração da maioria)."""
+    """RE (conserto 129-C): a oferta contra o PEDIDO do cálculo dela (`referencia["pedido"]`), nunca contra o quadro.
+
+        básica ausente ............. DIFERENTE ("não informou a básica")
+        básica ≠ a do pedido ....... DIFERENTE (o preço é de outro seguro)
+        essencial ecoada MENOR/0 ... DIFERENTE "cobre menos: X" (a config do ramo diz o que é essencial)
+        pedida e NÃO ecoada ........ COMPARÁVEL com o aviso "não informou X" (📊 18 de 38 ofertas ecoam menos chaves que
+                                     o enviado — não devolver é FATO; "não inclui" seria inferência)
+        não essencial ecoada menor . COMPARÁVEL com o aviso "cobre menos que o pedido: X"
+    Sem referência de básica (nenhuma oferta a devolveu) → a régua genérica (mesma configuração da maioria)."""
     ref = referencia if isinstance(referencia, Mapping) else None
-    if ref is None or ref.get("basica") is None:
+    if ref is None or not ref.get("pedido"):
         return _classificar_generico(oferta, ref.get("assinatura") if ref else None)
+    pedido, ramo = ref["pedido"], int(ref.get("ramo") or 0)
+    essenciais = set(ref.get("essenciais") or ())
     cob = _coberturas(oferta)
-    if not any(k != "percComissao" for k in cob):
+    if not cob:
         return Classe(False, "sem_cobertura_informada", "a seguradora não informou as coberturas")
     basica = _num(cob.get(CHAVE_DA_BASICA))
     if basica is None or basica <= 0:
         return Classe(False, "basica_nao_informada", "não informou o valor da cobertura básica (incêndio)")
-    if abs(basica - float(ref["basica"])) >= 1.0:
-        return Classe(False, "basica_diferente", f"calculou a cobertura básica (incêndio) com {reais(basica)}; as "
-                                                 f"outras, com {reais(ref['basica'])}")
-    faltam = [k for k, v in ref["essenciais"].items() if not (_num(cob.get(k)) or 0) > 0]
-    menores = [k for k, v in ref["essenciais"].items() if k not in faltam and _num(cob.get(k)) < v - 1.0]
-    if faltam or menores:
-        partes = []
-        if faltam:
-            partes.append("não inclui " + ", ".join(_nome_re(k) for k in faltam))
-        if menores:
-            partes.append("cobre menos em " + ", ".join(_nome_re(k) for k in menores))
-        return Classe(False, "sem_cobertura_essencial", "; ".join(partes))
-    return COMPLETA
+    alvo = float(pedido[CHAVE_DA_BASICA])
+    if abs(basica - alvo) >= 1.0:
+        de_quem = "o pedido" if ref.get("fonte") == "pedido" else "as outras"
+        return Classe(False, "basica_diferente", f"calculou a cobertura básica (incêndio) com {reais(basica)}; "
+                                                 f"{de_quem}, com {reais(alvo)}")
+    ecos = ecos_re(cob, pedido, ramo)
+    nao_informou = [k for k, v in ecos.items() if v is None]
+    menores = [k for k, v in ecos.items() if v is not None and v < pedido[k] - 1.0]
+    menos_essencial = [k for k in menores if k in essenciais]
+    if menos_essencial:
+        return Classe(False, "cobre_menos", "cobre menos: " + ", ".join(_nome_re(k) for k in menos_essencial))
+    ordem = lambda ks: sorted(ks, key=lambda k: (k not in essenciais, list(pedido).index(k)))  # noqa: E731
+    avisos = []
+    if nao_informou:
+        avisos.append("não informou " + ", ".join(_nome_re(k) for k in ordem(nao_informou)))
+    if menores:
+        avisos.append("cobre menos que o pedido: " + ", ".join(_nome_re(k) for k in ordem(menores)))
+    return Classe(True, "completa", avisos=tuple(avisos)) if avisos else COMPLETA
 
 
 #: ramo → a régua. O que não está aqui usa `_classificar_generico` (D-MC-73: a 129-C mede e acrescenta).
@@ -462,7 +530,7 @@ def posicao_de_preferencia(oferta: Mapping[str, Any], preferidas: Sequence[Any])
 
 
 def _entrada(oferta: Mapping[str, Any], opcao: str, corretora: str, ramo: int,
-             preferidas: Sequence[Any] = ()) -> Dict[str, Any]:
+             preferidas: Sequence[Any] = (), avisos: Sequence[str] = ()) -> Dict[str, Any]:
     """A linha de ranking — campos ESCOLHIDOS um a um (a comissão nunca é copiada)."""
     cob = _coberturas(oferta)
     pref = posicao_de_preferencia(oferta, preferidas)
@@ -471,7 +539,7 @@ def _entrada(oferta: Mapping[str, Any], opcao: str, corretora: str, ramo: int,
         fv = float(fv) if fv is not None else None
     except (TypeError, ValueError):
         fv = None
-    return {
+    linha = {
         "oferta_id": str(oferta.get("id") or ""), "calculo_id": str(oferta.get("calculo_id") or ""),
         "corretora_company_id": corretora, "opcao": opcao, "ramo": ramo,
         "seguradora": nome_de_exibicao(oferta.get("seguradora")),
@@ -486,6 +554,10 @@ def _entrada(oferta: Mapping[str, Any], opcao: str, corretora: str, ramo: int,
         # SPEC-129-C D-129C-07: a preferida da corretora no ramo é MARCADA — nunca esconde as outras
         "preferida": pref is not None, "ordem_de_preferencia": pref,
     }
+    if ramo in RAMOS_RE:
+        # conserto 129-C (red P1 · juiz P3): COMPARÁVEL, mas o corretor LÊ o que a seguradora não devolveu
+        linha["avisos"] = list(avisos)
+    return linha
 
 
 def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str, Any]] = (), *,
@@ -501,12 +573,17 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
     papeis = dict(cfg.get("calculo_por_papel") or {"completa": "padrao"})
     por_calculo: Dict[str, Tuple[str, str]] = {}
     corretoras: List[str] = []
+    pedidos_re: Dict[str, Dict[str, float]] = {}      # SPEC-129-C conserto: calculo_id → as coberturas PEDIDAS
     for e in estados or ():
         cid = str(e.get("calculo_id") or e.get("id") or "")
         if not cid or not e.get("opcao"):
             continue
         corr = str(e.get("corretora_company_id") or e.get("company_id") or "")
         por_calculo[cid] = (str(e["opcao"]), corr)
+        if ramo in RAMOS_RE:
+            ped_re = pedido_re(e.get("coberturas_pedidas"))
+            if ped_re:
+                pedidos_re[cid] = ped_re
         if corr and corr not in corretoras:
             corretoras.append(corr)
 
@@ -533,10 +610,27 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
     reguas: Dict[str, str] = {}
     for opcao, itens in agrupadas.items():
         referencia = None
+        ref_por_calculo: Dict[str, Dict[str, Any]] = {}
         if ramo in RAMOS_RE:
-            # SPEC-129-C: a configuração do quadro DESTA opção (a básica e as essenciais da maioria)
-            referencia = referencia_re([o for o, _ in itens], coberturas_essenciais(cfg, ramo))
-            reguas[opcao] = "re" if referencia["basica"] is not None else "generica_sem_basica"
+            # conserto 129-C (red P2 · canário #2): cada oferta contra o PEDIDO do cálculo dela; o quadro (a moda) só
+            # quando o estado não trouxe as coberturas pedidas — e a régua sai marcada `re_sem_pedido`, nunca calada
+            essenciais = coberturas_essenciais(cfg, ramo)
+            quadro_re = referencia_re([o for o, _ in itens], essenciais)
+            if quadro_re["basica"] is None:
+                referencia = quadro_re                    # nenhuma oferta devolveu a básica: a genérica, marcada
+                reguas[opcao] = "generica_sem_basica"
+            else:
+                plano_b = {"ramo": ramo, "essenciais": tuple(essenciais), "fonte": "quadro",
+                           "pedido": {CHAVE_DA_BASICA: quadro_re["basica"], **quadro_re["essenciais"]}}
+                sem_pedido = False
+                for o, _ in itens:
+                    cid = str(o.get("calculo_id") or "")
+                    if cid in pedidos_re:
+                        ref_por_calculo[cid] = {"ramo": ramo, "essenciais": tuple(essenciais), "fonte": "pedido",
+                                                "pedido": pedidos_re[cid]}
+                    else:
+                        ref_por_calculo[cid], sem_pedido = plano_b, True
+                reguas[opcao] = "re_sem_pedido" if sem_pedido else "re"
         elif ramo not in REGRAS_POR_RAMO:
             contagem = Counter(assinatura_de_coberturas(o) for o, _ in itens if _premio(o) is not None)
             referencia = contagem.most_common(1)[0][0] if contagem else None
@@ -545,9 +639,10 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
         responderam[opcao] = set()
         for o, corr in itens:
             responderam[opcao].add(_chave_seguradora(o))
-            classe = classificar(o, config=cfg, ramo=ramo, referencia=referencia)
+            classe = classificar(o, config=cfg, ramo=ramo,
+                                 referencia=ref_por_calculo.get(str(o.get("calculo_id") or ""), referencia))
             if classe.comparavel:
-                ent = _entrada(o, opcao, corr, ramo, preferidas)
+                ent = _entrada(o, opcao, corr, ramo, preferidas, classe.avisos)
                 k = (corr, _chave_seguradora(o))
                 if k not in melhores or ent["premio_anual"] < melhores[k]["premio_anual"]:
                     melhores[k] = ent
@@ -614,8 +709,9 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
     if len(corretoras) > 1:
         resumo["corretoras_comparadas"] = len(corretoras)
     if ramo in RAMOS_RE:
-        # SPEC-129-C: QUAL régua decidiu o "comparável" da opção completa — "generica_sem_basica" quando nenhuma oferta
-        # devolveu a básica (a régua de RE não tinha como se aplicar): fica VISÍVEL, nunca calado
+        # SPEC-129-C: QUAL régua decidiu o "comparável" da opção completa — "re" (contra o PEDIDO) · "re_sem_pedido"
+        # (algum estado sem as coberturas pedidas: contra a moda do quadro) · "generica_sem_basica" (nenhuma oferta
+        # devolveu a básica): fica VISÍVEL, nunca calado
         resumo["regua"] = reguas.get(opcao_completa)
     return Comparacao(ramo=ramo, papeis=papeis, por_opcao=por_opcao, diferentes_por_opcao=diferentes_por_opcao,
                       nao_responderam_por_opcao=nao_responderam_por_opcao, entre_corretoras=entre, resumo=resumo,

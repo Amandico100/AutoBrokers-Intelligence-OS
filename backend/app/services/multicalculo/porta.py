@@ -169,6 +169,20 @@ def _preset_padrao(opcao: str) -> Dict[str, Any]:
     return dict(tabela[opcao])
 
 
+def extras_da_opcao_re(base_da_opcao: Mapping[str, Any], opcao: str, extras: Mapping[str, Any]) -> Dict[str, Any]:
+    """🔴 Red P6 (conserto 129-C): as `extras` do pedido (a apólice anterior) VENCEM a opção — e na "mais em conta"
+    isso a deixava quase igual à padrão (📊 empresarial: só `vidros 4000 → 0` mudava; o 2º calcularV2 saía repetido).
+    Na "mais em conta" ficam só as extras que a PRÓPRIA opção cobre (`base_da_opcao` > 0: as essenciais do ramo + toda
+    RC, `presets.coberturas_re` da econômica), com o valor da apólice; as acessórias saem. Na padrão, todas ficam."""
+    from portal_worker.multicalculo.presets import ECONOMICA
+
+    if opcao != ECONOMICA:
+        return dict(extras or {})
+    cobertas = {k for k, v in (base_da_opcao or {}).items()
+                if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0}
+    return {k: v for k, v in (extras or {}).items() if k in cobertas}
+
+
 def _coberturas_re_padrao(ramo: int, opcao: str, valor_basica: Any, extras: Mapping[str, Any]) -> Dict[str, Any]:
     """As coberturas de UM cálculo de RE — o resolvedor dos presets (F1, `presets.coberturas_re`): todas as chaves do
     ramo, a Básica DO PEDIDO (D-129C-03), a assistência da opção e as `extras` do pedido (que vencem a opção)."""
@@ -196,6 +210,7 @@ def _ajuste_de_re(ajuste: Ajuste, ramo: int) -> Ajuste:
     if ajuste.tipo == "cobertura":
         if not isinstance(valor, Mapping) or not valor:
             raise ValueError("ajuste cobertura de RE: esperava {cobertura do Agger: valor}")
+        _conferir_cobertura_do_ajuste_re(valor, ramo)
     elif isinstance(valor, str):
         texto = valor.strip()
         if texto.replace(".", "", 1).isdigit():
@@ -212,6 +227,30 @@ def _ajuste_de_re(ajuste: Ajuste, ramo: int) -> Ajuste:
     elif isinstance(valor, bool) or not isinstance(valor, (int, float)):
         raise ValueError(f"ajuste {ajuste.tipo} do ramo {ramo}: esperava um número")
     return Ajuste(tipo=ajuste.tipo, valor=valor, seguradora=ajuste.seguradora, ramo=ramo)
+
+
+#: os nomes com que a BÁSICA pode chegar num ajuste (a chave do Agger, o nome do pedido, a palavra)
+_NOMES_DA_BASICA = frozenset({CHAVE_DA_BASICA.lower(), "basica", "valor_basica", "cobertura_basica"})
+
+
+def _conferir_cobertura_do_ajuste_re(valor: Mapping[str, Any], ramo: int) -> None:
+    """🔴 Juiz B2 (conserto 129-C, decisão do gerente nota 88, D-129C-03): o ajuste NÃO muda a Básica — ela é a do
+    PEDIDO; para outra Básica, um pedido novo. Antes a porta gravava a Básica antiga e o robô mandava a do ajuste: o
+    banco mentia sobre o que foi calculado. Agora o que se grava é o que se envia: Básica no ajuste → recusa clara; e
+    cobertura fora das do ramo (`presets.CHAVES_DE_COBERTURA_RE`, as que o robô aplica) → recusa, nunca gravada calada."""
+    from portal_worker.multicalculo.presets import CHAVES_DE_COBERTURA_RE
+
+    nomes = {str(k).strip().lower() for k in valor}
+    if nomes & _NOMES_DA_BASICA:
+        raise ValueError("o ajuste não muda a cobertura Básica (incêndio): ela vem do pedido — para outra Básica, "
+                         "faça um pedido novo")
+    validas = set(CHAVES_DE_COBERTURA_RE.get(int(ramo), ())) - {CHAVE_DA_BASICA}
+    fora = sorted(str(k) for k in valor if k not in validas)
+    if fora:
+        raise ValueError(f"ajuste cobertura do ramo {ramo}: cobertura sem código no Agger: {', '.join(fora)}")
+    for v in valor.values():
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+            raise ValueError(f"ajuste cobertura do ramo {ramo}: cada cobertura precisa de um valor ≥ 0")
 
 
 def _ajuste_codificado(ajuste: Ajuste) -> Ajuste:
@@ -262,6 +301,12 @@ def _aplicar_ajuste_re(coberturas: Mapping[str, Any], ajuste: Ajuste) -> Dict[st
     elif ajuste.tipo in CAMPO_DO_AJUSTE_RE:
         novas[CAMPO_DO_AJUSTE_RE[ajuste.tipo]] = ajuste.valor
     return novas
+
+
+def comissao_re_valida(valor: Any, teto: float) -> bool:
+    """Red P4 (conserto 129-C): a comissão EXPLÍCITA do item de RE é > 0 e ≤ o teto da config. 📊 o padrão do Agger no
+    empresarial é 0 % (B0-a): um 0 escrito é exatamente o que a D-129C-05 evita; 500 % é erro de digitação."""
+    return (isinstance(valor, (int, float)) and not isinstance(valor, bool)) and 0 < float(valor) <= float(teto)
 
 
 def _erro_publico(erro: Any) -> Optional[str]:
@@ -388,8 +433,12 @@ class MulticalculoProvider:
         if ramo != RAMO_AUTO:
             if kind == KIND_CANAL:
                 raise RamoNaoSuportado("o canal calcula só o AUTO nesta versão")
-            # D-129C-05: a comissão EXPLÍCITA do ramo ANTES de validar — o contrato a exige
-            pedido = pedido.com_comissao(await self._comissao_re(company_id=company_id, ramo=ramo))
+            # D-129C-05: a comissão EXPLÍCITA do ramo ANTES de validar — o contrato a exige. Red P4 (conserto 129-C):
+            # a que o pedido TROUXE também passa pela régua da config (> 0 e ≤ `comissao.teto_pct`)
+            comissao, teto = await self._comissao_re(company_id=company_id, ramo=ramo)
+            pedido = pedido.com_comissao(comissao)
+            if not comissao_re_valida(pedido.valor("comissao_desconto", "comissao_percentual"), teto):
+                raise PedidoIncompleto(["comissao_desconto.comissao_percentual"])
 
         # F4 (costura): o que falta E o que veio sem código medido no Agger (o robô recusaria só no disparo)
         # SPEC-133-A D-133A-03: no canal a PLACA supre FIPE/ano/combustível (o robô preenche pela placa — ver
@@ -423,13 +472,13 @@ class MulticalculoProvider:
                                   hmac_doc=hmac_doc, alvo=alvo, escolhidas=escolhidas, por_opcao=por_opcao,
                                   origem=origem, quadro=quadro)
 
-    async def _comissao_re(self, *, company_id: str, ramo: int) -> float:
-        """D-129C-05: a comissão do item no ramo, da config da CORRETORA (no RE a corretora é a solicitante: o canal
-        está fora). Banco fora → `ConfigIndisponivel` (nunca a comissão às cegas)."""
-        from app.services.multicalculo.config import carregar, comissao_do_ramo
+    async def _comissao_re(self, *, company_id: str, ramo: int) -> Tuple[float, float]:
+        """D-129C-05: (a comissão do item no ramo, o teto) da config da CORRETORA (no RE a corretora é a solicitante: o
+        canal está fora). Banco fora → `ConfigIndisponivel` (nunca a comissão às cegas)."""
+        from app.services.multicalculo.config import carregar, comissao_do_ramo, teto_da_comissao
 
         cfg = await asyncio.to_thread(carregar, company_id, db=self.repo.db)
-        return comissao_do_ramo(cfg, ramo)
+        return comissao_do_ramo(cfg, ramo), teto_da_comissao(cfg)
 
     async def _calcular_re(self, *, company_id: str, pedido: PedidoDeCalculo, alvo: List[str],
                            escolhidas: List[str], coberturas: Optional[Mapping[str, Mapping[str, Any]]],
@@ -443,8 +492,11 @@ class MulticalculoProvider:
         por_opcao: Dict[str, Dict[str, Any]] = {}
         for o in escolhidas:
             explicitas = (coberturas or {}).get(o)
-            cob = (coberturas_de_re(explicitas, pedido) if explicitas is not None
-                   else dict(self._coberturas_re(pedido.ramo, o, basica, extras) or {}))
+            if explicitas is not None:
+                cob = coberturas_de_re(explicitas, pedido)
+            else:
+                base = dict(self._coberturas_re(pedido.ramo, o, basica, {}) or {})
+                cob = dict(self._coberturas_re(pedido.ramo, o, basica, extras_da_opcao_re(base, o, extras)) or {})
             if not cob:
                 raise PresetIndisponivel(f"sem coberturas para a opção {o} do ramo {pedido.ramo}")
             por_opcao[o] = cob
@@ -516,6 +568,12 @@ class MulticalculoProvider:
                             "origem_calculo_id": c.get("origem_calculo_id"),
                             # conserto 129-B (juiz P4): o PORQUÊ do falhou/incerto/cancelado, saneado de novo
                             "erro": _erro_publico(c.get("erro"))})
+            if int(ped.get("ramo") or RAMO_AUTO) != RAMO_AUTO:
+                # conserto 129-C (red P2): a régua de RE compara cada oferta com o que o CÁLCULO PEDIU, não com o
+                # quadro. Sem a margem (o ajuste de comissão/desconto a grava aqui) — G2, mesmo no RE sem canal
+                estados[-1]["coberturas_pedidas"] = {
+                    k: v for k, v in dict(c.get("coberturas") or {}).items()
+                    if not str(k).lower().startswith(("perccomissao", "percdesconto"))}
         ofertas_v = sorted((_oferta_publica(o, company_id=company_id) for o in ofertas
                             if str(o.get("company_id")) in visiveis),
                            key=lambda o: float(o.get("premio_total") or 0))
@@ -561,6 +619,10 @@ class MulticalculoProvider:
         ramo = int(ped.get("ramo") or RAMO_AUTO)
         if ramo != RAMO_AUTO:
             ajuste = _ajuste_de_re(ajuste_bruto, ramo)      # nunca o código do CARRO num cálculo de RE
+            if ajuste.tipo == "comissao":
+                _c, teto = await self._comissao_re(company_id=company_id, ramo=ramo)
+                if not comissao_re_valida(ajuste.valor, teto):
+                    raise ValueError(f"ajuste comissao do ramo {ramo}: precisa ser maior que 0 e no máximo {teto:g} %")
         elif erro_do_auto is not None:
             raise erro_do_auto
         # 🔴 conserto 129-B (red P4): o clique duplo não vira 2º calcularV2 — o MESMO ajuste da MESMA origem ainda
