@@ -27,6 +27,7 @@
 > **07/10 (SPEC-130-A.1, o Quem Cobra Menos):** a **T-124** está ✅ feita, a **T-127** foi ❌ cancelada (D-130A-08 revogada) e nasceram a **T-129** (Implantar), a **T-130** (a lista do Nível 5) e a **T-131** (testadores, verba e o robô do Agger para a 133-A). 📊 Recontado 07/10 com os mesmos comandos → **117 pendentes** · **13 feitos** (a T-127 cancelada fica fora das duas contas).
 > **07/10 tarde (SPEC-133-A, o Quem Cobra Menos no WhatsApp):** nasceram a **T-132** (Implantar), a **T-133** (o QR no admin), a **T-134** (os testadores) e a **T-135** (o login do Agger do robô no piloto).
 > **10/10 (SPEC-133-A.1):** nasceram a **T-136** (a conta da Resulta no Agger) e a **T-137** (as senhas "mudar123"). **11/10 (SPEC-129-C, mais ramos do Agger):** nasceu a **T-138** — seguir o `programa-multicalculo/ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md` (17 passos em 5 blocos), que junta a T-132…T-137 numa ordem só; a **T-136** ganhou os achados do canário de RE (P-129C-04).
+> **11/10 tarde (SPEC-131-0 parte A, as contas da corretora):** nasceram a **T-139** (Implantar os 4 serviços), a **T-140** (funções e "quem é quem"), a **T-141** (o Agger de cada comercial), a **T-142** (a tela Serviços), a **T-143** (a InfoCap da Amandus é a da AutoFleet) e a **T-144** (conectar a InfoCap em cada corretora real).
 
 ## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123 · SPEC-130-A: T-124 a T-128)
 
@@ -94,8 +95,7 @@
 - [ ] **T-143** ⏳ 🧑 **decisão** · **A InfoCap da Amandus (a corretora de ensaio)** — hoje a conexão chamada antes "InfoCap RESULTA"
       guarda o login da **AutoFleet** (o nome foi corrigido para "InfoCap AUTOFLEET", D-131-0-27). O canário de auto da Amandus usa esse
       banco. Para ver a Resulta na Amandus: **crie uma conexão NOVA** com o login da Resulta e **arquive** a atual — 🔴 nunca troque a senha
-      dentro da mesma conexão (o que já foi lido fica guardado por conexão e misturaria as duas carteiras). Nota da execução: manter como
-      está até o canário de auto terminar = 80; trocar já = 55. · *de:* S131-0-A · BLOCO 0
+      dentro da mesma conexão (o que já foi lido fica guardado por conexão e misturaria as duas carteiras). A decisão é sua. · *de:* S131-0-A · BLOCO 0
 - [ ] **T-144** ⏳ 🧑 **quando quiser que o produto use a carteira de cada uma** · **Conectar a InfoCap na corretora REAL** — entre como
       admin da **Resulta** e depois da **AutoFleet** → **Personalização → Conectores → InfoCap**, cada uma com o próprio login da API. É o
       que liga a régua do dono e o "Quem é quem" (T-140) em cada corretora. · *de:* S131-0-A
