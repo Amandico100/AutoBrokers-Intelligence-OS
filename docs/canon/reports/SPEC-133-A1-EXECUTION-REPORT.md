@@ -68,5 +68,7 @@ O código e o relatório (push anterior, 10/10):
 O estado, a fila e o painel (`docs(133-A.1): estado, fila e painel`; painel republicado em
 https://claude.ai/code/artifact/defe331c-9399-4584-9d1c-2126a527cea0, versão 33):
 ```
-(saída colada abaixo, no commit seguinte)
+0860d31..85b7a5c  HEAD -> main
+0860d31..85b7a5c  HEAD -> spec/133-A1-qcm-ajustes
 ```
+`git rev-list --count origin/main..HEAD` → 0.
