@@ -13664,13 +13664,6 @@ A classe `imovel_desocupado` e o radical de busca não foram medidos ao vivo al�
 empresarial. **Custa esquecer:** o empresarial com poucas seguradoras.
 
 
-## P-1310-01 · 🤖 A régua real do dono: as duas carteiras e a mutação, no CÓDIGO DO PRODUTO
-`dono.medir_regra` (fonte injetada com o login de cada corretora) — 📊 11/10, arquivo `regua_real.out` do gerente: **Resulta padrão
-99/99** com um dono e 99 conferem; **Resulta com a regra mutada para `ordem 1` → 37/99** (a régua cai, como a mutação exige);
-**AutoFleet padrão 217/217**. Só a AutoFleet com a regra mutada (📊 BLOCO 0 por script: 24/217) ainda não tinha saído ao escrever.
-**Destrava:** rodar as 4 medições até o fim e colar no relatório da 131-0-A. **De quem:** 🤖 gerente. **Custa esquecer:** a regra do dono
-fica provada pelo produto numa carteira só — a outra (217 renovações de auto) depende do script do BLOCO 0.
-
 ## P-1310-02 · 🤖 A InfoCap devolve um cliente REAL para o CPF `00000000000`
 📊 BLOCO 0 §6.2 (laudo da CorpAPI, 11/10). Fora do escopo da parte A. **Destrava:** o produto barra CPF/CNPJ inválido (dígito
 verificador) ANTES de consultar a InfoCap, em todo chamador. **De quem:** 🤖 a SPEC que tocar a consulta por CPF (131). **Custa

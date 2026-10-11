@@ -6,7 +6,7 @@
 > (`laudo-juiz-1310.md`, `laudo-redteam-1310.md`).
 
 **Nota da execução: <<NOTA>>/100** — notas do julgamento: juiz 87/100 (0 blocker) ‖ red team 74/100 (2 blockers latentes) → conserto
-único (8 itens) → confirmação <<CONFIRMACAO>>.
+único (8 itens) → confirmação 84 (1 defeito NOVO do conserto: a retomada numa conta de pessoa ficava 'calculando' para sempre) → conserto pontual `bc5298d` (§9: ≤ 30 min, ≤ 2 arquivos, sem decisão — sem 3ª rodada de juiz).
 
 ## EXECUTION CARD
 ```
@@ -114,10 +114,10 @@ resulta padrao        apolices 99 · com_um_dono 99 · sem_dono 0 · ambiguas 0 
 resulta mutada_ordem1 apolices 99 · com_um_dono 95 · sem_dono 4 · confere_com_o_padrao 37 · donos_distintos 23
 autofleet padrao      apolices 217 · com_um_dono 217 · sem_dono 0 · ambiguas 0 · confere_com_o_padrao 217 · donos_distintos 9
                       por_papel_cru FECHADORA 200 · FECHADOR 13 · sem rótulo 4 · posicao_do_dono 1:24 2:95 3:45 4:51 5:1 6:1
-autofleet mutada_ordem1   <<REGUA_AUTOFLEET_MUTADA>>
+autofleet mutada_ordem1 apolices 217 · com_um_dono 216 · confere_com_o_padrao 24 · donos_distintos 48   → GATE FECHADO (P-1310-01)
 ```
-📊 O 37/99 reproduz o BLOCO 0 por caminho independente (a posição do dono, não a regra mutada). A linha da AutoFleet com a regra mutada não
-tinha saído quando este relatório foi escrito → P-1310-01 (o BLOCO 0 por script: 📊 24/217).
+📊 O 37/99 reproduz o BLOCO 0 por caminho independente (a posição do dono, não a regra mutada). A AutoFleet com a regra mutada: 📊 24/217 pelo produto,
+igual ao BLOCO 0 por script (24/217) → P-1310-01 FECHADA.
 
 ## 5. Julgamento — juiz 87 ‖ red team 74 → conserto único → confirmação
 **Juiz (fresco, read-only), 87/100, PASS com pendências:** 12 ataques, 10 PASS; FAIL leves: A3 (PUT de Serviços sem versão) e A8 (as
@@ -132,7 +132,7 @@ tinha saído quando este relatório foi escrito → P-1310-01 (o BLOCO 0 por scr
 (o manual chega à proposta) · P2 → PUT de Serviços com concorrência otimista (`atualizado_em` como versão, 409 com frase; auditoria com os
 valores) · P2 juiz → 23505 em `cadastrar_do_membro` vira a recusa com frase · P3 → as 3 vezes contam eventos `agger_da_pessoa_em_uso` ·
 P5 → `GET ?o=sugestoes` só para admin · P7 → `config_do_qcm` sem o desvio por `inspect`; `dono.membro_ativo` delega a `robos.membro_ativo`.
-**Confirmação:** <<CONFIRMACAO>>
+**Confirmação:** juiz novo, só o diff do conserto → 84/100; 8 itens conferidos (B1 1ª vez, B2, P1, P2 versão/409, P2-juiz, P3, P5, P7, replay g7); 1 defeito NOVO: no ramo de pessoa, a RETOMADA pausava a conta sem encerrar os `calculando` → o pedido nunca fechava (📊 reprodução: `('calculando', 2, 'pausado', '')` em 8 voltas; 📊 0 contas de pessoa em produção). Conserto `bc5298d`: encerra os `calculando` com motivo (ramo login-sem-desfecho e o irmão pré-existente senha-recusada) + defesa `_conta_da_retomada_inelegivel` (conta exigida pausada/bloqueada/apagada → falhou com motivo). 📊 antes 4 failed/1 passed → depois 5 passed; mutação da defesa 2 failed; suítes do motor 96 passed.
 
 ## 6. Bateria
 Uma rodada, DEPOIS do conserto, em 2º plano, triada nominalmente contra `docs/canon/reports/BATERIA-LINHA-DE-BASE.txt`. Rodadas: 1.

@@ -1159,3 +1159,12 @@ proposta fica fora da regra de transparência quando a regra exigir.
 apólices (outra base/login?). **Custa esquecer:** a renovação de RE (131) não tem de onde ler as apólices.
 
 ✅ **FECHADA 11/10/2026 (SPEC-131-0 parte A).** A carteira patrimonial da Resulta ESTÁ na InfoCap, no banco da Resulta: a conexão medida na 129-C ("InfoCap RESULTA", `5039f90d`, na Amandus) guardava o login da AutoFleet. 📊 Com o login da Resulta (11/10, `/documentos_bi`, `tipo_doc=A`): 2026 RESI 255 · COND 227 · EMPR 148; 📊 `/renovacoes` 11/10→10/11: 99 apólices (RESI 34 · EMPR 20 · COND 14). Prova: `programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md` §1–§3; a D-129C-02 foi revista pela D-131-0-26; a conexão foi renomeada "InfoCap AUTOFLEET" (D-131-0-27).
+
+## ✅ FECHADA 11/10 · P-1310-01 · 🤖 A régua real do dono: as duas carteiras e a mutação, no CÓDIGO DO PRODUTO
+`dono.medir_regra` (fonte injetada com o login de cada corretora) — 📊 11/10, arquivo `regua_real.out` do gerente: **Resulta padrão
+99/99** com um dono e 99 conferem; **Resulta com a regra mutada para `ordem 1` → 37/99** (a régua cai, como a mutação exige);
+**AutoFleet padrão 217/217**. Só a AutoFleet com a regra mutada (📊 BLOCO 0 por script: 24/217) ainda não tinha saído ao escrever.
+**Destrava:** rodar as 4 medições até o fim e colar no relatório da 131-0-A. **De quem:** 🤖 gerente. **Custa esquecer:** a regra do dono
+fica provada pelo produto numa carteira só — a outra (217 renovações de auto) depende do script do BLOCO 0.
+**FECHADA (11/10, gerente da 131-0-A):** 📊 AutoFleet com a regra mutada → 24/217 conferem (48 "donos"); as 4 medições pelo código do
+produto estão no relatório §4.3.
