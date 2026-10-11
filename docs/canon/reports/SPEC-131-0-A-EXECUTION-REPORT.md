@@ -5,7 +5,7 @@
 > `programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md` · laudos do juiz e do red team no rascunho do gerente
 > (`laudo-juiz-1310.md`, `laudo-redteam-1310.md`).
 
-**Nota da execução: <<NOTA>>/100** — notas do julgamento: juiz 87/100 (0 blocker) ‖ red team 74/100 (2 blockers latentes) → conserto
+**Nota da execução: 88/100** (critério: toda a parte A entregue e provada em dois tenants + régua real nas duas carteiras; −12 porque nenhum Agger de pessoa existe ainda para um cálculo real, `next start` de build de produção não medido e entregar/negociar só como chave) — notas do julgamento: juiz 87/100 (0 blocker) ‖ red team 74/100 (2 blockers latentes) → conserto
 único (8 itens) → confirmação 84 (1 defeito NOVO do conserto: a retomada numa conta de pessoa ficava 'calculando' para sempre) → conserto pontual `bc5298d` (§9: ≤ 30 min, ≤ 2 arquivos, sem decisão — sem 3ª rodada de juiz).
 
 ## EXECUTION CARD
@@ -33,7 +33,7 @@ GATES ................  §6
 O ELO ................  "o cálculo da renovação sai no Agger da comercial PORQUE ela é a dona": medido A (régua 99/99 e 217/217 no
                         /prod_docs real), B (o motor obedece conta_exigida) e o ELO (teste do fio: a apólice cujo dono é o código da
                         comercial chega ao motor com a conta dela, e a de outro dono nunca)
-FAIXA DE RELÓGIO .....  💭 9–13 h (builders 2–3 h em paralelo) · 📊 real: <<TELEMETRIA>>
+FAIXA DE RELÓGIO .....  💭 9–13 h (builders 2–3 h em paralelo) · 📊 real: 6 h 05 do gerente (07:35–~14:40)
 ```
 (Card copiado da SPEC §1; o nome da comercial do card original virou "a comercial" — CLAUDE.md §13.9.)
 
@@ -136,7 +136,12 @@ P5 → `GET ?o=sugestoes` só para admin · P7 → `config_do_qcm` sem o desvio 
 
 ## 6. Bateria
 Uma rodada, DEPOIS do conserto, em 2º plano, triada nominalmente contra `docs/canon/reports/BATERIA-LINHA-DE-BASE.txt`. Rodadas: 1.
-<<BATERIA>>
+📊 11/10, worktree limpo `C:/wt1310` em `786238b`, DUAS metades (627 arquivos, 314 + 313): m1 **15 failed · 1488 passed · 2 skipped**
+(38 min) · m2 **24 failed · 4585 passed · 7 skipped · 30 xfailed · 1 xpassed · 27 errors** (46 min). TRIAGEM NOMINAL contra a base (35):
+32 iguais · 3 sumiram (isoladas passam; não é ganho) · 34 novas → **27 = REGRESSÃO DESTA SPEC** (`test_spec129a_*`: o retrato do banco no
+dublê `dubles_do_work_os.ESQUEMA` sem `uso`/`dono_user_id` da _04 — o guarda dele fez o certo) → consertada (dublê atualizado) → 📊 **29
+passed** nas 3 suítes · 1 = ambiente (`node_modules` ausente no worktree; no checkout principal 1 passed) · 6 = carga/ordem (isoladas: 7
+passed, 1 xfailed). `bc5298d` (motor, retomada) não estava no commit da bateria: coberto pelas suítes do motor (📊 96 passed). **→ 0 regressões em aberto.**
 
 ## 7. 🚨 Incidente contido — a sessão somente-leitura no pooler (11/10 ~12:49 UTC)
 **FATO:** scripts de leitura do gerente e dos investigadores usaram `set session characteristics as transaction read only` pela porta
@@ -182,4 +187,14 @@ Nenhum nome de corretora ou de pessoa em código (📊 `grep` das linhas novas p
 
 ## 14. Telemetria (protocolo §11)
 `python backend/scripts/medir_execucao_claude_code.py --sessao atual`
-<<TELEMETRIA>>
+```
+python backend/scripts/medir_execucao_claude_code.py --sessao atual   (11/10/2026)
+EXECUTOR (gerente)  365 min · 174 turnos · pico 493k · ctx 60,1M · saída 157k · US$ 36,63 · opus-5-5
+agentes (18)        investigadores 4 + auditor 1 · revisor cego 1 · builders 4 (paralelo) + costura 1 · juiz 1 ‖ red team 1 ·
+                    conserto 1 + conserto final 1 · confirmação 1 · bateria 1 · documentos 1
+TOTAL               1.341 turnos · ctx 272,9M · saída 0,31M · US$ 167,92 (API-equivalente)
+achados por mecanismo: revisor cego 6 materiais (antes do build) · builders 2 latentes (Atendente 500; re-adicionar rebaixava o dono) ·
+  juiz 0 blocker/8 pend. · red team 2 blockers EXCLUSIVOS (login de pessoa sem limite; canal pedindo serviço de pessoa) · confirmação 1
+  blocker EXCLUSIVO (retomada presa) · bateria 1 regressão EXCLUSIVA (dublê do Work OS) · lente do dado: régua real 4/4
+rodadas da bateria: 1 (2 metades) · nota do executor 88 · juiz 87 · red team 74 · confirmação 84
+```
