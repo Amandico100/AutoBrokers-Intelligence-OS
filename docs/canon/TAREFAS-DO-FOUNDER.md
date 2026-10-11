@@ -67,6 +67,39 @@
       **Bloco 5 · os outros ramos (129-C)**: nada para testar no WhatsApp ainda (a página é a 130-C); vale conferir os passos 1 e 4.
       **Se algo não bater:** um print de cada tela e a hora, no chat. · *de:* S129-C · S133-A.1 · S133-A
 
+### ⓪ AGORA — as contas da corretora (11/10/2026, depois da SPEC-131-0 parte A)
+
+> O que mudou: cada pessoa da equipe ganha **funções** (comercial · calculista · negociador); a corretora diz **que código de produtor
+> da InfoCap é de quem**; o sistema sabe **quem é o dono de cada renovação** (📊 11/10: certo em 99 de 99 apólices da Resulta); cada
+> comercial pode ter **o próprio Agger** ao lado do Agger da corretora; e a tela **Serviços** separa o Quem Cobra Menos, a Cotação e a
+> Renovação. Nada é enviado a cliente por esta SPEC. **Painel** = o endereço do topo desta lista.
+
+- [ ] **T-139** ⏳ 🧑 **primeiro** · **Implantar a SPEC-131-0 parte A** — EasyPanel, **nesta ordem**: `smith-api` → `smith-worker` →
+      `portal-worker` → `smith-web`. Nenhuma variável nova. As 3 tabelas/colunas novas **já estão no banco** (aplicadas em 11/10) — o robô
+      novo lê o "uso" de cada conta do Agger, então o `portal-worker` precisa subir junto. **Esperado:** o painel abre; em Personalização
+      aparece o cartão **Serviços**. **Se der errado:** um print e a hora no chat. · *de:* S131-0-A
+- [ ] **T-140** ⏳ 🧑 **depois da T-139** · **Marcar as funções e dizer quem é quem** — painel → **Personalização → Equipe**: em cada
+      pessoa, marque as funções (comercial · calculista · negociador). Mais abaixo, em **"Quem é quem no sistema de gestão"**, confirme os
+      códigos de produtor de cada comercial (a tela sugere pelos nomes da InfoCap; você só confirma). ⚠️ Precisa de uma InfoCap conectada
+      **na própria corretora** (T-144); sem ela a seção avisa "sem conexão". · *de:* S131-0-A
+- [ ] **T-141** ⏳ 🧑 **depois da T-140, com o aceite de cada comercial** · **Conectar o Agger de cada comercial** — painel →
+      **Personalização → Conectores → Agger da corretora → "Aggers da equipe"**: escolha a pessoa e cadastre o login e a senha do Agger
+      DELA (ou peça que ela mesma cadastre, logada no painel). 🔴 Combine com ela antes: o robô vai entrar no login dela **de madrugada**
+      para calcular a renovação das apólices de que ela é dona — e sai logo depois. Se ela estiver usando o Agger, o robô cancela e
+      espera; nunca derruba a sessão dela. A senha nunca reaparece na tela. · *de:* S131-0-A
+- [ ] **T-142** ⏳ 🧑 **quando quiser** · **Escolher o que cada serviço faz** — painel → **Personalização → Serviços**: no topo, os 4 passos
+      dizem o que já está pronto. Em **Cotação** e **Renovação**, escolha só **calcular** × **calcular e entregar** × **calcular, entregar e
+      negociar**, e as exceções (por ramo, ou "valor acima de"). A aba **Quem Cobra Menos** é só leitura (ela segue a config do canal).
+      **Se aparecer "Outra pessoa salvou antes de você":** recarregue a página e salve de novo. · *de:* S131-0-A
+- [ ] **T-143** ⏳ 🧑 **decisão** · **A InfoCap da Amandus (a corretora de ensaio)** — hoje a conexão chamada antes "InfoCap RESULTA"
+      guarda o login da **AutoFleet** (o nome foi corrigido para "InfoCap AUTOFLEET", D-131-0-27). O canário de auto da Amandus usa esse
+      banco. Para ver a Resulta na Amandus: **crie uma conexão NOVA** com o login da Resulta e **arquive** a atual — 🔴 nunca troque a senha
+      dentro da mesma conexão (o que já foi lido fica guardado por conexão e misturaria as duas carteiras). Nota da execução: manter como
+      está até o canário de auto terminar = 80; trocar já = 55. · *de:* S131-0-A · BLOCO 0
+- [ ] **T-144** ⏳ 🧑 **quando quiser que o produto use a carteira de cada uma** · **Conectar a InfoCap na corretora REAL** — entre como
+      admin da **Resulta** e depois da **AutoFleet** → **Personalização → Conectores → InfoCap**, cada uma com o próprio login da API. É o
+      que liga a régua do dono e o "Quem é quem" (T-140) em cada corretora. · *de:* S131-0-A
+
 ### ① Implantar e conferir — não depende de nada
 
 - [x] **T-01** ✅ **Implantar o código de hoje** — `docling-service` (o worker antes da API) → `smith-api` → `smith-worker` →
