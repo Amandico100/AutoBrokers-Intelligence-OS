@@ -66,7 +66,7 @@ FAIXA DE RELÓGIO .....  💭 6–9 h · 📊 ~10 h (o julgamento achou 3 blocke
 - conserto: `361 passed in 123.86s` · B3: `166 passed in 66.52s`
 - §9.1 (juiz): `next build` exit 0 · `next start` · `GET /api/admin/canais/whatsapp` → 401 · POST de outra origem → 403 · a página → 307
 
-## 4. Bateria (2 metades em paralelo, worktrees no commit `2398175`)
+## 4. Bateria (1 rodada inteira: 2 metades em paralelo, worktrees no commit `2398175`)
 - metade 1: `29 failed, 3448 passed, 3 skipped, 31 xfailed, 1 xpassed in 2897.37s` — 24 da linha de base; 5 novas → `test_spec116_reserva_p0`
   (o papel novo declarado no mapa, §9.3 → 23 passed) · `test_o_grupo_so_fala_de_quem_precisa` e `test_spec061_colunas_reais` (guardas que
   não conheciam o canal, §9.3 com mutação → 2 passed) · `test_o_conhecimento_global_sai_anonimo` e `test_spec040_onda3_distiller`

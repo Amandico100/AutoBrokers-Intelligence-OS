@@ -22,6 +22,13 @@ O FIO ................  (1) proposta.montar (parcelas) → proposta_canal_html (
                         do motor resolve a conta → calcularV2
 PARALELISMO REAL .....  F1 página+mensagem ‖ F2 sexo pelo nome ‖ F3 conector Agger + UX de conexões ‖ F4 verificação das contas
                         Agger (ao vivo) ‖ F5 o plano (só documentos)
+UNIDADES .............  F1–F5 (as do PARALELISMO acima)
+COESÃO ...............  F1 página+mensagem+modelo · F2 conversa+dados · F3 conector+serviço+tela · F4/F5 documentos
+TIME .................  gerente · builders F1 ‖ F2 ‖ F3 ‖ F4 ‖ F5 · juiz ‖ red team · conserto único
+REFERÊNCIA ...........  interna: o conector InfoCap do painel (login e senha pela tela → cofre) é o molde do card do Agger; a
+                        página do canal da 133-A (`proposta_canal_html`) · externa: a tabela de nomes do IBGE (Censo 2010) —
+                        sem a §7.3 de 3 URLs (ajustes do Founder, 🟠 ALTO)
+O ELO ................  "a tela e o comando gravam o MESMO registro": um serviço só para a conta do robô, testado nos dois caminhos
 GATES ................  testes de cada fatia com mutação · a carteira byte a byte igual · `npm run test:rotas-montam` (F3) ·
                         nenhuma senha em log/arquivo/teste · dois tenants no conector · bateria sem regressão
 FAIXA DE RELÓGIO .....  💭 4–6 h

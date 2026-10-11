@@ -818,6 +818,12 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       campo de licença é **13/10/2026** → conferir em "Meu plano"; (5) **permissões**: dar ao `cotador@` o perfil restrito do robô da
       AutoFleet. A AutoFleet está igual à conta da Ellen (15 seguradoras válidas). · *de:* S133-A.1
 
+- [ ] **T-137** ⏳ 🧑 **hoje — segurança** · **Trocar a senha dos membros que ainda estão com "mudar123"** — 📊 10/10: **4 dos 7**
+      membros com senha no painel usam a senha padrão "mudar123" (quem souber o e-mail entra). **Como:** painel → **Personalização →
+      Equipe** → em cada pessoa, **Nova senha** → salvar (agora o painel gera uma aleatória e mostra uma vez; copie e entregue à pessoa),
+      ou peça a cada um para trocar no primeiro acesso. A partir de agora o painel recusa "mudar123" e senhas com menos de 10 caracteres.
+      · *de:* S133-A.1
+
 ### 🔭 FUTURO — depende de SPEC (ou de material) que ainda não existe
 
 > Não são atrasos: não há o que testar até a peça existir. O plano novo (programa **multicálculo**, SPECs 128+) vive em outro
