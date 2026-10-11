@@ -1,5 +1,7 @@
 # SPEC-129-C — Mais ramos do Agger: Condomínio, Residencial e Empresarial
 
+> ⚠️ ERRATA 11/10 (SPEC-131-0-A): a medição foi feita por uma conexão com o login da AutoFleet; a InfoCap da Resulta tem RE — ver programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md
+
 > v1.0 · 11/10/2026 · gerente Opus 5.5 · branch `spec/129-C-mais-ramos` · base `8d468b4` · rito AAA v13 · 🔴 CRÍTICO por piso
 > BLOCO 0 medido em `docs/canon/programa-multicalculo/129-C/` (BLOCO0-AGGER · BLOCO0-GRAVACAO · BLOCO0-INFOCAP · AGREGADO-POR-RAMO ·
 > RAMOS-NA-INFOCAP) e as fixtures saneadas em `backend/tests/fixtures/agger_ramos/` (3 formulários + 9 gravações reais, 0 dado pessoal).
