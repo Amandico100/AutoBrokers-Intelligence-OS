@@ -16,10 +16,41 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
 
+from portal_worker.multicalculo import presets as _presets
 from portal_worker.multicalculo.contrato import (
-    CAMPOS_DE_CODIGO_INTEIRO, CAMPOS_DE_CODIGO_TEXTO, CAMPOS_DO_PEDIDO_AUTO, CAMPOS_SIM_NAO, CODIGOS_MEDIDOS,
-    RAMO_AUTO, SEGURADORA_ANTERIOR_NO_AGGER,
+    CAMPOS_DE_CODIGO_INTEIRO, CAMPOS_DE_CODIGO_TEXTO, CAMPOS_DO_PEDIDO_AUTO, CAMPOS_DO_PEDIDO_RE, CAMPOS_SIM_NAO,
+    CODIGOS_MEDIDOS, CODIGOS_MEDIDOS_RE, RAMO_AUTO, RAMOS_RE,
+    SEGURADORA_ANTERIOR_NO_AGGER, problemas_do_pedido_re, tipo_do_campo_re,
 )
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-C — os OUTROS RAMOS (RE: condomínio 16 · residencial 2 · empresarial 18). O catálogo, os códigos, os TIPOS e
+# a VALIDAÇÃO do pedido de RE são do CONTRATO (F1, §3 da SPEC: `CAMPOS_DO_PEDIDO_RE`, `CODIGOS_MEDIDOS_RE`,
+# `tipo_do_campo_re`, `problemas_do_pedido_re`) e as coberturas de cada opção dos PRESETS (`presets.coberturas_re`):
+# este módulo só SANEIA a entrada para o tipo do contrato e pergunta ao contrato o que falta — um catálogo e um
+# validador só (CLAUDE.md §5).
+# ---------------------------------------------------------------------------------------------------------------------
+RAMOS_ACEITOS: Tuple[int, ...] = (RAMO_AUTO,) + RAMOS_RE
+#: a cobertura BÁSICA (incêndio/raio/explosão) — a dos presets (F1); o VALOR é o do PEDIDO (D-129C-03)
+CHAVE_DA_BASICA: str = _presets.CHAVE_DA_BASICA
+
+
+class RamoIndisponivel(ValueError):
+    """O ramo não é calculável (fora de `RAMOS_ACEITOS`)."""
+
+
+def catalogo_do_ramo(ramo: int) -> Dict[str, Tuple[Any, ...]]:
+    """O catálogo {grupo: campos} do ramo (o auto: o de sempre + `CAMPOS_EXTRAS`; o RE: o do contrato)."""
+    if ramo == RAMO_AUTO:
+        return {**CAMPOS_DO_PEDIDO_AUTO, **CAMPOS_EXTRAS}
+    if ramo not in CAMPOS_DO_PEDIDO_RE:
+        raise RamoIndisponivel(f"ramo {ramo} não implementado (aceitos: {', '.join(map(str, RAMOS_ACEITOS))})")
+    return dict(CAMPOS_DO_PEDIDO_RE[ramo])
+
+
+def _nomes(entradas: Iterable[Any]) -> List[str]:
+    return [str(e[0]) for e in entradas or ()]
+
 
 #: Grupos do pedido que o motor entrega ao robô. `coberturas` e `pacotes` NÃO moram no pedido: cada CÁLCULO tem as
 #: suas (`multicalculo_calculos.coberturas`, resolvidas pela porta por opção). Ficam no dict como `{}` para que as
@@ -172,6 +203,98 @@ def _sanear_bruto(grupo: str, nome: str, valor: Any) -> Any:
     raise CampoDesconhecido(f"{grupo}.{nome}: tipo de valor não aceito ({type(valor).__name__})")
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-C — o saneamento do pedido de RE
+# ---------------------------------------------------------------------------------------------------------------------
+def _monetario(valor: Any) -> Any:
+    """R$ → número: 1500000 · 1500000.0 · "1.500.000,00" · "R$ 1.500.000" · "1500000". O que não é número volta
+    como veio (e `sem_codigo` o aponta)."""
+    if isinstance(valor, bool):
+        return valor
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    if isinstance(valor, str):
+        t = re.sub(r"[R$\s]", "", valor)
+        if re.fullmatch(r"\d{1,3}(\.\d{3})+(,\d{1,2})?|\d+(,\d{1,2})?", t):
+            return float(t.replace(".", "").replace(",", "."))
+        if re.fullmatch(r"\d+\.\d{1,2}", t):
+            return float(t)
+    return valor
+
+
+def _inteiro_ou(valor: Any) -> Any:
+    if isinstance(valor, bool):
+        return valor
+    if isinstance(valor, float) and valor.is_integer():
+        return int(valor)
+    if isinstance(valor, str) and valor.strip().isdigit():
+        return int(valor.strip())
+    return valor
+
+
+def _codigo(ramo: int, nome: str, valor: Any, *, texto: bool) -> Any:
+    """Rótulo da tela → código medido (`contrato.CODIGOS_MEDIDOS_RE[(ramo, campo)]`); número → o código no TIPO dele."""
+    mapa = CODIGOS_MEDIDOS_RE.get((ramo, nome)) or {}
+    if isinstance(valor, str) and _chave_de_texto(valor) in mapa:
+        return mapa[_chave_de_texto(valor)]
+    if texto:
+        return str(valor) if isinstance(valor, int) and not isinstance(valor, bool) else valor
+    return _inteiro_ou(valor)
+
+
+def _sanear_re(ramo: int, grupo: str, nome: str, valor: Any) -> Any:
+    """A entrada no TIPO que o contrato pede (`contrato.tipo_do_campo_re`). O que não converte volta como veio e o
+    validador do contrato (`problemas_do_pedido_re`) o aponta — a porta recusa como `PedidoIncompleto`."""
+    tipo = tipo_do_campo_re(grupo, nome)
+    if tipo == "mapa_de_cobertura":
+        return _extras(valor)
+    if tipo == "dinheiro":
+        return None if valor is None or (isinstance(valor, str) and not valor.strip()) else _monetario(valor)
+    if tipo == "lista_de_codigos":
+        if valor is None:
+            return None
+        itens = valor if isinstance(valor, (list, tuple)) else [valor]
+        return [_codigo(ramo, nome, i.strip() if isinstance(i, str) else i, texto=False) for i in itens]
+    if isinstance(valor, (list, dict, tuple)):
+        raise CampoDesconhecido(f"{grupo}.{nome}: tipo de valor não aceito ({type(valor).__name__})")
+    if tipo == "digitos":
+        if isinstance(valor, int) and not isinstance(valor, bool):
+            return str(valor)
+        return re.sub(r"\D", "", valor) or None if isinstance(valor, str) else valor
+    if tipo == "data":
+        return _sanear_bruto("renovacao", "vigencia_inicio", valor)     # dd/mm/aaaa ou date → AAAA-MM-DD
+    saneado = _sanear_bruto(grupo, nome, valor)
+    if saneado is None:
+        return None
+    if tipo == "booleano" and isinstance(saneado, str):                # "não" nunca vira VERDADEIRO
+        k = _chave_de_texto(saneado)
+        return True if k in _SIM else False if k in _NAO else saneado
+    if tipo == "inteiro":
+        return _inteiro_ou(saneado)
+    if tipo in ("codigo", "codigo_texto"):
+        return _codigo(ramo, nome, saneado, texto=tipo == "codigo_texto")
+    if (grupo, nome) == ("renovacao", "seguradora_anterior"):
+        return _codificar(grupo, nome, saneado)                         # a mesma lista do Agger do auto
+    if tipo == "texto" and isinstance(saneado, (int, float)) and not isinstance(saneado, bool):
+        return str(int(saneado)) if float(saneado).is_integer() else str(saneado)   # 📊 anoFundacao "2005"
+    return saneado
+
+
+def _extras(valor: Any) -> Dict[str, Any]:
+    """`risco.extras` = {chave de cobertura do Agger: valor em R$} — opcional (§3). Chave vazia/não-texto recusa."""
+    if valor is None:
+        return {}
+    if not isinstance(valor, Mapping):
+        raise CampoDesconhecido("risco.extras: esperava {cobertura: valor}")
+    saida: Dict[str, Any] = {}
+    for k, v in valor.items():
+        if not isinstance(k, str) or not k.strip():
+            raise CampoDesconhecido("risco.extras: chave de cobertura inválida")
+        if v is not None:
+            saida[k.strip()] = _monetario(v)
+    return saida
+
+
 @dataclass(frozen=True)
 class PedidoDeCalculo:
     """O pedido saneado. Construa com `PedidoDeCalculo.de_dict(...)` ou `de_apolice(...)`.
@@ -199,7 +322,7 @@ class PedidoDeCalculo:
     def de_dict(cls, dados: Mapping[str, Any], *, ramo: int = RAMO_AUTO,
                 seguradoras: Iterable[int] = (), assumidos: Iterable[str] = ()) -> "PedidoDeCalculo":
         if ramo != RAMO_AUTO:
-            raise ValueError(f"ramo {ramo} não implementado (a v1 é o AUTO, {RAMO_AUTO})")
+            return cls._de_dict_re(dados, ramo=int(ramo), seguradoras=seguradoras, assumidos=assumidos)
         campos: Dict[str, Dict[str, Any]] = {}
         for grupo, valores in (dados or {}).items():
             if grupo in ("ramo", "seguradoras", "assumidos"):
@@ -225,6 +348,64 @@ class PedidoDeCalculo:
         segs = tuple(sorted({int(s) for s in seguradoras}))
         return cls(campos=campos, ramo=ramo, seguradoras=segs, assumidos=frozenset(str(a) for a in assumidos))
 
+    @classmethod
+    def _de_dict_re(cls, dados: Mapping[str, Any], *, ramo: int, seguradoras: Iterable[int],
+                    assumidos: Iterable[str]) -> "PedidoDeCalculo":
+        """SPEC-129-C: o pedido de RE (§3: `segurado` + `risco` + `renovacao`…), validado contra o catálogo DO RAMO
+        no contrato. Os campos de lista viram o CÓDIGO medido (`CODIGOS_MEDIDOS_RE`); o que não tem código fica como
+        veio e `sem_codigo()` o aponta. `risco.extras` é um dict {cobertura: R$}."""
+        cat = catalogo_do_ramo(ramo)
+        nomes = {g: set(_nomes(c)) for g, c in cat.items()}
+        campos: Dict[str, Dict[str, Any]] = {}
+        for grupo, valores in (dados or {}).items():
+            if grupo in ("ramo", "seguradoras", "assumidos"):
+                continue
+            if grupo not in cat:
+                raise CampoDesconhecido(f"grupo desconhecido no ramo {ramo}: {grupo}")
+            if grupo in GRUPOS_DO_CALCULO:
+                if valores:
+                    raise CampoDesconhecido(f"{grupo} é do CÁLCULO (coberturas por opção), não do pedido")
+                continue
+            if not isinstance(valores, Mapping):
+                raise CampoDesconhecido(f"{grupo}: esperava um objeto de campos")
+            for nome, valor in valores.items():
+                if nome not in nomes[grupo]:
+                    raise CampoDesconhecido(f"campo desconhecido no ramo {ramo}: {grupo}.{nome}")
+                saneado = _sanear_re(ramo, grupo, nome, valor)
+                if not _vazio(saneado) and saneado not in ({}, []):
+                    campos.setdefault(grupo, {})[nome] = saneado
+        for a in assumidos:
+            g, _, n = str(a).partition(".")
+            if g not in nomes or n not in nomes[g]:
+                raise CampoDesconhecido(f"assumido desconhecido: {a}")
+        segs = tuple(sorted({int(s) for s in seguradoras}))
+        return cls(campos=campos, ramo=ramo, seguradoras=segs, assumidos=frozenset(str(a) for a in assumidos))
+
+    @property
+    def e_re(self) -> bool:
+        return self.ramo != RAMO_AUTO
+
+    def com_comissao(self, percentual: float) -> "PedidoDeCalculo":
+        """RE (D-129C-05): a comissão EXPLÍCITA do item — a da config do ramo (a porta a dá), quando quem pediu não a
+        deu. O contrato a exige no RE: sem ela o Agger usaria a da conta (📊 0 % no empresarial)."""
+        if not self.e_re or not _vazio(self.valor("comissao_desconto", "comissao_percentual")):
+            return self
+        campos = {g: dict(v) for g, v in self.campos.items()}
+        campos.setdefault("comissao_desconto", {})["comissao_percentual"] = float(percentual)
+        return PedidoDeCalculo(campos=campos, ramo=self.ramo, seguradoras=self.seguradoras, assumidos=self.assumidos)
+
+    def _problemas_re(self) -> Tuple[List[str], List[str]]:
+        """(faltando, sem código) do pedido de RE, pelo VALIDADOR DO CONTRATO (`problemas_do_pedido_re`): "g.c" é
+        obrigatório ausente; "g.c:motivo" é valor sem código/tipo. + as extras fora das coberturas do ramo (e a
+        básica, que é `risco.valor_basica`, nunca uma extra)."""
+        faltam, sem = [], []
+        for item in problemas_do_pedido_re(self.para_dict()):
+            nome, _, motivo = item.partition(":")
+            (sem if motivo else faltam).append(nome)
+        validas = set(_presets.CHAVES_DE_COBERTURA_RE.get(self.ramo, ())) - {"assist24hs", CHAVE_DA_BASICA}
+        sem += [f"risco.extras.{k}" for k in (self.valor("risco", "extras") or {}) if k not in validas]
+        return faltam, sorted(set(sem))
+
     # ------------------------------------------------------------------ leitura
     def valor(self, grupo: str, nome: str) -> Any:
         return (self.campos.get(grupo) or {}).get(nome)
@@ -245,7 +426,9 @@ class PedidoDeCalculo:
 
     def faltando(self, *, origem: Optional[str] = None) -> List[str]:
         """Os obrigatórios da E3 que faltam, como "grupo.campo" (nomes, nunca valores). `origem='canal'`: a placa
-        supre FIPE/ano/combustível (D-133A-03)."""
+        supre FIPE/ano/combustível (D-133A-03). RE (SPEC-129-C): o que o CONTRATO diz que falta."""
+        if self.e_re:
+            return self._problemas_re()[0]
         supridos = self.supridos_pela_placa(origem)
         faltam = [f"{g}.{n}" for (g, n) in OBRIGATORIOS if _vazio(self.valor(g, n)) and f"{g}.{n}" not in supridos]
         # F4: o robô recusa a renovação sem a seguradora anterior (`cotacao_do_pedido`) — a porta pergunta antes
@@ -256,10 +439,14 @@ class PedidoDeCalculo:
     def sem_codigo(self) -> List[str]:
         """F4: os campos PRESENTES cujo valor não tem código medido no Agger (`contrato.CODIGOS_MEDIDOS`) — o robô
         os recusaria só no disparo. A porta os devolve como `PedidoIncompleto` (nomes, nunca valores)."""
+        if self.e_re:
+            return self._problemas_re()[1]
         return sorted(f"{g}.{n}" for g, campos in self.campos.items() for n, v in campos.items()
                       if not _vazio(v) and not _tem_codigo(g, n, v))
 
     def perfil_faltando(self) -> List[str]:
+        if self.e_re:
+            return []                     # o perfil do canal (garagem, uso, km, jovem) é do AUTO
         return [f"{g}.{n}" for (g, n) in CAMPOS_DE_PERFIL
                 if _vazio(self.valor(g, n)) and f"{g}.{n}" not in self.assumidos]
 
@@ -299,6 +486,16 @@ class PedidoDeCalculo:
         ausente NÃO aparece (o robô deixa a tela com o padrão dela). Todas as chaves de grupo aparecem sempre.
         """
         saida: Dict[str, Any] = {"ramo": self.ramo}
+        if self.e_re:
+            # SPEC-129-C: as chaves de grupo são as do catálogo DO RAMO (§3: segurado · risco · renovacao …);
+            # `risco.extras` sai como {cobertura: R$}
+            # (a forma de `contrato.PedidoDeCalculoRE.para_dict`: + "coberturas"/"pacotes" sempre vazios)
+            for grupo in catalogo_do_ramo(self.ramo):
+                saida[grupo] = {k: (dict(v) if isinstance(v, Mapping) else list(v) if isinstance(v, list) else v)
+                                for k, v in (self.campos.get(grupo) or {}).items()}
+            saida.update({"seguradoras": list(self.seguradoras), "assumidos": sorted(self.assumidos),
+                          "coberturas": {}, "pacotes": {}})
+            return saida
         for grupo in _CATALOGO:
             saida[grupo] = {} if grupo in GRUPOS_DO_CALCULO else dict(self.campos.get(grupo) or {})
         saida["seguradoras"] = list(self.seguradoras)

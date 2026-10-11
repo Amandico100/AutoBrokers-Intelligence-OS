@@ -190,7 +190,9 @@ _CAMINHOS_COMERCIAIS = ("comissao", "alvo_abaixo_da_atual_pct", "renovacao", "va
 _GENERICOS = {0, 1, 2, 100}
 #: o que da porta.py é desta SPEC (o resto da porta é da 129-B e não entra na varredura)
 _FUNCOES_DA_PORTA = {"_negociacao_da_dona", "_config_e_andamento", "ordem_do_mais_barato", "_enfileirar",
-                     "cotacao_alvo", "avaliar_cotacao_alvo", "_avaliar"}
+                     "cotacao_alvo", "avaliar_cotacao_alvo", "_avaliar",
+                     # SPEC-129-C — o pedido de RE: a comissão do ramo e as coberturas da opção (D-129C-03/05)
+                     "_calcular_re", "_comissao_re", "coberturas_de_re", "_ajuste_de_re", "_aplicar_ajuste_re"}
 _RE_NUMERO_COM_UNIDADE = re.compile(r"(?<![\w.,])(\d+(?:[.,]\d+)?)\s*(%|pp\b|dias?\b|h\b|horas?\b)")
 
 
@@ -300,6 +302,36 @@ def test_g8_um_teto_de_tempo_solto_na_mensagem_fica_vermelho():
     assert varrer("def ordem_do_mais_barato():\n    return 15\ndef outra():\n    return 15\n", "p.py",
                   so_funcoes={"ordem_do_mais_barato"}) == ["p.py:2 número 15"]
     assert varrer("x = round(v, 2)\nnota = min(100, n)\n", "x.py") == []
+
+
+def test_g8_129c_as_chaves_por_ramo_estao_na_varredura_e_so_vem_da_config():
+    """SPEC-129-C (D-129C-05/06/07): a comissão por ramo (`comissao.por_ramo`, padrão = a entrada), o reajuste da
+    básica na renovação (`renovacao.reajuste_basica_pct`), a preferência de seguradoras e as coberturas essenciais
+    moram SÓ em `PADRAO_DO_PRODUTO`. O reajuste entra na varredura (prefixo `renovacao`); a porta lê a comissão do
+    ramo por `comissao_do_ramo(cfg, …)`. Mutação: o número da entrada no lugar da leitura → VERMELHO."""
+    p = PADRAO_DO_PRODUTO
+    assert set(p["comissao"]["por_ramo"]) == {"16", "2", "18"} and set(p["preferencias_de_seguradoras"]) == {
+        "31", "16", "2", "18"}
+    assert set(p["renovacao"]["reajuste_basica_pct"]) == {"16", "2", "18"}
+    assert {float(v) for v in p["renovacao"]["reajuste_basica_pct"].values()} <= proibidos()
+    assert set(p["coberturas_essenciais"]) == {"16", "2", "18"}
+    porta = (SERVICO / "porta.py").read_text(encoding="utf-8")
+    assert varrer(porta, "porta.py", so_funcoes=_FUNCOES_DA_PORTA) == []               # controle: a de hoje passa
+    alvo = "return comissao_do_ramo(cfg, ramo)"
+    assert porta.count(alvo) == 1
+    entrada = p["comissao"]["entrada"]
+    mutado = porta.replace(alvo, f"return {entrada}")
+    assert varrer(mutado, "porta.py", so_funcoes=_FUNCOES_DA_PORTA) == [
+        f"porta.py:{porta[:porta.index(alvo)].count(chr(10)) + 1} número {entrada!r}"]   # a mutação fica vermelha
+    # a config por ramo: número fora da faixa vale o padrão DAQUELE ramo; a comissão sem número próprio = a entrada
+    c = mesclar({"comissao": {"por_ramo": {"18": 7.5, "16": "dez", "2": 150}},
+                 "renovacao": {"reajuste_basica_pct": {"16": 10.0, "2": 300}},
+                 "preferencias_de_seguradoras": {"16": ["Allianz", 5, True, ""]}})
+    assert CFG.comissao_do_ramo(c, 18) == 7.5 and CFG.comissao_do_ramo(c, 16) == entrada
+    assert CFG.comissao_do_ramo(c, 2) == entrada and CFG.comissao_do_ramo(c, 31) == entrada
+    assert CFG.reajuste_basica_pct(c, 16) == 10.0 and CFG.reajuste_basica_pct(c, 2) == 15.0
+    assert CFG.reajuste_basica_pct(c, 31) is None and CFG.basica_renovada(c, 16, 1_000_000) == 1_100_000.0
+    assert CFG.preferencias_do_ramo(c, 16) == ["Allianz", 5] and CFG.preferencias_do_ramo(c, 2) == []
 
 
 def _constantes_iguais(fonte: str, valor, funcoes=None):

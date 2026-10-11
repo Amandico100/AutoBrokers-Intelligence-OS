@@ -41,7 +41,9 @@ from portal_worker.multicalculo.contrato import (
     SEGURADORA_RECUSOU,
 )
 
-from app.services.multicalculo.config import PADRAO_DO_PRODUTO, casa_seguradora, e_produto_de_assinatura, normalizar
+from app.services.multicalculo.config import (PADRAO_DO_PRODUTO, casa_seguradora, coberturas_essenciais,
+                                              e_produto_de_assinatura, normalizar, preferencias_do_ramo)
+from app.services.multicalculo.pedido import CHAVE_DA_BASICA, RAMOS_RE
 
 SITUACOES: Tuple[str, ...] = ("novo_sem_apolice", "novo_com_apolice", "renovacao")
 MAX_MOTIVOS = 4               # o cartão do celular mostra poucos; a ordem já é a de importância (preço primeiro)
@@ -58,8 +60,17 @@ FRASE_DA_FAMILIA: Dict[str, str] = {
     DADO: "pediu um dado a mais para calcular",
     DESCONHECIDA: "não devolveu preço",
 }
+#: SPEC-129-C D-129C-04 — a seguradora sem atividade inequívoca para o empresarial SAI do cálculo e é LISTADA. O robô
+#: (F1) a anuncia como evento: `tipo == SEM_ATIVIDADE_COMPATIVEL` (ou `familia == SEM_ATIVIDADE_COMPATIVEL`).
+from portal_worker.multicalculo import contrato as _contrato  # noqa: E402
+
+SEM_ATIVIDADE = str(getattr(_contrato, "SEM_ATIVIDADE_COMPATIVEL", "sem_atividade_compativel")).upper()
+FRASE_DA_FAMILIA[SEM_ATIVIDADE] = "não tem na lista dela a atividade deste negócio"
+#: no RE o "perfil" é um RISCO (o imóvel), não um motorista
+FRASE_DA_FAMILIA_RE: Dict[str, str] = {ACEITACAO: "não aceitou este risco"}
 # a família mais INFORMATIVA vence quando a mesma seguradora recusou de mais de um jeito
-_PRIORIDADE_DA_FAMILIA = (ACEITACAO, INSTABILIDADE, COMERCIAL, DADO, PENDENTE, CREDENCIAL, PERMISSAO, DESCONHECIDA)
+_PRIORIDADE_DA_FAMILIA = (SEM_ATIVIDADE, ACEITACAO, INSTABILIDADE, COMERCIAL, DADO, PENDENTE, CREDENCIAL, PERMISSAO,
+                          DESCONHECIDA)
 
 # o nome que o segurado reconhece (o Agger devolve o nome interno da integração)
 NOME_DE_EXIBICAO: Dict[str, str] = {
@@ -93,13 +104,19 @@ class Classe:
 COMPLETA = Classe(True, "completa")
 
 
+def _sem_margem(cob: Dict[str, Any]) -> Dict[str, Any]:
+    """🔴 G3 (SPEC-129-C): 📊 as 9 gravações de RE trazem `percComissao` DENTRO de `resultados[].coberturas` (ex.: 30)
+    — a margem da corretora não pode sair por uma linha de cobertura nem pela `coberturas_brutas` do ranking."""
+    return {k: v for k, v in cob.items() if not str(k).lower().startswith(("perccomissao", "percdesconto"))}
+
+
 def _coberturas(oferta: Mapping[str, Any]) -> Dict[str, Any]:
     c = oferta.get("coberturas")
     if isinstance(c, Mapping):
-        return dict(c)
+        return _sem_margem(dict(c))
     if isinstance(c, (list, tuple)):            # contrato.Oferta guarda tuplas (chave, valor)
         try:
-            return {str(k): v for k, v in c}
+            return _sem_margem({str(k): v for k, v in c})
         except (TypeError, ValueError):
             return {}
     return {}
@@ -144,8 +161,98 @@ def _classificar_generico(oferta: Mapping[str, Any], referencia: Any = None) -> 
     return Classe(False, "configuracao_diferente", "cobre um conjunto diferente do pedido")
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-C — a régua de RE (condomínio 16 · residencial 2 · empresarial 18)
+# ---------------------------------------------------------------------------------------------------------------------
+#: o nome que o segurado lê para cada chave de cobertura de RE — 📊 os RÓTULOS da tela do Agger
+#: (`fixtures/agger_ramos/formulario_*.json`, campo `rotulo`, 11/10); onde o rótulo muda por ramo, o termo comum.
+NOME_DA_COBERTURA_RE: Dict[str, str] = {
+    CHAVE_DA_BASICA: "Básica (incêndio, raio e explosão)",
+    "isDanosIncendioRaioExplosaoCond": "Incêndio do conteúdo dos condôminos", "isValorCondominio": "RC Condomínio",
+    "isValorSindico": "RC Síndico", "isDanosEletricos": "Danos elétricos", "isDanosVendaval": "Vendaval",
+    "isDanosImpactoVeiculo": "Impacto de veículos", "isDanosRoubo": "Roubo de bens",
+    "rouboCondomino": "Roubo de bens dos condôminos", "isDanosPortoes": "Portões", "isDanosMorais": "Danos morais",
+    "vidros": "Vidros", "isDanosDesmoronamento": "Desmoronamento", "isDanosAluguel": "Perda ou pagamento de aluguel",
+    "isDanosVazamentoTanquesTubulacoes": "Vazamento de tanques e tubulações",
+    "tumultoGreveLockOut": "Tumultos, greves e lock-out", "isDanosAlagamento": "Alagamento",
+    "isDanosDespesasFixas": "Despesas fixas", "isEmpregador": "RC Empregador", "garagista": "RC Garagista",
+    "garagistaExclusiva": "RC Garagista (exclusiva)", "responsabilidadeCivil": "Responsabilidade civil",
+    "isDanosEquipamentosEletronicos": "Equipamentos eletrônicos", "equipamentos": "Equipamentos",
+    "recomposicaoDocumentos": "Recomposição de documentos", "lucroCessante": "Lucros cessantes",
+    "assist24hs": "Assistência",
+}
+
+
+def _num(v: Any) -> Optional[float]:
+    if isinstance(v, bool) or v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _moda(valores: Sequence[float]) -> Optional[float]:
+    """O valor mais comum; empate → o MENOR (a régua exige o que a maioria tem, nunca o que só a melhor tem)."""
+    if not valores:
+        return None
+    contagem = Counter(round(v, 2) for v in valores)
+    topo = max(contagem.values())
+    return min(v for v, n in contagem.items() if n == topo)
+
+
+def referencia_re(ofertas: Iterable[Mapping[str, Any]], essenciais: Iterable[str]) -> Dict[str, Any]:
+    """A CONFIGURAÇÃO do quadro de RE numa opção, lida das ofertas COM PREÇO: a básica = a mais comum entre as que a
+    devolvem; cada essencial (config, por ramo) entra quando a MAIORIA das ofertas a devolve > 0, com o valor mais
+    comum. Sem nenhuma básica devolvida → `basica: None` (a régua de RE não se aplica; vale a genérica, marcada)."""
+    com_preco = [o for o in ofertas if _premio(o) is not None]
+    basicas = [b for b in (_num(_coberturas(o).get(CHAVE_DA_BASICA)) for o in com_preco) if b and b > 0]
+    exigidas: Dict[str, float] = {}
+    for chave in essenciais:
+        if chave == CHAVE_DA_BASICA:
+            continue
+        valores = [v for v in (_num(_coberturas(o).get(chave)) for o in com_preco) if v and v > 0]
+        if com_preco and 2 * len(valores) > len(com_preco):
+            exigidas[chave] = _moda(valores)
+    contagem = Counter(assinatura_de_coberturas(o) for o in com_preco)
+    return {"basica": _moda(basicas), "essenciais": exigidas,
+            "assinatura": contagem.most_common(1)[0][0] if contagem else None}
+
+
+def _nome_re(chave: str) -> str:
+    return NOME_DA_COBERTURA_RE.get(chave, chave)
+
+
+def _classificar_re(oferta: Mapping[str, Any], referencia: Any = None) -> Classe:
+    """RE: COMPARÁVEL = a MESMA básica do quadro (± R$ 1) e as coberturas essenciais da maioria com o mesmo valor ou
+    mais. Sem referência de básica (nenhuma oferta a devolveu) → a régua genérica (mesma configuração da maioria)."""
+    ref = referencia if isinstance(referencia, Mapping) else None
+    if ref is None or ref.get("basica") is None:
+        return _classificar_generico(oferta, ref.get("assinatura") if ref else None)
+    cob = _coberturas(oferta)
+    if not any(k != "percComissao" for k in cob):
+        return Classe(False, "sem_cobertura_informada", "a seguradora não informou as coberturas")
+    basica = _num(cob.get(CHAVE_DA_BASICA))
+    if basica is None or basica <= 0:
+        return Classe(False, "basica_nao_informada", "não informou o valor da cobertura básica (incêndio)")
+    if abs(basica - float(ref["basica"])) >= 1.0:
+        return Classe(False, "basica_diferente", f"calculou a cobertura básica (incêndio) com {reais(basica)}; as "
+                                                 f"outras, com {reais(ref['basica'])}")
+    faltam = [k for k, v in ref["essenciais"].items() if not (_num(cob.get(k)) or 0) > 0]
+    menores = [k for k, v in ref["essenciais"].items() if k not in faltam and _num(cob.get(k)) < v - 1.0]
+    if faltam or menores:
+        partes = []
+        if faltam:
+            partes.append("não inclui " + ", ".join(_nome_re(k) for k in faltam))
+        if menores:
+            partes.append("cobre menos em " + ", ".join(_nome_re(k) for k in menores))
+        return Classe(False, "sem_cobertura_essencial", "; ".join(partes))
+    return COMPLETA
+
+
 #: ramo → a régua. O que não está aqui usa `_classificar_generico` (D-MC-73: a 129-C mede e acrescenta).
-REGRAS_POR_RAMO: Dict[int, Callable[[Mapping[str, Any], Any], Classe]] = {RAMO_AUTO: _classificar_auto}
+REGRAS_POR_RAMO: Dict[int, Callable[[Mapping[str, Any], Any], Classe]] = {
+    RAMO_AUTO: _classificar_auto, **{r: _classificar_re for r in RAMOS_RE}}
 
 
 def _premio(oferta: Mapping[str, Any]) -> Optional[float]:
@@ -162,7 +269,8 @@ def classificar(oferta: Mapping[str, Any], *, config: Optional[Mapping[str, Any]
     cfg = config or PADRAO_DO_PRODUTO
     if _premio(oferta) is None:
         return Classe(False, "sem_preco", "sem preço")
-    if e_produto_de_assinatura(oferta.get("seguradora"), oferta.get("pacote"), cfg):
+    # SPEC-129-C: produto de ASSINATURA é do carro (Azul por Assinatura) — no RE o prêmio devolvido é o anual
+    if int(ramo) not in RAMOS_RE and e_produto_de_assinatura(oferta.get("seguradora"), oferta.get("pacote"), cfg):
         return Classe(False, "assinatura", "preço de assinatura, não é um prêmio anual", exibe_preco=False)
     regra = REGRAS_POR_RAMO.get(int(ramo), _classificar_generico)
     return regra(oferta, referencia)
@@ -270,6 +378,11 @@ def coberturas_publicas(oferta: Mapping[str, Any], *, ramo: int = RAMO_AUTO) -> 
         for k, v in cob.items():
             if k in _VOLATEIS or isinstance(v, (dict, list, bool)) or v in (None, ""):
                 continue
+            if int(ramo) in RAMOS_RE:            # SPEC-129-C: o nome da TELA e o valor em R$
+                n = _num(v)
+                valor = reais(n) if n is not None and k != "assist24hs" else str(v)
+                linhas.append({"chave": str(k), "nome": NOME_DA_COBERTURA_RE.get(k, str(k)), "valor": valor})
+                continue
             linhas.append({"chave": str(k), "nome": str(k), "valor": str(v)})
         return linhas
     if cob.get("casco") is not None and not isinstance(cob.get("casco"), bool):
@@ -334,9 +447,25 @@ def _chave_seguradora(item: Mapping[str, Any]) -> str:
     return "nome:" + normalizar(item.get("seguradora"))
 
 
-def _entrada(oferta: Mapping[str, Any], opcao: str, corretora: str, ramo: int) -> Dict[str, Any]:
+def posicao_de_preferencia(oferta: Mapping[str, Any], preferidas: Sequence[Any]) -> Optional[int]:
+    """D-129C-07: a posição (1 = a mais preferida) da seguradora da oferta na lista do ramo, ou None. Item `int` casa
+    o código da seguradora no Agger; item texto casa o nome (começo de palavra, `casa_seguradora`)."""
+    cod = oferta.get("seguradora_codigo")
+    nomes = [str(oferta.get("seguradora") or ""), nome_de_exibicao(oferta.get("seguradora"))]
+    for i, item in enumerate(preferidas or (), start=1):
+        if isinstance(item, int) and not isinstance(item, bool):
+            if cod is not None and not isinstance(cod, bool) and str(cod) == str(item):
+                return i
+        elif isinstance(item, str) and any(casa_seguradora(n, [item]) for n in nomes):
+            return i
+    return None
+
+
+def _entrada(oferta: Mapping[str, Any], opcao: str, corretora: str, ramo: int,
+             preferidas: Sequence[Any] = ()) -> Dict[str, Any]:
     """A linha de ranking — campos ESCOLHIDOS um a um (a comissão nunca é copiada)."""
     cob = _coberturas(oferta)
+    pref = posicao_de_preferencia(oferta, preferidas)
     fv = oferta.get("franquia_valor")
     try:
         fv = float(fv) if fv is not None else None
@@ -354,6 +483,8 @@ def _entrada(oferta: Mapping[str, Any], opcao: str, corretora: str, ramo: int) -
         "parcelas": parcelas_de(oferta),
         "tem_pdf_da_seguradora": bool(oferta.get("tem_pdf")),
         "coberturas_brutas": cob,
+        # SPEC-129-C D-129C-07: a preferida da corretora no ramo é MARCADA — nunca esconde as outras
+        "preferida": pref is not None, "ordem_de_preferencia": pref,
     }
 
 
@@ -398,9 +529,15 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
     por_opcao: Dict[str, List[Dict[str, Any]]] = {}
     diferentes_por_opcao: Dict[str, List[Dict[str, Any]]] = {}
     responderam: Dict[str, set] = {}
+    preferidas = preferencias_do_ramo(cfg, ramo)
+    reguas: Dict[str, str] = {}
     for opcao, itens in agrupadas.items():
         referencia = None
-        if ramo not in REGRAS_POR_RAMO:
+        if ramo in RAMOS_RE:
+            # SPEC-129-C: a configuração do quadro DESTA opção (a básica e as essenciais da maioria)
+            referencia = referencia_re([o for o, _ in itens], coberturas_essenciais(cfg, ramo))
+            reguas[opcao] = "re" if referencia["basica"] is not None else "generica_sem_basica"
+        elif ramo not in REGRAS_POR_RAMO:
             contagem = Counter(assinatura_de_coberturas(o) for o, _ in itens if _premio(o) is not None)
             referencia = contagem.most_common(1)[0][0] if contagem else None
         melhores: Dict[Tuple[str, str], Dict[str, Any]] = {}
@@ -410,7 +547,7 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
             responderam[opcao].add(_chave_seguradora(o))
             classe = classificar(o, config=cfg, ramo=ramo, referencia=referencia)
             if classe.comparavel:
-                ent = _entrada(o, opcao, corr, ramo)
+                ent = _entrada(o, opcao, corr, ramo, preferidas)
                 k = (corr, _chave_seguradora(o))
                 if k not in melhores or ent["premio_anual"] < melhores[k]["premio_anual"]:
                     melhores[k] = ent
@@ -428,7 +565,9 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
                     d["premio_anual"] = round(premio, 2)
                 if corr not in d["corretoras"]:
                     d["corretoras"].append(corr)
-        por_opcao[opcao] = sorted(melhores.values(), key=lambda e: (e["premio_anual"], e["seguradora"]))
+        # no MESMO prêmio, a preferida da corretora vem antes (D-129C-07); sem preferência, a ordem de sempre
+        por_opcao[opcao] = sorted(melhores.values(), key=lambda e: (
+            e["premio_anual"], e["ordem_de_preferencia"] is None, e["ordem_de_preferencia"] or 0, e["seguradora"]))
         diferentes_por_opcao[opcao] = sorted(difs.values(), key=lambda d: (d["premio_anual"] is None,
                                                                            d["premio_anual"] or 0, d["seguradora"]))
 
@@ -436,7 +575,9 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
     recusas: Dict[str, Dict[str, Dict[str, Any]]] = {}
     for ev in eventos or ():
         familia = str(ev.get("familia") or "").upper()
-        if ev.get("tipo") != SEGURADORA_RECUSOU and familia != PENDENTE:
+        if str(ev.get("tipo") or "").upper() == SEM_ATIVIDADE:
+            familia = SEM_ATIVIDADE                  # SPEC-129-C D-129C-04: saiu do cálculo, listada
+        elif ev.get("tipo") != SEGURADORA_RECUSOU and familia != PENDENTE:
             continue
         if not familia or familia == OFERTA:
             continue
@@ -451,7 +592,8 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
         prio = _PRIORIDADE_DA_FAMILIA.index(familia) if familia in _PRIORIDADE_DA_FAMILIA else len(_PRIORIDADE_DA_FAMILIA)
         if atual is None or prio < atual["_prio"]:
             recusas[opcao][chave] = {"seguradora": nome_de_exibicao(ev.get("seguradora")), "familia": familia,
-                                     "motivo": FRASE_DA_FAMILIA.get(familia, FRASE_DA_FAMILIA[DESCONHECIDA]),
+                                     "motivo": (FRASE_DA_FAMILIA_RE.get(familia) if ramo in RAMOS_RE else None)
+                                     or FRASE_DA_FAMILIA.get(familia, FRASE_DA_FAMILIA[DESCONHECIDA]),
                                      "_prio": prio}
     nao_responderam_por_opcao = {
         op: sorted(({k: v for k, v in r.items() if k != "_prio"} for r in rs.values()), key=lambda r: r["seguradora"])
@@ -471,6 +613,10 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
               "nao_responderam": len(nao_resp)}
     if len(corretoras) > 1:
         resumo["corretoras_comparadas"] = len(corretoras)
+    if ramo in RAMOS_RE:
+        # SPEC-129-C: QUAL régua decidiu o "comparável" da opção completa — "generica_sem_basica" quando nenhuma oferta
+        # devolveu a básica (a régua de RE não tinha como se aplicar): fica VISÍVEL, nunca calado
+        resumo["regua"] = reguas.get(opcao_completa)
     return Comparacao(ramo=ramo, papeis=papeis, por_opcao=por_opcao, diferentes_por_opcao=diferentes_por_opcao,
                       nao_responderam_por_opcao=nao_responderam_por_opcao, entre_corretoras=entre, resumo=resumo,
                       sem_opcao=sem_opcao, corretoras=tuple(corretoras))

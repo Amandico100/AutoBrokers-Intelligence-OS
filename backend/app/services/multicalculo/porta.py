@@ -32,9 +32,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from portal_worker.multicalculo.contrato import RAMO_AUTO, TIPOS_DE_AJUSTE, Ajuste
+from portal_worker.multicalculo.contrato import RAMO_AUTO, TIPOS_DE_AJUSTE, TIPOS_DE_AJUSTE_RE, Ajuste
 
-from app.services.multicalculo.pedido import PedidoDeCalculo
+from app.services.multicalculo.pedido import CHAVE_DA_BASICA, RAMOS_RE, PedidoDeCalculo
+from portal_worker.multicalculo.presets import ORDEM_RE as _ORDEM_RE
 from app.services.multicalculo.repositorio import RepositorioMulticalculo
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,12 @@ OPCOES_PADRAO: Tuple[str, ...] = ("padrao", "economica")
 #: o que o CANAL pede (D-130A1-05): as duas da 129-B + o "mínimo do mínimo" (a maior economia, nunca a recomendada)
 OPCOES_DO_CANAL: Tuple[str, ...] = ("padrao", "economica", "minima")
 ORIGENS: Tuple[str, ...] = ("auxiliar", "canal", "teste")
+#: SPEC-129-C D-129C-03 — as opções de RE: "padrão" (as coberturas típicas do ramo) e "mais em conta" (as essenciais +
+#: assistência básica), com os MESMOS nomes do auto (o CHECK do banco já as aceita) e na ordem do disparo dos presets
+#: de RE (`presets.ORDEM_RE`, F1). A completa+ e a mínima são do carro.
+OPCOES_POR_RAMO: Dict[int, Tuple[str, ...]] = {RAMO_AUTO: OPCOES, **{r: tuple(_ORDEM_RE) for r in RAMOS_RE}}
+#: o canal comparador (QCM) continua SÓ AUTO nesta SPEC: RE é carteira (auxiliar) e canário (teste)
+ORIGENS_DO_RE: Tuple[str, ...] = ("auxiliar", "teste")
 KIND_CANAL = "platform_canal"
 KIND_CORRETORA = "client"
 ENV_CANARIO = "AUTOBROKERS_CANARIO"
@@ -99,6 +106,10 @@ class NaoEncontrado(LookupError):
 
 class PresetIndisponivel(RuntimeError):
     """Sem coberturas para a opção: nem explícitas nem preset. Nenhum cálculo sai sem coberturas."""
+
+
+class RamoNaoSuportado(ValueError):
+    """SPEC-129-C: o ramo não sai por este caminho — RE pelo canal (o QCM é só AUTO nesta SPEC) ou ramo sem motor."""
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -158,6 +169,51 @@ def _preset_padrao(opcao: str) -> Dict[str, Any]:
     return dict(tabela[opcao])
 
 
+def _coberturas_re_padrao(ramo: int, opcao: str, valor_basica: Any, extras: Mapping[str, Any]) -> Dict[str, Any]:
+    """As coberturas de UM cálculo de RE — o resolvedor dos presets (F1, `presets.coberturas_re`): todas as chaves do
+    ramo, a Básica DO PEDIDO (D-129C-03), a assistência da opção e as `extras` do pedido (que vencem a opção)."""
+    from portal_worker.multicalculo.presets import coberturas_re
+
+    return dict(coberturas_re(ramo, opcao, valor_basica, extras))
+
+
+def coberturas_de_re(base: Mapping[str, Any], pedido: PedidoDeCalculo) -> Dict[str, Any]:
+    """As coberturas EXPLÍCITAS de quem chamou num cálculo de RE: valem como vieram, menos a Básica — que é SEMPRE a
+    do pedido (D-129C-03), nunca a de quem chamou."""
+    cob = dict(base or {})
+    cob[CHAVE_DA_BASICA] = pedido.valor("risco", "valor_basica")
+    return cob
+
+
+def _ajuste_de_re(ajuste: Ajuste, ramo: int) -> Ajuste:
+    """SPEC-129-C: o ajuste num cálculo de RE. Só `contrato.TIPOS_DE_AJUSTE_RE`; o rótulo vira o código pela tabela
+    DE RE (`presets.VALORES_DO_AJUSTE_RE`, F1) — 📊 no RE a assistência é Não 0 · Básica 1 · Intermediária 2 ·
+    Completa 3, DIFERENTE do auto (Completa 1 · Básica 4): o código do carro aqui seria um cálculo errado e calado
+    (CLAUDE.md §9.5)."""
+    if ajuste.tipo not in TIPOS_DE_AJUSTE_RE:
+        raise ValueError(f"ajuste {ajuste.tipo} não existe no ramo {ramo} (aceitos: {', '.join(TIPOS_DE_AJUSTE_RE)})")
+    valor = ajuste.valor
+    if ajuste.tipo == "cobertura":
+        if not isinstance(valor, Mapping) or not valor:
+            raise ValueError("ajuste cobertura de RE: esperava {cobertura do Agger: valor}")
+    elif isinstance(valor, str):
+        texto = valor.strip()
+        if texto.replace(".", "", 1).isdigit():
+            valor = float(texto) if "." in texto else int(texto)
+        else:
+            from portal_worker.multicalculo.presets import VALORES_DO_AJUSTE_RE as tabela
+
+            chave = unicodedata.normalize("NFKD", texto)
+            chave = "".join(c for c in chave if not unicodedata.combining(c)).lower()
+            valores = tabela.get(ajuste.tipo) or {}
+            if chave not in valores:
+                raise ValueError(f"ajuste {ajuste.tipo} do ramo {ramo}: rótulo sem código medido — mande o código")
+            valor = valores[chave]
+    elif isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        raise ValueError(f"ajuste {ajuste.tipo} do ramo {ramo}: esperava um número")
+    return Ajuste(tipo=ajuste.tipo, valor=valor, seguradora=ajuste.seguradora, ramo=ramo)
+
+
 def _ajuste_codificado(ajuste: Ajuste) -> Ajuste:
     """F4 (costura): o rótulo do ajuste vira o CÓDIGO que o robô manda (`presets.VALORES_DO_AJUSTE`, medidos);
     rótulo sem código → `ValueError` na porta, nunca um recálculo recusado lá na frente."""
@@ -193,6 +249,21 @@ def _aplicar_ajuste(coberturas: Mapping[str, Any], ajuste: Ajuste) -> Dict[str, 
     return novas
 
 
+def _aplicar_ajuste_re(coberturas: Mapping[str, Any], ajuste: Ajuste) -> Dict[str, Any]:
+    """O gêmeo de `_aplicar_ajuste` no RE: `cobertura` funde chave a chave em `configuracoes`; assistência/comissão/
+    desconto trocam a chave do ramo (`presets.CAMPO_DO_AJUSTE_RE`, o gêmeo do `aplicarAjuste` do montador.js)."""
+    from portal_worker.multicalculo.presets import CAMPO_DO_AJUSTE_RE
+
+    novas = dict(coberturas or {})
+    if ajuste.seguradora is not None:
+        return novas
+    if ajuste.tipo == "cobertura" and isinstance(ajuste.valor, Mapping):
+        novas.update({k: v for k, v in ajuste.valor.items() if k != CHAVE_DA_BASICA})   # a Básica é a do pedido
+    elif ajuste.tipo in CAMPO_DO_AJUSTE_RE:
+        novas[CAMPO_DO_AJUSTE_RE[ajuste.tipo]] = ajuste.valor
+    return novas
+
+
 def _erro_publico(erro: Any) -> Optional[str]:
     """O `erro` do cálculo como a corretora o lê: o motor já o gravou saneado; a porta saneia DE NOVO (URL, chave,
     PII) e corta — o banco não é confiado como única rede."""
@@ -225,7 +296,8 @@ class MulticalculoProvider:
                  cifrar: Optional[Callable[[str], str]] = None,
                  presets: Optional[Callable[[str], Mapping[str, Any]]] = None,
                  ambiente: Optional[Mapping[str, str]] = None,
-                 agora: Callable[[], datetime] = _agora):
+                 agora: Callable[[], datetime] = _agora,
+                 coberturas_re: Optional[Callable[..., Mapping[str, Any]]] = None):
         self.repo = repositorio or RepositorioMulticalculo()
         if cifrar is None:
             from app.services import portal_vault
@@ -233,6 +305,7 @@ class MulticalculoProvider:
             cifrar = portal_vault.encrypt
         self._cifrar = cifrar
         self._preset = presets or _preset_padrao
+        self._coberturas_re = coberturas_re or _coberturas_re_padrao
         self._ambiente = ambiente
         self._agora = agora
 
@@ -242,8 +315,14 @@ class MulticalculoProvider:
 
     # ------------------------------------------------------------------ capacidades
     def capacidades(self, ramo: int = RAMO_AUTO) -> Dict[str, Any]:
+        if int(ramo) in RAMOS_RE:
+            return {"ramo": int(ramo), "suportado": True, "portal": self.provider_key,
+                    "opcoes": OPCOES_POR_RAMO[int(ramo)], "ajustes": TIPOS_DE_AJUSTE_RE, "origens": ORIGENS_DO_RE,
+                    "canal": False, "renovacao": True, "entrega": "eventos (consultar com desde_evento)",
+                    "pdf": "pdf(company_id, oferta_id) → bytes"}
         if int(ramo) != RAMO_AUTO:
-            return {"ramo": int(ramo), "suportado": False, "motivo": "a v1 calcula só o AUTO (31)"}
+            return {"ramo": int(ramo), "suportado": False,
+                    "motivo": "calcula o AUTO (31) e o RE: condomínio (16), residencial (2), empresarial (18)"}
         return {"ramo": RAMO_AUTO, "suportado": True, "portal": self.provider_key, "opcoes": OPCOES,
                 "ajustes": TIPOS_DE_AJUSTE, "origens": ORIGENS, "renovacao": True,
                 "entrega": "eventos (consultar com desde_evento)", "pdf": "pdf(company_id, oferta_id) → bytes"}
@@ -289,17 +368,28 @@ class MulticalculoProvider:
                 alvo.append(u)
         if not alvo:
             raise ValueError("nenhuma corretora pedida")
+        ramo = int(getattr(pedido, "ramo", RAMO_AUTO) or RAMO_AUTO)
+        aceitas = OPCOES_POR_RAMO.get(ramo, OPCOES)
         pedidas = set(opcoes)
-        escolhidas = [o for o in OPCOES if o in pedidas]     # a ordem é a de OPCOES (a do disparo), nunca a do chamador
-        if (pedidas - set(OPCOES)) or not escolhidas:
-            raise ValueError("opções aceitas: " + ", ".join(OPCOES))
+        escolhidas = [o for o in aceitas if o in pedidas]    # a ordem é a de OPCOES (a do disparo), nunca a do chamador
+        if (pedidas - set(aceitas)) or not escolhidas:
+            raise ValueError("opções aceitas: " + ", ".join(aceitas))
         quadro = int(quadro_s)
         if not 5 <= quadro <= 600:
             raise ValueError("quadro_s entre 5 e 600")
         if not isinstance(pedido, PedidoDeCalculo):
             raise TypeError("pedido precisa ser um PedidoDeCalculo")
+        if ramo != RAMO_AUTO and (ramo not in RAMOS_RE or origem not in ORIGENS_DO_RE):
+            # SPEC-129-C: o canal comparador (QCM) é SÓ AUTO nesta SPEC — recusa clara ANTES de qualquer leitura
+            raise RamoNaoSuportado(f"o ramo {ramo} não sai pela origem {origem!r}: o canal calcula só o AUTO "
+                                   f"({RAMO_AUTO}); o RE sai pela carteira da corretora")
 
-        await self._autorizar(company_id=company_id, corretoras=alvo)
+        kind = await self._autorizar(company_id=company_id, corretoras=alvo)
+        if ramo != RAMO_AUTO:
+            if kind == KIND_CANAL:
+                raise RamoNaoSuportado("o canal calcula só o AUTO nesta versão")
+            # D-129C-05: a comissão EXPLÍCITA do ramo ANTES de validar — o contrato a exige
+            pedido = pedido.com_comissao(await self._comissao_re(company_id=company_id, ramo=ramo))
 
         # F4 (costura): o que falta E o que veio sem código medido no Agger (o robô recusaria só no disparo)
         # SPEC-133-A D-133A-03: no canal a PLACA supre FIPE/ano/combustível (o robô preenche pela placa — ver
@@ -308,6 +398,9 @@ class MulticalculoProvider:
         faltam = ausentes + [c for c in pedido.sem_codigo() if c not in ausentes]
         if faltam:
             raise PedidoIncompleto(faltam)
+        if ramo != RAMO_AUTO:
+            return await self._calcular_re(company_id=company_id, pedido=pedido, alvo=alvo, escolhidas=escolhidas,
+                                           coberturas=coberturas, origem=origem, quadro=quadro)
         if origem == "canal":
             pedido = pedido.assumindo_pela_placa()
             perfil = pedido.perfil_faltando()
@@ -326,11 +419,47 @@ class MulticalculoProvider:
                 raise PresetIndisponivel(f"sem coberturas para a opção {o}")
             por_opcao[o] = cob
 
-        cifrado = self._cifrar(json.dumps(pedido.para_dict(), ensure_ascii=False, sort_keys=True))
+        return await self._gravar(company_id=company_id, dados=pedido.para_dict(), ramo=pedido.ramo,
+                                  hmac_doc=hmac_doc, alvo=alvo, escolhidas=escolhidas, por_opcao=por_opcao,
+                                  origem=origem, quadro=quadro)
+
+    async def _comissao_re(self, *, company_id: str, ramo: int) -> float:
+        """D-129C-05: a comissão do item no ramo, da config da CORRETORA (no RE a corretora é a solicitante: o canal
+        está fora). Banco fora → `ConfigIndisponivel` (nunca a comissão às cegas)."""
+        from app.services.multicalculo.config import carregar, comissao_do_ramo
+
+        cfg = await asyncio.to_thread(carregar, company_id, db=self.repo.db)
+        return comissao_do_ramo(cfg, ramo)
+
+    async def _calcular_re(self, *, company_id: str, pedido: PedidoDeCalculo, alvo: List[str],
+                           escolhidas: List[str], coberturas: Optional[Mapping[str, Mapping[str, Any]]],
+                           origem: str, quadro: int) -> PedidoAberto:
+        """SPEC-129-C: o pedido de RE (já validado pelo contrato e com a comissão do ramo) — as coberturas de cada
+        opção pelo resolvedor dos presets (a Básica e as extras DO PEDIDO) ou as explícitas de quem chamou (com a
+        Básica do pedido). Extra fora das coberturas do ramo já voltou como `PedidoIncompleto` (`sem_codigo`)."""
+        hmac_doc = cpf_hmac(pedido.documento, chave=self._env(ENV_HMAC))   # fail-closed ANTES de gravar
+        basica = pedido.valor("risco", "valor_basica")
+        extras = dict(pedido.valor("risco", "extras") or {})
+        por_opcao: Dict[str, Dict[str, Any]] = {}
+        for o in escolhidas:
+            explicitas = (coberturas or {}).get(o)
+            cob = (coberturas_de_re(explicitas, pedido) if explicitas is not None
+                   else dict(self._coberturas_re(pedido.ramo, o, basica, extras) or {}))
+            if not cob:
+                raise PresetIndisponivel(f"sem coberturas para a opção {o} do ramo {pedido.ramo}")
+            por_opcao[o] = cob
+        return await self._gravar(company_id=company_id, dados=pedido.para_dict(), ramo=pedido.ramo,
+                                  hmac_doc=hmac_doc, alvo=alvo, escolhidas=escolhidas, por_opcao=por_opcao,
+                                  origem=origem, quadro=quadro)
+
+    async def _gravar(self, *, company_id: str, dados: Mapping[str, Any], ramo: int, hmac_doc: str,
+                      alvo: List[str], escolhidas: List[str], por_opcao: Mapping[str, Mapping[str, Any]],
+                      origem: str, quadro: int) -> PedidoAberto:
+        cifrado = self._cifrar(json.dumps(dados, ensure_ascii=False, sort_keys=True))
         agora = self._agora()
         pedido_id = str(uuid.uuid4())
         linha_pedido = {
-            "id": pedido_id, "company_id": company_id, "origem": origem, "ramo": pedido.ramo,
+            "id": pedido_id, "company_id": company_id, "origem": origem, "ramo": ramo,
             "opcoes": escolhidas, "corretoras": alvo, "pedido_cifrado": cifrado, "cpf_hmac": hmac_doc,
             "quadro_s": quadro, "status": "aberto",
         }
@@ -411,7 +540,11 @@ class MulticalculoProvider:
                             seguradora=ajuste.get("seguradora"))
         if not isinstance(ajuste, Ajuste):
             raise TypeError("ajuste precisa ser um contrato.Ajuste ou um dict {tipo, valor, seguradora}")
-        ajuste = _ajuste_codificado(ajuste)
+        ajuste_bruto = ajuste                         # SPEC-129-C: o RE recodifica pela tabela DO RAMO (abaixo)
+        try:
+            ajuste, erro_do_auto = _ajuste_codificado(ajuste), None
+        except ValueError as exc:                     # rótulo sem código no AUTO — pode ter no RE ("intermediaria")
+            erro_do_auto = exc
         origem = await asyncio.to_thread(self.repo.calculo, company_id=company_id, calculo_id=calculo_id)
         if not origem or str(origem.get("solicitante_company_id")) != company_id:
             raise NaoEncontrado("cálculo não encontrado")
@@ -425,6 +558,11 @@ class MulticalculoProvider:
         if ped.get("status") == "cancelado":
             raise ValueError("pedido cancelado")
         self._conferir_origem(str(ped.get("origem")))
+        ramo = int(ped.get("ramo") or RAMO_AUTO)
+        if ramo != RAMO_AUTO:
+            ajuste = _ajuste_de_re(ajuste_bruto, ramo)      # nunca o código do CARRO num cálculo de RE
+        elif erro_do_auto is not None:
+            raise erro_do_auto
         # 🔴 conserto 129-B (red P4): o clique duplo não vira 2º calcularV2 — o MESMO ajuste da MESMA origem ainda
         # na fila ou no robô é DEVOLVIDO (o motor também cancela o repetido que escapar desta conferência)
         em_curso = await asyncio.to_thread(self.repo.ajustes_em_curso, company_id=company_id,
@@ -440,7 +578,8 @@ class MulticalculoProvider:
         novo = {
             "id": str(uuid.uuid4()), "pedido_id": str(origem["pedido_id"]), "solicitante_company_id": company_id,
             "company_id": corretora, "opcao": "ajuste", "origem_calculo_id": calculo_id,
-            "coberturas": _aplicar_ajuste(origem.get("coberturas") or {}, ajuste),
+            "coberturas": (_aplicar_ajuste(origem.get("coberturas") or {}, ajuste) if ramo == RAMO_AUTO
+                           else _aplicar_ajuste_re(origem.get("coberturas") or {}, ajuste)),
             "ajuste": {"tipo": ajuste.tipo, "valor": ajuste.valor, "seguradora": ajuste.seguradora,
                        "versao_base": int(origem["versao"]), "negocio_ref": str(origem["negocio_ref"])},
             "status": "na_fila", "prioridade": PRIORIDADE.get(str(ped.get("origem")), 5),

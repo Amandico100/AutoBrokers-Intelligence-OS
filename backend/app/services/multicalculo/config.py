@@ -42,11 +42,21 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         "autonomo_minimo": 12.0,  # 📊 D-MC-68: até 12 % é a negociação normal, passo a passo
         "piso": 10.0,             # 📊 D-MC-64/68: o piso de todas; o agente chega aqui SOZINHO, só como fechamento
         "passo_pp": 1.0,          # 💭 de quanto em quanto a comissão desce (o Founder: "aos poucos, não direto")
+        # SPEC-129-C D-129C-05 — a comissão de RE vai EXPLÍCITA no item do cálculo (📊 B0-a 11/10: na conta da
+        # corretora o Agger traz percComissaoEmpres = 0 nas 10 seguradoras do empresarial; Cond/Resid = 10). Por
+        # ramo (chave = o código do ramo como texto); None = a `entrada` acima (o padrão do produto, igual ao auto).
+        "por_ramo": {"16": None, "2": None, "18": None},
     },
     # D-MC-66 — novo COM apólice: mirar 💭 ~10–15 % abaixo do preço atual quando der, guardando margem
     "alvo_abaixo_da_atual_pct": {"minimo": 10.0, "maximo": 15.0},
     # D-MC-66 — renovação: proposta ~15 dias antes; tenta +1–2 pp de comissão sobre a do ano anterior
-    "renovacao": {"antecedencia_dias": 15, "comissao_a_mais_pp": {"minimo": 1.0, "maximo": 2.0}},
+    "renovacao": {"antecedencia_dias": 15, "comissao_a_mais_pp": {"minimo": 1.0, "maximo": 2.0},
+                  # SPEC-129-C D-129C-06 — o reajuste da cobertura BÁSICA (incêndio) na renovação de RE, por ramo, em %.
+                  # Padrão 15 = a palavra do Founder (10/10). 📊 AGREGADO-POR-RAMO §3 (B0-c, 11/10, 41 pares de
+                  # condomínio, mesmo cliente a 300–430 dias): o mais COMUM é +10 % (16 de 41; +15 % em 6; mediana
+                  # +13,3 %); empresarial 4 de 4 no mesmo endereço = +10 %; residencial inconclusivo (2 pares).
+                  # 🧑 o Founder confirma o número — a corretora troca o dela aqui.
+                  "reajuste_basica_pct": {"16": 15.0, "2": 15.0, "18": 15.0}},
     # D-MC-71 / D-130A-05 — validade = hoje + a MENOR validade das seguradoras do quadro. 📊 padrão 5 = o menor
     # medido (n = 4). `por_seguradora`: nome da seguradora (como o Agger devolve) → dias. Vazio até medir.
     "validade": {"padrao_dias": 5, "por_seguradora": {}},
@@ -86,6 +96,23 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
     # (contém), nomes normalizados.
     "produtos_de_assinatura": [{"seguradora": "Azul Assinatura"}, {"seguradora": "Azul por Assinatura"},
                                {"produto": "assinatura"}],
+    # SPEC-129-C D-129C-07 — a PREFERÊNCIA de seguradoras, por ramo, por corretora: lista ORDENADA (o nome como o
+    # Agger devolve — casamento por começo de palavra, `casa_seguradora` — ou o código da seguradora no Agger, int).
+    # Vazia = nenhuma preferida: todas as do ramo na conta são cotadas e comparadas igual. A comparação MARCA a
+    # preferida no ranking (e desempata por ela no mesmo prêmio); NUNCA esconde as outras.
+    "preferencias_de_seguradoras": {"31": [], "16": [], "2": [], "18": []},
+    # SPEC-129-C — o que torna duas ofertas de RE COMPARÁVEIS além da MESMA básica: estas coberturas, quando a
+    # maioria do quadro as devolve, têm de estar na oferta com o mesmo valor ou mais. Chaves do Agger
+    # (`cotacao.configuracoes`, fixtures `formulario_*`). Critério da lista: presentes em ≥ 12 dos 15 negócios lidos
+    # por ramo (📊 AGREGADO-POR-RAMO §2, B0-c 11/10) — condomínio: elétricos, impacto, vidros, RC condomínio, RC
+    # síndico, vendaval, portões (15/15), danos morais (14), tumulto e roubo (13) · residencial: elétricos e
+    # vendaval (13), RC familiar (12) · empresarial: elétricos (15), RC (12). A básica é sempre exigida (à parte).
+    "coberturas_essenciais": {
+        "16": ["isDanosEletricos", "isDanosImpactoVeiculo", "vidros", "isValorCondominio", "isValorSindico",
+               "isDanosVendaval", "isDanosPortoes", "isDanosMorais", "tumultoGreveLockOut", "isDanosRoubo"],
+        "2": ["isDanosEletricos", "isDanosVendaval", "responsabilidadeCivil"],
+        "18": ["isDanosEletricos", "responsabilidadeCivil"],
+    },
     # textos da página que a corretora pode trocar (None = o padrão de `manual_de_negociacao`)
     "faq": None,
     "sinistro": None,
@@ -226,7 +253,65 @@ def _coerente(cfg: Dict[str, Any]) -> Dict[str, Any]:
             cfg["opcoes"][k] = pad["opcoes"][k]
     if int(cfg["validade"]["padrao_dias"]) < 1:
         cfg["validade"]["padrao_dias"] = pad["validade"]["padrao_dias"]
+    # SPEC-129-C — as tabelas por ramo: um valor fora da faixa vale o padrão DAQUELE ramo, nunca um número quebrado
+    por_ramo = cfg["comissao"].get("por_ramo") or {}
+    for r, v in list(por_ramo.items()):
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100):
+            logger.warning("[MC-CONFIG] comissao.por_ramo.%s inválida — fica a entrada", r)
+            por_ramo[r] = None
+    reaj = cfg["renovacao"].get("reajuste_basica_pct") or {}
+    for r, v in list(reaj.items()):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
+            logger.warning("[MC-CONFIG] renovacao.reajuste_basica_pct.%s inválido — fica o padrão", r)
+            reaj[r] = pad["renovacao"]["reajuste_basica_pct"].get(r)
+    for tabela in ("preferencias_de_seguradoras", "coberturas_essenciais"):
+        for r, lista in list((cfg.get(tabela) or {}).items()):
+            cfg[tabela][r] = [i for i in lista if (isinstance(i, str) and i.strip())
+                              or (isinstance(i, int) and not isinstance(i, bool))]
     return cfg
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-C — a config POR RAMO (as chaves do jsonb são o código do ramo como texto)
+# ---------------------------------------------------------------------------------------------------------------------
+def _do_ramo(tabela: Any, ramo: Any) -> Any:
+    return (tabela or {}).get(str(int(ramo))) if isinstance(tabela, Mapping) else None
+
+
+def comissao_do_ramo(config: Mapping[str, Any], ramo: Any) -> float:
+    """D-129C-05: a comissão EXPLÍCITA do item no ramo; sem número próprio do ramo → `comissao.entrada`."""
+    com = config.get("comissao") or PADRAO_DO_PRODUTO["comissao"]
+    v = _do_ramo(com.get("por_ramo"), ramo)
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    return float(com["entrada"])
+
+
+def reajuste_basica_pct(config: Mapping[str, Any], ramo: Any) -> Optional[float]:
+    """D-129C-06: o reajuste da básica na renovação, em %. None = o ramo não tem a regra (o auto)."""
+    v = _do_ramo((config.get("renovacao") or {}).get("reajuste_basica_pct"), ramo)
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def basica_renovada(config: Mapping[str, Any], ramo: Any, basica_anterior: Any) -> Optional[float]:
+    """A básica do ano novo = a anterior + o reajuste do ramo (None sem regra ou sem valor anterior positivo)."""
+    pct = reajuste_basica_pct(config, ramo)
+    try:
+        anterior = float(basica_anterior)
+    except (TypeError, ValueError):
+        return None
+    if pct is None or anterior <= 0:
+        return None
+    return round(anterior * (1 + pct / 100), 2)
+
+
+def preferencias_do_ramo(config: Mapping[str, Any], ramo: Any) -> list:
+    """D-129C-07: a lista ORDENADA de seguradoras preferidas do ramo (nomes ou códigos do Agger); vazia = nenhuma."""
+    return list(_do_ramo(config.get("preferencias_de_seguradoras"), ramo) or [])
+
+
+def coberturas_essenciais(config: Mapping[str, Any], ramo: Any) -> tuple:
+    return tuple(_do_ramo(config.get("coberturas_essenciais"), ramo) or ())
 
 
 def mesclar(linha: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
