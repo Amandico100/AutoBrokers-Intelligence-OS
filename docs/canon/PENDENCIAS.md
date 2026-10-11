@@ -13641,3 +13641,29 @@ D-133A-11: o motor já é paralelo entre corretoras; os 8 minutos do canário vi
 ## P-133A-08 · 🤖 A tela de identidade não tem botão "Publicar"; logo SVG não aparece na proposta
 **Custa esquecer:** outra corretora não publica a própria marca sozinha; um logo SVG some da página.
 
+## P-129C-01 · 🤖 O PDF da seguradora não é guardado em NENHUMA oferta (📊 0/128 no auto também)
+📊 11/10: `pdf_path` vazio em todas as ofertas, 0 objetos em `multicalculo/` no bucket privado `portal-evidence`; a cópia dentro da página
+falhou 6 de 6 no canário de RE. Anterior à 129-C. Instrumentado: a página conta a falha por classe (`http_<status>`, `rede`, `nao_pdf`,
+`grande`, `so_nome`). **Destrava:** o próximo cálculo real mostra a classe; consertar a cópia. **Custa esquecer:** a página diz "PDF da
+seguradora" e não entrega.
+
+## P-129C-02 · 🧑 A carteira patrimonial da Resulta está fora da InfoCap
+📊 32.901 documentos desde 2015: Condomínio 0, Residencial 12, Empresarial 3. **Destrava:** o Founder diz onde a Resulta lança essas
+apólices (outra base/login?). **Custa esquecer:** a renovação de RE (131) não tem de onde ler as apólices.
+
+## P-129C-03 · 🧑 O reajuste da renovação de RE: 15 % (o Founder) × 📊 +10 % o mais comum no Agger
+41 pares de condomínio: +10 % em 16, +15 % em 6, mediana +13,3 %. Config `renovacao.reajuste_basica_pct` = 15 (padrão). **Destrava:** o
+manual da Resulta ou o Founder confirma. Ainda sem chamador (é a 131). **Custa esquecer:** a renovação sai com reajuste diferente do que a
+corretora pratica.
+
+## P-129C-04 · 🧑 Credenciais de RE no Agger da Resulta: Porto, Mapfre e HDI recusam por credencial
+📊 canário 11/10 (condomínio e residencial). **Destrava:** conferir no Agger da Resulta → Configurações → Seguradoras se Porto e Mapfre
+pedem credencial própria para RE e corrigir a HDI (T-136). **Custa esquecer:** três seguradoras grandes fora de todo RE.
+
+## P-129C-05 · 🤖 A página/proposta dos outros ramos (130-C)
+A página de hoje é de carro; o ranking de RE (com `avisos`) ainda não chega ao cliente nem ao chat. **Destrava:** a 130-C (D-129C-08).
+
+## P-129C-06 · 🤖 A atividade do empresarial: a busca do Agger exige 3 letras e casa por trecho (inferido de 1 amostra)
+A classe `imovel_desocupado` e o radical de busca não foram medidos ao vivo além do canário. **Destrava:** o próximo cálculo real de
+empresarial. **Custa esquecer:** o empresarial com poucas seguradoras.
+
