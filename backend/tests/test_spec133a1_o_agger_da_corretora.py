@@ -40,7 +40,7 @@ from portal_worker.multicalculo import robos as ROB  # noqa: E402
 CHAVE = "chave-interna-de-teste"
 SENHA = "Senha-Ficticia-Da-Tela-" + uuid4().hex[:8]
 LOGIN = "cotador-ficticio@exemplo.invalid"
-#: uma quarta-feira 12:00 em Brasília — dentro da janela padrão (seg-sab 07–22)
+#: uma quarta-feira 12:00 em Brasília (desde a SPEC-129-C F0 a conta global não tem janela — o instante só fixa o relógio)
 QUARTA_MEIO_DIA = datetime(2026, 10, 7, 15, 0, tzinfo=timezone.utc)
 
 
@@ -98,7 +98,8 @@ def test_o_fio_a_tela_liga_o_robo_e_o_motor_escolhe_a_conta(mundo):
     [conta] = _da_tela(m, m.a)
     assert conta["robo_estado"] == "ativo" and conta["username"] == LOGIN
     assert vault.decrypt(conta["secret_encrypted"]) == SENHA, "a senha está no cofre (a MESMA chave do worker)"
-    assert conta["robo_janela"] == CR.JANELA_PADRAO and conta["robo_teto_por_hora"] is None
+    # SPEC-129-C F0 · D-129C-01: a conta global nasce SEM janela (sempre ligada) — era a janela padrão seg-sab 07–22
+    assert conta["robo_janela"] is None and conta["robo_teto_por_hora"] is None
     retrato = r.json()["conta"]
     assert retrato["situacao"] == "aguardando" and retrato["tem_senha"] is True
     assert retrato["usuario"] == CR.mascarar(LOGIN) and set(retrato["acoes"]) >= {"pausar", "trocar_senha",
@@ -106,10 +107,11 @@ def test_o_fio_a_tela_liga_o_robo_e_o_motor_escolhe_a_conta(mundo):
     # o motor resolve a conta que a tela gravou (o fim do fio): mesma corretora, dentro da janela, com a lease
     escolhida = ROB.escolher(m.supa, m.a, "quem_cobra_menos", dono="motor-teste", agora=QUARTA_MEIO_DIA)
     assert escolhida is not None and escolhida["id"] == conta["id"]
-    # CONTROLE: domingo às 12h está fora da janela padrão — o motor NÃO a usa (a janela gravada é a que ele lê)
+    # SPEC-129-C F0 (§9.3, a lição migra): domingo também — a conta global não tem horário. O CONTROLE (uma conta COM
+    # janela recusada no mesmo instante) mora em `test_spec129c_agger_sempre_ligado` ①
     ROB.liberar(m.supa, escolhida, "motor-teste")
     domingo = QUARTA_MEIO_DIA + timedelta(days=4)
-    assert ROB.escolher(m.supa, m.a, "quem_cobra_menos", dono="motor-teste", agora=domingo) is None
+    assert ROB.escolher(m.supa, m.a, "quem_cobra_menos", dono="motor-teste", agora=domingo)["id"] == conta["id"]
 
 
 # ② ===================================================================================================================
@@ -145,7 +147,7 @@ def test_o_comando_e_a_tela_gravam_igual_e_o_mesmo_registro(mundo):
     m = mundo
     saida = []
     rc = CMD.main(["cadastrar", "--corretora", m.b, "--rotulo", CR.ROTULO_DA_CORRETORA, "--usuario", LOGIN,
-                   "--estado", "ativo", "--janela", "seg-sab,07:00-22:00"],
+                   "--estado", "ativo"],   # SPEC-129-C F0: a conta global não tem --janela (o comando a recusa)
                   supa=m.supa, ler_senha=lambda: SENHA, cifrar=vault.encrypt, escrever=saida.append)
     assert rc == 0, saida
     assert _post(m, m.a, "conectar", usuario=LOGIN, senha=SENHA).status_code == 200
@@ -210,7 +212,8 @@ def test_a_senha_nunca_aparece_em_resposta_nem_em_log(mundo, caplog, monkeypatch
         _post(m, m.a, "janela", janela={"dias": "toda hora", "inicio": "x", "fim": "y"}),   # recusa
         _post(m, m.a, "trocar_senha", senha=SENHA + "-2"),
     ]
-    assert [r.status_code for r in respostas] == [200, 200, 200, 200, 200, 409, 200]
+    # SPEC-129-C F0: a conta global não tem horário — as duas ações `janela` são recusadas (409)
+    assert [r.status_code for r in respostas] == [200, 200, 200, 200, 409, 409, 200]
     # o erro INESPERADO com a senha no corpo da exceção (a linha do banco ecoada) não vaza
     def explode(*a, **k):
         raise ValueError(f"linha com {SENHA} e {LOGIN}")

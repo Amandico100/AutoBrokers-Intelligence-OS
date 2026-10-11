@@ -245,7 +245,7 @@ async def delete_credential(
 #   · grava SÓ a conta global (`conta_do_robo.ROTULO_DA_CORRETORA`) — as contas do rodízio e do canário (login de
 #     pessoa) continuam só do comando;
 #   · grava pelo MESMO serviço do `comando_robo cadastrar` (`portal_worker.multicalculo.conta_do_robo`) — uma regra;
-#   · a conta nasce e volta SEMPRE `ativo` (nunca `teste`);
+#   · a conta nasce e volta SEMPRE `ativo` (nunca `teste`) e SEMPRE LIGADA, sem horário (SPEC-129-C F0 · D-129C-01);
 #   · `company_id` vem da SESSÃO (o proxy Next, `porteiroDeConfiguracao` para escrever: só admin da corretora);
 #   · a senha nunca volta (só `tem_senha`) e nunca vai para log — nem o corpo da exceção, que pode trazer a linha.
 def _conta_do_robo():
@@ -276,7 +276,10 @@ async def agger_da_corretora_agir(
     request: Request,
     x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
 ):
-    """`acao`: conectar (login + senha; também é o "trocar senha") · pausar · religar · desconectar · janela."""
+    """`acao`: conectar (login + senha; também é o "trocar senha") · pausar · religar · desconectar.
+
+    SPEC-129-C F0 · D-129C-01: sem horário — a conta global é sempre ligada; `janela` é recusada pelo serviço (409) e um
+    `janela` no corpo é ignorado. Horário e regras moram em cada auxiliar."""
     _require_internal_key(x_key)
     body = await request.json()
     company_id = str(body.get("company_id") or "")
@@ -285,17 +288,16 @@ async def agger_da_corretora_agir(
         raise HTTPException(status_code=400, detail="company_id e acao sao obrigatorios")
     CR = _conta_do_robo()
     supa = get_supabase_client().client
-    janela = body.get("janela") if isinstance(body.get("janela"), dict) else None
     try:
         if acao in ("conectar", "trocar_senha"):
             senha = str(body.get("senha") or "")
             try:
                 CR.conectar_da_corretora(supa, company_id, usuario=str(body.get("usuario") or ""), senha=senha,
-                                         cifrar=portal_vault.encrypt, janela=janela)
+                                         cifrar=portal_vault.encrypt)
             finally:
                 senha = ""  # noqa: F841
         else:
-            CR.agir_da_corretora(supa, company_id, acao, janela=janela)
+            CR.agir_da_corretora(supa, company_id, acao)
     except CR.Recusa as e:
         raise HTTPException(status_code=409, detail=str(e))
     except RuntimeError as e:  # o cofre sem chave (`portal_vault._fernet`)

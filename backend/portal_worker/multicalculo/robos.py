@@ -126,9 +126,13 @@ def _minutos(hhmm: Any) -> Optional[int]:
 
 
 def dentro_da_janela(janela: Any, agora: Optional[datetime] = None) -> bool:
-    """A conta pode trabalhar AGORA?
+    """A conta pode COMEÇAR um trabalho agora? (SPEC-129-C F0: a janela vale para começar — nunca para matar um
+    cálculo em andamento, nem para impedir a retomada ou a continuação de um pedido que já começou; ver
+    `conta_elegivel(continuacao=...)`.)
 
-    `None` = sem janela = sempre (só conta `ativo`; `teste` sem janela é proibido pelo CHECK do banco e,
+    `None` = sem janela = SEMPRE, 24×7, sem nenhum minuto de fora (é a representação da conta GLOBAL "Agger da
+    corretora", D-129C-01 — uma janela "seg-dom 00:00-23:59" NÃO é sempre: deixa 23:59–00:00 de fora toda noite) (só
+    conta `ativo`; `teste` sem janela é proibido pelo CHECK do banco e,
     se chegar aqui, `conta_elegivel` recusa). Formatos aceitos (💭 a costura confere com o
     `multicalculo_robo.py cadastrar --janela`): `{"dias": "seg-sex", "inicio": "07:00", "fim": "20:00"}`
     (dias também como lista de nomes ou de 0..6) ou o texto `"seg-sex,07:00-20:00"`.
@@ -166,8 +170,15 @@ def dentro_da_janela(janela: Any, agora: Optional[datetime] = None) -> bool:
 # ==========================================================================
 # Elegibilidade
 # ==========================================================================
-def conta_elegivel(conta: Dict[str, Any], origem: str, agora: datetime, *, canario: bool) -> tuple:
-    """(True, "") ou (False, motivo). Pura: o teto por hora e a lease ficam em `escolher`."""
+def conta_elegivel(conta: Dict[str, Any], origem: str, agora: datetime, *, canario: bool,
+                   continuacao: bool = False) -> tuple:
+    """(True, "") ou (False, motivo). Pura: o teto por hora e a lease ficam em `escolher`.
+
+    `continuacao` (SPEC-129-C F0, Founder 11/10: *"pode travar durante uma execução"*): o trabalho já COMEÇOU — a
+    retomada da leitura de um cálculo `calculando`, ou a econômica que entra no negócio já aberto pelo mesmo pedido.
+    A janela vale só para COMEÇAR: numa conta de ROBÔ (`ativo`) a continuação não espera a janela reabrir (o pedido
+    ficaria parado a noite inteira, ou expiraria). A conta `teste` (login de PESSOA) obedece à janela SEMPRE — fora
+    dela é o horário da pessoa."""
     estado = conta.get("robo_estado")
     if estado not in ESTADOS:
         return False, "não é robô"
@@ -183,7 +194,7 @@ def conta_elegivel(conta: Dict[str, Any], origem: str, agora: datetime, *, canar
             return False, "conta de teste só atende pedido de teste no canário"
         if conta.get("robo_janela") is None:
             return False, "conta de teste sem janela"
-    if not dentro_da_janela(conta.get("robo_janela"), agora):
+    if not (continuacao and estado != TESTE) and not dentro_da_janela(conta.get("robo_janela"), agora):
         return False, "fora da janela"
     if not conta.get("secret_encrypted"):
         return False, "sem senha"
@@ -243,7 +254,8 @@ def adquirir(supa, conta: Dict[str, Any], dono: str, agora: datetime,
 
 def escolher(supa, corretora_id: str, origem: str, *, dono: str, agora: Optional[datetime] = None,
              quantos: int = 1, canario: bool = False, lease_s: int = LEASE_VENCE_S,
-             ignorar: Iterable[str] = (), somente: Optional[str] = None) -> Optional[Dict[str, Any]]:
+             ignorar: Iterable[str] = (), somente: Optional[str] = None,
+             continuacao: bool = False) -> Optional[Dict[str, Any]]:
     """A conta-robô que vai rodar `quantos` cálculos desta corretora — com a lease JÁ tomada — ou None.
 
     Percorre as candidatas (a menos usada primeiro); a ocupada por outro motor perde o CAS e a próxima
@@ -251,13 +263,15 @@ def escolher(supa, corretora_id: str, origem: str, *, dono: str, agora: Optional
     pausou nesse meio tempo, ela NÃO volta e a lease é devolvida (conserto 129-B, red B1).
 
     `somente` (conserto 129-B, juiz P11): o grupo já tem negócio aberto numa conta — só ELA serve. A
-    econômica nunca abre negócio novo noutra conta; sem ela livre, o grupo espera."""
+    econômica nunca abre negócio novo noutra conta; sem ela livre, o grupo espera.
+
+    `continuacao` (SPEC-129-C F0): o trabalho já começou — a janela não o segura (ver `conta_elegivel`)."""
     agora = agora or _agora()
     pulo = set(ignorar or ())
     for conta in candidatos(supa, corretora_id):
         if conta["id"] in pulo or (somente is not None and conta["id"] != somente):
             continue
-        ok, _motivo = conta_elegivel(conta, origem, agora, canario=canario)
+        ok, _motivo = conta_elegivel(conta, origem, agora, canario=canario, continuacao=continuacao)
         if not ok:
             continue
         feitos = calculos_na_ultima_hora(supa, company_id=corretora_id, account_id=conta["id"], agora=agora)

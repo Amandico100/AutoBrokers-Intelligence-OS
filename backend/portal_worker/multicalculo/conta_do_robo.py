@@ -32,11 +32,15 @@ PORTAL_KEY = robos.PORTAL_KEY
 ROTULO_DA_CORRETORA = "agger-da-corretora"
 NOME_DA_CORRETORA = "Agger da corretora"
 
-#: 💭 a janela padrão da conta que nasce pela tela: segunda a sábado, 07:00–22:00 (Brasília). Editável na tela.
-#: Sem janela (`None` = sempre) a conta trabalharia de madrugada e no domingo — quando ninguém da corretora vê um
-#: bloqueio de senha. O teto por hora fica NULO: vale `robos.TETO_PADRAO_POR_HORA`.
-JANELA_PADRAO: Dict[str, str] = {"dias": "seg-sab", "inicio": "07:00", "fim": "22:00"}
-DIAS_DA_TELA = ("seg-sex", "seg-sab", "seg-dom")
+#: 🔴 SPEC-129-C F0 · D-129C-01 (Founder, 11/10: *"O Agger da corretora NÃO deve ter horário de funcionamento. Deve
+#: ficar ligado o tempo todo. Se for para ter horário ou personalização, isso deve ser feito nos AUXILIARES. O conector
+#: é só a conexão do sistema."*): a conta GLOBAL é SEMPRE LIGADA. A representação é `robo_janela = NULL`, porque é a
+#: única que `robos.dentro_da_janela` lê como 24×7 (`None` → True, sem minuto de fora). Uma janela "seg-dom
+#: 00:00-23:59" NÃO serve: o fim é exclusivo e deixa 23:59–00:00 fora toda noite — 📊 era o que as duas contas da tela
+#: tinham em 11/10. A tela não mostra nem edita horário; regra de horário, se existir, mora na config de cada auxiliar
+#: (QCM, Cotação, Renovação — requisito na SPEC-131-0). O teto por hora fica NULO: vale `robos.TETO_PADRAO_POR_HORA`.
+#: (Revê a janela padrão seg-sab 07–22 da 133-A.1.) O comando continua podendo pôr janela nas OUTRAS contas de robô.
+JANELA_DA_CORRETORA: Optional[Dict[str, str]] = None
 
 
 #: conserto 133-A.1 (red R4): o login do Agger é um e-mail/usuário (RFC 5321: 254) e a senha nunca passa de 256 —
@@ -191,6 +195,9 @@ def cadastrar(supa, *, company_id: str, rotulo: str, usuario: str, senha: Union[
     if not rotulo:
         raise Recusa("--rotulo obrigatório")
     _rotulo_reservado(rotulo, estado)
+    if rotulo == ROTULO_DA_CORRETORA and janela is not None:
+        # SPEC-129-C F0 · D-129C-01: a conta global é sempre ligada — nem o comando lhe põe janela
+        raise Recusa(RECUSA_DE_HORARIO)
     existe = _dados(supa.table("portal_accounts").select("id, robo_estado").eq("company_id", company_id)
                     .eq("portal_key", PORTAL_KEY).eq("account_label", rotulo).limit(1).execute())
     if existe:
@@ -280,9 +287,56 @@ def apagar_senha(supa, conta: Dict[str, Any]) -> None:
 
 
 def mudar_janela(supa, conta: Dict[str, Any], janela: Dict[str, str]) -> None:
+    """A janela de uma conta de robô do COMANDO (rodízio, canário). A conta global nunca tem janela (D-129C-01)."""
     janela = janela_valida(janela)
     supa.table("portal_accounts").update({"robo_janela": janela}).eq("id", conta["id"]).eq(
-        "company_id", conta["company_id"]).execute()
+        "company_id", conta["company_id"]).neq("account_label", ROTULO_DA_CORRETORA).execute()
+
+
+# ======================================================================================================================
+# SEMPRE LIGADA — a conta global sem horário (SPEC-129-C F0 · D-129C-01)
+# ======================================================================================================================
+RECUSA_DE_HORARIO = ("O Agger da corretora fica ligado o tempo todo — o conector é só a conexão. Horário e regras, "
+                     "quando existirem, ficam em cada auxiliar.")
+
+#: os estados de uma conta de login DEDICADO (nunca `teste`, que o CHECK do banco exige com janela)
+_ESTADOS_DE_ROBO_DEDICADO = (robos.ATIVO, robos.PAUSADO, robos.BLOQUEADO, robos.OCUPADA)
+
+
+def _tirar_janela(supa, conta: Dict[str, Any]) -> bool:
+    """`robo_janela = NULL` (24×7) SÓ na conta global e nunca numa `teste` (login de PESSOA). Devolve se gravou."""
+    feito = _dados(supa.table("portal_accounts").update({"robo_janela": None})
+                   .eq("id", conta["id"]).eq("company_id", conta["company_id"]).eq("portal_key", PORTAL_KEY)
+                   .eq("account_label", ROTULO_DA_CORRETORA).in_("robo_estado", list(_ESTADOS_DE_ROBO_DEDICADO))
+                   .execute())
+    return bool(feito)
+
+
+def sempre_ligada(supa, *, rotulo: str = ROTULO_DA_CORRETORA,
+                  company_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Tira a janela das contas GLOBAIS (rótulo `agger-da-corretora`) de todas as corretoras (ou de uma) — IDEMPOTENTE:
+    a que já está sem janela não é escrita. Não mexe em estado, senha, login nem lease; nunca numa conta `teste`.
+
+    Devolve uma linha por conta global: `{id, company_id, estado, janela_antes, mudou}` — sem login, sem segredo."""
+    if rotulo != ROTULO_DA_CORRETORA:
+        raise Recusa(f"só a conta global ('{ROTULO_DA_CORRETORA}') é sempre ligada — as outras contas de robô têm a "
+                     f"janela que o comando gravou")
+    q = (supa.table("portal_accounts").select("id, company_id, account_label, robo_estado, robo_janela")
+         .eq("portal_key", PORTAL_KEY).eq("account_label", ROTULO_DA_CORRETORA))
+    if company_id is not None:
+        q = q.eq("company_id", company_id)
+    saida = []
+    for c in _dados(q.order("company_id").execute()):
+        estado = c.get("robo_estado")
+        if estado is None:
+            continue
+        antes = c.get("robo_janela")
+        mudou = False
+        if antes is not None and estado in _ESTADOS_DE_ROBO_DEDICADO:
+            mudou = _tirar_janela(supa, c)
+        saida.append({"id": c["id"], "company_id": c["company_id"], "estado": estado, "janela_antes": antes,
+                      "mudou": mudou})
+    return saida
 
 
 # ======================================================================================================================
@@ -313,8 +367,7 @@ def retrato(supa, company_id: str, *, agora: Optional[datetime] = None) -> Dict[
     funcionando · aguardando. O texto humano vem DAQUI (a tela não traduz estado cru)."""
     agora = agora or datetime.now(timezone.utc)
     c = conta_da_corretora(supa, company_id)
-    base = {"nome": NOME_DA_CORRETORA, "janela_padrao": dict(JANELA_PADRAO), "dias_possiveis": list(DIAS_DA_TELA),
-            "teto_padrao_por_hora": robos.TETO_PADRAO_POR_HORA}
+    base = {"nome": NOME_DA_CORRETORA, "sempre_ligado": True, "teto_padrao_por_hora": robos.TETO_PADRAO_POR_HORA}
     if c is None:
         return {**base, "conectado": False, "situacao": "nao_conectado",
                 "rotulo": "Ainda não conectado — coloque o login e a senha do Agger da corretora.",
@@ -322,8 +375,6 @@ def retrato(supa, company_id: str, *, agora: Optional[datetime] = None) -> Dict[
     estado = c.get("robo_estado")
     tem_senha = bool(c.get("secret_encrypted"))
     ultimo = _ultimo_calculo(supa, c)
-    janela = c.get("robo_janela")
-    na_janela = robos.dentro_da_janela(janela, agora)
     lease = robos._ts(c.get("robo_batida_em"))
     em_uso = bool(c.get("robo_dono")) and lease is not None and (agora - lease).total_seconds() < robos.LEASE_VENCE_S
     if not tem_senha:
@@ -351,20 +402,21 @@ def retrato(supa, company_id: str, *, agora: Optional[datetime] = None) -> Dict[
         situacao, rotulo, acoes = ("aguardando", "Conectado — aguardando o 1º cálculo.",
                                    ["pausar", "trocar_senha", "desconectar"])
     return {**base, "conectado": tem_senha, "situacao": situacao, "rotulo": rotulo,
-            "acoes": acoes + ["janela"] if situacao != "teste" else [],
+            "acoes": acoes if situacao != "teste" else [],
             "id": c["id"], "usuario": mascarar(c.get("username") or ""), "tem_senha": tem_senha, "estado": estado,
             "ultimo_uso": ultimo, "ocupada_ate": c.get("robo_ocupada_ate") if estado == robos.OCUPADA else None,
-            "janela": janela if isinstance(janela, dict) else None, "dentro_da_janela": na_janela,
+            # SPEC-129-C F0: sem horário na tela. `sempre_ligado` False só numa conta legada com janela (o comando
+            # `sempre-ligada` e o próximo "conectar" a limpam) — a tela não a esconde
+            "sempre_ligado": c.get("robo_janela") is None,
             "teto_por_hora": robos.teto_da_conta(c), "atualizado_em": c.get("updated_at")}
 
 
-def conectar_da_corretora(supa, company_id: str, *, usuario: str, senha: str, cifrar: Callable[[str], str],
-                          janela: Optional[Dict[str, str]] = None) -> None:
+def conectar_da_corretora(supa, company_id: str, *, usuario: str, senha: str, cifrar: Callable[[str], str]) -> None:
     """Conectar e trocar a senha são o MESMO gesto na tela: login + senha → a conta global em uso real.
 
-    Sem conta: `cadastrar` (o MESMO do comando) com `ativo`, a janela padrão (ou a escolhida) e o teto padrão.
-    Com conta: `trocar_senha` (pausa — e o gatilho do banco pausaria de qualquer jeito) e `religar` como `ativo`;
-    o login em branco mantém o guardado (trocar só a senha).
+    Sem conta: `cadastrar` (o MESMO do comando) com `ativo`, SEM janela (sempre ligada, D-129C-01) e o teto padrão.
+    Com conta: `trocar_senha` (pausa — e o gatilho do banco pausaria de qualquer jeito), a janela legada sai
+    (`_tirar_janela`) e `religar` como `ativo`; o login em branco mantém o guardado (trocar só a senha).
 
     🔴 D-133A1-03 (revê a D-129B-11): a tela aceita o Agger porque o login agora é DEDICADO ao robô (cotador@) e
     quem o põe é o admin da corretora, de propósito. Por isso a conta da tela nasce e volta SEMPRE `ativo` — nunca
@@ -377,12 +429,12 @@ def conectar_da_corretora(supa, company_id: str, *, usuario: str, senha: str, ci
         raise Recusa("Informe o login e a senha do Agger.")
     if c is None:
         cadastrar(supa, company_id=company_id, rotulo=ROTULO_DA_CORRETORA, usuario=usuario, senha=senha,
-                  estado=robos.ATIVO, janela=janela or dict(JANELA_PADRAO), teto=None, cifrar=cifrar)
+                  estado=robos.ATIVO, janela=JANELA_DA_CORRETORA, teto=None, cifrar=cifrar)
         return
     # login em branco ao trocar a senha = mantém o login que já está guardado
     trocar_senha(supa, c, senha, cifrar=cifrar, usuario=usuario or None)
-    if janela is not None:
-        mudar_janela(supa, c, janela)
+    if c.get("robo_janela") is not None:
+        _tirar_janela(supa, c)
     religar(supa, c, robos.ATIVO)
 
 
@@ -394,8 +446,9 @@ def _so_conta_de_robo(c: Optional[Dict[str, Any]]) -> None:
                      "retirá-la pelo comando antes de conectar o Agger da corretora.")
 
 
-def agir_da_corretora(supa, company_id: str, acao: str, *, janela: Optional[Dict[str, str]] = None) -> None:
-    """pausar · religar · desconectar · janela — sempre sobre a conta GLOBAL desta corretora.
+def agir_da_corretora(supa, company_id: str, acao: str) -> None:
+    """pausar · religar · desconectar — sempre sobre a conta GLOBAL desta corretora. (`janela` saiu na SPEC-129-C F0:
+    a conta global é sempre ligada — D-129C-01.)
 
     Conserto 133-A.1 (red R2): o SERVIDOR confere a ação contra o estado (a tela esconder o botão não basta)."""
     c = conta_da_corretora(supa, company_id)
@@ -417,15 +470,14 @@ def agir_da_corretora(supa, company_id: str, acao: str, *, janela: Optional[Dict
     elif acao == "desconectar":
         apagar_senha(supa, c)
     elif acao == "janela":
-        if janela is None:
-            raise Recusa("Informe os dias e o horário.")
-        mudar_janela(supa, c, janela)
+        raise Recusa(RECUSA_DE_HORARIO)
     else:
         raise Recusa("ação desconhecida")
 
 
 __all__ = (
-    "PORTAL_KEY", "ROTULO_DA_CORRETORA", "NOME_DA_CORRETORA", "JANELA_PADRAO", "Recusa", "mascarar",
+    "PORTAL_KEY", "ROTULO_DA_CORRETORA", "NOME_DA_CORRETORA", "JANELA_DA_CORRETORA", "RECUSA_DE_HORARIO", "Recusa",
+    "mascarar", "sempre_ligada",
     "janela_valida", "janela_de_texto", "janela_em_texto", "empresa", "conta_por_id", "cadastrar", "pausar",
     "religar", "trocar_senha", "apagar_senha", "mudar_janela", "conta_da_corretora", "retrato",
     "conectar_da_corretora", "agir_da_corretora",

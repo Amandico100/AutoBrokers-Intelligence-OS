@@ -9,8 +9,11 @@ export const dynamic = 'force-dynamic';
 /**
  * SPEC-133-A.1 F3 — o "Agger da corretora" na tela de conexões (D-133A1-03/04).
  *
- * GET  → { conta: { situacao, rotulo, usuario (mascarado), tem_senha, ultimo_uso, janela, acoes… } }
- * POST → { acao: 'conectar' | 'trocar_senha' | 'pausar' | 'religar' | 'desconectar' | 'janela', usuario?, senha?, janela? }
+ * GET  → { conta: { situacao, rotulo, usuario (mascarado), tem_senha, ultimo_uso, sempre_ligado, acoes… } }
+ * POST → { acao: 'conectar' | 'trocar_senha' | 'pausar' | 'religar' | 'desconectar', usuario?, senha? }
+ *
+ * SPEC-129-C F0 · D-129C-01 (Founder, 11/10): o Agger da corretora fica ligado o tempo todo — sem horário aqui. O
+ * conector é só a conexão; horário e regras, quando existirem, moram em cada auxiliar.
  *
  * 🔴 O `company_id` vem SEMPRE da sessão — o do corpo é ignorado. Escrever passa pelo porteiro (origem + papel
  * administrativo DA corretora ativa). A senha só atravessa para o backend, que cifra no cofre; nunca volta, nunca
@@ -21,7 +24,7 @@ function backendHeaders(): Record<string, string> {
   return { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': key };
 }
 
-const ACOES = new Set(['conectar', 'trocar_senha', 'pausar', 'religar', 'desconectar', 'janela']);
+const ACOES = new Set(['conectar', 'trocar_senha', 'pausar', 'religar', 'desconectar']);
 
 export async function GET() {
   const ctx = await resolveSessionCompany();
@@ -52,7 +55,6 @@ export async function POST(req: NextRequest) {
         acao,
         usuario: typeof body?.usuario === 'string' ? body.usuario : undefined,
         senha: typeof body?.senha === 'string' ? body.senha : undefined,
-        janela: body?.janela && typeof body.janela === 'object' ? body.janela : undefined,
         company_id: porteiro.companyId, // da SESSÃO — nunca do cliente
       }),
     });

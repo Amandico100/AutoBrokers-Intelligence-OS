@@ -421,6 +421,29 @@ prefere usuários-robô (licença); a InfoCap da AutoFleet conectada para a medi
 
 ---
 
+## 8-A. Horário e regras moram no auxiliar, não no conector (Founder, 11/10)
+
+> *"O Agger da corretora NÃO deve ter horário de funcionamento. Deve ficar ligado o tempo todo. Se for para ter horário ou
+> personalização, isso deve ser feito nos AUXILIARES. O conector é só a conexão do sistema."* — D-129C-01 (gerente, nota 92).
+
+**FATO (SPEC-129-C F0, 11/10):** a conta global `agger-da-corretora` é gravada pela tela **sem janela** (`robo_janela = NULL`, o
+único valor que `robos.dentro_da_janela` lê como 24×7); a tela não mostra nem edita horário, e o servidor recusa a ação `janela`.
+📊 As 2 contas globais da produção tinham `seg-dom 00:00–23:59` (deixava 23:59–00:00 de fora toda noite) e passaram a sem janela
+pelo `comando_robo sempre-ligada`. E a janela que sobra numa conta de robô do comando vale só para **começar**: a retomada e a
+econômica de um pedido já começado não esperam a janela reabrir.
+
+**REQUISITO para a 131-0 (e para quem configurar os auxiliares):**
+- **R-HORARIO-1** · Nenhuma conta Agger que a corretora conecta — a global nem a de um comercial — tem horário no conector. O
+  conector guarda só a conexão (login, senha no cofre, estado).
+- **R-HORARIO-2** · Se um dia houver regra de quando trabalhar ("não cotar de madrugada", "renovação só em dia útil", "no Agger
+  da Mariana só fora do expediente dela"), ela mora na **configuração de cada auxiliar** (Quem Cobra Menos, Cotação,
+  Renovação) — e é o auxiliar que decide quando ENFILEIRAR o pedido; o motor nunca mata um cálculo em andamento por horário.
+- **R-HORARIO-3** · A exceção que fica no motor é a conta `teste` (login de PESSOA, só canário, D-129B-04): continua exigindo
+  janela, porque fora dela é o horário da pessoa. Na 131-0, o Agger de um comercial usado pelo robô (D-131-0-05) segue a regra
+  do auxiliar, não uma janela na conta.
+
+---
+
 ## 9. Referências
 
 - Internas: ONTOLOGIA · CAMADAS-DE-CONEXAO · PLANO-COMERCIAIS-E-CONTAS · A-PROVA-DO-AGGER §2/§E1/§E2/§E14/§10 · PLANO-MESTRE §4

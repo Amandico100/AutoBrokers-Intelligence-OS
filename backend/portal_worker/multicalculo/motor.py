@@ -452,7 +452,9 @@ class Motor:
                 continue
             if (pedido.get("origem") or "") == "teste" and not self.canario():
                 continue   # conserto 129-B (red P6): pedido de teste só no canário — também na retomada
-            conta = await self._escolher(corretora, pedido.get("origem") or "", agora, 1)
+            # SPEC-129-C F0: a retomada é a LEITURA de um cálculo que já saiu — a janela não a segura (ela vale só
+            # para começar; o negócio já existe no Agger e o pedido ficaria `calculando` até a janela reabrir)
+            conta = await self._escolher(corretora, pedido.get("origem") or "", agora, 1, continuacao=True)
             if conta is None:
                 continue
             tomados = []
@@ -532,7 +534,10 @@ class Motor:
             if por_corretora[corretora] + n > teto_corretora_hora():
                 logger.warning("[MC] teto da corretora %s por hora atingido — o grupo espera", corretora)
                 continue
-            conta = await self._escolher(corretora, origem, agora, n, somente=conta_fixa)
+            # SPEC-129-C F0: a econômica (ou a completa+) que entra no negócio JÁ ABERTO pelo mesmo pedido é a
+            # continuação de um cálculo que começou — a janela não a segura. O ajuste é pedido novo: obedece à janela.
+            continuacao = conta_fixa is not None and all(c.get("opcao") != "ajuste" for c in calcs)
+            conta = await self._escolher(corretora, origem, agora, n, somente=conta_fixa, continuacao=continuacao)
             if conta is None:
                 continue
             tomados = []
@@ -554,12 +559,13 @@ class Motor:
         return pares
 
     async def _escolher(self, corretora: str, origem: str, agora: datetime, quantos: int,
-                        somente: Optional[str] = None):
+                        somente: Optional[str] = None, continuacao: bool = False):
         """`robos.escolher` + a marca EM USO já na seleção: dois grupos da mesma volta nunca pegam o
         mesmo robô, nem quando a lease dele já é deste motor (sessão ociosa)."""
         conta = await self._db(lambda: robos.escolher(
             self.supa, corretora, origem, dono=self.dono, agora=agora, quantos=quantos,
-            canario=self.canario(), lease_s=self.lease_s, ignorar=set(self._contas_em_uso), somente=somente))
+            canario=self.canario(), lease_s=self.lease_s, ignorar=set(self._contas_em_uso), somente=somente,
+            continuacao=continuacao))
         if conta is not None:
             self._contas_em_uso.add(conta["id"])
             self._ociosas.pop(conta["id"], None)

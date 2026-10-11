@@ -13,6 +13,8 @@
     listar        [--corretora <uuid>]                  sem senha; o usuário MASCARADO
     aderir        --canal <uuid> --corretora <uuid>     recusa se o canal não for `platform_canal`
     apagar-senha  --conta <uuid>                        a conta vira `pausado` e fica sem senha
+    sempre-ligada [--rotulo agger-da-corretora] [--corretora <uuid>]
+                                                        tira a janela da conta GLOBAL (24×7, D-129C-01) — idempotente
 
 🔴 Mora no pacote do worker porque a imagem do `portal-worker` copia SÓ `backend/portal_worker` (Dockerfile): o
 comando tem de rodar onde o robô roda (protocolo §5 ②, ambiente de uso). Por isso usa o cofre do worker
@@ -112,6 +114,23 @@ def apagar_senha(supa, args) -> str:
     return f"senha apagada e robô pausado: conta {conta['id']}"
 
 
+def sempre_ligada(supa, args) -> List[str]:
+    """SPEC-129-C F0 · D-129C-01: a conta global (`agger-da-corretora`) de todas as corretoras (ou de uma) fica SEM
+    janela — ligada o tempo todo. Idempotente: a que já está sem janela não é escrita. Sem login, sem senha na saída."""
+    corretora = _uuid(args.corretora, "--corretora") if args.corretora else None
+    linhas = CR.sempre_ligada(supa, rotulo=args.rotulo, company_id=corretora)
+    if not linhas:
+        return [f"nenhuma conta '{args.rotulo}' encontrada"]
+    saida = [f"{c['id']} · corretora {c['company_id']} · {c['estado']} · janela antes "
+             f"{CR.janela_em_texto(c['janela_antes']) if c['janela_antes'] is not None else 'nenhuma'} · "
+             f"{'AGORA SEMPRE LIGADA' if c['mudou'] else ('já estava sempre ligada' if c['janela_antes'] is None else 'NÃO mudou')}"
+             for c in linhas]
+    mudaram = sum(1 for c in linhas if c["mudou"])
+    saida.append(f"{len(linhas)} conta(s) global(is) · {mudaram} mudaram agora · "
+                 f"{sum(1 for c in linhas if c['janela_antes'] is None)} já estavam sempre ligadas")
+    return saida
+
+
 def listar(supa, args) -> List[str]:
     q = (supa.table("portal_accounts")
          .select("id, company_id, account_label, username, secret_encrypted, robo_estado, robo_teto_por_hora, "
@@ -176,6 +195,9 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("religar", help="pausado/bloqueado/ocupada -> ativo ou teste (o único caminho de volta)")
     s.add_argument("--conta", required=True)
     s.add_argument("--estado", required=True, choices=(robos.ATIVO, robos.TESTE))
+    s = sub.add_parser("sempre-ligada", help="tira a janela da conta global do Agger (sempre ligada, idempotente)")
+    s.add_argument("--rotulo", default=CR.ROTULO_DA_CORRETORA, choices=(CR.ROTULO_DA_CORRETORA,))
+    s.add_argument("--corretora", default=None)
     s = sub.add_parser("listar", help="lista os robôs (sem senha)")
     s.add_argument("--corretora", default=None)
     s = sub.add_parser("aderir", help="liga o canal a uma corretora")
@@ -233,6 +255,9 @@ def main(argv: Optional[List[str]] = None, *, supa=None, ler_senha: Optional[Cal
             escrever(trocar_senha(supa, args, ler_senha=ler_senha or _senha_do_ambiente_ou_digitada, cifrar=cifrar))
         elif args.acao == "apagar-senha":
             escrever(apagar_senha(supa, args))
+        elif args.acao == "sempre-ligada":
+            for linha in sempre_ligada(supa, args):
+                escrever(linha)
         elif args.acao == "listar":
             for linha in listar(supa, args):
                 escrever(linha)
