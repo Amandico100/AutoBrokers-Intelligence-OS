@@ -518,6 +518,36 @@ def _e_conflito_de_chave(erro: BaseException) -> bool:
             or "conflict" in texto)
 
 
+async def anexar_documento_do_corretor(mensagem: str, file_url: str, file_name: str = "", *,
+                                       company_id: str) -> str:
+    """O anexo do CORRETOR no chat principal entra no turno — SPEC-130-B F3 (D-130B-05).
+
+    Os bytes passam pelo LEITOR do produto (`conteudo_do_anexo`, o mesmo do WhatsApp): documento de seguro →
+    a ficha MASCARADA + o texto mascarado (o corretor pergunta de cláusula); outro → o texto MASCARADO.
+    📊 Antes: o texto cru do PDF, até 20.000 caracteres, CPF incluso. Falhou → o AVISO INTERNO de sempre.
+    ⛔ Nunca a URL, o nome do arquivo nem o conteúdo no log.
+    """
+    nome = file_name or "arquivo"
+    corpo = None
+    try:
+        from app.services.vision_service import baixar_documento, conteudo_do_anexo
+
+        dados = await baixar_documento(file_url)
+        if dados:
+            corpo = await conteudo_do_anexo(dados, file_name or file_url, company_id=company_id,
+                                            audiencia="corretor")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[STREAM DOC] leitura do anexo falhou (%s)", type(e).__name__)
+        corpo = None
+    if corpo:
+        logger.info("[STREAM DOC] ✅ Documento anexado lido pelo leitor do produto (SPEC-130-B)")
+        return f"{mensagem}\n\n[DOCUMENTO ANEXADO: {nome}]\n{corpo}\n[FIM DO DOCUMENTO]"
+    return (
+        f"{mensagem}\n\n[AVISO INTERNO: o usuário anexou o documento "
+        f"'{nome}' mas a extração falhou — diga isso com naturalidade e peça para reenviar ou colar o trecho.]"
+    )
+
+
 def _sse_legado(payload: Dict[str, Any]) -> str:
     return "data: %s\n\n" % json.dumps(payload)
 
@@ -827,19 +857,10 @@ async def chat_stream(
             logger.info("[STREAM VISION] ✅ Imagem analisada (F1)")
 
     if chat_request.fileUrl:
-        from app.services.vision_service import extract_document_text
-
-        doc_text = await extract_document_text(chat_request.fileUrl, chat_request.fileName or "")
-        if doc_text:
-            enriched_message = (
-                f"{enriched_message}\n\n[DOCUMENTO ANEXADO: {chat_request.fileName or 'arquivo'}]\n{doc_text}\n[FIM DO DOCUMENTO]"
-            )
-            logger.info("[STREAM DOC] ✅ Documento anexado extraído (F1)")
-        else:
-            enriched_message = (
-                f"{enriched_message}\n\n[AVISO INTERNO: o usuário anexou o documento "
-                f"'{chat_request.fileName or 'arquivo'}' mas a extração falhou — diga isso com naturalidade e peça para reenviar ou colar o trecho.]"
-            )
+        enriched_message = await anexar_documento_do_corretor(
+            enriched_message, chat_request.fileUrl, chat_request.fileName or "",
+            company_id=str(chat_request.companyId),
+        )
 
     # ===========================================================================
     # 🛡️ GUARDRAILS SECURITY CHECK (BEFORE STREAMING)
