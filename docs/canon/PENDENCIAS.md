@@ -13723,3 +13723,83 @@ a sessão do Supavisor ficou somente-leitura e o APPLY da _02 falhou. Contido co
 UTC: 2 erros "read-only", nenhum do produto. É a mesma armadilha da SPEC-116, repetida. **Destrava:** um guarda (teste ou hook) que
 recuse `SET SESSION` em script que fale com o pooler; o helper já usa `set transaction read only`. **De quem:** 🤖. **Custa esquecer:**
 na próxima vez, a escrita do PRODUTO pode cair na conexão envenenada.
+
+
+## P-LEITOR-01 · 🤖 O leitor da apólice lê inteira só Allianz residencial/condomínio e HDI condomínio (📊 11/32)
+📊 11/10, o leitor REAL do produto sobre 32 apólices da janela de renovação (`programa-multicalculo/131-0/LAUDO-LEITURA-DE-APOLICE.md`
+§3): a soma das coberturas fecha com o prêmio líquido em 11/32; Tokio, Allianz empresarial, Alfa e HDI auto = 0 linhas. **Destrava:** a
+SPEC-130-B (`specs-propostas/SPEC-130-B-A-FICHA-UNICA-DA-APOLICE.md`, a cascata com o juiz do prêmio). **De quem:** 🤖 130-B. **Custa
+esquecer:** o atendimento responde cobertura de Tokio, HDI auto e empresarial só com o `/itens`, que fecha o prêmio em 0/24 apólices de RE.
+
+## P-LEITOR-02 · 🤖 Uma página ruim derruba o PDF inteiro (Sura e Yelum: 📊 2 de 27 PDFs com texto)
+O PyPDF2 do produto relança o erro da página (`backend/app/services/document_service.py:397-399`) e o pipeline volta
+`policy_document_evidence_pipeline_failed` — nem o texto chega ao modelo. 📊 O PyMuPDF (já no `requirements.txt`) lê os dois (LAUDO §3.4).
+**Destrava:** PyMuPDF como RESERVA por página, nunca como troca (📊 trocar derruba a linha de controle de 18 para 0 linhas). Barato; pode
+entrar antes da 130-B. **De quem:** 🤖 130-B (U2). **Custa esquecer:** toda apólice Sura/Yelum fica sem leitura no chat e no atendimento.
+
+## P-LEITOR-03 · 🤖 O PDF que o segurado manda no WhatsApp (e o corretor no chat) vai cru ao modelo
+Texto cortado em 20.000 caracteres, colado na mensagem, sem ficha, sem conferência e sem máscara de CPF no extrator
+(`backend/app/api/webhook.py:3310-3325`, `backend/app/services/vision_service.py:48,152`, `backend/app/api/chat.py:829-841`); 📊 2 de 6
+documentos recebidos "não foi possível ler". É um segundo leitor de apólice ao lado do oficial. **Destrava:** 130-B (U4) — o anexo entra
+pelo mesmo leitor e ao modelo vai só a ficha mascarada. **De quem:** 🤖 130-B. **Custa esquecer:** dado pessoal ao provedor do modelo e
+respostas sobre cobertura sem conferência.
+
+## P-LEITOR-04 · 🤖 Ninguém sabe quantas leituras de apólice deram certo em produção
+📊 `documents.metadata` vazio em 21/21 PDFs do CORP; a tool guarda só `tipo/ok/campos/cobertura` no `output_summary`, não o
+`document_status` (LAUDO §2). **Destrava:** 130-B (U2): parser, linhas, fechou/não fechou e custo em `documents.metadata`; o status da
+leitura no `output_summary`. **De quem:** 🤖 130-B. **Custa esquecer:** a taxa de acerto do leitor em produção continua imensurável.
+
+## P-COBRANCA-01 · 🧑 Allianz e Mapfre recusam a senha cadastrada
+📊 10–11/09: a Allianz diz "Acesso negado — valide os dados"; a Mapfre "Autenticação inválida!" (prints transcritos em
+`backend/tests/corpus/telas_reais_de_portal/`); 📊 a Mapfre nunca teve uma varredura concluída (`LAUDO-COBRANCA.md` §3). **Destrava:**
+o Founder entra à mão nos dois portais, troca a senha se preciso e salva no conector (T-145). **De quem:** 🧑 Founder. **Custa esquecer:**
+2 de 6 seguradoras sem cobrança; ao religar, o disjuntor de saúde as tira do ar no 1º dia.
+
+## P-COBRANCA-02 · 🧑🤖 A Zurich devolve a lista de parcelas VAZIA, sem explicação
+📊 10–11/09: login certo, chamada da lista de 90 dias → HTTP 200 com 46 bytes, duas vezes; a regra manda para revisão humana (correto).
+Não se sabe se é recusa silenciosa ou carteira sem Zurich. **Destrava:** a captura HAR da corretora na tela "Parcelas vencidas" (T-148)
+decide; se a tela também mostra zero, a regra ganha uma testemunha (a contagem do dashboard). **De quem:** 🧑 a captura · 🤖 a SPEC de
+cobrança estável. **Custa esquecer:** a Zurich nunca cobra e ninguém sabe se há o que cobrar. Toca P-E0016-ZURICH-GUARDA-VERMELHO-NA-BASE.
+
+## P-COBRANCA-03 · 🤖 Religar a cobrança tende a estourar o teto de 900 s (o teste de login nunca rodou)
+📊 Execuções com 6 seguradoras: 831–893 s contra o teto de 900 s (`routine_engine.py:309`); o teste de login antes da varredura
+(`billing_collection.py:3361`) põe 6 logins a mais na mesma fila serial e 📊 nunca rodou (0 `login_check` na história); 📊 o robô está parado
+desde 11/09. **Destrava:** `BILLING_COLLECTION_TIMEOUT_SECONDS=1800` no `smith-api` (ou `PORTAL_WORKER_CONCURRENCY=2`) e religar em modo
+teste por 3 dias úteis, medindo o teste de login e `portal_accounts.health` (T-146). Conferir antes com
+`printenv BILLING_COLLECTION_TIMEOUT_SECONDS` no contêiner. **De quem:** 🧑 a variável · 🤖 a medição. **Custa esquecer:** a 1ª execução
+é cancelada no meio e o relatório do dia se perde. Toca P-PILOTO-11.
+
+## P-COBRANCA-04 · 🤖 As capturas HAR das seguradoras estão só na árvore vencida
+📊 Mapfre 1, Tokio 2, Yelum 1, Zurich 2 em `AutoBrokers-Opus-Exec/docs/intake/MATERIAIS/` (fora do git); nenhuma em `AutoBrokers-FIX`;
+Allianz e HDI não localizadas em lugar nenhum (`LAUDO-COBRANCA.md` §1). **Destrava:** copiar (nunca link — "nunca junction em worktree")
+para `AutoBrokers-FIX/docs/intake/MATERIAIS/<SEGURADORA>/`; Allianz e HDI vêm das capturas novas (T-147, T-148). **De quem:** 🤖 (cópia)
+· 🧑 (capturas novas). **Custa esquecer:** a próxima SPEC de cobrança trabalha sem a régua de referência, ou na árvore errada.
+
+## P-AGGER-SENHA-EXPOSTA · 🧑 O Agger entrega as senhas das seguradoras ao navegador de qualquer pessoa logada
+📊 FATO pelo código público do Agger (`programa-multicalculo/131-0/LAUDO-AGGER-E-MERCADO.md` §2.5): para "Ver na seguradora", a página
+monta login E senha da seguradora e os publica na janela para qualquer ouvinte (`postMessage(…, "*")`). **Destrava:** (a) 🤖 regra do
+produto: o robô nunca grava a resposta de configuração de seguradora do Agger e nunca roda com extensão de terceiro; o Agger nunca é
+cofre de senhas para nós (D-1311-03); (b) 🧑 o Founder decide quem tem login no Agger e, se alguém sair, troca as senhas no Agger E na
+seguradora (T-152); (c) 🧑 opcional: avisar a Dimensa. **De quem:** 🧑 Founder + 🤖. **Custa esquecer:** um ex-funcionário ou uma extensão
+maliciosa no navegador de alguém da equipe leva as senhas de todos os portais da corretora.
+
+## P-INFOCAP-INCORP · 🧑🤖 A escrita na InfoCap (INCORP) nunca foi testada e não há ambiente de teste
+📊 O INCORP é o único caminho que grava documento (PDF → IA da Corp → produtor → grava) e já é usado à mão (📊 34/60 Resulta, 54/60
+AutoFleet em 2026); mas a coleção não publica ambiente (`environmentUID "-"`), os logins são de PRODUÇÃO e **não existe DELETE de
+documento** (`LAUDO-CORPAPI-COMPLETA.md` §2.8, §3.2). Falta o formato do JSON do `/incorp`. **Destrava:** a InfoCap responder (T-150): base
+de homologação + contrato do JSON + duplicata + custo. **De quem:** 🧑 o pedido · 🤖 a SPEC "Emissão e registro". **Custa esquecer:** um
+teste em produção grava documento que só se desfaz à mão no CORP.
+
+## P-INFOCAP-PARCELA-PAGA · 🤖 A "data de pago" da parcela na InfoCap não prova que o cliente pagou
+📊 `datquit = datvenc` em 208/212 (Resulta) e 395/403 (AutoFleet) parcelas quitadas, e há "pago" em parcela que ainda vai vencer: 30/126 e
+171/241 (`LAUDO-CORPAPI-COMPLETA.md` §5.1). INFERÊNCIA (nota 70): baixa automática por previsão. **Destrava:** nenhum leitor do produto
+afirma ao segurado "consta pago/em aberto" só por esse campo; a cobrança usa o portal da seguradora como verdade; validar com o
+financeiro de uma corretora. **De quem:** 🤖 (quem tocar parcela: cobrança, atendimento, 131). **Custa esquecer:** o agente diz a um
+segurado inadimplente que está tudo pago — ou cobra quem já pagou.
+
+## P-INFOCAP-BASES-CLONADAS · 🤖 As bases InfoCap das duas corretoras do piloto compartilham o histórico até ago/2024
+📊 2.353 de 2.355 tarefas antigas idênticas nas duas bases; 36/36 clientes sorteados de uma existem na outra com o mesmo código; documentos
+seguem sequências separadas que se sobrepõem (`LAUDO-CORPAPI-COMPLETA.md` §6.1). INFERÊNCIA (85): uma base nasceu como cópia da outra em
+set/2024. **Destrava:** toda chave InfoCap do produto = (conexão/company_id, codfil, código); contagem de "clientes da corretora" não sai
+de `/clientes`; o CRM da Corp não é fonte. **De quem:** 🤖 quem ler cliente/negócio da InfoCap (131, 132). **Custa esquecer:** números de
+carteira inflados na tela e registros antigos de uma corretora aparecendo na outra.
