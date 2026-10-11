@@ -52,8 +52,13 @@ confirmação **88** (os 4 blockers fechados por medição; 3 ataques novos de a
 `20261011_01_spec129c_motivo_do_evento` · versão `20261011071430` · VERIFY `0·0·0` → `1·1·0` · comportamental `OK: 301 recusado, vazio
 recusado, 300 e nulo aceitos` · 0 linhas sobrando.
 
-## 4. Bateria
-(preenchida no fecho)
+## 4. Bateria (1 rodada inteira: 2 metades em paralelo, worktrees no commit `95b4678`)
+- metade 1: `10 failed, 3204 passed, 3 skipped in 1338.57s` — 1 nova: o G8 da proposta (`.limit(50)` colidiu com o teto de comissão 50 da
+  config) → consertado (`f194fe7`), `37 passed`
+- metade 2: `31 failed, 2825 passed, 6 skipped, 31 xfailed, 1 xpassed in 4727.59s` — 2 novas, scripts de guarda antigos: isolados,
+  `test_o_humano_da_seguradora_e_atendido` passa; `test_o_vocabulario_viaja_na_imagem` passa direto (UTF-8) e pelo runner `1 passed in
+  118.13s` (o limite é 120 s — tempo, não regressão)
+- **0 regressão de produto.**
 
 ## 5. Fora (com dono)
 P-129C-01 o PDF não é guardado (📊 0/128 também no auto) · 02 🧑 onde está a carteira patrimonial da Resulta · 03 🧑 o reajuste 15 × 10 %
