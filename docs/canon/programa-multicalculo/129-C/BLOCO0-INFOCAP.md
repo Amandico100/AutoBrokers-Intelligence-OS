@@ -1,5 +1,7 @@
 # Laudo B0-b · SPEC-129-C · os três ramos na InfoCap
 
+> ⚠️ ERRATA 11/10 (SPEC-131-0-A): a medição foi feita por uma conexão com o login da AutoFleet; a InfoCap da Resulta tem RE — ver programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md
+
 Investigador B0-b (Opus 5.5), 11/10/2026. Só leitura: GET na InfoCap, `set transaction read only` no banco. **Nada foi gravado na
 InfoCap nem no Supabase.** No repositório, nada foi alterado; os arquivos novos estão em `docs/intake/` (fora do git, pelo `.gitignore:113`).
 Nenhum dado pessoal neste laudo: apólice = `sha256(nosnum)[:10]`, cliente = `sha256(codcli)[:10]`, PDF de conversa = `conv-<sha256[:12]>`.
