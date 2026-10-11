@@ -126,3 +126,121 @@ def coberturas_de(opcao: str) -> Dict[str, object]:
     if opcao not in PRESETS:
         raise ValueError(f"opção sem preset: {opcao!r} (há: {', '.join(PRESETS)})")
     return dict(PRESETS[opcao])
+
+
+# ======================================================================================================================
+# SPEC-129-C — as opções de RE (D-129C-03): Condomínio 16 · Residencial 2 · Empresarial 18
+# ======================================================================================================================
+# 🔴 NENHUM valor segurado fixo: a BÁSICA (incêndio) vem do PEDIDO (`risco.valor_basica`) — 📊 a Básica do condomínio vai
+# de R$ 2,5 mi a R$ 115 mi nos 15 negócios lidos (AGREGADO-POR-RAMO §2); um pacote fixo seria errado para quase todos.
+# A opção varia só as coberturas EXTRAS e a ASSISTÊNCIA:
+#   · "padrao"    = as coberturas TÍPICAS do ramo: as que a corretora mandou em >= 8 dos 15 negócios lidos (metade+),
+#                   no valor MEDIANO medido (📊 AGREGADO-POR-RAMO §2, n = 15 por ramo), e a assistência da maioria;
+#   · "economica" ("mais em conta") = só as ESSENCIAIS — as mandadas em >= 13 dos 15 (~85 %) — MAIS toda RC (terceiros
+#                   intactos, o mesmo princípio do auto, D-129B-08) e a assistência BÁSICA.
+#   📊 o "mais em conta" que as corretoras fazem no Agger é exatamente "tirar acessórias e baixar a assistência"
+#      (AGREGADO §2 "Padrão x mais em conta": assistência 2->1, tirar roubo/vendaval/vazamento/RC...).
+# 💭 ESCALA: as coberturas de PATRIMÔNIO (não as de RC) escalam com a Básica ABAIXO da Básica mediana do ramo:
+#   valor = mediana * min(1, básica / básica_mediana). Por quê: as recusas de RE mais comuns são de LIMITE relativo à
+#   Básica (📊 AGREGADO §1 "limite máximo para roubo é #% da cobertura básica", "LMI de despesas fixas acima do permitido
+#   (#% da cobertura incêndio)"; 📊 gravacao_empresarial_2: aluguel 240 mil sobre Básica 800 mil -> Allianz "supera o
+#   máximo permitido (120.000,00)" e Mapfre "supera o Limite Máximo") — a proporção da mediana é a que as seguradoras
+#   aceitaram. A RC não escala (não é % da Básica). O canário (F3) mede se a regra segura.
+# ⚠️ Os códigos de ASSISTÊNCIA do RE são OUTROS (📊 formulario_*.json, os 3 ramos): Não 0 · Básica 1 · Intermediária 2 ·
+#    Completa 3 — no auto Completa = 1 e Básica = 4. Não misture as tabelas.
+ASSISTENCIA_RE: Mapping[str, int] = {"nao": 0, "basica": 1, "intermediaria": 2, "completa": 3}
+
+# As chaves de COBERTURA de cada ramo — as da seção "Coberturas" de cada formulário que vão a `configuracoes`
+# (📊 formulario_<ramo>.json `campos[].caminho_no_corpo`), menos `valorDeNovo` e `imovelObjetoSegurado` (são do RISCO,
+# no contrato). Empresarial: + `responsabilidadeCivilOperacoes` (📊 gravacao_empresarial_1/2: sempre igual a
+# `responsabilidadeCivil`, "RC Operações"); o `isGuardaVeiculoValor` da tela não tem caminho medido (fica fora).
+# O robô aplica SÓ estas em `configuracoes`.
+CHAVES_DE_COBERTURA_RE: Mapping[int, Tuple[str, ...]] = {
+    16: ("assist24hs", "isDanosIncendioRaioExplosao", "isDanosIncendioRaioExplosaoCond", "isValorCondominio",
+         "isValorSindico", "isDanosEletricos", "isDanosVendaval", "isDanosImpactoVeiculo", "isDanosRoubo",
+         "rouboCondomino", "isDanosPortoes", "isDanosMorais", "vidros", "isDanosDesmoronamento", "isDanosAluguel",
+         "isDanosVazamentoTanquesTubulacoes", "anunciosLuminosos", "tumultoGreveLockOut", "isDanosAlagamento",
+         "isDanosDespesasFixas", "equipamentos", "isEmpregador", "isVGFuncionarios", "garagista", "garagistaExclusiva",
+         "chuveiroSprinkler", "placasSolares"),
+    2: ("assist24hs", "isDanosIncendioRaioExplosao", "isDanosEletricos", "isDanosEquipamentosEletronicos",
+        "isDanosRegistrosDocumentos", "isDanosVendaval", "isDanosImpactoVeiculo", "isDanosAluguel", "isDanosRoubo",
+        "responsabilidadeCivil", "isDanosAlagamento", "isDanosDesmoronamento", "vidros", "isDanosMorais",
+        "tumultoGreveLockOut", "placasSolares", "bike", "isDanosVazamentoTanquesTubulacoes"),
+    18: ("assist24hs", "isDanosIncendioRaioExplosao", "isDanosEletricos", "isDanosVendaval", "isDanosImpactoVeiculo",
+         "isDanosAluguel", "isDanosRoubo", "rouboFurtoDeValores", "vidros", "isDanosVazamentoTanquesTubulacoes",
+         "isDanosDespesasFixas", "equipamentos", "anunciosLuminosos", "isEmpregador", "isDanosMorais",
+         "responsabilidadeCivil", "responsabilidadeCivilOperacoes", "recomposicaoDocumentos", "tumultoGreveLockOut",
+         "isDanosDesmoronamento", "chuveiroSprinkler", "fidelidade", "placasSolares", "isDanosAlagamento",
+         "lucroCessante", "isDanosContaminacaoDeterioracao"),
+}
+CHAVE_DA_BASICA = "isDanosIncendioRaioExplosao"
+
+# A Básica MEDIANA de cada ramo (📊 AGREGADO §2: condomínio 14 mi · residencial 550 mil · empresarial 2 mi)
+BASICA_MEDIANA: Mapping[int, int] = {16: 14_000_000, 2: 550_000, 18: 2_000_000}
+# (chave, mediana medida, em quantos dos 15 negócios lidos, é RC — não escala). 📊 AGREGADO-POR-RAMO §2, linha a linha.
+# Ficam de fora as de >= 8/15 SEM mediana medida (condomínio desmoronamento 8/15; empresarial impacto e vazamento 8/15):
+# sem número medido, nenhum valor inventado.
+TIPICAS_RE: Mapping[int, Tuple[Tuple[str, int, int, bool], ...]] = {
+    16: (("isDanosEletricos", 52_000, 15, False), ("isDanosImpactoVeiculo", 50_000, 15, False),
+         ("vidros", 15_000, 15, False), ("isValorCondominio", 300_000, 15, True), ("isValorSindico", 300_000, 15, True),
+         ("isDanosVendaval", 84_000, 15, False), ("isDanosPortoes", 30_000, 15, False),
+         ("isDanosMorais", 50_000, 14, True), ("tumultoGreveLockOut", 20_000, 13, False),
+         ("isDanosRoubo", 10_000, 13, False), ("isDanosAluguel", 300_000, 11, False),
+         ("isDanosVazamentoTanquesTubulacoes", 70_000, 11, False),
+         ("isDanosIncendioRaioExplosaoCond", 1_600_000, 11, False)),
+    2: (("isDanosEletricos", 25_000, 13, False), ("isDanosVendaval", 50_000, 13, False),
+        ("responsabilidadeCivil", 50_000, 12, True), ("isDanosAluguel", 36_000, 10, False),
+        ("isDanosRoubo", 37_500, 10, False), ("isDanosVazamentoTanquesTubulacoes", 20_000, 9, False),
+        ("vidros", 20_000, 9, False)),
+    18: (("isDanosEletricos", 30_000, 15, False), ("responsabilidadeCivil", 125_000, 12, True),
+         ("responsabilidadeCivilOperacoes", 125_000, 12, True), ("vidros", 10_000, 11, False),
+         ("isDanosAluguel", 90_000, 10, False), ("isDanosVendaval", 100_000, 10, False),
+         ("isDanosRoubo", 30_000, 10, False)),
+}
+TIPICA_MIN = 8        # >= 8 de 15 = metade+ -> "padrão"
+ESSENCIAL_MIN = 13    # >= 13 de 15 ~ 85 % -> "mais em conta" (+ toda RC)
+# A assistência de cada opção (📊 AGREGADO §2): condomínio Completa 3 em 8 de 15 (Básica em 7) · residencial
+# Intermediária 2 em 10 de 15 · empresarial Básica 1 em 15 de 15. "Mais em conta" = Básica 1 nos três.
+ASSISTENCIA_DA_OPCAO_RE: Mapping[int, Mapping[str, int]] = {
+    16: {PADRAO: ASSISTENCIA_RE["completa"], ECONOMICA: ASSISTENCIA_RE["basica"]},
+    2: {PADRAO: ASSISTENCIA_RE["intermediaria"], ECONOMICA: ASSISTENCIA_RE["basica"]},
+    18: {PADRAO: ASSISTENCIA_RE["basica"], ECONOMICA: ASSISTENCIA_RE["basica"]},
+}
+# As opções do RE e a ORDEM do disparo no mesmo negócio (a padrão abre; a "mais em conta" é a versão seguinte).
+ORDEM_RE: Tuple[str, ...] = (PADRAO, ECONOMICA)
+
+# O AJUSTE do corretor no RE (`contrato.TIPOS_DE_AJUSTE_RE`). Comissão/desconto vão no ITEM; assistência e cobertura em
+# `configuracoes` — 🔴 o GÊMEO do ramo RE de `aplicarAjuste` no montador.js (o teste confere que dizem o mesmo).
+CAMPO_DO_AJUSTE_RE: Mapping[str, str] = {"comissao": "percComissao", "desconto": "percDesconto",
+                                          "assistencia": "assist24hs"}
+VALORES_DO_AJUSTE_RE: Mapping[str, Mapping[str, int]] = {"assistencia": ASSISTENCIA_RE}
+
+
+def _arredonda(v: float) -> int:
+    return int(round(v / 100.0)) * 100
+
+
+def coberturas_re(ramo: int, opcao: str, valor_basica: float,
+                  extras: "Mapping[str, float] | None" = None) -> Dict[str, object]:
+    """As coberturas de `configuracoes` da opção — TODAS as chaves do ramo, explícitas (zero = não contratada), a Básica
+    do PEDIDO e a assistência da opção. `extras` (do pedido: a apólice anterior / o cliente) VENCE a opção."""
+    if ramo not in CHAVES_DE_COBERTURA_RE:
+        raise ValueError(f"ramo sem coberturas de RE: {ramo!r}")
+    if opcao not in ORDEM_RE:
+        raise ValueError(f"opção sem preset no RE: {opcao!r} (há: {', '.join(ORDEM_RE)})")
+    if isinstance(valor_basica, bool) or not isinstance(valor_basica, (int, float)) or valor_basica <= 0:
+        raise ValueError("a Básica do pedido é obrigatória e > 0 (D-129C-03)")
+    chaves = CHAVES_DE_COBERTURA_RE[ramo]
+    saida: Dict[str, object] = {k: 0 for k in chaves}
+    saida[CHAVE_DA_BASICA] = valor_basica
+    saida["assist24hs"] = ASSISTENCIA_DA_OPCAO_RE[ramo][opcao]
+    fator = min(1.0, float(valor_basica) / BASICA_MEDIANA[ramo])
+    minimo = TIPICA_MIN if opcao == PADRAO else ESSENCIAL_MIN
+    for chave, mediana, n, rc in TIPICAS_RE[ramo]:
+        if n >= minimo or (opcao == ECONOMICA and rc):
+            saida[chave] = mediana if rc else _arredonda(mediana * fator)
+    for k, v in (extras or {}).items():
+        if k not in chaves or k == "assist24hs":
+            raise ValueError(f"cobertura desconhecida no ramo {ramo}: {k!r}")
+        saida[k] = v
+    return saida

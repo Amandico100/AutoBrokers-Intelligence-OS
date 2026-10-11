@@ -68,9 +68,121 @@
     return out;
   }
 
+  // ===================================================================================================================
+  // SPEC-129-C — o RE (Condomínio 16 · Residencial 2 · Empresarial 18). O auto acima NÃO muda (byte a byte).
+  // 📊 As 9 gravações reais (tests/fixtures/agger_ramos/gravacao_*): o MESMO envelope e o MESMO calcularV2, mas
+  //   · as COBERTURAS moram em `cotacao.configuracoes` (uma vez) — 0 chaves de cobertura nos itens (o Python as põe lá);
+  //   · cada item = a config da seguradora + `percComissao` (a comissão EFETIVA: 📊 20·22·25·30·40 no item, ecoada em
+  //     `resultados[].coberturas.percComissao`; o `percComissao<Ramo>` da config fica 10/0 e NÃO é a usada);
+  //   · empresarial: + `valoresAjusteSeguradora.imovelAtividadeProfissionalLocal = {Key, Value, Description}`.
+  // ===================================================================================================================
+  const RAMO_AUTO = 31;
+  // 📊 `nome` dos itens de RE gravados: 'HDI', 'CHUBB', 'Yelum', 'Porto Seguro', 'Tokio', 'Axa'… (o NOME do auto + Chubb,
+  //    que o auto não manda)
+  const NOME_RE = Object.assign({}, NOME, {32: 'CHUBB'});
+  // No RE só `id`/`usuario` ficam fora do item: 📊 os itens gravados de RE trazem TODOS os percComissao*/percDesconto*
+  // (BLOCO0-GRAVACAO §2). 💭 o conjunto exato que o cliente manda só um POST interceptado dirá (canário F3).
+  const SO_SEG_RE = new Set(['id', 'usuario']);
+  // O DESCONTO padrão do ramo que a tela aplica (`setComissaoDefault`: percDesconto ← percDesconto<Ramo>) — 📊 Allianz
+  // percDesconto 25 = percDescontoCond 25 no item do condomínio (gravacao_condominio_1/2). A COMISSÃO nunca cai no
+  // padrão da conta (📊 percComissaoEmpres = 0 nas 10): ela vem do pedido, explícita (D-129C-05) — sem ela, nada sai.
+  const DESCONTO_DO_RAMO = {16: 'percDescontoCond', 2: 'percDescontoResid', 18: 'percDescontoEmpres'};
+
+  // segs = `calculo/seguradoras` · opcoes = {status: [códigos do ramo], fora: [10, 22], atividades: {cod: {Key,Value,…}}}
+  // → {calculos, semAtividade: [[cod, nome]]}. Sem comissão → {erro: 'sem_comissao'} (nada é montado).
+  function montarCalculosRE(segs, ramo, comissao, desconto, opcoes) {
+    opcoes = opcoes || {};
+    if (comissao == null) return {erro: 'sem_comissao', calculos: [], semAtividade: []};
+    const status = new Set(opcoes.status || []);
+    const fora = new Set(opcoes.fora || [10, 22]);
+    const atividades = opcoes.atividades || {};
+    const S = {};
+    for (const s of segs || []) if (s && s.ativo) S[s.seguradora] = s;          // só as ATIVAS na conta
+    const alvo = Object.keys(S).map(Number).filter(k => status.has(k) && !fora.has(k)).sort((a, b) => a - b);
+    const out = [];
+    const semAtividade = [];
+    for (const k of alvo) {
+      const base = S[k];
+      let atividade = null;
+      if (ramo === 18) {
+        atividade = atividades[k] || atividades[String(k)] || null;
+        if (!atividade) { semAtividade.push([k, NOME_RE[k] || base.nomeSeguradora || '']); continue; }
+      }
+      const it = {};
+      for (const [kk, vv] of Object.entries(base)) if (!SO_SEG_RE.has(kk)) it[kk] = vv;
+      it.seguradora = k;
+      it.nome = NOME_RE[k] || it.nomeSeguradora;
+      it.idIntegracaoCfg = base.idIntegracao; it.idIntegracaoCfgSeg = base.idIntegracao;   // 📊 nos itens gravados
+      if (!('libertyCodigoEstabelecimento' in it)) it.libertyCodigoEstabelecimento = null;  // 📊 null nos gravados
+      it.libertyDescontoRegional = 1;                                                       // 📊 1 nos gravados
+      it.percComissao = comissao;                                                           // 🔴 D-129C-05
+      const dRamo = base[DESCONTO_DO_RAMO[ramo]];
+      it.percDesconto = desconto != null ? desconto : (dRamo == null ? null : dRamo);
+      // ⚠️ SEM a cópia "3" da Porto: 📊 no RE a Porto leva percComissao3 da config (0/ausente), não a da comissão
+      if (atividade) {
+        it.valoresAjusteSeguradora = {imovelAtividadeProfissionalLocal: {Key: atividade.Key, Value: atividade.Value,
+          Description: atividade.Description == null ? null : atividade.Description}};
+      }
+      out.push(it);
+    }
+    return {calculos: out, semAtividade};
+  }
+
+  // Recálculo de RE a partir de UMA versão: a config ATUAL + a comissão/desconto e a atividade do item da MESMA
+  // seguradora na versão-base (as coberturas já vêm em `configuracoes` da versão).
+  function montarDaVersaoRE(segs, versao, opcoes) {
+    const base = {};
+    for (const c of (versao && versao.calculos) || []) if (c && c.seguradora != null) base[c.seguradora] = c;
+    const atividades = {};
+    for (const [k, c] of Object.entries(base)) {
+      const a = c.valoresAjusteSeguradora && c.valoresAjusteSeguradora.imovelAtividadeProfissionalLocal;
+      if (a) atividades[k] = a;
+    }
+    const r = montarCalculosRE(segs, versao.ramo, 0, null, {status: (opcoes || {}).status, fora: (opcoes || {}).fora,
+                                                            atividades});
+    const out = [];
+    for (const it of r.calculos) {
+      const b = base[it.seguradora];
+      if (!b) continue;
+      it.percComissao = b.percComissao;
+      if ('percDesconto' in b) it.percDesconto = b.percDesconto;
+      out.push(it);
+    }
+    return out;
+  }
+
+  // Ajuste no RE: comissão/desconto no ITEM; assistência e cobertura em `configuracoes` (a cobertura do RE é do
+  // negócio, não da seguradora: ajuste de cobertura POR seguradora não tem onde morar → 0, "ajuste sem alvo").
+  // 🔴 GÊMEO de `presets.CAMPO_DO_AJUSTE_RE`.
+  const CAMPO_DO_AJUSTE_RE = {comissao: 'percComissao', desconto: 'percDesconto', assistencia: 'assist24hs'};
+  function aplicarAjusteRE(cot, ajuste, opcoes) {
+    const chaves = new Set(((opcoes || {}).chaves || {})[cot.ramo] || []);
+    const cfg = cot.configuracoes || (cot.configuracoes = {});
+    if (ajuste.tipo === 'assistencia') {
+      if (ajuste.seguradora != null) return 0;
+      cfg.assist24hs = ajuste.valor; return 1;
+    }
+    if (ajuste.tipo === 'cobertura') {
+      if (ajuste.seguradora != null || !ajuste.valor || typeof ajuste.valor !== 'object') return 0;
+      let n = 0;
+      for (const [k, v] of Object.entries(ajuste.valor)) if (chaves.has(k)) { cfg[k] = v; n++; }
+      return n;
+    }
+    if (ajuste.tipo === 'comissao' || ajuste.tipo === 'desconto') {
+      let n = 0;
+      for (const it of cot.calculos || []) {
+        if (ajuste.seguradora != null && it.seguradora !== ajuste.seguradora) continue;
+        it[CAMPO_DO_AJUSTE_RE[ajuste.tipo]] = ajuste.valor; n++;
+      }
+      return n;
+    }
+    return 0;
+  }
+
   // Recálculo a partir de UMA versão: as escolhas do app (DO_APP) vêm do item da MESMA seguradora na versão-base;
   // as credenciais vêm da config ATUAL (montarCalculos). Seguradora que não estava na base fica de fora.
-  function montarDaVersao(segs, versao) {
+  function montarDaVersao(segs, versao, opcoes) {
+    if (versao && versao.ramo != null && versao.ramo !== RAMO_AUTO) return montarDaVersaoRE(segs, versao, opcoes);
     const base = {};
     for (const c of (versao && versao.calculos) || []) if (c && c.seguradora != null) base[c.seguradora] = c;
     const out = [];
@@ -87,8 +199,9 @@
   // Ajuste do corretor (contrato.Ajuste): campo do item → valor; seguradora null = todas.
   const CAMPO_DO_AJUSTE = {comissao: 'percComissao', desconto: 'percDesconto', assistencia: 'assist24hs',
     carro_reserva: 'carroReserva', vidros: 'vidros', franquia: 'tipoFranquia', cobertura: 'tipoCobertura'};
-  function aplicarAjuste(cotacao, ajuste) {
+  function aplicarAjuste(cotacao, ajuste, opcoes) {
     if (!ajuste) return 0;
+    if (cotacao && cotacao.ramo != null && cotacao.ramo !== RAMO_AUTO) return aplicarAjusteRE(cotacao, ajuste, opcoes);
     let n = 0;
     if (ajuste.tipo === 'percentual_fipe') {
       for (const a of cotacao.automoveis || []) { a.pctAjuste = ajuste.valor; n++; }
@@ -201,5 +314,5 @@
   }
 
   window.__abM = {montarCalculos, montarDaVersao, aplicarAjuste, montarAutomovel, filtrar, coletarSegredos,
-                  redigirSegredos, DO_APP};
+                  redigirSegredos, DO_APP, montarCalculosRE, CAMPO_DO_AJUSTE_RE};
 })();

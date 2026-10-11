@@ -4,8 +4,9 @@
 🔴 O cálculo NÃO usa o nome em inglês no código (D-MC-37): é CÁLCULO, RODADA, OFERTA.
 
 Todo tipo carrega `ramo`. 📊 31 = auto no Agger (`cotacao.ramo` do `calcularV2`
-nas duas gravações de 18/09). A v1 implementa o AUTO; o residencial (E13) entra
-como mapa quando for medido.
+nas duas gravações de 18/09). A SPEC-129-C acrescenta Condomínio (16), Residencial (2)
+e Empresarial (18): o CONTRATO F1↔F2 do pedido de RE está em `CAMPOS_DO_PEDIDO_RE` /
+`problemas_do_pedido_re` / `PedidoDeCalculoRE` (abaixo).
 
 O que este módulo NUNCA carrega numa `Oferta`: login, senha, loginWs, senhaWs,
 URL ou caminho de PDF. As CHAVES são conferidas por `CHAVES_PROIBIDAS_NA_OFERTA`; URL e
@@ -19,6 +20,16 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple
 
 RAMO_AUTO = 31
+# SPEC-129-C — os ramos de RE. 📊 `cotacao.ramo` das 9 gravações reais saneadas (tests/fixtures/agger_ramos/
+# gravacao_{condominio,residencial,empresarial}_{1,2,3}.json, 11/10): 16 · 2 · 18; e a rota de cada formulário
+# (formulario_*.json `ramo`/`rota`: /cotacao/condominio · /residencial · /empresarial).
+RAMO_CONDOMINIO = 16
+RAMO_RESIDENCIAL = 2
+RAMO_EMPRESARIAL = 18
+RAMOS_RE: Tuple[int, ...] = (RAMO_CONDOMINIO, RAMO_RESIDENCIAL, RAMO_EMPRESARIAL)
+RAMOS: Tuple[int, ...] = (RAMO_AUTO,) + RAMOS_RE
+NOME_DO_RAMO = {RAMO_AUTO: "auto", RAMO_CONDOMINIO: "condominio", RAMO_RESIDENCIAL: "residencial",
+                RAMO_EMPRESARIAL: "empresarial"}
 
 # --------------------------------------------------------------------------
 # As famílias de resposta de uma seguradora (E10)
@@ -47,6 +58,10 @@ TIPOS_DE_AJUSTE: Tuple[str, ...] = (
     "comissao", "desconto", "assistencia", "carro_reserva", "vidros",
     "franquia", "percentual_fipe", "cobertura",
 )
+# SPEC-129-C: no RE só estes fazem sentido — carro reserva/franquia/FIPE são do automóvel e `vidros` no RE é um
+# VALOR segurado (📊 `configuracoes.vidros` 20000 em gravacao_condominio_1), não o código do auto: muda-se por
+# `cobertura` ({"vidros": valor}). `assistencia` no RE usa os códigos do RE (presets.ASSISTENCIA_RE).
+TIPOS_DE_AJUSTE_RE: Tuple[str, ...] = ("comissao", "desconto", "assistencia", "cobertura")
 
 # Chaves que uma Oferta NUNCA tem — o teste do contrato confere por máquina.
 CHAVES_PROIBIDAS_NA_OFERTA: Tuple[str, ...] = (
@@ -65,6 +80,8 @@ class Ajuste:
     def __post_init__(self) -> None:
         if self.tipo not in TIPOS_DE_AJUSTE:
             raise ValueError(f"tipo de ajuste desconhecido: {self.tipo!r}")
+        if self.ramo in RAMOS_RE and self.tipo not in TIPOS_DE_AJUSTE_RE:
+            raise ValueError(f"ajuste {self.tipo!r} não existe no ramo {self.ramo}")
 
 
 # --------------------------------------------------------------------------
@@ -238,6 +255,335 @@ class PedidoDeCalculoAuto:
     seguradoras: Tuple[int, ...] = ()   # códigos das seguradoras pedidas
 
 
+# ======================================================================================================================
+# 🔴 O CONTRATO F1 ↔ F2 DA SPEC-129-C — o pedido de RE (Condomínio 16 · Residencial 2 · Empresarial 18)
+# ======================================================================================================================
+# O dict que o motor entrega ao robô (`agger_robo.disparar(sessao, pedido, coberturas)`) para RE:
+#     {"ramo": 16|2|18,
+#      "segurado":          {campo: valor},     # CAMPOS_DO_PEDIDO_RE[ramo]["segurado"]
+#      "risco":             {campo: valor},     # o endereço do risco + o bem (+ "extras": {chave_de_cobertura: valor})
+#      "renovacao":         {campo: valor},     # como o auto (sinistros_anterior vira TEXTO "0"/"1" no corpo)
+#      "comissao_desconto": {"comissao_percentual": n, "desconto_percentual": n?},   # comissão OBRIGATÓRIA (D-129C-05)
+#      "seguradoras": [códigos], "assumidos": [...], "coberturas": {}, "pacotes": {}}
+# As COBERTURAS de cada opção NÃO moram no pedido: a porta as resolve com `presets.coberturas_re(ramo, opcao,
+# valor_basica, extras)` e o robô as aplica em `cotacao.configuracoes` (nunca no item — 📊 0 chaves de cobertura nos
+# itens das 9 gravações). `risco.valor_basica` é a Básica (incêndio) DO PEDIDO (D-129C-03: nenhum valor segurado fixo).
+# Cada código abaixo vem SÓ das fixtures medidas (CLAUDE.md §9.5): `formulario_<ramo>.json` (as opções da tela, lidas
+# rótulo a rótulo do JS do app em 11/10) e os corpos gravados `gravacao_<ramo>_{1,2}.json` (o TIPO de cada valor).
+#
+# Tipos (o que a porta entrega; `TIPO_DO_CAMPO_RE`): "texto" · "digitos" (só dígitos) · "data" (AAAA-MM-DD) ·
+# "inteiro" · "codigo" (inteiro de uma lista medida) · "codigo_texto" (dígito como TEXTO — 📊 imovelPavimentacao "0")
+# · "booleano" · "dinheiro" (número ≥ 0) · "lista_de_codigos" · "mapa_de_cobertura" ({chave: dinheiro}).
+_ENDERECO_DO_RISCO = (
+    # 📊 formulario_*.json: a seção "Endereço" vai para `configuracoes.imovel*` nos 3 ramos (obrigatórios: CEP, UF,
+    # cidade, bairro, logradouro; número e complemento não)
+    ("cep", "cotacao.configuracoes.imovelCep", True),
+    ("logradouro", "cotacao.configuracoes.imovelLogradouro", True),
+    ("numero", "cotacao.configuracoes.imovelNumero", False),
+    ("complemento", "cotacao.configuracoes.imovelComplemento", False),
+    ("bairro", "cotacao.configuracoes.imovelBairro", True),
+    ("cidade", "cotacao.configuracoes.imovelCidade", True),
+    ("uf", "cotacao.configuracoes.imovelUF", True),
+    # a Básica (incêndio/raio/explosão): obrigatória nos 3 formulários; o VALOR vem do pedido (D-129C-03)
+    ("valor_basica", "cotacao.configuracoes.isDanosIncendioRaioExplosao", True),
+    # 📊 valorDeNovo Não 0 · Sim 1 (padrão da tela Sim; 1 nas 6 gravações recentes)
+    ("valor_de_novo", "cotacao.configuracoes.valorDeNovo", False),
+    ("extras", "cotacao.configuracoes.<chave de presets.CHAVES_DE_COBERTURA_RE[ramo]>", False),
+)
+_RENOVACAO_RE = (
+    ("renovacao", "cotacao.renovacao", False),
+    ("bonus_anterior", "cotacao.bonusAnterior", False),
+    ("sinistros_anterior", "cotacao.sinistrosAnterior", False),     # 📊 TEXTO "0"/"1" no RE (9/9 gravações)
+    ("numero_apolice_anterior", "cotacao.numeroRenovacao", False),
+    ("seguradora_anterior", "cotacao.seguradoraAnteriorId", False),
+    ("fim_vigencia_anterior", "cotacao.vigFimAnterior", False),
+    ("vigencia_inicio", "cotacao.vigenciaIni", False),
+    ("vigencia_fim", "cotacao.vigenciaFim", False),
+)
+_COMISSAO_RE = (
+    # 🔴 D-129C-05: a comissão vai EXPLÍCITA no item (`percComissao`). 📊 sem ela a tela usa percComissaoEmpres = 0 em
+    # TODAS as 10 seguradoras da conta (formulario_empresarial.json `seguradoras.na_conta`) — mandar o padrão da conta
+    # seria comissão ZERO. Por isso é obrigatória no RE (o robô recusa antes de qualquer rede).
+    ("comissao_percentual", "cotacao.calculos[].percComissao", True),
+    ("desconto_percentual", "cotacao.calculos[].percDesconto", False),
+)
+CAMPOS_DO_PEDIDO_RE: dict = {
+    RAMO_CONDOMINIO: {
+        "segurado": (
+            # 📊 formulario_condominio: CNPJ e Razão Social obrigatórios; o app força tipoPessoa "J"
+            # (valoresEstaticosDraftSegurado {tipoPessoa:"J"}; 📊 J em 15/15 negócios lidos, BLOCO0-GRAVACAO)
+            ("cpf_cnpj", "cotacao.segurado.cpfCnpj", True),
+            ("nome", "cotacao.segurado.nome", True),
+            ("telefone", "cotacao.segurado.fone1", False),
+            ("email", "cotacao.segurado.email", False),
+        ),
+        "risco": _ENDERECO_DO_RISCO + (
+            ("tipo_imovel", "cotacao.configuracoes.imovelAtividade", True),          # Tipo de Condomínio (códigos)
+            ("estrutura", "cotacao.configuracoes.estruturaCondominio", True),
+            ("ano_fundacao", "cotacao.configuracoes.anoFundacao", True),             # 📊 TEXTO "2005"
+            ("blocos", "cotacao.configuracoes.qtdBlocos", True),                     # 📊 TEXTO "4"
+            ("pavimentos", "cotacao.configuracoes.pavimentos", True),                # 📊 TEXTO "5"
+            ("elevadores", "cotacao.configuracoes.qtdElevadores", True),             # 📊 inteiro 0 (às vezes texto)
+            ("area_construida", "cotacao.configuracoes.areaConstruida", False),
+            ("funcionarios", "cotacao.configuracoes.qtdFuncionarios", False),
+            ("protecoes", "cotacao.configuracoes.sisProtecaoIncendRoubo", False),    # 📊 [1] · [1,7] · [1,2,7]
+            ("patrimonio_historico", "cotacao.configuracoes.imovelPatrimonioHistorico", False),
+            ("area_comercial", "cotacao.configuracoes.condPossuiAreaComercial", False),
+            ("desmoronamento_5_anos", "cotacao.configuracoes.desmoronamento", False),
+        ),
+        "renovacao": _RENOVACAO_RE,
+        "comissao_desconto": _COMISSAO_RE,
+    },
+    RAMO_RESIDENCIAL: {
+        "segurado": (
+            ("cpf_cnpj", "cotacao.segurado.cpfCnpj", True),
+            ("nome", "cotacao.segurado.nome", True),
+            ("nascimento", "cotacao.segurado.dataNasc", True),     # 📊 formulario_residencial: obrigatório
+            ("sexo", "cotacao.segurado.sexo", False),              # 📊 padrão do app "M" (informacoesDefault)
+            ("estado_civil", "cotacao.segurado.estadoCivil", False),
+            ("telefone", "cotacao.segurado.fone1", False),
+            ("email", "cotacao.segurado.email", False),
+        ),
+        "risco": _ENDERECO_DO_RISCO + (
+            ("tipo_imovel", "cotacao.configuracoes.imovelTipoResidencia", True),
+            ("construcao", "cotacao.configuracoes.imovelConstrucao", True),
+            ("uso", "cotacao.configuracoes.imovelUso", True),
+            ("objeto", "cotacao.configuracoes.imovelObjetoSegurado", True),
+            ("alarme", "cotacao.configuracoes.imovelPossuiAlarme", False),
+            ("vigilancia_24h", "cotacao.configuracoes.imovelPossuiVigilancia24hs", False),
+            ("grades", "cotacao.configuracoes.imovelPossuiGrades", False),
+            ("cerca_eletrica", "cotacao.configuracoes.imovelPossuiCercaEletrica", False),
+            ("alarme_monitorado", "cotacao.configuracoes.imovelPossuiAlarmeMonitorado", False),
+            ("porteiro_eletronico", "cotacao.configuracoes.imovelPossuiPorteiroEletronico", False),
+            ("cftv", "cotacao.configuracoes.imovelPossuiCircuitoFechado", False),
+            ("patrimonio_historico", "cotacao.configuracoes.imovelPatrimonioHistorico", False),
+            ("proprietario", "cotacao.configuracoes.seguradoProprietario", False),   # 📊 padrão da tela: marcado
+            ("area_de_risco", "cotacao.configuracoes.areaRisco", False),
+            ("zona_rural", "cotacao.configuracoes.zonaRural", False),
+            ("atividade_no_local", "cotacao.configuracoes.imovelAtividadeProfissionalLocal", False),
+        ),
+        "renovacao": _RENOVACAO_RE,
+        "comissao_desconto": _COMISSAO_RE,
+    },
+    RAMO_EMPRESARIAL: {
+        "segurado": (
+            ("cpf_cnpj", "cotacao.segurado.cpfCnpj", True),
+            ("nome", "cotacao.segurado.nome", True),
+            ("telefone", "cotacao.segurado.fone1", False),
+            ("email", "cotacao.segurado.email", False),
+        ),
+        "risco": _ENDERECO_DO_RISCO + (
+            # 🔴 a atividade é POR SEGURADORA (D-129C-04): o robô a procura em `getOptionsBySegFull` com este TEXTO e
+            # põe o código de cada seguradora em `calculos[].valoresAjusteSeguradora` (📊 gravacao_empresarial_1/2)
+            ("atividade", "cotacao.calculos[].valoresAjusteSeguradora.imovelAtividadeProfissionalLocal", True),
+            # CNAE: SÓ ajuda a achar a classe da atividade (agger_robo.CNAE_DA_CLASSE). 📊 nenhum corpo RECENTE leva
+            # `cnae` (gravacao_empresarial_1/2) e o formulário de hoje não tem o campo — não vai ao Agger.
+            ("cnae", "(não vai ao corpo)", False),
+            ("pavimento", "cotacao.configuracoes.imovelPavimentacao", True),
+            ("localizacao", "cotacao.configuracoes.imovelLocalEstabelecimento", True),
+            ("construcao", "cotacao.configuracoes.imovelConstrucao", True),
+            ("ano_construcao", "cotacao.configuracoes.anoConstrucao", False),         # 📊 inteiro 2023
+            ("objeto", "cotacao.configuracoes.imovelObjetoSegurado", True),
+            ("alarme", "cotacao.configuracoes.imovelPossuiAlarme", False),
+            ("alarme_monitorado", "cotacao.configuracoes.imovelPossuiAlarmeMonitorado", False),
+            ("cftv", "cotacao.configuracoes.imovelPossuiCircuitoFechado", False),
+            ("vigilancia_24h", "cotacao.configuracoes.imovelPossuiVigilancia24hs", False),
+            ("grades_fechadura_tetra", "cotacao.configuracoes.imovelPossuiGradesEFechaduraTetra", False),
+            ("sensor_infravermelho", "cotacao.configuracoes.imovelPossuiSensorInfravermelho", False),
+            ("extintor", "cotacao.configuracoes.imovelPossuiExtintor", False),
+            ("hidrante", "cotacao.configuracoes.imovelPossuiHidrante", False),
+            ("sprinkler", "cotacao.configuracoes.imovelPossuiSprinkler", False),
+            ("detector_fumaca", "cotacao.configuracoes.imovelPossuiDetectorFumaca", False),
+            ("brigada_incendio", "cotacao.configuracoes.imovelPossuiBrigadaIncendio", False),
+            ("deposito", "cotacao.configuracoes.imovelUtilizadoDeposito", False),
+            ("divisa_terreno_baldio", "cotacao.configuracoes.imovelDivisaTerronoBaldio", False),
+            ("patrimonio_historico", "cotacao.configuracoes.imovelPatrimonioHistorico", False),
+            ("telha_metalica", "cotacao.configuracoes.imovelTelhaEstruturaMetalica", False),
+            ("caixa_eletronico", "cotacao.configuracoes.imovelCaixaEletronico", False),
+            ("isopainel", "cotacao.configuracoes.imovelPossuiIsopainel", False),
+            ("em_obra", "cotacao.configuracoes.imovelConstrucaoReforma", False),
+        ),
+        "renovacao": _RENOVACAO_RE,
+        "comissao_desconto": _COMISSAO_RE,
+    },
+}
+
+#: (ramo, grupo, campo) → o nome do campo no corpo (a última parte do caminho). Só os que vão a `configuracoes`.
+def chave_no_corpo(ramo: int, grupo: str, campo: str) -> Optional[str]:
+    for nome, caminho, _obr in CAMPOS_DO_PEDIDO_RE[ramo][grupo]:
+        if nome == campo:
+            parte = caminho.rsplit(".", 1)[-1]
+            return parte if caminho.startswith("cotacao.configuracoes.") and "<" not in parte else None
+    return None
+
+
+# Os CÓDIGOS dos campos de lista do RE — texto (normalizado: minúscula, sem acento) → código. 🔴 SÓ os medidos:
+# 📊 formulario_condominio/residencial/empresarial.json `campos[].opcoes` (rótulo a rótulo, JS do app de 11/10).
+# ⚠️ NÃO são ordinais: construção Superior = 4 (e Sólida = 1); não "corrija" para a ordem da tela.
+CODIGOS_MEDIDOS_RE: dict = {
+    # condomínio · Tipo de Condomínio (imovelAtividade): Residencial 1 · Escritório 2 · Consultório 3 · Comercial 4 ·
+    # Flat/Apart Hotel 5 · Shopping Center 6 · Misto 7  (📊 1 em 12/15 negócios lidos)
+    (RAMO_CONDOMINIO, "tipo_imovel"): {"residencial": 1, "escritorio": 2, "consultorio": 3, "comercial": 4,
+                                       "flat": 5, "flat/apart hotel": 5, "apart hotel": 5, "shopping": 6,
+                                       "shopping center": 6, "misto": 7},
+    (RAMO_CONDOMINIO, "estrutura"): {"vertical": 1, "horizontal": 2},
+    # equipamentos → códigos de sisProtecaoIncendRoubo (📊 [1] 10 · [1,7] 4 · [1,2,7] 1 nos negócios lidos)
+    (RAMO_CONDOMINIO, "protecoes"): {"extintores": 1, "hidrantes": 2, "sprinklers": 3, "alarme": 4,
+                                     "cerca eletrica": 5, "porteiro eletronico": 6, "cftv": 7,
+                                     "circuito fechado de cftv": 7, "detector de fumaca": 8,
+                                     "brigada de incendio": 9, "catraca eletronica": 10},
+    # residencial
+    (RAMO_RESIDENCIAL, "tipo_imovel"): {"casa": 1, "casa em condominio": 2, "casa em condominio fechado": 2,
+                                        "apartamento": 3},
+    (RAMO_RESIDENCIAL, "construcao"): {"superior": 4, "solida": 1, "mista": 2, "inferior": 3},
+    (RAMO_RESIDENCIAL, "uso"): {"habitual": 1, "veraneio": 2, "desocupado": 3},
+    (RAMO_RESIDENCIAL, "objeto"): {"predio": 1, "conteudo": 2, "predio + conteudo": 3, "predio e conteudo": 3},
+    # empresarial — pavimento e localização são TEXTO no corpo (📊 "0" nas 2 gravações recentes; Business/Data)
+    (RAMO_EMPRESARIAL, "pavimento"): {"terreo": "0", "primeiro": "1", "primeiro andar": "1",
+                                      "segundo em diante": "2", "segundo andar ou acima": "2"},
+    (RAMO_EMPRESARIAL, "localizacao"): {"outros": "0", "aeroporto": "1", "ceasa": "2", "ceasa/mercado": "2",
+                                        "mercado": "2", "condominio comercial": "3", "shopping": "4",
+                                        "supermercado": "5"},
+    (RAMO_EMPRESARIAL, "construcao"): {"superior": 4, "solida": 1, "mista": 2, "inferior": 3},
+    (RAMO_EMPRESARIAL, "objeto"): {"predio": 1, "conteudo": 2, "predio + conteudo": 3, "predio e conteudo": 3},
+}
+#: os códigos válidos de cada campo de lista (o que a porta aceita já como código) — os mesmos valores acima
+CODIGOS_VALIDOS_RE: dict = {k: frozenset(v.values()) for k, v in CODIGOS_MEDIDOS_RE.items()}
+# 📊 qtdElevadores: as opções da tela são 0–4 (formulario_condominio); o corpo aceita mais (📊 "15" num negócio lido)
+CODIGOS_VALIDOS_RE[(RAMO_CONDOMINIO, "elevadores")] = None   # inteiro ≥ 0, sem lista fechada
+
+TIPO_DO_CAMPO_RE: dict = {
+    ("segurado", "cpf_cnpj"): "digitos", ("segurado", "nome"): "texto", ("segurado", "nascimento"): "data",
+    ("segurado", "sexo"): "texto", ("segurado", "estado_civil"): "inteiro", ("segurado", "telefone"): "digitos",
+    ("segurado", "email"): "texto",
+    ("risco", "cep"): "digitos", ("risco", "logradouro"): "texto", ("risco", "numero"): "texto",
+    ("risco", "complemento"): "texto", ("risco", "bairro"): "texto", ("risco", "cidade"): "texto",
+    ("risco", "uf"): "texto", ("risco", "valor_basica"): "dinheiro", ("risco", "valor_de_novo"): "booleano",
+    ("risco", "extras"): "mapa_de_cobertura", ("risco", "tipo_imovel"): "codigo", ("risco", "estrutura"): "codigo",
+    ("risco", "ano_fundacao"): "texto", ("risco", "blocos"): "texto", ("risco", "pavimentos"): "texto",
+    ("risco", "elevadores"): "inteiro", ("risco", "area_construida"): "texto", ("risco", "funcionarios"): "texto",
+    ("risco", "protecoes"): "lista_de_codigos", ("risco", "construcao"): "codigo", ("risco", "uso"): "codigo",
+    ("risco", "objeto"): "codigo", ("risco", "atividade"): "texto", ("risco", "cnae"): "digitos",
+    ("risco", "pavimento"): "codigo_texto", ("risco", "localizacao"): "codigo_texto",
+    ("risco", "ano_construcao"): "inteiro",
+    ("renovacao", "renovacao"): "booleano", ("renovacao", "bonus_anterior"): "inteiro",
+    ("renovacao", "sinistros_anterior"): "inteiro", ("renovacao", "numero_apolice_anterior"): "texto",
+    ("renovacao", "seguradora_anterior"): "texto", ("renovacao", "fim_vigencia_anterior"): "data",
+    ("renovacao", "vigencia_inicio"): "data", ("renovacao", "vigencia_fim"): "data",
+    ("comissao_desconto", "comissao_percentual"): "dinheiro", ("comissao_desconto", "desconto_percentual"): "dinheiro",
+}
+
+
+def tipo_do_campo_re(grupo: str, campo: str) -> str:
+    """O tipo de um campo do pedido de RE; os sim/não do bem (imovelPossui*, perguntas) são 'booleano'."""
+    return TIPO_DO_CAMPO_RE.get((grupo, campo), "booleano" if grupo == "risco" else "texto")
+
+
+# As SEGURADORAS de cada ramo — o filtro GLOBAL do Agger (📊 `app/seguradoraStatus.<ramo>Status == 1`, lido do JS do
+# app em 11/10: formulario_<ramo>.json `seguradoras.habilitadas_no_agger_global`) ∩ as ativas na conta, menos Azul (10)
+# e Aliro (22) (regra do JS `getSeguradorasStatus`). Sem herdeiros (o GRUPO do auto não vale no RE: 📊 a Mitsui está
+# na lista global do empresarial mas não tem config própria na conta). O robô passa ESTA lista ao montador.js.
+SEGURADORAS_DO_RAMO: dict = {
+    RAMO_CONDOMINIO: (1, 4, 5, 8, 11, 19, 32, 35),
+    RAMO_RESIDENCIAL: (1, 3, 4, 5, 7, 8, 11, 12, 19, 24, 27, 31, 33, 43, 49),
+    RAMO_EMPRESARIAL: (1, 3, 4, 5, 7, 8, 11, 12, 13, 19, 24, 32, 35, 43),
+}
+SEGURADORAS_FORA_DO_RE: Tuple[int, ...] = (10, 22)   # Azul · Aliro (getSeguradorasStatus)
+# Os campos de `seguradorasRenovacao` que dizem se a seguradora anterior serve no ramo (📊 lista branca
+# "seguradoras_renovacao" do leitor: auto · residencial · condominio · empresarial)
+CAMPO_DO_RAMO_NA_RENOVACAO: dict = {RAMO_CONDOMINIO: "condominio", RAMO_RESIDENCIAL: "residencial",
+                                    RAMO_EMPRESARIAL: "empresarial"}
+
+
+def campos_do_pedido(ramo: int) -> dict:
+    """O catálogo do pedido do ramo: {grupo: ((nome, caminho, obrigatório), ...)}."""
+    if ramo == RAMO_AUTO:
+        return CAMPOS_DO_PEDIDO_AUTO
+    if ramo in CAMPOS_DO_PEDIDO_RE:
+        return CAMPOS_DO_PEDIDO_RE[ramo]
+    raise ValueError(f"ramo {ramo} não implementado (há: {', '.join(str(r) for r in RAMOS)})")
+
+
+def _vazio_re(v: Any) -> bool:
+    return v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, (list, dict)) and not v)
+
+
+def problemas_do_pedido_re(pedido: Any) -> Tuple[str, ...]:
+    """O que falta ou não tem código medido num pedido de RE (o dict do robô), como "grupo.campo" — NOMES, nunca
+    valores. Vazio = o robô pode montar o corpo. A porta (F2) devolve isto como `PedidoIncompleto`."""
+    if not isinstance(pedido, dict):
+        return ("pedido",)
+    ramo = pedido.get("ramo")
+    if ramo not in CAMPOS_DO_PEDIDO_RE:
+        return ("ramo",)
+    saida = []
+    for grupo, campos in CAMPOS_DO_PEDIDO_RE[ramo].items():
+        dados = pedido.get(grupo) if isinstance(pedido.get(grupo), dict) else {}
+        conhecidos = {n for n, _c, _o in campos}
+        for k in dados:
+            if k not in conhecidos:
+                saida.append(f"{grupo}.{k}:desconhecido")
+        for nome, _caminho, obrigatorio in campos:
+            v = dados.get(nome)
+            if _vazio_re(v):
+                if obrigatorio:
+                    saida.append(f"{grupo}.{nome}")
+                continue
+            validos = CODIGOS_VALIDOS_RE.get((ramo, nome)) if grupo == "risco" else None
+            tipo = tipo_do_campo_re(grupo, nome)
+            if tipo == "dinheiro" and (isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0):
+                saida.append(f"{grupo}.{nome}:valor")
+            elif tipo == "booleano" and not isinstance(v, bool):
+                saida.append(f"{grupo}.{nome}:sim_nao")
+            elif tipo == "lista_de_codigos" and not (isinstance(v, list) and all(
+                    isinstance(x, int) and not isinstance(x, bool) and (validos is None or x in validos) for x in v)):
+                saida.append(f"{grupo}.{nome}:codigo")
+            elif tipo in ("codigo", "codigo_texto") and validos is not None and v not in validos:
+                saida.append(f"{grupo}.{nome}:codigo")
+            elif tipo == "inteiro" and (isinstance(v, bool) or not isinstance(v, int)):
+                if not (isinstance(v, str) and v.strip().isdigit()):
+                    saida.append(f"{grupo}.{nome}:codigo")
+            elif tipo == "mapa_de_cobertura" and not (isinstance(v, dict) and all(
+                    isinstance(x, (int, float)) and not isinstance(x, bool) and x >= 0 for x in v.values())):
+                saida.append(f"{grupo}.{nome}:valor")
+    ren = pedido.get("renovacao") if isinstance(pedido.get("renovacao"), dict) else {}
+    if ren.get("renovacao") is True and _vazio_re(ren.get("seguradora_anterior")):
+        saida.append("renovacao.seguradora_anterior")
+    return tuple(saida)
+
+
+@dataclass(frozen=True)
+class PedidoDeCalculoRE:
+    """O pedido de RE validado contra o catálogo do ramo. `de_dict` levanta `ValueError` com os NOMES do que falta
+    (nunca valores); `para_dict()` é o dict que o motor entrega ao robô."""
+    ramo: int
+    segurado: Any
+    risco: Any
+    renovacao: Any = None
+    comissao_desconto: Any = None
+    seguradoras: Tuple[int, ...] = ()
+
+    def __repr__(self) -> str:   # ⛔ nunca os valores (CNPJ, nome, endereço)
+        return f"PedidoDeCalculoRE(ramo={self.ramo}, risco={len(self.risco or {})} campos)"
+
+    __str__ = __repr__
+
+    @classmethod
+    def de_dict(cls, dados: Any) -> "PedidoDeCalculoRE":
+        problemas = problemas_do_pedido_re(dados)
+        if problemas:
+            raise ValueError("pedido de RE inválido: " + ", ".join(problemas))
+        return cls(ramo=int(dados["ramo"]), segurado=dict(dados.get("segurado") or {}),
+                   risco=dict(dados.get("risco") or {}), renovacao=dict(dados.get("renovacao") or {}),
+                   comissao_desconto=dict(dados.get("comissao_desconto") or {}),
+                   seguradoras=tuple(sorted({int(s) for s in dados.get("seguradoras") or ()})))
+
+    def para_dict(self) -> dict:
+        return {"ramo": self.ramo, "segurado": dict(self.segurado), "risco": dict(self.risco),
+                "renovacao": dict(self.renovacao or {}), "comissao_desconto": dict(self.comissao_desconto or {}),
+                "seguradoras": list(self.seguradoras), "assumidos": [], "coberturas": {}, "pacotes": {}}
+
+
 # --------------------------------------------------------------------------
 # O resultado
 # --------------------------------------------------------------------------
@@ -309,6 +655,9 @@ NOVA_OFERTA = "nova_oferta"
 OFERTA_ATUALIZADA = "oferta_atualizada"
 SEGURADORA_RECUSOU = "seguradora_recusou"
 CONJUNTO_FECHADO = "conjunto_fechado"   # UMA vez por cálculo (leitor_agger.eventos_do_calculo)
+# SPEC-129-C D-129C-04: no empresarial, a seguradora cuja atividade NÃO casou de forma inequívoca com a do pedido SAI do
+# cálculo (nunca um código errado) e é narrada com este evento (família DADO: o corretor pode escolher o código à mão).
+SEM_ATIVIDADE_COMPATIVEL = "sem_atividade_compativel"
 
 
 @dataclass(frozen=True)

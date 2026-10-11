@@ -40,6 +40,7 @@ from .contrato import (
     PENDENTE, PERMISSAO, RAMO_AUTO, SEGURADORA_RECUSOU, Campo, Evento, Oferta,
     Parcelamento, PedidoDeCalculoAuto, RespostaDaSeguradora, RodadaDoCalculo,
 )
+from .presets import CHAVES_DE_COBERTURA_RE as _CHAVES_DE_COBERTURA_RE
 
 # ==========================================================================
 # A LISTA BRANCA — por CAMINHO COMPLETO até a folha, por endpoint
@@ -123,11 +124,58 @@ COTACAO: Tuple[str, ...] = (
     "tpFranquiaTxt", "tpCoberturaCalcTxt", "isAgger",
 ) + tuple(f"calculos[].{p}" for p in ITEM_DA_SEGURADORA)
 
+# --------------------------------------------------------------------------
+# SPEC-129-C — o resultado de RE (Condomínio 16 · Residencial 2 · Empresarial 18)
+# --------------------------------------------------------------------------
+# 📊 As 9 gravações reais (tests/fixtures/agger_ramos/gravacao_*): a MESMA forma do auto — um item por seguradora,
+# 1 `resultados[]` por item (94/94 · 129/129 · 121/121) — mas as coberturas ECOADAS em `resultados[].coberturas` são as
+# chaves de RE, com a assistência como TEXTO do plano ("Assist. 24 Horas Condominio Superior", "Plano Básico"…).
+# A lista branca de RE NÃO leva as chaves do auto (casco, RCF, carro reserva…): o que o RE não tem, não passa.
+# As chaves ecoadas MEDIDAS (union das 9 gravações, `resultados[].coberturas`, sem percComissao — canônico — e sem
+# `coberturaCompartilhada`, cujo significado não foi medido):
+COBERTURAS_ECOADAS_RE_MEDIDAS: Tuple[str, ...] = (
+    "assist24hs", "valorDeNovo", "imovelObjetoSegurado", "isDanosIncendioRaioExplosao",
+    "isDanosIncendioRaioExplosaoCond", "isDanosEletricos", "isDanosAluguel", "isDanosRoubo", "isDanosVendaval",
+    "isDanosVazamentoTanquesTubulacoes", "isDanosDesmoronamento", "tumultoGreveLockOut", "isValorSindico",
+    "isValorCondominio", "garagistaExclusiva", "garagista", "rouboCondomino", "isDanosImpactoVeiculo", "isDanosPortoes",
+    "isDanosAlagamento", "isDanosDespesasFixas", "isDanosMorais", "vidros", "responsabilidadeCivil",
+    "isDanosEquipamentosEletronicos", "placasSolares", "recomposicaoDocumentos", "isEmpregador", "chuveiroSprinkler",
+)
+# + toda chave que o pedido de RE pode mandar (presets.CHAVES_DE_COBERTURA_RE) — a seguradora ecoa o que recebeu
+COBERTURAS_DA_OFERTA_RE: Tuple[str, ...] = COBERTURAS_ECOADAS_RE_MEDIDAS + tuple(sorted(
+    {k for ks in _CHAVES_DE_COBERTURA_RE.values() for k in ks} - set(COBERTURAS_ECOADAS_RE_MEDIDAS)))
+
+ITEM_DA_SEGURADORA_RE: Tuple[str, ...] = (
+    "seguradora", "seguradoraTxt", "nomeSeguradora", "ativo", "nome",
+    "credenciaisValidas", "retorno", "retornoErro", "erros[]", "alertas[]",
+    "premio", "premioMensal", "valorFranquia", "tempoResposta", "packageType", "selected",
+    "percComissao", "percDesconto",
+    "resultados[].premio", "resultados[].premioMensal", "resultados[].franquia",
+    "resultados[].identificacao", "resultados[].packageType",
+    "resultados[].principal", "resultados[].selected",
+    "resultados[].renovacaoGarantida",
+    "resultados[].nroCalculo",                           # → marca
+    "resultados[].pathPdf", "resultados[].pdfFileNameAgger",  # → "<removido:pdf>"
+    "resultados[].erros[]", "resultados[].alertas[]", "resultados[].observacoes[]",
+    "resultados[].parcelamentos[].parcelas",
+    "resultados[].parcelamentos[].tipoPag",
+    "resultados[].parcelamentos[].premioPrimeiraParc",
+    "resultados[].parcelamentos[].premioDemaisParc",
+    "resultados[].parcelamentos[].valorIof",
+    "resultados[].coberturas.percComissao",
+    "resultados[].coberturas.percDesconto",
+) + tuple(f"resultados[].coberturas.{c}" for c in COBERTURAS_DA_OFERTA_RE)
+
 # corpo de cada endpoint, relativo ao `corpo` do envelope da fixture
 LISTA_BRANCA_POR_ENDPOINT: Dict[str, Tuple[str, ...]] = {
     "calcularV2": tuple(f"cotacao.{p}" for p in COTACAO) + ("negocio.id",),
     "calcularV2_resposta": ("idIntegracao", "versao"),
     "cotacao_calculos": tuple(f"[].{p}" for p in ITEM_DA_SEGURADORA),
+    "cotacao_calculos_re": tuple(f"[].{p}" for p in ITEM_DA_SEGURADORA_RE),
+    # SPEC-129-C D-129C-04: `getOptionsBySegFull` — só a seguradora e o código/rótulo de cada atividade
+    # (📊 forma: formulario_empresarial.json `atividade_por_seguradora.forma`)
+    "atividades_por_seguradora": ("[].seguradora", "[].KeyValue[].Key", "[].KeyValue[].Value",
+                                  "[].KeyValue[].Description"),
     "cotacao_versoes": tuple(f"[].{p}" for p in COTACAO),
     "negocio": COTACAO,
     # busca/v2: SÓ contagens (derivadas pelo gerador)
@@ -278,14 +326,91 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
 # A mensagem da renovação inválida (antes DESCONHECIDA) ganhou a família DADO — decisão do gerente
 # (D-128-02, nota 85 × ACEITACAO 50: não é recusa do risco, é pedido a corrigir).
 
+# SPEC-129-C — as famílias de recusa do RE, ANTES das do auto (só para ramo ≠ 31: o auto não muda).
+# (família, padrão sobre o texto DOBRADO, a fonte, o MOTIVO de RE). 🔴 Cada texto vem do ACERVO (§9.4): as 9 gravações
+# (gravacao_<ramo>_<n>) e AGREGADO-POR-RAMO §1 (45 negócios lidos, texto normalizado com "#" no lugar dos números).
+# As famílias são as MESMAS do contrato (a view `multicalculo_seguradora_dia` conta por elas); o motivo detalha:
+#   limite de cobertura → DADO (o pedido baixa a IS e recalcula) · construção → ACEITACAO · atividade inválida → DADO,
+#   bloqueada/declinada → ACEITACAO · comissão fora da faixa → COMERCIAL (como "desconto x comissão" do auto).
+MOTIVOS_RE: Tuple[str, ...] = ("limite_de_cobertura", "construcao", "atividade", "comissao", "aceitacao",
+                               "renovacao_cadastro", "credencial", "instabilidade")
+REGRAS_DE_FAMILIA_RE: Tuple[Tuple[str, "re.Pattern[str]", str, str], ...] = (
+    # gravacao_empresarial_2 (Allianz): "636 - Valor de IS da cobertura PERDA OU PAG DE ALUG.,supera o máximo
+    # permitido (120.000,00)" · (Mapfre): "[165455] - Cobertura Perda/Pagamento de Aluguel supera o Limite Máximo de
+    # Contratação" · AGREGADO §1: "LMR da cobertura inferior ao LMR mínimo" · "limite máximo para [roubo] é #% da
+    # cobertura básica" · "danos elétricos… fora do intervalo permitido (#% até #%)" · "danos por água acima do limite
+    # máximo" · "desmoronamento supera o limite máximo" · "perda de lucro bruto limitada a #% de lucros cessantes" ·
+    # "LMI de despesas fixas acima do permitido" · "LMI de roubo – veraneio acima do permitido" · "o número de vagas deve
+    # ser maior do que…"
+    (DADO, re.compile(r"supera o (limite )?maximo|inferior ao lmr minimo|% da cobertura basica|"
+                      r"fora do intervalo permitido|danos por agua acima do limite maximo|limitada a \d+[.,]?\d*\s?% de|"
+                      r"lmi de .{0,60}acima do permitido|numero de vagas deve ser"),
+     "gravacao_empresarial_2 · AGREGADO-POR-RAMO §1 (limite de cobertura)", "limite_de_cobertura"),
+    # AGREGADO §1 (residencial): "usuário sem autorização para cotar construção madeira" · "o tipo de construção
+    # (inferior) não está disponível"
+    (ACEITACAO, re.compile(r"sem autorizacao para cotar construcao|tipo de construcao .{0,40}nao esta disponivel"),
+     "AGREGADO-POR-RAMO §1 (construção)", "construcao"),
+    # AGREGADO §1 (empresarial): "atividade deve ser especificada corretamente" · "atividade inválida"
+    (DADO, re.compile(r"atividade deve ser especificada|atividade invalida"),
+     "AGREGADO-POR-RAMO §1 (atividade)", "atividade"),
+    # AGREGADO §1 (empresarial): "atividade bloqueada… sujeita a análise prévia" · "atividade declinada"
+    (ACEITACAO, re.compile(r"atividade bloqueada|atividade declinada"),
+     "AGREGADO-POR-RAMO §1 (atividade)", "atividade"),
+    # AGREGADO §1 (empresarial): "comissão do corretor acima do permitido" · "percentual de comissão… ultrapassa o máximo
+    # de (#%)" · "a comissão deve possuir um valor entre #% e #%"
+    (COMERCIAL, re.compile(r"comissao do corretor acima do permitido|percentual de comissao.{0,80}ultrapassa o maximo|"
+                           r"comissao deve possuir um valor entre"),
+     "AGREGADO-POR-RAMO §1 (comissão)", "comissao"),
+    # gravacao_condominio_1 (Bradesco): "Risco com divergencia de experiencia (3222)" · AGREGADO §1: "risco recusado.
+    # fora da atual política de aceitação" · "# - risco restrito" · "risco proibido… para o local de risco" · "o cálculo
+    # deve ser encaminhado para análise" · "cotação não será realizada - motivo técnico"
+    (ACEITACAO, re.compile(r"divergencia de experiencia|politica de aceitacao|risco restrito|risco proibido|"
+                           r"encaminhado para analise|motivo tecnico"),
+     "gravacao_condominio_1 · AGREGADO-POR-RAMO §1 (aceitação)", "aceitacao"),
+    # gravacao_empresarial_2 (Axa): "Erro ao validar cotação. Verificamos que esse proponente pode ser uma Renovação AXA"
+    # · gravacao_condominio_2 (Bradesco): "Nº de ocorrências: Campo Obrigatório" · AGREGADO §1: "não foi possível calcular
+    # como renovação interna, alterar para seguro novo" · "cotação de renovação não encontrada para o segurado" · "a
+    # apólice informada (#) é inválida" · "código da seguradora anterior inválido" · "endereço não encontrado para o CEP"
+    (DADO, re.compile(r"pode ser uma renovacao|campo obrigatorio|renovacao interna|cotacao de renovacao nao encontrada|"
+                      r"apolice informada .{0,30}invalida|seguradora anterior invalid|endereco nao encontrado para o cep"),
+     "gravacao_empresarial_2 · gravacao_condominio_2 · AGREGADO-POR-RAMO §1 (renovação/cadastro)", "renovacao_cadastro"),
+    # AGREGADO §1: "usuário e/ou senha incorretos… atualizar o login" · Tokio "é necessário fazer a adesão ao
+    # multicálculo no portal"
+    (CREDENCIAL, re.compile(r"usuario e/ou senha incorret|adesao ao multicalculo"),
+     "AGREGADO-POR-RAMO §1 (credencial)", "credencial"),
+    # AGREGADO §1: "ocorreu um erro inesperado… tente novamente" · "Erro - descrição retorno vazio"
+    (INSTABILIDADE, re.compile(r"erro inesperado|descricao retorno vazio"),
+     "AGREGADO-POR-RAMO §1 (genérico)", "instabilidade"),
+)
 
-def classificar_mensagens(mensagens: Sequence[str]) -> Optional[str]:
-    """A família da 1ª regra (em ordem de prioridade) que casa alguma mensagem."""
+
+def classificar_mensagens(mensagens: Sequence[str], ramo: int = RAMO_AUTO) -> Optional[str]:
+    """A família da 1ª regra (em ordem de prioridade) que casa alguma mensagem. No RE, as regras de RE vêm antes."""
     dobradas = [dobra(m) for m in mensagens if isinstance(m, str) and m.strip()]
+    if ramo != RAMO_AUTO:
+        for familia, padrao, _fonte, _motivo in REGRAS_DE_FAMILIA_RE:
+            if any(padrao.search(m) for m in dobradas):
+                return familia
     for familia, padrao, _fonte in REGRAS_DE_FAMILIA:
         if any(padrao.search(m) for m in dobradas):
             return familia
     return None
+
+
+def motivo_de_recusa_re(mensagens: Sequence[str]) -> Optional[str]:
+    """O motivo de RE (MOTIVOS_RE) da 1ª regra que casa; 'credencial'/'aceitacao'/'instabilidade' também pelas regras
+    comuns. None = nenhuma regra reconheceu."""
+    dobradas = [dobra(m) for m in mensagens if isinstance(m, str) and m.strip()]
+    for _familia, padrao, _fonte, motivo in REGRAS_DE_FAMILIA_RE:
+        if any(padrao.search(m) for m in dobradas):
+            return motivo
+    familia = classificar_mensagens(mensagens)
+    return {CREDENCIAL: "credencial", ACEITACAO: "aceitacao", INSTABILIDADE: "instabilidade"}.get(familia or "")
+
+
+def endpoint_de_calculos(ramo: int) -> str:
+    """A lista branca do `cotacao/calculos` do ramo: a do auto só serve ao auto."""
+    return "cotacao_calculos" if ramo == RAMO_AUTO else "cotacao_calculos_re"
 
 
 # ==========================================================================
@@ -364,6 +489,11 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
                 primeira_parcela=numero(p.get("premioPrimeiraParc")),
                 demais_parcelas=numero(p.get("premioDemaisParc")),
             ))
+    re_ = ramo != RAMO_AUTO
+    franquia = numero(r.get("franquia"))
+    if re_ and franquia is None:
+        # 📊 RE: `resultados[].franquia` = 0 em 344/344 com preço; o app de RE lê também a `valorFranquia` do item
+        franquia = numero(item.get("valorFranquia"))
     return Oferta(
         seguradora=_limpo(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""),
         seguradora_codigo=_inteiro(item.get("seguradora")),
@@ -371,9 +501,10 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
         tipo_de_pacote=_inteiro(r.get("packageType")),
         premio_total=premio,
         premio_mensal=numero(r.get("premioMensal")),
-        franquia_valor=numero(r.get("franquia")),
-        franquia_tipo=(str(cob.get("tipoFranquia")) if cob.get("tipoFranquia") is not None else None),
-        coberturas=tuple((k, cob[k]) for k in COBERTURAS_DA_OFERTA if k in cob),
+        franquia_valor=franquia,
+        franquia_tipo=(None if re_ else
+                       (str(cob.get("tipoFranquia")) if cob.get("tipoFranquia") is not None else None)),
+        coberturas=tuple((k, cob[k]) for k in (COBERTURAS_DA_OFERTA_RE if re_ else COBERTURAS_DA_OFERTA) if k in cob),
         parcelamentos=tuple(parcelas),
         tem_pdf=bool(r.get("pathPdf") or r.get("pdfFileNameAgger")),
         numero_calculo_presente=bool(r.get("nroCalculo")),
@@ -393,7 +524,7 @@ def ler_resposta(item: Dict[str, Any], ramo: int = RAMO_AUTO) -> RespostaDaSegur
     if ofertas:
         familia = OFERTA
     else:
-        familia = classificar_mensagens(mensagens)
+        familia = classificar_mensagens(mensagens, ramo)
         if familia is None:
             if item.get("credenciaisValidas") is False:
                 familia = CREDENCIAL

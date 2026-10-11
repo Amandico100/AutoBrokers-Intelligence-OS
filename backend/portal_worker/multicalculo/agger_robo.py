@@ -30,11 +30,17 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from ..redaction import redigir_texto, sem_url_nem_chave, tem_url_ou_chave
-from .contrato import CHAVES_PROIBIDAS_NA_OFERTA, RAMO_AUTO, Ajuste, Evento, RodadaDoCalculo
-from .leitor_agger import (
-    LISTA_BRANCA_POR_ENDPOINT, caminho_permitido, caminhos_de, eventos_entre, ler_resposta, ler_rodada,
+from .atividade_empresarial import escolher_atividades, termos_de_busca
+from .contrato import (
+    CAMPO_DO_RAMO_NA_RENOVACAO, CAMPOS_DO_PEDIDO_RE, CHAVES_PROIBIDAS_NA_OFERTA, DADO, RAMO_AUTO, RAMO_CONDOMINIO,
+    RAMO_EMPRESARIAL, RAMO_RESIDENCIAL, RAMOS_RE, SEGURADORAS_DO_RAMO, SEGURADORAS_FORA_DO_RE, SEM_ATIVIDADE_COMPATIVEL, Ajuste, Evento,
+    RodadaDoCalculo, chave_no_corpo, problemas_do_pedido_re, tipo_do_campo_re,
 )
-from .presets import CHAVES_DE_COBERTURA
+from .leitor_agger import (
+    LISTA_BRANCA_POR_ENDPOINT, caminho_permitido, caminhos_de, endpoint_de_calculos, eventos_entre, ler_resposta,
+    ler_rodada,
+)
+from .presets import CHAVE_DA_BASICA, CHAVES_DE_COBERTURA, CHAVES_DE_COBERTURA_RE
 
 logger = logging.getLogger("portal_worker.multicalculo")
 
@@ -46,7 +52,13 @@ PREFIXO_DA_MARCA = "ab0b"
 
 ERRO_DE_LEITURA = "erro_de_leitura"
 LISTA_CALCULOS = list(LISTA_BRANCA_POR_ENDPOINT["cotacao_calculos"])
+LISTA_CALCULOS_RE = list(LISTA_BRANCA_POR_ENDPOINT["cotacao_calculos_re"])
 LISTA_RESPOSTA = list(LISTA_BRANCA_POR_ENDPOINT["calcularV2_resposta"])
+LISTA_ATIVIDADES = list(LISTA_BRANCA_POR_ENDPOINT["atividades_por_seguradora"])
+
+
+def lista_de_calculos(ramo: int) -> List[str]:
+    return LISTA_CALCULOS if ramo == RAMO_AUTO else LISTA_CALCULOS_RE
 # O que a página troca por MARCA. As de PDF são conferidas à letra (a URL do PDF é segredo: leva assinatura/caminho
 # do arquivo). O nº de cálculo da seguradora não é segredo — o JS o marca por economia; aqui só se exige que não
 # traga URL/chave (as fixtures da 128 o trazem pseudonimizado, "<calculo#0009>").
@@ -70,6 +82,8 @@ MOTIVOS_LEGIVEIS = {
     "versao_base_inexistente": "a versão de origem do recálculo não existe mais no Agger",
     "ajuste_sem_alvo": "o ajuste não tem seguradora onde ser aplicado",
     "sem_resposta": "a página do Agger não respondeu ao preparo",
+    "sem_comissao": "o pedido de RE não trouxe a comissão (ela vai explícita em cada seguradora)",
+    "sem_atividade_compativel": "nenhuma seguradora tem uma atividade que case sem dúvida com a do pedido",
 }
 
 
@@ -122,6 +136,12 @@ class Disparo:
     negocio_ref: str
     versao: int
     t0: float
+    # SPEC-129-C: o ramo do negócio (o leitor usa a lista branca e as famílias DO RAMO) e, no empresarial, as
+    # seguradoras que SAÍRAM por não ter atividade compatível: ((código, nome), ...) — `acompanhar` as narra uma vez.
+    # ⚠️ A retomada do motor reconstrói o Disparo só com (negocio_ref, versao, t0): o ramo cai no padrão (31) — a costura
+    # F3 passa `ramo=` (o `multicalculo_pedidos.ramo`).
+    ramo: int = RAMO_AUTO
+    sem_atividade: Tuple[Tuple[int, str], ...] = ()
 
 
 # ======================================================================================================================
@@ -164,7 +184,7 @@ PADROES_DO_QUESTIONARIO = {"kmAnual": 6000, "tpUso": 1, "garagemResidencia": "2"
                            "pctAjuste": 100, "tpResidencia": 1}
 
 
-def cotacao_do_pedido(pedido: Dict[str, Any], *, agora: Optional[datetime] = None) -> Dict[str, Any]:
+def _cotacao_do_pedido_auto(pedido: Dict[str, Any], *, agora: Optional[datetime] = None) -> Dict[str, Any]:
     """PURA. O que a página completa depois: veículo (buscaPlaca/fipeModelo), endereço (cep), seguradora anterior
     (seguradorasRenovacao) e o `calculos[]` (config + coberturas). Levanta `DisparoRecusado` antes de qualquer rede."""
     seg = dict(pedido.get("segurado") or {})
@@ -264,6 +284,175 @@ def cotacao_do_pedido(pedido: Dict[str, Any], *, agora: Optional[datetime] = Non
             "desconto": (pedido.get("comissao_desconto") or {}).get("desconto_percentual")}
 
 
+def cotacao_do_pedido(pedido: Dict[str, Any], *, agora: Optional[datetime] = None,
+                      coberturas: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """PURA. Despacha pelo ramo do pedido: o AUTO (31) é o de sempre (byte a byte); o RE (16 · 2 · 18) monta segurado
+    + `configuracoes` (endereço do risco, o bem, as COBERTURAS) + vigência/renovação. Levanta `DisparoRecusado` antes de
+    qualquer rede."""
+    ramo = pedido.get("ramo", RAMO_AUTO) if isinstance(pedido, dict) else RAMO_AUTO
+    if ramo in (None, RAMO_AUTO):
+        return _cotacao_do_pedido_auto(pedido, agora=agora)
+    if ramo not in RAMOS_RE:
+        raise DisparoRecusado(f"ramo {ramo} não implementado")
+    return _cotacao_do_pedido_re(pedido, int(ramo), coberturas or {}, agora=agora)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# SPEC-129-C — a montagem do RE. 🔴 A FORMA vem das gravações reais (tests/fixtures/agger_ramos/gravacao_<ramo>_1.json,
+# `versao`): o molde de `configuracoes` de cada ramo é o corpo gravado com os VALORES neutralizados (as chaves e os
+# padrões ficam; endereço, bem e coberturas vêm do pedido). As chaves `*Txt`/`*TxtRS` do empresarial gravado (rótulos de
+# TELA, ex. "R$ 1.500.000,00") ficam fora: 💭 texto de exibição; o canário (F3) confirma que o Agger não as exige.
+# ----------------------------------------------------------------------------------------------------------------------
+_FUNERAL = {"tipo": 0, "valor": 0}
+_MOLDE_CONFIGURACOES: Dict[int, Dict[str, Any]] = {
+    # 📊 gravacao_condominio_1.versao.configuracoes (65 chaves; padrões do app: sisProtecaoIncendRoubo [1], Vertical 1,
+    # 1 bloco/1 pavimento como TEXTO, 0 elevador, valorDeNovo 1)
+    RAMO_CONDOMINIO: {
+        "imovelLogradouro": None, "imovelNumero": None, "imovelComplemento": "", "imovelBairro": None,
+        "imovelCidade": None, "imovelUF": None, "imovelUso": None, "imovelCep": None, "imovelAlarme": None,
+        "imovelTipoResidencia": None, "imovelConstrucao": None, "imovelOcupacao": None, "imovelObjetoSegurado": None,
+        "imovelAtividadeProfissionalLocal": None, "imovelPossuiAlarme": None, "imovelPossuiVigilancia24hs": None,
+        "responsabilidadeCivil": None, "isDanosMateriais": None, "despesaFixa": None, "fidelidade": None,
+        "funeral": _FUNERAL, "sisProtecaoIncendRoubo": [1], "condPossuiAreaComercial": False, "imovelAtividade": 1,
+        "anoFundacao": None, "estruturaCondominio": 1, "qtdElevadores": 0, "qtdBlocos": "1", "pavimentos": "1",
+        "qtdFuncionarios": "", "areaConstruida": "", "imovelPatrimonioHistorico": False, "desmoronamento": False,
+        "modalidade": None, "valorDeNovo": 1,
+    },
+    # 📊 gravacao_residencial_1.versao.configuracoes (51 chaves; padrões do app: Sólida 1, Casa 1, Habitual 1,
+    # Prédio+Conteúdo 3, "segurado é o proprietário" marcado)
+    RAMO_RESIDENCIAL: {
+        "imovelLogradouro": None, "imovelNumero": None, "imovelComplemento": "", "imovelBairro": None,
+        "imovelCidade": None, "imovelUF": None, "imovelUso": 1, "imovelCep": None, "imovelAlarme": None,
+        "imovelTipoResidencia": 1, "imovelConstrucao": 1, "imovelOcupacao": 1, "imovelObjetoSegurado": 3,
+        "imovelAtividadeProfissionalLocal": False, "imovelPossuiAlarme": False, "imovelPossuiVigilancia24hs": False,
+        "rouboCondomino": None, "isDanosMateriais": 0, "despesaFixa": 0, "fidelidade": 0, "funeral": _FUNERAL,
+        "sisProtecaoIncendRoubo": None, "imovelAtividade": False, "imovelPossuiGrades": False,
+        "imovelPossuiCercaEletrica": False, "imovelPossuiAlarmeMonitorado": False,
+        "imovelPossuiPorteiroEletronico": False, "imovelPossuiCircuitoFechado": False, "valorDeNovo": 1,
+        "imovelPatrimonioHistorico": False, "seguradoProprietario": True, "areaRisco": False, "zonaRural": False,
+    },
+    # 📊 gravacao_empresarial_1.versao.configuracoes (sem os *Txt; padrões do app: Térreo "0", Outros "0", Sólida 1,
+    # Prédio+Conteúdo 3, `isGuardaVeiculo` objeto)
+    RAMO_EMPRESARIAL: {
+        "imovelLogradouro": None, "imovelNumero": None, "imovelComplemento": "", "imovelBairro": None,
+        "imovelCidade": None, "imovelUF": None, "imovelUso": False, "imovelCep": None, "imovelAlarme": None,
+        "imovelConstrucao": 1, "imovelOcupacao": 1, "imovelObjetoSegurado": 3, "imovelPossuiAlarme": False,
+        "imovelPossuiVigilancia24hs": False, "rouboCondomino": None, "isDanosMateriais": 0, "despesaFixa": 0,
+        "funeral": _FUNERAL, "sisProtecaoIncendRoubo": None, "imovelLocalizacao": None, "imovelPossuiHidrante": False,
+        "imovelPavimentacao": "0", "imovelLocalEstabelecimento": "0", "anoConstrucao": None,
+        "imovelPossuiExtintor": False, "imovelPossuiSprinkler": False, "imovelPossuiBrigadaIncendio": False,
+        "imovelPossuiDetectorFumaca": False, "imovelPossuiAlarmeMonitorado": False, "imovelPossuiCircuitoFechado": False,
+        "imovelPossuiGradesEFechaduraTetra": False, "imovelPossuiSensorInfravermelho": False,
+        "imovelUtilizadoDeposito": False, "imovelDivisaTerronoBaldio": False, "imovelPatrimonioHistorico": False,
+        "imovelTelhaEstruturaMetalica": False, "imovelCaixaEletronico": False, "imovelPossuiIsopainel": False,
+        "imovelConstrucaoReforma": False, "valorDeNovo": 1,
+        "isGuardaVeiculo": {"franquia": None, "vagas": None, "valor": 0},
+    },
+}
+# 📊 o `segurado` gravado: condomínio (gravacao_condominio_1) sem `fone`; residencial/empresarial com `fone` e sexo "M"
+# (informacoesDefault {segurado:{sexo:"M"}}); estadoCivil 1 nos 3 (6/6 recentes).
+_ESTATICOS_DO_RASCUNHO: Dict[int, Dict[str, Any]] = {
+    # 📊 formulario_<ramo>.json `valores_fixos_do_corpo_no_js.valoresEstaticosDraft` + o topo das versões gravadas
+    RAMO_CONDOMINIO: {"tipoSeguro": 1, "origem": 1, "integracaoID": None, "codigoInterno": None},
+    RAMO_RESIDENCIAL: {"tipoSeguro": 1, "usuarioCriado": "", "usuarioCriadorNome": "", "origem": 1, "versaoAtual": 1,
+                       "integracaoID": None, "corretora": {}, "calculosEnviados": 1, "calculosRecebidos": 0},
+    RAMO_EMPRESARIAL: {"tipoSeguro": 1, "usuarioCriado": "", "usuarioCriadorNome": "", "origem": 1, "versaoAtual": 1,
+                       "integracaoID": None, "corretora": {}, "calculosEnviados": 1, "calculosRecebidos": 0},
+}
+
+
+def _valor_do_risco(grupo: str, nome: str, v: Any) -> Any:
+    tipo = tipo_do_campo_re(grupo, nome)
+    if tipo == "digitos":
+        return re.sub(r"\D", "", str(v))
+    if nome in ("ano_fundacao", "blocos", "pavimentos", "area_construida", "funcionarios"):
+        return str(v)                        # 📊 TEXTO no corpo gravado ("2005", "4", "5", "")
+    if tipo == "inteiro":
+        return _int(v, f"{grupo}.{nome}")
+    if nome == "valor_de_novo":
+        return 1 if v else 0                 # 📊 valorDeNovo Não 0 · Sim 1
+    if tipo == "lista_de_codigos":
+        return [int(x) for x in v]
+    return v
+
+
+def _cotacao_do_pedido_re(pedido: Dict[str, Any], ramo: int, coberturas: Dict[str, Any], *,
+                          agora: Optional[datetime] = None) -> Dict[str, Any]:
+    problemas = problemas_do_pedido_re(pedido)
+    if problemas:
+        raise DisparoRecusado("pedido sem: " + ", ".join(problemas))
+    seg = dict(pedido.get("segurado") or {})
+    risco = dict(pedido.get("risco") or {})
+    ren = dict(pedido.get("renovacao") or {})
+    com = dict(pedido.get("comissao_desconto") or {})
+    doc = re.sub(r"\D", "", str(seg.get("cpf_cnpj")))
+    segurado: Dict[str, Any] = {
+        "nome": seg.get("nome"),
+        # 📊 condomínio: o app FORÇA "J" (valoresEstaticosDraftSegurado); os outros pelo tamanho do documento
+        "tipoPessoa": "J" if ramo == RAMO_CONDOMINIO else ("J" if len(doc) == 14 else "F"),
+        "cpfCnpj": doc, "estadoCivil": _int(seg.get("estado_civil"), "segurado.estado_civil") or 1,
+        "dataNasc": _iso(seg.get("nascimento")) if seg.get("nascimento") else None, "dataPrimHabil": None,
+        "sexo": None if ramo == RAMO_CONDOMINIO else (_SEXO.get(str(seg.get("sexo") or "").strip().lower()) or "M"),
+        "fone1": re.sub(r"\D", "", str(seg.get("telefone") or "")), "cep": None, "residLogradouro": None,
+        "residNumero": None, "residBairro": None, "residCidade": None, "residUF": None,
+        "email": seg.get("email") or "",
+    }
+    if ramo != RAMO_CONDOMINIO:
+        segurado["fone"] = segurado["fone1"]
+    cfg: Dict[str, Any] = {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
+                           for k, v in _MOLDE_CONFIGURACOES[ramo].items()}
+    for k in CHAVES_DE_COBERTURA_RE[ramo]:
+        cfg[k] = 0
+    for k, v in (coberturas or {}).items():          # as da OPÇÃO (presets.coberturas_re, resolvidas pela porta)
+        if k in CHAVES_DE_COBERTURA_RE[ramo]:
+            cfg[k] = v
+    for nome, _caminho, _obr in CAMPOS_DO_PEDIDO_RE[ramo]["risco"]:
+        chave = chave_no_corpo(ramo, "risco", nome)
+        if chave is None or risco.get(nome) in (None, ""):
+            continue
+        cfg[chave] = _valor_do_risco("risco", nome, risco[nome])
+    for k, v in (risco.get("extras") or {}).items():  # o pedido VENCE a opção
+        if k not in CHAVES_DE_COBERTURA_RE[ramo] or k == "assist24hs":
+            raise DisparoRecusado(f"pedido sem: risco.extras.{k}:desconhecido")
+        cfg[k] = v
+    cfg[CHAVE_DA_BASICA] = risco["valor_basica"]     # 🔴 a Básica é SEMPRE a do pedido (D-129C-03)
+    if ramo == RAMO_EMPRESARIAL:
+        # 📊 "RC Operações": `responsabilidadeCivil` e `responsabilidadeCivilOperacoes` sempre iguais nos gravados
+        cfg["responsabilidadeCivilOperacoes"] = cfg.get("responsabilidadeCivil") or cfg.get(
+            "responsabilidadeCivilOperacoes") or 0
+        cfg["responsabilidadeCivil"] = cfg["responsabilidadeCivilOperacoes"]
+    renovacao = ren.get("renovacao") is True
+    agora_utc = (agora or datetime.now(timezone.utc)).replace(microsecond=0)
+    vig_ini = _iso(ren.get("vigencia_inicio")) or agora_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    vig_fim = _iso(ren.get("vigencia_fim"))
+    if not vig_fim:
+        try:
+            vig_fim = agora_utc.replace(year=agora_utc.year + 1).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        except ValueError:
+            vig_fim = (agora_utc + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    sin = _int(ren.get("sinistros_anterior"), "renovacao.sinistros_anterior") if renovacao else 0
+    cot: Dict[str, Any] = {
+        "segurado": segurado, "configuracoes": cfg,
+        "results": {k: {"errors": [], "successes": []} for k in ("main", "alternatives", "all", "porAssinatura", "ofertaCruzada")},
+        "loaded": False, "tipo": 5, "integracaoInfo": 1, "ramo": ramo, **_ESTATICOS_DO_RASCUNHO[ramo],
+        "vigenciaIni": vig_ini, "vigenciaFim": vig_fim, "renovacao": renovacao,
+        # 📊 bonusAnterior inteiro (5) na renovação, null fora dela; sinistrosAnterior TEXTO "0"/"1" sempre (9/9)
+        "bonusAnterior": (_int(ren.get("bonus_anterior"), "renovacao.bonus_anterior") or 0) if renovacao else None,
+        "sinistrosAnterior": str(sin or 0),
+        "numeroRenovacao": (str(ren["numero_apolice_anterior"]) if renovacao and ren.get("numero_apolice_anterior") else None),
+        "seguradoraAnteriorId": None,   # a página resolve pelo `seguradorasRenovacao` (o id é do Agger)
+        "vigFimAnterior": (_iso(ren.get("fim_vigencia_anterior")) or "") if renovacao else "",
+        "correlationId": correlation_id(),
+    }
+    if ramo != RAMO_CONDOMINIO:
+        cot["dataCriacao"] = agora_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return {"cotacao": cot, "seguradora_anterior": str(ren.get("seguradora_anterior")) if renovacao else None,
+            "seguradoras": [int(s) for s in (pedido.get("seguradoras") or [])],
+            "comissao": com.get("comissao_percentual"), "desconto": com.get("desconto_percentual"),
+            "ramo": ramo, "atividade": risco.get("atividade"), "cnae": risco.get("cnae"),
+            "pavimento": risco.get("pavimento")}
+
+
 # ======================================================================================================================
 # O JavaScript (roda em `Sessao.avaliar`; `window.__abM` = montador.js)
 # ======================================================================================================================
@@ -296,7 +485,7 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
         'versaoOrigem', 'numeroRenovacaoTxt', 'vigenciaFimTxt', 'vigenciaIniTxt', 'isAgger', 'calculos', 'correlationId']);
       for (const k of Object.keys(cot)) if (!['results', 'loaded', 'isClearDraft', 'correlationId'].includes(k)) delete cot[k];
       for (const [k, x] of Object.entries(v)) if (!FORA.has(k)) cot[k] = x;
-      cot.calculos = M.montarDaVersao(segs, v);
+      cot.calculos = M.montarDaVersao(segs, v, {status: (a.status_por_ramo || {})[v.ramo], fora: a.fora_do_re});
     }
     cot.id = v.id; cot.negocioId = v.negocioId; cot.idIntegracao = v.idIntegracao; cot.versao = v.versao;
     negocio = {id: v.negocioId};
@@ -304,7 +493,36 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
     ids = {ref: v.idIntegracao == null ? null : String(v.idIntegracao),
            negocio: v.negocioId == null ? null : String(v.negocioId), versao: v.id == null ? null : String(v.id)};
   }
-  if (!a.da_versao) {
+  let semAtividade = [];
+  if (!a.da_versao && a.ramo && a.ramo !== 31) {
+    // SPEC-129-C — RE: sem placa/FIPE; o CEP completa só o que o pedido não trouxe do ENDEREÇO DO RISCO
+    const cfg = cot.configuracoes;
+    if (cfg.imovelCep && (!cfg.imovelLogradouro || !cfg.imovelCidade || !cfg.imovelBairro || !cfg.imovelUF)) {
+      const [sc, ce] = await pegar(a.pdocs + '/calculo/cep?cep=' + encodeURIComponent(cfg.imovelCep), a.tPdocs);
+      const DE = {logradouro: 'imovelLogradouro', cidade: 'imovelCidade', bairro: 'imovelBairro', uf: 'imovelUF'};
+      if (sc === 200 && ce) for (const [k, c] of Object.entries(DE)) if (!cfg[c] && ce[k] != null) cfg[c] = ce[k];
+    }
+    if (cot.renovacao) {
+      const [sr, rs] = await pegar(a.pdocs + '/calculo/seguradorasRenovacao', a.tPdocs);
+      if (sr !== 200 || !Array.isArray(rs)) return {erro: 'seguradoras_renovacao_http_' + sr};
+      const alvo = norm(a.seguradora_anterior);
+      let achou = rs.filter(x => x && String(x.id) === String(a.seguradora_anterior));
+      if (!achou.length) achou = rs.filter(x => x && x[a.campo_renovacao] !== false && (norm(x.nome) === alvo || norm(x.nome).startsWith(alvo + ' ')));
+      if (achou.length !== 1) return {erro: achou.length ? 'seguradora_anterior_ambigua' : 'seguradora_anterior_desconhecida'};
+      cot.seguradoraAnteriorId = String(achou[0].id);
+    }
+    const r = M.montarCalculosRE(segs, a.ramo, a.comissao, a.desconto, {status: a.status, fora: a.fora_do_re,
+                                                                        atividades: a.atividades});
+    if (r.erro) return {erro: r.erro};
+    let calc = r.calculos;
+    semAtividade = r.semAtividade;
+    if (a.seguradoras && a.seguradoras.length) {
+      calc = calc.filter(c => a.seguradoras.includes(c.seguradora));
+      semAtividade = semAtividade.filter(x => a.seguradoras.includes(x[0]));
+    }
+    cot.calculos = calc;
+    if (!calc.length && semAtividade.length) return {erro: 'sem_atividade_compativel', sem_atividade: semAtividade};
+  } else if (!a.da_versao) {
     const auto = cot.automoveis[0];
     let bp = null, fm = null;
     if (auto.placa) {
@@ -334,10 +552,23 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
     if (a.seguradoras && a.seguradoras.length) calc = calc.filter(c => a.seguradoras.includes(c.seguradora));
     cot.calculos = calc;
   }
-  if (a.ajuste) { if (!M.aplicarAjuste(cot, a.ajuste)) return {erro: 'ajuste_sem_alvo'}; }
+  if (a.ajuste) { if (!M.aplicarAjuste(cot, a.ajuste, {chaves: a.chaves_re})) return {erro: 'ajuste_sem_alvo'}; }
   if (!cot.calculos || !cot.calculos.length) return {erro: 'nenhuma_seguradora'};
   window.__abCorpo = {cotacao: cot, negocio: negocio, correlationId: cot.correlationId};
-  return {ok: true, seguradoras: cot.calculos.map(c => c.seguradora), ids: ids};
+  return {ok: true, seguradoras: cot.calculos.map(c => c.seguradora), ids: ids, ramo: cot.ramo == null ? 31 : cot.ramo,
+          sem_atividade: semAtividade};
+}"""
+
+# SPEC-129-C D-129C-04: a atividade do empresarial, POR SEGURADORA — o MESMO endpoint que a tela chama no "Buscar por
+# atividade" (📊 B0-a 11/10: `GET pdocs/calculo/getOptionsBySegFull?executionType=10&filterText=…`). Só leitura; o que
+# volta passa pela lista branca `atividades_por_seguradora` (seguradora + Key/Value/Description).
+JS_ATIVIDADES = """async (a) => {""" + _JS_COMUM + """
+  const out = [];
+  for (const termo of a.termos) {
+    const [s, d] = await pegar(a.pdocs + '/calculo/getOptionsBySegFull?executionType=10&filterText=' + encodeURIComponent(termo), a.tPdocs);
+    out.push({termo: termo, status: s, opcoes: (s === 200 && Array.isArray(d)) ? M.filtrar(d, a.lista) : null});
+  }
+  return out;
 }"""
 
 # ENVIA o corpo preparado. Devolve só o status e o que a lista branca de `calcularV2_resposta` deixa.
@@ -498,7 +729,7 @@ def separar_itens(corpo: Any, ramo: int = RAMO_AUTO) -> Tuple[List[dict], List[T
         if not isinstance(item, dict):
             continue
         cod = item.get("seguradora") if isinstance(item.get("seguradora"), int) else None
-        ok = _limpo_da_lista([item], "cotacao_calculos")
+        ok = _limpo_da_lista([item], endpoint_de_calculos(ramo))
         if ok:
             r = ler_resposta(item, ramo)
             ok = all(not tem_url_ou_chave(t) for t in _textos_da_resposta(r)) and all(
@@ -567,7 +798,10 @@ async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
             raise DisparoIncerto(f"HTTP {status} sem idIntegracao/versão legíveis")
         ref = str(resp["idIntegracao"])
         sessao.registrar_negocio(ref)
-        return Disparo(negocio_ref=ref, versao=int(resp["versao"]), t0=t0)
+        ramo = prep.get("ramo") if isinstance(prep.get("ramo"), int) and not isinstance(prep.get("ramo"), bool) else RAMO_AUTO
+        fora = tuple((int(c), sem_url_nem_chave(n or "")) for c, n in (prep.get("sem_atividade") or ())
+                     if isinstance(c, int) and not isinstance(c, bool))
+        return Disparo(negocio_ref=ref, versao=int(resp["versao"]), t0=t0, ramo=ramo, sem_atividade=fora)
     if status in STATUS_SESSAO_MORTA:
         # 401/403 = o servidor não autenticou: nada foi criado, a sessão morreu
         raise SessaoMorta(f"a sessão do robô no Agger caiu (HTTP {status})")
@@ -579,7 +813,12 @@ async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
 
 async def disparar(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[str, Any], *,
                    negocio_ref: Optional[str] = None) -> Disparo:
-    """Negócio NOVO (negocio_ref=None) ou nova VERSÃO do negócio do robô (a econômica, D-129B-03)."""
+    """Negócio NOVO (negocio_ref=None) ou nova VERSÃO do negócio do robô (a econômica, D-129B-03).
+    RE (SPEC-129-C): as `coberturas` da opção vão em `cotacao.configuracoes` (montadas aqui, em Python — não têm
+    credencial); no empresarial a atividade de CADA seguradora é lida na página antes do preparo (D-129C-04)."""
+    ramo = pedido.get("ramo", RAMO_AUTO) if isinstance(pedido, dict) else RAMO_AUTO
+    if ramo in RAMOS_RE:
+        return await _disparar_re(sessao, pedido, coberturas, negocio_ref=negocio_ref)
     base = cotacao_do_pedido(pedido)
     cob = {k: v for k, v in (coberturas or {}).items() if k in CHAVES_DE_COBERTURA}
     # ⛔ NÃO registra `negocio_ref` aqui: a guarda só deixa a versão passar se o negócio JÁ é do robô (registrado
@@ -590,13 +829,58 @@ async def disparar(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[str, An
         "negocio_ref": negocio_ref, "versao_base": None, "da_versao": False, "ajuste": None})
 
 
+def _limpo_de_atividades(respostas: Any) -> bool:
+    if not isinstance(respostas, list):
+        return False
+    return all(isinstance(r, dict) and (r.get("opcoes") is None or _limpo_da_lista(r.get("opcoes"),
+                                                                                    "atividades_por_seguradora"))
+               for r in respostas)
+
+
+async def ler_atividades(sessao: Any, termos: Iterable[str]) -> List[dict]:
+    """GET `getOptionsBySegFull` NA PÁGINA para cada termo; o que volta já passou pela lista branca (JS e Python)."""
+    await sessao.garantir_token()
+    try:
+        r = await sessao.avaliar(JS_ATIVIDADES, {**_args_base(sessao), "termos": list(termos), "lista": LISTA_ATIVIDADES})
+    except Exception as e:  # noqa: BLE001 — nada saiu (só leitura)
+        raise DisparoRecusado(f"leitura das atividades falhou ({type(e).__name__})") from None
+    if isinstance(r, list) and any(isinstance(x, dict) and x.get("status") in STATUS_SESSAO_MORTA for x in r):
+        raise SessaoMorta("a sessão do robô no Agger caiu antes do cálculo (atividades)")
+    if not _limpo_de_atividades(r):
+        raise DisparoRecusado("a lista de atividades do Agger voltou fora da forma esperada")
+    return r
+
+
+async def _disparar_re(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[str, Any], *,
+                       negocio_ref: Optional[str]) -> Disparo:
+    base = cotacao_do_pedido(pedido, coberturas={k: v for k, v in (coberturas or {}).items()
+                                                 if k in CHAVES_DE_COBERTURA_RE[int(pedido["ramo"])]})
+    ramo = base["ramo"]
+    atividades: Dict[str, dict] = {}
+    if ramo == RAMO_EMPRESARIAL:
+        respostas = await ler_atividades(sessao, termos_de_busca(base["atividade"], base["cnae"]))
+        escolhidas, _fora = escolher_atividades(respostas, base["atividade"], cnae=base["cnae"],
+                                                pavimento=base["pavimento"])
+        atividades = {str(k): v for k, v in escolhidas.items()}
+    return await _preparar_e_enviar(sessao, {
+        "cot": base["cotacao"], "cob": {}, "comissao": base["comissao"], "desconto": base["desconto"],
+        "seguradoras": base["seguradoras"], "seguradora_anterior": base["seguradora_anterior"],
+        "negocio_ref": negocio_ref, "versao_base": None, "da_versao": False, "ajuste": None,
+        "ramo": ramo, "status": list(SEGURADORAS_DO_RAMO[ramo]), "fora_do_re": list(SEGURADORAS_FORA_DO_RE),
+        "atividades": atividades, "campo_renovacao": CAMPO_DO_RAMO_NA_RENOVACAO[ramo]})
+
+
 async def recalcular(sessao: Any, negocio_ref: str, *, versao_base: int, ajuste: Ajuste) -> Disparo:
-    """Nova versão do MESMO negócio partindo da `versao_base` (as coberturas e a comissão DELA), mais o ajuste."""
+    """Nova versão do MESMO negócio partindo da `versao_base` (as coberturas e a comissão DELA), mais o ajuste.
+    O ramo vem da própria versão (RE: as coberturas em `configuracoes`, a comissão e a atividade de cada item)."""
     aj = {"tipo": ajuste.tipo, "valor": ajuste.valor, "seguradora": ajuste.seguradora}
     return await _preparar_e_enviar(sessao, {
         "cot": {"results": {k: {"errors": [], "successes": []} for k in ("main", "alternatives", "all", "porAssinatura", "ofertaCruzada")},
                 "loaded": False, "isClearDraft": False, "correlationId": correlation_id()},
-        "negocio_ref": negocio_ref, "versao_base": int(versao_base), "da_versao": True, "ajuste": aj})
+        "negocio_ref": negocio_ref, "versao_base": int(versao_base), "da_versao": True, "ajuste": aj,
+        "status_por_ramo": {str(r): list(s) for r, s in SEGURADORAS_DO_RAMO.items()},
+        "fora_do_re": list(SEGURADORAS_FORA_DO_RE),
+        "chaves_re": {str(r): list(k) for r, k in CHAVES_DE_COBERTURA_RE.items()}})
 
 
 async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Evento], Awaitable[Any]],
@@ -613,6 +897,12 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
     leu = False
     falhas = 0
     descartadas: Set[Any] = set()
+    ramo = getattr(disparo, "ramo", RAMO_AUTO)
+    lista = lista_de_calculos(ramo)
+    if anterior is None:
+        # SPEC-129-C D-129C-04: a seguradora que saiu por não ter atividade compatível é NARRADA (nunca some calada)
+        for cod, nome in getattr(disparo, "sem_atividade", ()) or ():
+            await ao_evento(Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, nome or None, cod, DADO, None, ramo))
 
     def impossivel(motivo: str, *, morta: bool, pagina_fechada: bool = False) -> LeituraImpossivel:
         return LeituraImpossivel(motivo, sessao_morta=morta, leu=leu, quadro_saiu=quadro, rodada=atual,
@@ -623,7 +913,7 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
         t = time.time() - disparo.t0
         try:
             r = await sessao.avaliar(JS_LER_CALCULOS, {**_args_base(sessao), "ref": disparo.negocio_ref,
-                                                       "versao": int(disparo.versao), "lista": LISTA_CALCULOS})
+                                                       "versao": int(disparo.versao), "lista": lista})
         except Exception as e:  # noqa: BLE001
             logger.warning("multicalculo.robo leitura falhou (%s)", type(e).__name__)
             r = None
@@ -642,13 +932,13 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
         if isinstance(r, dict) and status == 200 and isinstance(r.get("corpo"), list):
             leu = True
             falhas = 0
-            limpos, sujos = separar_itens(r["corpo"])
+            limpos, sujos = separar_itens(r["corpo"], ramo)
             for nome, cod in sujos:
                 chave = cod if cod is not None else nome
                 if chave not in descartadas:
                     descartadas.add(chave)
-                    await ao_evento(Evento(ERRO_DE_LEITURA, t, nome or None, cod))
-            nova = ler_rodada(limpos, t_s=t)
+                    await ao_evento(Evento(ERRO_DE_LEITURA, t, nome or None, cod, ramo=ramo))
+            nova = ler_rodada(limpos, t_s=t, ramo=ramo)
             if limpos or not r["corpo"]:
                 for e in eventos_entre(atual, nova):
                     await ao_evento(e)
