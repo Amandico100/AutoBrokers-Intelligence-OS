@@ -28,6 +28,7 @@
 > **07/10 tarde (SPEC-133-A, o Quem Cobra Menos no WhatsApp):** nasceram a **T-132** (Implantar), a **T-133** (o QR no admin), a **T-134** (os testadores) e a **T-135** (o login do Agger do robô no piloto).
 > **10/10 (SPEC-133-A.1):** nasceram a **T-136** (a conta da Resulta no Agger) e a **T-137** (as senhas "mudar123"). **11/10 (SPEC-129-C, mais ramos do Agger):** nasceu a **T-138** — seguir o `programa-multicalculo/ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md` (17 passos em 5 blocos), que junta a T-132…T-137 numa ordem só; a **T-136** ganhou os achados do canário de RE (P-129C-04).
 > **11/10 tarde (SPEC-131-0 parte A, as contas da corretora):** nasceram a **T-139** (Implantar os 4 serviços), a **T-140** (funções e "quem é quem"), a **T-141** (o Agger de cada comercial), a **T-142** (a tela Serviços), a **T-143** (a InfoCap da Amandus é a da AutoFleet) e a **T-144** (conectar a InfoCap em cada corretora real).
+> **11/10 noite (o mapa de possibilidades: InfoCap, Agger, seguradoras e cobrança):** nasceram a **T-145** (senhas Allianz e Mapfre), a **T-146** (religar a cobrança em teste), a **T-147** e a **T-148** (capturas HAR da Allianz, Zurich e HDI), a **T-149** (API da HDI), a **T-150** (perguntas à InfoCap/Dimensa), a **T-151** (o menu Sincronizações do Agger), a **T-152** (🔴 as senhas expostas pelo Agger) e a **T-153** (o financeiro do CORP em Excel).
 
 ## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123 · SPEC-130-A: T-124 a T-128)
 
@@ -99,6 +100,77 @@
 - [ ] **T-144** ⏳ 🧑 **quando quiser que o produto use a carteira de cada uma** · **Conectar a InfoCap na corretora REAL** — entre como
       admin da **Resulta** e depois da **AutoFleet** → **Personalização → Conectores → InfoCap**, cada uma com o próprio login da API. É o
       que liga a régua do dono e o "Quem é quem" (T-140) em cada corretora. · *de:* S131-0-A
+
+### ⓪ AGORA — o mapa de 11/10 (InfoCap, Agger, seguradoras e cobrança)
+
+> O porquê de cada uma está em `programa-multicalculo/131-0/MAPA-DE-POSSIBILIDADES-INFOCAP-AGGER-SEGURADORAS.md` §11. Nenhuma delas
+> envia nada a cliente. A ordem sugerida: **T-152** (segurança) → **T-145** → **T-146** → as capturas e os e-mails quando puder.
+
+- [ ] **T-145** ⏳ 🧑 **hoje, 15 min** · **As senhas da Allianz e da Mapfre** (P-COBRANCA-01; substitui o item 9 da tabela "Decisões suas
+      em aberto") — 📊 nas últimas execuções (10 e 11/09) os dois portais **recusaram a senha** cadastrada.
+      1. Descubra qual corretora tem a rotina de cobrança: **SQL** (só leitura)
+         `select company_name from companies where id::text like '04b5cdbc%';`
+      2. No navegador, entre à mão com o usuário dessa corretora em **allianznet.com.br** e em **negocios.mapfre.com.br**.
+      3. Se a senha antiga não entrar: redefina no próprio portal e **salve a nova** no painel → **Personalização → Conectores** → o
+         cartão do portal da seguradora (Allianz / Mapfre).
+      4. **Esperado:** você entra direto, sem captcha e sem código por SMS/e-mail. **Se aparecer captcha ou código:** avise no chat — muda
+         o desenho do robô. · *de:* investigação 11/10 (LAUDO-COBRANCA)
+- [ ] **T-146** ⏳ 🧑 **depois da T-145, 10 min** · **Religar a cobrança em modo TESTE por 3 dias úteis** (P-COBRANCA-03) — 📊 o robô
+      está parado desde 11/09 e a execução com 6 seguradoras já leva 831–893 s, contra um teto de 900 s.
+      1. No **console do `smith-api`**: `printenv BILLING_COLLECTION_TIMEOUT_SECONDS` — vazio quer dizer 900 (o padrão).
+      2. **EasyPanel → `smith-api` → Ambiente**: acrescente `BILLING_COLLECTION_TIMEOUT_SECONDS=1800` e clique **Implantar** no
+         `smith-api` e no `smith-worker`.
+      3. Cole no chat: *"religue a cobrança em modo teste por 3 dias úteis e meça o teste de login (P-COBRANCA-03)"* — a execução
+         reativa a rotina com `send_mode=test` (todo envio vai só para o número de teste).
+      4. No dia seguinte, **SQL** (só leitura):
+         `select portal_key, journey, status, count(*) from portal_jobs where created_at > now() - interval '1 day' group by 1,2,3 order by 1,2;`
+         **Esperado:** linhas `login_check` e `cobranca_sweep` para as 6 seguradoras; Allianz e Mapfre com `done` se a T-145 deu certo.
+         E `select portal_key, health from portal_accounts order by 1;` → nem tudo `unknown`.
+      **Se der errado:** a Zurich com `needs_human` é esperado (T-148 decide); outra seguradora caída → print da linha e a hora no chat.
+      · *de:* investigação 11/10 (LAUDO-COBRANCA §5.3)
+- [ ] **T-147** ⏳ 🧑 **quando puder, 10 min** · **Captura (HAR) da Allianz — a lista de inadimplentes** (P-COBRANCA-04) — tira os 20
+      cliques do robô da Allianz (nota 86).
+      1. Chrome → **F12** → aba **Network** → marque **Preserve log** e **Disable cache** → apague a lista → só então abra a página de login.
+      2. Faça devagar: login → home → **Parcelas inadimplentes** → a lista aparecer → abrir 1 parcela → baixar a **2ª via / Carta de inadimplência**.
+      3. Ícone de download da aba Network → **"Export HAR (with sensitive data)"** (sem isso o Chrome tira o token).
+      4. Salve em `C:\Users\amand\Projetos\AUTOBROKERS RESULTA\AutoBrokers-FIX\docs\intake\MATERIAIS\ALLIANZ\` (pasta fora do git).
+      🔴 O arquivo tem cookie, token e dados de clientes: **não mande pelo chat**; só diga "T-147 salvo". · *de:* investigação 11/10
+- [ ] **T-148** ⏳ 🧑 **quando puder, 15 min** · **Captura (HAR) da Zurich e, sem pressa, da HDI** (P-COBRANCA-02) — mesmo jeito da T-147.
+      **Zurich** (com o usuário da corretora da T-145): login → Consulta › **Parcelas vencidas** → período de **90 dias** → **Buscar** → se
+      houver linha, **Gerar 2ª via**; tire também um **print** da tela de resultado. Salve em `…\docs\intake\MATERIAIS\ZURICH\`.
+      **Esperado:** o print diz se a tela também mostra zero (então a carteira não tem Zurich) ou mostra linhas (então o robô perde um filtro).
+      **HDI** (régua, sem pressa): login → **Parcela** → filtro de vencimento → lista → **2ª via** de 1 boleto → `…\MATERIAIS\HDI\`.
+      · *de:* investigação 11/10
+- [ ] **T-149** ⏳ 🧑 **5 min** · **Pedir à HDI acesso de parceiro às APIs** (nota 82: cobrança e transmissão por API, sem robô) — em
+      **https://developers.hdi.com.br** ("solicitar acesso") ou pelo seu contato comercial na HDI. Texto pronto:
+      > *"Somos a AutoBrokers, plataforma usada por corretoras parceiras da HDI. Queremos acesso de parceiro às APIs de Lista de parcelas
+      > com status, Impressão da 2ª via do Boleto, Efetivação, Impressão de Proposta e Lista de Propostas com Status, para Auto,
+      > Residencial e Condomínio. Qual o processo, o contrato e o ambiente de homologação?"*
+      **Esperado:** um formulário ou um contato; a resposta leva semanas (é comercial). · *de:* LAUDO-AGGER-E-MERCADO §7
+- [ ] **T-150** ⏳ 🧑 **5 min** · **Perguntar à InfoCap/Dimensa** (P-INFOCAP-INCORP; notas 78 e 75) — pelo suporte da InfoCap. Texto pronto:
+      > *"Usamos a CorpAPI. (1) Existe uma base de homologação para testar o fluxo INCORP (/incorp_url_post → /incorp → /incorp_contexto →
+      > /incorp_documento) sem gravar na produção? (2) Qual o formato do JSON devolvido por /incorp e o que /incorp_contexto espera?
+      > Ele aceita endosso, e o que acontece com documento duplicado? Há custo por chamada? (3) O Aggilizador já envia à Corp as
+      > propostas fechadas (os campos de multicálculo do documento)? (4) Existe rota para comissões recebidas/extrato de comissões?
+      > (5) Quais parâmetros o /dashboard aceita?"*
+      **Esperado:** se a (1) e a (2) vierem, a SPEC "Emissão e registro" pode cadastrar a proposta fechada sozinha. · *de:* LAUDO-CORPAPI-COMPLETA §3.2
+- [ ] **T-151** ⏳ 🧑 **5 min, só olhar** · **O menu "Sincronizações" no SEU Agger** — entre no **aggilizador.com.br** com o **seu**
+      login e veja se no menu lateral aparece **"Sincronizações"**. Se aparecer, abra e anote (ou tire print) **quais seguradoras estão
+      ativas** em Apólice digital, Proposta digital, Extrato e Parcelas pendentes. 🔴 **Não clique em "Sincronizar"** (é escrita).
+      **Esperado:** aparece → as ideias E4 (55) e A5 (50) do mapa ficam medíveis; não aparece → é módulo do plano e as duas morrem.
+      · *de:* LAUDO-AGGER-E-MERCADO §2.3
+- [ ] **T-152** ⏳ 🧑 **primeiro, 10 min** · 🔴 **O Agger entrega as senhas das seguradoras ao navegador** (P-AGGER-SENHA-EXPOSTA) —
+      qualquer pessoa com login no Agger da corretora consegue as senhas de todos os portais de seguradora cadastrados lá.
+      1. No Agger de cada corretora, abra a lista de usuários e confira se **cada login ativo é de alguém que ainda trabalha lá**.
+      2. Se alguém saiu: desative o login no Agger **e troque a senha de cada portal de seguradora** — no portal, no Agger e no painel
+         (Personalização → Conectores).
+      3. Nunca instale extensão de terceiro no navegador usado pela equipe para o Agger.
+      **Esperado:** nada muda no produto (o robô já não lê essas senhas; a regra virou a D-1311-03). · *de:* LAUDO-AGGER-E-MERCADO §2.5
+- [ ] **T-153** ⏳ 🧑 **quando quiser o financeiro, 20 min** · **Exportar o financeiro do CORP clássico em Excel** (nota 85; a API não tem
+      comissão recebida, repasse pago nem caixa) — no CORP clássico → **Gerenciador de Relatórios** → exporte em **Excel**, últimos 12
+      meses: **Comissões Recebidas** · **Comissões Pendentes** · **Repasse ao Produtor** · **Fluxo de Caixa – Extrato Diário**. Salve em
+      `C:\Users\amand\Projetos\AUTOBROKERS RESULTA\AutoBrokers-FIX\docs\intake\FINANCEIRO-CORP\` (fora do git; tem dado de cliente) e
+      diga no chat "T-153 salvo". **Esperado:** é a matéria-prima da SPEC "financeiro por planilha". · *de:* LAUDO-CORPAPI-COMPLETA §5.3
 
 ### ① Implantar e conferir — não depende de nada
 
