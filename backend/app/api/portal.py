@@ -307,3 +307,84 @@ async def agger_da_corretora_agir(
         logger.error("[PORTAL] agger-da-corretora: %s falhou (%s)", acao, type(e).__name__)
         raise HTTPException(status_code=500, detail="não consegui salvar agora — nada mudou além do que já aparece")
     return {"ok": True, "conta": CR.retrato(supa, company_id)}
+
+
+# =====================================================================================================================
+# SPEC-131-0 A · F3 — OS AGGERS DA EQUIPE (D-131-0-05/06/29). O Agger de cada PESSOA ao lado do Agger da corretora.
+#   · `company_id` vem da SESSÃO (o proxy Next); `por_user_id` também — o proxy decide se quem pede é admin da corretora
+#     ou a própria pessoa, e o SERVIÇO confere de novo (`conta_do_robo._pode_mexer`, no banco)
+#   · grava pelo MESMO serviço da conta global (`portal_worker.multicalculo.conta_do_robo`) — uma regra
+#   · a senha nunca volta e nunca vai para log — nem o corpo da exceção
+# =====================================================================================================================
+_ACOES_DO_MEMBRO = frozenset({"conectar", "trocar_senha", "pausar", "religar", "desconectar"})
+
+
+@router.get("/aggers-da-equipe")
+async def aggers_da_equipe(
+    company_id: str,
+    x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+):
+    _require_internal_key(x_key)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id obrigatorio")
+    CR = _conta_do_robo()
+    try:
+        return CR.aggers_da_equipe(get_supabase_client().client, company_id)
+    except Exception as e:  # noqa: BLE001
+        logger.error("[PORTAL] aggers-da-equipe: leitura falhou (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="não consegui ler os Aggers da equipe agora")
+
+
+@router.post("/aggers-da-equipe")
+async def aggers_da_equipe_agir(
+    request: Request,
+    x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+):
+    """`acao`: conectar (login + senha) · trocar_senha · pausar · religar · desconectar — sobre o Agger de
+    `dono_user_id`, pedido por `por_user_id` (ambos da sessão/proxy)."""
+    _require_internal_key(x_key)
+    body = await request.json()
+    company_id = str(body.get("company_id") or "")
+    acao = str(body.get("acao") or "")
+    dono = str(body.get("dono_user_id") or "")
+    por = str(body.get("por_user_id") or "")
+    if not company_id or acao not in _ACOES_DO_MEMBRO or not dono or not por:
+        raise HTTPException(status_code=400, detail="company_id, acao, dono_user_id e por_user_id sao obrigatorios")
+    CR = _conta_do_robo()
+    supa = get_supabase_client().client
+    senha = str(body.get("senha") or "")
+    try:
+        CR.agir_do_membro(supa, company_id, dono, acao, por_user_id=por, usuario=str(body.get("usuario") or ""),
+                          senha=senha, cifrar=portal_vault.encrypt)
+    except CR.Recusa as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except RuntimeError as e:  # o cofre sem chave (`portal_vault._fernet`)
+        logger.error("[PORTAL] aggers-da-equipe: cofre indisponivel (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="cofre indisponivel — PORTAL_VAULT_KEY configurada no smith-api?")
+    except Exception as e:  # noqa: BLE001 — nunca o corpo: pode trazer a linha com o segredo
+        logger.error("[PORTAL] aggers-da-equipe: %s falhou (%s)", acao, type(e).__name__)
+        raise HTTPException(status_code=500, detail="não consegui salvar agora — nada mudou além do que já aparece")
+    finally:
+        senha = ""  # noqa: F841
+    return {"ok": True, **CR.aggers_da_equipe(supa, company_id)}
+
+
+@router.post("/aggers-da-equipe/desligar-membro")
+async def aggers_da_equipe_desligar_membro(
+    request: Request,
+    x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+):
+    """A pessoa saiu da equipe (o DELETE da tela da equipe, F1): o Agger dela é PAUSADO e a senha APAGADA
+    (`conta_do_robo.desligar_do_membro`, o único escritor). Sem Agger → `tinha_agger: false`. Idempotente."""
+    _require_internal_key(x_key)
+    body = await request.json()
+    company_id = str(body.get("company_id") or "")
+    user_id = str(body.get("user_id") or "")
+    if not company_id or not user_id:
+        raise HTTPException(status_code=400, detail="company_id e user_id sao obrigatorios")
+    CR = _conta_do_robo()
+    try:
+        return {"ok": True, **CR.desligar_do_membro(get_supabase_client().client, company_id, user_id)}
+    except Exception as e:  # noqa: BLE001
+        logger.error("[PORTAL] desligar-membro falhou (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="não consegui desligar o Agger desta pessoa agora")

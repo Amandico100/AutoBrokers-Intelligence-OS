@@ -111,6 +111,23 @@ class RepositorioMulticalculo:
                         .eq("id", str(pedido_id)).eq("company_id", str(company_id)).limit(1).execute())
         return linhas[0] if linhas else None
 
+    def servico_do_pedido(self, *, company_id: str, pedido_id: str) -> Optional[str]:
+        """SPEC-131-0 A: o `servico` do pedido (qcm · cotacao · renovacao) ou None (legado). Filtro do SOLICITANTE."""
+        ped = _dados(self.db.table(PEDIDOS).select("id, servico")
+                     .eq("id", str(pedido_id)).eq("company_id", str(company_id)).limit(1).execute())
+        return ped[0].get("servico") if ped else None
+
+    def servico_e_conta(self, *, company_id: str, pedido_id: str, calculo_id: str) -> Dict[str, Any]:
+        """SPEC-131-0 A · F3: o `servico` do pedido e a conta em que o cálculo de origem saiu (`account_id`) ou foi
+        exigida — o que o recálculo herda. Filtro do SOLICITANTE nas duas leituras (CLAUDE.md §7)."""
+        ped = _dados(self.db.table(PEDIDOS).select("id, servico")
+                     .eq("id", str(pedido_id)).eq("company_id", str(company_id)).limit(1).execute())
+        calc = _dados(self.db.table(CALCULOS).select("id, account_id, conta_exigida_id")
+                      .eq("id", str(calculo_id)).eq("solicitante_company_id", str(company_id)).limit(1).execute())
+        return {"servico": (ped[0].get("servico") if ped else None),
+                "account_id": (calc[0].get("account_id") if calc else None),
+                "conta_exigida_id": (calc[0].get("conta_exigida_id") if calc else None)}
+
     def calculos_do_pedido(self, *, company_id: str, pedido_id: str) -> List[Dict[str, Any]]:
         return _dados(self.db.table(CALCULOS).select(_COLS_CALCULO)
                       .eq("pedido_id", str(pedido_id)).eq("solicitante_company_id", str(company_id))

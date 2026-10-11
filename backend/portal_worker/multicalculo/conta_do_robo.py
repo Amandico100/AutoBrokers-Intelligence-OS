@@ -210,9 +210,13 @@ def cadastrar(supa, *, company_id: str, rotulo: str, usuario: str, senha: Union[
     if callable(senha):
         senha = senha()
     senha = _senha_valida(senha)
+    # SPEC-131-0 A · F3: de QUEM é a conta — a mesma regra do backfill da 20261011_04 (o login de PESSOA do canário é
+    # `teste`; o resto que o comando e a tela cadastram é da CORRETORA). O Agger de uma pessoa nasce só em
+    # `cadastrar_do_membro`.
+    uso = robos.USO_TESTE if estado == robos.TESTE or rotulo.startswith("canario") else robos.GLOBAL
     linha = {"company_id": company_id, "portal_key": PORTAL_KEY, "account_label": rotulo, "username": usuario,
              "secret_encrypted": cifrar(senha), "health": "unknown", "robo_estado": estado,
-             "robo_teto_por_hora": int(teto) if teto is not None else None, "robo_janela": janela}
+             "robo_teto_por_hora": int(teto) if teto is not None else None, "robo_janela": janela, "uso": uso}
     senha = ""  # noqa: F841 — a senha em claro não sobrevive à cifra
     criada = _dados(supa.table("portal_accounts").insert(linha).execute())
     linha.pop("secret_encrypted", None)
@@ -237,10 +241,13 @@ def religar(supa, conta: Dict[str, Any], estado: str) -> None:
     if estado not in (robos.ATIVO, robos.TESTE):
         raise Recusa("--estado: ativo ou teste")
     linha = _dados(supa.table("portal_accounts")
-                   .select("id, account_label, username, secret_encrypted, robo_janela, robo_estado")
+                   .select("id, account_label, username, secret_encrypted, robo_janela, robo_estado, uso")
                    .eq("id", conta["id"]).eq("company_id", conta["company_id"]).limit(1).execute())
     if linha:
         _rotulo_reservado(str(linha[0].get("account_label") or ""), estado)
+        if linha[0].get("uso") == robos.MEMBRO and estado != robos.ATIVO:
+            # SPEC-131-0 A · F3: o Agger de uma pessoa é uso REAL e sem horário (CHECK ck_portal_accounts_membro_real)
+            raise Recusa("O Agger de uma pessoa só volta como 'ativo' (nunca 'teste').")
     if not linha or not linha[0].get("secret_encrypted"):
         raise Recusa("a conta está sem senha — rode `trocar-senha` antes de religar")
     if estado == robos.TESTE and not linha[0].get("robo_janela"):
@@ -475,7 +482,203 @@ def agir_da_corretora(supa, company_id: str, acao: str) -> None:
         raise Recusa("ação desconhecida")
 
 
+# ======================================================================================================================
+# OS AGGERS DA EQUIPE — o Agger de cada PESSOA (SPEC-131-0 A · F3 · D-131-0-05/06/29, §5.2 da SPEC)
+#
+# A conta é da PESSOA (`dono_user_id` → users_v2), não do vínculo: remover alguém da equipe não fica travado por
+# cálculos antigos — a conta é desligada (pausa + a senha sai) e o motor nunca mais a usa, porque ela só vale enquanto a
+# dona é membro ATIVO desta corretora (`robos.membro_ativo`, reconferido a cada escolha). Quem cadastra: o admin da
+# corretora (por qualquer pessoa da equipe) ou a PRÓPRIA pessoa (D-131-0-06). A senha nunca reaparece.
+# ======================================================================================================================
+#: os papéis que administram a corretora — o MESMO conjunto de `lib/admin/admin-auth-policy.ts:TENANT_WRITE_ROLES`
+PAPEIS_DE_ADMIN = ("owner", "admin", "admin_company", "master_admin")
+
+
+def _rotulo_da_pessoa(dono_user_id: str) -> str:
+    """O rótulo da conta de uma pessoa: o id dela (nunca o nome — CLAUDE.md §13.9)."""
+    return f"agger-da-pessoa-{dono_user_id}"
+
+
+def _vinculo(supa, company_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    linhas = _dados(supa.table("company_members").select("user_id, company_id, role, is_owner, status")
+                    .eq("company_id", str(company_id)).eq("user_id", str(user_id)).eq("status", "active")
+                    .limit(1).execute())
+    linhas = [v for v in linhas if str(v.get("company_id")) == str(company_id) and v.get("status") == "active"]
+    return linhas[0] if linhas else None
+
+
+def _pode_mexer(supa, company_id: str, dono_user_id: str, por_user_id: Optional[str]) -> None:
+    """D-131-0-06: o admin desta corretora mexe no Agger de qualquer pessoa da equipe; a pessoa, só no dela. E a dona
+    precisa ser membro ATIVO desta corretora (com usuário ativo) — senão a conta não vale e não se cadastra."""
+    if not robos.membro_ativo(supa, company_id, dono_user_id):
+        raise Recusa("Esta pessoa não está ativa na equipe desta corretora.")
+    if not por_user_id:
+        raise Recusa("Não sei quem está pedindo esta mudança.")
+    if str(por_user_id) == str(dono_user_id):
+        return
+    v = _vinculo(supa, company_id, por_user_id)
+    if not v or not (v.get("is_owner") or v.get("role") in PAPEIS_DE_ADMIN):
+        raise Recusa("Só um administrador da corretora, ou a própria pessoa, mexe no Agger dela.")
+
+
+def conta_do_membro(supa, company_id: str, dono_user_id: str) -> Optional[Dict[str, Any]]:
+    """A conta do Agger DESTA pessoa NESTA corretora (filtro `company_id` sempre)."""
+    linhas = _dados(supa.table("portal_accounts").select(_COLUNAS_DA_TELA + ", uso, dono_user_id")
+                    .eq("company_id", str(company_id)).eq("portal_key", PORTAL_KEY).eq("uso", robos.MEMBRO)
+                    .eq("dono_user_id", str(dono_user_id)).limit(1).execute())
+    linhas = [c for c in linhas if str(c.get("company_id")) == str(company_id)
+              and str(c.get("dono_user_id")) == str(dono_user_id)]
+    return linhas[0] if linhas else None
+
+
+def cadastrar_do_membro(supa, company_id: str, dono_user_id: str, usuario: str, senha: str,
+                        por_user_id: Optional[str], *, cifrar: Callable[[str], str]) -> Dict[str, Any]:
+    """Cria o Agger de uma PESSOA: `uso='membro'`, `robo_estado='ativo'`, SEM horário (o horário é regra do auxiliar)
+    e o teto padrão. Recusa: corretora que não é cliente · dona fora da equipe/inativa · quem pede não é admin nem a
+    própria pessoa · a pessoa já tem Agger aqui · o login já está noutra conta desta corretora. Devolve a linha SEM o
+    segredo."""
+    emp = empresa(supa, company_id)
+    if not emp or emp.get("company_kind") != "client":
+        raise Recusa("a corretora precisa ser uma empresa cliente (company_kind='client')")
+    _pode_mexer(supa, company_id, dono_user_id, por_user_id)
+    usuario = _login_valido(usuario, vazio="Informe o login do Agger desta pessoa.")
+    if conta_do_membro(supa, company_id, dono_user_id) is not None:
+        raise Recusa("Esta pessoa já tem o Agger dela conectado aqui — use 'trocar senha'.")
+    _login_em_outra_conta(supa, company_id, usuario)
+    senha = _senha_valida(senha)
+    linha = {"company_id": company_id, "portal_key": PORTAL_KEY, "account_label": _rotulo_da_pessoa(dono_user_id),
+             "username": usuario, "secret_encrypted": cifrar(senha), "health": "unknown",
+             "robo_estado": robos.ATIVO, "robo_teto_por_hora": None, "robo_janela": None,
+             "uso": robos.MEMBRO, "dono_user_id": str(dono_user_id)}
+    senha = ""  # noqa: F841 — a senha em claro não sobrevive à cifra
+    criada = _dados(supa.table("portal_accounts").insert(linha).execute())
+    linha.pop("secret_encrypted", None)
+    return {**linha, "id": criada[0]["id"] if criada else None}
+
+
+def desligar_do_membro(supa, company_id: str, user_id: str) -> Dict[str, Any]:
+    """A pessoa saiu da equipe (ou o admin desligou o Agger dela): PAUSA e APAGA a senha. É o ÚNICO escritor desse
+    gesto (a tela da equipe chama `POST /api/portal/aggers-da-equipe/desligar-membro`). A LINHA fica: os cálculos antigos
+    apontam para ela. Sem conta → nada a fazer. Idempotente."""
+    c = conta_do_membro(supa, company_id, user_id)
+    if c is None:
+        return {"tinha_agger": False, "desligado": False}
+    apagar_senha(supa, c)
+    return {"tinha_agger": True, "desligado": True, "id": c["id"]}
+
+
+def _retrato_da_conta_da_pessoa(supa, c: Optional[Dict[str, Any]], *, agora: datetime) -> Dict[str, Any]:
+    if c is None:
+        return {"situacao": "nao_conectado", "rotulo": "Sem Agger próprio — as cotações dela vão pelo Agger da "
+                                                        "corretora.", "acoes": ["conectar"], "conectado": False}
+    estado = c.get("robo_estado")
+    tem_senha = bool(c.get("secret_encrypted"))
+    lease = robos._ts(c.get("robo_batida_em"))
+    em_uso = bool(c.get("robo_dono")) and lease is not None and (agora - lease).total_seconds() < robos.LEASE_VENCE_S
+    if not tem_senha:
+        s = ("desconectado", "Desconectado — a senha foi apagada. As cotações dela vão pelo Agger da corretora.",
+             ["conectar"])
+    elif estado == robos.BLOQUEADO:
+        s = ("senha_recusada", "O Agger recusou a senha. Troque a senha para voltar a usar.",
+             ["trocar_senha", "desconectar"])
+    elif estado == robos.PAUSADO:
+        s = ("pausado", "Pausado — nada é calculado no Agger dela até religar.",
+             ["religar", "trocar_senha", "desconectar"])
+    elif estado == robos.OCUPADA:
+        s = ("ocupada", "Ela estava usando o Agger. O robô tenta de novo em alguns minutos, sem derrubá-la.",
+             ["pausar", "trocar_senha", "desconectar"])
+    elif em_uso:
+        s = ("calculando", "Calculando agora.", ["pausar", "trocar_senha", "desconectar"])
+    else:
+        s = ("conectado", "Conectado — o robô entra, calcula e sai.", ["pausar", "trocar_senha", "desconectar"])
+    return {"situacao": s[0], "rotulo": s[1], "acoes": s[2], "conectado": tem_senha, "id": c["id"],
+            "usuario": mascarar(c.get("username") or ""), "tem_senha": tem_senha, "ultimo_uso": _ultimo_calculo(supa, c),
+            "ocupada_ate": c.get("robo_ocupada_ate") if estado == robos.OCUPADA else None}
+
+
+def aggers_da_equipe(supa, company_id: str, *, agora: Optional[datetime] = None) -> Dict[str, Any]:
+    """O retrato da equipe: cada pessoa ATIVA da corretora com o estado do Agger dela — nome, funções (quando a coluna
+    existe — F1), login MASCARADO, último uso. Sem senha, sem segredo, sem lease. Filtro `company_id` em toda leitura."""
+    agora = agora or datetime.now(timezone.utc)
+    try:
+        vinculos = _dados(supa.table("company_members").select("user_id, company_id, role, status, funcoes")
+                          .eq("company_id", str(company_id)).eq("status", "active").execute())
+    except Exception:  # noqa: BLE001 — antes da migration da F1 a coluna `funcoes` não existe
+        vinculos = _dados(supa.table("company_members").select("user_id, company_id, role, status")
+                          .eq("company_id", str(company_id)).eq("status", "active").execute())
+    vinculos = [v for v in vinculos if str(v.get("company_id")) == str(company_id)]
+    ids = sorted({str(v["user_id"]) for v in vinculos if v.get("user_id")})
+    usuarios: Dict[str, Dict[str, Any]] = {}
+    if ids:
+        for u in _dados(supa.table("users_v2").select("id, first_name, last_name, status, deleted_at")
+                        .in_("id", ids).execute()):
+            usuarios[str(u["id"])] = u
+    contas = {str(c.get("dono_user_id")): c for c in _dados(
+        supa.table("portal_accounts").select(_COLUNAS_DA_TELA + ", uso, dono_user_id")
+        .eq("company_id", str(company_id)).eq("portal_key", PORTAL_KEY).eq("uso", robos.MEMBRO).execute())
+        if str(c.get("company_id")) == str(company_id)}
+    pessoas = []
+    for v in vinculos:
+        uid = str(v["user_id"])
+        u = usuarios.get(uid) or {}
+        if u.get("status") != "active" or u.get("deleted_at"):
+            continue
+        nome = " ".join(x for x in (u.get("first_name"), u.get("last_name")) if x).strip() or "Sem nome"
+        pessoas.append({"user_id": uid, "nome": nome, "papel": v.get("role"),
+                        "funcoes": list(v.get("funcoes") or []),
+                        "agger": _retrato_da_conta_da_pessoa(supa, contas.get(uid), agora=agora)})
+    pessoas.sort(key=lambda p: p["nome"].casefold())
+    return {"pessoas": pessoas}
+
+
+def agir_do_membro(supa, company_id: str, dono_user_id: str, acao: str, *, por_user_id: Optional[str],
+                   usuario: str = "", senha: str = "", cifrar: Optional[Callable[[str], str]] = None) -> None:
+    """conectar · trocar_senha · pausar · religar · desconectar — sobre o Agger DESTA pessoa NESTA corretora. Quem pode:
+    o admin da corretora ou a própria pessoa (`_pode_mexer`). O servidor confere a ação contra o estado (R2)."""
+    if acao not in ("conectar", "trocar_senha", "pausar", "religar", "desconectar"):
+        raise Recusa("ação desconhecida")
+    if acao == "desconectar":
+        # desligar não exige que a dona esteja ativa (é o gesto de quem saiu) — mas exige admin ou a própria pessoa
+        v = _vinculo(supa, company_id, por_user_id) if por_user_id else None
+        if not por_user_id or (str(por_user_id) != str(dono_user_id)
+                               and not (v and (v.get("is_owner") or v.get("role") in PAPEIS_DE_ADMIN))):
+            raise Recusa("Só um administrador da corretora, ou a própria pessoa, mexe no Agger dela.")
+        if conta_do_membro(supa, company_id, dono_user_id) is None:
+            raise Recusa("Esta pessoa não tem Agger conectado aqui.")
+        desligar_do_membro(supa, company_id, dono_user_id)
+        return
+    _pode_mexer(supa, company_id, dono_user_id, por_user_id)
+    c = conta_do_membro(supa, company_id, dono_user_id)
+    if acao in ("conectar", "trocar_senha"):
+        if cifrar is None:
+            raise Recusa("cofre indisponível")
+        if not senha:
+            raise Recusa("Informe a senha do Agger.")
+        if c is None:
+            cadastrar_do_membro(supa, company_id, dono_user_id, usuario, senha, por_user_id, cifrar=cifrar)
+            return
+        trocar_senha(supa, c, senha, cifrar=cifrar, usuario=str(usuario or "").strip() or None)
+        religar(supa, c, robos.ATIVO)
+        return
+    if c is None:
+        raise Recusa("Esta pessoa não tem Agger conectado aqui.")
+    if acao == "pausar":
+        if c.get("robo_estado") == robos.PAUSADO:
+            return
+        pausar(supa, c)
+    elif acao == "religar":
+        if not c.get("secret_encrypted"):
+            raise Recusa("Sem senha guardada — conecte de novo com o login e a senha.")
+        if c.get("robo_estado") == robos.BLOQUEADO:
+            raise Recusa("O Agger recusou esta senha — troque a senha para religar.")
+        if c.get("robo_estado") == robos.ATIVO:
+            return
+        religar(supa, c, robos.ATIVO)
+
+
 __all__ = (
+    "PAPEIS_DE_ADMIN", "conta_do_membro", "cadastrar_do_membro", "desligar_do_membro", "aggers_da_equipe",
+    "agir_do_membro",
     "PORTAL_KEY", "ROTULO_DA_CORRETORA", "NOME_DA_CORRETORA", "JANELA_DA_CORRETORA", "RECUSA_DE_HORARIO", "Recusa",
     "mascarar", "sempre_ligada",
     "janela_valida", "janela_de_texto", "janela_em_texto", "empresa", "conta_por_id", "cadastrar", "pausar",

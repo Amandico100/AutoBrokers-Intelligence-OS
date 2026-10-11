@@ -41,6 +41,20 @@ OCUPADA = "ocupada"
 TESTE = "teste"
 ESTADOS = (ATIVO, PAUSADO, BLOQUEADO, OCUPADA, TESTE)
 
+# SPEC-131-0 A · F3 (D-131-0-05/29) — DE QUEM é a conta (`portal_accounts.uso`, migration 20261011_04). É o eixo
+# "pessoa ou robô" do motor (o `robo_estado` diz só se ela pode trabalhar AGORA):
+#   GLOBAL  o robô DEDICADO da corretora: entra no rodízio de `candidatos` (o Quem Cobra Menos e quem não tem Agger)
+#   MEMBRO  o Agger de uma PESSOA da equipe (`dono_user_id`): NUNCA no rodízio — só quando o cálculo EXIGE esta conta
+#           (`somente`), de um pedido com serviço de pessoa (cotação ou renovação), e só enquanto a dona é membro ATIVO
+#           da corretora. O robô entra, calcula e SAI (logout sempre); sessão ativa = a pessoa está usando.
+#   TESTE   o login de pessoa do canário: só pedido `teste` no canário (como a conta `robo_estado='teste'`)
+GLOBAL = "global"
+MEMBRO = "membro"
+USO_TESTE = "teste"
+USOS = (GLOBAL, MEMBRO, USO_TESTE)
+#: os serviços que podem usar o Agger de uma pessoa (o Quem Cobra Menos e o legado `servico=None` NUNCA)
+SERVICOS_DA_PESSOA = ("cotacao", "renovacao")
+
 # 💭 60 cálculos por hora por login (D-129B-07): um cálculo do Agger leva 📊 40 s–7 min (A-PROVA-DO-AGGER)
 # e o robô faz UM grupo por vez; 60/h só é atingido por um laço descontrolado, nunca por uso normal. A coluna
 # `robo_teto_por_hora` (1–600) vence este padrão, conta por conta.
@@ -171,17 +185,35 @@ def dentro_da_janela(janela: Any, agora: Optional[datetime] = None) -> bool:
 # Elegibilidade
 # ==========================================================================
 def conta_elegivel(conta: Dict[str, Any], origem: str, agora: datetime, *, canario: bool,
-                   continuacao: bool = False) -> tuple:
+                   continuacao: bool = False, servico: Optional[str] = None, somente: Optional[str] = None,
+                   dono_ativo: Optional[bool] = None) -> tuple:
     """(True, "") ou (False, motivo). Pura: o teto por hora e a lease ficam em `escolher`.
 
     `continuacao` (SPEC-129-C F0, Founder 11/10: *"pode travar durante uma execução"*): o trabalho já COMEÇOU — a
     retomada da leitura de um cálculo `calculando`, ou a econômica que entra no negócio já aberto pelo mesmo pedido.
     A janela vale só para COMEÇAR: numa conta de ROBÔ (`ativo`) a continuação não espera a janela reabrir (o pedido
     ficaria parado a noite inteira, ou expiraria). A conta `teste` (login de PESSOA) obedece à janela SEMPRE — fora
-    dela é o horário da pessoa."""
+    dela é o horário da pessoa.
+
+    SPEC-131-0 A · F3 (§5.1 da SPEC): a conta `uso='membro'` (o Agger de uma PESSOA) só serve quando o cálculo a EXIGE
+    (`somente` = ela), o pedido tem serviço de pessoa (`servico` cotação/renovação — o legado e o Quem Cobra Menos
+    NUNCA) e a dona é membro ATIVO desta corretora (`dono_ativo`, reconferido no banco por `membro_ativo` na hora da
+    escolha). Qualquer dúvida → inelegível (fail-closed). A conta `uso='teste'` só serve ao canário."""
     estado = conta.get("robo_estado")
     if estado not in ESTADOS:
         return False, "não é robô"
+    uso = conta.get("uso")
+    if uso not in USOS:
+        return False, "conta sem dono definido (uso)"
+    if uso == MEMBRO:
+        if somente is None or str(somente) != str(conta.get("id")):
+            return False, "o Agger de uma pessoa só calcula o que foi pedido nele"
+        if servico not in SERVICOS_DA_PESSOA:
+            return False, "o Agger de uma pessoa não atende este serviço"
+        if not conta.get("dono_user_id") or dono_ativo is not True:
+            return False, "a dona deste Agger não está ativa na corretora"
+    if uso == USO_TESTE and (origem != "teste" or not canario):
+        return False, "conta de teste só atende pedido de teste no canário"
     if estado in (PAUSADO, BLOQUEADO):
         return False, estado
     if estado == OCUPADA:
@@ -223,15 +255,41 @@ def calculos_na_ultima_hora(supa, *, company_id: str, account_id: Optional[str] 
 # ==========================================================================
 # A escolha + a lease
 # ==========================================================================
-def candidatos(supa, corretora_id: str) -> list:
+def candidatos(supa, corretora_id: str, *, somente: Optional[str] = None) -> list:
     """As contas-robô do Agger DESTA corretora, a menos usada primeiro (a batida mais antiga) —
-    é o que faz o rodízio girar em vez de gastar sempre o mesmo login."""
+    é o que faz o rodízio girar em vez de gastar sempre o mesmo login.
+
+    🔴 SPEC-131-0 A · F3: o rodízio é SÓ das contas da corretora (`uso` global) e do canário (`teste`). O Agger de uma
+    PESSOA (`membro`) só aparece quando é ELE o pedido (`somente` = o id dele) — nunca por sorteio."""
     r = (supa.table("portal_accounts")
          .select("id, company_id, portal_key, account_label, username, secret_encrypted, robo_estado, "
-                 "robo_teto_por_hora, robo_janela, robo_ocupada_ate, robo_dono, robo_batida_em")
+                 "robo_teto_por_hora, robo_janela, robo_ocupada_ate, robo_dono, robo_batida_em, uso, dono_user_id")
          .eq("company_id", corretora_id).eq("portal_key", PORTAL_KEY)
          .order("robo_batida_em").order("id").execute())
-    return [c for c in (r.data or []) if c.get("robo_estado") is not None]
+    return [c for c in (r.data or []) if c.get("robo_estado") is not None
+            and (c.get("uso") in (GLOBAL, USO_TESTE)
+                 or (c.get("uso") == MEMBRO and somente is not None and str(c.get("id")) == str(somente)))]
+
+
+def membro_ativo(supa, company_id: str, user_id: Any) -> bool:
+    """A pessoa é membro ATIVO DESTA corretora (`company_members.status='active'`) E o usuário dela está ativo
+    (`users_v2.status='active'`, sem `deleted_at`)? Qualquer falha de leitura = NÃO (fail-closed — D-131-0-29: a conta
+    de uma pessoa só vale enquanto ela é da equipe). Filtra `company_id` sempre (CLAUDE.md §7)."""
+    if not company_id or not user_id:
+        return False
+    try:
+        vinc = (supa.table("company_members").select("user_id, company_id, status")
+                .eq("company_id", str(company_id)).eq("user_id", str(user_id)).eq("status", "active")
+                .limit(1).execute())
+        if not [v for v in (vinc.data or []) if str(v.get("company_id")) == str(company_id)
+                and str(v.get("user_id")) == str(user_id) and v.get("status") == "active"]:
+            return False
+        usr = supa.table("users_v2").select("id, status, deleted_at").eq("id", str(user_id)).limit(1).execute()
+        linhas = [u for u in (usr.data or []) if str(u.get("id")) == str(user_id)]
+        return bool(linhas) and linhas[0].get("status") == "active" and not linhas[0].get("deleted_at")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[MC] não consegui conferir a dona de um Agger (%s) — a conta não é usada", type(exc).__name__)
+        return False
 
 
 def adquirir(supa, conta: Dict[str, Any], dono: str, agora: datetime,
@@ -255,7 +313,7 @@ def adquirir(supa, conta: Dict[str, Any], dono: str, agora: datetime,
 def escolher(supa, corretora_id: str, origem: str, *, dono: str, agora: Optional[datetime] = None,
              quantos: int = 1, canario: bool = False, lease_s: int = LEASE_VENCE_S,
              ignorar: Iterable[str] = (), somente: Optional[str] = None,
-             continuacao: bool = False) -> Optional[Dict[str, Any]]:
+             continuacao: bool = False, servico: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """A conta-robô que vai rodar `quantos` cálculos desta corretora — com a lease JÁ tomada — ou None.
 
     Percorre as candidatas (a menos usada primeiro); a ocupada por outro motor perde o CAS e a próxima
@@ -265,13 +323,19 @@ def escolher(supa, corretora_id: str, origem: str, *, dono: str, agora: Optional
     `somente` (conserto 129-B, juiz P11): o grupo já tem negócio aberto numa conta — só ELA serve. A
     econômica nunca abre negócio novo noutra conta; sem ela livre, o grupo espera.
 
-    `continuacao` (SPEC-129-C F0): o trabalho já começou — a janela não o segura (ver `conta_elegivel`)."""
+    `continuacao` (SPEC-129-C F0): o trabalho já começou — a janela não o segura (ver `conta_elegivel`).
+
+    `servico` (SPEC-131-0 A · F3): o do pedido. Com `somente` = a conta EXIGIDA pelo cálculo (`conta_exigida_id`), só
+    ela serve — nunca outra, nem a da corretora. O Agger de uma pessoa reconfere a dona AQUI, no banco, a cada escolha."""
     agora = agora or _agora()
     pulo = set(ignorar or ())
-    for conta in candidatos(supa, corretora_id):
-        if conta["id"] in pulo or (somente is not None and conta["id"] != somente):
+    for conta in candidatos(supa, corretora_id, somente=somente):
+        if conta["id"] in pulo or (somente is not None and str(conta["id"]) != str(somente)):
             continue
-        ok, _motivo = conta_elegivel(conta, origem, agora, canario=canario, continuacao=continuacao)
+        dono_ativo = (membro_ativo(supa, corretora_id, conta.get("dono_user_id"))
+                      if conta.get("uso") == MEMBRO else None)
+        ok, _motivo = conta_elegivel(conta, origem, agora, canario=canario, continuacao=continuacao,
+                                     servico=servico, somente=somente, dono_ativo=dono_ativo)
         if not ok:
             continue
         feitos = calculos_na_ultima_hora(supa, company_id=corretora_id, account_id=conta["id"], agora=agora)
@@ -319,6 +383,10 @@ def liberar(supa, conta: Dict[str, Any], dono: str) -> None:
 #                                     também nunca se retenta
 #   teste → pausado ............ a conta de PESSOA estava em uso, ou o login dela não teve desfecho (D-129B-04)
 #   ocupada → ativo ............ só em `escolher`, com o prazo vencido (o CAS de lá também confere o prazo)
+# SPEC-131-0 A · F3: o Agger de uma PESSOA (`uso='membro'`) vive em `ativo` e usa as MESMAS transições — a diferença é
+# do motor, por USO: sessão ativa → `ocupada` 30 min e o cálculo volta (na 3ª, falha com o motivo); senha recusada →
+# `bloqueado` na 1ª e o cálculo FALHA (nenhuma outra conta serve a ele). Nunca `pausado` pelo motor (só `teste`): quem
+# pausa o Agger de uma pessoa é ela ou o admin, pela tela.
 TRANSICOES_DO_MOTOR: Dict[str, tuple] = {
     OCUPADA: (ATIVO,),
     BLOQUEADO: (ATIVO, OCUPADA, TESTE),
@@ -355,6 +423,7 @@ def conta_publica(conta: Dict[str, Any]) -> Dict[str, Any]:
 
 __all__: tuple = (
     "PORTAL_KEY", "ESTADOS", "ATIVO", "PAUSADO", "BLOQUEADO", "OCUPADA", "TESTE",
+    "GLOBAL", "MEMBRO", "USO_TESTE", "USOS", "SERVICOS_DA_PESSOA", "membro_ativo",
     "TETO_PADRAO_POR_HORA", "LEASE_VENCE_S", "dentro_da_janela", "conta_elegivel", "teto_da_conta",
     "calculos_na_ultima_hora", "candidatos", "adquirir", "escolher", "renovar", "liberar",
     "marcar_estado", "conta_publica", "TRANSICOES_DO_MOTOR",

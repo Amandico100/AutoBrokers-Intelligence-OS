@@ -108,6 +108,14 @@ MOTIVO_AJUSTE_REPETIDO = "o mesmo ajuste deste cálculo já foi pedido e está e
 MOTIVO_NAO_LEU = "não consegui ler o resultado no Agger"
 MOTIVO_LEU_PARTE = "o Agger parou de responder depois do quadro: fechado com o que foi lido"
 MOTIVO_TESTE_INDEFINIDO = "o login da conta de teste não chegou ao fim: o robô parou e pausou a conta"
+# SPEC-131-0 A · F3 (D-131-0-05): o Agger de uma PESSOA. 💭 3 vezes: a pessoa estava no próprio login em três tentativas
+# (cada uma ≥ 30 min depois da outra, `OCUPADA_MIN`) — o cálculo FALHA com o motivo e quem pediu decide (a 132 pergunta);
+# NUNCA cai calado no Agger da corretora (R3). O prefixo é a chave que a 131/132 lê.
+VEZES_DA_PESSOA_EM_USO = 3
+MOTIVO_PESSOA_EM_USO = ("agger_da_pessoa_em_uso — a dona deste Agger estava usando o próprio login nas 3 tentativas; "
+                        "o cálculo não saiu e quem pediu decide o que fazer")
+MOTIVO_SENHA_DA_PESSOA = ("o Agger desta pessoa recusou a senha: o cálculo não saiu (só esta conta podia fazê-lo) — "
+                          "troque a senha do Agger dela e peça de novo")
 KIND_CANAL = "platform_canal"
 MOTIVO_INCERTO = ("o disparo PODE ter saído no portal e o motor não teve a confirmação: "
                   "não refaça sem conferir o negócio no Agger")
@@ -448,14 +456,18 @@ class Motor:
         pares: List[Tuple[Grupo, Dict[str, Any]]] = []
         for (pedido_id, corretora), calcs in grupos.items():
             solicitante = calcs[0]["solicitante_company_id"]
-            pedido = await self._pedido(pedido_id, solicitante, "id, origem, quadro_s")
+            pedido = await self._pedido(pedido_id, solicitante, "id, origem, quadro_s, servico")
             if not pedido:
                 continue
             if (pedido.get("origem") or "") == "teste" and not self.canario():
                 continue   # conserto 129-B (red P6): pedido de teste só no canário — também na retomada
             # SPEC-129-C F0: a retomada é a LEITURA de um cálculo que já saiu — a janela não a segura (ela vale só
             # para começar; o negócio já existe no Agger e o pedido ficaria `calculando` até a janela reabrir)
-            conta = await self._escolher(corretora, pedido.get("origem") or "", agora, 1, continuacao=True)
+            # 🔴 SPEC-131-0 A · F3 (V20): o negócio de uma conta EXIGIDA (ou do Agger de uma PESSOA) só é lido por ELA —
+            # nunca pelo login da corretora nem pelo de outra pessoa
+            somente = await self._conta_da_retomada(corretora, calcs)
+            conta = await self._escolher(corretora, pedido.get("origem") or "", agora, 1, continuacao=True,
+                                         somente=somente, servico=pedido.get("servico"))
             if conta is None:
                 continue
             tomados = []
@@ -500,7 +512,7 @@ class Motor:
         pares: List[Tuple[Grupo, Dict[str, Any]]] = []
         for (pedido_id, corretora), calcs in grupos.items():
             solicitante = calcs[0]["solicitante_company_id"]
-            pedido = await self._pedido(pedido_id, solicitante, "id, origem, quadro_s, status")
+            pedido = await self._pedido(pedido_id, solicitante, "id, origem, quadro_s, status, servico")
             if not pedido:
                 continue
             if pedido.get("status") not in (None, "aberto"):
@@ -538,7 +550,17 @@ class Motor:
             # SPEC-129-C F0: a econômica (ou a completa+) que entra no negócio JÁ ABERTO pelo mesmo pedido é a
             # continuação de um cálculo que começou — a janela não a segura. O ajuste é pedido novo: obedece à janela.
             continuacao = conta_fixa is not None and all(c.get("opcao") != "ajuste" for c in calcs)
-            conta = await self._escolher(corretora, origem, agora, n, somente=conta_fixa, continuacao=continuacao)
+            # 🔴 SPEC-131-0 A · F3: a conta EXIGIDA pelo cálculo (`qual_agger.decidir`, gravada pela porta) — só ela
+            # serve, nunca outra. Ela e a do negócio já aberto (`conta_fixa`) têm de ser a MESMA; divergência é dado
+            # inconsistente: o grupo NÃO sai (espera e expira) em vez de abrir negócio no login errado
+            exigidas = {str(c["conta_exigida_id"]) for c in calcs if c.get("conta_exigida_id")}
+            if len(exigidas) > 1 or (exigidas and conta_fixa is not None and conta_fixa not in exigidas):
+                logger.error("[MC] o pedido %s exige contas divergentes na corretora %s — o grupo não sai",
+                             pedido_id, corretora)
+                continue
+            somente = next(iter(exigidas)) if exigidas else conta_fixa
+            conta = await self._escolher(corretora, origem, agora, n, somente=somente, continuacao=continuacao,
+                                         servico=pedido.get("servico"))
             if conta is None:
                 continue
             tomados = []
@@ -560,13 +582,13 @@ class Motor:
         return pares
 
     async def _escolher(self, corretora: str, origem: str, agora: datetime, quantos: int,
-                        somente: Optional[str] = None, continuacao: bool = False):
+                        somente: Optional[str] = None, continuacao: bool = False, servico: Optional[str] = None):
         """`robos.escolher` + a marca EM USO já na seleção: dois grupos da mesma volta nunca pegam o
         mesmo robô, nem quando a lease dele já é deste motor (sessão ociosa)."""
         conta = await self._db(lambda: robos.escolher(
             self.supa, corretora, origem, dono=self.dono, agora=agora, quantos=quantos,
             canario=self.canario(), lease_s=self.lease_s, ignorar=set(self._contas_em_uso), somente=somente,
-            continuacao=continuacao))
+            continuacao=continuacao, servico=servico))
         if conta is not None:
             self._contas_em_uso.add(conta["id"])
             self._ociosas.pop(conta["id"], None)
@@ -646,18 +668,36 @@ class Motor:
         com_negocio.sort(key=lambda x: (x.get("opcao") == "ajuste", str(x.get("criado_em") or "")))
         return False, (str(com_negocio[0]["account_id"]) if com_negocio else None)
 
+    async def _conta_da_retomada(self, corretora: str, calcs: List[Dict[str, Any]]) -> Optional[str]:
+        """SPEC-131-0 A · F3 (V20): a conta que PODE ler o negócio na retomada. A exigida pelo cálculo, se há uma; senão,
+        a conta que o abriu, quando ela é o Agger de uma PESSOA (o negócio é da sessão dela — nunca o login da
+        corretora). None = como hoje: qualquer conta da corretora no rodízio."""
+        exigidas = {str(c["conta_exigida_id"]) for c in calcs if c.get("conta_exigida_id")}
+        if exigidas:
+            return next(iter(exigidas)) if len(exigidas) == 1 else sorted(exigidas)[0]
+        contas = sorted({str(c["account_id"]) for c in calcs if c.get("account_id")})
+        if not contas:
+            return None
+        r = await self._db(lambda: self.supa.table("portal_accounts").select("id, uso")
+                           .eq("company_id", corretora).in_("id", contas).execute())
+        de_pessoa = [str(x["id"]) for x in (r.data or []) if x.get("uso") == robos.MEMBRO]
+        return de_pessoa[0] if de_pessoa else None
+
     async def _soltar_conta(self, conta: Dict[str, Any], *, perdeu: bool = False, descartar: bool = False) -> None:
         """Fim do uso do robô. Sessão aberta de conta `ativo` → fica OCIOSA com a lease (reaproveita o
         login); conta `teste` (login de PESSOA) → logout e lease devolvida (D-129B-04). Sessão MORTA (401/403)
-        → descartada sem logout e NUNCA reaproveitada (conserto 129-B, juiz B1)."""
+        → descartada sem logout e NUNCA reaproveitada (conserto 129-B, juiz B1).
+        🔴 SPEC-131-0 A · F3 (D-131-0-05): decide pelo USO — o Agger de uma PESSOA (`uso='membro'`) é login de pessoa:
+        LOGOUT SEMPRE (segurar a sessão dela ociosa a derrubaria o dia todo)."""
         self._contas_em_uso.discard(conta["id"])
         if descartar:
             self._ociosas.pop(conta["id"], None)
             await self._descartar_sessao(conta["id"])
             await self._db(lambda: robos.liberar(self.supa, conta, self.dono))
             return
-        if (conta["id"] in self._contas_com_sessao and conta.get("robo_estado") != robos.TESTE
-                and not perdeu):
+        login_de_pessoa = conta.get("robo_estado") == robos.TESTE or conta.get("uso") in (robos.MEMBRO,
+                                                                                         robos.USO_TESTE)
+        if conta["id"] in self._contas_com_sessao and not login_de_pessoa and not perdeu:
             agora = self.agora()
             self._ociosas[conta["id"]] = {"conta": conta, "desde": agora, "batida": agora}
             return
@@ -852,6 +892,18 @@ class Motor:
                 await self._encerrar(g, c, "falhou",
                                      "a conta de teste estava em uso por uma pessoa: o robô cancelou e parou")
             return
+        if conta.get("uso") == robos.MEMBRO:
+            # 🔴 SPEC-131-0 A · F3 (D-131-0-05): o Agger de uma PESSOA e ela está nele. O aviso foi CANCELADO (nunca
+            # "Prosseguir"); a conta fica `ocupada` 30 min e o cálculo volta à fila — na 3ª tentativa ele FALHA com o
+            # motivo. Nunca vai para o Agger da corretora: a conta é EXIGIDA (o motor não tem outra para ele)
+            await self._marcar(conta, robos.OCUPADA, ocupada_min=OCUPADA_MIN)
+            logger.warning("[MC] Agger de pessoa %s em uso pela dona — afastado por %s min", conta["id"], OCUPADA_MIN)
+            esgotados = [c for c in calcs if c.get("status") != "calculando"
+                         and int(c.get("tentativas") or 0) >= VEZES_DA_PESSOA_EM_USO]
+            for c in esgotados:
+                await self._encerrar(g, c, "falhou", MOTIVO_PESSOA_EM_USO)
+            await self._devolver_a_fila(g, [c for c in calcs if c not in esgotados])
+            return
         await self._marcar(conta, robos.OCUPADA, ocupada_min=OCUPADA_MIN)
         logger.warning("[MC] robô %s ocupado por uma pessoa — afastado por %s min", conta["id"], OCUPADA_MIN)
         await self._devolver_a_fila(g, calcs)
@@ -882,6 +934,13 @@ class Motor:
             await self._gravar_linha_de_evento(g, c, {
                 "tipo": "robo_bloqueado", "chave": f"robo_bloqueado|{conta['id']}", "familia": None,
             })
+        if conta.get("uso") == robos.MEMBRO:
+            # 🔴 SPEC-131-0 A · F3: o Agger de uma PESSOA recusou a senha — bloqueado na 1ª (acima) e o cálculo FALHA: só
+            # esta conta podia fazê-lo, e esperar na fila até expirar esconderia o porquê de quem pediu
+            for c in calcs:
+                if c.get("status") != "calculando":
+                    await self._encerrar(g, c, "falhou", MOTIVO_SENHA_DA_PESSOA)
+            return
         await self._devolver_a_fila(g, calcs)
 
     async def _fechar_sessao(self, conta_id: str) -> None:

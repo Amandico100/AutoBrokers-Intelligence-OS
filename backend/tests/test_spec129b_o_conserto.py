@@ -328,7 +328,8 @@ def test_red_b1_controle_e_as_transicoes_do_motor(ambiente, monkeypatch):
     velha = dict(linha)                                     # o que `candidatos` leu: `ocupada`, prazo vencido
     linha.update(robo_estado="pausado")
     amb.relogio.avancar(31 * 60)
-    monkeypatch.setattr(ROB, "candidatos", lambda _s, _c: [velha])
+    # SPEC-131-0 A · F3: `candidatos` ganhou `somente=` (o Agger de uma pessoa só entra quando é ele o pedido)
+    monkeypatch.setattr(ROB, "candidatos", lambda _s, _c, **_k: [velha])
     assert ROB.escolher(supa, a, "auxiliar", dono="m", agora=amb.relogio.agora()) is None
     assert linha["robo_estado"] == "pausado" and linha["robo_dono"] is None
     # CONTROLE: sem a pausa, a mesma `ocupada` vencida volta a `ativo` e é escolhida

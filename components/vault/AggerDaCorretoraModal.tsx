@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
 
+import { AggersDaEquipe } from './AggersDaEquipe';
+
 /**
  * SPEC-133-A.1 F3 — o "Agger da corretora" (D-133A1-03/04): o login DEDICADO do robô que faz os cálculos do
  * Quem Cobra Menos (e de quem não tem Agger próprio). O mesmo jeito da InfoCap: clicar → login + senha → salvar.
@@ -149,7 +151,7 @@ export function AggerDaCorretoraModal({
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="border-border bg-surface sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto border-border bg-surface sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface-2 text-primary">
@@ -220,6 +222,9 @@ export function AggerDaCorretoraModal({
 
         {erro && <p className="text-xs text-danger">{erro}</p>}
         {aviso && <p className="text-xs text-success">{aviso}</p>}
+
+        {/* SPEC-131-0 A · F3: o Agger de cada pessoa, ao lado do Agger da corretora */}
+        {open && <AggersDaEquipe />}
 
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => close(false)} disabled={ocupado}>Fechar</Button>

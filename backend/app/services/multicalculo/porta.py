@@ -57,6 +57,10 @@ ORIGENS: Tuple[str, ...] = ("auxiliar", "canal", "teste")
 OPCOES_POR_RAMO: Dict[int, Tuple[str, ...]] = {RAMO_AUTO: OPCOES, **{r: tuple(_ORDEM_RE) for r in RAMOS_RE}}
 #: o canal comparador (QCM) continua SÓ AUTO nesta SPEC: RE é carteira (auxiliar) e canário (teste)
 ORIGENS_DO_RE: Tuple[str, ...] = ("auxiliar", "teste")
+#: SPEC-131-0 A · F3 (D-131-0-32): o SERVIÇO é coluna nova; a `origem` não muda (CHECK, prioridade, ~15 leitores) — ela
+#: SAI do serviço: o Quem Cobra Menos é o canal; a cotação e a renovação são trabalho da corretora (prioridade menor)
+SERVICOS: Tuple[str, ...] = ("qcm", "cotacao", "renovacao")
+ORIGEM_DO_SERVICO: Dict[str, str] = {"qcm": "canal", "cotacao": "auxiliar", "renovacao": "auxiliar"}
 KIND_CANAL = "platform_canal"
 KIND_CORRETORA = "client"
 ENV_CANARIO = "AUTOBROKERS_CANARIO"
@@ -110,6 +114,11 @@ class PresetIndisponivel(RuntimeError):
 
 class RamoNaoSuportado(ValueError):
     """SPEC-129-C: o ramo não sai por este caminho — RE pelo canal (o QCM é só AUTO nesta SPEC) ou ramo sem motor."""
+
+
+class ContaRecusada(PermissionError):
+    """SPEC-131-0 A · F3: `qual_agger.decidir` recusou a conta (ex.: o Agger do dono recusou a senha e a apólice não
+    vence logo). A mensagem é para quem pediu, em português de gente; NADA foi gravado."""
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -403,8 +412,27 @@ class MulticalculoProvider:
                        corretoras: Optional[Iterable[str]] = None,
                        opcoes: Iterable[str] = OPCOES_PADRAO,
                        coberturas: Optional[Mapping[str, Mapping[str, Any]]] = None,
-                       origem: str, quadro_s: int = 60) -> PedidoAberto:
+                       origem: Optional[str] = None, quadro_s: int = 60,
+                       servico: Optional[str] = None, solicitante_user_id: Optional[str] = None,
+                       dono_user_id: Optional[str] = None, vence_em_dias: Optional[int] = None) -> PedidoAberto:
+        """SPEC-131-0 A · F3: com `servico` (qcm · cotacao · renovacao), a conta de CADA corretora é decidida por
+        `qual_agger.decidir` ANTES de gravar e fica no cálculo (`conta_exigida_id` + regra + fallback + motivo); a
+        `origem` sai do serviço (qcm → canal; cotação/renovação → auxiliar). `servico=None` = o legado (canário, testes):
+        nada muda, byte a byte. `vence_em_dias` (renovação) libera o Agger da corretora quando o do dono recusou a senha e
+        a apólice vence logo (`servicos.renovacao.conta_global_se_vence_em_dias`)."""
         company_id = _uuid(company_id, "company_id")
+        if servico is not None:
+            if servico not in SERVICOS:
+                raise ValueError("serviços aceitos: " + ", ".join(SERVICOS))
+            if origem is not None and origem != ORIGEM_DO_SERVICO[servico]:
+                raise ValueError(f"o serviço {servico} sai pela origem {ORIGEM_DO_SERVICO[servico]!r}, não {origem!r}")
+            origem = ORIGEM_DO_SERVICO[servico]
+            solicitante_user_id = _uuid(solicitante_user_id, "solicitante_user_id") if solicitante_user_id else None
+            dono_user_id = _uuid(dono_user_id, "dono_user_id") if dono_user_id else None
+        elif solicitante_user_id or dono_user_id:
+            raise ValueError("quem pediu e o dono só valem com o serviço (qcm, cotacao, renovacao)")
+        if origem is None:
+            raise ValueError("origem obrigatória (ou o serviço)")
         self._conferir_origem(origem)
         alvo: List[str] = []
         for c in (corretoras if corretoras is not None else [company_id]):
@@ -435,7 +463,7 @@ class MulticalculoProvider:
                 raise RamoNaoSuportado("o canal calcula só o AUTO nesta versão")
             # D-129C-05: a comissão EXPLÍCITA do ramo ANTES de validar — o contrato a exige. Red P4 (conserto 129-C):
             # a que o pedido TROUXE também passa pela régua da config (> 0 e ≤ `comissao.teto_pct`)
-            comissao, teto = await self._comissao_re(company_id=company_id, ramo=ramo)
+            comissao, teto = await self._comissao_re(company_id=company_id, ramo=ramo, servico=servico)
             pedido = pedido.com_comissao(comissao)
             if not comissao_re_valida(pedido.valor("comissao_desconto", "comissao_percentual"), teto):
                 raise PedidoIncompleto(["comissao_desconto.comissao_percentual"])
@@ -447,9 +475,13 @@ class MulticalculoProvider:
         faltam = ausentes + [c for c in pedido.sem_codigo() if c not in ausentes]
         if faltam:
             raise PedidoIncompleto(faltam)
+        # SPEC-131-0 A · F3: QUAL AGGER, por corretora, antes de qualquer escrita — uma recusa não grava nada
+        contas = await self._decidir_contas(alvo=alvo, servico=servico, solicitante_user_id=solicitante_user_id,
+                                            dono_user_id=dono_user_id, vence_em_dias=vence_em_dias)
+        quem = {"servico": servico, "solicitante_user_id": solicitante_user_id, "contas": contas}
         if ramo != RAMO_AUTO:
             return await self._calcular_re(company_id=company_id, pedido=pedido, alvo=alvo, escolhidas=escolhidas,
-                                           coberturas=coberturas, origem=origem, quadro=quadro)
+                                           coberturas=coberturas, origem=origem, quadro=quadro, quem=quem)
         if origem == "canal":
             pedido = pedido.assumindo_pela_placa()
             perfil = pedido.perfil_faltando()
@@ -470,19 +502,45 @@ class MulticalculoProvider:
 
         return await self._gravar(company_id=company_id, dados=pedido.para_dict(), ramo=pedido.ramo,
                                   hmac_doc=hmac_doc, alvo=alvo, escolhidas=escolhidas, por_opcao=por_opcao,
-                                  origem=origem, quadro=quadro)
+                                  origem=origem, quadro=quadro, quem=quem)
 
-    async def _comissao_re(self, *, company_id: str, ramo: int) -> Tuple[float, float]:
+    async def _decidir_contas(self, *, alvo: List[str], servico: Optional[str], solicitante_user_id: Optional[str],
+                              dono_user_id: Optional[str], vence_em_dias: Optional[int]) -> Dict[str, Any]:
+        """{corretora: DecisaoDeConta} — vazio no legado (`servico=None`). Uma `recusa` → `ContaRecusada`."""
+        if servico is None:
+            return {}
+        from app.services.multicalculo import qual_agger
+
+        decisoes: Dict[str, Any] = {}
+        for corretora in alvo:
+            d = await asyncio.to_thread(qual_agger.decidir, self.repo.db, company_id=corretora, servico=servico,
+                                        solicitante_user_id=solicitante_user_id, dono_user_id=dono_user_id,
+                                        vence_em_dias=vence_em_dias)
+            if d.recusa:
+                raise ContaRecusada(d.recusa)
+            decisoes[corretora] = d
+        return decisoes
+
+    async def _carregar_cfg(self, company_id: str, servico: Optional[str]) -> Dict[str, Any]:
+        """SPEC-131-0 A (§5.3): a config da corretora ⊕ o manual do SERVIÇO do pedido. Sem serviço (legado) a chamada é
+        a de sempre, byte a byte — `servico` só vai quando existe."""
+        from app.services.multicalculo.config import carregar
+
+        if servico is None:
+            return await asyncio.to_thread(carregar, company_id, db=self.repo.db)
+        return await asyncio.to_thread(carregar, company_id, db=self.repo.db, servico=servico)
+
+    async def _comissao_re(self, *, company_id: str, ramo: int, servico: Optional[str] = None) -> Tuple[float, float]:
         """D-129C-05: (a comissão do item no ramo, o teto) da config da CORRETORA (no RE a corretora é a solicitante: o
         canal está fora). Banco fora → `ConfigIndisponivel` (nunca a comissão às cegas)."""
-        from app.services.multicalculo.config import carregar, comissao_do_ramo, teto_da_comissao
+        from app.services.multicalculo.config import comissao_do_ramo, teto_da_comissao
 
-        cfg = await asyncio.to_thread(carregar, company_id, db=self.repo.db)
+        cfg = await self._carregar_cfg(company_id, servico)
         return comissao_do_ramo(cfg, ramo), teto_da_comissao(cfg)
 
     async def _calcular_re(self, *, company_id: str, pedido: PedidoDeCalculo, alvo: List[str],
                            escolhidas: List[str], coberturas: Optional[Mapping[str, Mapping[str, Any]]],
-                           origem: str, quadro: int) -> PedidoAberto:
+                           origem: str, quadro: int, quem: Optional[Mapping[str, Any]] = None) -> PedidoAberto:
         """SPEC-129-C: o pedido de RE (já validado pelo contrato e com a comissão do ramo) — as coberturas de cada
         opção pelo resolvedor dos presets (a Básica e as extras DO PEDIDO) ou as explícitas de quem chamou (com a
         Básica do pedido). Extra fora das coberturas do ramo já voltou como `PedidoIncompleto` (`sem_codigo`)."""
@@ -502,11 +560,11 @@ class MulticalculoProvider:
             por_opcao[o] = cob
         return await self._gravar(company_id=company_id, dados=pedido.para_dict(), ramo=pedido.ramo,
                                   hmac_doc=hmac_doc, alvo=alvo, escolhidas=escolhidas, por_opcao=por_opcao,
-                                  origem=origem, quadro=quadro)
+                                  origem=origem, quadro=quadro, quem=quem)
 
     async def _gravar(self, *, company_id: str, dados: Mapping[str, Any], ramo: int, hmac_doc: str,
                       alvo: List[str], escolhidas: List[str], por_opcao: Mapping[str, Mapping[str, Any]],
-                      origem: str, quadro: int) -> PedidoAberto:
+                      origem: str, quadro: int, quem: Optional[Mapping[str, Any]] = None) -> PedidoAberto:
         cifrado = self._cifrar(json.dumps(dados, ensure_ascii=False, sort_keys=True))
         agora = self._agora()
         pedido_id = str(uuid.uuid4())
@@ -521,6 +579,17 @@ class MulticalculoProvider:
             "prioridade": PRIORIDADE[origem], "expira_em": (agora + VALIDADE[origem]).isoformat(),
             "disponivel_em": agora.isoformat(),
         } for corretora in alvo for o in escolhidas]
+        servico = (quem or {}).get("servico")
+        if servico is not None:
+            # SPEC-131-0 A · F3: o pedido diz para QUAL serviço e QUEM pediu; cada cálculo, em QUAL conta (a da decisão
+            # da corretora dele) e por quê. O legado (`servico=None`) não escreve nenhuma coluna nova
+            linha_pedido["servico"] = servico
+            linha_pedido["solicitante_user_id"] = (quem or {}).get("solicitante_user_id")
+            contas = (quem or {}).get("contas") or {}
+            for c in linhas_calc:
+                d = contas[c["company_id"]]
+                c.update({"conta_exigida_id": d.conta_id, "conta_regra": d.regra, "conta_fallback": bool(d.fallback),
+                          "conta_motivo": d.texto_para_o_banco() or None})
         _p, gravados = await asyncio.to_thread(self.repo.gravar_pedido, linha_pedido, linhas_calc)
         logger.info("[MULTICALCULO] pedido enfileirado: %s cálculo(s), origem=%s", len(linhas_calc), origem)
         return PedidoAberto(pedido_id=pedido_id, calculos=tuple(
@@ -616,11 +685,15 @@ class MulticalculoProvider:
         if ped.get("status") == "cancelado":
             raise ValueError("pedido cancelado")
         self._conferir_origem(str(ped.get("origem")))
+        # SPEC-131-0 A · F3: o serviço do pedido e a conta em que a origem saiu (o recálculo herda as duas)
+        do_pedido = await asyncio.to_thread(self.repo.servico_e_conta, company_id=company_id,
+                                            pedido_id=str(origem["pedido_id"]), calculo_id=calculo_id)
         ramo = int(ped.get("ramo") or RAMO_AUTO)
         if ramo != RAMO_AUTO:
             ajuste = _ajuste_de_re(ajuste_bruto, ramo)      # nunca o código do CARRO num cálculo de RE
             if ajuste.tipo == "comissao":
-                _c, teto = await self._comissao_re(company_id=company_id, ramo=ramo)
+                _c, teto = await self._comissao_re(company_id=company_id, ramo=ramo,
+                                                   servico=do_pedido.get("servico"))
                 if not comissao_re_valida(ajuste.valor, teto):
                     raise ValueError(f"ajuste comissao do ramo {ramo}: precisa ser maior que 0 e no máximo {teto:g} %")
         elif erro_do_auto is not None:
@@ -636,8 +709,24 @@ class MulticalculoProvider:
                     {k: aj.get(k) for k in ("tipo", "valor", "seguradora")} == pedido_igual:
                 return {"id": str(c["id"]), "corretora_company_id": corretora, "opcao": "ajuste",
                         "origem_calculo_id": calculo_id, "repetido": True}
+        # SPEC-131-0 A · F3: o recálculo HERDA a conta de origem (o negócio mora nela — V20). Só nos pedidos com serviço:
+        # o legado não escreve coluna nova (o motor já o prende à conta do negócio por `_conta_do_grupo`)
+        conta_herdada: Dict[str, Any] = {}
+        if do_pedido.get("servico"):
+            from app.services.multicalculo import qual_agger
+
+            conta_de_origem = do_pedido.get("account_id") or do_pedido.get("conta_exigida_id")
+            if not conta_de_origem:
+                raise ValueError("o cálculo de origem ainda não tem conta do Agger — espere o disparo")
+            d = await asyncio.to_thread(qual_agger.decidir, self.repo.db, company_id=corretora,
+                                        servico=str(do_pedido["servico"]), conta_de_origem_id=str(conta_de_origem))
+            if d.recusa:
+                raise ContaRecusada(d.recusa)
+            conta_herdada = {"conta_exigida_id": d.conta_id, "conta_regra": d.regra,
+                             "conta_fallback": bool(d.fallback), "conta_motivo": d.texto_para_o_banco() or None}
         agora = self._agora()
         novo = {
+            **conta_herdada,
             "id": str(uuid.uuid4()), "pedido_id": str(origem["pedido_id"]), "solicitante_company_id": company_id,
             "company_id": corretora, "opcao": "ajuste", "origem_calculo_id": calculo_id,
             "coberturas": (_aplicar_ajuste(origem.get("coberturas") or {}, ajuste) if ramo == RAMO_AUTO
@@ -718,10 +807,10 @@ class MulticalculoProvider:
         return None
 
     async def _config_e_andamento(self, *, company_id: str, pedido_id: str) -> Tuple[Dict[str, Any], "Andamento"]:
-        from app.services.multicalculo.config import carregar
-
         andamento = await self.consultar(company_id=company_id, pedido_id=pedido_id)
-        cfg = await asyncio.to_thread(carregar, company_id, db=self.repo.db)
+        # SPEC-131-0 A (§5.3): o manual do SERVIÇO do pedido (o legado lê a base, como sempre)
+        servico = await asyncio.to_thread(self.repo.servico_do_pedido, company_id=company_id, pedido_id=pedido_id)
+        cfg = await self._carregar_cfg(company_id, servico)
         return cfg, andamento
 
     async def ordem_do_mais_barato(self, *, company_id: str, oferta_ref: Mapping[str, Any],

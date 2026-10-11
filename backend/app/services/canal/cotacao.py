@@ -70,14 +70,25 @@ def decifrar_contato(token: str) -> Dict[str, Any]:
     return json.loads(portal_vault.decrypt(token))
 
 
+def config_do_qcm(company_id: str, db: Any) -> Dict[str, Any]:
+    """SPEC-131-0 A · §5.3: o canal lê o manual do serviço do comparador (`servico='qcm'`). A F4 acrescenta o argumento ao
+    `config.carregar`; antes dela (assinatura sem `servico`) vale a base — o comportamento de hoje."""
+    import inspect
+
+    from app.services.multicalculo import config as CFG
+
+    if "servico" in inspect.signature(CFG.carregar).parameters:
+        return CFG.carregar(company_id, db=db, servico="qcm")
+    return CFG.carregar(company_id, db=db)
+
+
 def nome_do_canal(db: Any, company_id: str) -> str:
     """O nome do canal DA CONFIG (`canal.nome`, D-MC-55) — o mesmo que a conversa usa. Config ilegível → o padrão do
     produto (`conversa.NOME_PADRAO_DO_CANAL`): um aviso nunca deixa de sair por causa do nome."""
     from app.services.canal.conversa import _nome_do_canal
-    from app.services.multicalculo import config as CFG
 
     try:
-        return _nome_do_canal(CFG.carregar(company_id, db=_cliente(db)))
+        return _nome_do_canal(config_do_qcm(company_id, _cliente(db)))
     except Exception as exc:  # noqa: BLE001
         logger.warning("[CANAL] config ilegível para o nome do canal (%s) — fica o padrão", type(exc).__name__)
         return _nome_do_canal(None)
@@ -106,8 +117,10 @@ async def disparar(db: Any, company_id: str, telefone_e164: str, perfil: dict, e
         if not corretoras:
             raise LookupError("o canal não tem adesão ativa com nenhuma corretora")
         pedido = PedidoDeCalculo.de_dict(perfil["pedido"], assumidos=perfil.get("assumidos") or ())
+        # SPEC-131-0 A · F3: o serviço é o do comparador (`qcm`) — a porta grava a regra (sempre o Agger da corretora) em
+        # cada cálculo; a origem continua 'canal'
         aberto = await _porta(db).calcular(company_id=company_id, pedido=pedido, corretoras=corretoras,
-                                           opcoes=OPCOES_DO_CANAL, origem="canal")
+                                           opcoes=OPCOES_DO_CANAL, origem="canal", servico="qcm")
     except Exception as exc:  # noqa: BLE001 — nomes de campo e o tipo; nunca valores
         campos = ", ".join(getattr(exc, "campos", []) or [])
         logger.error("[CANAL] a cotação não começou: %s %s", type(exc).__name__, campos)

@@ -134,7 +134,7 @@ def sempre_ligada(supa, args) -> List[str]:
 def listar(supa, args) -> List[str]:
     q = (supa.table("portal_accounts")
          .select("id, company_id, account_label, username, secret_encrypted, robo_estado, robo_teto_por_hora, "
-                 "robo_janela, robo_ocupada_ate, robo_dono, robo_batida_em")
+                 "robo_janela, robo_ocupada_ate, robo_dono, robo_batida_em, uso")
          .eq("portal_key", PORTAL_KEY))
     if args.corretora:
         q = q.eq("company_id", _uuid(args.corretora, "--corretora"))
@@ -144,9 +144,12 @@ def listar(supa, args) -> List[str]:
             continue
         j = c.get("robo_janela")
         janela = CR.janela_em_texto(j)
+        # SPEC-131-0 A · F3: de QUEM é a conta — da corretora (global), de uma pessoa (membro) ou do canário (teste)
+        uso = {robos.GLOBAL: "da corretora", robos.MEMBRO: "de uma pessoa", robos.USO_TESTE: "canário"}.get(
+            c.get("uso"), "SEM USO")
         saida.append(
             f"{c['id']} · corretora {c['company_id']} · {c.get('account_label')} · {mascarar(c.get('username') or '')}"
-            f" · {c.get('robo_estado')} · senha {'sim' if c.get('secret_encrypted') else 'NÃO'}"
+            f" · {uso} · {c.get('robo_estado')} · senha {'sim' if c.get('secret_encrypted') else 'NÃO'}"
             f" · teto {c.get('robo_teto_por_hora') or robos.TETO_PADRAO_POR_HORA}/h · janela {janela}"
             f" · em uso {'sim' if c.get('robo_dono') else 'não'}")
     return saida or ["nenhum robô do multicálculo cadastrado"]
