@@ -471,7 +471,7 @@ def _whatsapp_da_anfitria(db: Any, company_id: str, marca: Optional[Mapping[str,
     try:
         linhas = _dados(db.table("integrations").select("paired_phone_e164, purpose, is_active")
                         .eq("company_id", company_id).eq("purpose", "attendance").eq("is_active", True)
-                        .limit(50).execute())   # o teto da leitura (o G8 proíbe os números da config)
+                        .limit(64).execute())   # o teto da leitura (o G8 proíbe os números da config — 50 virou o teto da comissão)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[PROPOSTA] integrações ilegíveis: %s", type(exc).__name__)
         return None
