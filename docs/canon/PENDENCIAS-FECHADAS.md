@@ -1152,3 +1152,10 @@ A opção existe na config e está DESLIGADA (D-130A-08). **Destrava:** o juríd
 proposta fica fora da regra de transparência quando a regra exigir.
 
 ❌ **FECHADA SEM FAZER 06/10/2026 (decisão do Founder, D-130A-08 revogada).** *"Isso não será feito. Nós não vendemos seguros; nós só informamos através da tecnologia."* A chave `remuneracao_cnsp_382` saiu de `config.py` e o campo `mostrar_remuneracao` do modelo da página (SPEC-130-A.1); a T-127 foi cancelada.
+
+
+## P-129C-02 · 🧑 A carteira patrimonial da Resulta está fora da InfoCap
+📊 32.901 documentos desde 2015: Condomínio 0, Residencial 12, Empresarial 3. **Destrava:** o Founder diz onde a Resulta lança essas
+apólices (outra base/login?). **Custa esquecer:** a renovação de RE (131) não tem de onde ler as apólices.
+
+✅ **FECHADA 11/10/2026 (SPEC-131-0 parte A).** A carteira patrimonial da Resulta ESTÁ na InfoCap, no banco da Resulta: a conexão medida na 129-C ("InfoCap RESULTA", `5039f90d`, na Amandus) guardava o login da AutoFleet. 📊 Com o login da Resulta (11/10, `/documentos_bi`, `tipo_doc=A`): 2026 RESI 255 · COND 227 · EMPR 148; 📊 `/renovacoes` 11/10→10/11: 99 apólices (RESI 34 · EMPR 20 · COND 14). Prova: `programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md` §1–§3; a D-129C-02 foi revista pela D-131-0-26; a conexão foi renomeada "InfoCap AUTOFLEET" (D-131-0-27).
