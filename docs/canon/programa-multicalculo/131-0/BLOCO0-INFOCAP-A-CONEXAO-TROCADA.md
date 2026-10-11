@@ -79,7 +79,31 @@ Campos do `/prod_docs` avulso (📊 os dois bancos): `codpro`, `nome_produtor`, 
 | P-129C pendência "onde a Resulta lança RE?" | **FECHADA**: na InfoCap, no banco da Resulta |
 | a conexão "InfoCap RESULTA" da Amandus | o nome mente — ela é a AutoFleet (D-131-0-27) |
 
-## 6. Anexos
+## 6. Os três laudos (investigadores Opus 5.5, 11/10, só leitura)
 
-Laudos dos investigadores (rascunho da sessão, resumidos no relatório): prints do dashboard, coleção Postman inteira com status medido de
-cada rota, e o cruzamento das apólices em PDF com o CORP.
+**6.1 As apólices em PDF do intake × o CORP** (laudo fora do git: carrega números reais de apólice). 📊 As **25** apólices reais estão no
+CORP, cada uma no banco da corretora impressa no PDF (**16 Resulta · 9 AutoFleet · 0 nas duas**), mesmo número e mesma vigência em 24/25.
+As 15 de condomínio, residencial e empresarial: **todas no banco da Resulta**. Seguradoras por ramo na Resulta (📊 `/documentos_bi` 2026):
+Condomínio 227 (Allianz 161 · Tokio 42 · HDI 10) · Residencial 255 (Allianz 178 · Yelum/LIBE 23 · HDI 19 · Tokio 14) · Empresarial 148
+(Allianz 44 · Tokio 33 · Porto 29 · Chubb 12). Para a renovação de RE: `/itens` traz endereço do risco, atividade e coberturas com
+importância segurada e franquia (📊 30 vigentes por ramo: coberturas COND 28 · RESI 29 · EMPR 22), mas a lista é INCOMPLETA (📊 condomínio
+Allianz: 14 coberturas somam R$ 9.656,91 de R$ 12.050,14 do PDF) → a fonte completa é o PDF que o próprio CORP guarda.
+Armadilhas da API: a busca por número só acha apólice VIGENTE; o número não tem formato fixo (casar por dígitos sobre a lista do cliente);
+CPF com dois cadastros dá 500; `/itens` exige a data de início.
+
+**6.2 A CorpAPI rota a rota** → [`LAUDO-CORPAPI-ROTA-A-ROTA.md`](LAUDO-CORPAPI-ROTA-A-ROTA.md). Os 4 links do Founder: `/renovacoes`,
+**`/documento_anexos` (o PDF da apólice, link temporário de ~1 h — 📊 77 de 99 renovações com o arquivo da apólice; RESI/EMPR/COND
+completos)**, `/documento`, `/producao`. `/renovacoes` aceita só `dt_ini, dt_fim, qtd_pag, pag, ordem, orientacao, texto, cancelado,
+resgates, codcli, codram, codcia` (parâmetro desconhecido = 500) — **nenhum filtro por produtor**: o dono é calculado do nosso lado. O
+produtor `indireto="F"` tem `perpart = 100` nas 99. Rota fora da coleção: `GET /usuario?codigo=N` (usuário ↔ produtor), 📊 vazia na prática
+(1 de 39). "403" do gateway = rota inexistente, não permissão. Vazio às vezes é 200 com `message`.
+🔴 Fora do escopo: `cpf_cnpj=00000000000` devolve um cliente REAL (P-1310-CPF-ZERO).
+
+**6.3 Os prints do dashboard** → [`LAUDO-PRINTS-DO-CORP.md`](LAUDO-PRINTS-DO-CORP.md). Prints de 30/06–01/07/2025: CORP clássico (Resulta)
+e CorpNow (AutoFleet). Nada escondido por permissão: as janelas padrão da TELA escondem (sinistros 180 dias, "documentos antigos",
+"apenas vigentes"). O papel do produtor está no NOME, um cadastro por papel. 🔴 O `nosnum` se repete entre os dois bancos → nenhuma chave
+pode ser só `codfil:nosnum` (auditoria da chave da apólice no relatório da 131-0-A).
+
+**6.4 Precisa de HAR/F12 do Founder?** Para a parte A, **não** (nota 25 para o CORP clássico, que é tela transmitida; 72 "útil" para o
+CorpNow). A API já entrega dono, renovações, itens e o PDF. Vira NECESSÁRIO (90) só se uma SPEC precisar de endossos/sinistros/"Acompanhamento"
+pela tela — aí a sequência de cliques está no laudo dos prints §7.
