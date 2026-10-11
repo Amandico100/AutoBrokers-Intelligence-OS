@@ -4054,3 +4054,24 @@ do cálculo (Chromium na imagem do `smith-api` ou serviço de render). **Evidên
 produto é o do robô (`portal-worker`), que a D-MC-42 reserva para o cálculo. **Consequência:** a página tem CSS de impressão e o
 cliente salva o PDF pelo próprio navegador; o PDF gerado no servidor entra quando houver o render fora do robô (D-MC-43 segue aberta).
 **Autorização:** Founder, 06/10/2026, na pergunta única da abertura (D-130A-07; notas 75 × já 50).
+
+## 11/10/2026 · SPEC-131-0 parte A · os auxiliares Cotação/Renovação não entram no catálogo agora (D-131-0-08) — VALIOSA · ⏳ PROPOSTA
+**Problema:** a proposta (`specs-propostas/SPEC-131-0-CONTAS-COMERCIAIS-E-CONEXOES.md` §6) previa os cartões dos auxiliares de Cotação e
+de Renovação no catálogo já na parte A. **Evidência:** 📊 `grep "\.calcular(" backend/app` → o único chamador de produto da porta é
+`canal/cotacao.py` (o QCM); 📊 `multicalculo_pedidos` com `servico` de cotação/renovação = 0 (red team, 11/10). Um cartão instalável
+sem runtime seria um Auxiliar que não trabalha. **Consequência:** a parte A entrega a config por serviço e a tela "Serviços"; os
+cartões nascem com o runtime na 131 (renovação) e na 132 (cotação). Nada foi cortado em silêncio. **Autorização:** ⏳ pendente do
+Founder (decidida pela execução com nota 85 × cartão vazio agora 40).
+
+## 11/10/2026 · SPEC-131-0 parte A · o convite por link fica para a SPEC de usuários (D-131-0-28) — FUTURA · ⏳ PROPOSTA
+**Problema:** a proposta (R21/§4.4) incluía o convite por link no pacote dos usuários. **Evidência:** o convite de hoje não grava o
+vínculo em `company_members` (BLOCO 0, mapa do código do investigador); com a fonte única do papel (F1, falha fechada), consertá-lo é
+redesenhar o fluxo de entrada, não uma coluna. O `mudar123` já saiu na 133-A.1. **Consequência:** P-1310-07 aberta; quem entra por
+convite hoje fica sem papel (403) até a SPEC de usuários. **Autorização:** ⏳ pendente do Founder (nota 80 × fazer agora 50).
+
+## 11/10/2026 · SPEC-131-0 parte A · funções POR RAMO e o substituto de férias ficam para a 131/135 (D-131-0-33) — VALIOSA · ⏳ PROPOSTA
+**Problema:** a proposta (R19, D-131-0-24, V2) previa quem calcula × quem negocia × responsável POR RAMO e o substituto de férias.
+**Evidência:** nenhum chamador lê isso ainda — a 131 (renovação) e a 135 (negociação) são os consumidores; a parte A entrega só as
+funções da pessoa (`company_members.funcoes`). Uma tabela sem leitor seria escrita às cegas. **Consequência:** P-1310-08 aberta; a
+renovação de uma comercial de férias vai para o Agger dela e espera, até a 131/135. **Autorização:** ⏳ pendente do Founder (nota 78 ×
+fazer agora 55).
