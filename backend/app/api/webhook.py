@@ -3311,12 +3311,18 @@ async def _handle_evolution_like_inbound(
             elif media["kind"] == "document":
                 fname = str(media.get("file_name") or "documento.pdf")
                 ext = os.path.splitext(fname)[1].lower() or ".pdf"
-                url = await _upload_media_bytes(company_for_media, blob, mime or "application/pdf", ext, bucket="chat-docs")
+                await _upload_media_bytes(company_for_media, blob, mime or "application/pdf", ext, bucket="chat-docs")
+                # 🔴 SPEC-130-B F3 — o PDF do segurado passa pelo LEITOR do produto (os bytes já estão aqui: nada de
+                # baixar de novo pela URL) e ao modelo vai a FICHA MASCARADA; documento que não é de seguro, o texto
+                # MASCARADO. 📊 antes: texto cru até 20.000 caracteres, CPF incluso. Falhou → `None` → "reenvie".
                 doc_text = None
-                if url:
-                    from app.services.vision_service import extract_document_text
+                try:
+                    from app.services.vision_service import conteudo_do_anexo
 
-                    doc_text = await extract_document_text(url, fname)
+                    doc_text = await conteudo_do_anexo(blob, fname, company_id=company_for_media,
+                                                       audiencia="segurado")
+                except Exception as e:  # noqa: BLE001 — ⛔ nunca o nome nem o conteúdo no log
+                    logger.error("[WEBHOOK EVOLUTION] leitura do documento falhou (%s)", type(e).__name__)
                 base_txt = media.get("caption") or MARCA_DO_DOCUMENTO % fname
                 if doc_text:
                     text_message = f"{base_txt}\n\n{CABECALHO_DO_DOCUMENTO % fname}\n{doc_text}\n[FIM DO DOCUMENTO]"
