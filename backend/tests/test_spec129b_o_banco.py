@@ -104,6 +104,12 @@ def banco():
         conn.add_notice_handler(lambda d: avisos.append(d.message_primary))
         cur.execute("set local lock_timeout = '5s'")
         cur.execute("set local statement_timeout = '60s'")
+        # SPEC-131-0-A §9.3: o VERIFY desta migration semeia contas `agger` escritas ANTES de existir `uso`; o banco
+        # de hoje exige `uso` (ck_portal_accounts_agger_tem_uso, 20261011_04). Dentro DESTA transação desfeita, o
+        # mundo antigo recebe o mesmo valor que o backfill da _04 deu às contas legadas: 'global'. Nada fica.
+        if _um(cur, "select count(*) from information_schema.columns where table_schema='public' "
+                    "and table_name='portal_accounts' and column_name='uso'")[0]:
+            cur.execute("alter table public.portal_accounts alter column uso set default 'global'")
         t0 = time.monotonic()
         cur.execute(MIGRACAO.read_text(encoding="utf-8"))          # o APPLY
         yield cur, conn, avisos
