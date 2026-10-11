@@ -267,3 +267,135 @@ def test_a_tela_generica_de_credenciais_continua_recusando_o_agger(mundo):
     r = m.cli.post("/api/portal/credentials", headers={"X-AutoBrokers-Internal-Key": CHAVE},
                    json={"company_id": m.a, "portal_key": "agger", "username": LOGIN, "password": SENHA})
     assert r.status_code == 403 and not _contas(m, m.a)
+
+
+# ⑦ ===================================================================================================================
+# CONSERTO 133-A.1 (red R1 · P2): o MESMO login do Agger em duas contas de robô da corretora = duas sessões que se
+# derrubam (o motor gira entre as duas: `robos.escolher`). O serviço único recusa — pela tela E pelo comando.
+def _ativas(m, company_id):
+    return [c for c in ROB.candidatos(m.supa, company_id) if c["robo_estado"] == "ativo"]
+
+
+def test_R1_o_mesmo_login_nao_entra_em_duas_contas_do_robo(mundo):
+    from portal_worker import vault
+
+    m = mundo
+    CR.cadastrar(m.supa, company_id=m.a, rotulo="robo-1", usuario=LOGIN, senha="Senha-Robo1-Ficticia",
+                 estado="ativo", janela=None, teto=None, cifrar=vault.encrypt)
+    # a tela com o MESMO login — escrito com caixa e espaços diferentes — é recusada, e nada é gravado
+    r = _post(m, m.a, "conectar", usuario="  " + LOGIN.upper().replace("@", " @") + " ", senha=SENHA)
+    assert r.status_code == 409, r.text
+    assert "outra conta do robô" in r.json()["detail"] and "trocar senha" in r.json()["detail"]
+    assert not _da_tela(m, m.a) and len(_ativas(m, m.a)) == 1
+    # CONTROLE: outro login entra (o guarda não recusa tudo)
+    assert _post(m, m.a, "conectar", usuario="outro-" + LOGIN, senha=SENHA).status_code == 200
+    # trocar o login da tela PARA o do robo-1 também é recusado (o login antigo e a senha antiga ficam)
+    [antes] = _da_tela(m, m.a)
+    assert _post(m, m.a, "trocar_senha", usuario=LOGIN, senha="Outra-Ficticia-1").status_code == 409
+    [depois] = _da_tela(m, m.a)
+    assert depois == antes
+    # o COMANDO: cadastrar outro robô com o login que a tela usa → recusa (sem pedir a senha)
+    saida, pediu = [], []
+    rc = CMD.main(["cadastrar", "--corretora", m.a, "--rotulo", "robo-3", "--usuario", "Outro-" + LOGIN,
+                   "--estado", "ativo"], supa=m.supa, ler_senha=lambda: pediu.append(1) or "x-ficticia",
+                  cifrar=vault.encrypt, escrever=saida.append)
+    assert rc != 0 and not pediu and any("outra conta do robô" in s for s in saida), saida
+    assert len(_ativas(m, m.a)) == 2 and len({c["username"].lower() for c in _ativas(m, m.a)}) == 2
+    # a OUTRA corretora pode usar o mesmo login (a regra é por corretora)
+    assert _post(m, m.b, "conectar", usuario=LOGIN, senha=SENHA).status_code == 200
+
+
+def test_R1_conta_sem_senha_nao_prende_o_login_e_religar_confere(mundo):
+    """A conta desconectada (sem senha) não roda — não prende o login. Mas devolver a senha a ela (trocar-senha) ou
+    religar uma duplicata antiga com senha é recusado enquanto outra conta usa o login."""
+    from portal_worker import vault
+
+    m = mundo
+    velha = CR.cadastrar(m.supa, company_id=m.a, rotulo="robo-1", usuario=LOGIN, senha="Senha-Velha-Ficticia",
+                         estado="ativo", janela=None, teto=None, cifrar=vault.encrypt)
+    CR.apagar_senha(m.supa, {"id": velha["id"], "company_id": m.a})
+    assert _post(m, m.a, "conectar", usuario=LOGIN, senha=SENHA).status_code == 200
+    with pytest.raises(CR.Recusa, match="outra conta do robô"):
+        CR.trocar_senha(m.supa, {"id": velha["id"], "company_id": m.a}, "Nova-Ficticia-2", cifrar=vault.encrypt)
+    # a duplicata do legado (as duas com senha): religar a pausada é recusado
+    m.banco.semear("portal_accounts", {"id": str(uuid4()), "company_id": m.a, "portal_key": "agger",
+                                       "account_label": "robo-legado", "username": LOGIN.upper(),
+                                       "secret_encrypted": vault.encrypt("x-ficticia"), "health": "unknown",
+                                       "robo_estado": "pausado", "robo_janela": None, "robo_teto_por_hora": None})
+    leg = next(c for c in _contas(m, m.a) if c["account_label"] == "robo-legado")
+    with pytest.raises(CR.Recusa, match="outra conta do robô"):
+        CR.religar(m.supa, leg, "ativo")
+    assert next(c for c in _contas(m, m.a) if c["account_label"] == "robo-legado")["robo_estado"] == "pausado"
+    assert len(_ativas(m, m.a)) == 1
+
+
+# ⑧ ===================================================================================================================
+# CONSERTO (red R2 · P3): senha RECUSADA pelo Agger (`bloqueado`) só volta com senha NOVA — o servidor confere as
+# ações do estado, não só a tela. Cada volta com a senha velha é mais um login errado no Agger (risco de travar).
+def test_R2_bloqueado_so_volta_com_senha_nova(mundo):
+    m = mundo
+    assert _post(m, m.a, "conectar", usuario=LOGIN, senha=SENHA).status_code == 200
+    [c] = _da_tela(m, m.a)
+    assert ROB.marcar_estado(m.supa, {**c, "robo_estado": "ativo"}, ROB.BLOQUEADO)
+    r = _post(m, m.a, "pausar")
+    assert r.status_code == 409 and "troque a senha" in r.json()["detail"].lower(), r.text
+    assert _da_tela(m, m.a)[0]["robo_estado"] == "bloqueado", "pausar numa bloqueada não muda nada"
+    assert _post(m, m.a, "religar").status_code == 409
+    assert _da_tela(m, m.a)[0]["robo_estado"] == "bloqueado"
+    with pytest.raises(CR.Recusa):  # o comando também: o serviço é um só
+        CR.pausar(m.supa, _da_tela(m, m.a)[0])
+    assert _da_tela(m, m.a)[0]["robo_estado"] == "bloqueado"
+    # CONTROLE: com a senha NOVA ela volta
+    assert _post(m, m.a, "trocar_senha", senha="Senha-Nova-Ficticia-3").status_code == 200
+    assert _da_tela(m, m.a)[0]["robo_estado"] == "ativo"
+    # pausar duas vezes (clique duplo) não é erro
+    assert _post(m, m.a, "pausar").status_code == 200 and _post(m, m.a, "pausar").status_code == 200
+
+
+# ⑨ ===================================================================================================================
+# CONSERTO (red R3 · P3): a tela só toca na conta GLOBAL de robô — nunca numa conta `teste` (login de PESSOA).
+def test_R3_a_tela_nunca_toca_em_conta_de_pessoa_e_o_rotulo_e_so_do_robo(mundo):
+    from portal_worker import vault
+
+    m = mundo
+    pessoa = "pessoa-comercial@exemplo.invalid"
+    janela = {"dias": "seg-sex", "inicio": "20:00", "fim": "23:59"}
+    with pytest.raises(CR.Recusa, match="reservado"):  # a porta do comando fecha o rótulo para `teste`
+        CR.cadastrar(m.supa, company_id=m.a, rotulo=CR.ROTULO_DA_CORRETORA, usuario=pessoa, senha="x-ficticia",
+                     estado="teste", janela=janela, teto=None, cifrar=vault.encrypt)
+    # o legado: uma conta `teste` com o rótulo da tela (gravada antes do conserto)
+    m.banco.semear("portal_accounts", {"id": str(uuid4()), "company_id": m.a, "portal_key": "agger",
+                                       "account_label": CR.ROTULO_DA_CORRETORA, "username": pessoa,
+                                       "secret_encrypted": vault.encrypt("x-ficticia"), "health": "unknown",
+                                       "robo_estado": "teste", "robo_janela": janela, "robo_teto_por_hora": None})
+    [antes] = _da_tela(m, m.a)
+    retrato = _get(m, m.a).json()["conta"]
+    assert retrato["situacao"] == "teste" and retrato["acoes"] == []
+    for acao, extra in (("trocar_senha", {"senha": "nova-ficticia"}), ("conectar", {"usuario": LOGIN, "senha": SENHA}),
+                        ("pausar", {}), ("religar", {}), ("desconectar", {}), ("janela", {"janela": janela})):
+        r = _post(m, m.a, acao, **extra)
+        assert r.status_code == 409 and "pessoa" in r.json()["detail"], (acao, r.text)
+    assert _da_tela(m, m.a) == [antes], "nada mudou"
+    with pytest.raises(CR.Recusa, match="reservado"):  # nem o comando religa o rótulo como `teste`
+        CR.religar(m.supa, {**antes, "robo_estado": "pausado"}, "teste")
+
+
+# ⑩ ===================================================================================================================
+# CONSERTO (red R4 · P3): limites de tamanho — login ≤ 254, senha ≤ 256; vazio recusado.
+def test_R4_limites_do_login_e_da_senha(mundo):
+    from portal_worker import vault
+
+    m = mundo
+    assert _post(m, m.a, "conectar", usuario="a" * 255, senha=SENHA).status_code == 409
+    assert _post(m, m.a, "conectar", usuario=LOGIN, senha="s" * 257).status_code == 409
+    assert _post(m, m.a, "conectar", usuario="", senha=SENHA).status_code == 409
+    assert _post(m, m.a, "conectar", usuario=LOGIN, senha="").status_code == 409
+    assert not _contas(m, m.a)
+    # CONTROLE: no limite exato entra
+    assert _post(m, m.a, "conectar", usuario="a" * 254, senha="s" * 256).status_code == 200
+    assert _post(m, m.a, "trocar_senha", usuario="b" * 255, senha=SENHA).status_code == 409
+    assert _post(m, m.a, "trocar_senha", senha="s" * 257).status_code == 409
+    assert _da_tela(m, m.a)[0]["username"] == "a" * 254
+    with pytest.raises(CR.Recusa):
+        CR.cadastrar(m.supa, company_id=m.a, rotulo="robo-9", usuario="c" * 255, senha="x-ficticia",
+                     estado="ativo", janela=None, teto=None, cifrar=vault.encrypt)

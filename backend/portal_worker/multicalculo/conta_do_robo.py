@@ -18,6 +18,7 @@ NUNCA importa `app.*` e NUNCA cifra sozinho: quem chama passa `cifrar` (o cofre 
 """
 from __future__ import annotations
 
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -38,8 +39,65 @@ JANELA_PADRAO: Dict[str, str] = {"dias": "seg-sab", "inicio": "07:00", "fim": "2
 DIAS_DA_TELA = ("seg-sex", "seg-sab", "seg-dom")
 
 
+#: conserto 133-A.1 (red R4): o login do Agger é um e-mail/usuário (RFC 5321: 254) e a senha nunca passa de 256 —
+#: um login de 200.000 caracteres era aceito e gravado.
+LOGIN_MAX = 254
+SENHA_MAX = 256
+
+
 class Recusa(Exception):
     """O serviço recusou — a mensagem é para quem pediu (sem dado sensível)."""
+
+
+def _login_valido(usuario: Any, *, vazio: str = "login vazio") -> str:
+    u = str(usuario or "").strip()
+    if not u:
+        raise Recusa(vazio)
+    if len(u) > LOGIN_MAX:
+        raise Recusa(f"login comprido demais (máximo {LOGIN_MAX} caracteres)")
+    return u
+
+
+def _senha_valida(senha: Any) -> str:
+    s = str(senha or "")
+    if not s:
+        raise Recusa("senha vazia")
+    if len(s) > SENHA_MAX:
+        raise Recusa(f"senha comprida demais (máximo {SENHA_MAX} caracteres)")
+    return s
+
+
+def login_normalizado(usuario: Any) -> str:
+    """O login para COMPARAR (nunca para gravar): sem acento, sem caixa, sem espaço — `Cotador @X` e `cotador@x`
+    são o mesmo login no Agger, e duas contas com ele são duas sessões que se derrubam."""
+    t = unicodedata.normalize("NFKD", str(usuario or ""))
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
+    return "".join(t.casefold().split())
+
+
+def _login_em_outra_conta(supa, company_id: str, usuario: str, *, exceto: Optional[str] = None) -> None:
+    """Conserto 133-A.1 (red R1 · P2): o MESMO login em duas contas de robô da corretora (o `robo-1` do comando + o
+    `agger-da-corretora` da tela) faz o motor girar entre as duas (`robos.escolher`) — duas sessões simultâneas do
+    mesmo login no Agger, que se derrubam (`ocupada`) e podem bloquear o login. Uma conta SEM senha não roda (religar
+    exige senha) e não prende o login; voltar a ter senha passa por aqui de novo."""
+    alvo = login_normalizado(usuario)
+    linhas = _dados(supa.table("portal_accounts").select("id, account_label, username, secret_encrypted, robo_estado")
+                    .eq("company_id", company_id).eq("portal_key", PORTAL_KEY).execute())
+    for c in linhas:
+        if c.get("robo_estado") is None or not c.get("secret_encrypted") or str(c.get("id")) == str(exceto or ""):
+            continue
+        if login_normalizado(c.get("username")) == alvo:
+            raise Recusa(f"Esse login já está ligado em outra conta do robô desta corretora (rótulo "
+                         f"'{c.get('account_label')}') — use 'trocar senha' nela, ou apague a senha dela antes. "
+                         f"O mesmo login em duas contas faz o robô abrir duas sessões que se derrubam no Agger.")
+
+
+def _rotulo_reservado(rotulo: str, estado: str) -> None:
+    """Conserto 133-A.1 (red R3): o rótulo da TELA é só da conta GLOBAL de robô (login dedicado, `ativo`). Uma conta
+    `teste` (login de PESSOA) com esse rótulo viraria `ativo` pelo "trocar senha" da tela (D-133A1-03)."""
+    if rotulo == ROTULO_DA_CORRETORA and estado != robos.ATIVO:
+        raise Recusa(f"o rótulo '{ROTULO_DA_CORRETORA}' é reservado à conta do robô da tela (sempre 'ativo') — "
+                     f"a conta de teste (login de pessoa) usa outro rótulo")
 
 
 def mascarar(valor: str) -> str:
@@ -128,12 +186,11 @@ def cadastrar(supa, *, company_id: str, rotulo: str, usuario: str, senha: Union[
         raise Recusa("conta 'teste' (login de PESSOA) exige --janela (D-129B-04)")
     if teto is not None and not 1 <= int(teto) <= 600:
         raise Recusa("--teto entre 1 e 600 por hora")
-    usuario = str(usuario or "").strip()
-    if not usuario:
-        raise Recusa("--usuario obrigatório")
+    usuario = _login_valido(usuario, vazio="--usuario obrigatório")
     rotulo = str(rotulo or "").strip()
     if not rotulo:
         raise Recusa("--rotulo obrigatório")
+    _rotulo_reservado(rotulo, estado)
     existe = _dados(supa.table("portal_accounts").select("id, robo_estado").eq("company_id", company_id)
                     .eq("portal_key", PORTAL_KEY).eq("account_label", rotulo).limit(1).execute())
     if existe:
@@ -142,10 +199,10 @@ def cadastrar(supa, *, company_id: str, rotulo: str, usuario: str, senha: Union[
         raise Recusa(f"já existe a conta {cid} com este rótulo nesta corretora (estado {existe[0].get('robo_estado')})"
                      f" — para trocar a senha: `trocar-senha --conta {cid}` e depois `religar --conta {cid} --estado "
                      f"ativo|teste`; ou cadastre com OUTRO rótulo")
+    _login_em_outra_conta(supa, company_id, usuario)
     if callable(senha):
         senha = senha()
-    if not senha:
-        raise Recusa("senha vazia")
+    senha = _senha_valida(senha)
     linha = {"company_id": company_id, "portal_key": PORTAL_KEY, "account_label": rotulo, "username": usuario,
              "secret_encrypted": cifrar(senha), "health": "unknown", "robo_estado": estado,
              "robo_teto_por_hora": int(teto) if teto is not None else None, "robo_janela": janela}
@@ -156,6 +213,13 @@ def cadastrar(supa, *, company_id: str, rotulo: str, usuario: str, senha: Union[
 
 
 def pausar(supa, conta: Dict[str, Any]) -> None:
+    """Conserto 133-A.1 (red R2): `bloqueado` (o Agger recusou a senha) NÃO vira `pausado` — senão um `religar`
+    seguinte a devolveria ao motor com a MESMA senha recusada (mais um login errado no Agger). Ela já está parada;
+    sai só com senha nova (`trocar_senha`)."""
+    linha = _dados(supa.table("portal_accounts").select("robo_estado").eq("id", conta["id"])
+                   .eq("company_id", conta["company_id"]).limit(1).execute())
+    if linha and linha[0].get("robo_estado") == robos.BLOQUEADO:
+        raise Recusa("O Agger recusou esta senha — a conta já está parada. Troque a senha para o robô voltar.")
     supa.table("portal_accounts").update({"robo_estado": robos.PAUSADO}).eq("id", conta["id"]).eq(
         "company_id", conta["company_id"]).execute()
 
@@ -165,8 +229,11 @@ def religar(supa, conta: Dict[str, Any], estado: str) -> None:
     volta (o motor nunca desfaz uma pausa). Recusa conta sem senha e `teste` sem janela. CAS no estado de origem."""
     if estado not in (robos.ATIVO, robos.TESTE):
         raise Recusa("--estado: ativo ou teste")
-    linha = _dados(supa.table("portal_accounts").select("id, secret_encrypted, robo_janela, robo_estado")
+    linha = _dados(supa.table("portal_accounts")
+                   .select("id, account_label, username, secret_encrypted, robo_janela, robo_estado")
                    .eq("id", conta["id"]).eq("company_id", conta["company_id"]).limit(1).execute())
+    if linha:
+        _rotulo_reservado(str(linha[0].get("account_label") or ""), estado)
     if not linha or not linha[0].get("secret_encrypted"):
         raise Recusa("a conta está sem senha — rode `trocar-senha` antes de religar")
     if estado == robos.TESTE and not linha[0].get("robo_janela"):
@@ -175,6 +242,7 @@ def religar(supa, conta: Dict[str, Any], estado: str) -> None:
     atual = linha[0].get("robo_estado")
     if atual not in de:
         raise Recusa(f"a conta está '{atual}' — religar só desfaz pausado, bloqueado ou ocupada")
+    _login_em_outra_conta(supa, conta["company_id"], linha[0].get("username") or "", exceto=conta["id"])
     feito = _dados(supa.table("portal_accounts").update({"robo_estado": estado, "robo_ocupada_ate": None})
                    .eq("id", conta["id"]).eq("company_id", conta["company_id"]).in_("robo_estado", list(de)).execute())
     if not feito:
@@ -186,13 +254,20 @@ def trocar_senha(supa, conta: Dict[str, Any], senha: str, *, cifrar: Callable[[s
     """A senha nova (e, se veio, o login novo), cifrada. A conta fica `pausado` — o gatilho do banco
     (`trg_portal_accounts_robo_pausa`) já faz isso quando o segredo muda; aqui é escrito junto para não depender dele —
     e volta com `religar`."""
-    if not senha:
-        raise Recusa("senha vazia")
+    senha = _senha_valida(senha)
+    if usuario is not None:
+        usuario = _login_valido(usuario)
+        login_final = usuario
+    else:
+        atual = _dados(supa.table("portal_accounts").select("username").eq("id", conta["id"])
+                       .eq("company_id", conta["company_id"]).limit(1).execute())
+        if not atual:
+            raise Recusa("conta de robô do multicálculo não encontrada")
+        login_final = atual[0].get("username") or ""
+    # conserto 133-A.1 (R1): a conta volta a ter senha (pode rodar) — o login dela não pode estar em OUTRA com senha
+    _login_em_outra_conta(supa, conta["company_id"], login_final, exceto=conta["id"])
     patch: Dict[str, Any] = {"secret_encrypted": cifrar(senha), "robo_estado": robos.PAUSADO}
     if usuario is not None:
-        usuario = str(usuario).strip()
-        if not usuario:
-            raise Recusa("login vazio")
         patch["username"] = usuario
     supa.table("portal_accounts").update(patch).eq("id", conta["id"]).eq("company_id", conta["company_id"]).execute()
 
@@ -264,8 +339,9 @@ def retrato(supa, company_id: str, *, agora: Optional[datetime] = None) -> Dict[
         situacao, rotulo, acoes = ("ocupada", "Alguém entrou no Agger com este login. O robô volta sozinho em "
                                               "alguns minutos.", ["pausar", "trocar_senha", "desconectar"])
     elif estado == robos.TESTE:
-        situacao, rotulo, acoes = ("teste", "Em teste (só o canário usa esta conta).",
-                                   ["pausar", "trocar_senha", "desconectar"])
+        # conserto 133-A.1 (red R3): conta de PESSOA (legado de antes do conserto) — a tela não mexe nela
+        situacao, rotulo, acoes = ("teste", "Esta é uma conta de teste (login de pessoa): só o comando do Founder "
+                                            "mexe nela.", [])
     elif em_uso:
         situacao, rotulo, acoes = ("calculando", "Funcionando — calculando agora.",
                                    ["pausar", "trocar_senha", "desconectar"])
@@ -274,7 +350,8 @@ def retrato(supa, company_id: str, *, agora: Optional[datetime] = None) -> Dict[
     else:
         situacao, rotulo, acoes = ("aguardando", "Conectado — aguardando o 1º cálculo.",
                                    ["pausar", "trocar_senha", "desconectar"])
-    return {**base, "conectado": tem_senha, "situacao": situacao, "rotulo": rotulo, "acoes": acoes + ["janela"],
+    return {**base, "conectado": tem_senha, "situacao": situacao, "rotulo": rotulo,
+            "acoes": acoes + ["janela"] if situacao != "teste" else [],
             "id": c["id"], "usuario": mascarar(c.get("username") or ""), "tem_senha": tem_senha, "estado": estado,
             "ultimo_uso": ultimo, "ocupada_ate": c.get("robo_ocupada_ate") if estado == robos.OCUPADA else None,
             "janela": janela if isinstance(janela, dict) else None, "dentro_da_janela": na_janela,
@@ -295,6 +372,7 @@ def conectar_da_corretora(supa, company_id: str, *, usuario: str, senha: str, ci
     cadastra, com outro rótulo."""
     usuario = str(usuario or "").strip()
     c = conta_da_corretora(supa, company_id)
+    _so_conta_de_robo(c)
     if not senha or (c is None and not usuario):
         raise Recusa("Informe o login e a senha do Agger.")
     if c is None:
@@ -308,12 +386,25 @@ def conectar_da_corretora(supa, company_id: str, *, usuario: str, senha: str, ci
     religar(supa, c, robos.ATIVO)
 
 
+def _so_conta_de_robo(c: Optional[Dict[str, Any]]) -> None:
+    """Conserto 133-A.1 (red R3): a tela só toca na conta GLOBAL de robô. Uma conta `teste` (login de PESSOA) com o
+    rótulo da tela — o legado de antes do `_rotulo_reservado` — é só do comando."""
+    if c is not None and c.get("robo_estado") == robos.TESTE:
+        raise Recusa("Esta conta é de teste, com o login de uma pessoa — a tela não mexe nela. Peça ao Founder para "
+                     "retirá-la pelo comando antes de conectar o Agger da corretora.")
+
+
 def agir_da_corretora(supa, company_id: str, acao: str, *, janela: Optional[Dict[str, str]] = None) -> None:
-    """pausar · religar · desconectar · janela — sempre sobre a conta GLOBAL desta corretora."""
+    """pausar · religar · desconectar · janela — sempre sobre a conta GLOBAL desta corretora.
+
+    Conserto 133-A.1 (red R2): o SERVIDOR confere a ação contra o estado (a tela esconder o botão não basta)."""
     c = conta_da_corretora(supa, company_id)
     if c is None:
         raise Recusa("O Agger da corretora ainda não está conectado.")
+    _so_conta_de_robo(c)
     if acao == "pausar":
+        if c.get("robo_estado") == robos.PAUSADO:
+            return  # clique duplo: já está pausada
         pausar(supa, c)
     elif acao == "religar":
         if not c.get("secret_encrypted"):

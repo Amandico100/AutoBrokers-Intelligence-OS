@@ -6,7 +6,7 @@
 // comuns só visualizam. Quem pertence a 2 corretoras aparece nas duas.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Check, Copy, Loader2, Plus, X } from 'lucide-react';
 
 // 🔴 SPEC-EXTRA-001.3 BLOCO B — D-PILOTO-09: a lista de números da casa
 // mora AQUI, no card Equipe, e não em card próprio.
@@ -43,6 +43,11 @@ export function TeamClient() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  // 🔴 conserto 133-A.1 (juiz P3-4): a senha com que a pessoa nasce aparece UMA vez, depois de salvar, com o botão
+  // copiar — a que o servidor gerou (`senha_provisoria`, quando o campo foi apagado) ou a que o admin enviou. Antes, o
+  // servidor devolvia a gerada e a tela a jogava fora: o membro nascia com uma senha que ninguém sabia.
+  const [criada, setCriada] = useState<{ nome: string; email: string; senha: string } | null>(null);
+  const [copiada, setCopiada] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -75,7 +80,12 @@ export function TeamClient() {
     setForm({ first_name: '', last_name: '', email: '', phone: '', role: 'member', password: senhaProvisoria() });
   };
 
-  const close = () => { setSelected(null); setAdding(false); };
+  const close = () => { setSelected(null); setAdding(false); setCriada(null); setCopiada(false); };
+
+  const copiar = async () => {
+    if (!criada) return;
+    try { await navigator.clipboard.writeText(criada.senha); setCopiada(true); } catch { setCopiada(false); }
+  };
 
   const save = async () => {
     setBusy(true); setNotice('');
@@ -88,6 +98,14 @@ export function TeamClient() {
           : { user_id: selected?.user_id, first_name: form.first_name, last_name: form.last_name, phone: form.phone, role: form.role, ...(form.password ? { password: form.password } : {}) }),
       });
       const j = await res.json().catch(() => ({}));
+      if (j?.ok && adding && !j.existed) {
+        const senha = String(j.senha_provisoria || form.password || '');
+        setAdding(false);
+        setCriada({ nome: `${form.first_name} ${form.last_name || ''}`.trim(), email: form.email || '', senha });
+        setForm({});
+        await load();
+        return;
+      }
       if (j?.ok) { close(); await load(); return; }
       setNotice(j?.error || 'Não foi possível salvar.');
     } finally {
@@ -115,7 +133,7 @@ export function TeamClient() {
 
   if (!members) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
-  const modalOpen = adding || Boolean(selected);
+  const modalOpen = adding || Boolean(selected) || Boolean(criada);
 
   return (
     <div className="space-y-3">
@@ -167,12 +185,34 @@ export function TeamClient() {
           >
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-foreground">
-                {adding ? 'Adicionar pessoa' : selected?.name}
+                {criada ? 'Pessoa adicionada' : adding ? 'Adicionar pessoa' : selected?.name}
               </h2>
               <button onClick={close} className="rounded-md p-1 text-muted-foreground hover:text-foreground" aria-label="Fechar">
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {criada && (
+              <div className="space-y-3 text-sm">
+                <p className="text-muted-foreground">
+                  {criada.nome || 'A pessoa'} já pode entrar com o e-mail <span className="text-foreground">{criada.email}</span> e
+                  a senha abaixo. Copie e envie para ela agora — esta senha <b>não aparece de novo</b>. Ela pode trocá-la
+                  depois em Configurações.
+                </p>
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 p-3">
+                  <code className="min-w-0 flex-1 break-all font-mono text-sm text-foreground" data-senha-provisoria>{criada.senha}</code>
+                  <button
+                    onClick={copiar}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-card"
+                    aria-label="Copiar a senha"
+                  >
+                    {copiada ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copiada ? 'Copiada' : 'Copiar'}
+                  </button>
+                </div>
+                <button onClick={close} className="rounded-lg border border-border px-3 py-2 text-sm text-foreground">Fechar</button>
+              </div>
+            )}
 
             {!adding && selected && (
               <div className="mb-3 space-y-1 rounded-lg border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
@@ -183,7 +223,7 @@ export function TeamClient() {
               </div>
             )}
 
-            {canManage ? (
+            {criada ? null : canManage ? (
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block text-[12px]">
@@ -233,7 +273,7 @@ export function TeamClient() {
                   </label>
                 </div>
                 <label className="block text-[12px]">
-                  <span className="text-muted-foreground">{adding ? 'Senha provisória' : 'Nova senha (deixe vazio para manter)'}</span>
+                  <span className="text-muted-foreground">{adding ? 'Senha provisória (mínimo 10 — você a vê de novo ao salvar)' : 'Nova senha (mínimo 10; deixe vazio para manter)'}</span>
                   <input value={form.password || ''} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} className={inputCls} />
                 </label>
 

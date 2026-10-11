@@ -9,6 +9,7 @@ import { canWriteTenantConfig } from '@/lib/admin/admin-auth-policy';
 import { getTeam } from '@/lib/admin/tenant-overview-store';
 import { hashPassword } from '@/lib/auth';
 import { randomBytes } from 'crypto';
+import { recusaDaSenhaDoMembro } from '@/lib/admin/senha-do-membro';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +62,9 @@ export async function POST(req: NextRequest) {
   const password = String(body.password || randomBytes(12).toString('base64url'));
   if (!email || !email.includes('@')) return NextResponse.json({ ok: false, error: 'E-mail inválido.' }, { status: 400 });
   if (!firstName) return NextResponse.json({ ok: false, error: 'Informe o nome.' }, { status: 400 });
-  if (password.length < 6) return NextResponse.json({ ok: false, error: 'Senha provisória muito curta (mínimo 6).' }, { status: 400 });
+  // 🔴 conserto 133-A.1 (juiz P3-4): nunca "mudar123", mínimo 10 — a MESMA regra do PATCH
+  const recusa = recusaDaSenhaDoMembro(password);
+  if (recusa) return NextResponse.json({ ok: false, error: recusa }, { status: 400 });
 
   const supabase = auth.supabase;
   const { data: existing } = await supabase.from('users_v2')
@@ -130,7 +133,8 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.last_name === 'string') userUpd.last_name = body.last_name.trim();
   if (body.phone != null) userUpd.phone = digits(body.phone) || '0';
   if (typeof body.password === 'string' && body.password) {
-    if (body.password.length < 6) return NextResponse.json({ ok: false, error: 'Senha muito curta (mínimo 6).' }, { status: 400 });
+    const recusa = recusaDaSenhaDoMembro(body.password);
+    if (recusa) return NextResponse.json({ ok: false, error: recusa }, { status: 400 });
     userUpd.password_hash = await hashPassword(body.password);
   }
   if (Object.keys(userUpd).length) {
