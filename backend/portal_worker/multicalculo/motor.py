@@ -46,8 +46,8 @@ from ..worker import _inteiro_do_ambiente, _upload_portal_blob, portal_real_enab
 from . import presets as _presets
 from . import robos
 from .contrato import (
-    CONJUNTO_FECHADO, DADO, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA, RAMO_AUTO, SEGURADORA_RECUSOU,
-    SEM_ATIVIDADE_COMPATIVEL, Ajuste, Evento, Oferta, RespostaDaSeguradora, RodadaDoCalculo,
+    CONJUNTO_FECHADO, MOTIVO_MAX, MOTIVO_SEM_ATIVIDADE, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA, RAMO_AUTO,
+    SEGURADORA_RECUSOU, SEM_ATIVIDADE, SEM_ATIVIDADE_COMPATIVEL, Ajuste, Evento, Oferta, RespostaDaSeguradora, RodadaDoCalculo,
 )
 
 logger = logging.getLogger("portal_worker.multicalculo")
@@ -268,6 +268,7 @@ class Motor:
         self.lease_s = lease_s
         self._decifrar = decifrar
         self._upload = upload or _upload_portal_blob
+        self._eventos_motivo: Optional[bool] = None   # conserto 129-C: a coluna `motivo` existe? (migration 20261011_01)
         self._freio = freio or kill_switch_ativo
         self._canario = canario
         self._tarefas: set = set()
@@ -1125,11 +1126,15 @@ class Motor:
             "pacote": o.pacote if o is not None else None,
             "tipo_de_pacote": o.tipo_de_pacote if o is not None else None,
             "familia": e.familia, "oferta_id": oferta_id, "t_s": e.t_s,
+            # conserto 129-C (canário #5): o PORQUÊ da recusa — o texto da seguradora pelo redator (URL, chave e PII
+            # somem), numa linha, até MOTIVO_MAX. Coluna da migration 20261011_01 (sem ela: grava sem o motivo).
+            "motivo": (erro_curto(e.motivo, MOTIVO_MAX) or None) if getattr(e, "motivo", None) else None,
         })
 
     async def _gravar_sem_atividade(self, g: Grupo, c: Dict[str, Any], sem: Iterable[Any], ramo: int) -> None:
         """SPEC-129-C D-129C-04: cada seguradora que o robô tirou do empresarial por não ter atividade inequívoca vira o
-        evento `SEM_ATIVIDADE_COMPATIVEL` (família DADO) — a MESMA chave que o `acompanhar` do robô narra."""
+        evento `SEM_ATIVIDADE_COMPATIVEL` — a MESMA chave que o `acompanhar` do robô narra. 🔴 Conserto 129-C: família
+        SEM_ATIVIDADE (o nome do tipo, a mesma da comparação; antes DADO) e o motivo escrito."""
         for item in sem or ():
             try:
                 cod, nome = item
@@ -1137,14 +1142,47 @@ class Motor:
                 continue
             if not isinstance(cod, int) or isinstance(cod, bool):
                 continue
-            e = Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, erro_curto(nome, 120) or None, cod, DADO, None, ramo)
+            e = Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, erro_curto(nome, 120) or None, cod, SEM_ATIVIDADE, None, ramo,
+                       motivo=MOTIVO_SEM_ATIVIDADE)
             await self._gravar_evento(g, c, e, {"feita": True})
 
     async def _gravar_linha_de_evento(self, g: Grupo, c: Dict[str, Any], campos: Dict[str, Any]) -> None:
         linha = {"calculo_id": c["id"], "pedido_id": g.pedido_id, "company_id": g.company_id,
                  "solicitante_company_id": g.solicitante_company_id, **campos}
-        await self._db(lambda: self.supa.table("multicalculo_eventos").upsert(
-            linha, on_conflict="calculo_id,chave", ignore_duplicates=True).execute())
+        if linha.get("motivo") is None or not await self._eventos_tem_motivo(g):
+            linha.pop("motivo", None)      # nada a dizer — ou o banco ainda não tem a coluna (migration 20261011_01)
+        try:
+            await self._db(lambda: self.supa.table("multicalculo_eventos").upsert(
+                linha, on_conflict="calculo_id,chave", ignore_duplicates=True).execute())
+        except Exception as exc:  # noqa: BLE001
+            # 🔴 conserto 129-C: o código pode subir ANTES da migration do motivo. Sem a coluna, o evento é gravado sem
+            # ele (nunca se perde a narração por causa do porquê) e o motor não tenta de novo nesta vida.
+            if "motivo" not in linha or "motivo" not in str(exc).lower():
+                raise
+            if self._eventos_motivo is not False:
+                logger.warning("[MC] multicalculo_eventos sem a coluna `motivo` (migration 20261011_01 não aplicada)")
+            self._eventos_motivo = False
+            linha.pop("motivo", None)
+            await self._db(lambda: self.supa.table("multicalculo_eventos").upsert(
+                linha, on_conflict="calculo_id,chave", ignore_duplicates=True).execute())
+
+    async def _eventos_tem_motivo(self, g: Grupo) -> bool:
+        """A coluna `motivo` existe? Perguntado UMA vez por vida, ANTES do 1º evento com motivo, por um PATCH que não
+        casa nenhuma linha (`id = -1`): o PostgREST recusa coluna desconhecida (PGRST204) mesmo sem linha — e assim o
+        evento nunca é tentado duas vezes (a retomada conta as tentativas). Erro que não é da coluna: sem motivo desta
+        vez, sem decidir para sempre."""
+        if self._eventos_motivo is None:
+            try:
+                await self._db(lambda: self.supa.table("multicalculo_eventos").update({"motivo": None})
+                               .eq("id", -1).eq("company_id", g.company_id).execute())
+                self._eventos_motivo = True
+            except Exception as exc:  # noqa: BLE001
+                if "motivo" not in str(exc).lower():
+                    return False
+                if self._eventos_motivo is None:      # dois grupos em paralelo perguntam juntos: um aviso só
+                    logger.warning("[MC] multicalculo_eventos sem a coluna `motivo` (migration 20261011_01 não aplicada)")
+                self._eventos_motivo = False
+        return bool(self._eventos_motivo)
 
     def _linha_da_oferta(self, g: Grupo, c: Dict[str, Any], o: Oferta, *, nova: bool) -> Dict[str, Any]:
         """A Oferta do leitor como linha. A 2ª rede depois da lista branca do robô: o texto LIVRE (alerta,
@@ -1188,9 +1226,13 @@ class Motor:
                 r = await self._db(lambda q=q: q.limit(1).execute())
                 oferta = (r.data or [None])[0]
                 if not oferta or not blob:
+                    # conserto 129-C (canário #7): antes sumia calado — agora se sabe que o PDF veio e não achou dono
+                    logger.warning("[MC] um PDF do cálculo %s não achou a oferta (seguradora %s)", c["id"], cod)
                     continue
                 caminho = f"multicalculo/{g.company_id}/{c['id']}/{oferta['id']}.pdf"
                 salvo = await self._upload(self.supa, caminho, blob)
+                if not salvo:
+                    logger.warning("[MC] um PDF do cálculo %s não foi guardado no armazenamento", c["id"])
                 if salvo:
                     await self._db(lambda o=oferta, s=salvo: self.supa.table("multicalculo_ofertas")
                                    .update({"pdf_path": s, "tem_pdf": True})

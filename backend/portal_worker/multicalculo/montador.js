@@ -155,6 +155,7 @@
   // negócio, não da seguradora: ajuste de cobertura POR seguradora não tem onde morar → 0, "ajuste sem alvo").
   // 🔴 GÊMEO de `presets.CAMPO_DO_AJUSTE_RE`.
   const CAMPO_DO_AJUSTE_RE = {comissao: 'percComissao', desconto: 'percDesconto', assistencia: 'assist24hs'};
+  const CHAVE_DA_BASICA_RE = 'isDanosIncendioRaioExplosao';   // 🔴 GÊMEO de `presets.CHAVE_DA_BASICA`
   function aplicarAjusteRE(cot, ajuste, opcoes) {
     const chaves = new Set(((opcoes || {}).chaves || {})[cot.ramo] || []);
     const cfg = cot.configuracoes || (cot.configuracoes = {});
@@ -165,7 +166,8 @@
     if (ajuste.tipo === 'cobertura') {
       if (ajuste.seguradora != null || !ajuste.valor || typeof ajuste.valor !== 'object') return 0;
       let n = 0;
-      for (const [k, v] of Object.entries(ajuste.valor)) if (chaves.has(k)) { cfg[k] = v; n++; }
+      // 🔴 conserto 129-C (juiz B2, D-129C-03): a Básica vem SÓ do pedido — o ajuste nunca a muda, nem se vier na lista
+      for (const [k, v] of Object.entries(ajuste.valor)) if (chaves.has(k) && k !== CHAVE_DA_BASICA_RE) { cfg[k] = v; n++; }
       return n;
     }
     if (ajuste.tipo === 'comissao' || ajuste.tipo === 'desconto') {

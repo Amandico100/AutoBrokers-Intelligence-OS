@@ -642,7 +642,8 @@ def test_o_fio_empresarial_escritorio_porto_sai_e_e_narrada(monkeypatch):
             eventos.append(e)
         final = await R.acompanhar(sessao, disp, ao_evento=ao_evento, intervalo_s=0.05, teto_s=60)
         sem = [e for e in eventos if e.tipo == C.SEM_ATIVIDADE_COMPATIVEL]
-        assert [(e.seguradora_codigo, e.familia) for e in sem] == [(8, C.DADO)] and eventos[0] is sem[0]
+        # §9.3: a família era DADO; o conserto 129-C a fez a MESMA da comparação (o nome do tipo)
+        assert [(e.seguradora_codigo, e.familia) for e in sem] == [(8, C.SEM_ATIVIDADE)] and eventos[0] is sem[0]
         assert 8 not in {o.seguradora_codigo for o in final.ofertas}
         # MUTAÇÃO comissão fora do item / cobertura no item → a régua da forma fica vermelha
         mut = copy.deepcopy(cot)

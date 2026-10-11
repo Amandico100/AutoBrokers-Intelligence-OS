@@ -45,10 +45,11 @@ DADO = "DADO"                    # o PEDIDO precisa de correção: dado inválid
                                  # corretor/motor conserta e recalcula; não é recusa do risco
 PENDENTE = "PENDENTE"            # ainda não respondeu nesta rodada
 DESCONHECIDA = "DESCONHECIDA"    # respondeu, sem oferta, e nenhuma regra reconheceu
+SEM_ATIVIDADE = "SEM_ATIVIDADE_COMPATIVEL"  # SPEC-129-C: saiu do empresarial sem atividade inequívoca (ver abaixo)
 
 FAMILIAS: Tuple[str, ...] = (
     OFERTA, CREDENCIAL, PERMISSAO, ACEITACAO, COMERCIAL,
-    INSTABILIDADE, DADO, PENDENTE, DESCONHECIDA,
+    INSTABILIDADE, DADO, PENDENTE, DESCONHECIDA, SEM_ATIVIDADE,
 )
 
 # --------------------------------------------------------------------------
@@ -293,7 +294,7 @@ _ENDERECO_DO_RISCO = (
 _RENOVACAO_RE = (
     ("renovacao", "cotacao.renovacao", False),
     ("bonus_anterior", "cotacao.bonusAnterior", False),
-    ("sinistros_anterior", "cotacao.sinistrosAnterior", False),     # 📊 TEXTO "0"/"1" no RE (9/9 gravações)
+    ("sinistros_anterior", "cotacao.sinistrosAnterior", False),     # 📊 TEXTO "0"/"1" no RE em 6/9 gravações (as 3 migradas: int 0)
     ("numero_apolice_anterior", "cotacao.numeroRenovacao", False),
     ("seguradora_anterior", "cotacao.seguradoraAnteriorId", False),
     ("fim_vigencia_anterior", "cotacao.vigFimAnterior", False),
@@ -676,6 +677,13 @@ CONJUNTO_FECHADO = "conjunto_fechado"   # UMA vez por cálculo (leitor_agger.eve
 # SPEC-129-C D-129C-04: no empresarial, a seguradora cuja atividade NÃO casou de forma inequívoca com a do pedido SAI do
 # cálculo (nunca um código errado) e é narrada com este evento (família DADO: o corretor pode escolher o código à mão).
 SEM_ATIVIDADE_COMPATIVEL = "sem_atividade_compativel"
+# 🔴 Conserto 129-C (canário #3/#7 + juiz P1): a FAMÍLIA desse evento é o NOME do tipo, em maiúsculas — a mesma que a
+# comparação (`app/services/multicalculo/comparacao.SEM_ATIVIDADE`) já mostra. Antes o motor gravava DADO e a comparação
+# mostrava SEM_ATIVIDADE_COMPATIVEL: duas famílias para o mesmo fato.
+assert SEM_ATIVIDADE == SEM_ATIVIDADE_COMPATIVEL.upper()
+# O motivo gravado no evento (conserto 129-C canário #5): o texto da seguradora, saneado, até este tamanho.
+MOTIVO_MAX = 300
+MOTIVO_SEM_ATIVIDADE = "nenhuma atividade da lista desta seguradora casa sem dúvida com a do pedido"
 
 
 @dataclass(frozen=True)
@@ -687,3 +695,6 @@ class Evento:
     familia: Optional[str] = None
     oferta: Optional[Oferta] = None
     ramo: int = RAMO_AUTO
+    # Conserto 129-C (canário #5): POR QUE a seguradora recusou — o texto dela (sem URL/chave; o motor ainda passa o
+    # redator de PII). Fora da igualdade: o mesmo evento com outro texto é o MESMO evento (a chave não muda).
+    motivo: Optional[str] = field(default=None, compare=False)

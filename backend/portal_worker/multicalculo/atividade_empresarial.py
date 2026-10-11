@@ -14,6 +14,10 @@ nenhum → a seguradora SAI e é devolvida como "sem atividade compatível" (nun
     3. CLASSE ..... o pedido cai numa das classes mais comuns (📊 AGREGADO-POR-RAMO §4: escritórios — de longe —,
                     postos de combustível, máquinas/equipamentos, artigos médicos/dentários e consultórios, salão de
                     beleza/estética) e o rótulo casa o padrão DA classe.
+                    🔴 Conserto 129-C (juiz B1 + red B1): a classe só decide quando TODA palavra significativa do
+                    pedido está no rótulo OU no vocabulário da classe. Palavra que qualifica o pedido e a classe não
+                    conhece ("estética AUTOMOTIVA", "oficina de COSTURA", "ALUGUEL de máquinas") → a seguradora SAI.
+                    E um pedido que diz uma palavra que a própria classe EXCLUI não cai nessa classe (nem na busca).
 Antes dos três, saem os candidatos que não servem: o PAVIMENTO (térreo / a partir do 1º / 2º em diante — 📊 Allianz,
 Yelum, Mitsui e Pottencial têm um código por andar para "escritório") e os QUALIFICADORES que mudam o risco (depósito,
 informática/publicidade, coworking, automotivo… — só saem se o pedido não os disser).
@@ -63,43 +67,73 @@ def _tem_palavra(rotulo: str, p: str) -> bool:
 # (📊 formulario_empresarial.json `amostra_medida_11_10["escritorio"]`, 15 seguradoras; gravacao_empresarial_1/2: os
 # códigos que as pessoas escolheram para estética e escritório). A ordem importa: "clínica de estética" é BELEZA.
 # --------------------------------------------------------------------------------------------------------------------
+#   · "vocabulario" (conserto 129-C B1): os RADICAIS que a classe cobre — uma palavra do pedido que não está no rótulo
+#     só é aceita se começar por um destes. 💭 desenho: as palavras dos próprios sinônimos + as que dizem a mesma coisa.
+#   · "exclui": o rótulo que a tem SAI (quando o pedido não a diz) e o PEDIDO que a tem NÃO cai na classe.
 CLASSES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("beleza_estetica", {
         "sinonimos": ("estetica", "salao de beleza", "cabeleireir", "cabeleleir", "barbearia", "manicure"),
         "termos": ("estetica", "beleza"),
+        "vocabulario": ("estetic", "clinica", "consultorio", "salao", "beleza", "cabele", "barbearia", "manicure",
+                        "pedicure"),
         # 📊 gravacao_empresarial_1 (escolha humana para uma clínica de estética): "CABELEIREIROS, SALAO DE BELEZA E/OU
         # ESTETICA" (Porto, Tokio), "CLINICA DE ESTETICA" (Zurich, Axa), "Salao de beleza, clinica de estetica…" (Yelum)
         "aceita": re.compile(r"estetic|beleza|cabele[il]?reir|barbearia"),
-        "exclui": re.compile(r"automotiv|veicul|lava.?(jato|rapido)|fabrica|industria"),
+        "exclui": re.compile(r"automotiv|automove|veicul|lava.?(jato|rapido)|fabrica|industria|veterinar"),
     }),
-    ("clinica_saude", {
-        "sinonimos": ("clinica medica", "consultorio", "odontolog", "dentista", "dentari", "clinica odonto",
-                      "artigos medicos", "medico", "medica"),
-        "termos": ("consultorio", "clinica"),
-        "aceita": re.compile(r"consultorio|clinica (medica|odontolog)|odontolog|dentari|medic"),
-        "exclui": re.compile(r"estetic|veterinar"),
+    # 🔴 conserto 129-C B1: a antiga "clinica_saude" juntava COMÉRCIO de artigos médicos, consultório médico e
+    # odontologia — "dentista" recebia "ARTIGOS MEDICOS E HOSPITALARES (COMERCIO)" e "consultório odontológico" o
+    # "CONSULTORIO MEDICO". São três riscos; cada um é a sua classe (a ordem importa: artigos antes de consultório).
+    ("artigos_medicos", {
+        "sinonimos": ("artigos medic", "artigos hospitalar", "artigos odontolog", "artigos dentari", "material medic",
+                      "materiais medic", "produtos medic", "equipamentos medic", "equipamentos hospitalar"),
+        "termos": ("artigos medicos",),
+        "vocabulario": ("artigo", "materia", "produto", "equipamento", "medic", "hospitalar", "odontolog", "dentari",
+                        "cirurgic"),
+        "aceita": re.compile(r"(artigo|materia|produto|equipamento)s?\b.{0,40}(medic|hospitalar|odontolog|dentari|"
+                             r"cirurgic)"),
+        "exclui": re.compile(r"consultorio|clinica|fabric|industri|aluguel|locacao"),
+    }),
+    ("odontologia", {
+        "sinonimos": ("odontolog", "dentista", "dentari", "dental"),
+        "termos": ("odontolog", "dentista"),
+        "vocabulario": ("odontolog", "dentist", "dentari", "dental", "consultorio", "clinica"),
+        "aceita": re.compile(r"odontolog|dentist|dentari|dental"),
+        "exclui": re.compile(r"artigo|protese|laborator|fabric|industri|comercio|deposito|veterinar|estetic"),
+    }),
+    ("consultorio_medico", {
+        "sinonimos": ("consultorio", "clinica medica", "medico", "medica", "ambulatori"),
+        "termos": ("consultorio", "clinica medica"),
+        "vocabulario": ("consultorio", "clinica", "medic", "ambulatori"),
+        "aceita": re.compile(r"consultorio|clinica.{0,20}medic|ambulatori"),
+        "exclui": re.compile(r"artigo|hospitalar|odontolog|dentist|dentari|dental|estetic|veterinar|fabric|industri|"
+                             r"comercio"),
     }),
     ("posto_combustivel", {
         "sinonimos": ("posto de combustive", "posto de gasolina", "combustive", "gasolina"),
         "termos": ("combustivel", "posto"),
+        "vocabulario": ("posto", "combustive", "gasolina"),
         "aceita": re.compile(r"posto.{0,40}(combust|gasolina)|(combust|gasolina).{0,40}posto"),
         "exclui": re.compile(r"saude|policial|telefon"),
     }),
     ("oficina", {
         "sinonimos": ("oficina",),
         "termos": ("oficina",),
+        "vocabulario": ("oficina", "mecanic", "automotiv", "veicul"),
         "aceita": re.compile(r"oficina"),
         "exclui": re.compile(r"costura|artesanat"),
     }),
     ("maquinas_equipamentos", {
         "sinonimos": ("maquinas", "equipamentos"),
         "termos": ("maquinas",),
+        "vocabulario": ("maquina", "equipamento"),
         "aceita": re.compile(r"maquinas"),
-        "exclui": re.compile(r"aluguel|costura"),
+        "exclui": re.compile(r"aluguel|locacao|costura|fabric|industri|conserto|manutencao|reparo"),
     }),
     ("escritorio", {
         "sinonimos": ("escritorio", "advocacia", "advogad", "contabilidade", "contabil", "contador"),
         "termos": ("escritorio",),
+        "vocabulario": ("escritorio", "advocacia", "advogad", "contabil", "contador"),
         # 📊 amostra "escritorio": fora os que são OUTRO risco com a palavra escritório — "BOLSA DE VALORES:
         # ESCRITORIOS" (Zurich), "…SERV. INFORMATICA OU PUBLIC…" (Porto), "…TRANSMISSAO ELETRONICA" (HDI, Sura),
         # "LEILOEIRO, ESCRITÓRIO E DEPÓSITO…" (Tokio), "Aluguel de máquinas… para escritório" e "…apoio administrativo"
@@ -108,11 +142,23 @@ CLASSES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
         "exclui": re.compile(r"bolsa de valores|informatica|public|transmissao eletronica|leiloeiro|aluguel de maquinas|"
                              r"apoio administrativo|coworking|edificio residencial"),
     }),
+    # Conserto 129-C (canário #2): o empresarial "edifícios desocupados" achou código só na Allianz (📊 1 opção em 15
+    # blocos, CANARIO-AO-VIVO §3.2) — cada seguradora dá outro nome ao risco. 💭 os rótulos que esta classe aceita NÃO
+    # foram medidos (só o da Allianz, "Edifícios desocupados"): a regra é estreita de propósito — o rótulo tem de dizer
+    # "desocupad"/"não ocupad"/"sem ocupação", e terreno, obra, reforma e residência são OUTRO risco.
+    ("imovel_desocupado", {
+        "sinonimos": ("desocupad", "nao ocupad", "sem ocupacao"),
+        "termos": ("desocupad",),
+        "vocabulario": ("desocupad", "ocupad", "ocupacao", "edifici", "imove", "imovei", "predio", "galpa", "galpo",
+                        "sala"),
+        "aceita": re.compile(r"desocupad|nao ocupad|sem ocupacao"),
+        "exclui": re.compile(r"terreno|lote|obra|construcao|reforma|residenc|casa|apartamento"),
+    }),
 )
 # O CNAE só decide a classe quando o TEXTO não decide. Os códigos são da tabela oficial (IBGE, CNAE 2.3 subclasses):
 CNAE_DA_CLASSE: Mapping[str, str] = {
-    "8630504": "clinica_saude",        # Atividade odontológica (📊 3 negócios empresariais lidos — AGREGADO §4)
-    "8630503": "clinica_saude",        # Atividade médica ambulatorial restrita a consultas
+    "8630504": "odontologia",          # Atividade odontológica (📊 3 negócios empresariais lidos — AGREGADO §4)
+    "8630503": "consultorio_medico",   # Atividade médica ambulatorial restrita a consultas
     "9602501": "beleza_estetica",      # Cabeleireiros, manicure e pedicure
     "9602502": "beleza_estetica",      # Atividades de estética e outros serviços de cuidados com a beleza
     "4731800": "posto_combustivel",    # Comércio varejista de combustíveis para veículos automotores
@@ -122,30 +168,55 @@ CNAE_DA_CLASSE: Mapping[str, str] = {
 }
 # Qualificadores que mudam o risco: o candidato que os tem SAI, a não ser que o pedido diga a mesma coisa.
 # 📊 "FARMACIAS OU DROGARIAS (LOJAS)" × "(DEPOSITOS)" (Porto), "Depósito de produtos de padaria" × "Padaria e
-# confeitaria" (Bradesco) — amostra_medida_11_10.
-QUALIFICADORES: Tuple[str, ...] = ("deposito", "shopping", "aeroporto", "posto de combustivel")
+# confeitaria" (Bradesco) — amostra_medida_11_10. Conserto 129-C: + "conveniencia" (💭 o red mostrou "posto de
+# combustível" → "LOJA DE CONVENIENCIA EM POSTO DE COMBUSTIVEL" pela etapa PALAVRAS: a loja não é o posto).
+QUALIFICADORES: Tuple[str, ...] = ("deposito", "shopping", "aeroporto", "posto de combustivel", "conveniencia")
 
 
 def classe_do_pedido(atividade: Any, cnae: Any = None) -> Optional[str]:
+    """A 1ª classe cujo sinônimo está no pedido — 🔴 conserto 129-C B1: a não ser que o pedido diga uma palavra que a
+    própria classe EXCLUI ("estética AUTOMOTIVA" não é beleza; "oficina de COSTURA" não é oficina mecânica)."""
     txt = normalizar(atividade)
     for nome, c in CLASSES:
-        if any(s in txt for s in c["sinonimos"]):
+        if any(s in txt for s in c["sinonimos"]) and not c["exclui"].search(txt):
             return nome
-    return CNAE_DA_CLASSE.get(re.sub(r"\D", "", str(cnae or "")))
+    classe = CNAE_DA_CLASSE.get(re.sub(r"\D", "", str(cnae or "")))
+    if classe and dict(CLASSES)[classe]["exclui"].search(txt):
+        return None
+    return classe
+
+
+def radical(p: str) -> str:
+    """'desocupados' → 'desocupad' · 'edificios' → 'edifici' · 'padarias' → 'padari' (o filtro da tela é por trecho)."""
+    r = p[:-1] if p.endswith("s") else p
+    if len(r) > 5 and r[-1] in "aoe":
+        r = r[:-1]
+    return r
+
+
+# Quantos GETs `getOptionsBySegFull` um pedido faz, no máximo (cada termo é uma leitura na página).
+MAX_TERMOS = 6
 
 
 def termos_de_busca(atividade: Any, cnae: Any = None) -> Tuple[str, ...]:
-    """O que a página procura em `getOptionsBySegFull` (≥ 3 letras, como a tela exige): o texto do pedido e os termos
-    da classe. A união das respostas é a lista de candidatos de cada seguradora."""
+    """O que a página procura em `getOptionsBySegFull` (≥ 3 letras, como a tela exige): o texto do pedido, o RADICAL
+    de cada palavra significativa (conserto 129-C canário #2: 📊 um termo só — "edificios desocupados" — achou 1 opção
+    em 15 seguradoras; o filtro da tela casa por trecho, então "desocupad" acha "imóvel desocupado" e "loja
+    desocupada") e os termos da classe. A união das respostas é a lista de candidatos de cada seguradora; quem decide é
+    `escolher`, com a MESMA regra — mais candidatos nunca relaxam a escolha (empate → sai)."""
     saida: List[str] = []
     txt = normalizar(atividade)
     if len(re.sub(r"[^a-z]", "", txt)) >= 3:
         saida.append(txt)
+    for p in palavras(txt):
+        r = radical(p)
+        if len(r) >= 4 and r not in saida:
+            saida.append(r)
     classe = classe_do_pedido(atividade, cnae)
     for nome, c in CLASSES:
         if nome == classe:
             saida.extend(t for t in c["termos"] if t not in saida)
-    return tuple(saida)
+    return tuple(saida[:MAX_TERMOS])
 
 
 # O PAVIMENTO (📊 contrato.CODIGOS_MEDIDOS_RE: Térreo "0" · Primeiro "1" · Segundo em diante "2") × o rótulo
@@ -211,7 +282,10 @@ def escolher(opcoes: Sequence[dict], atividade: Any, *, cnae: Any = None,
         if len(com_todas) > 1:
             return None, "ambiguo"
     if regra:
-        da_classe = [o for rot, o in cands if regra["aceita"].search(rot)]
+        # 🔴 conserto 129-C B1: a classe só decide quando o pedido NÃO tem palavra que nem o rótulo nem a classe cobrem
+        vocab = regra["vocabulario"]
+        da_classe = [o for rot, o in cands if regra["aceita"].search(rot)
+                     and all(_tem_palavra(rot, p) or any(p.startswith(v) for v in vocab) for p in ps)]
         if len(da_classe) == 1:
             return da_classe[0], "classe"
         if len(da_classe) > 1:

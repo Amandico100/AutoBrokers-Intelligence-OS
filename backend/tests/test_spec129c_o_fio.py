@@ -366,7 +366,7 @@ def test_empresarial_sem_nenhuma_atividade_nada_sai_e_todas_chegam_listadas(mund
     for c in calcs:
         evs = [e for e in linhas(m, "multicalculo_eventos", calculo_id=c["id"])
                if e["tipo"] == K.SEM_ATIVIDADE_COMPATIVEL]
-        assert {e["seguradora_codigo"] for e in evs} == todas and {e["familia"] for e in evs} == {K.DADO}
+        assert {e["seguradora_codigo"] for e in evs} == todas and {e["familia"] for e in evs} == {K.SEM_ATIVIDADE}  # §9.3: era DADO
     q = C.comparar(andamento.ofertas, andamento.eventos, estados=andamento.estados, config=cfg, ramo=18)
     assert q.ranking() == [] and len(q.nao_responderam) == len(todas) == q.resumo["nao_responderam"]
     assert {r["motivo"] for r in q.nao_responderam} == {FRASE_ATIVIDADE}

@@ -174,6 +174,12 @@ CHAVES_DE_COBERTURA_RE: Mapping[int, Tuple[str, ...]] = {
          "lucroCessante", "isDanosContaminacaoDeterioracao"),
 }
 CHAVE_DA_BASICA = "isDanosIncendioRaioExplosao"
+# 🔴 Conserto 129-C (juiz B2, D-129C-03 nota 88): a Básica de RE vem SÓ do pedido — o AJUSTE de cobertura (recálculo)
+# nunca a muda. Antes o robô e o montador aplicavam a Básica do ajuste em `configuracoes` enquanto a porta gravava a do
+# pedido: o banco dizia uma Básica e o Agger calculava outra. Estas são as chaves que o ajuste PODE mudar (o gêmeo em
+# montador.js `aplicarAjusteRE` recusa a Básica também, mesmo que alguém a ponha na lista).
+CHAVES_DO_AJUSTE_RE: Mapping[int, Tuple[str, ...]] = {
+    r: tuple(k for k in ks if k != CHAVE_DA_BASICA) for r, ks in CHAVES_DE_COBERTURA_RE.items()}
 
 # A Básica MEDIANA de cada ramo (📊 AGREGADO §2: condomínio 14 mi · residencial 550 mil · empresarial 2 mi)
 BASICA_MEDIANA: Mapping[int, int] = {16: 14_000_000, 2: 550_000, 18: 2_000_000}

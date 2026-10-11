@@ -34,13 +34,13 @@ from .atividade_empresarial import escolher_atividades, termos_de_busca
 from .contrato import (
     CAMPO_DO_RAMO_NA_RENOVACAO, CAMPOS_DO_PEDIDO_RE, CHAVES_PROIBIDAS_NA_OFERTA, DADO, RAMO_AUTO, RAMO_CONDOMINIO,
     RAMO_EMPRESARIAL, RAMO_RESIDENCIAL, RAMOS_RE, SEGURADORAS_DO_RAMO, SEGURADORAS_FORA_DO_RE, SEM_ATIVIDADE_COMPATIVEL, Ajuste, Evento,
-    RodadaDoCalculo, chave_no_corpo, problemas_do_pedido_re, tipo_do_campo_re,
+    MOTIVO_SEM_ATIVIDADE, SEM_ATIVIDADE, RodadaDoCalculo, chave_no_corpo, problemas_do_pedido_re, tipo_do_campo_re,
 )
 from .leitor_agger import (
     LISTA_BRANCA_POR_ENDPOINT, caminho_permitido, caminhos_de, endpoint_de_calculos, eventos_entre, ler_resposta,
     ler_rodada,
 )
-from .presets import CHAVE_DA_BASICA, CHAVES_DE_COBERTURA, CHAVES_DE_COBERTURA_RE
+from .presets import CHAVE_DA_BASICA, CHAVES_DE_COBERTURA, CHAVES_DE_COBERTURA_RE, CHAVES_DO_AJUSTE_RE
 
 logger = logging.getLogger("portal_worker.multicalculo")
 
@@ -308,7 +308,7 @@ def cotacao_do_pedido(pedido: Dict[str, Any], *, agora: Optional[datetime] = Non
 # ----------------------------------------------------------------------------------------------------------------------
 _FUNERAL = {"tipo": 0, "valor": 0}
 _MOLDE_CONFIGURACOES: Dict[int, Dict[str, Any]] = {
-    # 📊 gravacao_condominio_1.versao.configuracoes (65 chaves; padrões do app: sisProtecaoIncendRoubo [1], Vertical 1,
+    # 📊 gravacao_condominio_1.versao.configuracoes (62 chaves — conserto 129-C: o texto dizia 65; padrões do app: sisProtecaoIncendRoubo [1], Vertical 1,
     # 1 bloco/1 pavimento como TEXTO, 0 elevador, valorDeNovo 1)
     RAMO_CONDOMINIO: {
         "imovelLogradouro": None, "imovelNumero": None, "imovelComplemento": "", "imovelBairro": None,
@@ -420,10 +420,18 @@ def _cotacao_do_pedido_re(pedido: Dict[str, Any], ramo: int, coberturas: Dict[st
         cfg[k] = v
     cfg[CHAVE_DA_BASICA] = risco["valor_basica"]     # 🔴 a Básica é SEMPRE a do pedido (D-129C-03)
     if ramo == RAMO_EMPRESARIAL:
-        # 📊 "RC Operações": `responsabilidadeCivil` e `responsabilidadeCivilOperacoes` sempre iguais nos gravados
-        cfg["responsabilidadeCivilOperacoes"] = cfg.get("responsabilidadeCivil") or cfg.get(
-            "responsabilidadeCivilOperacoes") or 0
-        cfg["responsabilidadeCivil"] = cfg["responsabilidadeCivilOperacoes"]
+        # 📊 "RC Operações": `responsabilidadeCivil` e `responsabilidadeCivilOperacoes` sempre iguais nos gravados — por
+        # isso a que o PEDIDO não disse acompanha a que ele disse. 🔴 Conserto 129-C (red P5): o pedido que diz AS DUAS
+        # leva cada uma com o seu valor (antes a RC sobrescrevia a RC Operações: 100 mil + 300 mil saíam 100 mil + 100 mil).
+        extras = risco.get("extras") or {}
+        rc, rcop = "responsabilidadeCivil", "responsabilidadeCivilOperacoes"
+        if rc in extras and rcop not in extras:
+            cfg[rcop] = cfg[rc]
+        elif rcop in extras and rc not in extras:
+            cfg[rc] = cfg[rcop]
+        elif rc not in extras and rcop not in extras:
+            cfg[rcop] = cfg.get(rc) or cfg.get(rcop) or 0
+            cfg[rc] = cfg[rcop]
     renovacao = ren.get("renovacao") is True
     agora_utc = (agora or datetime.now(timezone.utc)).replace(microsecond=0)
     vig_ini = _iso(ren.get("vigencia_inicio")) or agora_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
@@ -439,7 +447,8 @@ def _cotacao_do_pedido_re(pedido: Dict[str, Any], ramo: int, coberturas: Dict[st
         "results": {k: {"errors": [], "successes": []} for k in ("main", "alternatives", "all", "porAssinatura", "ofertaCruzada")},
         "loaded": False, "tipo": 5, "integracaoInfo": 1, "ramo": ramo, **_ESTATICOS_DO_RASCUNHO[ramo],
         "vigenciaIni": vig_ini, "vigenciaFim": vig_fim, "renovacao": renovacao,
-        # 📊 bonusAnterior inteiro (5) na renovação, null fora dela; sinistrosAnterior TEXTO "0"/"1" sempre (9/9)
+        # 📊 bonusAnterior inteiro (5) na renovação, null fora dela; sinistrosAnterior TEXTO "0"/"1"
+        # (📊 6/9 gravações em texto; as 3 migradas — *_3 — têm int 0: o Agger aceitou as duas formas; o robô manda texto)
         "bonusAnterior": (_int(ren.get("bonus_anterior"), "renovacao.bonus_anterior") or 0) if renovacao else None,
         "sinistrosAnterior": str(sin or 0),
         "numeroRenovacao": (str(ren["numero_apolice_anterior"]) if renovacao and ren.get("numero_apolice_anterior") else None),
@@ -629,20 +638,26 @@ JS_PDFS = """async (a) => {""" + _JS_COMUM + """
   const [s, d] = await pegar(a.pdocs + '/calculo/cotacao/calculos/' + encodeURIComponent(a.ref) + '/' + a.versao, a.tPdocs);
   if (s !== 200 || !Array.isArray(d)) return {erro: 'calculos_http_' + s, pdfs: []};
   const out = []; let falhas = 0;
+  // conserto 129-C (canário #7: 📊 6 de 6 PDFs de RE com `pathPdf` "não copiados", e 0 de 128 do auto com `pdf_path`):
+  // o PORQUÊ de cada falha, por CLASSE — nunca a URL. http_<status> · rede (fetch lançou: CORS/rede) · nao_pdf · grande
+  // · so_nome (a oferta só tem `pdfFileNameAgger`, sem `pathPdf`: nada para baixar).
+  const motivos = {}; const conta = k => { motivos[k] = (motivos[k] || 0) + 1; };
   for (const it of d) {
     for (const r of (it && it.resultados) || []) {
-      if (!r || !(Number(r.premio) > 0) || !r.pathPdf) continue;
+      if (!r || !(Number(r.premio) > 0)) continue;
+      if (!r.pathPdf) { if (r.pdfFileNameAgger) conta('so_nome'); continue; }
       try {
         const resp = await fetch(r.pathPdf);
-        if (!resp.ok) { falhas++; continue; }
+        if (!resp.ok) { falhas++; conta('http_' + (Number(resp.status) || 0)); continue; }
         const buf = new Uint8Array(await resp.arrayBuffer());
-        if (buf.length > a.max || !(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46)) { falhas++; continue; }
+        if (buf.length > a.max) { falhas++; conta('grande'); continue; }
+        if (!(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46)) { falhas++; conta('nao_pdf'); continue; }
         let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
         out.push([it.seguradora, r.identificacao || '', r.packageType == null ? null : r.packageType, btoa(bin)]);
-      } catch (e) { falhas++; }
+      } catch (e) { falhas++; conta('rede'); }
     }
   }
-  return {pdfs: out, falhas};
+  return {pdfs: out, falhas, motivos};
 }"""
 
 
@@ -892,7 +907,8 @@ async def recalcular(sessao: Any, negocio_ref: str, *, versao_base: int, ajuste:
         "negocio_ref": negocio_ref, "versao_base": int(versao_base), "da_versao": True, "ajuste": aj,
         "status_por_ramo": {str(r): list(s) for r, s in SEGURADORAS_DO_RAMO.items()},
         "fora_do_re": list(SEGURADORAS_FORA_DO_RE),
-        "chaves_re": {str(r): list(k) for r, k in CHAVES_DE_COBERTURA_RE.items()}})
+        # 🔴 conserto 129-C (juiz B2): a Básica NÃO está entre as chaves que o ajuste muda (D-129C-03)
+        "chaves_re": {str(r): list(k) for r, k in CHAVES_DO_AJUSTE_RE.items()}})
 
 
 async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Evento], Awaitable[Any]],
@@ -914,7 +930,9 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
     if anterior is None:
         # SPEC-129-C D-129C-04: a seguradora que saiu por não ter atividade compatível é NARRADA (nunca some calada)
         for cod, nome in getattr(disparo, "sem_atividade", ()) or ():
-            await ao_evento(Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, nome or None, cod, DADO, None, ramo))
+            # conserto 129-C: a família é o NOME do tipo (a mesma da comparação), e o motivo vai junto
+            await ao_evento(Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, nome or None, cod, SEM_ATIVIDADE, None, ramo,
+                                   motivo=MOTIVO_SEM_ATIVIDADE))
 
     def impossivel(motivo: str, *, morta: bool, pagina_fechada: bool = False) -> LeituraImpossivel:
         return LeituraImpossivel(motivo, sessao_morta=morta, leu=leu, quadro_saiu=quadro, rodada=atual,
@@ -1000,6 +1018,20 @@ async def copiar_pdfs(sessao: Any, disparo: Disparo) -> Dict[tuple, bytes]:
         dados = base64.b64decode(b64)
         if dados[:4] == b"%PDF" and len(dados) <= PDF_MAX_BYTES:
             saida[chave] = dados
-    if (r or {}).get("falhas"):
-        logger.info("multicalculo.robo pdfs: %s não copiados", int(r["falhas"]))
+    motivos = motivos_dos_pdfs(r)
+    if (r or {}).get("falhas") or motivos:
+        logger.info("multicalculo.robo pdfs: %s não copiados %s", int((r or {}).get("falhas") or 0), motivos)
     return saida
+
+
+_RE_MOTIVO_PDF = re.compile(r"^(http_\d{1,3}|rede|nao_pdf|grande|so_nome)$")
+
+
+def motivos_dos_pdfs(r: Any) -> Dict[str, int]:
+    """As CLASSES de falha que a página contou (conserto 129-C, canário #7). Só nomes da lista e inteiros: o que não
+    for isso não chega ao log (a página nunca devolve URL por aqui)."""
+    m = (r or {}).get("motivos") if isinstance(r, dict) else None
+    if not isinstance(m, dict):
+        return {}
+    return {k: int(v) for k, v in sorted(m.items())
+            if isinstance(k, str) and _RE_MOTIVO_PDF.match(k) and isinstance(v, int) and not isinstance(v, bool)}

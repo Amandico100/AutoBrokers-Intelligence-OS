@@ -36,7 +36,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from ..redaction import sem_url_nem_chave
 from .contrato import (
     ACEITACAO, CAMPOS_DO_PEDIDO_AUTO, COMERCIAL, CONJUNTO_FECHADO, CREDENCIAL,
-    DADO, DESCONHECIDA, INSTABILIDADE, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA,
+    DADO, DESCONHECIDA, INSTABILIDADE, MOTIVO_MAX, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA,
     PENDENTE, PERMISSAO, RAMO_AUTO, SEGURADORA_RECUSOU, Campo, Evento, Oferta,
     Parcelamento, PedidoDeCalculoAuto, RespostaDaSeguradora, RodadaDoCalculo,
 )
@@ -474,6 +474,27 @@ def _textos(lista: Any) -> List[str]:
     return [_limpo(x) for x in lista if isinstance(x, str) and x.strip()]
 
 
+_SIM = frozenset({"sim", "s", "true", "1", "yes"})
+_NAO = frozenset({"nao", "n", "false", "0", "no"})
+
+
+def sim_nao(valor: Any) -> Any:
+    """Conserto 129-C (canário #6): o RE ECOA `valorDeNovo` às vezes como 1, às vezes como "Sim" (📊 canário ao vivo
+    11/10) — o código do corpo é Não 0 · Sim 1 (contrato `valor_de_novo`). Uma forma só: 1/0. O que não for sim/não
+    claro fica como veio (nunca se inventa um "sim")."""
+    if isinstance(valor, bool):
+        return 1 if valor else 0
+    if isinstance(valor, (int, float)) and valor in (0, 1):
+        return int(valor)
+    if isinstance(valor, str):
+        d = dobra(valor).strip()
+        if d in _SIM:
+            return 1
+        if d in _NAO:
+            return 0
+    return valor
+
+
 def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Oferta]:
     premio = numero(r.get("premio"))
     if premio is None or premio <= 0:
@@ -490,9 +511,12 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
                 demais_parcelas=numero(p.get("premioDemaisParc")),
             ))
     re_ = ramo != RAMO_AUTO
+    if re_ and "valorDeNovo" in cob:
+        cob["valorDeNovo"] = sim_nao(cob["valorDeNovo"])
     franquia = numero(r.get("franquia"))
     if re_ and franquia is None:
-        # 📊 RE: `resultados[].franquia` = 0 em 344/344 com preço; o app de RE lê também a `valorFranquia` do item
+        # 📊 RE (fixtures das 9 gravações, conserto 129-C): `resultados[].franquia` = 0 em 38 resultados com preço e AUSENTE
+        # em 22 (as 3 migradas, *_3) — o texto antigo dizia "0 em 344/344". O app de RE lê também a `valorFranquia` do item
         franquia = numero(item.get("valorFranquia"))
     return Oferta(
         seguradora=_limpo(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""),
@@ -604,6 +628,19 @@ def _por_seguradora(rodada: Optional[RodadaDoCalculo]) -> Dict[Any, List[Respost
     return grupos
 
 
+def motivo_das_mensagens(respostas: Sequence[RespostaDaSeguradora]) -> Optional[str]:
+    """Conserto 129-C (canário #5: 📊 Tokio, Chubb e Bradesco recusaram o condomínio com DESCONHECIDA e o PORQUÊ se
+    perdeu): as mensagens da seguradora (já sem URL nem chave — `_textos`), sem repetir, numa linha, até MOTIVO_MAX. O
+    motor ainda passa o redator de PII (`motor.erro_curto`) antes de gravar. Sem mensagem → None."""
+    vistas: List[str] = []
+    for r in respostas:
+        for m in r.mensagens or ():
+            t = " ".join(str(m).split())
+            if t and t not in vistas:
+                vistas.append(t)
+    return " | ".join(vistas)[:MOTIVO_MAX] or None
+
+
 def eventos_entre(anterior: Optional[RodadaDoCalculo], nova: RodadaDoCalculo) -> List[Evento]:
     """O que MUDOU de `anterior` para `nova`. Rodadas iguais → []. Rodada
     atrasada (t_s menor que o da anterior) → [] — não se narra o passado.
@@ -636,7 +673,7 @@ def eventos_entre(anterior: Optional[RodadaDoCalculo], nova: RodadaDoCalculo) ->
         fam = _familia_consolidada(rs)
         if fam not in (OFERTA, PENDENTE) and familia_antes.get(k) != fam:
             eventos.append(Evento(SEGURADORA_RECUSOU, nova.t_s, primeiro.seguradora, primeiro.seguradora_codigo,
-                                  fam, None, nova.ramo))
+                                  fam, None, nova.ramo, motivo=motivo_das_mensagens(rs)))
     if nova.fechado and not (anterior is not None and anterior.fechado):
         eventos.append(Evento(CONJUNTO_FECHADO, nova.t_s, ramo=nova.ramo))
     return eventos
