@@ -61,4 +61,12 @@ a 129-C (chat novo, prompt pronto em `specs-propostas/PROMPT-DE-ABERTURA-SPEC-12
 membros com "mudar123" (T-137).
 
 ## 5. Entrega
-(preenchido no fecho)
+O código e o relatório (push anterior, 10/10):
+```
+9928ad3..0860d31  HEAD -> main
+```
+O estado, a fila e o painel (`docs(133-A.1): estado, fila e painel`; painel republicado em
+https://claude.ai/code/artifact/defe331c-9399-4584-9d1c-2126a527cea0, versão 33):
+```
+(saída colada abaixo, no commit seguinte)
+```

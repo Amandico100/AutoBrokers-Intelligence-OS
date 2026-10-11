@@ -77,10 +77,18 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
               canal no webhook antes do observer (só convidados, anti-laço), consentimento + 11 perguntas, o pedido ao motor, a página
               da marca QCM, 2 lembretes, a passagem com card no Inbox, o QR no admin · 📊 O FIO 17 casos, 4 controles com ZERO envio ·
               migrations 20261007_01/_02 APLICADAS · D-133A-01…16 · P-133A-01…08 · 🧑 T-132…T-135 (Implantar, QR, convidados, robô)
+            SPEC-133-A.1 (QCM: os ajustes do Founder, o Agger da corretora pela tela e o plano das contas) — CONCLUÍDA 10/10/2026,
+              10/10 requisitos, nota 88, branch spec/133-A1-qcm-ajustes, base `9928ad3` → main `0860d31` (juiz 88 ‖ red team 84,
+              sem blocker → conserto curto) · carrossel e parcelas do QCM (📊 a Youse só traz 4x) · "homem ou mulher?" só para nome
+              ambíguo (IBGE) · o Agger da corretora pela TELA (conta global do robô, um serviço só) · "mudar123" fora do produto ·
+              o plano da 131-0 e as 16 situações de entrada · 📊 bateria 0 regressão · nenhuma migration · D-133A1-01…07 ·
+              🧑 T-132 (com os valores das variáveis) · T-133 · T-134 · T-135 (Agger pela tela) · T-136 (conta da Resulta) · T-137 (senhas)
 A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável  →  ✔ 128 prova do Agger
   (v2.5.1)  →  ✔ 129-B motor (várias corretoras em paralelo)  →  ✔ 130-A comparação e proposta  →  ✔ 130-A.1 a mensagem do QCM
             →  ✔ 133-A Quem Cobra Menos no WhatsApp, piloto fechado (as rodadas dos testadores correm no calendário)
-            →  129-C mais ramos do Agger (⏭ próxima, D-MC-73)
+            →  ✔ 133-A.1 os ajustes do Founder no QCM e o Agger da corretora pela tela
+            →  129-C mais ramos do Agger (⏭ próxima, chat NOVO, prompt pronto: specs-propostas/PROMPT-DE-ABERTURA-SPEC-129-C-PRONTO.md)
+            →  131-0 parte A as contas da corretora (planejada: specs-propostas/SPEC-131-0-CONTAS-COMERCIAIS-E-CONEXOES.md)
             →  130-B leitor de apólice
             →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2  →  133-B Quem Cobra Menos piloto 🚀3
             →  135 proposta conversa 🚀4  →  136 lembretes  →  137 público no WhatsApp oficial 🚀5  →  ★ Claude/ChatGPT
