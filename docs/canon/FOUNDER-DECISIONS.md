@@ -2428,7 +2428,7 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | # | Decisão | Estado | Substitui / revê |
 |---|---|---|---|
 | D-129C-01 | **O Agger da corretora fica SEMPRE ligado**; horário e regras moram no auxiliar (F0, feito; 📊 a janela "seg-dom 00:00–23:59" deixava 23:59–00:00 fora) | ✅ TOMADA (gerente, nota 92) | — |
-| D-129C-02 | **A fonte das coberturas e das seguradoras de RE é o histórico do Agger**, não a InfoCap (📊 a InfoCap da Resulta tem 0 condomínio, 12 residencial, 3 empresarial em 32.901 documentos; o Agger tem 672/115/182 negócios) | ✅ TOMADA (gerente, nota 95) | — |
+| D-129C-02 | **A fonte das coberturas e das seguradoras de RE é o histórico do Agger**, não a InfoCap (📊 a InfoCap da Resulta tem 0 condomínio, 12 residencial, 3 empresarial em 32.901 documentos; o Agger tem 672/115/182 negócios) | ✅ TOMADA (gerente, nota 95) · ↪ REVISTA por D-131-0-26 (11/10): a conexão medida tinha o login da AutoFleet; a InfoCap da Resulta TEM RE | ↪ D-131-0-26 |
 | D-129C-03 | **As opções de RE não têm valores segurados fixos**: os valores vêm do PEDIDO (a básica do risco); a opção varia as coberturas extras e a assistência — "padrão" (as típicas do ramo, 📊 AGREGADO) e "mais em conta" (só as essenciais + assistência básica) | ✅ TOMADA (gerente, nota 88) | — |
 | D-129C-04 | **A atividade do empresarial é por seguradora**: o robô lê `getOptionsBySegFull` no cálculo e escolhe o código de cada seguradora pela atividade do pedido (texto normalizado + sinônimos por classe); seguradora sem atividade inequívoca sai e é listada ("sem atividade compatível"). Notas 85 × pedir humano sempre 50 | ✅ TOMADA (gerente, nota 85) | — |
 | D-129C-05 | **A comissão de RE vai EXPLÍCITA no item** pela config por ramo (📊 o padrão do Agger no empresarial é 0 %); padrão do produto = o `comissao.entrada` da corretora, igual ao auto | ✅ TOMADA (gerente, nota 88) | — |
@@ -2436,3 +2436,28 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | D-129C-07 | **Preferência de seguradoras por ramo por corretora** em `multicalculo_config` (lista ordenada; vazia = todas as do ramo na conta); a comparação marca a preferida, nunca esconde as outras | ✅ TOMADA (gerente, nota 90) | — |
 | D-129C-08 | **A página/proposta dos outros ramos fica para uma SPEC própria (130-C)** — a página de hoje é de carro; a 129-C entrega as ofertas comparadas e o ranking (P-129C-05) | ✅ TOMADA (gerente, nota 82) | — |
 | D-129C-09 | **O canário usa 1 risco real por ramo** (dado de cliente, autorizado pelo Founder em 10/10) pela conta cotador@ da Resulta; o negócio fica no Agger dela; nunca nada vai ao cliente | ✅ TOMADA (Founder 10/10 + gerente, nota 85) | — |
+
+## D-131-0-03…35 · SPEC-131-0 parte A — as contas da corretora (11/10/2026, tomadas pela execução com nota 0–100; rito AAA v13 CRÍTICO)
+
+> Fonte: `specs/SPEC-131-0-A-as-contas-da-corretora.md` §3 · BLOCO 0 `programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md` ·
+> relatório `reports/SPEC-131-0-A-EXECUTION-REPORT.md`. Os números da InfoCap são 📊 de 11/10/2026 (`/prod_docs` avulso e
+> `/documentos_bi`, um login por corretora — comandos no BLOCO 0 §2–§4). Nenhum nome de pessoa da equipe aqui (§13.9): "a comercial".
+
+| # | Decisão | Estado | Substitui / revê |
+|---|---|---|---|
+| D-131-0-03 | **O dono da renovação na InfoCap é o produtor com `indireto = "F"` no `/prod_docs` avulso** (📊 Resulta 99/99 · AutoFleet 217/217; o `ordem 1` acerta só 37/99 e 24/217) | ✅ TOMADA (gerente, nota 96) | o `ordem == 1` de `fonte_infocap.py` |
+| D-131-0-05 | **O Agger de uma pessoa é login de PESSOA**: o robô entra, calcula e sai (logout sempre); sessão ativa = Cancelar e esperar, nunca "Prosseguir"; QUANDO usar é regra do auxiliar (renovação de madrugada; cotação = a própria pessoa pediu). Ocupada 3× → o cálculo falha com o motivo e quem pediu decide; nunca cai calado no Agger da corretora. ⚠️ decidida SEM medir "transferir negócio entre usuários do Agger" (P-1310-06) | ✅ TOMADA (gerente, nota 84) | — |
+| D-131-0-06 | **A senha do Agger da pessoa**: o admin cadastra por ela OU a própria pessoa; nunca reaparece na tela, no log nem na auditoria (só `tem_senha`) | ✅ TOMADA (gerente, nota 88) | — |
+| D-131-0-07 | **A ordem guiada é o cabeçalho da tela "Serviços"**: 4 passos com estado lido do banco (sistema de gestão → Agger da corretora → equipe e Aggers → serviços), cada um com o link | ✅ TOMADA (gerente, nota 86) | — |
+| D-131-0-08 | **Os auxiliares Cotação/Renovação NASCEM com runtime (131/132)**: a parte A entrega a config por serviço e a tela "Serviços", não cartões vazios no catálogo (corte registrado em CHANGE-ADDENDA) | ✅ TOMADA (gerente, nota 85) | — |
+| D-131-0-14 | **Usuários: opção B incremental** — funções de trabalho (comercial · calculista · negociador) + papel de acesso fechado (`owner · admin_company · member · attendant`) + uma fonte só do papel (`company_members`, falha fechada); grupos ficam fora | ✅ TOMADA (gerente, nota 85) | — |
+| D-131-0-26 | **A InfoCap da Resulta TEM RE** (📊 2026: RESI 255 · COND 227 · EMPR 148) e é a fonte de QUEM e QUANDO renova (📊 99 renovações em 30 dias); o Agger segue fonte das coberturas montadas | ✅ TOMADA (gerente, nota 95) | **revê D-129C-02** |
+| D-131-0-27 | **A conexão "InfoCap RESULTA" da Amandus guarda o login da AutoFleet** → o NOME foi corrigido para "InfoCap AUTOFLEET" (`metadata.renomeada` guarda o antes); trocar o login fica com o Founder (o canário de auto da Amandus usa esse banco) | ✅ TOMADA e APLICADA (gerente, nota 85) | — |
+| D-131-0-28 | **O convite por link** (que hoje nem cria o vínculo) fica para a SPEC de usuários; o `mudar123` já saiu na 133-A.1 (corte registrado em CHANGE-ADDENDA) | ✅ TOMADA (gerente, nota 80) | — |
+| D-131-0-29 | **O dono da conta Agger é a PESSOA** (`dono_user_id` → `users_v2`), não o vínculo; a conta só vale se a pessoa for membro ATIVO daquela corretora | ✅ TOMADA (gerente, nota 88) | — |
+| D-131-0-30 | **O vínculo produtor ↔ pessoa usa `(user_id, company_id)` → `company_members` ON DELETE CASCADE**: saiu da equipe = o vínculo cai = a renovação dele vai para "sem dono" | ✅ TOMADA (gerente, nota 90) | — |
+| D-131-0-31 | **A regra do dono é DADO**: linha da corretora em `regras_de_dono`, senão o padrão do SISTEMA em JSON (sem nome de corretora); a auditoria diz qual das duas decidiu | ✅ TOMADA (gerente, nota 86) | o `producer-roles.resulta.json` (aposentado) |
+| D-131-0-32 | **`servico` é coluna NOVA** (`qcm · cotacao · renovacao`); `origem` não muda (CHECK, prioridade, ~15 leitores) | ✅ TOMADA (gerente, nota 92) | — |
+| D-131-0-33 | **Quem calcula × quem negocia × responsável POR RAMO e o substituto de férias** ficam para a 131/135, que os consomem; aqui só as funções da pessoa (corte registrado em CHANGE-ADDENDA) | ✅ TOMADA (gerente, nota 78) | — |
+| D-131-0-34 | **Sem índice "uma conta global por corretora"**: o rodízio entre robôs globais já é usado e um índice o quebraria (📊 backfill `global:2`) — notas 80 × 40 | ✅ TOMADA (builder F3, nota 80) | — |
+| D-131-0-35 | **A aba do Quem Cobra Menos na tela "Serviços" é só leitura**: o QCM lê a config do CANAL; editar por ali criaria um segundo escritor — notas 80 × 45 | ✅ TOMADA (builder F4, nota 80) | — |
