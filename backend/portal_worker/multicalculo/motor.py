@@ -112,8 +112,15 @@ MOTIVO_TESTE_INDEFINIDO = "o login da conta de teste não chegou ao fim: o robô
 # (cada uma ≥ 30 min depois da outra, `OCUPADA_MIN`) — o cálculo FALHA com o motivo e quem pediu decide (a 132 pergunta);
 # NUNCA cai calado no Agger da corretora (R3). O prefixo é a chave que a 131/132 lê.
 VEZES_DA_PESSOA_EM_USO = 3
+#: 🔴 conserto 131-0 A (juiz P3): cada vez que a dona estava no próprio login vira UM evento deste tipo no cálculo (chave
+#: única por tomada). As "3 vezes" contam ESTES eventos — não `tentativas`, que sobe a cada tomada por qualquer causa
+TIPO_PESSOA_EM_USO = "agger_da_pessoa_em_uso"
 MOTIVO_PESSOA_EM_USO = ("agger_da_pessoa_em_uso — a dona deste Agger estava usando o próprio login nas 3 tentativas; "
                         "o cálculo não saiu e quem pediu decide o que fazer")
+# 🔴 conserto 131-0 A (red B1): o login no Agger de uma PESSOA não chegou ao fim (nem entrou, nem recusou, nem ocupada).
+# Não se insiste no login de alguém: a conta é PAUSADA, o cálculo FALHA com o motivo (mesmo prefixo-chave dos outros)
+MOTIVO_PESSOA_SEM_RESPOSTA = ("agger_da_pessoa_sem_resposta — o login no Agger desta pessoa não chegou ao fim: o robô "
+                              "parou e pausou o Agger dela; religue na tela da equipe e peça de novo")
 MOTIVO_SENHA_DA_PESSOA = ("o Agger desta pessoa recusou a senha: o cálculo não saiu (só esta conta podia fazê-lo) — "
                           "troque a senha do Agger dela e peça de novo")
 KIND_CANAL = "platform_canal"
@@ -870,6 +877,17 @@ class Motor:
                 for c in list(g.calculos):
                     await self._encerrar(g, c, "falhou", MOTIVO_TESTE_INDEFINIDO)
                 return None
+            if (indefinida is not None and isinstance(exc, indefinida)
+                    and conta.get("uso") == robos.MEMBRO):
+                # 🔴 conserto 131-0 A (red B1): o Agger de uma PESSOA com login sem desfecho — a mesma regra da conta
+                # `teste` (login de pessoa): pausa e para na 1ª, o cálculo falha com o motivo. Nunca cai no Agger da
+                # corretora (a conta é a EXIGIDA) e nunca volta à fila para logar de novo no login dela
+                await self._marcar(conta, robos.PAUSADO)
+                logger.warning("[MC] Agger de pessoa %s: login sem desfecho — pausado", conta["id"])
+                for c in list(g.calculos):
+                    if c.get("status") != "calculando":
+                        await self._encerrar(g, c, "falhou", MOTIVO_PESSOA_SEM_RESPOSTA)
+                return None
             logger.error("[MC] a sessão do robô %s não abriu (%s)", conta["id"], type(exc).__name__)
             await self._devolver_a_fila(g, g.calculos, com_espera=True)
             return None
@@ -898,8 +916,9 @@ class Motor:
             # motivo. Nunca vai para o Agger da corretora: a conta é EXIGIDA (o motor não tem outra para ele)
             await self._marcar(conta, robos.OCUPADA, ocupada_min=OCUPADA_MIN)
             logger.warning("[MC] Agger de pessoa %s em uso pela dona — afastado por %s min", conta["id"], OCUPADA_MIN)
+            vezes = await self._vezes_da_pessoa_em_uso(g, conta, [c for c in calcs if c.get("status") != "calculando"])
             esgotados = [c for c in calcs if c.get("status") != "calculando"
-                         and int(c.get("tentativas") or 0) >= VEZES_DA_PESSOA_EM_USO]
+                         and vezes.get(c["id"], 0) >= VEZES_DA_PESSOA_EM_USO]
             for c in esgotados:
                 await self._encerrar(g, c, "falhou", MOTIVO_PESSOA_EM_USO)
             await self._devolver_a_fila(g, [c for c in calcs if c not in esgotados])
@@ -907,6 +926,29 @@ class Motor:
         await self._marcar(conta, robos.OCUPADA, ocupada_min=OCUPADA_MIN)
         logger.warning("[MC] robô %s ocupado por uma pessoa — afastado por %s min", conta["id"], OCUPADA_MIN)
         await self._devolver_a_fila(g, calcs)
+
+    async def _vezes_da_pessoa_em_uso(self, g: Grupo, conta: Dict[str, Any],
+                                      calcs: List[Dict[str, Any]]) -> Dict[str, int]:
+        """🔴 conserto 131-0 A (juiz P3): registra ESTA vez (um evento `agger_da_pessoa_em_uso` por tomada — a chave leva
+        a tentativa, então a mesma tomada nunca conta duas) e devolve, por cálculo, quantas vezes a dona estava no
+        próprio login. Banco ilegível → `tentativas` (o de antes: falha mais cedo, nunca insiste mais no login dela)."""
+        vezes: Dict[str, int] = {}
+        for c in calcs:
+            try:
+                await self._gravar_linha_de_evento(g, c, {
+                    "tipo": TIPO_PESSOA_EM_USO, "familia": None,
+                    "chave": f"{TIPO_PESSOA_EM_USO}|{conta['id']}|{int(c.get('tentativas') or 0)}",
+                    "motivo": "a dona deste Agger estava usando o próprio login: o robô cancelou e espera",
+                })
+                r = await self._db(lambda c=c: self.supa.table("multicalculo_eventos").select("id, tipo")
+                                   .eq("calculo_id", c["id"]).eq("company_id", g.company_id)
+                                   .eq("tipo", TIPO_PESSOA_EM_USO).execute())
+                vezes[c["id"]] = len([e for e in (r.data or []) if e.get("tipo") == TIPO_PESSOA_EM_USO])
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[MC] não consegui contar as vezes da pessoa no Agger (%s) — conto as tentativas",
+                               type(exc).__name__)
+                vezes[c["id"]] = int(c.get("tentativas") or 0)
+        return vezes
 
     async def _marcar(self, conta: Dict[str, Any], estado: str, **kw) -> bool:
         """`robos.marcar_estado` (CAS a partir do estado LIDO): a pausa do Founder vence o motor (red B1)."""

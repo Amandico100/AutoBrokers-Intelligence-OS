@@ -10,7 +10,9 @@ export const dynamic = 'force-dynamic';
  * SPEC-131-0 parte A · F4 — a tela "Serviços" (D-131-0-07/08/10/12).
  *
  * GET → { servicos: <a config dos serviços: o que a corretora mudou + o efetivo>, prontidao: <os 4 passos> }
- * PUT → { servicos?, preferencias_de_seguradoras? } — grava SÓ o manual dos serviços e as seguradoras preferidas.
+ * PUT → { versao, servicos?, preferencias_de_seguradoras? } — grava SÓ o manual dos serviços e as seguradoras
+ *       preferidas. `versao` é a que o GET devolveu (`servicos.versao`): se outra pessoa salvou no meio, o backend
+ *       devolve 409 com a frase e nada é gravado (conserto 131-0 A — dois admins nunca se apagam).
  *
  * 🔴 O `company_id` vem SEMPRE da sessão — o do corpo é ignorado. Escrever passa pelo porteiro (origem + papel
  * administrativo DA corretora ativa) e fica na auditoria com QUEM mudou. O backend recusa chave fora da lista.
@@ -54,6 +56,10 @@ export async function PUT(req: NextRequest) {
   if (body && typeof body === 'object' && 'preferencias_de_seguradoras' in body) {
     corpo.preferencias_de_seguradoras = body.preferencias_de_seguradoras;
   }
+  // a versão que a tela leu (null = a corretora ainda não tinha linha). Sem ela o backend recusa (422)
+  if (body && typeof body === 'object' && 'versao' in body) {
+    corpo.versao = typeof body.versao === 'string' ? body.versao : null;
+  }
   let res: Response;
   try {
     res = await fetch(`${getBackendUrl()}/api/servicos-da-corretora`, {
@@ -62,13 +68,25 @@ export async function PUT(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Backend indisponível' }, { status: 502 });
   }
+  const resposta = await res.json().catch(() => ({}));
+  // a auditoria guarda QUEM, QUAIS chaves e os VALORES novos (o manual dos serviços não tem segredo) — uma mudança
+  // tem volta: o valor anterior é o da linha de auditoria anterior. Conflito (409) fica registrado como tal
   await registrarNaAuditoria(porteiro, {
     evento: 'multicalculo_config.write', acao: 'servicos.salvar',
     status: res.ok ? 'ok' : 'erro',
     metadata: {
+      conflito: res.status === 409,
       servicos: corpo.servicos && typeof corpo.servicos === 'object' ? Object.keys(corpo.servicos as object) : [],
       preferencias_comuns: 'preferencias_de_seguradoras' in corpo,
+      valores: {
+        ...(corpo.servicos !== undefined ? { servicos: corpo.servicos } : {}),
+        ...('preferencias_de_seguradoras' in corpo
+          ? { preferencias_de_seguradoras: corpo.preferencias_de_seguradoras } : {}),
+      },
+      versao_lida: corpo.versao ?? null,
+      versao_gravada: res.ok && resposta && typeof resposta === 'object'
+        ? (resposta as { versao?: string | null }).versao ?? null : null,
     },
   });
-  return NextResponse.json(await res.json().catch(() => ({})), { status: res.status });
+  return NextResponse.json(resposta, { status: res.status });
 }

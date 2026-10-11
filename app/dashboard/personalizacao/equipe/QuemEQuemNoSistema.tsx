@@ -128,6 +128,12 @@ export function QuemEQuemNoSistema() {
     try {
       const r = await fetch('/api/dashboard/equipe/sistema-de-gestao?o=sugestoes', { cache: 'no-store' });
       const j = await r.json().catch(() => ({}));
+      if (r.status === 403) {
+        // conserto 131-0 A (juiz P5): a lista de produtores é só de quem administra a corretora
+        setProdutores([]);
+        setAvisoProdutores('Só quem administra a corretora vê os produtores da InfoCap.');
+        return;
+      }
       if (j?.status !== 'ok') {
         setProdutores([]);
         setAvisoProdutores(

@@ -383,6 +383,131 @@ def test_g_senha_recusada_no_agger_de_pessoa_bloqueia_e_falha_na_primeira(ambien
     assert g not in obtidas(amb)
 
 
+class _SessaoIndefinida(Exception):
+    """O 3º desfecho do login: nem entrou, nem recusou a senha, nem estava ocupada (dublê do `agger_sessao`)."""
+
+
+def test_conserto_b1_login_sem_desfecho_no_agger_de_pessoa_pausa_e_falha_na_primeira(ambiente):
+    """🔴 conserto 131-0 A (red B1): login SEM DESFECHO no Agger de uma pessoa → pausa a conta e o cálculo FALHA com o
+    motivo, na 1ª — nunca volta à fila para logar de novo no login dela, nunca cai no Agger da corretora.
+    Controle: a mesma falha no Agger da CORRETORA volta à fila com espera e a conta segue ativa (robô dedicado)."""
+    amb = ambiente
+    a = TM.empresa(amb)
+    g = conta_global(amb, a)
+    ma = membro(amb, a)
+    pa = conta_da_pessoa(amb, a, ma)
+    aberto = calcular(amb, a, servico="cotacao", solicitante_user_id=ma)
+    amb.mundo.login[pa] = _SessaoIndefinida
+    mod = SimpleNamespace(SessaoOcupada=TM.SessaoOcupada, CredencialRecusada=TM.CredencialRecusada,
+                          SessaoIndefinida=_SessaoIndefinida)
+    for vez in range(3):
+        m = TM.motor(amb, f"m{vez}")
+        m._sessao_mod = mod
+        TM.rodar(m.uma_volta())
+        TM.rodar(m.desligar())
+        amb.relogio.avancar(16 * 60)
+    assert len([x for x in amb.mundo.obter if x[1] == pa]) == 1, "insistiu no login de uma pessoa"
+    assert TM.conta(amb, pa)["robo_estado"] == "pausado"
+    [c] = calculos(amb, aberto.pedido_id)
+    assert c["status"] == "falhou" and c["erro"].startswith("agger_da_pessoa_sem_resposta"), c["erro"]
+    assert g not in obtidas(amb), "caiu no Agger da corretora"
+    # a pessoa (ou o admin) religa pela tela — a pausa do motor tem volta
+    CR.agir_do_membro(supa(amb), a, ma, "religar", por_user_id=ma)
+    assert TM.conta(amb, pa)["robo_estado"] == "ativo"
+
+    # CONTROLE: o Agger da CORRETORA com a mesma falha — volta à fila (com espera) e a conta segue ativa
+    b = TM.empresa(amb)
+    gb = conta_global(amb, b)
+    aberto_b = calcular(amb, b, servico="cotacao", solicitante_user_id=membro(amb, b))
+    amb.mundo.login[gb] = _SessaoIndefinida
+    m = TM.motor(amb, "mb")
+    m._sessao_mod = mod
+    TM.rodar(m.uma_volta())
+    TM.rodar(m.desligar())
+    assert TM.conta(amb, gb)["robo_estado"] == "ativo"
+    assert [x["status"] for x in calculos(amb, aberto_b.pedido_id)] == ["na_fila"]
+    # e o motor nunca pausa a conta da corretora, nem chamado à mão (a transição é só do Agger de pessoa)
+    with pytest.raises(ValueError):
+        ROB.marcar_estado(supa(amb), TM.conta(amb, gb), ROB.PAUSADO)
+
+
+def test_conserto_p3_as_tres_vezes_contam_so_quando_a_pessoa_estava_no_agger(ambiente):
+    """🔴 conserto 131-0 A (juiz P3): duas tomadas perdidas por OUTRA causa (o login caiu por um erro qualquer) e só
+    depois a pessoa no próprio login — isso é UMA vez, não três: o cálculo volta à fila. Antes, `tentativas` (3) fazia
+    o cálculo falhar afirmando "a dona estava no login nas 3 tentativas" — falso. Ele falha na 3ª vez REAL.
+    Controle: `test_g_pessoa_no_proprio_agger_tres_vezes_o_calculo_falha_com_o_motivo` (3 vezes reais → falha)."""
+    amb = ambiente
+    a = TM.empresa(amb)
+    g = conta_global(amb, a)
+    ma = membro(amb, a)
+    pa = conta_da_pessoa(amb, a, ma)
+    aberto = calcular(amb, a, servico="cotacao", solicitante_user_id=ma)
+    [cid] = [c["id"] for c in calculos(amb, aberto.pedido_id)]
+
+    def c():
+        return next(x for x in amb.banco.linhas("multicalculo_calculos") if x["id"] == cid)
+
+    amb.mundo.login[pa] = RuntimeError                 # outra causa: o login caiu (nem pessoa, nem senha)
+    for vez in (1, 2):
+        TM.rodar(TM.motor(amb, f"x{vez}").uma_volta())
+        assert (c()["status"], c()["tentativas"]) == ("na_fila", vez)
+        amb.relogio.avancar(16 * 60)
+    amb.mundo.login[pa] = TM.SessaoOcupada             # agora sim: a pessoa está no Agger — a 1ª vez dela
+    TM.rodar(TM.motor(amb, "o1").uma_volta())
+    assert c()["tentativas"] == 3 and c()["status"] == "na_fila", (c()["status"], c().get("erro"))
+    for vez in (2, 3):                                 # a 2ª e a 3ª vez REAIS
+        amb.relogio.avancar(MOT.OCUPADA_MIN * 60 + 1)
+        TM.rodar(TM.motor(amb, f"o{vez}").uma_volta())
+    assert c()["status"] == "falhou" and c()["erro"].startswith("agger_da_pessoa_em_uso"), c()["erro"]
+    ev = [e for e in amb.banco.linhas("multicalculo_eventos")
+          if e["calculo_id"] == cid and e["tipo"] == MOT.TIPO_PESSOA_EM_USO]
+    assert len(ev) == 3 and all(e["company_id"] == a for e in ev)
+    assert g not in obtidas(amb)
+
+
+def test_conserto_p2_juiz_dois_cliques_em_conectar_a_corrida_vira_a_frase(ambiente, monkeypatch):
+    """🔴 conserto 131-0 A (juiz P2): dois cliques em "conectar" ao mesmo tempo — os dois passam pela conferência
+    (`conta_do_membro` ainda vazia) e o índice único `uq_portal_accounts_membro_por_pessoa` segura o segundo. Antes:
+    um erro 500 genérico. Agora: a frase. Controle: a primeira conexão (sem corrida) grava."""
+    amb = ambiente
+    a = TM.empresa(amb)
+    ma = membro(amb, a)
+    s = supa(amb)
+    feita = CR.cadastrar_do_membro(s, a, ma, "pessoa-1@exemplo.invalid", SENHA_A, ma, cifrar=lambda t: "cif:" + t)
+    assert feita["id"] and feita["uso"] == "membro"                      # controle: a 1ª grava
+    monkeypatch.setattr(CR, "conta_do_membro", lambda *_a, **_k: None)    # a corrida: a conferência não viu a 1ª
+    with pytest.raises(CR.Recusa) as e:
+        CR.cadastrar_do_membro(s, a, ma, "pessoa-2@exemplo.invalid", SENHA_B, ma, cifrar=lambda t: "cif:" + t)
+    assert str(e.value) == CR.RECUSA_JA_CONECTADO
+    assert len([c for c in amb.banco.linhas("portal_accounts") if c.get("dono_user_id") == ma]) == 1
+
+
+def test_conserto_b2_o_canal_nunca_pede_cotacao_nem_renovacao(ambiente):
+    """🔴 conserto 131-0 A (red B2): cotação e renovação são trabalho DA PRÓPRIA corretora (podem sair no Agger de uma
+    pessoa dela). O canal — mesmo com adesão ativa — só pede o Quem Cobra Menos; e a corretora pede só para ELA.
+    Nada é gravado na recusa. Controle: o QCM do canal e a renovação da própria corretora passam."""
+    from app.services.multicalculo.porta import NaoAutorizado
+
+    amb = ambiente
+    canal, a, b = TM.empresa(amb), TM.empresa(amb), TM.empresa(amb)
+    TM._canal_com_adesao(amb, canal, [a])
+    conta_global(amb, a)
+    ma = membro(amb, a)
+    pa = conta_da_pessoa(amb, a, ma)
+    antes = len(amb.banco.linhas("multicalculo_pedidos"))
+    for servico, quem in (("renovacao", {"dono_user_id": ma}), ("cotacao", {"solicitante_user_id": ma})):
+        with pytest.raises(NaoAutorizado):
+            calcular(amb, canal, corretoras=[a], servico=servico, **quem)
+        with pytest.raises(NaoAutorizado):                         # a corretora pedindo para OUTRA
+            calcular(amb, b, corretoras=[a], servico=servico, **quem)
+    assert len(amb.banco.linhas("multicalculo_pedidos")) == antes, "a recusa gravou um pedido"
+    # CONTROLE: o canal pede o QCM (nunca no Agger da pessoa) e a própria corretora pede a renovação no Agger do dono
+    q = calcular(amb, canal, corretoras=[a], servico="qcm")
+    assert {c["conta_exigida_id"] for c in calculos(amb, q.pedido_id)} == {None}
+    r = calcular(amb, a, servico="renovacao", dono_user_id=ma)
+    assert {c["conta_exigida_id"] for c in calculos(amb, r.pedido_id)} == {pa}
+
+
 # =====================================================================================================================
 # (h) duas corretoras — e o cadastro, a tela e o desligar
 # =====================================================================================================================

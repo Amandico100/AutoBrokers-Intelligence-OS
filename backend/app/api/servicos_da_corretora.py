@@ -32,7 +32,14 @@ _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4
 #: os ramos que a tela mostra, na ordem da tela (o código é o do Agger, como o jsonb guarda)
 RAMOS_DA_TELA = (("31", "Automóvel"), ("16", "Condomínio"), ("2", "Residencial"), ("18", "Empresarial"))
 #: o que o corpo do PUT pode trazer — qualquer outra chave é recusada
-_CHAVES_DO_PUT = frozenset({"company_id", "atualizado_por", "servicos", "preferencias_de_seguradoras"})
+_CHAVES_DO_PUT = frozenset({"company_id", "atualizado_por", "servicos", "preferencias_de_seguradoras", "versao"})
+#: conserto 131-0 A (juiz P1 · red P2): a frase do conflito — dois admins salvando ao mesmo tempo
+FRASE_DO_CONFLITO = ("Outra pessoa salvou os serviços antes de você. Recarregue a página para ver o que mudou e salve "
+                     "de novo — nada do que você mandou foi gravado.")
+
+
+class Conflito(Exception):
+    """A linha mudou entre a leitura da tela e a gravação (a versão enviada não é mais a do banco)."""
 
 #: os links de cada passo da ordem guiada (telas que já existem)
 _LINK_CONECTORES = "/dashboard/personalizacao/conectores"
@@ -68,8 +75,21 @@ def qcm_aderido(db: Any, company_id: str) -> bool:
 
 
 def _linha(db: Any, company_id: str) -> Optional[Dict[str, Any]]:
-    linhas = _dados(db.table(CFG.TABELA).select("company_id, config").eq("company_id", company_id).limit(1).execute())
+    linhas = _dados(db.table(CFG.TABELA).select("company_id, config, atualizado_em")
+                    .eq("company_id", company_id).limit(1).execute())
     return next((l for l in linhas if str(l.get("company_id", "")).lower() == company_id), None)
+
+
+def _versao(linha: Optional[Dict[str, Any]]) -> Optional[str]:
+    """A VERSÃO da linha da corretora = o `atualizado_em` como o banco o devolveu (None: a corretora ainda não tem
+    linha). A tela lê com o GET e devolve no PUT — concorrência otimista (conserto 131-0 A, juiz P1 · red P2)."""
+    v = (linha or {}).get("atualizado_em")
+    return str(v) if v else None
+
+
+def _duplicada(exc: Exception) -> bool:
+    texto = f"{getattr(exc, 'code', '')} {exc}".lower()
+    return "23505" in texto or "duplicate key" in texto
 
 
 def _efetivo(cfg: Dict[str, Any], servico: str) -> Dict[str, Any]:
@@ -109,6 +129,7 @@ def retrato(db: Any, company_id: str) -> Dict[str, Any]:
         "faixas": {"antecedencia_dias_max": CFG.ANTECEDENCIA_DIAS_MAX,
                    "conta_global_dias_max": CFG.CONTA_GLOBAL_DIAS_MAX},
         "configurado": bool(sobreposto),
+        "versao": _versao(linha),
     }
 
 
@@ -128,16 +149,22 @@ async def ler(company_id: str, x_key: Optional[str] = Header(default=None, alias
 # ---------------------------------------------------------------------------------------------------------------------
 # escrita
 # ---------------------------------------------------------------------------------------------------------------------
-def gravar(db: Any, company_id: str, *, servicos: Any = None, preferencias_de_seguradoras: Any = None,
-           atualizado_por: Optional[str] = None) -> Dict[str, Any]:
+def gravar(db: Any, company_id: str, *, versao: Optional[str], servicos: Any = None,
+           preferencias_de_seguradoras: Any = None, atualizado_por: Optional[str] = None) -> Dict[str, Any]:
     """Grava SÓ `servicos.<serviço>` (cada serviço enviado substitui o bloco dele; os outros ficam) e as preferências
-    comuns. O resto da linha da corretora fica como estava. Recusa (`ValueError`) com a lista de erros."""
+    comuns. O resto da linha da corretora fica como estava. Recusa (`ValueError`) com a lista de erros.
+
+    🔴 conserto 131-0 A (juiz P1 · red P2): `versao` é a que a tela LEU (`retrato()['versao']`). Grava SÓ se a linha
+    ainda está nela — `update … where company_id = … and atualizado_em = versao`; sem linha, um `insert` que o banco
+    recusa se outra pessoa criou antes. Mudou no meio → `Conflito` e NADA é gravado (dois admins nunca se apagam)."""
     erros = CFG.erros_da_edicao(servicos, preferencias_de_seguradoras)
     if servicos is None and preferencias_de_seguradoras is None:
         erros.append("nada para gravar: envie servicos e/ou preferencias_de_seguradoras")
     if erros:
         raise ValueError("; ".join(erros))
     linha = _linha(db, company_id)
+    if (str(versao) if versao else None) != _versao(linha):
+        raise Conflito(FRASE_DO_CONFLITO)
     nova = dict((linha or {}).get("config") or {})
     if servicos is not None:
         blocos = dict(nova.get("servicos") or {}) if isinstance(nova.get("servicos"), dict) else {}
@@ -157,11 +184,20 @@ def gravar(db: Any, company_id: str, *, servicos: Any = None, preferencias_de_se
                 bloco["excecoes_do_modo"]):
             raise ValueError(f"servicos.{s}.excecoes_do_modo não sobreviveu à leitura")
     autor = str(atualizado_por or "").strip().lower()
-    db.table(CFG.TABELA).upsert({
-        "company_id": company_id, "config": nova,
-        "atualizado_em": datetime.now(timezone.utc).isoformat(),
-        "atualizado_por": autor if _UUID.match(autor) else None,
-    }, on_conflict="company_id").execute()
+    patch = {"config": nova, "atualizado_em": datetime.now(timezone.utc).isoformat(),
+             "atualizado_por": autor if _UUID.match(autor) else None}
+    if linha is None:
+        try:
+            db.table(CFG.TABELA).insert({"company_id": company_id, **patch}).execute()
+        except Exception as e:  # noqa: BLE001
+            if _duplicada(e):
+                raise Conflito(FRASE_DO_CONFLITO) from None
+            raise
+    else:
+        feito = _dados(db.table(CFG.TABELA).update(patch).eq("company_id", company_id)
+                       .eq("atualizado_em", linha["atualizado_em"]).execute())
+        if not feito:
+            raise Conflito(FRASE_DO_CONFLITO)
     return retrato(db, company_id)
 
 
@@ -178,10 +214,16 @@ async def salvar(request: Request, x_key: Optional[str] = Header(default=None, a
     if fora:
         raise HTTPException(status_code=422, detail=f"chave fora da lista: {', '.join(fora)}")
     cid = _cid(body.get("company_id"))
+    if "versao" not in body:
+        # a tela manda a versão que leu (null quando a corretora ainda não tem linha) — sem ela não há como saber se
+        # outra pessoa salvou no meio
+        raise HTTPException(status_code=422, detail="falta a versão que a tela leu: recarregue a página")
     try:
-        return {"ok": True, **gravar(_db(), cid, servicos=body.get("servicos"),
+        return {"ok": True, **gravar(_db(), cid, versao=body.get("versao"), servicos=body.get("servicos"),
                                      preferencias_de_seguradoras=body.get("preferencias_de_seguradoras"),
                                      atualizado_por=body.get("atualizado_por"))}
+    except Conflito as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:  # noqa: BLE001

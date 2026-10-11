@@ -639,11 +639,20 @@ def test_9_o_nome_do_canal_na_cotacao_vem_da_config(monkeypatch):
         return True
 
     monkeypatch.setattr(cotacao, "_avisar", _avisar)
-    monkeypatch.setattr(CFG, "carregar", lambda cid, db: CFG.mesclar({"canal": {"nome": "Canal Ficticio"}}))
+    # conserto 131-0 A (juiz P7): o dublê tem a assinatura REAL do `carregar` (com `servico`) — o desvio por
+    # assinatura saiu do `config_do_qcm`; e o canal pede o manual do QCM
+    pedidos = []
+
+    def _carregar(cid, db, servico=None):
+        pedidos.append(servico)
+        return CFG.mesclar({"canal": {"nome": "Canal Ficticio"}})
+
+    monkeypatch.setattr(CFG, "carregar", _carregar)
     asyncio.run(cotacao.pedir_ajuda_humana(None, CID, TEL, {"primeiro_nome": "Pessoa"}, motivo="teste"))
     assert avisos and avisos[0].startswith("Canal Ficticio —")
+    assert pedidos and set(pedidos) == {"qcm"}
     # controle: config ilegível → o padrão do produto (o aviso não deixa de sair)
-    def _quebra(cid, db):
+    def _quebra(cid, db, servico=None):
         raise CFG.ConfigIndisponivel("simulado")
     monkeypatch.setattr(CFG, "carregar", _quebra)
     asyncio.run(cotacao.pedir_ajuda_humana(None, CID, TEL, {}, motivo="teste"))

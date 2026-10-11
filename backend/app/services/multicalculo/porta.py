@@ -61,6 +61,8 @@ ORIGENS_DO_RE: Tuple[str, ...] = ("auxiliar", "teste")
 #: SAI do serviço: o Quem Cobra Menos é o canal; a cotação e a renovação são trabalho da corretora (prioridade menor)
 SERVICOS: Tuple[str, ...] = ("qcm", "cotacao", "renovacao")
 ORIGEM_DO_SERVICO: Dict[str, str] = {"qcm": "canal", "cotacao": "auxiliar", "renovacao": "auxiliar"}
+#: os serviços que só a PRÓPRIA corretora pede para si (podem sair no Agger de uma pessoa dela — conserto red B2)
+SERVICOS_DA_CORRETORA: Tuple[str, ...] = ("cotacao", "renovacao")
 KIND_CANAL = "platform_canal"
 KIND_CORRETORA = "client"
 ENV_CANARIO = "AUTOBROKERS_CANARIO"
@@ -458,6 +460,11 @@ class MulticalculoProvider:
                                    f"({RAMO_AUTO}); o RE sai pela carteira da corretora")
 
         kind = await self._autorizar(company_id=company_id, corretoras=alvo)
+        if servico in SERVICOS_DA_CORRETORA and (kind != KIND_CORRETORA or alvo != [company_id]):
+            # 🔴 conserto 131-0 A (red B2): cotação e renovação são trabalho DA PRÓPRIA corretora (o Agger de uma pessoa
+            # dela pode ser usado). Ninguém de fora — nem o canal com adesão — pede esses serviços: o filtro mora AQUI,
+            # na porta, e não na confiança em quem chamou (CLAUDE.md §7). O canal calcula só o Quem Cobra Menos (`qcm`)
+            raise NaoAutorizado(f"o serviço {servico} só é pedido pela própria corretora, para ela mesma")
         if ramo != RAMO_AUTO:
             if kind == KIND_CANAL:
                 raise RamoNaoSuportado("o canal calcula só o AUTO nesta versão")

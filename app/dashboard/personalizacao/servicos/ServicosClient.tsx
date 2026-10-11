@@ -32,6 +32,8 @@ type DadosServicos = {
   efetivo: Partial<Record<Servico, Efetivo>>;
   padrao: Partial<Record<Servico, Efetivo>>;
   faixas: { antecedencia_dias_max: number; conta_global_dias_max: number };
+  /** a versão que esta tela leu — volta no salvar; se outra pessoa salvou no meio, o servidor recusa (409) */
+  versao?: string | null;
 };
 type Passo = { chave: string; titulo: string; estado: string; detalhe: string; link: string };
 type Prontidao = { passos: Passo[]; prontos: number; total: number } | null;
@@ -120,11 +122,13 @@ export function ServicosClient() {
   const [rascunhos, setRascunhos] = useState<Partial<Record<Servico, Rascunho>>>({});
   const [salvando, setSalvando] = useState(false);
   const [aviso, setAviso] = useState('');
+  const [conflito, setConflito] = useState(false);
 
   const aplicar = useCallback((j: { servicos?: DadosServicos; prontidao?: Prontidao } | DadosServicos) => {
     const d = ('efetivo' in j ? j : j.servicos) as DadosServicos | undefined;
     if (!d || !d.efetivo) return;
     setDados(d);
+    setConflito(false);
     setRascunhos(Object.fromEntries(d.servicos.map((s) => [s, rascunhoDe(d, s)])));
     if ('prontidao' in j && j.prontidao !== undefined) setProntidao(j.prontidao ?? null);
   }, []);
@@ -167,7 +171,7 @@ export function ServicosClient() {
       if (Object.keys(reaj).length) ren.reajuste_basica_pct = reaj;
       if (Object.keys(ren).length) bloco.renovacao = ren;
     }
-    const corpo: Record<string, unknown> = { servicos: { [aba]: bloco } };
+    const corpo: Record<string, unknown> = { servicos: { [aba]: bloco }, versao: dados.versao ?? null };
     if (r.igualParaTodos) corpo.preferencias_de_seguradoras = r.preferencias;
     setSalvando(true);
     try {
@@ -175,7 +179,12 @@ export function ServicosClient() {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { setAviso(typeof j?.detail === 'string' ? j.detail : j?.error || 'Não consegui salvar.'); return; }
+      if (!res.ok) {
+        // 409: outra pessoa salvou antes — o rascunho fica na tela; recarregar mostra o que ela gravou
+        setConflito(res.status === 409);
+        setAviso(typeof j?.detail === 'string' ? j.detail : j?.error || 'Não consegui salvar.');
+        return;
+      }
       aplicar(j);
       setAviso(`Regras da ${NOME_DO_SERVICO[aba]} salvas.`);
       carregar();
@@ -302,7 +311,15 @@ export function ServicosClient() {
             >
               {salvando ? 'Salvando…' : `Salvar regras da ${NOME_DO_SERVICO[aba]}`}
             </button>
-            {aviso && <p className="text-[13px] text-muted-foreground">{aviso}</p>}
+            {aviso && <p className={`text-[13px] ${conflito ? 'text-red-600' : 'text-muted-foreground'}`}>{aviso}</p>}
+            {conflito && (
+              <button
+                onClick={() => { setAviso(''); carregar(); }}
+                className="min-h-[44px] rounded-lg border border-border px-4 text-sm font-medium"
+              >
+                Recarregar
+              </button>
+            )}
           </div>
           <p className="text-[11px] text-faint">
             O AutoBrokers passa a seguir estas regras quando a {NOME_DO_SERVICO[aba]} automática estiver ligada na sua corretora.

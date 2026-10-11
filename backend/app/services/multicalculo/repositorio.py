@@ -106,8 +106,11 @@ class RepositorioMulticalculo:
 
     # ------------------------------------------------------------------ leitura (sempre do solicitante)
     def pedido(self, *, company_id: str, pedido_id: str) -> Optional[Dict[str, Any]]:
+        # conserto 131-0 A (red P1): `servico` e `solicitante_user_id` (migration 20261011_04) — a proposta da corretora
+        # lê o manual do SERVIÇO do pedido (`proposta.montar_proposta`); sem eles ela caía sempre na base
         linhas = _dados(self.db.table(PEDIDOS)
-                        .select("id, company_id, origem, ramo, opcoes, corretoras, quadro_s, status, criado_em")
+                        .select("id, company_id, origem, ramo, opcoes, corretoras, quadro_s, status, criado_em, "
+                                "servico, solicitante_user_id")
                         .eq("id", str(pedido_id)).eq("company_id", str(company_id)).limit(1).execute())
         return linhas[0] if linhas else None
 

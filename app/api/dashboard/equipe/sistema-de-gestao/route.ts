@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveSessionCompany } from '@/lib/vault/server';
 import { porteiroDeConfiguracao, registrarNaAuditoria } from '@/lib/admin/porteiro-de-configuracao';
+import { requireCompanyMember } from '@/lib/admin/admin-auth';
 import { getBackendUrl } from '@/lib/backend-url';
 
 export const dynamic = 'force-dynamic';
@@ -16,8 +17,9 @@ export const dynamic = 'force-dynamic';
  * POST { acao: 'regra', regra }            (regra null = voltar ao padrão do sistema)
  * POST { acao: 'medir', dias? }            → a régua (só contagens; nunca nome de cliente)
  *
- * 🔴 O `company_id` vem SEMPRE da sessão — o do corpo é ignorado. Ler: membro da corretora ativa
- * (`resolveSessionCompany`). Escrever e medir: o porteiro (origem + papel administrativo DA corretora ativa) e a
+ * 🔴 O `company_id` vem SEMPRE da sessão — o do corpo é ignorado. Ler os vínculos: membro da corretora ativa
+ * (`resolveSessionCompany`). Ler as SUGESTÕES: papel administrativo (`requireCompanyMember({ write: true })` — conserto
+ * 131-0 A, juiz P5): elas trazem os nomes dos produtores da InfoCap e cada abertura é uma ida à InfoCap. Escrever e medir: o porteiro (origem + papel administrativo DA corretora ativa) e a
  * auditoria (só O QUE mudou: nunca nome de produtor nem de pessoa).
  */
 function backendHeaders(): Record<string, string> {
@@ -39,7 +41,10 @@ export async function GET(req: NextRequest) {
   const o = req.nextUrl.searchParams.get('o') || 'vinculos';
   try {
     if (o === 'sugestoes') {
-      const res = await fetch(`${getBackendUrl()}${BASE}/sugestoes?company_id=${cid}`, {
+      const auth = await requireCompanyMember({ write: true });
+      if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+      // a corretora é a do PAPEL conferido (a mesma resolução do porteiro) — nunca a do pedido
+      const res = await fetch(`${getBackendUrl()}${BASE}/sugestoes?company_id=${encodeURIComponent(auth.ctx.companyId)}`, {
         headers: backendHeaders(),
         cache: 'no-store',
       });

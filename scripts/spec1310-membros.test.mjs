@@ -489,5 +489,40 @@ async function exigir(sessao, write, banco) {
   assert('⑤ nenhum rótulo de papel escrito à mão sobrou', !/<option value="(member|attendant|admin_company)">/.test(tela));
 }
 
+// ⑥ conserto 131-0 A (juiz P5) — as SUGESTÕES do sistema de gestão (nomes dos produtores da InfoCap + uma ida à
+// InfoCap por abertura) só para quem administra. A rota REAL sobre o requireCompanyMember REAL.
+{
+  async function sugestoes(sessao, banco) {
+    const auth = carregarAuth(banco, sessao);
+    const mod = carregarTS('app/api/dashboard/equipe/sistema-de-gestao/route.ts', (id) => {
+      if (id === 'next/server') return { NextResponse: { json: (b, init) => ({ body: b, status: init?.status ?? 200 }) } };
+      if (id === '@/lib/admin/admin-auth') return auth;
+      if (id === '@/lib/vault/server') return { resolveSessionCompany: async () => ({ userId: sessao.userId, companyId: A }) };
+      if (id === '@/lib/admin/porteiro-de-configuracao') return { porteiroDeConfiguracao: async () => null, registrarNaAuditoria: async () => {} };
+      if (id === '@/lib/backend-url') return { getBackendUrl: () => 'http://backend.teste' };
+      return undefined;
+    });
+    const fetchOriginal = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      chamadasAoBackend.push({ url });
+      return { ok: true, status: 200, json: async () => ({ status: 'ok', produtores: [] }) };
+    };
+    try {
+      const req = { nextUrl: { searchParams: new URLSearchParams('o=sugestoes') }, headers: { get: () => null } };
+      return await mod.GET(req);
+    } finally {
+      globalThis.fetch = fetchOriginal;
+    }
+  }
+  chamadasAoBackend.length = 0;
+  const r1 = await sugestoes(sessaoSemEmpresaAtiva(MEMBRO_A), bancoFalso(MUNDO));
+  assert('🔴 ⑥ membro comum NÃO lê as sugestões (403) e a InfoCap não é chamada',
+    r1.status === 403 && chamadasAoBackend.length === 0);
+  const r2 = await sugestoes(sessaoSemEmpresaAtiva(ADMIN_A), bancoFalso(MUNDO));
+  assert('⑥ controle: o administrador lê as sugestões da corretora DELE',
+    r2.status === 200 && chamadasAoBackend.length === 1
+    && chamadasAoBackend[0].url === `http://backend.teste/api/contas-da-corretora/sistema-de-gestao/sugestoes?company_id=${A}`);
+}
+
 console.log(`${pass} ok, ${fail} falha(s)`);
 process.exit(fail ? 1 : 0);

@@ -392,6 +392,12 @@ TRANSICOES_DO_MOTOR: Dict[str, tuple] = {
     BLOQUEADO: (ATIVO, OCUPADA, TESTE),
     PAUSADO: (TESTE,),
 }
+#: 🔴 conserto 131-0 A (red B1): o Agger de uma PESSOA (`uso='membro'`) cujo login ficou sem desfecho — o motor o PAUSA
+#: (como a conta `teste`, que também é login de pessoa) em vez de insistir. Só para `membro`: a conta da corretora
+#: (`global`) nunca é pausada pelo motor. A volta é da pessoa ou do admin (`conta_do_robo.agir_do_membro('religar')`).
+TRANSICOES_DO_MOTOR_NA_PESSOA: Dict[str, tuple] = {
+    PAUSADO: (ATIVO, OCUPADA),
+}
 
 
 def marcar_estado(supa, conta: Dict[str, Any], estado: str, *, agora: Optional[datetime] = None,
@@ -401,7 +407,10 @@ def marcar_estado(supa, conta: Dict[str, Any], estado: str, *, agora: Optional[d
     if estado not in ESTADOS:
         raise ValueError(f"estado de robô desconhecido: {estado!r}")
     de = conta.get("robo_estado")
-    if de not in TRANSICOES_DO_MOTOR.get(estado, ()):
+    permitidas = TRANSICOES_DO_MOTOR.get(estado, ())
+    if conta.get("uso") == MEMBRO:
+        permitidas = permitidas + TRANSICOES_DO_MOTOR_NA_PESSOA.get(estado, ())
+    if de not in permitidas:
         raise ValueError(f"o motor não faz a transição {de!r} → {estado!r}")
     patch: Dict[str, Any] = {"robo_estado": estado}
     if estado == OCUPADA:
@@ -426,6 +435,6 @@ __all__: tuple = (
     "GLOBAL", "MEMBRO", "USO_TESTE", "USOS", "SERVICOS_DA_PESSOA", "membro_ativo",
     "TETO_PADRAO_POR_HORA", "LEASE_VENCE_S", "dentro_da_janela", "conta_elegivel", "teto_da_conta",
     "calculos_na_ultima_hora", "candidatos", "adquirir", "escolher", "renovar", "liberar",
-    "marcar_estado", "conta_publica", "TRANSICOES_DO_MOTOR",
+    "marcar_estado", "conta_publica", "TRANSICOES_DO_MOTOR", "TRANSICOES_DO_MOTOR_NA_PESSOA",
 )
 

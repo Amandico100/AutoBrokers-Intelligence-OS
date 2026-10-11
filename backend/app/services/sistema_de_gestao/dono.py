@@ -335,19 +335,16 @@ def aplicar_regra(linhas: List[Dict[str, Any]], regra: Regra) -> List[_Candidato
 # A pessoa por trás do código
 # --------------------------------------------------------------------------------------------------------------------
 def membro_ativo(db: Any, company_id: str, user_id: str) -> bool:
-    """`company_members.status='active'` NA corretora E `users_v2.status='active'` sem `deleted_at`."""
+    """`company_members.status='active'` NA corretora E `users_v2.status='active'` sem `deleted_at`.
+    🔴 conserto 131-0 A (juiz P7 · CLAUDE.md §5): a regra é UMA — `robos.membro_ativo`, a mesma que o motor e o
+    `qual_agger` usam para o Agger de uma pessoa. Aqui só se confere a FORMA do id e se entrega o cliente certo."""
+    from portal_worker.multicalculo import robos
+
     cid = _uuid(company_id)
     uid = str(user_id or "").strip().lower()
     if not _UUID.match(uid):
         return False
-    vinc = _dados(_t(db, "company_members").select("user_id, company_id, status")
-                  .eq("company_id", cid).eq("user_id", uid).limit(1).execute())
-    if not any(_mesma(v.get("company_id"), cid) and _mesma(v.get("user_id"), uid) and v.get("status") == "active"
-               for v in vinc):
-        return False
-    pessoa = _dados(_t(db, "users_v2").select("id, status, deleted_at").eq("id", uid).limit(1).execute())
-    return any(_mesma(p.get("id"), uid) and p.get("status") == "active" and not p.get("deleted_at")
-               for p in pessoa)
+    return robos.membro_ativo(db if hasattr(db, "table") else getattr(db, "client", db), cid, uid)
 
 
 def membro_do_produtor(db: Any, company_id: str, sistema: str, codfil: Any, codigo: Any) -> Optional[str]:

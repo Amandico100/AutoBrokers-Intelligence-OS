@@ -71,15 +71,11 @@ def decifrar_contato(token: str) -> Dict[str, Any]:
 
 
 def config_do_qcm(company_id: str, db: Any) -> Dict[str, Any]:
-    """SPEC-131-0 A · §5.3: o canal lê o manual do serviço do comparador (`servico='qcm'`). A F4 acrescenta o argumento ao
-    `config.carregar`; antes dela (assinatura sem `servico`) vale a base — o comportamento de hoje."""
-    import inspect
-
+    """SPEC-131-0 A · §5.3: o canal lê o manual do serviço do comparador (`servico='qcm'`) — `config.carregar` é o
+    único leitor (o desvio por assinatura que existia antes da F4 saiu: era código morto — juiz P7)."""
     from app.services.multicalculo import config as CFG
 
-    if "servico" in inspect.signature(CFG.carregar).parameters:
-        return CFG.carregar(company_id, db=db, servico="qcm")
-    return CFG.carregar(company_id, db=db)
+    return CFG.carregar(company_id, db=db, servico="qcm")
 
 
 def nome_do_canal(db: Any, company_id: str) -> str:

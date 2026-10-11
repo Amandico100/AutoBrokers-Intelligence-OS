@@ -51,7 +51,7 @@ class _Resp:
 class _Consulta:
     def __init__(self, banco, tabela):
         self.banco, self.tabela, self.filtros, self.nao_nulos, self.lim = banco, tabela, [], [], None
-        self.colunas, self._upsert = None, None
+        self.colunas, self._upsert, self._insert, self._update = None, None, None, None
 
     @property
     def not_(self):
@@ -85,10 +85,31 @@ class _Consulta:
         self._upsert = (dict(linha), on_conflict)
         return self
 
+    def insert(self, linha):
+        self._insert = dict(linha)
+        return self
+
+    def update(self, patch):
+        self._update = dict(patch)
+        return self
+
     def execute(self):
         if self.banco.quebrado:
             raise RuntimeError("banco fora")
         linhas = self.banco.tabelas.setdefault(self.tabela, [])
+        if self._insert is not None:     # a chave primária company_id: duplicada → o erro do Postgres (23505)
+            nova = self._insert
+            if any(l.get("company_id") == nova.get("company_id") for l in linhas):
+                raise RuntimeError("23505 duplicate key value violates unique constraint")
+            self.banco.escritas.append((self.tabela, copy.deepcopy(nova)))
+            linhas.append(copy.deepcopy(nova))
+            return _Resp([nova])
+        if self._update is not None:     # só as linhas que casam TODOS os filtros (o CAS do atualizado_em)
+            alvo = [l for l in linhas if all(l.get(c) == v for c, v in self.filtros)]
+            for l in alvo:
+                l.update(copy.deepcopy(self._update))
+                self.banco.escritas.append((self.tabela, copy.deepcopy(l)))
+            return _Resp(copy.deepcopy(alvo))
         if self._upsert is not None:
             nova, chave = self._upsert
             self.banco.escritas.append((self.tabela, copy.deepcopy(nova)))
@@ -289,8 +310,10 @@ def _mundo() -> Banco:
     """corretora_a: tudo configurado + aderida ao QCM; corretora_b: nada. Linhas de B com cara de A para pegar vazamento."""
     return Banco(
         multicalculo_config=[{"company_id": A, "config": {"comissao": {"piso": 11.0}, "google_confirmado": None,
-                                                          "servicos": {"renovacao": {"modo": "calcular_entregar"}}}},
-                             {"company_id": B, "config": {"validade": {"padrao_dias": 3}}}],
+                                                          "servicos": {"renovacao": {"modo": "calcular_entregar"}}},
+                              "atualizado_em": "2026-10-10T12:00:00+00:00"},
+                             {"company_id": B, "config": {"validade": {"padrao_dias": 3}},
+                              "atualizado_em": "2026-10-09T12:00:00+00:00"}],
         multicalculo_adesoes=[{"canal_company_id": CANAL, "corretora_company_id": A, "ativa": True}],
         tenant_connections=[
             {"id": "t-a", "company_id": A, "status": "connected", "connector_templates": {"slug": "infocap"}},
@@ -327,7 +350,9 @@ def test_get_devolve_o_sobreposto_e_o_efetivo_e_o_qcm_so_com_adesao(cliente):
 
 def test_put_grava_so_servicos_e_preferencias_e_recusa_chave_fora_da_lista(cliente):
     url, cab = "/api/servicos-da-corretora", cliente.cab
-    bom = {"company_id": A, "atualizado_por": MEMBRO_A1,
+    versao = cliente.get(f"{url}?company_id={A}", headers=cab).json()["versao"]       # a versão que a tela leu
+    assert versao == "2026-10-10T12:00:00+00:00"
+    bom = {"company_id": A, "atualizado_por": MEMBRO_A1, "versao": versao,
            "servicos": {"cotacao": {"modo": "calcular_entregar",
                                     "excecoes_do_modo": [{"ramo": "16", "modo": "calcular"}],
                                     "preferencias_de_seguradoras": {"31": ["porto"]}},
@@ -344,7 +369,8 @@ def test_put_grava_so_servicos_e_preferencias_e_recusa_chave_fora_da_lista(clien
         {**bom, "servicos": {"renovacao": {"renovacao": {"reajuste_basica_pct": {"31": 10}}}}},
         {**bom, "servicos": {"renovacao": {"conta_global_se_vence_em_dias": -1}}},
         {**bom, "preferencias_de_seguradoras": {"99": ["porto"]}},
-        {"company_id": A},                                                                 # nada para gravar
+        {"company_id": A, "versao": versao},                                               # nada para gravar
+        {k: v for k, v in bom.items() if k != "versao"},                                   # sem a versão lida
     ]
     for corpo in recusas:
         r = cliente.put(url, json=corpo, headers=cab)
@@ -369,23 +395,75 @@ def test_put_grava_so_servicos_e_preferencias_e_recusa_chave_fora_da_lista(clien
     linha_b = next(l for l in cliente.banco.tabelas["multicalculo_config"] if l["company_id"] == B)
     assert linha_b["config"] == {"validade": {"padrao_dias": 3}}
     # um serviço enviado substitui SÓ o bloco dele (o da renovação continua)
-    r = cliente.put(url, json={"company_id": A, "servicos": {"cotacao": {"modo": "calcular"}}}, headers=cab)
+    r = cliente.put(url, json={"company_id": A, "versao": r.json()["versao"],
+                               "servicos": {"cotacao": {"modo": "calcular"}}}, headers=cab)
     linha_a = next(l for l in cliente.banco.tabelas["multicalculo_config"] if l["company_id"] == A)
     assert linha_a["config"]["servicos"]["renovacao"]["conta_global_se_vence_em_dias"] == 3
     assert linha_a["config"]["servicos"]["cotacao"] == {"modo": "calcular"} and linha_a["atualizado_por"] is None
     # o que a tela não edita (escrito por outro caminho) sobrevive à gravação da tela
     linha_a["config"]["servicos"]["cotacao"]["validade"] = {"padrao_dias": 4}
-    cliente.put(url, json={"company_id": A, "servicos": {"cotacao": {"modo": "calcular_entregar"}}}, headers=cab)
+    cliente.put(url, json={"company_id": A, "versao": linha_a["atualizado_em"],
+                           "servicos": {"cotacao": {"modo": "calcular_entregar"}}}, headers=cab)
     assert linha_a["config"]["servicos"]["cotacao"] == {"validade": {"padrao_dias": 4}, "modo": "calcular_entregar"}
 
 
 def test_put_numa_corretora_sem_linha_cria_a_linha_dela(cliente):
     cliente.banco.tabelas["multicalculo_config"] = [l for l in cliente.banco.tabelas["multicalculo_config"]
                                                    if l["company_id"] != B]
+    assert cliente.get(f"/api/servicos-da-corretora?company_id={B}", headers=cliente.cab).json()["versao"] is None
     r = cliente.put("/api/servicos-da-corretora", headers=cliente.cab,
-                    json={"company_id": B, "servicos": {"renovacao": {"modo": "calcular_entregar"}}})
+                    json={"company_id": B, "versao": None, "servicos": {"renovacao": {"modo": "calcular_entregar"}}})
     assert r.status_code == 200 and r.json()["efetivo"]["renovacao"]["modo"] == "calcular_entregar"
     assert [l["company_id"] for l in cliente.banco.tabelas["multicalculo_config"]] == [A, B]
+    assert r.json()["versao"]                                                     # a linha nova já tem versão
+
+
+def test_conserto_p2_dois_admins_ao_mesmo_tempo_o_segundo_recebe_conflito_e_nada_se_perde(cliente):
+    """🔴 conserto 131-0 A (juiz P1 · red P2, a reprodução `rt_put.py`): os dois admins abrem a tela (a MESMA versão);
+    um salva a Cotação, o outro a Renovação. Antes: o segundo apagava o primeiro. Agora: o segundo recebe 409 com a
+    frase, nada dele é gravado, e a Cotação do primeiro fica. Controle: o segundo, depois de recarregar, salva."""
+    from app.api import servicos_da_corretora as S
+
+    url, cab = "/api/servicos-da-corretora", cliente.cab
+    lida = cliente.get(f"{url}?company_id={A}", headers=cab).json()["versao"]
+    um = cliente.put(url, headers=cab, json={"company_id": A, "versao": lida,
+                                             "servicos": {"cotacao": {"modo": "calcular_entregar"}}})
+    assert um.status_code == 200 and um.json()["versao"] != lida
+    escritas = len(cliente.banco.escritas)
+    dois = cliente.put(url, headers=cab, json={"company_id": A, "versao": lida,
+                                               "servicos": {"renovacao": {"modo": "calcular_entregar_negociar"}}})
+    assert dois.status_code == 409 and dois.json()["detail"] == S.FRASE_DO_CONFLITO
+    assert len(cliente.banco.escritas) == escritas                                   # nada do segundo foi gravado
+    linha_a = next(l for l in cliente.banco.tabelas["multicalculo_config"] if l["company_id"] == A)
+    assert linha_a["config"]["servicos"]["cotacao"] == {"modo": "calcular_entregar"}   # a edição do 1º ficou
+    # a corrida que a leitura não pega (a linha muda ENTRE a leitura e o update): o CAS do update recusa
+    banco = cliente.banco
+    original = S._linha
+
+    def lida_e_logo_mudada(db, cid):
+        linha = original(db, cid)
+        next(l for l in banco.tabelas["multicalculo_config"] if l["company_id"] == cid)["atualizado_em"] = "outra"
+        return linha
+
+    S._linha = lida_e_logo_mudada
+    try:
+        with pytest.raises(S.Conflito):
+            S.gravar(banco, A, versao=linha_a["atualizado_em"], servicos={"renovacao": {"modo": "calcular"}})
+    finally:
+        S._linha = original
+    # e a corretora SEM linha: duas telas criando ao mesmo tempo — a segunda recebe o conflito, não um erro 500
+    cliente.banco.tabelas["multicalculo_config"] = [l for l in banco.tabelas["multicalculo_config"]
+                                                   if l["company_id"] != B]
+    novo = {"company_id": B, "versao": None, "servicos": {"cotacao": {"modo": "calcular"}}}
+    assert cliente.put(url, headers=cab, json=novo).status_code == 200
+    assert cliente.put(url, headers=cab, json=novo).status_code == 409
+    # CONTROLE: o segundo admin recarrega (versão nova) e salva — a Renovação dele entra e a Cotação do 1º fica
+    nova = cliente.get(f"{url}?company_id={A}", headers=cab).json()["versao"]
+    tres = cliente.put(url, headers=cab, json={"company_id": A, "versao": nova,
+                                               "servicos": {"renovacao": {"modo": "calcular_entregar_negociar"}}})
+    assert tres.status_code == 200, tres.text
+    linha_a = next(l for l in cliente.banco.tabelas["multicalculo_config"] if l["company_id"] == A)
+    assert set(linha_a["config"]["servicos"]) == {"cotacao", "renovacao"}
 
 
 # =====================================================================================================================
@@ -487,6 +565,36 @@ def test_o_caminho_da_proposta_a_renovacao_nao_muda_o_html_do_qcm_e_o_qcm_muda(m
     assert len(datas) == 3 and datas[0] == datas[1]                                   # a renovação não mexeu
     padrao = PADRAO_DO_PRODUTO["validade"]["padrao_dias"]
     assert (datas[0] - datas[2]).days == padrao - 2                                   # o QCM da anfitriã mexeu
+
+
+def test_conserto_p1_a_proposta_da_corretora_le_o_manual_do_servico_do_pedido(monkeypatch):
+    """🔴 conserto 131-0 A (red P1): o pedido DA PRÓPRIA corretora com `servico='renovacao'` → a proposta lê o manual da
+    RENOVAÇÃO (aqui: a validade). Antes, `repo.pedido` não selecionava `servico` e a proposta caía sempre na base.
+    Controle: o MESMO pedido sem serviço (legado) usa a base — a diferença é só o serviço do pedido."""
+    from dubles import mundo_da_proposta as M
+    from app.services.multicalculo.proposta import montar_proposta
+
+    monkeypatch.setenv("PUBLIC_APP_URL", BASE_URL)
+    m = M.montar_mundo(monkeypatch, solicitante="beta")
+    _config_de(m, m.beta)["servicos"] = {"renovacao": {"validade": {"padrao_dias": 9}},
+                                         "cotacao": {"validade": {"padrao_dias": 8}}}
+
+    def validade():
+        modelo = asyncio.run(montar_proposta(m.dono, m.pedido_id, "novo_sem_apolice", None, primeiro_nome="Cliente",
+                                             db=m.db, agora=m.relogio.agora()))
+        return datetime.fromisoformat(modelo["validade_ate"]).date()
+
+    [ped] = [p for p in m.banco.linhas("multicalculo_pedidos") if p["id"] == m.pedido_id]
+    base = validade()                                                    # controle: sem serviço → a base
+    ped["servico"] = "renovacao"
+    renov = validade()
+    ped["servico"] = "cotacao"
+    cot = validade()
+    padrao = PADRAO_DO_PRODUTO["validade"]["padrao_dias"]
+    hoje = m.relogio.agora().date()
+    assert (base - hoje).days == padrao
+    assert (renov - hoje).days == 9, "a proposta da corretora não leu o manual da renovação"
+    assert (cot - hoje).days == 8
 
 
 # =====================================================================================================================

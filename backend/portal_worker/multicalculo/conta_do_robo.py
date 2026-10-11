@@ -494,6 +494,10 @@ def agir_da_corretora(supa, company_id: str, acao: str) -> None:
 PAPEIS_DE_ADMIN = ("owner", "admin", "admin_company", "master_admin")
 
 
+#: a pessoa já tem o Agger dela nesta corretora (a conferência E a corrida pelo índice único dizem o mesmo)
+RECUSA_JA_CONECTADO = ("Esta pessoa já tem um Agger conectado aqui — troque a senha em vez de conectar de novo.")
+
+
 def _rotulo_da_pessoa(dono_user_id: str) -> str:
     """O rótulo da conta de uma pessoa: o id dela (nunca o nome — CLAUDE.md §13.9)."""
     return f"agger-da-pessoa-{dono_user_id}"
@@ -543,7 +547,7 @@ def cadastrar_do_membro(supa, company_id: str, dono_user_id: str, usuario: str, 
     _pode_mexer(supa, company_id, dono_user_id, por_user_id)
     usuario = _login_valido(usuario, vazio="Informe o login do Agger desta pessoa.")
     if conta_do_membro(supa, company_id, dono_user_id) is not None:
-        raise Recusa("Esta pessoa já tem o Agger dela conectado aqui — use 'trocar senha'.")
+        raise Recusa(RECUSA_JA_CONECTADO)
     _login_em_outra_conta(supa, company_id, usuario)
     senha = _senha_valida(senha)
     linha = {"company_id": company_id, "portal_key": PORTAL_KEY, "account_label": _rotulo_da_pessoa(dono_user_id),
@@ -551,7 +555,14 @@ def cadastrar_do_membro(supa, company_id: str, dono_user_id: str, usuario: str, 
              "robo_estado": robos.ATIVO, "robo_teto_por_hora": None, "robo_janela": None,
              "uso": robos.MEMBRO, "dono_user_id": str(dono_user_id)}
     senha = ""  # noqa: F841 — a senha em claro não sobrevive à cifra
-    criada = _dados(supa.table("portal_accounts").insert(linha).execute())
+    try:
+        criada = _dados(supa.table("portal_accounts").insert(linha).execute())
+    except Exception as exc:  # noqa: BLE001 — a corrida perdida (dois cliques/duas telas): o índice único segura
+        # 🔴 conserto 131-0 A (juiz P2): `uq_portal_accounts_membro_por_pessoa` (23505) vira a frase, como em
+        # `dono.vincular` — nunca um erro 500 genérico
+        if "23505" in str(getattr(exc, "code", "")) or "duplicate key" in str(exc).lower():
+            raise Recusa(RECUSA_JA_CONECTADO) from None
+        raise
     linha.pop("secret_encrypted", None)
     return {**linha, "id": criada[0]["id"] if criada else None}
 
