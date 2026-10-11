@@ -13666,8 +13666,8 @@ empresarial. **Custa esquecer:** o empresarial com poucas seguradoras.
 
 ## P-1310-01 · 🤖 A régua real do dono: as duas carteiras e a mutação, no CÓDIGO DO PRODUTO
 `dono.medir_regra` (fonte injetada com o login de cada corretora) — 📊 11/10, arquivo `regua_real.out` do gerente: **Resulta padrão
-99/99** com um dono e 99 conferem; **Resulta com a regra mutada para `ordem 1` → 37/99** (a régua cai, como a mutação exige). As duas
-linhas da AutoFleet (📊 BLOCO 0 por script: 217/217 e 24/217) ainda não tinham saído pelo código do produto ao escrever.
+99/99** com um dono e 99 conferem; **Resulta com a regra mutada para `ordem 1` → 37/99** (a régua cai, como a mutação exige);
+**AutoFleet padrão 217/217**. Só a AutoFleet com a regra mutada (📊 BLOCO 0 por script: 24/217) ainda não tinha saído ao escrever.
 **Destrava:** rodar as 4 medições até o fim e colar no relatório da 131-0-A. **De quem:** 🤖 gerente. **Custa esquecer:** a regra do dono
 fica provada pelo produto numa carteira só — a outra (217 renovações de auto) depende do script do BLOCO 0.
 
