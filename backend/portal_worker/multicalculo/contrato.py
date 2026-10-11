@@ -413,7 +413,10 @@ def chave_no_corpo(ramo: int, grupo: str, campo: str) -> Optional[str]:
     for nome, caminho, _obr in CAMPOS_DO_PEDIDO_RE[ramo][grupo]:
         if nome == campo:
             parte = caminho.rsplit(".", 1)[-1]
-            return parte if caminho.startswith("cotacao.configuracoes.") and "<" not in parte else None
+            # 🔴 costura 129-C: o "<" do caminho-modelo das extras ("…configuracoes.<chave de presets.CHAVES_…[ramo]>")
+            # fica ANTES do último ponto — conferir só a `parte` devolvia "CHAVES_DE_COBERTURA_RE[ramo]>" como chave, e o
+            # robô mandava o dict das extras inteiro sob ela em `configuracoes` (a F1 nunca mandou extras; a F2 sempre)
+            return parte if caminho.startswith("cotacao.configuracoes.") and "<" not in caminho else None
     return None
 
 
@@ -504,6 +507,19 @@ def campos_do_pedido(ramo: int) -> dict:
     raise ValueError(f"ramo {ramo} não implementado (há: {', '.join(str(r) for r in RAMOS)})")
 
 
+# 🔴 costura 129-C (decisão do contrato × a tela, nota 90 × 35): marcada a renovação, a TELA dos 3 ramos passa a exigir
+# QUATRO campos — 📊 formulario_{condominio,residencial,empresarial}.json `campos[].libera_quando`: "renovacao = true
+# (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)". O robô preencheria
+# bônus 0 / sinistros "0" / vigência anterior vazia por conta própria — declarar à seguradora "sem sinistro, bônus 0"
+# sem saber é preço errado e calado (CLAUDE.md §9.5). Faltando qualquer um, o pedido volta como `PedidoIncompleto`.
+# ⚠️ `sinistros_anterior = 0` e `bonus_anterior = 0` são RESPOSTAS (não vazios): `_vazio_re(0)` é falso.
+# E `valor_de_novo` (obrigatório na tela de condomínio/residencial) fica OPCIONAL no pedido, nota 85 × 60: a tela abre
+# com "Sim" já marcado (📊 `padrao_na_tela: "Sim"`) e o robô manda 1 quando o pedido cala (agger_robo
+# `_MOLDE_CONFIGURACOES[*]["valorDeNovo"] = 1`) — o corpo nunca sai sem ele; exigir a pergunta só travaria o corretor.
+CAMPOS_DA_RENOVACAO_NA_TELA: Tuple[str, ...] = ("fim_vigencia_anterior", "seguradora_anterior", "sinistros_anterior",
+                                                 "bonus_anterior")
+
+
 def _vazio_re(v: Any) -> bool:
     return v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, (list, dict)) and not v)
 
@@ -547,8 +563,10 @@ def problemas_do_pedido_re(pedido: Any) -> Tuple[str, ...]:
                     isinstance(x, (int, float)) and not isinstance(x, bool) and x >= 0 for x in v.values())):
                 saida.append(f"{grupo}.{nome}:valor")
     ren = pedido.get("renovacao") if isinstance(pedido.get("renovacao"), dict) else {}
-    if ren.get("renovacao") is True and _vazio_re(ren.get("seguradora_anterior")):
-        saida.append("renovacao.seguradora_anterior")
+    if ren.get("renovacao") is True:
+        for nome in CAMPOS_DA_RENOVACAO_NA_TELA:
+            if _vazio_re(ren.get(nome)):
+                saida.append(f"renovacao.{nome}")
     return tuple(saida)
 
 

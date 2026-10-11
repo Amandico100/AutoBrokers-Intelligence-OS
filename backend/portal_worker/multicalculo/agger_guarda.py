@@ -19,7 +19,8 @@ Instalada no BrowserContext ANTES da 1ª aba (`instalar` recusa contexto com aba
       POST calculo/calcularV2 ........ ids de negócio NULOS = negócio NOVO; ids preenchidos SÓ com os QUATRO
                                        presentes: `cotacao.idIntegracao` em `negocios_do_robo`, `negocio.id` ==
                                        `cotacao.negocioId`, e os dois + `cotacao.id` iguais aos que o Agger deu
-                                       para ESSE negócio (`registrar_ids`) — nunca o negócio de uma pessoa
+                                       para ESSE negócio (`registrar_ids`) — nunca o negócio de uma pessoa ·
+                                       NUNCA com query (`?salvar=true` = "Salvar rascunho": cria negócio — 129-C)
     TUDO O MAIS ..................... abortado e CONTADO. URL com "derrub" é abortada até em leitura.
     WebSocket ....................... fechado (route_web_socket quando a versão do Playwright tem; e um
                                        stub de `window.WebSocket` por init script SEMPRE — a imagem do worker
@@ -194,6 +195,13 @@ def decidir(metodo: str, url: str, corpo: Optional[str], estado: EstadoDaGuarda,
     if caminho.endswith("/usuario/deslogaSessao"):
         return True, "logout"
     if caminho.endswith("/calculo/calcularV2"):
+        # 🔴 costura 129-C (B0-a): "Salvar rascunho" é o MESMO calcularV2 com `?salvar=true` (`saveNegocio` do app) —
+        # CRIA negócio sem calcular. O robô NUNCA põe query no calcularV2 (agger_robo.JS_ENVIAR: `a.api +
+        # '/calculo/calcularV2'`): qualquer query é barrada, e a do rascunho com o motivo dela
+        consulta = urlsplit(url or "").query
+        if consulta:
+            return False, ("salvar_rascunho" if re.search(r"(?:^|&)salvar(?:=|&|$)", consulta, re.I)
+                           else "calcular_com_query")
         ids = ids_de_negocio(corpo)
         if ids is None:
             return False, "corpo_ilegivel"

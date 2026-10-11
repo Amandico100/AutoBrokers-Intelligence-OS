@@ -46,8 +46,8 @@ from ..worker import _inteiro_do_ambiente, _upload_portal_blob, portal_real_enab
 from . import presets as _presets
 from . import robos
 from .contrato import (
-    CONJUNTO_FECHADO, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA, SEGURADORA_RECUSOU, Ajuste, Evento, Oferta,
-    RespostaDaSeguradora, RodadaDoCalculo,
+    CONJUNTO_FECHADO, DADO, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA, RAMO_AUTO, SEGURADORA_RECUSOU,
+    SEM_ATIVIDADE_COMPATIVEL, Ajuste, Evento, Oferta, RespostaDaSeguradora, RodadaDoCalculo,
 )
 
 logger = logging.getLogger("portal_worker.multicalculo")
@@ -761,7 +761,7 @@ class Motor:
                     return
 
     async def _trabalho(self, g: Grupo, conta: Dict[str, Any], perdeu: asyncio.Event) -> None:
-        linha = await self._pedido(g.pedido_id, g.solicitante_company_id, "id, pedido_cifrado")
+        linha = await self._pedido(g.pedido_id, g.solicitante_company_id, "id, pedido_cifrado, ramo")
         pedido: Optional[Dict[str, Any]] = None
         if not g.retomada:
             try:
@@ -778,8 +778,14 @@ class Motor:
             return
 
         if g.retomada:
+            # 🔴 costura 129-C: o Disparo da retomada leva o RAMO do pedido (`multicalculo_pedidos.ramo`) — sem ele o robô
+            # lê um negócio de RE com a lista branca e as famílias do AUTO (a Básica some das ofertas). O auto não passa
+            # nada (o Disparo de sempre, byte a byte)
+            ramo = _ramo_do_pedido(linha)
+            do_ramo = {"ramo": ramo} if ramo != RAMO_AUTO else {}
             disparos = {c["id"]: self.robo.Disparo(negocio_ref=c["negocio_ref"], versao=int(c["versao"]),
-                                                    t0=(_ts(c.get("disparado_em")) or self.agora()).timestamp())
+                                                    t0=(_ts(c.get("disparado_em")) or self.agora()).timestamp(),
+                                                    **do_ramo)
                         for c in g.calculos}
         else:
             disparos = await self._disparar_todos(g, conta, sessao, pedido or {}, perdeu)
@@ -947,6 +953,8 @@ class Motor:
                         continue
                     d = await robo.disparar(sessao, pedido, c.get("coberturas") or {}, negocio_ref=negocio)
             except robo.DisparoRecusado as exc:
+                # costura 129-C (D-129C-04): NENHUMA seguradora casou a atividade — quem saiu é gravado ANTES do `falhou`
+                await self._gravar_sem_atividade(g, c, getattr(exc, "sem_atividade", ()), _ramo_do_pedido(pedido))
                 if getattr(exc, "sessao_morta", False):
                     # nada saiu (401/403 antes do cálculo): a sessão é DESCARTADA e o que não saiu volta à fila
                     g.sessao_morta = True
@@ -968,6 +976,9 @@ class Motor:
             if not await self._checkpoint(g, c, d):
                 perdeu.set()
                 break
+            # costura 129-C (D-129C-04): quem saiu por atividade é gravado JÁ no checkpoint (o `acompanhar` narra de novo
+            # e o upsert por chave o engole) — a retomada reconstrói o Disparo sem essa lista
+            await self._gravar_sem_atividade(g, c, getattr(d, "sem_atividade", ()), getattr(d, "ramo", RAMO_AUTO))
             disparos[c["id"]] = d
             if c.get("opcao") != "ajuste" and negocio is None:
                 negocio = d.negocio_ref
@@ -1115,6 +1126,19 @@ class Motor:
             "tipo_de_pacote": o.tipo_de_pacote if o is not None else None,
             "familia": e.familia, "oferta_id": oferta_id, "t_s": e.t_s,
         })
+
+    async def _gravar_sem_atividade(self, g: Grupo, c: Dict[str, Any], sem: Iterable[Any], ramo: int) -> None:
+        """SPEC-129-C D-129C-04: cada seguradora que o robô tirou do empresarial por não ter atividade inequívoca vira o
+        evento `SEM_ATIVIDADE_COMPATIVEL` (família DADO) — a MESMA chave que o `acompanhar` do robô narra."""
+        for item in sem or ():
+            try:
+                cod, nome = item
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(cod, int) or isinstance(cod, bool):
+                continue
+            e = Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, erro_curto(nome, 120) or None, cod, DADO, None, ramo)
+            await self._gravar_evento(g, c, e, {"feita": True})
 
     async def _gravar_linha_de_evento(self, g: Grupo, c: Dict[str, Any], campos: Dict[str, Any]) -> None:
         linha = {"calculo_id": c["id"], "pedido_id": g.pedido_id, "company_id": g.company_id,
@@ -1266,6 +1290,17 @@ class Motor:
             familia=OFERTA if s["ofertas"] else (s["familia"] or OFERTA), ofertas=tuple(s["ofertas"].values()))
             for s in por_seg.values())
         return RodadaDoCalculo(t_s=None, respostas=respostas, fechado=fechado)
+
+
+def _ramo_do_pedido(linha: Any) -> int:
+    """O ramo de uma linha de `multicalculo_pedidos` (ou do pedido decifrado); ausente/ilegível = o AUTO."""
+    v = linha.get("ramo") if isinstance(linha, dict) else None
+    if isinstance(v, bool):
+        return RAMO_AUTO
+    try:
+        return int(v) if v is not None else RAMO_AUTO
+    except (TypeError, ValueError):
+        return RAMO_AUTO
 
 
 def _ajuste_do_banco(valor: Any) -> Optional[Ajuste]:

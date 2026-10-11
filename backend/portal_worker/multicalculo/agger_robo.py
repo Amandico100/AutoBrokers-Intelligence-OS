@@ -101,6 +101,9 @@ class DisparoRecusado(Exception):
     """Nada saiu, ou o servidor recusou com resposta clara. `.motivo` = texto CURTO e saneado (vai ao `erro`)."""
 
     sessao_morta = False
+    # costura 129-C: no empresarial em que NENHUMA seguradora casou a atividade, quem saiu: ((código, nome), ...) — o
+    # motor as grava como `SEM_ATIVIDADE_COMPATIVEL` antes de encerrar (nunca somem caladas)
+    sem_atividade: Tuple[Tuple[int, str], ...] = ()
 
     def __init__(self, motivo: Any = "") -> None:
         self.motivo = motivo_curto(motivo)
@@ -138,8 +141,8 @@ class Disparo:
     t0: float
     # SPEC-129-C: o ramo do negócio (o leitor usa a lista branca e as famílias DO RAMO) e, no empresarial, as
     # seguradoras que SAÍRAM por não ter atividade compatível: ((código, nome), ...) — `acompanhar` as narra uma vez.
-    # ⚠️ A retomada do motor reconstrói o Disparo só com (negocio_ref, versao, t0): o ramo cai no padrão (31) — a costura
-    # F3 passa `ramo=` (o `multicalculo_pedidos.ramo`).
+    # A retomada do motor reconstrói o Disparo com (negocio_ref, versao, t0) e, no RE, `ramo=` lido de
+    # `multicalculo_pedidos.ramo` (costura 129-C, motor._trabalho); `sem_atividade` o motor já gravou no checkpoint.
     ramo: int = RAMO_AUTO
     sem_atividade: Tuple[Tuple[int, str], ...] = ()
 
@@ -759,6 +762,13 @@ def _recusa_do_preparo(codigo: Any) -> DisparoRecusado:
     return DisparoRecusado(MOTIVOS_LEGIVEIS.get(codigo, f"preparo: {codigo}"))
 
 
+def _sem_atividade_de(prep: Dict[str, Any]) -> Tuple[Tuple[int, str], ...]:
+    """As seguradoras que saíram por atividade (o `[código, nome]` do JS), saneadas — nome sem URL nem chave."""
+    fora = prep.get("sem_atividade") if isinstance(prep, dict) else None
+    return tuple((int(x[0]), sem_url_nem_chave(x[1] or "")) for x in (fora or ())
+                 if isinstance(x, (list, tuple)) and len(x) == 2 and isinstance(x[0], int) and not isinstance(x[0], bool))
+
+
 async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
     await sessao.garantir_token()
     try:
@@ -766,7 +776,10 @@ async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
     except Exception as e:  # noqa: BLE001 — nada saiu
         raise DisparoRecusado(f"preparo falhou ({type(e).__name__})") from None
     if not isinstance(prep, dict) or not prep.get("ok"):
-        raise _recusa_do_preparo(prep.get("erro") if isinstance(prep, dict) else None)
+        recusa = _recusa_do_preparo(prep.get("erro") if isinstance(prep, dict) else None)
+        if isinstance(prep, dict) and prep.get("erro") == "sem_atividade_compativel":
+            recusa.sem_atividade = _sem_atividade_de(prep)
+        raise recusa
     ids = prep.get("ids")
     pedido_ref = args.get("negocio_ref")
     if pedido_ref and isinstance(ids, dict) and ids.get("ref") is not None and str(ids["ref"]) == str(pedido_ref):
@@ -799,9 +812,8 @@ async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
         ref = str(resp["idIntegracao"])
         sessao.registrar_negocio(ref)
         ramo = prep.get("ramo") if isinstance(prep.get("ramo"), int) and not isinstance(prep.get("ramo"), bool) else RAMO_AUTO
-        fora = tuple((int(c), sem_url_nem_chave(n or "")) for c, n in (prep.get("sem_atividade") or ())
-                     if isinstance(c, int) and not isinstance(c, bool))
-        return Disparo(negocio_ref=ref, versao=int(resp["versao"]), t0=t0, ramo=ramo, sem_atividade=fora)
+        return Disparo(negocio_ref=ref, versao=int(resp["versao"]), t0=t0, ramo=ramo,
+                       sem_atividade=_sem_atividade_de(prep))
     if status in STATUS_SESSAO_MORTA:
         # 401/403 = o servidor não autenticou: nada foi criado, a sessão morreu
         raise SessaoMorta(f"a sessão do robô no Agger caiu (HTTP {status})")

@@ -21,4 +21,5 @@ from app.services.multicalculo.porta import (  # noqa: F401
     PedidoIncompleto,
     PerfilIncompleto,
     PresetIndisponivel,
+    RamoNaoSuportado,
 )

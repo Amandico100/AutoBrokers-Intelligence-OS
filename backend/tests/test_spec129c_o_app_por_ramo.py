@@ -403,9 +403,16 @@ def test_pedido_de_re_incompleto_volta_com_o_campo_que_falta(mundo):
     fora = PED.PedidoDeCalculo.de_dict(dados(2, risco={"extras": {"bike": 3000, "garagista": 1,
                                                                   PED.CHAVE_DA_BASICA: 9}}), ramo=2)
     assert fora.sem_codigo() == ["risco.extras.garagista", f"risco.extras.{PED.CHAVE_DA_BASICA}"]
-    # renovação de RE sem a seguradora anterior → pergunta antes (o contrato a exige; o robô a procura pelo nome)
+    # renovação de RE → pergunta antes os QUATRO que a tela exige marcada a renovação (costura 129-C: o contrato pedia
+    # só a seguradora anterior; 📊 formulario_*.json `libera_quando` — a lição migrou, §9.3)
     renov = PED.PedidoDeCalculo.de_dict(dados(16, renovacao={"renovacao": "sim"}), ramo=16)
-    assert renov.renovacao is True and renov.com_comissao(10).faltando() == ["renovacao.seguradora_anterior"]
+    assert renov.renovacao is True and renov.com_comissao(10).faltando() == [
+        "renovacao.fim_vigencia_anterior", "renovacao.seguradora_anterior", "renovacao.sinistros_anterior",
+        "renovacao.bonus_anterior"]
+    zero = PED.PedidoDeCalculo.de_dict(dados(16, renovacao={"renovacao": "sim", "seguradora_anterior": "HDI",
+                                                            "fim_vigencia_anterior": "31/10/2026",
+                                                            "sinistros_anterior": 0, "bonus_anterior": 0}), ramo=16)
+    assert zero.com_comissao(10).faltando() == []                 # 0 sinistro e bônus 0 são RESPOSTAS, não vazios
     assert m.banco.linhas("multicalculo_pedidos") == []          # nada gravado em nenhuma recusa
     with pytest.raises(PED.CampoDesconhecido):
         PED.PedidoDeCalculo.de_dict(dados(2, veiculo={"placa": "ABC1D23"}), ramo=2)   # grupo do carro no RE
