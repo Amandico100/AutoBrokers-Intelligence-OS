@@ -4075,3 +4075,17 @@ convite hoje fica sem papel (403) até a SPEC de usuários. **Autorização:** �
 funções da pessoa (`company_members.funcoes`). Uma tabela sem leitor seria escrita às cegas. **Consequência:** P-1310-08 aberta; a
 renovação de uma comercial de férias vai para o Agger dela e espera, até a 131/135. **Autorização:** ⏳ pendente do Founder (decidida pela
 execução com nota 78, SPEC §3).
+
+## 11/10/2026 · SPEC-130-B · de "leitor de apólice para a cotação" para "a ficha única da apólice do produto" (D-1311-01) — ESSENCIAL · ⏳ PROPOSTA
+**Problema:** o PLANO-MESTRE (§SPEC-130, bloco "130-B") e as SITUACOES-DE-ENTRADA (§2, item 1) previam um extrator NOVO de foto/PDF →
+ficha, para a 132 (chat) e a 133-B (QCM). **Evidência:** 📊 11/10, o leitor REAL do produto rodado sobre 32 apólices da janela de
+renovação (`programa-multicalculo/131-0/LAUDO-LEITURA-DE-APOLICE.md` §3): o produto JÁ lê o PDF da apólice do CORP (📊 21 PDFs
+guardados) e JÁ tem a ficha (`Apolice`/`ApoliceDocumental` + `reconciliar` + `PdfOnlyProvider`); o defeito é o motor (regex de 2
+layouts: fecha o prêmio em 11/32; Sura e Yelum derrubam o pipeline); e há QUATRO leitores de documento de seguro, só um com ficha (o
+anexo do WhatsApp e do chat vai cru ao modelo). Um extrator novo seria o 5º leitor — motor paralelo (CLAUDE.md §5). **Consequência:**
+a 130-B troca o motor DENTRO do `policy_document_evidence_service` (cascata texto → regex → fecha o prêmio? → modelo barato pelo Model
+Router → visão por página → humano), liga as fontes ao mesmo leitor (`/documento_anexos`, WhatsApp, chat, QCM, renovação) e passa a
+servir também atendimento e renovação. O escopo **cresce** (nada é cortado): a classificação de cotação e CRLV (SITUACOES E5/E6)
+continua dentro. Proposta: `specs-propostas/SPEC-130-B-A-FICHA-UNICA-DA-APOLICE.md`. Notas: opção A do laudo **90** × leitor novo 35;
+abrir já em chat novo **92** × manter o escopo antigo 40. **Autorização:** ⏳ pendente do Founder (decidida pelo gerente com nota 92,
+D-1311-01).
