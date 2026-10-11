@@ -13647,10 +13647,6 @@ falhou 6 de 6 no canário de RE. Anterior à 129-C. Instrumentado: a página con
 `grande`, `so_nome`). **Destrava:** o próximo cálculo real mostra a classe; consertar a cópia. **Custa esquecer:** a página diz "PDF da
 seguradora" e não entrega.
 
-## P-129C-02 · 🧑 A carteira patrimonial da Resulta está fora da InfoCap
-📊 32.901 documentos desde 2015: Condomínio 0, Residencial 12, Empresarial 3. **Destrava:** o Founder diz onde a Resulta lança essas
-apólices (outra base/login?). **Custa esquecer:** a renovação de RE (131) não tem de onde ler as apólices.
-
 ## P-129C-03 · 🧑 O reajuste da renovação de RE: 15 % (o Founder) × 📊 +10 % o mais comum no Agger
 41 pares de condomínio: +10 % em 16, +15 % em 6, mediana +13,3 %. Config `renovacao.reajuste_basica_pct` = 15 (padrão). **Destrava:** o
 manual da Resulta ou o Founder confirma. Ainda sem chamador (é a 131). **Custa esquecer:** a renovação sai com reajuste diferente do que a
@@ -13667,3 +13663,70 @@ A página de hoje é de carro; o ranking de RE (com `avisos`) ainda não chega a
 A classe `imovel_desocupado` e o radical de busca não foram medidos ao vivo além do canário. **Destrava:** o próximo cálculo real de
 empresarial. **Custa esquecer:** o empresarial com poucas seguradoras.
 
+
+## P-1310-01 · 🤖 A régua real do dono: as duas carteiras e a mutação, no CÓDIGO DO PRODUTO
+`dono.medir_regra` (fonte injetada com o login de cada corretora) — 📊 11/10, arquivo `regua_real.out` do gerente: **Resulta padrão
+99/99** com um dono e 99 conferem; **Resulta com a regra mutada para `ordem 1` → 37/99** (a régua cai, como a mutação exige). As duas
+linhas da AutoFleet (📊 BLOCO 0 por script: 217/217 e 24/217) ainda não tinham saído pelo código do produto ao escrever.
+**Destrava:** rodar as 4 medições até o fim e colar no relatório da 131-0-A. **De quem:** 🤖 gerente. **Custa esquecer:** a regra do dono
+fica provada pelo produto numa carteira só — a outra (217 renovações de auto) depende do script do BLOCO 0.
+
+## P-1310-02 · 🤖 A InfoCap devolve um cliente REAL para o CPF `00000000000`
+📊 BLOCO 0 §6.2 (laudo da CorpAPI, 11/10). Fora do escopo da parte A. **Destrava:** o produto barra CPF/CNPJ inválido (dígito
+verificador) ANTES de consultar a InfoCap, em todo chamador. **De quem:** 🤖 a SPEC que tocar a consulta por CPF (131). **Custa
+esquecer:** um CPF digitado errado ou zerado mostra a apólice de outra pessoa ao corretor — e, no canal, ao segurado.
+
+## P-1310-03 · 🤖 `next start` de build de produção não medido (CLAUDE.md §9.1)
+📊 11/10: `npm run test:rotas-montam` → 315 rotas montam; `next dev` → 401 nas 3 rotas novas sem sessão e 307 na página. **Destrava:**
+medir `next start` + 1 requisição a `/api/…` no contêiner depois do Implantar (T da 131-0-A). **De quem:** 🤖. **Custa esquecer:** a
+lição de 02/08 (1h40 fora do ar com todos os gates verdes) é exatamente esta lacuna.
+
+## P-1310-04 · 🤖 `ContaRecusada` sem tradução HTTP em nenhum chamador
+O `qual_agger` recusa (senha do Agger da pessoa recusada, conta de outra corretora); hoje só o QCM chama a porta e ele nunca recusa.
+**Destrava:** a 131/132 (os primeiros chamadores de cotação e renovação) traduzem a recusa numa frase e num status. **De quem:** 🤖
+131/132. **Custa esquecer:** o primeiro pedido de renovação com senha recusada vira 500 genérico na tela.
+
+## P-1310-05 · 🤖 As sugestões de vínculo só casam `codfil = 1`
+`dono.sugerir_vinculos` busca `("1", codigo)`; um vínculo gravado com outra filial aparece como "sem vínculo" (red team P3, por leitura;
+📊 `membro_produtores` = 0 linhas em 11/10). **Destrava:** usar o `codfil` da sugestão. **De quem:** 🤖. **Custa esquecer:** corretora
+com filial vê um vínculo feito como se faltasse e o refaz.
+
+## P-1310-06 · 🤖 "Transferir negócio entre usuários do Agger" não foi medido (D-131-0-05)
+A D-131-0-05 foi decidida sem saber se o Agger permite passar um cálculo do login da corretora para o de uma pessoa. Medir exige
+escrever na conta de uma pessoa. **Destrava:** BLOCO 0 da 132, com o aceite da comercial dona do login (🧑). **De quem:** 🤖 132 (com
+anuência 🧑). **Custa esquecer:** se a transferência existir, a renovação poderia calcular no robô e entregar à pessoa, sem entrar no
+login dela de madrugada.
+
+## P-1310-07 · 🤖 O convite por link não cria o vínculo (D-131-0-28)
+Hoje o convite não grava `company_members`. **Destrava:** a SPEC de usuários. **De quem:** 🤖. **Custa esquecer:** quem entra por convite
+fica sem papel e sem funções; com a fonte única do papel (falha fechada), recebe 403.
+
+## P-1310-08 · 🤖 Funções por ramo e o substituto de férias (D-131-0-33)
+Quem calcula × quem negocia × responsável POR RAMO e o substituto ficam para a 131/135. **De quem:** 🤖 131/135. **Custa esquecer:** a
+renovação de condomínio de uma comercial de férias vai para o Agger dela e espera.
+
+## P-1310-09 · 🤖 O aviso da decisão (`multicalculo_calculos.conta_motivo`) não tem entregador
+"Sem dono", "sem Agger da pessoa, usei o da corretora" ficam gravados, mas ninguém avisa o admin. **Destrava:** a 131/132. **De quem:** 🤖.
+**Custa esquecer:** a corretora não sabe que a renovação saiu pelo Agger dela e não pelo da comercial.
+
+## P-1310-10 · 🤖 Reler o dono no disparo exige o localizador da apólice no pedido
+O dono é decidido no pedido; se a InfoCap mudar o produtor entre o pedido e o cálculo, ninguém relê. **Destrava:** a 131 guarda
+`codfil`/`nosnum`/conexão no pedido e relê o dono no disparo. **De quem:** 🤖 131. **Custa esquecer:** a renovação sai no Agger de quem
+deixou de ser dono.
+
+## P-1310-11 · 🤖 `desligar-membro` não tenta de novo quando falha
+Remover alguém da equipe chama `POST /api/portal/aggers-da-equipe/desligar-membro`; se falhar, o vínculo sai mesmo assim e a resposta
+diz `agger_pendente: true` — a conta já é inelegível (falha fechada), mas a senha fica no cofre. **Destrava:** nova tentativa automática
+(Work OS, não scheduler novo) ou botão na tela. **De quem:** 🤖. **Custa esquecer:** a senha de quem saiu fica guardada sem uso.
+
+## P-1310-12 · 🤖 O `/prod_docs` é uma chamada por apólice
+📊 BLOCO 0: 99 e 217 chamadas em série para as carteiras de 30 dias (💭 ~1–3 min por 100 apólices, estimativa do gerente, não medida
+por cronômetro). **Destrava:** cache por conexão (já existe) + a rotina da 131 rodar de madrugada. **De quem:** 🤖 131. **Custa
+esquecer:** a tela de régua demora e a InfoCap pode limitar.
+
+## P-1310-13 · 🤖 Guarda contra `SET SESSION … read only` pelo pooler
+🚨 11/10 ~12:49 UTC: scripts de leitura usaram `set session characteristics as transaction read only` pela porta 6543 (modo transação):
+a sessão do Supavisor ficou somente-leitura e o APPLY da _02 falhou. Contido com `pg_terminate_backend`; 📊 logs do Postgres 09:00–13:10
+UTC: 2 erros "read-only", nenhum do produto. É a mesma armadilha da SPEC-116, repetida. **Destrava:** um guarda (teste ou hook) que
+recuse `SET SESSION` em script que fale com o pooler; o helper já usa `set transaction read only`. **De quem:** 🤖. **Custa esquecer:**
+na próxima vez, a escrita do PRODUTO pode cair na conexão envenenada.
