@@ -1,5 +1,7 @@
 # SPEC-129-C — Mais ramos do Agger: Condomínio, Residencial e Empresarial · relatório de execução
 
+> ⚠️ ERRATA 11/10 (SPEC-131-0-A): a medição foi feita por uma conexão com o login da AutoFleet; a InfoCap da Resulta tem RE — ver programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md
+
 > 11/10/2026 · branch `spec/129-C-mais-ramos` · base `8d468b4` · rito AAA v13, 🔴 CRÍTICO · SPEC `specs/SPEC-129-C-mais-ramos-do-agger.md`
 > BLOCO 0 e canário em `programa-multicalculo/129-C/` · laudos no rascunho do gerente (`laudos/129c-juiz.md`, `129c-red.md`, `129c-confirmacao.md`)
 
