@@ -151,6 +151,7 @@ calculadas em paralelo, e indica a vencedora; Claude/ChatGPT ficam para a ★.
 | 06/10 | 130-A | modelos de linguagem | 0,00 | 💭 3,93 |
 | 10/10 | 133-A.1 | nenhuma rodada paga de modelo | 0,00 | 💭 3,93 |
 | 11/10 | 131-0-A | nenhuma rodada paga de modelo (só GET/`/login` na InfoCap) | 0,00 | 💭 3,93 |
+| 11/10 | 130-B | BLOCO 0, 2 leituras de apólice pela Luna (papel `auxiliar`; estimado 💭 0,02 antes) — 📊 real `token_usage_logs` `service_type='bancada_130b'`: 0,000588 + 0,001732 | 📊 0,0023 | 💭 3,93 |
 
 Regra: nenhuma rodada paga sem estimativa escrita aqui antes. O que sobrar passa para a SPEC seguinte.
 
