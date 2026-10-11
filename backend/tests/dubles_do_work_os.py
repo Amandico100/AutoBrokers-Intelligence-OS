@@ -334,6 +334,10 @@ ESQUEMA: dict[str, dict[str, tuple]] = {
         "robo_ocupada_ate": ("ts", True, None),
         "robo_dono": ("text", True, None),
         "robo_batida_em": ("ts", True, None),
+        # 📊 SPEC-131-0-A `20261011_04` (APLICADA 11/10/2026): USO da conta Agger (global · membro · teste; nula fora do
+        # Agger) e a PESSOA dona da conta de membro — o retrato acompanha o banco vivo
+        "uso": ("text", True, None),
+        "dono_user_id": ("uuid", True, None),
     },
     "companies": {
         "id": ("uuid", False, 'UUID'),
