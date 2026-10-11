@@ -1,6 +1,7 @@
 import { DetailHeader } from '@/components/patterns';
 import { icons } from '@/lib/icons';
 import { TeamClient } from './TeamClient';
+import { QuemEQuemNoSistema } from './QuemEQuemNoSistema';
 
 export const metadata = { title: 'Equipe · AutoBrokers' };
 
@@ -15,6 +16,7 @@ export default function EquipePage() {
           breadcrumb={[{ label: 'Personalização', href: '/dashboard/personalizacao' }, { label: 'Equipe' }]}
         />
         <TeamClient />
+        <QuemEQuemNoSistema />
       </div>
     </div>
   );

@@ -1072,6 +1072,12 @@ CANDIDATOS_MANIFESTO_LER = ("de_arquivo", "carregar", "do_json", "de_json",
                             "ler", "from_file")
 CANDIDATOS_DRIFT = ("avaliar_drift", "conferir_fingerprint", "com_fingerprint",
                     "estado_com_fingerprint", "checar_drift")
+#: ⚠️ SPEC-131-0 F2 (§9.3, a lição migra): `actor_type_de` e o mapa
+#: `producer-roles.<corretora>.json` foram APOSENTADOS (0 produtores, 0 chamadores,
+#: nome de corretora em arquivo — §13.9). O M3 abaixo cai no ramo `actor is None`
+#: e confere a lição no TEXTO da tool ("unknown" + `actor_type`); o comportamento
+#: (o papel cru nunca decide) é guardado em
+#: `test_spec1310_f2_dono.py::test_o_papel_escrito_no_nome_nunca_decide_o_dono`.
 CANDIDATOS_ACTOR = ("actor_type_de", "papel_do_produtor", "_actor_type",
                     "actor_type", "papel_de")
 

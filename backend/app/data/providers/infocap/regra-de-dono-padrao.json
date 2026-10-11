@@ -1,0 +1,19 @@
+{
+  "sistema": "infocap",
+  "rota": "/prod_docs",
+  "campo": "indireto",
+  "igual": "F",
+  "codigo": "codpro",
+  "nome": "nome_produtor",
+  "papel_no_nome": true,
+  "_medido": "📊 11/10/2026, as duas carteiras reais medidas: 99/99 e 217/217 — BLOCO0-INFOCAP §4",
+  "_explica": [
+    "SPEC-131-0 D-131-0-03/31 — a regra PADRÃO do sistema InfoCap para dizer quem é o DONO de uma renovação.",
+    "É DADO, não código: a corretora pode gravar a regra dela em `regras_de_dono` e ela vence esta.",
+    "Lida por app/services/sistema_de_gestao/dono.py pelo resolvedor do censo (manifesto.caminho_do_censo).",
+    "`rota` é o /prod_docs AVULSO (uma chamada por apólice): o prod_docs embutido em /renovacoes NÃO tem `indireto`.",
+    "🔴 no avulso o código do produtor é `codpro`; no embutido é `cod_pro`.",
+    "`ordem` = 1 NÃO é o dono: 📊 acerta 37/99 e 24/217 nas duas carteiras medidas.",
+    "Nenhum nome de corretora entra aqui (CLAUDE.md §13.9)."
+  ]
+}

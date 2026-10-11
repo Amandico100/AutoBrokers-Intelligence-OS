@@ -50,8 +50,9 @@ Então o pack fica em memória, por processo, com a chave carregando o
 📊 A fonte devolve um rótulo de papel (`EXECUTIVO`, `FECHADOR`) que descreve
 função comercial, e **não** vínculo. Chamar de "funcionário" quem a fonte
 chamou de EXECUTIVO é uma afirmação trabalhista inventada pelo software, sobre
-uma pessoa, num documento que circula. O papel vem de arquivo versionado,
-curado por gente; sem entrada no arquivo, o papel é `unknown` e o Artifact
+uma pessoa, num documento que circula. O papel só viria de uma declaração da
+corretora (o arquivo por corretora da SPEC-094 foi aposentado na SPEC-131-0 —
+quem é quem mora em `membro_produtores`); sem ela, o papel é `unknown` e o Artifact
 escreve "papel não mapeado". O rótulo da fonte vai para `role_source`, que é
 onde ele pode estar: como procedência, nunca como veredito.
 """
@@ -262,82 +263,23 @@ class PlanoDeConsulta(BaseModel):
 
 
 # ==========================================================================
-# O MAPA DE PRODUTOR — e o `unknown` que não se arredonda
+# O PAPEL DO PRODUTOR — e o `unknown` que não se arredonda
 # ==========================================================================
-PAPEIS = ("employee", "partner", "indicator", "channel", "unknown")
-PAPEL_PADRAO = "unknown"
+#: 🔴 SPEC-131-0 F2 (CLAUDE.md §9.3 — a lição migra, não morre). O mapa
+#: `producer-roles.<corretora>.json` da SPEC-094 BLOCO F foi APOSENTADO: 📊 ele
+#: nasceu e morreu com 0 produtores, e o leitor (`actor_type_de`) tinha 0
+#: chamadores no produto (`git grep -n actor_type_de -- backend/app` → só a
+#: definição). Um arquivo por NOME de corretora viola o CLAUDE.md §13.9.
+#:
+#: Quem é quem agora mora no BANCO, por `company_id`: `membro_produtores`
+#: (código de produtor ↔ pessoa da corretora) e `regras_de_dono` (quem é o dono
+#: da renovação) — `app/services/sistema_de_gestao/dono.py`.
+#:
+#: A lição que fica: o rótulo da fonte (EXECUTIVO, FECHADOR) é PROCEDÊNCIA —
+#: vai para `role_source` / `papel_cru` e NUNCA decide vínculo. Sem declaração,
+#: o `actor_type` de todo produtor é "unknown" e o Artifact escreve "papel não
+#: mapeado". Função comercial não é relação de trabalho.
 FRASE_SEM_MAPA = "papel não mapeado"
-
-_CACHE_DE_PAPEIS: Dict[str, Dict[str, str]] = {}
-
-
-def _arquivo_de_papeis(slug: str) -> str:
-    """O caminho do mapa versionado desta corretora.
-
-    🔴 A pasta é a do censo do provider, e ela é composta a partir da constante
-    do CBIM — o nome do sistema de gestão não é escrito aqui. 📊 A única coluna
-    `jsonb` de `companies` é `acionamento_profile`, que é outra coisa; guardar
-    o mapa em banco exigiria migration de estrutura, e a §7 desta SPEC tem uma
-    migration só, de seed.
-    """
-    from app.comercial import cbim
-    from app.comercial import manifesto
-
-    # 🔴 SPEC-EXTRA-001.5.1 (A-ter): pelo RESOLVEDOR, não por `join` direto — o
-    # mapa mora no PACOTE (`backend/app/data/providers/`), e o `docs/` fica como
-    # segundo lugar para quem tiver uma árvore antiga. 📊 Na cópia que reproduz
-    # o contêiner, o caminho antigo nem existia.
-    return manifesto.caminho_do_censo(
-        cbim.PROVIDER_PILOTO, "producer-roles.%s.json" % (slug or "").strip().lower())
-
-
-def mapa_de_papeis(slug: str) -> Dict[str, str]:
-    """`{rótulo do produtor: actor_type}` — do arquivo versionado, ou vazio."""
-    chave = (slug or "").strip().lower()
-    if chave in _CACHE_DE_PAPEIS:
-        return _CACHE_DE_PAPEIS[chave]
-    mapa: Dict[str, str] = {}
-    caminho = _arquivo_de_papeis(chave)
-    try:
-        with open(caminho, encoding="utf-8") as fh:
-            bruto = json.load(fh)
-        for item in (bruto.get("producers") or []):
-            rotulo = str(item.get("label") or "").strip().lower()
-            papel = str(item.get("actor_type") or "").strip().lower()
-            if rotulo and papel in PAPEIS:
-                mapa[rotulo] = papel
-    except FileNotFoundError:
-        pass
-    except Exception as exc:  # noqa: BLE001
-        # ⚠️ Mapa ilegível NÃO derruba o relatório e NÃO vira `employee`:
-        # vira ausência de mapa, que é a verdade.
-        logger.warning("[094] mapa de papeis ilegivel (%s)", type(exc).__name__)
-    _CACHE_DE_PAPEIS[chave] = mapa
-    return mapa
-
-
-def actor_type_de(company: str = "", rotulo: str = "",
-                  role_source: str = "") -> str:
-    """O papel de um produtor. **`unknown` quando não há mapa.**
-
-    🔴 `role_source` é o rótulo que a fonte devolveu. Ele entra como
-    procedência e **nunca** decide o papel: a fonte descreve função comercial,
-    e função comercial não é vínculo. Um software que promove `EXECUTIVO` a
-    `employee` está afirmando uma relação trabalhista que ninguém declarou,
-    sobre uma pessoa, num documento que circula.
-
-    ⚠️ `company` aceita o slug da corretora ou o identificador dela — o mapa é
-    procurado pelo slug, e uma corretora sem arquivo devolve `unknown` para
-    todo mundo, que é a resposta honesta.
-    """
-    mapa = mapa_de_papeis(company)
-    papel = mapa.get((rotulo or "").strip().lower(), PAPEL_PADRAO)
-    return papel if papel in PAPEIS else PAPEL_PADRAO
-
-
-def esquecer_papeis() -> None:
-    """Solta o cache do mapa. Existe para teste, e para o arquivo recarregar."""
-    _CACHE_DE_PAPEIS.clear()
 
 
 # ==========================================================================

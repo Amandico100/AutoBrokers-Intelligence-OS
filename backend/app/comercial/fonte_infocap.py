@@ -464,6 +464,30 @@ class FonteInfocap:
             saida.extend(self._linhas(bruto, "renovacoes"))
         return saida
 
+    # ------------------------------------------- o DONO da apólice (SPEC-131-0)
+    #
+    # 🔴 SPEC-131-0 F2 · D-131-0-03. O `prod_docs` embutido em `/renovacoes` é
+    # REDUZIDO (armadilha 1 do topo): não tem `indireto`. O dono da renovação só
+    # se lê no `/prod_docs` AVULSO, uma chamada por apólice. 📊 11/10/2026, os
+    # dois bancos: `{"header": {"count"}, "prod_docs": [{codfil, nosnum, codage,
+    # codpro, ordem, indireto "T"|"F", nome_produtor, nome_agente, per_r, val_r,
+    # …}]}`. ⚠️ No avulso o código do produtor é `codpro`; no embutido, `cod_pro`.
+    #
+    # ⚠️ Os MESMOS `_get`/`_linhas`: a chave de cache leva o `_rotulo`, que pelo
+    # caminho canônico (`infocap_analytics_provider._abrir`) é
+    # `chave_de_cache(company_id, connection_id)`. 📊 O mesmo `nosnum` existe nos
+    # dois bancos medidos (91175) — sem a corretora na chave, o dono de uma
+    # apólice de uma corretora sairia do cache da outra.
+    def prod_docs_avulso(self, codfil: Any, nosnum: Any) -> List[Dict[str, Any]]:
+        """Os produtores de UMA apólice, como a API os devolve. Nenhuma interpretação."""
+        bruto = self._get("/prod_docs", {"codfil": codfil, "nosnum": nosnum})
+        return self._linhas(bruto, "prod_docs")
+
+    def produtores(self) -> List[Dict[str, Any]]:
+        """O cadastro de produtores (`{codigo, nome}`). 📊 Sem `codage` a rota dá 500."""
+        bruto = self._get("/produtores", {"texto": "", "codage": 1})
+        return self._linhas(bruto, "produtores")
+
     # ------------------------------------------------------------- produção
     def producao(self, inicio: date, fim: date) -> List[Apolice]:
         """As APÓLICES emitidas no período, com prêmio e comissão.

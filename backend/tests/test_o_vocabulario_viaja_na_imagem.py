@@ -457,20 +457,25 @@ print("\n[9] 🔴 A-ter — o CENSO DO PROVIDER também viaja na imagem")
 # responde `UNKNOWN` a TODA capacidade, com a evidência "capacidade fora do
 # censo: não verificada" — indistinguível, para quem lê o relatório do Pulso
 # 360, de "medimos e não sabemos". Sem 500, sem exceção, sem linha vermelha.
+# 🔴 SPEC-131-0 F2 (§9.3 — a lição migra): o `producer-roles.resulta.json` (0 produtores, nome de corretora no
+# arquivo — §13.9) foi aposentado; quem é quem mora no banco (`membro_produtores`). O DADO de runtime que o
+# substituiu no pacote é a regra PADRÃO do dono (`regra-de-dono-padrao.json`) — e é ela que tem de viajar na
+# imagem: sem ela, toda renovação de corretora sem regra própria sairia "sem dono".
 CENSO = ("infocap-capability-manifest.json", "infocap-schema-fingerprints.json",
-         "producer-roles.resulta.json")
+         "regra-de-dono-padrao.json")
 
 PROGRAMA_DO_CENSO = (
     "import logging, os, sys\n"
     "logging.basicConfig(stream=sys.stdout, level=logging.WARNING, force=True)\n"
     "from app.comercial import manifesto\n"
-    "from app.agents.tools import executive_intelligence as EI\n"
+    "from app.services.sistema_de_gestao import dono as DONO\n"
     "manifesto.esquecer_censo()\n"
     "m = manifesto.carregar_manifesto('infocap')\n"
     "print('DIR_EXISTE:', os.path.isdir(manifesto.DIRETORIO_DO_CENSO))\n"
     "print('CAPS:', len(m.capacidades))\n"
     "print('FINGERPRINTS:', len(m.fingerprints_do_censo))\n"
-    "print('MAPA_EXISTE:', os.path.isfile(EI._arquivo_de_papeis('resulta')))\n"
+    "_r = DONO.regra_padrao_do_sistema('infocap')\n"
+    "print('REGRA_DO_DONO:', _r.campo if _r else None, _r.igual if _r else None)\n"
 )
 
 for _nome in CENSO:
@@ -506,9 +511,10 @@ try:
     checar(_numero("FINGERPRINTS:") > 0,
            "e os fingerprints de rota também chegam — é deles que sai o drift",
            saida_censo[-300:])
-    checar("MAPA_EXISTE: True" in linhas_censo,
-           "🔴 e o mapa de produtor (`producer-roles.resulta.json`) é ENCONTRADO "
-           "pelo resolvedor — antes o caminho nem existia", saida_censo[-300:])
+    checar("REGRA_DO_DONO: indireto F" in linhas_censo,
+           "🔴 e a regra padrão do dono (`regra-de-dono-padrao.json`) é ENCONTRADA "
+           "pelo resolvedor do censo na cópia SEM `docs/` (SPEC-131-0; antes: o mapa "
+           "de produtor da SPEC-094, aposentado)", saida_censo[-300:])
     checar("[CENSO]" not in saida_censo,
            "e NENHUMA linha `[CENSO] … AUSENTE` sobra no log", saida_censo[-300:])
 
