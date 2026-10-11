@@ -117,6 +117,8 @@ cada pessoa** (§7.3 abaixo); (d) a tabela de usuários serve a clientes e funci
 
 ### 2.3 A InfoCap responde à pergunta do Founder? — **SIM, com uma ressalva**
 
+> ⚠️ ERRATA 11/10 (SPEC-131-0-A): a medição foi feita por uma conexão com o login da AutoFleet — as 228 renovações (221 AUTO) desta seção eram da AutoFleet; a InfoCap da Resulta tem RE (📊 99 renovações em 30 dias, regra do dono 99/99) — ver programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md
+
 Documentação pública (coleção Postman `CorpAPI`, publicada 14/03/2025, baixada de
 `documenter.gw.postman.com/api/collections/33455116/2sAYkBrLmi`): **55 rotas**. As que importam aqui: `/produtores?texto=&codage=`,
 `/agentes`, `/prod_docs` (GET por `codfil`+`nosnum`; POST/PATCH/DELETE com `indireto`), `/renovacoes` (por `fimvig`),
