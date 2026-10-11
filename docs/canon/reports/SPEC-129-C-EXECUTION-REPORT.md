@@ -75,6 +75,7 @@ Push do código, da migration, do relatório e da bateria (11/10):
 ```
 Push do estado, da fila, das decisões D-129C-01…09 e do painel (`docs(129-C): estado, fila, decisões e painel`):
 ```
-(colado no commit seguinte)
+   c3a7495..d5691fe  HEAD -> main
+   c3a7495..d5691fe  HEAD -> spec/129-C-mais-ramos
 ```
 Painel do Founder republicado: https://claude.ai/code/artifact/defe331c-9399-4584-9d1c-2126a527cea0 (versão 34).
