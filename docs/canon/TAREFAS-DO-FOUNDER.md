@@ -26,6 +26,7 @@
 > (jurídico da remuneração) e a **T-128** (o recado à Ellen). 📊 Recontado 06/10 com os mesmos comandos → **116 pendentes** · **12 feitos** (T-01…T-128).
 > **07/10 (SPEC-130-A.1, o Quem Cobra Menos):** a **T-124** está ✅ feita, a **T-127** foi ❌ cancelada (D-130A-08 revogada) e nasceram a **T-129** (Implantar), a **T-130** (a lista do Nível 5) e a **T-131** (testadores, verba e o robô do Agger para a 133-A). 📊 Recontado 07/10 com os mesmos comandos → **117 pendentes** · **13 feitos** (a T-127 cancelada fica fora das duas contas).
 > **07/10 tarde (SPEC-133-A, o Quem Cobra Menos no WhatsApp):** nasceram a **T-132** (Implantar), a **T-133** (o QR no admin), a **T-134** (os testadores) e a **T-135** (o login do Agger do robô no piloto).
+> **10/10 (SPEC-133-A.1):** nasceram a **T-136** (a conta da Resulta no Agger) e a **T-137** (as senhas "mudar123"). **11/10 (SPEC-129-C, mais ramos do Agger):** nasceu a **T-138** — seguir o `programa-multicalculo/ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md` (17 passos em 5 blocos), que junta a T-132…T-137 numa ordem só; a **T-136** ganhou os achados do canário de RE (P-129C-04).
 
 ## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123 · SPEC-130-A: T-124 a T-128)
 
@@ -51,6 +52,20 @@
 **Os 9 grupos, na ordem:** ① Implantar e conferir · ② Chat principal · ③ Atendimento no WhatsApp com o agente ligado ·
 ④ Acionamento por seguradora · ⑤ Portal de vidros · ⑥ Grupo de suporte · ⑦ Leitura de foto e documento · ⑧ Cobrança ·
 ⑨ Desfazer o ensaio e ir para a vida real.
+
+### ⓪ AGORA — o roteiro de validação (11/10/2026, depois da SPEC-129-C)
+
+- [ ] **T-138** ⏳ 🧑 **agora, um bloco por vez** · **Seguir o ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md** —
+      `docs/canon/programa-multicalculo/ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md` (17 passos; cada um diz o que fazer, o que ESPERAR e o que fazer
+      se não bater). Junta a T-132…T-137 numa ordem só:
+      **Bloco 1 · deixar o sistema pronto** (passos 1–4, ~20 min): Implantar os 4 serviços · conferir "Ligado o tempo todo" no Agger da
+      corretora · trocar as senhas "mudar123" (T-137) · corrigir o Agger da Resulta e conferir as credenciais de RE (T-136 + P-129C-04).
+      **Bloco 2 · o número do Quem Cobra Menos** (passos 5–7): WhatsApp Business no chip novo · ler o QR no portal admin (T-133) · convidar o
+      seu número (T-134).
+      **Bloco 3 · o seu teste** (passos 8–14, ~15 min): "oi" → perguntas → resultado → abrir o link → "Quero fechar" → os lembretes → "parar".
+      **Bloco 4 · os 4 testadores** (passos 15–17, depois do seu teste dar certo): cadastrar · mandar o convite pronto · juntar as respostas.
+      **Bloco 5 · os outros ramos (129-C)**: nada para testar no WhatsApp ainda (a página é a 130-C); vale conferir os passos 1 e 4.
+      **Se algo não bater:** um print de cada tela e a hora, no chat. · *de:* S129-C · S133-A.1 · S133-A
 
 ### ① Implantar e conferir — não depende de nada
 
@@ -817,6 +832,10 @@ Resulta e AutoFleet, **não apagou nada** no Agger nem na InfoCap e deixou 3 neg
       (3) **Tokio** sem o login do serviço web → Configurações → Seguradoras → Tokio → preencher → Validar; (4) **assinatura**: a data no
       campo de licença é **13/10/2026** → conferir em "Meu plano"; (5) **permissões**: dar ao `cotador@` o perfil restrito do robô da
       AutoFleet. A AutoFleet está igual à conta da Ellen (15 seguradoras válidas). · *de:* S133-A.1
+      🔁 **11/10 (SPEC-129-C, P-129C-04):** no canário de RE (condomínio e residencial), 📊 **Porto, Mapfre e HDI recusaram por
+      CREDENCIAL** — em 10/10 a medição era só do automóvel. Além da HDI: (6) em Configurações → Seguradoras, ver se **Porto** e **Mapfre**
+      pedem credencial própria para Condomínio/Residencial/Empresarial e cadastrar. Sem isso, três seguradoras grandes ficam fora de todo RE.
+      É o passo 4 do roteiro (T-138).
 
 - [ ] **T-137** ⏳ 🧑 **hoje — segurança** · **Trocar a senha dos membros que ainda estão com "mudar123"** — 📊 10/10: **4 dos 7**
       membros com senha no painel usam a senha padrão "mudar123" (quem souber o e-mail entra). **Como:** painel → **Personalização →

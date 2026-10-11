@@ -1,7 +1,54 @@
 <div id="tab-tarefas" class="tab" hidden>
 
 <div class="virada" style="border-left-color:var(--crit)">
-  <span class="eyebrow" style="color:var(--crit)">🆕 10/10/2026 &middot; o Programa Multicálculo (Quem Cobra Menos) &middot; fonte <code>TAREFAS-DO-FOUNDER.md</code>, T-120 a T-137</span>
+  <span class="eyebrow" style="color:var(--crit)">🔴 AGORA &middot; 11/10/2026 &middot; o roteiro de validação (T-138) &middot; fonte <code>programa-multicalculo/ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md</code></span>
+  <h2>17 passos em 5 blocos — um bloco de cada vez, nesta ordem</h2>
+  <p class="lede" style="max-width:78ch">Este roteiro junta numa ordem só tudo o que as SPECs <b>130-A.1</b>, <b>133-A</b>, <b>133-A.1</b> e <b>129-C</b> deixaram com você.
+  Cada passo diz <b>o que fazer</b>, <b>o que você deve ver</b> e <b>o que fazer se não bater</b>. Os números T-1xx são os da lista longa, logo abaixo.
+  <b>Se algo não bater em qualquer passo:</b> tire um print de cada tela, anote a hora e mande aqui no chat.</p>
+
+  <h3 style="margin:18px 0 8px">Bloco 1 — deixar o sistema pronto <span style="color:var(--muted);font-weight:400">(uns 20 minutos)</span></h3>
+  <dl class="q2">
+    <dt>1 · Implantar</dt><dd>A 129-C mudou o robô, o app e a tela do Agger. No EasyPanel, clique <b>Implantar</b> nesta ordem: <code>smith-api</code> → <code>smith-worker</code> → <code>portal-worker</code> → <code>smith-web</code>. Depois abra <code>https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health</code>. <b>O que ver:</b> <code>build_time</code> de 11/10/2026 ou depois. <b>Se a data for anterior:</b> Implantar o <code>portal-worker</code> de novo.</dd>
+    <dt>2 · a tela do Agger</dt><dd>No painel, em <b>cada</b> corretora: <b>Personalização → Conectores → "Agger da corretora"</b>. <b>O que ver:</b> "Ligado o tempo todo" e <b>nenhum</b> campo de horário (o robô do Agger agora fica sempre disponível; o horário passa a ser regra de cada serviço). <b>Se aparecer horário:</b> o <code>smith-web</code> não foi implantado — repita o passo 1 para ele.</dd>
+    <dt>3 · as senhas (T-137)</dt><dd>Painel → <b>Personalização → Equipe</b> → em cada pessoa, <b>Nova senha</b> → salvar → copie a senha que aparece (ela só aparece <b>uma vez</b>) e entregue à pessoa. 📊 São 4 pessoas com a senha padrão antiga. <b>Por quê:</b> quem souber o e-mail de uma delas entra no painel.</dd>
+    <dt>4 · o Agger da Resulta (T-136)</dt><dd>Entre no Agger com um login de <b>administrador</b> da Resulta e, em <b>Configurações → Seguradoras</b>: <b>HDI</b> (credencial inválida → corrigir e Validar) · <b>Mitsui</b> (cadastrar, se houver código) · <b>Tokio</b> (preencher o login do serviço web) · confira em <b>"Meu plano"</b> a licença, que vencia em <b>13/10</b> · 🆕 <b>Porto e Mapfre</b>: veja se pedem uma credencial própria para <b>Condomínio, Residencial e Empresarial</b> — 📊 no cálculo real de 11/10 as duas e a HDI recusaram por credencial nesses ramos (P-129C-04) · dê ao <code>cotador@</code> o mesmo <b>perfil restrito</b> do robô da AutoFleet. <b>O que ver:</b> as seguradoras como válidas. <b>Se esquecer:</b> três seguradoras grandes ficam fora de toda cotação de condomínio, residencial e empresarial.</dd>
+  </dl>
+
+  <h3 style="margin:22px 0 8px">Bloco 2 — o número do Quem Cobra Menos <span style="color:var(--muted);font-weight:400">(o chip novo)</span></h3>
+  <dl class="q2">
+    <dt>5 · o WhatsApp</dt><dd>Instale o <b>WhatsApp Business</b> no chip novo, com o nome <b>"Quem Cobra Menos"</b>.</dd>
+    <dt>6 · o QR (T-133)</dt><dd>No <b>portal admin</b> → <b>Conexões</b> → <b>Canais: Quem Cobra Menos (WhatsApp)</b> → <b>Conectar</b>. No celular do chip novo: WhatsApp → <b>Aparelhos conectados</b> → <b>Conectar aparelho</b> → aponte para o QR. <b>O que ver:</b> "conectado".</dd>
+    <dt>7 · o seu convite (T-134)</dt><dd>Só quem está na lista de convidados recebe resposta. No <b>Console do <code>smith-api</code></b> (EasyPanel → serviço → Console), troque <code>55DDDNUMERO</code> pelo <b>seu</b> número (55 + DDD + número, só dígitos):
+      <pre style="white-space:pre-wrap;background:var(--sunk);padding:8px 10px;border-radius:3px;font-size:11.5px;margin:6px 0 0"><code>python -m app.services.canal.comando_convidados --adicionar 55DDDNUMERO --apelido "Amandus"
+python -m app.services.canal.comando_convidados --listar</code></pre>
+      <b>O que ver:</b> o seu número na lista, <b>mascarado</b>. <b>Se aparecer "banco indisponível":</b> o Implantar do passo 1 não terminou.</dd>
+  </dl>
+
+  <h3 style="margin:22px 0 8px">Bloco 3 — o seu teste <span style="color:var(--muted);font-weight:400">(uns 15 minutos)</span></h3>
+  <dl class="q2">
+    <dt>8 · "oi"</dt><dd>Do seu celular, mande <b>"oi"</b> para o número novo. <b>O que ver:</b> a apresentação e o pedido de consentimento.</dd>
+    <dt>9 · as perguntas</dt><dd>Responda <b>"sim"</b> e depois as perguntas: placa, CEP, se usa para aplicativo, km, condutor jovem, CPF, nome, nascimento, anos de carteira, quanto paga hoje. <b>O que ver:</b> uma pergunta por vez; com um nome comum, a pergunta "homem ou mulher?" <b>não</b> aparece.</dd>
+    <dt>10 · o resultado</dt><dd>Espere alguns minutos. <b>O que ver:</b> "Prontinho, &lt;nome&gt;! Descobrimos Quem Cobra Menos…", "Fiz &lt;100 + cotações&gt; Cotações…", "Você deve economizar até R$ …" (contra o valor que você disse pagar), "Quem cobra menos? Corretora … · &lt;N&gt;x de R$ …", os cartões, o melhor preço por seguradora, quem é a corretora (com SUSEP e anos de mercado), o link e a pergunta final.</dd>
+    <dt>11 · o link</dt><dd>Abra o link. <b>O que ver:</b> a marca do Quem Cobra Menos; as opções <b>lado a lado</b> (arraste para o lado); em cada cartão a menor parcela no topo, depois o preço à vista, depois a maior parcela sem juros; o logo da corretora vencedora; o bloco "Nível 5".</dd>
+    <dt>12 · "Quero fechar"</dt><dd>Toque em <b>"Quero fechar"</b>. <b>O que ver:</b> volta para a conversa com o texto pronto; ao mandar, uma resposta de passagem e um cartão <b>"Cliente do canal quer fechar"</b> no Inbox do portal admin.</dd>
+    <dt>13 · os lembretes</dt><dd>Num segundo teste, <b>não responda por 15 minutos</b>. <b>O que ver:</b> 1 lembrete; no dia seguinte, no horário comercial, o 2º; <b>nunca</b> um 3º.</dd>
+    <dt>14 · "parar"</dt><dd>Mande <b>"parar"</b>. <b>O que ver:</b> uma frase de confirmação e mais nada.</dd>
+  </dl>
+
+  <h3 style="margin:22px 0 8px">Bloco 4 — os 4 testadores <span style="color:var(--muted);font-weight:400">(só depois de o seu teste dar certo)</span></h3>
+  <dl class="q2">
+    <dt>15 · cadastrar</dt><dd>Cada um com o comando do passo 7, trocando o número e o apelido.</dd>
+    <dt>16 · o convite</dt><dd>Mande a eles: <i>"Oi! Estou testando um serviço que descobre quem cobra menos no seguro do seu carro. Manda 'oi' para &lt;número novo&gt; e responde as perguntas. Precisa da placa, do CEP de onde o carro dorme e do seu CPF. É cotação de verdade, mas você não é obrigado a fechar. Depois me conta: chegou até o resultado? Quanto tempo levou? Onde travou? Mostraria para um amigo?"</i></dd>
+    <dt>17 · juntar</dt><dd>Junte as respostas e os prints e mande aqui no chat.</dd>
+  </dl>
+
+  <h3 style="margin:22px 0 8px">Bloco 5 — os outros ramos (129-C) <span style="color:var(--muted);font-weight:400">(nada para testar no WhatsApp ainda)</span></h3>
+  <p class="lede" style="max-width:78ch">A 129-C ensinou o motor a cotar <b>Condomínio, Residencial e Empresarial</b> — 📊 um cálculo real de cada fechou no Agger da Resulta em 11/10. A tela e a proposta desses ramos para o cliente são a próxima entrega deles (a 130-C). <b>O que você valida agora:</b> só os passos <b>1</b> e <b>4</b> — o sistema implantado e o Agger da Resulta com as credenciais certas para esses ramos.</p>
+</div>
+
+<div class="virada" style="border-left-color:var(--crit)">
+  <span class="eyebrow" style="color:var(--crit)">10/10/2026 &middot; o detalhe de cada tarefa do multicálculo (o roteiro acima as junta numa ordem só) &middot; fonte <code>TAREFAS-DO-FOUNDER.md</code>, T-120 a T-138</span>
   <h2>O que só você faz para o Quem Cobra Menos falar com os convidados — na ordem</h2>
   <p class="lede" style="max-width:78ch">As SPECs <b>130-A</b> (a proposta), <b>130-A.1</b> (a mensagem), <b>133-A</b> (o Quem Cobra Menos no WhatsApp) e <b>133-A.1</b> (os seus ajustes e o Agger pela tela) estão prontas e na <code>main</code>.
   O código não manda nada a ninguém até você fazer os passos 2 a 6 — <b>um depois do outro</b>. O passo 1 é de segurança e vale para hoje.
@@ -22,7 +69,7 @@ portal-worker  MULTICALCULO_MOTOR_LIGADO = true</code></pre>
 python -m app.services.canal.comando_convidados --listar</code></pre>
       <b>O que esperar:</b> os números aparecem <b>mascarados</b> na lista. Comece pelo <b>seu</b> número. Para tirar alguém: <code>--remover 55DDDNUMERO</code>. <b>Se aparecer "banco indisponível":</b> o passo 2 não terminou.</dd>
     <dt>5 · T-135 · depois do 2</dt><dd><b>Ligar o Agger de cada corretora — agora pela TELA.</b> Logado em <b>cada</b> corretora no painel → <b>Personalização → Conectores → "Agger da corretora"</b> → o login <code>cotador@…</code> da corretora + a senha → <b>Salvar</b>. <b>O que esperar:</b> o cartão mostra "aguardando o 1º cálculo" (e, depois do primeiro teste, "funcionando"); a senha nunca volta para a tela. Sem este passo <b>nenhuma cotação do canal sai</b>. Login de <b>pessoa</b> (o da Ellen, por exemplo) continua proibido para o robô, e o mesmo login nunca pode estar em duas corretoras — a tela recusa.</dd>
-    <dt>6 · T-136 · antes dos testes com a Resulta</dt><dd><b>Corrigir a conta <code>cotador@</code> da Resulta no Agger</b> (📊 medido em 10/10), entrando com um login de <b>administrador</b> da Resulta: (1) <b>HDI</b> com credencial inválida → Configurações → Seguradoras → HDI → corrigir usuário e senha → Validar; (2) <b>Mitsui</b> não cadastrada → cadastrar, se houver código; (3) <b>Tokio</b> sem o login do serviço web → preencher → Validar; (4) a data no campo de licença é <b>13/10/2026</b> → conferir em "Meu plano"; (5) dar ao <code>cotador@</code> o mesmo <b>perfil restrito</b> do robô da AutoFleet. <b>O que esperar:</b> as três seguradoras aparecem como válidas. A conta da AutoFleet já está igual à da Ellen (15 seguradoras válidas).</dd>
+    <dt>6 · T-136 · antes dos testes com a Resulta</dt><dd><b>Corrigir a conta <code>cotador@</code> da Resulta no Agger</b> (📊 medido em 10/10), entrando com um login de <b>administrador</b> da Resulta: (1) <b>HDI</b> com credencial inválida → Configurações → Seguradoras → HDI → corrigir usuário e senha → Validar; (2) <b>Mitsui</b> não cadastrada → cadastrar, se houver código; (3) <b>Tokio</b> sem o login do serviço web → preencher → Validar; (4) a data no campo de licença é <b>13/10/2026</b> → conferir em "Meu plano"; (5) dar ao <code>cotador@</code> o mesmo <b>perfil restrito</b> do robô da AutoFleet. <b>O que esperar:</b> as três seguradoras aparecem como válidas. A conta da AutoFleet já está igual à da Ellen (15 seguradoras válidas). 🆕 <b>11/10 (P-129C-04):</b> no cálculo real de condomínio e residencial, 📊 <b>Porto, Mapfre e HDI recusaram por credencial</b> — veja também se Porto e Mapfre pedem credencial própria para esses ramos.</dd>
     <dt>7 · T-125 · antes da 1ª passagem real</dt><dd>No painel, <b>Personalização → Corretora → Identidade da corretora</b>, logado em cada corretora: preencha o <b>WhatsApp de atendimento</b> (o número que fecha o seguro) e o <b>código SUSEP</b>. 📊 07/10: a marca da AutoFleet já foi <b>publicada</b> pela 133-A (logo, 2011, SUSEP aparecendo); o que falta é o WhatsApp. <b>Se não fizer:</b> quem diz "quero fechar" no canal cai num cartão no Inbox do admin e espera alguém olhar (P-133A-02), e a proposta da carteira não publica.</dd>
     <dt>8 · T-126 · depois do Implantar</dt><dd>Eu republico a proposta do canário e mando o link no chat. Você manda o link <b>para você mesmo pelo WhatsApp</b> e abre tocando nele. <b>O que esperar:</b> a prévia do link com uma imagem do melhor preço; a página com os cartões de arrastar, sem comissão e sem o nome da corretora que perdeu. <b>Se não bater:</b> mande um print no chat.</dd>
     <dt>9 · T-128 · hoje</dt><dd><b>Avisar a Ellen:</b> <i>"se aparecer 'sessão ativa' ao entrar no Agger hoje, é o seu próprio login (a sessão que o robô deixou) — pode prosseguir"</i>. <b>Se não avisar:</b> ela pode achar que alguém está usando o login dela.</dd>

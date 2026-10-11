@@ -2419,3 +2419,20 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | D-133A1-06 | **A 129-C abre num chat NOVO** (este chegou ao teto de contexto do CLAUDE.md §9); os manuais da Resulta atualizam depois; a regra +15 % é configuração | ✅ TOMADA (gerente, nota 85) | — |
 | D-133A1-07 | **A menor parcela é a que a seguradora traz** — 📊 a Youse só traz 4x (nunca se inventa 12x); quando a seguradora traz 12x, o 12x aparece em destaque | ✅ TOMADA (gerente, medido) | — |
 | D-130A1-11 | **Comerciais com WhatsApp e Agger próprios** (cada comercial cota na conta dela, recebe o aviso e depois fala com o cliente): **PLANEJADO, não construído** — `programa-multicalculo/PLANO-COMERCIAIS-E-CONTAS.md`. Entra depois da 131 (o auxiliar de renovação é quem precisa dele primeiro). Notas: planejar agora e construir com a 131 85 × construir já 40 | ✅ TOMADA (gerente, nota 85) | D-MC-24/40 |
+
+## D-129C-01…09 · SPEC-129-C — mais ramos do Agger: Condomínio, Residencial e Empresarial (11/10/2026, tomadas pela execução com nota 0–100; rito AAA v13 CRÍTICO)
+
+> Fonte: `specs/SPEC-129-C-mais-ramos-do-agger.md` §2 · relatório `reports/SPEC-129-C-EXECUTION-REPORT.md` (nota 88) · canário AO VIVO
+> `programa-multicalculo/129-C/CANARIO-AO-VIVO.md` (📊 11/10: 1 cálculo real por ramo, HTTP 201 nos 3).
+
+| # | Decisão | Estado | Substitui / revê |
+|---|---|---|---|
+| D-129C-01 | **O Agger da corretora fica SEMPRE ligado**; horário e regras moram no auxiliar (F0, feito; 📊 a janela "seg-dom 00:00–23:59" deixava 23:59–00:00 fora) | ✅ TOMADA (gerente, nota 92) | — |
+| D-129C-02 | **A fonte das coberturas e das seguradoras de RE é o histórico do Agger**, não a InfoCap (📊 a InfoCap da Resulta tem 0 condomínio, 12 residencial, 3 empresarial em 32.901 documentos; o Agger tem 672/115/182 negócios) | ✅ TOMADA (gerente, nota 95) | — |
+| D-129C-03 | **As opções de RE não têm valores segurados fixos**: os valores vêm do PEDIDO (a básica do risco); a opção varia as coberturas extras e a assistência — "padrão" (as típicas do ramo, 📊 AGREGADO) e "mais em conta" (só as essenciais + assistência básica) | ✅ TOMADA (gerente, nota 88) | — |
+| D-129C-04 | **A atividade do empresarial é por seguradora**: o robô lê `getOptionsBySegFull` no cálculo e escolhe o código de cada seguradora pela atividade do pedido (texto normalizado + sinônimos por classe); seguradora sem atividade inequívoca sai e é listada ("sem atividade compatível"). Notas 85 × pedir humano sempre 50 | ✅ TOMADA (gerente, nota 85) | — |
+| D-129C-05 | **A comissão de RE vai EXPLÍCITA no item** pela config por ramo (📊 o padrão do Agger no empresarial é 0 %); padrão do produto = o `comissao.entrada` da corretora, igual ao auto | ✅ TOMADA (gerente, nota 88) | — |
+| D-129C-06 | **A regra de renovação por ramo é configuração** (`renovacao.reajuste_basica_pct`); padrão = 15 % (a palavra do Founder) — 📊 o Agger mostra +10 % como o mais comum no condomínio (16 de 41 pares; mediana +13,3 %): 🧑 o Founder confirma o número (P-129C-03) | ✅ TOMADA (gerente, nota 80) | — |
+| D-129C-07 | **Preferência de seguradoras por ramo por corretora** em `multicalculo_config` (lista ordenada; vazia = todas as do ramo na conta); a comparação marca a preferida, nunca esconde as outras | ✅ TOMADA (gerente, nota 90) | — |
+| D-129C-08 | **A página/proposta dos outros ramos fica para uma SPEC própria (130-C)** — a página de hoje é de carro; a 129-C entrega as ofertas comparadas e o ranking (P-129C-05) | ✅ TOMADA (gerente, nota 82) | — |
+| D-129C-09 | **O canário usa 1 risco real por ramo** (dado de cliente, autorizado pelo Founder em 10/10) pela conta cotador@ da Resulta; o negócio fica no Agger dela; nunca nada vai ao cliente | ✅ TOMADA (Founder 10/10 + gerente, nota 85) | — |

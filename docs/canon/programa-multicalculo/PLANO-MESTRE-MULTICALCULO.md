@@ -16,6 +16,19 @@ Acréscimo de 10/10 (sem mudar a versão; SPEC-133-A.1, fatia F5 — retorno do 
 - **Decidido JÁ (D-131-0-04, nota 92):** até a 131-0, a corretora cadastra UMA conta Agger pela tela (a global); 📊 o motor trata todas as contas `agger` da corretora como um rodízio só (`robos.py:215-224`) — um Agger de comercial entraria no Quem Cobra Menos. **D-131-0-03 (95):** o dono da renovação na InfoCap é o produtor com `indireto = "F"` no `/prod_docs` avulso (📊 228/228 renovações de 10/10–09/11); o `ordem 1`/`produtor` de `/renovacoes` acerta só 27/228 — a 131 nunca usa o `ordem 1` para dono.
 - **As situações de entrada** (apólice, cotação de outra corretora em mãos, só o preço, nada, CRLV, áudio, tudo numa mensagem, renovação, cliente da carteira, WhatsApp do membro) estão mapeadas em [`SITUACOES-DE-ENTRADA-DA-COTACAO.md`](SITUACOES-DE-ENTRADA-DA-COTACAO.md). Encaixes, sem SPEC nova: **130-B** vira leitor de DOCUMENTO de seguro (apólice · proposta · cotação de outra corretora · CRLV, bancada + 5–10 cotações + 5–10 CRLVs); **132** usa o cadastro do sistema de gestão para o cliente da carteira e o áudio; **133-B** aceita apólice/cotação/CRLV, áudio e várias respostas numa fala, perguntando só o que faltou. Hoje a apólice enviada NÃO é lida (o QCM guarda só a referência; o leitor é a 130-B).
 
+Acréscimo de 11/10 (sem mudar a versão; SPEC-129-C):
+- **A 129-C ✅ CONCLUÍDA em 11/10** (nota 88; `reports/SPEC-129-C-EXECUTION-REPORT.md` · D-129C-01…09 · P-129C-01…06): o MESMO motor da
+  129-B calcula Condomínio (16), Residencial (2) e Empresarial (18). 📊 Canário AO VIVO nos 3 ramos pela conta cotador@ da Resulta
+  ([`129-C/CANARIO-AO-VIVO.md`](129-C/CANARIO-AO-VIVO.md)): HTTP 201 ×3, condomínio 3/7 com preço · residencial 3/8 · empresarial 1/1,
+  ~47 s do envio ao último preço. A fonte de RE é o histórico do Agger, não a InfoCap (D-129C-02); o Agger da corretora fica sempre ligado
+  (D-129C-01). A próxima é a **131-0 parte A** (chat novo). O que é do Founder: o
+  [`ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md`](ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md) (T-138, 17 passos em 5 blocos).
+- **Entra na fila a SPEC-130-C — a página/proposta dos outros ramos** (D-129C-08; P-129C-05): hoje a página é de carro, e o ranking de RE
+  não chega ao cliente nem ao chat. **Recomendação do gerente: como fatia JUNTO da 132** (a cotação no chat principal é o primeiro
+  caminho que entrega uma cotação de RE ao corretor; página e chat são arquivos disjuntos) — **nota 85** × logo depois da 131-0 parte A
+  **68** (página sem quem a entregue: o QCM é só automóvel e a renovação de RE não tem de onde ler as apólices, P-129C-02) × depois da 132
+  **55** (a 132 sairia cotando RE sem proposta). 🧑 O Founder confirma ao abrir a 132.
+
 O que mudou da v2.5 para a v2.5.1 (Amandus/gerente, 05/10 tarde — [PASSAGEM](PASSAGEM-2026-10-05-WHATSAPP-PLANO-A.md) §3 e §8):
 - **A fila virou INTERCALADA (D-MC-61):** 129-B → 130-A → 133-A → 130-B → 131 → 132 → 133-B → 135 → 136 → 137 → ★, com a **134 flutuante** (entra quando a Meta aprovar, depois da 133-A). As duas linhas andam juntas: o Quem Cobra Menos (leads novos para as corretoras) e os Auxiliares de Renovação e de Cotação (o dia a dia da corretora, no chat principal).
 - **A D-128-03 foi TOMADA (05/10):** o robô recalcula reenviando o corpo do pedido, de dentro da página; isso resolve a autorização que a D-MC-28 pedia. Para construir e testar a 129-B, o login da Ellen; para o uso real, um usuário novo de robô em cada corretora (T-120).

@@ -69,4 +69,12 @@ Nenhum motor paralelo: o mesmo motor, robô, montador, leitor, porta e comparaç
 em código; as fixtures sem dado pessoal (varredura 0).
 
 ## 7. Entrega
-(preenchida no fecho)
+Push do código, da migration, do relatório e da bateria (11/10):
+```
+   8d468b4..c3a7495  HEAD -> main
+```
+Push do estado, da fila, das decisões D-129C-01…09 e do painel (`docs(129-C): estado, fila, decisões e painel`):
+```
+(colado no commit seguinte)
+```
+Painel do Founder republicado: https://claude.ai/code/artifact/defe331c-9399-4584-9d1c-2126a527cea0 (versão 34).

@@ -83,14 +83,22 @@ FORA DA     SPEC-116 → 124 (modelos, apólice, formulário, corredores, grupo,
               ambíguo (IBGE) · o Agger da corretora pela TELA (conta global do robô, um serviço só) · "mudar123" fora do produto ·
               o plano da 131-0 e as 16 situações de entrada · 📊 bateria 0 regressão · nenhuma migration · D-133A1-01…07 ·
               🧑 T-132 (com os valores das variáveis) · T-133 · T-134 · T-135 (Agger pela tela) · T-136 (conta da Resulta) · T-137 (senhas)
+            SPEC-129-C (mais ramos do Agger: Condomínio, Residencial e Empresarial) — CONCLUÍDA 11/10/2026, nota 88, 🔴 CRÍTICO,
+              branch spec/129-C-mais-ramos, base `8d468b4` → main `c3a7495` (juiz 76 ‖ red team 62 → conserto portal ‖ app →
+              confirmação 88) · o MESMO motor da 129-B ganha o ramo: pedido, opções, corpo, atividade do empresarial por seguradora,
+              leitor e comparação de RE, config por ramo; o Agger da corretora sempre ligado · 📊 canário AO VIVO 11/10 nos 3 ramos
+              (HTTP 201 ×3): condomínio 3/7 (Allianz R$ 8.408,79) · residencial 3/8 (Tokio R$ 490,25) · empresarial 1/1 (Allianz
+              R$ 2.072,76) · ~47 s · 📊 bateria 0 regressão · migration 20261011_01 APLICADA · D-129C-01…09 · P-129C-01…06 ·
+              🧑 T-138 o ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md (17 passos em 5 blocos) · P-129C-04 credenciais de RE (Porto/Mapfre/HDI)
 A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável  →  ✔ 128 prova do Agger
   (v2.5.1)  →  ✔ 129-B motor (várias corretoras em paralelo)  →  ✔ 130-A comparação e proposta  →  ✔ 130-A.1 a mensagem do QCM
             →  ✔ 133-A Quem Cobra Menos no WhatsApp, piloto fechado (as rodadas dos testadores correm no calendário)
             →  ✔ 133-A.1 os ajustes do Founder no QCM e o Agger da corretora pela tela
-            →  129-C mais ramos do Agger (⏭ próxima, chat NOVO, prompt pronto: specs-propostas/PROMPT-DE-ABERTURA-SPEC-129-C-PRONTO.md)
-            →  131-0 parte A as contas da corretora (planejada: specs-propostas/SPEC-131-0-CONTAS-COMERCIAIS-E-CONEXOES.md)
+            →  ✔ 129-C mais ramos do Agger (Condomínio, Residencial, Empresarial — canário real nos 3)
+            →  131-0 parte A as contas da corretora (⏭ próxima, chat NOVO; planejada: specs-propostas/SPEC-131-0-CONTAS-COMERCIAIS-E-CONEXOES.md)
             →  130-B leitor de apólice
-            →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2  →  133-B Quem Cobra Menos piloto 🚀3
+            →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2 (+ 130-C a página/proposta dos outros ramos, fatia junto, D-129C-08)
+            →  133-B Quem Cobra Menos piloto 🚀3
             →  135 proposta conversa 🚀4  →  136 lembretes  →  137 público no WhatsApp oficial 🚀5  →  ★ Claude/ChatGPT
   ⇅ 134     migração para a API oficial da Meta — FLUTUANTE: entra quando a Meta aprovar, a qualquer momento depois da 133-A
   troca     portão da 131 (InfoCap da Resulta de volta) antes do da 130-B → a 131 sobe para logo depois da 129-C · a 132 exige a 130-B
