@@ -379,6 +379,14 @@ from app.api.portal import router as portal_router
 
 app.include_router(portal_router, tags=["Portal"])
 
+# === SPEC-131-0 A — as contas da corretora (quem é quem no sistema de gestão, a regra do dono) e o manual de
+# cada serviço (QCM · Cotação · Renovação) com os 4 passos. Ambos internos (chave Next↔backend), company_id do BFF.
+from app.api.contas_da_corretora import router as contas_da_corretora_router  # noqa: E402
+from app.api.servicos_da_corretora import router as servicos_da_corretora_router  # noqa: E402
+
+app.include_router(contas_da_corretora_router)
+app.include_router(servicos_da_corretora_router)
+
 # SPEC-055 - Work OS: execucao duravel
 try:
     from app.api.work_runs import router as work_runs_router

@@ -5,7 +5,7 @@ Endpoints INTERNOS (chave Next↔backend `X-AutoBrokers-Internal-Key`, o mesmo p
 e escrita vai por `app.services.sistema_de_gestao.dono`, que filtra `company_id` no código (CLAUDE.md §7).
 
 ⛔ Nada aqui escreve no sistema de gestão (só GET). ⛔ Nenhum nome de cliente sai daqui.
-⚠️ Este router NÃO está registrado no `main.py` — quem registra é a costura (F5).
+Registrado no `main.py` pela costura (F5); `tests/test_spec1310_o_fio.py` prova que monta e exige a chave.
 """
 from __future__ import annotations
 
