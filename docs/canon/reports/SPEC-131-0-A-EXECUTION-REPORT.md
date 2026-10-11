@@ -183,7 +183,13 @@ lida pelo MESMO `_abrir` de `fonte_infocap.py`. `qual_agger` e `dono` são funç
 Nenhum nome de corretora ou de pessoa em código (📊 `grep` das linhas novas pelo juiz: só "resultado" e o comentário do arquivo aposentado).
 
 ## 13. Entrega
-<<PUSH>>
+```
+$ git rev-list --count HEAD..origin/main        → 0
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   7aa15ce..27771bd  HEAD -> main
+$ git rev-list --count origin/main..HEAD        → 0   (28 commits no ar)
+```
 
 ## 14. Telemetria (protocolo §11)
 `python backend/scripts/medir_execucao_claude_code.py --sessao atual`
