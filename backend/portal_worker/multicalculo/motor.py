@@ -121,6 +121,12 @@ MOTIVO_PESSOA_EM_USO = ("agger_da_pessoa_em_uso — a dona deste Agger estava us
 # Não se insiste no login de alguém: a conta é PAUSADA, o cálculo FALHA com o motivo (mesmo prefixo-chave dos outros)
 MOTIVO_PESSOA_SEM_RESPOSTA = ("agger_da_pessoa_sem_resposta — o login no Agger desta pessoa não chegou ao fim: o robô "
                               "parou e pausou o Agger dela; religue na tela da equipe e peça de novo")
+# 🔴 conserto da confirmação 131-0 A (defesa): a retomada exige uma conta que não volta sozinha (pausada, bloqueada,
+# apagada) — o cálculo FALHA com o motivo em vez de ficar `calculando` para sempre (mesmo prefixo-chave dos outros)
+MOTIVO_PESSOA_INDISPONIVEL = ("agger_da_pessoa_indisponivel — o Agger desta pessoa está pausado ou bloqueado e só ele "
+                              "podia ler o resultado; o negócio continua no Agger e pode ser consultado lá")
+MOTIVO_CONTA_EXIGIDA_INDISPONIVEL = ("o Agger que abriu este negócio está pausado ou bloqueado e só ele podia ler o "
+                                     "resultado; o negócio continua no Agger e pode ser consultado lá")
 MOTIVO_SENHA_DA_PESSOA = ("o Agger desta pessoa recusou a senha: o cálculo não saiu (só esta conta podia fazê-lo) — "
                           "troque a senha do Agger dela e peça de novo")
 KIND_CANAL = "platform_canal"
@@ -476,6 +482,8 @@ class Motor:
             conta = await self._escolher(corretora, pedido.get("origem") or "", agora, 1, continuacao=True,
                                          somente=somente, servico=pedido.get("servico"))
             if conta is None:
+                if somente is not None:
+                    await self._conta_da_retomada_inelegivel(corretora, somente, calcs, vencida)
                 continue
             tomados = []
             for c in calcs:
@@ -690,6 +698,35 @@ class Motor:
         de_pessoa = [str(x["id"]) for x in (r.data or []) if x.get("uso") == robos.MEMBRO]
         return de_pessoa[0] if de_pessoa else None
 
+    async def _conta_da_retomada_inelegivel(self, corretora: str, somente: str, calcs: List[Dict[str, Any]],
+                                            vencida: str) -> bool:
+        """🔴 conserto da confirmação 131-0 A (defesa): a retomada EXIGE uma conta (`somente`) e ela não volta mais sozinha —
+        pausada, bloqueada ou apagada. Pular o grupo seria pular PARA SEMPRE (`tentativas` não sobe sem tomada): o cálculo
+        termina `falhou` com o motivo e o pedido fecha. Conta só ocupada/em uso por outro motor → espera (o de antes).
+        Banco ilegível → espera (nunca falha um cálculo por um erro de leitura)."""
+        try:
+            r = await self._db(lambda: self.supa.table("portal_accounts").select("id, uso, robo_estado")
+                               .eq("id", somente).eq("company_id", corretora).limit(1).execute())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[MC] não consegui ler a conta exigida da retomada (%s) — espera", type(exc).__name__)
+            return False
+        atual = (r.data or [None])[0]
+        if atual is not None and atual.get("robo_estado") not in (robos.PAUSADO, robos.BLOQUEADO):
+            return False
+        motivo = (MOTIVO_PESSOA_INDISPONIVEL if atual is None or atual.get("uso") == robos.MEMBRO
+                  else MOTIVO_CONTA_EXIGIDA_INDISPONIVEL)
+        logger.warning("[MC] retomada: a conta exigida %s está %s — o cálculo falha com o motivo", somente,
+                       (atual or {}).get("robo_estado") or "apagada")
+        agora_iso = _iso(self.agora())
+        for c in calcs:
+            await self._db(lambda c=c: self.supa.table("multicalculo_calculos").update({
+                "status": "falhou", "fechado_em": agora_iso, "dono": None, "batida_em": None,
+                "erro": erro_curto(motivo),
+            }).eq("id", c["id"]).eq("company_id", corretora).eq("status", "calculando")
+                .lt("batida_em", vencida).execute())
+            await self._fechar_pedido_se_terminou(c["pedido_id"], c["solicitante_company_id"])
+        return True
+
     async def _soltar_conta(self, conta: Dict[str, Any], *, perdeu: bool = False, descartar: bool = False) -> None:
         """Fim do uso do robô. Sessão aberta de conta `ativo` → fica OCIOSA com a lease (reaproveita o
         login); conta `teste` (login de PESSOA) → logout e lease devolvida (D-129B-04). Sessão MORTA (401/403)
@@ -884,9 +921,10 @@ class Motor:
                 # corretora (a conta é a EXIGIDA) e nunca volta à fila para logar de novo no login dela
                 await self._marcar(conta, robos.PAUSADO)
                 logger.warning("[MC] Agger de pessoa %s: login sem desfecho — pausado", conta["id"])
+                # 🔴 conserto da confirmação 131-0 A: TAMBÉM os `calculando` (a retomada): com a conta pausada ninguém mais
+                # lê o negócio dela — sem isto o cálculo ficava `calculando` para sempre e o pedido nunca fechava
                 for c in list(g.calculos):
-                    if c.get("status") != "calculando":
-                        await self._encerrar(g, c, "falhou", MOTIVO_PESSOA_SEM_RESPOSTA)
+                    await self._encerrar(g, c, "falhou", MOTIVO_PESSOA_SEM_RESPOSTA)
                 return None
             logger.error("[MC] a sessão do robô %s não abriu (%s)", conta["id"], type(exc).__name__)
             await self._devolver_a_fila(g, g.calculos, com_espera=True)
@@ -979,9 +1017,9 @@ class Motor:
         if conta.get("uso") == robos.MEMBRO:
             # 🔴 SPEC-131-0 A · F3: o Agger de uma PESSOA recusou a senha — bloqueado na 1ª (acima) e o cálculo FALHA: só
             # esta conta podia fazê-lo, e esperar na fila até expirar esconderia o porquê de quem pediu
+            # 🔴 conserto da confirmação 131-0 A: TAMBÉM os `calculando` (a retomada) — bloqueada, ninguém mais lê o negócio
             for c in calcs:
-                if c.get("status") != "calculando":
-                    await self._encerrar(g, c, "falhou", MOTIVO_SENHA_DA_PESSOA)
+                await self._encerrar(g, c, "falhou", MOTIVO_SENHA_DA_PESSOA)
             return
         await self._devolver_a_fila(g, calcs)
 
