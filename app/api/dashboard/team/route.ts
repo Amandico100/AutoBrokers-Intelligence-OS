@@ -3,36 +3,61 @@
 // GET: membros (via company_members). POST: adicionar. PATCH: editar.
 // DELETE: remover o vínculo. Escritas exigem papel administrativo DA empresa
 // ativa; um membro comum só enxerga a lista.
+// SPEC-131-0 A · F1: `funcoes` (comercial · calculista · negociador) no GET/POST/PATCH; o PATCH de papel espelha em
+// `users_v2.role` quando esta é a empresa primária; o DELETE desliga o Agger pessoal pelo backend.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCompanyMember, assertSameOrigin } from '@/lib/admin/admin-auth';
-import { canWriteTenantConfig } from '@/lib/admin/admin-auth-policy';
+import { canWriteTenantConfig, lerFuncoes, papelNoCadastroLegado, papelQueAEquipeDa } from '@/lib/admin/admin-auth-policy';
 import { getTeam } from '@/lib/admin/tenant-overview-store';
 import { hashPassword } from '@/lib/auth';
 import { randomBytes } from 'crypto';
 import { recusaDaSenhaDoMembro } from '@/lib/admin/senha-do-membro';
+import { getBackendUrl } from '@/lib/backend-url';
 
 export const dynamic = 'force-dynamic';
 
-// 🔴 `attendant` ENTRA AQUI, senão a permissão da SPEC-093 não tem como ser
-// concedida a ninguém.
+// 🔴 `attendant` ENTRA NA LISTA DE PAPÉIS, senão a permissão da SPEC-093 não tem
+// como ser concedida a ninguém.
 //
 // 📊 Achado em 26/08/2026: o BLOCO A da SPEC-093 criou o papel na política de
 // autorização (`admin-auth-policy.ts`) — o papel que liga o agente de
-// atendimento **e mais nada**. Mas esta lista tinha só dois valores, e a linha
-// abaixo faz `attendant` virar `member` **em silêncio**:
-//
-//     const role = ALLOWED_ROLES.has(...) ? ... : 'member';
-//
-// ⚠️ Sem esta linha, a Regina e a Saionara **não tinham como receber o papel**:
-// nem pela tela (que não o oferece) nem pela API (que o descartava). A única
-// alternativa era `admin_company`, que abre a configuração inteira — prompt do
-// agente, integrações, tudo. **Exatamente o que o BLOCO A existe para evitar.**
+// atendimento **e mais nada**. Mas a lista desta rota tinha só dois valores, e
+// um papel fora dela virava `member` **em silêncio**.
 //
 // 🔴 É a §9.3 numa forma nova: não é um guarda que falha, é uma permissão que
 // ninguém consegue dar. A capacidade existia e era inalcançável.
-const ALLOWED_ROLES = new Set(['admin_company', 'member', 'attendant']);
+//
+// 🔴 SPEC-131-0 A · F1 — a lista mora numa fonte só: `PAPEIS_QUE_A_EQUIPE_DA` ⊂ `PAPEIS_DE_ACESSO` (na política, a
+// mesma do CHECK `ck_company_members_role`), lida por `papelQueAEquipeDa`. Papel desconhecido agora é RECUSADO
+// (400), nunca trocado calado. As FUNÇÕES (`FUNCOES_DE_TRABALHO`, lidas por `lerFuncoes`) idem — e não dão acesso.
+const PAPEL_INVALIDO = 'Papel desconhecido. Os papéis são Administrador, Membro e Atendente.';
 
 const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
+
+function backendHeaders(): Record<string, string> {
+  const key = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY || '';
+  return { 'Content-Type': 'application/json', 'X-AutoBrokers-Internal-Key': key };
+}
+
+/**
+ * SPEC-131-0 A · F1 × F3 (§5.2) — quem sai da equipe tem o Agger PESSOAL desligado (pausa + a senha apagada) pelo
+ * ÚNICO escritor, `conta_do_robo.desligar_do_membro`, atrás do endpoint interno do backend. ⛔ Esta rota NUNCA
+ * escreve a tabela das contas de portal. Se a chamada falhar, o vínculo já saiu e a conta já é inelegível (o motor
+ * reconfere o vínculo ativo); a resposta diz `agger_pendente: true` para a tela avisar.
+ */
+async function desligarAggerDoMembro(companyId: string, userId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/portal/aggers-da-equipe/desligar-membro`, {
+      method: 'POST',
+      headers: backendHeaders(),
+      body: JSON.stringify({ company_id: companyId, user_id: userId }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(_req: NextRequest) {
   const auth = await requireCompanyMember({ write: false });
@@ -56,7 +81,11 @@ export async function POST(req: NextRequest) {
   const firstName = String(body.first_name || '').trim();
   const lastName = String(body.last_name || '').trim();
   const phone = digits(body.phone);
-  const role = ALLOWED_ROLES.has(String(body.role)) ? String(body.role) : 'member';
+  // sem papel no pedido = Membro; papel desconhecido = 400 (nunca troca calada)
+  const role = body.role == null || body.role === '' ? 'member' : papelQueAEquipeDa(body.role);
+  if (!role) return NextResponse.json({ ok: false, error: PAPEL_INVALIDO }, { status: 400 });
+  const lidas = body.funcoes == null ? { ok: true as const, funcoes: [] } : lerFuncoes(body.funcoes);
+  if (!lidas.ok) return NextResponse.json({ ok: false, error: lidas.erro }, { status: 400 });
   // 🔴 SPEC-133-A.1: nunca mais uma senha padrão conhecida ("mudar123"); sem senha no pedido → aleatória, devolvida UMA vez
   const senhaGerada = !body.password;
   const password = String(body.password || randomBytes(12).toString('base64url'));
@@ -71,6 +100,15 @@ export async function POST(req: NextRequest) {
     .select('id, company_id').eq('email', email).is('deleted_at', null).maybeSingle();
 
   let userId = existing?.id as string | undefined;
+  if (userId) {
+    // ⚠️ quem JÁ está na equipe não é "adicionado" de novo: o upsert abaixo reescreveria papel e is_owner do vínculo
+    // (um administrador rebaixaria o dono re-adicionando o e-mail dele). Editar é pelo PATCH.
+    const { data: jaNaEquipe } = await supabase.from('company_members')
+      .select('id').eq('user_id', userId).eq('company_id', auth.ctx.companyId).eq('status', 'active').maybeSingle();
+    if (jaNaEquipe) {
+      return NextResponse.json({ ok: false, error: 'Essa pessoa já está na equipe — abra o nome dela para editar.' }, { status: 409 });
+    }
+  }
   if (!userId) {
     // Usuário novo: nasce com esta empresa como primária. CPF placeholder único
     // (o membro completa depois em Configurações); sem confirmação de e-mail.
@@ -85,7 +123,9 @@ export async function POST(req: NextRequest) {
       birth_date: '1990-01-01',
       company_id: auth.ctx.companyId,
       status: 'active',
-      role,
+      // espelho legado: o banco só aceita admin_company|member em users_v2.role (`users_v2_role_check`) — `attendant`
+      // vira `member`. 📊 Antes, adicionar uma Atendente nova batia nesse CHECK e devolvia 500.
+      role: papelNoCadastroLegado(role),
       is_owner: false,
       terms_accepted_at: new Date().toISOString(),
       privacy_policy_accepted_at: new Date().toISOString(),
@@ -98,7 +138,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { error: memberErr } = await supabase.from('company_members').upsert(
-    { user_id: userId, company_id: auth.ctx.companyId, role, is_owner: false, status: 'active' },
+    { user_id: userId, company_id: auth.ctx.companyId, role, is_owner: false, status: 'active', funcoes: lidas.funcoes },
     { onConflict: 'user_id,company_id' },
   );
   if (memberErr) {
@@ -127,6 +167,13 @@ export async function PATCH(req: NextRequest) {
   if (member.is_owner && !auth.ctx.isOwner) {
     return NextResponse.json({ ok: false, error: 'Só o dono pode editar outro dono.' }, { status: 403 });
   }
+  // valida TUDO antes de gravar qualquer coisa: um pedido com papel ou função errados não salva nada pela metade
+  // (o papel que a pessoa JÁ tem volta igual da tela — inclusive o do dono, que a tela não deixa trocar)
+  const pedePapel = body.role != null && body.role !== member.role;
+  const novoPapel = pedePapel ? papelQueAEquipeDa(body.role) : null;
+  if (pedePapel && !novoPapel) return NextResponse.json({ ok: false, error: PAPEL_INVALIDO }, { status: 400 });
+  const lidas = body.funcoes == null ? null : lerFuncoes(body.funcoes);
+  if (lidas && !lidas.ok) return NextResponse.json({ ok: false, error: lidas.erro }, { status: 400 });
 
   const userUpd: Record<string, unknown> = {};
   if (typeof body.first_name === 'string' && body.first_name.trim()) userUpd.first_name = body.first_name.trim();
@@ -143,9 +190,23 @@ export async function PATCH(req: NextRequest) {
     if (error) return NextResponse.json({ ok: false, error: 'Não foi possível atualizar os dados.' }, { status: 500 });
   }
 
-  if (typeof body.role === 'string' && ALLOWED_ROLES.has(body.role) && body.role !== member.role && !member.is_owner) {
-    const { error } = await supabase.from('company_members').update({ role: body.role }).eq('id', member.id);
-    if (error) return NextResponse.json({ ok: false, error: 'Não foi possível mudar o papel.' }, { status: 500 });
+  const vinculoUpd: Record<string, unknown> = {};
+  const mudaPapel = Boolean(novoPapel && novoPapel !== member.role && !member.is_owner);
+  if (mudaPapel) vinculoUpd.role = novoPapel;
+  if (lidas && lidas.ok) vinculoUpd.funcoes = lidas.funcoes;
+  if (Object.keys(vinculoUpd).length) {
+    // 🔴 o vínculo é a ÚNICA fonte do papel (`requireCompanyMember` lê só ele) — sempre filtrado pela corretora da sessão
+    const { error } = await supabase.from('company_members').update(vinculoUpd)
+      .eq('id', member.id).eq('company_id', auth.ctx.companyId);
+    if (error) return NextResponse.json({ ok: false, error: 'Não foi possível salvar o papel ou as funções.' }, { status: 500 });
+  }
+  if (mudaPapel) {
+    // cinto e suspensório: o espelho legado `users_v2.role` acompanha — mas SÓ quando esta corretora é a primária da
+    // pessoa. O filtro `company_id` está NA escrita: se a primária for outra, nada muda lá.
+    const { error } = await supabase.from('users_v2')
+      .update({ role: papelNoCadastroLegado(novoPapel), updated_at: new Date().toISOString() })
+      .eq('id', userId).eq('company_id', auth.ctx.companyId);
+    if (error) console.error('[TEAM] espelho do papel em users_v2 falhou:', error.message);
   }
   return NextResponse.json({ ok: true });
 }
@@ -171,7 +232,9 @@ export async function DELETE(req: NextRequest) {
   }
   // Remove o VÍNCULO com esta empresa — a conta continua existindo (a pessoa
   // pode pertencer a outra corretora).
-  const { error } = await supabase.from('company_members').delete().eq('id', member.id);
+  const { error } = await supabase.from('company_members').delete().eq('id', member.id).eq('company_id', auth.ctx.companyId);
   if (error) return NextResponse.json({ ok: false, error: 'Não foi possível remover.' }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  // o Agger PESSOAL dela NESTA corretora é desligado pelo backend (F3); falhou → o vínculo já saiu mesmo assim
+  const desligou = await desligarAggerDoMembro(auth.ctx.companyId, userId);
+  return NextResponse.json({ ok: true, agger_pendente: !desligou });
 }

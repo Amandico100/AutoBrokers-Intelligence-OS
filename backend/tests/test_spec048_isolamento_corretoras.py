@@ -81,7 +81,18 @@ check("GET expoe can_manage p/ esconder botoes de membro comum", "can_manage" in
 
 _tc = _src("app/dashboard/personalizacao/equipe/TeamClient.tsx")
 check("clique no membro abre modal com dados", "openMember" in _tc and "modalOpen" in _tc)
-check("adicionar pessoa com senha provisoria", "Adicionar pessoa" in _tc and "mudar123" in _tc)
+# §9.3 (SPEC-131-0 A · F1): esta linha exigia a string "mudar123" no TeamClient — verdade VENCIDA desde a 133-A.1,
+# quando a senha padrão saiu e a palavra só sobrevivia num comentário. A lição ("ninguém entra com a senha que todo
+# mundo conhece") migra para onde ela é guardada de verdade: a regra `lib/admin/senha-do-membro.ts` RECUSA "mudar123",
+# a rota decide por ela no POST e no PATCH, e nem a tela nem a rota a geram como valor.
+_senha = _src("lib/admin/senha-do-membro.ts")
+check("adicionar pessoa com senha provisoria", "Adicionar pessoa" in _tc and "senhaProvisoria()" in _tc)
+check("a senha antiga 'mudar123' e RECUSADA pela regra", "new Set(['mudar123'])" in _senha)
+check("a rota decide pela regra no POST e no PATCH",
+      "recusaDaSenhaDoMembro(password)" in _team and "recusaDaSenhaDoMembro(body.password)" in _team)
+import re as _re
+_gera = _re.compile(r"""(password|senha)\w*\s*[:=]\s*['"]mudar123""", _re.I)
+check("nem a tela nem a rota geram 'mudar123' como senha", not _gera.search(_tc) and not _gera.search(_team))
 check("membro comum nao gerencia", "canManage" in _tc)
 
 # ---------------------------------------------------------------------------

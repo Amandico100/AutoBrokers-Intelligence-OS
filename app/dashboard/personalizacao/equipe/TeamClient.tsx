@@ -4,6 +4,10 @@
 // adicionar pessoa (senha provisória, sem confirmação de e-mail), clicar no
 // membro abre o modal com os dados (editar/excluir — só admin). Membros
 // comuns só visualizam. Quem pertence a 2 corretoras aparece nas duas.
+//
+// SPEC-131-0 A · F1 — cada pessoa tem um PAPEL de acesso (Administrador · Membro · Atendente) e FUNÇÕES de trabalho
+// (Comercial · Calculista · Negociador), que são outra coisa: dizem o que ela faz, não o que ela pode. As listas, os
+// rótulos e a ajuda vêm da política (`lib/admin/admin-auth-policy.ts`) — a mesma lista do CHECK do banco.
 
 import { useCallback, useEffect, useState } from 'react';
 import { Check, Copy, Loader2, Plus, X } from 'lucide-react';
@@ -11,6 +15,10 @@ import { Check, Copy, Loader2, Plus, X } from 'lucide-react';
 // 🔴 SPEC-EXTRA-001.3 BLOCO B — D-PILOTO-09: a lista de números da casa
 // mora AQUI, no card Equipe, e não em card próprio.
 import { NumerosDaCasa } from './NumerosDaCasa';
+import {
+  AJUDA_DAS_FUNCOES, FUNCOES_DE_TRABALHO, O_QUE_O_PAPEL_PODE, PAPEIS_QUE_A_EQUIPE_DA, ROTULO_DA_FUNCAO, ROTULO_DO_PAPEL,
+  type FuncaoDeTrabalho,
+} from '@/lib/admin/admin-auth-policy';
 
 // 🔴 SPEC-133-A.1 (achado do planejador, 10/10): a senha provisória era sempre "mudar123" — quem soubesse o e-mail de um
 // membro novo entrava. Agora cada pessoa nasce com uma senha aleatória, que o admin vê (e pode trocar) antes de salvar.
@@ -25,7 +33,24 @@ type Member = {
   user_id: string; name: string; first_name: string; last_name: string;
   email: string | null; phone: string | null; role: string; role_label: string;
   is_owner: boolean; status: string | null; last_login_at: string | null;
+  funcoes?: string[];
 };
+
+const rotuloDaFuncao = (f: string) => ROTULO_DA_FUNCAO[f as FuncaoDeTrabalho] ?? f;
+
+/** As funções de uma pessoa como etiquetas pequenas (só leitura). */
+function EtiquetasDeFuncao({ funcoes }: { funcoes?: string[] }) {
+  if (!funcoes?.length) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-1" data-funcoes-do-membro>
+      {funcoes.map((f) => (
+        <span key={f} className="rounded-full border border-primary/30 bg-brand-soft px-2 py-0.5 text-[10px] font-medium text-primary">
+          {rotuloDaFuncao(f)}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 const inputCls = 'mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground';
 
@@ -48,6 +73,10 @@ export function TeamClient() {
   // servidor devolvia a gerada e a tela a jogava fora: o membro nascia com uma senha que ninguém sabia.
   const [criada, setCriada] = useState<{ nome: string; email: string; senha: string } | null>(null);
   const [copiada, setCopiada] = useState(false);
+  // as funções em edição no modal (comercial · calculista · negociador)
+  const [funcoes, setFuncoes] = useState<string[]>([]);
+  // aviso que fica na tela depois de fechar o modal (ex.: o Agger pessoal de quem saiu não foi desligado agora)
+  const [aviso, setAviso] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -71,6 +100,7 @@ export function TeamClient() {
       first_name: m.first_name, last_name: m.last_name,
       phone: m.phone || '', role: m.role, password: '',
     });
+    setFuncoes(m.funcoes ?? []);
   };
 
   const openAdd = () => {
@@ -78,7 +108,14 @@ export function TeamClient() {
     setAdding(true);
     setNotice('');
     setForm({ first_name: '', last_name: '', email: '', phone: '', role: 'member', password: senhaProvisoria() });
+    setFuncoes([]);
   };
+
+  // marca/desmarca uma função, mantendo a ordem da lista oficial
+  const alternarFuncao = (f: string) =>
+    setFuncoes((atual) => (atual.includes(f)
+      ? atual.filter((x) => x !== f)
+      : FUNCOES_DE_TRABALHO.filter((x) => x === f || atual.includes(x))));
 
   const close = () => { setSelected(null); setAdding(false); setCriada(null); setCopiada(false); };
 
@@ -94,8 +131,8 @@ export function TeamClient() {
         method: adding ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(adding
-          ? { first_name: form.first_name, last_name: form.last_name, email: form.email, phone: form.phone, role: form.role, password: form.password }
-          : { user_id: selected?.user_id, first_name: form.first_name, last_name: form.last_name, phone: form.phone, role: form.role, ...(form.password ? { password: form.password } : {}) }),
+          ? { first_name: form.first_name, last_name: form.last_name, email: form.email, phone: form.phone, role: form.role, funcoes, password: form.password }
+          : { user_id: selected?.user_id, first_name: form.first_name, last_name: form.last_name, phone: form.phone, role: form.role, funcoes, ...(form.password ? { password: form.password } : {}) }),
       });
       const j = await res.json().catch(() => ({}));
       if (j?.ok && adding && !j.existed) {
@@ -124,7 +161,15 @@ export function TeamClient() {
         body: JSON.stringify({ user_id: selected.user_id }),
       });
       const j = await res.json().catch(() => ({}));
-      if (j?.ok) { close(); await load(); return; }
+      if (j?.ok) {
+        const nome = selected.name;
+        close();
+        setAviso(j.agger_pendente
+          ? `${nome} saiu da equipe. O Agger pessoal dessa pessoa não foi desligado agora — ele já não é usado em nenhum cálculo, mas a senha dele ainda está guardada. Avise o suporte para apagar.`
+          : '');
+        await load();
+        return;
+      }
       setNotice(j?.error || 'Não foi possível remover.');
     } finally {
       setBusy(false);
@@ -137,6 +182,11 @@ export function TeamClient() {
 
   return (
     <div className="space-y-3">
+      {aviso && (
+        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-foreground" role="status" data-aviso-agger-pendente>
+          {aviso}
+        </p>
+      )}
       {canManage && (
         <button
           onClick={openAdd}
@@ -163,6 +213,7 @@ export function TeamClient() {
                   {m.user_id === me && <span className="ml-1 text-[10px] text-muted-foreground">(você)</span>}
                 </p>
                 {m.email && <p className="truncate text-[11px] text-faint">{m.email}</p>}
+                <EtiquetasDeFuncao funcoes={m.funcoes} />
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-[12px] text-muted-foreground">{m.role_label}</p>
@@ -180,7 +231,7 @@ export function TeamClient() {
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={close}>
           <div
-            className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl"
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-xl sm:p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
@@ -219,6 +270,10 @@ export function TeamClient() {
                 <p><span className="text-faint">E-mail:</span> {selected.email}</p>
                 {selected.phone && <p><span className="text-faint">Celular:</span> {selected.phone}</p>}
                 <p><span className="text-faint">Papel:</span> {selected.role_label}{selected.is_owner ? ' · Dono' : ''}</p>
+                <p>
+                  <span className="text-faint">Funções:</span>{' '}
+                  {selected.funcoes?.length ? selected.funcoes.map(rotuloDaFuncao).join(' · ') : 'nenhuma marcada'}
+                </p>
                 <p><span className="text-faint">Último acesso:</span> {fmtWhen(selected.last_login_at)}</p>
               </div>
             )}
@@ -241,7 +296,7 @@ export function TeamClient() {
                     <input type="email" value={form.email || ''} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} className={inputCls} />
                   </label>
                 )}
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <label className="block text-[12px]">
                     <span className="text-muted-foreground">Celular</span>
                     <input value={form.phone || ''} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} className={inputCls} />
@@ -254,24 +309,52 @@ export function TeamClient() {
                       disabled={Boolean(selected?.is_owner)}
                       className={inputCls}
                     >
-                      {/* 🔴 Os rótulos dizem O QUE A PESSOA PODE FAZER.
-                          📊 Antes, `member` chamava-se "Atendente / Membro" — e
-                          é exatamente o papel que recebe 403 ao tentar ligar o
-                          agente de atendimento. Quem escolhesse "Atendente"
-                          para a atendente acertava o nome e errava a permissão,
-                          e só descobriria no primeiro dia de piloto.
-
-                          🔴 09/09/2026 — e a decisão do Founder resolveu o resto
-                          pela raiz: MEMBRO liga e desliga o agente. O rótulo
-                          "só consulta" virou mentira no mesmo dia, e um rótulo
-                          que mente sobre a permissão é o defeito que este
-                          comentário existe para não repetir. */}
-                      <option value="member">Membro — liga e desliga o agente</option>
-                      <option value="attendant">Atendente — liga e desliga o agente (mesmo poder)</option>
-                      <option value="admin_company">Administrador — configura tudo</option>
+                      {/* 🔴 O nome diz QUEM a pessoa é; o que o papel PODE aparece logo abaixo, e as duas coisas
+                          vêm da política (uma fonte). 📊 Histórico: `member` já se chamou "Atendente / Membro" e
+                          depois "só consulta" — rótulos que mentiam sobre a permissão. Um rótulo que mente sobre a
+                          permissão é o defeito que este comentário existe para não repetir. */}
+                      {selected?.is_owner && !(PAPEIS_QUE_A_EQUIPE_DA as readonly string[]).includes(form.role || '') && (
+                        <option value={form.role}>{ROTULO_DO_PAPEL[form.role] ?? 'Dono'}</option>
+                      )}
+                      {PAPEIS_QUE_A_EQUIPE_DA.map((p) => (
+                        <option key={p} value={p}>{ROTULO_DO_PAPEL[p]}</option>
+                      ))}
                     </select>
+                    {O_QUE_O_PAPEL_PODE[form.role || 'member'] && (
+                      <span className="mt-1 block text-[11px] text-faint" data-o-que-o-papel-pode>
+                        {O_QUE_O_PAPEL_PODE[form.role || 'member']}.
+                      </span>
+                    )}
                   </label>
                 </div>
+                <fieldset className="block text-[12px]">
+                  <legend className="text-muted-foreground">Funções na corretora</legend>
+                  <div className="mt-1 flex flex-wrap gap-2" data-funcoes-editaveis>
+                    {FUNCOES_DE_TRABALHO.map((f) => {
+                      const marcada = funcoes.includes(f);
+                      return (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => alternarFuncao(f)}
+                          aria-pressed={marcada}
+                          className={`min-h-[36px] rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                            marcada
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-border bg-background text-muted-foreground hover:border-primary/60 hover:text-foreground'
+                          }`}
+                        >
+                          {marcada && <Check className="mr-1 inline h-3 w-3" aria-hidden />}
+                          {ROTULO_DA_FUNCAO[f]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="mt-1 block text-[11px] text-faint" data-ajuda-das-funcoes>
+                    {AJUDA_DAS_FUNCOES} Pode marcar mais de uma, ou nenhuma. A função não muda o que a pessoa pode
+                    acessar — isso é o papel.
+                  </span>
+                </fieldset>
                 <label className="block text-[12px]">
                   <span className="text-muted-foreground">{adding ? 'Senha provisória (mínimo 10 — você a vê de novo ao salvar)' : 'Nova senha (mínimo 10; deixe vazio para manter)'}</span>
                   <input value={form.password || ''} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} className={inputCls} />

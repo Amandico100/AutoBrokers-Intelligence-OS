@@ -4,6 +4,82 @@
 /** Papéis tenant que podem ESCREVER configuração da própria corretora. */
 export const TENANT_WRITE_ROLES = ['owner', 'admin', 'admin_company', 'master_admin'];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SPEC-131-0 parte A · F1 (D-131-0-14) — o PAPEL DE ACESSO e as FUNÇÕES DE TRABALHO
+//
+// 🔴 Duas coisas diferentes, de propósito (o modelo é o do Slack: papéis de acesso fechados, separados do que a
+// pessoa faz):
+//   · o PAPEL diz o que a pessoa PODE no sistema — lista FECHADA; o banco tem o MESMO CHECK
+//     (`ck_company_members_role`, migration 20261011_02_spec1310_membros.sql) e o teste
+//     `scripts/spec1310-membros.test.mjs` compara as duas listas;
+//   · as FUNÇÕES dizem o que a pessoa FAZ na corretora (quem tem carteira, quem calcula, quem conversa com o
+//     cliente). ⛔ Função NÃO dá acesso a nada: nenhuma função acima a recebe, e `canWriteTenantConfig` nem a vê.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Os papéis de acesso que existem — a lista fechada do CHECK `ck_company_members_role`. */
+export const PAPEIS_DE_ACESSO = ['owner', 'admin_company', 'member', 'attendant'] as const;
+export type PapelDeAcesso = (typeof PAPEIS_DE_ACESSO)[number];
+
+/** Os que a tela da equipe pode dar. `owner` não: o dono nasce no provisionamento da corretora (`is_owner`). */
+export const PAPEIS_QUE_A_EQUIPE_DA: readonly PapelDeAcesso[] = PAPEIS_DE_ACESSO.filter((p) => p !== 'owner');
+
+/** As funções de trabalho — a lista fechada do CHECK `ck_company_members_funcoes`. */
+export const FUNCOES_DE_TRABALHO = ['comercial', 'calculista', 'negociador'] as const;
+export type FuncaoDeTrabalho = (typeof FUNCOES_DE_TRABALHO)[number];
+
+/** O nome de cada papel na tela. Os rótulos dizem quem a pessoa é; `O_QUE_O_PAPEL_PODE` diz o que ela pode. */
+export const ROTULO_DO_PAPEL: Record<string, string> = {
+  owner: 'Dono', admin_company: 'Administrador', member: 'Membro', attendant: 'Atendente',
+  // legados que a política ainda reconhece (nunca gravados em company_members — o CHECK recusa)
+  admin: 'Administrador', master_admin: 'Master',
+};
+
+export const O_QUE_O_PAPEL_PODE: Record<string, string> = {
+  owner: 'configura tudo e responde pela corretora',
+  admin_company: 'configura tudo: equipe, agentes, conexões e serviços',
+  member: 'usa o sistema e liga e desliga o agente de atendimento',
+  attendant: 'liga e desliga o agente de atendimento (o mesmo poder do Membro)',
+};
+
+export const ROTULO_DA_FUNCAO: Record<FuncaoDeTrabalho, string> = {
+  comercial: 'Comercial', calculista: 'Calculista', negociador: 'Negociador',
+};
+
+/** A linha de ajuda da tela, em português de gente. */
+export const AJUDA_DAS_FUNCOES =
+  'Comercial: tem carteira e Agger próprio. Calculista: monta cálculos, não fala com cliente. Negociador: conversa com o cliente.';
+
+/** O papel pedido pela tela da equipe, se for um que ela pode dar; senão `null` (a rota responde 400 — nunca troca calada). */
+export function papelQueAEquipeDa(v: unknown): PapelDeAcesso | null {
+  const s = typeof v === 'string' ? v : '';
+  return (PAPEIS_QUE_A_EQUIPE_DA as readonly string[]).includes(s) ? (s as PapelDeAcesso) : null;
+}
+
+/**
+ * Lê as funções pedidas. Lista fechada: um item desconhecido RECUSA o pedido inteiro (nunca é descartado em
+ * silêncio). Repetidas viram uma; a ordem é a da lista oficial.
+ */
+export function lerFuncoes(v: unknown): { ok: true; funcoes: FuncaoDeTrabalho[] } | { ok: false; erro: string } {
+  if (!Array.isArray(v)) return { ok: false, erro: 'As funções vêm numa lista.' };
+  const desconhecidas = v.filter((x) => typeof x !== 'string' || !(FUNCOES_DE_TRABALHO as readonly string[]).includes(x));
+  if (desconhecidas.length) {
+    return {
+      ok: false,
+      erro: `Função desconhecida: ${desconhecidas.map((x) => String(x)).join(', ')}. As funções são Comercial, Calculista e Negociador.`,
+    };
+  }
+  return { ok: true, funcoes: FUNCOES_DE_TRABALHO.filter((f) => v.includes(f)) };
+}
+
+/**
+ * O papel que vai para o espelho legado `users_v2.role`. 📊 O banco só aceita `admin_company` ou `member` ali
+ * (`users_v2_role_check`, lido do catálogo em 11/10/2026) — `attendant` vira `member`, que não administra nada.
+ * Só os leitores LEGADOS (cobrança, portal admin antigo) leem o espelho; o acesso ao painel lê `company_members`.
+ */
+export function papelNoCadastroLegado(papel: string | null | undefined): 'admin_company' | 'member' {
+  return papel === 'admin_company' || papel === 'owner' ? 'admin_company' : 'member';
+}
+
 /**
  * Papéis que podem LIGAR/DESLIGAR o agente de ATENDIMENTO — e nada mais.
  *

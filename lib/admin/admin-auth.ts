@@ -64,7 +64,24 @@ export interface TenantCtx { userId: string; companyId: string; role: string | n
  * VÍNCULO daquela empresa (o mesmo usuário pode ser dono numa e membro na
  * outra). Sem escolha, vale a primária (users_v2.company_id). Era ESTE seam
  * ignorar o seletor que fazia os dados de uma corretora vazarem na outra.
+ *
+ * 🔴 SPEC-131-0 parte A · F1 — UMA fonte do papel: `company_members`, nos DOIS caminhos.
+ * 📊 Antes, sem empresa ativa (o login grava `activeCompanyId = null`), o papel vinha de `users_v2.role` — e o
+ * PATCH da equipe muda só `company_members.role`. Quem fosse rebaixado de Administrador para Membro continuava
+ * administrando até trocar de corretora no seletor. Agora `users_v2` diz só QUAL é a empresa primária; o papel e o
+ * `is_owner` vêm do vínculo ATIVO dela. Sem vínculo ativo → nega (falha FECHADA), nunca cai no `users_v2.role`.
  */
+async function vinculoAtivo(supabase: SupabaseClient, userId: string, companyId: string) {
+  const { data: member } = await supabase
+    .from('company_members')
+    .select('company_id, role, is_owner')
+    .eq('user_id', userId)
+    .eq('company_id', companyId)
+    .eq('status', 'active')
+    .maybeSingle();
+  return member?.company_id ? member : null;
+}
+
 export async function requireCompanyMember(opts: { write: boolean }): Promise<{ ok: true; ctx: TenantCtx; supabase: SupabaseClient } | AuthFail> {
   const c = await cookies();
   const s = await getIronSession<SessionData>(c, sessionOptions);
@@ -72,31 +89,29 @@ export async function requireCompanyMember(opts: { write: boolean }): Promise<{ 
   const supabase = supabaseService();
 
   const active = s.activeCompanyId || null;
+  let companyId: string;
+  let member: Awaited<ReturnType<typeof vinculoAtivo>>;
   if (active) {
-    const { data: member } = await supabase
-      .from('company_members')
-      .select('company_id, role, is_owner')
-      .eq('user_id', s.userId)
-      .eq('company_id', active)
-      .eq('status', 'active')
-      .maybeSingle();
-    if (!member?.company_id) return { ok: false, status: 403, error: 'no_membership_active_company' };
-    const role = (member.role as string | null) ?? null;
-    const isOwner = Boolean(member.is_owner);
-    if (opts.write && !canWriteTenantConfig({ role, isOwner })) return { ok: false, status: 403, error: 'admin_required' };
-    return { ok: true, ctx: { userId: s.userId, companyId: member.company_id, role, isOwner }, supabase };
+    member = await vinculoAtivo(supabase, s.userId, active);
+    if (!member) return { ok: false, status: 403, error: 'no_membership_active_company' };
+    companyId = active;
+  } else {
+    // users_v2 só responde QUAL é a empresa primária — nunca o papel.
+    const { data } = await supabase.from('users_v2').select('company_id').eq('id', s.userId).maybeSingle();
+    const dbCompanyId = (data?.company_id as string | null) ?? null;
+    if (!dbCompanyId) return { ok: false, status: 404, error: 'no_company' };
+    if (!tenantCompanyConsistent({ sessionCompanyId: s.companyId ?? null, dbCompanyId })) {
+      return { ok: false, status: 403, error: 'session_company_divergent' };
+    }
+    member = await vinculoAtivo(supabase, s.userId, dbCompanyId);
+    if (!member) return { ok: false, status: 403, error: 'no_membership_primary_company' };
+    companyId = dbCompanyId;
   }
 
-  const { data } = await supabase.from('users_v2').select('company_id, role, is_owner').eq('id', s.userId).maybeSingle();
-  const dbCompanyId = (data?.company_id as string | null) ?? null;
-  if (!dbCompanyId) return { ok: false, status: 404, error: 'no_company' };
-  if (!tenantCompanyConsistent({ sessionCompanyId: s.companyId ?? null, dbCompanyId })) {
-    return { ok: false, status: 403, error: 'session_company_divergent' };
-  }
-  const role = (data?.role as string | null) ?? null;
-  const isOwner = Boolean(data?.is_owner);
+  const role = (member.role as string | null) ?? null;
+  const isOwner = Boolean(member.is_owner);
   if (opts.write && !canWriteTenantConfig({ role, isOwner })) return { ok: false, status: 403, error: 'admin_required' };
-  return { ok: true, ctx: { userId: s.userId, companyId: dbCompanyId, role, isOwner }, supabase };
+  return { ok: true, ctx: { userId: s.userId, companyId, role, isOwner }, supabase };
 }
 
 /** TA2-C 0.3 — same-origin para mutações (defesa em profundidade). Retorna AuthFail ou null. */
