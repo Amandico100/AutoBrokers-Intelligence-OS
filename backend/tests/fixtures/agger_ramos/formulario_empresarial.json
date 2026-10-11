@@ -1,0 +1,2236 @@
+{
+ "formato": "agger_formulario_ramo_v1",
+ "fonte": "SPEC-129-C BLOCO 0 (B0-a), 11/10/2026 00:40–00:51: DOM do formulário aberto SEM preencher na conta cotador@ da corretora B (a dos 3 ramos), ZERO cálculos (calcularV2 = 0, toda escrita fora de login/token/logout barrada); códigos lidos do JS do app (bundle de 11/10) e de GET Business/Data. O caminho_no_corpo vem do CÓDIGO do app (preencheDraft/getCalcObject), NÃO de um corpo gravado.",
+ "ramo": 18,
+ "rota": "/cotacao/empresarial/formulario",
+ "secoes": [
+  "Informações adicionais",
+  "Formulário Empresarial",
+  "Segurado",
+  "Endereço",
+  "Imóvel",
+  "Seguro",
+  "Renovação",
+  "Coberturas",
+  "Seguradoras",
+  "Configurações"
+ ],
+ "n_campos": 55,
+ "n_obrigatorios": 16,
+ "campos": [
+  {
+   "campo": "cpfCnpj",
+   "rotulo": "CPF / CNPJ",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.cpfCnpj"
+  },
+  {
+   "campo": "nome",
+   "rotulo": "Nome completo",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.nome"
+  },
+  {
+   "campo": "fone",
+   "rotulo": "Telefone",
+   "tipo": "input:tel",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.fone1"
+  },
+  {
+   "campo": "email",
+   "rotulo": "Email",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.email"
+  },
+  {
+   "campo": "cep",
+   "rotulo": "CEP",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelCep"
+  },
+  {
+   "campo": "uf",
+   "rotulo": "UF",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.configuracoes.imovelUF"
+  },
+  {
+   "campo": "cidade",
+   "rotulo": "Cidade",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelCidade"
+  },
+  {
+   "campo": "bairro",
+   "rotulo": "Bairro",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelBairro"
+  },
+  {
+   "campo": "logradouro",
+   "rotulo": "Logradouro",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelLogradouro"
+  },
+  {
+   "campo": "numero",
+   "rotulo": "Número",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelNumero"
+  },
+  {
+   "campo": "complemento",
+   "rotulo": "Complemento",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelComplemento"
+  },
+  {
+   "campo": "imovelPavimentacao",
+   "rotulo": "Pavimento/Andar",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Térreo",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelPavimentacao",
+   "opcoes": [
+    {
+     "codigo": "0",
+     "rotulo": "Térreo"
+    },
+    {
+     "codigo": "1",
+     "rotulo": "Primeiro"
+    },
+    {
+     "codigo": "2",
+     "rotulo": "Segundo em diante"
+    }
+   ],
+   "opcoes_fonte": "GET api.aggilizador.com.br/Business/Data → Pavimento (códigos TEXTO)",
+   "opcoes_na_tela": [
+    "Primeiro",
+    "Segundo em diante",
+    "Térreo"
+   ]
+  },
+  {
+   "campo": "anoConstrucao",
+   "rotulo": "Ano Construção",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.configuracoes.anoConstrucao"
+  },
+  {
+   "campo": "imovelConstrucao",
+   "rotulo": "Construção",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Sólida",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelConstrucao",
+   "opcoes": [
+    {
+     "codigo": 4,
+     "rotulo": "Superior"
+    },
+    {
+     "codigo": 1,
+     "rotulo": "Sólida"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "Mista"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "Inferior"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static tipoConstrucao)",
+   "opcoes_na_tela": [
+    "Superior",
+    "Sólida",
+    "Mista",
+    "Inferior"
+   ]
+  },
+  {
+   "campo": "imovelLocalEstabelecimento",
+   "rotulo": "Localização",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Outros",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelLocalEstabelecimento",
+   "opcoes": [
+    {
+     "codigo": "0",
+     "rotulo": "Outros"
+    },
+    {
+     "codigo": "1",
+     "rotulo": "Aeroporto"
+    },
+    {
+     "codigo": "2",
+     "rotulo": "Ceasa/Mercado"
+    },
+    {
+     "codigo": "3",
+     "rotulo": "Condomínio Comercial"
+    },
+    {
+     "codigo": "4",
+     "rotulo": "Shopping"
+    },
+    {
+     "codigo": "5",
+     "rotulo": "Supermercado"
+    }
+   ],
+   "opcoes_fonte": "GET api.aggilizador.com.br/Business/Data → Local (códigos TEXTO)",
+   "opcoes_na_tela": [
+    "Aeroporto",
+    "Ceasa/Mercado",
+    "Condomínio Comercial",
+    "Outros",
+    "Shopping",
+    "Supermercado"
+   ]
+  },
+  {
+   "campo": "equipamentosSeguranca",
+   "rotulo": "Equipamentos de Segurança",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.configuracoes.<um booleano por opção> (atualizaPerguntasOpcoes)",
+   "opcoes": [
+    {
+     "rotulo": "Alarme local",
+     "vira_campo_booleano": "imovelPossuiAlarme"
+    },
+    {
+     "rotulo": "Alarme monitorado",
+     "vira_campo_booleano": "imovelPossuiAlarmeMonitorado"
+    },
+    {
+     "rotulo": "Circuito fechado CFTV",
+     "vira_campo_booleano": "imovelPossuiCircuitoFechado"
+    },
+    {
+     "rotulo": "Vigilância 24h",
+     "vira_campo_booleano": "imovelPossuiVigilancia24hs"
+    },
+    {
+     "rotulo": "Grade e Fechadura Tetra",
+     "vira_campo_booleano": "imovelPossuiGradesEFechaduraTetra"
+    },
+    {
+     "rotulo": "Sensor infravermelho",
+     "vira_campo_booleano": "imovelPossuiSensorInfravermelho"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static equipamentosSeguranca + equipeSegurancaTxt); multisseleção → um booleano por opção",
+   "opcoes_na_tela": [
+    "Alarme local",
+    "Alarme monitorado",
+    "Circuito fechado CFTV",
+    "Grade e Fechadura Tetra",
+    "Sensor infravermelho",
+    "Vigilância 24h"
+   ]
+  },
+  {
+   "campo": "equipamentosIncendio",
+   "rotulo": "Equipamentos de Incêndio",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.configuracoes.<um booleano por opção> (atualizaPerguntasOpcoes)",
+   "opcoes": [
+    {
+     "rotulo": "Extintor de incêndio",
+     "vira_campo_booleano": "imovelPossuiExtintor"
+    },
+    {
+     "rotulo": "Hidrante",
+     "vira_campo_booleano": "imovelPossuiHidrante"
+    },
+    {
+     "rotulo": "Sprinkler",
+     "vira_campo_booleano": "imovelPossuiSprinkler"
+    },
+    {
+     "rotulo": "Detector de fumaça",
+     "vira_campo_booleano": "imovelPossuiDetectorFumaca"
+    },
+    {
+     "rotulo": "Brigada de incêndio",
+     "vira_campo_booleano": "imovelPossuiBrigadaIncendio"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static equipamentosIncendio + equipeIncendioTxt); multisseleção → um booleano por opção",
+   "opcoes_na_tela": [
+    "Brigada de incêndio",
+    "Detector de fumaça",
+    "Extintor de incêndio",
+    "Hidrante",
+    "Sprinkler"
+   ]
+  },
+  {
+   "campo": "perguntasAdicionais",
+   "rotulo": "Perguntas Extras",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.configuracoes.<um booleano por opção> (atualizaPerguntasOpcoes)",
+   "opcoes": [
+    {
+     "rotulo": "Local utilizado como depósito de materiais",
+     "vira_campo_booleano": "imovelUtilizadoDeposito"
+    },
+    {
+     "rotulo": "Local faz divisa com terreno baldio",
+     "vira_campo_booleano": "imovelDivisaTerronoBaldio"
+    },
+    {
+     "rotulo": "Imóvel tombado pelo patrimônio histórico",
+     "vira_campo_booleano": "imovelPatrimonioHistorico"
+    },
+    {
+     "rotulo": "Imóvel possui telha ou estrutura de metal",
+     "vira_campo_booleano": "imovelTelhaEstruturaMetalica"
+    },
+    {
+     "rotulo": "Imóvel possui caixas eletrônicos em sua estrutura",
+     "vira_campo_booleano": "imovelCaixaEletronico"
+    },
+    {
+     "rotulo": "Imóvel possui isopainel em sua construção",
+     "vira_campo_booleano": "imovelPossuiIsopainel"
+    },
+    {
+     "rotulo": "Imóvel em construção ou reforma",
+     "vira_campo_booleano": "imovelConstrucaoReforma"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static perguntasAdicionais + perguntasAdicionaisTxt); multisseleção → um booleano por opção",
+   "opcoes_na_tela": [
+    "Imóvel em construção ou reforma",
+    "Imóvel possui caixas eletrônicos em sua estrutura",
+    "Imóvel possui isopainel em sua construção",
+    "Imóvel possui telha ou estrutura de metal",
+    "Imóvel tombado pelo patrimônio histórico",
+    "Local faz divisa com terreno baldio",
+    "Local utilizado como depósito de materiais"
+   ]
+  },
+  {
+   "campo": "imovelAtividadeProfissionalLocal",
+   "rotulo": "Buscar por atividade",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.calculos[i].valoresAjusteSeguradora.imovelAtividadeProfissionalLocal = {Key,Value} POR SEGURADORA"
+  },
+  {
+   "campo": "vigenciaIni",
+   "rotulo": "Início Vigência",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "11/10/2026",
+   "caminho_no_corpo": "cotacao.vigenciaIni"
+  },
+  {
+   "campo": "vigenciaFim",
+   "rotulo": "Final Vigência",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "11/10/2027",
+   "caminho_no_corpo": "cotacao.vigenciaFim"
+  },
+  {
+   "campo": "renovacao",
+   "rotulo": "Esta é uma renovação",
+   "tipo": "mat-checkbox",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.renovacao"
+  },
+  {
+   "campo": "vigFimAnterior",
+   "rotulo": "Final Vigência Anterior",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.vigFimAnterior",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)"
+  },
+  {
+   "campo": "seguradoraAnteriorId",
+   "rotulo": "Seguradora Anterior",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.seguradoraAnteriorId",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)"
+  },
+  {
+   "campo": "numeroRenovacao",
+   "rotulo": "Número Apólice Anterior",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.numeroRenovacao",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)"
+  },
+  {
+   "campo": "sinistrosAnterior",
+   "rotulo": "Sinistros",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.sinistrosAnterior",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)",
+   "opcoes": [
+    {
+     "codigo": "0",
+     "rotulo": "Não"
+    },
+    {
+     "codigo": "1",
+     "rotulo": "Sim"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static sinistrosAnterior)",
+   "opcoes_na_tela": null
+  },
+  {
+   "campo": "bonusAnterior",
+   "rotulo": "Novo Bônus",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.bonusAnterior",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)",
+   "opcoes": [
+    {
+     "codigo": 0,
+     "rotulo": "0"
+    },
+    {
+     "codigo": 1,
+     "rotulo": "1"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "2"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "3"
+    },
+    {
+     "codigo": 4,
+     "rotulo": "4"
+    },
+    {
+     "codigo": 5,
+     "rotulo": "5"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static bonusAnterior)",
+   "opcoes_na_tela": null
+  },
+  {
+   "campo": "assist24hs",
+   "rotulo": "Assistência",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Básica",
+   "caminho_no_corpo": "cotacao.configuracoes.assist24hs",
+   "opcoes": [
+    {
+     "codigo": 0,
+     "rotulo": "Não"
+    },
+    {
+     "codigo": 1,
+     "rotulo": "Básica"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "Intermediária"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "Completa"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static assist24hs)",
+   "opcoes_na_tela": [
+    "Não",
+    "Básica",
+    "Intermediária",
+    "Completa"
+   ]
+  },
+  {
+   "campo": "imovelObjetoSegurado",
+   "rotulo": "Objeto Segurado (Verba)",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Prédio + Conteúdo",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelObjetoSegurado",
+   "opcoes": [
+    {
+     "codigo": 1,
+     "rotulo": "Prédio"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "Conteúdo"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "Prédio + Conteúdo"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static objetoSegurado)",
+   "opcoes_na_tela": [
+    "Prédio",
+    "Conteúdo",
+    "Prédio + Conteúdo"
+   ]
+  },
+  {
+   "campo": "valorDeNovo",
+   "rotulo": "Valor de Novo",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": "Sim",
+   "caminho_no_corpo": "cotacao.configuracoes.valorDeNovo",
+   "opcoes": [
+    {
+     "codigo": 0,
+     "rotulo": "Não"
+    },
+    {
+     "codigo": 1,
+     "rotulo": "Sim"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static valorDeNovo)",
+   "opcoes_na_tela": [
+    "Não",
+    "Sim"
+   ]
+  },
+  {
+   "campo": "isDanosIncendioRaioExplosao",
+   "rotulo": "Básica (Incêndio / Raio / Explosão)",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosIncendioRaioExplosao",
+   "faixas_de_valor": [
+    {
+     "min": 50000,
+     "max": 500000,
+     "passo": 10000
+    },
+    {
+     "min": 525000,
+     "max": 2000000,
+     "passo": 25000
+    },
+    {
+     "min": 2100000,
+     "max": 10000000,
+     "passo": 100000
+    }
+   ],
+   "faixas_fonte": "JS do app (static isDanosIncendioRaioExplosao)"
+  },
+  {
+   "campo": "isDanosEletricos",
+   "rotulo": "Danos Elétricos",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosEletricos",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosVendaval",
+   "rotulo": "Vendaval",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosVendaval",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosImpactoVeiculo",
+   "rotulo": "Impacto Veículos",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosImpactoVeiculo",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosAluguel",
+   "rotulo": "Perda / Pagto Aluguel",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosAluguel",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 60000,
+     "passo": 3000
+    },
+    {
+     "min": 70000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static perdaAluguel)"
+  },
+  {
+   "campo": "isDanosRoubo",
+   "rotulo": "Roubo de Bens",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosRoubo",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "rouboFurtoDeValores",
+   "rotulo": "Roubo de Valores",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.rouboFurtoDeValores",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "vidros",
+   "rotulo": "Vidros",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.vidros",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 5000,
+     "passo": 500
+    },
+    {
+     "min": 6000,
+     "max": 9000,
+     "passo": 1000
+    },
+    {
+     "min": 10000,
+     "max": 50000,
+     "passo": 5000
+    }
+   ],
+   "faixas_fonte": "JS do app (static vidros)"
+  },
+  {
+   "campo": "isDanosVazamentoTanquesTubulacoes",
+   "rotulo": "Vazamento",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosVazamentoTanquesTubulacoes",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosDespesasFixas",
+   "rotulo": "Danos Despesas Fixas",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosDespesasFixas",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 60000,
+     "passo": 3000
+    },
+    {
+     "min": 70000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static despesasFixas)"
+  },
+  {
+   "campo": "equipamentos",
+   "rotulo": "Equipamentos",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.equipamentos",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "anunciosLuminosos",
+   "rotulo": "Anúncios Luminosos",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.anunciosLuminosos",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isEmpregador",
+   "rotulo": "RC Empregador",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isEmpregador",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosMorais",
+   "rotulo": "Danos Morais",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosMorais",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "responsabilidadeCivil",
+   "rotulo": "RC Operações",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.responsabilidadeCivil",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "recomposicaoDocumentos",
+   "rotulo": "Recomposição de Documentos",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.recomposicaoDocumentos",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isGuardaVeiculoValor",
+   "rotulo": "RC Garagista",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": null,
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "tumultoGreveLockOut",
+   "rotulo": "Tumultos, Greves e Lock-out",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.tumultoGreveLockOut",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosDesmoronamento",
+   "rotulo": "Desmoronamento",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosDesmoronamento",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "chuveiroSprinkler",
+   "rotulo": "Chuveiro / Sprinkler",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.chuveiroSprinkler",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "fidelidade",
+   "rotulo": "Fidelidade",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.fidelidade",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "placasSolares",
+   "rotulo": "Placas Solares",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.placasSolares",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosAlagamento",
+   "rotulo": "Alagamento",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosAlagamento",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "lucroCessante",
+   "rotulo": "Lucros Cessantes",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.lucroCessante",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosContaminacaoDeterioracao",
+   "rotulo": "Contaminação / Deterioração",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosContaminacaoDeterioracao",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  }
+ ],
+ "valores_fixos_do_corpo_no_js": {
+  "valoresEstaticosDraft": "{ramo:18,tipoSeguro:1,usuarioCriado:\"\",usuarioCriadorNome:\"\",origem:1,versaoAtual:1,integracaoID:null,corretora:{},calculosEnviados:1,calculosRecebidos:0,dataCriacao:vt.getDataCriacao()}",
+  "valoresEstaticosDraftConfiguracoes": "{imovelOcupacao:1,isDanosMateriais:0,despesaFixa:0,imovelUso:!1,isDanosVendaval:\"\",imovelTipoResidencia:void 0,imovelLocalizacao:null}",
+  "valoresEstaticosDraftSegurado": null,
+  "camposRemoverDraftConfiguracoes": [
+   "imovelAtividade",
+   "imovelAtividadeTxt",
+   "imovelAtividadeProfissionalLocal",
+   "imovelAtividadeProfissionalLocalAgger",
+   "equipamentosMoveis",
+   "equipamentosEstacionarios",
+   "isDanosEquipamentosEletronicos",
+   "imovelPossuiGrades",
+   "imovelPossuiFechaduraTetra",
+   "perdaLucroBruto"
+  ],
+  "informacoesDefault_js": "{segurado:{sexo:\"M\"},endereco:{},imovel:{imovelConstrucao:1,imovelTipoResidencia:1,imovelLocalizacao:null,imovelPavimentacao:\"0\",imovelLocalEstabelecimento:\"0\",imovelPossuiExtintor:!1,imovelPossuiAlarme:!1,imovelPossuiHidrante:!1,imovelPossuiSprinkler:!1,imovelPossuiBrigadaIncendio:!1,imovelPossuiDetectorFumaca:!1,imovelPossuiAlarmeMonitorado:!1,imovelPossuiCircuitoFechado:!1,imovelPossuiVigilancia24hs:!1,imovelPossuiGradesEFechaduraTetra:!1,imovelPossuiSensorInfravermelho:!1,imovelUtilizadoDeposito:!1,imovelDivisaTerronoBaldio:!1,imovelPatrimonioHistorico:!1,imovelTelhaEstruturaMetalica:!1,imovelCaixaEletronico:!1,imovelPossuiIsopainel:!1,imovelConstrucaoReforma:!1,perguntasAdicionais:[]},coberturas:{valorDeNovo:1,imovelObjetoSegurado:3,isDanosIncendioRaioExplosao:5e4,isDanosEletricos:0,isDanosVendaval:0,isDanosImpactoVeiculo:0,isDanosAluguel:0,isDanosRoubo:0,equipamentos:0,isDanosDespesasFixas:0,responsabilidadeCivil:0,vidros:0,assist24hs:1,isDanosVazamentoTanquesTubulacoes:0,isEmpregador:0,isDanosMorais:0,anunciosLuminosos:0,recomposicaoDocumentos:0,rouboFurtoDeValores:0,tumultoGreveLockOut:0,isGuardaVeiculoValor:0,isDanosDesmoronamento:0,chuveiroSprinkler:0,fidelidade:0,placasSolares:0,isDanosAlagamento:0,lucroCessante:0,isDanosContaminacaoDeterioracao:0},seguro:{vigenciaIni:vt.geraDataVigencia(\"vigenciaIni\"),vigenciaFim:vt.geraDataVigencia(\"vigenciaFim\"),renovacao:!1}}"
+ },
+ "pacote_prata_da_conta": [
+  {
+   "descricao": "Prata",
+   "codigo": 1,
+   "default": true,
+   "coberturas": {
+    "isDanosIncendioRaioExplosao": 0,
+    "isDanosEletricos": 0,
+    "isDanosVendaval": 0,
+    "isDanosImpactoVeiculo": 0,
+    "isDanosAluguel": 0,
+    "isDanosRoubo": 0,
+    "equipamentos": 0,
+    "isDanosDespesasFixas": 0,
+    "responsabilidadeCivil": 0,
+    "vidros": 0,
+    "assist24hs": 1,
+    "isDanosVazamentoTanquesTubulacoes": 0,
+    "isEmpregador": 0,
+    "isDanosMorais": 0,
+    "anunciosLuminosos": 0,
+    "recomposicaoDocumentos": 0,
+    "rouboFurtoDeValores": 0,
+    "tumultoGreveLockOut": 0,
+    "isGuardaVeiculoValor": 0,
+    "isDanosDesmoronamento": 0,
+    "chuveiroSprinkler": 0,
+    "fidelidade": 0,
+    "placasSolares": 0,
+    "isDanosAlagamento": 0,
+    "lucroCessante": 0,
+    "isDanosContaminacaoDeterioracao": 0
+   }
+  }
+ ],
+ "seguradoras": {
+  "regra": "habilitada no ramo = app/seguradoraStatus.empresarialStatus == 1 (global) ∩ calculo/seguradoras ativa na conta, menos Azul (10) e Aliro (22) — getSeguradorasStatus do app",
+  "habilitadas_no_agger_global": [
+   1,
+   3,
+   4,
+   5,
+   7,
+   8,
+   11,
+   12,
+   13,
+   19,
+   24,
+   32,
+   35,
+   43
+  ],
+  "na_conta": [
+   {
+    "codigo": 32,
+    "nome_config": "Chubb",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 12,
+    "nome_config": "Liberty Site",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 3,
+    "nome_config": "Mapfre",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 4,
+    "nome_config": "Hdi",
+    "credencial_valida": false,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 35,
+    "nome_config": "Axa",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": null
+   },
+   {
+    "codigo": 1,
+    "nome_config": "Bradesco",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 5,
+    "nome_config": "Allianz",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 7,
+    "nome_config": "Zurich",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 8,
+    "nome_config": "Porto Seguro",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 11,
+    "nome_config": "Tokio",
+    "credencial_valida": true,
+    "percComissaoEmpres": 0,
+    "percDescontoEmpres": null,
+    "percComissao_auto_ignorado": 0
+   }
+  ],
+  "marcadas_na_tela_ao_abrir": {
+   "Allianz": false,
+   "Axa": false,
+   "Bradesco": false,
+   "CHUBB": false,
+   "HDI": false,
+   "Mapfre": false,
+   "Porto Seguro": false,
+   "Tokio": false,
+   "Yelum": false,
+   "Zurich": false
+  },
+  "comissao_por_ramo": "setComissaoDefault: percComissao ← percComissaoEmpres, percDesconto ← percDescontoEmpres"
+ },
+ "atividade_por_seguradora": {
+  "endpoint": "GET pdocs.aggilizador.com.br/calculo/getOptionsBySegFull?executionType=10&filterText=<texto ≥ 3 letras>",
+  "forma": "[{seguradora:<código>, KeyValue:[{Key, Value, Description}]}] — um código PRÓPRIO de cada seguradora",
+  "regra_da_tela": "seguradora SEM atividade escolhida fica ativo=false (fora do cálculo) — controlaSeguradorasComAjuste; por isso a tela abre com as 10 desmarcadas",
+  "amostra_medida_11_10": {
+   "padaria": [
+    {
+     "seguradora": 7,
+     "n": 1,
+     "amostra": [
+      [
+       "605.03",
+       "PADARIAS"
+      ]
+     ]
+    },
+    {
+     "seguradora": 4,
+     "n": 1,
+     "amostra": [
+      [
+       "700314",
+       "PADARIA - LOJA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 35,
+     "n": 2,
+     "amostra": [
+      [
+       "COM,10365",
+       "Padarias"
+      ],
+      [
+       "IND,10364",
+       "Padaria e confeitaria - Produtos"
+      ]
+     ]
+    },
+    {
+     "seguradora": 18,
+     "n": 1,
+     "amostra": [
+      [
+       "6,32159",
+       "Padarias/Confeitarias/Cafeterias/Casa de Bolo"
+      ]
+     ]
+    },
+    {
+     "seguradora": 8,
+     "n": 1,
+     "amostra": [
+      [
+       "910",
+       "PADARIAS/CONFEITARIAS"
+      ]
+     ]
+    },
+    {
+     "seguradora": 19,
+     "n": 1,
+     "amostra": [
+      [
+       "1551",
+       "PADARIA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 12,
+     "n": 1,
+     "amostra": [
+      [
+       "167",
+       "167 - PADARIA E CONFEITARIA (420-00)"
+      ]
+     ]
+    },
+    {
+     "seguradora": 13,
+     "n": 2,
+     "amostra": [
+      [
+       "420-11,01",
+       "PADARIAS"
+      ],
+      [
+       "420-12,01",
+       "PADARIAS - Com fornos a outro qualquer aquecimento"
+      ]
+     ]
+    },
+    {
+     "seguradora": 43,
+     "n": 1,
+     "amostra": [
+      [
+       "1271",
+       "Comércio varejista de produtos de padaria, laticínio, doces, balas e semelhantes"
+      ]
+     ]
+    },
+    {
+     "seguradora": 5,
+     "n": 1,
+     "amostra": [
+      [
+       "72200",
+       "Padarias e confeitarias"
+      ]
+     ]
+    },
+    {
+     "seguradora": 3,
+     "n": 2,
+     "amostra": [
+      [
+       "PADARIA,P1.21",
+       "PADARIA - CONFEITARIAS"
+      ],
+      [
+       "PADARIA,P1.20",
+       "PADARIA - PADARIA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 32,
+     "n": 1,
+     "amostra": [
+      [
+       "72,246,1",
+       "Padarias Confeitarias e Docerias"
+      ]
+     ]
+    },
+    {
+     "seguradora": 1,
+     "n": 2,
+     "amostra": [
+      [
+       "4,1.1.812",
+       "701.12 - Depósito de produtos de padaria e confeitaria"
+      ],
+      [
+       "4,1.1.814",
+       "701.14 - Padaria e confeitaria"
+      ]
+     ]
+    },
+    {
+     "seguradora": 11,
+     "n": 1,
+     "amostra": [
+      [
+       "2444",
+       "PADARIA, PANIFICADORA OU CONFEITARIA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 24,
+     "n": 1,
+     "amostra": [
+      [
+       "52028",
+       "PADARIAS, CONFEITARIAS E PANIFICADORAS"
+      ]
+     ]
+    }
+   ],
+   "escritorio": [
+    {
+     "seguradora": 7,
+     "n": 7,
+     "amostra": [
+      [
+       "071.01",
+       "BOLSA DE VALORES: ESCRITORIOS"
+      ],
+      [
+       "321.03",
+       "ESCRITORIO ANDAR SUPERIOR: Predio/Construcao Vertical Alto-Exceto imobiliarias"
+      ]
+     ]
+    },
+    {
+     "seguradora": 4,
+     "n": 2,
+     "amostra": [
+      [
+       "700160",
+       "ESCRITORIO"
+      ],
+      [
+       "700161",
+       "ESCRITORIO - TRANSMISSAO ELETRONICA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 35,
+     "n": 1,
+     "amostra": [
+      [
+       "SER,10194",
+       "Escritório"
+      ]
+     ]
+    },
+    {
+     "seguradora": 18,
+     "n": 1,
+     "amostra": [
+      [
+       "5,32090",
+       "Escritório"
+      ]
+     ]
+    },
+    {
+     "seguradora": 8,
+     "n": 4,
+     "amostra": [
+      [
+       "496",
+       "ESCRITORIOS DE SERV. INFORMATICA OU PUBLIC - A PARTIR DO PRIMEIRO ANDAR"
+      ],
+      [
+       "488",
+       "ESCRITORIOS DE SERV INFORMATICA OU PUBLIC - TERREO OU SOBRADO"
+      ]
+     ]
+    },
+    {
+     "seguradora": 19,
+     "n": 2,
+     "amostra": [
+      [
+       "1453",
+       "ESCRITÓRIO"
+      ],
+      [
+       "1454",
+       "ESCRITÓRIO - TRANSMISSÃO ELETRÔNICA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 12,
+     "n": 2,
+     "amostra": [
+      [
+       "101",
+       "101 - ESCRITORIO - Andar superior (197-00)"
+      ],
+      [
+       "102",
+       "102 - ESCRITORIO - Andar terreo (197-10)"
+      ]
+     ]
+    },
+    {
+     "seguradora": 13,
+     "n": 2,
+     "amostra": [
+      [
+       "197-10A,03",
+       "ESCRITORIO - A partir do 1º Andar"
+      ],
+      [
+       "197-10,03",
+       "ESCRITORIO - Térreo/Sobrado"
+      ]
+     ]
+    },
+    {
+     "seguradora": 43,
+     "n": 4,
+     "amostra": [
+      [
+       "1443",
+       "Aluguel de máquinas e equipamentos para escritório"
+      ],
+      [
+       "1462",
+       "Serviços combinados de escritório e apoio administrativo"
+      ]
+     ]
+    },
+    {
+     "seguradora": 5,
+     "n": 2,
+     "amostra": [
+      [
+       "90100",
+       "Escritório no térreo ou 1° andar"
+      ],
+      [
+       "90101",
+       "Escritório, 2° andar ou superior"
+      ]
+     ]
+    },
+    {
+     "seguradora": 3,
+     "n": 3,
+     "amostra": [
+      [
+       "ESCRITORIOS,E6.10",
+       "ESCRITORIOS - DEMAIS ESCRITÓRIOS"
+      ],
+      [
+       "ESCRITORIOS,E6.11",
+       "ESCRITORIOS - ESPAÇOS COWORKING"
+      ]
+     ]
+    },
+    {
+     "seguradora": 32,
+     "n": 1,
+     "amostra": [
+      [
+       "38,74,3",
+       "Escritórios"
+      ]
+     ]
+    },
+    {
+     "seguradora": 1,
+     "n": 5,
+     "amostra": [
+      [
+       "2,1.16.875",
+       "701.75 - Escritório de pessoa física ou jurídica"
+      ],
+      [
+       "3,1.2.726",
+       "700.26 - Edifício residencial e/ou escritórios e/ou consultórios, com ou sem comércio e prestação de serviços"
+      ]
+     ]
+    },
+    {
+     "seguradora": 11,
+     "n": 3,
+     "amostra": [
+      [
+       "2344",
+       "ESCRITORIOS"
+      ],
+      [
+       "2400",
+       "LEILOEIRO, ESCRITÓRIO E DEPÓSITO DE MERCADORIAS"
+      ]
+     ]
+    },
+    {
+     "seguradora": 24,
+     "n": 7,
+     "amostra": [
+      [
+       "47425",
+       "ESCRITORIO (A PARTIR  DO 1º ANDAR - EDIFICIO)"
+      ],
+      [
+       "47426",
+       "ESCRITORIO (TERREO/ SOBRADO)"
+      ]
+     ]
+    }
+   ],
+   "restaurante": [
+    {
+     "seguradora": 7,
+     "n": 1,
+     "amostra": [
+      [
+       "670.02",
+       "RESTAURANTE"
+      ]
+     ]
+    },
+    {
+     "seguradora": 4,
+     "n": 1,
+     "amostra": [
+      [
+       "700363",
+       "RESTAURANTE / PIZZARIA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 35,
+     "n": 1,
+     "amostra": [
+      [
+       "SER,10417",
+       "Restaurante"
+      ]
+     ]
+    },
+    {
+     "seguradora": 18,
+     "n": 1,
+     "amostra": [
+      [
+       "2,32186",
+       "Restaurante/Churrascaria/Choperia/Pizzaria"
+      ]
+     ]
+    },
+    {
+     "seguradora": 8,
+     "n": 1,
+     "amostra": [
+      [
+       "998",
+       "RESTAURANTE, CHOPERIA, CHURRASCARIA, PIZZARIA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 19,
+     "n": 1,
+     "amostra": [
+      [
+       "1584",
+       "RESTAURANTE"
+      ]
+     ]
+    },
+    {
+     "seguradora": 12,
+     "n": 1,
+     "amostra": [
+      [
+       "249",
+       "249 - RESTAURANTE, PIZZARIA E LANCHONETE (473-00)"
+      ]
+     ]
+    },
+    {
+     "seguradora": 13,
+     "n": 1,
+     "amostra": [
+      [
+       "061-00,01",
+       "RESTAURANTE / BAR"
+      ]
+     ]
+    },
+    {
+     "seguradora": 43,
+     "n": 1,
+     "amostra": [
+      [
+       "1340",
+       "Restaurantes e outros estabelecimentos de serviços de alimentação e bebidas"
+      ]
+     ]
+    },
+    {
+     "seguradora": 5,
+     "n": 1,
+     "amostra": [
+      [
+       "99145",
+       "Bar/lanchonete/restaurante (exc. casas noturnas e similares)"
+      ]
+     ]
+    },
+    {
+     "seguradora": 3,
+     "n": 7,
+     "amostra": [
+      [
+       "RESTAURANTES,R3.13",
+       "RESTAURANTES - BUFFET - SALÃO DE FESTAS"
+      ],
+      [
+       "RESTAURANTES,R3.14",
+       "RESTAURANTES - CAFETERIAS"
+      ]
+     ]
+    },
+    {
+     "seguradora": 32,
+     "n": 2,
+     "amostra": [
+      [
+       "10,10,1",
+       "Bar Botequim Lanchonete Pastelaria Pizzaria e Restaurante"
+      ],
+      [
+       "10,11,1",
+       "Bar Botequim Lanchonete Pastelaria Pizzaria e Restaurante em Shopping Center"
+      ]
+     ]
+    },
+    {
+     "seguradora": 1,
+     "n": 1,
+     "amostra": [
+      [
+       "4,1.1.865",
+       "701.65 - Restaurante (churrascaria, pizzaria, etc.)"
+      ]
+     ]
+    },
+    {
+     "seguradora": 11,
+     "n": 1,
+     "amostra": [
+      [
+       "2490",
+       "RESTAURANTES, PIZZARIAS E CHURRASCARIAS"
+      ]
+     ]
+    },
+    {
+     "seguradora": 24,
+     "n": 2,
+     "amostra": [
+      [
+       "52030",
+       "RESTAURANTE EM SHOPPING"
+      ],
+      [
+       "52031",
+       "RESTAURANTE."
+      ]
+     ]
+    }
+   ],
+   "farmacia": [
+    {
+     "seguradora": 7,
+     "n": 2,
+     "amostra": [
+      [
+       "353.03",
+       "FARMACIAS DE MANIPULACAO E PRODUTOS HOMEOPATICOS(Fora de posto de Combustivel): Lojas"
+      ],
+      [
+       "353.02",
+       "FARMACIAS: Lojas"
+      ]
+     ]
+    },
+    {
+     "seguradora": 4,
+     "n": 1,
+     "amostra": [
+      [
+       "700184",
+       "FARMACIA / DROGARIA - LOJA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 35,
+     "n": 2,
+     "amostra": [
+      [
+       "COM,10169",
+       "Drogarias e farmácias"
+      ],
+      [
+       "COM,10223",
+       "Farmácias de manipulação"
+      ]
+     ]
+    },
+    {
+     "seguradora": 18,
+     "n": 1,
+     "amostra": [
+      [
+       "9,32100",
+       "Farmácia/Drogaria"
+      ]
+     ]
+    },
+    {
+     "seguradora": 8,
+     "n": 2,
+     "amostra": [
+      [
+       "541",
+       "FARMACIAS OU DROGARIAS (LOJAS)"
+      ],
+      [
+       "540",
+       "FARMACIAS OU DROGARIAS (DEPOSITOS)"
+      ]
+     ]
+    },
+    {
+     "seguradora": 19,
+     "n": 1,
+     "amostra": [
+      [
+       "1469",
+       "FARMÁCIA / DROGARIA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 12,
+     "n": 2,
+     "amostra": [
+      [
+       "340",
+       "340 - DROGARIA, FARMACIA COM MANIPULACAO (172-10)"
+      ],
+      [
+       "89",
+       "89 - DROGARIA, FARMACIA SEM MANIPULACAO (172-00)"
+      ]
+     ]
+    },
+    {
+     "seguradora": 13,
+     "n": 1,
+     "amostra": [
+      [
+       "172-10,01",
+       "DROGARIAS/FARMÁCIAS - Loja"
+      ]
+     ]
+    },
+    {
+     "seguradora": 43,
+     "n": 0,
+     "amostra": []
+    },
+    {
+     "seguradora": 5,
+     "n": 1,
+     "amostra": [
+      [
+       "99228",
+       "Drogarias ou farmácias"
+      ]
+     ]
+    },
+    {
+     "seguradora": 3,
+     "n": 2,
+     "amostra": [
+      [
+       "FARMACIAS/DROGARIAS,F2.10",
+       "FARMACIAS/DROGARIAS - DEPOSITOS"
+      ],
+      [
+       "FARMACIAS/DROGARIAS,F2.20",
+       "FARMACIAS/DROGARIAS - LOJAS"
+      ]
+     ]
+    },
+    {
+     "seguradora": 32,
+     "n": 1,
+     "amostra": [
+      [
+       "45,232,1",
+       "Farmácias e Drogarias"
+      ]
+     ]
+    },
+    {
+     "seguradora": 1,
+     "n": 1,
+     "amostra": [
+      [
+       "4,1.15.829",
+       "701.29 - Farmácias e drogarias, inclusive manipulação e homeopatia"
+      ]
+     ]
+    },
+    {
+     "seguradora": 11,
+     "n": 2,
+     "amostra": [
+      [
+       "2353",
+       "FARMÁCIA E DROGARIA - DEPÓSITO"
+      ],
+      [
+       "2354",
+       "FARMÁCIA E DROGARIA - LOJA"
+      ]
+     ]
+    },
+    {
+     "seguradora": 24,
+     "n": 3,
+     "amostra": [
+      [
+       "47404",
+       "DROGARIA E FARMACIA - COM MANIPULAÇAO"
+      ],
+      [
+       "47405",
+       "DROGARIA E FARMACIA - COM OU SEM MANIPULAÇAO EM SHOPPING"
+      ]
+     ]
+    }
+   ]
+  },
+  "atividade_generica_business_data": [
+   {
+    "codigo": "0",
+    "rotulo": "Outros"
+   },
+   {
+    "codigo": "1",
+    "rotulo": "Academia"
+   },
+   {
+    "codigo": "36",
+    "rotulo": "Açougue"
+   },
+   {
+    "codigo": "2",
+    "rotulo": "Bar"
+   },
+   {
+    "codigo": "3",
+    "rotulo": "Beleza e Estética"
+   },
+   {
+    "codigo": "35",
+    "rotulo": "Buffet"
+   },
+   {
+    "codigo": "4",
+    "rotulo": "Clínica Veterinária"
+   },
+   {
+    "codigo": "5",
+    "rotulo": "Concessionária"
+   },
+   {
+    "codigo": "6",
+    "rotulo": "Consultório Médico"
+   },
+   {
+    "codigo": "7",
+    "rotulo": "Consultório Odontológico"
+   },
+   {
+    "codigo": "38",
+    "rotulo": "Copiadora"
+   },
+   {
+    "codigo": "9",
+    "rotulo": "Escola de Idiomas"
+   },
+   {
+    "codigo": "8",
+    "rotulo": "Escola de Informática"
+   },
+   {
+    "codigo": "11",
+    "rotulo": "Escola ou Colégio"
+   },
+   {
+    "codigo": "10",
+    "rotulo": "Escola Técnica"
+   },
+   {
+    "codigo": "12",
+    "rotulo": "Escritório"
+   },
+   {
+    "codigo": "13",
+    "rotulo": "Farmácia"
+   },
+   {
+    "codigo": "14",
+    "rotulo": "Floricultura"
+   },
+   {
+    "codigo": "15",
+    "rotulo": "Hotel"
+   },
+   {
+    "codigo": "16",
+    "rotulo": "Igreja"
+   },
+   {
+    "codigo": "17",
+    "rotulo": "Lavanderia"
+   },
+   {
+    "codigo": "18",
+    "rotulo": "Livraria"
+   },
+   {
+    "codigo": "19",
+    "rotulo": "Loja de Calçados"
+   },
+   {
+    "codigo": "34",
+    "rotulo": "Loja de Colchões"
+   },
+   {
+    "codigo": "33",
+    "rotulo": "Loja de Eletrodomésticos"
+   },
+   {
+    "codigo": "32",
+    "rotulo": "Loja de Material de Construção"
+   },
+   {
+    "codigo": "31",
+    "rotulo": "Loja de Móveis"
+   },
+   {
+    "codigo": "20",
+    "rotulo": "Loja de Roupas"
+   },
+   {
+    "codigo": "22",
+    "rotulo": "Motel"
+   },
+   {
+    "codigo": "23",
+    "rotulo": "Ótica"
+   },
+   {
+    "codigo": "24",
+    "rotulo": "Padaria"
+   },
+   {
+    "codigo": "25",
+    "rotulo": "Papelaria"
+   },
+   {
+    "codigo": "26",
+    "rotulo": "Perfumaria"
+   },
+   {
+    "codigo": "27",
+    "rotulo": "Pet Shop"
+   },
+   {
+    "codigo": "28",
+    "rotulo": "Posto de Combustível"
+   },
+   {
+    "codigo": "29",
+    "rotulo": "Pousada"
+   },
+   {
+    "codigo": "30",
+    "rotulo": "Restaurante"
+   },
+   {
+    "codigo": "21",
+    "rotulo": "Supermercado"
+   },
+   {
+    "codigo": "37",
+    "rotulo": "Transportadora"
+   }
+  ]
+ }
+}

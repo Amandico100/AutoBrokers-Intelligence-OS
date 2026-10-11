@@ -1,0 +1,1059 @@
+{
+ "formato": "agger_formulario_ramo_v1",
+ "fonte": "SPEC-129-C BLOCO 0 (B0-a), 11/10/2026 00:40–00:51: DOM do formulário aberto SEM preencher na conta cotador@ da corretora B (a dos 3 ramos), ZERO cálculos (calcularV2 = 0, toda escrita fora de login/token/logout barrada); códigos lidos do JS do app (bundle de 11/10) e de GET Business/Data. O caminho_no_corpo vem do CÓDIGO do app (preencheDraft/getCalcObject), NÃO de um corpo gravado.",
+ "ramo": 2,
+ "rota": "/cotacao/residencial/formulario",
+ "secoes": [
+  "Informações adicionais",
+  "Formulário Residencial",
+  "Segurado",
+  "Endereço",
+  "Imóvel",
+  "Seguro",
+  "Renovação",
+  "Coberturas",
+  "Seguradoras",
+  "Configurações"
+ ],
+ "n_campos": 45,
+ "n_obrigatorios": 33,
+ "campos": [
+  {
+   "campo": "cpfCnpj",
+   "rotulo": "CPF / CNPJ",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.cpfCnpj"
+  },
+  {
+   "campo": "nome",
+   "rotulo": "Nome",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.nome"
+  },
+  {
+   "campo": "dataNasc",
+   "rotulo": "Data de Nascimento",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.dataNasc"
+  },
+  {
+   "campo": "fone",
+   "rotulo": "Telefone",
+   "tipo": "input:tel",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.fone1"
+  },
+  {
+   "campo": "email",
+   "rotulo": "Email",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.segurado.email"
+  },
+  {
+   "campo": "cep",
+   "rotulo": "CEP",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelCep"
+  },
+  {
+   "campo": "uf",
+   "rotulo": "UF",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.configuracoes.imovelUF"
+  },
+  {
+   "campo": "cidade",
+   "rotulo": "Cidade",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelCidade"
+  },
+  {
+   "campo": "bairro",
+   "rotulo": "Bairro",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelBairro"
+  },
+  {
+   "campo": "logradouro",
+   "rotulo": "Logradouro",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelLogradouro"
+  },
+  {
+   "campo": "numero",
+   "rotulo": "Número",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelNumero"
+  },
+  {
+   "campo": "complemento",
+   "rotulo": "Complemento",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelComplemento"
+  },
+  {
+   "campo": "imovelConstrucao",
+   "rotulo": "Construção",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Sólida",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelConstrucao",
+   "opcoes": [
+    {
+     "codigo": 4,
+     "rotulo": "Superior"
+    },
+    {
+     "codigo": 1,
+     "rotulo": "Sólida"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "Mista"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "Inferior"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static tipoConstrucao)",
+   "opcoes_na_tela": [
+    "Superior",
+    "Sólida",
+    "Mista",
+    "Inferior"
+   ]
+  },
+  {
+   "campo": "imovelTipoResidencia",
+   "rotulo": "Tipo",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Casa",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelTipoResidencia",
+   "opcoes": [
+    {
+     "codigo": 1,
+     "rotulo": "Casa"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "Casa em condomínio Fechado"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "Apartamento"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static tipoResidencia)",
+   "opcoes_na_tela": [
+    "Casa",
+    "Casa em condomínio Fechado",
+    "Apartamento"
+   ]
+  },
+  {
+   "campo": "imovelUso",
+   "rotulo": "Uso",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Habitual",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelUso",
+   "opcoes": [
+    {
+     "codigo": 1,
+     "rotulo": "Habitual"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "Veraneio"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "Desocupado"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static imovelUso)",
+   "opcoes_na_tela": [
+    "Habitual",
+    "Veraneio",
+    "Desocupado"
+   ]
+  },
+  {
+   "campo": "equipamentosSeguranca",
+   "rotulo": "Equipamentos de Segurança",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.configuracoes.<um booleano por opção> (atualizaPerguntasOpcoes)",
+   "opcoes": [
+    {
+     "rotulo": "Alarme",
+     "vira_campo_booleano": "imovelPossuiAlarme"
+    },
+    {
+     "rotulo": "Vigilância 24h",
+     "vira_campo_booleano": "imovelPossuiVigilancia24hs"
+    },
+    {
+     "rotulo": "Grades",
+     "vira_campo_booleano": "imovelPossuiGrades"
+    },
+    {
+     "rotulo": "Cerca elétrica",
+     "vira_campo_booleano": "imovelPossuiCercaEletrica"
+    },
+    {
+     "rotulo": "Alarme monitorado",
+     "vira_campo_booleano": "imovelPossuiAlarmeMonitorado"
+    },
+    {
+     "rotulo": "Porteiro Eletrônico",
+     "vira_campo_booleano": "imovelPossuiPorteiroEletronico"
+    },
+    {
+     "rotulo": "Circuito Fechado de TV",
+     "vira_campo_booleano": "imovelPossuiCircuitoFechado"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static equipamentosSeguranca + equipeSegurancaTxt); multisseleção → um booleano por opção",
+   "opcoes_na_tela": [
+    "Alarme",
+    "Alarme monitorado",
+    "Cerca elétrica",
+    "Circuito Fechado de TV",
+    "Grades",
+    "Porteiro Eletrônico",
+    "Vigilância 24h"
+   ]
+  },
+  {
+   "campo": "perguntasAdicionais",
+   "rotulo": "Perguntas Extras",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": "Segurado é o proprietário do imóvel",
+   "caminho_no_corpo": "cotacao.configuracoes.<um booleano por opção> (atualizaPerguntasOpcoes)",
+   "opcoes": [
+    {
+     "rotulo": "Imóvel tombado pelo patrimônio histórico",
+     "vira_campo_booleano": "imovelPatrimonioHistorico"
+    },
+    {
+     "rotulo": "Segurado é o proprietário do imóvel",
+     "vira_campo_booleano": "seguradoProprietario"
+    },
+    {
+     "rotulo": "A moradia está próxima de cortiços, favelas e similares e/ou faz divisa com terrenos baldios e/ou imóveis desocupados",
+     "vira_campo_booleano": "areaRisco"
+    },
+    {
+     "rotulo": "Imóvel localizado na zona rural",
+     "vira_campo_booleano": "zonaRural"
+    },
+    {
+     "rotulo": "Atividade profissional no local",
+     "vira_campo_booleano": "imovelAtividadeProfissionalLocal"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static perguntasAdicionais + perguntasAdicionaisTxt); multisseleção → um booleano por opção",
+   "opcoes_na_tela": [
+    "A moradia está próxima de cortiços, favelas e similares e/ou faz divisa com terrenos baldios e/ou imóveis desocupados",
+    "Atividade profissional no local",
+    "Imóvel localizado na zona rural",
+    "Imóvel tombado pelo patrimônio histórico",
+    "Segurado é o proprietário do imóvel"
+   ]
+  },
+  {
+   "campo": "vigenciaIni",
+   "rotulo": "Início Vigência",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "11/10/2026",
+   "caminho_no_corpo": "cotacao.vigenciaIni"
+  },
+  {
+   "campo": "vigenciaFim",
+   "rotulo": "Final Vigência",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "11/10/2027",
+   "caminho_no_corpo": "cotacao.vigenciaFim"
+  },
+  {
+   "campo": "renovacao",
+   "rotulo": "Esta é uma renovação",
+   "tipo": "mat-checkbox",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.renovacao"
+  },
+  {
+   "campo": "vigFimAnterior",
+   "rotulo": "Final Vigência Anterior",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.vigFimAnterior",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)"
+  },
+  {
+   "campo": "seguradoraAnteriorId",
+   "rotulo": "Seguradora Anterior",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.seguradoraAnteriorId",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)"
+  },
+  {
+   "campo": "numeroRenovacao",
+   "rotulo": "Número Apólice Anterior",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>",
+   "caminho_no_corpo": "cotacao.numeroRenovacao",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)"
+  },
+  {
+   "campo": "sinistrosAnterior",
+   "rotulo": "Sinistros",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.sinistrosAnterior",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)",
+   "opcoes": [
+    {
+     "codigo": "0",
+     "rotulo": "Não"
+    },
+    {
+     "codigo": "1",
+     "rotulo": "Sim"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static sinistrosAnterior)",
+   "opcoes_na_tela": null
+  },
+  {
+   "campo": "bonusAnterior",
+   "rotulo": "Novo Bônus",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": null,
+   "caminho_no_corpo": "cotacao.bonusAnterior",
+   "desabilitado_na_abertura": true,
+   "libera_quando": "renovacao = true (então obrigatórios: vigFimAnterior, seguradoraAnteriorId, sinistrosAnterior, bonusAnterior)",
+   "opcoes": [
+    {
+     "codigo": 0,
+     "rotulo": "0"
+    },
+    {
+     "codigo": 1,
+     "rotulo": "1"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "2"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "3"
+    },
+    {
+     "codigo": 4,
+     "rotulo": "4"
+    },
+    {
+     "codigo": 5,
+     "rotulo": "5"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static bonusAnterior)",
+   "opcoes_na_tela": null
+  },
+  {
+   "campo": "assist24hs",
+   "rotulo": "Assistência 24hs",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Intermediária",
+   "caminho_no_corpo": "cotacao.configuracoes.assist24hs",
+   "opcoes": [
+    {
+     "codigo": 0,
+     "rotulo": "Não"
+    },
+    {
+     "codigo": 1,
+     "rotulo": "Básica"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "Intermediária"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "Completa"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static assist24hs)",
+   "opcoes_na_tela": [
+    "Não",
+    "Básica",
+    "Intermediária",
+    "Completa"
+   ]
+  },
+  {
+   "campo": "imovelObjetoSegurado",
+   "rotulo": "Objeto Segurado (Verba)",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Prédio + Conteúdo",
+   "caminho_no_corpo": "cotacao.configuracoes.imovelObjetoSegurado",
+   "opcoes": [
+    {
+     "codigo": 1,
+     "rotulo": "Prédio"
+    },
+    {
+     "codigo": 2,
+     "rotulo": "Conteúdo"
+    },
+    {
+     "codigo": 3,
+     "rotulo": "Prédio + Conteúdo"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static objetoSegurado)",
+   "opcoes_na_tela": [
+    "Prédio",
+    "Conteúdo",
+    "Prédio + Conteúdo"
+   ]
+  },
+  {
+   "campo": "valorDeNovo",
+   "rotulo": "Valor de Novo",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "Sim",
+   "caminho_no_corpo": "cotacao.configuracoes.valorDeNovo",
+   "opcoes": [
+    {
+     "codigo": 0,
+     "rotulo": "Não"
+    },
+    {
+     "codigo": 1,
+     "rotulo": "Sim"
+    }
+   ],
+   "opcoes_fonte": "JS do app (static valorDeNovo)",
+   "opcoes_na_tela": [
+    "Não",
+    "Sim"
+   ]
+  },
+  {
+   "campo": "isDanosIncendioRaioExplosao",
+   "rotulo": "Incênd / Raio / Explosão",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 200.000,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosIncendioRaioExplosao",
+   "faixas_de_valor": [
+    {
+     "min": 50000,
+     "max": 500000,
+     "passo": 10000
+    },
+    {
+     "min": 525000,
+     "max": 2000000,
+     "passo": 25000
+    },
+    {
+     "min": 2100000,
+     "max": 10000000,
+     "passo": 100000
+    }
+   ],
+   "faixas_fonte": "JS do app (static isDanosIncendioRaioExplosao)"
+  },
+  {
+   "campo": "isDanosEletricos",
+   "rotulo": "Danos Elétricos",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosEletricos",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 100000,
+     "passo": 5000
+    },
+    {
+     "min": 110000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static isDanosEletricos)"
+  },
+  {
+   "campo": "isDanosEquipamentosEletronicos",
+   "rotulo": "Danos Equipamentos Eletrônicos",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosEquipamentosEletronicos",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 100000,
+     "passo": 5000
+    },
+    {
+     "min": 110000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static isDanosEquipamentosEletronicos)"
+  },
+  {
+   "campo": "isDanosRegistrosDocumentos",
+   "rotulo": "Desp. de Recomp. de Registros e Documentos",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosRegistrosDocumentos",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 100000,
+     "passo": 5000
+    },
+    {
+     "min": 110000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static isDanosRegistrosDocumentos)"
+  },
+  {
+   "campo": "isDanosVendaval",
+   "rotulo": "Vendaval",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosVendaval",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosImpactoVeiculo",
+   "rotulo": "Impacto Veículos",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosImpactoVeiculo",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosAluguel",
+   "rotulo": "Perda / Pagamento Aluguel",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosAluguel",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 60000,
+     "passo": 3000
+    },
+    {
+     "min": 70000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static perdaAluguel)"
+  },
+  {
+   "campo": "isDanosRoubo",
+   "rotulo": "Roubo",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosRoubo",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "responsabilidadeCivil",
+   "rotulo": "Resp. Civil Familiar",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.responsabilidadeCivil",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosAlagamento",
+   "rotulo": "Alagamento",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosAlagamento",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosDesmoronamento",
+   "rotulo": "Desmoronamento",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosDesmoronamento",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "vidros",
+   "rotulo": "Vidros",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.vidros",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 5000,
+     "passo": 500
+    },
+    {
+     "min": 6000,
+     "max": 9000,
+     "passo": 1000
+    },
+    {
+     "min": 10000,
+     "max": 50000,
+     "passo": 5000
+    }
+   ],
+   "faixas_fonte": "JS do app (static vidros)"
+  },
+  {
+   "campo": "isDanosMorais",
+   "rotulo": "Danos Morais",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosMorais",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "tumultoGreveLockOut",
+   "rotulo": "Tumultos, Greves e Lock-out",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.tumultoGreveLockOut",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "placasSolares",
+   "rotulo": "Placas Solares",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.placasSolares",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "bike",
+   "rotulo": "Bike",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00",
+   "caminho_no_corpo": "cotacao.configuracoes.bike",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  },
+  {
+   "campo": "isDanosVazamentoTanquesTubulacoes",
+   "rotulo": "Vazamento Tanques Tubulações",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "0",
+   "caminho_no_corpo": "cotacao.configuracoes.isDanosVazamentoTanquesTubulacoes",
+   "faixas_de_valor": [
+    {
+     "min": 0,
+     "max": 20000,
+     "passo": 1000
+    },
+    {
+     "min": 25000,
+     "max": 50000,
+     "passo": 5000
+    },
+    {
+     "min": 60000,
+     "max": 300000,
+     "passo": 10000
+    }
+   ],
+   "faixas_fonte": "JS do app (static valoresPadrao)"
+  }
+ ],
+ "valores_fixos_do_corpo_no_js": {
+  "valoresEstaticosDraft": "{ramo:2,tipoSeguro:1,usuarioCriado:\"\",usuarioCriadorNome:\"\",origem:1,versaoAtual:1,integracaoID:null,corretora:{},calculosEnviados:1,calculosRecebidos:0,dataCriacao:St.getDataCriacao()}",
+  "valoresEstaticosDraftConfiguracoes": "{imovelOcupacao:1,isDanosMateriais:0,despesaFixa:0,fidelidade:0,imovelAtividade:!1}",
+  "valoresEstaticosDraftSegurado": null,
+  "camposRemoverDraftConfiguracoes": null,
+  "informacoesDefault_js": "{segurado:{sexo:\"M\"},endereco:{},imovel:{imovelConstrucao:1,imovelTipoResidencia:1,imovelUso:1,imovelAtividade:!1,imovelPossuiAlarme:!1,imovelPossuiVigilancia24hs:!1,imovelPossuiGrades:!1,imovelPossuiCercaEletrica:!1,imovelPossuiAlarmeMonitorado:!1,imovelPossuiPorteiroEletronico:!1,imovelPossuiCircuitoFechado:!1,perguntasAdicionais:[2]},coberturas:{imovelObjetoSegurado:3,valorDeNovo:1,isDanosIncendioRaioExplosao:5e4,isDanosEletricos:0,isDanosEquipamentosEletronicos:0,isDanosRegistrosDocumentos:0,isDanosVendaval:0,isDanosImpactoVeiculo:0,isDanosAluguel:0,isDanosRoubo:0,responsabilidadeCivil:0,isDanosAlagamento:0,isDanosDesmoronamento:0,isDanosMorais:0,tumultoGreveLockOut:0,placasSolares:0,bike:0,vidros:0,assist24hs:1,isDanosVazamentoTanquesTubulacoes:0},seguro:{vigenciaIni:St.geraDataVigencia(\"vigenciaIni\"),vigenciaFim:St.geraDataVigencia(\"vigenciaFim\"),tpCobertura:1,renovacao:!1}}"
+ },
+ "pacote_prata_da_conta": [
+  {
+   "descricao": "prata",
+   "codigo": 1,
+   "default": true,
+   "coberturas": {
+    "assist24hs": 2,
+    "isDanosIncendioRaioExplosao": 200000,
+    "isDanosEletricos": 0,
+    "isDanosRegistrosDocumentos": 0,
+    "isDanosVendaval": 0,
+    "isDanosImpactoVeiculo": 0,
+    "isDanosAluguel": 0,
+    "isDanosRoubo": 0,
+    "responsabilidadeCivil": 0,
+    "isDanosAlagamento": 0,
+    "isDanosDesmoronamento": 0,
+    "isDanosMorais": 0,
+    "isDanosEquipamentosEletronicos": 0,
+    "tumultoGreveLockOut": 0,
+    "placasSolares": 0,
+    "bike": 0,
+    "vidros": 0,
+    "isDanosVazamentoTanquesTubulacoes": 0
+   }
+  }
+ ],
+ "seguradoras": {
+  "regra": "habilitada no ramo = app/seguradoraStatus.residStatus == 1 (global) ∩ calculo/seguradoras ativa na conta, menos Azul (10) e Aliro (22) — getSeguradorasStatus do app",
+  "habilitadas_no_agger_global": [
+   1,
+   3,
+   4,
+   5,
+   7,
+   8,
+   11,
+   12,
+   19,
+   24,
+   27,
+   31,
+   33,
+   43,
+   49
+  ],
+  "na_conta": [
+   {
+    "codigo": 12,
+    "nome_config": "Liberty Site",
+    "credencial_valida": true,
+    "percComissaoResid": 10,
+    "percDescontoResid": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 3,
+    "nome_config": "Mapfre",
+    "credencial_valida": true,
+    "percComissaoResid": 10,
+    "percDescontoResid": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 4,
+    "nome_config": "Hdi",
+    "credencial_valida": false,
+    "percComissaoResid": 10,
+    "percDescontoResid": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 1,
+    "nome_config": "Bradesco",
+    "credencial_valida": true,
+    "percComissaoResid": 10,
+    "percDescontoResid": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 5,
+    "nome_config": "Allianz",
+    "credencial_valida": true,
+    "percComissaoResid": 10,
+    "percDescontoResid": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 7,
+    "nome_config": "Zurich",
+    "credencial_valida": true,
+    "percComissaoResid": 10,
+    "percDescontoResid": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 8,
+    "nome_config": "Porto Seguro",
+    "credencial_valida": true,
+    "percComissaoResid": 10,
+    "percDescontoResid": null,
+    "percComissao_auto_ignorado": 0
+   },
+   {
+    "codigo": 11,
+    "nome_config": "Tokio",
+    "credencial_valida": true,
+    "percComissaoResid": 10,
+    "percDescontoResid": null,
+    "percComissao_auto_ignorado": 0
+   }
+  ],
+  "marcadas_na_tela_ao_abrir": {
+   "Allianz": true,
+   "Bradesco": true,
+   "HDI": true,
+   "Mapfre": true,
+   "Porto Seguro": true,
+   "Tokio": true,
+   "Yelum": true,
+   "Zurich": true
+  },
+  "comissao_por_ramo": "setComissaoDefault: percComissao ← percComissaoResid, percDesconto ← percDescontoResid"
+ }
+}

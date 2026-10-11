@@ -1,0 +1,3680 @@
+{
+ "formato": "agger_gravacao_re_v1",
+ "ramo": 2,
+ "ramo_nome": "residencial",
+ "grupo": "recente",
+ "dias_desde_criacao": 9,
+ "n_versoes": 1,
+ "fonte": "GET pdocs calculo/cotacao/versoes/{ref} (a versão = corpo do calcularV2 gravado + o que o servidor acrescenta) e GET pdocs calculo/cotacao/calculos/{ref}/{versao} (a resposta por seguradora); parcelamentos cortados em 4",
+ "versoes_resumo": [
+  {
+   "versao": 1,
+   "createdAt": "2026-10-01T16:03:50.940Z",
+   "n_calc": 8
+  }
+ ],
+ "versao": {
+  "configuracoes": {
+   "imovelLogradouro": "<endereco#0016>",
+   "imovelNumero": "<endereco#0017>",
+   "imovelComplemento": "",
+   "imovelBairro": "<endereco#0018>",
+   "imovelCidade": "<endereco#0004>",
+   "imovelUF": "SC",
+   "imovelUso": 1,
+   "imovelCep": "<cep#0005>",
+   "imovelAlarme": null,
+   "imovelTipoResidencia": 1,
+   "imovelConstrucao": 4,
+   "imovelOcupacao": 1,
+   "imovelObjetoSegurado": 3,
+   "imovelAtividadeProfissionalLocal": false,
+   "imovelPossuiAlarme": false,
+   "imovelPossuiVigilancia24hs": false,
+   "isDanosIncendioRaioExplosao": 550000,
+   "isDanosEletricos": 10000,
+   "isDanosImpactoVeiculo": 0,
+   "isDanosAluguel": 22000,
+   "isDanosRoubo": 0,
+   "rouboCondomino": null,
+   "responsabilidadeCivil": 0,
+   "isDanosAlagamento": 0,
+   "isDanosDesmoronamento": 0,
+   "vidros": 0,
+   "isDanosMateriais": 0,
+   "despesaFixa": 0,
+   "assist24hs": 1,
+   "fidelidade": 0,
+   "funeral": {
+    "tipo": 0,
+    "valor": 0
+   },
+   "sisProtecaoIncendRoubo": null,
+   "imovelAtividade": false,
+   "imovelPossuiGrades": false,
+   "imovelPossuiCercaEletrica": false,
+   "imovelPossuiAlarmeMonitorado": false,
+   "imovelPossuiPorteiroEletronico": false,
+   "imovelPossuiCircuitoFechado": false,
+   "valorDeNovo": 1,
+   "imovelPatrimonioHistorico": false,
+   "seguradoProprietario": true,
+   "areaRisco": false,
+   "zonaRural": false,
+   "isDanosEquipamentosEletronicos": 0,
+   "isDanosRegistrosDocumentos": 0,
+   "isDanosVendaval": 45000,
+   "isDanosMorais": 0,
+   "tumultoGreveLockOut": 0,
+   "placasSolares": 0,
+   "bike": 0,
+   "isDanosVazamentoTanquesTubulacoes": 0
+  },
+  "segurado": {
+   "nome": "<nome#0006>",
+   "tipoPessoa": "F",
+   "cpfCnpj": "<doc#0006>",
+   "estadoCivil": 1,
+   "dataNasc": "<data#0003>",
+   "dataPrimHabil": null,
+   "sexo": "M",
+   "fone1": "",
+   "cep": null,
+   "residLogradouro": null,
+   "residNumero": null,
+   "residBairro": null,
+   "residCidade": null,
+   "residUF": null,
+   "email": "",
+   "fone": ""
+  },
+  "calculos": [
+   {
+    "ativo": true,
+    "nome": "Tokio",
+    "nomeSeguradora": "Tokio",
+    "seguradora": 11,
+    "idIntegracao": "<id#0008>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "idConfiguracao": null,
+    "apolicesBaixar": false,
+    "configsGlobais": true,
+    "code": "<redacted:config>",
+    "secondCode": null,
+    "thirdCode": null,
+    "fourthCode": null,
+    "fifthCode": null,
+    "sixthCode": null,
+    "seventhCode": null,
+    "eighthCode": null,
+    "codeAux": null,
+    "secondCodeAux": null,
+    "thirdCodeAux": null,
+    "susep": null,
+    "userLogin": null,
+    "tokioCodigo": "<redacted:config>",
+    "loginWs": null,
+    "senhaWs": null,
+    "tokioAgenciaFuncional": null,
+    "tokioContaCorrente": null,
+    "tokioMatricula": null,
+    "tokioCodigoLista": null,
+    "IdUser": "<usuario#0002>",
+    "idUsuario": "<usuario#0003>",
+    "credenciaisValidas": true,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percComissao": 30,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0008>",
+    "idIntegracaoCfgSeg": "<id#0008>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0008>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-10-1",
+    "executionId": "<id#0101>",
+    "executionGuid": "<id#0102>",
+    "premio": 1246.3,
+    "premioMensal": 103.85833333333333,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Principal",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0103>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 1246.3,
+      "premioMensal": 103.85833333333333,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 30,
+       "assist24hs": "Plano Básico",
+       "isDanosIncendioRaioExplosao": 550000,
+       "isDanosEletricos": 10000,
+       "isDanosAluguel": 22000,
+       "isDanosVendaval": 45000,
+       "imovelObjetoSegurado": "Prédio + Conteúdo",
+       "valorDeNovo": "Sim"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1246.3,
+        "premioDemaisParc": 1246.3,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 623.15,
+        "premioDemaisParc": 623.15,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 415.43,
+        "premioDemaisParc": 415.43,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 311.58,
+        "premioDemaisParc": 311.58,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 249.26,
+        "premioDemaisParc": 249.26,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 207.72,
+        "premioDemaisParc": 207.72,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 178.04,
+        "premioDemaisParc": 178.04,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 155.79,
+        "premioDemaisParc": 155.79,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 138.48,
+        "premioDemaisParc": 138.48,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 124.63,
+        "premioDemaisParc": 124.63,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 113.3,
+        "premioDemaisParc": 113.3,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 103.86,
+        "premioDemaisParc": 103.86,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1246.3,
+        "premioDemaisParc": 1246.3,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 623.15,
+        "premioDemaisParc": 623.15,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 415.43,
+        "premioDemaisParc": 415.43,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 311.58,
+        "premioDemaisParc": 311.58,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 266.71,
+        "premioDemaisParc": 266.71,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 226,
+        "premioDemaisParc": 226,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 196.91,
+        "premioDemaisParc": 196.91,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 180.87,
+        "premioDemaisParc": 180.87,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 164.1,
+        "premioDemaisParc": 164.1,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 150.68,
+        "premioDemaisParc": 150.68,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 139.81,
+        "premioDemaisParc": 139.81,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 130.76,
+        "premioDemaisParc": 130.76,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1246.3,
+        "premioDemaisParc": 1246.3,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 623.15,
+        "premioDemaisParc": 623.15,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 415.43,
+        "premioDemaisParc": 415.43,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 311.58,
+        "premioDemaisParc": 311.58,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 249.26,
+        "premioDemaisParc": 249.26,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 207.72,
+        "premioDemaisParc": 207.72,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 178.04,
+        "premioDemaisParc": 178.04,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 155.79,
+        "premioDemaisParc": 155.79,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 138.48,
+        "premioDemaisParc": 138.48,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 124.63,
+        "premioDemaisParc": 124.63,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 113.3,
+        "premioDemaisParc": 113.3,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 103.86,
+        "premioDemaisParc": 103.86,
+        "tipoPag": 2,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0104>",
+    "seguradoraTxt": "Tokio",
+    "retorno": true,
+    "dataHoraRetorno": "2026-10-01T16:04:04.000Z",
+    "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+    "tempoResposta": 13000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Mapfre",
+    "nomeSeguradora": "Mapfre",
+    "seguradora": 3,
+    "idIntegracao": "<id#0086>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "mapfreCodVc": "<redacted:config>",
+    "mapfreCodInt": "<redacted:config>",
+    "mapfreTpUsuario": "<usuario#0003>",
+    "configsGlobais": true,
+    "mapfreUsuarios": "<usuario#0003>",
+    "credenciaisValidas": true,
+    "eighthCode": "<redacted:config>",
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percAgenciamentoVida": 0,
+    "percComissaoAcidentesPessoais": null,
+    "percDescontoAcidentesPessoais": null,
+    "percAgenciamentoAcidentesPessoais": null,
+    "percComissaoAluguel": null,
+    "percDescontoAluguel": null,
+    "grupoAfinidade": null,
+    "apolicesBaixar": false,
+    "percComissao": 30,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0086>",
+    "idIntegracaoCfgSeg": "<id#0086>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0086>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-10-1",
+    "executionId": "<id#0101>",
+    "executionGuid": "<id#0102>",
+    "premio": 568.37,
+    "premioMensal": 47.36416666666667,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Principal",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0105>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 568.37,
+      "premioMensal": 47.36416666666667,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 30,
+       "assist24hs": "Assistência Perfil Plus",
+       "isDanosIncendioRaioExplosao": 550000,
+       "isDanosEletricos": 10000,
+       "isDanosAluguel": 22000,
+       "isDanosVendaval": 45000,
+       "recomposicaoDocumentos": 5000,
+       "imovelObjetoSegurado": 3,
+       "valorDeNovo": "Sim",
+       "coberturaCompartilhada": "25,22"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 568.37,
+        "premioDemaisParc": 568.37,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 284.18,
+        "premioDemaisParc": 284.18,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 189.45,
+        "premioDemaisParc": 189.45,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 142.1,
+        "premioDemaisParc": 142.1,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 121.51,
+        "premioDemaisParc": 121.51,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 102.95,
+        "premioDemaisParc": 102.95,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 89.68,
+        "premioDemaisParc": 89.68,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 81.06,
+        "premioDemaisParc": 81.06,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 73.38,
+        "premioDemaisParc": 73.38,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 568.37,
+        "premioDemaisParc": 568.37,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 284.18,
+        "premioDemaisParc": 284.18,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 189.45,
+        "premioDemaisParc": 189.45,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 142.1,
+        "premioDemaisParc": 142.1,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 113.69,
+        "premioDemaisParc": 113.69,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 94.72,
+        "premioDemaisParc": 94.72,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 81.17,
+        "premioDemaisParc": 81.17,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 71.02,
+        "premioDemaisParc": 71.02,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 63.17,
+        "premioDemaisParc": 63.17,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 56.81,
+        "premioDemaisParc": 56.81,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 568.37,
+        "premioDemaisParc": 568.37,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 284.18,
+        "premioDemaisParc": 284.18,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 189.45,
+        "premioDemaisParc": 189.45,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 142.1,
+        "premioDemaisParc": 142.1,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 113.69,
+        "premioDemaisParc": 113.69,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 94.72,
+        "premioDemaisParc": 94.72,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 81.17,
+        "premioDemaisParc": 81.17,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 71.02,
+        "premioDemaisParc": 71.02,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 63.17,
+        "premioDemaisParc": 63.17,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 56.81,
+        "premioDemaisParc": 56.81,
+        "tipoPag": 3,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0106>",
+    "seguradoraTxt": "Mapfre",
+    "retorno": true,
+    "dataHoraRetorno": "2026-10-01T16:04:06.000Z",
+    "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+    "tempoResposta": 15000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "HDI",
+    "nomeSeguradora": "Hdi",
+    "seguradora": 4,
+    "idIntegracao": "<id#0080>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "configsGlobais": true,
+    "credenciaisValidas": true,
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoAcidentesPessoais": null,
+    "percDescontoAcidentesPessoais": null,
+    "percAgenciamentoAcidentesPessoais": null,
+    "hdiSucursalLista": "<redacted:config>",
+    "hdiSucursal": "<redacted:config>",
+    "hdiCodigoProdutor": null,
+    "ambienteCalculo": null,
+    "apolicesBaixar": false,
+    "percComissao": 30,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0080>",
+    "idIntegracaoCfgSeg": "<id#0080>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0080>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-10-1",
+    "executionId": "<id#0101>",
+    "executionGuid": "<id#0102>",
+    "premio": 752.12,
+    "premioMensal": 62.67666666666667,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Principal",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0107>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 752.12,
+      "premioMensal": 62.67666666666667,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 30,
+       "assist24hs": "Essencial",
+       "isDanosIncendioRaioExplosao": 550000,
+       "isDanosEletricos": 10000,
+       "isDanosAluguel": 22000,
+       "isDanosVendaval": 45000,
+       "imovelObjetoSegurado": "Prédio e Conteúdo",
+       "valorDeNovo": "Sim"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 752.12,
+        "premioDemaisParc": 752.12,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 376.06,
+        "premioDemaisParc": 376.06,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 250.71,
+        "premioDemaisParc": 250.71,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 188.03,
+        "premioDemaisParc": 188.03,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 150.42,
+        "premioDemaisParc": 150.42,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 125.35,
+        "premioDemaisParc": 125.35,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 118.85,
+        "premioDemaisParc": 118.85,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 105.72,
+        "premioDemaisParc": 105.72,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 95.52,
+        "premioDemaisParc": 95.52,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 87.38,
+        "premioDemaisParc": 87.38,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 80.73,
+        "premioDemaisParc": 80.73,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 752.12,
+        "premioDemaisParc": 752.12,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 376.06,
+        "premioDemaisParc": 376.06,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 250.71,
+        "premioDemaisParc": 250.71,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 188.03,
+        "premioDemaisParc": 188.03,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 150.42,
+        "premioDemaisParc": 150.42,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 125.35,
+        "premioDemaisParc": 125.35,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 113.94,
+        "premioDemaisParc": 113.94,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 100.66,
+        "premioDemaisParc": 100.66,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 90.34,
+        "premioDemaisParc": 90.34,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 82.09,
+        "premioDemaisParc": 82.09,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 75.34,
+        "premioDemaisParc": 75.34,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 752.12,
+        "premioDemaisParc": 752.12,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 376.06,
+        "premioDemaisParc": 376.06,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 250.71,
+        "premioDemaisParc": 250.71,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 188.03,
+        "premioDemaisParc": 188.03,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 150.42,
+        "premioDemaisParc": 150.42,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 125.35,
+        "premioDemaisParc": 125.35,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 107.45,
+        "premioDemaisParc": 107.45,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 94.02,
+        "premioDemaisParc": 94.02,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 83.57,
+        "premioDemaisParc": 83.57,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 75.21,
+        "premioDemaisParc": 75.21,
+        "tipoPag": 1,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0108>",
+    "seguradoraTxt": "Hdi",
+    "retorno": true,
+    "dataHoraRetorno": "2026-10-01T16:04:07.000Z",
+    "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+    "tempoResposta": 16000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Zurich",
+    "nomeSeguradora": "Zurich",
+    "seguradora": 7,
+    "idIntegracao": "<id#0075>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "idConfiguracao": null,
+    "apolicesBaixar": false,
+    "configsGlobais": true,
+    "code": null,
+    "secondCode": null,
+    "thirdCode": null,
+    "fourthCode": null,
+    "fifthCode": null,
+    "sixthCode": null,
+    "seventhCode": null,
+    "eighthCode": null,
+    "codeAux": null,
+    "secondCodeAux": null,
+    "thirdCodeAux": null,
+    "susep": null,
+    "userLogin": null,
+    "IdUser": "<usuario#0002>",
+    "idUsuario": "<usuario#0003>",
+    "credenciaisValidas": true,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percComissao": 30,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0075>",
+    "idIntegracaoCfgSeg": "<id#0075>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0075>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-10-1",
+    "executionId": "<id#0101>",
+    "executionGuid": "<id#0102>",
+    "premio": 511.68,
+    "premioMensal": 42.64,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Zurich Residencia",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0109>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 511.68,
+      "premioMensal": 42.64,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 30,
+       "assist24hs": "Assistência Essencial",
+       "isDanosIncendioRaioExplosao": 550000,
+       "isDanosEletricos": 10000,
+       "isDanosEquipamentosEletronicos": "",
+       "isDanosAluguel": 22000,
+       "isDanosVendaval": 45000,
+       "tumultoGreveLockOut": "",
+       "imovelObjetoSegurado": "Prédio/Conteúdo",
+       "valorDeNovo": "Sim",
+       "placasSolares": ""
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 511.68,
+        "premioDemaisParc": 511.68,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 255.84,
+        "premioDemaisParc": 255.84,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 170.56,
+        "premioDemaisParc": 170.56,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 127.92,
+        "premioDemaisParc": 127.92,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 102.32,
+        "premioDemaisParc": 102.32,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 85.28,
+        "premioDemaisParc": 85.28,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 79.71,
+        "premioDemaisParc": 79.71,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 70.76,
+        "premioDemaisParc": 70.76,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 63.83,
+        "premioDemaisParc": 63.83,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 58.21,
+        "premioDemaisParc": 58.21,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 511.68,
+        "premioDemaisParc": 511.68,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 255.84,
+        "premioDemaisParc": 255.84,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 170.56,
+        "premioDemaisParc": 170.56,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 127.92,
+        "premioDemaisParc": 127.92,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 102.32,
+        "premioDemaisParc": 102.32,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 85.28,
+        "premioDemaisParc": 85.28,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 511.68,
+        "premioDemaisParc": 511.68,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 255.84,
+        "premioDemaisParc": 255.84,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 170.56,
+        "premioDemaisParc": 170.56,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 127.92,
+        "premioDemaisParc": 127.92,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 102.32,
+        "premioDemaisParc": 102.32,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 85.28,
+        "premioDemaisParc": 85.28,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 73.08,
+        "premioDemaisParc": 73.08,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 63.96,
+        "premioDemaisParc": 63.96,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 56.88,
+        "premioDemaisParc": 56.88,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 51.15,
+        "premioDemaisParc": 51.15,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 46.48,
+        "premioDemaisParc": 46.48,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 42.64,
+        "premioDemaisParc": 42.64,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 511.68,
+        "premioDemaisParc": 511.68,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 255.84,
+        "premioDemaisParc": 255.84,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 170.56,
+        "premioDemaisParc": 170.56,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 127.92,
+        "premioDemaisParc": 127.92,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 102.32,
+        "premioDemaisParc": 102.32,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 85.28,
+        "premioDemaisParc": 85.28,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 73.08,
+        "premioDemaisParc": 73.08,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 63.96,
+        "premioDemaisParc": 63.96,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 56.88,
+        "premioDemaisParc": 56.88,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 51.15,
+        "premioDemaisParc": 51.15,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 511.68,
+        "premioDemaisParc": 511.68,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 255.84,
+        "premioDemaisParc": 255.84,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 170.56,
+        "premioDemaisParc": 170.56,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 127.92,
+        "premioDemaisParc": 127.92,
+        "tipoPag": 2,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0110>",
+    "seguradoraTxt": "Zurich",
+    "retorno": true,
+    "dataHoraRetorno": "2026-10-01T16:04:25.000Z",
+    "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+    "tempoResposta": 34000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Porto Seguro",
+    "nomeSeguradora": "Porto Seguro",
+    "seguradora": 8,
+    "idIntegracao": "<id#0019>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "idConfiguracao": null,
+    "apolicesBaixar": false,
+    "configsGlobais": true,
+    "code": "<redacted:config>",
+    "secondCode": null,
+    "thirdCode": null,
+    "fourthCode": null,
+    "fifthCode": null,
+    "sixthCode": null,
+    "seventhCode": null,
+    "eighthCode": null,
+    "codeAux": null,
+    "secondCodeAux": null,
+    "thirdCodeAux": null,
+    "susep": null,
+    "userLogin": null,
+    "portoSusep": "<redacted:config>",
+    "IdUser": "<usuario#0002>",
+    "idUsuario": "<usuario#0003>",
+    "credenciaisValidas": true,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoCond": 10,
+    "percDescontoCond": 0,
+    "percComissao": 30,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0019>",
+    "idIntegracaoCfgSeg": "<id#0019>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0019>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-10-1",
+    "executionId": "<id#0101>",
+    "executionGuid": "<id#0102>",
+    "premio": 1654.76,
+    "premioMensal": 137.89666666666668,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "PLANO ESSENCIAL GRATUITO",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0111>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 1654.76,
+      "premioMensal": 137.89666666666668,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 30,
+       "assist24hs": "PLANO ESSENCIAL - GRATUITO GERAL",
+       "isDanosIncendioRaioExplosao": 550000,
+       "isDanosEletricos": 10000,
+       "isDanosAluguel": 22000,
+       "isDanosVendaval": 45000,
+       "imovelObjetoSegurado": "Prédio e Conteúdo",
+       "valorDeNovo": "Sim"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1654.76,
+        "premioDemaisParc": 1654.76,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 827.38,
+        "premioDemaisParc": 827.38,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 551.58,
+        "premioDemaisParc": 551.58,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 413.69,
+        "premioDemaisParc": 413.69,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 330.96,
+        "premioDemaisParc": 330.96,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 275.81,
+        "premioDemaisParc": 275.81,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 255.11,
+        "premioDemaisParc": 255.11,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 233.77,
+        "premioDemaisParc": 233.77,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 211.44,
+        "premioDemaisParc": 211.44,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 193.56,
+        "premioDemaisParc": 193.56,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 178.9,
+        "premioDemaisParc": 178.9,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 166.79,
+        "premioDemaisParc": 166.79,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1654.76,
+        "premioDemaisParc": 1654.76,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 827.38,
+        "premioDemaisParc": 827.38,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 551.58,
+        "premioDemaisParc": 551.58,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 413.69,
+        "premioDemaisParc": 413.69,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 330.96,
+        "premioDemaisParc": 330.96,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 275.81,
+        "premioDemaisParc": 275.81,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 236.42,
+        "premioDemaisParc": 236.42,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 206.88,
+        "premioDemaisParc": 206.88,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 183.88,
+        "premioDemaisParc": 183.88,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 165.44,
+        "premioDemaisParc": 165.44,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 178.9,
+        "premioDemaisParc": 178.9,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 166.79,
+        "premioDemaisParc": 166.79,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1654.76,
+        "premioDemaisParc": 1654.76,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 847.81,
+        "premioDemaisParc": 847.81,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 579.11,
+        "premioDemaisParc": 579.11,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 444.89,
+        "premioDemaisParc": 444.89,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 364.51,
+        "premioDemaisParc": 364.51,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 311.02,
+        "premioDemaisParc": 311.02,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 272.9,
+        "premioDemaisParc": 272.9,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 244.39,
+        "premioDemaisParc": 244.39,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 222.29,
+        "premioDemaisParc": 222.29,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 204.73,
+        "premioDemaisParc": 204.73,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 190.37,
+        "premioDemaisParc": 190.37,
+        "tipoPag": 3,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0112>",
+    "seguradoraTxt": "Porto Seguro",
+    "retorno": true,
+    "dataHoraRetorno": "2026-10-01T16:04:17.000Z",
+    "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+    "tempoResposta": 26000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Bradesco",
+    "nomeSeguradora": "Bradesco",
+    "seguradora": 1,
+    "idIntegracao": "<id#0014>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "bradescoCpfCnpj": "<doc#0002>",
+    "configsGlobais": true,
+    "credenciaisValidas": true,
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percAgenciamentoVida": 0,
+    "percDescontoCond": null,
+    "percComissaoCond": 10,
+    "bradescoAgenciaProdutor": null,
+    "bradescoCodCorretor": "<redacted:config>",
+    "bradescoCodUsuario": null,
+    "bradescoInspetoria": null,
+    "bradescoSucursalFake": "<redacted:config>",
+    "bradescoSucursal": "<redacted:config>",
+    "bradescoSucursais": "<redacted:config>",
+    "bradescoContrato": null,
+    "apolicesBaixar": false,
+    "percComissao": 30,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0014>",
+    "idIntegracaoCfgSeg": "<id#0014>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0014>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-10-1",
+    "executionId": "<id#0101>",
+    "executionGuid": "<id#0102>",
+    "premio": 475.48,
+    "premioMensal": 39.623333333333335,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Bradesco Residencia",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0113>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 475.48,
+      "premioMensal": 39.623333333333335,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 30,
+       "assist24hs": "Plano Eco Essencial",
+       "isDanosIncendioRaioExplosao": 550000,
+       "isDanosEletricos": 10000,
+       "isDanosAluguel": 22000,
+       "isDanosVendaval": 45000,
+       "imovelObjetoSegurado": "Prédio e conteúdo",
+       "valorDeNovo": "Sim",
+       "coberturaCompartilhada": "18,22,28,36"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 475.48,
+        "premioDemaisParc": 475.48,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 237.74,
+        "premioDemaisParc": 237.74,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 158.5,
+        "premioDemaisParc": 158.5,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 118.87,
+        "premioDemaisParc": 118.87,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 95.08,
+        "premioDemaisParc": 95.08,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 79.23,
+        "premioDemaisParc": 79.23,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 67.9,
+        "premioDemaisParc": 67.9,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 59.4,
+        "premioDemaisParc": 59.4,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 52.84,
+        "premioDemaisParc": 52.84,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 47.53,
+        "premioDemaisParc": 47.53,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 456.06,
+        "premioDemaisParc": 456.06,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 228.03,
+        "premioDemaisParc": 228.03,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 152.02,
+        "premioDemaisParc": 152.02,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 114,
+        "premioDemaisParc": 114,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 91.22,
+        "premioDemaisParc": 91.22,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 76.01,
+        "premioDemaisParc": 76.01,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 65.16,
+        "premioDemaisParc": 65.16,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 56.99,
+        "premioDemaisParc": 56.99,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 50.7,
+        "premioDemaisParc": 50.7,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 45.57,
+        "premioDemaisParc": 45.57,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 475.48,
+        "premioDemaisParc": 475.48,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 237.74,
+        "premioDemaisParc": 237.74,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 158.5,
+        "premioDemaisParc": 158.5,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 118.87,
+        "premioDemaisParc": 118.87,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 95.08,
+        "premioDemaisParc": 95.08,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 79.23,
+        "premioDemaisParc": 79.23,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 67.9,
+        "premioDemaisParc": 67.9,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 59.4,
+        "premioDemaisParc": 59.4,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 52.84,
+        "premioDemaisParc": 52.84,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 47.53,
+        "premioDemaisParc": 47.53,
+        "tipoPag": 2,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0114>",
+    "seguradoraTxt": "Bradesco",
+    "retorno": true,
+    "dataHoraRetorno": "2026-10-01T16:05:06.000Z",
+    "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+    "tempoResposta": 75000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Yelum",
+    "nomeSeguradora": "Liberty Site",
+    "seguradora": 12,
+    "idIntegracao": "<id#0083>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "configsGlobais": true,
+    "credenciaisValidas": true,
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoAcidentesPessoais": null,
+    "percDescontoAcidentesPessoais": null,
+    "percAgenciamentoAcidentesPessoais": null,
+    "libertyCpfCnpj": "<redacted:credencial>",
+    "libertyFiliais": "[{\"Key\":\"25,1\",\"Value\":\"<nome>\"},{\"Key\":\"06,1\",\"Value\":\"<nome>\"},{\"Key\":\"94,1\",\"Value\":\"<nome> Corporate\"},{\"Key\":\"95,1\",\"Value\":\"Varejo Concessionaria\"},{\"Key\":\"95,10\",\"Value\":\"Varejo Concessionaria - Concessionária\"}]",
+    "libertyCodigoFilial": "<redacted:config>",
+    "libertyCorretores": "<redacted:credencial>",
+    "libertyCodigoCorretor": "<redacted:config>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyTokenEretorno": null,
+    "apolicesBaixar": false,
+    "percComissao": 30,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0083>",
+    "idIntegracaoCfgSeg": "<id#0083>",
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0083>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-10-1",
+    "executionId": "<id#0101>",
+    "executionGuid": "<id#0102>",
+    "premio": 641.13,
+    "premioMensal": 53.4275,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Pacote Básica",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0115>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 641.13,
+      "premioMensal": 53.4275,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 30,
+       "assist24hs": "Básica",
+       "isDanosIncendioRaioExplosao": 550000,
+       "isDanosEletricos": 10000,
+       "isDanosAluguel": 22000,
+       "isDanosVendaval": 45000,
+       "imovelObjetoSegurado": "PRÉDIO E CONTEÚDO",
+       "valorDeNovo": "Sim"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 641.13,
+        "premioDemaisParc": 641.13,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 320.57,
+        "premioDemaisParc": 320.57,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 213.71,
+        "premioDemaisParc": 213.71,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 160.29,
+        "premioDemaisParc": 160.29,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 137.19,
+        "premioDemaisParc": 137.19,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 116.25,
+        "premioDemaisParc": 116.25,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 101.31,
+        "premioDemaisParc": 101.31,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 90.11,
+        "premioDemaisParc": 90.11,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 81.43,
+        "premioDemaisParc": 81.43,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 74.49,
+        "premioDemaisParc": 74.49,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 641.13,
+        "premioDemaisParc": 641.13,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 320.57,
+        "premioDemaisParc": 320.57,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 213.71,
+        "premioDemaisParc": 213.71,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 160.29,
+        "premioDemaisParc": 160.29,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 128.22,
+        "premioDemaisParc": 128.22,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 106.85,
+        "premioDemaisParc": 106.85,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 91.59,
+        "premioDemaisParc": 91.59,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 80.14,
+        "premioDemaisParc": 80.14,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 71.24,
+        "premioDemaisParc": 71.24,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 64.12,
+        "premioDemaisParc": 64.12,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 641.13,
+        "premioDemaisParc": 641.13,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 320.57,
+        "premioDemaisParc": 320.57,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 213.71,
+        "premioDemaisParc": 213.71,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 160.29,
+        "premioDemaisParc": 160.29,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 128.22,
+        "premioDemaisParc": 128.22,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 106.85,
+        "premioDemaisParc": 106.85,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 91.59,
+        "premioDemaisParc": 91.59,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 80.14,
+        "premioDemaisParc": 80.14,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 71.24,
+        "premioDemaisParc": 71.24,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 64.12,
+        "premioDemaisParc": 64.12,
+        "tipoPag": 1,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0116>",
+    "seguradoraTxt": "Liberty Site",
+    "retorno": true,
+    "dataHoraRetorno": "2026-10-01T16:04:18.000Z",
+    "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+    "tempoResposta": 27000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Allianz",
+    "nomeSeguradora": "Allianz",
+    "seguradora": 5,
+    "idIntegracao": "<id#0016>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "configsGlobais": true,
+    "credenciaisValidas": true,
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percComissaoCond": 10,
+    "percDescontoCond": 25,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoAcidentesPessoais": null,
+    "percDescontoAcidentesPessoais": null,
+    "percAgenciamentoAcidentesPessoais": null,
+    "percComissaoViagem": null,
+    "percDescontoViagem": null,
+    "allianzSucursalSelecionada": "<redacted:config>",
+    "allianzSucursais": "<redacted:config>",
+    "apolicesBaixar": false,
+    "percComissao": 30,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0016>",
+    "idIntegracaoCfgSeg": "<id#0016>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0016>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-10-1",
+    "executionId": "<id#0101>",
+    "executionGuid": "<id#0102>",
+    "premio": 568.32,
+    "premioMensal": 47.36000000000001,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Personalizado",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0117>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 568.32,
+      "premioMensal": 47.36000000000001,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 30,
+       "assist24hs": "ESSENCIAL",
+       "isDanosIncendioRaioExplosao": 550000,
+       "isDanosEletricos": 10000,
+       "isDanosAluguel": 22000,
+       "isDanosVendaval": 45000,
+       "imovelObjetoSegurado": "PRÉDIO+CONTEÚDO",
+       "valorDeNovo": "Sim"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 568.32,
+        "premioDemaisParc": 568.32,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 284.16,
+        "premioDemaisParc": 284.16,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 189.44,
+        "premioDemaisParc": 189.44,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 142.08,
+        "premioDemaisParc": 142.08,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 113.664,
+        "premioDemaisParc": 113.664,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 94.72,
+        "premioDemaisParc": 94.72,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 81.18857,
+        "premioDemaisParc": 81.18857,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 71.04,
+        "premioDemaisParc": 71.04,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 63.14667,
+        "premioDemaisParc": 63.14667,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 56.832,
+        "premioDemaisParc": 56.832,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 51.66545,
+        "premioDemaisParc": 51.66545,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 47.36,
+        "premioDemaisParc": 47.36,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 568.32,
+        "premioDemaisParc": 568.32,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 284.16,
+        "premioDemaisParc": 284.16,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 189.44,
+        "premioDemaisParc": 189.44,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 142.08,
+        "premioDemaisParc": 142.08,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 568.32,
+        "premioDemaisParc": 568.32,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 284.16,
+        "premioDemaisParc": 284.16,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 189.44,
+        "premioDemaisParc": 189.44,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 142.08,
+        "premioDemaisParc": 142.08,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 113.664,
+        "premioDemaisParc": 113.664,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 94.72,
+        "premioDemaisParc": 94.72,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 81.18857,
+        "premioDemaisParc": 81.18857,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 71.04,
+        "premioDemaisParc": 71.04,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 63.14667,
+        "premioDemaisParc": 63.14667,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 56.832,
+        "premioDemaisParc": 56.832,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 51.66545,
+        "premioDemaisParc": 51.66545,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 47.36,
+        "premioDemaisParc": 47.36,
+        "tipoPag": 1,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0118>",
+    "seguradoraTxt": "Allianz",
+    "retorno": true,
+    "dataHoraRetorno": "2026-10-01T16:04:34.000Z",
+    "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+    "tempoResposta": 43000,
+    "retornoErro": false
+   }
+  ],
+  "results": {
+   "main": {
+    "errors": [],
+    "successes": []
+   },
+   "alternatives": {
+    "errors": [],
+    "successes": []
+   },
+   "all": {
+    "errors": [],
+    "successes": []
+   },
+   "porAssinatura": {
+    "errors": [],
+    "successes": []
+   },
+   "ofertaCruzada": {
+    "errors": [],
+    "successes": []
+   }
+  },
+  "loaded": false,
+  "tipo": 5,
+  "integracaoInfo": 1,
+  "ramo": 2,
+  "tipoSeguro": 1,
+  "usuarioCriado": "",
+  "usuarioCriadorNome": "",
+  "origem": 1,
+  "versaoAtual": 1,
+  "integracaoID": null,
+  "corretora": {},
+  "calculosEnviados": 1,
+  "calculosRecebidos": 0,
+  "dataCriacao": "2026-10-01T16:03:50.940Z",
+  "seguradoCpfCnpj": "<doc#0006>",
+  "seguradoNome": "<nome#0006>",
+  "vigenciaIni": "2026-10-01T17:47:20.353Z",
+  "vigenciaFim": "2027-10-01T17:47:20.353Z",
+  "renovacao": false,
+  "bonusAnterior": "",
+  "sinistrosAnterior": "0",
+  "numeroRenovacao": "",
+  "seguradoraAnteriorId": "",
+  "vigFimAnterior": "",
+  "correlationId": "<id#0119>",
+  "customerIp": "<id#0120>",
+  "usuarioId": "<usuario#0003>",
+  "corretoraId": "<id#0025>",
+  "aplicacaoId": 3,
+  "customerName": "<nome#0002>",
+  "customerId": "<id#0026>",
+  "idIntegracao": "<id#0121>",
+  "negocioId": "<id#0122>",
+  "isAgger": true,
+  "updatedAt": "2026-10-01T16:03:51.000Z",
+  "versao": 1,
+  "id": "<id#0123>"
+ },
+ "calculos": [
+  {
+   "ativo": true,
+   "nome": "Tokio",
+   "nomeSeguradora": "Tokio",
+   "seguradora": 11,
+   "idIntegracao": "<id#0008>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "idConfiguracao": null,
+   "apolicesBaixar": false,
+   "configsGlobais": true,
+   "code": "<redacted:config>",
+   "secondCode": null,
+   "thirdCode": null,
+   "fourthCode": null,
+   "fifthCode": null,
+   "sixthCode": null,
+   "seventhCode": null,
+   "eighthCode": null,
+   "codeAux": null,
+   "secondCodeAux": null,
+   "thirdCodeAux": null,
+   "susep": null,
+   "userLogin": null,
+   "tokioCodigo": "<redacted:config>",
+   "loginWs": null,
+   "senhaWs": null,
+   "tokioAgenciaFuncional": null,
+   "tokioContaCorrente": null,
+   "tokioMatricula": null,
+   "tokioCodigoLista": null,
+   "IdUser": "<usuario#0002>",
+   "idUsuario": "<usuario#0003>",
+   "credenciaisValidas": true,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percComissao": 30,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0008>",
+   "idIntegracaoCfgSeg": "<id#0008>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0008>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-10-1",
+   "executionId": "<id#0101>",
+   "executionGuid": "<id#0102>",
+   "premio": 1246.3,
+   "premioMensal": 103.85833333333333,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Principal",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0103>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 1246.3,
+     "premioMensal": 103.85833333333333,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 30,
+      "assist24hs": "Plano Básico",
+      "isDanosIncendioRaioExplosao": 550000,
+      "isDanosEletricos": 10000,
+      "isDanosAluguel": 22000,
+      "isDanosVendaval": 45000,
+      "imovelObjetoSegurado": "Prédio + Conteúdo",
+      "valorDeNovo": "Sim"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 1246.3,
+       "premioDemaisParc": 1246.3,
+       "tipoPag": 1,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 623.15,
+       "premioDemaisParc": 623.15,
+       "tipoPag": 1,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 415.43,
+       "premioDemaisParc": 415.43,
+       "tipoPag": 1,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 311.58,
+       "premioDemaisParc": 311.58,
+       "tipoPag": 1,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 36
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0104>",
+   "seguradoraTxt": "Tokio",
+   "retorno": true,
+   "dataHoraRetorno": "2026-10-01T16:04:04.000Z",
+   "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+   "tempoResposta": 13000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Mapfre",
+   "nomeSeguradora": "Mapfre",
+   "seguradora": 3,
+   "idIntegracao": "<id#0086>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "mapfreCodVc": "<redacted:config>",
+   "mapfreCodInt": "<redacted:config>",
+   "mapfreTpUsuario": "<usuario#0003>",
+   "configsGlobais": true,
+   "mapfreUsuarios": "<usuario#0003>",
+   "credenciaisValidas": true,
+   "eighthCode": "<redacted:config>",
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percAgenciamentoVida": 0,
+   "percComissaoAcidentesPessoais": null,
+   "percDescontoAcidentesPessoais": null,
+   "percAgenciamentoAcidentesPessoais": null,
+   "percComissaoAluguel": null,
+   "percDescontoAluguel": null,
+   "grupoAfinidade": null,
+   "apolicesBaixar": false,
+   "percComissao": 30,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0086>",
+   "idIntegracaoCfgSeg": "<id#0086>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0086>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-10-1",
+   "executionId": "<id#0101>",
+   "executionGuid": "<id#0102>",
+   "premio": 568.37,
+   "premioMensal": 47.36416666666667,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Principal",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0105>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 568.37,
+     "premioMensal": 47.36416666666667,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 30,
+      "assist24hs": "Assistência Perfil Plus",
+      "isDanosIncendioRaioExplosao": 550000,
+      "isDanosEletricos": 10000,
+      "isDanosAluguel": 22000,
+      "isDanosVendaval": 45000,
+      "recomposicaoDocumentos": 5000,
+      "imovelObjetoSegurado": 3,
+      "valorDeNovo": "Sim",
+      "coberturaCompartilhada": "25,22"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 568.37,
+       "premioDemaisParc": 568.37,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 284.18,
+       "premioDemaisParc": 284.18,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 189.45,
+       "premioDemaisParc": 189.45,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 142.1,
+       "premioDemaisParc": 142.1,
+       "tipoPag": 2,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 29
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0106>",
+   "seguradoraTxt": "Mapfre",
+   "retorno": true,
+   "dataHoraRetorno": "2026-10-01T16:04:06.000Z",
+   "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+   "tempoResposta": 15000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "HDI",
+   "nomeSeguradora": "Hdi",
+   "seguradora": 4,
+   "idIntegracao": "<id#0080>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "configsGlobais": true,
+   "credenciaisValidas": true,
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoAcidentesPessoais": null,
+   "percDescontoAcidentesPessoais": null,
+   "percAgenciamentoAcidentesPessoais": null,
+   "hdiSucursalLista": "<redacted:config>",
+   "hdiSucursal": "<redacted:config>",
+   "hdiCodigoProdutor": null,
+   "ambienteCalculo": null,
+   "apolicesBaixar": false,
+   "percComissao": 30,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0080>",
+   "idIntegracaoCfgSeg": "<id#0080>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0080>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-10-1",
+   "executionId": "<id#0101>",
+   "executionGuid": "<id#0102>",
+   "premio": 752.12,
+   "premioMensal": 62.67666666666667,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Principal",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0107>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 752.12,
+     "premioMensal": 62.67666666666667,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 30,
+      "assist24hs": "Essencial",
+      "isDanosIncendioRaioExplosao": 550000,
+      "isDanosEletricos": 10000,
+      "isDanosAluguel": 22000,
+      "isDanosVendaval": 45000,
+      "imovelObjetoSegurado": "Prédio e Conteúdo",
+      "valorDeNovo": "Sim"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 752.12,
+       "premioDemaisParc": 752.12,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 376.06,
+       "premioDemaisParc": 376.06,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 250.71,
+       "premioDemaisParc": 250.71,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 188.03,
+       "premioDemaisParc": 188.03,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 32
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0108>",
+   "seguradoraTxt": "Hdi",
+   "retorno": true,
+   "dataHoraRetorno": "2026-10-01T16:04:07.000Z",
+   "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+   "tempoResposta": 16000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Zurich",
+   "nomeSeguradora": "Zurich",
+   "seguradora": 7,
+   "idIntegracao": "<id#0075>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "idConfiguracao": null,
+   "apolicesBaixar": false,
+   "configsGlobais": true,
+   "code": null,
+   "secondCode": null,
+   "thirdCode": null,
+   "fourthCode": null,
+   "fifthCode": null,
+   "sixthCode": null,
+   "seventhCode": null,
+   "eighthCode": null,
+   "codeAux": null,
+   "secondCodeAux": null,
+   "thirdCodeAux": null,
+   "susep": null,
+   "userLogin": null,
+   "IdUser": "<usuario#0002>",
+   "idUsuario": "<usuario#0003>",
+   "credenciaisValidas": true,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percComissao": 30,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0075>",
+   "idIntegracaoCfgSeg": "<id#0075>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0075>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-10-1",
+   "executionId": "<id#0101>",
+   "executionGuid": "<id#0102>",
+   "premio": 511.68,
+   "premioMensal": 42.64,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Zurich Residencia",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0109>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 511.68,
+     "premioMensal": 42.64,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 30,
+      "assist24hs": "Assistência Essencial",
+      "isDanosIncendioRaioExplosao": 550000,
+      "isDanosEletricos": 10000,
+      "isDanosEquipamentosEletronicos": "",
+      "isDanosAluguel": 22000,
+      "isDanosVendaval": 45000,
+      "tumultoGreveLockOut": "",
+      "imovelObjetoSegurado": "Prédio/Conteúdo",
+      "valorDeNovo": "Sim",
+      "placasSolares": ""
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 511.68,
+       "premioDemaisParc": 511.68,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 255.84,
+       "premioDemaisParc": 255.84,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 170.56,
+       "premioDemaisParc": 170.56,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 127.92,
+       "premioDemaisParc": 127.92,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 42
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0110>",
+   "seguradoraTxt": "Zurich",
+   "retorno": true,
+   "dataHoraRetorno": "2026-10-01T16:04:25.000Z",
+   "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+   "tempoResposta": 34000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Porto Seguro",
+   "nomeSeguradora": "Porto Seguro",
+   "seguradora": 8,
+   "idIntegracao": "<id#0019>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "idConfiguracao": null,
+   "apolicesBaixar": false,
+   "configsGlobais": true,
+   "code": "<redacted:config>",
+   "secondCode": null,
+   "thirdCode": null,
+   "fourthCode": null,
+   "fifthCode": null,
+   "sixthCode": null,
+   "seventhCode": null,
+   "eighthCode": null,
+   "codeAux": null,
+   "secondCodeAux": null,
+   "thirdCodeAux": null,
+   "susep": null,
+   "userLogin": null,
+   "portoSusep": "<redacted:config>",
+   "IdUser": "<usuario#0002>",
+   "idUsuario": "<usuario#0003>",
+   "credenciaisValidas": true,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoCond": 10,
+   "percDescontoCond": 0,
+   "percComissao": 30,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0019>",
+   "idIntegracaoCfgSeg": "<id#0019>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0019>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-10-1",
+   "executionId": "<id#0101>",
+   "executionGuid": "<id#0102>",
+   "premio": 1654.76,
+   "premioMensal": 137.89666666666668,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "PLANO ESSENCIAL GRATUITO",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0111>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 1654.76,
+     "premioMensal": 137.89666666666668,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 30,
+      "assist24hs": "PLANO ESSENCIAL - GRATUITO GERAL",
+      "isDanosIncendioRaioExplosao": 550000,
+      "isDanosEletricos": 10000,
+      "isDanosAluguel": 22000,
+      "isDanosVendaval": 45000,
+      "imovelObjetoSegurado": "Prédio e Conteúdo",
+      "valorDeNovo": "Sim"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 1654.76,
+       "premioDemaisParc": 1654.76,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 827.38,
+       "premioDemaisParc": 827.38,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 551.58,
+       "premioDemaisParc": 551.58,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 413.69,
+       "premioDemaisParc": 413.69,
+       "tipoPag": 2,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 35
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0112>",
+   "seguradoraTxt": "Porto Seguro",
+   "retorno": true,
+   "dataHoraRetorno": "2026-10-01T16:04:17.000Z",
+   "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+   "tempoResposta": 26000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Bradesco",
+   "nomeSeguradora": "Bradesco",
+   "seguradora": 1,
+   "idIntegracao": "<id#0014>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "bradescoCpfCnpj": "<doc#0002>",
+   "configsGlobais": true,
+   "credenciaisValidas": true,
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percAgenciamentoVida": 0,
+   "percDescontoCond": null,
+   "percComissaoCond": 10,
+   "bradescoAgenciaProdutor": null,
+   "bradescoCodCorretor": "<redacted:config>",
+   "bradescoCodUsuario": null,
+   "bradescoInspetoria": null,
+   "bradescoSucursalFake": "<redacted:config>",
+   "bradescoSucursal": "<redacted:config>",
+   "bradescoSucursais": "<redacted:config>",
+   "bradescoContrato": null,
+   "apolicesBaixar": false,
+   "percComissao": 30,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0014>",
+   "idIntegracaoCfgSeg": "<id#0014>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0014>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-10-1",
+   "executionId": "<id#0101>",
+   "executionGuid": "<id#0102>",
+   "premio": 475.48,
+   "premioMensal": 39.623333333333335,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Bradesco Residencia",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0113>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 475.48,
+     "premioMensal": 39.623333333333335,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 30,
+      "assist24hs": "Plano Eco Essencial",
+      "isDanosIncendioRaioExplosao": 550000,
+      "isDanosEletricos": 10000,
+      "isDanosAluguel": 22000,
+      "isDanosVendaval": 45000,
+      "imovelObjetoSegurado": "Prédio e conteúdo",
+      "valorDeNovo": "Sim",
+      "coberturaCompartilhada": "18,22,28,36"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 475.48,
+       "premioDemaisParc": 475.48,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 237.74,
+       "premioDemaisParc": 237.74,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 158.5,
+       "premioDemaisParc": 158.5,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 118.87,
+       "premioDemaisParc": 118.87,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 30
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0114>",
+   "seguradoraTxt": "Bradesco",
+   "retorno": true,
+   "dataHoraRetorno": "2026-10-01T16:05:06.000Z",
+   "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+   "tempoResposta": 75000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Yelum",
+   "nomeSeguradora": "Liberty Site",
+   "seguradora": 12,
+   "idIntegracao": "<id#0083>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "configsGlobais": true,
+   "credenciaisValidas": true,
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoAcidentesPessoais": null,
+   "percDescontoAcidentesPessoais": null,
+   "percAgenciamentoAcidentesPessoais": null,
+   "libertyCpfCnpj": "<redacted:credencial>",
+   "libertyFiliais": "[{\"Key\":\"25,1\",\"Value\":\"<nome>\"},{\"Key\":\"06,1\",\"Value\":\"<nome>\"},{\"Key\":\"94,1\",\"Value\":\"<nome> Corporate\"},{\"Key\":\"95,1\",\"Value\":\"Varejo Concessionaria\"},{\"Key\":\"95,10\",\"Value\":\"Varejo Concessionaria - Concessionária\"}]",
+   "libertyCodigoFilial": "<redacted:config>",
+   "libertyCorretores": "<redacted:credencial>",
+   "libertyCodigoCorretor": "<redacted:config>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyTokenEretorno": null,
+   "apolicesBaixar": false,
+   "percComissao": 30,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0083>",
+   "idIntegracaoCfgSeg": "<id#0083>",
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0083>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-10-1",
+   "executionId": "<id#0101>",
+   "executionGuid": "<id#0102>",
+   "premio": 641.13,
+   "premioMensal": 53.4275,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Pacote Básica",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0115>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 641.13,
+     "premioMensal": 53.4275,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 30,
+      "assist24hs": "Básica",
+      "isDanosIncendioRaioExplosao": 550000,
+      "isDanosEletricos": 10000,
+      "isDanosAluguel": 22000,
+      "isDanosVendaval": 45000,
+      "imovelObjetoSegurado": "PRÉDIO E CONTEÚDO",
+      "valorDeNovo": "Sim"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 641.13,
+       "premioDemaisParc": 641.13,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 320.57,
+       "premioDemaisParc": 320.57,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 213.71,
+       "premioDemaisParc": 213.71,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 160.29,
+       "premioDemaisParc": 160.29,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 30
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0116>",
+   "seguradoraTxt": "Liberty Site",
+   "retorno": true,
+   "dataHoraRetorno": "2026-10-01T16:04:18.000Z",
+   "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+   "tempoResposta": 27000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Allianz",
+   "nomeSeguradora": "Allianz",
+   "seguradora": 5,
+   "idIntegracao": "<id#0016>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "configsGlobais": true,
+   "credenciaisValidas": true,
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percComissaoCond": 10,
+   "percDescontoCond": 25,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoAcidentesPessoais": null,
+   "percDescontoAcidentesPessoais": null,
+   "percAgenciamentoAcidentesPessoais": null,
+   "percComissaoViagem": null,
+   "percDescontoViagem": null,
+   "allianzSucursalSelecionada": "<redacted:config>",
+   "allianzSucursais": "<redacted:config>",
+   "apolicesBaixar": false,
+   "percComissao": 30,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0016>",
+   "idIntegracaoCfgSeg": "<id#0016>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0016>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-10-1",
+   "executionId": "<id#0101>",
+   "executionGuid": "<id#0102>",
+   "premio": 568.32,
+   "premioMensal": 47.36000000000001,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Personalizado",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0117>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 568.32,
+     "premioMensal": 47.36000000000001,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 30,
+      "assist24hs": "ESSENCIAL",
+      "isDanosIncendioRaioExplosao": 550000,
+      "isDanosEletricos": 10000,
+      "isDanosAluguel": 22000,
+      "isDanosVendaval": 45000,
+      "imovelObjetoSegurado": "PRÉDIO+CONTEÚDO",
+      "valorDeNovo": "Sim"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 568.32,
+       "premioDemaisParc": 568.32,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 284.16,
+       "premioDemaisParc": 284.16,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 189.44,
+       "premioDemaisParc": 189.44,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 142.08,
+       "premioDemaisParc": 142.08,
+       "tipoPag": 2,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 28
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0118>",
+   "seguradoraTxt": "Allianz",
+   "retorno": true,
+   "dataHoraRetorno": "2026-10-01T16:04:34.000Z",
+   "dataHoraEnvio": "2026-10-01T16:03:51.000Z",
+   "tempoResposta": 43000,
+   "retornoErro": false
+  }
+ ],
+ "_formato_dos_campos_trocados": {
+  ".versao.configuracoes.imovelCep": "########",
+  ".versao.segurado.nome": "texto",
+  ".versao.segurado.cpfCnpj": "##############",
+  ".versao.calculos[].bradescoCpfCnpj": "<AAAAAAAA:AAAAAAAAAA>",
+  ".calculos[].bradescoCpfCnpj": "<AAAAAAAA:AAAAAAAAAA>",
+  ".versao.segurado.cep": "########",
+  ".versao.segurado.cpfCnpjTxt": "###.###.######-##",
+  ".versao.segurado.dataNascTxt": "AAAAAAA AAAA",
+  ".versao.segurado.cepTxt": "#####-###",
+  ".versao.seguradoCpfCnpj": "##############",
+  ".versao.calculos[].seguradoCpfCnpj": "##############",
+  ".calculos[].seguradoCpfCnpj": "##############",
+  ".versao.segurado.dataNasc": "####-##-##A##:##:##.###A"
+ }
+}

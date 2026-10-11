@@ -1,0 +1,3423 @@
+{
+ "formato": "agger_gravacao_re_v1",
+ "ramo": 18,
+ "ramo_nome": "empresarial",
+ "grupo": "recente",
+ "dias_desde_criacao": 19,
+ "n_versoes": 5,
+ "fonte": "GET pdocs calculo/cotacao/versoes/{ref} (a versão = corpo do calcularV2 gravado + o que o servidor acrescenta) e GET pdocs calculo/cotacao/calculos/{ref}/{versao} (a resposta por seguradora); parcelamentos cortados em 4",
+ "versoes_resumo": [
+  {
+   "versao": 5,
+   "createdAt": "2026-09-22T13:48:58.404Z",
+   "n_calc": 8
+  },
+  {
+   "versao": 4,
+   "createdAt": "2026-09-22T13:28:50.998Z",
+   "n_calc": 8
+  },
+  {
+   "versao": 3,
+   "createdAt": "2026-09-22T13:21:06.730Z",
+   "n_calc": 8
+  },
+  {
+   "versao": 2,
+   "createdAt": "2026-09-22T12:39:00.341Z",
+   "n_calc": 8
+  },
+  {
+   "versao": 1,
+   "createdAt": "2026-09-22T12:31:02.695Z",
+   "n_calc": 8
+  }
+ ],
+ "versao": {
+  "configuracoes": {
+   "imovelLogradouro": "<endereco#0024>",
+   "imovelNumero": "<endereco#0025>",
+   "imovelComplemento": "<endereco#0026>",
+   "imovelBairro": "<endereco#0022>",
+   "imovelCidade": "<endereco#0027>",
+   "imovelUF": "SC",
+   "imovelUso": false,
+   "imovelCep": "<cep#0007>",
+   "imovelAlarme": null,
+   "imovelConstrucao": 1,
+   "imovelOcupacao": 1,
+   "imovelObjetoSegurado": 2,
+   "imovelPossuiAlarme": false,
+   "imovelPossuiVigilancia24hs": false,
+   "isDanosIncendioRaioExplosao": 1500000,
+   "isDanosEletricos": 20000,
+   "isDanosImpactoVeiculo": 0,
+   "isDanosAluguel": 0,
+   "isDanosRoubo": 0,
+   "rouboCondomino": null,
+   "responsabilidadeCivil": 100000,
+   "isDanosAlagamento": 0,
+   "isDanosDesmoronamento": 0,
+   "vidros": 0,
+   "isDanosMateriais": 0,
+   "despesaFixa": 0,
+   "assist24hs": 1,
+   "fidelidade": 0,
+   "funeral": {
+    "tipo": 0,
+    "valor": 0
+   },
+   "sisProtecaoIncendRoubo": null,
+   "isDanosVendaval": 0,
+   "imovelLocalizacao": null,
+   "imovelPossuiHidrante": false,
+   "imovelPavimentacao": "0",
+   "imovelLocalEstabelecimento": "<redacted:config>",
+   "anoConstrucao": 2023,
+   "imovelPossuiExtintor": true,
+   "imovelPossuiSprinkler": false,
+   "imovelPossuiBrigadaIncendio": false,
+   "imovelPossuiDetectorFumaca": false,
+   "imovelPossuiAlarmeMonitorado": false,
+   "imovelPossuiCircuitoFechado": false,
+   "imovelPossuiGradesEFechaduraTetra": false,
+   "imovelPossuiSensorInfravermelho": false,
+   "imovelUtilizadoDeposito": false,
+   "imovelDivisaTerronoBaldio": false,
+   "imovelPatrimonioHistorico": false,
+   "imovelTelhaEstruturaMetalica": false,
+   "imovelCaixaEletronico": false,
+   "imovelPossuiIsopainel": false,
+   "imovelConstrucaoReforma": false,
+   "valorDeNovo": 1,
+   "responsabilidadeCivilOperacoes": 100000,
+   "equipamentos": 0,
+   "isDanosVazamentoTanquesTubulacoes": 0,
+   "isDanosDespesasFixas": 0,
+   "isEmpregador": 0,
+   "isDanosMorais": 0,
+   "anunciosLuminosos": 0,
+   "recomposicaoDocumentos": 0,
+   "rouboFurtoDeValores": 0,
+   "tumultoGreveLockOut": 0,
+   "chuveiroSprinkler": 0,
+   "placasSolares": 0,
+   "lucroCessante": 0,
+   "isDanosContaminacaoDeterioracao": 0,
+   "isGuardaVeiculo": {
+    "franquia": null,
+    "vagas": null,
+    "valor": 0
+   },
+   "usoImovelTxt": false,
+   "tipoImovelTxt": false,
+   "tipoConstrucaoTxt": "Sólida",
+   "objetoSeguradoTxt": "Conteúdo",
+   "isDanosIncendioRaioExplosaoTxtRS": "R$ 1.500.000,00",
+   "isDanosVazamentoTanquesTubulacoesTxtRS": "R$ 20.000,00",
+   "isDanosAlagamentoTxtRS": "R$ 0,00",
+   "isDanosAluguelTxtRS": "R$ 0,00",
+   "isDanosDesmoronamentoTxtRS": "R$ 0,00",
+   "isDanosEletricosTxtRS": "R$ 20.000,00",
+   "isDanosVendavalTxtRS": "R$ 0,00",
+   "isDanosImpactoVeiculoTxtRS": "R$ 0,00",
+   "isEmpregadorTxtRS": "R$ 0,00",
+   "isDanosMoraisTxtRS": "R$ 0,00",
+   "anunciosLuminososTxtRS": "R$ 0,00",
+   "equipamentosTxtRS": "R$ 0,00",
+   "recomposicaoDocumentosTxtRS": "R$ 0,00",
+   "rouboFurtoDeValoresTxtRS": "R$ 0,00",
+   "tumultoGreveLockOutTxtRS": "R$ 0,00",
+   "lucroCessanteTxtRS": "R$ 0,00",
+   "isDanosContaminacaoDeterioracaoTxtRS": "R$ 0,00",
+   "isGuardaVeiculoValorTxtRS": "R$ 0,00",
+   "responsabilidadeCivilOperacoesTxtRS": "R$ 100.000,00",
+   "isDanosRouboBensTxtRS": "R$ 50.000,00",
+   "isDanosVazamentoTxtRS": "R$ 20.000,00",
+   "isDanosRouboTxtRS": "R$ 50.000,00",
+   "isDanosVidrosTxtRS": "R$ 0,00",
+   "responsabilidadeCivilTxtRS": "R$ 100.000,00",
+   "assist24hsTxt": "Básica"
+  },
+  "segurado": {
+   "nome": "<nome#0008>",
+   "tipoPessoa": "J",
+   "cpfCnpj": "<doc#0008>",
+   "estadoCivil": 1,
+   "dataNasc": "",
+   "dataPrimHabil": null,
+   "sexo": "M",
+   "fone1": "<fone#0001>",
+   "cep": null,
+   "residLogradouro": null,
+   "residNumero": null,
+   "residBairro": null,
+   "residCidade": null,
+   "residUF": null,
+   "email": "<email#0001>",
+   "fone": "<fone#0001>",
+   "cpfCnpjTxt": "<doc#0008>",
+   "dataNascTxt": "<data#0001>",
+   "estadoCivilTxt": "Solteiro(a)",
+   "cepTxt": "",
+   "sexoTxt": "Masculino"
+  },
+  "loaded": false,
+  "tipo": 5,
+  "integracaoInfo": 1,
+  "ramo": 18,
+  "tipoSeguro": 1,
+  "usuarioCriado": "",
+  "usuarioCriadorNome": "",
+  "origem": 1,
+  "versaoAtual": 4,
+  "integracaoID": null,
+  "corretora": {},
+  "calculosEnviados": 1,
+  "calculosRecebidos": 0,
+  "dataCriacao": "2026-09-22T13:48:58.404Z",
+  "seguradoCpfCnpj": "<doc#0008>",
+  "seguradoNome": "<nome#0008>",
+  "vigenciaIni": "2026-09-22T17:47:20.353Z",
+  "vigenciaFim": "2027-09-22T17:47:20.353Z",
+  "renovacao": false,
+  "bonusAnterior": null,
+  "sinistrosAnterior": "0",
+  "numeroRenovacao": null,
+  "seguradoraAnteriorId": null,
+  "vigFimAnterior": "",
+  "correlationId": "<id#0145>",
+  "customerIp": "<id#0146>",
+  "usuarioId": "<usuario#0003>",
+  "corretoraId": "<id#0025>",
+  "aplicacaoId": 3,
+  "customerName": "<nome#0002>",
+  "customerId": "<id#0026>",
+  "idIntegracao": "<id#0147>",
+  "negocioId": "<id#0148>",
+  "isAgger": true,
+  "updatedAt": "2026-09-22T13:48:58.000Z",
+  "versao": 5,
+  "id": "<id#0149>",
+  "vigenciaIniTxt": "22/09/2026",
+  "vigenciaFimTxt": "22/09/2027",
+  "numeroRenovacaoTxt": "<id#0150>",
+  "status": 2,
+  "usuario": "<usuario#0003>",
+  "textoBusca": "<id#0151>",
+  "versaoOrigem": 4,
+  "calculos": [
+   {
+    "ativo": true,
+    "nome": "Bradesco",
+    "nomeSeguradora": "Bradesco",
+    "seguradora": 1,
+    "idIntegracao": "<id#0014>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "bradescoCpfCnpj": "<doc#0002>",
+    "configsGlobais": true,
+    "credenciaisValidas": true,
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percAgenciamentoVida": 0,
+    "percDescontoCond": null,
+    "percComissaoCond": 10,
+    "bradescoAgenciaProdutor": null,
+    "bradescoCodCorretor": "<redacted:config>",
+    "bradescoCodUsuario": null,
+    "bradescoInspetoria": null,
+    "bradescoSucursalFake": "<redacted:config>",
+    "bradescoSucursal": "<redacted:config>",
+    "bradescoSucursais": "<redacted:config>",
+    "bradescoContrato": null,
+    "apolicesBaixar": false,
+    "percComissao": 40,
+    "percDesconto": null,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "idIntegracaoCfg": "<id#0014>",
+    "idIntegracaoCfgSeg": "<id#0014>",
+    "valoresAjusteSeguradora": {
+     "imovelAtividadeProfissionalLocal": {
+      "Key": "1,1.8.711",
+      "Value": "700.11 - Consultório ou clínica de estética",
+      "Description": null
+     }
+    },
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0014>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-9-22",
+    "executionId": "<id#0152>",
+    "executionGuid": "<id#0153>",
+    "premio": 816,
+    "premioMensal": 68,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Bradesco Empresa",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0154>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 816,
+      "premioMensal": 68,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 40,
+       "assist24hs": "Sim",
+       "isDanosIncendioRaioExplosao": 1500000,
+       "isDanosEletricos": 20000,
+       "imovelObjetoSegurado": "Prédio, Máquinas, Móveis e Utensílios, Mercadorias e Matérias Primas",
+       "valorDeNovo": "Sim",
+       "coberturaCompartilhada": "18,22,28"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 816,
+        "premioDemaisParc": 816,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 408,
+        "premioDemaisParc": 408,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 272,
+        "premioDemaisParc": 272,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 204,
+        "premioDemaisParc": 204,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 163.2,
+        "premioDemaisParc": 163.2,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 136,
+        "premioDemaisParc": 136,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 135.59,
+        "premioDemaisParc": 135.59,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 121.76,
+        "premioDemaisParc": 121.76,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 111.1,
+        "premioDemaisParc": 111.1,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 102.6,
+        "premioDemaisParc": 102.6,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 816,
+        "premioDemaisParc": 816,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 408,
+        "premioDemaisParc": 408,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 272,
+        "premioDemaisParc": 272,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 204,
+        "premioDemaisParc": 204,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 163.2,
+        "premioDemaisParc": 163.2,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 136,
+        "premioDemaisParc": 136,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 116.58,
+        "premioDemaisParc": 116.58,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 102,
+        "premioDemaisParc": 102,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 111.1,
+        "premioDemaisParc": 111.1,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 102.6,
+        "premioDemaisParc": 102.6,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 816,
+        "premioDemaisParc": 816,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 408,
+        "premioDemaisParc": 408,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 272,
+        "premioDemaisParc": 272,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 204,
+        "premioDemaisParc": 204,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 163.2,
+        "premioDemaisParc": 163.2,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 136,
+        "premioDemaisParc": 136,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 116.58,
+        "premioDemaisParc": 116.58,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 102,
+        "premioDemaisParc": 102,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 106.63,
+        "premioDemaisParc": 106.63,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 97.97,
+        "premioDemaisParc": 97.97,
+        "tipoPag": 2,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0155>",
+    "seguradoraTxt": "Bradesco",
+    "retorno": true,
+    "dataHoraRetorno": "2026-09-22T13:51:53.000Z",
+    "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+    "tempoResposta": 175000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Porto Seguro",
+    "nomeSeguradora": "Porto Seguro",
+    "seguradora": 8,
+    "idIntegracao": "<id#0019>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "idConfiguracao": null,
+    "apolicesBaixar": false,
+    "configsGlobais": true,
+    "code": "<redacted:config>",
+    "secondCode": null,
+    "thirdCode": null,
+    "fourthCode": null,
+    "fifthCode": null,
+    "sixthCode": null,
+    "seventhCode": null,
+    "eighthCode": null,
+    "codeAux": null,
+    "secondCodeAux": null,
+    "thirdCodeAux": null,
+    "susep": null,
+    "userLogin": null,
+    "portoSusep": "<redacted:config>",
+    "IdUser": "<usuario#0002>",
+    "idUsuario": "<usuario#0003>",
+    "credenciaisValidas": true,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoCond": 10,
+    "percDescontoCond": 0,
+    "percComissao": 40,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0019>",
+    "idIntegracaoCfgSeg": "<id#0019>",
+    "valoresAjusteSeguradora": {
+     "imovelAtividadeProfissionalLocal": {
+      "Key": "230",
+      "Value": "CABELEIREIROS, SALAO DE BELEZA E/OU ESTETICA",
+      "Description": null
+     }
+    },
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0019>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-9-22",
+    "executionId": "<id#0152>",
+    "executionGuid": "<id#0153>",
+    "premio": 1185.78,
+    "premioMensal": 98.815,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Porto Empresa",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0156>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 1185.78,
+      "premioMensal": 98.815,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [
+       "Cobertura de custos de defesa contratada automaticamente no valor de R$5 mil. Caso haja interesse em alterar, entre na plataforma da seguradora."
+      ],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 40,
+       "assist24hs": "PLANO COMPACTO - GRATUITO REDE REFERENCIADA - EMP",
+       "isDanosIncendioRaioExplosao": 1500000,
+       "responsabilidadeCivil": 100000,
+       "isDanosEletricos": 20000,
+       "imovelObjetoSegurado": "EXCLUSIVO CONTEÚDO",
+       "valorDeNovo": "Sim"
+      },
+      "franquias": {},
+      "observacoes": [
+       "Cobertura de custos de defesa contratada automaticamente no valor de R$5 mil. Caso haja interesse em alterar, entre na plataforma da seguradora."
+      ],
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1126.49,
+        "premioDemaisParc": 1126.49,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 592.89,
+        "premioDemaisParc": 592.89,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 395.26,
+        "premioDemaisParc": 395.26,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 296.46,
+        "premioDemaisParc": 296.46,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 237.14,
+        "premioDemaisParc": 237.14,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 197.63,
+        "premioDemaisParc": 197.63,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 182.79,
+        "premioDemaisParc": 182.79,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 167.54,
+        "premioDemaisParc": 167.54,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 151.48,
+        "premioDemaisParc": 151.48,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 138.69,
+        "premioDemaisParc": 138.69,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 128.2,
+        "premioDemaisParc": 128.2,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 119.51,
+        "premioDemaisParc": 119.51,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1126.49,
+        "premioDemaisParc": 1126.49,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 592.89,
+        "premioDemaisParc": 592.89,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 395.26,
+        "premioDemaisParc": 395.26,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 296.46,
+        "premioDemaisParc": 296.46,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 237.14,
+        "premioDemaisParc": 237.14,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 197.63,
+        "premioDemaisParc": 197.63,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 169.38,
+        "premioDemaisParc": 169.38,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 148.24,
+        "premioDemaisParc": 148.24,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 131.78,
+        "premioDemaisParc": 131.78,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 118.56,
+        "premioDemaisParc": 118.56,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 128.2,
+        "premioDemaisParc": 128.2,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1126.49,
+        "premioDemaisParc": 1126.49,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 592.89,
+        "premioDemaisParc": 592.89,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 395.26,
+        "premioDemaisParc": 395.26,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 296.46,
+        "premioDemaisParc": 296.46,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 237.14,
+        "premioDemaisParc": 237.14,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 197.63,
+        "premioDemaisParc": 197.63,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 195.57,
+        "premioDemaisParc": 195.57,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 175.11,
+        "premioDemaisParc": 175.11,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 159.33,
+        "premioDemaisParc": 159.33,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 146.7,
+        "premioDemaisParc": 146.7,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 136.38,
+        "premioDemaisParc": 136.38,
+        "tipoPag": 3,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0157>",
+    "seguradoraTxt": "Porto Seguro",
+    "retorno": true,
+    "dataHoraRetorno": "2026-09-22T13:50:13.000Z",
+    "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+    "tempoResposta": 75000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Yelum",
+    "nomeSeguradora": "Liberty Site",
+    "seguradora": 12,
+    "idIntegracao": "<id#0083>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "configsGlobais": true,
+    "credenciaisValidas": true,
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoAcidentesPessoais": null,
+    "percDescontoAcidentesPessoais": null,
+    "percAgenciamentoAcidentesPessoais": null,
+    "libertyCpfCnpj": "<redacted:credencial>",
+    "libertyFiliais": "[{\"Key\":\"25,1\",\"Value\":\"<nome>\"},{\"Key\":\"06,1\",\"Value\":\"<nome>\"},{\"Key\":\"94,1\",\"Value\":\"<nome> Corporate\"},{\"Key\":\"95,1\",\"Value\":\"Varejo Concessionaria\"},{\"Key\":\"95,10\",\"Value\":\"Varejo Concessionaria - Concessionária\"}]",
+    "libertyCodigoFilial": "<redacted:config>",
+    "libertyCorretores": "<redacted:credencial>",
+    "libertyCodigoCorretor": "<redacted:config>",
+    "libertyCodigoEstabelecimento": null,
+    "libertyTokenEretorno": null,
+    "apolicesBaixar": false,
+    "percComissao": 40,
+    "percDesconto": null,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "idIntegracaoCfg": "<id#0083>",
+    "idIntegracaoCfgSeg": "<id#0083>",
+    "valoresAjusteSeguradora": {
+     "imovelAtividadeProfissionalLocal": {
+      "Key": "250",
+      "Value": "250 - Salao de beleza, clinica de estetica, podologia e massagem (062-10)",
+      "Description": null
+     }
+    },
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0083>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-9-22",
+    "executionId": "<id#0152>",
+    "executionGuid": "<id#0153>",
+    "premio": 2071.06,
+    "premioMensal": 172.58833333333334,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Pacote Básica",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0158>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 2071.06,
+      "premioMensal": 172.58833333333334,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 40,
+       "assist24hs": "Básica",
+       "isDanosIncendioRaioExplosao": 1500000,
+       "responsabilidadeCivil": 100000,
+       "isDanosEletricos": 20000,
+       "isDanosAlagamento": "",
+       "imovelObjetoSegurado": "CONTEÚDO",
+       "valorDeNovo": "Sim"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2071.06,
+        "premioDemaisParc": 2071.06,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1035.53,
+        "premioDemaisParc": 1035.53,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 690.36,
+        "premioDemaisParc": 690.36,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 517.77,
+        "premioDemaisParc": 517.77,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 414.21,
+        "premioDemaisParc": 414.21,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 345.17,
+        "premioDemaisParc": 345.17,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 295.86,
+        "premioDemaisParc": 295.86,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 258.88,
+        "premioDemaisParc": 258.88,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 230.12,
+        "premioDemaisParc": 230.12,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 207.1,
+        "premioDemaisParc": 207.1,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2071.06,
+        "premioDemaisParc": 2071.06,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1035.53,
+        "premioDemaisParc": 1035.53,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 690.36,
+        "premioDemaisParc": 690.36,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 517.77,
+        "premioDemaisParc": 517.77,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 414.21,
+        "premioDemaisParc": 414.21,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 345.17,
+        "premioDemaisParc": 345.17,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 295.86,
+        "premioDemaisParc": 295.86,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 258.88,
+        "premioDemaisParc": 258.88,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 230.12,
+        "premioDemaisParc": 230.12,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 207.1,
+        "premioDemaisParc": 207.1,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2071.06,
+        "premioDemaisParc": 2071.06,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1035.53,
+        "premioDemaisParc": 1035.53,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 690.36,
+        "premioDemaisParc": 690.36,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 517.77,
+        "premioDemaisParc": 517.77,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 414.21,
+        "premioDemaisParc": 414.21,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 345.17,
+        "premioDemaisParc": 345.17,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 295.86,
+        "premioDemaisParc": 295.86,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 258.88,
+        "premioDemaisParc": 258.88,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 230.12,
+        "premioDemaisParc": 230.12,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 207.1,
+        "premioDemaisParc": 207.1,
+        "tipoPag": 1,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0159>",
+    "seguradoraTxt": "Liberty Site",
+    "retorno": true,
+    "dataHoraRetorno": "2026-09-22T13:50:10.000Z",
+    "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+    "tempoResposta": 72000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Axa",
+    "nomeSeguradora": "Axa",
+    "seguradora": 35,
+    "idIntegracao": "<id#0011>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "loginWs": null,
+    "configsGlobais": true,
+    "credenciaisValidas": true,
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percComissao": 40,
+    "percDesconto": null,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "idIntegracaoCfg": "<id#0011>",
+    "idIntegracaoCfgSeg": "<id#0011>",
+    "valoresAjusteSeguradora": {
+     "imovelAtividadeProfissionalLocal": {
+      "Key": "SER,10124",
+      "Value": "Clínica de estética",
+      "Description": null
+     }
+    },
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0011>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-9-22",
+    "executionId": "<id#0152>",
+    "executionGuid": "<id#0153>",
+    "premio": 0,
+    "premioMensal": null,
+    "createdBy": "<usuario#0001>",
+    "erros": [
+     "Login ou senha incorreta. Confira suas credenciais de acesso."
+    ],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Principal",
+      "codigoIdentificacaoSeg": 1,
+      "pdfFileNameAgger": null,
+      "premioMensal": null,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [
+       "Login ou senha incorreta. Confira suas credenciais de acesso."
+      ],
+      "coberturas": {},
+      "franquias": {},
+      "parcelamentos": [],
+      "pathPdf": null
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0160>",
+    "seguradoraTxt": "Axa",
+    "retorno": true,
+    "dataHoraRetorno": "2026-09-22T13:49:00.000Z",
+    "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+    "tempoResposta": 2000,
+    "retornoErro": true
+   },
+   {
+    "ativo": true,
+    "nome": "Tokio",
+    "nomeSeguradora": "Tokio",
+    "seguradora": 11,
+    "idIntegracao": "<id#0008>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "idConfiguracao": null,
+    "apolicesBaixar": false,
+    "configsGlobais": true,
+    "code": "<redacted:config>",
+    "secondCode": null,
+    "thirdCode": null,
+    "fourthCode": null,
+    "fifthCode": null,
+    "sixthCode": null,
+    "seventhCode": null,
+    "eighthCode": null,
+    "codeAux": null,
+    "secondCodeAux": null,
+    "thirdCodeAux": null,
+    "susep": null,
+    "userLogin": null,
+    "tokioCodigo": "<redacted:config>",
+    "loginWs": null,
+    "senhaWs": null,
+    "tokioAgenciaFuncional": null,
+    "tokioContaCorrente": null,
+    "tokioMatricula": null,
+    "tokioCodigoLista": null,
+    "IdUser": "<usuario#0002>",
+    "idUsuario": "<usuario#0003>",
+    "credenciaisValidas": true,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percComissao": 40,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0008>",
+    "idIntegracaoCfgSeg": "<id#0008>",
+    "valoresAjusteSeguradora": {
+     "imovelAtividadeProfissionalLocal": {
+      "Key": "2256",
+      "Value": "CABELEIREIROS, BARBEARIA, SALÃO DE BELEZA E/OU ESTÉTICA",
+      "Description": null
+     }
+    },
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0008>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-9-22",
+    "executionId": "<id#0152>",
+    "executionGuid": "<id#0153>",
+    "premio": 1796.8,
+    "premioMensal": 149.73333333333332,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Principal",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0161>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 1796.8,
+      "premioMensal": 149.73333333333332,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 40,
+       "assist24hs": "Tokio Marine Assistência",
+       "isDanosIncendioRaioExplosao": 1500000,
+       "responsabilidadeCivil": 100000,
+       "imovelObjetoSegurado": 2,
+       "valorDeNovo": 1
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1796.8,
+        "premioDemaisParc": 1796.8,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 898.4,
+        "premioDemaisParc": 898.4,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 598.94,
+        "premioDemaisParc": 598.94,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 449.2,
+        "premioDemaisParc": 449.2,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 359.36,
+        "premioDemaisParc": 359.36,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 299.5,
+        "premioDemaisParc": 299.5,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 256.72,
+        "premioDemaisParc": 256.72,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 224.6,
+        "premioDemaisParc": 224.6,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 199.68,
+        "premioDemaisParc": 199.68,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 179.68,
+        "premioDemaisParc": 179.68,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 163.4,
+        "premioDemaisParc": 163.4,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 149.77,
+        "premioDemaisParc": 149.77,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1796.8,
+        "premioDemaisParc": 1796.8,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 898.4,
+        "premioDemaisParc": 898.4,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 598.94,
+        "premioDemaisParc": 598.94,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 449.2,
+        "premioDemaisParc": 449.2,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 359.36,
+        "premioDemaisParc": 359.36,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 299.5,
+        "premioDemaisParc": 299.5,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 256.72,
+        "premioDemaisParc": 256.72,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 224.6,
+        "premioDemaisParc": 224.6,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 199.68,
+        "premioDemaisParc": 199.68,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 179.68,
+        "premioDemaisParc": 179.68,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 163.4,
+        "premioDemaisParc": 163.4,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 149.77,
+        "premioDemaisParc": 149.77,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 1796.8,
+        "premioDemaisParc": 1796.8,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 898.4,
+        "premioDemaisParc": 898.4,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 598.94,
+        "premioDemaisParc": 598.94,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 449.2,
+        "premioDemaisParc": 449.2,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 359.36,
+        "premioDemaisParc": 359.36,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 299.5,
+        "premioDemaisParc": 299.5,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 256.72,
+        "premioDemaisParc": 256.72,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 224.6,
+        "premioDemaisParc": 224.6,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 199.68,
+        "premioDemaisParc": 199.68,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 179.68,
+        "premioDemaisParc": 179.68,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 163.4,
+        "premioDemaisParc": 163.4,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 12,
+        "premioPrimeiraParc": 149.77,
+        "premioDemaisParc": 149.77,
+        "tipoPag": 1,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0162>",
+    "seguradoraTxt": "Tokio",
+    "retorno": true,
+    "dataHoraRetorno": "2026-09-22T13:49:03.000Z",
+    "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+    "tempoResposta": 5000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Zurich",
+    "nomeSeguradora": "Zurich",
+    "seguradora": 7,
+    "idIntegracao": "<id#0075>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "idConfiguracao": null,
+    "apolicesBaixar": false,
+    "configsGlobais": true,
+    "code": null,
+    "secondCode": null,
+    "thirdCode": null,
+    "fourthCode": null,
+    "fifthCode": null,
+    "sixthCode": null,
+    "seventhCode": null,
+    "eighthCode": null,
+    "codeAux": null,
+    "secondCodeAux": null,
+    "thirdCodeAux": null,
+    "susep": null,
+    "userLogin": null,
+    "IdUser": "<usuario#0002>",
+    "idUsuario": "<usuario#0003>",
+    "credenciaisValidas": true,
+    "percAgenciamentoVida": 0,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percComissao": 40,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "percDesconto": null,
+    "idIntegracaoCfg": "<id#0075>",
+    "idIntegracaoCfgSeg": "<id#0075>",
+    "valoresAjusteSeguradora": {
+     "imovelAtividadeProfissionalLocal": {
+      "Key": "236.01",
+      "Value": "CLINICA DE ESTETICA",
+      "Description": ""
+     }
+    },
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0075>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-9-22",
+    "executionId": "<id#0152>",
+    "executionGuid": "<id#0153>",
+    "premio": 2052.54,
+    "premioMensal": 171.045,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Zurich Empresa",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0163>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 2052.54,
+      "premioMensal": 171.045,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 40,
+       "assist24hs": "Assistência básica + serviços sustentáveis",
+       "isDanosIncendioRaioExplosao": 1500000,
+       "responsabilidadeCivil": 100000,
+       "isDanosEletricos": 20000,
+       "isDanosAlagamento": "",
+       "imovelObjetoSegurado": "Conteúdo",
+       "valorDeNovo": "Não"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2052.54,
+        "premioDemaisParc": 2052.54,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1026.27,
+        "premioDemaisParc": 1026.27,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 684.18,
+        "premioDemaisParc": 684.18,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 513.15,
+        "premioDemaisParc": 513.15,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 410.5,
+        "premioDemaisParc": 410.5,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 342.09,
+        "premioDemaisParc": 342.09,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 310.95,
+        "premioDemaisParc": 310.95,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 274.69,
+        "premioDemaisParc": 274.69,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 246.52,
+        "premioDemaisParc": 246.52,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 224.04,
+        "premioDemaisParc": 224.04,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2052.54,
+        "premioDemaisParc": 2052.54,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1026.27,
+        "premioDemaisParc": 1026.27,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 684.18,
+        "premioDemaisParc": 684.18,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 513.15,
+        "premioDemaisParc": 513.15,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2052.54,
+        "premioDemaisParc": 2052.54,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1026.27,
+        "premioDemaisParc": 1026.27,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 684.18,
+        "premioDemaisParc": 684.18,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 513.15,
+        "premioDemaisParc": 513.15,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 410.5,
+        "premioDemaisParc": 410.5,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 342.09,
+        "premioDemaisParc": 342.09,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 293.22,
+        "premioDemaisParc": 293.22,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 256.55,
+        "premioDemaisParc": 256.55,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 228.06,
+        "premioDemaisParc": 228.06,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 205.29,
+        "premioDemaisParc": 205.29,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2052.54,
+        "premioDemaisParc": 2052.54,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1026.27,
+        "premioDemaisParc": 1026.27,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 684.18,
+        "premioDemaisParc": 684.18,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 513.15,
+        "premioDemaisParc": 513.15,
+        "tipoPag": 2,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0164>",
+    "seguradoraTxt": "Zurich",
+    "retorno": true,
+    "dataHoraRetorno": "2026-09-22T13:49:54.000Z",
+    "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+    "tempoResposta": 56000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "HDI",
+    "nomeSeguradora": "Hdi",
+    "seguradora": 4,
+    "idIntegracao": "<id#0080>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "configsGlobais": true,
+    "credenciaisValidas": true,
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percComissaoVidaGlobal": 0,
+    "percDescontoVidaGlobal": null,
+    "percAgenciamentoVidaGlobal": 0,
+    "percComissaoAcidentesPessoais": null,
+    "percDescontoAcidentesPessoais": null,
+    "percAgenciamentoAcidentesPessoais": null,
+    "hdiSucursalLista": "<redacted:config>",
+    "hdiSucursal": "<redacted:config>",
+    "hdiCodigoProdutor": null,
+    "ambienteCalculo": null,
+    "apolicesBaixar": false,
+    "percComissao": 40,
+    "percDesconto": null,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "idIntegracaoCfg": "<id#0080>",
+    "idIntegracaoCfgSeg": "<id#0080>",
+    "valoresAjusteSeguradora": {
+     "imovelAtividadeProfissionalLocal": {
+      "Key": "700126",
+      "Value": "CONSULTORIO E CLINICA, ESTETICA",
+      "Description": null
+     }
+    },
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0080>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-9-22",
+    "executionId": "<id#0152>",
+    "executionGuid": "<id#0153>",
+    "premio": 2122.03,
+    "premioMensal": 176.83583333333334,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Principal",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0165>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 2122.03,
+      "premioMensal": 176.83583333333334,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 40,
+       "assist24hs": "Empresarial Essencial",
+       "isDanosIncendioRaioExplosao": 1500000,
+       "responsabilidadeCivil": 100000,
+       "isDanosEletricos": 20000,
+       "imovelObjetoSegurado": "Conteúdo",
+       "valorDeNovo": "Sim"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2122.03,
+        "premioDemaisParc": 2122.03,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1061.02,
+        "premioDemaisParc": 1061.02,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 707.34,
+        "premioDemaisParc": 707.34,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 530.51,
+        "premioDemaisParc": 530.51,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 424.41,
+        "premioDemaisParc": 424.41,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 353.67,
+        "premioDemaisParc": 353.67,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 303.15,
+        "premioDemaisParc": 303.15,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 265.25,
+        "premioDemaisParc": 265.25,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 235.78,
+        "premioDemaisParc": 235.78,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 212.2,
+        "premioDemaisParc": 212.2,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 222.66,
+        "premioDemaisParc": 222.66,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2122.03,
+        "premioDemaisParc": 2122.03,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1061.02,
+        "premioDemaisParc": 1061.02,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 707.34,
+        "premioDemaisParc": 707.34,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 530.51,
+        "premioDemaisParc": 530.51,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 424.41,
+        "premioDemaisParc": 424.41,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 353.67,
+        "premioDemaisParc": 353.67,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 303.15,
+        "premioDemaisParc": 303.15,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 265.25,
+        "premioDemaisParc": 265.25,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 235.78,
+        "premioDemaisParc": 235.78,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 212.2,
+        "premioDemaisParc": 212.2,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 11,
+        "premioPrimeiraParc": 217.6,
+        "premioDemaisParc": 217.6,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 2122.03,
+        "premioDemaisParc": 2122.03,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 1061.02,
+        "premioDemaisParc": 1061.02,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 707.34,
+        "premioDemaisParc": 707.34,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 530.51,
+        "premioDemaisParc": 530.51,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 424.41,
+        "premioDemaisParc": 424.41,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 353.67,
+        "premioDemaisParc": 353.67,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 303.15,
+        "premioDemaisParc": 303.15,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 265.25,
+        "premioDemaisParc": 265.25,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 235.78,
+        "premioDemaisParc": 235.78,
+        "tipoPag": 1,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 212.2,
+        "premioDemaisParc": 212.2,
+        "tipoPag": 1,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0166>",
+    "seguradoraTxt": "Hdi",
+    "retorno": true,
+    "dataHoraRetorno": "2026-09-22T13:49:17.000Z",
+    "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+    "tempoResposta": 19000,
+    "retornoErro": false
+   },
+   {
+    "ativo": true,
+    "nome": "Mapfre",
+    "nomeSeguradora": "Mapfre",
+    "seguradora": 3,
+    "idIntegracao": "<id#0086>",
+    "parcelasBaixar": false,
+    "aplicacaoId": 3,
+    "tipoConfig": "compartilhada",
+    "mapfreCodVc": "<redacted:config>",
+    "mapfreCodInt": "<redacted:config>",
+    "mapfreTpUsuario": "<usuario#0003>",
+    "configsGlobais": true,
+    "mapfreUsuarios": "<usuario#0003>",
+    "credenciaisValidas": true,
+    "eighthCode": "<redacted:config>",
+    "cargaIniciada": false,
+    "customStatusRamo": [],
+    "percComissaoCond": 10,
+    "percDescontoCond": null,
+    "percAgenciamentoVida": 0,
+    "percComissaoAcidentesPessoais": null,
+    "percDescontoAcidentesPessoais": null,
+    "percAgenciamentoAcidentesPessoais": null,
+    "percComissaoAluguel": null,
+    "percDescontoAluguel": null,
+    "grupoAfinidade": null,
+    "apolicesBaixar": false,
+    "percComissao": 40,
+    "percDesconto": null,
+    "percComissao2": 0,
+    "percComissao3": 0,
+    "idIntegracaoCfg": "<id#0086>",
+    "idIntegracaoCfgSeg": "<id#0086>",
+    "valoresAjusteSeguradora": {
+     "imovelAtividadeProfissionalLocal": {
+      "Key": "CABELEREIROS/SALAO DE BELEZA/ESTETICA,C1.10",
+      "Value": "CABELEREIROS/SALAO DE BELEZA/ESTETICA - PERMITINDO-SE A VENDA DE ARTIGOS - PERFUMARIAS",
+      "Description": null
+     }
+    },
+    "libertyCodigoEstabelecimento": null,
+    "libertyDescontoRegional": 1,
+    "ID": "<id#0086>",
+    "selected": true,
+    "packageType": 0,
+    "dtCalculo": "2026-9-22",
+    "executionId": "<id#0152>",
+    "executionGuid": "<id#0153>",
+    "premio": 888.26,
+    "premioMensal": 74.02166666666666,
+    "createdBy": "<usuario#0001>",
+    "erros": [],
+    "alertas": [],
+    "quotationInfo": null,
+    "resultados": [
+     {
+      "principal": true,
+      "selected": true,
+      "packageType": 0,
+      "identificacao": "Principal",
+      "codigoIdentificacaoSeg": 1,
+      "nroCalculo": "<id#0167>",
+      "pdfFileNameAgger": "<removido:pdf>",
+      "premio": 888.26,
+      "premioMensal": 74.02166666666666,
+      "franquia": 0,
+      "renovacaoGarantida": false,
+      "alertas": [],
+      "erros": [],
+      "coberturas": {
+       "percComissao": 40,
+       "assist24hs": "Contratada",
+       "isDanosIncendioRaioExplosao": 1500000,
+       "responsabilidadeCivil": 100000,
+       "isDanosEletricos": 20000,
+       "recomposicaoDocumentos": 10000,
+       "imovelObjetoSegurado": 2,
+       "valorDeNovo": "Não"
+      },
+      "franquias": {},
+      "parcelamentos": [
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 888.26,
+        "premioDemaisParc": 888.26,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 444.13,
+        "premioDemaisParc": 444.13,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 296.09,
+        "premioDemaisParc": 296.09,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 222.07,
+        "premioDemaisParc": 222.07,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 189.91,
+        "premioDemaisParc": 189.91,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 160.88,
+        "premioDemaisParc": 160.88,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 140.17,
+        "premioDemaisParc": 140.17,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 126.66,
+        "premioDemaisParc": 126.66,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 114.66,
+        "premioDemaisParc": 114.66,
+        "tipoPag": 2,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 1,
+        "premioPrimeiraParc": 888.26,
+        "premioDemaisParc": 888.26,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 2,
+        "premioPrimeiraParc": 444.13,
+        "premioDemaisParc": 444.13,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 3,
+        "premioPrimeiraParc": 296.09,
+        "premioDemaisParc": 296.09,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 4,
+        "premioPrimeiraParc": 222.07,
+        "premioDemaisParc": 222.07,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 5,
+        "premioPrimeiraParc": 177.65,
+        "premioDemaisParc": 177.65,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 6,
+        "premioPrimeiraParc": 148.04,
+        "premioDemaisParc": 148.04,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 7,
+        "premioPrimeiraParc": 126.89,
+        "premioDemaisParc": 126.89,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 8,
+        "premioPrimeiraParc": 111.03,
+        "premioDemaisParc": 111.03,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 9,
+        "premioPrimeiraParc": 98.7,
+        "premioDemaisParc": 98.7,
+        "tipoPag": 3,
+        "valorIof": 0
+       },
+       {
+        "parcelas": 10,
+        "premioPrimeiraParc": 88.83,
+        "premioDemaisParc": 88.83,
+        "tipoPag": 3,
+        "valorIof": 0
+       }
+      ],
+      "pathPdf": "<removido:pdf>"
+     }
+    ],
+    "valorFranquia": 0,
+    "id": "<id#0168>",
+    "seguradoraTxt": "Mapfre",
+    "retorno": true,
+    "dataHoraRetorno": "2026-09-22T13:49:13.000Z",
+    "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+    "tempoResposta": 15000,
+    "retornoErro": false
+   }
+  ]
+ },
+ "calculos": [
+  {
+   "ativo": true,
+   "nome": "Bradesco",
+   "nomeSeguradora": "Bradesco",
+   "seguradora": 1,
+   "idIntegracao": "<id#0014>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "bradescoCpfCnpj": "<doc#0002>",
+   "configsGlobais": true,
+   "credenciaisValidas": true,
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percAgenciamentoVida": 0,
+   "percDescontoCond": null,
+   "percComissaoCond": 10,
+   "bradescoAgenciaProdutor": null,
+   "bradescoCodCorretor": "<redacted:config>",
+   "bradescoCodUsuario": null,
+   "bradescoInspetoria": null,
+   "bradescoSucursalFake": "<redacted:config>",
+   "bradescoSucursal": "<redacted:config>",
+   "bradescoSucursais": "<redacted:config>",
+   "bradescoContrato": null,
+   "apolicesBaixar": false,
+   "percComissao": 40,
+   "percDesconto": null,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "idIntegracaoCfg": "<id#0014>",
+   "idIntegracaoCfgSeg": "<id#0014>",
+   "valoresAjusteSeguradora": {
+    "imovelAtividadeProfissionalLocal": {
+     "Key": "1,1.8.711",
+     "Value": "700.11 - Consultório ou clínica de estética",
+     "Description": null
+    }
+   },
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0014>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-9-22",
+   "executionId": "<id#0152>",
+   "executionGuid": "<id#0153>",
+   "premio": 816,
+   "premioMensal": 68,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Bradesco Empresa",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0154>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 816,
+     "premioMensal": 68,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 40,
+      "assist24hs": "Sim",
+      "isDanosIncendioRaioExplosao": 1500000,
+      "isDanosEletricos": 20000,
+      "imovelObjetoSegurado": "Prédio, Máquinas, Móveis e Utensílios, Mercadorias e Matérias Primas",
+      "valorDeNovo": "Sim",
+      "coberturaCompartilhada": "18,22,28"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 816,
+       "premioDemaisParc": 816,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 408,
+       "premioDemaisParc": 408,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 272,
+       "premioDemaisParc": 272,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 204,
+       "premioDemaisParc": 204,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 30
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0155>",
+   "seguradoraTxt": "Bradesco",
+   "retorno": true,
+   "dataHoraRetorno": "2026-09-22T13:51:53.000Z",
+   "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+   "tempoResposta": 175000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Porto Seguro",
+   "nomeSeguradora": "Porto Seguro",
+   "seguradora": 8,
+   "idIntegracao": "<id#0019>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "idConfiguracao": null,
+   "apolicesBaixar": false,
+   "configsGlobais": true,
+   "code": "<redacted:config>",
+   "secondCode": null,
+   "thirdCode": null,
+   "fourthCode": null,
+   "fifthCode": null,
+   "sixthCode": null,
+   "seventhCode": null,
+   "eighthCode": null,
+   "codeAux": null,
+   "secondCodeAux": null,
+   "thirdCodeAux": null,
+   "susep": null,
+   "userLogin": null,
+   "portoSusep": "<redacted:config>",
+   "IdUser": "<usuario#0002>",
+   "idUsuario": "<usuario#0003>",
+   "credenciaisValidas": true,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoCond": 10,
+   "percDescontoCond": 0,
+   "percComissao": 40,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0019>",
+   "idIntegracaoCfgSeg": "<id#0019>",
+   "valoresAjusteSeguradora": {
+    "imovelAtividadeProfissionalLocal": {
+     "Key": "230",
+     "Value": "CABELEIREIROS, SALAO DE BELEZA E/OU ESTETICA",
+     "Description": null
+    }
+   },
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0019>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-9-22",
+   "executionId": "<id#0152>",
+   "executionGuid": "<id#0153>",
+   "premio": 1185.78,
+   "premioMensal": 98.815,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Porto Empresa",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0156>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 1185.78,
+     "premioMensal": 98.815,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [
+      "Cobertura de custos de defesa contratada automaticamente no valor de R$5 mil. Caso haja interesse em alterar, entre na plataforma da seguradora."
+     ],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 40,
+      "assist24hs": "PLANO COMPACTO - GRATUITO REDE REFERENCIADA - EMP",
+      "isDanosIncendioRaioExplosao": 1500000,
+      "responsabilidadeCivil": 100000,
+      "isDanosEletricos": 20000,
+      "imovelObjetoSegurado": "EXCLUSIVO CONTEÚDO",
+      "valorDeNovo": "Sim"
+     },
+     "franquias": {},
+     "observacoes": [
+      "Cobertura de custos de defesa contratada automaticamente no valor de R$5 mil. Caso haja interesse em alterar, entre na plataforma da seguradora."
+     ],
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 1126.49,
+       "premioDemaisParc": 1126.49,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 592.89,
+       "premioDemaisParc": 592.89,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 395.26,
+       "premioDemaisParc": 395.26,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 296.46,
+       "premioDemaisParc": 296.46,
+       "tipoPag": 2,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 34
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0157>",
+   "seguradoraTxt": "Porto Seguro",
+   "retorno": true,
+   "dataHoraRetorno": "2026-09-22T13:50:13.000Z",
+   "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+   "tempoResposta": 75000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Yelum",
+   "nomeSeguradora": "Liberty Site",
+   "seguradora": 12,
+   "idIntegracao": "<id#0083>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "configsGlobais": true,
+   "credenciaisValidas": true,
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoAcidentesPessoais": null,
+   "percDescontoAcidentesPessoais": null,
+   "percAgenciamentoAcidentesPessoais": null,
+   "libertyCpfCnpj": "<redacted:credencial>",
+   "libertyFiliais": "[{\"Key\":\"25,1\",\"Value\":\"<nome>\"},{\"Key\":\"06,1\",\"Value\":\"<nome>\"},{\"Key\":\"94,1\",\"Value\":\"<nome> Corporate\"},{\"Key\":\"95,1\",\"Value\":\"Varejo Concessionaria\"},{\"Key\":\"95,10\",\"Value\":\"Varejo Concessionaria - Concessionária\"}]",
+   "libertyCodigoFilial": "<redacted:config>",
+   "libertyCorretores": "<redacted:credencial>",
+   "libertyCodigoCorretor": "<redacted:config>",
+   "libertyCodigoEstabelecimento": null,
+   "libertyTokenEretorno": null,
+   "apolicesBaixar": false,
+   "percComissao": 40,
+   "percDesconto": null,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "idIntegracaoCfg": "<id#0083>",
+   "idIntegracaoCfgSeg": "<id#0083>",
+   "valoresAjusteSeguradora": {
+    "imovelAtividadeProfissionalLocal": {
+     "Key": "250",
+     "Value": "250 - Salao de beleza, clinica de estetica, podologia e massagem (062-10)",
+     "Description": null
+    }
+   },
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0083>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-9-22",
+   "executionId": "<id#0152>",
+   "executionGuid": "<id#0153>",
+   "premio": 2071.06,
+   "premioMensal": 172.58833333333334,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Pacote Básica",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0158>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 2071.06,
+     "premioMensal": 172.58833333333334,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 40,
+      "assist24hs": "Básica",
+      "isDanosIncendioRaioExplosao": 1500000,
+      "responsabilidadeCivil": 100000,
+      "isDanosEletricos": 20000,
+      "isDanosAlagamento": "",
+      "imovelObjetoSegurado": "CONTEÚDO",
+      "valorDeNovo": "Sim"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 2071.06,
+       "premioDemaisParc": 2071.06,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 1035.53,
+       "premioDemaisParc": 1035.53,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 690.36,
+       "premioDemaisParc": 690.36,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 517.77,
+       "premioDemaisParc": 517.77,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 30
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0159>",
+   "seguradoraTxt": "Liberty Site",
+   "retorno": true,
+   "dataHoraRetorno": "2026-09-22T13:50:10.000Z",
+   "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+   "tempoResposta": 72000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Axa",
+   "nomeSeguradora": "Axa",
+   "seguradora": 35,
+   "idIntegracao": "<id#0011>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "loginWs": null,
+   "configsGlobais": true,
+   "credenciaisValidas": true,
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percComissao": 40,
+   "percDesconto": null,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "idIntegracaoCfg": "<id#0011>",
+   "idIntegracaoCfgSeg": "<id#0011>",
+   "valoresAjusteSeguradora": {
+    "imovelAtividadeProfissionalLocal": {
+     "Key": "SER,10124",
+     "Value": "Clínica de estética",
+     "Description": null
+    }
+   },
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0011>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-9-22",
+   "executionId": "<id#0152>",
+   "executionGuid": "<id#0153>",
+   "premio": 0,
+   "premioMensal": null,
+   "createdBy": "<usuario#0001>",
+   "erros": [
+    "Login ou senha incorreta. Confira suas credenciais de acesso."
+   ],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Principal",
+     "codigoIdentificacaoSeg": 1,
+     "pdfFileNameAgger": null,
+     "premioMensal": null,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [
+      "Login ou senha incorreta. Confira suas credenciais de acesso."
+     ],
+     "coberturas": {},
+     "franquias": {},
+     "parcelamentos": [],
+     "pathPdf": null
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0160>",
+   "seguradoraTxt": "Axa",
+   "retorno": true,
+   "dataHoraRetorno": "2026-09-22T13:49:00.000Z",
+   "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+   "tempoResposta": 2000,
+   "retornoErro": true
+  },
+  {
+   "ativo": true,
+   "nome": "Tokio",
+   "nomeSeguradora": "Tokio",
+   "seguradora": 11,
+   "idIntegracao": "<id#0008>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "idConfiguracao": null,
+   "apolicesBaixar": false,
+   "configsGlobais": true,
+   "code": "<redacted:config>",
+   "secondCode": null,
+   "thirdCode": null,
+   "fourthCode": null,
+   "fifthCode": null,
+   "sixthCode": null,
+   "seventhCode": null,
+   "eighthCode": null,
+   "codeAux": null,
+   "secondCodeAux": null,
+   "thirdCodeAux": null,
+   "susep": null,
+   "userLogin": null,
+   "tokioCodigo": "<redacted:config>",
+   "loginWs": null,
+   "senhaWs": null,
+   "tokioAgenciaFuncional": null,
+   "tokioContaCorrente": null,
+   "tokioMatricula": null,
+   "tokioCodigoLista": null,
+   "IdUser": "<usuario#0002>",
+   "idUsuario": "<usuario#0003>",
+   "credenciaisValidas": true,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percComissao": 40,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0008>",
+   "idIntegracaoCfgSeg": "<id#0008>",
+   "valoresAjusteSeguradora": {
+    "imovelAtividadeProfissionalLocal": {
+     "Key": "2256",
+     "Value": "CABELEIREIROS, BARBEARIA, SALÃO DE BELEZA E/OU ESTÉTICA",
+     "Description": null
+    }
+   },
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0008>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-9-22",
+   "executionId": "<id#0152>",
+   "executionGuid": "<id#0153>",
+   "premio": 1796.8,
+   "premioMensal": 149.73333333333332,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Principal",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0161>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 1796.8,
+     "premioMensal": 149.73333333333332,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 40,
+      "assist24hs": "Tokio Marine Assistência",
+      "isDanosIncendioRaioExplosao": 1500000,
+      "responsabilidadeCivil": 100000,
+      "imovelObjetoSegurado": 2,
+      "valorDeNovo": 1
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 1796.8,
+       "premioDemaisParc": 1796.8,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 898.4,
+       "premioDemaisParc": 898.4,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 598.94,
+       "premioDemaisParc": 598.94,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 449.2,
+       "premioDemaisParc": 449.2,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 36
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0162>",
+   "seguradoraTxt": "Tokio",
+   "retorno": true,
+   "dataHoraRetorno": "2026-09-22T13:49:03.000Z",
+   "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+   "tempoResposta": 5000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Zurich",
+   "nomeSeguradora": "Zurich",
+   "seguradora": 7,
+   "idIntegracao": "<id#0075>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "idConfiguracao": null,
+   "apolicesBaixar": false,
+   "configsGlobais": true,
+   "code": null,
+   "secondCode": null,
+   "thirdCode": null,
+   "fourthCode": null,
+   "fifthCode": null,
+   "sixthCode": null,
+   "seventhCode": null,
+   "eighthCode": null,
+   "codeAux": null,
+   "secondCodeAux": null,
+   "thirdCodeAux": null,
+   "susep": null,
+   "userLogin": null,
+   "IdUser": "<usuario#0002>",
+   "idUsuario": "<usuario#0003>",
+   "credenciaisValidas": true,
+   "percAgenciamentoVida": 0,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percComissao": 40,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "percDesconto": null,
+   "idIntegracaoCfg": "<id#0075>",
+   "idIntegracaoCfgSeg": "<id#0075>",
+   "valoresAjusteSeguradora": {
+    "imovelAtividadeProfissionalLocal": {
+     "Key": "236.01",
+     "Value": "CLINICA DE ESTETICA",
+     "Description": ""
+    }
+   },
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0075>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-9-22",
+   "executionId": "<id#0152>",
+   "executionGuid": "<id#0153>",
+   "premio": 2052.54,
+   "premioMensal": 171.045,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Zurich Empresa",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0163>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 2052.54,
+     "premioMensal": 171.045,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 40,
+      "assist24hs": "Assistência básica + serviços sustentáveis",
+      "isDanosIncendioRaioExplosao": 1500000,
+      "responsabilidadeCivil": 100000,
+      "isDanosEletricos": 20000,
+      "isDanosAlagamento": "",
+      "imovelObjetoSegurado": "Conteúdo",
+      "valorDeNovo": "Não"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 2052.54,
+       "premioDemaisParc": 2052.54,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 1026.27,
+       "premioDemaisParc": 1026.27,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 684.18,
+       "premioDemaisParc": 684.18,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 513.15,
+       "premioDemaisParc": 513.15,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 28
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0164>",
+   "seguradoraTxt": "Zurich",
+   "retorno": true,
+   "dataHoraRetorno": "2026-09-22T13:49:54.000Z",
+   "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+   "tempoResposta": 56000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "HDI",
+   "nomeSeguradora": "Hdi",
+   "seguradora": 4,
+   "idIntegracao": "<id#0080>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "configsGlobais": true,
+   "credenciaisValidas": true,
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percComissaoVidaGlobal": 0,
+   "percDescontoVidaGlobal": null,
+   "percAgenciamentoVidaGlobal": 0,
+   "percComissaoAcidentesPessoais": null,
+   "percDescontoAcidentesPessoais": null,
+   "percAgenciamentoAcidentesPessoais": null,
+   "hdiSucursalLista": "<redacted:config>",
+   "hdiSucursal": "<redacted:config>",
+   "hdiCodigoProdutor": null,
+   "ambienteCalculo": null,
+   "apolicesBaixar": false,
+   "percComissao": 40,
+   "percDesconto": null,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "idIntegracaoCfg": "<id#0080>",
+   "idIntegracaoCfgSeg": "<id#0080>",
+   "valoresAjusteSeguradora": {
+    "imovelAtividadeProfissionalLocal": {
+     "Key": "700126",
+     "Value": "CONSULTORIO E CLINICA, ESTETICA",
+     "Description": null
+    }
+   },
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0080>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-9-22",
+   "executionId": "<id#0152>",
+   "executionGuid": "<id#0153>",
+   "premio": 2122.03,
+   "premioMensal": 176.83583333333334,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Principal",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0165>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 2122.03,
+     "premioMensal": 176.83583333333334,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 40,
+      "assist24hs": "Empresarial Essencial",
+      "isDanosIncendioRaioExplosao": 1500000,
+      "responsabilidadeCivil": 100000,
+      "isDanosEletricos": 20000,
+      "imovelObjetoSegurado": "Conteúdo",
+      "valorDeNovo": "Sim"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 2122.03,
+       "premioDemaisParc": 2122.03,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 1061.02,
+       "premioDemaisParc": 1061.02,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 707.34,
+       "premioDemaisParc": 707.34,
+       "tipoPag": 3,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 530.51,
+       "premioDemaisParc": 530.51,
+       "tipoPag": 3,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 32
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0166>",
+   "seguradoraTxt": "Hdi",
+   "retorno": true,
+   "dataHoraRetorno": "2026-09-22T13:49:17.000Z",
+   "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+   "tempoResposta": 19000,
+   "retornoErro": false
+  },
+  {
+   "ativo": true,
+   "nome": "Mapfre",
+   "nomeSeguradora": "Mapfre",
+   "seguradora": 3,
+   "idIntegracao": "<id#0086>",
+   "parcelasBaixar": false,
+   "aplicacaoId": 3,
+   "tipoConfig": "compartilhada",
+   "mapfreCodVc": "<redacted:config>",
+   "mapfreCodInt": "<redacted:config>",
+   "mapfreTpUsuario": "<usuario#0003>",
+   "configsGlobais": true,
+   "mapfreUsuarios": "<usuario#0003>",
+   "credenciaisValidas": true,
+   "eighthCode": "<redacted:config>",
+   "cargaIniciada": false,
+   "customStatusRamo": [],
+   "percComissaoCond": 10,
+   "percDescontoCond": null,
+   "percAgenciamentoVida": 0,
+   "percComissaoAcidentesPessoais": null,
+   "percDescontoAcidentesPessoais": null,
+   "percAgenciamentoAcidentesPessoais": null,
+   "percComissaoAluguel": null,
+   "percDescontoAluguel": null,
+   "grupoAfinidade": null,
+   "apolicesBaixar": false,
+   "percComissao": 40,
+   "percDesconto": null,
+   "percComissao2": 0,
+   "percComissao3": 0,
+   "idIntegracaoCfg": "<id#0086>",
+   "idIntegracaoCfgSeg": "<id#0086>",
+   "valoresAjusteSeguradora": {
+    "imovelAtividadeProfissionalLocal": {
+     "Key": "CABELEREIROS/SALAO DE BELEZA/ESTETICA,C1.10",
+     "Value": "CABELEREIROS/SALAO DE BELEZA/ESTETICA - PERMITINDO-SE A VENDA DE ARTIGOS - PERFUMARIAS",
+     "Description": null
+    }
+   },
+   "libertyCodigoEstabelecimento": null,
+   "libertyDescontoRegional": 1,
+   "ID": "<id#0086>",
+   "selected": true,
+   "packageType": 0,
+   "dtCalculo": "2026-9-22",
+   "executionId": "<id#0152>",
+   "executionGuid": "<id#0153>",
+   "premio": 888.26,
+   "premioMensal": 74.02166666666666,
+   "createdBy": "<usuario#0001>",
+   "erros": [],
+   "alertas": [],
+   "quotationInfo": null,
+   "resultados": [
+    {
+     "principal": true,
+     "selected": true,
+     "packageType": 0,
+     "identificacao": "Principal",
+     "codigoIdentificacaoSeg": 1,
+     "nroCalculo": "<id#0167>",
+     "pdfFileNameAgger": "<removido:pdf>",
+     "premio": 888.26,
+     "premioMensal": 74.02166666666666,
+     "franquia": 0,
+     "renovacaoGarantida": false,
+     "alertas": [],
+     "erros": [],
+     "coberturas": {
+      "percComissao": 40,
+      "assist24hs": "Contratada",
+      "isDanosIncendioRaioExplosao": 1500000,
+      "responsabilidadeCivil": 100000,
+      "isDanosEletricos": 20000,
+      "recomposicaoDocumentos": 10000,
+      "imovelObjetoSegurado": 2,
+      "valorDeNovo": "Não"
+     },
+     "franquias": {},
+     "parcelamentos": [
+      {
+       "parcelas": 1,
+       "premioPrimeiraParc": 888.26,
+       "premioDemaisParc": 888.26,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 2,
+       "premioPrimeiraParc": 444.13,
+       "premioDemaisParc": 444.13,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 3,
+       "premioPrimeiraParc": 296.09,
+       "premioDemaisParc": 296.09,
+       "tipoPag": 2,
+       "valorIof": 0
+      },
+      {
+       "parcelas": 4,
+       "premioPrimeiraParc": 222.07,
+       "premioDemaisParc": 222.07,
+       "tipoPag": 2,
+       "valorIof": 0
+      }
+     ],
+     "pathPdf": "<removido:pdf>",
+     "n_parcelamentos": 19
+    }
+   ],
+   "valorFranquia": 0,
+   "id": "<id#0168>",
+   "seguradoraTxt": "Mapfre",
+   "retorno": true,
+   "dataHoraRetorno": "2026-09-22T13:49:13.000Z",
+   "dataHoraEnvio": "2026-09-22T13:48:58.000Z",
+   "tempoResposta": 15000,
+   "retornoErro": false
+  }
+ ],
+ "_formato_dos_campos_trocados": {
+  ".versao.configuracoes.imovelCep": "########",
+  ".versao.segurado.nome": "texto",
+  ".versao.segurado.cpfCnpj": "##############",
+  ".versao.calculos[].bradescoCpfCnpj": "<AAAAAAAA:AAAAAAAAAA>",
+  ".calculos[].bradescoCpfCnpj": "<AAAAAAAA:AAAAAAAAAA>",
+  ".versao.segurado.cep": "########",
+  ".versao.segurado.cpfCnpjTxt": "###.###.######-##",
+  ".versao.segurado.dataNascTxt": "AAAAAAA AAAA",
+  ".versao.segurado.cepTxt": "#####-###",
+  ".versao.seguradoCpfCnpj": "##############",
+  ".versao.calculos[].seguradoCpfCnpj": "##############",
+  ".calculos[].seguradoCpfCnpj": "##############",
+  ".versao.segurado.dataNasc": "####-##-##A##:##:##.###A",
+  ".versao.segurado.fone1": "##########",
+  ".versao.segurado.fone": "##########"
+ }
+}
