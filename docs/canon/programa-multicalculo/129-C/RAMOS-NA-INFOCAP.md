@@ -1,5 +1,7 @@
 # Condomínio, Residencial e Empresarial na InfoCap: o que a carteira mostra
 
+> ⚠️ ERRATA 11/10 (SPEC-131-0-A): a medição foi feita por uma conexão com o login da AutoFleet; a InfoCap da Resulta tem RE — ver programa-multicalculo/131-0/BLOCO0-INFOCAP-A-CONEXAO-TROCADA.md
+
 > SPEC-129-C · BLOCO 0 · investigação B0-b · medido em 11/10/2026, só leitura (GET) na conexão InfoCap `connected`
 > (a da Resulta, ligada à corretora de ensaio). Nenhum CPF, CNPJ, nome ou telefone aparece aqui. Cada apólice é
 > citada por `sha256(nosnum)[:10]`; as que vieram das conversas, por `conv-<sha256(pdf)[:12]>`.
