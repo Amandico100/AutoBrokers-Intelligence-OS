@@ -77,6 +77,8 @@ export const personalizacaoAreas: ModuleArea[] = [
   { key: 'conectores', icon: icons.conectores, title: 'Conectores', description: 'Integrações da corretora ou pessoais — você escolhe ao conectar.', href: '/dashboard/personalizacao/conectores' },
   { key: 'seguradoras', icon: icons.seguradoras, title: 'Seguradoras', description: 'Canais, portais e corredores.', href: '/dashboard/personalizacao/seguradoras' },
   { key: 'corredores', icon: icons.seguradoras, title: 'Corredores', description: 'Ative os fluxos por seguradora e ramo.', href: '/dashboard/personalizacao/corredores', status: { tone: 'success', label: 'Ativável' } },
+  // SPEC-131-0 parte A · F4 — o manual de cada serviço (Cotação · Renovação · Quem Cobra Menos) e a configuração em 4 passos
+  { key: 'servicos', icon: icons.auxiliares, title: 'Serviços', description: 'O que o AutoBrokers faz em cada serviço: só calcular, entregar ao cliente ou também negociar.', href: '/dashboard/personalizacao/servicos' },
   { key: 'prontidao', icon: icons.casos, title: 'Prontidão', description: 'O que falta para o atendimento entrar no ar.', href: '/dashboard/personalizacao/prontidao', status: { tone: 'info', label: 'Checklist' } },
 ];
 

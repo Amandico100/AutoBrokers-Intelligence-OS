@@ -754,7 +754,7 @@ def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[
         logger.warning("[PROPOSTA] adesões ilegíveis para o desempate: %s", type(exc).__name__)
     for c in corretoras:
         try:
-            g = _google(CFG.carregar(c, db=db))
+            g = _google(CFG.carregar(c, db=db, servico="qcm"))   # SPEC-131-0 F4: só o canal desempata
         except Exception:  # noqa: BLE001 — sem a nota, o critério seguinte decide
             g = None
         if g:
@@ -785,8 +785,11 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     ramo = int(ped.get("ramo") or CMP.RAMO_AUTO)
     kind = repo.tipos_de_empresa([company_id]).get(company_id)
     origem = "canal" if kind == KIND_CANAL else "corretora"
+    # SPEC-131-0 F4 (§5.3): o MANUAL do serviço. O canal é SEMPRE o Quem Cobra Menos; a proposta da própria corretora
+    # segue o serviço que o pedido diz (`multicalculo_pedidos.servico`, F3) — sem ele, a base da corretora (o de antes)
+    servico = "qcm" if origem == "canal" else (ped.get("servico") if ped.get("servico") in CFG.SERVICOS else None)
 
-    cfg_sol = CFG.carregar(company_id, db=db)
+    cfg_sol = CFG.carregar(company_id, db=db, servico=servico)
     ofertas, eventos, estados = list(andamento.ofertas), list(andamento.eventos), list(andamento.estados)
     ordem = [str(c) for c in (ped.get("corretoras") or [])]
     corretoras = sorted({str(e.get("corretora_company_id")) for e in estados})
@@ -808,7 +811,7 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     ranking = quadro.ranking(quadro.opcao_completa, anfitria_id)
     if not ops or not ranking:
         raise PropostaImpossivel("a corretora anfitriã não tem oferta com cobertura completa neste pedido")
-    cfg_anf = cfg_sol if anfitria_id == company_id else CFG.carregar(anfitria_id, db=db)
+    cfg_anf = cfg_sol if anfitria_id == company_id else CFG.carregar(anfitria_id, db=db, servico=servico)
 
     # as opções: sem o `ref` interno; nível, juros com nome, "por que é mais barata", arredondamento único
     por_id = {str(o.get("id")): o for o in ofertas_a}

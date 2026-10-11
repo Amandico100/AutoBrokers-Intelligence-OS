@@ -61,7 +61,7 @@ def _comecando(estado: Dict[str, Any], conversa: Any, texto: str) -> bool:
 def _carregar_config(db, company_id: str) -> Dict[str, Any]:
     from app.services.multicalculo.config import carregar
 
-    return carregar(company_id, db=db)
+    return carregar(company_id, db=db, servico="qcm")   # SPEC-131-0 F4: o manual do Quem Cobra Menos
 
 
 async def _avisar_do_limite(db, company_id: str, tel: str, teto: int) -> None:

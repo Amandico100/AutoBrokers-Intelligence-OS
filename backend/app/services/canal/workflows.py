@@ -69,7 +69,7 @@ def _follow_up(db: Any, company_id: str) -> Dict[str, Any]:
     from app.services.multicalculo import config as CFG
 
     try:
-        cfg = CFG.carregar(company_id, db=db)
+        cfg = CFG.carregar(company_id, db=db, servico="qcm")   # SPEC-131-0 F4: o manual do Quem Cobra Menos
     except Exception as exc:  # noqa: BLE001 — lembrete é cortesia: sem config, o padrão do produto
         logger.warning("[CANAL] config ilegível (%s) — follow-up do padrão", type(exc).__name__)
         cfg = CFG.mesclar(None)
@@ -114,7 +114,7 @@ async def _enviar_e_contar(db: Any, company_id: str, telefone: str, baloes: list
 def _config_do_canal(db: Any, company_id: str) -> Dict[str, Any]:
     from app.services.multicalculo import config as CFG
 
-    return CFG.carregar(company_id, db=db)
+    return CFG.carregar(company_id, db=db, servico="qcm")   # SPEC-131-0 F4: o manual do Quem Cobra Menos
 
 
 def _anfitria_do_artefato(db: Any, company_id: str, artifact_id: str) -> Dict[str, Any]:

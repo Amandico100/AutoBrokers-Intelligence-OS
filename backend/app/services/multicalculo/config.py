@@ -166,7 +166,33 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         # O primeiro é SEMPRE o da integração ativa do canal (`canal.envio.numero_do_canal`); vazio = sem reserva.
         "whatsapp": "",
     },
+    # SPEC-131-0 parte A · F4 (D-131-0-07/08/10/12) — o MANUAL DE CADA SERVIÇO. O Founder (10/10): *"o manual de regras
+    # para renovação, como pensar, como cotar, deve ser diferente de Quem Cobra Menos e da cotação… se eu falar que é
+    # para todas a mesma regra, aí ajusta em tudo"*. Tudo acima é a BASE da corretora (vale para os três); cada serviço
+    # pode SOBREPOR qualquer chave da base na linha da corretora (`servicos.<serviço>.<chave da base>`) — e o que um
+    # serviço sobrepõe nunca vaza para outro (`carregar(…, servico=)`).
+    # `modo` — *"a corretora deve poder escolher se quer que o agente faça só o cálculo… ou ligar a negociação"*:
+    #   calcular (deixa pronto no Agger) · calcular_entregar (manda ao cliente) · calcular_entregar_negociar.
+    # `excecoes_do_modo` — [{ramo?, valor_acima_de?, modo}]: quando a condição casa, vale o modo da exceção; se várias
+    #   casam, vale a MAIS CONTIDA (nunca uma exceção liga mais do que outra deixou).
+    "servicos": {
+        # o Quem Cobra Menos É calcular, entregar e negociar — é a natureza do canal
+        "qcm": {"modo": "calcular_entregar_negociar", "excecoes_do_modo": []},
+        # 💭 Cotação e Renovação nascem no modo mais contido: a corretora liga a entrega/negociação quando quiser
+        "cotacao": {"modo": "calcular", "excecoes_do_modo": []},
+        "renovacao": {"modo": "calcular", "excecoes_do_modo": [],
+                      # D-131-0-05 / §5 F3 — o Agger do comercial falhou (senha recusada): a conta da CORRETORA só
+                      # assume quando a apólice vence em MENOS que isto, em dias 💭 (lido por `qual_agger.decidir`)
+                      "conta_global_se_vence_em_dias": 5},
+    },
 }
+
+#: os serviços que têm manual próprio (D-131-0-32: a mesma lista da coluna `multicalculo_pedidos.servico`)
+SERVICOS = ("qcm", "cotacao", "renovacao")
+#: do mais contido ao mais aberto — a ORDEM importa (`modo_do_servico` escolhe o mais contido entre exceções)
+MODOS = ("calcular", "calcular_entregar", "calcular_entregar_negociar")
+#: as chaves PRÓPRIAS de cada serviço (o resto do bloco do serviço sobrepõe a base)
+_CHAVES_PROPRIAS = {s: frozenset(PADRAO_DO_PRODUTO["servicos"][s]) for s in SERVICOS}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -228,12 +254,16 @@ _TABELAS_LIVRES = frozenset({"por_seguradora", "desconto_permitido_pct"})
 PASSO_PP_MINIMO = 0.5
 
 
-def _coerente(cfg: Dict[str, Any]) -> Dict[str, Any]:
+def _coerente(cfg: Dict[str, Any], pad: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """As réguas que não podem quebrar: piso ≤ autônomo ≤ entrada (todos > 0) · piso ≥ o piso do PRODUTO ·
-    `PASSO_PP_MINIMO` ≤ passo ≤ entrada − autônomo · pesos somam 100 · opções ≥ 1. Fora disso: o padrão da seção."""
-    pad = PADRAO_DO_PRODUTO
+    `PASSO_PP_MINIMO` ≤ passo ≤ entrada − autônomo · pesos somam 100 · opções ≥ 1. Fora disso: o padrão da seção.
+
+    SPEC-131-0 F4: `pad` = de onde vem a seção quando a régua quebra. Na base da corretora é o padrão do produto; na
+    sobreposição de um SERVIÇO é a base JÁ MESCLADA da corretora (um erro no manual da Renovação volta para a regra
+    da corretora, nunca para o padrão do produto). O piso do PRODUTO vale sempre."""
+    pad = pad if pad is not None else PADRAO_DO_PRODUTO
     c = cfg["comissao"]
-    piso_do_produto = float(pad["comissao"]["piso"])
+    piso_do_produto = float(PADRAO_DO_PRODUTO["comissao"]["piso"])
     if not (0 < c["piso"] <= c["autonomo_minimo"] <= c["entrada"]) or not (0 < c["passo_pp"] <= c["entrada"]):
         logger.warning("[MC-CONFIG] comissão incoerente (piso ≤ autônomo ≤ entrada) — fica o padrão")
         cfg["comissao"] = copy.deepcopy(pad["comissao"])
@@ -273,7 +303,7 @@ def _coerente(cfg: Dict[str, Any]) -> Dict[str, Any]:
     for r, v in list(reaj.items()):
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
             logger.warning("[MC-CONFIG] renovacao.reajuste_basica_pct.%s inválido — fica o padrão", r)
-            reaj[r] = pad["renovacao"]["reajuste_basica_pct"].get(r)
+            reaj[r] = (pad["renovacao"].get("reajuste_basica_pct") or {}).get(r)
     for tabela in ("preferencias_de_seguradoras", "coberturas_essenciais"):
         for r, lista in list((cfg.get(tabela) or {}).items()):
             cfg[tabela][r] = [i for i in lista if (isinstance(i, str) and i.strip())
@@ -307,9 +337,20 @@ def teto_da_comissao(config: Mapping[str, Any]) -> float:
 
 
 def reajuste_basica_pct(config: Mapping[str, Any], ramo: Any) -> Optional[float]:
-    """D-129C-06: o reajuste da básica na renovação, em %. None = o ramo não tem a regra (o auto)."""
-    v = _do_ramo((config.get("renovacao") or {}).get("reajuste_basica_pct"), ramo)
+    """D-129C-06: o reajuste da básica na renovação, em %. None = o ramo não tem a regra (o auto).
+
+    SPEC-131-0 F4: aceita o MAPA por ramo (o formato do padrão) ou UM número só ("15 % em todos os ramos de RE") —
+    um número vale para os ramos que o padrão conhece; o auto continua sem a regra."""
+    tabela = (config.get("renovacao") or {}).get("reajuste_basica_pct")
+    if isinstance(tabela, (int, float)) and not isinstance(tabela, bool):
+        tabela = _reajuste_em_mapa(tabela)
+    v = _do_ramo(tabela, ramo)
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _reajuste_em_mapa(numero: float) -> Dict[str, float]:
+    """Um número só → o mesmo número em cada ramo que o padrão do produto conhece."""
+    return {r: numero for r in PADRAO_DO_PRODUTO["renovacao"]["reajuste_basica_pct"]}
 
 
 def basica_renovada(config: Mapping[str, Any], ramo: Any, basica_anterior: Any) -> Optional[float]:
@@ -337,19 +378,134 @@ def coberturas_essenciais(config: Mapping[str, Any], ramo: Any) -> tuple:
     return tuple(_do_ramo(config.get("coberturas_essenciais"), ramo) or ())
 
 
-def mesclar(linha: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
-    """O padrão ⊕ a config de uma corretora (puro — o que `carregar` usa depois de ler o banco)."""
+def _normalizar(linha: Mapping[str, Any]) -> Dict[str, Any]:
+    """Os atalhos de escrita que o formato aceita, levados ao formato do padrão (sem tocar no dicionário de quem
+    chamou): `renovacao.reajuste_basica_pct` como UM número → o mesmo número em cada ramo."""
+    saida = dict(linha)
+    ren = saida.get("renovacao")
+    if isinstance(ren, Mapping):
+        r = ren.get("reajuste_basica_pct")
+        if isinstance(r, (int, float)) and not isinstance(r, bool):
+            saida["renovacao"] = {**ren, "reajuste_basica_pct": _reajuste_em_mapa(r)}
+    return saida
+
+
+def _modo_valido(v: Any) -> bool:
+    return isinstance(v, str) and v in MODOS
+
+
+def _ramo_da_excecao(v: Any) -> Optional[str]:
+    """O ramo como o jsonb guarda (o código como texto). Recusa bool, vazio e o que não é número de ramo."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int) and v > 0:
+        return str(v)
+    if isinstance(v, str) and v.strip().isdigit() and int(v.strip()) > 0:
+        return str(int(v.strip()))
+    return None
+
+
+def _excecao(item: Any) -> Optional[Dict[str, Any]]:
+    """Uma exceção do modo, limpa — ou None (fora do formato: ignorada com log). Tem de ter UMA condição ao menos."""
+    if not isinstance(item, Mapping) or not _modo_valido(item.get("modo")):
+        return None
+    saida: Dict[str, Any] = {"modo": item["modo"]}
+    if item.get("ramo") is not None:
+        ramo = _ramo_da_excecao(item.get("ramo"))
+        if ramo is None:
+            return None
+        saida["ramo"] = ramo
+    v = item.get("valor_acima_de")
+    if v is not None:
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+            return None
+        saida["valor_acima_de"] = float(v)
+    if "ramo" not in saida and "valor_acima_de" not in saida:
+        return None
+    return saida
+
+
+def _servicos(bruto: Any) -> Dict[str, Dict[str, Any]]:
+    """As chaves PRÓPRIAS de cada serviço (modo, exceções, e o que o serviço tem só dele), sobre o padrão. Fora do
+    formato → o padrão daquela chave, com log. As sobreposições da BASE não entram aqui (`_sobreposicao`)."""
+    saida = copy.deepcopy(PADRAO_DO_PRODUTO["servicos"])
+    if bruto is None:
+        return saida
+    if not isinstance(bruto, Mapping):
+        logger.warning("[MC-CONFIG] servicos: esperado objeto — fica o padrão")
+        return saida
+    for s, bloco in bruto.items():
+        if s not in saida:
+            logger.info("[MC-CONFIG] serviço desconhecido ignorado: servicos.%s", s)
+            continue
+        if not isinstance(bloco, Mapping):
+            logger.warning("[MC-CONFIG] servicos.%s: esperado objeto — fica o padrão", s)
+            continue
+        alvo = saida[s]
+        if "modo" in bloco:
+            if _modo_valido(bloco["modo"]):
+                alvo["modo"] = bloco["modo"]
+            else:
+                logger.warning("[MC-CONFIG] servicos.%s.modo inválido — fica o padrão", s)
+        if "excecoes_do_modo" in bloco:
+            lista = bloco["excecoes_do_modo"]
+            if isinstance(lista, list):
+                limpas = [e for e in (_excecao(i) for i in lista) if e is not None]
+                if len(limpas) != len(lista):
+                    logger.warning("[MC-CONFIG] servicos.%s.excecoes_do_modo: item fora do formato ignorado", s)
+                alvo["excecoes_do_modo"] = limpas
+            else:
+                logger.warning("[MC-CONFIG] servicos.%s.excecoes_do_modo: esperado lista — fica o padrão", s)
+        for k in _CHAVES_PROPRIAS[s] - {"modo", "excecoes_do_modo"}:
+            if k in bloco:
+                alvo[k] = _mesclar(alvo[k], bloco[k], f"servicos.{s}.{k}")
+    return saida
+
+
+def _sobreposicao(bruto: Any, servico: str) -> Dict[str, Any]:
+    """O que o bloco do serviço SOBREPÕE da base (tudo que não é chave própria dele). `servicos` dentro de um serviço
+    não existe (um serviço não reescreve o manual de outro)."""
+    if not isinstance(bruto, Mapping):
+        return {}
+    bloco = bruto.get(servico)
+    if not isinstance(bloco, Mapping):
+        return {}
+    return {k: v for k, v in bloco.items() if k not in _CHAVES_PROPRIAS[servico] and k != "servicos"}
+
+
+def mesclar(linha: Optional[Mapping[str, Any]], servico: Optional[str] = None) -> Dict[str, Any]:
+    """O padrão ⊕ a config de uma corretora ⊕ (com `servico`) o que o manual DAQUELE serviço sobrepõe — puro, é o que
+    `carregar` usa depois de ler o banco. `servico=None` = a base da corretora (o comportamento de antes da 131-0).
+
+    🔴 A separação: só o bloco `servicos[servico]` entra; o de outro serviço nunca (o guarda da F4 fica VERMELHO se
+    a Renovação mudar o que o Quem Cobra Menos lê)."""
+    if servico is not None and servico not in SERVICOS:
+        raise ValueError(f"serviço desconhecido: {servico!r} (aceitos: {', '.join(SERVICOS)})")
     base = copy.deepcopy(PADRAO_DO_PRODUTO)
-    if not linha:
-        return base
-    return _coerente(_mesclar(base, linha, ""))
+    linha = dict(linha or {})
+    bruto_servicos = linha.pop("servicos", None)
+    cfg = _coerente(_mesclar(base, _normalizar(linha), "")) if linha else base
+    cfg["servicos"] = _servicos(bruto_servicos)
+    if servico is not None:
+        extra = _sobreposicao(bruto_servicos, servico)
+        if extra:
+            da_corretora = copy.deepcopy(cfg)
+            cfg = _coerente(_mesclar(cfg, _normalizar(extra), f"servicos.{servico}"), da_corretora)
+        # a config de UM serviço leva só o bloco DELE: o modo da Renovação não é dado do Quem Cobra Menos
+        cfg["servicos"] = {servico: cfg["servicos"][servico]}
+    return cfg
 
 
-def carregar(company_id: str, *, db: Any) -> Dict[str, Any]:
-    """A config EFETIVA da corretora: `PADRAO_DO_PRODUTO` ⊕ a linha dela em `multicalculo_config`.
+def carregar(company_id: str, db: Any = None, servico: Optional[str] = None) -> Dict[str, Any]:
+    """A config EFETIVA da corretora: `PADRAO_DO_PRODUTO` ⊕ a linha dela em `multicalculo_config` ⊕ (com `servico`)
+    o manual daquele serviço (`servicos[servico]` sobrepõe a base). `servico=None` = a base (o comportamento de hoje).
 
     🔴 Filtro `company_id` AQUI (o backend usa service role; a RLS sem policy não protege erro de filtro — §7).
     Sem linha → o padrão. Banco fora → `ConfigIndisponivel` (nunca o padrão às cegas: o piso dela pode ser maior)."""
+    if db is None:
+        raise TypeError("carregar precisa do banco (db=)")
+    if servico is not None and servico not in SERVICOS:
+        raise ValueError(f"serviço desconhecido: {servico!r} (aceitos: {', '.join(SERVICOS)})")
     cid = str(company_id or "").strip()
     if not _UUID.match(cid):
         raise ValueError("company_id precisa ser um uuid")
@@ -360,7 +516,164 @@ def carregar(company_id: str, *, db: Any) -> Dict[str, Any]:
         raise ConfigIndisponivel(f"multicalculo_config ilegível ({type(exc).__name__})") from None
     linhas = list(getattr(resp, "data", None) or [])
     linha = next((l for l in linhas if str(l.get("company_id", "")).lower() == cid), None)
-    return mesclar((linha or {}).get("config") if linha else None)
+    return mesclar((linha or {}).get("config") if linha else None, servico)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-131-0 F4 — a chave calcular × entregar × negociar, por serviço (D-131-0-10/12)
+# ---------------------------------------------------------------------------------------------------------------------
+def _bloco_do_servico(cfg: Mapping[str, Any], servico: str) -> Mapping[str, Any]:
+    if servico not in SERVICOS:
+        raise ValueError(f"serviço desconhecido: {servico!r} (aceitos: {', '.join(SERVICOS)})")
+    todos = cfg.get("servicos") if isinstance(cfg, Mapping) else None
+    if not isinstance(todos, Mapping):
+        return PADRAO_DO_PRODUTO["servicos"][servico]          # uma config sem a seção (crua): o padrão do produto
+    bloco = todos.get(servico)
+    if not isinstance(bloco, Mapping):
+        # 🔴 a config foi carregada para OUTRO serviço: responder o padrão aqui seria adivinhar — recusa
+        raise ValueError(f"esta config é de outro serviço ({', '.join(map(str, todos))}); carregue com "
+                         f"servico={servico!r}")
+    return bloco
+
+
+def _casa(excecao: Mapping[str, Any], ramo: Any, valor: Any) -> bool:
+    if "ramo" in excecao:
+        if ramo is None or _ramo_da_excecao(ramo if not isinstance(ramo, float) else int(ramo)) != excecao["ramo"]:
+            return False
+    if "valor_acima_de" in excecao:
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)) or not valor > excecao["valor_acima_de"]:
+            return False
+    return True
+
+
+def modo_do_servico(cfg: Mapping[str, Any], servico: str, ramo: Any = None, valor: Any = None) -> str:
+    """O que o AutoBrokers faz NESTE serviço, para este ramo/valor: 'calcular' · 'calcular_entregar' ·
+    'calcular_entregar_negociar'. Exceções que casam: vale a MAIS CONTIDA (a ordem em que foram escritas não decide);
+    nenhuma casa: o `modo` do serviço. Modo fora da lista → o padrão do produto daquele serviço."""
+    bloco = _bloco_do_servico(cfg, servico)
+    modo = bloco.get("modo")
+    if not _modo_valido(modo):
+        modo = PADRAO_DO_PRODUTO["servicos"][servico]["modo"]
+    casados = [e["modo"] for e in (_excecao(i) for i in (bloco.get("excecoes_do_modo") or ()))
+               if e is not None and _casa(e, ramo, valor)]
+    if casados:
+        return min(casados, key=MODOS.index)
+    return modo
+
+
+def pode_entregar(cfg: Mapping[str, Any], servico: str, ramo: Any = None, valor: Any = None) -> bool:
+    """O resultado do cálculo pode ir ao CLIENTE (não só ficar pronto no Agger)?"""
+    return modo_do_servico(cfg, servico, ramo, valor) in ("calcular_entregar", "calcular_entregar_negociar")
+
+
+def pode_negociar(cfg: Mapping[str, Any], servico: str, ramo: Any = None, valor: Any = None) -> bool:
+    """O agente pode negociar (recalcular com margem/cortes) neste serviço?"""
+    return modo_do_servico(cfg, servico, ramo, valor) == "calcular_entregar_negociar"
+
+
+def conta_global_se_vence_em_dias(cfg: Mapping[str, Any]) -> int:
+    """§5 F3 — a conta da corretora só assume a renovação de quem teve a senha recusada quando a apólice vence em
+    MENOS que isto (lido por `qual_agger.decidir`). Fora do formato → o padrão do produto."""
+    bloco = _bloco_do_servico(cfg, "renovacao")
+    v = bloco.get("conta_global_se_vence_em_dias")
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+        v = PADRAO_DO_PRODUTO["servicos"]["renovacao"]["conta_global_se_vence_em_dias"]
+    return int(v)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-131-0 F4 — a ESCRITA pela tela "Serviços": só estas chaves; qualquer outra é RECUSADA (a leitura ignora, a
+# escrita recusa — a tela nunca grava o que o produto não lê)
+# ---------------------------------------------------------------------------------------------------------------------
+#: o que a tela edita em cada serviço. O Quem Cobra Menos não entra: o manual dele é a natureza do canal (a comparação
+#: usa a config do CANAL — `proposta.py`, `cfg_sol`) e a corretora não o reescreve por esta tela.
+EDITAVEL_POR_SERVICO: Dict[str, frozenset] = {
+    "cotacao": frozenset({"modo", "excecoes_do_modo", "preferencias_de_seguradoras"}),
+    "renovacao": frozenset({"modo", "excecoes_do_modo", "preferencias_de_seguradoras",
+                            "conta_global_se_vence_em_dias", "renovacao"}),
+}
+_EDITAVEL_NA_RENOVACAO = frozenset({"antecedencia_dias", "reajuste_basica_pct"})
+#: as faixas que a tela aceita 💭 (fora delas a escrita é recusada; nunca um número quebrado gravado)
+ANTECEDENCIA_DIAS_MAX = 120
+CONTA_GLOBAL_DIAS_MAX = 60
+
+
+def _numero(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _erros_das_preferencias(v: Any, onde: str) -> list:
+    if not isinstance(v, Mapping):
+        return [f"{onde}: esperado um objeto por ramo"]
+    erros = []
+    ramos = PADRAO_DO_PRODUTO["preferencias_de_seguradoras"]
+    for r, lista in v.items():
+        if r not in ramos:
+            erros.append(f"{onde}.{r}: ramo desconhecido")
+        elif not isinstance(lista, list) or not all(
+                (isinstance(i, str) and i.strip()) or (isinstance(i, int) and not isinstance(i, bool)) for i in lista):
+            erros.append(f"{onde}.{r}: esperada uma lista de seguradoras")
+    return erros
+
+
+def erros_da_edicao(servicos: Any = None, preferencias_de_seguradoras: Any = None) -> list:
+    """A escrita da tela "Serviços": a lista de erros (vazia = pode gravar). Recusa chave fora da lista, serviço que
+    a tela não edita, modo fora dos três, exceção sem condição, número fora da faixa."""
+    erros: list = []
+    if preferencias_de_seguradoras is not None:
+        erros += _erros_das_preferencias(preferencias_de_seguradoras, "preferencias_de_seguradoras")
+    if servicos is None:
+        return erros
+    if not isinstance(servicos, Mapping):
+        return erros + ["servicos: esperado um objeto"]
+    for s, bloco in servicos.items():
+        if s not in EDITAVEL_POR_SERVICO:
+            erros.append(f"servicos.{s}: este serviço não se edita por esta tela")
+            continue
+        if not isinstance(bloco, Mapping):
+            erros.append(f"servicos.{s}: esperado um objeto")
+            continue
+        for k, v in bloco.items():
+            onde = f"servicos.{s}.{k}"
+            if k not in EDITAVEL_POR_SERVICO[s]:
+                erros.append(f"{onde}: chave fora da lista")
+            elif k == "modo" and not _modo_valido(v):
+                erros.append(f"{onde}: escolha um dos três modos")
+            elif k == "excecoes_do_modo":
+                if not isinstance(v, list):
+                    erros.append(f"{onde}: esperada uma lista")
+                    continue
+                for i, item in enumerate(v):
+                    if not isinstance(item, Mapping) or set(item) - {"ramo", "valor_acima_de", "modo"} \
+                            or _excecao(item) is None:
+                        erros.append(f"{onde}[{i}]: precisa de um modo e de um ramo e/ou um valor")
+            elif k == "preferencias_de_seguradoras":
+                erros += _erros_das_preferencias(v, onde)
+            elif k == "conta_global_se_vence_em_dias":
+                if not _numero(v) or not 0 <= v <= CONTA_GLOBAL_DIAS_MAX or int(v) != v:
+                    erros.append(f"{onde}: um número inteiro de dias, de 0 a {CONTA_GLOBAL_DIAS_MAX}")
+            elif k == "renovacao":
+                if not isinstance(v, Mapping):
+                    erros.append(f"{onde}: esperado um objeto")
+                    continue
+                for kk, vv in v.items():
+                    onde2 = f"{onde}.{kk}"
+                    if kk not in _EDITAVEL_NA_RENOVACAO:
+                        erros.append(f"{onde2}: chave fora da lista")
+                    elif kk == "antecedencia_dias":
+                        if not _numero(vv) or not 1 <= vv <= ANTECEDENCIA_DIAS_MAX or int(vv) != vv:
+                            erros.append(f"{onde2}: um número inteiro de dias, de 1 a {ANTECEDENCIA_DIAS_MAX}")
+                    elif kk == "reajuste_basica_pct":
+                        mapa = _reajuste_em_mapa(vv) if _numero(vv) else vv
+                        if not isinstance(mapa, Mapping):
+                            erros.append(f"{onde2}: um número ou um número por ramo")
+                            continue
+                        for r, pct in mapa.items():
+                            if r not in PADRAO_DO_PRODUTO["renovacao"]["reajuste_basica_pct"]:
+                                erros.append(f"{onde2}.{r}: ramo sem reajuste da básica")
+                            elif not _numero(pct) or not 0 <= pct <= 100:
+                                erros.append(f"{onde2}.{r}: um percentual de 0 a 100")
+    return erros
 
 
 def validade_dias(config: Mapping[str, Any], seguradoras: Iterable[str]) -> int:
