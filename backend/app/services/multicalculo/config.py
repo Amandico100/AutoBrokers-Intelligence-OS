@@ -356,9 +356,10 @@ def _reajuste_em_mapa(numero: float) -> Dict[str, float]:
 def basica_renovada(config: Mapping[str, Any], ramo: Any, basica_anterior: Any) -> Optional[float]:
     """A básica do ano novo = a anterior + o reajuste do ramo (None sem regra ou sem valor anterior positivo).
 
-    ⚠️ SEM CHAMADOR NESTA SPEC (juiz P2, conserto 129-C): chamada pela 131 (o auxiliar de renovação), que monta o
-    pedido de renovação de RE com `risco.valor_basica = basica_renovada(...)`. Até lá a renovação de RE sai com a
-    Básica que o pedido trouxer — pronto e desligado, anotado em PENDENCIAS pelo gerente."""
+    Chamador (SPEC-130-B F4): `pedido.de_apolice` → `_de_apolice_re`, que lê a Básica da FICHA da apólice e grava
+    `risco.valor_basica = basica_renovada(...)` (marcada `assumido`). Sem regra de reajuste para o ramo → `None`, e o
+    pedido sai com o aviso `sem_regra_de_reajuste` (a anterior NÃO vai "sem reajuste"). ⚠️ Quem DISPARA a renovação
+    (o auxiliar da 131) ainda não chama `de_apolice` — o pedido fica pronto, o gatilho é da 131."""
     pct = reajuste_basica_pct(config, ramo)
     try:
         anterior = float(basica_anterior)
