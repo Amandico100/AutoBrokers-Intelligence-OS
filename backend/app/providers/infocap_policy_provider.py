@@ -50,7 +50,9 @@ ele existe. Quem lê os valores é `_sinal_do_provedor`, aqui, e mais ninguém.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -610,7 +612,33 @@ def apolice_documental_do_pack(pack: Dict[str, Any]) -> Optional[ApoliceDocument
         plano_de_assistencia=plano,
         parcelas=parcelas,
         referencia=_referencia_do_documento(pack),
+        **_estado_da_leitura_do_pack(pack),
     )
+
+
+def _estado_da_leitura_do_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
+    """SPEC-130-B §4: `tipo_documento` · `leitura` · `objeto_do_risco` da ficha.
+
+    A F1 grava `leitura` e `objeto_do_risco` no resultado do leitor
+    (`official_policy_document_evidence`); aqui eles só ATRAVESSAM a porta.
+    ⚠️ Só se passa o campo que a `ApoliceDocumental` declara: a porta funciona
+    com e sem o contrato novo (as fatias foram escritas em paralelo), e um
+    campo ausente na fonte fica no default `None` — nunca "vazio" inventado.
+    """
+    declarados = {campo.name for campo in dataclasses.fields(ApoliceDocumental)}
+    evidencia = pack.get("official_policy_document_evidence")
+    if not isinstance(evidencia, Mapping):
+        return {}
+    leitura = evidencia.get("leitura")
+    objeto = evidencia.get("objeto_do_risco")
+    candidatos: Dict[str, Any] = {
+        "leitura": dict(leitura) if isinstance(leitura, Mapping) else None,
+        "tipo_documento": (str(leitura.get("tipo_documento")).strip() or None)
+        if isinstance(leitura, Mapping) and leitura.get("tipo_documento") else None,
+        "objeto_do_risco": dict(objeto) if isinstance(objeto, Mapping) else None,
+    }
+    return {chave: valor for chave, valor in candidatos.items()
+            if chave in declarados and valor is not None}
 
 
 def _linhas_e_plano_do_documento(
@@ -732,7 +760,15 @@ class InfoCapProvider:
             por_operacao=por_operacao,
             notas={
                 "listar_apolices": "le a lista inteira (`policies_all`); `matches` continua truncado em 10 para o TEXTO, nunca para decidir",
-                "documento_oficial": "o extrator de linhas nao le os dois layouts reais de tabela (D4; BLOCO D)",
+                # 🔴 SPEC-130-B (P11): a nota de antes dizia que o extrator nao lia os
+                # dois layouts reais — ele le os dois, e SO eles. O VALOR fica PARCIAL
+                # ate a regua da F5 (`scripts/regua_ficha_da_apolice.py`, 32 apolices)
+                # medir; e a F5 que decide PARCIAL x SUPORTADA, com o numero.
+                "documento_oficial": (
+                    "le o PDF da apolice do CORP (url_apolice e, sem ela, /documento_anexos) pela "
+                    "cascata do leitor (regex -> juiz do premio -> modelo -> visao); cada leitura "
+                    "diz se fechou com o premio liquido em `leitura.estado` — PARCIAL ate a regua medir"
+                ),
                 "parcelas_em_aberto": "P-PILOTO-19: /parcelas responde 403; as parcelas vem do /documento",
             },
         )
