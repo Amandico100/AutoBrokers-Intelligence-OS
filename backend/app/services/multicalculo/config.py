@@ -359,7 +359,8 @@ def basica_renovada(config: Mapping[str, Any], ramo: Any, basica_anterior: Any) 
     Chamador (SPEC-130-B F4): `pedido.de_apolice` → `_de_apolice_re`, que lê a Básica da FICHA da apólice e grava
     `risco.valor_basica = basica_renovada(...)` (marcada `assumido`). Sem regra de reajuste para o ramo → `None`, e o
     pedido sai com o aviso `sem_regra_de_reajuste` (a anterior NÃO vai "sem reajuste"). ⚠️ Quem DISPARA a renovação
-    (o auxiliar da 131) ainda não chama `de_apolice` — o pedido fica pronto, o gatilho é da 131."""
+    (o auxiliar da 131) ainda não chama `de_apolice` — o pedido fica pronto, o gatilho é da 131: ela é chamada pela 131
+    através de `de_apolice`."""
     pct = reajuste_basica_pct(config, ramo)
     try:
         anterior = float(basica_anterior)
