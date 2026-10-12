@@ -12,14 +12,15 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
 
 from portal_worker.multicalculo import presets as _presets
 from portal_worker.multicalculo.contrato import (
     CAMPOS_DE_CODIGO_INTEIRO, CAMPOS_DE_CODIGO_TEXTO, CAMPOS_DO_PEDIDO_AUTO, CAMPOS_DO_PEDIDO_RE, CAMPOS_SIM_NAO,
-    CODIGOS_MEDIDOS, CODIGOS_MEDIDOS_RE, RAMO_AUTO, RAMOS_RE,
+    CODIGOS_MEDIDOS, CODIGOS_MEDIDOS_RE, RAMO_AUTO, RAMO_CONDOMINIO, RAMO_EMPRESARIAL, RAMO_RESIDENCIAL, RAMOS_RE,
     SEGURADORA_ANTERIOR_NO_AGGER, problemas_do_pedido_re, tipo_do_campo_re,
 )
 
@@ -303,17 +304,22 @@ class PedidoDeCalculo:
     `assumidos` "grupo.campo" que NÃO vieram de quem pediu: valor deduzido (condutor = segurado, CEP de pernoite =
                 CEP) ou deixado para o PADRÃO da tela (perfil, na origem auxiliar). O robô e a página mostram o que foi
                 assumido; ninguém apresenta um assumido como dito pelo cliente.
+    `avisos`    SPEC-130-B F4: o que o CORRETOR confere antes de cotar (códigos `AVISO_*`, nunca valores) — ex.: a
+                ficha da apólice anterior cuja leitura não fechou. ⛔ NÃO vão em `para_dict()`: o contrato do robô não
+                muda; quem mostra é quem chamou (a 131).
     """
 
     campos: Mapping[str, Mapping[str, Any]]
     ramo: int = RAMO_AUTO
     seguradoras: Tuple[int, ...] = ()
     assumidos: FrozenSet[str] = frozenset()
+    avisos: FrozenSet[str] = frozenset()
 
     def __repr__(self) -> str:  # ⛔ nunca os valores
         preenchidos = sum(1 for g in self.campos.values() for v in g.values() if not _vazio(v))
+        avisos = f", avisos={sorted(self.avisos)}" if self.avisos else ""
         return (f"PedidoDeCalculo(ramo={self.ramo}, grupos={sorted(self.campos)}, preenchidos={preenchidos}, "
-                f"assumidos={len(self.assumidos)})")
+                f"assumidos={len(self.assumidos)}{avisos})")
 
     __str__ = __repr__
 
@@ -392,7 +398,7 @@ class PedidoDeCalculo:
             return self
         campos = {g: dict(v) for g, v in self.campos.items()}
         campos.setdefault("comissao_desconto", {})["comissao_percentual"] = float(percentual)
-        return PedidoDeCalculo(campos=campos, ramo=self.ramo, seguradoras=self.seguradoras, assumidos=self.assumidos)
+        return replace(self, campos=campos)
 
     def _problemas_re(self) -> Tuple[List[str], List[str]]:
         """(faltando, sem código) do pedido de RE, pelo VALIDADOR DO CONTRATO (`problemas_do_pedido_re`): "g.c" é
@@ -421,8 +427,7 @@ class PedidoDeCalculo:
         novos = self.supridos_pela_placa("canal")
         if not novos:
             return self
-        return PedidoDeCalculo(campos=self.campos, ramo=self.ramo, seguradoras=self.seguradoras,
-                               assumidos=frozenset(self.assumidos | novos))
+        return replace(self, assumidos=frozenset(self.assumidos | novos))
 
     def faltando(self, *, origem: Optional[str] = None) -> List[str]:
         """Os obrigatórios da E3 que faltam, como "grupo.campo" (nomes, nunca valores). `origem='canal'`: a placa
@@ -453,8 +458,7 @@ class PedidoDeCalculo:
     def assumindo_perfil(self) -> "PedidoDeCalculo":
         """O perfil que falta vira `assumido` (fica para o PADRÃO da tela) — a origem auxiliar (D-128-07)."""
         novos = {f"{g}.{n}" for (g, n) in CAMPOS_DE_PERFIL if _vazio(self.valor(g, n))}
-        return PedidoDeCalculo(campos=self.campos, ramo=self.ramo, seguradoras=self.seguradoras,
-                               assumidos=frozenset(self.assumidos | novos))
+        return replace(self, assumidos=frozenset(self.assumidos | novos))
 
     @property
     def documento(self) -> str:
@@ -504,8 +508,62 @@ class PedidoDeCalculo:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# A RENOVAÇÃO a partir da ficha da InfoCap
+# A RENOVAÇÃO a partir da FICHA ÚNICA da apólice (SPEC-129-B G13 · SPEC-130-B F4)
 # ---------------------------------------------------------------------------------------------------------------------
+#: SPEC-130-B F4 — família da porta (`policy_data_provider.familia_de_ramo`) → o ramo do Agger (`contrato.RAMO_*`).
+#: 🔴 Por que está certo (CLAUDE.md §9.5): "resi"/"cond"/"empr" são as famílias dos sinônimos residencial/condomínio/
+#: empresarial em `FAMILIAS_DE_RAMO`, e o contrato da 129-C chama esses MESMOS ramos de 2/16/18 (lidos do formulário de
+#: cada ramo no Agger). Família fora daqui (vida, viagem, saúde…) não tem pedido no Agger → `RamoIndisponivel`.
+#: `None` ("não sei", a abreviatura fora do agrupamento) segue como AUTO — o comportamento de antes da F4 (controle).
+RAMO_DO_AGGER_POR_FAMILIA: Dict[str, int] = {
+    "auto": RAMO_AUTO, "resi": RAMO_RESIDENCIAL, "cond": RAMO_CONDOMINIO, "empr": RAMO_EMPRESARIAL,
+}
+
+#: O grupo de `providers/rotulos_de_cobertura.json` que É a Básica. 🔴 Por que: `basica_simples` reúne "incendio raio
+#: explosao" e "basica simples" (📊 Allianz condomínio do golden, LMI igual nos dois lados) — a cobertura que o Agger
+#: chama `isDanosIncendioRaioExplosao` (`presets.CHAVE_DA_BASICA`). Um rótulo de OUTRO grupo declarado (📊
+#: `incendio_bens_condominos`, que no Agger é outra chave: `isDanosIncendioRaioExplosaoCond`) nunca é a Básica.
+GRUPO_DA_BASICA: str = "basica_simples"
+#: Rótulo FORA do catálogo (o catálogo só tem 2 grafias, as da Allianz): é a Básica quando nomeia o incêndio E o raio
+#: ou a explosão — 📊 as grafias medidas em `programa-multicalculo/129-C/RAMOS-NA-INFOCAP.md` §3.1–3.3: "Incêndio / raio
+#: / explosão / fumaça" (residencial 13/13), "… / fumaça / aeronave" (condomínio Tokio, empresarial Sura) — ou quando
+#: se diz "básica" ("Básica Simples"/"Cobertura Básica").
+_PALAVRAS_DO_INCENDIO = frozenset({"incendio"})
+_PALAVRAS_DO_RAIO_OU_EXPLOSAO = frozenset({"raio", "explosao"})
+#: ⛔ e NUNCA quando nomeia outra coisa: 📊 "Incêndio de bens dos condôminos" (condomínio Tokio, R$ 2 mi ao lado da
+#: Básica de R$ 17,6 mi) e a "Assistência … Básica" (é o NÍVEL da assistência, `presets.ASSISTENCIA_RE`, não a Básica).
+_PALAVRAS_QUE_NAO_SAO_A_BASICA = frozenset({"bens", "condominos", "condomino", "condomin", "assistencia",
+                                            "assitencia", "assist", "franquia"})
+
+#: Os AVISOS do pedido (`PedidoDeCalculo.avisos`) — o corretor confere antes de cotar; nenhum RECUSA o pedido.
+#: a leitura do documento não fechou (F1: `Sinal("documento_nao_conferido")` ou `leitura.estado` ≠ "fechou")
+AVISO_COBERTURAS_NAO_CONFERIDAS = "coberturas_nao_conferidas"
+#: nenhuma cobertura veio do documento: a Básica é a do CADASTRO (📊 `/itens` traz garantias em só 4 de 15 documentos)
+AVISO_COBERTURAS_DO_CADASTRO = "coberturas_do_cadastro"
+#: duas linhas que são a Básica, com limites diferentes (ex.: prédio e conteúdo) — nenhuma é escolhida
+AVISO_BASICA_AMBIGUA = "basica_ambigua"
+#: a config da corretora não tem o reajuste da Básica para o ramo — a anterior NÃO vai "sem reajuste"
+AVISO_SEM_REGRA_DE_REAJUSTE = "sem_regra_de_reajuste"
+#: o documento lido é endosso/proposta/cotação/CRLV (F1 `tipo_de_documento`), não a apólice
+AVISO_DOCUMENTO_NAO_E_A_APOLICE = "documento_nao_e_a_apolice"
+#: AUTO: a placa do cadastro e a do documento diferem (o endosso troca o carro; vale a do cadastro)
+AVISO_PLACA_DIVERGE = "placa_diverge_do_documento"
+
+#: o sinal que a F1 acende em `reconciliar` (SPEC-130-B §4) e os tipos de documento da F1 que não são a apólice
+SINAL_DOCUMENTO_NAO_CONFERIDO = "documento_nao_conferido"
+_TIPOS_QUE_NAO_SAO_A_APOLICE = frozenset({"endosso", "proposta", "cotacao", "crlv"})
+
+
+class FichaIncompleta(ValueError):
+    """`de_apolice(..., exigir_completo=True)`: a ficha + o perfil não fecham o pedido. `faltando` = "grupo.campo"
+    (NOMES, nunca valores) — a mesma lista que a porta devolveria como `PedidoIncompleto`."""
+
+    def __init__(self, faltando: Iterable[str], *, avisos: Iterable[str] = ()):
+        self.faltando = list(faltando)
+        self.avisos = sorted(set(avisos))
+        super().__init__("a ficha da apólice não fecha o pedido de renovação; falta: " + ", ".join(self.faltando))
+
+
 def _valor_de(campo: Any) -> Any:
     """Um `CampoComOrigem` (ou None) → o valor, ou None se indisponível."""
     if campo is None:
@@ -515,6 +573,15 @@ def _valor_de(campo: Any) -> Any:
     return None
 
 
+def _cru(valor: Any) -> Any:
+    """Valor do objeto do risco: aceita o valor puro ou um `CampoComOrigem` (a F1 pode entregar qualquer um)."""
+    if valor is None:
+        return None
+    if hasattr(valor, "tem_valor") and hasattr(valor, "origem"):
+        return _valor_de(valor)
+    return None if isinstance(valor, str) and not valor.strip() else valor
+
+
 def _mais_um_ano(d: date) -> date:
     try:
         return d.replace(year=d.year + 1)
@@ -522,32 +589,80 @@ def _mais_um_ano(d: date) -> date:
         return d.replace(year=d.year + 1, day=28)
 
 
-def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] = None) -> PedidoDeCalculo:
-    """A RENOVAÇÃO: `policy_data_provider.Apolice` + o `perfil` da ficha → `PedidoDeCalculo` com `renovacao=True`.
+def _objeto_do_risco(apolice: Any, ficha: Any) -> Dict[str, Any]:
+    """O objeto do risco da FICHA (`ApoliceDocumental.objeto_do_risco`, F1) — ou o que a porta pôr na `Apolice`.
+    Leitura tolerante: ficha de antes da 130-B (sem o campo) → {}."""
+    for fonte in (ficha, apolice):
+        obj = getattr(fonte, "objeto_do_risco", None) if fonte is not None else None
+        if isinstance(obj, Mapping) and obj:
+            return {str(k): _cru(v) for k, v in obj.items() if _cru(v) is not None}
+    return {}
 
-    Da `Apolice` (o tipo canônico) vêm: número da apólice anterior, seguradora anterior, fim da vigência anterior →
-    vigência nova (fim + 1 ano), placa (`item_de_risco`).
-    📊 BLOCO 0 (05/10): o tipo `Apolice` NÃO carrega FIPE, chassi, anos, bônus, nascimento, sexo nem CEP — a E2 os
-    achou nas rotas `/itens` e `/cliente` da InfoCap, que não viram campo da `Apolice`. Eles chegam em `perfil`
-    ({grupo: {campo: valor}}, os nomes do contrato), que quem chama monta da ficha. O bônus é
-    `perfil["renovacao"]["bonus_anterior"]` e NUNCA é descartado (G13).
 
-    O que falta e é deduzível vira `assumido`: condutor = o próprio segurado (relação "proprio"), CEP de pernoite = CEP
-    do segurado. O que falta e NÃO é deduzível (estado civil, tempo de habilitação) não é inventado: fica faltando e a
-    porta devolve `PedidoIncompleto` — o canal pergunta, o auxiliar pede ao corretor.
-    """
-    perfil = {g: dict(v or {}) for g, v in (perfil or {}).items()}
-    ramo = getattr(apolice, "ramo", None)
-    try:
-        from app.providers.policy_data_provider import familia_de_ramo
+def _avisos_da_leitura(apolice: Any, ficha: Any) -> set:
+    avisos: set = set()
+    sinais = getattr(apolice, "sinais", None) or ()
+    if any(getattr(s, "codigo", None) == SINAL_DOCUMENTO_NAO_CONFERIDO for s in sinais):
+        avisos.add(AVISO_COBERTURAS_NAO_CONFERIDAS)
+    leitura = getattr(ficha, "leitura", None) if ficha is not None else None
+    if isinstance(leitura, Mapping) and str(leitura.get("estado") or "") not in ("", "fechou"):
+        avisos.add(AVISO_COBERTURAS_NAO_CONFERIDAS)
+    tipo = getattr(ficha, "tipo_documento", None) if ficha is not None else None
+    if tipo and _chave_de_texto(tipo) in _TIPOS_QUE_NAO_SAO_A_APOLICE:
+        avisos.add(AVISO_DOCUMENTO_NAO_E_A_APOLICE)
+    return avisos
 
-        familia = familia_de_ramo(ramo)
-    except Exception:  # noqa: BLE001
-        familia = None
-    if familia is not None and familia != "auto":
-        raise ValueError(f"renovação de ramo '{familia}' não implementada (a v1 é o AUTO)")
 
-    renov = dict(perfil.get("renovacao") or {})
+def e_a_cobertura_basica(cobertura: Any) -> bool:
+    """A cobertura é a Básica (incêndio/raio/explosão)? Pelo GRUPO declarado; sem grupo, pelas palavras do rótulo."""
+    from app.providers.policy_data_provider import grupo_de_rotulo, normalizar_rotulo
+
+    rotulo = getattr(cobertura, "rotulo", "") or ""
+    gid = getattr(cobertura, "grupo", None) or grupo_de_rotulo(rotulo)
+    if gid:
+        return gid == GRUPO_DA_BASICA
+    palavras = set(normalizar_rotulo(rotulo).split())
+    if palavras & _PALAVRAS_QUE_NAO_SAO_A_BASICA:
+        return False
+    return bool((palavras & _PALAVRAS_DO_INCENDIO and palavras & _PALAVRAS_DO_RAIO_OU_EXPLOSAO)
+                or "basica" in palavras)
+
+
+def coberturas_da_ficha(apolice: Any) -> Tuple[Dict[str, Any], ...]:
+    """As coberturas da ficha (a `Apolice` reconciliada) para o corretor CONFERIR: rótulo, limite, de onde veio e se é
+    a Básica. ⛔ Só rótulo e dinheiro — a cobertura não carrega dado pessoal."""
+    saida = []
+    for c in getattr(apolice, "coberturas", None) or ():
+        limite = getattr(c, "limite", None)
+        saida.append({"rotulo": getattr(c, "rotulo", ""), "limite": _valor_de(limite),
+                      "origem": getattr(limite, "origem", None), "basica": e_a_cobertura_basica(c)})
+    return tuple(saida)
+
+
+def _basica_da_ficha(apolice: Any) -> Tuple[Optional[Decimal], Optional[str], bool]:
+    """(limite da Básica, origem, ambígua). Duas Básicas com limites DIFERENTES → (None, None, True): nunca escolhe.
+
+    🔴 O DOCUMENTO vence o cadastro (a regra de `reconciliar` para cobertura/limite): havendo Básica lida do documento,
+    só ela conta. 📊 Sem isso, um rótulo do cadastro que o catálogo casa ("INCENDIO RAIO EXPLOSAO") e um do PDF que ele
+    não casa ("Incêndio, Raio e Explosão") ficam LADO A LADO depois de `reconciliar` — e o limite antigo do cadastro
+    empataria com o do documento (o teste do fio residencial nasceu vermelho por isso)."""
+    achadas = [c for c in coberturas_da_ficha(apolice)
+               if c["basica"] and isinstance(c["limite"], (Decimal, int, float)) and not isinstance(c["limite"], bool)
+               and c["limite"] > 0]
+    do_documento = [c for c in achadas if c["origem"] == "documento_oficial"]
+    achadas = do_documento or achadas
+    valores = {Decimal(str(c["limite"])) for c in achadas}
+    if len(valores) > 1:
+        return None, None, True
+    if not valores:
+        return None, None, False
+    origens = {c["origem"] for c in achadas}
+    return valores.pop(), ("documento_oficial" if "documento_oficial" in origens else next(iter(origens))), False
+
+
+def _renovacao_da_apolice(apolice: Any, renov: Dict[str, Any]) -> Dict[str, Any]:
+    """O bloco `renovacao` (AUTO e RE): número, seguradora anterior (o NOME da lista do Agger), vigência nova."""
+    renov = dict(renov)
     renov["renovacao"] = True
     numero = str(getattr(apolice, "numero_humano", "") or "").strip()
     if numero and not renov.get("numero_apolice_anterior"):
@@ -566,15 +681,78 @@ def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] =
         renov.setdefault("fim_vigencia_anterior", fim.isoformat())
         renov.setdefault("vigencia_inicio", fim.isoformat())
         renov.setdefault("vigencia_fim", _mais_um_ano(fim).isoformat())
-    perfil["renovacao"] = renov
+    return renov
 
+
+def _ramo_do_agger(apolice: Any) -> int:
+    try:
+        from app.providers.policy_data_provider import familia_de_ramo
+
+        familia = familia_de_ramo(getattr(apolice, "ramo", None))
+    except Exception:  # noqa: BLE001
+        familia = None
+    if familia is None:
+        return RAMO_AUTO
+    if familia not in RAMO_DO_AGGER_POR_FAMILIA:
+        raise RamoIndisponivel(f"renovação do ramo '{familia}' não implementada (há: auto, residencial, condomínio, "
+                               "empresarial)")
+    return RAMO_DO_AGGER_POR_FAMILIA[familia]
+
+
+def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] = None, *, ficha: Any = None,
+               config: Optional[Mapping[str, Any]] = None, exigir_completo: bool = False) -> PedidoDeCalculo:
+    """A RENOVAÇÃO: a FICHA ÚNICA da apólice (`policy_data_provider.Apolice`, já `reconciliar`-ada) + o `perfil` →
+    `PedidoDeCalculo` com `renovacao=True`, no AUTO e no RE (residencial 2 · condomínio 16 · empresarial 18).
+
+    Da `Apolice` vêm: número da apólice anterior, seguradora anterior, fim da vigência anterior → vigência nova (fim +
+    1 ano), placa (`item_de_risco`) e — no RE — as COBERTURAS: a Básica (incêndio) da ficha, reajustada pela config da
+    corretora (`renovacao.reajuste_basica_pct`, D-129C-06, via `config.basica_renovada`), vira `risco.valor_basica`
+    (D-129C-03: o valor vem do PEDIDO) e fica `assumido` (é deduzida, não dita).
+    Da `ficha` (`ApoliceDocumental`, SPEC-130-B) vêm o objeto do risco (`objeto_do_risco`: AUTO placa/chassi/ano_modelo;
+    RE cep e, no empresarial, atividade), o estado da leitura e o tipo do documento — lidos de forma TOLERANTE (uma
+    ficha sem esses campos funciona).
+    📊 BLOCO 0 (05/10): o tipo `Apolice` NÃO carrega FIPE, bônus, nascimento, sexo nem o endereço do risco — eles chegam
+    em `perfil` ({grupo: {campo: valor}}, os nomes do contrato DO RAMO). O bônus nunca é descartado (G13).
+
+    Quem VENCE: o `perfil` (o que quem pediu disse agora) > o cadastro (`item_de_risco`: o endosso troca o carro) > o
+    documento. ⛔ O que falta e não é deduzível NÃO é inventado: fica em `faltando()` (a porta devolve
+    `PedidoIncompleto`); com `exigir_completo=True` sai já aqui como `FichaIncompleta(faltando=[...])`.
+    A ficha cuja leitura NÃO fechou não recusa o pedido: ele sai com o aviso `coberturas_nao_conferidas` (`avisos`).
+    """
+    perfil = {g: dict(v or {}) for g, v in (perfil or {}).items()}
+    ramo = _ramo_do_agger(apolice)
+    perfil["renovacao"] = _renovacao_da_apolice(apolice, perfil.get("renovacao") or {})
+    objeto = _objeto_do_risco(apolice, ficha)
+    avisos = _avisos_da_leitura(apolice, ficha)
+    assumidos: set = set()
+
+    if ramo == RAMO_AUTO:
+        pedido = _de_apolice_auto(apolice, perfil, objeto, avisos, assumidos)
+    else:
+        pedido = _de_apolice_re(apolice, perfil, objeto, avisos, assumidos, ramo=ramo, config=config)
+    pedido = replace(pedido, avisos=frozenset(avisos))
+    if exigir_completo:
+        faltam = pedido.faltando()
+        faltam += [c for c in pedido.sem_codigo() if c not in faltam]
+        if faltam:
+            raise FichaIncompleta(faltam, avisos=pedido.avisos)
+    return pedido
+
+
+def _de_apolice_auto(apolice: Any, perfil: Dict[str, Dict[str, Any]], objeto: Mapping[str, Any], avisos: set,
+                     assumidos: set) -> PedidoDeCalculo:
     veic = dict(perfil.get("veiculo") or {})
-    placa = _valor_de(getattr(getattr(apolice, "item_de_risco", None), "placa", None))
-    if placa and not veic.get("placa"):
-        veic["placa"] = placa
+    placa_cadastro = _valor_de(getattr(getattr(apolice, "item_de_risco", None), "placa", None))
+    placa_documento = objeto.get("placa")
+    if placa_cadastro and placa_documento and (_sanear("veiculo", "placa", str(placa_cadastro))
+                                               != _sanear("veiculo", "placa", str(placa_documento))):
+        avisos.add(AVISO_PLACA_DIVERGE)
+    for nome, valor in (("placa", placa_cadastro or placa_documento), ("chassi", objeto.get("chassi")),
+                        ("ano_modelo", objeto.get("ano_modelo"))):
+        if not _vazio(valor) and _vazio(veic.get(nome)):
+            veic[nome] = valor
     perfil["veiculo"] = veic
 
-    assumidos: set = set()
     seg_ = perfil.get("segurado") or {}
     cond = dict(perfil.get("condutor") or {})
     if not any(not _vazio(cond.get(k)) for k in ("cpf", "nome")):
@@ -591,5 +769,35 @@ def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] =
         pern["cep_pernoite"] = seg_["cep"]
         assumidos.add("pernoite.cep_pernoite")
     perfil["pernoite"] = pern
-
     return PedidoDeCalculo.de_dict(perfil, assumidos=assumidos)
+
+
+def _de_apolice_re(apolice: Any, perfil: Dict[str, Dict[str, Any]], objeto: Mapping[str, Any], avisos: set,
+                   assumidos: set, *, ramo: int, config: Optional[Mapping[str, Any]]) -> PedidoDeCalculo:
+    risco = dict(perfil.get("risco") or {})
+    # o objeto do risco da ficha: o CEP (os 3 ramos); a atividade só onde o contrato a tem (empresarial — no
+    # residencial `atividade_no_local` é um sim/não, outra pergunta)
+    if _vazio(risco.get("cep")) and not _vazio(objeto.get("cep")):
+        risco["cep"] = objeto["cep"]
+    if ramo == RAMO_EMPRESARIAL and _vazio(risco.get("atividade")) and not _vazio(objeto.get("atividade")):
+        risco["atividade"] = objeto["atividade"]
+    if _vazio(risco.get("valor_basica")):
+        anterior, origem, ambigua = _basica_da_ficha(apolice)
+        if ambigua:
+            avisos.add(AVISO_BASICA_AMBIGUA)
+        if anterior is not None:
+            if config is None:
+                raise TypeError("a renovação de RE precisa da config da corretora (renovacao.reajuste_basica_pct): "
+                                "nenhum reajuste é presumido")
+            from app.services.multicalculo.config import basica_renovada
+
+            nova = basica_renovada(config, ramo, anterior)
+            if nova is None:
+                avisos.add(AVISO_SEM_REGRA_DE_REAJUSTE)
+            else:
+                risco["valor_basica"] = nova
+                assumidos.add("risco.valor_basica")
+                if origem != "documento_oficial":
+                    avisos.add(AVISO_COBERTURAS_DO_CADASTRO)
+    perfil["risco"] = risco
+    return PedidoDeCalculo.de_dict(perfil, ramo=ramo, assumidos=assumidos)
