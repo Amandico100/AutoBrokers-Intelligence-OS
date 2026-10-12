@@ -527,11 +527,19 @@ def test_a_porta_sem_leitura_continua_como_antes():
 
 
 def test_ausencia_de_leitura_nao_e_ausencia_de_cobertura():
-    """Sem linha nenhuma, None — MESMO com a leitura dizendo `nao_fechou`."""
+    """🔴 F5 (C2, CLAUDE.md §9.3 — a lição MIGRA): SEM leitura registrada e sem linha → `None`
+    (continua). COM leitura `nao_fechou` e 0 linhas → `ApoliceDocumental(linhas=())` com a leitura,
+    para `reconciliar` acender `documento_nao_conferido` (antes: `None`, e o corretor não era avisado)."""
     from app.providers.infocap_policy_provider import apolice_documental_do_pack
 
+    sem_leitura = _resultado_da_leitura("nao_fechou", linhas=0)
+    sem_leitura.pop("leitura")
+    assert apolice_documental_do_pack({"official_policy_document_evidence": sem_leitura}) is None
+
     vazio = _resultado_da_leitura("nao_fechou", linhas=0)
-    assert apolice_documental_do_pack({"official_policy_document_evidence": vazio}) is None
+    pdf = apolice_documental_do_pack({"official_policy_document_evidence": vazio})
+    assert pdf is not None and pdf.linhas == ()
+    assert pdf.leitura["estado"] == "nao_fechou"
 
 
 def test_a_capacidade_diz_a_verdade_sobre_o_documento():
@@ -541,7 +549,9 @@ def test_a_capacidade_diz_a_verdade_sobre_o_documento():
     nota = cap.notas["documento_oficial"]
     assert "nao le os dois layouts" not in nota, "a nota vencida (P11) saiu"
     assert "documento_anexos" in nota and "cascata" in nota
-    assert cap.por_operacao["documento_oficial"] == "PARCIAL", "PARCIAL até a régua medir"
+    # 🔴 F5 (C7, §9.3 — a lição migra): a régua MEDIU; o valor e a nota carregam o número e a data
+    assert cap.por_operacao["documento_oficial"] == "SUPORTADA"
+    assert "26 de 28" in nota and "11/10/2026" in nota and "nao conferidas" in nota
 
 
 # ===========================================================================
