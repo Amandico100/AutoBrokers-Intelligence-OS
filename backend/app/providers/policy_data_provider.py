@@ -662,9 +662,13 @@ def frase_do_sinal(sinal: Sinal) -> str:
         # o corretor precisa saber que a lista pode estar incompleta.
         estado = str(detalhe.get("estado") or "").strip()
         linhas = int(detalhe.get("linhas") or 0)
-        if estado == "pendente":
+        if estado == "pendente" and detalhe.get("em_andamento"):
             return ("a leitura completa do documento oficial ainda está em andamento: as coberturas "
                     "acima podem estar incompletas. Não afirme que a lista está inteira.")
+        if estado in ("pendente", "modelo_indisponivel"):
+            # 🔴 SPEC-130-B conserto (red team B4): sem 2º plano agendado, nada está "em andamento"
+            return ("não consegui conferir a tabela inteira do documento oficial: as coberturas acima "
+                    "podem estar incompletas. Não afirme que a lista está inteira.")
         if estado == "sem_premio_para_conferir":
             return ("o documento oficial foi lido (%d linha%s de cobertura), mas não há prêmio líquido "
                     "para conferir a soma: não afirme que a lista está completa."
@@ -1724,6 +1728,7 @@ def reconciliar(corp: Apolice, pdf: Optional[ApoliceDocumental]) -> Apolice:
                 "linhas": leitura.get("linhas"),
                 "soma": leitura.get("soma_linhas"),
                 "esperado": leitura.get("premio_esperado"),
+                "em_andamento": bool(leitura.get("em_andamento")),
             }))
 
     if pdf is None or not pdf.linhas:
