@@ -527,6 +527,9 @@ async def anexar_documento_do_corretor(mensagem: str, file_url: str, file_name: 
     📊 Antes: o texto cru do PDF, até 20.000 caracteres, CPF incluso. Falhou → o AVISO INTERNO de sempre.
     ⛔ Nunca a URL, o nome do arquivo nem o conteúdo no log.
     """
+    company_id = str(company_id or "").strip()
+    if company_id.lower() == "none":
+        company_id = ""
     corpo = None
     # 🔴 SPEC-130-B F5 (C4): o NOME vai ao modelo MASCARADO (o arquivo pode se chamar pelo CPF).
     try:
@@ -865,7 +868,8 @@ async def chat_stream(
     if chat_request.fileUrl:
         enriched_message = await anexar_documento_do_corretor(
             enriched_message, chat_request.fileUrl, chat_request.fileName or "",
-            company_id=str(chat_request.companyId),
+            # 🔴 SPEC-130-B conserto (juiz J5): `str(None)` é "None" — uma corretora que não existe no ledger
+            company_id=str(chat_request.companyId or ""),
         )
 
     # ===========================================================================
