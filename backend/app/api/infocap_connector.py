@@ -4671,7 +4671,14 @@ async def infocap_vehicle_item(
                 cancelado = str(det.get("cancelado") or "F").upper() == "T"
                 ini, fim = _parse_br_date(det.get("inivig")), _parse_br_date(det.get("fimvig"))
                 active = (not cancelado) and (ini is None or ini <= today) and (fim is None or fim >= today)
-                itens_res = await client.get("/itens", params={"codfil": cf, "nosnum": nosnum}, headers=headers)
+                # 🔴 SPEC-130-B F5 (C3): a MESMA `data=` da F2 (D-130B-10). 📊 Sem ela, `/itens` dá 404 na
+                #    renovação de AUTO ainda não iniciada — e o veículo voltava vazio ao acionamento/portal.
+                itens_params: Dict[str, Any] = {"codfil": cf, "nosnum": nosnum}
+                itens_data = _itens_reference_date(*_validity_of(det))
+                if itens_data:
+                    itens_params["data"] = itens_data
+                itens_res = await client.get(config.get("infocap_itens_path") or "/itens",
+                                             params=itens_params, headers=headers)
                 itens = []
                 if itens_res.status_code < 400:
                     ij = itens_res.json()
