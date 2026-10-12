@@ -8,6 +8,7 @@ NUNCA retorna/loga login/senha/ciphertext. NÃO faz chamada real ao InfoCap.
 """
 import hmac
 import hashlib
+import inspect
 import ipaddress
 import json
 import logging
@@ -18,7 +19,8 @@ import tempfile
 import time
 import unicodedata
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
@@ -1170,10 +1172,11 @@ async def infocap_lookup(
                             catalog_match_count=len(matches_raw),
                         ),
                     ))
+                _vig_ini, _vig_fim = _validity_of(selected_raw)
                 policy_items = await _fetch_policy_items(
                     client, headers, itens_path=itens_path,
                     codfil=policy_locator["codfil"], nosnum=policy_locator["nosnum"], company_id=company_id,
-                    connection_id=connection_id,
+                    connection_id=connection_id, valid_from=_vig_ini, valid_to=_vig_fim,
                 )
                 pack = _build_evidence_pack(
                     selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked,
@@ -1188,6 +1191,9 @@ async def infocap_lookup(
                     auth_cookies=auth_res.cookies,
                     credential_origin_url=base_url,
                     connection_id=connection_id,
+                    client=client,
+                    headers=headers,
+                    anexos_path=config.get("infocap_documento_anexos_path") or "/documento_anexos",
                 )
                 selected_policy = _sanitize_policy(selected_raw, unmasked)
                 client_flags: Dict[str, Any] = {}
@@ -1410,10 +1416,11 @@ async def infocap_lookup(
                         catalog_match_count=len(locator_matches),
                     ),
                 ))
+            _vig_ini, _vig_fim = _validity_of(selected_raw)
             policy_items = await _fetch_policy_items(
                 client, headers, itens_path=itens_path,
                 codfil=policy_locator["codfil"], nosnum=policy_locator["nosnum"], company_id=company_id,
-                connection_id=connection_id,
+                connection_id=connection_id, valid_from=_vig_ini, valid_to=_vig_fim,
             )
             pack = _build_evidence_pack(
                 selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked,
@@ -1428,6 +1435,9 @@ async def infocap_lookup(
                 auth_cookies=auth_res.cookies,
                 credential_origin_url=base_url,
                 connection_id=connection_id,
+                client=client,
+                headers=headers,
+                anexos_path=config.get("infocap_documento_anexos_path") or "/documento_anexos",
             )
             selected_policy = _sanitize_policy(selected_raw, unmasked)
             return _done({
@@ -2254,12 +2264,24 @@ async def _maybe_attach_official_policy_document_evidence(
     credential_origin_url: Optional[str] = None,
     agent_id: Optional[str] = None,
     connection_id: str = "",
+    client: Optional[httpx.AsyncClient] = None,
+    headers: Optional[Dict[str, str]] = None,
+    anexos_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Attach R1C.1 evidence when requested and safe, without leaking source URL.
 
     🔴 `connection_id` entra na CHAVE do cache documental (SPEC-EXTRA-001.1
     §3.3): a mesma apólice lida por outra conexão da mesma corretora não pode
-    servir a leitura anterior."""
+    servir a leitura anterior.
+
+    🔴 SPEC-130-B (P4): sem `acompanhamento.emissao.url_apolice`, a APÓLICE
+    também mora em `/documento_anexos` (📊 laudo 131-0 §3.2: +1/32 — o PDF
+    escaneado da Porto empresarial só existe ali). Com `client` na mão, o
+    conector consulta os anexos (só leitura, mesmo token) e o PORTÃO
+    `official_document_source_available` passa a enxergar essa fonte. Sem
+    `client` (auditoria, chamadores antigos) o comportamento é o de antes.
+    E o `preliq` do `/documento` segue ao leitor como `premio_liquido_esperado`
+    — é com ele que o juiz do documento confere a soma das linhas."""
     if not isinstance(pack, dict):
         return pack
     try:
@@ -2283,10 +2305,28 @@ async def _maybe_attach_official_policy_document_evidence(
     # exatamente nas perguntas que dependem dele — cláusula, exclusão,
     # sublimite escrito em prosa. Havendo fonte documental e pedido de detalhe,
     # lê-se o documento TAMBÉM: as duas fontes se somam, não se excluem.
-    if not pack.get("official_document_source_available"):
-        return pack
-
     candidates = _extract_official_document_candidates(detail_envelope if isinstance(detail_envelope, dict) else {})
+    attachment: Optional[Dict[str, str]] = None
+    if client is not None and not any(item.get("source_kind") == "policy_pdf" for item in candidates):
+        locator = pack.get("policy_locator") if isinstance(pack.get("policy_locator"), dict) else {}
+        if locator.get("codfil") and locator.get("nosnum"):
+            attachment = await _fetch_policy_attachment_candidate(
+                client,
+                headers or {},
+                anexos_path=anexos_path or "/documento_anexos",
+                codfil=locator.get("codfil"),
+                nosnum=locator.get("nosnum"),
+                company_id=company_id,
+            )
+        if attachment:
+            candidates = [attachment, *candidates]
+    if not pack.get("official_document_source_available") and attachment is None:
+        return pack
+    if attachment is not None:
+        pack = dict(pack)
+        pack["official_document_source_available"] = True
+        pack["official_document_source"] = _POLICY_ATTACHMENT_SOURCE_PATH
+
     selected_candidate = next((item for item in candidates if item.get("source_kind") == "policy_pdf"), candidates[0] if candidates else None)
     if not selected_candidate:
         updated = dict(pack)
@@ -2307,6 +2347,13 @@ async def _maybe_attach_official_policy_document_evidence(
 
     try:
         service = get_policy_document_evidence_service()
+        extra_kwargs: Dict[str, Any] = {}
+        # ⚠️ O kwarg é do CONTRATO §4 da SPEC-130-B (o serviço o ganha na F1).
+        # Só se passa quando a assinatura o aceita: passar a um serviço que não
+        # o conhece levantaria TypeError, o `except` abaixo engoliria, e TODA
+        # leitura documental cairia em silêncio.
+        if _accepts_kwarg(service.ensure_official_policy_evidence, "premio_liquido_esperado"):
+            extra_kwargs["premio_liquido_esperado"] = _expected_net_premium(detail_envelope, pack)
         evidence = await service.ensure_official_policy_evidence(
             company_id=company_id,
             policy_locator=pack.get("policy_locator") or {},
@@ -2316,6 +2363,7 @@ async def _maybe_attach_official_policy_document_evidence(
             agent_id=agent_id,
             force_refresh=bool(getattr(payload, "force_document_evidence_refresh", False)),
             connection_id=connection_id,
+            **extra_kwargs,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[INFOCAP POLICY DOC] evidence pipeline failed: {type(exc).__name__}")
@@ -3410,8 +3458,15 @@ async def _fetch_policy_items(
     nosnum: Any,
     company_id: str,
     connection_id: str = "",
+    valid_from: Optional[str] = None,
+    valid_to: Optional[str] = None,
+    hoje: Optional[date] = None,
 ) -> List[Dict[str, Any]]:
     """Lê `/itens` (coberturas + objeto do risco) com cache curto no Redis.
+
+    🔴 SPEC-130-B (P10, D-130B-10): `data=` = hoje presa na vigência
+    (`_itens_reference_date`), e a DATA entra na chave do cache — o item de
+    uma data não pode servir a pergunta de outra.
 
     Best-effort: falha aqui nunca derruba a consulta da apólice — o pack só
     volta a ficar sem cobertura estruturada, que é o estado anterior.
@@ -3426,10 +3481,15 @@ async def _fetch_policy_items(
     """
     if not codfil or not nosnum:
         return []
+    reference_date = _itens_reference_date(valid_from, valid_to, hoje=hoje)
     cache_key = (
         f"infocap:itens:{_short_hash(str(company_id))}:"
         f"{_short_hash(str(connection_id))}:{codfil}:{nosnum}"
+        f"{(':' + reference_date) if reference_date else ''}"
     )
+    params: Dict[str, Any] = {"codfil": codfil, "nosnum": nosnum}
+    if reference_date:
+        params["data"] = reference_date
     redis_client = None
     try:
         from app.core.redis import get_async_redis_client
@@ -3444,7 +3504,7 @@ async def _fetch_policy_items(
         logger.debug(f"[INFOCAP ITENS] cache indisponivel: {type(exc).__name__}")
         redis_client = None
     try:
-        res = await client.get(itens_path, params={"codfil": codfil, "nosnum": nosnum}, headers=headers)
+        res = await client.get(itens_path, params=params, headers=headers)
         if res.status_code >= 400:
             logger.info(f"[INFOCAP ITENS] http_status={res.status_code} sem coberturas estruturadas")
             return []
@@ -3686,6 +3746,187 @@ def _extract_official_document_candidates(envelope: Optional[Dict[str, Any]]) ->
                 "url": url_proposta.strip(),
             })
     return candidates
+
+
+# ---------------------------------------------------------------------------
+# SPEC-130-B · F2 — as fontes do CORP que faltavam ao leitor
+# ---------------------------------------------------------------------------
+_POLICY_ATTACHMENT_SOURCE_PATH = "documento_anexos"
+# extensão que NÃO é PDF: no `tipo` o ponto é opcional ("doc"), no nome/URL é obrigatório
+_NON_PDF_TYPE_RE = re.compile(r"^\.?(docx?|xlsx?|jpe?g?|png|gif|txt|zip|rar|msg|eml)$", re.I)
+_NON_PDF_NAME_RE = re.compile(r"\.(docx?|xlsx?|jpe?g?|png|gif|txt|zip|rar|msg|eml)$", re.I)
+_BR_LOCAL_TZ = timezone(timedelta(hours=-3))  # o Brasil não tem horário de verão desde 2019
+
+
+def _attachment_label_norm(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    return "".join(ch for ch in text if not unicodedata.combining(ch)).strip().upper()
+
+
+def _attachment_timestamp(value: Any) -> Optional[datetime]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
+                "%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw[:19], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _select_policy_attachment(payload: Any) -> Optional[Dict[str, str]]:
+    """O anexo da APÓLICE em `/documento_anexos`. **Puro.** `None` se não houver.
+
+    📊 Laudo 131-0 (ROTA-A-ROTA §6): `anexos[]{nome tipo descricao datahora
+    usuinc url indice_anexo}`; nomes por prefixo: PROPOSTA 69 · APÓLICE 30 +
+    "APÓLICE <ramo>" ~38 · BOLETO ~31 · OUTRO 9. "Sem anexo" é **200 com
+    `message`**, não 404 — por isso se lê a CHAVE, não o status.
+
+    Regra: nome OU descrição começando por "APÓLICE" (com ou sem acento),
+    nunca endosso, nunca extensão que não seja PDF; havendo várias, a mais
+    recente (`datahora`, depois o maior `indice_anexo`, depois a posição).
+    """
+    if isinstance(payload, dict):
+        anexos = payload.get("anexos")
+    elif isinstance(payload, list):
+        anexos = payload
+    else:
+        anexos = None
+    if not isinstance(anexos, list):
+        return None
+    ranked: List[Tuple[datetime, int, int, str]] = []
+    for position, item in enumerate(anexos):
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not isinstance(url, str) or not url.strip().lower().startswith(("https://", "http://")):
+            continue
+        name = _attachment_label_norm(item.get("nome"))
+        description = _attachment_label_norm(item.get("descricao"))
+        if not (name.startswith("APOLICE") or description.startswith("APOLICE")):
+            continue
+        if "ENDOSSO" in name or "ENDOSSO" in description:
+            continue
+        if (_NON_PDF_TYPE_RE.search(str(item.get("tipo") or "").strip())
+                or _NON_PDF_NAME_RE.search(str(item.get("nome") or "").strip())
+                or _NON_PDF_NAME_RE.search(urlparse(url.strip()).path or "")):
+            continue
+        try:
+            index = int(str(item.get("indice_anexo") or "").strip())
+        except ValueError:
+            index = -1
+        ranked.append((_attachment_timestamp(item.get("datahora")) or datetime.min, index, position, url.strip()))
+    if not ranked:
+        return None
+    best = max(ranked, key=lambda entry: entry[:3])
+    return {
+        "source_kind": "policy_pdf",
+        "source_path": _POLICY_ATTACHMENT_SOURCE_PATH,
+        "url": best[3],
+    }
+
+
+async def _fetch_policy_attachment_candidate(
+    client: "httpx.AsyncClient",
+    headers: Dict[str, str],
+    *,
+    anexos_path: str,
+    codfil: Any,
+    nosnum: Any,
+    company_id: str,
+) -> Optional[Dict[str, str]]:
+    """`GET /documento_anexos?codfil=&nosnum=` → candidato `policy_pdf`, ou `None`.
+
+    Só leitura. **Nunca levanta**: falha da rota = sem candidato, e o pack segue
+    como antes. ⛔ A URL é S3 PRÉ-ASSINADA (vale ~1 h) — nunca vai a log."""
+    try:
+        res = await client.get(anexos_path, params={"codfil": codfil, "nosnum": nosnum}, headers=headers)
+        if res.status_code >= 400:
+            logger.info(
+                f"[INFOCAP ANEXOS] company_hash={_short_hash(str(company_id))} "
+                f"http_status={res.status_code} sem anexo de apolice"
+            )
+            return None
+        payload = res.json()
+    except Exception as exc:  # noqa: BLE001 — fonte extra, nunca dependência
+        logger.warning(f"[INFOCAP ANEXOS] leitura falhou: {type(exc).__name__}")
+        return None
+    candidate = _select_policy_attachment(payload)
+    total = len(payload.get("anexos") or []) if isinstance(payload, dict) and isinstance(payload.get("anexos"), list) else 0
+    logger.info(
+        f"[INFOCAP ANEXOS] company_hash={_short_hash(str(company_id))} anexos={total} "
+        f"apolice={'sim' if candidate else 'nao'}"
+    )
+    return candidate
+
+
+def _accepts_kwarg(function: Any, name: str) -> bool:
+    try:
+        parameters = inspect.signature(function).parameters
+    except (TypeError, ValueError):
+        return False
+    return name in parameters or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
+
+
+def _expected_net_premium(envelope: Any, pack: Optional[Dict[str, Any]] = None) -> Optional[Decimal]:
+    """O `preliq` do `/documento` como `Decimal`. Ausente, ilegível ou ≤ 0 → `None`.
+
+    Fonte: o `preliq` cru do envelope; sem ele, o MESMO `preliq` já formatado
+    no pack (`premium_summary.net_premium`, montado por `_premium_summary`).
+    ⚠️ O parser de dinheiro é o da PORTA (`dinheiro`), não um segundo aqui:
+    `1146.91`, `"1146.91"`, `"1.146,91"` e `"R$ 1.146,91"` chegam da fonte, e
+    todas têm de dar o mesmo número que o `_contador_de_premio` usa."""
+    try:
+        from app.providers.policy_data_provider import dinheiro
+    except Exception:  # noqa: BLE001
+        return None
+    docs = _extract_documents(envelope) if isinstance(envelope, (dict, list)) else []
+    brutos: List[Any] = [docs[0].get("preliq")] if docs else []
+    net = ((pack or {}).get("premium_summary") or {}).get("net_premium") if isinstance(pack, dict) else None
+    if isinstance(net, dict):
+        brutos.append(net.get("value"))
+    for bruto in brutos:
+        try:
+            value = dinheiro(bruto)
+        except Exception:  # noqa: BLE001
+            continue
+        if isinstance(value, Decimal) and value > 0:
+            return value
+    return None
+
+
+def _itens_reference_date(
+    valid_from: Optional[str], valid_to: Optional[str], *, hoje: Optional[date] = None,
+) -> Optional[str]:
+    """A `data=` de `/itens`: HOJE, presa entre o início e o fim da vigência (D-130B-10).
+
+    📊 Sem `data`, `/itens` devolve 404 para a apólice que ainda não começou —
+    exatamente a renovação. 📊 Com `data`, o item vem NA DATA (endosso de
+    substituição refletido em 7/7, laudo 131-0 CORPAPI-COMPLETA §172).
+    Renovação ainda não iniciada → o início · vencida → o fim · sem vigência
+    legível → `None` (a chamada segue como antes, sem `data`).
+    """
+    start = _parse_date(valid_from) if isinstance(valid_from, str) else None
+    end = _parse_date(valid_to) if isinstance(valid_to, str) else None
+    if start is None and end is None:
+        return None
+    if start is not None and end is not None and start.date() > end.date():
+        return None
+    reference = hoje or datetime.now(_BR_LOCAL_TZ).date()
+    if start is not None and reference < start.date():
+        reference = start.date()
+    if end is not None and reference > end.date():
+        reference = end.date()
+    return reference.strftime("%d/%m/%Y")
+
+
+def _validity_of(doc: Any) -> Tuple[Optional[str], Optional[str]]:
+    if not isinstance(doc, dict):
+        return None, None
+    return (_first_str(doc, ["inivig", "datini", "inicio_vigencia"]),
+            _first_str(doc, ["fimvig", "datfim", "fim_vigencia"]))
 
 
 def _content_length_bucket(length: Optional[int]) -> str:
@@ -4245,9 +4486,10 @@ async def infocap_policy_detail(
                         catalog_match_count=0,
                     ),
                 )
+            _vig_ini, _vig_fim = _validity_of(doc)
             policy_items = await _fetch_policy_items(
                 client, headers, itens_path=itens_path, codfil=codfil, nosnum=nosnum, company_id=company_id,
-                connection_id=connection_id,
+                connection_id=connection_id, valid_from=_vig_ini, valid_to=_vig_fim,
             )
             pack = _build_evidence_pack(
                 doc, prefer_insurer, prefer_product, unmasked,
@@ -4262,6 +4504,9 @@ async def infocap_policy_detail(
                 auth_cookies=auth_res.cookies,
                 credential_origin_url=base_url,
                 connection_id=connection_id,
+                client=client,
+                headers=headers,
+                anexos_path=config.get("infocap_documento_anexos_path") or "/documento_anexos",
             )
             _log("found", extra=f" confidence={pack.get('confidence')}")
             return {
