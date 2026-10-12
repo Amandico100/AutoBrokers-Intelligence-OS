@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tempfile
 from typing import Any, Dict, Optional
 
@@ -222,6 +223,28 @@ def mascarar(texto: Optional[str]) -> Optional[str]:
         logger.error("[VISION] máscara do leitor falhou (%s) — o texto do documento NÃO vai ao modelo",
                      type(e).__name__)
         return None
+
+
+_MARCADOR_DA_MASCARA = re.compile(r"\[([A-Z]{2,12})\]")
+
+
+def nome_do_anexo_para_o_modelo(nome: Any, *, padrao: str = "documento") -> str:
+    """O NOME do arquivo como pode ir no TEXTO do turno (SPEC-130-B F5 · C4).
+
+    📊 A F3 achou: o nome do anexo ia CRU ao modelo dentro de `MARCA_DO_DOCUMENTO` /
+    `CABECALHO_DO_DOCUMENTO` (webhook) e de `[DOCUMENTO ANEXADO: …]` (chat) — e o segurado
+    nomeia arquivo com o próprio CPF ("rg 123.456.789-09.pdf"). Passa pela máscara do LEITOR.
+    ⚠️ Os marcadores `[CPF]` viram `<CPF>`: o nome mora DENTRO de uma marca entre colchetes, e
+    `webhook.nome_do_documento` recorta a marca até o primeiro `]` — um `]` no meio cortaria o nome.
+    ⛔ Máscara indisponível → o `padrao`, nunca o nome cru (fail-closed). O CAMPO
+    `documento_payload["fileName"]` não passa por aqui: ele não vai ao modelo (só ao classificador)."""
+    bruto = " ".join(str(nome or "").replace("[", "(").replace("]", ")").split())
+    if not bruto:
+        return padrao
+    mascarado = mascarar(bruto)
+    if mascarado is None:
+        return padrao
+    return _MARCADOR_DA_MASCARA.sub(r"<\1>", mascarado)[:160] or padrao
 
 
 async def baixar_documento(file_url: str) -> Optional[bytes]:
