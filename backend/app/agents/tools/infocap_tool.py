@@ -278,6 +278,104 @@ def _linha_do_cadastro_incompleto(apolice: Any) -> Optional[str]:
     )
 
 
+# ---------------------------------------------------------------------------
+# SPEC-130-B · F2 (P-LEITOR-04) — o ESTADO da leitura do documento, sem PII
+# ---------------------------------------------------------------------------
+#: a chave do retorno da tool que leva o estado da leitura (o recorder a copia
+#: para `tool_invocations.output_summary`).
+CHAVE_DO_DOCUMENTO = "documento"
+_CAMPOS_DO_DOCUMENTO = ("document_status", "cache_status", "estado_da_leitura", "degraus",
+                        "linhas", "fechou", "leitor_versao")
+#: um valor de ENUM de código: letras/dígitos/`._-`, curto, com pelo menos uma
+#: letra e sem sequência longa de dígitos — CPF, telefone, URL e e-mail não passam.
+_RE_ENUM_SEGURO = re.compile(r"^(?=.*[A-Za-z])[A-Za-z0-9._-]{1,40}$")
+_RE_DIGITOS_LONGOS = re.compile(r"\d{6,}")
+
+
+def _enum_seguro(valor: Any) -> Optional[str]:
+    texto = str(valor).strip() if isinstance(valor, str) else ""
+    if not texto or not _RE_ENUM_SEGURO.match(texto) or _RE_DIGITOS_LONGOS.search(texto):
+        return None
+    return texto
+
+
+def _evidencia_do_documento(data: Any) -> Dict[str, Any]:
+    pack = (data or {}).get("policy_evidence_pack") if isinstance(data, dict) else None
+    evidencia = (pack or {}).get("official_policy_document_evidence") if isinstance(pack, dict) else None
+    return evidencia if isinstance(evidencia, dict) else {}
+
+
+def resumo_da_leitura_do_documento(data: Any) -> Optional[Dict[str, Any]]:
+    """O bloco `documento` do retorno da tool — **lista fechada, só enum e número**.
+
+    📊 Até a SPEC-130-B nada da leitura do PDF ficava registrado (P-LEITOR-04):
+    a taxa de acerto do leitor não tinha como ser medida em produção. ⛔ Nenhum
+    texto da apólice entra aqui: cada string passa por `_enum_seguro` (um CPF,
+    um telefone, uma URL ou um e-mail não têm a forma de enum e caem)."""
+    evidencia = _evidencia_do_documento(data)
+    if not evidencia:
+        return None
+    leitura = evidencia.get("leitura") if isinstance(evidencia.get("leitura"), dict) else {}
+    linhas = leitura.get("linhas")
+    if isinstance(linhas, (list, tuple)):
+        linhas = len(linhas)
+    degraus = leitura.get("degraus")
+    estado = _enum_seguro(leitura.get("estado"))
+    bloco = {
+        "document_status": _enum_seguro(evidencia.get("document_status")),
+        "cache_status": _enum_seguro(evidencia.get("cache_status")),
+        "estado_da_leitura": estado,
+        "degraus": ([d for d in (_enum_seguro(x) for x in degraus) if d][:10]
+                    if isinstance(degraus, (list, tuple)) else None),
+        "linhas": linhas if isinstance(linhas, int) and not isinstance(linhas, bool) else None,
+        "fechou": (estado == "fechou") if estado else None,
+        "leitor_versao": _enum_seguro(leitura.get("leitor_versao")),
+    }
+    return {chave: bloco[chave] for chave in _CAMPOS_DO_DOCUMENTO if bloco[chave] is not None}
+
+
+def _com_documento(resposta: Dict[str, Any], data: Any) -> Dict[str, Any]:
+    bloco = resumo_da_leitura_do_documento(data)
+    if bloco:
+        resposta[CHAVE_DO_DOCUMENTO] = bloco
+    return resposta
+
+
+def _linha_da_leitura_nao_conferida(pack: Any) -> Optional[str]:
+    """A MARCA para o atendimento quando a leitura do documento NÃO fechou.
+
+    Sem ela o modelo do atendimento recebe as coberturas lidas e pode afirmar
+    ao segurado que a lista está completa — quando a soma das linhas não bate
+    com o prêmio. Leitura que fechou, ou sem leitura registrada: `None`."""
+    from app.providers.policy_data_provider import dinheiro, reais, Indisponivel
+
+    evidencia = (pack or {}).get("official_policy_document_evidence") if isinstance(pack, dict) else None
+    leitura = (evidencia or {}).get("leitura") if isinstance(evidencia, dict) else None
+    if not isinstance(leitura, dict):
+        return None
+    estado = str(leitura.get("estado") or "").strip()
+    if not estado or estado == "fechou":
+        return None
+    linhas = leitura.get("linhas")
+    n = len(linhas) if isinstance(linhas, (list, tuple)) else (linhas if isinstance(linhas, int) else 0)
+    soma, esperado = dinheiro(leitura.get("soma_linhas")), dinheiro(leitura.get("premio_esperado"))
+    if estado == "nao_fechou" and not isinstance(soma, Indisponivel) and not isinstance(esperado, Indisponivel):
+        porque = "as %d coberturas lidas somam %s de %s do premio liquido" % (n, reais(soma), reais(esperado))
+    elif estado == "sem_premio_para_conferir":
+        porque = "nao ha premio liquido para conferir a soma das %d coberturas lidas" % n
+    elif estado == "pendente":
+        porque = "a leitura ainda esta em andamento (%d coberturas lidas ate agora)" % n
+    elif estado == "falhou":
+        porque = "a leitura do documento falhou"
+    else:
+        porque = "estado da leitura: %s (%d coberturas lidas)" % (estado, n)
+    return (
+        "leitura_do_documento: a leitura do documento nao foi conferida: %s. NAO afirme que a "
+        "lista de coberturas esta completa; se o cliente perguntar de uma cobertura que nao esta "
+        "acima, diga que a equipe da corretora confirma." % porque
+    )
+
+
 def _linha_da_familia_de_acionamento(insurer_key: Any) -> Optional[str]:
     """A família de acionamento da seguradora — **do CATÁLOGO, não do prompt**.
 
@@ -1044,10 +1142,10 @@ class InfocapPolicyLookupTool(BaseTool):
                 await self._lacuna_vira_tarefa(db, meta, user_query, session_id,
                                            mensagem_atual)
                 return self._com_rastro(
-                    {"content": content, "data": det, "found": bool(det.get("ok")),
+                    _com_documento({"content": content, "data": det, "found": bool(det.get("ok")),
                      "policy_response_contract": contract,
                      "cobertura": (meta or {}).get("cobertura"),
-                     **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})},
+                     **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})}, det),
                     rastro)
 
             result = await provider.lookup(
@@ -1149,10 +1247,10 @@ class InfocapPolicyLookupTool(BaseTool):
             # segundo registro (CLAUDE.md §5) e nenhum argumento cru: o dict vem
             # de `VereditoDeCobertura.para_registro()`, que não carrega texto.
             return self._com_rastro(
-                {"content": content, "data": result, "found": bool(result.get("ok")),
+                _com_documento({"content": content, "data": result, "found": bool(result.get("ok")),
                  "policy_response_contract": contract,
                  "cobertura": (meta or {}).get("cobertura"),
-                 **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})},
+                 **({MARCA_DO_TITULAR_AUTORIZADO: True} if quem.get("autorizado") else {})}, result),
                 rastro)
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InfocapPolicyLookupTool] erro: {type(e).__name__}")
@@ -1780,6 +1878,15 @@ class InfocapPolicyLookupTool(BaseTool):
                         f"premio {section.get('premium')}" if section.get("premium") else None]
                 suffix = " — " + " · ".join(b for b in bits if b) if any(bits) else ""
                 lines.append(f"- {section.get('label')}{suffix}")
+        # 🔴 SPEC-130-B: no ATENDIMENTO, a leitura que NAO fechou vem MARCADA logo
+        # abaixo das coberturas — o segurado nunca ouve "cobertura completa" de uma
+        # leitura que nao bateu com o premio. O texto do corretor nao muda: ele
+        # recebe o aviso da porta (`documento_nao_conferido`) nos avisos abaixo.
+        if client_facing:
+            marca = _linha_da_leitura_nao_conferida(pack)
+            if marca:
+                lines.append(marca)
+                ja_ditos.add("documento_nao_conferido")
         if apolice is not None:
             from app.providers.policy_data_provider import Indisponivel, frase_do_sinal
 
