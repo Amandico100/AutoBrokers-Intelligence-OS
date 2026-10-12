@@ -67,6 +67,10 @@ MAPA = {
     # `canal_cotacao` (entender resposta livre na conversa do Quem Cobra Menos) nasce com reserva de OUTRO
     # provedor — o mesmo par da `confirmacao` (primário openai/gpt-6-luna medium).
     "canal_cotacao": ("anthropic", "claude-sonnet-5-5", "low"),
+    # §9.3 — SPEC-130-B F1 (11/10/2026, migration 20261011_05_spec130b_papel_leitura_de_apolice): o papel
+    # `leitura_de_apolice` (ler a tabela de coberturas quando o regex não fecha o prêmio) nasce com reserva
+    # de OUTRO provedor, em `medium` (D-130B-09: ler uma tabela inteira com trecho literal, não descrever foto).
+    "leitura_de_apolice": ("anthropic", "claude-sonnet-5-5", "medium"),
 }
 
 
