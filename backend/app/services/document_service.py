@@ -98,7 +98,12 @@ def extrair_paginas_tolerante(
             texto = ""
             if reserva:
                 try:
-                    texto = (reserva[indice].get_text() or "").strip()
+                    # 🔴 SPEC-130-B F5 (régua): `sort=True` — a ordem de LEITURA (linha a linha), não a do
+                    #    fluxo do PDF. 📊 Sura AUTO (19/19 páginas pela reserva): sem ele a tabela de coberturas
+                    #    sai COLUNA por coluna (um valor por linha), nenhuma linha tem rótulo + prêmio, e o
+                    #    modelo não tem trecho literal para citar (7 de 8 linhas descartadas). ⚠️ Só a RESERVA
+                    #    muda: o caminho do PyPDF2 (o dialeto do regex) fica como estava.
+                    texto = (reserva[indice].get_text("text", sort=True) or "").strip()
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("[DocumentService] PyMuPDF falhou na página %d: %s",
                                    indice + 1, type(exc).__name__)
