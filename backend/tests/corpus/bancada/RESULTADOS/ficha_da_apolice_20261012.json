@@ -1,0 +1,2578 @@
+{
+ "spec": "SPEC-130-B conserto unico (juiz B1 + red team B1-B4)",
+ "semente": 1311,
+ "leitor_versao": "130B.2",
+ "com_modelo": true,
+ "service_type": "bancada_130b",
+ "medido_em": "2026-10-11",
+ "controle": [
+  "COND-ALLI-10",
+  "COND-ALLI-13",
+  "COND-ALLI-14",
+  "COND-ALLI-15",
+  "COND-HDI-08",
+  "RESI-ALLI-00",
+  "RESI-ALLI-01",
+  "RESI-ALLI-02",
+  "RESI-ALLI-03",
+  "RESI-ALLI-05",
+  "RESI-ALLI-06"
+ ],
+ "apolices": [
+  {
+   "id": "RESI-ALLI-00",
+   "locator_hash": "689c081a1ebf",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "1146.91",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 546262,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 7,
+     "soma": "1146.91",
+     "fecha": true
+    }
+   ],
+   "linhas": 7,
+   "soma": "1146.91",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.025,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 4.43,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "RESI-ALLI-01",
+   "locator_hash": "370c71ffdd36",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "724.82",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 551876,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 13,
+     "soma": "724.82",
+     "fecha": true
+    }
+   ],
+   "linhas": 13,
+   "soma": "724.82",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.041,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.75,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "RESI-ALLI-02",
+   "locator_hash": "b1443e8b7c9a",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "153.08",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 540798,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 7,
+     "soma": "153.08",
+     "fecha": true
+    }
+   ],
+   "linhas": 7,
+   "soma": "153.08",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.027,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.64,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "RESI-ALLI-03",
+   "locator_hash": "b3c0355a7869",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "466.50",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 545711,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 12,
+     "soma": "466.50",
+     "fecha": true
+    }
+   ],
+   "linhas": 12,
+   "soma": "466.50",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.024,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.68,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "RESI-BRAD-04",
+   "locator_hash": "b2b594673774",
+   "ramo": "RESI",
+   "seguradora": "BRAD",
+   "esperado": "570.73",
+   "fonte_do_pdf": "sem_pdf",
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "RESI-ALLI-05",
+   "locator_hash": "e7d047dd27ec",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "685.92",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 552224,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 13,
+     "soma": "685.92",
+     "fecha": true
+    }
+   ],
+   "linhas": 13,
+   "soma": "685.92",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.025,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.94,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "RESI-ALLI-06",
+   "locator_hash": "54115745741b",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "337.72",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 545778,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 7,
+     "soma": "337.72",
+     "fecha": true
+    }
+   ],
+   "linhas": 7,
+   "soma": "337.72",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.023,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.79,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "RESI-TMAR-07",
+   "locator_hash": "da34eac2ac31",
+   "ramo": "RESI",
+   "seguradora": "TMAR",
+   "esperado": "321.50",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1546225,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 8,
+     "soma": "321.50",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 3
+     },
+     "duracao_s": 30.534
+    }
+   ],
+   "linhas": 8,
+   "soma": "321.50",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000979,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 30.633,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão, Fumaça e Queda Aeronave",
+     "premio": "R$ 25,66",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vazamento de Tubulações",
+     "premio": "R$ 27,78",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 53,16",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "RESPONSABILIDADE CIVIL FAMILIAR",
+     "premio": "R$ 12,92",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Roubo e Subtração de Bens com Arrombamento",
+     "premio": "R$ 12,22",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Tornado, Granizo",
+     "premio": "R$ 58,62",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros, Espelhos, Mármores e Granitos",
+     "premio": "R$ 16,99",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas Plano Básico",
+     "premio": "R$ 114,15",
+     "tem_limite": false
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 47.68,
+   "rodada": "2_parcial_8"
+  },
+  {
+   "id": "COND-HDI-08",
+   "locator_hash": "c1ee1dd831aa",
+   "ramo": "COND",
+   "seguradora": "HDI",
+   "esperado": "10941.92",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 16155,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 14,
+     "soma": "10941.92",
+     "fecha": true
+    }
+   ],
+   "linhas": 14,
+   "soma": "10941.92",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.025,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.87,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "COND-TMAR-09",
+   "locator_hash": "4d2e062f94e7",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "31875.89",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 728012,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "nao_fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 19,
+     "soma": "30516.06",
+     "fecha": false,
+     "descartadas": 1,
+     "motivos_do_descarte": {
+      "trecho_fora_de_uma_linha": 1,
+      "fora:2_linhas_cima_com_valor": 1,
+      "aceitas_em_rotulo_embrulhado": 3
+     },
+     "duracao_s": 40.266
+    }
+   ],
+   "linhas": 0,
+   "soma": "0.00",
+   "diferenca": "31875.89",
+   "fecha_juiz": false,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": false,
+   "custo_usd_estimado": 0.001658,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 40.355,
+   "conferencia": null,
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão, Fumaça e Queda Aeronave",
+     "premio": "R$ 478,50",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 15.103,93",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Tornado e Granizo",
+     "premio": "R$ 2.605,59",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Roubo e Subtração de Bens com Arrombamento",
+     "premio": "R$ 60,91",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros, Espelhos, Anúncios Luminosos",
+     "premio": "R$ 1.744,07",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Síndico",
+     "premio": "R$ 210,64",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Condomínio",
+     "premio": "R$ 526,49",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Danos Morais",
+     "premio": "R$ 38,23",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Portões Automáticos",
+     "premio": "R$ 2.122,98",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Incêndio de Bens de Condôminos",
+     "premio": "R$ 1.837,58",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Roubo/Subtração de Bens c/Arrombamento-Condôminos",
+     "premio": "R$ 2.333,84",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Impacto de Veículos",
+     "premio": "R$ 234,18",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Tumulto, Greve e Lock-Out",
+     "premio": "R$ 13,72",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Vazamento de Tanques e Tubulações",
+     "premio": "R$ 1.199,60",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Alagamento e Inundação",
+     "premio": "R$ 1.648,86",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Desmoronamento",
+     "premio": "R$ 270,17",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 6,41",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas com Aluguel - Condôminos",
+     "premio": "R$ 50,74",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas Plano Básico",
+     "premio": "R$ 29,62",
+     "tem_limite": false
+    }
+   ],
+   "duracao_s": 46.71,
+   "rodada": "3_parcial_4"
+  },
+  {
+   "id": "COND-ALLI-10",
+   "locator_hash": "10064090d3d5",
+   "ramo": "COND",
+   "seguradora": "ALLI",
+   "esperado": "3656.93",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 124647,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 18,
+     "soma": "3656.93",
+     "fecha": true
+    }
+   ],
+   "linhas": 18,
+   "soma": "3656.93",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.024,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.32,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "COND-TMAR-11",
+   "locator_hash": "c77a6b2d0ba5",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "5732.11",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 727668,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "nao_fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 17,
+     "soma": "5334.62",
+     "fecha": false,
+     "descartadas": 1,
+     "motivos_do_descarte": {
+      "trecho_fora_de_uma_linha": 1,
+      "fora:2_linhas_cima_com_valor": 1,
+      "aceitas_em_rotulo_embrulhado": 2
+     },
+     "duracao_s": 23.086
+    }
+   ],
+   "linhas": 0,
+   "soma": "0.00",
+   "diferenca": "5732.11",
+   "fecha_juiz": false,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": false,
+   "custo_usd_estimado": 0.00131,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 23.148,
+   "conferencia": null,
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão, Fumaça e Queda Aeronave",
+     "premio": "R$ 679,07",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 2.681,66",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Tornado e Granizo",
+     "premio": "R$ 611,59",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Roubo e Subtração de Bens com Arrombamento",
+     "premio": "R$ 155,18",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros, Espelhos, Anúncios Luminosos",
+     "premio": "R$ 128,89",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Síndico",
+     "premio": "R$ 45,21",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Condomínio",
+     "premio": "R$ 172,29",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Danos Morais",
+     "premio": "R$ 32,82",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Portões Automáticos",
+     "premio": "R$ 146,78",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Incêndio de Bens de Condôminos",
+     "premio": "R$ 46,05",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Impacto de Veículos",
+     "premio": "R$ 88,93",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Tumulto, Greve e Lock-Out",
+     "premio": "R$ 8,43",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Vazamento de Tanques e Tubulações",
+     "premio": "R$ 408,54",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Desmoronamento",
+     "premio": "R$ 83,00",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 11,05",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas com Aluguel - Condôminos",
+     "premio": "R$ 6,25",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas Plano Básico",
+     "premio": "R$ 28,88",
+     "tem_limite": false
+    }
+   ],
+   "duracao_s": 27.63,
+   "rodada": "3_parcial_4"
+  },
+  {
+   "id": "COND-TMAR-12",
+   "locator_hash": "13aef6c4b5d6",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "2834.36",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 727293,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 14,
+     "soma": "2834.36",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 3
+     },
+     "duracao_s": 24.071
+    }
+   ],
+   "linhas": 14,
+   "soma": "2834.36",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001253,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 24.128,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão, Fumaça e Queda Aeronave",
+     "premio": "R$ 87,50",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 718,64",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Tornado e Granizo",
+     "premio": "R$ 606,60",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Síndico",
+     "premio": "R$ 42,01",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Condomínio",
+     "premio": "R$ 262,45",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Danos Morais",
+     "premio": "R$ 61,02",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "RESPONSABILIDADE CIVIL GARAGISTA COMPREENSIVA",
+     "premio": "R$ 369,48",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Portões Automáticos",
+     "premio": "R$ 276,26",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Incêndio de Bens de Condôminos",
+     "premio": "R$ 60,79",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Roubo/Subtração de Bens c/Arrombamento-Condôminos",
+     "premio": "R$ 94,28",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Impacto de Veículos",
+     "premio": "R$ 128,90",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Desmoronamento",
+     "premio": "R$ 91,30",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas com Aluguel - Condôminos",
+     "premio": "R$ 6,25",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas Plano Básico",
+     "premio": "R$ 28,88",
+     "tem_limite": false
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 30.9,
+   "rodada": "2_parcial_8"
+  },
+  {
+   "id": "COND-ALLI-13",
+   "locator_hash": "d88a2fd8751b",
+   "ramo": "COND",
+   "seguradora": "ALLI",
+   "esperado": "8618.73",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 124451,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 17,
+     "soma": "8618.73",
+     "fecha": true
+    }
+   ],
+   "linhas": 17,
+   "soma": "8618.73",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.025,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.3,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "COND-ALLI-14",
+   "locator_hash": "ea1643f07319",
+   "ramo": "COND",
+   "seguradora": "ALLI",
+   "esperado": "8305.48",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 124002,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 19,
+     "soma": "8305.48",
+     "fecha": true
+    }
+   ],
+   "linhas": 19,
+   "soma": "8305.48",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.025,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.04,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "COND-ALLI-15",
+   "locator_hash": "89892c981611",
+   "ramo": "COND",
+   "seguradora": "ALLI",
+   "esperado": "4790.92",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 123964,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 18,
+     "soma": "4790.92",
+     "fecha": true
+    }
+   ],
+   "linhas": 18,
+   "soma": "4790.92",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.042,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 2.15,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "EMPR-TMAR-16",
+   "locator_hash": "936b1e7fbb48",
+   "ramo": "EMPR",
+   "seguradora": "TMAR",
+   "esperado": "21280.39",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 2673716,
+   "paginas": 105,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 105
+   },
+   "tipo_documento": "apolice",
+   "estado": "nao_fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 3,
+     "soma": "1500.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 1,
+     "soma": "287.11",
+     "fecha": false,
+     "descartadas": 10,
+     "motivos_do_descarte": {
+      "trecho_fora_de_uma_linha": 10,
+      "fora:nao_esta_na_pagina": 7,
+      "fora:4_linhas": 3
+     },
+     "duracao_s": 22.842
+    }
+   ],
+   "linhas": 3,
+   "soma": "1500.00",
+   "diferenca": "19780.39",
+   "fecha_juiz": false,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": false,
+   "custo_usd_estimado": 0.004097,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 24.778,
+   "conferencia": null,
+   "texto_ao_modelo": {
+    "cortado": true,
+    "caracteres": 242538,
+    "paginas_com_texto": 105,
+    "paginas_enviadas": 56,
+    "teto": 120000,
+    "caracteres_enviados": 119599
+   },
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [
+    {
+     "pagina": 6,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Operações",
+     "premio": "R$ 287,11",
+     "tem_limite": true
+    }
+   ],
+   "duracao_s": 41.06,
+   "rodada": "3_parcial_4"
+  },
+  {
+   "id": "EMPR-ALLI-17",
+   "locator_hash": "5c46abfdd96d",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "10244.03",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 137998,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 7,
+     "soma": "10244.03",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 1
+     },
+     "duracao_s": 15.789
+    }
+   ],
+   "linhas": 7,
+   "soma": "10244.03",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000604,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 15.826,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 1.066,52",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 12,04",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Incêndio e Complementares",
+     "premio": "R$ 6.216,18",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros e Anúncios Luminosos e Mármores",
+     "premio": "R$ 798,12",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil",
+     "premio": "R$ 482,08",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Roubo",
+     "premio": "R$ 263,68",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Granizo e Tornado",
+     "premio": "R$ 1.405,41",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 19.27,
+   "rodada": "2_parcial_8"
+  },
+  {
+   "id": "EMPR-PORT-18",
+   "locator_hash": "a2eb549a0b1f",
+   "ramo": "EMPR",
+   "seguradora": "PORT",
+   "esperado": "5103.85",
+   "fonte_do_pdf": "documento_anexos",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 2559485,
+   "paginas": 16,
+   "paginas_sem_texto": 16,
+   "parser_por_pagina": {
+    "sem_texto": 16
+   },
+   "tipo_documento": "desconhecido",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "visao",
+     "linhas": 2,
+     "soma": "5103.85",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 41.078,
+     "paginas_enviadas": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16
+     ]
+    }
+   ],
+   "linhas": 2,
+   "soma": "5103.85",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.004647,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 41.078,
+   "conferencia": "soma",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 6,
+     "degrau": "visao",
+     "rotulo": "INCÊNDIO, EXPLOSÃO, FUMAÇA E QUEDA DE AERONAVE",
+     "premio": "R$ 184,09",
+     "tem_limite": true
+    },
+    {
+     "pagina": 6,
+     "degrau": "visao",
+     "rotulo": "RESPONSABILIDADE CIVIL GARAGISTA AMPLA",
+     "premio": "R$ 4.919,76",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 68.73,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "EMPR-ALLI-19",
+   "locator_hash": "883b291887ca",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "327.51",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 137090,
+   "paginas": 4,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 3,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 2,
+     "soma": "327.51",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 12.061
+    }
+   ],
+   "linhas": 2,
+   "soma": "327.51",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000305,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 12.08,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Incêndio e Complementares",
+     "premio": "R$ 171,88",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil",
+     "premio": "R$ 155,63",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 14.27,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "EMPR-ALLI-20",
+   "locator_hash": "c91509e25650",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "6195.72",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 138939,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 7,
+     "soma": "6195.72",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 1
+     },
+     "duracao_s": 15.783
+    }
+   ],
+   "linhas": 7,
+   "soma": "6195.72",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000557,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 15.821,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 458,40",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 14,24",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Incêndio e Complementares",
+     "premio": "R$ 2.313,89",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros e Anúncios Luminosos e Mármores",
+     "premio": "R$ 1.110,53",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil",
+     "premio": "R$ 538,68",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Roubo",
+     "premio": "R$ 350,68",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Granizo e Tornado",
+     "premio": "R$ 1.409,30",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 19.97,
+   "rodada": "3_parcial_4"
+  },
+  {
+   "id": "EMPR-ALFA-21",
+   "locator_hash": "3b3c524f2b48",
+   "ramo": "EMPR",
+   "seguradora": "ALFA",
+   "esperado": "761.01",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 755965,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "nao_fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 3,
+     "soma": "779.54",
+     "fecha": false,
+     "descartadas": 0,
+     "duracao_s": 14.694
+    }
+   ],
+   "linhas": 0,
+   "soma": "0.00",
+   "diferenca": "761.01",
+   "fecha_juiz": false,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": false,
+   "custo_usd_estimado": 0.000587,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 14.732,
+   "conferencia": null,
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão",
+     "premio": "R$ 538,93",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 222,08",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Assistência - 24 Horas",
+     "premio": "R$ 18,53",
+     "tem_limite": false
+    }
+   ],
+   "duracao_s": 18.12,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "EMPR-TMAR-22",
+   "locator_hash": "ecad22d87ef2",
+   "ramo": "EMPR",
+   "seguradora": "TMAR",
+   "esperado": "9763.69",
+   "fonte_do_pdf": "sem_pdf",
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "EMPR-ALLI-23",
+   "locator_hash": "f9f4551197ed",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "3291.20",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 138493,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 7,
+     "soma": "3291.20",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 1
+     },
+     "duracao_s": 17.071
+    }
+   ],
+   "linhas": 7,
+   "soma": "3291.20",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000574,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 17.107,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 59,86",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 23,93",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Incêndio e Complementares",
+     "premio": "R$ 1.826,85",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros e Anúncios Luminosos e Mármores",
+     "premio": "R$ 396,14",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil",
+     "premio": "R$ 253,78",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Roubo",
+     "premio": "R$ 656,81",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Granizo e Tornado",
+     "premio": "R$ 73,83",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 22.35,
+   "rodada": "2_parcial_8"
+  },
+  {
+   "id": "AUTO-SURA-24",
+   "locator_hash": "28787fd7c5b0",
+   "ramo": "AUTO",
+   "seguradora": "SURA",
+   "esperado": "4591.86",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 184792,
+   "paginas": 19,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pymupdf": 19
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 2,
+     "soma": "5405.84",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 8,
+     "soma": "4591.85",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 24.195
+    }
+   ],
+   "linhas": 8,
+   "soma": "4591.85",
+   "diferenca": "0.01",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.002415,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 25.317,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Casco",
+     "premio": "R$ 2.702,92",
+     "tem_limite": false
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Corporais",
+     "premio": "R$ 129,42",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Materiais",
+     "premio": "R$ 320,09",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Morais",
+     "premio": "R$ 64,70",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "APP − Morte",
+     "premio": "R$ 11,24",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "APP − Invalidez",
+     "premio": "R$ 13,49",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Assistencia Basica",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "VIDROS COM FRANQUIA − VIDROS ÚNICO VIP",
+     "premio": "R$ 1.349,99",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 28.99,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "AUTO-TMAR-25",
+   "locator_hash": "8b5df954b5d7",
+   "ramo": "AUTO",
+   "seguradora": "TMAR",
+   "esperado": "1818.07",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1152188,
+   "paginas": 8,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 8
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 15,
+     "soma": "1818.07",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 22.366
+    }
+   ],
+   "linhas": 15,
+   "soma": "1818.07",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001111,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 22.406,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Colisão, Incêndio e Roubo/Furto",
+     "premio": "R$ 1.313,73",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos Materiais",
+     "premio": "R$ 304,63",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos Corporais",
+     "premio": "R$ 56,01",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos morais",
+     "premio": "R$ 42,52",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "APP - Morte por Passageiro",
+     "premio": "R$ 15,68",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "APP - Invalidez por Passageiro",
+     "premio": "R$ 15,68",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Km adicional de reboque",
+     "premio": "R$ 18,32",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas VIP",
+     "premio": "R$ 49,50",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Acessórios",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas Extraordinárias",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Blindagem",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Kit Gás",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Extensão para Garantia de 0km",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Carta Verde - Danos Materiais",
+     "premio": "R$ 1,00",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Carta Verde - Danos Corporais",
+     "premio": "R$ 1,00",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 34.1,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "AUTO-LIBE-26",
+   "locator_hash": "f80599dfcf30",
+   "ramo": "AUTO",
+   "seguradora": "LIBE",
+   "esperado": "3449.40",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 82348,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pymupdf": 4
+   },
+   "tipo_documento": "endosso",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 11,
+     "soma": "5207.28",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 10,
+     "soma": "3440.98",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 1,
+     "motivos_do_descarte": {
+      "premio_fora_do_trecho": 1
+     },
+     "duracao_s": 21.875
+    }
+   ],
+   "linhas": 10,
+   "soma": "3440.98",
+   "diferenca": "8.42",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001323,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 22.001,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "BASICA - 01-COMPREENSIVA",
+     "premio": "R$ 2.255,83",
+     "tem_limite": false
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "RESP CIVIL FACULTATIVA VEICULOS - DANOS MATERIAIS",
+     "premio": "R$ 222,25",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "RESP CIVIL FACULTATIVA VEICULOS - DANOS CORPORAIS",
+     "premio": "R$ 112,03",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "RESP CIVIL FACULTATIVA VEICULOS - DANOS MORAIS E ESTETICOS",
+     "premio": "R$ 56,11",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "ACIDENTES PESSOAIS PASSAGEIROS - LMI POR PASSAGEIRO - MORTE",
+     "premio": "R$ 8,42",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "CARTA VERDE - DANOS MATERIAIS",
+     "premio": "R$ 2,50",
+     "tem_limite": false
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "CARTA VERDE - MORTE E/OU DANOS PESSOAIS",
+     "premio": "R$ 2,50",
+     "tem_limite": false
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "CARRO RESERVA 35 DIAS BÁSICO",
+     "premio": "R$ 493,94",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "ASSISTÊNCIA - SUPERIOR",
+     "premio": "R$ 155,12",
+     "tem_limite": false
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "VIDROS INTERMEDIÁRIO",
+     "premio": "R$ 132,28",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 24.1,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "AUTO-YOUS-27",
+   "locator_hash": "fc70faa406d1",
+   "ramo": "AUTO",
+   "seguradora": "YOUS",
+   "esperado": "2578.00",
+   "fonte_do_pdf": "sem_pdf",
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "AUTO-YOUS-28",
+   "locator_hash": "493912b9504a",
+   "ramo": "AUTO",
+   "seguradora": "YOUS",
+   "esperado": "5406.80",
+   "fonte_do_pdf": "sem_pdf",
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "AUTO-TMAR-29",
+   "locator_hash": "af4ca200d446",
+   "ramo": "AUTO",
+   "seguradora": "TMAR",
+   "esperado": "1588.14",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1151885,
+   "paginas": 8,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 8
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 15,
+     "soma": "1588.14",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 19.55
+    }
+   ],
+   "linhas": 15,
+   "soma": "1588.14",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000963,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 19.612,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Colisão, Incêndio e Roubo/Furto",
+     "premio": "R$ 1.191,47",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos Materiais",
+     "premio": "R$ 279,32",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos Corporais",
+     "premio": "R$ 37,61",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos Morais",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "APP - Morte por Passageiro",
+     "premio": "R$ 9,20",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "APP - Invalidez por Passageiro",
+     "premio": "R$ 9,20",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Km adicional de reboque",
+     "premio": "R$ 14,80",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas VIP",
+     "premio": "R$ 44,54",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Acessórios",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas Extraordinárias",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Blindagem",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Kit Gás",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Extensão para Garantia de 0km",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Carta Verde - Danos Materiais",
+     "premio": "R$ 1,00",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Carta Verde - Danos Corporais",
+     "premio": "R$ 1,00",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 27.55,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "AUTO-HDI-30",
+   "locator_hash": "6d9bc1bcc495",
+   "ramo": "AUTO",
+   "seguradora": "HDI",
+   "esperado": "2948.64",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 17585,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 12,
+     "soma": "2948.64",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 23.461
+    }
+   ],
+   "linhas": 12,
+   "soma": "2948.64",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001214,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 23.532,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Casco",
+     "premio": "R$ 1.612,95",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "RCF-V Danos Materiais",
+     "premio": "R$ 627,02",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "RCF-V Danos Corporais",
+     "premio": "R$ 147,28",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "APP Morte",
+     "premio": "R$ 29,49",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "APP Invalidez Permanente",
+     "premio": "R$ 20,83",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "HDI Auto Vidros (*1)",
+     "premio": "R$ 68,56",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Morais e Estéticos",
+     "premio": "R$ 32,92",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Faróis, Lanternas, Retrov, Auxil (*2)",
+     "premio": "R$ 48,38",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "15 Dias Cr Manual (*3)",
+     "premio": "R$ 60,13",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vip Auto - sem Limite Km (*4)",
+     "premio": "R$ 296,08",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Carta Verde - Danos Materiais",
+     "premio": "R$ 2,50",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Carta Verde - Danos Pessoais",
+     "premio": "R$ 2,50",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 25.93,
+   "rodada": "1_inteira"
+  },
+  {
+   "id": "AUTO-TMAR-31",
+   "locator_hash": "83302dff0afe",
+   "ramo": "AUTO",
+   "seguradora": "TMAR",
+   "esperado": "3591.67",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1152372,
+   "paginas": 8,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 8
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 15,
+     "soma": "3591.67",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 20.335
+    }
+   ],
+   "linhas": 15,
+   "soma": "3591.67",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001009,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 20.4,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Colisão, Incêndio e Roubo/Furto",
+     "premio": "R$ 2.942,44",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos Materiais",
+     "premio": "R$ 339,91",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos Corporais",
+     "premio": "R$ 67,98",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "RCF-V - Danos morais",
+     "premio": "R$ 58,42",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "APP - Morte por Passageiro",
+     "premio": "R$ 18,40",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "APP - Invalidez por Passageiro",
+     "premio": "R$ 18,40",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Km adicional de reboque",
+     "premio": "R$ 48,99",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas VIP",
+     "premio": "R$ 95,13",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Acessórios",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas Extraordinárias",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Blindagem",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Kit Gás",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Extensão para Garantia de 0km",
+     "premio": "R$ 0,00",
+     "tem_limite": false
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Carta Verde - Danos Materiais",
+     "premio": "R$ 1,00",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Carta Verde - Danos Corporais",
+     "premio": "R$ 1,00",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 26.89,
+   "rodada": "1_inteira"
+  }
+ ],
+ "rodadas": {
+  "1_inteira": "as 32, juiz da linha estrito (uma linha so)",
+  "2_parcial_8": "as 8 que cairam/nao fechavam, + rotulo embrulhado em 2 linhas",
+  "3_parcial_4": "as 4 que sobraram, + o detalhe do descarte (codigo final)"
+ },
+ "nota": "as linhas que NAO passaram por rerun (rodada 1) nao tiveram descarte trecho_fora_de_uma_linha: a regra do rotulo embrulhado nao muda o resultado delas"
+}
