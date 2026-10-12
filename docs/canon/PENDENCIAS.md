@@ -13725,41 +13725,24 @@ recuse `SET SESSION` em script que fale com o pooler; o helper já usa `set tran
 na próxima vez, a escrita do PRODUTO pode cair na conexão envenenada.
 
 
-## P-LEITOR-01 · 🤖 O leitor da apólice lê inteira só Allianz residencial/condomínio e HDI condomínio (📊 11/32)
-📊 11/10, o leitor REAL do produto sobre 32 apólices da janela de renovação (`programa-multicalculo/131-0/LAUDO-LEITURA-DE-APOLICE.md`
-§3): a soma das coberturas fecha com o prêmio líquido em 11/32; Tokio, Allianz empresarial, Alfa e HDI auto = 0 linhas. **Destrava:** a
-SPEC-130-B (`specs-propostas/SPEC-130-B-A-FICHA-UNICA-DA-APOLICE.md`, a cascata com o juiz do prêmio). **De quem:** 🤖 130-B. **Custa
-esquecer:** o atendimento responde cobertura de Tokio, HDI auto e empresarial só com o `/itens`, que fecha o prêmio em 0/24 apólices de RE.
-
-## P-LEITOR-02 · 🤖 Uma página ruim derruba o PDF inteiro (Sura e Yelum: 📊 2 de 27 PDFs com texto)
-O PyPDF2 do produto relança o erro da página (`backend/app/services/document_service.py:397-399`) e o pipeline volta
-`policy_document_evidence_pipeline_failed` — nem o texto chega ao modelo. 📊 O PyMuPDF (já no `requirements.txt`) lê os dois (LAUDO §3.4).
-**Destrava:** PyMuPDF como RESERVA por página, nunca como troca (📊 trocar derruba a linha de controle de 18 para 0 linhas). Barato; pode
-entrar antes da 130-B. **De quem:** 🤖 130-B (U2). **Custa esquecer:** toda apólice Sura/Yelum fica sem leitura no chat e no atendimento.
-
-## P-LEITOR-03 · 🤖 O PDF que o segurado manda no WhatsApp (e o corretor no chat) vai cru ao modelo
-Texto cortado em 20.000 caracteres, colado na mensagem, sem ficha, sem conferência e sem máscara de CPF no extrator
-(`backend/app/api/webhook.py:3310-3325`, `backend/app/services/vision_service.py:48,152`, `backend/app/api/chat.py:829-841`); 📊 2 de 6
-documentos recebidos "não foi possível ler". É um segundo leitor de apólice ao lado do oficial. **Destrava:** 130-B (U4) — o anexo entra
-pelo mesmo leitor e ao modelo vai só a ficha mascarada. **De quem:** 🤖 130-B. **Custa esquecer:** dado pessoal ao provedor do modelo e
-respostas sobre cobertura sem conferência.
-
-## P-LEITOR-04 · 🤖 Ninguém sabe quantas leituras de apólice deram certo em produção
-📊 `documents.metadata` vazio em 21/21 PDFs do CORP; a tool guarda só `tipo/ok/campos/cobertura` no `output_summary`, não o
-`document_status` (LAUDO §2). **Destrava:** 130-B (U2): parser, linhas, fechou/não fechou e custo em `documents.metadata`; o status da
-leitura no `output_summary`. **De quem:** 🤖 130-B. **Custa esquecer:** a taxa de acerto do leitor em produção continua imensurável.
-
 ## P-COBRANCA-01 · 🧑 Allianz e Mapfre recusam a senha cadastrada
 📊 10–11/09: a Allianz diz "Acesso negado — valide os dados"; a Mapfre "Autenticação inválida!" (prints transcritos em
 `backend/tests/corpus/telas_reais_de_portal/`); 📊 a Mapfre nunca teve uma varredura concluída (`LAUDO-COBRANCA.md` §3). **Destrava:**
 o Founder entra à mão nos dois portais, troca a senha se preciso e salva no conector (T-145). **De quem:** 🧑 Founder. **Custa esquecer:**
 2 de 6 seguradoras sem cobrança; ao religar, o disjuntor de saúde as tira do ar no 1º dia.
+**Atualizada 12/10 (fechamento da 130-B):** ✅ a parte do Founder está feita — ele mandou as senhas novas das duas corretoras-piloto e o
+gerente as GRAVOU em 11/10 no cofre do produto (`portal_accounts`, cifradas com a chave de produção; conferidas por releitura; o cifrado
+antigo guardado fora do git para reverter). 📊 Achado: a Mapfre de uma das corretoras já tinha a senha nova (a falha antiga dela não era a
+senha); a Mapfre da outra trocou também o LOGIN. ⚠️ Nada foi testado no portal: falta religar em teste (T-146/P-COBRANCA-03), que a fila
+TOMADA em 11/10 (D-1311-02) pôs no FIM, na SPEC de cobrança estável. **De quem agora:** 🤖 a SPEC de cobrança estável.
 
 ## P-COBRANCA-02 · 🧑🤖 A Zurich devolve a lista de parcelas VAZIA, sem explicação
 📊 10–11/09: login certo, chamada da lista de 90 dias → HTTP 200 com 46 bytes, duas vezes; a regra manda para revisão humana (correto).
 Não se sabe se é recusa silenciosa ou carteira sem Zurich. **Destrava:** a captura HAR da corretora na tela "Parcelas vencidas" (T-148)
 decide; se a tela também mostra zero, a regra ganha uma testemunha (a contagem do dashboard). **De quem:** 🧑 a captura · 🤖 a SPEC de
 cobrança estável. **Custa esquecer:** a Zurich nunca cobra e ninguém sabe se há o que cobrar. Toca P-E0016-ZURICH-GUARDA-VERMELHO-NA-BASE.
+**Atualizada 12/10:** 📊 já há material da Zurich na árvore em dia — `docs/intake/PORTAL SEGURADORAS/ZURICH/` (2 HAR + HTML da tela
+"Consulta Parcelas Vencidas e a Vencer"); ler na SPEC de cobrança estável (fim da fila, D-1311-02) antes de pedir captura nova.
 
 ## P-COBRANCA-03 · 🤖 Religar a cobrança tende a estourar o teto de 900 s (o teste de login nunca rodou)
 📊 Execuções com 6 seguradoras: 831–893 s contra o teto de 900 s (`routine_engine.py:309`); o teste de login antes da varredura
@@ -13774,6 +13757,9 @@ teste por 3 dias úteis, medindo o teste de login e `portal_accounts.health` (T-
 Allianz e HDI não localizadas em lugar nenhum (`LAUDO-COBRANCA.md` §1). **Destrava:** copiar (nunca link — "nunca junction em worktree")
 para `AutoBrokers-FIX/docs/intake/MATERIAIS/<SEGURADORA>/`; Allianz e HDI vêm das capturas novas (T-147, T-148). **De quem:** 🤖 (cópia)
 · 🧑 (capturas novas). **Custa esquecer:** a próxima SPEC de cobrança trabalha sem a régua de referência, ou na árvore errada.
+**Atualizada 12/10:** 📊 a árvore em dia já tem `docs/intake/PORTAL SEGURADORAS/` com MAPFRE, TOKIO e ZURICH (2 HAR cada + HTML; fora
+do git). O HAR da Allianz foi usado na construção da cobrança mas NÃO foi guardado; HDI segue sem captura. As capturas novas (T-147/T-148)
+ficam para a SPEC de cobrança estável, no fim da fila (D-1311-02 TOMADA 11/10).
 
 ## P-AGGER-SENHA-EXPOSTA · 🧑 O Agger entrega as senhas das seguradoras ao navegador de qualquer pessoa logada
 📊 FATO pelo código público do Agger (`programa-multicalculo/131-0/LAUDO-AGGER-E-MERCADO.md` §2.5): para "Ver na seguradora", a página
@@ -13789,6 +13775,10 @@ AutoFleet em 2026); mas a coleção não publica ambiente (`environmentUID "-"`)
 documento** (`LAUDO-CORPAPI-COMPLETA.md` §2.8, §3.2). Falta o formato do JSON do `/incorp`. **Destrava:** a InfoCap responder (T-150): base
 de homologação + contrato do JSON + duplicata + custo. **De quem:** 🧑 o pedido · 🤖 a SPEC "Emissão e registro". **Custa esquecer:** um
 teste em produção grava documento que só se desfaz à mão no CORP.
+**Atualizada 12/10 (resposta do Founder, 11/10):** **NÃO há base de homologação** para o INCORP; o Agger **não** alimenta a InfoCap
+sozinho; "Sincronizações" por API = a API atual (dá para tentar por HAR dentro da InfoCap, se for preciso). → A D-1311-04 continua valendo
+(não escrever na InfoCap). **Pendência da SPEC "Emissão e registro":** PROPOR como escrever em produção com segurança (o que gravar, como
+conferir, como desfazer à mão) — nada decidido aqui. **De quem:** 🤖 "Emissão e registro" · 🧑 a decisão final.
 
 ## P-INFOCAP-PARCELA-PAGA · 🤖 A "data de pago" da parcela na InfoCap não prova que o cliente pagou
 📊 `datquit = datvenc` em 208/212 (Resulta) e 395/403 (AutoFleet) parcelas quitadas, e há "pago" em parcela que ainda vai vencer: 30/126 e
@@ -13803,3 +13793,70 @@ seguem sequências separadas que se sobrepõem (`LAUDO-CORPAPI-COMPLETA.md` §6.
 set/2024. **Destrava:** toda chave InfoCap do produto = (conexão/company_id, codfil, código); contagem de "clientes da corretora" não sai
 de `/clientes`; o CRM da Corp não é fonte. **De quem:** 🤖 quem ler cliente/negócio da InfoCap (131, 132). **Custa esquecer:** números de
 carteira inflados na tela e registros antigos de uma corretora aparecendo na outra.
+
+## P-130B · SPEC-130-B, a ficha única da apólice (12/10/2026)
+
+## P-130B-01 · 🤖 A tabela da Tokio quebrada em duas linhas pelo PyPDF2 (COND 6/8 contra a meta de 7/8)
+📊 Régua de 12/10 (`ficha_da_apolice_20261012.json`): COND-TMAR-09 e COND-TMAR-11 perdem uma linha cada e EMPR-TMAR-16 também — o PyPDF2
+parte a linha da tabela da Tokio em duas, e o juiz novo (por linha, D-130B-13) a recusa de propósito. **Destrava:** a reserva PyMuPDF
+`sort=True` também nessas páginas (não só na que falha) ou a visão na página; medir na régua com as 11 de controle intactas. **De quem:** 🤖.
+**Custa esquecer:** condomínio e empresarial da Tokio respondem "leitura não conferida" na renovação e no atendimento.
+
+## P-130B-02 · 🤖 A assistência cobrada FORA do prêmio líquido (Alfa) faz o juiz recusar
+A soma das linhas fica maior que o prêmio líquido porque a assistência é cobrada à parte; o juiz recusa (correto pela regra de hoje).
+**Destrava:** decidir a regra (descontar a linha de assistência marcada como "fora do líquido" × aceitar soma = líquido + assistência),
+com nota, e medir na régua. **De quem:** 🤖 (decisão com nota). **Custa esquecer:** toda apólice da Alfa fica "não fechou" para sempre.
+
+## P-130B-03 · 🤖 O trecho do modelo varia entre rodadas
+📊 EMPR-ALLI-20 fecha numa rodada e não na outra (régua 11/10 × 12/10). **Destrava:** o prompt "copie UMA linha" medido em 3+ rodadas na
+mesma apólice, com a taxa de fechamento por rodada no resultado da régua. **De quem:** 🤖. **Custa esquecer:** a mesma apólice dá
+"conferida" num dia e "não conferida" no outro, e a régua credita o acaso.
+
+## P-130B-04 · 🤖 O anexo do WhatsApp pode segurar o atendimento até 40 s (+20 s), sem cache por hash
+O anexo passa pelo leitor antes da resposta; sem reaproveitar a leitura pelo hash do arquivo, o mesmo PDF reenviado paga tudo de novo.
+**Destrava:** cache por hash no caminho do anexo (o mesmo da leitura guardada) e medir o tempo real em produção depois do Implantar.
+**De quem:** 🤖. **Custa esquecer:** o segurado espera quase um minuto pela resposta e acha que a conversa caiu.
+
+## P-130B-05 · 🤖 `/documento_anexos` é consultado a cada pergunta sem `url_apolice`, antes do cache
+**Destrava:** olhar a leitura guardada antes de chamar a InfoCap (ou guardar o "não tem anexo" por um tempo). **De quem:** 🤖 (131).
+**Custa esquecer:** uma chamada à InfoCap por pergunta — lento e arrisca limite da API.
+
+## P-130B-06 · 🤖 Sem Redis não há 2º plano: cada pergunta paga o modelo de novo
+A trava do 2º plano é Redis (D-130B-08); sem ele, a leitura que estourou os 20 s recomeça na próxima pergunta. **Destrava:** degradar para
+"não reler antes de X minutos" pela leitura guardada, ou alerta quando o Redis faltar. **De quem:** 🤖. **Custa esquecer:** custo de
+modelo multiplicado por pergunta num dia de Redis fora.
+
+## P-130B-07 · 🤖 O 2º leitor `/attendance/media/document-extract` continua fora da ficha
+**Destrava:** o endpoint passa pelo mesmo leitor (como o anexo do WhatsApp e do chat) ou é aposentado. **De quem:** 🤖. **Custa
+esquecer:** um leitor de documento de seguro sem juiz e sem máscara ao lado do oficial (CLAUDE.md §5).
+
+## P-130B-08 · 🤖 Anexo escaneado sem prêmio impresso não vai à visão
+Sem prêmio para conferir, o estado é `sem_premio_para_conferir` e a visão não é chamada. **Destrava:** decidir se a visão lê mesmo sem
+juiz (com o aviso "não conferida") e medir em amostra real. **De quem:** 🤖. **Custa esquecer:** a foto da apólice que o segurado manda
+não vira ficha nenhuma.
+
+## P-130B-09 · 🤖 A visão confere só a soma
+Linha única genérica pode fechar; sai "conferida pela soma, lida de imagem", sem limite. **Destrava:** levar à visão o juiz por linha
+(rótulo, limite) do texto. **De quem:** 🤖. **Custa esquecer:** uma apólice escaneada "conferida" sem as coberturas separadas.
+
+## P-130B-10 · 🤖 Resposta gigante do modelo processada no laço async
+📊 18,7 s num caso artificial (teste do conserto). **Destrava:** cortar o tamanho da resposta antes de processar, ou processar fora do
+laço. **De quem:** 🤖. **Custa esquecer:** uma resposta anômala do provedor trava o atendimento de todos por segundos.
+
+## P-130B-11 · 🤖 A 131 tem de ligar `de_apolice(…, ficha=, config=)` e a pré-leitura das renovações do mês
+A renovação monta o pedido de AUTO e de RE pela ficha, recusando com a lista do que falta — mas nenhum código do produto a chama ainda.
+**Destrava:** a SPEC-131 liga o chamador e a pré-leitura (de madrugada) das renovações do mês. **De quem:** 🤖 131. **Custa esquecer:** a
+ficha existe e a renovação continua montada à mão.
+
+## P-130B-12 · 🤖 O mapa rótulo do documento → chave do Agger para as coberturas EXTRAS
+Hoje as extras vão pelo preset do ramo, não pelo que a apólice atual tem. **Destrava:** o mapa por seguradora/ramo, medido contra as
+fichas da bancada. **De quem:** 🤖 131. **Custa esquecer:** a renovação "igual à atual" cota coberturas diferentes das que o cliente tem.
+
+## P-130B-13 · 🤖 `DocumentService.delete_document` não apaga o `raw/{id}.json` nem o `.leitura.json`
+**Destrava:** apagar os dois junto com o documento (e teste). **De quem:** 🤖. **Custa esquecer:** a ficha e o texto de uma apólice
+apagada ficam no MinIO — dado pessoal sem dono.
+
+## P-130B-14 · 🧑🤖 As pastas não rastreadas `app/app/` e `app/backend/` na raiz fazem `test_o_sonnet_5_esta_proibido` falhar
+📊 Na árvore desde 03/10 (`git status`: `?? app/app/`, `?? app/backend/`); são cópias velhas e o teste as varre. O gerente NÃO apagou.
+**Destrava:** decidir apagar (conferir antes que nada nelas é único). **De quem:** 🧑 a decisão · 🤖 a remoção. **Custa esquecer:** a
+bateria fica com um vermelho que não é do produto e ensina a ignorar vermelho (CLAUDE.md §9.3).
