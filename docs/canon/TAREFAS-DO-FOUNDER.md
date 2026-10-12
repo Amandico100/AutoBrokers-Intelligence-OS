@@ -29,6 +29,10 @@
 > **10/10 (SPEC-133-A.1):** nasceram a **T-136** (a conta da Resulta no Agger) e a **T-137** (as senhas "mudar123"). **11/10 (SPEC-129-C, mais ramos do Agger):** nasceu a **T-138** — seguir o `programa-multicalculo/ROTEIRO-DE-VALIDACAO-DO-FOUNDER.md` (17 passos em 5 blocos), que junta a T-132…T-137 numa ordem só; a **T-136** ganhou os achados do canário de RE (P-129C-04).
 > **11/10 tarde (SPEC-131-0 parte A, as contas da corretora):** nasceram a **T-139** (Implantar os 4 serviços), a **T-140** (funções e "quem é quem"), a **T-141** (o Agger de cada comercial), a **T-142** (a tela Serviços), a **T-143** (a InfoCap da Amandus é a da AutoFleet) e a **T-144** (conectar a InfoCap em cada corretora real).
 > **11/10 noite (o mapa de possibilidades: InfoCap, Agger, seguradoras e cobrança):** nasceram a **T-145** (senhas Allianz e Mapfre), a **T-146** (religar a cobrança em teste), a **T-147** e a **T-148** (capturas HAR da Allianz, Zurich e HDI), a **T-149** (API da HDI), a **T-150** (perguntas à InfoCap/Dimensa), a **T-151** (o menu Sincronizações do Agger), a **T-152** (🔴 as senhas expostas pelo Agger) e a **T-153** (o financeiro do CORP em Excel).
+> **12/10 (SPEC-130-B, a ficha única da apólice + as respostas do Founder de 11/10):** a **T-145** está ✅ feita (as senhas gravadas no
+> cofre), a **T-150** e a **T-151** ✅ respondidas, a **T-149** ❌ cancelada (a liberação da HDI já existe), a **T-146**, a **T-147** e a
+> **T-148** ⏸ foram para o FIM da fila (a cobrança estável, D-1311-02 TOMADA), a **T-153** ⏸ adiada; o `smith-web` foi implantado e o
+> `/api/versao` conferido (11/10). Nasceram a **T-154** (Implantar a 130-B) e a **T-155** (apagar as pastas velhas `app/app/` e `app/backend/`). A **T-152** segue pendente.
 
 ## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123 · SPEC-130-A: T-124 a T-128)
 
@@ -80,6 +84,8 @@
       `portal-worker` → `smith-web`. Nenhuma variável nova. As 3 tabelas/colunas novas **já estão no banco** (aplicadas em 11/10) — o robô
       novo lê o "uso" de cada conta do Agger, então o `portal-worker` precisa subir junto. **Esperado:** o painel abre; em Personalização
       aparece o cartão **Serviços**. **Se der errado:** um print e a hora no chat. · *de:* S131-0-A
+      🧑 **11/10:** o Founder implantou o `smith-web` e conferiu o `/api/versao` ("já implantei e deu certo"); os outros três não foram
+      confirmados um a um — o T-154 (a 130-B) sobe `smith-api` e `smith-worker` de novo de qualquer jeito.
 - [ ] **T-140** ⏳ 🧑 **depois da T-139** · **Marcar as funções e dizer quem é quem** — painel → **Personalização → Equipe**: em cada
       pessoa, marque as funções (comercial · calculista · negociador). Mais abaixo, em **"Quem é quem no sistema de gestão"**, confirme os
       códigos de produtor de cada comercial (a tela sugere pelos nomes da InfoCap; você só confirma). ⚠️ Precisa de uma InfoCap conectada
@@ -105,8 +111,14 @@
 
 > O porquê de cada uma está em `programa-multicalculo/131-0/MAPA-DE-POSSIBILIDADES-INFOCAP-AGGER-SEGURADORAS.md` §11. Nenhuma delas
 > envia nada a cliente. A ordem sugerida: **T-152** (segurança) → **T-145** → **T-146** → as capturas e os e-mails quando puder.
+> **12/10:** o Founder respondeu em 11/10 — o que sobrou da cobrança (T-146, T-147, T-148) foi para o FIM da fila (D-1311-02 TOMADA: a
+> cobrança não é pré-requisito de renovação nem de cotação). Só a **T-152** continua valendo agora.
 
-- [ ] **T-145** ⏳ 🧑 **hoje, 15 min** · **As senhas da Allianz e da Mapfre** (P-COBRANCA-01; substitui o item 9 da tabela "Decisões suas
+- [x] **T-145** ✅ **FEITA 11/10** — o Founder mandou as quatro senhas (Allianz e Mapfre das duas corretoras-piloto) e o gerente as
+      GRAVOU no cofre do produto (`portal_accounts`, cifradas com a chave de produção; conferidas por releitura: login e senha batem; o
+      cifrado antigo guardado fora do git para reverter). 📊 Uma das Mapfre já tinha a senha nova (a falha antiga dela não era a senha); a
+      outra trocou também o LOGIN. ⚠️ Nada foi testado no portal (a cobrança continua desligada; o teste é a T-146, no fim da fila).
+      O texto original, para a história: · **As senhas da Allianz e da Mapfre** (P-COBRANCA-01; substitui o item 9 da tabela "Decisões suas
       em aberto") — 📊 nas últimas execuções (10 e 11/09) os dois portais **recusaram a senha** cadastrada.
       1. Descubra qual corretora tem a rotina de cobrança: **SQL** (só leitura)
          `select company_name from companies where id::text like '04b5cdbc%';`
@@ -115,7 +127,7 @@
          cartão do portal da seguradora (Allianz / Mapfre).
       4. **Esperado:** você entra direto, sem captcha e sem código por SMS/e-mail. **Se aparecer captcha ou código:** avise no chat — muda
          o desenho do robô. · *de:* investigação 11/10 (LAUDO-COBRANCA)
-- [ ] **T-146** ⏳ 🧑 **depois da T-145, 10 min** · **Religar a cobrança em modo TESTE por 3 dias úteis** (P-COBRANCA-03) — 📊 o robô
+- [ ] **T-146** ⏸ 🧑 **NO FIM DA FILA (Founder 11/10, D-1311-02 TOMADA: a SPEC de cobrança estável a faz)** · **Religar a cobrança em modo TESTE por 3 dias úteis** (P-COBRANCA-03) — 📊 o robô
       está parado desde 11/09 e a execução com 6 seguradoras já leva 831–893 s, contra um teto de 900 s.
       1. No **console do `smith-api`**: `printenv BILLING_COLLECTION_TIMEOUT_SECONDS` — vazio quer dizer 900 (o padrão).
       2. **EasyPanel → `smith-api` → Ambiente**: acrescente `BILLING_COLLECTION_TIMEOUT_SECONDS=1800` e clique **Implantar** no
@@ -128,33 +140,41 @@
          E `select portal_key, health from portal_accounts order by 1;` → nem tudo `unknown`.
       **Se der errado:** a Zurich com `needs_human` é esperado (T-148 decide); outra seguradora caída → print da linha e a hora no chat.
       · *de:* investigação 11/10 (LAUDO-COBRANCA §5.3)
-- [ ] **T-147** ⏳ 🧑 **quando puder, 10 min** · **Captura (HAR) da Allianz — a lista de inadimplentes** (P-COBRANCA-04) — tira os 20
+- [ ] **T-147** ⏸ 🧑 **NO FIM DA FILA (cobrança estável)** — 📊 12/10: o HAR da Allianz foi usado na construção da cobrança mas NÃO
+      foi guardado; esta captura continua sendo a fonte, quando a SPEC de cobrança estável abrir. · **Captura (HAR) da Allianz — a lista de inadimplentes** (P-COBRANCA-04) — tira os 20
       cliques do robô da Allianz (nota 86).
       1. Chrome → **F12** → aba **Network** → marque **Preserve log** e **Disable cache** → apague a lista → só então abra a página de login.
       2. Faça devagar: login → home → **Parcelas inadimplentes** → a lista aparecer → abrir 1 parcela → baixar a **2ª via / Carta de inadimplência**.
       3. Ícone de download da aba Network → **"Export HAR (with sensitive data)"** (sem isso o Chrome tira o token).
       4. Salve em `C:\Users\amand\Projetos\AUTOBROKERS RESULTA\AutoBrokers-FIX\docs\intake\MATERIAIS\ALLIANZ\` (pasta fora do git).
       🔴 O arquivo tem cookie, token e dados de clientes: **não mande pelo chat**; só diga "T-147 salvo". · *de:* investigação 11/10
-- [ ] **T-148** ⏳ 🧑 **quando puder, 15 min** · **Captura (HAR) da Zurich e, sem pressa, da HDI** (P-COBRANCA-02) — mesmo jeito da T-147.
+- [ ] **T-148** ⏸ 🧑 **NO FIM DA FILA (cobrança estável)** — 📊 12/10: a Zurich JÁ tem material na árvore em dia,
+      `docs/intake/PORTAL SEGURADORAS/ZURICH/` (2 HAR + HTML da tela de parcelas vencidas; também MAPFRE e TOKIO, 2 HAR cada) — a SPEC
+      lê esse material antes de pedir captura nova; a HDI segue sem captura. · **Captura (HAR) da Zurich e, sem pressa, da HDI** (P-COBRANCA-02) — mesmo jeito da T-147.
       **Zurich** (com o usuário da corretora da T-145): login → Consulta › **Parcelas vencidas** → período de **90 dias** → **Buscar** → se
       houver linha, **Gerar 2ª via**; tire também um **print** da tela de resultado. Salve em `…\docs\intake\MATERIAIS\ZURICH\`.
       **Esperado:** o print diz se a tela também mostra zero (então a carteira não tem Zurich) ou mostra linhas (então o robô perde um filtro).
       **HDI** (régua, sem pressa): login → **Parcela** → filtro de vencimento → lista → **2ª via** de 1 boleto → `…\MATERIAIS\HDI\`.
       · *de:* investigação 11/10
-- [ ] **T-149** ⏳ 🧑 **5 min** · **Pedir à HDI acesso de parceiro às APIs** (nota 82: cobrança e transmissão por API, sem robô) — em
+- [ ] ~~**T-149**~~ ❌ **CANCELADA 11/10 pelo Founder** — não precisa: a liberação de parceiro da HDI JÁ EXISTE; por ora, usar as
+      informações do Agger. · O texto original: **Pedir à HDI acesso de parceiro às APIs** (nota 82: cobrança e transmissão por API, sem robô) — em
       **https://developers.hdi.com.br** ("solicitar acesso") ou pelo seu contato comercial na HDI. Texto pronto:
       > *"Somos a AutoBrokers, plataforma usada por corretoras parceiras da HDI. Queremos acesso de parceiro às APIs de Lista de parcelas
       > com status, Impressão da 2ª via do Boleto, Efetivação, Impressão de Proposta e Lista de Propostas com Status, para Auto,
       > Residencial e Condomínio. Qual o processo, o contrato e o ambiente de homologação?"*
       **Esperado:** um formulário ou um contato; a resposta leva semanas (é comercial). · *de:* LAUDO-AGGER-E-MERCADO §7
-- [ ] **T-150** ⏳ 🧑 **5 min** · **Perguntar à InfoCap/Dimensa** (P-INFOCAP-INCORP; notas 78 e 75) — pelo suporte da InfoCap. Texto pronto:
+- [x] **T-150** ✅ **RESPONDIDA 11/10** — 🧑 **não há base de testes (homologação) para o INCORP**; o Agger **não** alimenta a
+      InfoCap sozinho; "Sincronizações" por API = a API atual (dá para tentar por HAR dentro da InfoCap, se for preciso). → a D-1311-04
+      continua valendo e a SPEC "Emissão e registro" terá de propor como escrever em produção com segurança (P-INFOCAP-INCORP).
+      Prioridade do Founder agora: cotações, renovações, Quem Cobra Menos e cálculos. · O texto original: **Perguntar à InfoCap/Dimensa** (P-INFOCAP-INCORP; notas 78 e 75) — pelo suporte da InfoCap. Texto pronto:
       > *"Usamos a CorpAPI. (1) Existe uma base de homologação para testar o fluxo INCORP (/incorp_url_post → /incorp → /incorp_contexto →
       > /incorp_documento) sem gravar na produção? (2) Qual o formato do JSON devolvido por /incorp e o que /incorp_contexto espera?
       > Ele aceita endosso, e o que acontece com documento duplicado? Há custo por chamada? (3) O Aggilizador já envia à Corp as
       > propostas fechadas (os campos de multicálculo do documento)? (4) Existe rota para comissões recebidas/extrato de comissões?
       > (5) Quais parâmetros o /dashboard aceita?"*
       **Esperado:** se a (1) e a (2) vierem, a SPEC "Emissão e registro" pode cadastrar a proposta fechada sozinha. · *de:* LAUDO-CORPAPI-COMPLETA §3.2
-- [ ] **T-151** ⏳ 🧑 **5 min, só olhar** · **O menu "Sincronizações" no SEU Agger** — entre no **aggilizador.com.br** com o **seu**
+- [x] **T-151** ✅ **FEITA 11/10** — o menu **NÃO existe** (nenhuma aba, página ou menu "Sincronizações") → as ideias E4 e A5 do mapa
+      morrem. · O texto original: **O menu "Sincronizações" no SEU Agger** — entre no **aggilizador.com.br** com o **seu**
       login e veja se no menu lateral aparece **"Sincronizações"**. Se aparecer, abra e anote (ou tire print) **quais seguradoras estão
       ativas** em Apólice digital, Proposta digital, Extrato e Parcelas pendentes. 🔴 **Não clique em "Sincronizar"** (é escrita).
       **Esperado:** aparece → as ideias E4 (55) e A5 (50) do mapa ficam medíveis; não aparece → é módulo do plano e as duas morrem.
@@ -166,11 +186,30 @@
          (Personalização → Conectores).
       3. Nunca instale extensão de terceiro no navegador usado pela equipe para o Agger.
       **Esperado:** nada muda no produto (o robô já não lê essas senhas; a regra virou a D-1311-03). · *de:* LAUDO-AGGER-E-MERCADO §2.5
-- [ ] **T-153** ⏳ 🧑 **quando quiser o financeiro, 20 min** · **Exportar o financeiro do CORP clássico em Excel** (nota 85; a API não tem
+- [ ] **T-153** ⏸ 🧑 **ADIADA pelo Founder em 11/10 ("outra ocasião")** — o financeiro por planilha saiu da fila por ora. ·
+      **Exportar o financeiro do CORP clássico em Excel** (nota 85; a API não tem
       comissão recebida, repasse pago nem caixa) — no CORP clássico → **Gerenciador de Relatórios** → exporte em **Excel**, últimos 12
       meses: **Comissões Recebidas** · **Comissões Pendentes** · **Repasse ao Produtor** · **Fluxo de Caixa – Extrato Diário**. Salve em
       `C:\Users\amand\Projetos\AUTOBROKERS RESULTA\AutoBrokers-FIX\docs\intake\FINANCEIRO-CORP\` (fora do git; tem dado de cliente) e
       diga no chat "T-153 salvo". **Esperado:** é a matéria-prima da SPEC "financeiro por planilha". · *de:* LAUDO-CORPAPI-COMPLETA §5.3
+
+### ⓪ AGORA — a ficha única da apólice (12/10/2026, depois da SPEC-130-B)
+
+> O que mudou: o produto lê a apólice (o PDF do CORP, o anexo do WhatsApp e o do chat) com UM leitor só, que confere a soma das
+> coberturas contra o prêmio antes de afirmar qualquer coisa. 📊 Na bancada de 11–12/10: antes 11 de 32 apólices conferidas; agora 24 de
+> 28 com PDF. Quando não confere, o atendimento diz que a leitura não foi conferida em vez de afirmar a lista. Nada é enviado a cliente
+> por esta SPEC; a renovação que usa a ficha liga na 131.
+
+- [ ] **T-154** ⏳ 🧑 **primeiro** · **Implantar a SPEC-130-B** — EasyPanel, **nesta ordem**: `smith-api` → `smith-worker`. 📊 Só o
+      código de `backend/` mudou (`git diff 4bfd562..HEAD --stat`: 25 arquivos, nenhum em `frontend/` nem em `portal_worker/`) — o
+      `smith-web` e o `portal-worker` não precisam. **Nenhuma variável nova obrigatória.** A migration do papel `leitura_de_apolice`
+      **já está no banco** (aplicada 11/10). Freio, se precisar: `LEITOR_APOLICE_MODELO=0` no `smith-api` desliga o modelo E a visão (fica
+      só o regex, custo zero). **Esperado:** o painel abre; no chat, ao perguntar a cobertura de uma apólice de residencial que tem PDF, a
+      resposta vem com as coberturas; quando a leitura não fecha, vem o aviso de que não foi conferida. **Se der errado:** um print e a
+      hora no chat. · *de:* S130-B
+- [ ] **T-155** ⏳ 🧑 **decisão, 1 min** · **Apagar as pastas velhas `app/app/` e `app/backend/` da raiz do projeto** (P-130B-14) — estão
+      na árvore desde 03/10, fora do git, e fazem um teste da bateria falhar sem ser defeito do produto. Responda no chat *"pode apagar"* ou
+      *"não apague"*; a execução confere antes que nada nelas é único. · *de:* S130-B
 
 ### ① Implantar e conferir — não depende de nada
 
