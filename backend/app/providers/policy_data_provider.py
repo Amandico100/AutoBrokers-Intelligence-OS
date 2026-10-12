@@ -81,6 +81,7 @@ from typing import (
     Generic,
     List,
     Literal,
+    Mapping,
     Optional,
     Protocol,
     Sequence,
@@ -147,6 +148,9 @@ __all__ = [
     "opcoes_em_texto",
     "reconciliar",
     "TOLERANCIA_DE_PREMIO",
+    "TOLERANCIA_DO_DOCUMENTO",
+    "ToleranciaRelativa",
+    "fecha_o_premio",
     # contrato e registry
     "PolicyDataProvider",
     "MEMBROS_DO_CONTRATO",
@@ -252,6 +256,56 @@ _DOIS_CENTAVOS = Decimal("0.01")
 #: cobertura entre cadastro e PDF na Allianz do golden é R$ 0,04 (Incêndio de
 #: Bens de Condôminos, 307,30 x 307,26).
 TOLERANCIA_DE_PREMIO = Decimal("0.05")
+
+
+@dataclass(frozen=True)
+class ToleranciaRelativa:
+    """Tolerância que cresce com o valor: `max(piso; fração × esperado)`."""
+
+    piso: Decimal
+    fracao: Decimal
+
+    def para(self, esperado: Decimal) -> Decimal:
+        return max(self.piso, (abs(esperado) * self.fracao).quantize(_DOIS_CENTAVOS))
+
+
+#: 🔴 SPEC-130-B D-130B-12 (nota 82 x 70 para "só ±2 %"): o JUIZ DO DOCUMENTO —
+#: `max(R$ 0,05; 0,5 % do esperado)`. Ele decide se a LEITURA de um PDF fechou
+#: (Σ prêmio das linhas lidas = prêmio líquido). Mais folgado que o do cadastro
+#: porque o PDF arredonda linha a linha e a soma de 20 arredondamentos passa de
+#: R$ 0,05; mais apertado que ±2 % porque ±2 % esconderia uma cobertura pequena
+#: faltando (💭 numa apólice de R$ 30.000, uma linha de R$ 500 some dentro de 2 %).
+#: ⛔ O cadastro (`_contador_de_premio`) NÃO usa esta: continua em R$ 0,05.
+TOLERANCIA_DO_DOCUMENTO = ToleranciaRelativa(piso=Decimal("0.05"), fracao=Decimal("0.005"))
+
+
+def fecha_o_premio(
+    soma: Any,
+    esperado: Any,
+    *,
+    tolerancia: Union[Decimal, ToleranciaRelativa, None] = None,
+) -> Tuple[bool, Decimal, Decimal]:
+    """`(fecha, diferenca, pct)` — o MESMO cálculo do contador de prêmio.
+
+    `diferenca = esperado - soma` (positiva = falta), `pct` sobre o esperado.
+    `tolerancia`: `Decimal` absoluto (o do cadastro, R$ 0,05), `ToleranciaRelativa`,
+    ou `None` = `TOLERANCIA_DO_DOCUMENTO`.
+
+    ⛔ Sem esperado positivo não há o que conferir: devolve `(False, 0, 0)` — e
+    quem chama decide o estado (`sem_premio_para_conferir`), nunca "fechou".
+    """
+    s = dinheiro(soma)
+    e = dinheiro(esperado)
+    if not isinstance(e, Decimal) or e <= 0:
+        return False, Decimal("0.00"), Decimal("0.00")
+    if not isinstance(s, Decimal):
+        s = Decimal("0.00")
+    diferenca = (e - s).quantize(_DOIS_CENTAVOS)
+    pct = (diferenca / e * Decimal("100")).quantize(_DOIS_CENTAVOS)
+    if tolerancia is None:
+        tolerancia = TOLERANCIA_DO_DOCUMENTO
+    limite = tolerancia.para(e) if isinstance(tolerancia, ToleranciaRelativa) else Decimal(tolerancia)
+    return abs(diferenca) <= limite, diferenca, pct
 
 
 def dinheiro(valor: Any) -> Union[Dinheiro, Indisponivel]:
@@ -603,6 +657,25 @@ def frase_do_sinal(sinal: Sinal) -> str:
                "" if int(detalhe.get("coberturas_do_cadastro") or 0) == 1 else "s",
                "" if int(detalhe.get("coberturas_do_cadastro") or 0) == 1 else "s")
         )
+    if codigo == "documento_nao_conferido":
+        # 💭 copy. SPEC-130-B: a leitura do PDF não FECHOU com o prêmio líquido —
+        # o corretor precisa saber que a lista pode estar incompleta.
+        estado = str(detalhe.get("estado") or "").strip()
+        linhas = int(detalhe.get("linhas") or 0)
+        if estado == "pendente":
+            return ("a leitura completa do documento oficial ainda está em andamento: as coberturas "
+                    "acima podem estar incompletas. Não afirme que a lista está inteira.")
+        if estado == "sem_premio_para_conferir":
+            return ("o documento oficial foi lido (%d linha%s de cobertura), mas não há prêmio líquido "
+                    "para conferir a soma: não afirme que a lista está completa."
+                    % (linhas, "" if linhas == 1 else "s"))
+        if estado == "falhou":
+            return ("o documento oficial não pôde ser lido por inteiro: confirme as coberturas na "
+                    "seguradora antes de afirmar que uma delas está ou não contratada.")
+        return ("o documento oficial foi lido, mas a soma das coberturas lidas (%s em %d linha%s) "
+                "não fecha com o prêmio líquido (%s): pode faltar cobertura. Não afirme que a lista "
+                "está completa." % (reais(detalhe.get("soma")), linhas, "" if linhas == 1 else "s",
+                                    reais(detalhe.get("esperado"))))
     if codigo == "apolice_cancelada":
         return "o sistema de gestão marca esta apólice como CANCELADA."
     if codigo == "status_do_fornecedor":
@@ -657,6 +730,12 @@ class ApoliceDocumental:
     parcelas: Tuple[Parcela, ...] = ()
     premio_liquido: Union[Dinheiro, Indisponivel] = INDISPONIVEL
     referencia: Optional[ReferenciaDeDocumento] = None
+    # 🔴 SPEC-130-B §4 — a FICHA: o que o documento É, se a leitura FECHOU, e o
+    #    objeto do risco. Defaults `None`: nenhum chamador de antes quebra.
+    #    `hash=False`: são mapeamentos (não hasheáveis) e não entram na identidade.
+    tipo_documento: Optional[str] = None
+    leitura: Optional[Mapping[str, Any]] = field(default=None, hash=False)
+    objeto_do_risco: Optional[Mapping[str, Any]] = field(default=None, hash=False)
 
 
 @dataclass(frozen=True)
@@ -1633,6 +1712,20 @@ def reconciliar(corp: Apolice, pdf: Optional[ApoliceDocumental]) -> Apolice:
         sinais = [s for s in sinais if s.codigo != "cadastro_incompleto"]
         sinais.append(sinal_premio)
 
+    # 🔴 SPEC-130-B §4: a leitura do documento que NÃO fechou é dita ao corretor.
+    #    ⛔ A regra de quem vence NÃO muda — o sinal só AVISA que a lista pode
+    #    estar incompleta. Idempotente como os outros: o recalculado substitui.
+    leitura = getattr(pdf, "leitura", None) if pdf is not None else None
+    if isinstance(leitura, Mapping) and str(leitura.get("estado") or ""):
+        sinais = [s for s in sinais if s.codigo != "documento_nao_conferido"]
+        if str(leitura.get("estado")) != "fechou":
+            sinais.append(Sinal("documento_nao_conferido", {
+                "estado": str(leitura.get("estado")),
+                "linhas": leitura.get("linhas"),
+                "soma": leitura.get("soma_linhas"),
+                "esperado": leitura.get("premio_esperado"),
+            }))
+
     if pdf is None or not pdf.linhas:
         return replace(corp, sinais=tuple(sinais))
 
@@ -1867,10 +1960,11 @@ def _contador_de_premio(corp: Apolice) -> Optional[Sinal]:
     if not do_cadastro:
         return None
     soma = sum(do_cadastro, Decimal("0")).quantize(_DOIS_CENTAVOS)
-    diferenca = (liquido - soma).quantize(_DOIS_CENTAVOS)
-    if abs(diferenca) <= TOLERANCIA_DE_PREMIO:
+    # 🔴 SPEC-130-B D-130B-02: o MESMO cálculo do juiz do documento, com a
+    #    tolerância DE HOJE do cadastro (R$ 0,05) — comportamento idêntico.
+    fecha, diferenca, pct = fecha_o_premio(soma, liquido, tolerancia=TOLERANCIA_DE_PREMIO)
+    if fecha:
         return None
-    pct = (diferenca / liquido * Decimal("100")).quantize(_DOIS_CENTAVOS)
     return Sinal("cadastro_incompleto", {
         "soma_das_coberturas": soma,
         "premio_liquido": liquido,
