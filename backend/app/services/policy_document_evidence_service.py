@@ -8,7 +8,9 @@ evidence snippets for the Smith runtime.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
 import logging
 import os
 import re
@@ -48,7 +50,17 @@ MAX_DOCUMENT_TEXT_CHARS = 60_000
 #: condomínio real produz **22** itens estruturados e a HDI **20** — e os
 #: fragmentos de cláusula/exclusão vinham DEPOIS, no mesmo teto. Com 40, uma
 #: apólice de 21 coberturas perdia trecho de cláusula em silêncio.
-MAX_EVIDENCE_ITEMS = 60
+#:
+#: 🔴 SPEC-130-B: DOIS tetos, um por tipo, e o total é a soma. 📊 BLOCO 0 do
+#: laudo: a apólice empresarial de 105 páginas parou em 7 % do prêmio porque os
+#: estruturados de todas as páginas disputavam o MESMO teto de 60 com os
+#: fragmentos. Estruturados (linha de cobertura, plano, parcela, franquia em
+#: prosa, LMG) têm teto próprio e GRANDE; fragmentos de cláusula, o de sempre.
+#: ⚠️ O corte da ENTREGA (`_result`) é `MAX_EVIDENCE_ITEMS` — o mesmo número que
+#: a extração nunca ultrapassa (300 + 60).
+TETO_ESTRUTURADOS = 300
+TETO_FRAGMENTOS = 60
+MAX_EVIDENCE_ITEMS = TETO_ESTRUTURADOS + TETO_FRAGMENTOS
 
 _INTENT_TERMS = (
     "cobertura",
@@ -629,9 +641,11 @@ def extract_policy_document_evidence(
     content_hash: str,
     extraction_method: str = "direct_text",
 ) -> List[Dict[str, Any]]:
-    locator_hash = policy_locator_hash(policy_locator)
+    # SPEC-130-B: o anexo do WhatsApp/chat não tem locator — o hash fica vazio.
+    locator_hash = policy_locator_hash(policy_locator) if policy_locator else ""
     evidence: List[Dict[str, Any]] = []
     seen: set[Tuple[int, str, str]] = set()
+    estruturados = 0
 
     def _base_item(page_number: int, evidence_type: str, snippet: str) -> Dict[str, Any]:
         return {
@@ -688,9 +702,14 @@ def extract_policy_document_evidence(
             item = _base_item(page_number, evidence_type, snippet)
             item["structured"] = structured_item.get("structured") or {}
             evidence.append(item)
-            if len(evidence) >= MAX_EVIDENCE_ITEMS:
-                return evidence
+            estruturados += 1
+            if estruturados >= TETO_ESTRUTURADOS:
+                break
+        if estruturados >= TETO_ESTRUTURADOS:
+            logger.warning("[PolicyDocumentEvidence] teto de estruturados (%d) atingido", TETO_ESTRUTURADOS)
+            break
 
+    teto_total = len(evidence) + TETO_FRAGMENTOS
     for page_number, content in paginas:
         for fragment in _split_page_fragments(content):
             types_found = _classify_fragment(fragment)
@@ -703,8 +722,8 @@ def extract_policy_document_evidence(
                     continue
                 seen.add(key)
                 evidence.append(_base_item(page_number, evidence_type, snippet))
-            if len(evidence) >= MAX_EVIDENCE_ITEMS:
-                return evidence
+            if len(evidence) >= teto_total:
+                return evidence[:teto_total]
     return evidence
 
 
@@ -794,6 +813,777 @@ def _empty_result(
     }
 
 
+# ===========================================================================
+# SPEC-130-B U3 — A LEITURA EM CASCATA, COM JUIZ
+# ===========================================================================
+#
+#   regex → JUIZ (fecha o prêmio?) → modelo barato (texto MASCARADO, trecho
+#   literal obrigatório) → JUIZ → visão (só página sem texto) → JUIZ → estado
+#
+# 🔴 Não é um leitor novo (CLAUDE.md §5, D-130B-01): o degrau 1 é o MESMO
+# `extract_policy_document_evidence` de sempre, intacto; os degraus 2 e 3
+# devolvem `coverage_row` no MESMO formato, e o juiz é o MESMO cálculo do
+# contador de prêmio (`fecha_o_premio`, D-130B-02), com a tolerância do
+# documento (D-130B-12).
+
+#: A versão do leitor. 🔴 A leitura guardada só é reaproveitada se for DESTA
+#: versão — mudar o leitor é mudar este número, e tudo é relido uma vez.
+LEITOR_VERSAO = "130B.1"
+
+ESTADOS_DA_LEITURA = ("fechou", "nao_fechou", "sem_premio_para_conferir", "pendente", "falhou")
+#: Os estados em que a leitura guardada SERVE (não se relê pelo modelo).
+ESTADOS_FINAIS = ("fechou", "nao_fechou", "sem_premio_para_conferir")
+
+PAPEL_DA_LEITURA = "leitura_de_apolice"
+#: no máximo 20 páginas sem texto vão à visão (custo e latência têm teto)
+MAX_PAGINAS_NA_VISAO = 20
+DPI_DA_VISAO = 150
+#: 📊 `llm_pricing` 11/10/2026 (migration 20261007_02, cabeçalho): gpt-6-luna
+#: US$ 0,10 / 0,50 por 1 M tokens (entrada / saída). Só para ESTIMAR quando a
+#: resposta não traz custo; o custo de verdade é o do ledger (`token_usage_logs`).
+_PRECO_ESTIMADO_POR_MILHAO = (0.10, 0.50)
+
+
+def leitor_por_modelo_ligado() -> bool:
+    """`LEITOR_APOLICE_MODELO=0` desliga o modelo E a visão (padrão: ligado)."""
+    return str(os.getenv("LEITOR_APOLICE_MODELO", "1")).strip().lower() not in ("0", "false", "nao", "não", "off")
+
+
+def orcamento_do_modelo_s() -> float:
+    """`LEITOR_APOLICE_ORCAMENTO_S` (padrão 20 s) — D-130B-08."""
+    try:
+        valor = float(str(os.getenv("LEITOR_APOLICE_ORCAMENTO_S", "20")).strip())
+    except ValueError:
+        valor = 20.0
+    return valor if valor > 0 else 20.0
+
+
+# ---------------------------------------------------------------------------
+# A MÁSCARA DO LEITOR (D-130B-07)
+# ---------------------------------------------------------------------------
+# 🔴 Por que NÃO o mascarador do canal inteiro: 📊 `canal/conversa.py:332` troca
+# QUALQUER sequência de 8+ dígitos (com separadores) por `[NUMERO]` — e
+# `600.000,00` tem 8 dígitos. Ele apagaria o LMI e o prêmio, que são exatamente
+# o que o modelo precisa ler. Daqui se REUSA dele o que não toca dinheiro:
+# e-mail, placa (com uma trava a mais: placa seguida de `,dd`/`.ddd` é DINHEIRO
+# — "LMI 1000,00" casaria a regra de placa) e o CEP com traço.
+# Os números de documento são reconhecidos pela FORMA (pontuação de CPF/CNPJ,
+# hífen de telefone) ou pela LONGURA SEM separador decimal (9+ dígitos crus).
+# ⛔ Dinheiro em pt-BR sempre tem vírgula decimal — e é ela que o protege.
+_MASCARA_CNPJ = re.compile(r"(?<![\d.,/])\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}(?!\d)")
+_MASCARA_CPF = re.compile(r"(?<![\d.,/])\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)")
+_MASCARA_CEP_PONTO = re.compile(r"(?<![\d.,])\d{2}\.\d{3}-\d{3}(?!\d)")
+_MASCARA_TELEFONE = re.compile(
+    r"(?:\+?55[\s-]?)?\(\d{2}\)\s*9?\d{4}[\s-]?\d{4}(?!\d)"           # (11) 98765-4321
+    r"|(?<![\d.,])(?:\+?55[\s-]?)?\d{2}\s9?\d{4}-\d{4}(?!\d)"         # 11 98765-4321
+    r"|(?<![\d.,-])(?!(?:19|20)\d{2}-(?:19|20)\d{2}(?!\d))9?\d{4}-\d{4}(?!\d)"  # 98765-4321 (não "2025-2026")
+    r"|(?<!\d)0[38]00[\s-]?\d{3}[\s-]?\d{4}(?!\d)"                     # 0800 / 0300
+)
+_MASCARA_CHASSI = re.compile(
+    r"(?<![A-Za-z0-9])(?=[A-HJ-NPR-Z0-9]{17}(?![A-Za-z0-9]))(?=[A-HJ-NPR-Z0-9]*\d)"
+    r"(?=[A-HJ-NPR-Z0-9]*[A-HJ-NPR-Z])[A-HJ-NPR-Z0-9]{17}")
+_MASCARA_DIGITOS_CRUS = re.compile(r"(?<![\d.,])\d{9,}(?!\d|[.,]\d)")
+_DINHEIRO_LOGO_DEPOIS = re.compile(r"^[.,]\d")
+_PALAVRA_E_ANO = re.compile(r"^[A-Za-z]{3}\s+(?:19|20)\d{2}$")
+_MASCARA_PLACA_ROTULADA = re.compile(r"(?i)(\bplaca\s*:?\s*)[A-Z]{3}[\s-]?\d[A-Z0-9]\d{2}\b")
+
+
+def _mascaras_do_canal() -> Dict[str, Any]:
+    """E-mail, placa e CEP do mascarador do CANAL — o MESMO padrão, não uma cópia."""
+    try:
+        from app.services.canal.conversa import _MASCARAS
+
+        return {marcador: padrao for padrao, marcador in _MASCARAS
+                if marcador in ("[EMAIL]", "[PLACA]", "[CEP]")}
+    except Exception:  # noqa: BLE001 — sem o canal, a reserva local (mesmas formas)
+        return {
+            "[EMAIL]": re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"),
+            "[PLACA]": re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{3}[\s-]?\d[A-Za-z0-9]\d{2}(?![A-Za-z0-9])"),
+            "[CEP]": re.compile(r"(?<!\d)\d{5}-\d{3}(?!\d)"),
+        }
+
+
+def mascarar_texto_de_apolice(texto: str) -> str:
+    """CPF, CNPJ, telefone, e-mail, CEP, placa e chassi → marcadores. **Nunca dinheiro.**
+
+    ✅ `600.000,00` · `15.103,93` · `R$ 1500000,00` passam intactos.
+    ⛔ `123.456.789-09` · `12.345.678/0001-90` · `(11) 98765-4321` · `12345678909` não.
+    """
+    t = str(texto or "")
+    canal = _mascaras_do_canal()
+    if "[EMAIL]" in canal:
+        t = canal["[EMAIL]"].sub("[EMAIL]", t)
+    t = _MASCARA_CNPJ.sub("[CNPJ]", t)
+    t = _MASCARA_CPF.sub("[CPF]", t)
+    t = _MASCARA_CEP_PONTO.sub("[CEP]", t)
+    if "[CEP]" in canal:
+        t = canal["[CEP]"].sub("[CEP]", t)
+    t = _MASCARA_TELEFONE.sub("[TELEFONE]", t)
+    t = _MASCARA_PLACA_ROTULADA.sub(lambda m: m.group(1) + "[PLACA]", t)
+    if "[PLACA]" in canal:
+        def _placa(m: "re.Match[str]") -> str:
+            # 🔴 as travas a mais, porque um documento de seguro não é uma conversa:
+            #    "LMI 1000,00" (3 letras + 4 dígitos + `,00`) é DINHEIRO, e
+            #    "Vig 2025-2026" (palavra + espaço + ANO) é DATA. A placa que vem
+            #    rotulada ("Placa: ABC 2019") já saiu na linha acima.
+            if _DINHEIRO_LOGO_DEPOIS.match(m.string[m.end():]):
+                return m.group(0)
+            if _PALAVRA_E_ANO.match(m.group(0)):
+                return m.group(0)
+            return "[PLACA]"
+        t = canal["[PLACA]"].sub(_placa, t)
+    t = _MASCARA_CHASSI.sub("[CHASSI]", t)
+    t = _MASCARA_DIGITOS_CRUS.sub("[NUMERO]", t)
+    return t
+
+
+def _espacos(texto: Any) -> str:
+    return " ".join(str(texto or "").split())
+
+
+# ---------------------------------------------------------------------------
+# O QUE O DOCUMENTO É, O PRÊMIO IMPRESSO E O OBJETO DO RISCO — regex LOCAL
+# ---------------------------------------------------------------------------
+_PREMIO_LIQUIDO_IMPRESSO_RE = re.compile(
+    r"pr[eê]mio\s+l[ií]quido(?:\s+total)?(?:\s*\(R\$\))?\s*:?\s*(?:R\$)?\s*:?\s*"
+    r"(?P<valor>" + _VALOR_BR + r")",
+    re.IGNORECASE,
+)
+
+
+def premio_liquido_impresso(pages: Iterable[Dict[str, Any]]) -> Optional[str]:
+    """O `Prêmio Líquido … R$ X` IMPRESSO no documento (o 1º, em ordem de página)."""
+    for page in pages or []:
+        achado = _PREMIO_LIQUIDO_IMPRESSO_RE.search(str(page.get("content") or page.get("text") or ""))
+        if achado:
+            return achado.group("valor")
+    return None
+
+
+def tipo_de_documento(pages: Iterable[Dict[str, Any]]) -> str:
+    """apólice · proposta · endosso · cotação · crlv · desconhecido — por PALAVRAS, sem modelo.
+
+    A 1ª página decide (é onde mora o título); a ordem dá prioridade ao que é
+    mais específico: o CRLV não tem a palavra apólice; o endosso e a proposta
+    citam a apólice; a cotação, ainda não.
+    """
+    lista = list(pages or [])
+    primeira = _strip_accents(str((lista[0].get("content") or lista[0].get("text") or "") if lista else ""))
+    tudo = _strip_accents(" ".join(str(p.get("content") or p.get("text") or "") for p in lista[:3]))
+    if not tudo.strip():
+        return "desconhecido"
+    if re.search(r"certificado de registro e licenciamento|\bcrlv\b", primeira):
+        return "crlv"
+    if re.search(r"\bendosso\s+(?:n\s*[o°º.]|de\s+(?:altera|cancel|inclus|exclus|restitui|cobran))", primeira):
+        return "endosso"
+    tem_numero_de_apolice = bool(re.search(r"\bapolice\s*(?:n\s*[o°º.]|numero|:)", primeira))
+    if re.search(r"\bcotacao\b|\borcamento\b", primeira) and not tem_numero_de_apolice:
+        return "cotacao"
+    if re.search(r"\bproposta\s+de\s+seguro\b|\bproposta\s+n\s*[o°º.]", primeira) and not tem_numero_de_apolice:
+        return "proposta"
+    if re.search(r"\bapolice\b", tudo):
+        return "apolice"
+    return "desconhecido"
+
+
+_OBJETO_RE: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
+    ("placa", re.compile(r"\bplaca\s*:?\s*([A-Z]{3}[\s-]?\d[A-Z0-9]\d{2})\b", re.IGNORECASE)),
+    ("chassi", re.compile(r"\bchassi\s*:?\s*([A-HJ-NPR-Z0-9]{17})\b", re.IGNORECASE)),
+    ("ano_modelo", re.compile(r"\bano\s*/?\s*modelo\s*:?\s*((?:19|20)\d{2}(?:\s*/\s*(?:19|20)\d{2})?)", re.IGNORECASE)),
+    ("cep", re.compile(r"\bCEP\s*:?\s*(\d{2}\.?\d{3}-?\d{3})\b", re.IGNORECASE)),
+    ("atividade", re.compile(r"\batividade(?:\s+(?:principal|do\s+risco|exercida))?\s*:\s*([^\n]{3,80})", re.IGNORECASE)),
+    ("importancia_segurada", re.compile(
+        r"(?:import[aâ]ncia\s+segurada|valor\s+em\s+risco|limite\s+m[aá]ximo\s+de\s+garantia(?:\s+da\s+ap[oó]lice)?)"
+        r"[^\n\d]{0,30}?(?:R\$\s*)?(" + _VALOR_BR + r")", re.IGNORECASE)),
+)
+
+
+def objeto_do_risco_local(pages: Iterable[Dict[str, Any]]) -> Dict[str, Optional[str]]:
+    """Placa, chassi, ano/modelo, CEP, atividade, importância segurada — regex LOCAL.
+
+    ⛔ O modelo NUNCA extrai dado pessoal: o que identifica o bem segurado sai
+    daqui, do texto cru, e fica na FICHA (MinIO) — nunca no `documents.metadata`.
+    """
+    texto = "\n".join(str(p.get("content") or p.get("text") or "") for p in pages or [])
+    saida: Dict[str, Optional[str]] = {}
+    for campo, padrao in _OBJETO_RE:
+        achado = padrao.search(texto)
+        valor = _espacos(achado.group(1)) if achado else None
+        if valor and campo == "placa":
+            valor = re.sub(r"[\s-]", "", valor).upper()
+        saida[campo] = valor or None
+    return saida
+
+
+# ---------------------------------------------------------------------------
+# O JUIZ
+# ---------------------------------------------------------------------------
+def _decimal(valor: Any) -> Optional[Any]:
+    from app.providers.policy_data_provider import Indisponivel, dinheiro
+
+    d = dinheiro(valor)
+    return None if isinstance(d, Indisponivel) else d
+
+
+def _linhas_que_contam(evidence: Iterable[Dict[str, Any]]) -> List[Any]:
+    """Os prêmios que `apolice_documental_do_pack` CONTARIA: `coverage_row` com
+    prêmio + `assistance_plan` com prêmio (o plano com preço é linha, 📊 Allianz
+    R$ 23,88). ⚠️ A mesma regra do adaptador — se ela divergir, o juiz julga
+    uma lista que o corretor não recebe."""
+    premios: List[Any] = []
+    for item in evidence or []:
+        estruturado = (item or {}).get("structured") or {}
+        if estruturado.get("kind") not in ("coverage_row", "assistance_plan"):
+            continue
+        if estruturado.get("kind") == "coverage_row" and not str(estruturado.get("label") or "").strip():
+            continue
+        if estruturado.get("kind") == "assistance_plan" and not str(estruturado.get("plan") or "").strip():
+            continue
+        premio = _decimal(estruturado.get("premium"))
+        if premio is not None:
+            premios.append(premio)
+    return premios
+
+
+def _julgar(evidence: List[Dict[str, Any]], esperado: Any) -> Dict[str, Any]:
+    from decimal import Decimal
+
+    from app.providers.policy_data_provider import TOLERANCIA_DO_DOCUMENTO, fecha_o_premio
+
+    premios = _linhas_que_contam(evidence)
+    soma = sum(premios, Decimal("0")).quantize(Decimal("0.01"))
+    if esperado is None:
+        return {"linhas": len(premios), "soma": soma, "fecha": False, "diferenca": None, "pct": None}
+    fecha, diferenca, pct = fecha_o_premio(soma, esperado, tolerancia=TOLERANCIA_DO_DOCUMENTO)
+    return {"linhas": len(premios), "soma": soma, "fecha": bool(fecha), "diferenca": diferenca, "pct": pct}
+
+
+# ---------------------------------------------------------------------------
+# OS DEGRAUS 2 e 3 — modelo e visão, por PAPEL do Model Router
+# ---------------------------------------------------------------------------
+_INSTRUCAO_DA_LEITURA = (
+    "Você lê a TABELA DE COBERTURAS de um documento de seguro brasileiro. Dados pessoais já foram "
+    "trocados por marcadores como [CPF]; ignore-os. Devolva SÓ um JSON, sem texto em volta:\n"
+    '{"linhas":[{"pagina":N,"rotulo":"...","limite":"600.000,00","premio":"15.103,93","franquia":"...",'
+    '"trecho":"..."}],"premio_liquido_impresso":"..."}\n'
+    "Regras: uma linha por cobertura ou assistência que tenha PRÊMIO; `trecho` é a linha do documento "
+    "COPIADA LITERALMENTE (sem corrigir nada), e o prêmio tem de aparecer nela; `pagina` é o número do "
+    "marcador [pagina N]; não invente linha; não inclua prêmio líquido, IOF, custo de apólice, total ou "
+    "parcelas como linha; valores no formato do documento."
+)
+
+
+def _texto_da_resposta(resposta: Any) -> str:
+    if resposta is None:
+        return ""
+    if isinstance(resposta, (dict, list)) and not hasattr(resposta, "content"):
+        return json.dumps(resposta, ensure_ascii=False)
+    conteudo = getattr(resposta, "content", resposta)
+    if isinstance(conteudo, list):
+        return "".join(
+            str(b.get("text") or "") if isinstance(b, dict) else str(b) for b in conteudo)
+    return str(conteudo or "")
+
+
+def _json_da_resposta(resposta: Any) -> Dict[str, Any]:
+    if isinstance(resposta, dict) and "linhas" in resposta:
+        return resposta
+    texto = _texto_da_resposta(resposta)
+    achado = re.search(r"\{.*\}", texto, re.S)
+    if not achado:
+        return {}
+    try:
+        dados = json.loads(achado.group(0))
+    except (ValueError, TypeError):
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def _custo_da_resposta(resposta: Any) -> Tuple[float, bool, Optional[str]]:
+    """`(custo_usd, estimado, modelo)` — do `usage_metadata` quando há."""
+    uso = getattr(resposta, "usage_metadata", None) or {}
+    meta = getattr(resposta, "response_metadata", None) or {}
+    modelo = meta.get("model_name") or meta.get("model") if isinstance(meta, dict) else None
+    try:
+        entrada = float(uso.get("input_tokens") or 0)
+        saida = float(uso.get("output_tokens") or 0)
+    except (AttributeError, TypeError, ValueError):
+        entrada = saida = 0.0
+    if not (entrada or saida):
+        return 0.0, True, modelo
+    custo = entrada / 1e6 * _PRECO_ESTIMADO_POR_MILHAO[0] + saida / 1e6 * _PRECO_ESTIMADO_POR_MILHAO[1]
+    # 💭 estimado pela tabela da Luna; o ledger (`token_usage_logs`) tem o real
+    return round(custo, 6), True, modelo
+
+
+async def _leitor_modelo_padrao(texto_mascarado: str, *, company_id: str) -> Any:
+    """O degrau 2 pelo PAPEL `leitura_de_apolice` (Model Router, com reserva)."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.factories.llm_factory import invocar_com_reserva
+
+    return await invocar_com_reserva(
+        PAPEL_DA_LEITURA,
+        [SystemMessage(content=_INSTRUCAO_DA_LEITURA), HumanMessage(content=texto_mascarado)],
+        company_id=company_id, service_type=PAPEL_DA_LEITURA, classe_de_dado="pii",
+    )
+
+
+async def _leitor_visao_padrao(imagens: List[Tuple[int, str]], *, company_id: str) -> Any:
+    """O degrau 3: SÓ as páginas sem texto, como imagem, pelo mesmo papel."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from app.factories.llm_factory import invocar_com_reserva
+
+    conteudo: List[Dict[str, Any]] = [{
+        "type": "text",
+        "text": "As imagens abaixo são páginas de um documento de seguro, na ordem: "
+                + ", ".join("[pagina %d]" % n for n, _ in imagens)
+                + ". Leia a tabela de coberturas. ⛔ Não transcreva nome, CPF, telefone ou endereço.",
+    }]
+    for _numero, b64 in imagens:
+        conteudo.append({"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}})
+    return await invocar_com_reserva(
+        PAPEL_DA_LEITURA,
+        [SystemMessage(content=_INSTRUCAO_DA_LEITURA), HumanMessage(content=conteudo)],
+        company_id=company_id, service_type=PAPEL_DA_LEITURA, classe_de_dado="pii",
+    )
+
+
+def _paginas_mascaradas(paginas: List[Tuple[int, str]]) -> Dict[int, str]:
+    return {numero: mascarar_texto_de_apolice(conteudo) for numero, conteudo in paginas}
+
+
+def _texto_marcado(mascaradas: Dict[int, str]) -> str:
+    return "\n\n".join("[pagina %d]\n%s" % (n, t) for n, t in sorted(mascaradas.items()) if t.strip())
+
+
+def _premio_no_trecho(premio: Any, trecho_norm: str) -> bool:
+    """O prêmio aparece no trecho? Nas duas grafias (`1.234,56` e `1234,56`)."""
+    from decimal import Decimal
+
+    if premio is None:
+        return False
+    numero = Decimal(premio).quantize(Decimal("0.01"))
+    com_milhar = f"{numero:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+    sem_milhar = f"{numero:.2f}".replace(".", ",")
+    for grafia in {com_milhar, sem_milhar}:
+        if re.search(r"(?<![\d.,])" + re.escape(grafia) + r"(?![\d]|,\d)", trecho_norm):
+            return True
+    return False
+
+
+def _linha_para_coverage_row(
+    linha: Dict[str, Any],
+    *,
+    pagina: int,
+    trecho: str,
+    premio: Any,
+    metodo: str,
+    confianca: str,
+    base: Dict[str, Any],
+    indice: int,
+) -> Dict[str, Any]:
+    from app.providers.policy_data_provider import reais
+
+    limite = _decimal(linha.get("limite"))
+    franquia = _espacos(linha.get("franquia")) or None
+    item = {
+        **base,
+        "page_number": pagina,
+        "chunk_id": f"{base.get('document_id') or 'anexo'}:p{pagina}:{metodo}{indice}",
+        "evidence_type": "coverage",
+        "evidence_text": _redact_short_text(trecho),
+        "extraction_method": metodo,
+        "confidence": confianca,
+        "structured": {
+            "kind": "coverage_row",
+            "label": _rotulo_limpo(linha.get("rotulo")),
+            "lmi": reais(limite) if limite is not None else None,
+            "premium": reais(premio),
+            "participation": franquia,
+            "layout": metodo,
+        },
+    }
+    return item
+
+
+def _linhas_do_modelo(
+    dados: Dict[str, Any],
+    mascaradas: Dict[int, str],
+    *,
+    base: Dict[str, Any],
+    exigir_trecho_literal: bool,
+    metodo: str,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """As linhas do modelo que SOBREVIVEM à conferência → `(coverage_rows, descartadas)`.
+
+    🔴 D-130B-06: no degrau do texto, uma linha só entra se o `trecho` existir
+    LITERALMENTE no texto mascarado daquela página E o prêmio aparecer nele.
+    O modelo não tem como inventar uma linha que o documento não tem.
+    """
+    saida: List[Dict[str, Any]] = []
+    descartadas = 0
+    vistos: set = set()
+    normalizadas = {n: _espacos(t) for n, t in mascaradas.items()}
+    for indice, linha in enumerate(dados.get("linhas") or []):
+        if not isinstance(linha, dict):
+            descartadas += 1
+            continue
+        try:
+            pagina = int(linha.get("pagina"))
+        except (TypeError, ValueError):
+            descartadas += 1
+            continue
+        rotulo = _rotulo_limpo(linha.get("rotulo"))
+        premio = _decimal(linha.get("premio"))
+        trecho = _espacos(linha.get("trecho"))
+        if not rotulo or premio is None or rotulo_nao_e_cobertura(rotulo):
+            descartadas += 1
+            continue
+        if exigir_trecho_literal:
+            pagina_texto = normalizadas.get(pagina)
+            if (not trecho or pagina_texto is None or trecho not in pagina_texto
+                    or not _premio_no_trecho(premio, trecho)):
+                descartadas += 1
+                continue
+        else:
+            if pagina not in mascaradas:
+                descartadas += 1
+                continue
+            trecho = trecho or rotulo
+        chave = (pagina, trecho if exigir_trecho_literal else rotulo, str(premio))
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        saida.append(_linha_para_coverage_row(
+            linha, pagina=pagina, trecho=mascarar_texto_de_apolice(trecho), premio=premio,
+            metodo=metodo, confianca="high" if exigir_trecho_literal else "medium",
+            base=base, indice=indice + 1))
+    return saida, descartadas
+
+
+def _sem_as_linhas_do_regex(evidence: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """O regex SAI da conta quando o modelo vence: sem `coverage_row`, e o
+    `assistance_plan` fica — SEM o preço (senão ele seria contado duas vezes)."""
+    saida: List[Dict[str, Any]] = []
+    for item in evidence:
+        estruturado = (item or {}).get("structured") or {}
+        if estruturado.get("kind") == "coverage_row":
+            continue
+        if estruturado.get("kind") == "assistance_plan" and estruturado.get("premium") is not None:
+            item = {**item, "structured": {k: v for k, v in estruturado.items() if k != "premium"}}
+        saida.append(item)
+    return saida
+
+
+def _renderizar_paginas(file_bytes: bytes, numeros: List[int]) -> List[Tuple[int, str]]:
+    """PNG base64 das páginas pedidas (~150 dpi), no máximo `MAX_PAGINAS_NA_VISAO`."""
+    import base64
+
+    import fitz  # PyMuPDF
+
+    imagens: List[Tuple[int, str]] = []
+    documento = fitz.open(stream=bytes(file_bytes), filetype="pdf")
+    try:
+        for numero in numeros[:MAX_PAGINAS_NA_VISAO]:
+            if 1 <= numero <= documento.page_count:
+                png = documento[numero - 1].get_pixmap(dpi=DPI_DA_VISAO).tobytes("png")
+                imagens.append((numero, base64.b64encode(png).decode("ascii")))
+    finally:
+        documento.close()
+    return imagens
+
+
+def _texto_de_dinheiro(valor: Any) -> Optional[str]:
+    return None if valor is None else str(valor)
+
+
+async def ler_documento_de_seguro(
+    pages: Iterable[Dict[str, Any]],
+    *,
+    company_id: str,
+    premio_esperado: Any = None,
+    fonte_do_esperado: Optional[str] = None,
+    file_bytes: Optional[bytes] = None,
+    total_paginas: Optional[int] = None,
+    parser_por_pagina: Optional[Dict[str, str]] = None,
+    permitir_modelo: bool = True,
+    leitor_modelo: Optional[Callable[..., Awaitable[Any]]] = None,
+    leitor_visao: Optional[Callable[..., Awaitable[Any]]] = None,
+    document_id: str = "",
+    policy_locator: Optional[Dict[str, Any]] = None,
+    content_hash: str = "",
+    extraction_method: str = "direct_text",
+) -> Dict[str, Any]:
+    """A cascata (SPEC-130-B §4). Devolve `{evidence_items, leitura, objeto_do_risco}`.
+
+    ⛔ Nunca loga o texto. ⛔ O modelo só vê o texto MASCARADO. ⛔ A visão só vê
+    página SEM texto. ⚠️ `permitir_modelo=False` (ou `LEITOR_APOLICE_MODELO=0`)
+    para no regex.
+    """
+    from time import monotonic
+
+    inicio = monotonic()
+    lista = [p for p in (pages or []) if isinstance(p, dict)]
+    parser = {str(k): str(v) for k, v in (parser_por_pagina or {}).items()}
+    sem_texto = sorted(int(n) for n, p in parser.items() if p == "sem_texto" and str(n).isdigit())
+    leitura: Dict[str, Any] = {
+        "leitor_versao": LEITOR_VERSAO,
+        "tipo_documento": "desconhecido",
+        "estado": "falhou",
+        "degraus": [],
+        "linhas": 0,
+        "soma_linhas": "0.00",
+        "premio_esperado": None,
+        "fonte_do_esperado": None,
+        "diferenca": None,
+        "paginas": int(total_paginas or 0) or len(lista),
+        "paginas_sem_texto": sem_texto,
+        "parser_por_pagina": parser,
+        "custo_usd": 0.0,
+        "custo_estimado": False,
+        "modelo": None,
+        "duracao_s": 0.0,
+    }
+    objeto: Dict[str, Any] = {}
+    evidence: List[Dict[str, Any]] = []
+    try:
+        evidence = extract_policy_document_evidence(
+            lista, question="", document_id=str(document_id or ""), company_id=company_id,
+            policy_locator=policy_locator or {}, content_hash=content_hash,
+            extraction_method=extraction_method,
+        )
+        leitura["tipo_documento"] = tipo_de_documento(lista)
+        objeto = objeto_do_risco_local(lista)
+
+        esperado = _decimal(premio_esperado) if premio_esperado is not None else None
+        fonte = (fonte_do_esperado or "corp") if esperado is not None else None
+        if esperado is None:
+            impresso = premio_liquido_impresso(lista)
+            esperado = _decimal(impresso) if impresso else None
+            fonte = "impresso" if esperado is not None else None
+        leitura["premio_esperado"] = _texto_de_dinheiro(esperado)
+        leitura["fonte_do_esperado"] = fonte
+
+        juizo = _julgar(evidence, esperado)
+        leitura["degraus"].append({"degrau": "regex", "linhas": juizo["linhas"],
+                                   "soma": str(juizo["soma"]), "fecha": juizo["fecha"]})
+
+        modelo_ligado = bool(permitir_modelo) and leitor_por_modelo_ligado()
+        base = {
+            "document_id": str(document_id or ""), "company_id": company_id,
+            "policy_locator_hash": policy_locator_hash(policy_locator) if policy_locator else "",
+            "source_document": OFFICIAL_POLICY_DOCUMENT_SOURCE, "content_hash": content_hash,
+            "conflict_status": "none",
+        }
+
+        # --- degrau 2: o modelo, sobre o texto MASCARADO -------------------------
+        if esperado is not None and not juizo["fecha"] and modelo_ligado and lista:
+            leitor = leitor_modelo or _leitor_modelo_padrao
+            paginas_txt: List[Tuple[int, str]] = []
+            for page in lista:
+                try:
+                    numero = int(page.get("page_number") or 0) or len(paginas_txt) + 1
+                except (TypeError, ValueError):
+                    numero = len(paginas_txt) + 1
+                paginas_txt.append((numero, str(page.get("content") or page.get("text") or "")))
+            mascaradas = _paginas_mascaradas(paginas_txt)
+            t0 = monotonic()
+            degrau: Dict[str, Any] = {"degrau": "modelo"}
+            try:
+                resposta = await leitor(_texto_marcado(mascaradas), company_id=company_id)
+                custo, estimado, nome = _custo_da_resposta(resposta)
+                leitura["custo_usd"] = round(float(leitura["custo_usd"]) + custo, 6)
+                leitura["custo_estimado"] = bool(leitura["custo_estimado"] or estimado)
+                leitura["modelo"] = nome or leitura["modelo"] or PAPEL_DA_LEITURA
+                linhas_m, descartadas = _linhas_do_modelo(
+                    _json_da_resposta(resposta), mascaradas, base=base,
+                    exigir_trecho_literal=True, metodo="modelo")
+                candidata = _sem_as_linhas_do_regex(evidence) + linhas_m
+                juizo_m = _julgar(candidata, esperado)
+                degrau.update({"linhas": juizo_m["linhas"], "soma": str(juizo_m["soma"]),
+                               "fecha": juizo_m["fecha"], "descartadas": descartadas})
+                # 🔴 o modelo VENCE se fecha — ou se o regex não leu NADA e ele leu algo
+                if linhas_m and (juizo_m["fecha"] or juizo["linhas"] == 0):
+                    evidence, juizo = candidata, juizo_m
+                    degrau["venceu"] = True
+            except Exception as exc:  # noqa: BLE001 — o degrau falha, a leitura não
+                degrau["erro"] = type(exc).__name__
+                logger.warning("[LeitorDeApolice] degrau do modelo falhou: %s", type(exc).__name__)
+            degrau["duracao_s"] = round(monotonic() - t0, 3)
+            leitura["degraus"].append(degrau)
+
+        # --- degrau 3: a visão, SÓ nas páginas sem texto -------------------------
+        if esperado is not None and not juizo["fecha"] and modelo_ligado and sem_texto and file_bytes:
+            leitor_v = leitor_visao or _leitor_visao_padrao
+            t0 = monotonic()
+            degrau = {"degrau": "visao", "paginas_enviadas": sem_texto[:MAX_PAGINAS_NA_VISAO]}
+            try:
+                imagens = await asyncio.to_thread(_renderizar_paginas, file_bytes, sem_texto)
+                if imagens:
+                    resposta = await leitor_v(imagens, company_id=company_id)
+                    custo, estimado, nome = _custo_da_resposta(resposta)
+                    leitura["custo_usd"] = round(float(leitura["custo_usd"]) + custo, 6)
+                    leitura["custo_estimado"] = bool(leitura["custo_estimado"] or estimado)
+                    leitura["modelo"] = nome or leitura["modelo"] or PAPEL_DA_LEITURA
+                    paginas_v = {n: "" for n, _ in imagens}
+                    linhas_v, descartadas = _linhas_do_modelo(
+                        _json_da_resposta(resposta), paginas_v, base=base,
+                        exigir_trecho_literal=False, metodo="visao")
+                    candidata = evidence + linhas_v
+                    juizo_v = _julgar(candidata, esperado)
+                    degrau.update({"linhas": juizo_v["linhas"], "soma": str(juizo_v["soma"]),
+                                   "fecha": juizo_v["fecha"], "descartadas": descartadas})
+                    if linhas_v and (juizo_v["fecha"] or juizo["linhas"] == 0):
+                        evidence, juizo = candidata, juizo_v
+                        degrau["venceu"] = True
+            except Exception as exc:  # noqa: BLE001
+                degrau["erro"] = type(exc).__name__
+                logger.warning("[LeitorDeApolice] degrau da visão falhou: %s", type(exc).__name__)
+            degrau["duracao_s"] = round(monotonic() - t0, 3)
+            leitura["degraus"].append(degrau)
+
+        leitura["linhas"] = juizo["linhas"]
+        leitura["soma_linhas"] = str(juizo["soma"])
+        leitura["diferenca"] = _texto_de_dinheiro(juizo["diferenca"])
+        if esperado is None:
+            leitura["estado"] = "sem_premio_para_conferir"
+        else:
+            leitura["estado"] = "fechou" if juizo["fecha"] else "nao_fechou"
+    except Exception as exc:  # noqa: BLE001 — a leitura registra a falha, não derruba o atendimento
+        logger.warning("[LeitorDeApolice] leitura falhou: %s", type(exc).__name__)
+        leitura["estado"] = "falhou"
+        leitura["motivo"] = type(exc).__name__
+    leitura["duracao_s"] = round(monotonic() - inicio, 3)
+    return {"evidence_items": evidence, "leitura": leitura, "objeto_do_risco": objeto}
+
+
+def ficha_para_o_modelo(resultado: Dict[str, Any], *, audiencia: str = "segurado") -> str:
+    """A ficha LEGÍVEL e MASCARADA — o que pode ir ao modelo da conversa (D-130B-05).
+
+    `segurado`: só coberturas, plano e o estado da conferência. `corretor`: +
+    o objeto do risco (mascarado). ⛔ Nunca o texto cru.
+    """
+    from app.providers.policy_data_provider import reais
+
+    resultado = resultado or {}
+    leitura = resultado.get("leitura") or {}
+    tipo = str(leitura.get("tipo_documento") or "desconhecido")
+    linhas_txt: List[str] = ["Documento: %s." % {
+        "apolice": "apólice", "proposta": "proposta", "endosso": "endosso", "cotacao": "cotação",
+        "crlv": "CRLV (documento do veículo)"}.get(tipo, "documento de seguro (tipo não identificado)")]
+    estado = str(leitura.get("estado") or "")
+    if estado == "fechou":
+        linhas_txt.append("Conferida: a soma das coberturas bate com o prêmio líquido (%s)."
+                          % reais(leitura.get("premio_esperado")))
+    elif estado == "nao_fechou":
+        linhas_txt.append("NÃO conferida: li %s de %s do prêmio líquido — pode faltar cobertura; não afirme "
+                          "que a lista está completa." % (reais(leitura.get("soma_linhas")),
+                                                          reais(leitura.get("premio_esperado"))))
+    elif estado == "pendente":
+        linhas_txt.append("Leitura completa ainda em andamento: a lista abaixo pode estar incompleta.")
+    elif estado == "sem_premio_para_conferir":
+        linhas_txt.append("Sem prêmio líquido para conferir a soma: não afirme que a lista está completa.")
+    else:
+        linhas_txt.append("O documento não pôde ser lido por inteiro.")
+    coberturas: List[str] = []
+    planos: List[str] = []
+    for item in resultado.get("evidence_items") or []:
+        e = (item or {}).get("structured") or {}
+        if e.get("kind") == "coverage_row":
+            partes = [str(e.get("label") or "").strip()]
+            if e.get("lmi"):
+                partes.append("limite %s" % e.get("lmi"))
+            if e.get("premium"):
+                partes.append("prêmio %s" % e.get("premium"))
+            if e.get("participation"):
+                partes.append("franquia %s" % e.get("participation"))
+            coberturas.append("- " + " · ".join(p for p in partes if p) + " (pág. %s)" % item.get("page_number"))
+        elif e.get("kind") == "assistance_plan":
+            planos.append("- %s%s" % (e.get("plan"), (" · prêmio %s" % e.get("premium")) if e.get("premium") else ""))
+    if coberturas:
+        linhas_txt.append("Coberturas:")
+        linhas_txt.extend(coberturas)
+    if planos:
+        linhas_txt.append("Assistência:")
+        linhas_txt.extend(planos)
+    if str(audiencia or "").strip().lower() == "corretor":
+        objeto = resultado.get("objeto_do_risco") or {}
+        rotulos = {"ano_modelo": "ano/modelo", "atividade": "atividade",
+                   "importancia_segurada": "importância segurada", "placa": "placa", "chassi": "chassi",
+                   "cep": "CEP"}
+        partes = ["%s: %s" % (rotulos[k], objeto[k]) for k in rotulos if objeto.get(k)]
+        if partes:
+            linhas_txt.append("Objeto do risco: " + " · ".join(partes) + ".")
+    return mascarar_texto_de_apolice("\n".join(linhas_txt))
+
+
+async def ler_anexo_de_seguro(
+    file_bytes: bytes,
+    file_name: str,
+    *,
+    company_id: str,
+    orcamento_s: float = 40.0,
+    leitor_modelo: Optional[Callable[..., Awaitable[Any]]] = None,
+) -> Dict[str, Any]:
+    """O anexo do WhatsApp/chat lido EM MEMÓRIA pelo MESMO leitor (nada é gravado).
+
+    Estourou o orçamento → a resposta vai com o regex e `estado="pendente"`.
+    O resultado traz `texto_mascarado` (para o CORRETOR, que pergunta de cláusula).
+    """
+    nome = str(file_name or "").lower()
+    dados = bytes(file_bytes or b"")
+    if not dados or not (nome.endswith(".pdf") or dados[:5] == b"%PDF-"):
+        return {"evidence_items": [], "objeto_do_risco": {}, "texto_mascarado": "",
+                "leitura": {"leitor_versao": LEITOR_VERSAO, "estado": "falhou", "motivo": "nao_e_pdf",
+                            "tipo_documento": "desconhecido", "degraus": [], "linhas": 0}}
+    try:
+        from app.services.document_service import extrair_paginas_tolerante
+
+        pages, parser, total = await asyncio.to_thread(extrair_paginas_tolerante, dados)
+    except Exception as exc:  # noqa: BLE001
+        return {"evidence_items": [], "objeto_do_risco": {}, "texto_mascarado": "",
+                "leitura": {"leitor_versao": LEITOR_VERSAO, "estado": "falhou", "motivo": type(exc).__name__,
+                            "tipo_documento": "desconhecido", "degraus": [], "linhas": 0}}
+    conteudo_hash = hashlib.sha256(dados).hexdigest()
+    comum = dict(company_id=company_id, file_bytes=dados, total_paginas=total, parser_por_pagina=parser,
+                 document_id="anexo-" + conteudo_hash[:12], content_hash=conteudo_hash)
+    try:
+        resultado = await asyncio.wait_for(
+            ler_documento_de_seguro(pages, permitir_modelo=True, leitor_modelo=leitor_modelo, **comum),
+            timeout=max(1.0, float(orcamento_s or 40.0)))
+    except asyncio.TimeoutError:
+        resultado = await ler_documento_de_seguro(pages, permitir_modelo=False, **comum)
+        if resultado["leitura"].get("estado") != "fechou":
+            resultado["leitura"]["estado"] = "pendente"
+            resultado["leitura"]["motivo"] = "orcamento_estourado"
+    resultado["texto_mascarado"] = mascarar_texto_de_apolice(build_document_plain_text(pages))
+    return resultado
+
+
+def _chave_da_trava(company_id: str, connection_id: str, content_hash: str) -> str:
+    """A trava do 2º plano: por corretora + conexão + conteúdo (hashes, nunca o valor).
+
+    ⚠️ 16 caracteres do conteúdo: é o que o HIT conhece (o nome do arquivo guarda
+    16) — com 24 no miss e 16 no hit, a mesma leitura teria duas travas."""
+    return "leitor_apolice:%s:%s:%s" % (
+        _short_hash(company_id, 16), _short_hash(connection_id or "-", 12), str(content_hash or "")[:16])
+
+
+async def _redis_padrao() -> Any:
+    try:
+        from app.core.redis import get_async_redis_client
+
+        return await asyncio.wait_for(get_async_redis_client(), timeout=2.0)
+    except Exception:  # noqa: BLE001 — sem Redis: não há 2º plano (só registra)
+        return None
+
+
+#: As tarefas em 2º plano vivas — referência forte (o asyncio só guarda fraca).
+_TAREFAS_EM_SEGUNDO_PLANO: set = set()
+
+
 class PolicyDocumentEvidenceService:
     """Coordinates official policy document retrieval, cache and snippets."""
 
@@ -803,10 +1593,18 @@ class PolicyDocumentEvidenceService:
         document_service: Any = None,
         ingestion_service: Any = None,
         docling_parser: Optional[Callable[..., List[Dict[str, Any]]]] = None,
+        leitor_modelo: Optional[Callable[..., Awaitable[Any]]] = None,
+        leitor_visao: Optional[Callable[..., Awaitable[Any]]] = None,
+        redis_factory: Optional[Callable[[], Awaitable[Any]]] = None,
     ) -> None:
         self.document_service = document_service
         self.ingestion_service = ingestion_service
         self.docling_parser = docling_parser
+        # SPEC-130-B: os degraus 2/3 e a trava são injetáveis (dublê nos testes).
+        self.leitor_modelo = leitor_modelo
+        self.leitor_visao = leitor_visao
+        self.redis_factory = redis_factory
+        self.tarefas_em_segundo_plano = _TAREFAS_EM_SEGUNDO_PLANO
 
     @staticmethod
     def _docling_fallback_parser(*, file_bytes: bytes, policy_metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -894,6 +1692,175 @@ class PolicyDocumentEvidenceService:
                 return None
             return doc_service.find_official_policy_document(company_id, locator_hash)
 
+    # ----- SPEC-130-B: a leitura REGISTRADA, com orçamento e 2º plano ----------
+    @staticmethod
+    def _guardar_leitura(
+        doc_service: Any,
+        *,
+        document_id: str,
+        company_id: str,
+        content_hash: str,
+        resultado: Dict[str, Any],
+    ) -> None:
+        """Ficha inteira → MinIO; resumo (sem objeto do risco) → `documents.metadata`."""
+        if not hasattr(doc_service, "guardar_leitura"):
+            return
+        leitura = dict(resultado.get("leitura") or {})
+        ficha = {
+            "company_id": company_id,
+            "document_id": document_id,
+            "content_hash": content_hash,
+            "leitor_versao": LEITOR_VERSAO,
+            "evidence_items": resultado.get("evidence_items") or [],
+            "leitura": leitura,
+            "objeto_do_risco": resultado.get("objeto_do_risco") or {},
+            "gravado_em": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            doc_service.guardar_leitura(document_id, company_id, ficha, leitura)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[LeitorDeApolice] leitura não registrada: %s", type(exc).__name__)
+
+    @staticmethod
+    def _leitura_guardada(
+        doc_service: Any,
+        *,
+        document_id: str,
+        company_id: str,
+        content_hash: str,
+        premio_esperado: Any,
+    ) -> Optional[Dict[str, Any]]:
+        """A ficha guardada que SERVE: desta corretora, deste conteúdo, desta versão,
+        num estado final — e julgada contra o MESMO prêmio esperado."""
+        if not hasattr(doc_service, "carregar_leitura"):
+            return None
+        try:
+            ficha = doc_service.carregar_leitura(document_id, company_id)
+        except Exception:  # noqa: BLE001
+            return None
+        if not isinstance(ficha, dict) or str(ficha.get("company_id") or "") != str(company_id):
+            return None
+        if content_hash and str(ficha.get("content_hash") or "")[:16] != str(content_hash)[:16]:
+            return None
+        leitura = ficha.get("leitura") or {}
+        if leitura.get("leitor_versao") != LEITOR_VERSAO or leitura.get("estado") not in ESTADOS_FINAIS:
+            return None
+        # ⚠️ "não fechou" lido SÓ pelo regex (o modelo estava desligado) não é leitura
+        #    pelo modelo: com o modelo ligado de novo, ele merece a sua vez.
+        if (leitura.get("estado") == "nao_fechou" and leitor_por_modelo_ligado()
+                and not any(d.get("degrau") in ("modelo", "visao") for d in (leitura.get("degraus") or [])
+                            if isinstance(d, dict))):
+            return None
+        if premio_esperado is not None:
+            novo = _decimal(premio_esperado)
+            if novo is not None and str(novo) != str(leitura.get("premio_esperado")):
+                return None   # o prêmio de referência mudou: julga de novo (o regex é grátis)
+        return {
+            "evidence_items": list(ficha.get("evidence_items") or []),
+            "leitura": dict(leitura),
+            "objeto_do_risco": dict(ficha.get("objeto_do_risco") or {}),
+        }
+
+    async def _redis(self) -> Any:
+        fabrica = self.redis_factory or _redis_padrao
+        try:
+            return await fabrica()
+        except Exception:  # noqa: BLE001
+            return None
+
+    async def _ler_e_registrar(
+        self,
+        *,
+        doc_service: Any,
+        pages: List[Dict[str, Any]],
+        company_id: str,
+        connection_id: str,
+        document_id: str,
+        content_hash: str,
+        policy_locator: Dict[str, Any],
+        premio_esperado: Any,
+        file_bytes: Optional[bytes],
+        total_paginas: Optional[int],
+        parser_por_pagina: Optional[Dict[str, str]],
+        extraction_method: str = "direct_text",
+    ) -> Dict[str, Any]:
+        """A cascata com ORÇAMENTO (D-130B-08).
+
+        1. o regex (grátis) — fechou, ou não há prêmio para conferir? acabou.
+        2. senão, o modelo: trava Redis `SET NX EX 600` por corretora+conexão+hash
+           (a outra chamada simultânea NÃO chama o modelo: devolve `pendente`).
+        3. o modelo estourou o orçamento → a resposta de AGORA vai com o regex e
+           `pendente`, e a leitura CONTINUA em 2º plano; ao terminar, grava.
+           Sem Redis não há 2º plano: a tarefa é cancelada e a próxima tenta.
+        """
+        comum = dict(
+            company_id=company_id, premio_esperado=premio_esperado,
+            fonte_do_esperado="corp" if premio_esperado is not None else None,
+            file_bytes=file_bytes, total_paginas=total_paginas, parser_por_pagina=parser_por_pagina,
+            document_id=document_id, policy_locator=policy_locator, content_hash=content_hash,
+            extraction_method=extraction_method,
+        )
+        regex = await ler_documento_de_seguro(pages, permitir_modelo=False, **comum)
+        estado = regex["leitura"].get("estado")
+        if estado != "nao_fechou" or not leitor_por_modelo_ligado():
+            if estado in ESTADOS_FINAIS:
+                self._guardar_leitura(doc_service, document_id=document_id, company_id=company_id,
+                                      content_hash=content_hash, resultado=regex)
+            return regex
+
+        def _pendente(motivo: str) -> Dict[str, Any]:
+            regex["leitura"]["estado"] = "pendente"
+            regex["leitura"]["motivo"] = motivo
+            return regex
+
+        redis = await self._redis()
+        chave = _chave_da_trava(company_id, connection_id, content_hash)
+        marca = hashlib.sha256(os.urandom(16)).hexdigest()[:16]
+        travou = False
+        if redis is not None:
+            try:
+                travou = bool(await redis.set(chave, marca, nx=True, ex=600))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[LeitorDeApolice] trava indisponível: %s", type(exc).__name__)
+                redis = None
+            if redis is not None and not travou:
+                return _pendente("leitura_em_andamento")
+
+        async def _soltar() -> None:
+            if redis is None or not travou:
+                return
+            try:
+                if await redis.get(chave) == marca:
+                    await redis.delete(chave)
+            except Exception:  # noqa: BLE001
+                pass
+
+        async def _completa() -> Dict[str, Any]:
+            try:
+                resultado = await ler_documento_de_seguro(
+                    pages, permitir_modelo=True, leitor_modelo=self.leitor_modelo,
+                    leitor_visao=self.leitor_visao, **comum)
+                if resultado["leitura"].get("estado") in ESTADOS_FINAIS:
+                    self._guardar_leitura(doc_service, document_id=document_id, company_id=company_id,
+                                          content_hash=content_hash, resultado=resultado)
+                return resultado
+            finally:
+                await _soltar()
+
+        tarefa = asyncio.ensure_future(_completa())
+        try:
+            return await asyncio.wait_for(asyncio.shield(tarefa), timeout=orcamento_do_modelo_s())
+        except asyncio.TimeoutError:
+            if redis is not None and travou:
+                self.tarefas_em_segundo_plano.add(tarefa)
+                tarefa.add_done_callback(self.tarefas_em_segundo_plano.discard)
+                return _pendente("orcamento_estourado_segue_em_segundo_plano")
+            tarefa.cancel()
+            resultado = _pendente("orcamento_estourado_sem_segundo_plano")
+            self._guardar_leitura(doc_service, document_id=document_id, company_id=company_id,
+                                  content_hash=content_hash, resultado=resultado)
+            return resultado
+
     async def ensure_official_policy_evidence(
         self,
         *,
@@ -906,6 +1873,7 @@ class PolicyDocumentEvidenceService:
         force_refresh: bool = False,
         case_id: Optional[str] = None,
         connection_id: str = "",
+        premio_liquido_esperado: Any = None,
     ) -> Dict[str, Any]:
         if not policy_locator:
             return _empty_result(status="source_unavailable", cache_status="unavailable", blockers=["policy_locator_required"], company_id=company_id)
@@ -925,14 +1893,26 @@ class PolicyDocumentEvidenceService:
             if cached:
                 pages = doc_service.load_raw_pages(cached.get("id"), company_id) if hasattr(doc_service, "load_raw_pages") else []
                 content_hash = cached.get("content_hash") or (cached.get("metadata") or {}).get("content_hash") or ""
-                evidence = extract_policy_document_evidence(
-                    pages,
-                    question=question,
-                    document_id=str(cached.get("id")),
-                    company_id=company_id,
-                    policy_locator=policy_locator,
-                    content_hash=content_hash,
-                )
+                # 🔴 SPEC-130-B: a LEITURA guardada desta versão, num estado final,
+                #    serve SEM chamar modelo. Senão, a cascata (o regex é grátis).
+                lido = self._leitura_guardada(
+                    doc_service, document_id=str(cached.get("id")), company_id=company_id,
+                    content_hash=content_hash, premio_esperado=premio_liquido_esperado)
+                if lido is None:
+                    resumo = cached.get("metadata") or {}
+                    parser_por_pagina = resumo.get("parser_por_pagina") if isinstance(resumo, dict) else None
+                    bytes_originais = None
+                    if (isinstance(parser_por_pagina, dict) and "sem_texto" in parser_por_pagina.values()
+                            and hasattr(doc_service, "carregar_pdf_original")):
+                        bytes_originais = doc_service.carregar_pdf_original(cached, company_id)
+                    lido = await self._ler_e_registrar(
+                        doc_service=doc_service, pages=pages, company_id=company_id,
+                        connection_id=connection_id, document_id=str(cached.get("id")),
+                        content_hash=content_hash, policy_locator=policy_locator,
+                        premio_esperado=premio_liquido_esperado, file_bytes=bytes_originais,
+                        total_paginas=(resumo.get("total_paginas") if isinstance(resumo, dict) else None),
+                        parser_por_pagina=parser_por_pagina)
+                evidence = lido["evidence_items"]
                 return self._result(
                     company_id=company_id,
                     policy_locator=policy_locator,
@@ -948,6 +1928,8 @@ class PolicyDocumentEvidenceService:
                     qdrant_ingested=True,
                     case_id=case_id,
                     connection_id=connection_id,
+                    leitura=lido.get("leitura"),
+                    objeto_do_risco=lido.get("objeto_do_risco"),
                 )
 
         if not official_document_candidate or not official_document_candidate.get("url"):
@@ -1023,7 +2005,11 @@ class PolicyDocumentEvidenceService:
         if not evidence and fallback_parser:
             document_status = "docling_pending"
             try:
-                docling_pages = fallback_parser(file_bytes=body_bytes, policy_metadata=metadata) or []
+                # 🔴 SPEC-130-B: o docling é SÍNCRONO (HTTP + arquivo temporário) e
+                #    rodava DENTRO do laço async — travando todo atendimento do
+                #    processo enquanto lia. Agora vai para uma thread.
+                docling_pages = await asyncio.to_thread(
+                    fallback_parser, file_bytes=body_bytes, policy_metadata=metadata) or []
                 evidence = extract_policy_document_evidence(
                     docling_pages,
                     question=question,
@@ -1038,6 +2024,20 @@ class PolicyDocumentEvidenceService:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[PolicyDocumentEvidence] Docling fallback failed: %s", type(exc).__name__)
                 document_status = "low_confidence"
+
+        # 🔴 SPEC-130-B: a CASCATA sobre o texto que se leu (o do docling, quando
+        #    foi ele que achou algo). O degrau 1 refaz o MESMO regex acima.
+        texto_lido = docling_pages if (parser_used == "docling" and evidence) else pages
+        lido = await self._ler_e_registrar(
+            doc_service=doc_service, pages=texto_lido, company_id=company_id,
+            connection_id=connection_id, document_id=str(document_id), content_hash=content_hash,
+            policy_locator=policy_locator, premio_esperado=premio_liquido_esperado,
+            file_bytes=body_bytes, total_paginas=metadata.get("total_paginas"),
+            parser_por_pagina=metadata.get("parser_por_pagina"),
+            extraction_method="docling" if texto_lido is docling_pages else "direct_text")
+        evidence = lido["evidence_items"]
+        if evidence and document_status != "evidence_ready":
+            document_status = "evidence_ready"
 
         qdrant_ingested = False
         try:
@@ -1069,6 +2069,8 @@ class PolicyDocumentEvidenceService:
             qdrant_ingested=qdrant_ingested,
             case_id=case_id,
             connection_id=connection_id,
+            leitura=lido.get("leitura"),
+            objeto_do_risco=lido.get("objeto_do_risco"),
         )
 
     def _result(
@@ -1088,6 +2090,8 @@ class PolicyDocumentEvidenceService:
         case_id: Optional[str],
         pages: Optional[List[Dict[str, Any]]] = None,
         connection_id: str = "",
+        leitura: Optional[Dict[str, Any]] = None,
+        objeto_do_risco: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         confidence = _confidence_for_evidence(evidence)
         result = {
@@ -1135,6 +2139,11 @@ class PolicyDocumentEvidenceService:
             "qdrant_ingested": qdrant_ingested,
             "case_id": case_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            # 🔴 SPEC-130-B §4: o estado da leitura (fechou / não fechou / …) e o
+            #    objeto do risco. ⚠️ O objeto vai no PACK (servidor), nunca no
+            #    `documents.metadata`.
+            "leitura": dict(leitura or {}),
+            "objeto_do_risco": dict(objeto_do_risco or {}),
         }
         return _sanitize_pipeline_output(result)
 
