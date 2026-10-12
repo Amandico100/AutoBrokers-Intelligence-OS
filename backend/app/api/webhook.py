@@ -3323,9 +3323,18 @@ async def _handle_evolution_like_inbound(
                                                        audiencia="segurado")
                 except Exception as e:  # noqa: BLE001 — ⛔ nunca o nome nem o conteúdo no log
                     logger.error("[WEBHOOK EVOLUTION] leitura do documento falhou (%s)", type(e).__name__)
-                base_txt = media.get("caption") or MARCA_DO_DOCUMENTO % fname
+                # 🔴 SPEC-130-B F5 (C4): no TEXTO (que vai ao modelo) o nome vai MASCARADO — o segurado
+                # nomeia o arquivo com o CPF. O campo `fileName` abaixo segue cru: só o classificador o lê.
+                try:
+                    from app.services.vision_service import nome_do_anexo_para_o_modelo
+
+                    fname_no_texto = nome_do_anexo_para_o_modelo(fname)
+                except Exception:  # noqa: BLE001 — sem a máscara, nunca o nome cru
+                    fname_no_texto = "documento"
+                base_txt = media.get("caption") or MARCA_DO_DOCUMENTO % fname_no_texto
                 if doc_text:
-                    text_message = f"{base_txt}\n\n{CABECALHO_DO_DOCUMENTO % fname}\n{doc_text}\n[FIM DO DOCUMENTO]"
+                    text_message = (f"{base_txt}\n\n{CABECALHO_DO_DOCUMENTO % fname_no_texto}\n{doc_text}"
+                                    "\n[FIM DO DOCUMENTO]")
                 else:
                     text_message = f"{base_txt}\n(não foi possível ler o conteúdo do documento — peça para reenviar ou colar o texto)"
                 # 🔴 SPEC-093-B — O NOME DO ARQUIVO VIAJA COMO CAMPO, e não só dentro
