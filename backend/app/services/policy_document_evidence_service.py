@@ -16,7 +16,7 @@ import os
 import re
 import tempfile
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -828,11 +828,22 @@ def _empty_result(
 
 #: A versão do leitor. 🔴 A leitura guardada só é reaproveitada se for DESTA
 #: versão — mudar o leitor é mudar este número, e tudo é relido uma vez.
-LEITOR_VERSAO = "130B.1"
+#: 📊 130B.2 (conserto único): o juiz passou a conferir a LINHA (B1) — toda leitura de 130B.1 é relida uma vez.
+LEITOR_VERSAO = "130B.2"
 
-ESTADOS_DA_LEITURA = ("fechou", "nao_fechou", "sem_premio_para_conferir", "pendente", "falhou")
+ESTADOS_DA_LEITURA = ("fechou", "nao_fechou", "sem_premio_para_conferir", "pendente", "modelo_indisponivel",
+                      "falhou")
 #: Os estados em que a leitura guardada SERVE (não se relê pelo modelo).
 ESTADOS_FINAIS = ("fechou", "nao_fechou", "sem_premio_para_conferir")
+#: 🔴 conserto (red team B2): exceção / 429 / timeout / JSON inválido ou truncado do modelo NÃO é leitura
+#: final — é `modelo_indisponivel`, relida depois de `ESPERA_DO_MODELO_INDISPONIVEL_S`; na
+#: `MAX_TENTATIVAS_DO_MODELO`-ésima vira `nao_fechou` final (o crédito zerado não relê para sempre).
+ESPERA_DO_MODELO_INDISPONIVEL_S = 600
+MAX_TENTATIVAS_DO_MODELO = 3
+#: 🔴 conserto (red team P2): o texto ao modelo tem TETO. 📊 `rt5_bordas.py` 5b: 300 páginas → 648.490
+#: caracteres (~162 mil tokens). 💭 120 mil caracteres (~30 mil tokens) cabem a tabela de qualquer apólice
+#: da régua (a maior, EMPR-TMAR-16, tem 105 páginas — as de valores vão primeiro).
+TETO_DO_TEXTO_AO_MODELO = 120_000
 
 PAPEL_DA_LEITURA = "leitura_de_apolice"
 #: no máximo 20 páginas sem texto vão à visão (custo e latência têm teto)
@@ -872,13 +883,32 @@ def orcamento_do_modelo_s() -> float:
 # ⛔ Dinheiro em pt-BR sempre tem vírgula decimal — e é ela que o protege.
 _MASCARA_CNPJ = re.compile(r"(?<![\d.,/])\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}(?!\d)")
 _MASCARA_CPF = re.compile(r"(?<![\d.,/])\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)")
+#: 🔴 conserto da SPEC-130-B (red team P1 · juiz J2): o CPF com ESPAÇOS (`123 456 789 09`) e o pontuado
+#: com BARRA (`123.456.789/09`). ⛔ `123.456.789,00` é DINHEIRO: a vírgula não está na lista de separadores.
+_MASCARA_CPF_SOLTO = re.compile(
+    r"(?<![\d.,/])\d{3}(?:\s\d{3}\s\d{3}[\s-]|\.\d{3}\.\d{3}[/\s])\d{2}(?!\d|[.,]\d)")
 _MASCARA_CEP_PONTO = re.compile(r"(?<![\d.,])\d{2}\.\d{3}-\d{3}(?!\d)")
 _MASCARA_TELEFONE = re.compile(
-    r"(?:\+?55[\s-]?)?\(\d{2}\)\s*9?\d{4}[\s-]?\d{4}(?!\d)"           # (11) 98765-4321
-    r"|(?<![\d.,])(?:\+?55[\s-]?)?\d{2}\s9?\d{4}-\d{4}(?!\d)"         # 11 98765-4321
-    r"|(?<![\d.,-])(?!(?:19|20)\d{2}-(?:19|20)\d{2}(?!\d))9?\d{4}-\d{4}(?!\d)"  # 98765-4321 (não "2025-2026")
+    r"(?:\+?55[\s-]?)?\(\d{2}\)\s*9?\s?\d{4}[\s.-]?\d{4}(?!\d)"       # (11) 98765-4321 · (11) 8765 4321 · (11) 9 8765-4321
+    r"|(?<![\d.,])(?:\+?55[\s.-]?)?\d{2}[\s.]9?\s?\d{4}[\s.-]\d{4}(?!\d|[.,]\d)"  # 11 98765-4321 · 11 98765 4321 · 11.98765.4321
+    r"|(?<![\d.,-])(?!(?:19|20)\d{2}[\s-](?:19|20)\d{2}(?!\d))9?\d{4}[\s-]\d{4}(?!\d|[.,]\d)"  # 98765-4321 · 98765 4321 (não "2025-2026")
     r"|(?<!\d)0[38]00[\s-]?\d{3}[\s-]?\d{4}(?!\d)"                     # 0800 / 0300
 )
+#: RG: pela FORMA quando a forma é só dele (`12.345.678-9`, `MG-12.345.678`) e pelo RÓTULO quando não é
+#: (`RG 1234567`). ⛔ `12.345.678` sozinho NÃO: há apólice que imprime LMI sem centavos (`1.000.000`).
+_MASCARA_RG_FORMA = re.compile(
+    r"(?<![\d.,/])(?:[A-Z]{2}[-\s]?)?\d{1,2}\.\d{3}\.\d{3}-[\dXx](?![\d])"
+    r"|(?<![A-Za-z0-9])[A-Z]{2}-\s?\d{1,2}\.\d{3}\.\d{3}(?![\d])")
+_MASCARA_RG_ROTULADO = re.compile(
+    r"(?i)(\b(?:RG|R\.G\.|identidade)\s*(?:n[º°o.]?\s*)?:?\s*)[A-Z]{0,2}[-\s]?\d[\d.\-]{4,14}[\dXx]?(?![\d])")
+#: Data de NASCIMENTO, pelo rótulo. ⚠️ Datas em geral NÃO: o aviso de sinistro e o boleto que o segurado
+#: manda precisam da data do evento e do vencimento — e o leitor de coberturas não depende de data
+#: nenhuma (a linha de cobertura não tem data; a de parcela tem, e o modelo não a lê como linha).
+_MASCARA_NASCIMENTO = re.compile(
+    r"(?i)(\b(?:data\s+de\s+)?(?:nasc(?:imento)?|dt\.?\s*nasc)\.?\s*(?:em)?\s*:?\s*)\d{1,2}/\d{1,2}/\d{2,4}")
+#: 8 dígitos SOLTOS (o CEP sem traço `01310100`, um telefone sem DDD). ⛔ Nunca dinheiro: nem com `,dd`
+#: depois, nem com `R$` antes (ver `_oito_digitos`).
+_MASCARA_OITO_DIGITOS = re.compile(r"(?<![\d.,/-])\d{8}(?!\d|[.,]\d|-\d)")
 _MASCARA_CHASSI = re.compile(
     r"(?<![A-Za-z0-9])(?=[A-HJ-NPR-Z0-9]{17}(?![A-Za-z0-9]))(?=[A-HJ-NPR-Z0-9]*\d)"
     r"(?=[A-HJ-NPR-Z0-9]*[A-HJ-NPR-Z])[A-HJ-NPR-Z0-9]{17}")
@@ -903,11 +933,20 @@ def _mascaras_do_canal() -> Dict[str, Any]:
         }
 
 
+def _oito_digitos(m: "re.Match[str]") -> str:
+    """8 dígitos soltos → `[CEP]` (rotulado) ou `[NUMERO]`. ⛔ `R$ 15000000` é DINHEIRO: fica."""
+    antes = m.string[max(0, m.start() - 6):m.start()]
+    if re.search(r"R\$\s*$", antes):
+        return m.group(0)
+    return "[CEP]" if re.search(r"(?i)cep\s*:?\s*$", antes) else "[NUMERO]"
+
+
 def mascarar_texto_de_apolice(texto: str) -> str:
-    """CPF, CNPJ, telefone, e-mail, CEP, placa e chassi → marcadores. **Nunca dinheiro.**
+    """CPF, CNPJ, RG, telefone, e-mail, CEP, placa, chassi e nascimento → marcadores. **Nunca dinheiro.**
 
     ✅ `600.000,00` · `15.103,93` · `R$ 1500000,00` passam intactos.
-    ⛔ `123.456.789-09` · `12.345.678/0001-90` · `(11) 98765-4321` · `12345678909` não.
+    ⛔ `123.456.789-09` · `123 456 789 09` · `12.345.678/0001-90` · `(11) 98765-4321` · `11 98765 4321` ·
+       `12345678909` · `01310100` · `RG 12.345.678-9` · `Nascimento 01/02/1980` não.
     """
     t = str(texto or "")
     canal = _mascaras_do_canal()
@@ -915,10 +954,15 @@ def mascarar_texto_de_apolice(texto: str) -> str:
         t = canal["[EMAIL]"].sub("[EMAIL]", t)
     t = _MASCARA_CNPJ.sub("[CNPJ]", t)
     t = _MASCARA_CPF.sub("[CPF]", t)
+    t = _MASCARA_CPF_SOLTO.sub("[CPF]", t)
+    t = _MASCARA_RG_ROTULADO.sub(lambda m: m.group(1) + "[RG]", t)
+    t = _MASCARA_RG_FORMA.sub("[RG]", t)
+    t = _MASCARA_NASCIMENTO.sub(lambda m: m.group(1) + "[DATA]", t)
     t = _MASCARA_CEP_PONTO.sub("[CEP]", t)
     if "[CEP]" in canal:
         t = canal["[CEP]"].sub("[CEP]", t)
     t = _MASCARA_TELEFONE.sub("[TELEFONE]", t)
+    t = _MASCARA_OITO_DIGITOS.sub(_oito_digitos, t)
     t = _MASCARA_PLACA_ROTULADA.sub(lambda m: m.group(1) + "[PLACA]", t)
     if "[PLACA]" in canal:
         def _placa(m: "re.Match[str]") -> str:
@@ -960,12 +1004,41 @@ def premio_liquido_impresso(pages: Iterable[Dict[str, Any]]) -> Optional[str]:
     return None
 
 
+#: 🔴 conserto da SPEC-130-B (red team B3): os documentos de SINISTRO que o segurado manda — e que CITAM a
+#: apólice. 📊 `rt6_sinistro.py`: laudo, BO e aviso de sinistro saíam "apólice" (a palavra estava lá), a ficha
+#: não tinha linha nenhuma, e o atendente lia "Documento: apólice" em vez do CONTEÚDO do laudo. Cada termo
+#: diz POR QUE não é documento de seguro (CLAUDE.md §9.5). ⚠️ Só no TÍTULO (as primeiras linhas da 1ª página):
+#: uma apólice cita "aviso de sinistro: 0800…" no rodapé e "vistoria prévia" nas condições.
+_TITULOS_QUE_NAO_SAO_DE_SEGURO: Tuple[Tuple[str, str], ...] = (
+    (r"\blaudo\b", "laudo (de vistoria, pericial, técnico) descreve o dano — não o contrato"),
+    (r"\bboletim\s+de\s+ocorrencia\b", "BO é documento policial"),
+    (r"\b(?:aviso|comunicad\w*|comunicacao|notificacao|abertura|relatorio|declaracao)\s+de\s+sinistro\b",
+     "aviso de sinistro é o pedido de indenização, não a apólice"),
+    (r"\b(?:termo|relatorio|auto|laudo)\s+de\s+vistoria\b", "vistoria registra o estado do bem"),
+    (r"\b(?:nota\s+fiscal|recibo|boleto)\b", "documento de pagamento ou compra"),
+)
+#: "orçamento" é COTAÇÃO DE SEGURO só com vocabulário de seguro; senão é de oficina/peças (📊 rt6: o orçamento
+#: da funilaria virava "cotação" com "coberturas" e "limite").
+_VOCABULARIO_DE_SEGURO_RE = re.compile(r"\bseguro\b|\bpremio\b|\bcobertura|\bsegurad[oa]\b|\bseguradora\b")
+#: 🔴 a palavra "apólice" sozinha NÃO faz apólice (o laudo cita a apólice). Estes sinais são da TABELA.
+_SINAIS_DE_APOLICE_RE = re.compile(
+    r"premio\s+liquido|premio\s+total|\blmi\b|importancia\s+segurada|limite\s+maximo\s+de\s+"
+    r"(?:indenizacao|garantia|responsabilidade)|valor\s+em\s+risco|\bcoberturas?\b|\bfranquia\b")
+_PREMIO_DO_CONTRATO_RE = re.compile(r"premio\s+(?:liquido|total|comercial)")
+
+
+def _titulo(primeira: str, linhas: int = 6) -> str:
+    return " ".join([l for l in primeira.splitlines() if l.strip()][:linhas])
+
+
 def tipo_de_documento(pages: Iterable[Dict[str, Any]]) -> str:
-    """apólice · proposta · endosso · cotação · crlv · desconhecido — por PALAVRAS, sem modelo.
+    """apólice · proposta · endosso · cotação · crlv · outro · desconhecido — por PALAVRAS, sem modelo.
 
     A 1ª página decide (é onde mora o título); a ordem dá prioridade ao que é
     mais específico: o CRLV não tem a palavra apólice; o endosso e a proposta
-    citam a apólice; a cotação, ainda não.
+    citam a apólice; a cotação, ainda não. `outro` = documento que NÃO é de seguro
+    (laudo, BO, aviso de sinistro, orçamento de oficina): o anexo vai como TEXTO
+    MASCARADO, não como ficha.
     """
     lista = list(pages or [])
     primeira = _strip_accents(str((lista[0].get("content") or lista[0].get("text") or "") if lista else ""))
@@ -974,14 +1047,24 @@ def tipo_de_documento(pages: Iterable[Dict[str, Any]]) -> str:
         return "desconhecido"
     if re.search(r"certificado de registro e licenciamento|\bcrlv\b", primeira):
         return "crlv"
-    if re.search(r"\bendosso\s+(?:n\s*[o°º.]|de\s+(?:altera|cancel|inclus|exclus|restitui|cobran))", primeira):
+    titulo = _titulo(primeira)
+    # ⛔ quem tem o PRÊMIO do contrato é documento de seguro, diga o título o que disser
+    if not _PREMIO_DO_CONTRATO_RE.search(tudo):
+        if any(re.search(padrao, titulo) for padrao, _motivo in _TITULOS_QUE_NAO_SAO_DE_SEGURO):
+            return "outro"
+    # red team P4: "ENDOSSO N 12" (sem º) também é endosso
+    if re.search(r"\bendosso\s+(?:n\s*[o°º.]|n\s*\d|numero|de\s+(?:altera|cancel|inclus|exclus|restitui|cobran))",
+                 primeira):
         return "endosso"
     tem_numero_de_apolice = bool(re.search(r"\bapolice\s*(?:n\s*[o°º.]|numero|:)", primeira))
-    if re.search(r"\bcotacao\b|\borcamento\b", primeira) and not tem_numero_de_apolice:
+    if re.search(r"\bcotacao\b", primeira) and not tem_numero_de_apolice:
         return "cotacao"
+    if re.search(r"\borcamento\b", primeira) and not tem_numero_de_apolice:
+        return "cotacao" if _VOCABULARIO_DE_SEGURO_RE.search(tudo) else "outro"
     if re.search(r"\bproposta\s+de\s+seguro\b|\bproposta\s+n\s*[o°º.]", primeira) and not tem_numero_de_apolice:
         return "proposta"
-    if re.search(r"\bapolice\b", tudo):
+    if re.search(r"\bapolice\b", tudo) and _SINAIS_DE_APOLICE_RE.search(
+            _strip_accents(" ".join(str(p.get("content") or p.get("text") or "") for p in lista))):
         return "apolice"
     return "desconhecido"
 
@@ -1163,42 +1246,173 @@ def _texto_marcado(mascaradas: Dict[int, str]) -> str:
     return "\n\n".join("[pagina %d]\n%s" % (n, t) for n, t in sorted(mascaradas.items()) if t.strip())
 
 
+def _paginas_dentro_do_teto(mascaradas: Dict[int, str], teto: int = TETO_DO_TEXTO_AO_MODELO
+                            ) -> Tuple[Dict[int, str], Dict[str, Any]]:
+    """As páginas que cabem em `teto` caracteres — as com MAIS valores em dinheiro primeiro (é onde mora a
+    tabela de coberturas), enviadas na ordem do documento. → `(enviadas, registro_do_corte)`."""
+    com_texto = {n: t for n, t in mascaradas.items() if str(t or "").strip()}
+    total = len(_texto_marcado(com_texto))
+    registro = {"cortado": False, "caracteres": total, "paginas_com_texto": len(com_texto),
+                "paginas_enviadas": len(com_texto), "teto": teto}
+    if total <= teto:
+        return com_texto, registro
+    ordem = sorted(com_texto, key=lambda n: (-len(_DINHEIRO_NO_TRECHO_RE.findall(com_texto[n])), n))
+    escolhidas: Dict[int, str] = {}
+    usado = 0
+    for n in ordem:
+        custo = len("[pagina %d]\n" % n) + len(com_texto[n]) + 2
+        if usado + custo > teto:
+            continue
+        escolhidas[n] = com_texto[n]
+        usado += custo
+    if not escolhidas and ordem:   # uma página só já passa do teto: vai ela, cortada em LINHA inteira
+        n = ordem[0]
+        linhas, acumulado = [], 0
+        for linha in com_texto[n].splitlines():
+            if acumulado + len(linha) + 1 > teto - 20:
+                break
+            linhas.append(linha)
+            acumulado += len(linha) + 1
+        escolhidas[n] = "\n".join(linhas)
+    registro.update({"cortado": True, "paginas_enviadas": len(escolhidas),
+                     "caracteres_enviados": len(_texto_marcado(escolhidas))})
+    return escolhidas, registro
+
+
+def _resposta_valida(dados: Any) -> bool:
+    """A resposta do modelo tem a FORMA pedida (`{"linhas": [...]}`)? JSON inválido, truncado pelo teto
+    de saída ou sem `linhas` NÃO é "o modelo leu e não achou" — é o modelo indisponível (red team B2)."""
+    return isinstance(dados, dict) and isinstance(dados.get("linhas"), list)
+
+
 #: Um valor em dinheiro pt-BR: SEMPRE 2 decimais. Lido da esquerda para a direita, é isso que
 #: separa valores COLADOS pelo extrator (📊 Tokio EMPR, PyPDF2: `17.539,151.803,19` são dois valores).
 _DINHEIRO_NO_TRECHO_RE = re.compile(r"\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}")
 
 
-def _premio_no_trecho(premio: Any, trecho_norm: str) -> bool:
-    """O prêmio aparece no trecho, como UM dos valores em dinheiro dele?
-
-    🔴 SPEC-130-B F5 (régua): antes, a grafia era procurada com "nem dígito antes nem depois" — e o
-    PyPDF2 COLA os valores das colunas da Tokio (📊 EMPR-TMAR-16: as 11 linhas do modelo somavam o
-    prêmio líquido ao centavo e 10 eram descartadas por isso). Agora o trecho é FATIADO em valores
-    pela forma do dinheiro pt-BR (2 decimais, da esquerda para a direita) e o prêmio tem de ser
-    IGUAL a um deles. ⛔ Continua estrito: `2.345,67` não casa com `12.345,67` (o fatiamento dá
-    12345,67), nem `345,67` com `2.345,67`."""
+def _valores_do_trecho(trecho_norm: str) -> List[Any]:
+    """Os valores em dinheiro do trecho, FATIADOS pela forma do dinheiro pt-BR (2 decimais, da esquerda
+    para a direita). 🔴 SPEC-130-B F5 (régua): o PyPDF2 COLA os valores das colunas da Tokio
+    (`17.539,151.803,19` são dois valores) — a cola vale nos DOIS lados: um valor colado ANTES só conta
+    se o anterior acabou exatamente ali; um valor com dígito colado DEPOIS só conta se o próximo começa
+    exatamente ali. 🔴 conserto (red team P5): `16,771.96` (separador trocado) dava `16,77` — agora o
+    `1` colado depois, sem valor que comece nele, derruba o falso valor."""
     from decimal import Decimal, InvalidOperation
+
+    texto = str(trecho_norm or "")
+    achados = list(_DINHEIRO_NO_TRECHO_RE.finditer(texto))
+    valores: List[Any] = []
+    for i, achado in enumerate(achados):
+        inicio, fim = achado.start(), achado.end()
+        anterior_fim = achados[i - 1].end() if i > 0 else -1
+        proximo_inicio = achados[i + 1].start() if i + 1 < len(achados) else -1
+        # ⛔ colado ANTES: o valor começa no meio de outro número (salvo a cola do extrator)
+        if inicio > 0 and texto[inicio - 1] in "0123456789.," and inicio != anterior_fim:
+            continue
+        # ⛔ colado DEPOIS: o "valor" é o começo de outro número (salvo a cola do extrator)
+        if fim < len(texto) and texto[fim] in "0123456789" and fim != proximo_inicio:
+            continue
+        try:
+            valores.append(Decimal(achado.group(0).replace(".", "").replace(",", ".")))
+        except InvalidOperation:
+            continue
+    return valores
+
+
+def _premio_no_trecho(premio: Any, trecho_norm: str) -> bool:
+    """O prêmio aparece no trecho, como UM dos valores em dinheiro dele (`_valores_do_trecho`)?
+
+    ⛔ Estrito: `2.345,67` não casa com `12.345,67` (o fatiamento dá 12345,67), nem `345,67` com
+    `2.345,67`."""
+    from decimal import Decimal
 
     if premio is None:
         return False
     numero = Decimal(premio).quantize(Decimal("0.01"))
-    texto = str(trecho_norm or "")
-    fim_anterior = -1
-    for achado in _DINHEIRO_NO_TRECHO_RE.finditer(texto):
-        bruto, inicio = achado.group(0), achado.start()
-        colado = inicio > 0 and texto[inicio - 1] in "0123456789.,"
-        anterior, fim_anterior = fim_anterior, achado.end()
-        # ⛔ um dígito/separador colado ANTES só vale se o valor anterior acabou EXATAMENTE aqui
-        #    (a cola do extrator); senão o valor começa no meio de outro número e não conta.
-        if colado and inicio != anterior:
-            continue
-        try:
-            valor = Decimal(bruto.replace(".", "").replace(",", "."))
-        except InvalidOperation:
-            continue
-        if valor == numero:
-            return True
-    return False
+    return any(v == numero for v in _valores_do_trecho(trecho_norm))
+
+
+# ---------------------------------------------------------------------------
+# 🔴 O JUIZ DA LINHA — conserto da SPEC-130-B (juiz B1 ‖ red team B1)
+# ---------------------------------------------------------------------------
+# 📊 `ataque_juiz.py` / `rt1_juiz.py` / `rt4_fio_ponta.py` (11/10/2026): o juiz conferia só a SOMA e que
+# o trecho existia. Rótulo inventado citando a linha do "Prêmio Líquido", rótulos TROCADOS entre linhas
+# reais, LMI de R$ 9.999.999,00 inventado, a página inteira como "trecho", a linha "Total" — todos saíam
+# "Conferida", e o LMI inventado SOBRESCREVIA o do cadastro em `reconciliar`. A soma prova que o DINHEIRO
+# está todo lá; estas regras provam que cada real está com o NOME certo.
+
+#: (a) o trecho é UMA linha do documento — e cabe neste teto. 💭 300 caracteres: a linha mais longa de
+#: cobertura nas fixtures reais tem ~120 (Allianz com franquia em prosa); a página inteira tem milhares.
+TETO_DO_TRECHO = 300
+
+#: (b) o TRECHO de total/imposto/parcela nunca é cobertura — além de `_ROTULOS_QUE_NAO_SAO_COBERTURA`
+#: (prêmio líquido, IOF, custo de apólice…), aplicada ao trecho também. Sobre a chave normalizada.
+#: ⚠️ "total" sozinho NÃO: "Colisão - Perda Total" é cobertura de AUTO.
+_TRECHOS_QUE_NAO_SAO_COBERTURA: Tuple[Tuple[str, str], ...] = (
+    (r"^(?:sub\s?)?total\b", "linha de TOTAL é a soma das coberturas"),
+    (r"\btotal\s+(?:a\s+pagar|geral|do|da|das|dos|de)\b|\bvalor\s+total\b|\bsub\s?total\b",
+     "linha de TOTAL é a soma das coberturas"),
+    (r"\bparcelas?\b", "linha de PARCELA é o financeiro, não cobertura"),
+    (r"^\d{1,3}\s+\d{1,2}\s+\d{1,2}\s+\d{4}\b", "nº + vencimento: linha de parcela"),
+    (r"\bjuros\b|\bencargos?\b|\bfracionamento\b", "é financeiro"),
+)
+
+#: (c) o RÓTULO tem de estar no trecho. Régua (normalizado: sem acento, minúsculo, pontuação → espaço):
+#: o rótulo inteiro contido no trecho, OU ≥ 70 % das palavras significativas do rótulo presentes nele.
+#: Palavra significativa = ≥ 3 letras (ou com dígito, "24h") e fora desta lista. Presente = contida no
+#: trecho sem espaços (o PyPDF2 cola palavras: "IncendioRaio") ou abreviada no trecho ("Elet." → "eletricos",
+#: palavra do trecho com ≥ 4 letras que começa a do rótulo). 💭 70 %: um rótulo de 3 palavras aceita 1
+#: ausente só se tiver 4+ ("Responsabilidade Civil Familiar Ampla"); um de 2 exige as 2.
+FRACAO_DO_ROTULO_NO_TRECHO = 0.7
+_PALAVRAS_VAZIAS = frozenset({"de", "da", "do", "das", "dos", "e", "a", "o", "os", "as", "com", "por",
+                              "para", "em", "no", "na", "nos", "nas", "ao", "aos"})
+
+
+def trecho_nao_e_cobertura(texto: Any) -> Optional[str]:
+    """O MOTIVO pelo qual este trecho (ou rótulo) é linha de total/imposto/parcela — ou `None`."""
+    chave = _rotulo_chave(texto)
+    if not chave:
+        return "linha sem rótulo legível"
+    motivo = rotulo_nao_e_cobertura(texto)
+    if motivo:
+        return motivo
+    for padrao, motivo in _TRECHOS_QUE_NAO_SAO_COBERTURA:
+        if re.search(padrao, chave):
+            return motivo
+    return None
+
+
+def rotulo_no_trecho(rotulo: Any, trecho: Any) -> bool:
+    """O rótulo do modelo está no trecho que ele citou? (a régua está em `FRACAO_DO_ROTULO_NO_TRECHO`)."""
+    r, t = _rotulo_chave(rotulo), _rotulo_chave(trecho)
+    if not r or not t:
+        return False
+    if (" %s " % r) in (" %s " % t):
+        return True
+    colado = t.replace(" ", "")
+    palavras_do_trecho = [p for p in t.split() if len(p) >= 4 and not p.isdigit()]
+    tokens = [x for x in r.split()
+              if x not in _PALAVRAS_VAZIAS and (len(x) >= 3 or any(c.isdigit() for c in x))]
+    if not tokens:
+        return r.replace(" ", "") in colado
+
+    def _presente(token: str) -> bool:
+        return token in colado or any(token.startswith(p) for p in palavras_do_trecho)
+
+    return sum(1 for x in tokens if _presente(x)) / len(tokens) >= FRACAO_DO_ROTULO_NO_TRECHO
+
+
+def _limite_conferido(limite: Any, premio: Any, trecho_norm: str) -> Any:
+    """(d) o LIMITE do modelo só fica se for um dos valores do trecho — e NÃO o mesmo valor que já
+    foi usado como prêmio. Senão `None` (indisponível): a LINHA fica, o limite inventado cai."""
+    if limite is None:
+        return None
+    valores = list(_valores_do_trecho(trecho_norm))
+    for i, v in enumerate(valores):
+        if v == premio:
+            del valores[i]
+            break
+    return limite if any(v == limite for v in valores) else None
 
 
 def _linha_para_coverage_row(
@@ -1211,10 +1425,10 @@ def _linha_para_coverage_row(
     confianca: str,
     base: Dict[str, Any],
     indice: int,
+    limite: Any = None,
 ) -> Dict[str, Any]:
     from app.providers.policy_data_provider import reais
 
-    limite = _decimal(linha.get("limite"))
     franquia = _espacos(linha.get("franquia")) or None
     item = {
         **base,
@@ -1244,51 +1458,147 @@ def _linhas_do_modelo(
     exigir_trecho_literal: bool,
     metodo: str,
 ) -> Tuple[List[Dict[str, Any]], int]:
-    """As linhas do modelo que SOBREVIVEM à conferência → `(coverage_rows, descartadas)`.
+    """As linhas do modelo que SOBREVIVEM à conferência → `(coverage_rows, descartadas, motivos)`.
 
-    🔴 D-130B-06: no degrau do texto, uma linha só entra se o `trecho` existir
-    LITERALMENTE no texto mascarado daquela página E o prêmio aparecer nele.
-    O modelo não tem como inventar uma linha que o documento não tem.
+    🔴 No degrau do TEXTO (D-130B-06 + o conserto do B1), uma linha só entra se:
+      (a) o `trecho` existe LITERALMENTE numa ÚNICA linha do texto mascarado daquela página
+          (≤ `TETO_DO_TRECHO`) — a página inteira, ou duas linhas coladas, não são trecho;
+      (b) o trecho NÃO é linha de total/imposto/parcela (`trecho_nao_e_cobertura`), nem o rótulo;
+      (c) o RÓTULO do modelo está no trecho (`rotulo_no_trecho`);
+      (d) o prêmio é um dos valores do trecho, e o LIMITE (se vier) é OUTRO valor dele — senão o
+          limite cai para indisponível e a linha fica;
+      (e) cada LINHA do documento conta uma vez só (duas citações da mesma linha, ou de pedaços
+          dela, não somam duas vezes).
+    🔴 Na VISÃO não há texto para conferir: o rótulo nunca é de total, o limite só fica se for ≥ o
+    prêmio, e a mesma (página, rótulo, prêmio) conta uma vez. Quem lê a ficha sabe que a conferência
+    foi SÓ pela soma (`leitura.conferencia = "soma"`).
+    `motivos` = contagem por motivo de descarte (enum, sem texto do documento).
     """
     saida: List[Dict[str, Any]] = []
     descartadas = 0
+    embrulhadas = 0
+    motivos: Dict[str, int] = {}
     vistos: set = set()
-    normalizadas = {n: _espacos(t) for n, t in mascaradas.items()}
+    linhas_da_pagina = {n: [_espacos(l) for l in str(t or "").splitlines() if l.strip()]
+                        for n, t in mascaradas.items()}
+    usadas: Dict[int, set] = {}
+
+    def _descartar(motivo: str) -> None:
+        nonlocal descartadas
+        descartadas += 1
+        motivos[motivo] = motivos.get(motivo, 0) + 1
+
     for indice, linha in enumerate(dados.get("linhas") or []):
         if not isinstance(linha, dict):
-            descartadas += 1
+            _descartar("linha_invalida")
             continue
         try:
             pagina = int(linha.get("pagina"))
         except (TypeError, ValueError):
-            descartadas += 1
+            _descartar("sem_pagina")
             continue
         rotulo = _rotulo_limpo(linha.get("rotulo"))
         premio = _decimal(linha.get("premio"))
+        limite = _decimal(linha.get("limite"))
         trecho = _espacos(linha.get("trecho"))
-        if not rotulo or premio is None or rotulo_nao_e_cobertura(rotulo):
-            descartadas += 1
+        if not rotulo or premio is None:
+            _descartar("sem_rotulo_ou_premio")
+            continue
+        if trecho_nao_e_cobertura(rotulo):
+            _descartar("rotulo_de_total")
             continue
         if exigir_trecho_literal:
-            pagina_texto = normalizadas.get(pagina)
-            if (not trecho or pagina_texto is None or trecho not in pagina_texto
-                    or not _premio_no_trecho(premio, trecho)):
-                descartadas += 1
+            linhas = linhas_da_pagina.get(pagina)
+            if not trecho or linhas is None:
+                _descartar("sem_trecho")
                 continue
+            if len(trecho) > TETO_DO_TRECHO:
+                _descartar("trecho_longo_demais")
+                continue
+            onde = [(i,) for i, l in enumerate(linhas) if trecho in l]
+            if not onde:
+                onde = _linhas_do_rotulo_embrulhado(trecho, premio, linhas)
+                if onde:
+                    embrulhadas += 1
+            if not onde:
+                _descartar("trecho_fora_de_uma_linha")
+                detalhe = _por_que_fora_de_uma_linha(trecho, premio, linhas)
+                motivos["fora:" + detalhe] = motivos.get("fora:" + detalhe, 0) + 1
+                continue
+            if trecho_nao_e_cobertura(trecho):
+                _descartar("trecho_de_total")
+                continue
+            if not _premio_no_trecho(premio, trecho):
+                _descartar("premio_fora_do_trecho")
+                continue
+            if not rotulo_no_trecho(rotulo, trecho):
+                _descartar("rotulo_fora_do_trecho")
+                continue
+            livre = [g for g in onde if not (set(g) & usadas.setdefault(pagina, set()))]
+            if not livre:
+                _descartar("linha_repetida")
+                continue
+            usadas[pagina].update(livre[0])
+            limite = _limite_conferido(limite, premio, trecho)
         else:
             if pagina not in mascaradas:
-                descartadas += 1
+                _descartar("pagina_nao_enviada")
                 continue
+            if limite is not None and limite < premio:
+                limite = None
+            chave = (pagina, _rotulo_chave(rotulo), str(premio))
+            if chave in vistos:
+                _descartar("linha_repetida")
+                continue
+            vistos.add(chave)
             trecho = trecho or rotulo
-        chave = (pagina, trecho if exigir_trecho_literal else rotulo, str(premio))
-        if chave in vistos:
-            continue
-        vistos.add(chave)
         saida.append(_linha_para_coverage_row(
             linha, pagina=pagina, trecho=mascarar_texto_de_apolice(trecho), premio=premio,
             metodo=metodo, confianca="high" if exigir_trecho_literal else "medium",
-            base=base, indice=indice + 1))
-    return saida, descartadas
+            base=base, indice=indice + 1, limite=limite))
+    if embrulhadas:
+        motivos["aceitas_em_rotulo_embrulhado"] = embrulhadas   # registro (não é descarte)
+    return saida, descartadas, motivos
+
+
+def _por_que_fora_de_uma_linha(trecho: str, premio: Any, linhas: List[str]) -> str:
+    """O DETALHE do descarte `trecho_fora_de_uma_linha` — enum, para a régua (nunca o texto)."""
+    for n in (2, 3, 4):
+        for i in range(len(linhas) - n + 1):
+            if trecho in " ".join(linhas[i:i + n]):
+                if n > 2:
+                    return "%d_linhas" % n
+                cima = linhas[i]
+                return "2_linhas_cima_com_valor" if _DINHEIRO_NO_TRECHO_RE.search(cima) \
+                    else "2_linhas_premio_fora_de_baixo"
+    return "nao_esta_na_pagina"
+
+
+def _linhas_do_rotulo_embrulhado(trecho: str, premio: Any, linhas: List[str]) -> List[Tuple[int, int]]:
+    """(a') o trecho que atravessa DUAS linhas consecutivas só vale quando é um RÓTULO EMBRULHADO.
+
+    📊 Régua do conserto (12/10/2026, `ficha_da_apolice_20261012.json`): com "uma linha só" literal, 26 linhas
+    do modelo em 8 apólices (Tokio, Allianz EMPR) caíram, TODAS por `trecho_fora_de_uma_linha`, e 7 que fechavam
+    deixaram de fechar (os outros guardas do B1 descartaram 0 linhas nas 28). 💭 Inferência: o PyPDF2 quebra
+    o rótulo longo e os valores vão para a linha de baixo — `aceitas_em_rotulo_embrulhado` no degrau mede
+    quantas entram por aqui. A quebra só é aceita se: são DUAS linhas (nunca três, nunca a página), a de
+    CIMA não tem valor em dinheiro nenhum (é só rótulo) e o prêmio está no pedaço da de BAIXO.
+    ⛔ "16.771,96 Danos Eletricos 600.000,00" (o fim de uma linha com valor + o rótulo da outra) é recusado:
+    a de cima tem valor. Os demais guardas (rótulo no trecho, total, limite, linha uma vez) valem iguais."""
+    achados: List[Tuple[int, int]] = []
+    for i in range(len(linhas) - 1):
+        cima, baixo = linhas[i], linhas[i + 1]
+        junta = cima + " " + baixo
+        posicao = junta.find(trecho)
+        if posicao < 0 or posicao >= len(cima) or posicao + len(trecho) <= len(cima) + 1:
+            continue                       # não atravessa a quebra
+        if _DINHEIRO_NO_TRECHO_RE.search(cima):
+            continue                       # a de cima tem valor: não é rótulo embrulhado
+        pedaco_de_baixo = junta[len(cima) + 1:posicao + len(trecho)]
+        if not _premio_no_trecho(premio, pedaco_de_baixo):
+            continue
+        achados.append((i, i + 1))
+    return achados
 
 
 def _sem_as_linhas_do_regex(evidence: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1406,6 +1716,15 @@ async def ler_documento_de_seguro(
             "conflict_status": "none",
         }
 
+        # 🔴 conserto (juiz J3 · red team P5): linha do modelo/visão que NÃO fecha não entra na
+        #    evidência — ela venceria o CADASTRO no limite em `reconciliar` sem que nada a tivesse
+        #    conferido. Fica só no REGISTRO da leitura (a ficha no MinIO), para auditoria.
+        #    `provisoria` é o que o modelo leu (mesmo sem fechar): a visão SOMA a ele — o PDF misto
+        #    (texto + página escaneada) só fecha com os dois juntos.
+        provisoria: List[Dict[str, Any]] = evidence
+        nao_conferidas: List[Dict[str, Any]] = []
+        indisponivel = False
+
         # --- degrau 2: o modelo, sobre o texto MASCARADO -------------------------
         if esperado is not None and not juizo["fecha"] and modelo_ligado and lista:
             leitor = leitor_modelo or _leitor_modelo_padrao
@@ -1416,7 +1735,9 @@ async def ler_documento_de_seguro(
                 except (TypeError, ValueError):
                     numero = len(paginas_txt) + 1
                 paginas_txt.append((numero, str(page.get("content") or page.get("text") or "")))
-            mascaradas = _paginas_mascaradas(paginas_txt)
+            mascaradas, corte = _paginas_dentro_do_teto(_paginas_mascaradas(paginas_txt))
+            if corte.get("cortado"):
+                leitura["texto_ao_modelo"] = corte
             t0 = monotonic()
             degrau: Dict[str, Any] = {"degrau": "modelo"}
             try:
@@ -1425,19 +1746,30 @@ async def ler_documento_de_seguro(
                 leitura["custo_usd"] = round(float(leitura["custo_usd"]) + custo, 6)
                 leitura["custo_estimado"] = bool(leitura["custo_estimado"] or estimado)
                 leitura["modelo"] = nome or leitura["modelo"] or PAPEL_DA_LEITURA
-                linhas_m, descartadas = _linhas_do_modelo(
-                    _json_da_resposta(resposta), mascaradas, base=base,
+                dados = _json_da_resposta(resposta)
+                if not _resposta_valida(dados):
+                    degrau["erro"] = "resposta_invalida"
+                    indisponivel = True
+                linhas_m, descartadas, motivos = _linhas_do_modelo(
+                    dados if isinstance(dados, dict) else {}, mascaradas, base=base,
                     exigir_trecho_literal=True, metodo="modelo")
                 candidata = _sem_as_linhas_do_regex(evidence) + linhas_m
                 juizo_m = _julgar(candidata, esperado)
                 degrau.update({"linhas": juizo_m["linhas"], "soma": str(juizo_m["soma"]),
                                "fecha": juizo_m["fecha"], "descartadas": descartadas})
-                # 🔴 o modelo VENCE se fecha — ou se o regex não leu NADA e ele leu algo
-                if linhas_m and (juizo_m["fecha"] or juizo["linhas"] == 0):
+                if motivos:
+                    degrau["motivos_do_descarte"] = motivos
+                # 🔴 o modelo VENCE só se FECHA (J3). Leu algo e não fechou → só no registro.
+                if linhas_m and juizo_m["fecha"]:
                     evidence, juizo = candidata, juizo_m
                     degrau["venceu"] = True
+                elif linhas_m:
+                    nao_conferidas.extend(linhas_m)
+                    if juizo["linhas"] == 0:
+                        provisoria = candidata
             except Exception as exc:  # noqa: BLE001 — o degrau falha, a leitura não
                 degrau["erro"] = type(exc).__name__
+                indisponivel = True
                 logger.warning("[LeitorDeApolice] degrau do modelo falhou: %s", type(exc).__name__)
             degrau["duracao_s"] = round(monotonic() - t0, 3)
             leitura["degraus"].append(degrau)
@@ -1455,19 +1787,29 @@ async def ler_documento_de_seguro(
                     leitura["custo_usd"] = round(float(leitura["custo_usd"]) + custo, 6)
                     leitura["custo_estimado"] = bool(leitura["custo_estimado"] or estimado)
                     leitura["modelo"] = nome or leitura["modelo"] or PAPEL_DA_LEITURA
+                    dados = _json_da_resposta(resposta)
+                    if not _resposta_valida(dados):
+                        degrau["erro"] = "resposta_invalida"
+                        indisponivel = True
                     paginas_v = {n: "" for n, _ in imagens}
-                    linhas_v, descartadas = _linhas_do_modelo(
-                        _json_da_resposta(resposta), paginas_v, base=base,
+                    linhas_v, descartadas, motivos = _linhas_do_modelo(
+                        dados if isinstance(dados, dict) else {}, paginas_v, base=base,
                         exigir_trecho_literal=False, metodo="visao")
-                    candidata = evidence + linhas_v
+                    candidata = provisoria + linhas_v
                     juizo_v = _julgar(candidata, esperado)
                     degrau.update({"linhas": juizo_v["linhas"], "soma": str(juizo_v["soma"]),
                                    "fecha": juizo_v["fecha"], "descartadas": descartadas})
-                    if linhas_v and (juizo_v["fecha"] or juizo["linhas"] == 0):
+                    if motivos:
+                        degrau["motivos_do_descarte"] = motivos
+                    if linhas_v and juizo_v["fecha"]:
                         evidence, juizo = candidata, juizo_v
                         degrau["venceu"] = True
+                        nao_conferidas = []
+                    elif linhas_v:
+                        nao_conferidas.extend(linhas_v)
             except Exception as exc:  # noqa: BLE001
                 degrau["erro"] = type(exc).__name__
+                indisponivel = True
                 logger.warning("[LeitorDeApolice] degrau da visão falhou: %s", type(exc).__name__)
             degrau["duracao_s"] = round(monotonic() - t0, 3)
             leitura["degraus"].append(degrau)
@@ -1477,14 +1819,29 @@ async def ler_documento_de_seguro(
         leitura["diferenca"] = _texto_de_dinheiro(juizo["diferenca"])
         if esperado is None:
             leitura["estado"] = "sem_premio_para_conferir"
+        elif juizo["fecha"]:
+            leitura["estado"] = "fechou"
+            # como a lista foi conferida: pela LINHA (rótulo + prêmio no trecho literal) ou só pela
+            # SOMA (a visão: não há texto da página para conferir o rótulo)
+            leitura["conferencia"] = "soma" if any(
+                d.get("degrau") == "visao" and d.get("venceu") for d in leitura["degraus"]) else "linha"
+        elif indisponivel:
+            leitura["estado"] = "modelo_indisponivel"
         else:
-            leitura["estado"] = "fechou" if juizo["fecha"] else "nao_fechou"
+            leitura["estado"] = "nao_fechou"
+        if nao_conferidas:
+            leitura["linhas_nao_conferidas"] = len(nao_conferidas)
     except Exception as exc:  # noqa: BLE001 — a leitura registra a falha, não derruba o atendimento
         logger.warning("[LeitorDeApolice] leitura falhou: %s", type(exc).__name__)
         leitura["estado"] = "falhou"
         leitura["motivo"] = type(exc).__name__
+        nao_conferidas = []
     leitura["duracao_s"] = round(monotonic() - inicio, 3)
-    return {"evidence_items": evidence, "leitura": leitura, "objeto_do_risco": objeto}
+    saida = {"evidence_items": evidence, "leitura": leitura, "objeto_do_risco": objeto}
+    if nao_conferidas:
+        # ⛔ só na FICHA (MinIO, pasta da corretora) — nunca no pack, nunca no `documents.metadata`
+        saida["linhas_nao_conferidas"] = nao_conferidas
+    return saida
 
 
 def ficha_para_o_modelo(resultado: Dict[str, Any], *, audiencia: str = "segurado") -> str:
@@ -1502,15 +1859,25 @@ def ficha_para_o_modelo(resultado: Dict[str, Any], *, audiencia: str = "segurado
         "apolice": "apólice", "proposta": "proposta", "endosso": "endosso", "cotacao": "cotação",
         "crlv": "CRLV (documento do veículo)"}.get(tipo, "documento de seguro (tipo não identificado)")]
     estado = str(leitura.get("estado") or "")
-    if estado == "fechou":
+    if estado == "fechou" and leitura.get("conferencia") == "soma":
+        # 🔴 conserto (B1): a visão não tem texto para conferir o RÓTULO — só a soma foi conferida
+        linhas_txt.append("Conferida pela soma, lida de imagem: a soma das coberturas bate com o prêmio "
+                          "líquido (%s); os nomes das coberturas foram lidos da imagem da página."
+                          % reais(leitura.get("premio_esperado")))
+    elif estado == "fechou":
         linhas_txt.append("Conferida: a soma das coberturas bate com o prêmio líquido (%s)."
                           % reais(leitura.get("premio_esperado")))
     elif estado == "nao_fechou":
         linhas_txt.append("NÃO conferida: li %s de %s do prêmio líquido — pode faltar cobertura; não afirme "
                           "que a lista está completa." % (reais(leitura.get("soma_linhas")),
                                                           reais(leitura.get("premio_esperado"))))
-    elif estado == "pendente":
+    elif estado == "pendente" and leitura.get("em_andamento"):
         linhas_txt.append("Leitura completa ainda em andamento: a lista abaixo pode estar incompleta.")
+    elif estado in ("pendente", "modelo_indisponivel"):
+        # 🔴 conserto (red team B4): sem tarefa de 2º plano agendada NADA está em andamento — o
+        #    atendente não pode prometer um retorno que nenhum processo fará
+        linhas_txt.append("NÃO conferida: não consegui conferir a tabela inteira; a lista abaixo pode estar "
+                          "incompleta. Não afirme que a lista está completa.")
     elif estado == "sem_premio_para_conferir":
         linhas_txt.append("Sem prêmio líquido para conferir a soma: não afirme que a lista está completa.")
     else:
@@ -1586,6 +1953,8 @@ async def ler_anexo_de_seguro(
         if resultado["leitura"].get("estado") != "fechou":
             resultado["leitura"]["estado"] = "pendente"
             resultado["leitura"]["motivo"] = "orcamento_estourado"
+            # ⛔ o anexo NÃO tem 2º plano: nada continua lendo (red team B4)
+            resultado["leitura"]["em_andamento"] = False
     resultado["texto_mascarado"] = mascarar_texto_de_apolice(build_document_plain_text(pages))
     return resultado
 
@@ -1610,6 +1979,21 @@ async def _redis_padrao() -> Any:
 
 #: As tarefas em 2º plano vivas — referência forte (o asyncio só guarda fraca).
 _TAREFAS_EM_SEGUNDO_PLANO: set = set()
+
+
+def _agora() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _ainda_nao_e_hora(quando: Any) -> bool:
+    """`proxima_tentativa_em` está no FUTURO? Ilegível/ausente → `False` (relê)."""
+    try:
+        alvo = datetime.fromisoformat(str(quando))
+    except (TypeError, ValueError):
+        return False
+    if alvo.tzinfo is None:
+        alvo = alvo.replace(tzinfo=timezone.utc)
+    return _agora() < alvo
 
 
 class PolicyDocumentEvidenceService:
@@ -1742,6 +2126,8 @@ class PolicyDocumentEvidenceService:
             "evidence_items": resultado.get("evidence_items") or [],
             "leitura": leitura,
             "objeto_do_risco": resultado.get("objeto_do_risco") or {},
+            # J3: o que o modelo/visão leu e NÃO fechou — só aqui, para auditoria
+            "linhas_nao_conferidas": resultado.get("linhas_nao_conferidas") or [],
             "gravado_em": datetime.now(timezone.utc).isoformat(),
         }
         try:
@@ -1771,7 +2157,13 @@ class PolicyDocumentEvidenceService:
         if content_hash and str(ficha.get("content_hash") or "")[:16] != str(content_hash)[:16]:
             return None
         leitura = ficha.get("leitura") or {}
-        if leitura.get("leitor_versao") != LEITOR_VERSAO or leitura.get("estado") not in ESTADOS_FINAIS:
+        if leitura.get("leitor_versao") != LEITOR_VERSAO:
+            return None
+        if leitura.get("estado") == "modelo_indisponivel":
+            # 🔴 B2: o modelo estava fora — serve (SEM chamar o modelo) só até a hora da próxima tentativa
+            if not _ainda_nao_e_hora(leitura.get("proxima_tentativa_em")):
+                return None
+        elif leitura.get("estado") not in ESTADOS_FINAIS:
             return None
         # ⚠️ "não fechou" lido SÓ pelo regex (o modelo estava desligado) não é leitura
         #    pelo modelo: com o modelo ligado de novo, ele merece a sua vez.
@@ -1828,18 +2220,57 @@ class PolicyDocumentEvidenceService:
             document_id=document_id, policy_locator=policy_locator, content_hash=content_hash,
             extraction_method=extraction_method,
         )
+        async def _registrar(resultado: Dict[str, Any]) -> None:
+            # 🔴 J6: MinIO + Supabase são SÍNCRONOS — fora do laço async, numa thread
+            await asyncio.to_thread(self._guardar_leitura, doc_service, document_id=document_id,
+                                    company_id=company_id, content_hash=content_hash, resultado=resultado)
+
         regex = await ler_documento_de_seguro(pages, permitir_modelo=False, **comum)
         estado = regex["leitura"].get("estado")
         if estado != "nao_fechou" or not leitor_por_modelo_ligado():
             if estado in ESTADOS_FINAIS:
-                self._guardar_leitura(doc_service, document_id=document_id, company_id=company_id,
-                                      content_hash=content_hash, resultado=regex)
+                await _registrar(regex)
             return regex
 
-        def _pendente(motivo: str) -> Dict[str, Any]:
+        def _pendente(motivo: str, *, em_andamento: bool) -> Dict[str, Any]:
             regex["leitura"]["estado"] = "pendente"
             regex["leitura"]["motivo"] = motivo
+            # 🔴 B4: o sinal EXPLÍCITO de que alguém continua lendo (a tarefa de 2º plano daqui, ou o
+            #    processo que segura a trava). Sem ele, a ficha não promete retorno.
+            regex["leitura"]["em_andamento"] = bool(em_andamento)
             return regex
+
+        async def _tentativas_anteriores() -> int:
+            if not hasattr(doc_service, "carregar_leitura"):
+                return 0
+            try:
+                ficha = await asyncio.to_thread(doc_service.carregar_leitura, document_id, company_id)
+            except Exception:  # noqa: BLE001
+                return 0
+            leitura = (ficha or {}).get("leitura") if isinstance(ficha, dict) else None
+            if (not isinstance(leitura, dict) or str(ficha.get("company_id") or "") != str(company_id)
+                    or leitura.get("leitor_versao") != LEITOR_VERSAO
+                    or leitura.get("estado") != "modelo_indisponivel"
+                    or (content_hash and str(ficha.get("content_hash") or "")[:16] != str(content_hash)[:16])):
+                return 0
+            try:
+                return max(0, int(leitura.get("tentativas") or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        async def _registrar_indisponivel(resultado: Dict[str, Any]) -> None:
+            """🔴 B2: o modelo fora NÃO é leitura final — conta a tentativa e marca a próxima hora;
+            na `MAX_TENTATIVAS_DO_MODELO`-ésima, vira `nao_fechou` final."""
+            leitura = resultado["leitura"]
+            tentativas = await _tentativas_anteriores() + 1
+            leitura["tentativas"] = tentativas
+            if tentativas >= MAX_TENTATIVAS_DO_MODELO:
+                leitura["estado"] = "nao_fechou"
+                leitura["motivo"] = "modelo_indisponivel_em_%d_tentativas" % tentativas
+            else:
+                leitura["proxima_tentativa_em"] = (
+                    _agora() + timedelta(seconds=ESPERA_DO_MODELO_INDISPONIVEL_S)).isoformat()
+            await _registrar(resultado)
 
         redis = await self._redis()
         chave = _chave_da_trava(company_id, connection_id, content_hash)
@@ -1852,7 +2283,7 @@ class PolicyDocumentEvidenceService:
                 logger.warning("[LeitorDeApolice] trava indisponível: %s", type(exc).__name__)
                 redis = None
             if redis is not None and not travou:
-                return _pendente("leitura_em_andamento")
+                return _pendente("leitura_em_andamento", em_andamento=True)
 
         async def _soltar() -> None:
             if redis is None or not travou:
@@ -1868,9 +2299,11 @@ class PolicyDocumentEvidenceService:
                 resultado = await ler_documento_de_seguro(
                     pages, permitir_modelo=True, leitor_modelo=self.leitor_modelo,
                     leitor_visao=self.leitor_visao, **comum)
-                if resultado["leitura"].get("estado") in ESTADOS_FINAIS:
-                    self._guardar_leitura(doc_service, document_id=document_id, company_id=company_id,
-                                          content_hash=content_hash, resultado=resultado)
+                estado_final = resultado["leitura"].get("estado")
+                if estado_final == "modelo_indisponivel":
+                    await _registrar_indisponivel(resultado)
+                elif estado_final in ESTADOS_FINAIS:
+                    await _registrar(resultado)
                 return resultado
             finally:
                 await _soltar()
@@ -1882,11 +2315,10 @@ class PolicyDocumentEvidenceService:
             if redis is not None and travou:
                 self.tarefas_em_segundo_plano.add(tarefa)
                 tarefa.add_done_callback(self.tarefas_em_segundo_plano.discard)
-                return _pendente("orcamento_estourado_segue_em_segundo_plano")
+                return _pendente("orcamento_estourado_segue_em_segundo_plano", em_andamento=True)
             tarefa.cancel()
-            resultado = _pendente("orcamento_estourado_sem_segundo_plano")
-            self._guardar_leitura(doc_service, document_id=document_id, company_id=company_id,
-                                  content_hash=content_hash, resultado=resultado)
+            resultado = _pendente("orcamento_estourado_sem_segundo_plano", em_andamento=False)
+            await _registrar(resultado)
             return resultado
 
     async def ensure_official_policy_evidence(
@@ -1923,23 +2355,37 @@ class PolicyDocumentEvidenceService:
                 content_hash = cached.get("content_hash") or (cached.get("metadata") or {}).get("content_hash") or ""
                 # 🔴 SPEC-130-B: a LEITURA guardada desta versão, num estado final,
                 #    serve SEM chamar modelo. Senão, a cascata (o regex é grátis).
-                lido = self._leitura_guardada(
+                lido = await asyncio.to_thread(
+                    self._leitura_guardada,
                     doc_service, document_id=str(cached.get("id")), company_id=company_id,
                     content_hash=content_hash, premio_esperado=premio_liquido_esperado)
                 if lido is None:
                     resumo = cached.get("metadata") or {}
                     parser_por_pagina = resumo.get("parser_por_pagina") if isinstance(resumo, dict) else None
+                    total_paginas = resumo.get("total_paginas") if isinstance(resumo, dict) else None
+                    # 🔴 conserto (juiz J1): os PDFs guardados ANTES da 130-B (📊 21, 0 com metadata) têm
+                    #    as páginas da extração VELHA (PyPDF2 inteiro: a Sura perdia 19/19) e nenhum
+                    #    `parser_por_pagina` (a visão nunca rodava). Sem leitura desta versão, o PDF
+                    #    ORIGINAL é relido pelo leitor TOLERANTE; sem o original, as páginas guardadas.
                     bytes_originais = None
-                    if (isinstance(parser_por_pagina, dict) and "sem_texto" in parser_por_pagina.values()
-                            and hasattr(doc_service, "carregar_pdf_original")):
-                        bytes_originais = doc_service.carregar_pdf_original(cached, company_id)
+                    if hasattr(doc_service, "carregar_pdf_original"):
+                        bytes_originais = await asyncio.to_thread(
+                            doc_service.carregar_pdf_original, cached, company_id)
+                    if bytes_originais:
+                        try:
+                            from .document_service import extrair_paginas_tolerante
+
+                            novas, parser_por_pagina, total_paginas = await asyncio.to_thread(
+                                extrair_paginas_tolerante, bytes(bytes_originais))
+                            pages = novas
+                        except Exception as exc:  # noqa: BLE001 — fica com as páginas guardadas
+                            logger.warning("[LeitorDeApolice] PDF original ilegível: %s", type(exc).__name__)
                     lido = await self._ler_e_registrar(
                         doc_service=doc_service, pages=pages, company_id=company_id,
                         connection_id=connection_id, document_id=str(cached.get("id")),
                         content_hash=content_hash, policy_locator=policy_locator,
-                        premio_esperado=premio_liquido_esperado, file_bytes=bytes_originais,
-                        total_paginas=(resumo.get("total_paginas") if isinstance(resumo, dict) else None),
-                        parser_por_pagina=parser_por_pagina)
+                        premio_esperado=premio_liquido_esperado, file_bytes=bytes_originais or None,
+                        total_paginas=total_paginas, parser_por_pagina=parser_por_pagina)
                 evidence = lido["evidence_items"]
                 return self._result(
                     company_id=company_id,
