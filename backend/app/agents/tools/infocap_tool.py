@@ -299,6 +299,24 @@ def _enum_seguro(valor: Any) -> Optional[str]:
     return texto
 
 
+def _nome_do_degrau(degrau: Any) -> Optional[str]:
+    """Um degrau da leitura → enum. 🔴 F5 (costura): a F1 grava cada degrau como
+    DICT (`{"degrau": "modelo", "venceu": True, ...}`); a F2 foi escrita contra
+    strings. 📊 Com o motor real, `_enum_seguro(dict)` dava `None` e o registro
+    perdia TODOS os degraus. Só o NOME do degrau e o desfecho (`.venceu`/`.erro`)
+    passam — nunca soma, linhas descartadas ou nome de exceção."""
+    if isinstance(degrau, dict):
+        nome = _enum_seguro(degrau.get("degrau"))
+        if not nome:
+            return None
+        if degrau.get("venceu"):
+            return nome + ".venceu"
+        if degrau.get("erro"):
+            return nome + ".erro"
+        return nome
+    return _enum_seguro(degrau)
+
+
 def _evidencia_do_documento(data: Any) -> Dict[str, Any]:
     pack = (data or {}).get("policy_evidence_pack") if isinstance(data, dict) else None
     evidencia = (pack or {}).get("official_policy_document_evidence") if isinstance(pack, dict) else None
@@ -325,7 +343,7 @@ def resumo_da_leitura_do_documento(data: Any) -> Optional[Dict[str, Any]]:
         "document_status": _enum_seguro(evidencia.get("document_status")),
         "cache_status": _enum_seguro(evidencia.get("cache_status")),
         "estado_da_leitura": estado,
-        "degraus": ([d for d in (_enum_seguro(x) for x in degraus) if d][:10]
+        "degraus": ([d for d in (_nome_do_degrau(x) for x in degraus) if d][:10]
                     if isinstance(degraus, (list, tuple)) else None),
         "linhas": linhas if isinstance(linhas, int) and not isinstance(linhas, bool) else None,
         "fechou": (estado == "fechou") if estado else None,
