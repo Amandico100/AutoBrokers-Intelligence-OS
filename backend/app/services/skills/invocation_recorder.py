@@ -38,6 +38,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import time
 from contextvars import ContextVar
 from typing import Any, Optional
@@ -394,6 +395,54 @@ def _origem_da_cobertura(cobertura: Any) -> Optional[dict]:
     return fora
 
 
+#: 🔴 SPEC-130-B F5 (P-LEITOR-04) — O ESTADO DA LEITURA DO DOCUMENTO.
+#:
+#: O bloco `documento` que `infocap_tool.resumo_da_leitura_do_documento` monta
+#: era DESCARTADO aqui (📊 a lista acima não o tinha): a taxa de acerto do leitor
+#: não tinha como ser medida em produção. A lista é a MESMA da tool (o teste
+#: `test_spec130b_costura.py` prova que as duas não divergem), e a forma de cada
+#: valor é conferida DE NOVO aqui — defesa em profundidade: o recorder não
+#: confia em quem o chama. ⛔ Nada de dinheiro, URL, rótulo ou texto de apólice.
+_CAMPOS_DO_DOCUMENTO = ("document_status", "cache_status", "estado_da_leitura", "degraus",
+                        "linhas", "fechou", "leitor_versao")
+_ENUM_DO_DOCUMENTO = re.compile(r"^(?=.*[A-Za-z])[A-Za-z0-9._-]{1,40}$")
+_DIGITOS_LONGOS = re.compile(r"\d{6,}")
+
+
+def _enum_do_documento(valor: Any) -> Optional[str]:
+    if not isinstance(valor, str):
+        return None
+    texto = valor.strip()
+    if not texto or not _ENUM_DO_DOCUMENTO.match(texto) or _DIGITOS_LONGOS.search(texto):
+        return None
+    return texto
+
+
+def _leitura_do_documento(bloco: Any) -> Optional[dict]:
+    """Só os 7 campos, só enum/inteiro/booleano. Qualquer outra forma cai."""
+    if not isinstance(bloco, dict):
+        return None
+    fora: dict = {}
+    for chave in _CAMPOS_DO_DOCUMENTO:
+        valor = bloco.get(chave)
+        if chave == "degraus":
+            if isinstance(valor, (list, tuple)):
+                degraus = [d for d in (_enum_do_documento(x) for x in valor) if d][:10]
+                if degraus:
+                    fora[chave] = degraus
+        elif chave == "linhas":
+            if isinstance(valor, int) and not isinstance(valor, bool) and 0 <= valor < 100_000:
+                fora[chave] = valor
+        elif chave == "fechou":
+            if isinstance(valor, bool):
+                fora[chave] = valor
+        else:
+            enum = _enum_do_documento(valor)
+            if enum:
+                fora[chave] = enum
+    return fora or None
+
+
 def _rastro_da_consulta(resultado: dict) -> Optional[dict]:
     """🔴 SPEC-126 U3 · D2 — QUAL apólice esta chamada consultou/acionou, em pseudônimo.
 
@@ -428,6 +477,9 @@ def _resumo_da_saida(resultado: Any) -> dict:
         origem = _origem_da_cobertura(resultado.get("cobertura"))
         if origem:
             resumo["cobertura"] = origem
+        documento = _leitura_do_documento(resultado.get("documento"))
+        if documento:
+            resumo["documento"] = documento
         rastro = _rastro_da_consulta(resultado)
         if rastro:
             resumo["rastro_da_consulta"] = rastro
