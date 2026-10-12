@@ -4076,7 +4076,7 @@ funções da pessoa (`company_members.funcoes`). Uma tabela sem leitor seria esc
 renovação de uma comercial de férias vai para o Agger dela e espera, até a 131/135. **Autorização:** ⏳ pendente do Founder (decidida pela
 execução com nota 78, SPEC §3).
 
-## 11/10/2026 · SPEC-130-B · de "leitor de apólice para a cotação" para "a ficha única da apólice do produto" (D-1311-01) — ESSENCIAL · ⏳ PROPOSTA
+## 11/10/2026 · SPEC-130-B · de "leitor de apólice para a cotação" para "a ficha única da apólice do produto" (D-1311-01) — ESSENCIAL · ✅ ACEITA (Founder, 11/10)
 **Problema:** o PLANO-MESTRE (§SPEC-130, bloco "130-B") e as SITUACOES-DE-ENTRADA (§2, item 1) previam um extrator NOVO de foto/PDF →
 ficha, para a 132 (chat) e a 133-B (QCM). **Evidência:** 📊 11/10, o leitor REAL do produto rodado sobre 32 apólices da janela de
 renovação (`programa-multicalculo/131-0/LAUDO-LEITURA-DE-APOLICE.md` §3): o produto JÁ lê o PDF da apólice do CORP (📊 21 PDFs
@@ -4087,5 +4087,8 @@ a 130-B troca o motor DENTRO do `policy_document_evidence_service` (cascata text
 Router → visão por página → humano), liga as fontes ao mesmo leitor (`/documento_anexos`, WhatsApp, chat, QCM, renovação) e passa a
 servir também atendimento e renovação. O escopo **cresce** (nada é cortado): a classificação de cotação e CRLV (SITUACOES E5/E6)
 continua dentro. Proposta: `specs-propostas/SPEC-130-B-A-FICHA-UNICA-DA-APOLICE.md`. Notas: opção A do laudo **90** × leitor novo 35;
-abrir já em chat novo **92** × manter o escopo antigo 40. **Autorização:** ⏳ pendente do Founder (decidida pelo gerente com nota 92,
-D-1311-01).
+abrir já em chat novo **92** × manter o escopo antigo 40. **Autorização:** ✅ **ACEITA pelo Founder em 11/10/2026** — ele mandou
+executar com o prompt da proposta (decidida antes pelo gerente com nota 92, D-1311-01). **Execução:** SPEC-130-B concluída 12/10
+(`specs/SPEC-130-B-a-ficha-unica-da-apolice.md`, `reports/SPEC-130-B-EXECUTION-REPORT.md`): 📊 régua 11/32 → 24/28 com PDF; o anexo do
+WhatsApp e do chat pelo mesmo leitor; nenhum leitor novo. ⚠️ O que NÃO coube: a meta de COND ≥ 7/8 ficou em 6/8 (P-130B-01) e o 2º leitor
+`/attendance/media/document-extract` continua fora da ficha (P-130B-07).
