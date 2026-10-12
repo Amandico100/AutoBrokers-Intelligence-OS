@@ -527,8 +527,14 @@ async def anexar_documento_do_corretor(mensagem: str, file_url: str, file_name: 
     📊 Antes: o texto cru do PDF, até 20.000 caracteres, CPF incluso. Falhou → o AVISO INTERNO de sempre.
     ⛔ Nunca a URL, o nome do arquivo nem o conteúdo no log.
     """
-    nome = file_name or "arquivo"
     corpo = None
+    # 🔴 SPEC-130-B F5 (C4): o NOME vai ao modelo MASCARADO (o arquivo pode se chamar pelo CPF).
+    try:
+        from app.services.vision_service import nome_do_anexo_para_o_modelo
+
+        nome = nome_do_anexo_para_o_modelo(file_name, padrao="arquivo")
+    except Exception:  # noqa: BLE001 — sem a máscara, nunca o nome cru
+        nome = "arquivo"
     try:
         from app.services.vision_service import baixar_documento, conteudo_do_anexo
 
