@@ -208,7 +208,10 @@ def test_b1_visao_rotulo_de_total_recusado_limite_menor_que_o_premio_cai_e_a_fic
         [], company_id="corretora-A", premio_esperado="500.00", leitor_visao=_visao,
         leitor_modelo=_modelo_que_devolve([]), parser_por_pagina={"1": "sem_texto"}, file_bytes=pdf))
     assert r["leitura"]["estado"] == "fechou" and r["leitura"]["conferencia"] == "soma"
-    assert {x["label"]: x["lmi"] for x in _rows(r, "visao")} == {"Incendio": None, "Vendaval": "R$ 10.000,00"}
+    # 🔴 Atualizado na confirmação de 12/10/2026 (CLAUDE.md §9.3): antes o limite ≥ prêmio da VISÃO ficava
+    # ("Vendaval": R$ 10.000,00) — e venceria o do cadastro em `reconciliar` sem trecho que o conferisse.
+    # A lição migra: a visão continua recusando total e conferindo pela soma, e agora NUNCA traz limite.
+    assert {x["label"]: x["lmi"] for x in _rows(r, "visao")} == {"Incendio": None, "Vendaval": None}
     ficha = S.ficha_para_o_modelo(r, audiencia="segurado")
     assert "Conferida pela soma, lida de imagem" in ficha
 
