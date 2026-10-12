@@ -1116,8 +1116,12 @@ def _custo_da_resposta(resposta: Any) -> Tuple[float, bool, Optional[str]]:
     return round(custo, 6), True, modelo
 
 
-async def _leitor_modelo_padrao(texto_mascarado: str, *, company_id: str) -> Any:
-    """O degrau 2 pelo PAPEL `leitura_de_apolice` (Model Router, com reserva)."""
+async def _leitor_modelo_padrao(texto_mascarado: str, *, company_id: str,
+                                service_type: str = PAPEL_DA_LEITURA) -> Any:
+    """O degrau 2 pelo PAPEL `leitura_de_apolice` (Model Router, com reserva).
+
+    `service_type` só muda a LINHA DO LEDGER (a régua da bancada usa `bancada_130b`);
+    o papel, o prompt e a máscara são os mesmos do produto."""
     from langchain_core.messages import HumanMessage, SystemMessage
 
     from app.factories.llm_factory import invocar_com_reserva
@@ -1125,11 +1129,12 @@ async def _leitor_modelo_padrao(texto_mascarado: str, *, company_id: str) -> Any
     return await invocar_com_reserva(
         PAPEL_DA_LEITURA,
         [SystemMessage(content=_INSTRUCAO_DA_LEITURA), HumanMessage(content=texto_mascarado)],
-        company_id=company_id, service_type=PAPEL_DA_LEITURA, classe_de_dado="pii",
+        company_id=company_id, service_type=service_type, classe_de_dado="pii",
     )
 
 
-async def _leitor_visao_padrao(imagens: List[Tuple[int, str]], *, company_id: str) -> Any:
+async def _leitor_visao_padrao(imagens: List[Tuple[int, str]], *, company_id: str,
+                               service_type: str = PAPEL_DA_LEITURA) -> Any:
     """O degrau 3: SÓ as páginas sem texto, como imagem, pelo mesmo papel."""
     from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -1146,7 +1151,7 @@ async def _leitor_visao_padrao(imagens: List[Tuple[int, str]], *, company_id: st
     return await invocar_com_reserva(
         PAPEL_DA_LEITURA,
         [SystemMessage(content=_INSTRUCAO_DA_LEITURA), HumanMessage(content=conteudo)],
-        company_id=company_id, service_type=PAPEL_DA_LEITURA, classe_de_dado="pii",
+        company_id=company_id, service_type=service_type, classe_de_dado="pii",
     )
 
 
@@ -1158,17 +1163,40 @@ def _texto_marcado(mascaradas: Dict[int, str]) -> str:
     return "\n\n".join("[pagina %d]\n%s" % (n, t) for n, t in sorted(mascaradas.items()) if t.strip())
 
 
+#: Um valor em dinheiro pt-BR: SEMPRE 2 decimais. Lido da esquerda para a direita, é isso que
+#: separa valores COLADOS pelo extrator (📊 Tokio EMPR, PyPDF2: `17.539,151.803,19` são dois valores).
+_DINHEIRO_NO_TRECHO_RE = re.compile(r"\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}")
+
+
 def _premio_no_trecho(premio: Any, trecho_norm: str) -> bool:
-    """O prêmio aparece no trecho? Nas duas grafias (`1.234,56` e `1234,56`)."""
-    from decimal import Decimal
+    """O prêmio aparece no trecho, como UM dos valores em dinheiro dele?
+
+    🔴 SPEC-130-B F5 (régua): antes, a grafia era procurada com "nem dígito antes nem depois" — e o
+    PyPDF2 COLA os valores das colunas da Tokio (📊 EMPR-TMAR-16: as 11 linhas do modelo somavam o
+    prêmio líquido ao centavo e 10 eram descartadas por isso). Agora o trecho é FATIADO em valores
+    pela forma do dinheiro pt-BR (2 decimais, da esquerda para a direita) e o prêmio tem de ser
+    IGUAL a um deles. ⛔ Continua estrito: `2.345,67` não casa com `12.345,67` (o fatiamento dá
+    12345,67), nem `345,67` com `2.345,67`."""
+    from decimal import Decimal, InvalidOperation
 
     if premio is None:
         return False
     numero = Decimal(premio).quantize(Decimal("0.01"))
-    com_milhar = f"{numero:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
-    sem_milhar = f"{numero:.2f}".replace(".", ",")
-    for grafia in {com_milhar, sem_milhar}:
-        if re.search(r"(?<![\d.,])" + re.escape(grafia) + r"(?![\d]|,\d)", trecho_norm):
+    texto = str(trecho_norm or "")
+    fim_anterior = -1
+    for achado in _DINHEIRO_NO_TRECHO_RE.finditer(texto):
+        bruto, inicio = achado.group(0), achado.start()
+        colado = inicio > 0 and texto[inicio - 1] in "0123456789.,"
+        anterior, fim_anterior = fim_anterior, achado.end()
+        # ⛔ um dígito/separador colado ANTES só vale se o valor anterior acabou EXATAMENTE aqui
+        #    (a cola do extrator); senão o valor começa no meio de outro número e não conta.
+        if colado and inicio != anterior:
+            continue
+        try:
+            valor = Decimal(bruto.replace(".", "").replace(",", "."))
+        except InvalidOperation:
+            continue
+        if valor == numero:
             return True
     return False
 
