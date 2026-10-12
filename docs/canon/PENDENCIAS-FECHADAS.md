@@ -1168,3 +1168,39 @@ apólices (outra base/login?). **Custa esquecer:** a renovação de RE (131) nã
 fica provada pelo produto numa carteira só — a outra (217 renovações de auto) depende do script do BLOCO 0.
 **FECHADA (11/10, gerente da 131-0-A):** 📊 AutoFleet com a regra mutada → 24/217 conferem (48 "donos"); as 4 medições pelo código do
 produto estão no relatório §4.3.
+
+
+## P-LEITOR-01 · 🤖 O leitor da apólice lê inteira só Allianz residencial/condomínio e HDI condomínio (📊 11/32)
+📊 11/10, o leitor REAL do produto sobre 32 apólices da janela de renovação (`programa-multicalculo/131-0/LAUDO-LEITURA-DE-APOLICE.md`
+§3): a soma das coberturas fecha com o prêmio líquido em 11/32; Tokio, Allianz empresarial, Alfa e HDI auto = 0 linhas. **Destrava:** a
+SPEC-130-B (`specs-propostas/SPEC-130-B-A-FICHA-UNICA-DA-APOLICE.md`, a cascata com o juiz do prêmio). **De quem:** 🤖 130-B. **Custa
+esquecer:** o atendimento responde cobertura de Tokio, HDI auto e empresarial só com o `/itens`, que fecha o prêmio em 0/24 apólices de RE.
+
+✅ **FECHADA 12/10/2026 (SPEC-130-B).** 📊 A régua pelo código do produto sobre os bytes reais das mesmas 32 apólices (`backend/scripts/regua_ficha_da_apolice.py`, resultados sem PII em `backend/tests/corpus/bancada/RESULTADOS/ficha_da_apolice_20261011.json` e `_20261012.json`): ANTES 11/32 → **24/28 com PDF** (RESI 7/7 · COND 6/8 · EMPR 5/7 · AUTO 6/6); as 11 de controle intactas, todas pelo regex, custo 0; 4/32 sem PDF na fonte. O que sobra (a tabela da Tokio quebrada em duas linhas pelo PyPDF2: COND-TMAR-09/-11 e EMPR-TMAR-16) virou **P-130B-01**.
+
+
+## P-LEITOR-02 · 🤖 Uma página ruim derruba o PDF inteiro (Sura e Yelum: 📊 2 de 27 PDFs com texto)
+O PyPDF2 do produto relança o erro da página (`backend/app/services/document_service.py:397-399`) e o pipeline volta
+`policy_document_evidence_pipeline_failed` — nem o texto chega ao modelo. 📊 O PyMuPDF (já no `requirements.txt`) lê os dois (LAUDO §3.4).
+**Destrava:** PyMuPDF como RESERVA por página, nunca como troca (📊 trocar derruba a linha de controle de 18 para 0 linhas). Barato; pode
+entrar antes da 130-B. **De quem:** 🤖 130-B (U2). **Custa esquecer:** toda apólice Sura/Yelum fica sem leitura no chat e no atendimento.
+
+✅ **FECHADA 12/10/2026 (SPEC-130-B).** Páginas tolerantes: PyPDF2 por página e PyMuPDF só na página que falha (D-130B-04). 📊 Régua de 12/10: Sura e Yelum agora leem; **0 pipeline caído** em 28 PDFs.
+
+
+## P-LEITOR-03 · 🤖 O PDF que o segurado manda no WhatsApp (e o corretor no chat) vai cru ao modelo
+Texto cortado em 20.000 caracteres, colado na mensagem, sem ficha, sem conferência e sem máscara de CPF no extrator
+(`backend/app/api/webhook.py:3310-3325`, `backend/app/services/vision_service.py:48,152`, `backend/app/api/chat.py:829-841`); 📊 2 de 6
+documentos recebidos "não foi possível ler". É um segundo leitor de apólice ao lado do oficial. **Destrava:** 130-B (U4) — o anexo entra
+pelo mesmo leitor e ao modelo vai só a ficha mascarada. **De quem:** 🤖 130-B. **Custa esquecer:** dado pessoal ao provedor do modelo e
+respostas sobre cobertura sem conferência.
+
+✅ **FECHADA 12/10/2026 (SPEC-130-B).** O anexo do WhatsApp e do chat passa pelo mesmo leitor: ao modelo do SEGURADO vai só a ficha mascarada; ao CORRETOR, a ficha + o texto mascarado; documento que não é de seguro (laudo, BO, orçamento de oficina) segue como texto mascarado; o nome do arquivo também é mascarado (D-130B-05/07/14). Provas: `backend/tests/test_spec130b_anexos.py` e `test_spec130b_conserto.py`. O que sobra: o 2º leitor `/attendance/media/document-extract` (P-130B-07) e o anexo escaneado sem prêmio (P-130B-08).
+
+
+## P-LEITOR-04 · 🤖 Ninguém sabe quantas leituras de apólice deram certo em produção
+📊 `documents.metadata` vazio em 21/21 PDFs do CORP; a tool guarda só `tipo/ok/campos/cobertura` no `output_summary`, não o
+`document_status` (LAUDO §2). **Destrava:** 130-B (U2): parser, linhas, fechou/não fechou e custo em `documents.metadata`; o status da
+leitura no `output_summary`. **De quem:** 🤖 130-B. **Custa esquecer:** a taxa de acerto do leitor em produção continua imensurável.
+
+✅ **FECHADA 12/10/2026 (SPEC-130-B).** A tool registra o estado da leitura em `tool_invocations.output_summary` (bloco `documento`, só enum/número) e o leitor guarda o resumo em `documents.metadata.leitura` (+ a ficha JSON no MinIO, por hash e `LEITOR_VERSAO` 130B.2). A taxa de acerto em produção fica mensurável a partir do Implantar (T-154).
