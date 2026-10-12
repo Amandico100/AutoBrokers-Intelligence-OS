@@ -1,0 +1,949 @@
+{
+ "spec": "SPEC-130-B F5 · C6",
+ "semente": 1311,
+ "leitor_versao": "130B.2",
+ "com_modelo": true,
+ "service_type": "bancada_130b",
+ "medido_em": "2026-10-12",
+ "controle": [
+  "COND-ALLI-10",
+  "COND-ALLI-13",
+  "COND-ALLI-14",
+  "COND-ALLI-15",
+  "COND-HDI-08",
+  "RESI-ALLI-00",
+  "RESI-ALLI-01",
+  "RESI-ALLI-02",
+  "RESI-ALLI-03",
+  "RESI-ALLI-05",
+  "RESI-ALLI-06"
+ ],
+ "apolices": [
+  {
+   "id": "RESI-TMAR-07",
+   "locator_hash": "da34eac2ac31",
+   "ramo": "RESI",
+   "seguradora": "TMAR",
+   "esperado": "321.50",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1546225,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 8,
+     "soma": "321.50",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 3
+     },
+     "duracao_s": 29.609
+    }
+   ],
+   "linhas": 8,
+   "soma": "321.50",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000884,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 29.711,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão, Fumaça e Queda Aeronave",
+     "premio": "R$ 25,66",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vazamento de Tubulações",
+     "premio": "R$ 27,78",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 53,16",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "RESPONSABILIDADE CIVIL FAMILIAR",
+     "premio": "R$ 12,92",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Roubo e Subtração de Bens com Arrombamento",
+     "premio": "R$ 12,22",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Tornado, Granizo",
+     "premio": "R$ 58,62",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros, Espelhos, Mármores e Granitos",
+     "premio": "R$ 16,99",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas Plano Básico",
+     "premio": "R$ 114,15",
+     "tem_limite": false
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 40.08
+  },
+  {
+   "id": "COND-TMAR-09",
+   "locator_hash": "4d2e062f94e7",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "31875.89",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 728012,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "nao_fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 19,
+     "soma": "30516.06",
+     "fecha": false,
+     "descartadas": 1,
+     "motivos_do_descarte": {
+      "trecho_fora_de_uma_linha": 1,
+      "fora:2_linhas_cima_com_valor": 1,
+      "aceitas_em_rotulo_embrulhado": 3
+     },
+     "duracao_s": 29.439
+    }
+   ],
+   "linhas": 0,
+   "soma": "0.00",
+   "diferenca": "31875.89",
+   "fecha_juiz": false,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": false,
+   "custo_usd_estimado": 0.001495,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 29.505,
+   "conferencia": null,
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão, Fumaça e Queda Aeronave",
+     "premio": "R$ 478,50",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 15.103,93",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Tornado e Granizo",
+     "premio": "R$ 2.605,59",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Roubo e Subtração de Bens com Arrombamento",
+     "premio": "R$ 60,91",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros, Espelhos, Anúncios Luminosos",
+     "premio": "R$ 1.744,07",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Síndico",
+     "premio": "R$ 210,64",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Condomínio",
+     "premio": "R$ 526,49",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Danos Morais",
+     "premio": "R$ 38,23",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Portões Automáticos",
+     "premio": "R$ 2.122,98",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Incêndio de Bens de Condôminos",
+     "premio": "R$ 1.837,58",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Roubo/Subtração de Bens c/Arrombamento-Condôminos",
+     "premio": "R$ 2.333,84",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Impacto de Veículos",
+     "premio": "R$ 234,18",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Tumulto, Greve e Lock-Out",
+     "premio": "R$ 13,72",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Vazamento de Tanques e Tubulações",
+     "premio": "R$ 1.199,60",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Alagamento e Inundação",
+     "premio": "R$ 1.648,86",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Desmoronamento",
+     "premio": "R$ 270,17",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 6,41",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas com Aluguel - Condôminos",
+     "premio": "R$ 50,74",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas Plano Básico",
+     "premio": "R$ 29,62",
+     "tem_limite": false
+    }
+   ],
+   "duracao_s": 33.64
+  },
+  {
+   "id": "COND-TMAR-11",
+   "locator_hash": "c77a6b2d0ba5",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "5732.11",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 727668,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "nao_fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 17,
+     "soma": "5334.62",
+     "fecha": false,
+     "descartadas": 1,
+     "motivos_do_descarte": {
+      "trecho_fora_de_uma_linha": 1,
+      "fora:2_linhas_cima_com_valor": 1,
+      "aceitas_em_rotulo_embrulhado": 2
+     },
+     "duracao_s": 33.266
+    }
+   ],
+   "linhas": 0,
+   "soma": "0.00",
+   "diferenca": "5732.11",
+   "fecha_juiz": false,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": false,
+   "custo_usd_estimado": 0.001398,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 33.331,
+   "conferencia": null,
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [],
+   "rotulos_nao_conferidos": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão, Fumaça e Queda Aeronave",
+     "premio": "R$ 679,07",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 2.681,66",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Tornado e Granizo",
+     "premio": "R$ 611,59",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Roubo e Subtração de Bens com Arrombamento",
+     "premio": "R$ 155,18",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros, Espelhos, Anúncios Luminosos",
+     "premio": "R$ 128,89",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Síndico",
+     "premio": "R$ 45,21",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Condomínio",
+     "premio": "R$ 172,29",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Danos Morais",
+     "premio": "R$ 32,82",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Portões Automáticos",
+     "premio": "R$ 146,78",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Incêndio de Bens de Condôminos",
+     "premio": "R$ 46,05",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Impacto de Veículos",
+     "premio": "R$ 88,93",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Tumulto, Greve e Lock-Out",
+     "premio": "R$ 8,43",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Vazamento de Tanques e Tubulações",
+     "premio": "R$ 408,54",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Desmoronamento",
+     "premio": "R$ 83,00",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 11,05",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas com Aluguel - Condôminos",
+     "premio": "R$ 6,25",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas Plano Básico",
+     "premio": "R$ 28,88",
+     "tem_limite": false
+    }
+   ],
+   "duracao_s": 39.47
+  },
+  {
+   "id": "COND-TMAR-12",
+   "locator_hash": "13aef6c4b5d6",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "2834.36",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 727293,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 14,
+     "soma": "2834.36",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 3
+     },
+     "duracao_s": 23.008
+    }
+   ],
+   "linhas": 14,
+   "soma": "2834.36",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001168,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 23.073,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Incêndio, Raio, Explosão, Fumaça e Queda Aeronave",
+     "premio": "R$ 87,50",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 718,64",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Tornado e Granizo",
+     "premio": "R$ 606,60",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Síndico",
+     "premio": "R$ 42,01",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Condomínio",
+     "premio": "R$ 262,45",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Danos Morais",
+     "premio": "R$ 61,02",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "RESPONSABILIDADE CIVIL GARAGISTA COMPREENSIVA",
+     "premio": "R$ 369,48",
+     "tem_limite": true
+    },
+    {
+     "pagina": 3,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil Portões Automáticos",
+     "premio": "R$ 276,26",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Incêndio de Bens de Condôminos",
+     "premio": "R$ 60,79",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Roubo/Subtração de Bens c/Arrombamento- Condôminos",
+     "premio": "R$ 94,28",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Impacto de Veículos",
+     "premio": "R$ 128,90",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Desmoronamento",
+     "premio": "R$ 91,30",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Despesas com Aluguel - Condôminos",
+     "premio": "R$ 6,25",
+     "tem_limite": true
+    },
+    {
+     "pagina": 4,
+     "degrau": "modelo",
+     "rotulo": "Assistência 24 horas Plano Básico",
+     "premio": "R$ 28,88",
+     "tem_limite": false
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 33.43
+  },
+  {
+   "id": "EMPR-ALLI-17",
+   "locator_hash": "5c46abfdd96d",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "10244.03",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 137998,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 7,
+     "soma": "10244.03",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 1
+     },
+     "duracao_s": 17.102
+    }
+   ],
+   "linhas": 7,
+   "soma": "10244.03",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000537,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 17.141,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 1.066,52",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 12,04",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Incêndio e Complementares",
+     "premio": "R$ 6.216,18",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros e Anúncios Luminosos e Mármores",
+     "premio": "R$ 798,12",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil",
+     "premio": "R$ 482,08",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Roubo",
+     "premio": "R$ 263,68",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Granizo e Tornado",
+     "premio": "R$ 1.405,41",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 22.43
+  },
+  {
+   "id": "EMPR-ALLI-20",
+   "locator_hash": "c91509e25650",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "6195.72",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 138939,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 7,
+     "soma": "6195.72",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 1
+     },
+     "duracao_s": 17.455
+    }
+   ],
+   "linhas": 7,
+   "soma": "6195.72",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000694,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 17.495,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 458,40",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 14,24",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Incêndio e Complementares",
+     "premio": "R$ 2.313,89",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros e Anúncios Luminosos e Mármores",
+     "premio": "R$ 1.110,53",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil",
+     "premio": "R$ 538,68",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Roubo",
+     "premio": "R$ 350,68",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Granizo e Tornado",
+     "premio": "R$ 1.409,30",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 20.18
+  },
+  {
+   "id": "EMPR-ALLI-23",
+   "locator_hash": "f9f4551197ed",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "3291.20",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 138493,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 7,
+     "soma": "3291.20",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "motivos_do_descarte": {
+      "aceitas_em_rotulo_embrulhado": 1
+     },
+     "duracao_s": 15.277
+    }
+   ],
+   "linhas": 7,
+   "soma": "3291.20",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.00056,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 15.316,
+   "conferencia": "linha",
+   "texto_ao_modelo": null,
+   "rotulos_do_modelo": [
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Danos Elétricos",
+     "premio": "R$ 59,86",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Despesas Fixas",
+     "premio": "R$ 23,93",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Incêndio e Complementares",
+     "premio": "R$ 1.826,85",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Quebra de Vidros e Anúncios Luminosos e Mármores",
+     "premio": "R$ 396,14",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Responsabilidade Civil",
+     "premio": "R$ 253,78",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Roubo",
+     "premio": "R$ 656,81",
+     "tem_limite": true
+    },
+    {
+     "pagina": 2,
+     "degrau": "modelo",
+     "rotulo": "Vendaval, Furacão, Ciclone, Granizo e Tornado",
+     "premio": "R$ 73,83",
+     "tem_limite": true
+    }
+   ],
+   "rotulos_nao_conferidos": [],
+   "duracao_s": 18.13
+  }
+ ]
+}

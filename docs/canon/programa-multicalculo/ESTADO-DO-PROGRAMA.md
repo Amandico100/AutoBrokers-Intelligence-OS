@@ -175,7 +175,9 @@ calculadas em paralelo, e indica a vencedora; Claude/ChatGPT ficam para a ★.
 | 11/10 | 130-B | ESTIMATIVA ANTES da régua das 32 (F5, papel `leitura_de_apolice`): 💭 ~21 leituras pelo modelo × US$ 0,002 + ~16 páginas pela visão × US$ 0,003, até 3 rodadas (estimado 💭 0,30 antes) — 📊 real `token_usage_logs service_type='bancada_130b'` depois de 00:30 UTC: 41 chamadas (2 rodadas + 3 diagnósticos) | 📊 0,0515 | 💭 3,88 |
 | 12/10 | 130-B | régua do CONSERTO (juiz por linha; estimado 💭 0,06 antes: 1–2 rodadas × ~US$ 0,03) — 📊 real `token_usage_logs service_type='bancada_130b'`, acumulado de 0,053790 a 0,091085 | 📊 0,0373 | 💭 3,84 |
 
-📊 **Total da 130-B: ≈ US$ 0,091 de modelo** (0,0023 + 0,0515 + 0,0373; verba proposta US$ 1,50). O saldo segue 💭 por causa da linha estimada do Google de 06/10.
+| 12/10 | 130-B | régua da CONFIRMAÇÃO (as 7 apólices da regra das duas linhas, depois do guarda novo; estimado 💭 0,015 antes) — 📊 real: acumulado 0,091085 → 0,098287 | 📊 0,0072 | 💭 3,83 |
+
+📊 **Total da 130-B: US$ 0,0983 de modelo** (79 chamadas; `select sum(total_cost_usd) from token_usage_logs where service_type='bancada_130b'`; verba proposta US$ 1,50). O saldo segue 💭 por causa da linha estimada do Google de 06/10.
 
 Regra: nenhuma rodada paga sem estimativa escrita aqui antes. O que sobrar passa para a SPEC seguinte.
 
