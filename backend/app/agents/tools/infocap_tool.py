@@ -381,8 +381,12 @@ def _linha_da_leitura_nao_conferida(pack: Any) -> Optional[str]:
         porque = "as %d coberturas lidas somam %s de %s do premio liquido" % (n, reais(soma), reais(esperado))
     elif estado == "sem_premio_para_conferir":
         porque = "nao ha premio liquido para conferir a soma das %d coberturas lidas" % n
-    elif estado == "pendente":
+    elif estado == "pendente" and leitura.get("em_andamento"):
         porque = "a leitura ainda esta em andamento (%d coberturas lidas ate agora)" % n
+    elif estado in ("pendente", "modelo_indisponivel"):
+        # 🔴 SPEC-130-B conserto (red team B4): sem 2º plano agendado, nada continua lendo —
+        #    nunca prometer retorno ao segurado
+        porque = "nao consegui conferir a tabela inteira (%d coberturas lidas)" % n
     elif estado == "falhou":
         porque = "a leitura do documento falhou"
     else:
