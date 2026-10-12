@@ -23,6 +23,117 @@ from .minio_service import get_minio_service
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# SPEC-130-B U2 (P-LEITOR-02) — as PÁGINAS TOLERANTES
+# ---------------------------------------------------------------------------
+#: O que cada página do PDF entregou. ⛔ Não é decoração: é o que diz à leitura
+#: quais páginas só a VISÃO pode ler (`sem_texto`).
+PARSER_PYPDF2 = "pypdf2"
+PARSER_PYMUPDF = "pymupdf"
+PARSER_SEM_TEXTO = "sem_texto"
+
+
+def _pymupdf_aberto(file_bytes: bytes) -> Any:
+    """O documento aberto no PyMuPDF, ou `None` (sem a biblioteca, ou PDF ilegível)."""
+    try:
+        import fitz  # PyMuPDF — já está no requirements (docling/portal)
+
+        return fitz.open(stream=file_bytes, filetype="pdf")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[DocumentService] PyMuPDF indisponível para este PDF: %s", type(exc).__name__)
+        return None
+
+
+def extrair_paginas_tolerante(
+    file_bytes: bytes,
+) -> Tuple[List[Dict[str, Any]], Dict[str, str], int]:
+    """`(pages, parser_por_pagina, total_paginas)` — o PDF lido página a página.
+
+    🔴 **PyPDF2 POR PÁGINA, e PyMuPDF só na página em que ele falha.** O PyPDF2 é
+    o DIALETO do regex (CLAUDE.md §9.4): 📊 BLOCO 0 da SPEC-130-B — trocar o
+    extrator inteiro pelo PyMuPDF derruba a apólice de controle de 18 para 0
+    linhas, porque o espaçamento das colunas muda. Mas o PyPDF2 lança exceção
+    numa página e, até aqui, a exceção derrubava o PDF INTEIRO: 📊 a Sura teve
+    19/19 páginas com erro e a Yelum 4/4. Agora a página que falha (ou volta
+    vazia) é relida pelo PyMuPDF; a que não tem texto em nenhum dos dois é
+    `sem_texto` — e só ela pode ir à visão.
+
+    `pages` mantém a forma de sempre: só as páginas com texto, com o
+    `page_number` REAL (1-based). ⛔ PDF que nenhum dos dois abre → exceção,
+    como antes.
+    """
+    dados = bytes(file_bytes or b"")
+    leitor = None
+    try:
+        leitor = PyPDF2.PdfReader(BytesIO(dados))
+        total = len(leitor.pages)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[DocumentService] PyPDF2 não abriu o PDF: %s", type(exc).__name__)
+        leitor = None
+        total = 0
+
+    reserva: Any = None
+    if leitor is None:
+        reserva = _pymupdf_aberto(dados)
+        if reserva is None:
+            raise ValueError("pdf_ilegivel: nem PyPDF2 nem PyMuPDF abriram o arquivo")
+        total = int(reserva.page_count)
+
+    pages: List[Dict[str, Any]] = []
+    parser_por_pagina: Dict[str, str] = {}
+    for indice in range(total):
+        texto = ""
+        if leitor is not None:
+            try:
+                texto = (leitor.pages[indice].extract_text() or "").strip()
+            except Exception as exc:  # noqa: BLE001 — a página, não o PDF
+                logger.warning("[DocumentService] PyPDF2 falhou na página %d: %s",
+                               indice + 1, type(exc).__name__)
+                texto = ""
+        if texto:
+            parser = PARSER_PYPDF2
+        else:
+            if reserva is None:
+                reserva = _pymupdf_aberto(dados) or False
+            texto = ""
+            if reserva:
+                try:
+                    texto = (reserva[indice].get_text() or "").strip()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("[DocumentService] PyMuPDF falhou na página %d: %s",
+                                   indice + 1, type(exc).__name__)
+                    texto = ""
+            parser = PARSER_PYMUPDF if texto else PARSER_SEM_TEXTO
+        parser_por_pagina[str(indice + 1)] = parser
+        if texto:
+            pages.append({"page_number": indice + 1, "content": texto, "text": texto})
+    if reserva:
+        try:
+            reserva.close()
+        except Exception:  # noqa: BLE001
+            pass
+    return pages, parser_por_pagina, total
+
+
+#: O que pode morar em `documents.metadata` — lista FECHADA. ⛔ Nada de URL,
+#: locator cru (codfil/nosnum), objeto do risco ou texto: a coluna é lida por
+#: telas e relatórios; a ficha completa fica no MinIO, na pasta da corretora.
+_CHAVES_DO_RESUMO = (
+    "provider", "document_type", "source_document", "source_kind", "source_transport",
+    "content_hash", "policy_locator_hash", "sensitivity", "scope", "parser_used",
+    "parser_por_pagina", "total_paginas", "paginas_sem_texto", "created_at",
+)
+
+
+def _resumo_do_documento(policy_metadata: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: policy_metadata[k] for k in _CHAVES_DO_RESUMO if policy_metadata.get(k) is not None}
+
+
+def _caminho_da_leitura(company_id: str, document_id: str) -> str:
+    """A FICHA da leitura mora ao lado do raw JSON — dentro da pasta da corretora."""
+    return f"{company_id}/raw/{document_id}.leitura.json"
+
+
 class DocumentService:
     """
     Serviço para upload e extração de texto de documentos
@@ -230,6 +341,88 @@ class DocumentService:
             logger.warning(f"[DocumentService] policy raw pages unavailable: {type(e).__name__}")
             return []
 
+    # ----- SPEC-130-B U2: a LEITURA registrada --------------------------------
+    def guardar_leitura(
+        self,
+        document_id: str,
+        company_id: str,
+        ficha: Dict[str, Any],
+        resumo: Dict[str, Any],
+    ) -> bool:
+        """Grava a FICHA no MinIO e o RESUMO em `documents.metadata.leitura`.
+
+        🔴 Isolamento (CLAUDE.md §7): o objeto mora em `{company_id}/raw/…` e o
+        UPDATE filtra `id` **e** `company_id` — o service role ignora RLS, então
+        o filtro no código é a trava. ⛔ `resumo` nunca leva `objeto_do_risco`.
+        """
+        if not document_id or not company_id:
+            return False
+        ok = True
+        try:
+            corpo = BytesIO(json.dumps(ficha, ensure_ascii=False, default=str).encode("utf-8"))
+            self.minio.client.put_object(
+                "documents",
+                _caminho_da_leitura(company_id, document_id),
+                corpo,
+                length=corpo.getbuffer().nbytes,
+                content_type="application/json",
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[DocumentService] ficha da leitura não gravada: {type(e).__name__}")
+            ok = False
+        try:
+            resumo_limpo = {k: v for k, v in dict(resumo or {}).items() if k != "objeto_do_risco"}
+            atual = (
+                self.supabase.table("documents").select("metadata")
+                .eq("id", document_id).eq("company_id", company_id).limit(1).execute()
+            )
+            linhas = atual.data if atual and atual.data else []
+            if not linhas:
+                return False
+            metadata = dict(linhas[0].get("metadata") or {})
+            metadata["leitura"] = resumo_limpo
+            (
+                self.supabase.table("documents").update({"metadata": metadata})
+                .eq("id", document_id).eq("company_id", company_id).execute()
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[DocumentService] resumo da leitura não gravado: {type(e).__name__}")
+            ok = False
+        return ok
+
+    def carregar_leitura(self, document_id: str, company_id: str) -> Optional[Dict[str, Any]]:
+        """A FICHA guardada **desta corretora**, ou `None`.
+
+        ⚠️ Além do caminho por `company_id`, a ficha carrega o `company_id` com
+        que foi escrita, e ele é conferido: uma ficha que não é desta corretora
+        não serve, mesmo que um caminho errado a tenha trazido.
+        """
+        if not document_id or not company_id:
+            return None
+        try:
+            dados = json.load(self.minio.download_file(_caminho_da_leitura(company_id, document_id)))
+        except Exception:  # noqa: BLE001 — ficha ausente é o caso normal do 1º acesso
+            return None
+        if not isinstance(dados, dict) or str(dados.get("company_id") or "") != str(company_id):
+            return None
+        return dados
+
+    def carregar_pdf_original(self, documento: Dict[str, Any], company_id: str) -> Optional[bytes]:
+        """Os BYTES do PDF guardado — só para a VISÃO ler as páginas sem texto."""
+        try:
+            if str((documento or {}).get("company_id") or "") != str(company_id):
+                return None
+            caminho = str((documento or {}).get("minio_path") or "")
+            if not caminho:
+                return None
+            # `upload_file` grava `{company_id}/{document_id}/{arquivo}`: a pasta é a da corretora
+            if not caminho.startswith(f"{company_id}/"):
+                return None
+            return self.minio.download_file(caminho).read()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[DocumentService] PDF original indisponível: {type(e).__name__}")
+            return None
+
     def store_official_policy_document(
         self,
         *,
@@ -261,7 +454,19 @@ class DocumentService:
                 content_type=content_type or "application/pdf",
             )
 
-            text_content, pages = self.extract_text_internal(BytesIO(file_data), file_type)
+            # 🔴 SPEC-130-B U2: as páginas TOLERANTES, e o que cada uma entregou.
+            pages, parser_por_pagina, total_paginas = extrair_paginas_tolerante(bytes(file_data))
+            text_content = "\n\n".join(page["content"] for page in pages).strip()
+            paginas_sem_texto = sorted(
+                int(n) for n, p in parser_por_pagina.items() if p == PARSER_SEM_TEXTO)
+            # ⚠️ A extração VOLTA a quem chamou pelo mesmo dicionário de metadados
+            #    (o retorno `(document_id, pages)` não muda: dublês e chamadores de
+            #    antes continuam valendo). É assim que a leitura sabe quais páginas
+            #    só a visão pode ler.
+            if isinstance(policy_metadata, dict):
+                policy_metadata["parser_por_pagina"] = dict(parser_por_pagina)
+                policy_metadata["total_paginas"] = total_paginas
+                policy_metadata["paginas_sem_texto"] = paginas_sem_texto
             from .knowledge_scope import SCOPE_CONNECTOR
 
             raw_data = {
@@ -275,6 +480,9 @@ class DocumentService:
                     "scope": SCOPE_CONNECTOR,
                     "uploaded_at": datetime.now(timezone.utc).isoformat(),
                     **(policy_metadata or {}),
+                    "parser_por_pagina": parser_por_pagina,
+                    "total_paginas": total_paginas,
+                    "paginas_sem_texto": paginas_sem_texto,
                 },
             }
             raw_bytes = BytesIO(json.dumps(raw_data, ensure_ascii=False).encode("utf-8"))
@@ -304,6 +512,11 @@ class DocumentService:
                         "ingestion_strategy": "page",
                         "ingestion_mode": "semantic",
                         "status": "pending",
+                        # 🔴 SPEC-130-B: 📊 BLOCO 0 item 2 — os 21 PDFs do CORP
+                        #    tinham `metadata` VAZIO. O resumo (sem PII, sem URL,
+                        #    sem locator cru) passa a nascer com o documento.
+                        "source_kind": str((policy_metadata or {}).get("source_kind") or "policy_pdf"),
+                        "metadata": _resumo_do_documento(policy_metadata or {}),
                     }
                 )
                 .execute()
@@ -376,22 +589,15 @@ class DocumentService:
         return None
 
     def _extract_pdf_text(self, file_data: BytesIO) -> Tuple[str, List[Dict[str, Any]]]:
-        """Extrai texto de PDF preservando paginação"""
+        """Extrai texto de PDF preservando paginação.
+
+        🔴 SPEC-130-B: pelas PÁGINAS TOLERANTES — uma página que o PyPDF2 não lê
+        não derruba mais o PDF inteiro. O retorno é o de sempre.
+        """
         try:
-            pdf_reader = PyPDF2.PdfReader(file_data)
-            text = ""
-            pages = []
-
-            for i, page in enumerate(pdf_reader.pages):
-                page_text = page.extract_text() or ""
-                page_text = page_text.strip()
-
-                if page_text:
-                    text += page_text + "\n\n"
-                    pages.append(
-                        {"page_number": i + 1, "content": page_text, "text": page_text}
-                    )
-
+            file_data.seek(0)
+            pages, _parser, _total = extrair_paginas_tolerante(file_data.read())
+            text = "\n\n".join(page["content"] for page in pages)
             return text.strip(), pages
 
         except Exception as e:
