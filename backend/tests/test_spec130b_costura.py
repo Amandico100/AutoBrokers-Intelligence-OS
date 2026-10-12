@@ -307,7 +307,9 @@ def test_c1_o_recorder_registra_o_bloco_documento_da_tool_sem_pii():
     doc = resumo.get("documento")
     assert doc is not None, "o bloco `documento` da tool não chegou ao output_summary (P-LEITOR-04)"
     assert doc["estado_da_leitura"] == "fechou" and doc["fechou"] is True and doc["linhas"] == 2
-    assert doc["leitor_versao"] == "130B.1"
+    from app.services.policy_document_evidence_service import LEITOR_VERSAO
+
+    assert doc["leitor_versao"] == LEITOR_VERSAO     # 130B.2 desde o conserto único (o juiz da linha)
     assert doc["degraus"] == ["regex", "modelo.venceu"], doc                         # a costura F1 × F2
     assert set(doc) <= set(R._CAMPOS_DO_DOCUMENTO)
     assert not _PROIBIDO.search(json.dumps(resumo, ensure_ascii=False)), resumo
