@@ -33,6 +33,9 @@
 > cofre), a **T-150** e a **T-151** ✅ respondidas, a **T-149** ❌ cancelada (a liberação da HDI já existe), a **T-146**, a **T-147** e a
 > **T-148** ⏸ foram para o FIM da fila (a cobrança estável, D-1311-02 TOMADA), a **T-153** ⏸ adiada; o `smith-web` foi implantado e o
 > `/api/versao` conferido (11/10). Nasceram a **T-154** (Implantar a 130-B) e a **T-155** (apagar as pastas velhas `app/app/` e `app/backend/`). A **T-152** segue pendente.
+> **12/10 noite (a proposta da SPEC-131, o aplicativo de Renovação):** nasceu a seção **"⓪ PARA LIGAR a renovação"** (a ordem das tarefas que
+> já existem + as novas **T-156** (o aceite NOVO da madrugada), **T-157** (o telefone e o Agger de cada comercial no Meu perfil) e **T-158**
+> (em qual Agger roda o canário)); a **T-141** e a **T-142** ganharam 🔁 (o aceite muda; Serviços muda de lugar).
 
 ## 🧪 A LISTA ÚNICA DOS TESTES (atualizada 03/10/2026 — SPEC-126: T-91 a T-98 · SPEC-127: T-99 a T-103 · fechador 04/10: T-104 T-105 · SPEC-128: T-106 a T-113 · passagem 05/10: T-114 a T-119 · v2.5.1: T-120 · SPEC-129-B: T-121 a T-123 · SPEC-130-A: T-124 a T-128)
 
@@ -95,10 +98,15 @@
       DELA (ou peça que ela mesma cadastre, logada no painel). 🔴 Combine com ela antes: o robô vai entrar no login dela **de madrugada**
       para calcular a renovação das apólices de que ela é dona — e sai logo depois. Se ela estiver usando o Agger, o robô cancela e
       espera; nunca derruba a sessão dela. A senha nunca reaparece na tela. · *de:* S131-0-A
+      🔁 **12/10 (proposta da SPEC-131, D-131-03):** a frase "nunca derruba a sessão dela" **deixa de valer** — de madrugada o robô entra
+      mesmo com a sessão aberta (uma vez por noite, só renovação). Faça a **T-156** (o aceite novo) ANTES desta. E na 131-B o Agger de cada
+      pessoa sai deste modal e vai para **Meu perfil** — cada uma conecta o dela (D-131-07, T-157).
 - [ ] **T-142** ⏳ 🧑 **quando quiser** · **Escolher o que cada serviço faz** — painel → **Personalização → Serviços**: no topo, os 4 passos
       dizem o que já está pronto. Em **Cotação** e **Renovação**, escolha só **calcular** × **calcular e entregar** × **calcular, entregar e
       negociar**, e as exceções (por ramo, ou "valor acima de"). A aba **Quem Cobra Menos** é só leitura (ela segue a config do canal).
       **Se aparecer "Outra pessoa salvou antes de você":** recarregue a página e salve de novo. · *de:* S131-0-A
+      🔁 **12/10 (proposta da SPEC-131, D-131-06):** a tela Serviços vai para DENTRO de cada aplicativo (Renovação, Cotação, Quem Cobra Menos →
+      aba Configurar) na 131-B. 📊 12/10: nenhuma corretora salvou a tela ainda — **pode esperar** e fazer já no lugar novo.
 - [ ] **T-143** ⏳ 🧑 **decisão** · **A InfoCap da Amandus (a corretora de ensaio)** — hoje a conexão chamada antes "InfoCap RESULTA"
       guarda o login da **AutoFleet** (o nome foi corrigido para "InfoCap AUTOFLEET", D-131-0-27). O canário de auto da Amandus usa esse
       banco. Para ver a Resulta na Amandus: **crie uma conexão NOVA** com o login da Resulta e **arquive** a atual — 🔴 nunca troque a senha
@@ -210,6 +218,45 @@
 - [ ] **T-155** ⏳ 🧑 **decisão, 1 min** · **Apagar as pastas velhas `app/app/` e `app/backend/` da raiz do projeto** (P-130B-14) — estão
       na árvore desde 03/10, fora do git, e fazem um teste da bateria falhar sem ser defeito do produto. Responda no chat *"pode apagar"* ou
       *"não apague"*; a execução confere antes que nada nelas é único. · *de:* S130-B
+
+### ⓪ PARA LIGAR a renovação (12/10/2026, proposta da SPEC-131 — o aplicativo de Renovação)
+
+> O que vem: todo dia, antes das 7h, cada comercial encontra no Agger dele as renovações do dia calculadas (10 dias antes do
+> vencimento), e no painel um aplicativo de Renovação com a lista, a apresentação pronta e o botão "Enviar pelo WhatsApp" (abre o
+> WhatsApp DELE com a mensagem pronta). A proposta: `specs-propostas/SPEC-131-O-APLICATIVO-DE-RENOVACAO.md` — executa em chat novo
+> (131-A e depois 131-B). 🔴 **Nada desta lista trava CONSTRUIR** (a execução se prova na corretora de ensaio); ela decide quando a
+> renovação LIGA nas corretoras reais e se sai no Agger de cada comercial ou no da corretora. **A ordem sugerida:**
+>
+> 1. **T-154** e **T-139** — Implantar (a 130-B e a 131-0-A). Sem isso o servidor não tem a ficha nem as contas.
+> 2. **T-122** — as 2 variáveis do motor: `MULTICALCULO_HMAC_KEY` no `smith-api` e `MULTICALCULO_MOTOR_LIGADO=true` no `portal-worker`
+>    (o motor nasce DESLIGADO, D-129B-09). 📊 12/10: o valor em produção não foi medido daqui — no console do `portal-worker`,
+>    `printenv MULTICALCULO_MOTOR_LIGADO` deve responder `true`.
+> 3. **T-144** — a InfoCap conectada na própria corretora, nas duas reais. 📊 12/10: conectada em **0 de 2** (só a de ensaio). Sem ela,
+>    a madrugada não sabe quem renova (o dia fica "sem conexão" e você recebe o alerta).
+> 4. **T-136** — ⚠️ **a licença do Agger de uma das corretoras tem data 13/10/2026 (amanhã)** (📊 A-PROVA §11 item 4): confira em
+>    "Meu plano"; vencida, nenhuma renovação calcula nela. Junto: HDI, Mitsui, Tokio e as credenciais de RE da Porto, Mapfre e HDI (P-129C-04).
+> 5. **T-125** — o WhatsApp de atendimento no cadastro de marca (📊 0 de 3 preenchidos): é o "Quero renovar" de reserva quando o comercial
+>    dono não tem telefone verificado (T-157).
+> 6. **T-140** — quem é quem (o vínculo produtor da InfoCap ↔ pessoa). 📊 12/10: **0 vínculos** → hoje TODAS as renovações iriam para o
+>    Agger da corretora, com aviso. Funciona; só não sai "no Agger DELE".
+> 7. **T-156** e depois **T-141** — o aceite NOVO de cada comercial e o Agger dela no perfil.
+> 8. **T-157** e **T-158** — quando quiser.
+
+- [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
+      texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
+      > *"Para a sua renovação ficar pronta antes das 7h, o robô vai entrar no SEU Agger de madrugada (entre 1h e 6h30). Se você esqueceu
+      > o Agger aberto, ele entra mesmo assim — uma vez por noite, só para as renovações das apólices que são suas — e sai logo depois.
+      > Se você estiver usando o Agger nessa hora, ele espera e tenta de novo; se não der até 6h15, calcula no Agger da corretora e te avisa."*
+      **Esperado:** cada uma diz "ok" (vale por mensagem). Quem não aceitar fica sem o Agger próprio: as renovações dela calculam no Agger
+      da corretora, com aviso. 🔴 Antes do aceite, a execução NÃO entra no Agger de nenhuma pessoa. · *de:* proposta SPEC-131 §4.4
+- [ ] **T-157** ⏳ 🧑 **quando a 131-B estiver no ar** · **O telefone de cada comercial** — cada um, logado no painel → **Meu perfil →
+      Minhas conexões**: confirma o próprio WhatsApp (é para onde vai o "Quero renovar" do cliente dele) e conecta o próprio Agger (a
+      T-141 passa a ser feita por ela mesma, no perfil, D-131-07). **Esperado:** em Personalização → Equipe, a coluna "Agger" mostra
+      "conectado ✓" para cada um. **Se não fizer:** o "Quero renovar" vai ao WhatsApp da corretora (T-125). · *de:* proposta SPEC-131 §4.8
+- [ ] **T-158** ⏳ 🧑 **decisão, 1 min — não trava construir** · **Em qual Agger roda o canário da madrugada** (a prova da 131-A numa
+      corretora de ENSAIO, ≤ 5 renovações, uma madrugada). 📊 12/10: além das 2 contas das corretoras (ativas), as 2 contas `teste` do Agger estão **pausadas** (laudo I1 §1).
+      Opções: (a) reativar uma conta de teste para a corretora de ensaio — nota **85**; (b) esperar a T-141 de uma comercial real — **40**
+      (atrasa a prova). Responda no chat *"T-158: a"* ou *"T-158: b"*. · *de:* proposta SPEC-131 §6
 
 ### ① Implantar e conferir — não depende de nada
 
