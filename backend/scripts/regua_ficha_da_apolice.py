@@ -18,7 +18,8 @@ e mede Σ prêmio das linhas × prêmio líquido do `/documento`: pelo JUIZ do p
 ⛔ Só `/login` e GET na InfoCap, em série, ~0,35 s entre chamadas. Nada é gravado em
    `documents` nem no MinIO: o PDF vive na memória deste processo.
 ⛔ A saída não tem PII: por `id` + `locator_hash`, só contagens, dinheiro e enums.
-   Nenhum rótulo de cobertura, nenhum nº de apólice, URL, nome, CPF.
+   Só o RÓTULO genérico de cobertura das linhas lidas pelo modelo/visão (mascarado, ≤ 60 caracteres —
+   conserto único, para o juiz conferir o nome); nenhum nº de apólice, URL, nome, CPF, trecho.
 ⛔ Credenciais: `docs/intake/BANCADA-130B/corp.env` (fora do git), carregado SÓ neste
    processo. Nunca impressas.
 
@@ -89,7 +90,26 @@ def _degraus_sem_pii(degraus: Any) -> List[Dict[str, Any]]:
         if not isinstance(d, dict):
             continue
         saida.append({k: d.get(k) for k in ("degrau", "linhas", "soma", "fecha", "venceu", "descartadas",
-                                            "erro", "duracao_s", "paginas_enviadas") if k in d})
+                                            "motivos_do_descarte", "erro", "duracao_s", "paginas_enviadas")
+                      if k in d})
+    return saida
+
+
+def _rotulos_do_modelo(itens: Any) -> List[Dict[str, Any]]:
+    """🔴 conserto único (juiz B1): por linha lida pelo MODELO/VISÃO, o RÓTULO genérico da cobertura — para o
+    juiz conferir o nome, não só a soma. ⛔ Sem trecho, sem limite: só rótulo (mascarado e cortado), página,
+    prêmio e de que degrau veio. Rótulo de cobertura não é dado pessoal ("Incêndio", "Danos Elétricos")."""
+    from app.services.policy_document_evidence_service import mascarar_texto_de_apolice
+
+    saida = []
+    for item in itens or []:
+        e = (item or {}).get("structured") or {}
+        metodo = (item or {}).get("extraction_method")
+        if e.get("kind") != "coverage_row" or metodo not in ("modelo", "visao"):
+            continue
+        saida.append({"pagina": item.get("page_number"), "degrau": metodo,
+                      "rotulo": mascarar_texto_de_apolice(str(e.get("label") or ""))[:60],
+                      "premio": e.get("premium"), "tem_limite": bool(e.get("lmi"))})
     return saida
 
 
@@ -234,6 +254,11 @@ async def _medir_uma(corp: _Corp, apolice: Dict[str, Any], *, com_modelo: bool) 
         "custo_usd_estimado": leitura.get("custo_usd"),
         "modelo": leitura.get("modelo"),
         "duracao_leitura_s": leitura.get("duracao_s"),
+        "conferencia": leitura.get("conferencia"),
+        "texto_ao_modelo": leitura.get("texto_ao_modelo"),
+        # o que entrou na ficha pelo modelo/visão, e o que ficou SÓ no registro (não fechou — J3)
+        "rotulos_do_modelo": _rotulos_do_modelo(resultado.get("evidence_items")),
+        "rotulos_nao_conferidos": _rotulos_do_modelo(resultado.get("linhas_nao_conferidas")),
     })
     linha["duracao_s"] = round(time.monotonic() - inicio, 2)
     return linha
