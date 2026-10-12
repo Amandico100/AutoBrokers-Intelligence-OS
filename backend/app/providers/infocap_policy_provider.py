@@ -582,6 +582,9 @@ def apolice_documental_do_pack(pack: Dict[str, Any]) -> Optional[ApoliceDocument
     honesta: `ApoliceDocumental(linhas=())` diria "o documento não tem
     coberturas", e `reconciliar` trataria as 6 linhas do cadastro como a
     apólice inteira. **Ausência de LEITURA não é ausência de COBERTURA.**
+    🔴 SPEC-130-B F5: a exceção é a leitura REGISTRADA que não fechou (estado ≠
+    `fechou`) — ela volta com `linhas=()` e a `leitura`, para o sinal
+    `documento_nao_conferido` chegar ao corretor; as coberturas do cadastro ficam.
 
     🔴 O `assistance_plan` COM PREÇO entra nas duas pontas: vira o plano E vira
     uma linha de cobertura. 📊 A `Assistência 24h` da Allianz custa R$ 23,88 no
@@ -606,6 +609,19 @@ def apolice_documental_do_pack(pack: Dict[str, Any]) -> Optional[ApoliceDocument
 
     parcelas = _parcelas_do_documento(pack)
     if not linhas and plano is None and not parcelas:
+        # 🔴 SPEC-130-B F5 (C2, nota 85 × manter `None` 50) — a LEITURA que não fechou
+        #    e não achou linha nenhuma ainda é dita ao corretor. Com `None`, `reconciliar`
+        #    não via a leitura e o sinal `documento_nao_conferido` não acendia: o corretor
+        #    recebia as coberturas do cadastro como se o documento as confirmasse.
+        #    `linhas=()` AQUI é seguro porque `reconciliar` com `pdf.linhas` vazio devolve
+        #    as coberturas do CADASTRO intactas (só acrescenta o sinal) — provado em
+        #    `test_spec130b_costura.py`.
+        #    ⛔ E a regra de cima continua: SEM leitura registrada e sem linha → `None`.
+        #    Ausência de LEITURA não é ausência de COBERTURA.
+        estado = _estado_da_leitura_do_pack(pack)
+        leitura = estado.get("leitura")
+        if isinstance(leitura, Mapping) and str(leitura.get("estado") or "").strip() not in ("", "fechou"):
+            return ApoliceDocumental(linhas=(), referencia=_referencia_do_documento(pack), **estado)
         return None
     return ApoliceDocumental(
         linhas=tuple(linhas),
@@ -752,7 +768,8 @@ class InfoCapProvider:
             "buscar_cliente": "SUPORTADA",
             "listar_apolices": "SUPORTADA",
             "detalhar_apolice": "SUPORTADA",
-            "documento_oficial": "PARCIAL",
+            # 🔴 SPEC-130-B F5 (C7, nota 78 × PARCIAL 62): a régua mediu (11/10/2026) — ver a nota.
+            "documento_oficial": "SUPORTADA",
             "parcelas_em_aberto": "PARCIAL",
         }
         return CapacidadeDoProvider(
@@ -760,14 +777,18 @@ class InfoCapProvider:
             por_operacao=por_operacao,
             notas={
                 "listar_apolices": "le a lista inteira (`policies_all`); `matches` continua truncado em 10 para o TEXTO, nunca para decidir",
-                # 🔴 SPEC-130-B (P11): a nota de antes dizia que o extrator nao lia os
-                # dois layouts reais — ele le os dois, e SO eles. O VALOR fica PARCIAL
-                # ate a regua da F5 (`scripts/regua_ficha_da_apolice.py`, 32 apolices)
-                # medir; e a F5 que decide PARCIAL x SUPORTADA, com o numero.
+                # 🔴 SPEC-130-B F5 (C7): SUPORTADA pelo número da régua
+                # (`scripts/regua_ficha_da_apolice.py`, bancada de 32, semente 1311). ⚠️ "Suportada"
+                # NÃO quer dizer "toda leitura fecha": quem chama lê `leitura.estado` — é ele que
+                # diz "conferida" ou "não conferida", e a leitura que não fecha acende
+                # `documento_nao_conferido` em `reconciliar`.
                 "documento_oficial": (
                     "le o PDF da apolice do CORP (url_apolice e, sem ela, /documento_anexos) pela "
                     "cascata do leitor (regex -> juiz do premio -> modelo -> visao); cada leitura "
-                    "diz se fechou com o premio liquido em `leitura.estado` — PARCIAL ate a regua medir"
+                    "diz se fechou com o premio liquido em `leitura.estado`. Regua 11/10/2026: "
+                    "26 de 28 apolices com PDF fecham pelo juiz (RESI 7/7, COND 8/8, EMPR 5/7, "
+                    "AUTO 6/6; antes 11/32); 4 de 32 nao tem PDF na fonte; as 2 que nao fecham "
+                    "saem como nao conferidas"
                 ),
                 "parcelas_em_aberto": "P-PILOTO-19: /parcelas responde 403; as parcelas vem do /documento",
             },
