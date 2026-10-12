@@ -595,7 +595,18 @@ def _conteudo_da_consulta_para_o_modelo(result: Dict[str, Any]) -> str:
         # infocap_briefing_only (SPEC-016.1 D10): a LLM recebe SÓ o briefing
         # humanizado — nunca o JSON cru com abreviações/termos internos da fonte.
         return str(result.get("content"))
-    return json.dumps(result, ensure_ascii=False, default=str)
+    # 🔴 SPEC-130-B conserto (red team P7): o OBJETO DO RISCO da ficha (placa, chassi, CEP CRUS, do texto
+    #    do PDF) nunca vai serializado ao modelo — ele existe para o PEDIDO de renovação, não para a fala.
+    return json.dumps(_sem_objeto_do_risco(result), ensure_ascii=False, default=str)
+
+
+def _sem_objeto_do_risco(valor: Any) -> Any:
+    """Cópia sem a chave `objeto_do_risco` em nenhum nível. **PURA.**"""
+    if isinstance(valor, dict):
+        return {k: _sem_objeto_do_risco(v) for k, v in valor.items() if k != "objeto_do_risco"}
+    if isinstance(valor, (list, tuple)):
+        return [_sem_objeto_do_risco(v) for v in valor]
+    return valor
 
 
 def _fala_ao_segurado(state: Dict[str, Any]) -> bool:
