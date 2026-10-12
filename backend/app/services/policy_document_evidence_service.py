@@ -1517,7 +1517,7 @@ def _linhas_do_modelo(
                 continue
             onde = [(i,) for i, l in enumerate(linhas) if trecho in l]
             if not onde:
-                onde = _linhas_do_rotulo_embrulhado(trecho, premio, linhas)
+                onde = _linhas_do_rotulo_embrulhado(trecho, premio, linhas, rotulo=rotulo)
                 if onde:
                     embrulhadas += 1
             if not onde:
@@ -1544,8 +1544,11 @@ def _linhas_do_modelo(
             if pagina not in mascaradas:
                 _descartar("pagina_nao_enviada")
                 continue
-            if limite is not None and limite < premio:
-                limite = None
+            # 🔴 Confirmação de 12/10/2026: o limite lido de IMAGEM não tem trecho para conferir e,
+            # na porta, o documento vence o cadastro no limite (`reconciliar`) — um limite inventado
+            # pela visão passaria por cima do limite certo do sistema de gestão. A visão só confere
+            # pela SOMA dos prêmios; o limite dela nunca entra (fica o do cadastro, quando houver).
+            limite = None
             chave = (pagina, _rotulo_chave(rotulo), str(premio))
             if chave in vistos:
                 _descartar("linha_repetida")
@@ -1574,7 +1577,25 @@ def _por_que_fora_de_uma_linha(trecho: str, premio: Any, linhas: List[str]) -> s
     return "nao_esta_na_pagina"
 
 
-def _linhas_do_rotulo_embrulhado(trecho: str, premio: Any, linhas: List[str]) -> List[Tuple[int, int]]:
+def _rotulo_de_baixo_no_do_modelo(baixo: str, rotulo: Any) -> bool:
+    """(a'') o RÓTULO que a linha de BAIXO já traz (o texto antes do primeiro valor) tem de estar no
+    rótulo do modelo. 🔴 Confirmação de 12/10/2026: sem isto, "Vendaval Não contratada" (em cima, sem
+    valor) + "Danos Elétricos 600.000,00 15.103,93" (embaixo) deixava o modelo chamar a linha de baixo
+    de "Vendaval" — e o segurado ouviria um Vendaval de R$ 600 mil que a apólice NÃO contrata. Um título
+    de seção em cima ("COBERTURAS ADICIONAIS") é o mesmo ataque. Linha de baixo SEM rótulo (só valores)
+    não tem o que conferir aqui — o rótulo do modelo continua tendo de estar no trecho (`rotulo_no_trecho`)."""
+    achado = _DINHEIRO_NO_TRECHO_RE.search(baixo)
+    texto = baixo[:achado.start()] if achado else baixo
+    exigidas = [p for p in _rotulo_chave(texto).split()
+                if p not in _PALAVRAS_VAZIAS and len(p) >= 3 and not p.isdigit()]
+    if not exigidas:
+        return True
+    do_modelo = set(_rotulo_chave(rotulo).split())
+    return all(p in do_modelo for p in exigidas)
+
+
+def _linhas_do_rotulo_embrulhado(trecho: str, premio: Any, linhas: List[str], *,
+                                 rotulo: Any = None) -> List[Tuple[int, int]]:
     """(a') o trecho que atravessa DUAS linhas consecutivas só vale quando é um RÓTULO EMBRULHADO.
 
     📊 Régua do conserto (12/10/2026, `ficha_da_apolice_20261012.json`): com "uma linha só" literal, 26 linhas
@@ -1597,6 +1618,8 @@ def _linhas_do_rotulo_embrulhado(trecho: str, premio: Any, linhas: List[str]) ->
         pedaco_de_baixo = junta[len(cima) + 1:posicao + len(trecho)]
         if not _premio_no_trecho(premio, pedaco_de_baixo):
             continue
+        if not _rotulo_de_baixo_no_do_modelo(baixo, rotulo):
+            continue                       # o rótulo da de baixo não é o do modelo: outra cobertura
         achados.append((i, i + 1))
     return achados
 
