@@ -81,7 +81,7 @@ as duas carteiras reais por API, sem gravar nada.
 
 ## 7. Gate da SPEC
 Juiz **84** (1 blocker) ‖ red team **58** QUEBREI (4 blockers) → conserto único → confirmação **80** (1 defeito novo + 1 lacuna,
-consertados pelo gerente com teste e mutação; régua das 7 afetadas idêntica). Bateria: ver o fim. Push: ver o fim.
+consertados pelo gerente com teste e mutação; régua das 7 afetadas idêntica). Bateria: 0 regressão em aberto (ver o bloco da bateria). **Push: `git push origin HEAD:main` → `4bfd562..9e58675  HEAD -> main`, 0 pendente.**
 **Nota do executor: 87/100** — o outcome foi medido nos bytes reais (24/28, 11 intactas) e 6 blockers fechados com prova; abaixo de 90
 pela meta de COND não batida (6/8), pela leitura real em produção ainda não provada (falta Implantar) e pela variação do modelo.
 
