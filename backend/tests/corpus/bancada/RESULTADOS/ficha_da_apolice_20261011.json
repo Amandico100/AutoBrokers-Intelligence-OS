@@ -1,0 +1,1241 @@
+{
+ "spec": "SPEC-130-B F5 · C6",
+ "semente": 1311,
+ "leitor_versao": "130B.1",
+ "com_modelo": true,
+ "service_type": "bancada_130b",
+ "medido_em": "2026-10-11",
+ "controle": [
+  "COND-ALLI-10",
+  "COND-ALLI-13",
+  "COND-ALLI-14",
+  "COND-ALLI-15",
+  "COND-HDI-08",
+  "RESI-ALLI-00",
+  "RESI-ALLI-01",
+  "RESI-ALLI-02",
+  "RESI-ALLI-03",
+  "RESI-ALLI-05",
+  "RESI-ALLI-06"
+ ],
+ "apolices": [
+  {
+   "id": "RESI-ALLI-00",
+   "locator_hash": "689c081a1ebf",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "1146.91",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 546262,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 7,
+     "soma": "1146.91",
+     "fecha": true
+    }
+   ],
+   "linhas": 7,
+   "soma": "1146.91",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.042,
+   "duracao_s": 5.2
+  },
+  {
+   "id": "RESI-ALLI-01",
+   "locator_hash": "370c71ffdd36",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "724.82",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 551876,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 13,
+     "soma": "724.82",
+     "fecha": true
+    }
+   ],
+   "linhas": 13,
+   "soma": "724.82",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.041,
+   "duracao_s": 4.72
+  },
+  {
+   "id": "RESI-ALLI-02",
+   "locator_hash": "b1443e8b7c9a",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "153.08",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 540798,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 7,
+     "soma": "153.08",
+     "fecha": true
+    }
+   ],
+   "linhas": 7,
+   "soma": "153.08",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.037,
+   "duracao_s": 4.5
+  },
+  {
+   "id": "RESI-ALLI-03",
+   "locator_hash": "b3c0355a7869",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "466.50",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 545711,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 12,
+     "soma": "466.50",
+     "fecha": true
+    }
+   ],
+   "linhas": 12,
+   "soma": "466.50",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.039,
+   "duracao_s": 3.4
+  },
+  {
+   "id": "RESI-BRAD-04",
+   "locator_hash": "b2b594673774",
+   "ramo": "RESI",
+   "seguradora": "BRAD",
+   "esperado": "570.73",
+   "fonte_do_pdf": "sem_pdf"
+  },
+  {
+   "id": "RESI-ALLI-05",
+   "locator_hash": "e7d047dd27ec",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "685.92",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 552224,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 13,
+     "soma": "685.92",
+     "fecha": true
+    }
+   ],
+   "linhas": 13,
+   "soma": "685.92",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.047,
+   "duracao_s": 4.76
+  },
+  {
+   "id": "RESI-ALLI-06",
+   "locator_hash": "54115745741b",
+   "ramo": "RESI",
+   "seguradora": "ALLI",
+   "esperado": "337.72",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 545778,
+   "paginas": 6,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 5,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 7,
+     "soma": "337.72",
+     "fecha": true
+    }
+   ],
+   "linhas": 7,
+   "soma": "337.72",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.041,
+   "duracao_s": 4.76
+  },
+  {
+   "id": "RESI-TMAR-07",
+   "locator_hash": "da34eac2ac31",
+   "ramo": "RESI",
+   "seguradora": "TMAR",
+   "esperado": "321.50",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1546225,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 8,
+     "soma": "321.50",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 31.695
+    }
+   ],
+   "linhas": 8,
+   "soma": "321.50",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000998,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 31.766,
+   "duracao_s": 38.97
+  },
+  {
+   "id": "COND-HDI-08",
+   "locator_hash": "c1ee1dd831aa",
+   "ramo": "COND",
+   "seguradora": "HDI",
+   "esperado": "10941.92",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 16155,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 14,
+     "soma": "10941.92",
+     "fecha": true
+    }
+   ],
+   "linhas": 14,
+   "soma": "10941.92",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.043,
+   "duracao_s": 2.27
+  },
+  {
+   "id": "COND-TMAR-09",
+   "locator_hash": "4d2e062f94e7",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "31875.89",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 728012,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 20,
+     "soma": "31875.89",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 28.445
+    }
+   ],
+   "linhas": 20,
+   "soma": "31875.89",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001697,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 28.502,
+   "duracao_s": 32.94
+  },
+  {
+   "id": "COND-ALLI-10",
+   "locator_hash": "10064090d3d5",
+   "ramo": "COND",
+   "seguradora": "ALLI",
+   "esperado": "3656.93",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 124647,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 18,
+     "soma": "3656.93",
+     "fecha": true
+    }
+   ],
+   "linhas": 18,
+   "soma": "3656.93",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.039,
+   "duracao_s": 3.98
+  },
+  {
+   "id": "COND-TMAR-11",
+   "locator_hash": "c77a6b2d0ba5",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "5732.11",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 727668,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 18,
+     "soma": "5732.11",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 25.154
+    }
+   ],
+   "linhas": 18,
+   "soma": "5732.11",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001349,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 25.217,
+   "duracao_s": 37.37
+  },
+  {
+   "id": "COND-TMAR-12",
+   "locator_hash": "13aef6c4b5d6",
+   "ramo": "COND",
+   "seguradora": "TMAR",
+   "esperado": "2834.36",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 727293,
+   "paginas": 7,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 7
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 14,
+     "soma": "2834.36",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 21.283
+    }
+   ],
+   "linhas": 14,
+   "soma": "2834.36",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001137,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 21.334,
+   "duracao_s": 28.5
+  },
+  {
+   "id": "COND-ALLI-13",
+   "locator_hash": "d88a2fd8751b",
+   "ramo": "COND",
+   "seguradora": "ALLI",
+   "esperado": "8618.73",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 124451,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 17,
+     "soma": "8618.73",
+     "fecha": true
+    }
+   ],
+   "linhas": 17,
+   "soma": "8618.73",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.039,
+   "duracao_s": 5.17
+  },
+  {
+   "id": "COND-ALLI-14",
+   "locator_hash": "ea1643f07319",
+   "ramo": "COND",
+   "seguradora": "ALLI",
+   "esperado": "8305.48",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 124002,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 19,
+     "soma": "8305.48",
+     "fecha": true
+    }
+   ],
+   "linhas": 19,
+   "soma": "8305.48",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.043,
+   "duracao_s": 6.12
+  },
+  {
+   "id": "COND-ALLI-15",
+   "locator_hash": "89892c981611",
+   "ramo": "COND",
+   "seguradora": "ALLI",
+   "esperado": "4790.92",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 123964,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 18,
+     "soma": "4790.92",
+     "fecha": true
+    }
+   ],
+   "linhas": 18,
+   "soma": "4790.92",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": true,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.0,
+   "modelo": null,
+   "duracao_leitura_s": 0.042,
+   "duracao_s": 3.01
+  },
+  {
+   "id": "EMPR-TMAR-16",
+   "locator_hash": "936b1e7fbb48",
+   "ramo": "EMPR",
+   "seguradora": "TMAR",
+   "esperado": "21280.39",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 2673716,
+   "paginas": 105,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 105
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 3,
+     "soma": "1500.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 11,
+     "soma": "21280.39",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 23.525
+    }
+   ],
+   "linhas": 11,
+   "soma": "21280.39",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.007241,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 24.732,
+   "duracao_s": 40.58
+  },
+  {
+   "id": "EMPR-ALLI-17",
+   "locator_hash": "5c46abfdd96d",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "10244.03",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 137998,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "nao_fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 6,
+     "soma": "9445.91",
+     "fecha": false,
+     "venceu": true,
+     "descartadas": 1,
+     "duracao_s": 14.104
+    }
+   ],
+   "linhas": 6,
+   "soma": "9445.91",
+   "diferenca": "798.12",
+   "fecha_juiz": false,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": false,
+   "custo_usd_estimado": 0.000548,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 14.133,
+   "duracao_s": 16.92
+  },
+  {
+   "id": "EMPR-PORT-18",
+   "locator_hash": "a2eb549a0b1f",
+   "ramo": "EMPR",
+   "seguradora": "PORT",
+   "esperado": "5103.85",
+   "fonte_do_pdf": "documento_anexos",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 2559485,
+   "paginas": 16,
+   "paginas_sem_texto": 16,
+   "parser_por_pagina": {
+    "sem_texto": 16
+   },
+   "tipo_documento": "desconhecido",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "visao",
+     "linhas": 2,
+     "soma": "5103.85",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 30.559,
+     "paginas_enviadas": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16
+     ]
+    }
+   ],
+   "linhas": 2,
+   "soma": "5103.85",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.004591,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 30.559,
+   "duracao_s": 75.42
+  },
+  {
+   "id": "EMPR-ALLI-19",
+   "locator_hash": "883b291887ca",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "327.51",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 137090,
+   "paginas": 4,
+   "paginas_sem_texto": 1,
+   "parser_por_pagina": {
+    "pypdf2": 3,
+    "sem_texto": 1
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 2,
+     "soma": "327.51",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 11.576
+    }
+   ],
+   "linhas": 2,
+   "soma": "327.51",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000307,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 11.604,
+   "duracao_s": 20.61
+  },
+  {
+   "id": "EMPR-ALLI-20",
+   "locator_hash": "c91509e25650",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "6195.72",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 138939,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 7,
+     "soma": "6195.72",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 14.689
+    }
+   ],
+   "linhas": 7,
+   "soma": "6195.72",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000626,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 14.719,
+   "duracao_s": 19.24
+  },
+  {
+   "id": "EMPR-ALFA-21",
+   "locator_hash": "3b3c524f2b48",
+   "ramo": "EMPR",
+   "seguradora": "ALFA",
+   "esperado": "761.01",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 755965,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "nao_fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 3,
+     "soma": "779.54",
+     "fecha": false,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 14.394
+    }
+   ],
+   "linhas": 3,
+   "soma": "779.54",
+   "diferenca": "-18.53",
+   "fecha_juiz": false,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": false,
+   "custo_usd_estimado": 0.000603,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 14.449,
+   "duracao_s": 23.57
+  },
+  {
+   "id": "EMPR-TMAR-22",
+   "locator_hash": "ecad22d87ef2",
+   "ramo": "EMPR",
+   "seguradora": "TMAR",
+   "esperado": "9763.69",
+   "fonte_do_pdf": "sem_pdf"
+  },
+  {
+   "id": "EMPR-ALLI-23",
+   "locator_hash": "f9f4551197ed",
+   "ramo": "EMPR",
+   "seguradora": "ALLI",
+   "esperado": "3291.20",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 138493,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 7,
+     "soma": "3291.20",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 13.966
+    }
+   ],
+   "linhas": 7,
+   "soma": "3291.20",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000514,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 13.999,
+   "duracao_s": 16.23
+  },
+  {
+   "id": "AUTO-SURA-24",
+   "locator_hash": "28787fd7c5b0",
+   "ramo": "AUTO",
+   "seguradora": "SURA",
+   "esperado": "4591.86",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 184792,
+   "paginas": 19,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pymupdf": 19
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 2,
+     "soma": "5405.84",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 8,
+     "soma": "4591.85",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 21.335
+    }
+   ],
+   "linhas": 8,
+   "soma": "4591.85",
+   "diferenca": "0.01",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.002252,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 22.53,
+   "duracao_s": 26.62
+  },
+  {
+   "id": "AUTO-TMAR-25",
+   "locator_hash": "8b5df954b5d7",
+   "ramo": "AUTO",
+   "seguradora": "TMAR",
+   "esperado": "1818.07",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1152188,
+   "paginas": 8,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 8
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 15,
+     "soma": "1818.07",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 17.932
+    }
+   ],
+   "linhas": 15,
+   "soma": "1818.07",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000956,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 17.985,
+   "duracao_s": 29.04
+  },
+  {
+   "id": "AUTO-LIBE-26",
+   "locator_hash": "f80599dfcf30",
+   "ramo": "AUTO",
+   "seguradora": "LIBE",
+   "esperado": "3449.40",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 82348,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pymupdf": 4
+   },
+   "tipo_documento": "endosso",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 11,
+     "soma": "5207.28",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 10,
+     "soma": "3440.98",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 1,
+     "duracao_s": 18.29
+    }
+   ],
+   "linhas": 10,
+   "soma": "3440.98",
+   "diferenca": "8.42",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001145,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 18.454,
+   "duracao_s": 21.12
+  },
+  {
+   "id": "AUTO-YOUS-27",
+   "locator_hash": "fc70faa406d1",
+   "ramo": "AUTO",
+   "seguradora": "YOUS",
+   "esperado": "2578.00",
+   "fonte_do_pdf": "sem_pdf"
+  },
+  {
+   "id": "AUTO-YOUS-28",
+   "locator_hash": "493912b9504a",
+   "ramo": "AUTO",
+   "seguradora": "YOUS",
+   "esperado": "5406.80",
+   "fonte_do_pdf": "sem_pdf"
+  },
+  {
+   "id": "AUTO-TMAR-29",
+   "locator_hash": "af4ca200d446",
+   "ramo": "AUTO",
+   "seguradora": "TMAR",
+   "esperado": "1588.14",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1151885,
+   "paginas": 8,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 8
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 15,
+     "soma": "1588.14",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 20.881
+    }
+   ],
+   "linhas": 15,
+   "soma": "1588.14",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001032,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 20.936,
+   "duracao_s": 27.04
+  },
+  {
+   "id": "AUTO-HDI-30",
+   "locator_hash": "6d9bc1bcc495",
+   "ramo": "AUTO",
+   "seguradora": "HDI",
+   "esperado": "2948.64",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 17585,
+   "paginas": 4,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 4
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 12,
+     "soma": "2948.64",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 16.507
+    }
+   ],
+   "linhas": 12,
+   "soma": "2948.64",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.000867,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 16.561,
+   "duracao_s": 18.61
+  },
+  {
+   "id": "AUTO-TMAR-31",
+   "locator_hash": "83302dff0afe",
+   "ramo": "AUTO",
+   "seguradora": "TMAR",
+   "esperado": "3591.67",
+   "fonte_do_pdf": "acompanhamento.emissao.url_apolice",
+   "tipo_da_fonte": "policy_pdf",
+   "bytes": 1152372,
+   "paginas": 8,
+   "paginas_sem_texto": 0,
+   "parser_por_pagina": {
+    "pypdf2": 8
+   },
+   "tipo_documento": "apolice",
+   "estado": "fechou",
+   "motivo": null,
+   "degraus": [
+    {
+     "degrau": "regex",
+     "linhas": 0,
+     "soma": "0.00",
+     "fecha": false
+    },
+    {
+     "degrau": "modelo",
+     "linhas": 15,
+     "soma": "3591.67",
+     "fecha": true,
+     "venceu": true,
+     "descartadas": 0,
+     "duracao_s": 21.024
+    }
+   ],
+   "linhas": 15,
+   "soma": "3591.67",
+   "diferenca": "0.00",
+   "fecha_juiz": true,
+   "fecha_pelo_regex": false,
+   "fecha_2pct": true,
+   "custo_usd_estimado": 0.001089,
+   "modelo": "gpt-6-luna",
+   "duracao_leitura_s": 21.082,
+   "duracao_s": 29.11
+  }
+ ]
+}
