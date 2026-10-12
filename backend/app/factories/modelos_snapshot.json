@@ -2880,6 +2880,20 @@
    "risco": "medio",
    "versao": 2
   },
+  "leitura_de_apolice": {
+   "classe_de_dado": "pii",
+   "descricao": "SPEC-130-B — lê a tabela de coberturas de documento de seguro (texto MASCARADO; páginas sem texto como imagem) quando o regex não fecha o prêmio; trecho literal conferido e juiz do prêmio — app/services/policy_document_evidence_service.py",
+   "esforco": "medium",
+   "esforco_reserva": "medium",
+   "modelo_primario": "gpt-6-luna",
+   "modelo_reserva": "claude-sonnet-5-5",
+   "motivo": "SPEC-130-B D-130B-09 nota 80 · BLOCO 0 item 4: Luna medium fechou Tokio COND (20/20 trechos) e Allianz EMPR (7/7) ao centavo; piso de produção medium; reserva de outro provedor",
+   "papel": "leitura_de_apolice",
+   "provider": "openai",
+   "provider_reserva": "anthropic",
+   "risco": "alto",
+   "versao": 1
+  },
   "memoria": {
    "classe_de_dado": "pii",
    "descricao": "memória: resumo de sessão e fatos do usuário — memory_service.py (memory_settings DEFAULT gpt-4o-mini)",
