@@ -154,6 +154,10 @@ F1 usa dublê de `porta.calcular`/`de_apolice`; F4 liga o real.
 | D-131-30 | Teto por corretora **1** até medir A4 (sem Agger de pessoa hoje, custo zero); configurável | 82 | 3 sem medir 60 |
 | D-131-31 | Canário com relógio injetado (fora do horário real), mesmas peças do produto | 85 | esperar a madrugada 60 |
 | D-131-32 | Todo subagente desta execução declara o modelo na 1ª linha; se não for Opus 5.5, é descartado e outro Opus 5.5 refaz (Founder) | F | — |
+| D-131-33 | 📊 pico de 42 renovações de UM dono num dia (Resulta, 11× a média): **teto por conta por noite** (12) + **antecipar** até 7 dias o que cabe na sobra; vencidas acima do teto entram mesmo assim e o aviso diz | 85 | começar 01:30 60 |
+| D-131-34 | A1 medido: Prosseguir derruba SÓ aquela sessão (`derrubaSessao` = id do aviso); a guarda libera só esse id; o corpo do login (traz o token da outra sessão) nunca é gravado | 90 | — |
+| D-131-35 | Canário na corretora REAL de origem dos dados (a de ensaio tem 0 Aggers): ≤ 5 itens, marcado, InfoCap em processo, nada enviado | 85 | cadastrar Agger no ensaio (1 login em 2 contas) 30 |
+| D-131-36 | O login do Agger traz a data da licença: evento `licenca_agger` + aviso antes de vencer; vencida → falha com motivo humano | 85 | ignorar 40 |
 
 ## 8. O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS
 1. **https://knowledge.hubspot.com/object-settings/set-up-and-customize-pipelines** · faz: estágios com campo exigido e ganho/perdido ·
