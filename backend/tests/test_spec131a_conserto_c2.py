@@ -420,3 +420,20 @@ def test_p6_instalar_registra_o_email_so_do_primeiro_login():
     a = json.dumps({"email": "a@exemplo.invalid", "senha": "s", "derrubaSessao": MNA.ID_DO_AVISO})
     assert G.decidir("POST", MNA.API + "/usuario/login", b, e)[0] is False
     assert G.decidir("POST", MNA.API + "/usuario/login", a, e) == (True, "prosseguir")
+
+
+# --- gerente (13/10): a moto pelo tipo que o Agger devolve na placa (o sinal que o C2 apontou e não era dele) ---
+def test_moto_pela_placa_recusa_antes_de_enviar_e_a_madrugada_a_ve_como_definitiva():
+    from portal_worker.multicalculo import agger_robo as AR
+    from app.services.multicalculo import madrugada as M
+
+    # o preparo recusa a moto antes do POST (o guarda mora no JS que roda na página do Agger)
+    js = AR.JS_PREPARAR if hasattr(AR, "JS_PREPARAR") else open(AR.__file__, encoding="utf-8").read()
+    assert "erro: 'veiculo_moto'" in js and "tipoVeic" in js
+    texto = AR._recusa_do_preparo("veiculo_moto")
+    motivo = str(texto)
+    assert motivo.startswith("veiculo_moto — "), motivo
+    # linha de controle: outro código de preparo NÃO vira recusa de veículo definitiva
+    assert not str(AR._recusa_do_preparo("nenhuma_seguradora")).startswith("veiculo_")
+    # a madrugada lê a cabeça "veiculo_…" como definitiva (não recalcula toda noite)
+    assert M.falhou_definitivo("veiculo_moto")

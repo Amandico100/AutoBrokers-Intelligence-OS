@@ -85,6 +85,9 @@ MOTIVOS_LEGIVEIS = {
     "sem_resposta": "a página do Agger não respondeu ao preparo",
     "sem_comissao": "o pedido de RE não trouxe a comissão (ela vai explícita em cada seguradora)",
     "sem_atividade_compativel": "nenhuma seguradora tem uma atividade que case sem dúvida com a do pedido",
+    # o código vai NA FRENTE de propósito: a madrugada lê a cabeça "veiculo_…" como recusa DEFINITIVA (não recalcula
+    # toda noite) — moto é SPEC própria (D-131-28)
+    "veiculo_moto": "veiculo_moto — a placa é de uma moto; o aplicativo ainda não cota moto pelo Agger: renove manualmente",
 }
 
 
@@ -542,6 +545,10 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
       const [sp, d] = await pegar(a.pdocs + '/calculo/buscaPlaca?placa=' + encodeURIComponent(auto.placa), a.tPdocs);
       if (sp === 200 && d && d.fipe) bp = d;
     }
+    // SPEC-131-A conserto (juiz B2): o tipo que o PRÓPRIO Agger devolve pela placa — 📊 bundle do app:
+    // tipoVeiculo={carro:"v",motocicleta:"m",caminhao:"c"}. Moto mandada no formulário de carro só volta recusa
+    // ("NUM PORTAS INVALIDO PARA MOTOCICLETAS", 📊 16 seguradoras × 2 no canário de 13/10) — recusa ANTES de enviar.
+    if (bp && /^m$/i.test(String(bp.tipoVeic || ''))) return {erro: 'veiculo_moto'};
     const fipe = auto.fipe || (bp && bp.fipe);
     const ano = auto.anoModelo || (bp && bp.anoMod);
     if (!fipe || !ano) return {erro: 'veiculo_sem_fipe_ou_ano'};
