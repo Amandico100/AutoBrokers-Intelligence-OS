@@ -87,7 +87,7 @@ MOTIVOS_LEGIVEIS = {
     "sem_atividade_compativel": "nenhuma seguradora tem uma atividade que case sem dúvida com a do pedido",
     # o código vai NA FRENTE de propósito: a madrugada lê a cabeça "veiculo_…" como recusa DEFINITIVA (não recalcula
     # toda noite) — moto é SPEC própria (D-131-28)
-    "veiculo_moto": "veiculo_moto — a placa é de uma moto; o aplicativo ainda não cota moto pelo Agger: renove manualmente",
+    "veiculo_moto": "veiculo_moto — a placa é de uma moto e o formulário de carro do Agger não cota moto",
 }
 
 

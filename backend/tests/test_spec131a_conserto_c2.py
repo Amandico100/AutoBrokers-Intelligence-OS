@@ -437,3 +437,21 @@ def test_moto_pela_placa_recusa_antes_de_enviar_e_a_madrugada_a_ve_como_definiti
     assert not str(AR._recusa_do_preparo("nenhuma_seguradora")).startswith("veiculo_")
     # a madrugada lê a cabeça "veiculo_…" como definitiva (não recalcula toda noite)
     assert M.falhou_definitivo("veiculo_moto")
+
+
+# --- gerente (13/10), confirmação N1/N2: a moto pela placa vira pendência "renove manualmente", com frase de gente ---
+def test_moto_pela_placa_vira_pendente_ramo_nao_cotado_e_todo_motivo_de_veiculo_tem_frase():
+    from app.services.multicalculo import madrugada as M
+    from app.services.multicalculo import renovacao as R
+    from portal_worker.multicalculo import agger_robo as AR
+
+    calc = {"status": "falhou", "erro": str(AR._recusa_do_preparo("veiculo_moto"))}
+    assert M.estado_derivado([calc], 0, False) == ("pendente", "ramo_nao_cotado")
+    assert "pendente" in R.TRANSICOES["calculando"]
+    # linha de controle: outro fechamento sem oferta continua `falhou`
+    assert M.estado_derivado([{"status": "fechado", "erro": None}], 0, False)[0] == "falhou"
+    for m in ("veiculo_moto", "veiculo_sem_combustivel"):
+        frase = R.frase_do_motivo(m)
+        assert frase and "_" not in frase, (m, frase)
+    # N2: o texto do robô vale para qualquer serviço (QCM, cotação) — não fala de renovação
+    assert "renove" not in str(AR._recusa_do_preparo("veiculo_moto")).lower()

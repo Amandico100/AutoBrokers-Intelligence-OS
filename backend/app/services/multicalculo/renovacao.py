@@ -46,8 +46,9 @@ TRANSICOES: Dict[str, Tuple[str, ...]] = {
     "listada": ("pronta", "pendente", "substituida"),
     "pronta": ("pronta", "pendente", "calculando", "falhou", "substituida"),
     "pendente": ("pronta", "pendente", "substituida"),
-    "calculando": ("calculada", "falhou", "aguardando_agger", "substituida"),
-    "aguardando_agger": ("calculando", "calculada", "falhou", "aguardando_agger", "substituida"),
+    # confirmação N1: o cálculo pode revelar que o item não é cotável (a moto pela placa) → pendente(ramo_nao_cotado)
+    "calculando": ("calculada", "falhou", "pendente", "aguardando_agger", "substituida"),
+    "aguardando_agger": ("calculando", "calculada", "falhou", "pendente", "aguardando_agger", "substituida"),
     "falhou": ("calculando", "pronta", "pendente", "falhou", "substituida"),
     "calculada": ("apresentada", "substituida"),
     "apresentada": ("enviada", "substituida"),
@@ -94,6 +95,9 @@ FRASE_DO_MOTIVO: Dict[str, str] = {
     "porta_recusou": "a configuração do multicálculo recusou o pedido (confira a configuração)",
     "desvio_indisponivel": "o Agger da corretora não pôde receber o desvio",
     "erro_inesperado": "erro inesperado do sistema",
+    # confirmação N1: os motivos de veículo que o robô escreve com o código na frente
+    "veiculo_moto": "a placa é de uma moto: o aplicativo ainda não cota moto (renove manualmente)",
+    "veiculo_sem_combustivel": "o combustível do veículo não veio da InfoCap nem da FIPE (complete no Agger)",
 }
 
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")

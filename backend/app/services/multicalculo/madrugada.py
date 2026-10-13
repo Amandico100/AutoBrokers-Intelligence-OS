@@ -408,7 +408,12 @@ def estado_derivado(calculos: List[Mapping[str, Any]], ofertas: int, pessoa_em_u
     if terminais:
         if ofertas > 0:
             return "calculada", None
-        return "falhou", _motivo_do_calculo(calculos[0])
+        motivo = _motivo_do_calculo(calculos[0])
+        # confirmação N1: a moto que só a PLACA revelou (o Agger devolve tipoVeic "m") não é falha do robô — é um ramo
+        # que o aplicativo não cota (D-131-28): vira pendência "renove manualmente", fora do denominador dos cotáveis
+        if motivo == "veiculo_moto":
+            return "pendente", "ramo_nao_cotado"
+        return "falhou", motivo
     if pessoa_em_uso:
         return "aguardando_agger", None
     return "calculando", None
@@ -617,6 +622,20 @@ def _pedido_de_hoje(db: Any, cid: str, item: Mapping[str, Any], dia: date) -> Op
     atual = str(item.get("pedido_id") or "")
     vivos = [x for x in linhas if str(x.get("company_id")) == cid and str(x.get("status")) != "cancelado"
              and str(x.get("id")) != atual and (_ts(x.get("criado_em")) or inicio - timedelta(days=1)) >= inicio]
+    # confirmação N3: adotar só o que ainda vale — `aberto` (a queda entre a porta e o `calculando`) ou `fechado` COM
+    # oferta; um pedido do dia que fechou SEM oferta não é adotado (o recálculo legítimo segue para a porta)
+    def _vale(x: Mapping[str, Any]) -> bool:
+        st = str(x.get("status"))
+        if st == "aberto":
+            return True
+        if st != "fechado":
+            return False
+        try:
+            return bool(_cliente(db).table("multicalculo_ofertas").select("id").eq("pedido_id", str(x["id"]))
+                        .eq("solicitante_company_id", cid).limit(1).execute().data)
+        except Exception:  # noqa: BLE001 — ilegível: não adota (a porta ainda devolve o `aberto`)
+            return False
+    vivos = [x for x in vivos if _vale(x)]
     if not vivos:
         return None
     return str(max(vivos, key=lambda x: _ts(x.get("criado_em")))["id"])
