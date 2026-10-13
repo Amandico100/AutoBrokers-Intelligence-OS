@@ -32,17 +32,27 @@
 // ⚠️ O vocabulário visual (card, linha, chip, quem cuida) mora em
 // `components/atendimento/caso-visual.tsx` — a mesma peça que a tela de Casos
 // usa. Duas telas, um jeito de mostrar um caso.
+//
+// ⚠️ SPEC-131-B · G2: o quadro, a lista, a alternância salva e o teto de
+// pintura foram EXTRAÍDOS para `components/aplicativos/QuadroOuLista.tsx` — a
+// mesma peça que a aba Renovações usa. O que é desta tela fica aqui: o polling,
+// o filtro de quem cuida, a ordem e os títulos das colunas, e o `abrir`.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Columns3, Headphones, List, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
+import { Headphones, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
 
 import { DetailHeader } from '@/components/patterns';
+import {
+  QuadroOuLista,
+  SeletorDeLeitura,
+  useLeituraSalva,
+  type ColunaDoQuadro,
+} from '@/components/aplicativos/QuadroOuLista';
 import { CardDoCaso, LinhaDoCaso, ROTULO_DO_ESTAGIO } from '@/components/atendimento/caso-visual';
 import { STAGE_META, type Stage } from '@/lib/attendance/dispatch-states';
 import type { Caso } from '@/lib/atendimento/casos';
 import { icons } from '@/lib/icons';
-import { cn } from '@/lib/utils';
 
 interface Payload {
   items: Caso[];
@@ -83,50 +93,25 @@ const COLUNAS = (Object.keys(ORDEM_NO_QUADRO) as Stage[]).sort(
   (a, b) => ORDEM_NO_QUADRO[a] - ORDEM_NO_QUADRO[b],
 );
 
-/** A cor da régua do cabeçalho da coluna — o TOM vem da lista canônica. */
-const REGUA_DO_TOM: Record<string, string> = {
-  danger: 'bg-danger/70',
-  warning: 'bg-warning/70',
-  success: 'bg-success/70',
-  info: 'bg-primary/60',
-  neutral: 'bg-border',
-  approval: 'bg-primary/60',
-};
+/** As colunas do quadro: rótulo, tom e descrição vêm da lista canônica; uma
+ *  coluna sem caso não aparece (como sempre foi nesta tela). */
+const COLUNAS_DO_QUADRO: ColunaDoQuadro[] = COLUNAS.map((stage) => ({
+  id: stage,
+  titulo: TITULO_DA_COLUNA[stage],
+  descricao: STAGE_META[stage]?.desc,
+  tom: STAGE_META[stage]?.tone,
+  esconderSeVazia: true,
+}));
 
 const PREFERENCIA_DE_LEITURA = 'autobrokers.atendimentos.fila.leitura';
-
-/** Quantos cards uma coluna mostra antes de mandar para a lista completa. Não é
- *  um teto de dados (a rota lê tudo): é um teto de PINTURA — 600 nós numa
- *  coluna deixam o celular lento e ninguém rola até o fim de nenhuma delas. */
-const CARDS_POR_COLUNA = 50;
 
 export default function AttendanceQueueClient() {
   const router = useRouter();
   const [dados, setDados] = useState<Payload | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [responsavel, setResponsavel] = useState('todos');
-  const [leitura, setLeitura] = useState<'quadro' | 'lista'>('quadro');
-
-  // A leitura escolhida sobrevive ao refresh. Em `try/catch` porque navegador
-  // com armazenamento bloqueado LANÇA ao ler `localStorage` — e a escolha entre
-  // quadro e lista não é motivo para uma tela inteira não abrir.
-  useEffect(() => {
-    try {
-      const salva = window.localStorage.getItem(PREFERENCIA_DE_LEITURA);
-      if (salva === 'lista' || salva === 'quadro') setLeitura(salva);
-    } catch {
-      /* sem preferência — quadro */
-    }
-  }, []);
-
-  const escolherLeitura = (v: 'quadro' | 'lista') => {
-    setLeitura(v);
-    try {
-      window.localStorage.setItem(PREFERENCIA_DE_LEITURA, v);
-    } catch {
-      /* sem drama */
-    }
-  };
+  // A leitura escolhida sobrevive ao refresh (salva no aparelho, em try/catch).
+  const [leitura, escolherLeitura] = useLeituraSalva(PREFERENCIA_DE_LEITURA, 'quadro');
 
   const load = useCallback(async (manual?: boolean) => {
     if (manual) setRefreshing(true);
@@ -227,29 +212,7 @@ export default function AttendanceQueueClient() {
           <span className="hidden flex-1 sm:block" />
 
           {/* Quadro × Lista — o segmentado, no tamanho do polegar. */}
-          <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
-            {(
-              [
-                ['quadro', 'Quadro', Columns3],
-                ['lista', 'Lista', List],
-              ] as const
-            ).map(([v, rot, Icone]) => (
-              <button
-                key={v}
-                onClick={() => escolherLeitura(v)}
-                aria-pressed={leitura === v}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                  leitura === v
-                    ? 'bg-brand-soft text-primary'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <Icone className="h-3.5 w-3.5" />
-                {rot}
-              </button>
-            ))}
-          </div>
+          <SeletorDeLeitura leitura={leitura} onEscolher={escolherLeitura} />
 
           {donos.length > 0 && (
             <select
@@ -305,71 +268,27 @@ export default function AttendanceQueueClient() {
 
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[100rem] px-4 pb-10 sm:px-6">
-          {/* ───────────────────────── O QUADRO ───────────────────────── */}
-          {leitura === 'quadro' && !vazio && (
-            <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 sm:snap-none">
-              {COLUNAS.map((stage) => {
-                const grupo = visiveis.filter((i) => i.stage === stage);
-                if (grupo.length === 0) return null;
-                const meta = STAGE_META[stage];
-                return (
-                  <section
-                    key={stage}
-                    className={cn(
-                      'flex w-[84vw] max-w-[19rem] shrink-0 snap-start flex-col rounded-xl',
-                      'border border-border bg-surface-2/40 sm:w-[19rem]',
-                      'sm:max-h-[calc(100vh-15rem)]',
-                    )}
-                  >
-                    {/* O CABEÇALHO COM A CONTAGEM — grudado no topo enquanto a
-                        coluna rola, senão a pessoa perde de vista onde está. */}
-                    <header className="sticky top-0 z-10 rounded-t-xl border-b border-border/60 bg-surface-2/95 px-3 py-2.5 backdrop-blur">
-                      <div className="flex items-center gap-2">
-                        <span
-                          aria-hidden
-                          className={cn(
-                            'h-2 w-2 shrink-0 rounded-full',
-                            REGUA_DO_TOM[meta.tone] || 'bg-border',
-                          )}
-                        />
-                        <h2 className="min-w-0 flex-1 truncate text-xs font-semibold tracking-[-0.01em] text-foreground">
-                          {TITULO_DA_COLUNA[stage]}
-                        </h2>
-                        <span className="shrink-0 rounded-full border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
-                          {grupo.length}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate text-[11px] leading-snug text-faint">
-                        {meta.desc}
-                      </p>
-                    </header>
-
-                    <div className="min-h-0 space-y-2 overflow-y-auto p-2.5">
-                      {grupo.slice(0, CARDS_POR_COLUNA).map((i) => (
-                        <CardDoCaso key={i.key} item={i} onOpen={abrir} />
-                      ))}
-                      {grupo.length > CARDS_POR_COLUNA && (
-                        <p className="px-0.5 pt-1 text-[11px] text-muted-foreground">
-                          e mais {grupo.length - CARDS_POR_COLUNA} —{' '}
-                          <a href="/dashboard/atendimentos/casos" className="text-primary">
-                            ver todos os casos
-                          </a>
-                        </p>
-                      )}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ───────────────────────── A LISTA ───────────────────────── */}
-          {leitura === 'lista' && !vazio && (
-            <div className="mx-auto max-w-3xl space-y-2">
-              {emOrdem.map((i) => (
-                <LinhaDoCaso key={i.key} item={i} onOpen={abrir} />
-              ))}
-            </div>
+          {/* ──────────────────── O QUADRO · A LISTA ──────────────────── */}
+          {!vazio && (
+            <QuadroOuLista
+              leitura={leitura}
+              // o quadro preserva a ordem da rota dentro de cada coluna; a
+              // LISTA usa a mesma ordem do quadro: urgência primeiro
+              itens={leitura === 'quadro' ? visiveis : emOrdem}
+              colunas={COLUNAS_DO_QUADRO}
+              colunaDe={(i) => i.stage}
+              chave={(i) => i.key}
+              Card={(i) => <CardDoCaso item={i} onOpen={abrir} />}
+              Linha={(i) => <LinhaDoCaso item={i} onOpen={abrir} />}
+              maisNaColuna={(restantes) => (
+                <p className="px-0.5 pt-1 text-[11px] text-muted-foreground">
+                  e mais {restantes} —{' '}
+                  <a href="/dashboard/atendimentos/casos" className="text-primary">
+                    ver todos os casos
+                  </a>
+                </p>
+              )}
+            />
           )}
 
           <p className="mt-3 text-[11px] text-muted-foreground">

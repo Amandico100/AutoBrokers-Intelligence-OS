@@ -387,6 +387,12 @@ from app.api.servicos_da_corretora import router as servicos_da_corretora_router
 app.include_router(contas_da_corretora_router)
 app.include_router(servicos_da_corretora_router)
 
+# === SPEC-131-B · G2 — a aba Renovações: a lista, o detalhe, a apresentação e o envio pelo `wa.me` de quem clica.
+# Interna (chave Next↔backend), company_id/user_id do BFF. ⛔ Nada sai daqui para o cliente.
+from app.api.renovacoes import router as renovacoes_router  # noqa: E402
+
+app.include_router(renovacoes_router)
+
 # SPEC-055 - Work OS: execucao duravel
 try:
     from app.api.work_runs import router as work_runs_router
