@@ -7,8 +7,9 @@ SEPARADO do que montou a lista: ele NÃO importa `madrugada` (o montador) — um
     InfoCap /renovacoes [dia, dia + antecedência + margem]  →  ESPERADAS (só as que vencem até dia + antecedência)
     × itens da tabela                                      →  faltou?  cria o item + evento `esquecida_pela_preparacao`
                                                               e o dia fica VERMELHO
-    InfoCap fora                                           →  o dia é `sem_conexao` (contagens NULAS, nunca "0") +
-                                                              alerta à corretora
+    InfoCap fora — ou VAZIA com itens do período na tabela →  o dia é `sem_conexao` (contagens NULAS, nunca "0") +
+                                                              alerta à corretora (conserto C1, RT-P1)
+    `pendente(sem_conexao)` NÃO conta como feito (conserto C1, RT-P2): fica em `detalhes.sem_conexao`
 
 completude = (calculadas + pendentes COM motivo) ÷ esperadas · e à parte calculadas ÷ cotáveis. `calculando` às 05:30
 não conta como feito (nunca contou: só `calculada`/`pendente` entram no numerador) — e o que está em voo SEM batida do
@@ -92,6 +93,18 @@ async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optio
     antecedencia = int(params["antecedencia_dias"])
     ate = d + timedelta(days=antecedencia)
 
+    def _sem_conexao(detalhes: Dict[str, Any]) -> Dict[str, Any]:
+        repo.gravar_dia(cid, d.isoformat(), {
+            "estado": "sem_conexao", "esperadas": None, "calculadas": None, "pendentes": None, "falharam": None,
+            "faltaram": None, "completude_pct": None, "cotaveis": None, "calculadas_de_cotaveis_pct": None,
+            "detalhes": detalhes})
+        R.registrar_aviso(db, cid, dia=d.isoformat(), assunto="conferencia", user_id=None, severidade="high",
+                          texto=("A conferência das renovações não conseguiu ler a InfoCap: não dá para garantir "
+                                 "que nenhuma ficou esquecida hoje. Confira a conexão da InfoCap."),
+                          valores={"sem_conexao": 1}, work_run_id=work_run_id,
+                          fuso=R.fuso_da_corretora(db, cid), janela=params["janela"])
+        return {"estado": "sem_conexao", "esperadas": None, "faltaram": None, "completude_pct": None}
+
     # 1 · a InfoCap DE NOVO (nunca a lista congelada)
     try:
         fonte = await _abrir_fonte(db, cid)
@@ -99,16 +112,7 @@ async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optio
                                        d + timedelta(days=antecedencia + int(params["margem_dias"])))
     except Exception as exc:  # noqa: BLE001 — o tipo basta
         logger.warning("[RENOV] conferência sem InfoCap (%s)", type(exc).__name__)
-        repo.gravar_dia(cid, d.isoformat(), {
-            "estado": "sem_conexao", "esperadas": None, "calculadas": None, "pendentes": None, "falharam": None,
-            "faltaram": None, "completude_pct": None, "cotaveis": None, "calculadas_de_cotaveis_pct": None,
-            "detalhes": {"erro": type(exc).__name__}})
-        R.registrar_aviso(db, cid, dia=d.isoformat(), assunto="conferencia", user_id=None, severidade="high",
-                          texto=("A conferência das renovações não conseguiu ler a InfoCap: não dá para garantir "
-                                 "que nenhuma ficou esquecida hoje. Confira a conexão da InfoCap."),
-                          valores={"sem_conexao": 1}, work_run_id=work_run_id,
-                          fuso=R.fuso_da_corretora(db, cid), janela=params["janela"])
-        return {"estado": "sem_conexao", "esperadas": None, "faltaram": None, "completude_pct": None}
+        return _sem_conexao({"erro": type(exc).__name__})
 
     # 2 · as ESPERADAS do dia: vencem até dia + antecedência (as da margem ainda não são de hoje)
     esperadas: Dict[tuple, Dict[str, Any]] = {}
@@ -127,6 +131,13 @@ async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optio
 
     # 3 · × os itens (a tabela é o que se CONFERE)
     itens = {R.chave_do_item(x): x for x in repo.listar(cid) if x.get("estado") != "substituida"}
+    # conserto C1 (RT-P1): a InfoCap que devolve VAZIO (o `_get` trata 404 como `{}`, e um 200 vazio é igual) enquanto
+    # a tabela tem itens que vencem no período NÃO é "nada a conferir": é a InfoCap que não respondeu a lista.
+    # `_pct(0, 0)` daria 100 % e o dia sairia "completo" sem que nada fosse conferido
+    do_periodo = sum(1 for x in itens.values() if (lambda f: f is not None and d <= f <= ate)(R.data_de(x.get("fimvig"))))
+    if not esperadas and do_periodo:
+        logger.warning("[RENOV] conferência: a InfoCap devolveu 0 renovações e a tabela tem %d no período", do_periodo)
+        return _sem_conexao({"erro": "infocap_vazia", "na_tabela_no_periodo": do_periodo})
     faltaram = 0
     for chave, campos in esperadas.items():
         if chave in itens:
@@ -136,7 +147,7 @@ async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optio
         itens[chave] = linha
         faltaram += 1
 
-    calculadas = pendentes = falharam = nao_cotaveis = em_voo = 0
+    calculadas = pendentes = falharam = nao_cotaveis = em_voo = sem_conexao = 0
     sem_batida = 0
     agora = datetime.now(timezone.utc)
     motivos: Dict[str, int] = {}
@@ -145,6 +156,10 @@ async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optio
         estado = str(item.get("estado") or "")
         if estado in R.ESTADOS_CALCULADOS:
             calculadas += 1
+        elif estado == "pendente" and item.get("motivo") == "sem_conexao":
+            # conserto C1 (RT-P2): o item que a InfoCap não deixou tratar NÃO foi feito — o motivo existe, o trabalho não
+            sem_conexao += 1
+            motivos["sem_conexao"] = motivos.get("sem_conexao", 0) + 1
         elif estado == "pendente" and R.motivo_valido(item.get("motivo")):
             pendentes += 1
             motivos[str(item["motivo"])] = motivos.get(str(item["motivo"]), 0) + 1
@@ -165,6 +180,7 @@ async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optio
         "falharam": falharam, "faltaram": faltaram, "completude_pct": completude, "cotaveis": cotaveis,
         "calculadas_de_cotaveis_pct": _pct(calculadas, cotaveis),
         "detalhes": {"em_voo": em_voo, "calculando_sem_batida": sem_batida, "motivos": motivos,
+                     "sem_conexao": sem_conexao,
                      "antecedencia_dias": antecedencia, **({"canario": True} if canario else {})},
     }
     repo.gravar_dia(cid, d.isoformat(), medida)

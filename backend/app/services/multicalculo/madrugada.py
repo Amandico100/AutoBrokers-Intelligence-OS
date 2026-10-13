@@ -148,16 +148,19 @@ async def perfil_do_segurado(db: Any, company_id: str, item: Mapping[str, Any], 
     NÃO carrega), montado por `perfil_da_renovacao.montar` (SPEC-131-A F5): a InfoCap MEDIDA (`/documento` → `/cliente`,
     `/itens` na data) → a ficha → a regra declarada da renovação, cada suposição em `nao_conferidos` (o objeto devolvido
     é um `PerfilMontado`: um dict com o atributo `nao_conferidos`).
-    Sem a fonte, ou a InfoCap falhou → None: o item fica `pendente(falta_dado)` com os NOMES do que falta — nunca um dado
-    inventado. ⛔ Nada é logado além do tipo do erro."""
+    Conserto C1 (J-B1): sem a fonte, ou a InfoCap FALHOU (`FalhaDaInfocap`) → `SemConexao` — o item não é "falta um
+    dado" quando o que faltou foi a InfoCap responder. Outro erro do montador → None: o item fica `pendente(falta_dado)`
+    com os NOMES do que falta — nunca um dado inventado. ⛔ Nada é logado além do tipo do erro."""
     if fonte is None:
-        return None
+        raise SemConexao("sem a InfoCap da corretora, o perfil não se monta")
     from app.services.multicalculo import perfil_da_renovacao as PR
 
     try:
         perfil, nao = await asyncio.to_thread(PR.montar, company_id, item, apolice, ficha, fonte, config=config)
     except Exception as exc:  # noqa: BLE001 — o tipo basta; a mensagem pode carregar dado
         logger.info("[RENOV] perfil do segurado indisponível (%s)", type(exc).__name__)
+        if type(exc).__name__ == "FalhaDaInfocap":
+            raise SemConexao("a InfoCap não respondeu o perfil") from None
         return None
     return PR.PerfilMontado(perfil, nao)
 
@@ -349,9 +352,49 @@ MOTIVO_LICENCA_VENCIDA = "licenca_agger_vencida"
 def _motivo_do_calculo(calc: Mapping[str, Any]) -> str:
     erro = str(calc.get("erro") or "").strip()
     cabeca = erro.split(" ", 1)[0] if erro else ""
-    if cabeca and R.motivo_valido(cabeca) and (cabeca.startswith("agger_") or cabeca == MOTIVO_LICENCA_VENCIDA):
+    # conserto C1: a recusa de RAMO/VEÍCULO que o motor escrever com o código na frente ("ramo_nao_cotado — …",
+    # "veiculo_… — …") passa como está — ela é DEFINITIVA (`falhou_definitivo`) e tem a frase do ramo
+    if cabeca and R.motivo_valido(cabeca) and (cabeca.startswith("agger_") or cabeca == MOTIVO_LICENCA_VENCIDA
+                                               or cabeca in R.MOTIVOS_NAO_COTAVEIS or cabeca.startswith("veiculo_")):
         return cabeca
     return "calculo_" + str(calc.get("status") or "falhou")
+
+
+#: conserto C1 (J-B2 · RT-P7 · J-P2): o `falhou` que a próxima noite repetiria IGUAL — todas as seguradoras recusaram
+#: (`calculo_fechado` sem oferta), alguém cancelou, o ramo/veículo que o Agger não cota. Não volta a `pronta` sozinho.
+MOTIVOS_DEFINITIVOS: Tuple[str, ...] = ("calculo_fechado", "calculo_cancelado")
+#: os cálculos que já estão NO ROBÔ (o `repositorio.cancelar` do desvio só cancela os `na_fila`)
+STATUS_NO_ROBO: Tuple[str, ...] = ("disparando", "calculando")
+
+
+def falhou_definitivo(motivo: Any) -> bool:
+    m = str(motivo or "")
+    return m in MOTIVOS_DEFINITIVOS or m in R.MOTIVOS_NAO_COTAVEIS or m.startswith("veiculo_")
+
+
+def _ts(valor: Any) -> Optional[datetime]:
+    if not valor:
+        return None
+    if isinstance(valor, datetime):
+        return valor if valor.tzinfo else valor.replace(tzinfo=timezone.utc)
+    try:
+        d = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def noites_que_falhou(repo: Any, company_id: str, renovacao_id: str, fuso: str) -> int:
+    """Em quantas NOITES (o dia local da corretora) o item chegou a `falhou` — contado pelos eventos da máquina."""
+    tz = _tz(fuso)
+    noites = set()
+    for e in repo.eventos(company_id, renovacao_id):
+        if e.get("para") != "falhou":
+            continue
+        t = _ts(e.get("criado_em"))
+        if t is not None:
+            noites.add(t.astimezone(tz).date())
+    return len(noites)
 
 
 def estado_derivado(calculos: List[Mapping[str, Any]], ofertas: int, pessoa_em_uso: bool) -> Tuple[str, Optional[str]]:
@@ -427,14 +470,24 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
             P._ramo_do_agger(SimpleNamespace(ramo=sigla))
         except P.RamoIndisponivel as exc:
             return (*motivo_da_excecao(exc), None, None)
+    if fonte is None:
+        # conserto C1 (J-B1): sem a InfoCap o item NÃO é reavaliado — o que faltou foi a conexão, nunca um dado
+        return "pendente", "sem_conexao", None, None
     try:
         apolice, ficha = await ficha_da_apolice(db, company_id, item, fonte)
     except Exception as exc:  # noqa: BLE001
         logger.info("[RENOV] ficha indisponível (%s)", type(exc).__name__)
         return "pendente", "sem_conexao", None, None
     nao: Dict[str, str] = {}
+    infocap_caiu = False
     try:
         perfil = await _o_perfil(db, company_id, item, fonte, apolice=apolice, ficha=ficha, config=cfg)
+    except SemConexao:
+        perfil, infocap_caiu = None, True       # J-B1: a InfoCap caiu no meio do perfil
+    except Exception as exc:  # noqa: BLE001
+        estado, motivo = motivo_da_excecao(exc, ficha=ficha)
+        return (estado, motivo, None, None) if estado == "pendente" else ("pendente", "falta_dado", None, None)
+    try:
         nao = dict(getattr(perfil, "nao_conferidos", None) or {})
         # sem o perfil (a InfoCap não respondeu o `/documento`) o pedido não fecha — e a comissão anterior leria o MESMO
         # `/documento` de novo (mais 3 tentativas, ~9 s por item): não se pede o que não muda o resultado
@@ -443,6 +496,8 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
         if nao:
             pedido = _com_os_nao_conferidos(pedido, nao)
     except Exception as exc:  # noqa: BLE001
+        if infocap_caiu:
+            return "pendente", "sem_conexao", None, None
         estado, motivo = motivo_da_excecao(exc, ficha=ficha)
         if estado != "pendente":
             estado, motivo = "pendente", "falta_dado"
@@ -450,6 +505,8 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
     # F5: o porquê de cada suposição vai no evento (só NOMES e as frases das regras — nunca valores)
     supostos = {"nao_conferidos": dict(sorted(nao.items()))} if nao else {}
     faltam = o_que_falta(pedido)
+    if faltam and infocap_caiu:
+        return "pendente", "sem_conexao", None, None     # o que falta é o que a InfoCap não respondeu
     if faltam:
         return "pendente", "falta_dado", None, {"faltando": faltam[:40], **supostos}
     return "pronta", None, pedido, (supostos or None)
@@ -478,11 +535,30 @@ async def preparar_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrug
         _linha, criada = repo.upsert_da_lista(cid, campos, por=por, canario=canario)
         listadas += int(criada)
 
-    resultado = {"listadas": listadas, "prontas": 0, "pendentes": 0, "ja_em_curso": 0}
+    resultado = {"listadas": listadas, "prontas": 0, "pendentes": 0, "ja_em_curso": 0, "falhou_definitivo": 0,
+                 "precisa_de_voce": 0}
+    fuso = fuso_da_corretora(db, cid)
     for item in sorted(repo.listar(cid, estados=R.ESTADOS_PREPARAVEIS), key=lambda x: (str(x["fimvig"]),
                                                                                        str(x["nosnum"]))):
         if R.chave_do_item(item) not in vistos:
             continue      # fora da lista de hoje (endosso, cancelamento): a conferência decide, não a preparação
+        # conserto C1 (J-B2 · RT-P7 · J-P2): a retentativa tem FIM. O `falhou` definitivo não volta sozinho; o
+        # passageiro volta no máximo `VOLTAS_DO_FALHOU` noites e depois vira `pendente(precisa_de_voce)` — que também
+        # não volta sozinho (a pessoa decide)
+        if item["estado"] == "pendente" and item.get("motivo") == "precisa_de_voce":
+            resultado["precisa_de_voce"] += 1
+            continue
+        if item["estado"] == "falhou":
+            if falhou_definitivo(item.get("motivo")):
+                resultado["falhou_definitivo"] += 1
+                continue
+            noites = noites_que_falhou(repo, cid, str(item["id"]), fuso)
+            if noites > R.VOLTAS_DO_FALHOU:
+                repo.transicionar(cid, item["id"], "pendente", por=por, motivo="precisa_de_voce",
+                                  dados={"noites_que_falhou": noites, "ultimo_motivo": str(item.get("motivo") or "")})
+                resultado["precisa_de_voce"] += 1
+                resultado["pendentes"] += 1
+                continue
         fim = _dia(item["fimvig"])
         campos: Dict[str, Any] = {"calcular_em": (fim - timedelta(days=int(params["antecedencia_dias"]))).isoformat()}
         dono = await dono_da_apolice(db, cid, codfil=item["codfil"], nosnum=item["nosnum"], fonte=fonte)
@@ -527,10 +603,38 @@ def _sem_hmac(cru: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------------------------------------------------
 # O PASSO 2 — calcular (disparar) e acompanhar (derivar)
 # ---------------------------------------------------------------------------------------------------------------------
+def _pedido_de_hoje(db: Any, cid: str, item: Mapping[str, Any], dia: date) -> Optional[str]:
+    """O pedido que a porta JÁ gravou hoje (dia local da corretora) para esta renovação, não cancelado e diferente do
+    que o item já aponta — o rastro de uma queda entre a porta e o `calculando`. Banco ilegível → None (segue a porta,
+    que ainda devolve o `aberto`)."""
+    try:
+        linhas = (_cliente(db).table("multicalculo_pedidos").select("id, company_id, status, criado_em")
+                  .eq("company_id", cid).eq("renovacao_id", str(item["id"])).execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RENOV] pedidos da renovação ilegíveis (%s)", type(exc).__name__)
+        return None
+    inicio = datetime(dia.year, dia.month, dia.day, tzinfo=_tz(fuso_da_corretora(db, cid)))
+    atual = str(item.get("pedido_id") or "")
+    vivos = [x for x in linhas if str(x.get("company_id")) == cid and str(x.get("status")) != "cancelado"
+             and str(x.get("id")) != atual and (_ts(x.get("criado_em")) or inicio - timedelta(days=1)) >= inicio]
+    if not vivos:
+        return None
+    return str(max(vivos, key=lambda x: _ts(x.get("criado_em")))["id"])
+
+
 async def _pedir(db: Any, cid: str, item: Mapping[str, Any], dia: date, cfg: Mapping[str, Any], params: Mapping,
                  fonte: Any, *, por: str, forcar: Optional[str] = None) -> str:
-    """Monta o pedido de novo (a ficha de AGORA) e chama a porta. Devolve o estado novo do item."""
+    """Monta o pedido de novo (a ficha de AGORA) e chama a porta. Devolve o estado novo do item.
+    Conserto C1 (J-P5): a queda entre `porta.calcular` e o `calculando` deixava o item `pronta` com o pedido já
+    gravado — a retomada abria o 2º. Agora o pedido DE HOJE da renovação (não cancelado, e que não é o que o item já
+    aponta) é ADOTADO, sem ir à porta."""
     repo = R.RepositorioDeRenovacoes(db)
+    ja = _pedido_de_hoje(db, cid, item, dia)
+    if ja is not None:
+        logger.info("[RENOV] a renovação já tem o pedido de hoje: adotado, nenhum pedido novo")
+        repo.transicionar(cid, item["id"], "calculando", por=por, campos={"pedido_id": ja},
+                          dados={"adotado": True, **({"desvio": True} if forcar else {})})
+        return "calculando"
     estado, motivo, pedido, dados = await _avaliar(db, cid, item, fonte, cfg)
     if pedido is None:
         novo = estado if item["estado"] != "aguardando_agger" else "falhou"
@@ -596,8 +700,23 @@ async def calcular_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrug
         return resultado
     try:
         fonte = await abrir_fonte(db, cid)
-    except Exception:  # noqa: BLE001 — sem a InfoCap a ficha não se monta: as prontas esperam a próxima chamada
+    except Exception as exc:  # noqa: BLE001 — sem a InfoCap a ficha não se monta
+        logger.warning("[RENOV] calcular sem a InfoCap (%s): as prontas ficam sem_conexao", type(exc).__name__)
         fonte = None
+    if fonte is None:
+        # 🔴 conserto C1 (J-B1): sem a fonte o item NÃO é reavaliado (antes o `_pedir` rodava assim mesmo e a `pronta`
+        # virava `pendente(falta_dado)`). `pendente(sem_conexao)`: o aviso diz "a InfoCap não respondeu", a completude
+        # não o conta como feito, e a preparação da próxima noite o reavalia
+        for item in itens:
+            try:
+                repo.transicionar(cid, item["id"], "pendente", por=por, motivo="sem_conexao",
+                                  dados={"passo": "calcular"})
+            except (R.ConcorrenciaPerdida, R.TransicaoInvalida) as exc:
+                logger.warning("[RENOV] item não marcado sem_conexao (%s)", type(exc).__name__)
+                continue
+            resultado["pendentes"] += 1
+        resultado["sem_conexao"] = len(itens)
+        return resultado
     for item in itens:
         novo = await _pedir(db, cid, item, d, cfg, params, fonte, por=por)
         chave = {"calculando": "disparados", "pendente": "pendentes"}.get(novo, "falharam")
@@ -656,44 +775,83 @@ async def desvio_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrugad
     cid = R._uuid(company_id)
     d = _dia(dia)
     repo = R.RepositorioDeRenovacoes(db)
-    alvo = [x for x in repo.listar(cid, estados=("aguardando_agger", "falhou"), calcular_ate=d.isoformat())
-            if x["estado"] == "aguardando_agger" or str(x.get("motivo") or "") in MOTIVOS_PASSAGEIROS]
-    resultado = {"desviados": 0, "falharam": 0}
+    resultado = {"desviados": 0, "falharam": 0, "esperando_o_robo": 0, "sem_conexao": 0}
+    # 🔴 conserto C1 (RT-B1): o estado GRAVADO é das 05:30 (a última releitura do calcular); a retentativa do motor
+    # pode ter calculado no Agger da DONA entre 05:30 e 06:15. RELÊ os cálculos ANTES de escolher o que desviar —
+    # o item que já saiu vira `calculada` aqui e não abre o 2º negócio no Agger da corretora
+    try:
+        acompanhar(db, cid, por=por)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RENOV] desvio: releitura antes da lista falhou (%s)", type(exc).__name__)
+    alvo = []
+    for x in repo.listar(cid, estados=("aguardando_agger", "falhou"), calcular_ate=d.isoformat()):
+        if not (x["estado"] == "aguardando_agger" or str(x.get("motivo") or "") in MOTIVOS_PASSAGEIROS):
+            continue
+        if x.get("pedido_id"):
+            # e, por item, o pedido da dona de AGORA: com oferta (já saiu) ou com cálculo NO ROBÔ (o `cancelar` da
+            # porta só cancela `na_fila` — desviar deixaria dois negócios vivos) → não desvia; a releitura do passo
+            # desvio deriva o resultado
+            calcs, ofertas, _pessoa = _ler_o_pedido(db, cid, str(x["pedido_id"]))
+            if ofertas > 0 or any(str(c.get("status")) in STATUS_NO_ROBO for c in calcs):
+                resultado["esperando_o_robo"] += 1
+                continue
+        alvo.append(x)
     if not alvo:
         return resultado
     cfg = carregar_config(db, cid)
     params = R.parametros(cfg)
     try:
         fonte = await abrir_fonte(db, cid)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RENOV] desvio sem a InfoCap (%s): nada é reavaliado", type(exc).__name__)
         fonte = None
-    por_pessoa: Dict[Optional[str], int] = {}
+    if fonte is None:
+        # J-B1 também aqui: sem a InfoCap o pedido não se monta — o item fica como está (a releitura do passo desvio
+        # deriva o que o motor fizer com ele) e nada vira "falta um dado"
+        resultado["sem_conexao"] = len(alvo)
+        return resultado
+    hora = params["janela"].get("desvio", "06:15")
+    por_pessoa: Dict[Optional[str], Dict[str, int]] = {}
     for item in sorted(alvo, key=lambda x: (int(x.get("ramo_agger") or 999), str(x.get("fimvig")))):
+        razao = "aguardando_agger" if item["estado"] == "aguardando_agger" else str(item.get("motivo") or "")
         novo = await _pedir(db, cid, item, d, cfg, params, fonte, por=por, forcar=MOTIVO_DO_DESVIO)
         if novo == "calculando":
             resultado["desviados"] += 1
             pessoa = item.get("responsavel_user_id") or item.get("dono_user_id")
-            por_pessoa[pessoa] = por_pessoa.get(pessoa, 0) + 1
+            razoes = por_pessoa.setdefault(pessoa, {})
+            razoes[razao] = razoes.get(razao, 0) + 1
         else:
             resultado["falharam"] += 1
-    for pessoa, n in por_pessoa.items():
-        texto = (f"{n} renovação(ões) {'sua(s) ' if pessoa else ''}foram calculadas no Agger da CORRETORA: o Agger "
-                 f"{'do dono' if pessoa else ''} não ficou livre até as {params['janela'].get('desvio', '06:15')}.")
+    for pessoa, razoes in por_pessoa.items():
+        n = sum(razoes.values())
+        # o aviso diz o PORQUÊ verdadeiro de cada item: "não ficou livre" só quando a dona estava no próprio Agger
+        porques = [(_frase_do_desvio(r, hora) + (f" ({q})" if len(razoes) > 1 else "")) for r, q in sorted(razoes.items())]
+        texto = (f"{n} renovação(ões) {'sua(s) ' if pessoa else ''}foram calculadas no Agger da CORRETORA: "
+                 + "; ".join(porques) + ".")
         R.registrar_aviso(db, cid, dia=d.isoformat(), assunto="desvio", texto=texto, user_id=pessoa,
                           severidade="medium", valores={"desviadas": n}, work_run_id=work_run_id,
                           fuso=fuso_da_corretora(db, cid), janela=params["janela"])
     return resultado
 
 
+def _frase_do_desvio(razao: str, hora: Any) -> str:
+    if razao in ("aguardando_agger", "agger_da_pessoa_em_uso"):
+        return f"o Agger do dono não ficou livre até as {hora}"
+    return R.frase_do_motivo(razao)
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # O PASSO 5 — avisar (06:45)
 # ---------------------------------------------------------------------------------------------------------------------
 def _texto(n: int, m: int, k: int, motivos: Mapping[str, int], *, seu: bool, antecipadas: int = 0,
-           acima: int = 0) -> str:
+           acima: int = 0, falhas: Optional[Mapping[str, int]] = None) -> str:
     texto = f"{n} prontas no {'seu ' if seu else ''}Agger · {m} pendentes"
     if m:
         texto += " (" + ", ".join(f"{R.frase_do_motivo(mo)}: {q}" for mo, q in sorted(motivos.items())) + ")"
     texto += f" · {k} falharam"
+    if k and falhas:
+        # conserto C1 (J-P7): o "K falharam" diz POR QUÊ, em frase de gente
+        texto += " (" + ", ".join(f"{R.frase_do_motivo(mo)}: {q}" for mo, q in sorted(falhas.items())) + ")"
     if antecipadas:
         texto += f" · {antecipadas} antecipada(s) dos próximos dias"
     if acima:
@@ -771,6 +929,17 @@ def _da_noite(itens: List[Mapping[str, Any]], d: date) -> List[Mapping[str, Any]
     return saida
 
 
+def _calculadas_de_cotaveis(medida: Mapping[str, Any], do_dia: List[Mapping[str, Any]], hoje: str) -> Tuple[int, int]:
+    """(calculadas, cotáveis) do DIA: os da conferência (as esperadas que vencem hoje) quando ela os gravou; sem eles
+    (sem conferência, ou `sem_conexao`), a mesma conta sobre a lista do dia (calcular_em ≤ hoje)."""
+    if medida.get("calculadas") is not None and medida.get("cotaveis") is not None:
+        return int(medida["calculadas"]), int(medida["cotaveis"])
+    vencem = [x for x in do_dia if str(x.get("calcular_em") or "") <= hoje]
+    calculadas = sum(1 for x in vencem if x.get("estado") in R.ESTADOS_CALCULADOS)
+    nao_cot = sum(1 for x in vencem if x.get("estado") == "pendente" and x.get("motivo") in R.MOTIVOS_NAO_COTAVEIS)
+    return calculadas, len(vencem) - nao_cot
+
+
 def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str] = None) -> Dict[str, int]:
     """Por pessoa (o responsável: dono ou substituto) e à corretora: N prontas · M pendentes (porquê) · K falharam
     (+ antecipadas e acima do teto, D-131-33). Pelo briefing (o canal in-app que já existe), só no painel."""
@@ -794,6 +963,7 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
     total = {"n": 0, "m": 0, "k": 0, "antecipadas": 0, "acima_do_teto": sum(max(0, v - teto)
                                                                              for v in por_conta.values())}
     motivos_total: Dict[str, int] = {}
+    falhas_total: Dict[str, int] = {}
     for pessoa, itens in grupos.items():
         n = sum(1 for x in itens if x["estado"] in R.ESTADOS_CALCULADOS)
         pend = [x for x in itens if x["estado"] == "pendente"]
@@ -804,6 +974,11 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
         for x in pend:
             motivos[str(x.get("motivo"))] = motivos.get(str(x.get("motivo")), 0) + 1
             motivos_total[str(x.get("motivo"))] = motivos_total.get(str(x.get("motivo")), 0) + 1
+        falhas: Dict[str, int] = {}
+        for x in itens:
+            if x["estado"] == "falhou":
+                falhas[str(x.get("motivo"))] = falhas.get(str(x.get("motivo")), 0) + 1
+                falhas_total[str(x.get("motivo"))] = falhas_total.get(str(x.get("motivo")), 0) + 1
         total["n"] += n
         total["m"] += len(pend)
         total["k"] += k
@@ -811,7 +986,8 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
         if pessoa is None:
             continue      # sem dono: entra no aviso da corretora (abaixo)
         R.registrar_aviso(db, cid, dia=hoje, assunto="avisar", user_id=pessoa,
-                          texto=_texto(n, len(pend), k, motivos, seu=True, antecipadas=ant, acima=acima),
+                          texto=_texto(n, len(pend), k, motivos, seu=True, antecipadas=ant, acima=acima,
+                                       falhas=falhas),
                           severidade="medium" if (pend or k) else "info",
                           valores={"prontas": n, "pendentes": len(pend), "falharam": k, "antecipadas": ant,
                                    "acima_do_teto": acima},
@@ -819,14 +995,20 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
         avisos += 1
     medida = repo.dia(cid, hoje) or {}
     texto = _texto(total["n"], total["m"], total["k"], motivos_total, seu=False, antecipadas=total["antecipadas"],
-                   acima=total["acima_do_teto"])
+                   acima=total["acima_do_teto"], falhas=falhas_total)
     estado_do_dia = str(medida.get("estado") or "")
+    # 🔴 conserto C1 (J-P9 · RT-P2): a completude da SPEC conta `pendente` com motivo como feito — o número que diz se o
+    # trabalho ACONTECEU é "calculadas de cotáveis", e ele vai SEMPRE no aviso (da conferência; sem ela, da lista do dia)
+    calc_cot = _calculadas_de_cotaveis(medida, do_dia, hoje)
     if estado_do_dia == "vermelho":
         texto += f" · 🔴 a conferência achou {medida.get('faltaram') or 0} renovação(ões) que a lista do dia esqueceu"
     elif estado_do_dia == "sem_conexao":
         texto += " · a conferência das 05:30 não conseguiu ler a InfoCap"
+    elif estado_do_dia and calc_cot[0] == 0 and calc_cot[1] >= 1:
+        texto += " · nenhuma renovação cotável foi calculada hoje"     # nunca "100 %" num dia sem cálculo
     elif estado_do_dia:
         texto += f" · completude {medida.get('completude_pct')}%"
+    texto += f" · {calc_cot[0]} calculada(s) de {calc_cot[1]} cotável(is)"
     lic = licencas_do_agger(db, cid, d)
     texto += _frase_da_licenca(lic)
     R.registrar_aviso(db, cid, dia=hoje, assunto="avisar", user_id=None, texto=texto,
@@ -834,6 +1016,7 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
                       else ("medium" if (total["m"] or total["k"] or lic.get("vencendo")) else "info"),
                       valores={"prontas": total["n"], "pendentes": total["m"], "falharam": total["k"],
                                "antecipadas": total["antecipadas"], "acima_do_teto": total["acima_do_teto"],
+                               "calculadas": calc_cot[0], "cotaveis": calc_cot[1],
                                "licenca_vencendo": lic.get("vencendo", 0), "licenca_vencida": lic.get("vencidas", 0)},
                       work_run_id=work_run_id, fuso=fuso, janela=params["janela"])
     return {"avisos": avisos + 1, "n": total["n"], "m": total["m"], "k": total["k"]}

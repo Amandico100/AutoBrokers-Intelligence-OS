@@ -3,14 +3,17 @@
 
     cd backend
     PORTAL_HEADLESS_MODE=classic PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe scripts/bloco0_131a_agger_ao_vivo.py \
-        --env <arquivo .env FORA do git> --saida <json FORA do git> <prosseguir|leitura|pessoa>
+        --env <arquivo .env FORA do git> --saida <json FORA do git> --conta <PREFIXO> <prosseguir|leitura|pessoa>
 
-    prosseguir  A1+A11: o login do ROBÔ (cotador@ AutoFleet) em DOIS contextos; no 2º, o aviso de sessão ativa → "Prosseguir"
+    --conta PREFIXO  a credencial vem do ambiente em <PREFIXO>_LOGIN / <PREFIXO>_PASSWORD — o operador escolhe a conta
+                     (CLAUDE.md §13.9: nenhum nome de corretora no código; a conta é argumento, nunca constante)
+
+    prosseguir  A1+A11: o login de uma conta de ROBÔ (cotador@) em DOIS contextos; no 2º, o aviso de sessão ativa → "Prosseguir"
                 (SÓ nesta conta de robô). Grava método, caminho, chaves de query e a FORMA do corpo (valores redigidos);
                 mede quando o 1º contexto percebe (API e tela). Logout dos dois + um 3º login de conferência (fantasma?).
-    leitura     B4+licença: o cotador@ da Resulta, só leitura — aviso de licença na tela, a assinatura, e a URL que o
+    leitura     B4+licença: uma conta de robô (cotador@), só leitura — aviso de licença na tela, a assinatura, e a URL que o
                 CLIQUE num negócio produz. Depois, num contexto SEM login, a mesma URL (redireciona? guarda o destino?).
-    pessoa      A7: a conta de PESSOA (AutoFleet), SÓ LEITURA. Aviso de sessão ativa → SÓ "Cancelar" e para.
+    pessoa      A7: uma conta de PESSOA, SÓ LEITURA. Aviso de sessão ativa → SÓ "Cancelar" e para.
 ⛔ Credenciais só do ambiente; nada de e-mail, CPF, nome, placa ou id de negócio na saída (ids viram <id>, valores <redigido>).
 ⛔ Nenhum `goto` numa sessão viva: só a 1ª carga de /login e cliques. A guarda de produção (agger_guarda) no contexto do robô.
 """
@@ -86,6 +89,18 @@ def forma_do_corpo(corpo: Optional[str]) -> Any:
         except Exception:  # noqa: BLE001
             pass
         return f"<nao-json:{len(corpo)}>"
+
+
+#: o PREFIXO da conta medida (argumento `--conta`) — nunca um nome de corretora no código (CLAUDE.md §13.9)
+CONTA: Dict[str, Optional[str]] = {"prefixo": None}
+
+
+def credencial() -> "tuple[str, str]":
+    """(login, senha) de `<PREFIXO>_LOGIN` / `<PREFIXO>_PASSWORD` no ambiente carregado do `--env`."""
+    prefixo = CONTA["prefixo"]
+    if not prefixo:
+        raise SystemExit("RECUSADO: esta medição precisa de --conta <PREFIXO> (a credencial vem do ambiente)")
+    return os.environ[f"{prefixo}_LOGIN"], os.environ[f"{prefixo}_PASSWORD"]
 
 
 def carregar_env(caminho: str) -> None:
@@ -320,8 +335,7 @@ async def medir_prosseguir(nav: Any, saida: Dict[str, Any]) -> None:
     from portal_worker.multicalculo import agger_guarda as G  # noqa: PLC0415
     from portal_worker.multicalculo.agger_sessao import RE_AVISO, SELETOR_DIALOGO, Sessao, SessaoOcupada  # noqa: PLC0415
 
-    usuario = os.environ["AGGER_AUTOFLEET_COTADOR_LOGIN"]
-    senha = os.environ["AGGER_AUTOFLEET_COTADOR_PASSWORD"]
+    usuario, senha = credencial()
     conta = {"id": "a1-ctx1", "username": usuario, "robo_estado": "ativo"}
     memoria("navegador_sem_contexto", saida)
     websockets: List[Dict[str, Any]] = []
@@ -593,21 +607,22 @@ async def medir_prosseguir(nav: Any, saida: Dict[str, Any]) -> None:
         a1["conferencia_3o_login"] = {"erro": type(e).__name__}
 
 
-# ------------------------------------------------------------------ B4 + licença (cotador@ Resulta, só leitura)
+# ------------------------------------------------------------------ B4 + licença (uma conta de robô, só leitura)
 async def medir_leitura(nav: Any, saida: Dict[str, Any]) -> None:
     from portal_worker.multicalculo.agger_sessao import SessaoOcupada  # noqa: PLC0415
 
-    s = nova_sessoes(nav, "resulta")
-    conta = {"id": "b4-resulta", "username": os.environ["AGGER_RESULTA_COTADOR_LOGIN"], "robo_estado": "ativo"}
+    s = nova_sessoes(nav, "leitura")
+    usuario, senha = credencial()
+    conta = {"id": "b4-leitura", "username": usuario, "robo_estado": "ativo"}
     t = time.time()
     try:
-        sess = await s.obter(conta, senha=os.environ["AGGER_RESULTA_COTADOR_PASSWORD"], negocios_do_robo=set())
+        sess = await s.obter(conta, senha=senha, negocios_do_robo=set())
     except SessaoOcupada:
         saida["leitura"] = {"entrou": False, "motivo": "aviso de sessão ativa → Cancelar"}
         return
     out: Dict[str, Any] = {"entrou": True, "login_s": round(time.time() - t, 1)}
     saida["leitura"] = out
-    memoria("resulta_logado", saida)
+    memoria("leitura_logado", saida)
     p = sess.pagina
     await asyncio.sleep(4)
     corpo = await p.inner_text("body")
@@ -646,7 +661,7 @@ async def medir_leitura(nav: Any, saida: Dict[str, Any]) -> None:
     hrefs = await p.evaluate("() => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href')).filter(h => /cotac|negoc|calcul/i.test(h)).slice(0, 30)")
     out["b4"]["hrefs_de_negocio"] = sorted({RE_ID.sub("<id>", h.split("?")[0]) for h in hrefs})
     link = p.url if p.url != antes else None
-    memoria("resulta_negocio_aberto", saida)
+    memoria("leitura_negocio_aberto", saida)
     await logout_por_clique(s, sess, out, "logout")
     await sess.contexto.close()
     # o mesmo link num contexto SEM login (nenhuma sessão é criada: não há POST de login)
@@ -678,9 +693,10 @@ async def medir_pessoa(nav: Any, saida: Dict[str, Any]) -> None:
     from portal_worker.multicalculo.agger_sessao import SessaoOcupada  # noqa: PLC0415
 
     s = nova_sessoes(nav, "pessoa")
-    conta = {"id": "a7-pessoa", "username": os.environ["AGGER_AUTOFLEET_PESSOA_LOGIN"], "robo_estado": "teste"}
+    usuario, senha = credencial()
+    conta = {"id": "a7-pessoa", "username": usuario, "robo_estado": "teste"}
     try:
-        sess = await s.obter(conta, senha=os.environ["AGGER_AUTOFLEET_PESSOA_PASSWORD"], negocios_do_robo=set())
+        sess = await s.obter(conta, senha=senha, negocios_do_robo=set())
     except SessaoOcupada:
         saida["a7"] = {"medido": False, "motivo": "NÃO MEDIDO — pessoa logada (Cancelar clicado)"}
         return
@@ -759,9 +775,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--env", required=True)
     ap.add_argument("--saida", required=True)
+    ap.add_argument("--conta", default=None, help="PREFIXO das variáveis <PREFIXO>_LOGIN / <PREFIXO>_PASSWORD")
     ap.add_argument("medicao", choices=("prosseguir", "leitura", "pessoa", "rotas"))
     args = ap.parse_args()
     carregar_env(args.env)
+    CONTA["prefixo"] = args.conta
     saida = asyncio.run(main_async(args))
     texto = json.dumps(saida, ensure_ascii=False, indent=1, default=str)
     texto = RE_EMAIL.sub("<email>", texto)

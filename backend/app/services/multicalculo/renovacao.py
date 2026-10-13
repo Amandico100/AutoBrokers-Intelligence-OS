@@ -64,7 +64,9 @@ ESTADOS_EM_VOO: Tuple[str, ...] = ("calculando", "aguardando_agger")
 
 #: os motivos de PENDÊNCIA (a renovação não vai ao Agger esta noite, e a corretora vê por quê)
 MOTIVOS_DE_PENDENCIA: Tuple[str, ...] = ("ramo_nao_cotado", "ramo_desconhecido", "falta_dado", "sem_conexao", "sem_pdf",
-                                         "sem_dono_e_sem_conta", "documento_invalido")
+                                         "sem_dono_e_sem_conta", "documento_invalido", "precisa_de_voce")
+#: conserto C1 (J-B2/RT-P7): o `falhou` passageiro que já falhou em mais noites que isto vira `pendente(precisa_de_voce)`
+VOLTAS_DO_FALHOU = 2
 #: os motivos de pendência que tiram o item das COTÁVEIS (`calculadas ÷ cotáveis`)
 MOTIVOS_NAO_COTAVEIS: Tuple[str, ...] = ("ramo_nao_cotado", "ramo_desconhecido")
 
@@ -79,6 +81,19 @@ FRASE_DO_MOTIVO: Dict[str, str] = {
     # o que um CÁLCULO deixa (o motor, F3) e a renovação mostra — costura F4 (D-131-36)
     "licenca_agger_vencida": "a licença do Agger venceu (renove com o Agger)",
     "conta_recusada": "o Agger recusou a conta",
+    # conserto C1 (J-P7): todo motivo que chega a um aviso tem frase de gente — nunca o código com espaços
+    "precisa_de_voce": f"falhou em mais de {VOLTAS_DO_FALHOU} noites: o robô parou de tentar, precisa de você",
+    "calculo_fechado": "nenhuma seguradora devolveu oferta (confira o pedido no Agger)",
+    "calculo_falhou": "o robô não conseguiu calcular no Agger",
+    "calculo_incerto": "o Agger não confirmou se o cálculo saiu (confira no Agger)",
+    "calculo_cancelado": "o cálculo foi cancelado no Agger",
+    "calculo_expirado": "o cálculo esperou demais na fila do Agger do dono",
+    "agger_da_pessoa_em_uso": "o dono estava usando o próprio Agger",
+    "agger_da_pessoa_sem_resposta": "o login no Agger do dono não chegou ao fim",
+    "agger_da_pessoa_indisponivel": "o Agger do dono está pausado ou bloqueado",
+    "porta_recusou": "a configuração do multicálculo recusou o pedido (confira a configuração)",
+    "desvio_indisponivel": "o Agger da corretora não pôde receber o desvio",
+    "erro_inesperado": "erro inesperado do sistema",
 }
 
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")

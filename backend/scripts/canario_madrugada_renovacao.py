@@ -200,6 +200,29 @@ class FonteFiltrada:
         return getattr(self._fonte, nome)
 
 
+def _quando(valor: Any) -> Optional[datetime]:
+    try:
+        d = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def itens_desta_rodada(linhas: List[Dict[str, Any]], chaves: set, inicio: datetime) -> List[Dict[str, Any]]:
+    """Os itens que ESTA rodada mediu: os escolhidos nela ((codfil, nosnum) em `chaves` — o mesmo item da UNIQUE é
+    reusado entre rodadas, então ele é desta rodada mesmo sem evento novo) e os que ela CRIOU (`criado_em` ≥ início,
+    p. ex. a esquecida que a conferência acha). `canario=true` de rodadas anteriores fica fora."""
+    from app.services.multicalculo import renovacao as R
+
+    saida = []
+    for x in linhas:
+        chave = (R.codfil_de(x.get("codfil")), R.nosnum_de(x.get("nosnum")))
+        criado = _quando(x.get("criado_em"))
+        if chave in chaves or (criado is not None and criado >= inicio):
+            saida.append(x)
+    return saida
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # a LENTE DO DADO — um GET de /renovacoes SEM o código do produto
 # ---------------------------------------------------------------------------------------------------------------------
@@ -360,9 +383,12 @@ async def executar(args) -> Dict[str, Any]:
 
     # ③ a medida por SELECT
     t1 = datetime.now(timezone.utc)
-    itens = [x for x in (supa.table("renovacoes").select("id, company_id, ramo_sigla, estado, motivo, canario, "
-                                                         "pedido_id, fimvig, calcular_em")
-                         .eq("company_id", cid).eq("canario", True).execute().data or [])]
+    # conserto C1: só os itens DESTA rodada — `canario=true` de rodadas anteriores não entram na medida nem na lente
+    # (📊 juiz 13/10: sem o filtro, 7 itens no período, 3 de rodadas anteriores)
+    itens = itens_desta_rodada(supa.table("renovacoes").select("id, company_id, codfil, nosnum, ramo_sigla, estado, "
+                                                               "motivo, canario, pedido_id, fimvig, calcular_em, "
+                                                               "criado_em")
+                               .eq("company_id", cid).eq("canario", True).execute().data or [], chaves, t0)
     ids = [x["id"] for x in itens]
     evs = supa.table("renovacao_eventos").select("renovacao_id, para, motivo, dados").eq("company_id", cid) \
         .in_("renovacao_id", ids or ["00000000-0000-0000-0000-000000000000"]).execute().data or []
