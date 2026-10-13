@@ -24,9 +24,18 @@ As TRAVAS do canário (no processo, nunca no produto):
     só um motor local pegue os cálculos (a lease `robo_dono` é por conta e expira em 90 s; a fila é global)
   · a ficha do produto roda, mas SEM o PDF (`_maybe_attach_official_policy_document_evidence` devolve o pack): o
     leitor documental grava o documento no acervo da
-    corretora (linha + bytes) e chama modelo — e o resultado do item não muda (sem o perfil do segurado, o pedido de
-    renovação não fecha: `madrugada.perfil_do_segurado`, P-131A-PERFIL)
+    corretora (linha + bytes) e chama modelo. Sem o PDF, o `anterior` sai das coberturas do CADASTRO (o que faltar
+    vale o preset, marcado "não conferido" — F2); o perfil do segurado vem da InfoCap (F5, `perfil_da_renovacao`)
 ⛔ Saída só com contagens, ramos, estados, motivos e hashes curtos — nenhum nome, documento, placa ou nº de apólice.
+
+SPEC-131-A F5 — `--calcular` (≤ 2 AUTO; PORTAL_HEADLESS_MODE=classic nesta máquina): o CANÁRIO COM CÁLCULO.
+  · a gravação do pedido é LIBERADA, mas cada cálculo nasce com `disponivel_em` = agora + 6 h (o `_reservar` do motor de
+    PRODUÇÃO — fila global — só pega `disponivel_em <= agora`); o repositório é embrulhado NO PROCESSO, nada no produto
+  · ESTE processo roda o motor REAL (`motor.Motor`) com `somente_pedidos` = os pedidos dele e `ignorar_espera=True` (o
+    ponto de entrada "processar estes cálculos", F5) e um `dono` próprio — a prova por SELECT é que todo cálculo fechado
+    tem ESTE dono; no fim, `encerrar()` (logout de toda sessão, o navegador fecha)
+  · o desvio das 06:15 NÃO roda (abriria pedido novo que este motor não processaria); cálculo que sobrar na fila é
+    cancelado pelo repositório do produto (nunca fica para o motor de produção pegar em 6 h)
 """
 from __future__ import annotations
 
@@ -74,6 +83,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--infocap", required=True, help="prefixo das variáveis INFOCAP_<P>_LOGIN/_PASSWORD no arquivo")
     p.add_argument("--max", type=int, default=5)
     p.add_argument("--saida", default=None)
+    p.add_argument("--calcular", action="store_true", help="F5: calcula de verdade (≤ 2 AUTO) só no motor DESTE processo")
+    p.add_argument("--teto-min", type=int, default=25, help="F5: minutos que o motor do canário espera os cálculos")
     return p
 
 
@@ -113,6 +124,54 @@ def escolher(linhas: List[Dict[str, Any]], hoje: date, maximo: int) -> Tuple[Opt
             escolha = (auto + nao + resi)[:maximo]
             return d, escolha
     return None, []
+
+
+#: F5: o que o perfil precisa trazer para o AUTO fechar sem a ficha (a placa, aqui, vem do item da InfoCap)
+PERFIL_QUE_FECHA = (("segurado", "cpf_cnpj"), ("segurado", "nascimento"), ("segurado", "cep"),
+                    ("condutor", "tempo_habilitacao"), ("veiculo", "placa"), ("veiculo", "combustivel"))
+
+
+def escolher_calculaveis(linhas: List[Dict[str, Any]], hoje: date, fonte: Any, cid: str, *, quantos: int = 2,
+                         olhar: int = 15) -> Tuple[Optional[date], List[Dict[str, Any]], Dict[str, Any]]:
+    """F5 (`--calcular`): ≤ `quantos` AUTO que vencem em ≤ 10 dias e cujo perfil FECHA (o `perfil_da_renovacao.montar`
+    do produto, nos primeiros `olhar` candidatos pela ordem do hash) + 1 não cotável. Devolve também a CONTAGEM do que
+    falta nos candidatos (só nomes de campo e quantos) — a cobertura real do perfil."""
+    from app.services.multicalculo import perfil_da_renovacao as PR
+    from app.services.multicalculo import renovacao as R
+    from app.services.multicalculo.pedido import RAMO_DO_AGGER_POR_FAMILIA
+
+    janela = []
+    for cru in linhas:
+        campos = R.linha_da_infocap({k: v for k, v in cru.items() if k not in ("cic", "cpf_cnpj")})
+        if campos is None:
+            continue
+        fim = R.data_de(campos["fimvig"])
+        if hoje <= fim <= hoje + timedelta(days=ANTECEDENCIA):
+            fam = _familia(campos["ramo_sigla"] or "")
+            janela.append({"cru": cru, "fim": fim, "sigla": campos["ramo_sigla"] or "", "fam": fam,
+                           "cotavel": fam in RAMO_DO_AGGER_POR_FAMILIA, "campos": campos,
+                           "ordem": _h(f"{campos['codfil']}:{campos['nosnum']}")})
+    janela.sort(key=lambda x: x["ordem"])
+    medida: Dict[str, Any] = {"olhados": 0, "fecham": 0, "falta": {}}
+    autos = []
+    for x in [y for y in janela if y["fam"] == "auto"][:olhar]:
+        medida["olhados"] += 1
+        try:
+            perfil, _nao = PR.montar(cid, {**x["campos"], "ramo_sigla": "AUTO"}, None, None, fonte)
+        except Exception as exc:  # noqa: BLE001
+            medida["falta"][f"erro:{type(exc).__name__}"] = medida["falta"].get(f"erro:{type(exc).__name__}", 0) + 1
+            continue
+        faltam = [f"{g}.{c}" for g, c in PERFIL_QUE_FECHA if c not in (perfil.get(g) or {})]
+        for n in faltam:
+            medida["falta"][n] = medida["falta"].get(n, 0) + 1
+        if not faltam:
+            medida["fecham"] += 1
+            if len(autos) < quantos:
+                autos.append(x)
+    if not autos:
+        return None, [], medida
+    nao = [y for y in janela if not y["cotavel"]][:1]
+    return hoje, autos + nao, medida
 
 
 class FonteFiltrada:
@@ -194,7 +253,11 @@ async def executar(args) -> Dict[str, Any]:
     t = time.monotonic()
     linhas = await asyncio.to_thread(fonte_real.renovacoes_cruas, hoje, hoje + timedelta(days=60))
     rel["t_lista_s"] = round(time.monotonic() - t, 1)
-    dia, escolha = escolher(linhas, hoje, args.max)
+    if args.calcular:
+        dia, escolha, rel["perfil_dos_candidatos"] = await asyncio.to_thread(
+            escolher_calculaveis, linhas, hoje, fonte_real, cid)
+    else:
+        dia, escolha = escolher(linhas, hoje, args.max)
     if dia is None:
         rel["recusa"] = "nenhum dia com ≥ 2 AUTO e ≥ 1 não cotável em ≤ 10 dias"
         return rel
@@ -209,7 +272,8 @@ async def executar(args) -> Dict[str, Any]:
 
     def aviso_capturado(_db, company_id, *, dia, assunto, texto, user_id=None, severidade="info", valores=None, **_k):
         avisos.append({"assunto": assunto, "para": "pessoa" if user_id else "corretora", "severidade": severidade,
-                       "valores": dict(valores or {}), "tamanho": len(texto)})
+                       "valores": dict(valores or {}), "tamanho": len(texto),
+                       "texto": texto if args.calcular else None})   # `madrugada._texto`: contagens e motivos
         return None
 
     async def abrir(_db, company_id):
@@ -240,16 +304,41 @@ async def executar(args) -> Dict[str, Any]:
     CONF._abrir_fonte = abrir
     IC._maybe_attach_official_policy_document_evidence = sem_pdf
     R.registrar_aviso = aviso_capturado
-    PORTA.MulticalculoProvider._gravar = gravacao_proibida
+    meus_pedidos: set = set()
+    if not args.calcular:
+        PORTA.MulticalculoProvider._gravar = gravacao_proibida
+    else:
+        from app.services.multicalculo.repositorio import RepositorioMulticalculo
+
+        gravar_do_produto = RepositorioMulticalculo.gravar_pedido
+        espera = timedelta(hours=6)
+
+        def gravar_com_espera(self, pedido, calculos):
+            if str(pedido.get("company_id")) != cid or len(meus_pedidos) >= 2:
+                raise RuntimeError("canario: só ≤ 2 pedidos, só da corretora do canário")
+            futuro = (datetime.now(timezone.utc) + espera).isoformat()
+            calculos = [{**c, "disponivel_em": futuro} for c in calculos]     # a fila GLOBAL não o vê por 6 h
+            linha, gravados = gravar_do_produto(self, pedido, calculos)
+            meus_pedidos.add(str(linha["id"]))
+            return linha, gravados
+
+        RepositorioMulticalculo.gravar_pedido = gravar_com_espera
 
     contas_antes = _contas(supa, cid)
     passos: Dict[str, Any] = {}
-    for nome, fn in (("preparar", lambda: M.preparar_dia(db, cid, dia, canario=True)),
-                     ("calcular", lambda: M.calcular_dia(db, cid, dia)),
-                     ("acompanhar", lambda: asyncio.to_thread(M.acompanhar, db, cid, por="canario.acompanhar")),
-                     ("conferir", lambda: CONF.conferir_dia(db, cid, dia, canario=True)),
-                     ("desvio", lambda: M.desvio_dia(db, cid, dia)),
-                     ("avisar", lambda: asyncio.to_thread(M.avisar_dia, db, cid, dia))):
+    dono_do_motor = f"canario-f5-{_h(cid)}-{os.getpid()}:mc"
+    rel["dono_do_motor"] = dono_do_motor
+    sequencia = [("preparar", lambda: M.preparar_dia(db, cid, dia, canario=True)),
+                 ("calcular", lambda: M.calcular_dia(db, cid, dia))]
+    if args.calcular:
+        sequencia.append(("motor_do_canario", lambda: motor_do_canario(supa, meus_pedidos, dono_do_motor,
+                                                                         teto_s=60 * args.teto_min)))
+    sequencia += [("acompanhar", lambda: asyncio.to_thread(M.acompanhar, db, cid, por="canario.acompanhar")),
+                  ("conferir", lambda: CONF.conferir_dia(db, cid, dia, canario=True))]
+    if not args.calcular:
+        sequencia.append(("desvio", lambda: M.desvio_dia(db, cid, dia)))
+    sequencia.append(("avisar", lambda: asyncio.to_thread(M.avisar_dia, db, cid, dia)))
+    for nome, fn in sequencia:
         t = time.monotonic()
         try:
             r = await fn()
@@ -258,6 +347,8 @@ async def executar(args) -> Dict[str, Any]:
             passos[nome] = {"t_s": round(time.monotonic() - t, 1), "erro": type(exc).__name__}
     rel["passos"] = passos
     rel["avisos_capturados"] = avisos
+    if args.calcular:
+        rel["calculo"] = medir_o_calculo(supa, cid, meus_pedidos, dono_do_motor)
 
     # ③ a medida por SELECT
     t1 = datetime.now(timezone.utc)
@@ -314,6 +405,98 @@ async def executar(args) -> Dict[str, Any]:
     rel["leituras_da_fonte_filtrada"] = fonte.leituras
     rel["fim_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return rel
+
+
+TERMINAIS = ("fechado", "falhou", "incerto", "cancelado", "expirado")
+
+
+async def motor_do_canario(supa, pedidos: set, dono: str, *, teto_s: int) -> Dict[str, Any]:
+    """O motor REAL (`portal_worker.multicalculo.motor.Motor`) só para os pedidos DESTE processo, ignorando a espera
+    que os esconde da fila global (F5: `ignorar_espera`). Volta a volta até todo cálculo fechar (ou o teto) e SEMPRE
+    `encerrar()` — logout de toda sessão e o navegador fechado."""
+    from portal_worker.multicalculo import motor as MOT
+
+    if not pedidos:
+        return {"voltas": 0, "grupos": 0, "motivo": "nenhum pedido gravado"}
+    m = MOT.Motor(supa, somente_pedidos=set(pedidos), ignorar_espera=True, dono=dono, canario=False)
+    voltas = grupos = 0
+    t0 = time.monotonic()
+    try:
+        while time.monotonic() - t0 < teto_s:
+            grupos += await m.uma_volta(esperar=True)
+            voltas += 1
+            calcs = supa.table("multicalculo_calculos").select("status").in_("pedido_id", sorted(pedidos)) \
+                .execute().data or []
+            if calcs and all(c["status"] in TERMINAIS for c in calcs):
+                break
+            await asyncio.sleep(5)
+    finally:
+        await m.encerrar()
+    sobra = supa.table("multicalculo_calculos").select("id, pedido_id, solicitante_company_id") \
+        .in_("pedido_id", sorted(pedidos)).eq("status", "na_fila").execute().data or []
+    cancelados = 0
+    if sobra:
+        from app.services.multicalculo.repositorio import RepositorioMulticalculo
+
+        repo = RepositorioMulticalculo(supa)
+        for pid in sorted({x["pedido_id"] for x in sobra}):
+            sol = next(x["solicitante_company_id"] for x in sobra if x["pedido_id"] == pid)
+            cancelados += repo.cancelar(company_id=sol, pedido_id=pid)
+    return {"voltas": voltas, "grupos": grupos, "t_s": round(time.monotonic() - t0, 1),
+            "sobra_na_fila_cancelada": cancelados}
+
+
+def _t(valor: Any) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(str(valor).replace("Z", "+00:00")) if valor else None
+    except ValueError:
+        return None
+
+
+def medir_o_calculo(supa, cid: str, pedidos: set, dono: str) -> Dict[str, Any]:
+    """A prova por SELECT: quem fechou cada cálculo (o `dono`), A3 (as opções no MESMO negócio), ofertas por opção,
+    tempo por pedido, o estado do item. ⛔ Só contagens, estados, opções e hashes."""
+    ids = sorted(pedidos) or ["00000000-0000-0000-0000-000000000000"]
+    peds = supa.table("multicalculo_pedidos").select("id, company_id, servico, politica_de_sessao, renovacao_id, "
+                                                     "criado_em, status").in_("id", ids).execute().data or []
+    calcs = supa.table("multicalculo_calculos").select(
+        "id, pedido_id, company_id, opcao, status, dono, account_id, tentativas, negocio_ref, versao, disponivel_em, "
+        "disparado_em, primeira_oferta_em, fechado_em, erro, prioridade").in_("pedido_id", ids).execute().data or []
+    cids = [c["id"] for c in calcs] or ["00000000-0000-0000-0000-000000000000"]
+    ofertas = supa.table("multicalculo_ofertas").select("calculo_id, premio_total").in_("calculo_id", cids) \
+        .execute().data or []
+    eventos = supa.table("multicalculo_eventos").select("calculo_id, tipo").in_("calculo_id", cids).execute().data or []
+    saida: Dict[str, Any] = {"pedidos": len(peds), "calculos": len(calcs),
+                             "donos_dos_calculos": sorted({str(c.get("dono")) for c in calcs}),
+                             "todos_deste_motor": bool(calcs) and all(c.get("dono") == dono for c in calcs),
+                             "outro_dono": sum(1 for c in calcs if c.get("dono") not in (None, dono)),
+                             "tentativas": sorted({int(c.get("tentativas") or 0) for c in calcs}),
+                             "contas_usadas": sorted({_h(c.get("account_id")) for c in calcs if c.get("account_id")}),
+                             "prioridades": sorted({c.get("prioridade") for c in calcs}),
+                             "eventos_do_motor": len(eventos),
+                             "tipos_de_evento": sorted({str(e.get("tipo")) for e in eventos}), "por_pedido": []}
+    for p in peds:
+        meus = [c for c in calcs if c["pedido_id"] == p["id"]]
+        inicio = min((_t(c.get("disparado_em")) for c in meus if c.get("disparado_em")), default=None)
+        fim = max((_t(c.get("fechado_em")) for c in meus if c.get("fechado_em")), default=None)
+        item = (supa.table("renovacoes").select("estado, motivo").eq("company_id", cid)
+                .eq("id", p["renovacao_id"]).execute().data or [{}])[0] if p.get("renovacao_id") else {}
+        saida["por_pedido"].append({
+            "pedido": _h(p["id"]), "servico": p.get("servico"), "politica": p.get("politica_de_sessao"),
+            "status_do_pedido": p.get("status"),
+            "opcoes": {c["opcao"]: {"status": c["status"],
+                                    "ofertas": sum(1 for o in ofertas if o["calculo_id"] == c["id"]),
+                                    "versao": c.get("versao"), "erro": (c.get("erro") or "")[:120] or None}
+                       for c in meus},
+            "negocios_distintos": len({c.get("negocio_ref") for c in meus if c.get("negocio_ref")}),
+            "A3_mesmo_negocio_e_fechadas": bool(meus) and len({c.get("negocio_ref") for c in meus}) == 1
+            and all(c["status"] == "fechado" for c in meus),
+            "espera_no_futuro_na_gravacao": all(_t(c.get("disponivel_em")) and _t(p.get("criado_em"))
+                                                and _t(c["disponivel_em"]) > _t(p["criado_em"]) + timedelta(hours=5)
+                                                for c in meus),
+            "tempo_s": round((fim - inicio).total_seconds(), 1) if inicio and fim else None,
+            "item": {"estado": item.get("estado"), "motivo": item.get("motivo")}})
+    return saida
 
 
 def _contas(supa, cid: str) -> List[Tuple]:

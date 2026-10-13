@@ -349,15 +349,18 @@ class FonteInfocap:
         self._token = tok
         return tok
 
-    def _get(self, rota: str, params: Dict[str, Any]) -> Any:
-        """GET com cache e retry. Levanta `FalhaDaInfocap` com motivo LEGÍVEL."""
+    def _get(self, rota: str, params: Dict[str, Any], *, guardar: bool = True) -> Any:
+        """GET com cache e retry. Levanta `FalhaDaInfocap` com motivo LEGÍVEL.
+
+        `guardar=False` (SPEC-131-A F5): nem lê nem grava o cache — o cadastro do CLIENTE (CPF, nascimento, endereço)
+        não fica no Redis uma hora por causa de uma leitura de madrugada."""
         url = f"{self._base}{rota}?{urllib.parse.urlencode(params)}"
 
         # A chave carrega o ROTULO da corretora. Sem ele, duas corretoras
         # pedindo o mesmo periodo leriam a carteira uma da outra —
         # cross-tenant por cache e a forma mais silenciosa desse defeito.
         chave = f"comercial:{self._rotulo}:{rota}:{urllib.parse.urlencode(sorted(params.items()))}"
-        guardado = _cache_ler(chave)
+        guardado = _cache_ler(chave) if guardar else None
         if guardado is not None:
             logger.info("[COMERCIAL] cache quente para %s", rota)
             return guardado
@@ -368,14 +371,16 @@ class FonteInfocap:
                     url, headers={"Authorization": self._autenticar()})
                 with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
                     resposta = json.loads(r.read())
-                _cache_gravar(chave, resposta)
+                if guardar:
+                    _cache_gravar(chave, resposta)
                 return resposta
             except urllib.error.HTTPError as exc:
                 # 404 é VAZIO, não erro. A API responde assim quando o filtro
                 # não casa nada, e tratar como falha faria um período sem
                 # movimento derrubar o relatório inteiro.
                 if exc.code == 404:
-                    _cache_gravar(chave, {})
+                    if guardar:
+                        _cache_gravar(chave, {})
                     return {}
                 if exc.code == 401:
                     self._token = None  # expirou: reautentica na próxima volta
@@ -506,6 +511,49 @@ class FonteInfocap:
         """Os produtores de UMA apólice, como a API os devolve. Nenhuma interpretação."""
         bruto = self._get("/prod_docs", {"codfil": codfil, "nosnum": nosnum})
         return self._linhas(bruto, "prod_docs")
+
+    # --------------------------------------- o PERFIL da renovação (SPEC-131-A F5)
+    #
+    # 📊 Medido 12/10 (10 AUTO reais de uma corretora, só contagens): o que o
+    # pedido do Agger exige e a `Apolice` não traz mora em TRÊS rotas —
+    #   `/documento`  → `codcli` (10/10; o mesmo da lista de renovações 10/10) e
+    #                   `sinistro` "F"/"T" (21/21 "F" nas duas bases);
+    #   `/cliente`    → `cpf_cnpj` 10/10 · `datanas` 9/10 · `sexo` M/F 8/10 ·
+    #                   `estado_civil` (rótulo) 8/10 · `enderecos[].cep` 10/10;
+    #   `/itens`      → placa 9/10 válida · `anofab`/`anomod` 10/10 · `fipe`
+    #                   10/10 (mas 9/10 com 5–6 dígitos) · `combustivel` 6/10 ·
+    #                   `bonusclas` 10/10; no RE, o endereço do risco 8/9.
+    # Condutor, tempo de habilitação, uso e garagem: 0/10 em qualquer rota.
+    # ⚠️ Os MESMOS `_get`/`_linhas` (uma rota, um lugar — CLAUDE.md §5).
+    def documento_cru(self, codfil: Any, nosnum: Any) -> Dict[str, Any]:
+        """O `/documento` de UMA apólice (o primeiro do envelope), como veio. Vazio → {}."""
+        return self._primeiro(self._get("/documento", {"codfil": codfil, "nosnum": nosnum}), "documento")
+
+    def cliente_cru(self, codfil: Any, codigo: Any) -> Dict[str, Any]:
+        """O cadastro de UM cliente (`/cliente?codfil&codigo`), como veio. ⛔ SEM cache (dado pessoal)."""
+        return self._primeiro(self._get("/cliente", {"codfil": codfil, "codigo": codigo}, guardar=False), "cliente")
+
+    def itens_crus(self, codfil: Any, nosnum: Any, data: Optional[date] = None) -> List[Dict[str, Any]]:
+        """Os itens de UMA apólice NA DATA (`/itens?codfil&nosnum&data`). 📊 Sem `data` a rota dá 404 para a
+        apólice que ainda não começou (D-130B-10) — quem chama passa a data presa na vigência."""
+        params: Dict[str, Any] = {"codfil": codfil, "nosnum": nosnum}
+        if data is not None:
+            params["data"] = data.strftime("%d/%m/%Y")
+        resposta = self._get("/itens", params)
+        alvo = resposta.get("itens") if isinstance(resposta, dict) else None
+        return [x for x in alvo if isinstance(x, dict)] if isinstance(alvo, list) else []
+
+    @staticmethod
+    def _primeiro(resposta: Any, chave: str) -> Dict[str, Any]:
+        """O 1º objeto de `resposta[chave]` — SÓ dessa chave. 📊 12/10: `{"header", "documento": [1], "historico":
+        [6], "acompanhamento": {…}}` e `{"header", "cliente": [1]}`; o "primeiro dicionário de qualquer lista" de
+        `_linhas` devolveria uma linha do HISTÓRICO como se fosse a apólice."""
+        alvo = resposta.get(chave) if isinstance(resposta, dict) else None
+        if isinstance(alvo, dict):
+            return alvo
+        if isinstance(alvo, list):
+            return next((x for x in alvo if isinstance(x, dict)), {})
+        return {}
 
     def produtores(self) -> List[Dict[str, Any]]:
         """O cadastro de produtores (`{codigo, nome}`). 📊 Sem `codage` a rota dá 500."""

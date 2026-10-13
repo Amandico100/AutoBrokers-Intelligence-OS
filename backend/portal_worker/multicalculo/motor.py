@@ -376,8 +376,15 @@ class Motor:
                  upload: Optional[Callable[..., Awaitable[Optional[str]]]] = None,
                  freio: Optional[Callable[[], bool]] = None,
                  canario: Optional[bool] = None,
-                 somente_pedidos: Optional[set] = None) -> None:
+                 somente_pedidos: Optional[set] = None,
+                 ignorar_espera: bool = False) -> None:
         self.supa = supa
+        # SPEC-131-A F5 — "PROCESSAR ESTES CÁLCULOS": o canário grava os SEUS cálculos com `disponivel_em` no FUTURO
+        # (o motor de produção — a fila é global — só reserva `disponivel_em <= agora`, `_reservar`) e este motor, com
+        # `somente_pedidos`, os reserva JÁ. ⛔ Só com `somente_pedidos`: nunca a fila inteira sem a espera.
+        if ignorar_espera and somente_pedidos is None:
+            raise ValueError("ignorar_espera só com somente_pedidos (o canário): nunca a fila inteira")
+        self.ignorar_espera = bool(ignorar_espera)
         # Conserto 129-B (juiz P10): o motor do CANÁRIO serve só os pedidos que ele criou (o conjunto é lido a cada
         # volta: quem o passa pode acrescentar ids depois). None = a fila inteira (o serviço).
         self.somente_pedidos = somente_pedidos
@@ -624,10 +631,13 @@ class Motor:
         conta, um grupo por vez (a lease)."""
         agora = self.agora()
         agora_iso = _iso(agora)
-        r = await self._db(lambda: self._so_meus(self.supa.table("multicalculo_calculos").select("*")
-                           .eq("status", "na_fila")
-                           .or_(f"disponivel_em.is.null,disponivel_em.lte.{agora_iso}"))
-                           .order("prioridade").order("criado_em").limit(LIMITE_DA_FILA).execute())
+        def _na_fila():
+            q = self._so_meus(self.supa.table("multicalculo_calculos").select("*").eq("status", "na_fila"))
+            if not (self.ignorar_espera and self.somente_pedidos is not None):
+                q = q.or_(f"disponivel_em.is.null,disponivel_em.lte.{agora_iso}")
+            return q.order("prioridade").order("criado_em").limit(LIMITE_DA_FILA).execute()
+
+        r = await self._db(_na_fila)
         linhas = list(r.data or [])
         if not linhas:
             return []

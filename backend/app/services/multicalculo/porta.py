@@ -34,7 +34,7 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Seque
 
 from portal_worker.multicalculo.contrato import RAMO_AUTO, TIPOS_DE_AJUSTE, TIPOS_DE_AJUSTE_RE, Ajuste
 
-from app.services.multicalculo.pedido import CHAVE_DA_BASICA, RAMOS_RE, PedidoDeCalculo
+from app.services.multicalculo.pedido import CHAVE_DA_BASICA, RAMOS_RE, SERVICOS_EM_QUE_A_PLACA_SUPRE, PedidoDeCalculo
 from portal_worker.multicalculo.presets import ORDEM_RE as _ORDEM_RE
 from app.services.multicalculo.repositorio import RepositorioMulticalculo
 
@@ -534,7 +534,8 @@ class MulticalculoProvider:
         # F4 (costura): o que falta E o que veio sem código medido no Agger (o robô recusaria só no disparo)
         # SPEC-133-A D-133A-03: no canal a PLACA supre FIPE/ano/combustível (o robô preenche pela placa — ver
         # `pedido.CAMPOS_QUE_A_PLACA_SUPRE`, com a evidência no robô)
-        ausentes = pedido.faltando(origem=origem)
+        # SPEC-131-A F5: e na RENOVAÇÃO (o serviço) — a apólice traz a placa (`pedido.SERVICOS_EM_QUE_A_PLACA_SUPRE`)
+        ausentes = pedido.faltando(origem=origem, servico=servico)
         faltam = ausentes + [c for c in pedido.sem_codigo() if c not in ausentes]
         if faltam:
             raise PedidoIncompleto(faltam)
@@ -562,6 +563,8 @@ class MulticalculoProvider:
             if perfil:
                 raise PerfilIncompleto(perfil)
         else:
+            if servico in SERVICOS_EM_QUE_A_PLACA_SUPRE:
+                pedido = pedido.assumindo_pela_placa(servico=servico)   # F5: "o Agger preenche pela placa", declarado
             pedido = pedido.assumindo_perfil()          # D-128-07: auxiliar (e o canário) assumem o padrão da tela
 
         hmac_doc = cpf_hmac(pedido.documento, chave=self._env(ENV_HMAC))   # fail-closed ANTES de gravar

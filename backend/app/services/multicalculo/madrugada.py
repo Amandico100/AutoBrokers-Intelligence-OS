@@ -141,17 +141,51 @@ async def ficha_da_apolice(db: Any, company_id: str, item: Mapping[str, Any], fo
     return apolice_reconciliada_do_pack(pack, apolice_ref=ref), apolice_documental_do_pack(pack)
 
 
-async def perfil_do_segurado(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
+async def perfil_do_segurado(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any, *, apolice: Any = None,
+                             ficha: Any = None, config: Optional[Mapping[str, Any]] = None
                              ) -> Optional[Dict[str, Dict[str, Any]]]:
-    """O PERFIL do pedido ({grupo: {campo: valor}}: segurado, condutor, veículo — o que a `Apolice` NÃO carrega).
+    """O PERFIL do pedido ({grupo: {campo: valor}}: segurado, condutor, veículo, o endereço do risco — o que a `Apolice`
+    NÃO carrega), montado por `perfil_da_renovacao.montar` (SPEC-131-A F5): a InfoCap MEDIDA (`/documento` → `/cliente`,
+    `/itens` na data) → a ficha → a regra declarada da renovação, cada suposição em `nao_conferidos` (o objeto devolvido
+    é um `PerfilMontado`: um dict com o atributo `nao_conferidos`).
+    Sem a fonte, ou a InfoCap falhou → None: o item fica `pendente(falta_dado)` com os NOMES do que falta — nunca um dado
+    inventado. ⛔ Nada é logado além do tipo do erro."""
+    if fonte is None:
+        return None
+    from app.services.multicalculo import perfil_da_renovacao as PR
 
-    🔴 costura F4 (achado): o produto AINDA NÃO TEM esta fonte. 📊 `pedido.OBRIGATORIOS` (AUTO) exige 16 campos — CPF,
-    nome, nascimento, sexo, estado civil, CEP, FIPE, ano, combustível, condutor e tempo de habilitação — e o RE exige
-    o segurado e o endereço do risco (`contrato.CAMPOS_DO_PEDIDO_RE`); nem a `Apolice` (130-B) nem a `ApoliceDocumental`
-    os trazem. Sem eles o item vira `pendente(falta_dado)` com os NOMES do que falta no evento — nunca um dado
-    inventado. Esta é a borda onde a fonte entra (o cadastro do cliente na InfoCap e/ou o que o corretor completa) —
-    pendência P-131A-PERFIL."""
-    return None
+    try:
+        perfil, nao = await asyncio.to_thread(PR.montar, company_id, item, apolice, ficha, fonte, config=config)
+    except Exception as exc:  # noqa: BLE001 — o tipo basta; a mensagem pode carregar dado
+        logger.info("[RENOV] perfil do segurado indisponível (%s)", type(exc).__name__)
+        return None
+    return PR.PerfilMontado(perfil, nao)
+
+
+async def _o_perfil(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any, **contexto: Any) -> Any:
+    """Chama a borda `perfil_do_segurado` com o contexto (apólice, ficha, config) que ELA aceita — o dublê de 4
+    argumentos (os testes da F1/F4) continua servindo."""
+    borda = perfil_do_segurado
+    try:
+        params = inspect.signature(borda).parameters
+        livre = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+        contexto = {k: v for k, v in contexto.items() if livre or k in params}
+    except (TypeError, ValueError):
+        contexto = {}
+    return await borda(db, company_id, item, fonte, **contexto)
+
+
+def _com_os_nao_conferidos(pedido: Any, nao: Mapping[str, str]) -> Any:
+    """F5: o que o perfil SUPÔS vira `assumido` no pedido (o robô e a página sabem que não veio da pessoa) — só os
+    nomes do catálogo do ramo; o porquê de cada um vai no evento do item."""
+    from dataclasses import replace
+
+    from app.services.multicalculo.perfil_da_renovacao import nomes_do_catalogo
+
+    nomes = nomes_do_catalogo(int(getattr(pedido, "ramo")), nao)
+    if not nomes:
+        return pedido
+    return replace(pedido, assumidos=frozenset(set(pedido.assumidos) | set(nomes)))
 
 
 def comissao_anterior(fonte: Any, item: Mapping[str, Any]) -> Optional[float]:
@@ -183,7 +217,8 @@ def o_que_falta(pedido: Any) -> List[str]:
     """Os NOMES ("grupo.campo") que a porta recusaria (`PedidoIncompleto`) — a MESMA conta da porta (`faltando` na
     origem `auxiliar` + `sem_codigo`), menos o que ela mesma completa. Vazio = o pedido pode ir ao Agger."""
     try:
-        faltam = list(pedido.faltando(origem="auxiliar"))
+        # F5: a MESMA conta da porta na renovação — a placa supre FIPE/ano/combustível (`SERVICOS_EM_QUE_A_PLACA_SUPRE`)
+        faltam = list(pedido.faltando(origem="auxiliar", servico="renovacao"))
         faltam += [c for c in pedido.sem_codigo() if c not in faltam]
     except Exception as exc:  # noqa: BLE001 — um pedido que nem se confere não está pronto
         return [f"pedido:{type(exc).__name__}"]
@@ -397,19 +432,27 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
     except Exception as exc:  # noqa: BLE001
         logger.info("[RENOV] ficha indisponível (%s)", type(exc).__name__)
         return "pendente", "sem_conexao", None, None
+    nao: Dict[str, str] = {}
     try:
-        perfil = await perfil_do_segurado(db, company_id, item, fonte)
+        perfil = await _o_perfil(db, company_id, item, fonte, apolice=apolice, ficha=ficha, config=cfg)
+        nao = dict(getattr(perfil, "nao_conferidos", None) or {})
+        # sem o perfil (a InfoCap não respondeu o `/documento`) o pedido não fecha — e a comissão anterior leria o MESMO
+        # `/documento` de novo (mais 3 tentativas, ~9 s por item): não se pede o que não muda o resultado
         pedido = de_apolice(apolice, ficha=ficha, config=cfg, perfil=perfil,
-                            comissao_anterior_pct=comissao_anterior(fonte, item))
+                            comissao_anterior_pct=comissao_anterior(fonte, item) if perfil is not None else None)
+        if nao:
+            pedido = _com_os_nao_conferidos(pedido, nao)
     except Exception as exc:  # noqa: BLE001
         estado, motivo = motivo_da_excecao(exc, ficha=ficha)
         if estado != "pendente":
             estado, motivo = "pendente", "falta_dado"
         return estado, motivo, None, None
+    # F5: o porquê de cada suposição vai no evento (só NOMES e as frases das regras — nunca valores)
+    supostos = {"nao_conferidos": dict(sorted(nao.items()))} if nao else {}
     faltam = o_que_falta(pedido)
     if faltam:
-        return "pendente", "falta_dado", None, {"faltando": faltam[:40]}
-    return "pronta", None, pedido, None
+        return "pendente", "falta_dado", None, {"faltando": faltam[:40], **supostos}
+    return "pronta", None, pedido, (supostos or None)
 
 
 async def preparar_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrugada.preparar",

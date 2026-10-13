@@ -98,6 +98,21 @@ CAMPOS_DE_PERFIL: Tuple[Tuple[str, str], ...] = (
 CAMPOS_QUE_A_PLACA_SUPRE: Tuple[Tuple[str, str], ...] = (
     ("veiculo", "fipe"), ("veiculo", "ano_fabricacao"), ("veiculo", "combustivel"),
 )
+#: SPEC-131-A F5 — a MESMA regra na RENOVAÇÃO (o serviço, não a origem: a renovação sai pela origem `auxiliar`, como a
+#: cotação do chat, que continua exigindo os três). 🔴 Por que é verdade aqui (CLAUDE.md §9.5): (1) o robô é o MESMO e não
+#: sabe de onde o pedido veio — `agger_robo.py` `_cotacao_do_pedido_auto` só exige `placa` OU `fipe` e o montador completa
+#: pela placa; (2) a renovação TEM a placa da apólice: 📊 12/10, `/itens` da InfoCap, placa válida em 9/10 AUTO reais;
+#: (3) a FIPE da InfoCap NÃO serve como veio: 📊 9/10 com 5–6 dígitos (o Agger grava 7, "0013277") — mandá-la "consertada"
+#: seria escolher o carro por dedução, e o pedido VENCE a placa no montador.
+SERVICOS_EM_QUE_A_PLACA_SUPRE: Tuple[str, ...] = ("renovacao",)
+#: 🔴 Na renovação a placa supre SÓ a FIPE e o ano — NUNCA o combustível. 📊 canário real 13/10 (2 AUTO, 4 cálculos):
+#: com o combustível vazio no pedido, 64/64 respostas das seguradoras foram "É necessário informar o tipo de
+#: combustível." — o montador só traduz o FLEX (`montador.js` `COMBUSTIVEL = {Flex: 6}`); carro a gasolina, diesel,
+#: elétrico… sai com `combustivel: null` e TODA seguradora recusa. Sem o código medido (P-129B-05), o combustível que não
+#: é Flex fica FALTANDO, com o nome — nunca um cálculo que só volta recusa.
+CAMPOS_QUE_A_PLACA_SUPRE_NA_RENOVACAO: Tuple[Tuple[str, str], ...] = (
+    ("veiculo", "fipe"), ("veiculo", "ano_fabricacao"),
+)
 
 _CATALOGO: Dict[str, Tuple[str, ...]] = {
     grupo: tuple(c[0] for c in campos)
@@ -437,25 +452,29 @@ class PedidoDeCalculo:
     def valor(self, grupo: str, nome: str) -> Any:
         return (self.campos.get(grupo) or {}).get(nome)
 
-    def supridos_pela_placa(self, origem: Optional[str] = None) -> FrozenSet[str]:
-        """D-133A-03: na origem `canal`, com placa, os campos de `CAMPOS_QUE_A_PLACA_SUPRE` ausentes ficam com o robô."""
-        if origem != "canal" or _vazio(self.valor("veiculo", "placa")):
+    def supridos_pela_placa(self, origem: Optional[str] = None, servico: Optional[str] = None) -> FrozenSet[str]:
+        """D-133A-03: na origem `canal` — e no serviço `renovacao` (SPEC-131-A F5, `SERVICOS_EM_QUE_A_PLACA_SUPRE`) —,
+        com placa, os campos de `CAMPOS_QUE_A_PLACA_SUPRE` ausentes ficam com o robô."""
+        if (origem != "canal" and servico not in SERVICOS_EM_QUE_A_PLACA_SUPRE) or self.e_re                 or _vazio(self.valor("veiculo", "placa")):
             return frozenset()
-        return frozenset(f"{g}.{n}" for (g, n) in CAMPOS_QUE_A_PLACA_SUPRE if _vazio(self.valor(g, n)))
+        campos = CAMPOS_QUE_A_PLACA_SUPRE if origem == "canal" else CAMPOS_QUE_A_PLACA_SUPRE_NA_RENOVACAO
+        return frozenset(f"{g}.{n}" for (g, n) in campos if _vazio(self.valor(g, n)))
 
-    def assumindo_pela_placa(self) -> "PedidoDeCalculo":
-        """O que a placa supre vira `assumido` ("o Agger preenche pela placa") — nunca valor inventado."""
-        novos = self.supridos_pela_placa("canal")
+    def assumindo_pela_placa(self, *, servico: Optional[str] = None) -> "PedidoDeCalculo":
+        """O que a placa supre vira `assumido` ("o Agger preenche pela placa") — nunca valor inventado. Sem `servico`:
+        a regra do canal (D-133A-03); `servico='renovacao'`: a da renovação (F5)."""
+        novos = self.supridos_pela_placa("canal") if servico is None else self.supridos_pela_placa(servico=servico)
         if not novos:
             return self
         return replace(self, assumidos=frozenset(self.assumidos | novos))
 
-    def faltando(self, *, origem: Optional[str] = None) -> List[str]:
-        """Os obrigatórios da E3 que faltam, como "grupo.campo" (nomes, nunca valores). `origem='canal'`: a placa
-        supre FIPE/ano/combustível (D-133A-03). RE (SPEC-129-C): o que o CONTRATO diz que falta."""
+    def faltando(self, *, origem: Optional[str] = None, servico: Optional[str] = None) -> List[str]:
+        """Os obrigatórios da E3 que faltam, como "grupo.campo" (nomes, nunca valores). `origem='canal'` ou
+        `servico='renovacao'`: a placa supre FIPE/ano/combustível (D-133A-03 · SPEC-131-A F5). RE (SPEC-129-C): o que o
+        CONTRATO diz que falta."""
         if self.e_re:
             return self._problemas_re()[0]
-        supridos = self.supridos_pela_placa(origem)
+        supridos = self.supridos_pela_placa(origem, servico)
         faltam = [f"{g}.{n}" for (g, n) in OBRIGATORIOS if _vazio(self.valor(g, n)) and f"{g}.{n}" not in supridos]
         # F4: o robô recusa a renovação sem a seguradora anterior (`cotacao_do_pedido`) — a porta pergunta antes
         if self.renovacao and _vazio(self.valor("renovacao", "seguradora_anterior")):
