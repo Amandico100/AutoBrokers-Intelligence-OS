@@ -229,21 +229,57 @@ textarea::-webkit-scrollbar-thumb:hover {
    O ícone (marca d'água) e a esmaecida para surface na base são do componente CapaGerada.
    Só ESTE bloco é da 131-B; nenhum token global muda (D-131-43).
    ============================================= */
+/* conserto K2 (juiz de design, conserto 6): mais viva e DISTINTA por aplicativo. A matiz (--app-h) dá a cor; a
+   variante (data-variante 0–3, derivada do ícone em CapaGerada) dá a COMPOSIÇÃO: onde nasce a luz e a textura
+   (pontos · linhas diagonais · anéis · grade). Duas capas lado a lado nunca são "o mesmo gradiente com outra cor". */
 .capa-aplicativo {
   --app-h: 205;
+  --capa-a: hsl(var(--app-h) 62% 80% / 0.95);
+  --capa-b: hsl(calc(var(--app-h) + 28) 58% 86% / 0.9);
+  --capa-c: hsl(calc(var(--app-h) - 18) 55% 72% / 0.55);
+  --capa-t: hsl(var(--app-h) 40% 30% / 0.08);
   background-color: hsl(var(--surface-2));
   background-image:
-    radial-gradient(120% 90% at 0 0, hsl(var(--app-h) 55% 85% / 0.9), transparent 60%),
-    radial-gradient(90% 80% at 100% 100%, hsl(calc(var(--app-h) + 25) 50% 90% / 0.9), transparent 60%),
-    radial-gradient(hsl(var(--foreground) / 0.06) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 14px 14px;
+    radial-gradient(110% 95% at 0 0, var(--capa-a), transparent 62%),
+    radial-gradient(85% 80% at 100% 100%, var(--capa-b), transparent 60%),
+    linear-gradient(125deg, transparent 38%, var(--capa-c) 52%, transparent 66%),
+    radial-gradient(var(--capa-t) 1px, transparent 1.5px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 14px 14px;
+}
+
+.capa-aplicativo[data-variante='1'] {
+  background-image:
+    radial-gradient(100% 110% at 100% 0, var(--capa-a), transparent 60%),
+    radial-gradient(80% 90% at 0 100%, var(--capa-b), transparent 62%),
+    linear-gradient(60deg, transparent 30%, var(--capa-c) 48%, transparent 64%),
+    repeating-linear-gradient(135deg, var(--capa-t) 0 1px, transparent 1px 12px);
+  background-size: 100% 100%;
+}
+
+.capa-aplicativo[data-variante='2'] {
+  background-image:
+    radial-gradient(70% 120% at 18% 50%, var(--capa-a), transparent 64%),
+    radial-gradient(60% 80% at 92% 18%, var(--capa-b), transparent 60%),
+    radial-gradient(55% 70% at 70% 110%, var(--capa-c), transparent 62%),
+    repeating-radial-gradient(circle at 18% 50%, var(--capa-t) 0 1px, transparent 1px 18px);
+  background-size: 100% 100%;
+}
+
+.capa-aplicativo[data-variante='3'] {
+  background-image:
+    radial-gradient(120% 80% at 50% 0, var(--capa-a), transparent 58%),
+    radial-gradient(70% 90% at 100% 100%, var(--capa-b), transparent 60%),
+    linear-gradient(160deg, transparent 45%, var(--capa-c) 60%, transparent 76%),
+    linear-gradient(var(--capa-t) 1px, transparent 1px),
+    linear-gradient(90deg, var(--capa-t) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 22px 22px, 22px 22px;
 }
 
 .dark .capa-aplicativo {
-  background-image:
-    radial-gradient(120% 90% at 0 0, hsl(var(--app-h) 45% 38% / 0.55), transparent 60%),
-    radial-gradient(90% 80% at 100% 100%, hsl(calc(var(--app-h) + 25) 40% 30% / 0.35), transparent 60%),
-    radial-gradient(hsl(var(--foreground) / 0.07) 1px, transparent 1px);
+  --capa-a: hsl(var(--app-h) 55% 46% / 0.75);
+  --capa-b: hsl(calc(var(--app-h) + 28) 48% 38% / 0.5);
+  --capa-c: hsl(calc(var(--app-h) - 18) 50% 52% / 0.28);
+  --capa-t: hsl(var(--foreground) / 0.08);
 }
 
 /* o ícone no tile e a marca d'água: dark hsl(h 50% 72%), light hsl(h 45% 38%) — contraste >= 3:1 */

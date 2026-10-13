@@ -16,8 +16,8 @@ export function MinhasConexoes() {
         <AggersDaEquipe apenasEu />
       </div>
       <p className="text-sm text-muted-foreground">
-        As conexões da corretora (sistema de gestão, Agger da corretora, WhatsApp de atendimento) ficam em{' '}
-        <Link href="/dashboard/personalizacao/conectores" className="font-medium text-primary underline-offset-4 hover:underline">
+        As conexões da corretora ficam em{' '}
+        <Link href="/dashboard/personalizacao/conectores" className="font-medium text-foreground underline underline-offset-4 dark:text-primary">
           Personalização → Conectores
         </Link>
         , com quem administra a corretora.

@@ -25,6 +25,13 @@ export interface CapaGeradaProps {
   crescerNoHover?: boolean;
 }
 
+/** A composição da capa gerada (0–3), estável por aplicativo: derivada do ícone, que é único por aplicativo. */
+export function varianteDaCapa(icone: string, matiz: number): number {
+  let h = Math.abs(Math.round(matiz)) || 0;
+  for (let i = 0; i < icone.length; i += 1) h = (h * 31 + icone.charCodeAt(i)) >>> 0;
+  return h % 4;
+}
+
 export function estiloDaMatiz(matiz: number): CSSProperties {
   return { ['--app-h' as string]: String(matiz) } as CSSProperties;
 }
@@ -52,9 +59,9 @@ export function CapaGerada({
           className={cn('h-full w-full object-cover', crescer)}
         />
       ) : (
-        <div className={cn('capa-aplicativo absolute inset-0', crescer)} data-capa="gerada">
+        <div className={cn('capa-aplicativo absolute inset-0', crescer)} data-capa="gerada" data-variante={varianteDaCapa(icone, matiz)}>
           <Icone
-            className="icone-aplicativo absolute -bottom-4 right-3 opacity-[.12]"
+            className="icone-aplicativo absolute -bottom-4 right-3 -rotate-6 opacity-20"
             size={marca}
             strokeWidth={1.6}
             aria-hidden="true"

@@ -6,13 +6,14 @@
 
 import { ChevronDown, Copy, Loader2, MessageCircle, Presentation, TriangleAlert } from 'lucide-react';
 
-import { StatusPill } from '@/components/patterns/StatusPill';
+import { Selo } from '@/components/aplicativos/casca/Selo';
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 import { cn } from '@/lib/utils';
 
 import { reais, tomDoEstado, variacao, venceEm, dataCurta, type CalculoDaOpcao, type Renovacao } from './tipos';
 
 export function SeloPrecisaDeVoce({ className }: { className?: string }) {
-  return <StatusPill tone="warning" label="Precisa de você" className={className} />;
+  return <Selo tom="warning" rotulo="Precisa de você" className={className} />;
 }
 
 export function Variacao({ pct, className }: { pct: number | null; className?: string }) {
@@ -22,11 +23,14 @@ export function Variacao({ pct, className }: { pct: number | null; className?: s
     <span
       className={cn(
         'whitespace-nowrap text-xs font-medium tabular-nums',
-        v.tom === 'sobe' ? 'text-warning' : v.tom === 'desce' ? 'text-success' : 'text-muted-foreground',
+        // no claro, a cor do tom reprova AA em texto de 12 px: o número vai escuro e a seta leva a cor
+        v.tom === 'sobe' ? 'text-foreground-2 dark:text-warning' : v.tom === 'desce' ? 'text-foreground-2 dark:text-success' : 'text-muted-foreground',
         className,
       )}
     >
-      <span aria-hidden>{v.tom === 'sobe' ? '▲ ' : v.tom === 'desce' ? '▼ ' : ''}</span>
+      <span aria-hidden className={v.tom === 'sobe' ? 'text-warning' : v.tom === 'desce' ? 'text-success' : undefined}>
+        {v.tom === 'sobe' ? '▲ ' : v.tom === 'desce' ? '▼ ' : ''}
+      </span>
       <span className="sr-only">{v.tom === 'sobe' ? 'aumento de ' : v.tom === 'desce' ? 'redução de ' : 'variação de '}</span>
       {v.texto}
     </span>
@@ -210,7 +214,7 @@ export function LinhaDaRenovacao({
   const idCalculos = `calculos-${r.id}`;
   const estado = (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      {r.precisa_de_voce ? <SeloPrecisaDeVoce /> : <StatusPill tone={tomDoEstado(r)} label={r.estado_rotulo} />}
+      {r.precisa_de_voce ? <SeloPrecisaDeVoce /> : <Selo tom={tomDoEstado(r)} rotulo={r.estado_rotulo} />}
     </span>
   );
   return (
@@ -247,8 +251,9 @@ export function LinhaDaRenovacao({
             onClick={() => acoes.enviar(r.id)}
             disabled={Boolean(acoes.ocupado)}
             className={cn(
-              'mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold',
-              'text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60',
+              'mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg text-sm font-semibold',
+              BOTAO_PRIMARIO,
+              'transition-opacity disabled:opacity-60',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             )}
           >
@@ -267,7 +272,8 @@ export function LinhaDaRenovacao({
         className={cn(
           'hidden min-h-14 items-center gap-x-3 gap-y-1 py-2 pl-2 pr-2 sm:grid',
           'grid-cols-[2.25rem_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]',
-          'lg:grid-cols-[2.25rem_minmax(0,1.5fr)_4.5rem_6rem_minmax(0,1.4fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.1fr)_auto]',
+          // o estado tem largura mínima: o selo de 12 px ("Precisa de você") não invade a coluna das ações
+          'lg:grid-cols-[2.25rem_minmax(0,1.5fr)_4.5rem_6rem_minmax(0,1.4fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(8.75rem,1.1fr)_auto]',
         )}
       >
         <button
@@ -365,8 +371,8 @@ export function LinhaDaRenovacao({
       {aberta && (
         <div id={idCalculos} className="hidden border-t border-border-soft bg-surface-2/40 p-3 sm:block">
           {r.precisa_de_voce && r.motivo_frase && (
-            <p className="mb-2 flex items-center gap-1.5 text-sm text-warning">
-              <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+            <p className="mb-2 flex items-center gap-1.5 text-sm text-foreground dark:text-warning">
+              <TriangleAlert className="h-4 w-4 shrink-0 text-warning" aria-hidden />
               {r.motivo_frase}
             </p>
           )}

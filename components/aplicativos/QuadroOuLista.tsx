@@ -111,9 +111,9 @@ export function SeletorDeLeitura({
           onClick={() => onEscolher(v)}
           aria-pressed={leitura === v}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+            'inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors sm:min-h-9 sm:text-xs',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            leitura === v ? 'bg-brand-soft text-primary' : 'text-muted-foreground hover:text-foreground',
+            leitura === v ? 'bg-brand-soft text-foreground dark:text-primary' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           <Icone className="h-3.5 w-3.5" aria-hidden />

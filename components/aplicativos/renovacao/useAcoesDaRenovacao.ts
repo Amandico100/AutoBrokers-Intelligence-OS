@@ -67,6 +67,7 @@ export function useAcoesDaRenovacao(onMudou?: () => void) {
         terminar(id, { tipo: 'aberto' });
       } else {
         janela?.close();
+        // sem celular: a tela oferece o Copiar — com a mensagem COMPLETA (`texto`), nunca a curta do link
         terminar(id, { tipo: 'sem_telefone', texto: String(j.texto || '') });
       }
     } catch (e) {
@@ -93,7 +94,9 @@ export function useAcoesDaRenovacao(onMudou?: () => void) {
   }
 
   /**
-   * "Copiar a mensagem": a MESMA mensagem que vai no link. A cópia acontece no clique — o texto chega depois, por
+   * "Copiar a mensagem": a mensagem COMPLETA (`texto` — as opções, as parcelas, a assinatura e a validade). O link do
+   * WhatsApp leva a versão curta (`texto_curto`, ≤ 500); o Copiar existe justamente para a inteira chegar ao cliente
+   * (red team RT-B2, SPEC §2.1 B1). Nunca `texto_curto` aqui. A cópia acontece no clique — o texto chega depois, por
    * isso o `ClipboardItem` com promessa (Safari exige o gesto); sem ele, `writeText` depois da resposta; e se o
    * navegador recusar as duas, o texto aparece na tela para copiar à mão.
    */

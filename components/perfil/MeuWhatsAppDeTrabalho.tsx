@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Info } from 'lucide-react';
 
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
+import { Confirmar } from '@/components/aplicativos/casca/Confirmar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 import { fraseDoErro, type MeuPerfil } from './useMeuPerfil';
 
@@ -59,8 +62,7 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-foreground">Meu WhatsApp de trabalho</h3>
         <p className="text-sm text-muted-foreground">
-          O número em que você atende os clientes. Quando um cliente abre a renovação que você mandou e toca em
-          {' '}&quot;Quero renovar&quot;, a conversa vem para este número — direto para você.
+          O número em que você atende. O &quot;Quero renovar&quot; do cliente chega aqui, direto para você.
         </p>
       </div>
 
@@ -77,14 +79,17 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
           </p>
           <div className="flex gap-2">
             <button type="button" onClick={() => { setEditando(true); setAviso(''); }}
-              className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2">
+              className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               Mudar
             </button>
-            <button type="button" disabled={ocupado}
-              onClick={() => { if (confirm('Tirar o seu WhatsApp de trabalho? O "Quero renovar" passa a ir para o número da corretora.')) gravar({ numero: null }, 'Número tirado.'); }}
-              className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-danger hover:bg-surface-2 disabled:opacity-60">
-              Tirar
-            </button>
+            <Confirmar titulo="Tirar o seu WhatsApp de trabalho?"
+              descricao={'O "Quero renovar" passa a ir para o número da corretora.'}
+              acao="Tirar" perigo onConfirmar={() => gravar({ numero: null }, 'Número tirado.')}>
+              <button type="button" disabled={ocupado}
+                className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-danger hover:bg-surface-2 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Tirar
+              </button>
+            </Confirmar>
           </div>
         </div>
       ) : (
@@ -103,12 +108,12 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
           </label>
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={ocupado || !numero.trim() || !confirmo}
-              className="h-11 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+              className={cn('h-11 rounded-lg px-5 text-sm font-medium disabled:opacity-60', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
               {ocupado ? 'Salvando…' : 'Salvar'}
             </button>
             {atual?.confirmado && (
               <button type="button" onClick={() => { setEditando(false); setErro(''); }}
-                className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2">
+                className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 Cancelar
               </button>
             )}
@@ -119,12 +124,11 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
       <p className="flex items-start gap-2 rounded-lg border border-border-soft p-3 text-sm text-muted-foreground">
         <Info size={16} strokeWidth={1.6} className="mt-0.5 shrink-0" aria-hidden />
         <span>
-          Isto é só o número: o AutoBrokers não se conecta a ele e não envia nada por ele. O número de atendimento da
-          corretora e o do Quem Cobra Menos são outros e não mudam.
+          É só o número: o AutoBrokers não se conecta a ele nem envia nada por ele.
         </span>
       </p>
       {erro && <p className="text-sm text-danger" role="alert">{erro}</p>}
-      {aviso && <p className="text-sm text-success" role="status">{aviso}</p>}
+      {aviso && <p className="text-sm text-foreground dark:text-success" role="status">{aviso}</p>}
     </div>
   );
 }

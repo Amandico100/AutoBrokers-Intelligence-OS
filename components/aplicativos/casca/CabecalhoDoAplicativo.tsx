@@ -40,7 +40,8 @@ export interface CabecalhoProps {
   ocupado: boolean;
   erro: string;
   motivoDeNaoLigar?: string;
-  onAcao: (acao: 'install' | 'resume' | 'pause') => void;
+  /** `confirmado`: veio da confirmação "Ligar …?" — a API exige `confirmar_ligar` para LIGAR a Renovação (K1) */
+  onAcao: (acao: 'install' | 'resume' | 'pause', opcoes?: { confirmado?: boolean }) => void;
 }
 
 function FuncionaCom({ conexoes }: { conexoes: ConexaoDoAplicativo[] }) {
@@ -58,7 +59,7 @@ function FuncionaCom({ conexoes }: { conexoes: ConexaoDoAplicativo[] }) {
             {c.pronto === false && <AlertTriangle className="h-3.5 w-3.5 text-warning" strokeWidth={1.6} aria-label="falta conectar" />}
           </>
         );
-        const classe = 'inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm text-foreground';
+        const classe = 'inline-flex h-11 sm:h-8 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm text-foreground';
         return c.pronto === false && c.onde ? (
           <Link key={c.slug} href={c.onde} className={cn(classe, 'hover:border-primary/40', FOCO)} data-conexao={c.slug}>
             {conteudo}
@@ -136,7 +137,7 @@ function AcaoPrincipal({ item, botao, resumoDosPassos, ocupado, onAcao }: Omit<C
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel className="h-11">Agora não</AlertDialogCancel>
-          <AlertDialogAction className={cn('h-11', BOTAO_PRIMARIO)} onClick={() => onAcao(botao.acao)}>
+          <AlertDialogAction className={cn('h-11', BOTAO_PRIMARIO)} onClick={() => onAcao(botao.acao, { confirmado: true })}>
             Ligar
           </AlertDialogAction>
         </AlertDialogFooter>

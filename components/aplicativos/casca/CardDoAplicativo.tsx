@@ -4,22 +4,22 @@
 // destaque do topo.
 //
 // Um `Link` só por card; o nome acessível é nome + estado. A prova é número REAL desta corretora ou o estado em
-// palavras (`provaDoCard`) — nunca estrela, nunca contagem inventada (D-131-26). Cor de estado só por `StatusPill`
+// palavras (`provaDoCard`) — nunca estrela, nunca contagem inventada (D-131-26). Cor de estado só pelo `Selo` da casca
 // (nunca emerald/amber cru); texto informativo em `muted-foreground` (nunca `faint`, que reprova AA).
 
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 
-import { StatusPill } from '@/components/patterns/StatusPill';
 import { cn } from '@/lib/utils';
 import { provaDoCard, seloDoEstado, type EstadoDoCard, type ItemDoCatalogo } from '@/lib/auxiliaries/catalog';
 import { CapaGerada, estiloDaMatiz } from './CapaGerada';
+import { Selo } from './Selo';
 import { iconeDoAplicativo } from './icones';
 
 export function SeloDoAplicativo({ estado, className }: { estado: EstadoDoCard; className?: string }) {
   const selo = seloDoEstado(estado);
   if (!selo) return null;
-  return <StatusPill tone={selo.tom} label={selo.rotulo} className={cn('font-sans text-xs', className)} />;
+  return <Selo tom={selo.tom} rotulo={selo.rotulo} className={className} />;
 }
 
 /** O tile do ícone: 48 px no card, 40 no "em breve", 72 no cabeçalho. */

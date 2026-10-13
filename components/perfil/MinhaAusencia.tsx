@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import { CalendarClock, X } from 'lucide-react';
 
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
+import { Confirmar } from '@/components/aplicativos/casca/Confirmar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 import { dataBR, fraseDoErro, type MeuPerfil } from './useMeuPerfil';
 
@@ -51,7 +54,7 @@ export function MinhaAusencia({ perfil, onMudou }: { perfil: MeuPerfil | null; o
   };
 
   const apagar = async (id: string) => {
-    if (!confirm('Apagar esta ausência?')) return;
+    // a confirmação é a da casa (`Confirmar`, no botão) — nunca o confirm() do navegador
     setOcupado(true); setErro(''); setAviso('');
     try {
       const res = await fetch(`/api/dashboard/meu-perfil?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -71,8 +74,7 @@ export function MinhaAusencia({ perfil, onMudou }: { perfil: MeuPerfil | null; o
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-foreground">Ausência</h3>
         <p className="text-sm text-muted-foreground">
-          Vai sair de férias? Escolha quem cobre você. As renovações da sua carteira continuam sendo calculadas no seu
-          Agger, e o aviso de cada uma vai para quem cobre — até você voltar.
+          Vai sair de férias? Escolha quem cobre você. Suas renovações seguem no seu Agger; os avisos vão para quem cobre.
         </p>
       </div>
 
@@ -84,13 +86,16 @@ export function MinhaAusencia({ perfil, onMudou }: { perfil: MeuPerfil | null; o
                 <CalendarClock size={16} strokeWidth={1.6} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
                 <span>
                   De {dataBR(a.de)} a {dataBR(a.ate)} · {a.nome} cobre você
-                  {a.ativa && <span className="ml-2 text-success">· agora</span>}
+                  {a.ativa && <span className="ml-2 font-medium text-foreground dark:text-success">· agora</span>}
                 </span>
               </p>
-              <button type="button" disabled={ocupado} onClick={() => apagar(a.id)} aria-label={`Apagar a ausência de ${dataBR(a.de)} a ${dataBR(a.ate)}`}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-danger disabled:opacity-50">
-                <X size={16} strokeWidth={1.6} aria-hidden />
-              </button>
+              <Confirmar titulo="Apagar esta ausência?" descricao={`De ${dataBR(a.de)} a ${dataBR(a.ate)}. Os avisos voltam a ir para você.`}
+                acao="Apagar" perigo onConfirmar={() => apagar(a.id)}>
+                <button type="button" disabled={ocupado} aria-label={`Apagar a ausência de ${dataBR(a.de)} a ${dataBR(a.ate)}`}
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-danger disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <X size={16} strokeWidth={1.6} aria-hidden />
+                </button>
+              </Confirmar>
             </li>
           ))}
         </ul>
@@ -120,7 +125,7 @@ export function MinhaAusencia({ perfil, onMudou }: { perfil: MeuPerfil | null; o
             </select>
           </div>
           <button type="submit" disabled={ocupado}
-            className="h-11 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+            className={cn('h-11 rounded-lg px-5 text-sm font-medium disabled:opacity-60', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
             {ocupado ? 'Salvando…' : 'Marcar ausência'}
           </button>
         </form>
@@ -140,7 +145,7 @@ export function MinhaAusencia({ perfil, onMudou }: { perfil: MeuPerfil | null; o
       )}
 
       {erro && <p className="text-sm text-danger" role="alert">{erro}</p>}
-      {aviso && <p className="text-sm text-success" role="status">{aviso}</p>}
+      {aviso && <p className="text-sm text-foreground dark:text-success" role="status">{aviso}</p>}
     </div>
   );
 }

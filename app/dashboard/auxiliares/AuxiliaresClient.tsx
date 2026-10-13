@@ -160,7 +160,7 @@ export default function AuxiliaresClient() {
                 <ToggleGroupItem
                   key={v}
                   value={v}
-                  className="h-10 shrink-0 whitespace-nowrap px-3 text-sm text-muted-foreground data-[state=on]:bg-surface-2 data-[state=on]:text-foreground"
+                  className="h-11 shrink-0 whitespace-nowrap px-3 sm:h-10 text-sm text-muted-foreground data-[state=on]:bg-surface-2 data-[state=on]:text-foreground"
                 >
                   {rotulo}
                 </ToggleGroupItem>
@@ -205,7 +205,7 @@ export default function AuxiliaresClient() {
                   aria-pressed={ativo}
                   onClick={() => setCategoria(ativo ? null : chave)}
                   className={cn(
-                    'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors',
+                    'inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full sm:h-10 border px-3 text-sm transition-colors',
                     ativo
                       ? 'border-primary bg-brand-soft text-foreground'
                       : 'border-border bg-surface text-muted-foreground hover:border-primary/40 hover:text-foreground',

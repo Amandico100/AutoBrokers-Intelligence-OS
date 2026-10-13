@@ -72,14 +72,15 @@ export default function AuxiliarDetalheClient({ item, podeLigar, atividade, font
   const botao = botaoPrincipal(item);
   const conexoes = useMemo(() => conexoesDoCabecalho(item, fontes), [item, fontes]);
 
-  async function agir(action: 'install' | 'resume' | 'pause') {
+  async function agir(action: 'install' | 'resume' | 'pause', opcoes?: { confirmado?: boolean }) {
     setOcupado(true);
     setErro('');
     try {
       const r = await fetch(`/api/dashboard/auxiliaries/${item.template_id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
+        // o "Ligar" que passou pela confirmação leva `confirmar_ligar` — sem ele a API não liga a Renovação (K1)
+        body: JSON.stringify(opcoes?.confirmado ? { action, confirmar_ligar: true } : { action }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok || j?.ok === false) {

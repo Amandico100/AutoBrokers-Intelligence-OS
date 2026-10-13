@@ -92,7 +92,7 @@ export function Excecoes({ excecoes, ramos, modos, onChange, desabilitado }: {
             <li key={i} className="flex items-center justify-between gap-2 rounded-lg border border-border-soft px-3 py-2 text-sm">
               <span className="min-w-0 text-foreground">{textoDaExcecao(e, ramos, modos)}</span>
               <button type="button" disabled={desabilitado} onClick={() => onChange(excecoes.filter((_, j) => j !== i))}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-danger disabled:opacity-50"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-danger disabled:opacity-50 sm:h-9 sm:w-9"
                 aria-label={`Tirar a exceção ${textoDaExcecao(e, ramos, modos)}`}>
                 <X size={16} strokeWidth={1.6} aria-hidden />
               </button>
@@ -137,7 +137,7 @@ export function Preferidas({ ramos, lista, igualParaTodos, comum, nomeDoServico,
     [itens[i], itens[j]] = [itens[j], itens[i]];
     trocar(ramo, itens);
   };
-  const icone = 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground disabled:opacity-40';
+  const icone = 'inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground disabled:opacity-40';
   return (
     <div className="space-y-3">
       <div role="radiogroup" aria-label="De quem é a lista de seguradoras preferidas" className="flex flex-wrap gap-2">

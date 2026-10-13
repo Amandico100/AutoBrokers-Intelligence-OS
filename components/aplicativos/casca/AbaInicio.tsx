@@ -4,7 +4,11 @@
 //   o que é → o que faz → o que a corretora ganha → Como começar → atividade recente → dúvidas.
 // Saíram "De onde ele tira a informação" e os slugs crus. A atividade vem da fonte REAL (`routine_runs`; na
 // Renovação, as madrugadas de `renovacao_dias`) — o Histórico por `last_run_at` mentia (laudo I2 F7).
+//
+// Conserto K2 (juiz de design, conserto 9 — "menos texto"): "O que é" mostra o 1º parágrafo e "Ler mais"; "O que faz"
+// mostra no máximo 3 itens; e, com passo faltando, "Como começar" sobe para logo depois de "O que é".
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
 
@@ -57,23 +61,50 @@ export function AbaInicio({ item, passos, atividade, hrefDuvidas }: AbaInicioPro
         ? { numero: item.prova.execucoes, legenda: item.prova.execucoes === 1 ? 'execução até hoje' : 'execuções até hoje' }
         : null;
   const emBreve = item.estado === 'em_breve';
+  const [lerMais, setLerMais] = useState(false);
+  const [todasAsTarefas, setTodasAsTarefas] = useState(false);
+  const paragrafos = (item.descricao || '').split('\n\n').filter((p) => p.trim());
+  const visiveis = lerMais ? paragrafos : paragrafos.slice(0, 1);
+  const tarefas = todasAsTarefas ? item.o_que_faz : item.o_que_faz.slice(0, 3);
+  const faltaPasso = !emBreve && passos.some((p) => p.estado !== 'pronto');
+  const BOTAO_TEXTO =
+    'inline-flex min-h-[44px] items-center text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-primary';
+
+  const comoComecar = emBreve ? (
+    <Bloco titulo="Ainda não está pronto">
+      <p className="max-w-[65ch] text-sm text-muted-foreground">
+        {item.falta_para_existir || 'Este aplicativo ainda está sendo construído.'}
+      </p>
+    </Bloco>
+  ) : (
+    <Bloco titulo="Como começar" primeiro={!item.descricao && faltaPasso}>
+      <ComoComecar passos={passos} />
+    </Bloco>
+  );
 
   return (
     <div>
       {item.descricao && (
         <Bloco titulo="O que é" primeiro>
           <div className="max-w-[65ch] space-y-3 text-base leading-7 text-foreground-2">
-            {item.descricao.split('\n\n').map((p, i) => (
+            {visiveis.map((p, i) => (
               <p key={i}>{p}</p>
             ))}
           </div>
+          {paragrafos.length > 1 && (
+            <button type="button" onClick={() => setLerMais((x) => !x)} aria-expanded={lerMais} className={BOTAO_TEXTO}>
+              {lerMais ? 'Ler menos' : 'Ler mais'}
+            </button>
+          )}
         </Bloco>
       )}
 
+      {faltaPasso && comoComecar}
+
       {item.o_que_faz.length > 0 && (
-        <Bloco titulo="O que faz" primeiro={!item.descricao}>
+        <Bloco titulo="O que faz" primeiro={!item.descricao && !faltaPasso}>
           <ul className="space-y-3">
-            {item.o_que_faz.map((t, i) => (
+            {tarefas.map((t, i) => (
               <li key={i} className="flex items-start gap-3">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" strokeWidth={2} aria-hidden="true" />
                 <span>
@@ -83,6 +114,11 @@ export function AbaInicio({ item, passos, atividade, hrefDuvidas }: AbaInicioPro
               </li>
             ))}
           </ul>
+          {item.o_que_faz.length > 3 && (
+            <button type="button" onClick={() => setTodasAsTarefas((x) => !x)} aria-expanded={todasAsTarefas} className={BOTAO_TEXTO}>
+              {todasAsTarefas ? 'Ver menos' : `Ver as ${item.o_que_faz.length}`}
+            </button>
+          )}
         </Bloco>
       )}
 
@@ -101,17 +137,7 @@ export function AbaInicio({ item, passos, atividade, hrefDuvidas }: AbaInicioPro
         </Bloco>
       )}
 
-      {emBreve ? (
-        <Bloco titulo="Ainda não está pronto">
-          <p className="max-w-[65ch] text-sm text-muted-foreground">
-            {item.falta_para_existir || 'Este aplicativo ainda está sendo construído.'}
-          </p>
-        </Bloco>
-      ) : (
-        <Bloco titulo="Como começar">
-          <ComoComecar passos={passos} />
-        </Bloco>
-      )}
+      {!faltaPasso && comoComecar}
 
       {!emBreve && (
         <Bloco titulo="Atividade recente">

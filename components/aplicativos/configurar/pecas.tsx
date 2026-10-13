@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Info, Minus, Plus } from 'lucide-react';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 import { cn } from '@/lib/utils';
 
 /**
@@ -51,7 +52,7 @@ export function Ajuda({ titulo, children }: { titulo: string; children: ReactNod
       <PopoverTrigger
         type="button"
         aria-label={`O que é: ${titulo}`}
-        className="-m-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="-m-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Info size={15} strokeWidth={1.6} aria-hidden />
       </PopoverTrigger>
@@ -96,7 +97,7 @@ export function NumeroComBotoes({ id, valor, min, max, onChange, sufixo, rotulo,
   );
 }
 
-/** Segmentado acessível (radiogroup), h-10. Opção desabilitada mostra o porquê no rótulo. */
+/** Segmentado acessível (radiogroup): 44 px no celular, 40 no notebook. Opção desabilitada mostra o porquê no rótulo. */
 export function Segmentado<T extends string>({ valor, opcoes, onChange, rotulo, desabilitado }: {
   valor: T; rotulo: string; onChange: (v: T) => void; desabilitado?: boolean;
   opcoes: { valor: T; titulo: string; desabilitada?: boolean }[];
@@ -112,7 +113,7 @@ export function Segmentado<T extends string>({ valor, opcoes, onChange, rotulo, 
           disabled={desabilitado || o.desabilitada}
           onClick={() => onChange(o.valor)}
           className={cn(
-            'min-h-[40px] rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+            'min-h-11 rounded-md px-3 text-sm sm:min-h-10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
             valor === o.valor ? 'bg-surface-2 font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
           )}
         >
@@ -138,17 +139,17 @@ export function BarraSalvar({ visivel, salvando, onDescartar, onSalvar, aviso, c
         <div className="flex gap-2">
           {conflito && onRecarregar ? (
             <button type="button" onClick={onRecarregar}
-              className="h-11 flex-1 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 sm:flex-none">
+              className="h-11 flex-1 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-none">
               Recarregar
             </button>
           ) : visivel ? (
             <>
               <button type="button" onClick={onDescartar} disabled={salvando}
-                className="h-11 flex-1 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-60 sm:flex-none">
+                className="h-11 flex-1 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-none">
                 Descartar
               </button>
               <button type="button" onClick={onSalvar} disabled={salvando}
-                className="h-11 flex-1 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 sm:flex-none">
+                className={cn('h-11 flex-1 rounded-lg px-5 text-sm font-medium disabled:opacity-60 sm:flex-none', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
                 {salvando ? 'Salvando…' : 'Salvar'}
               </button>
             </>

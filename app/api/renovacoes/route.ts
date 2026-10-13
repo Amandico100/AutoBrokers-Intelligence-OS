@@ -3,31 +3,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 
 import { cabecalhosDoBackend, repassar, sessaoDaCorretora } from './comum';
+import { CABECALHO_DA_BUSCA, pedidoDaLista } from './pedido';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * SPEC-131-B · G2 — GET /api/renovacoes?escopo=minhas|todas&estado=&ramo=&de=&ate=&seguradora=&q=
+ * SPEC-131-B · G2 — GET /api/renovacoes?escopo=minhas|todas&estado=&ramo=&de=&ate=&seguradora=
  *
  * As renovações da corretora DA SESSÃO, na forma da aba Renovações. Sem `escopo`, o padrão é pelo papel: quem
  * administra a corretora vê "todas"; o comercial vê as "minhas" (dono ou responsável = eu).
+ *
+ * 🔴 A busca ("Nome ou CPF") NÃO vem na query: chega no cabeçalho `x-renovacoes-busca` e vai ao backend no
+ * cabeçalho `x-busca` (juiz J-B1 — a query string acaba no log de acesso). `q` na query é ignorado. Ver `pedido.ts`.
  */
-const FILTROS = ['estado', 'ramo', 'de', 'ate', 'seguradora', 'q'] as const;
-
 export async function GET(req: NextRequest) {
   const s = await sessaoDaCorretora();
   if (s instanceof NextResponse) return s;
-  const entrada = req.nextUrl.searchParams;
-  const pedido = entrada.get('escopo');
-  const escopo = pedido === 'minhas' || pedido === 'todas' ? pedido : s.admin ? 'todas' : 'minhas';
-  const p = new URLSearchParams({ company_id: s.companyId, user_id: s.userId, escopo });
-  for (const k of FILTROS) {
-    const v = (entrada.get(k) || '').trim();
-    if (v) p.set(k, v.slice(0, 120));
-  }
+  const { consulta, cabecalhos } = pedidoDaLista(req.nextUrl.searchParams, req.headers.get(CABECALHO_DA_BUSCA), s);
   try {
-    const res = await fetch(`${getBackendUrl()}/api/renovacoes?${p.toString()}`, {
-      headers: cabecalhosDoBackend(),
+    const res = await fetch(`${getBackendUrl()}/api/renovacoes?${consulta}`, {
+      headers: { ...cabecalhosDoBackend(), ...cabecalhos },
       cache: 'no-store',
     });
     return repassar(res);

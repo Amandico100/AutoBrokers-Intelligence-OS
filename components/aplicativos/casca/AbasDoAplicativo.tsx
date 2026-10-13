@@ -39,8 +39,14 @@ function AbaCarregada({ componente, item, aba }: { componente: string; item: Ite
       return;
     }
     const [, pasta, nome] = m;
-    // o webpack transforma este template num CONTEXTO (`components/aplicativos/**/Aba*`): cada aba vira um chunk
-    import(`@/components/aplicativos/${pasta}/Aba${nome}`)
+    // o webpack transforma este template num CONTEXTO: cada aba vira um chunk. 🔴 Conserto K2: sem o
+    // `webpackInclude`, o contexto era `components/aplicativos/ lazy ^\.\/.*$` — TODO arquivo da pasta, inclusive os
+    // `*.test.mjs` (📊 13/10, `next dev`: um teste com `node:child_process` derrubou a compilação da página do
+    // aplicativo inteira, e os testes com `node:fs` iam parar no pacote do navegador). Só `<pasta>/Aba<Nome>.tsx` entra.
+    import(
+      /* webpackInclude: /[\\/][a-z0-9-]+[\\/]Aba[A-Za-z0-9]+\.tsx$/ */
+      `@/components/aplicativos/${pasta}/Aba${nome}`
+    )
       .then((mod) => {
         if (!vivo) return;
         if (typeof mod?.default === 'function' || typeof mod?.default === 'object') setComp(() => mod.default);

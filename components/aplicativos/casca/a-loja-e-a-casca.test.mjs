@@ -316,5 +316,59 @@ for (const rel of ARQS) {
 }
 checar(EMOJI.test('💰') && /emerald-/.test('text-emerald-600'), 'CONTROLE: os detectores acham emoji e cor crua quando existem');
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+console.log('\n[11] Conserto K2 (juiz de design 3, 4, 10): um botão primário só, selo legível, confirmação da casa, busca fora da URL');
+const listar = (dir) => fs.readdirSync(path.join(RAIZ, dir)).filter((f) => /\.tsx?$/.test(f)).map((f) => `${dir}/${f}`);
+const TELAS_131B = [
+  ...listar('components/aplicativos/casca'),
+  ...listar('components/aplicativos/configurar'),
+  ...listar('components/aplicativos/renovacao'),
+  'components/aplicativos/QuadroOuLista.tsx',
+  ...listar('components/perfil'),
+  'app/dashboard/auxiliares/AuxiliaresClient.tsx',
+  'app/dashboard/auxiliares/[slug]/AuxiliarDetalheClient.tsx',
+  'app/dashboard/configuracoes/page.tsx',
+];
+function defeitosDeDesign(fonte) {
+  const c = fonte.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const d = [];
+  // branco sobre `primary` no claro = 4,38:1 (reprova); o primário é `BOTAO_PRIMARIO` (foreground/background no claro)
+  if (/(^|[\s'"`])bg-primary(?![\w/-])[\s\S]{0,200}?text-primary-foreground/.test(c)) d.push('bg-primary como botão (use BOTAO_PRIMARIO)');
+  // `text-primary` como TEXTO no claro = 4,10–4,38:1; só vale com `dark:` na frente
+  if (/(^|[\s'"`])text-primary(?![\w/-])/.test(c)) d.push('text-primary sem dark: (use text-foreground dark:text-primary)');
+  // o StatusPill cru sai em font-mono 11 px e com o texto na cor do tom (reprova AA no claro): use o `Selo` da casca
+  if (/<StatusPill\b/.test(c)) d.push('StatusPill cru (use o Selo da casca)');
+  if (/(^|[^\w.])confirm\(/.test(c)) d.push('confirm() do navegador (use o Confirmar da casca)');
+  return d;
+}
+for (const rel of TELAS_131B) {
+  const d = defeitosDeDesign(fs.readFileSync(path.join(RAIZ, rel), 'utf8'));
+  checar(d.length === 0, `${rel}: botão, link, selo e confirmação da casa`, d.join(' | '));
+}
+checar(
+  defeitosDeDesign(`<button className="h-11 bg-primary text-primary-foreground">x</button>`).length === 1 &&
+    defeitosDeDesign(`<a className="font-medium text-primary hover:underline">x</a>`).length === 1 &&
+    defeitosDeDesign(`<StatusPill tone="warning" label="x" />`).length === 1 &&
+    defeitosDeDesign(`if (!confirm('Apagar?')) return;`).length === 1 &&
+    defeitosDeDesign(`<a className="text-foreground dark:text-primary bg-primary/60 dark:bg-primary dark:text-primary-foreground">x</a>`).length === 0 &&
+    defeitosDeDesign(`<span className="h-2 w-2 rounded-full bg-primary" />`).length === 0,
+  'CONTROLE: cada detector acha o defeito histórico e aceita a forma consertada',
+);
+// o import dinâmico das abas só enxerga `<pasta>/Aba<Nome>.tsx` — sem isso, um `*.test.mjs` com `node:child_process`
+// dentro de components/aplicativos derrubava a compilação da página do aplicativo (📊 13/10, `next dev`)
+const incluir = (fonte) => {
+  const m = /webpackInclude:\s*\/(.+?)\/\s*\*\//.exec(fonte);
+  if (!m) return null;
+  const re = new RegExp(m[1]);
+  return re.test('./renovacao/AbaRenovacoes.tsx') && re.test('./casca/AbaInicio.tsx') &&
+    !re.test('./renovacao/a-busca-nao-vai-na-url.test.mjs') && !re.test('./casca/a-loja-e-a-casca.test.mjs');
+};
+const ABAS_FONTE = fs.readFileSync(path.join(RAIZ, 'components/aplicativos/casca/AbasDoAplicativo.tsx'), 'utf8');
+checar(incluir(ABAS_FONTE) === true, 'o contexto do import dinâmico só inclui Aba*.tsx (nenhum teste vai ao navegador)');
+checar(incluir(ABAS_FONTE.replace(/\/\*\s*webpackInclude:[^*]*\*\//, '')) !== true, 'CONTROLE: sem o webpackInclude o guarda fica VERMELHO');
+const SELO = fs.readFileSync(path.join(RAIZ, 'components/aplicativos/casca/Selo.tsx'), 'utf8');
+checar(/font-sans text-xs/.test(SELO) && !/font-mono|text-\[1[01]px\]/.test(SELO.replace(/^\s*\/\/.*$/gm, '')) && /text-foreground-2 dark:text-warning/.test(SELO),
+  'o Selo: 12 px, sem mono, no claro texto escuro (a cor no ponto)');
+
 console.log(falhas === 0 ? '\nA LOJA E A CASCA: TODOS OS GUARDAS VERDES\n' : `\n${falhas} GUARDA(S) VERMELHO(S)\n`);
 process.exit(falhas === 0 ? 0 : 1);

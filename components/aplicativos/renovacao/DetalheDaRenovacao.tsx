@@ -11,7 +11,8 @@ import { Copy, ExternalLink, Loader2, MessageCircle, Presentation, TriangleAlert
 
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { StatusPill } from '@/components/patterns/StatusPill';
+import { Selo } from '@/components/aplicativos/casca/Selo';
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 import { cn } from '@/lib/utils';
 
 import { CalculosLadoALado, SeloPrecisaDeVoce, Variacao } from './PecasDaRenovacao';
@@ -106,10 +107,12 @@ export function DetalheDaRenovacaoGaveta({
                   <button
                     type="button"
                     onClick={() => acoes.enviar(atual.id)}
+                    aria-label="Enviar pelo WhatsApp"
                     disabled={Boolean(acoes.ocupado)}
                     className={cn(
-                      'inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold',
-                      'text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60',
+                      'inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold',
+                      BOTAO_PRIMARIO,
+                      'transition-opacity disabled:opacity-60',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                     )}
                   >
@@ -118,7 +121,9 @@ export function DetalheDaRenovacaoGaveta({
                     ) : (
                       <MessageCircle className="h-4 w-4" aria-hidden />
                     )}
-                    Enviar pelo WhatsApp
+                    {/* no celular a barra tem metade da largura: o rótulo curto não quebra em duas linhas */}
+                    <span className="whitespace-nowrap sm:hidden">Enviar</span>
+                    <span className="hidden whitespace-nowrap sm:inline">Enviar pelo WhatsApp</span>
                   </button>
                   <button
                     type="button"
@@ -142,7 +147,7 @@ export function DetalheDaRenovacaoGaveta({
                   type="button"
                   onClick={() => acoes.copiar(atual.id)}
                   disabled={Boolean(acoes.ocupado)}
-                  className="mt-1 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium text-primary hover:bg-brand-soft disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="mt-1 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium text-foreground hover:bg-brand-soft dark:text-primary disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {ocupada === 'copiar' ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -178,7 +183,7 @@ function Conteudo({ d }: { d: DetalheDaRenovacao }) {
             .join(' · ')}
         </SheetDescription>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <StatusPill tone={tomDoEstado(d)} label={d.estado_rotulo} />
+          <Selo tom={tomDoEstado(d)} rotulo={d.estado_rotulo} />
           {d.precisa_de_voce && <SeloPrecisaDeVoce />}
         </div>
         <p
@@ -226,7 +231,7 @@ function Conteudo({ d }: { d: DetalheDaRenovacao }) {
               href={d.agger_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex h-11 items-center gap-2 rounded-lg px-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-11 items-center gap-2 rounded-lg px-1 text-sm font-medium text-foreground underline-offset-4 hover:underline dark:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ExternalLink className="h-4 w-4" aria-hidden />
               Abrir no Agger
@@ -269,7 +274,7 @@ export function AvisoDoResultado({ r, onCopiar }: { r: Resultado; onCopiar: () =
           <button
             type="button"
             onClick={onCopiar}
-            className="mt-2 inline-flex h-11 items-center gap-2 rounded-lg px-1 font-medium text-primary hover:underline"
+            className="mt-2 inline-flex h-11 items-center gap-2 rounded-lg px-1 font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-primary"
           >
             <Copy className="h-4 w-4" aria-hidden />
             Copiar a mensagem

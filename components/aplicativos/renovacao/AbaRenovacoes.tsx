@@ -16,8 +16,11 @@
 //   detalhe  `&item=<id>` — gaveta no notebook, tela cheia no celular
 //
 // 🔴 Todo filtro mora na URL (`escopo`, `atalho`, `estado`, `ramo`,
-// `seguradora`, `periodo`, `q`, `item`): o link copiado abre igual, e "voltar"
+// `seguradora`, `periodo`, `item`): o link copiado abre igual, e "voltar"
 // fecha o detalhe. ⛔ Nada sai daqui para o cliente sozinho.
+// 🔴 A BUSCA (nome ou CPF) é a exceção (juiz J-B1): fica só no estado da tela e
+// vai à API no cabeçalho `x-renovacoes-busca` — NUNCA na URL da página nem na
+// query (a query acaba no log de acesso e no histórico do navegador).
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -28,6 +31,7 @@ import { toast } from 'sonner';
 import { QuadroOuLista, SeletorDeLeitura, useLeituraSalva } from '@/components/aplicativos/QuadroOuLista';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 import { cn } from '@/lib/utils';
 
 import { DetalheDaRenovacaoGaveta } from './DetalheDaRenovacao';
@@ -41,6 +45,7 @@ import {
   type Renovacao,
 } from './tipos';
 import { useAcoesDaRenovacao } from './useAcoesDaRenovacao';
+import { CABECALHO_DA_BUSCA } from '@/app/api/renovacoes/pedido';
 
 const PREFERENCIA_DE_LEITURA = 'autobrokers.aplicativos.renovacao.leitura';
 
@@ -92,8 +97,9 @@ function AbaRenovacoesConteudo() {
   const ramo = busca.get('ramo') || '';
   const seguradora = busca.get('seguradora') || '';
   const periodo = busca.get('periodo') || '';
-  const q = busca.get('q') || '';
   const item = busca.get('item');
+  // um link antigo podia trazer a busca na URL: ela é apagada da barra e NÃO é usada
+  const buscaVelhaNaUrl = busca.has('q');
 
   const [dados, setDados] = useState<ListaDeRenovacoes | null>(null);
   const [erro, setErro] = useState(false);
@@ -101,7 +107,8 @@ function AbaRenovacoesConteudo() {
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [filtrosNoCelular, setFiltrosNoCelular] = useState(false);
   const [leitura, escolherLeitura] = useLeituraSalva(PREFERENCIA_DE_LEITURA, 'lista');
-  const [textoDaBusca, setTextoDaBusca] = useState(q);
+  const [textoDaBusca, setTextoDaBusca] = useState('');
+  const [termo, setTermo] = useState('');
   const abriuPorAqui = useRef(false);
 
   /** Troca parâmetros da URL sem rolar a página e sem perder os outros (inclusive `aba`). */
@@ -119,13 +126,14 @@ function AbaRenovacoesConteudo() {
     [busca, pathname, router],
   );
 
-  // a busca vai à URL depois de uma pausa na digitação
-  useEffect(() => setTextoDaBusca(q), [q]);
+  // a busca vale depois de uma pausa na digitação — e fica SÓ no estado (nunca na URL)
   useEffect(() => {
-    if (textoDaBusca === q) return;
-    const t = setTimeout(() => mudar({ q: textoDaBusca.trim() || null }), 350);
+    const t = setTimeout(() => setTermo(textoDaBusca.trim()), 350);
     return () => clearTimeout(t);
-  }, [textoDaBusca, q, mudar]);
+  }, [textoDaBusca]);
+  useEffect(() => {
+    if (buscaVelhaNaUrl) mudar({ q: null });
+  }, [buscaVelhaNaUrl, mudar]);
 
   const consulta = useMemo(() => {
     const p = new URLSearchParams();
@@ -133,17 +141,17 @@ function AbaRenovacoesConteudo() {
     if (estado) p.set('estado', estado);
     if (ramo) p.set('ramo', ramo);
     if (seguradora) p.set('seguradora', seguradora);
-    if (q) p.set('q', q);
     const { de, ate } = intervaloDoPeriodo(periodo);
     if (de) p.set('de', de);
     if (ate) p.set('ate', ate);
     return p.toString();
-  }, [escopoNaUrl, estado, ramo, seguradora, q, periodo]);
+  }, [escopoNaUrl, estado, ramo, seguradora, periodo]);
 
   useEffect(() => {
     let vivo = true;
     setErro(false);
-    fetch(`/api/renovacoes?${consulta}`, { cache: 'no-store' })
+    const cabecalhos: Record<string, string> = termo ? { [CABECALHO_DA_BUSCA]: encodeURIComponent(termo) } : {};
+    fetch(`/api/renovacoes?${consulta}`, { cache: 'no-store', headers: cabecalhos })
       .then(async (res) => {
         const j = await res.json().catch(() => null);
         if (!vivo) return;
@@ -157,7 +165,7 @@ function AbaRenovacoesConteudo() {
     return () => {
       vivo = false;
     };
-  }, [consulta, recarga]);
+  }, [consulta, termo, recarga]);
 
   const recarregar = useCallback(() => setRecarga((n) => n + 1), []);
   const acoes = useAcoesDaRenovacao(recarregar);
@@ -202,9 +210,12 @@ function AbaRenovacoesConteudo() {
     });
 
   const filtrosAtivos = [estado, ramo, seguradora, periodo].filter(Boolean).length;
-  const algumFiltro = filtrosAtivos > 0 || Boolean(q) || Boolean(atalho);
-  const limparFiltros = () =>
-    mudar({ estado: null, ramo: null, seguradora: null, periodo: null, q: null, atalho: null });
+  const algumFiltro = filtrosAtivos > 0 || Boolean(termo) || Boolean(atalho);
+  const limparFiltros = () => {
+    setTextoDaBusca('');
+    setTermo('');
+    mudar({ estado: null, ramo: null, seguradora: null, periodo: null, atalho: null });
+  };
 
   return (
     <div className="space-y-4 pb-10">
@@ -234,7 +245,7 @@ function AbaRenovacoesConteudo() {
               <span
                 className={cn(
                   'text-xl font-semibold tabular-nums',
-                  a.id === 'precisa_de_voce' && (n || 0) > 0 ? 'text-warning' : 'text-foreground',
+                  a.id === 'precisa_de_voce' && (n || 0) > 0 ? 'text-foreground dark:text-warning' : 'text-foreground',
                 )}
               >
                 {typeof n === 'number' ? n : '–'}
@@ -260,9 +271,9 @@ function AbaRenovacoesConteudo() {
               aria-pressed={escopo === v}
               onClick={() => mudar({ escopo: v })}
               className={cn(
-                'h-9 rounded-md px-3 text-sm font-medium transition-colors',
+                'h-11 rounded-md px-3 text-sm font-medium transition-colors sm:h-9',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                escopo === v ? 'bg-brand-soft text-primary' : 'text-muted-foreground hover:text-foreground',
+                escopo === v ? 'bg-brand-soft text-foreground dark:text-primary' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {rot}
@@ -313,7 +324,7 @@ function AbaRenovacoesConteudo() {
         <button
           type="button"
           onClick={limparFiltros}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg px-1 text-sm font-medium text-primary hover:underline"
+          className="inline-flex h-11 items-center gap-1.5 rounded-lg px-1 text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-primary sm:h-9"
         >
           <X className="h-4 w-4" aria-hidden />
           Limpar filtros
@@ -340,7 +351,7 @@ function AbaRenovacoesConteudo() {
         <Vazio
           dados={dados}
           atalho={atalho}
-          outrosFiltros={filtrosAtivos > 0 || Boolean(q)}
+          outrosFiltros={filtrosAtivos > 0 || Boolean(termo)}
           limpar={limparFiltros}
           verTodas={() => mudar({ escopo: 'todas' })}
           escopo={escopo}
@@ -377,7 +388,7 @@ function AbaRenovacoesConteudo() {
             <button
               type="button"
               onClick={() => escolherLeitura('lista')}
-              className="px-0.5 pt-1 text-left text-xs font-medium text-primary hover:underline"
+              className="inline-flex min-h-11 items-center px-0.5 text-left text-sm font-medium text-foreground underline-offset-4 hover:underline dark:text-primary sm:min-h-9 sm:text-xs"
             >
               e mais {restantes} — ver na lista
             </button>
@@ -404,7 +415,7 @@ function AbaRenovacoesConteudo() {
           <button
             type="button"
             onClick={() => setFiltrosNoCelular(false)}
-            className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground"
+            className={cn('mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg text-sm font-semibold', BOTAO_PRIMARIO)}
           >
             Ver {visiveis.length === 1 ? '1 renovação' : `${visiveis.length} renovações`}
           </button>
@@ -566,7 +577,7 @@ function Vazio({
       <>
         Quando o aplicativo estiver ligado, a madrugada calcula as renovações dos próximos dias e elas aparecem aqui
         antes das 7h. Ligue o aplicativo em{' '}
-        <Link href="?aba=inicio" className="font-medium text-primary hover:underline">
+        <Link href="?aba=inicio" className="font-medium text-foreground underline underline-offset-4 dark:text-primary">
           Início → Como começar
         </Link>
         .

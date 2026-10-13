@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 import { BarraSalvar, Grupo, Linha, NumeroComBotoes, Segmentado } from '@/components/aplicativos/configurar/pecas';
-import { CartoesDeModo, Excecoes, Preferidas, type OpcaoDeModo } from '@/components/aplicativos/configurar/campos';
+import { Excecoes, Preferidas, type OpcaoDeModo } from '@/components/aplicativos/configurar/campos';
 import {
   copia, type ContaDaRenovacao, type DadosServicos, type Efetivo, type Excecao, type Modo, type Preferencias,
   useServicos,
@@ -131,9 +131,42 @@ function Estado({ ok, texto, href, acao }: { ok: boolean; texto: string; href: s
         : <AlertCircle size={16} strokeWidth={1.6} className="text-warning" aria-hidden />}
       <span className="text-foreground">{texto}</span>
       <span aria-hidden className="text-muted-foreground">·</span>
-      <Link href={href} className="font-medium text-primary underline-offset-4 hover:underline">{acao}</Link>
+      <Link href={href}
+        className="inline-flex min-h-11 items-center font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-primary sm:min-h-0">
+        {acao}
+      </Link>
     </p>
   );
+}
+
+/**
+ * "Com qual conta" — juiz de design, conserto 8: só aparece o que PEDE AÇÃO. Com tudo certo, uma linha só
+ * ("Tudo conectado · ver"), em vez de três linhas de estado empilhadas.
+ */
+function PendenciasDaConta({
+  conta, contas, eu, comerciais, semAgger,
+}: { conta: ContaDaRenovacao; contas: Contas; eu?: Pessoa; comerciais: Pessoa[]; semAgger: Pessoa[] }) {
+  const faltas: { texto: string; href: string; acao: string }[] = [];
+  if (conta === 'responsavel' && eu && !eu.agger?.conectado) {
+    faltas.push({ texto: 'Seu Agger não está conectado', href: '/dashboard/configuracoes?aba=conexoes', acao: 'conectar' });
+  }
+  if (conta === 'responsavel') {
+    if (comerciais.length === 0) {
+      faltas.push({ texto: 'Ninguém marcado como comercial na equipe', href: '/dashboard/personalizacao/equipe', acao: 'ver equipe' });
+    } else if (semAgger.length > 0) {
+      faltas.push({
+        texto: `${semAgger.length} ${semAgger.length === 1 ? 'comercial' : 'comerciais'} sem Agger próprio`,
+        href: '/dashboard/personalizacao/equipe', acao: 'ver equipe',
+      });
+    }
+  }
+  if (!contas.corretora?.conectado) {
+    faltas.push({ texto: 'Agger da corretora não conectado', href: '/dashboard/personalizacao/conectores', acao: 'conectar' });
+  }
+  if (faltas.length === 0) {
+    return <Estado ok texto="Tudo conectado" href="/dashboard/personalizacao/conectores" acao="ver" />;
+  }
+  return <>{faltas.map((f) => <Estado key={f.texto} ok={false} texto={f.texto} href={f.href} acao={f.acao} />)}</>;
 }
 
 export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
@@ -214,8 +247,14 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
       )}
 
       <Grupo id="cfg-o-que-fazer" titulo="O que fazer" descricao="O que o AutoBrokers faz com cada renovação que vai vencer.">
-        <CartoesDeModo opcoes={MODOS_DA_RENOVACAO} valor={r.modo} nome="O que fazer" desabilitado={!pode}
-          onChange={(modo) => mudar({ modo })} />
+        {/* juiz de design, conserto 8: uma linha SÓ DE LEITURA — havia dois cartões e só um se escolhia (escolha falsa) */}
+        <div className="p-4" data-o-que-fazer="leitura">
+          <p className="flex items-start gap-2 text-sm text-foreground">
+            <CheckCircle2 size={16} strokeWidth={1.6} className="mt-0.5 shrink-0 text-success" aria-hidden />
+            <span><span className="font-medium">Calcula e deixa pronto.</span> Quem envia ao cliente é o comercial, pelo WhatsApp dele.</span>
+          </p>
+          <p className="mt-2 pl-6 text-sm text-muted-foreground">Enviar e negociar · em breve</p>
+        </div>
         <Linha rotulo="Quantas opções para o cliente"
           info={<>Cada renovação ganha até 3 cálculos, nesta ordem: {ordem.map((o) => NOME_DA_OPCAO[o] || o).join(', ')}. Com menos opções, a madrugada termina mais cedo.</>}>
           <Segmentado rotulo="Quantas opções" valor={String(r.quantasOpcoes)} desabilitado={!pode}
@@ -258,26 +297,9 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
           </p>
           <div className="mt-3 space-y-2">
             {contas ? (
-              <>
-                {r.conta === 'responsavel' && eu && (
-                  <Estado ok={Boolean(eu.agger?.conectado)}
-                    texto={eu.agger?.conectado ? 'Seu Agger conectado' : 'Seu Agger não está conectado'}
-                    href="/dashboard/configuracoes?aba=conexoes" acao={eu.agger?.conectado ? 'mudar' : 'conectar'} />
-                )}
-                {r.conta === 'corretora' ? null : comerciais.length === 0 ? (
-                  <Estado ok={false} texto="Ninguém marcado como comercial na equipe" href="/dashboard/personalizacao/equipe" acao="ver equipe" />
-                ) : (
-                  <Estado ok={semAgger.length === 0}
-                    texto={semAgger.length === 0 ? 'Todos os comerciais com Agger próprio'
-                      : `${semAgger.length} ${semAgger.length === 1 ? 'comercial' : 'comerciais'} sem Agger próprio`}
-                    href="/dashboard/personalizacao/equipe" acao="ver equipe" />
-                )}
-                <Estado ok={Boolean(contas.corretora?.conectado)}
-                  texto={contas.corretora?.conectado ? 'Agger da corretora conectado' : 'Agger da corretora não conectado'}
-                  href="/dashboard/personalizacao/conectores" acao={contas.corretora?.conectado ? 'mudar' : 'conectar'} />
-              </>
+              <PendenciasDaConta conta={r.conta} contas={contas} eu={eu} comerciais={comerciais} semAgger={semAgger} />
             ) : (
-              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-11 w-full" />
             )}
           </div>
         </Linha>

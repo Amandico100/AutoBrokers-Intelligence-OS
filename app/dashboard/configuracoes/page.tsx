@@ -17,6 +17,7 @@ import { MinhasConexoes } from '@/components/perfil/MinhasConexoes';
 import { MeuWhatsAppDeTrabalho } from '@/components/perfil/MeuWhatsAppDeTrabalho';
 import { MinhaAusencia } from '@/components/perfil/MinhaAusencia';
 import { useMeuPerfil } from '@/components/perfil/useMeuPerfil';
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 
 /**
  * "Meu perfil" — a camada da PESSOA (SPEC-064 Bloco B). SPEC-131-B G3 (laudo I2 §5, D-131-07/08/41): Dados · Minhas
@@ -151,7 +152,7 @@ export default function MeuPerfilPage() {
             <TabsList className="inline-flex h-auto w-max gap-1 border border-border bg-muted p-1">
               {ABAS.map((a) => (
                 <TabsTrigger key={a.id} value={a.id}
-                  className="min-h-[40px] whitespace-nowrap px-3 text-sm data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                  className="min-h-11 whitespace-nowrap px-3 sm:min-h-10 text-sm data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
                   <a.icone className="mr-2 h-4 w-4" strokeWidth={1.6} aria-hidden /> {a.rotulo}
                 </TabsTrigger>
               ))}
@@ -213,7 +214,7 @@ export default function MeuPerfilPage() {
               </div>
               <p className="text-sm text-muted-foreground">E-mail, CPF e data de nascimento não se mudam por aqui.</p>
               <div className="flex justify-end">
-                <Button onClick={handleUpdateProfile} disabled={isSaving} className="h-11">
+                <Button onClick={handleUpdateProfile} disabled={isSaving} className={`h-11 ${BOTAO_PRIMARIO}`}>
                   {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : <Save className="mr-2 h-4 w-4" aria-hidden />}
                   Salvar dados
                 </Button>
@@ -259,7 +260,7 @@ export default function MeuPerfilPage() {
                   <Input id="senha-confirma" type="password" autoComplete="new-password" value={passwords.confirm}
                     onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} className="bg-background" />
                 </div>
-                <Button onClick={handleChangePassword} disabled={isSaving} className="h-11 w-full">
+                <Button onClick={handleChangePassword} disabled={isSaving} className={`h-11 w-full ${BOTAO_PRIMARIO}`}>
                   {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : <Lock className="mr-2 h-4 w-4" aria-hidden />}
                   Trocar a senha
                 </Button>

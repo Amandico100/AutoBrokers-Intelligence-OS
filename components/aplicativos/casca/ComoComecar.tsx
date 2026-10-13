@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { Check } from 'lucide-react';
 
 import { Progress } from '@/components/ui/progress';
-import { StatusPill, type StatusTone } from '@/components/patterns/StatusPill';
+import { Selo, type TomDoSelo as StatusTone } from './Selo';
 import { cn } from '@/lib/utils';
 import { contagemDosPassos, type EstadoDoPasso, type PassoDoComoComecar } from '@/lib/auxiliaries/catalog';
 
@@ -48,7 +48,7 @@ export function ComoComecar({ passos }: { passos: PassoDoComoComecar[] }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <p className="text-sm font-medium text-foreground">{p.titulo}</p>
-                  <StatusPill tone={pilula.tom} label={pilula.rotulo} className="font-sans text-xs" />
+                  <Selo tom={pilula.tom} rotulo={pilula.rotulo} />
                 </div>
                 <p className="mt-0.5 text-sm text-muted-foreground">{p.detalhe}</p>
               </div>
