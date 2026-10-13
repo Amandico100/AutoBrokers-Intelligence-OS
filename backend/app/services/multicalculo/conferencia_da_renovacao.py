@@ -80,7 +80,9 @@ def _sem_batida(db: Any, company_id: str, item: Mapping[str, Any], agora: dateti
     return True
 
 
-async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str] = None) -> Dict[str, Any]:
+async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str] = None,
+                       canario: bool = False) -> Dict[str, Any]:
+    """`canario=True` (só o script do canário): o item esquecido nasce `canario` e a medida do dia diz que é canário."""
     cid = R._uuid(company_id)
     d = R.data_de(dia)
     if d is None:
@@ -130,7 +132,7 @@ async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optio
         if chave in itens:
             continue
         # (não criada = existia só como `substituida`: para o dia, ela faltou do mesmo jeito)
-        linha, _criada = repo.upsert_da_lista(cid, campos, por=POR, motivo_do_evento=MOTIVO_ESQUECIDA)
+        linha, _criada = repo.upsert_da_lista(cid, campos, por=POR, motivo_do_evento=MOTIVO_ESQUECIDA, canario=canario)
         itens[chave] = linha
         faltaram += 1
 
@@ -163,7 +165,7 @@ async def conferir_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optio
         "falharam": falharam, "faltaram": faltaram, "completude_pct": completude, "cotaveis": cotaveis,
         "calculadas_de_cotaveis_pct": _pct(calculadas, cotaveis),
         "detalhes": {"em_voo": em_voo, "calculando_sem_batida": sem_batida, "motivos": motivos,
-                     "antecedencia_dias": antecedencia},
+                     "antecedencia_dias": antecedencia, **({"canario": True} if canario else {})},
     }
     repo.gravar_dia(cid, d.isoformat(), medida)
     if faltaram:

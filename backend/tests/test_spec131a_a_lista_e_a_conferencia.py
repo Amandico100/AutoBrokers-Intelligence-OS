@@ -328,6 +328,7 @@ def test_a_dona_no_proprio_agger_vira_aguardando_e_o_desvio_vai_a_corretora_com_
     rodar(m, desv["id"], c.id)
     nova = PortaDuble.chamadas[antes:]
     assert len(nova) == 1 and nova[0]["forcar_corretora_motivo"] == M.MOTIVO_DO_DESVIO and nova[0]["ramo"] == 31
+    assert nova[0]["politica_de_sessao"] is None      # costura F4: o desvio NÃO leva a política da madrugada
     item = next(x for x in itens(m, c.id) if x["id"] == auto["id"])
     assert item["estado"] == "calculando" and item["pedido_id"] != pedido_da_dona
     aviso = publicacoes(m, c.id, "desvio")

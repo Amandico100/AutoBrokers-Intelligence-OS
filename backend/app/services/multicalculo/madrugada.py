@@ -24,6 +24,7 @@ import asyncio
 import inspect
 import logging
 from datetime import date, datetime, time, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from app.services.multicalculo import renovacao as R
@@ -114,36 +115,106 @@ async def dono_da_apolice(db: Any, company_id: str, *, codfil: Any, nosnum: Any,
 
 
 async def ficha_da_apolice(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any) -> Tuple[Any, Any]:
-    """A FICHA ÚNICA (130-B): a `Apolice` reconciliada da InfoCap + o documento (ou None). `infocap:<codfil>:<nosnum>`
-    é o locator técnico que o provider aceita (📊 `infocap_connector.py`)."""
-    from app.providers.infocap_policy_provider import InfoCapProvider
+    """A FICHA ÚNICA COMPLETA (130-B), numa ÚNICA leitura da InfoCap: o pack do detalhe com a evidência documental →
+    (a `Apolice` do cadastro RECONCILIADA com o documento, a `ApoliceDocumental` — linhas, franquias, objeto do risco,
+    estado da leitura — ou None quando o documento não foi lido). É o par que `detalhar_apolice` + `documento_oficial`
+    devolveriam, sem pedir o detalhe (e o PDF) duas vezes. `infocap:<codfil>:<nosnum>` é o locator técnico que o
+    provider aceita (📊 `infocap_connector.py`).
+    ⚠️ costura F4: antes era só `detalhar_apolice` e a ficha ia `None` — o `anterior` saía sem as linhas do PDF."""
+    from app.providers.infocap_policy_provider import (InfoCapProvider, apolice_documental_do_pack,
+                                                       apolice_reconciliada_do_pack)
+
+    import os
+
+    from app.core.database import create_async_supabase_client
 
     ref = f"infocap:{item.get('codfil') or 1}:{item.get('nosnum')}"
-    apolice = await InfoCapProvider().detalhar_apolice(company_id=company_id, apolice_ref=ref, db=db)
-    return apolice, None
+    # 🔴 costura F4 (canário 13/10): o conector do detalhe é a ROTA interna — exige a chave interna e o cliente ASSÍNCRONO
+    # do banco (`await db.client.table(...)`), como o chamador do chat (`infocap_tool.py`, `_internal_key` +
+    # `create_async_supabase_client`). Com o cliente síncrono do worker e sem a chave, TODO item virava `sem_conexao`
+    chave = os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
+    bruto = await InfoCapProvider().detail(company_id=company_id, policy_ref=ref, document_evidence_requested=True,
+                                           db=await create_async_supabase_client(), internal_key=chave)
+    pack = bruto.get("policy_evidence_pack") if isinstance(bruto, dict) else None
+    if not isinstance(pack, dict):
+        raise SemConexao(f"a InfoCap não devolveu a ficha (status={(bruto or {}).get('status')!r})")
+    return apolice_reconciliada_do_pack(pack, apolice_ref=ref), apolice_documental_do_pack(pack)
 
 
-def de_apolice(apolice: Any, *, ficha: Any, config: Mapping[str, Any]) -> Any:
+async def perfil_do_segurado(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
+                             ) -> Optional[Dict[str, Dict[str, Any]]]:
+    """O PERFIL do pedido ({grupo: {campo: valor}}: segurado, condutor, veículo — o que a `Apolice` NÃO carrega).
+
+    🔴 costura F4 (achado): o produto AINDA NÃO TEM esta fonte. 📊 `pedido.OBRIGATORIOS` (AUTO) exige 16 campos — CPF,
+    nome, nascimento, sexo, estado civil, CEP, FIPE, ano, combustível, condutor e tempo de habilitação — e o RE exige
+    o segurado e o endereço do risco (`contrato.CAMPOS_DO_PEDIDO_RE`); nem a `Apolice` (130-B) nem a `ApoliceDocumental`
+    os trazem. Sem eles o item vira `pendente(falta_dado)` com os NOMES do que falta no evento — nunca um dado
+    inventado. Esta é a borda onde a fonte entra (o cadastro do cliente na InfoCap e/ou o que o corretor completa) —
+    pendência P-131A-PERFIL."""
+    return None
+
+
+def comissao_anterior(fonte: Any, item: Mapping[str, Any]) -> Optional[float]:
+    """D-131-16: o `per_c` do ano anterior (`FonteInfocap.comissao_da_corretora`, 📊 BLOCO 0 A5). Falhou → None (fica a
+    comissão de hoje; nunca derruba o item)."""
+    if fonte is None or not hasattr(fonte, "comissao_da_corretora"):
+        return None
+    try:
+        return fonte.comissao_da_corretora(item.get("codfil") or 1, item.get("nosnum"))
+    except Exception as exc:  # noqa: BLE001
+        logger.info("[RENOV] comissão anterior ilegível (%s)", type(exc).__name__)
+        return None
+
+
+def de_apolice(apolice: Any, *, ficha: Any, config: Mapping[str, Any], perfil: Optional[Mapping[str, Any]] = None,
+               comissao_anterior_pct: Optional[float] = None) -> Any:
+    """`pedido.de_apolice` pelo CONTRATO da F2: a ficha COMPLETA, a config DA RENOVAÇÃO (as opções vêm dela) e a
+    comissão do ano anterior."""
     from app.services.multicalculo import pedido as P
 
-    return P.de_apolice(apolice, None, ficha=ficha, config=config)
+    return P.de_apolice(apolice, perfil, ficha=ficha, config=config, comissao_anterior_pct=comissao_anterior_pct)
+
+
+#: o que a porta completa sozinha antes de conferir o pedido (`porta.calcular`): a comissão do ramo no RE (D-129C-05)
+CAMPOS_QUE_A_PORTA_COMPLETA = frozenset({"comissao_desconto.comissao_percentual"})
+
+
+def o_que_falta(pedido: Any) -> List[str]:
+    """Os NOMES ("grupo.campo") que a porta recusaria (`PedidoIncompleto`) — a MESMA conta da porta (`faltando` na
+    origem `auxiliar` + `sem_codigo`), menos o que ela mesma completa. Vazio = o pedido pode ir ao Agger."""
+    try:
+        faltam = list(pedido.faltando(origem="auxiliar"))
+        faltam += [c for c in pedido.sem_codigo() if c not in faltam]
+    except Exception as exc:  # noqa: BLE001 — um pedido que nem se confere não está pronto
+        return [f"pedido:{type(exc).__name__}"]
+    return [c for c in faltam if c not in CAMPOS_QUE_A_PORTA_COMPLETA]
 
 
 async def calcular_na_porta(db: Any, company_id: str, *, pedido: Any, renovacao_id: str, opcoes: List[str],
                             dono_user_id: Optional[str], vence_em_dias: int,
                             forcar_corretora_motivo: Optional[str] = None) -> str:
-    """`porta.calcular` pelo CONTRATO da SPEC §5 (F3). Devolve o `pedido_id`."""
+    """`porta.calcular` pelo CONTRATO REAL da F3 (async, devolve `PedidoAberto`). Devolve o `pedido_id`.
+    As opções e as coberturas são as que o PEDIDO montou da ficha (F2: `opcoes`, `coberturas_por_opcao` — a
+    `franquia_reduzida` cedida já não está lá); `opcoes` da config só quando o pedido não declarou as dele."""
     from app.services.multicalculo.porta import MulticalculoProvider
 
     porta = MulticalculoProvider()
-    kw: Dict[str, Any] = dict(company_id=company_id, pedido=pedido, opcoes=opcoes, servico="renovacao",
-                              dono_user_id=dono_user_id, vence_em_dias=vence_em_dias,
+    do_pedido = [str(o) for o in (getattr(pedido, "opcoes", None) or ())]
+    coberturas = getattr(pedido, "coberturas_por_opcao", None)
+    kw: Dict[str, Any] = dict(company_id=company_id, pedido=pedido, opcoes=do_pedido or list(opcoes),
+                              servico="renovacao", dono_user_id=dono_user_id, vence_em_dias=vence_em_dias,
                               prioridade=PRIORIDADE_DA_RENOVACAO, politica_de_sessao=POLITICA_DE_SESSAO,
                               renovacao_id=renovacao_id)
+    if isinstance(coberturas, Mapping) and coberturas:
+        kw["coberturas"] = {str(k): dict(v) for k, v in coberturas.items()}
     if forcar_corretora_motivo is not None:
         if "forcar_corretora_motivo" not in inspect.signature(porta.calcular).parameters:
             raise DesvioIndisponivel("a porta desta versão não força o Agger da corretora")
         kw["forcar_corretora_motivo"] = forcar_corretora_motivo
+        # 🔴 costura F4: o desvio vai ao Agger da CORRETORA — a política da madrugada (Prosseguir sobre a sessão da
+        # DONA) não se aplica e a porta a RECUSA junto do desvio (`_da_madrugada`). Com o dublê da F1 o desvio
+        # "passava"; com a porta real, todo desvio das 06:15 virava `falhou`
+        kw["politica_de_sessao"] = None
     aberto = await porta.calcular(**kw)
     pid = aberto.get("pedido_id") if isinstance(aberto, Mapping) else getattr(aberto, "pedido_id", None)
     if not pid:
@@ -234,10 +305,16 @@ def motivo_da_excecao(exc: BaseException, *, ficha: Any = None) -> Tuple[str, st
     return "falhou", "erro_inesperado"
 
 
+#: os motivos que o MOTOR (F3) põe na frente do `erro` do cálculo e que a renovação grava como estão: a dona no
+#: próprio Agger (`agger_*`, passageiros — o desvio os leva à corretora) e a licença do Agger vencida (D-131-36: falha
+#: com motivo humano; NÃO é passageiro — a conta da corretora também precisa da licença)
+MOTIVO_LICENCA_VENCIDA = "licenca_agger_vencida"
+
+
 def _motivo_do_calculo(calc: Mapping[str, Any]) -> str:
     erro = str(calc.get("erro") or "").strip()
     cabeca = erro.split(" ", 1)[0] if erro else ""
-    if cabeca and R.motivo_valido(cabeca) and cabeca.startswith("agger_"):
+    if cabeca and R.motivo_valido(cabeca) and (cabeca.startswith("agger_") or cabeca == MOTIVO_LICENCA_VENCIDA):
         return cabeca
     return "calculo_" + str(calc.get("status") or "falhou")
 
@@ -300,25 +377,45 @@ async def _ler_a_lista(db: Any, company_id: str, dia: date, params: Mapping[str,
 
 
 async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any, cfg: Mapping[str, Any]
-                   ) -> Tuple[str, Optional[str], Any]:
-    """(estado, motivo, pedido) de UM item: ficha → de_apolice. Nada é gravado aqui."""
+                   ) -> Tuple[str, Optional[str], Any, Optional[Dict[str, Any]]]:
+    """(estado, motivo, pedido, dados do evento) de UM item: ficha COMPLETA → perfil → comissão anterior → de_apolice
+    → a MESMA conferência da porta. `pronta` = o pedido que a porta aceitaria; o que falta vira `pendente(falta_dado)`
+    com os NOMES dos campos no evento (nunca valores). Nada é gravado aqui."""
+    sigla = str(item.get("ramo_sigla") or "").strip()
+    if sigla:
+        # 🔴 costura F4 (canário 13/10): o ramo da LISTA decide antes da ficha — o ramo que o Agger não cota (ou que
+        # ninguém reconhece) não gasta a leitura da ficha (o PDF e o modelo) e não vira `sem_conexao` quando a InfoCap
+        # do detalhe falha: ele é `ramo_nao_cotado`/`ramo_desconhecido`, e SAI das cotáveis
+        from app.services.multicalculo import pedido as P
+
+        try:
+            P._ramo_do_agger(SimpleNamespace(ramo=sigla))
+        except P.RamoIndisponivel as exc:
+            return (*motivo_da_excecao(exc), None, None)
     try:
         apolice, ficha = await ficha_da_apolice(db, company_id, item, fonte)
     except Exception as exc:  # noqa: BLE001
         logger.info("[RENOV] ficha indisponível (%s)", type(exc).__name__)
-        return "pendente", "sem_conexao", None
+        return "pendente", "sem_conexao", None, None
     try:
-        pedido = de_apolice(apolice, ficha=ficha, config=cfg)
+        perfil = await perfil_do_segurado(db, company_id, item, fonte)
+        pedido = de_apolice(apolice, ficha=ficha, config=cfg, perfil=perfil,
+                            comissao_anterior_pct=comissao_anterior(fonte, item))
     except Exception as exc:  # noqa: BLE001
         estado, motivo = motivo_da_excecao(exc, ficha=ficha)
         if estado != "pendente":
             estado, motivo = "pendente", "falta_dado"
-        return estado, motivo, None
-    return "pronta", None, pedido
+        return estado, motivo, None, None
+    faltam = o_que_falta(pedido)
+    if faltam:
+        return "pendente", "falta_dado", None, {"faltando": faltam[:40]}
+    return "pronta", None, pedido, None
 
 
-async def preparar_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrugada.preparar") -> Dict[str, int]:
-    """A LISTA CONGELADA do dia e, por item, EM SÉRIE (📊 "10 paralelas → um 500", dono.py), pronta|pendente."""
+async def preparar_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrugada.preparar",
+                       canario: bool = False) -> Dict[str, int]:
+    """A LISTA CONGELADA do dia e, por item, EM SÉRIE (📊 "10 paralelas → um 500", dono.py), pronta|pendente.
+    `canario=True` (só `scripts/canario_madrugada_renovacao.py`): os itens NOVOS nascem com `renovacoes.canario`."""
     cid = R._uuid(company_id)
     d = _dia(dia)
     repo = R.RepositorioDeRenovacoes(db)
@@ -335,7 +432,7 @@ async def preparar_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrug
         if chave in vistos:
             continue
         vistos.add(chave)
-        _linha, criada = repo.upsert_da_lista(cid, campos, por=por)
+        _linha, criada = repo.upsert_da_lista(cid, campos, por=por, canario=canario)
         listadas += int(criada)
 
     resultado = {"listadas": listadas, "prontas": 0, "pendentes": 0, "ja_em_curso": 0}
@@ -355,13 +452,13 @@ async def preparar_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrug
         campos["dono_user_id"] = uid
         campos["dono_motivo"] = status or None
         campos["responsavel_user_id"] = repo.substituto_de(cid, uid, d.isoformat()) or uid
-        estado, motivo, pedido = await _avaliar(db, cid, item, fonte, cfg)
+        estado, motivo, pedido, dados = await _avaliar(db, cid, item, fonte, cfg)
         if pedido is not None:
             try:
                 campos["ramo_agger"] = int(getattr(pedido, "ramo"))
             except (TypeError, ValueError):
                 pass
-        repo.transicionar(cid, item["id"], estado, por=por, motivo=motivo, campos=campos)
+        repo.transicionar(cid, item["id"], estado, por=por, motivo=motivo, campos=campos, dados=dados)
         resultado["prontas" if estado == "pronta" else "pendentes"] += 1
     return resultado
 
@@ -391,11 +488,11 @@ async def _pedir(db: Any, cid: str, item: Mapping[str, Any], dia: date, cfg: Map
                  fonte: Any, *, por: str, forcar: Optional[str] = None) -> str:
     """Monta o pedido de novo (a ficha de AGORA) e chama a porta. Devolve o estado novo do item."""
     repo = R.RepositorioDeRenovacoes(db)
-    estado, motivo, pedido = await _avaliar(db, cid, item, fonte, cfg)
+    estado, motivo, pedido, dados = await _avaliar(db, cid, item, fonte, cfg)
     if pedido is None:
-        repo.transicionar(cid, item["id"], estado if item["estado"] != "aguardando_agger" else "falhou",
-                          por=por, motivo=motivo)
-        return estado
+        novo = estado if item["estado"] != "aguardando_agger" else "falhou"
+        repo.transicionar(cid, item["id"], novo, por=por, motivo=motivo, dados=dados)
+        return novo
     vence = (_dia(item["fimvig"]) - dia).days
     try:
         pid = await calcular_na_porta(db, cid, pedido=pedido, renovacao_id=str(item["id"]),
@@ -561,6 +658,62 @@ def _texto(n: int, m: int, k: int, motivos: Mapping[str, int], *, seu: bool, ant
     return texto
 
 
+TIPO_LICENCA = "licenca_agger"        # o evento que o motor grava no login (motor.TIPO_LICENCA, F3)
+LICENCA_AVISO_DIAS = 7                # D-131-36: avisa ANTES de vencer
+
+
+def _limite_da_licenca(motivo: Any) -> Optional[date]:
+    """A data-limite que o motor escreveu no evento (`dataLimiteCalculo=AAAA-MM-DD`, e sem ela `licenca=`) — a mesma
+    precedência de `motor.dias_para_o_limite`. Só datas: o evento nunca leva token nem corpo do login."""
+    texto = str(motivo or "")
+    for chave in ("dataLimiteCalculo", "licenca"):
+        for parte in texto.split("·"):
+            k, _, v = parte.strip().partition("=")
+            if k.strip() == chave:
+                d = R.data_de(v.strip())
+                if d is not None:
+                    return d
+    return None
+
+
+def licencas_do_agger(db: Any, company_id: str, hoje: date) -> Dict[str, int]:
+    """D-131-36 — pelo ÚLTIMO evento `licenca_agger` de cada conta do Agger DESTA corretora (filtro `company_id`, §7):
+    quantas vencem em ≤ 7 dias e quantas já venceram, e o menor prazo. Banco ilegível → nada (o aviso não cai)."""
+    cid = R._uuid(company_id)
+    try:
+        linhas = (_cliente(db).table("multicalculo_eventos").select("company_id, tipo, chave, motivo, criado_em")
+                  .eq("company_id", cid).eq("tipo", TIPO_LICENCA).order("criado_em", desc=True).limit(200)
+                  .execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RENOV] eventos da licença ilegíveis (%s)", type(exc).__name__)
+        return {"vencendo": 0, "vencidas": 0}
+    ultimo: Dict[str, Tuple[str, Optional[date]]] = {}
+    for e in linhas:
+        if str(e.get("company_id")) != cid:
+            continue
+        partes = str(e.get("chave") or "").split("|")
+        conta = partes[1] if len(partes) >= 3 else ""
+        quando = str(e.get("criado_em") or "")
+        if conta and (conta not in ultimo or quando > ultimo[conta][0]):
+            ultimo[conta] = (quando, _limite_da_licenca(e.get("motivo")))
+    prazos = [(lim - hoje).days for _q, lim in ultimo.values() if lim is not None]
+    saida = {"vencendo": sum(1 for p in prazos if 0 < p <= LICENCA_AVISO_DIAS),
+             "vencidas": sum(1 for p in prazos if p <= 0)}
+    if prazos:
+        saida["menor_prazo_dias"] = min(prazos)
+    return saida
+
+
+def _frase_da_licenca(lic: Mapping[str, int]) -> str:
+    texto = ""
+    if lic.get("vencidas"):
+        texto += f" · 🔴 a licença do Agger venceu em {lic['vencidas']} conta(s): nenhum cálculo sai nela até renovar"
+    if lic.get("vencendo"):
+        texto += (f" · ⚠️ a licença do Agger vence em até {LICENCA_AVISO_DIAS} dias em {lic['vencendo']} conta(s) "
+                  "(renove com o Agger antes)")
+    return texto
+
+
 def _da_noite(itens: List[Mapping[str, Any]], d: date) -> List[Mapping[str, Any]]:
     """O que o aviso conta: o que VENCE (calcular_em ≤ dia, fimvig ≥ dia) + o que foi ANTECIPADO esta noite (calcular_em
     futuro, mas já saiu ao Agger). Uma antecipável que ficou `pronta`/`pendente` é do dia dela, não de hoje."""
@@ -631,11 +784,14 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
         texto += " · a conferência das 05:30 não conseguiu ler a InfoCap"
     elif estado_do_dia:
         texto += f" · completude {medida.get('completude_pct')}%"
+    lic = licencas_do_agger(db, cid, d)
+    texto += _frase_da_licenca(lic)
     R.registrar_aviso(db, cid, dia=hoje, assunto="avisar", user_id=None, texto=texto,
-                      severidade="high" if estado_do_dia in ("vermelho", "sem_conexao") else (
-                          "medium" if (total["m"] or total["k"]) else "info"),
+                      severidade="high" if (estado_do_dia in ("vermelho", "sem_conexao") or lic.get("vencidas"))
+                      else ("medium" if (total["m"] or total["k"] or lic.get("vencendo")) else "info"),
                       valores={"prontas": total["n"], "pendentes": total["m"], "falharam": total["k"],
-                               "antecipadas": total["antecipadas"], "acima_do_teto": total["acima_do_teto"]},
+                               "antecipadas": total["antecipadas"], "acima_do_teto": total["acima_do_teto"],
+                               "licenca_vencendo": lic.get("vencendo", 0), "licenca_vencida": lic.get("vencidas", 0)},
                       work_run_id=work_run_id, fuso=fuso, janela=params["janela"])
     return {"avisos": avisos + 1, "n": total["n"], "m": total["m"], "k": total["k"]}
 

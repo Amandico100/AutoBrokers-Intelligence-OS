@@ -76,6 +76,9 @@ FRASE_DO_MOTIVO: Dict[str, str] = {
     "sem_pdf": "sem o PDF da apólice",
     "sem_dono_e_sem_conta": "sem dono e sem Agger da corretora",
     "documento_invalido": "CPF/CNPJ inválido no cadastro",
+    # o que um CÁLCULO deixa (o motor, F3) e a renovação mostra — costura F4 (D-131-36)
+    "licenca_agger_vencida": "a licença do Agger venceu (renove com o Agger)",
+    "conta_recusada": "o Agger recusou a conta",
 }
 
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")

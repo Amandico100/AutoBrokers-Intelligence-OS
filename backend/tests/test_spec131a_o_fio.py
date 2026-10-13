@@ -163,7 +163,7 @@ def ramo_indisponivel(motivo: str) -> Exception:
 RAMO_DO_AGGER = {"AUTO": 31, "RESI": 2, "COND": 16, "EMPR": 18}
 
 
-def de_apolice_pelo_contrato(apolice, *, ficha, config):
+def de_apolice_pelo_contrato(apolice, *, ficha, config, **_contrato_f2):   # perfil, comissao_anterior_pct (F2)
     sigla = str(getattr(apolice, "ramo", "") or "").upper()
     if sigla in RAMO_DO_AGGER:
         return SimpleNamespace(ramo=RAMO_DO_AGGER[sigla], sigla=sigla)
@@ -185,6 +185,10 @@ class PortaDuble:
     async def calcular(self, *, company_id, pedido, opcoes, servico, dono_user_id=None, vence_em_dias=None,
                        prioridade=None, politica_de_sessao=None, renovacao_id=None, forcar_corretora_motivo=None,
                        **_resto):
+        # costura F4: o dublê confere o que a porta REAL confere antes de qualquer leitura (prioridade, política,
+        # desvio) — o dublê que aceitava a política da madrugada JUNTO do desvio escondeu que todo desvio falharia
+        PORTA_DO_PRODUTO._da_madrugada(servico=servico, prioridade=prioridade, politica_de_sessao=politica_de_sessao,
+                                       renovacao_id=renovacao_id, forcar_corretora_motivo=forcar_corretora_motivo)
         PortaDuble.chamadas.append(dict(company_id=company_id, opcoes=list(opcoes), servico=servico,
                                         dono_user_id=dono_user_id, vence_em_dias=vence_em_dias, prioridade=prioridade,
                                         politica_de_sessao=politica_de_sessao, renovacao_id=renovacao_id,
@@ -285,8 +289,7 @@ def cinco_renovacoes(base: int = 910000, fimvig: date = DIA + timedelta(days=10)
             linha_renov(base + 5, "XYZW", fimvig)]
 
 
-@pytest.fixture
-def mundo(monkeypatch):
+def _mundo(monkeypatch, *, real: bool):
     instalar(monkeypatch)
     DONO._padrao_bruto.cache_clear()
     monkeypatch.setenv("MULTICALCULO_HMAC_KEY", CHAVE_HMAC)
@@ -303,19 +306,92 @@ def mundo(monkeypatch):
 
     monkeypatch.setattr(DONO, "abrir_fonte", abrir_fonte)
 
-    async def ficha(_db, _cid, item, _fonte):
-        return SimpleNamespace(ramo=item.get("ramo_sigla")), SimpleNamespace(objeto_do_risco={})
-
-    monkeypatch.setattr(M, "ficha_da_apolice", ficha)
-    monkeypatch.setattr(M, "de_apolice", de_apolice_pelo_contrato)
     PortaDuble.chamadas = []
     PortaDuble.banco = banco
-    monkeypatch.setattr(PORTA, "MulticalculoProvider", PortaDuble)
+    if real:
+        # 🔴 costura F4: de_apolice (F2) e a porta (F3) REAIS. Dublê SÓ na borda: a InfoCap HTTP do detalhe (a ficha
+        # sintética), a fonte do perfil (que o produto ainda não tem — `madrugada.perfil_do_segurado`), o cofre e o banco
+        async def ficha(_db, _cid, item, _fonte):
+            return ficha_sintetica(str(item.get("ramo_sigla") or ""))
+
+        async def perfil(_db, _cid, item, _fonte):
+            f = PERFIL_SINTETICO.get(str(item.get("ramo_sigla") or ""))
+            return f() if f else None
+
+        monkeypatch.setattr(M, "ficha_da_apolice", ficha)
+        monkeypatch.setattr(M, "perfil_do_segurado", perfil)
+        monkeypatch.setattr(PORTA, "MulticalculoProvider", porta_real(banco, relogio))
+    else:
+        async def ficha(_db, _cid, item, _fonte):
+            return SimpleNamespace(ramo=item.get("ramo_sigla")), SimpleNamespace(objeto_do_risco={})
+
+        monkeypatch.setattr(M, "ficha_da_apolice", ficha)
+        monkeypatch.setattr(M, "de_apolice", de_apolice_pelo_contrato)
+        monkeypatch.setattr(M, "o_que_falta", lambda _pedido: [])
+        monkeypatch.setattr(PORTA, "MulticalculoProvider", PortaDuble)
     relogio.instalar()
     relogio.cobrir(M, CONF, R, TICK)
     yield m
     relogio.desinstalar()
     DONO._padrao_bruto.cache_clear()
+
+
+@pytest.fixture
+def mundo(monkeypatch):
+    """F1: de_apolice e a porta pelo CONTRATO (dublês) — os testes da máquina de estados e da conferência."""
+    yield from _mundo(monkeypatch, real=False)
+
+
+@pytest.fixture
+def mundo_real(monkeypatch):
+    """F4 (costura): de_apolice e porta REAIS."""
+    yield from _mundo(monkeypatch, real=True)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# As bordas do MUNDO REAL — a ficha e o perfil SINTÉTICOS (os da F2), a porta do produto sobre o banco dublê
+# ---------------------------------------------------------------------------------------------------------------------
+import test_spec131a_o_pedido_da_renovacao as F2T  # noqa: E402
+from app.providers.policy_data_provider import reconciliar  # noqa: E402
+from app.services.multicalculo.repositorio import RepositorioMulticalculo  # noqa: E402
+
+PORTA_DO_PRODUTO = PORTA.MulticalculoProvider
+PERFIL_SINTETICO = {"AUTO": F2T._perfil_auto, "RESI": F2T._perfil_resi, "COND": F2T._perfil_cond}
+OPCOES_DA_RENOVACAO = {"anterior", "franquia_reduzida", "completa_mais"}
+
+
+def ficha_sintetica(sigla: str):
+    """(Apolice reconciliada, ApoliceDocumental) — a forma que `madrugada.ficha_da_apolice` devolve no produto."""
+    if sigla == "AUTO":
+        ficha = F2T._ficha(F2T.FICHA_A, objeto={"chassi": "9BWZZZ377VT000001"})
+        return reconciliar(F2T._apolice("AUTO", placa="AAA1A11"), ficha), ficha
+    linhas = {"COND": F2T._COND, "RESI": (("Incêndio, Raio e Explosão", 100000, None),)}.get(sigla)
+    if linhas is None:
+        return F2T._apolice(sigla), None
+    ficha = F2T._ficha(linhas, objeto={"cep": "88000000"})
+    return reconciliar(F2T._apolice(sigla), ficha), ficha
+
+
+def porta_real(banco, relogio):
+    """A classe da PORTA DO PRODUTO, com o repositório no banco dublê, o cofre dublê e a chave do HMAC de teste."""
+
+    class _PortaDoProduto(PORTA_DO_PRODUTO):
+        def __init__(self, *_a, **_k):
+            super().__init__(RepositorioMulticalculo(banco.visao("smith-api")),
+                             cifrar=lambda texto: f"cifrado-de-teste:{len(texto)}",
+                             ambiente={"MULTICALCULO_HMAC_KEY": CHAVE_HMAC}, agora=relogio.agora)
+
+    return _PortaDoProduto
+
+
+def agger_da_corretora(m, company_id: str) -> str:
+    """O Agger GLOBAL da corretora (a renovação cujo dono não tem Agger cai nele, com aviso — `qual_agger`)."""
+    rid = str(uuid.uuid4())
+    m.banco.semear("portal_accounts", {
+        "id": rid, "company_id": company_id, "portal_key": "agger", "account_label": "agger-da-corretora",
+        "username": f"robo-{rid[:6]}@exemplo.invalid", "secret_encrypted": "cifrado-de-teste", "robo_estado": "ativo",
+        "robo_janela": None, "uso": "global", "dono_user_id": None, "robo_batida_em": None})
+    return rid
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -402,9 +478,15 @@ def madrugada_inteira(m, c, *, motor=True) -> None:
 # =====================================================================================================================
 # 🔴 O TESTE DO FIO
 # =====================================================================================================================
-def test_o_fio_do_tick_ao_aviso(mundo):
-    m = mundo
+def pedidos_da_renovacao(m, company_id) -> list:
+    """Os pedidos que a PORTA REAL gravou, na ordem em que entraram no banco."""
+    return [p for p in m.banco.linhas("multicalculo_pedidos") if p["company_id"] == company_id]
+
+
+def test_o_fio_do_tick_ao_aviso(mundo_real):
+    m = mundo_real
     c = montar_corretora(m, "token-a", renovacoes=cinco_renovacoes())
+    agger_da_corretora(m, c.id)
 
     # 00:31 — o tick enfileira SÓ o preparar; dois ticks no mesmo minuto = UM run
     tick(m, local(0, 31))
@@ -426,16 +508,22 @@ def test_o_fio_do_tick_ao_aviso(mundo):
         assert x["documento_mascarado"] == "***.***.***-00" and len(x["documento_hmac"]) == 64
         assert x["cliente_nome_curto"] == "Cliente"
 
-    # 02:01 — calcular: a porta recebe o CONTRATO (renovação, prioridade 7, madrugada, renovacao_id), ordem (ramo, fimvig)
+    # 02:01 — calcular: a PORTA REAL grava o CONTRATO (renovação, prioridade 7, madrugada, renovacao_id), ordem (ramo,
+    # fimvig), com as opções e as coberturas que de_apolice (REAL) montou da ficha
     tick(m, local(2, 1))
     calc = run_do_passo(m, c.id, "calcular")
     rodar(m, calc["id"], c.id)
-    assert [ch["ramo"] for ch in PortaDuble.chamadas] == [2, 16, 31]
-    for ch in PortaDuble.chamadas:
-        assert (ch["servico"], ch["prioridade"], ch["politica_de_sessao"]) == ("renovacao", 7, "madrugada")
-        assert ch["opcoes"] == ["anterior", "franquia_reduzida", "completa_mais"]
-        assert ch["vence_em_dias"] == 10 and ch["renovacao_id"]
-        assert "economica" not in ch["opcoes"] and "minima" not in ch["opcoes"]
+    assert m.banco.run(calc["id"]).get("error_message") is None, m.banco.run(calc["id"]).get("error_message")
+    peds = pedidos_da_renovacao(m, c.id)
+    assert [p["ramo"] for p in peds] == [2, 16, 31], [(x["ramo_sigla"], x["estado"], x.get("motivo")) for x in itens(m, c.id)]
+    por_id = {x["id"]: x for x in itens(m, c.id)}
+    for p in peds:
+        assert (p["servico"], p["politica_de_sessao"], p["origem"]) == ("renovacao", "madrugada", "auxiliar")
+        assert p["renovacao_id"] in por_id and por_id[p["renovacao_id"]]["pedido_id"] == p["id"]
+        assert p["opcoes"] and set(p["opcoes"]) <= OPCOES_DA_RENOVACAO, p["opcoes"]
+        calcs = [x for x in m.banco.linhas("multicalculo_calculos") if x["pedido_id"] == p["id"]]
+        assert sorted(x["opcao"] for x in calcs) == sorted(p["opcoes"]) and {x["prioridade"] for x in calcs} == {7}
+        assert all(x["coberturas"] for x in calcs)
     assert sorted(x["estado"] for x in itens(m, c.id)) == ["calculando"] * 3 + ["pendente"] * 2
     # a espera DURÁVEL: o run dorme (nenhum worker segura), e nada foi derivado por callback
     assert m.banco.run(calc["id"])["status"] == "waiting_input"

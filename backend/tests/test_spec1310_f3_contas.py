@@ -224,7 +224,9 @@ def test_d_renovacao_no_agger_do_dono_e_os_desvios(ambiente):
     assert (c["conta_exigida_id"], c["conta_regra"], c["conta_fallback"]) == (pd, "renovacao_do_dono", False)
     pedido = next(p for p in amb.banco.linhas("multicalculo_pedidos") if p["id"] == aberto.pedido_id)
     assert (pedido["servico"], pedido["origem"]) == ("renovacao", "auxiliar")
-    assert c["prioridade"] == 5, "a renovação tem prioridade menor que o canal"
+    # SPEC-131-A (laudo I1 §2.5, D-131-30): a renovação ganhou prioridade PRÓPRIA, 7 — atrás da cotação (5), que nunca
+    # espera uma madrugada que transbordou. Era 5 (a da origem `auxiliar`): verdade vencida, CLAUDE.md §9.3
+    assert c["prioridade"] == 7, "a renovação vem atrás do canal (0) e da cotação (5)"
 
     for quem, regra, trecho in ((sem_conta, "renovacao_da_corretora", "ainda não tem o próprio Agger"),
                                 (inativo, "renovacao_da_corretora", "não está ativo na equipe"),

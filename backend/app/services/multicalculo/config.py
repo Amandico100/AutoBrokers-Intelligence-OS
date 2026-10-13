@@ -202,6 +202,11 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
                       # D-131-30 — sessões do Agger ao mesmo tempo POR CORRETORA (o do processo é o env
                       # MULTICALCULO_TETO_SESSOES); 1 até o BLOCO 0 A4 medir 2 logins da mesma corretora juntos
                       "teto_sessoes_corretora": 1,
+                      # D-131-03 / T-156 — o ACEITE do "Prosseguir" da madrugada, POR CONTA: ids da conta do Agger
+                      # (`portal_accounts.id`) ou da dona (`user_id`). Vazio = a política fica DESLIGADA em todas.
+                      # Lida CRUA pelo motor (F3, `_cfg_madrugada`); registrada aqui para a leitura validar e para a
+                      # tela "Serviços" (que só regrava as chaves que edita) nunca apagá-la — costura F4
+                      "prosseguir_aceites": [],
                       # D-131-33 — 📊 o pico medido é 42 renovações de UM dono num dia (BLOCO 0 da 131-A §1): NIVELAR.
                       # No máximo isto de pedidos por login (conta do Agger) por noite (1–60) 💭; o excedente é
                       # ANTECIPADO para noites anteriores até `antecipar_ate_dias` antes (0–20) 💭 (lidos pela F1)
@@ -541,6 +546,13 @@ def _renovacao_coerente(bloco: Dict[str, Any]) -> None:
     else:
         bloco["comissao_a_mais_pp"] = float(v)
     bloco["janela"] = _janela_limpa(bloco.get("janela"))
+    aceites = bloco.get("prosseguir_aceites")
+    if not (isinstance(aceites, list) and all(isinstance(x, str) and _UUID.match(x.strip()) for x in aceites)):
+        # ⛔ um aceite que não é um id NÃO liga a política em ninguém: a lista inteira volta a vazia (desligada)
+        logger.warning("[MC-CONFIG] servicos.renovacao.prosseguir_aceites: esperada uma lista de ids — fica vazia")
+        bloco["prosseguir_aceites"] = []
+    else:
+        bloco["prosseguir_aceites"] = sorted({x.strip().lower() for x in aceites})
 
 
 def _janela_limpa(janela: Any) -> Dict[str, Any]:

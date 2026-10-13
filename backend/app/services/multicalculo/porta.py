@@ -538,6 +538,15 @@ class MulticalculoProvider:
         faltam = ausentes + [c for c in pedido.sem_codigo() if c not in ausentes]
         if faltam:
             raise PedidoIncompleto(faltam)
+        if renovacao_id is not None:
+            # SPEC-131-A costura F4: UM pedido aberto por renovação. A janela de crash entre a porta gravar e a madrugada
+            # gravar o estado (F1) não duplica o cálculo — o pedido aberto que já existe é devolvido. O desvio das 06:15
+            # (`forcar_corretora_motivo`) CANCELA o aberto antes de abrir o novo no Agger da corretora (nunca dois em voo)
+            ja = await asyncio.to_thread(self._aberto_da_renovacao, company_id, renovacao_id,
+                                         cancelar=forcar_corretora_motivo is not None)
+            if ja is not None:
+                logger.info("[MULTICALCULO] a renovação já tem pedido aberto: devolvido, nada gravado")
+                return ja
         # SPEC-131-0 A · F3: QUAL AGGER, por corretora, antes de qualquer escrita — uma recusa não grava nada
         contas = await self._decidir_contas(alvo=alvo, servico=servico, solicitante_user_id=solicitante_user_id,
                                             dono_user_id=dono_user_id, vence_em_dias=vence_em_dias,
@@ -589,6 +598,28 @@ class MulticalculoProvider:
         return decisoes
 
     # ------------------------------------------------------------------ SPEC-131-A: a madrugada
+    def _aberto_da_renovacao(self, company_id: str, renovacao_id: str, *, cancelar: bool) -> Optional[PedidoAberto]:
+        """O pedido `aberto` DESTA corretora para a renovação (filtro `company_id` no banco E de novo aqui, §7).
+        `cancelar=True` (o desvio): cancela os abertos e devolve None. Senão devolve o mais recente, com os cálculos."""
+        db = self.repo.db
+        linhas = [dict(x) for x in (db.table("multicalculo_pedidos").select("id, company_id, status, criado_em")
+                                    .eq("company_id", company_id).eq("renovacao_id", renovacao_id)
+                                    .eq("status", "aberto").execute().data or [])
+                  if str(x.get("company_id")) == company_id and x.get("status") == "aberto"]
+        if not linhas:
+            return None
+        if cancelar:
+            for p in linhas:
+                self.repo.cancelar(company_id=company_id, pedido_id=str(p["id"]))
+            return None
+        p = max(linhas, key=lambda x: str(x.get("criado_em") or ""))
+        calcs = [c for c in (db.table("multicalculo_calculos").select("id, company_id, opcao, solicitante_company_id")
+                             .eq("pedido_id", str(p["id"])).eq("solicitante_company_id", company_id).execute().data
+                             or []) if str(c.get("solicitante_company_id")) == company_id]
+        return PedidoAberto(pedido_id=str(p["id"]), calculos=tuple(
+            {"id": str(c["id"]), "corretora_company_id": str(c["company_id"]), "opcao": str(c["opcao"])}
+            for c in calcs))
+
     @staticmethod
     def _da_madrugada(*, servico: Optional[str], prioridade: Any, politica_de_sessao: Any, renovacao_id: Any,
                       forcar_corretora_motivo: Any) -> Tuple[Optional[int], Optional[str], Optional[str]]:
