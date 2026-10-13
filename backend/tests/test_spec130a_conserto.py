@@ -103,8 +103,9 @@ def _sem_whatsapp(m, corretora):
 # =====================================================================================================================
 # RT-B1 — "a melhor das N" só para a 1ª do RANKING (lido do HTML servido)
 # =====================================================================================================================
-@pytest.mark.parametrize("situacao,rotulo_da_atual", [("novo_com_apolice", "Igual à sua atual"),
-                                                      ("renovacao", "Sua renovação")])
+# SPEC-131-B (D-131-22/40, §9.3 — a lição migra): a renovação saiu daqui. Para quem JÁ é cliente a 1ª é a "Sua
+# renovação" e a página nunca diz "a melhor das N" — guardado sobre o HTML servido em test_spec131b_a_pagina_de_renovacao
+@pytest.mark.parametrize("situacao,rotulo_da_atual", [("novo_com_apolice", "Igual à sua atual")])
 def test_RT_B1_com_apolice_e_completa_mais_o_topo_e_a_1a_do_ranking_no_html_servido(monkeypatch, situacao,
                                                                                     rotulo_da_atual):
     """📊 roteiro do red team (06/10): antes, o H1 era "Ana, a melhor das 11 para o seu Compass: Porto, R$ 8.460 por

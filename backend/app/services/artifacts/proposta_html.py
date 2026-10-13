@@ -343,6 +343,47 @@ def _logo(anfitria: dict) -> Optional[str]:
     return None
 
 
+def e_renovacao(modelo: Any) -> bool:
+    """SPEC-131-B (D-131-40, três páginas para três momentos): a página de RENOVAÇÃO é a da carteira com
+    `situacao="renovacao"`. O canal nunca (a página dele é outra e não muda)."""
+    return isinstance(modelo, dict) and modelo.get("situacao") == "renovacao" and modelo.get("origem") != "canal"
+
+
+def _previa_da_renovacao(modelo: dict) -> dict:
+    """A prévia do link da renovação — as MESMAS chaves de `previa_do_modelo` (o PNG lê estas), sem dado pessoal
+    (nem o vencimento) e sem ranking: a 1ª opção do modelo, a marca e a validade."""
+    ops = _opcoes(modelo)
+    rec = ops[0] if ops else {}
+    anfitria = _anfitria(modelo)
+    seguradora = str(rec.get("seguradora") or "").strip()
+    preco = _brl(rec.get("premio_anual"))
+    marca = str(anfitria.get("nome") or "").strip()
+    validade = _data_curta(modelo.get("validade_ate"))
+    fq = rec.get("franquia") if isinstance(rec.get("franquia"), dict) else {}
+    partes = ["As opções da sua renovação."]
+    if marca:
+        partes.append(f"Preparada por {marca}.")
+    if validade:
+        partes.append(f"Válida até {validade}.")
+    return {
+        "titulo": (f"A renovação do seu seguro: {seguradora} por {preco} ao ano" if seguradora and preco
+                   else "A renovação do seu seguro"),
+        "descricao": " ".join(partes),
+        "manchete": "A renovação do seu seguro está pronta",
+        "seguradora": seguradora,
+        "rotulo": str(rec.get("rotulo") or "").strip(),
+        "preco": preco,
+        "franquia_tipo": str(fq.get("tipo") or "").strip(),
+        "franquia": _brl(fq.get("valor")),
+        "comparadas": None,
+        "corretoras": None,
+        "canal": "",
+        "marca": marca,
+        "logo": _logo(anfitria),
+        "validade": validade,
+    }
+
+
 def previa_do_modelo(modelo: dict) -> dict:
     """O que a prévia do link diz — og:title/og:description e o PNG. D-MC-74.
 
@@ -353,6 +394,8 @@ def previa_do_modelo(modelo: dict) -> dict:
     por quem encaminha a mensagem.
     """
     modelo = modelo or {}
+    if e_renovacao(modelo):                     # SPEC-131-B: a prévia da renovação não fala de ranking
+        return _previa_da_renovacao(modelo)
     rec = opcao_recomendada(modelo) or {}
     resumo = modelo.get("resumo") or {}
     anfitria = _anfitria(modelo)
@@ -491,14 +534,27 @@ def _celula_cobertura(k: str, o: dict, rec: dict, tag: str) -> str:
 
 
 def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], resto: list[str],
-           resto_iguais: bool, href_fechar: str) -> str:
+           resto_iguais: bool, href_fechar: str, renovacao: bool = False) -> str:
     rec, n, v = ops[0], len(ops), i + 1
     V = AP.voz(modelo)
     nc = _comparaveis(modelo)
     bem = AP.o_bem(modelo)
     rotulo = str(o.get("rotulo") or o.get("id"))
 
-    if i == 0:
+    if renovacao:
+        # SPEC-131-B: cada cartão diz POR QUE o recomendamos (a construção garante a frase — nunca ranking); o 1º os
+        # motivos, os outros o que muda em relação à "Sua renovação"
+        pq = str(o.get("por_que") or "").strip()
+        blk = (f'<h3>{_e(V["porque"])}</h3><p class="expl">{_e(AP.nbsp(pq))}</p>' if pq else "")
+        if i == 0:
+            itens = [m for m in o.get("motivos") or [] if isinstance(m, str) and m.strip()]
+            blk += ('<ul class="why">' + "".join(f'<li>{ICO["check"]}<span>{_e(AP.nbsp(x))}</span></li>'
+                                                 for x in itens) + "</ul>") if itens else ""
+        else:
+            itens = [x for x in o.get("o_que_muda") or [] if isinstance(x, str) and x.strip()]
+            blk += (f'<h3>O que muda em relação {_e(_a_referencia(rec))}</h3><ul class="diffs">'
+                    + "".join(f"<li>{_e(AP.nbsp(x))}</li>" for x in itens) + "</ul>") if itens else ""
+    elif i == 0:
         motivos = [m for m in o.get("motivos") or [] if isinstance(m, str) and m.strip()]
         porque = V["porque"] if e_a_melhor_do_ranking(modelo, o) else "Sobre esta opção"
         blk = (f'<h3>{_e(porque)}</h3><ul class="why">'
@@ -816,6 +872,8 @@ def render_proposta(modelo: dict) -> str:
     `SCRIPT_DA_PROPOSTA`. Todo texto do modelo é escapado. Campo ausente não aparece.
     """
     modelo = modelo if isinstance(modelo, dict) else {}
+    if e_renovacao(modelo):                     # SPEC-131-B (D-131-40): a página de quem JÁ é cliente
+        return render_renovacao(modelo)
     previa = previa_do_modelo(modelo)
     ops = _ordenadas(modelo)
     rec = ops[0] if ops else None
@@ -1106,6 +1164,354 @@ def render_proposta(modelo: dict) -> str:
 {sinistro}
 {faq_html}
 {fim}
+{legal}
+<div class="endpad"></div>
+</div>
+</main>
+{dock}
+<script type="application/json" id="ab-dados">{_json_para_html(dados)}</script>
+<script>{SCRIPT_DA_PROPOSTA}</script>
+</body>
+</html>"""
+
+
+# =====================================================================================================================
+# SPEC-131-B (G4) — a página de RENOVAÇÃO (D-131-22/23/40/42, laudo I3 §2.3): a MESMA carteira, outro momento
+# =====================================================================================================================
+#: o que só a página de renovação desenha — as variáveis são as do tema da carteira (claro/escuro e impressão)
+CSS_DA_RENOVACAO = """
+.hero h1 .vence{font-size:.6em;font-weight:550;letter-spacing:-.01em;color:var(--p-text);white-space:nowrap}
+.hxr{margin:16px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hx{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:14px 16px;display:grid;gap:2px;min-width:0}
+.hx.on{border-color:var(--p-text);box-shadow:inset 0 0 0 1px var(--p-text)}
+.hx .hl{font-size:12.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-muted)}
+.hx b{font-size:17px;font-weight:600;color:var(--ink-strong);overflow-wrap:anywhere}
+.hx .hv{font-size:20px;font-weight:650;color:var(--ink-strong);font-variant-numeric:tabular-nums}
+.hx .hs{font-size:13.5px;color:var(--ink-muted)}
+.hxm{margin:12px 0 0;padding:12px 14px;border-radius:14px;background:var(--surface-2);font-size:15px;line-height:1.45;color:var(--ink)}
+.hxm b{color:var(--ink-strong);font-weight:600}
+.hxm .num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.rel{margin:0;font-size:16px;color:var(--ink-strong);font-weight:550}
+.todas{margin-top:48px}
+.todas > summary{min-height:56px}
+.todas .todas-in{padding:0 14px 14px}
+.semnum{margin:14px 0 0;padding:12px 14px;border-radius:14px;background:var(--surface-2);font-size:15px;color:var(--ink)}
+.pdf{margin:8px 0 0;font-size:13px;color:var(--ink-muted)}
+@media (max-width:359px){.hxr{grid-template-columns:1fr}}
+@media print{.hx.on{box-shadow:none;border:1.5px solid #000}.pdf{display:none}}
+"""
+
+
+def _dif_de_hoje(novo: Any, hoje: Any) -> Optional[str]:
+    """"R$ 230 a mais por ano (+3 %)" — o que mudou do seguro de hoje para a renovação, em R$ e em %."""
+    a, b = AP.dec(novo), AP.dec(hoje)
+    if a is None or b is None or b <= 0:
+        return None
+    d = a - b
+    if abs(AP.reais(d) or 0) < 1:
+        return "o mesmo preço de hoje"
+    pct = abs(d) / b * 100
+    pct_txt = "menos de 1 %" if pct < 1 else ("+" if d > 0 else "−") + _pct(pct)
+    return f"{AP.brl(abs(d), False)} {'a mais' if d > 0 else 'a menos'} por ano ({pct_txt})"
+
+
+def _pct(v: Any) -> str:
+    """13.27 → "13 %" · 13.5 → "14 %" (inteiro, meio para cima)."""
+    return f"{int(float(v) + 0.5)} %"
+
+
+def render_renovacao(modelo: dict) -> str:
+    """A página de RENOVAÇÃO (quem JÁ é cliente). O MESMO esqueleto da carteira (CSS, tema, script com o MESMO hash,
+    funciona sem JS, imprime), com as seções do laudo I3 §2.3, nesta ordem:
+
+    hero com o VENCIMENTO · o seu seguro hoje × a renovação (R$ e %, a Básica do RE por extenso) · os cartões com "por
+    que recomendamos" (a "Sua renovação" primeiro) · comparar ("Mostrar só o que muda") · quem cuida de você (o DONO;
+    "renova com a gente há N anos" SÓ com prova) · sinistro · dúvidas de renovação · pronto para renovar · todas as
+    seguradoras RECOLHIDAS · legal.
+
+    ⛔ NUNCA: "a melhor das N", a régua do ranking, o duelo entre corretoras, "O que é o …" do canal, a econômica/
+    mínima, a nota do Google (quem já é cliente não precisa de prova de estranho). "Quero renovar" e "Tirar uma
+    dúvida" vão ao número do modelo (`cta`: o dono confirmado → a corretora); sem número, sem botão e a frase "responda
+    a mensagem em que recebeu este link" (D-131-42)."""
+    ops = _opcoes(modelo)[:3]
+    rec = ops[0] if ops else None
+    anf = _anfitria(modelo)
+    nome_anf = str(anf.get("nome") or "").strip()
+    V = AP.voz(modelo)
+    bem = AP.o_bem(modelo)
+    nome = str((modelo.get("cliente") or {}).get("primeiro_nome") or "").strip() if isinstance(modelo.get("cliente"), dict) else ""
+    ren = modelo.get("renovacao") if isinstance(modelo.get("renovacao"), dict) else {}
+    dono = ren.get("dono") if isinstance(ren.get("dono"), dict) else {}
+    dono_nome = str(dono.get("primeiro_nome") or "").strip()
+    digitos = _digitos_do_whatsapp(modelo)
+    logo = _logo(anf)
+    previa = previa_do_modelo(modelo)
+    vence = AP.data_br(ren.get("vence_em"))
+    sobre_o_bem = f"do {bem['apelido']}" if bem["apelido"] else ""
+    # o botão fala com QUEM vai atender: o dono (o número do botão É o dele) ou a corretora
+    fala_com_o_dono = bool(dono_nome and digitos and digitos == str(dono.get("whatsapp") or ""))
+    com_quem = f"com {dono_nome}" if fala_com_o_dono else (f"com a {nome_anf}" if nome_anf else "")
+
+    def wa(texto: str) -> str:
+        return f"https://wa.me/{digitos}?text={quote(texto, safe='')}" if digitos else ""
+
+    def href_fechar(o: dict) -> str:
+        return f"?{PARAMETRO_DO_FECHAR}={quote(str(o['id']), safe='')}" if digitos else ""
+
+    # ---- topo (sem a nota do Google: opcional e desligada na renovação, laudo I3 §2.3)
+    if logo:
+        marca = (f'<span class="brand"><span class="plate"><img src="{_e(logo)}" alt="{_e(nome_anf)}" height="30">'
+                 f'</span></span>')
+    elif nome_anf:
+        marca = (f'<span class="brand"><span class="mono" aria-hidden="true">{_e(AP.monograma(nome_anf))}</span>'
+                 f'<span class="brand-name">{_e(nome_anf)}</span></span>')
+    else:
+        marca = '<span class="brand"></span>'
+
+    # ---- hero: o VENCIMENTO é o motivo da página
+    do_bem = f"do seu {bem['apelido']}" if bem["apelido"] else "do seu seguro"
+    frase = f"a renovação {do_bem} está pronta"
+    h1 = (f'<span class="hello">{_e(nome)}, </span>{_e(frase)}' if nome else _e(frase[:1].upper() + frase[1:]))
+    if vence:
+        h1 += f' <span class="vence">· vence em {_e(vence)}</span>'
+    lede = ", ".join(x for x in (bem["descricao"], bem["ano"]) if x)
+    lede = f"{lede}." if lede else ""
+
+    # ---- o seu seguro hoje × a renovação (EZLynx: "o que mudou")
+    hoje_html = ""
+    seg_hoje = str(ren.get("seguradora_atual") or "").strip()
+    premio_hoje = ren.get("premio_atual")
+    if rec is not None and (seg_hoje or AP.dec(premio_hoje) is not None):
+        col_hoje = ('<div class="hx"><span class="hl">Hoje</span>'
+                    + (f"<b>{_e(seg_hoje)}</b>" if seg_hoje else "")
+                    + (f'<span class="hv">{_e(AP.brl(premio_hoje))}</span><span class="hs">por ano</span>'
+                       if AP.dec(premio_hoje) is not None else "")
+                    + (f'<span class="hs">vence em {_e(vence)}</span>' if vence else "") + "</div>")
+        pc = AP.parcelas(rec)
+        parc = (f"ou {pc['sem_juros'][0]}x de {AP.brl(pc['sem_juros'][1])} sem juros" if pc["sem_juros"]
+                else f"ou {pc['com_juros'][0]}x de {AP.brl(pc['com_juros'][1])} com juros" if pc["com_juros"] else "")
+        col_ren = (f'<div class="hx on"><span class="hl">{_e(rec.get("rotulo") or "A renovação")}</span>'
+                   f'<b>{_e(rec.get("seguradora") or "")}</b>'
+                   f'<span class="hv">{_e(AP.brl(rec.get("premio_anual")))}</span><span class="hs">por ano</span>'
+                   + (f'<span class="hs">{_e(parc)}</span>' if parc else "") + "</div>")
+        mudou = []
+        dif = _dif_de_hoje(rec.get("premio_anual"), premio_hoje)
+        if dif:
+            mudou.append(f'<span class="num">{_e(dif)}</span>')
+        if seg_hoje and rec.get("seguradora"):
+            mesma = AP.tidy(seg_hoje).lower() == AP.tidy(rec.get("seguradora")).lower()
+            mudou.append("na mesma seguradora" if mesma
+                         else f"troca de {_e(seg_hoje)} para {_e(rec.get('seguradora'))}")
+        basica = ren.get("basica") if isinstance(ren.get("basica"), dict) else {}
+        frase_basica = ""
+        if AP.dec(basica.get("valor")) is not None:
+            pct = basica.get("reajuste_pct")
+            pct_txt = (f" em {_pct(pct)}" if isinstance(pct, (int, float)) and not isinstance(pct, bool) and pct > 0
+                       else "")
+            frase_basica = (f'<p class="hxm">A cobertura básica (incêndio, raio e explosão) foi reajustada{_e(pct_txt)} '
+                            f'para acompanhar o valor do imóvel: agora <b class="num">{_e(AP.brl(basica["valor"], False))}</b>.</p>')
+        hoje_html = (f'<section class="s" aria-labelledby="h-hoje"><h2 id="h-hoje">O seu seguro hoje × a renovação</h2>'
+                     f'<div class="hxr">{col_hoje}{col_ren}</div>'
+                     + (f'<p class="hxm"><b>O que mudou:</b> {"; ".join(mudou)}.</p>' if mudou else "")
+                     + frase_basica + "</section>")
+
+    # ---- os cartões (a "Sua renovação" em 1º — a ordem do modelo, D-131-22)
+    topo, resto, resto_iguais = AP.escolher_coberturas(ops) if ops else ([], [], True)
+    passes = "".join(_passe(o, i, ops, modelo, topo, resto, resto_iguais, href_fechar(o), renovacao=True)
+                     for i, o in enumerate(ops))
+    abas = "".join(f'<a class="tab" href="#opt-{i}" role="tab" id="tab-{i}" aria-controls="opt-{i}" '
+                   f'aria-selected="{"true" if i == 0 else "false"}"{"" if i == 0 else " tabindex=\"-1\""}>'
+                   f'{_e(o.get("rotulo") or o.get("id"))}</a>' for i, o in enumerate(ops))
+    n = len(ops)
+
+    # ---- quem cuida de você: o DONO + a corretora; "renova com a gente há N anos" SÓ com prova (CDC art. 37)
+    fatos = []
+    anos = AP.numero_inteiro(ren.get("anos"))
+    rel = (f'<p class="rel">Você renova com a gente há {anos}{AP.NB}{"ano" if anos == 1 else "anos"}.</p>'
+           if anos and anos >= 1 else "")
+    desde = AP.numero_inteiro(anf.get("desde"))
+    ano_ref = re.match(r"^(\d{4})", str(modelo.get("gerado_em") or ""))
+    if desde and ano_ref and 0 < int(ano_ref.group(1)) - desde < 200:
+        fatos.append(f'<div class="fact"><b>{int(ano_ref.group(1)) - desde}{AP.NB}anos</b><span>atendendo, desde {desde}</span></div>')
+    susep = str(anf.get("susep") or "").strip()
+    if susep:
+        fatos.append(f'<div class="fact"><b>{_e(susep)}</b><span>registro na SUSEP</span></div>')
+    cidade = str(anf.get("cidade") or "").strip()
+    site = str(anf.get("site") or "").strip()
+    site_ok = re.fullmatch(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}(/[A-Za-z0-9._~/-]*)?", site or "") is not None
+    ola = f"Olá! Aqui é {nome}." if nome else "Olá!"
+    canais = ""
+    if digitos or site_ok:
+        rotulo_wa = f"Falar com {dono_nome}" if fala_com_o_dono else "WhatsApp"
+        canais = ('<div class="chan">'
+                  + (f'<a href="{_e(wa(f"{ola} Vim pela renovação do seguro{(" " + sobre_o_bem) if sobre_o_bem else ""}."))}" '
+                     f'rel="noopener">{ICO["wa"]}{_e(rotulo_wa)}</a>' if digitos else "")
+                  + (f'<a href="https://{_e(site)}" rel="noopener">{ICO["globe"]}{_e(site)}</a>' if site_ok else "")
+                  + "</div>")
+    host_html = ""
+    if nome_anf or dono_nome:
+        id_visual = (f'<span class="plate"><img src="{_e(logo)}" alt="" height="44"></span>' if logo
+                     else f'<span class="mono big" aria-hidden="true">{_e(AP.monograma(dono_nome or nome_anf))}</span>')
+        titulo = dono_nome or nome_anf
+        linha2 = " · ".join(x for x in ((f"da {nome_anf}" if dono_nome and nome_anf else ""), cidade) if x)
+        host_html = (f'<section class="s" aria-labelledby="h-host"><h2 id="h-host">Quem cuida de você</h2>'
+                     f'<div class="host"><div class="host-id">{id_visual}<div><h3>{_e(titulo)}</h3>'
+                     + (f"<p>{_e(linha2)}</p>" if linha2 else "") + "</div></div>" + rel
+                     + (f'<div class="facts">{"".join(fatos)}</div>' if fatos else "")
+                     + canais + "</div></section>")
+
+    sinistro_l = modelo.get("sinistro") if isinstance(modelo.get("sinistro"), list) else anf.get("sinistro")
+    passos = [s for s in (sinistro_l or []) if isinstance(s, str) and s.strip()]
+    sinistro = ""
+    if passos:
+        sinistro = (f'<section class="s" aria-labelledby="h-sin"><h2 id="h-sin">Se acontecer alguma coisa</h2>'
+                    + (f'<p class="sub">Quem cuida é a {_e(nome_anf)}, não um 0800.</p>' if nome_anf
+                       else '<p class="sub">Quem cuida é a sua corretora, não um 0800.</p>')
+                    + f'<ol class="steps">{"".join(f"<li><p>{_e(s)}</p></li>" for s in passos)}</ol></section>')
+    faq = "".join(f'<details><summary>{_e(f["p"])}{ICO["chev"]}</summary><p>{_e(AP.nbsp(str(f["r"])))}</p></details>'
+                  for f in modelo.get("faq") or []
+                  if isinstance(f, dict) and str(f.get("p") or "").strip() and str(f.get("r") or "").strip())
+    faq_html = (f'<section class="s" aria-labelledby="h-faq"><h2 id="h-faq">Dúvidas sobre a renovação</h2>'
+                f'<div class="faq">{faq}</div></section>') if faq else ""
+
+    # ---- todas as seguradoras, RECOLHIDAS (prova de trabalho, nunca convite a trocar — laudo I3 §2.3)
+    rk = _ranking(modelo)
+    todas = ""
+    if rk:
+        def marca_da_opcao(x: dict) -> str:
+            o = next((o for o in ops if _mesma(o, x)), None)
+            return str(o.get("rotulo") or o.get("id")) if o else ""
+
+        menor_rk = AP.dec(rk[0]["premio_anual"])
+        itens_rk = []
+        for i, x in enumerate(rk):
+            tag = marca_da_opcao(x)
+            fqx = AP.brl(x.get("franquia"), False)
+            dif = AP.dec(x["premio_anual"]) - menor_rk
+            meta2 = "menor preço" if i == 0 else f"{AP.brl(dif, False)} a mais por ano"
+            itens_rk.append(f'<li class="{"mine" if tag else ""}"><span class="n">{i + 1}</span><span class="nm">{_e(x["seguradora"])}'
+                            f'{f"<span class=tag>{_e(tag)}</span>" if tag else ""}</span><span class="pr">{_e(AP.brl(x["premio_anual"]))}</span>'
+                            f'<span class="meta"><span>{f"franquia {_e(fqx)}" if fqx else ""}</span><span>{_e(meta2)}</span></span></li>')
+        pdif = [x for x in modelo.get("produto_diferente") or [] if isinstance(x, dict) and str(x.get("seguradora") or "").strip()]
+        nr = [x for x in modelo.get("nao_responderam") or [] if isinstance(x, dict) and str(x.get("seguradora") or "").strip()]
+        conta = _frase_da_conta(_conta_do_resumo(modelo), len(pdif))
+        pd_html = ""
+        if pdif:
+            pd_html = ('<p class="line-static"><b>Cobrem menos (fora da lista):</b> '
+                       + "; ".join(_e(x["seguradora"]) + (f' ({_e(x.get("por_que_nao_compara"))})'
+                                                         if str(x.get("por_que_nao_compara") or "").strip() else "")
+                                   for x in pdif) + ".</p>")
+        nr_html = ("<p class=\"line-static\"><b>Não deram preço:</b> "
+                   + "; ".join(_e(x["seguradora"]) + (f' ({_e(x.get("motivo"))})' if str(x.get("motivo") or "").strip() else "")
+                               for x in nr) + ".</p>") if nr else ""
+        todas = (f'<details class="line todas" id="todas"><summary><span><b>Todas as seguradoras que cotamos</b>'
+                 f'{f" · {len(rk)} com preço" if rk else ""}</span>{ICO["chev"]}</summary><div class="todas-in">'
+                 + (f'<p class="sub">{_e(conta)}</p>' if conta else "")
+                 + f'<ol class="rank">{"".join(itens_rk)}</ol><div class="others">{pd_html}{nr_html}</div></div></details>')
+
+    validade = AP.data_br(modelo.get("validade_ate"))
+    aviso = AP.aviso_legal(modelo.get("aviso_legal"), susep)
+    legal = ('<footer class="legal">' + (f'<p class="valid">Preços válidos até {_e(validade)}.</p>' if validade else "")
+             + f'<p>{_e((aviso + " " if aviso else "") + V["nota_longa"] + " pesa preço, franquia e coberturas.")}</p>'
+             + '<p class="pdf">Para guardar em PDF: no navegador, toque em Compartilhar › Imprimir (ou Ctrl+P) e '
+               'escolha “Salvar como PDF”.</p></footer>')
+
+    # ---- o fecho e o rodapé fixo: "Quero renovar" / "Tirar uma dúvida" (D-131-42)
+    def sub_de(o: dict) -> str:
+        return ", ".join(x for x in (str(o.get("seguradora") or "").strip(), AP.brl(o.get("premio_anual"))) if x)
+
+    def aria_de(o: dict) -> str:
+        return (f"Quero renovar: {o.get('seguradora') or o.get('rotulo') or ''}"
+                + (f", {_brl(o.get('premio_anual'))} por ano" if _brl(o.get("premio_anual")) else "")
+                + (f", no WhatsApp {com_quem}" if com_quem else ", no WhatsApp"))
+
+    dock = ""
+    fim = ""
+    if rec is not None and digitos:
+        duvida = (f"{ola} Tenho uma dúvida sobre a renovação do seguro{(' ' + sobre_o_bem) if sobre_o_bem else ''}.")
+        dock = (f'<div class="dock"><div class="dock-in">'
+                f'<a class="ask" href="{_e(wa(duvida))}" rel="noopener">Tirar uma dúvida</a>'
+                f'<a class="close" id="ab-fechar" href="{_e(href_fechar(rec))}" rel="nofollow" aria-label="{_e(aria_de(rec))}">'
+                f'{ICO["wa"]}<span class="t"><b>Quero renovar</b><span id="close-sub">{_e(sub_de(rec))}</span></span></a>'
+                f'<span class="pick nojs">Escolha uma opção acima</span>'
+                f'</div><p class="dock-note">Abre a conversa{(" " + _e(com_quem)) if com_quem else ""} no WhatsApp. '
+                f'Nada é cobrado agora.</p></div>')
+        fim = (f'<section class="s fim" aria-labelledby="h-fim"><h2 id="h-fim">Pronto para renovar?</h2>'
+               f'<p class="sub">Você pode renovar na opção “{_e(rec.get("rotulo") or rec.get("id"))}” aqui, ou escolher '
+               f'outra nos cartões acima.</p>'
+               f'<a class="close fim-fechar" href="{_e(href_fechar(rec))}" rel="nofollow" aria-label="{_e(aria_de(rec))}">'
+               f'{ICO["wa"]}<span class="t"><b>Quero renovar</b><span class="fim-sub">'
+               f'{_e(str(rec.get("rotulo") or rec.get("id")) + " · " + sub_de(rec))}</span></span></a></section>')
+    elif rec is not None:
+        # D-131-42: sem o número do dono e sem o da corretora, a página publica SEM botão — e diz o caminho de verdade
+        fim = (f'<section class="s" aria-labelledby="h-fim"><h2 id="h-fim">Pronto para renovar?</h2>'
+               f'<p class="semnum">Para renovar ou tirar uma dúvida, responda a mensagem em que recebeu este link.</p>'
+               f'</section>')
+
+    dados: dict = {"opcoes": [{"id": o["id"], "rotulo": o.get("rotulo"), "seguradora": o.get("seguradora"),
+                               "sub": sub_de(o), "aria": aria_de(o)} for o in ops]}
+    vence_prop = re.match(r"^\d{4}-\d{2}-\d{2}$", str(modelo.get("validade_ate") or ""))
+    if vence_prop and digitos:                  # RT-8: preço vencido → "Pedir preço atualizado" (o script troca)
+        dia = _data_curta(modelo.get("validade_ate"))
+        pedir = (f"{ola} A proposta de renovação do seguro{(' ' + sobre_o_bem) if sobre_o_bem else ''} venceu em "
+                 f"{AP.data_br(modelo.get('validade_ate'))}. Pode atualizar o preço?")
+        dados["vencido"] = {"ate": vence_prop.group(0), "aviso": f"Preço vencido em {dia} — peça uma atualização",
+                            "botao": "Pedir preço atualizado", "sub": f"a proposta venceu em {dia}", "url": wa(pedir)}
+
+    titulo_pagina = f"A renovação do seu seguro · {nome_anf}" if nome_anf else "A renovação do seu seguro"
+    navrow = ""
+    if n > 1:
+        navrow = (f'<div class="navrow"><div class="tabs" role="tablist" aria-label="Opções">'
+                  f'<span class="tab-ind" id="tab-ind" aria-hidden="true"></span>{abas}</div>'
+                  f'<div class="nav js-only"><button type="button" id="prev" aria-label="Opção anterior">{ICO["left"]}</button>'
+                  f'<span class="count" id="count" aria-live="polite">1 de {n}</span>'
+                  f'<button type="button" id="next" aria-label="Próxima opção">{ICO["right"]}</button></div></div>')
+    rows = 5 + len(topo)
+    return f"""<!doctype html>
+<html lang="pt-BR" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>{_e(titulo_pagina)}</title>
+<meta name="description" content="{_e(previa['descricao'])}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:title" content="{_e(previa['titulo'])}">
+<meta property="og:description" content="{_e(previa['descricao'])}">
+{f'<meta property="og:site_name" content="{_e(nome_anf)}">' if nome_anf else ''}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{_e(previa['titulo'])}">
+<meta name="twitter:description" content="{_e(previa['descricao'])}">
+{MARCADOR_DA_PREVIA}
+<style>{CSS_DA_PROPOSTA}</style>
+<style>{AP.css_do_tema(anf)}
+:root{{--n:{max(n, 1)}}}</style>
+<style>{CSS_DA_RENOVACAO}</style>
+</head>
+<body>
+<header class="wrap top">{marca}</header>
+<main>
+<div class="wrap hero">
+<h1>{h1}</h1>
+{f'<p class="lede">{_e(lede)}</p>' if lede else ''}
+</div>
+<div class="wrap">
+{hoje_html}
+</div>
+<div class="wrap hero">
+{navrow}
+</div>
+<div class="widewrap"><div class="track" id="track" style="--rows:{rows}" tabindex="0" role="region" aria-roledescription="carrossel" aria-label="As {n} opções da sua renovação. Use as setas do teclado para trocar.">
+{passes}
+</div></div>
+<div class="wrap">
+{_comparar(ops)}
+{host_html}
+{sinistro}
+{faq_html}
+{fim}
+{todas}
 {legal}
 <div class="endpad"></div>
 </div>

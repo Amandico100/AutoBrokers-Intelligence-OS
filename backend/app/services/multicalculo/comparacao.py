@@ -907,6 +907,134 @@ def _repete(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
             == assinatura_de_coberturas({"coberturas": b.get("coberturas_brutas") or {}}))
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-131-B (D-131-22/40, laudo I3 §1.3/§2.3) — a ordem da RENOVAÇÃO: quem JÁ é cliente
+# ---------------------------------------------------------------------------------------------------------------------
+#: os cálculos da renovação (131-A, `porta.OPCOES_DA_RENOVACAO`) → o cartão que cada um vira, NA ORDEM da página. O 1º
+#: (a apólice de hoje, iguais ou maiores) é o papel `completa` — `config_da_renovacao` o aponta para `anterior`.
+CARTOES_DA_RENOVACAO: Tuple[Tuple[str, str, str], ...] = (
+    ("franquia_reduzida", "franquia_reduzida", "Franquia reduzida"),
+    ("completa_mais", "mais_completa", "Mais completa"),
+)
+
+
+def config_da_renovacao(config: Optional[Mapping[str, Any]], estados: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
+    """A config com o papel `completa` no cálculo `anterior` quando o pedido o tem (131-A: as coberturas da apólice de
+    hoje, iguais ou maiores) — é ele que vira o ranking, o resumo e "Sua renovação". Sem `anterior` (o pedido da 131-0
+    sem a ficha), o papel fica como estava (`padrao`). Cópia: a config de quem chama não muda."""
+    cfg = dict(config or PADRAO_DO_PRODUTO)
+    papeis = dict(cfg.get("calculo_por_papel") or {"completa": "padrao"})
+    if any(str(e.get("opcao") or "") == "anterior" for e in estados or ()):
+        papeis["completa"] = "anterior"
+    for calc, _id, _rot in CARTOES_DA_RENOVACAO:
+        papeis.setdefault(calc, calc)
+    cfg["calculo_por_papel"] = papeis
+    return cfg
+
+
+def _da_seguradora(lista: Sequence[Mapping[str, Any]], seguradora: str) -> Optional[Dict[str, Any]]:
+    return next((dict(c) for c in lista if casa_seguradora(c["seguradora_original"], [seguradora])
+                 or casa_seguradora(c["seguradora"], [seguradora])
+                 or casa_seguradora(seguradora, [c["seguradora_original"]])
+                 or casa_seguradora(seguradora, [c["seguradora"]])), None)
+
+
+def _por_que_da_renovacao(e: Mapping[str, Any], id_: str, base: Mapping[str, Any], ramo: int) -> str:
+    """O "por que recomendamos" de cada cartão da renovação — só o que a construção GARANTE (nada de ranking)."""
+    de_hoje = e.get("opcao") == "anterior"          # o cálculo montado da apólice de hoje (131-A F2)
+    if id_ == "sua_renovacao":
+        return ("As coberturas do seu seguro de hoje, iguais ou maiores, na mesma seguradora: você renova sem perder "
+                "nada." if de_hoje else "Cobertura completa na mesma seguradora de hoje: você continua com quem já "
+                "conhece.")
+    if id_ == "recomendada":
+        return ("A sua seguradora de hoje não devolveu preço para estas coberturas; esta tem as coberturas do seu "
+                "seguro de hoje, iguais ou maiores." if de_hoje else
+                "A sua seguradora de hoje não devolveu preço com cobertura completa; esta tem cobertura completa.")
+    if id_ == "franquia_reduzida":
+        fv, fb = e["franquia"]["valor"], base["franquia"]["valor"]
+        if fv is not None and fb is not None and fb - fv >= 0.01:
+            return (f"A sua renovação com a franquia reduzida: se precisar acionar o seguro, você paga "
+                    f"{reais(fb - fv)} a menos.")
+        return "A sua renovação com a franquia reduzida: você paga menos se precisar acionar o seguro."
+    if id_ == "mais_completa":
+        if ramo == RAMO_AUTO and (e.get("coberturas_brutas") or {}).get("reparoRapido"):
+            return "A sua renovação com a cobertura de pequenos reparos, para os consertos do dia a dia."
+        return "A opção mais completa que calculamos para a sua renovação."
+    if id_ == "menor_franquia":
+        return f"A menor franquia entre as seguradoras com as mesmas coberturas: {reais(e['franquia']['valor'])}."
+    return ("As mesmas coberturas em outra seguradora, se você quiser comparar." if de_hoje
+            else "Cobertura completa em outra seguradora, se você quiser comparar.")
+
+
+def _repete_na_renovacao(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    """O `_repete` (J-P4) com a FRANQUIA: a "Franquia reduzida" tem as MESMAS coberturas da "Sua renovação" e só a
+    franquia muda — pela assinatura das coberturas ela seria "a mesma repetida". Repetida = a mesma seguradora com o
+    mesmo prêmio (± R$ 1), ou com as mesmas coberturas E a mesma franquia."""
+    if normalizar(a.get("seguradora")) != normalizar(b.get("seguradora")):
+        return False
+    if abs(float(a["premio_anual"]) - float(b["premio_anual"])) < 1.0:
+        return True
+    fa, fb = a["franquia"]["valor"], b["franquia"]["valor"]
+    mesma_franquia = (fa is None and fb is None) or (fa is not None and fb is not None and abs(fa - fb) < 0.01)
+    return mesma_franquia and _repete(a, b)
+
+
+def _opcoes_da_renovacao(comparacao: Comparacao, *, apolice_atual: Mapping[str, Any], config: Mapping[str, Any],
+                         dona: str) -> List[Dict[str, Any]]:
+    """🔴 SPEC-131-B (laudo I3 §1.3, D-131-22): na renovação a 1ª opção é a "Sua renovação" — a seguradora de HOJE no
+    cálculo da apólice de hoje (`anterior`), mesmo que outra seja mais barata (RT-B1 vale para quem NÃO é cliente). Depois
+    a franquia reduzida e a mais completa, da MESMA seguradora quando ela as calculou. ⛔ Econômica e mínima NUNCA (a
+    "Mais em conta" e a "menor completa em 1º" são da cotação). A seguradora de hoje sem preço → a 1ª é a "Recomendada"
+    (a menor com as mesmas coberturas), nunca chamada de "Sua renovação" (J-B2). Vaga sobrando → "Menor franquia" de
+    outra seguradora, senão "Outra seguradora"."""
+    papeis = comparacao.papeis
+    A = comparacao.ranking(papeis.get("completa", "padrao"), dona)
+    if not A:
+        return []
+    atual_seg = str(apolice_atual["seguradora"]).strip()
+    base = _da_seguradora(A, atual_seg)
+    escolhidas: List[Tuple[Dict[str, Any], str, str, str]] = []
+    if base is not None:
+        escolhidas.append((base, "sua_renovacao", "Sua renovação", "renovacao"))
+    else:
+        base = A[0]
+        escolhidas.append((base, "recomendada", "Recomendada", "renovacao"))
+    pool = list(A)
+    for calc, id_, rot in CARTOES_DA_RENOVACAO:
+        L = comparacao.ranking(papeis.get(calc, calc), dona)
+        pool += L
+        x = _da_seguradora(L, base["seguradora_original"] or base["seguradora"]) or (L[0] if L else None)
+        if x is not None and not _repete_na_renovacao(x, base):
+            escolhidas.append((x, id_, rot, calc))
+    na_pagina = int(config["opcoes"]["na_pagina"])
+    if len(escolhidas) < na_pagina:
+        fora = {e[0]["oferta_id"] for e in escolhidas}
+        outras = [c for c in A if c["oferta_id"] not in fora and normalizar(c["seguradora"]) != normalizar(base["seguradora"])]
+        fb = base["franquia"]["valor"]
+        menores = [c for c in outras if c["franquia"]["valor"] is not None and fb is not None
+                   and c["franquia"]["valor"] < fb - 0.005]
+        if menores:
+            escolhidas.append((min(menores, key=lambda c: (c["franquia"]["valor"], c["premio_anual"])),
+                               "menor_franquia", "Menor franquia", "completa"))
+        elif outras:
+            escolhidas.append((outras[0], "outra_seguradora", "Outra seguradora", "completa"))
+    vistos: set = set()
+    unicas = []
+    for item in escolhidas:
+        if item[0]["oferta_id"] not in vistos:
+            vistos.add(item[0]["oferta_id"])
+            unicas.append(item)
+    unicas = unicas[:na_pagina]
+    ctx = {"referencia": base, "rotulo_ref": unicas[0][2], "pool": pool, "config": config, "ranking_completa": A,
+           "apolice_atual": apolice_atual}
+    saida = []
+    for e, id_, rot, papel in unicas:
+        o = _opcao(e, id_, rot, papel, **ctx)
+        o["por_que"] = _por_que_da_renovacao(e, id_, base, int(e.get("ramo") or RAMO_AUTO))
+        saida.append(o)
+    return saida
+
+
 def precisa_de_apolice(situacao: str) -> bool:
     return situacao in ("novo_com_apolice", "renovacao")
 
@@ -930,12 +1058,14 @@ def opcoes(comparacao: Comparacao, *, situacao: str, apolice_atual: Optional[Map
     sem apólice  → Recomendada (menor completa) · Mais em conta (menor econômica, se MAIS BARATA) · Mais completa
                    (se houver cálculo `completa_mais` que acrescente algo) — senão "Menor franquia" (se a menor
                    franquia do quadro é de OUTRA seguradora) ou "Outra completa" (2ª menor completa)
-    com apólice  → a seguradora da apólice É a menor completa: "Igual à sua atual" ("Sua renovação") em 1º · Mais em
-    / renovação    conta · Mais completa (senão a "Outra completa"/"Menor franquia")
+    renovação    → SPEC-131-B (`_opcoes_da_renovacao`): "Sua renovação" (a seguradora de HOJE) em 1º · Franquia reduzida
+                   · Mais completa — nunca a econômica, a mínima nem a "menor completa em 1º"
+    com apólice  → a seguradora da apólice É a menor completa: "Igual à sua atual" em 1º · Mais em
+                   conta · Mais completa (senão a "Outra completa"/"Menor franquia")
                    não é: Recomendada (a menor completa) em 1º · "Igual à sua atual" · Mais em conta (senão Mais completa)
                    a seguradora da apólice não está no quadro: como sem apólice (nenhum "igual" inventado)
 
-    🔴 A 1ª opção é SEMPRE a menor completa (RT-B1, red team 06/10): é ela que a página chama de "a melhor das N" e a
+    🔴 Fora da renovação, a 1ª opção é SEMPRE a menor completa (RT-B1, red team 06/10): é ela que a página chama de "a melhor das N" e a
     mensagem leva primeiro. A seguradora da apólice entra como "igual", na posição VERDADEIRA dela no ranking.
     `apolice_atual` obrigatória com apólice/renovação (J-B2: `ValueError`).
     `corretora`: de quem são as ofertas (padrão: a VENCEDORA — a anfitriã fecha o que mostra).
@@ -949,6 +1079,8 @@ def opcoes(comparacao: Comparacao, *, situacao: str, apolice_atual: Optional[Map
     dona = corretora or comparacao.vencedora
     if dona is None:
         return []
+    if situacao == "renovacao":                                  # SPEC-131-B: a ordem de quem JÁ é cliente
+        return _opcoes_da_renovacao(comparacao, apolice_atual=apolice_atual, config=cfg, dona=dona)
     C = comparacao.ranking(papeis.get("completa", "padrao"), dona)
     E = comparacao.ranking(papeis.get("economica", "economica"), dona)
     M = comparacao.ranking(papeis.get("completa_mais", "completa_mais"), dona)

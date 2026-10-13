@@ -531,3 +531,114 @@ def mensagem_para(modelo: Mapping[str, Any], link: str, *, config: Optional[Mapp
     if str(modelo.get("origem") or "") == "canal":
         return mensagem_do_canal(modelo, link, config=config)
     return mensagem_whatsapp(modelo, link, config=config)
+
+
+# =====================================================================================================================
+# SPEC-131-B (G4) — A MENSAGEM DE RENOVAÇÃO: o comercial ao cliente que JÁ é da casa (D-MC-74, BLOCO 0 B1)
+# =====================================================================================================================
+#: BLOCO 0 B1 (NÃO medido nos aparelhos): o texto que vai DENTRO do `wa.me/?text=` fica neste teto 💭; o completo vai no
+#: "Copiar a mensagem", que a tela oferece SEMPRE ao lado
+TETO_DO_TEXTO_CURTO = 500
+
+
+def _primeiro(nome: Any) -> Optional[str]:
+    m = re.findall(r"[^\W\d_][^\W\d_'’-]*", str(nome or ""))
+    return m[0][:40].capitalize() if m else None
+
+
+def _de_quem_assina(pessoa: Any) -> Optional[str]:
+    if isinstance(pessoa, Mapping):
+        return _primeiro(pessoa.get("primeiro_nome") or pessoa.get("first_name") or pessoa.get("nome"))
+    texto = str(pessoa or "").strip()
+    if re.fullmatch(r"[0-9a-fA-F-]{32,36}", texto):     # um user_id não é nome
+        return None
+    return _primeiro(texto)
+
+
+def _diferenca_de_hoje(premio: Any, atual: Any) -> Optional[str]:
+    try:
+        p, a = float(premio), float(atual)
+    except (TypeError, ValueError):
+        return None
+    if a <= 0:
+        return None
+    d = p - a
+    if abs(d) < 1:
+        return f"_O mesmo preço que você paga hoje ({_brl_inteiro(a)})._"
+    return f"_Hoje você paga {_brl_inteiro(a)}: {_brl_inteiro(abs(d))} {'a mais' if d > 0 else 'a menos'} por ano._"
+
+
+def mensagem_de_renovacao(renovacao: Mapping[str, Any], proposta: Mapping[str, Any], *, pessoa: Any,
+                          config: Optional[Mapping[str, Any]] = None) -> Dict[str, str]:
+    """SPEC-131-B (contrato G4 → G2): a mensagem que o COMERCIAL manda, do aparelho dele (`wa.me`), a quem JÁ é
+    cliente — o vencimento, no máximo 2 opções (D-MC-74; a "Sua renovação" primeiro), o link `/r/`, assinada por ele e
+    pela corretora. Devolve {texto, texto_curto, link}: `texto` ≤ 700 para o "Copiar a mensagem"; `texto_curto` ≤ 500
+    💭 para o `wa.me` (BLOCO 0 B1).
+
+    `renovacao`: a linha de `renovacoes` (ou o bloco `modelo["renovacao"]`) · `proposta`: o que `publicar_renovacao`
+    devolve ({url, modelo}) · `pessoa`: quem envia ({primeiro_nome} ou o nome).
+    ⛔ PURA: nunca recebe nem escreve o telefone do cliente (a G2 o busca na hora e monta o `wa.me`); nunca comissão,
+    urgência falsa nem "a melhor das N"."""
+    modelo = proposta.get("modelo") if isinstance(proposta.get("modelo"), Mapping) else proposta
+    link = str(proposta.get("url") or proposta.get("link") or "").strip()
+    if not link:
+        raise ValueError("a mensagem de renovação precisa do link da página (`url` de publicar_renovacao)")
+    bloco = modelo.get("renovacao") if isinstance(modelo.get("renovacao"), Mapping) else {}
+    cfg = config or PADRAO_DO_PRODUTO
+    quantas = min(2, int(((cfg.get("opcoes") or {}).get("no_whatsapp")) or PADRAO_DO_PRODUTO["opcoes"]["no_whatsapp"]))
+    ops = [o for o in (modelo.get("opcoes") or []) if isinstance(o, Mapping) and o.get("premio_anual")][:max(1, quantas)]
+    if not ops:
+        raise ValueError("a proposta de renovação não tem opção com preço")
+    cliente = _primeiro((modelo.get("cliente") or {}).get("primeiro_nome") or renovacao.get("cliente_nome_curto"))
+    quem = _de_quem_assina(pessoa)
+    corretora = str((modelo.get("anfitria") or {}).get("nome") or "").strip()
+    bem = str((modelo.get("bem") or {}).get("apelido") or "").strip()
+    vence = _data(bloco.get("vence_em") or renovacao.get("vence_em") or renovacao.get("fimvig"))
+    atual = bloco.get("premio_atual") or renovacao.get("premio_atual")
+    validade = _data(modelo.get("validade_ate"))
+
+    ola = f"Olá, {cliente}!" if cliente else "Olá!"
+    if quem and corretora:
+        apresenta = f"Aqui é {quem}, da {corretora}."
+    elif quem:
+        apresenta = f"Aqui é {quem}."
+    elif corretora:
+        apresenta = f"Quem fala é a {corretora}."
+    else:
+        apresenta = ""
+    do_seguro = f"O seguro do seu {bem}" if bem else "O seu seguro"
+    pronto = (f"{do_seguro} vence em {vence} e a sua renovação já está pronta. {EMOJI_DO_RESULTADO}" if vence
+              else f"A renovação do seu seguro{' do ' + bem if bem else ''} já está pronta. {EMOJI_DO_RESULTADO}")
+    assinatura = " · ".join(x for x in (quem, corretora) if x)
+
+    texto = ""
+    for com_parcelas, com_diferenca, com_fecho in ((True, True, True), (False, True, True), (False, False, True),
+                                                    (False, False, False)):
+        blocos = [" ".join(x for x in (ola, apresenta) if x), pronto]
+        linhas = []
+        for i, o in enumerate(ops):
+            linha = _linha_da_opcao(o, com_parcelas=com_parcelas)
+            dif = _diferenca_de_hoje(o["premio_anual"], atual) if i == 0 and com_diferenca else None
+            linhas.append(linha + (f"\n{dif}" if dif else ""))
+        blocos.append("\n".join(linhas))
+        blocos.append("Veja as opções e os detalhes aqui:\n" + link
+                      + (f"\nOs preços valem até {validade}." if validade else ""))
+        if com_fecho:
+            blocos.append("Qualquer dúvida, é só me responder." + (f"\n{assinatura}" if assinatura else ""))
+        texto = "\n\n".join(b for b in blocos if b)
+        if len(texto) <= TETO_DE_CARACTERES:
+            break
+
+    rec = ops[0]
+    preco = f"{rec.get('seguradora')}, {_brl_inteiro(rec['premio_anual'])} por ano"
+    vence_curto = f" (vence em {vence})" if vence else ""
+    candidatos = [
+        f"{ola} {apresenta} A renovação do seu seguro{' do ' + bem if bem else ''}{vence_curto} está pronta: "
+        f"{preco}. Veja as opções: {link}",
+        f"{ola} A renovação do seu seguro{vence_curto} está pronta: {preco}. Veja as opções: {link}",
+        f"{ola} A sua renovação está pronta. Veja as opções: {link}",
+        f"A sua renovação está pronta: {link}",
+    ]
+    curto = next((re.sub(r"\s+", " ", c).strip() for c in candidatos
+                  if len(re.sub(r"\s+", " ", c).strip()) <= TETO_DO_TEXTO_CURTO), link[:TETO_DO_TEXTO_CURTO])
+    return {"texto": texto, "texto_curto": curto, "link": link}

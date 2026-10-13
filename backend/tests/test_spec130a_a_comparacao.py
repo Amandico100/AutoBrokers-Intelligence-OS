@@ -212,8 +212,12 @@ def test_opcoes_com_apolice_e_renovacao(quadro):
     assert any("que a sua apólice atual" in m for m in ops[1]["motivos"])
     assert any(m.endswith("menor preço entre as 13 seguradoras com cobertura completa") and not m.startswith("Menor")
                for m in ops[1]["motivos"])                                   # a posição dela, não "a menor"
+    # SPEC-131-B (D-131-22, §9.3 — a lição migra): na RENOVAÇÃO a seguradora de HOJE vem em 1º como "Sua renovação",
+    # mesmo mais cara; nunca a "Mais em conta". O RT-B1 continua valendo para quem NÃO é cliente (acima). A página
+    # servida da renovação é guardada em test_spec131b_a_pagina_de_renovacao.py
     ren = C.opcoes(quadro, situacao="renovacao", apolice_atual=apolice)
-    assert [o["id"] for o in ren][:2] == ["recomendada", "sua_renovacao"] and ren[1]["rotulo"] == "Sua renovação"
+    assert ren[0]["id"] == "sua_renovacao" and ren[0]["rotulo"] == "Sua renovação" and ren[0]["seguradora"] == "Bradesco"
+    assert "mais_em_conta" not in [o["id"] for o in ren] and "recomendada" not in [o["id"] for o in ren]
     with pytest.raises(ValueError):
         C.opcoes(quadro, situacao="qualquer")
 

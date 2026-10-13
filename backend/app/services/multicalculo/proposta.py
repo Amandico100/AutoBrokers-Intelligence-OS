@@ -598,6 +598,85 @@ def _faq(cfg_anf: Mapping[str, Any], *, resumo: Mapping[str, Any], opcoes: List[
     return saida
 
 
+def cta_da_pagina(destino: Optional[str], opcoes: Sequence[Mapping[str, Any]], *, nome: Optional[str],
+                  ref_curta: str, renovacao: bool = False) -> Optional[Dict[str, Any]]:
+    """O "Quero fechar" / "Quero renovar" da página: o número e o texto de cada opção. Sem número → None (sem botão)."""
+    if not destino:
+        return None
+    ola = f"Olá!{' Aqui é ' + nome + '.' if nome else ''}"
+    textos = {}
+    for o in opcoes:
+        preco = reais_inteiros(o["premio_anual"])
+        if renovacao:                           # SPEC-131-B: quem JÁ é cliente renova, não "fecha"
+            textos[o["id"]] = (f"{ola} Quero renovar o meu seguro na opção {o['rotulo']} ({o['seguradora']}, "
+                               f"{preco} por ano). Ref. {ref_curta}")
+        else:
+            textos[o["id"]] = (f"{ola} Quero fechar a opção {o['rotulo']} "
+                               f"({o['seguradora']}, {preco} por ano). Ref. {ref_curta}")
+    return {"whatsapp_url": f"https://wa.me/{destino}", "texto_por_opcao": textos}
+
+
+def pct_br(v: Any) -> str:
+    """O percentual em português: vírgula decimal, uma casa no máximo e sem ",0"."""
+    f = round(float(v), 1)
+    return (str(int(f)) if f.is_integer() else f"{f:.1f}".replace(".", ",")) + " %"
+
+
+def _data_br(iso: Any) -> Optional[str]:
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", str(iso or ""))
+    if not m:
+        return None
+    ano, mes, dia = m.groups()
+    return f"{dia}/{mes}/{ano}"
+
+
+def faq_da_renovacao(*, ramo: int, opcoes: Sequence[Mapping[str, Any]], vence_em: Any = None,
+                     reajuste_pct: Optional[float] = None, com_whatsapp: bool = True) -> List[Dict[str, str]]:
+    """SPEC-131-B (laudo I3 §2.3): as dúvidas de quem JÁ é cliente — reajuste, bônus, mudar a franquia, se não renovar,
+    parcelar. Só afirma o que é verdade para qualquer corretora e o que ESTA página mostra; as objeções de cliente
+    novo (banco/cooperativa, "outras seguradoras") ficam na cotação (D-131-40)."""
+    auto = int(ramo) == CMP.RAMO_AUTO
+    ids = {str(o.get("id")): o for o in opcoes}
+    falar = "Me responda por aqui" if com_whatsapp else "Fale com a corretora"
+    saida: List[Dict[str, str]] = []
+    if auto:
+        saida.append({"p": "Por que o preço da renovação mudou?",
+                      "r": "O preço de cada ano é recalculado pela seguradora: muda com o valor do carro na tabela "
+                           "FIPE, com o seu bônus e com a política dela para o ano. Por isso calculamos a sua "
+                           "renovação de novo, com as coberturas que você tem hoje."})
+        saida.append({"p": "E o meu bônus?",
+                      "r": "Renovando até o vencimento, o seu bônus (o desconto por não ter usado o seguro) continua "
+                           "valendo. Deixar o seguro vencer pode fazer você perder o bônus."})
+    else:
+        pct = f" em {pct_br(reajuste_pct)}" if reajuste_pct else ""
+        saida.append({"p": "Por que o preço da renovação mudou?",
+                      "r": f"A cobertura básica (incêndio, raio e explosão) é reajustada{pct} para acompanhar o valor "
+                           "do imóvel, e cada seguradora recalcula o preço do ano. As outras coberturas seguem as do "
+                           "seu seguro de hoje."})
+    if "franquia_reduzida" in ids or "menor_franquia" in ids:
+        o = ids.get("franquia_reduzida") or ids["menor_franquia"]
+        saida.append({"p": "Posso mudar a franquia?",
+                      "r": f"Pode. Veja o cartão “{o.get('rotulo')}”: ele mostra quanto custa a franquia menor. "
+                           f"{falar} se quiser outra combinação."})
+    else:
+        saida.append({"p": "Posso mudar a franquia?",
+                      "r": f"Pode. Franquia menor costuma deixar o seguro um pouco mais caro. {falar} que "
+                           "recalculamos com a franquia que você preferir."})
+    vence = _data_br(vence_em)
+    sem = "o carro" if auto else "o imóvel"
+    saida.append({"p": "E se eu não renovar?",
+                  "r": (f"O seu seguro termina no vencimento{', em ' + vence if vence else ''}, e {sem} fica sem "
+                        "cobertura a partir daí." + (" Renovando no prazo, você não perde o bônus." if auto else ""))})
+    p = (opcoes[0].get("parcelas") if opcoes else None) or {}
+    vezes = p.get("vezes") if isinstance(p, Mapping) else None
+    saida.append({"p": "Dá para parcelar?",
+                  "r": (f"Dá. A opção “{opcoes[0].get('rotulo')}” vai até {int(vezes)}x; cada seguradora tem o seu "
+                        "limite de parcelas." if vezes and int(vezes) > 1 else
+                        "Dá. Cada seguradora tem o seu limite de parcelas; os cartões mostram o parcelamento de cada "
+                        "opção.")})
+    return [{"p": i["p"], "r": arredondar_texto(i["r"])} for i in saida]
+
+
 # =====================================================================================================================
 # MONTAR
 # =====================================================================================================================
@@ -791,6 +870,9 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
 
     cfg_sol = CFG.carregar(company_id, db=db, servico=servico)
     ofertas, eventos, estados = list(andamento.ofertas), list(andamento.eventos), list(andamento.estados)
+    renovacao = situacao == "renovacao" and origem == "corretora"
+    if renovacao:                               # SPEC-131-B: o ranking e "Sua renovação" vêm do cálculo `anterior`
+        cfg_sol = CMP.config_da_renovacao(cfg_sol, estados)
     ordem = [str(c) for c in (ped.get("corretoras") or [])]
     corretoras = sorted({str(e.get("corretora_company_id")) for e in estados})
     info = _corretoras_info(db, canal=company_id, corretoras=corretoras) if origem == "canal" else {}
@@ -822,6 +904,8 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
         item = {k: v for k, v in o.items() if k != "ref"}
         item["motivos"] = [arredondar_texto(_texto_de_parcela(t, sem_juros)) for t in o["motivos"]]
         item["o_que_muda"] = [arredondar_texto(t) for t in o["o_que_muda"]]
+        if o.get("por_que"):                    # SPEC-131-B: o "por que recomendamos" de cada cartão da renovação
+            item["por_que"] = arredondar_texto(o["por_que"])
         item["coberturas"] = [dict(c) for c in o["coberturas"]]
         total = _total_do_parcelamento(bruta, item.get("parcelas"))
         if total is not None:
@@ -887,14 +971,7 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     nome = _primeiro_nome(primeiro_nome)
     bem = _bem(ofertas_a, ramo)
     ref_curta = pedido_id[:8]
-    cta = None
-    if destino_fechar:
-        textos = {}
-        for o in opcoes:
-            preco = reais_inteiros(o["premio_anual"])
-            textos[o["id"]] = (f"Olá!{' Aqui é ' + nome + '.' if nome else ''} Quero fechar a opção {o['rotulo']} "
-                               f"({o['seguradora']}, {preco} por ano). Ref. {ref_curta}")
-        cta = {"whatsapp_url": f"https://wa.me/{destino_fechar}", "texto_por_opcao": textos}
+    cta = cta_da_pagina(destino_fechar, opcoes, nome=nome, ref_curta=ref_curta, renovacao=renovacao)
 
     modelo: Dict[str, Any] = {
         "versao_do_contrato": VERSAO_DO_CONTRATO,
@@ -913,8 +990,9 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
         "nao_responderam": [{"seguradora": n["seguradora"], "motivo": n["motivo"]} for n in quadro.nao_responderam],
         "entre_corretoras": entre,
         "anfitria": anfitria,
-        "faq": _faq(cfg_anf, resumo=resumo, opcoes=opcoes, situacao=situacao, voz=origem,
-                    com_whatsapp=bool(whats)),
+        "faq": (faq_da_renovacao(ramo=ramo, opcoes=opcoes, reajuste_pct=CFG.reajuste_basica_pct(cfg_anf, ramo),
+                                 com_whatsapp=bool(whats)) if renovacao else
+                _faq(cfg_anf, resumo=resumo, opcoes=opcoes, situacao=situacao, voz=origem, com_whatsapp=bool(whats))),
         "sinistro": MANUAL.sinistro_padrao(cfg_anf, com_whatsapp=bool(whats)),
         "validade_ate": validade_ate,
         "gerado_em": hoje.replace(microsecond=0).isoformat(),
@@ -935,6 +1013,9 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     if _contexto is not None:                       # o que `publicar_proposta` precisa e a página não mostra
         _contexto.update({"anfitria_id": anfitria_id, "cfg_sol": cfg_sol, "dias": dias, "hoje": hoje,
                           "refs": {o["id"]: dict(o["ref"]) for o in ops}})
+        if renovacao and ramo in CMP.RAMOS_RE:      # SPEC-131-B: a Básica que o cálculo da 1ª opção PEDIU (reajustada)
+            est = next((e for e in estados if str(e.get("calculo_id")) == str(ops[0]["ref"]["calculo_id"])), {})
+            _contexto["basica_pedida"] = (CMP.pedido_re(est.get("coberturas_pedidas")) or {}).get(CMP.CHAVE_DA_BASICA)
     return modelo
 
 
@@ -969,13 +1050,10 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
 
     🔴 J-B1: sem WhatsApp de atendimento da anfitriã → `SemCanalDeFechamento` antes de gravar (a página não teria como
     fechar). Só `permitir_sem_whatsapp=True` publica assim — e aí nenhuma frase da página promete WhatsApp."""
-    from app.services.artifacts.service import ArtifactService, base_publica_do_app, tags_do_canario
     from app.services.multicalculo.mensagem import mensagem_para
 
     company_id, pedido_id = _uuid(company_id, "company_id"), _uuid(pedido_id, "pedido_id")
-    base = (base_url or base_publica_do_app() or "").strip().rstrip("/")
-    if not re.match(r"^https?://[^/\s]+$", base):
-        raise LinkSemEndereco("sem o endereço público do painel (PUBLIC_APP_URL/SMITH_WEB_URL) o link não tem host")
+    base = _base_do_link(base_url)
 
     ctx: Dict[str, Any] = {}
     modelo = await montar_proposta(company_id, pedido_id, situacao, apolice_atual, primeiro_nome, db=db, agora=agora,
@@ -992,14 +1070,36 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
             "atendimento ativa): a página sairia sem o botão \"Quero fechar\" e o cliente não teria como fechar. "
             "Cadastre o WhatsApp de atendimento dela — ou publique assim mesmo, de propósito, com "
             "permitir_sem_whatsapp (no comando: --sem-whatsapp). Nada foi gravado.")
+    publicado = _gravar_e_compartilhar(db, company_id, pedido_id, modelo, ctx, base)
+    return {**publicado, "mensagem": mensagem_para(modelo, publicado["url"], config=ctx["cfg_sol"]),
+            "validade_ate": modelo["validade_ate"]}
+
+
+def _base_do_link(base_url: Optional[str]) -> str:
+    from app.services.artifacts.service import base_publica_do_app
+
+    base = (base_url or base_publica_do_app() or "").strip().rstrip("/")
+    if not re.match(r"^https?://[^/\s]+$", base):
+        raise LinkSemEndereco("sem o endereço público do painel (PUBLIC_APP_URL/SMITH_WEB_URL) o link não tem host")
+    return base
+
+
+def _gravar_e_compartilhar(db: Any, company_id: str, pedido_id: str, modelo: Dict[str, Any], ctx: Mapping[str, Any],
+                           base: str, *, titulo_base: str = "Proposta de seguro",
+                           subject_extra: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    """Cria (ou versiona) o artefato `proposal.quote` no SOLICITANTE, renderiza, publica e compartilha — o MESMO
+    caminho da proposta da 130-A, agora também da renovação (SPEC-131-B: nenhum publicador paralelo, CLAUDE.md §5).
+    Devolve {url, token, artifact_id, versao}."""
+    from app.services.artifacts.service import ArtifactService, tags_do_canario
+
     rec = modelo["opcoes"][0]
     bem = (modelo.get("bem") or {}).get("descricao")
-    titulo = f"Proposta de seguro{' · ' + bem if bem else ''}"
+    titulo = f"{titulo_base}{' · ' + bem if bem else ''}"
     resumo_peca = (f"{rec['rotulo']}: {rec['seguradora']}, {reais_inteiros(rec['premio_anual'])} por ano · "
                    f"{modelo['resumo']['com_preco_comparavel']} seguradoras comparáveis · válida até "
                    f"{modelo['validade_ate']}")
     subject = {"kind": "multicalculo_pedido", "pedido_id": pedido_id, "anfitria_company_id": ctx["anfitria_id"],
-               "opcoes": ctx["refs"]}
+               "opcoes": ctx["refs"], **dict(subject_extra or {})}
     fontes = [{"label": "Multicálculo", "kind": "multicalculo_pedido", "ref": pedido_id,
                "as_of": modelo["gerado_em"]}]
 
@@ -1023,5 +1123,258 @@ async def publicar_proposta(company_id: str, pedido_id: str, situacao: str, apol
     url = f"{base}/r/{share['token']}"
     logger.info("[PROPOSTA] publicada: versão %s, %s opções", publicada.get("version"), len(modelo["opcoes"]))
     return {"url": url, "token": share["token"], "artifact_id": artifact_id,
-            "versao": int(publicada.get("version") or versao.get("version") or 1),
-            "mensagem": mensagem_para(modelo, url, config=ctx["cfg_sol"]), "validade_ate": modelo["validade_ate"]}
+            "versao": int(publicada.get("version") or versao.get("version") or 1)}
+
+
+# =====================================================================================================================
+# SPEC-131-B (G4) — a página de RENOVAÇÃO: quem JÁ é cliente (D-131-22/23/24/40/42, laudo I3 §2.3)
+# =====================================================================================================================
+#: os estados da renovação que já têm cálculo para mostrar (a 131-A grava `calculada`; o resto é o que veio depois)
+ESTADOS_COM_CALCULO = ("calculada", "apresentada", "enviada")
+#: o teto de elos da cadeia `nosnum_ren` (uma cadeia circular ou absurda nunca trava a publicação)
+_LIMITE_DA_CADEIA = 64
+
+#: a busca do histórico da apólice na InfoCap: (company_id, codfil, nosnum) → o envelope de `/documento` (com
+#: `historico[]`) ou a lista. Síncrona ou assíncrona. O teste troca esta borda (nenhuma chamada real à InfoCap).
+BuscarHistorico = Callable[[str, Any, Any], Any]
+
+
+def _linhas_do_historico(resposta: Any) -> List[Dict[str, Any]]:
+    if isinstance(resposta, list):
+        return [x for x in resposta if isinstance(x, dict)]
+    if not isinstance(resposta, Mapping):
+        return []
+    linhas: List[Dict[str, Any]] = []
+    for chave in ("historico", "documento"):
+        v = resposta.get(chave)
+        if isinstance(v, list):
+            linhas += [x for x in v if isinstance(x, dict)]
+        elif isinstance(v, dict):
+            linhas.append(v)
+    return linhas
+
+
+def anos_de_renovacao(resposta: Any, *, nosnum: Any, hoje: date) -> Optional[int]:
+    """"Renova com a gente há N anos" — SÓ com PROVA (BLOCO 0 B2, CDC art. 37): a cadeia `nosnum_ren` do
+    `/documento.historico` (cada apólice aponta a ANTERIOR que ela renova), a partir DESTA apólice. Cada elo só conta
+    se a apólice anterior ESTÁ no histórico (tipdoc apólice) com início de vigência legível; a contagem vai do início
+    da mais antiga provada até hoje, em anos completos. Sem nenhum elo provado, ou menos de 1 ano → None (a frase não
+    aparece). Nunca "cliente desde" (📊 `/cliente_ligacoes` 0/10)."""
+    from app.services.multicalculo.renovacao import data_de, nosnum_de
+
+    por_nosnum: Dict[str, Dict[str, Any]] = {}
+    for l in _linhas_do_historico(resposta):
+        n = nosnum_de(l.get("nosnum"))
+        if n and n not in por_nosnum:
+            por_nosnum[n] = l
+    atual = por_nosnum.get(nosnum_de(nosnum))
+    if atual is None:
+        return None
+    vistos = {nosnum_de(nosnum)}
+    inicio: Optional[date] = None
+    elos = 0
+    cur = atual
+    while elos < _LIMITE_DA_CADEIA:
+        ant = nosnum_de(cur.get("nosnum_ren"))
+        if not ant or ant in vistos:
+            break
+        prev = por_nosnum.get(ant)
+        if prev is None or str(prev.get("tipdoc") or "A").strip().upper() != "A":
+            break                                               # sem a linha da anterior, não há prova da data
+        ini = data_de(prev.get("inivig"))
+        if ini is None:
+            break
+        vistos.add(ant)
+        elos += 1
+        inicio, cur = ini, prev
+    if not elos or inicio is None:
+        return None
+    anos = hoje.year - inicio.year - ((hoje.month, hoje.day) < (inicio.month, inicio.day))
+    return anos if anos >= 1 else None
+
+
+async def _historico_pela_infocap(db: Any, company_id: str, codfil: Any, nosnum: Any) -> Any:
+    """O `/documento?codfil&nosnum` desta apólice pela InfoCap DESTA corretora (o caminho canônico da 131-A,
+    `madrugada.abrir_fonte`). O envelope traz `historico[]` (📊 12/10: `{"header", "documento": [1], "historico": [6]}`).
+    ⚠️ Usa o `_get` da MESMA fonte (uma rota, um lugar — CLAUDE.md §5) até ela ganhar um leitor público do histórico."""
+    import asyncio
+
+    from app.services.multicalculo import madrugada as MAD
+
+    fonte = await MAD.abrir_fonte(db, company_id)
+    if fonte is None:
+        return None
+    leitor = getattr(fonte, "historico_cru", None)
+    if callable(leitor):
+        return await asyncio.to_thread(leitor, codfil, nosnum)
+    return await asyncio.to_thread(fonte._get, "/documento", {"codfil": codfil, "nosnum": nosnum})
+
+
+async def _anos_provados(db: Any, company_id: str, item: Mapping[str, Any], hoje: date,
+                         historico: Optional[BuscarHistorico]) -> Optional[int]:
+    import inspect
+
+    busca = historico or (lambda cid, codfil, nosnum: _historico_pela_infocap(db, cid, codfil, nosnum))
+    try:
+        resposta = busca(company_id, item.get("codfil") or 1, item.get("nosnum"))
+        if inspect.isawaitable(resposta):
+            resposta = await resposta
+    except Exception as exc:  # noqa: BLE001 — sem a InfoCap não há prova: a frase simplesmente não aparece
+        logger.info("[RENOVACAO] histórico da apólice ilegível (%s): sem 'N anos'", type(exc).__name__)
+        return None
+    return anos_de_renovacao(resposta, nosnum=item.get("nosnum"), hoje=hoje)
+
+
+def membro_para_o_cliente(db: Any, company_id: str, user_id: Any) -> Dict[str, Any]:
+    """O comercial como o CLIENTE o vê: o primeiro nome e o "Meu WhatsApp de trabalho" — este SÓ quando a pessoa o
+    CONFIRMOU (`company_members.whatsapp_trabalho_e164` + `whatsapp_trabalho_confirmado_em`, colunas da G1; D-131-41).
+    🔴 Só se ele é MEMBRO desta corretora (filtro `company_id`, CLAUDE.md §7). Colunas ainda não aplicadas → só o nome."""
+    try:
+        uid = _uuid(user_id, "user_id")
+        cid = _uuid(company_id, "company_id")
+    except ValueError:
+        return {}
+    vinc: List[Dict[str, Any]] = []
+    for colunas in ("user_id, company_id, whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em",
+                    "user_id, company_id"):
+        try:
+            vinc = _dados(db.table("company_members").select(colunas).eq("company_id", cid)
+                          .eq("user_id", uid).limit(1).execute())
+            break
+        except Exception as exc:  # noqa: BLE001 — a migration da G1 ainda não aplicada: lê sem as colunas
+            logger.info("[RENOVACAO] membro ilegível com as colunas novas? (%s)", type(exc).__name__)
+    v = next((x for x in vinc if str(x.get("company_id") or "").lower() == cid
+              and str(x.get("user_id") or "").lower() == uid), None)
+    if v is None:
+        return {}
+    saida: Dict[str, Any] = {"user_id": uid}
+    try:
+        usr = _dados(db.table("users_v2").select("id, first_name").eq("id", uid).limit(1).execute())
+        nome = _primeiro_nome(next((u.get("first_name") for u in usr if str(u.get("id") or "").lower() == uid), None))
+        if nome:
+            saida["primeiro_nome"] = nome
+    except Exception as exc:  # noqa: BLE001
+        logger.info("[RENOVACAO] nome do membro ilegível (%s)", type(exc).__name__)
+    if v.get("whatsapp_trabalho_confirmado_em"):
+        dig = _digitos_de_whatsapp(v.get("whatsapp_trabalho_e164"))
+        if dig:
+            saida["whatsapp"] = dig
+    return saida
+
+
+def pessoa_de(db: Any, company_id: str, pessoa: Any) -> Dict[str, Any]:
+    """`pessoa` do contrato (quem clica): o user_id (texto) ou {user_id|id, primeiro_nome|first_name|nome}. O nome
+    dado vale; sem ele, o da equipe (só se membro DESTA corretora)."""
+    if isinstance(pessoa, Mapping):
+        uid = pessoa.get("user_id") or pessoa.get("id")
+        nome = _primeiro_nome(pessoa.get("primeiro_nome") or pessoa.get("first_name") or pessoa.get("nome"))
+    else:
+        uid, nome = pessoa, None
+    saida: Dict[str, Any] = {}
+    if uid:
+        try:
+            saida["user_id"] = _uuid(uid, "pessoa")
+        except ValueError:
+            pass
+    if nome:
+        saida["primeiro_nome"] = nome
+    elif saida.get("user_id"):
+        m = membro_para_o_cliente(db, company_id, saida["user_id"])
+        if m.get("primeiro_nome"):
+            saida["primeiro_nome"] = m["primeiro_nome"]
+    return saida
+
+
+def bloco_da_renovacao(item: Mapping[str, Any], *, dono: Mapping[str, Any], anos: Optional[int],
+                       basica: Optional[float], reajuste_pct: Optional[float]) -> Dict[str, Any]:
+    """O que a página de renovação mostra além do CONTRATO §5 (`modelo["renovacao"]`). Ausente = não aparece. ⛔ Sem
+    telefone do cliente, sem nome completo, sem documento: só o primeiro nome do DONO e o WhatsApp de trabalho dele."""
+    bloco: Dict[str, Any] = {}
+    from app.services.multicalculo.renovacao import data_de
+
+    fim = data_de(item.get("fimvig"))
+    if fim is not None:
+        bloco["vence_em"] = fim.isoformat()
+    seg = str(item.get("seguradora_atual") or "").strip()
+    if seg:
+        bloco["seguradora_atual"] = CMP.nome_de_exibicao(seg)
+    p = premio_atual({"premio_anual": item.get("premio_atual")})
+    if p:
+        bloco["premio_atual"] = p
+    if anos:
+        bloco["anos"] = int(anos)
+    d = {k: dono[k] for k in ("primeiro_nome", "whatsapp") if dono.get(k)}
+    if d:
+        bloco["dono"] = d
+    try:
+        b = float(basica) if basica is not None else None
+    except (TypeError, ValueError):
+        b = None
+    if b and b > 0:
+        bloco["basica"] = {"valor": round(b, 2)}
+        if reajuste_pct:
+            bloco["basica"]["reajuste_pct"] = float(reajuste_pct)
+    return bloco
+
+
+async def publicar_renovacao(company_id: str, renovacao_id: str, *, pessoa: Any, db: Any = None,
+                             base_url: Optional[str] = None, agora: Optional[datetime] = None,
+                             baixar_logo: Optional[BaixarLogo] = None,
+                             historico: Optional[BuscarHistorico] = None) -> Dict[str, Any]:
+    """SPEC-131-B (contrato G4 → G2): a página de RENOVAÇÃO de UMA renovação da 131-A, publicada no `/r/` rastreado
+    (o MESMO caminho da proposta: artefato `proposal.quote` no Hub, versão nova a cada publicação do mesmo pedido).
+    Devolve {token, url, artifact_id, versao, validade_ate, modelo}. NÃO muda o estado da renovação (é da API, G2).
+
+    🔴 `company_id` é o da SESSÃO: a renovação é lida pelo repositório com o filtro (outra corretora → `NaoEncontrada`).
+    🔴 D-131-42: o "Quero renovar" vai ao DONO com WhatsApp de trabalho CONFIRMADO → senão à corretora → senão a página
+       sai SEM o botão e diz "responda a mensagem em que recebeu este link" (NUNCA recusa por falta do número).
+    🔴 "renova com a gente há N anos" só com a cadeia `nosnum_ren` provada (`anos_de_renovacao`).
+    ⛔ O telefone do CLIENTE nunca entra aqui (nem no modelo, nem no HTML): ele é buscado na hora do ENVIO, pela G2.
+
+    Recusas: `ValueError` (uuid) · `renovacao.NaoEncontrada` · `PropostaImpossivel` (sem cálculo, sem a seguradora de
+    hoje, ou sem oferta completa) · `LinkSemEndereco`."""
+    from app.services.multicalculo.renovacao import RepositorioDeRenovacoes
+
+    company_id, renovacao_id = _uuid(company_id, "company_id"), _uuid(renovacao_id, "renovacao_id")
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client().client
+    base = _base_do_link(base_url)
+    item = RepositorioDeRenovacoes(db).por_id(company_id, renovacao_id)
+    if str(item.get("estado") or "") not in ESTADOS_COM_CALCULO or not item.get("pedido_id"):
+        raise PropostaImpossivel("a renovação ainda não foi calculada: não há o que apresentar")
+    seg = str(item.get("seguradora_atual") or "").strip()
+    if not seg:
+        raise PropostaImpossivel("a renovação não tem a seguradora de hoje: a página chamaria de \"Sua renovação\" "
+                                 "uma seguradora que talvez não seja a do cliente")
+    pedido_id = _uuid(item["pedido_id"], "pedido_id")
+    apolice = {"seguradora": seg, "premio_anual": item.get("premio_atual")}
+    ctx: Dict[str, Any] = {}
+    modelo = await montar_proposta(company_id, pedido_id, "renovacao", apolice, item.get("cliente_nome_curto"),
+                                   db=db, agora=agora, baixar_logo=baixar_logo, _contexto=ctx)
+    if modelo.get("origem") != "corretora":
+        raise PropostaImpossivel("a renovação é trabalho da corretora: o pedido não é dela")
+
+    dono = membro_para_o_cliente(db, company_id, item.get("dono_user_id") or item.get("responsavel_user_id"))
+    anos = await _anos_provados(db, company_id, item, ctx["hoje"].date(), historico)
+    reajuste = CFG.reajuste_basica_pct(ctx["cfg_sol"], modelo["ramo"])
+    modelo["renovacao"] = bloco_da_renovacao(item, dono=dono, anos=anos, basica=ctx.get("basica_pedida"),
+                                             reajuste_pct=reajuste)
+    # D-131-42: o dono confirmado → a corretora → ninguém (a página publica assim mesmo, sem o botão)
+    destino = dono.get("whatsapp") or (modelo.get("anfitria") or {}).get("whatsapp")
+    nome_cliente = (modelo.get("cliente") or {}).get("primeiro_nome")
+    modelo["cta"] = cta_da_pagina(destino, modelo["opcoes"], nome=nome_cliente, ref_curta=pedido_id[:8],
+                                  renovacao=True)
+    modelo["renovacao"]["fechar_com"] = "dono" if dono.get("whatsapp") else ("corretora" if destino else "nenhum")
+    modelo["faq"] = faq_da_renovacao(ramo=modelo["ramo"], opcoes=modelo["opcoes"],
+                                     vence_em=modelo["renovacao"].get("vence_em"), reajuste_pct=reajuste,
+                                     com_whatsapp=bool(destino))
+    modelo["sinistro"] = MANUAL.sinistro_padrao(ctx["cfg_sol"], com_whatsapp=bool(destino))
+    _sem_comissao(modelo)
+    quem = pessoa_de(db, company_id, pessoa)
+    publicado = _gravar_e_compartilhar(db, company_id, pedido_id, modelo, ctx, base,
+                                       titulo_base="Renovação do seguro",
+                                       subject_extra={"renovacao_id": renovacao_id,
+                                                      "publicada_por": quem.get("user_id")})
+    return {**publicado, "validade_ate": modelo["validade_ate"], "modelo": modelo}
