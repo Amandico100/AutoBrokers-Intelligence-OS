@@ -511,15 +511,24 @@ def _vinculo(supa, company_id: str, user_id: str) -> Optional[Dict[str, Any]]:
     return linhas[0] if linhas else None
 
 
-def _pode_mexer(supa, company_id: str, dono_user_id: str, por_user_id: Optional[str]) -> None:
-    """D-131-0-06: o admin desta corretora mexe no Agger de qualquer pessoa da equipe; a pessoa, só no dela. E a dona
-    precisa ser membro ATIVO desta corretora (com usuário ativo) — senão a conta não vale e não se cadastra."""
+#: SPEC-131-B (D-131-07, revê D-131-0-06): o login e a senha de um Agger de PESSOA só a própria pessoa digita — o admin
+#: não conecta nem troca a senha do Agger de outra pessoa (ele pausa, religa e desconecta: o gesto de segurança)
+ACOES_SO_DA_PROPRIA_PESSOA = frozenset({"conectar", "trocar_senha"})
+
+
+def _pode_mexer(supa, company_id: str, dono_user_id: str, por_user_id: Optional[str], *,
+                acao: str = "conectar") -> None:
+    """D-131-0-06: o admin desta corretora mexe no Agger de qualquer pessoa da equipe; a pessoa, só no dela — 🔴 menos
+    conectar/trocar a senha (D-131-07, J-P4 da 131-B: a mesma regra do proxy Next, aqui como defesa em profundidade).
+    E a dona precisa ser membro ATIVO desta corretora (com usuário ativo) — senão a conta não vale e não se cadastra."""
     if not robos.membro_ativo(supa, company_id, dono_user_id):
         raise Recusa("Esta pessoa não está ativa na equipe desta corretora.")
     if not por_user_id:
         raise Recusa("Não sei quem está pedindo esta mudança.")
     if str(por_user_id) == str(dono_user_id):
         return
+    if acao in ACOES_SO_DA_PROPRIA_PESSOA:
+        raise Recusa("Cada pessoa conecta o próprio Agger, em Meu perfil → Minhas conexões. Peça para ela conectar.")
     v = _vinculo(supa, company_id, por_user_id)
     if not v or not (v.get("is_owner") or v.get("role") in PAPEIS_DE_ADMIN):
         raise Recusa("Só um administrador da corretora, ou a própria pessoa, mexe no Agger dela.")
@@ -658,7 +667,7 @@ def agir_do_membro(supa, company_id: str, dono_user_id: str, acao: str, *, por_u
             raise Recusa("Esta pessoa não tem Agger conectado aqui.")
         desligar_do_membro(supa, company_id, dono_user_id)
         return
-    _pode_mexer(supa, company_id, dono_user_id, por_user_id)
+    _pode_mexer(supa, company_id, dono_user_id, por_user_id, acao=acao)
     c = conta_do_membro(supa, company_id, dono_user_id)
     if acao in ("conectar", "trocar_senha"):
         if cifrar is None:

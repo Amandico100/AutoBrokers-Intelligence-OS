@@ -525,6 +525,12 @@ def _google(cfg: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     return {"nota": nota, "avaliacoes": avaliacoes, "fonte": fonte}
 
 
+def _marca_publicada(perfil: Optional[Mapping[str, Any]]) -> bool:
+    """A marca vale na página só PUBLICADA e com os dois temas (o mesmo critério para o nome, a cor e o número)."""
+    temas = ((perfil or {}).get("palette") or {}).get("themes") or {}
+    return bool(perfil and perfil.get("is_published") is True and temas.get("light") and temas.get("dark"))
+
+
 async def montar_anfitria(db: Any, company_id: str, cfg: Mapping[str, Any], *,
                           baixar_logo: Optional[BaixarLogo] = None) -> Dict[str, Any]:
     """A anfitriã do modelo. 🔴 Filtro `company_id` em toda leitura (service role — CLAUDE.md §7)."""
@@ -533,7 +539,7 @@ async def montar_anfitria(db: Any, company_id: str, cfg: Mapping[str, Any], *,
     perfis = _dados(db.table("brand_profiles").select("*").eq("company_id", company_id).limit(1).execute())
     perfil = next((p for p in perfis if str(p.get("company_id")) == company_id), None)
     temas = ((perfil or {}).get("palette") or {}).get("themes") or {}
-    publicada = bool(perfil and perfil.get("is_published") is True and temas.get("light") and temas.get("dark"))
+    publicada = _marca_publicada(perfil)
 
     anf: Dict[str, Any] = {"nome": nome_oficial, "marca_cadastrada": publicada}
     if publicada:
@@ -1179,7 +1185,9 @@ def anos_de_renovacao(resposta: Any, *, nosnum: Any, hoje: date) -> Optional[int
         if not ant or ant in vistos:
             break
         prev = por_nosnum.get(ant)
-        if prev is None or str(prev.get("tipdoc") or "A").strip().upper() != "A":
+        # RT-P4: a anterior só prova "N anos" com `tipdoc` EXPLÍCITO de apólice — sem o tipo, não se sabe se é apólice
+        # ou endosso (CDC art. 37: sem prova, sem frase)
+        if prev is None or str(prev.get("tipdoc") or "").strip().upper() != "A":
             break                                               # sem a linha da anterior, não há prova da data
         ini = data_de(prev.get("inivig"))
         if ini is None:
@@ -1226,23 +1234,24 @@ async def _anos_provados(db: Any, company_id: str, item: Mapping[str, Any], hoje
 def membro_para_o_cliente(db: Any, company_id: str, user_id: Any) -> Dict[str, Any]:
     """O comercial como o CLIENTE o vê: o primeiro nome e o "Meu WhatsApp de trabalho" — este SÓ quando a pessoa o
     CONFIRMOU (`company_members.whatsapp_trabalho_e164` + `whatsapp_trabalho_confirmado_em`, colunas da G1; D-131-41).
-    🔴 Só se ele é MEMBRO desta corretora (filtro `company_id`, CLAUDE.md §7). Colunas ainda não aplicadas → só o nome."""
+    🔴 Só se ele é MEMBRO ATIVO desta corretora (filtro `company_id` + `status='active'`, CLAUDE.md §7 · J-P2: quem saiu
+    não recebe o "Quero renovar" nem é nomeado). Colunas ainda não aplicadas → só o nome."""
     try:
         uid = _uuid(user_id, "user_id")
         cid = _uuid(company_id, "company_id")
     except ValueError:
         return {}
     vinc: List[Dict[str, Any]] = []
-    for colunas in ("user_id, company_id, whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em",
-                    "user_id, company_id"):
+    for colunas in ("user_id, company_id, status, whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em",
+                    "user_id, company_id, status"):
         try:
             vinc = _dados(db.table("company_members").select(colunas).eq("company_id", cid)
-                          .eq("user_id", uid).limit(1).execute())
+                          .eq("user_id", uid).eq("status", "active").limit(1).execute())
             break
         except Exception as exc:  # noqa: BLE001 — a migration da G1 ainda não aplicada: lê sem as colunas
             logger.info("[RENOVACAO] membro ilegível com as colunas novas? (%s)", type(exc).__name__)
     v = next((x for x in vinc if str(x.get("company_id") or "").lower() == cid
-              and str(x.get("user_id") or "").lower() == uid), None)
+              and str(x.get("user_id") or "").lower() == uid and x.get("status") == "active"), None)
     if v is None:
         return {}
     saida: Dict[str, Any] = {"user_id": uid}
@@ -1281,6 +1290,48 @@ def pessoa_de(db: Any, company_id: str, pessoa: Any) -> Dict[str, Any]:
         if m.get("primeiro_nome"):
             saida["primeiro_nome"] = m["primeiro_nome"]
     return saida
+
+
+def dono_da_renovacao(db: Any, company_id: str, item: Mapping[str, Any]) -> Dict[str, Any]:
+    """Quem cuida desta renovação, como o CLIENTE o vê: o dono (ou o responsável), membro ATIVO desta corretora —
+    {user_id, primeiro_nome?, whatsapp?} — ou {} (ninguém nomeado)."""
+    return membro_para_o_cliente(db, company_id, item.get("dono_user_id") or item.get("responsavel_user_id"))
+
+
+def whatsapp_da_corretora(db: Any, company_id: str) -> Optional[str]:
+    """O número da CORRETORA para o "Quero renovar" — a MESMA escolha de `montar_anfitria` (o WhatsApp da marca
+    PUBLICADA, senão a integração de atendimento ativa), lida agora. Filtro `company_id` (CLAUDE.md §7)."""
+    perfis = _dados(db.table("brand_profiles").select("*").eq("company_id", company_id).limit(1).execute())
+    perfil = next((p for p in perfis if str(p.get("company_id")) == company_id), None)
+    return _whatsapp_da_anfitria(db, company_id, perfil if _marca_publicada(perfil) else None)
+
+
+def quem_atende_na_pagina(modelo: Mapping[str, Any]) -> Dict[str, Optional[str]]:
+    """O "quem atende" CONGELADO numa página de renovação publicada: o nome do dono que ela mostra e o número do botão
+    ("Quero renovar"/"Tirar uma dúvida" — `cta.whatsapp_url`; sem botão → None)."""
+    ren = modelo.get("renovacao") if isinstance(modelo.get("renovacao"), Mapping) else {}
+    dono = ren.get("dono") if isinstance(ren.get("dono"), Mapping) else {}
+    cta = modelo.get("cta") if isinstance(modelo.get("cta"), Mapping) else {}
+    return {"nome": dono.get("primeiro_nome") or None, "whatsapp": _digitos_de_whatsapp(cta.get("whatsapp_url"))}
+
+
+def quem_atende_agora(db: Any, company_id: str, item: Mapping[str, Any]) -> Dict[str, Optional[str]]:
+    """O "quem atende" que uma publicação de AGORA poria na página (a regra de `publicar_renovacao`, D-131-42): o dono
+    ATIVO com número confirmado → a corretora → ninguém."""
+    dono = dono_da_renovacao(db, company_id, item)
+    numero = dono.get("whatsapp") or whatsapp_da_corretora(db, company_id)
+    return {"nome": dono.get("primeiro_nome") or None, "whatsapp": numero or None}
+
+
+def quem_atende_mudou(db: Any, company_id: str, item: Mapping[str, Any], modelo: Mapping[str, Any]) -> bool:
+    """🔴 RT-B1: a página publicada leva o cliente a quem atenderia AGORA? Mudou (o dono saiu, ficou inativo, apagou ou
+    trocou o número, ou passou a ter um; o número da corretora mudou) → True, e quem envia REPUBLICA. Leitura que falha
+    → True (na dúvida, republica: nunca um WhatsApp errado ao cliente)."""
+    try:
+        return quem_atende_na_pagina(modelo) != quem_atende_agora(db, _uuid(company_id, "company_id"), item)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("[RENOVACAO] quem atende ilegível agora (%s): republica", type(exc).__name__)
+        return True
 
 
 def bloco_da_renovacao(item: Mapping[str, Any], *, dono: Mapping[str, Any], anos: Optional[int],
@@ -1354,7 +1405,7 @@ async def publicar_renovacao(company_id: str, renovacao_id: str, *, pessoa: Any,
     if modelo.get("origem") != "corretora":
         raise PropostaImpossivel("a renovação é trabalho da corretora: o pedido não é dela")
 
-    dono = membro_para_o_cliente(db, company_id, item.get("dono_user_id") or item.get("responsavel_user_id"))
+    dono = dono_da_renovacao(db, company_id, item)
     anos = await _anos_provados(db, company_id, item, ctx["hoje"].date(), historico)
     reajuste = CFG.reajuste_basica_pct(ctx["cfg_sol"], modelo["ramo"])
     modelo["renovacao"] = bloco_da_renovacao(item, dono=dono, anos=anos, basica=ctx.get("basica_pedida"),

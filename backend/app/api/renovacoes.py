@@ -1,9 +1,14 @@
 """SPEC-131-B · G2 — a API da aba Renovações (o lugar onde o comercial confere e envia).
 
-    GET  /api/renovacoes?company_id=&user_id=&escopo=minhas|todas&estado=&ramo=&de=&ate=&seguradora=&q=
+    GET  /api/renovacoes?company_id=&user_id=&escopo=minhas|todas&estado=&ramo=&de=&ate=&seguradora=
+         + cabeçalho `x-busca` (nome ou CPF/CNPJ — 🔴 NUNCA na query string: a query vai ao log de acesso)
     GET  /api/renovacoes/{id}?company_id=&user_id=                o detalhe + a linha do tempo + "Abrir no Agger"
     POST /api/renovacoes/{id}/apresentacao   {company_id, user_id}          → {token, url} · estado `apresentada`
-    POST /api/renovacoes/{id}/envio          {company_id, user_id, via?}    → {wa_me_url, texto} | {texto, sem_telefone}
+    POST /api/renovacoes/{id}/envio          {company_id, user_id, via?}    → {texto, texto_curto, link, wa_me_url?,
+                                                                               sem_telefone}
+         `texto` = a mensagem COMPLETA (≤ 700, a do "Copiar a mensagem") · `texto_curto` = a que vai DENTRO do
+         `wa_me_url` (a completa se couber em 500; senão a curta da G4). 🔴 O link enviado é SEMPRE o `proposta_ref`
+         gravado (dois cliques ao mesmo tempo mandam o MESMO link).
 
 🔴 Chave interna (o proxy Next é quem fala com isto); `company_id` e `user_id` vêm da SESSÃO no proxy, nunca do
    navegador. TODA leitura passa pelo repositório da 131-A (`RepositorioDeRenovacoes`, filtro `company_id` + a segunda
@@ -45,8 +50,11 @@ VIAS_DO_ENVIO = ("whatsapp", "copiar")
 ESCOPOS = ("minhas", "todas")
 
 #: B1 do BLOCO 0 (não medido nos aparelhos): o texto que vai DENTRO do link ≤ 500 caracteres; a mensagem inteira vai
-#: no "Copiar a mensagem", que fica SEMPRE ao lado
+#: no "Copiar a mensagem", que fica SEMPRE ao lado (RT-B2: `texto` = a inteira, `texto_curto` = a do link)
 LIMITE_DO_TEXTO_NO_LINK = 500
+#: J-B1: a busca (nome ou CPF/CNPJ) chega neste CABEÇALHO — a query string vai ao log de acesso do uvicorn e à URL
+CABECALHO_DA_BUSCA = "x-busca"
+TAMANHO_MAXIMO_DA_BUSCA = 80
 #: a lista padrão: o que vence de 30 dias atrás em diante (a renovação vencida há mais tempo não é mais trabalho)
 DIAS_PARA_TRAS_PADRAO = 30
 #: os estados que a tela mostra — `substituida` é a linha velha de um endosso (a nova está na lista)
@@ -281,32 +289,32 @@ def proximo_passo(item: Mapping[str, Any], linha: Mapping[str, Any]) -> str:
 
 
 def numero_de_whatsapp(cliente: Mapping[str, Any]) -> Optional[str]:
-    """O número do cadastro do cliente (`/cliente`) em dígitos E.164 do Brasil (`55` + DDD + número), o CELULAR
-    primeiro. Formas lidas (as que o produto já lê, `infocap_connector._client_phone`): `telefones[]` com `{ddd,
-    numero}` (ou texto), `telefone`, `contatos[]`. Nada válido → None. ⛔ Quem chama nunca loga o que volta."""
+    """O número do PRÓPRIO cliente (`/cliente`) em dígitos E.164 do Brasil (`55` + DDD + número), o CELULAR primeiro.
+    🔴 RT-B3: as MESMAS fontes do leitor canônico (`infocap_connector._client_phone`): `telefone` e `telefones[]` — NUNCA
+    `contatos[]` (pode ser o contador, um parente: outra pessoa receberia o nome, o vencimento e o link do cliente).
+    🔴 A regra do número é a ÚNICA do produto (`perfil_do_membro.e164_do_brasil`, = o CHECK do banco): um número de
+    OUTRO país nunca vira brasileiro. Nada válido → None (a tela oferece só o "Copiar"). ⛔ Quem chama nunca loga."""
+    from app.services.perfil_do_membro import e164_do_brasil
+
     candidatos: List[str] = []
 
     def juntar(v: Any) -> None:
         if isinstance(v, Mapping):
-            numero = v.get("numero") or v.get("telefone") or v.get("celular") or v.get("fone")
+            numero = v.get("numero")
             if numero:
                 candidatos.append(f"{v.get('ddd') or ''}{numero}")
-        elif isinstance(v, (str, int)):
+        elif isinstance(v, (str, int)) and not isinstance(v, bool):
             candidatos.append(str(v))
 
-    for chave in ("telefones", "contatos"):
-        lista = cliente.get(chave)
-        for v in (lista if isinstance(lista, list) else []):
-            juntar(v)
-    juntar(cliente.get("celular"))
     juntar(cliente.get("telefone"))
+    lista = cliente.get("telefones")
+    for v in (lista if isinstance(lista, list) else []):
+        juntar(v)
     validos: List[str] = []
     for bruto in candidatos:
-        d = re.sub(r"\D", "", bruto).lstrip("0")
-        if len(d) in (10, 11):
-            d = "55" + d
-        if len(d) in (12, 13) and d.startswith("55") and d not in validos:
-            validos.append(d)
+        e164 = e164_do_brasil(bruto)
+        if e164 and e164[1:] not in validos:
+            validos.append(e164[1:])
     celular = next((d for d in validos if len(d) == 13 and d[4] == "9"), None)
     return celular or (validos[0] if validos else None)
 
@@ -374,6 +382,36 @@ def aplicativo_ligado(db: Any, cid: str) -> bool:
     return any(str(x.get("company_id", "")).lower() == cid and x.get("status") == "active" for x in linhas)
 
 
+def quem_eu_cubro_hoje(db: Any, cid: str, uid: str, hoje: date) -> frozenset:
+    """J-P6: as pessoas desta corretora cuja ausência ATIVA hoje tem a mim como substituto (o leitor do perfil)."""
+    try:
+        from app.services.perfil_do_membro import quem_eu_cubro_hoje as ler
+
+        return frozenset(ler(db, cid, uid, hoje=hoje))
+    except Exception as exc:  # noqa: BLE001 — sem a tabela de ausências, "Minhas" é só o que é meu
+        logger.info("[RENOVACOES] ausências ilegíveis para 'Minhas': %s", type(exc).__name__)
+        return frozenset()
+
+
+def busca_do_cabecalho(valor: Optional[str]) -> Optional[str]:
+    """J-B1: o texto da busca vem no cabeçalho `x-busca` (nunca na query, que vai ao log de acesso). Aceita o texto
+    percent-encoded (`encodeURIComponent`) ou cru; os bytes UTF-8 que o Starlette leu como latin-1 voltam a ser texto.
+    ⛔ Nunca é logado. Vazio → None."""
+    texto = str(valor or "")
+    if not texto.strip():
+        return None
+    try:
+        texto = texto.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    if "%" in texto:
+        from urllib.parse import unquote
+
+        texto = unquote(texto)
+    texto = texto.strip()[:TAMANHO_MAXIMO_DA_BUSCA]
+    return texto or None
+
+
 def _casa_busca(linha: Mapping[str, Any], q: str) -> bool:
     texto = _sem_acento(q.strip())
     if not texto:
@@ -388,14 +426,18 @@ def _casa_busca(linha: Mapping[str, Any], q: str) -> bool:
 
 
 def _filtrar(linhas: List[Dict[str, Any]], *, uid: str, escopo: str, estado: Optional[str], ramo: Optional[str],
-             de: Optional[str], ate: Optional[str], seguradora: Optional[str], q: Optional[str]) -> List[Dict[str, Any]]:
+             de: Optional[str], ate: Optional[str], seguradora: Optional[str], q: Optional[str],
+             cobertos: Iterable[str] = ()) -> List[Dict[str, Any]]:
+    """`cobertos` (J-P6, D-131-08): as pessoas que EU cubro numa ausência ATIVA hoje — as renovações delas entram em
+    "Minhas" (o aviso já vem para mim; a lista precisa mostrar o trabalho)."""
     saida = []
+    meus = {uid, *(str(c).lower() for c in cobertos)}
     estados = {e.strip() for e in (estado or "").split(",") if e.strip()}
     ramo_alvo = _sem_acento(ramo or "")
     seg_alvo = _sem_acento(seguradora or "")
     for x in linhas:
-        if escopo == "minhas" and uid not in (str(x.get("dono_user_id") or "").lower(),
-                                              str(x.get("responsavel_user_id") or "").lower()):
+        if escopo == "minhas" and not meus & {str(x.get("dono_user_id") or "").lower(),
+                                              str(x.get("responsavel_user_id") or "").lower()}:
             continue
         if estados and str(x.get("estado")) not in estados and COLUNA_DO_ESTADO.get(str(x.get("estado"))) not in estados:
             continue
@@ -423,10 +465,11 @@ def montar_lista(db: Any, cid: str, uid: str, *, escopo: str = "minhas", estado:
         de = (hoje - timedelta(days=DIAS_PARA_TRAS_PADRAO)).isoformat()
     repo = R.RepositorioDeRenovacoes(db)
     todas = repo.listar(cid, estados=ESTADOS_VISIVEIS)
+    cobertos = quem_eu_cubro_hoje(db, cid, uid, hoje) if escopo == "minhas" else frozenset()
     do_escopo = _filtrar(todas, uid=uid, escopo=escopo, estado=None, ramo=None, de=None, ate=None, seguradora=None,
-                         q=None)
+                         q=None, cobertos=cobertos)
     linhas = _filtrar(do_escopo, uid=uid, escopo=escopo, estado=estado, ramo=ramo, de=de, ate=ate,
-                      seguradora=seguradora, q=q)
+                      seguradora=seguradora, q=q, cobertos=cobertos)
     calcs, ofs = calculos_e_ofertas(db, cid, [x.get("pedido_id") for x in linhas])
     nomes = _nomes_da_equipe(db, cid)
     itens = []
@@ -551,8 +594,10 @@ FOLGA_DO_LINK_REAPROVEITADO = timedelta(days=2)
 def ultima_apresentacao(db: Any, cid: str, linha: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     """A apresentação JÁ publicada desta renovação (`proposta_ref` = o token do `/r/`), para o envio mandar o MESMO
     link que o comercial conferiu — sem versão nova a cada clique. Só vale se o link é DESTA corretora, não foi
-    revogado, não vence nos próximos dias e a versão é uma página de RENOVAÇÃO (`modelo["renovacao"]`). Qualquer
-    dúvida → None (quem chama republica). Devolve {token, url, versao, artifact_id, modelo}."""
+    revogado, não vence nos próximos dias, a versão é uma página de RENOVAÇÃO (`modelo["renovacao"]`) e 🔴 RT-B1:
+    QUEM ATENDE na página é quem atenderia AGORA (`proposta.quem_atende_mudou` — o dono ainda ATIVO, com o MESMO número
+    confirmado; senão a corretora com o mesmo número). Qualquer dúvida → None (quem chama republica). Devolve {token,
+    url, versao, artifact_id, modelo}."""
     token = str(linha.get("proposta_ref") or "").strip()
     if not token or linha.get("estado") not in ("apresentada", "enviada"):
         return None
@@ -575,6 +620,11 @@ def ultima_apresentacao(db: Any, cid: str, linha: Mapping[str, Any]) -> Optional
         modelo = (v or {}).get("payload")
         if not isinstance(modelo, Mapping) or not isinstance(modelo.get("renovacao"), Mapping) \
                 or not modelo.get("opcoes"):
+            return None
+        if P.quem_atende_mudou(db, cid, linha, modelo):
+            # o dono saiu, apagou ou trocou o número (ou passou a ter um): a página velha mandaria o cliente ao
+            # WhatsApp errado — republica com o "quem atende" de agora
+            logger.info("[RENOVACOES] quem atende mudou desde a apresentação: republica")
             return None
         return {"token": token, "url": f"{P._base_do_link(None)}/r/{token}", "versao": int(v.get("version") or 1),
                 "artifact_id": str(s.get("artifact_id")), "modelo": dict(modelo)}
@@ -615,6 +665,18 @@ async def mensagem(db: Any, cid: str, renovacao: Mapping[str, Any], proposta: Ma
     return dict(r)
 
 
+def textos_do_envio(msg: Mapping[str, Any]) -> Dict[str, Any]:
+    """🔴 RT-B2 (contrato com a tela): dois campos, cada um com o seu papel —
+    `texto`       = a mensagem COMPLETA (≤ 700 — as opções, as parcelas, "hoje você paga…", a assinatura): o "Copiar a
+                    mensagem" e o caso "sem telefone" usam ESTA;
+    `texto_curto` = a que vai DENTRO do `wa_me_url`: a completa quando cabe em 500 (B1 do BLOCO 0), senão a curta da G4.
+    `link`        = o `/r/` da apresentação (está nas duas)."""
+    completo = str(msg["texto"])
+    curto = str(msg.get("texto_curto") or "").strip()
+    no_link = completo if (len(completo) <= LIMITE_DO_TEXTO_NO_LINK or not curto) else curto
+    return {"texto": completo, "texto_curto": no_link, "link": msg.get("link")}
+
+
 async def abrir_fonte(db: Any, cid: str) -> Any:
     """A InfoCap DESTA corretora pelo caminho canônico (`dono.abrir_fonte`, nunca por nome — §13.9)."""
     from app.services.sistema_de_gestao import dono as DONO
@@ -650,14 +712,57 @@ def _erro_da_maquina(exc: Exception) -> HTTPException:
     return HTTPException(status_code=409, detail="Esta renovação mudou de estado. Abra de novo para ver como está.")
 
 
-def _apresentar(db: Any, cid: str, rid: str, uid: str, token: Optional[str]) -> Dict[str, Any]:
-    """`calculada → apresentada` (com a referência da página). Já apresentada ou enviada: nada muda."""
+#: quantas vezes a referência é refeita quando outra pessoa mexeu na mesma renovação ao mesmo tempo
+TENTATIVAS_DA_REFERENCIA = 3
+
+
+def _trocar_referencia(db: Any, cid: str, linha: Mapping[str, Any], token: str) -> Dict[str, Any]:
+    """RT-P2: a apresentação foi REPUBLICADA (o link velho vencia, ou quem atende mudou) numa renovação já
+    `apresentada`/`enviada`: a referência passa a ser o link NOVO. Não é transição (o estado fica); CAS pela `versao`
+    e pelo `estado`, como a máquina — perdeu a corrida → `ConcorrenciaPerdida`."""
+    versao = int(linha.get("versao") or 1)
+    patch = {"proposta_ref": token, "versao": versao + 1, "atualizado_em": R.RepositorioDeRenovacoes(db)._agora()}
+    tabela = getattr(db, "client", db).table(R.TABELA)
+    linhas = list(getattr(tabela.update(patch).eq("id", linha["id"]).eq("company_id", cid)
+                          .eq("estado", linha.get("estado")).eq("versao", versao).execute(), "data", None) or [])
+    nova = next((x for x in linhas if str(x.get("company_id", "")).lower() == cid), None)
+    if nova is None:
+        raise R.ConcorrenciaPerdida("a renovação mudou enquanto a referência da apresentação era trocada")
+    return nova
+
+
+def fixar_referencia(db: Any, cid: str, rid: str, uid: str,
+                     proposta: Mapping[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """🔴 RT-P1/P2: a referência GRAVADA (`proposta_ref`) é SEMPRE o link que sai — um link só por renovação.
+    `calculada → apresentada` com o token (pela máquina, CAS). Já apresentada/enviada com OUTRO token: se o gravado
+    ainda VALE (`ultima_apresentacao` — outro clique ao mesmo tempo gravou o dele), ele é ADOTADO e é o que vai; se não
+    vale mais (vencendo, quem atende mudou), a referência passa a ser o novo (CAS). Perdeu a corrida → relê e decide
+    de novo. Devolve (linha, proposta) — a proposta pode não ser a que entrou (a página órfã nunca é enviada)."""
     repo = R.RepositorioDeRenovacoes(db)
-    linha = repo.por_id(cid, rid)
-    if linha.get("estado") != "calculada":
-        return linha
-    campos = {"proposta_ref": token} if token and linha.get("proposta_ref") != token else None
-    return repo.transicionar(cid, rid, "apresentada", por=uid, campos=campos)
+    atual = dict(proposta)
+    for _ in range(TENTATIVAS_DA_REFERENCIA):
+        linha = repo.por_id(cid, rid)
+        token = str(atual.get("token") or "")
+        estado = linha.get("estado")
+        try:
+            if estado == "calculada":
+                return repo.transicionar(cid, rid, "apresentada", por=uid, campos={"proposta_ref": token}), atual
+            if estado not in ("apresentada", "enviada"):
+                raise R.TransicaoInvalida(f"{estado}: não se apresenta")
+            if linha.get("proposta_ref") == token:
+                return linha, atual
+            gravada = ultima_apresentacao(db, cid, linha)
+            if gravada is not None:
+                return linha, gravada      # o link gravado vale: é ELE que vai
+            return _trocar_referencia(db, cid, linha, token), atual
+        except R.ConcorrenciaPerdida:
+            continue
+    raise R.ConcorrenciaPerdida("a renovação mudou de novo durante o envio")
+
+
+def _apresentar(db: Any, cid: str, rid: str, uid: str, token: Optional[str]) -> Dict[str, Any]:
+    """Compatível com a G5: a referência fixada para `token` (ver `fixar_referencia`)."""
+    return fixar_referencia(db, cid, rid, uid, {"token": token})[0]
 
 
 def _registrar_envio(db: Any, cid: str, rid: str, uid: str, *, via: str, proposta: Mapping[str, Any]) -> Dict[str, Any]:
@@ -670,7 +775,16 @@ def _registrar_envio(db: Any, cid: str, rid: str, uid: str, *, via: str, propost
     if linha.get("estado") == "enviada":
         repo._evento(cid, rid, "enviada", "enviada", uid, "aberto_para_envio", dados)   # a escrita da própria máquina
         return linha
-    return repo.transicionar(cid, rid, "enviada", por=uid, motivo="aberto_para_envio", dados=dados)
+    try:
+        return repo.transicionar(cid, rid, "enviada", por=uid, motivo="aberto_para_envio", dados=dados)
+    except R.ConcorrenciaPerdida:
+        # RT-P1: o outro clique levou a `enviada` no mesmo instante (com o MESMO link — `fixar_referencia`): o meu
+        # envio vira só o evento; qualquer outra mudança sobe como 409
+        linha = repo.por_id(cid, rid)
+        if linha.get("estado") != "enviada":
+            raise
+        repo._evento(cid, rid, "enviada", "enviada", uid, "aberto_para_envio", dados)
+        return linha
 
 
 async def _corpo(request: Request) -> Dict[str, Any]:
@@ -700,9 +814,11 @@ async def listar_renovacoes(
     de: Optional[str] = None,
     ate: Optional[str] = None,
     seguradora: Optional[str] = None,
-    q: Optional[str] = None,
+    x_busca: Optional[str] = Header(default=None, alias=CABECALHO_DA_BUSCA),
     x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
 ):
+    """🔴 J-B1: a busca (nome ou CPF/CNPJ) é SÓ o cabeçalho `x-busca`. Um `?q=` na query não é lido (não filtra, não
+    é logado por esta rota) — a query string inteira vai ao log de acesso do uvicorn, o documento não pode ir junto."""
     _require_internal_key(x_key)
     cid, uid = _uuid(company_id, "company_id"), _uuid(user_id, "user_id")
     if escopo not in ESCOPOS:
@@ -712,7 +828,7 @@ async def listar_renovacoes(
             raise HTTPException(status_code=400, detail=f"{nome} é uma data AAAA-MM-DD")
     try:
         return await asyncio.to_thread(montar_lista, _db(), cid, uid, escopo=escopo, estado=estado, ramo=ramo, de=de,
-                                       ate=ate, seguradora=seguradora, q=(q or "")[:80] or None)
+                                       ate=ate, seguradora=seguradora, q=busca_do_cabecalho(x_busca))
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -760,7 +876,7 @@ async def apresentar_renovacao(
         if proposta is None:
             pessoa = await asyncio.to_thread(quem_clica, db, cid, uid)
             proposta = await publicar(db, cid, rid, pessoa)
-        linha = await asyncio.to_thread(_apresentar, db, cid, rid, uid, proposta.get("token"))
+        linha, proposta = await asyncio.to_thread(fixar_referencia, db, cid, rid, uid, proposta)
     except (R.NaoEncontrada, R.ConcorrenciaPerdida, R.TransicaoInvalida) as exc:
         raise _erro_da_maquina(exc)
     return {"token": proposta.get("token"), "url": proposta.get("url"), "versao": proposta.get("versao"),
@@ -792,17 +908,16 @@ async def enviar_renovacao(
         proposta = await asyncio.to_thread(ultima_apresentacao, db, cid, linha)
         if proposta is None:
             proposta = await publicar(db, cid, rid, pessoa)
-        linha = await asyncio.to_thread(_apresentar, db, cid, rid, uid, proposta.get("token"))
+        # 🔴 RT-P1/P2: o link que sai é o GRAVADO (outro clique ao mesmo tempo → o link dele, um só)
+        linha, proposta = await asyncio.to_thread(fixar_referencia, db, cid, rid, uid, proposta)
         msg = await mensagem(db, cid, linha, proposta, pessoa)
-        completo = str(msg["texto"])
-        no_link = completo if len(completo) <= LIMITE_DO_TEXTO_NO_LINK else str(msg.get("texto_curto") or completo)
-        resposta: Dict[str, Any] = {"texto": no_link, "texto_completo": completo, "link": msg.get("link")}
+        resposta: Dict[str, Any] = textos_do_envio(msg)
         if via == "whatsapp":
             numero = await telefone_do_cliente(db, cid, linha)
             if not numero:
                 # sem telefone: nada foi aberto — a pessoa copia a mensagem (e o "copiar" registra o envio)
                 return {**resposta, "sem_telefone": True, "estado": linha.get("estado")}
-            resposta["wa_me_url"] = url_do_wa_me(numero, no_link)
+            resposta["wa_me_url"] = url_do_wa_me(numero, resposta["texto_curto"])
         linha = await asyncio.to_thread(_registrar_envio, db, cid, rid, uid, via=via, proposta=proposta)
     except (R.NaoEncontrada, R.ConcorrenciaPerdida, R.TransicaoInvalida) as exc:
         raise _erro_da_maquina(exc)

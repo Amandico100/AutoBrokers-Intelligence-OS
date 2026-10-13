@@ -25,6 +25,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 
@@ -248,7 +249,10 @@ def test_filtros_estado_coluna_ramo_seguradora_datas_e_busca(mundo):
     assert ids(ramo="auto") == {r1["id"], r2["id"]}
     assert ids(seguradora="seguradora atual teste") == {r1["id"], r2["id"]}
     assert ids(de=HOJE.isoformat(), ate=(HOJE + timedelta(days=7)).isoformat()) == {r1["id"]}
-    assert ids(q="brú") == {r2["id"]}                            # sem acento, sem caixa
+    # §9.3 (conserto K1, J-B1): a busca vem no CABEÇALHO `x-busca` (percent-encoded), nunca na query
+    r = m.cliente.get("/api/renovacoes", params={"company_id": m.a.id, "user_id": m.a.dono1, "escopo": "minhas"},
+                      headers={**H, "x-busca": quote("brú")})
+    assert r.status_code == 200 and {i["id"] for i in r.json()["itens"]} == {r2["id"]}   # sem acento, sem caixa
     r = m.cliente.get("/api/renovacoes", params={"company_id": m.a.id, "user_id": m.a.dono1, "de": "13/10/2026"},
                       headers=H)
     assert r.status_code == 400
@@ -425,8 +429,9 @@ def test_o_texto_longo_vai_curto_no_link_e_inteiro_no_copiar(mundo, monkeypatch)
                         raising=False)
     r1 = _renovacao(m.banco, m.a, nosnum="1", estado="calculada", dono=m.a.dono1)
     corpo = _post(m, r1["id"], "envio", {"company_id": m.a.id, "user_id": m.a.dono1}).json()
-    assert corpo["wa_me_url"].endswith("?text=curto") and corpo["texto"] == "curto"
-    assert corpo["texto_completo"] == longo
+    # §9.3 (conserto K1, RT-B2): `texto` = a COMPLETA (a do "Copiar"), `texto_curto` = a do link
+    assert corpo["wa_me_url"].endswith("?text=curto") and corpo["texto_curto"] == "curto"
+    assert corpo["texto"] == longo and "texto_completo" not in corpo
 
 
 def test_numero_de_whatsapp_prefere_o_celular_e_recusa_lixo():

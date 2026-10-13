@@ -540,12 +540,17 @@ def test_h_duas_corretoras_cada_uma_com_as_suas_pessoas_e_contas(ambiente, api, 
     adm_a = membro(amb, a, papel="admin_company")
     ma, mb = membro(amb, a), membro(amb, b)
 
-    # a própria pessoa conecta o Agger dela; o admin de A conecta o de outra pessoa de A
+    # a própria pessoa conecta o Agger dela
     r = _post(api, "aggers-da-equipe", company_id=a, acao="conectar", dono_user_id=ma, por_user_id=ma,
               usuario="pessoa-a@exemplo.invalid", senha=SENHA_A)
     assert r.status_code == 200, r.text
     outra_a = membro(amb, a)
-    assert _post(api, "aggers-da-equipe", company_id=a, acao="conectar", dono_user_id=outra_a, por_user_id=adm_a,
+    # §9.3 (SPEC-131-B, D-131-07 revê D-131-0-06): o admin NÃO conecta mais o Agger de outra pessoa (J-P4 — a regra do
+    # proxy também no serviço); a lição migra: quem conecta é a própria pessoa
+    r = _post(api, "aggers-da-equipe", company_id=a, acao="conectar", dono_user_id=outra_a, por_user_id=adm_a,
+              usuario="pessoa-a2@exemplo.invalid", senha=SENHA_A)
+    assert r.status_code == 409 and "Meu perfil" in r.json()["detail"], r.text
+    assert _post(api, "aggers-da-equipe", company_id=a, acao="conectar", dono_user_id=outra_a, por_user_id=outra_a,
                  usuario="pessoa-a2@exemplo.invalid", senha=SENHA_A).status_code == 200
     # um membro comum NÃO mexe no Agger de outra pessoa · o admin de A NÃO cadastra pessoa de B
     r = _post(api, "aggers-da-equipe", company_id=a, acao="pausar", dono_user_id=outra_a, por_user_id=ma)

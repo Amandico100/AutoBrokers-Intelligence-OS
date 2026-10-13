@@ -597,8 +597,15 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
         tipo = str(fq.get("tipo") or "").strip().lower()
         dica = (f"Sua parte no conserto se o {bem['rotulo'] or 'carro'} bater." if bem["e_veiculo"]
                 else "Sua parte no prejuízo, se precisar acionar o seguro.")
-        franquia = (f'<div class="sec fq"><span class="lbl">Franquia{" " + _e(tipo) if tipo else ""}</span>'
-                    f'<span class="val">{_e(fq_valor)}</span><span class="hint">{_e(dica)}</span></div>')
+        if renovacao:
+            # laudo de design 131-B, conserto 2: "Franquia reduzida" é só o NOME de uma opção — a linha da franquia diz
+            # "Franquia" e o tipo da seguradora vai para a dica
+            dica = f"{dica} Tipo na seguradora: {tipo}." if tipo else dica
+            franquia = (f'<div class="sec fq"><span class="lbl">Franquia</span>'
+                        f'<span class="val">{_e(fq_valor)}</span><span class="hint">{_e(dica)}</span></div>')
+        else:
+            franquia = (f'<div class="sec fq"><span class="lbl">Franquia{" " + _e(tipo) if tipo else ""}</span>'
+                        f'<span class="val">{_e(fq_valor)}</span><span class="hint">{_e(dica)}</span></div>')
     else:
         franquia = '<div class="sec fq"></div>'
     aria = f"Opção {v} de {n}: {rotulo}, {o.get('seguradora') or ''}" + (f", {_brl(o.get('premio_anual'))} por ano" if preco else "")
@@ -1180,7 +1187,14 @@ def render_proposta(modelo: dict) -> str:
 # =====================================================================================================================
 #: o que só a página de renovação desenha — as variáveis são as do tema da carteira (claro/escuro e impressão)
 CSS_DA_RENOVACAO = """
-.hero h1 .vence{font-size:.6em;font-weight:550;letter-spacing:-.01em;color:var(--p-text);white-space:nowrap}
+.hero h1 .hello{color:var(--ink-strong);font-weight:650}
+.hero h1 .vence{display:block;margin-top:8px;font-size:18px;line-height:1.3;font-weight:550;letter-spacing:-.01em;color:var(--p-text);white-space:nowrap}
+@media (min-width:1024px){
+  .hero.wrap{max-width:720px}
+  .hero h1{max-width:none}
+  .s > h2,.s > .sub{text-align:center}
+  .hxm{text-align:center}
+}
 .hxr{margin:16px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .hx{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:14px 16px;display:grid;gap:2px;min-width:0}
 .hx.on{border-color:var(--p-text);box-shadow:inset 0 0 0 1px var(--p-text)}
@@ -1211,13 +1225,19 @@ def _dif_de_hoje(novo: Any, hoje: Any) -> Optional[str]:
     if abs(AP.reais(d) or 0) < 1:
         return "o mesmo preço de hoje"
     pct = abs(d) / b * 100
-    pct_txt = "menos de 1 %" if pct < 1 else ("+" if d > 0 else "−") + _pct(pct)
+    pct_txt = "menos de 1%" if pct < 1 else ("+" if d > 0 else "−") + _pct(pct)
     return f"{AP.brl(abs(d), False)} {'a mais' if d > 0 else 'a menos'} por ano ({pct_txt})"
 
 
 def _pct(v: Any) -> str:
-    """13.27 → "13 %" · 13.5 → "14 %" (inteiro, meio para cima)."""
-    return f"{int(float(v) + 0.5)} %"
+    """13.27 → "13%" · 13.5 → "14%" (inteiro, meio para cima; sem espaço, como o "100%" da página — laudo de design)."""
+    return f"{int(float(v) + 0.5)}%"
+
+
+def _pct_colado(texto: Any) -> str:
+    """"paga só 70 % da tabela FIPE" → "70%": na página de RENOVAÇÃO o percentual vai colado, como o "100%" das
+    coberturas (laudo de design 131-B). O texto vem da classificação da comparação, que a cotação mostra como sempre."""
+    return re.sub(r"(\d)\s+%", r"\1%", str(texto or ""))
 
 
 def render_renovacao(modelo: dict) -> str:
@@ -1273,7 +1293,8 @@ def render_renovacao(modelo: dict) -> str:
     frase = f"a renovação {do_bem} está pronta"
     h1 = (f'<span class="hello">{_e(nome)}, </span>{_e(frase)}' if nome else _e(frase[:1].upper() + frase[1:]))
     if vence:
-        h1 += f' <span class="vence">· vence em {_e(vence)}</span>'
+        # laudo de design 131-B, conserto 7: o vencimento numa linha PRÓPRIA (o "· vence em" colado quebrava no celular)
+        h1 += f' <span class="vence">vence em {_e(vence)}</span>'
     lede = ", ".join(x for x in (bem["descricao"], bem["ano"]) if x)
     lede = f"{lede}." if lede else ""
 
@@ -1398,7 +1419,7 @@ def render_renovacao(modelo: dict) -> str:
         pd_html = ""
         if pdif:
             pd_html = ('<p class="line-static"><b>Cobrem menos (fora da lista):</b> '
-                       + "; ".join(_e(x["seguradora"]) + (f' ({_e(x.get("por_que_nao_compara"))})'
+                       + "; ".join(_e(x["seguradora"]) + (f' ({_e(_pct_colado(x.get("por_que_nao_compara")))})'
                                                          if str(x.get("por_que_nao_compara") or "").strip() else "")
                                    for x in pdif) + ".</p>")
         nr_html = ("<p class=\"line-static\"><b>Não deram preço:</b> "

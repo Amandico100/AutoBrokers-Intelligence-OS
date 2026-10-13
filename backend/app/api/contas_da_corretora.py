@@ -205,6 +205,12 @@ async def gravar_whatsapp_de_trabalho(request: Request,
     except P.Recusa as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:  # noqa: BLE001
+        if "ck_company_members_whatsapp" in str(e):
+            # RT-P3/J-P3: a regra do Python É a do CHECK; se um dia divergirem, a pessoa lê a correção, nunca um 500.
+            # ⛔ só o TIPO vai ao log (a mensagem do banco pode trazer o número)
+            logger.warning("[CONTAS] o banco recusou o WhatsApp de trabalho (%s)", type(e).__name__)
+            raise HTTPException(status_code=422, detail="Use um número do Brasil com DDD: celular com 9 dígitos "
+                                                        "(começando com 9) ou fixo com 8 (começando de 2 a 5).")
         raise _falhou("gravar o WhatsApp de trabalho", e)
 
 

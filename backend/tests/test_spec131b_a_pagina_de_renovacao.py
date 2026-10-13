@@ -190,7 +190,9 @@ def test_a_pagina_servida_de_renovacao(monkeypatch):
     vence = VENCE.strftime("%d/%m/%Y")
 
     # o hero: o VENCIMENTO é o motivo da página
-    assert _h1(doc).startswith("Ana, a renovação do seu ") and _h1(doc).endswith(f"está pronta · vence em {vence}")
+    # §9.3 (conserto K1, laudo de design 7): o vencimento numa linha PRÓPRIA do título, sem o "·" colado
+    assert _h1(doc).startswith("Ana, a renovação do seu ") and _h1(doc).endswith(f"está pronta vence em {vence}")
+    assert re.search(r'<span class="vence">vence em ', doc) and "· vence em" not in doc
     # 🔴 mutação 1: a 1ª é a "Sua renovação" (a seguradora de HOJE, a mais cara do quadro) — nunca "a melhor das N"
     assert ordem_das_opcoes(doc)[0] == "sua_renovacao"
     assert texto_visivel(re.search(r'<span class="badge b1">(.*?)</span>', doc).group(1)) == "Sua renovação"
@@ -205,7 +207,8 @@ def test_a_pagina_servida_de_renovacao(monkeypatch):
     hoje = texto_visivel(secao)
     assert "O seu seguro hoje × a renovação" in hoje and "7.900,00" in hoje
     assert re.search(r'<span class="hl">Hoje</span><b>Porto</b>', secao)
-    assert re.search(r"O que mudou: R\$ [\d.]+ a mais por ano \(\+\d+ %\); na mesma seguradora\.", hoje), hoje
+    # §9.3 (conserto K1, laudo de design 2): "7%" sem espaço, como o "100%" da página
+    assert re.search(r"O que mudou: R\$ [\d.]+ a mais por ano \(\+\d+%\); na mesma seguradora\.", hoje), hoje
     # os cartões: "por que recomendamos" em cada um; a franquia reduzida e a completa+ da MESMA seguradora
     ids = ordem_das_opcoes(doc)
     assert ids == ["sua_renovacao", "franquia_reduzida", "mais_completa"]

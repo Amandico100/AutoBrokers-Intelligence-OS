@@ -795,11 +795,21 @@ def nota_de(e: Mapping[str, Any], pool: Sequence[Mapping[str, Any]], config: Map
     return int(max(0, min(100, round(total))))
 
 
+def _aspas(rotulo: str, renovacao: bool) -> str:
+    """O nome de uma opção citado no texto: aspas tipográficas na RENOVAÇÃO (laudo de design 131-B, conserto 2); a
+    cotação segue byte a byte como era."""
+    return f"“{rotulo}”" if renovacao else f"\"{rotulo}\""
+
+
 def _motivos(e: Mapping[str, Any], papel: str, *, ranking_completa: Sequence[Mapping[str, Any]],
              referencia: Optional[Mapping[str, Any]], rotulo_ref: Optional[str], pool: Sequence[Mapping[str, Any]],
-             apolice_atual: Optional[Mapping[str, Any]], ramo: int) -> List[str]:
+             apolice_atual: Optional[Mapping[str, Any]], ramo: int, renovacao: bool = False) -> List[str]:
+    """Os motivos do ✓ ("por que recomendamos"). `renovacao` (SPEC-131-B, laudo de design, consertos 1 e 2): um AUMENTO
+    sobre a apólice de hoje NUNCA é motivo (ele é informação neutra no "o seu seguro hoje × a renovação"); a franquia é
+    "Franquia: R$ X" (o "reduzida" é só o NOME de uma opção); "7%" e "100%" sem espaço; aspas tipográficas."""
     m: List[str] = []
     n = len(ranking_completa)
+    pct_sep = "" if renovacao else " "
     if papel in ("completa", "igual") and n:
         pos = next((i for i, r in enumerate(ranking_completa, start=1) if r["oferta_id"] == e["oferta_id"]), None)
         if pos == 1:
@@ -810,16 +820,18 @@ def _motivos(e: Mapping[str, Any], papel: str, *, ranking_completa: Sequence[Map
     elif referencia is not None and rotulo_ref:
         dif = e["premio_anual"] - referencia["premio_anual"]
         if abs(dif) >= 0.01:
-            m.append(f"{reais(abs(dif))} {'a menos' if dif < 0 else 'a mais'} por ano que a opção \"{rotulo_ref}\"")
+            m.append(f"{reais(abs(dif))} {'a menos' if dif < 0 else 'a mais'} por ano que a opção "
+                     f"{_aspas(rotulo_ref, renovacao)}")
     atual = (apolice_atual or {}).get("premio_anual")
     if atual:
         try:
             atual = float(atual)
             dif = e["premio_anual"] - atual
-            if abs(dif) >= 0.01 and atual > 0:
+            # renovação: só a ECONOMIA é motivo — o aumento não ganha ✓ (fica no "o que mudou", neutro)
+            if abs(dif) >= 0.01 and atual > 0 and not (renovacao and dif > 0):
                 pct = abs(dif) / atual * 100
                 m.append(f"{reais(abs(dif))} {'a menos' if dif < 0 else 'a mais'} que a sua apólice atual "
-                         f"({pct:.0f} %)")
+                         f"({pct:.0f}{pct_sep}%)")
         except (TypeError, ValueError):
             pass
     fv = e["franquia"]["valor"]
@@ -827,6 +839,8 @@ def _motivos(e: Mapping[str, Any], papel: str, *, ranking_completa: Sequence[Map
         franqs = [p["franquia"]["valor"] for p in pool if p["franquia"]["valor"]]
         if len(set(franqs)) > 1 and fv <= min(franqs) + 0.005:
             m.append(f"A menor franquia do quadro: {reais(fv)}")
+        elif renovacao:
+            m.append(f"Franquia: {reais(fv)}")
         else:
             tipo = str(e["franquia"].get("tipo") or "").strip().lower()
             m.append(f"Franquia {tipo + ' ' if tipo else ''}de {reais(fv)}")
@@ -842,32 +856,34 @@ def _motivos(e: Mapping[str, Any], papel: str, *, ranking_completa: Sequence[Map
         m.append(f"Em até {p['vezes']}x de {reais(p['valor'])}")
     m = m[:MAX_MOTIVOS]
     if len(m) < 2:
-        m.append("Cobertura completa: batida, roubo, incêndio e danos a terceiros, 100 % da tabela FIPE"
+        m.append(f"Cobertura completa: batida, roubo, incêndio e danos a terceiros, 100{pct_sep}% da tabela FIPE"
                  if ramo == RAMO_AUTO else "Mesma configuração de coberturas das outras opções comparadas")
     return m
 
 
 def _o_que_muda(e: Mapping[str, Any], ref: Optional[Mapping[str, Any]], rotulo_ref: Optional[str],
-                papel: str = "") -> List[str]:
+                papel: str = "", renovacao: bool = False) -> List[str]:
     """`papel == "minima"` (D-130A1-05): a mínima foi PEDIDA sem carro reserva. Se a seguradora não informou o carro
     reserva, "Sem carro reserva" é a leitura que cobre MENOS (nunca a que promete a mais); se ela DEU dias mesmo assim,
-    vale o que ela devolveu."""
+    vale o que ela devolveu. `renovacao` (laudo de design 131-B, conserto 2): aspas tipográficas e a franquia como
+    "Franquia: R$ X" (o "(R$ X menor)" repetia o que o "por que" do cartão já diz)."""
     if ref is None or ref["oferta_id"] == e["oferta_id"]:
         return []
-    r = rotulo_ref or "recomendada"
+    r = _aspas(rotulo_ref or "recomendada", renovacao)
     saida: List[str] = []
     dif = e["premio_anual"] - ref["premio_anual"]
     if abs(dif) >= 0.01:
-        saida.append(f"{reais(abs(dif))} {'a menos' if dif < 0 else 'a mais'} por ano que a opção \"{r}\"")
+        saida.append(f"{reais(abs(dif))} {'a menos' if dif < 0 else 'a mais'} por ano que a opção {r}")
     if e["seguradora"] != ref["seguradora"]:
-        saida.append(f"Seguradora {e['seguradora']} (na opção \"{r}\": {ref['seguradora']})")
+        saida.append(f"Seguradora {e['seguradora']} (na opção {r}: {ref['seguradora']})")
     fv, fr = e["franquia"]["valor"], ref["franquia"]["valor"]
     if fv is not None and fr is not None and abs(fv - fr) >= 0.01:
-        saida.append(f"Franquia de {reais(fv)} ({reais(abs(fv - fr))} {'menor' if fv < fr else 'maior'})")
+        saida.append(f"Franquia: {reais(fv)}" if renovacao
+                     else f"Franquia de {reais(fv)} ({reais(abs(fv - fr))} {'menor' if fv < fr else 'maior'})")
     ce, cr = _caracteristicas(e), _caracteristicas(ref)
     if ce["reserva"] is not None and cr["reserva"] is not None and ce["reserva"] != cr["reserva"]:
         saida.append("Sem carro reserva" if ce["reserva"] == 0
-                     else f"Carro reserva por {ce['reserva']} dias (na opção \"{r}\": {cr['reserva']})")
+                     else f"Carro reserva por {ce['reserva']} dias (na opção {r}: {cr['reserva']})")
     elif papel == "minima" and not ce["reserva"] and cr["reserva"] != 0:
         saida.append("Sem carro reserva")
     if ce["vidros"] is not None and cr["vidros"] is not None and ce["vidros"] != cr["vidros"]:
@@ -881,6 +897,7 @@ def _o_que_muda(e: Mapping[str, Any], ref: Optional[Mapping[str, Any]], rotulo_r
 def _opcao(e: Mapping[str, Any], id_: str, rotulo: str, papel: str, **ctx: Any) -> Dict[str, Any]:
     ramo = int(e.get("ramo") or RAMO_AUTO)
     ref, rotulo_ref = ctx["referencia"], ctx["rotulo_ref"]
+    renovacao = bool(ctx.get("renovacao"))          # só `_opcoes_da_renovacao` liga (a cotação segue byte a byte)
     return {
         "id": id_, "rotulo": rotulo, "seguradora": e["seguradora"], "produto": e["produto"],
         "premio_anual": e["premio_anual"], "parcelas": e["parcelas"], "franquia": dict(e["franquia"]),
@@ -888,8 +905,9 @@ def _opcao(e: Mapping[str, Any], id_: str, rotulo: str, papel: str, **ctx: Any) 
         "nota": nota_de(e, ctx["pool"], ctx["config"]),
         "motivos": _motivos(e, papel, ranking_completa=ctx["ranking_completa"],
                             referencia=None if ref is None or ref["oferta_id"] == e["oferta_id"] else ref,
-                            rotulo_ref=rotulo_ref, pool=ctx["pool"], apolice_atual=ctx["apolice_atual"], ramo=ramo),
-        "o_que_muda": _o_que_muda(e, ref, rotulo_ref, papel),
+                            rotulo_ref=rotulo_ref, pool=ctx["pool"], apolice_atual=ctx["apolice_atual"], ramo=ramo,
+                            renovacao=renovacao),
+        "o_que_muda": _o_que_muda(e, ref, rotulo_ref, papel, renovacao=renovacao),
         "tem_pdf_da_seguradora": e.get("tem_pdf_da_seguradora", False),
         "ref": {"oferta_id": e["oferta_id"], "calculo_id": e["calculo_id"],
                 "corretora_company_id": e["corretora_company_id"], "opcao": e["opcao"]},
@@ -1026,7 +1044,7 @@ def _opcoes_da_renovacao(comparacao: Comparacao, *, apolice_atual: Mapping[str, 
             unicas.append(item)
     unicas = unicas[:na_pagina]
     ctx = {"referencia": base, "rotulo_ref": unicas[0][2], "pool": pool, "config": config, "ranking_completa": A,
-           "apolice_atual": apolice_atual}
+           "apolice_atual": apolice_atual, "renovacao": True}
     saida = []
     for e, id_, rot, papel in unicas:
         o = _opcao(e, id_, rot, papel, **ctx)

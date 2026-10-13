@@ -28,8 +28,6 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 TABELA_AUSENCIAS = "membro_ausencias"
-#: E.164: "+", 8 a 15 dígitos, sem zero à esquerda do país
-_E164 = re.compile(r"^\+[1-9]\d{7,14}$")
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 #: 💭 uma ausência cobre no máximo isto de dias (férias longas viram duas); evita um "até 2099" por engano
 DURACAO_MAXIMA_DIAS = 180
@@ -101,26 +99,58 @@ def _primeiro_nome(nome: str) -> str:
 # ---------------------------------------------------------------------------------------------------------------------
 # o WhatsApp de trabalho (D-131-41)
 # ---------------------------------------------------------------------------------------------------------------------
+#: 🔴 a MESMA regra do CHECK `ck_company_members_whatsapp_e164` (migration 20261014_01): +55, DDD sem zero, celular
+#: com 9 + 8 dígitos ou fixo começando em 2–5 com 8 dígitos. O Python e o banco nunca discordam (RT-P3/J-P3).
+_E164_DO_BRASIL = re.compile(r"^\+55[1-9][1-9](9[0-9]{8}|[2-5][0-9]{7})$")
+
+
+def _nacional_de(texto: Any) -> Optional[str]:
+    """Os dígitos NACIONAIS (DDD + número) de um texto de telefone — ou None quando ele é de OUTRO país. "+55 …",
+    "0055 …", "55 11 9…" (12–13 dígitos), "011 3333-4444" (o 0 de longa distância) e "11 9…" são do Brasil;
+    "+1 …", "+351 …", "001 …" não são (e nunca viram um número brasileiro de DDD trocado)."""
+    bruto = str(texto or "").strip()
+    digitos = re.sub(r"\D", "", bruto)
+    if not digitos:
+        return None
+    if bruto.startswith("+"):
+        return digitos[2:] if digitos.startswith("55") else None
+    if digitos.startswith("00"):
+        return digitos[4:] if digitos.startswith("0055") else None
+    if len(digitos) in (12, 13) and digitos.startswith("55"):
+        return digitos[2:]
+    return digitos[1:] if digitos.startswith("0") else digitos
+
+
+def e164_do_brasil(texto: Any) -> Optional[str]:
+    """"+55DDDNÚMERO" quando o texto é um número do Brasil válido pela regra do banco — senão None. A régua ÚNICA do
+    produto para número de WhatsApp: o de trabalho (aqui) e o do cliente no envio (`api.renovacoes`)."""
+    nacional = _nacional_de(texto)
+    numero = f"+55{nacional}" if nacional else ""
+    return numero if _E164_DO_BRASIL.match(numero) else None
+
+
 def normalizar_whatsapp(texto: Any) -> str:
-    """O número em E.164. Aceita "+55 (11) 9…", "5511…" ou "11 9…" (sem país → Brasil). Recusa o que não é número de
-    WhatsApp: fora do E.164, ou um número do Brasil sem DDD válido / com tamanho errado."""
+    """O número em E.164 do Brasil. Aceita "+55 (11) 9…", "5511…" ou "11 9…" (sem país → Brasil). Recusa, com a frase
+    de correção, tudo o que o CHECK do banco recusaria (RT-P3: nunca um 500): outro país, DDD inválido, tamanho
+    errado, celular sem o 9, fixo que não começa em 2–5."""
     bruto = str(texto or "").strip()
     digitos = re.sub(r"\D", "", bruto)
     if not digitos:
         raise Recusa("Digite o número do WhatsApp em que você atende os clientes.")
-    if not bruto.startswith("+") and len(digitos) in (10, 11):
-        digitos = "55" + digitos            # o número nacional: DDD + número
-    numero = "+" + digitos
-    if not _E164.match(numero):
-        raise Recusa("Este número não parece um WhatsApp. Use o DDD e o número, por exemplo (11) 9 1234-5678.")
-    if digitos.startswith("55"):
-        nacional = digitos[2:]
-        ddd = nacional[:2]
-        if len(nacional) not in (10, 11) or ddd[0] == "0" or ddd[1] == "0":
-            raise Recusa("Confira o DDD e o número: no Brasil são 2 dígitos de DDD e 8 ou 9 do número.")
-        if len(nacional) == 11 and nacional[2] != "9":
-            raise Recusa("Celular no Brasil começa com 9 depois do DDD. Confira o número.")
-    return numero
+    numero = e164_do_brasil(bruto)
+    if numero:
+        return numero
+    nacional = _nacional_de(bruto)
+    if nacional is None:
+        raise Recusa("Use um número do Brasil: +55, o DDD e o número, por exemplo +55 (11) 9 1234-5678. "
+                     "Se faltou o 55, coloque-o depois do +.")
+    ddd = nacional[:2]
+    if len(nacional) not in (10, 11) or len(ddd) < 2 or "0" in ddd:
+        raise Recusa("Confira o DDD e o número: no Brasil são 2 dígitos de DDD e 8 ou 9 do número.")
+    if len(nacional) == 11:
+        raise Recusa("Celular no Brasil começa com 9 depois do DDD. Confira o número.")
+    raise Recusa("Este número não parece um WhatsApp. Celular tem 9 dígitos depois do DDD, começando com 9; "
+                 "telefone fixo tem 8, começando de 2 a 5.")
 
 
 def _so_a_propria_pessoa(user_id: str, por_user_id: Any) -> None:
@@ -184,6 +214,22 @@ def _ausencias(db: Any, company_id: str, *, coluna: str, user_id: str, desde: da
                   key=lambda x: str(x.get("de")))
 
 
+def _cruza(ausencia: Dict[str, Any], d0: date, d1: date) -> bool:
+    return str(ausencia.get("de"))[:10] <= d1.isoformat() and str(ausencia.get("ate"))[:10] >= d0.isoformat()
+
+
+def quem_eu_cubro_hoje(db: Any, company_id: Any, user_id: Any, *, hoje: Optional[date] = None) -> List[str]:
+    """J-P6: os `user_id` desta corretora cuja ausência ATIVA hoje tem `user_id` como substituto — as renovações deles
+    entram no "Minhas" de quem cobre (D-131-08). Filtro `company_id` no banco e de novo aqui."""
+    cid, uid = _uuid(company_id, "company_id"), _uuid(user_id, "user_id")
+    dia = (hoje or _hoje()).isoformat()
+    linhas = _dados(_t(db, TABELA_AUSENCIAS).select("id, company_id, user_id, substituto_user_id, de, ate")
+                    .eq("company_id", cid).eq("substituto_user_id", uid).lte("de", dia).gte("ate", dia).execute())
+    return sorted({str(a.get("user_id")).lower() for a in linhas
+                   if str(a.get("company_id")).lower() == cid and str(a.get("substituto_user_id")).lower() == uid
+                   and str(a.get("de"))[:10] <= dia <= str(a.get("ate"))[:10] and a.get("user_id")})
+
+
 def criar_ausencia(db: Any, company_id: Any, *, user_id: Any, substituto_user_id: Any, de: Any, ate: Any,
                    por_user_id: Any, hoje: Optional[date] = None) -> Dict[str, Any]:
     """Cria a ausência de `user_id` com OUTRA pessoa ativa da MESMA corretora cobrindo. Recusa: a própria pessoa como
@@ -210,8 +256,13 @@ def criar_ausencia(db: Any, company_id: Any, *, user_id: Any, substituto_user_id
     if not _e_membro_ativo(db, cid, sub):
         raise Recusa("Quem vai cobrir precisa ser uma pessoa ativa da equipe desta corretora.")
     for a in _ausencias(db, cid, coluna="user_id", user_id=uid, desde=dia):
-        if str(a.get("de"))[:10] <= d1.isoformat() and str(a.get("ate"))[:10] >= d0.isoformat():
+        if _cruza(a, d0, d1):
             raise Recusa("Já existe uma ausência marcada neste período. Apague a outra antes.")
+    # RT-P5: quem cobre não pode estar FORA no mesmo período (A fora com B cobrindo e B fora com A cobrindo: o aviso
+    # iria a quem está de férias, e ninguém cuidaria das renovações)
+    for a in _ausencias(db, cid, coluna="user_id", user_id=sub, desde=dia):
+        if _cruza(a, d0, d1):
+            raise Recusa("Quem vai cobrir também está fora nestes dias. Escolha outra pessoa.")
     linha = {"company_id": cid, "user_id": uid, "substituto_user_id": sub, "de": d0.isoformat(),
              "ate": d1.isoformat(), "criado_por": por}
     criada = _dados(_t(db, TABELA_AUSENCIAS).insert(linha).execute())
@@ -312,5 +363,5 @@ def situacao_da_equipe(db: Any, company_id: Any, *, hoje: Optional[date] = None)
     return {"pessoas": pessoas}
 
 
-__all__ = ("Recusa", "normalizar_whatsapp", "gravar_whatsapp_trabalho", "remover_whatsapp_trabalho", "criar_ausencia",
+__all__ = ("Recusa", "e164_do_brasil", "normalizar_whatsapp", "quem_eu_cubro_hoje", "gravar_whatsapp_trabalho", "remover_whatsapp_trabalho", "criar_ausencia",
            "apagar_ausencia", "ler_perfil", "situacao_da_equipe", "DURACAO_MAXIMA_DIAS", "TABELA_AUSENCIAS")

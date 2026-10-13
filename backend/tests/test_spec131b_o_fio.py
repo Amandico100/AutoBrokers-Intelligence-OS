@@ -154,9 +154,11 @@ def test_o_fio_da_renovacao_calculada_ao_whatsapp_do_comercial(fio, caplog):
     env = r.json()
     assert env["wa_me_url"].startswith(f"https://wa.me/{TELEFONE}?text=")
     no_link = unquote(env["wa_me_url"].split("?text=", 1)[1])
-    assert no_link == env["texto"] and f"/r/{token}" in env["texto"]
-    assert f"/r/{token}" in env["texto_completo"] and "Aqui é Bruna" in env["texto_completo"]
-    assert "Ana" in env["texto_completo"] and "a melhor das" not in env["texto_completo"]
+    # §9.3 (conserto K1, RT-B2): `texto` = a mensagem COMPLETA (a do "Copiar"); `texto_curto` = a do link
+    assert no_link == env["texto_curto"] and f"/r/{token}" in env["texto_curto"]
+    assert len(env["texto"]) > len(env["texto_curto"]) and "texto_completo" not in env
+    assert f"/r/{token}" in env["texto"] and "Aqui é Bruna" in env["texto"]
+    assert "Ana" in env["texto"] and "a melhor das" not in env["texto"]
     assert len(m.banco.linhas("artifact_versions")) == versoes_antes + 1, "o envio republicou a página"
     assert env["estado"] == "enviada" and _linha(m)["estado"] == "enviada"
     ev = _eventos(m)

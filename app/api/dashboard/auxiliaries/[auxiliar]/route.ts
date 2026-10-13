@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCompanyMember, assertSameOrigin } from '@/lib/admin/admin-auth';
 import { installTenantAuxiliary, changeTenantAuxiliaryStatus } from '@/lib/admin/tenant-auxiliary-store';
 import { getBackendUrl } from '@/lib/backend-url';
+import { INSTALAR_JA_LIGA } from '@/lib/auxiliaries/catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ aux
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   const body = await req.json().catch(() => ({}));
   const action = typeof body.action === 'string' ? body.action : 'install';
+
+  // SPEC-131-B (RT-P7): nos aplicativos em que INSTALAR já é LIGAR (a madrugada da Renovação roda assim que está
+  // `active`), ligar exige a confirmação EXPLÍCITA no corpo — `{"confirmar_ligar": true}`, o que a tela manda depois do
+  // "Ligar Renovação?". A trava mora no servidor: um POST sem corpo (o `action` padrão é `install`) não liga nada.
+  if (action === 'install' || action === 'resume') {
+    const { data: tpl } = await auth.supabase.from('auxiliary_templates')
+      .select('id, slug').eq('id', templateId).maybeSingle();
+    if (tpl?.slug && INSTALAR_JA_LIGA.has(String(tpl.slug)) && body?.confirmar_ligar !== true) {
+      return NextResponse.json({
+        ok: false,
+        error: 'confirmar_ligar',
+        detalhe: 'Ligar este aplicativo começa o trabalho na próxima madrugada. Confirme em "Ligar" para continuar.',
+      }, { status: 400 });
+    }
+  }
 
   if (action === 'install') {
     let backend: { url: string; apiKey: string } | undefined;

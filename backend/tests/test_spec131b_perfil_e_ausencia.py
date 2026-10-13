@@ -178,14 +178,15 @@ def _linha(banco, cid, uid):
 @pytest.mark.parametrize("entrada,esperado", [
     ("(11) 9 1234-5678", NUMERO), ("11912345678", NUMERO), ("+55 11 91234-5678", NUMERO), ("5511912345678", NUMERO),
     ("(11) 3123-4567", "+551131234567"),                          # fixo com WhatsApp Business (8 dígitos)
-    ("+351 912 345 678", "+351912345678"),                        # fora do Brasil: só o E.164
 ])
 def test_o_numero_vira_e164(entrada, esperado):
     assert P.normalizar_whatsapp(entrada) == esperado
 
 
+# §9.3 (conserto K1, RT-P3/J-P3): "+351 …" era aceito e o CHECK do banco o recusava (500). A regra do Python agora É a
+# do CHECK (+55, fixo 2–5): o número de outro país vira recusa com a frase de correção
 @pytest.mark.parametrize("entrada", ["", "abc", "123", "(01) 91234-5678", "(11) 8123-45678", "+0011912345678",
-                                     "+55 11 91234-567890"])
+                                     "+55 11 91234-567890", "+351 912 345 678"])
 def test_numero_que_nao_e_whatsapp_e_recusado(entrada):
     with pytest.raises(P.Recusa):
         P.normalizar_whatsapp(entrada)
