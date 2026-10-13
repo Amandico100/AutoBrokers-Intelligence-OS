@@ -76,6 +76,7 @@ _RE_ESPACOS = re.compile(r"\s+")
 # Os códigos que a página devolve no preparo, em português de gente (o `erro` que a corretora lê pela porta).
 MOTIVOS_LEGIVEIS = {
     "veiculo_sem_fipe_ou_ano": "o veículo não tem FIPE ou ano reconhecidos pelo Agger",
+    "veiculo_sem_combustivel": "o combustível do veículo não veio e a FIPE do modelo não o diz ao Agger",
     "nenhuma_seguradora": "nenhuma seguradora ativa na conta do Agger para este cálculo",
     "seguradora_anterior_desconhecida": "a seguradora anterior da renovação não existe no Agger",
     "seguradora_anterior_ambigua": "a seguradora anterior da renovação casa com mais de uma no Agger",
@@ -549,6 +550,9 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
     if (sf !== 200 || !Array.isArray(d2) || !d2.length) return {erro: 'fipe_modelo_http_' + sf};
     fm = d2;
     cot.automoveis = [M.montarAutomovel(auto, bp, fm)];
+    // SPEC-131-A F6: sem combustível (o pedido não trouxe e a FIPE não tem rótulo que a tela conheça) NADA sai — 📊 13/10
+    // o calcularV2 sem ele voltou 64/64 "É necessário informar o tipo de combustível."
+    if (cot.automoveis[0].combustivel == null) return {erro: 'veiculo_sem_combustivel'};
     const [sc, ce] = await pegar(a.pdocs + '/calculo/cep?cep=' + encodeURIComponent(cot.segurado.cep), a.tPdocs);
     if (sc === 200 && ce) for (const k of ['logradouro', 'cidade', 'bairro', 'uf']) if (ce[k] != null) cot.segurado[k] = ce[k];
     if (cot.renovacao) {

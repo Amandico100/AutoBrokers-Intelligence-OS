@@ -191,7 +191,7 @@ CAMPOS_DO_PEDIDO_AUTO: dict = {
 # só no disparo, lá na frente. A PORTA traduz com ESTA tabela e recusa o resto como `PedidoIncompleto` (nunca um
 # disparo recusado depois de o pedido entrar na fila). 🔴 Só entra aqui texto→código MEDIDO (CLAUDE.md §9.5):
 #   📊 sexo "M"/"F" ............ 18/18 corpos do `calcularV2` das fixtures (gravacao_r1/r2, vivo_conta_a/b)
-#   📊 combustível Flex = 6 .... 18/18 corpos (e `montador.js` COMBUSTIVEL)
+#   📊 combustível Flex = 6 .... 18/18 corpos (e `montador.js` COMBUSTIVEL); os outros 6, a lista da tela (F6, abaixo)
 #   📊 relação "próprio" = 1 ... 17/18 condutores (o 18º, código 14, não tem rótulo medido)
 # Estado civil (📊 códigos 1, 2 e 4 nas fixtures), uso, garagem, fabricante: o RÓTULO de cada código NÃO foi
 # medido — só o código entra (P-129B-05: medir a lista de opções da tela e acrescentar aqui).
@@ -199,7 +199,13 @@ CODIGOS_MEDIDOS: dict = {
     ("segurado", "sexo"): {"m": "M", "masculino": "M", "f": "F", "feminino": "F"},
     ("condutor", "sexo"): {"m": "M", "masculino": "M", "f": "F", "feminino": "F"},
     ("segurado", "tipo_pessoa"): {"f": "F", "fisica": "F", "j": "J", "juridica": "J"},
-    ("veiculo", "combustivel"): {"flex": 6},
+    # 📊 SPEC-131-A F6 (13/10): a lista do campo Combustível da TELA do Agger, lida no bundle do app (o chunk do
+    # formulário AUTO: `static combustivel=[{value,viewValue}]`, o mesmo `inArrayValidator` que exige o campo). O rótulo
+    # é o `viewValue` da tela (sem acento, minúsculo); o código é o `value` que vai no `calcularV2`.
+    # CONTROLE: FLEX = 6 é o código dos 18/18 corpos gravados — a lista lida e o que a tela manda são a mesma coisa.
+    # Espelho em `montador.js` `COMBUSTIVEL` (o rótulo da FIPE → código): mudou aqui, muda lá (o teste do perfil confere).
+    ("veiculo", "combustivel"): {"gasolina": 1, "alcool": 2, "diesel": 3, "eletrico": 5, "flex": 6, "tetrafuel": 10,
+                                 "hibrido": 11},
     ("condutor", "relacao_com_segurado"): {"proprio": 1},
 }
 #: campos que o robô manda como NÚMERO inteiro (`agger_robo._int`): código de lista ou quantidade

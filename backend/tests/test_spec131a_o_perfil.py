@@ -11,7 +11,8 @@ MOTOR real (`FonteInfocap._get` → os leitores novos → `perfil_da_renovacao.m
   · cada SUPOSIÇÃO sai marcada "não conferido" com o porquê (e vira `assumido` no pedido) — a mutação que tira uma marca
     fica VERMELHA (`test_toda_suposicao_sai_marcada`);
   · campo ausente → `pendente(falta_dado)` com o NOME; cadastro de outra pessoa ou CPF inválido → não entra;
-  · na renovação a placa supre FIPE/ano/combustível (D-133A-03 estendida); na cotação, não (a linha de controle);
+  · na renovação a placa supre FIPE/ano/combustível (D-133A-03 estendida; F6: os 7 códigos da tela); na cotação,
+    não (a linha de controle); o rótulo da InfoCap → o código da tela, e as 3 tabelas são a mesma (F6);
   · o cadastro do cliente NÃO fica no cache.
 
 ⛔ Tudo sintético (o CPF de exemplo da 129-B, "Pessoa Sintetica"); nenhuma corretora pelo nome (CLAUDE.md §13.9).
@@ -277,11 +278,73 @@ def test_sexo_vazio_sai_do_nome_marcado_ou_fica_faltando(monkeypatch):
     assert "sexo" not in perfil.get("segurado", {}) and "segurado.sexo" not in nao
 
 
-def test_combustivel_que_nao_e_flex_fica_faltando(monkeypatch):
-    perfil, nao, _r = _montar(monkeypatch, itens=[item_auto(combustivel="Gasolina")])
-    assert "combustivel" not in perfil["veiculo"] and "veiculo.combustivel" not in nao
-    perfil, _nao, _r = _montar(monkeypatch, itens=[item_auto(combustivel="Alcool/Gasolina")])
-    assert perfil["veiculo"]["combustivel"] == "flex"
+#: F6 — o rótulo da InfoCap → o código da TELA do Agger. 📊 13/10, a lista do campo Combustível lida no bundle do app:
+#: GASOLINA 1 · ALCOOL 2 · DIESEL 3 · ELÉTRICO 5 · FLEX 6 · TETRAFUEL 10 · HÍBRIDO 11 (controle: FLEX 6 = 18/18 corpos).
+#: Os rótulos da InfoCap são os do F5 (📊 40 AUTO: Flex 13 · Gasolina 7 · Diesel 3 · Eletrico 2 · Hibrido 1 …).
+COMBUSTIVEL_DA_TELA = {"gasolina": 1, "alcool": 2, "diesel": 3, "eletrico": 5, "flex": 6, "tetrafuel": 10, "hibrido": 11}
+
+
+@pytest.mark.parametrize("rotulo,codigo", [
+    ("Alcool/Gasolina", 6), ("Gasolina", 1), ("GASOLINA", 1), ("Diesel", 3), ("Elétrico", 5), ("Eletrico", 5),
+    ("Híbrido", 11), ("Hibrido", 11), ("Alcool", 2), ("Etanol", 2), ("Flex", 6), ("Tetrafuel", 10)])
+def test_combustivel_pelo_rotulo_da_infocap_vira_o_codigo_da_tela(monkeypatch, rotulo, codigo):
+    perfil, nao, _r = _montar(monkeypatch, itens=[item_auto(combustivel=rotulo)])
+    assert "veiculo.combustivel" not in nao                     # VEIO da InfoCap: não é suposição
+    apolice, ficha = FIO.ficha_sintetica("AUTO")
+    pedido = P.de_apolice(apolice, perfil, ficha=ficha, config=F2T.CONFIG)
+    assert pedido.valor("veiculo", "combustivel") == codigo, rotulo
+    assert pedido.sem_codigo() == [] and "veiculo.combustivel" not in M.o_que_falta(pedido)
+
+
+@pytest.mark.parametrize("rotulo", ["", None, "Nao Informado", "GNV", "Querosene"])
+def test_combustivel_sem_rotulo_conhecido_a_placa_supre_marcado_e_sem_placa_falta(monkeypatch, rotulo):
+    perfil, nao, _r = _montar(monkeypatch, itens=[item_auto(combustivel=rotulo)])
+    assert "combustivel" not in perfil["veiculo"]
+    assert nao["veiculo.combustivel"] == PR.POR_QUE_PELA_PLACA            # a placa supre — DECLARADO
+    apolice, ficha = FIO.ficha_sintetica("AUTO")
+    pedido = P.de_apolice(apolice, perfil, ficha=ficha, config=F2T.CONFIG)
+    assert pedido.valor("veiculo", "combustivel") is None and "veiculo.combustivel" not in M.o_que_falta(pedido)
+    # CONTROLE: sem placa nada é suprido do nada — falta, com o nome
+    sem_placa = P.de_apolice(F2T._apolice("AUTO"), {**perfil, "veiculo": {}}, ficha=None, config=F2T.CONFIG)
+    assert "veiculo.combustivel" in sem_placa.faltando(origem="auxiliar", servico="renovacao")
+
+
+def test_as_tres_tabelas_do_combustivel_sao_a_mesma():
+    """InfoCap → rótulo (`perfil_da_renovacao`), rótulo → código (`contrato.CODIGOS_MEDIDOS`: a porta — o canal também)
+    e o rótulo da FIPE → código (`montador.js`, na página): UMA lista, a da tela. Mudou uma, este guarda fica vermelho."""
+    import re as _re
+    from portal_worker.multicalculo.contrato import CODIGOS_MEDIDOS
+
+    assert CODIGOS_MEDIDOS[("veiculo", "combustivel")] == COMBUSTIVEL_DA_TELA
+    assert set(PR.COMBUSTIVEL_NO_AGGER.values()) <= set(COMBUSTIVEL_DA_TELA)
+    js = (BACKEND / "portal_worker" / "multicalculo" / "montador.js").read_text(encoding="utf-8")
+    bloco = _re.search(r"const COMBUSTIVEL = \[(.*?)\];", js, _re.S).group(1)       # a FORMA da declaração (§9.4)
+    pares = {k.lower(): int(v) for k, v in _re.findall(r"\['([A-Z]+)', (\d+)\]", bloco)}
+    assert pares == COMBUSTIVEL_DA_TELA
+
+
+def test_o_montador_traduz_o_rotulo_da_fipe_como_a_tela():
+    """O MOTOR na página (`montador.js` `codigoDoCombustivel` e `montarAutomovel`), rodado no node: o rótulo da tabela
+    FIPE do modelo → o código, para TODO combustível (a F5 só traduzia o Flex — 📊 64/64 recusas); vazio → nada."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("sem node nesta máquina")
+    js = (BACKEND / "portal_worker" / "multicalculo" / "montador.js").as_posix()
+    prog = ("global.window={};eval(require('fs').readFileSync(%r,'utf8'));const M=window.__abM;"
+            "const r={};for(const x of ['Gasolina','Flex','Diesel','\\u00c1lcool','El\\u00e9trico','H\\u00edbrido',"
+            "'Tetrafuel','']) r[x]=M.codigoDoCombustivel(x);"
+            "const fm=[{modelo:'X',fipeValores:[{valor:1,mesVersaoTabela:9,anoVersaoTabela:2026,combustivel:'Diesel'},"
+            "{valor:2,mesVersaoTabela:8,anoVersaoTabela:2026,combustivel:'Flex'}]}];"
+            "r.auto=M.montarAutomovel({combustivel:null},{fipe:'1',anoMod:2020},fm).combustivel;"
+            "r.vence=M.montarAutomovel({combustivel:1},{fipe:'1',anoMod:2020},fm).combustivel;"
+            "console.log(JSON.stringify(r))") % js
+    saida = json.loads(subprocess.run([node, "-e", prog], capture_output=True, text=True, encoding="utf-8",
+                                      timeout=60, check=True).stdout)
+    assert saida == {"Gasolina": 1, "Flex": 6, "Diesel": 3, "Álcool": 2, "Elétrico": 5, "Híbrido": 11, "Tetrafuel": 10,
+                     "": None, "auto": 3, "vence": 1}     # a tabela MAIS RECENTE decide; o pedido VENCE a FIPE
 
 
 def test_sinistro_e_fipe(monkeypatch):
@@ -325,20 +388,18 @@ def test_toda_suposicao_sai_marcada(monkeypatch):
 # =====================================================================================================================
 # 4. A PLACA SUPRE NA RENOVAÇÃO — e não na cotação (a linha de controle)
 # =====================================================================================================================
-def test_a_placa_supre_fipe_e_ano_na_renovacao_nunca_o_combustivel_nem_na_cotacao():
+def test_a_placa_supre_fipe_ano_e_combustivel_na_renovacao_e_nao_na_cotacao():
+    """F6 (§9.3 — a verdade da F5 venceu): o combustível VOLTA a ser suprido pela placa na renovação, porque os 7 códigos
+    da tela foram medidos e o montador traduz o rótulo da FIPE como a tela (a F5 o tirou: só o Flex tinha código)."""
     apolice, ficha = FIO.ficha_sintetica("AUTO")
     perfil = F2T._perfil_auto()
     perfil["veiculo"] = {}                                    # sem FIPE, ano e combustível
     pedido = P.de_apolice(apolice, perfil, ficha=ficha, config=F2T.CONFIG)
-    supridos = {"veiculo.fipe", "veiculo.ano_fabricacao"}
+    supridos = {"veiculo.fipe", "veiculo.ano_fabricacao", "veiculo.combustivel"}
     assert not supridos & set(pedido.faltando(origem="auxiliar", servico="renovacao"))
     assert not supridos & set(M.o_que_falta(pedido))         # a madrugada usa a MESMA conta da porta
-    # 📊 canário 13/10: combustível vazio → 64/64 recusas ("É necessário informar o tipo de combustível") — FALTA
-    assert "veiculo.combustivel" in pedido.faltando(origem="auxiliar", servico="renovacao")
-    assert "veiculo.combustivel" in M.o_que_falta(pedido)
-    assert "veiculo.combustivel" not in pedido.assumindo_pela_placa(servico="renovacao").assumidos
     # CONTROLE: a cotação (mesma origem `auxiliar`, sem o serviço) continua exigindo os três
-    assert supridos | {"veiculo.combustivel"} <= set(pedido.faltando(origem="auxiliar"))
+    assert supridos <= set(pedido.faltando(origem="auxiliar"))
     assert supridos <= pedido.assumindo_pela_placa(servico="renovacao").assumidos
     # e o canal (D-133A-03) segue como era — fora desta fatia (ver o relatório)
     assert "veiculo.combustivel" not in pedido.faltando(origem="canal")

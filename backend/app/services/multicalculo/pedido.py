@@ -91,9 +91,12 @@ CAMPOS_DE_PERFIL: Tuple[Tuple[str, str], ...] = (
 #: sabe o código FIPE). 🔴 Por que é verdade (CLAUDE.md §9.5), lido no robô que monta o pedido ao Agger:
 #:   · `portal_worker/multicalculo/agger_robo.py:178-179` o robô só exige `veiculo.placa` OU `veiculo.fipe`;
 #:   · `agger_robo.py:310-311` com placa ele chama `/calculo/buscaPlaca` e usa a FIPE dela (`fipe = auto.fipe || bp.fipe`);
-#:   · `montador.js:121-129` preenche `anoFabricacao` (bp.anoFab||anoMod), `fipe` (bp.fipe) e `combustivel` (Flex→6 da
-#:     tabela FIPE) quando o pedido NÃO os traz — "o pedido VENCE; os GETs preenchem".
-#: ⚠️ combustível ≠ Flex fica nulo no montador (📊 só Flex=6 medido) — o Agger decide; a porta não inventa código.
+#:   · `montador.js` `montarAutomovel` preenche `anoFabricacao` (bp.anoFab||anoMod), `fipe` (bp.fipe) e `combustivel` (o
+#:     rótulo da tabela FIPE do modelo → código, pela regra da TELA, `codigoDoCombustivel`) quando o pedido NÃO os traz —
+#:     "o pedido VENCE; os GETs preenchem".
+#: SPEC-131-A F6: até a F5 só o Flex tinha código (o resto ficava nulo e 📊 64/64 seguradoras recusavam); 📊 13/10 a lista
+#: da tela foi lida (os 7 combustíveis, `contrato.CODIGOS_MEDIDOS`) — o conserto vale para o CANAL e para a renovação.
+#: Rótulo da FIPE que a tela não conhece → o robô recusa ANTES do POST (`veiculo_sem_combustivel`), nunca 64 recusas.
 #: Só na origem `canal`; a carteira (auxiliar/teste) continua exigindo os três.
 CAMPOS_QUE_A_PLACA_SUPRE: Tuple[Tuple[str, str], ...] = (
     ("veiculo", "fipe"), ("veiculo", "ano_fabricacao"), ("veiculo", "combustivel"),
@@ -105,13 +108,15 @@ CAMPOS_QUE_A_PLACA_SUPRE: Tuple[Tuple[str, str], ...] = (
 #: (3) a FIPE da InfoCap NÃO serve como veio: 📊 9/10 com 5–6 dígitos (o Agger grava 7, "0013277") — mandá-la "consertada"
 #: seria escolher o carro por dedução, e o pedido VENCE a placa no montador.
 SERVICOS_EM_QUE_A_PLACA_SUPRE: Tuple[str, ...] = ("renovacao",)
-#: 🔴 Na renovação a placa supre SÓ a FIPE e o ano — NUNCA o combustível. 📊 canário real 13/10 (2 AUTO, 4 cálculos):
-#: com o combustível vazio no pedido, 64/64 respostas das seguradoras foram "É necessário informar o tipo de
-#: combustível." — o montador só traduz o FLEX (`montador.js` `COMBUSTIVEL = {Flex: 6}`); carro a gasolina, diesel,
-#: elétrico… sai com `combustivel: null` e TODA seguradora recusa. Sem o código medido (P-129B-05), o combustível que não
-#: é Flex fica FALTANDO, com o nome — nunca um cálculo que só volta recusa.
+#: 🔴 F5 tirou o combustível daqui: 📊 canário real 13/10 (2 AUTO, 4 cálculos), combustível vazio no pedido → 64/64
+#: respostas "É necessário informar o tipo de combustível." — o montador só traduzia o FLEX. 🔴 F6 o devolve, porque
+#: deixou de ser verdade: (1) 📊 13/10 a lista da tela foi lida — os 7 combustíveis têm código (`contrato.CODIGOS_MEDIDOS`)
+#: e o montador traduz o rótulo da FIPE do modelo como a TELA faz (`montador.js` `codigoDoCombustivel`); (2) o rótulo que a
+#: tela não conhece o robô recusa ANTES do POST (`agger_robo` `veiculo_sem_combustivel`) — nunca um cálculo que só volta
+#: recusa; (3) a InfoCap, quando traz rótulo conhecido, VENCE (`perfil_da_renovacao.COMBUSTIVEL_NO_AGGER`; "o pedido
+#: vence") — a placa só supre o vazio, "Nao Informado" e o fora da tabela.
 CAMPOS_QUE_A_PLACA_SUPRE_NA_RENOVACAO: Tuple[Tuple[str, str], ...] = (
-    ("veiculo", "fipe"), ("veiculo", "ano_fabricacao"),
+    ("veiculo", "fipe"), ("veiculo", "ano_fabricacao"), ("veiculo", "combustivel"),
 )
 
 _CATALOGO: Dict[str, Tuple[str, ...]] = {

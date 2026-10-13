@@ -129,6 +129,16 @@ def _dados(resp: Any) -> List[Dict[str, Any]]:
     return [dict(dados)] if isinstance(dados, dict) else []
 
 
+def _comparavel(dados: Any) -> Any:
+    """Os `dados` de um evento na forma que o jsonb devolve (tupla → lista, data → texto, chaves ordenadas): o que a
+    máquina vai gravar e o que ela gravou se comparam pelo CONTEÚDO. Vazio e ausente são o mesmo (o evento grava {})."""
+    import json
+
+    if not dados:
+        return {}
+    return json.loads(json.dumps(dados, default=str, sort_keys=True))
+
+
 def guardar_estado(estado: str) -> str:
     """A GUARDA de todo escritor: estado reservado → `EstadoReservado`; desconhecido → `TransicaoInvalida`."""
     if estado in ESTADOS_RESERVADOS:
@@ -323,6 +333,12 @@ class RepositorioDeRenovacoes:
             "motivo": motivo, "dados": dict(dados or {}), "criado_em": self._agora(),
         }).execute()
 
+    def _dados_do_ultimo_evento(self, cid: str, rid: str) -> Any:
+        """Os `dados` do evento mais recente do item (o que a máquina disse por último) — None se não houver. Pela
+        lista em ordem crescente (`eventos`): no empate de `criado_em` (o relógio injetado), o último gravado é o último."""
+        linhas = self.eventos(cid, rid)
+        return linhas[-1].get("dados") if linhas else None
+
     def upsert_da_lista(self, company_id: str, campos: Mapping[str, Any], *, por: str,
                         canario: bool = False, motivo_do_evento: Optional[str] = None) -> Tuple[Dict[str, Any], bool]:
         """O item da lista congelada pela UNIQUE (company_id, sistema, codfil, nosnum, fimvig) — NUNCA duplica.
@@ -387,7 +403,10 @@ class RepositorioDeRenovacoes:
     def transicionar(self, company_id: str, renovacao_id: str, para: str, *, por: str,
                      motivo: Optional[str] = None, dados: Optional[Mapping[str, Any]] = None,
                      campos: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
-        """A ÚNICA porta do estado. `de == para` com o mesmo motivo e nenhum campo novo = nada (idempotente)."""
+        """A ÚNICA porta do estado. `de == para` com o mesmo motivo, nenhum campo novo e os MESMOS `dados` do último
+        evento = nada (idempotente). SPEC-131-A F6: os `dados` mudaram (o "faltando" de um pendente que mudou, o que
+        passou a ser suposto) → o estado fica, a versão sobe e o evento NOVO guarda o porquê de agora — o evento velho
+        nunca fica como explicação de um item cujo motivo mudou por dentro. `dados=None` = quem chama não diz nada."""
         guardar_estado(para)
         cid = _uuid(company_id)
         if para in ESTADOS_COM_MOTIVO and not motivo_valido(motivo):
@@ -405,7 +424,8 @@ class RepositorioDeRenovacoes:
         motivo_final = motivo if para in ESTADOS_COM_MOTIVO else None
         novos = {k: v for k, v in extra.items() if atual.get(k) != v}
         if de == para and (atual.get("motivo") or None) == motivo_final and not novos:
-            return atual
+            if dados is None or _comparavel(dados) == _comparavel(self._dados_do_ultimo_evento(cid, str(atual["id"]))):
+                return atual
         versao = int(atual.get("versao") or 1)
         patch = {"estado": para, "motivo": motivo_final, "versao": versao + 1, "atualizado_em": self._agora(), **novos}
         linhas = _dados(self._t(TABELA).update(patch).eq("id", atual["id"]).eq("company_id", cid)

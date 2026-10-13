@@ -151,6 +151,41 @@ def test_pendente_e_falhou_sem_motivo_sao_recusados_pela_maquina_e_pelo_banco(mu
         repo.transicionar(c.id, pronta["id"], "enviada", por="teste")
 
 
+def test_pendente_cujo_faltando_mudou_grava_evento_novo_e_o_mesmo_nao_duplica(mundo):
+    """F6 (a F5 apontou na F1): `transicionar` era idempotente só por estado+motivo e IGNORAVA `dados` — o item pendente
+    cujo "faltando" mudou guardava o evento VELHO (o corretor via o porquê de ontem). Agora: dados novos → evento novo
+    (o estado fica, a versão sobe); os MESMOS dados → nada (0 evento a mais — a idempotência da ② continua)."""
+    m = mundo
+    c = montar_corretora(m, "token-a", renovacoes=cinco_renovacoes())
+    _preparar(m, c)
+    repo = R.RepositorioDeRenovacoes(m.db)
+    alvo = next(x for x in itens(m, c.id) if x["estado"] == "pronta")
+
+    def evs():
+        return [e for e in m.banco.linhas("renovacao_eventos") if e["renovacao_id"] == alvo["id"]]
+
+    repo.transicionar(c.id, alvo["id"], "pendente", por="teste", motivo="falta_dado",
+                      dados={"faltando": ["veiculo.combustivel", "segurado.cep"]})
+    n0, v0 = len(evs()), repo.por_id(c.id, alvo["id"])["versao"]
+    # o MESMO (estado, motivo, dados) — inclusive em outra forma (tupla) — não grava nada
+    repo.transicionar(c.id, alvo["id"], "pendente", por="teste", motivo="falta_dado",
+                      dados={"faltando": ("veiculo.combustivel", "segurado.cep")})
+    repo.transicionar(c.id, alvo["id"], "pendente", por="teste", motivo="falta_dado")      # dados=None: não diz nada
+    assert len(evs()) == n0 and repo.por_id(c.id, alvo["id"])["versao"] == v0
+    # o "faltando" MUDOU (o combustível passou a vir): evento NOVO com os dados de AGORA, o estado fica
+    repo.transicionar(c.id, alvo["id"], "pendente", por="teste", motivo="falta_dado",
+                      dados={"faltando": ["segurado.cep"]})
+    novos = evs()
+    assert len(novos) == n0 + 1
+    assert (novos[-1]["de"], novos[-1]["para"], novos[-1]["motivo"]) == ("pendente", "pendente", "falta_dado")
+    assert novos[-1]["dados"] == {"faltando": ["segurado.cep"]}
+    linha = repo.por_id(c.id, alvo["id"])
+    assert (linha["estado"], linha["motivo"], linha["versao"]) == ("pendente", "falta_dado", v0 + 1)
+    # e de novo o MESMO: nada (o último evento agora é o novo)
+    repo.transicionar(c.id, alvo["id"], "pendente", por="teste", motivo="falta_dado", dados={"faltando": ["segurado.cep"]})
+    assert len(evs()) == n0 + 1
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # ⑤ os estados reservados
 # ---------------------------------------------------------------------------------------------------------------------

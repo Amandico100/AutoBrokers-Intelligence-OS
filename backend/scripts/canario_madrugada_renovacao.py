@@ -85,6 +85,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--saida", default=None)
     p.add_argument("--calcular", action="store_true", help="F5: calcula de verdade (≤ 2 AUTO) só no motor DESTE processo")
     p.add_argument("--teto-min", type=int, default=25, help="F5: minutos que o motor do canário espera os cálculos")
+    p.add_argument("--quantos", type=int, default=2, choices=(1, 2, 3), help="F6: quantos AUTO calcular (≤ 3)")
     return p
 
 
@@ -126,9 +127,10 @@ def escolher(linhas: List[Dict[str, Any]], hoje: date, maximo: int) -> Tuple[Opt
     return None, []
 
 
-#: F5: o que o perfil precisa trazer para o AUTO fechar sem a ficha (a placa, aqui, vem do item da InfoCap)
+#: F5: o que o perfil precisa trazer para o AUTO fechar sem a ficha (a placa, aqui, vem do item da InfoCap). F6: o
+#: combustível saiu da lista — a placa o supre (os 7 códigos da tela); o canário CONTA quantos vieram da InfoCap
 PERFIL_QUE_FECHA = (("segurado", "cpf_cnpj"), ("segurado", "nascimento"), ("segurado", "cep"),
-                    ("condutor", "tempo_habilitacao"), ("veiculo", "placa"), ("veiculo", "combustivel"))
+                    ("condutor", "tempo_habilitacao"), ("veiculo", "placa"))
 
 
 def escolher_calculaveis(linhas: List[Dict[str, Any]], hoje: date, fonte: Any, cid: str, *, quantos: int = 2,
@@ -152,8 +154,8 @@ def escolher_calculaveis(linhas: List[Dict[str, Any]], hoje: date, fonte: Any, c
                            "cotavel": fam in RAMO_DO_AGGER_POR_FAMILIA, "campos": campos,
                            "ordem": _h(f"{campos['codfil']}:{campos['nosnum']}")})
     janela.sort(key=lambda x: x["ordem"])
-    medida: Dict[str, Any] = {"olhados": 0, "fecham": 0, "falta": {}}
-    autos = []
+    medida: Dict[str, Any] = {"olhados": 0, "fecham": 0, "falta": {}, "combustivel": {}}
+    fecham = []
     for x in [y for y in janela if y["fam"] == "auto"][:olhar]:
         medida["olhados"] += 1
         try:
@@ -164,10 +166,16 @@ def escolher_calculaveis(linhas: List[Dict[str, Any]], hoje: date, fonte: Any, c
         faltam = [f"{g}.{c}" for g, c in PERFIL_QUE_FECHA if c not in (perfil.get(g) or {})]
         for n in faltam:
             medida["falta"][n] = medida["falta"].get(n, 0) + 1
+        # F6: de onde vem o combustível (o rótulo da tela pela InfoCap, ou a placa)
+        comb = (perfil.get("veiculo") or {}).get("combustivel") or "pela_placa"
+        medida["combustivel"][comb] = medida["combustivel"].get(comb, 0) + 1
         if not faltam:
             medida["fecham"] += 1
-            if len(autos) < quantos:
-                autos.append(x)
+            fecham.append((comb, x))
+    # F6: ≥ 1 que NÃO é flex primeiro (a prova do conserto), depois a ordem do hash
+    outros = [x for comb, x in fecham if comb != "flex"][:1]
+    autos = outros + [x for _c, x in fecham if all(x is not o for o in outros)]
+    autos = autos[:quantos]
     if not autos:
         return None, [], medida
     nao = [y for y in janela if not y["cotavel"]][:1]
@@ -255,7 +263,7 @@ async def executar(args) -> Dict[str, Any]:
     rel["t_lista_s"] = round(time.monotonic() - t, 1)
     if args.calcular:
         dia, escolha, rel["perfil_dos_candidatos"] = await asyncio.to_thread(
-            escolher_calculaveis, linhas, hoje, fonte_real, cid)
+            escolher_calculaveis, linhas, hoje, fonte_real, cid, quantos=args.quantos)
     else:
         dia, escolha = escolher(linhas, hoje, args.max)
     if dia is None:
@@ -314,8 +322,8 @@ async def executar(args) -> Dict[str, Any]:
         espera = timedelta(hours=6)
 
         def gravar_com_espera(self, pedido, calculos):
-            if str(pedido.get("company_id")) != cid or len(meus_pedidos) >= 2:
-                raise RuntimeError("canario: só ≤ 2 pedidos, só da corretora do canário")
+            if str(pedido.get("company_id")) != cid or len(meus_pedidos) >= args.quantos:
+                raise RuntimeError("canario: só ≤ --quantos pedidos, só da corretora do canário")
             futuro = (datetime.now(timezone.utc) + espera).isoformat()
             calculos = [{**c, "disponivel_em": futuro} for c in calculos]     # a fila GLOBAL não o vê por 6 h
             linha, gravados = gravar_do_produto(self, pedido, calculos)

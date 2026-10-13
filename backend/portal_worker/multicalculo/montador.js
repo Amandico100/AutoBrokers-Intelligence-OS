@@ -224,7 +224,18 @@
 
   // O automóvel a partir de `buscaPlaca` + `fipeModelo` + o que o pedido trouxe (o pedido VENCE; os GETs preenchem).
   // 📊 M1: 0 campos diferentes da tela depois de 2 regras — descricao = fipeModelo[0].modelo e fipeTxt = a STRING 'null'.
-  const COMBUSTIVEL = {Flex: 6};   // 📊 só o Flex foi medido (6); os outros ficam com o código do pedido
+  // O COMBUSTÍVEL pela regra da TELA (SPEC-131-A F6). 📊 13/10, lido no bundle do app do Agger: a lista do campo
+  // Combustível (`static combustivel=[{value,viewValue}]`, nesta ORDEM) e o `setaCombustivel` — o rótulo da FIPE do
+  // modelo, sem acento e maiúsculo, escolhe a 1ª opção cujo rótulo o CONTÉM; rótulo vazio não escolhe nada.
+  // CONTROLE: FLEX = 6 nos 18/18 corpos gravados. Espelho em `contrato.CODIGOS_MEDIDOS` (o teste do perfil confere).
+  const COMBUSTIVEL = [['ALCOOL', 2], ['DIESEL', 3], ['ELETRICO', 5], ['FLEX', 6], ['GASOLINA', 1], ['HIBRIDO', 11],
+                       ['TETRAFUEL', 10]];
+  function codigoDoCombustivel(rotulo) {
+    const r = String(rotulo == null ? '' : rotulo).normalize('NFD').replace(/\p{M}/gu, '').toUpperCase().trim();
+    if (!r) return null;
+    const achou = COMBUSTIVEL.find(([v]) => v.includes(r));
+    return achou ? achou[1] : null;
+  }
   function montarAutomovel(parcial, bp, fm) {
     const a = Object.assign({}, parcial);
     bp = bp || {};
@@ -232,7 +243,7 @@
     const vs = m.fipeValores || [];
     const ult = vs.reduce((acc, v) => Math.max(acc, v.anoVersaoTabela * 100 + v.mesVersaoTabela), 0);
     const atuais = vs.filter(v => v.anoVersaoTabela * 100 + v.mesVersaoTabela === ult);
-    const esc = atuais.find(v => COMBUSTIVEL[v.combustivel] === a.combustivel) || atuais.find(v => v.combustivel === 'Flex') || atuais[0] || {};
+    const esc = atuais.find(v => codigoDoCombustivel(v.combustivel) === a.combustivel) || atuais.find(v => v.combustivel === 'Flex') || atuais[0] || {};
     if (a.fabricante == null) a.fabricante = bp.codFabr;
     if (a.anoModelo == null) a.anoModelo = bp.anoMod != null ? Number(bp.anoMod) : null;
     if (a.anoFabricacao == null) a.anoFabricacao = Number(bp.anoFab || bp.anoMod) || a.anoModelo;
@@ -241,7 +252,7 @@
     if (!a.placa) a.placa = bp.placa || null;
     a.descricao = m.modelo || a.descricao || bp.modelo || null;
     a.valReferenciado = esc.valor != null ? esc.valor : (a.valReferenciado != null ? a.valReferenciado : null);
-    if (a.combustivel == null) a.combustivel = COMBUSTIVEL[esc.combustivel] != null ? COMBUSTIVEL[esc.combustivel] : null;
+    if (a.combustivel == null) a.combustivel = codigoDoCombustivel(esc.combustivel);
     a.fipeTxt = 'null';   // 📊 o app manda a STRING 'null'
     return a;
   }
@@ -315,6 +326,6 @@
     return anda(valor);
   }
 
-  window.__abM = {montarCalculos, montarDaVersao, aplicarAjuste, montarAutomovel, filtrar, coletarSegredos,
+  window.__abM = {montarCalculos, montarDaVersao, aplicarAjuste, montarAutomovel, codigoDoCombustivel, filtrar, coletarSegredos,
                   redigirSegredos, DO_APP, montarCalculosRE, CAMPO_DO_AJUSTE_RE};
 })();

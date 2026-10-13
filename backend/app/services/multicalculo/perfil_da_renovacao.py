@@ -90,8 +90,8 @@ POR_QUE_PERNOITE = "CEP de pernoite = o do endereço residencial do cadastro"
 #: não é lida, e 1 é o MENOR número verdadeiro (nunca "sem sinistro" por omissão — o robô mandaria 0).
 POR_QUE_SINISTRO = "a apólice anterior tem sinistro; a quantidade não é lida na InfoCap — 1 (o mínimo verdadeiro)"
 
-#: O que a PLACA supre (D-133A-03 estendida à renovação — `pedido.CAMPOS_QUE_A_PLACA_SUPRE_NA_RENOVACAO`): a FIPE e o
-#: ano. ⛔ O combustível NÃO (📊 canário 13/10: sem ele, 64/64 recusas das seguradoras) — só o Flex tem código medido.
+#: O que a PLACA supre (D-133A-03 estendida à renovação — `pedido.CAMPOS_QUE_A_PLACA_SUPRE_NA_RENOVACAO`): a FIPE, o
+#: ano e — F6, com os 7 códigos da tela medidos — o combustível que a InfoCap não traz (o robô o lê da FIPE do modelo).
 POR_QUE_PELA_PLACA = "o Agger preenche pela placa (buscaPlaca); a InfoCap não traz o valor no formato do Agger"
 
 #: O perfil que a porta deixa com o PADRÃO DA TELA na origem auxiliar (D-128-07, `pedido.CAMPOS_DE_PERFIL`).
@@ -101,10 +101,28 @@ POR_QUE_PADRAO_DA_TELA = "padrão da tela do Agger — a InfoCap não traz (D-12
 #: dígitos — completar com zeros é escolher o carro por dedução: fica com a placa.
 DIGITOS_DA_FIPE = 7
 
-#: "Alcool/Gasolina" é o FLEX (o único combustível com código medido no Agger, 📊 Flex = 6 em 18/18 corpos). Os outros
-#: rótulos (📊 40 AUTO de uma janela de 10 dias: Flex 13 · vazio 8 · Gasolina 7 · None 4 · Diesel 3 · "Nao Informado" 2 ·
-#: Eletrico 2 · Hibrido 1) ficam FORA do perfil: o item sai `pendente(falta_dado)` com `veiculo.combustivel` (P-129B-05).
-COMBUSTIVEL_FLEX = frozenset({"alcool/gasolina", "gasolina/alcool", "flex", "alcool gasolina", "bicombustivel"})
+#: O COMBUSTÍVEL: o RÓTULO da InfoCap → o rótulo da lista da TELA do Agger, que `contrato.CODIGOS_MEDIDOS` traduz em
+#: código (📊 F6 13/10: a lista do campo Combustível lida no bundle do app — GASOLINA 1 · ALCOOL 2 · DIESEL 3 ·
+#: ELÉTRICO 5 · FLEX 6 · TETRAFUEL 10 · HÍBRIDO 11; controle: FLEX = 6 em 18/18 corpos gravados).
+#: 📊 F5: 40 AUTO de uma janela de 10 dias — Flex 13 · vazio 8 · Gasolina 7 · None 4 · Diesel 3 · "Nao Informado" 2 ·
+#: Eletrico 2 · Hibrido 1. 🔴 Por que cada linha está certa (CLAUDE.md §9.5):
+COMBUSTIVEL_NO_AGGER: Dict[str, str] = {
+    # o carro que aceita álcool E gasolina É o flex — a InfoCap escreve os dois combustíveis; a tela chama de FLEX
+    "alcool/gasolina": "flex", "gasolina/alcool": "flex", "alcool gasolina": "flex", "bicombustivel": "flex",
+    "flex": "flex",
+    # o MESMO nome na InfoCap e na tela (sem acento): nenhuma interpretação
+    "gasolina": "gasolina", "diesel": "diesel", "eletrico": "eletrico", "hibrido": "hibrido", "tetrafuel": "tetrafuel",
+    # a tela chama de ALCOOL; "etanol" é o nome de bomba do MESMO combustível (álcool etílico hidratado)
+    "alcool": "alcool", "etanol": "alcool",
+}
+#: ⛔ vazio · None · "Nao Informado" · qualquer rótulo fora da tabela → o perfil NÃO põe combustível: a PLACA supre
+#: (o robô lê o combustível da FIPE do modelo, como a tela faz — `montador.js` `COMBUSTIVEL`); sem placa, fica faltando.
+COMBUSTIVEL_FLEX = frozenset(k for k, v in COMBUSTIVEL_NO_AGGER.items() if v == "flex")   # compat. (F5)
+
+
+def combustivel_no_agger(rotulo: Any) -> Optional[str]:
+    """O rótulo da InfoCap → o rótulo da tela do Agger (`COMBUSTIVEL_NO_AGGER`), ou None (a placa supre)."""
+    return COMBUSTIVEL_NO_AGGER.get(_sem_acento(rotulo)) if rotulo is not None else None
 
 _PLACA = re.compile(r"[A-Z]{3}\d[A-Z0-9]\d{2}")
 
@@ -311,8 +329,7 @@ def montar(company_id: str, item: Mapping[str, Any], apolice: Any, ficha: Any, f
                 por("veiculo", "placa", placa)
             por("veiculo", "ano_fabricacao", _ano(alvo.get("anofab"), hoje))
             por("veiculo", "ano_modelo", _ano(alvo.get("anomod"), hoje))
-            if _sem_acento(alvo.get("combustivel")) in COMBUSTIVEL_FLEX:
-                por("veiculo", "combustivel", "flex")
+            por("veiculo", "combustivel", combustivel_no_agger(alvo.get("combustivel")))
             fipe = _digitos(alvo.get("fipe"))
             if placa is None and len(fipe) == DIGITOS_DA_FIPE:
                 por("veiculo", "fipe", fipe)
