@@ -36,8 +36,22 @@ RAMOS_ACEITOS: Tuple[int, ...] = (RAMO_AUTO,) + RAMOS_RE
 CHAVE_DA_BASICA: str = _presets.CHAVE_DA_BASICA
 
 
+#: SPEC-131-A F2 — POR QUE o ramo não é calculável (o item da renovação vira `pendente` com este motivo, "renove
+#: manualmente", e CONTA na completude): `ramo_nao_cotado` = o ramo é conhecido e o Agger não o cota aqui (vida,
+#: viagem, saúde; ou um código de ramo sem pedido); `ramo_desconhecido` = a sigla não está no agrupamento de ramos
+#: (`policy_data_provider.FAMILIAS_DE_RAMO`) — "não sei que ramo é", NUNCA "é carro".
+MOTIVOS_DE_RAMO_INDISPONIVEL: Tuple[str, ...] = ("ramo_nao_cotado", "ramo_desconhecido")
+
+
 class RamoIndisponivel(ValueError):
-    """O ramo não é calculável (fora de `RAMOS_ACEITOS`)."""
+    """O ramo não é calculável (fora de `RAMOS_ACEITOS`). `motivo` ∈ `MOTIVOS_DE_RAMO_INDISPONIVEL` (padrão
+    `ramo_nao_cotado`: quem já levantava `RamoIndisponivel("…")` continua igual)."""
+
+    def __init__(self, mensagem: str = "", *, motivo: str = "ramo_nao_cotado"):
+        if motivo not in MOTIVOS_DE_RAMO_INDISPONIVEL:
+            raise ValueError(f"motivo de ramo indisponível fora da lista: {motivo!r}")
+        self.motivo = motivo
+        super().__init__(mensagem or motivo)
 
 
 def catalogo_do_ramo(ramo: int) -> Dict[str, Tuple[Any, ...]]:
@@ -314,12 +328,19 @@ class PedidoDeCalculo:
     seguradoras: Tuple[int, ...] = ()
     assumidos: FrozenSet[str] = frozenset()
     avisos: FrozenSet[str] = frozenset()
+    #: SPEC-131-A F2 — a RENOVAÇÃO (`de_apolice`): as opções, na ordem do disparo, e o corpo de cada uma (o que a
+    #: porta recebe em `calcular(opcoes=, coberturas=)`); `nao_conferidos` = "opção.chave" que NÃO veio da ficha (vale
+    #: o preset completo — o corretor confere). ⛔ Nada disto vai em `para_dict()`: o contrato do robô não muda.
+    opcoes: Tuple[str, ...] = ()
+    coberturas_por_opcao: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    nao_conferidos: FrozenSet[str] = frozenset()
 
     def __repr__(self) -> str:  # ⛔ nunca os valores
         preenchidos = sum(1 for g in self.campos.values() for v in g.values() if not _vazio(v))
         avisos = f", avisos={sorted(self.avisos)}" if self.avisos else ""
+        opcoes = f", opcoes={list(self.opcoes)}" if self.opcoes else ""
         return (f"PedidoDeCalculo(ramo={self.ramo}, grupos={sorted(self.campos)}, preenchidos={preenchidos}, "
-                f"assumidos={len(self.assumidos)}{avisos})")
+                f"assumidos={len(self.assumidos)}{avisos}{opcoes})")
 
     __str__ = __repr__
 
@@ -513,8 +534,10 @@ class PedidoDeCalculo:
 #: SPEC-130-B F4 — família da porta (`policy_data_provider.familia_de_ramo`) → o ramo do Agger (`contrato.RAMO_*`).
 #: 🔴 Por que está certo (CLAUDE.md §9.5): "resi"/"cond"/"empr" são as famílias dos sinônimos residencial/condomínio/
 #: empresarial em `FAMILIAS_DE_RAMO`, e o contrato da 129-C chama esses MESMOS ramos de 2/16/18 (lidos do formulário de
-#: cada ramo no Agger). Família fora daqui (vida, viagem, saúde…) não tem pedido no Agger → `RamoIndisponivel`.
-#: `None` ("não sei", a abreviatura fora do agrupamento) segue como AUTO — o comportamento de antes da F4 (controle).
+#: cada ramo no Agger). Família fora daqui (vida, viagem, saúde…) não tem pedido no Agger → `RamoIndisponivel`
+#: (`ramo_nao_cotado`). 🔴 SPEC-131-A F2: `None` ("não sei", a abreviatura fora do agrupamento) → `RamoIndisponivel`
+#: (`ramo_desconhecido`), NUNCA o carro: 📊 BLOCO 0 (12/10) NAUT, RCPR, GOC, CAPI, MOBI, FROT, PQRE, CTVE, TRAN, RISC
+#: viravam pedido de AUTO (31) e o motivo mostrado seria "falta a placa" (mutação 3 da SPEC).
 RAMO_DO_AGGER_POR_FAMILIA: Dict[str, int] = {
     "auto": RAMO_AUTO, "resi": RAMO_RESIDENCIAL, "cond": RAMO_CONDOMINIO, "empr": RAMO_EMPRESARIAL,
 }
@@ -692,15 +715,17 @@ def _ramo_do_agger(apolice: Any) -> int:
     except Exception:  # noqa: BLE001
         familia = None
     if familia is None:
-        return RAMO_AUTO
+        raise RamoIndisponivel("ramo desconhecido: a sigla não está no agrupamento de ramos — renove manualmente",
+                               motivo="ramo_desconhecido")
     if familia not in RAMO_DO_AGGER_POR_FAMILIA:
         raise RamoIndisponivel(f"renovação do ramo '{familia}' não implementada (há: auto, residencial, condomínio, "
-                               "empresarial)")
+                               "empresarial)", motivo="ramo_nao_cotado")
     return RAMO_DO_AGGER_POR_FAMILIA[familia]
 
 
 def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] = None, *, ficha: Any = None,
-               config: Optional[Mapping[str, Any]] = None, exigir_completo: bool = False) -> PedidoDeCalculo:
+               config: Optional[Mapping[str, Any]] = None, exigir_completo: bool = False,
+               comissao_anterior_pct: Optional[float] = None) -> PedidoDeCalculo:
     """A RENOVAÇÃO: a FICHA ÚNICA da apólice (`policy_data_provider.Apolice`, já `reconciliar`-ada) + o `perfil` →
     `PedidoDeCalculo` com `renovacao=True`, no AUTO e no RE (residencial 2 · condomínio 16 · empresarial 18).
 
@@ -731,12 +756,107 @@ def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] =
     else:
         pedido = _de_apolice_re(apolice, perfil, objeto, avisos, assumidos, ramo=ramo, config=config)
     pedido = replace(pedido, avisos=frozenset(avisos))
+    pedido = _com_as_opcoes_da_renovacao(pedido, apolice, ficha, config)
+    pedido = _com_a_comissao_anterior(pedido, comissao_anterior_pct, config)
     if exigir_completo:
         faltam = pedido.faltando()
         faltam += [c for c in pedido.sem_codigo() if c not in faltam]
         if faltam:
             raise FichaIncompleta(faltam, avisos=pedido.avisos)
     return pedido
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-131-A F2 — AS OPÇÕES DA RENOVAÇÃO (`servicos.renovacao.opcoes`): o corpo de cada uma, montado da FICHA
+# ---------------------------------------------------------------------------------------------------------------------
+def opcoes_pedidas_na_renovacao(config: Optional[Mapping[str, Any]]) -> Tuple[str, ...]:
+    """As opções que a config da corretora pede para a renovação — lidas CRUAS e conferidas pela guarda dos presets:
+    ⛔ econômica/mínima → `presets.OpcaoProibidaNaRenovacao`, mesmo numa config que não passou pela validação.
+    Sem config (ou carregada para outro serviço) → as três do produto."""
+    servicos = (config or {}).get("servicos") if isinstance(config, Mapping) else None
+    bloco = servicos.get("renovacao") if isinstance(servicos, Mapping) else None
+    lista = bloco.get("opcoes") if isinstance(bloco, Mapping) else None
+    return _presets.conferir_opcoes_da_renovacao(_presets.OPCOES_DA_RENOVACAO if lista is None else lista)
+
+
+def _numero_ou_none(v: Any) -> Optional[float]:
+    if isinstance(v, bool) or not isinstance(v, (int, float, Decimal)):
+        return None
+    return float(v)
+
+
+def _linhas_da_ficha(apolice: Any, ficha: Any) -> List[Tuple[str, Optional[float], Optional[str], Optional[str]]]:
+    """(rótulo normalizado, limite, texto da franquia normalizado, grupo do catálogo) de CADA linha de cobertura — do
+    cadastro reconciliado (`Apolice.coberturas`) e do documento (`ApoliceDocumental.linhas`). Leitura tolerante."""
+    from app.providers.policy_data_provider import grupo_de_rotulo, normalizar_rotulo
+
+    saida = []
+    for c in getattr(apolice, "coberturas", None) or ():
+        rotulo = getattr(c, "rotulo", "") or ""
+        fr = _valor_de(getattr(c, "franquia", None))
+        saida.append((normalizar_rotulo(rotulo), _numero_ou_none(_valor_de(getattr(c, "limite", None))),
+                      normalizar_rotulo(fr) if isinstance(fr, str) else None,
+                      getattr(c, "grupo", None) or grupo_de_rotulo(rotulo)))
+    for linha in (getattr(ficha, "linhas", None) or ()) if ficha is not None else ():
+        rotulo = getattr(linha, "rotulo", "") or ""
+        fr = getattr(linha, "franquia_texto", None)
+        saida.append((normalizar_rotulo(rotulo), _numero_ou_none(getattr(linha, "limite", None)),
+                      normalizar_rotulo(fr) if isinstance(fr, str) and fr.strip() else None, grupo_de_rotulo(rotulo)))
+    return saida
+
+
+def _com_as_opcoes_da_renovacao(pedido: "PedidoDeCalculo", apolice: Any, ficha: Any,
+                                config: Optional[Mapping[str, Any]]) -> "PedidoDeCalculo":
+    """`anterior` (as coberturas da ficha, iguais ou maiores) · `franquia_reduzida` · `completa_mais` — as que a config
+    pede, sem opção repetida. AUTO: o que a ficha não traz fica no preset completo e marcado `nao_conferidos`. RE: as
+    coberturas da ficha (pelo catálogo de rótulos) vencem as típicas, sobre a Básica DO PEDIDO (já reajustada); sem a
+    Básica o corpo não sai (o pedido já diz `risco.valor_basica` em `faltando()`)."""
+    pedidas = opcoes_pedidas_na_renovacao(config)
+    linhas = _linhas_da_ficha(apolice, ficha)
+    if pedido.ramo == RAMO_AUTO:
+        lidas, acima = _presets.ler_coberturas_auto((r, l, f) for (r, l, f, _g) in linhas)
+        por_opcao, nao_lidas = _presets.coberturas_da_renovacao_auto(lidas, pedidas)
+        marcas = frozenset(f"{_presets.ANTERIOR}.{k}" for k in (*nao_lidas, *acima)) \
+            if _presets.ANTERIOR in por_opcao else frozenset()
+        return replace(pedido, opcoes=tuple(por_opcao), coberturas_por_opcao=por_opcao, nao_conferidos=marcas)
+    basica = _numero_ou_none(pedido.valor("risco", "valor_basica"))
+    if basica is None or basica <= 0:
+        return replace(pedido, opcoes=pedidas, coberturas_por_opcao={})
+    validas = set(_presets.CHAVES_DE_COBERTURA_RE.get(pedido.ramo, ())) - {"assist24hs", CHAVE_DA_BASICA}
+    extras = _presets.extras_re_da_ficha(pedido.ramo, ((g, l) for (_r, l, _f, g) in linhas))
+    # o que quem pediu disse (`risco.extras`) vence a ficha; chave fora do ramo já é `sem_codigo()` do pedido
+    extras.update({k: v for k, v in (pedido.valor("risco", "extras") or {}).items()
+                   if k in validas and _numero_ou_none(v) is not None})
+    por_opcao = _presets.coberturas_da_renovacao_re(pedido.ramo, basica, extras, pedidas)
+    return replace(pedido, opcoes=tuple(por_opcao), coberturas_por_opcao=por_opcao)
+
+
+def _com_a_comissao_anterior(pedido: "PedidoDeCalculo", per_c: Any,
+                             config: Optional[Mapping[str, Any]]) -> "PedidoDeCalculo":
+    """D-131-16 (SPEC-131-A F2): a comissão da renovação = a do ano anterior (`per_c` do `/documento` — 📊 BLOCO 0 A5:
+    > 0 em 20/20 nas duas corretoras e é a da CORRETORA, `val_c = base_c × per_c / 100` 20/20) + 
+    `servicos.renovacao.comissao_a_mais_pp`, nunca acima do teto da config (`comissao.teto_pct`).
+    ⛔ O que quem pediu disse (`comissao_desconto.comissao_percentual`) vence. Sem `per_c` válido nada muda (a de hoje:
+    a da conta no AUTO, a do ramo no RE pela porta). Nas seguradoras que obedecem o DESCONTO e ignoram a comissão
+    (`config.seguradoras_que_obedecem_desconto`, 📊 128 E5) a comissão enviada não tem efeito — e nenhum desconto é
+    posto no lugar dela (D-131-16: "nelas, nada")."""
+    from app.services.multicalculo.config import comissao_a_mais_pp, teto_da_comissao
+
+    anterior = _numero_ou_none(per_c)
+    if anterior is None or anterior <= 0 or not _vazio(pedido.valor("comissao_desconto", "comissao_percentual")):
+        return pedido
+    cfg = config if isinstance(config, Mapping) else {}
+    teto = teto_da_comissao(cfg)
+    if anterior > teto:
+        return pedido                                   # um `per_c` acima do teto é erro de fonte, nunca a comissão
+    try:
+        a_mais = comissao_a_mais_pp(cfg)
+    except ValueError:                                  # config carregada para OUTRO serviço: não se adivinha
+        return pedido
+    campos = {g: dict(v) for g, v in pedido.campos.items()}
+    campos.setdefault("comissao_desconto", {})["comissao_percentual"] = round(min(anterior + a_mais, teto), 2)
+    return replace(pedido, campos=campos,
+                   assumidos=frozenset(pedido.assumidos | {"comissao_desconto.comissao_percentual"}))
 
 
 def _de_apolice_auto(apolice: Any, perfil: Dict[str, Dict[str, Any]], objeto: Mapping[str, Any], avisos: set,

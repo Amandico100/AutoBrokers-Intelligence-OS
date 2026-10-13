@@ -416,6 +416,30 @@ class FonteInfocap:
                 return v
         return []
 
+    # ---------------------------------------------- a comissão da apólice
+    def comissao_da_corretora(self, codfil: Any, nosnum: Any) -> Optional[float]:
+        """SPEC-131-A F2 (D-131-16): a comissão da CORRETORA na apólice (`per_c` do `GET /documento?codfil&nosnum`),
+        em %. 📊 BLOCO 0 A5 (12/10): > 0 em 20/20 nas duas corretoras; `val_c == base_c × per_c / 100` em 20/20; nunca
+        o `per_r` do produtor (0/20). None quando a fonte não traz um número > 0 — nunca 0 por omissão. ⛔ Lê
+        `per_c` e mais nada: nenhum dado pessoal sai daqui."""
+        resposta = self._get("/documento", {"codfil": codfil, "nosnum": nosnum})
+        candidatos: List[Any] = []
+        if isinstance(resposta, dict):
+            candidatos.append(resposta)
+            for v in resposta.values():
+                if isinstance(v, dict):
+                    candidatos.append(v)
+        candidatos += self._linhas(resposta, "documento")
+        for doc in candidatos:
+            if isinstance(doc, dict) and "per_c" in doc:
+                bruto = doc.get("per_c")
+                try:
+                    v = float(str(bruto).replace(",", ".")) if bruto not in (None, "") else None
+                except ValueError:
+                    v = None
+                return v if v is not None and v > 0 else None
+        return None
+
     # --------------------------------------------------- as linhas SEM TOQUE
     #
     # 🔴 SPEC-094 BLOCO B. Os dois leitores abaixo devolvem a linha da API

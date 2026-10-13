@@ -53,8 +53,10 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
     },
     # D-MC-66 — novo COM apólice: mirar 💭 ~10–15 % abaixo do preço atual quando der, guardando margem
     "alvo_abaixo_da_atual_pct": {"minimo": 10.0, "maximo": 15.0},
-    # D-MC-66 — renovação: proposta ~15 dias antes; tenta +1–2 pp de comissão sobre a do ano anterior
-    "renovacao": {"antecedencia_dias": 15, "comissao_a_mais_pp": {"minimo": 1.0, "maximo": 2.0},
+    # D-MC-66 — renovação: tenta +1–2 pp de comissão sobre a do ano anterior. SPEC-131-A (D-131-01): a renovação é
+    # CALCULADA quando vence em ≤ 10 dias (era ~15, D-MC-66). Um número só: o madrugada lê o mesmo em
+    # `servicos.renovacao.antecedencia_dias` (espelho resolvido em `mesclar`, `_resolver_renovacao`)
+    "renovacao": {"antecedencia_dias": 10, "comissao_a_mais_pp": {"minimo": 1.0, "maximo": 2.0},
                   # SPEC-129-C D-129C-06 — o reajuste da cobertura BÁSICA (incêndio) na renovação de RE, por ramo, em %.
                   # Padrão 15 = a palavra do Founder (10/10). 📊 AGREGADO-POR-RAMO §3 (B0-c, 11/10, 41 pares de
                   # condomínio, mesmo cliente a 300–430 dias): o mais COMUM é +10 % (16 de 41; +15 % em 6; mediana
@@ -183,7 +185,31 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         "renovacao": {"modo": "calcular", "excecoes_do_modo": [],
                       # D-131-0-05 / §5 F3 — o Agger do comercial falhou (senha recusada): a conta da CORRETORA só
                       # assume quando a apólice vence em MENOS que isto, em dias 💭 (lido por `qual_agger.decidir`)
-                      "conta_global_se_vence_em_dias": 5},
+                      "conta_global_se_vence_em_dias": 5,
+                      # SPEC-131-A §4/§5 — A MADRUGADA DA RENOVAÇÃO (lidas pela F1 `madrugada.py` e pela F3 `motor.py`)
+                      # D-131-01: calcula o que vence em ≤ isto (1–60 dias). Espelho de `renovacao.antecedencia_dias`
+                      # (a tela grava lá): `mesclar` resolve UM número e escreve nos dois lugares.
+                      "antecedencia_dias": 10,
+                      # §4 — no FUSO da corretora, 7 dias por semana (HH:MM). Prosseguir sobre sessão aberta só entre
+                      # `prosseguir_de` e `prosseguir_ate`; a pessoa voltou → nova tentativa a cada `retentativa_min`
+                      # (D-131-29, Founder 12/10: de hora em hora)
+                      "janela": {"preparar": "00:30", "calcular": "02:00", "conferir": "05:30", "desvio": "06:15",
+                                 "avisar": "06:45", "prosseguir_de": "01:00", "prosseguir_ate": "06:30",
+                                 "retentativa_min": 60},
+                      # §4 — 1 a 3, na ordem do disparo; só `presets.OPCOES_DA_RENOVACAO`. ⛔ econômica e mínima
+                      # NUNCA numa renovação (mutação 7): a validação recusa e volta a este padrão
+                      "opcoes": ["anterior", "franquia_reduzida", "completa_mais"],
+                      # D-131-30 — sessões do Agger ao mesmo tempo POR CORRETORA (o do processo é o env
+                      # MULTICALCULO_TETO_SESSOES); 1 até o BLOCO 0 A4 medir 2 logins da mesma corretora juntos
+                      "teto_sessoes_corretora": 1,
+                      # D-131-33 — 📊 o pico medido é 42 renovações de UM dono num dia (BLOCO 0 da 131-A §1): NIVELAR.
+                      # No máximo isto de pedidos por login (conta do Agger) por noite (1–60) 💭; o excedente é
+                      # ANTECIPADO para noites anteriores até `antecipar_ate_dias` antes (0–20) 💭 (lidos pela F1)
+                      "teto_por_conta_noite": 12,
+                      "antecipar_ate_dias": 7,
+                      # D-131-16 (BLOCO 0 A5 📊 `per_c` > 0 em 20/20 nas duas corretoras, é a comissão da CORRETORA):
+                      # a opção `anterior` leva a comissão do ano anterior + isto, em pontos percentuais (0–5) 💭
+                      "comissao_a_mais_pp": 1.0},
     },
 }
 
@@ -461,7 +487,146 @@ def _servicos(bruto: Any) -> Dict[str, Dict[str, Any]]:
         for k in _CHAVES_PROPRIAS[s] - {"modo", "excecoes_do_modo"}:
             if k in bloco:
                 alvo[k] = _mesclar(alvo[k], bloco[k], f"servicos.{s}.{k}")
+    _renovacao_coerente(saida["renovacao"])
     return saida
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-131-A F2 — a régua das chaves da MADRUGADA (`servicos.renovacao`): fora dela, o padrão DAQUELA chave, com log
+# ---------------------------------------------------------------------------------------------------------------------
+_HHMM = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+#: as faixas 💭 (valores iniciais; a corretora configura dentro delas)
+ANTECEDENCIA_DIAS_FAIXA = (1, 60)
+RETENTATIVA_MIN_FAIXA = (1, 360)
+TETO_SESSOES_CORRETORA_FAIXA = (1, 20)
+TETO_POR_CONTA_NOITE_FAIXA = (1, 60)
+ANTECIPAR_ATE_DIAS_FAIXA = (0, 20)
+COMISSAO_A_MAIS_PP_FAIXA = (0, 5)
+
+
+def _inteiro_na_faixa(v: Any, faixa: tuple) -> bool:
+    return _numero(v) and int(v) == v and faixa[0] <= v <= faixa[1]
+
+
+def _opcoes_validas(v: Any) -> bool:
+    from portal_worker.multicalculo.presets import OPCOES_DA_RENOVACAO, PROIBIDAS_NA_RENOVACAO
+
+    return (isinstance(v, list) and 1 <= len(v) <= 3 and len(set(map(str, v))) == len(v)
+            and all(isinstance(o, str) and o in OPCOES_DA_RENOVACAO and o not in PROIBIDAS_NA_RENOVACAO for o in v))
+
+
+def _renovacao_coerente(bloco: Dict[str, Any]) -> None:
+    pad = PADRAO_DO_PRODUTO["servicos"]["renovacao"]
+    if not _inteiro_na_faixa(bloco.get("antecedencia_dias"), ANTECEDENCIA_DIAS_FAIXA):
+        logger.warning("[MC-CONFIG] servicos.renovacao.antecedencia_dias fora de 1–60 — fica o padrão")
+        bloco["antecedencia_dias"] = pad["antecedencia_dias"]
+    else:
+        bloco["antecedencia_dias"] = int(bloco["antecedencia_dias"])
+    if not _opcoes_validas(bloco.get("opcoes")):
+        logger.warning("[MC-CONFIG] servicos.renovacao.opcoes: 1 a 3 de anterior/franquia_reduzida/completa_mais — "
+                       "fica o padrão")
+        bloco["opcoes"] = list(pad["opcoes"])
+    for chave, faixa in (("teto_sessoes_corretora", TETO_SESSOES_CORRETORA_FAIXA),
+                         ("teto_por_conta_noite", TETO_POR_CONTA_NOITE_FAIXA),
+                         ("antecipar_ate_dias", ANTECIPAR_ATE_DIAS_FAIXA)):
+        if not _inteiro_na_faixa(bloco.get(chave), faixa):
+            logger.warning("[MC-CONFIG] servicos.renovacao.%s fora de %s–%s — fica o padrão", chave, *faixa)
+            bloco[chave] = pad[chave]
+        else:
+            bloco[chave] = int(bloco[chave])
+    v = bloco.get("comissao_a_mais_pp")
+    if not (_numero(v) and COMISSAO_A_MAIS_PP_FAIXA[0] <= v <= COMISSAO_A_MAIS_PP_FAIXA[1]):
+        logger.warning("[MC-CONFIG] servicos.renovacao.comissao_a_mais_pp fora de 0–5 — fica o padrão")
+        bloco["comissao_a_mais_pp"] = pad["comissao_a_mais_pp"]
+    else:
+        bloco["comissao_a_mais_pp"] = float(v)
+    bloco["janela"] = _janela_limpa(bloco.get("janela"))
+
+
+def _janela_limpa(janela: Any) -> Dict[str, Any]:
+    janela = janela if isinstance(janela, Mapping) else {}
+    limpa: Dict[str, Any] = {}
+    for k, padrao in PADRAO_DO_PRODUTO["servicos"]["renovacao"]["janela"].items():
+        v = janela.get(k, padrao)
+        ok = _inteiro_na_faixa(v, RETENTATIVA_MIN_FAIXA) if k == "retentativa_min" else \
+            (isinstance(v, str) and bool(_HHMM.match(v)))
+        if not ok:
+            logger.warning("[MC-CONFIG] servicos.renovacao.janela.%s inválido — fica o padrão", k)
+        limpa[k] = (int(v) if k == "retentativa_min" else v) if ok else padrao
+    return limpa
+
+
+def _resolver_renovacao(cfg: Dict[str, Any], bruto_servicos: Any) -> None:
+    """UM número de antecedência nos dois lugares que o produto lê: `servicos.renovacao.antecedencia_dias` (o madrugada)
+    e `renovacao.antecedencia_dias` (a tela, o manual). Quem vence: o que a corretora escreveu em
+    `servicos.renovacao.antecedencia_dias` > o efetivo da base (com o que a tela gravou em
+    `servicos.renovacao.renovacao`) > o padrão. Fora de 1–60 → o padrão."""
+    bloco = (cfg.get("servicos") or {}).get("renovacao")
+    if not isinstance(bloco, dict):
+        return
+    bruto = bruto_servicos.get("renovacao") if isinstance(bruto_servicos, Mapping) else None
+    explicito = isinstance(bruto, Mapping) and "antecedencia_dias" in bruto \
+        and _inteiro_na_faixa(bruto["antecedencia_dias"], ANTECEDENCIA_DIAS_FAIXA)
+    if explicito:
+        dias = int(bruto["antecedencia_dias"])
+    else:
+        base = (cfg.get("renovacao") or {}).get("antecedencia_dias")
+        dias = int(base) if _inteiro_na_faixa(base, ANTECEDENCIA_DIAS_FAIXA) \
+            else PADRAO_DO_PRODUTO["servicos"]["renovacao"]["antecedencia_dias"]
+    bloco["antecedencia_dias"] = dias
+    cfg.setdefault("renovacao", {})["antecedencia_dias"] = dias
+
+
+def _bloco_da_renovacao(cfg: Mapping[str, Any]) -> Mapping[str, Any]:
+    return _bloco_do_servico(cfg, "renovacao")
+
+
+def antecedencia_dias(cfg: Mapping[str, Any]) -> int:
+    """D-131-01: a renovação é calculada quando vence em ≤ isto (dias)."""
+    v = _bloco_da_renovacao(cfg).get("antecedencia_dias")
+    return int(v) if _inteiro_na_faixa(v, ANTECEDENCIA_DIAS_FAIXA) \
+        else PADRAO_DO_PRODUTO["servicos"]["renovacao"]["antecedencia_dias"]
+
+
+def janela_da_renovacao(cfg: Mapping[str, Any]) -> Dict[str, Any]:
+    """A janela da madrugada (HH:MM no fuso da corretora + `retentativa_min`); chave fora da régua → o padrão dela."""
+    return _janela_limpa(_bloco_da_renovacao(cfg).get("janela"))
+
+
+def opcoes_da_renovacao(cfg: Mapping[str, Any]) -> tuple:
+    """As opções da renovação (1–3, na ordem do disparo). Fora da régua → as três do produto."""
+    v = _bloco_da_renovacao(cfg).get("opcoes")
+    return tuple(v) if _opcoes_validas(v) else tuple(PADRAO_DO_PRODUTO["servicos"]["renovacao"]["opcoes"])
+
+
+def teto_sessoes_corretora(cfg: Mapping[str, Any]) -> int:
+    """D-131-30: sessões do Agger ao mesmo tempo por corretora."""
+    v = _bloco_da_renovacao(cfg).get("teto_sessoes_corretora")
+    return int(v) if _inteiro_na_faixa(v, TETO_SESSOES_CORRETORA_FAIXA) \
+        else PADRAO_DO_PRODUTO["servicos"]["renovacao"]["teto_sessoes_corretora"]
+
+
+def comissao_a_mais_pp(cfg: Mapping[str, Any]) -> float:
+    """D-131-16: quantos pp a opção `anterior` da renovação leva ACIMA da comissão do ano anterior (`per_c`).
+    ⚠️ `renovacao.comissao_a_mais_pp` {mínimo, máximo} da base é o TEXTO do manual de negociação (D-MC-66), não este."""
+    v = _bloco_da_renovacao(cfg).get("comissao_a_mais_pp")
+    if not (_numero(v) and COMISSAO_A_MAIS_PP_FAIXA[0] <= v <= COMISSAO_A_MAIS_PP_FAIXA[1]):
+        v = PADRAO_DO_PRODUTO["servicos"]["renovacao"]["comissao_a_mais_pp"]
+    return float(v)
+
+
+def teto_por_conta_noite(cfg: Mapping[str, Any]) -> int:
+    """D-131-33: no máximo isto de pedidos de renovação por login do Agger por noite."""
+    v = _bloco_da_renovacao(cfg).get("teto_por_conta_noite")
+    return int(v) if _inteiro_na_faixa(v, TETO_POR_CONTA_NOITE_FAIXA) \
+        else PADRAO_DO_PRODUTO["servicos"]["renovacao"]["teto_por_conta_noite"]
+
+
+def antecipar_ate_dias(cfg: Mapping[str, Any]) -> int:
+    """D-131-33: o excedente da noite é antecipado para até isto de dias antes (nunca depois do vencimento)."""
+    v = _bloco_da_renovacao(cfg).get("antecipar_ate_dias")
+    return int(v) if _inteiro_na_faixa(v, ANTECIPAR_ATE_DIAS_FAIXA) \
+        else PADRAO_DO_PRODUTO["servicos"]["renovacao"]["antecipar_ate_dias"]
 
 
 def _sobreposicao(bruto: Any, servico: str) -> Dict[str, Any]:
@@ -495,6 +660,7 @@ def mesclar(linha: Optional[Mapping[str, Any]], servico: Optional[str] = None) -
             cfg = _coerente(_mesclar(cfg, _normalizar(extra), f"servicos.{servico}"), da_corretora)
         # a config de UM serviço leva só o bloco DELE: o modo da Renovação não é dado do Quem Cobra Menos
         cfg["servicos"] = {servico: cfg["servicos"][servico]}
+    _resolver_renovacao(cfg, bruto_servicos)          # SPEC-131-A: UMA antecedência, nos dois lugares
     return cfg
 
 
@@ -596,7 +762,9 @@ EDITAVEL_POR_SERVICO: Dict[str, frozenset] = {
 }
 _EDITAVEL_NA_RENOVACAO = frozenset({"antecedencia_dias", "reajuste_basica_pct"})
 #: as faixas que a tela aceita 💭 (fora delas a escrita é recusada; nunca um número quebrado gravado)
-ANTECEDENCIA_DIAS_MAX = 120
+#: SPEC-131-A: a mesma faixa da leitura (`ANTECEDENCIA_DIAS_FAIXA`, 1–60) — 📊 0 linhas em `multicalculo_config`
+#: (SELECT count(*), 12/10): nenhum valor salvo fica fora dela
+ANTECEDENCIA_DIAS_MAX = 60
 CONTA_GLOBAL_DIAS_MAX = 60
 
 

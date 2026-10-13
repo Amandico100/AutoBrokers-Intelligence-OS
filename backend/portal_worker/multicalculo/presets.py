@@ -250,3 +250,215 @@ def coberturas_re(ramo: int, opcao: str, valor_basica: float,
             raise ValueError(f"cobertura desconhecida no ramo {ramo}: {k!r}")
         saida[k] = v
     return saida
+
+
+# ======================================================================================================================
+# SPEC-131-A F2 — AS OPÇÕES DA RENOVAÇÃO (D-MC-69 · laudo I3 §1.3): "anterior" · "franquia_reduzida" · "completa_mais"
+# ======================================================================================================================
+# 🔴 Para quem JÁ é cliente as comerciais descrevem "igual ao ano passado + melhorias" (📊 ESTRATEGIA-COMERCIAL §1.1/§1.4,
+#    n = 4): ninguém descreve "o mais barato possível". Por isso ⛔ a econômica e a mínima NUNCA entram numa renovação
+#    (mutação 7 da SPEC-131-A): `PROIBIDAS_NA_RENOVACAO` é recusada aqui, na config e no pedido.
+# 🔴 O `anterior` NÃO tem preset FIXO em `PRESETS`: ele é MONTADO da ficha de cada apólice. Sem as coberturas da ficha,
+#    a porta recusa a opção (`PresetIndisponivel`) — nunca a padrão disfarçada de "igual ao ano passado". Pelo mesmo
+#    motivo `PRESETS`/`ORDEM` (QCM e cotação) não mudam: a renovação tem a SUA ordem do disparo, abaixo.
+ANTERIOR = "anterior"
+FRANQUIA_REDUZIDA = "franquia_reduzida"
+#: a ORDEM do disparo no mesmo negócio da renovação: o `anterior` ABRE (versão 1); as outras são versões dele
+OPCOES_DA_RENOVACAO: Tuple[str, ...] = (ANTERIOR, FRANQUIA_REDUZIDA, COMPLETA_MAIS)
+PROIBIDAS_NA_RENOVACAO = frozenset({ECONOMICA, MINIMA})
+
+
+class OpcaoProibidaNaRenovacao(ValueError):
+    """Uma renovação pediu a econômica ou a mínima (ou uma opção que não existe na renovação)."""
+
+
+def conferir_opcoes_da_renovacao(opcoes) -> Tuple[str, ...]:
+    """A lista de opções de uma renovação, conferida: 1 a 3, sem repetição, só `OPCOES_DA_RENOVACAO`. ⛔ econômica e
+    mínima → `OpcaoProibidaNaRenovacao` (a guarda que a mutação 7 tem de deixar vermelha)."""
+    lista = tuple(opcoes or ())
+    proibidas = sorted(set(lista) & PROIBIDAS_NA_RENOVACAO)
+    if proibidas:
+        raise OpcaoProibidaNaRenovacao(f"opção proibida numa renovação: {', '.join(proibidas)}")
+    fora = sorted(set(lista) - set(OPCOES_DA_RENOVACAO))
+    if fora or not 1 <= len(lista) <= 3 or len(set(lista)) != len(lista):
+        raise OpcaoProibidaNaRenovacao(f"as opções da renovação são 1 a 3 de: {', '.join(OPCOES_DA_RENOVACAO)}")
+    return lista
+
+
+# A ESCADA "para cima" de cada CÓDIGO (do pior ao melhor) — os mesmos códigos MEDIDOS do topo deste arquivo (§9.5):
+#   📊 franquia normal 2 < reduzida 1 · vidros básico 1 < completo 2 · reserva sem 0 < 7 d 1 < 15 d 2 ·
+#   📊 assistência básica 4 < completa 1 (NÃO ordinal). Booleano: False < True. Valor em R$: o número.
+ESCADA_AUTO: Mapping[str, Tuple[int, ...]] = {
+    "tipoFranquia": (2, 1), "vidros": (1, 2), "carroReserva": (0, 1, 2), "assist24hs": (4, 1),
+}
+
+
+def _nivel(chave: str, valor: object) -> float:
+    escada = ESCADA_AUTO.get(chave)
+    if escada is not None:
+        return float(escada.index(valor)) if valor in escada else -1.0
+    if isinstance(valor, bool):
+        return 1.0 if valor else 0.0
+    return float(valor) if isinstance(valor, (int, float)) else -1.0
+
+
+def maior(chave: str, a: object, b: object) -> object:
+    """O MELHOR dos dois valores de uma chave de cobertura (para cima, nunca para baixo)."""
+    return b if _nivel(chave, b) > _nivel(chave, a) else a
+
+
+def _mil_acima(valor: object) -> int:
+    """R$ arredondado para CIMA ao milhar 💭 (o passo que o Agger aceita em RCF/APP não foi medido; o milhar nunca
+    fica abaixo do que o cliente tinha)."""
+    v = float(valor)
+    return int(-(-v // 1000) * 1000)
+
+
+# O RÓTULO da ficha (já normalizado por `policy_data_provider.normalizar_rotulo`) → a chave do Agger, no AUTO.
+# 📊 o que está medido: as linhas "Casco", "Danos Materiais", "Danos Corporais" (Sura AUTO, régua F5 da 130-B,
+#    `test_spec130b_costura`). 💭 o resto (morais, APP, vidros, reserva, assistência, a palavra da franquia) é a
+#    grafia comum das apólices — ⚠️ P-130B-12 continua: o mapa precisa ser medido contra as fichas AUTO da bancada.
+#    Rótulo que nenhuma regra lê não vira nada: fica o preset completo e a marca "não conferido".
+def _tem(texto: str, *palavras: str) -> bool:
+    ps = set(texto.split())
+    return all(p in ps for p in palavras)
+
+
+def _codigo_da_franquia(texto: str):
+    if _tem(texto, "reduzida"):
+        return 1
+    if any(_tem(texto, p) for p in ("normal", "obrigatoria", "basica", "majorada", "ampliada")):
+        return 2            # majorada/ampliada é PIOR que a normal: para cima, a normal (o código 4 não foi medido)
+    return None
+
+
+def _dias(texto: str):
+    import re as _re
+
+    m = _re.search(r"(\d{1,3})\s*dias?\b", texto)
+    return int(m.group(1)) if m else None
+
+
+def ler_coberturas_auto(linhas) -> Tuple[Dict[str, object], Tuple[str, ...]]:
+    """As coberturas que a ficha DIZ, como chaves do Agger: ({chave: valor}, chaves acima do maior código medido).
+
+    `linhas` = [(rótulo normalizado, limite em R$ ou None, texto da franquia normalizado ou None)]. A mesma chave lida
+    duas vezes (cadastro e documento) fica com a MAIOR. Carro reserva acima de 15 dias → 15 dias (o maior código medido)
+    e a chave volta em `acima` (o pedido a marca "não conferido": nunca abaixo calado)."""
+    lidas: Dict[str, object] = {}
+    acima = set()
+
+    def por(chave: str, valor: object) -> None:
+        lidas[chave] = maior(chave, lidas[chave], valor) if chave in lidas else valor
+
+    for rotulo, limite, franquia in linhas or ():
+        r = str(rotulo or "")
+        tem_valor = isinstance(limite, (int, float)) and not isinstance(limite, bool) and limite > 0
+        if _tem(r, "franquia") or _tem(r, "casco") or _tem(r, "colisao"):
+            cod = _codigo_da_franquia(f"{r} {franquia or ''}")
+            if cod is not None:
+                por("tipoFranquia", cod)
+        if _tem(r, "danos", "materiais") and tem_valor:
+            por("isDanosMateriais", _mil_acima(limite))
+        elif _tem(r, "danos", "corporais") and tem_valor:
+            por("isDanosCorporais", _mil_acima(limite))
+        elif _tem(r, "danos", "morais") and tem_valor:
+            por("isDanosMorais", _mil_acima(limite))
+        elif (_tem(r, "app") or _tem(r, "acidentes", "pessoais")) and not _tem(r, "invalidez") and tem_valor:
+            por("isAppMorte", _mil_acima(limite))
+        elif _tem(r, "vidros"):
+            if _tem(r, "completo") or _tem(r, "completa"):
+                por("vidros", 2)
+            elif _tem(r, "basico") or _tem(r, "basica"):
+                por("vidros", 1)
+        elif _tem(r, "reserva") or _tem(r, "carro", "extra"):
+            dias = _dias(r)
+            if dias is not None:
+                if dias > 15:
+                    acima.add("carroReserva")
+                por("carroReserva", 1 if dias <= 7 else 2)
+        elif _tem(r, "assistencia") or _tem(r, "assitencia"):
+            if _tem(r, "completa") or _tem(r, "intermediaria"):
+                por("assist24hs", 1)            # intermediária → completa (para cima: o código dela não foi medido)
+            elif _tem(r, "basica"):
+                por("assist24hs", 4)
+    return lidas, tuple(sorted(acima))
+
+
+def _sem_repetidas(por_opcao: Dict[str, Dict[str, object]]) -> Dict[str, Dict[str, object]]:
+    """Duas opções com as MESMAS coberturas são um cálculo pago duas vezes: a de trás cede o lugar."""
+    saida: Dict[str, Dict[str, object]] = {}
+    for o, cob in por_opcao.items():
+        if not any(cob == ja for ja in saida.values()):
+            saida[o] = cob
+    return saida
+
+
+def coberturas_da_renovacao_auto(lidas: Mapping[str, object], opcoes=OPCOES_DA_RENOVACAO
+                                 ) -> Tuple[Dict[str, Dict[str, object]], Tuple[str, ...]]:
+    """O corpo de cada opção da renovação de AUTO: ({opção: coberturas}, as chaves do `anterior` NÃO conferidas).
+
+    · anterior          = o preset completo (`padrao`) com o que a ficha DIZ por cima (igual ou maior, nunca menor);
+    · franquia_reduzida = o anterior com `tipoFranquia` REDUZIDA — se o anterior já era reduzido, CEDE o lugar;
+    · completa_mais     = o MELHOR de (anterior, padrão) chave a chave + pequenos reparos (D-MC-69)."""
+    pedidas = conferir_opcoes_da_renovacao(opcoes)
+    desconhecidas = sorted(set(lidas) - set(CHAVES_DE_COBERTURA))
+    if desconhecidas:
+        raise ValueError(f"cobertura fora do corpo do Agger: {', '.join(desconhecidas)}")
+    anterior = dict(_PADRAO)
+    anterior.update(lidas)
+    nao_conferidas = tuple(k for k in CHAVES_DE_COBERTURA if k not in lidas)
+    todas: Dict[str, Dict[str, object]] = {
+        ANTERIOR: anterior,
+        FRANQUIA_REDUZIDA: dict(anterior, tipoFranquia=_PADRAO["tipoFranquia"]),
+        COMPLETA_MAIS: dict({k: maior(k, anterior[k], _PADRAO[k]) for k in CHAVES_DE_COBERTURA}, reparoRapido=True),
+    }
+    return _sem_repetidas({o: todas[o] for o in pedidas}), nao_conferidas
+
+
+# O GRUPO do catálogo de rótulos (`app/providers/rotulos_de_cobertura.json`, medido na 130-B) → a chave do Agger no RE,
+# por ramo. 🔴 Por que está certo (§9.5): cada chave é a da seção "Coberturas" do formulário do ramo
+# (`CHAVES_DE_COBERTURA_RE`, 📊 formulario_<ramo>.json) com o MESMO nome da cobertura do grupo. A Básica e a
+# assistência ficam fora (a Básica é `risco.valor_basica`; a assistência é da opção). ⚠️ "equipamentos" do condomínio e
+# do empresarial NÃO é o grupo `equipamentos_eletronicos` (não medido) — fica fora. Rótulo sem grupo não vira nada
+# (P-130B-12 continua para os rótulos fora do catálogo).
+CHAVE_DO_GRUPO_RE: Mapping[int, Mapping[str, str]] = {
+    16: {"rc_condominio": "isValorCondominio", "rc_sindico": "isValorSindico", "rc_danos_morais": "isDanosMorais",
+         "rc_portoes": "isDanosPortoes", "incendio_bens_condominos": "isDanosIncendioRaioExplosaoCond",
+         "vidros": "vidros", "roubo_furto_de_bens": "isDanosRoubo", "tumultos": "tumultoGreveLockOut",
+         "vendaval": "isDanosVendaval", "ruptura_de_tubulacoes": "isDanosVazamentoTanquesTubulacoes"},
+    2: {"rc_familiar": "responsabilidadeCivil", "rc_danos_morais": "isDanosMorais", "vidros": "vidros",
+        "roubo_furto_de_bens": "isDanosRoubo", "equipamentos_eletronicos": "isDanosEquipamentosEletronicos",
+        "tumultos": "tumultoGreveLockOut", "vendaval": "isDanosVendaval",
+        "ruptura_de_tubulacoes": "isDanosVazamentoTanquesTubulacoes"},
+    18: {"rc_danos_morais": "isDanosMorais", "vidros": "vidros", "roubo_furto_de_bens": "isDanosRoubo",
+         "tumultos": "tumultoGreveLockOut", "vendaval": "isDanosVendaval",
+         "ruptura_de_tubulacoes": "isDanosVazamentoTanquesTubulacoes"},
+}
+
+
+def extras_re_da_ficha(ramo: int, linhas) -> Dict[str, float]:
+    """`linhas` = [(grupo do catálogo ou None, limite em R$)] → as `extras` do RE ({chave do Agger: R$}); a mesma chave
+    duas vezes fica com a MAIOR."""
+    mapa = CHAVE_DO_GRUPO_RE.get(int(ramo), {})
+    saida: Dict[str, float] = {}
+    for grupo, limite in linhas or ():
+        chave = mapa.get(str(grupo or ""))
+        if chave and isinstance(limite, (int, float)) and not isinstance(limite, bool) and limite > 0:
+            saida[chave] = max(float(limite), saida.get(chave, 0.0))
+    return saida
+
+
+def coberturas_da_renovacao_re(ramo: int, valor_basica: float, extras: "Mapping[str, float] | None",
+                               opcoes=OPCOES_DA_RENOVACAO) -> Dict[str, Dict[str, object]]:
+    """O corpo de cada opção da renovação de RE (a Básica é a do PEDIDO, já reajustada pela config):
+    · anterior          = as coberturas típicas do ramo com as da ficha por cima (`extras` VENCEM a opção);
+    · franquia_reduzida = ⛔ não existe toggle de franquia medido no RE → a TÍPICA do ramo (laudo I3 §1.3, nota 62);
+    · completa_mais     = o melhor de (anterior, típica) chave a chave + assistência COMPLETA (💭 laudo I3 §1.3)."""
+    pedidas = conferir_opcoes_da_renovacao(opcoes)
+    tipica = coberturas_re(ramo, PADRAO, valor_basica)
+    anterior = coberturas_re(ramo, PADRAO, valor_basica, extras=dict(extras or {}))
+    mais = {k: max(anterior[k], tipica[k]) for k in anterior}
+    mais["assist24hs"] = ASSISTENCIA_RE["completa"]
+    todas = {ANTERIOR: anterior, FRANQUIA_REDUZIDA: tipica, COMPLETA_MAIS: mais}
+    return _sem_repetidas({o: todas[o] for o in pedidas})

@@ -199,6 +199,34 @@ def _digits(s: Optional[str]) -> str:
     return re.sub(r"\D", "", s or "")
 
 
+# 🔴 SPEC-131-A F2 (P-1310-02) — 📊 a InfoCap devolve um cliente REAL para o CPF `00000000000` (laudo da CorpAPI,
+# 11/10). Toda consulta por CPF/CNPJ (`/cliente_cpf`, e no probe `/busca_cpf` e `/producao?texto=`) passa por AQUI
+# antes da rede: o documento que não fecha o dígito verificador é RECUSADO — nunca consultado. Uma régua só:
+# `app/utils/documento_br.py`.
+DOCUMENTO_INVALIDO_RESPOSTA = {"ok": False, "status": "documento_invalido", "source": "infocap", "provider": "infocap",
+                               "verification_status": "unverified", "blockers": ["documento_invalido"]}
+
+
+def _cpf_cnpj_ou_recusa(valor: Optional[str]) -> str:
+    """Os dígitos do CPF/CNPJ que PODE ir à InfoCap — ou `DocumentoInvalido` (antes de qualquer chamada)."""
+    from app.utils.documento_br import exigir_documento_valido
+
+    return exigir_documento_valido(valor)
+
+
+def _recusa_documento_invalido(valor: Optional[str]) -> Optional[Dict[str, Any]]:
+    """None quando o documento pode ir à InfoCap (ou quando não há documento); senão a resposta explícita."""
+    from app.utils.documento_br import DocumentoInvalido
+
+    if not _digits(valor):
+        return None
+    try:
+        _cpf_cnpj_ou_recusa(valor)
+    except DocumentoInvalido:
+        return dict(DOCUMENTO_INVALIDO_RESPOSTA)
+    return None
+
+
 def _mask_tail(value: Optional[str], keep: int = 2) -> Optional[str]:
     d = _digits(value)
     if len(d) < keep:
@@ -956,6 +984,9 @@ async def infocap_lookup(
     unmasked = bool(getattr(payload, "unmasked", False))
     if not company_id:
         raise HTTPException(status_code=400, detail="company_id is required")
+    recusa = _recusa_documento_invalido(payload.document)          # P-1310-02: antes de qualquer chamada à InfoCap
+    if recusa is not None:
+        return recusa
 
     connection_decision = await _resolve_infocap_connection(
         db,
@@ -1009,7 +1040,7 @@ async def infocap_lookup(
         query_strategy = "document_cpf"
         search_path = cpf_search_path
         search_param = cpf_search_param
-        search_value: str = doc_digits
+        search_value: str = _cpf_cnpj_ou_recusa(doc_digits)          # já conferido no topo: a régua é UMA
         extra_params = extra_params_raw if isinstance(extra_params_raw, dict) else {"codfil": codfil_default}
     elif name:
         query_strategy = "customer_name"
@@ -2492,7 +2523,7 @@ async def _resolve_policy_detail_for_document_source_audit(
     if qtype == "cpf":
         if not digits:
             raise HTTPException(status_code=400, detail="cpf query requires digits")
-        search_params = {"codfil": codfil, "cpf_cnpj": digits}
+        search_params = {"codfil": codfil, "cpf_cnpj": _cpf_cnpj_ou_recusa(digits)}   # P-1310-02
         search_endpoint = "initial_search.cliente_cpf"
         search_path = cpf_search_path
     else:
@@ -2717,7 +2748,7 @@ async def _run_policy_chain_contract_probe(
     policy_locator: Optional[Dict[str, str]] = None
 
     if qtype == "cpf":
-        search_params = {"codfil": codfil, "cpf_cnpj": digits}
+        search_params = {"codfil": codfil, "cpf_cnpj": _cpf_cnpj_ou_recusa(digits)}   # P-1310-02
         search_endpoint = "initial_search.cliente_cpf"
         search_path = cpf_search_path
     else:
@@ -2912,7 +2943,7 @@ async def _run_policy_identity_integrity_audit(
         })
 
     if qtype == "cpf":
-        search_params = {"codfil": codfil, "cpf_cnpj": digits}
+        search_params = {"codfil": codfil, "cpf_cnpj": _cpf_cnpj_ou_recusa(digits)}   # P-1310-02
         search_endpoint = "initial_search.cliente_cpf"
         search_path = cpf_search_path
     else:
@@ -3123,6 +3154,10 @@ async def infocap_probe(
     raw_query = (payload.query or "").strip()
     digits = _digits(raw_query)
     formatted = _format_doc(digits) if digits else None
+    if qtype == "cpf":
+        recusa = _recusa_documento_invalido(digits)                # P-1310-02: o probe e as 3 auditorias também
+        if recusa is not None:
+            return {**recusa, "probes": []}
 
     probes: List[Dict[str, Any]] = []
     auth_status: Optional[int] = None
@@ -3205,8 +3240,10 @@ async def infocap_probe(
             targets: List[Dict[str, Any]] = []
             if qtype == "cpf" and digits:
                 targets += [
-                    {"path": "/busca_cpf", "params": {"cpf_cnpj": digits}, "label": "/busca_cpf?cpf_cnpj=***"},
-                    {"path": "/cliente_cpf", "params": {"codfil": codfil, "cpf_cnpj": digits}, "label": "/cliente_cpf?codfil=N&cpf_cnpj=***"},
+                    {"path": "/busca_cpf", "params": {"cpf_cnpj": _cpf_cnpj_ou_recusa(digits)},
+                     "label": "/busca_cpf?cpf_cnpj=***"},
+                    {"path": "/cliente_cpf", "params": {"codfil": codfil, "cpf_cnpj": _cpf_cnpj_ou_recusa(digits)},
+                     "label": "/cliente_cpf?codfil=N&cpf_cnpj=***"},
                     {"path": "/producao", "params": {"texto": digits}, "label": "/producao?texto=***(cpf)"},
                 ]
                 if formatted:
@@ -4595,6 +4632,9 @@ async def infocap_vehicle_item(
     doc_digits = _digits(payload.document)
     if not company_id or not doc_digits:
         return {"ok": False, "status": "missing_params", "blockers": ["company_id/document required"]}
+    recusa = _recusa_documento_invalido(doc_digits)                # P-1310-02: antes de qualquer chamada à InfoCap
+    if recusa is not None:
+        return recusa
 
     connection_decision = await _resolve_infocap_connection(db, company_id=company_id,
                                                             requested_connection_id=payload.tenant_connection_id or None)
@@ -4635,7 +4675,8 @@ async def infocap_vehicle_item(
             # 1) cadastro do cliente (nome/telefone/endereco REAIS)
             cli_res = await client.get(config.get("infocap_cpf_search_path") or "/cliente_cpf",
                                        params={"codfil": codfil_default,
-                                               (config.get("infocap_cpf_search_param") or "cpf_cnpj"): doc_digits},
+                                               (config.get("infocap_cpf_search_param") or "cpf_cnpj"):
+                                                   _cpf_cnpj_ou_recusa(doc_digits)},
                                        headers=headers)
             cli_arr = _extract_array(cli_res.json()) if cli_res.status_code < 400 else []
             cli = cli_arr[0] if cli_arr else {}

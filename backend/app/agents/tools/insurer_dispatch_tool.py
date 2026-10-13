@@ -93,39 +93,13 @@ def _digitos(valor) -> str:
     return re.sub(r"\D", "", str(valor or ""))
 
 
-def _digito_verificador(numeros, pesos) -> int:
-    resto = sum(n * p for n, p in zip(numeros, pesos)) % 11
-    return 0 if resto < 2 else 11 - resto
-
-
-def cpf_valido(valor) -> bool:
-    """CPF pelo DÍGITO VERIFICADOR, não pelo comprimento.
-
-    `12345678901` tem onze dígitos e não é CPF de ninguém. Um CPF errado não
-    atrasa o atendimento: ele abre o chamado na apólice de outra pessoa.
-    """
-    d = [int(c) for c in _digitos(valor)]
-    if len(d) != 11 or len(set(d)) == 1:  # 111.111.111-11 fecha a conta e não existe
-        return False
-    return (d[9] == _digito_verificador(d[:9], range(10, 1, -1))
-            and d[10] == _digito_verificador(d[:10], range(11, 1, -1)))
-
-
-def cnpj_valido(valor) -> bool:
-    """CNPJ pelo dígito verificador. Existe porque o titular pode ser PESSOA
-    JURÍDICA — condomínio e empresa são carteira inteira no residencial, e as
-    URAs pedem "CPF ou CNPJ". Reprovar um CNPJ verdadeiro travaria o corredor."""
-    d = [int(c) for c in _digitos(valor)]
-    if len(d) != 14 or len(set(d)) == 1:
-        return False
-    pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-    return (d[12] == _digito_verificador(d[:12], pesos1)
-            and d[13] == _digito_verificador(d[:13], [6] + pesos1))
-
-
-def documento_br_valido(valor) -> bool:
-    """O que o campo `titular_cpf` de fato aceita: CPF **ou** CNPJ."""
-    return cpf_valido(valor) or cnpj_valido(valor)
+# 🔴 SPEC-131-A F2 (P-1310-02): a régua do DÍGITO VERIFICADOR mudou de casa para `app/utils/documento_br.py` — a
+# consulta à InfoCap (`api/infocap_connector.py`) precisa dela sem subir o grafo do agente. Os nomes de sempre
+# continuam aqui, REEXPORTADOS (uma régua só, CLAUDE.md §5): `cpf_valido` · `cnpj_valido` · `documento_br_valido`.
+#   `12345678901` tem onze dígitos e não é CPF de ninguém: um CPF errado não atrasa o atendimento, ele abre o chamado
+#   na apólice de outra pessoa. O CNPJ existe porque o titular pode ser PESSOA JURÍDICA (condomínio, empresa).
+from app.utils.documento_br import cnpj_valido, cpf_valido  # noqa: E402,F401
+from app.utils.documento_br import documento_valido as documento_br_valido  # noqa: E402,F401
 
 
 def placa_br_valida(valor) -> bool:
