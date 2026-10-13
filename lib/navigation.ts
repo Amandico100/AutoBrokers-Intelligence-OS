@@ -28,7 +28,9 @@ export interface NavItem {
 export const PILLARS: NavItem[] = [
   { key: 'autobrokers', label: 'AutoBrokers', href: '/dashboard', icon: 'autobrokers' },
   { key: 'atendimentos', label: 'Atendimentos', href: '/dashboard/atendimentos', icon: 'atendimentos' },
-  { key: 'auxiliares', label: 'Auxiliares', href: '/dashboard/auxiliares', icon: 'auxiliares' },
+  // SPEC-131-B (D-131-18) — o LABEL muda para "Aplicativos" (o nome NA TELA); a key, o href e o ícone não — o
+  // código segue `auxiliary`, e os guardas do menu fixam os três.
+  { key: 'auxiliares', label: 'Aplicativos', href: '/dashboard/auxiliares', icon: 'auxiliares' },
   // 🔴 SEXTO PILAR, TEMPORARIO — pedido do Founder em 18/08/2026, para a
   // apresentacao do dia 19.
   //

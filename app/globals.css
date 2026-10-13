@@ -222,3 +222,35 @@ textarea::-webkit-scrollbar-thumb {
 textarea::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* =============================================
+   SPEC-131-B · a CAPA GERADA de cada aplicativo (laudo de design §2.3)
+   Zero bytes: surface-2 + 2 radiais na matiz do aplicativo (--app-h) + grade de pontos de 1 px.
+   O ícone (marca d'água) e a esmaecida para surface na base são do componente CapaGerada.
+   Só ESTE bloco é da 131-B; nenhum token global muda (D-131-43).
+   ============================================= */
+.capa-aplicativo {
+  --app-h: 205;
+  background-color: hsl(var(--surface-2));
+  background-image:
+    radial-gradient(120% 90% at 0 0, hsl(var(--app-h) 55% 85% / 0.9), transparent 60%),
+    radial-gradient(90% 80% at 100% 100%, hsl(calc(var(--app-h) + 25) 50% 90% / 0.9), transparent 60%),
+    radial-gradient(hsl(var(--foreground) / 0.06) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 14px 14px;
+}
+
+.dark .capa-aplicativo {
+  background-image:
+    radial-gradient(120% 90% at 0 0, hsl(var(--app-h) 45% 38% / 0.55), transparent 60%),
+    radial-gradient(90% 80% at 100% 100%, hsl(calc(var(--app-h) + 25) 40% 30% / 0.35), transparent 60%),
+    radial-gradient(hsl(var(--foreground) / 0.07) 1px, transparent 1px);
+}
+
+/* o ícone no tile e a marca d'água: dark hsl(h 50% 72%), light hsl(h 45% 38%) — contraste >= 3:1 */
+.icone-aplicativo {
+  color: hsl(var(--app-h, 205) 45% 38%);
+}
+
+.dark .icone-aplicativo {
+  color: hsl(var(--app-h, 205) 50% 72%);
+}

@@ -1,43 +1,78 @@
 'use client';
 
-// SPEC-064 Bloco C.3 — a página de UM Auxiliar.
+// SPEC-064 Bloco C.3 — a página de UM Auxiliar. SPEC-131-B — a CASCA de todo aplicativo (laudo de design §3):
 //
-// Antes só existia um modal de configuração: nada explicava o que a coisa faz
-// nem por que vale a pena. Modal serve para uma decisão; isto é uma leitura.
+//   cabeçalho (capa, ícone, nome, frase, selo, botão principal por estado, "Funciona com")
+//   abas por `?aba=`: Início · Configurar · o trabalho feito (quem tem) · Dúvidas
 //
-// A ordem das seções não é estética. É a ordem em que o corretor decide:
-// o que é → o que faz → o que eu ganho → de onde vem o dado → ligo?
+// Este arquivo é o maestro: lê a aba da URL, decide o botão (`botaoPrincipal`), monta os passos do "Como começar"
+// (`passosDoComoComecar`) e fala com a API de instalar/ligar/desligar. O desenho mora em
+// components/aplicativos/casca/*; as abas próprias (Renovações, o Configurar da Renovação/Cotação/QCM) são de G2/G3
+// e entram por import dinâmico (`ABAS_DO_APLICATIVO`).
+//
+// O Configurar dos aplicativos com rotina continua sendo o painel de hoje — `PainelDeRotinas`, a Cobrança intocada
+// (D-131-19). 🔴 SPEC-078 C.4: o painel mora DENTRO da tela do aplicativo; nunca um link para outra página.
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Loader2, Plug, Power, PauseCircle } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-import { CATEGORIAS, type ItemDoCatalogo } from '@/lib/auxiliaries/catalog';
 import PainelDeRotinas from '@/components/auxiliares/PainelDeRotinas';
+import { AbasDoAplicativo } from '@/components/aplicativos/casca/AbasDoAplicativo';
+import { AbaDuvidas } from '@/components/aplicativos/casca/AbaDuvidas';
+import { AbaInicio } from '@/components/aplicativos/casca/AbaInicio';
+import { CabecalhoDoAplicativo } from '@/components/aplicativos/casca/CabecalhoDoAplicativo';
+import {
+  abaValida,
+  abasDoAplicativo,
+  botaoPrincipal,
+  contagemDosPassos,
+  LINK_CONECTORES,
+  NOME_HUMANO_DA_CONEXAO,
+  passosDoComoComecar,
+  type AtividadeDoAplicativo,
+  type ConexaoDoAplicativo,
+  type FontesDoComoComecar,
+  type ItemDoCatalogo,
+} from '@/lib/auxiliaries/catalog';
 
 interface Props {
   item: ItemDoCatalogo;
   podeLigar: { pode: boolean; motivo?: string };
+  atividade: AtividadeDoAplicativo[];
+  fontes: FontesDoComoComecar;
 }
 
-function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-2">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {titulo}
-      </h2>
-      {children}
-    </section>
-  );
+/** Os aplicativos do multicálculo trabalham no Agger — ele entra no "Funciona com" pela prontidão (o cofre). */
+const USAM_O_AGGER = new Set(['renovacao', 'cotacao', 'quem-cobra-menos']);
+
+function conexoesDoCabecalho(item: ItemDoCatalogo, fontes: FontesDoComoComecar): ConexaoDoAplicativo[] {
+  const lista = [...item.conexoes];
+  if (USAM_O_AGGER.has(item.slug)) {
+    const p = fontes.prontidao?.find((x) => x.chave === 'agger_da_corretora');
+    lista.push({
+      slug: 'agger',
+      nome: 'Agger',
+      pronto: p ? p.estado === 'pronto' : null,
+      onde: LINK_CONECTORES,
+    });
+  }
+  return lista;
 }
 
-export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
+export default function AuxiliarDetalheClient({ item, podeLigar, atividade, fontes }: Props) {
   const router = useRouter();
+  const busca = useSearchParams();
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
 
-  async function agir(action: 'install' | 'pause' | 'resume') {
+  const abas = useMemo(() => abasDoAplicativo(item), [item]);
+  const abaAtual = abaValida(abas, busca?.get('aba'));
+  const passos = useMemo(() => passosDoComoComecar(item, fontes), [item, fontes]);
+  const { prontos, total } = contagemDosPassos(passos);
+  const botao = botaoPrincipal(item);
+  const conexoes = useMemo(() => conexoesDoCabecalho(item, fontes), [item, fontes]);
+
+  async function agir(action: 'install' | 'resume' | 'pause') {
     setOcupado(true);
     setErro('');
     try {
@@ -46,318 +81,102 @@ export default function AuxiliarDetalheClient({ item, podeLigar }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
-      const j = await r.json();
+      const j = await r.json().catch(() => null);
       if (!r.ok || j?.ok === false) {
-        // O servidor recusa por dois motivos, e os dois têm texto próprio:
-        // "em breve" e "falta conectar". Repassar o motivo é o que evita o
-        // corretor achar que o produto está quebrado.
+        // O servidor recusa por dois motivos com texto próprio: "em breve" e "falta conectar". Repassar o motivo é o
+        // que evita o corretor achar que o produto está quebrado.
         //
-        // 🔴 E quando o motivo NÃO tem texto próprio, o servidor manda a causa
-        // real em `details` — e esta tela a descartava.
-        //
-        // 📊 Medido em 17/08/2026: o Founder viu `install_failed` na tela, sem
-        // mais nada. A resposta HTTP trazia, em `details[0]`, a mensagem exata
-        // do banco ("Could not find the 'display_name' column…"). Duas telas de
-        // distância entre o sintoma e a causa, por uma linha que não lia um
-        // campo que já vinha pronto.
-        //
-        // O detalhe técnico não é bonito para o corretor, mas é honesto — e a
-        // alternativa medida foi pior: um slug em inglês que não explica nada.
-        const tecnico = Array.isArray(j?.details)
-          ? String(j.details[0] || '').trim()
-          : '';
+        // 🔴 A causa técnica vem em `details` (📊 17/08/2026: o Founder via só `install_failed`; `details[0]` trazia
+        // a mensagem exata do banco). SPEC-131-B (laudo de design §1, item 17): ela vai para o LOG, inteira, e a tela
+        // fala português — o erro técnico cru na tela era o defeito 17.
+        const tecnico = Array.isArray(j?.details) ? String(j.details[0] || '').trim() : '';
+        if (tecnico || j?.error) console.error('[APLICATIVO]', item.slug, action, j?.error, tecnico);
+        const faltando: string[] = Array.isArray(j?.faltando) ? j.faltando : [];
+        const nomes = faltando.map(
+          (s) => item.conectores_pendentes.find((c) => c.slug === s)?.nome ?? NOME_HUMANO_DA_CONEXAO[s] ?? 'uma conexão',
+        );
         setErro(
           j?.detalhe ||
-            (j?.faltando ? `Conecte antes: ${j.faltando.join(', ')}.` : null) ||
-            (tecnico ? `Não foi possível concluir — ${tecnico}` : null) ||
-            j?.error ||
-            'Não foi possível concluir.',
+            (nomes.length ? `Conecte antes: ${nomes.join(', ')}.` : null) ||
+            'Não deu para concluir agora. Tente de novo em instantes; se continuar, fale com o suporte.',
         );
         return;
       }
+      if (action === 'install' && !item.sem_rotina && botao.tipo === 'acao' && botao.rotulo === 'Instalar') {
+        // instalar abre o Configurar — é ali que se diz o que ele faz antes de ligar (laudo de design §3)
+        router.push(`/dashboard/auxiliares/${item.slug}?aba=configurar`, { scroll: false });
+      }
       router.refresh();
-    } catch {
-      setErro('Falha de conexão.');
+    } catch (e) {
+      console.error('[APLICATIVO] falha de conexão', e);
+      setErro('Sem conexão com o servidor agora. Tente de novo em instantes.');
     } finally {
       setOcupado(false);
     }
   }
 
   const ligado = item.estado === 'ligado';
-  // Instalado ≠ ligado. Um Auxiliar PAUSADO continua dono das rotinas dele, e
-  // é justamente pausado que a corretora quer configurar antes de ligar.
-  //
-  // 📊 Medido em 17/08/2026: a Resulta tem a Cobrança Feita instalada com
-  // status `inactive` (= "pausado" na tela) e UMA rotina de cobrança com o
-  // número de teste e a mensagem já gravados. Com a seção presa em `ligado`,
-  // essa rotina era invisível pela interface — existia no banco e em lugar
-  // nenhum na tela.
+  // Instalado ≠ ligado. Um aplicativo PAUSADO continua dono das rotinas dele, e é justamente pausado que a corretora
+  // quer configurar antes de ligar (📊 17/08/2026: a Cobrança Feita instalada `inactive`, com uma rotina gravada que
+  // era invisível pela interface).
   const instalado = ligado || item.estado === 'pausado';
 
-  return (
-    <div className="space-y-8">
-      {/* 1 · TÍTULO E HEADLINE */}
+  const configurarPadrao = instalado ? (
+    <section className="space-y-4 pt-8">
       <div>
-        <div className="flex flex-wrap items-center gap-2">
-          {item.categorias.map((c) => {
-            const cat = CATEGORIAS[c];
-            if (!cat) return null;
-            return (
-              <span
-                key={c}
-                className="rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-              >
-                {cat.emoji} {cat.rotulo}
-              </span>
-            );
-          })}
-        </div>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{item.nome}</h1>
-        {item.headline && (
-          <p className="mt-1 text-base text-muted-foreground">{item.headline}</p>
-        )}
+        <h2 className="text-lg font-semibold text-foreground">Rotinas deste aplicativo</h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          O que ele faz, quando e para quem. A configuração fica guardada mesmo desligado.
+        </p>
       </div>
+      <PainelDeRotinas auxiliarSlug={item.slug} auxiliarNome={item.nome} auxiliarLigado={ligado} />
+    </section>
+  ) : null;
 
-      {/* 2 · O QUE É */}
-      {item.descricao && (
-        <Secao titulo="O que é">
-          <div className="space-y-2 text-sm leading-relaxed text-muted-foreground">
-            {item.descricao.split('\n\n').map((p, i) => (
-              <p key={i}>{p}</p>
-            ))}
-          </div>
-        </Secao>
-      )}
+  // Configurar com ponto de atenção quando o passo de configuração ainda falta
+  const marcadas = passos.some((p) => (p.chave === 'configurar' || p.chave === 'servicos') && p.estado !== 'pronto')
+    ? ['configurar']
+    : [];
 
-      {/* 3 · O QUE ELE FAZ */}
-      {item.o_que_faz.length > 0 && (
-        <Secao titulo="O que ele faz">
-          <ul className="space-y-2">
-            {item.o_que_faz.map((t, i) => (
-              <li
-                key={i}
-                className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2"
-              >
-                <span className="text-sm text-foreground">{t.tarefa}</span>
-                <span className="shrink-0 rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] text-muted-foreground">
-                  {t.frequencia}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Secao>
-      )}
+  return (
+    <div>
+      <CabecalhoDoAplicativo
+        item={item}
+        botao={botao}
+        conexoes={conexoes}
+        resumoDosPassos={`${prontos} de ${total} prontos`}
+        ocupado={ocupado}
+        erro={erro}
+        motivoDeNaoLigar={
+          item.estado_catalogo !== 'coming_soon' && item.estado !== 'falta_conectar' && !podeLigar.pode
+            ? podeLigar.motivo
+            : undefined
+        }
+        onAcao={agir}
+      />
 
-      {/* 4 · O QUE VOCÊ GANHA
-          Quando ainda não há número medido, o texto diz o que SERÁ medido.
-          Nunca inventa valor — CLAUDE.md §12.1. */}
-      {item.promessa && (
-        <Secao titulo="O que você ganha">
-          <p className="rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-foreground">
-            {item.promessa}
-          </p>
-        </Secao>
-      )}
-
-      {/* 5 · DE ONDE ELE TIRA A INFORMAÇÃO */}
-      {item.fontes.length > 0 && (
-        <Secao titulo="De onde ele tira a informação">
-          <div className="flex flex-wrap gap-1.5">
-            {item.fontes.map((f) => (
-              <span
-                key={f}
-                className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-muted-foreground"
-              >
-                {f.replace(/_/g, ' ')}
-              </span>
-            ))}
-          </div>
-          <p className="text-[11px] text-faint">
-            Você precisa saber o que o Auxiliar acessa. Nada aqui sai da sua corretora.
-          </p>
-        </Secao>
-      )}
-
-      {/* CONEXÕES — a peça que o Founder pediu:
-          conectou uma vez, serve a todos os Auxiliares. */}
-      {(item.conectores_pendentes.length > 0 || item.conectores_prontos.length > 0) && (
-        <Secao titulo="Conexões que ele usa">
-          <div className="space-y-2">
-            {item.conectores_prontos.map((c) => (
-              <div
-                key={c}
-                className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2"
-              >
-                <Plug className="h-3.5 w-3.5 text-emerald-600" />
-                <span className="text-sm text-foreground">{c.replace(/_/g, ' ')}</span>
-                <span className="ml-auto text-[11px] font-medium text-emerald-600">conectado</span>
-              </div>
-            ))}
-            {item.conectores_pendentes.map((c) => (
-              <Link
-                key={c.slug}
-                href={c.onde}
-                className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 transition-colors hover:bg-amber-500/20"
-              >
-                <Plug className="h-3.5 w-3.5 text-amber-600" />
-                <span className="text-sm text-foreground">{c.nome}</span>
-                <span className="ml-auto text-[11px] font-medium text-amber-600">conectar →</span>
-              </Link>
-            ))}
-          </div>
-          <p className="text-[11px] text-faint">
-            A conexão é da corretora: depois de conectada, qualquer Auxiliar que precisar dela
-            usa a mesma — você não conecta duas vezes.
-          </p>
-        </Secao>
-      )}
-
-      {/* 6 · INSTALAR — o PRIMEIRO passo, e só ele.
-          🔴 SPEC-078, ajuste de 17/08/2026 pedido pelo Founder: "ligar o
-          Auxiliar precisa ser o ÚLTIMO passo. Depois de fazer todas as
-          personalizações, ativar a rotina, aí sim vem o botão de ligar."
-          Ele está certo, e o motivo é de produto: ligar antes de configurar
-          coloca um trabalhador para trabalhar com as instruções em branco.
-          Instalar e ligar eram o mesmo botão; agora são dois momentos. */}
-      {!item.instalado && (
-        <Secao titulo="Instalar">
-          {erro && <p className="text-sm text-danger">{erro}</p>}
-          {item.estado_catalogo === 'coming_soon' ? (
-            <div className="rounded-lg border border-border bg-surface-2 px-3 py-3">
-              <p className="text-sm font-medium text-foreground">Ainda não está pronto</p>
-              {item.falta_para_existir && (
-                <p className="mt-1 text-xs text-muted-foreground">{item.falta_para_existir}</p>
-              )}
-              <button
-                disabled
-                className="mt-3 cursor-not-allowed rounded-md border border-border bg-surface px-3 py-2 text-sm text-faint"
-              >
-                Em breve
-              </button>
+      <AbasDoAplicativo
+        item={item}
+        abas={abas}
+        abaAtual={abaAtual}
+        marcadas={marcadas}
+        conteudo={{
+          inicio: (
+            <AbaInicio
+              item={item}
+              passos={passos}
+              atividade={atividade}
+              hrefDuvidas={`/dashboard/auxiliares/${item.slug}?aba=duvidas`}
+            />
+          ),
+          configurar: configurarPadrao,
+          duvidas: (
+            <div className="pt-8">
+              <AbaDuvidas faq={item.faq} />
             </div>
-          ) : (
-            <div className="space-y-2">
-              <button
-                onClick={() => agir('install')}
-                disabled={ocupado || !podeLigar.pode}
-                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-                Instalar este Auxiliar
-              </button>
-              <p className="text-[11px] text-faint">
-                Instalar não liga nada. Depois de instalar, você configura a rotina —
-                e ligar é o último passo.
-              </p>
-              {!podeLigar.pode && podeLigar.motivo && (
-                <p className="text-xs text-amber-600">{podeLigar.motivo}</p>
-              )}
-            </div>
-          )}
-        </Secao>
-      )}
-
-      {/* 7 · EXECUTAR AGORA — para os que têm tela própria de execução */}
-      {item.tela_de_execucao && item.estado_catalogo === 'available' && (
-        <Secao titulo="Executar agora">
-          <Link
-            href={item.tela_de_execucao}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary/40"
-          >
-            Abrir a tela deste Auxiliar →
-          </Link>
-          <p className="text-[11px] text-faint">
-            Este Auxiliar também roda sob demanda, sem esperar a rotina.
-          </p>
-        </Secao>
-      )}
-
-      {/* 8 · ROTINAS DESTE AUXILIAR
-          🔴 SPEC-078 C.4 — o painel de configuração MORA AQUI agora.
-          Antes isto era um LINK para `/dashboard/auxiliares/rotinas`, uma
-          página autônoma que listava as rotinas de toda a corretora e tinha um
-          botão "Nova rotina" sem dono. Era a quarta das quatro rotas que a
-          SPEC-064 §B.3 mandou absorver, e a única que não tinha sido — e o
-          botão dela foi o que produziu a rotina órfã de 17/08 às 13:01.
-          O possessivo do título já estava certo desde o começo. Agora o
-          conteúdo corresponde a ele. */}
-      {instalado && (
-        <Secao titulo="Rotinas deste Auxiliar">
-          <PainelDeRotinas
-            auxiliarSlug={item.slug}
-            auxiliarNome={item.nome}
-            auxiliarLigado={ligado}
-          />
-        </Secao>
-      )}
-
-      {/* 8.5 · LIGAR — O ÚLTIMO PASSO, e ele parece o último passo.
-          Verde e grande porque é a decisão que faz o trabalhador começar a
-          trabalhar; tudo acima é preparação. Antes ele era um botão comum,
-          na metade da página, ANTES da configuração — e ligar antes de
-          configurar coloca o robô para rodar com o formulário em branco. */}
-      {instalado && item.estado_catalogo === 'available' && (
-        <Secao titulo={ligado ? 'Este Auxiliar está trabalhando' : 'Último passo — ligar'}>
-          {erro && <p className="mb-2 text-sm text-danger">{erro}</p>}
-          {ligado ? (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-600/10 px-3 py-2.5">
-                <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                  Ligado — as rotinas ativas acima vão rodar no horário configurado.
-                </span>
-              </div>
-              <button
-                onClick={() => agir('pause')}
-                disabled={ocupado}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-danger/40 disabled:opacity-60"
-              >
-                {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4" />}
-                Desligar este Auxiliar
-              </button>
-              <p className="text-[11px] text-faint">
-                Desligar não apaga nada — a configuração, as rotinas e o histórico ficam.
-                Ele simplesmente para de trabalhar até você ligar de novo.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <button
-                onClick={() => agir('resume')}
-                disabled={ocupado || !podeLigar.pode}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-              >
-                {ocupado ? <Loader2 className="h-5 w-5 animate-spin" /> : <Power className="h-5 w-5" />}
-                Ligar este Auxiliar
-              </button>
-              <p className="text-[11px] text-faint">
-                A partir daqui ele começa a trabalhar sozinho, nos horários das rotinas
-                que você configurou acima. Confira a configuração antes.
-              </p>
-              {!podeLigar.pode && podeLigar.motivo && (
-                <p className="text-xs text-amber-600">{podeLigar.motivo}</p>
-              )}
-            </div>
-          )}
-        </Secao>
-      )}
-
-      {/* 9 · HISTÓRICO */}
-      <Secao titulo="Histórico">
-        {item.ultima_execucao ? (
-          <p className="text-sm text-muted-foreground">
-            Última execução em{' '}
-            {new Date(item.ultima_execucao).toLocaleString('pt-BR')}.{' '}
-            <Link href="/dashboard/entregas" className="text-primary underline">
-              Ver tudo que ele entregou
-            </Link>
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Ainda não rodou nenhuma vez.
-          </p>
-        )}
-      </Secao>
+          ),
+        }}
+      />
     </div>
   );
 }

@@ -21,6 +21,8 @@
 
 > **Auxiliar TEM Rotina. Auxiliar NÃO É Rotina.**
 
+**Aplicativo** = o nome do **Auxiliar NA TELA** (menu "Aplicativos", a loja, a página de cada um) — só na tela; código, tabelas e rotas seguem `auxiliary` (D-131-18, SPEC-131-B).
+
 ---
 
 ## Quem conversa, quem executa
