@@ -79,6 +79,15 @@ export async function POST(req: NextRequest) {
   if (!UUID.test(dono)) return NextResponse.json({ error: 'Pessoa inválida' }, { status: 400 });
   const quem = await quemPode(req, dono);
   if (quem instanceof NextResponse) return quem;
+  // 🔴 SPEC-131-B G3 (D-131-07, revê D-131-0-06): cada pessoa conecta SÓ o próprio Agger, em Meu perfil. O admin não
+  // digita login nem senha de outra pessoa — ele vê a situação em Equipe e pede para ela conectar. Pausar, religar e
+  // desconectar o Agger de quem saiu continuam com o admin (o gesto de segurança).
+  if ((acao === 'conectar' || acao === 'trocar_senha') && quem.userId !== dono) {
+    return NextResponse.json(
+      { error: 'Cada pessoa conecta o próprio Agger, em Meu perfil → Minhas conexões. Peça para ela conectar.' },
+      { status: 403 },
+    );
+  }
   let res: Response;
   try {
     res = await fetch(`${getBackendUrl()}/api/portal/aggers-da-equipe`, {

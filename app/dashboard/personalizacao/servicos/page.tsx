@@ -1,25 +1,10 @@
-import { DetailHeader } from '@/components/patterns';
-import { icons } from '@/lib/icons';
-import { ServicosClient } from './ServicosClient';
-
-export const metadata = { title: 'Serviços · AutoBrokers' };
+import { redirect } from 'next/navigation';
 
 /**
- * SPEC-131-0 parte A · F4 — o manual de cada serviço (Cotação · Renovação · Quem Cobra Menos) e, no topo, a
- * configuração em 4 passos (D-131-0-07). Leitura e escrita pela rota `/api/dashboard/servicos`.
+ * SPEC-131-B G3 (D-131-06) — "Serviços" saiu de Personalização: o que cada aplicativo faz mora na aba Configurar DELE.
+ * O endereço antigo continua vivo (link salvo não some) e leva à Renovação. O backend (`/api/servicos-da-corretora`)
+ * não mudou de lugar: a aba Configurar de cada aplicativo lê e grava pela mesma rota.
  */
 export default function ServicosPage() {
-  return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6 sm:py-10">
-        <DetailHeader
-          icon={icons.auxiliares}
-          title="Serviços"
-          subtitle="O que o AutoBrokers faz em cada serviço: só calcular, calcular e entregar ao cliente, ou também negociar."
-          breadcrumb={[{ label: 'Personalização', href: '/dashboard/personalizacao' }, { label: 'Serviços' }]}
-        />
-        <ServicosClient />
-      </div>
-    </div>
-  );
+  redirect('/dashboard/auxiliares/renovacao?aba=configurar');
 }

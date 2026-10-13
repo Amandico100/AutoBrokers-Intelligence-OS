@@ -10,13 +10,16 @@ import { Label } from '@/components/ui/label';
 function corDaSituacao(situacao: string): string {
   if (situacao === 'conectado' || situacao === 'calculando') return 'text-success';
   if (situacao === 'senha_recusada') return 'text-danger';
-  if (situacao === 'pausado' || situacao === 'ocupada') return 'text-amber-600';
+  if (situacao === 'pausado' || situacao === 'ocupada') return 'text-warning';
   return 'text-muted-foreground';
 }
 
 /**
- * SPEC-131-0 parte A · F3 — "Aggers da equipe" (D-131-0-05/06/29): o Agger de cada pessoa da equipe, ao lado do Agger
- * da corretora. Mora DENTRO do modal do Agger da corretora (uma conexão, duas partes).
+ * SPEC-131-0 parte A · F3 — o Agger de cada PESSOA (D-131-0-05/29).
+ *
+ * 🔴 SPEC-131-B G3 (D-131-07, revê D-131-0-06): saiu do modal do Agger da corretora. Mora em Meu perfil → Minhas
+ * conexões e mostra SÓ o Agger de quem está logado — cada pessoa conecta o dela. O admin vê a situação de cada um em
+ * Personalização → Equipe e pede para conectar; nunca digita o login de outra pessoa (a rota recusa).
  *
  * O estado e o texto de cada pessoa vêm prontos do backend (`conta_do_robo.aggers_da_equipe`) — a tela não traduz
  * estado cru. A senha nunca volta: só "senha guardada". O admin mexe no Agger de qualquer pessoa; a pessoa, no dela —
@@ -39,7 +42,7 @@ type Pessoa = { user_id: string; nome: string; papel?: string | null; funcoes?: 
 const FUNCAO: Record<string, string> = { comercial: 'Comercial', calculista: 'Calculista', negociador: 'Negociador' };
 const quando = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR') : '');
 
-export function AggersDaEquipe() {
+export function AggersDaEquipe({ apenasEu = true }: { apenasEu?: boolean } = {}) {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [eu, setEu] = useState('');
   const [podeTodos, setPodeTodos] = useState(false);
@@ -57,15 +60,17 @@ export function AggersDaEquipe() {
       const res = await fetch('/api/dashboard/aggers-da-equipe', { cache: 'no-store' });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setErro(j.detail || j.error || 'Não consegui ler os Aggers da equipe agora.'); return; }
-      setPessoas(Array.isArray(j.pessoas) ? j.pessoas : []);
-      setEu(String(j.eu || ''));
-      setPodeTodos(Boolean(j.pode_gerir_todos));
+      const todas: Pessoa[] = Array.isArray(j.pessoas) ? j.pessoas : [];
+      const quem = String(j.eu || '');
+      setPessoas(apenasEu ? todas.filter((p) => p.user_id === quem) : todas);
+      setEu(quem);
+      setPodeTodos(!apenasEu && Boolean(j.pode_gerir_todos));
     } catch {
       setErro('Não consegui ler os Aggers da equipe agora.');
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [apenasEu]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -81,11 +86,11 @@ export function AggersDaEquipe() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErro(res.status === 403 ? 'Só um administrador da corretora, ou a própria pessoa, mexe neste Agger.'
+        setErro(res.status === 403 ? (j.error || 'Só a própria pessoa conecta o Agger dela.')
           : (j.detail || j.error || 'Não consegui salvar agora.'));
         return;
       }
-      if (Array.isArray(j.pessoas)) setPessoas(j.pessoas);
+      if (Array.isArray(j.pessoas)) setPessoas(apenasEu ? j.pessoas.filter((p: Pessoa) => p.user_id === eu) : j.pessoas);
       fecharFormulario();
       setAviso(ok);
     } catch {
@@ -97,19 +102,21 @@ export function AggersDaEquipe() {
   };
 
   return (
-    <section className="space-y-3 border-t border-border pt-4" aria-labelledby="aggers-da-equipe">
+    <section className="space-y-3" aria-labelledby="aggers-da-equipe">
       <div className="space-y-1">
-        <h3 id="aggers-da-equipe" className="text-sm font-semibold text-foreground">Aggers da equipe</h3>
-        <p className="text-xs text-muted-foreground">
-          O Agger da corretora atende o Quem Cobra Menos e quem não tem Agger próprio. Cada comercial pode ter o seu:
-          as cotações que ela pedir e as renovações da carteira dela serão calculadas no Agger dela.
+        <h3 id="aggers-da-equipe" className="text-base font-semibold text-foreground">{apenasEu ? 'Seu Agger' : 'Aggers da equipe'}</h3>
+        <p className="text-sm text-muted-foreground">
+          As cotações que você pedir e as renovações da sua carteira são calculadas no seu Agger — o negócio fica com
+          você. Sem ele, vão pelo Agger da corretora. A senha fica guardada no cofre e nunca volta para a tela.
         </p>
       </div>
 
       {carregando && pessoas.length === 0 ? (
-        <p className="py-2 text-center text-xs text-muted-foreground">Carregando…</p>
+        <p className="py-2 text-sm text-muted-foreground">Carregando…</p>
       ) : pessoas.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Ninguém na equipe ainda.</p>
+        <p className="text-sm text-muted-foreground">
+          {apenasEu ? 'Você não está ativo na equipe desta corretora.' : 'Ninguém na equipe ainda.'}
+        </p>
       ) : (
         <ul className="space-y-2">
           {pessoas.map((p) => {
@@ -123,27 +130,27 @@ export function AggersDaEquipe() {
                 <div className="flex flex-wrap items-baseline justify-between gap-x-2">
                   <p className="text-sm font-medium text-foreground">{p.nome}{meu ? ' (você)' : ''}</p>
                   {p.funcoes && p.funcoes.length > 0 && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {p.funcoes.map((f) => FUNCAO[f] || f).join(' · ')}
                     </p>
                   )}
                 </div>
-                <p className={`text-xs ${cor}`}>{p.agger.rotulo}</p>
+                <p className={`text-sm ${cor}`}>{p.agger.rotulo}</p>
                 {p.agger.usuario && (
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Login {p.agger.usuario} · {p.agger.tem_senha ? 'senha guardada' : 'sem senha'}
                     {p.agger.ultimo_uso ? ` · último cálculo ${quando(p.agger.ultimo_uso)}` : ''}
                   </p>
                 )}
                 {p.agger.ocupada_ate && (
-                  <p className="text-[11px] text-muted-foreground">Tenta de novo por volta de {quando(p.agger.ocupada_ate)}</p>
+                  <p className="text-xs text-muted-foreground">Tenta de novo por volta de {quando(p.agger.ocupada_ate)}</p>
                 )}
 
                 {formAberto ? (
                   <div className="space-y-2">
                     <div className="space-y-1">
                       <Label htmlFor={`ag-user-${p.user_id}`} className="text-xs text-foreground">
-                        {aberta?.acao === 'conectar' ? 'Login do Agger desta pessoa'
+                        {aberta?.acao === 'conectar' ? (meu ? 'Seu login do Agger' : 'Login do Agger desta pessoa')
                           : `Login (deixe em branco para manter ${p.agger.usuario || 'o atual'})`}
                       </Label>
                       <Input id={`ag-user-${p.user_id}`} value={usuario} onChange={(e) => setUsuario(e.target.value)}
@@ -173,7 +180,7 @@ export function AggersDaEquipe() {
                     {pode('conectar') && (
                       <Button size="sm" disabled={ocupado}
                         onClick={() => { setAberta({ id: p.user_id, acao: 'conectar' }); setErro(''); setAviso(''); }}>
-                        Conectar o Agger desta pessoa
+                        {meu ? 'Conectar o meu Agger' : 'Conectar o Agger desta pessoa'}
                       </Button>
                     )}
                     {pode('trocar_senha') && (
@@ -193,7 +200,9 @@ export function AggersDaEquipe() {
                     {pode('desconectar') && (
                       <Button size="sm" variant="outline" className="text-danger" disabled={ocupado}
                         onClick={() => {
-                          if (!confirm(`Desconectar o Agger de ${p.nome}? A senha é apagada e as cotações dela passam a ir pelo Agger da corretora.`)) return;
+                          if (!confirm(meu
+                            ? 'Desconectar o seu Agger? A senha é apagada e as suas cotações e renovações passam a ir pelo Agger da corretora.'
+                            : `Desconectar o Agger de ${p.nome}? A senha é apagada e as cotações dela passam a ir pelo Agger da corretora.`)) return;
                           agir(p.user_id, 'desconectar', {}, 'Agger desconectado. A senha foi apagada.');
                         }}>
                         Desconectar
@@ -207,8 +216,8 @@ export function AggersDaEquipe() {
         </ul>
       )}
 
-      {erro && <p className="text-xs text-danger">{erro}</p>}
-      {aviso && <p className="text-xs text-success">{aviso}</p>}
+      {erro && <p className="text-sm text-danger" role="alert">{erro}</p>}
+      {aviso && <p className="text-sm text-success" role="status">{aviso}</p>}
     </section>
   );
 }

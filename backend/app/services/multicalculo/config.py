@@ -788,7 +788,12 @@ def conta_global_se_vence_em_dias(cfg: Mapping[str, Any]) -> int:
 EDITAVEL_POR_SERVICO: Dict[str, frozenset] = {
     "cotacao": frozenset({"modo", "excecoes_do_modo", "preferencias_de_seguradoras"}),
     "renovacao": frozenset({"modo", "excecoes_do_modo", "preferencias_de_seguradoras",
-                            "conta_global_se_vence_em_dias", "renovacao"}),
+                            "conta_global_se_vence_em_dias", "renovacao",
+                            # SPEC-131-B G3 — a aba Configurar da Renovação: quantas opções (1–3), o teto por conta
+                            # por noite e a antecipação. São chaves que a MADRUGADA já lê (`opcoes_da_renovacao`,
+                            # `teto_por_conta_noite`, `antecipar_ate_dias`): a tela nunca grava o que o produto não lê.
+                            # ⛔ `prosseguir_aceites` e `teto_sessoes_corretora` continuam fora (só o comando/gerente).
+                            "opcoes", "teto_por_conta_noite", "antecipar_ate_dias"}),
 }
 _EDITAVEL_NA_RENOVACAO = frozenset({"antecedencia_dias", "reajuste_basica_pct"})
 #: as faixas que a tela aceita 💭 (fora delas a escrita é recusada; nunca um número quebrado gravado)
@@ -852,6 +857,18 @@ def erros_da_edicao(servicos: Any = None, preferencias_de_seguradoras: Any = Non
             elif k == "conta_global_se_vence_em_dias":
                 if not _numero(v) or not 0 <= v <= CONTA_GLOBAL_DIAS_MAX or int(v) != v:
                     erros.append(f"{onde}: um número inteiro de dias, de 0 a {CONTA_GLOBAL_DIAS_MAX}")
+            elif k == "opcoes":
+                # a MESMA régua da leitura (`_opcoes_validas`): ⛔ econômica e mínima nunca numa renovação
+                if not _opcoes_validas(v):
+                    erros.append(f"{onde}: de 1 a 3 opções da renovação, sem repetir")
+            elif k == "teto_por_conta_noite":
+                if not _inteiro_na_faixa(v, TETO_POR_CONTA_NOITE_FAIXA):
+                    erros.append(f"{onde}: um número inteiro, de {TETO_POR_CONTA_NOITE_FAIXA[0]} a "
+                                 f"{TETO_POR_CONTA_NOITE_FAIXA[1]}")
+            elif k == "antecipar_ate_dias":
+                if not _inteiro_na_faixa(v, ANTECIPAR_ATE_DIAS_FAIXA):
+                    erros.append(f"{onde}: um número inteiro de dias, de {ANTECIPAR_ATE_DIAS_FAIXA[0]} a "
+                                 f"{ANTECIPAR_ATE_DIAS_FAIXA[1]}")
             elif k == "renovacao":
                 if not isinstance(v, Mapping):
                     erros.append(f"{onde}: esperado um objeto")

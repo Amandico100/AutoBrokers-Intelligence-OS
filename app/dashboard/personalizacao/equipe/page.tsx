@@ -2,6 +2,7 @@ import { DetailHeader } from '@/components/patterns';
 import { icons } from '@/lib/icons';
 import { TeamClient } from './TeamClient';
 import { QuemEQuemNoSistema } from './QuemEQuemNoSistema';
+import { SituacaoDaEquipe } from './SituacaoDaEquipe';
 
 export const metadata = { title: 'Equipe · AutoBrokers' };
 
@@ -16,6 +17,8 @@ export default function EquipePage() {
           breadcrumb={[{ label: 'Personalização', href: '/dashboard/personalizacao' }, { label: 'Equipe' }]}
         />
         <TeamClient />
+        {/* SPEC-131-B G3 (D-131-07): Agger · WhatsApp de trabalho · ausência de cada pessoa (só o admin vê) */}
+        <SituacaoDaEquipe />
         <QuemEQuemNoSistema />
       </div>
     </div>

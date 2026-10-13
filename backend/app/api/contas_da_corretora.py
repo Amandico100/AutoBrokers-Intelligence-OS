@@ -163,3 +163,91 @@ async def medir(request: Request,
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:  # noqa: BLE001
         raise _falhou("medir a regra", e)
+
+
+# ------------------------------------------------------------------------------------------------- o MEU perfil
+# SPEC-131-B G3 — "Meu perfil" (o WhatsApp de trabalho e a ausência) e a SITUAÇÃO de cada pessoa em Equipe. O BFF manda
+# `company_id` e `user_id`/`por_user_id` da SESSÃO; o serviço (`perfil_do_membro`) filtra `company_id` e confere quem
+# pode. ⛔ Nenhum número de telefone vai para log; o número só volta para a própria pessoa (GET /perfil).
+def _perfil():
+    from app.services import perfil_do_membro as PERFIL
+
+    return PERFIL
+
+
+@router.get("/perfil")
+async def ler_perfil(company_id: str, user_id: str,
+                     x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key")):
+    _require_internal_key(x_key)
+    P = _perfil()
+    try:
+        return P.ler_perfil(_db(), company_id, user_id)
+    except P.Recusa as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise _falhou("ler o perfil", e)
+
+
+@router.put("/perfil/whatsapp-de-trabalho")
+async def gravar_whatsapp_de_trabalho(request: Request,
+                                      x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key")):
+    """`{company_id, user_id, por_user_id, numero, confirmo: true}` grava · `numero: null` apaga. Só a própria pessoa."""
+    _require_internal_key(x_key)
+    b = await _corpo(request)
+    P = _perfil()
+    try:
+        if b.get("numero") is None:
+            return {"ok": True, **P.remover_whatsapp_trabalho(_db(), b["company_id"], b.get("user_id"),
+                                                              por_user_id=b.get("por_user_id"))}
+        return {"ok": True, **P.gravar_whatsapp_trabalho(_db(), b["company_id"], b.get("user_id"),
+                                                         numero=b.get("numero"), confirmo=b.get("confirmo"),
+                                                         por_user_id=b.get("por_user_id"))}
+    except P.Recusa as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise _falhou("gravar o WhatsApp de trabalho", e)
+
+
+@router.post("/perfil/ausencias")
+async def criar_ausencia(request: Request,
+                         x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key")):
+    """`{company_id, user_id, substituto_user_id, de, ate, por_user_id}` — OUTRA pessoa ativa da MESMA corretora."""
+    _require_internal_key(x_key)
+    b = await _corpo(request)
+    P = _perfil()
+    try:
+        r = P.criar_ausencia(_db(), b["company_id"], user_id=b.get("user_id"),
+                             substituto_user_id=b.get("substituto_user_id"), de=b.get("de"), ate=b.get("ate"),
+                             por_user_id=b.get("por_user_id"))
+    except P.Recusa as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise _falhou("marcar a ausência", e)
+    return {"ok": True, "ausencia": r}
+
+
+@router.delete("/perfil/ausencias")
+async def apagar_ausencia(company_id: str, id: str, por_user_id: str,  # noqa: A002 — o nome é o da query
+                          x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key")):
+    _require_internal_key(x_key)
+    P = _perfil()
+    try:
+        return {"ok": True, **P.apagar_ausencia(_db(), company_id, ausencia_id=id, por_user_id=por_user_id)}
+    except P.Recusa as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise _falhou("apagar a ausência", e)
+
+
+@router.get("/equipe/situacao")
+async def situacao_da_equipe(company_id: str,
+                             x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key")):
+    """A coluna SITUAÇÃO de Equipe: Agger · WhatsApp de trabalho confirmado (sim/não) · ausência ativa."""
+    _require_internal_key(x_key)
+    P = _perfil()
+    try:
+        return P.situacao_da_equipe(_db(), company_id)
+    except P.Recusa as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise _falhou("ler a situação da equipe", e)

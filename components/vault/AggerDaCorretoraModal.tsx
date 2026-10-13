@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -10,8 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Icon } from '@/components/ui/Icon';
 import { icons } from '@/lib/icons';
-
-import { AggersDaEquipe } from './AggersDaEquipe';
 
 /**
  * SPEC-133-A.1 F3 — o "Agger da corretora" (D-133A1-03/04): o login DEDICADO do robô que faz os cálculos do
@@ -112,7 +111,7 @@ export function AggerDaCorretoraModal({
   const jaExiste = Boolean(conta?.id);
   const pode = (a: string) => Boolean(conta?.acoes?.includes(a));
   const tom = tomDaSituacao(conta?.situacao);
-  const corTom = tom === 'success' ? 'text-success' : tom === 'danger' ? 'text-danger' : tom === 'warning' ? 'text-amber-600' : 'text-muted-foreground';
+  const corTom = tom === 'success' ? 'text-success' : tom === 'danger' ? 'text-danger' : tom === 'warning' ? 'text-warning' : 'text-muted-foreground';
 
   const formulario = (titulo: string, pedeLogin: boolean, acao: 'conectar' | 'trocar_senha') => (
     <div className="space-y-3">
@@ -223,8 +222,19 @@ export function AggerDaCorretoraModal({
         {erro && <p className="text-xs text-danger">{erro}</p>}
         {aviso && <p className="text-xs text-success">{aviso}</p>}
 
-        {/* SPEC-131-0 A · F3: o Agger de cada pessoa, ao lado do Agger da corretora */}
-        {open && <AggersDaEquipe />}
+        {/* SPEC-131-B G3 (D-131-07, revê D-131-0-06): o Agger de cada PESSOA saiu deste modal. Cada um conecta o seu
+            em Meu perfil → Minhas conexões; o admin vê quem falta em Equipe e pede para conectar. */}
+        <p className="border-t border-border pt-4 text-sm text-muted-foreground" data-aggers-das-pessoas-sairam>
+          O Agger de cada pessoa da equipe fica em{' '}
+          <Link href="/dashboard/configuracoes?aba=conexoes" className="font-medium text-primary underline-offset-4 hover:underline">
+            Meu perfil → Minhas conexões
+          </Link>
+          : cada um conecta o seu. Quem ainda não conectou aparece em{' '}
+          <Link href="/dashboard/personalizacao/equipe" className="font-medium text-primary underline-offset-4 hover:underline">
+            Equipe
+          </Link>
+          .
+        </p>
 
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => close(false)} disabled={ocupado}>Fechar</Button>

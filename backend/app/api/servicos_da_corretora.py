@@ -102,8 +102,19 @@ def _efetivo(cfg: Dict[str, Any], servico: str) -> Dict[str, Any]:
         saida.update({"conta_global_se_vence_em_dias": CFG.conta_global_se_vence_em_dias(cfg),
                       "antecedencia_dias": ren.get("antecedencia_dias"),
                       "reajuste_basica_pct": {r: CFG.reajuste_basica_pct(cfg, r)
-                                              for r in CFG.PADRAO_DO_PRODUTO["renovacao"]["reajuste_basica_pct"]}})
+                                              for r in CFG.PADRAO_DO_PRODUTO["renovacao"]["reajuste_basica_pct"]},
+                      # SPEC-131-B G3 — a aba Configurar da Renovação lê pelos MESMOS leitores da madrugada
+                      "opcoes": list(CFG.opcoes_da_renovacao(cfg)),
+                      "teto_por_conta_noite": CFG.teto_por_conta_noite(cfg),
+                      "antecipar_ate_dias": CFG.antecipar_ate_dias(cfg)})
     return saida
+
+
+def _opcoes_da_renovacao_na_ordem() -> List[str]:
+    """As opções da renovação na ORDEM do disparo (`presets.OPCOES_DA_RENOVACAO`): "quantas opções" N = as N primeiras."""
+    from portal_worker.multicalculo.presets import OPCOES_DA_RENOVACAO
+
+    return list(OPCOES_DA_RENOVACAO)
 
 
 def retrato(db: Any, company_id: str) -> Dict[str, Any]:
@@ -127,7 +138,12 @@ def retrato(db: Any, company_id: str) -> Dict[str, Any]:
         "efetivo": {s: _efetivo(CFG.mesclar(bruto or None, s), s) for s in servicos},
         "padrao": {s: _efetivo(CFG.mesclar(None, s), s) for s in servicos},
         "faixas": {"antecedencia_dias_max": CFG.ANTECEDENCIA_DIAS_MAX,
-                   "conta_global_dias_max": CFG.CONTA_GLOBAL_DIAS_MAX},
+                   "conta_global_dias_max": CFG.CONTA_GLOBAL_DIAS_MAX,
+                   # SPEC-131-B G3 — as faixas das chaves da madrugada que a aba Configurar edita (a tela não escreve
+                   # nenhum número comercial: o guarda G8 da 130-A)
+                   "teto_por_conta_noite": list(CFG.TETO_POR_CONTA_NOITE_FAIXA),
+                   "antecipar_ate_dias": list(CFG.ANTECIPAR_ATE_DIAS_FAIXA),
+                   "opcoes_da_renovacao": _opcoes_da_renovacao_na_ordem()},
         "configurado": bool(sobreposto),
         "versao": _versao(linha),
     }
