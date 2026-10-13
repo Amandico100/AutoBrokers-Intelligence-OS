@@ -168,5 +168,5 @@ F1 usa dublê de `porta.calcular`/`de_apolice`; F4 liga o real.
 3. **https://int.ezlynx.com/solutions/renewals-client-retention** · faz: fila de renovações com antecedência · modelamos: a lista do
    dia e o prêmio anterior guardado (para o "hoje × renovação" da 131-B) · rejeitamos: o portal deles · juiz: `premio_atual` no canário.
 
-## 9. Fora
+## 9. O QUE SAIU (fora desta SPEC, com destino)
 Telas, página, envio, Ausência na tela → 131-B · negociar → 135 · emissão → SPEC própria · vida/moto → depois da 132 · P-1310-06 → 132.

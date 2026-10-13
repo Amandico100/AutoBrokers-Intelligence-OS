@@ -1,3 +1,8 @@
+# 📊 13/10/2026, SPEC-131-A (branch spec/131-A-a-madrugada, HEAD 62f95a8), worktrees limpos C:/wt131a1 e C:/wt131a2, DUAS METADES em paralelo
+#   (--ignore-glob test_[p-z]* / test_[0-9a-o]*) → m1: 18 failed · 1835 passed · 2 skipped (1:09:03) · m2: 22 failed · 4638 passed · 7 skipped ·
+#   30 xfailed · 1 xpassed (1:53:50). TRIAGEM contra a base (35): 32 iguais · 3 sumiram (não conferidas na base) · 8 novas: 7 de carga/ambiente/ordem
+#   (isoladas passam; node_modules ausente no worktree; XPASS da P-226 volta a xfail isolado) · 1 REGRESSÃO DESTA SPEC: o guarda dos mil (renovacao.py
+#   eventos() .limit(5000), de 0c5eb27; passa em 2cd6168) → consertada com paginação (37 passed). A lista abaixo não muda.
 # 📊 06/10/2026, SPEC-129-B (branch spec/129-B-o-motor, HEAD dc6d712), worktree limpo C:/wt129b, em DUAS METADES (a inteira > 2 h nesta
 #   máquina) → m1: 14 failed · 1399 passed · m2: 30 failed · 3916 passed · 7 skipped · 31 xfailed · 1 xpassed · 27 errors. TRIAGEM: 46 na
 #   base · NOVAS: 29 da 129-A + 6 do G7 + 1 guarda de mil linhas = REGRESSÕES DESTA SPEC, consertadas (5618070, f5cd345, 8d225ac) e

@@ -279,6 +279,26 @@ def linha_da_infocap(cru: Mapping[str, Any], *, sistema: str = SISTEMA_PADRAO,
 # ---------------------------------------------------------------------------------------------------------------------
 # O repositório — company_id em TODO filtro (CLAUDE.md §7)
 # ---------------------------------------------------------------------------------------------------------------------
+#: o PostgREST corta toda resposta em 1000 linhas (guarda `test_ninguem_pede_mais_de_mil_linhas_de_novo`, P-122):
+#: pedir mais de uma vez só funciona PAGINANDO — senão o que passa de 1000 some em silêncio (bateria da 131-A, 13/10)
+PAGINA = 1000
+
+
+def _paginado(nova_consulta: Any, teto: int) -> List[Dict[str, Any]]:
+    """Lê em páginas de PAGINA linhas até `teto` (ou até a página vir incompleta). `nova_consulta()` monta a consulta
+    DO ZERO a cada página (o construtor do PostgREST acumula parâmetros — o molde do `attendance_distiller`)."""
+    linhas: List[Dict[str, Any]] = []
+    inicio = 0
+    while inicio < teto:
+        fim = min(inicio + PAGINA, teto) - 1
+        pagina = _dados(nova_consulta().range(inicio, fim).execute())
+        linhas.extend(pagina)
+        if len(pagina) < fim - inicio + 1:
+            break
+        inicio = fim + 1
+    return linhas
+
+
 class RepositorioDeRenovacoes:
     def __init__(self, db: Any, *, agora: Any = None):
         self.db = getattr(db, "client", db)
@@ -307,21 +327,28 @@ class RepositorioDeRenovacoes:
     def listar(self, company_id: str, *, estados: Optional[Iterable[str]] = None,
                calcular_ate: Optional[str] = None, limite: int = 5000) -> List[Dict[str, Any]]:
         cid = _uuid(company_id)
-        q = self._t(TABELA).select("*").eq("company_id", cid)
-        if estados is not None:
-            q = q.in_("estado", list(estados))
-        if calcular_ate is not None:
-            q = q.lte("calcular_em", calcular_ate)
-        linhas = _dados(q.limit(limite).execute())
+
+        def q() -> Any:
+            c = self._t(TABELA).select("*").eq("company_id", cid)
+            if estados is not None:
+                c = c.in_("estado", list(estados))
+            if calcular_ate is not None:
+                c = c.lte("calcular_em", calcular_ate)
+            return c.order("id")
+        linhas = _paginado(q, limite)
         # 🔴 a segunda trava: mesmo que o filtro do banco falhasse, nada de outra corretora sai daqui
         return [x for x in linhas if str(x.get("company_id", "")).lower() == cid]
 
     def eventos(self, company_id: str, renovacao_id: Optional[str] = None) -> List[Dict[str, Any]]:
         cid = _uuid(company_id)
-        q = self._t(TABELA_EVENTOS).select("*").eq("company_id", cid)
-        if renovacao_id is not None:
-            q = q.eq("renovacao_id", _uuid(renovacao_id, "renovacao_id"))
-        return [x for x in _dados(q.order("criado_em").limit(5000).execute())
+        rid = _uuid(renovacao_id, "renovacao_id") if renovacao_id is not None else None
+
+        def q() -> Any:
+            c = self._t(TABELA_EVENTOS).select("*").eq("company_id", cid)
+            if rid is not None:
+                c = c.eq("renovacao_id", rid)
+            return c.order("criado_em")   # só a data, como antes: o "último evento" depende dela (desempate pela inserção)
+        return [x for x in _paginado(q, 5000)
                 if str(x.get("company_id", "")).lower() == cid]
 
     def dia(self, company_id: str, dia: str) -> Optional[Dict[str, Any]]:
