@@ -228,12 +228,37 @@ def decidir(db: Any, *, company_id: str, servico: str, solicitante_user_id: Opti
     if servico == "renovacao" and conta_de_origem_id is None:
         if forcar_corretora_motivo is not None:
             return _desvio_para_a_corretora(supa, company_id, dono_user_id, forcar_corretora_motivo)
+        # SPEC-131-B (D-131-04): "Com qual conta" — a corretora escolheu o Agger DELA para todas as renovações
+        if cfg is None:
+            cfg = _cfg_da_renovacao(company_id, supa)
+        if _conta_escolhida(cfg) == "corretora":
+            d = _por_escolha_da_corretora(supa, company_id)
+            return _com_o_substituto(supa, company_id, dono_user_id, substituto_user_id, d, hoje)
         d = _decidir(supa, company_id=company_id, servico=servico, solicitante_user_id=solicitante_user_id,
                      dono_user_id=dono_user_id, conta_de_origem_id=None, vence_em_dias=vence_em_dias, cfg=cfg)
         return _com_o_substituto(supa, company_id, dono_user_id, substituto_user_id, d, hoje)
     return _decidir(supa, company_id=company_id, servico=servico, solicitante_user_id=solicitante_user_id,
                     dono_user_id=dono_user_id, conta_de_origem_id=conta_de_origem_id, vence_em_dias=vence_em_dias,
                     cfg=cfg)
+
+
+def _conta_escolhida(cfg: Optional[Mapping[str, Any]]) -> str:
+    """`servicos.renovacao.conta` pelo leitor ÚNICO (`config.conta_da_renovacao`). Ilegível → `responsavel`."""
+    from app.services.multicalculo import config as CFG
+
+    try:
+        return CFG.conta_da_renovacao(cfg)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[QUAL_AGGER] 'com qual conta' ilegível (%s) — vale o responsável", type(exc).__name__)
+        return "responsavel"
+
+
+def _por_escolha_da_corretora(supa: Any, company_id: str) -> DecisaoDeConta:
+    """A corretora ESCOLHEU calcular as renovações no Agger dela: regra própria, `fallback=False` e SEM o aviso de
+    desvio (não é falha de ninguém). Só avisa se o Agger da corretora não está conectado (o cálculo não sairia)."""
+    aviso = None if _tem_global_conectada(supa, company_id) else _AVISO_SEM_GLOBAL
+    return DecisaoDeConta(conta_id=None, uso=ROB.GLOBAL, regra="renovacao_conta_da_corretora", fallback=False,
+                          motivo="A corretora escolheu calcular as renovações no Agger da corretora.", aviso=aviso)
 
 
 def _desvio_para_a_corretora(supa: Any, company_id: str, dono_user_id: Optional[str], motivo: str) -> DecisaoDeConta:

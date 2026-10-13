@@ -509,6 +509,8 @@ export function passosDoComoComecar(
       daProntidao(fontes, 'agger_da_corretora', 'Conectar o Agger da corretora', LINK_CONECTORES, 'Conectar'),
       meu,
       daProntidao(fontes, 'equipe', 'Dizer quem é quem na equipe', LINK_EQUIPE, 'Abrir Equipe'),
+      // SPEC-131-B G5 (laudo de design §3: "→ Configure → Ligue"): as regras moram na aba Configurar DESTE aplicativo
+      daProntidao(fontes, 'servicos', 'Escolher as regras da renovação', `${aqui}?aba=configurar`, 'Configurar'),
       passoLigar,
     ];
   }

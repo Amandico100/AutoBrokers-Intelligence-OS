@@ -11,7 +11,7 @@
 // importa esses arquivos estaticamente: cada um só pesa quando a aba abre, e um arquivo que ainda não existe vira
 // a frase "esta parte ainda está sendo preparada", não uma tela quebrada.
 
-import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
@@ -21,6 +21,9 @@ import type { AbaDoAplicativo, ItemDoCatalogo, PropsDaAba } from '@/lib/auxiliar
 
 /** Só `<pasta>/Aba<Nome>`, letras, números e hífen — nada de `..` nem caminho arbitrário. */
 const FORMA_DO_COMPONENTE = /^([a-z0-9-]+)\/Aba([A-Za-z0-9]+)$/;
+
+/** A altura da barra de abas antes da medida (gatilho h-11 = 44 px + a borda de 1 px): o 1º desenho já gruda certo. */
+const ALTURA_INICIAL_DAS_ABAS = '45px';
 
 function AbaCarregada({ componente, item, aba }: { componente: string; item: ItemDoCatalogo; aba: string }) {
   const [Comp, setComp] = useState<ComponentType<PropsDaAba> | null>(null);
@@ -83,6 +86,20 @@ export function AbasDoAplicativo({ item, abas, abaAtual, conteudo, marcadas = []
   const router = useRouter();
   const pathname = usePathname();
   const busca = useSearchParams();
+  // `--altura-das-abas`: o que gruda DEBAIXO da barra (ex.: o cabeçalho de grupo da aba Renovações) lê a altura REAL
+  // dela, medida — muda com a fonte, o zoom e a quebra de linha, e nenhum número fica escrito em duas telas.
+  const raiz = useRef<HTMLDivElement>(null);
+  const barra = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = barra.current;
+    const alvo = raiz.current;
+    if (!el || !alvo || typeof ResizeObserver === 'undefined') return;
+    const medir = () => alvo.style.setProperty('--altura-das-abas', `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   function trocar(id: string) {
     const p = new URLSearchParams(busca?.toString() ?? '');
@@ -93,8 +110,9 @@ export function AbasDoAplicativo({ item, abas, abaAtual, conteudo, marcadas = []
   }
 
   return (
-    <Tabs value={abaAtual} onValueChange={trocar} className="mt-6">
-      <div className="sticky top-0 z-10 -mx-4 border-b border-border bg-background/95 px-4 sm:-mx-6 sm:px-6 sm:backdrop-blur">
+    <Tabs ref={raiz} value={abaAtual} onValueChange={trocar} className="mt-6"
+      style={{ '--altura-das-abas': ALTURA_INICIAL_DAS_ABAS } as CSSProperties}>
+      <div ref={barra} className="sticky top-0 z-10 -mx-4 border-b border-border bg-background/95 px-4 sm:-mx-6 sm:px-6 sm:backdrop-blur">
         <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none bg-transparent p-0">
           {abas.map((a) => (
             <TabsTrigger

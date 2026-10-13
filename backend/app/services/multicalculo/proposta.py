@@ -1195,19 +1195,17 @@ def anos_de_renovacao(resposta: Any, *, nosnum: Any, hoje: date) -> Optional[int
 
 async def _historico_pela_infocap(db: Any, company_id: str, codfil: Any, nosnum: Any) -> Any:
     """O `/documento?codfil&nosnum` desta apólice pela InfoCap DESTA corretora (o caminho canônico da 131-A,
-    `madrugada.abrir_fonte`). O envelope traz `historico[]` (📊 12/10: `{"header", "documento": [1], "historico": [6]}`).
-    ⚠️ Usa o `_get` da MESMA fonte (uma rota, um lugar — CLAUDE.md §5) até ela ganhar um leitor público do histórico."""
+    `madrugada.abrir_fonte`), pelo leitor PÚBLICO `FonteInfocap.historico_cru` (📊 12/10: `{"header", "documento":
+    [1], "historico": [6]}` → as linhas). Fonte sem o leitor → None (sem prova, a frase não aparece)."""
     import asyncio
 
     from app.services.multicalculo import madrugada as MAD
 
     fonte = await MAD.abrir_fonte(db, company_id)
-    if fonte is None:
+    leitor = getattr(fonte, "historico_cru", None) if fonte is not None else None
+    if not callable(leitor):
         return None
-    leitor = getattr(fonte, "historico_cru", None)
-    if callable(leitor):
-        return await asyncio.to_thread(leitor, codfil, nosnum)
-    return await asyncio.to_thread(fonte._get, "/documento", {"codfil": codfil, "nosnum": nosnum})
+    return await asyncio.to_thread(leitor, codfil, nosnum)
 
 
 async def _anos_provados(db: Any, company_id: str, item: Mapping[str, Any], hoje: date,

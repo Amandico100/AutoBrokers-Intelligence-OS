@@ -487,7 +487,10 @@ def test_prontidao_duas_corretoras_cada_uma_ve_o_seu(cliente):
                                                      "equipe": "falta", "servicos": "falta"}
     assert pb["equipe"]["numeros"] == {"pessoas_ativas": 1, "comerciais": 0, "comerciais_com_agger": 0,
                                        "com_agger_proprio": 0, "vinculos_de_produtor": 0}
-    assert all(p["link"].startswith("/dashboard/personalizacao/") for p in pa.values())
+    # SPEC-131-B (D-131-06): as regras moram na aba Configurar do aplicativo — o link vai DIRETO (o endereço antigo de
+    # Serviços só redireciona). Era "/dashboard/personalizacao/servicos": verdade vencida, CLAUDE.md §9.3
+    assert pa["servicos"]["link"] == "/dashboard/auxiliares/renovacao?aba=configurar"
+    assert all(p["link"].startswith("/dashboard/personalizacao/") for k, p in pa.items() if k != "servicos")
     # 🔴 toda leitura pediu o filtro da corretora ao banco
     for tabela, filtros in cliente.banco.consultas:
         assert ("company_id", A) in filtros or ("company_id", B) in filtros or ("corretora_company_id", A) in filtros \

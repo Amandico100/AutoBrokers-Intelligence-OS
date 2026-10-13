@@ -44,7 +44,8 @@ class Conflito(Exception):
 #: os links de cada passo da ordem guiada (telas que já existem)
 _LINK_CONECTORES = "/dashboard/personalizacao/conectores"
 _LINK_EQUIPE = "/dashboard/personalizacao/equipe"
-_LINK_SERVICOS = "/dashboard/personalizacao/servicos"
+#: SPEC-131-B (D-131-06): as regras moram na aba Configurar do aplicativo — DIRETO, sem passar pelo redirect antigo
+_LINK_SERVICOS = "/dashboard/auxiliares/renovacao?aba=configurar"
 
 
 def _db():
@@ -106,7 +107,9 @@ def _efetivo(cfg: Dict[str, Any], servico: str) -> Dict[str, Any]:
                       # SPEC-131-B G3 — a aba Configurar da Renovação lê pelos MESMOS leitores da madrugada
                       "opcoes": list(CFG.opcoes_da_renovacao(cfg)),
                       "teto_por_conta_noite": CFG.teto_por_conta_noite(cfg),
-                      "antecipar_ate_dias": CFG.antecipar_ate_dias(cfg)})
+                      "antecipar_ate_dias": CFG.antecipar_ate_dias(cfg),
+                      # SPEC-131-B G5 — "Com qual conta" (D-131-04), pelo leitor que `qual_agger.decidir` usa
+                      "conta": CFG.conta_da_renovacao(cfg)})
     return saida
 
 
@@ -143,7 +146,8 @@ def retrato(db: Any, company_id: str) -> Dict[str, Any]:
                    # nenhum número comercial: o guarda G8 da 130-A)
                    "teto_por_conta_noite": list(CFG.TETO_POR_CONTA_NOITE_FAIXA),
                    "antecipar_ate_dias": list(CFG.ANTECIPAR_ATE_DIAS_FAIXA),
-                   "opcoes_da_renovacao": _opcoes_da_renovacao_na_ordem()},
+                   "opcoes_da_renovacao": _opcoes_da_renovacao_na_ordem(),
+                   "contas_da_renovacao": list(CFG.CONTAS_DA_RENOVACAO)},
         "configurado": bool(sobreposto),
         "versao": _versao(linha),
     }

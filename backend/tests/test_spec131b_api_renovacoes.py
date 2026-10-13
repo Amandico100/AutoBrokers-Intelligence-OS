@@ -128,13 +128,17 @@ def mundo(monkeypatch):
 
     m = SimpleNamespace(banco=banco, db=db, fontes={}, publicadas=[], mensagens=[])
 
-    def publicar_renovacao(company_id, renovacao_id, *, pessoa):
-        m.publicadas.append((company_id, renovacao_id, pessoa))
+    def publicar_renovacao(company_id, renovacao_id, *, pessoa, db=None):
+        # o contrato REAL (G5): `pessoa` = {user_id, primeiro_nome} de quem clicou; o banco da sessão vai junto
+        assert isinstance(pessoa, dict) and db is m.db
+        m.publicadas.append((company_id, renovacao_id, pessoa.get("user_id")))
         return {"token": f"tok{renovacao_id[:8]}", "url": f"https://exemplo.invalid/r/tok{renovacao_id[:8]}",
                 "versao": 1}
 
-    def mensagem_de_renovacao(renovacao, proposta, *, pessoa):
-        m.mensagens.append((renovacao["id"], pessoa))
+    def mensagem_de_renovacao(renovacao, proposta, *, pessoa, config=None):
+        # ⛔ nunca o telefone: só {url, modelo} e o primeiro nome de quem envia
+        assert set(proposta) == {"url", "modelo"} and set(pessoa) == {"primeiro_nome"}
+        m.mensagens.append((renovacao["id"], pessoa["primeiro_nome"]))
         return {"texto": f"Oi, {renovacao['cliente_nome_curto']}! Sua renovação está pronta: {proposta['url']}",
                 "texto_curto": f"Sua renovação: {proposta['url']}", "link": proposta["url"]}
 
@@ -417,7 +421,7 @@ def test_o_texto_longo_vai_curto_no_link_e_inteiro_no_copiar(mundo, monkeypatch)
     m = mundo
     longo = "x" * (API.LIMITE_DO_TEXTO_NO_LINK + 50)
     monkeypatch.setattr(MSG, "mensagem_de_renovacao",
-                        lambda ren, prop, *, pessoa: {"texto": longo, "texto_curto": "curto", "link": prop["url"]},
+                        lambda ren, prop, *, pessoa, config=None: {"texto": longo, "texto_curto": "curto", "link": prop["url"]},
                         raising=False)
     r1 = _renovacao(m.banco, m.a, nosnum="1", estado="calculada", dono=m.a.dono1)
     corpo = _post(m, r1["id"], "envio", {"company_id": m.a.id, "user_id": m.a.dono1}).json()

@@ -502,27 +502,114 @@ async def _chamar(fn: Any, *args: Any, **kwargs: Any) -> Any:
     return await r if inspect.isawaitable(r) else r
 
 
-async def publicar(cid: str, rid: str, uid: str) -> Dict[str, Any]:
-    """`proposta.publicar_renovacao(company_id, renovacao_id, *, pessoa) -> {token, url}` (contrato da SPEC §5, G4)."""
+def quem_clica(db: Any, cid: str, uid: str) -> Dict[str, Any]:
+    """A `pessoa` do contrato da G4: {user_id, primeiro_nome} de QUEM clicou — o nome só se ela é membro DESTA
+    corretora (`proposta.pessoa_de`, filtro company_id). Sem nome legível, só o id (a mensagem sai sem "Aqui é…")."""
     from app.services.multicalculo import proposta as P
 
-    fn = getattr(P, "publicar_renovacao", None)
-    if fn is None:
-        raise HTTPException(status_code=503, detail="A apresentação de renovação ainda não está disponível.")
-    r = await _chamar(fn, cid, rid, pessoa=uid)
+    try:
+        return dict(P.pessoa_de(db, cid, uid))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RENOVACOES] nome de quem clicou ilegível: %s", type(exc).__name__)
+        return {"user_id": uid}
+
+
+def _erro_da_publicacao(exc: Exception) -> Optional[HTTPException]:
+    from app.services.multicalculo import proposta as P
+
+    if isinstance(exc, P.PropostaImpossivel):
+        return HTTPException(status_code=409, detail="Ainda não dá para montar a apresentação desta renovação: "
+                                                     "falta um cálculo com preço. Confira no Agger.")
+    if isinstance(exc, P.LinkSemEndereco):
+        return HTTPException(status_code=503, detail="O endereço público do painel não está configurado: o link "
+                                                     "da apresentação não teria para onde apontar.")
+    return None
+
+
+async def publicar(db: Any, cid: str, rid: str, pessoa: Mapping[str, Any]) -> Dict[str, Any]:
+    """`proposta.publicar_renovacao(company_id, renovacao_id, *, pessoa, db) -> {token, url, artifact_id, versao,
+    validade_ate, modelo}` (contrato da SPEC §5, G4) — ASYNC, com o MESMO banco da sessão. Ela NÃO muda o estado
+    (quem faz `apresentada` é esta API)."""
+    from app.services.multicalculo import proposta as P
+
+    try:
+        r = await _chamar(P.publicar_renovacao, cid, rid, pessoa=dict(pessoa), db=db)
+    except Exception as exc:  # noqa: BLE001
+        http = _erro_da_publicacao(exc)
+        if http is None:
+            raise
+        raise http
     if not isinstance(r, Mapping) or not r.get("url"):
         raise HTTPException(status_code=502, detail="Não consegui preparar a apresentação agora. Tente de novo.")
     return dict(r)
 
 
-async def mensagem(renovacao: Mapping[str, Any], proposta: Mapping[str, Any], uid: str) -> Dict[str, Any]:
-    """`mensagem.mensagem_de_renovacao(renovacao, proposta, *, pessoa) -> {texto, texto_curto, link}` (G4)."""
+#: um link que vence antes disto não é reaproveitado no envio (o cliente abriria um link morto)
+FOLGA_DO_LINK_REAPROVEITADO = timedelta(days=2)
+
+
+def ultima_apresentacao(db: Any, cid: str, linha: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """A apresentação JÁ publicada desta renovação (`proposta_ref` = o token do `/r/`), para o envio mandar o MESMO
+    link que o comercial conferiu — sem versão nova a cada clique. Só vale se o link é DESTA corretora, não foi
+    revogado, não vence nos próximos dias e a versão é uma página de RENOVAÇÃO (`modelo["renovacao"]`). Qualquer
+    dúvida → None (quem chama republica). Devolve {token, url, versao, artifact_id, modelo}."""
+    token = str(linha.get("proposta_ref") or "").strip()
+    if not token or linha.get("estado") not in ("apresentada", "enviada"):
+        return None
+    try:
+        from app.services.multicalculo import proposta as P
+
+        shares = list(getattr(db.table("artifact_shares")
+                              .select("company_id, artifact_id, artifact_version_id, expires_at, revoked_at")
+                              .eq("token", token).eq("company_id", cid).limit(1).execute(), "data", None) or [])
+        s = next((x for x in shares if str(x.get("company_id") or "").lower() == cid), None)
+        if s is None or s.get("revoked_at"):
+            return None
+        vence = datetime.fromisoformat(str(s.get("expires_at")).replace("Z", "+00:00"))
+        if vence <= datetime.now(vence.tzinfo) + FOLGA_DO_LINK_REAPROVEITADO:
+            return None
+        versoes = list(getattr(db.table("artifact_versions").select("id, company_id, version, payload")
+                               .eq("id", s["artifact_version_id"]).eq("company_id", cid).limit(1).execute(),
+                               "data", None) or [])
+        v = next((x for x in versoes if str(x.get("company_id") or "").lower() == cid), None)
+        modelo = (v or {}).get("payload")
+        if not isinstance(modelo, Mapping) or not isinstance(modelo.get("renovacao"), Mapping) \
+                or not modelo.get("opcoes"):
+            return None
+        return {"token": token, "url": f"{P._base_do_link(None)}/r/{token}", "versao": int(v.get("version") or 1),
+                "artifact_id": str(s.get("artifact_id")), "modelo": dict(modelo)}
+    except Exception as exc:  # noqa: BLE001 — na dúvida, republica (nunca um link morto ao cliente)
+        logger.info("[RENOVACOES] a apresentação anterior não serve: %s", type(exc).__name__)
+        return None
+
+
+def _config_da_renovacao(db: Any, cid: str) -> Optional[Mapping[str, Any]]:
+    try:
+        from app.services.multicalculo import config as CFG
+
+        return CFG.carregar(cid, db=db, servico="renovacao")
+    except Exception as exc:  # noqa: BLE001 — a mensagem usa o padrão do produto
+        logger.info("[RENOVACOES] config ilegível para a mensagem: %s", type(exc).__name__)
+        return None
+
+
+async def mensagem(db: Any, cid: str, renovacao: Mapping[str, Any], proposta: Mapping[str, Any],
+                   pessoa: Mapping[str, Any]) -> Dict[str, Any]:
+    """`mensagem.mensagem_de_renovacao(renovacao, {url, modelo}, *, pessoa={primeiro_nome}) -> {texto, texto_curto,
+    link}` (G4). ⛔ Nunca recebe o telefone: o `wa.me/<cliente>` é esta API que monta, na hora."""
     from app.services.multicalculo import mensagem as MSG
 
-    fn = getattr(MSG, "mensagem_de_renovacao", None)
-    if fn is None:
-        raise HTTPException(status_code=503, detail="A mensagem de renovação ainda não está disponível.")
-    r = await _chamar(fn, dict(renovacao), dict(proposta), pessoa=uid)
+    kw: Dict[str, Any] = {"pessoa": {"primeiro_nome": pessoa.get("primeiro_nome")}}
+    cfg = await asyncio.to_thread(_config_da_renovacao, db, cid)
+    if cfg is not None:
+        kw["config"] = cfg
+    try:
+        r = await _chamar(MSG.mensagem_de_renovacao, dict(renovacao),
+                          {"url": proposta.get("url"), "modelo": proposta.get("modelo") or {}}, **kw)
+    except ValueError as exc:
+        logger.warning("[RENOVACOES] mensagem impossível: %s", type(exc).__name__)
+        raise HTTPException(status_code=409, detail="Não consegui montar a mensagem: a apresentação não tem opção "
+                                                    "com preço.")
     if not isinstance(r, Mapping) or not str(r.get("texto") or "").strip():
         raise HTTPException(status_code=502, detail="Não consegui montar a mensagem agora. Tente de novo.")
     return dict(r)
@@ -669,11 +756,15 @@ async def apresentar_renovacao(
         linha = await asyncio.to_thread(R.RepositorioDeRenovacoes(db).por_id, cid, rid)
         if linha.get("estado") not in ESTADOS_ENVIAVEIS:
             raise HTTPException(status_code=409, detail="Esta renovação ainda não foi calculada.")
-        proposta = await publicar(cid, rid, uid)
+        proposta = await asyncio.to_thread(ultima_apresentacao, db, cid, linha)
+        if proposta is None:
+            pessoa = await asyncio.to_thread(quem_clica, db, cid, uid)
+            proposta = await publicar(db, cid, rid, pessoa)
         linha = await asyncio.to_thread(_apresentar, db, cid, rid, uid, proposta.get("token"))
     except (R.NaoEncontrada, R.ConcorrenciaPerdida, R.TransicaoInvalida) as exc:
         raise _erro_da_maquina(exc)
-    return {"token": proposta.get("token"), "url": proposta.get("url"), "estado": linha.get("estado")}
+    return {"token": proposta.get("token"), "url": proposta.get("url"), "versao": proposta.get("versao"),
+            "estado": linha.get("estado")}
 
 
 @router.post("/{renovacao_id}/envio")
@@ -696,9 +787,13 @@ async def enviar_renovacao(
         linha = await asyncio.to_thread(R.RepositorioDeRenovacoes(db).por_id, cid, rid)
         if linha.get("estado") not in ESTADOS_ENVIAVEIS:
             raise HTTPException(status_code=409, detail="Esta renovação ainda não foi calculada.")
-        proposta = await publicar(cid, rid, uid)
+        pessoa = await asyncio.to_thread(quem_clica, db, cid, uid)
+        # a ÚLTIMA apresentação publicada (o link que o comercial conferiu); sem ela, ou vencendo, publica agora
+        proposta = await asyncio.to_thread(ultima_apresentacao, db, cid, linha)
+        if proposta is None:
+            proposta = await publicar(db, cid, rid, pessoa)
         linha = await asyncio.to_thread(_apresentar, db, cid, rid, uid, proposta.get("token"))
-        msg = await mensagem(linha, proposta, uid)
+        msg = await mensagem(db, cid, linha, proposta, pessoa)
         completo = str(msg["texto"])
         no_link = completo if len(completo) <= LIMITE_DO_TEXTO_NO_LINK else str(msg.get("texto_curto") or completo)
         resposta: Dict[str, Any] = {"texto": no_link, "texto_completo": completo, "link": msg.get("link")}

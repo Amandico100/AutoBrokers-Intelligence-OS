@@ -22,7 +22,10 @@ export type Efetivo = {
   opcoes?: string[];
   teto_por_conta_noite?: number;
   antecipar_ate_dias?: number;
+  /** SPEC-131-B G5 — "Com qual conta" (D-131-04): o Agger do responsável (padrão) ou sempre o da corretora */
+  conta?: ContaDaRenovacao;
 };
+export type ContaDaRenovacao = 'responsavel' | 'corretora';
 export type DadosServicos = {
   qcm_aderido: boolean;
   servicos: Servico[];
@@ -38,6 +41,7 @@ export type DadosServicos = {
     teto_por_conta_noite?: [number, number];
     antecipar_ate_dias?: [number, number];
     opcoes_da_renovacao?: string[];
+    contas_da_renovacao?: ContaDaRenovacao[];
   };
   versao?: string | null;
 };

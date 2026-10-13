@@ -13,7 +13,8 @@ import { cn } from '@/lib/utils';
 import { BarraSalvar, Grupo, Linha, NumeroComBotoes, Segmentado } from '@/components/aplicativos/configurar/pecas';
 import { CartoesDeModo, Excecoes, Preferidas, type OpcaoDeModo } from '@/components/aplicativos/configurar/campos';
 import {
-  copia, type DadosServicos, type Efetivo, type Excecao, type Modo, type Preferencias, useServicos,
+  copia, type ContaDaRenovacao, type DadosServicos, type Efetivo, type Excecao, type Modo, type Preferencias,
+  useServicos,
 } from '@/components/aplicativos/configurar/servicos';
 
 /**
@@ -25,19 +26,24 @@ import {
  * O produto não envia nada sozinho: "preparar o envio" deixa a apresentação e a mensagem prontas; quem envia é o
  * comercial, pelo WhatsApp do aparelho dele. Nenhum número comercial nesta tela: padrões e faixas vêm do backend.
  */
+// SPEC-131-B G5 (D-131-24): o ENVIO é sempre ação do comercial nesta SPEC — a tela não oferece "calcular_entregar"
+// (envio automático). O backend aceita o valor (outra SPEC o liga); aqui ele é lido como "Só calcular", que é o que o
+// produto faz com ele hoje (nenhum leitor de `pode_entregar` na renovação).
 const MODOS_DA_RENOVACAO: OpcaoDeModo[] = [
   {
     valor: 'calcular', titulo: 'Só calcular', curto: 'só calcular',
-    explica: 'De madrugada, calcula as renovações que vão vencer e deixa tudo pronto no Agger e na aba Renovações.',
-  },
-  {
-    valor: 'calcular_entregar', titulo: 'Calcular e preparar o envio', curto: 'calcular e preparar o envio',
-    explica: 'Também monta a apresentação e a mensagem para o cliente. Quem envia é o comercial, pelo WhatsApp dele.',
+    explica: 'De madrugada, calcula as renovações que vão vencer e deixa tudo pronto no Agger e na aba Renovações. Quem envia ao cliente é o comercial, pelo WhatsApp dele.',
   },
   {
     valor: 'calcular_entregar_negociar', titulo: 'Enviar e negociar', curto: 'enviar e negociar', emBreve: true,
     explica: 'O AutoBrokers conversa com o cliente e negocia dentro das regras da corretora.',
   },
+];
+
+/** Só para LER exceções antigas que pediam o envio automático (nenhuma se escolhe por aqui). */
+const MODOS_PARA_LER: OpcaoDeModo[] = [
+  ...MODOS_DA_RENOVACAO,
+  { valor: 'calcular_entregar', titulo: 'Preparar o envio', curto: 'preparar o envio', explica: '', emBreve: true },
 ];
 
 /** O nome de gente de cada opção da renovação (a chave é a do produto, `presets.OPCOES_DA_RENOVACAO`). */
@@ -59,7 +65,11 @@ type Rascunho = {
   antecipar: number;
   usarCorretoraSeFalhar: boolean;
   contaGlobalDias: number;
+  conta: ContaDaRenovacao;
 };
+
+/** O modo como a TELA o mostra: o que ela não oferece (o envio automático) é o que o produto faz — só calcular. */
+const modoNaTela = (m: Modo): Modo => (MODOS_DA_RENOVACAO.some((x) => x.valor === m) ? m : 'calcular');
 
 function rascunhoDe(d: DadosServicos): Rascunho {
   const e = d.efetivo.renovacao as Efetivo;
@@ -67,7 +77,7 @@ function rascunhoDe(d: DadosServicos): Rascunho {
   const bruto = (d.sobreposto.servicos.renovacao || {}) as Record<string, unknown>;
   const conta = e.conta_global_se_vence_em_dias ?? p.conta_global_se_vence_em_dias ?? 0;
   return {
-    modo: e.modo,
+    modo: modoNaTela(e.modo),
     excecoes: copia(e.excecoes_do_modo || []),
     igualParaTodos: !bruto.preferencias_de_seguradoras,
     preferencias: copia(e.preferencias_de_seguradoras || {}),
@@ -79,6 +89,7 @@ function rascunhoDe(d: DadosServicos): Rascunho {
     usarCorretoraSeFalhar: conta > 0,
     // desligado (0) → ao religar, volta o padrão do produto
     contaGlobalDias: conta > 0 ? conta : Number(p.conta_global_se_vence_em_dias ?? 0),
+    conta: e.conta ?? p.conta ?? 'responsavel',
   };
 }
 
@@ -188,6 +199,7 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
     if (JSON.stringify(opcoes) !== JSON.stringify(padrao.opcoes || [])) bloco.opcoes = opcoes;
     if (r.teto !== padrao.teto_por_conta_noite) bloco.teto_por_conta_noite = r.teto;
     if (r.antecipar !== padrao.antecipar_ate_dias) bloco.antecipar_ate_dias = r.antecipar;
+    if (r.conta !== (padrao.conta ?? 'responsavel')) bloco.conta = r.conta;
     const corpo: Record<string, unknown> = { servicos: { renovacao: bloco } };
     if (r.igualParaTodos) corpo.preferencias_de_seguradoras = r.preferencias;
     await salvar(corpo, 'Configuração da Renovação salva.');
@@ -232,25 +244,27 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
 
       <Grupo id="cfg-conta" titulo="Com qual conta" descricao="Em qual Agger o cálculo é feito e de onde sai a mensagem.">
         <Linha rotulo="Agger"
-          info="A renovação é calculada no Agger de quem cuida da apólice, para o negócio ficar na carteira dele. O Agger da corretora entra quando o responsável não tem Agger conectado, ou quando o dele falha perto do vencimento (veja em Avançado).">
-          <Segmentado rotulo="Agger usado no cálculo" valor="responsavel" desabilitado={!pode}
+          info="Do responsável: a renovação é calculada no Agger de quem cuida da apólice, para o negócio ficar na carteira dele; o da corretora entra quando o responsável não tem Agger conectado, ou quando o dele falha perto do vencimento (veja em Avançado). Da corretora: todas as renovações são calculadas no Agger da corretora.">
+          <Segmentado<ContaDaRenovacao> rotulo="Agger usado no cálculo" valor={r.conta} desabilitado={!pode}
             opcoes={[
               { valor: 'responsavel', titulo: 'Do responsável (recomendado)' },
-              { valor: 'corretora', titulo: 'Da corretora', desabilitada: true },
+              { valor: 'corretora', titulo: 'Da corretora' },
             ]}
-            onChange={() => undefined} />
+            onChange={(conta) => mudar({ conta })} />
           <p className="mt-2 text-sm text-muted-foreground">
-            Usar sempre o da corretora ainda não está disponível na renovação.
+            {r.conta === 'corretora'
+              ? 'Todas as renovações são calculadas no Agger da corretora. O negócio fica na conta da corretora, não na do comercial.'
+              : 'Cada renovação é calculada no Agger de quem cuida da apólice.'}
           </p>
           <div className="mt-3 space-y-2">
             {contas ? (
               <>
-                {eu && (
+                {r.conta === 'responsavel' && eu && (
                   <Estado ok={Boolean(eu.agger?.conectado)}
                     texto={eu.agger?.conectado ? 'Seu Agger conectado' : 'Seu Agger não está conectado'}
                     href="/dashboard/configuracoes?aba=conexoes" acao={eu.agger?.conectado ? 'mudar' : 'conectar'} />
                 )}
-                {comerciais.length === 0 ? (
+                {r.conta === 'corretora' ? null : comerciais.length === 0 ? (
                   <Estado ok={false} texto="Ninguém marcado como comercial na equipe" href="/dashboard/personalizacao/equipe" acao="ver equipe" />
                 ) : (
                   <Estado ok={semAgger.length === 0}
@@ -281,17 +295,21 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
           className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-border bg-surface px-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span>
             <span className="block text-base font-semibold text-foreground">Avançado</span>
-            <span className="block text-sm text-muted-foreground">Exceções, reajuste, limite por noite e seguradoras preferidas.</span>
+            <span className="block text-sm text-muted-foreground">Reajuste, limite por noite e seguradoras preferidas.</span>
           </span>
           <ChevronDown size={18} strokeWidth={1.6} aria-hidden className={cn('shrink-0 text-muted-foreground transition-transform', avancado && 'rotate-180')} />
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-8">
-          <Grupo id="cfg-excecoes" titulo="Exceções" descricao="Por ramo ou por valor. Se duas valerem para o mesmo cálculo, vale a que faz menos.">
-            <div className="p-4">
-              <Excecoes excecoes={r.excecoes} ramos={ramos} modos={MODOS_DA_RENOVACAO} desabilitado={!pode}
-                onChange={(excecoes) => mudar({ excecoes })} />
-            </div>
-          </Grupo>
+          {/* Com um modo só para escolher (o envio é sempre do comercial), uma exceção nova não mudaria nada: o grupo
+              aparece só para ver e tirar as que já existem. */}
+          {r.excecoes.length > 0 && (
+            <Grupo id="cfg-excecoes" titulo="Exceções" descricao="Exceções antigas, por ramo ou por valor. O envio é sempre do comercial.">
+              <div className="p-4">
+                <Excecoes excecoes={r.excecoes} ramos={ramos} modos={MODOS_PARA_LER} desabilitado={!pode}
+                  onChange={(excecoes) => mudar({ excecoes })} />
+              </div>
+            </Grupo>
+          )}
 
           <Grupo id="cfg-limites" titulo="Limites da madrugada">
             {Object.keys(r.reajuste).length > 0 && (
@@ -324,6 +342,7 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
               <NumeroComBotoes id="cfg-antecipar" rotulo="dias de antecipação" valor={r.antecipar} min={faixaAntecipar[0]}
                 max={faixaAntecipar[1]} sufixo="dias antes" desabilitado={!pode} onChange={(antecipar) => mudar({ antecipar })} />
             </Linha>
+            {r.conta === 'responsavel' && (
             <Linha rotulo="Se o Agger do responsável falhar, usar o da corretora"
               info="Se o Agger de quem cuida da apólice recusar a senha, a renovação espera por ele. Ligado, ela passa para o Agger da corretora quando faltar pouco para vencer.">
               <div className="space-y-3">
@@ -339,6 +358,7 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
                 )}
               </div>
             </Linha>
+            )}
           </Grupo>
 
           <Grupo id="cfg-seguradoras" titulo="Seguradoras preferidas" descricao="Por ramo, em ordem de preferência.">

@@ -529,6 +529,23 @@ class FonteInfocap:
         """O `/documento` de UMA apólice (o primeiro do envelope), como veio. Vazio → {}."""
         return self._primeiro(self._get("/documento", {"codfil": codfil, "nosnum": nosnum}), "documento")
 
+    def historico_cru(self, codfil: Any, nosnum: Any) -> List[Dict[str, Any]]:
+        """SPEC-131-B: as linhas do `/documento?codfil&nosnum` que provam a RELAÇÃO — a própria apólice (`documento`)
+        e o `historico[]` (as anteriores, ligadas por `nosnum_ren`), como vieram. 📊 12/10: `{"header",
+        "documento": [1], "historico": [6], …}`. A MESMA chamada (e o mesmo cache) de `documento_cru` — uma rota, um
+        lugar (CLAUDE.md §5). Quem lê usa só `nosnum`/`nosnum_ren`/`tipdoc`/`inivig`; vazio → []."""
+        resposta = self._get("/documento", {"codfil": codfil, "nosnum": nosnum})
+        if not isinstance(resposta, dict):
+            return []
+        linhas: List[Dict[str, Any]] = []
+        for chave in ("documento", "historico"):
+            alvo = resposta.get(chave)
+            if isinstance(alvo, dict):
+                linhas.append(alvo)
+            elif isinstance(alvo, list):
+                linhas += [x for x in alvo if isinstance(x, dict)]
+        return linhas
+
     def cliente_cru(self, codfil: Any, codigo: Any) -> Dict[str, Any]:
         """O cadastro de UM cliente (`/cliente?codfil&codigo`), como veio. ⛔ SEM cache (dado pessoal)."""
         return self._primeiro(self._get("/cliente", {"codfil": codfil, "codigo": codigo}, guardar=False), "cliente")

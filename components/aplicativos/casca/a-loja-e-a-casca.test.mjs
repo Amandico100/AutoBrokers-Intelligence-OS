@@ -127,18 +127,19 @@ const fontes = {
   meuAgger: true,
 };
 const pr = C.passosDoComoComecar(itemRen, fontes);
-checar(pr.map((x) => x.chave).join(',') === 'sistema_de_gestao,agger_da_corretora,meu_agger,equipe,ligar', 'Renovação: gestão → Agger da corretora → seu Agger → equipe → Ligar', pr.map((x) => x.chave).join(','));
+checar(pr.map((x) => x.chave).join(',') === 'sistema_de_gestao,agger_da_corretora,meu_agger,equipe,servicos,ligar', 'Renovação: gestão → Agger da corretora → seu Agger → equipe → regras → Ligar', pr.map((x) => x.chave).join(','));
+checar(pr.find((x) => x.chave === 'servicos')?.link === '/dashboard/auxiliares/renovacao?aba=configurar', 'as regras levam DIRETO à aba Configurar (sem o redirect de Serviços)');
 checar(pr.every((x) => x.chave === 'ligar' || x.link), 'todo passo (menos Ligar) tem link');
 checar(pr.find((x) => x.chave === 'meu_agger')?.link === C.LINK_MEU_PERFIL, '"seu Agger" leva ao Meu perfil');
 checar(pr.find((x) => x.chave === 'equipe')?.estado === 'atencao', 'equipe em parte → atenção');
 const n1 = C.contagemDosPassos(pr);
-checar(n1.prontos === 2 && n1.total === 5, '"2 de 5 prontos" confere (gestão + seu Agger)', JSON.stringify(n1));
+checar(n1.prontos === 2 && n1.total === 6, '"2 de 6 prontos" confere (gestão + seu Agger)', JSON.stringify(n1));
 const cego = C.passosDoComoComecar(itemRen, { prontidao: null, meuAgger: null });
 const nCego = C.contagemDosPassos(cego);
 checar(nCego.prontos === 1 && cego.find((x) => x.chave === 'agger_da_corretora')?.estado === 'nao_sei',
   'sem leitura do backend: Agger e equipe "não deu para conferir", nunca pronto (só a InfoCap, que o catálogo leu)', JSON.stringify(nCego));
 const ligadoRen = C.contagemDosPassos(C.passosDoComoComecar({ ...itemRen, estado: 'ligado' }, fontes));
-checar(ligadoRen.prontos === 3, 'CONTROLE: ligado → o passo Ligar vira pronto (3 de 5)');
+checar(ligadoRen.prontos === 3, 'CONTROLE: ligado → o passo Ligar vira pronto (3 de 6)');
 const pg = C.passosDoComoComecar({ slug: 'cobranca-feita', estado: 'falta_conectar', instalado: false, rotinas: 0, sem_rotina: false,
   conexoes: [{ slug: 'insurance_portal', nome: 'Portal da Seguradora', pronto: false, onde: '/p' }, { slug: 'whatsapp_zapi', nome: 'WhatsApp', pronto: true, onde: '/w' }] },
   { prontidao: null, meuAgger: null });

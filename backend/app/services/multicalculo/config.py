@@ -186,6 +186,10 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
                       # D-131-0-05 / §5 F3 — o Agger do comercial falhou (senha recusada): a conta da CORRETORA só
                       # assume quando a apólice vence em MENOS que isto, em dias 💭 (lido por `qual_agger.decidir`)
                       "conta_global_se_vence_em_dias": 5,
+                      # SPEC-131-B (D-131-04, Founder) — "Com qual conta": `responsavel` = o Agger de quem cuida da
+                      # apólice (as regras da 131-0 A) · `corretora` = SEMPRE o Agger da corretora, por escolha dela
+                      # (regra própria, sem aviso de desvio). Lido por `qual_agger.decidir` (`conta_da_renovacao`)
+                      "conta": "responsavel",
                       # SPEC-131-A §4/§5 — A MADRUGADA DA RENOVAÇÃO (lidas pela F1 `madrugada.py` e pela F3 `motor.py`)
                       # D-131-01: calcula o que vence em ≤ isto (1–60 dias). Espelho de `renovacao.antecedencia_dias`
                       # (a tela grava lá): `mesclar` resolve UM número e escreve nos dois lugares.
@@ -507,6 +511,8 @@ TETO_SESSOES_CORRETORA_FAIXA = (1, 20)
 TETO_POR_CONTA_NOITE_FAIXA = (1, 60)
 ANTECIPAR_ATE_DIAS_FAIXA = (0, 20)
 COMISSAO_A_MAIS_PP_FAIXA = (0, 5)
+#: SPEC-131-B (D-131-04) — "Com qual conta" a renovação calcula: a do responsável (padrão) ou SEMPRE a da corretora
+CONTAS_DA_RENOVACAO = ("responsavel", "corretora")
 
 
 def _inteiro_na_faixa(v: Any, faixa: tuple) -> bool:
@@ -545,6 +551,9 @@ def _renovacao_coerente(bloco: Dict[str, Any]) -> None:
         bloco["comissao_a_mais_pp"] = pad["comissao_a_mais_pp"]
     else:
         bloco["comissao_a_mais_pp"] = float(v)
+    if bloco.get("conta") not in CONTAS_DA_RENOVACAO:
+        logger.warning("[MC-CONFIG] servicos.renovacao.conta: responsavel ou corretora — fica o padrão")
+        bloco["conta"] = pad["conta"]
     bloco["janela"] = _janela_limpa(bloco.get("janela"))
     aceites = bloco.get("prosseguir_aceites")
     if not (isinstance(aceites, list) and all(isinstance(x, str) and _UUID.match(x.strip()) for x in aceites)):
@@ -769,6 +778,15 @@ def pode_negociar(cfg: Mapping[str, Any], servico: str, ramo: Any = None, valor:
     return modo_do_servico(cfg, servico, ramo, valor) == "calcular_entregar_negociar"
 
 
+def conta_da_renovacao(cfg: Optional[Mapping[str, Any]]) -> str:
+    """SPEC-131-B (D-131-04): `responsavel` (o Agger de quem cuida da apólice — padrão) ou `corretora` (sempre o da
+    corretora). Lido por `qual_agger.decidir`. Sem config, ou fora do formato → o padrão do produto (`responsavel`)."""
+    if cfg is None:
+        return PADRAO_DO_PRODUTO["servicos"]["renovacao"]["conta"]
+    v = _bloco_do_servico(cfg, "renovacao").get("conta")
+    return v if v in CONTAS_DA_RENOVACAO else PADRAO_DO_PRODUTO["servicos"]["renovacao"]["conta"]
+
+
 def conta_global_se_vence_em_dias(cfg: Mapping[str, Any]) -> int:
     """§5 F3 — a conta da corretora só assume a renovação de quem teve a senha recusada quando a apólice vence em
     MENOS que isto (lido por `qual_agger.decidir`). Fora do formato → o padrão do produto."""
@@ -793,7 +811,9 @@ EDITAVEL_POR_SERVICO: Dict[str, frozenset] = {
                             # por noite e a antecipação. São chaves que a MADRUGADA já lê (`opcoes_da_renovacao`,
                             # `teto_por_conta_noite`, `antecipar_ate_dias`): a tela nunca grava o que o produto não lê.
                             # ⛔ `prosseguir_aceites` e `teto_sessoes_corretora` continuam fora (só o comando/gerente).
-                            "opcoes", "teto_por_conta_noite", "antecipar_ate_dias"}),
+                            "opcoes", "teto_por_conta_noite", "antecipar_ate_dias",
+                            # SPEC-131-B G5 — "Com qual conta" (D-131-04): lida por `qual_agger.decidir`
+                            "conta"}),
 }
 _EDITAVEL_NA_RENOVACAO = frozenset({"antecedencia_dias", "reajuste_basica_pct"})
 #: as faixas que a tela aceita 💭 (fora delas a escrita é recusada; nunca um número quebrado gravado)
@@ -857,6 +877,9 @@ def erros_da_edicao(servicos: Any = None, preferencias_de_seguradoras: Any = Non
             elif k == "conta_global_se_vence_em_dias":
                 if not _numero(v) or not 0 <= v <= CONTA_GLOBAL_DIAS_MAX or int(v) != v:
                     erros.append(f"{onde}: um número inteiro de dias, de 0 a {CONTA_GLOBAL_DIAS_MAX}")
+            elif k == "conta":
+                if v not in CONTAS_DA_RENOVACAO:
+                    erros.append(f"{onde}: escolha {' ou '.join(CONTAS_DA_RENOVACAO)}")
             elif k == "opcoes":
                 # a MESMA régua da leitura (`_opcoes_validas`): ⛔ econômica e mínima nunca numa renovação
                 if not _opcoes_validas(v):

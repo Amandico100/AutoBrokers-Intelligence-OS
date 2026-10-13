@@ -136,24 +136,52 @@ def teste_a_rota_e_unica():
            "sem isso o corretor precisaria decorar o endereço")
 
 
-def teste_a_pagina_do_auxiliar_tem_as_secoes():
-    print("\n[3] A página de cada Auxiliar responde na ordem em que se decide")
-    fonte = _ler("app", "dashboard", "auxiliares", "[slug]", "AuxiliarDetalheClient.tsx")
-    for secao in ("O que é", "O que ele faz", "O que você ganha",
-                  "De onde ele tira a informação", "Conexões que ele usa",
-                  "Rotinas deste Auxiliar", "Histórico"):
-        checar(secao in fonte, f'traz a seção "{secao}"')
+#: SPEC-131-B (G1): a página de TODO aplicativo é a CASCA — `components/aplicativos/casca/*` — com as seções na ordem
+#: do laudo de design §3. A verdade VENCIDA que este guarda afirmava ("De onde ele tira a informação", "Conexões que
+#: ele usa", "Rotinas deste Auxiliar", "Histórico" no `AuxiliarDetalheClient`) a SPEC mandou TIRAR (CLAUDE.md §9.3):
+#: a lição migra — as seções continuam exigidas, agora onde moram, e a que saiu passa a ser exigida AUSENTE.
+PASTA_DA_CASCA = os.path.join(RAIZ, "components", "aplicativos", "casca")
+SECOES_DA_CASCA = ("O que é", "O que faz", "O que a corretora ganha", "Como começar", "Atividade recente")
+SECOES_QUE_SAIRAM = ("De onde ele tira a informação",)
 
-    checar("item.headline" in fonte, "mostra a headline, não só o nome")
-    checar("falta_para_existir" in fonte,
+
+def _fonte_da_casca() -> str:
+    """O texto de TODOS os arquivos da casca (sem os testes), mais o `catalog.ts` (o botão e o "em breve")."""
+    partes = []
+    for nome in sorted(os.listdir(PASTA_DA_CASCA)):
+        if nome.endswith((".tsx", ".ts")) and ".test." not in nome:
+            partes.append(_ler("components", "aplicativos", "casca", nome))
+    return "\n".join(partes)
+
+
+def checar_secoes_da_casca(casca: str, catalogo: str) -> None:
+    """A régua, PURA (o controle a chama com um texto mutado — §9.3: o guarda precisa conseguir ficar vermelho)."""
+    for secao in SECOES_DA_CASCA:
+        checar(f'titulo="{secao}"' in casca, f'a casca traz a seção "{secao}"')
+    for secao in SECOES_QUE_SAIRAM:
+        checar(secao not in casca and secao not in catalogo, f'a seção "{secao}" saiu (SPEC-131-B §4)')
+    pos = [casca.find(f'titulo="{x}"') for x in SECOES_DA_CASCA]
+    checar(all(p >= 0 for p in pos) and pos == sorted(pos),
+           "as seções vêm na ordem do laudo (o que é → o que faz → ganha → como começar → atividade)")
+    checar("item.headline" in casca, "mostra a headline, não só o nome")
+    checar("falta_para_existir" in casca and "falta_para_existir" in catalogo,
            "o 'em breve' explica o que falta para existir")
+
+
+def teste_a_pagina_do_auxiliar_tem_as_secoes():
+    print("\n[3] A página de cada aplicativo responde na ordem em que se decide (a casca)")
+    catalogo = _sem_comentario(_ler("lib", "auxiliaries", "catalog.ts"))
+    checar_secoes_da_casca(_sem_comentario(_fonte_da_casca()), catalogo)
 
 
 def teste_em_breve_nao_liga_e_a_recusa_e_do_servidor():
     print("\n[4] 'Em breve' não liga — e quem recusa é o servidor")
-    tela = _ler("app", "dashboard", "auxiliares", "[slug]", "AuxiliarDetalheClient.tsx")
-    checar("coming_soon" in tela and "disabled" in tela,
-           "o botão fica desabilitado para 'em breve'")
+    catalogo = _sem_comentario(_ler("lib", "auxiliaries", "catalog.ts"))
+    cabecalho = _sem_comentario(_ler("components", "aplicativos", "casca", "CabecalhoDoAplicativo.tsx"))
+    m = re.search(r"if \(item\.estado === 'em_breve'\) \{\s*return \{ tipo: 'desabilitado'", catalogo)
+    checar(bool(m), "o botão principal do 'em breve' é do tipo desabilitado (`botaoPrincipal`)")
+    checar(re.search(r"botao\.tipo === 'desabilitado'\)[^}]*?<button[^>]*\sdisabled[\s>]", cabecalho, re.S) is not None,
+           "e a casca o desenha com `disabled`")
 
     # O botão é conveniência. A trava de verdade tem de estar no servidor:
     # um POST direto não pode instalar um Auxiliar cujo runtime é 'none'.
@@ -192,6 +220,20 @@ def teste_conexao_e_da_corretora():
     checar("falta_conectar" in store,
            "o servidor recusa ligar Auxiliar sem a conexão que ele exige",
            "ligar sem conexão produz um card 'ligado' que falha em silêncio")
+
+
+try:
+    import pytest
+
+    @pytest.fixture
+    def catalogo() -> list[dict]:
+        """No pytest (que coleta `teste_*`): o catálogo do banco, ou o caso pulado sem credencial — como no script."""
+        cat = _catalogo()
+        if cat is None:
+            pytest.skip("sem credencial de banco — caso pulado")
+        return cat
+except ImportError:  # pragma: no cover — o script roda sem pytest
+    pass
 
 
 def teste_catalogo_e_global(catalogo: list[dict]):
