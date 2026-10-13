@@ -75,6 +75,9 @@ export function DetalheDaRenovacaoGaveta({
         className={cn(
           'flex h-[100dvh] w-full max-w-full flex-col gap-0 p-0',
           'sm:w-[520px] sm:max-w-[520px]',
+          // K3: o ✕ do Sheet (o último filho) tem 16 px — vira um alvo de 44 px, no mesmo canto
+          '[&>button:last-child]:right-2 [&>button:last-child]:top-2 [&>button:last-child]:inline-flex',
+          '[&>button:last-child]:h-11 [&>button:last-child]:w-11 [&>button:last-child]:items-center [&>button:last-child]:justify-center',
         )}
       >
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 sm:px-6">

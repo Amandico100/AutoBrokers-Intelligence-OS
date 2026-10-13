@@ -35,7 +35,9 @@ export function ComoComecar({ passos }: { passos: PassoDoComoComecar[] }) {
           const pronto = p.estado === 'pronto';
           const pilula = PILULA[p.estado];
           return (
-            <li key={p.chave} className="flex gap-3 p-4" data-passo={p.chave} data-estado={p.estado}>
+            // K3 (juiz de design 5): no celular o link desce para baixo do texto (alinhado ao texto, não ao número) —
+            // ao lado, ele espremia o passo numa coluna de ~150 px; a partir de 640 volta para a direita
+            <li key={p.chave} className="flex flex-wrap gap-x-3 gap-y-1 p-4 sm:flex-nowrap" data-passo={p.chave} data-estado={p.estado}>
               <span
                 className={cn(
                   'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-sm font-medium tabular-nums',
@@ -53,19 +55,21 @@ export function ComoComecar({ passos }: { passos: PassoDoComoComecar[] }) {
                 <p className="mt-0.5 text-sm text-muted-foreground">{p.detalhe}</p>
               </div>
               {p.link && (
-                <Link
-                  href={p.link}
-                  className="flex min-h-[44px] shrink-0 items-center self-center rounded-md px-2 text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-primary"
-                >
-                  {pronto ? (
-                    <span className="inline-flex items-center gap-1">
-                      <Check className="h-4 w-4 text-success" strokeWidth={2} aria-hidden="true" />
-                      {p.titulo.startsWith('Conectar') ? 'Conectado' : 'Pronto'} · mudar
-                    </span>
-                  ) : (
-                    `${p.rotuloDoLink ?? 'Abrir'} →`
-                  )}
-                </Link>
+                <div className="basis-full pl-10 sm:basis-auto sm:shrink-0 sm:self-center sm:pl-0">
+                  <Link
+                    href={p.link}
+                    className="-ml-2 inline-flex min-h-[44px] items-center rounded-md px-2 text-sm sm:ml-0 font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-primary"
+                  >
+                    {pronto ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Check className="h-4 w-4 text-success" strokeWidth={2} aria-hidden="true" />
+                        {p.titulo.startsWith('Conectar') ? 'Conectado' : 'Pronto'} · mudar
+                      </span>
+                    ) : (
+                      `${p.rotuloDoLink ?? 'Abrir'} →`
+                    )}
+                  </Link>
+                </div>
               )}
             </li>
           );

@@ -314,7 +314,7 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
 
       <Collapsible open={avancado} onOpenChange={setAvancado} className="space-y-3">
         <CollapsibleTrigger
-          className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-border bg-surface px-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span>
             <span className="block text-base font-semibold text-foreground">Avançado</span>
             <span className="block text-sm text-muted-foreground">Reajuste, limite por noite e seguradoras preferidas.</span>

@@ -28,7 +28,7 @@ import { BOTAO_PRIMARIO, SeloDoAplicativo, TileDoIcone } from './CardDoAplicativ
 import { iconeDaConexao } from './icones';
 
 const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
-const BOTAO = 'inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto';
+const BOTAO_BASE = 'inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto';
 
 export interface CabecalhoProps {
   item: ItemDoCatalogo;
@@ -42,6 +42,11 @@ export interface CabecalhoProps {
   motivoDeNaoLigar?: string;
   /** `confirmado`: veio da confirmação "Ligar …?" — a API exige `confirmar_ligar` para LIGAR a Renovação (K1) */
   onAcao: (acao: 'install' | 'resume' | 'pause', opcoes?: { confirmado?: boolean }) => void;
+  /**
+   * K3 (juiz de design 6): a capa grande é do Início. Nas outras abas o cabeçalho é COMPACTO — ícone, nome, selo e o
+   * botão de ação (Ligar/Desligar) — para o trabalho subir: em Renovações a lista começa acima da dobra no celular.
+   */
+  compacto?: boolean;
 }
 
 function FuncionaCom({ conexoes }: { conexoes: ConexaoDoAplicativo[] }) {
@@ -74,7 +79,9 @@ function FuncionaCom({ conexoes }: { conexoes: ConexaoDoAplicativo[] }) {
   );
 }
 
-function AcaoPrincipal({ item, botao, resumoDosPassos, ocupado, onAcao }: Omit<CabecalhoProps, 'conexoes' | 'erro'>) {
+function AcaoPrincipal({ item, botao, resumoDosPassos, ocupado, onAcao, compacto }: Omit<CabecalhoProps, 'conexoes' | 'erro'>) {
+  // no cabeçalho compacto o botão mede o próprio texto (nunca a largura toda) — ao lado do nome
+  const BOTAO = cn(BOTAO_BASE, compacto && 'w-auto px-4');
   if (botao.tipo === 'desabilitado') {
     return (
       <button type="button" disabled className={cn(BOTAO, 'border border-border bg-surface-2 text-muted-foreground')}>
@@ -146,41 +153,9 @@ function AcaoPrincipal({ item, botao, resumoDosPassos, ocupado, onAcao }: Omit<C
   );
 }
 
-export function CabecalhoDoAplicativo(props: CabecalhoProps) {
-  const { item, botao, conexoes, erro, motivoDeNaoLigar } = props;
+function Avisos({ botao, erro, motivoDeNaoLigar }: Pick<CabecalhoProps, 'botao' | 'erro' | 'motivoDeNaoLigar'>) {
   return (
-    <header className="space-y-5">
-      <CapaGerada
-        icone={item.icone}
-        matiz={item.matiz}
-        coverUrl={item.cover_url}
-        className="aspect-[5/2] rounded-2xl border border-border sm:aspect-[4/1]"
-        marca={180}
-      />
-      <div className="flex flex-col gap-4 px-1 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-          <TileDoIcone icone={item.icone} matiz={item.matiz} tamanho={72} className="-mt-14 ml-3 ring-4 ring-background sm:-mt-10 sm:ml-4" />
-          <div className="min-w-0 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{item.nome}</h1>
-              <SeloDoAplicativo estado={item.estado} />
-            </div>
-            {item.headline && <p className="text-base text-foreground-2">{item.headline}</p>}
-          </div>
-        </div>
-        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:items-end">
-          <AcaoPrincipal {...props} />
-          {item.tela_de_execucao && item.estado_catalogo === 'available' && (
-            <Link
-              href={item.tela_de_execucao}
-              className={cn(BOTAO, 'border border-border bg-surface text-foreground hover:border-primary/40', FOCO)}
-            >
-              Abrir agora
-            </Link>
-          )}
-        </div>
-      </div>
-
+    <>
       {botao.tipo === 'desabilitado' && botao.motivo && (
         <p className="px-1 text-sm text-muted-foreground">{botao.motivo}</p>
       )}
@@ -195,6 +170,76 @@ export function CabecalhoDoAplicativo(props: CabecalhoProps) {
           {erro}
         </p>
       )}
+    </>
+  );
+}
+
+/** As abas de trabalho: ícone + nome + selo + a ação, numa linha só. Sem capa, sem "Funciona com" (moram no Início). */
+function CabecalhoCompacto(props: CabecalhoProps) {
+  const { item, botao, erro, motivoDeNaoLigar } = props;
+  return (
+    <header className="space-y-2" data-cabecalho="compacto">
+      <div className="flex items-center gap-3 px-1">
+        <TileDoIcone icone={item.icone} matiz={item.matiz} tamanho={48} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{item.nome}</h1>
+            <SeloDoAplicativo estado={item.estado} />
+          </div>
+          {item.headline && <p className="hidden truncate text-sm text-muted-foreground sm:block">{item.headline}</p>}
+        </div>
+        {/* só a AÇÃO (Ligar/Desligar/Instalar): o link "Configurar" e o "Em breve" já são a própria aba ou o Início */}
+        {botao.tipo === 'acao' && (
+          <div className="shrink-0">
+            <AcaoPrincipal {...props} />
+          </div>
+        )}
+      </div>
+      {/* o "desligar não apaga nada" é do Início; aqui só o que impede ou deu errado */}
+      <Avisos botao={botao.tipo === 'acao' && botao.fantasma ? { ...botao, fantasma: false } : botao} erro={erro} motivoDeNaoLigar={motivoDeNaoLigar} />
+    </header>
+  );
+}
+
+export function CabecalhoDoAplicativo(props: CabecalhoProps) {
+  const { item, botao, conexoes, erro, motivoDeNaoLigar } = props;
+  if (props.compacto) return <CabecalhoCompacto {...props} />;
+  return (
+    <header className="space-y-5" data-cabecalho="completo">
+      <CapaGerada
+        icone={item.icone}
+        matiz={item.matiz}
+        coverUrl={item.cover_url}
+        className="aspect-[5/2] rounded-2xl border border-border sm:aspect-[4/1]"
+        marca={180}
+      />
+      <div className="flex flex-col gap-4 px-1 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
+          {/* K3 (juiz de design 3): `relative z-10` — sem ele a capa (relative, overflow-hidden) pinta POR CIMA do tile
+              no celular e só a metade de baixo aparecia; o card da loja já fazia assim */}
+          <TileDoIcone icone={item.icone} matiz={item.matiz} tamanho={72} className="relative z-10 -mt-14 ml-3 ring-4 ring-background sm:-mt-10 sm:ml-4" />
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{item.nome}</h1>
+              <SeloDoAplicativo estado={item.estado} />
+            </div>
+            {item.headline && <p className="text-base text-foreground-2">{item.headline}</p>}
+          </div>
+        </div>
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:items-end">
+          <AcaoPrincipal {...props} />
+          {item.tela_de_execucao && item.estado_catalogo === 'available' && (
+            <Link
+              href={item.tela_de_execucao}
+              className={cn(BOTAO_BASE, 'border border-border bg-surface text-foreground hover:border-primary/40', FOCO)}
+            >
+              Abrir agora
+            </Link>
+          )}
+        </div>
+      </div>
+
+      <Avisos botao={botao} erro={erro} motivoDeNaoLigar={motivoDeNaoLigar} />
 
       <div className="px-1">
         <FuncionaCom conexoes={conexoes} />

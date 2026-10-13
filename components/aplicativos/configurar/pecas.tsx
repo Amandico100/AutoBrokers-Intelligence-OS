@@ -61,13 +61,13 @@ export function Ajuda({ titulo, children }: { titulo: string; children: ReactNod
   );
 }
 
-/** Número inteiro com − / + (h-10), dentro da faixa que veio do backend. */
+/** Número inteiro com − / + (44 px no celular, 40 a partir de 640 — K3), dentro da faixa que veio do backend. */
 export function NumeroComBotoes({ id, valor, min, max, onChange, sufixo, rotulo, desabilitado }: {
   id: string; valor: number; min: number; max: number; onChange: (n: number) => void; sufixo?: string; rotulo: string;
   desabilitado?: boolean;
 }) {
   const limitar = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
-  const botao = 'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:bg-surface-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+  const botao = 'inline-flex h-11 w-11 sm:h-10 sm:w-10 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:bg-surface-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   return (
     <div className="flex items-center gap-2">
       <button type="button" className={botao} aria-label={`Menos — ${rotulo}`} disabled={desabilitado || valor <= min}

@@ -154,6 +154,7 @@ export default function AuxiliarDetalheClient({ item, podeLigar, atividade, font
             : undefined
         }
         onAcao={agir}
+        compacto={abaAtual !== 'inicio'}
       />
 
       <AbasDoAplicativo

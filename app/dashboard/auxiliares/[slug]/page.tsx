@@ -15,7 +15,10 @@ import { ArrowLeft } from 'lucide-react';
 
 import { getSupabaseAdmin, resolveSessionCompany } from '@/lib/auxiliaries/server';
 import { getBackendUrl } from '@/lib/backend-url';
+import { LarguraDoAplicativo } from '@/components/aplicativos/casca/LarguraDoAplicativo';
 import {
+  abasDoAplicativo,
+  abasLargas,
   atividadeRecente,
   auxiliarPorSlug,
   podeLigar,
@@ -91,7 +94,8 @@ export default async function AuxiliarPage({
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+      {/* K3 (juiz de design 2): a aba de LISTA (Renovações) ganha largura — 9 colunas em max-w-5xl cortavam o nome */}
+      <LarguraDoAplicativo largas={abasLargas(abasDoAplicativo(item))}>
         <Link
           href="/dashboard/auxiliares"
           className="mb-4 inline-flex min-h-[44px] items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -106,7 +110,7 @@ export default async function AuxiliarPage({
           atividade={atividade}
           fontes={fontes}
         />
-      </div>
+      </LarguraDoAplicativo>
     </div>
   );
 }

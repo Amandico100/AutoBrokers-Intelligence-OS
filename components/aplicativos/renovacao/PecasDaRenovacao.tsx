@@ -192,9 +192,14 @@ function BotaoIcone({
 /**
  * A LINHA DA LISTA. Três desenhos, uma marcação de dados:
  *   celular (< 640)      cartão: nome · vence em · prêmio e Δ · estado · UM botão grande "Enviar"
- *   640–1023             linha com a 2ª linha (ramo, seguradoras, responsável)
- *   ≥ 1024               a linha inteira: Cliente · Ramo · Vence · Seguradora atual → nova · Prêmio atual → novo (Δ)
- *                        · Responsável · Estado · ações-ícone
+ *   640–1279             linha com a 2ª linha (estado, ramo, seguradoras, responsável)
+ *   ≥ 1280               a linha inteira: Cliente (ramo · responsável embaixo) · Vence · Seguradora atual → nova
+ *                        · Prêmio atual → novo (Δ) · Estado · ações-ícone
+ *                        K3 (juiz de design 2): Ramo e Responsável saíram das colunas próprias para a sublinha do nome
+ *                        (o documento, sempre mascarado, não dizia nada), e o nome e a seguradora têm largura MÍNIMA
+ *                        (11rem/10rem). A linha inteira só a partir de 1280 px: com a barra lateral de 256 px, entre
+ *                        1024 e 1279 as mínimas não cabem e a 2ª linha volta. Com a aba em max-w-7xl, 24 caracteres
+ *                        cabem inteiros de 1280 px em diante; o `title` guarda o texto inteiro se um dia não couber.
  * O chevron expande nos cálculos lado a lado.
  */
 export function LinhaDaRenovacao({
@@ -273,7 +278,7 @@ export function LinhaDaRenovacao({
           'hidden min-h-14 items-center gap-x-3 gap-y-1 py-2 pl-2 pr-2 sm:grid',
           'grid-cols-[2.25rem_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]',
           // o estado tem largura mínima: o selo de 12 px ("Precisa de você") não invade a coluna das ações
-          'lg:grid-cols-[2.25rem_minmax(0,1.5fr)_4.5rem_6rem_minmax(0,1.4fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(8.75rem,1.1fr)_auto]',
+          'xl:grid-cols-[2.25rem_minmax(11rem,1.6fr)_5.5rem_minmax(10rem,1.4fr)_minmax(8rem,1fr)_minmax(8.75rem,auto)_auto]',
         )}
       >
         <button
@@ -292,21 +297,24 @@ export function LinhaDaRenovacao({
           onClick={() => onAbrir(r)}
           className="min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="block truncate text-sm font-semibold text-foreground">{nomeDoCliente(r)}</span>
-          <span className="block truncate font-mono text-xs text-muted-foreground">{r.documento || ''}</span>
+          <span className="block truncate text-sm font-semibold text-foreground" title={nomeDoCliente(r)}>{nomeDoCliente(r)}</span>
+          {/* até 1279: o documento (a 2ª linha já traz ramo e responsável); de 1280 em diante: ramo · responsável */}
+          <span className="block truncate font-mono text-xs text-muted-foreground xl:hidden">{r.documento || ''}</span>
+          <span className="hidden truncate text-xs text-muted-foreground xl:block"
+            title={r.responsavel ? `Responsável: ${r.responsavel.nome}` : undefined}>
+            {r.ramo_rotulo || 'Ramo não informado'} · {r.responsavel ? r.responsavel.nome : 'Sem responsável'}
+          </span>
         </button>
 
-        <span className="hidden truncate text-sm text-foreground-2 lg:block">{r.ramo_rotulo || '—'}</span>
-
-        <span className="text-sm text-foreground lg:order-none">
+        <span className="text-sm text-foreground">
           <span className="block tabular-nums">{dataCurta(r.vence_em)}</span>
           <span className="block text-xs text-muted-foreground">{venceEm(r.dias_para_vencer)}</span>
         </span>
 
-        <span className="hidden min-w-0 text-sm lg:block">
-          <span className="block truncate text-foreground-2">{r.seguradora_atual || '—'}</span>
+        <span className="hidden min-w-0 text-sm xl:block">
+          <span className="block truncate text-foreground-2" title={r.seguradora_atual || undefined}>{r.seguradora_atual || '—'}</span>
           {r.seguradora_nova && (
-            <span className="block truncate text-xs text-muted-foreground">→ {r.seguradora_nova}</span>
+            <span className="block truncate text-xs text-muted-foreground" title={r.seguradora_nova}>→ {r.seguradora_nova}</span>
           )}
         </span>
 
@@ -321,11 +329,7 @@ export function LinhaDaRenovacao({
           </span>
         </span>
 
-        <span className="hidden truncate text-sm text-foreground-2 lg:block">
-          {r.responsavel ? r.responsavel.nome : 'Sem responsável'}
-        </span>
-
-        <span className="hidden lg:block">{estado}</span>
+        <span className="hidden xl:block">{estado}</span>
 
         <span className="flex items-center justify-end gap-0.5">
           <BotaoIcone
@@ -354,8 +358,8 @@ export function LinhaDaRenovacao({
           </BotaoIcone>
         </span>
 
-        {/* 640–1023: a 2ª linha */}
-        <p className="col-span-full flex flex-wrap items-center gap-x-2 gap-y-1 pl-[2.75rem] text-xs text-muted-foreground lg:hidden">
+        {/* 640–1279: a 2ª linha */}
+        <p className="col-span-full flex flex-wrap items-center gap-x-2 gap-y-1 pl-[2.75rem] text-xs text-muted-foreground xl:hidden">
           {estado}
           <span>{r.ramo_rotulo || 'Ramo não informado'}</span>
           <span aria-hidden>·</span>

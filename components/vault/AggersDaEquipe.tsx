@@ -2,17 +2,25 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { Confirmar } from '@/components/aplicativos/casca/Confirmar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-/** A cor de cada situação (a do Agger da corretora, `tomDaSituacao`, mais `conectado` e `nao_conectado`). */
-function corDaSituacao(situacao: string): string {
-  if (situacao === 'conectado' || situacao === 'calculando') return 'text-success';
-  if (situacao === 'senha_recusada') return 'text-danger';
-  if (situacao === 'pausado' || situacao === 'ocupada') return 'text-warning';
-  return 'text-muted-foreground';
+/**
+ * O tom de cada situação (a do Agger da corretora, `tomDaSituacao`, mais `conectado` e `nao_conectado`).
+ * SPEC-131-B K3: no claro, `text-success` sobre a superfície dá 4,16:1 (reprova AA) — o TEXTO vai escuro e a cor fica
+ * no PONTO ao lado (nunca só cor: o rótulo diz a situação); no escuro, o texto leva a cor.
+ */
+function tomDaSituacao(situacao: string): { texto: string; ponto: string } {
+  if (situacao === 'conectado' || situacao === 'calculando') return { texto: 'text-foreground dark:text-success', ponto: 'bg-success' };
+  if (situacao === 'senha_recusada') return { texto: 'text-foreground dark:text-danger', ponto: 'bg-danger' };
+  if (situacao === 'pausado' || situacao === 'ocupada') return { texto: 'text-foreground dark:text-warning', ponto: 'bg-warning' };
+  return { texto: 'text-muted-foreground', ponto: 'bg-muted-foreground/50' };
 }
+
+/** os botões da linha: 44 px no celular (alvo de toque), 36 px a partir de 640 */
+const ALVO = 'h-11 sm:h-9';
 
 /**
  * SPEC-131-0 parte A · F3 — o Agger de cada PESSOA (D-131-0-05/29).
@@ -122,7 +130,7 @@ export function AggersDaEquipe({ apenasEu = true }: { apenasEu?: boolean } = {})
           {pessoas.map((p) => {
             const meu = p.user_id === eu;
             const pode = (a: string) => (podeTodos || meu) && p.agger.acoes.includes(a);
-            const cor = corDaSituacao(p.agger.situacao);
+            const tom = tomDaSituacao(p.agger.situacao);
             const formAberto = aberta?.id === p.user_id;
             return (
               <li key={p.user_id} className="space-y-2 rounded-lg border border-border bg-surface-2 p-3"
@@ -135,7 +143,10 @@ export function AggersDaEquipe({ apenasEu = true }: { apenasEu?: boolean } = {})
                     </p>
                   )}
                 </div>
-                <p className={`text-sm ${cor}`}>{p.agger.rotulo}</p>
+                <p className={`flex items-center gap-2 text-sm ${tom.texto}`}>
+                  <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${tom.ponto}`} />
+                  {p.agger.rotulo}
+                </p>
                 {p.agger.usuario && (
                   <p className="text-xs text-muted-foreground">
                     Login {p.agger.usuario} · {p.agger.tem_senha ? 'senha guardada' : 'sem senha'}
@@ -164,9 +175,10 @@ export function AggersDaEquipe({ apenasEu = true }: { apenasEu?: boolean } = {})
                         onChange={(e) => setSenha(e.target.value)} className="bg-background" />
                     </div>
                     <div className="flex flex-wrap justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={fecharFormulario} disabled={ocupado}>Voltar</Button>
+                      <Button size="sm" variant="outline" className={ALVO} onClick={fecharFormulario} disabled={ocupado}>Voltar</Button>
                       <Button
                         size="sm"
+                        className={ALVO}
                         disabled={ocupado || !senha || (aberta?.acao === 'conectar' && !usuario.trim())}
                         onClick={() => agir(p.user_id, aberta!.acao, { usuario: usuario.trim() || undefined, senha },
                           aberta?.acao === 'conectar' ? `Agger de ${p.nome} conectado.` : 'Senha trocada.')}
@@ -178,35 +190,39 @@ export function AggersDaEquipe({ apenasEu = true }: { apenasEu?: boolean } = {})
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {pode('conectar') && (
-                      <Button size="sm" disabled={ocupado}
+                      <Button size="sm" className={ALVO} disabled={ocupado}
                         onClick={() => { setAberta({ id: p.user_id, acao: 'conectar' }); setErro(''); setAviso(''); }}>
                         {meu ? 'Conectar o meu Agger' : 'Conectar o Agger desta pessoa'}
                       </Button>
                     )}
                     {pode('trocar_senha') && (
-                      <Button size="sm" variant="outline" disabled={ocupado}
+                      <Button size="sm" variant="outline" className={ALVO} disabled={ocupado}
                         onClick={() => { setAberta({ id: p.user_id, acao: 'trocar_senha' }); setErro(''); setAviso(''); }}>
                         Trocar senha
                       </Button>
                     )}
                     {pode('religar') && (
-                      <Button size="sm" variant="outline" disabled={ocupado}
+                      <Button size="sm" variant="outline" className={ALVO} disabled={ocupado}
                         onClick={() => agir(p.user_id, 'religar', {}, 'Agger religado.')}>Religar</Button>
                     )}
                     {pode('pausar') && (
-                      <Button size="sm" variant="outline" disabled={ocupado}
+                      <Button size="sm" variant="outline" className={ALVO} disabled={ocupado}
                         onClick={() => agir(p.user_id, 'pausar', {}, 'Agger pausado.')}>Pausar</Button>
                     )}
                     {pode('desconectar') && (
-                      <Button size="sm" variant="outline" className="text-danger" disabled={ocupado}
-                        onClick={() => {
-                          if (!confirm(meu
-                            ? 'Desconectar o seu Agger? A senha é apagada e as suas cotações e renovações passam a ir pelo Agger da corretora.'
-                            : `Desconectar o Agger de ${p.nome}? A senha é apagada e as cotações dela passam a ir pelo Agger da corretora.`)) return;
-                          agir(p.user_id, 'desconectar', {}, 'Agger desconectado. A senha foi apagada.');
-                        }}>
-                        Desconectar
-                      </Button>
+                      <Confirmar
+                        titulo={meu ? 'Desconectar o seu Agger?' : `Desconectar o Agger de ${p.nome}?`}
+                        descricao={meu
+                          ? 'A senha é apagada e as suas cotações e renovações passam a ir pelo Agger da corretora.'
+                          : 'A senha é apagada e as cotações desta pessoa passam a ir pelo Agger da corretora.'}
+                        acao="Desconectar"
+                        perigo
+                        onConfirmar={() => agir(p.user_id, 'desconectar', {}, 'Agger desconectado. A senha foi apagada.')}
+                      >
+                        <Button size="sm" variant="outline" className={`${ALVO} text-danger`} disabled={ocupado}>
+                          Desconectar
+                        </Button>
+                      </Confirmar>
                     )}
                   </div>
                 )}
@@ -217,7 +233,7 @@ export function AggersDaEquipe({ apenasEu = true }: { apenasEu?: boolean } = {})
       )}
 
       {erro && <p className="text-sm text-danger" role="alert">{erro}</p>}
-      {aviso && <p className="text-sm text-success" role="status">{aviso}</p>}
+      {aviso && <p className="text-sm text-foreground dark:text-success" role="status">{aviso}</p>}
     </section>
   );
 }

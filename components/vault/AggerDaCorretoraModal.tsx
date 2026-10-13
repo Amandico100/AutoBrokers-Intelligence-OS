@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { Confirmar } from '@/components/aplicativos/casca/Confirmar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -201,18 +202,18 @@ export function AggerDaCorretoraModal({
                   <Button size="sm" variant="outline" onClick={() => agir('pausar', {}, 'Robô pausado.')} disabled={ocupado}>Pausar</Button>
                 )}
                 {pode('desconectar') && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-danger"
-                    disabled={ocupado}
-                    onClick={() => {
-                      if (!confirm('Desconectar o Agger? A senha é apagada e o robô para de calcular. O histórico de cálculos fica.')) return;
-                      agir('desconectar', {}, 'Agger desconectado. A senha foi apagada.');
-                    }}
+                  // SPEC-131-B K3: a confirmação da casa (o AlertDialog do produto), nunca o confirm() do navegador
+                  <Confirmar
+                    titulo="Desconectar o Agger?"
+                    descricao="A senha é apagada e o robô para de calcular. O histórico de cálculos fica."
+                    acao="Desconectar"
+                    perigo
+                    onConfirmar={() => agir('desconectar', {}, 'Agger desconectado. A senha foi apagada.')}
                   >
-                    Desconectar
-                  </Button>
+                    <Button size="sm" variant="outline" className="text-danger" disabled={ocupado}>
+                      Desconectar
+                    </Button>
+                  </Confirmar>
                 )}
               </div>
             )}

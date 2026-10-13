@@ -92,8 +92,9 @@ export function CardDoAplicativo({ item }: { item: ItemDoCatalogo }) {
         </p>
       </div>
 
-      <div className="flex items-center justify-between gap-3 border-t border-border-soft px-4 py-3">
-        <span className="truncate text-xs text-foreground-2">{prova}</span>
+      {/* K3 (juiz de design 7): a prova é a frase que convence — quebra em 2 linhas, nunca "este m…" */}
+      <div className="flex items-end justify-between gap-3 border-t border-border-soft px-4 py-3">
+        <span className="line-clamp-2 min-w-0 text-xs leading-snug text-foreground-2" data-prova>{prova}</span>
         <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-foreground dark:text-primary">
           Abrir <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.6} aria-hidden="true" />
         </span>
@@ -117,7 +118,7 @@ export function LinhaEmBreve({ item }: { item: ItemDoCatalogo }) {
       <TileDoIcone icone={item.icone} matiz={item.matiz} tamanho={40} apagado />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{item.nome}</span>
-        <span className="block truncate text-sm text-muted-foreground">{item.headline || item.resumo}</span>
+        <span className="line-clamp-2 text-sm text-muted-foreground">{item.headline || item.resumo}</span>
       </span>
       <SeloDoAplicativo estado="em_breve" className="shrink-0" />
     </Link>
@@ -140,7 +141,9 @@ export function DestaqueDoAplicativo({ item }: { item: ItemDoCatalogo }) {
         marca={220}
         crescerNoHover
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent sm:bg-gradient-to-r sm:from-background/85 sm:via-background/40" />
+      {/* K3 (juiz de design 7): no claro a esmaecida cobria a capa inteira (um vazio pálido) — ela fica só sob o texto
+          (até ~45 %), e a cor aparece; no escuro segue como era */}
+      <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent sm:bg-gradient-to-r sm:from-background/80 sm:via-background/20 sm:via-45% sm:to-transparent dark:sm:from-background/85 dark:sm:via-background/40 dark:sm:via-50%" />
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 p-5 sm:inset-y-0 sm:right-auto sm:max-w-xl sm:justify-center sm:p-8">
         <span className="inline-flex w-fit items-center rounded-full border border-primary/40 bg-background/70 px-2.5 py-0.5 text-xs font-medium text-foreground">
           Em destaque

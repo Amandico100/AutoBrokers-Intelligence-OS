@@ -370,5 +370,52 @@ const SELO = fs.readFileSync(path.join(RAIZ, 'components/aplicativos/casca/Selo.
 checar(/font-sans text-xs/.test(SELO) && !/font-mono|text-\[1[01]px\]/.test(SELO.replace(/^\s*\/\/.*$/gm, '')) && /text-foreground-2 dark:text-warning/.test(SELO),
   'o Selo: 12 px, sem mono, no claro texto escuro (a cor no ponto)');
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+console.log('\n[12] Conserto K3 (juiz de design 1 e 8): toda classe `min-h-N` do projeto GERA CSS; confirm() fora também do cofre');
+// 📊 13/10: no Tailwind 3.3.3 `min-h-11` não gerava nada (o alvo de 44 px era no-op). O guarda resolve o config REAL
+// (o mesmo `resolveConfig` que o Tailwind usa) e exige que cada `min-h-<chave>` escrito no código exista no tema.
+const resolveConfig = require('tailwindcss/resolveConfig');
+const TW_FONTE = fs.readFileSync(path.join(RAIZ, 'tailwind.config.ts'), 'utf8');
+function temaDeMinHeight(fonte) {
+  const js = ts.transpileModule(fonte, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+  }).outputText;
+  const mod = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('require', 'module', 'exports', js)(require, mod, mod.exports);
+  return resolveConfig(mod.exports.default || mod.exports).theme.minHeight;
+}
+function classesMinH(dirs) {
+  const achadas = new Map(); // chave -> primeiro arquivo
+  const varrer = (d) => {
+    for (const e of fs.readdirSync(path.join(RAIZ, d), { withFileTypes: true })) {
+      const rel = `${d}/${e.name}`;
+      if (e.isDirectory()) { if (!/node_modules|\.next/.test(e.name)) varrer(rel); continue; }
+      if (!/\.(tsx?|jsx?)$/.test(e.name) || /\.test\./.test(e.name)) continue;
+      const fonte = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+      for (const m of fonte.matchAll(/(?<![\w-])(?:[a-z]+:)*min-h-([a-z0-9.]+)(?![\w-]|\.\d|\[)/g)) {
+        if (!achadas.has(m[1])) achadas.set(m[1], rel);
+      }
+    }
+  };
+  dirs.forEach(varrer);
+  return achadas;
+}
+const MIN_H = temaDeMinHeight(TW_FONTE);
+const usadas = classesMinH(['app', 'components', 'lib']);
+const semCss = [...usadas].filter(([k]) => !(k in MIN_H)).map(([k, rel]) => `min-h-${k} (${rel})`);
+checar(usadas.has('11') && semCss.length === 0, `toda min-h-N usada gera CSS (${usadas.size} chaves: ${[...usadas.keys()].join(', ')})`, semCss.join(' | '));
+checar(MIN_H['11'] === '2.75rem' && MIN_H['0'] === '0px' && MIN_H.screen === '100vh' && MIN_H.full === '100%',
+  'min-h-11 = 44 px; as que já existiam saem iguais (0 = 0px, screen, full)', JSON.stringify({ 11: MIN_H['11'], 0: MIN_H['0'] }));
+const MIN_H_33 = temaDeMinHeight(TW_FONTE.replace(/^\s*minHeight:.*$/m, ''));
+checar(!('11' in MIN_H_33) && [...usadas].some(([k]) => !(k in MIN_H_33)),
+  'CONTROLE: sem o `minHeight` do config (o 3.3 puro), o guarda fica VERMELHO (min-h-11 não existe)');
+
+const listarFundo = (dir) => fs.readdirSync(path.join(RAIZ, dir)).filter((f) => /\.tsx?$/.test(f)).map((f) => `${dir}/${f}`);
+for (const rel of listarFundo('components/vault')) {
+  const c = fs.readFileSync(path.join(RAIZ, rel), 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  checar(!/(^|[^\w.])confirm\(/.test(c), `${rel}: sem confirm() do navegador`);
+}
+
 console.log(falhas === 0 ? '\nA LOJA E A CASCA: TODOS OS GUARDAS VERDES\n' : `\n${falhas} GUARDA(S) VERMELHO(S)\n`);
 process.exit(falhas === 0 ? 0 : 1);

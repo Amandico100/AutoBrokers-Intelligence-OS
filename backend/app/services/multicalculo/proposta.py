@@ -469,8 +469,12 @@ def _whatsapp_da_anfitria(db: Any, company_id: str, marca: Optional[Mapping[str,
         if dig:
             return dig
     try:
-        linhas = _dados(db.table("integrations").select("paired_phone_e164, purpose, is_active")
+        # N1 (131-B K3): ORDEM FIXA — com 2+ integrações de atendimento ativas, a leitura sem ORDER BY podia trocar de
+        # número entre duas chamadas, `quem_atende_mudou` dava True e cada envio republicava a página. A mais antiga
+        # vence (`created_at`, depois `id` no empate) — a mesma em toda leitura.
+        linhas = _dados(db.table("integrations").select("id, created_at, paired_phone_e164, purpose, is_active")
                         .eq("company_id", company_id).eq("purpose", "attendance").eq("is_active", True)
+                        .order("created_at").order("id")
                         .limit(64).execute())   # o teto da leitura (o G8 proíbe os números da config — 50 virou o teto da comissão)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[PROPOSTA] integrações ilegíveis: %s", type(exc).__name__)

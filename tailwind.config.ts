@@ -9,6 +9,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // SPEC-131-B K3 · No Tailwind 3.3 `min-h-*` só tem 0/full/screen/min/max/fit — `min-h-11` (44 px de toque)
+      // não gerava CSS nenhum. A 3.4 passou a usar a escala de `spacing`; isto antecipa exatamente esse comportamento
+      // (as classes que já existiam saem iguais: `min-h-0` = 0px nas duas escalas). Guarda: a-loja-e-a-casca.test.mjs.
+      minHeight: ({ theme }) => ({ ...theme('spacing') }),
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-conic':

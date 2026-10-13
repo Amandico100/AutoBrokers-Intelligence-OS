@@ -302,6 +302,15 @@ export function abasDoAplicativo(
   });
 }
 
+/**
+ * K3 (juiz de design 2): as abas de trabalho em LISTA ganham largura (`max-w-7xl`); as de leitura ficam em 5xl.
+ * Devolve as que ESTE aplicativo tem — a página (servidor) passa a lista pronta para a casca (cliente).
+ */
+export const ABAS_LARGAS: readonly string[] = ['renovacoes'];
+export function abasLargas(abas: AbaDoAplicativo[]): string[] {
+  return abas.filter((a) => ABAS_LARGAS.includes(a.id)).map((a) => a.id);
+}
+
 /** A aba pedida na URL, se ela existe para este aplicativo; senão Início (aba inválida → Início). */
 export function abaValida(abas: AbaDoAplicativo[], pedida: string | null | undefined): string {
   return abas.some((a) => a.id === pedida) ? String(pedida) : 'inicio';

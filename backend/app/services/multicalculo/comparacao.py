@@ -852,7 +852,9 @@ def _motivos(e: Mapping[str, Any], papel: str, *, ranking_completa: Sequence[Map
     elif car["km"]:
         m.append(f"Guincho até {_km(car['km'])} km")
     p = e.get("parcelas")
-    if p and p["vezes"] > 1:
+    # renovação (K3, juiz de design 4): a parcela já está SOB o preço, com a fonte da proposta (`com_juros`); repetir
+    # aqui com `parcelas_de` (as "demais parcelas") mostrava DUAS parcelas para a mesma opção (R$ 555,83 × R$ 554,94)
+    if p and p["vezes"] > 1 and not renovacao:
         m.append(f"Em até {p['vezes']}x de {reais(p['valor'])}")
     m = m[:MAX_MOTIVOS]
     if len(m) < 2:

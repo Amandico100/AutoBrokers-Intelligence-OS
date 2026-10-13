@@ -439,10 +439,50 @@ def test_rtp7_a_rota_de_instalar_exige_confirmar_ligar_para_quem_instalar_ja_lig
     assert "import { INSTALAR_JA_LIGA } from '@/lib/auxiliaries/catalog'" in rota
     trava = rota.index("confirmar_ligar !== true")
     assert rota.index("if (action === 'install' || action === 'resume')") < trava < rota.index("installTenantAuxiliary(")
-    assert "status: 400" in rota[trava:trava + 400] and "detalhe:" in rota[trava:trava + 400]
-    # o guarda consegue ficar vermelho: a rota de antes (sem a trava) não passa
-    sem_trava = rota[:trava] + rota[trava:].replace("confirmar_ligar !== true", "false", 1)
-    assert "confirmar_ligar !== true" not in sem_trava
+    assert _a_trava_da_rota(rota)
+    # CONTROLE HONESTO (K3, N2 da confirmação): o MESMO verificador, sobre rotas com o defeito, dá False — sem a trava,
+    # com a trava só no `install` (o `resume` religaria sem confirmar) e com a trava DEPOIS de instalar
+    sem_trava = rota.replace("confirmar_ligar !== true", "false", 1)
+    so_install = rota.replace("if (action === 'install' || action === 'resume')", "if (action === 'install')", 1)
+    depois = "await installTenantAuxiliary(/* instala ANTES de conferir */);\n" + rota
+    assert not _a_trava_da_rota(sem_trava)
+    assert not _a_trava_da_rota(so_install)
+    assert not _a_trava_da_rota(depois)
+
+
+def _a_trava_da_rota(rota: str) -> bool:
+    """A trava de "Ligar" na rota Next: existe, cobre `install` E `resume`, vem ANTES de instalar e responde 400 com
+    a frase. Uma função só — o guarda e o controle passam pelo MESMO verificador (CLAUDE.md §9.3, corolário)."""
+    try:
+        trava = rota.index("confirmar_ligar !== true")
+        cobre = rota.index("if (action === 'install' || action === 'resume')")
+        instala = rota.index("installTenantAuxiliary(")
+    except ValueError:
+        return False
+    return cobre < trava < instala and "status: 400" in rota[trava:trava + 400] and "detalhe:" in rota[trava:trava + 400]
+
+
+# =====================================================================================================================
+# N1 (K3) — o número da corretora com ORDEM FIXA: duas integrações de atendimento ativas nunca oscilam entre leituras
+# =====================================================================================================================
+def test_n1_o_numero_da_corretora_le_a_integracao_mais_antiga_sempre(monkeypatch):
+    m = G4.mundo(monkeypatch)
+    for b in m.banco.linhas("brand_profiles"):          # sem o número da marca: vale a integração de atendimento
+        if b["company_id"] == m.beta:
+            b["contact"] = {}
+    antiga = "5548988887777"                           # 💭 número inventado
+    # semeada POR ÚLTIMO (o fim da tabela), mas criada ANTES — a leitura sem ORDER BY pegaria a outra
+    m.banco.semear("integrations", {"company_id": m.beta, "provider": "evolution-go", "purpose": "attendance",
+                                    "is_active": True, "channel_status": "connected", "paired_phone_e164": "+" + antiga,
+                                    "created_at": "2020-01-01T00:00:00+00:00"})
+    lidos = {P.whatsapp_da_corretora(m.db, m.beta) for _ in range(3)}
+    assert lidos == {antiga}, lidos
+    # CONTROLE: a leitura SEM ordem (a de antes) devolve outro número primeiro — o guarda consegue ficar vermelho
+    sem_ordem = (m.db.table("integrations").select("company_id, paired_phone_e164, purpose, is_active").eq("company_id", m.beta)
+                 .eq("purpose", "attendance").eq("is_active", True).limit(64).execute().data)
+    assert P._digitos_de_whatsapp(sem_ordem[0]["paired_phone_e164"]) != antiga
+    # e a vizinha (alfa) nunca entra na leitura da beta
+    assert all(str(i.get("company_id")) == m.beta for i in sem_ordem)
 
 
 # =====================================================================================================================
@@ -493,3 +533,34 @@ def test_design_a_cotacao_segue_com_os_textos_de_antes():
                      apolice_atual={"premio_anual": 1000.0}, ramo=C.RAMO_AUTO, renovacao=True)
     assert not any("a mais que a sua apólice atual" in x for x in ren) and "Franquia: R$" in " ".join(ren)
     assert inspect.signature(C._motivos).parameters["renovacao"].default is False
+
+
+# =====================================================================================================================
+# K3 (juiz de design 4) — UMA parcela por opção na página de renovação, no HTML SERVIDO
+# =====================================================================================================================
+def _parcelas_divergentes(doc: str) -> list:
+    """Em cada cartão (`<article class="pass">`), toda "Nx de R$ V" com o MESMO N tem o MESMO V. Devolve as divergências."""
+    ruins = []
+    for i, art in enumerate(re.findall(r'<article class="pass".*?</article>', doc, re.S)):
+        por_n: dict = {}
+        for n, v in re.findall(r"(\d+)x de R\$\s*([\d.,]+)", texto_visivel(art)):
+            por_n.setdefault(n, set()).add(v)
+        ruins += [(i, n, sorted(vs)) for n, vs in por_n.items() if len(vs) > 1]
+    return ruins
+
+
+def test_k3_a_mesma_opcao_mostra_uma_parcela_so(monkeypatch):
+    m = G4.mundo(monkeypatch)
+    r = G4._publicar(m)
+    doc = G4._servido(m, r["token"])
+    cartoes = re.findall(r'<article class="pass".*?</article>', doc, re.S)
+    assert len(cartoes) >= 2, "a página de renovação tem os cartões das opções"
+    assert any(re.search(r"\d+x de R\$", texto_visivel(c)) for c in cartoes), "a parcela continua sob o preço"
+    assert _parcelas_divergentes(doc) == [], _parcelas_divergentes(doc)
+    # e a parcela NÃO se repete no "por que" (a fonte é uma só: a que está sob o preço)
+    for lista in re.findall(r'<ul class="why">(.*?)</ul>', doc, re.S):
+        assert not re.search(r"Em até \d+x de R\$", texto_visivel(lista)), texto_visivel(lista)
+    # CONTROLE: o defeito histórico (o "por que" com as "demais parcelas") fica VERMELHO no mesmo verificador
+    historico_ = ('<article class="pass"><p>ou 10x de R$ 555,83 com juros</p>'
+                  '<ul class="why"><li>Em até 10x de R$ 554,94</li></ul></article>')
+    assert _parcelas_divergentes(historico_) == [(0, "10", ["554,94", "555,83"])]
