@@ -130,6 +130,33 @@ MOTIVO_CONTA_EXIGIDA_INDISPONIVEL = ("o Agger que abriu este negócio está paus
 MOTIVO_SENHA_DA_PESSOA = ("o Agger desta pessoa recusou a senha: o cálculo não saiu (só esta conta podia fazê-lo) — "
                           "troque a senha do Agger dela e peça de novo")
 KIND_CANAL = "platform_canal"
+
+# ==========================================================================
+# SPEC-131-A — A MADRUGADA DA RENOVAÇÃO (D-131-03 revista · D-131-29 · D-131-30)
+# ==========================================================================
+#: a política de sessão que só `madrugada.py` põe no pedido (`multicalculo_pedidos.politica_de_sessao`)
+POLITICA_MADRUGADA = "madrugada"
+#: 💭 6 sessões do Agger ao mesmo tempo por PROCESSO (📊 BLOCO 0 A11: +169–225 MB RSS por contexto logado a mais → 6 ≈
+#: 1,3–1,5 GB). Lido A CADA VOLTA (`MULTICALCULO_TETO_SESSOES`, 1–200). O excedente ESPERA na fila; nunca falha
+TETO_SESSOES_PADRAO = 6
+#: D-131-30: sessões ao mesmo tempo POR CORRETORA nos grupos de renovação (`servicos.renovacao.teto_sessoes_corretora`);
+#: 1 até o BLOCO 0 A4 medir 2 logins da mesma corretora calculando juntos
+TETO_SESSOES_CORRETORA_PADRAO = 1
+#: a janela da madrugada (fuso da corretora) — o padrão do produto quando a config não diz (config.py F2 tem o mesmo)
+JANELA_DA_MADRUGADA_PADRAO: Dict[str, Any] = {"prosseguir_de": "01:00", "prosseguir_ate": "06:30", "desvio": "06:15",
+                                              "retentativa_min": 60}
+#: a regra de `qual_agger` que PROVA que a conta exigida é a do DONO da apólice (a única em que se prossegue)
+REGRA_DO_DONO = "renovacao_do_dono"
+#: o evento que guarda o "1× por conta por noite" (chave `prosseguiu_sessao|<conta>|<noite>`; SELECT antes)
+TIPO_PROSSEGUIU = "prosseguiu_sessao"
+#: o evento das datas da licença do Agger (chave `licenca_agger|<conta>|<dia>`: no máximo 1 por conta por dia)
+TIPO_LICENCA = "licenca_agger"
+MOTIVO_LICENCA_VENCIDA = ("licenca_agger_vencida — a licença do Agger desta conta venceu: nenhum cálculo sai nela até "
+                          "a corretora renovar a licença com o Agger")
+#: a dona VOLTOU ao próprio Agger depois do Prosseguir desta noite (ou a política não se aplica): o robô cancela e
+#: tenta de novo a cada `retentativa_min`; passado o desvio, falha com o prefixo PASSAGEIRO que a madrugada (F1) desvia
+MOTIVO_PESSOA_VOLTOU = ("agger_da_pessoa_em_uso — a dona estava no próprio Agger durante a madrugada; a renovação vai "
+                        "pelo Agger da corretora, com aviso")
 MOTIVO_INCERTO = ("o disparo PODE ter saído no portal e o motor não teve a confirmação: "
                   "não refaça sem conferir o negócio no Agger")
 MOTIVO_MORREU_NO_DISPARO = ("o motor caiu durante o disparo: o cálculo PODE ter saído no portal — "
@@ -152,6 +179,71 @@ def teto_corretora_hora() -> int:
 
 def teto_geral_hora() -> int:
     return _inteiro_do_ambiente("MULTICALCULO_TETO_GERAL_HORA", TETO_GERAL_HORA_PADRAO, 1, 50000)
+
+
+def teto_sessoes() -> int:
+    """SPEC-131-A: sessões do Agger abertas ao mesmo tempo neste processo."""
+    return _inteiro_do_ambiente("MULTICALCULO_TETO_SESSOES", TETO_SESSOES_PADRAO, 1, 200)
+
+
+def _fuso(nome: Any):
+    """O fuso da corretora (IANA); ilegível ou sem `tzdata` na imagem → o de Brasília fixo dos robôs."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(str(nome)) if nome else robos.FUSO_DA_JANELA
+    except Exception:  # noqa: BLE001
+        return robos.FUSO_DA_JANELA
+
+
+def janela_da_madrugada(bloco: Any) -> Dict[str, Any]:
+    """`servicos.renovacao.janela` lida com o padrão CHAVE A CHAVE (HH:MM ilegível → o padrão daquela chave)."""
+    janela = bloco if isinstance(bloco, dict) else {}
+    saida: Dict[str, Any] = {}
+    for k, padrao in JANELA_DA_MADRUGADA_PADRAO.items():
+        v = janela.get(k, padrao)
+        if k == "retentativa_min":
+            ok = isinstance(v, int) and not isinstance(v, bool) and 5 <= v <= 360
+        else:
+            ok = robos._minutos(v) is not None
+        saida[k] = v if ok else padrao
+    return saida
+
+
+def noite_da_madrugada(local: datetime):
+    """A NOITE a que um instante local pertence: a madrugada de D vai do meio-dia de D−1 ao meio-dia de D (a janela
+    01:00–06:30 e o desvio 06:15 caem todos no MESMO dia D)."""
+    return (local + timedelta(hours=12)).date() if local.hour >= 12 else local.date()
+
+
+def _no_dia(dia, hhmm: str, fuso) -> datetime:
+    m = robos._minutos(hhmm) or 0
+    return datetime(dia.year, dia.month, dia.day, m // 60, m % 60, tzinfo=fuso)
+
+
+def dentro_do_prosseguir(agora: datetime, janela: Dict[str, Any], fuso) -> bool:
+    """Agora (no fuso da corretora) está em [prosseguir_de, prosseguir_ate)? Janela ilegível → NÃO (fail-closed)."""
+    local = agora.astimezone(fuso)
+    de, ate = robos._minutos(janela.get("prosseguir_de")), robos._minutos(janela.get("prosseguir_ate"))
+    if de is None or ate is None or de >= ate:
+        return False
+    m = local.hour * 60 + local.minute
+    return de <= m < ate
+
+
+def dias_para_o_limite(licenca: Dict[str, Any], hoje) -> Optional[int]:
+    """Dias até o fim da licença do Agger: `dataLimiteCalculo` (o último dia em que o Agger calcula) e, sem ela,
+    `licenca`. None = o login não disse."""
+    from datetime import date as _date
+
+    for chave in ("dataLimiteCalculo", "licenca"):
+        v = (licenca or {}).get(chave)
+        if isinstance(v, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+            try:
+                return (_date.fromisoformat(v) - hoje).days
+            except ValueError:
+                continue
+    return None
 
 
 def _agora_real() -> datetime:
@@ -214,6 +306,21 @@ class Grupo:
     retomada: bool = False
     ativos: set = field(default_factory=set)   # ids que a batida ainda precisa segurar
     sessao_morta: bool = False                 # 401/403 ou página fechada: a sessão é DESCARTADA no fim do grupo
+    servico: Optional[str] = None              # SPEC-131-A: o serviço do pedido (qcm · cotacao · renovacao · None)
+    politica: Optional[str] = None             # SPEC-131-A: a política de sessão do pedido ('madrugada' ou None)
+    ja_prosseguiu: bool = False                # SPEC-131-A: esta conta JÁ prosseguiu nesta noite (a dona voltou)
+
+
+_ORDEM_DA_RENOVACAO = {o: i for i, o in enumerate(("anterior", "padrao", "franquia_reduzida", "completa_mais"))}
+_ORDEM_DA_RENOVACAO["ajuste"] = len(_ORDEM_DA_RENOVACAO)
+
+
+def _ordem_do_grupo(calcs: List[Dict[str, Any]]) -> Dict[str, int]:
+    """SPEC-131-A: a renovação abre o negócio com o `anterior` (presets F2: `OPCOES_DA_RENOVACAO`); as outras são versões
+    dele. Grupo sem opção de renovação → a ordem de sempre (`presets.ORDEM`)."""
+    if any(c.get("opcao") in ("anterior", "franquia_reduzida") for c in calcs):
+        return _ORDEM_DA_RENOVACAO
+    return _ORDEM_DA_OPCAO
 
 
 class _PossePerdida(Exception):
@@ -296,6 +403,10 @@ class Motor:
         self._contas_em_uso: set = set()
         self._contas_com_sessao: Dict[str, Dict[str, Any]] = {}
         self._ociosas: Dict[str, Dict[str, Any]] = {}
+        # SPEC-131-A: a corretora de cada conta em uso/com sessão (o teto por corretora) e a config da madrugada lida
+        # (cache curto: a volta é de 5 s e a config muda pela tela)
+        self._corretora_da_conta: Dict[str, str] = {}
+        self._cfg_da_madrugada: Dict[str, Tuple[datetime, Dict[str, Any]]] = {}
         self._abrindo = asyncio.Lock()
         # 🔴 conserto 129-B (canário ao vivo 05/10): o motor que está ENCERRANDO (deploy) não grava estado de cálculo
         # nem de conta por caminho de erro — o erro é efeito da própria morte, não do Agger. Ver `encerrar()`.
@@ -485,6 +596,10 @@ class Motor:
                 if somente is not None:
                     await self._conta_da_retomada_inelegivel(corretora, somente, calcs, vencida)
                 continue
+            if not await self._cabe_sessao(conta, corretora, madrugada=False):
+                self._contas_em_uso.discard(conta["id"])     # SPEC-131-A: a leitura espera a vaga (o negócio existe)
+                await self._db(lambda c=conta: robos.liberar(self.supa, c, self.dono))
+                continue
             tomados = []
             for c in calcs:
                 ok = await self._db(lambda c=c: self.supa.table("multicalculo_calculos").update({
@@ -499,7 +614,8 @@ class Motor:
                 continue
             logger.info("[MC] retomando %s cálculo(s) do pedido %s (só leitura)", len(tomados), pedido_id)
             pares.append((Grupo(pedido_id, corretora, solicitante, tomados, pedido.get("origem") or "",
-                                float(pedido.get("quadro_s") or 60), retomada=True), conta))
+                                float(pedido.get("quadro_s") or 60), retomada=True,
+                                servico=pedido.get("servico")), conta))
         return pares
 
     async def _reservar(self) -> List[Tuple[Grupo, Dict[str, Any]]]:
@@ -578,6 +694,14 @@ class Motor:
                                          servico=pedido.get("servico"))
             if conta is None:
                 continue
+            politica = (await self._politica_do_pedido(pedido_id, solicitante)
+                        if pedido.get("servico") == "renovacao" else None)
+            # SPEC-131-A: o teto de sessões (processo; e por corretora na fila da MADRUGADA — D-131-30) — o excedente
+            # ESPERA, nunca falha. A renovação de dia (sem a política) e os outros serviços seguem como sempre
+            if not await self._cabe_sessao(conta, corretora, madrugada=politica == POLITICA_MADRUGADA):
+                self._contas_em_uso.discard(conta["id"])
+                await self._db(lambda c=conta: robos.liberar(self.supa, c, self.dono))
+                continue
             tomados = []
             for c in calcs:
                 ok = await self._db(lambda c=c: self.supa.table("multicalculo_calculos").update({
@@ -593,8 +717,20 @@ class Motor:
             geral += len(tomados)
             por_corretora[corretora] += len(tomados)
             pares.append((Grupo(pedido_id, corretora, solicitante, tomados, origem,
-                                float(pedido.get("quadro_s") or 60)), conta))
+                                float(pedido.get("quadro_s") or 60), servico=pedido.get("servico"),
+                                politica=politica), conta))
         return pares
+
+    async def _politica_do_pedido(self, pedido_id: str, solicitante: str) -> Optional[str]:
+        """A política de sessão do pedido (coluna da migration 20261013_01). Lida À PARTE e só na renovação: um banco
+        sem a coluna (código antes da migration) não derruba a fila — devolve None (nunca Prosseguir: fail-closed)."""
+        try:
+            linha = await self._pedido(pedido_id, solicitante, "id, politica_de_sessao")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[MC] política de sessão ilegível (%s) — sem Prosseguir", type(exc).__name__)
+            return None
+        valor = (linha or {}).get("politica_de_sessao")
+        return valor if valor == POLITICA_MADRUGADA else None
 
     async def _escolher(self, corretora: str, origem: str, agora: datetime, quantos: int,
                         somente: Optional[str] = None, continuacao: bool = False, servico: Optional[str] = None):
@@ -607,7 +743,96 @@ class Motor:
         if conta is not None:
             self._contas_em_uso.add(conta["id"])
             self._ociosas.pop(conta["id"], None)
+            self._corretora_da_conta[conta["id"]] = str(conta.get("company_id") or corretora)
         return conta
+
+    # ------------------------------------------------------------------ SPEC-131-A: o teto de sessões
+    async def _fechar_ociosa(self, conta_id: str) -> None:
+        o = self._ociosas.pop(conta_id, None)
+        if o is None:
+            return
+        await self._fechar_sessao(conta_id)
+        await self._db(lambda: robos.liberar(self.supa, o["conta"], self.dono))
+
+    async def _cabe_sessao(self, conta: Dict[str, Any], corretora: str, *, madrugada: bool) -> bool:
+        """O grupo pode abrir uma sessão NOVA nesta conta agora? Sessão já aberta (reaproveitada) sempre cabe. Teto do
+        PROCESSO (env) para todo serviço; teto da CORRETORA (config) só nos grupos da fila da MADRUGADA (política
+        'madrugada') — a cotação, o QCM e a renovação de dia não mudam. Cheio → fecha uma sessão OCIOSA comum (nunca a que a madrugada segura para a pessoa) e confere de novo;
+        ainda cheio → o grupo fica na fila."""
+        cid = conta["id"]
+        if cid in self._contas_com_sessao:
+            return True
+
+        def abertas() -> set:
+            return (set(self._contas_com_sessao) | set(self._contas_em_uso)) - {cid}
+
+        async def liberar_uma(filtro) -> bool:
+            livres = sorted((o["desde"], k) for k, o in self._ociosas.items()
+                            if k not in self._contas_em_uso and not o.get("madrugada") and filtro(k))
+            if not livres:
+                return False
+            await self._fechar_ociosa(livres[0][1])
+            return True
+
+        teto = teto_sessoes()
+        while len(abertas()) >= teto:
+            if not await liberar_uma(lambda k: True):
+                logger.warning("[MC] teto de %s sessões do processo atingido — o grupo espera na fila", teto)
+                return False
+        if madrugada:
+            teto_c = int((await self._cfg_madrugada(corretora))["teto_sessoes_corretora"])
+
+            def da_corretora() -> set:
+                return {k for k in abertas() if self._corretora_da_conta.get(k) == str(corretora)}
+
+            while len(da_corretora()) >= teto_c:
+                if not await liberar_uma(lambda k: self._corretora_da_conta.get(k) == str(corretora)):
+                    logger.info("[MC] teto de %s sessão(ões) da corretora %s na renovação — o grupo espera", teto_c,
+                                corretora)
+                    return False
+        return True
+
+    # ------------------------------------------------------------------ SPEC-131-A: a config e o relógio da madrugada
+    async def _cfg_madrugada(self, corretora: str) -> Dict[str, Any]:
+        """{janela, teto_sessoes_corretora, aceites, fuso} da corretora — `multicalculo_config.config.servicos.renovacao`
+        (o worker não importa `app.*`: lê a linha e aplica o padrão do produto chave a chave) e o fuso do perfil do
+        briefing. Cache de 60 s. Banco ilegível → o PADRÃO (que não liga o Prosseguir: aceites vazios)."""
+        agora = self.agora()
+        guardado = self._cfg_da_madrugada.get(str(corretora))
+        if guardado is not None and (agora - guardado[0]).total_seconds() < 60:
+            return guardado[1]
+        bloco: Dict[str, Any] = {}
+        fuso_nome = None
+        try:
+            r = await self._db(lambda: self.supa.table("multicalculo_config").select("company_id, config")
+                               .eq("company_id", corretora).limit(1).execute())
+            linha = next((x for x in (r.data or []) if str(x.get("company_id")) == str(corretora)), None)
+            servicos = ((linha or {}).get("config") or {}).get("servicos") if isinstance(
+                (linha or {}).get("config"), dict) else None
+            if isinstance(servicos, dict) and isinstance(servicos.get("renovacao"), dict):
+                bloco = servicos["renovacao"]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[MC] config da madrugada ilegível (%s) — vale o padrão", type(exc).__name__)
+        try:
+            r = await self._db(lambda: self.supa.table("briefing_profiles").select("company_id, timezone")
+                               .eq("company_id", corretora).limit(5).execute())
+            fuso_nome = next((x.get("timezone") for x in (r.data or [])
+                              if str(x.get("company_id")) == str(corretora) and x.get("timezone")), None)
+        except Exception:  # noqa: BLE001
+            fuso_nome = None
+        teto = bloco.get("teto_sessoes_corretora")
+        aceites = bloco.get("prosseguir_aceites")
+        cfg = {
+            "janela": janela_da_madrugada(bloco.get("janela")),
+            "teto_sessoes_corretora": teto if isinstance(teto, int) and not isinstance(teto, bool) and 1 <= teto <= 10
+            else TETO_SESSOES_CORRETORA_PADRAO,
+            # 🔴 o ACEITE da madrugada (T-156): sem ele, a política fica DESLIGADA por conta. A 131-0 A não deixou campo de
+            # aceite: o sinal é EXPLÍCITO, por conta, nesta lista (id da conta do Agger ou o user_id da dona)
+            "aceites": {str(x) for x in aceites if isinstance(x, str)} if isinstance(aceites, list) else set(),
+            "fuso": _fuso(fuso_nome),
+        }
+        self._cfg_da_madrugada[str(corretora)] = (agora, cfg)
+        return cfg
 
     # ------------------------------------------------------------------ as reconferências NA HORA do efeito
     async def _canal_autorizado(self, solicitante: str, corretora: str) -> bool:
@@ -727,7 +952,8 @@ class Motor:
             await self._fechar_pedido_se_terminou(c["pedido_id"], c["solicitante_company_id"])
         return True
 
-    async def _soltar_conta(self, conta: Dict[str, Any], *, perdeu: bool = False, descartar: bool = False) -> None:
+    async def _soltar_conta(self, conta: Dict[str, Any], *, perdeu: bool = False, descartar: bool = False,
+                            grupo: Optional[Grupo] = None) -> None:
         """Fim do uso do robô. Sessão aberta de conta `ativo` → fica OCIOSA com a lease (reaproveita o
         login); conta `teste` (login de PESSOA) → logout e lease devolvida (D-129B-04). Sessão MORTA (401/403)
         → descartada sem logout e NUNCA reaproveitada (conserto 129-B, juiz B1).
@@ -745,9 +971,36 @@ class Motor:
             agora = self.agora()
             self._ociosas[conta["id"]] = {"conta": conta, "desde": agora, "batida": agora}
             return
+        if (conta["id"] in self._contas_com_sessao and not perdeu and not self._encerrando and grupo is not None
+                and grupo.politica == POLITICA_MADRUGADA and conta.get("uso") == robos.MEMBRO
+                and await self._segurar_para_a_pessoa(conta)):
+            # 🔴 SPEC-131-A (laudo I1 §2.5 b): de madrugada, a sessão do Agger de uma PESSOA fica aberta entre os pedidos
+            # DELA (há mais na fila agora) — 1 login em vez de N. Sai no fim da fila dela, e SEMPRE até `prosseguir_ate`
+            agora = self.agora()
+            self._ociosas[conta["id"]] = {"conta": conta, "desde": agora, "batida": agora, "madrugada": True}
+            return
         if conta["id"] in self._contas_com_sessao:
             await self._fechar_sessao(conta["id"])
         await self._db(lambda: robos.liberar(self.supa, conta, self.dono))
+
+    async def _segurar_para_a_pessoa(self, conta: Dict[str, Any]) -> bool:
+        """Segurar a sessão do Agger desta pessoa? Só dentro de [prosseguir_de, prosseguir_ate) no fuso da corretora E com
+        ≥ 1 cálculo da madrugada DELA (conta exigida = esta) pronto para sair agora. Leitura que falha → NÃO (logout)."""
+        corretora = str(conta.get("company_id"))
+        try:
+            cfg = await self._cfg_madrugada(corretora)
+            agora = self.agora()
+            if not dentro_do_prosseguir(agora, cfg["janela"], cfg["fuso"]):
+                return False
+            agora_iso = _iso(agora)
+            r = await self._db(lambda: self.supa.table("multicalculo_calculos").select("id, pedido_id")
+                               .eq("company_id", corretora).eq("conta_exigida_id", conta["id"])
+                               .eq("status", "na_fila")
+                               .or_(f"disponivel_em.is.null,disponivel_em.lte.{agora_iso}").limit(1).execute())
+            return bool(r.data)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[MC] não consegui ver a fila da pessoa (%s) — logout", type(exc).__name__)
+            return False
 
     async def _cuidar_das_ociosas(self) -> None:
         """A cada volta: sessão ociosa vencida, fora da janela ou de conta que deixou de estar ativa →
@@ -763,6 +1016,9 @@ class Motor:
             fechar = ((agora - o["desde"]).total_seconds() >= OCIOSA_MAX_S or not atual
                       or atual.get("robo_estado") != robos.ATIVO
                       or not robos.dentro_da_janela(atual.get("robo_janela"), agora))
+            if not fechar and o.get("madrugada"):
+                # SPEC-131-A: a sessão da PESSOA segurada de madrugada — logout no fim da fila dela e sempre até 06:30
+                fechar = not await self._segurar_para_a_pessoa(conta)
             if not fechar and (agora - o["batida"]).total_seconds() >= self.batida_s:
                 if await self._db(lambda: robos.renovar(self.supa, conta, self.dono, agora)):
                     o["batida"] = agora
@@ -810,7 +1066,7 @@ class Motor:
             # encerrando, a sessão sai com LOGOUT (a "morte" pode ser efeito do próprio desligar): descartar sem logout
             # deixaria a sessão viva no Agger e o próximo login veria o aviso de sessão ativa
             await self._soltar_conta(conta, perdeu=perdeu.is_set(),
-                                     descartar=g.sessao_morta and not self._encerrando)
+                                     descartar=g.sessao_morta and not self._encerrando, grupo=g)
             await self._fechar_pedido_se_terminou(g.pedido_id, g.solicitante_company_id)
 
     async def _bater(self, g: Grupo, conta: Dict[str, Any], perdeu: asyncio.Event) -> None:
@@ -895,8 +1151,16 @@ class Motor:
             logger.error("[MC] não consegui preparar a sessão do robô %s (%s)", conta["id"], type(exc).__name__)
             await self._devolver_a_fila(g, g.calculos, com_espera=True)
             return None
+        # SPEC-131-A (D-131-03 revista): o Prosseguir só se TODAS as travas da madrugada valem AGORA — e só então o
+        # parâmetro existe na chamada (sem ele, a sessão é a de sempre: o aviso → Cancelar)
+        prosseguir = False
+        if g.politica == POLITICA_MADRUGADA and not g.retomada:
+            prosseguir, porque = await self._pode_prosseguir(g, conta)
+            if not prosseguir:
+                logger.info("[MC] madrugada: sem Prosseguir na conta %s (%s)", conta["id"], porque)
         try:
-            sessao = await sessoes.obter(robos.conta_publica(conta), senha=senha, negocios_do_robo=negocios)
+            extra = {"prosseguir": True} if prosseguir else {}
+            sessao = await sessoes.obter(robos.conta_publica(conta), senha=senha, negocios_do_robo=negocios, **extra)
         except SessaoOcupada:
             await self._sessao_ocupada(g, conta, g.calculos)
             return None
@@ -932,7 +1196,116 @@ class Motor:
         finally:
             senha = None  # noqa: F841 — a senha não sobrevive ao `obter`
         self._contas_com_sessao[conta["id"]] = conta
+        self._corretora_da_conta[conta["id"]] = str(conta.get("company_id") or g.company_id)
+        if not await self._depois_do_login(g, conta, sessao):
+            return None
         return sessao
+
+    # ------------------------------------------------------------------ SPEC-131-A: as travas do Prosseguir
+    def _noite(self, cfg: Dict[str, Any]):
+        return noite_da_madrugada(self.agora().astimezone(cfg["fuso"]))
+
+    async def _pode_prosseguir(self, g: Grupo, conta: Dict[str, Any]) -> Tuple[bool, str]:
+        """(sim, porquê). TODAS, ou nada (D-131-03 revista):
+        a política do pedido é a da madrugada · o serviço é a renovação · a conta é `uso='membro'` (NUNCA a da corretora
+        nem a de teste) · ela é a do DONO da apólice (todo cálculo do grupo a EXIGE pela regra `renovacao_do_dono`) ·
+        agora, no fuso da corretora, está em [prosseguir_de, prosseguir_ate) · a conta tem o ACEITE registrado
+        (`servicos.renovacao.prosseguir_aceites`) · e NENHUM `prosseguiu_sessao` desta conta nesta noite (SELECT).
+        Qualquer leitura que falha → não."""
+        if g.politica != POLITICA_MADRUGADA or g.servico != "renovacao":
+            return False, "não é a madrugada da renovação"
+        if conta.get("uso") != robos.MEMBRO or conta.get("robo_estado") == robos.TESTE or not conta.get("dono_user_id"):
+            return False, "não é o Agger de uma pessoa"
+        if not g.calculos or any(str(c.get("conta_exigida_id") or "") != str(conta["id"])
+                                 or c.get("conta_regra") != REGRA_DO_DONO for c in g.calculos):
+            return False, "a conta não é a do dono da apólice"
+        try:
+            cfg = await self._cfg_madrugada(g.company_id)
+        except Exception:  # noqa: BLE001
+            return False, "config ilegível"
+        if not dentro_do_prosseguir(self.agora(), cfg["janela"], cfg["fuso"]):
+            return False, "fora da janela do Prosseguir"
+        if str(conta["id"]) not in cfg["aceites"] and str(conta.get("dono_user_id")) not in cfg["aceites"]:
+            return False, "sem o aceite da madrugada (T-156)"
+        chave = f"{TIPO_PROSSEGUIU}|{conta['id']}|{self._noite(cfg).isoformat()}"
+        try:
+            r = await self._db(lambda: self.supa.table("multicalculo_eventos").select("id, chave")
+                               .eq("company_id", g.company_id).eq("tipo", TIPO_PROSSEGUIU).eq("chave", chave)
+                               .limit(1).execute())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[MC] não consegui conferir o Prosseguir desta noite (%s) — sem Prosseguir",
+                           type(exc).__name__)
+            return False, "eventos ilegíveis"
+        if r.data:
+            g.ja_prosseguiu = True
+            return False, "já prosseguiu nesta conta esta noite"
+        return True, ""
+
+    async def _depois_do_login(self, g: Grupo, conta: Dict[str, Any], sessao: Any) -> bool:
+        """Logo depois de obter a sessão: (1) o Prosseguir desta noite vira o evento `prosseguiu_sessao` (sem token, sem
+        corpo — só a conta e a noite); (2) a licença do Agger vira UM evento `licenca_agger` por conta por dia (só datas e
+        números); vencida (≤ 0 dias) → o grupo FALHA com o motivo e devolve False. ⛔ Nada da resposta do login além disso."""
+        if not g.calculos:
+            return True
+        c0 = g.calculos[0]
+        cfg = None
+        if getattr(sessao, "prosseguiu", False):
+            try:
+                cfg = await self._cfg_madrugada(g.company_id)
+                await self._gravar_linha_de_evento(g, c0, {
+                    "tipo": TIPO_PROSSEGUIU, "familia": None,
+                    "chave": f"{TIPO_PROSSEGUIU}|{conta['id']}|{self._noite(cfg).isoformat()}",
+                    "motivo": "o robô prosseguiu sobre uma sessão aberta do Agger da dona (madrugada, 1× por noite)",
+                })
+                sessao.prosseguiu = False
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[MC] o evento do Prosseguir não gravou (%s)", type(exc).__name__)
+        licenca = getattr(sessao, "licenca", None)
+        if not isinstance(licenca, dict) or not licenca or getattr(sessao, "_licenca_conferida", False):
+            return True
+        try:
+            sessao._licenca_conferida = True
+        except Exception:  # noqa: BLE001
+            pass
+        so_datas = {k: v for k, v in licenca.items()
+                    if k in ("licenca", "dataLimiteCalculo", "diasParaExpirarSenha", "expirationDate")
+                    and ((isinstance(v, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", v))
+                         or (isinstance(v, int) and not isinstance(v, bool)))}
+        if cfg is None:
+            try:
+                cfg = await self._cfg_madrugada(g.company_id)
+            except Exception:  # noqa: BLE001
+                cfg = {"fuso": robos.FUSO_DA_JANELA}
+        hoje = self.agora().astimezone(cfg["fuso"]).date()
+        dias = dias_para_o_limite(so_datas, hoje)
+        await self._registrar_licenca(g, c0, conta, so_datas, dias, hoje)
+        if dias is not None and dias <= 0:
+            logger.error("[MC] a licença do Agger da conta %s venceu — nenhum cálculo sai nela", conta["id"])
+            for c in list(g.calculos):
+                if c.get("status") != "calculando":
+                    await self._encerrar(g, c, "falhou", MOTIVO_LICENCA_VENCIDA)
+            if any(c.get("status") == "calculando" for c in g.calculos):
+                return True       # a retomada ainda LÊ o que já saiu (ler não é calcular)
+            await self._fechar_sessao(conta["id"])   # nunca ociosa: a próxima sessão reconfere a licença no login
+            return False
+        return True
+
+    async def _registrar_licenca(self, g: Grupo, c: Dict[str, Any], conta: Dict[str, Any], so_datas: Dict[str, Any],
+                                 dias: Optional[int], hoje) -> None:
+        chave = f"{TIPO_LICENCA}|{conta['id']}|{hoje.isoformat()}"
+        try:
+            r = await self._db(lambda: self.supa.table("multicalculo_eventos").select("id")
+                               .eq("company_id", g.company_id).eq("tipo", TIPO_LICENCA).eq("chave", chave)
+                               .limit(1).execute())
+            if r.data:
+                return
+            partes = [f"{k}={so_datas[k]}" for k in sorted(so_datas)]
+            if dias is not None:
+                partes.append(f"dias_para_o_limite={dias}")
+            await self._gravar_linha_de_evento(g, c, {"tipo": TIPO_LICENCA, "familia": None, "chave": chave,
+                                                      "motivo": " · ".join(partes)[:300] or None})
+        except Exception as exc:  # noqa: BLE001 — o evento é aviso; nunca derruba o cálculo
+            logger.warning("[MC] o evento da licença do Agger não gravou (%s)", type(exc).__name__)
 
     async def _sessao_ocupada(self, g: Grupo, conta: Dict[str, Any], calcs: Iterable[Dict[str, Any]]) -> None:
         """O aviso de sessão ativa apareceu e foi CANCELADO: uma pessoa está no login.
@@ -947,6 +1320,11 @@ class Motor:
             for c in calcs:
                 await self._encerrar(g, c, "falhou",
                                      "a conta de teste estava em uso por uma pessoa: o robô cancelou e parou")
+            return
+        if (conta.get("uso") == robos.MEMBRO and g.politica == POLITICA_MADRUGADA and g.servico == "renovacao"
+                and g.ja_prosseguiu):
+            # a dona VOLTOU depois do Prosseguir desta noite: não prossegue de novo — espera de hora em hora até o desvio
+            await self._pessoa_voltou(g, conta, calcs)
             return
         if conta.get("uso") == robos.MEMBRO:
             # 🔴 SPEC-131-0 A · F3 (D-131-0-05): o Agger de uma PESSOA e ela está nele. O aviso foi CANCELADO (nunca
@@ -964,6 +1342,41 @@ class Motor:
         await self._marcar(conta, robos.OCUPADA, ocupada_min=OCUPADA_MIN)
         logger.warning("[MC] robô %s ocupado por uma pessoa — afastado por %s min", conta["id"], OCUPADA_MIN)
         await self._devolver_a_fila(g, calcs)
+
+    async def _pessoa_voltou(self, g: Grupo, conta: Dict[str, Any], calcs: List[Dict[str, Any]]) -> None:
+        """🔴 SPEC-131-A (D-131-03 revista · D-131-29): a madrugada da renovação achou a dona no próprio Agger e NÃO
+        prosseguiu (a conta JÁ prosseguiu esta noite = ela voltou; não se prossegue 2×). O robô CANCELOU; o cálculo volta à fila
+        para daqui a `retentativa_min` (Founder: de hora em hora) SEM contar falha, até o desvio (06:15): a próxima tentativa
+        que cairia depois dele FALHA agora com o prefixo passageiro `agger_da_pessoa_em_uso`, que a madrugada leva ao Agger
+        da corretora COM aviso nomeado. O evento `agger_da_pessoa_em_uso` marca o item como `aguardando_agger` (F1)."""
+        try:
+            cfg = await self._cfg_madrugada(g.company_id)
+        except Exception:  # noqa: BLE001
+            cfg = {"janela": dict(JANELA_DA_MADRUGADA_PADRAO), "fuso": robos.FUSO_DA_JANELA}
+        janela = cfg["janela"]
+        retentativa = int(janela.get("retentativa_min") or JANELA_DA_MADRUGADA_PADRAO["retentativa_min"])
+        agora = self.agora()
+        desvio = _no_dia(noite_da_madrugada(agora.astimezone(cfg["fuso"])), str(janela.get("desvio")), cfg["fuso"])
+        proxima = agora + timedelta(minutes=retentativa)
+        await self._marcar(conta, robos.OCUPADA, ocupada_min=retentativa)
+        logger.warning("[MC] madrugada: a dona do Agger %s está nele — nova tentativa em %s min", conta["id"],
+                       retentativa)
+        fora = [c for c in calcs if c.get("status") != "calculando"]
+        for c in fora:
+            try:
+                await self._gravar_linha_de_evento(g, c, {
+                    "tipo": TIPO_PESSOA_EM_USO, "familia": None,
+                    "chave": f"{TIPO_PESSOA_EM_USO}|{conta['id']}|{int(c.get('tentativas') or 0)}",
+                    "motivo": "a dona deste Agger estava nele de madrugada: o robô cancelou e tenta de novo mais tarde",
+                })
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[MC] o evento da pessoa no Agger não gravou (%s)", type(exc).__name__)
+        if proxima > desvio:
+            for c in fora:
+                await self._encerrar(g, c, "falhou", MOTIVO_PESSOA_VOLTOU)
+            await self._devolver_a_fila(g, [c for c in calcs if c not in fora])
+            return
+        await self._devolver_a_fila(g, calcs, disponivel_em=proxima)
 
     async def _vezes_da_pessoa_em_uso(self, g: Grupo, conta: Dict[str, Any],
                                       calcs: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -1066,7 +1479,8 @@ class Motor:
         robo = self.robo
         SessaoOcupada = self.sessao_mod.SessaoOcupada
         CredencialRecusada = self.sessao_mod.CredencialRecusada
-        ordem = sorted(g.calculos, key=lambda c: _ORDEM_DA_OPCAO.get(c.get("opcao"), 9))
+        ordem_da_opcao = _ordem_do_grupo(g.calculos)
+        ordem = sorted(g.calculos, key=lambda c: ordem_da_opcao.get(c.get("opcao"), 9))
         negocio = await self._negocio_do_pedido(g)
         disparos: Dict[str, Any] = {}
         for i, c in enumerate(ordem):
@@ -1397,7 +1811,7 @@ class Motor:
                        .in_("status", ["disparando", "calculando"]).execute())
 
     async def _devolver_a_fila(self, g: Grupo, calcs: Iterable[Dict[str, Any]], *,
-                               com_espera: bool = False) -> None:
+                               com_espera: bool = False, disponivel_em: Optional[datetime] = None) -> None:
         """Só o que NADA tocou no portal volta (status `disparando`, antes de qualquer POST). Os que
         estão `calculando` ficam: o negócio existe e a retomada lê. `com_espera` (falha de login sem
         causa conhecida): `disponivel_em` = agora + 60 s × tentativas, teto 15 min.
@@ -1414,6 +1828,8 @@ class Motor:
             if com_espera:
                 atraso = min(ATRASO_POR_TENTATIVA_S * max(1, int(c.get("tentativas") or 1)), ATRASO_MAX_S)
                 patch["disponivel_em"] = _iso(self.agora() + timedelta(seconds=atraso))
+            if disponivel_em is not None:      # SPEC-131-A: a retentativa da madrugada (o mecanismo de espera da fila)
+                patch["disponivel_em"] = _iso(disponivel_em)
             await self._db(lambda c=c, patch=patch: self.supa.table("multicalculo_calculos").update(patch).eq("id", c["id"]).eq("company_id", g.company_id).eq("dono", self.dono)
                 .eq("status", "disparando").execute())
 
@@ -1564,4 +1980,6 @@ __all__: tuple = (
     "BATIDA_S", "LEASE_VENCE_S", "VOLTA_S", "OCUPADA_MIN", "MAX_RETOMADAS", "Motor", "Grupo",
     "laco_do_motor", "motor_ligado", "canario_ligado", "teto_corretora_hora", "teto_geral_hora",
     "chave_do_evento", "erro_curto", "registrar_motor_do_processo", "desligar_o_motor_do_processo",
+    "teto_sessoes", "POLITICA_MADRUGADA", "TIPO_PROSSEGUIU", "TIPO_LICENCA", "janela_da_madrugada",
+    "dentro_do_prosseguir", "noite_da_madrugada", "dias_para_o_limite",
 )

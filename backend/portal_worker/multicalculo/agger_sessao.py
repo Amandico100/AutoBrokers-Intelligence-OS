@@ -10,7 +10,9 @@
 
 O login é pela TELA (📊 05/10: 2 logins ao vivo, 37 s e 55 s, sessao.py do laboratório), com a GUARDA instalada
 antes da 1ª aba (agger_guarda). O aviso de "sessão ativa" (outra pessoa logada com o MESMO login) → o robô
-clica SÓ "Cancelar" e levanta `SessaoOcupada` — nunca derruba a pessoa (PASSAGEM §8). Senha recusada →
+clica SÓ "Cancelar" e levanta `SessaoOcupada` — nunca derruba a pessoa (PASSAGEM §8). 🔴 SPEC-131-A: a única
+exceção é a política da madrugada (`obter(prosseguir=True)`, decidida pelo motor, só no Agger de uma PESSOA): clica
+"Prosseguir" e a guarda deixa passar SÓ o POST que derruba a sessão do aviso, por id (📊 BLOCO 0 A1). Senha recusada →
 `CredencialRecusada` (1 tentativa: a guarda barra o 2º login do contexto).
 
 O token: o app do Agger manda `Authorization` nas chamadas a `pdocs.` e `api-prod.`; a sessão o captura do
@@ -41,10 +43,56 @@ LOGOUT_INDEFINIDO_S = 25         # o logout de um login sem desfecho: a tela + 1
 MONTADOR_JS = (Path(__file__).with_name("montador.js")).read_text(encoding="utf-8")
 
 # O aviso de sessão ativa: o texto (como o laboratório, 📊 "text=sessão ativa") E o diálogo que o contém.
-# 🔴 O botão é procurado DENTRO do diálogo e pelo texto EXATO "Cancelar" — nenhum seletor aqui casa "Prosseguir".
+# 🔴 O botão é procurado DENTRO do diálogo e pelo texto EXATO "Cancelar". O "Prosseguir" (RE_PROSSEGUIR, abaixo) só é
+# procurado quando a política da madrugada pediu (`obter(prosseguir=True)`) — fora dela, nenhum caminho o clica.
 RE_AVISO = re.compile(r"sess[aã]o\s+ativa", re.I)
 SELETOR_DIALOGO = "[role=dialog], [role=alertdialog], mat-dialog-container, .cdk-overlay-pane, .modal"
 RE_CANCELAR = re.compile(r"^\s*Cancelar\s*$", re.I)
+# 🔴 SPEC-131-A (D-131-03 revista): o "Prosseguir" EXISTE só para a política da madrugada (`obter(prosseguir=True)`, que
+# só o motor decide, só em conta `uso='membro'`). Sem ela, o seletor acima continua o único que se clica.
+RE_PROSSEGUIR = re.compile(r"^\s*Prosseguir\s*$", re.I)
+# 📊 BLOCO 0 A1: a 1ª resposta do login com sessão aberta é 201 `{message: "Já existe uma sessão ativa…", data: {id,
+# token, …}}` — o `data.id` é o alvo do Prosseguir; ⛔ o `data.token` é o da OUTRA sessão e NUNCA é lido para fora daqui
+RE_JA_EXISTE = re.compile(r"j[aá]\s+existe\s+uma\s+sess[aã]o\s+ativa", re.I)
+ESPERA_DO_ID_S = 10              # o Prosseguir espera o `data.id` da resposta; sem ele, Cancelar (fail-closed)
+# O que o login devolve da LICENÇA (📊 BLOCO 0: `licenca`, `dataLimiteCalculo`, `diasParaExpirarSenha`; `expirationDate`
+# no `/usuario/current`) — SÓ estas chaves saem da resposta, e só datas ou números
+CHAVES_DA_LICENCA = ("licenca", "dataLimiteCalculo", "diasParaExpirarSenha", "expirationDate")
+_RE_DATA = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+
+def extrair_licenca(corpo: Any, _prof: int = 0) -> Dict[str, Any]:
+    """Só as datas/números da licença de uma resposta de login (busca rasa no objeto). Data → `AAAA-MM-DD`; número →
+    int. Todo o resto — token, e-mail, ids — é IGNORADO e nunca sai daqui."""
+    saida: Dict[str, Any] = {}
+    if _prof > 3:
+        return saida
+    if isinstance(corpo, dict):
+        for k, v in corpo.items():
+            if k in CHAVES_DA_LICENCA and k not in saida:
+                if isinstance(v, bool):
+                    continue
+                if isinstance(v, (int, float)):
+                    saida[k] = int(v)
+                elif isinstance(v, str) and _RE_DATA.match(v.strip()):
+                    saida[k] = v.strip()[:10]
+            elif isinstance(v, (dict, list)):
+                for k2, v2 in extrair_licenca(v, _prof + 1).items():
+                    saida.setdefault(k2, v2)
+    elif isinstance(corpo, list):
+        for item in corpo[:5]:
+            for k2, v2 in extrair_licenca(item, _prof + 1).items():
+                saida.setdefault(k2, v2)
+    return saida
+
+
+def id_da_sessao_ativa(corpo: Any) -> Optional[str]:
+    """O `data.id` da resposta "Já existe uma sessão ativa" — ou None. Nada mais é lido dela."""
+    if not isinstance(corpo, dict) or not RE_JA_EXISTE.search(str(corpo.get("message") or "")):
+        return None
+    dados = corpo.get("data")
+    alvo = dados.get("id") if isinstance(dados, dict) else None
+    return str(alvo) if isinstance(alvo, (str, int)) and not isinstance(alvo, bool) and str(alvo).strip() else None
 RE_SENHA_RECUSADA = re.compile(r"(senha|credenciais?|login)[^.]{0,40}(inv[aá]lid|incorret)|usu[aá]rio n[aã]o encontrado", re.I)
 RE_SAIR = re.compile(r"^\s*(Sair|Logout|Desconectar)\s*$", re.I)
 
@@ -87,6 +135,10 @@ class Sessao:
         self._tokens: Dict[str, str] = {}
         self._token_em: float = 0.0
         self._renovacao_tentada_em: float = 0.0
+        # SPEC-131-A: o login desta sessão PROSSEGUIU sobre uma sessão aberta (o motor grava o evento e zera) · as
+        # datas/números da licença que o login devolveu (`extrair_licenca`: nada além delas)
+        self.prosseguiu: bool = False
+        self.licenca: Dict[str, Any] = {}
 
     def __repr__(self) -> str:  # ⛔ nunca token, e-mail ou senha
         return f"Sessao(conta_id={self.conta_id!r}, estado={self.robo_estado!r})"
@@ -171,8 +223,13 @@ class Sessoes:
         self._sessoes: Dict[str, Sessao] = {}
         self._travas: Dict[str, asyncio.Lock] = {}
 
-    async def obter(self, conta: Dict[str, Any], *, senha: str, negocios_do_robo: Set[str]) -> Sessao:
+    async def obter(self, conta: Dict[str, Any], *, senha: str, negocios_do_robo: Set[str],
+                    prosseguir: bool = False) -> Sessao:
+        """`prosseguir` (SPEC-131-A, a política da madrugada — só o motor decide): se o aviso de sessão ativa aparecer,
+        clica "Prosseguir" em vez de "Cancelar", e a guarda deixa passar SÓ o POST que derruba a sessão do aviso. Vale
+        apenas para o Agger de uma PESSOA (`uso='membro'`): conta da corretora ou de teste NUNCA prossegue."""
         conta_id = str(conta.get("id"))
+        prosseguir = bool(prosseguir) and conta.get("uso") == "membro" and conta.get("robo_estado") != "teste"
         trava = self._travas.setdefault(conta_id, asyncio.Lock())
         async with trava:
             viva = self._sessoes.get(conta_id)
@@ -183,15 +240,16 @@ class Sessoes:
                 await viva.garantir_token()
                 return viva
             self._sessoes.pop(conta_id, None)
-            sessao = await self._entrar(conta, senha, negocios_do_robo)
+            sessao = await self._entrar(conta, senha, negocios_do_robo, prosseguir=prosseguir)
             self._sessoes[conta_id] = sessao
             return sessao
 
-    async def _entrar(self, conta: Dict[str, Any], senha: str, negocios_do_robo: Set[str]) -> Sessao:
+    async def _entrar(self, conta: Dict[str, Any], senha: str, negocios_do_robo: Set[str], *,
+                      prosseguir: bool = False) -> Sessao:
         usuario = str(conta.get("username") or "")
         if not usuario or not senha:
             raise CredencialRecusada("conta sem usuário ou senha")
-        estado = EstadoDaGuarda(host_api=self.bases["host_api"])
+        estado = EstadoDaGuarda(host_api=self.bases["host_api"], prosseguir_permitido=bool(prosseguir))
         for n in negocios_do_robo or ():
             estado.registrar_negocio(n)
         ctx = await self.navegador.new_context(viewport={"width": 1440, "height": 900}, locale="pt-BR",
@@ -199,12 +257,34 @@ class Sessoes:
         try:
             await instalar(ctx, estado)                       # 🔴 ANTES da 1ª aba
             status_login: Dict[str, int] = {}
+            licenca: Dict[str, Any] = {}
+            leituras: list = []
+
+            async def _ler_login(resp: Any) -> None:
+                """O corpo da resposta do login é lido AQUI e morre aqui: sai só o `data.id` do aviso (para a guarda,
+                e só com a política ligada) e as datas/números da licença. ⛔ Nenhum log, nenhuma exceção com ele."""
+                try:
+                    corpo = await resp.json()
+                except Exception:  # noqa: BLE001 — sem o tipo nem a mensagem: o corpo não sai daqui
+                    return
+                try:
+                    alvo = id_da_sessao_ativa(corpo)
+                    if alvo is not None:
+                        estado.registrar_sessao_ativa(alvo)
+                    elif resp.status < 300:
+                        licenca.update(extrair_licenca(corpo))
+                except Exception:  # noqa: BLE001
+                    pass
+                finally:
+                    corpo = None  # noqa: F841
 
             def _resp(resp: Any) -> None:
                 try:
                     req = resp.request
                     if req.method == "POST" and urlsplit(resp.url).path.endswith("/usuario/login"):
                         status_login["s"] = resp.status
+                        if resp.status < 300:
+                            leituras.append(asyncio.ensure_future(_ler_login(resp)))
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -218,11 +298,30 @@ class Sessoes:
             await pagina.fill('input[type="email"]', usuario)
             await pagina.fill('input[type="password"]', senha)
             await pagina.locator("button", has_text=re.compile(r"^\s*Entrar\s*$", re.I)).first.click()
+            prosseguiu_clicado, prosseguiu_em = False, 0.0
             while time.time() - t0 < LOGIN_TIMEOUT_S:
                 await asyncio.sleep(0.5)
                 if "/cotacoes" in pagina.url and sessao.tem_tokens():
-                    logger.info("multicalculo.sessao conta=%s entrou em %.1fs", sessao.conta_id, time.time() - t0)
+                    if leituras:
+                        await asyncio.gather(*leituras, return_exceptions=True)
+                    sessao.licenca = dict(licenca)
+                    sessao.prosseguiu = estado.prosseguiu > 0
+                    logger.info("multicalculo.sessao conta=%s entrou em %.1fs%s", sessao.conta_id, time.time() - t0,
+                                " (prosseguiu sobre uma sessão aberta)" if sessao.prosseguiu else "")
                     return sessao
+                if prosseguir and not prosseguiu_clicado and await self._aviso_visivel(pagina):
+                    # 🔴 a política da madrugada: o Prosseguir só com o `data.id` do aviso NESTE contexto (a guarda só
+                    # deixa passar o POST que derruba ESSA sessão). Sem o id no prazo → Cancelar, como sempre
+                    limite = time.time() + ESPERA_DO_ID_S
+                    while not estado.sessao_ativa_id and time.time() < limite:
+                        await asyncio.sleep(0.2)
+                    if estado.sessao_ativa_id and await self._prosseguir_aviso(pagina):
+                        prosseguiu_clicado, prosseguiu_em = True, time.time()
+                        logger.info("multicalculo.sessao conta=%s: Prosseguir da madrugada sobre uma sessão aberta",
+                                    sessao.conta_id)
+                        continue
+                if prosseguiu_clicado and time.time() - prosseguiu_em < 5:
+                    continue      # o diálogo fecha depois do clique: não confundir o fechamento com um aviso novo
                 if await self._cancelar_aviso_se_houver(pagina):
                     raise SessaoOcupada("aviso de sessão ativa: cancelado")
                 if status_login.get("s", 0) >= 400 or await self._senha_recusada(pagina):
@@ -274,6 +373,26 @@ class Sessoes:
                 await botao.click()
             return True
         return False
+
+    @classmethod
+    async def _aviso_visivel(cls, pagina: Any) -> bool:
+        try:
+            return await cls._primeiro_visivel(pagina.get_by_text(RE_AVISO)) is not None
+        except Exception:  # noqa: BLE001
+            return False
+
+    @classmethod
+    async def _prosseguir_aviso(cls, pagina: Any) -> bool:
+        """🔴 SPEC-131-A: o botão VISÍVEL de texto EXATO "Prosseguir", DENTRO do diálogo do aviso de sessão ativa — e só
+        ele. Sem diálogo reconhecível, não clica (o Cancelar do laço segue valendo)."""
+        dialogo = await cls._primeiro_visivel(pagina.locator(SELETOR_DIALOGO).filter(has_text=RE_AVISO))
+        if dialogo is None:
+            return False
+        botao = await cls._primeiro_visivel(dialogo.locator("button", has_text=RE_PROSSEGUIR))
+        if botao is None:
+            return False
+        await botao.click()
+        return True
 
     @classmethod
     async def _senha_recusada(cls, pagina: Any) -> bool:

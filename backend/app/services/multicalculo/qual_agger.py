@@ -23,7 +23,9 @@ As regras (SPEC §5):
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
+from datetime import date, datetime
 from typing import Any, Dict, Mapping, Optional
 
 from portal_worker.multicalculo import robos as ROB
@@ -47,6 +49,9 @@ class DecisaoDeConta:
     motivo: str
     aviso: Optional[str] = None
     recusa: Optional[str] = None
+    #: SPEC-131-A (D-131-08): a quem o AVISO desta decisão vai — o SUBSTITUTO quando o dono está ausente; None = o
+    #: dono/quem pediu, como sempre (quem entrega é a madrugada, pelo canal in-app que já existe)
+    avisar_user_id: Optional[str] = None
 
     def texto_para_o_banco(self) -> str:
         """O que vai para `multicalculo_calculos.conta_motivo` (≤ 500): o porquê e, quando há, o aviso a quem precisa
@@ -117,6 +122,61 @@ def _cfg_da_renovacao(company_id: str, supa: Any) -> Optional[Mapping[str, Any]]
         return None
 
 
+def _primeiro_nome(supa: Any, company_id: str, user_id: Optional[str]) -> Optional[str]:
+    """O primeiro nome de um MEMBRO desta corretora (o aviso NOMEIA a pessoa: "nunca calado"). Só se ele é da equipe
+    (`company_members` filtrado por `company_id`); qualquer falha → None (o aviso diz "o dono"/"o substituto")."""
+    if not user_id:
+        return None
+    try:
+        vinc = _dados(supa.table("company_members").select("user_id, company_id").eq("company_id", str(company_id))
+                      .eq("user_id", str(user_id)).limit(1).execute())
+        if not [v for v in vinc if str(v.get("company_id")) == str(company_id)]:
+            return None
+        usr = _dados(supa.table("users_v2").select("id, first_name").eq("id", str(user_id)).limit(1).execute())
+        nome = str((usr[0] if usr else {}).get("first_name") or "").strip().split(" ")[0]
+        return nome[:40] or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _hoje() -> date:
+    """O dia de HOJE no horário de Brasília (a janela e a ausência são escritas nele; mesmo fuso fixo dos robôs)."""
+    return datetime.now(ROB.FUSO_DA_JANELA).date()
+
+
+def substituto_ativo(supa: Any, company_id: str, user_id: Optional[str], hoje: Optional[date] = None) -> Optional[str]:
+    """SPEC-131-A (D-131-08): o substituto de `user_id` com AUSÊNCIA ATIVA hoje (`membro_ausencias`, `de ≤ hoje ≤ ate`),
+    nesta corretora — ou None. Tabela ausente (migration não aplicada) ou ilegível → None, com log (o cálculo segue)."""
+    if not user_id:
+        return None
+    dia = (hoje or _hoje()).isoformat()
+    try:
+        linhas = _dados(supa.table("membro_ausencias").select("company_id, user_id, substituto_user_id, de, ate")
+                        .eq("company_id", str(company_id)).eq("user_id", str(user_id))
+                        .lte("de", dia).gte("ate", dia).execute())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[QUAL_AGGER] ausências ilegíveis (%s) — segue sem substituto", type(exc).__name__)
+        return None
+    linhas = [x for x in linhas if str(x.get("company_id")) == str(company_id) and str(x.get("user_id")) == str(user_id)
+              and str(x.get("de") or "")[:10] <= dia <= str(x.get("ate") or "")[:10] and x.get("substituto_user_id")]
+    return str(linhas[0]["substituto_user_id"]) if linhas else None
+
+
+#: o desvio das 06:15 (madrugada) e outros motivos conhecidos de forçar o Agger da corretora → a frase do aviso
+_FRASE_DO_DESVIO = {
+    "renovacao_desvio_0615": "o Agger {de} não ficou livre de madrugada",
+}
+
+
+def _frase_do_desvio(motivo: str, de: str) -> str:
+    """O porquê do desvio em português de gente: o código conhecido vira frase; texto livre vai saneado e curto."""
+    m = str(motivo or "").strip()
+    if m in _FRASE_DO_DESVIO:
+        return _FRASE_DO_DESVIO[m].format(de=de)
+    limpo = re.sub(r"\s+", " ", re.sub(r"[^\w\sÀ-ÿ.,:()%-]", "", m))[:160].strip()
+    return limpo or f"o Agger {de} não pôde ser usado"
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # os textos (português de gente — eles chegam à corretora)
 # ---------------------------------------------------------------------------------------------------------------------
@@ -148,13 +208,67 @@ def _situacao(conta: Optional[Dict[str, Any]]) -> str:
 # ---------------------------------------------------------------------------------------------------------------------
 def decidir(db: Any, *, company_id: str, servico: str, solicitante_user_id: Optional[str] = None,
             dono_user_id: Optional[str] = None, conta_de_origem_id: Optional[str] = None,
-            vence_em_dias: Optional[int] = None, cfg: Optional[Mapping[str, Any]] = None) -> DecisaoDeConta:
-    """Em qual conta do Agger DESTA corretora (`company_id` = a corretora de registro do cálculo) o cálculo sai."""
+            vence_em_dias: Optional[int] = None, cfg: Optional[Mapping[str, Any]] = None,
+            substituto_user_id: Optional[str] = None, forcar_corretora_motivo: Optional[str] = None,
+            hoje: Optional[date] = None) -> DecisaoDeConta:
+    """Em qual conta do Agger DESTA corretora (`company_id` = a corretora de registro do cálculo) o cálculo sai.
+
+    SPEC-131-A (D-131-04/08), só na RENOVAÇÃO:
+      · `forcar_corretora_motivo` — o desvio das 06:15: o Agger da CORRETORA, com o aviso NOMEANDO o dono e o porquê
+        (nunca calado; o motivo vazio é recusado).
+      · ausência ativa do dono (`membro_ausencias`, ou `substituto_user_id` passado por quem já leu) — o cálculo SEGUE no
+        Agger do dono e o AVISO vai ao substituto, nomeado (`avisar_user_id`)."""
     if servico not in SERVICOS:
         raise ValueError(f"serviço desconhecido: {servico!r} (aceitos: {', '.join(SERVICOS)})")
     if not company_id:
         raise ValueError("company_id obrigatório")
+    if (forcar_corretora_motivo is not None or substituto_user_id is not None) and servico != "renovacao":
+        raise ValueError("forçar o Agger da corretora e o substituto só valem na renovação")
     supa = _cliente(db)
+    if servico == "renovacao" and conta_de_origem_id is None:
+        if forcar_corretora_motivo is not None:
+            return _desvio_para_a_corretora(supa, company_id, dono_user_id, forcar_corretora_motivo)
+        d = _decidir(supa, company_id=company_id, servico=servico, solicitante_user_id=solicitante_user_id,
+                     dono_user_id=dono_user_id, conta_de_origem_id=None, vence_em_dias=vence_em_dias, cfg=cfg)
+        return _com_o_substituto(supa, company_id, dono_user_id, substituto_user_id, d, hoje)
+    return _decidir(supa, company_id=company_id, servico=servico, solicitante_user_id=solicitante_user_id,
+                    dono_user_id=dono_user_id, conta_de_origem_id=conta_de_origem_id, vence_em_dias=vence_em_dias,
+                    cfg=cfg)
+
+
+def _desvio_para_a_corretora(supa: Any, company_id: str, dono_user_id: Optional[str], motivo: str) -> DecisaoDeConta:
+    """O desvio das 06:15: SEMPRE o Agger da corretora, e o aviso diz DE QUEM era a renovação e POR QUÊ saiu dali."""
+    if not str(motivo or "").strip():
+        raise ValueError("forçar o Agger da corretora exige o motivo (o aviso nunca sai calado)")
+    nome = _primeiro_nome(supa, company_id, dono_user_id)
+    de = f"de {nome}" if nome else ("do dono" if dono_user_id else "de quem cuida desta apólice")
+    porque = _frase_do_desvio(motivo, de)
+    quem = f"{nome}, esta" if nome else "Esta"
+    return _da_corretora(supa, company_id, regra="renovacao_desvio_da_corretora",
+                         motivo=f"Calculada no Agger da corretora porque {porque}.",
+                         aviso=f"{quem} renovação foi calculada no Agger da CORRETORA, não no seu — confira lá.")
+
+
+def _com_o_substituto(supa: Any, company_id: str, dono_user_id: Optional[str], substituto_user_id: Optional[str],
+                      d: DecisaoDeConta, hoje: Optional[date]) -> DecisaoDeConta:
+    """D-131-08: o dono ausente HOJE → a conta é a MESMA da decisão (o Agger do dono, ou o da corretora pelas regras de
+    sempre) e o aviso NOMEIA o substituto e vai a ele. Recusa continua recusa (só ganha o nome de quem é avisado)."""
+    if not dono_user_id:
+        return d
+    sub = substituto_user_id or substituto_ativo(supa, company_id, dono_user_id, hoje)
+    if not sub or str(sub) == str(dono_user_id) or not ROB.membro_ativo(supa, company_id, sub):
+        return d
+    nome_sub = _primeiro_nome(supa, company_id, sub)
+    nome_dono = _primeiro_nome(supa, company_id, dono_user_id)
+    texto = (f"{nome_dono or 'O dono'} está ausente: o aviso desta renovação vai para "
+             f"{nome_sub or 'quem o substitui'}, que cuida dela até a volta.")
+    return replace(d, aviso=" ".join(x for x in (d.aviso, texto) if x), avisar_user_id=str(sub))
+
+
+def _decidir(supa: Any, *, company_id: str, servico: str, solicitante_user_id: Optional[str],
+             dono_user_id: Optional[str], conta_de_origem_id: Optional[str], vence_em_dias: Optional[int],
+             cfg: Optional[Mapping[str, Any]]) -> DecisaoDeConta:
+    """As regras da 131-0 A, byte a byte (o substituto e o desvio são camadas por cima, em `decidir`)."""
 
     # -- o recálculo: o negócio mora na conta em que saiu ------------------------------------------------------------
     if conta_de_origem_id:
@@ -239,4 +353,4 @@ def decidir(db: Any, *, company_id: str, servico: str, solicitante_user_id: Opti
                          aviso="A renovação vai pelo Agger da corretora.")
 
 
-__all__ = ("DecisaoDeConta", "decidir", "SERVICOS", "PADRAO_CONTA_GLOBAL_SE_VENCE_EM_DIAS")
+__all__ = ("DecisaoDeConta", "decidir", "SERVICOS", "PADRAO_CONTA_GLOBAL_SE_VENCE_EM_DIAS", "substituto_ativo")

@@ -50,6 +50,17 @@ OPCOES: Tuple[str, ...] = ("padrao", "economica", "completa_mais", "minima")
 OPCOES_PADRAO: Tuple[str, ...] = ("padrao", "economica")
 #: o que o CANAL pede (D-130A1-05): as duas da 129-B + o "mínimo do mínimo" (a maior economia, nunca a recomendada)
 OPCOES_DO_CANAL: Tuple[str, ...] = ("padrao", "economica", "minima")
+#: SPEC-131-A (§4, F2 `presets.OPCOES_DA_RENOVACAO`): as opções da RENOVAÇÃO, na ordem do disparo (o `anterior` ABRE o
+#: negócio). 🔴 `OPCOES` acima NÃO muda: é o gêmeo de `presets.ORDEM`/`PRESETS` (QCM e cotação) e da CHECK 20261006_04
+#: (test_spec130a1_minima / test_spec130a_completa_mais conferem as três listas). A renovação tem a SUA lista; o banco
+#: aceita a união (`TODAS_AS_OPCOES`, CHECK alargada pela migration 20261013_01 da F1). ⛔ econômica e mínima NUNCA
+#: numa renovação (mutação 7)
+OPCOES_DA_RENOVACAO: Tuple[str, ...] = ("anterior", "franquia_reduzida", "completa_mais")
+PROIBIDAS_NA_RENOVACAO: Tuple[str, ...] = ("economica", "minima")
+#: o que a porta ACEITA numa renovação, na ordem do disparo: as três da SPEC + a `padrao` da 131-0 A (o pedido que
+#: chega sem a ficha da 130-B; `test_spec1310_f3_contas` a usa) — logo depois do `anterior`, que abre quando existe
+OPCOES_DA_RENOVACAO_ACEITAS: Tuple[str, ...] = ("anterior", "padrao", "franquia_reduzida", "completa_mais")
+TODAS_AS_OPCOES: Tuple[str, ...] = OPCOES + tuple(o for o in OPCOES_DA_RENOVACAO if o not in OPCOES)
 ORIGENS: Tuple[str, ...] = ("auxiliar", "canal", "teste")
 #: SPEC-129-C D-129C-03 — as opções de RE: "padrão" (as coberturas típicas do ramo) e "mais em conta" (as essenciais +
 #: assistência básica), com os MESMOS nomes do auto (o CHECK do banco já as aceita) e na ordem do disparo dos presets
@@ -73,6 +84,13 @@ ENV_HMAC = "MULTICALCULO_HMAC_KEY"
 PRIORIDADE: Dict[str, int] = {"canal": 0, "teste": 0, "auxiliar": 5}
 VALIDADE: Dict[str, timedelta] = {"canal": timedelta(minutes=10), "teste": timedelta(minutes=30),
                                   "auxiliar": timedelta(hours=24)}
+#: SPEC-131-A (laudo I1 §2.5, nota 85): a RENOVAÇÃO tem prioridade PRÓPRIA, abaixo da cotação (5) — a cotação pedida no
+#: chat nunca espera uma madrugada que transbordou. Cotação e renovação têm a MESMA origem (`auxiliar`): a prioridade sai
+#: do SERVIÇO. `prioridade=` de quem chama só pode pôr o pedido mais ATRÁS (≥ a do serviço), nunca na frente, e ≤ 9
+PRIORIDADE_DO_SERVICO: Dict[str, int] = {"renovacao": 7}
+PRIORIDADE_MAXIMA = 9
+#: SPEC-131-A (D-131-03 revista): as políticas de sessão que um pedido pode levar — só a da madrugada, só na renovação
+POLITICAS_DE_SESSAO: Tuple[str, ...] = ("madrugada",)
 
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
@@ -120,7 +138,22 @@ class RamoNaoSuportado(ValueError):
 
 class ContaRecusada(PermissionError):
     """SPEC-131-0 A · F3: `qual_agger.decidir` recusou a conta (ex.: o Agger do dono recusou a senha e a apólice não
-    vence logo). A mensagem é para quem pediu, em português de gente; NADA foi gravado."""
+    vence logo). A mensagem é para quem pediu, em português de gente; NADA foi gravado.
+
+    SPEC-131-A (P-1310-04): a recusa TRADUZIDA — `status` (o código estável que a renovação grava como motivo e uma
+    rota devolve como 409), `frase` (para a tela, nunca 500 genérico) e `regra` (a da decisão)."""
+
+    STATUS = "conta_recusada"
+    HTTP = 409
+
+    def __init__(self, frase: str = "", *, regra: Optional[str] = None):
+        self.frase = str(frase or "O Agger desta conta recusou o cálculo.").strip()
+        self.status = self.STATUS
+        self.regra = regra
+        super().__init__(self.frase)
+
+    def para_dict(self) -> Dict[str, Any]:
+        return {"status": self.status, "frase": self.frase, "regra": self.regra}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -416,13 +449,25 @@ class MulticalculoProvider:
                        coberturas: Optional[Mapping[str, Mapping[str, Any]]] = None,
                        origem: Optional[str] = None, quadro_s: int = 60,
                        servico: Optional[str] = None, solicitante_user_id: Optional[str] = None,
-                       dono_user_id: Optional[str] = None, vence_em_dias: Optional[int] = None) -> PedidoAberto:
+                       dono_user_id: Optional[str] = None, vence_em_dias: Optional[int] = None,
+                       prioridade: Optional[int] = None, politica_de_sessao: Optional[str] = None,
+                       renovacao_id: Optional[str] = None,
+                       forcar_corretora_motivo: Optional[str] = None) -> PedidoAberto:
         """SPEC-131-0 A · F3: com `servico` (qcm · cotacao · renovacao), a conta de CADA corretora é decidida por
         `qual_agger.decidir` ANTES de gravar e fica no cálculo (`conta_exigida_id` + regra + fallback + motivo); a
         `origem` sai do serviço (qcm → canal; cotação/renovação → auxiliar). `servico=None` = o legado (canário, testes):
         nada muda, byte a byte. `vence_em_dias` (renovação) libera o Agger da corretora quando o do dono recusou a senha e
-        a apólice vence logo (`servicos.renovacao.conta_global_se_vence_em_dias`)."""
+        a apólice vence logo (`servicos.renovacao.conta_global_se_vence_em_dias`).
+
+        SPEC-131-A (contrato §5): `prioridade` (None = a do serviço/origem: renovação 7, cotação 5, canal 0; maior = mais
+        ATRÁS, nunca na frente) · `politica_de_sessao` (só None ou 'madrugada', só na renovação — quem a passa é
+        `madrugada.py`) · `renovacao_id` (o item de `renovacoes`, só na renovação) · `forcar_corretora_motivo` (o desvio
+        das 06:15: o Agger da corretora COM aviso nomeado, só na renovação). As colunas novas só são escritas quando
+        vêm — o legado continua byte a byte."""
         company_id = _uuid(company_id, "company_id")
+        prioridade, politica_de_sessao, renovacao_id = self._da_madrugada(
+            servico=servico, prioridade=prioridade, politica_de_sessao=politica_de_sessao, renovacao_id=renovacao_id,
+            forcar_corretora_motivo=forcar_corretora_motivo)
         if servico is not None:
             if servico not in SERVICOS:
                 raise ValueError("serviços aceitos: " + ", ".join(SERVICOS))
@@ -444,8 +489,19 @@ class MulticalculoProvider:
         if not alvo:
             raise ValueError("nenhuma corretora pedida")
         ramo = int(getattr(pedido, "ramo", RAMO_AUTO) or RAMO_AUTO)
-        aceitas = OPCOES_POR_RAMO.get(ramo, OPCOES)
         pedidas = set(opcoes)
+        if servico == "renovacao":
+            # SPEC-131-A §4: ⛔ econômica e mínima NUNCA numa renovação (mutação 7) — recusa ANTES de qualquer leitura
+            proibidas = sorted(pedidas & set(PROIBIDAS_NA_RENOVACAO))
+            if proibidas:
+                raise ValueError("opção proibida numa renovação: " + ", ".join(proibidas))
+            aceitas = OPCOES_DA_RENOVACAO_ACEITAS
+            coberturas = self._coberturas_da_renovacao(pedido, coberturas)
+            # a opção que o pedido CEDEU (F2: a franquia já era reduzida → "cede o lugar") não sai; o resto, na ordem
+            cedidas = self._cedidas(pedido, pedidas)
+            pedidas -= cedidas
+        else:
+            aceitas = OPCOES_POR_RAMO.get(ramo, OPCOES)
         escolhidas = [o for o in aceitas if o in pedidas]    # a ordem é a de OPCOES (a do disparo), nunca a do chamador
         if (pedidas - set(aceitas)) or not escolhidas:
             raise ValueError("opções aceitas: " + ", ".join(aceitas))
@@ -484,8 +540,10 @@ class MulticalculoProvider:
             raise PedidoIncompleto(faltam)
         # SPEC-131-0 A · F3: QUAL AGGER, por corretora, antes de qualquer escrita — uma recusa não grava nada
         contas = await self._decidir_contas(alvo=alvo, servico=servico, solicitante_user_id=solicitante_user_id,
-                                            dono_user_id=dono_user_id, vence_em_dias=vence_em_dias)
-        quem = {"servico": servico, "solicitante_user_id": solicitante_user_id, "contas": contas}
+                                            dono_user_id=dono_user_id, vence_em_dias=vence_em_dias,
+                                            forcar_corretora_motivo=forcar_corretora_motivo)
+        quem = {"servico": servico, "solicitante_user_id": solicitante_user_id, "contas": contas,
+                "prioridade": prioridade, "politica_de_sessao": politica_de_sessao, "renovacao_id": renovacao_id}
         if ramo != RAMO_AUTO:
             return await self._calcular_re(company_id=company_id, pedido=pedido, alvo=alvo, escolhidas=escolhidas,
                                            coberturas=coberturas, origem=origem, quadro=quadro, quem=quem)
@@ -512,21 +570,73 @@ class MulticalculoProvider:
                                   origem=origem, quadro=quadro, quem=quem)
 
     async def _decidir_contas(self, *, alvo: List[str], servico: Optional[str], solicitante_user_id: Optional[str],
-                              dono_user_id: Optional[str], vence_em_dias: Optional[int]) -> Dict[str, Any]:
+                              dono_user_id: Optional[str], vence_em_dias: Optional[int],
+                              forcar_corretora_motivo: Optional[str] = None) -> Dict[str, Any]:
         """{corretora: DecisaoDeConta} — vazio no legado (`servico=None`). Uma `recusa` → `ContaRecusada`."""
         if servico is None:
             return {}
         from app.services.multicalculo import qual_agger
 
+        extra = {"forcar_corretora_motivo": forcar_corretora_motivo} if forcar_corretora_motivo is not None else {}
         decisoes: Dict[str, Any] = {}
         for corretora in alvo:
             d = await asyncio.to_thread(qual_agger.decidir, self.repo.db, company_id=corretora, servico=servico,
                                         solicitante_user_id=solicitante_user_id, dono_user_id=dono_user_id,
-                                        vence_em_dias=vence_em_dias)
+                                        vence_em_dias=vence_em_dias, **extra)
             if d.recusa:
-                raise ContaRecusada(d.recusa)
+                raise ContaRecusada(d.recusa, regra=d.regra)
             decisoes[corretora] = d
         return decisoes
+
+    # ------------------------------------------------------------------ SPEC-131-A: a madrugada
+    @staticmethod
+    def _da_madrugada(*, servico: Optional[str], prioridade: Any, politica_de_sessao: Any, renovacao_id: Any,
+                      forcar_corretora_motivo: Any) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+        """(prioridade, politica, renovacao_id) conferidos — ANTES de qualquer leitura. Recusa = `ValueError`."""
+        if politica_de_sessao is not None:
+            if politica_de_sessao not in POLITICAS_DE_SESSAO:
+                raise ValueError("política de sessão aceita: " + ", ".join(POLITICAS_DE_SESSAO))
+            if servico != "renovacao":
+                raise ValueError("a política de sessão da madrugada só vale na renovação")
+        if renovacao_id is not None:
+            if servico != "renovacao":
+                raise ValueError("renovacao_id só vale na renovação")
+            renovacao_id = _uuid(renovacao_id, "renovacao_id")
+        if forcar_corretora_motivo is not None:
+            if servico != "renovacao":
+                raise ValueError("forçar o Agger da corretora só vale na renovação")
+            if not str(forcar_corretora_motivo).strip():
+                raise ValueError("forçar o Agger da corretora exige o motivo (o aviso nunca sai calado)")
+            if politica_de_sessao is not None:
+                raise ValueError("o desvio para o Agger da corretora não leva a política de sessão da madrugada")
+        if prioridade is not None:
+            if isinstance(prioridade, bool) or not isinstance(prioridade, int):
+                raise ValueError("prioridade precisa ser um inteiro")
+            base = PRIORIDADE_DO_SERVICO.get(str(servico), PRIORIDADE.get(ORIGEM_DO_SERVICO.get(str(servico), ""), 0))
+            if not base <= prioridade <= PRIORIDADE_MAXIMA:
+                # 🔴 mutação 5 da SPEC: nenhuma renovação passa na frente da cotação (prioridade < 7 é recusada)
+                raise ValueError(f"prioridade entre {base} e {PRIORIDADE_MAXIMA} para este serviço (maior = mais atrás)")
+        return prioridade, politica_de_sessao, renovacao_id
+
+    @staticmethod
+    def _coberturas_da_renovacao(pedido: PedidoDeCalculo,
+                                 coberturas: Optional[Mapping[str, Mapping[str, Any]]]
+                                 ) -> Optional[Mapping[str, Mapping[str, Any]]]:
+        """As coberturas de cada opção da renovação: as EXPLÍCITAS de quem chamou vencem; senão as que o PEDIDO montou
+        da ficha (F2: `PedidoDeCalculo.coberturas_por_opcao`, o `anterior` é montado apólice a apólice)."""
+        if coberturas is not None:
+            return coberturas
+        do_pedido = getattr(pedido, "coberturas_por_opcao", None)
+        return dict(do_pedido) if isinstance(do_pedido, Mapping) and do_pedido else None
+
+    @staticmethod
+    def _cedidas(pedido: PedidoDeCalculo, pedidas: set) -> set:
+        """As opções pedidas que o PEDIDO montou como cedidas (F2: a franquia já era reduzida → a `franquia_reduzida`
+        CEDE o lugar). Só quando o pedido declara as suas opções; o resto é recusado como sempre."""
+        do_pedido = tuple(getattr(pedido, "opcoes", ()) or ())
+        if not do_pedido:
+            return set()
+        return {o for o in pedidas if o in OPCOES_DA_RENOVACAO and o not in do_pedido}
 
     async def _carregar_cfg(self, company_id: str, servico: Optional[str]) -> Dict[str, Any]:
         """SPEC-131-0 A (§5.3): a config da corretora ⊕ o manual do SERVIÇO do pedido. Sem serviço (legado) a chamada é
@@ -559,6 +669,10 @@ class MulticalculoProvider:
             explicitas = (coberturas or {}).get(o)
             if explicitas is not None:
                 cob = coberturas_de_re(explicitas, pedido)
+            elif o not in _ORDEM_RE:
+                # SPEC-131-A: `anterior`/`franquia_reduzida`/`completa_mais` do RE são montadas da ficha (F2) — sem elas,
+                # nunca a típica disfarçada de "igual ao ano passado"
+                raise PresetIndisponivel(f"sem coberturas para a opção {o} do ramo {pedido.ramo}")
             else:
                 base = dict(self._coberturas_re(pedido.ramo, o, basica, {}) or {})
                 cob = dict(self._coberturas_re(pedido.ramo, o, basica, extras_da_opcao_re(base, o, extras)) or {})
@@ -575,6 +689,11 @@ class MulticalculoProvider:
         cifrado = self._cifrar(json.dumps(dados, ensure_ascii=False, sort_keys=True))
         agora = self._agora()
         pedido_id = str(uuid.uuid4())
+        servico = (quem or {}).get("servico")
+        # SPEC-131-A: a prioridade do SERVIÇO (renovação 7) ou a que quem chamou pediu (já conferida: nunca na frente)
+        prioridade = (quem or {}).get("prioridade")
+        if prioridade is None:
+            prioridade = PRIORIDADE_DO_SERVICO.get(str(servico), PRIORIDADE[origem])
         linha_pedido = {
             "id": pedido_id, "company_id": company_id, "origem": origem, "ramo": ramo,
             "opcoes": escolhidas, "corretoras": alvo, "pedido_cifrado": cifrado, "cpf_hmac": hmac_doc,
@@ -583,10 +702,13 @@ class MulticalculoProvider:
         linhas_calc = [{
             "id": str(uuid.uuid4()), "pedido_id": pedido_id, "solicitante_company_id": company_id,
             "company_id": corretora, "opcao": o, "coberturas": por_opcao[o], "status": "na_fila",
-            "prioridade": PRIORIDADE[origem], "expira_em": (agora + VALIDADE[origem]).isoformat(),
+            "prioridade": int(prioridade), "expira_em": (agora + VALIDADE[origem]).isoformat(),
             "disponivel_em": agora.isoformat(),
         } for corretora in alvo for o in escolhidas]
-        servico = (quem or {}).get("servico")
+        # SPEC-131-A: a política de sessão e o item da renovação (colunas da migration 20261013_01) — só quando vêm
+        for coluna in ("politica_de_sessao", "renovacao_id"):
+            if (quem or {}).get(coluna) is not None:
+                linha_pedido[coluna] = (quem or {})[coluna]
         if servico is not None:
             # SPEC-131-0 A · F3: o pedido diz para QUAL serviço e QUEM pediu; cada cálculo, em QUAL conta (a da decisão
             # da corretora dele) e por quê. O legado (`servico=None`) não escreve nenhuma coluna nova
@@ -728,7 +850,7 @@ class MulticalculoProvider:
             d = await asyncio.to_thread(qual_agger.decidir, self.repo.db, company_id=corretora,
                                         servico=str(do_pedido["servico"]), conta_de_origem_id=str(conta_de_origem))
             if d.recusa:
-                raise ContaRecusada(d.recusa)
+                raise ContaRecusada(d.recusa, regra=d.regra)
             conta_herdada = {"conta_exigida_id": d.conta_id, "conta_regra": d.regra,
                              "conta_fallback": bool(d.fallback), "conta_motivo": d.texto_para_o_banco() or None}
         agora = self._agora()
@@ -740,7 +862,9 @@ class MulticalculoProvider:
                            else _aplicar_ajuste_re(origem.get("coberturas") or {}, ajuste)),
             "ajuste": {"tipo": ajuste.tipo, "valor": ajuste.valor, "seguradora": ajuste.seguradora,
                        "versao_base": int(origem["versao"]), "negocio_ref": str(origem["negocio_ref"])},
-            "status": "na_fila", "prioridade": PRIORIDADE.get(str(ped.get("origem")), 5),
+            # SPEC-131-A: o recálculo de uma renovação fica na prioridade DELA (7), atrás da cotação
+            "status": "na_fila", "prioridade": PRIORIDADE_DO_SERVICO.get(str(do_pedido.get("servico")),
+                                                                         PRIORIDADE.get(str(ped.get("origem")), 5)),
             "expira_em": (agora + VALIDADE.get(str(ped.get("origem")), timedelta(hours=24))).isoformat(),
             "disponivel_em": agora.isoformat(),
         }

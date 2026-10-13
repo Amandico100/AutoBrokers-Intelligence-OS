@@ -14,6 +14,11 @@ Instalada no BrowserContext ANTES da 1ª aba (`instalar` recusa contexto com aba
     ESCRITA, só no host da API (api-prod.<host do Agger>):
       POST usuario/login ............. 1 por CONTEXTO; corpo sem "derrubar/forçar/prosseguir/encerrar/nova sessão"
                                        (o aviso de sessão ativa: o robô CANCELA; nunca derruba a pessoa)
+                                       🔴 SPEC-131-A (D-131-03 revista): a ÚNICA exceção é o "Prosseguir" da
+                                       madrugada — UM 2º POST `{email, senha, derrubaSessao}` cujo `derrubaSessao`
+                                       é EXATAMENTE o `data.id` da resposta "Já existe uma sessão ativa" DESTE
+                                       contexto (📊 BLOCO 0 A1: derruba só aquela sessão, por id). Só vale com
+                                       `prosseguir_permitido`, que SÓ a política da madrugada liga (agger_sessao)
       POST usuario/login/pdocs ....... ≤ 6 por HORA (📊 o app chama 2× por login; 6/h = 3 logins/h, já anômalo)
       POST usuario/deslogaSessao ..... o logout do PRÓPRIO robô (o token no header é o dele)
       POST calculo/calcularV2 ........ ids de negócio NULOS = negócio NOVO; ids preenchidos SÓ com os QUATRO
@@ -90,10 +95,25 @@ class EstadoDaGuarda:
     # `versoes/{ref}` DENTRO da página, antes do POST). idIntegracao → {"negocio": {...}, "versao": {...}}
     ids_do_negocio: Dict[str, Dict[str, Set[str]]] = field(default_factory=dict)
     dominio: str = ""                               # leitura só neste domínio e nos subdomínios dele
+    # 🔴 SPEC-131-A — o SINAL ESTREITO do "Prosseguir" da madrugada. Nasce DESLIGADO; só a política da madrugada o liga
+    # (`Sessoes.obter(prosseguir=True)`, decidido pelo motor). `sessao_ativa_id` = o `data.id` da resposta "Já existe
+    # uma sessão ativa" deste contexto (lido da RESPOSTA, nunca do que a página manda); `prosseguiu` = quantos
+    # Prosseguir passaram (no máximo 1). ⛔ O `data.token` daquela resposta NUNCA mora aqui (é o token da OUTRA sessão)
+    prosseguir_permitido: bool = False
+    sessao_ativa_id: str = ""
+    prosseguiu: int = 0
 
     def __post_init__(self) -> None:
         if not self.dominio:
             self.dominio = dominio_de(self.host_api)
+
+    def registrar_sessao_ativa(self, id_da_sessao: Any) -> None:
+        """O `data.id` da resposta "Já existe uma sessão ativa" do PRÓPRIO contexto. Sem a política ligada, nada é
+        guardado (a exceção não existe fora da madrugada). Só o 1º vale: um id trocado depois não é aceito."""
+        if not self.prosseguir_permitido or self.sessao_ativa_id:
+            return
+        if isinstance(id_da_sessao, (str, int)) and not isinstance(id_da_sessao, bool) and norm_id(id_da_sessao):
+            self.sessao_ativa_id = norm_id(id_da_sessao)
 
     def registrar_negocio(self, negocio_ref: str) -> None:
         n = norm_id(negocio_ref)
@@ -119,7 +139,29 @@ class EstadoDaGuarda:
 
     def contagem(self) -> Dict[str, int]:
         return {"calcularV2": self.calcular, "barradas": self.barradas, "login": self.logins,
-                "pdocs": len(self.pdocs), "logout": self.logout}
+                "pdocs": len(self.pdocs), "logout": self.logout, "prosseguir": self.prosseguiu}
+
+
+#: as chaves que o "Prosseguir" do app manda (📊 BLOCO 0 A1: `{email, senha, derrubaSessao}`) — nenhuma outra
+CHAVES_DO_PROSSEGUIR = frozenset({"email", "senha", "derrubaSessao"})
+
+
+def prosseguir_valido(corpo: Optional[str], estado: "EstadoDaGuarda") -> bool:
+    """O 2º POST de login é o "Prosseguir" da madrugada, e só ele? Todas: a política ligou o sinal · nenhum Prosseguir
+    passou ainda neste contexto · o 1º login já saiu · o corpo é `{email, senha, derrubaSessao}` (nada mais) · e
+    `derrubaSessao` é o `data.id` da resposta "Já existe uma sessão ativa" DESTE contexto. Qualquer dúvida → não."""
+    if not estado.prosseguir_permitido or estado.prosseguiu or estado.logins < 1 or not estado.sessao_ativa_id:
+        return False
+    try:
+        b = json.loads(corpo or "")
+    except Exception:  # noqa: BLE001
+        return False
+    if not isinstance(b, dict) or set(b) != CHAVES_DO_PROSSEGUIR:
+        return False
+    alvo = b.get("derrubaSessao")
+    if not isinstance(alvo, str) or not alvo.strip():
+        return False
+    return norm_id(alvo) == estado.sessao_ativa_id
 
 
 def _caminho(url: str) -> Tuple[str, str]:
@@ -181,6 +223,8 @@ def decidir(metodo: str, url: str, corpo: Optional[str], estado: EstadoDaGuarda,
     if m != "POST":
         return False, "escrita_fora_da_lista_branca"
     if caminho.endswith("/usuario/login"):
+        if prosseguir_valido(corpo, estado):
+            return True, "prosseguir"     # 🔴 SPEC-131-A: a exceção ESTREITA (ver `prosseguir_valido`)
         if DERRUBA.search(corpo):
             return False, "derruba_sessao"
         if estado.logins >= LOGINS_POR_CONTEXTO:
@@ -257,6 +301,9 @@ async def instalar(contexto: Any, estado: EstadoDaGuarda) -> None:
             return
         if motivo == "login":
             estado.logins += 1
+        elif motivo == "prosseguir":
+            estado.logins += 1
+            estado.prosseguiu += 1
         elif motivo == "pdocs":
             estado.pdocs.append(time.time())
         elif motivo in ("calculo_novo", "calculo_do_robo"):
