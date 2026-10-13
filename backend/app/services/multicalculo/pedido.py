@@ -566,6 +566,36 @@ RAMO_DO_AGGER_POR_FAMILIA: Dict[str, int] = {
     "auto": RAMO_AUTO, "resi": RAMO_RESIDENCIAL, "cond": RAMO_CONDOMINIO, "empr": RAMO_EMPRESARIAL,
 }
 
+#: 🔴 conserto C2 (red P10): siglas que `FAMILIAS_DE_RAMO` agrupa em "auto" e que NÃO são o pedido de UM carro.
+#: Por que cada uma: "frota"/"auto frota" = N veículos numa apólice (o pedido de AUTO calcula 1 de N e marcaria
+#: `calculada`); "rcfv" = só a responsabilidade civil (o `anterior` partiria do preset completo, COM casco). Até medir,
+#: `ramo_nao_cotado` (renovar manualmente), nunca AUTO. Comparadas já normalizadas (`normalizar_rotulo`).
+SIGLAS_AUTO_NAO_COTADAS: Dict[str, str] = {"frota": "frota", "auto frota": "frota", "rcfv": "RCF-V"}
+
+#: 🔴 conserto C2 (juiz B2): MOTO dentro da sigla AUTO. 📊 13/10, renovação `4d9be9e8` (AUTO, ramo 31): o pedido de carro
+#: voltou "NUM PORTAS INVALIDO PARA MOTOCICLETAS", "Moto - Carro reserva (Veículo) deve ser informado", "Ramo divergente"
+#: (2 de cada) e 0 ofertas. O código 31 do Agger cobre carro, caminhão E motocicleta (`agger_formularios`), mas o pedido
+#: do produto é o de CARRO (portas, carro reserva): moto é SPEC própria (D-131-28). A palavra da moto no item da InfoCap
+#: (`/itens`: `categoria` — 📊 F5 12/10: "Passeio" 9 · "Demais" 1 — e `veiculo`, a descrição) → `ramo_nao_cotado`.
+#: Só palavras INTEIRAS ("motors", "automotor" NÃO casam). ⚠️ o rótulo exato da moto na InfoCap não foi medido.
+RE_VEICULO_MOTO = re.compile(r"\b(moto|motos|motocicletas?|motonetas?|motociclos?|ciclomotor(es)?|scooters?)\b")
+#: a marca que `perfil_da_renovacao.montar` põe no perfil quando o item é de um veículo que o pedido de AUTO não cota
+#: (o perfil passa pela borda da madrugada como dict — a marca viaja nele e `de_apolice` a lê e a TIRA antes do pedido)
+MARCA_DO_VEICULO_NAO_COTADO = "_veiculo_nao_cotado"
+FRASE_DA_MOTO = ("moto: renove manualmente — o pedido de AUTO do Agger é o de carro; moto é SPEC própria (D-131-28)")
+
+
+def veiculo_nao_cotado(*textos: Any) -> Optional[str]:
+    """"moto" se algum texto do item (categoria, descrição) é de moto; None senão."""
+    for t in textos:
+        if t is None:
+            continue
+        norm = unicodedata.normalize("NFKD", str(t))
+        norm = "".join(c for c in norm if not unicodedata.combining(c)).lower()
+        if RE_VEICULO_MOTO.search(norm):
+            return "moto"
+    return None
+
 #: O grupo de `providers/rotulos_de_cobertura.json` que É a Básica. 🔴 Por que: `basica_simples` reúne "incendio raio
 #: explosao" e "basica simples" (📊 Allianz condomínio do golden, LMI igual nos dois lados) — a cobertura que o Agger
 #: chama `isDanosIncendioRaioExplosao` (`presets.CHAVE_DA_BASICA`). Um rótulo de OUTRO grupo declarado (📊
@@ -741,6 +771,15 @@ def _ramo_do_agger(apolice: Any) -> int:
     if familia is None:
         raise RamoIndisponivel("ramo desconhecido: a sigla não está no agrupamento de ramos — renove manualmente",
                                motivo="ramo_desconhecido")
+    try:
+        from app.providers.policy_data_provider import normalizar_rotulo
+
+        sigla = normalizar_rotulo(str(getattr(apolice, "ramo", None) or ""))
+    except Exception:  # noqa: BLE001
+        sigla = ""
+    if familia == "auto" and sigla in SIGLAS_AUTO_NAO_COTADAS:
+        raise RamoIndisponivel(f"{SIGLAS_AUTO_NAO_COTADAS[sigla]}: renove manualmente — o pedido de AUTO do Agger é o "
+                               "de UM carro", motivo="ramo_nao_cotado")
     if familia not in RAMO_DO_AGGER_POR_FAMILIA:
         raise RamoIndisponivel(f"renovação do ramo '{familia}' não implementada (há: auto, residencial, condomínio, "
                                "empresarial)", motivo="ramo_nao_cotado")
@@ -770,6 +809,9 @@ def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] =
     """
     perfil = {g: dict(v or {}) for g, v in (perfil or {}).items()}
     ramo = _ramo_do_agger(apolice)
+    marca = perfil.pop(MARCA_DO_VEICULO_NAO_COTADO, None) or {}
+    if ramo == RAMO_AUTO and marca.get("tipo") == "moto":
+        raise RamoIndisponivel(FRASE_DA_MOTO, motivo="ramo_nao_cotado")     # conserto C2 (juiz B2)
     perfil["renovacao"] = _renovacao_da_apolice(apolice, perfil.get("renovacao") or {})
     objeto = _objeto_do_risco(apolice, ficha)
     avisos = _avisos_da_leitura(apolice, ficha)

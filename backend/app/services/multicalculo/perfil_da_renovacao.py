@@ -310,6 +310,15 @@ def montar(company_id: str, item: Mapping[str, Any], apolice: Any, ficha: Any, f
     alvo = _item_do_veiculo(itens, placa_apolice)
 
     if auto:
+        # 🔴 conserto C2 (juiz B2): MOTO dentro da sigla AUTO → a marca no perfil; `pedido.de_apolice` a lê e levanta
+        # `RamoIndisponivel(ramo_nao_cotado)` ANTES de qualquer pedido (a borda da madrugada engole exceção daqui e a
+        # transformaria em `falta_dado`; a marca atravessa como dado). O item do veículo; sem ele, os itens vivos.
+        vivos = [i for i in itens if not _sim(i.get("cancelado"))]
+        candidatos = [alvo] if alvo is not None else vivos
+        tipo = P.veiculo_nao_cotado(*(i.get(k) for i in candidatos for k in ("categoria", "veiculo")))
+        if tipo is not None:
+            perfil[P.MARCA_DO_VEICULO_NAO_COTADO] = {"tipo": tipo}
+            return perfil, nao
         # o CONDUTOR (= o segurado; `de_apolice` copia os campos dele) e o tempo de habilitação pela idade
         if not pj and nasc is not None:
             idade = _idade(nasc, hoje)

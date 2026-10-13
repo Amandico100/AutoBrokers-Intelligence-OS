@@ -263,6 +263,10 @@ def coberturas_re(ramo: int, opcao: str, valor_basica: float,
 #    motivo `PRESETS`/`ORDEM` (QCM e cotação) não mudam: a renovação tem a SUA ordem do disparo, abaixo.
 ANTERIOR = "anterior"
 FRANQUIA_REDUZIDA = "franquia_reduzida"
+#: o CÓDIGO da franquia NORMAL (obrigatória) no `calcularV2`. 🔴 Por que 2: 📊 RES "Prata" (topo deste arquivo, 1 corpo
+#: da 128) = tipoFranquia 2 "franquia normal"; a escada medida é normal 2 < reduzida 1 (`ESCADA_AUTO`); e a ficha que diz
+#: "normal/obrigatória" já vira 2 (`_codigo_da_franquia`). É o valor do `anterior` quando a ficha NÃO diz a franquia.
+FRANQUIA_NORMAL = 2
 #: a ORDEM do disparo no mesmo negócio da renovação: o `anterior` ABRE (versão 1); as outras são versões dele
 OPCOES_DA_RENOVACAO: Tuple[str, ...] = (ANTERIOR, FRANQUIA_REDUZIDA, COMPLETA_MAIS)
 PROIBIDAS_NA_RENOVACAO = frozenset({ECONOMICA, MINIMA})
@@ -399,13 +403,18 @@ def coberturas_da_renovacao_auto(lidas: Mapping[str, object], opcoes=OPCOES_DA_R
     """O corpo de cada opção da renovação de AUTO: ({opção: coberturas}, as chaves do `anterior` NÃO conferidas).
 
     · anterior          = o preset completo (`padrao`) com o que a ficha DIZ por cima (igual ou maior, nunca menor);
-    · franquia_reduzida = o anterior com `tipoFranquia` REDUZIDA — se o anterior já era reduzido, CEDE o lugar;
+                          a franquia que a ficha NÃO diz = a NORMAL (`FRANQUIA_NORMAL`), não conferida (conserto C2);
+    · franquia_reduzida = o anterior com `tipoFranquia` REDUZIDA — se a ficha PROVA que já era reduzida, CEDE o lugar;
     · completa_mais     = o MELHOR de (anterior, padrão) chave a chave + pequenos reparos (D-MC-69)."""
     pedidas = conferir_opcoes_da_renovacao(opcoes)
     desconhecidas = sorted(set(lidas) - set(CHAVES_DE_COBERTURA))
     if desconhecidas:
         raise ValueError(f"cobertura fora do corpo do Agger: {', '.join(desconhecidas)}")
     anterior = dict(_PADRAO)
+    # 🔴 conserto C2 (red P3 · juiz P1: 📊 0 de 5 pedidos do canário com a 3ª opção): a ficha que NÃO diz a franquia não
+    # herda a REDUZIDA do preset — o `anterior` leva a NORMAL (a obrigatória), marcada não conferida, e a
+    # `franquia_reduzida` volta a ser opção PRÓPRIA. Ela só cede o lugar quando a ficha PROVA que já era reduzida.
+    anterior["tipoFranquia"] = FRANQUIA_NORMAL
     anterior.update(lidas)
     nao_conferidas = tuple(k for k in CHAVES_DE_COBERTURA if k not in lidas)
     todas: Dict[str, Dict[str, object]] = {

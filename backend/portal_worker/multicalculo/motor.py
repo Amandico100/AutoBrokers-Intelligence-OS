@@ -207,7 +207,24 @@ def janela_da_madrugada(bloco: Any) -> Dict[str, Any]:
         else:
             ok = robos._minutos(v) is not None
         saida[k] = v if ok else padrao
+    # 🔴 conserto C2 (red P4): o Prosseguir é SÓ da madrugada — `prosseguir_de`/`prosseguir_ate` dentro de 00:00–07:00
+    # local e de < até; fora disso as DUAS voltam ao padrão (a mesma régua de `config._janela_limpa`)
+    if not prosseguir_na_madrugada(saida.get("prosseguir_de"), saida.get("prosseguir_ate")):
+        saida["prosseguir_de"] = JANELA_DA_MADRUGADA_PADRAO["prosseguir_de"]
+        saida["prosseguir_ate"] = JANELA_DA_MADRUGADA_PADRAO["prosseguir_ate"]
     return saida
+
+
+#: 🔴 conserto C2 (red P4): a "noite" do Prosseguir é UMA só — 00:00 a 07:00 no fuso da corretora. Por quê: a janela
+#: do produto é 01:00–06:30 (Founder, D-131-29) e o desvio é 06:15; com `00:00–23:59` o meio-dia "prosseguia" e a
+#: noite de meio-dia a meio-dia (`noite_da_madrugada`) deixava 2 Prosseguir no mesmo dia (📊 red team: 11h e 13h dentro)
+LIMITE_DA_MADRUGADA_MIN = 7 * 60
+
+
+def prosseguir_na_madrugada(de: Any, ate: Any) -> bool:
+    """`prosseguir_de` < `prosseguir_ate`, os dois em [00:00, 07:00]."""
+    m_de, m_ate = robos._minutos(de), robos._minutos(ate)
+    return (m_de is not None and m_ate is not None and 0 <= m_de < m_ate <= LIMITE_DA_MADRUGADA_MIN)
 
 
 def noite_da_madrugada(local: datetime):
@@ -222,11 +239,14 @@ def _no_dia(dia, hhmm: str, fuso) -> datetime:
 
 
 def dentro_do_prosseguir(agora: datetime, janela: Dict[str, Any], fuso) -> bool:
-    """Agora (no fuso da corretora) está em [prosseguir_de, prosseguir_ate)? Janela ilegível → NÃO (fail-closed)."""
+    """Agora (no fuso da corretora) está em [prosseguir_de, prosseguir_ate)? Janela ilegível, ou fora de 00:00–07:00
+    → NÃO (fail-closed)."""
     local = agora.astimezone(fuso)
     de, ate = robos._minutos(janela.get("prosseguir_de")), robos._minutos(janela.get("prosseguir_ate"))
     if de is None or ate is None or de >= ate:
         return False
+    if not prosseguir_na_madrugada(janela.get("prosseguir_de"), janela.get("prosseguir_ate")):
+        return False      # conserto C2 (red P4): janela fora de 00:00–07:00 nunca prossegue (fail-closed)
     m = local.hour * 60 + local.minute
     return de <= m < ate
 
@@ -309,6 +329,7 @@ class Grupo:
     servico: Optional[str] = None              # SPEC-131-A: o serviço do pedido (qcm · cotacao · renovacao · None)
     politica: Optional[str] = None             # SPEC-131-A: a política de sessão do pedido ('madrugada' ou None)
     ja_prosseguiu: bool = False                # SPEC-131-A: esta conta JÁ prosseguiu nesta noite (a dona voltou)
+    prosseguir_reservado: bool = False         # conserto C2 (red P5): a marca do "1× por noite" gravada ANTES do clique
 
 
 _ORDEM_DA_RENOVACAO = {o: i for i, o in enumerate(("anterior", "padrao", "franquia_reduzida", "completa_mais"))}
@@ -1169,7 +1190,14 @@ class Motor:
             if not prosseguir:
                 logger.info("[MC] madrugada: sem Prosseguir na conta %s (%s)", conta["id"], porque)
         try:
-            extra = {"prosseguir": True} if prosseguir else {}
+            extra: Dict[str, Any] = {}
+            if prosseguir:
+                # 🔴 conserto C2 (red P5): a marca do "1× por noite" é a RESERVA, gravada pela sessão ANTES do clique;
+                # a escrita falhou → a sessão cancela (fail-closed), nunca prossegue sem a marca
+                async def _reserva(g=g, conta=conta) -> bool:
+                    return await self._reservar_prosseguir(g, conta)
+
+                extra = {"prosseguir": True, "antes_de_prosseguir": _reserva}
             sessao = await sessoes.obter(robos.conta_publica(conta), senha=senha, negocios_do_robo=negocios, **extra)
         except SessaoOcupada:
             await self._sessao_ocupada(g, conta, g.calculos)
@@ -1251,6 +1279,26 @@ class Motor:
             return False, "já prosseguiu nesta conta esta noite"
         return True, ""
 
+    async def _reservar_prosseguir(self, g: Grupo, conta: Dict[str, Any]) -> bool:
+        """🔴 conserto C2 (red P5): grava `prosseguiu_sessao|<conta>|<noite>` ANTES do clique em "Prosseguir". True só com
+        a escrita confirmada; qualquer falha → False (a sessão cancela). A marca vale mesmo se o clique não chegar ao fim
+        (timeout depois do clique): a noite já gastou o seu Prosseguir — falhar FECHADO."""
+        if not g.calculos:
+            return False
+        try:
+            cfg = await self._cfg_madrugada(g.company_id)
+            await self._gravar_linha_de_evento(g, g.calculos[0], {
+                "tipo": TIPO_PROSSEGUIU, "familia": None,
+                "chave": f"{TIPO_PROSSEGUIU}|{conta['id']}|{self._noite(cfg).isoformat()}",
+                "motivo": "o robô prosseguiu sobre uma sessão aberta do Agger da dona (madrugada, 1× por noite; "
+                          "marca gravada antes do clique)",
+            })
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[MC] a marca do Prosseguir não gravou (%s) — sem Prosseguir", type(exc).__name__)
+            return False
+        g.prosseguir_reservado = True
+        return True
+
     async def _depois_do_login(self, g: Grupo, conta: Dict[str, Any], sessao: Any) -> bool:
         """Logo depois de obter a sessão: (1) o Prosseguir desta noite vira o evento `prosseguiu_sessao` (sem token, sem
         corpo — só a conta e a noite); (2) a licença do Agger vira UM evento `licenca_agger` por conta por dia (só datas e
@@ -1259,7 +1307,9 @@ class Motor:
             return True
         c0 = g.calculos[0]
         cfg = None
-        if getattr(sessao, "prosseguiu", False):
+        if getattr(sessao, "prosseguiu", False) and g.prosseguir_reservado:
+            sessao.prosseguiu = False          # conserto C2 (red P5): a marca já foi gravada ANTES do clique
+        elif getattr(sessao, "prosseguiu", False):
             try:
                 cfg = await self._cfg_madrugada(g.company_id)
                 await self._gravar_linha_de_evento(g, c0, {

@@ -565,7 +565,25 @@ def _janela_limpa(janela: Any) -> Dict[str, Any]:
         if not ok:
             logger.warning("[MC-CONFIG] servicos.renovacao.janela.%s inválido — fica o padrão", k)
         limpa[k] = (int(v) if k == "retentativa_min" else v) if ok else padrao
+    # 🔴 conserto C2 (red P4): o Prosseguir é SÓ da madrugada — `prosseguir_de` < `prosseguir_ate`, os dois dentro de
+    # 00:00–07:00 local (a "noite" é uma só). Por quê: o padrão é 01:00–06:30 (D-131-29) e o desvio 06:15; com
+    # `00:00–23:59` o meio-dia prosseguia e cabiam 2 Prosseguir no mesmo dia (📊 red team). Fora disso → as DUAS voltam
+    # ao padrão (o motor aplica a mesma régua: `motor.prosseguir_na_madrugada`)
+    m_de, m_ate = _minutos_hhmm(limpa["prosseguir_de"]), _minutos_hhmm(limpa["prosseguir_ate"])
+    if not (0 <= m_de < m_ate <= LIMITE_DO_PROSSEGUIR_MIN):
+        logger.warning("[MC-CONFIG] servicos.renovacao.janela.prosseguir_de/ate fora de 00:00–07:00 — fica o padrão")
+        pad = PADRAO_DO_PRODUTO["servicos"]["renovacao"]["janela"]
+        limpa["prosseguir_de"], limpa["prosseguir_ate"] = pad["prosseguir_de"], pad["prosseguir_ate"]
     return limpa
+
+
+#: conserto C2 (red P4): o fim da madrugada para o Prosseguir, em minutos locais (07:00)
+LIMITE_DO_PROSSEGUIR_MIN = 7 * 60
+
+
+def _minutos_hhmm(v: str) -> int:
+    h, m = str(v).split(":")
+    return int(h) * 60 + int(m)
 
 
 def _resolver_renovacao(cfg: Dict[str, Any], bruto_servicos: Any) -> None:

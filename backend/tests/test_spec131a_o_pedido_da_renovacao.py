@@ -243,7 +243,10 @@ def test_lente_o_anterior_e_igual_ou_maior_que_a_ficha_campo_a_campo(nome, linha
         assert _nivel(chave, tem) >= _nivel(chave, disse), (nome, chave, tem, disse)
         assert f"anterior.{chave}" not in pedido.nao_conferidos
     for chave in set(P.CHAVES_DE_COBERTURA) - set(DIZ[nome]):
-        assert anterior[chave] == P.PRESETS[P.PADRAO][chave]               # o que a ficha não traz: o preset completo
+        # conserto C2 (red P3 · juiz P1): a franquia que a ficha NÃO diz é a NORMAL (2), nunca a reduzida suposta —
+        # senão a `franquia_reduzida` sai idêntica e cede o lugar (📊 0 em 5 pedidos do canário)
+        esperado = 2 if chave == "tipoFranquia" else P.PRESETS[P.PADRAO][chave]
+        assert anterior[chave] == esperado, (nome, chave)                    # o que a ficha não traz: o preset completo
         assert f"anterior.{chave}" in pedido.nao_conferidos                # e a marca "não conferido"
     assert anterior["isDanosMateriais"] % 1000 == 0                         # sempre para cima, nunca para baixo
 

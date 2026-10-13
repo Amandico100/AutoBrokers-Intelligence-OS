@@ -28,7 +28,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, Optional, Set
 from urllib.parse import urlsplit
 
 from .agger_guarda import EstadoDaGuarda, instalar
@@ -58,6 +58,15 @@ ESPERA_DO_ID_S = 10              # o Prosseguir espera o `data.id` da resposta; 
 # O que o login devolve da LICENÇA (📊 BLOCO 0: `licenca`, `dataLimiteCalculo`, `diasParaExpirarSenha`; `expirationDate`
 # no `/usuario/current`) — SÓ estas chaves saem da resposta, e só datas ou números
 CHAVES_DA_LICENCA = ("licenca", "dataLimiteCalculo", "diasParaExpirarSenha", "expirationDate")
+# 🔴 conserto C2 (juiz B3: 📊 0 eventos `licenca_agger` ao vivo com logins reais). ONDE a licença mora, medido na escuta
+# do BLOCO 0 (12/10, 3 rodadas, fora do git): o corpo do `POST /usuario/login` de um login NORMAL não foi lido em 0 de 4
+# contextos (só o do Prosseguir, 2/2); o `GET /usuario/current` que o PRÓPRIO app faz trouxe licenca/expirationDate/
+# diasParaExpirarSenha em 4 de 4 (📊 21× em 147 s num contexto); o `POST /usuario/login/pdocs` trouxe `dataLimiteCalculo`
+# em 6 de 6. A sessão lê as TRÊS respostas interceptadas (nenhuma chamada nova); se o `current` do app ainda não veio
+# quando o login fecha, espera `ESPERA_DO_CURRENT_S` e, sem ele, faz UM `GET /usuario/current` na sessão já aberta
+# (nunca `goto`). A licença é AVISO: nada aqui derruba o login.
+ROTA_DO_CURRENT = "/usuario/current"
+ESPERA_DO_CURRENT_S = 2.0
 _RE_DATA = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 
@@ -224,10 +233,13 @@ class Sessoes:
         self._travas: Dict[str, asyncio.Lock] = {}
 
     async def obter(self, conta: Dict[str, Any], *, senha: str, negocios_do_robo: Set[str],
-                    prosseguir: bool = False) -> Sessao:
+                    prosseguir: bool = False,
+                    antes_de_prosseguir: Optional[Callable[[], Awaitable[bool]]] = None) -> Sessao:
         """`prosseguir` (SPEC-131-A, a política da madrugada — só o motor decide): se o aviso de sessão ativa aparecer,
         clica "Prosseguir" em vez de "Cancelar", e a guarda deixa passar SÓ o POST que derruba a sessão do aviso. Vale
-        apenas para o Agger de uma PESSOA (`uso='membro'`): conta da corretora ou de teste NUNCA prossegue."""
+        apenas para o Agger de uma PESSOA (`uso='membro'`): conta da corretora ou de teste NUNCA prossegue.
+        🔴 conserto C2 (red P5): `antes_de_prosseguir` é a RESERVA do "1× por noite" (o motor grava a marca), chamada
+        DEPOIS de o aviso aparecer e ANTES do clique; sem ela, ou se ela não devolver True, o robô CANCELA (fail-closed)."""
         conta_id = str(conta.get("id"))
         prosseguir = bool(prosseguir) and conta.get("uso") == "membro" and conta.get("robo_estado") != "teste"
         trava = self._travas.setdefault(conta_id, asyncio.Lock())
@@ -240,12 +252,46 @@ class Sessoes:
                 await viva.garantir_token()
                 return viva
             self._sessoes.pop(conta_id, None)
-            sessao = await self._entrar(conta, senha, negocios_do_robo, prosseguir=prosseguir)
+            sessao = await self._entrar(conta, senha, negocios_do_robo, prosseguir=prosseguir,
+                                        antes_de_prosseguir=antes_de_prosseguir)
             self._sessoes[conta_id] = sessao
             return sessao
 
+    @staticmethod
+    async def _reservou(antes_de_prosseguir: Optional[Callable[[], Awaitable[bool]]]) -> bool:
+        """A reserva do motor (a marca do "1× por noite") — qualquer falha, ou a falta dela, é NÃO."""
+        if antes_de_prosseguir is None:
+            return False
+        try:
+            return (await antes_de_prosseguir()) is True
+        except Exception as e:  # noqa: BLE001
+            logger.warning("multicalculo.sessao a reserva do Prosseguir falhou (%s) — Cancelar", type(e).__name__)
+            return False
+
+    async def _completar_licenca(self, sessao: "Sessao", lidas: Dict[str, bool], leituras: list) -> None:
+        """J-B3: a licença vem do `GET /usuario/current` que o app já faz (interceptado). Se ele ainda não veio, espera
+        `ESPERA_DO_CURRENT_S`; sem ele, UM `GET /usuario/current` na sessão aberta (o corpo é lido SÓ pelo interceptador:
+        à página volta só o status). Nunca `goto`. Nada aqui derruba o login."""
+        try:
+            limite = time.time() + ESPERA_DO_CURRENT_S
+            while not lidas.get("respondeu") and time.time() < limite:
+                await asyncio.sleep(0.2)
+            if not lidas.get("respondeu") and sessao._tokens.get("api"):
+                await sessao.pagina.evaluate(
+                    "async ([u, t]) => { try { const r = await fetch(u, {headers: {Authorization: t}});"
+                    " return r.status; } catch (e) { return 0; } }",
+                    [sessao.bases["api"] + ROTA_DO_CURRENT, sessao._tokens["api"]])
+                limite = time.time() + ESPERA_DO_CURRENT_S      # o evento da resposta chega pelo interceptador
+                while not lidas.get("respondeu") and time.time() < limite:
+                    await asyncio.sleep(0.1)
+            if leituras:
+                await asyncio.gather(*list(leituras), return_exceptions=True)
+        except Exception as e:  # noqa: BLE001
+            logger.info("multicalculo.sessao licença não lida (%s)", type(e).__name__)
+
     async def _entrar(self, conta: Dict[str, Any], senha: str, negocios_do_robo: Set[str], *,
-                      prosseguir: bool = False) -> Sessao:
+                      prosseguir: bool = False,
+                      antes_de_prosseguir: Optional[Callable[[], Awaitable[bool]]] = None) -> Sessao:
         usuario = str(conta.get("username") or "")
         if not usuario or not senha:
             raise CredencialRecusada("conta sem usuário ou senha")
@@ -278,13 +324,33 @@ class Sessoes:
                 finally:
                     corpo = None  # noqa: F841
 
+            lidas: Dict[str, bool] = {}
+
+            async def _ler_licenca(resp: Any) -> None:
+                """J-B3: `GET /usuario/current` e `POST /usuario/login/pdocs` — SÓ as datas/números da licença saem."""
+                try:
+                    corpo = await resp.json()
+                    licenca.update(extrair_licenca(corpo))
+                except Exception:  # noqa: BLE001 — o corpo não sai daqui, nem no tipo do erro
+                    return
+                finally:
+                    corpo = None  # noqa: F841
+
             def _resp(resp: Any) -> None:
                 try:
                     req = resp.request
-                    if req.method == "POST" and urlsplit(resp.url).path.endswith("/usuario/login"):
+                    partes = urlsplit(resp.url)
+                    caminho = partes.path
+                    if req.method == "GET" and caminho.endswith(ROTA_DO_CURRENT) and                             (partes.hostname or "").lower() == self.bases["host_api"]:
+                        lidas["respondeu"] = True       # qualquer status: a espera acaba (o corpo só se lê se < 300)
+                    if req.method == "POST" and caminho.endswith("/usuario/login"):
                         status_login["s"] = resp.status
                         if resp.status < 300:
                             leituras.append(asyncio.ensure_future(_ler_login(resp)))
+                    elif resp.status < 300 and (partes.hostname or "").lower() == self.bases["host_api"] and (
+                            (req.method == "POST" and caminho.endswith("/usuario/login/pdocs"))
+                            or (req.method == "GET" and caminho.endswith(ROTA_DO_CURRENT))):
+                        leituras.append(asyncio.ensure_future(_ler_licenca(resp)))
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -302,8 +368,7 @@ class Sessoes:
             while time.time() - t0 < LOGIN_TIMEOUT_S:
                 await asyncio.sleep(0.5)
                 if "/cotacoes" in pagina.url and sessao.tem_tokens():
-                    if leituras:
-                        await asyncio.gather(*leituras, return_exceptions=True)
+                    await self._completar_licenca(sessao, lidas, leituras)
                     sessao.licenca = dict(licenca)
                     sessao.prosseguiu = estado.prosseguiu > 0
                     logger.info("multicalculo.sessao conta=%s entrou em %.1fs%s", sessao.conta_id, time.time() - t0,
@@ -315,7 +380,9 @@ class Sessoes:
                     limite = time.time() + ESPERA_DO_ID_S
                     while not estado.sessao_ativa_id and time.time() < limite:
                         await asyncio.sleep(0.2)
-                    if estado.sessao_ativa_id and await self._prosseguir_aviso(pagina):
+                    # 🔴 conserto C2 (red P5): a marca do "1× por noite" é RESERVADA antes do clique; sem ela → Cancelar
+                    if (estado.sessao_ativa_id and await self._reservou(antes_de_prosseguir)
+                            and await self._prosseguir_aviso(pagina)):
                         prosseguiu_clicado, prosseguiu_em = True, time.time()
                         logger.info("multicalculo.sessao conta=%s: Prosseguir da madrugada sobre uma sessão aberta",
                                     sessao.conta_id)

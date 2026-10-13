@@ -37,6 +37,7 @@ Instalada no BrowserContext ANTES da 1ª aba (`instalar` recusa contexto com aba
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -102,10 +103,21 @@ class EstadoDaGuarda:
     prosseguir_permitido: bool = False
     sessao_ativa_id: str = ""
     prosseguiu: int = 0
+    # 🔴 conserto C2 (red P6): o HASH (sha256) do e-mail do 1º login deste contexto — o Prosseguir só passa com o MESMO.
+    # ⛔ o e-mail em claro nunca mora aqui (repr/log não o mostram)
+    email_do_login: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         if not self.dominio:
             self.dominio = dominio_de(self.host_api)
+
+    def registrar_email_do_login(self, corpo: Optional[str]) -> None:
+        """O e-mail do 1º POST de login deste contexto (só o hash; só o 1º vale — um 2º login nunca o troca)."""
+        if self.email_do_login:
+            return
+        h = hash_do_email(corpo)
+        if h:
+            self.email_do_login = h
 
     def registrar_sessao_ativa(self, id_da_sessao: Any) -> None:
         """O `data.id` da resposta "Já existe uma sessão ativa" do PRÓPRIO contexto. Sem a política ligada, nada é
@@ -146,11 +158,26 @@ class EstadoDaGuarda:
 CHAVES_DO_PROSSEGUIR = frozenset({"email", "senha", "derrubaSessao"})
 
 
+def hash_do_email(corpo: Optional[str]) -> str:
+    """sha256 do `email` (aparado, minúsculo) de um corpo de login; "" se ilegível. Nada em claro sai daqui."""
+    try:
+        b = json.loads(corpo or "")
+    except Exception:  # noqa: BLE001
+        return ""
+    email = b.get("email") if isinstance(b, dict) else None
+    if not isinstance(email, str) or not email.strip():
+        return ""
+    return hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()
+
+
 def prosseguir_valido(corpo: Optional[str], estado: "EstadoDaGuarda") -> bool:
     """O 2º POST de login é o "Prosseguir" da madrugada, e só ele? Todas: a política ligou o sinal · nenhum Prosseguir
-    passou ainda neste contexto · o 1º login já saiu · o corpo é `{email, senha, derrubaSessao}` (nada mais) · e
-    `derrubaSessao` é o `data.id` da resposta "Já existe uma sessão ativa" DESTE contexto. Qualquer dúvida → não."""
+    passou ainda neste contexto · o 1º login já saiu · o corpo é `{email, senha, derrubaSessao}` (nada mais) ·
+    `derrubaSessao` é o `data.id` da resposta "Já existe uma sessão ativa" DESTE contexto · e (conserto C2, red P6) o
+    `email` é o MESMO do 1º login deste contexto (sem o 1º registrado → não). Qualquer dúvida → não."""
     if not estado.prosseguir_permitido or estado.prosseguiu or estado.logins < 1 or not estado.sessao_ativa_id:
+        return False
+    if not estado.email_do_login or hash_do_email(corpo) != estado.email_do_login:
         return False
     try:
         b = json.loads(corpo or "")
@@ -301,6 +328,7 @@ async def instalar(contexto: Any, estado: EstadoDaGuarda) -> None:
             return
         if motivo == "login":
             estado.logins += 1
+            estado.registrar_email_do_login(corpo)      # conserto C2 (red P6): o e-mail (hash) do 1º login
         elif motivo == "prosseguir":
             estado.logins += 1
             estado.prosseguiu += 1

@@ -137,11 +137,14 @@ class SessoesDaMadrugada(TM.SessoesDuble):
         mundo.__dict__.setdefault("licencas", {})
 
     async def obter(self, conta, *, senha, negocios_do_robo, **kw):
-        assert set(kw) <= {"prosseguir"}, kw
+        # conserto C2 (red P5): o Prosseguir leva a RESERVA (`antes_de_prosseguir`), chamada ANTES do clique; sem ela,
+        # ou com ela falhando, a sessão REAL cancela (fail-closed) — o dublê obedece à mesma interface
+        assert set(kw) <= {"prosseguir", "antes_de_prosseguir"}, kw
         self.m.prosseguir_pedido.append((conta["id"], bool(kw.get("prosseguir"))))
         if conta["id"] not in self._s:
             if conta["id"] in self.m.aberta_pela_pessoa:
-                if not kw.get("prosseguir"):
+                reserva = kw.get("antes_de_prosseguir")
+                if not kw.get("prosseguir") or reserva is None or not await reserva():
                     self.m.obter.append((self.processo, conta["id"]))
                     raise TM.SessaoOcupada()
                 self.m.aberta_pela_pessoa.discard(conta["id"])
@@ -376,8 +379,10 @@ def test_guarda_sem_a_politica_barra_o_prosseguir_como_sempre():
 
 def test_guarda_com_a_politica_libera_so_o_post_que_derruba_a_sessao_do_aviso():
     e = _estado(prosseguir_permitido=True)
-    assert G.decidir("POST", API + "/usuario/login", '{"email":"x","senha":"y"}', e) == (True, "login")
+    primeiro = '{"email":"x@exemplo.invalid","senha":"y"}'
+    assert G.decidir("POST", API + "/usuario/login", primeiro, e) == (True, "login")
     e.logins = 1
+    e.registrar_email_do_login(primeiro)        # conserto C2 (red P6): o que `instalar` faz no 1º login
     # antes de a resposta do aviso chegar, não há alvo: barra
     assert G.decidir("POST", API + "/usuario/login", _prosseguir(), e)[0] is False
     e.registrar_sessao_ativa(ID_DO_AVISO.upper())
@@ -392,6 +397,7 @@ def test_mf3_a_guarda_recusa_derrubar_outra_sessao_que_nao_a_do_aviso():
     """MUTAÇÃO da F3: a guarda aceitando `derrubaSessao` diferente do `data.id` do aviso → VERMELHO."""
     e = _estado(prosseguir_permitido=True)
     e.logins = 1
+    e.registrar_email_do_login(_prosseguir())   # conserto C2 (red P6): o e-mail do 1º login deste contexto
     e.registrar_sessao_ativa(ID_DO_AVISO)
     for alvo in ("7339eaec-de01-4c3b-9a1f-000000000002", "", "*", ID_DO_AVISO + "0"):
         assert G.decidir("POST", API + "/usuario/login", _prosseguir(alvo), e) == (False, "derruba_sessao"), alvo
@@ -772,7 +778,12 @@ def test_sessao_real_prossegue_so_com_a_politica_e_nunca_grava_o_token_da_outra_
                                 negocios_do_robo=set(), prosseguir=True)
         assert d.derrubadas == []
         # a política da madrugada: Prosseguir pela tela, a guarda deixa passar SÓ o POST com o id do aviso
-        s = await sessoes.obter(pessoa, senha=SENHA, negocios_do_robo=set(), prosseguir=True)
+        # (conserto C2, red P5: o Prosseguir exige a RESERVA do "1× por noite", gravada antes do clique)
+        async def reserva():
+            return True
+
+        s = await sessoes.obter(pessoa, senha=SENHA, negocios_do_robo=set(), prosseguir=True,
+                                antes_de_prosseguir=reserva)
         assert d.derrubadas == [ID_DO_AVISO] and s.prosseguiu is True
         assert s.estado_da_guarda.prosseguiu == 1 and s.contagem_de_escritas()["prosseguir"] == 1
         assert s.licenca == {"licenca": "2026-10-20", "dataLimiteCalculo": "2026-10-27", "diasParaExpirarSenha": 115}
