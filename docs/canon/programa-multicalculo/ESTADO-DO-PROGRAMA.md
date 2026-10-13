@@ -180,6 +180,8 @@ calculadas em paralelo, e indica a vencedora; Claude/ChatGPT ficam para a ★.
 
 | 12/10 | 130-B | régua da CONFIRMAÇÃO (as 7 apólices da regra das duas linhas, depois do guarda novo; estimado 💭 0,015 antes) — 📊 real: acumulado 0,091085 → 0,098287 | 📊 0,0072 | 💭 3,83 |
 
+| 12/10 | 131-A | ESTIMATIVA ANTES do canário da madrugada (F4): ≤ 5 renovações reais da corretora de origem; leitura da ficha 📊 ~US$ 0,0014 cada (BLOCO 0) × 5 × até 2 rodadas; cálculos no Agger não custam modelo (estimado 💭 0,02 antes) | — | 💭 3,83 |
+
 📊 **Total da 130-B: US$ 0,0983 de modelo** (79 chamadas; `select sum(total_cost_usd) from token_usage_logs where service_type='bancada_130b'`; verba proposta US$ 1,50). O saldo segue 💭 por causa da linha estimada do Google de 06/10.
 
 Regra: nenhuma rodada paga sem estimativa escrita aqui antes. O que sobrar passa para a SPEC seguinte.
