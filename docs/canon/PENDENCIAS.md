@@ -13442,6 +13442,11 @@ Agger da Resulta. **Custa esquecer:** a Resulta cota sem a Tokio, hoje e no moto
 ## P-129B-05 · 🤖 Rótulos de estado civil, uso, garagem e fabricante não medidos
 O pedido só aceita CÓDIGO por enquanto. **Destrava:** medir os rótulos ao vivo e aceitar o texto. **Custa esquecer:** cada chamador
 (130-A/133-A) traduz para código por conta própria — e cada um de um jeito.
+↪ **13/10 · SPEC-131-A: o COMBUSTÍVEL ✅ FECHADO** — 📊 F6: a lista do campo lida no bundle do app do Agger, 7 códigos (GASOLINA 1 ·
+ALCOOL 2 · DIESEL 3 · ELÉTRICO 5 · FLEX 6 · TETRAFUEL 10 · HÍBRIDO 11; controle FLEX = 6 em 18/18 corpos gravados), o rótulo da InfoCap
+traduzido em `perfil_da_renovacao.COMBUSTIVEL_NO_AGGER` e, sem rótulo, a placa supre. 📊 canário: antes 64/64 recusas "informe o
+combustível", depois 0/50. **🟡 CONTINUA:** estado civil, uso, garagem e fabricante — a renovação os manda pelo PADRÃO DA TELA, marcados
+"não conferido" (P-131A-06).
 
 ## P-129B-07 · 🤖 O modo do Chromium do contêiner (`--headless=new`) não abriu nesta máquina Windows
 📊 1ª rodada do canário: 0 cálculo em 180 s; o canário usou o modo clássico. No contêiner Linux o portal-worker já roda assim.
@@ -13668,6 +13673,11 @@ empresarial. **Custa esquecer:** o empresarial com poucas seguradoras.
 📊 BLOCO 0 §6.2 (laudo da CorpAPI, 11/10). Fora do escopo da parte A. **Destrava:** o produto barra CPF/CNPJ inválido (dígito
 verificador) ANTES de consultar a InfoCap, em todo chamador. **De quem:** 🤖 a SPEC que tocar a consulta por CPF (131). **Custa
 esquecer:** um CPF digitado errado ou zerado mostra a apólice de outra pessoa ao corretor — e, no canal, ao segurado.
+↪ **13/10 · ✅ FECHADA pela SPEC-131-A (D-131-17).** `app/utils/documento_br.documento_valido` (CPF 11 / CNPJ 14, dígito verificador,
+repetidos recusados) barra antes da rede em todo chamador: `infocap_connector` (`/cliente_cpf`, `/busca_cpf`, `/producao?texto=`, conferido
+pelo red team), `quem_e_o_segurado`, `insurer_dispatch_tool` e o perfil da renovação. Guardas: `test_spec131a_o_pedido_da_renovacao.py`
+`test_documento_valido`, `test_a_consulta_do_produto_recusa_o_documento_invalido_antes_da_rede` e
+`test_toda_chamada_a_cliente_cpf_passa_pelo_helper` (todo chamador novo de `/cliente_cpf` sem o helper fica vermelho).
 
 ## P-1310-03 · 🤖 `next start` de build de produção não medido (CLAUDE.md §9.1)
 📊 11/10: `npm run test:rotas-montam` → 315 rotas montam; `next dev` → 401 nas 3 rotas novas sem sessão e 307 na página. **Destrava:**
@@ -13678,6 +13688,9 @@ lição de 02/08 (1h40 fora do ar com todos os gates verdes) é exatamente esta 
 O `qual_agger` recusa (senha do Agger da pessoa recusada, conta de outra corretora); hoje só o QCM chama a porta e ele nunca recusa.
 **Destrava:** a 131/132 (os primeiros chamadores de cotação e renovação) traduzem a recusa numa frase e num status. **De quem:** 🤖
 131/132. **Custa esquecer:** o primeiro pedido de renovação com senha recusada vira 500 genérico na tela.
+↪ **13/10 · ✅ FECHADA NA RENOVAÇÃO pela SPEC-131-A.** `madrugada.motivo_da_excecao` traduz `ContaRecusada` em `falhou(conta_recusada)` com
+frase humana no aviso (`madrugada.py:337`); guarda `test_spec131a_a_madrugada_no_agger.py::test_conta_recusada_traduzida_em_status_e_frase`.
+🟡 A cotação no chat ainda não tem chamador: a tradução HTTP dela é da **132**, que reusa a mesma frase.
 
 ## P-1310-05 · 🤖 As sugestões de vínculo só casam `codfil = 1`
 `dono.sugerir_vinculos` busca `("1", codigo)`; um vínculo gravado com outra filial aparece como "sem vínculo" (red team P3, por leitura;
@@ -13847,10 +13860,17 @@ laço. **De quem:** 🤖. **Custa esquecer:** uma resposta anômala do provedor 
 A renovação monta o pedido de AUTO e de RE pela ficha, recusando com a lista do que falta — mas nenhum código do produto a chama ainda.
 **Destrava:** a SPEC-131 liga o chamador e a pré-leitura (de madrugada) das renovações do mês. **De quem:** 🤖 131. **Custa esquecer:** a
 ficha existe e a renovação continua montada à mão.
+↪ **13/10 · ✅ FECHADA pela SPEC-131-A.** O chamador existe: `madrugada.preparar_dia` (00:30) lê a ficha de cada renovação
+(`ficha_da_apolice`) e monta o pedido com `de_apolice(apolice, ficha=, config=, perfil=)` (`madrugada.py:482–499`), com o perfil do segurado
+da InfoCap (F5). 📊 Prova: canário real de 13/10 (relatório §1/§6) — 2 renovações AUTO `calculada` no Agger, 📊 16/15 e 21/22 ofertas nas
+duas opções. ⚠️ O canário rodou SEM o PDF (juiz P1); a leitura com PDF em produção e o custo dela continuam abertos em P-131A-13.
 
 ## P-130B-12 · 🤖 O mapa rótulo do documento → chave do Agger para as coberturas EXTRAS
 Hoje as extras vão pelo preset do ramo, não pelo que a apólice atual tem. **Destrava:** o mapa por seguradora/ramo, medido contra as
 fichas da bancada. **De quem:** 🤖 131. **Custa esquecer:** a renovação "igual à atual" cota coberturas diferentes das que o cliente tem.
+↪ **13/10 · 🟡 CONTINUA depois da SPEC-131-A.** A 131-A não mediu o mapa das extras; ela só tornou visível o efeito: sem a franquia
+lida na ficha, o `anterior` usa a NORMAL marcada "não conferida" (D-131-39) e 📊 0 de 5 pedidos reais tiveram a 3ª opção antes do conserto
+(juiz P1). **Destrava:** o mesmo — medir, em fichas reais COM PDF, quantas trazem franquia e extras legíveis. **De quem:** 🤖 131-B ou 132.
 
 ## P-130B-13 · 🤖 `DocumentService.delete_document` não apaga o `raw/{id}.json` nem o `.leitura.json`
 **Destrava:** apagar os dois junto com o documento (e teste). **De quem:** 🤖. **Custa esquecer:** a ficha e o texto de uma apólice
@@ -13860,3 +13880,112 @@ apagada ficam no MinIO — dado pessoal sem dono.
 📊 Na árvore desde 03/10 (`git status`: `?? app/app/`, `?? app/backend/`); são cópias velhas e o teste as varre. O gerente NÃO apagou.
 **Destrava:** decidir apagar (conferir antes que nada nelas é único). **De quem:** 🧑 a decisão · 🤖 a remoção. **Custa esquecer:** a
 bateria fica com um vermelho que não é do produto e ensina a ignorar vermelho (CLAUDE.md §9.3).
+
+## P-131A · SPEC-131-A, a madrugada da renovação (13/10/2026)
+
+> Fonte: `reports/SPEC-131-A-EXECUTION-REPORT.md` §10 · laudos `programa-multicalculo/131/` JUIZ-131-A (J-), RED-TEAM-131-A (RT-),
+> CONFIRMACAO-131-A (N-), conferidos contra o código de `e58db51`. 📊 Hoje nada roda em produção: 0 corretoras com o aplicativo instalado
+> (`tenant_auxiliaries` slug renovação = 0); a madrugada liga onde a 131-B instalar. Já fechados no conserto (não entram aqui): J-B1…B3,
+> RT-B1, J-P1/RT-P3 (D-131-39), J-P2/RT-P7, J-P5, J-P7, J-P8/RT-P11, J-P9/RT-P2 (D-131-37), RT-P4, RT-P5, RT-P6, RT-P10 (D-131-38), N1–N3. O Implantar parcial (RT-P9) virou tarefa: T-160.
+
+## P-131A-01 · 🤖 A comissão da renovação passa do máximo de algumas seguradoras
+📊 Canário 13/10: 10 recusas por comissão (relatório §10) — Allianz, Sura e Zurich com teto de 30 % ("ultrapassa o máximo de (30%)",
+"27 - Comissão não permitida", "deve estar entre 5% a 30%"; juiz P4). É o `per_c` do ano anterior + `comissao_a_mais_pp` (D-131-16) acima
+do teto daquela seguradora. **Destrava:** teto de comissão POR SEGURADORA na config (o pedido manda o menor entre "anterior + pp" e o teto),
+medido pelas próprias mensagens de recusa. **De quem:** 🤖 131-B ou 132. **Custa esquecer:** ofertas perdidas toda madrugada justamente nas
+seguradoras que recusam, e a corretora acha que "a Allianz não cotou".
+
+## P-131A-02 · 🤖 O Prosseguir e a licença do Agger nunca rodaram ao vivo com o código novo
+📊 SELECT 13/10 (`multicalculo_eventos`): `licenca_agger` **0** · `prosseguiu_sessao` **0** (confirmação); o conserto da licença
+(`/usuario/current` + `/usuario/login/pdocs`, D-131-36) não está implantado e não existe Agger de pessoa (📊 `portal_accounts`
+`uso='membro'` = 0, red team). **Destrava:** o canário DEPOIS do Implantar (T-160): ≥ 1 evento `licenca_agger` por conta logada (o guarda
+do juiz B3) e, com o aceite de uma comercial (T-156), uma noite com Prosseguir medido. **De quem:** 🤖 (o canário) · 🧑 (Implantar e aceite).
+**Custa esquecer:** a licença vence sem aviso e a madrugada daquela corretora falha toda noite; o Prosseguir entra no ar sem nunca ter sido
+visto funcionar.
+
+## P-131A-03 · 🤖 A4 não medido — duas sessões do Agger da MESMA corretora ao mesmo tempo
+O teto por corretora ficou em 1 (D-131-30) porque não se mediu se dois logins da mesma corretora calculam juntos sem se atrapalhar.
+**Destrava:** medir com 2 contas da mesma corretora (o robô + 1 comercial com aceite) e subir o teto pela config. **De quem:** 🤖 (com 🧑 o
+aceite). **Custa esquecer:** a corretora com várias comerciais calcula em fila única; 📊 com o pico de 42 renovações de um dono (D-131-33)
+a madrugada pode não caber antes das 05:30.
+
+## P-131A-04 · 🤖 A3 — 3 opções ao mesmo tempo nunca medidas; a 3ª opção voltou sem canário
+📊 BLOCO 0 (`131/BLOCO0-131-A-AGGER-AO-VIVO.md`): A3 **NÃO MEDIDO** (não havia perfil de teste sem dado pessoal); vale a premissa de 2
+simultâneos (📊 16/16, E7). 📊 Antes do conserto, 0 de 5 pedidos reais tinham a `franquia_reduzida` (juiz P1); o conserto C2 a trouxe de
+volta (D-131-39), sem rodada real depois. **Destrava:** um canário com 3 opções, contando ofertas por opção. **De quem:** 🤖. **Custa
+esquecer:** a promessa das 3 opções (D-131-05) segue sem prova; se o Agger não aguentar 3 juntas, a 3ª falha calada.
+
+## P-131A-05 · 🤖 O rótulo de MOTO da InfoCap não foi medido
+A moto pela placa é pega no robô (`tipoVeic` do Agger, D-131-38); a moto pela InfoCap depende do rótulo do item, e 📊
+`veiculo_nao_cotado('HONDA CG 160 FAN')` = None (confirmação N1: a descrição real não casa). **Destrava:** medir os rótulos de categoria/
+espécie da InfoCap nas duas bases e casar a moto ANTES de pedir. **De quem:** 🤖. **Custa esquecer:** toda moto gasta uma sessão do Agger
+até a placa revelar; sem placa, ela pode ir como carro.
+
+## P-131A-06 · 🤖 Estado civil, uso e garagem vão pelo padrão da tela (parte da P-129B-05)
+O perfil da renovação (F5) manda o que a InfoCap não traz pelo padrão da tela do Agger (D-128-07), marcado "não conferido"; supõe também
+condutor = segurado e habilitação = idade − 18 (teto 10) (relatório §10). 📊 F5 (12/10, 10 AUTO reais): a InfoCap não guarda condutor
+(0/10) nem CEP de pernoite (0/10). **Destrava:** medir os rótulos no Agger (P-129B-05) e a 131-B mostrar "não conferido" ao comercial antes
+de enviar. **De quem:** 🤖. **Custa esquecer:** um preço calculado com perfil suposto vai ao cliente como se fosse o dele.
+
+## P-131A-07 · 🤖 `fonte_infocap._get` trata 404 como `{}` e GUARDA no cache
+📊 `backend/app/comercial/fonte_infocap.py:381–384` (lido 13/10): 404 → `{}` gravado no cache quando `guardar=True` (red team P1). O conserto
+C1 só pega o caso em que a InfoCap volta VAZIA com itens do período na tabela (`conferencia_da_renovacao.py:136–140` → `sem_conexao`).
+**Destrava:** não gravar o `{}` do 404 no cache (ou TTL curto) e marcar a resposta como "vazia por 404". **De quem:** 🤖. **Custa
+esquecer:** um 404 passageiro fica no cache e as leituras seguintes acreditam que não há nada.
+
+## P-131A-08 · 🤖 O caso PARCIAL da InfoCap — itens que somem da leitura nova
+A conferência confere a InfoCap contra a tabela (o que falta na tabela fica vermelho), mas não ao contrário: se a leitura nova vem com
+PARTE dos itens, o que estava na tabela e sumiu da InfoCap não deixa o dia incompleto (só o vazio total vira `sem_conexao`, P-131A-07).
+**Destrava:** a conferência ao contrário do red team P1 — item da tabela no período, fora de `substituida`, que não voltou da InfoCap →
+`divergente`, com teste de mutação. **De quem:** 🤖. **Custa esquecer:** uma InfoCap meio caída produz um dia "completo".
+
+## P-131A-09 · 🤖 Frota e RCF-V ficam como ramo não cotado
+`pedido.SIGLAS_AUTO_NAO_COTADAS` (frota, auto frota, RCF-V) → `pendente(ramo_nao_cotado)` "renove manualmente" (D-131-38): calcular 1 de N
+veículos, ou partir do preset com casco, seria errado. **Destrava:** medir frota (N itens por apólice) e RCF-V no Agger e criar o pedido
+certo. **De quem:** 🤖 (SPEC de ramos, depois da 132). **Custa esquecer:** a frota, que é renovação grande, sai sempre na mão.
+
+## P-131A-10 · 🤖 `falhou` definitivo e `precisa_de_voce` só voltam pela tela
+O `falhou` definitivo não volta sozinho e o passageiro vira `precisa_de_voce` depois de 2 noites (conserto C1); não há botão para
+recalcular. **Destrava:** "Calcular de novo" na aba Renovações da **131-B**. **De quem:** 🤖 131-B. **Custa esquecer:** o item fica parado
+até o vencimento, e a corretora não tem como pedir de novo.
+
+## P-131A-11 · 🧑 As 8 linhas de canário na tabela `renovacoes`
+📊 SELECT 13/10: `renovacoes` = 8 linhas, **8 com `canario=true`**, 1 corretora (a de origem dos dados, D-131-35); 2 `calculada` ·
+1 `falhou` · 5 `pendente`. ⚠️ O relatório §4 diz 6; o SELECT de hoje e o juiz dizem 8. O ROLLBACK da migration RECUSA enquanto houver
+dado. **Destrava:** o Founder decide apagar — T-161. **De quem:** 🧑 a decisão · 🤖 o delete. **Custa esquecer:** a aba Renovações da
+131-B abre com itens de ensaio misturados aos reais.
+
+## P-131A-12 · 🤖 O teste do fio fecha os cálculos com dublê, não com o motor real
+`test_spec131a_o_fio.py` fecha com `fechar_com_ofertas` (juiz P3); a porta e o `de_apolice` são reais; o motor real só rodou no canário.
+**Destrava:** o motor com robô dublê no teste do fio, ou o aceite escrito do gerente. **De quem:** 🤖. **Custa esquecer:** uma mudança no
+motor que quebre a madrugada passa verde no fio.
+
+## P-131A-13 · 🤖 A ficha com PDF é lida 2× por item por noite; o custo com PDF não foi medido
+`preparar` e `_pedir` leem a ficha de novo em cada noite da janela (juiz P6). 📊 O canário rodou SEM o PDF: US$ 0,00 de modelo
+(`token_usage_logs` vazio de 03:00 a 05:00 UTC de 13/10). **Destrava:** reusar a leitura guardada por hash (a da 130-B) entre os dois
+passos e medir o custo numa noite com PDF. **De quem:** 🤖. **Custa esquecer:** custo de modelo multiplicado por item × noites.
+
+## P-131A-14 · 🤖 A fila do motor lê 50 linhas para todas as corretoras
+📊 `backend/portal_worker/multicalculo/motor.py:89` `LIMITE_DA_FILA = 50`, ordenada por prioridade e criação (red team P8): os grupos de
+uma corretora que esperam o teto ocupam a cabeça da fila; a sessão segurada para a pessoa trava os outros logins dela por até 10 min.
+**Destrava:** medir no canário de 2 corretoras e buscar a fila por corretora. **De quem:** 🤖. **Custa esquecer:** 💭 a madrugada de
+uma corretora grande atrasa a das outras.
+
+## P-131A-15 · 🤖 A marca "1 Prosseguir por noite" não é mutex entre dois grupos da mesma conta
+A marca é gravada ANTES do clique (conserto C2), mas com `upsert … ignore_duplicates` (`motor.py:1769/1780`): dois grupos da mesma conta
+podem ambos achar que a reservaram (confirmação (d)); hoje `_cabe_sessao` segura 1 sessão por conta. **Destrava:** reservar com insert
+que falha no conflito e conferir quem ganhou. **De quem:** 🤖. **Custa esquecer:** se o teto por conta subir, dois Prosseguir na mesma noite.
+
+## P-131A-16 · 🤖 O guarda da moto pela placa olha o TEXTO do JS
+`test_moto_pela_placa…` confere `"erro: 'veiculo_moto'" in js` — regex sobre o código (CLAUDE.md §9.4); o montador JS não roda no teste
+(confirmação). **Destrava:** rodar o `JS_PREPARAR` num motor JS com uma resposta de `buscaPlaca` de moto. **De quem:** 🤖. **Custa
+esquecer:** o guarda continua verde se a recusa sair do caminho real.
+
+## A drenagem das pendências que a SPEC-131-A tocou
+| P | estado |
+|---|---|
+| P-130B-11 | ✅ FECHADA — o chamador e a pré-leitura das 00:30 existem; 📊 2 renovações reais calculadas no canário (sem PDF → P-131A-13) |
+| P-130B-12 | 🟡 CONTINUA — o mapa das extras não foi medido; a franquia não lida virou "não conferida" (D-131-39) |
+| P-1310-02 | ✅ FECHADA — `documento_valido` antes da rede em todo chamador, com o guarda de todo `/cliente_cpf` |
+| P-1310-04 | ✅ FECHADA na renovação (`falhou(conta_recusada)` com frase); a cotação é da 132 |
+| P-129B-05 | 🟡 PARCIAL — o combustível ✅ (7 códigos medidos); estado civil, uso, garagem e fabricante continuam (P-131A-06) |

@@ -101,6 +101,8 @@
       🔁 **12/10 (proposta da SPEC-131, D-131-03):** a frase "nunca derruba a sessão dela" **deixa de valer** — de madrugada o robô entra
       mesmo com a sessão aberta (uma vez por noite, só renovação). Faça a **T-156** (o aceite novo) ANTES desta. E na 131-B o Agger de cada
       pessoa sai deste modal e vai para **Meu perfil** — cada uma conecta o dela (D-131-07, T-157).
+      🔁 **13/10 (SPEC-131-A construída):** a regra de madrugada que vale é a da **T-156** (1h–6h30, uma vez por noite, só a sessão do aviso,
+      de hora em hora até 6h15). Sem o aceite dela, o robô NÃO prossegue na conta dela.
 - [ ] **T-142** ⏳ 🧑 **quando quiser** · **Escolher o que cada serviço faz** — painel → **Personalização → Serviços**: no topo, os 4 passos
       dizem o que já está pronto. Em **Cotação** e **Renovação**, escolha só **calcular** × **calcular e entregar** × **calcular, entregar e
       negociar**, e as exceções (por ramo, ou "valor acima de"). A aba **Quem Cobra Menos** é só leitura (ela segue a config do canal).
@@ -241,6 +243,8 @@
 >    Agger da corretora, com aviso. Funciona; só não sai "no Agger DELE".
 > 7. **T-156** e depois **T-141** — o aceite NOVO de cada comercial e o Agger dela no perfil.
 > 8. **T-157** e **T-158** — quando quiser.
+> 9. **13/10 (131-A construída):** **T-159** (as licenças do Agger, ⚠️ a da Resulta vence HOJE) · **T-160** (Implantar os 3 serviços
+>    JUNTOS, depois da 131-B) · **T-161** (apagar as 8 linhas de ensaio) · **T-162** (a conta do Agger usada no BLOCO 0).
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -249,6 +253,13 @@
       > Se você estiver usando o Agger nessa hora, ele espera e tenta de novo; se não der até 6h15, calcula no Agger da corretora e te avisa."*
       **Esperado:** cada uma diz "ok" (vale por mensagem). Quem não aceitar fica sem o Agger próprio: as renovações dela calculam no Agger
       da corretora, com aviso. 🔴 Antes do aceite, a execução NÃO entra no Agger de nenhuma pessoa. · *de:* proposta SPEC-131 §4.4
+      🔁 **13/10 (SPEC-131-A, o que foi construído — D-131-29/34):** a regra exata que a comercial aceita é esta, e o texto acima continua
+      certo: (1) o robô só clica "Prosseguir" entre **1h e 6h30** da corretora (a janela é configurável, mas o sistema RECUSA qualquer
+      horário fora de 0h–7h); (2) **uma vez por noite por conta**, só para renovações dela; (3) o Prosseguir derruba **só a sessão que o
+      próprio aviso do Agger mostra** (📊 medido no BLOCO 0: nenhuma outra cai), com o e-mail dela e nada mais; (4) se ela voltar a usar o
+      Agger, o robô cancela e tenta de novo **de hora em hora** até 6h15; depois, Agger da corretora com aviso. **Sem o aceite, a política
+      fica DESLIGADA naquela conta** (o motor confere o aceite antes de clicar). ⚠️ 📊 13/10: o Prosseguir ainda não rodou ao vivo nenhuma
+      vez (P-131A-02) — o primeiro uso real será o canário depois da T-160.
 - [ ] **T-157** ⏳ 🧑 **quando a 131-B estiver no ar** · **O telefone de cada comercial** — cada um, logado no painel → **Meu perfil →
       Minhas conexões**: confirma o próprio WhatsApp (é para onde vai o "Quero renovar" do cliente dele) e conecta o próprio Agger (a
       T-141 passa a ser feita por ela mesma, no perfil, D-131-07). **Esperado:** em Personalização → Equipe, a coluna "Agger" mostra
@@ -257,6 +268,48 @@
       corretora de ENSAIO, ≤ 5 renovações, uma madrugada). 📊 12/10: além das 2 contas das corretoras (ativas), as 2 contas `teste` do Agger estão **pausadas** (laudo I1 §1).
       Opções: (a) reativar uma conta de teste para a corretora de ensaio — nota **85**; (b) esperar a T-141 de uma comercial real — **40**
       (atrasa a prova). Responda no chat *"T-158: a"* ou *"T-158: b"*. · *de:* proposta SPEC-131 §6
+      🔁 **13/10 (SPEC-131-A):** decidida pela execução (D-131-35, nota 85): o canário rodou na corretora REAL de origem dos dados, conta do
+      robô, ≤ 5 itens marcados, nada enviado. Não precisa responder.
+
+> **13/10 (SPEC-131-A, a madrugada da renovação, construída e na `main` `e58db51`):** 📊 a primeira renovação real calculada pelo
+> produto — 2 renovações de carro calculadas no Agger no canário (16/15 e 21/22 ofertas). Nada roda sozinho ainda: a madrugada só liga
+> na corretora onde a 131-B instalar o aplicativo. Nasceram a **T-159** (licenças do Agger), a **T-160** (Implantar os 3 serviços
+> JUNTOS, depois da 131-B), a **T-161** (apagar as linhas de ensaio) e a **T-162** (a conta do Agger usada no BLOCO 0); a **T-156** e a
+> **T-141** ganharam 🔁 com a regra exata da madrugada.
+
+- [ ] **T-159** ⏳ 🧑 **AGORA — hoje** · **Renovar a licença do Agger das duas corretoras** — 📊 Resulta: licença com data **13/10/2026**
+      (A-PROVA §11, lida em 10/10) · AutoFleet: **20/10/2026** (📊 `/usuario/current` no BLOCO 0 da 131-A, 12/10; `dataLimiteCalculo` 27/10).
+      Vencida, **nenhuma renovação calcula** naquela corretora.
+      1. Entre no **aggilizador.com.br** como administrador de cada corretora → **Meu plano** (ou "Assinatura") → confira a data da licença.
+      2. Se vence em até 7 dias: renove com o fornecedor do Agger (é contrato seu; nada no AutoBrokers muda).
+      3. Diga no chat *"T-159: Resulta até DD/MM, AutoFleet até DD/MM"*.
+      **Esperado:** a data nova aparece em Meu plano. Depois do Implantar (T-160), o produto passa a ler a data sozinho e avisa 7 dias antes
+      (D-131-36); no **SQL** (só leitura), depois da primeira madrugada:
+      `select company_id, motivo, criado_em from multicalculo_eventos where tipo = 'licenca_agger' order by criado_em desc limit 5;`
+      → ≥ 1 linha por corretora que calculou. 📊 13/10: **0 linhas** (o código novo ainda não está no ar).
+      **Se der errado:** Meu plano sem data, ou o Agger pedindo pagamento → print e a hora no chat. · *de:* S131-A §10.1
+- [ ] **T-160** ⏳ 🧑 **depois da 131-B (é ela que liga)** · **Implantar `smith-api` + `smith-worker` + `portal-worker` JUNTOS** —
+      EasyPanel, **nesta ordem e no mesmo momento**: `smith-api` → `smith-worker` → `portal-worker` (e o `smith-web` que a 131-B pedir).
+      🔴 **Os três juntos:** com o `smith-api` novo e o `portal-worker` velho, o robô velho não conhece as opções novas da renovação nem o
+      combustível — 📊 a 1ª rodada do canário com o robô velho deu **114 recusas e 0 ofertas** (red team P9). A tabela `renovacoes` **já está
+      no banco** (migration aplicada 13/10, versão `20261013003843`). Nenhuma variável nova obrigatória; o motor precisa estar ligado (T-122).
+      1. Implantar os três, na ordem.
+      2. Abra `https://autobrokers-intelligence-os-portal-worker.golhpm.easypanel.host/health`.
+      **Esperado:** `build_time` de 13/10/2026 ou depois. Nada calcula até a 131-B instalar o aplicativo numa corretora (📊 13/10: 0
+      instalados). **Se der errado:** `build_time` antigo → Implantar o `portal-worker` de novo; erro na tela → print e a hora no chat.
+      · *de:* S131-A §6 · RT-P9
+- [ ] **T-161** ⏳ 🧑 **decisão, 1 min** · **Apagar as 8 renovações de ensaio do canário** (P-131A-11) — 📊 13/10: a tabela `renovacoes`
+      tem 8 linhas e as 8 são do canário (`canario = true`), todas da corretora de origem dos dados. Elas não aparecem para ninguém hoje, mas
+      a aba Renovações da 131-B as mostraria misturadas às reais. Responda no chat *"T-161: pode apagar"* ou *"T-161: guarde"*; a execução
+      apaga com SELECT antes e depois (nunca à mão). **Esperado:** depois, `select count(*) from renovacoes where canario;` → `0`.
+      · *de:* S131-A §13
+- [ ] **T-162** ⏳ 🧑 **quando puder, 2 min** · **Conferir a conta do Agger da AutoFleet usada no BLOCO 0 (a da Ellen)** — no BLOCO 0 da
+      131-A uma leitura nessa conta não terminou o login (máquina lenta, A7); pode ter ficado uma sessão do teste presa.
+      1. Peça à Ellen (ou entre você, se tiver o acesso) no Agger da AutoFleet com o login dela.
+      2. Se aparecer o aviso **"sessão ativa"**, clique **Prosseguir** — é seguro: 📊 o BLOCO 0 mediu que o Prosseguir derruba **só** a
+         sessão mostrada no aviso (a do teste).
+      **Esperado:** ela entra normalmente; nada do trabalho dela some (o robô não apaga cotação de ninguém). **Se der errado:** print da
+      tela e a hora no chat. · *de:* S131-A §10.1
 
 ### ① Implantar e conferir — não depende de nada
 

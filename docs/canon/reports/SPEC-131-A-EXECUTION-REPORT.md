@@ -58,7 +58,7 @@ FAIXA DE RELÓGIO declarada 💭 4–6 h · real ≈ 16 h (18:29 de 12/10 → ~1
 ## 4. Migrations
 `20261013_01_spec131a_renovacoes.sql` — APLICADA pelo gerente via MCP, versão 📊 `20261013003843`. VERIFY do objeto 📊
 `4·4·1·1·1·1·2·1·1·1·1·2·0` (igual ao esperado); VERIFY comportamental: 10/10 recusas e aceites certos, 0 linha restante. ROLLBACK escrito
-no cabeçalho e RECUSA se houver dado (📊 há: 6 linhas `canario=true` da AutoFleet).
+no cabeçalho e RECUSA se houver dado (📊 há: 8 linhas `canario=true` da AutoFleet (SELECT 13/10)).
 
 ## 5. Testes
 📊 os 8 `test_spec131a_*` + o guarda dos mil linhas: ver §5.1. Mutações vermelhas (cada uma restaurada por cópia): (1) item some ·

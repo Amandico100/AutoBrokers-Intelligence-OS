@@ -60,7 +60,7 @@ WhatsApp de trabalho" no perfil é só o NÚMERO (para o cliente responder ao do
 | B4 | link direto ao cálculo no Agger | 📊 rota `/cotacao/:ramo/resultados/:idIntegracao` no bundle; clique não provado | "Abrir no Agger" usa o link; texto "se pedir login, entre e volte" |
 | B5 | telefone do cliente | 📊 `/renovacoes.fone` ≥ 10 dígitos: 97,6 % e 80,3 % | buscado NA HORA; sem ele, só "Copiar a mensagem" |
 | B6 | config de Serviços / `renovacao-maxima` instalada | 📊 0 e 0 | redirect sem migração de dado |
-| B7 | telefone verificado do comercial | 📊 0 verificados; `users_v2.phone` 10/10 membros, sem verificação | "Meu WhatsApp de trabalho" confirmado pela pessoa (D-131-41) |
+| B7 | telefone verificado do comercial | 📊 0 verificados; `users_v2.phone` 10/10 membros, sem verificação | "Meu WhatsApp de trabalho" confirmado pela pessoa (D-131-43) |
 | B8 | o estado da renovação na tela | 📊 a 131-A grava `renovacoes` + eventos; 0 corretoras com o aplicativo instalado | instalar = ligar a madrugada; o botão Ligar mostra o "Como começar" antes |
 
 ## 3. Dados — migration `backend/supabase/migrations/20261014_01_spec131b_catalogo.sql` (G1; global, expand-only)
@@ -127,12 +127,12 @@ API: `GET /api/renovacoes?escopo=minhas|todas&estado=&ramo=&de=&ate=&seguradora=
 ## 7. Decisões desta SPEC
 | # | decisão | nota | contra |
 |---|---|---|---|
-| D-131-38 | A loja melhora NA GALERIA QUE EXISTE (mesma rota), já nesta SPEC, com o card novo para TODOS os aplicativos (Founder 12/10) | 90 | página nova 45 · só depois 60 |
-| D-131-39 | Galeria híbrida (capa gerada + ícone lucide; capa do Founder por `cover_url`) | 90 | capa em tudo 72 · só ícone 68 |
-| D-131-40 | Três páginas por momento (renovação · cotação · QCM), copy nunca cruzada | F | — |
-| D-131-41 | "Meu WhatsApp de trabalho" = só o número, confirmado pela pessoa; nunca pareado aqui; atendimento, QCM e trabalho nunca trocados | 88 | parear já 40 |
-| D-131-42 | "Quero renovar": dono confirmado → corretora → sem botão ("responda a mensagem que recebeu"); a página publica sem número da corretora quando o envio é pelo comercial | 85 | recusar publicar 50 |
-| D-131-43 | Tokens globais intocados; contraste corrigido nas telas novas; a correção global vira proposta | 80 | mexer em tudo agora 50 |
+| D-131-40 | A loja melhora NA GALERIA QUE EXISTE (mesma rota), já nesta SPEC, com o card novo para TODOS os aplicativos (Founder 12/10) | 90 | página nova 45 · só depois 60 |
+| D-131-41 | Galeria híbrida (capa gerada + ícone lucide; capa do Founder por `cover_url`) | 90 | capa em tudo 72 · só ícone 68 |
+| D-131-42 | Três páginas por momento (renovação · cotação · QCM), copy nunca cruzada | F | — |
+| D-131-43 | "Meu WhatsApp de trabalho" = só o número, confirmado pela pessoa; nunca pareado aqui; atendimento, QCM e trabalho nunca trocados | 88 | parear já 40 |
+| D-131-44 | "Quero renovar": dono confirmado → corretora → sem botão ("responda a mensagem que recebeu"); a página publica sem número da corretora quando o envio é pelo comercial | 85 | recusar publicar 50 |
+| D-131-45 | Tokens globais intocados; contraste corrigido nas telas novas; a correção global vira proposta | 80 | mexer em tudo agora 50 |
 
 ## 8. O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS
 1. **https://www.raycast.com/store** · faz: loja de extensões com ícone forte, nome, frase e instalar em 1 clique · modelamos: o card e o

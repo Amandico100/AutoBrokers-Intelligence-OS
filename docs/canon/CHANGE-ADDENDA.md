@@ -4092,3 +4092,46 @@ executar com o prompt da proposta (decidida antes pelo gerente com nota 92, D-13
 (`specs/SPEC-130-B-a-ficha-unica-da-apolice.md`, `reports/SPEC-130-B-EXECUTION-REPORT.md`): 📊 régua 11/32 → 24/28 com PDF; o anexo do
 WhatsApp e do chat pelo mesmo leitor; nenhum leitor novo. ⚠️ O que NÃO coube: a meta de COND ≥ 7/8 ficou em 6/8 (P-130B-01) e o 2º leitor
 `/attendance/media/document-extract` continua fora da ficha (P-130B-07).
+
+
+## 13/10/2026 · SPEC-131-A · o PERFIL DO SEGURADO montado da InfoCap (F5) — ESSENCIAL · ✅ EXECUTADA (gerente)
+**Problema:** a SPEC-131-A (§5) montava o pedido da renovação pela ficha da apólice (`de_apolice`) e não previa o perfil do segurado
+(nascimento, sexo, condutor, pernoite, sinistro). **Evidência:** 📊 canário da F4 (13/10): **0 pedidos** — todo AUTO real ficou
+`pendente(falta_dado)` com 16 campos faltando (juiz: o dia 12/10 gravou "completo 100 %" com 0 calculadas). 📊 F5 (12/10, 10 AUTO reais): a
+InfoCap não guarda condutor (0/10) nem CEP de pernoite (0/10); o endereço do cadastro é residencial em 10/10. **Consequência:** nasceu
+`multicalculo/perfil_da_renovacao.py`: o perfil vem do cadastro e dos itens da InfoCap; o que é suposto (condutor = segurado, habilitação =
+idade − 18 com teto 10, pernoite = endereço residencial, sexo pelo nome na régua do IBGE, padrão da tela para estado civil/uso/garagem) vai
+marcado "não conferido" para o comercial conferir antes de enviar. 📊 fecha o perfil de 10 de 15 AUTO (relatório §1). Pendências:
+P-131A-06 e P-129B-05. **Autorização:** BLOCKER do outcome (sem ele, 📊 0 de 2 AUTO reais calculavam, relatório §8); executada pelo gerente
+dentro do escopo (montar o pedido da renovação), sem motor paralelo — o perfil entra pelo `de_apolice(…, perfil=)` que já existia.
+
+## 13/10/2026 · SPEC-131-A · o COMBUSTÍVEL: os 7 códigos do Agger e a placa supre (F6) — ESSENCIAL · ✅ EXECUTADA (gerente)
+**Problema:** a SPEC não previa o combustível; o montador mandava só o flex. **Evidência:** 📊 canário da F5 (13/10): 2 pedidos,
+**64/64 recusas** "É necessário informar o tipo de combustível" (32 + 32, conferido pelo juiz). 📊 F6: a lista do campo lida no bundle do
+app — GASOLINA 1 · ALCOOL 2 · DIESEL 3 · ELÉTRICO 5 · FLEX 6 · TETRAFUEL 10 · HÍBRIDO 11 (controle FLEX = 6 em 18/18 corpos gravados).
+**Consequência:** `perfil_da_renovacao.COMBUSTIVEL_NO_AGGER` traduz o rótulo da InfoCap; sem rótulo, a placa (FIPE) supre; sem placa, recusa
+ANTES de enviar (`veiculo_sem_combustivel`). 📊 depois: 0/50 recusas de combustível e **2 renovações calculadas**. O mapa amplia o do canal
+(133-A) sem mudar o flex (o red team não achou regressão). Fecha a parte "combustível" da P-129B-05. **Autorização:** BLOCKER do outcome;
+executada pelo gerente dentro do escopo.
+
+## 13/10/2026 · SPEC-131-A · o motor ganhou `ignorar_espera`, só junto de `somente_pedidos` — ESSENCIAL · ✅ EXECUTADA (gerente)
+**Problema:** o canário precisava rodar fora da madrugada real (D-131-31) sem que o motor de PRODUÇÃO tocasse nos pedidos dele, e sem que
+o motor do canário pegasse a fila inteira. **Evidência:** `backend/portal_worker/multicalculo/motor.py:401–408` — `ignorar_espera=True`
+sem `somente_pedidos` levanta `ValueError("ignorar_espera só com somente_pedidos (o canário): nunca a fila inteira")`; só
+`scripts/canario_madrugada_renovacao.py` o liga (red team, grep). 📊 Isolamento: 6/6 cálculos do canário com o dono do processo do canário,
+0 de outro (relatório §1). **Consequência:** nenhum caminho de produção pula a espera durável; o canário de madrugada continua possível
+depois do Implantar. **Autorização:** executada pelo gerente (instrumento de prova, não comportamento novo do produto).
+
+## 13/10/2026 · SPEC-131-A · a fórmula da completude muda: `sem_conexao` não conta como feito (D-131-37) — ESSENCIAL · ✅ EXECUTADA (gerente)
+**Problema:** a SPEC §4 contava todo `pendente` com motivo como feito. **Evidência:** juiz B1/P9 e red team P2 — 📊 o dia 12/10 do canário
+gravou "completo · 100 %" com 0 calculadas; com a InfoCap fora ou o dono sem conexão, o dia saía verde sem trabalho feito. A confirmação
+(g) pediu o registro aqui. **Consequência:** `pendente(sem_conexao)` sai do numerador; InfoCap vazia com itens do período = dia
+`sem_conexao`; o aviso traz sempre "N calculadas de M cotáveis"; `precisa_de_voce` continua contando (pendência com motivo visível).
+**Autorização:** decisão do gerente no conserto (D-131-37); o RT-P2 a punha como "decisão do Founder" — ele pode revê-la, a régua mais
+estrita é a que não mente.
+
+## 13/10/2026 · SPEC-131-A · a licença do Agger lida de `/usuario/current` — VALIOSA · ✅ EXECUTADA (gerente)
+**Problema:** a D-131-36 lia a licença do corpo do `POST /usuario/login`. **Evidência:** 📊 juiz B3: 0 eventos `licenca_agger` com logins
+reais; o BLOCO 0 mediu a data em `GET /usuario/current` (AutoFleet: licença 20/10, `dataLimiteCalculo` 27/10). **Consequência:** a sessão
+lê `/usuario/current` e `/usuario/login/pdocs` interceptados (ou UM `fetch` na página aberta, nunca `goto`); só as datas são extraídas.
+⚠️ Sem prova ao vivo até o Implantar (P-131A-02, T-160). **Autorização:** conserto do blocker B3, dentro do escopo.
