@@ -120,7 +120,7 @@ class IntelligenceTick:
         agora = agora or _agora()
         resultado = {"deteccao": 0, "briefings": 0, "garimpo": 0,
                      "medicao": 0, "cluster": 0, "sombra_sinistros": 0,
-                     "censo_do_mercado": 0, "expirados": 0}
+                     "censo_do_mercado": 0, "expirados": 0, "renovacao": 0}
 
         empresas = self._empresas()
         for empresa in empresas:
@@ -143,6 +143,7 @@ class IntelligenceTick:
                                  self._janela(agora, INTERVALO_CLAIMS_SHADOW_HORAS)):
                     resultado["sombra_sinistros"] += 1
                 resultado["briefings"] += self._briefings(company_id, agora)
+                resultado["renovacao"] += self._renovacoes(company_id, agora)
             except Exception as exc:  # noqa: BLE001
                 # Uma corretora com problema não pode travar o tick das outras.
                 logger.warning("[Tick] corretora %s falhou: %s",
@@ -229,7 +230,8 @@ class IntelligenceTick:
 
     def _agendar(self, company_id: str, workflow_key: str, titulo: str,
                  janela: str, *, escopo: str = "tenant",
-                 payload: Optional[dict] = None) -> bool:
+                 payload: Optional[dict] = None, chave: Optional[str] = None,
+                 outcome_type: str = "intelligence.cycle") -> bool:
         """Cria o Work Run se ainda não existe para esta janela."""
         from ..work.runs import WorkRunService
 
@@ -251,15 +253,15 @@ class IntelligenceTick:
         # ⚠️ E a chave do `cluster_demand` muda junto, porque ele usa o mesmo
         # molde de plataforma: ele roda UMA vez a mais na janela da implantacao,
         # e nunca mais.
-        chave = (f"intel:{escopo}:{workflow_key}:{janela}"
-                 if escopo == "plataforma"
-                 else f"intel:{escopo}:{workflow_key}:{company_id}:{janela}")
+        chave = chave or (f"intel:{escopo}:{workflow_key}:{janela}"
+                          if escopo == "plataforma"
+                          else f"intel:{escopo}:{workflow_key}:{company_id}:{janela}")
         try:
             r = WorkRunService(self._raw).criar(
                 company_id=company_id,
                 source_type="system",
                 source_id=workflow_key,
-                outcome_type="intelligence.cycle",
+                outcome_type=outcome_type,
                 outcome_title=titulo,
                 workflow_key=workflow_key,
                 idempotency_key=chave,
@@ -289,6 +291,21 @@ class IntelligenceTick:
             janela = (agora.strftime("%Y-%m-%d") if cadencia == "daily"
                       else agora.strftime("%Y-W%W"))
             if self._agendar(company_id, workflow, titulo, janela):
+                criados += 1
+        return criados
+
+    def _renovacoes(self, company_id: str, agora: datetime) -> int:
+        """SPEC-131-A: a madrugada da renovação — os 5 passos do dia, no fuso da corretora, só com o aplicativo de
+        Renovação ligado. 🔴 A chave `renov:<passo>:<company>:<dia>` é a idempotência: dois ticks no mesmo minuto,
+        dois workers ou um restart dentro da janela de 1 h = UM run por passo por dia. O tick só ENFILEIRA."""
+        from ..multicalculo import madrugada as M
+
+        criados = 0
+        for passo, dia in M.passos_devidos(self.db, company_id, agora):
+            if self._agendar(company_id, M.WORKFLOW_DO_PASSO[passo], M.TITULO_DO_PASSO[passo], dia,
+                             payload={"dia": dia, "passo": passo},
+                             chave=f"renov:{passo}:{company_id}:{dia}",
+                             outcome_type="renovacao.madrugada"):
                 criados += 1
         return criados
 
