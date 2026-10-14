@@ -59,7 +59,7 @@
 //   [7]  D.1   /api/conversations: limite 60 + cursor + has_more
 //   [8]  S.4   /api/n8n: sessão vence; sem sessão → 401
 //   [9]  C.2   page.tsx: client_request_id por envio; sem companyId/userId/agentId;
-//              sem /api/messages para texto; sem UCP; showAgentSelector={false}
+//              sem /api/messages para texto; sem UCP; sem seletor de agente no composer
 //  [10]  C.3   page.tsx: "Tentar de novo" reenvia o MESMO client_request_id
 //  [11]  C.1   lerEventos: seq, lacuna (transport:'gap'), protocolo, [DONE]
 //  [12]  C.1   o estado do Turno: submitting→streaming→complete; policy sem content
@@ -118,7 +118,7 @@ export const MUTACOES = [
     o_que: 'reintroduzir a heurística `ucp_` no texto do stream',
     reprova: '[9] (estágio parseado do conteúdo, não do evento)' },
   { arquivo: 'app/dashboard/chat/page.tsx',
-    o_que: 'showAgentSelector={true}',
+    o_que: 'o composer volta a receber o seletor de agente (onAgentChange=… / showAgentSelector={true})',
     reprova: '[9] (o seletor de agente do painel volta — R11)' },
   { arquivo: 'app/dashboard/chat/page.tsx',
     o_que: '"Tentar de novo" gera um novo client_request_id',
@@ -553,7 +553,7 @@ function silenciandoSincrono(fn) {
 /**
  * Monta `ChatPage` de VERDADE (o mesmo `app/dashboard/chat/page.tsx` do
  * produto), chama a função UMA vez, e devolve `handleSendMessage` — extraído
- * do `onSendMessage` que o composer (`<InputArea>`) recebe, exatamente a
+ * do `onSendMessage` que o composer (`<Composer>`, SPEC-132-A) recebe, exatamente a
  * mesma função que um clique real chamaria.
  */
 function montarChatPage({ respostasFetch } = {}) {
@@ -563,11 +563,12 @@ function montarChatPage({ respostasFetch } = {}) {
   const resolver = (id) => {
     if (id === 'react') return hooks;
     if (id === '@/components/chat/ChatWelcome') return { ChatWelcome: marcador('ChatWelcome') };
-    if (id === '@/components/chat/ChatShortcutCards') return { ChatShortcutCards: marcador('ChatShortcutCards') };
     if (id === '@/components/chat/LinhaDeAtividade') return { LinhaDeAtividade: marcador('LinhaDeAtividade') };
     if (id === '@/components/chat/AvisoDoTurno') return { AvisoDoTurno: marcador('AvisoDoTurno') };
     if (id === '@/components/chat/VoltarAoFim') return { VoltarAoFim: marcador('VoltarAoFim') };
-    if (id === '@/components/InputArea') return marcador('InputArea'); // default import
+    // SPEC-132-A — o composer novo (era `@/components/InputArea`, apagado). `ComposerHandle` e os tipos do
+    // composer são `import type`: o transpile os apaga, eles nunca chegam aqui.
+    if (id === '@/components/chat/composer/Composer') return { Composer: marcador('Composer') };
     if (id === '@/components/MessageBubble') return { MessageBubble: marcador('MessageBubble') };
     if (id === '@/components/TypingIndicator') return { TypingIndicator: marcador('TypingIndicator') };
     if (id === '@/lib/chat/protocolo') return carregarTS('lib/chat/protocolo.ts', () => undefined);
@@ -1029,17 +1030,30 @@ function analisarPageSemMessagesParaTexto(chatFonte) {
   }
   return problemas;
 }
-console.log('\n[9] C.2 — page.tsx: client_request_id por envio; sem companyId/userId/agentId; sem UCP; showAgentSelector={false}');
+console.log('\n[9] C.2 — page.tsx: client_request_id por envio; sem companyId/userId/agentId; sem UCP; sem seletor de agente');
 const CHAT_FONTE = fonte('app/dashboard/chat/page.tsx');
 devendo(analisarPageStream(CHAT_FONTE), 'o envio leva só client_request_id (uuid); zero companyId/userId/agentId; zero UCP', 'C.2');
 devendo(analisarPageSemMessagesParaTexto(CHAT_FONTE), 'page.tsx não grava o texto por /api/messages', 'A.2');
-// showAgentSelector={false} é INVARIANTE — hoje já está correto (deve ficar VERDE)
-function analisarSeletor(chatFonte) {
+// R11 é INVARIANTE: o seletor de agente do painel NÃO volta ao composer.
+//
+// 🔴 CLAUDE.md §9.3 — a lição MIGRA, não morre. Até a SPEC-131 ela era a prop `showAgentSelector={false}` no
+// `<InputArea>`. A SPEC-132-A apagou o InputArea: o composer novo (`components/chat/composer/`) NÃO TEM seletor de
+// agente, então a prop deixou de existir — exigir a string antiga seria exigir uma verdade vencida. O que se
+// afirma agora é o mesmo invariante, mais forte: a página não passa NADA de seletor (nem a prop antiga ligada, nem
+// `onAgentChange`/`agents=`) e o composer não declara seletor nenhum.
+function fontesDoComposer() {
+  const dir = path.join(RAIZ, 'components/chat/composer');
+  if (!fs.existsSync(dir)) return '';
+  return fs.readdirSync(dir).filter((f) => /\.tsx?$/.test(f)).map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n');
+}
+function analisarSeletor(chatFonte, composerFonte = '') {
   const problemas = [];
-  if (!/showAgentSelector=\{false\}/.test(chatFonte)) problemas.push('showAgentSelector={false} sumiu — é invariante (R11)');
+  if (/showAgentSelector=\{true\}/.test(chatFonte)) problemas.push('showAgentSelector={true} — o seletor de agente do painel voltou (R11)');
+  if (/onAgentChange\s*=|\bagents=\{/.test(chatFonte)) problemas.push('page.tsx passa o seletor de agente (onAgentChange/agents) ao composer — R11');
+  if (/onAgentChange|agent-dropdown|showAgentSelector/.test(composerFonte)) problemas.push('o composer (components/chat/composer/) declara um seletor de agente — R11');
   return problemas;
 }
-checar(analisarSeletor(CHAT_FONTE), 'showAgentSelector={false} continua (invariante R11)');
+checar(analisarSeletor(CHAT_FONTE, fontesDoComposer()), 'o composer não tem seletor de agente (invariante R11)');
 
 // ── [10] C.3 · "Tentar de novo" reenvia o MESMO client_request_id ─────────────
 function analisarRetry(chatFonte) {
@@ -1673,6 +1687,8 @@ controle(analisarN8N401({ resposta: { status: 400 } }), '[8] n8n sem sessão res
 controle(analisarPageStream("await fetch('/api/chat/stream', { body: JSON.stringify({ chatInput, companyId: companyId, userId: userId, agentId }) });\naccumulated.match(/\\{\"type\"\\s*:\\s*\"ucp_/);"), '[9] page com companyId no fetch e a heurística ucp_');
 controle(analisarPageSemMessagesParaTexto("saveMessage(convId, 'user', message, 'text');"), '[9] page gravando o texto por /api/messages');
 controle(analisarSeletor('showAgentSelector={true}'), '[9] showAgentSelector={true}');
+controle(analisarSeletor('<Composer onAgentChange={handleAgentChange} agents={agents} />'), '[9] page passando o seletor de agente ao Composer');
+controle(analisarSeletor('', 'export function Composer({ onAgentChange }) {}'), '[9] composer declarando um seletor de agente');
 
 // [10] PAR: retry gerando um novo uuid.
 controle(analisarRetry("<AvisoDoTurno onRetry={() => { const id = crypto.randomUUID(); enviar(id); }} />"), '[10] "Tentar de novo" gerando um novo client_request_id');
