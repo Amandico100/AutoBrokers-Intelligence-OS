@@ -1221,6 +1221,24 @@ CSS_DA_RENOVACAO = """
 @media print{.hx.on{box-shadow:none;border:1.5px solid #000}.pdf{display:none}}
 """
 
+#: SPEC-132-B (E · D-132B-08) — a faixa das páginas de EXEMPLO (`modelo["exemplo"] is True`, só o script
+#: `scripts/publicar_exemplo_da_pagina.py` a liga): o MESMO texto e o MESMO visual da faixa da venda
+#: (`proposta_cotacao_html.CSS_DA_VENDA`, `.exemplo` — o teste da fatia E confere as duas regras). Sem a bandeira, nem
+#: um byte da renovação muda (o retrato byte a byte da B2).
+FAIXA_DE_EXEMPLO = '<div class="exemplo" role="note">Exemplo — dados fictícios</div>'
+CSS_DA_FAIXA_DE_EXEMPLO = """
+.exemplo{background:var(--surface-2);color:var(--ink);border-bottom:1px solid var(--line);font-size:13px;line-height:1.3;
+  text-align:center;padding:8px 16px;font-weight:550}
+@media print{
+  .exemplo{border:1px solid #888}
+}
+"""
+
+
+def e_exemplo(modelo: Any) -> bool:
+    """A página é um EXEMPLO com dados fictícios (D-132B-08)? Só com `True` explícito."""
+    return isinstance(modelo, dict) and modelo.get("exemplo") is True
+
 
 def _dif_de_hoje(novo: Any, hoje: Any) -> Optional[str]:
     """"R$ 230 a mais por ano (+3 %)" — o que mudou do seguro de hoje para a renovação, em R$ e em %."""
@@ -1494,6 +1512,9 @@ def render_renovacao(modelo: dict) -> str:
                   f'<span class="count" id="count" aria-live="polite">1 de {n}</span>'
                   f'<button type="button" id="next" aria-label="Próxima opção">{ICO["right"]}</button></div></div>')
     rows = 5 + len(topo)
+    # D-132B-08: a faixa só nas páginas de exemplo — sem a bandeira as duas são "" (nenhum byte a mais)
+    estilo_do_exemplo = f"<style>{CSS_DA_FAIXA_DE_EXEMPLO}</style>" if e_exemplo(modelo) else ""
+    faixa_do_exemplo = FAIXA_DE_EXEMPLO + "\n" if e_exemplo(modelo) else ""
     return f"""<!doctype html>
 <html lang="pt-BR" class="no-js">
 <head>
@@ -1514,10 +1535,10 @@ def render_renovacao(modelo: dict) -> str:
 <style>{CSS_DA_PROPOSTA}</style>
 <style>{AP.css_do_tema(anf)}
 :root{{--n:{max(n, 1)}}}</style>
-<style>{CSS_DA_RENOVACAO}</style>
+<style>{CSS_DA_RENOVACAO}</style>{estilo_do_exemplo}
 </head>
 <body>
-<header class="wrap top">{marca}</header>
+{faixa_do_exemplo}<header class="wrap top">{marca}</header>
 <main>
 <div class="wrap hero">
 <h1>{h1}</h1>
