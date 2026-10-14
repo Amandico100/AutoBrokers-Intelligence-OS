@@ -184,17 +184,21 @@ def mundo(ambiente, monkeypatch):
     from app.services.multicalculo import mensagem as MSG
     from app.services.multicalculo import proposta as PROP
 
-    async def publicar_cotacao(company_id, pedido_id, *, pessoa_user_id, apolice_atual=None, db=None):
+    async def publicar_cotacao(company_id, pedido_id, *, pessoa_user_id, apolice_atual=None, db=None,
+                               primeiro_nome=None):
         m.publicacoes.append({"company_id": company_id, "pedido_id": pedido_id, "pessoa_user_id": pessoa_user_id,
-                              "apolice_atual": apolice_atual})
+                              "apolice_atual": apolice_atual, "primeiro_nome": primeiro_nome})
         ofertas = sorted((o for o in m.banco.linhas("multicalculo_ofertas") if o["pedido_id"] == pedido_id),
                          key=lambda o: float(o["premio_total"]))
         assert ofertas, "a publicação foi chamada sem oferta no banco"
-        um = lambda o, i: {"id": i, "seguradora": o["seguradora"], "premio_anual": float(o["premio_total"]),  # noqa
-                           "parcelas": {"vezes": 10, "valor": round(float(o["premio_total"]) / 10, 2)},
-                           "franquia": {"valor": o.get("franquia_valor")}}
-        resumo = {"opcoes": [um(ofertas[len(ofertas) // 2], "recomendada"), um(ofertas[0], "mais_em_conta"),
-                             um(ofertas[-1], "mais_completa")]}
+        # 🔴 B4: o MESMO formato do `resumo` REAL da B2 (`proposta.resumo_da_cotacao`) — o fio prova com o real
+        um = lambda o, i, papel: {"id": i, "papel": papel, "seguradora": o["seguradora"],  # noqa: E731
+                                  "parcela": {"vezes": 10, "valor": round(float(o["premio_total"]) / 10, 2),
+                                              "sem_juros": True},
+                                  "a_vista": float(o["premio_total"]), "franquia": o.get("franquia_valor")}
+        resumo = {"opcoes": [um(ofertas[len(ofertas) // 2], "recomendada", "Recomendada"),
+                             um(ofertas[0], "mais_em_conta", "Mais em conta"),
+                             um(ofertas[-1], "mais_completa", "Mais completa")]}
         return {"token": "tok" + pedido_id[:8], "url": LINK_BASE + "tok" + pedido_id[:8],
                 "artifact_id": str(uuid4()), "resumo": resumo}
 
@@ -246,7 +250,8 @@ def guarda_o_fio(m: Mundo) -> dict:
     assert "| Recomendada |" in texto and "| Mais em conta |" in texto and "| Mais completa |" in texto
     assert f"Apresentação para o cliente: {LINK_BASE}" in texto and "**Mensagem para o cliente**" in texto
     assert "Agger da corretora" not in texto, "aviso de conta da corretora com o Agger da pessoa"
-    assert m.publicacoes == [{"company_id": a, "pedido_id": ped["id"], "pessoa_user_id": uid, "apolice_atual": None}]
+    assert m.publicacoes == [{"company_id": a, "pedido_id": ped["id"], "pessoa_user_id": uid, "apolice_atual": None,
+                              "primeiro_nome": NOME.split()[0]}], "a página não recebeu o primeiro nome do CLIENTE"
     assert m.banco.run(run["id"])["status"] == "completed"
     return {"a": a, "uid": uid, "sess": sess, "conversa": conversa, "pedido": ped, "saidas": [r1, r2, texto],
             "mensagem": msgs[0]}
