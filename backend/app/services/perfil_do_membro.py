@@ -12,6 +12,8 @@ D-131-41: o "Meu WhatsApp de trabalho" é SÓ o número, confirmado pela própri
 (`company_members.whatsapp_trabalho_e164` + `whatsapp_trabalho_confirmado_em`, por corretora). ⛔ Nada em
 `integrations`, nenhum pareamento: o número de ATENDIMENTO da corretora e o do QUEM COBRA MENOS são outros e não mudam.
 Só a própria pessoa grava o dela (nem o admin grava o número de outra pessoa).
+SPEC-132-C (D-132C-02): a VERIFICAÇÃO por posse (`whatsapp_trabalho_verificado_em`) é escrita só por
+`atalho.verificacao.consumir_codigo`; aqui ela é LIDA e APAGADA quando o número muda ou sai.
 D-131-08: a ausência aponta OUTRA pessoa ATIVA da MESMA corretora (`membro_ausencias`, CHECKs no banco também). O cálculo
 continua no Agger do dono; o aviso vai ao substituto (`qual_agger.substituto_ativo`, o leitor). A pessoa cria a dela; o
 admin da corretora pode criar a de outra pessoa.
@@ -170,37 +172,82 @@ def gravar_whatsapp_trabalho(db: Any, company_id: Any, user_id: Any, *, numero: 
     if not _e_membro_ativo(db, cid, uid):
         raise Recusa("Você não está ativo na equipe desta corretora.")
     quando = (agora or datetime.now(timezone.utc)).isoformat()
-    feito = _dados(_t(db, "company_members")
-                   .update({"whatsapp_trabalho_e164": e164, "whatsapp_trabalho_confirmado_em": quando})
-                   .eq("company_id", cid).eq("user_id", uid).execute())
+    patch: Dict[str, Any] = {"whatsapp_trabalho_e164": e164, "whatsapp_trabalho_confirmado_em": quando}
+    mudou = _numero_atual(db, cid, uid) != e164
+    if mudou:
+        # SPEC-132-C (D-132C-02): a verificação por POSSE é do número; número novo = verificação apagada
+        patch[COLUNA_VERIFICADO] = None
+    feito = _atualizar_membro(db, cid, uid, patch)
     if not feito:
         raise Recusa("Não achei o seu cadastro nesta corretora.")
-    return {"numero": e164, "confirmado_em": quando, "confirmado": True}
+    return {"numero": e164, "confirmado_em": quando, "confirmado": True,
+            **({"verificado_em": None, "verificado": False} if mudou else {})}
 
 
 def remover_whatsapp_trabalho(db: Any, company_id: Any, user_id: Any, *, por_user_id: Any) -> Dict[str, Any]:
     cid, uid = _uuid(company_id, "company_id"), _uuid(user_id, "user_id")
     _so_a_propria_pessoa(uid, por_user_id)
-    _t(db, "company_members").update({"whatsapp_trabalho_e164": None, "whatsapp_trabalho_confirmado_em": None}) \
-        .eq("company_id", cid).eq("user_id", uid).execute()
-    return {"numero": None, "confirmado_em": None, "confirmado": False}
+    _atualizar_membro(db, cid, uid, {"whatsapp_trabalho_e164": None, "whatsapp_trabalho_confirmado_em": None,
+                                     COLUNA_VERIFICADO: None})
+    return {"numero": None, "confirmado_em": None, "confirmado": False, "verificado_em": None, "verificado": False}
+
+
+#: SPEC-132-C — a coluna da verificação por posse (migration 20261014_03); escrita só por `atalho.verificacao`
+COLUNA_VERIFICADO = "whatsapp_trabalho_verificado_em"
+
+
+def _numero_atual(db: Any, cid: str, uid: str) -> Optional[str]:
+    linhas = _dados(_t(db, "company_members").select("user_id, company_id, whatsapp_trabalho_e164")
+                    .eq("company_id", cid).eq("user_id", uid).limit(1).execute())
+    linhas = [x for x in linhas if str(x.get("company_id")).lower() == cid and str(x.get("user_id")).lower() == uid]
+    return linhas[0].get("whatsapp_trabalho_e164") if linhas else None
+
+
+def _atualizar_membro(db: Any, cid: str, uid: str, patch: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """UPDATE no membro (company_id + user_id). Antes da migration 20261014_03 a coluna da verificação não existe: o
+    UPDATE é refeito sem ela (não há verificação a apagar), e o "Meu WhatsApp de trabalho" continua gravando."""
+    try:
+        return _dados(_t(db, "company_members").update(patch).eq("company_id", cid).eq("user_id", uid).execute())
+    except Exception as exc:  # noqa: BLE001
+        if COLUNA_VERIFICADO not in patch or COLUNA_VERIFICADO not in str(exc):
+            raise
+        logger.warning("[PERFIL] coluna da verificação ausente (%s) — gravado sem ela", type(exc).__name__)
+        resto = {k: v for k, v in patch.items() if k != COLUNA_VERIFICADO}
+        return _dados(_t(db, "company_members").update(resto).eq("company_id", cid).eq("user_id", uid).execute())
 
 
 def _whatsapp_do_membro(db: Any, company_id: str, user_id: str) -> Dict[str, Any]:
+    colunas = "user_id, company_id, whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em"
+
+    def _ler(cols: str) -> List[Dict[str, Any]]:
+        return _dados(_t(db, "company_members").select(cols)
+                      .eq("company_id", company_id).eq("user_id", user_id).limit(1).execute())
+
     try:
-        linhas = _dados(_t(db, "company_members")
-                        .select("user_id, company_id, whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em")
-                        .eq("company_id", company_id).eq("user_id", user_id).limit(1).execute())
+        try:
+            linhas = _ler(f"{colunas}, {COLUNA_VERIFICADO}")
+        except Exception as exc:  # noqa: BLE001 — antes da migration 20261014_03 (SPEC-132-C) a coluna não existe
+            logger.warning("[PERFIL] verificação do WhatsApp ilegível (%s)", type(exc).__name__)
+            linhas = _ler(colunas)
     except Exception as exc:  # noqa: BLE001 — antes da migration da G1 as colunas não existem
         logger.warning("[PERFIL] WhatsApp de trabalho ilegível (%s)", type(exc).__name__)
-        return {"numero": None, "confirmado_em": None, "confirmado": False, "disponivel": False}
+        return {"numero": None, "confirmado_em": None, "confirmado": False, "verificado_em": None,
+                "verificado": False, "disponivel": False}
     linhas = [x for x in linhas if str(x.get("company_id")).lower() == company_id
               and str(x.get("user_id")).lower() == user_id]
     m = linhas[0] if linhas else {}
     numero = m.get("whatsapp_trabalho_e164")
     confirmado_em = m.get("whatsapp_trabalho_confirmado_em")
+    verificado_em = m.get(COLUNA_VERIFICADO) if numero else None
     return {"numero": numero, "confirmado_em": confirmado_em, "confirmado": bool(numero and confirmado_em),
-            "disponivel": True}
+            "verificado_em": verificado_em, "verificado": bool(numero and verificado_em), "disponivel": True}
+
+
+def _atalho_whatsapp(db: Any) -> Dict[str, Any]:
+    """SPEC-132-C: o número do AutoBrokers já foi ligado pela plataforma? (sem ele, a tela esconde o botão)."""
+    from app.services.atalho.verificacao import numero_do_assistente
+
+    return {"disponivel": bool(numero_do_assistente(db))}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -310,6 +357,7 @@ def ler_perfil(db: Any, company_id: Any, user_id: Any, *, hoje: Optional[date] =
 
     return {
         "whatsapp_trabalho": _whatsapp_do_membro(db, cid, uid),
+        "atalho_whatsapp": _atalho_whatsapp(db),
         "ausencias": [_linha(a, "substituto_user_id") for a in minhas],
         "cubro": [_linha(a, "user_id") for a in cubro],
         "pessoas": [p for p in pessoas if p["user_id"] != uid],
