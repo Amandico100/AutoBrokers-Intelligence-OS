@@ -39,7 +39,7 @@ from typing import Any, Optional
 
 from app.services.work.runs import (CODIGO_EFEITO_INCERTO, CODIGO_ETAPA_NAO_VERIFICADA,
                                     ETAPA_NAO_VERIFICADA_VOLTA_EM_S, CancelamentoPedido,
-                                    EfeitoIncerto, EtapaNaoVerificada, Esperando)
+                                    Concluido, EfeitoIncerto, EtapaNaoVerificada, Esperando)
 
 logger = logging.getLogger(__name__)
 
@@ -508,7 +508,12 @@ class SmithWorker:
         if isinstance(resumo, Esperando):
             return
 
-        self.runs.concluir(run_id, company_id, resumo or "Trabalho concluído", lease_token=lease_token)
+        # SPEC-132-B (B4): o handler que devolve `Concluido` leva o que produziu ao `result_payload`.
+        resultado = None
+        if isinstance(resumo, Concluido):
+            resumo, resultado = resumo.resumo, resumo.resultado
+        self.runs.concluir(run_id, company_id, resumo or "Trabalho concluído", resultado=resultado,
+                           lease_token=lease_token)
 
     def _fechar_cancelado(self, run_id: str, company_id: str, lease_token: Optional[str]) -> bool:
         """`running|cancelling|planning`(meu token) → `cancelled`, com o evento na linha do tempo."""
