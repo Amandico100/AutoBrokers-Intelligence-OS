@@ -4,7 +4,8 @@
     para_whatsapp(markdown)                                 o markdown do CORE → o texto que o WhatsApp mostra bem
     em_mensagens(texto, teto=3500)                          cortado em mensagens inteiras (parágrafo → linha → força)
     integracao_do_assistente(db)                            a integração ATIVA `purpose='assistente'` da plataforma
-    async enviar(integracao, telefone, mensagens)           manda pela integração DADA; para no 1º que falhar
+    async enviar(integracao, telefone, mensagens, *, db)    manda pela integração DADA; para no 1º que falhar —
+                                                            o CINTO ÚNICO da saída: anti-laço + teto de envios do dia
     async enviar_ao_membro(db, *, company_id, user_id, texto)   a C3 chama (o resultado da cotação pelo WhatsApp)
     async avisar_pelo_atalho_se_for_o_caso(db, *, company_id, conversation_id, texto_markdown)   C3: a conversa é do
                                                             atalho? → `enviar_ao_membro` ao dono dela
@@ -18,6 +19,11 @@ de 300 caracteres. O corte em ≤ 💭 3.500 é feito AQUI, por parágrafo, para
 🔴 A integração de saída é SEMPRE a do assistente (a que recebeu, ou a achada por `integracao_do_assistente`) —
 nunca "qualquer integração ativa da empresa da plataforma": a mesma empresa tem o número do QCM, e responder ao
 corretor pelo número do QCM (ou vice-versa) é a mutação 4 ao contrário.
+🔴 O ANTI-LAÇO VALE NA SAÍDA (RT-132C-01): `enviar` recusa o destino que é número de uma INSTÂNCIA do produto
+(`entrada.numero_do_produto` — linha de atendimento/observer de QUALQUER corretora, o QCM, o próprio assistente, um
+destino de suporte). O membro que verificou o celular e DEPOIS o pareou como linha da corretora não recebe nada —
+nem a volta da cotação. E toda mensagem que sai conta no teto do dia por telefone (`estado.reservar_envios`, P2).
+Sem `db` não há como conferir: nada sai (fail-closed).
 ⛔ Nenhum telefone em log (só `mascarar`); nenhum conteúdo em log.
 """
 from __future__ import annotations
@@ -268,9 +274,13 @@ def _mascarar(telefone: Any) -> str:
     return mascarar(telefone)
 
 
-async def enviar(integracao: Dict[str, Any], telefone: Any, mensagens: Union[str, Sequence[str]]) -> int:
+async def enviar(integracao: Dict[str, Any], telefone: Any, mensagens: Union[str, Sequence[str]], *,
+                 db: Any = None) -> int:
     """Manda as mensagens ao telefone pela integração DADA (a do assistente). Devolve quantas saíram; para na 1ª
-    que falhar (uma resposta pela metade é melhor que uma fora de ordem). Nunca levanta."""
+    que falhar (uma resposta pela metade é melhor que uma fora de ordem). Nunca levanta.
+
+    O cinto único da SAÍDA, nesta ordem: integração do assistente · destino que NÃO é instância do produto
+    (anti-laço, RT-132C-01) · o teto de envios do dia deste telefone (P2). `db` ausente → nada sai."""
     from app.services.atalho.verificacao import PURPOSE_DO_ASSISTENTE
     from app.services.canal.repositorio import canonico
 
@@ -282,6 +292,17 @@ async def enviar(integracao: Dict[str, Any], telefone: Any, mensagens: Union[str
     if str(integracao.get("purpose") or "") != PURPOSE_DO_ASSISTENTE:
         # o cinto: o atalho nunca fala por outro número (atendimento, observer, QCM)
         logger.error("[ATALHO] envio recusado: a integração não é a do assistente")
+        return 0
+    if db is None:
+        logger.error("[ATALHO] envio recusado: sem banco para conferir o anti-laço e o teto")
+        return 0
+    from app.services.atalho import estado as EST
+    from app.services.atalho.entrada import numero_do_produto
+
+    if await asyncio.to_thread(numero_do_produto, db, tel):
+        logger.warning("[ATALHO] envio recusado: o destino (%s) é uma instância do produto — anti-laço", _mascarar(tel))
+        return 0
+    if not await asyncio.to_thread(EST.reservar_envios, db, tel, len(textos)):
         return 0
     from app.services.whatsapp_service import get_whatsapp_service
 
@@ -303,9 +324,9 @@ async def enviar(integracao: Dict[str, Any], telefone: Any, mensagens: Union[str
     return saiu
 
 
-async def enviar_texto(integracao: Dict[str, Any], telefone: Any, markdown: Any) -> int:
+async def enviar_texto(integracao: Dict[str, Any], telefone: Any, markdown: Any, *, db: Any = None) -> int:
     """`para_whatsapp` → `em_mensagens` → `enviar`. O caminho único da resposta do chat."""
-    return await enviar(integracao, telefone, em_mensagens(para_whatsapp(markdown)))
+    return await enviar(integracao, telefone, em_mensagens(para_whatsapp(markdown)), db=db)
 
 
 def _telefone_verificado(db: Any, company_id: str, user_id: str) -> Optional[str]:
@@ -337,7 +358,7 @@ async def enviar_ao_membro(db: Any, *, company_id: Any, user_id: Any, texto: Any
         integracao = await asyncio.to_thread(integracao_do_assistente, db)
         if not integracao:
             return 0
-        return await enviar_texto(integracao, telefone, texto)
+        return await enviar_texto(integracao, telefone, texto, db=db)
     except Exception as erro:  # noqa: BLE001
         logger.error("[ATALHO] envio ao membro falhou (%s)", type(erro).__name__)
         return 0
@@ -346,8 +367,10 @@ async def enviar_ao_membro(db: Any, *, company_id: Any, user_id: Any, texto: Any
 # =====================================================================================================================
 # SPEC-132-C C3 — a volta do Work Run pelo WhatsApp (a Cotação Rápida que terminou depois do turno)
 # =====================================================================================================================
-#: 💭 quanto a volta pode segurar quem a chamou (o envio tem o próprio timeout; isto é o cinto)
+#: 💭 quanto a volta pode segurar quem a chamou (o passo do Work Run) — um TETO de verdade (thread daemon + join)
 TEMPO_DA_VOLTA_S = 60.0
+#: 💭 quanto a volta pode durar em 2º plano depois que o passo seguiu (o cinto da thread daemon)
+TEMPO_MAXIMO_DA_VOLTA_EM_2O_PLANO_S = 120.0
 _VOLTAS_EM_CURSO: set = set()
 
 
@@ -393,15 +416,24 @@ async def avisar_pelo_atalho_se_for_o_caso(db: Any, *, company_id: Any, conversa
 
 def avisar_pelo_atalho_sem_esperar(db: Any, *, company_id: Any, conversation_id: Any, texto_markdown: Any) -> None:
     """A ponte SÍNCRONA para quem grava a mensagem fora de um laço async (`cotacao.workflow.gravar_mensagem`, que roda
-    em `asyncio.to_thread`): sem laço nesta thread → roda a volta aqui mesmo (com teto); dentro de um laço (o gancho
-    de desistência do Work OS) → agenda no laço e segue. Nunca levanta."""
+    em `asyncio.to_thread`): sem laço nesta thread → a volta roda numa THREAD DAEMON com laço próprio e quem chamou
+    espera no máximo `TEMPO_DA_VOLTA_S` (P4 do juiz: `asyncio.run` + `wait_for` NÃO era teto — o `to_thread` do envio
+    segurava o passo do Work Run o tempo inteiro do provedor); passado o teto, o passo segue e o envio termina sozinho
+    (o id da mensagem é fixo: sem duplicidade). Dentro de um laço (o gancho de desistência do Work OS) → agenda no laço
+    e segue. Nunca levanta."""
     async def _com_teto() -> None:
         try:
             await asyncio.wait_for(avisar_pelo_atalho_se_for_o_caso(
                 db, company_id=company_id, conversation_id=conversation_id, texto_markdown=texto_markdown),
-                timeout=TEMPO_DA_VOLTA_S)
+                timeout=max(TEMPO_DA_VOLTA_S, TEMPO_MAXIMO_DA_VOLTA_EM_2O_PLANO_S))
         except Exception as erro:  # noqa: BLE001
             logger.error("[ATALHO] a volta pelo WhatsApp não terminou (%s)", type(erro).__name__)
+
+    def _na_thread() -> None:
+        try:
+            asyncio.run(_com_teto())
+        except Exception as erro:  # noqa: BLE001
+            logger.error("[ATALHO] a volta pelo WhatsApp falhou na thread (%s)", type(erro).__name__)
 
     try:
         try:
@@ -409,7 +441,13 @@ def avisar_pelo_atalho_sem_esperar(db: Any, *, company_id: Any, conversation_id:
         except RuntimeError:
             laco = None
         if laco is None:
-            asyncio.run(_com_teto())
+            import threading
+
+            fio_da_volta = threading.Thread(target=_na_thread, name="atalho-volta", daemon=True)
+            fio_da_volta.start()
+            fio_da_volta.join(timeout=max(0.0, float(TEMPO_DA_VOLTA_S)))
+            if fio_da_volta.is_alive():
+                logger.warning("[ATALHO] a volta pelo WhatsApp passou de %.1f s — segue em 2º plano", TEMPO_DA_VOLTA_S)
         else:
             tarefa = laco.create_task(_com_teto())
             _VOLTAS_EM_CURSO.add(tarefa)          # sem a referência o laço pode recolher a tarefa no meio
