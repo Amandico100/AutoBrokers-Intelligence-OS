@@ -104,6 +104,7 @@ def _cotacao(m, c, quem: str, *, estado: str = "pronta", nome: str = "Fulano Fic
             "outcome_title": "Cotação", "workflow_key": API.WORKFLOW, "thread_id": f"work:{c.id}:{run_id}",
             "input_fingerprint": "x",
             "idempotency_key": f"k-{pedido['id']}", "requester_user_id": quem, "status": "completed",
+            "source_id": pedido["id"],                    # o que o `workflow.abrir` grava (a aba lê por ele)
             "input_payload": {"pedido_id": pedido["id"], **run.get("entrada", {})},
             "result_payload": run.get("resultado", {})})
     return pedido
@@ -127,8 +128,9 @@ def mundo(monkeypatch):
 
     monkeypatch.setattr(API, "_decifrar", decifrar)
 
-    def publicar_cotacao(company_id, pedido_id, *, pessoa_user_id, apolice_atual=None, db=None):
-        # o contrato da B2 (SPEC §5): quem clicou vai como `pessoa_user_id`; o banco da sessão vai junto
+    def publicar_cotacao(company_id, pedido_id, *, pessoa_user_id, apolice_atual=None, db=None, **_extra):
+        # o contrato da B2 (SPEC §5): QUEM PEDIU a cotação vai como `pessoa_user_id` (conserto RT B-3 — nunca quem
+        # clicou); o banco da sessão vai junto
         assert db is m.db and apolice_atual is None
         m.publicadas.append((company_id, pedido_id, pessoa_user_id))
         tok = f"tok{pedido_id[:8]}"
@@ -313,17 +315,21 @@ def test_envio_sem_telefone_so_o_texto_e_copiar_nao_decifra(mundo):
     assert _post(m, p["id"], "envio", {"company_id": m.a.id, "user_id": m.a.um, "estado": "x"}).status_code == 400
 
 
-def test_apresentacao_usa_o_link_da_conversa_e_so_publica_sem_ele(mundo):
+def test_apresentacao_passa_sempre_pela_b2_com_quem_pediu(mundo):
+    """⚠️ §9.3 (conserto RT B-3): antes o link guardado no run valia PARA SEMPRE ("usa o link da conversa e só publica
+    sem ele") — sem conferir se quem cotou ainda está na corretora nem se o link ainda abre. Agora a aba SEMPRE passa
+    pela `publicar_cotacao` (que reaproveita o MESMO link quando a página seria idêntica e ele vale — o fio prova), e
+    com QUEM PEDIU, nunca com quem clicou."""
     m = mundo
     com_link = _cotacao(m, m.a, m.a.um, run={"resultado": {"url": "https://exemplo.invalid/r/dachat", "token": "dachat"}})
-    r = _post(m, com_link["id"], "apresentacao", {"company_id": m.a.id, "user_id": m.a.um})
-    assert r.status_code == 200 and r.json()["url"] == "https://exemplo.invalid/r/dachat" and m.publicadas == []
+    r = _post(m, com_link["id"], "apresentacao", {"company_id": m.a.id, "user_id": m.a.dois})
+    assert r.status_code == 200 and m.publicadas == [(m.a.id, com_link["id"], m.a.um)], m.publicadas
     sem_link = _cotacao(m, m.a, m.a.dois)
     r = _post(m, sem_link["id"], "apresentacao", {"company_id": m.a.id, "user_id": m.a.um})
-    assert r.status_code == 200 and m.publicadas == [(m.a.id, sem_link["id"], m.a.um)]
+    assert r.status_code == 200 and m.publicadas[-1] == (m.a.id, sem_link["id"], m.a.dois), m.publicadas
     calculando = _cotacao(m, m.a, m.a.um, estado="calculando")
     r = _post(m, calculando["id"], "apresentacao", {"company_id": m.a.id, "user_id": m.a.um})
-    assert r.status_code == 409 and len(m.publicadas) == 1
+    assert r.status_code == 409 and len(m.publicadas) == 2
 
 
 # ---------------------------------------------------------------------------------------------------------------------
