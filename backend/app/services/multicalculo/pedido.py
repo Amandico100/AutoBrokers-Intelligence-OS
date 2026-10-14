@@ -101,13 +101,19 @@ CAMPOS_DE_PERFIL: Tuple[Tuple[str, str], ...] = (
 CAMPOS_QUE_A_PLACA_SUPRE: Tuple[Tuple[str, str], ...] = (
     ("veiculo", "fipe"), ("veiculo", "ano_fabricacao"), ("veiculo", "combustivel"),
 )
-#: SPEC-131-A F5 — a MESMA regra na RENOVAÇÃO (o serviço, não a origem: a renovação sai pela origem `auxiliar`, como a
-#: cotação do chat, que continua exigindo os três). 🔴 Por que é verdade aqui (CLAUDE.md §9.5): (1) o robô é o MESMO e não
+#: SPEC-131-A F5 — a MESMA regra na RENOVAÇÃO (o serviço, não a origem: a renovação sai pela origem `auxiliar`).
+#: 🔴 Por que é verdade aqui (CLAUDE.md §9.5): (1) o robô é o MESMO e não
 #: sabe de onde o pedido veio — `agger_robo.py` `_cotacao_do_pedido_auto` só exige `placa` OU `fipe` e o montador completa
 #: pela placa; (2) a renovação TEM a placa da apólice: 📊 12/10, `/itens` da InfoCap, placa válida em 9/10 AUTO reais;
 #: (3) a FIPE da InfoCap NÃO serve como veio: 📊 9/10 com 5–6 dígitos (o Agger grava 7, "0013277") — mandá-la "consertada"
 #: seria escolher o carro por dedução, e o pedido VENCE a placa no montador.
-SERVICOS_EM_QUE_A_PLACA_SUPRE: Tuple[str, ...] = ("renovacao",)
+#: 🔴 SPEC-132-B (B1, C4 do BLOCO 0): a COTAÇÃO do chat entra no conjunto — verdade vencida (§9.3) o "a cotação do chat
+#: continua exigindo os três" que morava aqui: ela não tinha chamador (📊 14/10, `servico="cotacao"` sem chamador). Por
+#: que é verdade: (1) é o MESMO robô e a MESMA busca (`/calculo/buscaPlaca` no disparo, `agger_robo.py:310-311`) que o
+#: canal e a renovação usam — nada novo é buscado aqui; (2) o corretor sabe a placa, ninguém sabe a FIPE (D-133A-03 vale
+#: para quem está no chat tanto quanto para quem está no WhatsApp); (3) o que a placa supre vira `assumido` ("o Agger
+#: preenche pela placa"), nunca valor inventado — o resumo antes de calcular diz isso ao corretor.
+SERVICOS_EM_QUE_A_PLACA_SUPRE: Tuple[str, ...] = ("renovacao", "cotacao")
 #: 🔴 F5 tirou o combustível daqui: 📊 canário real 13/10 (2 AUTO, 4 cálculos), combustível vazio no pedido → 64/64
 #: respostas "É necessário informar o tipo de combustível." — o montador só traduzia o FLEX. 🔴 F6 o devolve, porque
 #: deixou de ser verdade: (1) 📊 13/10 a lista da tela foi lida — os 7 combustíveis têm código (`contrato.CODIGOS_MEDIDOS`)
@@ -458,8 +464,8 @@ class PedidoDeCalculo:
         return (self.campos.get(grupo) or {}).get(nome)
 
     def supridos_pela_placa(self, origem: Optional[str] = None, servico: Optional[str] = None) -> FrozenSet[str]:
-        """D-133A-03: na origem `canal` — e no serviço `renovacao` (SPEC-131-A F5, `SERVICOS_EM_QUE_A_PLACA_SUPRE`) —,
-        com placa, os campos de `CAMPOS_QUE_A_PLACA_SUPRE` ausentes ficam com o robô."""
+        """D-133A-03: na origem `canal` — e nos serviços de `SERVICOS_EM_QUE_A_PLACA_SUPRE` (a renovação, SPEC-131-A F5;
+        a cotação do chat, SPEC-132-B) —, com placa, os campos de `CAMPOS_QUE_A_PLACA_SUPRE` ausentes ficam com o robô."""
         if (origem != "canal" and servico not in SERVICOS_EM_QUE_A_PLACA_SUPRE) or self.e_re                 or _vazio(self.valor("veiculo", "placa")):
             return frozenset()
         campos = CAMPOS_QUE_A_PLACA_SUPRE if origem == "canal" else CAMPOS_QUE_A_PLACA_SUPRE_NA_RENOVACAO
@@ -987,3 +993,78 @@ def _de_apolice_re(apolice: Any, perfil: Dict[str, Dict[str, Any]], objeto: Mapp
                     avisos.add(AVISO_COBERTURAS_DO_CADASTRO)
     perfil["risco"] = risco
     return PedidoDeCalculo.de_dict(perfil, ramo=ramo, assumidos=assumidos)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-132-B (B1, C5 do BLOCO 0) — a COTAÇÃO NOVA com a apólice anexada (`situacao='novo_com_apolice'`)
+# ---------------------------------------------------------------------------------------------------------------------
+#: os avisos da leitura que valem numa COTAÇÃO NOVA. ⛔ `coberturas_nao_conferidas`/`coberturas_do_cadastro` são da
+#: renovação (lá as coberturas da ficha montam o `anterior`); na cotação nova as coberturas vêm dos presets da opção —
+#: a leitura da tabela de coberturas não muda nada do cálculo, e o aviso faria o corretor conferir o que não se usa.
+AVISOS_DA_FICHA_NA_COTACAO: FrozenSet[str] = frozenset({AVISO_DOCUMENTO_NAO_E_A_APOLICE, AVISO_PLACA_DIVERGE})
+_ANO = re.compile(r"((?:19|20)\d{2})")
+
+
+def _ficha_tolerante(ficha: Any) -> Any:
+    """A ficha como OBJETO (o miolo de `de_apolice` lê atributos): aceita a `ApoliceDocumental` (130-B) ou o dict que o
+    leitor de anexo devolve (`policy_document_evidence_service.ler_anexo_de_seguro`: `objeto_do_risco`, `leitura` —
+    o tipo do documento mora em `leitura.tipo_documento`). Nada é lido além disso: o anexo NÃO traz CPF, nome nem
+    nascimento (o leitor nunca extrai dado pessoal, `objeto_do_risco_local`)."""
+    if ficha is None or not isinstance(ficha, Mapping):
+        return ficha
+    from types import SimpleNamespace
+
+    leitura = ficha.get("leitura") if isinstance(ficha.get("leitura"), Mapping) else None
+    return SimpleNamespace(objeto_do_risco=ficha.get("objeto_do_risco") or {}, leitura=leitura,
+                           tipo_documento=ficha.get("tipo_documento") or (leitura or {}).get("tipo_documento"),
+                           linhas=())
+
+
+def _ano_modelo_da_ficha(valor: Any) -> Optional[int]:
+    """"2021/2022" (o regex do leitor lê ano/modelo junto) → 2022, o ano do MODELO (o 2º). Um ano só → ele. O ano de
+    FABRICAÇÃO não sai daqui: a placa o supre (o pedido vence a placa — ler errado aqui seria escolher o carro)."""
+    anos = _ANO.findall(str(valor or ""))
+    return int(anos[-1]) if anos else None
+
+
+def de_ficha(ficha: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] = None, *, ramo: int = RAMO_AUTO,
+             apolice: Any = None) -> PedidoDeCalculo:
+    """A COTAÇÃO NOVA a partir da apólice que o corretor ANEXOU (SPEC-132-B, `situacao='novo_com_apolice'`) — a irmã de
+    `de_apolice` (que é SEMPRE renovação, `renovacao=True`): o MESMO miolo (`_objeto_do_risco`, `_avisos_da_leitura`,
+    `_de_apolice_auto` — condutor = segurado e CEP de pernoite = CEP, declarados `assumidos`), SEM o bloco da renovação
+    e SEM as opções/coberturas da ficha (na cotação nova as coberturas são as dos presets de cada opção).
+
+    Da ficha vêm só os do OBJETO DO RISCO: AUTO placa, chassi, ano/modelo e o CEP (`segurado.cep`, assumido: lido do
+    documento, não dito); RE o CEP e, no empresarial, a atividade. Quem VENCE: o `perfil` (o que o corretor disse) > a
+    ficha. O resto (CPF, nome, nascimento…) vem do `perfil` — o leitor do anexo não extrai dado pessoal.
+    Moto (a marca `MARCA_DO_VEICULO_NAO_COTADO`) → `RamoIndisponivel`, como na renovação."""
+    perfil = {g: dict(v or {}) for g, v in (perfil or {}).items()}
+    marca = perfil.pop(MARCA_DO_VEICULO_NAO_COTADO, None) or {}
+    ramo = int(ramo)
+    if ramo not in RAMOS_ACEITOS:
+        raise RamoIndisponivel(f"ramo {ramo} não é cotado aqui (aceitos: {', '.join(map(str, RAMOS_ACEITOS))})")
+    if ramo == RAMO_AUTO and marca.get("tipo") == "moto":
+        raise RamoIndisponivel(FRASE_DA_MOTO, motivo="ramo_nao_cotado")
+    ficha_obj = _ficha_tolerante(ficha)
+    objeto = _objeto_do_risco(apolice, ficha_obj)
+    avisos = _avisos_da_leitura(apolice, ficha_obj) & AVISOS_DA_FICHA_NA_COTACAO
+    assumidos: set = set()
+    if ramo == RAMO_AUTO:
+        if objeto.get("ano_modelo") is not None:
+            objeto = {**objeto, "ano_modelo": _ano_modelo_da_ficha(objeto.get("ano_modelo"))}
+        seg_ = dict(perfil.get("segurado") or {})
+        if _vazio(seg_.get("cep")) and not _vazio(objeto.get("cep")):
+            seg_["cep"] = objeto["cep"]
+            assumidos.add("segurado.cep")
+        perfil["segurado"] = seg_
+        pedido = _de_apolice_auto(apolice, perfil, {k: v for k, v in objeto.items() if v is not None}, avisos,
+                                  assumidos)
+    else:
+        risco = dict(perfil.get("risco") or {})
+        for chave in ("cep",) + (("atividade",) if ramo == RAMO_EMPRESARIAL else ()):
+            if _vazio(risco.get(chave)) and not _vazio(objeto.get(chave)):
+                risco[chave] = objeto[chave]
+                assumidos.add(f"risco.{chave}")
+        perfil["risco"] = risco
+        pedido = PedidoDeCalculo.de_dict(perfil, ramo=ramo, assumidos=assumidos)
+    return replace(pedido, avisos=frozenset(avisos))
