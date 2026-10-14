@@ -116,7 +116,7 @@ nunca o conteúdo) e as fases em `messages.payload.turn.fases_ms`.
 ## 6. A régua
 - **Fio** (A4): um turno com 1 foto + 1 PDF + 1 xlsx + 1 áudio, Storage e modelo DUBLÊS só na borda, atravessa BFF → backend →
   `chat_anexos` → o bloco do modelo contém o texto mascarado de cada um (nenhum CPF cru) → eventos `activity` antes do 1º delta.
-- **Mutações (VERMELHAS uma vez, restaura por cópia):** (1) o cliente volta a ler `publicUrl` · (2) o BFF aceita path de OUTRA
+- **Mutações (cada mutação VERMELHA uma vez, restaura por cópia):** (1) o cliente volta a ler `publicUrl` · (2) o BFF aceita path de OUTRA
   corretora · (3) o CPF de um xlsx chega cru ao modelo · (4) `esforco='turbo'` muda o esforço · (5) o pré-trabalho volta para antes
   do `StreamingResponse` (o teste mede que os cabeçalhos saem antes da leitura do anexo) · (6) a barra do rodapé volta no celular.
 - **Isolamento:** o upload e o turno com DUAS corretoras (o path da outra → 403; o filtro no BFF, não a RLS).

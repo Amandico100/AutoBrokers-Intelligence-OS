@@ -117,7 +117,7 @@ url, artifact_id, resumo}` e `mensagem_de_cotacao(modelo, link) -> {texto, texto
 ## 6. A régua
 - **Fio:** da frase do corretor (modelo DUBLÊ que chama a ferramenta) ao `messages` do assistente na MESMA conversa com o link, motor
   com o Agger DUBLÊ na borda, e o HTML SERVIDO pelo `/r/` é a página de VENDA.
-- **Mutações:** (1) disparar sem confirmação · (2) o mesmo `confirmacao_id` dispara 2× · (3) `solicitante_user_id` some (vai sempre à
+- **Mutações** (cada mutação VERMELHA uma vez): (1) disparar sem confirmação · (2) o mesmo `confirmacao_id` dispara 2× · (3) `solicitante_user_id` some (vai sempre à
   corretora) · (4) a página de cotação mostra "Quem Cobra Menos"/"Nível 5"/duelo · (5) número sem prova ("economia" sem apólice, "N
   anos" sem `founded_year`) · (6) a API de cotações devolve item de OUTRA corretora · (7) CPF cru na resposta do chat.
 - **Isolamento:** ferramenta, Work Run e API com duas corretoras.

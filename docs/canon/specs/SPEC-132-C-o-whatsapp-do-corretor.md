@@ -70,7 +70,7 @@ código, expira_em, usado_em; índice único parcial por membro ativo) com RLS +
 | **C3 · costura** | o resultado da cotação pelo WhatsApp, o QR no admin, o fio | `backend/app/services/cotacao/workflow.py` (só o envio pelo canal) · a tela de Canais do admin · `test_spec132c_o_fio.py` |
 
 ## 6. A régua
-Mutações: (1) número NÃO verificado é atendido · (2) código usado 2× · (3) código de A vincula membro de B · (4) mensagem do número do
+Mutações (cada mutação VERMELHA uma vez): (1) número NÃO verificado é atendido · (2) código usado 2× · (3) código de A vincula membro de B · (4) mensagem do número do
 ATENDIMENTO ou do QCM cai no assistente · (5) fromMe/grupo gera resposta · (6) membro de duas corretoras recebe dado da outra.
 Isolamento com duas corretoras. Canário: depois do QR do Founder (caixa do Founder), uma conversa real com o número do gerente.
 

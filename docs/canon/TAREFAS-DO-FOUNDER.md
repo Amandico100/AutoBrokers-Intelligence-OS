@@ -248,6 +248,9 @@
 > 10. **13/10 (131-B construída, `main` `1247e44`):** **T-160** (agora os **4** serviços, com o `smith-web`) → **T-161** → **T-157** (cada
 >    comercial no Meu perfil) → **T-163** (LIGAR a Renovação numa corretora) · **T-165** (quem vê "Todas") quando quiser · **T-164** (as
 >    capas, opcional).
+> 11. **14/10 (SPEC-132 A·B·C construída):** **T-166** (Implantar os 4 — o `smith-api` reconstrói a imagem) → **T-167** (os 3 exemplos) →
+>    **T-168** (o chat novo) → **T-170** (o SEU Agger) → **T-169** (uma Cotação Rápida real) → **T-173** (a latência) · **T-172** (decisão) ·
+>    **T-171** (o número do AutoBrokers) quando quiser ligar.
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -366,6 +369,72 @@
       (b) deixar como está e só corrigir a frase da aba Dúvidas — 💭 nota **60**.
       Responda no chat *"T-165: a"* ou *"T-165: b"*. **Esperado:** a execução aplica numa SPEC pequena. · *de:* S131-B §10 · juiz P5 ·
       red team P6
+
+> **14/10 (SPEC-132 A·B·C — o chat novo, a Cotação Rápida e o WhatsApp do corretor; branch `spec/132-o-chat-e-a-cotacao`):** a caixa do
+> chat que cabe no celular e lê foto, PDF, planilha e áudio; a Cotação Rápida pedida no chat, com o link de VENDA com a marca da
+> corretora; o número "AutoBrokers" pelo WhatsApp (nasce DESLIGADO). 📊 Nada disso está no ar: o servidor de produção roda o código
+> antigo até a **T-166**. Nasceram a T-166 a T-173. A InfoCap de cada corretora já está na própria conta (o gerente fez com a sua
+> autorização de 14/10: Resulta e AutoFleet `connected/healthy`).
+
+- [ ] **T-166** ⏳ 🧑 **primeiro, 10 min** · **Implantar os 4 serviços JUNTOS** — EasyPanel, nesta ordem e no mesmo momento: `smith-api` →
+      `smith-worker` → `portal-worker` → `smith-web`. 🔴 O `smith-api` **reconstrói a imagem** desta vez (o Dockerfile mudou: o modelo
+      português do spaCy agora vem dentro dela) — o primeiro Implantar dele demora mais que o normal. As 4 migrations da 132 **já estão
+      no banco** (versões 📊 `20261014075627`, `20261014075717`, `20261014093346`, `20261014112744`). Nenhuma variável nova obrigatória
+      (a do WhatsApp do corretor é da T-171).
+      1. Implantar os quatro, nessa ordem.
+      2. Abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/api/versao` → **esperado:** `commit`
+         começando pelo último da 132 (o gerente diz qual na resposta final) e `build_em_brasilia` de hoje.
+      3. Entre no painel pelo celular → **esperado:** a barra de atalhos do rodapé SUMIU; a caixa diz "Peça ao AutoBrokers" e tem um "+".
+      **Se der errado:** `/api/versao` com commit antigo → Implantar o `smith-web` de novo; o `smith-api` não sobe ("unhealthy") → print do
+      log do contêiner e a hora no chat (nunca reinicie mexendo no banco). · *de:* S132-A/B/C §6
+- [ ] **T-167** ⏳ 🧑 **depois da T-166, 3 min** · **Abrir as 3 páginas de EXEMPLO** (marca real da corretora-piloto, dados fictícios, faixa
+      "Exemplo — dados fictícios"; o "Quero fechar" aponta para o SEU número de teste):
+      - RENOVAÇÃO: https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/uKLqbAIIO3LHXknt4iYJdil2F3J23VvawBVK56GmvLo
+      - COTAÇÃO: https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/jpyVB9JyGK2ep3P6rVW_XjJtD_2S_S1SnR9gwh8RSEY
+      - COTAÇÃO com apólice (mostra a economia): https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/T0Lliep2eAxNACFZBTQX-F5_ikgVodKzOYjC7uRoQmY
+      **Esperado:** cada uma abre no celular com a marca, a faixa de exemplo no topo, a parcela em destaque e o "Quero fechar" que abre o
+      seu WhatsApp de teste. 📊 Antes da T-166 elas dão "Este link não está mais disponível" (o servidor antigo não as entende).
+      **Se der errado:** ainda "não disponível" depois do Implantar → print e a hora no chat. Diga no chat o que achou da página (o
+      juiz de design dela ainda não rodou — P-132B-13). · *de:* S132-B §1 · D-132-E1
+- [ ] **T-168** ⏳ 🧑 **depois da T-166, 10 min** · **Testar o chat novo** — no celular e no notebook, numa conversa nova:
+      1. Toque no "+" → **Fotos** → mande 2 fotos (uma do iPhone, se tiver: é o HEIC) e pergunte "o que tem nessas fotos?".
+      2. "+" → **Arquivos** → uma apólice em PDF e uma planilha (xlsx ou csv) → "resume isso".
+      3. Toque no microfone, grave 10 segundos e envie.
+      4. "+" → **Esforço** → Rápido, pergunte algo; depois Máximo, pergunte de novo.
+      5. Na resposta, toque **Copiar** e cole no bloco de notas.
+      **Esperado:** linhas como "Lendo apolice.pdf…" antes do texto; a resposta fala do conteúdo dos arquivos; nenhum CPF aparece inteiro;
+      o áudio aparece transcrito na sua bolha; no celular a tela não "pula" quando o teclado abre. **Se der errado:** print da tela e a
+      hora no chat (o erro do anexo aparece em vermelho na ficha, com o motivo). · *de:* S132-A §10.1
+- [ ] **T-169** ⏳ 🧑 **depois da T-166 e da T-170, 5 min** · **Uma Cotação Rápida real** (dados de um cliente de TESTE) — no chat escreva,
+      por exemplo, *"cota o carro placa ABC1D23 do cliente teste, CPF …, nascimento …, CEP …"* (ou mande a foto do documento e a
+      apólice). O AutoBrokers pergunta só o que faltar e mostra um resumo; responda **"sim"** (digitado ou por áudio).
+      **Esperado:** "Calculando nas seguradoras no seu Agger…" (ou "no Agger da corretora", com aviso, se você não fez a T-170); em 1 a 2
+      minutos, NA MESMA conversa, a tabela de 3 opções + o link da apresentação + a "Mensagem para o cliente". Depois: Aplicativos →
+      **Cotação Rápida** → aba **Cotações** → a cotação aparece com "Pronta". Nada é enviado ao cliente. **Se der errado:** "Não consegui
+      começar o cálculo" → print e a hora no chat; a execução lê no banco qual conta foi usada e quanto demorou (P-132B-10). · *de:* S132-B §6
+- [ ] **T-170** ⏳ 🧑 **antes da T-169, 3 min** · **Conectar o SEU Agger no Meu perfil** — Meu perfil → Minhas conexões → Agger → o seu login.
+      **Esperado:** "Conectado". A partir daí a Cotação Rápida que VOCÊ pede calcula no SEU Agger. Sem isso ela calcula no Agger da corretora,
+      com um aviso na resposta (funciona, só não sai "no seu"). Vale para cada comercial (é a mesma T-157). · *de:* S132-B §1 · D-131-0-05
+- [ ] **T-171** ⏳ 🧑 **quando quiser ligar, 15 min + um chip** · **O número do AutoBrokers (o atalho do WhatsApp dos corretores)** — nasce
+      DESLIGADO (📊 sem a variável, o número só conta e fica calado).
+      1. Um chip NOVO num celular (não use o número de atendimento de nenhuma corretora nem o do Quem Cobra Menos).
+      2. Portal admin → **Canais: AutoBrokers — assistente dos corretores** → **QR** → leia com o WhatsApp do chip novo.
+      3. EasyPanel → `smith-api` → variáveis → `ATALHO_WHATSAPP_LIGADO=1` → Implantar o `smith-api`.
+      4. Cada corretor: Meu perfil → **Meu WhatsApp de trabalho** → o número dele → **Usar pelo WhatsApp** → **Abrir no WhatsApp** → enviar
+         a mensagem pronta "ATIVAR 123456" DO CELULAR DELE (o código vale 15 minutos e só do número que ele declarou).
+      **Esperado:** em segundos chega "Pronto, {nome}…" no WhatsApp dele; o perfil passa a dizer "Verificado ✓"; daí ele conversa como no
+      chat (texto, áudio, foto, PDF, Cotação Rápida). Um número que ninguém ativou recebe SILÊNCIO (de propósito). **Se der errado:** sem
+      "Pronto" depois de 1 minuto → confira se o número declarado no perfil é o MESMO do celular que mandou; continuou → print e a hora no
+      chat. Para desligar: tirar a variável e Implantar o `smith-api`. · *de:* S132-C §6
+- [ ] **T-172** ⏳ 🧑 **decisão, 1 min** · **A Cotação Rápida vale para toda corretora com agente central?** (P-132B-07) — 📊 hoje SIM: a
+      ferramenta de cotação aparece no chat de toda corretora que tem agente central, mesmo sem o aplicativo "Cotação Rápida" instalado
+      (cálculo que sai no Agger). Opções: (a) manter assim e desligar numa corretora quando ela pedir — 💭 nota **70**; (b) só onde o
+      aplicativo estiver ligado — 💭 **75**. Responda no chat *"T-172: a"* ou *"T-172: b"*. **Esperado:** a execução aplica numa SPEC
+      pequena. · *de:* S132-B §6 · red team P-RT-2
+- [ ] **T-173** ⏳ 🧑 **depois da T-166, 1 min** · **Pedir a medição da latência** — escreva no chat do Claude Code: *"meça a latência do
+      chat depois do Implantar"*. O comando (`lat.py`) é da execução: mede a 1ª resposta com Equilibrado e com Rápido, contra o ANTES
+      (📊 14/10: 1º texto em **10,2 s** numa conversa nova e 7,1 s na 2ª mensagem). **Esperado:** a execução cola os números do depois e
+      diz se a meta (💭 1º texto ≤ 3 s no Rápido) foi batida. · *de:* S132-A §6 · P-132A-09
 
 ### ① Implantar e conferir — não depende de nada
 

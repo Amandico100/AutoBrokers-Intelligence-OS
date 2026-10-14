@@ -4164,3 +4164,48 @@ arquivos do widget que já existiam, `git diff 7d41c1f..1247e44 -- app/embed` = 
 painel foi VISTO sem criar usuário nem tocar em autenticação; nada do harness foi para a `main`. Lição para a próxima SPEC com tela:
 um caminho de captura permanente, só em `next dev`, evitaria refazer o harness (proposta, não executada). **Autorização:** instrumento de
 prova do gerente, apagado antes do commit.
+
+## 14/10/2026 · SPEC-132-A · os buckets do chat com 20 MB e 25 tipos (D-132-G2) — ESSENCIAL · ✅ EXECUTADA (gerente, API do Storage)
+**Problema:** a SPEC-132-A promete 10 arquivos de 20 MB, HEIC, `.xls` e áudio por arquivo, mas o Storage recusava antes do código.
+**Evidência:** 📊 BLOCO 0 (14/10): `chat-media` 5 MB só jpeg/png/webp/gif · `chat-docs` 15 MB sem xls/webm/wav. **Consequência:** os dois
+buckets passaram a 20 MB e 25 tipos (HEIC/HEIF, xls, m4a/mp3/ogg/opus/wav/webm, além dos de antes), pela API do Storage — não é migration
+(a configuração do bucket não mora em SQL do repositório). `avatars` e `voice-messages` intocados. Rollback: a configuração anterior em
+`scratchpad/s132/buckets_rollback.json` (fora do git, sem segredo). ⚠️ O proxy do EasyPanel com 20 MB não foi provado (P-132A-09).
+**Autorização:** BLOCKER do outcome (sem ele o anexo da SPEC não sobe); executada pelo gerente dentro do escopo.
+
+## 14/10/2026 · SPEC-132-A · o `backend/Dockerfile` instala o modelo português do spaCy (D-132-G3) — ESSENCIAL · ✅ EXECUTADA (gerente, `bdfdfd0`)
+**Problema:** o aquecimento da 132-A carrega o Presidio no arranque; sem o `pt_core_news_md` na imagem, ele era baixado por pip a cada
+arranque, e quando o download falhava o `SystemExit` atravessava o laço e derrubava o app (red team, pendência 1, promovida a blocker).
+**Evidência:** 📊 `Dockerfile:8` só instalava `en_core_web_lg`; a sonda `rt132a/aquece.py` → `ESCAPOU DO EVENT LOOP: SystemExit 1`.
+**Consequência:** `pt_core_news_md` na imagem + `SystemExit` contido no aquecimento (`main.py`, `presidio_service.py`). O Implantar do
+`smith-api` RECONSTRÓI a imagem (T-166). **Autorização:** conserto do blocker, dentro do escopo.
+
+## 14/10/2026 · SPEC-132 · a InfoCap de cada corretora na sua própria conta (D-132-G1) — VALIOSA · ✅ EXECUTADA (gerente, por ordem do Founder)
+**Problema:** a corretora de ensaio tinha a conexão "InfoCap AUTOFLEET" (login da AutoFleet) ativa e as duas corretoras reais só tinham
+conexões desconectadas (D-MC-27, D-131-0-27). **Evidência:** 📊 ANTES: ensaio 1 conectada (login de outra corretora); Resulta e AutoFleet
+0 conectadas. DEPOIS (VERIFY decifrando o login, sem exibi-lo): ensaio 0 ativas; Resulta e AutoFleet `connected/healthy`, cada uma com o
+login da própria corretora; os dois logins autenticaram (HTTP 200) no CORP; 3 conexões antigas arquivadas com motivo. **Consequência:** a
+leitura da carteira (E11, P-132B-11) e a madrugada da renovação passam a ler a InfoCap certa em cada corretora; a corretora de ensaio fica
+sem InfoCap. Rollback em `scratchpad/s132/infocap_rollback.json` (fora do git). **Autorização:** o Founder autorizou em 14/10 (no chat da 132).
+
+## 14/10/2026 · SPEC-132-A/B · `messages` fora do Realtime → a tela CONSULTA a conversa a cada 6 s (D-132B-09) — ESSENCIAL · ✅ EXECUTADA (fatia A5)
+**Problema:** a SPEC-132-B §1 dizia "`messages`, que a tela já ouve pelo Realtime"; a resposta da cotação chega 1–2 min depois, gravada pelo
+Work Run. **Evidência:** 📊 `messages` NÃO está na publicação `supabase_realtime` (0 linhas); sem isso, o corretor só veria a cotação
+recarregando a página. **Consequência:** enquanto há cotação calculando na conversa, a página consulta `/api/conversations` a cada 6 s, por
+até 10 min (pausa com a aba oculta, para ao trocar de conversa, deduplica por id); a rota filtra `session_id` + `user_id` da sessão.
+Alternativa rejeitada: pôr `messages` no Realtime (nota 60 — muda o banco e a carga de todas as conversas, inclusive do WhatsApp).
+**Autorização:** BLOCKER do outcome; executada dentro do escopo.
+
+## 14/10/2026 · SPEC-132-B · `Concluido` no Work OS (o workflow devolve o que produziu) — ESSENCIAL · ✅ EXECUTADA (fatia B4)
+**Problema:** o Work Run `cotacao.chat` precisa guardar o link, o artefato e o pedido no `result_payload` (a aba Cotações lê dali), e o
+worker só gravava o resumo em texto. **Evidência:** 📊 `git diff 285cadc..HEAD -- backend/app/services/work/runs.py
+backend/app/workers/smith_worker.py` → +19 / +9 linhas: a classe `Concluido` (`runs.py:155`) e o ramo `isinstance(resumo, Concluido)`
+(`smith_worker.py:513`). **Consequência:** ADITIVO — quem devolve `str` continua igual e `concluir(…, resultado=None)` grava `{}` como antes
+(juiz e red team conferiram: outros workflows intactos). Nenhum executor novo (CLAUDE.md §5). **Autorização:** dentro do escopo (B4).
+
+## 14/10/2026 · SPEC-132-C · a conversa do atalho FORA da Fila de atendimentos (D-132C-05) — ESSENCIAL · ✅ EXECUTADA (conserto, `de42bed`)
+**Problema:** a SPEC-132-C cuidou da Central e do espelho; a Fila/Casos (`lib/atendimento/casos.ts`) lia TODA conversa da corretora sem
+filtro de canal. **Evidência:** juiz P2 — a conversa privada do corretor com o AutoBrokers apareceria para a equipe. **Consequência:**
+`.neq('channel','whatsapp_assistente')` nas duas leituras (+6/−2 linhas). ⚠️ `neq` também exclui `channel IS NULL` — 📊 0 nulos em 14/10
+(default `'web'`), então hoje nada muda além do filtro (blindagem FUTURA em P-132C-01). **Autorização:** conserto de privacidade, dentro
+do escopo.

@@ -97,7 +97,10 @@ A FILA      ✔ 0.5 registro + /r/ + P-E0018-14  →  ✔ 129-A espera durável 
             →  ✔ 129-C mais ramos do Agger (Condomínio, Residencial, Empresarial — canário real nos 3)
             →  131-0 parte A as contas da corretora (⏭ próxima, chat NOVO; planejada: specs-propostas/SPEC-131-0-CONTAS-COMERCIAIS-E-CONEXOES.md)
             →  130-B leitor de apólice
-            →  131 renovação 🚀1  →  132 cotação no chat principal 🚀2 (+ 130-C a página/proposta dos outros ramos, fatia junto, D-129C-08)
+            →  131 renovação 🚀1  →  ✔ 132 o chat principal (A) · a Cotação Rápida 🚀2 (B) · o WhatsApp do corretor (C) — CONCLUÍDA 14/10
+               no código (`ce32e89`; confirmações 86 · 82 · 88; nada no ar até o Implantar, T-166); a 130-C NÃO entrou (D-129C-08)
+            →  ⏭ "A loja de aplicativos" (8.1) · vida e moto (8.2) — a fila viva está em programa-multicalculo/ESTADO-DO-PROGRAMA.md §1
+               (⚠️ as linhas 131-0 → 130-B → 131 acima estão vencidas: concluídas em 11–13/10)
             →  133-B Quem Cobra Menos piloto 🚀3
             →  135 proposta conversa 🚀4  →  136 lembretes  →  137 público no WhatsApp oficial 🚀5  →  ★ Claude/ChatGPT
   ⇅ 134     migração para a API oficial da Meta — FLUTUANTE: entra quando a Meta aprovar, a qualquer momento depois da 133-A

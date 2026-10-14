@@ -13696,6 +13696,9 @@ O `qual_agger` recusa (senha do Agger da pessoa recusada, conta de outra correto
 ↪ **13/10 · ✅ FECHADA NA RENOVAÇÃO pela SPEC-131-A.** `madrugada.motivo_da_excecao` traduz `ContaRecusada` em `falhou(conta_recusada)` com
 frase humana no aviso (`madrugada.py:337`); guarda `test_spec131a_a_madrugada_no_agger.py::test_conta_recusada_traduzida_em_status_e_frase`.
 🟡 A cotação no chat ainda não tem chamador: a tradução HTTP dela é da **132**, que reusa a mesma frase.
+↪ **14/10 · 🟡 CONTINUA, menor (SPEC-132-B).** A cotação no chat TRADUZ a recusa: `cotacao_disparar` devolve `frase_da_recusa_da_porta`
+(`ContaRecusada` → `exc.frase`, `cotacao_tool.py:247/303`) e `cotacao_ajustar` trata a do recálculo (`:402`). 📊 grep `ContaRecusada` em
+`backend/tests/test_spec132*` = 0: falta o guarda que prove a frase nos dois caminhos.
 
 ## P-1310-05 · 🤖 As sugestões de vínculo só casam `codfil = 1`
 `dono.sugerir_vinculos` busca `("1", codigo)`; um vínculo gravado com outra filial aparece como "sem vínculo" (red team P3, por leitura;
@@ -13707,6 +13710,7 @@ A D-131-0-05 foi decidida sem saber se o Agger permite passar um cálculo do log
 escrever na conta de uma pessoa. **Destrava:** BLOCO 0 da 132, com o aceite da comercial dona do login (🧑). **De quem:** 🤖 132 (com
 anuência 🧑). **Custa esquecer:** se a transferência existir, a renovação poderia calcular no robô e entregar à pessoa, sem entrar no
 login dela de madrugada.
+↪ **14/10 · 🟡 CONTINUA (SPEC-132).** Não medido no BLOCO 0 da 132 (exige escrever no Agger de uma pessoa, com o aceite dela). Destino: 135.
 
 ## P-1310-07 · 🤖 O convite por link não cria o vínculo (D-131-0-28)
 Hoje o convite não grava `company_members`. **Destrava:** a SPEC de usuários. **De quem:** 🤖. **Custa esquecer:** quem entra por convite
@@ -14061,6 +14065,8 @@ D-131-48 tirou "Preparar o envio" da TELA, mas `config.MODOS` segue com os 3 mod
 própria definição — gravar o modo por API hoje não envia nada. **Destrava:** recusar `calcular_entregar*` para `renovacao` na validação
 até a 135 (o envio automático, D-131-24). **De quem:** 🤖 132 ou 135. **Custa esquecer:** a 135 liga o envio automático e encontra
 corretoras com o modo gravado por fora da tela — envio que ninguém escolheu.
+↪ **14/10 · 🟡 CONTINUA (SPEC-132).** 📊 grep: `pode_entregar(` / `pode_negociar(` seguem com 0 chamadores (`config.py:819/824`); a 132 não
+criou envio automático. Destino: 135.
 
 ## P-131B-10 · 🤖 Dois envios ao mesmo tempo deixam uma página publicada que nunca é enviada
 RT-P1 consertado (K1): quem perde a corrida adota o link do outro (`test_rtp1`: enviado == gravado). Mas a página que ele já publicou
@@ -14107,3 +14113,213 @@ itens 14/15: 📊 8 `text-[10/11px]` e `emerald-/amber-` em `app/dashboard/auxil
 | P-130A-01 | 🟡 ALIVIADA na renovação — a página de renovação publica sem o número da corretora e o "Quero renovar" cai no dono confirmado ou em "responda a mensagem que recebeu" (D-131-44). Continua 🧑 para a carteira de cotação e o QCM (T-125) |
 | P-131A-10 | 🟡 CONTINUA — o "Calcular de novo" NÃO foi construído na 131-B (📊 grep "Calcular de novo"/"recalcular" em `components/aplicativos/renovacao` e `backend/app/api/renovacoes.py` = 0). Passa à próxima SPEC que tocar a aba Renovações |
 | P-131A-11 | 🟡 CONTINUA e pesa mais — a API `/api/renovacoes` não filtra `canario` (📊 grep `canario` em `backend/app/api/renovacoes.py` = 0): ao Ligar na corretora de origem, as 8 linhas de ensaio aparecem na aba. Decida a T-161 ANTES da T-163 |
+
+## P-132 · SPEC-132 A·B·C, o chat, a Cotação Rápida e o WhatsApp do corretor (14/10/2026)
+
+> Fonte: `reports/SPEC-132-{A,B,C}-EXECUTION-REPORT.md` §10 · laudos `programa-multicalculo/132/` JUIZ-132-x (J-), RED-TEAM-132-x (RT-),
+> CONFIRMACAO-132-x (N-/C-), conferidos contra o código de `ce32e89`. 📊 Hoje nada disto roda em produção: o servidor está no código
+> antigo (o Implantar é a T-166) e o atalho do WhatsApp nasce desligado (T-171). Já fechados no conserto (não entram aqui): os 4 blockers
+> da A (J-P1, RT-B1, RT-B2, RT-P1) e J-P3/J-P4/RT-P5/RT-P6; os 6 da B e o "sim" por áudio (`ce32e89`); os 3 da C, o N1 (`ce32e89`), o
+> `data.key` em lista (RT-P4) e o texto sem corte (cortado em 8000).
+
+### 132-A · o chat principal
+
+## P-132A-01 · 🤖 A transcrição do áudio é gravada ANTES do guardrail
+`chat.py` grava `payload.transcricao` (já mascarada) na pergunta e só depois roda o guardrail; quando ele barra, a resposta não é gravada,
+mas a transcrição fica (RT-P3). **Destrava:** gravar a transcrição só depois do guardrail, ou apagá-la quando ele barrar. **De quem:** 🤖.
+**Custa esquecer:** um áudio que a política recusou fica guardado como texto na conversa.
+
+## P-132A-02 · 🤖 CPF falado por extenso não casa a máscara
+"cinco dois nove, nove oito dois…" na transcrição não é dígito e passa pela máscara (RT-P7; não medido com áudio real). **Destrava:**
+normalizar número por extenso antes de `mascarar` (na máscara da plataforma, 130-B), com um áudio real de teste. **De quem:** 🤖.
+**Custa esquecer:** o CPF do segurado chega inteiro ao modelo quando o corretor o dita.
+
+## P-132A-03 · 🤖 Data de nascimento sem rótulo passa crua
+📊 sonda do juiz: CSV com coluna "Data" → `01/02/1980` cru; texto "nasci em 01/02/1980" cru; nome de arquivo `nasc 01-02-1980…` cru. Com
+cabeçalho reconhecido ("Nascto") vira `[DATA]`. A regra "nascimento só rotulado" é a da 130-B (J-P2). **Destrava:** ampliar
+`_COLUNAS_SENSIVEIS` (`dn`, `aniversario`, `idade`) e decidir na máscara da plataforma se data solta perto de nome vira `[DATA]`.
+**De quem:** 🤖 (decisão de máscara da plataforma). **Custa esquecer:** a data de nascimento do segurado vai ao modelo.
+
+## P-132A-04 · 🤖 Quatro leituras em paralelo sobre o MESMO cliente Supabase síncrono
+`_build_initial_state` roda até 4 `to_thread` simultâneos (ferramentas, delegações, nome da corretora, marca) — e isso vale também para o
+atendimento do WhatsApp (J-P5). O guarda usa dublê. **Destrava:** no canário depois do Implantar, um turno real de atendimento com o log
+sem `RuntimeError`/`ProtocolError`; se aparecer, voltar as quatro para sequenciais. **De quem:** 🤖. **Custa esquecer:** erro
+intermitente no atendimento dos segurados, difícil de ligar a esta mudança.
+
+## P-132A-05 · 🤖 Um Stop antes do turno deixa a chave em `PARADAS`
+O Stop que cai na reserva de um turno depois recusado (política/porteira) deixa `PARADAS[chave]` até o próximo turno com a mesma chave
+(confirmação, pendência 1). **Destrava:** limpar `PARADAS` no mesmo `finally` que solta a reserva. **De quem:** 🤖. **Custa esquecer:**
+alguns bytes por Stop; nada chega a ninguém (FUTURA).
+
+## P-132A-06 · 🤖 O `fileUrl` legado só é aceito no host do `SUPABASE_URL`
+O conserto do SSRF amarrou o download ao host do Storage; se o Storage passar a ser servido por domínio próprio, o `fileUrl` legítimo é
+recusado com aviso (fail-safe). 📊 grep: nenhum produtor de `fileUrl` no front hoje. **Destrava:** uma lista de hosts permitidos por
+configuração quando o domínio mudar. **De quem:** 🤖. **Custa esquecer:** anexos de integrações antigas somem em silêncio.
+
+## P-132A-07 · 🤖 O teto de 15 min de áudio só vale quando o cabeçalho diz a duração
+O WebM do gravador costuma não dizer; vale então o teto de 20 MB (💭 ~1 h em opus) (confirmação, pendência 3). **Destrava:** medir a
+duração pelo decodificador antes da transcrição. **De quem:** 🤖. **Custa esquecer:** um áudio longo vira uma transcrição cara.
+
+## P-132A-08 · 🤖 O `?aba=` se perde no redirect do login
+📊 §9.1: `/dashboard/auxiliares/cotacao?aba=cotacoes` sem sessão → 307 sem o `?aba`. **Destrava:** o middleware guardar a URL inteira no
+`redirect`. **De quem:** 🤖. **Custa esquecer:** o link da aba Cotações mandado a um colega abre no Início do aplicativo.
+
+## P-132A-09 · 🧑🤖 Nada da latência nem dos 20 MB foi medido em produção (o ELO da 132-A)
+📊 ANTES (14/10): 1º delta 10,2 s na conversa nova, 7,1 s na 2ª mensagem. O DEPOIS só existe em dublê (1º byte 0,392 s). Também sem prova:
+o envio de 10–20 MB pelo proxy do EasyPanel e um HEIC real de iPhone. **Destrava:** T-166 (Implantar) → T-173 (o gerente roda `lat.py`
+com Equilibrado e Rápido; meta 💭 1º delta ≤ 3 s no Rápido aquecido) + uma foto HEIC e um PDF de 15 MB no canário (T-168). **De quem:**
+🧑 Implantar · 🤖 a medição. **Custa esquecer:** a SPEC promete "responde rápido" sem número.
+
+## P-132A-10 · 🤖 Voz em tempo real
+Fora da SPEC (§9): conversa por voz contínua (Gemini Live ou similar). **Destrava:** uma SPEC própria com custo medido. **De quem:** 🤖.
+**Custa esquecer:** nada hoje; o áudio gravado já funciona.
+
+## P-132A-11 · 🤖 Regenerar com outro esforço
+O "Tentar de novo" repete com o mesmo esforço (§9). **Destrava:** o botão oferecer Rápido/Máximo na última resposta. **De quem:** 🤖.
+**Custa esquecer:** o corretor troca o esforço no "+" e reenvia à mão.
+
+## P-132A-12 · 🤖 A foto chega ao modelo principal como DESCRIÇÃO, não como imagem
+O papel `visao` descreve a foto (mascarada) e o `chat_principal` recebe o texto. **Destrava:** medir numa bancada se mandar a imagem ao
+modelo principal (com a máscara visual) melhora a resposta e quanto custa. **De quem:** 🤖. **Custa esquecer:** detalhe que a descrição
+omitiu nunca chega à resposta.
+
+## P-132A-13 · 🤖 Conectores escolhidos por pedido
+Fora da SPEC (§9): o chat usa o que a corretora conectou; escolher conector por pedido só se a medição mostrar custo. **Destrava:** medir
+o custo das ferramentas por turno. **De quem:** 🤖. **Custa esquecer:** contexto maior que o necessário em todo turno.
+
+## P-132A-14 · 🤖 O juiz de design da tela nova não rodou
+A régua (§6) pedia capturas de celular 390×844 e notebook 1440×900, claro e escuro (caixa vazia, 3 anexos, gravando, o "+" aberto, resposta
+com tabela e Copiar), nota ≥ 90. Não rodou; o juiz leu o código e os 109 OKs (confiança MÉDIA no visual). **Destrava:** as capturas com o
+`next dev` e um juiz de design fresco; o que ficar abaixo de 90 vira conserto. **De quem:** 🤖. **Custa esquecer:** a tela que o
+corretor usa o dia inteiro sem nunca ter sido vista por um juiz.
+
+### 132-B · a Cotação Rápida
+
+## P-132B-01 · 🤖 A aba Cotações e a apresentação podem divergir depois do recálculo
+O conserto faz a resposta do ajuste sair das ofertas do `ajuste_calculo_id`; a página mostra as opções do pedido. **Destrava:** decidir o
+que a aba mostra depois de um ajuste (a linha ajustada ou as 3 opções) e um guarda que compare as duas. **De quem:** 🤖. **Custa
+esquecer:** o corretor vê um preço na aba e o cliente outro na página.
+
+## P-132B-02 · 🤖 O 2º recálculo em outra opção não foi exercitado
+A régua provou um ajuste numa opção; dois ajustes seguidos em opções diferentes não têm guarda. **Destrava:** um caso no fio com dois
+ajustes e a tabela conferida contra o banco. **De quem:** 🤖. **Custa esquecer:** a 2ª resposta pode misturar o cálculo do 1º ajuste.
+
+## P-132B-03 · 🤖 A Dúvida "Posso pedir a cotação pelo WhatsApp? Em breve." fica falsa quando a 132-C ligar
+FAQ 4 da migration `20261014_02` (J-P4). **Destrava:** uma migration de texto no mesmo dia da T-171 (ligar o atalho). **De quem:** 🤖.
+**Custa esquecer:** o aplicativo diz "em breve" sobre o que já funciona.
+
+## P-132B-04 · 🤖 O Work Run da cotação segura um slot do worker por até 💭 6 min
+`WORK_WORKER_CONCURRENCY=3` e `WORK_TENANT_CONCURRENCY=2` (`smith_worker.py:49-50`): a 3ª cotação simultânea da corretora espera, e
+Rotinas e renovações também (J-P5). **Destrava:** medir no canário; `dormir` entre consultas, como o `canal.cotacao`. **De quem:** 🤖.
+**Custa esquecer:** a promessa "1 a 2 minutos" quebra no dia em que três corretores cotam juntos.
+
+## P-132B-05 · 🤖 Escolher uma entrada IGUAL ao padrão do produto volta à base da corretora
+`ConfigurarCotacaoEQcm.tsx` não envia a chave igual ao padrão; com D-B4-01 (a gravação substitui), ela volta à BASE da corretora, e a tela
+relida mostra outro número (J-P7). **Destrava:** comparar com o efetivo da base, não com o padrão. **De quem:** 🤖. **Custa esquecer:** a
+corretora grava um valor e lê outro.
+
+## P-132B-06 · 🤖 "Não consegui terminar esta cotação" pode sair antes de um retry que entrega
+💭 Erro transitório no `acompanhar` grava o aviso antes de o erro subir (`workflow.py`); se o worker retentar e entregar, o corretor lê
+"não terminou" e depois "Pronto" (J-P8, não medido). **Destrava:** gravar o aviso só no `ao_desistir`. **De quem:** 🤖. **Custa esquecer:**
+o corretor avisa o cliente que deu errado e a cotação chega depois.
+
+## P-132B-07 · 🧑 A capability da cotação está ligada em TODA corretora com agente central
+A migration `_04` liga por papel (`core`), sem depender do aplicativo "Cotação Rápida" instalado (RT P-RT-2); cálculo que sai do prédio.
+**Destrava:** o Founder decide (T-172): manter global (e desligar por corretora pelo entitlement) ou exigir o aplicativo ligado. **De
+quem:** 🧑 a decisão · 🤖 a trava. **Custa esquecer:** no Implantar, toda corretora com agente central passa a cotar pelo chat.
+
+## P-132B-08 · 🤖 A faixa da comissão de entrada sai do padrão do PRODUTO, não do mínimo da corretora
+`COMISSAO_ENTRADA_FAIXA` ignora o `autonomo_minimo` da corretora; uma entrada abaixo dele é gravada e depois descartada em silêncio pelo
+`_coerente` (RT P-RT-3). **Destrava:** a faixa da tela pelo mínimo efetivo da corretora. **De quem:** 🤖. **Custa esquecer:** a corretora
+acha que mudou a comissão e nada mudou (vale só em RE, D-132B-10).
+
+## P-132B-09 · 🤖 Os links antigos não são revogados quando sai uma página nova
+O cliente que já recebeu o link anterior (por exemplo, com o WhatsApp de quem saiu) continua com ele (RT P-RT-4; vem da 131-B, P-131B-10).
+**Destrava:** revogar a versão anterior no `publicar_cotacao` quando "quem atende" muda. **De quem:** 🤖. **Custa esquecer:** o "Quero
+fechar" de um link velho cai no número de um ex-funcionário.
+
+## P-132B-10 · 🧑🤖 Nenhum canário REAL da Cotação Rápida
+O gate da SPEC (§6) pedia 1 cotação AUTO real, o tempo até a resposta na conversa e a conta lida do banco. O servidor de produção roda o
+código antigo. **Destrava:** T-166 → T-169 (uma cotação com um cliente de teste) → o gerente lê
+`select servico, solicitante_user_id is not null, criado_em from multicalculo_pedidos where servico='cotacao' order by criado_em desc limit 3;`
+e o `conta_exigida_id`/`conta_regra` do cálculo. **De quem:** 🧑 Implantar e pedir · 🤖 a leitura. **Custa esquecer:** a 🚀2 vai ao ar
+sem nunca ter calculado de verdade.
+
+## P-132B-11 · 🤖 O cliente da carteira (E11) não é lido
+A InfoCap de cada corretora está conectada na própria conta (D-132-G1), mas a cotação não busca o cliente da carteira pelo CPF/nome
+(SITUACOES-DE-ENTRADA E11). **Destrava:** 133-B/135. **De quem:** 🤖. **Custa esquecer:** o corretor redigita dados que a corretora já tem.
+
+## P-132B-12 · 🤖 A cotação de OUTRA corretora como alvo (E5)
+"Bate esta cotação da concorrente" não entra no pedido (E5). **Destrava:** 133-B/135, com o `cotacao_alvo` da 130-A. **De quem:** 🤖.
+**Custa esquecer:** o caso mais comum de venda (o cliente com uma proposta na mão) fica fora do chat.
+
+## P-132B-13 · 🤖 O juiz de design da página de VENDA não rodou
+O Founder pediu "perto de 100"; a régua (§6) pedia a página SERVIDA com a marca de DUAS corretoras, celular e notebook, claro e escuro, e o
+aplicativo. Os juízes leram o HTML (0 "Quem Cobra Menos", 0 "melhor das", "N anos" só com o ano). **Destrava:** capturas da página
+servida + juiz de design fresco; abaixo de 90 vira conserto. **De quem:** 🤖. **Custa esquecer:** a página que o cliente vê nunca foi vista.
+
+## P-132B-14 · 🤖 O comando de operador com `--atual` afirma "prêmio líquido da sua apólice" para um número DITO
+💭 Inferência da confirmação (P1): o `comando_proposta --atual` num pedido `servico="cotacao"` cairia na página de venda com a frase da
+apólice lida. Caminho de operador, não da conversa. **Destrava:** condicionar a frase a `apolice_atual.origem == "documento"`. **De
+quem:** 🤖. **Custa esquecer:** um exemplo manual afirma ao cliente uma economia sobre um número que ninguém leu.
+
+## P-132B-15 · 🤖 Re-preparar depois do "sim" pede o "sim" de novo
+Se o modelo chamar `cotacao_preparar` outra vez depois do "sim", a fala entra em `falas_vistas` e o disparo ouve `sem_sim` (confirmação
+P3). **Destrava:** o preparar que não mudou o pedido manter o resumo anterior. **De quem:** 🤖. **Custa esquecer:** atrito, não dano.
+
+### 132-C · o WhatsApp do corretor
+
+## P-132C-01 · ✅ FECHADA 14/10 — a Fila de atendimentos mostrava a conversa do atalho
+J-P2: `lib/atendimento/casos.ts` lia toda conversa da corretora. ✅ Consertado em `de42bed`: `.neq('channel','whatsapp_assistente')` nas
+duas leituras (D-132C-05). ⚠️ `neq` também exclui `channel IS NULL` — 📊 14/10: 0 nulos (default `'web'`); blindar com
+`or(channel.is.null,channel.neq.…)` se um dia houver (FUTURA).
+
+## P-132C-02 · 🤖 Sem Redis, o dedup do webhook é pulado
+`webhook.py:2552`: a reentrega da mesma mensagem responde 2× (J-P3, padrão pré-existente). **Destrava:** dedup pelo id da mensagem no
+banco quando o Redis falta. **De quem:** 🤖. **Custa esquecer:** o corretor recebe a resposta duas vezes num soluço do Redis.
+
+## P-132C-03 · 🤖 O corretor cujo número É a linha de atendimento da corretora não recebe explicação
+O anti-laço cala de propósito (J-P6, red team C2). **Destrava:** no Meu perfil, avisar "este número é o WhatsApp de atendimento da
+corretora; use outro para falar com o AutoBrokers". **De quem:** 🤖. **Custa esquecer:** em corretora pequena (o celular do corretor é o
+da corretora) o atalho "não funciona" sem motivo.
+
+## P-132C-04 · 🤖 `whatsapp_atalho_tentativas` e `whatsapp_atalho_estado` crescem sem limpeza
+J-P7; a migration `_05` já criou o índice do `atualizado_em` para a limpeza. **Destrava:** uma Rotina que apague tentativas > 24 h e
+estado > 30 dias. **De quem:** 🤖. **Custa esquecer:** tabela que só cresce.
+
+## P-132C-05 · 🤖 A trava por telefone não tem guarda que fique vermelho
+`entrada.py`: a sonda A6 SEM a trava continua verde (o banco em memória serializa) (J-P8). **Destrava:** um teste com dois turnos realmente
+concorrentes. **De quem:** 🤖. **Custa esquecer:** a trava pode sumir num refactor e ninguém vê.
+
+## P-132C-06 · 🤖 O limite de 240/min por IP do webhook GO é compartilhado
+`webhook.py:2888`: o IP é o mesmo servidor Evolution para todas as linhas; o tráfego do assistente compete com o atendimento das
+corretoras (RT P6b, inferência). **Destrava:** limite por instância, não por IP. **De quem:** 🤖. **Custa esquecer:** num pico, o
+atendimento dos segurados recebe 429.
+
+## P-132C-07 · 🤖 Dígitos unicode no ATIVAR gastam uma tentativa do dono
+`１２３４５６` / `١٢٣٤٥٦` casam a regex e nunca o hash (RT P6c). **Destrava:** normalizar para ASCII antes do hash. **De quem:** 🤖.
+**Custa esquecer:** um teclado diferente faz o corretor errar o código sem saber por quê.
+
+## P-132C-08 · 🤖 O LID do WhatsApp real não foi medido
+O red team provou LID sem alternativo (cala) e com `SenderAlt` (usa o telefone) em dublê. **Destrava:** no canário (P-132C-09), registrar o
+formato do `remoteJid`/`SenderAlt` que o Evolution GO entrega de um celular novo. **De quem:** 🤖. **Custa esquecer:** corretor com conta
+LID recebe silêncio.
+
+## P-132C-09 · 🧑🤖 Nenhum canário real do atalho
+Depende do chip, do QR e da variável (T-171). **Destrava:** T-171 → uma conversa real com o número do gerente: ATIVAR, uma pergunta, um
+áudio, uma foto, uma Cotação Rápida que volta pelo WhatsApp. **De quem:** 🧑 chip e QR · 🤖 o canário. **Custa esquecer:** a peça que envia
+mensagem nunca rodou no Evolution real.
+
+## P-132C-10 · 🤖 O teto de envios (300/dia) pode bater antes do teto de turnos (200/dia)
+Confirmação, observação: respostas de 2+ mensagens fazem o teto de envios chegar primeiro; os turnos seguem rodando (custo) e a frase do
+teto não sai. **Destrava:** contar o turno no teto de envios ou alinhar os dois. **De quem:** 🤖. **Custa esquecer:** custo de modelo sem
+resposta ao corretor (FUTURA).
+
+## A drenagem das pendências que a SPEC-132 tocou
+| P | estado |
+|---|---|
+| P-1310-04 | 🟡 CONTINUA, menor — a cotação no chat TRADUZ a recusa: `cotacao_disparar` devolve `frase_da_recusa_da_porta` (`ContaRecusada` → `exc.frase`, `cotacao_tool.py:247/303`) e `cotacao_ajustar` trata a do recálculo (`:402`). 📊 grep `ContaRecusada` em `backend/tests/test_spec132*` = 0: falta o guarda que prove a frase nos dois caminhos |
+| P-1310-06 | 🟡 CONTINUA — "transferir negócio entre usuários do Agger" NÃO foi medido na 132 (exige escrever no Agger de uma pessoa, com o aceite dela). Destino: a próxima SPEC que mexer na conta da pessoa (135) |
+| P-131B-09 | 🟡 CONTINUA — 📊 grep 14/10: `pode_entregar(` / `pode_negociar(` com 0 chamadores fora de `config.py:819/824`; a 132 não criou envio automático. Destino: 135 |
+| P-130A-01 | 🟡 ALIVIADA também na cotação de venda — `publicar_cotacao` nunca recusa por falta do número (sem ele, sem barra e "responda a mensagem em que recebeu este link", `proposta.py:1619`). O QCM continua recusando (T-125) |
+| T-144 (InfoCap) | ✅ a parte "conectar a InfoCap na própria corretora" foi feita pelo gerente com a autorização do Founder (D-132-G1): Resulta e AutoFleet `connected/healthy` |
