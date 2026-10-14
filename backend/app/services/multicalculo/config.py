@@ -181,7 +181,55 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
         # o Quem Cobra Menos É calcular, entregar e negociar — é a natureza do canal
         "qcm": {"modo": "calcular_entregar_negociar", "excecoes_do_modo": []},
         # 💭 Cotação e Renovação nascem no modo mais contido: a corretora liga a entrega/negociação quando quiser
-        "cotacao": {"modo": "calcular", "excecoes_do_modo": []},
+        "cotacao": {"modo": "calcular", "excecoes_do_modo": [],
+                    # SPEC-132-B (D-132B-06) — os CÁLCULOS da cotação, na ordem do disparo (1 a 3, sem repetir, a
+                    # `padrao` sempre — é dela que sai a Recomendada). As 3 da página de venda: Recomendada (padrao),
+                    # Mais em conta (economica) e Mais completa (completa_mais). ⛔ a `minima` é só do canal.
+                    "opcoes": ["padrao", "economica", "completa_mais"],
+                    # SPEC-132-B (D-132B-01/02) — os TEXTOS da página de VENDA (`proposta_cotacao_html`). Padrão do
+                    # produto, verdadeiros para QUALQUER corretora; a corretora troca cada lista inteira na linha dela
+                    # (`servicos.cotacao.pagina.<chave>`). `{corretora}` e `{validade}` são trocados na página pelo
+                    # nome e pela data REAIS. ⛔ nenhum texto promete WhatsApp, valor de devolução ou prazo da
+                    # seguradora; `diferenciais` nasce VAZIO (bloco sem dado some — nunca um diferencial inventado).
+                    "pagina": {
+                        "diferenciais": [],
+                        "depois_do_sim": [
+                            "Você escolhe a opção e fala com a gente. Tiramos as últimas dúvidas e conferimos os seus "
+                            "dados.",
+                            "Fazemos a proposta na seguradora. Se ela pedir vistoria do carro, avisamos e combinamos "
+                            "com você.",
+                            "A apólice chega no seu e-mail. E a {corretora} continua do seu lado durante todo o "
+                            "seguro.",
+                        ],
+                        "faq": [
+                            {"pergunta": "Por que fechar com uma corretora?",
+                             "resposta": "Porque a corretora trabalha para você, não para a seguradora: compara várias "
+                                         "de uma vez, explica o que cada cobertura faz e representa você diante da "
+                                         "seguradora — na contratação e, principalmente, se precisar acionar o "
+                                         "seguro."},
+                            {"pergunta": "E se eu bater o carro?",
+                             "resposta": "Você avisa a {corretora}. A gente orienta o que fazer, abre o aviso na "
+                                         "seguradora com você e acompanha até o fim. A franquia de cada opção é a sua "
+                                         "parte no conserto, quando houver."},
+                            {"pergunta": "O preço pode mudar?",
+                             "resposta": "Os preços desta cotação valem até {validade}. Depois disso a seguradora pode "
+                                         "recalcular, e a gente atualiza a cotação para você, sem custo."},
+                            {"pergunta": "Como eu pago?",
+                             "resposta": "À vista ou parcelado, nas formas que cada seguradora aceita (cartão de "
+                                         "crédito, boleto ou débito em conta). Os cartões mostram a parcela de cada "
+                                         "opção."},
+                            {"pergunta": "Posso cancelar depois?",
+                             "resposta": "Pode. A devolução do que você já pagou segue as regras da seguradora para o "
+                                         "período que ficou sem uso, e a gente cuida do pedido com você."},
+                            {"pergunta": "Preciso fazer vistoria?",
+                             "resposta": "Depende da seguradora e do carro. Se ela pedir, avisamos antes e combinamos "
+                                         "o melhor horário com você."},
+                            {"pergunta": "Os meus dados estão seguros?",
+                             "resposta": "Estão. Usamos os seus dados só para cotar e contratar o seu seguro, como manda "
+                                         "a Lei Geral de Proteção de Dados (LGPD). Esta página não mostra o seu CPF nem "
+                                         "o seu telefone."},
+                        ],
+                    }},
         "renovacao": {"modo": "calcular", "excecoes_do_modo": [],
                       # D-131-0-05 / §5 F3 — o Agger do comercial falhou (senha recusada): a conta da CORRETORA só
                       # assume quando a apólice vence em MENOS que isto, em dias 💭 (lido por `qual_agger.decidir`)
@@ -804,7 +852,12 @@ def conta_global_se_vence_em_dias(cfg: Mapping[str, Any]) -> int:
 #: o que a tela edita em cada serviço. O Quem Cobra Menos não entra: o manual dele é a natureza do canal (a comparação
 #: usa a config do CANAL — `proposta.py`, `cfg_sol`) e a corretora não o reescreve por esta tela.
 EDITAVEL_POR_SERVICO: Dict[str, frozenset] = {
-    "cotacao": frozenset({"modo", "excecoes_do_modo", "preferencias_de_seguradoras"}),
+    "cotacao": frozenset({"modo", "excecoes_do_modo", "preferencias_de_seguradoras",
+                          # SPEC-132-B (D-132B-06) — o Configurar da Cotação Rápida edita SÓ estas regras do cálculo:
+                          # quais opções, a comissão de ENTRADA e a validade (o resto aparece como "padrão do
+                          # AutoBrokers"). `comissao` e `validade` são chaves da BASE sobrepostas só na cotação
+                          # (`_sobreposicao`); `opcoes` é chave PRÓPRIA da cotação (`opcoes_da_cotacao`).
+                          "opcoes", "comissao", "validade"}),
     "renovacao": frozenset({"modo", "excecoes_do_modo", "preferencias_de_seguradoras",
                             "conta_global_se_vence_em_dias", "renovacao",
                             # SPEC-131-B G3 — a aba Configurar da Renovação: quantas opções (1–3), o teto por conta
@@ -839,6 +892,64 @@ def _erros_das_preferencias(v: Any, onde: str) -> list:
                 (isinstance(i, str) and i.strip()) or (isinstance(i, int) and not isinstance(i, bool)) for i in lista):
             erros.append(f"{onde}.{r}: esperada uma lista de seguradoras")
     return erros
+
+
+#: SPEC-132-B — os CÁLCULOS que a cotação aceita (a `minima` é só do canal; a `padrao` é obrigatória: dela sai a
+#: Recomendada) e as faixas que a tela da cotação aceita 💭 (fora delas a escrita é recusada)
+OPCOES_DA_COTACAO = ("padrao", "economica", "completa_mais")
+VALIDADE_DIAS_FAIXA = (1, 30)
+#: a comissão de ENTRADA da cotação: do autônomo do produto + 1 passo (a régua `_coerente` exige espaço para negociar)
+#: até o teto do produto
+COMISSAO_ENTRADA_FAIXA = (float(PADRAO_DO_PRODUTO["comissao"]["autonomo_minimo"])
+                          + float(PADRAO_DO_PRODUTO["comissao"]["passo_pp"]),
+                          float(PADRAO_DO_PRODUTO["comissao"]["teto_pct"]))
+
+
+def _opcoes_da_cotacao_validas(v: Any) -> bool:
+    return (isinstance(v, list) and 1 <= len(v) <= 3 and len(set(map(str, v))) == len(v)
+            and all(isinstance(x, str) and x in OPCOES_DA_COTACAO for x in v) and "padrao" in v)
+
+
+def opcoes_da_cotacao(cfg: Optional[Mapping[str, Any]]) -> tuple:
+    """SPEC-132-B — os cálculos da cotação, na ORDEM do disparo (a de `OPCOES_DA_COTACAO`, nunca a de quem escreveu).
+    Sem config, ou fora da régua → o padrão do produto."""
+    pad = tuple(PADRAO_DO_PRODUTO["servicos"]["cotacao"]["opcoes"])
+    if cfg is None:
+        return pad
+    v = list(_bloco_do_servico(cfg, "cotacao").get("opcoes") or [])
+    if not _opcoes_da_cotacao_validas(v):
+        return pad
+    return tuple(o for o in OPCOES_DA_COTACAO if o in v)
+
+
+def pagina_da_cotacao(cfg: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """SPEC-132-B — os textos da página de VENDA: {diferenciais: [str], depois_do_sim: [str], faq: [{pergunta,
+    resposta}]}. Cada lista da corretora vale INTEIRA quando está no formato; fora dele (ou vazia, salvo
+    `diferenciais`), o padrão do produto daquela lista — nunca uma lista quebrada na página do cliente."""
+    pad = PADRAO_DO_PRODUTO["servicos"]["cotacao"]["pagina"]
+    bloco: Mapping[str, Any] = {}
+    if cfg is not None:
+        bloco = _bloco_do_servico(cfg, "cotacao").get("pagina") or {}
+        if not isinstance(bloco, Mapping):
+            bloco = {}
+
+    def textos(v: Any) -> Optional[list]:
+        if isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v):
+            return [x.strip() for x in v]
+        return None
+
+    saida: Dict[str, Any] = {}
+    dif = textos(bloco.get("diferenciais"))
+    saida["diferenciais"] = dif if dif is not None else list(pad["diferenciais"])
+    dep = textos(bloco.get("depois_do_sim"))
+    saida["depois_do_sim"] = dep if dep else list(pad["depois_do_sim"])
+    faq = bloco.get("faq")
+    if (isinstance(faq, list) and faq and all(isinstance(i, Mapping) and str(i.get("pergunta") or "").strip()
+                                              and str(i.get("resposta") or "").strip() for i in faq)):
+        saida["faq"] = [{"pergunta": str(i["pergunta"]).strip(), "resposta": str(i["resposta"]).strip()} for i in faq]
+    else:
+        saida["faq"] = [dict(i) for i in pad["faq"]]
+    return saida
 
 
 def erros_da_edicao(servicos: Any = None, preferencias_de_seguradoras: Any = None) -> list:
@@ -880,10 +991,28 @@ def erros_da_edicao(servicos: Any = None, preferencias_de_seguradoras: Any = Non
             elif k == "conta":
                 if v not in CONTAS_DA_RENOVACAO:
                     erros.append(f"{onde}: escolha {' ou '.join(CONTAS_DA_RENOVACAO)}")
+            elif k == "opcoes" and s == "cotacao":
+                # SPEC-132-B: a MESMA régua da leitura (`opcoes_da_cotacao`) — ⛔ a mínima é do canal
+                if not _opcoes_da_cotacao_validas(v):
+                    erros.append(f"{onde}: de 1 a 3 opções da cotação ({', '.join(OPCOES_DA_COTACAO)}), sem "
+                                 "repetir e com a padrao")
             elif k == "opcoes":
                 # a MESMA régua da leitura (`_opcoes_validas`): ⛔ econômica e mínima nunca numa renovação
                 if not _opcoes_validas(v):
                     erros.append(f"{onde}: de 1 a 3 opções da renovação, sem repetir")
+            elif k == "comissao":
+                # SPEC-132-B: só a ENTRADA (o piso, o autônomo e o passo são do padrão do AutoBrokers)
+                if not isinstance(v, Mapping) or set(v) != {"entrada"}:
+                    erros.append(f"{onde}: só a comissão de entrada ({{\"entrada\": %}}) se edita aqui")
+                elif not _numero(v["entrada"]) or not COMISSAO_ENTRADA_FAIXA[0] <= v["entrada"] <= COMISSAO_ENTRADA_FAIXA[1]:
+                    erros.append(f"{onde}.entrada: um percentual de {COMISSAO_ENTRADA_FAIXA[0]:g} a "
+                                 f"{COMISSAO_ENTRADA_FAIXA[1]:g}")
+            elif k == "validade":
+                if not isinstance(v, Mapping) or set(v) != {"padrao_dias"}:
+                    erros.append(f"{onde}: só os dias de validade ({{\"padrao_dias\": n}}) se editam aqui")
+                elif not _inteiro_na_faixa(v["padrao_dias"], VALIDADE_DIAS_FAIXA):
+                    erros.append(f"{onde}.padrao_dias: um número inteiro de dias, de {VALIDADE_DIAS_FAIXA[0]} a "
+                                 f"{VALIDADE_DIAS_FAIXA[1]}")
             elif k == "teto_por_conta_noite":
                 if not _inteiro_na_faixa(v, TETO_POR_CONTA_NOITE_FAIXA):
                     erros.append(f"{onde}: um número inteiro, de {TETO_POR_CONTA_NOITE_FAIXA[0]} a "
