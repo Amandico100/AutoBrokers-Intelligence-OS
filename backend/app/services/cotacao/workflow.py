@@ -16,12 +16,17 @@ Modelado no `canal.cotacao` (`canal/workflows.py`: o MESMO `executar_passo`, a M
    de desistência depois da entrega) não grava 2 mensagens. A etapa `entregar` que terminou não repete (`guardar`).
 🔴 MULTI-TENANT: o run lê a conversa com `company_id` e só escreve nela se ela for DESTA corretora (§7). `messages` não
    tem `company_id`: a coerência é a conversa conferida antes de cada escrita.
-⛔ O `input_payload` vai EM CLARO para `work_runs`: só ids, a situação e a seguradora atual (nenhum CPF, nome, placa).
+⛔ O `input_payload` vai EM CLARO para `work_runs`: ids, a situação, a seguradora atual e o RESUMO do cliente que a aba
+   Cotações lista (B4 · `resumo_do_cliente`): o PRIMEIRO nome, o documento MASCARADO (≤ 2 dígitos, a regra da
+   renovação), o carro ("Onix 2022") e a placa. Nunca o CPF, o nome inteiro, o telefone, o e-mail.
+🔴 O `result_payload` (B4 · `Concluido`): o link, o token, o artefato, a mensagem para o cliente (já sem documento) e
+   o resumo das opções — é o que a aba Cotações (B3) mostra sem republicar.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import uuid
 from typing import Any, Dict, List, Mapping, Optional
@@ -109,6 +114,55 @@ def gravar_mensagem(db: Any, *, company_id: str, conversation_id: str, run_id: s
     return True
 
 
+#: as chaves do resumo do cliente no `input_payload` (o que a aba Cotações — `api/cotacoes.do_run` — lê)
+CHAVES_DO_CLIENTE = ("cliente_nome_curto", "documento_mascarado", "risco", "placa")
+_PLACA = re.compile(r"^[A-Z]{3}\d[A-Z0-9]\d{2}$")
+
+
+def resumo_do_cliente(campos: Optional[Mapping[str, Any]], descricao: Any = None) -> Dict[str, str]:
+    """Do pedido confirmado (`{grupo: {campo: valor}}`), SÓ o que pode ir em claro ao `work_runs`: o primeiro nome, o
+    documento mascarado, o carro e a placa. Campo que não veio não entra (a aba cai no pedido cifrado)."""
+    from app.services.multicalculo.renovacao import mascarar_documento, primeiro_nome
+
+    campos = campos if isinstance(campos, Mapping) else {}
+    seg = campos.get("segurado") if isinstance(campos.get("segurado"), Mapping) else {}
+    vei = campos.get("veiculo") if isinstance(campos.get("veiculo"), Mapping) else {}
+    saida: Dict[str, str] = {}
+    nome = primeiro_nome(seg.get("nome"))
+    if nome:
+        saida["cliente_nome_curto"] = nome
+    doc = mascarar_documento(seg.get("cpf_cnpj"))
+    if doc and sum(ch.isdigit() for ch in doc) <= 2:
+        saida["documento_mascarado"] = doc
+    placa = str(vei.get("placa") or "").strip().upper().replace("-", "")
+    if _PLACA.match(placa):
+        saida["placa"] = placa
+    risco = str(descricao or vei.get("modelo") or "").strip()
+    if risco and not re.search(r"\d{6,}", risco):      # nunca um número de documento no "risco"
+        saida["risco"] = risco[:60]
+    elif "placa" in saida:
+        saida["risco"] = f"Placa {saida['placa']}"
+    return saida
+
+
+def _cliente_do_run_anterior(db: Any, company_id: str, pedido_id: str) -> Dict[str, str]:
+    """O resumo do cliente do run de cotação anterior do MESMO pedido (o recálculo não tem a confirmação)."""
+    try:
+        linhas = _dados(_cliente(db).table("work_runs").select("id, company_id, workflow_key, input_payload")
+                        .eq("company_id", str(company_id)).eq("workflow_key", WORKFLOW_KEY)
+                        .eq("source_id", str(pedido_id)).execute())
+    except Exception as exc:  # noqa: BLE001 — sem o anterior, a aba lê do pedido cifrado
+        logger.info("[COTACAO] run anterior ilegível (%s)", type(exc).__name__)
+        return {}
+    for r in linhas:
+        ent = r.get("input_payload") if isinstance(r.get("input_payload"), Mapping) else {}
+        if str(r.get("company_id")) == str(company_id) and str(ent.get("pedido_id") or "") == str(pedido_id):
+            achado = {k: ent[k] for k in CHAVES_DO_CLIENTE if isinstance(ent.get(k), str) and ent[k].strip()}
+            if achado:
+                return achado
+    return {}
+
+
 def contas_do_pedido(db: Any, company_id: str, pedido_id: str) -> List[Dict[str, Any]]:
     """Em qual conta cada cálculo do pedido TEM de sair (o que a porta gravou da decisão do `qual_agger`)."""
     linhas = _dados(_cliente(db).table("multicalculo_calculos")
@@ -123,8 +177,10 @@ def contas_do_pedido(db: Any, company_id: str, pedido_id: str) -> List[Dict[str,
 # =====================================================================================================================
 def abrir(db: Any, *, company_id: str, user_id: str, conversation_id: str, pedido_id: str,
           situacao: str = "novo_sem_apolice", apolice_atual: Optional[Mapping[str, Any]] = None,
-          ajuste: Optional[str] = None, ajuste_calculo_id: Optional[str] = None) -> str:
-    """O run (`WorkRunService.criar`, a RPC com o outbox) + a `conversation_id` na linha. Devolve o `run_id`."""
+          ajuste: Optional[str] = None, ajuste_calculo_id: Optional[str] = None,
+          cliente: Optional[Mapping[str, Any]] = None) -> str:
+    """O run (`WorkRunService.criar`, a RPC com o outbox) + a `conversation_id` na linha. Devolve o `run_id`.
+    `cliente`: o `resumo_do_cliente` (o disparo o tem); sem ele (o recálculo), o do run anterior do mesmo pedido."""
     from app.services.work.runs import WorkRunService
 
     cli = _cliente(db)
@@ -136,6 +192,8 @@ def abrir(db: Any, *, company_id: str, user_id: str, conversation_id: str, pedid
                                     if k in apolice_atual}
     if ajuste:
         entrada.update({"ajuste": str(ajuste)[:80], "ajuste_calculo_id": str(ajuste_calculo_id or "")})
+    do_cliente = dict(cliente) if cliente else _cliente_do_run_anterior(cli, company_id, pedido_id)
+    entrada.update({k: str(do_cliente[k]) for k in CHAVES_DO_CLIENTE if do_cliente.get(k)})
     linha = WorkRunService(cli).criar(
         company_id=company_id, source_type="chat", outcome_type=OUTCOME_TYPE,
         outcome_title=("Cotação Rápida — recálculo pedido no chat" if ajuste else "Cotação Rápida — pedida no chat"),
@@ -242,6 +300,8 @@ async def _cotacao(ctx: dict) -> Any:
                               step_type="system", fn=_acompanhar, guardar=("situacao", "responderam", "cortado"))
 
     # ② entregar — publica (B2) e escreve a resposta na conversa (idempotente: o id da mensagem é fixo)
+    produzido: Dict[str, Any] = {}
+
     async def _entregar() -> dict:
         contas = await asyncio.to_thread(contas_do_pedido, db, company_id, pedido_id)
         onde = RESP.onde_pelas_contas(contas)
@@ -257,7 +317,8 @@ async def _cotacao(ctx: dict) -> Any:
             from app.services.multicalculo.proposta import publicar_cotacao
 
             pub = await publicar_cotacao(company_id, pedido_id, pessoa_user_id=pessoa,
-                                         apolice_atual=payload.get("apolice_atual"), db=db)
+                                         apolice_atual=payload.get("apolice_atual"), db=db,
+                                         primeiro_nome=payload.get("cliente_nome_curto") or None)
         except Exception as exc:  # noqa: BLE001 — o resultado existe; a página é que não saiu
             logger.error("[COTACAO] a apresentação não foi publicada (%s)", type(exc).__name__)
             escreveu = await asyncio.to_thread(
@@ -270,18 +331,27 @@ async def _cotacao(ctx: dict) -> Any:
         try:
             from app.services.multicalculo.mensagem import mensagem_de_cotacao
 
-            msg = mensagem_de_cotacao(resumo, pub.get("url")) or {}
+            # 🔴 B4: a mensagem é montada do MODELO da página — o `resumo` não tem o que ela lê (com ele a função
+            #    recusava "sem opção com preço" e o corretor ficava sem a mensagem para o cliente)
+            msg = mensagem_de_cotacao(pub.get("modelo") if isinstance(pub.get("modelo"), Mapping) else pub,
+                                      pub.get("url")) or {}
         except Exception as exc:  # noqa: BLE001 — sem o texto pronto, o link e a tabela ainda chegam
             logger.warning("[COTACAO] mensagem para o cliente indisponível (%s)", type(exc).__name__)
         texto = RESP.texto_pronto(responderam=responderam, opcoes=list(resumo.get("opcoes") or []),
                                   link=pub.get("url"), mensagem_para_o_cliente=msg.get("texto"),
                                   aviso_da_conta=aviso, ajuste=ajuste)
+        mensagem = {"texto": RESP.sem_documento_inteiro(msg.get("texto") or ""),
+                    "texto_curto": RESP.sem_documento_inteiro(msg.get("texto_curto") or "")}
+        produzido.update({"pedido_id": pedido_id, "url": pub.get("url"), "token": pub.get("token"),
+                          "artifact_id": str(pub.get("artifact_id") or "") or None,
+                          "mensagem": mensagem if mensagem["texto"] else None, "resumo": dict(resumo)})
         escreveu = await asyncio.to_thread(
             gravar_mensagem, db, company_id=company_id, conversation_id=conversa, run_id=run_id, tipo="pronta",
             texto=texto, payload={"pedido_id": pedido_id, "estado": "pronta", "url": pub.get("url"),
+                                  "token": pub.get("token"),
                                   "artifact_id": str(pub.get("artifact_id") or "") or None,
-                                  "mensagem_para_o_cliente": RESP.sem_documento_inteiro(msg.get("texto") or ""),
-                                  "texto_curto": RESP.sem_documento_inteiro(msg.get("texto_curto") or "")})
+                                  "mensagem_para_o_cliente": mensagem["texto"],
+                                  "texto_curto": mensagem["texto_curto"], "resumo": dict(resumo)})
         return {"situacao": "entregue", "artifact_id": str(pub.get("artifact_id") or "") or None,
                 "escreveu": bool(escreveu)}
 
@@ -289,8 +359,29 @@ async def _cotacao(ctx: dict) -> Any:
                               step_type="tool", fn=_entregar, efeito="idempotente",
                               guardar=("situacao", "artifact_id", "escreveu"))
     situacao = (r2 or {}).get("situacao")
+    _R = _runs_mod()
     if situacao == "entregue":
-        return f"Cotação entregue na conversa: {(r1 or {}).get('responderam')} seguradora(s) responderam."
+        if not produzido:                       # a retomada: a etapa já tinha entregue — o que ela gravou na conversa
+            produzido.update(await asyncio.to_thread(_produzido_da_mensagem, db, conversa, run_id, pedido_id))
+        return _R.Concluido(f"Cotação entregue na conversa: {(r1 or {}).get('responderam')} seguradora(s) "
+                            "responderam.", {**produzido, "situacao": "entregue"})
     if situacao == "sem_publicar":
-        return "As seguradoras responderam, mas a apresentação não saiu; a conversa foi avisada."
-    return "Nenhuma seguradora respondeu com preço; a conversa foi avisada."
+        return _R.Concluido("As seguradoras responderam, mas a apresentação não saiu; a conversa foi avisada.",
+                            {"pedido_id": pedido_id, "situacao": "sem_publicar"})
+    return _R.Concluido("Nenhuma seguradora respondeu com preço; a conversa foi avisada.",
+                        {"pedido_id": pedido_id, "situacao": "sem_preco"})
+
+
+def _produzido_da_mensagem(db: Any, conversa: str, run_id: str, pedido_id: str) -> Dict[str, Any]:
+    """O `result_payload` reconstruído da mensagem `pronta` que a etapa JÁ gravou (o run morreu entre a entrega e o
+    `concluir`): o link, o token, a mensagem e o resumo estão no `payload.cotacao` dela."""
+    linhas = _dados(_cliente(db).table("messages").select("id, conversation_id, payload")
+                    .eq("id", id_da_mensagem(run_id, "pronta")).eq("conversation_id", str(conversa)).limit(1).execute())
+    cot = ((linhas[0].get("payload") or {}).get("cotacao") or {}) if linhas else {}
+    if not isinstance(cot, Mapping) or not cot.get("url"):
+        return {"pedido_id": pedido_id}
+    texto = cot.get("mensagem_para_o_cliente") or ""
+    return {"pedido_id": pedido_id, "url": cot.get("url"), "token": cot.get("token"),
+            "artifact_id": cot.get("artifact_id"),
+            "mensagem": {"texto": texto, "texto_curto": cot.get("texto_curto") or ""} if texto else None,
+            "resumo": dict(cot.get("resumo") or {})}
