@@ -170,7 +170,7 @@ CORRETO do MANIFEST (o do arquivo não). Desligar sem reverter: `update capabili
 capability_key='tenant.multicalculo.cotacao' and agent_role='core';` (as ferramentas somem do chat).
 
 ## 📊 A BATERIA — quantas vezes ela rodou nesta SPEC
-PENDENTE — o gerente preenche (a rodada inteira das três SPECs, em `scratchpad/bat132`, ainda roda).
+📊 1 rodada inteira em 3 partes, em série (HEAD `bdfdfd0`→`ce32e89`, logs `scratchpad/bat132/`): parte 1 `22 failed, 1832 passed, 1 skipped` (42 min) · parte 2 `397 passed` · parte 3 `15 failed, 4618 passed, 6 skipped, 30 xfailed, 1 xpassed` (68 min) · front `test:chat-shell`, `o-chat-novo`, `a-loja-e-a-casca` verdes. Triagem nominal contra `BATERIA-LINHA-DE-BASE.txt`: 26 iguais · 9 sumiram · 10 novas de AMBIENTE (7 pelas pastas soltas não versionadas `app/app/` e `app/backend/` que os scanners de modelo varrem — T-155; 1 intake do portal apagado em 03/10; 1 InfoCap sem credencial no ambiente local; 1 higiene da árvore compartilhada) · **1 REGRESSÃO da 132** (`test_spec130a_a_proposta.py::test_g8…`: números 6/60 soltos em `multicalculo/proposta.py`) → CONSERTADA em `08c7138` (tetos nomeados; o teste passa). (a rodada inteira das três SPECs, em `scratchpad/bat132`, ainda roda).
 
 ## §11 A TELEMETRIA (`python backend/scripts/medir_execucao_claude_code.py --sessao atual`, rodado da raiz, 14/10 ~09:49 BRT, horários em UTC)
 ```
