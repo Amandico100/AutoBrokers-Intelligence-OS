@@ -635,6 +635,8 @@ Novo auxiliar
 
 Esses atalhos podem ser cards pequenos, botões ou chips, conforme decisão do Claude Design.
 
+> **Revisto pela SPEC-132-A (D-132A-03, 14/10/2026): sem atalhos; a caixa é o centro.**
+
 ---
 
 ## 8.3 Cards
@@ -848,6 +850,8 @@ Elementos:
 * nova conversa;
 * mensagens.
 
+> **Revisto pela SPEC-132-A (D-132A-03, 14/10/2026): sem atalhos; a caixa é o centro.**
+
 Não colocar:
 
 * dashboard;
@@ -1060,6 +1064,8 @@ Avaliar:
 * páginas de detalhe para configuração longa;
 * breadcrumbs simplificados;
 * transição lateral.
+
+> **SPEC-132-A (D-132A-02, 14/10/2026):** a barra de atalhos do rodapé saiu do celular (D-132A-02); navegação pelo ☰.
 
 ## 10.3 O que evitar no mobile
 
