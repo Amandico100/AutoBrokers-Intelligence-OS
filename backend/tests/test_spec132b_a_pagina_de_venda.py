@@ -50,7 +50,9 @@ CONTRATO = json.loads((BACKEND / "tests" / "fixtures" / "proposta" / "modelo_con
 CORRETOR = "c0c00000-0000-4000-8000-00000000c132"        # quem cotou (membro da corretora beta)
 WHATS_CORRETOR = "5548988881320"                         # o "Meu WhatsApp de trabalho" dele
 WHATS_CORRETORA = "5548999990099"                        # o WhatsApp da marca PUBLICADA da beta (o dublê)
-APOLICE_CARA = {"seguradora": "Porto", "premio_anual": 9000.0}
+#: a apólice LIDA da ficha (130-B): só com `origem="documento"` o prêmio entra (conserto juiz B2 — §9.3: antes o
+#: prêmio sem origem valia; era a porta da "economia" sem prova)
+APOLICE_CARA = {"seguradora": "Porto", "premio_anual": 9000.0, "origem": "documento"}
 
 #: 🔴 o retrato tirado ANTES desta fatia (14/10/2026, `scratchpad/hashes_antes.py`, sha256 do HTML de cada página para
 #: os modelos de `_modelos_de_referencia`). Mudou por verdade nova (uma decisão que muda ESTAS páginas)? Regere com o
@@ -251,8 +253,16 @@ def test_economia_so_com_a_apolice_e_nunca_um_aumento(monkeypatch):
     assert eco.startswith(f"{menos} a menos por ano") and "R$ 9.000 por ano" in eco and "“Recomendada”" in eco
     # a apólice MAIS BARATA que a recomendada: nenhuma "economia" (um aumento nunca é vantagem)
     m2 = mundo(monkeypatch)
-    doc2 = _servido(m2, _publicar(m2, apolice_atual={"seguradora": "Porto", "premio_anual": 1500.0})["token"])
+    doc2 = _servido(m2, _publicar(m2, apolice_atual={"seguradora": "Porto", "premio_anual": 1500.0,
+                                                     "origem": "documento"})["token"])
     assert 'class="eco' not in doc2 and 'id="h-eco"' not in doc2
+    # 🔴 conserto juiz B2: o MESMO prêmio caro, mas DITO (sem a apólice lida) → a página não mostra economia nenhuma
+    for dito in ({"seguradora": "Porto", "premio_anual": 9000.0},
+                 {"seguradora": "Porto", "premio_anual": 9000.0, "origem": "corretor"}):
+        m3 = mundo(monkeypatch)
+        doc3 = _servido(m3, _publicar(m3, apolice_atual=dito)["token"])
+        assert 'id="h-eco"' not in doc3, dito
+    assert "prêmio líquido da sua apólice atual" in eco and "sem o IOF" in eco
     # o modelo SEM apólice com uma "economia contra o maior preço" (a da carteira): a página não a mostra
     sem = _venda()
     sem["resumo"]["economia"] = {"ate": 4291.84, "de": 8460.29, "para": 4168.45, "contra": "maior"}
