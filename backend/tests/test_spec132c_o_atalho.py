@@ -63,7 +63,7 @@ ALFA = "aaaaaaaa-0000-4000-8000-0000000000a1"
 BETA = "bbbbbbbb-0000-4000-8000-0000000000b1"
 U1 = "11111111-0000-4000-8000-000000000001"     # Alfa
 U2 = "22222222-0000-4000-8000-000000000002"     # Alfa E Beta (a mesma pessoa nas duas)
-U3 = "33333333-0000-4000-8000-000000000003"     # Beta, ainda sem número (vai ATIVAR)
+U3 = "33333333-0000-4000-8000-000000000003"     # Beta, número DECLARADO e confirmado, ainda NÃO verificado (vai ATIVAR)
 U4 = "44444444-0000-4000-8000-000000000004"     # Beta
 U5 = "55555555-0000-4000-8000-000000000005"     # Alfa, verificou o número que é a LINHA da corretora (anti-laço)
 U6 = "66666666-0000-4000-8000-000000000006"     # Alfa, número CONFIRMADO por clique mas NÃO verificado
@@ -83,6 +83,8 @@ TOKEN_ASSISTENTE = "tok-assistente-132c-" + "a" * 40
 TOKEN_QCM = "tok-qcm-132c-" + "q" * 40
 TOKEN_ALFA = "tok-alfa-132c-" + "z" * 40
 TOKEN_FALSO_ASSISTENTE = "tok-falso-132c-" + "f" * 40
+#: uma chave Fernet de TESTE (o cofre cifra a fala que espera a escolha da corretora — `atalho.estado`)
+CHAVE_DO_COFRE = "dGVzdGUtZG8tY29mcmUtMTMyYy1hdGFsaG8tMzJieXQ="
 TABELA_MD = ("**Cotação Rápida — 3 seguradoras**\n\n"
              "| Seguradora | Parcelas | À vista |\n|---|---|---|\n"
              "| Seguradora Um | 12x R$ 99,90 | R$ 1.100,00 |\n| Seguradora Dois | 10x R$ 120,00 | R$ 1.150,00 |\n\n"
@@ -266,7 +268,8 @@ def mundo_inicial() -> Banco:
         users_v2=[_pessoa(U1, "Pessoa Um"), _pessoa(U2, "Pessoa Dois"), _pessoa(U3, "Pessoa Tres"),
                   _pessoa(U4, "Pessoa Quatro"), _pessoa(U5, "Pessoa Cinco"), _pessoa(U6, "Pessoa Seis")],
         company_members=[_membro(ALFA, U1, CEL_1), _membro(ALFA, U2, CEL_2), _membro(BETA, U2, CEL_2),
-                         _membro(BETA, U3), _membro(BETA, U4, CEL_4), _membro(ALFA, U5, CEL_LINHA_ALFA),
+                         _membro(BETA, U3, CEL_3, verificado=False), _membro(BETA, U4, CEL_4),
+                         _membro(ALFA, U5, CEL_LINHA_ALFA),
                          _membro(ALFA, U6, CEL_6, verificado=False)],
         agents=[{"id": AG_ALFA_ATEND, "company_id": ALFA, "is_active": True, "agent_role": "attendance",
                  "widget_config": {}},
@@ -292,7 +295,7 @@ def mundo_inicial() -> Banco:
              "webhook_token_hash": _hash(TOKEN_FALSO_ASSISTENTE)}],
         canal_convidados=[{"company_id": CANAL, "telefone": V._canonico(CEL_1), "ativo": True}],
         human_support_destinations=[], conversations=[], messages=[], artifacts=[],
-        whatsapp_atalho_codigos=[], whatsapp_atalho_tentativas=[],
+        whatsapp_atalho_codigos=[], whatsapp_atalho_tentativas=[], whatsapp_atalho_estado=[],
     )
 
 
@@ -367,6 +370,7 @@ def fio(monkeypatch):
     monkeypatch.setenv(E.ENV_LIGADO, "1")
     monkeypatch.setenv("ADMIN_API_KEY", arreio.CHAVE_INTERNA_D)
     monkeypatch.setenv("ATALHO_CODIGO_SEGREDO", "segredo-de-teste-132c")
+    monkeypatch.setenv("PORTAL_VAULT_KEY", CHAVE_DO_COFRE)
     monkeypatch.setenv("PUBLIC_APP_URL", "https://app.exemplo.test")
     monkeypatch.setattr(ENV, "PAUSA_ENTRE_MENSAGENS_S", 0)
 
@@ -452,9 +456,21 @@ def fio(monkeypatch):
         assert r.status_code == 200, r.text
         return r.json()
 
+    cliente_cru = TestClient(app, raise_server_exceptions=False)
+
+    def postar_cru(corpo, *, token=TOKEN_ASSISTENTE):
+        """O corpo como veio (formatos estranhos): devolve (status HTTP, json ou texto) — sem afirmar 200."""
+        limiter.reset()
+        r = cliente_cru.post(f"/api/v1/webhook/evolution-go/{token}", json=corpo)
+        try:
+            return r.status_code, r.json()
+        except ValueError:
+            return r.status_code, r.text
+
     try:
         yield types.SimpleNamespace(banco=banco, envio=envio, taps=taps, pipeline=pipeline, grafo=chamadas_do_grafo,
-                                    redis=redis, postar=postar, postar_v2=postar_v2, arreio=arreio)
+                                    redis=redis, postar=postar, postar_v2=postar_v2, postar_cru=postar_cru,
+                                    arreio=arreio)
     finally:
         sys.modules["app.agents.graph"].stream_agent_eventos = original
         troca.__exit__(None, None, None)
@@ -546,9 +562,11 @@ def test_a_mesma_mensagem_ao_qcm_ou_ao_atendimento_nao_passa_pelo_atalho(fio):
     # o atendimento de uma corretora: o observer consome
     fio.postar("quanto fica o seguro?", tel=CEL_1, token=TOKEN_ALFA)
     assert fio.taps == ["int-alfa"]
-    # uma corretora com purpose='assistente' na própria linha NÃO é o número do AutoBrokers
-    fio.postar("quanto fica o seguro?", tel=CEL_1, token=TOKEN_FALSO_ASSISTENTE)
-    assert fio.taps == ["int-alfa", "int-falso"]
+    # uma corretora com purpose='assistente' na própria linha NÃO é o número do AutoBrokers — e (conserto B1) o
+    # portão FECHA: não vira atalho, nem observer, nem pipeline (antes caía no observer: a verdade mudou, §9.3)
+    r = fio.postar("quanto fica o seguro?", tel=CEL_1, token=TOKEN_FALSO_ASSISTENTE)
+    assert r == {"status": "ignored", "reason": "atalho_nao_confirmado"}
+    assert fio.taps == ["int-alfa"] and fio.pipeline == ["int-qcm"]
     assert fio.grafo == [] and fio.envio.enviados == [] and fio.banco.linhas("conversations") == []
 
 
@@ -730,10 +748,163 @@ def test_o_envio_recusa_integracao_que_nao_e_a_do_assistente(monkeypatch):
 
     envio = EnvioFalso()
     monkeypatch.setattr(_ws, "get_whatsapp_service", lambda: envio)
-    n = asyncio.run(ENV.enviar({"id": "int-qcm", "purpose": "observer"}, CEL_1, ["oi"]))
+    monkeypatch.setenv("ATALHO_CODIGO_SEGREDO", "segredo-de-teste-132c")
+    banco = mundo_inicial()
+    n = asyncio.run(ENV.enviar({"id": "int-qcm", "purpose": "observer"}, CEL_1, ["oi"], db=banco))
     assert n == 0 and envio.enviados == []
+    # sem banco não há como conferir o anti-laço nem o teto: nada sai (fail-closed)
     n = asyncio.run(ENV.enviar({"id": "int-assistente", "purpose": "assistente"}, CEL_1, ["oi"]))
+    assert n == 0 and envio.enviados == []
+    n = asyncio.run(ENV.enviar({"id": "int-assistente", "purpose": "assistente"}, CEL_1, ["oi"], db=banco))
     assert n == 1 and envio.enviados[0]["integracao"] == "int-assistente"
+
+
+# =====================================================================================================================
+# 11. O CONSERTO ÚNICO (laudos JUIZ-132-C e RED-TEAM-132-C) — cada guarda tem a sua mutação lá embaixo (C*)
+# =====================================================================================================================
+def test_o_portao_do_assistente_falha_fechado_com_o_banco_instavel(fio, monkeypatch):
+    """B1 (juiz): a leitura do tipo da empresa falha → a mensagem ao número do ASSISTENTE é IGNORADA ali — nunca o
+    observer, o QCM nem o pipeline de atendimento."""
+    from app.services.canal import repositorio as _repo
+
+    # CONTROLE: banco bom → o atalho (nada no observer nem no pipeline)
+    assert fio.postar("oi", tel=CEL_ESTRANHO) == {"status": "accepted", "reason": "atalho"}
+    assert fio.taps == [] and fio.pipeline == []
+    _repo._CACHE_DO_TIPO.clear()
+    original = fio.banco.table
+
+    def _table(nome):   # o PostgREST não responde à leitura de `companies`
+        if nome == "companies":
+            raise RuntimeError("banco instavel")
+        return original(nome)
+
+    monkeypatch.setattr(fio.banco, "table", _table)
+    r = fio.postar("me passa os dados do cliente", tel=CEL_ESTRANHO)
+    assert r == {"status": "ignored", "reason": "atalho_nao_confirmado"}
+    assert fio.taps == [] and fio.pipeline == [] and fio.grafo == [] and fio.envio.enviados == []
+
+
+def _conversa_do_atalho(fio, cid, uid):
+    linha = {"id": str(uuid.uuid4()), "company_id": cid, "user_id": uid, "channel": T.CANAL_DO_ATALHO,
+             "session_id": str(uuid.uuid4()), "status": "open", "last_message_at": _agora_iso()}
+    fio.banco.linhas("conversations").append(linha)
+    return linha
+
+
+def test_a_saida_nao_manda_para_instancia_do_produto(fio):
+    """RT-132C-01: U5 verificou o celular e DEPOIS ele virou a linha de atendimento da Alfa. A volta da cotação (e
+    qualquer envio) NÃO sai para lá — o anti-laço vale na SAÍDA. U1 é o controle."""
+    import asyncio
+
+    conv_u5 = _conversa_do_atalho(fio, ALFA, U5)
+    assert asyncio.run(ENV.avisar_pelo_atalho_se_for_o_caso(
+        fio.banco, company_id=ALFA, conversation_id=conv_u5["id"], texto_markdown="**Cotação** pronta")) is False
+    integ = ENV.integracao_do_assistente(fio.banco)
+    assert asyncio.run(ENV.enviar(integ, CEL_LINHA_ALFA, ["oi"], db=fio.banco)) == 0
+    assert asyncio.run(ENV.enviar(integ, "+" + QCM, ["oi"], db=fio.banco)) == 0
+    assert fio.envio.enviados == []
+    # CONTROLE: o mesmo caminho para U1 (o celular de uma pessoa) sai, uma vez
+    conv_u1 = _conversa_do_atalho(fio, ALFA, U1)
+    assert asyncio.run(ENV.avisar_pelo_atalho_se_for_o_caso(
+        fio.banco, company_id=ALFA, conversation_id=conv_u1["id"], texto_markdown="**Cotação** pronta")) is True
+    assert [e["para"] for e in fio.envio.enviados] == [V._canonico(CEL_1)]
+
+
+def test_o_codigo_vazado_mandado_de_outro_celular_nao_troca_a_identidade(fio):
+    """P1 (juiz e red team): o código de U1 mandado de OUTRO celular → silêncio; o número, a confirmação e a
+    verificação de U1 não mudam; o turno seguinte do outro celular não roda como U1."""
+    antes = copy.deepcopy(next(m for m in fio.banco.linhas("company_members")
+                               if m["company_id"] == ALFA and m["user_id"] == U1))
+    passo = V.gerar_codigo(fio.banco, company_id=ALFA, user_id=U1)
+    fio.postar(passo["texto"], tel=CEL_ESTRANHO)
+    depois = next(m for m in fio.banco.linhas("company_members") if m["company_id"] == ALFA and m["user_id"] == U1)
+    assert depois == antes                                    # nada mudou no membro
+    assert fio.envio.enviados == []
+    fio.postar("lista os meus clientes", tel=CEL_ESTRANHO)
+    assert fio.grafo == [] and fio.envio.enviados == []
+    # CONTROLE: o MESMO código, do número declarado de U1, verifica
+    fio.postar(passo["texto"], tel=CEL_1)
+    (pronto,) = fio.envio.enviados
+    assert pronto["para"] == V._canonico(CEL_1) and pronto["texto"].startswith("Pronto, ")
+
+
+def test_qual_corretora_vai_uma_vez_e_as_falas_esperam_juntas(fio):
+    """P2 (red team): 8 mensagens sem escolher → UMA pergunta; a escolha leva as falas guardadas, juntas, para a
+    corretora escolhida. E cada mensagem que saiu contou no teto do dia."""
+    from app.services.atalho import estado as EST
+
+    for i in range(8):
+        fio.postar(f"pergunta {i}", tel=CEL_2)
+    perguntas = [e for e in fio.envio.enviados if "qual corretora" in e["texto"]]
+    assert len(perguntas) == 1 and len(fio.envio.enviados) == 1 and fio.grafo == []
+    fio.postar("2", tel=CEL_2)
+    assert [(g["company_id"], g["user_id"]) for g in fio.grafo] == [(BETA, U2)]
+    (conv,) = _conversas(fio.banco, company_id=BETA, user_id=U2)
+    (fala,) = [m["content"] for m in _mensagens(fio.banco, conv["id"]) if m["role"] == "user"]
+    assert fala == "\n".join(f"pergunta {i}" for i in range(8))
+    assert EST.enviadas_hoje(fio.banco, CEL_2) == len(fio.envio.enviados) == 2
+
+
+def test_toda_mensagem_que_sai_conta_no_teto_de_envios(fio, monkeypatch):
+    """P2 (red team): sem agente CORE, cada mensagem recebia a frase e o contador ficava em zero. Agora a frase conta,
+    e no teto do dia nada mais sai (💭 teto rebaixado para 3 no teste)."""
+    from app.services.atalho import estado as EST
+
+    monkeypatch.setattr(EST, "TETO_DE_ENVIOS_POR_DIA", 3)
+    fio.banco.dados["agents"] = [a for a in fio.banco.linhas("agents") if a["company_id"] != BETA]
+    for i in range(10):
+        fio.postar(f"oi {i}", tel=CEL_4)
+    assert len(fio.envio.enviados) == 3 and all("ainda não está ligado" in e["texto"] for e in fio.envio.enviados)
+    assert EST.enviadas_hoje(fio.banco, CEL_4) == 3
+    # CONTROLE: outro telefone tem o próprio teto
+    fio.postar("oi", tel=CEL_1)
+    assert fio.envio.enviados[-1]["para"] == V._canonico(CEL_1)
+
+
+def test_sem_redis_trocar_corretora_funciona(fio, monkeypatch):
+    """P3 (red team): a pergunta pendente mora no banco — Redis fora, "trocar corretora" + "2" vai para a Beta."""
+    import app.api.webhook as w
+    import app.core.redis as _redis
+
+    fio.postar("oi", tel=CEL_2)
+    fio.postar("1", tel=CEL_2)                       # escolhe a Alfa
+
+    async def _sem():
+        raise RuntimeError("redis fora")
+
+    monkeypatch.setattr(_redis, "get_async_redis_client", _sem)
+    monkeypatch.setattr(w, "get_async_redis_client", _sem)
+    fio.postar("trocar corretora", tel=CEL_2)
+    assert "qual corretora" in fio.envio.enviados[-1]["texto"]
+    fio.postar("2", tel=CEL_2)
+    assert "Corretora Beta" in fio.envio.enviados[-1]["texto"]
+    fio.postar("e agora?", tel=CEL_2)
+    assert fio.grafo[-1]["company_id"] == BETA
+    assert all(m["content"] != "2" for m in fio.banco.linhas("messages") if m["role"] == "user")
+
+
+@pytest.mark.parametrize("chave", [["a"], "texto", 5], ids=["lista", "texto", "numero"])
+def test_formato_estranho_da_chave_e_ignorado_sem_500(fio, chave):
+    """P4 (red team): `data.key` como lista dava 500 no webhook do assistente."""
+    status, corpo = fio.postar_cru({"event": "messages.upsert",
+                                    "data": {"key": chave, "message": {"conversation": "oi"}}})
+    assert status == 200 and corpo["status"] == "ignored"
+    assert fio.envio.enviados == [] and fio.grafo == []
+    # CONTROLE: o mesmo envelope com a chave certa entra
+    assert fio.postar_v2({"conversation": "oi"}, tel=CEL_1) == {"status": "accepted", "reason": "atalho"}
+
+
+def test_texto_enorme_e_cortado_antes_do_turno_com_aviso(fio):
+    """P5 (red team): 1 MB de texto virava `chatInput`. Agora até 💭 8.000 caracteres, e a pessoa é avisada."""
+    fio.postar("a" * 20000, tel=CEL_1)
+    (turno,) = fio.grafo
+    (conv,) = _conversas(fio.banco, company_id=ALFA, user_id=U1)
+    (pergunta,) = [m for m in _mensagens(fio.banco, conv["id"]) if m["role"] == "user"]
+    assert len(pergunta["content"]) == E.LIMITE_DO_TEXTO
+    assert fio.envio.enviados[0]["texto"] == E.FRASE_TEXTO_LONGO and len(fio.envio.enviados) == 2
+    # CONTROLE: o texto do tamanho do limite passa inteiro, sem aviso
+    fio.postar("b" * E.LIMITE_DO_TEXTO, tel=CEL_1)
+    assert fio.envio.enviados[-2]["texto"] != E.FRASE_TEXTO_LONGO and len(fio.envio.enviados) == 3
 
 
 # =====================================================================================================================
@@ -742,7 +913,7 @@ def test_o_envio_recusa_integracao_que_nao_e_a_do_assistente(monkeypatch):
 MUTACOES = [
     ("M1", "app/services/atalho/entrada.py",
      '                logger.info("[ATALHO] número não verificado (%s) — silêncio", _mascarar(tel))\n',
-     '                await envio.enviar_texto(integracao, tel, "Este número é exclusivo de corretores.")\n',
+     '                await envio.enviar_texto(integracao, tel, "Este número é exclusivo de corretores.", db=db)\n',
      "test_numero_nao_verificado_silencio_sem_resposta_e_sem_conteudo"),
     ("M4", "app/services/atalho/entrada.py",
      "    if str((integracao or {}).get(\"purpose\") or \"\").strip().lower() != PURPOSE_DO_ASSISTENTE:\n",
@@ -767,6 +938,46 @@ MUTACOES = [
      "            if len(membros) == 1:\n                membro = membros[0]\n",
      "            if len(membros) >= 1:\n                membro = membros[0]\n",
      "test_membro_de_duas_corretoras_pergunta_e_nao_mistura"),
+    # --- o conserto único (cada uma é o defeito do laudo DE VOLTA) ---
+    ("C-B1 o portão volta a falhar aberto", "app/api/webhook.py",
+     '        return {"status": "ignored", "reason": "atalho_nao_confirmado"}\n',
+     "",
+     "test_o_portao_do_assistente_falha_fechado"),
+    ("C-RT01 a saída sem anti-laço", "app/services/atalho/envio.py",
+     "    if await asyncio.to_thread(numero_do_produto, db, tel):\n",
+     "    if False:\n",
+     "test_a_saida_nao_manda_para_instancia_do_produto"),
+    ("C-P1 o código vale de qualquer celular", "app/services/atalho/verificacao.py",
+     "            or not _mesmo_telefone(membro.get(\"whatsapp_trabalho_e164\"), e164):\n",
+     "            and not _mesmo_telefone(membro.get(\"whatsapp_trabalho_e164\"), e164):\n",
+     "test_o_codigo_vazado_mandado_de_outro_celular",
+     ("app/services/atalho/verificacao.py",
+      "    patch = {\"whatsapp_trabalho_verificado_em\": t0.isoformat()}\n",
+      "    patch = {\"whatsapp_trabalho_e164\": _e164_de(telefone), \"whatsapp_trabalho_verificado_em\": t0.isoformat()}\n"),
+     ("app/services/atalho/verificacao.py",
+      "                                   .eq(\"whatsapp_trabalho_e164\", e164).execute())",
+      "                                   .execute())")),
+    ("C-P2a a pergunta volta a cada mensagem", "app/services/atalho/entrada.py",
+     "    if pendente and not trocar:\n",
+     "    if pendente and not trocar and _escolha(texto, membros):\n",
+     "test_qual_corretora_vai_uma_vez"),
+    ("C-P2b o envio não conta no teto", "app/services/atalho/envio.py",
+     "    if not await asyncio.to_thread(EST.reservar_envios, db, tel, len(textos)):\n",
+     "    if False:\n",
+     "test_toda_mensagem_que_sai_conta_no_teto"),
+    ("C-P3 a pergunta pendente some (como Redis fora)", "app/services/atalho/entrada.py",
+     "    guardado = await asyncio.to_thread(EST.ler, db, telefone)\n",
+     "    guardado = {}\n",
+     "test_sem_redis_trocar_corretora_funciona"),
+    ("C-P4 a chave estranha volta a derrubar", "app/services/atalho/entrada.py",
+     "    if not isinstance(chave, dict):        # P4 (red team): `key` como lista/texto → ignorado, nunca um 500\n"
+     "        return None, \"payload_invalido\"\n",
+     "",
+     "test_formato_estranho_da_chave"),
+    ("C-P5 sem corte do texto", "app/services/atalho/entrada.py",
+     "    if isinstance(texto, str) and len(texto) > LIMITE_DO_TEXTO:\n",
+     "    if False:\n",
+     "test_texto_enorme_e_cortado"),
 ]
 
 
@@ -780,24 +991,24 @@ def _mutar() -> int:
             for arq, d, p in trocas:
                 caminho = BACKEND / arq
                 if caminho not in copias:
-                    copias[caminho] = caminho.read_text(encoding="utf-8")
-                atual = caminho.read_text(encoding="utf-8")
-                assert atual.count(d) == 1, f"{rotulo}: o trecho não está UMA vez em {arq}"
-                caminho.write_text(atual.replace(d, p), encoding="utf-8")
+                    copias[caminho] = caminho.read_bytes()
+                atual = caminho.read_bytes().decode("utf-8")
+                assert atual.count(d.replace("\n", "\r\n")) + atual.count(d) >= 1, \
+                    f"{rotulo}: o trecho não está em {arq}"
+                trocado = atual.replace(d.replace("\n", "\r\n"), p.replace("\n", "\r\n"), 1) \
+                    if d.replace("\n", "\r\n") in atual else atual.replace(d, p, 1)
+                assert trocado != atual, f"{rotulo}: a troca não mudou {arq}"
+                caminho.write_bytes(trocado.encode("utf-8"))
             r = subprocess.run([sys.executable, "-m", "pytest", __file__, "-q", "-p", "no:cacheprovider",
                                 "-k", teste], cwd=str(BACKEND), capture_output=True, text=True)
             vermelho = r.returncode != 0
             print(f"{rotulo}: {'VERMELHO (o guarda pegou)' if vermelho else 'MUTACAO NAO PEGOU'} — {teste}")
             falhas += 0 if vermelho else 1
         finally:
-            # restaura POR CÓPIA; se alguém mexeu no arquivo durante a rodada, desfaz só a troca (não a obra alheia)
-            for arq, d, p in trocas:
-                caminho = BACKEND / arq
-                atual = caminho.read_text(encoding="utf-8")
-                if p in atual and d not in atual:
-                    caminho.write_text(atual.replace(p, d, 1), encoding="utf-8")
-            for caminho, texto in copias.items():
-                assert caminho.read_text(encoding="utf-8") == texto or True
+            # 🔴 restaura POR CÓPIA DOS BYTES — e confere (o arquivo volta idêntico, byte a byte)
+            for caminho, original in copias.items():
+                caminho.write_bytes(original)
+                assert caminho.read_bytes() == original, f"{rotulo}: {caminho.name} não voltou igual"
     return falhas
 
 
