@@ -24,6 +24,22 @@ export type Efetivo = {
   antecipar_ate_dias?: number;
   /** SPEC-131-B G5 — "Com qual conta" (D-131-04): o Agger do responsável (padrão) ou sempre o da corretora */
   conta?: ContaDaRenovacao;
+  /** SPEC-132-B · B3 — a Cotação Rápida: TODAS as regras efetivas do cálculo (os mesmos leitores do motor e da página) */
+  regras?: RegrasDaCotacao;
+};
+/** SPEC-132-B · B3 (D-132B-06) — as regras do cálculo da cotação como o backend as lê (`servicos_da_corretora._regras_da_cotacao`). */
+export type RegrasDaCotacao = {
+  comissao: { entrada?: number; autonomo_minimo?: number; piso?: number; passo_pp?: number; teto_pct?: number };
+  comissao_por_ramo: Record<string, number | null>;
+  validade_dias?: number;
+  validade_por_seguradora: Record<string, number>;
+  opcoes_no_whatsapp?: number;
+  opcoes_na_pagina?: number;
+  calculo_por_papel: Record<string, string>;
+  alvo_abaixo_da_atual_pct: { minimo?: number; maximo?: number };
+  ordem_do_mais_barato: string[];
+  cortes_de_cobertura: Record<string, string>;
+  coberturas_essenciais: Record<string, string[]>;
 };
 export type ContaDaRenovacao = 'responsavel' | 'corretora';
 export type DadosServicos = {
@@ -42,13 +58,19 @@ export type DadosServicos = {
     antecipar_ate_dias?: [number, number];
     opcoes_da_renovacao?: string[];
     contas_da_renovacao?: ContaDaRenovacao[];
+    /** SPEC-132-B · B3 — o que a cotação pode calcular e as faixas de comissão de entrada e de validade */
+    opcoes_da_cotacao?: string[];
+    comissao_entrada_da_cotacao?: [number, number];
+    validade_dias_da_cotacao?: [number, number];
   };
+  /** SPEC-132-B · B3 — o que o backend JÁ aceita gravar na cotação (opcoes · comissao · validade); o resto só se mostra */
+  editaveis_da_cotacao?: string[];
   versao?: string | null;
 };
 
 export const NOME_DO_SERVICO: Record<Servico, string> = {
-  cotacao: 'Cotação',
-  renovacao: 'Renovação',
+  cotacao: 'Cotação Rápida',
+  renovacao: 'Renovação Automática',
   qcm: 'Quem Cobra Menos',
 };
 
