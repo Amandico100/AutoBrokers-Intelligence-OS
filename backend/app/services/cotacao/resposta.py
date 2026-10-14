@@ -153,7 +153,14 @@ def aviso_da_conta(onde: str) -> Optional[str]:
     return f"Calculei {onde}. Para as próximas saírem no seu, conecte o seu Agger em Meu perfil."
 
 
-def texto_sem_resposta(*, aviso: Optional[str] = None) -> str:
+def texto_sem_resposta(*, aviso: Optional[str] = None, ajuste: Optional[str] = None) -> str:
+    if ajuste:
+        # o RECÁLCULO sem preço: a apresentação de antes continua a que vale (nenhum link novo, nenhum preço velho
+        # rotulado como novo — conserto juiz B1)
+        return sem_documento_inteiro(
+            f"Nenhuma seguradora respondeu ao recálculo com {ajuste}. A apresentação que eu mandei antes continua "
+            "valendo, com os preços de antes. Você pode abrir o cálculo no Agger para ver o motivo, ou me pedir para "
+            "tentar o recálculo de novo daqui a pouco." + (f"\n\n{aviso}" if aviso else ""))
     base = ("Nenhuma seguradora respondeu com preço desta vez. Isso acontece quando elas estão fora do ar ou pedem uma "
             "análise a mais do perfil. Você pode abrir o cálculo no Agger para ver o motivo de cada uma, ou me pedir "
             "para tentar de novo daqui a pouco.")
@@ -174,13 +181,15 @@ def texto_sem_publicar(*, responderam: int) -> str:
 # =====================================================================================================================
 # o cinto — nenhum CPF/CNPJ inteiro sai desta fatia (mutação 7)
 # =====================================================================================================================
-_CPF = re.compile(r"(?<![\d*])(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})(?!\d)")
-_CNPJ = re.compile(r"(?<![\d*])(\d{2})\.?(\d{3})\.?(\d{3})/?(\d{4})-?(\d{2})(?!\d)")
+#: 🔴 conserto juiz P9 / RT P-RT-1: o separador entre os grupos pode ser ponto, hífen, barra OU ESPAÇO
+#: ("529 982 247 25" passava cru). O dígito verificador continua sendo a régua: 11 dígitos que não são CPF ficam.
+_CPF = re.compile(r"(?<![\d*])(\d{3})[. ]?(\d{3})[. ]?(\d{3})[-. ]?(\d{2})(?![\d])")
+_CNPJ = re.compile(r"(?<![\d*])(\d{2})[. ]?(\d{3})[. ]?(\d{3})[/. ]?(\d{4})[-. ]?(\d{2})(?![\d])")
 
 
 def sem_documento_inteiro(texto: Any) -> str:
-    """Todo CPF/CNPJ com dígito verificador VÁLIDO vira `***.***.***-NN` (a máscara da renovação). Os outros números
-    (data, CEP, valor, telefone sem DV) ficam como vieram."""
+    """Todo CPF/CNPJ com dígito verificador VÁLIDO vira `***.***.***-NN` (a máscara da renovação) — pontuado, colado
+    ou separado por espaços. Os outros números (data, CEP, valor, telefone sem DV) ficam como vieram."""
     from app.services.cotacao.pedido_da_conversa import documento_valido
     from app.services.multicalculo.renovacao import mascarar_documento
 
