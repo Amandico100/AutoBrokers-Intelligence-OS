@@ -57,9 +57,13 @@ APOLICE_CARA = {"seguradora": "Porto", "premio_anual": 9000.0, "origem": "docume
 #: 🔴 o retrato tirado ANTES desta fatia (14/10/2026, `scratchpad/hashes_antes.py`, sha256 do HTML de cada página para
 #: os modelos de `_modelos_de_referencia`). Mudou por verdade nova (uma decisão que muda ESTAS páginas)? Regere com o
 #: mesmo cálculo e escreva aqui por quê — nunca por um efeito colateral da página de venda (D-131-42: copy nunca cruzada).
+#: §9.3 (14/10, conserto de design 132-B, R1–R6): a RENOVAÇÃO mudou por decisão que é DELA (o laudo de design
+#: `docs/canon/programa-multicalculo/132/JUIZ-DE-DESIGN-132-B.md`: um eixo só, SUSEP no topo, "Por que considerar",
+#: nota igual escondida, sem "Tipo na seguradora", terceiros explicados) — o retrato foi tirado de novo com o mesmo
+#: cálculo (`scratchpad/hash_agora.py`). A carteira e o canal NÃO mudaram (os mesmos hashes de antes).
 RETRATO_ANTES = {
     "carteira": "56d8c9e5469dc837fa11cf95379f2e1237818f3ab7293cce73f86166d2aeac96",
-    "renovacao": "4dabd326d4c35a7bb74c4e6117612cf54d4f934a56e792529190e46171473986",
+    "renovacao": "4c0ca3a6277425372f49ea66ec8f1ec3a4319080e617e09581d92b2ecaf2c1dd",
     "canal": "d5c72d4bffe4373d1e7c481081cd6c1bfb1789bf7f41565c09d77013b816a787",
 }
 
@@ -162,7 +166,15 @@ def test_a_pagina_servida_de_venda_na_ordem(monkeypatch):
     assert pos == sorted(pos), "os blocos fora da ordem do §4"
     assert re.fullmatch(r"Ana, a cotação do seu \S+ está pronta", _h1(doc)), _h1(doc)
     conta = PH._conta_do_resumo(r["modelo"])
-    assert f"Comparamos {conta['cotadas']} seguradoras para você — sem custo e sem compromisso." in txt
+    # §9.3 (laudo de design 132-B, item 7): o N REAL do §4 — quantas cotamos E quantas têm a mesma cobertura; as outras
+    # (produto diferente, sem preço) a frase das opções conta, e as partes somam o total (J-B3)
+    if conta["completas"] < conta["cotadas"]:
+        assert (f"Cotamos em {conta['cotadas']} seguradoras para você — {conta['completas']} com a mesma cobertura "
+                "completa. Sem custo e sem compromisso.") in txt
+        outras = conta["diferentes"] + conta["nr"]
+        assert (f"Das outras {outras}," in txt) if outras > 1 else ("A outra " in txt)
+    else:
+        assert f"Comparamos {conta['cotadas']} seguradoras para você — sem custo e sem compromisso." in txt
     assert "Corretora de seguros" in txt and "SUSEP nº 10.2030405" in txt
     # as 3 opções, a recomendada primeiro (o "Quero esta" de cada cartão e o fechar do topo)
     ids = ordem_das_opcoes(doc)
@@ -233,6 +245,7 @@ def test_mutacao_5_sem_dado_o_bloco_some(monkeypatch):
     txt = texto_visivel(doc)
     assert "no mercado" not in txt and "desde " not in txt
     assert "no Google" not in txt and 'id="h-eco"' not in doc     # ("a menos por ano" existe no COMPARAR, à parte)
+    assert 'class="of-eco"' not in doc and "seu seguro atual" not in txt
     assert 'class="difs"' not in doc
     # CONTROLE: com cada dado, o bloco aparece (o guarda consegue falhar)
     m2 = mundo(monkeypatch, fundada=2011, diferenciais=["Revisamos o seu seguro todo ano"],
@@ -255,14 +268,21 @@ def test_economia_so_com_a_apolice_e_nunca_um_aumento(monkeypatch):
     m2 = mundo(monkeypatch)
     doc2 = _servido(m2, _publicar(m2, apolice_atual={"seguradora": "Porto", "premio_anual": 1500.0,
                                                      "origem": "documento"})["token"])
-    assert 'class="eco' not in doc2 and 'id="h-eco"' not in doc2
+    assert 'class="eco' not in doc2 and 'id="h-eco"' not in doc2 and 'class="of-eco"' not in doc2
     # 🔴 conserto juiz B2: o MESMO prêmio caro, mas DITO (sem a apólice lida) → a página não mostra economia nenhuma
     for dito in ({"seguradora": "Porto", "premio_anual": 9000.0},
                  {"seguradora": "Porto", "premio_anual": 9000.0, "origem": "corretor"}):
         m3 = mundo(monkeypatch)
         doc3 = _servido(m3, _publicar(m3, apolice_atual=dito)["token"])
-        assert 'id="h-eco"' not in doc3, dito
-    assert "prêmio líquido da sua apólice atual" in eco and "sem o IOF" in eco
+        assert 'id="h-eco"' not in doc3 and 'class="of-eco"' not in doc3, dito
+    # §9.3 (laudo de design 132-B, D1): o número mora no CARTÃO da oferta, em linguagem de gente; o critério (o prêmio
+    # líquido da apólice, sem o IOF) mora no rodapé — nunca jargão no bloco que encanta
+    oferta = texto_visivel(re.search(r'<article class="oferta".*?</article>', doc, re.S).group(0))
+    assert f"{menos} a menos por ano que o seu seguro atual" in oferta
+    legal = texto_visivel(re.search(r'<footer class="legal">.*?</footer>', doc, re.S).group(0))
+    assert "prêmio líquido da sua apólice atual" in legal and "sem o IOF" in legal
+    assert "IOF" not in eco and "líquido" not in eco
+    assert 'class="of-eco"' not in doc2 and "IOF" not in texto_visivel(doc2)
     # o modelo SEM apólice com uma "economia contra o maior preço" (a da carteira): a página não a mostra
     sem = _venda()
     sem["resumo"]["economia"] = {"ate": 4291.84, "de": 8460.29, "para": 4168.45, "contra": "maior"}
@@ -379,6 +399,69 @@ def test_a_faixa_de_exemplo_so_com_a_bandeira(monkeypatch):
     assert "Exemplo — dados fictícios" not in texto_visivel(PV.render_cotacao(_venda()))
     m = mundo(monkeypatch)
     assert "Exemplo — dados fictícios" in texto_visivel(_servido(m, _publicar(m, exemplo=True)["token"]))
+
+
+def _grandes(doc):
+    """O número grande de cada cartão das opções (a parte inteira), na ordem da página."""
+    return re.findall(r'<article class="pass op".*?<span class="int">([^<]+)</span>', doc, re.S)
+
+
+def test_D3_quando_a_parcela_inverte_a_ordem_o_numero_grande_e_o_a_vista():
+    """📊 laudo de design 132-B, D3 (Vega, 14/10): Recomendada 10x de R$ 478,43 SEM juros e a "Mais em conta" 10x de
+    R$ 484,27 COM juros — a "mais em conta" com o número maior. MUTAÇÃO: `a_vista_na_frente` sempre False (a regra
+    de antes) → VERMELHO."""
+    m = _venda()
+    m["opcoes"][0]["parcelas_sem_juros"] = {"vezes": 10, "valor": 478.43}
+    ops = PV.opcoes_da_venda(m)
+    assert PV.a_vista_na_frente(ops)
+    doc = PV.render_cotacao(m)
+    a_vista = [PH.AP.brl(o["premio_anual"]).split(" ")[1].split(",")[0] for o in ops]
+    assert _grandes(doc) == a_vista                                          # os TRÊS no mesmo critério
+    txt = texto_visivel(doc)
+    assert "Parcelada, a opção “Recomendada” sai mais em conta (sem juros)." in txt
+    assert txt.count("Mais barata à vista") == 1                          # só o cartão que inverte explica
+    # CONTROLE: sem a inversão, a parcela continua o número grande e nenhum cartão explica nada
+    doc0 = PV.render_cotacao(_venda())
+    assert not PV.a_vista_na_frente(PV.opcoes_da_venda(_venda()))
+    assert _grandes(doc0) != a_vista and "Parcelada, a opção" not in texto_visivel(doc0)
+
+
+def test_D4_o_cliente_nao_le_recado_interno_e_os_terceiros_dizem_o_que_sao():
+    """Laudo de design 132-B, D4: "nome próprio desta seguradora: a corretora confirma o que cobre" é recado ao
+    CORRETOR; "R$ 200 mil + R$ 200 mil" não diz o que é cada parte. A carteira (o painel do corretor) segue igual."""
+    carteira = PH.render_proposta(copy.deepcopy(CONTRATO))
+    assert PH.AP.FRASE_SEM_ORDEM in texto_visivel(carteira)                  # CONTROLE: o recado existe neste modelo
+    for doc in (PV.render_cotacao(_venda()), PH.render_proposta(_modelos_de_referencia()["renovacao"][1])):
+        assert PH.AP.FRASE_SEM_ORDEM not in texto_visivel(doc)
+        assert "para danos materiais e R$" in texto_visivel(doc) and "para danos corporais" in texto_visivel(doc)
+    assert "para danos materiais" not in carteira
+
+
+def test_D6_sem_repeticao_susep_validade_e_uma_linha_do_tempo():
+    """Laudo de design 132-B, D6: SUSEP 1× no topo + rodapé, validade no cartão + rodapé (+ a resposta da pergunta),
+    UMA linha do tempo numerada, nada de "Para guardar em PDF" na venda, sem o quadro "SUSEP" no "Por que fechar"."""
+    m = _venda()
+    m["anfitria"] = dict(m["anfitria"], susep="SUSEP 202031234")
+    doc = PV.render_cotacao(m)
+    txt = texto_visivel(doc)
+    assert txt.count("202031234") == 2, txt.count("202031234")
+    # "13/10" no cartão; "13/10/2026" na resposta "O preço pode mudar?" e no rodapé (o curto conta os três)
+    assert txt.count(PH._data_curta(m["validade_ate"])) == 3 and txt.count(PH.AP.data_br(m["validade_ate"])) == 2
+    assert doc.count('class="steps"') == 1 and 'class="sin"' in doc
+    assert "guardar em PDF" not in txt and 'class="vfato"><b>SUSEP' not in doc
+    assert "deram preço nesta cotação" not in txt
+    # o "Se acontecer" fala com o NOME da corretora (item 10), com ponto final
+    m["sinistro"] = ["Avise a sua corretora pelo WhatsApp assim que puder", "A corretora acompanha até o fim"]
+    t2 = texto_visivel(PV.render_cotacao(m))
+    nome = m["anfitria"]["nome"]
+    assert f"Avise a {nome} pelo WhatsApp assim que puder." in t2 and f"A {nome} acompanha até o fim." in t2
+    assert "a sua corretora" not in t2
+
+
+def test_D2_o_sobre_e_uma_frase_que_vende_e_a_grade_se_ajusta():
+    assert PV._sobre("Buscamos soluções transparentes para você. Em 2009 um grupo comprou a LUZ.") ==         "Buscamos soluções transparentes para você."
+    assert PV._sobre("x" * 161 + ". Resto.") == ""                            # nunca uma frase cortada no meio
+    assert "repeat(auto-fit,minmax(150px,1fr))" in PV.CSS_DA_VENDA
 
 
 # =====================================================================================================================

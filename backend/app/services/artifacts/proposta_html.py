@@ -525,14 +525,19 @@ def _nome_com_selo(nome: Any, kind: Optional[str]) -> str:
     return (_e(inicio + " ") if inicio else "") + f'<span class="nw">{_e(ultima)}{_selo(kind)}</span>'
 
 
-def _celula_cobertura(k: str, o: dict, rec: dict, tag: str) -> str:
+def _celula_cobertura(k: str, o: dict, rec: dict, tag: str, cliente: bool = False) -> str:
+    """`cliente=True` (a VENDA e a RENOVAÇÃO, laudo de design 132-B D4): sem o recado interno ao corretor e com os
+    terceiros explicados. Sem ele (a carteira, o canal), nem um byte muda."""
     c = AP.cobertura(o, k)
     if c is None:
         return '<div class="sec cov" aria-hidden="true"></div>' if tag == "div" else ""
     kind, nota = AP.comparar_cobertura(k, o, rec)
+    valor = AP.valor_da_cobertura(c)
+    if cliente:
+        nota, valor = AP.nota_para_o_cliente(nota), AP.valor_para_o_cliente(k, valor)
     extra = f'<span class="cx">{_e(AP.nbsp(nota))}</span>' if nota else ""
     corpo = (f'<span class="ci">{ICO.get(k, ICO["check"])}</span><span class="cn">{_nome_com_selo(c["nome"], kind)}</span>'
-             f'<span class="cv">{_e(AP.nbsp(AP.valor_da_cobertura(c)))}{extra}</span>')
+             f'<span class="cv">{_e(AP.nbsp(valor))}{extra}</span>')
     return f'<div class="sec cov">{corpo}</div>' if tag == "div" else f"<li>{corpo}</li>"
 
 
@@ -548,15 +553,21 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
         # SPEC-131-B: cada cartão diz POR QUE o recomendamos (a construção garante a frase — nunca ranking); o 1º os
         # motivos, os outros o que muda em relação à "Sua renovação"
         pq = str(o.get("por_que") or "").strip()
-        blk = (f'<h3>{_e(V["porque"])}</h3><p class="expl">{_e(AP.nbsp(pq))}</p>' if pq else "")
+        # laudo de design 132-B, R2: "Por que recomendamos" só no 1º cartão (o que a página propõe); os outros são
+        # alternativas — "Por que considerar"
+        blk = (f'<h3>{_e(V["porque"] if i == 0 else "Por que considerar")}</h3><p class="expl">{_e(AP.nbsp(pq))}</p>'
+               if pq else "")
         if i == 0:
             itens = [m for m in o.get("motivos") or [] if isinstance(m, str) and m.strip()]
             blk += ('<ul class="why">' + "".join(f'<li>{ICO["check"]}<span>{_e(AP.nbsp(x))}</span></li>'
                                                  for x in itens) + "</ul>") if itens else ""
         else:
-            itens = [x for x in o.get("o_que_muda") or [] if isinstance(x, str) and x.strip()]
+            itens = [_e(AP.nbsp(x)) for x in o.get("o_que_muda") or [] if isinstance(x, str) and x.strip()]
+            # R6: o que esta opção TEM e a "Sua renovação" não tem, com o selo "a mais" (só o que o modelo declara)
+            itens += [_e(AP.nbsp(f'{c["nome"]}: {AP.valor_para_o_cliente(c.get("chave"), AP.valor_da_cobertura(c))}'))
+                      + _pill("up", "a mais") for c in so_nas_outras(ops, o)]
             blk += (f'<h3>O que muda em relação {_e(_a_referencia(rec))}</h3><ul class="diffs">'
-                    + "".join(f"<li>{_e(AP.nbsp(x))}</li>" for x in itens) + "</ul>") if itens else ""
+                    + "".join(f"<li>{x}</li>" for x in itens) + "</ul>") if itens else ""
     elif i == 0:
         motivos = [m for m in o.get("motivos") or [] if isinstance(m, str) and m.strip()]
         porque = V["porque"] if e_a_melhor_do_ranking(modelo, o) else "Sobre esta opção"
@@ -574,7 +585,7 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
                + "".join(f"<li>{_e(AP.nbsp(x))}</li>" for x in itens) + "</ul>") if itens else ""
 
     mais = ""
-    lis = "".join(_celula_cobertura(k, o, rec, "li") for k in resto)
+    lis = "".join(_celula_cobertura(k, o, rec, "li", cliente=renovacao) for k in resto)
     if lis:
         n_resto = sum(1 for k in resto if AP.cobertura(o, k))
         mais = (f'<details class="more"><summary><span>Mais {n_resto} cobertura{"s" if n_resto > 1 else ""}'
@@ -582,6 +593,12 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
                 + f'</span>{ICO["chev"]}</summary><ul class="covs">{lis}</ul></details>')
 
     nota = AP.numero_inteiro(o.get("nota"))
+    if renovacao and n > 1:
+        # laudo de design 132-B, R3: a MESMA nota nos cartões (diferença < 3) não ajuda a escolher — sai dos cartões
+        # (o "Comparar" continua com a linha da nota)
+        notas = [x for x in (AP.numero_inteiro(y.get("nota")) for y in ops) if x is not None]
+        if notas and max(notas) - min(notas) < 3:
+            nota = None
     campo = (f'<span class="field"><span class="fl">{_e(V["nota"])}</span><span class="fv">{nota}<small>/100</small></span>'
              f'<span class="fh">{_e(AP.LEGENDA_DA_NOTA)}</span></span>'
              if nota is not None and 0 <= nota <= 100 else "")
@@ -602,8 +619,8 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
                 else "Sua parte no prejuízo, se precisar acionar o seguro.")
         if renovacao:
             # laudo de design 131-B, conserto 2: "Franquia reduzida" é só o NOME de uma opção — a linha da franquia diz
-            # "Franquia" e o tipo da seguradora vai para a dica
-            dica = f"{dica} Tipo na seguradora: {tipo}." if tipo else dica
+            # "Franquia". Laudo 132-B, R4: o tipo da seguradora ("reduzida" nas duas franquias diferentes) confundia —
+            # sai do cartão; o "Comparar" ainda o mostra
             franquia = (f'<div class="sec fq"><span class="lbl">Franquia</span>'
                         f'<span class="val">{_e(fq_valor)}</span><span class="hint">{_e(dica)}</span></div>')
         else:
@@ -625,7 +642,7 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
 </div>
 {franquia}
 <div class="sec blk">{blk}</div>
-{"".join(_celula_cobertura(k, o, rec, "div") for k in topo)}
+{"".join(_celula_cobertura(k, o, rec, "div", cliente=renovacao) for k in topo)}
 <div class="sec morewrap">{mais}</div>
 <div class="sec foot">{want}</div>
 </article></div>'''
@@ -710,7 +727,26 @@ def _regua(modelo: dict, ops: list[dict]) -> str:
             f'<div class="legend" aria-hidden="true">{legenda}</div></figure>')
 
 
-def _comparar(ops: list[dict]) -> str:
+def so_nas_outras(ops: list[dict], o: Optional[dict] = None) -> list[dict]:
+    """As coberturas que a opção `o` (ou qualquer outra que não a 1ª) TEM e a 1ª não tem — o que ela traz a mais
+    (laudo de design 132-B, R6). Só o que o modelo declara; nunca um "a mais" deduzido de texto."""
+    if not ops:
+        return []
+    rec = ops[0]
+    da_1a = {c.get("chave") for c in rec.get("coberturas") or [] if isinstance(c, dict) and AP.cobertura(rec, c.get("chave"))}
+    saida, vistas = [], set()
+    for x in ([o] if o is not None else ops[1:]):
+        for c in x.get("coberturas") or []:
+            k = c.get("chave") if isinstance(c, dict) else None
+            if k and k not in da_1a and k not in vistas and AP.cobertura(x, k):
+                vistas.add(k)
+                saida.append(AP.cobertura(x, k))
+    return saida
+
+
+def _comparar(ops: list[dict], cliente: bool = False) -> str:
+    """`cliente=True` (VENDA e RENOVAÇÃO): os terceiros explicados, sem o recado interno ao corretor e com as
+    coberturas que só as OUTRAS opções têm (o que a "Mais completa" tem a mais — laudo 132-B R6)."""
     if len(ops) < 2:
         return ""
     rec = ops[0]
@@ -784,15 +820,23 @@ def _comparar(ops: list[dict]) -> str:
         k = c["chave"]
         cs = [AP.cobertura(o, k) for o in ops]
         vals = [AP.valor_da_cobertura(x) if x else "" for x in cs]
+        mostra = [AP.valor_para_o_cliente(k, v) for v in vals] if cliente else vals
         if all(cs) and len({AP._chave_txt(v) for v in vals}) == 1:
-            linha(AP.nbsp(c["nome"]), _e(AP.nbsp(vals[0])), igual=True, icone=ICO.get(k, ""))
+            linha(AP.nbsp(c["nome"]), _e(AP.nbsp(mostra[0])), igual=True, icone=ICO.get(k, ""))
         else:
             celulas = []
-            for v, o in zip(vals, ops):
+            for v, o in zip(mostra, ops):
                 kind, nota = AP.comparar_cobertura(k, o, rec)
+                if cliente:
+                    nota = AP.nota_para_o_cliente(nota)
                 # o selo FECHA a célula: nunca entre o valor e a nota (laudo critico-g D7)
                 celulas.append(_e(AP.nbsp(v)) + (f'<span class="cx">{_e(AP.nbsp(nota))}</span>' if nota else "") + _selo(kind))
             linha(AP.nbsp(c["nome"]), celulas, icone=ICO.get(k, ""))
+    if cliente:
+        for c in so_nas_outras(ops):
+            k = c["chave"]
+            linha(AP.nbsp(c["nome"]), [(_e(AP.nbsp(AP.valor_para_o_cliente(k, AP.valor_da_cobertura(x)))) + _pill("up", "a mais"))
+                                       if x else "—" for x in (AP.cobertura(o, k) for o in ops)], icone=ICO.get(k, ""))
     cab = "".join(f'<div class="mini" data-v="{i + 1}"><span>{_e(o.get("rotulo") or o.get("id"))}</span>'
                   f'<b>{_e(o.get("seguradora") or "")}</b></div>' for i, o in enumerate(ops))
     return f'''<details class="cmp" id="comparar" data-on="0">
@@ -1195,11 +1239,25 @@ def render_proposta(modelo: dict) -> str:
 CSS_DA_RENOVACAO = """
 .hero h1 .hello{color:var(--ink-strong);font-weight:650}
 .hero h1 .vence{display:block;margin-top:8px;font-size:18px;line-height:1.3;font-weight:550;letter-spacing:-.01em;color:var(--p-text);white-space:nowrap}
+/* laudo de design 132-B: a autoridade no topo (R5) e a marca legível (36–40 px, a placa do escuro do tamanho do logo) */
+.renova .cred{margin:0;display:grid;justify-items:end;text-align:right;font-size:13px;line-height:1.3;color:var(--ink-muted)}
+.renova .cred b{font-weight:600;color:var(--ink-strong)}
+.renova .brand img{height:36px;max-width:180px;object-fit:contain}
+.renova .plate{display:inline-flex;width:max-content}
+/* R1 — UM eixo só, o mesmo da venda: de 760 px em diante tudo alinhado à esquerda; de 1024 em diante na coluna de 1080 */
+@media (min-width:760px){
+  .renova .hero{text-align:left}
+  .renova .hero h1{margin-left:0;margin-right:0}
+  .renova .lede{margin-left:0;margin-right:0}
+  .renova .navrow{margin-left:0;margin-right:0}
+}
 @media (min-width:1024px){
-  .hero.wrap{max-width:720px}
-  .hero h1{max-width:none}
-  .s > h2,.s > .sub{text-align:center}
-  .hxm{text-align:center}
+  .renova .top,.renova .wrap,.renova .hero.wrap{max-width:1080px}
+  .renova .brand img{height:40px}
+  .renova .hero h1{font-size:50px;max-width:20ch;letter-spacing:-.02em;font-variation-settings:'wdth' 92}
+  .renova .hxr,.renova .hxm{max-width:720px}
+  .renova .widewrap{max-width:1080px;padding:0 var(--gutter)}
+  .renova .track{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-columns:minmax(0,1fr);padding:18px 0 64px}
 }
 .hxr{margin:16px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .hx{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:14px 16px;display:grid;gap:2px;min-width:0}
@@ -1264,6 +1322,15 @@ def _pct_colado(texto: Any) -> str:
     return re.sub(r"(\d)\s+%", r"\1%", str(texto or ""))
 
 
+def _frase_do_cliente(texto: str, corretora: str) -> str:
+    """Um passo do "Se acontecer" para o CLIENTE (venda e renovação, laudo de design 132-B item 10): o NOME da
+    corretora no lugar de "a sua corretora"/"A corretora" (a página tem o nome dela) e o ponto final."""
+    t = str(texto or "").strip()
+    if corretora:
+        t = re.sub(r"\b([Aa]) (?:sua )?corretora\b", lambda m: f"{m.group(1)} {corretora}", t)
+    return t if not t or t[-1] in ".!?" else t + "."
+
+
 def render_renovacao(modelo: dict) -> str:
     """A página de RENOVAÇÃO (quem JÁ é cliente). O MESMO esqueleto da carteira (CSS, tema, script com o MESMO hash,
     funciona sem JS, imprime), com as seções do laudo I3 §2.3, nesta ordem:
@@ -1311,6 +1378,10 @@ def render_renovacao(modelo: dict) -> str:
                  f'<span class="brand-name">{_e(nome_anf)}</span></span>')
     else:
         marca = '<span class="brand"></span>'
+    # laudo de design 132-B, R5: a autoridade no topo, discreta, igual à da venda ("Corretora de seguros · SUSEP nº")
+    susep_num = re.sub(r"(?i)^\s*susep\s*(?:n\s*[º°o.]*\s*)?[:\-]?\s*", "", str(anf.get("susep") or "")).strip()
+    cred = ('<p class="cred"><span>Corretora de seguros</span> '
+            + (f'<b>SUSEP nº {_e(susep_num)}</b>' if susep_num else "") + "</p>")
 
     # ---- hero: o VENCIMENTO é o motivo da página
     do_bem = f"do seu {bem['apelido']}" if bem["apelido"] else "do seu seguro"
@@ -1379,8 +1450,7 @@ def render_renovacao(modelo: dict) -> str:
     if desde and ano_ref and 0 < int(ano_ref.group(1)) - desde < 200:
         fatos.append(f'<div class="fact"><b>{int(ano_ref.group(1)) - desde}{AP.NB}anos</b><span>atendendo, desde {desde}</span></div>')
     susep = str(anf.get("susep") or "").strip()
-    if susep:
-        fatos.append(f'<div class="fact"><b>{_e(susep)}</b><span>registro na SUSEP</span></div>')
+    # laudo 132-B, R5: o nº da SUSEP não vira um número gigante solto no "Quem cuida" — mora no topo e no rodapé
     cidade = str(anf.get("cidade") or "").strip()
     site = str(anf.get("site") or "").strip()
     site_ok = re.fullmatch(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}(/[A-Za-z0-9._~/-]*)?", site or "") is not None
@@ -1406,7 +1476,7 @@ def render_renovacao(modelo: dict) -> str:
                      + canais + "</div></section>")
 
     sinistro_l = modelo.get("sinistro") if isinstance(modelo.get("sinistro"), list) else anf.get("sinistro")
-    passos = [s for s in (sinistro_l or []) if isinstance(s, str) and s.strip()]
+    passos = [_frase_do_cliente(s, nome_anf) for s in (sinistro_l or []) if isinstance(s, str) and s.strip()]
     sinistro = ""
     if passos:
         sinistro = (f'<section class="s" aria-labelledby="h-sin"><h2 id="h-sin">Se acontecer alguma coisa</h2>'
@@ -1537,8 +1607,8 @@ def render_renovacao(modelo: dict) -> str:
 :root{{--n:{max(n, 1)}}}</style>
 <style>{CSS_DA_RENOVACAO}</style>{estilo_do_exemplo}
 </head>
-<body>
-{faixa_do_exemplo}<header class="wrap top">{marca}</header>
+<body class="renova">
+{faixa_do_exemplo}<header class="wrap top">{marca}{cred}</header>
 <main>
 <div class="wrap hero">
 <h1>{h1}</h1>
@@ -1554,7 +1624,7 @@ def render_renovacao(modelo: dict) -> str:
 {passes}
 </div></div>
 <div class="wrap">
-{_comparar(ops)}
+{_comparar(ops, cliente=True)}
 {host_html}
 {sinistro}
 {faq_html}

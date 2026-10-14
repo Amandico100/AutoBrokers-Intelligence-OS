@@ -38,6 +38,11 @@ SITUACOES_DA_VENDA = ("novo_sem_apolice", "novo_com_apolice")
 PAGINA_DE_VENDA = "venda"
 
 _e = PH._e
+#: quantos diferenciais da corretora a página mostra (mais que isso vira lista de cadastro, não argumento) e o teto de
+#: seguradoras parceiras lidas da marca (a conta de "N seguradoras parceiras"). São do DESENHO da página — não são
+#: número comercial; `multicalculo/proposta.py` os lê daqui (guarda G8 da 130-A)
+TETO_DE_DIFERENCIAIS = 6
+TETO_DE_PARCEIRAS_LIDAS = 60
 _RE_PARCELA = re.compile(r"\b\d+\s*x\b", re.I)     # "Em até 10x de R$ …": a parcela já está no cartão (uma só)
 
 
@@ -131,14 +136,49 @@ def _numero_grande(valor: Any) -> str:
             f'<span class="dec">,{_e(cent)}</span>')
 
 
-def _bloco_do_preco(o: dict, cls: str) -> str:
-    """O número forte (a parcela), o "10x de" discreto e, embaixo, o que fecha a conta: juros e à vista."""
+A_VISTA = "à" + AP.NB + "vista"            # laudo de design 132-B, item 8: "à / vista" nunca quebra
+
+
+def _total_parcelado(o: dict) -> Optional[Any]:
+    """Quanto a pessoa paga NO TOTAL se parcelar (a regra de `_parcela`): o total com juros, ou o próprio preço."""
+    p = _parcela(o)
+    if not p:
+        return None
+    return AP.dec(p["total"]) if p["total"] is not None else AP.dec(o.get("premio_anual"))
+
+
+def a_vista_na_frente(ops: list[dict]) -> bool:
+    """🔴 Laudo de design 132-B, D3: o número grande dos cartões é a PARCELA — enquanto a ordem das parcelas for a mesma
+    do preço à vista. Quando inverte (a "Mais em conta" à vista com a parcela MAIOR que a da Recomendada, porque uma é
+    sem juros e a outra com) ou quando nem todas têm parcela, o número grande dos TRÊS passa a ser o preço à vista —
+    nunca um cartão "mais em conta" com o número maior."""
+    linhas = [(AP.dec(o.get("premio_anual")), _parcela(o)) for o in ops]
+    if len({bool(p) for _a, p in linhas}) > 1:
+        return True
+    for a1, p1 in linhas:
+        for a2, p2 in linhas:
+            if None not in (a1, a2) and p1 and p2 and a1 < a2 and AP.dec(p1["valor"]) > AP.dec(p2["valor"]):
+                return True
+    return False
+
+
+def _bloco_do_preco(o: dict, cls: str, *, a_vista: bool = False) -> str:
+    """O número forte (a parcela), o "10x de" discreto e, embaixo, o que fecha a conta: juros e à vista. Com
+    `a_vista` (D3), o número forte é o preço à vista e a parcela desce para a linha de baixo."""
     p = _parcela(o)
     avista = AP.brl(o.get("premio_anual"))
+    if a_vista and avista:
+        linha2 = ""
+        if p:
+            linha2 = (f"ou {p['vezes']}x de {AP.brl(p['valor'])} sem juros." if p["sem_juros"] else
+                      f"ou {p['vezes']}x de {AP.brl(p['valor'])} com juros, total {AP.brl(p['total'], False)}.")
+        return (f'<div class="{cls}"><p class="pv"><span class="num">{_numero_grande(o.get("premio_anual"))}</span>'
+                f' <span class="vz depois">{A_VISTA}</span></p>'
+                + (f' <p class="pj">{_e(AP.nbsp(linha2))}</p>' if linha2 else "") + "</div>")
     if p:
         juros = ("sem juros" if p["sem_juros"]
                  else f"com juros, total {AP.brl(p['total'], False)}")
-        linha2 = f"{juros}. Ou {avista} à vista." if avista else f"{juros}."
+        linha2 = f"{juros}. Ou {avista} {A_VISTA}." if avista else f"{juros}."
         return (f'<div class="{cls}"><p class="pv"><span class="vz">{p["vezes"]}x de</span> '
                 f'<span class="num">{_numero_grande(p["valor"])}</span></p>'
                 f' <p class="pj">{_e(AP.nbsp(linha2))}</p></div>')
@@ -148,9 +188,28 @@ def _bloco_do_preco(o: dict, cls: str) -> str:
     return ""
 
 
+def _nota_da_inversao(o: dict, rec: dict, rotulo_rec: str) -> str:
+    """D3: o cartão mais barato À VISTA cuja parcela é MAIOR que a da recomendada diz por quê — só com os números do
+    modelo (total parcelado de cada uma, nº de parcelas)."""
+    a, b = AP.dec(o.get("premio_anual")), AP.dec(rec.get("premio_anual"))
+    po, pr = _parcela(o), _parcela(rec)
+    if o is rec or None in (a, b) or not po or not pr or not a < b or not AP.dec(po["valor"]) > AP.dec(pr["valor"]):
+        return ""
+    to, tr = _total_parcelado(o), _total_parcelado(rec)
+    if to is not None and tr is not None and to > tr:
+        return (f"Mais barata {A_VISTA}. Parcelada, a opção “{rotulo_rec}” sai mais em conta"
+                + (" (sem juros)." if pr["sem_juros"] else "."))
+    if po["vezes"] < pr["vezes"]:
+        return (f"Mais barata {A_VISTA}. A parcela é maior porque são {po['vezes']} vezes, e não "
+                f"{pr['vezes']} como na opção “{rotulo_rec}”.")
+    return ""
+
+
 def _franquia(o: dict) -> str:
+    """Sem centavos: o MESMO arredondamento dos motivos do cartão ("Franquia reduzida: R$ 5.171" e, logo acima,
+    "R$ 5.170,54" eram o mesmo número com duas caras — laudo de design 132-B, D4)."""
     fq = o.get("franquia") if isinstance(o.get("franquia"), dict) else {}
-    return AP.brl(fq.get("valor"))
+    return AP.brl(fq.get("valor"), False)
 
 
 def _motivos(o: dict) -> list[str]:
@@ -194,20 +253,14 @@ def _google(anf: dict) -> Optional[tuple[str, int]]:
     return f"{nota:.1f}".replace(".", ","), n
 
 
-def _sobre(texto: Any, teto: int = 300) -> str:
-    """O "sobre" da corretora em 2–3 linhas: sem marcação, cortado no fim de uma frase (nunca no meio)."""
+def _sobre(texto: Any, teto: int = 160) -> str:
+    """O "sobre" da corretora numa frase só (laudo de design 132-B, D2): sem marcação, a 1ª frase inteira até `teto`
+    caracteres — maior que isso, nada (nunca uma frase cortada no meio, nunca a história societária inteira)."""
     t = re.sub(r"[#*_>`\[\]]+", "", str(texto or ""))
     t = re.sub(r"\(\s*https?://[^)]*\)", "", t)
     t = re.sub(r"\s+", " ", t).strip()
-    if len(t) <= teto:
-        return t
-    frases = re.split(r"(?<=[.!?])\s+", t)
-    saida = ""
-    for f in frases:
-        if len(saida) + len(f) + 1 > teto:
-            break
-        saida = f"{saida} {f}".strip()
-    return saida
+    primeira = re.split(r"(?<=[.!?])\s+", t, maxsplit=1)[0].strip() if t else ""
+    return primeira if len(primeira) <= teto else ""
 
 
 def _substituir(texto: str, *, corretora: str, validade: str) -> str:
@@ -267,6 +320,9 @@ body.venda{background:var(--canvas)}
 .vtop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;padding-bottom:6px}
 .cred{margin:0;display:grid;justify-items:end;text-align:right;font-size:13px;line-height:1.3;color:var(--ink-muted)}
 .cred b{font-weight:600;color:var(--ink-strong)}
+/* D5 / item 11: o logo legível (36 px; 40 no notebook) e a placa do escuro do tamanho do logo */
+.venda .brand img{height:36px;max-width:180px;object-fit:contain}
+.venda .plate{display:inline-flex;width:max-content}
 /* hero */
 .vhero{padding-top:18px}
 .vhero h1{margin:0;font-size:32px;line-height:1.06;font-weight:620;letter-spacing:-.028em;color:var(--ink-strong);
@@ -298,6 +354,10 @@ body.venda{background:var(--canvas)}
 .of-fatos .valid{margin:0;font-size:15px;opacity:1}
 .of-pq{margin:14px 0 0;font-size:15px;line-height:1.42}
 .of-pq b{font-weight:650}
+/* D1: a economia (SÓ com a apólice lida) no cartão, logo abaixo do preço */
+.of-eco{margin:14px 0 0;display:inline-flex;align-items:flex-start;gap:7px;padding:7px 12px 7px 9px;border-radius:12px;
+  background:var(--pos-bg);color:var(--pos);font-size:15.5px;font-weight:620;line-height:1.3}
+.of-eco svg{width:18px;height:18px;flex:none;margin-top:1px}
 .of-ver{display:inline-flex;align-items:center;gap:6px;min-height:44px;margin-top:10px;font-size:15px;font-weight:600;
   color:inherit;text-underline-offset:3px}
 .of-ver svg{width:18px;height:18px}
@@ -329,6 +389,8 @@ body.venda{background:var(--canvas)}
 .op .pv .cur{font-size:17px;margin-top:4px}
 .op .pv .vz{font-size:15px}
 .op .pj{font-size:14px;color:var(--ink-muted);margin-top:6px}
+/* D3: o cartão mais barato à vista com a parcela maior diz por quê */
+.op-inv{margin:10px 0 0;padding:8px 10px;border-radius:10px;background:var(--surface-2);font-size:13.5px;line-height:1.38;color:var(--ink)}
 .op-fq{margin:12px 0 0;padding:10px 0 0;border-top:1px dashed var(--line-strong);display:flex;justify-content:space-between;
   align-items:baseline;gap:10px;font-size:14px;color:var(--ink-muted)}
 .op-fq b{font-size:17px;font-weight:600;color:var(--ink-strong)}
@@ -344,12 +406,15 @@ body.venda{background:var(--canvas)}
 .eco{margin:28px 0 0;border-radius:20px;padding:18px 20px;background:var(--pos-bg);color:var(--ink-strong);
   border:1px solid color-mix(in srgb, var(--pos) 30%, transparent)}
 .eco h2{margin:0;font-size:24px;line-height:1.15;font-weight:620;letter-spacing:-.02em;color:var(--pos)}
-.eco p{margin:6px 0 0;font-size:15px;color:var(--ink);max-width:60ch}
+.eco-conta{margin:12px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:520px}
+.eco-conta p{margin:0;display:grid;gap:2px;padding:10px 12px;border-radius:12px;background:var(--surface)}
+.eco-conta span{font-size:13.5px;color:var(--ink-muted);line-height:1.3}
+.eco-conta b{font-size:17px;font-weight:620;color:var(--ink-strong)}
 
 /* por que fechar com a corretora */
-.vfatos{margin:20px 0 0;display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
-.vfato{padding:14px 12px 14px 0;border-bottom:1px solid var(--line);display:grid;gap:2px;min-width:0}
-.vfato:nth-child(2n){padding-left:14px;border-left:1px solid var(--line)}
+/* D2: a grade se ajusta ao número de fatos (2 fatos nunca deixam meia linha vazia) */
+.vfatos{margin:20px 0 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 24px;border-top:1px solid var(--line)}
+.vfato{padding:14px 0;border-bottom:1px solid var(--line);display:grid;gap:2px;min-width:0}
 .vfato b{font-size:24px;line-height:1.1;font-weight:640;letter-spacing:-.02em;color:var(--ink-strong);display:flex;align-items:center;gap:6px;
   font-variation-settings:'wdth' 88;overflow-wrap:anywhere}
 .vfato b svg{width:18px;height:18px;color:var(--a)}
@@ -359,35 +424,73 @@ body.venda{background:var(--canvas)}
 .difs svg{width:20px;height:20px;color:var(--pos);margin-top:1px}
 .papel{margin:20px 0 0;padding:16px 18px;border-radius:18px;background:var(--p-soft);color:var(--ink);font-size:15.5px;line-height:1.45;max-width:66ch}
 .papel b{display:block;color:var(--ink-strong);font-weight:620;margin-bottom:2px;font-size:16.5px}
+/* D2e: com pouco dado de marca, o papel ABRE o bloco (texto, não caixa de canto) */
+.papel.lead{background:none;padding:0;margin-top:14px;font-size:17px;line-height:1.5;max-width:60ch}
+.papel.lead b{display:inline;font-size:inherit;margin:0}
+.vsobre{font-size:16.5px;color:var(--ink)}
 .fonte{margin:10px 0 0;font-size:13px;color:var(--ink-muted)}
 
 /* depois do sim */
 .venda .steps p{margin-top:5px}
 .venda .steps b{display:block;color:var(--ink-strong);font-weight:600}
 
+/* D6: "Se acontecer" é um cartão compacto — a linha do tempo numerada é uma só (a do "depois do sim") */
+.sin{margin:16px 0 0;display:grid;grid-template-columns:28px 1fr;gap:14px;padding:16px 18px;border-radius:18px;
+  background:var(--surface);border:1px solid var(--line)}
+.sin>svg{width:28px;height:28px;color:var(--p-text)}
+.sin ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.sin li{font-size:15px;line-height:1.42;color:var(--ink)}
+/* D5: o lado esquerdo do hero no notebook (só ≥ 1024 px) */
+.vlado{display:none}
+.vhoje{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
+.vhoje div{display:grid;gap:1px}
+.vhoje div span{font-size:13px;color:var(--ink-muted);line-height:1.3}
+.vhoje b{font-size:23px;line-height:1.15;font-weight:640;color:var(--ink-strong);letter-spacing:-.015em}
+.vhoje .on b{color:var(--pos)}
+.vseta{display:grid;color:var(--ink-muted)}
+.vseta svg{width:20px;height:20px}
+.vfaixa{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.vfaixa li{display:grid;grid-template-columns:20px 1fr;gap:10px;font-size:15.5px;line-height:1.35;color:var(--ink)}
+.vfaixa svg{width:20px;height:20px;color:var(--pos)}
+.vmini{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 16px;padding:14px 16px;border-radius:18px;
+  background:var(--surface);border:1px solid var(--line)}
+.vmini-t{grid-column:1/-1;font-size:13px;color:var(--ink-muted)}
+.vmini .host-id{gap:12px}
+.vmini .mono.big{width:44px;height:44px;border-radius:12px;font-size:17px}
+.vmini .plate img{height:36px}
+.vmini b{display:block;font-size:17px;font-weight:620;color:var(--ink-strong);line-height:1.2}
+.vmini .host-id div span{display:block;font-size:13.5px;color:var(--ink-muted);line-height:1.3}
+.vmini-wa{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line-strong);
+  font-size:14.5px;font-weight:600;text-decoration:none;color:var(--ink-strong);white-space:nowrap}
+.vmini-wa svg{width:18px;height:18px}
+/* item 12: sem a barra fixa, o fim não guarda o lugar dela */
+.venda .endpad.curto{height:24px}
+
 /* fecho */
 .venda .fim .close{margin-top:18px;max-width:520px}
 .nada{margin:10px 0 0;font-size:14.5px;color:var(--ink-muted)}
 .semnum{margin:16px 0 0;padding:14px 16px;border-radius:14px;background:var(--surface-2);font-size:15.5px;color:var(--ink);max-width:60ch}
-.pdf{margin:0;font-size:13px;color:var(--ink-muted)}
 /* sem JavaScript a barra fica com a RECOMENDADA, com o nome escrito: nunca promete outra opção */
 .no-js .venda .dock .close{display:flex}
 
 @media (min-width:760px){
   .vhero{padding-top:34px}
-  .vhero h1{font-size:46px}
-  .vfatos{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .vfato:nth-child(2n){padding-left:0;border-left:0}
-  .vfato+.vfato{padding-left:16px;border-left:1px solid var(--line)}
-  .vfato:nth-child(4n+1){padding-left:0;border-left:0}
+  /* D5: o título respira (largura 92, sem colar as letras) */
+  .vhero h1{font-size:46px;letter-spacing:-.02em;font-variation-settings:'wdth' 92}
 }
 @media (min-width:1024px){
   /* UM eixo só (laudo 131-B): tudo na mesma coluna de 1080 px, alinhado à esquerda */
   .venda .wrap{max-width:1080px}
   .vtop{max-width:1080px}
   .vhero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:48px;align-items:center;padding-top:40px}
-  .vhero h1{font-size:54px}
-  .vhero .lede{font-size:18px}
+  .vhero h1{font-size:52px;max-width:none}
+  .vhero .lede{font-size:18px;max-width:44ch}
+  .venda .brand img{height:40px}
+  .vlado{display:grid;gap:16px;margin-top:26px;max-width:480px}
+  /* o que o lado esquerdo do hero já mostra no notebook não se repete lá embaixo */
+  .venda .vhost,.venda .eco{display:none}
+  /* D6: as duas seções do "depois" lado a lado */
+  .vduas{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start}
   .oferta{margin-top:0;padding:26px 26px 22px}
   .vtrack{max-width:1080px;margin:6px auto 0;padding:0 var(--gutter)}
   .venda .track{display:grid;grid-template-columns:repeat(var(--n,3),minmax(0,1fr));grid-template-rows:none;grid-auto-flow:row;
@@ -395,13 +498,18 @@ body.venda{background:var(--canvas)}
   .venda .navrow{display:none}
   .venda .s>h2{max-width:none}
 }
-@media (max-width:359px){.vfatos{grid-template-columns:1fr}.vfato:nth-child(2n){padding-left:0;border-left:0}.pv .int{font-size:54px}}
+@media (max-width:400px){
+  /* item 9: no celular a barra não corta o nome da seguradora — a linha de baixo quebra em duas */
+  .venda .close .t span{white-space:normal;font-size:13px;line-height:1.2}
+}
+@media (max-width:359px){.pv .int{font-size:54px}.eco-conta{grid-template-columns:1fr}}
 @media print{
   .exemplo{border:1px solid #888}
   .oferta{background:#fff!important;color:#000;border:1.5px solid #000;box-shadow:none}
   .oferta::before{display:none}
   .of-tag,.pass[data-v="1"] .op-tag{border:1px solid #000;background:#fff;color:#000}
-  .of-ver,.op-pe,.pdf{display:none!important}
+  .of-ver,.op-pe,.vlado{display:none!important}
+  .venda .vhost,.venda .eco{display:block!important}
   .venda .pass{border:1px solid #888;box-shadow:none;margin-bottom:12pt;break-inside:avoid;padding:10pt}
   .eco{background:#fff;border:1px solid #000}
   .eco h2{color:#000}
@@ -415,6 +523,22 @@ body.venda{background:var(--canvas)}
 # =====================================================================================================================
 # a página
 # =====================================================================================================================
+def _as_outras(conta: Optional[dict]) -> str:
+    """"Das outras 5, 4 só ofereceram produtos diferentes e 1 não deu preço." — o que o topo ("Cotamos em 16 — 11 com
+    a mesma cobertura completa") não contou; cada seguradora em UM lugar e as partes somam o total (J-B3)."""
+    if not conta:
+        return ""
+    d, nr = conta["diferentes"], conta["nr"]
+    if d + nr == 1:
+        return "A outra " + ("só ofereceu um produto diferente." if d else "não deu preço.")
+    partes = []
+    if d:
+        partes.append(f"{d} só {'ofereceu um produto diferente' if d == 1 else 'ofereceram produtos diferentes'}")
+    if nr:
+        partes.append(f"{nr} não {'deu' if nr == 1 else 'deram'} preço")
+    return f"Das outras {d + nr}, {' e '.join(partes)}." if partes else ""
+
+
 def render_cotacao(modelo: dict) -> str:
     """O documento inteiro da página de VENDA, a partir do modelo do CONTRATO §5 + `venda` (corretor, marca, textos).
     Todo texto do modelo é escapado; campo ausente não aparece."""
@@ -440,6 +564,8 @@ def render_cotacao(modelo: dict) -> str:
     com_quem = (f"com {corretor_nome}" if fala_com_o_corretor else (f"com a {nome_anf}" if nome_anf else ""))
     sobre_o_bem = f"do {bem['apelido']}" if bem["apelido"] else ""
     ola = f"Olá! Aqui é {nome}." if nome else "Olá!"
+    a_vista = a_vista_na_frente(ops)             # D3: a parcela inverte a ordem → o número grande é o à vista
+    eco = _economia(modelo, rec)
 
     def wa(texto: str) -> str:
         return f"https://wa.me/{digitos}?text={quote(texto, safe='')}" if digitos else ""
@@ -452,7 +578,7 @@ def render_cotacao(modelo: dict) -> str:
 
     # ---- 1. cabeçalho da marca
     if logo:
-        marca = (f'<span class="brand"><span class="plate"><img src="{_e(logo)}" alt="{_e(nome_anf)}" height="30">'
+        marca = (f'<span class="brand"><span class="plate"><img src="{_e(logo)}" alt="{_e(nome_anf)}" height="36">'
                  f'</span></span>')
     elif nome_anf:
         marca = (f'<span class="brand"><span class="mono" aria-hidden="true">{_e(AP.monograma(nome_anf))}</span>'
@@ -468,7 +594,12 @@ def render_cotacao(modelo: dict) -> str:
     h1 = (f'{_e(nome)}, {_e(frase)}' if nome else _e(frase[:1].upper() + frase[1:]))
     conta = _conta(modelo)
     n_cotadas = conta["cotadas"] if conta else AP.numero_inteiro((modelo.get("resumo") or {}).get("seguradoras_cotadas"))
-    if n_cotadas and n_cotadas > 1:
+    if conta and conta["cotadas"] > 1 and conta["completas"] < conta["cotadas"]:
+        # laudo de design 132-B, item 7: o N REAL (§4) — quantas cotamos E quantas têm a mesma cobertura; as outras
+        # (produto diferente, sem preço) a frase das opções conta logo abaixo, e as partes somam o total (J-B3)
+        lede = (f"Cotamos em {conta['cotadas']} seguradoras para você — {conta['completas']} com a mesma cobertura "
+                "completa. Sem custo e sem compromisso.")
+    elif n_cotadas and n_cotadas > 1:
         lede = f"Comparamos {n_cotadas} seguradoras para você — sem custo e sem compromisso."
     else:
         lede = "Cotamos o seu seguro sem custo e sem compromisso."
@@ -490,12 +621,30 @@ def render_cotacao(modelo: dict) -> str:
                      + (f'<div><dt>Validade</dt> <dd class="valid">Preço válido até {_e(validade_curta)}</dd></div>'
                         if validade_curta else "")
                      + "</dl>")
+        # D1: o "uau" honesto (SÓ com a apólice lida) mora no cartão, logo abaixo do preço — o critério, no rodapé
+        of_eco = (f'<p class="of-eco">{PH.ICO["check"]}<span>{_e(AP.brl(eco["menos"], False))} a menos por ano que o '
+                  f'seu seguro atual</span></p>' if eco else "")
         ver = (f'<a class="of-ver" href="#opcoes">Ver as {len(ops)} opções{PH.ICO["chev"]}</a>' if len(ops) > 1 else "")
         oferta = (f'<article class="oferta" aria-labelledby="h-oferta">'
                   f'<span class="of-tag">{PH.ICO["check"] if melhor else ""}{_e(tag)}</span> '
                   f'<h2 class="of-seg" id="h-oferta">{_e(rec.get("seguradora") or "")}'
                   + (f' <span class="prod">{_e(produto)}</span>' if produto else "") + "</h2>"
-                  + _bloco_do_preco(rec, "preco") + fatos + pq + ver + "</article>")
+                  + _bloco_do_preco(rec, "preco", a_vista=a_vista) + of_eco + fatos + pq + ver + "</article>")
+
+    # ---- 2b. o lado esquerdo do hero no NOTEBOOK (D5: sem meia tela vazia): a conta de hoje × nova (só com a
+    #          apólice), dois fatos e o mini-cartão de quem cuida. Abaixo de 1024 px não aparece (o celular já tem tudo
+    #          isso na ordem da página); acima, os blocos que ele repete lá embaixo saem (`.vhost`, `.eco`)
+    lado = []
+    if eco and rec is not None:
+        lado.append(f'<div class="vhoje"><div><span>Seu seguro atual</span><b>{_e(AP.brl(eco["hoje"], False))}</b>'
+                    f'<span>por ano</span></div><span class="vseta" aria-hidden="true">{PH.ICO["right"]}</span>'
+                    f'<div class="on"><span>Opção “{_e(rotulo(rec))}”</span><b>{_e(AP.brl(rec.get("premio_anual"), False))}'
+                    f'</b><span>por ano, {A_VISTA}</span></div></div>')
+    faixa = ["Nada é cobrado agora"]
+    faixa.append(f"A {nome_anf} representa você diante da seguradora" if nome_anf
+                 else "A corretora representa você diante da seguradora")
+    lado.append('<ul class="vfaixa">' + "".join(f'<li>{PH.ICO["check"]}<span>{_e(x)}</span></li>' for x in faixa)
+                + "</ul>")
 
     # ---- 3. as 3 opções (carrossel sem JS no celular; lado a lado no notebook) + comparar coberturas
     topo, resto, resto_iguais = AP.escolher_coberturas(ops) if ops else ([], [], True)
@@ -514,12 +663,16 @@ def render_cotacao(modelo: dict) -> str:
         else:
             muda = [x for x in o.get("o_que_muda") or [] if isinstance(x, str) and x.strip()]
             fala_franquia = any("franquia" in x.lower() for x in muda)
-            itens = muda + [m for m in _motivos(o) if not (fala_franquia and "franquia" in m.lower())]
+            itens = [_e(AP.nbsp(x)) for x in muda + [m for m in _motivos(o)
+                                                     if not (fala_franquia and "franquia" in m.lower())]][:4]
+            # R6 (vale na venda também): o que esta opção TEM e a recomendada não tem, com o selo "a mais"
+            itens += [_e(AP.nbsp(f'{c["nome"]}: {AP.valor_para_o_cliente(c.get("chave"), AP.valor_da_cobertura(c))}'))
+                      + PH._pill("up", "a mais") for c in PH.so_nas_outras(ops, o)]
             pq = (f'<div class="op-pq"><h3>O que muda em relação {_e(PH._a_referencia(rec))}</h3><ul class="diffs">'
-                  + "".join(f"<li>{_e(AP.nbsp(x))}</li>" for x in itens[:4]) + "</ul></div>") if itens else ""
-        covs = "".join(PH._celula_cobertura(k, o, rec, "li") for k in topo)
+                  + "".join(f"<li>{x}</li>" for x in itens) + "</ul></div>") if itens else ""
+        covs = "".join(PH._celula_cobertura(k, o, rec, "li", cliente=True) for k in topo)
         mais = ""
-        lis = "".join(PH._celula_cobertura(k, o, rec, "li") for k in resto)
+        lis = "".join(PH._celula_cobertura(k, o, rec, "li", cliente=True) for k in resto)
         if lis:
             n_resto = sum(1 for k in resto if AP.cobertura(o, k))
             mais = (f'<details class="more"><summary><span>Mais {n_resto} cobertura{"s" if n_resto > 1 else ""}'
@@ -527,6 +680,7 @@ def render_cotacao(modelo: dict) -> str:
                     + f'</span>{PH.ICO["chev"]}</summary><ul class="covs">{lis}</ul></details>')
         produto = AP.sem_seguradora(o.get("produto"), o.get("seguradora"))
         fq = _franquia(o)
+        inversao = _nota_da_inversao(o, rec, rotulo(rec)) if a_vista else ""
         aria = f"Opção {i + 1} de {n}: {rotulo(o)}, {o.get('seguradora') or ''}, {parcela_em_texto(o)}"
         pe = (f'<div class="op-pe"><a class="want" href="{_e(href_fechar(o))}" rel="nofollow">{PH.ICO["wa"]}'
               f'Quero esta</a></div>' if digitos else "")
@@ -536,7 +690,8 @@ def render_cotacao(modelo: dict) -> str:
             f'<span class="op-tag">{_e(rotulo(o))}</span> '
             f'<p class="op-seg">{_e(o.get("seguradora") or "")}'
             + (f' <span class="prod">{_e(produto)}</span>' if produto else "") + "</p>"
-            + _bloco_do_preco(o, "preco")
+            + _bloco_do_preco(o, "preco", a_vista=a_vista)
+            + (f'<p class="op-inv">{_e(AP.nbsp(inversao))}</p>' if inversao else "")
             + (f'<p class="op-fq"><span>Franquia</span> <b>{_e(fq)}</b></p>' if fq else "")
             + pq + (f'<ul class="covs">{covs}</ul>' if covs else "") + mais + pe + "</article></div>")
     abas = "".join(f'<a class="tab" href="#opt-{i}" role="tab" id="tab-{i}" aria-controls="opt-{i}" '
@@ -549,9 +704,8 @@ def render_cotacao(modelo: dict) -> str:
                   f'<div class="nav js-only"><button type="button" id="prev" aria-label="Opção anterior">{PH.ICO["left"]}</button>'
                   f'<span class="count" id="count" aria-live="polite">1 de {n}</span>'
                   f'<button type="button" id="next" aria-label="Próxima opção">{PH.ICO["right"]}</button></div></div>')
-    pdif = [x for x in modelo.get("produto_diferente") or [] if isinstance(x, dict) and str(x.get("seguradora") or "").strip()]
-    frase_conta = PH._frase_da_conta(conta, len(pdif)) if conta else ""
-    frase_conta = re.sub(r" (?:A|As) \d+ ofertas? que cobrem? menos aparecem? à parte\.", "", frase_conta)
+    # item 7 / D6: o topo já diz quantas cotamos e quantas são completas; aqui só as OUTRAS (as partes somam o total)
+    frase_conta = _as_outras(conta) if conta and lede.startswith("Cotamos em") else ""
     titulo_ops = {1: "A opção que separamos", 2: "As duas opções que separamos"}.get(n, f"As {n} opções que separamos")
     opcoes_html = ""
     if ops:
@@ -562,35 +716,30 @@ def render_cotacao(modelo: dict) -> str:
                        f'<div class="vtrack"><div class="track" id="track" tabindex="0" role="region" '
                        f'aria-roledescription="carrossel" aria-label="As {n} opções. Use as setas do teclado para trocar.">'
                        + "".join(cartoes) + "</div></div>"
-                       + '<div class="wrap">' + PH._comparar(ops).replace("Comparar lado a lado", "Comparar coberturas")
+                       + '<div class="wrap">' + PH._comparar(ops, cliente=True).replace("Comparar lado a lado",
+                                                                                      "Comparar coberturas")
                        + "</div>")
 
-    # ---- 4. economia: SÓ com a apólice atual
-    eco = _economia(modelo, rec)
+    # ---- 4. economia: SÓ com a apólice atual — a CONTA (o número já está no cartão da oferta; o critério, no rodapé)
     eco_html = ""
     if eco:
         eco_html = (f'<section class="eco" aria-labelledby="h-eco"><h2 id="h-eco">'
-                    f'{_e(AP.brl(eco["menos"], False))} a menos por ano</h2>'
-                    # 🔴 conserto juiz B2: o número de hoje é o prêmio LÍQUIDO lido e conferido na apólice anexada
-                    #    (a ficha da 130-B) — a frase diz exatamente isso, sem arredondar o que é a comparação
-                    f'<p>Comparado ao prêmio líquido da sua apólice atual ({_e(AP.brl(eco["hoje"], False))} por ano, '
-                    f'sem o IOF), com a opção “{_e(rotulo(rec))}”.</p></section>')
+                    f'{_e(AP.brl(eco["menos"], False))} a menos por ano que o seu seguro atual</h2>'
+                    f'<div class="eco-conta"><p><span>Seu seguro atual</span> <b>{_e(AP.brl(eco["hoje"], False))} por ano</b>'
+                    f'</p><p><span>Com a opção “{_e(rotulo(rec))}”</span> '
+                    f'<b>{_e(AP.brl(rec.get("premio_anual"), False))} por ano</b></p></div></section>')
 
-    # ---- 5. por que fechar com a corretora (só FATOS do banco)
+    # ---- 5. por que fechar com a corretora (só FATOS do banco; D2: a 1ª frase do que VENDE, sem a SUSEP — ela está no
+    #         topo e no rodapé — e sem repetir quantas deram preço nesta cotação, que o topo já disse)
     fatos = []
     anos = _anos(anf, modelo)
     if anos:
         fatos.append(f'<div class="vfato"><b>{anos[0]}{AP.NB}{"ano" if anos[0] == 1 else "anos"}</b> '
                      f'<span>no mercado, desde {anos[1]}</span></div>')
-    if susep:
-        fatos.append(f'<div class="vfato"><b>SUSEP</b> <span>registro nº {_e(susep)}</span></div>')
     marca_v = venda.get("marca") if isinstance(venda.get("marca"), dict) else {}
     parceiras = AP.numero_inteiro(marca_v.get("seguradoras_parceiras"))
     if parceiras and parceiras > 1:
         fatos.append(f'<div class="vfato"><b>{parceiras} seguradoras</b> <span>parceiras da corretora</span></div>')
-    elif conta and conta["completas"] > 1:
-        fatos.append(f'<div class="vfato"><b>{conta["completas"]} seguradoras</b>'
-                     f' <span>deram preço nesta cotação</span></div>')
     g = _google(anf)
     if g:
         fatos.append(f'<div class="vfato"><b>{PH.ICO["star"]}{g[0]}</b> <span>no Google, {g[1]} avaliações</span></div>')
@@ -606,12 +755,14 @@ def render_cotacao(modelo: dict) -> str:
              "acionar o seguro.")
     pq_html = ""
     if nome_anf:
+        magro = len(fatos) < 2 and not difs          # D2e: com pouco dado, o PAPEL abre o bloco (não é caixa de canto)
         pq_html = (f'<section class="s" aria-labelledby="h-pq"><h2 id="h-pq">Por que fechar com a {_e(nome_anf)}</h2>'
-                   + (f'<p class="sub">{_e(sobre)}</p>' if sobre else "")
+                   + (f'<p class="sub vsobre">{_e(sobre)}</p>' if sobre else "")
+                   + (f'<p class="papel lead">{papel}</p>' if magro else "")
                    + (f'<div class="vfatos">{"".join(fatos)}</div>' if fatos else "") + fonte_g
                    + ('<ul class="difs">' + "".join(f'<li>{PH.ICO["check"]}<span>{_e(AP.nbsp(d))}</span></li>'
-                                                    for d in difs[:6]) + "</ul>" if difs else "")
-                   + f'<p class="papel">{papel}</p></section>')
+                                                    for d in difs[:TETO_DE_DIFERENCIAIS]) + "</ul>" if difs else "")
+                   + ("" if magro else f'<p class="papel">{papel}</p>') + "</section>")
 
     # ---- 6. quem vai cuidar de você: o corretor que cotou → senão a corretora
     cidade = str(anf.get("cidade") or "").strip()
@@ -631,19 +782,28 @@ def render_cotacao(modelo: dict) -> str:
             linha2 = cidade
             texto = "A mesma equipe que preparou estas opções cuida do seu seguro depois do sim."
         rotulo_wa = f"Falar com {corretor_nome}" if fala_com_o_corretor else "WhatsApp"
+        link_wa = wa(f"{ola} Vim pela cotação do seguro{(' ' + sobre_o_bem) if sobre_o_bem else ''}.")
         canais = ""
         if digitos or site_ok:
             canais = ('<div class="chan">'
-                      + (f'<a href="{_e(wa(f"{ola} Vim pela cotação do seguro{(" " + sobre_o_bem) if sobre_o_bem else ""}."))}" '
-                         f'rel="noopener">{PH.ICO["wa"]}{_e(rotulo_wa)}</a>' if digitos else "")
+                      + (f'<a href="{_e(link_wa)}" rel="noopener">{PH.ICO["wa"]}{_e(rotulo_wa)}</a>' if digitos else "")
                       + (f'<a href="https://{_e(site)}" rel="noopener">{PH.ICO["globe"]}{_e(site)}</a>' if site_ok else "")
                       + "</div>")
-        host_html = (f'<section class="s" aria-labelledby="h-host"><h2 id="h-host">Quem vai cuidar de você</h2>'
+        host_html = (f'<section class="s vhost" aria-labelledby="h-host"><h2 id="h-host">Quem vai cuidar de você</h2>'
                      f'<div class="host"><div class="host-id">{id_visual}<div><h3>{_e(titulo)}</h3>'
                      + (f" <p>{_e(linha2)}</p>" if linha2 else "") + "</div></div>"
                      f'<p class="sub0">{_e(texto)}</p>' + canais + "</div></section>")
+        # o mini-cartão do hero no notebook: o MESMO conteúdo (quem, o que fez, o WhatsApp)
+        # (sem corretor, o monograma: o logo já está no topo, a dois palmos dali)
+        mini_visual = (id_visual if corretor_nome
+                       else f'<span class="mono big" aria-hidden="true">{_e(AP.monograma(nome_anf))}</span>')
+        lado.append(f'<div class="vmini"><span class="vmini-t">Quem vai cuidar de você</span>'
+                    f'<div class="host-id">{mini_visual}<div><b>{_e(titulo)}</b>'
+                    + (f"<span>{_e(linha2)}</span>" if linha2 else "") + "</div></div>"
+                    + (f'<a class="vmini-wa" href="{_e(link_wa)}" rel="noopener">{PH.ICO["wa"]}{_e(rotulo_wa)}</a>'
+                       if digitos else "") + "</div>")
 
-    # ---- 7. como funciona depois do sim
+    # ---- 7. como funciona depois do sim — a ÚNICA linha do tempo numerada (D6)
     passos = _textos(venda.get("depois_do_sim")) or _textos(pagina_pad.get("depois_do_sim"))
     passos = [_substituir(p, corretora=nome_anf, validade=validade) for p in passos][:4]
     depois_html = ""
@@ -656,16 +816,19 @@ def render_cotacao(modelo: dict) -> str:
         depois_html = (f'<section class="s" aria-labelledby="h-depois"><h2 id="h-depois">Como funciona depois do sim</h2>'
                        f'<ol class="steps">{"".join(itens)}</ol></section>')
 
-    # ---- 8. se acontecer alguma coisa
+    # ---- 8. se acontecer alguma coisa — um cartão compacto (não uma 2ª linha do tempo), com o NOME da corretora
     sinistro_l = modelo.get("sinistro") if isinstance(modelo.get("sinistro"), list) else anf.get("sinistro")
-    passos_s = _textos(sinistro_l)
+    passos_s = [PH._frase_do_cliente(s, nome_anf) for s in _textos(sinistro_l)]
     tem_assistencia = any(AP.cobertura(o, "assistencia") for o in ops)   # só afirma o que as opções TÊM
     sinistro = ""
     if passos_s:
         sinistro = (f'<section class="s" aria-labelledby="h-sin"><h2 id="h-sin">Se acontecer alguma coisa</h2>'
                     + (f'<p class="sub">{"O guincho e a assistência 24 h são da seguradora. " if tem_assistencia else ""}'
                        f'Quem cuida do seu caso com ela é a {_e(nome_anf)}, não um 0800.</p>' if nome_anf else "")
-                    + f'<ol class="steps">{"".join(f"<li><p>{_e(s)}</p></li>" for s in passos_s)}</ol></section>')
+                    + f'<div class="sin">{PH.ICO["casco"]}<ul>'
+                    + "".join(f"<li>{_e(AP.nbsp(s))}</li>" for s in passos_s) + "</ul></div></section>")
+    duas = (f'<div class="vduas">{depois_html}{sinistro}</div>' if depois_html and sinistro
+            else depois_html + sinistro)
 
     # ---- 9. perguntas antes de fechar
     faq_l = _perguntas(venda.get("faq")) or _perguntas(pagina_pad.get("faq"))
@@ -695,28 +858,27 @@ def render_cotacao(modelo: dict) -> str:
                 f'{PH.ICO["wa"]}<span class="t"><b>Quero fechar</b><span id="close-sub">{_e(sub_de(rec))}</span></span></a>'
                 f'</div><p class="dock-note">Abre o WhatsApp{(" " + _e(com_quem)) if com_quem else ""}. '
                 f'Nada é cobrado agora.</p></div>')
+        # D6: a validade já está no cartão da oferta e no rodapé; "Nada é cobrado agora" está na barra, logo abaixo
         fim = (f'<section class="s fim" id="fechar" aria-labelledby="h-fim"><h2 id="h-fim">Pronto para fechar?</h2>'
-               f'<p class="sub">Feche a opção “{_e(rotulo(rec))}” aqui ou escolha outra nos cartões acima. '
-               f'<span class="valid">{_e(valido)}</span></p>'
+               f'<p class="sub">Feche a opção “{_e(rotulo(rec))}” aqui ou escolha outra nos cartões acima.</p>'
                f'<a class="close fim-fechar" href="{_e(href_fechar(rec))}" rel="nofollow" aria-label="{_e(aria_de(rec))}">'
                f'{PH.ICO["wa"]}<span class="t"><b>Quero fechar</b><span class="fim-sub">'
-               f'{_e(rotulo(rec) + ": " + sub_de(rec))}</span></span></a>'
-               f'<p class="nada">Nada é cobrado agora.</p></section>')
+               f'{_e(rotulo(rec) + ": " + sub_de(rec))}</span></span></a></section>')
     elif rec is not None:
         # D-131-44 (o mesmo da renovação): sem número nenhum a página publica SEM botão e diz o caminho de verdade
         fim = (f'<section class="s" id="fechar" aria-labelledby="h-fim"><h2 id="h-fim">Pronto para fechar?</h2>'
                f'<p class="semnum">Para fechar ou tirar uma dúvida, responda a mensagem em que recebeu este link.</p>'
-               + (f'<p class="nada">{_e(valido)} Nada é cobrado agora.</p>' if valido else
-                  '<p class="nada">Nada é cobrado agora.</p>') + "</section>")
+               '<p class="nada">Nada é cobrado agora.</p></section>')
 
-    # ---- 11. rodapé legal
+    # ---- 11. rodapé legal (o critério da economia mora aqui — D1)
     aviso = AP.aviso_legal(modelo.get("aviso_legal"), susep)
     metodo = ("Como comparamos: só entram lado a lado as ofertas com a mesma cobertura completa; as que cobrem menos "
               "dizem o que deixam de cobrir. A nossa nota, de 0 a 100, pesa preço, franquia e coberturas.")
+    if eco:
+        metodo += (f" A economia compara o prêmio líquido da sua apólice atual ({AP.brl(eco['hoje'], False)} por ano, "
+                   f"lido no documento que você enviou, sem o IOF) com o preço {A_VISTA} da opção “{rotulo(rec)}”.")
     legal = ('<footer class="legal">' + (f'<p class="valid">{_e(valido)}</p>' if valido else "")
-             + (f"<p>{_e(aviso)}</p>" if aviso else "") + f"<p>{_e(metodo)}</p>"
-             + '<p class="pdf">Para guardar em PDF: no navegador, toque em Compartilhar › Imprimir (ou Ctrl+P) e '
-               'escolha “Salvar como PDF”.</p></footer>')
+             + (f"<p>{_e(aviso)}</p>" if aviso else "") + f"<p>{_e(metodo)}</p></footer>")
 
     dados: dict = {"opcoes": [{"id": o["id"], "rotulo": o.get("rotulo"), "seguradora": o.get("seguradora"),
                                "sub": sub_de(o), "aria": aria_de(o)} for o in ops]}
@@ -730,6 +892,9 @@ def render_cotacao(modelo: dict) -> str:
 
     exemplo = ('<div class="exemplo" role="note">Exemplo — dados fictícios</div>' if modelo.get("exemplo") is True else "")
     titulo_pagina = f"A cotação do seu seguro · {nome_anf}" if nome_anf else "A cotação do seu seguro"
+    lado_html = f'<div class="vlado">{"".join(lado)}</div>' if lado else ""
+    # item 12: sem a barra fixa, o fim da página não guarda os 150 px dela
+    endpad = '<div class="endpad"></div>' if dock else '<div class="endpad curto"></div>'
     return f"""<!doctype html>
 <html lang="pt-BR" class="no-js">
 <head>
@@ -758,7 +923,7 @@ def render_cotacao(modelo: dict) -> str:
 <main>
 <div class="wrap vhero">
 <div class="vhero-txt"><h1>{h1}</h1>
-<p class="lede">{_e(lede)}</p></div>
+<p class="lede">{_e(lede)}</p>{lado_html}</div>
 {oferta}
 </div>
 {opcoes_html}
@@ -766,12 +931,11 @@ def render_cotacao(modelo: dict) -> str:
 {eco_html}
 {pq_html}
 {host_html}
-{depois_html}
-{sinistro}
+{duas}
 {faq_html}
 {fim}
 {legal}
-<div class="endpad"></div>
+{endpad}
 </div>
 </main>
 {dock}

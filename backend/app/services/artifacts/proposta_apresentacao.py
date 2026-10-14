@@ -338,6 +338,23 @@ def _palavras(v: str) -> list[str]:
 FRASE_SEM_ORDEM = "nome próprio desta seguradora: a corretora confirma o que cobre"
 
 
+def valor_para_o_cliente(chave: Any, valor: str) -> str:
+    """Na VENDA e na RENOVAÇÃO (quem lê é o cliente — laudo de design 132-B, D4): os terceiros dizem o que é cada parte
+    ("R$ 200 mil + R$ 200 mil" → "R$ 200 mil para danos materiais e R$ 200 mil para danos corporais"; a ordem é a de
+    `comparacao.coberturas_publicas`: materiais + corporais). A carteira e o canal seguem com o texto curto."""
+    if chave == "terceiros":
+        m = re.fullmatch(r"\s*(R\$.+?)\s*\+\s*(R\$.+?)\s*", str(valor or ""))
+        if m:
+            return f"{m.group(1)} para danos materiais e {m.group(2)} para danos corporais"
+    return valor
+
+
+def nota_para_o_cliente(nota: str) -> str:
+    """A frase de `FRASE_SEM_ORDEM` é recado para o CORRETOR conferir; ao cliente ela diz "nem a corretora sabe o que
+    cobre" (laudo de design 132-B, D4) — na venda e na renovação ela não aparece."""
+    return "" if nota == FRASE_SEM_ORDEM else nota
+
+
 def comparar_cobertura(chave: str, o: dict, rec: dict) -> tuple[Optional[str], str]:
     """('melhor' | 'mais simples' | None, nota). Só duas etiquetas; o que não se ordena ganha uma frase.
 

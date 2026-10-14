@@ -212,7 +212,17 @@ def test_a_pagina_servida_de_renovacao(monkeypatch):
     # os cartões: "por que recomendamos" em cada um; a franquia reduzida e a completa+ da MESMA seguradora
     ids = ordem_das_opcoes(doc)
     assert ids == ["sua_renovacao", "franquia_reduzida", "mais_completa"]
-    assert doc.count("<h3>Por que recomendamos</h3>") == 3
+    # §9.3 (laudo de design 132-B, R2): "Por que recomendamos" só no cartão que a página propõe; os outros são
+    # alternativas ("Por que considerar") — antes os três diziam "recomendamos"
+    assert doc.count("<h3>Por que recomendamos</h3>") == 1 and doc.count("<h3>Por que considerar</h3>") == 2
+    # R3: a MESMA nota nos três (diferença < 3) sai dos cartões; R4: sem "Tipo na seguradora" (as duas franquias
+    # diferentes eram "reduzida"); R5: a SUSEP no topo, discreta — nunca um número solto no "Quem cuida"
+    notas = [o.get("nota") for o in r["modelo"]["opcoes"] if o.get("nota") is not None]
+    assert ('class="field"' in doc) == (bool(notas) and max(notas) - min(notas) >= 3)
+    assert "Tipo na seguradora" not in txt and "registro na SUSEP" not in txt
+    topo = texto_visivel(re.search(r'<header class="wrap top">(.*?)</header>', doc, re.S).group(1))
+    assert topo.startswith("Corretora de seguros") or "Corretora de seguros" in topo
+    assert PH.AP.FRASE_SEM_ORDEM not in txt
     assert "pequenos reparos" in txt and "Mostrar só o que muda" in txt
     # a relação: o DONO (primeiro nome), "renova com a gente há N anos" com PROVA (3 elos medidos no dublê)
     assert "Quem cuida de você" in txt and "Bruna" in txt and "Bruna Ficticia" not in txt

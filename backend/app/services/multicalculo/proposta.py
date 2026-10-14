@@ -1460,14 +1460,17 @@ def marca_da_venda(db: Any, company_id: str) -> Dict[str, Any]:
     perfil = next((p for p in perfis if str(p.get("company_id")) == company_id), None)
     if not _marca_publicada(perfil):
         return {}
+    from app.services.artifacts.proposta_cotacao_html import TETO_DE_DIFERENCIAIS, TETO_DE_PARCEIRAS_LIDAS
+
     saida: Dict[str, Any] = {}
-    difs = _lista_de_textos(perfil.get("differentiators"), 6)
+    difs = _lista_de_textos(perfil.get("differentiators"), TETO_DE_DIFERENCIAIS)
     if difs:
         saida["diferenciais"] = difs
-    sobre = str(perfil.get("about_md") or perfil.get("mission") or "").strip()
+    # laudo de design 132-B, D2: o que VENDE primeiro (o lema, a missão); a história do cadastro só como reserva
+    sobre = str(perfil.get("tagline") or perfil.get("mission") or perfil.get("about_md") or "").strip()
     if sobre:
         saida["sobre"] = sobre[:_TETO_DO_SOBRE]
-    parceiras = {CFG.normalizar(x) for x in _lista_de_textos(perfil.get("insurers"), 60)}
+    parceiras = {CFG.normalizar(x) for x in _lista_de_textos(perfil.get("insurers"), TETO_DE_PARCEIRAS_LIDAS)}
     if len(parceiras) > 1:
         saida["seguradoras_parceiras"] = len(parceiras)
     return saida
@@ -1517,9 +1520,11 @@ def bloco_da_venda(*, corretor: Mapping[str, Any], marca: Mapping[str, Any], pag
     c = {k: corretor[k] for k in ("primeiro_nome", "whatsapp") if corretor.get(k)}
     if c:
         bloco["corretor"] = c
+    from app.services.artifacts.proposta_cotacao_html import TETO_DE_DIFERENCIAIS
+
     difs = list(pagina.get("diferenciais") or []) or list(marca.get("diferenciais") or [])
     if difs:
-        bloco["diferenciais"] = difs[:6]
+        bloco["diferenciais"] = difs[:TETO_DE_DIFERENCIAIS]
     m = {k: marca[k] for k in ("sobre", "seguradoras_parceiras") if marca.get(k)}
     if m:
         bloco["marca"] = m
