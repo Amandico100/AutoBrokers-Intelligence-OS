@@ -18,133 +18,16 @@
 // O `purpose` é `observer` porque é o que o pareamento grava para tudo que não
 // é auxiliar (`channel_identity.purpose_canonico`). Quem tira o canal do caminho
 // do observador é o desvio por `company_kind` no webhook (F1), não esta rota.
-import { NextRequest, NextResponse } from 'next/server';
-
-import { assertSameOrigin, requireMasterAdmin } from '@/lib/admin/admin-auth';
-import { resolverEmpresaDoCanal } from '@/lib/admin/canal-da-plataforma';
-import { writeAudit } from '@/lib/vault/server';
-import { backendRequest, correlationId, internalKey } from '@/lib/vault/whatsapp-channel-proxy';
+//
+// SPEC-132-C C3 — a implementação mudou-se para `lib/admin/rota-do-canal-whatsapp.ts`
+// SEM mudar um byte do que esta rota manda ao backend: o segundo número da
+// plataforma (o assistente dos corretores, `app/api/admin/canais/assistente/whatsapp`)
+// usa a MESMA rota com outro `purpose`, em vez de uma cópia dela.
+import { rotaDoCanalWhatsApp } from '@/lib/admin/rota-do-canal-whatsapp';
 
 export const dynamic = 'force-dynamic';
 
-const PURPOSE = 'observer';
+const ROTA = rotaDoCanalWhatsApp('observer', 'admin_canal');
 
-function negar(status: number, detail: string): NextResponse {
-  return NextResponse.json({ detail }, { status });
-}
-
-export async function GET(req: NextRequest) {
-  const auth = await requireMasterAdmin();
-  if (!auth.ok) return negar(auth.status, auth.error);
-  const canal = await resolverEmpresaDoCanal(auth.supabase);
-  if (!canal.ok) return negar(canal.status, canal.detail);
-  const key = internalKey();
-  if (!key) return negar(500, 'internal_key_not_configured');
-
-  const correlation = correlationId(req);
-  const action = req.nextUrl.searchParams.get('action') || 'status';
-  const attemptId = req.nextUrl.searchParams.get('attempt_id');
-  const company = encodeURIComponent(canal.companyId);
-
-  if (action === 'pairing' && attemptId) {
-    return backendRequest(
-      `/api/whatsapp-channel/pairing/${encodeURIComponent(attemptId)}?company_id=${company}&purpose=${PURPOSE}`,
-      key,
-      correlation,
-    );
-  }
-  if (action === 'qr') {
-    return backendRequest(`/api/whatsapp-channel/qr?company_id=${company}&purpose=${PURPOSE}`, key, correlation);
-  }
-  if (action === 'diagnostics') {
-    return backendRequest(
-      `/api/admin/whatsapp-channel/diagnostics?company_id=${company}&purpose=${PURPOSE}`,
-      key,
-      correlation,
-    );
-  }
-  return backendRequest(`/api/whatsapp-channel/status?company_id=${company}&purpose=${PURPOSE}`, key, correlation);
-}
-
-export async function POST(req: NextRequest) {
-  const origem = assertSameOrigin(req);
-  if (origem) return negar(origem.status, origem.error);
-  const auth = await requireMasterAdmin();
-  if (!auth.ok) return negar(auth.status, auth.error);
-  const canal = await resolverEmpresaDoCanal(auth.supabase);
-  if (!canal.ok) return negar(canal.status, canal.detail);
-  const key = internalKey();
-  if (!key) return negar(500, 'internal_key_not_configured');
-
-  const correlation = correlationId(req);
-  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const action = String(body.action || 'pairing');
-  const attemptId = typeof body.attempt_id === 'string' ? body.attempt_id : '';
-
-  // A autorização de Auxiliar é um consentimento da CORRETORA sobre o número dela.
-  // O canal não tem Auxiliares; aceitar a ação aqui seria gravar um sim que ninguém deu.
-  if (action === 'set-auxiliary-authorization') return negar(400, 'nao_se_aplica_ao_canal');
-
-  // ⛔ A auditoria guarda QUAL ação e QUEM — nunca o número, nunca o QR.
-  // `actor_user_id` fica nulo: o id de `admin_users` não é um usuário de corretora.
-  await writeAudit(auth.supabase, {
-    company_id: canal.companyId,
-    event_type: 'whatsapp_channel.write',
-    action,
-    status: 'ok',
-    actor_user_id: null,
-    metadata: { correlation_id: correlation, admin_id: auth.ctx.adminId, origem: 'admin_canal' },
-  });
-
-  const alertNumber = typeof body.alert_number === 'string' ? body.alert_number.replace(/\D/g, '') : '';
-  if (alertNumber && (alertNumber.length < 10 || alertNumber.length > 15)) return negar(400, 'numero_invalido');
-
-  if (action === 'set-alert') {
-    return backendRequest('/api/whatsapp-channel/set-alert', key, correlation, {
-      method: 'POST',
-      body: JSON.stringify({
-        company_id: canal.companyId,
-        purpose: PURPOSE,
-        mode: String(body.mode || ''),
-        alert_number: alertNumber || null,
-      }),
-    });
-  }
-
-  if (action === 'disconnect') {
-    return backendRequest('/api/whatsapp-channel/disconnect', key, correlation, {
-      method: 'POST',
-      body: JSON.stringify({ company_id: canal.companyId, purpose: PURPOSE }),
-    });
-  }
-
-  if ((action === 'retry' || action === 'cancel') && !attemptId) return negar(400, 'attempt_id_required');
-  if (action === 'retry' || action === 'cancel') {
-    return backendRequest(
-      `/api/whatsapp-channel/pairing/${encodeURIComponent(attemptId)}/${action}`,
-      key,
-      correlation,
-      {
-        method: 'POST',
-        body: JSON.stringify({ company_id: canal.companyId, purpose: PURPOSE, correlation_id: correlation }),
-      },
-    );
-  }
-
-  if (action !== 'pairing') return negar(400, 'acao_desconhecida');
-  const method = body.method === 'phone' ? 'phone' : 'qr';
-  const phoneNumber = typeof body.phone_number === 'string' ? body.phone_number.replace(/\D/g, '') : '';
-  if (method === 'phone' && (phoneNumber.length < 10 || phoneNumber.length > 15)) {
-    return negar(400, 'invalid_phone_number');
-  }
-  return backendRequest('/api/whatsapp-channel/pairing', key, correlation, {
-    method: 'POST',
-    body: JSON.stringify({
-      company_id: canal.companyId,
-      purpose: PURPOSE,
-      method,
-      phone_number: phoneNumber || null,
-      correlation_id: correlation,
-    }),
-  });
-}
+export const GET = ROTA.GET;
+export const POST = ROTA.POST;
