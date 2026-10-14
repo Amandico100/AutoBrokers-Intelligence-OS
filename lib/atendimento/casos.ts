@@ -486,7 +486,8 @@ export async function projetarCasos(
     // agora. Quando o id é dado, a janela não se aplica: lê-se A LINHA.
     const porId = Boolean(filtro.conversa_id);
     const ativas = await lerEmLotes((de, ate) => {
-      let q = supabase.from('conversations').select(COLUNAS_CONVERSA).eq('company_id', companyId); // 🔴 R9/§7
+      let q = supabase.from('conversations').select(COLUNAS_CONVERSA).eq('company_id', companyId) // 🔴 R9/§7
+        .neq('channel', 'whatsapp_assistente'); // SPEC-132-C D-132C-05: a conversa do corretor com o AutoBrokers pelo WhatsApp não é atendimento (📊 14/10: 0 canais nulos)
       if (porId) q = q.eq('id', filtro.conversa_id as string);
       else q = q.is('resolvido_em', null);
       return q
@@ -636,7 +637,8 @@ export async function projetarCasos(
     //    A mesma janela de cursor, sobre a mesma chave, para o merge ser estável.
     const implicitas = await ler(
       (() => {
-        let q = supabase.from('conversations').select(COLUNAS_CONVERSA).eq('company_id', companyId); // 🔴 R9/§7
+        let q = supabase.from('conversations').select(COLUNAS_CONVERSA).eq('company_id', companyId) // 🔴 R9/§7
+        .neq('channel', 'whatsapp_assistente'); // SPEC-132-C D-132C-05: a conversa do corretor com o AutoBrokers pelo WhatsApp não é atendimento (📊 14/10: 0 canais nulos)
         if (busca) {
           q = q.or(`user_name.ilike.%${busca}%,user_phone.ilike.%${digitos(busca) || busca}%`);
         }
