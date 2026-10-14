@@ -6,6 +6,9 @@
     integracao_do_assistente(db)                            a integração ATIVA `purpose='assistente'` da plataforma
     async enviar(integracao, telefone, mensagens)           manda pela integração DADA; para no 1º que falhar
     async enviar_ao_membro(db, *, company_id, user_id, texto)   a C3 chama (o resultado da cotação pelo WhatsApp)
+    async avisar_pelo_atalho_se_for_o_caso(db, *, company_id, conversation_id, texto_markdown)   C3: a conversa é do
+                                                            atalho? → `enviar_ao_membro` ao dono dela
+    avisar_pelo_atalho_sem_esperar(...)                     a ponte síncrona (o `gravar_mensagem` da cotação)
     async digitando(integracao, telefone, estado)           "digitando…" (a mesma flag do atendimento)
 
 Um motor só (CLAUDE.md §5): o envio é `whatsapp_service.send_message` (o seam multi-provedor, a digital da própria
@@ -340,6 +343,81 @@ async def enviar_ao_membro(db: Any, *, company_id: Any, user_id: Any, texto: Any
         return 0
 
 
+# =====================================================================================================================
+# SPEC-132-C C3 — a volta do Work Run pelo WhatsApp (a Cotação Rápida que terminou depois do turno)
+# =====================================================================================================================
+#: 💭 quanto a volta pode segurar quem a chamou (o envio tem o próprio timeout; isto é o cinto)
+TEMPO_DA_VOLTA_S = 60.0
+_VOLTAS_EM_CURSO: set = set()
+
+
+def _conversa_do_atalho(db: Any, company_id: str, conversation_id: str) -> Optional[Dict[str, Any]]:
+    """A conversa SE for desta corretora E do canal do atalho (filtro no banco E reconferido aqui). Senão None."""
+    from app.services.atalho.turno import CANAL_DO_ATALHO
+
+    cid, conv = str(company_id or "").strip().lower(), str(conversation_id or "").strip().lower()
+    if not cid or not conv:
+        return None
+    cli = getattr(db, "client", db)
+    linhas = _dados(cli.table("conversations").select("id, company_id, user_id, channel")
+                    .eq("id", conv).eq("company_id", cid).limit(1).execute())
+    linha = next((x for x in linhas if str(x.get("id") or "").lower() == conv
+                  and str(x.get("company_id") or "").lower() == cid), None)
+    if not linha or linha.get("channel") != CANAL_DO_ATALHO or not linha.get("user_id"):
+        return None
+    return linha
+
+
+async def avisar_pelo_atalho_se_for_o_caso(db: Any, *, company_id: Any, conversation_id: Any,
+                                           texto_markdown: Any) -> bool:
+    """A mensagem que um Work Run gravou na conversa (ex.: o resultado da Cotação Rápida) volta TAMBÉM pelo WhatsApp
+    quando a conversa nasceu nele (`channel == turno.CANAL_DO_ATALHO`): ao DONO da conversa (`user_id`), no número
+    VERIFICADO dele, pela instância do assistente (`enviar_ao_membro` — que respeita `ATALHO_WHATSAPP_LIGADO`).
+    Conversa do painel, de outra corretora, sem dono ou ilegível → False, nada sai. True = saiu ao menos 1 mensagem.
+    Nunca levanta (quem chama já gravou a mensagem; o WhatsApp é cortesia)."""
+    try:
+        if not str(texto_markdown or "").strip():
+            return False
+        cid = str(company_id or "")
+        linha = await asyncio.to_thread(_conversa_do_atalho, db, cid, str(conversation_id or ""))
+        if not linha:
+            return False
+        cli = getattr(db, "client", db)
+        n = await enviar_ao_membro(cli, company_id=cid.strip().lower(), user_id=str(linha["user_id"]),
+                                   texto=texto_markdown)
+        return n > 0
+    except Exception as erro:  # noqa: BLE001
+        logger.error("[ATALHO] a volta pelo WhatsApp falhou (%s)", type(erro).__name__)
+        return False
+
+
+def avisar_pelo_atalho_sem_esperar(db: Any, *, company_id: Any, conversation_id: Any, texto_markdown: Any) -> None:
+    """A ponte SÍNCRONA para quem grava a mensagem fora de um laço async (`cotacao.workflow.gravar_mensagem`, que roda
+    em `asyncio.to_thread`): sem laço nesta thread → roda a volta aqui mesmo (com teto); dentro de um laço (o gancho
+    de desistência do Work OS) → agenda no laço e segue. Nunca levanta."""
+    async def _com_teto() -> None:
+        try:
+            await asyncio.wait_for(avisar_pelo_atalho_se_for_o_caso(
+                db, company_id=company_id, conversation_id=conversation_id, texto_markdown=texto_markdown),
+                timeout=TEMPO_DA_VOLTA_S)
+        except Exception as erro:  # noqa: BLE001
+            logger.error("[ATALHO] a volta pelo WhatsApp não terminou (%s)", type(erro).__name__)
+
+    try:
+        try:
+            laco = asyncio.get_running_loop()
+        except RuntimeError:
+            laco = None
+        if laco is None:
+            asyncio.run(_com_teto())
+        else:
+            tarefa = laco.create_task(_com_teto())
+            _VOLTAS_EM_CURSO.add(tarefa)          # sem a referência o laço pode recolher a tarefa no meio
+            tarefa.add_done_callback(_VOLTAS_EM_CURSO.discard)
+    except Exception as erro:  # noqa: BLE001
+        logger.error("[ATALHO] a volta pelo WhatsApp não foi agendada (%s)", type(erro).__name__)
+
+
 async def digitando(integracao: Dict[str, Any], telefone: Any, estado: str = "composing") -> None:
     """"digitando…" — a MESMA flag e o MESMO seam do atendimento (`PRESENCA_DIGITANDO_LIGADA`,
     `whatsapp_service.send_presence`). Enfeite: nunca levanta, nunca custa a resposta."""
@@ -359,4 +437,5 @@ async def digitando(integracao: Dict[str, Any], telefone: Any, estado: str = "co
 
 
 __all__ = ("TETO_DE_UMA_MENSAGEM", "para_whatsapp", "em_mensagens", "integracao_do_assistente", "enviar",
-           "enviar_texto", "enviar_ao_membro", "digitando")
+           "enviar_texto", "enviar_ao_membro", "digitando", "avisar_pelo_atalho_se_for_o_caso",
+           "avisar_pelo_atalho_sem_esperar")
