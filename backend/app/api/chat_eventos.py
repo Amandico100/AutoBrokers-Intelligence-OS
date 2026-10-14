@@ -203,6 +203,10 @@ _TRABALHO = {"key": "work.organizing", "label": "Organizando o trabalho"}
 _EQUIPE = {"key": "team.calling", "label": "Chamando alguém da equipe"}
 
 CATALOGO_DE_ESTAGIOS: Dict[str, Dict[str, str]] = {
+    # SPEC-132-B — a Cotação Rápida: a tela reconhece o disparo por esta chave (A5, a resposta que chega depois)
+    "cotacao_preparar": {"key": "quote.preparing", "label": "Conferindo os dados da cotação"},
+    "cotacao_disparar": {"key": "quote.calculating", "label": "Começando o cálculo nas seguradoras"},
+    "cotacao_ajustar": {"key": "quote.calculating", "label": "Recalculando a cotação"},
     # documentos da corretora
     "knowledge_base_search": _DOCUMENTOS,
     "filesystem_search": _DOCUMENTOS,
