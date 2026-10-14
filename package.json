@@ -14,6 +14,7 @@
     "test:relatorio-pelo-protocolo": "python backend/tests/test_o_relatorio_nasce_pelo_protocolo.py",
     "test:relatorios": "node scripts/relatorios-dizem-o-que-sao.test.mjs",
     "test:chat-shell": "node scripts/o-chat-responde-e-continua.test.mjs",
+    "test:chat-novo": "node scripts/o-chat-novo.test.mjs",
     "test:casa": "node scripts/a-operacao-tem-uma-casa.test.mjs",
     "test:de-quem-e": "node scripts/cada-coisa-sabe-de-quem-e.test.mjs",
     "test:de-quem-e-backend": "cd backend && python tests/test_cada_coisa_sabe_de_quem_e.py",
