@@ -93,20 +93,36 @@ def seguradoras_que_responderam(ofertas: Iterable[Mapping[str, Any]]) -> int:
 
 
 def _linha(rotulo: str, o: Mapping[str, Any]) -> str:
-    parc = o.get("parcelas") if isinstance(o.get("parcelas"), Mapping) else {}
-    parcela = f"{int(parc['vezes'])}x {_reais(parc.get('valor'))}" if parc.get("vezes") and parc.get("valor") else "—"
-    fr = o.get("franquia") if isinstance(o.get("franquia"), Mapping) else {"valor": o.get("franquia")}
-    a_vista = o.get("a_vista") if o.get("a_vista") is not None else o.get("premio_anual")
-    return f"| {rotulo} | {o.get('seguradora') or '—'} | {parcela} | {_reais(a_vista)} | {_reais(fr.get('valor'))} |"
+    """Uma opção do `resumo` da B2 (`proposta.resumo_da_cotacao`): {id, papel, seguradora, parcela:{vezes, valor,
+    sem_juros, total?}, a_vista, franquia} — a MESMA parcela que a página mostra (uma só por opção)."""
+    parc = o.get("parcela") if isinstance(o.get("parcela"), Mapping) else {}
+    if parc.get("vezes") and parc.get("valor"):
+        parcela = f"{int(parc['vezes'])}x {_reais(parc.get('valor'))}" + (" sem juros" if parc.get("sem_juros") else "")
+    else:
+        parcela = "—"
+    fr = o.get("franquia")
+    fr = fr.get("valor") if isinstance(fr, Mapping) else fr
+    return f"| {rotulo} | {o.get('seguradora') or '—'} | {parcela} | {_reais(o.get('a_vista'))} | {_reais(fr)} |"
 
 
-ROTULO_DA_LINHA = {"recomendada": "Recomendada", "mais_em_conta": "Mais em conta", "mais_completa": "Mais completa"}
+#: o rótulo de cada papel quando o `resumo` não traz o `papel` (o texto da página vence: "Igual à sua atual"…)
+ROTULO_DA_LINHA = {"recomendada": "Recomendada", "mais_em_conta": "Mais em conta", "mais_completa": "Mais completa",
+                   "igual_a_atual": "Igual à sua atual"}
+#: as linhas da tabela do chat — as mesmas 3 da página (o hero + os cartões)
+LINHAS_DA_TABELA = 3
 
 
 def tabela(opcoes: Sequence[Mapping[str, Any]]) -> str:
-    """As 3 linhas (Recomendada · Mais em conta · Mais completa), na ordem da página. Opção que não veio não aparece."""
-    por_id = {str(o.get("id") or ""): o for o in opcoes or () if isinstance(o, Mapping)}
-    linhas = [_linha(rot, por_id[i]) for i, rot in ROTULO_DA_LINHA.items() if i in por_id]
+    """As linhas na ORDEM do `resumo` da B2 — a ordem da página (a recomendada primeiro, depois a mais em conta e a
+    mais completa; com a apólice, "Igual à sua atual" no lugar que a página der). Até 3; opção sem seguradora some."""
+    linhas = []
+    for o in opcoes or ():
+        if not isinstance(o, Mapping) or not o.get("seguradora"):
+            continue
+        rotulo = str(o.get("papel") or ROTULO_DA_LINHA.get(str(o.get("id") or ""), "") or "Opção").strip()
+        linhas.append(_linha(rotulo, o))
+        if len(linhas) == LINHAS_DA_TABELA:
+            break
     if not linhas:
         return ""
     return "\n".join(["| | Seguradora | Parcela | À vista | Franquia |", "|---|---|---|---|---|", *linhas])
