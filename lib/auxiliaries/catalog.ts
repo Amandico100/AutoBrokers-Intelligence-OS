@@ -221,7 +221,7 @@ export const ICONES_CONHECIDOS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * SPEC-131-B (D-131-21) — aplicativos SEM rotina: Cotação e Quem Cobra Menos têm só Início + Configurar. Não se
+ * SPEC-131-B (D-131-21) — aplicativos SEM rotina: Cotação Rápida e Quem Cobra Menos. Não se
  * instalam nem se ligam (as regras valem assim que salvas); o botão principal deles é "Configurar".
  */
 export const APLICATIVOS_SEM_ROTINA: ReadonlySet<string> = new Set(['cotacao', 'quem-cobra-menos']);
@@ -272,9 +272,11 @@ export const ABAS_DO_APLICATIVO: Record<string, AbaDoAplicativo[]> = {
     { id: 'renovacoes', rotulo: 'Renovações', componente: 'renovacao/AbaRenovacoes' },   // G2
     ABA_DUVIDAS,
   ],
+  // SPEC-132-B · B3 — a Cotação Rápida tão completa quanto a Renovação: Início · Configurar · Cotações · Dúvidas
   cotacao: [
     ABA_INICIO,
-    { id: 'configurar', rotulo: 'Configurar', componente: 'cotacao/AbaConfigurar' },     // G3
+    { id: 'configurar', rotulo: 'Configurar', componente: 'cotacao/AbaConfigurar' },     // G3 + as regras (B3)
+    { id: 'cotacoes', rotulo: 'Cotações', componente: 'cotacao/AbaCotacoes' },          // B3
     ABA_DUVIDAS,
   ],
   'quem-cobra-menos': [
@@ -306,7 +308,7 @@ export function abasDoAplicativo(
  * K3 (juiz de design 2): as abas de trabalho em LISTA ganham largura (`max-w-7xl`); as de leitura ficam em 5xl.
  * Devolve as que ESTE aplicativo tem — a página (servidor) passa a lista pronta para a casca (cliente).
  */
-export const ABAS_LARGAS: readonly string[] = ['renovacoes'];
+export const ABAS_LARGAS: readonly string[] = ['renovacoes', 'cotacoes'];
 export function abasLargas(abas: AbaDoAplicativo[]): string[] {
   return abas.filter((a) => ABAS_LARGAS.includes(a.id)).map((a) => a.id);
 }
@@ -431,6 +433,8 @@ export interface PassoDaProntidao {
   estado: string;
   detalhe?: string;
   link?: string;
+  /** SPEC-132-B · B3 — no passo `servicos`: QUAL serviço já tem regra escolhida (cotacao, renovacao) */
+  por_servico?: Record<string, boolean>;
 }
 
 export interface FontesDoComoComecar {
@@ -470,7 +474,8 @@ function daProntidao(
  * Os passos do "Como começar" deste aplicativo. Puro: recebe o item e o que já foi lido (prontidão, meu Agger).
  *
  * Renovação (SPEC §4): sistema de gestão conectado → Agger da corretora → o SEU Agger (Meu perfil) → quem é quem
- * (Equipe) → Ligar. Cotação e Quem Cobra Menos: Agger da corretora → as regras. Os outros: as conexões da
+ * (Equipe) → Ligar. Cotação Rápida: Agger da corretora → o SEU Agger → as regras. Quem Cobra Menos: Agger da
+ * corretora → as regras. Os outros: as conexões da
  * corretora que ele exige → configurar a rotina → ligar.
  */
 export function passosDoComoComecar(
@@ -521,6 +526,42 @@ export function passosDoComoComecar(
       // SPEC-131-B G5 (laudo de design §3: "→ Configure → Ligue"): as regras moram na aba Configurar DESTE aplicativo
       daProntidao(fontes, 'servicos', 'Escolher as regras da renovação', `${aqui}?aba=configurar`, 'Configurar'),
       passoLigar,
+    ];
+  }
+
+  if (item.slug === 'cotacao') {
+    // SPEC-132-B · B3 (SPEC §4): Agger da corretora (o reserva) → o SEU Agger (Meu perfil) → as regras do cálculo
+    const meu: PassoDoComoComecar = {
+      chave: 'meu_agger',
+      titulo: 'Conectar o seu Agger',
+      detalhe: fontes.meuAgger
+        ? 'O seu Agger está conectado: as cotações que você pedir saem na sua conta.'
+        : fontes.meuAgger === false
+          ? 'Em Meu perfil, Minhas conexões. Sem ele, as suas cotações saem no Agger da corretora.'
+          : 'Não deu para conferir agora.',
+      estado: fontes.meuAgger ? 'pronto' : fontes.meuAgger === false ? 'falta' : 'nao_sei',
+      link: LINK_MEU_PERFIL,
+      rotuloDoLink: 'Abrir Meu perfil',
+    };
+    const servicos = fontes.prontidao?.find((x) => x.chave === 'servicos');
+    const daCotacao = servicos?.por_servico ? servicos.por_servico.cotacao : undefined;
+    const regras: PassoDoComoComecar =
+      typeof daCotacao === 'boolean'
+        ? {
+            chave: 'servicos',
+            titulo: 'Conferir as regras do cálculo',
+            detalhe: daCotacao
+              ? 'As regras da cotação estão escolhidas.'
+              : 'Enquanto você não escolher, valem as regras padrão do AutoBrokers.',
+            estado: daCotacao ? 'pronto' : 'falta',
+            link: `${aqui}?aba=configurar`,
+            rotuloDoLink: 'Configurar',
+          }
+        : daProntidao(fontes, 'servicos', 'Conferir as regras do cálculo', `${aqui}?aba=configurar`, 'Configurar');
+    return [
+      daProntidao(fontes, 'agger_da_corretora', 'Conectar o Agger da corretora', LINK_CONECTORES, 'Conectar'),
+      meu,
+      regras,
     ];
   }
 
