@@ -140,8 +140,13 @@ def resumo_do_cliente(campos: Optional[Mapping[str, Any]], descricao: Any = None
     placa = str(vei.get("placa") or "").strip().upper().replace("-", "")
     if _PLACA.match(placa):
         saida["placa"] = placa
-    risco = str(descricao or vei.get("modelo") or "").strip()
-    if risco and not re.search(r"\d{6,}", risco):      # nunca um número de documento no "risco"
+    from app.services.cotacao.resposta import sem_documento_inteiro
+
+    # 🔴 conserto juiz P2 / RT P-RT-1: o "risco" vai EM CLARO ao `work_runs` e à aba — passa pela MÁSCARA (CPF/CNPJ
+    #    pontuado, colado ou com espaços) e, por cinto, nenhuma sequência colada de 6+ dígitos sobra ("Onix 2021 2022"
+    #    fica: é ano/modelo, não documento)
+    risco = sem_documento_inteiro(str(descricao or vei.get("modelo") or "").strip())
+    if risco and not re.search(r"\d{6,}", risco):
         saida["risco"] = risco[:60]
     elif "placa" in saida:
         saida["risco"] = f"Placa {saida['placa']}"
@@ -164,6 +169,23 @@ def _cliente_do_run_anterior(db: Any, company_id: str, pedido_id: str) -> Dict[s
             if achado:
                 return achado
     return {}
+
+
+def _apolice_do_run_anterior(db: Any, company_id: str, pedido_id: str) -> Optional[Dict[str, Any]]:
+    """A `apolice_atual` do run de DISPARO do mesmo pedido (o que não é recálculo), desta corretora."""
+    try:
+        linhas = _dados(_cliente(db).table("work_runs").select("id, company_id, workflow_key, input_payload")
+                        .eq("company_id", str(company_id)).eq("workflow_key", WORKFLOW_KEY)
+                        .eq("source_id", str(pedido_id)).execute())
+    except Exception as exc:  # noqa: BLE001
+        logger.info("[COTACAO] run anterior ilegível (%s)", type(exc).__name__)
+        return None
+    for r in linhas:
+        ent = r.get("input_payload") if isinstance(r.get("input_payload"), Mapping) else {}
+        if (str(r.get("company_id")) == str(company_id) and str(ent.get("pedido_id") or "") == str(pedido_id)
+                and not ent.get("ajuste_calculo_id") and isinstance(ent.get("apolice_atual"), Mapping)):
+            return dict(ent["apolice_atual"])
+    return None
 
 
 def contas_do_pedido(db: Any, company_id: str, pedido_id: str) -> List[Dict[str, Any]]:
@@ -190,8 +212,15 @@ def abrir(db: Any, *, company_id: str, user_id: str, conversation_id: str, pedid
     chave = f"{WORKFLOW_KEY}:{pedido_id}" + (f":ajuste:{ajuste_calculo_id}" if ajuste_calculo_id else "")
     entrada: Dict[str, Any] = {"pedido_id": str(pedido_id), "conversation_id": str(conversation_id),
                                "solicitante_user_id": str(user_id), "situacao": situacao}
+    if ajuste and not apolice_atual:
+        # o recálculo é a MESMA cotação: a apólice lida no disparo (e a situação) seguem com ele — sem isso a página
+        # depois do ajuste perderia o "Igual à sua atual" e a economia que a de antes mostrava
+        anterior = _apolice_do_run_anterior(cli, company_id, pedido_id)
+        if anterior:
+            apolice_atual, situacao = anterior, "novo_com_apolice"
+            entrada["situacao"] = situacao
     if apolice_atual:
-        entrada["apolice_atual"] = {k: apolice_atual[k] for k in ("seguradora", "premio_anual", "origem")
+        entrada["apolice_atual"] = {k: apolice_atual[k] for k in ("seguradora", "premio_anual", "origem", "base")
                                     if k in apolice_atual}
     if ajuste:
         entrada.update({"ajuste": str(ajuste)[:80], "ajuste_calculo_id": str(ajuste_calculo_id or "")})
@@ -282,6 +311,7 @@ async def _cotacao(ctx: dict) -> Any:
     conversa = str(payload.get("conversation_id") or "")
     pessoa = str(payload.get("solicitante_user_id") or "") or None
     ajuste = payload.get("ajuste") or None
+    ajuste_calculo_id = str(payload.get("ajuste_calculo_id") or "") or None
     if not pedido_id or not conversa:
         raise ValueError("run da cotação sem pedido ou sem conversa")
 
@@ -294,7 +324,10 @@ async def _cotacao(ctx: dict) -> Any:
             prontos = [e for e in and_.estados if e.get("status") in TERMINAIS or e.get("quadro_pronto_em")]
             acabou = bool(and_.estados) and len(prontos) == len(and_.estados)
             if acabou or time.monotonic() - inicio > TETO_S or ctx["cancelado"]():
-                n = RESP.seguradoras_que_responderam(and_.ofertas)
+                # 🔴 conserto juiz B1 / RT B-2: no RECÁLCULO contam só as seguradoras que responderam AO AJUSTE
+                ofertas = ([o for o in and_.ofertas if str(o.get("calculo_id")) == ajuste_calculo_id]
+                           if ajuste_calculo_id else and_.ofertas)
+                n = RESP.seguradoras_que_responderam(ofertas)
                 return {"situacao": "com_preco" if n else "sem_preco", "responderam": n,
                         "cortado": not acabou}
             await _dormir(INTERVALO_S)
@@ -313,15 +346,18 @@ async def _cotacao(ctx: dict) -> Any:
         if (r1 or {}).get("situacao") != "com_preco":
             escreveu = await asyncio.to_thread(
                 gravar_mensagem, db, company_id=company_id, conversation_id=conversa, run_id=run_id,
-                tipo="sem_resposta", texto=RESP.texto_sem_resposta(aviso=aviso),
+                tipo="sem_resposta", texto=RESP.texto_sem_resposta(aviso=aviso, ajuste=ajuste),
                 payload={"pedido_id": pedido_id, "estado": "sem_resposta"})
             return {"situacao": "sem_preco", "escreveu": bool(escreveu)}
         try:
             from app.services.multicalculo.proposta import publicar_cotacao
 
+            # 🔴 conserto juiz B1 / RT B-2: o run do RECÁLCULO publica a página DEPOIS do ajuste (a opção ajustada
+            #    com as ofertas dele) — o modelo muda, e com ele a tabela daqui e o link (versão nova)
+            extra = {"ajuste_calculo_id": ajuste_calculo_id} if ajuste_calculo_id else {}
             pub = await publicar_cotacao(company_id, pedido_id, pessoa_user_id=pessoa,
                                          apolice_atual=payload.get("apolice_atual"), db=db,
-                                         primeiro_nome=payload.get("cliente_nome_curto") or None)
+                                         primeiro_nome=payload.get("cliente_nome_curto") or None, **extra)
         except Exception as exc:  # noqa: BLE001 — o resultado existe; a página é que não saiu
             logger.error("[COTACAO] a apresentação não foi publicada (%s)", type(exc).__name__)
             escreveu = await asyncio.to_thread(
