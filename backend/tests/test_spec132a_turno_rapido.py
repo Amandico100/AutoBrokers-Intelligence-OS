@@ -897,3 +897,173 @@ def test_o_aquecimento_e_o_1o_turno_nao_disputam_o_pool(monkeypatch):
     um, outro = asyncio.run(_dois_mutado())
     assert not (isinstance(um, _SaverD) and isinstance(outro, _SaverD)), \
         "sem a trava os dois receberam o saver — o guarda é carimbo"
+
+
+# =====================================================================================================================
+# 🔴 O CONSERTO ÚNICO (14/10) — juiz P1 (o mesmo turno 2×) e red team P1 (o aquecimento derrubava o app)
+# =====================================================================================================================
+def _corrida(T, chat_mod, *, com_anexo=False):
+    """Dois POSTs IGUAIS (o mesmo `client_request_id`) ao mesmo tempo, no mesmo app (a sonda do juiz)."""
+    banco = T._banco_padrao_d(conversas=[])
+    borda = _Borda(demora=0.5)
+    crid, sessao, amid = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    extra = {"attachments": [_anexo()]} if com_anexo else {}
+    corpo = _corpo(sessao=sessao, crid=crid, assistantMessageId=amid, **extra)
+
+    async def _rodar():
+        with T._TrocaModulosD(borda.stubs(banco)):
+            app = T._montar_app_d(chat_mod, banco)
+            await _turno_asgi(app, _corpo())
+            borda.motor.clear()
+            resultado = await asyncio.gather(_turno_asgi(app, corpo), _turno_asgi(app, corpo))
+            sobrou = [k for k in chat_mod.TURNOS_ATIVOS if k.endswith(crid)]
+            return resultado, sobrou
+
+    ((_m1, t1), (_m2, t2)), sobrou = asyncio.run(_rodar())
+    codigos = sorted(str((e.get("payload") or {}).get("code")) for t in (t1, t2) for e in T._linhas_sse_d(t)
+                     if str(e.get("type", "")) in ("notice", "policy.blocked"))
+    return len(borda.motor), codigos, sobrou
+
+
+def test_conserto_p1_o_mesmo_turno_duas_vezes_chama_o_modelo_uma_vez(ambiente):
+    """📊 juiz P1: no HEAD de antes do conserto, 6/6 rodadas com o modelo chamado 2× (com e sem anexo)."""
+    T, chat_mod = ambiente
+    for com_anexo in (False, True):
+        motor, codigos, sobrou = _corrida(T, chat_mod, com_anexo=com_anexo)
+        print("📊 corrida (anexo=%s): modelo chamado %d× · avisos %s · chaves que sobraram %s"
+              % (com_anexo, motor, codigos, sobrou))
+        assert motor == 1 and codigos == ["turn_in_progress"], (motor, codigos)
+        assert sobrou == [], "a chave do turno ficou presa depois do fim: %s" % sobrou
+    # 🔴 MUTAÇÃO — sem a reserva logo depois da conferência (o código de antes) → o modelo 2× → VERMELHO
+    mutado = _modulo_mutado(CHAT_PY, "app.api._chat_sem_reserva_132a",
+                            "        TURNOS_ATIVOS[chave_do_turno] = reserva\n", "")
+    motor_m, codigos_m, _ = _corrida(T, mutado)
+    print("📊 MUTADO (sem a reserva): modelo chamado %d× · avisos %s" % (motor_m, codigos_m))
+    assert motor_m == 2, "a mutação passou — o guarda da corrida é carimbo"
+
+
+def test_conserto_p1_a_reserva_e_solta_quando_o_turno_nao_comeca(ambiente):
+    """A porteira barrou (sem crédito): a reserva sai — a mesma pergunta, depois, é atendida (não fica "em andamento")."""
+    T, chat_mod = ambiente
+    banco = T._banco_padrao_d(conversas=[])
+    borda = _Borda(demora=0.0)
+    crid = str(uuid.uuid4())
+    corpo = _corpo(crid=crid)
+
+    async def _rodar():
+        with T._TrocaModulosD(borda.stubs(banco)):
+            app = T._montar_app_d(chat_mod, banco)
+            T.PODE_CONSUMIR_D[:] = [False, "sem saldo"]
+            _m, barrado = await _turno_asgi(app, corpo)
+            preso = [k for k in chat_mod.TURNOS_ATIVOS if k.endswith(crid)]
+            T.PODE_CONSUMIR_D[:] = [True, "ok"]
+            _m2, depois = await _turno_asgi(app, corpo)
+            return barrado, preso, depois
+
+    barrado, preso, depois = asyncio.run(_rodar())
+    tipos_barrado = [e.get("type") for e in T._linhas_sse_d(barrado)]
+    tipos_depois = [e.get("type") for e in T._linhas_sse_d(depois)]
+    assert "policy.blocked" in tipos_barrado and preso == [], (tipos_barrado, preso)
+    assert "assistant.content.delta" in tipos_depois, tipos_depois
+
+
+def _aquecimento_isolado(monkeypatch, fonte_do_main: str, presidio):
+    """As duas funções do aquecimento compiladas SEM subir o app (o molde de `test_aquecimento_desligavel…`)."""
+    arvore = ast.parse(fonte_do_main)
+    fns = {n.name: n for n in arvore.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    mod = types.ModuleType("app._aquecimento_conserto_132a")
+    mod.__dict__.update({"os": os, "logger": __import__("logging").getLogger("aquecimento-teste")})
+    exec(compile(ast.Module(body=[fns["aquecer_no_arranque"]], type_ignores=[]), "main.py", "exec"), mod.__dict__)
+    PS = types.ModuleType("app.services.presidio_service")
+    PS.get_presidio_service = lambda: presidio
+    SS = types.ModuleType("app.services.search_service")
+    SS.get_search_service = lambda: object()
+    G = types.ModuleType("app.agents.graph")
+
+    async def _pool():
+        return None
+
+    G.get_async_postgres_checkpointer = _pool
+    G._async_postgres_pool = object()
+    pacote = types.ModuleType("app.agents")
+    pacote.graph = G
+    for nome, falso in (("app.services.presidio_service", PS), ("app.services.search_service", SS),
+                        ("app.agents", pacote), ("app.agents.graph", G)):
+        monkeypatch.setitem(sys.modules, nome, falso)
+    return mod
+
+
+def test_conserto_rt_p1_o_download_do_spacy_que_sai_nao_derruba_o_app(monkeypatch):
+    """📊 red team P1: `pt_core_news_md` ausente + download sem rede = `sys.exit(1)` → `ESCAPOU DO EVENT LOOP:
+    SystemExit 1`. O aquecimento pega `BaseException` (menos o cancelamento do desligamento)."""
+    class _PresidioQueSai:
+        def analyze_and_anonymize(self, *_a, **_k):
+            raise SystemExit(1)  # o que `spacy.cli.download` faz quando o pip falha
+
+    fonte = io.open(os.path.join(RAIZ, "app", "main.py"), encoding="utf-8").read()
+    mod = _aquecimento_isolado(monkeypatch, fonte, _PresidioQueSai())
+    tempos = asyncio.run(mod.aquecer_no_arranque())
+    assert tempos["presidio"] is None and isinstance(tempos["busca"], float), tempos
+    # 🔴 MUTAÇÃO — `except Exception` (o de antes) → o SystemExit atravessa → VERMELHO
+    de = "        except BaseException as falha:  # noqa: BLE001 — aquecer NUNCA derruba o app"
+    assert de in fonte, "a âncora da mutação sumiu do main.py"
+    mod_m = _aquecimento_isolado(monkeypatch, fonte.replace(de, "        except Exception as falha:"), _PresidioQueSai())
+    with pytest.raises(SystemExit):
+        asyncio.run(mod_m.aquecer_no_arranque())
+
+
+def test_conserto_rt_p1_presidio_sem_o_modelo_pt_cai_no_motor_padrao(monkeypatch):
+    """O `PresidioService` REAL: o download que faz `sys.exit` vira o motor padrão (inicializado), e com
+    `PRESIDIO_BAIXAR_MODELO=0` o download nem é tentado. Dublê só na borda: o motor do spaCy e o analisador."""
+    import app.services.presidio_service as PSV
+
+    chamadas = []
+
+    class _Registro:
+        def add_recognizer(self, _r):
+            chamadas.append("reconhecedor")
+
+    class _AnalisadorD:
+        def __init__(self, *a, **k):
+            self.registry = _Registro()
+            chamadas.append("analisador")
+
+    class _ProvedorQueSai:
+        def __init__(self, *a, **k):
+            pass
+
+        def create_engine(self):
+            chamadas.append("download")
+            raise SystemExit(1)
+
+    monkeypatch.setattr(PSV, "AnalyzerEngine", _AnalisadorD)
+    monkeypatch.setattr(PSV, "AnonymizerEngine", lambda: object())
+    monkeypatch.setattr(PSV, "NlpEngineProvider", _ProvedorQueSai)
+    monkeypatch.setattr(PSV, "_modelo_instalado", lambda nome: nome != "pt_core_news_md")
+
+    def _novo():
+        servico = object.__new__(PSV.PresidioService)
+        servico._initialize()
+        return servico
+
+    monkeypatch.setenv("PRESIDIO_BAIXAR_MODELO", "1")
+    s = _novo()
+    assert s.initialized is True and isinstance(s.analyzer, _AnalisadorD) and "download" in chamadas, chamadas
+    chamadas.clear()
+    monkeypatch.setenv("PRESIDIO_BAIXAR_MODELO", "0")
+    s = _novo()
+    assert s.initialized is True and "download" not in chamadas, chamadas
+    # 🔴 MUTAÇÃO — o `except` do motor só com `Exception` → o SystemExit cai no `except` de fora e o Presidio fica
+    # DESLIGADO (initialized=False) → VERMELHO
+    caminho = os.path.join(RAIZ, "app", "services", "presidio_service.py")
+    mutado = _modulo_mutado(caminho, "app.services._presidio_sem_systemexit_132a",
+                            "            except (Exception, SystemExit) as model_error:",
+                            "            except Exception as model_error:")
+    monkeypatch.setattr(mutado, "AnalyzerEngine", _AnalisadorD)
+    monkeypatch.setattr(mutado, "AnonymizerEngine", lambda: object())
+    monkeypatch.setattr(mutado, "NlpEngineProvider", _ProvedorQueSai)
+    monkeypatch.setattr(mutado, "_modelo_instalado", lambda nome: nome != "pt_core_news_md")
+    monkeypatch.setenv("PRESIDIO_BAIXAR_MODELO", "1")
+    sm = object.__new__(mutado.PresidioService)
+    sm._initialize()
+    assert sm.initialized is False, "a mutação passou — o guarda do Presidio é carimbo"
