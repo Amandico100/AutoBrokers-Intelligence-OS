@@ -214,6 +214,26 @@ async def gravar_whatsapp_de_trabalho(request: Request,
         raise _falhou("gravar o WhatsApp de trabalho", e)
 
 
+@router.post("/perfil/whatsapp-de-trabalho/codigo")
+async def gerar_codigo_do_atalho(request: Request,
+                                 x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key")):
+    """SPEC-132-C C1 (D-132C-02) — `{company_id, user_id, por_user_id}` (da SESSÃO) → o código de 6 dígitos que a
+    PRÓPRIA pessoa manda do celular dela ao número do AutoBrokers ("ATIVAR 123456"). Só o hash fica no banco.
+    ⛔ o código não vai para log; volta só para quem pediu."""
+    _require_internal_key(x_key)
+    b = await _corpo(request)
+    from app.services.atalho import verificacao as V
+
+    if str(b.get("por_user_id") or "").strip().lower() != str(b.get("user_id") or "").strip().lower():
+        raise HTTPException(status_code=422, detail="Só a própria pessoa pede o código do WhatsApp dela.")
+    try:
+        return {"ok": True, **V.gerar_codigo(_db(), company_id=b["company_id"], user_id=b.get("user_id"))}
+    except V.Recusa as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise _falhou("gerar o código do WhatsApp", e)
+
+
 @router.post("/perfil/ausencias")
 async def criar_ausencia(request: Request,
                          x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key")):
