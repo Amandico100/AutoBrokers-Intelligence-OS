@@ -1139,10 +1139,10 @@ function guardaPlacarNaoCalculaNaTela(placarTsx) {
  * 📊 Um Pulso custa 162 s de InfoCap e uma versão nova. Um efeito que "só
  * manda a pergunta" gastaria isso a cada montagem.
  *
- * 🔴 E o composer é REMONTADO: `page.tsx` monta `const composer` e o renderiza
- * em DUAS posições da árvore. Ao enviar a primeira mensagem o `InputArea`
- * desmonta, remonta e re-semearia a pergunta — por isso o estado "já consumi"
- * mora ACIMA da fronteira de remontagem, no `page.tsx`.
+ * 🔴 O estado "já consumi" mora ACIMA do composer, no `page.tsx`, e é zerado no ato de enviar. (Até a
+ * SPEC-131 o composer era remontado na 1ª mensagem; a SPEC-132-A o fez UM só, que não remonta — o zeramento
+ * no envio continua certo e é o que um remount futuro exigiria.) O composer é `components/chat/composer/
+ * Composer.tsx` desde a SPEC-132-A (o `InputArea` foi apagado — a lição migra, CLAUDE.md §9.3).
  */
 function guardaOChatSoPrePreenche(chatFonte, inputFonte) {
   const problemas = [];
@@ -1155,7 +1155,7 @@ function guardaOChatSoPrePreenche(chatFonte, inputFonte) {
   if (!inicializador) {
     problemas.push(
       '`?pergunta=` não é lido num inicializador `useState(() => …)` — um efeito chega tarde, ' +
-        'depois de o InputArea já ter nascido com texto vazio',
+        'depois de o Composer já ter nascido com texto vazio',
     );
   }
   // ⛔ NENHUM efeito novo envia sozinho.
@@ -1168,7 +1168,7 @@ function guardaOChatSoPrePreenche(chatFonte, inputFonte) {
   // team EXECUTOU este componente: o efeito roda no primeiro commit, ANTES de
   // o composer existir (`if (isLoadingUser) return <Carregando/>` segura a
   // árvore até `/api/auth/me`), e zerar ali apagava a pergunta antes de o
-  // InputArea montar — o campo nascia vazio. Esta asserção, na versão
+  // Composer montar — o campo nascia vazio. Esta asserção, na versão
   // anterior, exigia exatamente o defeito. A lição migra: o consumo acontece
   // no ATO de enviar (`handleSendMessage`), acima da fronteira de remontagem.
   const efeitoDaUrl = /useEffect\(\(\) => \{[\s\S]*?searchParams[\s\S]*?\}, \[[^\]]*\]\);/.exec(chatFonte);
@@ -1190,13 +1190,13 @@ function guardaOChatSoPrePreenche(chatFonte, inputFonte) {
     );
   }
   if (!/initialText/.test(chatFonte)) {
-    problemas.push('page.tsx não passa `initialText` ao InputArea');
+    problemas.push('page.tsx não passa `initialText` ao Composer');
   }
   if (!/initialText/.test(inputFonte)) {
-    problemas.push('components/InputArea/index.tsx não tem a prop `initialText`');
+    problemas.push('components/chat/composer/Composer.tsx não tem a prop `initialText`');
   } else if (!/useState\(\s*initialText\s*\?\?\s*''\s*\)/.test(inputFonte)) {
     problemas.push(
-      'InputArea não semeia `initialText` no inicializador do `useState` — semear por efeito ' +
+      'o Composer não semeia `initialText` no inicializador do `useState` — semear por efeito ' +
         'apagaria o que o corretor já tivesse digitado',
     );
   }
@@ -1445,7 +1445,7 @@ checar(
 
 console.log('\n[9] O chat PRE-PREENCHE a pergunta — e nunca envia sozinho  (E10)');
 checar(
-  guardaOChatSoPrePreenche(fonte('app/dashboard/chat/page.tsx'), fonte('components/InputArea/index.tsx')),
+  guardaOChatSoPrePreenche(fonte('app/dashboard/chat/page.tsx'), fonte('components/chat/composer/Composer.tsx')),
   'inicializador sincrono, zeramento no efeito da URL, prop initialText, zero envio automatico');
 
 console.log('\n[10] O detalhe: `?versao=` honrado, e a data do dado e a do dado');
@@ -1699,7 +1699,7 @@ function carregarTSXDeTexto(fonteTsx, rel, resolver, React, extraJs = '') {
  * só lê o inicializador na MONTAGEM; um fetch (rede) só resolve DEPOIS do
  * flush síncrono. `useUserId` segue o contrato do arquivo real
  * (hooks/useUserId.ts: `isLoading` nasce true e vira false quando o fetch
- * resolve). Devolve o `initialText` da PRIMEIRA montagem do InputArea — é o
+ * resolve). Devolve o `initialText` da PRIMEIRA montagem do Composer — é o
  * único que importa: `useState(initialText ?? '')` lê a prop só ali.
  */
 async function executarChat(fonteDoChat) {
@@ -1751,7 +1751,7 @@ async function executarChat(fonteDoChat) {
   Object.defineProperty(globalThis, 'crypto', { value: { randomUUID: () => '00000000-0000-4000-8000-000000000000' }, configurable: true });
   globalThis.fetch = () => new Promise((res) => filaDeRede.push(() => res({ ok: true, json: async () => ({}) })));
 
-  const InputAreaStub = function InputArea() { return null; };
+  const InputAreaStub = function Composer() { return null; };
   const inerte = () => null;
   function useUserIdFake() {
     const [carregando, setCarregando] = useState(true);
@@ -1762,13 +1762,13 @@ async function executarChat(fonteDoChat) {
   try {
     const pagina = carregarTSXDeTexto(fonteDoChat, 'app/dashboard/chat/page.tsx', (id) => {
       if (id === 'react') return React;
-      if (id === '@/components/InputArea') return { __esModule: true, default: InputAreaStub };
+      if (id === '@/components/chat/composer/Composer') return { __esModule: true, Composer: InputAreaStub, default: InputAreaStub };
       if (id === '@/hooks/useUserId') return { useUserId: useUserIdFake };
       if (id === '@/lib/supabase') return { supabase: { channel: () => ({ on: () => ({ subscribe: () => ({}) }) }), removeChannel() {} } };
       if (id === '@/lib/n8nClient') return { sendTextToN8N: async () => ({}), sendVoiceToN8N: async () => ({}) };
       if (id === 'sonner') return { toast: { success() {}, error() {} } };
       if (id === '@/lib/types') return {};
-      return { __esModule: true, default: inerte, ChatWelcome: inerte, ChatShortcutCards: inerte, MessageBubble: inerte, TypingIndicator: inerte };
+      return { __esModule: true, default: inerte, ChatWelcome: inerte, MessageBubble: inerte, TypingIndicator: inerte };
     }, React);
     const Componente = pagina.default;
     const linhaDoTempo = [];
@@ -1800,12 +1800,12 @@ async function executarChat(fonteDoChat) {
 function guardaAPerguntaChegaAoCampo(resultado) {
   const problemas = [];
   if (!resultado || !resultado.primeiraMontagem) {
-    problemas.push('o InputArea nunca montou — o componente não chegou a renderizar o composer');
+    problemas.push('o Composer nunca montou — o componente não chegou a renderizar o composer');
     return problemas;
   }
   if (resultado.initialText !== resultado.pergunta) {
     problemas.push(
-      `na PRIMEIRA montagem do InputArea (${resultado.primeiraMontagem}) initialText = ` +
+      `na PRIMEIRA montagem do Composer (${resultado.primeiraMontagem}) initialText = ` +
         `${JSON.stringify(resultado.initialText)} — a pergunta do relatório NÃO chega ao campo`,
     );
   }
@@ -1971,7 +1971,7 @@ function guardaFontesComData(lerFontes) {
 console.log('\n[13] O CHAT EXECUTADO — a pergunta do relatório chega ao campo?');
 const CHAT_FONTE = fonte('app/dashboard/chat/page.tsx');
 const chatReal = await executarChat(CHAT_FONTE);
-console.log(`      primeira montagem do InputArea: ${chatReal.primeiraMontagem} · initialText = ${JSON.stringify(chatReal.initialText)}`);
+console.log(`      primeira montagem do Composer: ${chatReal.primeiraMontagem} · initialText = ${JSON.stringify(chatReal.initialText)}`);
 checar(guardaAPerguntaChegaAoCampo(chatReal), 'a pergunta pre-preenchida chega ao campo na primeira montagem do composer');
 
 console.log('\n[14] O DETALHE EXECUTADO — a frase de frescor é honesta, e a vizinha não vaza');
