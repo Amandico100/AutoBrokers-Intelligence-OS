@@ -32,7 +32,9 @@ leitor de `subject_ref.pedido_id` é o próprio publicador (📊 14/10 `grep -rn
 ⛔ Nenhuma pessoa real: cliente, corretor e dona são fictícios. ⛔ Nenhum telefone: o WhatsApp da marca é TIRADO do
 modelo e a página sai sem o botão "Quero fechar" (diz "responda a mensagem em que recebeu este link"). Só com
 `--com-whatsapp-da-corretora` (decisão de quem roda) o botão leva ao WhatsApp de ATENDIMENTO da corretora — o número
-dela, nunca de pessoa. ⛔ Nenhum nome de corretora neste arquivo (CLAUDE.md §13.9): tudo vem do banco.
+dela, nunca de pessoa. `--whatsapp-do-dono +55…` (E.164 BR, um número FICTÍCIO de quem roda) põe esse número como
+o WhatsApp de trabalho CONFIRMADO da dona/do corretor fictício — SÓ no modelo do exemplo, nunca em tabela — e a barra
+"Quero fechar"/"Quero renovar" e o "Quem cuida de você" passam a apontar para ele. ⛔ Nenhum nome de corretora neste arquivo (CLAUDE.md §13.9): tudo vem do banco.
 
 Ambiente (nomes, nunca valores): SUPABASE_URL, SUPABASE_KEY (service role) e as obrigatórias de `app.core.config`
 (OPENAI_API_KEY, ENCRYPTION_KEY, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD) — no contêiner do backend já estão; com
@@ -44,6 +46,7 @@ import argparse
 import asyncio
 import copy
 import json
+import re
 import sys
 import uuid
 from datetime import datetime, timedelta
@@ -73,6 +76,18 @@ CLIENTE_FICTICIA = "Mariana"
 CORRETOR_FICTICIO = "Caio"
 DONA_FICTICIA = "Bruna"
 CARRO_POPULAR = {"rotulo": "carro", "descricao": "Chevrolet Onix 1.0 flex", "ano": "2022/2023", "apelido": "Onix"}
+
+
+#: o "Meu WhatsApp de trabalho" que `--whatsapp-do-dono` aceita: E.164 do Brasil (+55, DDD, 8 ou 9 dígitos)
+_RE_E164_BR = re.compile(r"^\+55[1-9][1-9]9?\d{8}$")
+
+
+def whatsapp_do_dono(valor: str) -> str:
+    """O número de `--whatsapp-do-dono` validado (E.164 BR, ex.: +5511900000000) → os dígitos que a página usa."""
+    v = str(valor or "").strip()
+    if not _RE_E164_BR.fullmatch(v):
+        raise ValueError(f"--whatsapp-do-dono precisa ser E.164 do Brasil, como +5511900000000 (veio {v!r})")
+    return v[1:]
 
 
 class EscritaProibida(RuntimeError):
@@ -200,8 +215,11 @@ def _economia_contra_a_apolice(modelo: Mapping[str, Any], atual: float) -> Optio
 
 async def montar_modelo_de_exemplo(db: Any, company_id: str, pagina: str, *, com_apolice: bool = False,
                                    com_whatsapp_da_corretora: bool = False, agora: Optional[datetime] = None,
-                                   baixar_logo: Any = None) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
-    """(modelo, ctx, pedido_id) do exemplo. Lê do banco SÓ a marca e a config da corretora (filtro `company_id`)."""
+                                   baixar_logo: Any = None, whatsapp_do_dono_ficticio: Optional[str] = None
+                                   ) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+    """(modelo, ctx, pedido_id) do exemplo. Lê do banco SÓ a marca e a config da corretora (filtro `company_id`).
+    `whatsapp_do_dono_ficticio` (E.164 BR): o WhatsApp de trabalho CONFIRMADO da dona/do corretor fictício — SÓ no
+    modelo (nunca em tabela); o "Quem cuida de você" e o "Quero fechar"/"Quero renovar" passam a apontar para ele."""
     from app.services.multicalculo import config as CFG
     from app.services.multicalculo import manual_de_negociacao as MANUAL
     from app.services.multicalculo import proposta as P
@@ -214,9 +232,12 @@ async def montar_modelo_de_exemplo(db: Any, company_id: str, pagina: str, *, com
     cfg = CFG.carregar(company_id, db=db, servico="renovacao" if renovacao else "cotacao")
     anfitria = await P.montar_anfitria(db, company_id, cfg, baixar_logo=baixar_logo)
     numero = anfitria.pop("whatsapp", None)                     # ⛔ nenhum telefone, salvo a escolha explícita
-    destino = numero if com_whatsapp_da_corretora else None
-    if destino:
-        anfitria["whatsapp"] = destino
+    if com_whatsapp_da_corretora and numero:
+        anfitria["whatsapp"] = numero
+    do_dono = whatsapp_do_dono(whatsapp_do_dono_ficticio) if whatsapp_do_dono_ficticio else None
+    # a regra do produto (D-131-42 / D-132B-05): o dono confirmado → a corretora → ninguém
+    destino = do_dono or (numero if com_whatsapp_da_corretora else None)
+    pessoa = {"whatsapp": do_dono} if do_dono else {}
 
     hoje = P._agora(agora)
     folga = int(cfg["link"]["folga_dias"])
@@ -246,11 +267,11 @@ async def montar_modelo_de_exemplo(db: Any, company_id: str, pagina: str, *, com
         item = {"fimvig": (hoje.date() + timedelta(days=DIAS_ATE_VENCER)).isoformat(),
                 "seguradora_atual": modelo["opcoes"][0]["seguradora"], "premio_atual": premio_de_hoje}
         reajuste = CFG.reajuste_basica_pct(cfg, modelo["ramo"])
-        modelo["renovacao"] = P.bloco_da_renovacao(item, dono={"primeiro_nome": DONA_FICTICIA}, anos=None,
+        modelo["renovacao"] = P.bloco_da_renovacao(item, dono={"primeiro_nome": DONA_FICTICIA, **pessoa}, anos=None,
                                                    basica=None, reajuste_pct=reajuste)
         modelo["cta"] = P.cta_da_pagina(destino, modelo["opcoes"], nome=CLIENTE_FICTICIA, ref_curta=ref_curta,
                                         renovacao=True)
-        modelo["renovacao"]["fechar_com"] = "corretora" if destino else "nenhum"
+        modelo["renovacao"]["fechar_com"] = "dono" if do_dono else ("corretora" if destino else "nenhum")
         modelo["faq"] = P.faq_da_renovacao(ramo=modelo["ramo"], opcoes=modelo["opcoes"],
                                            vence_em=modelo["renovacao"].get("vence_em"), reajuste_pct=reajuste,
                                            com_whatsapp=bool(destino))
@@ -262,7 +283,7 @@ async def montar_modelo_de_exemplo(db: Any, company_id: str, pagina: str, *, com
             if eco:
                 modelo["resumo"]["economia"] = eco
         modelo["cta"] = P.cta_da_pagina(destino, modelo["opcoes"], nome=CLIENTE_FICTICIA, ref_curta=ref_curta)
-        modelo["venda"] = P.bloco_da_venda(corretor={"primeiro_nome": CORRETOR_FICTICIO},
+        modelo["venda"] = P.bloco_da_venda(corretor={"primeiro_nome": CORRETOR_FICTICIO, **pessoa},
                                            marca=P.marca_da_venda(db, company_id),
                                            pagina=CFG.pagina_da_cotacao(cfg), destino=destino)
         modelo["faq"] = [{"p": f["pergunta"], "r": f["resposta"]} for f in modelo["venda"]["faq"]]
@@ -283,6 +304,7 @@ def renderizar(modelo: Mapping[str, Any]) -> str:
 
 async def gerar_exemplo(db: Any, company_id: str, pagina: str, *, com_apolice: bool = False,
                         com_whatsapp_da_corretora: bool = False, confirmar: bool = False,
+                        whatsapp_do_dono_ficticio: Optional[str] = None,
                         saida: Optional[Path] = None, base_url: Optional[str] = None,
                         agora: Optional[datetime] = None, baixar_logo: Any = None) -> Dict[str, Any]:
     """Monta e (com `confirmar`) publica o exemplo. Devolve {url?, token?, artifact_id?, arquivo?, bytes}."""
@@ -291,7 +313,8 @@ async def gerar_exemplo(db: Any, company_id: str, pagina: str, *, com_apolice: b
     if not confirmar:
         modelo, _ctx, _pid = await montar_modelo_de_exemplo(
             SoLeitura(db), company_id, pagina, com_apolice=com_apolice,
-            com_whatsapp_da_corretora=com_whatsapp_da_corretora, agora=agora, baixar_logo=baixar_logo)
+            com_whatsapp_da_corretora=com_whatsapp_da_corretora, agora=agora, baixar_logo=baixar_logo,
+            whatsapp_do_dono_ficticio=whatsapp_do_dono_ficticio)
         html = renderizar(modelo)
         destino = Path(saida) if saida else Path.cwd() / f"exemplo-{pagina}{'-com-apolice' if com_apolice else ''}.html"
         destino.parent.mkdir(parents=True, exist_ok=True)
@@ -301,7 +324,7 @@ async def gerar_exemplo(db: Any, company_id: str, pagina: str, *, com_apolice: b
     base = P._base_do_link(base_url)                           # sem endereço público → recusa ANTES de gravar
     modelo, ctx, pedido_id = await montar_modelo_de_exemplo(
         db, company_id, pagina, com_apolice=com_apolice, com_whatsapp_da_corretora=com_whatsapp_da_corretora,
-        agora=agora, baixar_logo=baixar_logo)
+        agora=agora, baixar_logo=baixar_logo, whatsapp_do_dono_ficticio=whatsapp_do_dono_ficticio)
     titulo = "Exemplo · Renovação do seguro" if pagina == "renovacao" else "Exemplo · Cotação de seguro"
     publicado = P._gravar_e_compartilhar(db, ctx["anfitria_id"], pedido_id, modelo, ctx, base, titulo_base=titulo,
                                          subject_extra={"kind": "exemplo_da_pagina", "exemplo": True,
@@ -317,6 +340,9 @@ def _argumentos(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     ap.add_argument("--com-apolice", action="store_true", help="venda: a cliente tem apólice (mostra a economia)")
     ap.add_argument("--com-whatsapp-da-corretora", action="store_true",
                     help="o botão 'Quero fechar' leva ao WhatsApp de atendimento da corretora (padrão: sem botão)")
+    ap.add_argument("--whatsapp-do-dono", default=None, metavar="+55DDDNUMERO",
+                    help="o WhatsApp de trabalho CONFIRMADO do dono/corretor fictício (E.164 BR, ex.: +5511900000000):"
+                         " só no modelo do exemplo, nunca em tabela; a barra 'Quero fechar' aponta para ele")
     ap.add_argument("--confirmar", action="store_true", help="publica de verdade; sem isto, só grava o HTML local")
     ap.add_argument("--saida", type=Path, default=None, help="sem --confirmar: o arquivo .html de saída")
     return ap.parse_args(argv)
@@ -324,12 +350,18 @@ def _argumentos(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 
 def main(argv: Optional[Sequence[str]] = None, *, db: Any = None) -> int:
     a = _argumentos(argv)
+    if a.whatsapp_do_dono:
+        try:
+            whatsapp_do_dono(a.whatsapp_do_dono)
+        except ValueError as exc:
+            raise SystemExit(str(exc))
     if db is None:
         from app.core.database import get_supabase_client
 
         db = get_supabase_client().client
     r = asyncio.run(gerar_exemplo(db, a.company_id, a.pagina, com_apolice=a.com_apolice,
                                   com_whatsapp_da_corretora=a.com_whatsapp_da_corretora, confirmar=a.confirmar,
+                                  whatsapp_do_dono_ficticio=a.whatsapp_do_dono,
                                   saida=a.saida))
     print(r["url"] if a.confirmar else r["arquivo"])
     print(f"{r['bytes']} bytes de HTML")
