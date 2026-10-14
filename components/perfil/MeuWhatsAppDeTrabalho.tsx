@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Info } from 'lucide-react';
+import { CheckCircle2, Info, MessageCircle } from 'lucide-react';
 
 import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 import { Confirmar } from '@/components/aplicativos/casca/Confirmar';
@@ -15,7 +15,22 @@ import { fraseDoErro, type MeuPerfil } from './useMeuPerfil';
  * ela. A página de renovação usa este número no "Quero renovar" (o cliente responde ao dono da carteira).
  * Nenhum pareamento, nada em `integrations`: o número de atendimento da corretora e o do Quem Cobra Menos são outros e
  * não mudam. O envio continua saindo do aparelho de quem clica.
+ *
+ * SPEC-132-C C1 (D-132C-02) — "Usar pelo WhatsApp": a pessoa prova que o número é DELA mandando, do próprio celular, o
+ * código "ATIVAR 123456" ao número do AutoBrokers. Verificado, ela conversa com o AutoBrokers pelo WhatsApp como no chat.
+ * Trocar o número apaga a verificação. Sem o número do AutoBrokers ligado pela plataforma, o botão não aparece.
  */
+type WhatsAppDoPerfil = MeuPerfil['whatsapp_trabalho'] & { verificado_em?: string | null; verificado?: boolean };
+type PerfilComAtalho = MeuPerfil & { atalho_whatsapp?: { disponivel?: boolean } };
+type Codigo = {
+  codigo: string;
+  texto: string;
+  expira_em: string;
+  validade_minutos: number;
+  wa_me_url: string | null;
+  numero_assistente: string | null;
+};
+
 function exibir(e164: string): string {
   const d = e164.replace(/\D/g, '');
   if (d.startsWith('55') && (d.length === 12 || d.length === 13)) {
@@ -26,20 +41,30 @@ function exibir(e164: string): string {
   return e164;
 }
 
+const BOTAO_SECUNDARIO =
+  'inline-flex h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
 export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil | null; onMudou: () => void }) {
-  const atual = perfil?.whatsapp_trabalho;
+  const atual = perfil?.whatsapp_trabalho as WhatsAppDoPerfil | undefined;
+  const atalhoDisponivel = (perfil as PerfilComAtalho | null)?.atalho_whatsapp?.disponivel === true;
   const [editando, setEditando] = useState(false);
   const [numero, setNumero] = useState('');
   const [confirmo, setConfirmo] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
+  const [codigo, setCodigo] = useState<Codigo | null>(null);
+  const [pedindo, setPedindo] = useState(false);
+  const [erroDoCodigo, setErroDoCodigo] = useState('');
 
   useEffect(() => {
     if (atual) { setEditando(!atual.confirmado); setNumero(atual.numero ? exibir(atual.numero) : ''); setConfirmo(false); }
+    if (atual?.verificado) setCodigo(null);
   }, [atual]);
 
   if (!perfil) return <Skeleton className="h-40 w-full rounded-xl" />;
+
+  const verificado = Boolean(atual?.verificado && atual?.numero);
 
   const gravar = async (corpo: Record<string, unknown>, ok: string) => {
     setOcupado(true); setErro(''); setAviso('');
@@ -49,11 +74,25 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
       });
       if (!res.ok) { setErro(await fraseDoErro(res, 'Não conseguimos salvar agora.')); return; }
       setAviso(ok);
+      setCodigo(null);
       onMudou();
     } catch {
       setErro('Não conseguimos salvar agora.');
     } finally {
       setOcupado(false);
+    }
+  };
+
+  const pedirCodigo = async () => {
+    setPedindo(true); setErroDoCodigo('');
+    try {
+      const res = await fetch('/api/dashboard/meu-perfil/whatsapp/codigo', { method: 'POST', cache: 'no-store' });
+      if (!res.ok) { setErroDoCodigo(await fraseDoErro(res, 'Não conseguimos gerar o código agora.')); return; }
+      setCodigo((await res.json()) as Codigo);
+    } catch {
+      setErroDoCodigo('Não conseguimos gerar o código agora.');
+    } finally {
+      setPedindo(false);
     }
   };
 
@@ -72,21 +111,21 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
         </p>
       ) : !editando && atual?.confirmado && atual.numero ? (
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="flex items-center gap-2 text-sm text-foreground">
+          <p className="flex flex-wrap items-center gap-2 text-sm text-foreground">
             <CheckCircle2 size={16} strokeWidth={1.6} className="text-success" aria-hidden />
             <span className="tabular-nums">{exibir(atual.numero)}</span>
-            <span className="text-muted-foreground">· confirmado</span>
+            <span className="text-muted-foreground">· {verificado ? 'verificado' : 'confirmado'}</span>
           </p>
           <div className="flex gap-2">
-            <button type="button" onClick={() => { setEditando(true); setAviso(''); }}
-              className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <button type="button" onClick={() => { setEditando(true); setAviso(''); }} className={BOTAO_SECUNDARIO}>
               Mudar
             </button>
             <Confirmar titulo="Tirar o seu WhatsApp de trabalho?"
-              descricao={'O "Quero renovar" passa a ir para o número da corretora.'}
+              descricao={verificado
+                ? 'O "Quero renovar" passa a ir para o número da corretora, e você deixa de falar com o AutoBrokers pelo WhatsApp.'
+                : 'O "Quero renovar" passa a ir para o número da corretora.'}
               acao="Tirar" perigo onConfirmar={() => gravar({ numero: null }, 'Número tirado.')}>
-              <button type="button" disabled={ocupado}
-                className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-danger hover:bg-surface-2 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <button type="button" disabled={ocupado} className={cn(BOTAO_SECUNDARIO, 'text-danger')}>
                 Tirar
               </button>
             </Confirmar>
@@ -106,14 +145,18 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
               className="mt-0.5 h-5 w-5 shrink-0 accent-[hsl(var(--primary))]" />
             Confirmo que este é o WhatsApp em que eu atendo os clientes.
           </label>
+          {verificado && (
+            <p className="text-sm text-muted-foreground">
+              Se você trocar o número, vai precisar verificar de novo para falar com o AutoBrokers pelo WhatsApp.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={ocupado || !numero.trim() || !confirmo}
               className={cn('h-11 rounded-lg px-5 text-sm font-medium disabled:opacity-60', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
               {ocupado ? 'Salvando…' : 'Salvar'}
             </button>
             {atual?.confirmado && (
-              <button type="button" onClick={() => { setEditando(false); setErro(''); }}
-                className="h-11 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <button type="button" onClick={() => { setEditando(false); setErro(''); }} className={BOTAO_SECUNDARIO}>
                 Cancelar
               </button>
             )}
@@ -121,10 +164,78 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
         </form>
       )}
 
+      {atual?.disponivel !== false && (
+        <section aria-labelledby="atalho-whatsapp-titulo" className="space-y-3 rounded-xl border border-border bg-surface p-4">
+          <h4 id="atalho-whatsapp-titulo" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <MessageCircle size={16} strokeWidth={1.6} aria-hidden />
+            Falar com o AutoBrokers pelo WhatsApp
+          </h4>
+
+          {verificado ? (
+            <p className="flex items-start gap-2 text-sm text-foreground" role="status">
+              <CheckCircle2 size={16} strokeWidth={1.6} className="mt-0.5 shrink-0 text-success" aria-hidden />
+              <span>Verificado — você pode falar com o AutoBrokers pelo WhatsApp, do número acima.</span>
+            </p>
+          ) : !atalhoDisponivel ? (
+            <p className="text-sm text-muted-foreground">
+              O número do AutoBrokers ainda não foi ligado pela plataforma.
+            </p>
+          ) : !codigo ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Escreva, mande áudio, foto ou o PDF da apólice pelo seu WhatsApp, como no chat. Antes, prove que o
+                número é seu: você manda um código do seu celular para o AutoBrokers.
+              </p>
+              <button type="button" onClick={pedirCodigo} disabled={pedindo}
+                className={cn('h-11 rounded-lg px-5 text-sm font-medium disabled:opacity-60', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
+                {pedindo ? 'Gerando o código…' : 'Usar pelo WhatsApp'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground">
+                <li>
+                  Salve o contato <strong>AutoBrokers</strong>
+                  {codigo.numero_assistente ? (
+                    <> com o número <span className="tabular-nums">{exibir(codigo.numero_assistente)}</span></>
+                  ) : null}
+                  .
+                </li>
+                <li>Mande a mensagem abaixo do <strong>seu</strong> celular — o do número que vai falar com o AutoBrokers.</li>
+              </ol>
+              <p className="w-fit rounded-lg border border-border bg-background px-4 py-3 font-mono text-lg font-semibold tracking-wider text-foreground tabular-nums"
+                aria-label={`Mensagem: ${codigo.texto}`}>
+                {codigo.texto}
+              </p>
+              <p className="text-sm text-muted-foreground">Expira em {codigo.validade_minutos || 15} minutos. Vale uma vez só.</p>
+              <div className="flex flex-wrap gap-2">
+                {codigo.wa_me_url && (
+                  <a href={codigo.wa_me_url} target="_blank" rel="noopener noreferrer"
+                    className={cn('inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-medium', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
+                    Abrir no WhatsApp
+                  </a>
+                )}
+                <button type="button" onClick={() => { setAviso(''); onMudou(); }} className={BOTAO_SECUNDARIO}>
+                  Já mandei
+                </button>
+                <button type="button" onClick={pedirCodigo} disabled={pedindo} className={BOTAO_SECUNDARIO}>
+                  {pedindo ? 'Gerando…' : 'Gerar outro código'}
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Depois de mandar, toque em &quot;Já mandei&quot;. O AutoBrokers responde no WhatsApp quando o número for verificado.
+              </p>
+            </div>
+          )}
+          {erroDoCodigo && <p className="text-sm text-danger" role="alert">{erroDoCodigo}</p>}
+        </section>
+      )}
+
       <p className="flex items-start gap-2 rounded-lg border border-border-soft p-3 text-sm text-muted-foreground">
         <Info size={16} strokeWidth={1.6} className="mt-0.5 shrink-0" aria-hidden />
         <span>
-          É só o número: o AutoBrokers não se conecta a ele nem envia nada por ele.
+          É só o número: o AutoBrokers não se conecta a ele nem envia nada por ele, e nada vai para os seus clientes.
+          {verificado ? ' Quando você escreve para o AutoBrokers, ele responde a você, pelo número dele.' : ''}
         </span>
       </p>
       {erro && <p className="text-sm text-danger" role="alert">{erro}</p>}
