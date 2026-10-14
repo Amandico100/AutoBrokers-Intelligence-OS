@@ -9,8 +9,10 @@ export const dynamic = 'force-dynamic';
 /**
  * SPEC-131-B G3 — "Meu perfil": o MEU WhatsApp de trabalho e a MINHA ausência (D-131-41, D-131-08).
  *
- * GET    → { whatsapp_trabalho: {numero, confirmado_em, confirmado, disponivel}, ausencias, cubro, pessoas, eu,
- *            pode_gerir_todos }
+ * GET    → { whatsapp_trabalho: {numero, confirmado_em, confirmado, verificado_em, verificado, disponivel},
+ *            atalho_whatsapp: {disponivel}, ausencias, cubro, pessoas, eu, pode_gerir_todos }
+ *          (SPEC-132-C: `verificado` = a pessoa provou a posse mandando o código do celular; trocar o número apaga.
+ *           O código sai de POST ./whatsapp/codigo)
  * PUT    { numero, confirmo: true }    grava o WhatsApp de trabalho DA PESSOA DA SESSÃO · { numero: null } apaga
  * POST   { substituto_user_id, de, ate, user_id? }   marca a ausência (a minha; `user_id` de outra pessoa só o admin)
  * DELETE ?id=                           apaga uma ausência (a minha; a de outra pessoa só o admin)
