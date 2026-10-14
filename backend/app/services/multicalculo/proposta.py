@@ -1431,3 +1431,146 @@ async def publicar_renovacao(company_id: str, renovacao_id: str, *, pessoa: Any,
                                        subject_extra={"renovacao_id": renovacao_id,
                                                       "publicada_por": quem.get("user_id")})
     return {**publicado, "validade_ate": modelo["validade_ate"], "modelo": modelo}
+
+
+# =====================================================================================================================
+# SPEC-132-B (B2) — a página de COTAÇÃO = a página de VENDA da corretora (D-132B-01/02/05/08)
+# =====================================================================================================================
+#: o "sobre" da marca entra no modelo até este tamanho (a página corta em 2–3 linhas, no fim de uma frase)
+_TETO_DO_SOBRE = 600
+
+
+def _lista_de_textos(v: Any, teto: int) -> List[str]:
+    return [str(x).strip() for x in (v or []) if isinstance(x, str) and str(x).strip()][:teto]
+
+
+def marca_da_venda(db: Any, company_id: str) -> Dict[str, Any]:
+    """Os FATOS da marca que a página de venda mostra em "Por que fechar com a corretora" — só da marca PUBLICADA
+    (o mesmo critério da anfitriã) e com filtro `company_id` (CLAUDE.md §7): {diferenciais, sobre,
+    seguradoras_parceiras}. Campo vazio não entra (o bloco some — D-132B-02)."""
+    perfis = _dados(db.table("brand_profiles").select("*").eq("company_id", company_id).limit(1).execute())
+    perfil = next((p for p in perfis if str(p.get("company_id")) == company_id), None)
+    if not _marca_publicada(perfil):
+        return {}
+    saida: Dict[str, Any] = {}
+    difs = _lista_de_textos(perfil.get("differentiators"), 6)
+    if difs:
+        saida["diferenciais"] = difs
+    sobre = str(perfil.get("about_md") or perfil.get("mission") or "").strip()
+    if sobre:
+        saida["sobre"] = sobre[:_TETO_DO_SOBRE]
+    parceiras = {CFG.normalizar(x) for x in _lista_de_textos(perfil.get("insurers"), 60)}
+    if len(parceiras) > 1:
+        saida["seguradoras_parceiras"] = len(parceiras)
+    return saida
+
+
+def _parcela_do_chat(o: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """A MESMA parcela que a página mostra (`proposta_cotacao_html._parcela`): a maior sem juros, senão a com juros."""
+    from app.services.artifacts.proposta_cotacao_html import _parcela
+
+    p = _parcela(dict(o))
+    if not p:
+        return None
+    saida = {"vezes": int(p["vezes"]), "valor": float(p["valor"]), "sem_juros": bool(p["sem_juros"])}
+    if p.get("total") is not None:
+        saida["total"] = float(p["total"])
+    return saida
+
+
+def resumo_da_cotacao(modelo: Mapping[str, Any]) -> Dict[str, Any]:
+    """O que o CHAT mostra da cotação pronta (B1): quantas seguradoras e as opções NA ORDEM da página (a recomendada
+    primeiro) — {seguradoras_cotadas, com_preco_comparavel, validade_ate, opcoes: [{id, papel, seguradora, parcela,
+    a_vista, franquia}]}. ⛔ Sem comissão, sem dado do cliente."""
+    from app.services.artifacts import proposta_html as PH
+
+    from app.services.artifacts.proposta_cotacao_html import opcoes_da_venda
+
+    ops = opcoes_da_venda(dict(modelo))
+    resumo = modelo.get("resumo") if isinstance(modelo.get("resumo"), Mapping) else {}
+    conta = PH._conta_do_resumo(dict(modelo))
+    saida_ops = []
+    for o in ops:
+        fq = o.get("franquia") if isinstance(o.get("franquia"), Mapping) else {}
+        saida_ops.append({"id": o.get("id"), "papel": o.get("rotulo"), "seguradora": o.get("seguradora"),
+                          "parcela": _parcela_do_chat(o), "a_vista": o.get("premio_anual"),
+                          "franquia": fq.get("valor")})
+    return {"seguradoras_cotadas": conta["cotadas"] if conta else resumo.get("seguradoras_cotadas"),
+            "com_preco_comparavel": resumo.get("com_preco_comparavel"),
+            "validade_ate": modelo.get("validade_ate"), "opcoes": saida_ops}
+
+
+def bloco_da_venda(*, corretor: Mapping[str, Any], marca: Mapping[str, Any], pagina: Mapping[str, Any],
+                   destino: Optional[str]) -> Dict[str, Any]:
+    """O que a página de VENDA mostra além do CONTRATO §5 (`modelo["venda"]`). ⛔ Do corretor, só o primeiro nome e o
+    WhatsApp de TRABALHO confirmado; nada do cliente. Os diferenciais: os da config da cotação (a corretora escreveu
+    para esta página) → senão os da marca publicada → senão nenhum (o bloco some)."""
+    bloco: Dict[str, Any] = {}
+    c = {k: corretor[k] for k in ("primeiro_nome", "whatsapp") if corretor.get(k)}
+    if c:
+        bloco["corretor"] = c
+    difs = list(pagina.get("diferenciais") or []) or list(marca.get("diferenciais") or [])
+    if difs:
+        bloco["diferenciais"] = difs[:6]
+    m = {k: marca[k] for k in ("sobre", "seguradoras_parceiras") if marca.get(k)}
+    if m:
+        bloco["marca"] = m
+    bloco["depois_do_sim"] = list(pagina.get("depois_do_sim") or [])
+    bloco["faq"] = [dict(f) for f in pagina.get("faq") or []]
+    bloco["fechar_com"] = ("corretor" if corretor.get("whatsapp") and destino == corretor.get("whatsapp")
+                           else "corretora" if destino else "nenhum")
+    return bloco
+
+
+async def publicar_cotacao(company_id: str, pedido_id: str, *, pessoa_user_id: Any,
+                           apolice_atual: Optional[Mapping] = None, db: Any = None,
+                           primeiro_nome: Optional[str] = None, base_url: Optional[str] = None,
+                           agora: Optional[datetime] = None, baixar_logo: Optional[BaixarLogo] = None,
+                           exemplo: bool = False) -> Dict[str, Any]:
+    """SPEC-132-B (contrato B2 → B1/B3): a página de VENDA de uma cotação, publicada no `/r/` rastreado pelo MESMO
+    caminho da proposta (artefato `proposal.quote` no Hub; publicar de novo = versão nova da mesma peça — CLAUDE.md §5).
+    Devolve {token, url, artifact_id, versao, validade_ate, resumo, modelo}; `resumo` = as opções para o chat
+    (`resumo_da_cotacao`).
+
+    🔴 `company_id` é o da SESSÃO: o pedido é lido pela porta com o filtro (outra corretora → `NaoEncontrado`).
+    🔴 O "Quero fechar" vai ao WhatsApp de TRABALHO CONFIRMADO de quem cotou (`pessoa_user_id`, membro ATIVO desta
+       corretora) → senão ao da corretora → senão a página publica SEM botão e diz "responda a mensagem em que recebeu
+       este link" (D-131-44). NUNCA recusa por falta de número: o link vai pelo CORRETOR (D-132B-05).
+    🔴 Com `apolice_atual` a situação é `novo_com_apolice` (a economia SÓ aparece assim); sem ela, `novo_sem_apolice`.
+    `primeiro_nome`: o do CLIENTE (só o primeiro entra). `exemplo=True` (D-132B-08): a faixa "Exemplo — dados
+    fictícios" no topo — só para as páginas de exemplo.
+    ⛔ O telefone e o CPF do cliente nunca entram no modelo nem no HTML.
+
+    Recusas: `ValueError` (uuid; apólice sem a seguradora) · `NaoEncontrado` · `PropostaImpossivel` (sem oferta
+    completa; pedido de canal) · `LinkSemEndereco`."""
+    company_id, pedido_id = _uuid(company_id, "company_id"), _uuid(pedido_id, "pedido_id")
+    if db is None:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client().client
+    base = _base_do_link(base_url)
+    situacao = "novo_com_apolice" if apolice_atual else "novo_sem_apolice"
+    ctx: Dict[str, Any] = {}
+    modelo = await montar_proposta(company_id, pedido_id, situacao, apolice_atual, primeiro_nome, db=db, agora=agora,
+                                   baixar_logo=baixar_logo, _contexto=ctx)
+    if modelo.get("origem") != "corretora":
+        raise PropostaImpossivel("a página de venda é da corretora: este pedido é do canal comparador")
+
+    corretor = membro_para_o_cliente(db, company_id, pessoa_user_id) if pessoa_user_id else {}
+    destino = corretor.get("whatsapp") or (modelo.get("anfitria") or {}).get("whatsapp")
+    nome_cliente = (modelo.get("cliente") or {}).get("primeiro_nome")
+    modelo["cta"] = cta_da_pagina(destino, modelo["opcoes"], nome=nome_cliente, ref_curta=pedido_id[:8])
+    cfg_cot = CFG.carregar(company_id, db=db, servico="cotacao")
+    modelo["venda"] = bloco_da_venda(corretor=corretor, marca=marca_da_venda(db, company_id),
+                                     pagina=CFG.pagina_da_cotacao(cfg_cot), destino=destino)
+    modelo["faq"] = [{"p": f["pergunta"], "r": f["resposta"]} for f in modelo["venda"]["faq"]]
+    modelo["sinistro"] = MANUAL.sinistro_padrao(cfg_cot, com_whatsapp=bool(destino))
+    modelo["pagina"] = "venda"
+    if exemplo:
+        modelo["exemplo"] = True
+    _sem_comissao(modelo)
+    publicada_por = corretor.get("user_id") or (str(pessoa_user_id) if pessoa_user_id else None)
+    publicado = _gravar_e_compartilhar(db, company_id, pedido_id, modelo, ctx, base, titulo_base="Cotação de seguro",
+                                       subject_extra={"pagina": "venda", "publicada_por": publicada_por})
+    return {**publicado, "validade_ate": modelo["validade_ate"], "resumo": resumo_da_cotacao(modelo),
+            "modelo": modelo}
