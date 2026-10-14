@@ -110,7 +110,83 @@ def _efetivo(cfg: Dict[str, Any], servico: str) -> Dict[str, Any]:
                       "antecipar_ate_dias": CFG.antecipar_ate_dias(cfg),
                       # SPEC-131-B G5 — "Com qual conta" (D-131-04), pelo leitor que `qual_agger.decidir` usa
                       "conta": CFG.conta_da_renovacao(cfg)})
+    elif servico == "cotacao":
+        saida.update(_regras_da_cotacao(cfg))
     return saida
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-132-B · B3 (D-132B-06) — "As regras do cálculo" da Cotação Rápida: TODAS as regras efetivas, lidas pelos MESMOS
+# leitores que o cálculo e a página usam. A tela edita só as opções, a comissão de entrada e a validade; o resto aparece
+# como "padrão do AutoBrokers" (ou "a corretora mudou", comparando com `padrao.cotacao`). ⛔ Nenhum número aqui.
+# ---------------------------------------------------------------------------------------------------------------------
+#: o que a tela da cotação EDITA (o backend só aceita o que `CFG.EDITAVEL_POR_SERVICO["cotacao"]` liberar — fatia B2)
+EDITAVEIS_DA_COTACAO = ("opcoes", "comissao", "validade")
+
+
+def _opcoes_aceitas_da_cotacao() -> List[str]:
+    """As opções que a COTAÇÃO pode calcular, na ordem do disparo. A mínima é só do canal (D-130A1-05: a carteira não
+    gasta o cálculo dela) — a lista vem da config quando ela a declarar (B2), senão da porta."""
+    lista = getattr(CFG, "OPCOES_DA_COTACAO_ACEITAS", None)
+    if lista:
+        return list(lista)
+    from app.services.multicalculo.porta import OPCOES
+
+    return [o for o in OPCOES if o != "minima"]
+
+
+def _opcoes_da_cotacao(cfg: Dict[str, Any]) -> List[str]:
+    """Quais versões a cotação calcula: o leitor da config (B2) → o bloco do serviço → o padrão da porta."""
+    leitor = getattr(CFG, "opcoes_da_cotacao", None)
+    if callable(leitor):
+        try:
+            return list(leitor(cfg))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[SERVICOS] opções da cotação ilegíveis (%s)", type(e).__name__)
+    bloco = (cfg.get("servicos") or {}).get("cotacao") or {}
+    aceitas = _opcoes_aceitas_da_cotacao()
+    v = bloco.get("opcoes")
+    if isinstance(v, list) and v and all(o in aceitas for o in v) and len(set(v)) == len(v):
+        return [o for o in aceitas if o in v]
+    from app.services.multicalculo.porta import OPCOES_PADRAO
+
+    return list(OPCOES_PADRAO)
+
+
+def _regras_da_cotacao(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    com = cfg.get("comissao") or {}
+    return {
+        "opcoes": _opcoes_da_cotacao(cfg),
+        "regras": {
+            "comissao": {k: com.get(k) for k in ("entrada", "autonomo_minimo", "piso", "passo_pp", "teto_pct")},
+            "comissao_por_ramo": {r: CFG.comissao_do_ramo(cfg, r) for r in (com.get("por_ramo") or {})},
+            "validade_dias": (cfg.get("validade") or {}).get("padrao_dias"),
+            "validade_por_seguradora": dict((cfg.get("validade") or {}).get("por_seguradora") or {}),
+            "opcoes_no_whatsapp": (cfg.get("opcoes") or {}).get("no_whatsapp"),
+            "opcoes_na_pagina": (cfg.get("opcoes") or {}).get("na_pagina"),
+            "calculo_por_papel": dict(cfg.get("calculo_por_papel") or {}),
+            "alvo_abaixo_da_atual_pct": dict(cfg.get("alvo_abaixo_da_atual_pct") or {}),
+            "ordem_do_mais_barato": list(cfg.get("ordem_do_mais_barato") or []),
+            "cortes_de_cobertura": dict(cfg.get("cortes_de_cobertura") or {}),
+            "coberturas_essenciais": {r: list(CFG.coberturas_essenciais(cfg, r))
+                                      for r in (cfg.get("coberturas_essenciais") or {})},
+        },
+    }
+
+
+def _faixas_da_cotacao(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """As faixas do que a tela da cotação edita, das MESMAS réguas da leitura (`config._coerente`): a entrada fica entre
+    o autônomo + um passo (senão a régua da comissão quebra e volta ao padrão) e o teto do item."""
+    com = cfg.get("comissao") or {}
+    faixa_validade = getattr(CFG, "VALIDADE_DIAS_FAIXA", None) or _VALIDADE_FAIXA_SE_A_CONFIG_NAO_DISSER
+    return {"opcoes_da_cotacao": _opcoes_aceitas_da_cotacao(),
+            "comissao_entrada_da_cotacao": [float(com.get("autonomo_minimo", 0)) + float(com.get("passo_pp", 0)),
+                                            float(com.get("teto_pct", 0))],
+            "validade_dias_da_cotacao": list(faixa_validade)}
+
+
+#: 💭 só enquanto a config (fatia B2) não exportar `VALIDADE_DIAS_FAIXA`: de 1 dia a um mês
+_VALIDADE_FAIXA_SE_A_CONFIG_NAO_DISSER = (1, 30)
 
 
 def _opcoes_da_renovacao_na_ordem() -> List[str]:
@@ -147,7 +223,11 @@ def retrato(db: Any, company_id: str) -> Dict[str, Any]:
                    "teto_por_conta_noite": list(CFG.TETO_POR_CONTA_NOITE_FAIXA),
                    "antecipar_ate_dias": list(CFG.ANTECIPAR_ATE_DIAS_FAIXA),
                    "opcoes_da_renovacao": _opcoes_da_renovacao_na_ordem(),
-                   "contas_da_renovacao": list(CFG.CONTAS_DA_RENOVACAO)},
+                   "contas_da_renovacao": list(CFG.CONTAS_DA_RENOVACAO),
+                   # SPEC-132-B · B3 — as faixas da cotação (da régua da leitura, nunca um número escrito aqui)
+                   **_faixas_da_cotacao(CFG.mesclar(bruto or None, "cotacao"))},
+        # SPEC-132-B · B3 — o que o backend JÁ aceita gravar na cotação: a tela só deixa editar o que está aqui
+        "editaveis_da_cotacao": sorted(set(EDITAVEIS_DA_COTACAO) & set(CFG.EDITAVEL_POR_SERVICO.get("cotacao", ()))),
         "configurado": bool(sobreposto),
         "versao": _versao(linha),
     }
@@ -346,11 +426,14 @@ def _servicos_configurados(db: Any, company_id: str) -> Dict[str, Any]:
     linha = _linha(db, company_id)
     bruto = ((linha or {}).get("config") or {}).get("servicos")
     feitos = [s for s in CFG.EDITAVEL_POR_SERVICO if isinstance(bruto, dict) and bruto.get(s)]
+    # SPEC-132-B · B3: QUAL serviço já tem regra escolhida — o "Como começar" de cada aplicativo lê o DELE
+    por_servico = {s: s in feitos for s in CFG.EDITAVEL_POR_SERVICO}
     if feitos:
-        return _passo("servicos", titulo, "pronto", "As regras de cada serviço estão escolhidas.", _LINK_SERVICOS)
+        return _passo("servicos", titulo, "pronto", "As regras de cada serviço estão escolhidas.", _LINK_SERVICOS,
+                      por_servico=por_servico)
     return _passo("servicos", titulo, "falta",
                   "Enquanto você não escolher, vale o padrão: o AutoBrokers só calcula e deixa pronto no Agger.",
-                  _LINK_SERVICOS)
+                  _LINK_SERVICOS, por_servico=por_servico)
 
 
 def prontidao(db: Any, company_id: str) -> Dict[str, Any]:
