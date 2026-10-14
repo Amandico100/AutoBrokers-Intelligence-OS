@@ -282,8 +282,16 @@ async def baixar_documento(file_url: str) -> Optional[bytes]:
         return None
     try:
         import httpx
+        from urllib.parse import urlsplit
 
-        async with httpx.AsyncClient(timeout=_TIMEOUT_DO_DOWNLOAD_S, follow_redirects=True) as client:
+        from app.core import settings
+
+        # 🔴 SPEC-132-A (red team P5, SSRF): só o host do NOSSO Supabase Storage, em https, sem seguir redirecionamento.
+        alvo, nosso = urlsplit(str(file_url)), urlsplit(str(getattr(settings, "SUPABASE_URL", "") or ""))
+        if alvo.scheme != "https" or not alvo.hostname or alvo.hostname != nosso.hostname or alvo.port != nosso.port:
+            logger.warning("[VISION] baixar_documento recusou um endereço fora do Storage da plataforma")
+            return None
+        async with httpx.AsyncClient(timeout=_TIMEOUT_DO_DOWNLOAD_S, follow_redirects=False) as client:
             res = await client.get(file_url)
             res.raise_for_status()
             data = res.content
