@@ -55,6 +55,12 @@ PyPDF2==3.0.1
 # e sem linha nao ha titulo, nem secao, nem corte por secao.
 PyMuPDF==1.28.0
 python-docx==1.1.0
+# SPEC-132-A (os anexos do chat): o corretor manda planilha (.xlsx/.xls) e a foto do iPhone (HEIC).
+# 📊 14/10/2026: nenhum dos três estava aqui (`grep -n "openpyxl\|xlrd\|heif" requirements.txt` → 0); o Pillow chega
+# pelo fastembed. Sem eles o `chat_anexos` NÃO quebra — devolve o aviso "salve como .xlsx/.csv" ou "mande em JPG".
+openpyxl>=3.1.0,<4
+xlrd>=2.0.1,<3
+pillow-heif>=0.18.0,<2
 
 # Utils
 httpx==0.27.2  # supabase 2.10.0 exige httpx<0.28 (📊 pip --dry-run 23/09/2026)
