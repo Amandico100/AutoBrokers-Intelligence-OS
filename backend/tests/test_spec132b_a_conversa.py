@@ -98,8 +98,17 @@ class Mundo:
         return cid, sess
 
     def falou(self, conversa, texto):
+        """A fala do CORRETOR gravada na conversa (como a rota do chat grava ANTES de chamar o agente). O instante é o
+        do relógio REAL: o `created_at` do banco dublê é o relógio congelado do motor, e o "sim" tem de ser DEPOIS do
+        resumo (`confirmacao.confirmou_depois`)."""
+        from datetime import datetime, timezone
+
         self.banco.semear("messages", {"id": str(uuid4()), "conversation_id": conversa, "role": "user",
-                                       "content": texto, "type": "text", "payload": {}})
+                                       "content": texto, "type": "text", "payload": {},
+                                       "created_at": datetime.now(timezone.utc).isoformat()})
+
+    def conversa_da_sessao(self, sess):
+        return next(c["id"] for c in self.banco.linhas("conversations") if c.get("session_id") == sess)
 
     def ferramentas(self, corretora):
         return {t.name: t for t in T.ferramentas_de_cotacao(company_id=corretora, supabase=self.db)}
@@ -108,7 +117,13 @@ class Mundo:
     def preparar(self, corretora, uid, sess, **campos):
         return TM.rodar(self.ferramentas(corretora)["cotacao_preparar"]._arun(user_id=uid, session_id=sess, **campos))
 
-    def disparar(self, corretora, uid, sess, cid):
+    def disparar(self, corretora, uid, sess, cid, *, sim="sim, pode calcular"):
+        """O corretor RESPONDE ao resumo ("sim, pode calcular" — gravado na conversa da sessão) e o modelo dispara.
+        `sim=None`: o modelo dispara SEM a resposta do corretor (o ataque do juiz B4)."""
+        if sim is not None:
+            conversa = next((c["id"] for c in self.banco.linhas("conversations") if c.get("session_id") == sess), None)
+            if conversa:
+                self.falou(conversa, sim)
         return TM.rodar(self.ferramentas(corretora)["cotacao_disparar"]._arun(confirmacao_id=cid, user_id=uid,
                                                                                session_id=sess))
 
@@ -185,7 +200,7 @@ def mundo(ambiente, monkeypatch):
     from app.services.multicalculo import proposta as PROP
 
     async def publicar_cotacao(company_id, pedido_id, *, pessoa_user_id, apolice_atual=None, db=None,
-                               primeiro_nome=None):
+                               primeiro_nome=None, **_extra):
         m.publicacoes.append({"company_id": company_id, "pedido_id": pedido_id, "pessoa_user_id": pessoa_user_id,
                               "apolice_atual": apolice_atual, "primeiro_nome": primeiro_nome})
         ofertas = sorted((o for o in m.banco.linhas("multicalculo_ofertas") if o["pedido_id"] == pedido_id),
@@ -512,12 +527,13 @@ def test_de_ficha_e_a_cotacao_nova_com_a_apolice_nunca_a_renovacao():
 def test_mutacao_1_disparar_sem_confirmacao_o_guarda_fica_vermelho(mundo, monkeypatch):
     original = CONF.consumir
 
-    async def sem_conferir(*, company_id, user_id, conversation_id, confirmacao_id, redis=None):
+    async def sem_conferir(*, company_id, user_id, conversation_id, confirmacao_id, falas_do_corretor=(),
+                           redis=None):
         for k, v in list(mundo.redis.d.items()):           # o defeito: qualquer id serve (o último preparado)
             if not k.endswith(":usada"):
                 return dict(CONF._decifrar(v).get("conteudo") or {})
         return await original(company_id=company_id, user_id=user_id, conversation_id=conversation_id,
-                              confirmacao_id=confirmacao_id, redis=redis)
+                              confirmacao_id=confirmacao_id, falas_do_corretor=falas_do_corretor, redis=redis)
 
     monkeypatch.setattr(CONF, "consumir", sem_conferir)
     with pytest.raises(AssertionError):
@@ -553,3 +569,162 @@ def test_mutacao_7_cpf_cru_na_resposta_o_guarda_fica_vermelho(mundo, monkeypatch
     f = guarda_o_fio(mundo)
     with pytest.raises(AssertionError):
         guarda_cpf_nunca_volta_cru(mundo, f["saidas"])
+
+
+# =====================================================================================================================
+# CONSERTO ÚNICO (juiz 132-B + red team 132-B) — cada guarda tem a sua mutação logo abaixo, e fica VERMELHO com ela
+# =====================================================================================================================
+#: a ficha de uma APÓLICE cuja leitura FECHOU (a soma das coberturas bate com o prêmio líquido impresso) — 130-B
+FICHA_CONFERIDA = {"objeto_do_risco": {"placa": "ABC1D23", "ano_modelo": "2021/2022", "cep": "01001-000"},
+                   "leitura": {"estado": "fechou", "tipo_documento": "apolice", "premio_esperado": "3.912,40"}}
+CPF_DO_OUTRO = "111.444.777-35"                        # sintético, DV válido — o "outro cliente" da conversa
+
+
+# -- B3 · o CPF de outro cliente da mesma conversa nunca completa o pedido ------------------------------------------
+def guarda_cpf_de_outro_cliente(montar=PC.montar) -> None:
+    falas = ["agora cota o HB20 placa XYZ9K88 da Maria Ficticia, nasc 03/04/1990, CEP 88010-000, 10 anos de carteira",
+             f"cota o Onix placa ABC1D23 do Joao Ficticio, CPF {CPF_PONTUADO}, nasc 01/02/1980, CEP 01001-000"]
+    maria = {"nome": "Maria Ficticia", "nascimento": "03/04/1990", "sexo": "feminino", "cep": "88010-000",
+             "placa": "XYZ9K88", "anos_de_carteira": "10"}
+    m = montar(maria, textos_crus=falas)
+    assert not m.completa and "segurado.cpf_cnpj" in m.faltam, "o pedido da Maria saiu com o CPF do João"
+    assert "o CPF do cliente" in PC.frase_do_que_falta(m)
+    # o modelo indicou um CPF MASCARADO que não é o do João (outros dígitos visíveis) → também pergunta
+    m = montar({**maria, "cpf_cnpj": "***.***.***-31"}, textos_crus=falas)
+    assert not m.completa and "segurado.cpf_cnpj" in m.faltam
+    # CONTROLE: o mascarado com os dígitos do CPF que ESTÁ no texto cru (o guardrail mascarou) → acha
+    m = montar({**maria, "cpf_cnpj": "***.***.***-25"}, textos_crus=falas)
+    assert m.completa and m.pedido.valor("segurado", "cpf_cnpj") == CPF
+    # dois candidatos compatíveis → pergunta (nunca escolhe)
+    m = montar({**maria, "cpf_cnpj": "<CPF>"}, textos_crus=falas + [f"o da Maria é {CPF_DO_OUTRO}"])
+    assert not m.completa
+
+
+def test_b3_o_cpf_de_outro_cliente_da_conversa_nunca_completa_o_pedido():
+    guarda_cpf_de_outro_cliente()
+
+
+def test_mutacao_b3_o_texto_cru_lido_sem_o_cpf_do_modelo_o_guarda_fica_vermelho(monkeypatch):
+    real = PC.unico_no_texto_cru
+
+    def montar_antigo(dados, **kw):                      # o defeito: lê o texto cru mesmo sem CPF nenhum do modelo
+        monkeypatch.setattr(PC, "unico_no_texto_cru", lambda tipo, textos, compativel_com=None: real(tipo, textos))
+        d = dict(dados)
+        d.setdefault("cpf_cnpj", "<CPF>")
+        return PC.montar(d, **kw)
+
+    with pytest.raises(AssertionError):
+        guarda_cpf_de_outro_cliente(montar_antigo)
+
+
+# -- B2 · "economia" só com a apólice ANEXADA e conferida; o que o corretor digita fica no resumo dele -------------
+CASOS_DO_DINHEIRO = (("4200.00", 4200.0), ("3.500,50", 3500.5), ("3500.50", 3500.5), ("4.200", 4200.0),
+                     ("R$ 4.200,00", 4200.0), ("3500", 3500.0), ("3500.5", 3500.5), (4200, 4200.0),
+                     ("1.234.567", 1234567.0), ("abc", None), ("0", None), ("-5", None), ("", None), (None, None))
+
+
+def test_b2_o_dinheiro_como_o_corretor_escreve():
+    for texto, esperado in CASOS_DO_DINHEIRO:
+        assert PC.valor_em_reais(texto) == esperado, (texto, PC.valor_em_reais(texto), esperado)
+
+
+def guarda_economia_so_com_a_apolice(seguro_atual=PC.seguro_atual) -> None:
+    d = {"seguradora_atual": "Seguradora X", "premio_atual_anual": "4200.00"}
+    # sem anexo: nada de apólice — o que ele disse vai ao RESUMO, nunca à página
+    sit, ap, dito = seguro_atual(d, None)
+    assert (sit, ap) == ("novo_sem_apolice", None), (sit, ap)
+    assert dito == {"seguradora": "Seguradora X", "premio_anual": 4200.0}, dito
+    # com uma ficha que NÃO fechou (ou que não é apólice, ou sem prêmio): também não
+    for leitura in ({"estado": "nao_fechou", "tipo_documento": "apolice", "premio_esperado": "3.912,40"},
+                    {"estado": "fechou", "tipo_documento": "endosso", "premio_esperado": "3.912,40"},
+                    {"estado": "fechou", "tipo_documento": "apolice"}):
+        assert seguro_atual(d, {**FICHA_CONFERIDA, "leitura": leitura})[0] == "novo_sem_apolice", leitura
+    # CONTROLE: a apólice anexada e CONFERIDA → o prêmio é o DA FICHA (nunca o que o modelo escreveu)
+    sit, ap, _ = seguro_atual(d, FICHA_CONFERIDA)
+    assert sit == "novo_com_apolice" and ap == {"seguradora": "Seguradora X", "premio_anual": 3912.4,
+                                                "origem": "documento", "base": "liquido"}, ap
+
+
+def test_b2_economia_so_com_a_apolice_anexada_e_conferida():
+    guarda_economia_so_com_a_apolice()
+    m = PC.montar({**COMPLETOS, "seguradora_atual": "Seguradora X", "premio_atual_anual": "4200.00"})
+    r = PC.resumo(m, onde="no seu Agger", opcoes=("padrao",))
+    assert m.situacao == "novo_sem_apolice" and m.apolice_atual is None
+    assert "O cliente disse que paga hoje: Seguradora X, R$" in r and "4.200,00 por ano" in r, r
+    assert "não vai para a apresentação do cliente" in r
+
+
+def test_mutacao_b2_o_premio_declarado_vira_apolice_o_guarda_fica_vermelho():
+    def antigo(d, ficha):                                 # o defeito: a seguradora dita basta; o prêmio do modelo vale
+        return ("novo_com_apolice", {"seguradora": d["seguradora_atual"], "premio_anual": 420000.0,
+                                     "origem": "documento" if ficha is not None else "corretor"}, None)
+
+    with pytest.raises(AssertionError):
+        guarda_economia_so_com_a_apolice(antigo)
+
+
+# -- B4 · o "sim" é uma FALA do corretor depois do resumo, não o modelo -------------------------------------------
+def guarda_sim_do_corretor(m: Mundo) -> None:
+    a = m.corretora()
+    uid, _ = m.pessoa(a)
+    conversa, sess = m.conversa(a, uid)
+    m.falou(conversa, "cota o Onix 2022 placa ABC1D23 da Fulana")
+    cid = _id_da_confirmacao(m.preparar(a, uid, sess, **COMPLETOS))
+    r = m.disparar(a, uid, sess, cid, sim=None)           # o modelo encadeia: nenhuma fala do corretor no meio
+    assert "ainda NÃO calculei" in r and not m.pedidos(), "disparou sem o 'sim' do corretor"
+    r = m.disparar(a, uid, sess, cid, sim="não, espera, o CEP está errado")
+    assert "ainda NÃO calculei" in r and not m.pedidos(), "disparou com um 'não'"
+    r = m.disparar(a, uid, sess, cid, sim="sim, mas o CEP é 88010-000")
+    assert "ainda NÃO calculei" in r and not m.pedidos(), "disparou com um dado novo (é correção, não confirmação)"
+    # CONTROLE: o "sim" do corretor depois do resumo → calcula UMA vez (a recusa não consumiu o id)
+    assert "Calculando" in m.disparar(a, uid, sess, cid, sim="sim, pode calcular")
+    assert len(m.pedidos(a)) == 1
+
+
+def test_b4_o_disparo_exige_o_sim_do_corretor_depois_do_resumo(mundo):
+    guarda_sim_do_corretor(mundo)
+
+
+def test_b4_o_que_e_um_sim():
+    for sim in ("sim", "Sim!", "pode", "pode calcular", "calcula", "ok", "manda", "confirmo", "isso, pode calcular",
+                "pode calcular para mim"):
+        assert CONF.e_confirmacao(sim), sim
+    for nao in ("não", "nao calcula", "espera", "peraí, vou ver", "sim, mas espera", "muda o CEP", "",
+                "cota o HB20 placa XYZ9K88", "sim 01001-000", "x" * 90):
+        assert not CONF.e_confirmacao(nao), nao
+
+
+def test_mutacao_b4_o_disparo_sem_o_sim_o_guarda_fica_vermelho(mundo, monkeypatch):
+    monkeypatch.setattr(CONF, "confirmou_depois", lambda *a, **k: True)     # o defeito: o código não distingue
+    with pytest.raises(AssertionError):
+        guarda_sim_do_corretor(mundo)
+
+
+# -- P2 · P9 · o CPF (pontuado, colado, com espaços) nunca vai em claro ao `work_runs` -------------------------------
+def guarda_cpf_no_risco(resumo=WF.resumo_do_cliente, cinto=RESP.sem_documento_inteiro) -> None:
+    campos = {"segurado": {"cpf_cnpj": CPF, "nome": NOME}, "veiculo": {"placa": "ABC1D23"}}
+    for desc in (f"Onix do CPF {CPF_PONTUADO}", f"Onix do CPF {CPF}", "Onix do 529 982 247 25"):
+        r = resumo(campos, desc)
+        assert CPF not in re.sub(r"\D", "", str(r.get("risco") or "")), (desc, r)
+    assert cinto("CPF 529 982 247 25") == "CPF ***.***.***-25"
+    # CONTROLE: 11 dígitos que NÃO são CPF (o DV não fecha) não são mascarados à toa; ano/modelo fica
+    assert cinto("protocolo 123 456 789 00") == "protocolo 123 456 789 00"
+    assert resumo(campos, "Onix 2021 2022")["risco"] == "Onix 2021 2022"
+
+
+def test_p2_p9_o_cpf_com_pontos_ou_espacos_nunca_vai_em_claro_ao_run():
+    guarda_cpf_no_risco()
+
+
+def test_mutacao_p2_o_risco_sem_a_mascara_o_guarda_fica_vermelho():
+    cpf_antigo = re.compile(r"(?<![\d*])(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})(?!\d)")
+
+    def cinto_antigo(t):                                  # o defeito: o separador espaço não era documento
+        return cpf_antigo.sub(lambda mm: "***.***.***-" + mm.group(4), str(t or ""))
+
+    def resumo_antigo(campos, desc=None):                 # o defeito: o `\d{6,}` sem a máscara
+        risco = str(desc or "")
+        return {"risco": risco[:60]} if not re.search(r"\d{6,}", risco) else {}
+
+    with pytest.raises(AssertionError):
+        guarda_cpf_no_risco(resumo=resumo_antigo, cinto=cinto_antigo)
