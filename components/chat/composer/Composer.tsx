@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { FichaDeAnexo } from './FichaDeAnexo';
 import { FolhaDoMais } from './FolhaDoMais';
 import { GravadorDeAudio } from './GravadorDeAudio';
-import { aparelhoDeToque, deveEnviarNoEnter, teclaQueEscreve } from './teclado';
+import { aparelhoDeToque, deveEnviarNoEnter, teclaVaiParaACaixa } from './teclado';
 import { ACEITA_ARQUIVOS, ACEITA_FOTOS, MAX_ARQUIVOS, type AnexoEnviado, type OpcoesDoEnvio } from './tipos';
 import { useAnexos } from './useAnexos';
 import { rotuloDoEsforco, useEsforco } from './useEsforco';
@@ -25,7 +25,11 @@ import { rotuloDoEsforco, useEsforco } from './useEsforco';
 export type StatusDoTurnoNoComposer = 'idle' | 'submitting' | 'streaming' | 'stopped' | 'complete' | 'failed';
 
 export interface ComposerProps {
-  /** envia o turno. `anexos` já subiram (`{bucket, path, nome, mime, bytes}` + o que a bolha usa) */
+  /**
+   * envia o turno. `anexos` já subiram (`{bucket, path, nome, mime, bytes}` + o que a bolha usa).
+   * Devolver (ou resolver para) `false` = o envio foi RECUSADO antes de o turno começar: o texto e os anexos voltam
+   * para a caixa (juiz P4). Qualquer outro valor = aceito.
+   */
   onSendMessage: (texto: string, anexos?: AnexoEnviado[], opcoes?: OpcoesDoEnvio) => unknown;
   onStop?: () => void;
   turnStatus?: StatusDoTurnoNoComposer;
@@ -144,13 +148,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Começou a digitar fora da caixa (notebook)? A letra vai para a caixa — "digitei e nada apareceu" não acontece.
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
-      if (!teclaQueEscreve(e)) return;
-      const ativo = document.activeElement as HTMLElement | null;
-      if (ativo && ativo !== document.body) {
-        const tag = ativo.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ativo.isContentEditable) return;
-        if (ativo.closest('[role="dialog"]')) return;
-      }
+      // o Espaço num botão APERTA o botão — não vai para a caixa (juiz P3)
+      if (!teclaVaiParaACaixa(e, document.activeElement as HTMLElement | null, document.body)) return;
       focar();
     };
     window.addEventListener('keydown', aoTeclar);
@@ -163,7 +162,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const texto = textoRef.current.trim();
     const prontos = anexos.prontos;
     if (!texto && prontos.length === 0) return false;
-    void onSendMessage(texto, prontos, { esforco });
+    // o que sai da caixa fica guardado até a página dizer se o envio foi aceito
+    const textoEnviado = textoRef.current;
+    const fichasEnviadas = anexos.fichasRef.current.filter((f) => f.estado === 'pronto' && f.anexo);
+    const resultado = onSendMessage(texto, prontos, { esforco });
+    void Promise.resolve(resultado).then(
+      (aceito) => {
+        if (aceito !== false) return;
+        // 🔴 juiz P4: recusado antes de o turno começar → o texto e os anexos VOLTAM. O que o corretor já escreveu
+        // de novo nesse meio-tempo não é apagado.
+        if (!textoRef.current.trim()) {
+          textoRef.current = textoEnviado;
+          setMessage(textoEnviado);
+          requestAnimationFrame(ajustarAltura);
+        }
+        anexos.restaurar(fichasEnviadas);
+      },
+      () => undefined,
+    );
     setMessage('');
     textoRef.current = '';
     anexos.limpar();
