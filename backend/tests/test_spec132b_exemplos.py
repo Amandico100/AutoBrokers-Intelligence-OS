@@ -286,3 +286,33 @@ def test_main_imprime_so_o_link_e_o_tamanho(monkeypatch, capsys, tmp_path):
     assert EX.main(["--company-id", m.beta, "--pagina", "renovacao", "--saida", str(arq)], db=m.db) == 0
     linhas = capsys.readouterr().out.strip().splitlines()
     assert linhas == [str(arq), f"{len(arq.read_bytes())} bytes de HTML"]
+
+
+# =====================================================================================================================
+# 7. --whatsapp-do-dono: o número FICTÍCIO de quem cuida — só no modelo; a barra aponta para ele
+# =====================================================================================================================
+DONO_FICTICIO = "+5511900000000"
+
+
+@pytest.mark.parametrize("pagina", ["venda", "renovacao"])
+def test_com_o_whatsapp_do_dono_a_barra_aponta_para_ele(monkeypatch, tmp_path, pagina):
+    m = mundo(monkeypatch)
+    antes = _retrato(m)
+    doc = _local(m, tmp_path, m.alfa, pagina, whatsapp_do_dono_ficticio=DONO_FICTICIO)
+    assert '<div class="dock">' in doc                                   # a barra "Quero fechar"/"Quero renovar"
+    assert f"wa.me/{DONO_FICTICIO[1:]}" in doc and M.WHATS_ALFA not in doc   # o dono, nunca a corretora
+    nome = EX.DONA_FICTICIA if pagina == "renovacao" else EX.CORRETOR_FICTICIO
+    assert nome in texto_visivel(doc)                                    # "Quem cuida de você" é ele
+    assert _retrato(m) == antes                                          # só no modelo: nenhuma tabela tocada
+    with pytest.raises(ValueError):
+        EX.whatsapp_do_dono("11900000000")                               # sem +55 / fora do E.164 BR: recusa
+    with pytest.raises(SystemExit):
+        EX.main(["--company-id", m.alfa, "--pagina", pagina, "--whatsapp-do-dono", "+1 555 0100",
+                 "--saida", str(tmp_path / "x.html")], db=m.db)
+
+
+@pytest.mark.parametrize("pagina", ["venda", "renovacao"])
+def test_sem_o_whatsapp_do_dono_nao_ha_barra(monkeypatch, tmp_path, pagina):
+    m = mundo(monkeypatch)
+    doc = _local(m, tmp_path, m.alfa, pagina)
+    assert '<div class="dock">' not in doc and "wa.me/" not in doc
