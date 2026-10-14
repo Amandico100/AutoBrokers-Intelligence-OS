@@ -34,13 +34,15 @@ resolvida pelas MESMAS regras.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import json
 import logging
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Iterator, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,77 @@ _COLUNAS_PAPEIS = (
 
 class ModeloNaoResolvido(Exception):
     """Papel/modelo/provedor desconhecido, lifecycle proibido ou classe de dado recusada."""
+
+
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-132-A B8 · D-132A-04 — o ESFORÇO que o corretor escolheu para ESTE pedido
+# ---------------------------------------------------------------------------
+#: O único papel que aceita esforço por pedido. ⛔ O atendimento ao segurado, a
+#: memória, o HyDE, a visão: nenhum deles muda — a variável é lida SÓ aqui.
+PAPEL_DO_CHAT = "chat_principal"
+
+#: Rápido · Equilibrado · Máximo → o nível da escala canônica. `None` = o esforço
+#: que a ROTA do papel declara (hoje `medium`; ⛔ a palavra não é fixada aqui:
+#: trocar a rota no banco muda o Equilibrado sem deploy).
+#: ⛔ O MODELO e a RESERVA são sempre os do papel — o esforço nunca troca de modelo
+#: escondido (D-132A-04: "Rápido = modelo menor" recebeu nota 70 e perdeu).
+ESCOLHAS_DE_ESFORCO: Dict[str, Optional[str]] = {
+    "rapido": "low",
+    "equilibrado": None,
+    "maximo": "high",
+}
+
+#: O nível do pedido EM VOO. Uma `ContextVar`: cada turno roda na sua task, e a
+#: task COPIA o contexto — um pedido Rápido nunca vaza para o turno vizinho.
+_esforco_do_pedido: "contextvars.ContextVar[Optional[str]]" = contextvars.ContextVar(
+    "esforco_do_pedido", default=None)
+
+
+def nivel_da_escolha(escolha: Optional[str]) -> Optional[str]:
+    """`rapido` → `low` · `maximo` → `high` · `equilibrado`/ausente/desconhecida → `None`.
+
+    ⛔ Escolha fora do conjunto NÃO vira esforço: `turbo` é ignorado (vale a rota).
+    """
+    return ESCOLHAS_DE_ESFORCO.get(str(escolha or "").strip().lower())
+
+
+@contextlib.contextmanager
+def esforco_do_pedido(nivel: Optional[str]) -> Iterator[None]:
+    """Vale o `nivel` para o papel `chat_principal` dentro do bloco. `None` = o da rota.
+
+    ⛔ Nível fora da escala canônica é IGNORADO (com log): quem pede não escolhe
+    um esforço que o resolvedor não conhece.
+    """
+    if nivel is not None and nivel not in NIVEIS_DE_ESFORCO:
+        logger.warning("[ModelRouter] esforço do pedido %r fora da escala — ignorado", nivel)
+        nivel = None
+    marca = _esforco_do_pedido.set(nivel)
+    try:
+        yield
+    finally:
+        _esforco_do_pedido.reset(marca)
+
+
+def _com_esforco_do_pedido(papel: str, provider: Optional[str], model: Optional[str],
+                           effort: Optional[str], classe: str, cat: Dict[str, dict]
+                           ) -> Tuple[Optional[str], Optional[dict]]:
+    """O esforço do pedido, se ele vale para este papel E o modelo o aceita em produção.
+
+    Devolve `(nível, linha_do_catálogo)` ou `(None, None)` — e aí vale o esforço
+    de sempre. Recusa (nível que o modelo não tem, abaixo do mínimo de produção)
+    NÃO derruba o turno: cai no esforço da rota, com log.
+    """
+    if papel != PAPEL_DO_CHAT:
+        return None, None
+    nivel = _esforco_do_pedido.get()
+    if nivel is None or nivel == effort:
+        return None, None
+    try:
+        return nivel, _validar(papel, provider, model, nivel, classe, cat)
+    except ModeloNaoResolvido as recusa:
+        logger.warning("[ModelRouter] esforço do pedido %r recusado (%s) — vale o da rota",
+                       nivel, recusa)
+        return None, None
 
 
 @dataclass(frozen=True)
@@ -143,6 +216,17 @@ def _dados() -> Tuple[Dict[str, dict], Dict[str, dict], str]:
         _cache["dados"] = dados
         _cache["em"] = agora
     return dados
+
+
+def cache_quente() -> bool:
+    """O catálogo/rotas estão em cache e frescos? (perguntar NÃO vai ao banco).
+
+    SPEC-132-A: quem só quer DESCREVER o turno (o esforço que foi usado) consulta o
+    resolvedor apenas com o cache quente — nunca abre uma ida ao banco para isso.
+    """
+    with _lock:
+        return _cache["dados"] is not None and (
+            time.monotonic() - float(_cache["em"])) < CACHE_TTL_SECONDS
 
 
 def limpar_cache() -> None:
@@ -283,6 +367,14 @@ def resolver(papel: str, *, agente: Optional[dict] = None, corretora: Optional[d
     if rota:
         linha = _validar(papel, rota.get("provider"), rota.get("modelo_primario"),
                          rota.get("esforco"), classe, cat)
+        # 🔴 SPEC-132-A: o MESMO modelo e a MESMA reserva; só o esforço do pedido.
+        nivel, linha_do_pedido = _com_esforco_do_pedido(
+            papel, rota.get("provider"), rota.get("modelo_primario"), rota.get("esforco"),
+            classe, cat)
+        if nivel is not None:
+            return _montar(papel, linha_do_pedido, nivel, classe, fonte, versao,
+                           (rota.get("motivo") or "rota do papel") + " · esforço do pedido",
+                           reserva)
         return _montar(papel, linha, rota.get("esforco"), classe, fonte, versao,
                        rota.get("motivo") or "rota do papel", reserva)
 
@@ -297,6 +389,10 @@ def resolver(papel: str, *, agente: Optional[dict] = None, corretora: Optional[d
                 effort = None  # esforço gravado que o modelo não aceita: default do provedor
             # produção: o modelo do agente também só roda se APPROVED e no mínimo
             _validar(papel, dono.get("llm_provider"), dono["llm_model"], effort, classe, cat)
+            nivel, _ = _com_esforco_do_pedido(papel, dono.get("llm_provider"), dono["llm_model"],
+                                              effort, classe, cat)
+            if nivel is not None:  # SPEC-132-A: o mesmo modelo, o esforço do pedido
+                effort = nivel
             return _montar(papel, linha, effort, classe, "agente", None,
                            "papel sem rota: modelo do agente", None)
 
