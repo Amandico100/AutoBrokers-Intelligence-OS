@@ -38,6 +38,13 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // 📊 14/10/2026 (SPEC-132): o build do EasyPanel morreu 4× logo depois de "Checking validity of types" (4–7 min;
+  // os builds bons levavam 5–10), com o MESMO código que passou `tsc --noEmit` e `next build` completo aqui. É o
+  // servidor sem memória na checagem de tipos, não erro de código. A checagem continua sendo GATE de toda SPEC
+  // (`npx tsc --noEmit`, CLAUDE.md §9.1 / protocolo §4); o servidor só deixa de repeti-la.
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   images: { unoptimized: true },
   // SPEC-132-A (A4) — o `middleware.ts` intercepta `/api/upload` (o matcher pega toda rota sem ponto), e o Next 15.5
   // corta o corpo que passa pelo middleware em 10 MB (`config-shared.js`: `middlewareClientMaxBodySize: 10485760`).

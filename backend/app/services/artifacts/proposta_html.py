@@ -998,8 +998,11 @@ def render_proposta(modelo: dict) -> str:
     # ---- carrossel
     topo, resto, resto_iguais = AP.escolher_coberturas(ops) if ops else ([], [], True)
     passes = "".join(_passe(o, i, ops, modelo, topo, resto, resto_iguais, href_fechar(o)) for i, o in enumerate(ops))
+    # ⚠️ produção roda Python 3.11: nada de barra invertida dentro da expressão de uma f-string (só o 3.12+ aceita —
+    # o arquivo inteiro deixava de carregar e TODA página de proposta dava 500; guarda: test_o_backend_compila_no_python_da_producao)
+    _fora_da_ordem = ' tabindex="-1"'
     abas = "".join(f'<a class="tab" href="#opt-{i}" role="tab" id="tab-{i}" aria-controls="opt-{i}" '
-                   f'aria-selected="{"true" if i == 0 else "false"}"{"" if i == 0 else " tabindex=\"-1\""}>'
+                   f'aria-selected="{"true" if i == 0 else "false"}"{"" if i == 0 else _fora_da_ordem}>'
                    f'{_e(o.get("rotulo") or o.get("id"))}</a>' for i, o in enumerate(ops))
     n = len(ops)
 
@@ -1440,8 +1443,11 @@ def render_renovacao(modelo: dict) -> str:
     topo, resto, resto_iguais = AP.escolher_coberturas(ops) if ops else ([], [], True)
     passes = "".join(_passe(o, i, ops, modelo, topo, resto, resto_iguais, href_fechar(o), renovacao=True)
                      for i, o in enumerate(ops))
+    # ⚠️ produção roda Python 3.11: nada de barra invertida dentro da expressão de uma f-string (só o 3.12+ aceita —
+    # o arquivo inteiro deixava de carregar e TODA página de proposta dava 500; guarda: test_o_backend_compila_no_python_da_producao)
+    _fora_da_ordem = ' tabindex="-1"'
     abas = "".join(f'<a class="tab" href="#opt-{i}" role="tab" id="tab-{i}" aria-controls="opt-{i}" '
-                   f'aria-selected="{"true" if i == 0 else "false"}"{"" if i == 0 else " tabindex=\"-1\""}>'
+                   f'aria-selected="{"true" if i == 0 else "false"}"{"" if i == 0 else _fora_da_ordem}>'
                    f'{_e(o.get("rotulo") or o.get("id"))}</a>' for i, o in enumerate(ops))
     n = len(ops)
 
@@ -1463,8 +1469,11 @@ def render_renovacao(modelo: dict) -> str:
     canais = ""
     if digitos or site_ok:
         rotulo_wa = f"Falar com {dono_nome}" if fala_com_o_dono else "WhatsApp"
+        # ⚠️ Python 3.11 em produção: sem aspas iguais aninhadas dentro de f-string (só o 3.12+ aceita)
+        _do_bem = (" " + sobre_o_bem) if sobre_o_bem else ""
+        _texto_wa = f"{ola} Vim pela renovação do seguro{_do_bem}."
         canais = ('<div class="chan">'
-                  + (f'<a href="{_e(wa(f"{ola} Vim pela renovação do seguro{(" " + sobre_o_bem) if sobre_o_bem else ""}."))}" '
+                  + (f'<a href="{_e(wa(_texto_wa))}" '
                      f'rel="noopener">{ICO["wa"]}{_e(rotulo_wa)}</a>' if digitos else "")
                   + (f'<a href="https://{_e(site)}" rel="noopener">{ICO["globe"]}{_e(site)}</a>' if site_ok else "")
                   + "</div>")
