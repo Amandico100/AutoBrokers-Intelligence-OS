@@ -444,14 +444,14 @@ async def rodar(db: Any, integracao: Dict[str, Any], telefone: str, membro: Dict
         agente = await asyncio.to_thread(agente_core, db, cid)
         if not agente:
             await envio.enviar_texto(integracao, telefone, FRASE_SEM_AGENTE.format(
-                corretora=membro.get("nome_da_corretora") or "sua corretora"))
+                corretora=membro.get("nome_da_corretora") or "sua corretora"), db=db)
             res.status = "sem_agente"
             return res
         chave = _chave_interna()
         if not chave:
             # ⛔ sem a chave o handler cairia no modo WIDGET (sem `userId`): o turno não roda às cegas
             logger.error("[ATALHO] sem chave interna (ADMIN_API_KEY/BACKEND_INTERNAL_API_KEY) — o turno não roda")
-            await envio.enviar_texto(integracao, telefone, FRASE_SEM_RESPOSTA)
+            await envio.enviar_texto(integracao, telefone, FRASE_SEM_RESPOSTA, db=db)
             res.status = "sem_chave"
             return res
 
@@ -465,7 +465,7 @@ async def rodar(db: Any, integracao: Dict[str, Any], telefone: str, membro: Dict
             if subida.get("anexo"):
                 anexos.append(subida["anexo"])
             elif subida.get("aviso") and not fala:
-                await envio.enviar_texto(integracao, telefone, subida["aviso"])
+                await envio.enviar_texto(integracao, telefone, subida["aviso"], db=db)
                 res.status = "arquivo_falhou"
                 return res
         if not fala and not anexos:
@@ -512,7 +512,7 @@ async def rodar(db: Any, integracao: Dict[str, Any], telefone: str, membro: Dict
         else:
             res.status = "respondido"
         res.texto = final
-        res.enviadas = await envio.enviar_texto(integracao, telefone, final)
+        res.enviadas = await envio.enviar_texto(integracao, telefone, final, db=db)
         logger.info("[ATALHO] turno de %s: %s, %d mensagem(ns)", _mascarar(telefone), res.status, res.enviadas)
         return res
     except Exception as erro:  # noqa: BLE001 — o atalho nunca derruba o webhook
