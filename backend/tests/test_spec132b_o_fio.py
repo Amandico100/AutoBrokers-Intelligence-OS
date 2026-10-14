@@ -243,7 +243,10 @@ def guarda_o_fio(m: Fio) -> dict:
     assert "Confira antes de eu calcular" in r1 and "no seu Agger" in r1, r1
     assert not m.pedidos(), "preparar NÃO calcula (D-132B-03)"
 
-    # ③ o "sim" → disparar pelo MESMO tool_node
+    # ③ o "sim" do CORRETOR (uma fala NOVA na conversa, depois do resumo — conserto juiz B4) → disparar pelo MESMO
+    #    tool_node. ⚠️ §9.3: antes este guarda encadeava preparar → disparar sem fala nenhuma no meio (era verdade
+    #    vencida: o código não distinguia; agora recusa — `test_b4_preparar_e_disparar_no_mesmo_turno_nao_calcula`)
+    m.falou(conversa, "sim, pode calcular")
     r2 = turno(tools_a, company_id=a, user_id=uid, session_id=sess, nome="cotacao_disparar",
                args={"confirmacao_id": _id_da_confirmacao(r1), **falsos})
     assert "Calculando nas seguradoras no seu Agger" in r2, r2
@@ -432,3 +435,192 @@ def test_mutacao_o_link_nao_e_reaproveitado_o_fio_fica_vermelho(fio, monkeypatch
     monkeypatch.setattr(P, "link_que_ainda_vale", lambda *a, **k: None)
     with pytest.raises(AssertionError):
         guarda_o_fio(fio)
+
+
+# =====================================================================================================================
+# CONSERTO ÚNICO (juiz 132-B B1/B2/B4 + red team B-1/B-2/B-3) — pelo FIO REAL: tool_node, porta, motor, worker, B2
+# publicando de verdade e o HTML que o `/r/` SERVE. Cada guarda tem a mutação logo abaixo (fica VERMELHO com ela).
+# =====================================================================================================================
+def _servido(m, url: str) -> str:
+    from app.services.artifacts.service import ArtifactService
+
+    r = ArtifactService(m.banco.visao("rota-publica")).abrir_compartilhado(url.rsplit("/r/", 1)[1],
+                                                                          user_agent="Mozilla/5.0")
+    return (r or {}).get("html") or ""
+
+
+def _tabela(texto: str) -> list:
+    return [l for l in texto.splitlines() if l.startswith("| ") and not l.startswith("| |") and "---" not in l]
+
+
+def _cotacao_pronta(m, *, extra=None, whatsapp=None):
+    """Uma cotação inteira pelo fio: a frase, o resumo, o SIM do corretor, o disparo, o motor e o run."""
+    a = m.corretora_com_marca(MARCA_A, "#1D5579")
+    uid, _ = m.pessoa(a, com_agger=True)
+    if whatsapp:
+        for v in m.banco.linhas("company_members"):
+            if v.get("user_id") == uid and v.get("company_id") == a:
+                v.update({"whatsapp_trabalho_e164": whatsapp,
+                          "whatsapp_trabalho_confirmado_em": "2026-10-01T00:00:00+00:00"})
+    conversa, sess = m.conversa(a, uid)
+    m.falou(conversa, FRASE)
+    tools = ferramentas_do_grafo(m.mp, m.db, a)
+    r1 = turno(tools, company_id=a, user_id=uid, session_id=sess, nome="cotacao_preparar",
+               args={**CONV.COMPLETOS, **(extra or {})})
+    m.falou(conversa, "sim, pode calcular")
+    r2 = turno(tools, company_id=a, user_id=uid, session_id=sess, nome="cotacao_disparar",
+               args={"confirmacao_id": _id_da_confirmacao(r1)})
+    [ped] = m.pedidos(a)
+    m.motor()
+    m.rodar_runs(a)
+    [msg] = m.mensagens_do_assistente(conversa)
+    return {"a": a, "uid": uid, "conversa": conversa, "sess": sess, "tools": tools, "pedido": ped, "r1": r1,
+            "r2": r2, "msg": msg, "url": msg["payload"]["cotacao"]["url"]}
+
+
+# -- B1 · o RECÁLCULO responde com a tabela e o link DO AJUSTE ------------------------------------------------------
+def guarda_o_recalculo(m: Fio) -> None:
+    c = _cotacao_pronta(m)
+    a, pid = c["a"], c["pedido"]["id"]
+    r = turno(c["tools"], company_id=a, user_id=c["uid"], session_id=c["sess"], nome="cotacao_ajustar",
+              args={"pedido_id": pid, "tipo": "franquia", "valor": "reduzida"})
+    assert r.startswith("Recalculando com a franquia reduzida"), r
+    m.motor()
+    m.rodar_runs(a)
+    [aj] = [x for x in m.calculos(pid) if x["opcao"] == "ajuste"]
+    assert aj["status"] == "fechado"
+    [run_aj] = [x for x in m.runs(a) if (x.get("input_payload") or {}).get("ajuste_calculo_id") == aj["id"]]
+    assert m.banco.run(run_aj["id"])["status"] == "completed"
+    msgs = m.mensagens_do_assistente(c["conversa"])
+    assert len(msgs) == 2, [x["content"][:60] for x in msgs]
+    [depois] = [x for x in msgs if x["payload"]["cotacao"]["work_run_id"] == run_aj["id"]]
+    assert "(Recalculado com a franquia reduzida.)" in depois["content"]
+    assert _tabela(depois["content"]) != _tabela(c["msg"]["content"]), "o recálculo mostrou a tabela de ANTES"
+    url = depois["payload"]["cotacao"]["url"]
+    assert url and url != c["url"], "o recálculo devolveu o link de ANTES"
+    # os preços da Recomendada são os do AJUSTE, no banco (nunca os de antes)
+    resumo = m.banco.run(run_aj["id"])["result_payload"]["resumo"]
+    rec = next(o for o in resumo["opcoes"] if o["id"] == "recomendada")
+    do_ajuste = {round(float(o["premio_total"]), 2) for o in m.banco.linhas("multicalculo_ofertas")
+                 if o["calculo_id"] == aj["id"]}
+    assert round(float(rec["a_vista"]), 2) in do_ajuste, (rec, sorted(do_ajuste)[:5])
+    # e a página que o novo link SERVE é a do recálculo; a de antes continua abrindo com os preços de antes
+    assert _servido(m, url) and _servido(m, c["url"])
+
+
+def test_b1_o_recalculo_responde_com_a_tabela_e_o_link_do_ajuste(fio):
+    guarda_o_recalculo(fio)
+
+
+def test_mutacao_b1_a_comparacao_ignora_o_ajuste_o_guarda_fica_vermelho(fio, monkeypatch):
+    from app.services.multicalculo import comparacao as CMP
+
+    monkeypatch.setattr(CMP, "estados_do_recalculo", lambda estados, _id: [dict(e) for e in estados])
+    with pytest.raises(AssertionError):
+        guarda_o_recalculo(fio)
+
+
+# -- B4 · preparar e disparar no MESMO turno (o modelo encadeia) não calcula ------------------------------------------
+def guarda_o_mesmo_turno(m: Fio) -> None:
+    a = m.corretora_com_marca(MARCA_A, "#1D5579")
+    uid, _ = m.pessoa(a, com_agger=True)
+    conversa, sess = m.conversa(a, uid)
+    m.falou(conversa, FRASE)                          # a ÚNICA fala do corretor: o pedido
+    tools = ferramentas_do_grafo(m.mp, m.db, a)
+    cid = _id_da_confirmacao(turno(tools, company_id=a, user_id=uid, session_id=sess, nome="cotacao_preparar",
+                                   args=dict(CONV.COMPLETOS)))
+    r = turno(tools, company_id=a, user_id=uid, session_id=sess, nome="cotacao_disparar", args={"confirmacao_id": cid})
+    assert "ainda NÃO calculei" in r and not m.pedidos(a), "disparou sem o 'sim' do corretor"
+    # CONTROLE: o corretor responde "sim" → o MESMO id dispara (a recusa não o consumiu)
+    m.falou(conversa, "sim")
+    r = turno(tools, company_id=a, user_id=uid, session_id=sess, nome="cotacao_disparar", args={"confirmacao_id": cid})
+    assert "Calculando nas seguradoras" in r and len(m.pedidos(a)) == 1, r
+
+
+def test_b4_preparar_e_disparar_no_mesmo_turno_nao_calcula(fio):
+    guarda_o_mesmo_turno(fio)
+
+
+def test_mutacao_b4_o_sim_nao_e_conferido_o_guarda_fica_vermelho(fio, monkeypatch):
+    monkeypatch.setattr(CONF, "confirmou_depois", lambda *a, **k: True)
+    with pytest.raises(AssertionError):
+        guarda_o_mesmo_turno(fio)
+
+
+# -- B2 · sem apólice anexada, a página SERVIDA não tem "economia" (mutação 5 da SPEC) -------------------------------
+def guarda_economia_sem_prova(m: Fio) -> None:
+    c = _cotacao_pronta(m, extra={"seguradora_atual": "Seguradora X", "premio_atual_anual": "4200.00"})
+    html = _servido(m, c["url"])
+    assert html and 'id="h-eco"' not in html and "a menos por ano</h2>" not in html, "economia sem apólice"
+    [run] = m.runs(c["a"])
+    assert run["input_payload"]["situacao"] == "novo_sem_apolice" and "apolice_atual" not in run["input_payload"]
+    # o que o corretor disse fica no resumo DELE (com o valor lido certo: "4200.00" é R$ 4.200,00, não 420 mil)
+    assert "O cliente disse que paga hoje: Seguradora X" in c["r1"] and "4.200,00 por ano" in c["r1"], c["r1"]
+
+
+def test_b2_sem_a_apolice_anexada_a_pagina_nao_tem_economia(fio):
+    guarda_economia_sem_prova(fio)
+
+
+def test_mutacao_5_economia_sem_prova_o_guarda_fica_vermelho(fio, monkeypatch):
+    from app.services.cotacao import pedido_da_conversa as PC
+    from app.services.multicalculo import proposta as P
+
+    def antigo(d, ficha):                             # o defeito: o que o modelo escreveu vira a apólice "lida"
+        return ("novo_com_apolice", {"seguradora": d["seguradora_atual"], "premio_anual": 420000.0,
+                                     "origem": "documento"}, None)
+
+    monkeypatch.setattr(PC, "seguro_atual", antigo)
+    monkeypatch.setattr(P, "apolice_com_prova", lambda ap: dict(ap) if ap else None)
+    with pytest.raises(AssertionError):
+        guarda_economia_sem_prova(fio)
+
+
+# -- RT B-3 · a aba Cotações confere o link: quem saiu da corretora · link vencido -----------------------------------
+NUMERO_DO_CORRETOR = "+5511977776666"
+
+
+def guarda_a_aba_confere_o_link(m: Fio) -> None:
+    c = _cotacao_pronta(m, extra={"telefone": "(11) 98888-7777"}, whatsapp=NUMERO_DO_CORRETOR)
+    a, pid, url = c["a"], c["pedido"]["id"], c["url"]
+    assert NUMERO_DO_CORRETOR[1:] in _servido(m, url), "a página não aponta para quem cotou (o controle)"
+    api = m.api()
+    # CONTROLE: nada mudou → o MESMO link
+    r = api.post(f"/api/cotacoes/{pid}/apresentacao", json={"company_id": a, "user_id": c["uid"]}, headers=api.cab)
+    assert r.status_code == 200 and r.json()["url"] == url, r.text
+    # ① quem cotou SAIU da corretora: o gestor clica "Enviar" → link NOVO, que não aponta para o número dele
+    for v in m.banco.linhas("company_members"):
+        if v.get("user_id") == c["uid"] and v.get("company_id") == a:
+            v["status"] = "inactive"
+    chefe, _ = m.pessoa(a)
+    r = api.post(f"/api/cotacoes/{pid}/envio", json={"company_id": a, "user_id": chefe}, headers=api.cab)
+    assert r.status_code == 200, r.text
+    novo = r.json()["link"]
+    assert novo != url and NUMERO_DO_CORRETOR[1:] not in _servido(m, novo), "o link ainda manda a quem saiu"
+    assert novo in r.json()["texto"] and novo.rsplit("/r/", 1)[1] in (r.json().get("wa_me_url") or "")
+    # ② o link VENCEU: o "Ver apresentação" devolve um link que ABRE
+    from datetime import datetime, timedelta, timezone
+
+    for sh in m.banco.linhas("artifact_shares"):
+        if novo.endswith(sh.get("token") or "#"):
+            sh["expires_at"] = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    r = api.post(f"/api/cotacoes/{pid}/apresentacao", json={"company_id": a, "user_id": chefe}, headers=api.cab)
+    assert r.status_code == 200 and r.json()["url"] != novo and _servido(m, r.json()["url"]), r.text
+
+
+def test_rt_b3_a_aba_nunca_entrega_o_link_de_quem_saiu_nem_o_vencido(fio):
+    guarda_a_aba_confere_o_link(fio)
+
+
+def test_mutacao_rt_b3_a_aba_devolve_o_link_do_run_o_guarda_fica_vermelho(fio, monkeypatch):
+    from app.api import cotacoes as API
+
+    async def antiga(db, cid, pid, pedido):           # o defeito: o link guardado no run, para sempre
+        run = API.runs_por_pedido(db, cid, pedido_id=pid).get(pid)
+        info = API.do_run(run)
+        return {"url": info["url"], "token": info.get("token"), "modelo": info.get("modelo"),
+                "mensagem": info.get("mensagem")}
+
+    monkeypatch.setattr(API, "apresentacao", antiga)
+    with pytest.raises(AssertionError):
+        guarda_a_aba_confere_o_link(fio)
