@@ -76,7 +76,10 @@ class _PrepararIn(BaseModel):
         False, description="true quando o corretor anexou a apólice atual do cliente nesta conversa")
     nome_do_anexo: Optional[str] = Field(None, description="o nome do PDF, se houver mais de um anexo")
     seguradora_atual: Optional[str] = Field(None, description="a seguradora do seguro atual, se o corretor disse")
-    premio_atual_anual: Optional[str] = Field(None, description="quanto o cliente paga hoje por ano, se disse")
+    premio_atual_anual: Optional[str] = Field(
+        None, description="quanto o cliente paga hoje por ano, se o corretor disse (ex.: '4.200' ou '4200.00'). Só "
+                          "aparece no resumo para o corretor: a economia na apresentação do cliente vem da apólice "
+                          "ANEXADA, nunca deste número")
 
 
 class _DispararIn(BaseModel):
@@ -179,6 +182,8 @@ class CotacaoPrepararTool(_Cotacao):
             if aviso:
                 avisos.append(aviso)
         textos = await asyncio.to_thread(PC.textos_crus_da_conversa, db, conversa)
+        # as falas que JÁ estão na conversa quando o resumo sai — o "sim" do disparo tem de ser outra (juiz B4)
+        vistas = [f["id"] for f in await asyncio.to_thread(CONF.ler_falas, db, conversa)]
         cfg = await asyncio.to_thread(_config, company_id, db)
         dados = {k: v for k, v in campos.items() if k not in ("usar_apolice_anexada", "nome_do_anexo")}
         try:
@@ -202,14 +207,15 @@ class CotacaoPrepararTool(_Cotacao):
                     "apolice_atual": m.apolice_atual, "descricao": m.descricao}
         try:
             cid = await CONF.guardar(company_id=company_id, user_id=user_id, conversation_id=conversa,
-                                     conteudo=conteudo)
+                                     conteudo=conteudo, falas_vistas=vistas)
         except CONF.ConfirmacaoRecusada as r:
             return r.frase
         partes = avisos + [PC.resumo(m, onde=onde_calcula(decisao), opcoes=opcoes),
                            f"confirmacao_id: {cid}",
-                           "(Para o assistente: mostre o resumo acima e pergunte se pode calcular. Só com um 'sim' "
-                           "explícito do corretor chame cotacao_disparar com este confirmacao_id — ele vale 30 minutos "
-                           "e uma vez. Não mostre o confirmacao_id ao corretor.)"]
+                           "(Para o assistente: mostre o resumo acima e pergunte se pode calcular — e ENCERRE a sua "
+                           "resposta aqui. Só quando o corretor responder com um 'sim' explícito, na PRÓXIMA mensagem "
+                           "dele, chame cotacao_disparar com este confirmacao_id — ele vale 30 minutos e uma vez; sem "
+                           "a resposta dele a ferramenta recusa. Não mostre o confirmacao_id ao corretor.)"]
         return "\n".join(partes)
 
 
@@ -255,8 +261,9 @@ def frase_da_recusa_da_porta(exc: BaseException) -> str:
 class CotacaoDispararTool(_Cotacao):
     name: str = "cotacao_disparar"
     description: str = (
-        "CALCULA a cotação que a cotacao_preparar resumiu — SÓ depois de o corretor confirmar o resumo com um 'sim' "
-        "explícito ('sim', 'pode', 'calcula'). Recebe o confirmacao_id (vale uma vez, por 30 minutos). O resultado "
+        "CALCULA a cotação que a cotacao_preparar resumiu — SÓ depois de o corretor RESPONDER ao resumo, na mensagem "
+        "seguinte dele, com um 'sim' explícito ('sim', 'pode', 'calcula'); nunca no mesmo turno do resumo (a ferramenta "
+        "recusa). Recebe o confirmacao_id (vale uma vez, por 30 minutos). O resultado "
         "volta sozinho nesta conversa em 1 a 2 minutos; repita ao corretor a frase que a ferramenta devolver.")
     args_schema: Type[BaseModel] = _DispararIn
 
@@ -278,8 +285,10 @@ class CotacaoDispararTool(_Cotacao):
 
         db, company_id, user_id, conversa = await asyncio.to_thread(self._turno, user_id, session_id)
         try:
+            # 🔴 juiz B4: o "sim" é uma FALA do corretor nesta conversa, gravada depois do resumo — não o modelo
+            falas = await asyncio.to_thread(CONF.ler_falas, db, conversa)
             c = await CONF.consumir(company_id=company_id, user_id=user_id, conversation_id=conversa,
-                                    confirmacao_id=confirmacao_id)
+                                    confirmacao_id=confirmacao_id, falas_do_corretor=falas)
         except CONF.ConfirmacaoRecusada as r:
             return r.frase
         pedido = PedidoDeCalculo.de_dict(c.get("campos") or {}, ramo=int(c.get("ramo") or 31),
