@@ -10,11 +10,11 @@ import logging
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from pydantic import UUID4, BaseModel, Field
+from pydantic import UUID4, BaseModel, Field, field_validator
 
 from app.core import settings
 from app.core.auth import _chaves_internas
@@ -39,7 +39,40 @@ from app.api.chat_eventos import (
 # turno em voo e o FORMATO da chave — um formato, um lugar.
 from app.services.skills.invocation_recorder import chave_de_rastro, marcar_turno
 
+# SPEC-132-A B8 — as escolhas de esforço moram no Model Router (módulo PURO: só
+# biblioteca padrão no topo), e não numa segunda lista aqui.
+from app.factories.model_policy import ESCOLHAS_DE_ESFORCO
+
 logger = logging.getLogger(__name__)
+
+#: O teto de anexos por pedido (SPEC-132-A §5: "até 10 arquivos").
+TETO_DE_ANEXOS = 10
+
+
+def opcoes_validas(bruto: Any) -> Optional[Dict[str, Any]]:
+    """`options` do pedido, só com o que o turno conhece. **PURA.** (SPEC-132-A)
+
+    ⛔ Chave nova ou valor fora do conjunto é IGNORADO com log — nunca 422 (a tela
+    pode ganhar uma opção antes do backend saber dela, e o turno não morre por isso).
+    `web_search` só como booleano; `esforco` só em `ESCOLHAS_DE_ESFORCO`
+    (rapido · equilibrado · maximo). ⛔ O VALOR ignorado não vai ao log (é do
+    cliente); só a CHAVE, cortada.
+    """
+    if bruto is None:
+        return None
+    if not isinstance(bruto, dict):
+        logger.warning("[STREAM] options ignorado: não é um objeto (%s)", type(bruto).__name__)
+        return None
+    limpas: Dict[str, Any] = {}
+    for chave, valor in bruto.items():
+        if chave == "web_search" and isinstance(valor, bool):
+            limpas[chave] = valor
+        elif (chave == "esforco" and isinstance(valor, str)
+              and valor.strip().lower() in ESCOLHAS_DE_ESFORCO):
+            limpas[chave] = valor.strip().lower()
+        else:
+            logger.warning("[STREAM] opção ignorada: %s", str(chave)[:30])
+    return limpas
 
 router = APIRouter()
 
@@ -86,7 +119,13 @@ class ChatRequest(BaseModel):
     assistantMessageId: Optional[UUID4] = Field(None, description="ID pré-gerado")
     channel: str = Field(default="web", description="Origin: web, whatsapp, widget")
     conversationHistory: Optional[List[Dict[str, Any]]] = None
-    options: Optional[Dict[str, bool]] = Field(None)
+    # 🔴 SPEC-132-A B8: `{web_search?: bool, esforco?: 'rapido'|'equilibrado'|'maximo'}`.
+    # Validado por `opcoes_validas` — o que não se conhece some com log, sem 422.
+    options: Optional[Dict[str, Any]] = Field(None)
+    # 🔴 SPEC-132-A §5: `[{bucket, path, nome, mime, bytes}]` — o arquivo JÁ subido.
+    # O backend lê os BYTES pelo service role (`chat_anexos.preparar`); o path tem
+    # de estar no prefixo `<company_id>/` (o BFF recusa antes; aqui, de novo).
+    attachments: Optional[List[Dict[str, Any]]] = Field(None, max_length=TETO_DE_ANEXOS)
     # SPEC-096 A.1/A.3 — o id que o PEDIDO carrega. É por ele que o índice único
     # parcial recusa a resposta duplicada e que a tela descarta o eco do
     # Realtime. Obrigatório no modo painel. ⚠️ Aceito nas duas grafias porque a
@@ -95,6 +134,11 @@ class ChatRequest(BaseModel):
     userMessageId: Optional[UUID4] = Field(None, alias="user_message_id")
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("options", mode="before")
+    @classmethod
+    def _so_as_opcoes_conhecidas(cls, valor):
+        return opcoes_validas(valor)
 
 class ChatResponse(BaseModel):
     output: str = Field(..., description="Resposta da IA")
@@ -557,6 +601,162 @@ async def anexar_documento_do_corretor(mensagem: str, file_url: str, file_name: 
     )
 
 
+# =============================================================================
+# 🔴 SPEC-132-A — O ANEXO DO CHAT NOVO E A LINHA DE ATIVIDADE (módulo, PURO)
+# =============================================================================
+
+#: A linha de atividade usa o `stage.started` que a tela JÁ lê (`{key, label}`,
+#: `lib/chat/protocolo.ts`) — nenhum evento novo. O 1º delta a apaga.
+ESTAGIO_PENSANDO = {"key": "thinking", "label": "Pensando…"}
+CHAVE_DOS_ANEXOS = "attachments.reading"
+
+#: O nome do arquivo na linha de atividade não cresce sem fim (a linha é uma só).
+TETO_DO_NOME_NA_TELA = 48
+
+AVISO_SEM_LEITURA = "não consegui ler os arquivos anexados agora"
+
+
+def _e_foto(anexo: Dict[str, Any]) -> bool:
+    return str((anexo or {}).get("mime") or "").lower().startswith("image/")
+
+
+def _e_audio(anexo: Dict[str, Any]) -> bool:
+    return str((anexo or {}).get("mime") or "").lower().startswith("audio/")
+
+
+def _nome_para_a_tela(nome: Any) -> str:
+    """O nome do arquivo MASCARADO (o arquivo pode se chamar pelo CPF — 130-B F5).
+
+    ⛔ Sem a máscara, nunca o nome cru: vira "o arquivo".
+    """
+    try:
+        from app.services.vision_service import nome_do_anexo_para_o_modelo
+
+        limpo = nome_do_anexo_para_o_modelo(nome, padrao="o arquivo")
+    except Exception:  # noqa: BLE001 — sem a máscara, nunca o nome cru
+        limpo = "o arquivo"
+    limpo = str(limpo or "o arquivo")
+    if len(limpo) > TETO_DO_NOME_NA_TELA:
+        limpo = limpo[:TETO_DO_NOME_NA_TELA - 1] + "…"
+    return limpo
+
+
+def rotulo_dos_anexos(anexos: List[Dict[str, Any]], *, imagem_antiga: bool = False,
+                      documento_antigo: Optional[str] = None) -> str:
+    """A frase que o corretor lê enquanto o AutoBrokers lê o que ele mandou. **PURA.**
+
+    "Lendo apolice.pdf…" · "Ouvindo o áudio…" · "Olhando a foto…" · "Lendo 3 arquivos…".
+    """
+    itens = [a for a in (anexos or []) if isinstance(a, dict)]
+    if imagem_antiga:
+        itens.append({"mime": "image/*"})
+    if documento_antigo is not None:
+        itens.append({"mime": "application/octet-stream", "nome": documento_antigo})
+    if not itens:
+        return ESTAGIO_PENSANDO["label"]
+    fotos = [a for a in itens if _e_foto(a)]
+    audios = [a for a in itens if _e_audio(a)]
+    if len(itens) == 1:
+        if fotos:
+            return "Olhando a foto…"
+        if audios:
+            return "Ouvindo o áudio…"
+        return "Lendo %s…" % _nome_para_a_tela(itens[0].get("nome"))
+    if len(fotos) == len(itens):
+        return "Olhando as %d fotos…" % len(itens)
+    if len(audios) == len(itens):
+        return "Ouvindo os %d áudios…" % len(itens)
+    return "Lendo %d arquivos…" % len(itens)
+
+
+def _como_lista(valor: Any) -> List[str]:
+    if valor is None:
+        return []
+    if isinstance(valor, str):
+        return [valor] if valor.strip() else []
+    if isinstance(valor, (list, tuple)):
+        return [str(x) for x in valor if x is not None and str(x).strip()]
+    texto = str(valor)
+    return [texto] if texto.strip() else []
+
+
+def incorporar_os_anexos(mensagem: Optional[str], resultado: Any) -> Tuple[str, Optional[str]]:
+    """O que `chat_anexos.preparar` leu entra no turno — no MESMO formato dos campos antigos.
+
+    Devolve `(mensagem_do_turno, transcricao)`. **PURA.**
+      · `.descricoes` → `[CONTEXTO VISUAL — imagem enviada pelo usuário]` (o bloco da visão de antes)
+      · `.texto`      → os blocos `[DOCUMENTO ANEXADO …]` JÁ MASCARADOS, como vieram
+      · `.transcricoes` → sem texto do corretor, a transcrição É a mensagem; com texto, um bloco
+      · `.avisos`     → `[AVISO INTERNO: …]`, a mesma frase que o documento ilegível já usa
+    ⛔ `resultado is None` (o leitor não existe ou caiu) vira AVISO — o turno nunca morre por anexo.
+    """
+    base = mensagem or ""
+    if resultado is None:
+        return (base + "\n\n[AVISO INTERNO: %s — diga isso com naturalidade e peça para "
+                "reenviar ou colar o trecho.]" % AVISO_SEM_LEITURA), None
+    blocos = _como_lista(getattr(resultado, "texto", None))
+    descricoes = _como_lista(getattr(resultado, "descricoes", None))
+    transcricoes = _como_lista(getattr(resultado, "transcricoes", None))
+    avisos = _como_lista(getattr(resultado, "avisos", None))
+    transcricao = "\n\n".join(transcricoes) if transcricoes else None
+    partes = []
+    if not base.strip() and transcricao:
+        partes.append(transcricao)          # só áudio: a transcrição é a pergunta
+        transcricoes = []
+    else:
+        partes.append(base)
+    for descricao in descricoes:
+        partes.append("[CONTEXTO VISUAL — imagem enviada pelo usuário]:\n%s" % descricao)
+    partes.extend(blocos)
+    for trecho in transcricoes:
+        partes.append("[ÁUDIO ENVIADO PELO CORRETOR — transcrição]:\n%s" % trecho)
+    for aviso in avisos:
+        partes.append("[AVISO INTERNO: %s — diga isso com naturalidade e peça para reenviar "
+                      "ou colar o trecho.]" % aviso)
+    return "\n\n".join(p for p in partes if p), transcricao
+
+
+def anexos_fora_da_corretora(company_id: Any, anexos: Optional[List[Dict[str, Any]]]) -> int:
+    """Quantos anexos NÃO estão no prefixo `<company_id>/`. **PURA.** (CLAUDE.md §7)
+
+    🔴 O BFF já recusa (403); aqui é o cinto: o backend lê pelo SERVICE ROLE, e um
+    path de outra corretora seria um arquivo alheio lido em nome desta.
+    """
+    prefixo = "%s/" % str(company_id or "").strip()
+    fora = 0
+    for anexo in anexos or []:
+        caminho = str((anexo or {}).get("path") or "") if isinstance(anexo, dict) else ""
+        if (prefixo == "/" or not caminho.startswith(prefixo) or ".." in caminho
+                or "\\" in caminho):
+            fora += 1
+    return fora
+
+
+def _nivel_efetivo(agent_data: Optional[Dict[str, Any]], nivel: Optional[str]) -> Optional[str]:
+    """O esforço que o modelo do turno vai de fato usar (para o `payload.turn`).
+
+    ⚠️ Só com o cache do Model Router QUENTE (o grafo acabou de resolver a rota):
+    descrever o turno nunca abre uma ida ao banco. Frio → o nível PEDIDO.
+    """
+    try:
+        from app.factories import model_policy as _MP
+
+        if not _MP.cache_quente():
+            return nivel
+        from app.factories.llm_factory import LLMFactory
+
+        with _MP.esforco_do_pedido(nivel):
+            return LLMFactory.resolver_para(agent_data or {}, agent_data or {}).effort
+    except Exception:  # noqa: BLE001 — diagnóstico, nunca derruba o turno
+        return None
+
+
+async def _nenhum_evento():
+    """O turno barrado pelo guardrail não chama o modelo: nenhum evento do motor."""
+    return
+    yield  # noqa: B901 — faz desta função um gerador assíncrono vazio
+
+
 def _sse_legado(payload: Dict[str, Any]) -> str:
     return "data: %s\n\n" % json.dumps(payload)
 
@@ -598,15 +798,29 @@ async def chat_stream(
 
     Duas línguas, uma rota: o **widget** continua recebendo `{"token": "..."}`
     exatamente como antes; o **painel** recebe o protocolo tipado da SPEC-096.
+
+    🔴 SPEC-132-A B6 — no PAINEL o `StreamingResponse` sai assim que as checagens
+    BARATAS e de SEGURANÇA passam (a conversa é desta corretora, a porteira, o
+    agente). O caro — anexos, visão, guardrail, grafo frio, o estado do turno —
+    roda DENTRO de `_gerar`, com linhas de atividade. O widget segue igual.
     """
+    # 🔴 SPEC-132-A: o relógio do turno começa no RECEBIMENTO (`ttft_ms`).
+    recebido_em = time.monotonic()
+    modo = _modo_de_confianca(request)
+    if modo == "widget" and chat_request.attachments:
+        # ⛔ Sem o BFF ninguém conferiu a sessão nem o prefixo do arquivo: o widget
+        # não lê anexo por lista (ele tem `imageUrl`/`fileUrl`, como sempre).
+        logger.warning("[STREAM] widget com attachments — ignorados")
+        chat_request.attachments = None
+
     # Validation
-    if not chat_request.chatInput:
+    # SPEC-132-A: no painel, um áudio sozinho É a pergunta (sem `chatInput`).
+    if not chat_request.chatInput and not chat_request.attachments:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="chatInput is required for streaming",
         )
 
-    modo = _modo_de_confianca(request)
     if modo == "widget":
         # 🔴 O corpo não escolhe a identidade. Sem a chave do BFF, o `userId`
         # some — e com ele somem os privilégios que ele carregava.
@@ -638,6 +852,18 @@ async def chat_stream(
         "assistant_message_id": assistant_message_id,
     }
     chave_do_turno = "%s:%s" % (chat_request.companyId, client_request_id)
+
+    # 🔴 SPEC-132-A · CLAUDE.md §7 — o anexo é DESTA corretora, ou o turno não começa.
+    # Checagem de SEGURANÇA e barata: fica ANTES do stream, e nada é gravado (R5).
+    if chat_request.attachments and anexos_fora_da_corretora(chat_request.companyId,
+                                                             chat_request.attachments):
+        logger.warning("[STREAM] trust=anexo_fora_da_corretora company=%s",
+                       str(chat_request.companyId)[:8])
+        return _resposta_de_politica(
+            modo=modo, turno=turno, tipo=TIPO_POLICY_BLOCKED, code="policy",
+            texto=MENSAGENS_HUMANAS["policy"],
+            legado={"token": MENSAGENS_HUMANAS["policy"], "blocked": True},
+        )
 
     logger.info(
         "[STREAM] modo=%s company=%s session=%s turno=%s",
@@ -743,7 +969,8 @@ async def chat_stream(
     # SPEC-062 §4, leis 2 e 4 — a PORTEIRA decide, nao o saldo direto.
     from app.services.billing_gate import pode_consumir
 
-    _pode, _motivo = pode_consumir(str(chat_request.companyId))
+    # SPEC-132-A: síncrona e vai ao banco — fora do event loop (o resultado é o mesmo).
+    _pode, _motivo = await asyncio.to_thread(pode_consumir, str(chat_request.companyId))
     if not _pode:
         logger.info("[STREAM] barrado pela porteira: %s", _motivo)
         return _resposta_de_politica(
@@ -754,7 +981,6 @@ async def chat_stream(
     # Get company config and prepare graph
     from app.agents.graph import stream_agent, stream_agent_eventos
     from app.services.agent_service import AgentService
-    from app.services.langchain_service import get_or_create_graph
 
     sync_db = get_supabase_client()
 
@@ -790,7 +1016,8 @@ async def chat_stream(
     # Try to load agent
     try:
         agent_service = AgentService()
-        agent_obj = agent_service.get_agent_by_id(str(chat_request.agentId))
+        # SPEC-132-A: cache de 60 s; no frio vai ao banco (síncrono) — fora do loop.
+        agent_obj = await asyncio.to_thread(agent_service.get_agent_by_id, str(chat_request.agentId))
         if agent_obj:
             agent_data = agent_obj.model_dump()
             # Use agent's API key if available (decrypted)
@@ -831,88 +1058,136 @@ async def chat_stream(
         except Exception as widget_error:
             logger.warning(f"[STREAM] Widget security check error (allowing): {type(widget_error).__name__}")
 
-    # 🔥 Usar cache de grafos (LRUCache) para evitar recriação a cada mensagem
-    from app.services.qdrant_service import get_qdrant_service
-    qdrant = get_qdrant_service()
+    # =========================================================================
+    # 🔴 SPEC-132-A B6 — O PRÉ-TRABALHO CARO, escrito UMA vez para os dois modos
+    # =========================================================================
+    # WIDGET: roda ANTES do stream, na ordem de sempre (grafo → visão → documento
+    # → guardrail) — o contrato legado não tem linha de atividade.
+    # PAINEL: roda DENTRO de `_gerar`, depois do `turn.accepted`.
+    async def _o_grafo(nivel: Optional[str] = None):
+        # 🔥 Usar cache de grafos (LRUCache) para evitar recriação a cada mensagem
+        from app.services.langchain_service import get_or_create_graph
+        from app.services.qdrant_service import get_qdrant_service
 
-    # agent_data contém updated_at que é usado como chave do cache
-    graph = await get_or_create_graph(
-        company_id=str(chat_request.companyId),
-        agent_id=str(chat_request.agentId),
-        agent_config=agent_data,
-        api_key=api_key,
-        qdrant_service=qdrant,
-        supabase_client=sync_db,
-        enable_logging=True,
-    )
-
-    # === VISION PROCESSING (antes do streaming) ===
-    enriched_message = chat_request.chatInput
-
-    # F1 — visão/documentos GLOBAIS: default de plataforma quando o agente não
-    # tem vision_model (nunca mais "não consigo visualizar"); PDF/DOCX viram
-    # texto via docling. Fail-safe: falhou → segue só com o texto do usuário.
-    if chat_request.imageUrl:
-        from app.services.vision_service import describe_image
-
-        vision_text = await describe_image(
-            chat_request.imageUrl,
+        qdrant = get_qdrant_service()
+        argumentos = dict(
             company_id=str(chat_request.companyId),
-            agent_id=str(chat_request.agentId) if chat_request.agentId else None,
-            agent_data=agent_data,
+            agent_id=str(chat_request.agentId),
+            agent_config=agent_data,
+            api_key=api_key,
+            qdrant_service=qdrant,
+            supabase_client=sync_db,
+            enable_logging=True,
         )
-        if vision_text:
-            enriched_message = f"{chat_request.chatInput}\n\n[CONTEXTO VISUAL — imagem enviada pelo usuário]:\n{vision_text}"
-            logger.info("[STREAM VISION] ✅ Imagem analisada (F1)")
+        if nivel is not None:
+            # SPEC-132-A B8: o esforço do pedido (o MESMO modelo do papel).
+            argumentos["esforco_do_pedido"] = nivel
+        # agent_data contém updated_at que é usado como chave do cache
+        return await get_or_create_graph(**argumentos)
 
-    if chat_request.fileUrl:
-        enriched_message = await anexar_documento_do_corretor(
-            enriched_message, chat_request.fileUrl, chat_request.fileName or "",
-            # 🔴 SPEC-130-B conserto (juiz J5): `str(None)` é "None" — uma corretora que não existe no ledger
-            company_id=str(chat_request.companyId or ""),
-        )
+    async def _os_campos_antigos(mensagem: str) -> str:
+        """`imageUrl`/`fileUrl` — o caminho de antes (o widget e as chamadas antigas)."""
+        enriched_message = mensagem
 
-    # ===========================================================================
-    # 🛡️ GUARDRAILS SECURITY CHECK (BEFORE STREAMING)
-    # ===========================================================================
-    from app.agents.guardrails import SmithGuardrail
+        # F1 — visão/documentos GLOBAIS: default de plataforma quando o agente não
+        # tem vision_model (nunca mais "não consigo visualizar"); PDF/DOCX viram
+        # texto via docling. Fail-safe: falhou → segue só com o texto do usuário.
+        if chat_request.imageUrl:
+            from app.services.vision_service import describe_image
 
-    final_message = enriched_message
-    guardrail = None
-
-    if agent_data:
-        try:
-            guardrail = SmithGuardrail(
-                agent_config=agent_data,
-                company_id=str(chat_request.companyId)
+            vision_text = await describe_image(
+                chat_request.imageUrl,
+                company_id=str(chat_request.companyId),
+                agent_id=str(chat_request.agentId) if chat_request.agentId else None,
+                agent_data=agent_data,
             )
-            is_blocked, block_reason, sanitized_text = await guardrail.validate_input(enriched_message)
+            if vision_text:
+                enriched_message = f"{mensagem}\n\n[CONTEXTO VISUAL — imagem enviada pelo usuário]:\n{vision_text}"
+                logger.info("[STREAM VISION] ✅ Imagem analisada (F1)")
 
-            if is_blocked:
-                logger.warning("[SECURITY] 🛡️ Stream message BLOCKED")
-                return _resposta_de_politica(
-                    modo=modo, turno=turno, tipo=TIPO_POLICY_BLOCKED, code="policy",
-                    texto=block_reason or MENSAGENS_HUMANAS["policy"],
-                    legado={"token": block_reason, "blocked": True},
+        if chat_request.fileUrl:
+            enriched_message = await anexar_documento_do_corretor(
+                enriched_message, chat_request.fileUrl, chat_request.fileName or "",
+                # 🔴 SPEC-130-B conserto (juiz J5): `str(None)` é "None" — uma corretora que não existe no ledger
+                company_id=str(chat_request.companyId or ""),
+            )
+        return enriched_message
+
+    async def _o_guardrail(enriched_message: str):
+        """`(bloqueio | None, final_message)` — 🛡️ o MESMO portão de antes.
+
+        `bloqueio` = `{code, texto, legado}`; quem chama decide a forma (o widget
+        devolve a resposta de política; o painel emite o evento DENTRO do stream).
+        """
+        from app.agents.guardrails import SmithGuardrail
+
+        final_message = enriched_message
+        guardrail = None
+
+        if agent_data:
+            try:
+                guardrail = SmithGuardrail(
+                    agent_config=agent_data,
+                    company_id=str(chat_request.companyId)
                 )
+                is_blocked, block_reason, sanitized_text = await guardrail.validate_input(enriched_message)
 
-            # 🔥 Usa texto sanitizado
-            final_message = sanitized_text
-            logger.debug("[SECURITY] ✅ Stream message passed guardrail")
+                if is_blocked:
+                    logger.warning("[SECURITY] 🛡️ Stream message BLOCKED")
+                    return ({"code": "policy",
+                             "texto": block_reason or MENSAGENS_HUMANAS["policy"],
+                             "legado": {"token": block_reason, "blocked": True}},
+                            final_message)
 
-        except HTTPException:
-            raise
-        except Exception as gr_error:
-            logger.error(f"[SECURITY] ⚠️ Guardrail error: {type(gr_error).__name__}", exc_info=True)
+                # 🔥 Usa texto sanitizado
+                final_message = sanitized_text
+                logger.debug("[SECURITY] ✅ Stream message passed guardrail")
 
-            # 🔥 Fail-close se configurado (default: True)
-            fail_close = getattr(guardrail, 'fail_close', True) if guardrail else True
-            if fail_close:
-                return _resposta_de_politica(
-                    modo=modo, turno=turno, tipo=TIPO_POLICY_BLOCKED, code="policy",
-                    texto=TEXTO_ERRO_DE_SEGURANCA,
-                    legado={"token": TEXTO_ERRO_DE_SEGURANCA, "blocked": True},
-                )
+            except HTTPException:
+                raise
+            except Exception as gr_error:
+                logger.error(f"[SECURITY] ⚠️ Guardrail error: {type(gr_error).__name__}", exc_info=True)
+
+                # 🔥 Fail-close se configurado (default: True)
+                fail_close = getattr(guardrail, 'fail_close', True) if guardrail else True
+                if fail_close:
+                    return ({"code": "policy", "texto": TEXTO_ERRO_DE_SEGURANCA,
+                             "legado": {"token": TEXTO_ERRO_DE_SEGURANCA, "blocked": True}},
+                            final_message)
+        return None, final_message
+
+    async def _gravar_a_transcricao(transcricao: Optional[str]) -> None:
+        """A transcrição do áudio vai para `payload.transcricao` da PERGUNTA (a bolha de voz).
+
+        🔴 A linha é achada por `id` E pela conversa DESTA corretora (conferida lá em
+        cima) — nunca só pelo `id` que veio no corpo (CLAUDE.md §7). Melhor-esforço.
+        """
+        if not (transcricao and chat_request.userMessageId and conversation_id):
+            return
+        try:
+            linhas = (
+                await db.client.table("messages")
+                .select("payload")
+                .eq("id", str(chat_request.userMessageId))
+                .eq("conversation_id", conversation_id)
+                .eq("role", "user")
+                .limit(1)
+                .execute()
+            ).data or []
+            if not linhas:
+                return
+            payload = dict(linhas[0].get("payload") or {})
+            payload["transcricao"] = transcricao
+            await (
+                db.client.table("messages")
+                .update({"payload": payload})
+                .eq("id", str(chat_request.userMessageId))
+                .eq("conversation_id", conversation_id)
+                .execute()
+            )
+        except Exception as sem_transcricao:  # noqa: BLE001
+            logger.warning("[STREAM ANEXOS] transcrição não gravada (%s)",
+                           type(sem_transcricao).__name__)
 
     # =========================================================================
     # A PERSISTÊNCIA — a mesma para os dois modos, e ela é do TURNO
@@ -1089,6 +1364,16 @@ async def chat_stream(
     # MODO WIDGET — o contrato antigo, intacto
     # =========================================================================
     if modo == "widget":
+        # ⚠️ O pré-trabalho do widget fica ANTES do stream, na ordem de sempre.
+        graph = await _o_grafo()
+        enriched_message = await _os_campos_antigos(chat_request.chatInput)
+        bloqueio, final_message = await _o_guardrail(enriched_message)
+        if bloqueio is not None:
+            return _resposta_de_politica(
+                modo=modo, turno=turno, tipo=TIPO_POLICY_BLOCKED, code=bloqueio["code"],
+                texto=bloqueio["texto"], legado=bloqueio["legado"],
+            )
+
         async def event_generator():
             """Generate SSE events with tokens from the LLM stream."""
             full_response = ""
@@ -1146,9 +1431,101 @@ async def chat_stream(
     # `chave_de_rastro` — a mesma função dos dois lados (CLAUDE.md §5 e §9.4).
     marcar_turno(client_request_id)
 
+    #: SPEC-132-A B8 — Rápido · Equilibrado · Máximo (já validado por `opcoes_validas`).
+    escolha = (chat_request.options or {}).get("esforco") or "equilibrado"
+
+    async def _preparar_o_turno(emitir, fases: Dict[str, Any], extras: Dict[str, Any]):
+        """O pré-trabalho CARO do painel — DENTRO do stream (SPEC-132-A B6).
+
+        Os anexos (`chat_anexos.preparar` + os campos antigos) e o grafo (frio na 1ª
+        vez do processo ou do esforço) correm JUNTOS; o guardrail vem depois, sobre
+        a mensagem já enriquecida — a mesma ordem de decisão de antes.
+        Devolve `(final_message, graph, politica | None)`.
+        """
+        from app.factories.model_policy import nivel_da_escolha
+
+        nivel = nivel_da_escolha(escolha)
+        anexos = list(chat_request.attachments or [])
+        mostrou_anexos = bool(anexos or chat_request.imageUrl or chat_request.fileUrl)
+        if mostrou_anexos:
+            emitir("stage.started", {"key": CHAVE_DOS_ANEXOS, "label": rotulo_dos_anexos(
+                anexos, imagem_antiga=bool(chat_request.imageUrl),
+                documento_antigo=(chat_request.fileName or "") if chat_request.fileUrl else None)})
+        else:
+            emitir("stage.started", dict(ESTAGIO_PENSANDO))
+
+        async def _cronometrar(nome: str, corrotina):
+            inicio = time.monotonic()
+            try:
+                return await corrotina
+            finally:
+                fases[nome] = int((time.monotonic() - inicio) * 1000)
+
+        def _ao_progredir(*args, **kwargs):
+            # ⚠️ Serve chamado com ou sem `await`: devolve um futuro já resolvido.
+            rotulo = None
+            for item in list(args) + list(kwargs.values()):
+                if isinstance(item, dict):
+                    rotulo = rotulo_dos_anexos([item])
+                    break
+                if isinstance(item, str) and item.strip() and len(item) <= 80:
+                    rotulo = item.strip()
+                    break
+            if rotulo:
+                emitir("stage.started", {"key": CHAVE_DOS_ANEXOS, "label": rotulo})
+            pronto = asyncio.get_running_loop().create_future()
+            pronto.set_result(None)
+            return pronto
+
+        async def _ler_o_que_veio() -> str:
+            texto = await _os_campos_antigos(chat_request.chatInput or "")
+            if not anexos:
+                return texto
+            resultado = None
+            try:
+                from app.services.chat_anexos import preparar
+
+                resultado = await preparar(str(chat_request.companyId), anexos,
+                                           ao_progredir=_ao_progredir)
+            except Exception as sem_leitor:  # noqa: BLE001 — anexo nunca derruba o turno
+                logger.error("[STREAM ANEXOS] leitura dos anexos falhou (%s)",
+                             type(sem_leitor).__name__)
+            texto, transcricao = incorporar_os_anexos(texto, resultado)
+            extras["anexos"] = {
+                "recebidos": len(anexos),
+                "lidos": len(_como_lista(getattr(resultado, "lidos", None))) if resultado else 0,
+                "avisos": len(_como_lista(getattr(resultado, "avisos", None))) if resultado else 1,
+            }
+            await _gravar_a_transcricao(transcricao)
+            return texto
+
+        tarefa_do_grafo = asyncio.ensure_future(_cronometrar("grafo", _o_grafo(nivel)))
+        tarefa_do_grafo.add_done_callback(lambda t: t.cancelled() or t.exception())
+        try:
+            texto = await _cronometrar("anexos", _ler_o_que_veio())
+        except BaseException:
+            tarefa_do_grafo.cancel()
+            raise
+        graph = await tarefa_do_grafo
+        extras["esforco_nivel"] = _nivel_efetivo(agent_data, nivel)
+
+        bloqueio, final = await _cronometrar("guardrail", _o_guardrail(texto))
+        if bloqueio is not None:
+            return texto, graph, {"tipo": TIPO_POLICY_BLOCKED, "code": bloqueio["code"],
+                                  "texto": bloqueio["texto"]}
+        if mostrou_anexos:
+            emitir("stage.started", dict(ESTAGIO_PENSANDO))
+        return final, graph, None
+
     async def _gerar(fila_de_saida: "asyncio.Queue") -> None:
         comeco = time.monotonic()
         ttft_ms = None
+        # SPEC-132-A B1: `ttft_ms` agora conta do RECEBIMENTO do pedido; o de antes
+        # (do começo da geração) continua gravado, para comparar com o histórico.
+        ttft_gerar_ms = None
+        fases: Dict[str, Any] = {"preparo": int((comeco - recebido_em) * 1000)}
+        extras: Dict[str, Any] = {"esforco": escolha}
+        politica: Optional[Dict[str, str]] = None
         partes: List[str] = []
         estagios: List[str] = []
         estado = "complete"
@@ -1172,7 +1549,16 @@ async def chat_stream(
 
         try:
             emitir("turn.accepted", dict(turno))
-            async for ev in stream_agent_eventos(
+            # 🔴 SPEC-132-A B6 — o caro começa AQUI, com o stream já aberto.
+            final_message, graph, politica = await _preparar_o_turno(emitir, fases, extras)
+            if politica is not None:
+                # O guardrail barrou: o MESMO aviso de antes, agora dentro do stream —
+                # e NADA é gravado (sem delta não há conteúdo; R5).
+                estado = "failed"
+                emitir(politica["tipo"], {"code": politica["code"],
+                                          "message_human": politica["texto"]})
+            inicio_do_modelo = time.monotonic()
+            async for ev in (stream_agent_eventos(
                 graph,
                 user_message=final_message,
                 company_id=str(chat_request.companyId),
@@ -1184,14 +1570,20 @@ async def chat_stream(
                 agent_id=str(chat_request.agentId) if chat_request.agentId else None,
                 async_supabase_client=db.client,
                 client_request_id=client_request_id,
-            ):
+                esforco=escolha,
+                fases=fases,
+            ) if politica is None else _nenhum_evento()):
                 especie = ev.get("kind")
                 if especie == "delta":
                     texto = ev.get("text") or ""
                     if not texto:
                         continue
                     if ttft_ms is None:
-                        ttft_ms = int((time.monotonic() - comeco) * 1000)
+                        agora = time.monotonic()
+                        ttft_ms = int((agora - recebido_em) * 1000)
+                        ttft_gerar_ms = int((agora - comeco) * 1000)
+                        fases["primeiro_token"] = max(
+                            0, int((agora - inicio_do_modelo) * 1000) - int(fases.get("contexto") or 0))
                     partes.append(texto)
                     emitir("assistant.content.delta", {"text": texto})
                 elif especie == "tool_start":
@@ -1248,16 +1640,25 @@ async def chat_stream(
                     # ⚠️ O campo e `content` — e o nome do contrato R6.
                     emitir("assistant.content.completed", {"content": conteudo})
 
+                agora_no_fecho = time.monotonic()
                 dados_do_turno = {
                     "client_request_id": client_request_id,
                     "status": estado,
                     "ttft_ms": ttft_ms,
-                    "total_ms": int((time.monotonic() - comeco) * 1000),
+                    "total_ms": int((agora_no_fecho - recebido_em) * 1000),
                     "stages": estagios,
                     "artifacts": [{"artifact_id": e["artifact_id"], "title": e["title"]}
                                   for e in entregas],
-                    "error_code": (erro or {}).get("code"),
+                    "error_code": (erro or {}).get("code") or (politica or {}).get("code"),
+                    # SPEC-132-A B1 — as fases medidas, e as medidas de antes ao lado
+                    "ttft_gerar_ms": ttft_gerar_ms,
+                    "total_gerar_ms": int((agora_no_fecho - comeco) * 1000),
+                    "fases_ms": dict(fases),
                 }
+                # SPEC-132-A B8 — o esforço escolhido e o que o modelo usou; os anexos lidos
+                for chave, valor in extras.items():
+                    if valor is not None:
+                        dados_do_turno[chave] = valor
                 # ⚠️ Só o que o modelo de fato declarou entra: chave com `None`
                 # é ruído no `payload` e mente sobre ter havido medição.
                 for chave, valor in (desfecho or {}).items():
