@@ -8,6 +8,12 @@ banco (PostgREST mínimo que aplica SÓ os filtros pedidos — esquecer o compan
 Mutações da régua (§6) que estes testes têm de pegar:
   (2) código usado 2×                 → `test_codigo_e_de_uso_unico`
   (3) código de A vincula membro de B → `test_o_membro_vinculado_e_sempre_o_do_codigo_*`
+Conserto único (laudos JUIZ/RED-TEAM-132-C) — `python tests/test_spec132c_verificacao.py --mutar` (por cópia):
+  V-P1  o código vale de qualquer celular → `test_o_codigo_de_outro_celular_*`
+  V-G   sem teto global                   → `test_o_teto_global_*`
+  V-D   gera com o número não declarado   → `test_gerar_exige_*`
+  V-L   o perfil oferece com o atalho desligado → `test_desligado_*`
+O código AMARRA o número declarado: todo membro que ATIVA tem o número salvo e confirmado no Meu perfil.
 ⛔ Nomes fictícios (§13.9): corretora_a/corretora_b, pessoa_a1… Telefones inventados.
 """
 from __future__ import annotations
@@ -25,6 +31,8 @@ BACKEND = Path(__file__).resolve().parents[1]
 for _p in (str(BACKEND), str(BACKEND / "tests")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
+
+import subprocess  # noqa: E402
 
 from app.services import perfil_do_membro as P  # noqa: E402
 from app.services.atalho import verificacao as V  # noqa: E402
@@ -153,6 +161,10 @@ def _membro(cid, uid, *, status="active", **extra):
             "whatsapp_trabalho_verificado_em": None, **extra}
 
 
+def _declarado(cel):
+    return {"whatsapp_trabalho_e164": cel, "whatsapp_trabalho_confirmado_em": T0.isoformat()}
+
+
 def _usuario(uid, nome):
     primeiro, _, resto = nome.partition(" ")
     return {"id": uid, "first_name": primeiro, "last_name": resto, "status": "active", "deleted_at": None}
@@ -163,8 +175,9 @@ def banco(com_assistente=True) -> Banco:
         companies=[{"id": A, "company_name": "Corretora Alfa", "company_kind": "client"},
                    {"id": B, "company_name": "Corretora Beta", "company_kind": "client"},
                    {"id": CANAL, "company_name": "AutoBrokers Canal", "company_kind": "platform_canal"}],
-        company_members=[_membro(A, A1), _membro(A, A2), _membro(A, SAIU, status="inactive"),
-                         _membro(B, A1), _membro(B, B1)],
+        # o número DECLARADO e confirmado no Meu perfil (o código só vale mandado dele — conserto P1)
+        company_members=[_membro(A, A1, **_declarado(CEL_A1)), _membro(A, A2, **_declarado(CEL_A2)),
+                         _membro(A, SAIU, status="inactive"), _membro(B, A1), _membro(B, B1, **_declarado(CEL_B1))],
         users_v2=[_usuario(A1, "Pessoa Aum"), _usuario(A2, "Pessoa Adois"), _usuario(SAIU, "Pessoa Saiu"),
                   _usuario(B1, "Pessoa Bum")],
         integrations=([{"company_id": CANAL, "purpose": "assistente", "is_active": True,
@@ -180,6 +193,7 @@ def _segredo(monkeypatch):
         monkeypatch.delenv(nome, raising=False)
     monkeypatch.delenv(V.ENV_DO_NUMERO, raising=False)
     monkeypatch.setenv("ATALHO_CODIGO_SEGREDO", "segredo-de-teste-132c")
+    monkeypatch.setenv("ATALHO_WHATSAPP_LIGADO", "1")
 
 
 def _linha(b, cid, uid):
@@ -300,7 +314,7 @@ def test_o_fio_da_verificacao_ativa_grava_e_responde_pronto():
     m = _linha(b, A, A1)
     assert m["whatsapp_trabalho_e164"] == CEL_A1
     assert m["whatsapp_trabalho_verificado_em"] == (T0 + timedelta(minutes=3)).isoformat()
-    assert m["whatsapp_trabalho_confirmado_em"]                                       # nulo → preenchido
+    assert m["whatsapp_trabalho_confirmado_em"] == T0.isoformat()                    # o do Meu perfil, intocado
     # o perfil mostra a verificação
     w = P.ler_perfil(b, A, A1)["whatsapp_trabalho"]
     assert w["verificado"] is True and w["verificado_em"] and w["confirmado"] is True
@@ -361,6 +375,8 @@ def test_o_membro_vinculado_e_sempre_o_do_codigo_nunca_o_dono_do_telefone():
 def test_o_mesmo_numero_em_dois_membros_da_mesma_corretora_e_recusado():
     b = banco()
     assert consumir(b, CEL_A1, f"ATIVAR {gerar(b, A, A1)['codigo']}").ok
+    _linha(b, A, A2).update(whatsapp_trabalho_e164=CEL_A1)          # A2 declarou o número que A1 já verificou
+    _linha(b, B, A1).update(**_declarado(CEL_A1))                   # a mesma pessoa, na B, declara o mesmo número
     codigo2 = gerar(b, A, A2)["codigo"]
     r = consumir(b, CEL_A1, f"ATIVAR {codigo2}")
     assert not r.ok and r.motivo == "numero_de_outra_pessoa" and r.responder and "outra pessoa" in r.mensagem
@@ -377,6 +393,7 @@ def test_o_indice_unico_do_banco_tambem_recusa_e_o_codigo_volta_a_valer(monkeypa
     """A corrida: o cinto do Python não viu o outro membro, o índice `uq_company_members_whatsapp_verificado` viu."""
     b = banco()
     assert consumir(b, CEL_A1, f"ATIVAR {gerar(b, A, A1)['codigo']}").ok
+    _linha(b, A, A2).update(whatsapp_trabalho_e164=CEL_A1)
     codigo2 = gerar(b, A, A2)["codigo"]
     original = _Consulta.execute
 
@@ -414,8 +431,8 @@ def test_teto_de_tentativas_erradas_por_numero_cala_ate_o_codigo_certo():
     # ⛔ nenhuma linha guarda o telefone em claro nem o texto
     for l in b.tabelas[V.TABELA_TENTATIVAS]:
         assert set(l) == {"id", "telefone_hash", "criado_em"} and "11912345678" not in l["telefone_hash"]
-    # outro número não é afetado (o teto é POR número)
-    assert consumir(b, CEL_A2, f"ATIVAR {codigo}").ok
+    # outro número não é afetado (o teto é POR número): A2, do número dela, ativa
+    assert consumir(b, CEL_A2, f"ATIVAR {gerar(b, A, A2)['codigo']}").ok
 
 
 def test_numero_de_outro_pais_e_mensagem_qualquer_calam():
@@ -432,6 +449,7 @@ def test_o_telefone_sem_o_9_vira_a_forma_canonica():
     # "1234-5678" depois do DDD não é celular nem fixo do Brasil (o CHECK do banco recusaria): cala
     assert consumir(b, "551112345678@s.whatsapp.net", f"ATIVAR {codigo}").motivo == "numero_invalido"
     b2 = banco()
+    _linha(b2, A, A1).update(whatsapp_trabalho_e164="+5511991234567")   # declarado com o 9; a conta antiga manda sem
     codigo2 = gerar(b2, A, A1)["codigo"]
     assert consumir(b2, "551191234567", f"ATIVAR {codigo2}").ok              # conta antiga sem o 9
     assert _linha(b2, A, A1)["whatsapp_trabalho_e164"] == "+5511991234567"
@@ -518,3 +536,116 @@ def test_a_rota_gera_so_para_a_propria_pessoa(monkeypatch):
     assert r.status_code == 200 and r.json()["ok"] is True and len(r.json()["codigo"]) == 6
     assert r.json()["wa_me_url"].startswith(f"https://wa.me/{ASSISTENTE}?text=ATIVAR%20")
     assert [(l["company_id"], l["user_id"]) for l in b.tabelas[V.TABELA_CODIGOS]] == [(A, A1)]
+
+
+# =====================================================================================================================
+# 4. O CONSERTO ÚNICO — o código amarra o número DECLARADO, o teto global, e o atalho desligado não oferece código
+# =====================================================================================================================
+def test_gerar_exige_o_numero_declarado_e_confirmado():
+    b = banco()
+    _linha(b, A, A1).update(whatsapp_trabalho_e164=None, whatsapp_trabalho_confirmado_em=None)
+    with pytest.raises(V.Recusa, match="Primeiro salve e confirme"):
+        gerar(b, A, A1)
+    _linha(b, A, A1).update(whatsapp_trabalho_e164=CEL_A1)          # número sem a confirmação da pessoa
+    with pytest.raises(V.Recusa, match="Primeiro salve e confirme"):
+        gerar(b, A, A1)
+    assert b.tabelas[V.TABELA_CODIGOS] == []
+    # CONTROLE: confirmado, gera
+    _linha(b, A, A1).update(whatsapp_trabalho_confirmado_em=T0.isoformat())
+    assert len(gerar(b, A, A1)["codigo"]) == 6
+
+
+def test_desligado_nao_gera_codigo_e_o_perfil_diz_em_breve(monkeypatch):
+    b = banco()
+    assert P.ler_perfil(b, A, A1)["atalho_whatsapp"] == {"disponivel": True}      # CONTROLE: ligado e com número
+    monkeypatch.delenv("ATALHO_WHATSAPP_LIGADO")
+    assert P.ler_perfil(b, A, A1)["atalho_whatsapp"] == {"disponivel": False}
+    with pytest.raises(V.Recusa, match="Em breve"):
+        gerar(b, A, A1)
+    assert b.tabelas[V.TABELA_CODIGOS] == []
+
+
+def test_o_codigo_de_outro_celular_cala_conta_e_nao_muda_o_membro():
+    """P1: A1 já verificou CEL_A1 e pede um código novo; o código mandado de OUTRO celular → silêncio, uma tentativa
+    contada, a linha do membro IDÊNTICA (número, confirmação, verificação). O mesmo código, do número dela, vale."""
+    b = banco()
+    assert consumir(b, CEL_A1, f"ATIVAR {gerar(b, A, A1)['codigo']}").ok
+    antes = copy.deepcopy(_linha(b, A, A1))
+    codigo = gerar(b, A, A1, agora=T0 + timedelta(minutes=1))["codigo"]
+    r = consumir(b, CEL_B1, f"ATIVAR {codigo}", agora=T0 + timedelta(minutes=2))
+    assert not r.ok and not r.responder and r.motivo == "numero_nao_declarado"
+    assert _linha(b, A, A1) == antes
+    assert V.membros_verificados_por_telefone(b, CEL_B1) == []
+    assert len(b.tabelas[V.TABELA_TENTATIVAS]) == 1
+    assert [e for e in b.escritas if e[0] == "company_members"][1:] == []       # só a 1ª ativação escreveu no membro
+    # CONTROLE: o mesmo código, do número declarado, verifica de novo
+    assert consumir(b, CEL_A1, f"ATIVAR {codigo}", agora=T0 + timedelta(minutes=3)).ok
+
+
+def test_o_teto_global_cala_quem_roda_numeros():
+    """P1 (teto global): 12 números × 5 palpites = 60 chutes. Os primeiros 💭 30 contam; daí em diante, silêncio para
+    TODOS — até o código certo, do número certo, espera a hora passar."""
+    b = banco()
+    codigo = gerar(b, A, A1)["codigo"]
+    errado = f"{(int(codigo) + 1) % 10 ** 6:06d}"
+    motivos = []
+    for i in range(12):
+        for _ in range(5):
+            motivos.append(consumir(b, f"+55119{70000000 + i:08d}", f"ATIVAR {errado}").motivo)
+    assert motivos.count("codigo_invalido") == V.TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA
+    assert motivos.count("teto_global") == 60 - V.TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA
+    assert consumir(b, CEL_A1, f"ATIVAR {codigo}").motivo == "teto_global"
+    assert _linha(b, A, A1)["whatsapp_trabalho_verificado_em"] is None
+    # passada a hora, o dono do código (dentro da validade dele: um novo) ativa
+    novo = gerar(b, A, A1, agora=T0 + timedelta(minutes=61))["codigo"]
+    assert consumir(b, CEL_A1, f"ATIVAR {novo}", agora=T0 + timedelta(minutes=62)).ok
+
+
+# =====================================================================================================================
+# as MUTAÇÕES do conserto (por cópia) — `python tests/test_spec132c_verificacao.py --mutar`
+# =====================================================================================================================
+MUTACOES = [
+    ("V-P1 o código vale de qualquer celular", "app/services/atalho/verificacao.py",
+     "            or not _mesmo_telefone(membro.get(\"whatsapp_trabalho_e164\"), e164):\n",
+     "            and not _mesmo_telefone(membro.get(\"whatsapp_trabalho_e164\"), e164):\n",
+     "test_o_codigo_de_outro_celular"),
+    ("V-G sem teto global", "app/services/atalho/verificacao.py",
+     "    if _tentativas_erradas_no_total(db, t0) >= TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA:\n",
+     "    if False:\n",
+     "test_o_teto_global"),
+    ("V-D gera sem o número declarado", "app/services/atalho/verificacao.py",
+     "    if not (membro.get(\"whatsapp_trabalho_e164\") and membro.get(\"whatsapp_trabalho_confirmado_em\")):\n"
+     "        # 🔴 P1",
+     "    if False:\n        # 🔴 P1",
+     "test_gerar_exige"),
+    ("V-L o perfil oferece com o atalho desligado", "app/services/perfil_do_membro.py",
+     "        return {\"disponivel\": bool(ligado() and numero_do_assistente(db))}\n",
+     "        return {\"disponivel\": bool(numero_do_assistente(db))}\n",
+     "test_desligado"),
+]
+
+
+def _mutar() -> int:
+    falhas = 0
+    for rotulo, arquivo, de, para, teste in MUTACOES:
+        caminho = BACKEND / arquivo
+        bruto = caminho.read_bytes()
+        original = bruto.decode("utf-8")
+        crlf = "\r\n" in original
+        de_, para_ = (de.replace("\n", "\r\n"), para.replace("\n", "\r\n")) if crlf else (de, para)
+        assert original.count(de_) == 1, f"{rotulo}: o trecho não está UMA vez em {arquivo}"
+        try:
+            caminho.write_bytes(original.replace(de_, para_).encode("utf-8"))
+            r = subprocess.run([sys.executable, "-m", "pytest", __file__, "-q", "-p", "no:cacheprovider", "-k", teste],
+                               cwd=str(BACKEND), capture_output=True, text=True)
+            vermelho = r.returncode != 0
+            print(f"{rotulo}: {'VERMELHO (o guarda pegou)' if vermelho else 'MUTACAO NAO PEGOU'} — {teste}")
+            falhas += 0 if vermelho else 1
+        finally:
+            caminho.write_bytes(bruto)                          # 🔴 restaura POR CÓPIA DOS BYTES
+            assert caminho.read_bytes() == bruto, f"{rotulo}: {arquivo} não voltou igual"
+    return falhas
+
+
+if __name__ == "__main__" and "--mutar" in sys.argv:
+    sys.exit(_mutar())
