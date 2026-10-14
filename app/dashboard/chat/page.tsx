@@ -2,16 +2,16 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatWelcome } from '@/components/chat/ChatWelcome';
-import { ChatShortcutCards } from '@/components/chat/ChatShortcutCards';
 import { LinhaDeAtividade } from '@/components/chat/LinhaDeAtividade';
 import { AvisoDoTurno } from '@/components/chat/AvisoDoTurno';
 import { VoltarAoFim } from '@/components/chat/VoltarAoFim';
-import InputArea from '@/components/InputArea';
+import { Composer } from '@/components/chat/composer/Composer';
+import type { ComposerHandle } from '@/components/chat/composer/Composer';
+import type { AnexoDoPedido, AnexoEnviado, OpcoesDoEnvio } from '@/components/chat/composer/tipos';
 import { MessageBubble } from '@/components/MessageBubble';
 import { TypingIndicator } from '@/components/TypingIndicator';
 import { lerEventos, reduzirTurno } from '@/lib/chat/protocolo';
 import type { Turno } from '@/lib/chat/protocolo';
-import { sendTextToN8N, sendVoiceToN8N } from '@/lib/n8nClient';
 import { supabase } from '@/lib/supabase'; // KEPT: Only for Realtime subscriptions
 import { Message } from '@/lib/types';
 import { useUserId } from '@/hooks/useUserId';
@@ -39,13 +39,65 @@ const TURNO_PARADO: Turno = {
   artifacts: [],
 };
 
+/**
+ * SPEC-132-A — o esforço que o pedido leva. Só os três passam (B8); qualquer outra coisa vira Equilibrado AQUI,
+ * antes de sair da tela (o backend confere de novo).
+ */
+const ESFORCOS_DO_PEDIDO = ['rapido', 'equilibrado', 'maximo'];
+function esforcoDoPedido(valor: unknown): string {
+  return typeof valor === 'string' && ESFORCOS_DO_PEDIDO.includes(valor) ? valor : 'equilibrado';
+}
+
 interface EnvioDoTurno {
   message: string;
-  imageUrl?: string;
-  fileUrl?: string;
-  fileName?: string;
+  /** SPEC-132-A — os anexos JÁ SUBIDOS (`POST /api/upload`); o pedido leva só `{bucket, path, nome, mime, bytes}` */
+  anexos: AnexoEnviado[];
+  esforco: string;
   clientRequestId: string;
   assistantMsgId: string;
+}
+
+/** Só o que o contrato do pedido pede — a URL e a miniatura local nunca saem da tela (D-132A-05). */
+function anexosDoPedido(anexos: AnexoEnviado[]): AnexoDoPedido[] {
+  return anexos.map((a) => ({ bucket: a.bucket, path: a.path, nome: a.nome, mime: a.mime, bytes: a.bytes }));
+}
+
+/**
+ * "Tentar de novo" depois de recarregar a página: o envio é remontado da última pergunta GRAVADA (o mesmo
+ * `client_request_id`, os mesmos anexos), porque o `envioRef` só vive enquanto a aba vive. Só vale quando a
+ * resposta do AutoBrokers é a ÚLTIMA mensagem da conversa.
+ */
+function envioDaUltimaResposta(lista: Message[]): EnvioDoTurno | null {
+  const ultima = lista.length > 0 ? lista[lista.length - 1] : null;
+  if (!ultima || ultima.role !== 'assistant' || ultima.sender_user_id) return null;
+  for (let i = lista.length - 2; i >= 0; i--) {
+    const pergunta = lista[i];
+    if (pergunta.role !== 'user') continue;
+    const crid = pergunta.payload?.client_request_id;
+    if (!crid) return null;
+    const gravados = Array.isArray(pergunta.payload?.attachments) ? (pergunta.payload!.attachments as any[]) : [];
+    const anexos: AnexoEnviado[] = gravados
+      .filter((a) => a && typeof a.path === 'string' && a.path)
+      .map((a) => ({
+        bucket:
+          (typeof a.bucket === 'string' && a.bucket) ||
+          String(a.path).split('/').find((seg: string) => seg === 'chat-media' || seg === 'chat-docs') ||
+          (String(a.mime || '').startsWith('image/') ? 'chat-media' : 'chat-docs'),
+        path: a.path,
+        nome: typeof a.nome === 'string' ? a.nome : 'arquivo',
+        mime: typeof a.mime === 'string' ? a.mime : 'application/octet-stream',
+        bytes: typeof a.bytes === 'number' ? a.bytes : 0,
+      }));
+    const gravadoNoTurno = (ultima.payload?.turn as { esforco?: unknown } | undefined)?.esforco;
+    return {
+      message: pergunta.content,
+      anexos,
+      esforco: esforcoDoPedido(gravadoNoTurno),
+      clientRequestId: crid,
+      assistantMsgId: ultima.id,
+    };
+  }
+  return null;
 }
 
 export default function ChatPage() {
@@ -77,7 +129,7 @@ export default function ChatPage() {
   // SPEC-095 BLOCO E — a pergunta que o relatório escreveu chega PRÉ-PREENCHIDA.
   //
   // 🔴 Inicializador SÍNCRONO, no molde do `sessionId` acima — nunca um efeito.
-  // O `InputArea` semeia o campo com `useState(initialText ?? '')`, e um
+  // O `Composer` semeia o campo com `useState(initialText ?? '')`, e um
   // `useState` só lê o valor na MONTAGEM: um efeito chegaria depois de o campo
   // já ter nascido vazio, e a pergunta nunca apareceria.
   //
@@ -102,14 +154,14 @@ export default function ChatPage() {
   // efeito roda no PRIMEIRO commit, e o composer ainda não existe nesse
   // momento — `if (isLoadingUser) return <Carregando/>` mais abaixo segura a
   // árvore até `/api/auth/me` responder. Zerar o estado aqui apagava a pergunta
-  // ANTES de o `InputArea` montar, e o campo nascia vazio: "Perguntar ao
+  // ANTES de o `Composer` montar, e o campo nascia vazio: "Perguntar ao
   // AutoBrokers" abria um chat em branco. O guarda que só lia a FORMA da
   // declaração (inicializador síncrono + zeramento presentes) aprovou.
   //
-  // O estado "já consumi" continua morando AQUI, acima da fronteira de
-  // remontagem (o composer é renderizado em duas posições da árvore e remonta
-  // ao enviar a primeira mensagem) — mas ele é zerado no ATO de enviar
+  // O estado "já consumi" continua morando AQUI — e é zerado no ATO de enviar
   // (`handleSendMessage`), que é o único momento em que "consumir" tem sentido.
+  // (SPEC-132-A: o composer agora é UM só e não remonta ao enviar a primeira
+  // mensagem; zerar no envio continua certo — é o que um remount futuro exigiria.)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -143,6 +195,12 @@ export default function ChatPage() {
   const rolagemRef = useRef<HTMLDivElement>(null);
   const [longeDoFim, setLongeDoFim] = useState(false);
 
+  // SPEC-132-A — arrastar arquivos sobre a conversa anexa (quem sobe é o composer)
+  const [arrastando, setArrastando] = useState(false);
+  const arrasteRef = useRef(0);
+  const composerRef = useRef<ComposerHandle>(null);
+  const mensagensRef = useRef<Message[]>([]);
+
   // O que o turno em curso precisa lembrar entre um evento e outro.
   /**
    * 🔴 R3 — a trava do envio é uma REF, não um estado.
@@ -162,6 +220,10 @@ export default function ChatPage() {
   useEffect(() => {
     turnoRef.current = turno;
   }, [turno]);
+
+  useEffect(() => {
+    mensagensRef.current = messages;
+  }, [messages]);
 
   // 1. Busca Company e Permissões
   useEffect(() => {
@@ -402,64 +464,6 @@ export default function ChatPage() {
     }
   };
 
-  const saveMessage = async (
-    convId: string,
-    role: 'user' | 'assistant',
-    content: string,
-    type: 'text' | 'voice' = 'text',
-    audioUrl?: string,
-    imageUrl?: string,
-  ) => {
-    const response = await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conversation_id: convId,
-        role,
-        content,
-        type,
-        audio_url: audioUrl,
-        image_url: imageUrl,
-      }),
-    });
-
-    if (!response.ok) throw new Error('Falha ao salvar mensagem');
-
-    const data = await response.json();
-    return data.message;
-  };
-
-  const ensureConversation = async () => {
-    if (conversationId) return conversationId;
-    if (!userId || !companyId) throw new Error('Init failed');
-
-    const response = await fetch('/api/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: sessionId,
-        agent_id: selectedAgentId,
-        title: 'Nova Conversa',
-      }),
-    });
-
-    if (!response.ok) throw new Error('Falha ao criar conversa');
-
-    const data = await response.json();
-    setConversationId(data.conversation.id);
-    return data.conversation.id;
-  };
-
-  // === 🚀 LÓGICA DE TROCA DE AGENTE ===
-  const handleAgentChange = (newAgentId: string) => {
-    if (newAgentId === selectedAgentId) return;
-
-    const agentName = agents.find((a) => a.id === newAgentId)?.name;
-    setSelectedAgentId(newAgentId);
-    handleNewConversation();
-    toast.success(`Chat iniciado com ${agentName}`);
-  };
-
   /**
    * R11 — os pedaços de resposta são COALESCIDOS por quadro.
    *
@@ -491,7 +495,8 @@ export default function ChatPage() {
    * pedindo outra resposta, não uma pergunta nova (R3).
    */
   const executarTurno = async (envio: EnvioDoTurno) => {
-    const { message, imageUrl, fileUrl, fileName, clientRequestId, assistantMsgId } = envio;
+    const { message, anexos, esforco, clientRequestId, assistantMsgId } = envio;
+    const attachments = anexosDoPedido(anexos);
 
     textoDoAssistenteRef.current = '';
     let turnoAtual: Turno = {
@@ -514,10 +519,8 @@ export default function ChatPage() {
           chatInput: message,
           sessionId: sessionId,
           client_request_id: clientRequestId,
-          imageUrl: imageUrl,
-          fileUrl: fileUrl,
-          fileName: fileName,
-          options: { web_search: webSearchEnabled },
+          attachments,
+          options: { web_search: webSearchEnabled, esforco },
           assistantMessageId: assistantMsgId,
         }),
         signal: controlador.signal,
@@ -632,7 +635,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleSendMessage = async (message: string, imageUrl?: string, fileUrl?: string, fileName?: string) => {
+  const handleSendMessage = async (message: string, anexos: AnexoEnviado[] = [], opcoes?: Partial<OpcoesDoEnvio>) => {
     // 🔴 R3 — PRIMEIRA linha, antes de qualquer `await`: quem chegou primeiro
     // envia, quem chegou junto não envia nada. O §0 promete "Enter duas vezes:
     // UMA pergunta, UMA resposta", e é aqui que essa promessa é cumprida.
@@ -642,7 +645,7 @@ export default function ChatPage() {
       if (!userId) return;
 
       // SPEC-095 BLOCO E — a pergunta pré-preenchida foi CONSUMIDA: quem envia,
-      // envia. Zerar aqui (e só aqui) é o que impede a remontagem do composer de
+      // envia. Zerar aqui (e só aqui) é o que impede uma remontagem do composer de
       // re-semear a pergunta por cima da conversa que começou.
       setTextoInicial('');
 
@@ -669,9 +672,10 @@ export default function ChatPage() {
         role: 'user',
         content: message,
         type: 'text',
-        image_url: imageUrl,
         created_at: new Date().toISOString(),
-        payload: { client_request_id: clientRequestId },
+        // SPEC-132-A — a bolha mostra as fichas JÁ, nesta sessão (a miniatura local e a URL do proxy). Depois de
+        // recarregar, o que vale é o `payload.attachments` que o servidor gravou.
+        payload: { client_request_id: clientRequestId, ...(anexos.length > 0 ? { attachments: anexos } : {}) },
       };
 
       const tempAssistantMessage: Message = {
@@ -691,9 +695,8 @@ export default function ChatPage() {
 
       const envio: EnvioDoTurno = {
         message,
-        imageUrl,
-        fileUrl,
-        fileName,
+        anexos,
+        esforco: esforcoDoPedido(opcoes?.esforco),
         clientRequestId,
         assistantMsgId,
       };
@@ -713,11 +716,20 @@ export default function ChatPage() {
    * corretor veria a dele duplicada na conversa (R3).
    */
   const tentarDeNovo = useCallback(() => {
-    const envio = envioRef.current;
+    // Na sessão, o envio que a tela lembra (se ele é o da ÚLTIMA resposta); depois de recarregar, ou se a
+    // última resposta é outra, o remontado da última pergunta gravada.
+    const lembrado = envioRef.current;
+    const lista = mensagensRef.current;
+    const idDaUltima = lista.length > 0 ? lista[lista.length - 1].id : null;
+    const envio =
+      lembrado && (!idDaUltima || lembrado.assistantMsgId === idDaUltima)
+        ? lembrado
+        : envioDaUltimaResposta(lista) ?? lembrado;
     if (!envio) return;
     // A mesma trava do envio: dois cliques em "Tentar de novo" são um.
     if (enviandoRef.current) return;
     enviandoRef.current = true;
+    envioRef.current = envio;
     setMessages((prev) =>
       prev.map((m) => (m.id === envio.assistantMsgId ? { ...m, content: '' } : m)),
     );
@@ -758,66 +770,6 @@ export default function ChatPage() {
     }
   }, []);
 
-  const handleSendVoice = async (audioBase64: string, audioBlob: Blob) => {
-    if (!userId) return;
-    setTurno((t) => ({ ...t, status: 'submitting' }));
-
-    try {
-      let audioUrl: string | null = null;
-      try {
-        const { uploadVoiceMessage } = await import('@/lib/storageSetup');
-        audioUrl = await uploadVoiceMessage(audioBlob);
-      } catch (e) {
-        console.warn('Upload audio fail', e);
-      }
-
-      const convId = await ensureConversation();
-
-      const tempUserMessage: Message = {
-        id: crypto.randomUUID(),
-        conversation_id: convId,
-        role: 'user',
-        content: '[Mensagem de voz]',
-        type: 'voice',
-        audio_url: audioUrl || undefined,
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, tempUserMessage]);
-
-      // A voz continua no contrato de hoje (R12): ela grava a própria pergunta.
-      await saveMessage(convId, 'user', '[Mensagem de voz]', 'voice', audioUrl || undefined);
-
-      const response = await sendVoiceToN8N(
-        audioBase64,
-        sessionId,
-        selectedAgentId,
-        companyId!,
-        userId,
-      );
-
-      if (response && response.output) {
-        const assistantMessage: Message = {
-          id: crypto.randomUUID(),
-          conversation_id: convId,
-          role: 'assistant',
-          content: response.output,
-          type: 'text',
-          created_at: new Date().toISOString(),
-        };
-
-        setMessages((prev) => {
-          const exists = prev.some((m) => m.role === 'assistant' && m.content === response.output);
-          if (exists) return prev;
-          return [...prev, assistantMessage];
-        });
-      }
-    } catch (error) {
-      console.error('[AUDIO] Erro:', error);
-    } finally {
-      setTurno((t) => ({ ...t, status: 'complete' }));
-    }
-  };
-
   const handleNewConversation = useCallback(() => {
     const newSessionId = crypto.randomUUID();
     setSessionId(newSessionId);
@@ -826,6 +778,7 @@ export default function ChatPage() {
     setTurno(TURNO_PARADO);
     setTemAnteriores(false);
     setCursor(null);
+    envioRef.current = null;
   }, []);
 
   const handleSelectConversation = useCallback((newSessionId: string) => {
@@ -833,6 +786,7 @@ export default function ChatPage() {
     setConversationId(null);
     setMessages([]);
     setTurno(TURNO_PARADO);
+    envioRef.current = null;
   }, []);
 
   // Reset determinístico de conversa via evento global (sidebar/topbar "Nova conversa")
@@ -842,10 +796,40 @@ export default function ChatPage() {
     return () => window.removeEventListener('autobrokers:new-conversation', handler);
   }, [handleNewConversation]);
 
+  /**
+   * SPEC-132-A — soltar arquivos sobre a conversa anexa. O contador existe porque o `dragleave` dispara a cada
+   * filho que o ponteiro atravessa: sem ele, o aviso "Solte para anexar" piscaria.
+   */
+  const arrastaArquivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types || []).includes('Files');
+  const aoEntrarArrastando = (e: React.DragEvent) => {
+    if (!arrastaArquivos(e)) return;
+    e.preventDefault();
+    arrasteRef.current += 1;
+    setArrastando(true);
+  };
+  const aoArrastarPorCima = (e: React.DragEvent) => {
+    if (!arrastaArquivos(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const aoSairArrastando = (e: React.DragEvent) => {
+    if (!arrastaArquivos(e)) return;
+    arrasteRef.current = Math.max(0, arrasteRef.current - 1);
+    if (arrasteRef.current === 0) setArrastando(false);
+  };
+  const aoSoltar = (e: React.DragEvent) => {
+    if (!arrastaArquivos(e)) return;
+    e.preventDefault();
+    arrasteRef.current = 0;
+    setArrastando(false);
+    const arquivos = Array.from(e.dataTransfer.files || []);
+    if (arquivos.length > 0) composerRef.current?.adicionarArquivos(arquivos);
+  };
+
   if (isLoadingUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-400">
-        Carregando...
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Carregando…
       </div>
     );
   }
@@ -862,101 +846,117 @@ export default function ChatPage() {
     turno.status === 'stopped' || (turno.status === 'failed' && turno.aviso?.kind === 'error');
   const ultima = messages.length > 0 ? messages[messages.length - 1] : null;
 
-  const composer = (
-    <InputArea
-      onSendMessage={handleSendMessage}
-      onSendVoice={handleSendVoice}
-      disabled={turnoCorrendo}
-      showWebSearch={isWebSearchAllowed}
-      allowWebSearch={webSearchEnabled}
-      onToggleWebSearch={() => setWebSearchEnabled(!webSearchEnabled)}
-      companyId={companyId || undefined}
-      agents={agents}
-      selectedAgentId={selectedAgentId}
-      onAgentChange={handleAgentChange}
-      showAgentSelector={false}
-      initialText={textoInicial}
-      turnStatus={turno.status}
-      onStop={pararTurno}
-    />
-  );
+  /**
+   * SPEC-132-A — "Tentar de novo" na bolha: só na ÚLTIMA resposta do AutoBrokers (não na de um humano), só quando
+   * o turno não corre, e nunca junto do botão do aviso (um erro já oferece o dele).
+   */
+  const ultimaEhResposta = Boolean(ultima && ultima.role === 'assistant' && !ultima.sender_user_id && ultima.content);
+  const tentarNaBolha =
+    !turnoCorrendo &&
+    ultimaEhResposta &&
+    !(turno.aviso && podeTentarDeNovo) &&
+    (envioRef.current?.assistantMsgId === ultima!.id || envioDaUltimaResposta(messages) !== null);
+  const vazia = messages.length === 0;
 
+  /**
+   * 🔴 SPEC-132-A (D-132A-01/07) — UM composer, numa posição só da árvore: ele é sempre o 2º filho da coluna.
+   * 📊 Antes ele era renderizado em DOIS lugares (conversa vazia e conversa ativa) e remontava na 1ª mensagem —
+   * o texto, o foco e os anexos em curso se perdiam. Agora a conversa vazia só muda CLASSES: no notebook a coluna
+   * centraliza saudação + caixa; depois da 1ª mensagem a caixa desce para o rodapé sem remontar. No celular ela
+   * fica sempre embaixo.
+   */
   return (
-    <div className="flex h-full flex-col bg-background">
-      {messages.length === 0 ? (
-        /* CHAT-FIRST · estado inicial (sem mensagens) */
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center px-4 py-10">
-            <ChatWelcome />
-            <div className="mt-8 w-full">{composer}</div>
-            <ChatShortcutCards />
+    <div
+      className={`relative flex h-full min-h-0 flex-col bg-background ${vazia ? 'lg:justify-center lg:pb-[8vh]' : ''}`}
+      onDragEnter={aoEntrarArrastando}
+      onDragOver={aoArrastarPorCima}
+      onDragLeave={aoSairArrastando}
+      onDrop={aoSoltar}
+    >
+      <div className={`relative min-h-0 ${vazia ? 'flex flex-1 flex-col lg:flex-none' : 'flex-1'}`}>
+        {vazia ? (
+          /* CHAT-FIRST · a saudação; a caixa vem logo abaixo (notebook: as duas no meio) */
+          <div className="flex flex-1 flex-col items-center justify-center px-4 pb-6 pt-10 lg:flex-none lg:pb-8 lg:pt-0">
+            <ChatWelcome nome={userName} />
           </div>
-        </div>
-      ) : (
-        /* Conversa ativa */
-        <>
-          <div className="relative flex-1 overflow-hidden">
-            <div
-              ref={rolagemRef}
-              onScroll={aoRolar}
-              className="h-full overflow-y-auto px-4 py-6 scroll-smooth"
-            >
-              <div className="mx-auto w-full max-w-3xl pb-4">
-                {temAnteriores && (
-                  <div className="mb-4 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={carregarAnteriores}
-                      disabled={carregandoAnteriores}
-                      className="rounded-full border border-border bg-surface px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 disabled:opacity-60"
-                    >
-                      {carregandoAnteriores ? 'Carregando…' : 'Carregar anteriores'}
-                    </button>
-                  </div>
-                )}
+        ) : (
+          <div
+            ref={rolagemRef}
+            onScroll={aoRolar}
+            className="h-full overflow-y-auto overscroll-contain px-4 pt-6"
+          >
+            <div className="mx-auto w-full max-w-3xl pb-4">
+              {temAnteriores && (
+                <div className="mb-4 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={carregarAnteriores}
+                    disabled={carregandoAnteriores}
+                    className="rounded-full border border-border bg-surface px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 disabled:opacity-60"
+                  >
+                    {carregandoAnteriores ? 'Carregando…' : 'Carregar anteriores'}
+                  </button>
+                </div>
+              )}
 
-                {messages.map((msg) => (
-                  <MessageBubble
-                    key={msg.id}
-                    message={msg}
-                    userAvatar={userAvatar || undefined}
-                    userName={userName || undefined}
-                    onSendMessage={(text) => handleSendMessage(text)}
-                  />
-                ))}
+              {messages.map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  userAvatar={userAvatar || undefined}
+                  userName={userName || undefined}
+                  emCurso={turnoCorrendo && msg.id === ultima?.id}
+                  onRetry={tentarNaBolha && msg.id === ultima?.id ? tentarDeNovo : undefined}
+                />
+              ))}
 
-                {/* UMA linha de atividade, abaixo da última mensagem. Ela nasce
-                    do evento e some no primeiro pedaço de resposta (R6). */}
-                {turno.stage && <LinhaDeAtividade label={turno.stage.label} />}
+              {/* UMA linha de atividade, abaixo da última mensagem. Ela nasce
+                  do evento e some no primeiro pedaço de resposta (R6). */}
+              {turno.stage && <LinhaDeAtividade label={turno.stage.label} />}
 
-                {turnoCorrendo && !turno.stage && (!ultima || ultima.role !== 'assistant' || !ultima.content) && (
-                  <TypingIndicator />
-                )}
+              {turnoCorrendo && !turno.stage && (!ultima || ultima.role !== 'assistant' || !ultima.content) && (
+                <TypingIndicator />
+              )}
 
-                {turno.transport === 'reconnecting' && (
-                  <div className="px-1 py-2 text-sm text-muted-foreground">Reconectando…</div>
-                )}
+              {turno.transport === 'reconnecting' && (
+                <div className="px-1 py-2 text-sm text-muted-foreground">Reconectando…</div>
+              )}
 
-                {turno.aviso && (
-                  <AvisoDoTurno
-                    aviso={turno.aviso}
-                    onRetry={podeTentarDeNovo ? tentarDeNovo : undefined}
-                  />
-                )}
+              {turno.aviso && (
+                <AvisoDoTurno
+                  aviso={turno.aviso}
+                  onRetry={podeTentarDeNovo ? tentarDeNovo : undefined}
+                />
+              )}
 
-                <div ref={messagesEndRef} className="h-4" />
-              </div>
+              <div ref={messagesEndRef} className="h-4" />
             </div>
-
-            {/* A copy mora AQUI, na tela que a mostra: quem lê a conversa lê
-                "Voltar ao fim" e não um nome de componente. */}
-            {longeDoFim && <VoltarAoFim onClick={voltarAoFim} rotulo="Voltar ao fim" />}
           </div>
+        )}
 
-          <div className="shrink-0 bg-gradient-to-t from-background via-background to-transparent pt-3">
-            {composer}
-          </div>
-        </>
+        {/* A copy mora AQUI, na tela que a mostra: quem lê a conversa lê
+            "Voltar ao fim" e não um nome de componente. */}
+        {!vazia && longeDoFim && <VoltarAoFim onClick={voltarAoFim} rotulo="Voltar ao fim" />}
+      </div>
+
+      <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 sm:px-4">
+        <Composer
+          ref={composerRef}
+          onSendMessage={handleSendMessage}
+          onStop={pararTurno}
+          turnStatus={turno.status}
+          initialText={textoInicial}
+          focoKey={sessionId}
+          podePesquisarNaWeb={isWebSearchAllowed}
+          pesquisaNaWeb={webSearchEnabled}
+          onAlternarPesquisaNaWeb={() => setWebSearchEnabled(!webSearchEnabled)}
+        />
+      </div>
+
+      {arrastando && (
+        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-3xl border-2 border-dashed border-primary/60 bg-background/80">
+          <p className="text-base font-medium text-foreground">Solte para anexar</p>
+        </div>
       )}
     </div>
   );
