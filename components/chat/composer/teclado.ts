@@ -29,3 +29,39 @@ export function aparelhoDeToque(): boolean {
 export function teclaQueEscreve(e: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): boolean {
   return e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
 }
+
+/** O elemento com o foco, no que importa para decidir se a tecla vai para a caixa. */
+export interface ElementoComFoco {
+  tagName?: string;
+  isContentEditable?: boolean;
+  getAttribute?: (nome: string) => string | null;
+  closest?: (seletor: string) => unknown;
+}
+
+/** Papéis que o Espaço ACIONA (o navegador aperta o botão; não é texto). */
+const PAPEIS_QUE_O_ESPACO_ACIONA = new Set(['button', 'link', 'checkbox', 'switch', 'menuitem', 'tab', 'option', 'radio']);
+
+/**
+ * A tecla apertada FORA da caixa deve levar o foco para ela? (o corretor começou a digitar no meio da conversa)
+ *
+ * 🔴 Conserto da SPEC-132-A (juiz P3): o Espaço num botão ("Copiar", "Tentar de novo", "+", a barra lateral) é o
+ * jeito de APERTAR o botão pelo teclado — levá-lo para a caixa fazia o botão não acionar. Espaço em botão, link ou
+ * controle com papel de botão fica com eles; as letras continuam indo para a caixa.
+ */
+export function teclaVaiParaACaixa(
+  e: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean },
+  ativo: ElementoComFoco | null,
+  corpo: unknown = null,
+): boolean {
+  if (!teclaQueEscreve(e)) return false;
+  if (!ativo || ativo === corpo) return true;
+  const tag = String(ativo.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ativo.isContentEditable) return false;
+  if (typeof ativo.closest === 'function' && ativo.closest('[role="dialog"]')) return false;
+  if (e.key === ' ') {
+    if (tag === 'BUTTON' || tag === 'A' || tag === 'SUMMARY') return false;
+    const papel = typeof ativo.getAttribute === 'function' ? String(ativo.getAttribute('role') || '') : '';
+    if (PAPEIS_QUE_O_ESPACO_ACIONA.has(papel.toLowerCase())) return false;
+  }
+  return true;
+}
