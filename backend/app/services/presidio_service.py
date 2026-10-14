@@ -1,5 +1,6 @@
 
 import logging
+import threading
 from typing import Tuple
 
 from presidio_analyzer import (
@@ -127,11 +128,20 @@ class BrazilianEmailRecognizer(PatternRecognizer):
 
 class PresidioService:
     _instance = None
+    #: 🔴 SPEC-132-A B7 — o aquecimento do arranque cria o singleton numa THREAD
+    #: enquanto o 1º turno pode pedi-lo no event loop. Sem a trava, os dois viam
+    #: `_instance is None` e o spaCy (pt + en) carregava DUAS vezes.
+    _trava = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(PresidioService, cls).__new__(cls)
-            cls._instance._initialize()
+            with cls._trava:
+                if cls._instance is None:
+                    instancia = super(PresidioService, cls).__new__(cls)
+                    instancia._initialize()
+                    # Publicada só PRONTA: quem passa pelo `if` de fora sem a trava
+                    # nunca recebe uma instância pela metade.
+                    cls._instance = instancia
         return cls._instance
 
     def _initialize(self):
