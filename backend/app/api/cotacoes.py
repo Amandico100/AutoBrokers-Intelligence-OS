@@ -514,17 +514,48 @@ def _erro_da_publicacao(exc: Exception) -> Optional[HTTPException]:
     return None
 
 
-async def publicar(db: Any, cid: str, pid: str, uid: str) -> Dict[str, Any]:
-    """`proposta.publicar_cotacao(company_id, pedido_id, *, pessoa_user_id, apolice_atual=None, db=None) -> {token, url,
-    artifact_id, resumo}` (contrato B2). Importada na hora: sem ela, a tela diz que a apresentação ainda não existe."""
+def runs_do_pedido(db: Any, cid: str, pid: str) -> List[Dict[str, Any]]:
+    """TODOS os Work Runs `cotacao.chat` deste pedido desta corretora, do mais velho ao mais novo (o disparo e cada
+    recálculo). Filtro `company_id` no banco e de novo aqui (CLAUDE.md §7)."""
+    try:
+        linhas = list(getattr(db.table("work_runs").select(_COLS_RUN).eq("company_id", cid).eq("workflow_key", WORKFLOW)
+                              .eq("source_id", pid).execute(), "data", None) or [])
+    except Exception as exc:  # noqa: BLE001 — sem os runs, a apresentação sai do pedido (sem apólice, sem recálculo)
+        logger.warning("[COTACOES] runs do pedido ilegíveis: %s", type(exc).__name__)
+        return []
+    return sorted((r for r in linhas if _e_da_corretora(r, "company_id", cid) and pedido_do_run(r) == pid),
+                  key=lambda r: str(r.get("requested_at") or ""))
+
+
+def vista_da_apresentacao(pedido: Mapping[str, Any], runs: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    """🔴 Conserto RT B-3 + juiz P6: o que a apresentação deste pedido É — a MESMA página que a conversa entregou por
+    último: quem PEDIU a cotação (`solicitante_user_id`, nunca quem clicou), a apólice lida, o primeiro nome do cliente e
+    o recálculo da última resposta ENTREGUE. `publicar_cotacao` confere se quem pediu ainda é membro ativo (senão, a
+    página vai para a corretora) e só reaproveita o link se a página seria idêntica E o link ainda vale."""
+    entregues = [r for r in runs if (_payloads(r)[1].get("situacao") == "entregue")]
+    base = entregues[-1] if entregues else (runs[-1] if runs else None)
+    ent, _res = _payloads(base)
+    apolice = ent.get("apolice_atual") if isinstance(ent.get("apolice_atual"), Mapping) else None
+    return {"pessoa_user_id": _texto(pedido.get("solicitante_user_id")),
+            "apolice_atual": dict(apolice) if apolice else None,
+            "primeiro_nome": _texto(ent.get("cliente_nome_curto")),
+            "ajuste_calculo_id": _texto(ent.get("ajuste_calculo_id")),
+            "run": base}
+
+
+async def publicar(db: Any, cid: str, pid: str, vista: Mapping[str, Any]) -> Dict[str, Any]:
+    """`proposta.publicar_cotacao(company_id, pedido_id, *, pessoa_user_id, apolice_atual=None, db=None,
+    primeiro_nome=None, ajuste_calculo_id=None) -> {token, url, artifact_id, resumo, modelo}` (contrato B2). Importada na
+    hora: sem ela, a tela diz que a apresentação ainda não existe."""
     from app.services.multicalculo import proposta as P
 
     fn = getattr(P, "publicar_cotacao", None)
     if fn is None:
         raise HTTPException(status_code=503, detail="A apresentação da cotação ainda não está disponível. "
                                                     "Use o link que veio na conversa.")
+    extra = {k: vista[k] for k in ("apolice_atual", "primeiro_nome", "ajuste_calculo_id") if vista.get(k)}
     try:
-        r = await _chamar(fn, cid, pid, pessoa_user_id=uid, db=db)
+        r = await _chamar(fn, cid, pid, pessoa_user_id=vista.get("pessoa_user_id"), db=db, **extra)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -538,21 +569,23 @@ async def publicar(db: Any, cid: str, pid: str, uid: str) -> Dict[str, Any]:
     return dict(r)
 
 
-async def apresentacao(db: Any, cid: str, pid: str, uid: str, run: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
-    """O link que o corretor já recebeu na conversa (o do Work Run) vale; sem ele, publica agora (B2)."""
-    info = do_run(run)
-    if info.get("url"):
-        return {"url": info["url"], "token": info.get("token"), "modelo": info.get("modelo"),
-                "mensagem": info.get("mensagem"), "do_run": True}
-    r = await publicar(db, cid, pid, uid)
+async def apresentacao(db: Any, cid: str, pid: str, pedido: Mapping[str, Any]) -> Dict[str, Any]:
+    """🔴 Conserto RT B-3: SEMPRE pela `publicar_cotacao` (B2) — nunca o link guardado no run sem conferir. Ela devolve o
+    MESMO link quando a página seria idêntica e o link ainda vale (nada é gravado); quem pediu saiu da corretora, o link
+    venceu ou o recálculo mudou o preço → versão e link NOVOS. A mensagem pronta do run só vale se é deste link."""
+    runs = await asyncio.to_thread(runs_do_pedido, db, cid, pid)
+    vista = vista_da_apresentacao(pedido, runs)
+    r = await publicar(db, cid, pid, vista)
     modelo = r.get("modelo") if isinstance(r.get("modelo"), Mapping) else r.get("resumo")
+    pronta = do_run(vista["run"]).get("mensagem")
     return {"url": r["url"], "token": r.get("token"), "modelo": modelo if isinstance(modelo, Mapping) else None,
-            "mensagem": None, "do_run": False}
+            "mensagem": pronta if pronta and r["url"] in str(pronta.get("texto") or "") else None,
+            "reaproveitado": bool(r.get("reaproveitado"))}
 
 
-async def mensagem(db: Any, cid: str, pid: str, uid: str, ap: Dict[str, Any]) -> Dict[str, Any]:
+async def mensagem(db: Any, cid: str, pid: str, ap: Dict[str, Any]) -> Dict[str, Any]:
     """A mensagem para o cliente: a que o Work Run já montou para ESTE link; senão `mensagem_de_cotacao(modelo, link)`
-    (B2). Sem o modelo do link da conversa, publica uma vez para ter o resumo. ⛔ Nunca recebe o telefone."""
+    (B2), com o modelo da página que acabou de ser conferida. ⛔ Nunca recebe o telefone."""
     pronta = ap.get("mensagem")
     if pronta and _texto(pronta.get("texto")) and ap["url"] in str(pronta.get("texto")):
         return {"texto": str(pronta["texto"]), "texto_curto": _texto(pronta.get("texto_curto")), "link": ap["url"]}
@@ -562,11 +595,6 @@ async def mensagem(db: Any, cid: str, pid: str, uid: str, ap: Dict[str, Any]) ->
     if fn is None:
         raise HTTPException(status_code=503, detail="A mensagem da cotação ainda não está disponível. Copie o link "
                                                     "da apresentação.")
-    if ap.get("modelo") is None and ap.get("do_run"):
-        novo = await publicar(db, cid, pid, uid)
-        modelo = novo.get("modelo") if isinstance(novo.get("modelo"), Mapping) else novo.get("resumo")
-        ap.update({"url": novo["url"], "token": novo.get("token"),
-                   "modelo": modelo if isinstance(modelo, Mapping) else {}, "do_run": False})
     try:
         r = await _chamar(fn, dict(ap.get("modelo") or {}), ap["url"])
     except (ValueError, KeyError, TypeError) as exc:
@@ -663,8 +691,8 @@ async def apresentar_cotacao(
     cid, uid = REN._uuid(corpo.get("company_id"), "company_id"), REN._uuid(corpo.get("user_id"), "user_id")
     pid = REN._uuid(pedido_id, "pedido_id")
     db = _db()
-    _pedido, run = await _pronta(db, cid, uid, pid)
-    ap = await apresentacao(db, cid, pid, uid, run)
+    pedido, _run = await _pronta(db, cid, uid, pid)
+    ap = await apresentacao(db, cid, pid, pedido)
     return {"url": ap["url"], "token": ap.get("token")}
 
 
@@ -684,9 +712,9 @@ async def enviar_cotacao(
     if via not in REN.VIAS_DO_ENVIO:
         raise HTTPException(status_code=400, detail="via é whatsapp ou copiar")
     db = _db()
-    _pedido, run = await _pronta(db, cid, uid, pid)
-    ap = await apresentacao(db, cid, pid, uid, run)
-    msg = await mensagem(db, cid, pid, uid, ap)
+    pedido, _run = await _pronta(db, cid, uid, pid)
+    ap = await apresentacao(db, cid, pid, pedido)
+    msg = await mensagem(db, cid, pid, ap)
     resposta: Dict[str, Any] = REN.textos_do_envio(msg)
     if via == "copiar":
         return {**resposta, "sem_telefone": None}
