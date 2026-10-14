@@ -281,6 +281,10 @@ assert('🔴 a mutação do prefixo foi mesmo aplicada (um fator só)', FONTE_BF
     && lista[0].nome === 'apolice.pdf' && lista[0].mime === 'application/pdf' && lista[0].bytes === 1234 && lista[0].path === anexoDe(CO_A).path
     && !JSON.stringify(lista).includes('/api/storage') && !lista.some((a) => 'conteudo' in a || 'url' in a), JSON.stringify(lista));
   assert('o client_request_id continua no payload da pergunta', pergunta.payload?.client_request_id === 'req-132a-1');
+  // SPEC-132-A (A4) — o áudio/arquivo SOZINHO: `chatInput: ''` passa, e a conversa nova não nasce sem nome
+  assert('sem texto: o backend recebe chatInput "" e os anexos (o BFF não recusa)', ida.chatInput === '' && ida.attachments?.length === 2, JSON.stringify(ida.chatInput));
+  const conversaNova = r.registro.find((q) => q.tabela === 'conversations' && q.op === 'insert')?.payload || {};
+  assert('sem texto: a conversa nova leva o nome dos arquivos, nunca um título vazio', conversaNova.title === 'apolice.pdf, foto.jpg', JSON.stringify(conversaNova.title));
 }
 {
   for (const esforco of ['rapido', 'equilibrado', 'maximo']) {
