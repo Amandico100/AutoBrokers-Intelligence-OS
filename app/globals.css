@@ -126,7 +126,9 @@
       BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    min-height: 100vh;
+    /* SPEC-132-A (B9): 100dvh, nunca 100vh. No celular 100vh é a altura com a barra do navegador RECOLHIDA —
+       maior que o casco (h-[100dvh]) — e a sobra fazia a página "dançar" ao rolar. */
+    min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
