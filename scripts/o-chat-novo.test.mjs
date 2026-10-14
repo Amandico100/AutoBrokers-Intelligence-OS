@@ -490,6 +490,22 @@ const desenhar = (props) => renderToStaticMarkup(ReactReal.createElement(Message
   checar(/apolice\.pdf/.test(comAnexos) && /PDF · 178 KB/.test(comAnexos), 'a bolha do corretor mostra a ficha do PDF (nome, tipo, tamanho)', (comAnexos.match(/PDF[^<]*/) || [''])[0]);
   checar(/src="\/api\/storage\/chat-media\/co-alfa\/u-ana\/chat-media\/77aa\.jpg"/.test(comAnexos), 'depois de recarregar, a foto vem do proxy autenticado pelo path gravado (bucket deduzido do caminho)');
 
+  // SPEC-132-A (A4, costura A3 → A1) — o backend grava a transcrição em `payload.transcricao` da PERGUNTA (não no
+  // anexo), e o BFF grava o áudio sozinho como "[Anexo] nome". A bolha de voz mostra a transcrição; a marca, não.
+  const soAudio = desenhar({
+    message: {
+      id: 'u3', role: 'user', content: '[Anexo] gravacao.webm', type: 'text', created_at: '',
+      payload: {
+        attachments: [{ nome: 'gravacao.webm', mime: 'audio/webm', bytes: 48000, path: 'co-alfa/u-ana/chat-docs/9f1c.webm', bucket: 'chat-docs' }],
+        transcricao: 'qual o prazo da vistoria do carro',
+      },
+    },
+  });
+  checar(/qual o prazo da vistoria do carro/.test(soAudio), 'a bolha de voz mostra a transcrição gravada em payload.transcricao');
+  checar(!/\[Anexo\]/.test(soAudio), 'a marca "[Anexo] nome" que o BFF grava não aparece como fala do corretor');
+  const textoQueComeca = desenhar({ message: { id: 'u4', role: 'user', content: '[Anexo] foi o que escrevi', type: 'text', created_at: '' } });
+  checar(/\[Anexo\] foi o que escrevi/.test(textoQueComeca), 'CONTROLE: sem anexo, o texto "[Anexo] …" é fala e aparece');
+
   const C = carregarReal('components/chat/composer/copiar.ts');
   const limpo = C.textoLimpoDoMarkdown('## Resumo\n**Prêmio** de `R$ 1.200` em *12x*\n\n| Seguradora | Prêmio |\n|---|---|\n| Alfa | 1.200 |\n\nVeja [o site](https://exemplo.com.br).');
   const esperado = 'Resumo\nPrêmio de R$ 1.200 em 12x\n\nSeguradora\tPrêmio\nAlfa\t1.200\n\nVeja o site (https://exemplo.com.br).';
