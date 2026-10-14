@@ -192,7 +192,14 @@ export async function POST(req: NextRequest) {
           company_id: companyId,
           agent_id: agenteId,
           session_id: sessionId || null,
-          title: typeof chatInput === 'string' ? chatInput.slice(0, 50) : 'Nova Conversa',
+          // SPEC-132-A (A4) — o áudio sozinho chega com `chatInput: ''`: o título vazio deixava a conversa sem
+          // nome no histórico. Sem texto, o nome do(s) arquivo(s); sem nada, "Nova Conversa".
+          title:
+            typeof chatInput === 'string' && chatInput.trim()
+              ? chatInput.slice(0, 50)
+              : anexos.length > 0
+                ? anexos.map((a) => a.nome).join(', ').slice(0, 50)
+                : 'Nova Conversa',
           // 📊 F3 — 668 conversas 'open' contra 59 'active': quem escreve a
           // maioria é o backend, e ele escreve 'open'. Duas palavras para o
           // mesmo estado transformam qualquer filtro por status numa meia
