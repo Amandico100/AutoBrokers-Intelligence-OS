@@ -90,7 +90,9 @@ function envioDaUltimaResposta(lista: Message[]): EnvioDoTurno | null {
       }));
     const gravadoNoTurno = (ultima.payload?.turn as { esforco?: unknown } | undefined)?.esforco;
     return {
-      message: pergunta.content,
+      // SPEC-132-A (A4) — sem texto, o BFF gravou "[Anexo] nome…" como conteúdo. Reenviar ISSO como texto faria o
+      // backend tratar a transcrição do áudio como bloco anexo de uma "pergunta" que o corretor nunca escreveu.
+      message: anexos.length > 0 && /^\[Anexo\]\s/.test(pergunta.content || '') ? '' : pergunta.content,
       anexos,
       esforco: esforcoDoPedido(gravadoNoTurno),
       clientRequestId: crid,
@@ -348,8 +350,41 @@ export default function ChatPage() {
       )
       .subscribe();
 
+    // SPEC-132-A (A4) — a transcrição do áudio chega DEPOIS da pergunta: o backend a grava com um UPDATE em
+    // `payload.transcricao` da mensagem do corretor (A3), e o INSERT acima não a vê. Sem isto, a bolha de voz só
+    // mostrava o que o áudio disse depois de recarregar a página. Só a transcrição é fundida — o resto da bolha
+    // (miniatura local, fichas) continua sendo o que a tela já tem.
+    const canalDaTranscricao = supabase
+      .channel(`messages-transcricao:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const atual = payload.new as Message;
+          const transcricao = atual?.payload?.transcricao;
+          if (atual?.role !== 'user' || typeof transcricao !== 'string' || !transcricao.trim()) return;
+          const idDoEnvio = atual.payload?.client_request_id;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === 'user' &&
+              (m.id === atual.id || (idDoEnvio && m.payload?.client_request_id === idDoEnvio)) &&
+              m.payload?.transcricao !== transcricao
+                ? { ...m, payload: { ...(m.payload || {}), transcricao } }
+                : m,
+            ),
+          );
+        },
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(canalDaTranscricao);
     };
   }, [conversationId]);
 
