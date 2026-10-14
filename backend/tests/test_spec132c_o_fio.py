@@ -67,7 +67,7 @@ def _do_assistente(envio):
 # =====================================================================================================================
 @pytest.mark.parametrize("cid,uid,cel,nome_da_corretora", [(BETA, U3, CEL_3, "Corretora Beta"),
                                                            (ALFA, U6, CEL_6, "Corretora Alfa")],
-                         ids=["beta-sem-numero", "alfa-confirmado-sem-verificar"])
+                         ids=["beta-declarado-sem-verificar", "alfa-confirmado-sem-verificar"])
 def test_o_fio_do_codigo_do_perfil_a_resposta_pelo_assistente(fio, cid, uid, cel, nome_da_corretora):
     pergunta = "quanto fica o seguro do meu cliente?"
     # ANTES da verificação: a MESMA mensagem, do MESMO número → silêncio total
@@ -237,6 +237,43 @@ def test_a_ponte_sincrona_dentro_de_um_laco_agenda_e_nao_trava(fio):
     assert len(fio.envio.enviados) == n + 1 and fio.envio.enviados[-1]["integracao"] == "int-assistente"
 
 
+@pytest.mark.parametrize("dorme", [0.0, 1.5], ids=["controle", "envio-lento"])
+def test_a_volta_nao_prende_o_passo_do_work_run_alem_do_teto(fio, monkeypatch, dorme):
+    """P4 (juiz): `TEMPO_DA_VOLTA_S` tem de ser TETO de verdade. Medido como o juiz mediu: teto 0,3 s, envio de 1,5 s →
+    o passo (a thread que grava a cotação) fica livre em ≤ 0,4 s; o envio termina sozinho, uma vez."""
+    import threading
+    import time
+
+    conv = _ativar_e_conversar(fio)
+    n = len(fio.envio.enviados)
+    monkeypatch.setattr(ENV, "TEMPO_DA_VOLTA_S", 0.3)
+    original = fio.envio.send_message
+
+    def _lento(*a, **k):
+        time.sleep(dorme)
+        return original(*a, **k)
+
+    monkeypatch.setattr(fio.envio, "send_message", _lento)
+    medida = {}
+
+    def _passo():
+        t0 = time.monotonic()
+        ENV.avisar_pelo_atalho_sem_esperar(fio.banco, company_id=BETA, conversation_id=conv["id"],
+                                           texto_markdown="pronto")
+        medida["s"] = time.monotonic() - t0
+
+    th = threading.Thread(target=_passo)
+    th.start()
+    th.join(20)
+    assert medida["s"] <= 0.4, f"o passo ficou preso {medida['s']:.2f} s"
+    for _ in range(400):            # o envio termina em 2º plano (≤ 4 s)
+        if len(fio.envio.enviados) > n:
+            break
+        time.sleep(0.01)
+    time.sleep(0.05)
+    assert len(fio.envio.enviados) == n + 1 and fio.envio.enviados[-1]["integracao"] == "int-assistente"
+
+
 def test_o_workflow_da_cotacao_tem_a_costura():
     """🔴 O ELO: a função existe E o Work Run a chama. Fica VERMELHO até o gerente colar as 3 linhas
     (`COSTURA_DO_WORKFLOW`) no `gravar_mensagem` de `services/cotacao/workflow.py`, logo antes do `return True`."""
@@ -262,6 +299,7 @@ def test_o_qcm_sai_pelo_qcm_e_o_atalho_pelo_assistente(monkeypatch, ordem):
         banco.linhas("integrations").sort(key=lambda x: 0 if x["id"] == "int-qcm" else 1)
     REPO._CACHE_DO_TIPO.clear()
     monkeypatch.setattr(SEG, "decrypt_integration_secret", lambda v, **_k: v)
+    monkeypatch.setenv("ATALHO_CODIGO_SEGREDO", "segredo-de-teste-132c")   # o teto de envios conta pelo HMAC do telefone
     envio = C2.EnvioFalso()
     monkeypatch.setattr(WS, "get_whatsapp_service", lambda: envio)
     monkeypatch.setattr(CANAL_ENVIO, "PAUSA_ENTRE_BALOES_S", 0)
@@ -270,7 +308,8 @@ def test_o_qcm_sai_pelo_qcm_e_o_atalho_pelo_assistente(monkeypatch, ordem):
     assert CANAL_ENVIO.numero_do_canal(banco, CANAL) == C2.QCM       # o "Quero fechar" volta para o QCM
     assert asyncio.run(CANAL_ENVIO.enviar(banco, CANAL, C2.CEL_1, ["a cotação do convidado"])) == 1
     assert ENV.integracao_do_assistente(banco)["id"] == "int-assistente"
-    assert asyncio.run(ENV.enviar_texto(ENV.integracao_do_assistente(banco), C2.CEL_1, "a resposta do chat")) == 1
+    assert asyncio.run(ENV.enviar_texto(ENV.integracao_do_assistente(banco), C2.CEL_1, "a resposta do chat",
+                                        db=banco)) == 1
     assert [(e["integracao"], e["texto"]) for e in envio.enviados] == [
         ("int-qcm", "a cotação do convidado"), ("int-assistente", "a resposta do chat")]
 
@@ -444,6 +483,10 @@ MUTACOES = [
      "                    .eq(\"id\", conv).limit(1).execute())\n"
      "    linha = next((x for x in linhas if str(x.get(\"id\") or \"\").lower() == conv), None)\n",
      "test_a_volta_pelo_atalho_so_para_a_conversa_que_nasceu_nele"),
+    ("C-P4j a volta volta a prender o passo (asyncio.run direto)", "app/services/atalho/envio.py",
+     "            fio_da_volta.join(timeout=max(0.0, float(TEMPO_DA_VOLTA_S)))\n",
+     "            fio_da_volta.join()\n",
+     "test_a_volta_nao_prende_o_passo_do_work_run_alem_do_teto"),
 ]
 
 
@@ -451,20 +494,21 @@ def _mutar() -> int:
     falhas = 0
     for rotulo, arquivo, de, para, teste in MUTACOES:
         caminho = BACKEND / arquivo
-        original = caminho.read_text(encoding="utf-8")
-        assert original.count(de) == 1, f"{rotulo}: o trecho não está UMA vez em {arquivo}"
+        bruto = caminho.read_bytes()
+        original = bruto.decode("utf-8")
+        crlf = "\r\n" in original
+        de_, para_ = (de.replace("\n", "\r\n"), para.replace("\n", "\r\n")) if crlf else (de, para)
+        assert original.count(de_) == 1, f"{rotulo}: o trecho não está UMA vez em {arquivo}"
         try:
-            caminho.write_text(original.replace(de, para), encoding="utf-8")
+            caminho.write_bytes(original.replace(de_, para_).encode("utf-8"))
             r = subprocess.run([sys.executable, "-m", "pytest", __file__, "-q", "-p", "no:cacheprovider", "-k", teste],
                                cwd=str(BACKEND), capture_output=True, text=True)
             vermelho = r.returncode != 0
             print(f"{rotulo}: {'VERMELHO (o guarda pegou)' if vermelho else 'MUTACAO NAO PEGOU'} — {teste}")
             falhas += 0 if vermelho else 1
         finally:
-            atual = caminho.read_text(encoding="utf-8")
-            caminho.write_text(atual.replace(para, de, 1) if (para in atual and de not in atual) else atual,
-                               encoding="utf-8")
-            assert caminho.read_text(encoding="utf-8") == original, f"{rotulo}: {arquivo} não voltou igual"
+            caminho.write_bytes(bruto)                          # 🔴 restaura POR CÓPIA DOS BYTES
+            assert caminho.read_bytes() == bruto, f"{rotulo}: {arquivo} não voltou igual"
     return falhas
 
 
