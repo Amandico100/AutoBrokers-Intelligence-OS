@@ -368,6 +368,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: '/admin/atlas', label: 'Atlas de rotas' },
         // SPEC-133-A F4 — o QR do número do Quem Cobra Menos (canal da plataforma).
         { href: '/admin/canais/quem-cobra-menos/whatsapp', label: 'Canais: Quem Cobra Menos (WhatsApp)' },
+        // SPEC-132-C C3 — o QR do segundo número da plataforma: o assistente com que o corretor conversa.
+        { href: '/admin/canais/assistente/whatsapp', label: 'Canais: AutoBrokers — assistente dos corretores' },
       ],
     },
     {
