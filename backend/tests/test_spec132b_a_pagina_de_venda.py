@@ -182,11 +182,17 @@ def test_a_pagina_servida_de_venda_na_ordem(monkeypatch):
     assert f"<script>{PH.SCRIPT_DA_PROPOSTA}</script>" in doc and doc.count("<script>") == 1
     assert "17,37" not in doc and "17.37" not in doc
     assert re.search(r'og:title" content="A cotação do seu seguro: [^"]+x de R\$', doc)
-    # o Hub: a peça é da beta, marcada como venda, e publicar de novo = versão nova da MESMA peça
+    # o Hub: a peça é da beta, marcada como venda
     art = m.banco.linhas("artifacts")
     assert len(art) == 1 and art[0]["company_id"] == m.beta
     assert art[0]["subject_ref"]["pagina"] == "venda" and art[0]["subject_ref"]["publicada_por"] == CORRETOR
-    assert _publicar(m)["versao"] == 2 and len(m.banco.linhas("artifacts")) == 1
+    # §9.3 (SPEC-132-B B4, pedido da B3): publicar de novo a MESMA página devolve o MESMO link (nada é gravado — o
+    # "Ver apresentação" não versiona a cada clique); com a página DIFERENTE = versão nova da MESMA peça
+    de_novo = _publicar(m)
+    assert (de_novo["versao"], de_novo["token"], de_novo["url"]) == (r["versao"], r["token"], r["url"])
+    assert len(m.banco.linhas("artifact_versions")) == 1 and len(m.banco.linhas("artifact_shares")) == 1
+    outra = _publicar(m, primeiro_nome="Bia")
+    assert outra["versao"] == 2 and outra["token"] != r["token"] and len(m.banco.linhas("artifacts")) == 1
 
 
 def test_o_resumo_para_o_chat_tem_a_mesma_parcela_da_pagina(monkeypatch):
