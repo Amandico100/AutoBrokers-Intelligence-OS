@@ -5,6 +5,25 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Camera, Loader2, User } from 'lucide-react';
 import { toast } from 'sonner';
 
+/**
+ * SPEC-132-A (A4) — a URL do avatar a partir da resposta ATUAL de `POST /api/upload`.
+ * 📊 A rota nunca devolveu `publicUrl` (o mesmo defeito do anexo do chat, B3): o avatar subia e a tela recebia
+ * `undefined`. A rota devolve `{ok, bucket, path, url}` — `url` é o proxy autenticado (`/api/storage/...`), que só
+ * abre com sessão da MESMA corretora. O bucket `avatars` é PÚBLICO e o avatar aparece fora da sessão (o agente no
+ * widget, por exemplo): por isso se monta a URL pública do Storage pelo `path`, como era antes da SPEC-054.
+ * Sem a URL do Supabase no ambiente, fica o `url` do proxy.
+ */
+export function urlDoAvatarEnviado(resposta: unknown, supabaseUrl: string | undefined): string | null {
+  const r = (resposta && typeof resposta === 'object' ? resposta : {}) as Record<string, unknown>;
+  const path = typeof r.path === 'string' && r.path ? r.path : typeof r.filePath === 'string' ? r.filePath : '';
+  const base = String(supabaseUrl || '').replace(/\/+$/, '');
+  if (path && base) {
+    const codificado = path.split('/').map((s) => encodeURIComponent(s)).join('/');
+    return `${base}/storage/v1/object/public/avatars/${codificado}`;
+  }
+  return typeof r.url === 'string' && r.url ? r.url : null;
+}
+
 interface AvatarUploadProps {
   currentImageUrl?: string;
   onUpload: (url: string) => void;
@@ -68,14 +87,16 @@ export function AvatarUpload({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao fazer upload');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.motivo || errorData.error || 'Erro ao fazer upload');
       }
 
       const data = await response.json();
+      const url = urlDoAvatarEnviado(data, process.env.NEXT_PUBLIC_SUPABASE_URL);
+      if (!url) throw new Error('A foto subiu, mas não consegui o endereço dela. Tente de novo.');
 
       // Call the onUpload callback with the new URL
-      onUpload(data.publicUrl);
+      onUpload(url);
       toast.success('Foto atualizada com sucesso!');
     } catch (error: any) {
       console.error('Avatar upload error:', error);
