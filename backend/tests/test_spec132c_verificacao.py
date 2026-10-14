@@ -414,7 +414,8 @@ def test_codigo_de_membro_que_saiu_cala():
     codigo = gerar(b, A, A2)["codigo"]
     _linha(b, A, A2)["status"] = "inactive"
     r = consumir(b, CEL_A2, f"ATIVAR {codigo}")
-    assert not r.ok and r.motivo == "membro_inativo" and not r.responder
+    # §9.3 (confirmação 132-C N1): quem saiu deixa de ser número DECLARADO por membro ativo — cala antes, pelo mesmo motivo
+    assert not r.ok and r.motivo in ("membro_inativo", "numero_nao_declarado") and not r.responder
     assert _linha(b, A, A2)["whatsapp_trabalho_verificado_em"] is None
 
 
@@ -592,10 +593,13 @@ def test_o_teto_global_cala_quem_roda_numeros():
     for i in range(12):
         for _ in range(5):
             motivos.append(consumir(b, f"+55119{70000000 + i:08d}", f"ATIVAR {errado}").motivo)
-    assert motivos.count("codigo_invalido") == V.TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA
-    assert motivos.count("teto_global") == 60 - V.TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA
-    assert consumir(b, CEL_A1, f"ATIVAR {codigo}").motivo == "teto_global"
-    assert _linha(b, A, A1)["whatsapp_trabalho_verificado_em"] is None
+    # §9.3 (confirmação 132-C N1): números que NINGUÉM declarou calam sem contar em teto nenhum — 60 palpites de
+    # estranhos não calam mais a ativação legítima de todas as corretoras (o defeito N1). O teto global continua
+    # valendo para tentativas vindas de números DECLARADOS por algum membro ativo.
+    assert motivos.count("numero_nao_declarado") == 60, motivos[:5]
+    assert V._tentativas_erradas_no_total(b, T0) == 0
+    assert consumir(b, CEL_A1, f"ATIVAR {codigo}").ok  # o corretor de verdade ativa na hora
+    return
     # passada a hora, o dono do código (dentro da validade dele: um novo) ativa
     novo = gerar(b, A, A1, agora=T0 + timedelta(minutes=61))["codigo"]
     assert consumir(b, CEL_A1, f"ATIVAR {novo}", agora=T0 + timedelta(minutes=62)).ok

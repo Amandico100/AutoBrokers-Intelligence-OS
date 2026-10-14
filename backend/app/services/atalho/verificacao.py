@@ -341,6 +341,18 @@ def _tentativas_erradas(db: Any, tel_hash: str, t0: datetime) -> int:
                 and (_quando(x.get("criado_em")) or t0) >= uma_hora])
 
 
+def _declarado_por_alguem(db: Any, e164: str) -> bool:
+    """Algum membro ATIVO declarou e confirmou este número no Meu perfil? (o filtro é por telefone, em qualquer
+    corretora: aqui ainda não se sabe de quem é o código — o dono é decidido depois, pelo código)."""
+    try:
+        linhas = _dados(_t(db, "company_members").select("whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em, status")
+                        .eq("status", "active").not_.is_("whatsapp_trabalho_confirmado_em", "null").execute())
+    except Exception:  # noqa: BLE001 — banco instável: falha FECHADA (calado, sem contar)
+        return False
+    return any(x.get("status") == "active" and x.get("whatsapp_trabalho_confirmado_em")
+               and _mesmo_telefone(x.get("whatsapp_trabalho_e164"), e164) for x in linhas)
+
+
 def _consumir(db: Any, telefone: Any, texto: Any, agora: Optional[datetime]) -> ResultadoDaAtivacao:
     codigo = codigo_da_ativacao(texto)
     if not codigo:
@@ -355,6 +367,11 @@ def _consumir(db: Any, telefone: Any, texto: Any, agora: Optional[datetime]) -> 
     except Recusa:
         logger.error("[ATALHO] sem segredo para o HMAC — a ativação cala")
         return _silencio("sem_segredo")
+    # 🔴 confirmação 132-C N1: o código só vale do número DECLARADO e confirmado por algum membro ativo (P1). Um
+    # "ATIVAR" de número que ninguém declarou nunca pode dar certo — então fica calado SEM contar em teto nenhum: senão
+    # 30 palpites de estranhos calariam a ativação legítima de todas as corretoras por 1 hora.
+    if not _declarado_por_alguem(db, e164):
+        return _silencio("numero_nao_declarado")
     if _tentativas_erradas_no_total(db, t0) >= TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA:
         logger.warning("[ATALHO] teto GLOBAL de ativações erradas atingido — a ativação cala para todos")
         return _silencio("teto_global")

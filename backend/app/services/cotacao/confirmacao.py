@@ -53,7 +53,7 @@ FRASES = {
 }
 
 #: o "sim" do corretor (sem acento, minúsculo). Qualquer uma destas palavras numa fala CURTA, sem negação e sem dado novo
-_SIM = re.compile(r"\b(sim|s|pode|podes|calcula|calcular|calcule|ok|okay|okey|manda|mande|confirmo|confirmado|"
+_SIM = re.compile(r"\b(sim|s|claro|vamos|pode|podes|calcula|calcular|calcule|ok|okay|okey|manda|mande|confirmo|confirmado|"
                   r"confirma|isso|certo|correto|beleza|blz|bora|vai|fechado|positivo|perfeito|tudo certo|"
                   r"esta certo|ta certo|pode ser|segue|siga|faz|faca|dispara)\b")
 #: a negação (ou "espera") vence o "sim": "sim, mas espera" não calcula
@@ -83,11 +83,23 @@ def ler_falas(db: Any, conversation_id: str, *, limite: int = 20) -> list:
     """As últimas falas do CORRETOR (role user) NESTA conversa, a mais recente primeiro: `{id, content, created_at}`.
     A conversa é conferida por quem chama (`conversations.company_id` + dono). ⛔ O conteúdo nunca vai a log."""
     cli = getattr(db, "client", db)
-    linhas = list(getattr(cli.table("messages").select("id, conversation_id, role, content, created_at")
+    linhas = list(getattr(cli.table("messages").select("id, conversation_id, role, content, payload, created_at")
                           .eq("conversation_id", str(conversation_id)).eq("role", "user")
                           .order("created_at", desc=True).limit(limite).execute(), "data", None) or [])
-    return [{"id": str(l.get("id")), "content": str(l.get("content") or ""), "created_at": l.get("created_at")}
+    return [{"id": str(l.get("id")), "content": _texto_da_fala(l), "created_at": l.get("created_at")}
             for l in linhas if str(l.get("conversation_id")) == str(conversation_id) and l.get("role") == "user"]
+
+
+def _texto_da_fala(linha: Any) -> str:
+    """🔴 Confirmação 132-B (defeito novo): o "sim" FALADO. Quando o corretor manda só áudio, `content` guarda
+    "[Anexo] audio.webm" e o que ele disse mora em `payload.transcricao` (mascarada). Sem isto, quem confirma por voz
+    — o jeito natural no WhatsApp — entrava em laço com a recusa `sem_sim`."""
+    conteudo = str(linha.get("content") or "")
+    payload = linha.get("payload") if isinstance(linha.get("payload"), dict) else {}
+    transcricao = str(payload.get("transcricao") or "").strip()
+    if transcricao and (not conteudo.strip() or conteudo.strip().startswith("[Anexo]")):
+        return transcricao
+    return conteudo
 
 
 def _instante(v: Any) -> Any:
