@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from functools import partial
 from typing import Any, Dict, Optional
@@ -46,8 +47,6 @@ async def get_async_postgres_checkpointer():
     CRITICAL: Uses prepare_threshold=None for Supabase PgBouncer compatibility.
     The pool is opened lazily on first use.
     """
-    global _async_postgres_pool, _checkpointer_init_attempted
-
     from langgraph.checkpoint.memory import MemorySaver
 
     from app.core import settings
@@ -57,6 +56,34 @@ async def get_async_postgres_checkpointer():
     if not db_url:
         logger.warning("[Checkpoint] DB_URL ausente, usando MemorySaver")
         return MemorySaver()
+
+    # 🔴 SPEC-132-A B7 — o aquecimento do arranque abre o pool em 2º plano, e o
+    # 1º turno pode chegar NO MEIO da abertura. Sem a trava, o turno via o pool
+    # já atribuído e ainda FECHADO (`open=False` até o `await open()` acabar) e o
+    # seu grafo nascia com MemorySaver — cacheado, sem memória, até o processo
+    # reiniciar. Com a trava, quem chega no meio ESPERA a abertura terminar.
+    async with _trava_do_pool():
+        return await _checkpointer_com_o_pool(db_url, MemorySaver)
+
+
+#: A trava da criação do pool — uma por event loop (um `asyncio.Lock` é do loop
+#: em que foi usado; os testes rodam um loop por `asyncio.run`).
+_TRAVAS_DO_POOL: Dict[int, "asyncio.Lock"] = {}
+
+
+def _trava_do_pool() -> "asyncio.Lock":
+    laco = asyncio.get_running_loop()
+    trava = _TRAVAS_DO_POOL.get(id(laco))
+    if trava is None:
+        if len(_TRAVAS_DO_POOL) > 8:  # loops mortos (testes) não acumulam
+            _TRAVAS_DO_POOL.clear()
+        trava = _TRAVAS_DO_POOL[id(laco)] = asyncio.Lock()
+    return trava
+
+
+async def _checkpointer_com_o_pool(db_url, MemorySaver):
+    """O corpo de sempre de `get_async_postgres_checkpointer`, sob a trava."""
+    global _async_postgres_pool, _checkpointer_init_attempted
 
     # Check pool health
     if _async_postgres_pool is not None:
@@ -1223,6 +1250,26 @@ def escopo_do_acionamento(ficha: Any, *, assunto_novo: bool = False) -> Dict[str
     return escopo
 
 
+#: 💭 SPEC-132-A B1 — abaixo disto a pergunta não paga uma chamada de LLM a mais
+#: (o HyDE). "oi", "bom dia", "e a apólice?" não têm o que hipotetizar; o RAG
+#: denso + BM25 continua rodando para elas. Só no chat do CORRETOR.
+PALAVRAS_MINIMAS_PARA_HYDE = 6
+
+def hyde_no_turno(is_hyde: bool, esforco_do_chat: Optional[str], pergunta: str) -> bool:
+    """O HyDE roda neste turno? **PURA.** SPEC-132-A B1/B8.
+
+    `esforco_do_chat is None` = quem chamou NÃO é o chat do corretor (atendimento
+    ao segurado, widget, bancada): vale `is_hyde`, exatamente como antes.
+    No chat do corretor: Rápido nunca (nem a 2ª busca, que é a do documento
+    hipotético); Equilibrado/Máximo só com ≥ `PALAVRAS_MINIMAS_PARA_HYDE` palavras.
+    """
+    if esforco_do_chat is None:
+        return bool(is_hyde)
+    if not is_hyde or esforco_do_chat == "rapido":
+        return False
+    return len(str(pergunta or "").split()) >= PALAVRAS_MINIMAS_PARA_HYDE
+
+
 async def _build_initial_state(
     user_message: str,
     company_id: str,
@@ -1233,6 +1280,7 @@ async def _build_initial_state(
     supabase_client=None,
     agent_id: str = None,
     graph=None,
+    esforco_do_chat: Optional[str] = None,
 ) -> tuple:
     """
     Constrói o estado inicial.
@@ -1241,6 +1289,18 @@ async def _build_initial_state(
     `graph` (SPEC-125 S2): o grafo do turno, para ler o checkpoint ANTERIOR e
     transportar os resultados de ferramenta do mesmo assunto. Sem ele, nada
     atravessa — o resto do estado é o mesmo.
+
+    `esforco_do_chat` (SPEC-132-A): `rapido`/`equilibrado`/`maximo` — SÓ o chat
+    do corretor (o `/chat/stream` no modo painel) passa. Decide o HyDE
+    (`hyde_no_turno`). `None` (atendimento, widget, bancada) = o de antes.
+
+    🔴 SPEC-132-A B1 — AS LEITURAS INDEPENDENTES SAEM JUNTAS. Memória, RAG,
+    ferramentas HTTP/MCP, delegações, o nome da corretora e a marca eram lidos
+    um depois do outro (📊 seis idas ao banco/rede em série, as síncronas
+    travando o event loop). Agora todas COMEÇAM antes da montagem (as síncronas
+    em `to_thread`) e cada uma é ESPERADA no MESMO lugar onde era lida — o
+    prompt sai na mesma ordem, byte a byte (o guarda
+    `test_spec132a_turno_rapido.py` compara com a versão sequencial).
     """
     # === 1. RECUPERAR DADOS DO AGENTE ===
     real_agent_data = None
@@ -1300,18 +1360,136 @@ async def _build_initial_state(
         f.startswith("memoria") for f in _plano_ctx.fontes)
     if not _quer_memoria:
         logger.info("[Memory] pulada pelo plano de contexto (%s)", _plano_ctx.intencao.tipo)
-    if supabase_client and _quer_memoria:
-        try:
-            real_client = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
-            memory_service = MemoryService(real_client)
-            memory_context = await memory_service.build_memory_context_async(
-                user_id=user_id,
-                company_id=company_id,
-                current_query=user_message,
-                max_facts=10,
-                max_summaries=3,
-                agent_id=agent_id,
+
+    # === 🔴 SPEC-132-A B1 — AS LEITURAS COMEÇAM JUNTAS =========================
+    # Cada leitura vira uma task AGORA e é esperada no lugar de sempre, dentro do
+    # `try` de sempre (o `await` da task relança a MESMA exceção que a leitura
+    # em série levantava — o `except` de cada bloco continua decidindo). ⛔ Nada
+    # aqui monta prompt: a montagem segue a ordem de antes, linha a linha.
+    def _comecar(corrotina):
+        tarefa = asyncio.ensure_future(corrotina)
+        # Uma falha antes do `await` (o turno caiu no meio) não vira o aviso
+        # "Task exception was never retrieved": a exceção é lida aqui.
+        tarefa.add_done_callback(lambda t: t.cancelled() or t.exception())
+        return tarefa
+
+    def _cliente_real():
+        return supabase_client.client if hasattr(supabase_client, "client") else supabase_client
+
+    async def _ler_a_memoria():
+        real_client = _cliente_real()
+        memory_service = MemoryService(real_client)
+        return await memory_service.build_memory_context_async(
+            user_id=user_id,
+            company_id=company_id,
+            current_query=user_message,
+            max_facts=10,
+            max_summaries=3,
+            agent_id=agent_id,
+        )
+
+    def _ler_as_ferramentas_http():
+        return (
+            _cliente_real().table("agent_http_tools")
+            .select("name, description, method, parameters")
+            .eq("agent_id", str(agent_id))
+            .eq("is_active", True)
+            .execute()
+        )
+
+    async def _ler_as_ferramentas_mcp():
+        from ..services.mcp_gateway_service import get_mcp_gateway
+        gateway = get_mcp_gateway()
+        return await gateway.get_agent_mcp_tools(str(agent_id))
+
+    def _ler_as_delegacoes():
+        real_client = _cliente_real()
+        delegacoes = (
+            real_client.table("agent_delegations")
+            .select("subagent_id, task_description")
+            .eq("orchestrator_id", str(agent_id))
+            .eq("is_active", True)
+            .execute()
+        )
+        especialistas = None
+        if delegacoes.data:
+            # Buscar TODOS os subagentes em uma única query (em vez de N queries individuais)
+            sub_ids = [d["subagent_id"] for d in delegacoes.data]
+            especialistas = (
+                real_client.table("agents")
+                .select("id, name")
+                .in_("id", sub_ids)
+                .execute()
             )
+        return delegacoes, especialistas
+
+    def _ler_o_nome_da_corretora():
+        return supabase_client.table("companies").select("company_name, legal_name").eq(
+            "id", str(company_id)).limit(1).execute()
+
+    def _ler_a_marca():
+        from ..services.brand.capture import BrandCaptureService
+        return BrandCaptureService(supabase_client).render_blocos_do_prompt(str(company_id))
+
+    async def _buscar_no_rag():
+        """O prefetch do RAG (41C.1.2) — devolve `(quis_buscar, resultado)`."""
+        _quer_rag = (
+            any(f.startswith("rag") or f == "normativo" for f in _plano_ctx.fontes)
+            if (_ca_ativo and _plano_ctx is not None)
+            else should_prefetch_rag(user_message)
+        )
+        if not _quer_rag and _ca_ativo:
+            logger.info("[RAG Prefetch] pulado pelo plano (%s)", _plano_ctx.intencao.tipo)
+        if not _quer_rag:
+            return False, None
+        is_hyde = True
+        if real_agent_data is not None:
+            is_hyde = bool(real_agent_data.get("is_hyde_enabled", True))
+        # 🔴 SPEC-132-A: no chat do corretor, Rápido sem HyDE e pergunta curta sem
+        #    HyDE. Atendimento/widget (`esforco_do_chat is None`): como sempre.
+        is_hyde = hyde_no_turno(is_hyde, esforco_do_chat, user_message)
+        logger.info(
+            f"[RAG Prefetch] searching company={company_id} agent={agent_id} hyde={is_hyde}"
+        )
+        from ..services.search_service import get_search_service
+
+        # ⚠️ Em `to_thread`: a 1ª chamada do processo carrega o BM25 local
+        # (fastembed) — segundos que travariam o event loop de TODOS os turnos.
+        _search_service = await asyncio.to_thread(get_search_service)
+        # SPEC-013 P0 + SPEC-017 S17-7: Core E o atendente externo usam o
+        # conhecimento global curado além do privado da corretora (Founder:
+        # atendente nunca "burro"). Auxiliar segue só com o privado (Onda 4).
+        _role_for_rag = (real_agent_data or {}).get("agent_role") if real_agent_data else None
+        _rag_include_global = str(_role_for_rag or "").strip().lower() in ("", "core", "attendance")
+        return True, await asyncio.to_thread(
+            _search_service.smart_search,
+            company_id,
+            user_message,
+            str(agent_id) if agent_id else None,
+            is_hyde,
+            # SPEC-064 Bloco J — o comentario aqui dizia "OFF p/ attendance"
+            # e a linha logo acima INCLUI 'attendance' na lista. O codigo
+            # esta certo: o atendente PRECISA do conhecimento global — sao
+            # as 8.916 cartas destiladas de atendimento real. Era o
+            # comentario que estava velho, e comentario que contradiz o
+            # codigo ao lado e pior que comentario nenhum: ele faz a
+            # proxima pessoa "consertar" o que funciona.
+            _rag_include_global,  # ON para core E attendance; OFF para auxiliar
+        )
+
+    _com_agente = bool(agent_id and supabase_client)
+    _com_corretora = bool(company_id and supabase_client is not None)
+    _t_memoria = _comecar(_ler_a_memoria()) if (supabase_client and _quer_memoria) else None
+    _t_http = _comecar(asyncio.to_thread(_ler_as_ferramentas_http)) if _com_agente else None
+    _t_mcp = _comecar(_ler_as_ferramentas_mcp()) if _com_agente else None
+    _t_delegacoes = _comecar(asyncio.to_thread(_ler_as_delegacoes)) if _com_agente else None
+    _t_nome = _comecar(asyncio.to_thread(_ler_o_nome_da_corretora)) if _com_corretora else None
+    _t_marca = _comecar(asyncio.to_thread(_ler_a_marca)) if _com_corretora else None
+    _t_rag = _comecar(_buscar_no_rag())
+
+    if _t_memoria is not None:
+        try:
+            memory_context = await _t_memoria
             if memory_context:
                 logger.info(f"[Memory] 🧠 Contexto carregado: {len(memory_context)} chars.")
         except Exception as e:
@@ -1482,16 +1660,9 @@ async def _build_initial_state(
 
     # === HTTP TOOLS ===
     allowed_http_tools = []
-    if agent_id and supabase_client:
+    if _t_http is not None:
         try:
-            real_client = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
-            response = (
-                real_client.table("agent_http_tools")
-                .select("name, description, method, parameters")
-                .eq("agent_id", str(agent_id))
-                .eq("is_active", True)
-                .execute()
-            )
+            response = await _t_http
             http_tools = response.data or []
             if http_tools:
                 base_instructions, allowed_http_tools = expand_http_tool_variables(
@@ -1502,11 +1673,9 @@ async def _build_initial_state(
 
     # === MCP TOOLS ===
     allowed_mcp_tools = []
-    if agent_id and supabase_client:
+    if _t_mcp is not None:
         try:
-            from ..services.mcp_gateway_service import get_mcp_gateway
-            gateway = get_mcp_gateway()
-            mcp_tools = await gateway.get_agent_mcp_tools(str(agent_id))
+            mcp_tools = await _t_mcp
 
             if mcp_tools:
                 base_instructions, allowed_mcp_tools = expand_mcp_tool_variables(
@@ -1518,25 +1687,10 @@ async def _build_initial_state(
 
     # === SUBAGENT DELEGATION PROMPT EXPANSION ===
     # Otimizado: usa IN query para buscar todos os subagents de uma vez
-    if agent_id and supabase_client:
+    if _t_delegacoes is not None:
         try:
-            real_client = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
-            delegations_response = (
-                real_client.table("agent_delegations")
-                .select("subagent_id, task_description")
-                .eq("orchestrator_id", str(agent_id))
-                .eq("is_active", True)
-                .execute()
-            )
+            delegations_response, sub_agents_response = await _t_delegacoes
             if delegations_response.data:
-                # Buscar TODOS os subagentes em uma única query (em vez de N queries individuais)
-                sub_ids = [d["subagent_id"] for d in delegations_response.data]
-                sub_agents_response = (
-                    real_client.table("agents")
-                    .select("id, name")
-                    .in_("id", sub_ids)
-                    .execute()
-                )
                 sub_agents_map = {
                     str(s["id"]): s for s in (sub_agents_response.data or [])
                 }
@@ -1575,9 +1729,8 @@ async def _build_initial_state(
     # <CORRETORA>" (feedback founder 12/07) — nome da empresa vem do cadastro.
     _company_display_name = ""
     try:
-        if company_id and supabase_client is not None:
-            _c = supabase_client.table("companies").select("company_name, legal_name").eq(
-                "id", str(company_id)).limit(1).execute()
+        if _t_nome is not None:
+            _c = await _t_nome
             if _c.data:
                 _company_display_name = str(_c.data[0].get("company_name") or _c.data[0].get("legal_name") or "")
     except Exception as e:  # noqa: BLE001
@@ -1597,10 +1750,8 @@ async def _build_initial_state(
     # lugar cacheado é grátis; no dinâmico seria pago em toda chamada.
     _facts_block = _jeito_block = ""
     try:
-        if company_id and supabase_client is not None:
-            from ..services.brand.capture import BrandCaptureService
-            _facts_block, _jeito_block = BrandCaptureService(
-                supabase_client).render_blocos_do_prompt(str(company_id))
+        if _t_marca is not None:
+            _facts_block, _jeito_block = await _t_marca
     except Exception as e:  # noqa: BLE001 — marca fora do ar não cala o agente
         logger.warning(f"[Graph] blocos de marca indisponíveis: {type(e).__name__}")
 
@@ -1649,43 +1800,10 @@ async def _build_initial_state(
     rag_prefetch_strategy = None
     rag_prefetch_score = None
     try:
-        _quer_rag = (
-            any(f.startswith("rag") or f == "normativo" for f in _plano_ctx.fontes)
-            if (_ca_ativo and _plano_ctx is not None)
-            else should_prefetch_rag(user_message)
-        )
-        if not _quer_rag and _ca_ativo:
-            logger.info("[RAG Prefetch] pulado pelo plano (%s)", _plano_ctx.intencao.tipo)
+        # A busca começou junto com as outras leituras (`_buscar_no_rag`, acima);
+        # aqui ela é ESPERADA, no lugar de sempre.
+        _quer_rag, rag_result = await _t_rag
         if _quer_rag:
-            is_hyde = True
-            if real_agent_data is not None:
-                is_hyde = bool(real_agent_data.get("is_hyde_enabled", True))
-            logger.info(
-                f"[RAG Prefetch] searching company={company_id} agent={agent_id}"
-            )
-            from ..services.search_service import get_search_service
-
-            _search_service = get_search_service()
-            # SPEC-013 P0 + SPEC-017 S17-7: Core E o atendente externo usam o
-            # conhecimento global curado além do privado da corretora (Founder:
-            # atendente nunca "burro"). Auxiliar segue só com o privado (Onda 4).
-            _role_for_rag = (real_agent_data or {}).get("agent_role") if real_agent_data else None
-            _rag_include_global = str(_role_for_rag or "").strip().lower() in ("", "core", "attendance")
-            rag_result = await asyncio.to_thread(
-                _search_service.smart_search,
-                company_id,
-                user_message,
-                str(agent_id) if agent_id else None,
-                is_hyde,
-                # SPEC-064 Bloco J — o comentario aqui dizia "OFF p/ attendance"
-                # e a linha logo acima INCLUI 'attendance' na lista. O codigo
-                # esta certo: o atendente PRECISA do conhecimento global — sao
-                # as 8.916 cartas destiladas de atendimento real. Era o
-                # comentario que estava velho, e comentario que contradiz o
-                # codigo ao lado e pior que comentario nenhum: ele faz a
-                # proxima pessoa "consertar" o que funciona.
-                _rag_include_global,  # ON para core E attendance; OFF para auxiliar
-            )
             if rag_result and rag_result.get("found") and rag_result.get("content"):
                 rag_prefetch_content = rag_result.get("content") or ""
                 rag_prefetch_chunks = rag_result.get("chunks") or []
@@ -2523,8 +2641,15 @@ async def stream_agent_eventos(
     agent_id: str = None,
     async_supabase_client=None,
     client_request_id: str = None,
+    esforco: Optional[str] = None,
+    fases: Optional[Dict[str, Any]] = None,
 ):
     """Projeta `astream_events` em eventos tipados do turno.
+
+    `esforco` (SPEC-132-A): a escolha do chat do CORRETOR — só o `/chat/stream`
+    no modo painel passa; chega a `_build_initial_state(esforco_do_chat=)`.
+    `fases`: um dict que o chamador lê depois — aqui se escreve
+    `fases["contexto"]` (ms de `_build_initial_state`). Ninguém é obrigado a passar.
 
     Emite dicts: `{"kind": "delta", "text"}` · `{"kind": "tool_start", "name"}`
     · `{"kind": "tool_end", "name"}` · `{"kind": "error", "exc"}`.
@@ -2540,6 +2665,7 @@ async def stream_agent_eventos(
         initial_state = {"messages": []}
         config = {"configurable": {"thread_id": "%s:%s" % (company_id, session_id)}}
     else:
+        _inicio_do_contexto = time.monotonic()
         initial_state, config, real_agent_data = await _build_initial_state(
             user_message,
             company_id,
@@ -2550,7 +2676,10 @@ async def stream_agent_eventos(
             supabase_client,
             agent_id,
             graph=graph,
+            esforco_do_chat=esforco,
         )
+        if fases is not None:
+            fases["contexto"] = int((time.monotonic() - _inicio_do_contexto) * 1000)
 
         # === LANGSMITH TRACING (Multi-Tenant) ===
         from app.core.langsmith_setup import get_langsmith_config, is_langsmith_enabled
