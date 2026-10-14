@@ -1,3 +1,9 @@
+# 📊 13/10/2026, SPEC-131-B (branch spec/131-B-o-aplicativo, HEAD 191ecfa), worktree limpo C:/wt131b, TRÊS PARTES em paralelo
+#   (test_[0-9a-o]* · test_[p-r]*+s até spec122 · spec123+ e test_[t-z]*) → 17 failed · 1836 passed · 2 skipped (56:15) · 0 failed · 397 passed (15:39) ·
+#   19 failed · 4363 passed · 7 skipped · 30 xfailed · 1 xpassed (1:17:52). TRIAGEM contra a base (35): 32 iguais · 3 sumiram (as mesmas da 131-A) ·
+#   4 novas: roda_no_node (node_modules ausente) · árvore limpa (a parte A muta higiene_do_corpus no MESMO worktree: partes paralelas pedem worktrees
+#   separados) · fonte_comercial_bate_com_a_infocap (falha igual em e58db51: sem CORP_INFOCAP_* local) · 1 REGRESSÃO: [test_auxiliar_aparece_e_diz_porque]
+#   (ordem das seções, AbaInicio.tsx, de f148cf9) → consertada em 173f469 (o guarda mede a ordem de renderização; controle vermelho). A lista abaixo não muda.
 # 📊 13/10/2026, SPEC-131-A (branch spec/131-A-a-madrugada, HEAD 62f95a8), worktrees limpos C:/wt131a1 e C:/wt131a2, DUAS METADES em paralelo
 #   (--ignore-glob test_[p-z]* / test_[0-9a-o]*) → m1: 18 failed · 1835 passed · 2 skipped (1:09:03) · m2: 22 failed · 4638 passed · 7 skipped ·
 #   30 xfailed · 1 xpassed (1:53:50). TRIAGEM contra a base (35): 32 iguais · 3 sumiram (não conferidas na base) · 8 novas: 7 de carga/ambiente/ordem
