@@ -1,5 +1,6 @@
 
 import logging
+import os
 import threading
 from typing import Tuple
 
@@ -126,6 +127,24 @@ class BrazilianEmailRecognizer(PatternRecognizer):
 # PRESIDIO SERVICE
 # =============================================================================
 
+def _modelo_instalado(nome: str) -> bool:
+    try:
+        import spacy.util
+
+        return bool(spacy.util.is_package(nome))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _pode_baixar_modelo() -> bool:
+    """`PRESIDIO_BAIXAR_MODELO=0` proíbe o download do spaCy no arranque (padrão: permitido, o comportamento de hoje).
+
+    ⚠️ PENDÊNCIA de infra (SPEC-132-A, red team P1): o `backend/Dockerfile` só instala o `en_core_web_lg`; o
+    `pt_core_news_md` é baixado por pip a CADA arranque. Com `python -m spacy download pt_core_news_md` no Dockerfile,
+    o download nunca acontece em produção — e esta chave pode ir a `0`."""
+    return str(os.getenv("PRESIDIO_BAIXAR_MODELO", "1")).strip().lower() not in ("0", "false", "no", "off", "nao")
+
+
 class PresidioService:
     _instance = None
     #: 🔴 SPEC-132-A B7 — o aquecimento do arranque cria o singleton numa THREAD
@@ -155,6 +174,10 @@ class PresidioService:
                         {"lang_code": "en", "model_name": "en_core_web_lg"},
                     ],
                 }
+                faltam = [m["model_name"] for m in configuration["models"]
+                          if not _modelo_instalado(m["model_name"])]
+                if faltam and not _pode_baixar_modelo():
+                    raise RuntimeError("modelos do spaCy ausentes e download proibido: %s" % ", ".join(faltam))
                 provider = NlpEngineProvider(nlp_configuration=configuration)
                 nlp_engine = provider.create_engine()
 
@@ -164,8 +187,10 @@ class PresidioService:
                 )
                 logger.info("Presidio Service initialized with Portuguese (pt_core_news_md) + English")
 
-            except Exception as model_error:
-                logger.warning(f"Could not load pt_core_news_md: {model_error}. Using default engine.")
+            except (Exception, SystemExit) as model_error:
+                # 🔴 SPEC-132-A (red team P1): o download do spaCy que falha faz `sys.exit(1)` — `SystemExit` não é
+                # `Exception`, e derrubava o processo (no arranque ou no 1º turno). Agora vira o motor padrão.
+                logger.warning("Could not load pt_core_news_md (%s). Using default engine.", type(model_error).__name__)
                 self.analyzer = AnalyzerEngine()
 
             # Register Brazilian recognizers
@@ -178,8 +203,8 @@ class PresidioService:
             logger.info("Presidio Service initialized with Brazilian recognizers (CPF, CNPJ, Phone, Email)")
             self.initialized = True
 
-        except Exception as e:
-            logger.error(f"Failed to initialize Presidio: {e}")
+        except (Exception, SystemExit) as e:
+            logger.error("Failed to initialize Presidio (%s)", type(e).__name__)
             self.initialized = False
 
     def analyze_and_anonymize(self, text: str, action: str = 'mask') -> Tuple[bool, str]:
