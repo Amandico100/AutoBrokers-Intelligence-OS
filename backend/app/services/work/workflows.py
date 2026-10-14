@@ -72,7 +72,9 @@ def carregar_extras() -> None:
     for spec, modulo in (("SPEC-059", "app.services.intelligence.workflows"),
                          ("SPEC-060", "app.services.research.workflows"),
                          ("SPEC-133-A", "app.services.canal.workflows"),
-                         ("SPEC-131-A", "app.services.multicalculo.madrugada")):
+                         ("SPEC-131-A", "app.services.multicalculo.madrugada"),
+                         # SPEC-132-B (B1): `cotacao.chat` — a cotação pedida no chat responde na MESMA conversa
+                         ("SPEC-132-B", "app.services.cotacao.workflow")):
         try:
             __import__(modulo)
         except Exception as exc:  # noqa: BLE001
