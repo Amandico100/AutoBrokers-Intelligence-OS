@@ -293,8 +293,8 @@ function respostaSSE(eventos) {
  * A página real sobre o dublê do teste do shell: `useState` semeado POR POSIÇÃO (0 = messages, 1 = turno,
  * 5/6/7 = agents/selectedAgentId/agentsLoaded — a mesma ordem que `o-chat-responde-e-continua` fixa).
  */
-function montarPagina({ mensagens = [], turno = null, arquivo = 'app/dashboard/chat/page.tsx' } = {}) {
-  const seeds = { 5: [{ id: AG, name: 'Agente Alfa' }], 6: AG, 7: true };
+function montarPagina({ mensagens = [], turno = null, arquivo = 'app/dashboard/chat/page.tsx', seedsExtra = {}, toasts = null } = {}) {
+  const seeds = { 5: [{ id: AG, name: 'Agente Alfa' }], 6: AG, 7: true, ...seedsExtra };
   if (mensagens.length) seeds[0] = mensagens;
   if (turno) seeds[1] = turno;
   let idx = 0;
@@ -326,7 +326,7 @@ function montarPagina({ mensagens = [], turno = null, arquivo = 'app/dashboard/c
     '@/lib/supabase': { supabase: { channel: () => ({ on: () => ({ subscribe: () => ({}) }) }), removeChannel() {} } },
     '@/lib/types': {},
     '@/hooks/useUserId': { useUserId: () => ({ userId: UID, userAvatar: null, userName: 'Ana Teste', isLoading: false }) },
-    sonner: { toast: { error() {}, success() {} } },
+    sonner: { toast: { error(t) { if (toasts) toasts.push(String(t)); }, success() {} } },
   };
   const carregar = criarCarregador({
     React,
@@ -1072,6 +1072,177 @@ const ARQ_PAGINA_VIVA = process.env.PAGINA_VIVA_SOB_TESTE || ARQ_PAGINA;
     await p.avancar(6_000);
     checar(humanoNaTela && aindaEspera && !p.linhaDaEspera(), 'a mensagem de um humano aparece e NÃO encerra a espera; a da cotação, sim', `humano=${humanoNaTela} esperando=${aindaEspera}`);
   } finally { p.restaurar(); }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[12] Conserto (juiz P4): o envio RECUSADO antes do turno devolve o texto e os anexos à caixa');
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// MUTAÇÕES (em disco, restauradas por cópia — ver o relatório do conserto):
+//   16 o Composer ignora o `false` de onSendMessage (sem o restauro)          → [12b] 2 vermelhos
+//   17 a página não devolve `false` no 403 do BFF (`recusaAntesDoTurno` → false) → [12a] 2 vermelhos
+//   18 o Espaço num botão volta a ir para a caixa (sem a exceção do Espaço)      → [13] 2 vermelhos
+async function enviarComResposta(resposta, { seedsExtra = {} } = {}) {
+  const toasts = [];
+  const fetchAntes = globalThis.fetch;
+  const chamadas = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    chamadas.push(String(url));
+    if (/\/api\/chat\/stream$/.test(String(url))) return resposta();
+    return { ok: false, status: 500, json: async () => ({}) };
+  };
+  const consoleAntes = { error: console.error };
+  try {
+    const { arvore } = montarPagina({ arquivo: ARQ_PAGINA, seedsExtra, toasts });
+    const composer = [...nos(arvore)].find(ehComposer);
+    console.error = () => {};
+    const aceito = await composer.props.onSendMessage('Cotação do Onix 2020', [ANEXO_PDF], { esforco: 'rapido' });
+    return { aceito, toasts, chamadas: chamadas.filter((u) => /\/api\/chat\/stream$/.test(u)).length };
+  } finally {
+    globalThis.fetch = fetchAntes;
+    Object.assign(console, consoleAntes);
+  }
+}
+const respostaJson = (status, corpo) => () => ({ ok: status < 400, status, json: async () => corpo, body: null });
+{
+  // (a) a PÁGINA diz ao composer se o envio foi aceito
+  const recusado = await enviarComResposta(respostaJson(403, { ok: false, error: 'ANEXO_RECUSADO', motivo: 'Um dos anexos não pertence a esta corretora.', message: 'Um dos anexos não pertence a esta corretora.' }));
+  console.log(`      403 do BFF → aceito=${recusado.aceito} · toast: ${recusado.toasts.join(' | ')}`);
+  checar(recusado.aceito === false, '403 do BFF (antes de gravar) → onSendMessage resolve `false`', String(recusado.aceito));
+  checar(recusado.toasts.some((t) => /não pertence a esta corretora/.test(t) && /voltou para a caixa/.test(t)), 'o aviso é o motivo HUMANO do BFF + "Sua mensagem voltou para a caixa."', recusado.toasts.join(' | '));
+  const carregando = await enviarComResposta(respostaJson(200, {}), { seedsExtra: { 7: false } });
+  checar(carregando.aceito === false && carregando.chamadas === 0, 'agentes ainda carregando → `false`, sem chamar o stream', `aceito=${carregando.aceito} chamadas=${carregando.chamadas}`);
+  const doBackend = await enviarComResposta(respostaJson(429, { error: 'muitos turnos em voo', status: 429 }));
+  checar(doBackend.aceito !== false, 'CONTROLE: o 4xx REPASSADO do backend (a pergunta já foi gravada) não devolve o texto — vale o "Tentar de novo"', String(doBackend.aceito));
+  const ok = await enviarComResposta(() => respostaSSE([{ protocol: 'autobrokers.interaction.v1', seq: 1, type: 'turn.completed', turn: {}, payload: { status: 'complete' } }]));
+  checar(ok.aceito === true, 'CONTROLE: o turno que começou → `true`', String(ok.aceito));
+}
+
+/** O Composer real sobre o React dublê com efeitos: anexa um PDF (XHR dublê), envia, e mede o que ficou na caixa. */
+async function medirRestauro(resultadoDoEnvio, arquivoDoComposer = ARQ_COMPOSER) {
+  const { React, render, rodarEfeitos } = criarReactComEfeitos();
+  const stubs = (id) => {
+    const b = stubsDeBorda(id);
+    if (b !== undefined) return b;
+    if (id === 'lucide-react') return new Proxy({}, { get: () => () => null });
+    if (/\/(FichaDeAnexo|FolhaDoMais|GravadorDeAudio)$/.test(id)) return new Proxy({}, { get: (_t, k) => (k === '__esModule' ? true : () => null) });
+    return undefined;
+  };
+  const carregar = criarCarregador({ React, stubs });
+  const antes = { window: globalThis.window, document: globalThis.document, raf: globalThis.requestAnimationFrame, xhr: globalThis.XMLHttpRequest };
+  globalThis.window = { addEventListener() {}, removeEventListener() {}, localStorage: null };
+  globalThis.document = { activeElement: null, body: {} };
+  globalThis.requestAnimationFrame = (fn) => { fn(0); return 0; };
+  globalThis.XMLHttpRequest = class {
+    constructor() { this.upload = {}; this.status = 0; this.responseText = ''; }
+    open() {}
+    abort() {}
+    send(corpo) {
+      const arquivo = corpo.get('file');
+      setTimeout(() => {
+        this.status = 201;
+        this.responseText = JSON.stringify({ ok: true, bucket: 'chat-docs', path: `co-alfa/u-ana/chat-docs/${arquivo.name}`, nome: arquivo.name, mime: arquivo.type, bytes: arquivo.size, url: '/api/storage/x' });
+        this.onload();
+      }, 0);
+    }
+  };
+  const espera = () => new Promise((r) => setTimeout(r, 5));
+  try {
+    const { Composer } = carregar(arquivoDoComposer);
+    const ref = { current: null };
+    const enviados = [];
+    const campo = { value: '', style: {}, scrollHeight: 44, focus() {}, setSelectionRange() {} };
+    const props = { onSendMessage: (t, a) => { enviados.push({ t, a }); return Promise.resolve(resultadoDoEnvio); }, initialText: 'Cotação do Onix 2020', focoKey: 'c1', turnStatus: 'idle', ref };
+    const passo = () => {
+      const arvore = render(Composer, props);
+      for (const n of nos(arvore)) if (n.tipo === 'textarea' && n.props.ref && typeof n.props.ref === 'object') n.props.ref.current = campo;
+      rodarEfeitos();
+      return arvore;
+    };
+    passo();
+    ref.current.adicionarArquivos([new File(['%PDF-1.4'], 'apolice.pdf', { type: 'application/pdf' })]);
+    await espera();
+    let arvore = passo();
+    const enviar = [...nos(arvore)].find((n) => n.tipo === 'button' && n.props['aria-label'] === 'Enviar');
+    enviar.props.onClick();
+    arvore = passo();
+    const logoDepois = [...nos(arvore)].find((n) => n.tipo === 'textarea').props.value;
+    await espera();
+    arvore = passo();
+    const texto = [...nos(arvore)].find((n) => n.tipo === 'textarea').props.value;
+    const fichas = [...nos(arvore)].filter((n) => n.props && n.props.nome === 'apolice.pdf').length;
+    return { enviados, logoDepois, texto, fichas };
+  } finally {
+    globalThis.window = antes.window;
+    globalThis.document = antes.document;
+    globalThis.requestAnimationFrame = antes.raf;
+    globalThis.XMLHttpRequest = antes.xhr;
+  }
+}
+{
+  // (b) o COMPOSER devolve o texto e os anexos quando a página diz `false`
+  const recusa = await medirRestauro(false);
+  console.log(`      recusado: enviou ${recusa.enviados.length}× (${recusa.enviados[0]?.a?.length ?? 0} anexo) · caixa logo depois: "${recusa.logoDepois}" · depois da recusa: "${recusa.texto}" + ${recusa.fichas} ficha(s)`);
+  checar(recusa.enviados.length === 1 && recusa.enviados[0].a.length === 1 && recusa.logoDepois === '', 'o envio sai com o texto e o anexo, e a caixa esvazia na hora (como antes)');
+  checar(recusa.texto === 'Cotação do Onix 2020', 'recusado → o TEXTO volta para a caixa', recusa.texto);
+  checar(recusa.fichas === 1, 'recusado → o ANEXO volta para a caixa', String(recusa.fichas));
+  const aceito = await medirRestauro(true);
+  checar(aceito.texto === '' && aceito.fichas === 0, 'CONTROLE: aceito → a caixa continua vazia', `"${aceito.texto}" + ${aceito.fichas}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[13] Conserto (juiz P3): o Espaço num botão APERTA o botão — não é desviado para a caixa');
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+function medirTeclasForaDaCaixa(arquivoDoComposer = ARQ_COMPOSER) {
+  const { React, render, rodarEfeitos } = criarReactComEfeitos();
+  const stubs = (id) => {
+    const b = stubsDeBorda(id);
+    if (b !== undefined) return b;
+    if (id === 'lucide-react') return new Proxy({}, { get: () => () => null });
+    if (/\/(FichaDeAnexo|FolhaDoMais|GravadorDeAudio)$/.test(id)) return new Proxy({}, { get: (_t, k) => (k === '__esModule' ? true : () => null) });
+    return undefined;
+  };
+  const carregar = criarCarregador({ React, stubs });
+  const antes = { window: globalThis.window, document: globalThis.document, raf: globalThis.requestAnimationFrame };
+  const ouvintes = [];
+  globalThis.window = { addEventListener(t, fn) { if (t === 'keydown') ouvintes.push(fn); }, removeEventListener() {}, localStorage: null };
+  const corpo = {};
+  globalThis.document = { activeElement: null, body: corpo };
+  globalThis.requestAnimationFrame = (fn) => { fn(0); return 0; };
+  try {
+    const { Composer } = carregar(arquivoDoComposer);
+    let focos = 0;
+    const campo = { value: '', style: {}, scrollHeight: 44, focus() { focos += 1; }, setSelectionRange() {} };
+    const arvore = render(Composer, { onSendMessage() {}, focoKey: 'c1', turnStatus: 'idle' });
+    for (const n of nos(arvore)) if (n.tipo === 'textarea' && n.props.ref && typeof n.props.ref === 'object') n.props.ref.current = campo;
+    rodarEfeitos();
+    const elemento = (tagName, role = null) => ({ tagName, isContentEditable: false, getAttribute: (k) => (k === 'role' ? role : null), closest: () => null });
+    const tecla = (key, ativo) => {
+      globalThis.document.activeElement = ativo;
+      const antesDela = focos;
+      for (const fn of ouvintes) fn({ key, ctrlKey: false, metaKey: false, altKey: false });
+      return focos - antesDela;
+    };
+    return {
+      espacoNoBotao: tecla(' ', elemento('BUTTON')),
+      espacoNoLink: tecla(' ', elemento('A')),
+      espacoNoPapelBotao: tecla(' ', elemento('DIV', 'button')),
+      letraNoBotao: tecla('a', elemento('BUTTON')),
+      espacoNoCorpo: tecla(' ', corpo),
+    };
+  } finally {
+    globalThis.window = antes.window;
+    globalThis.document = antes.document;
+    globalThis.requestAnimationFrame = antes.raf;
+  }
+}
+{
+  const m = medirTeclasForaDaCaixa();
+  console.log(`      focus() na caixa · Espaço em <button>: ${m.espacoNoBotao} · em <a>: ${m.espacoNoLink} · em [role=button]: ${m.espacoNoPapelBotao} · letra em <button>: ${m.letraNoBotao} · Espaço sem foco: ${m.espacoNoCorpo}`);
+  checar(m.espacoNoBotao === 0, 'Espaço com o foco em "Copiar"/"Tentar de novo"/"+" NÃO vai para a caixa (o botão aciona)');
+  checar(m.espacoNoLink === 0 && m.espacoNoPapelBotao === 0, 'idem num link e num elemento com papel de botão');
+  checar(m.letraNoBotao >= 1 && m.espacoNoCorpo >= 1, 'CONTROLE: uma LETRA com o foco no botão, e o Espaço sem foco nenhum, continuam indo para a caixa', `letra=${m.letraNoBotao} corpo=${m.espacoNoCorpo}`);
+  const K = carregarReal('components/chat/composer/teclado.ts');
+  checar(K.teclaVaiParaACaixa({ key: 'Enter' }, null) === false, 'Enter nunca é desviado (não escreve um caractere)');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
