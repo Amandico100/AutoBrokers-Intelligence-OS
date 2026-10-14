@@ -88,6 +88,29 @@ def duracao_local_em_segundos(dados: bytes, extensao: str) -> Optional[float]:
     return None
 
 
+#: SPEC-132-A — MIME do anexo → a extensão que a API de transcrição aceita
+#: (flac · m4a · mp3 · mp4 · mpeg · mpga · oga · ogg · wav · webm). `.opus` é Ogg: vai como `.ogg`.
+_EXTENSAO_POR_MIME = {
+    "audio/webm": ".webm", "video/webm": ".webm",
+    "audio/ogg": ".ogg", "audio/opus": ".ogg", "application/ogg": ".ogg",
+    "audio/mpeg": ".mp3", "audio/mp3": ".mp3",
+    "audio/mp4": ".m4a", "audio/x-m4a": ".m4a", "audio/m4a": ".m4a",
+    "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/wave": ".wav",
+    "audio/aac": ".aac", "audio/x-aac": ".aac",
+}
+_EXTENSAO_POR_NOME = {"opus": ".ogg", "oga": ".ogg", "ogg": ".ogg", "mp3": ".mp3", "m4a": ".m4a", "mp4": ".m4a",
+                      "wav": ".wav", "webm": ".webm", "aac": ".aac", "mpeg": ".mp3", "mpga": ".mp3"}
+
+
+def extensao_da_transcricao(mime: str = "", nome: str = "") -> str:
+    """A extensão do arquivo temporário que vai à API (o MIME vence; depois o nome; senão `.webm`)."""
+    tipo = str(mime or "").split(";")[0].strip().lower()
+    if tipo in _EXTENSAO_POR_MIME:
+        return _EXTENSAO_POR_MIME[tipo]
+    ext = str(nome or "").rsplit(".", 1)[-1].lower() if "." in str(nome or "") else ""
+    return _EXTENSAO_POR_NOME.get(ext, ".webm")
+
+
 class AudioService:
     """Transcrição de áudio (async) pelo modelo da ROTA `transcricao`.
 
@@ -242,6 +265,33 @@ class AudioService:
         except Exception as e:
             logger.error(f"[AUDIO] Transcription error: {str(e)}", exc_info=True)
             raise Exception(f"Failed to transcribe audio: {str(e)}") from e
+
+    async def transcribe_audio_bytes(
+        self,
+        dados: bytes,
+        mime: str = "",
+        *,
+        nome: str = "",
+        company_id: str = None,
+        agent_id: str = None,
+    ) -> str:
+        """SPEC-132-A — transcreve os BYTES de um arquivo de áudio anexado no chat (m4a/mp3/ogg/opus/wav/webm/aac).
+
+        A extensão vem do MIME (ou do nome) e é a que a API de transcrição aceita (`.opus` vai como `.ogg`).
+        ⛔ Nunca a transcrição, o nome nem o conteúdo no log — só o tamanho e o formato.
+        Levanta `ValueError` (vazio) ou a exceção da API; quem chama (`chat_anexos`) transforma em aviso.
+        """
+        if not dados:
+            raise ValueError("Audio data is empty")
+        extensao = extensao_da_transcricao(mime, nome)
+        logger.info("[AUDIO] transcrição de anexo do chat: %d bytes (%s)", len(dados), extensao)
+        transcript, modelo, duracao = await self._transcrever(bytes(dados), extensao)
+        try:
+            self._registrar_uso(transcript, modelo, company_id=company_id, agent_id=agent_id,
+                                details={"source": "chat_anexo"}, duracao_local=duracao)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[AUDIO] Cost tracking failed: %s", type(e).__name__)
+        return str(getattr(transcript, "text", "") or "")
 
     async def transcribe_audio_from_url(
         self,
