@@ -854,7 +854,7 @@ def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[
 async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolice_atual: Optional[Mapping] = None,
                           primeiro_nome: Optional[str] = None, *, db: Any, agora: Optional[datetime] = None,
                           baixar_logo: Optional[BaixarLogo] = None, premio_atual_declarado: Optional[float] = None,
-                          _contexto: Optional[dict] = None) -> Dict[str, Any]:
+                          ajuste_calculo_id: Optional[str] = None, _contexto: Optional[dict] = None) -> Dict[str, Any]:
     """O MODELO da página (CONTRATO §5). `company_id` = o SOLICITANTE (a corretora, ou o canal).
     `premio_atual_declarado` (SPEC-133-A F0): o preço que a pessoa disse pagar hoje — a economia é contra ele quando
     não há apólice com prêmio.
@@ -880,6 +880,13 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
 
     cfg_sol = CFG.carregar(company_id, db=db, servico=servico)
     ofertas, eventos, estados = list(andamento.ofertas), list(andamento.eventos), list(andamento.estados)
+    if ajuste_calculo_id:
+        # SPEC-132-B (conserto juiz B1 + RT B-2): a página DEPOIS do recálculo — o cálculo de ajuste no lugar da opção
+        # de onde saiu; as ofertas e os eventos de cálculos que saíram da vista não entram em conta nenhuma
+        estados = CMP.estados_do_recalculo(estados, ajuste_calculo_id)
+        na_vista = {str(e.get("calculo_id")) for e in estados}
+        ofertas = [o for o in ofertas if str(o.get("calculo_id")) in na_vista]
+        eventos = [e for e in eventos if str(e.get("calculo_id")) in na_vista]
     renovacao = situacao == "renovacao" and origem == "corretora"
     if renovacao:                               # SPEC-131-B: o ranking e "Sua renovação" vêm do cálculo `anterior`
         cfg_sol = CMP.config_da_renovacao(cfg_sol, estados)
@@ -1008,6 +1015,7 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
         "gerado_em": hoje.replace(microsecond=0).isoformat(),
         "aviso_legal": AVISO_LEGAL_CANAL if origem == "canal" else AVISO_LEGAL_CORRETORA,
         "cta": cta,
+        **({"recalculo": {"calculo_id": str(ajuste_calculo_id)}} if ajuste_calculo_id else {}),
         # D-130A-08 REVOGADA (SPEC-130-A.1): "nós não vendemos seguros" — nenhuma remuneração no modelo (G9)
     }
     if origem == "canal":                       # RT-10: o nome do canal é CONFIGURAÇÃO do produto, não constante
@@ -1583,11 +1591,24 @@ def link_que_ainda_vale(db: Any, company_id: str, pedido_id: str, modelo: Mappin
         return None
 
 
+def apolice_com_prova(apolice_atual: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
+    """A apólice atual como a página da COTAÇÃO pode usá-la: a seguradora sempre; o prêmio SÓ com
+    `origem == "documento"` (lido e conferido pela ficha — SPEC-132-B §4.4, mutação 5). O prêmio que alguém DISSE nunca
+    vira "economia" na página do cliente. Sem a seguradora → None."""
+    if not isinstance(apolice_atual, Mapping) or not str(apolice_atual.get("seguradora") or "").strip():
+        return None
+    saida: Dict[str, Any] = {"seguradora": str(apolice_atual["seguradora"]).strip()}
+    if apolice_atual.get("origem") == "documento" and premio_atual(apolice_atual) is not None:
+        saida.update({"premio_anual": premio_atual(apolice_atual), "origem": "documento",
+                      "base": str(apolice_atual.get("base") or "liquido")})
+    return saida
+
+
 async def publicar_cotacao(company_id: str, pedido_id: str, *, pessoa_user_id: Any,
                            apolice_atual: Optional[Mapping] = None, db: Any = None,
                            primeiro_nome: Optional[str] = None, base_url: Optional[str] = None,
                            agora: Optional[datetime] = None, baixar_logo: Optional[BaixarLogo] = None,
-                           exemplo: bool = False) -> Dict[str, Any]:
+                           exemplo: bool = False, ajuste_calculo_id: Optional[str] = None) -> Dict[str, Any]:
     """SPEC-132-B (contrato B2 → B1/B3): a página de VENDA de uma cotação, publicada no `/r/` rastreado pelo MESMO
     caminho da proposta (artefato `proposal.quote` no Hub; publicar de novo = versão nova da mesma peça — CLAUDE.md §5).
     Devolve {token, url, artifact_id, versao, validade_ate, resumo, modelo}; `resumo` = as opções para o chat
@@ -1598,6 +1619,11 @@ async def publicar_cotacao(company_id: str, pedido_id: str, *, pessoa_user_id: A
        corretora) → senão ao da corretora → senão a página publica SEM botão e diz "responda a mensagem em que recebeu
        este link" (D-131-44). NUNCA recusa por falta de número: o link vai pelo CORRETOR (D-132B-05).
     🔴 Com `apolice_atual` a situação é `novo_com_apolice` (a economia SÓ aparece assim); sem ela, `novo_sem_apolice`.
+    🔴 Conserto juiz B2 + RT B-1: o prêmio da apólice só entra (e com ele a economia) quando veio do DOCUMENTO lido
+       (`apolice_atual.origem == "documento"`, a ficha da 130-B conferida); qualquer outro prêmio é descartado aqui —
+       a seguradora fica ("Igual à sua atual"), o número não.
+    `ajuste_calculo_id` (conserto juiz B1 + RT B-2): a página DEPOIS do recálculo — a opção ajustada com as ofertas do
+    cálculo de ajuste (`comparacao.estados_do_recalculo`); o modelo muda, e com ele a versão e o link.
     `primeiro_nome`: o do CLIENTE (só o primeiro entra). `exemplo=True` (D-132B-08): a faixa "Exemplo — dados
     fictícios" no topo — só para as páginas de exemplo.
     ⛔ O telefone e o CPF do cliente nunca entram no modelo nem no HTML.
@@ -1610,10 +1636,11 @@ async def publicar_cotacao(company_id: str, pedido_id: str, *, pessoa_user_id: A
 
         db = get_supabase_client().client
     base = _base_do_link(base_url)
+    apolice_atual = apolice_com_prova(apolice_atual)
     situacao = "novo_com_apolice" if apolice_atual else "novo_sem_apolice"
     ctx: Dict[str, Any] = {}
     modelo = await montar_proposta(company_id, pedido_id, situacao, apolice_atual, primeiro_nome, db=db, agora=agora,
-                                   baixar_logo=baixar_logo, _contexto=ctx)
+                                   baixar_logo=baixar_logo, ajuste_calculo_id=ajuste_calculo_id or None, _contexto=ctx)
     if modelo.get("origem") != "corretora":
         raise PropostaImpossivel("a página de venda é da corretora: este pedido é do canal comparador")
 
