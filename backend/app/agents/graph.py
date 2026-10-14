@@ -592,6 +592,20 @@ async def create_agent_graph(
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Graph] ⚠️ Capability tools (SPEC-014) não anexadas: {e}")
 
+    # === SPEC-132-B · B4 — a COTAÇÃO RÁPIDA no chat do corretor (preparar → confirmar → calcular → ajustar) ===
+    # Governada pelo Registry como as outras: SÓ com `tenant.multicalculo.cotacao` ATIVA (o binding do papel `core`
+    # da migration 20261014_04 — global por papel, vale para QUALQUER corretora; a corretora a desliga pelo
+    # entitlement) e SÓ no papel core (o atendente do segurado nunca cota). `company_id` vai no construtor (o grafo é
+    # por corretora); quem pede e a conversa são injetados por turno no `tool_node`, nunca pelo modelo.
+    # 🔴 Num `try` próprio: uma falha aqui não derruba as ferramentas de cima, nem as de cima derrubam esta.
+    try:
+        if (company_id and real_supabase_client and "tenant.multicalculo.cotacao" in _active
+                and str(_agent_role or "core").strip().lower() in ("core", "", "core(legado)")):
+            from .tools.cotacao_tool import ferramentas_de_cotacao
+            tools.extend(ferramentas_de_cotacao(company_id=str(company_id), supabase=real_supabase_client))
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[Graph] ⚠️ ferramentas da cotação não anexadas: {type(e).__name__}")
+
     # === SPEC-057 — o corretor pede o relatório por conversa ===
     # É aqui que a fundação das 054–057 vira algo que ele vê: "me faz o
     # panorama do mês" devolve uma peça com a marca da corretora dele.
