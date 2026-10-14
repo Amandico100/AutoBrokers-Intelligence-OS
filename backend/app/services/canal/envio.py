@@ -31,11 +31,19 @@ _PROVEDORES = ("evolution-go", "evolution", "evolution-api", "z-api", "zapi")
 
 def _linha_do_canal(db, company_id: str) -> Optional[Dict[str, Any]]:
     """A linha da integração ATIVA do canal (conectada primeiro), como está no banco. Sem ela → None.
-    A MESMA escolha serve ao envio (`integracao_do_canal`) e ao número da conversa (`numero_do_canal`)."""
+    A MESMA escolha serve ao envio (`integracao_do_canal`) e ao número da conversa (`numero_do_canal`).
+
+    🔴 SPEC-132-C C3 — a empresa da plataforma tem DOIS números: o do QCM e o do ASSISTENTE dos corretores
+    (`purpose='assistente'`, o atalho do chat). O QCM nunca responde pelo número do assistente (nem o "Quero fechar"
+    da página aponta para ele): a linha `assistente` não é candidata aqui. O inverso mora em
+    `atalho.envio.integracao_do_assistente` (só `purpose='assistente'`)."""
+    from app.services.whatsapp.channel_identity import PURPOSE_DO_ASSISTENTE
+
     cid = repo._cid(company_id)
     linhas = repo._dados(db.table("integrations").select("*").eq("company_id", cid).eq("is_active", True).execute())
     linhas = [x for x in repo._da_empresa(linhas, cid)
-              if str(x.get("provider") or "").strip().lower() in _PROVEDORES]
+              if str(x.get("provider") or "").strip().lower() in _PROVEDORES
+              and str(x.get("purpose") or "").strip().lower() != PURPOSE_DO_ASSISTENTE]
     if not linhas:
         return None
     linhas.sort(key=lambda x: 0 if str(x.get("channel_status") or "").lower() == "connected" else 1)
