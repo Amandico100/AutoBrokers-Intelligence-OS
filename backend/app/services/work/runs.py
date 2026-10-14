@@ -152,6 +152,25 @@ class Esperando:
 ESPERANDO = Esperando()
 
 
+class Concluido:
+    """O handler TERMINOU e devolve, além do resumo, o que o run PRODUZIU — vira `work_runs.result_payload`.
+
+    SPEC-132-B (B4): o `concluir` sempre aceitou `resultado`, mas o worker nunca o passava — todo run fechava com
+    `result_payload = {}` e quem lê o resultado depois (a aba Cotações: o link, o token, a mensagem) não tinha de onde.
+    Devolver uma `str` continua valendo (o de sempre: resultado vazio). ⛔ Só ids, links e texto já mascarado — o
+    `result_payload` vai EM CLARO ao banco.
+    """
+
+    __slots__ = ("resumo", "resultado")
+
+    def __init__(self, resumo: str, resultado: Optional[dict] = None):
+        self.resumo = resumo
+        self.resultado = dict(resultado or {})
+
+    def __repr__(self) -> str:  # pragma: no cover - diagnóstico
+        return f"CONCLUIDO({self.resumo!r})"
+
+
 class EfeitoIncerto(Exception):
     """Um passo de efeito EXTERNO foi interrompido no meio: pode ter acontecido.
 
